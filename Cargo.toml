@@ -1,0 +1,16 @@
+[package]
+name = "graphite"
+version = "0.1.0"
+authors = ["Keavon Chambers <graphite@keavon.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+image = "0.22"
+winit = "0.20"
+wgpu = "0.4"
+glsl-to-spirv = "0.1"
+failure = "0.1.7"
+cgmath = "0.17"
+palette = "0.5"
