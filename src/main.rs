@@ -1,10 +1,11 @@
 mod application;
 mod gui_rect;
 mod pipeline;
-mod program_state;
 mod texture;
 mod color_palette;
 mod shader_cache;
+mod pipeline_cache;
+mod draw_command;
 
 use application::Application;
 use winit::event_loop::EventLoop;
@@ -23,7 +24,6 @@ fn main() {
 
 	// State managers for render pipeline and program logic
 	// let app_render_state = RenderState::new(&mut app);
-	// let app_program_state = ProgramState::new(&mut app);
 
 	// Begin the application lifecycle
 	app.begin_lifecycle(event_loop, window);

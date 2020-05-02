@@ -1,8 +1,14 @@
 use std::collections::HashMap;
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq, Debug)]
 pub struct ShaderID {
-	pub index: usize,
+	index: usize,
+}
+
+impl ShaderID {
+	pub fn new(index: usize) -> Self {
+		Self { index }
+	}
 }
 
 pub struct ShaderCache {
@@ -39,8 +45,8 @@ impl ShaderCache {
 			let compiled = wgpu::read_spirv(spirv).unwrap();
 			let shader = device.create_shader_module(&compiled);
 
-			let length = self.path_to_id.len();
-			self.path_to_id.insert(String::from(path), ShaderID { index: length });
+			let last_index = self.path_to_id.len();
+			self.path_to_id.insert(String::from(path), ShaderID { index: last_index });
 			self.shaders.push(shader);
 		}
 

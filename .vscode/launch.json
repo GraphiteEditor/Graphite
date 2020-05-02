@@ -5,23 +5,41 @@
 	"version": "0.2.0",
 	"configurations": [
 		{
-			"name": "(Windows) Launch",
-			"type": "cppvsdbg",
-			"request": "launch",
-			"program": "${workspaceFolder}/target/debug/graphite.exe",
-			"args": [],
-			"stopAtEntry": false,
-			"cwd": "${workspaceFolder}",
-			"environment": [],
-			"externalConsole": false
-		},
-		{
-			"name": "(LLDB) Launch",
 			"type": "lldb",
 			"request": "launch",
-			"program": "${workspaceFolder}/target/debug/graphite.exe",
+			"name": "Debug executable 'graphite'",
+			"cargo": {
+				"args": [
+					"build",
+					"--bin=graphite",
+					"--package=graphite"
+				],
+				"filter": {
+					"name": "graphite",
+					"kind": "bin"
+				}
+			},
 			"args": [],
-			"cwd": "${workspaceFolder}",
+			"cwd": "${workspaceFolder}"
+		},
+		{
+			"type": "lldb",
+			"request": "launch",
+			"name": "Debug unit tests in executable 'graphite'",
+			"cargo": {
+				"args": [
+					"test",
+					"--no-run",
+					"--bin=graphite",
+					"--package=graphite"
+				],
+				"filter": {
+					"name": "graphite",
+					"kind": "bin"
+				}
+			},
+			"args": [],
+			"cwd": "${workspaceFolder}"
 		}
 	]
 }
