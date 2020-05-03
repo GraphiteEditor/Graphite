@@ -38,11 +38,17 @@ impl ShaderCache {
 	// 	self.shaders.get(id.index)
 	// }
 
-	pub fn load(&mut self, device: &wgpu::Device, path: &str, shader_type: glsl_to_spirv::ShaderType) -> Result<(), std::io::Error> {
+	pub fn load(&mut self, device: &wgpu::Device, path: &str, shader_type: glsl_to_spirv::ShaderType) -> std::io::Result<()> {
 		if self.path_to_id.get(path).is_none() {
 			let source = std::fs::read_to_string(path)?;
-			let spirv = glsl_to_spirv::compile(&source[..], shader_type).unwrap();
-			let compiled = wgpu::read_spirv(spirv).unwrap();
+			let spirv = match glsl_to_spirv::compile(&source[..], shader_type) {
+				Ok(spirv_output) => spirv_output,
+				Err(message) => {
+					println!("Error compiling GLSL to SPIRV shader: {}", message);
+					panic!("{}", message);
+				}
+			};
+			let compiled = wgpu::read_spirv(spirv)?;
 			let shader = device.create_shader_module(&compiled);
 
 			let last_index = self.path_to_id.len();

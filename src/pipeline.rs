@@ -48,7 +48,7 @@ impl Pipeline {
 			primitive_topology: wgpu::PrimitiveTopology::TriangleList,
 			color_states: &[
 				wgpu::ColorStateDescriptor {
-					format: wgpu::TextureFormat::Bgra8UnormSrgb,
+					format: wgpu::TextureFormat::Bgra8UnormSrgb, // TODO: Make this match Application.swap_chain_descriptor
 					color_blend: wgpu::BlendDescriptor::REPLACE,
 					alpha_blend: wgpu::BlendDescriptor::REPLACE,
 					write_mask: wgpu::ColorWrite::ALL,

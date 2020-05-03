@@ -92,11 +92,11 @@ impl Application {
 	pub fn example(&mut self) {
 		// Example vertex data
 		const VERTICES: &[[f32; 2]] = &[
-			[-0.0868241, -0.49240386],
-			[-0.49513406, -0.06958647],
-			[-0.21918549, 0.44939706],
-			[0.35966998, 0.3473291],
-			[0.44147372, -0.2347359],
+			[-0.0868241, 0.49240386],
+			[-0.49513406, 0.06958647],
+			[-0.21918549, -0.44939706],
+			[0.35966998, -0.3473291],
+			[0.44147372, 0.2347359],
 		];
 		const INDICES: &[u16] = &[
 			0, 1, 4,
@@ -153,7 +153,7 @@ impl Application {
 			// Once every event is handled and the GUI structure is updated, this requests a new sequence of draw commands
 			Event::MainEventsCleared => {
 				// Turn the GUI changes into draw commands added to the render pipeline queue
-				self.redraw();
+				self.redraw_gui();
 
 				// If any draw commands were actually added, ask the window to dispatch a redraw event
 				if !self.draw_command_queue.is_empty() {
@@ -165,30 +165,17 @@ impl Application {
 				self.render();
 			},
 			// Catch extraneous events
-			_ => {
-			},
+			_ => {},
 		}
 	}
 
 	pub fn window_event(&mut self, event: &WindowEvent, control_flow: &mut ControlFlow) {
 		match event {
-			WindowEvent::CloseRequested => {
-				self.quit(control_flow);
-			},
-			WindowEvent::KeyboardInput { input, .. } => {
-				self.keyboard_event(input, control_flow);
-			},
-			WindowEvent::Resized(physical_size) => {
-				self.resize(*physical_size);
-				*control_flow = ControlFlow::Wait;
-			},
-			WindowEvent::ScaleFactorChanged { new_inner_size, .. } => {
-				self.resize(**new_inner_size);
-				*control_flow = ControlFlow::Wait;
-			},
-			_ => {
-				*control_flow = ControlFlow::Wait;
-			},
+			WindowEvent::CloseRequested => self.quit(control_flow),
+			WindowEvent::KeyboardInput { input, .. } => self.keyboard_event(input, control_flow),
+			WindowEvent::Resized(physical_size) => self.resize(*physical_size),
+			WindowEvent::ScaleFactorChanged { new_inner_size, .. } => self.resize(**new_inner_size),
+			_ => {},
 		}
 	}
 
@@ -220,17 +207,17 @@ impl Application {
 	}
 
 	// Traverse the dirty GUI elements and queue up pipelines to render each GUI rectangle (box/sprite)
-	pub fn redraw(&mut self) {
+	pub fn redraw_gui(&mut self) {
 
 	}
 
 	// Render the queue of pipeline draw commands over the current window
 	pub fn render(&mut self) {
 		// Get a frame buffer to render on
-		let frame = self.swap_chain.get_next_texture().unwrap();
+		let frame = self.swap_chain.get_next_texture().expect("Timeout getting frame buffer texture");
 		
 		// Generates a render pass that commands are applied to, then generates a command buffer when finished
-		let mut command_encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
+		let mut command_encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("Render Encoder") });
 
 		// Temporary way to swap clear color every render
 		let color = match self.temp_color_toggle {

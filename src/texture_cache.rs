@@ -33,7 +33,7 @@ impl ShaderCache {
 		self.shaders.get(id.index)
 	}
 
-	pub fn load(&mut self, device: &wgpu::Device, path: &str, shader_type: glsl_to_spirv::ShaderType) -> Result<(), std::io::Error> {
+	pub fn load(&mut self, device: &wgpu::Device, path: &str, shader_type: glsl_to_spirv::ShaderType) -> std::io::Result<()> {
 		if self.name_to_id.get(path).is_none() {
 			let source = std::fs::read_to_string(path)?;
 			let spirv = glsl_to_spirv::compile(&source[..], shader_type).unwrap();
