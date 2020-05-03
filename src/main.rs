@@ -6,6 +6,7 @@ mod color_palette;
 mod resource_cache;
 mod shader_stage;
 mod draw_command;
+mod gui_tree;
 
 use application::Application;
 use winit::event_loop::EventLoop;

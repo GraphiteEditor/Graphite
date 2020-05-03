@@ -1,11 +1,12 @@
 // use super::render_state::RenderState;
 use super::color_palette::ColorPalette;
-use super::gui_rect::GUIRect;
+use super::gui_rect::GuiRect;
 use super::pipeline::Pipeline;
 use super::texture::Texture;
 use super::shader_stage::compile_from_glsl;
 use super::resource_cache::ResourceCache;
 use super::draw_command::DrawCommand;
+use super::gui_tree::GuiTree;
 use std::collections::VecDeque;
 use winit::event::*;
 use winit::event_loop::ControlFlow;
@@ -23,8 +24,8 @@ pub struct Application {
 	pub shader_cache: ResourceCache<wgpu::ShaderModule>,
 	pub pipeline_cache: ResourceCache<Pipeline>,
 	pub texture_cache: ResourceCache<Texture>,
-	pub gui_rect_queue: VecDeque<GUIRect>,
 	pub draw_command_queue: VecDeque<DrawCommand>,
+	pub gui_tree: GuiTree,
 	pub temp_color_toggle: bool,
 }
 
@@ -66,14 +67,16 @@ impl Application {
 		// Series of frame buffers with images presented to the surface
 		let swap_chain = device.create_swap_chain(&surface, &swap_chain_descriptor);
 
-		// Cache of all loaded shaders and the Pipeline programs they form
+		// Resource caches that own the application's shaders, pipelines, and textures
 		let shader_cache = ResourceCache::<wgpu::ShaderModule>::new();
 		let pipeline_cache = ResourceCache::<Pipeline>::new();
 		let texture_cache = ResourceCache::<Texture>::new();
 
-		let gui_rect_queue = VecDeque::new();
-
+		// Ordered list of draw commands to send to the GPU on the next frame render
 		let draw_command_queue = VecDeque::new();
+
+		// Data structure maintaining the user interface
+		let gui_tree = GuiTree::new();
 		
 		Self {
 			surface,
@@ -85,8 +88,8 @@ impl Application {
 			shader_cache,
 			pipeline_cache,
 			texture_cache,
-			gui_rect_queue,
 			draw_command_queue,
+			gui_tree,
 			temp_color_toggle: true,
 		}
 	}
@@ -163,49 +166,55 @@ impl Application {
 
 		match event {
 			// Handle all window events (like input and resize) in sequence
-			Event::WindowEvent { ref event, window_id } if window_id == window.id() => {
-				self.window_event(event, control_flow);
-			},
+			Event::WindowEvent { window_id, ref event } if window_id == window.id() => self.window_event(event, control_flow),
+			// Handle raw hardware-related events not related to a window
+			Event::DeviceEvent { .. } => (),
+			// Handle custom-dispatched events
+			Event::UserEvent(_) => (),
 			// Once every event is handled and the GUI structure is updated, this requests a new sequence of draw commands
-			Event::MainEventsCleared => {
-				// Turn the GUI changes into draw commands added to the render pipeline queue
-				self.redraw_gui();
-
-				// If any draw commands were actually added, ask the window to dispatch a redraw event
-				if !self.draw_command_queue.is_empty() {
-					window.request_redraw();
-				}
-			},
+			Event::MainEventsCleared => self.redraw_gui(window),
 			// Resizing or calling `window.request_redraw()` renders the GUI with the queued draw commands
-			Event::RedrawRequested(_) => {
-				self.render();
-			},
-			// Catch extraneous events
-			_ => {},
+			Event::RedrawRequested(_) => self.render(),
+			// Once all windows have been redrawn
+			Event::RedrawEventsCleared => (),
+			Event::NewEvents(_) => (),
+			Event::Suspended => (),
+			Event::Resumed => (),
+			Event::LoopDestroyed => (),
+			_ => (),
 		}
 	}
 
 	pub fn window_event(&mut self, event: &WindowEvent, control_flow: &mut ControlFlow) {
 		match event {
-			WindowEvent::CloseRequested => self.quit(control_flow),
-			WindowEvent::KeyboardInput { input, .. } => self.keyboard_event(input, control_flow),
 			WindowEvent::Resized(physical_size) => self.resize(*physical_size),
+			WindowEvent::Moved(_) => (),
+			WindowEvent::CloseRequested => self.quit(control_flow),
+			WindowEvent::Destroyed => (),
+			WindowEvent::DroppedFile(_) => (),
+			WindowEvent::HoveredFile(_) => (),
+			WindowEvent::HoveredFileCancelled => (),
+			WindowEvent::ReceivedCharacter(_) => (),
+			WindowEvent::Focused(_) => (),
+			WindowEvent::KeyboardInput { input, .. } => self.keyboard_event(input, control_flow),
+			WindowEvent::CursorMoved { .. } => (),
+			WindowEvent::CursorEntered { .. } => (),
+			WindowEvent::CursorLeft { .. } => (),
+			WindowEvent::MouseWheel { .. } => (),
+			WindowEvent::MouseInput { .. } => (),
+			WindowEvent::TouchpadPressure { .. } => (),
+			WindowEvent::AxisMotion { .. } => (),
+			WindowEvent::Touch(_) => (),
 			WindowEvent::ScaleFactorChanged { new_inner_size, .. } => self.resize(**new_inner_size),
-			_ => {},
+			WindowEvent::ThemeChanged(_) => (),
 		}
 	}
 
 	pub fn keyboard_event(&mut self, input: &KeyboardInput, control_flow: &mut ControlFlow) {
 		match input {
-			KeyboardInput { state: ElementState::Pressed, virtual_keycode: Some(VirtualKeyCode::Escape), .. } => {
-				self.quit(control_flow);
-			},
-			KeyboardInput { state: ElementState::Pressed, virtual_keycode: Some(VirtualKeyCode::Space), .. } => {
-				self.example();
-			},
-			_ => {
-				*control_flow = ControlFlow::Wait;
-			},
+			KeyboardInput { state: ElementState::Pressed, virtual_keycode: Some(VirtualKeyCode::Escape), .. } => self.quit(control_flow),
+			KeyboardInput { state: ElementState::Pressed, virtual_keycode: Some(VirtualKeyCode::Space), .. } => self.example(),
+			_ => *control_flow = ControlFlow::Wait,
 		}
 	}
 
@@ -222,9 +231,12 @@ impl Application {
 		// TODO: Mark root of GUI as dirty to force redraw of everything
 	}
 
-	// Traverse the dirty GUI elements and queue up pipelines to render each GUI rectangle (box/sprite)
-	pub fn redraw_gui(&mut self) {
-
+	// Traverse dirty GUI elements and turn GUI changes into draw commands added to the render pipeline queue
+	pub fn redraw_gui(&mut self, window: &Window) {
+		// If any draw commands were actually added, ask the window to dispatch a redraw event
+		if !self.draw_command_queue.is_empty() {
+			window.request_redraw();
+		}
 	}
 
 	// Render the queue of pipeline draw commands over the current window
@@ -256,22 +268,8 @@ impl Application {
 			depth_stencil_attachment: None,
 		});
 
-		// let mut currently_set_pipeline_id = None;
-
-		println!("Draw queue is length {}", self.draw_command_queue.len());
-
 		// Turn the queue of pipelines each into a command buffer and submit it to the render queue
 		self.draw_command_queue.iter().for_each(|command| {
-			// // Bind the pipeline required by the current draw command
-			// let new_pipeline_id = command.pipeline_id;
-			// if currently_set_pipeline_id == None || new_pipeline_id != currently_set_pipeline_id.unwrap() {
-			// 	currently_set_pipeline_id = Some(new_pipeline_id);
-
-			// 	let pipeline = self.pipeline_cache.get_by_id(new_pipeline_id).unwrap();
-			// 	render_pass.set_pipeline(&pipeline.render_pipeline);
-			// 	println!("Set pipeline");
-			// }
-
 			let pipeline = self.pipeline_cache.get(&command.pipeline_name).unwrap();
 			render_pass.set_pipeline(&pipeline.render_pipeline);
 			
@@ -282,7 +280,6 @@ impl Application {
 
 			// Draw call
 			render_pass.draw_indexed(0..command.index_count, 0, 0..1);
-			println!("Draw call!");
 		});
 
 		// Done sending render pass commands so we can give up mutation rights to command_encoder

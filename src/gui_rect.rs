@@ -1,4 +1,4 @@
-pub struct GUIRect {
+pub struct GuiRect {
 	pub corners: Corners<(f32, f32)>,
 	pub corners_radius: Corners<f32>,
 	pub sides_inset: Sides<f32>,
