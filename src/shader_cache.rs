@@ -1,45 +1,59 @@
 use std::collections::HashMap;
 
+
 #[derive(Copy, Clone, PartialEq, Debug)]
-pub struct ShaderID {
+struct CacheID {
 	index: usize,
 }
 
-impl ShaderID {
-	pub fn new(index: usize) -> Self {
+impl CacheID {
+	fn new(index: usize) -> Self {
 		Self { index }
 	}
 }
 
 pub struct ShaderCache {
 	pub shaders: Vec<wgpu::ShaderModule>,
-	pub path_to_id: HashMap<String, ShaderID>,
+	name_to_id: HashMap<String, CacheID>,
 }
 
 impl ShaderCache {
 	pub fn new() -> Self {
 		let shaders = Vec::new();
-		let path_to_id = HashMap::new();
+		let name_to_id = HashMap::new();
 
 		Self {
 			shaders,
-			path_to_id,
+			name_to_id,
 		}
 	}
 
-	pub fn get_by_path(&self, path: &str) -> Option<&wgpu::ShaderModule> {
-		match self.path_to_id.get(path) {
+	#[allow(dead_code)]
+	pub fn get(&self, name: &str) -> Option<&wgpu::ShaderModule> {
+		match self.name_to_id.get(name) {
 			Some(id) => self.shaders.get(id.index),
 			None => None,
 		}
 	}
 
-	// pub fn get_by_id(&self, id: ShaderID) -> Option<&wgpu::ShaderModule> {
-	// 	self.shaders.get(id.index)
-	// }
+	#[allow(dead_code)]
+	pub fn set(&mut self, name: &str, shader: wgpu::ShaderModule) {
+		match self.name_to_id.get(name) {
+			Some(id) => {
+				self.shaders[id.index] = shader;
+			},
+			None => {
+				let last_index = self.name_to_id.len();
+				let id = CacheID::new(last_index);
+				self.name_to_id.insert(String::from(name), id);
+				self.shaders.push(shader);
+			}
+		}
+	}
 
+	#[allow(dead_code)]
 	pub fn load(&mut self, device: &wgpu::Device, path: &str, shader_type: glsl_to_spirv::ShaderType) -> std::io::Result<()> {
-		if self.path_to_id.get(path).is_none() {
+		if self.name_to_id.get(path).is_none() {
 			let source = std::fs::read_to_string(path)?;
 			let spirv = match glsl_to_spirv::compile(&source[..], shader_type) {
 				Ok(spirv_output) => spirv_output,
@@ -51,8 +65,8 @@ impl ShaderCache {
 			let compiled = wgpu::read_spirv(spirv)?;
 			let shader = device.create_shader_module(&compiled);
 
-			let last_index = self.path_to_id.len();
-			self.path_to_id.insert(String::from(path), ShaderID { index: last_index });
+			let last_index = self.name_to_id.len();
+			self.name_to_id.insert(String::from(path), CacheID::new(last_index));
 			self.shaders.push(shader);
 		}
 

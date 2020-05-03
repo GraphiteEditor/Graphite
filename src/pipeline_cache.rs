@@ -2,19 +2,19 @@ use std::collections::HashMap;
 use super::pipeline::Pipeline;
 
 #[derive(Copy, Clone, PartialEq, Debug)]
-pub struct PipelineID {
+struct CacheID {
 	index: usize,
 }
 
-impl PipelineID {
-	pub fn new(index: usize) -> Self {
+impl CacheID {
+	fn new(index: usize) -> Self {
 		Self { index }
 	}
 }
 
 pub struct PipelineCache {
 	pub pipelines: Vec<Pipeline>,
-	pub name_to_id: HashMap<String, PipelineID>,
+	name_to_id: HashMap<String, CacheID>,
 }
 
 impl PipelineCache {
@@ -28,30 +28,32 @@ impl PipelineCache {
 		}
 	}
 
-	pub fn get_by_name(&self, name: &str) -> Option<&Pipeline> {
+	#[allow(dead_code)]
+	pub fn get(&self, name: &str) -> Option<&Pipeline> {
 		match self.name_to_id.get(name) {
 			Some(id) => self.pipelines.get(id.index),
 			None => None,
 		}
 	}
 
-	pub fn get_by_id(&self, id: PipelineID) -> Option<&Pipeline> {
-		self.pipelines.get(id.index)
-	}
-
-	pub fn set(&mut self, name: &str, pipeline: Pipeline) -> PipelineID {
+	#[allow(dead_code)]
+	pub fn set(&mut self, name: &str, pipeline: Pipeline) {
 		match self.name_to_id.get(name) {
 			Some(id) => {
 				self.pipelines[id.index] = pipeline;
-				id.clone()
 			},
 			None => {
 				let last_index = self.name_to_id.len();
-				let id = PipelineID::new(last_index);
+				let id = CacheID::new(last_index);
 				self.name_to_id.insert(String::from(name), id);
 				self.pipelines.push(pipeline);
-				id
 			}
 		}
+	}
+
+	#[allow(dead_code)]
+	pub fn load(&mut self, device: &wgpu::Device, name: &str, vertex_shader: &wgpu::ShaderModule, fragment_shader: &wgpu::ShaderModule) {
+		let pipeline = Pipeline::new(device, vertex_shader, fragment_shader);
+		self.set(name, pipeline);
 	}
 }

@@ -3,8 +3,8 @@ use super::color_palette::ColorPalette;
 use super::gui_rect::GUIRect;
 use super::pipeline::Pipeline;
 use super::texture::Texture;
-use super::shader_cache::ShaderCache;
-use super::pipeline_cache::PipelineCache;
+use super::shader_stage::compile_from_glsl;
+use super::resource_cache::ResourceCache;
 use super::draw_command::DrawCommand;
 use std::collections::VecDeque;
 use winit::event::*;
@@ -20,9 +20,9 @@ pub struct Application {
 	pub queue: wgpu::Queue,
 	pub swap_chain_descriptor: wgpu::SwapChainDescriptor,
 	pub swap_chain: wgpu::SwapChain,
-	pub shader_cache: ShaderCache,
-	pub pipeline_cache: PipelineCache,
-	// pub texture_cache: TextureCache,
+	pub shader_cache: ResourceCache<wgpu::ShaderModule>,
+	pub pipeline_cache: ResourceCache<Pipeline>,
+	pub texture_cache: ResourceCache<Texture>,
 	pub gui_rect_queue: VecDeque<GUIRect>,
 	pub draw_command_queue: VecDeque<DrawCommand>,
 	pub temp_color_toggle: bool,
@@ -67,8 +67,9 @@ impl Application {
 		let swap_chain = device.create_swap_chain(&surface, &swap_chain_descriptor);
 
 		// Cache of all loaded shaders and the Pipeline programs they form
-		let shader_cache = ShaderCache::new();
-		let pipeline_cache = PipelineCache::new();
+		let shader_cache = ResourceCache::<wgpu::ShaderModule>::new();
+		let pipeline_cache = ResourceCache::<Pipeline>::new();
+		let texture_cache = ResourceCache::<Texture>::new();
 
 		let gui_rect_queue = VecDeque::new();
 
@@ -83,6 +84,7 @@ impl Application {
 			swap_chain,
 			shader_cache,
 			pipeline_cache,
+			texture_cache,
 			gui_rect_queue,
 			draw_command_queue,
 			temp_color_toggle: true,
@@ -104,21 +106,39 @@ impl Application {
 			2, 3, 4,
 		];
 
-		// Load the vertex and fragment shaders
-		self.shader_cache.load(&self.device, "shaders/shader.vert", glsl_to_spirv::ShaderType::Vertex).unwrap();
-		self.shader_cache.load(&self.device, "shaders/shader.frag", glsl_to_spirv::ShaderType::Fragment).unwrap();
-		let vertex_shader = self.shader_cache.get_by_path("shaders/shader.vert").unwrap();
-		let fragment_shader = self.shader_cache.get_by_path("shaders/shader.frag").unwrap();
+		// Load the vertex shader
+		let vertex_shader_path = "shaders/shader.vert";
+		let vertex_shader_module = compile_from_glsl(&self.device, vertex_shader_path, glsl_to_spirv::ShaderType::Vertex).unwrap();
+		self.shader_cache.set(vertex_shader_path, vertex_shader_module);
 
-		// Construct a pipeline from the shader pair and a new BindGroup that holds a new TextureView, then store the pipeline in the cache
-		let example_pipeline = Pipeline::new(&self.device, vertex_shader, fragment_shader);
-		let example_texture_view = Texture::from_filepath(&self.device, &mut self.queue, "textures/grid.png").unwrap().texture_view;
+		// Load the fragment shader
+		let fragment_shader_path = "shaders/shader.frag";
+		let fragment_shader_module = compile_from_glsl(&self.device, fragment_shader_path, glsl_to_spirv::ShaderType::Fragment).unwrap();
+		self.shader_cache.set(fragment_shader_path, fragment_shader_module);
+
+		// Get the shader pair
+		let vertex_shader = self.shader_cache.get(vertex_shader_path).unwrap();
+		let fragment_shader = self.shader_cache.get(fragment_shader_path).unwrap();
+
+		// Construct a pipeline from the shader pair
+		let pipeline_name = "example";
+		let pipeline = Pipeline::new(&self.device, vertex_shader, fragment_shader);
+		self.pipeline_cache.set(pipeline_name, pipeline);
+		let example_pipeline = self.pipeline_cache.get(pipeline_name).unwrap();
+		
+		// Load a texture from the image file
+		let texture_path = "textures/grid.png";
+		let texture = Texture::from_filepath(&self.device, &mut self.queue, texture_path).unwrap();
+		self.texture_cache.set(texture_path, texture);
+		let grid_texture = self.texture_cache.get(texture_path).unwrap();
+		
+		// Create a BindGroup that holds a new TextureView
 		let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
 			layout: &example_pipeline.bind_group_layout,
 			bindings: &[
 				wgpu::Binding {
 					binding: 0,
-					resource: wgpu::BindingResource::TextureView(&example_texture_view),
+					resource: wgpu::BindingResource::TextureView(&grid_texture.texture_view),
 				},
 				// wgpu::Binding {
 				// 	binding: 1,
@@ -127,14 +147,10 @@ impl Application {
 			],
 			label: None,
 		});
-		let pipeline_id = self.pipeline_cache.set("example", example_pipeline);
 
-		assert_eq!(pipeline_id, super::pipeline_cache::PipelineID::new(0));
-
-		// Create a draw command with the vertex data and bind group
-		let example_draw_command = DrawCommand::new(&self.device, pipeline_id, VERTICES, INDICES, bind_group);
-		
-		self.draw_command_queue.push_back(example_draw_command);
+		// Create a draw command with the vertex data and bind group and push it to the GPU command queue
+		let draw_command = DrawCommand::new(&self.device, pipeline_name, VERTICES, INDICES, bind_group);
+		self.draw_command_queue.push_back(draw_command);
 	}
 
 	pub fn begin_lifecycle(mut self, event_loop: EventLoop<()>, window: Window) {
@@ -256,7 +272,7 @@ impl Application {
 			// 	println!("Set pipeline");
 			// }
 
-			let pipeline = self.pipeline_cache.get_by_id(command.pipeline_id).unwrap();
+			let pipeline = self.pipeline_cache.get(&command.pipeline_name).unwrap();
 			render_pass.set_pipeline(&pipeline.render_pipeline);
 			
 			// Commands sent to the GPU for drawing during this render pass

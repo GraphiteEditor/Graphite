@@ -5,6 +5,9 @@ mod texture;
 mod color_palette;
 mod shader_cache;
 mod pipeline_cache;
+mod texture_cache;
+mod resource_cache;
+mod shader_stage;
 mod draw_command;
 
 use application::Application;
