@@ -1,3 +1,4 @@
+use std::fs;
 use image::GenericImageView;
 
 pub struct Texture {
@@ -9,7 +10,7 @@ pub struct Texture {
 impl Texture {
 	pub fn from_filepath(device: &wgpu::Device, queue: &mut wgpu::Queue, path: &str) -> Result<Self, failure::Error> {
 		// Read the raw bytes from the specified file
-		let bytes = std::fs::read(path)?;
+		let bytes = fs::read(path)?;
 		
 		// Construct and return a Texture from the bytes
 		Texture::from_bytes(device, queue, &bytes[..])

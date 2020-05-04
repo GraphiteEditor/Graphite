@@ -1,6 +1,5 @@
-// use super::render_state::RenderState;
 use super::color_palette::ColorPalette;
-use super::gui_rect::GuiRect;
+use super::window_events;
 use super::pipeline::Pipeline;
 use super::texture::Texture;
 use super::shader_stage::compile_from_glsl;
@@ -9,8 +8,7 @@ use super::draw_command::DrawCommand;
 use super::gui_tree::GuiTree;
 use std::collections::VecDeque;
 use winit::event::*;
-use winit::event_loop::ControlFlow;
-use winit::event_loop::EventLoop;
+use winit::event_loop::*;
 use winit::window::Window;
 use futures::executor::block_on;
 
@@ -111,13 +109,17 @@ impl Application {
 
 		// Load the vertex shader
 		let vertex_shader_path = "shaders/shader.vert";
-		let vertex_shader_module = compile_from_glsl(&self.device, vertex_shader_path, glsl_to_spirv::ShaderType::Vertex).unwrap();
-		self.shader_cache.set(vertex_shader_path, vertex_shader_module);
+		if self.shader_cache.get(vertex_shader_path).is_none() {
+			let vertex_shader_module = compile_from_glsl(&self.device, vertex_shader_path, glsl_to_spirv::ShaderType::Vertex).unwrap();
+			self.shader_cache.set(vertex_shader_path, vertex_shader_module);
+		}
 
 		// Load the fragment shader
 		let fragment_shader_path = "shaders/shader.frag";
-		let fragment_shader_module = compile_from_glsl(&self.device, fragment_shader_path, glsl_to_spirv::ShaderType::Fragment).unwrap();
-		self.shader_cache.set(fragment_shader_path, fragment_shader_module);
+		if self.shader_cache.get(fragment_shader_path).is_none() {
+			let fragment_shader_module = compile_from_glsl(&self.device, fragment_shader_path, glsl_to_spirv::ShaderType::Fragment).unwrap();
+			self.shader_cache.set(fragment_shader_path, fragment_shader_module);
+		}
 
 		// Get the shader pair
 		let vertex_shader = self.shader_cache.get(vertex_shader_path).unwrap();
@@ -125,14 +127,18 @@ impl Application {
 
 		// Construct a pipeline from the shader pair
 		let pipeline_name = "example";
-		let pipeline = Pipeline::new(&self.device, vertex_shader, fragment_shader);
-		self.pipeline_cache.set(pipeline_name, pipeline);
+		if self.pipeline_cache.get(pipeline_name).is_none() {
+			let pipeline = Pipeline::new(&self.device, vertex_shader, fragment_shader);
+			self.pipeline_cache.set(pipeline_name, pipeline);
+		}
 		let example_pipeline = self.pipeline_cache.get(pipeline_name).unwrap();
 		
 		// Load a texture from the image file
 		let texture_path = "textures/grid.png";
-		let texture = Texture::from_filepath(&self.device, &mut self.queue, texture_path).unwrap();
-		self.texture_cache.set(texture_path, texture);
+		if self.texture_cache.get(texture_path).is_none() {
+			let texture = Texture::from_filepath(&self.device, &mut self.queue, texture_path).unwrap();
+			self.texture_cache.set(texture_path, texture);
+		}
 		let grid_texture = self.texture_cache.get(texture_path).unwrap();
 		
 		// Create a BindGroup that holds a new TextureView
@@ -156,17 +162,19 @@ impl Application {
 		self.draw_command_queue.push_back(draw_command);
 	}
 
+	// Initializes the event loop for rendering and event handling
 	pub fn begin_lifecycle(mut self, event_loop: EventLoop<()>, window: Window) {
 		event_loop.run(move |event, _, control_flow| self.main_event_loop(event, control_flow, &window));
 	}
 
+	// Called every time by the event loop
 	pub fn main_event_loop<T>(&mut self, event: Event<'_, T>, control_flow: &mut ControlFlow, window: &Window) {
 		// Wait for the next event to cause a subsequent event loop run, instead of looping instantly as a game would need
 		*control_flow = ControlFlow::Wait;
 
 		match event {
 			// Handle all window events (like input and resize) in sequence
-			Event::WindowEvent { window_id, ref event } if window_id == window.id() => self.window_event(event, control_flow),
+			Event::WindowEvent { window_id, ref event } if window_id == window.id() => window_events::window_event(self, control_flow, event),
 			// Handle raw hardware-related events not related to a window
 			Event::DeviceEvent { .. } => (),
 			// Handle custom-dispatched events
@@ -185,54 +193,10 @@ impl Application {
 		}
 	}
 
-	pub fn window_event(&mut self, event: &WindowEvent, control_flow: &mut ControlFlow) {
-		match event {
-			WindowEvent::Resized(physical_size) => self.resize(*physical_size),
-			WindowEvent::Moved(_) => (),
-			WindowEvent::CloseRequested => self.quit(control_flow),
-			WindowEvent::Destroyed => (),
-			WindowEvent::DroppedFile(_) => (),
-			WindowEvent::HoveredFile(_) => (),
-			WindowEvent::HoveredFileCancelled => (),
-			WindowEvent::ReceivedCharacter(_) => (),
-			WindowEvent::Focused(_) => (),
-			WindowEvent::KeyboardInput { input, .. } => self.keyboard_event(input, control_flow),
-			WindowEvent::CursorMoved { .. } => (),
-			WindowEvent::CursorEntered { .. } => (),
-			WindowEvent::CursorLeft { .. } => (),
-			WindowEvent::MouseWheel { .. } => (),
-			WindowEvent::MouseInput { .. } => (),
-			WindowEvent::TouchpadPressure { .. } => (),
-			WindowEvent::AxisMotion { .. } => (),
-			WindowEvent::Touch(_) => (),
-			WindowEvent::ScaleFactorChanged { new_inner_size, .. } => self.resize(**new_inner_size),
-			WindowEvent::ThemeChanged(_) => (),
-		}
-	}
-
-	pub fn keyboard_event(&mut self, input: &KeyboardInput, control_flow: &mut ControlFlow) {
-		match input {
-			KeyboardInput { state: ElementState::Pressed, virtual_keycode: Some(VirtualKeyCode::Escape), .. } => self.quit(control_flow),
-			KeyboardInput { state: ElementState::Pressed, virtual_keycode: Some(VirtualKeyCode::Space), .. } => self.example(),
-			_ => *control_flow = ControlFlow::Wait,
-		}
-	}
-
-	pub fn quit(&self, control_flow: &mut ControlFlow) {
-		*control_flow = ControlFlow::Exit;
-	}
-
-	pub fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) {
-		self.swap_chain_descriptor.width = new_size.width;
-		self.swap_chain_descriptor.height = new_size.height;
-
-		self.swap_chain = self.device.create_swap_chain(&self.surface, &self.swap_chain_descriptor);
-
-		// TODO: Mark root of GUI as dirty to force redraw of everything
-	}
-
 	// Traverse dirty GUI elements and turn GUI changes into draw commands added to the render pipeline queue
 	pub fn redraw_gui(&mut self, window: &Window) {
+		self.example();
+		
 		// If any draw commands were actually added, ask the window to dispatch a redraw event
 		if !self.draw_command_queue.is_empty() {
 			window.request_redraw();

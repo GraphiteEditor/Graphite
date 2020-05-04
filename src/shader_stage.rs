@@ -1,5 +1,8 @@
-pub fn compile_from_glsl(device: &wgpu::Device, path: &str, shader_type: glsl_to_spirv::ShaderType) -> std::io::Result<wgpu::ShaderModule> {
-	let source = std::fs::read_to_string(path)?;
+use std::fs;
+use std::io;
+
+pub fn compile_from_glsl(device: &wgpu::Device, path: &str, shader_type: glsl_to_spirv::ShaderType) -> io::Result<wgpu::ShaderModule> {
+	let source = fs::read_to_string(path)?;
 	let spirv = match glsl_to_spirv::compile(&source[..], shader_type) {
 		Ok(spirv_output) => spirv_output,
 		Err(message) => {

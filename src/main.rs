@@ -7,6 +7,7 @@ mod resource_cache;
 mod shader_stage;
 mod draw_command;
 mod gui_tree;
+mod window_events;
 
 use application::Application;
 use winit::event_loop::EventLoop;
@@ -20,11 +21,7 @@ fn main() {
 	let window = WindowBuilder::new().with_title("Graphite").build(&event_loop).unwrap();
 
 	// Initialize the render pipeline
-	let mut app = Application::new(&window);
-	app.example();
-
-	// State managers for render pipeline and program logic
-	// let app_render_state = RenderState::new(&mut app);
+	let app = Application::new(&window);
 
 	// Begin the application lifecycle
 	app.begin_lifecycle(event_loop, window);

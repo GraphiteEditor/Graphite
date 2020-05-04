@@ -1,3 +1,5 @@
+use std::mem;
+
 pub struct Pipeline {
 	pub bind_group_layout: wgpu::BindGroupLayout,
 	pub render_pipeline: wgpu::RenderPipeline,
@@ -58,7 +60,7 @@ impl Pipeline {
 			vertex_state: wgpu::VertexStateDescriptor {
 				index_format: wgpu::IndexFormat::Uint16,
 				vertex_buffers: &[wgpu::VertexBufferDescriptor {
-					stride: std::mem::size_of::<[f32; 2]>() as wgpu::BufferAddress,
+					stride: mem::size_of::<[f32; 2]>() as wgpu::BufferAddress,
 					step_mode: wgpu::InputStepMode::Vertex,
 					attributes: &[wgpu::VertexAttributeDescriptor {
 							offset: 0,
