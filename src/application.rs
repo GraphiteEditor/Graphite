@@ -20,6 +20,7 @@ pub struct Application {
 	pub swap_chain_descriptor: wgpu::SwapChainDescriptor,
 	pub swap_chain: wgpu::SwapChain,
 	pub shader_cache: ResourceCache<wgpu::ShaderModule>,
+	pub bind_group_cache: ResourceCache<wgpu::BindGroup>,
 	pub pipeline_cache: ResourceCache<Pipeline>,
 	pub texture_cache: ResourceCache<Texture>,
 	pub draw_command_queue: VecDeque<DrawCommand>,
@@ -67,6 +68,7 @@ impl Application {
 
 		// Resource caches that own the application's shaders, pipelines, and textures
 		let shader_cache = ResourceCache::<wgpu::ShaderModule>::new();
+		let bind_group_cache = ResourceCache::<wgpu::BindGroup>::new();
 		let pipeline_cache = ResourceCache::<Pipeline>::new();
 		let texture_cache = ResourceCache::<Texture>::new();
 
@@ -84,6 +86,7 @@ impl Application {
 			swap_chain_descriptor,
 			swap_chain,
 			shader_cache,
+			bind_group_cache,
 			pipeline_cache,
 			texture_cache,
 			draw_command_queue,
@@ -95,26 +98,24 @@ impl Application {
 	pub fn example(&mut self) {
 		// Example vertex data
 		const VERTICES: &[[f32; 2]] = &[
-			[-0.0868241, 0.49240386],
-			[-0.49513406, 0.06958647],
-			[-0.21918549, -0.44939706],
-			[0.35966998, -0.3473291],
-			[0.44147372, 0.2347359],
+			[-0.5, 0.5],
+			[0.5, 0.5],
+			[0.5, 1.0],
+			[-0.5, 1.0],
 		];
 		const INDICES: &[u16] = &[
-			0, 1, 4,
-			1, 2, 4,
-			2, 3, 4,
+			0, 1, 2,
+			0, 2, 3,
 		];
 
-		// Load the vertex shader
+		// If uncached, construct a vertex shader loaded from its source code file
 		let vertex_shader_path = "shaders/shader.vert";
 		if self.shader_cache.get(vertex_shader_path).is_none() {
 			let vertex_shader_module = compile_from_glsl(&self.device, vertex_shader_path, glsl_to_spirv::ShaderType::Vertex).unwrap();
 			self.shader_cache.set(vertex_shader_path, vertex_shader_module);
 		}
 
-		// Load the fragment shader
+		// If uncached, construct a fragment shader loaded from its source code file
 		let fragment_shader_path = "shaders/shader.frag";
 		if self.shader_cache.get(fragment_shader_path).is_none() {
 			let fragment_shader_module = compile_from_glsl(&self.device, fragment_shader_path, glsl_to_spirv::ShaderType::Fragment).unwrap();
@@ -125,15 +126,23 @@ impl Application {
 		let vertex_shader = self.shader_cache.get(vertex_shader_path).unwrap();
 		let fragment_shader = self.shader_cache.get(fragment_shader_path).unwrap();
 
-		// Construct a pipeline from the shader pair
-		let pipeline_name = "example";
+		// If uncached, construct a pipeline from the shader pair
+		let pipeline_name = "example-pipeline";
 		if self.pipeline_cache.get(pipeline_name).is_none() {
-			let pipeline = Pipeline::new(&self.device, vertex_shader, fragment_shader);
+			let bind_group_layout_binding_types = vec![
+				wgpu::BindingType::SampledTexture {
+					dimension: wgpu::TextureViewDimension::D2,
+					component_type: wgpu::TextureComponentType::Float,
+					multisampled: false,
+				},
+				// ty: wgpu::BindingType::Sampler,
+			];
+			let pipeline = Pipeline::new(&self.device, vertex_shader, fragment_shader, bind_group_layout_binding_types);
 			self.pipeline_cache.set(pipeline_name, pipeline);
 		}
 		let example_pipeline = self.pipeline_cache.get(pipeline_name).unwrap();
 		
-		// Load a texture from the image file
+		// If uncached, construct a texture loaded from the image file
 		let texture_path = "textures/grid.png";
 		if self.texture_cache.get(texture_path).is_none() {
 			let texture = Texture::from_filepath(&self.device, &mut self.queue, texture_path).unwrap();
@@ -141,24 +150,18 @@ impl Application {
 		}
 		let grid_texture = self.texture_cache.get(texture_path).unwrap();
 		
-		// Create a BindGroup that holds a new TextureView
-		let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
-			layout: &example_pipeline.bind_group_layout,
-			bindings: &[
-				wgpu::Binding {
-					binding: 0,
-					resource: wgpu::BindingResource::TextureView(&grid_texture.texture_view),
-				},
-				// wgpu::Binding {
-				// 	binding: 1,
-				// 	resource: wgpu::BindingResource::Sampler(&texture.sampler),
-				// }
-			],
-			label: None,
-		});
+		// If uncached, construct a bind group with resources matching the pipeline's bind group layout
+		let bind_group_name = "example-bindgroup";
+		if self.bind_group_cache.get(bind_group_name).is_none() {
+			let binding_resources = vec![
+				wgpu::BindingResource::TextureView(&grid_texture.texture_view),
+			];
+			let bind_group = example_pipeline.build_bind_group(&self.device, binding_resources);
+			self.bind_group_cache.set(bind_group_name, bind_group);
+		}
 
 		// Create a draw command with the vertex data and bind group and push it to the GPU command queue
-		let draw_command = DrawCommand::new(&self.device, pipeline_name, VERTICES, INDICES, bind_group);
+		let draw_command = DrawCommand::new(&self.device, pipeline_name, bind_group_name, VERTICES, INDICES);
 		self.draw_command_queue.push_back(draw_command);
 	}
 
@@ -232,15 +235,24 @@ impl Application {
 			depth_stencil_attachment: None,
 		});
 
+		let mut current_pipeline = String::new();
+
 		// Turn the queue of pipelines each into a command buffer and submit it to the render queue
 		self.draw_command_queue.iter().for_each(|command| {
-			let pipeline = self.pipeline_cache.get(&command.pipeline_name).unwrap();
-			render_pass.set_pipeline(&pipeline.render_pipeline);
-			
-			// Commands sent to the GPU for drawing during this render pass
+			// Tell the GPU which pipeline to draw in this render pass
+			if current_pipeline != command.pipeline_name {
+				let pipeline = self.pipeline_cache.get(&command.pipeline_name).unwrap();
+				render_pass.set_pipeline(&pipeline.render_pipeline);
+				current_pipeline = command.pipeline_name.clone();
+			}
+
+			// Send the GPU the vertices and triangle indices
 			render_pass.set_vertex_buffer(0, &command.vertex_buffer, 0, 0);
 			render_pass.set_index_buffer(&command.index_buffer, 0, 0);
-			render_pass.set_bind_group(0, &command.bind_group, &[]);
+
+			// Send the GPU the bind group resources
+			let bind_group = self.bind_group_cache.get(&command.bind_group_name).unwrap();
+			render_pass.set_bind_group(0, bind_group, &[]);
 
 			// Draw call
 			render_pass.draw_indexed(0..command.index_count, 0, 0..1);

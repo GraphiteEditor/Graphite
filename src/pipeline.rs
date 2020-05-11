@@ -6,24 +6,16 @@ pub struct Pipeline {
 }
 
 impl Pipeline {
-	pub fn new(device: &wgpu::Device, vertex_shader: &wgpu::ShaderModule, fragment_shader: &wgpu::ShaderModule) -> Self {
+	pub fn new(device: &wgpu::Device, vertex_shader: &wgpu::ShaderModule, fragment_shader: &wgpu::ShaderModule, bind_group_layout_binding_types: Vec<wgpu::BindingType>) -> Self {
+		let bind_group_layout_entries = bind_group_layout_binding_types.into_iter().enumerate().map(|(index, binding_type)|
+			wgpu::BindGroupLayoutEntry {
+				binding: index as u32,
+				visibility: wgpu::ShaderStage::all(),
+				ty: binding_type,
+			}
+		).collect::<Vec<_>>();
 		let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-			bindings: &[
-				wgpu::BindGroupLayoutEntry {
-					binding: 0,
-					visibility: wgpu::ShaderStage::FRAGMENT,
-					ty: wgpu::BindingType::SampledTexture {
-						dimension: wgpu::TextureViewDimension::D2,
-						component_type: wgpu::TextureComponentType::Float,
-						multisampled: false,
-					},
-				},
-				// wgpu::BindGroupLayoutEntry {
-				// 	binding: 1,
-				// 	visibility: wgpu::ShaderStage::FRAGMENT,
-				// 	ty: wgpu::BindingType::Sampler,
-				// },
-			],
+			bindings: bind_group_layout_entries.as_slice(),
 			label: None,
 		});
 
@@ -42,20 +34,18 @@ impl Pipeline {
 			}),
 			rasterization_state: Some(wgpu::RasterizationStateDescriptor {
 				front_face: wgpu::FrontFace::Ccw,
-				cull_mode: wgpu::CullMode::Back,
+				cull_mode: wgpu::CullMode::None,
 				depth_bias: 0,
 				depth_bias_slope_scale: 0.0,
 				depth_bias_clamp: 0.0,
 			}),
 			primitive_topology: wgpu::PrimitiveTopology::TriangleList,
-			color_states: &[
-				wgpu::ColorStateDescriptor {
-					format: wgpu::TextureFormat::Bgra8UnormSrgb, // TODO: Make this match Application.swap_chain_descriptor
-					color_blend: wgpu::BlendDescriptor::REPLACE,
-					alpha_blend: wgpu::BlendDescriptor::REPLACE,
-					write_mask: wgpu::ColorWrite::ALL,
-				},
-			],
+			color_states: &[wgpu::ColorStateDescriptor {
+				format: wgpu::TextureFormat::Bgra8UnormSrgb, // TODO: Make this match Application.swap_chain_descriptor
+				color_blend: wgpu::BlendDescriptor::REPLACE,
+				alpha_blend: wgpu::BlendDescriptor::REPLACE,
+				write_mask: wgpu::ColorWrite::ALL,
+			}],
 			depth_stencil_state: None,
 			vertex_state: wgpu::VertexStateDescriptor {
 				index_format: wgpu::IndexFormat::Uint16,
@@ -63,11 +53,10 @@ impl Pipeline {
 					stride: mem::size_of::<[f32; 2]>() as wgpu::BufferAddress,
 					step_mode: wgpu::InputStepMode::Vertex,
 					attributes: &[wgpu::VertexAttributeDescriptor {
-							offset: 0,
-							shader_location: 0,
-							format: wgpu::VertexFormat::Float2,
-						},
-					],
+						offset: 0,
+						shader_location: 0,
+						format: wgpu::VertexFormat::Float2,
+					}],
 				}],
 			},
 			sample_count: 1,
@@ -79,5 +68,19 @@ impl Pipeline {
 			bind_group_layout,
 			render_pipeline,
 		}
+	}
+
+	pub fn build_bind_group(&self, device: &wgpu::Device, binding_resources: Vec<wgpu::BindingResource>) -> wgpu::BindGroup {
+		let bindings = binding_resources.into_iter().enumerate().map(|(index, binding_resource)|
+			wgpu::Binding {
+				binding: index as u32,
+				resource: binding_resource,
+			}
+		).collect::<Vec<_>>();
+		device.create_bind_group(&wgpu::BindGroupDescriptor {
+			layout: &self.bind_group_layout,
+			bindings: bindings.as_slice(),
+			label: None,
+		})
 	}
 }
