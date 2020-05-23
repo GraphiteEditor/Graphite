@@ -138,19 +138,12 @@ impl Application {
 		let mut command_encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("Render Encoder") });
 
 		// Build an array of draw commands
-		let gui_node = self.gui_root.borrow_mut();
-		let mut nodes = vec![gui_node]; // TODO: Generate the DrawCommands as a list by recursively traversing the gui node tree
-
-		let device = &mut self.device;
-
-		// let commands: Vec<DrawCommand> = nodes.map(|mut node| node.build_draw_command(dev)).collect();
+		let mut nodes = vec![self.gui_root.borrow_mut()]; // TODO: Generate the DrawCommands as a list by recursively traversing the gui node tree
 		let mut commands = Vec::<DrawCommand>::with_capacity(nodes.len());
-		let mut bind_groups = Vec::<Vec<wgpu::BindGroup>>::with_capacity(nodes.len());
 		for i in 0..nodes.len() {
-			let new_pipeline = self.pipeline_cache.get("gui_rect").unwrap();
-			
-			commands.push(nodes[i].build_draw_command(device));
-			bind_groups.push(nodes[i].build_bind_groups(device, &mut self.queue, new_pipeline, &mut self.texture_cache));
+			let pipeline_name = nodes[i].get_pipeline_name();
+			let pipeline = self.pipeline_cache.get(&pipeline_name[..]).unwrap();
+			commands.push(nodes[i].build_draw_command(&mut self.device, &mut self.queue, pipeline, &mut self.texture_cache));
 		}
 
 		// Recording of commands while in "rendering mode" that go into a command buffer
@@ -167,28 +160,24 @@ impl Application {
 			depth_stencil_attachment: None,
 		});
 		
-		// Prepare a variable to cache the pipeline name
-		let mut bound_pipeline = self.pipeline_cache.get("gui_rect").unwrap(); //nodes[0].get_pipeline(&self.pipeline_cache);
-		render_pass.set_pipeline(&bound_pipeline.render_pipeline);
+		// Prepare a variable to reuse the pipeline based on its name
+		let mut pipeline_name = String::new();
 		
 		// Turn the queue of pipelines each into a command buffer and submit it to the render queue
-		for i in 0..nodes.len() {
-			// let command = commands[i];
+		for i in 0..commands.len() {
 			// If the previously set pipeline can't be reused, send the GPU the new pipeline to draw with
-			let new_pipeline = self.pipeline_cache.get("gui_rect").unwrap(); //node.get_pipeline(&self.pipeline_cache);
-			if bound_pipeline.render_pipeline != new_pipeline.render_pipeline {
-				render_pass.set_pipeline(&new_pipeline.render_pipeline);
-				bound_pipeline = new_pipeline;
+			if pipeline_name != commands[i].pipeline_name {
+				let pipeline = self.pipeline_cache.get(&commands[i].pipeline_name[..]).unwrap();
+				render_pass.set_pipeline(&pipeline.render_pipeline);
+				pipeline_name = commands[i].pipeline_name.clone();
 			}
 
 			// Send the GPU the vertices and triangle indices
 			render_pass.set_vertex_buffer(0, &commands[i].vertex_buffer, 0, 0);
 			render_pass.set_index_buffer(&commands[i].index_buffer, 0, 0);
 
-			// let bind_groups = nodes[i].build_bind_groups(&self.device, &mut self.queue, new_pipeline, &mut self.texture_cache);
-
 			// Send the GPU the bind group resources
-			for (index, bind_group) in bind_groups[i].iter().enumerate() {
+			for (index, bind_group) in commands[i].bind_groups.iter().enumerate() {
 				render_pass.set_bind_group(index as u32, bind_group, &[]);
 			}
 

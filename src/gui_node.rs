@@ -20,7 +20,11 @@ impl GuiNode {
 	// 	pipeline_cache.get("gui_rect").unwrap()
 	// }
 
-	pub fn build_draw_command(&mut self, device: &wgpu::Device) -> DrawCommand {
+	pub fn get_pipeline_name(&self) -> String {
+		String::from("gui_rect")
+	}
+
+	pub fn build_draw_command(&mut self, device: &wgpu::Device, queue: &mut wgpu::Queue, pipeline: &Pipeline, texture_cache: &mut ResourceCache<Texture>) -> DrawCommand {
 		const VERTICES: &[[f32; 2]] = &[
 			[-0.5, 0.5],
 			[0.5, 0.5],
@@ -31,9 +35,11 @@ impl GuiNode {
 			0, 1, 2,
 			0, 2, 3,
 		];
+
+		let bind_groups = self.build_bind_groups(device, queue, pipeline, texture_cache);
 		
 		// Create a draw command with the vertex data then push it to the GPU command queue
-		DrawCommand::new(device, VERTICES, INDICES)
+		DrawCommand::new(device, self.get_pipeline_name(), bind_groups, VERTICES, INDICES)
 	}
 
 	pub fn build_bind_groups(&mut self, device: &wgpu::Device, queue: &mut wgpu::Queue, pipeline: &Pipeline, texture_cache: &mut ResourceCache<Texture>) -> Vec<wgpu::BindGroup> {
