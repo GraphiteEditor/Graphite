@@ -22,6 +22,7 @@ pub enum ColorPalette {
 }
 
 impl ColorPalette {
+	#[allow(dead_code)]
 	pub fn get_color_srgb(self) -> Color {
 		let grayscale = match self {
 			ColorPalette::Black => 0 * 17, // #000000
@@ -56,6 +57,7 @@ impl ColorPalette {
 		Color::new(rgba.0 as f32 / 255.0, rgba.1 as f32 / 255.0, rgba.2 as f32 / 255.0, rgba.3 as f32 / 255.0)
 	}
 
+	#[allow(dead_code)]
 	pub fn get_color_linear(self) -> Color {
 		let standard_rgb = ColorPalette::get_color_srgb(self);
 

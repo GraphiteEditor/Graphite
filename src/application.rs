@@ -69,8 +69,8 @@ impl Application {
 		// Temporary setup below, TODO: move to appropriate place in architecture
 
 		// Window uniform bind group layout
-		let window_binding_types = vec![wgpu::BindingType::UniformBuffer { dynamic: false }];
-		let window_bind_group_layout = Pipeline::build_bind_group_layout(&device, &window_binding_types);
+		// let window_binding_types = vec![wgpu::BindingType::UniformBuffer { dynamic: false }];
+		// let window_bind_group_layout = Pipeline::build_bind_group_layout(&device, &window_binding_types);
 		
 		// Data structure maintaining the user interface
 		// let extra_layouts = vec![&window_bind_group_layout];
@@ -112,7 +112,7 @@ impl Application {
 			// Handle custom-dispatched events
 			Event::UserEvent(_) => (),
 			// Called once every event is handled and the GUI structure is updated
-			Event::MainEventsCleared => self.update_gui(window),
+			Event::MainEventsCleared => self.update_gui(),
 			// Resizing or calling `window.request_redraw()` renders the GUI with the queued draw commands
 			Event::RedrawRequested(_) => self.render(),
 			// Once all windows have been redrawn
@@ -125,7 +125,7 @@ impl Application {
 		}
 	}
 
-	pub fn update_gui(&mut self, window: &Window) {
+	pub fn update_gui(&mut self) {
 
 	}
 

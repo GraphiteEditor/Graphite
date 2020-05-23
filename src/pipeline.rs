@@ -71,10 +71,10 @@ impl Pipeline {
 		})
 	}
 
-	pub fn build_binding_staging_buffer<T: bytemuck::Pod>(device: &wgpu::Device, resource: T) -> wgpu::Buffer { // TODO: Turn this into a borrow
+	pub fn build_binding_staging_buffer<T: bytemuck::Pod>(device: &wgpu::Device, resource: &T) -> wgpu::Buffer {
 		// Construct a staging buffer with the binary uniform struct data
 		device.create_buffer_with_data(
-			bytemuck::cast_slice(&[resource]),
+			bytemuck::cast_slice(&[*resource]),
 			wgpu::BufferUsage::UNIFORM | wgpu::BufferUsage::COPY_DST,
 		)
 	}

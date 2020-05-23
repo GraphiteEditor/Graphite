@@ -41,7 +41,7 @@ impl GuiNode {
 		let texture = Texture::cached_load(device, queue, "textures/grid.png", texture_cache);
 
 		// Build a staging buffer from the uniform resource data
-		let binding_staging_buffer = Pipeline::build_binding_staging_buffer(device, self.form_factor);
+		let binding_staging_buffer = Pipeline::build_binding_staging_buffer(device, &self.form_factor);
 
 		// Construct the bind group for this GUI node
 		let bind_group = Pipeline::build_bind_group(device, &pipeline.bind_group_layout, vec![
