@@ -1,13 +1,16 @@
 mod application;
-mod gui_rect;
 mod pipeline;
 mod texture;
+mod color;
 mod color_palette;
 mod resource_cache;
 mod shader_stage;
 mod draw_command;
-mod gui_tree;
+mod gui_node;
+mod gui_attributes;
 mod window_events;
+mod window_uniform;
+mod bind_group_resource;
 
 use application::Application;
 use winit::event_loop::EventLoop;

@@ -1,5 +1,6 @@
 use std::fs;
 use image::GenericImageView;
+use crate::resource_cache::ResourceCache;
 
 pub struct Texture {
 	pub texture: wgpu::Texture,
@@ -8,6 +9,15 @@ pub struct Texture {
 }
 
 impl Texture {
+	pub fn cached_load<'a>(device: &wgpu::Device, queue: &mut wgpu::Queue, path: &str, texture_cache: &'a mut ResourceCache<Texture>) -> &'a Texture {
+		// If uncached, construct a texture loaded from the image file
+		if texture_cache.get(path).is_none() {
+			let texture = Texture::from_filepath(device, queue, path).unwrap();
+			texture_cache.set(path, texture);
+		}
+		texture_cache.get(path).unwrap()
+	}
+
 	pub fn from_filepath(device: &wgpu::Device, queue: &mut wgpu::Queue, path: &str) -> Result<Self, failure::Error> {
 		// Read the raw bytes from the specified file
 		let bytes = fs::read(path)?;

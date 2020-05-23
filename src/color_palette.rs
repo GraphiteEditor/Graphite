@@ -1,3 +1,5 @@
+use crate::color::Color;
+
 #[allow(dead_code)]
 pub enum ColorPalette {
 	Black,
@@ -20,7 +22,7 @@ pub enum ColorPalette {
 }
 
 impl ColorPalette {
-	pub fn get_color(self) -> wgpu::Color {
+	pub fn get_color_srgb(self) -> Color {
 		let grayscale = match self {
 			ColorPalette::Black => 0 * 17, // #000000
 			ColorPalette::NearBlack => 1 * 17, // #111111
@@ -42,8 +44,8 @@ impl ColorPalette {
 		};
 
 		if grayscale > -1 {
-			let value = grayscale as f64 / 255.0;
-			return wgpu::Color { r: value, g: value, b: value, a: 1.0 };
+			let value = grayscale as f32 / 255.0;
+			return Color::new(value, value, value, 1.0);
 		}
 
 		let rgba = match self {
@@ -51,19 +53,14 @@ impl ColorPalette {
 			_ => (0, 0, 0, 255), // Unimplemented returns black
 		};
 
-		wgpu::Color {
-			r: rgba.0 as f64 / 255.0,
-			g: rgba.1 as f64 / 255.0,
-			b: rgba.2 as f64 / 255.0,
-			a: rgba.3 as f64 / 255.0
-		}
+		Color::new(rgba.0 as f32 / 255.0, rgba.1 as f32 / 255.0, rgba.2 as f32 / 255.0, rgba.3 as f32 / 255.0)
 	}
 
-	pub fn get_color_linear(self) -> wgpu::Color {
-		let standard_rgb = ColorPalette::get_color(self);
+	pub fn get_color_linear(self) -> Color {
+		let standard_rgb = ColorPalette::get_color_srgb(self);
 
 		let linear = palette::Srgb::new(standard_rgb.r, standard_rgb.g, standard_rgb.b).into_linear();
 
-		wgpu::Color { r: linear.red, g: linear.green, b: linear.blue, a: standard_rgb.a }
+		Color::new(linear.red, linear.green, linear.blue, standard_rgb.a)
 	}
 }

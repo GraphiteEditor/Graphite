@@ -1,4 +1,4 @@
-use super::application::Application;
+use crate::application::Application;
 use winit::event::*;
 use winit::event_loop::ControlFlow;
 
@@ -30,7 +30,20 @@ pub fn window_event(application: &mut Application, control_flow: &mut ControlFlo
 fn keyboard_event(application: &mut Application, control_flow: &mut ControlFlow, input: &KeyboardInput) {
 	match input {
 		KeyboardInput { state: ElementState::Pressed, virtual_keycode: Some(VirtualKeyCode::Escape), .. } => quit(control_flow),
-		KeyboardInput { state: ElementState::Pressed, virtual_keycode: Some(VirtualKeyCode::Space), .. } => application.example(),
+		KeyboardInput { state: ElementState::Pressed, virtual_keycode: Some(VirtualKeyCode::Space), .. } => {
+			// const VERTICES: &[[f32; 2]] = &[
+			// 	[-0.2, 0.0],
+			// 	[0.2, 0.0],
+			// 	[0.2, -0.5],
+			// 	[-0.2, -0.5],
+			// ];
+			// const INDICES: &[u16] = &[
+			// 	0, 1, 2,
+			// 	0, 2, 3,
+			// ];
+
+			// application.example(VERTICES, INDICES);
+		},
 		_ => *control_flow = ControlFlow::Wait,
 	}
 }
