@@ -18,10 +18,6 @@ layout(set=0, binding=0) uniform GuiNodeUniform {
 };
 layout(set=0, binding=1) uniform sampler2D t_texture;
 
-// layout(set=1, binding=0) uniform WindowUniform {
-// 	Dimensions_u32 window_dimensions;
-// };
-
 void main() {
 	f_color = fill_color * texture(t_texture, v_uv / textureSize(t_texture, 0) * 100);
 }

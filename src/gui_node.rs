@@ -7,21 +7,28 @@ use crate::gui_attributes::*;
 
 pub struct GuiNode {
 	pub form_factor: GuiNodeUniform,
+	pub pipeline_name: String,
 }
 
 impl GuiNode {
 	pub fn new(width: u32, height: u32, color: Color) -> Self {
 		Self {
 			form_factor: GuiNodeUniform::new(width, height, color),
+			pipeline_name: String::from("gui_rect"),
 		}
 	}
 
-	// pub fn get_pipeline(&self, pipeline_cache: &ResourceCache<Pipeline>) -> &Pipeline {
-	// 	pipeline_cache.get("gui_rect").unwrap()
-	// }
+	pub fn build_draw_commands_recursive(node: &rctree::Node<GuiNode>, device: &wgpu::Device, queue: &mut wgpu::Queue, pipeline_cache: &ResourceCache<Pipeline>, texture_cache: &mut ResourceCache<Texture>) -> Vec<DrawCommand> {
+		let mut draw_commands: Vec<DrawCommand> = Vec::new();
 
-	pub fn get_pipeline_name(&self) -> String {
-		String::from("gui_rect")
+		for mut subnode in node.descendants() {
+			let mut subnode_data = subnode.borrow_mut();
+			let pipeline = pipeline_cache.get(&subnode_data.pipeline_name[..]).unwrap();
+			let command = subnode_data.build_draw_command(device, queue, pipeline, texture_cache);
+			draw_commands.push(command);
+		}
+
+		draw_commands
 	}
 
 	pub fn build_draw_command(&mut self, device: &wgpu::Device, queue: &mut wgpu::Queue, pipeline: &Pipeline, texture_cache: &mut ResourceCache<Texture>) -> DrawCommand {
@@ -39,7 +46,7 @@ impl GuiNode {
 		let bind_groups = self.build_bind_groups(device, queue, pipeline, texture_cache);
 		
 		// Create a draw command with the vertex data then push it to the GPU command queue
-		DrawCommand::new(device, self.get_pipeline_name(), bind_groups, VERTICES, INDICES)
+		DrawCommand::new(device, self.pipeline_name.clone(), bind_groups, VERTICES, INDICES)
 	}
 
 	pub fn build_bind_groups(&mut self, device: &wgpu::Device, queue: &mut wgpu::Queue, pipeline: &Pipeline, texture_cache: &mut ResourceCache<Texture>) -> Vec<wgpu::BindGroup> {

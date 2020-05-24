@@ -68,12 +68,7 @@ impl Application {
 
 		// Temporary setup below, TODO: move to appropriate place in architecture
 
-		// Window uniform bind group layout
-		// let window_binding_types = vec![wgpu::BindingType::UniformBuffer { dynamic: false }];
-		// let window_bind_group_layout = Pipeline::build_bind_group_layout(&device, &window_binding_types);
-		
 		// Data structure maintaining the user interface
-		// let extra_layouts = vec![&window_bind_group_layout];
 		let gui_rect_pipeline = Pipeline::new(&device, swap_chain_descriptor.format, vec![], &mut shader_cache, ("shaders/shader.vert", "shaders/shader.frag"));
 		pipeline_cache.set("gui_rect", gui_rect_pipeline);
 
@@ -137,14 +132,8 @@ impl Application {
 		// Generates a render pass that commands are applied to, then generates a command buffer when finished
 		let mut command_encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("Render Encoder") });
 
-		// Build an array of draw commands
-		let mut nodes = vec![self.gui_root.borrow_mut()]; // TODO: Generate the DrawCommands as a list by recursively traversing the gui node tree
-		let mut commands = Vec::<DrawCommand>::with_capacity(nodes.len());
-		for i in 0..nodes.len() {
-			let pipeline_name = nodes[i].get_pipeline_name();
-			let pipeline = self.pipeline_cache.get(&pipeline_name[..]).unwrap();
-			commands.push(nodes[i].build_draw_command(&mut self.device, &mut self.queue, pipeline, &mut self.texture_cache));
-		}
+		// Build an array of draw commands by traversing the GUI element tree
+		let commands = GuiNode::build_draw_commands_recursive(&self.gui_root, &self.device, &mut self.queue, &self.pipeline_cache, &mut self.texture_cache);
 
 		// Recording of commands while in "rendering mode" that go into a command buffer
 		let mut render_pass = command_encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -159,7 +148,7 @@ impl Application {
 			],
 			depth_stencil_attachment: None,
 		});
-		
+
 		// Prepare a variable to reuse the pipeline based on its name
 		let mut pipeline_name = String::new();
 		

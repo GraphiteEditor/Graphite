@@ -9,7 +9,6 @@ mod draw_command;
 mod gui_node;
 mod gui_attributes;
 mod window_events;
-mod window_uniform;
 
 use application::Application;
 use winit::event_loop::EventLoop;
