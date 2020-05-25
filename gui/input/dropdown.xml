@@ -1,0 +1,16 @@
+<input.dropdown content="OPTION_LIST" :default="DEFAULT = 0" :disabled="DISABLED = false">
+	<box width="100%" :round="4px">
+		<!-- Current selection text -->
+		<col width="100%" height="24px">
+			<text width="100%" height="100%" x-align="0.5" y-align="0.5" :color="mildwhite">{{CURRENT_TEXT}}</text>
+		</col>
+		<!-- Dropdown arrow icon -->
+		<col width="8px" height="100%">
+			<icon width="8px" height="100%" x-align="0.5" y-align="0.5">
+				<svg width="7" height="5" viewBox="0 0 7 5">
+					<path d="M0,.5l3.5,3L7,.5v2l-3.5,3L0,2.5Z" transform="translate(0 -0.5)" fill="#ddd" />
+				</svg>
+			</icon>
+		</col>
+	</box>
+</input.dropdown>
