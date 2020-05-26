@@ -9,7 +9,7 @@ mod draw_command;
 mod gui_node;
 mod gui_attributes;
 mod window_events;
-mod component_layout;
+mod gui_layout;
 mod layout_parsed_node;
 
 use application::Application;

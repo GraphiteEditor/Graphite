@@ -2,12 +2,12 @@ use std::fs;
 use std::io;
 use crate::layout_parsed_node::*;
 
-pub struct ComponentLayout {
+pub struct GuiLayout {
 
 }
 
-impl ComponentLayout {
-	pub fn new() -> ComponentLayout {
+impl GuiLayout {
+	pub fn new() -> GuiLayout {
 		let parsed_layout_tree = Self::parse_xml_file("gui/window/main.xml").unwrap();
 		Self::interpret_abstract_syntax_tree(parsed_layout_tree);
 		Self {}
