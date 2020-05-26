@@ -10,7 +10,7 @@ mod gui_node;
 mod gui_attributes;
 mod window_events;
 mod component_layout;
-mod parsed_layout_node;
+mod layout_parsed_node;
 
 use application::Application;
 use winit::event_loop::EventLoop;

@@ -1,12 +1,12 @@
 #[derive(Debug)]
-pub enum ParsedLayoutNode {
-	Tag(ParsedLayoutTag),
+pub enum LayoutParsedNode {
+	Tag(LayoutParsedTag),
 	Text(String),
 }
 
-impl ParsedLayoutNode {
+impl LayoutParsedNode {
 	pub fn new_tag(namespace: String, tag: String) -> Self {
-		Self::Tag(ParsedLayoutTag::new(namespace, tag))
+		Self::Tag(LayoutParsedTag::new(namespace, tag))
 	}
 
 	pub fn new_text(text: String) -> Self {
@@ -15,13 +15,13 @@ impl ParsedLayoutNode {
 }
 
 #[derive(Debug)]
-pub struct ParsedLayoutTag {
+pub struct LayoutParsedTag {
 	pub namespace: Option<String>,
 	pub tag: String,
 	pub attributes: Vec<(String, String)>,
 }
 
-impl ParsedLayoutTag {
+impl LayoutParsedTag {
 	pub fn new(namespace: String, tag: String) -> Self {
 		let namespace = if namespace.is_empty() { None } else { Some(namespace) };
 

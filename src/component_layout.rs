@@ -1,6 +1,6 @@
 use std::fs;
 use std::io;
-use crate::parsed_layout_node::*;
+use crate::layout_parsed_node::*;
 
 pub struct ComponentLayout {
 
@@ -9,19 +9,17 @@ pub struct ComponentLayout {
 impl ComponentLayout {
 	pub fn new() -> ComponentLayout {
 		let parsed_layout_tree = Self::parse_xml_file("gui/window/main.xml").unwrap();
-		for node in parsed_layout_tree.descendants() {
-			println!("{:?}", node);
-		}
+		Self::interpret_abstract_syntax_tree(parsed_layout_tree);
 		Self {}
 	}
 	
-	pub fn parse_xml_file(path: &str) -> io::Result<rctree::Node<ParsedLayoutNode>> {
+	pub fn parse_xml_file(path: &str) -> io::Result<rctree::Node<LayoutParsedNode>> {
 		let source = fs::read_to_string(path)?;
 		let parsed = xmlparser::Tokenizer::from(&source[..]);
 
-		let mut stack: Vec<rctree::Node<ParsedLayoutNode>> = Vec::new();
-		let mut current: Option<rctree::Node<ParsedLayoutNode>> = None;
-		let mut result: Option<rctree::Node<ParsedLayoutNode>> = None;
+		let mut stack: Vec<rctree::Node<LayoutParsedNode>> = Vec::new();
+		let mut current: Option<rctree::Node<LayoutParsedNode>> = None;
+		let mut result: Option<rctree::Node<LayoutParsedNode>> = None;
 		
 		for token in parsed {
 			match token.unwrap() {
@@ -29,7 +27,7 @@ impl ComponentLayout {
 					let namespace = String::from(prefix.as_str());
 					let tag_name = String::from(local.as_str());
 
-					let new_parsed_layout_node = ParsedLayoutNode::new_tag(namespace, tag_name);
+					let new_parsed_layout_node = LayoutParsedNode::new_tag(namespace, tag_name);
 
 					let new_node = rctree::Node::new(new_parsed_layout_node);
 					current = Some(new_node);
@@ -49,11 +47,11 @@ impl ComponentLayout {
 					match &mut current {
 						Some(current_node) => {
 							match &mut *current_node.borrow_mut() {
-								ParsedLayoutNode::Tag(tag) => {
+								LayoutParsedNode::Tag(tag) => {
 									// Add this attribute to the current node that has not yet reached its closing angle bracket
 									tag.add_attribute(attribute);
 								}
-								ParsedLayoutNode::Text(_) => {
+								LayoutParsedNode::Text(_) => {
 									panic!("Error adding attribute to tag when parsing XML layout in file: {}", path);
 								}
 							}
@@ -99,7 +97,7 @@ impl ComponentLayout {
 					let text_string = String::from(text.as_str());
 
 					if !text_string.trim().is_empty() {
-						let text_node = ParsedLayoutNode::new_text(text_string);
+						let text_node = LayoutParsedNode::new_text(text_string);
 						let new_node = rctree::Node::new(text_node);
 						parent_node.append(new_node);
 					}
@@ -111,6 +109,12 @@ impl ComponentLayout {
 		match result {
 			None => panic!("Invalid syntax when parsing XML layout in file: {}", path),
 			Some(tree) => Ok(tree)
+		}
+	}
+
+	pub fn interpret_abstract_syntax_tree(root: rctree::Node<LayoutParsedNode>) {
+		for node in root.descendants() {
+			println!("{:?}", node);
 		}
 	}
 }
