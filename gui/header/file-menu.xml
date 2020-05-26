@@ -1,20 +1,20 @@
-<header.file-menu>
+<header:file-menu>
 	<box height="100%" x-padding="10px">
-		<text height="100%" y-align="0.5" :color="mildwhite">፨</text>
+		<text height="100%" y-align="0.5" :color="[mildwhite]">፨</text>
 	</box>
 	<box height="100%" x-padding="10px">
-		<text height="100%" y-align="0.5" :color="mildwhite">File</text>
+		<text height="100%" y-align="0.5" :color="[mildwhite]">File</text>
 	</box>
 	<box height="100%" x-padding="10px">
-		<text height="100%" y-align="0.5" :color="mildwhite">Edit</text>
+		<text height="100%" y-align="0.5" :color="[mildwhite]">Edit</text>
 	</box>
 	<box height="100%" x-padding="10px">
-		<text height="100%" y-align="0.5" :color="mildwhite">Comp</text>
+		<text height="100%" y-align="0.5" :color="[mildwhite]">Comp</text>
 	</box>
 	<box height="100%" x-padding="10px">
-		<text height="100%" y-align="0.5" :color="mildwhite">View</text>
+		<text height="100%" y-align="0.5" :color="[mildwhite]">View</text>
 	</box>
 	<box height="100%" x-padding="10px">
-		<text height="100%" y-align="0.5" :color="mildwhite">Help</text>
+		<text height="100%" y-align="0.5" :color="[mildwhite]">Help</text>
 	</box>
-</header.file-menu>
+</header:file-menu>

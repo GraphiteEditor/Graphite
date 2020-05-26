@@ -1,8 +1,8 @@
-<input.dropdown content="OPTION_LIST" :default="DEFAULT = 0" :disabled="DISABLED = false">
+<input:dropdown content="OPTION_LIST" :default="DEFAULT = 0" :disabled="DISABLED = false">
 	<box width="100%" :round="4px">
 		<!-- Current selection text -->
 		<col width="100%" height="24px">
-			<text width="100%" height="100%" x-align="0.5" y-align="0.5" :color="mildwhite">{{CURRENT_TEXT}}</text>
+			<text width="100%" height="100%" x-align="0.5" y-align="0.5" :color="[mildwhite]">{{CURRENT_TEXT}}</text>
 		</col>
 		<!-- Dropdown arrow icon -->
 		<col width="8px" height="100%">
@@ -13,4 +13,4 @@
 			</icon>
 		</col>
 	</box>
-</input.dropdown>
+</input:dropdown>

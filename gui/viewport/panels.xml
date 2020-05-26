@@ -1,7 +1,7 @@
-<viewport.panels>
+<viewport:panels>
 	<checkbox-with-dropdown :checked="true" :default="2">
 		<dropdown-option>Option A</dropdown-option>
 		<dropdown-option>Option B</dropdown-option>
 		<dropdown-option>Option C</dropdown-option>
 	</checkbox-with-dropdown>
-</viewport.panels>
+</viewport:panels>

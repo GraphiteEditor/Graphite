@@ -3,7 +3,7 @@ use crate::window_events;
 use crate::pipeline::Pipeline;
 use crate::texture::Texture;
 use crate::resource_cache::ResourceCache;
-use crate::draw_command::DrawCommand;
+use crate::component_layout::ComponentLayout;
 use crate::gui_node::GuiNode;
 use winit::event::*;
 use winit::event_loop::*;
@@ -74,6 +74,8 @@ impl Application {
 
 		let gui_root_data = GuiNode::new(swap_chain_descriptor.width, swap_chain_descriptor.height, ColorPalette::get_color_srgb(ColorPalette::Accent));
 		let gui_root = rctree::Node::new(gui_root_data);
+
+		ComponentLayout::new();
 
 		Self {
 			surface,

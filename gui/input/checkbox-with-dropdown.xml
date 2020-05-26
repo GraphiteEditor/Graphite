@@ -1,12 +1,12 @@
-<input.checkbox-with-dropdown content="OPTION_LIST" :disabled="DISABLED = false" :checked="CHECKED = false" :default="DEFAULT = 0">
+<input:checkbox-with-dropdown content="OPTION_LIST" :disabled="DISABLED = false" :checked="CHECKED = false" :default="DEFAULT = 0">
 	<!-- Checkbox -->
 	<col width="height" height="100%">
 		<box width="100%" height="100%" x-align="0.5" y-align="0.5" :fill="[accent]">
-			<input.checkbox :checked="{{CHECKED}}" :disabled="{{DISABLED}}" :inverted="true" />
+			<input:checkbox :checked="{{CHECKED}}" :disabled="{{DISABLED}}" :inverted="true" />
 		</box>
 	</col>
 	<!-- Dropdown -->
 	<col width="100%">
-		<input.dropdown width="100%" :default="{{DEFAULT}}" :disabled="{{DISABLED}}">{{OPTION_LIST}}</input.dropdown>
+		<input:dropdown width="100%" :default="{{DEFAULT}}" :disabled="{{DISABLED}}">{{OPTION_LIST}}</input:dropdown>
 	</col>
-</input.checkbox-with-dropdown>
+</input:checkbox-with-dropdown>
