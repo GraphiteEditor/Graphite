@@ -1,8 +1,8 @@
-<header:window-buttons :maximized="IS_MAXIMIZED">
-	<box height="100%" y-align="0.5" x-padding="18px">
+<header:window-buttons :maximized="IS_MAXIMIZED: (Bool) = false">
+	<box height="100%" y-align="50%" x-padding="18px">
 		<icon :src="window_minimize.svg" />
 	</box>
-	<box height="100%" y-align="0.5" x-padding="18px">
+	<box height="100%" y-align="50%" x-padding="18px">
 		<if :a="{{IS_MAXIMIZED}}">
 			<icon :src="window_restore_down.svg" />
 		</if>
@@ -10,7 +10,7 @@
 			<icon :src="maximize.svg" />
 		</if>
 	</box>
-	<box height="100%" y-align="0.5" x-padding="18px">
+	<box height="100%" y-align="50%" x-padding="18px">
 		<icon :src="window_close.svg" />
 	</box>
 </header:window-buttons>

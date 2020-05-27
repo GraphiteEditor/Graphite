@@ -72,7 +72,7 @@ impl Application {
 		let gui_rect_pipeline = Pipeline::new(&device, swap_chain_descriptor.format, vec![], &mut shader_cache, ("shaders/shader.vert", "shaders/shader.frag"));
 		pipeline_cache.set("gui_rect", gui_rect_pipeline);
 
-		let gui_root_data = GuiNode::new(swap_chain_descriptor.width, swap_chain_descriptor.height, ColorPalette::get_color_srgb(ColorPalette::Accent));
+		let gui_root_data = GuiNode::new(swap_chain_descriptor.width, swap_chain_descriptor.height, ColorPalette::Accent.into_color_srgb());
 		let gui_root = rctree::Node::new(gui_root_data);
 
 		GuiLayout::new();

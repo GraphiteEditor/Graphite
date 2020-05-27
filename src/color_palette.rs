@@ -23,7 +23,7 @@ pub enum ColorPalette {
 
 impl ColorPalette {
 	#[allow(dead_code)]
-	pub fn get_color_srgb(self) -> Color {
+	pub fn into_color_srgb(&self) -> Color {
 		let grayscale = match self {
 			ColorPalette::Black => 0 * 17, // #000000
 			ColorPalette::NearBlack => 1 * 17, // #111111
@@ -58,11 +58,34 @@ impl ColorPalette {
 	}
 
 	#[allow(dead_code)]
-	pub fn get_color_linear(self) -> Color {
-		let standard_rgb = ColorPalette::get_color_srgb(self);
+	pub fn into_color_linear(&self) -> Color {
+		let standard_rgb = ColorPalette::into_color_srgb(self);
 
 		let linear = palette::Srgb::new(standard_rgb.r, standard_rgb.g, standard_rgb.b).into_linear();
 
 		Color::new(linear.red, linear.green, linear.blue, standard_rgb.a)
+	}
+
+	pub fn lookup_palette_color(name_in_palette: &str) -> ColorPalette {
+		match &name_in_palette.to_ascii_lowercase()[..] {
+			"black" => ColorPalette::Black,
+			"nearblack" => ColorPalette::NearBlack,
+			"mildblack" => ColorPalette::MildBlack,
+			"darkgray" => ColorPalette::DarkGray,
+			"dimgray" => ColorPalette::DimGray,
+			"dullgray" => ColorPalette::DullGray,
+			"lowergray" => ColorPalette::LowerGray,
+			"middlegray" => ColorPalette::MiddleGray,
+			"uppergray" => ColorPalette::UpperGray,
+			"palegray" => ColorPalette::PaleGray,
+			"softgray" => ColorPalette::SoftGray,
+			"lightgray" => ColorPalette::LightGray,
+			"brightgray" => ColorPalette::BrightGray,
+			"mildwhite" => ColorPalette::MildWhite,
+			"nearwhite" => ColorPalette::NearWhite,
+			"white" => ColorPalette::White,
+			"accent" => ColorPalette::Accent,
+			_ => panic!("Invalid color lookup of `{}` from the color palette", name_in_palette),
+		}
 	}
 }

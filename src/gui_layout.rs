@@ -1,6 +1,7 @@
 use std::fs;
 use std::io;
 use crate::layout_parsed_node::*;
+use crate::layout_abstract_syntax::*;
 
 pub struct GuiLayout {
 
@@ -10,6 +11,7 @@ impl GuiLayout {
 	pub fn new() -> GuiLayout {
 		let parsed_layout_tree = Self::parse_xml_file("gui/window/main.xml").unwrap();
 		Self::interpret_abstract_syntax_tree(parsed_layout_tree);
+
 		Self {}
 	}
 	
@@ -115,6 +117,15 @@ impl GuiLayout {
 	pub fn interpret_abstract_syntax_tree(root: rctree::Node<LayoutParsedNode>) {
 		for node in root.descendants() {
 			println!("{:?}", node);
+
+			match & *node.borrow() {
+				LayoutParsedNode::Tag(tag) => {
+					LayoutAbstractSyntaxNode::new(tag.namespace.clone(), tag.name.clone(), &tag.attributes);
+				}
+				LayoutParsedNode::Text(_) => {}
+			};
+
+			println!();
 		}
 	}
 }

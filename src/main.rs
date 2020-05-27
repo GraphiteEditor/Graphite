@@ -11,6 +11,9 @@ mod gui_attributes;
 mod window_events;
 mod gui_layout;
 mod layout_parsed_node;
+mod layout_abstract_types;
+mod layout_abstract_attributes;
+mod layout_abstract_syntax;
 
 use application::Application;
 use winit::event_loop::EventLoop;
