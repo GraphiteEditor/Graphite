@@ -1,0 +1,3 @@
+<if content="INNER_XML: (None) = none" :a="CONDITION_A: (Integer | Decimal | AbsolutePx | Percent | PercentRemainder | Inner | Width | Height | TemplateString | Color | Bool | None) = true"  :b="CONDITION_B: (Integer | Decimal | AbsolutePx | Percent | PercentRemainder | Inner | Width | Height | TemplateString | Color | Bool | None) = true">
+	{{RESULT}}
+</if>

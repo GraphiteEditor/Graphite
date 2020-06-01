@@ -2,18 +2,10 @@
 	<box width="14px" height="14px" :fill="{{BOX_COLOR}}" :round="2px">
 		<if :a="{{CHECKED}}">
 			<if :a="{{INVERTED}}" :b="false">
-				<icon>
-					<svg width="12.84px" height="11.59px" viewBox="0 0 12.84 11.59">
-						<polygon points="5.53,11.59 0,6.67 1.66,4.8 5.13,7.88 10.82,0 12.84,1.46" fill="#ffffff" />
-					</svg>
-				</icon>
+				<icon :svg="`checkmark_white.svg`" />
 			</if>
 			<if :a="{{INVERTED}}">
-				<icon>
-					<svg width="12.84px" height="11.59px" viewBox="0 0 12.84 11.59">
-						<polygon points="5.53,11.59 0,6.67 1.66,4.8 5.13,7.88 10.82,0 12.84,1.46" fill="#4b79a7" />
-					</svg>
-				</icon>
+				<icon :svg="`checkmark_accent.svg`" />
 			</if>
 		</if>
 	</box>

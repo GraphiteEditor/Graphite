@@ -1,19 +1,16 @@
 use crate::color::Color;
 
-// Variable types
-
-#[derive(Debug)]
-pub enum VariableValue {
-	Parameter(VariableParameter),
-	Argument(String),
-}
-
 #[derive(Debug)]
 pub struct VariableParameter {
 	pub name: String,
-	pub valid_types: Vec<TypeName>,
-	pub default: TypeValue,
-	// pub value: TypeValue,
+	pub type_sequence_options: Vec<Vec<TypeName>>,
+	pub type_sequence_default: Vec<TypeValue>,
+}
+
+impl VariableParameter {
+	pub fn new(name: String, valid_types: Vec<Vec<TypeName>>, default: Vec<TypeValue>) -> Self {
+		Self { name, type_sequence_options: valid_types, type_sequence_default: default }
+	}
 }
 
 #[derive(Debug)]
@@ -21,11 +18,21 @@ pub struct VariableArgument {
 	pub name: String,
 }
 
-// Value types
+impl VariableArgument {
+	pub fn new(name: String) -> Self {
+		Self { name }
+	}
+}
+
+#[derive(Debug)]
+pub enum TypeValueOrArgument {
+	TypeValue(TypeValue),
+	VariableArgument(VariableArgument),
+}
 
 #[derive(Debug)]
 pub enum TypeName {
-	Xml,
+	// Xml, // TODO
 	Integer,
 	Decimal,
 	AbsolutePx,
@@ -42,7 +49,7 @@ pub enum TypeName {
 
 #[derive(Debug)]
 pub enum TypeValue {
-	Xml(()), // TODO
+	// Xml(()), // TODO
 	Integer(i64),
 	Decimal(f64),
 	AbsolutePx(f32),
@@ -60,5 +67,5 @@ pub enum TypeValue {
 #[derive(Debug)]
 pub enum TemplateStringSegment {
 	String(String),
-	Argument(VariableArgument),
+	Argument(TypeValueOrArgument),
 }

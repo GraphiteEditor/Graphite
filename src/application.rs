@@ -69,13 +69,18 @@ impl Application {
 		// Temporary setup below, TODO: move to appropriate place in architecture
 
 		// Data structure maintaining the user interface
-		let gui_rect_pipeline = Pipeline::new(&device, swap_chain_descriptor.format, vec![], &mut shader_cache, ("shaders/shader.vert", "shaders/shader.frag"));
+		let gui_rect_pipeline = Pipeline::new(
+			&device, swap_chain_descriptor.format, Vec::new(), &mut shader_cache, ("shaders/shader.vert", "shaders/shader.frag")
+		);
 		pipeline_cache.set("gui_rect", gui_rect_pipeline);
 
+		// Render quad hierarchy
 		let gui_root_data = GuiNode::new(swap_chain_descriptor.width, swap_chain_descriptor.height, ColorPalette::Accent.into_color_srgb());
 		let gui_root = rctree::Node::new(gui_root_data);
 
-		GuiLayout::new();
+		// Main window in the XML layout language
+		let mut main_window_layout = GuiLayout::new();
+		main_window_layout.load_layout("window", "main");
 
 		Self {
 			surface,
@@ -97,7 +102,7 @@ impl Application {
 	}
 
 	// Called every time by the event loop
-	pub fn main_event_loop<T>(&mut self, event: Event<'_, T>, control_flow: &mut ControlFlow, window: &Window) {
+	fn main_event_loop<T>(&mut self, event: Event<'_, T>, control_flow: &mut ControlFlow, window: &Window) {
 		// Wait for the next event to cause a subsequent event loop run, instead of looping instantly as a game would need
 		*control_flow = ControlFlow::Wait;
 
@@ -122,12 +127,12 @@ impl Application {
 		}
 	}
 
-	pub fn update_gui(&mut self) {
+	fn update_gui(&mut self) {
 
 	}
 
 	// Render the queue of pipeline draw commands over the current window
-	pub fn render(&mut self) {
+	fn render(&mut self) {
 		// Get a frame buffer to render on
 		let frame = self.swap_chain.get_next_texture().expect("Timeout getting frame buffer texture");
 		

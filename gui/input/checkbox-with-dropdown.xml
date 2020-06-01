@@ -1,7 +1,7 @@
 <input:checkbox-with-dropdown content="OPTION_LIST: (None) = none" :disabled="DISABLED: (Bool) = false" :checked="CHECKED: (Bool) = false" :selected-index="SELECTED_INDEX: (Integer) = 0">
 	<!-- Checkbox -->
 	<col width="height" height="100%">
-		<box width="100%" height="100%" x-align="50%" y-align="50%" :round="4px 0px 0px 4px" :fill="['accent']">
+		<box width="100%" height="100%" x-align="50%" y-align="50%" :round="4px, 0px, 0px, 4px" :fill="['accent']">
 			<input:checkbox :checked="{{CHECKED}}" :disabled="{{DISABLED}}" :inverted="true" />
 		</box>
 	</col>

@@ -6,11 +6,7 @@
 		</col>
 		<!-- Dropdown arrow icon -->
 		<col width="8px" height="100%">
-			<icon width="8px" height="100%" x-align="50%" y-align="50%">
-				<svg width="7" height="5" viewBox="0 0 7 5">
-					<path d="M0,.5l3.5,3L7,.5v2l-3.5,3L0,2.5Z" transform="translate(0 -0.5)" fill="#ddd" />
-				</svg>
-			</icon>
+			<icon width="8px" height="100%" x-align="50%" y-align="50%" :svg="`dropdown_arrow.svg`" />
 		</col>
 	</box>
 </input:dropdown>
