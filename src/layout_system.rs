@@ -5,13 +5,14 @@ use crate::layout_abstract_syntax::*;
 use crate::layout_attribute_parser::*;
 use crate::resource_cache::ResourceCache;
 
-pub struct GuiLayout {
+pub struct LayoutSystem {
+	// pub dom_tree: rctree::Node<
 	pub loaded_layouts: ResourceCache<rctree::Node<LayoutAbstractNode>>,
 	attribute_parser: AttributeParser,
 }
 
-impl GuiLayout {
-	pub fn new() -> GuiLayout {
+impl LayoutSystem {
+	pub fn new() -> LayoutSystem {
 		Self {
 			loaded_layouts: ResourceCache::new(),
 			attribute_parser: AttributeParser::new(),
@@ -19,7 +20,7 @@ impl GuiLayout {
 	}
 
 	pub fn load_layout(&mut self, namespace: &str, name: &str) {
-		// Load and parse the XML layout
+		// Load and parse the requested XML layout
 		let xml_path = self.layout_xml_path(namespace, name);
 		let window_main = self.parse_xml_file(&xml_path[..]).unwrap();
 

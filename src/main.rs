@@ -9,10 +9,11 @@ mod draw_command;
 mod gui_node;
 mod gui_attributes;
 mod window_events;
-mod gui_layout;
+mod layout_system;
 mod layout_abstract_types;
 mod layout_abstract_syntax;
 mod layout_attribute_parser;
+mod layout_dom_node;
 
 use application::Application;
 use winit::event_loop::EventLoop;

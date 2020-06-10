@@ -3,7 +3,7 @@ use crate::window_events;
 use crate::pipeline::Pipeline;
 use crate::texture::Texture;
 use crate::resource_cache::ResourceCache;
-use crate::gui_layout::GuiLayout;
+use crate::layout_system::LayoutSystem;
 use crate::gui_node::GuiNode;
 use winit::event::*;
 use winit::event_loop::*;
@@ -70,7 +70,7 @@ impl Application {
 
 		// Data structure maintaining the user interface
 		let gui_rect_pipeline = Pipeline::new(
-			&device, swap_chain_descriptor.format, Vec::new(), &mut shader_cache, ("shaders/shader.vert", "shaders/shader.frag")
+			&device, swap_chain_descriptor.format, Vec::new(), &mut shader_cache, ("shaders/shader.vert", "shaders/shader.frag"),
 		);
 		pipeline_cache.set("gui_rect", gui_rect_pipeline);
 
@@ -79,7 +79,7 @@ impl Application {
 		let gui_root = rctree::Node::new(gui_root_data);
 
 		// Main window in the XML layout language
-		let mut main_window_layout = GuiLayout::new();
+		let mut main_window_layout = LayoutSystem::new();
 		main_window_layout.load_layout("window", "main");
 
 		Self {
