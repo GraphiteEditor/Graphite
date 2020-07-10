@@ -13,6 +13,7 @@ pub struct AttributeParser {
 }
 
 impl AttributeParser {
+	// Prebuild all the regex patterns
 	pub fn new() -> Self {
 		let capture_attribute_declaration_parameter_regex: regex::Regex = regex::Regex::new(
 			// Parameter: ?: (?, ... | ...) = ?
@@ -85,44 +86,44 @@ impl AttributeParser {
 			Some(["{{", name, "}}"]) => {
 				let name = String::from(*name);
 				TypeValueOrArgument::VariableArgument(VariableArgument::new(name))
-			}
+			},
 			// Integer: ?
 			Some([value]) if self.match_integer_regex.is_match(value) => {
 				let integer = value.parse::<i64>().expect(&format!("Invalid value `{}` specified in the attribute type `{}` when parsing XML layout", value, attribute_type)[..]);
 				TypeValueOrArgument::TypeValue(TypeValue::Integer(integer))
-			}
+			},
 			// Decimal: ?
 			Some([value]) if self.match_decimal_regex.is_match(value) => {
 				let decimal = value.parse::<f64>().expect(&format!("Invalid value `{}` specified in the attribute type `{}` when parsing XML layout", value, attribute_type)[..]);
 				TypeValueOrArgument::TypeValue(TypeValue::Decimal(decimal))
-			}
+			},
 			// AbsolutePx: px
 			Some([value, px]) if px.eq_ignore_ascii_case("px") => {
 				let pixels = value.parse::<f32>().expect(&format!("Invalid value `{}` specified in the attribute type`{}` when parsing XML layout", value, attribute_type)[..]);
 				TypeValueOrArgument::TypeValue(TypeValue::AbsolutePx(pixels))
-			}
+			},
 			// Percent: ?%
 			Some([value, "%"]) => {
 				let percent = value.parse::<f32>().expect(&format!("Invalid value `{}` specified in the attribute type `{}` when parsing XML layout", value, attribute_type)[..]);
 				TypeValueOrArgument::TypeValue(TypeValue::Percent(percent))
-			}
+			},
 			// PercentRemainder: ?@
 			Some([value, "@"]) => {
 				let percent_remainder = value.parse::<f32>().expect(&format!("Invalid value `{}` specified in the attribute type `{}` when parsing XML layout", value, attribute_type)[..]);
 				TypeValueOrArgument::TypeValue(TypeValue::PercentRemainder(percent_remainder))
-			}
+			},
 			// Inner: inner
 			Some([inner]) if inner.eq_ignore_ascii_case("inner") => {
 				TypeValueOrArgument::TypeValue(TypeValue::Inner)
-			}
+			},
 			// Width: width
 			Some([width]) if width.eq_ignore_ascii_case("width") => {
 				TypeValueOrArgument::TypeValue(TypeValue::Width)
-			}
+			},
 			// Height: height
 			Some([height]) if height.eq_ignore_ascii_case("height") => {
 				TypeValueOrArgument::TypeValue(TypeValue::Height)
-			}
+			},
 			// TemplateString: `? ... {{?}} ...`
 			Some(["`", string, "`"]) => {
 				let mut segments = Vec::<TemplateStringSegment>::new();
@@ -138,7 +139,7 @@ impl AttributeParser {
 				}
 
 				TypeValueOrArgument::TypeValue(TypeValue::TemplateString(segments))
-			}
+			},
 			// Color: [?]
 			Some(["[", color_name, "]"]) => {
 				let color = match self.capture_color_name_in_palette_regex.captures(color_name) {
@@ -154,16 +155,16 @@ impl AttributeParser {
 				};
 
 				TypeValueOrArgument::TypeValue(TypeValue::Color(color))
-			}
+			},
 			// Bool: true/false
 			Some([true_or_false]) if true_or_false.eq_ignore_ascii_case("true") || true_or_false.eq_ignore_ascii_case("false") => {
 				let boolean = true_or_false.eq_ignore_ascii_case("true");
 				TypeValueOrArgument::TypeValue(TypeValue::Bool(boolean))
-			}
+			},
 			// None: none
 			Some([none]) if none.eq_ignore_ascii_case("none") => {
 				TypeValueOrArgument::TypeValue(TypeValue::None)
-			}
+			},
 			// Unrecognized type pattern
 			_ => panic!("Invalid attribute type `{}` when parsing XML layout", attribute_type),
 		}
@@ -216,13 +217,13 @@ impl AttributeParser {
 						TypeValueOrArgument::TypeValue(type_value) => type_value,
 						TypeValueOrArgument::VariableArgument(variable_value) => {
 							panic!("Found the default variable value `{:?}` in the attribute declaration `{}` which only allows typed values, when parsing XML layout", variable_value, attribute_declaration);
-						}
+						},
 					}
 				).collect::<Vec<TypeValue>>();
 
 				// Return the parameter
 				AttributeValue::VariableParameter(VariableParameter::new(name, type_sequence_options, default_type_sequence))
-			}
+			},
 			// Unrecognized type pattern
 			_ => panic!("Invalid attribute attribute declaration `{}` when parsing XML layout", attribute_declaration),
 		}
