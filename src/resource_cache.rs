@@ -46,7 +46,7 @@ impl<T> ResourceCache<T> {
 				let id = CacheID::new(last_index);
 				self.name_to_id.insert(String::from(name), id);
 				self.resources.push(resource);
-			}
+			},
 		}
 	}
 }

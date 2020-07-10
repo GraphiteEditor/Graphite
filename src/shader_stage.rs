@@ -8,7 +8,7 @@ pub fn compile_from_glsl(device: &wgpu::Device, path: &str, shader_type: glsl_to
 		Err(message) => {
 			println!("Error compiling GLSL to SPIRV shader: {}", message);
 			panic!("{}", message);
-		}
+		},
 	};
 	let compiled = wgpu::read_spirv(spirv)?;
 	let shader = device.create_shader_module(&compiled);
