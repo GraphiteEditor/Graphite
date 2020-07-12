@@ -5,6 +5,8 @@ Graphite is an open-source, cross-platform digital content creation desktop app 
 
 Graphite is in an early stage of development and its vision is highly ambitious. The project is seeking collaborators to help design and develop the software. Please open an issue to get in touch if interested!
 
+We have a Discord server. Use the following link to join: `https://di-s-co-rd.gg/p2-a-Y-jM3` (remove the dashes).
+
 ## Design
 
 Interactive viewport *(work-in-progress design)*:
@@ -19,9 +21,8 @@ Node editor *(work-in-progress design)*:
 
 [WebGPU](https://gpuweb.github.io/gpuweb) (via Mozilla's [WGPU Rust library](https://wgpu.rs)) is being used as the graphics API because it is portable and safe. It makes deployment on the web and native platforms easy while ensuring consistent cross-platform behavior. It also offers the ability to use compute shaders to perform many tasks that speed up graphical computations.
 
-The GUI system is being custom-built for the specific needs of Graphite's interface, based on a simple XML format inspired by HTML, CSS, and Vue.js. This is the current focus of development.
+The [GUI system](gui) is being custom-built for the specific needs of Graphite's interface, based on a simple XML format inspired by HTML, CSS, and Vue.js. This is the current focus of development.
 
 JavaScript (via [Deno's V8 Rust library](https://github.com/denoland/rusty_v8)) will likely be the chosen scripting language used to extend functionality to areas of the application. This will make it faster to implement many features that are less dependent on low-level performance and it provides an integrated solution for future plugin support.
 
 [Pathfinder](https://github.com/servo/pathfinder) is the Rust library that will be used for vector graphics rendering.
-
