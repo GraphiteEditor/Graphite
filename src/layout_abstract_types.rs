@@ -9,7 +9,11 @@ pub struct VariableParameter {
 
 impl VariableParameter {
 	pub fn new(name: String, valid_types: Vec<Vec<TypeName>>, default: Vec<TypeValue>) -> Self {
-		Self { name, type_sequence_options: valid_types, type_sequence_default: default }
+		Self {
+			name,
+			type_sequence_options: valid_types,
+			type_sequence_default: default,
+		}
 	}
 }
 

@@ -21,10 +21,7 @@ impl<T> ResourceCache<T> {
 		let resources = Vec::new();
 		let name_to_id = HashMap::new();
 
-		Self {
-			resources,
-			name_to_id,
-		}
+		Self { resources, name_to_id }
 	}
 
 	#[allow(dead_code)]

@@ -1,19 +1,19 @@
 mod application;
-mod pipeline;
-mod texture;
 mod color;
 mod color_palette;
-mod resource_cache;
-mod shader_stage;
 mod draw_command;
-mod gui_node;
 mod gui_attributes;
-mod window_events;
-mod layout_system;
-mod layout_abstract_types;
+mod gui_node;
 mod layout_abstract_syntax;
+mod layout_abstract_types;
 mod layout_attribute_parser;
 mod layout_dom_node;
+mod layout_system;
+mod pipeline;
+mod resource_cache;
+mod shader_stage;
+mod texture;
+mod window_events;
 
 use application::Application;
 use winit::event_loop::EventLoop;
