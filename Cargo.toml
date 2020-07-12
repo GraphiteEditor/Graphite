@@ -20,3 +20,7 @@ rctree = "0.3.3"
 xmlparser = "0.13.1"
 regex = "1.3.7"
 css-color-parser = "0.1.2"
+env_logger = { version = "0.7.1", optional = true }
+
+[features]
+debug = ["env_logger"]

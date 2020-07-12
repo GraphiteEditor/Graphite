@@ -16,8 +16,10 @@ layout(set=0, binding=0) uniform GuiNodeUniform {
 	vec4 border_color;
 	vec4 fill_color;
 };
-layout(set=0, binding=1) uniform sampler2D t_texture;
+
+layout(set=0, binding=1) uniform texture2D t_texture;
+layout(set=0, binding=2) uniform sampler s_texture;
 
 void main() {
-	f_color = fill_color * texture(t_texture, v_uv / textureSize(t_texture, 0) * 100);
+	f_color = fill_color * texture(sampler2D(t_texture, s_texture), v_uv / textureSize(sampler2D(t_texture, s_texture), 0) * 500);
 }

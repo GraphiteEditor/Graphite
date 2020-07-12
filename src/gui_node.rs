@@ -60,6 +60,7 @@ impl GuiNode {
 		let bind_group = Pipeline::build_bind_group(device, &pipeline.bind_group_layout, vec![
 			Pipeline::build_binding_resource(&binding_staging_buffer),
 			wgpu::BindingResource::TextureView(&texture.texture_view),
+			wgpu::BindingResource::Sampler(&texture.sampler),
 		]);
 		
 		vec![

@@ -7,7 +7,7 @@
 		{
 			"type": "lldb",
 			"request": "launch",
-			"name": "Debug executable 'graphite'",
+			"name": "Graphite debug executable",
 			"cargo": {
 				"args": [
 					"build",
@@ -20,7 +20,10 @@
 				}
 			},
 			"args": [],
-			"cwd": "${workspaceFolder}"
+			"cwd": "${workspaceFolder}",
+			"env": {
+				"RUST_LOG": "error"
+			}
 		},
 		{
 			"type": "lldb",
