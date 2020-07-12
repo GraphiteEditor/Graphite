@@ -20,6 +20,10 @@ use winit::event_loop::EventLoop;
 use winit::window::WindowBuilder;
 
 fn main() {
+	// Display graphics API errors (requires Vulkan SDK is installed)
+	#[cfg(feature = "debug")]
+	env_logger::init();
+
 	// Handles all window events, user input, and redraws
 	let event_loop = EventLoop::new();
 

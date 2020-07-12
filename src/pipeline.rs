@@ -20,6 +20,7 @@ impl Pipeline {
 				component_type: wgpu::TextureComponentType::Float,
 				multisampled: false,
 			},
+			wgpu::BindingType::Sampler { comparison: false },
 		]);
 		
 		// Combine all bind group layouts
