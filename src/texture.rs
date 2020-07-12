@@ -1,6 +1,6 @@
-use std::fs;
-use image::GenericImageView;
 use crate::resource_cache::ResourceCache;
+use image::GenericImageView;
+use std::fs;
 
 pub struct Texture {
 	pub texture: wgpu::Texture,
@@ -21,11 +21,11 @@ impl Texture {
 	pub fn from_filepath(device: &wgpu::Device, queue: &mut wgpu::Queue, path: &str) -> Result<Self, failure::Error> {
 		// Read the raw bytes from the specified file
 		let bytes = fs::read(path)?;
-		
+
 		// Construct and return a Texture from the bytes
 		Texture::from_bytes(device, queue, &bytes[..])
 	}
-	
+
 	pub fn from_bytes(device: &wgpu::Device, queue: &mut wgpu::Queue, bytes: &[u8]) -> Result<Self, failure::Error> {
 		// Create an image with the Image library
 		let image = image::load_from_memory(bytes)?;
@@ -67,7 +67,7 @@ impl Texture {
 				offset: 0,
 				bytes_per_row: 4 * dimensions.0,
 				rows_per_image: dimensions.1,
-			}, 
+			},
 			wgpu::TextureCopyView {
 				texture: &texture,
 				mip_level: 0,
@@ -96,7 +96,11 @@ impl Texture {
 			lod_max_clamp: 100.0,
 			compare: wgpu::CompareFunction::Always,
 		});
-		
-		Ok(Self { texture, texture_view: view, sampler })
+
+		Ok(Self {
+			texture,
+			texture_view: view,
+			sampler,
+		})
 	}
 }

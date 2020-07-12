@@ -1,4 +1,3 @@
-
 use crate::layout_abstract_types::*;
 
 #[derive(Debug)]
@@ -26,7 +25,11 @@ pub struct LayoutAbstractTag {
 
 impl LayoutAbstractTag {
 	pub fn new(namespace: String, name: String) -> Self {
-		Self { namespace, name, attributes: Vec::new() }
+		Self {
+			namespace,
+			name,
+			attributes: Vec::new(),
+		}
 	}
 
 	pub fn add_attribute(&mut self, attribute: Attribute) {

@@ -1,0 +1,12 @@
+{
+	"[rust]": {
+		"editor.formatOnSave": true,
+		"editor.formatOnPaste": true
+	},
+	"rust-analyzer.rustfmt.extraArgs": [
+		"--config",                           // Remove when rustfmt 2.0
+		"match_block_trailing_comma=true",    // is released
+		"--config",                           // Remove when control_brace_style
+		"control_brace_style=ClosingNextLine" // becomes stable
+	]
+}
