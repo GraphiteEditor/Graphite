@@ -25,22 +25,22 @@ impl ColorPalette {
 	#[allow(dead_code)]
 	pub fn into_color_srgb(&self) -> Color {
 		let grayscale = match self {
-			ColorPalette::Black => 0 * 17, // #000000
-			ColorPalette::NearBlack => 1 * 17, // #111111
-			ColorPalette::MildBlack => 2 * 17, // #222222
-			ColorPalette::DarkGray => 3 * 17, // #333333
-			ColorPalette::DimGray => 4 * 17, // #444444
-			ColorPalette::DullGray => 5 * 17, // #555555
-			ColorPalette::LowerGray => 6 * 17, // #666666
-			ColorPalette::MiddleGray => 7 * 17, // #777777
-			ColorPalette::UpperGray => 8 * 17, // #888888
-			ColorPalette::PaleGray => 9 * 17, // #999999
-			ColorPalette::SoftGray => 10 * 17, // #aaaaaa
-			ColorPalette::LightGray => 11 * 17, // #bbbbbb
+			ColorPalette::Black => 0 * 17,       // #000000
+			ColorPalette::NearBlack => 1 * 17,   // #111111
+			ColorPalette::MildBlack => 2 * 17,   // #222222
+			ColorPalette::DarkGray => 3 * 17,    // #333333
+			ColorPalette::DimGray => 4 * 17,     // #444444
+			ColorPalette::DullGray => 5 * 17,    // #555555
+			ColorPalette::LowerGray => 6 * 17,   // #666666
+			ColorPalette::MiddleGray => 7 * 17,  // #777777
+			ColorPalette::UpperGray => 8 * 17,   // #888888
+			ColorPalette::PaleGray => 9 * 17,    // #999999
+			ColorPalette::SoftGray => 10 * 17,   // #aaaaaa
+			ColorPalette::LightGray => 11 * 17,  // #bbbbbb
 			ColorPalette::BrightGray => 12 * 17, // #cccccc
-			ColorPalette::MildWhite => 13 * 17, // #dddddd
-			ColorPalette::NearWhite => 14 * 17, // #eeeeee
-			ColorPalette::White => 15 * 17, // #ffffff
+			ColorPalette::MildWhite => 13 * 17,  // #dddddd
+			ColorPalette::NearWhite => 14 * 17,  // #eeeeee
+			ColorPalette::White => 15 * 17,      // #ffffff
 			_ => -1,
 		};
 
@@ -51,7 +51,7 @@ impl ColorPalette {
 
 		let rgba = match self {
 			ColorPalette::Accent => (75, 121, 167, 255), // #4b79a7
-			_ => (0, 0, 0, 255), // Unimplemented returns black
+			_ => (0, 0, 0, 255),                         // Unimplemented returns black
 		};
 
 		Color::new(rgba.0 as f32 / 255.0, rgba.1 as f32 / 255.0, rgba.2 as f32 / 255.0, rgba.3 as f32 / 255.0)

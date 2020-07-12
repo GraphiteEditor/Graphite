@@ -1,14 +1,14 @@
 use crate::color_palette::ColorPalette;
-use crate::window_events;
-use crate::pipeline::Pipeline;
-use crate::texture::Texture;
-use crate::resource_cache::ResourceCache;
-use crate::layout_system::LayoutSystem;
 use crate::gui_node::GuiNode;
+use crate::layout_system::LayoutSystem;
+use crate::pipeline::Pipeline;
+use crate::resource_cache::ResourceCache;
+use crate::texture::Texture;
+use crate::window_events;
+use futures::executor::block_on;
 use winit::event::*;
 use winit::event_loop::*;
 use winit::window::Window;
-use futures::executor::block_on;
 
 pub struct Application {
 	pub surface: wgpu::Surface,
@@ -35,7 +35,8 @@ impl Application {
 				compatible_surface: Some(&surface),
 			},
 			wgpu::BackendBit::PRIMARY,
-		)).unwrap();
+		))
+		.unwrap();
 
 		// Requests the device and queue from the adapter
 		let requested_device = block_on(adapter.request_device(&wgpu::DeviceDescriptor {
@@ -48,7 +49,7 @@ impl Application {
 
 		// Represents the GPU command queue, to submit CommandBuffers
 		let queue = requested_device.1;
-		
+
 		// Properties for the swap chain frame buffers
 		let swap_chain_descriptor = wgpu::SwapChainDescriptor {
 			usage: wgpu::TextureUsage::OUTPUT_ATTACHMENT,
@@ -70,7 +71,11 @@ impl Application {
 
 		// Data structure maintaining the user interface
 		let gui_rect_pipeline = Pipeline::new(
-			&device, swap_chain_descriptor.format, Vec::new(), &mut shader_cache, ("shaders/shader.vert", "shaders/shader.frag"),
+			&device,
+			swap_chain_descriptor.format,
+			Vec::new(),
+			&mut shader_cache,
+			("shaders/shader.vert", "shaders/shader.frag"),
 		);
 		pipeline_cache.set("gui_rect", gui_rect_pipeline);
 
@@ -127,15 +132,13 @@ impl Application {
 		}
 	}
 
-	fn update_gui(&mut self) {
-
-	}
+	fn update_gui(&mut self) {}
 
 	// Render the queue of pipeline draw commands over the current window
 	fn render(&mut self) {
 		// Get a frame buffer to render on
 		let frame = self.swap_chain.get_next_texture().expect("Timeout getting frame buffer texture");
-		
+
 		// Generates a render pass that commands are applied to, then generates a command buffer when finished
 		let mut command_encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("Render Encoder") });
 
@@ -144,21 +147,19 @@ impl Application {
 
 		// Recording of commands while in "rendering mode" that go into a command buffer
 		let mut render_pass = command_encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-			color_attachments: &[
-				wgpu::RenderPassColorAttachmentDescriptor {
-					attachment: &frame.view,
-					resolve_target: None,
-					load_op: wgpu::LoadOp::Clear,
-					store_op: wgpu::StoreOp::Store,
-					clear_color: wgpu::Color::BLACK,
-				}
-			],
+			color_attachments: &[wgpu::RenderPassColorAttachmentDescriptor {
+				attachment: &frame.view,
+				resolve_target: None,
+				load_op: wgpu::LoadOp::Clear,
+				store_op: wgpu::StoreOp::Store,
+				clear_color: wgpu::Color::BLACK,
+			}],
 			depth_stencil_attachment: None,
 		});
 
 		// Prepare a variable to reuse the pipeline based on its name
 		let mut pipeline_name = String::new();
-		
+
 		// Turn the queue of pipelines each into a command buffer and submit it to the render queue
 		for i in 0..commands.len() {
 			// If the previously set pipeline can't be reused, send the GPU the new pipeline to draw with
@@ -179,7 +180,7 @@ impl Application {
 
 			// Draw call
 			render_pass.draw_indexed(0..commands[i].index_count, 0, 0..1);
-		};
+		}
 
 		// Done sending render pass commands so we can give up mutation rights to command_encoder
 		drop(render_pass);

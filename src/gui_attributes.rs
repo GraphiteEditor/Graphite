@@ -9,7 +9,12 @@ pub struct Corners<T> {
 
 impl<T> Corners<T> {
 	pub fn new(top_left: T, top_right: T, bottom_right: T, bottom_left: T) -> Self {
-		Self { top_left, top_right, bottom_right, bottom_left }
+		Self {
+			top_left,
+			top_right,
+			bottom_right,
+			bottom_left,
+		}
 	}
 }
 

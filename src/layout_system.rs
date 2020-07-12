@@ -1,9 +1,9 @@
-use std::fs;
-use std::io;
-use std::collections::HashSet;
 use crate::layout_abstract_syntax::*;
 use crate::layout_attribute_parser::*;
 use crate::resource_cache::ResourceCache;
+use std::collections::HashSet;
+use std::fs;
+use std::io;
 
 pub struct LayoutSystem {
 	// pub dom_tree: rctree::Node<
@@ -38,7 +38,7 @@ impl LayoutSystem {
 
 	fn explore_referenced_layouts(&mut self, layout_tree_root: &rctree::Node<LayoutAbstractNode>, already_loaded_layouts: &mut HashSet<String>) {
 		for child_tag in layout_tree_root.descendants() {
-			match & *child_tag.borrow() {
+			match &*child_tag.borrow() {
 				// Tags are references to other XML layouts that should be loaded and cached
 				LayoutAbstractNode::Tag(layout_abstract_tag) => {
 					// Cache key in form namespace:name
@@ -56,7 +56,7 @@ impl LayoutSystem {
 								// Keep track of it being loaded to prevent duplicate work
 								let key_copy = key.clone();
 								already_loaded_layouts.insert(key);
-								
+
 								// Recursively explore the newly loaded layout's tags
 								self.explore_referenced_layouts(&new_loaded_layout, already_loaded_layouts);
 
@@ -107,7 +107,7 @@ impl LayoutSystem {
 		let mut current_opening_tag: Option<LayoutAbstractNode> = None;
 		// Top-level node that is popped from the stack when the closing tag is reached at the end of the XML document
 		let mut final_result: Option<rctree::Node<LayoutAbstractNode>> = None;
-		
+
 		for token in parser {
 			match token.unwrap() {
 				// Beginning of an opening tag (<NAMESPACE:NAME ...)
@@ -133,7 +133,8 @@ impl LayoutSystem {
 						string.push(':');
 						string.push_str(slice);
 						string
-					} else {
+					}
+					else {
 						String::from(local.as_str())
 					};
 					// Set the value to an ordinary string slice of the given value
@@ -212,11 +213,13 @@ impl LayoutSystem {
 				xmlparser::Token::Text { text } => {
 					// Trim any whitespace from around the string
 					let text_string = String::from(text.as_str().trim());
-					
+
 					// If the string isn't all whitespace, append a new text node to the parent
 					if !text_string.is_empty() {
 						// Get the tree node which contains this text
-						let parent_node = stack.last_mut().expect(&format!("Encountered text outside the root tag when parsing XML layout in file: {}", path)[..]);
+						let parent_node = stack
+							.last_mut()
+							.expect(&format!("Encountered text outside the root tag when parsing XML layout in file: {}", path)[..]);
 
 						// Construct an AST text node with the provided text
 						let abstract_text_node = LayoutAbstractNode::new_text(text_string);
@@ -227,10 +230,10 @@ impl LayoutSystem {
 						parent_node.append(new_tree_node);
 					}
 				},
-				_ => {}
+				_ => {},
 			}
 		}
-		
+
 		match final_result {
 			None => panic!("Invalid syntax when parsing XML layout in file: {}", path),
 			Some(tree) => Ok(tree),

@@ -1,6 +1,6 @@
-use std::mem;
 use crate::resource_cache::ResourceCache;
 use crate::shader_stage;
+use std::mem;
 
 pub struct Pipeline {
 	pub bind_group_layout: wgpu::BindGroupLayout,
@@ -8,25 +8,34 @@ pub struct Pipeline {
 }
 
 impl Pipeline {
-	pub fn new(device: &wgpu::Device, swap_chain_color_format: wgpu::TextureFormat, extra_layouts: Vec<&wgpu::BindGroupLayout>, shader_cache: &mut ResourceCache<wgpu::ShaderModule>, shader_pair_path: (&str, &str)) -> Self {
+	pub fn new(
+		device: &wgpu::Device,
+		swap_chain_color_format: wgpu::TextureFormat,
+		extra_layouts: Vec<&wgpu::BindGroupLayout>,
+		shader_cache: &mut ResourceCache<wgpu::ShaderModule>,
+		shader_pair_path: (&str, &str),
+	) -> Self {
 		// Load the vertex and fragment shaders
 		let shader_pair = Pipeline::get_shader_pair(device, shader_cache, shader_pair_path);
 
 		// Prepare a bind group layout for the GUI element's texture and form factor data
-		let bind_group_layout = Pipeline::build_bind_group_layout(device, &vec![
-			wgpu::BindingType::UniformBuffer { dynamic: false },
-			wgpu::BindingType::SampledTexture {
-				dimension: wgpu::TextureViewDimension::D2,
-				component_type: wgpu::TextureComponentType::Float,
-				multisampled: false,
-			},
-			wgpu::BindingType::Sampler { comparison: false },
-		]);
-		
+		let bind_group_layout = Pipeline::build_bind_group_layout(
+			device,
+			&vec![
+				wgpu::BindingType::UniformBuffer { dynamic: false },
+				wgpu::BindingType::SampledTexture {
+					dimension: wgpu::TextureViewDimension::D2,
+					component_type: wgpu::TextureComponentType::Float,
+					multisampled: false,
+				},
+				wgpu::BindingType::Sampler { comparison: false },
+			],
+		);
+
 		// Combine all bind group layouts
 		let mut bind_group_layouts = vec![&bind_group_layout];
 		bind_group_layouts.append(&mut extra_layouts.clone());
-		
+
 		// Construct the pipeline
 		let render_pipeline = Pipeline::build_pipeline(device, swap_chain_color_format, bind_group_layouts, shader_pair);
 		Self {
@@ -35,7 +44,11 @@ impl Pipeline {
 		}
 	}
 
-	pub fn get_shader_pair<'a>(device: &wgpu::Device, shader_cache: &'a mut ResourceCache<wgpu::ShaderModule>, shader_pair_path: (&str, &str)) -> (&'a wgpu::ShaderModule, &'a wgpu::ShaderModule) {
+	pub fn get_shader_pair<'a>(
+		device: &wgpu::Device,
+		shader_cache: &'a mut ResourceCache<wgpu::ShaderModule>,
+		shader_pair_path: (&str, &str),
+	) -> (&'a wgpu::ShaderModule, &'a wgpu::ShaderModule) {
 		// If uncached, construct a vertex shader loaded from its source code file
 		if shader_cache.get(shader_pair_path.0).is_none() {
 			let vertex_shader_module = shader_stage::compile_from_glsl(device, shader_pair_path.0, glsl_to_spirv::ShaderType::Vertex).unwrap();
@@ -56,28 +69,31 @@ impl Pipeline {
 	}
 
 	pub fn build_bind_group_layouts(device: &wgpu::Device, bind_group_layouts: &Vec<Vec<wgpu::BindingType>>) -> Vec<wgpu::BindGroupLayout> {
-		bind_group_layouts.into_iter().map(|layout_entry| Self::build_bind_group_layout(device, layout_entry)).collect::<Vec<_>>()
+		bind_group_layouts
+			.into_iter()
+			.map(|layout_entry| Self::build_bind_group_layout(device, layout_entry))
+			.collect::<Vec<_>>()
 	}
 
 	pub fn build_bind_group_layout(device: &wgpu::Device, bind_group_layout: &Vec<wgpu::BindingType>) -> wgpu::BindGroupLayout {
 		device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
 			label: None,
-			bindings: bind_group_layout.into_iter().enumerate().map(|(index, binding_type)|
-				wgpu::BindGroupLayoutEntry {
+			bindings: bind_group_layout
+				.into_iter()
+				.enumerate()
+				.map(|(index, binding_type)| wgpu::BindGroupLayoutEntry {
 					binding: index as u32,
 					visibility: wgpu::ShaderStage::all(),
 					ty: binding_type.clone(),
-				}
-			).collect::<Vec<_>>().as_slice(),
+				})
+				.collect::<Vec<_>>()
+				.as_slice(),
 		})
 	}
 
 	pub fn build_binding_staging_buffer<T: bytemuck::Pod>(device: &wgpu::Device, resource: &T) -> wgpu::Buffer {
 		// Construct a staging buffer with the binary uniform struct data
-		device.create_buffer_with_data(
-			bytemuck::cast_slice(&[*resource]),
-			wgpu::BufferUsage::UNIFORM | wgpu::BufferUsage::COPY_DST,
-		)
+		device.create_buffer_with_data(bytemuck::cast_slice(&[*resource]), wgpu::BufferUsage::UNIFORM | wgpu::BufferUsage::COPY_DST)
 	}
 
 	pub fn build_binding_resource(resource_buffer: &wgpu::Buffer) -> wgpu::BindingResource {
@@ -89,12 +105,14 @@ impl Pipeline {
 	}
 
 	pub fn build_bind_group(device: &wgpu::Device, bind_group_layout: &wgpu::BindGroupLayout, binding_resources: Vec<wgpu::BindingResource>) -> wgpu::BindGroup {
-		let bindings = binding_resources.into_iter().enumerate().map(|(index, binding_resource)|
-			wgpu::Binding {
+		let bindings = binding_resources
+			.into_iter()
+			.enumerate()
+			.map(|(index, binding_resource)| wgpu::Binding {
 				binding: index as u32,
 				resource: binding_resource,
-			}
-		).collect::<Vec<_>>();
+			})
+			.collect::<Vec<_>>();
 
 		device.create_bind_group(&wgpu::BindGroupDescriptor {
 			layout: bind_group_layout,
@@ -103,11 +121,16 @@ impl Pipeline {
 		})
 	}
 
-	pub fn build_pipeline(device: &wgpu::Device, swap_chain_color_format: wgpu::TextureFormat, bind_group_layouts: Vec<&wgpu::BindGroupLayout>, shader_pair: (&wgpu::ShaderModule, &wgpu::ShaderModule)) -> wgpu::RenderPipeline {
+	pub fn build_pipeline(
+		device: &wgpu::Device,
+		swap_chain_color_format: wgpu::TextureFormat,
+		bind_group_layouts: Vec<&wgpu::BindGroupLayout>,
+		shader_pair: (&wgpu::ShaderModule, &wgpu::ShaderModule),
+	) -> wgpu::RenderPipeline {
 		let render_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
 			bind_group_layouts: bind_group_layouts.as_slice(),
 		});
-		
+
 		let (vertex_shader, fragment_shader) = shader_pair;
 		device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
 			layout: &render_pipeline_layout,
