@@ -1,4 +1,4 @@
-<!-- Called as <window:main width="1920px" height="1080px" /> -->
+<!-- Instantiated by the window and called with absolute dimensions such as: <window:main width="1920px" height="1080px" /> -->
 <window:main>
 	<col width="100%" height="100%">
 		<!-- Header -->
