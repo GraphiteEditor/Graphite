@@ -1,18 +1,20 @@
 <!-- Called as <window:main width="1920px" height="1080px" /> -->
 <window:main>
-	<!-- Header -->
-	<row width="100%" height="28px">
-		<header:file-menu height="100%" x-align="0%" />
-		<text height="100%" y-align="50%" x-align="50%" :color="['mildwhite']">Document 1* - Graphite</text>
-		<header:window-buttons height="100%" x-align="100%" />
-	</row>
-	<!-- Viewport -->
-	<row width="100%" height="100@">
-		<viewport:panels width="100%" height="100%" />
-	</row>
-	<!-- Footer -->
-	<row width="100%" height="24px">
-		<text height="100%" y-align="50%" x-align="0%" x-padding="10px" :color="['mildwhite']" :size="14px">File: 1.8 MB | Memory: 137 MB | Scratch: 0.7/12.3 GB</text>
-		<text height="100%" y-align="50%" x-align="100%" x-padding="10px" :color="['mildwhite']" :size="14px">🖰 Box Select Objects | [⇧G] Move Selection | [⇧R] Rotate Selection | [⇧S] Scale Selection</text>
-	</row>
+	<col width="100%" height="100%">
+		<!-- Header -->
+		<row width="100%" height="28px">
+			<header:file-menu height="100%" x-align="0%" />
+			<text height="100%" y-align="50%" x-align="50%" :color="['mildwhite']">Document 1* - Graphite</text>
+			<header:window-buttons height="100%" x-align="100%" />
+		</row>
+		<!-- Viewport -->
+		<row width="100%" height="100@">
+			<viewport:panels width="100%" height="100%" />
+		</row>
+		<!-- Footer -->
+		<row width="100%" height="24px">
+			<text height="100%" y-align="50%" x-align="0%" x-padding="10px" :color="['mildwhite']" :size="14px">File: 1.8 MB | Memory: 137 MB | Scratch: 0.7/12.3 GB</text>
+			<text height="100%" y-align="50%" x-align="100%" x-padding="10px" :color="['mildwhite']" :size="14px">🖰 Box Select Objects | [⇧G] Move Selection | [⇧R] Rotate Selection | [⇧S] Scale Selection</text>
+		</row>
+	</col>
 </window:main>
