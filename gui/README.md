@@ -19,11 +19,11 @@ Layout is controlled using predefined attributes, such as `width`, `height`, `x-
 
 The children of a component are passed to it as a `content` attribute. For example, looking at the row component:
 ```xml
-<row content="INNER_XML: (GuiXml | None) = none">
+<row content="INNER_XML: (Layout | None) = none">
     {{INNER_XML}}
 </row>
 ```
-The `content` attribute defines a new variable `INNER_XML` of type either `GuiXml` or `None`, which can contain more XML or nothing at all. It has a default value of `none` (of type `None`).
+The `content` attribute defines a new variable `INNER_XML` of type either `Layout` or `None`, which can contain more XML or nothing at all. It has a default value of `none` (of type `None`).
 This is then expanded in the body of the row: `{{INNER_XML}}`.
 
 ## Defining new components

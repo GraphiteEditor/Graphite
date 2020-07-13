@@ -224,7 +224,7 @@ impl AttributeParser {
 
 								// Return the case-insensitive TypeName enum for the individual type
 								match &individual_type.to_ascii_lowercase()[..] {
-									// "xml" => TypeName::Xml, // TODO
+									// "layout" => TypeName::Layout, // TODO
 									"integer" => TypeName::Integer,
 									"decimal" => TypeName::Decimal,
 									"absolutepx" => TypeName::AbsolutePx,
