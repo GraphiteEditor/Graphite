@@ -15,6 +15,23 @@ The layout engine does a top-down pass through the component tree in order to de
 
 Layout is controlled using predefined attributes, such as `width`, `height`, `x-align`, `y-align`, `gap` or `padding`.
 
+### Layout algorithm
+
+To calculate dimensions (width/height):
+- elements with **fixed** sizes (e.g. `123px`) are laid out, in the order they are encountered.
+- then we handle elements with `inner`, which indicates that the size of the component depends on the size of the child. Their sizes have to be recursively computed. Afterwards we add their padding and spacing.
+- then we handle elements with **percentage** sizes (such as `10%`), based on the computed total size of the parent container.
+- then `@` rules (e.g. `100@`) are applied, which divide up the remaining free space in the container.
+
+When the `width`/`height` attributes are not specified, they each default to `inner`.
+
+If there's not enough space in the parent container to lay out all children, the container overflows (this can be handled, for example, through _scrolling_).
+
+To calculate positions (x/y):
+- this only makes sense when there is some free space left (otherwise, all the elements fit tightly together and are positioned one after another).
+- `x-align`/`y-align` take a percentage, which indicates where it should be along the respective axis.
+  `0%` would mean completely to the left/to the top, `100%` would mean completely to the right/to the bottom, and `50%` would be halfway between.
+
 ## Component lifetime
 
 The children of a component are passed to it as a `content` attribute. For example, looking at the row component:

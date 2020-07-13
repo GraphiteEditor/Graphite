@@ -469,6 +469,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "euclid"
+version = "0.22.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7ab0e07e345fb061928646949fdf5fb888e5d75a57385e7f5856e45be289e745"
+dependencies = [
+ "num-traits",
+]
+
+[[package]]
 name = "failure"
 version = "0.1.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -833,6 +842,7 @@ dependencies = [
  "cgmath",
  "css-color-parser",
  "env_logger",
+ "euclid",
  "failure",
  "futures",
  "glsl-to-spirv",

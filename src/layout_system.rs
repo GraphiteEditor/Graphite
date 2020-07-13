@@ -33,6 +33,10 @@ impl LayoutSystem {
 		let window_root_component_name = Self::component_name(name);
 		let window_root_component = self.loaded_components.get(&window_root_component_name[..]).unwrap();
 
+		// For the sake of example, we'll assume the window has a fixed size
+		let window_size = crate::layout_engine::Extent::new(1920.0, 1080.0);
+		crate::layout_engine::compute_layout(window_size, &window_root_component.child_components[0]);
+
 		// Construct the window and save it
 		let new_window = WindowDom::new(window_root_component);
 		self.windows.push(new_window);

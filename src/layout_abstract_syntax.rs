@@ -63,6 +63,16 @@ impl LayoutComponentNode {
 		Self::Text(text)
 	}
 
+	pub fn layout_attributes(&self) -> LayoutAttributes {
+		match self {
+			Self::Tag(tag) => tag.layout_arguments.clone(),
+			Self::Text(text) => LayoutAttributes {
+				width: Dimension::AbsolutePx((text.len() as f64) * 10.0),
+				..Default::default()
+			},
+		}
+	}
+
 	/// Print the component node (for debugging)
 	#[allow(dead_code)]
 	pub fn debug_print(&self) {
@@ -252,6 +262,27 @@ impl AttributeArg {
 
 // ====================================================================================================
 
+/// An axis along which layout is performed
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub enum Axis {
+	/// Horizontal axis, which is used to lay out the children of a row.
+	Horizontal,
+	/// Vertical axis, which is used to lay out the children of a column.
+	Vertical,
+}
+
+impl Axis {
+	/// Returns the axis perpendicular to this one.
+	pub fn perpendicular(&self) -> Axis {
+		match self {
+			Axis::Horizontal => Axis::Vertical,
+			Axis::Vertical => Axis::Horizontal,
+		}
+	}
+}
+
+// ====================================================================================================
+
 /// Attributes used by the layout engine to calculate sizing and placement
 #[derive(Clone, Debug, PartialEq)]
 pub struct LayoutAttributes {
@@ -261,6 +292,16 @@ pub struct LayoutAttributes {
 	pub y_align: f64,
 	pub gap: BoxDimensions,
 	pub padding: BoxDimensions,
+}
+
+impl LayoutAttributes {
+	/// Retrieves the size of this element along the specified axis.
+	pub fn size_along(&self, axis: Axis) -> Dimension {
+		match axis {
+			Axis::Horizontal => self.width,
+			Axis::Vertical => self.height,
+		}
+	}
 }
 
 impl Default for LayoutAttributes {
