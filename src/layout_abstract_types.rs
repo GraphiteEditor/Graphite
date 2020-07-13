@@ -36,7 +36,7 @@ pub enum TypeValueOrArgument {
 
 #[derive(Debug)]
 pub enum TypeName {
-	// GuiXml, // TODO
+	// Layout, // TODO
 	Integer,
 	Decimal,
 	AbsolutePx,
@@ -53,7 +53,7 @@ pub enum TypeName {
 
 #[derive(Debug)]
 pub enum TypeValue {
-	// GuiXml(()), // TODO
+	// Layout(()), // TODO
 	Integer(i64),
 	Decimal(f64),
 	AbsolutePx(f32),
