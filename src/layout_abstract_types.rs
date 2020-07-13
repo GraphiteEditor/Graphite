@@ -1,4 +1,5 @@
 use crate::color::Color;
+use crate::layout_abstract_syntax::*;
 
 #[derive(Debug)]
 pub struct VariableParameter {
@@ -36,7 +37,7 @@ pub enum TypeValueOrArgument {
 
 #[derive(Debug)]
 pub enum TypeName {
-	// Layout, // TODO
+	Layout,
 	Integer,
 	Decimal,
 	AbsolutePx,
@@ -53,7 +54,7 @@ pub enum TypeName {
 
 #[derive(Debug)]
 pub enum TypeValue {
-	// Layout(()), // TODO
+	Layout(Vec<rctree::Node<LayoutAbstractNode>>),
 	Integer(i64),
 	Decimal(f64),
 	AbsolutePx(f32),
