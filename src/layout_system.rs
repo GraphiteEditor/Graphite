@@ -317,29 +317,26 @@ impl LayoutSystem {
 		for node in component {
 			println!("Printing Component:\n{:#?}\n\n", node);
 			match node {
-				LayoutAbstractNode::Tag(tag) => {
-					let content = tag.attributes.iter().find(|a| a.name == "content");
-					match content {
-						Some(attribute) => match attribute.value {
-							AttributeValue::TypeValue(ref type_value) => {
-								for type_value_or_argument in type_value {
-									match type_value_or_argument {
-										TypeValueOrArgument::TypeValue(type_value) => match type_value {
-											TypeValue::Layout(layout) => {
-												for component_ast in layout {
-													Self::print_layout_tree(&component_ast);
-												}
-											},
-											_ => {},
+				LayoutAbstractNode::Tag(ref tag) => match tag.content {
+					Some(ref value) => match value {
+						AttributeValue::TypeValue(ref type_value) => {
+							for type_value_or_argument in type_value {
+								match type_value_or_argument {
+									TypeValueOrArgument::TypeValue(type_value) => match type_value {
+										TypeValue::Layout(layout) => {
+											for component_ast in layout {
+												Self::print_layout_tree(&component_ast);
+											}
 										},
-										TypeValueOrArgument::VariableArgument(_) => {},
-									}
+										_ => {},
+									},
+									TypeValueOrArgument::VariableArgument(_) => {},
 								}
-							},
-							AttributeValue::VariableParameter(_) => {},
+							}
 						},
-						None => {},
-					}
+						AttributeValue::VariableParameter(_) => {},
+					},
+					None => {},
 				},
 				LayoutAbstractNode::Text(_) => {},
 			}

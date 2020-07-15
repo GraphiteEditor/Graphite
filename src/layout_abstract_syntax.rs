@@ -20,7 +20,11 @@ impl LayoutAbstractNode {
 pub struct LayoutAbstractTag {
 	pub namespace: String,
 	pub name: String,
+	/// Layout attributes, which are used by the layout engine.
 	pub layout_attributes: LayoutAttributes,
+	/// The special content attribute, representing the inner elements of this tag.
+	pub content: Option<AttributeValue>,
+	/// User-defined attributes, which are prefixed with ':'
 	pub attributes: Vec<Attribute>,
 }
 
@@ -30,12 +34,25 @@ impl LayoutAbstractTag {
 			namespace,
 			name,
 			layout_attributes: Default::default(),
+			content: None,
 			attributes: Vec::new(),
 		}
 	}
 
 	pub fn add_attribute(&mut self, attribute: Attribute) {
+		// User-defined attribute
+		if attribute.name.chars().next().unwrap() == ':' {
+			self.attributes.push(attribute);
+		}
+		else {
+			self.add_builtin_attribute(attribute);
+		}
+	}
+
+	fn add_builtin_attribute(&mut self, attribute: Attribute) {
 		match &attribute.name[..] {
+			// The special `content` attribute
+			"content" => self.content = Some(attribute.value),
 			// Layout attributes, stored separately
 			"width" => self.layout_attributes.width = attribute.dimension(),
 			"height" => self.layout_attributes.height = attribute.dimension(),
@@ -47,8 +64,7 @@ impl LayoutAbstractTag {
 			"x-spacing" => self.layout_attributes.spacing.set_horizontal(attribute.dimension()),
 			"y-spacing" => self.layout_attributes.spacing.set_vertical(attribute.dimension()),
 			"spacing" => self.layout_attributes.spacing = attribute.box_dimensions(),
-			// Non-layout attribute
-			_ => self.attributes.push(attribute),
+			_ => panic!("unknown builtin attribute {}", attribute.name),
 		}
 	}
 }
