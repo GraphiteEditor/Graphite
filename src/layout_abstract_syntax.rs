@@ -25,7 +25,7 @@ pub struct LayoutAbstractTag {
 	/// The special content attribute, representing the inner elements of this tag.
 	pub content: Option<AttributeValue>,
 	/// User-defined attributes, which are prefixed with ':'
-	pub attributes: Vec<Attribute>,
+	pub user_attributes: Vec<Attribute>,
 }
 
 impl LayoutAbstractTag {
@@ -35,14 +35,14 @@ impl LayoutAbstractTag {
 			name,
 			layout_attributes: Default::default(),
 			content: None,
-			attributes: Vec::new(),
+			user_attributes: Vec::new(),
 		}
 	}
 
 	pub fn add_attribute(&mut self, attribute: Attribute) {
 		// User-defined attribute
 		if attribute.name.chars().next().unwrap() == ':' {
-			self.attributes.push(attribute);
+			self.user_attributes.push(attribute);
 		}
 		else {
 			self.add_builtin_attribute(attribute);
