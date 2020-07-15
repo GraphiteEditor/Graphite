@@ -85,7 +85,7 @@ impl Application {
 
 		// Main window in the XML layout language
 		let mut main_window_layout = LayoutSystem::new();
-		main_window_layout.load_layout("window", "main");
+		main_window_layout.load_layout_component("window", "main");
 
 		Self {
 			surface,
