@@ -76,11 +76,11 @@ pub enum TemplateStringSegment {
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum Dimension {
 	/// Absolute value in pixels.
-	AbsolutePx(f32),
+	AbsolutePx(f64),
 	/// Percent of parent container size along the same axis.
-	Percent(f32),
+	Percent(f64),
 	/// Percent of free space remaining in parent container.
-	PercentRemainder(f32),
+	PercentRemainder(f64),
 	/// Minimum size required to fit the children.
 	Inner,
 	/// Size relative to the width of this component.
