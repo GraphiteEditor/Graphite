@@ -128,7 +128,7 @@ impl AttributeParser {
 			// AbsolutePx: px
 			Some([value, px]) if px.eq_ignore_ascii_case("px") => {
 				let pixels = value
-					.parse::<f32>()
+					.parse::<f64>()
 					.expect(&format!("Invalid value `{}` specified in the attribute type`{}` when parsing XML layout", value, attribute_type)[..]);
 				let dimension = Dimension::AbsolutePx(pixels);
 				TypeValueOrArgument::TypeValue(TypeValue::Dimension(dimension))
@@ -136,7 +136,7 @@ impl AttributeParser {
 			// Percent: ?%
 			Some([value, "%"]) => {
 				let percent = value
-					.parse::<f32>()
+					.parse::<f64>()
 					.expect(&format!("Invalid value `{}` specified in the attribute type `{}` when parsing XML layout", value, attribute_type)[..]);
 				let dimension = Dimension::Percent(percent);
 				TypeValueOrArgument::TypeValue(TypeValue::Dimension(dimension))
@@ -144,7 +144,7 @@ impl AttributeParser {
 			// PercentRemainder: ?@
 			Some([value, "@"]) => {
 				let percent_remainder = value
-					.parse::<f32>()
+					.parse::<f64>()
 					.expect(&format!("Invalid value `{}` specified in the attribute type `{}` when parsing XML layout", value, attribute_type)[..]);
 				let dimension = Dimension::PercentRemainder(percent_remainder);
 				TypeValueOrArgument::TypeValue(TypeValue::Dimension(dimension))

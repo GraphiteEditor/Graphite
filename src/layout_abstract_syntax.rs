@@ -108,7 +108,7 @@ impl Attribute {
 	}
 
 	/// Extracts a percentage from this attribute's value.
-	fn percent(self) -> f32 {
+	fn percent(self) -> f64 {
 		match self.dimension() {
 			Dimension::Percent(value) => value,
 			_ => panic!("expected a percentage"),
@@ -151,8 +151,8 @@ pub enum AttributeValue {
 pub struct LayoutAttributes {
 	pub width: Dimension,
 	pub height: Dimension,
-	pub x_align: f32,
-	pub y_align: f32,
+	pub x_align: f64,
+	pub y_align: f64,
 	pub spacing: BoxDimensions,
 	pub padding: BoxDimensions,
 }
