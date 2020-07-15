@@ -130,28 +130,31 @@ impl AttributeParser {
 				let pixels = value
 					.parse::<f32>()
 					.expect(&format!("Invalid value `{}` specified in the attribute type`{}` when parsing XML layout", value, attribute_type)[..]);
-				TypeValueOrArgument::TypeValue(TypeValue::AbsolutePx(pixels))
+				let dimension = Dimension::AbsolutePx(pixels);
+				TypeValueOrArgument::TypeValue(TypeValue::Dimension(dimension))
 			},
 			// Percent: ?%
 			Some([value, "%"]) => {
 				let percent = value
 					.parse::<f32>()
 					.expect(&format!("Invalid value `{}` specified in the attribute type `{}` when parsing XML layout", value, attribute_type)[..]);
-				TypeValueOrArgument::TypeValue(TypeValue::Percent(percent))
+				let dimension = Dimension::Percent(percent);
+				TypeValueOrArgument::TypeValue(TypeValue::Dimension(dimension))
 			},
 			// PercentRemainder: ?@
 			Some([value, "@"]) => {
 				let percent_remainder = value
 					.parse::<f32>()
 					.expect(&format!("Invalid value `{}` specified in the attribute type `{}` when parsing XML layout", value, attribute_type)[..]);
-				TypeValueOrArgument::TypeValue(TypeValue::PercentRemainder(percent_remainder))
+				let dimension = Dimension::PercentRemainder(percent_remainder);
+				TypeValueOrArgument::TypeValue(TypeValue::Dimension(dimension))
 			},
 			// Inner: inner
-			Some([inner]) if inner.eq_ignore_ascii_case("inner") => TypeValueOrArgument::TypeValue(TypeValue::Inner),
+			Some([inner]) if inner.eq_ignore_ascii_case("inner") => TypeValueOrArgument::TypeValue(TypeValue::Dimension(Dimension::Inner)),
 			// Width: width
-			Some([width]) if width.eq_ignore_ascii_case("width") => TypeValueOrArgument::TypeValue(TypeValue::Width),
+			Some([width]) if width.eq_ignore_ascii_case("width") => TypeValueOrArgument::TypeValue(TypeValue::Dimension(Dimension::Width)),
 			// Height: height
-			Some([height]) if height.eq_ignore_ascii_case("height") => TypeValueOrArgument::TypeValue(TypeValue::Height),
+			Some([height]) if height.eq_ignore_ascii_case("height") => TypeValueOrArgument::TypeValue(TypeValue::Dimension(Dimension::Height)),
 			// TemplateString: `? ... {{?}} ...`
 			Some(["`", string, "`"]) => {
 				let mut segments = Vec::<TemplateStringSegment>::new();
