@@ -7,7 +7,6 @@ mod gui_node;
 mod layout_abstract_syntax;
 mod layout_abstract_types;
 mod layout_attribute_parser;
-mod layout_dom_node;
 mod layout_system;
 mod pipeline;
 mod resource_cache;
