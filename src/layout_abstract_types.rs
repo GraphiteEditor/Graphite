@@ -49,20 +49,80 @@ pub enum TypeValue {
 	Layout(Vec<ComponentAst>),
 	Integer(i64),
 	Decimal(f64),
-	AbsolutePx(f32),
-	Percent(f32),
-	PercentRemainder(f32),
-	Inner,
-	Width,
-	Height,
+	Dimension(Dimension),
 	TemplateString(Vec<TemplateStringSegment>),
 	Color(Color),
 	Bool(bool),
 	None,
 }
 
+impl TypeValue {
+	/// Converts this to a dimension, panics if not possible.
+	pub fn expect_dimension(&self) -> Dimension {
+		match self {
+			Self::Dimension(dimension) => *dimension,
+			_ => panic!("expected a dimension"),
+		}
+	}
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum TemplateStringSegment {
 	String(String),
 	Argument(TypeValueOrArgument),
+}
+
+/// A dimension is a measure along an axis.
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub enum Dimension {
+	/// Absolute value in pixels.
+	AbsolutePx(f32),
+	/// Percent of parent container size along the same axis.
+	Percent(f32),
+	/// Percent of free space remaining in parent container.
+	PercentRemainder(f32),
+	/// Minimum size required to fit the children.
+	Inner,
+	/// Size relative to the width of this component.
+	Width,
+	/// Size relative to the height of this component.
+	Height,
+}
+
+/// Dimensions along a box's four sides.
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub struct BoxDimensions {
+	pub top: Dimension,
+	pub right: Dimension,
+	pub bottom: Dimension,
+	pub left: Dimension,
+}
+
+impl BoxDimensions {
+	/// Construct new box dimensions, with values given for each side.
+	pub fn new(top: Dimension, right: Dimension, bottom: Dimension, left: Dimension) -> Self {
+		Self { top, right, bottom, left }
+	}
+
+	/// Construct new box dimensions, with same values used for top-bottom and left-right.
+	pub fn symmetric(vertical: Dimension, horizontal: Dimension) -> Self {
+		Self::new(vertical, horizontal, vertical, horizontal)
+	}
+
+	/// Construct new box dimensions with the same value for all sides.
+	pub fn all(value: Dimension) -> Self {
+		Self::new(value, value, value, value)
+	}
+
+	/// Sets the padding on the top and bottom sides.
+	pub fn set_vertical(&mut self, value: Dimension) {
+		self.top = value;
+		self.bottom = value;
+	}
+
+	/// Sets the padding on the left and right sides.
+	pub fn set_horizontal(&mut self, value: Dimension) {
+		self.left = value;
+		self.right = value;
+	}
 }

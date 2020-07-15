@@ -20,6 +20,7 @@ impl LayoutAbstractNode {
 pub struct LayoutAbstractTag {
 	pub namespace: String,
 	pub name: String,
+	pub layout_attributes: LayoutAttributes,
 	pub attributes: Vec<Attribute>,
 }
 
@@ -28,12 +29,27 @@ impl LayoutAbstractTag {
 		Self {
 			namespace,
 			name,
+			layout_attributes: Default::default(),
 			attributes: Vec::new(),
 		}
 	}
 
 	pub fn add_attribute(&mut self, attribute: Attribute) {
-		self.attributes.push(attribute);
+		match &attribute.name[..] {
+			// Layout attributes, stored separately
+			"width" => self.layout_attributes.width = attribute.dimension(),
+			"height" => self.layout_attributes.height = attribute.dimension(),
+			"x-align" => self.layout_attributes.x_align = attribute.percent(),
+			"y-align" => self.layout_attributes.y_align = attribute.percent(),
+			"x-padding" => self.layout_attributes.padding.set_horizontal(attribute.dimension()),
+			"y-padding" => self.layout_attributes.padding.set_vertical(attribute.dimension()),
+			"padding" => self.layout_attributes.padding = attribute.box_dimensions(),
+			"x-spacing" => self.layout_attributes.spacing.set_horizontal(attribute.dimension()),
+			"y-spacing" => self.layout_attributes.spacing.set_vertical(attribute.dimension()),
+			"spacing" => self.layout_attributes.spacing = attribute.box_dimensions(),
+			// Non-layout attribute
+			_ => self.attributes.push(attribute),
+		}
 	}
 }
 
@@ -47,10 +63,94 @@ impl Attribute {
 	pub fn new(name: String, value: AttributeValue) -> Self {
 		Self { name, value }
 	}
+
+	/// Extracts this attribute's values as typed values.
+	fn values(self) -> Vec<TypeValue> {
+		if let AttributeValue::TypeValue(values) = self.value {
+			values
+				.into_iter()
+				.map(|value| {
+					if let TypeValueOrArgument::TypeValue(value) = value {
+						value
+					}
+					else {
+						todo!("variable arguments are note yet supported")
+					}
+				})
+				.collect()
+		}
+		else {
+			todo!("variable arguments are not yet supported")
+		}
+	}
+
+	/// Converts this attribute's value into a single dimension.
+	fn dimension(self) -> Dimension {
+		let values = self.values();
+		assert_eq!(values.len(), 1, "expected a single value");
+		values[0].expect_dimension()
+	}
+
+	/// Extracts a percentage from this attribute's value.
+	fn percent(self) -> f32 {
+		match self.dimension() {
+			Dimension::Percent(value) => value,
+			_ => panic!("expected a percentage"),
+		}
+	}
+
+	/// Converts this attribute's values into box dimensions.
+	fn box_dimensions(self) -> BoxDimensions {
+		let values = self.values();
+		match values.len() {
+			1 => {
+				let value = values[0].expect_dimension();
+				BoxDimensions::all(value)
+			},
+			2 => {
+				let vertical = values[0].expect_dimension();
+				let horizontal = values[1].expect_dimension();
+				BoxDimensions::symmetric(vertical, horizontal)
+			},
+			4 => {
+				let top = values[0].expect_dimension();
+				let right = values[1].expect_dimension();
+				let bottom = values[2].expect_dimension();
+				let left = values[3].expect_dimension();
+				BoxDimensions::new(top, right, bottom, left)
+			},
+			_ => panic!("expected 1, 2 or 4 values"),
+		}
+	}
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum AttributeValue {
 	VariableParameter(VariableParameter),
 	TypeValue(Vec<TypeValueOrArgument>),
+}
+
+/// Layout-specific attributes.
+#[derive(Clone, Debug, PartialEq)]
+pub struct LayoutAttributes {
+	pub width: Dimension,
+	pub height: Dimension,
+	pub x_align: f32,
+	pub y_align: f32,
+	pub spacing: BoxDimensions,
+	pub padding: BoxDimensions,
+}
+
+impl Default for LayoutAttributes {
+	fn default() -> Self {
+		let zero_box = BoxDimensions::all(Dimension::AbsolutePx(0.0));
+		Self {
+			width: Dimension::Inner,
+			height: Dimension::Inner,
+			x_align: 0.0,
+			y_align: 0.0,
+			spacing: zero_box,
+			padding: zero_box,
+		}
+	}
 }
