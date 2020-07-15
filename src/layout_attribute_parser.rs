@@ -2,6 +2,7 @@ use crate::color::Color;
 use crate::color_palette::ColorPalette;
 use crate::layout_abstract_syntax::*;
 use crate::layout_abstract_types::*;
+use crate::layout_system::*;
 
 pub struct AttributeParser {
 	capture_attribute_declaration_parameter_regex: regex::Regex,
@@ -17,13 +18,15 @@ impl AttributeParser {
 	pub fn new() -> Self {
 		let capture_attribute_declaration_parameter_regex: regex::Regex = regex::Regex::new(
 			// Parameter: ?: (?, ... | ...) = ?
-			r"^\s*(\w*)\s*(:)\s*(\()\s*((?:(?:\w+)(?:\s*,\s*\w+)*)(?:\s*\|\s*(?:(?:\w+)(?:\s*,\s*\w+)*))*)\s*(\))\s*(=)\s*([\s\w'\[\]@%\-.`,]*?)\s*$",
+			r"^\s*(\w*)\s*(:)\s*(\()\s*((?:(?:\w+)(?:\s*,\s*\w+)*)(?:\s*\|\s*(?:(?:\w+)(?:\s*,\s*\w+)*))*)\s*(\))\s*(=)\s*([\s\w'\[\]@%\-.,]*?|\s*`[^`]*?`)\s*$",
 		)
 		.unwrap();
 
 		let capture_attribute_type_sequences_regex: regex::Regex = regex::Regex::new(concat!(
 			// Argument: {{?}}
 			r#"^\s*(\{\{)\s*(\w*)\s*(\}\})\s*$|"#,
+			// Layout: [[?]]
+			r#"^\s*(\[\[)\s*(.*)\s*(\]\])\s*$|"#,
 			// Integer: ?
 			r#"^\s*(-?\d+)\s*$|"#,
 			// Decimal: ?
@@ -89,9 +92,24 @@ impl AttributeParser {
 		let tokens = captures.as_ref().map(|c| c.as_slice());
 		match tokens {
 			// Argument: {{?}}
-			Some(["{{", name, "}}"]) => {
-				let name = String::from(*name);
-				TypeValueOrArgument::VariableArgument(VariableArgument::new(name))
+			Some(["{{", name, "}}"]) => TypeValueOrArgument::VariableArgument(String::from(*name)),
+			// Layout: [[?]]
+			Some(["[[", xml_syntax, "]]"]) => {
+				// Remove any whitespace in order to test if any XML syntax is present
+				let trimmed = xml_syntax.trim();
+
+				// Build either an empty vector (for empty XML input) or a vector with the one parsed AST
+				let layout_entries = if trimmed.len() == 0 {
+					vec![]
+				}
+				else {
+					let unescaped = Self::unescape_xml(trimmed);
+					let component_ast = LayoutSystem::parse_xml_tree(&self, &unescaped[..], false, false).unwrap();
+					vec![component_ast]
+				};
+
+				// Return the `Layout` typed value with the empty vector or vector with the parsed AST
+				TypeValueOrArgument::TypeValue(TypeValue::Layout(layout_entries))
 			},
 			// Integer: ?
 			Some([value]) if self.match_integer_regex.is_match(value) => {
@@ -139,12 +157,19 @@ impl AttributeParser {
 				let mut segments = Vec::<TemplateStringSegment>::new();
 				let mut is_template = false;
 
+				// Alternate between string and handlebars, always starting wtih string even if empty, and push abstract tokens of non-empty ones to the TemplateString sequence
 				for part in self.split_by_string_templates_regex.split(string) {
-					let segment = match is_template {
-						true => TemplateStringSegment::String(String::from(part)),
-						false => TemplateStringSegment::Argument(TypeValueOrArgument::VariableArgument(VariableArgument::new(String::from(part)))),
-					};
-					segments.push(segment);
+					// Push only non-empty template string segments (a String or Argument)
+					if !part.is_empty() {
+						// Based on whether we are alternating to a string or template, push the appropriate abstract token
+						let segment = match is_template {
+							false => TemplateStringSegment::String(String::from(part)),
+							true => TemplateStringSegment::Argument(TypeValueOrArgument::VariableArgument(String::from(part))),
+						};
+						segments.push(segment);
+					}
+
+					// The next iteration will switch from a template to a string or vice versa
 					is_template = !is_template;
 				}
 
@@ -267,5 +292,16 @@ impl AttributeParser {
 			// Unrecognized type pattern
 			_ => panic!("Invalid attribute attribute declaration `{}` when parsing XML layout", attribute_declaration),
 		}
+	}
+
+	/// Replace escape characters in an XML string, only supports `&, <, >, ", '`
+	fn unescape_xml(xml: &str) -> String {
+		// Find and replace each escape character, starting with `&` to avoid unescaping other escape sequences
+		xml.replace("&amp;", "&")
+			.replace("&lt;", "<")
+			.replace("&gt;", ">")
+			.replace("&quot;", "\"")
+			.replace("apos;", "'")
+			.replace("&#39;", "'")
 	}
 }

@@ -1,6 +1,6 @@
 use crate::layout_abstract_types::*;
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum LayoutAbstractNode {
 	Tag(LayoutAbstractTag),
 	Text(String),
@@ -16,7 +16,7 @@ impl LayoutAbstractNode {
 	}
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct LayoutAbstractTag {
 	pub namespace: String,
 	pub name: String,
@@ -37,7 +37,7 @@ impl LayoutAbstractTag {
 	}
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Attribute {
 	pub name: String,
 	pub value: AttributeValue,
@@ -49,7 +49,7 @@ impl Attribute {
 	}
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum AttributeValue {
 	VariableParameter(VariableParameter),
 	TypeValue(Vec<TypeValueOrArgument>),

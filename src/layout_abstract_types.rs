@@ -1,7 +1,7 @@
 use crate::color::Color;
 use crate::layout_abstract_syntax::*;
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct VariableParameter {
 	pub name: String,
 	pub type_sequence_options: Vec<Vec<TypeName>>,
@@ -18,24 +18,13 @@ impl VariableParameter {
 	}
 }
 
-#[derive(Debug)]
-pub struct VariableArgument {
-	pub name: String,
-}
-
-impl VariableArgument {
-	pub fn new(name: String) -> Self {
-		Self { name }
-	}
-}
-
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum TypeValueOrArgument {
 	TypeValue(TypeValue),
-	VariableArgument(VariableArgument),
+	VariableArgument(String),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum TypeName {
 	Layout,
 	Integer,
@@ -52,9 +41,12 @@ pub enum TypeName {
 	None,
 }
 
-#[derive(Debug)]
+pub type ComponentAst = rctree::Node<LayoutAbstractNode>;
+pub type Component = Vec<LayoutAbstractNode>;
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum TypeValue {
-	Layout(Vec<rctree::Node<LayoutAbstractNode>>),
+	Layout(Vec<ComponentAst>),
 	Integer(i64),
 	Decimal(f64),
 	AbsolutePx(f32),
@@ -69,7 +61,7 @@ pub enum TypeValue {
 	None,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum TemplateStringSegment {
 	String(String),
 	Argument(TypeValueOrArgument),
