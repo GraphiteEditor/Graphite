@@ -6,7 +6,7 @@
 		<if :a="{{IS_MAXIMIZED}}">
 			<icon :svg="`window_restore_down.svg`" />
 		</if>
-		<if :a="{{IS_MAXIMIZED}}" b="false">
+		<if :a="{{IS_MAXIMIZED}}" :b="false">
 			<icon :svg="`maximize.svg`" />
 		</if>
 	</box>
