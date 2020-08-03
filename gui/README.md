@@ -13,7 +13,7 @@ Interactivity is provided by script files which expose reactive variables. As th
 
 The layout engine does a top-down pass through the component tree in order to determine what to render.
 
-Layout is controlled using predefined attributes, such as `width`, `height`, `x-align`, `y-align`, `spacing` or `padding`.
+Layout is controlled using predefined attributes, such as `width`, `height`, `x-align`, `y-align`, `gap` or `padding`.
 
 ## Component lifetime
 
