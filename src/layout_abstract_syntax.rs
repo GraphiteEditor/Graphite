@@ -1,6 +1,7 @@
 use crate::layout_abstract_types::*;
 
 // AST for a component with info on its definition (from the root element of the XML layout) and a vector of direct child component tags
+#[derive(Debug, Clone, PartialEq)]
 pub struct FlatComponent {
 	// The abstract definition of the root node of the component with attribute parameters
 	pub own_info: LayoutComponentDefinition,
@@ -48,7 +49,7 @@ pub type NodeOrDefTree = rctree::Node<LayoutComponentNodeOrDefinition>;
 #[derive(Debug, Clone, PartialEq)]
 pub enum LayoutComponentNode {
 	Tag(LayoutComponentTag),
-	Text(String),
+	Text(Vec<TemplateStringSegment>),
 }
 
 impl LayoutComponentNode {
@@ -58,7 +59,7 @@ impl LayoutComponentNode {
 	}
 
 	/// Given some text hanging out in the XML between tags, construct a `LayoutComponentNode` with that text which simply stores the provided `String`
-	pub fn new_text(text: String) -> Self {
+	pub fn new_text(text: Vec<TemplateStringSegment>) -> Self {
 		Self::Text(text)
 	}
 
@@ -67,7 +68,7 @@ impl LayoutComponentNode {
 	pub fn debug_print(&self) {
 		match self {
 			LayoutComponentNode::Tag(tag) => tag.debug_print(),
-			LayoutComponentNode::Text(text) => println!("================> Text Node: {}", text),
+			LayoutComponentNode::Text(text) => println!("================> Text Node: {:#?}", text),
 		}
 	}
 }

@@ -317,7 +317,8 @@ impl LayoutSystem {
 							.expect(&format!("Encountered text outside the root tag when parsing XML layout in component: {}", path)[..]);
 
 						// Construct a text node with the provided text
-						let abstract_text_node = LayoutComponentNodeOrDefinition::LayoutComponentNode(LayoutComponentNode::new_text(text_string));
+						let text_template_sequence = attribute_parser.parse_text_template_sequence(&text_string[..]);
+						let abstract_text_node = LayoutComponentNodeOrDefinition::LayoutComponentNode(LayoutComponentNode::new_text(text_template_sequence));
 						// Put the text node in a new tree node
 						let tree_node = rctree::Node::new(abstract_text_node);
 
