@@ -1,14 +1,19 @@
 use crate::color::Color;
 use crate::layout_abstract_syntax::*;
 
+/// Parameter definition for an attribute in the root tag of a component XML layout
 #[derive(Debug, Clone, PartialEq)]
 pub struct VariableParameter {
+	// Name of the variable binding that can be used within the component in {{template tags}}
 	pub name: String,
+	// Combinations of allowed sequences of types that can be passed to instances of this component
 	pub type_sequence_options: Vec<Vec<TypeName>>,
+	// A single sequence of default values that get used if an instance of this component never has the corresponding argument passed to it
 	pub type_sequence_default: Vec<TypeValue>,
 }
 
 impl VariableParameter {
+	/// Construct a parameter definition for a variable accepted by a component definition, with the variable name, allowed combinations of types, and the default value sequence
 	pub fn new(name: String, valid_types: Vec<Vec<TypeName>>, default: Vec<TypeValue>) -> Self {
 		Self {
 			name,
@@ -18,12 +23,18 @@ impl VariableParameter {
 	}
 }
 
+// ====================================================================================================
+
+/// Wrapper for either a `TypeValue` struct or the name of a variable argument (just a `String`)
 #[derive(Debug, Clone, PartialEq)]
 pub enum TypeValueOrArgument {
 	TypeValue(TypeValue),
 	VariableArgument(String),
 }
 
+// ====================================================================================================
+
+/// All possible names for types of values in the reactive data and layout system
 #[derive(Debug, Clone, PartialEq)]
 pub enum TypeName {
 	Layout,
@@ -41,12 +52,12 @@ pub enum TypeName {
 	None,
 }
 
-pub type ComponentAst = rctree::Node<LayoutAbstractNode>;
-pub type Component = Vec<LayoutAbstractNode>;
+// ====================================================================================================
 
+/// Concrete values for data in the various types allowed by the reactive data and layout system
 #[derive(Debug, Clone, PartialEq)]
 pub enum TypeValue {
-	Layout(Vec<ComponentAst>),
+	Layout(Vec<NodeTree>),
 	Integer(i64),
 	Decimal(f64),
 	Dimension(Dimension),
@@ -61,16 +72,21 @@ impl TypeValue {
 	pub fn expect_dimension(&self) -> Dimension {
 		match self {
 			Self::Dimension(dimension) => *dimension,
-			_ => panic!("expected a dimension"),
+			_ => panic!("Expected a dimension"),
 		}
 	}
 }
 
+// ====================================================================================================
+
+/// A piece of a template string, made up of many of these enums concatenated together in alternating order between `String` and `Argument`, where the latter is a value or argument variable
 #[derive(Debug, Clone, PartialEq)]
 pub enum TemplateStringSegment {
 	String(String),
 	Argument(TypeValueOrArgument),
 }
+
+// ====================================================================================================
 
 /// A dimension is a measure along an axis.
 #[derive(Copy, Clone, Debug, PartialEq)]
@@ -89,7 +105,9 @@ pub enum Dimension {
 	Height,
 }
 
-/// Dimensions along a box's four sides.
+// ====================================================================================================
+
+/// Dimensions along the four sides of a box layout
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub struct BoxDimensions {
 	pub top: Dimension,

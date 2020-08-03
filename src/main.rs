@@ -12,6 +12,7 @@ mod pipeline;
 mod resource_cache;
 mod shader_stage;
 mod texture;
+mod window_dom;
 mod window_events;
 
 use application::Application;
