@@ -1,6 +1,5 @@
 use crate::color::Color;
 use crate::color_palette::ColorPalette;
-use crate::layout_abstract_syntax::*;
 use crate::layout_abstract_types::*;
 use crate::layout_system::*;
 
@@ -18,7 +17,7 @@ impl AttributeParser {
 	pub fn new() -> Self {
 		let capture_attribute_declaration_parameter_regex: regex::Regex = regex::Regex::new(
 			// Parameter: ?: (?, ... | ...) = ?
-			r"^\s*(\w*)\s*(:)\s*(\()\s*((?:(?:\w+)(?:\s*,\s*\w+)*)(?:\s*\|\s*(?:(?:\w+)(?:\s*,\s*\w+)*))*)\s*(\))\s*(=)\s*([\s\w'\[\]@%\-.,]*?|\s*`[^`]*?`)\s*$",
+			r"^\s*(\w*)\s*(:)\s*(\()\s*((?:(?:\w+)(?:\s*,\s*\w+)*)(?:\s*\|\s*(?:(?:\w+)(?:\s*,\s*\w+)*))*)\s*(\))\s*(=)\s*([\s\w'\[\]@%\-.,]+|`[^`]*`|\[\[.*\]\])\s*$",
 		)
 		.unwrap();
 
@@ -31,7 +30,7 @@ impl AttributeParser {
 			r#"^\s*(-?\d+)\s*$|"#,
 			// Decimal: ?
 			r#"^\s*(-?(?:(?:\d+\.\d*)|(?:\d*\.\d+)))\s*$|"#,
-			// AbsolutePx: px
+			// AbsolutePx: ?px
 			r#"^\s*(-?(?:(?:\d+(?:\.\d*)?)|(?:\d*(?:\.\d+))))([Pp][Xx])\s*$|"#,
 			// Percent: ?%
 			r#"^\s*(-?(?:(?:\d+(?:\.\d*)?)|(?:\d*(?:\.\d+))))(%)\s*$|"#,
@@ -72,16 +71,16 @@ impl AttributeParser {
 		}
 	}
 
-	pub fn parse_attribute_types(&self, input: &str) -> AttributeValue {
+	pub fn parse_attribute_argument_types(&self, input: &str) -> Vec<TypeValueOrArgument> {
 		let attribute_types = input.split(",").map(|piece| piece.trim()).collect::<Vec<&str>>();
 		let list = attribute_types
 			.iter()
-			.map(|attribute_type| self.parse_attribute_type(attribute_type))
+			.map(|attribute_type| self.parse_attribute_argument_type(attribute_type))
 			.collect::<Vec<TypeValueOrArgument>>();
-		AttributeValue::TypeValue(list)
+		list
 	}
 
-	pub fn parse_attribute_type(&self, attribute_type: &str) -> TypeValueOrArgument {
+	pub fn parse_attribute_argument_type(&self, attribute_type: &str) -> TypeValueOrArgument {
 		// Match with the regular expression
 		let captures = self
 			.capture_attribute_type_sequences_regex
@@ -98,17 +97,18 @@ impl AttributeParser {
 				// Remove any whitespace in order to test if any XML syntax is present
 				let trimmed = xml_syntax.trim();
 
-				// Build either an empty vector (for empty XML input) or a vector with the one parsed AST
+				// Build either an empty vector (for empty XML input) or a vector with the one parsed XML fragment
 				let layout_entries = if trimmed.len() == 0 {
 					vec![]
 				}
 				else {
 					let unescaped = Self::unescape_xml(trimmed);
-					let component_ast = LayoutSystem::parse_xml_tree(&self, &unescaped[..], false, false).unwrap();
-					vec![component_ast]
+					let parsed = LayoutSystem::parse_xml_node(&self, &unescaped[..], false).unwrap();
+					// Put the single parsed node in a vector (TODO: this should set any number of parsed nodes once `parse_xml_node` becomes `parse_xml_nodes`)
+					vec![parsed]
 				};
 
-				// Return the `Layout` typed value with the empty vector or vector with the parsed AST
+				// Return the `Layout` typed value with the empty vector or vector with the parsed XML fragment
 				TypeValueOrArgument::TypeValue(TypeValue::Layout(layout_entries))
 			},
 			// Integer: ?
@@ -224,7 +224,7 @@ impl AttributeParser {
 		}
 	}
 
-	pub fn parse_attribute_declaration(&self, attribute_declaration: &str) -> AttributeValue {
+	pub fn parse_attribute_parameter_declaration(&self, attribute_declaration: &str) -> VariableParameter {
 		// Match with the regular expression
 		let captures = self
 			.capture_attribute_declaration_parameter_regex
@@ -278,19 +278,21 @@ impl AttributeParser {
 				// Required default value for the variable parameter if not provided
 				let default_type_sequence = default_value
 					.split(",")
-					.map(|individual_type| match self.parse_attribute_type(individual_type) {
+					.map(|individual_type| match self.parse_attribute_argument_type(individual_type) {
 						TypeValueOrArgument::TypeValue(type_value) => type_value,
 						TypeValueOrArgument::VariableArgument(variable_value) => {
 							panic!(
-								"Found the default variable value `{:?}` in the attribute declaration `{}` which only allows typed values, when parsing XML layout",
+								"Found the default variable value `{:?}` in the attribute declaration `{}` (which only allows typed values) when parsing XML layout",
 								variable_value, attribute_declaration
 							);
 						},
 					})
 					.collect::<Vec<TypeValue>>();
 
+				// TODO: Verify the default types match the specified allowed types
+
 				// Return the parameter
-				AttributeValue::VariableParameter(VariableParameter::new(name, type_sequence_options, default_type_sequence))
+				VariableParameter::new(name, type_sequence_options, default_type_sequence)
 			},
 			// Unrecognized type pattern
 			_ => panic!("Invalid attribute attribute declaration `{}` when parsing XML layout", attribute_declaration),
