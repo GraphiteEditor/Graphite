@@ -157,24 +157,7 @@ impl AttributeParser {
 			Some([height]) if height.eq_ignore_ascii_case("height") => TypeValueOrArgument::TypeValue(TypeValue::Dimension(Dimension::Height)),
 			// TemplateString: `? ... {{?}} ...`
 			Some(["`", string, "`"]) => {
-				let mut segments = Vec::<TemplateStringSegment>::new();
-				let mut is_template = false;
-
-				// Alternate between string and handlebars, always starting wtih string even if empty, and push abstract tokens of non-empty ones to the TemplateString sequence
-				for part in self.split_by_string_templates_regex.split(string) {
-					// Push only non-empty template string segments (a String or Argument)
-					if !part.is_empty() {
-						// Based on whether we are alternating to a string or template, push the appropriate abstract token
-						let segment = match is_template {
-							false => TemplateStringSegment::String(String::from(part)),
-							true => TemplateStringSegment::Argument(TypeValueOrArgument::VariableArgument(String::from(part))),
-						};
-						segments.push(segment);
-					}
-
-					// The next iteration will switch from a template to a string or vice versa
-					is_template = !is_template;
-				}
+				let segments = self.parse_text_template_sequence(string);
 
 				TypeValueOrArgument::TypeValue(TypeValue::TemplateString(segments))
 			},
@@ -297,6 +280,30 @@ impl AttributeParser {
 			// Unrecognized type pattern
 			_ => panic!("Invalid attribute attribute declaration `{}` when parsing XML layout", attribute_declaration),
 		}
+	}
+
+	/// Extract {{template tags}} from surrounding text and return a vector alternating between text and the argument
+	pub fn parse_text_template_sequence(&self, input_text: &str) -> Vec<TemplateStringSegment> {
+		let mut segments = Vec::<TemplateStringSegment>::new();
+		let mut is_template = false;
+
+		// Alternate between string and handlebars, always starting wtih string even if empty, and push abstract tokens of non-empty ones to the TemplateString sequence
+		for part in self.split_by_string_templates_regex.split(input_text) {
+			// Push only non-empty template string segments (a String or Argument)
+			if !part.is_empty() {
+				// Based on whether we are alternating to a string or template, push the appropriate abstract token
+				let segment = match is_template {
+					false => TemplateStringSegment::String(String::from(part)),
+					true => TemplateStringSegment::Argument(TypeValueOrArgument::VariableArgument(String::from(part))),
+				};
+				segments.push(segment);
+			}
+
+			// The next iteration will switch from a template to a string or vice versa
+			is_template = !is_template;
+		}
+
+		segments
 	}
 
 	/// Replace escape characters in an XML string, only supports `&, <, >, ", '`
