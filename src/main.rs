@@ -33,14 +33,55 @@ fn layout(mut commands: Commands) {
 // Function initializing the 2D graphics system
 fn graphics(mut commands: Commands, asset_server: Res<AssetServer>, mut materials: ResMut<Assets<ColorMaterial>>) {
 	// Create a new 2D camera for our window's viewport
-	commands.spawn(Camera2dComponents::default());
+	commands.spawn(UiCameraComponents::default());
 
 	// Load a sample texture and render it
 	let texture_handle = asset_server.load("textures/grid.png").unwrap();
-	commands.spawn(SpriteComponents {
-		material: materials.add(texture_handle.into()),
-		..Default::default()
-	});
+	commands
+		// Create a node for the window
+		.spawn(NodeComponents {
+			style: Style {
+				size: Size {
+					width: Val::Percent(100.0),
+					height: Val::Percent(100.0),
+				},
+				flex_direction: FlexDirection::Column,
+				..Default::default()
+			},
+			..Default::default()
+		})
+		.with_children(|parent| {
+			// Header
+			parent.spawn(NodeComponents {
+				material: materials.add(Color::rgb(1.0, 0.0, 0.0).into()),
+				style: Style {
+					size: Size { width: Val::Percent(100.0), height: Val::Px(28.0), },
+					..Default::default()
+				},
+				..Default::default()
+			});
+			// Viewport
+			parent.spawn(ImageComponents {
+				material: materials.add(texture_handle.into()),
+				style: Style {
+					size: Size {
+						width: Val::Percent(100.0),
+						height: Val::Percent(100.0),
+					},
+					..Default::default()
+					},
+				..Default::default()
+			});
+			// Footer
+			parent.spawn(NodeComponents {
+				material: materials.add(Color::rgb(0.0, 0.0, 1.0).into()),
+				style: Style {
+					size: Size { width: Val::Percent(100.0), height: Val::Px(14.0), },
+					..Default::default()
+				},
+				..Default::default()
+			});
+		});
 }
 
 fn main() {
