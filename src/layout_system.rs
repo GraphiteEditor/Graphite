@@ -13,6 +13,9 @@ pub struct LayoutSystem {
 	attribute_parser: AttributeParser,
 }
 
+unsafe impl Send for LayoutSystem {}
+unsafe impl Sync for LayoutSystem {}
+
 impl LayoutSystem {
 	/// Construct the `LayoutSystem` with zero windows, an empty cache of component XML layouts, and an `AttributeParser` with its regex parsers
 	pub fn new() -> LayoutSystem {
