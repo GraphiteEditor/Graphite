@@ -45,7 +45,7 @@ pub type NodeOrDefTree = rctree::Node<LayoutComponentNodeOrDefinition>;
 
 // ====================================================================================================
 
-/// Representation of an XML node with either another XML tag (`LayoutComponentTag`) or a text node (just a `String`)
+/// Representation of an XML node with either another XML tag (`LayoutComponentTag`) or a text node (a vector of alternating `TemplateStringSegment::String`s and `TemplateStringSegment::Argument`s)
 #[derive(Debug, Clone, PartialEq)]
 pub enum LayoutComponentNode {
 	Tag(LayoutComponentTag),
@@ -81,19 +81,19 @@ pub struct LayoutComponentDefinition {
 	/// Name of the component in "namespace:name" format
 	pub name: (String, String),
 	/// User-defined attribute parameters, which are prefixed with ':'
-	pub user_attributes: Vec<VariableParameter>,
+	pub parameters: Vec<VariableParameter>,
 }
 
 impl LayoutComponentDefinition {
 	/// Construct a definition for a layout component given its name in "namespace:name" format with an empty set of parameters
 	pub fn new(name: (String, String)) -> Self {
-		let user_attributes = vec![];
-		Self { name, user_attributes }
+		let parameters = vec![];
+		Self { name, parameters }
 	}
 
 	/// Add a parameter definition (with its name, types, and default value) to this component definition
 	pub fn add_parameter(&mut self, parameter: VariableParameter) {
-		self.user_attributes.push(parameter);
+		self.parameters.push(parameter);
 	}
 }
 
