@@ -7,10 +7,10 @@ Graphite is in an early stage of development and its vision is highly ambitious.
 
 ## Design
 
-Interactive viewport *(work-in-progress design)*:
+Interactive viewport *(work-in-progress design mockup)*:
 ![Interactive viewport](https://files.keavon.com/-/HonoredBusyCygnet/capture.png)
 
-Node editor *(work-in-progress design)*:
+Node editor *(work-in-progress design mockup)*:
 ![Node editor](https://files.keavon.com/-/RigidFarawayHyracotherium/capture.png)
 
 ## Technology
