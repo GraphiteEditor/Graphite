@@ -4,7 +4,7 @@ use crate::layout_abstract_types::*;
 use crate::layout_system::*;
 
 pub struct AttributeParser {
-	capture_attribute_declaration_parameter_regex: regex::Regex,
+	capture_attribute_prop_definition_regex: regex::Regex,
 	capture_attribute_type_sequences_regex: regex::Regex,
 	match_integer_regex: regex::Regex,
 	match_decimal_regex: regex::Regex,
@@ -15,8 +15,8 @@ pub struct AttributeParser {
 impl AttributeParser {
 	// Prebuild all the regex patterns
 	pub fn new() -> Self {
-		let capture_attribute_declaration_parameter_regex: regex::Regex = regex::Regex::new(
-			// Parameter: ?: (?, ... | ...) = ?
+		let capture_attribute_prop_definition_regex: regex::Regex = regex::Regex::new(
+			// Prop definition: ?: (?, ... | ...) = ?
 			r"^\s*(\w*)\s*(:)\s*(\()\s*((?:(?:\w+)(?:\s*,\s*\w+)*)(?:\s*\|\s*(?:(?:\w+)(?:\s*,\s*\w+)*))*)\s*(\))\s*(=)\s*([\s\w'\[\]@%\-.,]+|`[^`]*`|\[\[.*\]\])\s*$",
 		)
 		.unwrap();
@@ -62,7 +62,7 @@ impl AttributeParser {
 		let capture_color_name_in_palette_regex = regex::Regex::new(r"\s*'(.*)'\s*").unwrap();
 
 		Self {
-			capture_attribute_declaration_parameter_regex,
+			capture_attribute_prop_definition_regex,
 			capture_attribute_type_sequences_regex,
 			match_integer_regex,
 			match_decimal_regex,
@@ -71,16 +71,16 @@ impl AttributeParser {
 		}
 	}
 
-	pub fn parse_attribute_argument_types(&self, input: &str) -> Vec<TypeValueOrArgument> {
+	pub fn parse_attribute_argument_types(&self, input: &str) -> Vec<TypedValueOrVariableName> {
 		let attribute_types = input.split(",").map(|piece| piece.trim()).collect::<Vec<&str>>();
 		let list = attribute_types
 			.iter()
 			.map(|attribute_type| self.parse_attribute_argument_type(attribute_type))
-			.collect::<Vec<TypeValueOrArgument>>();
+			.collect::<Vec<TypedValueOrVariableName>>();
 		list
 	}
 
-	pub fn parse_attribute_argument_type(&self, attribute_type: &str) -> TypeValueOrArgument {
+	pub fn parse_attribute_argument_type(&self, attribute_type: &str) -> TypedValueOrVariableName {
 		// Match with the regular expression
 		let captures = self
 			.capture_attribute_type_sequences_regex
@@ -90,8 +90,8 @@ impl AttributeParser {
 		// Match against the captured values as a list of tokens
 		let tokens = captures.as_ref().map(|c| c.as_slice());
 		match tokens {
-			// Argument: {{?}}
-			Some(["{{", name, "}}"]) => TypeValueOrArgument::VariableArgument(String::from(*name)),
+			// Variable name: {{?}}
+			Some(["{{", name, "}}"]) => TypedValueOrVariableName::VariableName(String::from(*name)),
 			// Layout: [[?]]
 			Some(["[[", xml_syntax, "]]"]) => {
 				// Remove any whitespace in order to test if any XML syntax is present
@@ -109,21 +109,21 @@ impl AttributeParser {
 				};
 
 				// Return the `Layout` typed value with the empty vector or vector with the parsed XML fragment
-				TypeValueOrArgument::TypeValue(TypeValue::Layout(layout_entries))
+				TypedValueOrVariableName::TypedValue(TypedValue::Layout(layout_entries))
 			},
 			// Integer: ?
 			Some([value]) if self.match_integer_regex.is_match(value) => {
 				let integer = value
 					.parse::<i64>()
 					.expect(&format!("Invalid value `{}` specified in the attribute type `{}` when parsing XML layout", value, attribute_type)[..]);
-				TypeValueOrArgument::TypeValue(TypeValue::Integer(integer))
+				TypedValueOrVariableName::TypedValue(TypedValue::Integer(integer))
 			},
 			// Decimal: ?
 			Some([value]) if self.match_decimal_regex.is_match(value) => {
 				let decimal = value
 					.parse::<f64>()
 					.expect(&format!("Invalid value `{}` specified in the attribute type `{}` when parsing XML layout", value, attribute_type)[..]);
-				TypeValueOrArgument::TypeValue(TypeValue::Decimal(decimal))
+				TypedValueOrVariableName::TypedValue(TypedValue::Decimal(decimal))
 			},
 			// AbsolutePx: px
 			Some([value, px]) if px.eq_ignore_ascii_case("px") => {
@@ -131,7 +131,7 @@ impl AttributeParser {
 					.parse::<f64>()
 					.expect(&format!("Invalid value `{}` specified in the attribute type`{}` when parsing XML layout", value, attribute_type)[..]);
 				let dimension = Dimension::AbsolutePx(pixels);
-				TypeValueOrArgument::TypeValue(TypeValue::Dimension(dimension))
+				TypedValueOrVariableName::TypedValue(TypedValue::Dimension(dimension))
 			},
 			// Percent: ?%
 			Some([value, "%"]) => {
@@ -139,7 +139,7 @@ impl AttributeParser {
 					.parse::<f64>()
 					.expect(&format!("Invalid value `{}` specified in the attribute type `{}` when parsing XML layout", value, attribute_type)[..]);
 				let dimension = Dimension::Percent(percent);
-				TypeValueOrArgument::TypeValue(TypeValue::Dimension(dimension))
+				TypedValueOrVariableName::TypedValue(TypedValue::Dimension(dimension))
 			},
 			// PercentRemainder: ?@
 			Some([value, "@"]) => {
@@ -147,19 +147,18 @@ impl AttributeParser {
 					.parse::<f64>()
 					.expect(&format!("Invalid value `{}` specified in the attribute type `{}` when parsing XML layout", value, attribute_type)[..]);
 				let dimension = Dimension::PercentRemainder(percent_remainder);
-				TypeValueOrArgument::TypeValue(TypeValue::Dimension(dimension))
+				TypedValueOrVariableName::TypedValue(TypedValue::Dimension(dimension))
 			},
 			// Inner: inner
-			Some([inner]) if inner.eq_ignore_ascii_case("inner") => TypeValueOrArgument::TypeValue(TypeValue::Dimension(Dimension::Inner)),
+			Some([inner]) if inner.eq_ignore_ascii_case("inner") => TypedValueOrVariableName::TypedValue(TypedValue::Dimension(Dimension::Inner)),
 			// Width: width
-			Some([width]) if width.eq_ignore_ascii_case("width") => TypeValueOrArgument::TypeValue(TypeValue::Dimension(Dimension::Width)),
+			Some([width]) if width.eq_ignore_ascii_case("width") => TypedValueOrVariableName::TypedValue(TypedValue::Dimension(Dimension::Width)),
 			// Height: height
-			Some([height]) if height.eq_ignore_ascii_case("height") => TypeValueOrArgument::TypeValue(TypeValue::Dimension(Dimension::Height)),
+			Some([height]) if height.eq_ignore_ascii_case("height") => TypedValueOrVariableName::TypedValue(TypedValue::Dimension(Dimension::Height)),
 			// TemplateString: `? ... {{?}} ...`
 			Some(["`", string, "`"]) => {
 				let segments = self.parse_text_template_sequence(string);
-
-				TypeValueOrArgument::TypeValue(TypeValue::TemplateString(segments))
+				TypedValueOrVariableName::TypedValue(TypedValue::TemplateString(segments))
 			},
 			// Color: [?]
 			Some(["[", color_name, "]"]) => {
@@ -193,33 +192,33 @@ impl AttributeParser {
 					},
 				};
 
-				TypeValueOrArgument::TypeValue(TypeValue::Color(color))
+				TypedValueOrVariableName::TypedValue(TypedValue::Color(color))
 			},
 			// Bool: true/false
 			Some([true_or_false]) if true_or_false.eq_ignore_ascii_case("true") || true_or_false.eq_ignore_ascii_case("false") => {
 				let boolean = true_or_false.eq_ignore_ascii_case("true");
-				TypeValueOrArgument::TypeValue(TypeValue::Bool(boolean))
+				TypedValueOrVariableName::TypedValue(TypedValue::Bool(boolean))
 			},
 			// None: none
-			Some([none]) if none.eq_ignore_ascii_case("none") => TypeValueOrArgument::TypeValue(TypeValue::None),
+			Some([none]) if none.eq_ignore_ascii_case("none") => TypedValueOrVariableName::TypedValue(TypedValue::None),
 			// Unrecognized type pattern
 			_ => panic!("Invalid attribute type `{}` when parsing XML layout", attribute_type),
 		}
 	}
 
-	pub fn parse_attribute_parameter_declaration(&self, attribute_declaration: &str) -> VariableParameter {
+	pub fn parse_attribute_prop_definition(&self, attribute_declaration: &str) -> PropDefinition {
 		// Match with the regular expression
 		let captures = self
-			.capture_attribute_declaration_parameter_regex
+			.capture_attribute_prop_definition_regex
 			.captures(attribute_declaration)
 			.map(|captures| captures.iter().skip(1).flat_map(|c| c).map(|c| c.as_str()).collect::<Vec<_>>());
 
 		// Match against the captured values as a list of tokens
 		let tokens = captures.as_ref().map(|c| c.as_slice());
 		match tokens {
-			// Parameter: ?: (?, ... | ...) = ?
+			// Prop definition: ?: (?, ... | ...) = ?
 			Some([name, ":", "(", raw_types_list, ")", "=", default_value]) => {
-				// Variable name bound in the parameter
+				// Variable name bound in the prop definition
 				let name = String::from(*name);
 
 				// Split the type sequences up into a list of options separated by vertical bars
@@ -258,24 +257,24 @@ impl AttributeParser {
 					})
 					.collect::<Vec<Vec<TypeName>>>();
 
-				// Required default value for the variable parameter if not provided
+				// Split the provided default values into a sequence
 				let default_type_sequence = default_value
 					.split(",")
 					.map(|individual_type| match self.parse_attribute_argument_type(individual_type) {
-						TypeValueOrArgument::TypeValue(type_value) => type_value,
-						TypeValueOrArgument::VariableArgument(variable_value) => {
+						TypedValueOrVariableName::TypedValue(type_value) => type_value,
+						TypedValueOrVariableName::VariableName(variable_value) => {
 							panic!(
-								"Found the default variable value `{:?}` in the attribute declaration `{}` (which only allows typed values) when parsing XML layout",
+								"Found the default variable name `{:?}` in the attribute declaration `{}` (which only allows typed values) when parsing XML layout",
 								variable_value, attribute_declaration
 							);
 						},
 					})
-					.collect::<Vec<TypeValue>>();
+					.collect::<Vec<TypedValue>>();
 
 				// TODO: Verify the default types match the specified allowed types
 
-				// Return the parameter
-				VariableParameter::new(name, type_sequence_options, default_type_sequence)
+				// Return the prop definition
+				PropDefinition::new(name, type_sequence_options, default_type_sequence)
 			},
 			// Unrecognized type pattern
 			_ => panic!("Invalid attribute attribute declaration `{}` when parsing XML layout", attribute_declaration),
@@ -294,7 +293,7 @@ impl AttributeParser {
 				// Based on whether we are alternating to a string or template, push the appropriate abstract token
 				let segment = match is_template {
 					false => TemplateStringSegment::String(String::from(part)),
-					true => TemplateStringSegment::Argument(TypeValueOrArgument::VariableArgument(String::from(part))),
+					true => TemplateStringSegment::Argument(TypedValueOrVariableName::VariableName(String::from(part))),
 				};
 				segments.push(segment);
 			}
