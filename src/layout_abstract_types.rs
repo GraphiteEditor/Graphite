@@ -1,22 +1,22 @@
 use crate::color::Color;
 use crate::layout_abstract_syntax::*;
 
-/// Parameter definition for an attribute in the root tag of a component XML layout
+/// Definition of a prop for a component, given in an attribute of the XML root tag
 #[derive(Debug, Clone, PartialEq)]
-pub struct VariableParameter {
+pub struct PropDefinition {
 	// Name of the variable binding that can be used within the component in {{template tags}}
-	pub name: String,
+	pub variable_name: String,
 	// Combinations of allowed sequences of types that can be passed to instances of this component
 	pub type_sequence_options: Vec<Vec<TypeName>>,
 	// A single sequence of default values that get used if an instance of this component never has the corresponding argument passed to it
-	pub type_sequence_default: Vec<TypeValue>,
+	pub type_sequence_default: Vec<TypedValue>,
 }
 
-impl VariableParameter {
-	/// Construct a parameter definition for a variable accepted by a component definition, with the variable name, allowed combinations of types, and the default value sequence
-	pub fn new(name: String, valid_types: Vec<Vec<TypeName>>, default: Vec<TypeValue>) -> Self {
+impl PropDefinition {
+	/// Construct a prop definition for a variable accepted by a component definition, with the variable name, valid combinations of types, and the default value sequence
+	pub fn new(variable_name: String, valid_types: Vec<Vec<TypeName>>, default: Vec<TypedValue>) -> Self {
 		Self {
-			name,
+			variable_name,
 			type_sequence_options: valid_types,
 			type_sequence_default: default,
 		}
@@ -25,11 +25,11 @@ impl VariableParameter {
 
 // ====================================================================================================
 
-/// Wrapper for either a `TypeValue` struct or the name of a variable argument (just a `String`)
+/// Wrapper for either a `TypedValue` struct or the name of a prop
 #[derive(Debug, Clone, PartialEq)]
-pub enum TypeValueOrArgument {
-	TypeValue(TypeValue),
-	VariableArgument(String),
+pub enum TypedValueOrVariableName {
+	TypedValue(TypedValue),
+	VariableName(String),
 }
 
 // ====================================================================================================
@@ -56,7 +56,7 @@ pub enum TypeName {
 
 /// Concrete values for data in the various types allowed by the reactive data and layout system
 #[derive(Debug, Clone, PartialEq)]
-pub enum TypeValue {
+pub enum TypedValue {
 	Layout(Vec<NodeTree>),
 	Integer(i64),
 	Decimal(f64),
@@ -67,7 +67,7 @@ pub enum TypeValue {
 	None,
 }
 
-impl TypeValue {
+impl TypedValue {
 	/// Converts this to a dimension, panics if not possible.
 	pub fn expect_dimension(&self) -> Dimension {
 		match self {
@@ -79,11 +79,11 @@ impl TypeValue {
 
 // ====================================================================================================
 
-/// A piece of a template string, made up of many of these enums concatenated together in alternating order between `String` and `Argument`, where the latter is a value or argument variable
+/// A piece of a template string, made up of many of these enums concatenated together in alternating order between `String` and `Argument`, where the latter is a value or variable name
 #[derive(Debug, Clone, PartialEq)]
 pub enum TemplateStringSegment {
 	String(String),
-	Argument(TypeValueOrArgument),
+	Argument(TypedValueOrVariableName),
 }
 
 // ====================================================================================================
