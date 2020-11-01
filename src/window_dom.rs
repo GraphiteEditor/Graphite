@@ -21,12 +21,12 @@ impl<'a> WindowDom<'a> {
 	fn build_dom_from_component(
 		root_component: &str,
 		layout_attributes: &LayoutAttributes,
-		parameters: &Vec<AttributeArg>,
+		props: &Vec<Prop>,
 		loaded_components: &'a ResourceCache<FlatComponent>,
 	) -> rctree::Node<DomNode> {
 		// Instantiate the DOM node and put it in a tree node
 		let component = loaded_components.get(root_component).unwrap();
-		let dom_node = DomNode::from_component(component, layout_attributes, parameters);
+		let dom_node = DomNode::from_component(component, layout_attributes, props);
 		let mut tree = rctree::Node::new(dom_node);
 
 		// Recursively build the child `DomNode` tree node instances
@@ -39,7 +39,7 @@ impl<'a> WindowDom<'a> {
 				let component_name = LayoutSystem::component_name((namespace, name));
 
 				// Recursively build the child `DomNode` component instance
-				Self::build_dom_from_component(&component_name[..], &child.layout_arguments, &child.user_arguments, loaded_components)
+				Self::build_dom_from_component(&component_name[..], &child.layout, &child.props, loaded_components)
 			})
 			.collect::<Vec<_>>();
 
@@ -56,11 +56,11 @@ impl<'a> WindowDom<'a> {
 pub struct DomNode {
 	pub cache_name: String,
 	pub layout_attributes: LayoutAttributes,
-	pub variable_bindings: HashMap<String, Vec<TypeValueOrArgument>>,
+	pub variable_bindings: HashMap<String, Vec<TypedValueOrVariableName>>,
 }
 
 impl DomNode {
-	pub fn new(cache_name: String, layout_attributes: LayoutAttributes, variable_bindings: HashMap<String, Vec<TypeValueOrArgument>>) -> Self {
+	pub fn new(cache_name: String, layout_attributes: LayoutAttributes, variable_bindings: HashMap<String, Vec<TypedValueOrVariableName>>) -> Self {
 		Self {
 			cache_name,
 			layout_attributes,
@@ -68,36 +68,36 @@ impl DomNode {
 		}
 	}
 
-	pub fn from_component(component: &FlatComponent, layout_attributes: &LayoutAttributes, parameters: &Vec<AttributeArg>) -> Self {
+	pub fn from_component(component: &FlatComponent, layout_attributes: &LayoutAttributes, props: &Vec<Prop>) -> Self {
 		// Cached name of the loaded component
 		let (namespace, name) = &component.own_info.name;
 		let cache_name = LayoutSystem::component_name((&namespace[..], &name[..]));
 
-		// Every VARIABLE_NAME binding defined as a parameter on this component
+		// Every VARIABLE_NAME binding defined in the prop definitions on this component
 		let mut variable_bindings = component
 			.own_info
-			.parameters
+			.prop_definitions
 			.iter()
-			.map(|parameter| {
+			.map(|prop_definition| {
 				(
-					// HashMap key is the parameter name
-					parameter.name.clone(),
-					// HashMap value is the parameter's defined default value
-					parameter
+					// HashMap key is the prop name
+					prop_definition.variable_name.clone(),
+					// HashMap value is the prop definition's default value
+					prop_definition
 						.type_sequence_default
 						.iter()
-						.map(|value| TypeValueOrArgument::TypeValue(value.clone()))
+						.map(|value| TypedValueOrVariableName::TypedValue(value.clone()))
 						.collect::<Vec<_>>(),
 				)
 			})
 			.collect::<HashMap<_, _>>();
-		// Overwrite the defaults for given parameters
-		for parameter in parameters {
-			if !variable_bindings.contains_key(&parameter.name[..]) {
-				panic!("Invalid argument {} given to the {} component", parameter.name, cache_name);
+		// Overwrite the default values for the provided props
+		for prop in props {
+			if !variable_bindings.contains_key(&prop.name[..]) {
+				panic!("Invalid argument {} given to the {} component", prop.name, cache_name);
 			}
 
-			variable_bindings.insert(parameter.name.clone(), parameter.value.clone());
+			variable_bindings.insert(prop.name.clone(), prop.value_sequence.clone());
 		}
 
 		Self::new(cache_name, layout_attributes.clone(), variable_bindings)
