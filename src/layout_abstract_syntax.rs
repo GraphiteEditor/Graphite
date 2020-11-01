@@ -3,7 +3,7 @@ use crate::layout_abstract_types::*;
 // AST for a component with info on its definition (from the root element of the XML layout) and a vector of direct child component tags
 #[derive(Debug, Clone, PartialEq)]
 pub struct FlatComponent {
-	// The abstract definition of the root node of the component with attribute parameters
+	// The abstract definition of the root node of the component with prop definitions
 	pub own_info: LayoutComponentDefinition,
 	// Only stores tags, text elements are disposed of (they'd be meaningless in a tag list)
 	pub child_components: Vec<LayoutComponentTag>,
@@ -11,7 +11,7 @@ pub struct FlatComponent {
 
 /// A component in its final processed form (after parsing its XML file), with information on its definition with a list of child components with their own children in their `content` attributes
 impl FlatComponent {
-	// Construct a layout component which stores its own root-level component definition (with attribute parameters, etc.) and a flat list of its direct child tags, each with an AST in their `content` attribute
+	// Construct a layout component which stores its own root-level component definition (with prop definitions, etc.) and a flat list of its direct child tags, each with an AST in their `content` attribute
 	pub fn new(own_info: LayoutComponentDefinition, child_components: Vec<LayoutComponentTag>) -> FlatComponent {
 		Self { own_info, child_components }
 	}
@@ -53,7 +53,7 @@ pub enum LayoutComponentNode {
 }
 
 impl LayoutComponentNode {
-	/// Given a tag name in "namespace:name" format, construct a `LayoutComponentNode` that wraps a newly constructed `LayoutComponentTag` struct based on the provided name
+	/// Given a tag name in namespace:name format, construct a `LayoutComponentNode` that wraps a newly constructed `LayoutComponentTag` struct based on the provided name
 	pub fn new_tag(name: (String, String)) -> Self {
 		Self::Tag(LayoutComponentTag::new(name))
 	}
@@ -75,25 +75,25 @@ impl LayoutComponentNode {
 
 // ====================================================================================================
 
-/// Abstract representation of a component based on the parameters defined by the root tag of a component XML layout
+/// Abstract representation of a component based on the definitions of its props in the root tag of a component XML layout
 #[derive(Debug, Clone, PartialEq)]
 pub struct LayoutComponentDefinition {
-	/// Name of the component in "namespace:name" format
+	/// Name of the component in namespace:name format
 	pub name: (String, String),
-	/// User-defined attribute parameters, which are prefixed with ':'
-	pub parameters: Vec<VariableParameter>,
+	/// Accepted prop definitions, which are prefixed with ':'
+	pub prop_definitions: Vec<PropDefinition>,
 }
 
 impl LayoutComponentDefinition {
-	/// Construct a definition for a layout component given its name in "namespace:name" format with an empty set of parameters
+	/// Construct a definition for a layout component given its name in namespace:name format with an (initially) empty set of prop definitions
 	pub fn new(name: (String, String)) -> Self {
-		let parameters = vec![];
-		Self { name, parameters }
+		let prop_definitions = vec![];
+		Self { name, prop_definitions }
 	}
 
-	/// Add a parameter definition (with its name, types, and default value) to this component definition
-	pub fn add_parameter(&mut self, parameter: VariableParameter) {
-		self.parameters.push(parameter);
+	/// Add a prop definition (with its name, valid types, and default value) to this component definition
+	pub fn add_prop_definition(&mut self, prop_definition: PropDefinition) {
+		self.prop_definitions.push(prop_definition);
 	}
 }
 
@@ -102,24 +102,24 @@ impl LayoutComponentDefinition {
 /// Abstract representation of a tag inside an abstract component with attributes and descendant content
 #[derive(Debug, Clone, PartialEq)]
 pub struct LayoutComponentTag {
-	/// Name of the tag's referenced component in "namespace:name" format
+	/// Namespace and name of the tag's referenced component
 	pub name: (String, String),
-	/// Layout engine attribute arguments, which are used by the layout engine
-	pub layout_arguments: LayoutAttributes,
-	/// User-defined attribute arguments, which are prefixed with ':'
-	pub user_arguments: Vec<AttributeArg>,
-	/// The special content attribute, representing the inner elements of this tag
+	/// Layout attributes, which are used by the layout engine
+	pub layout: LayoutAttributes,
+	/// Props on this tag, which are prefixed with ':'
+	pub props: Vec<Prop>,
+	/// The special content attribute, containing the inner elements of this tag
 	pub content: Option<Vec<NodeTree>>,
 }
 
 impl LayoutComponentTag {
-	/// Construct a tag in an XML layout component based on its referenced component name (in "namespace:name" format) and empty defaults
+	/// Construct a tag in an XML layout component based on its referenced component name (in namespace:name format) and empty defaults
 	pub fn new(name: (String, String)) -> Self {
 		Self {
 			name,
-			layout_arguments: Default::default(),
+			layout: Default::default(),
 			content: None,
-			user_arguments: Vec::new(),
+			props: Vec::new(),
 		}
 	}
 
@@ -128,11 +128,11 @@ impl LayoutComponentTag {
 		self.content = Some(content);
 	}
 
-	/// Add an XML tag attribute to this component (either a layout engine attribute, user-defined custom attribute, or event handler attribute)
-	pub fn add_attribute(&mut self, attribute: AttributeArg) {
-		// User-defined attribute (for reactive data system)
+	/// Add an XML tag attribute to this component (either a layout engine setting, a prop, or an event handler binding)
+	pub fn add_attribute(&mut self, attribute: Prop) {
+		// Prop argument (for reactive data system)
 		if attribute.name.len() > 1 && &attribute.name[..1] == ":" {
-			self.add_user_attribute(attribute);
+			self.add_prop(attribute);
 		}
 		// Event handler attribute (for event system)
 		else if attribute.name.len() > 3 && &attribute.name[..3] == "on:" {
@@ -144,25 +144,25 @@ impl LayoutComponentTag {
 		}
 	}
 
-	/// Add an XML tag attribute to this component for a colon-prefixed custom user-defined variable value
-	fn add_user_attribute(&mut self, attribute: AttributeArg) {
-		self.user_arguments.push(attribute);
+	/// Add an XML tag attribute to this component for a colon-prefixed prop
+	fn add_prop(&mut self, attribute: Prop) {
+		self.props.push(attribute);
 	}
 
 	/// Add an XML tag attribute to this component for a non-prefixed layout engine value
-	fn add_layout_attribute(&mut self, attribute: AttributeArg) {
+	fn add_layout_attribute(&mut self, attribute: Prop) {
 		match &attribute.name[..] {
 			// Layout attributes, stored separately
-			"width" => self.layout_arguments.width = attribute.dimension(),
-			"height" => self.layout_arguments.height = attribute.dimension(),
-			"x-align" => self.layout_arguments.x_align = attribute.percent(),
-			"y-align" => self.layout_arguments.y_align = attribute.percent(),
-			"x-padding" => self.layout_arguments.padding.set_horizontal(attribute.dimension()),
-			"y-padding" => self.layout_arguments.padding.set_vertical(attribute.dimension()),
-			"padding" => self.layout_arguments.padding = attribute.box_dimensions(),
-			"x-gap" => self.layout_arguments.gap.set_horizontal(attribute.dimension()),
-			"y-gap" => self.layout_arguments.gap.set_vertical(attribute.dimension()),
-			"gap" => self.layout_arguments.gap = attribute.box_dimensions(),
+			"width" => self.layout.width = attribute.dimension(),
+			"height" => self.layout.height = attribute.dimension(),
+			"x-align" => self.layout.x_align = attribute.percent(),
+			"y-align" => self.layout.y_align = attribute.percent(),
+			"x-padding" => self.layout.padding.set_horizontal(attribute.dimension()),
+			"y-padding" => self.layout.padding.set_vertical(attribute.dimension()),
+			"padding" => self.layout.padding = attribute.box_dimensions(),
+			"x-gap" => self.layout.gap.set_horizontal(attribute.dimension()),
+			"y-gap" => self.layout.gap.set_vertical(attribute.dimension()),
+			"gap" => self.layout.gap = attribute.box_dimensions(),
 			_ => panic!("Unknown builtin attribute `{}`", attribute.name),
 		}
 	}
@@ -182,29 +182,29 @@ impl LayoutComponentTag {
 
 // ====================================================================================================
 
-/// Name-value pair for an argument used in the attribute variable system, where the name is a `String` and the value sequence is a vector of `TypeValueOrArgument`s
+/// Name-value pair for a prop used in the prop-passing system, where the name is a `String` and the value sequence is a vector of `TypedValueOrVariableName`s
 #[derive(Debug, Clone, PartialEq)]
-pub struct AttributeArg {
+pub struct Prop {
 	pub name: String,
-	pub value: Vec<TypeValueOrArgument>,
+	pub value_sequence: Vec<TypedValueOrVariableName>,
 }
 
-impl AttributeArg {
+impl Prop {
 	/// Construct a name-value pair representing an argument on a layout tag given its name and sequence of values
-	pub fn new(name: String, value: Vec<TypeValueOrArgument>) -> Self {
-		Self { name, value }
+	pub fn new(name: String, value_sequence: Vec<TypedValueOrVariableName>) -> Self {
+		Self { name, value_sequence }
 	}
 
 	/// Extract this attribute's values as typed values
-	fn values(self) -> Vec<TypeValue> {
-		self.value
+	fn values(self) -> Vec<TypedValue> {
+		self.value_sequence
 			.into_iter()
 			.map(|value| {
-				if let TypeValueOrArgument::TypeValue(value) = value {
-					value
+				if let TypedValueOrVariableName::TypedValue(typed_value) = value {
+					typed_value
 				}
 				else {
-					todo!("Variable arguments are note yet supported")
+					todo!("Variable arguments are not yet supported")
 				}
 			})
 			.collect()
