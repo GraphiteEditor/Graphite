@@ -29,10 +29,8 @@ impl<'a> LayoutSystem<'a> {
 		self.preload_component(name)
 			.expect(&format!("Failure loading layout component '{}'", Self::component_name(name))[..]);
 
-		// Get the now-loaded component
+		// Get the now-loaded component's namespace:name
 		let window_root_component_name = Self::component_name(name);
-		// let window_root_component = self.loaded_components.get(&window_root_component_name[..]).unwrap();
-		// println!("FC: {:#?}", window_root_component);
 
 		// Construct the window and save it
 		let new_window = WindowDom::new(&window_root_component_name[..], (1920, 1080), &self.loaded_components);
@@ -67,10 +65,10 @@ impl<'a> LayoutSystem<'a> {
 			self.explore_component_tag(child_tag, already_loaded_layouts);
 		}
 
-		// Go through each parameter attribute and preload any default values of layouts
-		for definition in &component.own_info.parameters {
+		// Go through each prop definition and preload any default values of layouts
+		for definition in &component.own_info.prop_definitions {
 			for default in definition.type_sequence_default.iter() {
-				if let TypeValue::Layout(layouts) = default {
+				if let TypedValue::Layout(layouts) = default {
 					for layout in layouts {
 						match &*layout.borrow() {
 							LayoutComponentNode::Tag(tag) => self.explore_component_tag(tag, already_loaded_layouts),
@@ -84,7 +82,7 @@ impl<'a> LayoutSystem<'a> {
 
 	/// Preload and cache every XML component file referenced by tags within a recursive traversal of descendants in the given component tag
 	fn explore_component_tag(&mut self, tag: &LayoutComponentTag, already_loaded_layouts: &mut HashSet<String>) {
-		// Determine the cache key of form "namespace:name"
+		// Determine the cache key of form namespace:name
 		let (name, namespace) = &tag.name;
 		let key = Self::component_name((&name[..], &namespace[..]));
 
@@ -105,10 +103,10 @@ impl<'a> LayoutSystem<'a> {
 			self.loaded_components.set(&key_copy[..], component);
 		}
 
-		// Expore the Layout-type user attribute argument values
-		for argument in &tag.user_arguments {
-			for value in &argument.value {
-				if let TypeValueOrArgument::TypeValue(TypeValue::Layout(layouts)) = value {
+		// Expore the props with values of type Layout
+		for argument in &tag.props {
+			for value in &argument.value_sequence {
+				if let TypedValueOrVariableName::TypedValue(TypedValue::Layout(layouts)) = value {
 					for layout in layouts {
 						match &*layout.borrow() {
 							LayoutComponentNode::Tag(component_tag) => self.explore_component_tag(component_tag, already_loaded_layouts),
@@ -246,15 +244,15 @@ impl<'a> LayoutSystem<'a> {
 
 					// Add the new attribute to the current yet-to-be-closed element
 					match &mut current_opening_tag {
-						// Add this attribute as a parameter to the current root-level component definition tag
+						// Add this attribute as a definition of a prop to the current root-level component definition tag
 						Some(LayoutComponentNodeOrDefinition::LayoutComponentDefinition(definition)) => {
-							let parsed_parameter = attribute_parser.parse_attribute_parameter_declaration(value);
-							definition.add_parameter(parsed_parameter);
+							let prop_definition = attribute_parser.parse_attribute_prop_definition(value);
+							definition.add_prop_definition(prop_definition);
 						},
-						// Add this attribute as an argument to the current tag
+						// Add this attribute as a prop to the current tag
 						Some(LayoutComponentNodeOrDefinition::LayoutComponentNode(LayoutComponentNode::Tag(tag))) => {
 							let parsed_attributes = attribute_parser.parse_attribute_argument_types(value);
-							let attribute_argument = AttributeArg::new(name, parsed_attributes);
+							let attribute_argument = Prop::new(name, parsed_attributes);
 							tag.add_attribute(attribute_argument);
 						},
 						// It should be impossible to add an attribute when there is no opening tag in progress
