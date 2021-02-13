@@ -3,15 +3,17 @@ Graphite is an open-source, cross-platform digital content creation desktop app 
 
 ## Status
 
+*The code has not had many updates in the past half year as I moved my focus towards hammering out more of the product design and user experience. I'm looking forward to working with interested community members to get back to developing the code further throughout 2021, with the goal of establishing a minimum viable product by end-of-year.*
+
 Graphite is in an early stage of development and its vision is highly ambitious. The project is seeking collaborators to help design and develop the software. If interested, please open an issue to get in touch or introduce yourself in the project's Discord chat server at `https://di-s-co-rd.gg/p2-a-Y-jM3` (remove the dashes).
 
 ## Design
 
 Interactive viewport *(work-in-progress design mockup)*:
-![Interactive viewport](https://files.keavon.com/-/HonoredBusyCygnet/capture.png)
+![Interactive viewport](https://files.keavon.com/-/EmotionalShoddyTurnstone/capture.png)
 
 Node editor *(work-in-progress design mockup)*:
-![Node editor](https://files.keavon.com/-/RigidFarawayHyracotherium/capture.png)
+![Node editor](https://files.keavon.com/-/PartialTalkativePooch/capture.png)
 
 ## Technology
 
@@ -21,6 +23,6 @@ Node editor *(work-in-progress design mockup)*:
 
 The [GUI framework](gui) is being custom-built for the specific needs of Graphite's interface, based on a simple XML format inspired by HTML, CSS, and Vue.js. This is the current focus of development.
 
-JavaScript (via [Deno's V8 Rust library](https://github.com/denoland/rusty_v8)) will likely be the chosen scripting language used to extend functionality to areas of the application. This will make it faster to implement many features that are less dependent on low-level performance and it provides an integrated solution for future plugin support.
+Scripting language: this is to-be-decided. JavaScript (via [Deno's V8 Rust library](https://github.com/denoland/rusty_v8)) is one option, [Mun](https://mun-lang.org/) or Lua are other possibilities, and WebAssembly modules or modular compiled Rust modules are other possibilities.
 
-[Pathfinder](https://github.com/servo/pathfinder), backed by Mozilla, is the Rust library that will be used for vector graphics rendering.
+[Pathfinder](https://github.com/servo/pathfinder) is a Rust library that will be used for vector graphics rendering.
