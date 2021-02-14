@@ -1,3 +1,3 @@
-<box content="INNER_XML: (Layout) = [[]]" :fill="FILL: (Color) = ['middlegray']" :round="ROUND: (AbsolutePx | AbsolutePx, AbsolutePx, AbsolutePx, AbsolutePx) = 0px" :border-thickness="BORDER_THICKNESS: (AbsolutePx) = 0px" :border-color="BORDER_COLOR: (Color) = ['black']">
+<box children="INNER_XML: (Layout) = [[]]" :fill="FILL: (Color) = ['middlegray']" :round="ROUND: (AbsolutePx | AbsolutePx, AbsolutePx, AbsolutePx, AbsolutePx) = 0px" :border-thickness="BORDER_THICKNESS: (AbsolutePx) = 0px" :border-color="BORDER_COLOR: (Color) = ['black']">
 	{{INNER_XML}}
 </box>
