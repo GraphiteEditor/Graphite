@@ -9,9 +9,9 @@ pub struct FlatComponent {
 	pub child_components: Vec<LayoutComponentTag>,
 }
 
-/// A component in its final processed form (after parsing its XML file), with information on its definition with a list of child components with their own children in their `content` attributes
+/// A component in its final processed form (after parsing its XML file), with information on its definition with a list of child components with their own children in their `children` attributes
 impl FlatComponent {
-	// Construct a layout component which stores its own root-level component definition (with prop definitions, etc.) and a flat list of its direct child tags, each with an AST in their `content` attribute
+	// Construct a layout component which stores its own root-level component definition (with prop definitions, etc.) and a flat list of its direct child tags, each with an AST in their `children` attribute
 	pub fn new(own_info: LayoutComponentDefinition, child_components: Vec<LayoutComponentTag>) -> FlatComponent {
 		Self { own_info, child_components }
 	}
@@ -99,7 +99,7 @@ impl LayoutComponentDefinition {
 
 // ====================================================================================================
 
-/// Abstract representation of a tag inside an abstract component with attributes and descendant content
+/// Abstract representation of a tag inside an abstract component with attributes and children
 #[derive(Debug, Clone, PartialEq)]
 pub struct LayoutComponentTag {
 	/// Namespace and name of the tag's referenced component
@@ -108,8 +108,8 @@ pub struct LayoutComponentTag {
 	pub layout: LayoutAttributes,
 	/// Props on this tag, which are prefixed with ':'
 	pub props: Vec<Prop>,
-	/// The special content attribute, containing the inner elements of this tag
-	pub content: Option<Vec<NodeTree>>,
+	/// The special `children` attribute, containing the inner elements of this tag
+	pub children: Option<Vec<NodeTree>>,
 }
 
 impl LayoutComponentTag {
@@ -118,14 +118,14 @@ impl LayoutComponentTag {
 		Self {
 			name,
 			layout: Default::default(),
-			content: None,
+			children: None,
 			props: Vec::new(),
 		}
 	}
 
-	/// Provide a sequence of ASTs for this component's content attribute
-	pub fn set_content(&mut self, content: Vec<NodeTree>) {
-		self.content = Some(content);
+	/// Provide a sequence of ASTs for this component's special `children` attribute
+	pub fn set_children(&mut self, children: Vec<NodeTree>) {
+		self.children = Some(children);
 	}
 
 	/// Add an XML tag attribute to this component (either a layout engine setting, a prop, or an event handler binding)
@@ -170,8 +170,8 @@ impl LayoutComponentTag {
 	/// Print the layout tag (for debugging)
 	pub fn debug_print(&self) {
 		println!("Tag Node: {:#?}", self);
-		if let Some(ref content) = self.content {
-			for child in content {
+		if let Some(ref children) = self.children {
+			for child in children {
 				for node in child.descendants() {
 					println!("> Descendant Node: {:#?}", node);
 				}

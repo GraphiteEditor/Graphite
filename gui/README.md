@@ -17,13 +17,13 @@ Layout is controlled using predefined attributes, such as `width`, `height`, `x-
 
 ## Component lifetime
 
-The children of a component are passed to it as a `content` attribute. For example, looking at the row component:
+The children of a component are passed to it as a `children` attribute. For example, looking at the row component:
 ```xml
-<row content="INNER_XML: (Layout) = [[]]">
+<row children="INNER_XML: (Layout) = [[]]">
     {{INNER_XML}}
 </row>
 ```
-The `content` attribute defines a new variable `INNER_XML` of type `Layout` which can contain more XML layout structure. It has a default value of `[[]]` which refers to an empty layout— XML syntax (for the `Layout` data type) written in a tag's attribute is wrapped in ``[[`` (opening) and `]]` (closing) symbols. In this case the `INNER_XML` variable defaults to empty XML, however it is not stricly useful here because the `content` attribute will always have its value replaced by whatever exists between opening and closing tags when this component is called from elsewhere.
+The `children` attribute defines a new variable `INNER_XML` of type `Layout` which can contain more XML layout structure. It has a default value of `[[]]` which refers to an empty layout— XML syntax (for the `Layout` data type) written in a tag's attribute is wrapped in ``[[`` (opening) and `]]` (closing) symbols. In this case the `INNER_XML` variable defaults to empty XML, however it is not strictly useful here because the `children` attribute will always have its value replaced by whatever exists between opening and closing tags when this component is called from elsewhere.
 
 This is then expanded in the body of the row: `{{INNER_XML}}`.
 

@@ -24,7 +24,7 @@ impl<'a> LayoutSystem<'a> {
 	}
 
 	/// Load and construct a new window from a layout component
-	pub fn add_window(&'a mut self, name: (&str, &str)) {
+	pub fn add_window(&'a mut self, name: (&str, &str), window_size: (u32, u32)) {
 		// Preload the component and its dependencies
 		self.preload_component(name)
 			.expect(&format!("Failure loading layout component '{}'", Self::component_name(name))[..]);
@@ -33,7 +33,7 @@ impl<'a> LayoutSystem<'a> {
 		let window_root_component_name = Self::component_name(name);
 
 		// Construct the window and save it
-		let new_window = WindowDom::new(&window_root_component_name[..], (1920, 1080), &self.loaded_components);
+		let new_window = WindowDom::new(&window_root_component_name[..], window_size, &self.loaded_components);
 		self.windows.push(new_window);
 	}
 
@@ -117,9 +117,9 @@ impl<'a> LayoutSystem<'a> {
 			}
 		}
 
-		// Explore the tree of `content` children
-		if let Some(ref content) = tag.content {
-			for child_node in content.iter() {
+		// Explore the tree of the `children` elements stored in this component
+		if let Some(ref children) = tag.children {
+			for child_node in children.iter() {
 				for descendant in child_node.descendants() {
 					match &*descendant.borrow() {
 						LayoutComponentNode::Tag(component_tag) => self.explore_component_tag(component_tag, already_loaded_layouts),
@@ -144,7 +144,7 @@ impl<'a> LayoutSystem<'a> {
 		Ok(Self::node_tree_from_node_or_def_tree(&parsed_tree))
 	}
 
-	/// Flatten a full XML component AST into a vector of the immediate children and put the descendants of those nodes into `content` attributes
+	/// Flatten a full XML component AST into a vector of the immediate children and put the descendants of those nodes into `children` attributes
 	fn flatten_component_tree(tree: &mut NodeOrDefTree) -> FlatComponent {
 		let own_info = match &*tree.borrow() {
 			LayoutComponentNodeOrDefinition::LayoutComponentDefinition(definition) => definition.clone(),
@@ -152,11 +152,11 @@ impl<'a> LayoutSystem<'a> {
 			LayoutComponentNodeOrDefinition::LayoutComponentNode(LayoutComponentNode::Text(_)) => panic!("Text node found in place of component definition"),
 		};
 
-		// Turn all the tag nodes (but not text nodes) into a list of flat child components (with their descendant trees in their `content` attributes)
+		// Turn all the tag nodes (but not text nodes) into a list of flat child components (with their descendant trees in their `children` attributes)
 		let child_components = tree
 			// Get the direct children from this tree node
 			.children()
-			// Clone each child abstract tag node (ignoring text nodes) with each of their descendants added to their `content` attribute variable
+			// Clone each child abstract tag node (ignoring text nodes) with each of their descendants added to their `children` attribute variable
 			.filter_map(|child_node| {
 				// Filter out text nodes because they make no sense as child components
 				let mut cloned_tag = match &*child_node.borrow() {
@@ -165,14 +165,14 @@ impl<'a> LayoutSystem<'a> {
 					LayoutComponentNodeOrDefinition::LayoutComponentDefinition(_) => panic!("Component definition found in place of tag node"),
 				};
 
-				// Clone the tree for this child as `LayoutComponentNode`s and turn its children into a vector, then set that vector as the content attribute
+				// Clone the tree for this child as `LayoutComponentNode`s and turn its children into a vector, then set that vector as the `children` attribute
 				let node_within_root = Self::node_tree_from_node_or_def_tree(&child_node);
 				let children = node_within_root.children().map(|mut child| {
 					// Child must be detached in order to live on its own in the vector, otherwise it will be cleaned up when its (former) parent is dropped
 					child.detach();
 					child
 				}).collect::<Vec<_>>();
-				cloned_tag.set_content(children);
+				cloned_tag.set_children(children);
 
 				// Return this `LayoutComponentTag` within the component's root definition tag
 				Some(cloned_tag)
