@@ -1,3 +1,3 @@
-<icon content="INNER_XML: (Layout) = [[]]" :svg="SVG_SOURCE: (TemplateString) = ``" :style="SVG_STYLE: (TemplateString) = ``">
+<icon children="INNER_XML: (Layout) = [[]]" :svg="SVG_SOURCE: (TemplateString) = ``" :style="SVG_STYLE: (TemplateString) = ``">
 	{{INNER_XML}}
 </icon>
