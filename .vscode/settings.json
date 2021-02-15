@@ -7,6 +7,9 @@
 		"--config",                           // Remove when rustfmt 2.0
 		"match_block_trailing_comma=true",    // is released
 		"--config",                           // Remove when control_brace_style
-		"control_brace_style=ClosingNextLine" // becomes stable
-	]
+		"control_brace_style=ClosingNextLine" // becomes stable https://github.com/rust-lang/rustfmt/issues/3377
+	],
+	"rust-analyzer.diagnostics.disabled": [   // Remove when rust-analyzer bug fixes
+		"missing-unsafe"                      // unsafe code on WASM JavaScript
+	]                                         // https://github.com/rust-analyzer/rust-analyzer/issues/5412
 }
