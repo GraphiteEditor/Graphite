@@ -1,7 +1,0 @@
-<viewport:panels>
-	<input:checkbox-with-dropdown :checked="true" :selected-index="2">
-		Option A
-		Option B
-		Option C
-	</input:checkbox-with-dropdown>
-</viewport:panels>
