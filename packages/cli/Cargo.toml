@@ -1,7 +1,7 @@
 [package]
 name = "cli"
 version = "0.1.0"
-authors = ["Keavon Chambers <keavon@keavon.com>"]
+authors = ["Keavon Chambers <graphite@keavon.com>"]
 edition = "2018"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
