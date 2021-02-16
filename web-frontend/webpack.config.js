@@ -1,4 +1,4 @@
-const path = require('path');
+const path = require("path");
 const HtmlWebpackPlugin = require("html-webpack-plugin");
 const WasmPackPlugin = require("@wasm-tool/wasm-pack-plugin");
 
@@ -9,15 +9,15 @@ module.exports = {
 		filename: "main.js",
 	},
 	plugins: [
-		new HtmlWebpackPlugin({ title: 'Graphite' }),
+		new HtmlWebpackPlugin({ title: "Graphite" }),
 		new WasmPackPlugin({
 			crateDirectory: path.resolve(__dirname, "..", "packages", "wasm-bindings"),
 			outDir: path.resolve(__dirname, "pkg"),
 		}),
 	],
 	mode: "development",
-	devtool: 'source-map',
-	experiments: {
-		syncWebAssembly: true,
-	},
+	devtool: "source-map",
+	// experiments: {
+	// 	syncWebAssembly: true,
+	// },
 };
