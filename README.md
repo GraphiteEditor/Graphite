@@ -3,16 +3,14 @@ Graphite is an open-source, cross-platform digital content creation desktop app 
 
 ## Status
 
-*The code has not had many updates in the past half year as I moved my focus towards hammering out more of the product design and user experience. I'm looking forward to working with interested community members to get back to developing the code further throughout 2021, with the goal of establishing a minimum viable product by end-of-year.*
-
 Graphite is in an early stage of development and its vision is highly ambitious. The project is seeking collaborators to help design and develop the software. If interested, please open an issue to get in touch or introduce yourself in the project's Discord chat server at `https://di-s-co-rd.gg/p2-a-Y-jM3` (remove the dashes).
 
-## Design
+## Design mockups
 
-Interactive viewport *(work-in-progress design mockup)*:
+Interactive viewport **mockup** *(work-in-progress design)*:
 ![Interactive viewport](https://files.keavon.com/-/EmotionalShoddyTurnstone/capture.png)
 
-Node editor *(work-in-progress design mockup)*:
+Node editor **mockup** *(work-in-progress design)*:
 ![Node editor](https://files.keavon.com/-/PartialTalkativePooch/capture.png)
 
 ## Technology
@@ -23,9 +21,11 @@ Node editor *(work-in-progress design mockup)*:
 
 [Vue.js](https://vuejs.org/) is the web frontend framework initally used for building Graphite's user interface. This means, for the moment, Graphite will only run in a browser using Rust code compiled to [WebAssembly](https://webassembly.org/) (via [wasm-bindgen](https://github.com/rustwasm/wasm-bindgen)). This web-based GUI is intended to be rewritten in a native Rust GUI framework once that ecosystem matures or a developer can write a custom GUI framework suitable to the subset of featured needed by Graphite's user interface. The project was initially trying to write a custom GUI framework throughout 2020, but this was halting progress on higher-priority features.
 
-Extension scripting language: this is to-be-decided. JavaScript (via [Deno's V8 Rust library](https://github.com/denoland/rusty_v8)) is one option, [Mun](https://mun-lang.org/) or Lua are other possibilities, and WebAssembly modules or modular compiled Rust modules are other possibilities.
-
 [Pathfinder](https://github.com/servo/pathfinder) is a Rust library that will be used for vector graphics rendering.
+
+Extension scripting language: the current plan is to use WASM modules that call APIs exposed for adding to parts of the GUI and controlling functionality around the application.
+
+Node code scripting language: to be decided. Some nodes expose a code editor for writing short scripts to perform actions more efficiently than stringing together a bunch of nodes. (For comparison, Houdini uses its Vex language for this.) It may be possible to build a language runtime into a "language server node" (some would be provided by extensions, some out-of-the-box); other nodes could then consume a chosen language server node and execute logic written in the language of the user's choice.
 
 ## Running the code
 
