@@ -38,6 +38,7 @@
 		margin: 0 8px;
 		display: flex;
 		align-items: center;
+		white-space: nowrap;
 	}
 }
 </style>
