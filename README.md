@@ -17,12 +17,39 @@ Node editor *(work-in-progress design mockup)*:
 
 ## Technology
 
-[Rust](https://www.rust-lang.org/) is the language of choice for a number of compelling reasons. It is low-level and highly efficient which is important because the nondestructive, resolution-agnostic editing approach will already be challenging to render fast enough for real-time, interactive editing. Furthermore, Rust makes multithreading very easy to implement and its safety guarantees will eliminate the inclusion of many bugs and crashes in the software. It is also easy to compile Rust code natively to Windows, macOS, Linux, and even web browsers via WebAssembly, with the possibility of deploying Graphite to mobile devices down the road as well.
+[Rust](https://www.rust-lang.org/) is the language of choice for a number of compelling reasons. It is low-level and highly efficient which is important because the nondestructive, resolution-agnostic editing approach will already be challenging to render fast enough for real-time, interactive editing. Furthermore, Rust makes multithreading very easy to implement and its safety guarantees will eliminate the inclusion of many bugs and crashes in the software. It is also easy to compile Rust code natively to Windows, macOS, Linux, and web browsers via WebAssembly, with the possibility of deploying Graphite to mobile devices down the road as well.
 
-[WebGPU](https://gpuweb.github.io/gpuweb) (via Mozilla's [WGPU Rust library](https://wgpu.rs)) is being used as the graphics API because it is modern, portable, and safe. It makes deployment on the web and native platforms easy while ensuring consistent cross-platform behavior. It also offers the ability to use compute shaders to perform many tasks that speed up graphical computations.
+[WebGPU](https://gpuweb.github.io/gpuweb) (via the [WGPU Rust library](https://wgpu.rs)) is being used as the graphics API because it is modern, portable, and safe. It makes deployment on the web and native platforms easy while ensuring consistent cross-platform behavior. It also offers the ability to use compute shaders to perform many tasks that speed up graphical computations.
 
-The [GUI framework](gui) is being custom-built for the specific needs of Graphite's interface, based on a simple XML format inspired by HTML, CSS, and Vue.js. This is the current focus of development.
+[Vue.js](https://vuejs.org/) is the web frontend framework initally used for building Graphite's user interface. This means, for the moment, Graphite will only run in a browser using Rust code compiled to [WebAssembly](https://webassembly.org/) (via [wasm-bindgen](https://github.com/rustwasm/wasm-bindgen)). This web-based GUI is intended to be rewritten in a native Rust GUI framework once that ecosystem matures or a developer can write a custom GUI framework suitable to the subset of featured needed by Graphite's user interface. The project was initially trying to write a custom GUI framework throughout 2020, but this was halting progress on higher-priority features.
 
-Scripting language: this is to-be-decided. JavaScript (via [Deno's V8 Rust library](https://github.com/denoland/rusty_v8)) is one option, [Mun](https://mun-lang.org/) or Lua are other possibilities, and WebAssembly modules or modular compiled Rust modules are other possibilities.
+Extension scripting language: this is to-be-decided. JavaScript (via [Deno's V8 Rust library](https://github.com/denoland/rusty_v8)) is one option, [Mun](https://mun-lang.org/) or Lua are other possibilities, and WebAssembly modules or modular compiled Rust modules are other possibilities.
 
 [Pathfinder](https://github.com/servo/pathfinder) is a Rust library that will be used for vector graphics rendering.
+
+## Running the code
+
+The project is split between a Rust crates in `/packages` and web-based frontend in `/web-frontend` (this will be replaced by a native GUI system in the future in order to compile Graphite for Windows, Mac, and Linux). Currently the Vue.js frontend runs with the Vue CLI but the WASM bindings HTML/JS is built with WebPack (see [issue #29](https://github.com/Keavon/Graphite/issues/29)).
+
+### Running the web frontend
+
+```
+cd web-frontend
+npm install
+npm run serve
+```
+
+### Running the WASM binding generator
+
+PREREQUISITE: [Download and install](https://rustwasm.github.io/wasm-pack/) wasm-pack first.
+```
+cd web-frontend
+npm install
+npm run webpack-start
+```
+
+### Running the Rust code
+
+```
+cargo run
+```
