@@ -38,6 +38,10 @@
 			fill: #fff;
 		}
 	}
+
+	&.close:hover {
+		background: #e81123;
+	}
 }
 </style>
 

@@ -18,6 +18,7 @@
 	margin: 0 8px;
 	display: flex;
 	align-items: center;
+	white-space: nowrap;
 
 	.input-key, .input-mouse {
 		margin-right: 4px;

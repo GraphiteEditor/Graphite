@@ -8,6 +8,7 @@
 .window-title {
 	display: flex;
 	align-items: center;
+	white-space: nowrap;
 	padding: 0 8px;
 }
 </style>
