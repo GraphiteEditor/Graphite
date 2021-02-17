@@ -3,15 +3,15 @@
 </template>
 
 <script lang="ts">
-import { Options, Vue } from "vue-class-component";
+import { defineComponent } from "vue";
 import MainWindow from "./components/window/MainWindow.vue";
 
-@Options({
+export default defineComponent({
+	name: "App",
 	components: {
 		MainWindow,
 	},
-})
-export default class App extends Vue {}
+});
 </script>
 
 <style lang="scss">

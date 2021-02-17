@@ -39,18 +39,17 @@
 </style>
 
 <script lang="ts">
-import { Options, Vue } from "vue-class-component";
+import { defineComponent } from "vue";
 import LayoutRow from "../layout/LayoutRow.vue";
 import LayoutCol from "../layout/LayoutCol.vue";
 import DockablePanel from "./DockablePanel.vue";
 
-@Options({
+export default defineComponent({
+	name: "PanelArea",
 	components: {
 		LayoutRow,
 		LayoutCol,
 		DockablePanel,
 	},
-	props: {},
-})
-export default class PanelArea extends Vue {}
+});
 </script>
