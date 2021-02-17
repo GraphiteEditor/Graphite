@@ -33,6 +33,7 @@
 	"vetur.format.options.useTabs": true,
 	"eslint.format.enable": true,
 	"files.eol": "\n",
+	"html.format.wrapLineLength": 200,
 	"vetur.validation.interpolation": false,
 	"vetur.format.options.tabSize": 4,
 	"vetur.experimental.templateInterpolationService": true
