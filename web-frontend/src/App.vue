@@ -18,7 +18,7 @@ export default defineComponent({
 html, body, #app {
 	margin: 0;
 	height: 100%;
-	font-family: "Segoe UI", Arial, sans-serif;
+	font-family: "Source Sans Pro", Arial, sans-serif;
 	font-size: 14px;
 	line-height: 1;
 	color: #ddd;
