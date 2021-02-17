@@ -1,5 +1,3 @@
 const wasm = import("./pkg");
 
-wasm
-	.then(wasm => wasm.greet())
-	.catch(console.error);
+wasm.then((binding) => binding.greet()).catch(console.error);
