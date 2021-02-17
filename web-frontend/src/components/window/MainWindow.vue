@@ -34,14 +34,15 @@
 </style>
 
 <script lang="ts">
-import { Options, Vue } from "vue-class-component";
+import { defineComponent } from "vue";
 import LayoutRow from "../layout/LayoutRow.vue";
 import LayoutCol from "../layout/LayoutCol.vue";
 import HeaderBar from "../header/HeaderBar.vue";
 import PanelArea from "../panel-system/PanelArea.vue";
 import FooterBar from "../footer/FooterBar.vue";
 
-@Options({
+export default defineComponent({
+	name: "MainWindow",
 	components: {
 		LayoutRow,
 		LayoutCol,
@@ -49,7 +50,5 @@ import FooterBar from "../footer/FooterBar.vue";
 		PanelArea,
 		FooterBar,
 	},
-	props: {},
-})
-export default class MainWindow extends Vue {}
+});
 </script>

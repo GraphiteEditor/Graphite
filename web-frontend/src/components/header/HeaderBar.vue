@@ -30,22 +30,17 @@
 </style>
 
 <script lang="ts">
-import { Options, Vue } from "vue-class-component";
-import LayoutRow from "../layout/LayoutRow.vue";
-import LayoutCol from "../layout/LayoutCol.vue";
+import { defineComponent } from "vue";
 import FileMenu from "./FileMenu.vue";
 import WindowTitle from "./WindowTitle.vue";
 import WindowButtons from "./WindowButtons.vue";
 
-@Options({
+export default defineComponent({
+	name: "HeaderBar",
 	components: {
-		LayoutRow,
-		LayoutCol,
 		FileMenu,
 		WindowTitle,
 		WindowButtons,
 	},
-	props: {},
-})
-export default class HeaderBar extends Vue {}
+});
 </script>

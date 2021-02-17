@@ -44,18 +44,14 @@
 </style>
 
 <script lang="ts">
-import { Options, Vue } from "vue-class-component";
-import LayoutRow from "../layout/LayoutRow.vue";
-import LayoutCol from "../layout/LayoutCol.vue";
+import { defineComponent } from "vue";
 import InputHint from "./InputHint.vue";
 
-@Options({
+export default defineComponent({
+	name: "FooterBar",
 	components: {
-		LayoutRow,
-		LayoutCol,
 		InputHint,
 	},
-	props: {},
-})
-export default class FooterBar extends Vue {}
+});
+
 </script>

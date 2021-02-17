@@ -54,7 +54,7 @@
 </style>
 
 <script lang="ts">
-import { Options, Vue } from "vue-class-component";
+import { defineComponent } from "vue";
 
 export enum MouseInputInteraction {
 	"None" = "None",
@@ -69,14 +69,14 @@ export enum MouseInputInteraction {
 	"MMBDrag" = "MMBDrag",
 }
 
-@Options({
-	components: {},
+export default defineComponent({
+	name: "InputHint",
 	props: {
-		inputKeys: { type: Array, default: [] },
+		inputKeys: { type: Array, default: () => [] },
 		inputMouse: { type: String },
 	},
 	computed: {
-		getMouseIconInnerSVG() {
+		getMouseIconInnerSVG(): string {
 			switch (this.inputMouse) {
 			case MouseInputInteraction.None: return `
 				<path style="fill:#888888;" d="M9,7c0,0.55-0.45,1-1,1l0,0C7.45,8,7,7.55,7,7V4.5c0-0.55,0.45-1,1-1l0,0c0.55,0,1,0.45,1,1V7z" />
@@ -140,6 +140,5 @@ export enum MouseInputInteraction {
 			}
 		},
 	},
-})
-export default class InputHint extends Vue {}
+});
 </script>

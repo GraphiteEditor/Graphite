@@ -46,13 +46,12 @@
 </style>
 
 <script lang="ts">
-import { Options, Vue } from "vue-class-component";
+import { defineComponent } from "vue";
 
-@Options({
-	components: {},
+export default defineComponent({
+	name: "WindowButtons",
 	props: {
 		maximized: { type: Boolean, default: false },
 	},
-})
-export default class WindowButtons extends Vue {}
+});
 </script>
