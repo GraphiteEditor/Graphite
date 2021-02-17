@@ -131,16 +131,15 @@
 </style>
 
 <script lang="ts">
-import { Options, Vue } from "vue-class-component";
+import { defineComponent } from "vue";
 
-@Options({
-	components: {},
+export default defineComponent({
+	name: "DockablePanel",
 	props: {
 		tabConstantWidths: { type: Boolean, default: false },
 		tabCloseButtons: { type: Boolean, default: false },
 		tabLabels: { type: Array, required: true },
 		tabActiveIndex: { type: Number, required: true },
 	},
-})
-export default class DockablePanel extends Vue {}
+});
 </script>
