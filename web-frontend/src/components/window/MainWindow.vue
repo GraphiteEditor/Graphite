@@ -1,12 +1,12 @@
 <template>
 	<LayoutCol class="main-window">
-		<LayoutRow :class="['header-bar']">
-			<HeaderBar />
+		<LayoutRow :class="'title-bar'">
+			<TitleBar :platform="platform" :maximized="maximized" />
 		</LayoutRow>
-		<LayoutRow :class="['panel-container']">
+		<LayoutRow :class="'panel-container'">
 			<PanelArea />
 		</LayoutRow>
-		<LayoutRow :class="['footer-bar']">
+		<LayoutRow :class="'footer-bar'">
 			<FooterBar />
 		</LayoutRow>
 	</LayoutCol>
@@ -17,7 +17,7 @@
 	height: 100%;
 }
 
-.header-bar {
+.title-bar {
 	height: 28px;
 	flex: 0 0 auto;
 }
@@ -37,17 +37,30 @@
 import { defineComponent } from "vue";
 import LayoutRow from "../layout/LayoutRow.vue";
 import LayoutCol from "../layout/LayoutCol.vue";
-import HeaderBar from "../header/HeaderBar.vue";
 import PanelArea from "../panel-system/PanelArea.vue";
-import FooterBar from "../footer/FooterBar.vue";
+import TitleBar from "./title-bar/TitleBar.vue";
+import FooterBar from "./footer-bar/FooterBar.vue";
+
+export enum ApplicationPlatform {
+	"Windows" = "Windows",
+	"Mac" = "Mac",
+	"Linux" = "Linux",
+	"Web" = "Web",
+}
 
 export default defineComponent({
 	components: {
 		LayoutRow,
 		LayoutCol,
-		HeaderBar,
+		TitleBar,
 		PanelArea,
 		FooterBar,
+	},
+	data() {
+		return {
+			platform: ApplicationPlatform.Web,
+			maximized: true,
+		};
 	},
 });
 </script>

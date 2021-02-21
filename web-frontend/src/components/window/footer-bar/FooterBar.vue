@@ -1,7 +1,7 @@
 <template>
 	<div class="status-area footer-third">
 		<div>
-			<span>File: 1.8 MB | Memory: 137 MB | Scratch: 0.7/12.3 GB</span>
+			<span>Document: 0.17 MB | Memory: 137 MB | Scratch: 0.7/12.3 GB</span>
 		</div>
 	</div>
 	<div class="hint-area footer-third">
