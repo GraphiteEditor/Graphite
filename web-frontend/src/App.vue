@@ -2,18 +2,6 @@
 	<MainWindow />
 </template>
 
-<script lang="ts">
-import { defineComponent } from "vue";
-import MainWindow from "./components/window/MainWindow.vue";
-
-export default defineComponent({
-	name: "App",
-	components: {
-		MainWindow,
-	},
-});
-</script>
-
 <style lang="scss">
 html, body, #app {
 	margin: 0;
@@ -26,3 +14,12 @@ html, body, #app {
 	user-select: none;
 }
 </style>
+
+<script lang="ts">
+import { defineComponent } from "vue";
+import MainWindow from "./components/window/MainWindow.vue";
+
+export default defineComponent({
+	components: { MainWindow },
+});
+</script>

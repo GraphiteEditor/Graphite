@@ -15,7 +15,5 @@
 <script lang="ts">
 import { defineComponent } from "vue";
 
-export default defineComponent({
-	name: "LayoutRow",
-});
+export default defineComponent({});
 </script>

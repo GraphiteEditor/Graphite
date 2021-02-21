@@ -45,7 +45,6 @@ import LayoutCol from "../layout/LayoutCol.vue";
 import DockablePanel from "./DockablePanel.vue";
 
 export default defineComponent({
-	name: "PanelArea",
 	components: {
 		LayoutRow,
 		LayoutCol,

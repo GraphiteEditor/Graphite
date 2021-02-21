@@ -50,7 +50,5 @@
 <script lang="ts">
 import { defineComponent } from "vue";
 
-export default defineComponent({
-	name: "FileMenu",
-});
+export default defineComponent({});
 </script>
