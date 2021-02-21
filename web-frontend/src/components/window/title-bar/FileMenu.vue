@@ -49,6 +49,13 @@
 
 <script lang="ts">
 import { defineComponent } from "vue";
+import { ApplicationPlatform } from "../MainWindow.vue";
 
-export default defineComponent({});
+export default defineComponent({
+	data() {
+		return {
+			ApplicationPlatform,
+		};
+	},
+});
 </script>
