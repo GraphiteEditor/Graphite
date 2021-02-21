@@ -16,7 +16,5 @@
 <script lang="ts">
 import { defineComponent } from "vue";
 
-export default defineComponent({
-	name: "WindowTitle",
-});
+export default defineComponent({});
 </script>

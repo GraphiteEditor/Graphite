@@ -36,7 +36,6 @@ import WindowTitle from "./WindowTitle.vue";
 import WindowButtons from "./WindowButtons.vue";
 
 export default defineComponent({
-	name: "HeaderBar",
 	components: {
 		FileMenu,
 		WindowTitle,

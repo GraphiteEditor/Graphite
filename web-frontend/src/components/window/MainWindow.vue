@@ -42,7 +42,6 @@ import PanelArea from "../panel-system/PanelArea.vue";
 import FooterBar from "../footer/FooterBar.vue";
 
 export default defineComponent({
-	name: "MainWindow",
 	components: {
 		LayoutRow,
 		LayoutCol,

@@ -48,7 +48,6 @@ import { defineComponent } from "vue";
 import InputHint from "./InputHint.vue";
 
 export default defineComponent({
-	name: "FooterBar",
 	components: {
 		InputHint,
 	},

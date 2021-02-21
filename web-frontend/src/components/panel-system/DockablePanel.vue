@@ -134,7 +134,6 @@
 import { defineComponent } from "vue";
 
 export default defineComponent({
-	name: "DockablePanel",
 	props: {
 		tabConstantWidths: { type: Boolean, default: false },
 		tabCloseButtons: { type: Boolean, default: false },
