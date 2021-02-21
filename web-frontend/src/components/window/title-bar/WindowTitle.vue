@@ -1,6 +1,6 @@
 <template>
 	<div class="window-title">
-		<span>X-35B.gdd* - Graphite</span>
+		<span>{{title}}</span>
 	</div>
 </template>
 
@@ -16,5 +16,9 @@
 <script lang="ts">
 import { defineComponent } from "vue";
 
-export default defineComponent({});
+export default defineComponent({
+	props: {
+		title: { type: String, required: true },
+	},
+});
 </script>

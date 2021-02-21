@@ -3,7 +3,11 @@
 		<div class="tab-bar" :class="{ 'constant-widths': tabConstantWidths }">
 			<div class="tab" :class="{ active: tabIndex === tabActiveIndex }" v-for="(tabLabel, tabIndex) in tabLabels" :key="tabLabel">
 				<span>{{tabLabel}}</span>
-				<button v-if="tabCloseButtons">✕</button>
+				<button v-if="tabCloseButtons">
+					<svg width="16" height="16" viewBox="0 0 16 16">
+						<polygon points="12,5 11,4 8,7 5,4 4,5 7,8 4,11 5,12 8,9 11,12 12,11 9,8" />
+					</svg>
+				</button>
 			</div>
 		</div>
 		<div class="panel-content">
@@ -70,7 +74,7 @@
 				overflow-x: hidden;
 				white-space: nowrap;
 				text-overflow: ellipsis;
-				// Required because https://stackoverflow.com/a/21611191/775283
+				// Height and line-height required because https://stackoverflow.com/a/21611191/775283
 				height: 100%;
 				line-height: 28px;
 			}
@@ -88,10 +92,12 @@
 				font-size: 10px;
 				border-radius: 2px;
 				margin-left: 8px;
+				fill: #ddd;
 
 				&:hover {
 					background: #555;
 					color: white;
+					fill: white;
 				}
 			}
 
