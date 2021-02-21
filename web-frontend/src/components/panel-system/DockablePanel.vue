@@ -11,7 +11,7 @@
 			</div>
 		</div>
 		<div class="panel-content">
-
+			<component :is="panelType" />
 		</div>
 	</div>
 </template>
@@ -138,13 +138,24 @@
 
 <script lang="ts">
 import { defineComponent } from "vue";
+import Viewport from "../panels/ViewportPanel.vue";
+import Properties from "../panels/PropertiesPanel.vue";
+import Layers from "../panels/LayersPanel.vue";
+import Minimap from "../panels/MinimapPanel.vue";
 
 export default defineComponent({
+	components: {
+		Viewport,
+		Properties,
+		Layers,
+		Minimap,
+	},
 	props: {
 		tabConstantWidths: { type: Boolean, default: false },
 		tabCloseButtons: { type: Boolean, default: false },
 		tabLabels: { type: Array, required: true },
 		tabActiveIndex: { type: Number, required: true },
+		panelType: { type: String, required: true },
 	},
 });
 </script>

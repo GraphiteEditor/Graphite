@@ -1,20 +1,20 @@
 <template>
 	<LayoutRow class="dockable-grid-subdivision">
 		<LayoutCol class="dockable-grid-subdivision" style="flex-grow: 1597;">
-			<DockablePanel :tabCloseButtons="true" :tabConstantWidths="true" :tabLabels="['X-35B*', 'Document 2', 'Document 3', 'Document 4', 'Document 5']" :tabActiveIndex="0" />
+			<DockablePanel :panelType="'Viewport'" :tabCloseButtons="true" :tabConstantWidths="true" :tabLabels="['X-35B*', 'Document 2', 'Document 3', 'Document 4', 'Document 5']" :tabActiveIndex="0" />
 		</LayoutCol>
 		<LayoutCol class="dockable-grid-resize-gutter"></LayoutCol>
 		<LayoutCol class="dockable-grid-subdivision" style="flex-grow: 319;">
 			<LayoutRow class="dockable-grid-subdivision">
-				<DockablePanel :tabLabels="['Properties', 'Typography', 'Colors']" :tabActiveIndex="0" />
+				<DockablePanel :panelType="'Properties'" :tabLabels="['Properties', 'Typography', 'Colors']" :tabActiveIndex="0" />
 			</LayoutRow>
 			<LayoutRow class="dockable-grid-resize-gutter"></LayoutRow>
 			<LayoutRow class="dockable-grid-subdivision">
-				<DockablePanel :tabLabels="['Layers']" :tabActiveIndex="0" />
+				<DockablePanel :panelType="'Layers'" :tabLabels="['Layers']" :tabActiveIndex="0" />
 			</LayoutRow>
 			<LayoutRow class="dockable-grid-resize-gutter"></LayoutRow>
 			<LayoutRow class="dockable-grid-subdivision" style="flex-grow: 0; height: 0;">
-				<DockablePanel :tabLabels="['Minimap', 'Brushes', 'Links']" :tabActiveIndex="0" />
+				<DockablePanel :panelType="'Minimap'" :tabLabels="['Minimap', 'Brushes', 'Links']" :tabActiveIndex="0" />
 			</LayoutRow>
 		</LayoutCol>
 	</LayoutRow>
