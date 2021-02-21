@@ -49,7 +49,6 @@
 import { defineComponent } from "vue";
 
 export default defineComponent({
-	name: "WindowButtons",
 	props: {
 		maximized: { type: Boolean, default: false },
 	},

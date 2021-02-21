@@ -70,7 +70,6 @@ export enum MouseInputInteraction {
 }
 
 export default defineComponent({
-	name: "InputHint",
 	props: {
 		inputKeys: { type: Array, default: () => [] },
 		inputMouse: { type: String },
