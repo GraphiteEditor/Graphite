@@ -1,7 +1,8 @@
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [workspace]
-
 members = [
 	"packages/*",
 ]
+
+[profile.release.package.wasm-bindings]
+# Tell `rustc` to optimize for small code size.
+opt-level = "s"
