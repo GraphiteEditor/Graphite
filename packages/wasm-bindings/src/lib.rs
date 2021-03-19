@@ -12,7 +12,8 @@ extern "C" {
 	fn alert(s: &str);
 }
 
-#[wasm_bindgen]
-pub fn greet() {
+#[wasm_bindgen(start)]
+pub fn init() {
+	utils::set_panic_hook();
 	alert("Hello, Graphite!");
 }
