@@ -1,5 +1,5 @@
 use crate::EditorError;
-type PanelId = usize;
+pub type PanelId = usize;
 
 struct LayoutRoot {
 	hovered_panel: PanelId,
