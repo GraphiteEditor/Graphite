@@ -1,6 +1,7 @@
 [workspace]
 members = [
 	"packages/*",
+    "web-frontend/wasm-wrapper",
 ]
 
 [profile.release.package.wasm-bindings]
