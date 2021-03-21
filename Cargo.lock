@@ -199,10 +199,11 @@ dependencies = [
 ]
 
 [[package]]
-name = "wasm-bindings"
+name = "wasm-wrapper"
 version = "0.1.0"
 dependencies = [
  "console_error_panic_hook",
+ "graphite-editor",
  "wasm-bindgen",
  "wasm-bindgen-test",
 ]

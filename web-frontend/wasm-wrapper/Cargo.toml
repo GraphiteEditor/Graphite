@@ -1,5 +1,5 @@
 [package]
-name = "wasm-bindings"
+name = "wasm-wrapper"
 version = "0.1.0"
 authors = ["Keavon Chambers <graphite@keavon.com>"]
 edition = "2018"
@@ -12,6 +12,7 @@ default = ["console_error_panic_hook"]
 
 [dependencies]
 wasm-bindgen = "0.2.72"
+graphite-editor = { path = "../../packages/graphite-editor" }
 
 # The `console_error_panic_hook` crate provides better debugging of panics by
 # logging them with `console.error`. This is great for development, but requires
