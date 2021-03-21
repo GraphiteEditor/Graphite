@@ -2,7 +2,7 @@ use crate::Color;
 
 const TOOL_COUNT: usize = 10;
 
-struct ToolState {
+pub struct ToolState {
 	primary_color: Color,
 	secondary_color: Color,
 	active_tool: ToolType,
@@ -11,12 +11,12 @@ struct ToolState {
 
 impl ToolState {
 	pub fn select_tool(&mut self, tool: ToolType) {
-		self.active_tool = ToolType
+		self.active_tool = tool
 	}
 }
 
 #[repr(usize)]
-enum ToolType {
+pub enum ToolType {
 	Select = 0,
 	Crop = 1,
 	Navigate = 2,
@@ -30,11 +30,11 @@ enum ToolType {
 	// all discriminats must be strictly smaller than TOOL_COUNT!
 }
 
-enum ToolSettings {
+pub enum ToolSettings {
 	Select { append_mode: SelectAppendMode },
 }
 
-enum SelectAppendMode {
+pub enum SelectAppendMode {
 	New,
 	Add,
 	Substract,
