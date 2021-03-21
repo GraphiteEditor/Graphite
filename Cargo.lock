@@ -33,6 +33,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "graphite-editor"
+version = "0.1.0"
+dependencies = [
+ "log",
+]
+
+[[package]]
 name = "js-sys"
 version = "0.3.49"
 source = "registry+https://github.com/rust-lang/crates.io-index"
