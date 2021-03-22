@@ -1,13 +1,22 @@
 <template>
 	<div class="panel">
-		<div class="tab-bar" :class="{ 'constant-widths': tabConstantWidths }">
-			<div class="tab" :class="{ active: tabIndex === tabActiveIndex }" v-for="(tabLabel, tabIndex) in tabLabels" :key="tabLabel">
-				<span>{{tabLabel}}</span>
-				<button v-if="tabCloseButtons">
-					<svg width="16" height="16" viewBox="0 0 16 16">
-						<polygon points="12,5 11,4 8,7 5,4 4,5 7,8 4,11 5,12 8,9 11,12 12,11 9,8" />
-					</svg>
-				</button>
+		<div class="tab-bar" :class="{ 'min-widths': tabMinWidths }">
+			<div class="tab-group">
+				<div class="tab" :class="{ active: tabIndex === tabActiveIndex }" v-for="(tabLabel, tabIndex) in tabLabels" :key="tabLabel">
+					<span>{{tabLabel}}</span>
+					<button v-if="tabCloseButtons">
+						<svg width="16" height="16" viewBox="0 0 16 16">
+							<polygon points="12,5 11,4 8,7 5,4 4,5 7,8 4,11 5,12 8,9 11,12 12,11 9,8" />
+						</svg>
+					</button>
+				</div>
+			</div>
+			<div class="panel-options-ellipsis">
+				<svg viewBox="0 0 16 24">
+					<circle cx="8" cy="8" r="1.5" />
+					<circle cx="8" cy="12" r="1.5" />
+					<circle cx="8" cy="16" r="1.5" />
+				</svg>
 			</div>
 		</div>
 		<div class="panel-content">
@@ -26,105 +35,130 @@
 	overflow: hidden;
 
 	.tab-bar {
-		flex-direction: row;
 		height: 28px;
 		display: flex;
-		overflow: hidden;
+		flex-direction: row;
 
-		&.constant-widths .tab {
-			width: 120px;
+		&.min-widths .tab-group .tab {
+			min-width: 120px;
+			max-width: 360px;
 		}
 
-		.tab {
-			height: 100%;
-			padding: 0 10px;
+		.tab-group {
+			flex: 1 1 100%;
 			display: flex;
-			align-items: center;
-			position: relative;
+			flex-direction: row;
+			overflow: hidden;
 
-			&.active {
-				background: #333;
-				border-radius: 8px 8px 0 0;
+			.tab {
+				height: 100%;
+				padding: 0 10px;
+				display: flex;
+				align-items: center;
 				position: relative;
 
-				&::before, &::after {
-					content: "";
+				&.active {
+					background: #333;
+					border-radius: 8px 8px 0 0;
+					position: relative;
+
+					&::before, &::after {
+						content: "";
+						width: 16px;
+						height: 8px;
+						position: absolute;
+						bottom: 0;
+						box-shadow: #333;
+					}
+
+					&::before {
+						left: -16px;
+						border-bottom-right-radius: 8px;
+						box-shadow: 8px 0 0 0 #333;
+					}
+
+					&::after {
+						right: -16px;
+						border-bottom-left-radius: 8px;
+						box-shadow: -8px 0 0 0 #333;
+					}
+				}
+
+				span {
+					flex: 1 1 100%;
+					overflow-x: hidden;
+					white-space: nowrap;
+					text-overflow: ellipsis;
+					// Height and line-height required because https://stackoverflow.com/a/21611191/775283
+					height: 100%;
+					line-height: 28px;
+				}
+
+				button {
+					flex: 0 0 auto;
+					outline: none;
+					border: none;
+					padding: 0;
 					width: 16px;
-					height: 8px;
-					position: absolute;
-					bottom: 0;
-					box-shadow: #333;
+					height: 16px;
+					background: none;
+					color: #ddd;
+					font-weight: bold;
+					font-size: 10px;
+					border-radius: 2px;
+					margin-left: 8px;
+					fill: #ddd;
+
+					&:hover {
+						background: #555;
+						color: white;
+						fill: white;
+					}
 				}
 
-				&::before {
-					left: -16px;
-					border-bottom-right-radius: 8px;
-					box-shadow: 8px 0 0 0 #333;
+				&:not(.active) + .tab:not(.active) {
+					margin-left: 1px;
+
+					&::before {
+						content: "";
+						position: absolute;
+						left: -1px;
+						width: 1px;
+						height: 16px;
+						background: #444;
+					}
 				}
 
-				&::after {
-					right: -16px;
-					border-bottom-left-radius: 8px;
-					box-shadow: -8px 0 0 0 #333;
+				&:last-of-type:not(.active) {
+					margin-right: 1px;
+
+					&::after {
+						content: "";
+						position: absolute;
+						right: -1px;
+						width: 1px;
+						height: 16px;
+						background: #444;
+					}
 				}
 			}
+		}
 
-			span {
-				flex: 1 1 100%;
-				overflow-x: hidden;
-				white-space: nowrap;
-				text-overflow: ellipsis;
-				// Height and line-height required because https://stackoverflow.com/a/21611191/775283
-				height: 100%;
-				line-height: 28px;
-			}
+		.panel-options-ellipsis {
+			width: 16px;
+			height: 24px;
+			margin: 2px 4px;
 
-			button {
-				flex: 0 0 auto;
-				outline: none;
-				border: none;
-				padding: 0;
+			svg {
 				width: 16px;
-				height: 16px;
-				background: none;
-				color: #ddd;
-				font-weight: bold;
-				font-size: 10px;
+				height: 24px;
 				border-radius: 2px;
-				margin-left: 8px;
 				fill: #ddd;
-
-				&:hover {
-					background: #555;
-					color: white;
-					fill: white;
-				}
 			}
 
-			&:not(.active) + .tab:not(.active) {
-				margin-left: 1px;
-
-				&::before {
-					content: "";
-					position: absolute;
-					left: -1px;
-					width: 1px;
-					height: 16px;
-					background: #444;
-				}
-			}
-
-			&:last-of-type:not(.active) {
-				margin-right: 1px;
-
-				&::after {
-					content: "";
-					position: absolute;
-					right: -1px;
-					width: 1px;
-					height: 16px;
-					background: #444;
-				}
+			&:hover svg {
+				background: #555;
+				fill: #fff;
 			}
 		}
 	}
@@ -151,7 +185,7 @@ export default defineComponent({
 		Minimap,
 	},
 	props: {
-		tabConstantWidths: { type: Boolean, default: false },
+		tabMinWidths: { type: Boolean, default: false },
 		tabCloseButtons: { type: Boolean, default: false },
 		tabLabels: { type: Array, required: true },
 		tabActiveIndex: { type: Number, required: true },
