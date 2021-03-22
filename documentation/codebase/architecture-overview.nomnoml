@@ -1,0 +1,165 @@
+#spacing: 120
+#arrowSize: 0.5
+#leading: 1.5
+#gravity: 1
+#direction: down
+#bendSize: 0.2
+
+#.dependencies: visual=note direction=right title=bold
+#.client: visual=roundrect fill=lightgreen title=bold
+#.editor: fill=lightblue title=bold
+#.document: fill=darkorange title=bold
+#.renderer: fill=gold title=bold
+
+// Hierarchy
+
+[<dependencies> Dependencies|
+    [<client> Frontend Editor Client]
+    [<client> Headless Editor Client]
+    [<client> Application Client
+    (like a game engine or game that renders .grd graphs at runtime)]
+    [<editor> Editor Library]
+    [<document> Document Library]
+    [<renderer> Renderer Library]
+    
+    [Frontend Editor Client] Depends On -> [Editor Library]
+    [Editor Library] Depends On -> [Document Library]
+    [Headless Editor Client] Depends On -> [Document Library]
+    [Document Library] Depends On -> [Renderer Library]
+    [Application Client] Depends On -> [Renderer Library]
+]
+
+// Client
+
+[<client> Frontend Implementation|
+    One of many possible frontend implementations,
+    such as the native or web client.
+]
+[Frontend Implementation] -> Event [Editor Event Dispatcher]
+
+[<client> CLI Implementation|
+    A possible text-based CLI program that
+    wraps Graphite Document. Users can
+    pass a .gdd document and operation to
+    add to the document history by saving
+    to the supplied .gdd file. Users can also
+    pass a .gdd document and request a
+    render. Caches are saved to disk.
+]
+[CLI Implementation] -> [Design Document Maintainer]
+
+// Editor
+
+[<editor> Editor Event Dispatcher|
+    Convert all events from the frontend into Actions
+    and Operations. Actions are diffs to update state
+    stores. Operations are history events in a .gdd
+    file. Operations and document-specific Actions
+    include the document ID in the call.
+]
+[Editor Event Dispatcher] -> Action [Editor State Store]
+[Editor Event Dispatcher] -> Action [Open Documents State Store]
+[Editor Event Dispatcher] -> Update Bounds [Scheduler]
+[Editor Event Dispatcher] -> Operation [Design Document Maintainer]
+
+[<editor> Editor State Store|
+    [<state> Panel Layout]|
+    [<state> Working Colors]|
+    [<state> Active Tool]|
+    [<state> Tool Options]|
+    [<state> Modifier Key Input]|
+    [<state> Currently Hovered Panel]
+]
+[Editor State Store] -> [Frontend Implementation]
+[Editor State Store] -> [Tool State Machine]
+
+[<editor> Open Documents State Store|
+    For each open document:|
+    [<state> Pan and zoom viewport bounds]|
+    [<state> Selected layers]
+]
+[Open Documents State Store] -> [Tool State Machine]
+[Open Documents State Store] -> [Frontend Implementation]
+
+[<editor> Tool State Machine|
+    List possible operations in current context
+]
+[Tool State Machine] -> [Frontend Implementation]
+
+// Document
+
+[<document> Design Document Maintainer|
+    Process each operation and apply changes to the given document's
+    operation chain. Consolidate changes where possible by modifying
+    the previous operation if it's the same as this one and append partial
+    updates to operations from in-progress interactive tools.
+]
+[Design Document Maintainer] -> Design Document Diff [Render Graph Maintainer]
+[Design Document Maintainer] <-> Design Document [Open Documents File Store]
+
+[<document> Render Graph Maintainer|
+    Bake operations into a complete graph including history references.
+    Starting from the beginning of document history, each operation
+    modifies the graph in a specific way. If an operation creates a node
+    that references this point in history, duplicate the current graph pieces
+    between the live graph and each additional history reference so
+    changed nodes in history are "ghost variants" living in the live graph.
+]
+[Render Graph Maintainer] -> Render Graph [Scheduler]
+[Render Graph Maintainer] <-> Render Graph [Open Documents File Store]
+
+[<document>Open Documents File Store|
+    Kept in-memory or written to disk.|
+    For each open document:|
+    [<state> Design Document (.gdd)]|
+    [<state> Render Graph (.grd)]
+]
+
+// Renderer
+
+[<renderer> Scheduler|
+    Manage a thread pool and GPU time. Perform progressive enhancement
+    and speculative tile rendering. Request re-render of dirtied document within
+    bounds and stitch them over dirty raster cache tiles. Maintain interactive
+    responsiveness by targeting a minimum framerate and picking a requisite
+    render quality level at all times. Precompute nodes downstream of changes
+    when there is spare CPU thread pool and GPU time. Primary purpose is to
+    keep the Precompute and Raster Tile caches up-to-date with minimal
+    onscreen latency. Also notifies the Final Render Assembler when the cache
+    tiles for the root document visible in bounds have finished being updated.
+]
+[Scheduler] -> [Node Rasterizer] 
+[Scheduler] <-> [Node Cache Manager] 
+[Scheduler] -> [Final Render Assembler] 
+
+[<renderer> Node Cache Manager|
+    Purges old or less useful cached data
+    as necessary.|
+    [<state> Precompute Node Cache|
+        Prepare data for rasterization step.
+        Evaluate algorithms (CPU or GPU).
+        Changes when upstream changes.
+    ]|
+    [<state> Raster Tile Node Cache|
+        Must be fast, fragment shader only.
+        Only reevaluate downstream.
+        Reuse when panning.
+    ]
+]
+[Node Cache Manager] -> [Final Render Assembler]
+
+[<renderer> Node Rasterizer|
+    Rasterize and update the cache for a specified node
+    given a preferred bounds (but it can give a different
+    sized output), resolution, and quality level.
+]
+[Node Rasterizer] <-> [Node Cache Manager]
+
+[<renderer> Final Render Assembler|
+    Look up the rasterized cached tiles from
+    the document root and assemble them into
+    an image for live display by the frontend.
+    Operates when woken up by the scheduler
+    when root tiles or render bounds are updated.
+]
+[Final Render Assembler] --> Rendered Viewport [Frontend Implementation]

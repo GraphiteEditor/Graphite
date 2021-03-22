@@ -1,0 +1,100 @@
+# Graphite editor manual
+
+Work in progress.
+
+- [Overview](1-overview.md)
+	- [Key concepts](1-overview.md#key-concepts)
+	- [Glossary of terminology](1-overview.md#glossary-of-terminology)
+- Interface
+	- Title bar
+	- Workspace
+		- Panel interface (tab, pin, options bar, left menu)
+		- Arrangement and docking
+	- Status bar
+	- Multiple windows
+- Panels
+	- Viewport
+		- Canvas
+		- Rulers
+		- Tool menu
+		- Options bar
+	- Properties
+		- Blending
+		- Origin
+		- Transform
+		- Node-specific properties
+	- Layers
+		- Interface
+		- Compositing flow
+		- Groups
+		- Masks
+		- Isolation
+	- Graph
+		- Interface
+		- Layer/node equivalence
+		- Compositing flow
+		- Groups
+		- Masks
+		- Isolation
+	- Connection Matrix
+	- Spreadsheet
+	- Node Catalog
+	- Asset Manager
+		- Embedded assets
+		- Linked assets
+		- Local assets
+		- Remote assets
+		- Store assets
+	- Palettes
+		- Each color palette is an asset
+	- Minimap
+	- Histogram
+	- Timeline
+- Documents and assets
+	- Node groups, layer groups, and document tabs are equivalent
+	- Groups/documents are assets
+	- Assets are embedded or linked
+	- The document canvas is a group output
+	- Art boards and dimensions
+	- Reusable assets
+- Tools
+	- Overview
+		- Tools add and update assets
+	- Layout tool group
+	- Parametric tool group
+	- Raster tool group
+	- Vector tool group
+- Vector editing
+	- Data types
+	- Data flow
+	- Rasterization
+- Raster editing
+	- Resolution-agnostic sampling
+	- Compositing and data flow
+	- Caching
+	- Predictive caching
+	- Progressive enhancement
+	- Generator nodes
+	- Rasterizer nodes
+	- Adjustment nodes
+	- Filter nodes
+	- Sample transformer nodes
+	- Historical sampling
+- Text editing
+- Data types
+- Node types
+- Node library
+- File format interoperability
+	- Import/export: JPG, PNG, APNG, GIF, TIFF, TGA, BMP, JPEG 2000, WebP, HEIF, ICO
+	- Import/export: EXR
+	- Import: digital camera raw formats
+	- Import/export: SVG
+	- Import/export: EPS
+	- Import/export: PDF
+	- Import: PSD/PSB, AI, INDD?
+	- Export: G-code formats for laser and vinyl cutters?
+- Extensions
+- Color management
+- Units, measurement, and scale
+- Headless and integrations
+- Animation
