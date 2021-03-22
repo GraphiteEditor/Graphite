@@ -1,45 +1,62 @@
 <template>
-	<div class="status-area footer-third">
-		<div>
-			<span>Document: 0.17 MB | Memory: 137 MB | Scratch: 0.7/12.3 GB</span>
-		</div>
+	<div class="hint-area footer-area">
+		<InputHint :inputMouse="'LMB'">Select Object</InputHint>
+		<span class="plus">+</span>
+		<InputHint :inputKeys="['⇧']">Grow/Shrink Selection</InputHint>
+		<div class="divider"></div>
+		<InputHint :inputMouse="'LMBDrag'">Select Area</InputHint>
+		<span class="plus">+</span>
+		<InputHint :inputKeys="['⇧']">Grow/Shrink Selection</InputHint>
+		<div class="divider"></div>
+		<InputHint :inputKeys="['G']">Grab Selected</InputHint>
+		<InputHint :inputKeys="['R']">Rotate Selected</InputHint>
+		<InputHint :inputKeys="['S']">Scale Selected</InputHint>
+		<div class="divider"></div>
+		<InputHint :inputKeys="['↑', '→', '↓', '←']">Nudge Selected</InputHint>
+		<span class="plus">+</span>
+		<InputHint :inputKeys="['⇧']">Big Increment Nudge</InputHint>
+		<div class="divider"></div>
+		<InputHint :inputKeys="['Alt']" :inputMouse="'LMBDrag'">Move Duplicate</InputHint>
+		<InputHint :inputKeys="['Ctrl', 'D']">Duplicate</InputHint>
 	</div>
-	<div class="hint-area footer-third">
-		<InputHint :inputMouse="'LMBDrag'">Box Select</InputHint>
-		<InputHint :inputKeys="['G']">Grab Selection</InputHint>
-		<InputHint :inputKeys="['R']">Rotate Selection</InputHint>
-		<InputHint :inputKeys="['S']">Scale Selection</InputHint>
-	</div>
-	<div class="version-area footer-third">
+	<div class="status-area footer-area">
 		<div>
-			<span>Graphite 0.1.0</span>
+			<span>Graphite 0.0.1</span>
 		</div>
 	</div>
 </template>
 
 <style lang="scss">
-.footer-third {
+.footer-area {
 	display: flex;
-	flex: 1 1 100%;
 
-	&:nth-child(1) {
-		justify-content: flex-start;
+	&.hint-area {
+		flex: 1 1 100%;
 	}
 
-	&:nth-child(2) {
-		justify-content: center;
-	}
-
-	&:nth-child(3) {
-		justify-content: flex-end;
-	}
-
-	&.status-area div, &.version-area {
+	&.status-area div {
 		margin: 0 8px;
 		display: flex;
 		align-items: center;
 		white-space: nowrap;
 	}
+}
+
+.plus {
+	display: flex;
+	align-items: center;
+	font-weight: bold;
+}
+
+.divider {
+	width: 1px;
+	height: 16px;
+	margin: 4px 0;
+	background: #888;
+}
+
+.input-hint + .input-hint {
+	margin-left: 0;
 }
 </style>
 

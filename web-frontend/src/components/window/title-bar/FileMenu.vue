@@ -16,9 +16,7 @@
 	<div class="entry"><span>File</span></div>
 	<div class="entry"><span>Edit</span></div>
 	<div class="entry"><span>Document</span></div>
-	<div class="entry"><span>Nodes</span></div>
 	<div class="entry"><span>View</span></div>
-	<div class="entry"><span>Window</span></div>
 	<div class="entry"><span>Help</span></div>
 </template>
 
