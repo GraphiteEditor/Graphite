@@ -12,9 +12,9 @@
 	},
 	"repository": {
 		"type": "git",
-		"url": "git+https://github.com/keavon/graphite.git"
+		"url": "git+https://github.com/graphiteeditor/graphite.git"
 	},
-	"author": "Keavon Chambers <graphite@keavon.com>",
+	"author": "Graphite Authors <contact@graphite.design>",
 	"license": "Apache-2.0",
 	"homepage": "https://www.graphite.design",
 	"devDependencies": {

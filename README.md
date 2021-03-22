@@ -4,7 +4,7 @@
 
 Graphite is an in-development desktop graphics editor that strives to be the most powerful, intuitive, and versatile tool for fully-nondestructive vector and raster editing. It is early in development but the UI and UX design is relatively complete and highly promising. The first release, Graphite 0.1, will focus on SVG editing. Then 0.2 will make that nondestructive with a node graph. Later revisions will provide full resolution-agnostic raster editing capabilities.
 
-We need Rust and web developers! Feel free to peruse the [documentation](documentation/index.md) and hop onto Discord to ask for where to start:
+We need Rust and web developers! Feel free to peruse the [documentation](docs/index.md) and hop onto Discord to ask for where to start:
 
 ## Discord
 
@@ -66,7 +66,7 @@ We are also focusing initial feature development on a destructive SVG vector edi
 
 ## Running the code
 
-The project is split between a Rust crates in `/packages` and web-based frontend in `/web-frontend` (this will be replaced by a native GUI system in the future in order to compile Graphite for Windows, Mac, and Linux). Currently the Vue.js frontend runs with the Vue CLI but the WASM bindings HTML/JS is built with WebPack (see [issue #29](https://github.com/Keavon/Graphite/issues/29)).
+The project is split between a Rust crates in `/packages` and web-based frontend in `/web-frontend` (this will be replaced by a native GUI system in the future in order to compile Graphite for Windows, Mac, and Linux). Currently the Vue.js frontend runs with the Vue CLI but the WASM bindings HTML/JS is built with WebPack (see [issue #29](https://github.com/GraphiteEditor/Graphite/issues/29)).
 
 ### Running the web frontend
 

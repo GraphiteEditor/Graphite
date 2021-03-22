@@ -1,7 +1,8 @@
 [package]
 name = "wasm-wrapper"
+publish = false
 version = "0.1.0"
-authors = ["Keavon Chambers <graphite@keavon.com>"]
+authors = ["Graphite Authors <contact@graphite.design>"]
 edition = "2018"
 
 [lib]
