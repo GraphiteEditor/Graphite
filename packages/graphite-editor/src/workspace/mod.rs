@@ -1,7 +1,7 @@
 use crate::EditorError;
 pub type PanelId = usize;
 
-struct Workspace {
+pub struct Workspace {
 	hovered_panel: PanelId,
 	root: PanelGroup,
 }

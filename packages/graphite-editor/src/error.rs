@@ -3,7 +3,7 @@ use std::error::Error;
 use std::fmt::{self, Display};
 
 /// The error type used by the graphite editor.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum EditorError {
 	InvalidOperation(String),
 	Misc(String),
