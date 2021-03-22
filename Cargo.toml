@@ -4,6 +4,5 @@ members = [
 	"web-frontend/wasm-wrapper",
 ]
 
-[profile.release.package.wasm-bindings]
-# Tell `rustc` to optimize for small code size.
+[profile.release.package.wasm-wrapper]
 opt-level = "s"
