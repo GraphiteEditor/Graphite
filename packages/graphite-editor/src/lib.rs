@@ -11,9 +11,10 @@ pub use error::EditorError;
 pub use color::Color;
 
 use tools::ToolState;
+use workspace::Workspace;
 
 // TODO: serialize with serde to save the current editor state
 struct Editor {
 	tools: ToolState,
-	workspace: workspace::Workspace,
+	workspace: Workspace,
 }

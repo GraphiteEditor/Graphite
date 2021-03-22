@@ -1,3 +1,5 @@
+use wasm_bindgen::prelude::*;
+
 type DocumentId = u32;
 
 /// Modify the active Document in the editor state store
@@ -18,7 +20,7 @@ pub fn get_active_document() -> DocumentId {
 	todo!()
 }
 
-use graphite_editor::layout::PanelId;
+use graphite_editor::workspace::PanelId;
 /// Notify the editor that the mouse hovers above a panel
 #[wasm_bindgen]
 pub fn panel_hover_enter(panel_id: PanelId) {
@@ -27,8 +29,9 @@ pub fn panel_hover_enter(panel_id: PanelId) {
 
 /// Query a list of currently available operations
 #[wasm_bindgen]
-pub fn get_available_operations() -> Box<[String]> {
-	todo!()
+pub fn get_available_operations() -> Vec<JsValue> {
+	todo!();
+	// vec!["example1", "example2"].into_iter().map(JsValue::from).collect()
 }
 
 /*

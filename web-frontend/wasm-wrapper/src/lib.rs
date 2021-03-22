@@ -1,18 +1,13 @@
-mod utils;
-mod viewport;
-mod window;
+pub mod utils;
+pub mod viewport;
+pub mod window;
+pub mod wrappers;
 
 use wasm_bindgen::prelude::*;
-
-#[wasm_bindgen]
-extern "C" {
-	fn alert(s: &str);
-}
 
 #[wasm_bindgen(start)]
 pub fn init() {
 	utils::set_panic_hook();
-	alert("Hello, Graphite!");
 }
 
 /// Send events
