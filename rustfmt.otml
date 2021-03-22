@@ -1,0 +1,19 @@
+edition = "2018"
+hard_tabs = true
+max_width = 180
+newline_style = "Unix"
+use_try_shorthand = true
+
+# Enable when 2.0 is released:
+# match_block_trailing_comma = true
+
+# Enable when control_brace_style becomes stable:
+# control_brace_style = "ClosingNextLine"
+
+# Maybe enable these in the future when they're stabilized
+# normalize_comments = true
+# normalize_doc_attributes = true
+# struct_lit_width = 35
+# where_single_line = true
+
+# For now run: cargo fmt -- --config match_block_trailing_comma=true --config control_brace_style=ClosingNextLine
