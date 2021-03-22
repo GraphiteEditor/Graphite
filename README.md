@@ -42,8 +42,8 @@ We are also focusing initial feature development on a destructive SVG vector edi
 - Launch a website at www.graphite.design with a home page, blog, manual, and code documentation
 
 ### Remaining tasks for the MVP (0.1 release)
-- Graphite Editor Library
-- WASM wrapper for Graphite Editor Library
+- Editor Core Library
+- WASM wrapper for Editor Core Library
 - Panel system
 - Drawing vector shapes on screen
 - Properties panel and vector styling
