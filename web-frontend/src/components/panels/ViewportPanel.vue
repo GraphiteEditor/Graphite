@@ -2,12 +2,12 @@
 	<LayoutCol :class="'viewport'">
 		<LayoutRow :class="'options-bar'">
 			<div class="left side">
-				<span class="label">Grab</span>
-				<div class="divider"></div>
+				<!-- <span class="label">Select</span>
+				<div class="divider"></div> -->
 			</div>
 			<div class="spacer"></div>
 			<div class="right side">
-				<span class="label">Layer 1</span>
+				<!-- <span class="label">Layer 1</span> -->
 			</div>
 		</LayoutRow>
 		<LayoutRow :class="'tools-and-viewport'">
@@ -43,7 +43,7 @@
 			.divider {
 				width: 1px;
 				height: 24px;
-				background: #666;
+				background: #888;
 			}
 		}
 

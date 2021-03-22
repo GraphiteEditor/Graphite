@@ -1,7 +1,7 @@
 <template>
 	<LayoutRow class="dockable-grid-subdivision">
 		<LayoutCol class="dockable-grid-subdivision" style="flex-grow: 1597;">
-			<DockablePanel :panelType="'Viewport'" :tabCloseButtons="true" :tabConstantWidths="true" :tabLabels="['X-35B*', 'Document 2', 'Document 3', 'Document 4', 'Document 5']" :tabActiveIndex="0" />
+			<DockablePanel :panelType="'Viewport'" :tabCloseButtons="true" :tabMinWidths="true" :tabLabels="['X-35B Over Death Valley*', 'Document 2', 'Document 3', 'Document 4', 'Document 5']" :tabActiveIndex="0" />
 		</LayoutCol>
 		<LayoutCol class="dockable-grid-resize-gutter"></LayoutCol>
 		<LayoutCol class="dockable-grid-subdivision" style="flex-grow: 319;">
