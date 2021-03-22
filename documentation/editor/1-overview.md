@@ -17,7 +17,7 @@ TODO: Add more to make a comprehensive list, finish writing definitions, separat
 - GDD file  
   Graphite Design Document. A binary serialization of a *document* source file. The format includes a chain of *operations* that describe changes to the *layer graph* and the *properties* of *layers* throughout the history of the document since its creation. It also stores certain metadata and *embedded* file data. GDD files, along with *GRD files*, represent *assets* when shared. Because GDD files are editable (unlike *GRD files*), the *layers* of GDD *assets* may be expanded in the layer graph to reveal and modify their contents using a copy-on-write scheme stored to the *asset's* *layer*.
 - GRD file  
-  Graphite Render Data. A binary serialization of a *render graph* file. The format includes a single directed acyclic graph (DAG) compiled from the *layer graph* of a *document* as well as certain *properties* of set *data types* that are *imported* and *exported*. GRD files, along with *GDD files*, represent *assets* when shared. Because GRD files are read-only and can't be edited (unlike *GDD files*), the *layers* of GRD *assets* do not offer an ability to be expanded in the layer graph. GRD files are useful for sharing *assets* when their authors do not wish to provide the source *documents* used for their authoring. They are also the input format included in games that utilize the *Graphite Renderer Library* to render graphical content at runtime, as well as similar applications like headless renderers on web servers and image processing pipelines.
+  Graphite Render Data. A binary serialization of a *render graph* file. The format includes a single directed acyclic graph (DAG) compiled from the *layer graph* of a *document* as well as certain *properties* of set *data types* that are *imported* and *exported*. GRD files, along with *GDD files*, represent *assets* when shared. Because GRD files are read-only and can't be edited (unlike *GDD files*), the *layers* of GRD *assets* do not offer an ability to be expanded in the layer graph. GRD files are useful for sharing *assets* when their authors do not wish to provide the source *documents* used for their authoring. They are also the input format included in games that utilize the *Graphite Renderer Core Library* to render graphical content at runtime, as well as similar applications like headless renderers on web servers and image processing pipelines.
 - Window
 - Main window
 - Popout window
@@ -53,6 +53,7 @@ TODO: Add more to make a comprehensive list, finish writing definitions, separat
 - Connection
 - Pixel bounds
 - Canvas
-- Graphite Editor Library
-- Graphite Document Library
-- Graphite Renderer Library
+- Core Libraries
+- Editor Core Library
+- Document Core Library
+- Renderer Core Library

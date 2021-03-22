@@ -13,20 +13,20 @@
 
 // Hierarchy
 
-[<dependencies> Dependencies|
+[<dependencies> Core Libraries|
     [<client> Frontend Editor Client]
     [<client> Headless Editor Client]
     [<client> Application Client
     (like a game engine or game that renders .grd graphs at runtime)]
-    [<editor> Editor Library]
-    [<document> Document Library]
-    [<renderer> Renderer Library]
+    [<editor> Editor Core Library]
+    [<document> Document Core Library]
+    [<renderer> Renderer Core Library]
     
-    [Frontend Editor Client] Depends On -> [Editor Library]
-    [Editor Library] Depends On -> [Document Library]
-    [Headless Editor Client] Depends On -> [Document Library]
-    [Document Library] Depends On -> [Renderer Library]
-    [Application Client] Depends On -> [Renderer Library]
+    [Frontend Editor Client] Depends On -> [Editor Core Library]
+    [Editor Core Library] Depends On -> [Document Core Library]
+    [Headless Editor Client] Depends On -> [Document Core Library]
+    [Document Core Library] Depends On -> [Renderer Core Library]
+    [Application Client] Depends On -> [Renderer Core Library]
 ]
 
 // Client
