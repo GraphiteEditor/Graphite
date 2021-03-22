@@ -1,7 +1,7 @@
 [package]
 name = "graphite-editor-core"
 version = "0.1.0"
-authors = ["Graphite Authors <graphite@keavon.com>"]
+authors = ["Graphite Authors <contact@graphite.design>"]
 edition = "2018"
 
 [dependencies]

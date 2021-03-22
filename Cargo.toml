@@ -1,7 +1,8 @@
 [workspace]
 members = [
-	"packages/*",
-	"web-frontend/wasm-wrapper",
+	"core/*",
+	"client/cli",
+	"client/web/wasm",
 ]
 
 [profile.release.package.wasm-wrapper]
