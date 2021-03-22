@@ -37,6 +37,6 @@ pub enum ToolSettings {
 pub enum SelectAppendMode {
 	New,
 	Add,
-	Substract,
+	Subtract,
 	Intersect,
 }

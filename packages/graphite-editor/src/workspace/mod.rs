@@ -1,12 +1,12 @@
 use crate::EditorError;
 pub type PanelId = usize;
 
-struct LayoutRoot {
+struct Workspace {
 	hovered_panel: PanelId,
 	root: PanelGroup,
 }
 
-impl LayoutRoot {
+impl Workspace {
 	// add panel / panel group
 	// delete panel / panel group
 	// move panel / panel group
