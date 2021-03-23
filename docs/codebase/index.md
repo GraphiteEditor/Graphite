@@ -18,7 +18,7 @@ The main modules of the project architecture are outlined below. Some parts desc
 
 - **Web frontend**: `/client/web/`  
   Initial GUI for Graphite that will eventually be replaced by a native GUI implementation
-	- **Vue web app**: `vue/`  
+	- **Vue web app**: `src/`  
 	  Imports the WASM code and uses Vue props to customize and reuse most GUI components
 	- **Rust WebAssembly wrapper**: `wasm/`  
 	  Wraps the Editor Core Library and provides an API for the web app to use unburdened by Rust's complex data types that are not supported by WASM
