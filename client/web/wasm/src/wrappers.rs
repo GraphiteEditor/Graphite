@@ -1,4 +1,4 @@
-use graphite_editor::Color as InnerColor;
+use graphite_editor_core::Color as InnerColor;
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen]

@@ -16,3 +16,8 @@ pub fn handle_event(event_name: String) {
 	// TODO: add payload
 	todo!()
 }
+
+#[wasm_bindgen]
+pub fn greet(name: &str) -> String {
+	format!("Hello, {}!", name)
+}
