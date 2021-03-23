@@ -5,18 +5,12 @@
 				<div class="tab" :class="{ active: tabIndex === tabActiveIndex }" v-for="(tabLabel, tabIndex) in tabLabels" :key="tabLabel">
 					<span>{{tabLabel}}</span>
 					<button v-if="tabCloseButtons">
-						<svg width="16" height="16" viewBox="0 0 16 16">
-							<polygon points="12,5 11,4 8,7 5,4 4,5 7,8 4,11 5,12 8,9 11,12 12,11 9,8" />
-						</svg>
+						<CloseX />
 					</button>
 				</div>
 			</div>
 			<div class="panel-options-ellipsis">
-				<svg viewBox="0 0 16 24">
-					<circle cx="8" cy="8" r="1.5" />
-					<circle cx="8" cy="12" r="1.5" />
-					<circle cx="8" cy="16" r="1.5" />
-				</svg>
+				<VerticalEllipsis />
 			</div>
 		</div>
 		<div class="panel-content">
@@ -176,6 +170,8 @@ import Viewport from "../panels/ViewportPanel.vue";
 import Properties from "../panels/PropertiesPanel.vue";
 import Layers from "../panels/LayersPanel.vue";
 import Minimap from "../panels/MinimapPanel.vue";
+import CloseX from "../../../assets/svg/16x16-bounds-12x12-icon/tab_close_x.svg";
+import VerticalEllipsis from "../../../assets/svg/16x24-bounds-8x16-icon/vertical-ellipsis.svg";
 
 export default defineComponent({
 	components: {
@@ -183,6 +179,8 @@ export default defineComponent({
 		Properties,
 		Layers,
 		Minimap,
+		CloseX,
+		VerticalEllipsis,
 	},
 	props: {
 		tabMinWidths: { type: Boolean, default: false },
