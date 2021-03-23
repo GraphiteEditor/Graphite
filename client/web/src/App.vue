@@ -21,5 +21,15 @@ import MainWindow from "./components/window/MainWindow.vue";
 
 export default defineComponent({
 	components: { MainWindow },
+	created() {
+		this.greet();
+	},
+	methods: {
+		async greet() {
+			const wasm = import("../wasm/pkg");
+			const { greet } = await wasm;
+			console.log(greet("Graphite"));
+		},
+	},
 });
 </script>

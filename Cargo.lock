@@ -19,10 +19,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
 
 [[package]]
-name = "cli"
-version = "0.1.0"
-
-[[package]]
 name = "console_error_panic_hook"
 version = "0.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -33,11 +29,23 @@ dependencies = [
 ]
 
 [[package]]
-name = "graphite-editor"
+name = "graphite-cli"
+version = "0.1.0"
+
+[[package]]
+name = "graphite-document-core"
+version = "0.1.0"
+
+[[package]]
+name = "graphite-editor-core"
 version = "0.1.0"
 dependencies = [
  "log",
 ]
+
+[[package]]
+name = "graphite-renderer-core"
+version = "0.1.0"
 
 [[package]]
 name = "js-sys"
@@ -80,10 +88,6 @@ checksum = "c3d0b9745dc2debf507c8422de05d7226cc1f0644216dfdfead988f9b1ab32a7"
 dependencies = [
  "proc-macro2",
 ]
-
-[[package]]
-name = "render-engine"
-version = "0.1.0"
 
 [[package]]
 name = "scoped-tls"
@@ -203,7 +207,7 @@ name = "wasm-wrapper"
 version = "0.1.0"
 dependencies = [
  "console_error_panic_hook",
- "graphite-editor",
+ "graphite-editor-core",
  "wasm-bindgen",
  "wasm-bindgen-test",
 ]

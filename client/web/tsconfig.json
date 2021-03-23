@@ -12,12 +12,10 @@
 		"allowSyntheticDefaultImports": true,
 		"sourceMap": true,
 		"baseUrl": ".",
-		"types": [
-			"webpack-env"
-		],
+		"types": [],
 		"paths": {
 			"@/*": [
-				"src/*"
+				"vue/*"
 			]
 		},
 		"lib": [
@@ -28,9 +26,10 @@
 		]
 	},
 	"include": [
-		"src/**/*.ts",
-		"src/**/*.tsx",
-		"src/**/*.vue",
+		"vue/**/*.ts",
+		"vue/**/*.d.ts",
+		"vue/**/*.tsx",
+		"vue/**/*.vue",
 		"tests/**/*.ts",
 		"tests/**/*.tsx"
 	],
