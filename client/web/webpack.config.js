@@ -11,7 +11,7 @@ module.exports = {
 	plugins: [
 		new HtmlWebpackPlugin({ title: "Graphite" }),
 		new WasmPackPlugin({
-			crateDirectory: path.resolve(__dirname, "..", "packages", "wasm-bindings"),
+			crateDirectory: path.resolve(__dirname, "wasm"),
 			outDir: path.resolve(__dirname, "pkg"),
 		}),
 	],
