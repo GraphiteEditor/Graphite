@@ -5,7 +5,7 @@
 				<div class="tab" :class="{ active: tabIndex === tabActiveIndex }" v-for="(tabLabel, tabIndex) in tabLabels" :key="tabLabel">
 					<span>{{tabLabel}}</span>
 					<button v-if="tabCloseButtons">
-						<CloseX />
+						<CloseX width="16" height="16" />
 					</button>
 				</div>
 			</div>
@@ -170,8 +170,8 @@ import Viewport from "../panels/ViewportPanel.vue";
 import Properties from "../panels/PropertiesPanel.vue";
 import Layers from "../panels/LayersPanel.vue";
 import Minimap from "../panels/MinimapPanel.vue";
-import CloseX from "../../../assets/svg/16x16-bounds-12x12-icon/tab_close_x.svg";
 import VerticalEllipsis from "../../../assets/svg/16x24-bounds-8x16-icon/vertical-ellipsis.svg";
+import CloseX from "../../../assets/svg/16x16-bounds-12x12-icon/close-x.svg";
 
 export default defineComponent({
 	components: {
