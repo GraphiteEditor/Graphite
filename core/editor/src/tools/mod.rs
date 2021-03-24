@@ -15,9 +15,7 @@ impl ToolState {
 			primary_color: Color::BLACK,
 			secondary_color: Color::WHITE,
 			active_tool: ToolType::Select,
-			tool_settings: [ToolSettings::Select {
-				append_mode: SelectAppendMode::New,
-			}; TOOL_COUNT],
+			tool_settings: [ToolSettings::Select { append_mode: SelectAppendMode::New }; TOOL_COUNT],
 			// TODO: Initialize to sensible values
 		}
 	}
