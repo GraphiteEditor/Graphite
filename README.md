@@ -4,7 +4,7 @@
 
 Graphite is an in-development desktop graphics editor that strives to be the most powerful, intuitive, and versatile tool for fully-nondestructive vector and raster editing. It is early in development but the UI and UX design is relatively complete and highly promising. The first release, Graphite 0.1, will focus on SVG editing. Then 0.2 will make that nondestructive with a node graph. Later revisions will provide full resolution-agnostic raster editing capabilities.
 
-We need Rust and web developers! Feel free to peruse the [documentation](docs/index.md) and hop onto Discord to ask for where to start:
+We need Rust and web developers! Feel free to peruse the [documentation](docs/index.md) and hop onto Discord to ask where to start:
 
 ## Discord
 
