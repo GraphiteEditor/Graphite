@@ -10,12 +10,24 @@ pub struct ToolState {
 }
 
 impl ToolState {
+	pub const fn default() -> ToolState {
+		ToolState {
+			primary_color: Color::BLACK,
+			secondary_color: Color::WHITE,
+			active_tool: ToolType::Select,
+			tool_settings: [ToolSettings::Select {
+				append_mode: SelectAppendMode::New,
+			}; TOOL_COUNT],
+			// TODO: Initialize to sensible values
+		}
+	}
 	pub fn select_tool(&mut self, tool: ToolType) {
 		self.active_tool = tool
 	}
 }
 
 #[repr(usize)]
+#[derive(Debug, Clone)]
 pub enum ToolType {
 	Select = 0,
 	Crop = 1,
@@ -30,10 +42,12 @@ pub enum ToolType {
 	// all discriminats must be strictly smaller than TOOL_COUNT!
 }
 
+#[derive(Debug, Clone, Copy)]
 pub enum ToolSettings {
 	Select { append_mode: SelectAppendMode },
 }
 
+#[derive(Debug, Clone, Copy)]
 pub enum SelectAppendMode {
 	New,
 	Add,

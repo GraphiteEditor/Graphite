@@ -10,6 +10,12 @@ pub struct Color {
 }
 
 impl Color {
+	pub const BLACK: Color = Color::from_unsafe(0., 0., 0.);
+	pub const WHITE: Color = Color::from_unsafe(1., 1., 1.);
+	pub const RED: Color = Color::from_unsafe(1., 0., 0.);
+	pub const GREEN: Color = Color::from_unsafe(0., 1., 0.);
+	pub const BLUE: Color = Color::from_unsafe(0., 0., 1.);
+
 	pub fn from_rgbaf32(red: f32, green: f32, blue: f32, alpha: f32) -> Result<Color, EditorError> {
 		let color = Color { red, green, blue, alpha };
 		if [red, green, blue, alpha].iter().any(|c| c.is_sign_negative() || !c.is_finite()) {
@@ -17,6 +23,10 @@ impl Color {
 		}
 		Ok(color)
 	}
+	const fn from_unsafe(red: f32, green: f32, blue: f32) -> Color {
+		Color { red, green, blue, alpha: 1. }
+	}
+
 	pub fn from_rgb8(red: u8, green: u8, blue: u8) -> Color {
 		Color::from_rgba8(red, green, blue, 255)
 	}
