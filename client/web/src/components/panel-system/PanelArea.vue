@@ -6,7 +6,7 @@
 		<LayoutCol class="dockable-grid-resize-gutter"></LayoutCol>
 		<LayoutCol class="dockable-grid-subdivision" style="flex-grow: 319;">
 			<LayoutRow class="dockable-grid-subdivision">
-				<DockablePanel :panelType="'Properties'" :tabLabels="['Properties', 'Typography', 'Colors']" :tabActiveIndex="0" />
+				<DockablePanel :panelType="'Properties'" :tabLabels="['Properties', 'Spreadsheet', 'Palettes']" :tabActiveIndex="0" />
 			</LayoutRow>
 			<LayoutRow class="dockable-grid-resize-gutter"></LayoutRow>
 			<LayoutRow class="dockable-grid-subdivision">
@@ -14,7 +14,7 @@
 			</LayoutRow>
 			<LayoutRow class="dockable-grid-resize-gutter"></LayoutRow>
 			<LayoutRow class="dockable-grid-subdivision" style="flex-grow: 0; height: 0;">
-				<DockablePanel :panelType="'Minimap'" :tabLabels="['Minimap', 'Brushes', 'Links']" :tabActiveIndex="0" />
+				<DockablePanel :panelType="'Minimap'" :tabLabels="['Minimap', 'Asset Manager']" :tabActiveIndex="0" />
 			</LayoutRow>
 		</LayoutCol>
 	</LayoutRow>
