@@ -1,10 +1,18 @@
-use crate::wrappers::Color;
+use crate::wrappers::{translate_tool, Color};
+use graphite_editor_core::tools::ToolState;
 use wasm_bindgen::prelude::*;
+
+pub static mut TOOL_STATE: ToolState = ToolState::default();
 
 /// Modify the currently selected tool in the document state store
 #[wasm_bindgen]
-pub fn select_tool(tool: String) {
-	todo!()
+pub fn select_tool(tool: String) -> Result<(), JsValue> {
+	let tool_state = unsafe { &mut TOOL_STATE };
+	if let Some(tool) = translate_tool(tool.as_str()) {
+		Ok(tool_state.select_tool(tool))
+	} else {
+		Err(JsValue::from(format!("Couldn't select {} because it was not recognized as a valid tool", tool)))
+	}
 }
 
 /// Mouse movement with the bounds of the canvas
