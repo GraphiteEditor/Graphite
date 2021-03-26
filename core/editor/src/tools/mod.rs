@@ -22,6 +22,12 @@ impl ToolState {
 	pub fn select_tool(&mut self, tool: ToolType) {
 		self.active_tool = tool
 	}
+	pub fn set_primary_color<T: Into<Color>>(&mut self, primary_color: T) {
+		self.primary_color = primary_color.into();
+	}
+	pub fn set_secondary_color<T: Into<Color>>(&mut self, secondary_color: T) {
+		self.secondary_color = secondary_color.into();
+	}
 }
 
 #[repr(usize)]
