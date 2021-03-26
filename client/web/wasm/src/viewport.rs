@@ -24,5 +24,7 @@ pub fn on_mouse_move(x: u32, y: u32) {
 /// Update working colors
 #[wasm_bindgen]
 pub fn update_colors(primary_color: Color, secondary_color: Color) {
-	todo!()
+	let tool_state = unsafe { &mut TOOL_STATE };
+	tool_state.set_primary_color(primary_color.get_inner_color());
+	tool_state.set_secondary_color(secondary_color.get_inner_color());
 }
