@@ -13,6 +13,12 @@ impl Color {
 	}
 }
 
+impl Color {
+	pub fn get_inner_color(&self) -> InnerColor {
+		self.0
+	}
+}
+
 pub fn translate_tool(name: &str) -> Option<ToolType> {
 	match name {
 		"Select" => Some(ToolType::Select),
