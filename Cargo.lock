@@ -48,6 +48,16 @@ name = "graphite-renderer-core"
 version = "0.1.0"
 
 [[package]]
+name = "graphite-wasm-wrapper"
+version = "0.1.0"
+dependencies = [
+ "console_error_panic_hook",
+ "graphite-editor-core",
+ "wasm-bindgen",
+ "wasm-bindgen-test",
+]
+
+[[package]]
 name = "js-sys"
 version = "0.3.49"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -200,16 +210,6 @@ checksum = "10a6c0bd3933daf64c78fc25a7452530f79fa7e21f77fa03d608d1e988a66735"
 dependencies = [
  "proc-macro2",
  "quote",
-]
-
-[[package]]
-name = "wasm-wrapper"
-version = "0.1.0"
-dependencies = [
- "console_error_panic_hook",
- "graphite-editor-core",
- "wasm-bindgen",
- "wasm-bindgen-test",
 ]
 
 [[package]]
