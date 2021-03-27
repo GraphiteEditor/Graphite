@@ -3,7 +3,9 @@ name = "graphite-document-core"
 version = "0.1.0"
 authors = ["Graphite Authors <contact@graphite.design>"]
 edition = "2018"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+readme = "../../README.md"
+homepage = "https://www.graphite.design"
+repository = "https://github.com/GraphiteEditor/Graphite"
+license = "Apache-2.0"
 
 [dependencies]
