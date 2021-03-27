@@ -1,9 +1,13 @@
 [package]
-name = "wasm-wrapper"
-publish = false
+name = "graphite-wasm-wrapper"
 version = "0.1.0"
 authors = ["Graphite Authors <contact@graphite.design>"]
 edition = "2018"
+readme = "../../../README.md"
+homepage = "https://www.graphite.design"
+repository = "https://github.com/GraphiteEditor/Graphite"
+license = "Apache-2.0"
+publish = false
 
 [lib]
 crate-type = ["cdylib", "rlib"]
@@ -12,14 +16,25 @@ crate-type = ["cdylib", "rlib"]
 default = ["console_error_panic_hook"]
 
 [dependencies]
-wasm-bindgen = "0.2.72"
-graphite-editor-core = { path = "../../../core/editor" }
-
-# The `console_error_panic_hook` crate provides better debugging of panics by
-# logging them with `console.error`. This is great for development, but requires
-# all the `std::fmt` and `std::panicking` infrastructure, so isn't great for
-# code size when deploying.
 console_error_panic_hook = { version = "0.1.6", optional = true }
+graphite-editor-core = { path = "../../../core/editor" }
+wasm-bindgen = "0.2.72"
 
 [dev-dependencies]
 wasm-bindgen-test = "0.3.22"
+
+[package.metadata.wasm-pack.profile.dev]
+wasm-opt = false
+
+[package.metadata.wasm-pack.profile.dev.wasm-bindgen]
+debug-js-glue = true
+demangle-name-section = true
+dwarf-debug-info = true
+
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = ["-Os"]
+
+[package.metadata.wasm-pack.profile.release.wasm-bindgen]
+debug-js-glue = false
+demangle-name-section = false
+dwarf-debug-info = false
