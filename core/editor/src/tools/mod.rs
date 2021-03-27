@@ -1,54 +1,67 @@
 use crate::Color;
-
-const TOOL_COUNT: usize = 10;
+use std::collections::HashMap;
 
 pub struct ToolState {
-	primary_color: Color,
-	secondary_color: Color,
-	active_tool: ToolType,
-	tool_settings: [ToolSettings; TOOL_COUNT],
+	pub primary_color: Color,
+	pub secondary_color: Color,
+	pub active_tool: ToolType,
+	tool_settings: HashMap<ToolType, ToolSettings>,
 }
 
 impl ToolState {
-	pub const fn default() -> ToolState {
+	pub fn new() -> Self {
 		ToolState {
 			primary_color: Color::BLACK,
 			secondary_color: Color::WHITE,
 			active_tool: ToolType::Select,
-			tool_settings: [ToolSettings::Select { append_mode: SelectAppendMode::New }; TOOL_COUNT],
-			// TODO: Initialize to sensible values
+			tool_settings: default_tool_settings(),
 		}
-	}
-	pub fn select_tool(&mut self, tool: ToolType) {
-		self.active_tool = tool
-	}
-	pub fn set_primary_color<T: Into<Color>>(&mut self, primary_color: T) {
-		self.primary_color = primary_color.into();
-	}
-	pub fn set_secondary_color<T: Into<Color>>(&mut self, secondary_color: T) {
-		self.secondary_color = secondary_color.into();
 	}
 }
 
+fn default_tool_settings() -> HashMap<ToolType, ToolSettings> {
+	let tool_init = |tool: &ToolType| (*tool, tool.default_settings());
+	[
+		tool_init(&ToolType::Select),
+		tool_init(&ToolType::Shape), // TODO: Add more tool defaults
+	]
+	.iter()
+	.cloned()
+	.collect()
+}
+
 #[repr(usize)]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ToolType {
-	Select = 0,
-	Crop = 1,
-	Navigate = 2,
-	Sample = 3,
-	Path = 4,
-	Pen = 5,
-	Line = 6,
-	Rectangle = 7,
-	Ellipse = 8,
-	Shape = 9,
+	Select,
+	Crop,
+	Navigate,
+	Sample,
+	Path,
+	Pen,
+	Line,
+	Rectangle,
+	Ellipse,
+	Shape,
 	// all discriminats must be strictly smaller than TOOL_COUNT!
+}
+
+impl ToolType {
+	fn default_settings(&self) -> ToolSettings {
+		match self {
+			ToolType::Select => ToolSettings::Select { append_mode: SelectAppendMode::New },
+			ToolType::Shape => ToolSettings::Shape {
+				shape: Shape::Polygon { vertices: 3 },
+			},
+			_ => todo!(),
+		}
+	}
 }
 
 #[derive(Debug, Clone, Copy)]
 pub enum ToolSettings {
 	Select { append_mode: SelectAppendMode },
+	Shape { shape: Shape },
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -57,4 +70,10 @@ pub enum SelectAppendMode {
 	Add,
 	Subtract,
 	Intersect,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum Shape {
+	Star { vertices: u32 },
+	Polygon { vertices: u32 },
 }
