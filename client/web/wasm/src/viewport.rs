@@ -1,19 +1,18 @@
 use crate::shims::Error;
 use crate::wrappers::{translate_tool, Color};
-use graphite_editor_core::tools::ToolState;
 use wasm_bindgen::prelude::*;
-
-pub static mut TOOL_STATE: ToolState = ToolState::default();
 
 /// Modify the currently selected tool in the document state store
 #[wasm_bindgen]
 pub fn select_tool(tool: String) -> Result<(), JsValue> {
-	let tool_state = unsafe { &mut TOOL_STATE };
-	if let Some(tool) = translate_tool(&tool) {
-		Ok(tool_state.select_tool(tool))
-	} else {
-		Err(Error::new(&format!("Couldn't select {} because it was not recognized as a valid tool", tool)).into())
-	}
+	crate::EDITOR_STATE.with(|editor| {
+		if let Some(tool) = translate_tool(&tool) {
+			editor.borrow_mut().tools.active_tool = tool;
+			Ok(())
+		} else {
+			Err(Error::new(&format!("Couldn't select {} because it was not recognized as a valid tool", tool)).into())
+		}
+	})
 }
 
 /// Mouse movement with the bounds of the canvas
@@ -25,7 +24,9 @@ pub fn on_mouse_move(x: u32, y: u32) {
 /// Update working colors
 #[wasm_bindgen]
 pub fn update_colors(primary_color: Color, secondary_color: Color) {
-	let tool_state = unsafe { &mut TOOL_STATE };
-	tool_state.set_primary_color(primary_color.inner());
-	tool_state.set_secondary_color(secondary_color.inner());
+	crate::EDITOR_STATE.with(|editor| {
+		let mut editor = editor.borrow_mut();
+		editor.tools.primary_color = primary_color.inner();
+		editor.tools.secondary_color = secondary_color.inner();
+	})
 }

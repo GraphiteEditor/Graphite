@@ -4,7 +4,11 @@ pub mod viewport;
 pub mod window;
 pub mod wrappers;
 
+use graphite_editor_core::Editor;
+use std::cell::RefCell;
 use wasm_bindgen::prelude::*;
+
+thread_local! {pub static EDITOR_STATE: RefCell<Editor> = RefCell::new(Editor::new())}
 
 #[wasm_bindgen(start)]
 pub fn init() {
