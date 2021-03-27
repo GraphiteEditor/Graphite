@@ -11,25 +11,45 @@ pub enum Event {
 }
 
 #[derive(Debug, Clone)]
-struct Trace(Vec<MouseState>);
-#[derive(Debug, Clone)]
-struct MouseState {
-	x: u32,
-	y: u32,
-	mod_keys: ModKeys,
-	mouse_keys: MouseKeys,
+#[repr(C)]
+pub enum Response {
+	UpdateCanvas,
 }
 
 #[derive(Debug, Clone)]
-enum Key {
+pub struct Trace(Vec<MouseState>);
+#[derive(Debug, Clone, Default)]
+pub struct MouseState {
+	x: u32,
+	y: u32,
+	mod_keys: ModKeysStorage,
+	mouse_keys: MouseKeysStorage,
+}
+
+impl MouseState {
+	pub const fn new() -> MouseState {
+		MouseState {
+			x: 0,
+			y: 0,
+			mod_keys: 0,
+			mouse_keys: 0,
+		}
+	}
+	pub const fn from_pos(x: u32, y: u32) -> MouseState {
+		MouseState { x, y, mod_keys: 0, mouse_keys: 0 }
+	}
+}
+
+#[derive(Debug, Clone)]
+pub enum Key {
 	None,
 }
 
-type ModKeysStorage = u8;
-type MouseKeysStorage = u8;
+pub type ModKeysStorage = u8;
+pub type MouseKeysStorage = u8;
 #[derive(Debug, Clone, Copy)]
 #[repr(transparent)]
-struct ModKeys(ModKeysStorage);
+pub struct ModKeys(ModKeysStorage);
 
 impl ModKeys {
 	pub fn get_key(&self, key: ModKey) -> bool {
@@ -55,7 +75,7 @@ impl MouseKeys {
 
 #[repr(u8)]
 #[derive(Debug, Clone)]
-enum ModKey {
+pub enum ModKey {
 	Control = 1,
 	Shift = 2,
 	Alt = 4,
@@ -63,7 +83,7 @@ enum ModKey {
 
 #[repr(u8)]
 #[derive(Debug, Clone)]
-enum MouseKey {
+pub enum MouseKey {
 	LeftMouse = 1,
 	RightMouse = 2,
 	MiddleMouse = 4,

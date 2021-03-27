@@ -1,3 +1,4 @@
+use crate::events::Event;
 use crate::Color;
 use std::error::Error;
 use std::fmt::{self, Display};
@@ -6,6 +7,7 @@ use std::fmt::{self, Display};
 #[derive(Clone, Debug)]
 pub enum EditorError {
 	InvalidOperation(String),
+	InvalidEvent(String),
 	Misc(String),
 	Color(String),
 }
@@ -14,6 +16,7 @@ impl Display for EditorError {
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
 		match self {
 			EditorError::InvalidOperation(e) => write!(f, "Failed to execute operation: {}", e),
+			EditorError::InvalidEvent(e) => write!(f, "Failed to dispatch event: {}", e),
 			EditorError::Misc(e) => write!(f, "{}", e),
 			EditorError::Color(c) => write!(f, "Tried to construct an invalid color {:?}", c),
 		}
@@ -35,3 +38,4 @@ macro_rules! derive_from {
 derive_from!(&str, Misc);
 derive_from!(String, Misc);
 derive_from!(Color, Color);
+derive_from!(Event, InvalidEvent);
