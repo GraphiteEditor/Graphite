@@ -23,6 +23,7 @@ impl Color {
 		}
 		Ok(color)
 	}
+
 	const fn from_unsafe(red: f32, green: f32, blue: f32) -> Color {
 		Color { red, green, blue, alpha: 1. }
 	}
