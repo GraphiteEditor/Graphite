@@ -12,7 +12,7 @@
 		</LayoutRow>
 		<LayoutRow :class="'tools-and-viewport'">
 			<LayoutCol :class="'tools'"></LayoutCol>
-			<LayoutCol :class="'viewport-container'"></LayoutCol>
+			<LayoutCol :class="'viewport-container'" @click="canvasClick"></LayoutCol>
 		</LayoutRow>
 	</LayoutCol>
 </template>
@@ -70,12 +70,19 @@ import { defineComponent } from "vue";
 import LayoutRow from "../layout/LayoutRow.vue";
 import LayoutCol from "../layout/LayoutCol.vue";
 
+const wasm = import("../../../wasm/pkg");
+
 export default defineComponent({
 	components: {
 		LayoutRow,
 		LayoutCol,
 	},
-	props: {
+	methods: {
+        async canvasClick(e: MouseEvent) {
+            console.log(e);
+            const { on_mouse_click } = await wasm;
+            on_mouse_click(e.offsetX, e.offsetY);
+        }
 	},
 });
 </script>
