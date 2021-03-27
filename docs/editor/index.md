@@ -42,9 +42,11 @@ Work in progress.
 	- Asset Manager
 		- Embedded assets
 		- Linked assets
-		- Local assets
-		- Remote assets
+			- Local assets
+			- Remote assets
 		- Store assets
+		- Out-of-the-box assets
+		- Extension-provided assets
 	- Palettes
 		- Each color palette is an asset
 	- Minimap
