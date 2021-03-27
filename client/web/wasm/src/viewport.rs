@@ -1,7 +1,7 @@
 use crate::shims::Error;
 use crate::wrappers::{translate_tool, Color};
 use crate::EDITOR_STATE;
-use graphite_editor_core::events;
+use editor_core::events;
 use wasm_bindgen::prelude::*;
 
 /// Modify the currently selected tool in the document state store
