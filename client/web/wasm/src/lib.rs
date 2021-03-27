@@ -4,7 +4,7 @@ pub mod viewport;
 pub mod window;
 pub mod wrappers;
 
-use graphite_editor_core::{events::Response, Callback, Editor};
+use editor_core::{events::Response, Callback, Editor};
 use std::cell::RefCell;
 use wasm_bindgen::prelude::*;
 
