@@ -1,3 +1,4 @@
+mod shims;
 pub mod utils;
 pub mod viewport;
 pub mod window;
