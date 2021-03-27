@@ -15,6 +15,15 @@ use workspace::Workspace;
 
 // TODO: serialize with serde to save the current editor state
 pub struct Editor {
-	tools: ToolState,
+	pub tools: ToolState,
 	workspace: Workspace,
+}
+
+impl Editor {
+	pub fn new() -> Self {
+		Self {
+			tools: ToolState::new(),
+			workspace: Workspace::new(),
+		}
+	}
 }
