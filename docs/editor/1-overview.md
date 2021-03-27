@@ -57,3 +57,6 @@ TODO: Add more to make a comprehensive list, finish writing definitions, separat
 - Editor Core Library
 - Document Core Library
 - Renderer Core Library
+- Trace
+- Path
+- Shape
