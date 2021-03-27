@@ -14,7 +14,7 @@ use tools::ToolState;
 use workspace::Workspace;
 
 // TODO: serialize with serde to save the current editor state
-struct Editor {
+pub struct Editor {
 	tools: ToolState,
 	workspace: Workspace,
 }
