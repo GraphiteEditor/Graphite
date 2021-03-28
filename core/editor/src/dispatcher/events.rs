@@ -24,17 +24,12 @@ impl Trace {
 		Self(vec![])
 	}
 	pub fn first_point(&self) -> Option<&MouseState> {
-		if !self.0.is_empty() {
-			Some(&self.0[0])
-		} else {
-			None
-		}
+		self.0.get(0)
 	}
 	pub fn last_point(&self) -> Option<&MouseState> {
-		let trace = &self.0;
-		let trace_length = trace.len();
-		if trace_length > 0 {
-			Some(&trace[trace_length - 1])
+		// avoid underflow
+		if let Some(idx) = self.0.len().checked_sub(1) {
+			self.0.get(idx)
 		} else {
 			None
 		}
