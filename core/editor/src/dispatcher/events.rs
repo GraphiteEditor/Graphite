@@ -18,6 +18,34 @@ pub enum Response {
 
 #[derive(Debug, Clone)]
 pub struct Trace(Vec<MouseState>);
+
+impl Trace {
+	pub fn new() -> Self {
+		Self(vec![])
+	}
+	pub fn first_point(&self) -> Option<&MouseState> {
+		if !self.0.is_empty() {
+			Some(&self.0[0])
+		} else {
+			None
+		}
+	}
+	pub fn last_point(&self) -> Option<&MouseState> {
+		let trace = &self.0;
+		let trace_length = trace.len();
+		if trace_length > 0 {
+			Some(&trace[trace_length - 1])
+		} else {
+			None
+		}
+	}
+	pub fn append_point(&mut self, x: u32, y: u32) {
+		self.0.push(MouseState::from_pos(x, y))
+	}
+	pub fn clear(&mut self) {
+		self.0.clear()
+	}
+}
 #[derive(Debug, Clone, Default)]
 pub struct MouseState {
 	x: u32,
