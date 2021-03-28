@@ -11,9 +11,9 @@
 #.document: fill=darkorange title=bold
 #.renderer: fill=gold title=bold
 
-// Hierarchy
+// Dependencies
 
-[<dependencies> Core Libraries|
+[<dependencies> Clients and Core Libraries|
     [<client> Frontend Editor Client]
     [<client> Headless Editor Client]
     [<client> Application Client
@@ -35,7 +35,8 @@
     One of many possible frontend implementations,
     such as the native or web client.
 ]
-[Frontend Implementation] -> Event [Editor Event Dispatcher]
+[Frontend Implementation] Response <-> Event [Dispatcher]
+[Frontend Implementation] <-- Rendered Viewport [<renderer> From: Final Render Assembler]
 
 [<client> CLI Implementation|
     A possible text-based CLI program that
@@ -50,17 +51,24 @@
 
 // Editor
 
-[<editor> Editor Event Dispatcher|
+[<editor> Dispatcher|
     Convert all events from the frontend into Actions
     and Operations. Actions are diffs to update state
     stores. Operations are history events in a .gdd
     file. Operations and document-specific Actions
     include the document ID in the call.
 ]
-[Editor Event Dispatcher] -> Action [Editor State Store]
-[Editor Event Dispatcher] -> Action [Open Documents State Store]
-[Editor Event Dispatcher] -> Update Bounds [Scheduler]
-[Editor Event Dispatcher] -> Operation [Design Document Maintainer]
+[Dispatcher] <-> Action [Editor State Store]
+[Dispatcher] <-> Action [Open Documents State Store]
+[Dispatcher] -> Update Bounds [Scheduler]
+[Dispatcher] -> Operation [Design Document Maintainer]
+
+[<editor> Open Documents State Store|
+    For each open document:|
+    [<state> Pan and zoom viewport bounds]|
+    [<state> Selected layers]
+]
+[Tool State Machine] <- [Open Documents State Store]
 
 [<editor> Editor State Store|
     [<state> Panel Layout]|
@@ -70,21 +78,12 @@
     [<state> Modifier Key Input]|
     [<state> Currently Hovered Panel]
 ]
-[Editor State Store] -> [Frontend Implementation]
 [Editor State Store] -> [Tool State Machine]
 
-[<editor> Open Documents State Store|
-    For each open document:|
-    [<state> Pan and zoom viewport bounds]|
-    [<state> Selected layers]
-]
-[Open Documents State Store] -> [Tool State Machine]
-[Open Documents State Store] -> [Frontend Implementation]
-
 [<editor> Tool State Machine|
-    List possible operations in current context
+    List the possible operations in current context
 ]
-[Tool State Machine] -> [Frontend Implementation]
+[Tool State Machine] -> [Dispatcher]
 
 // Document
 
@@ -162,4 +161,4 @@
     Operates when woken up by the scheduler
     when root tiles or render bounds are updated.
 ]
-[Final Render Assembler] --> Rendered Viewport [Frontend Implementation]
+[Final Render Assembler] --> Rendered Viewport [<client> To: Frontend Implementation]
