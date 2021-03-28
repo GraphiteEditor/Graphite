@@ -9,7 +9,7 @@ use std::cell::RefCell;
 use wasm_bindgen::prelude::*;
 
 // the thread_local macro provides a way to initialize static variables with non-constant functions
-thread_local! {pub static EDITOR_STATE: RefCell<Editor> = RefCell::new(Editor::new(Box::new(handle_response)))}
+thread_local! { pub static EDITOR_STATE: RefCell<Editor> = RefCell::new(Editor::new(Box::new(handle_response))) }
 
 #[wasm_bindgen(start)]
 pub fn init() {
@@ -18,13 +18,13 @@ pub fn init() {
 
 fn handle_response(response: Response) {
 	match response {
-		Response::UpdateCanvas => update_canvas(),
+		Response::UpdateCanvas { document } => update_canvas(document),
 	}
 }
 
 #[wasm_bindgen(module = "/../src/wasm-callback-processor.js")]
 extern "C" {
-	fn update_canvas();
+	fn update_canvas(svg: String);
 }
 
 #[wasm_bindgen]

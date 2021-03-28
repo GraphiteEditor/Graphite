@@ -1,6 +1,6 @@
 pub mod events;
-use crate::tools::ToolState;
-use crate::{Color, EditorError};
+use crate::{Color, EditorError, EditorState};
+use document_core::{Circle, Point, SvgElement};
 use events::{Event, Response};
 
 pub type Callback = Box<dyn Fn(Response)>;
@@ -9,60 +9,68 @@ pub struct Dispatcher {
 }
 
 impl Dispatcher {
-	pub fn handle_event(&self, tool_state: &mut ToolState, event: Event) -> Result<(), EditorError> {
+	pub fn handle_event(&self, state: &mut EditorState, event: Event) -> Result<(), EditorError> {
 		match event {
 			Event::SelectTool(tool_type) => {
-				tool_state.active_tool = tool_type;
+				state.tools.active_tool = tool_type;
 				Ok(())
 			}
 			Event::SelectPrimaryColor(color) => {
-				tool_state.primary_color = color;
+				state.tools.primary_color = color;
 				Ok(())
 			}
 			Event::SelectSecondaryColor(color) => {
-				tool_state.secondary_color = color;
+				state.tools.secondary_color = color;
 				Ok(())
 			}
 			Event::SwapColors => {
-				std::mem::swap(&mut tool_state.primary_color, &mut tool_state.secondary_color);
+				std::mem::swap(&mut state.tools.primary_color, &mut state.tools.secondary_color);
 				Ok(())
 			}
 			Event::ResetColors => {
-				tool_state.primary_color = Color::BLACK;
-				tool_state.secondary_color = Color::WHITE;
+				state.tools.primary_color = Color::BLACK;
+				state.tools.secondary_color = Color::WHITE;
 				Ok(())
 			}
 			Event::MouseDown(mouse_state) => {
-				tool_state.mouse_state = mouse_state;
+				state.tools.mouse_state = mouse_state;
 				// the state has changed so we add a trace point
-				tool_state.record_trace_point();
+				state.tools.record_trace_point();
 
-				self.emit_response(Response::UpdateCanvas);
+				// self.emit_response(Response::UpdateCanvas { document: state.document.render() });
 				Ok(())
 			}
 			Event::MouseUp(mouse_state) => {
-				tool_state.mouse_state = mouse_state;
+				state.tools.mouse_state = mouse_state;
 				// the state has changed so we add a trace point
-				tool_state.record_trace_point();
+				state.tools.record_trace_point();
 
-				self.emit_response(Response::UpdateCanvas);
+				state.document.svg.push(SvgElement::Circle(Circle {
+					center: Point {
+						x: mouse_state.position.x as f64,
+						y: mouse_state.position.y as f64,
+					},
+					radius: 10.0,
+				}));
+
+				self.emit_response(Response::UpdateCanvas { document: state.document.render() });
 				Ok(())
 			}
 			Event::MouseMovement(pos) => {
-				tool_state.mouse_state.position = pos;
-				tool_state.record_trace_point();
+				state.tools.mouse_state.position = pos;
+				state.tools.record_trace_point();
 				Ok(())
 			}
 			Event::ModifierKeyDown(mod_keys) => {
-				tool_state.mod_keys = mod_keys;
+				state.tools.mod_keys = mod_keys;
 				// the state has changed so we add a trace point
-				tool_state.record_trace_point();
+				state.tools.record_trace_point();
 				Ok(())
 			}
 			Event::ModifierKeyUp(mod_keys) => {
-				tool_state.mod_keys = mod_keys;
+				state.tools.mod_keys = mod_keys;
 				// the state has changed so we add a trace point
-				tool_state.record_trace_point();
+				state.tools.record_trace_point();
 				Ok(())
 			}
 			Event::KeyPress(key) => todo!(),
