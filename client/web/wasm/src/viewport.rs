@@ -57,3 +57,19 @@ pub fn update_secondary_color(secondary_color: Color) -> Result<(), JsValue> {
 		.with(|editor| editor.borrow_mut().handle_event(events::Event::SelectSecondaryColor(secondary_color.inner())))
 		.map_err(|err: editor_core::EditorError| Error::new(&err.to_string()).into())
 }
+
+/// Swap primary and secondary color
+#[wasm_bindgen]
+pub fn swap_colors() -> Result<(), JsValue> {
+	EDITOR_STATE
+		.with(|editor| editor.borrow_mut().handle_event(events::Event::SwapColors))
+		.map_err(|err: editor_core::EditorError| Error::new(&err.to_string()).into())
+}
+
+/// Reset primary and secondary colors to their defaults
+#[wasm_bindgen]
+pub fn reset_colors() -> Result<(), JsValue> {
+	EDITOR_STATE
+		.with(|editor| editor.borrow_mut().handle_event(events::Event::ResetColors))
+		.map_err(|err: editor_core::EditorError| Error::new(&err.to_string()).into())
+}

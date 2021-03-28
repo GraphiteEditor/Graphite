@@ -1,6 +1,6 @@
 pub mod events;
 use crate::tools::ToolState;
-use crate::EditorError;
+use crate::{Color, EditorError};
 use events::{Event, Response};
 
 pub type Callback = Box<dyn Fn(Response)>;
@@ -21,6 +21,15 @@ impl Dispatcher {
 			}
 			Event::SelectSecondaryColor(color) => {
 				tool_state.secondary_color = color;
+				Ok(())
+			}
+			Event::SwapColors => {
+				std::mem::swap(&mut tool_state.primary_color, &mut tool_state.secondary_color);
+				Ok(())
+			}
+			Event::ResetColors => {
+				tool_state.primary_color = Color::BLACK;
+				tool_state.secondary_color = Color::WHITE;
 				Ok(())
 			}
 			Event::MouseDown(mouse_state) => {

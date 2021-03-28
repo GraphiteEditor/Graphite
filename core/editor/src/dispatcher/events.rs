@@ -9,6 +9,8 @@ pub enum Event {
 	SelectTool(ToolType),
 	SelectPrimaryColor(Color),
 	SelectSecondaryColor(Color),
+	SwapColors,
+	ResetColors,
 	MouseDown(MouseState),
 	MouseUp(MouseState),
 	MouseMovement(CanvasPosition),
