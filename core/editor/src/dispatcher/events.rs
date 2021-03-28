@@ -16,12 +16,12 @@ pub enum Response {
 	UpdateCanvas,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct Trace(Vec<MouseState>);
 
 impl Trace {
 	pub fn new() -> Self {
-		Self(vec![])
+		Self::default()
 	}
 	pub fn first_point(&self) -> Option<&MouseState> {
 		self.0.first()
