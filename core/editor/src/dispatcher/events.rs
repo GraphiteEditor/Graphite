@@ -22,7 +22,7 @@ pub enum Event {
 #[derive(Debug, Clone)]
 #[repr(C)]
 pub enum Response {
-	UpdateCanvas,
+	UpdateCanvas { document: String },
 }
 
 #[derive(Debug, Clone, Default)]

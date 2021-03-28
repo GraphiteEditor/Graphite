@@ -17,7 +17,9 @@
 				@mousedown="canvasMouseDown"
 				@mouseup="canvasMouseUp"
 				@mousemove="canvasMouseMove"
-			></LayoutCol>
+			>
+				<svg></svg>
+			</LayoutCol>
 		</LayoutRow>
 	</LayoutCol>
 </template>
@@ -65,6 +67,11 @@
 		.canvas {
 			background: #111;
 			flex: 1 1 100%;
+
+			svg {
+				width: 100%;
+				height: 100%;
+			}
 		}
 }
 }
