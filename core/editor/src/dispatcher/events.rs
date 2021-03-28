@@ -27,7 +27,6 @@ impl Trace {
 		self.0.first()
 	}
 	pub fn last_point(&self) -> Option<&MouseState> {
-		// avoid underflow
 		self.0.last()
 	}
 	pub fn append_point(&mut self, x: u32, y: u32) {
