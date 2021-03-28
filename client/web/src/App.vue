@@ -19,6 +19,8 @@ html, body, #app {
 import { defineComponent } from "vue";
 import MainWindow from "./components/window/MainWindow.vue";
 
+const wasm = import("../wasm/pkg");
+
 export default defineComponent({
 	components: { MainWindow },
 	created() {
@@ -26,7 +28,6 @@ export default defineComponent({
 	},
 	methods: {
 		async greet() {
-			const wasm = import("../wasm/pkg");
 			const { greet } = await wasm;
 			console.log(greet("Graphite"));
 		},
