@@ -3,7 +3,7 @@ const WasmPackPlugin = require("@wasm-tool/wasm-pack-plugin");
 const path = require("path");
 
 module.exports = {
-	lintOnSave: false,
+	lintOnSave: "warning",
 	chainWebpack: (config) => {
 		// Rust wasm bindgen https://github.com/rustwasm/wasm-bindgen
 		config
