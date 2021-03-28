@@ -42,15 +42,18 @@ pub fn on_mouse_up(x: u32, y: u32, mouse_keys: u8) -> Result<(), JsValue> {
 	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_event(ev)).map_err(|err| Error::new(&err.to_string()).into())
 }
 
-/// Update working colors
+/// Update primary color
 #[wasm_bindgen]
-pub fn update_colors(primary_color: Color, secondary_color: Color) -> Result<(), JsValue> {
+pub fn update_primary_color(primary_color: Color) -> Result<(), JsValue> {
 	EDITOR_STATE
-		.with(|editor| {
-			let mut editor = editor.borrow_mut();
-			editor.handle_event(events::Event::SelectPrimaryColor(primary_color.inner()))?;
-			editor.handle_event(events::Event::SelectPrimaryColor(secondary_color.inner()))?;
-			Ok(())
-		})
+		.with(|editor| editor.borrow_mut().handle_event(events::Event::SelectPrimaryColor(primary_color.inner())))
+		.map_err(|err: editor_core::EditorError| Error::new(&err.to_string()).into())
+}
+
+/// Update secondary color
+#[wasm_bindgen]
+pub fn update_secondary_color(secondary_color: Color) -> Result<(), JsValue> {
+	EDITOR_STATE
+		.with(|editor| editor.borrow_mut().handle_event(events::Event::SelectSecondaryColor(secondary_color.inner())))
 		.map_err(|err: editor_core::EditorError| Error::new(&err.to_string()).into())
 }

@@ -46,6 +46,7 @@ impl Trace {
 	}
 }
 
+// origin is top left
 #[derive(Debug, Copy, Clone, Default, Eq, PartialEq)]
 pub struct CanvasPosition {
 	pub x: u32,
