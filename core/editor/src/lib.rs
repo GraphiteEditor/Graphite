@@ -17,25 +17,35 @@ pub use dispatcher::events;
 pub use dispatcher::Callback;
 
 use dispatcher::Dispatcher;
+use document_core::Document;
 use tools::ToolState;
 use workspace::Workspace;
 
-// TODO: serialize with serde to save the current editor state
-pub struct Editor {
+pub struct EditorState {
 	tools: ToolState,
 	workspace: Workspace,
+	document: Document,
+}
+
+// TODO: serialize with serde to save the current editor state
+pub struct Editor {
+	state: EditorState,
 	dispatcher: Dispatcher,
 }
 
 impl Editor {
 	pub fn new(callback: Callback) -> Self {
 		Self {
-			tools: ToolState::new(),
-			workspace: Workspace::new(),
+			state: EditorState {
+				tools: ToolState::new(),
+				workspace: Workspace::new(),
+				document: Document::default(),
+			},
 			dispatcher: Dispatcher::new(callback),
 		}
 	}
+
 	pub fn handle_event(&mut self, event: events::Event) -> Result<(), EditorError> {
-		self.dispatcher.handle_event(&mut self.tools, event)
+		self.dispatcher.handle_event(&mut self.state, event)
 	}
 }

@@ -35,7 +35,7 @@ pub fn on_mouse_down(x: u32, y: u32, mouse_keys: u8) -> Result<(), JsValue> {
 #[wasm_bindgen]
 pub fn on_mouse_up(x: u32, y: u32, mouse_keys: u8) -> Result<(), JsValue> {
 	let mouse_keys = events::MouseKeys::from_bits(mouse_keys).expect("invalid modifier keys");
-	let ev = events::Event::MouseDown(events::MouseState {
+	let ev = events::Event::MouseUp(events::MouseState {
 		position: events::CanvasPosition { x, y },
 		mouse_keys,
 	});
