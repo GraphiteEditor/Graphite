@@ -12,7 +12,12 @@
 		</LayoutRow>
 		<LayoutRow :class="'tools-and-viewport'">
 			<LayoutCol :class="'tools'"></LayoutCol>
-			<LayoutCol :class="'viewport-container'" @click="canvasClick"></LayoutCol>
+			<LayoutCol
+				:class="'canvas'"
+				@mousedown="canvasMouseDown"
+				@mouseup="canvasMouseUp"
+				@mousemove="canvasMouseMove"
+			></LayoutCol>
 		</LayoutRow>
 	</LayoutCol>
 </template>
@@ -57,7 +62,7 @@
 			flex: 0 0 32px;
 		}
 
-		.viewport-container {
+		.canvas {
 			background: #111;
 			flex: 1 1 100%;
 		}
@@ -78,11 +83,21 @@ export default defineComponent({
 		LayoutCol,
 	},
 	methods: {
-        async canvasClick(e: MouseEvent) {
-            console.log(e);
-            const { on_mouse_click } = await wasm;
-            on_mouse_click(e.offsetX, e.offsetY);
-        }
+		async canvasMouseDown(e: MouseEvent) {
+			console.log(e);
+			const { on_mouse_down } = await wasm;
+			on_mouse_down(e.offsetX, e.offsetY, e.buttons);
+		},
+		async canvasMouseUp(e: MouseEvent) {
+			console.log(e);
+			const { on_mouse_up } = await wasm;
+			on_mouse_up(e.offsetX, e.offsetY, e.buttons);
+		},
+		async canvasMouseMove(e: MouseEvent) {
+			console.log(e);
+			const { on_mouse_move } = await wasm;
+			on_mouse_move(e.offsetX, e.offsetY);
+		},
 	},
 });
 </script>

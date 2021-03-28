@@ -22,7 +22,7 @@ use workspace::Workspace;
 
 // TODO: serialize with serde to save the current editor state
 pub struct Editor {
-	pub tools: ToolState,
+	tools: ToolState,
 	workspace: Workspace,
 	dispatcher: Dispatcher,
 }
@@ -36,6 +36,6 @@ impl Editor {
 		}
 	}
 	pub fn handle_event(&mut self, event: events::Event) -> Result<(), EditorError> {
-		self.dispatcher.handle_event(event)
+		self.dispatcher.handle_event(&mut self.tools, event)
 	}
 }
