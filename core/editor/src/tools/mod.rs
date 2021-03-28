@@ -1,7 +1,9 @@
-use crate::Color;
+use crate::{events::Trace, Color};
 use std::collections::HashMap;
 
 pub struct ToolState {
+	pub mouse_is_clicked: bool,
+	pub trace: Trace,
 	pub primary_color: Color,
 	pub secondary_color: Color,
 	pub active_tool: ToolType,
@@ -11,6 +13,8 @@ pub struct ToolState {
 impl ToolState {
 	pub fn new() -> Self {
 		ToolState {
+			mouse_is_clicked: false,
+			trace: Trace::new(),
 			primary_color: Color::BLACK,
 			secondary_color: Color::WHITE,
 			active_tool: ToolType::Select,

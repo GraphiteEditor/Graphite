@@ -16,8 +16,26 @@ pub enum Response {
 	UpdateCanvas,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct Trace(Vec<MouseState>);
+
+impl Trace {
+	pub fn new() -> Self {
+		Self::default()
+	}
+	pub fn first_point(&self) -> Option<&MouseState> {
+		self.0.first()
+	}
+	pub fn last_point(&self) -> Option<&MouseState> {
+		self.0.last()
+	}
+	pub fn append_point(&mut self, x: u32, y: u32) {
+		self.0.push(MouseState::from_pos(x, y))
+	}
+	pub fn clear(&mut self) {
+		self.0.clear()
+	}
+}
 #[derive(Debug, Clone, Default)]
 pub struct MouseState {
 	x: u32,
