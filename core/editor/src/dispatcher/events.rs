@@ -24,15 +24,11 @@ impl Trace {
 		Self(vec![])
 	}
 	pub fn first_point(&self) -> Option<&MouseState> {
-		self.0.get(0)
+		self.0.first()
 	}
 	pub fn last_point(&self) -> Option<&MouseState> {
 		// avoid underflow
-		if let Some(idx) = self.0.len().checked_sub(1) {
-			self.0.get(idx)
-		} else {
-			None
-		}
+		self.0.last()
 	}
 	pub fn append_point(&mut self, x: u32, y: u32) {
 		self.0.push(MouseState::from_pos(x, y))
