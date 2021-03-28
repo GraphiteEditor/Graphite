@@ -1,12 +1,21 @@
 use crate::tools::ToolType;
+use crate::Color;
+use bitflags::bitflags;
+use std::ops::{Deref, DerefMut};
+
 #[derive(Debug, Clone)]
 #[repr(C)]
 pub enum Event {
 	SelectTool(ToolType),
-	ModifierKeyDown(ModKey),
-	ModifierKeyUp(ModKey),
-	MouseMovement(Trace),
-	Click(MouseState),
+	SelectPrimaryColor(Color),
+	SelectSecondaryColor(Color),
+	SwapColors,
+	ResetColors,
+	MouseDown(MouseState),
+	MouseUp(MouseState),
+	MouseMovement(CanvasPosition),
+	ModifierKeyDown(ModKeys),
+	ModifierKeyUp(ModKeys),
 	KeyPress(Key),
 }
 
@@ -17,92 +26,81 @@ pub enum Response {
 }
 
 #[derive(Debug, Clone, Default)]
-pub struct Trace(Vec<MouseState>);
+pub struct Trace(Vec<TracePoint>);
+
+impl Deref for Trace {
+	type Target = Vec<TracePoint>;
+
+	fn deref(&self) -> &Self::Target {
+		&self.0
+	}
+}
+
+impl DerefMut for Trace {
+	fn deref_mut(&mut self) -> &mut Self::Target {
+		&mut self.0
+	}
+}
 
 impl Trace {
 	pub fn new() -> Self {
 		Self::default()
 	}
-	pub fn first_point(&self) -> Option<&MouseState> {
-		self.0.first()
-	}
-	pub fn last_point(&self) -> Option<&MouseState> {
-		self.0.last()
-	}
-	pub fn append_point(&mut self, x: u32, y: u32) {
-		self.0.push(MouseState::from_pos(x, y))
-	}
-	pub fn clear(&mut self) {
-		self.0.clear()
-	}
 }
-#[derive(Debug, Clone, Default)]
+
+// origin is top left
+#[derive(Debug, Copy, Clone, Default, Eq, PartialEq)]
+pub struct CanvasPosition {
+	pub x: u32,
+	pub y: u32,
+}
+
+#[derive(Debug, Copy, Clone, Default, Eq, PartialEq)]
+pub struct TracePoint {
+	pub mouse_state: MouseState,
+	pub mod_keys: ModKeys,
+}
+
+#[derive(Debug, Copy, Clone, Default, Eq, PartialEq)]
 pub struct MouseState {
-	x: u32,
-	y: u32,
-	mod_keys: ModKeysStorage,
-	mouse_keys: MouseKeysStorage,
+	pub position: CanvasPosition,
+	pub mouse_keys: MouseKeys,
 }
 
 impl MouseState {
-	pub const fn new() -> MouseState {
+	pub fn new() -> MouseState {
+		Self::default()
+	}
+
+	pub fn from_pos(x: u32, y: u32) -> MouseState {
 		MouseState {
-			x: 0,
-			y: 0,
-			mod_keys: 0,
-			mouse_keys: 0,
+			position: CanvasPosition { x, y },
+			mouse_keys: MouseKeys::default(),
 		}
 	}
-	pub const fn from_pos(x: u32, y: u32) -> MouseState {
-		MouseState { x, y, mod_keys: 0, mouse_keys: 0 }
-	}
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub enum Key {
-	None,
+	UnknownKey,
 }
 
-pub type ModKeysStorage = u8;
-pub type MouseKeysStorage = u8;
-#[derive(Debug, Clone, Copy)]
-#[repr(transparent)]
-pub struct ModKeys(ModKeysStorage);
-
-impl ModKeys {
-	pub fn get_key(&self, key: ModKey) -> bool {
-		key as ModKeysStorage & self.0 > 0
-	}
-	pub fn set_key(&mut self, key: ModKey) {
-		self.0 |= key as ModKeysStorage
+bitflags! {
+	#[derive(Default)]
+	#[repr(transparent)]
+	pub struct ModKeys: u8 {
+		const CONTROL = 0b0000_0001;
+		const SHIFT   = 0b0000_0010;
+		const ALT     = 0b0000_0100;
 	}
 }
 
-#[derive(Debug, Clone, Copy)]
-#[repr(transparent)]
-struct MouseKeys(u8);
-
-impl MouseKeys {
-	pub fn get_key(&self, key: MouseKey) -> bool {
-		key as ModKeysStorage & self.0 > 0
+bitflags! {
+	#[derive(Default)]
+	#[repr(transparent)]
+	pub struct MouseKeys: u8 {
+		const LEFT   = 0b0000_0001;
+		const RIGHT  = 0b0000_0010;
+		const MIDDLE = 0b0000_0100;
 	}
-	pub fn set_key(&mut self, key: MouseKey) {
-		self.0 |= key as MouseKeysStorage
-	}
-}
-
-#[repr(u8)]
-#[derive(Debug, Clone)]
-pub enum ModKey {
-	Control = 1,
-	Shift = 2,
-	Alt = 4,
-}
-
-#[repr(u8)]
-#[derive(Debug, Clone)]
-pub enum MouseKey {
-	LeftMouse = 1,
-	RightMouse = 2,
-	MiddleMouse = 4,
 }
