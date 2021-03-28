@@ -10,3 +10,8 @@ license = "Apache-2.0"
 
 [dependencies]
 log = "0.4"
+bitflags = "1.2.1"
+
+[dependencies.document-core]
+path = "../document"
+package = "graphite-document-core"
