@@ -19,6 +19,6 @@ module.exports = {
 		"linebreak-style": ["error", "unix"],
 		indent: ["error", "tab"],
 		quotes: ["error", "double"],
-		camelcase: ["error", { ignoreImports: true, ignoreDestructuring: true }]
+		camelcase: ["error", { ignoreImports: true, ignoreDestructuring: true }],
 	},
 };

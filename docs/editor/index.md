@@ -7,14 +7,17 @@ Work in progress.
 	- [Glossary of terminology](1-overview.md#glossary-of-terminology)
 - Interface
 	- Title bar
+		- Menu bar
+		- Focused document title
+		- Window buttons
 	- Workspace
 		- Panel interface (tab, pin, options bar, left menu)
 		- Arrangement and docking
 	- Status bar
 	- Multiple windows
 - Panels
-	- Viewport
-		- Canvas
+	- Document
+		- Canvas and frames
 		- Rulers
 		- Tool menu
 		- Options bar

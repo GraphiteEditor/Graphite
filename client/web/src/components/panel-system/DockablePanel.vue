@@ -166,7 +166,7 @@
 
 <script lang="ts">
 import { defineComponent } from "vue";
-import Viewport from "../panels/ViewportPanel.vue";
+import Document from "../panels/DocumentPanel.vue";
 import Properties from "../panels/PropertiesPanel.vue";
 import Layers from "../panels/LayersPanel.vue";
 import Minimap from "../panels/MinimapPanel.vue";
@@ -175,7 +175,7 @@ import CloseX from "../../../assets/svg/16x16-bounds-12x12-icon/close-x.svg";
 
 export default defineComponent({
 	components: {
-		Viewport,
+		Document,
 		Properties,
 		Layers,
 		Minimap,

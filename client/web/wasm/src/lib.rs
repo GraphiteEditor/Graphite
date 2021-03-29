@@ -1,6 +1,6 @@
+pub mod document;
 mod shims;
 pub mod utils;
-pub mod viewport;
 pub mod window;
 pub mod wrappers;
 
@@ -18,13 +18,13 @@ pub fn init() {
 
 fn handle_response(response: Response) {
 	match response {
-		Response::UpdateCanvas { document } => update_canvas(document),
+		Response::UpdateCanvas { document } => updateCanvas(document),
 	}
 }
 
 #[wasm_bindgen(module = "/../src/wasm-callback-processor.js")]
 extern "C" {
-	fn update_canvas(svg: String);
+	fn updateCanvas(svg: String);
 }
 
 #[wasm_bindgen]
