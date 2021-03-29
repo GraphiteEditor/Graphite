@@ -13,7 +13,7 @@ pub enum Event {
 	ResetColors,
 	MouseDown(MouseState),
 	MouseUp(MouseState),
-	MouseMovement(CanvasPosition),
+	MouseMovement(ViewportPosition),
 	ModifierKeyDown(ModKeys),
 	ModifierKeyUp(ModKeys),
 	KeyPress(Key),
@@ -50,7 +50,7 @@ impl Trace {
 
 // origin is top left
 #[derive(Debug, Copy, Clone, Default, Eq, PartialEq)]
-pub struct CanvasPosition {
+pub struct ViewportPosition {
 	pub x: u32,
 	pub y: u32,
 }
@@ -63,7 +63,7 @@ pub struct TracePoint {
 
 #[derive(Debug, Copy, Clone, Default, Eq, PartialEq)]
 pub struct MouseState {
-	pub position: CanvasPosition,
+	pub position: ViewportPosition,
 	pub mouse_keys: MouseKeys,
 }
 
@@ -74,7 +74,7 @@ impl MouseState {
 
 	pub fn from_pos(x: u32, y: u32) -> MouseState {
 		MouseState {
-			position: CanvasPosition { x, y },
+			position: ViewportPosition { x, y },
 			mouse_keys: MouseKeys::default(),
 		}
 	}

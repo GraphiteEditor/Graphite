@@ -13,30 +13,34 @@ pub fn select_tool(tool: String) -> Result<(), JsValue> {
 	})
 }
 
-/// Mouse movement with the bounds of the canvas
+// TODO: When a mouse button is down that started in the viewport, this should trigger even when the mouse is outside the viewport (or even the browser window if the browser supports it)
+/// Mouse movement within the screenspace bounds of the viewport
 #[wasm_bindgen]
 pub fn on_mouse_move(x: u32, y: u32) -> Result<(), JsValue> {
-	let ev = events::Event::MouseMovement(events::CanvasPosition { x, y });
+	// TODO: Convert these screenspace viewport coordinates to canvas coordinates based on the current zoom and pan
+	let ev = events::Event::MouseMovement(events::ViewportPosition { x, y });
 	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_event(ev)).map_err(|err| Error::new(&err.to_string()).into())
 }
 
-/// Mouse click within the bounds of the canvas
+/// A mouse button depressed within screenspace the bounds of the viewport
 #[wasm_bindgen]
 pub fn on_mouse_down(x: u32, y: u32, mouse_keys: u8) -> Result<(), JsValue> {
+	// TODO: Convert these screenspace viewport coordinates to canvas coordinates based on the current zoom and pan
 	let mouse_keys = events::MouseKeys::from_bits(mouse_keys).expect("invalid modifier keys");
 	let ev = events::Event::MouseDown(events::MouseState {
-		position: events::CanvasPosition { x, y },
+		position: events::ViewportPosition { x, y },
 		mouse_keys,
 	});
 	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_event(ev)).map_err(|err| Error::new(&err.to_string()).into())
 }
 
-/// Mouse released
+/// A mouse button released
 #[wasm_bindgen]
 pub fn on_mouse_up(x: u32, y: u32, mouse_keys: u8) -> Result<(), JsValue> {
+	// TODO: Convert these screenspace viewport coordinates to canvas coordinates based on the current zoom and pan
 	let mouse_keys = events::MouseKeys::from_bits(mouse_keys).expect("invalid modifier keys");
 	let ev = events::Event::MouseUp(events::MouseState {
-		position: events::CanvasPosition { x, y },
+		position: events::ViewportPosition { x, y },
 		mouse_keys,
 	});
 	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_event(ev)).map_err(|err| Error::new(&err.to_string()).into())

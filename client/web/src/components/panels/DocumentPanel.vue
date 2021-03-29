@@ -1,5 +1,5 @@
 <template>
-	<LayoutCol :class="'viewport'">
+	<LayoutCol :class="'document'">
 		<LayoutRow :class="'options-bar'">
 			<div class="left side">
 				<!-- <span class="label">Select</span>
@@ -10,22 +10,24 @@
 				<!-- <span class="label">Layer 1</span> -->
 			</div>
 		</LayoutRow>
-		<LayoutRow :class="'tools-and-viewport'">
-			<LayoutCol :class="'tools'"></LayoutCol>
-			<LayoutCol
-				:class="'canvas'"
-				@mousedown="canvasMouseDown"
-				@mouseup="canvasMouseUp"
-				@mousemove="canvasMouseMove"
-			>
-				<svg></svg>
+		<LayoutRow :class="'toolbar-and-viewport'">
+			<LayoutCol :class="'toolbar'"></LayoutCol>
+			<LayoutCol :class="'viewport'">
+				<div
+					class="canvas"
+					@mousedown="canvasMouseDown"
+					@mouseup="canvasMouseUp"
+					@mousemove="canvasMouseMove"
+				>
+					<svg></svg>
+				</div>
 			</LayoutCol>
 		</LayoutRow>
 	</LayoutCol>
 </template>
 
 <style lang="scss">
-.viewport {
+.document {
 	height: 100%;
 
 	.options-bar {
@@ -59,19 +61,25 @@
 		}
 	}
 
-	.tools-and-viewport {
-		.tools {
+	.toolbar-and-viewport {
+		.toolbar {
 			flex: 0 0 32px;
 		}
 
-		.canvas {
-			background: #111;
+		.viewport {
 			flex: 1 1 100%;
 
-			svg {
+			.canvas {
+				background: #111;
 				width: 100%;
 				height: 100%;
+
+				svg {
+					width: 100%;
+					height: 100%;
+				}
 			}
+
 		}
 }
 }
@@ -91,17 +99,14 @@ export default defineComponent({
 	},
 	methods: {
 		async canvasMouseDown(e: MouseEvent) {
-			console.log(e);
 			const { on_mouse_down } = await wasm;
 			on_mouse_down(e.offsetX, e.offsetY, e.buttons);
 		},
 		async canvasMouseUp(e: MouseEvent) {
-			console.log(e);
 			const { on_mouse_up } = await wasm;
 			on_mouse_up(e.offsetX, e.offsetY, e.buttons);
 		},
 		async canvasMouseMove(e: MouseEvent) {
-			console.log(e);
 			const { on_mouse_move } = await wasm;
 			on_mouse_move(e.offsetX, e.offsetY);
 		},

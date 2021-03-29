@@ -67,7 +67,7 @@
 
   [<editor> Open Documents State Store|
       For each open document:|
-      [<state> Pan and zoom viewport bounds]|
+      [<state> Pan and zoom canvas bounds]|
       [<state> Selected layers]
   ]
   [Tool State Machine] <- [Open Documents State Store]

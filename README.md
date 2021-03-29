@@ -12,9 +12,9 @@ If the Graphite project strikes your fancy, join our Discord community to chat w
 
 ## Design mockup
 
-This is a **work-in-progress mockup** of the viewport, properties, and layers panels. The mockup is a nonfunctional pixel-perfect prototype, not code. It is presently being replicated by a functional web UI.
+This is a **work-in-progress mockup** of the document, properties, and layers panels. The mockup is a nonfunctional pixel-perfect prototype, not code. It is presently being replicated by a functional web UI.
 
-![Interactive viewport](https://files.keavon.com/-/FatherlyGorgeousAmphiuma/capture.png)
+![Demo UI mockup](https://files.keavon.com/-/FatherlyGorgeousAmphiuma/capture.png)
 
 ## Vision
 

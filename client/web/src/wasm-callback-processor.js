@@ -1,3 +1,3 @@
-export function update_canvas(svg) {
-    document.querySelector(".canvas svg").innerHTML = svg;
+export function updateCanvas(svg) {
+	document.querySelector(".document .canvas svg").innerHTML = svg;
 }
