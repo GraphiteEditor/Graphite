@@ -10,6 +10,7 @@ pub struct Dispatcher {
 
 impl Dispatcher {
 	pub fn handle_event(&self, state: &mut EditorState, event: Event) -> Result<(), EditorError> {
+		log::trace!("{:?}", event);
 		match event {
 			Event::SelectTool(tool_type) => {
 				state.tools.active_tool = tool_type;

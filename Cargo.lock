@@ -70,6 +70,7 @@ version = "0.1.0"
 dependencies = [
  "console_error_panic_hook",
  "graphite-editor-core",
+ "log",
  "wasm-bindgen",
  "wasm-bindgen-test",
 ]
