@@ -10,7 +10,6 @@ mod select;
 mod shape;
 
 use crate::events::{Event, ModKeys, MouseState, Trace, TracePoint};
-// use crate::gen_tools_hashmap;
 use crate::Color;
 use crate::EditorError;
 use document_core::Operation;
