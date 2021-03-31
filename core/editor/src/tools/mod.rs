@@ -10,6 +10,7 @@ mod select;
 mod shape;
 
 use crate::events::{Event, ModKeys, MouseState, Trace, TracePoint};
+// use crate::gen_tools_hashmap;
 use crate::Color;
 use crate::EditorError;
 use document_core::Operation;
@@ -39,21 +40,17 @@ impl Default for ToolState {
 			primary_color: Color::BLACK,
 			secondary_color: Color::WHITE,
 			active_tool_type: ToolType::Select,
-			tools: {
-				let mut hash_map: HashMap<ToolType, Box<dyn Tool>> = HashMap::new();
-
-				hash_map.insert(ToolType::Select, Box::new(select::Select::default()));
-				hash_map.insert(ToolType::Crop, Box::new(crop::Crop::default()));
-				hash_map.insert(ToolType::Navigate, Box::new(navigate::Navigate::default()));
-				hash_map.insert(ToolType::Sample, Box::new(sample::Sample::default()));
-				hash_map.insert(ToolType::Path, Box::new(path::Path::default()));
-				hash_map.insert(ToolType::Pen, Box::new(pen::Pen::default()));
-				hash_map.insert(ToolType::Line, Box::new(line::Line::default()));
-				hash_map.insert(ToolType::Rectangle, Box::new(rectangle::Rectangle::default()));
-				hash_map.insert(ToolType::Ellipse, Box::new(ellipse::Ellipse::default()));
-				hash_map.insert(ToolType::Shape, Box::new(shape::Shape::default()));
-
-				hash_map
+			tools: gen_tools_hash_map! {
+				Select => select::Select,
+				Crop => crop::Crop,
+				Navigate => navigate::Navigate,
+				Sample => sample::Sample,
+				Path => path::Path,
+				Pen => pen::Pen,
+				Line => line::Line,
+				Rectangle => rectangle::Rectangle,
+				Ellipse => ellipse::Ellipse,
+				Shape => shape::Shape,
 			},
 			tool_settings: default_tool_settings(),
 		}

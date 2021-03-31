@@ -10,12 +10,12 @@ impl Tool for Select {
 	fn handle_input(&mut self, event: Event) -> Option<Operation> {
 		match event {
 			Event::MouseDown(state) => {
-				if !(state.mouse_keys & MouseKeys::LEFT).is_empty() {
+				if state.mouse_keys.contains(MouseKeys::LEFT) {
 					self.0 = Fsm::LmbDown;
 				}
 			}
 			Event::MouseUp(state) => {
-				if self.0 == Fsm::LmbDown && state.mouse_keys == MouseKeys::LEFT {
+				if self.0 == Fsm::LmbDown && state.mouse_keys.contains(MouseKeys::LEFT) {
 					self.0 = Fsm::SelectedObject;
 				}
 			}

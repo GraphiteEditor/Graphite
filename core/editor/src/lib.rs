@@ -1,6 +1,8 @@
 mod color;
 mod dispatcher;
 mod error;
+#[macro_use]
+mod macros;
 pub mod tools;
 pub mod workspace;
 
