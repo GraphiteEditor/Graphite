@@ -11,10 +11,12 @@ mod shape;
 
 use crate::events::{Event, ModKeys, MouseState, Trace, TracePoint};
 use crate::Color;
+use crate::EditorError;
+use document_core::Operation;
 use std::collections::HashMap;
 
 pub trait Tool {
-	fn handle_input(&mut self, event: Event);
+	fn handle_input(&mut self, event: Event) -> Option<Operation>;
 }
 
 pub struct ToolState {
@@ -70,8 +72,8 @@ impl ToolState {
 		})
 	}
 
-	pub fn active_tool(&mut self) -> &mut Box<dyn Tool> {
-		self.tools.get_mut(&self.active_tool_type).unwrap()
+	pub fn active_tool(&mut self) -> Result<&mut Box<dyn Tool>, EditorError> {
+		self.tools.get_mut(&self.active_tool_type).ok_or(EditorError::ToolNotInitialized)
 	}
 }
 
