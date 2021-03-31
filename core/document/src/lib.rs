@@ -5,6 +5,7 @@ pub use operation::Operation;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum SvgElement {
+    Folder(Folder),
 	Circle(Circle),
 	Rect(Rect),
 }
@@ -12,6 +13,9 @@ pub enum SvgElement {
 impl SvgElement {
 	pub fn render(&self) -> String {
 		match self {
+			Self::Folder(f) => {
+                f.elements.iter().map(|e| e.render()).fold(String::with_capacity(f.elements.len() * 30), |s, e| s + &e)
+			}
 			Self::Circle(c) => {
 				format!(r#"<circle cx="{}" cy="{}" r="{}" style="fill: #fff;" />"#, c.center.x, c.center.y, c.radius)
 			}
@@ -23,13 +27,33 @@ impl SvgElement {
 }
 
 #[derive(Default, Debug, Clone, PartialEq)]
+pub struct Folder {
+    elements: Vec<SvgElement>,
+    names: Vec<String>,
+}
+
+impl Folder {
+    pub fn add_element(&mut self, svg: SvgElement, name: String) -> usize {
+        self.elements.push(svg);
+        self.names.push(name);
+        self.elements.len() - 1
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct Document {
-	pub svg: Vec<SvgElement>,
+	pub svg: SvgElement,
+}
+
+impl Default for Document {
+    fn default() -> Self {
+        Self{svg: SvgElement::Folder(Folder::default())}
+    }
 }
 
 impl Document {
 	pub fn render(&self) -> String {
-		self.svg.iter().map(|element| element.render()).collect::<Vec<_>>().join("\n")
+        self.svg.render()
 	}
 
 	pub fn handle_operation<F: Fn(String)>(&mut self, operation: &Operation, update_frontend: F) {
