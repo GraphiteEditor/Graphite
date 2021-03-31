@@ -1,6 +1,21 @@
-use crate::events::{ModKeys, MouseState, TracePoint};
-use crate::{events::Trace, Color};
+mod crop;
+mod ellipse;
+mod line;
+mod navigate;
+mod path;
+mod pen;
+mod rectangle;
+mod sample;
+mod select;
+mod shape;
+
+use crate::events::{Event, ModKeys, MouseState, Trace, TracePoint};
+use crate::Color;
 use std::collections::HashMap;
+
+pub trait Tool {
+	fn handle_input(&mut self, event: Event);
+}
 
 pub struct ToolState {
 	pub mouse_state: MouseState,
@@ -8,7 +23,8 @@ pub struct ToolState {
 	pub trace: Trace,
 	pub primary_color: Color,
 	pub secondary_color: Color,
-	pub active_tool: ToolType,
+	pub active_tool_type: ToolType,
+	pub tools: HashMap<ToolType, Box<dyn Tool>>,
 	tool_settings: HashMap<ToolType, ToolSettings>,
 }
 
@@ -20,7 +36,23 @@ impl Default for ToolState {
 			trace: Trace::new(),
 			primary_color: Color::BLACK,
 			secondary_color: Color::WHITE,
-			active_tool: ToolType::Select,
+			active_tool_type: ToolType::Select,
+			tools: {
+				let mut hash_map: HashMap<ToolType, Box<dyn Tool>> = HashMap::new();
+
+				hash_map.insert(ToolType::Select, Box::new(select::Select::default()));
+				hash_map.insert(ToolType::Crop, Box::new(crop::Crop::default()));
+				hash_map.insert(ToolType::Navigate, Box::new(navigate::Navigate::default()));
+				hash_map.insert(ToolType::Sample, Box::new(sample::Sample::default()));
+				hash_map.insert(ToolType::Path, Box::new(path::Path::default()));
+				hash_map.insert(ToolType::Pen, Box::new(pen::Pen::default()));
+				hash_map.insert(ToolType::Line, Box::new(line::Line::default()));
+				hash_map.insert(ToolType::Rectangle, Box::new(rectangle::Rectangle::default()));
+				hash_map.insert(ToolType::Ellipse, Box::new(ellipse::Ellipse::default()));
+				hash_map.insert(ToolType::Shape, Box::new(shape::Shape::default()));
+
+				hash_map
+			},
 			tool_settings: default_tool_settings(),
 		}
 	}
@@ -36,6 +68,10 @@ impl ToolState {
 			mouse_state: self.mouse_state,
 			mod_keys: self.mod_keys,
 		})
+	}
+
+	pub fn active_tool(&mut self) -> &mut Box<dyn Tool> {
+		self.tools.get_mut(&self.active_tool_type).unwrap()
 	}
 }
 
