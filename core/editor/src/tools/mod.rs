@@ -13,7 +13,7 @@ use crate::events::{Event, ModKeys, MouseState, Trace, TracePoint};
 use crate::Color;
 use crate::EditorError;
 use document_core::Operation;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 pub trait Tool {
 	fn handle_input(&mut self, event: Event) -> Vec<Operation>;
@@ -28,6 +28,8 @@ pub struct ToolState {
 	pub active_tool_type: ToolType,
 	pub tools: HashMap<ToolType, Box<dyn Tool>>,
 	tool_settings: HashMap<ToolType, ToolSettings>,
+	bought_tools: HashSet<ToolType>,
+	keybard_access: bool,
 }
 
 impl Default for ToolState {
@@ -52,6 +54,8 @@ impl Default for ToolState {
 				Shape => shape::Shape,
 			},
 			tool_settings: default_tool_settings(),
+			bought_tools: HashSet::new(),
+			keybard_access: false,
 		}
 	}
 }
@@ -70,6 +74,28 @@ impl ToolState {
 
 	pub fn active_tool(&mut self) -> Result<&mut Box<dyn Tool>, EditorError> {
 		self.tools.get_mut(&self.active_tool_type).ok_or(EditorError::UnknownTool)
+	}
+
+	pub fn buy_tool(&mut self, tool_type: ToolType) {
+		if !self.bought_tools.contains(&tool_type) {
+			// TODO: set up server and payment method
+			self.bought_tools.insert(tool_type);
+		}
+	}
+
+	pub fn buy_keyboard_access(&mut self) {
+		if !self.keybard_access {
+			// TODO: set up server and payment method
+			self.keybard_access = true;
+		}
+	}
+
+	pub fn can_use_tool(&self, tool_type: &ToolType) -> bool {
+		self.bought_tools.contains(tool_type)
+	}
+
+	pub fn can_use_keyboard(&self) -> bool {
+		self.keybard_access
 	}
 }
 

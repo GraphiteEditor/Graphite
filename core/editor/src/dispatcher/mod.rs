@@ -16,6 +16,10 @@ impl Dispatcher {
 			Event::SelectTool(tool_type) => {
 				state.tool_state.active_tool_type = tool_type;
 
+				if !state.tool_state.can_use_tool(&tool_type) {
+					return Err(EditorError::ToolNotBought);
+				}
+
 				Ok(())
 			}
 			Event::SelectPrimaryColor(color) => {
@@ -68,18 +72,32 @@ impl Dispatcher {
 				Ok(())
 			}
 			Event::ModifierKeyDown(mod_keys) => {
+				if !state.tool_state.can_use_keyboard() {
+					return Err(EditorError::KeyboardNotBought);
+				}
+
 				state.tool_state.mod_keys = mod_keys;
 				state.tool_state.active_tool()?.handle_input(event);
 
 				Ok(())
 			}
 			Event::ModifierKeyUp(mod_keys) => {
+				if !state.tool_state.can_use_keyboard() {
+					return Err(EditorError::KeyboardNotBought);
+				}
+
 				state.tool_state.mod_keys = mod_keys;
 				state.tool_state.active_tool()?.handle_input(event);
 
 				Ok(())
 			}
-			Event::KeyPress(key) => todo!(),
+			Event::KeyPress(key) => {
+				if !state.tool_state.can_use_keyboard() {
+					return Err(EditorError::KeyboardNotBought);
+				}
+
+				todo!()
+			}
 		}
 	}
 

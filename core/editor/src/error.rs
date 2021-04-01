@@ -11,6 +11,8 @@ pub enum EditorError {
 	Misc(String),
 	Color(String),
 	UnknownTool,
+	ToolNotBought,
+	KeyboardNotBought,
 }
 
 impl Display for EditorError {
@@ -21,6 +23,8 @@ impl Display for EditorError {
 			EditorError::Misc(e) => write!(f, "{}", e),
 			EditorError::Color(c) => write!(f, "Tried to construct an invalid color {:?}", c),
 			EditorError::UnknownTool => write!(f, "The requested tool does not exist"),
+			EditorError::ToolNotBought => write!(f, "The requested tool must be bought before it can be used. Visit graphite.design/shop for more information"),
+			EditorError::KeyboardNotBought => write!(f, "Keyboard access must be bought before it can be used. Visit graphite.design/shop for more information"),
 		}
 	}
 }
