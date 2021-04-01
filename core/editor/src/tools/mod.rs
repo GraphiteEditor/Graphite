@@ -16,7 +16,7 @@ use document_core::Operation;
 use std::collections::HashMap;
 
 pub trait Tool {
-	fn handle_input(&mut self, event: Event) -> Option<Operation>;
+	fn handle_input(&mut self, event: Event) -> Vec<Operation>;
 }
 
 pub struct ToolState {

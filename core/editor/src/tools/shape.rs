@@ -6,7 +6,7 @@ use document_core::Operation;
 pub struct Shape;
 
 impl Tool for Shape {
-	fn handle_input(&mut self, event: Event) -> Option<Operation> {
+	fn handle_input(&mut self, event: Event) -> Vec<Operation> {
 		todo!();
 	}
 }

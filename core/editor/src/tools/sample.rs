@@ -6,7 +6,7 @@ use document_core::Operation;
 pub struct Sample;
 
 impl Tool for Sample {
-	fn handle_input(&mut self, event: Event) -> Option<Operation> {
+	fn handle_input(&mut self, event: Event) -> Vec<Operation> {
 		todo!();
 	}
 }

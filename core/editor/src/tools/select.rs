@@ -7,7 +7,7 @@ use document_core::Operation;
 pub struct Select(Fsm);
 
 impl Tool for Select {
-	fn handle_input(&mut self, event: Event) -> Option<Operation> {
+	fn handle_input(&mut self, event: Event) -> Vec<Operation> {
 		match event {
 			Event::MouseDown(state) => {
 				if state.mouse_keys.contains(MouseKeys::LEFT) {
@@ -22,7 +22,7 @@ impl Tool for Select {
 			_ => {}
 		}
 
-		None
+		Vec::new()
 	}
 }
 

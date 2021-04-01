@@ -6,7 +6,7 @@ use document_core::Operation;
 pub struct Crop;
 
 impl Tool for Crop {
-	fn handle_input(&mut self, event: Event) -> Option<Operation> {
+	fn handle_input(&mut self, event: Event) -> Vec<Operation> {
 		todo!();
 	}
 }
