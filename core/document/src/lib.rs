@@ -1,4 +1,7 @@
+pub mod operation;
+
 pub use kurbo::{Circle, Point};
+pub use operation::Operation;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum SvgElement {

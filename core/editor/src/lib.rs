@@ -1,6 +1,8 @@
 mod color;
 mod dispatcher;
 mod error;
+#[macro_use]
+mod macros;
 pub mod tools;
 pub mod workspace;
 
@@ -22,7 +24,7 @@ use tools::ToolState;
 use workspace::Workspace;
 
 pub struct EditorState {
-	tools: ToolState,
+	tool_state: ToolState,
 	workspace: Workspace,
 	document: Document,
 }
@@ -37,7 +39,7 @@ impl Editor {
 	pub fn new(callback: Callback) -> Self {
 		Self {
 			state: EditorState {
-				tools: ToolState::new(),
+				tool_state: ToolState::new(),
 				workspace: Workspace::new(),
 				document: Document::default(),
 			},

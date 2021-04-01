@@ -3,13 +3,14 @@ use crate::Color;
 use std::error::Error;
 use std::fmt::{self, Display};
 
-/// The error type used by the graphite editor.
+/// The error type used by the Graphite editor.
 #[derive(Clone, Debug)]
 pub enum EditorError {
 	InvalidOperation(String),
 	InvalidEvent(String),
 	Misc(String),
 	Color(String),
+	UnknownTool,
 }
 
 impl Display for EditorError {
@@ -19,6 +20,7 @@ impl Display for EditorError {
 			EditorError::InvalidEvent(e) => write!(f, "Failed to dispatch event: {}", e),
 			EditorError::Misc(e) => write!(f, "{}", e),
 			EditorError::Color(c) => write!(f, "Tried to construct an invalid color {:?}", c),
+			EditorError::UnknownTool => write!(f, "The requested tool does not exist"),
 		}
 	}
 }
