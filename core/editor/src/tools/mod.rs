@@ -69,7 +69,7 @@ impl ToolState {
 	}
 
 	pub fn active_tool(&mut self) -> Result<&mut Box<dyn Tool>, EditorError> {
-		self.tools.get_mut(&self.active_tool_type).ok_or(EditorError::ToolNotInitialized)
+		self.tools.get_mut(&self.active_tool_type).ok_or(EditorError::UnknownTool)
 	}
 }
 

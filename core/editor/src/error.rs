@@ -10,7 +10,7 @@ pub enum EditorError {
 	InvalidEvent(String),
 	Misc(String),
 	Color(String),
-	ToolNotInitialized,
+	UnknownTool,
 }
 
 impl Display for EditorError {
@@ -20,7 +20,7 @@ impl Display for EditorError {
 			EditorError::InvalidEvent(e) => write!(f, "Failed to dispatch event: {}", e),
 			EditorError::Misc(e) => write!(f, "{}", e),
 			EditorError::Color(c) => write!(f, "Tried to construct an invalid color {:?}", c),
-			EditorError::ToolNotInitialized => write!(f, "The requested tool is not initalized"),
+			EditorError::UnknownTool => write!(f, "The requested tool does not exist"),
 		}
 	}
 }
