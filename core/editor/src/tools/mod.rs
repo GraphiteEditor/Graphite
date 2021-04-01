@@ -1,6 +1,23 @@
-use crate::events::{ModKeys, MouseState, TracePoint};
-use crate::{events::Trace, Color};
+mod crop;
+mod ellipse;
+mod line;
+mod navigate;
+mod path;
+mod pen;
+mod rectangle;
+mod sample;
+mod select;
+mod shape;
+
+use crate::events::{Event, ModKeys, MouseState, Trace, TracePoint};
+use crate::Color;
+use crate::EditorError;
+use document_core::Operation;
 use std::collections::HashMap;
+
+pub trait Tool {
+	fn handle_input(&mut self, event: Event) -> Vec<Operation>;
+}
 
 pub struct ToolState {
 	pub mouse_state: MouseState,
@@ -8,7 +25,8 @@ pub struct ToolState {
 	pub trace: Trace,
 	pub primary_color: Color,
 	pub secondary_color: Color,
-	pub active_tool: ToolType,
+	pub active_tool_type: ToolType,
+	pub tools: HashMap<ToolType, Box<dyn Tool>>,
 	tool_settings: HashMap<ToolType, ToolSettings>,
 }
 
@@ -20,7 +38,19 @@ impl Default for ToolState {
 			trace: Trace::new(),
 			primary_color: Color::BLACK,
 			secondary_color: Color::WHITE,
-			active_tool: ToolType::Select,
+			active_tool_type: ToolType::Select,
+			tools: gen_tools_hash_map! {
+				Select => select::Select,
+				Crop => crop::Crop,
+				Navigate => navigate::Navigate,
+				Sample => sample::Sample,
+				Path => path::Path,
+				Pen => pen::Pen,
+				Line => line::Line,
+				Rectangle => rectangle::Rectangle,
+				Ellipse => ellipse::Ellipse,
+				Shape => shape::Shape,
+			},
 			tool_settings: default_tool_settings(),
 		}
 	}
@@ -36,6 +66,10 @@ impl ToolState {
 			mouse_state: self.mouse_state,
 			mod_keys: self.mod_keys,
 		})
+	}
+
+	pub fn active_tool(&mut self) -> Result<&mut Box<dyn Tool>, EditorError> {
+		self.tools.get_mut(&self.active_tool_type).ok_or(EditorError::UnknownTool)
 	}
 }
 

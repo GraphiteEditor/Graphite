@@ -5,5 +5,5 @@ members = [
 	"client/web/wasm",
 ]
 
-[profile.release.package.wasm-wrapper]
+[profile.release.package.graphite-wasm-wrapper]
 opt-level = "s"
