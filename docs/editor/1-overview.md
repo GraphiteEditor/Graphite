@@ -39,8 +39,8 @@ TODO: Add more to make a comprehensive list, finish writing definitions, separat
   The bar that spans horizontally across the top of a *panel* (located under the *tab bar*) which displays options related to the *panel*.
 - Viewport  
   The area that takes up the main space in a *panel* (located beneath the *options bar*) which displays the primary content of the *panel*.
-- Toolbar  
-  The bar that spans vertically across the left side of some *panels* (located left of the *viewport*) which displays a catalog of available items, such as document editing *tools* or common *nodes*.
+- Shelf  
+  The bar that spans vertically along the left side of some *panels* (located left of the *viewport*) which displays a catalog of available items, such as document editing *tools* or common *nodes*.
 - Tool  
   An instrument for interactively editing *documents* through a collection of related behavior. Each tool puts the editor into a mode that provides the ability to perform certain *operations* on the document interactively. Each *operation* is run based on the current context of mouse and modifier buttons, key presses, tool options, selected layers, editor state, and document state. The *operations* that get run are appended to the document history and update the underlying *layer graph* in real time.
 - Canvas  
