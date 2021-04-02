@@ -10,7 +10,7 @@
 			</LayoutRow>
 			<LayoutRow class="dockable-grid-resize-gutter"></LayoutRow>
 			<LayoutRow class="dockable-grid-subdivision">
-				<DockablePanel :panelType="'Layers'" :tabLabels="['Layers']" :tabActiveIndex="0" />
+				<DockablePanel :panelType="'LayerTree'" :tabLabels="['Layer Tree']" :tabActiveIndex="0" />
 			</LayoutRow>
 			<LayoutRow class="dockable-grid-resize-gutter"></LayoutRow>
 			<LayoutRow class="dockable-grid-subdivision" style="flex-grow: 0; height: 0;">

@@ -166,10 +166,10 @@
 
 <script lang="ts">
 import { defineComponent } from "vue";
-import Document from "../panels/DocumentPanel.vue";
-import Properties from "../panels/PropertiesPanel.vue";
-import Layers from "../panels/LayersPanel.vue";
-import Minimap from "../panels/MinimapPanel.vue";
+import Document from "../panels/Document.vue";
+import Properties from "../panels/Properties.vue";
+import LayerTree from "../panels/LayerTree.vue";
+import Minimap from "../panels/Minimap.vue";
 import VerticalEllipsis from "../../../assets/svg/16x24-bounds-8x16-icon/vertical-ellipsis.svg";
 import CloseX from "../../../assets/svg/16x16-bounds-12x12-icon/close-x.svg";
 
@@ -177,7 +177,7 @@ export default defineComponent({
 	components: {
 		Document,
 		Properties,
-		Layers,
+		LayerTree,
 		Minimap,
 		CloseX,
 		VerticalEllipsis,

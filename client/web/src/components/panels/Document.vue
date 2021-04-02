@@ -10,8 +10,8 @@
 				<!-- <span class="label">Layer 1</span> -->
 			</div>
 		</LayoutRow>
-		<LayoutRow :class="'toolbar-and-viewport'">
-			<LayoutCol :class="'toolbar'"></LayoutCol>
+		<LayoutRow :class="'shelf-and-viewport'">
+			<LayoutCol :class="'shelf'"></LayoutCol>
 			<LayoutCol :class="'viewport'">
 				<div
 					class="canvas"
@@ -61,8 +61,8 @@
 		}
 	}
 
-	.toolbar-and-viewport {
-		.toolbar {
+	.shelf-and-viewport {
+		.shelf {
 			flex: 0 0 32px;
 		}
 
@@ -79,9 +79,8 @@
 					height: 100%;
 				}
 			}
-
 		}
-}
+	}
 }
 </style>
 
