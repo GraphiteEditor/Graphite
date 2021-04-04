@@ -1,8 +1,10 @@
+#[macro_use]
+mod macros;
+
 mod color;
 mod dispatcher;
 mod error;
-#[macro_use]
-mod macros;
+pub mod hint;
 pub mod tools;
 pub mod workspace;
 
