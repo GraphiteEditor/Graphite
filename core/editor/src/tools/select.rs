@@ -1,40 +1,51 @@
-use crate::events::Event;
 use crate::events::MouseKeys;
-use crate::tools::Tool;
+use crate::events::{Event, Response};
+use crate::tools::{Fsm, Tool};
+use crate::Document;
 use document_core::Operation;
 
 #[derive(Default)]
-pub struct Select(Fsm);
+pub struct Select {
+	state: SelectToolState,
+}
 
 impl Tool for Select {
-	fn handle_input(&mut self, event: Event) -> Vec<Operation> {
-		match event {
-			Event::MouseDown(state) => {
-				if state.mouse_keys.contains(MouseKeys::LEFT) {
-					self.0 = Fsm::LmbDown;
-				}
-			}
-			Event::MouseUp(state) => {
-				if self.0 == Fsm::LmbDown && state.mouse_keys.contains(MouseKeys::LEFT) {
-					self.0 = Fsm::SelectedObject;
-				}
-			}
-			_ => {}
-		}
+	fn handle_input(&mut self, event: &Event, document: &Document) -> (Vec<Response>, Vec<Operation>) {
+		let mut responses = Vec::new();
+		let mut operations = Vec::new();
+		self.state = self.state.transition(event, document, &mut responses, &mut operations);
 
-		Vec::new()
+		(responses, operations)
 	}
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Fsm {
+enum SelectToolState {
 	Ready,
 	LmbDown,
-	SelectedObject,
+	TransformSelected,
 }
 
-impl Default for Fsm {
+impl Default for SelectToolState {
 	fn default() -> Self {
-		Fsm::Ready
+		SelectToolState::Ready
+	}
+}
+
+impl Fsm for SelectToolState {
+	fn transition(self, event: &Event, document: &Document, responses: &mut Vec<Response>, operations: &mut Vec<Operation>) -> Self {
+		match (self, event) {
+			(SelectToolState::Ready, Event::MouseDown(mouse_state)) if mouse_state.mouse_keys.contains(MouseKeys::LEFT) => SelectToolState::LmbDown,
+
+			(SelectToolState::LmbDown, Event::MouseUp(mouse_state)) if mouse_state.mouse_keys.contains(MouseKeys::LEFT) => SelectToolState::Ready,
+
+			(SelectToolState::LmbDown, Event::MouseMovement(mouse_state)) => SelectToolState::TransformSelected,
+
+			(SelectToolState::TransformSelected, Event::MouseMovement(mouse_state)) => SelectToolState::TransformSelected,
+
+			(SelectToolState::TransformSelected, Event::MouseUp(mouse_state)) if mouse_state.mouse_keys.contains(MouseKeys::LEFT) => SelectToolState::Ready,
+
+			(state, _) => state,
+		}
 	}
 }

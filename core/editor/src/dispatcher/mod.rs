@@ -1,6 +1,6 @@
 pub mod events;
-use crate::{Color, EditorError, EditorState};
-use document_core::{Circle, Point, SvgElement};
+use crate::{Color, Document, EditorError, ToolState};
+use document_core::Operation;
 use events::{Event, Response};
 
 pub type Callback = Box<dyn Fn(Response)>;
@@ -9,83 +9,74 @@ pub struct Dispatcher {
 }
 
 impl Dispatcher {
-	pub fn handle_event(&self, state: &mut EditorState, event: Event) -> Result<(), EditorError> {
+	pub fn handle_event(&self, tool_state: &mut ToolState, document: &mut Document, event: &Event) -> Result<(), EditorError> {
 		log::trace!("{:?}", event);
 
 		match event {
 			Event::SelectTool(tool_type) => {
-				state.tool_state.active_tool_type = tool_type;
-
-				Ok(())
+				tool_state.active_tool_type = *tool_type;
 			}
 			Event::SelectPrimaryColor(color) => {
-				state.tool_state.primary_color = color;
-
-				Ok(())
+				tool_state.primary_color = *color;
 			}
 			Event::SelectSecondaryColor(color) => {
-				state.tool_state.secondary_color = color;
-
-				Ok(())
+				tool_state.secondary_color = *color;
 			}
 			Event::SwapColors => {
-				std::mem::swap(&mut state.tool_state.primary_color, &mut state.tool_state.secondary_color);
-
-				Ok(())
+				std::mem::swap(&mut tool_state.primary_color, &mut tool_state.secondary_color);
 			}
 			Event::ResetColors => {
-				state.tool_state.primary_color = Color::BLACK;
-				state.tool_state.secondary_color = Color::WHITE;
-
-				Ok(())
+				tool_state.primary_color = Color::BLACK;
+				tool_state.secondary_color = Color::WHITE;
 			}
 			Event::MouseDown(mouse_state) => {
-				state.tool_state.mouse_state = mouse_state;
-				state.tool_state.active_tool()?.handle_input(event);
-
-				Ok(())
+				tool_state.mouse_state = *mouse_state;
 			}
 			Event::MouseUp(mouse_state) => {
-				state.tool_state.mouse_state = mouse_state;
-
-				state.document.svg.push(SvgElement::Circle(Circle {
-					center: Point {
-						x: mouse_state.position.x as f64,
-						y: mouse_state.position.y as f64,
-					},
-					radius: 10.0,
-				}));
-				self.emit_response(Response::UpdateCanvas { document: state.document.render() });
-
-				state.tool_state.active_tool()?.handle_input(event);
-
-				Ok(())
+				tool_state.mouse_state = *mouse_state;
 			}
 			Event::MouseMovement(pos) => {
-				state.tool_state.mouse_state.position = pos;
-				state.tool_state.active_tool()?.handle_input(event);
-
-				Ok(())
+				tool_state.mouse_state.position = *pos;
 			}
 			Event::ModifierKeyDown(mod_keys) => {
-				state.tool_state.mod_keys = mod_keys;
-				state.tool_state.active_tool()?.handle_input(event);
-
-				Ok(())
+				tool_state.mod_keys = *mod_keys;
 			}
 			Event::ModifierKeyUp(mod_keys) => {
-				state.tool_state.mod_keys = mod_keys;
-				state.tool_state.active_tool()?.handle_input(event);
-
-				Ok(())
+				tool_state.mod_keys = *mod_keys;
 			}
 			Event::KeyPress(key) => todo!(),
 		}
+
+		let (responses, operations) = tool_state.active_tool()?.handle_input(event, document);
+
+		self.dispatch_operations(document, &operations);
+		// TODO - Dispatch Responses
+
+		Ok(())
 	}
 
-	pub fn emit_response(&self, response: Response) {
+	fn dispatch_operations(&self, document: &mut Document, operations: &[Operation]) {
+		for operation in operations {
+			self.dispatch_operation(document, operation);
+		}
+	}
+
+	fn dispatch_operation(&self, document: &mut Document, operation: &Operation) {
+		document.handle_operation(operation, |svg: String| {
+			self.dispatch_response(&Response::UpdateCanvas { document: svg });
+		});
+	}
+
+	pub fn dispatch_responses(&self, responses: &[Response]) {
+		for response in responses {
+			self.dispatch_response(response);
+		}
+	}
+
+	pub fn dispatch_response(&self, response: &Response) {
 		let func = &self.callback;
-		func(response)
+		// TODO - Remove clone if possible
+		func(response.clone())
 	}
 
 	pub fn new(callback: Callback) -> Dispatcher {

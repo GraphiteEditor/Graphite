@@ -27,4 +27,17 @@ impl Document {
 	pub fn render(&self) -> String {
 		self.svg.iter().map(|element| element.render()).collect::<Vec<_>>().join("\n")
 	}
+
+	pub fn handle_operation<F: Fn(String)>(&mut self, operation: &Operation, update_frontend: F) {
+		match *operation {
+			Operation::AddCircle { cx, cy, r } => {
+				self.svg.push(SvgElement::Circle(Circle {
+					center: Point { x: cx, y: cy },
+					radius: r,
+				}));
+
+				update_frontend(self.render());
+			}
+		}
+	}
 }
