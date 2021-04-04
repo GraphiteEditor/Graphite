@@ -1,0 +1,19 @@
+[package]
+name = "graphite-proc-macros"
+version = "0.1.0"
+authors = ["Graphite Authors <contact@graphite.design>"]
+edition = "2018"
+publish = false
+
+[lib]
+path = "src/lib.rs"
+proc-macro = true
+
+[dependencies]
+proc-macro2 = "1.0.26"
+syn = "1.0.68"
+quote = "1.0.9"
+
+[dev-dependencies.editor-core]
+path = "../editor"
+package = "graphite-editor-core"
