@@ -48,7 +48,7 @@ impl Fsm for EllipseToolState {
 				EllipseToolState::Ready
 			}
 
-			(state, _) => state,
+			_ => self,
 		}
 	}
 }

@@ -39,13 +39,13 @@ impl Fsm for SelectToolState {
 
 			(SelectToolState::LmbDown, Event::MouseUp(mouse_state)) if mouse_state.mouse_keys.contains(MouseKeys::LEFT) => SelectToolState::Ready,
 
-			(SelectToolState::LmbDown, Event::MouseMovement(mouse_state)) => SelectToolState::TransformSelected,
+			(SelectToolState::LmbDown, Event::MouseMove(mouse_state)) => SelectToolState::TransformSelected,
 
-			(SelectToolState::TransformSelected, Event::MouseMovement(mouse_state)) => SelectToolState::TransformSelected,
+			(SelectToolState::TransformSelected, Event::MouseMove(mouse_state)) => self,
 
 			(SelectToolState::TransformSelected, Event::MouseUp(mouse_state)) if mouse_state.mouse_keys.contains(MouseKeys::LEFT) => SelectToolState::Ready,
 
-			(state, _) => state,
+			_ => self,
 		}
 	}
 }
