@@ -9,4 +9,5 @@ repository = "https://github.com/GraphiteEditor/Graphite"
 license = "Apache-2.0"
 
 [dependencies]
+log = "0.4"
 kurbo = "0.8.0"

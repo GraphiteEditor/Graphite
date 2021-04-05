@@ -1,3 +1,3 @@
 pub enum Operation {
-	AddCircle((f64, f64), f64),
+	AddCircle { cx: f64, cy: f64, r: f64 },
 }
