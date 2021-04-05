@@ -14,9 +14,8 @@ pub enum Event {
 	MouseDown(MouseState),
 	MouseUp(MouseState),
 	MouseMove(ViewportPosition),
-	ModifierKeyDown(ModKeys),
-	ModifierKeyUp(ModKeys),
-	KeyPress(Key),
+	KeyUp(Key),
+	KeyDown(Key),
 }
 
 #[derive(Debug, Clone)]

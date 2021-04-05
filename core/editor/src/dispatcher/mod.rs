@@ -38,13 +38,8 @@ impl Dispatcher {
 			Event::MouseMove(pos) => {
 				editor_state.tool_state.mouse_state.position = *pos;
 			}
-			Event::ModifierKeyDown(mod_keys) => {
-				editor_state.tool_state.mod_keys = *mod_keys;
-			}
-			Event::ModifierKeyUp(mod_keys) => {
-				editor_state.tool_state.mod_keys = *mod_keys;
-			}
-			Event::KeyPress(key) => todo!(),
+			Event::KeyUp(key) => todo!(),
+			Event::KeyDown(key) => todo!(),
 		}
 
 		let (responses, operations) = editor_state.tool_state.active_tool()?.handle_input(event, &editor_state.document);
