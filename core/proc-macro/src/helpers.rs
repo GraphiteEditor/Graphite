@@ -33,3 +33,30 @@ pub fn two_path(left_ident: Ident, right_ident: Ident) -> Path {
 
 	Path { leading_colon: None, segments }
 }
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use quote::ToTokens;
+	use syn::spanned::Spanned;
+
+	#[test]
+	fn test_fold_error_iter() {
+		let res = fold_error_iter(vec![Ok(()), Ok(())].into_iter());
+		assert!(res.is_ok());
+
+		let _span = quote::quote! { "" }.span();
+		let res = fold_error_iter(vec![Ok(()), Err(syn::Error::new(_span, "err1")), Err(syn::Error::new(_span, "err2"))].into_iter());
+		assert!(res.is_err());
+		let err = res.unwrap_err();
+		let mut check_err = syn::Error::new(_span, "err1");
+		check_err.combine(syn::Error::new(_span, "err2"));
+		assert_eq!(err.to_compile_error().to_string(), check_err.to_compile_error().to_string());
+	}
+
+	#[test]
+	fn test_two_path() {
+		let _span = quote::quote! { "" }.span();
+		assert_eq!(two_path(Ident::new("a", _span), Ident::new("b", _span)).to_token_stream().to_string(), "a :: b");
+	}
+}

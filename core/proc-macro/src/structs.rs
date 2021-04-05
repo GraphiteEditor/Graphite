@@ -57,13 +57,88 @@ impl Parse for AttrInnerKeyStringMap {
 }
 
 impl AttrInnerKeyStringMap {
-	pub fn into_hashmap(self) -> HashMap<Ident, Vec<LitStr>> {
-		let mut res = HashMap::<_, Vec<_>>::new();
+	pub fn into_iter(self) -> impl Iterator<Item = (Ident, Vec<LitStr>)> {
+		use std::collections::hash_map::Entry;
+
+		let mut res = Vec::<(Ident, Vec<LitStr>)>::new();
+		let mut idx = HashMap::<Ident, usize>::new();
 
 		for part in self.parts {
-			res.entry(part.key).or_default().push(part.lit);
+			match idx.entry(part.key) {
+				Entry::Occupied(occ) => {
+					res[*occ.get()].1.push(part.lit);
+				}
+				Entry::Vacant(vac) => {
+					let ident = vac.key().clone();
+					vac.insert(res.len());
+					res.push((ident, vec![part.lit]));
+				}
+			}
 		}
 
-		res
+		res.into_iter()
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn attr_inner_single_string() {
+		let res = syn::parse2::<AttrInnerSingleString>(quote::quote! {
+			("a string literal")
+		});
+		assert!(res.is_ok());
+		assert_eq!(res.ok().unwrap().content.value(), "a string literal");
+
+		let res = syn::parse2::<AttrInnerSingleString>(quote::quote! {
+			wrong, "stuff"
+		});
+		assert!(res.is_err());
+	}
+
+	#[test]
+	fn key_eq_string() {
+		let res = syn::parse2::<KeyEqString>(quote::quote! {
+			key="value"
+		});
+		assert!(res.is_ok());
+		let res = res.ok().unwrap();
+		assert_eq!(res.key, "key");
+		assert_eq!(res.lit.value(), "value");
+
+		let res = syn::parse2::<KeyEqString>(quote::quote! {
+			wrong, "stuff"
+		});
+		assert!(res.is_err());
+	}
+
+	#[test]
+	fn attr_inner_key_string_map() {
+		let res = syn::parse2::<AttrInnerKeyStringMap>(quote::quote! {
+			(key="value", key2="value2")
+		});
+		assert!(res.is_ok());
+		let res = res.ok().unwrap();
+		for (item, (k, v)) in res.parts.into_iter().zip(vec![("key", "value"), ("key2", "value2")]) {
+			assert_eq!(item.key, k);
+			assert_eq!(item.lit.value(), v);
+		}
+
+		let res = syn::parse2::<AttrInnerKeyStringMap>(quote::quote! {
+			(key="value", key2="value2",)
+		});
+		assert!(res.is_ok());
+		let res = res.ok().unwrap();
+		for (item, (k, v)) in res.parts.into_iter().zip(vec![("key", "value"), ("key2", "value2")]) {
+			assert_eq!(item.key, k);
+			assert_eq!(item.lit.value(), v);
+		}
+
+		let res = syn::parse2::<AttrInnerKeyStringMap>(quote::quote! {
+			wrong, "stuff"
+		});
+		assert!(res.is_err());
 	}
 }
