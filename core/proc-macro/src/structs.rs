@@ -57,13 +57,13 @@ impl Parse for AttrInnerKeyStringMap {
 }
 
 impl AttrInnerKeyStringMap {
-	pub fn into_iter(self) -> impl Iterator<Item = (Ident, Vec<LitStr>)> {
+	pub fn multi_into_iter(iter: impl IntoIterator<Item = Self>) -> impl Iterator<Item = (Ident, Vec<LitStr>)> {
 		use std::collections::hash_map::Entry;
 
 		let mut res = Vec::<(Ident, Vec<LitStr>)>::new();
 		let mut idx = HashMap::<Ident, usize>::new();
 
-		for part in self.parts {
+		for part in iter.into_iter().flat_map(|x: Self| x.parts) {
 			match idx.entry(part.key) {
 				Entry::Occupied(occ) => {
 					res[*occ.get()].1.push(part.lit);

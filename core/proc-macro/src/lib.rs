@@ -9,31 +9,28 @@ use syn::spanned::Spanned;
 use syn::{parse_macro_input, Attribute, Data, DeriveInput, LitStr, Variant};
 
 fn parse_hint_helper_attrs(attrs: &[Attribute], whole_span: Span, item_type: &str) -> syn::Result<(Vec<LitStr>, Vec<LitStr>)> {
-	let mut v = attrs.iter().filter(|a| a.path.get_ident().map_or(false, |i| i == "hint")).collect::<Vec<_>>();
-	match v.len() {
-		0 => {
-			// no hint attribute -> no hints
-			Ok((Vec::new(), Vec::new()))
-		}
-		1 => {
-			let attr = v.pop().unwrap();
-			let tokens_span = attr.tokens.span();
-
-			let parsed = syn::parse2::<AttrInnerKeyStringMap>(attr.tokens.clone())?;
-			let v: Vec<(LitStr, LitStr)> = fold_error_iter(parsed.into_iter().map(|(k, mut v)| match v.len() {
-				0 => panic!("internal error: a key without values was somehow inserted into the hashmap"),
-				1 => {
-					let single_val = v.pop().unwrap();
-					Ok((LitStr::new(&k.to_string(), Span::call_site()), single_val))
-				}
-				n => Err(syn::Error::new(tokens_span, format!("multiple hints for the same key ({} hints for {:?})", n, k))),
-			}))?;
-
-			Ok(v.into_iter().unzip())
-		}
-		// TODO: just join multiple attrs together
-		n => Err(syn::Error::new(whole_span, format!("too many `hint` attributes for {} (expected 1, got {})", item_type, n))),
-	}
+	fold_error_iter(
+		attrs
+			.iter()
+			.filter(|a| a.path.get_ident().map_or(false, |i| i == "hint"))
+			.map(|attr| syn::parse2::<AttrInnerKeyStringMap>(attr.tokens.clone())),
+	)
+	.and_then(|v: Vec<AttrInnerKeyStringMap>| {
+		fold_error_iter(AttrInnerKeyStringMap::multi_into_iter(v).map(|(k, mut v)| match v.len() {
+			0 => panic!("internal error: a key without values was somehow inserted into the hashmap"),
+			1 => {
+				let single_val = v.pop().unwrap();
+				Ok((LitStr::new(&k.to_string(), Span::call_site()), single_val))
+			}
+			n => {
+				// the first value is ok, the other ones should error
+				let after_first = v.into_iter().skip(1);
+				// this call to fold_error_iter will always return Err with a combined error
+				fold_error_iter(after_first.map(|lit| Err(syn::Error::new(lit.span(), format!("value for key {} was already given", k))))).map(|_: Vec<()>| unreachable!())
+			}
+		}))
+	})
+	.map(|v| v.into_iter().unzip())
 }
 
 fn derive_hint_impl(input_item: TokenStream2) -> syn::Result<TokenStream2> {
@@ -238,13 +235,25 @@ mod tests {
 		});
 		assert!(res.is_err());
 
-		// TODO: change this when that is no longer an error
 		let res = derive_hint_impl(quote::quote! {
 			#[hint(a="1")]
 			#[hint(b="2")]
 			struct S;
 		});
-		assert!(res.is_err());
+		assert!(res.is_ok());
+		ts_assert_eq(
+			res.unwrap(),
+			quote::quote! {
+				impl Hint for S {
+					fn hints(&self) -> ::std::collections::HashMap<String, String> {
+						let mut hm = ::std::collections::HashMap::new();
+						hm.insert("a".to_string(), "1".to_string());
+						hm.insert("b".to_string(), "2".to_string());
+						hm
+					}
+				}
+			},
+		)
 	}
 
 	// note: edge needs no testing since AttrInnerSingleString has testing and that's all you'd need to test with edge
