@@ -18,7 +18,7 @@ pub fn select_tool(tool: String) -> Result<(), JsValue> {
 #[wasm_bindgen]
 pub fn on_mouse_move(x: u32, y: u32) -> Result<(), JsValue> {
 	// TODO: Convert these screenspace viewport coordinates to canvas coordinates based on the current zoom and pan
-	let ev = events::Event::MouseMovement(events::ViewportPosition { x, y });
+	let ev = events::Event::MouseMove(events::ViewportPosition { x, y });
 	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_event(ev)).map_err(|err| Error::new(&err.to_string()).into())
 }
 

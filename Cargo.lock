@@ -49,6 +49,7 @@ name = "graphite-document-core"
 version = "0.1.0"
 dependencies = [
  "kurbo",
+ "log",
 ]
 
 [[package]]

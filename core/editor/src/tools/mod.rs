@@ -9,14 +9,19 @@ mod sample;
 mod select;
 mod shape;
 
-use crate::events::{Event, ModKeys, MouseState, Trace, TracePoint};
+use crate::events::{Event, ModKeys, MouseState, Response, Trace, TracePoint};
 use crate::Color;
+use crate::Document;
 use crate::EditorError;
 use document_core::Operation;
 use std::collections::HashMap;
 
 pub trait Tool {
-	fn handle_input(&mut self, event: Event) -> Vec<Operation>;
+	fn handle_input(&mut self, event: &Event, document: &Document) -> (Vec<Response>, Vec<Operation>);
+}
+
+pub trait Fsm {
+	fn transition(self, event: &Event, document: &Document, responses: &mut Vec<Response>, operations: &mut Vec<Operation>) -> Self;
 }
 
 pub struct ToolState {
@@ -38,7 +43,7 @@ impl Default for ToolState {
 			trace: Trace::new(),
 			primary_color: Color::BLACK,
 			secondary_color: Color::WHITE,
-			active_tool_type: ToolType::Select,
+			active_tool_type: ToolType::Ellipse,
 			tools: gen_tools_hash_map! {
 				Select => select::Select,
 				Crop => crop::Crop,

@@ -13,14 +13,14 @@ pub enum Event {
 	ResetColors,
 	MouseDown(MouseState),
 	MouseUp(MouseState),
-	MouseMovement(ViewportPosition),
-	ModifierKeyDown(ModKeys),
-	ModifierKeyUp(ModKeys),
-	KeyPress(Key),
+	MouseMove(ViewportPosition),
+	KeyUp(Key),
+	KeyDown(Key),
 }
 
 #[derive(Debug, Clone)]
 #[repr(C)]
+// TODO - Make Copy when possible
 pub enum Response {
 	UpdateCanvas { document: String },
 }
