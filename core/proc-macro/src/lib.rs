@@ -5,10 +5,9 @@ use crate::helpers::{fold_error_iter, two_path};
 use crate::structs::{AttrInnerKeyStringMap, AttrInnerSingleString};
 use proc_macro::TokenStream;
 use proc_macro2::{Span, TokenStream as TokenStream2};
-use syn::spanned::Spanned;
 use syn::{parse_macro_input, Attribute, Data, DeriveInput, LitStr, Variant};
 
-fn parse_hint_helper_attrs(attrs: &[Attribute], whole_span: Span, item_type: &str) -> syn::Result<(Vec<LitStr>, Vec<LitStr>)> {
+fn parse_hint_helper_attrs(attrs: &[Attribute]) -> syn::Result<(Vec<LitStr>, Vec<LitStr>)> {
 	fold_error_iter(
 		attrs
 			.iter()
@@ -22,7 +21,7 @@ fn parse_hint_helper_attrs(attrs: &[Attribute], whole_span: Span, item_type: &st
 				let single_val = v.pop().unwrap();
 				Ok((LitStr::new(&k.to_string(), Span::call_site()), single_val))
 			}
-			n => {
+			_ => {
 				// the first value is ok, the other ones should error
 				let after_first = v.into_iter().skip(1);
 				// this call to fold_error_iter will always return Err with a combined error
@@ -36,45 +35,47 @@ fn parse_hint_helper_attrs(attrs: &[Attribute], whole_span: Span, item_type: &st
 fn derive_hint_impl(input_item: TokenStream2) -> syn::Result<TokenStream2> {
 	let input = syn::parse2::<DeriveInput>(input_item)?;
 
-	let span = input.span();
 	let ident = input.ident;
 
 	match input.data {
 		Data::Enum(data) => {
 			let variants = data.variants.iter().map(|var: &Variant| two_path(ident.clone(), var.ident.clone())).collect::<Vec<_>>();
 
-			let hint_result = fold_error_iter(data.variants.into_iter().map(|var: Variant| parse_hint_helper_attrs(&var.attrs, var.span(), "variant")));
+			let hint_result = fold_error_iter(data.variants.into_iter().map(|var: Variant| parse_hint_helper_attrs(&var.attrs)));
 
 			hint_result.map(|hints: Vec<(Vec<LitStr>, Vec<LitStr>)>| {
 				let (keys, values): (Vec<Vec<LitStr>>, Vec<Vec<LitStr>>) = hints.into_iter().unzip();
+				let cap: Vec<usize> = keys.iter().map(|v| v.len()).collect();
 
 				quote::quote! {
 					impl Hint for #ident {
 						fn hints(&self) -> ::std::collections::HashMap<String, String> {
-							let mut hm = ::std::collections::HashMap::new();
 							match self {
 								#(
 									#variants { .. } => {
+										let mut hm = ::std::collections::HashMap::with_capacity(#cap);
 										#(
 											hm.insert(#keys.to_string(), #values.to_string());
 										)*
+										hm
 									}
 								)*
 							}
-							hm
 						}
 					}
 				}
 			})
 		}
 		Data::Struct(_) | Data::Union(_) => {
-			let hint_result = parse_hint_helper_attrs(&input.attrs, span, "struct");
+			let hint_result = parse_hint_helper_attrs(&input.attrs);
 
 			hint_result.map(|(keys, values)| {
+				let cap = keys.len();
+
 				quote::quote! {
 					impl Hint for #ident {
 						fn hints(&self) -> ::std::collections::HashMap<String, String> {
-							let mut hm = ::std::collections::HashMap::new();
+							let mut hm = ::std::collections::HashMap::with_capacity(#cap);
 							#(
 								hm.insert(#keys.to_string(), #values.to_string());
 							)*
@@ -170,7 +171,7 @@ mod tests {
 			quote::quote! {
 				impl Hint for S {
 					fn hints(&self) -> ::std::collections::HashMap<String, String> {
-						let mut hm = ::std::collections::HashMap::new();
+						let mut hm = ::std::collections::HashMap::with_capacity(2usize);
 						hm.insert("key1".to_string(), "val1".to_string());
 						hm.insert("key2".to_string(), "val2".to_string());
 						hm
@@ -194,20 +195,23 @@ mod tests {
 			quote::quote! {
 				impl Hint for E {
 					fn hints(&self) -> ::std::collections::HashMap<String, String> {
-						let mut hm = ::std::collections::HashMap::new();
 						match self {
 							E::S { .. } => {
+								let mut hm = ::std::collections::HashMap::with_capacity(2usize);
 								hm.insert("key1".to_string(), "val1".to_string());
 								hm.insert("key2".to_string(), "val2".to_string());
+								hm
 							}
 							E::X { .. } => {
+								let mut hm = ::std::collections::HashMap::with_capacity(1usize);
 								hm.insert("key3".to_string(), "val3".to_string());
+								hm
 							}
 							E::Y { .. } => {
-
+								let mut hm = ::std::collections::HashMap::with_capacity(0usize);
+								hm
 							}
 						}
-						hm
 					}
 				}
 			},
@@ -222,7 +226,7 @@ mod tests {
 			quote::quote! {
 				impl Hint for NoHint {
 					fn hints(&self) -> ::std::collections::HashMap<String, String> {
-						let mut hm = ::std::collections::HashMap::new();
+						let mut hm = ::std::collections::HashMap::with_capacity(0usize);
 						hm
 					}
 				}
@@ -246,7 +250,7 @@ mod tests {
 			quote::quote! {
 				impl Hint for S {
 					fn hints(&self) -> ::std::collections::HashMap<String, String> {
-						let mut hm = ::std::collections::HashMap::new();
+						let mut hm = ::std::collections::HashMap::with_capacity(2usize);
 						hm.insert("a".to_string(), "1".to_string());
 						hm.insert("b".to_string(), "2".to_string());
 						hm
