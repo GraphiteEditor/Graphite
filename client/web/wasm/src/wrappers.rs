@@ -1,4 +1,5 @@
 use crate::shims::Error;
+use editor_core::events;
 use editor_core::tools::{SelectAppendMode, ToolType};
 use editor_core::Color as InnerColor;
 use wasm_bindgen::prelude::*;
@@ -46,5 +47,26 @@ pub fn translate_append_mode(name: &str) -> Option<SelectAppendMode> {
 		"Subtract" => Some(SelectAppendMode::Subtract),
 		"Intersect" => Some(SelectAppendMode::Intersect),
 		_ => None,
+	}
+}
+
+pub fn translate_key(name: &str) -> events::Key {
+	use events::Key as K;
+	match name {
+		"e" => K::KeyE,
+		"r" => K::KeyR,
+		"m" => K::KeyM,
+		"x" => K::KeyX,
+		"0" => K::Key0,
+		"1" => K::Key1,
+		"2" => K::Key2,
+		"3" => K::Key3,
+		"4" => K::Key4,
+		"5" => K::Key5,
+		"6" => K::Key6,
+		"7" => K::Key7,
+		"8" => K::Key8,
+		"9" => K::Key9,
+		_ => K::UnknownKey,
 	}
 }

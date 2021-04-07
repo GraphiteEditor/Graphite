@@ -13,7 +13,7 @@ pub fn set_panic_hook() {
 #[wasm_bindgen]
 extern "C" {
 	#[wasm_bindgen(js_namespace = console)]
-	fn debug(msg: &str, format: &str);
+	fn log(msg: &str, format: &str);
 	#[wasm_bindgen(js_namespace = console)]
 	fn info(msg: &str, format: &str);
 	#[wasm_bindgen(js_namespace = console)]
@@ -32,13 +32,13 @@ impl log::Log for WasmLog {
 
 	fn log(&self, record: &log::Record) {
 		let (log, name, color): (fn(&str, &str), &str, &str) = match record.level() {
-			log::Level::Trace => (debug, "trace", "color:plum"),
-			log::Level::Debug => (debug, "debug", "color:plum"),
-			log::Level::Warn => (warn, "warn", "color:#1b8"),
-			log::Level::Info => (info, "info", "color:#fa2"),
+			log::Level::Trace => (log, "trace", "color:plum"),
+			log::Level::Debug => (log, "debug", "color:blue"),
+			log::Level::Warn => (warn, "warn", "color:#fa2"),
+			log::Level::Info => (info, "info", "color:#1b8"),
 			log::Level::Error => (error, "error", "color:red"),
 		};
-		let msg = &format!("{}", format_args!("%c{}%c\t{}", name, record.args()));
+		let msg = &format!("{}", format_args!("%c{}\t{}", name, record.args()));
 		log(msg, color)
 	}
 	fn flush(&self) {}
