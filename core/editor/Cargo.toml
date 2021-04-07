@@ -15,3 +15,7 @@ bitflags = "1.2.1"
 [dependencies.document-core]
 path = "../document"
 package = "graphite-document-core"
+
+[dependencies.proc-macros]
+path = "../proc-macro"
+package = "graphite-proc-macros"
