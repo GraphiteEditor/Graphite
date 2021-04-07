@@ -7,13 +7,14 @@ use document_core::Operation;
 #[derive(Default)]
 pub struct Select {
 	fsm_state: SelectToolFsmState,
+	data: SelectToolData,
 }
 
 impl Tool for Select {
 	fn handle_input(&mut self, event: &Event, document: &Document) -> (Vec<Response>, Vec<Operation>) {
 		let mut responses = Vec::new();
 		let mut operations = Vec::new();
-		self.fsm_state = self.fsm_state.transition(event, document, &mut responses, &mut operations);
+		self.fsm_state = self.fsm_state.transition(event, document, &mut self.data, &mut responses, &mut operations);
 
 		(responses, operations)
 	}
@@ -32,8 +33,13 @@ impl Default for SelectToolFsmState {
 	}
 }
 
+#[derive(Default)]
+struct SelectToolData;
+
 impl Fsm for SelectToolFsmState {
-	fn transition(self, event: &Event, document: &Document, responses: &mut Vec<Response>, operations: &mut Vec<Operation>) -> Self {
+	type ToolData = SelectToolData;
+
+	fn transition(self, event: &Event, document: &Document, data: &mut Self::ToolData, responses: &mut Vec<Response>, operations: &mut Vec<Operation>) -> Self {
 		match (self, event) {
 			(SelectToolFsmState::Ready, Event::MouseDown(mouse_state)) if mouse_state.mouse_keys.contains(MouseKeys::LEFT) => SelectToolFsmState::LmbDown,
 
