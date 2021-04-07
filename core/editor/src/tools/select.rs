@@ -6,44 +6,44 @@ use document_core::Operation;
 
 #[derive(Default)]
 pub struct Select {
-	state: SelectToolState,
+	fsm_state: SelectToolFsmState,
 }
 
 impl Tool for Select {
 	fn handle_input(&mut self, event: &Event, document: &Document) -> (Vec<Response>, Vec<Operation>) {
 		let mut responses = Vec::new();
 		let mut operations = Vec::new();
-		self.state = self.state.transition(event, document, &mut responses, &mut operations);
+		self.fsm_state = self.fsm_state.transition(event, document, &mut responses, &mut operations);
 
 		(responses, operations)
 	}
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum SelectToolState {
+enum SelectToolFsmState {
 	Ready,
 	LmbDown,
 	TransformSelected,
 }
 
-impl Default for SelectToolState {
+impl Default for SelectToolFsmState {
 	fn default() -> Self {
-		SelectToolState::Ready
+		SelectToolFsmState::Ready
 	}
 }
 
-impl Fsm for SelectToolState {
+impl Fsm for SelectToolFsmState {
 	fn transition(self, event: &Event, document: &Document, responses: &mut Vec<Response>, operations: &mut Vec<Operation>) -> Self {
 		match (self, event) {
-			(SelectToolState::Ready, Event::MouseDown(mouse_state)) if mouse_state.mouse_keys.contains(MouseKeys::LEFT) => SelectToolState::LmbDown,
+			(SelectToolFsmState::Ready, Event::MouseDown(mouse_state)) if mouse_state.mouse_keys.contains(MouseKeys::LEFT) => SelectToolFsmState::LmbDown,
 
-			(SelectToolState::LmbDown, Event::MouseUp(mouse_state)) if mouse_state.mouse_keys.contains(MouseKeys::LEFT) => SelectToolState::Ready,
+			(SelectToolFsmState::LmbDown, Event::MouseUp(mouse_state)) if mouse_state.mouse_keys.contains(MouseKeys::LEFT) => SelectToolFsmState::Ready,
 
-			(SelectToolState::LmbDown, Event::MouseMove(mouse_state)) => SelectToolState::TransformSelected,
+			(SelectToolFsmState::LmbDown, Event::MouseMove(mouse_state)) => SelectToolFsmState::TransformSelected,
 
-			(SelectToolState::TransformSelected, Event::MouseMove(mouse_state)) => self,
+			(SelectToolFsmState::TransformSelected, Event::MouseMove(mouse_state)) => self,
 
-			(SelectToolState::TransformSelected, Event::MouseUp(mouse_state)) if mouse_state.mouse_keys.contains(MouseKeys::LEFT) => SelectToolState::Ready,
+			(SelectToolFsmState::TransformSelected, Event::MouseUp(mouse_state)) if mouse_state.mouse_keys.contains(MouseKeys::LEFT) => SelectToolFsmState::Ready,
 
 			_ => self,
 		}
