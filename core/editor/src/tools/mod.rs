@@ -9,17 +9,23 @@ mod sample;
 mod select;
 mod shape;
 
-use crate::events::{Event, ModKeys, MouseState, Trace, TracePoint};
+use crate::events::{Event, ModKeys, MouseState, Response, Trace, TracePoint};
 use crate::Color;
+use crate::Document;
 use crate::EditorError;
 use document_core::Operation;
 use std::collections::HashMap;
 
 pub trait Tool {
-	fn handle_input(&mut self, event: Event) -> Vec<Operation>;
+	fn handle_input(&mut self, event: &Event, document: &Document) -> (Vec<Response>, Vec<Operation>);
 }
 
-pub struct ToolState {
+pub trait Fsm {
+	type ToolData;
+	fn transition(self, event: &Event, document: &Document, data: &mut Self::ToolData, responses: &mut Vec<Response>, operations: &mut Vec<Operation>) -> Self;
+}
+
+pub struct ToolFsmState {
 	pub mouse_state: MouseState,
 	pub mod_keys: ModKeys,
 	pub trace: Trace,
@@ -30,15 +36,15 @@ pub struct ToolState {
 	tool_settings: HashMap<ToolType, ToolSettings>,
 }
 
-impl Default for ToolState {
+impl Default for ToolFsmState {
 	fn default() -> Self {
-		ToolState {
+		ToolFsmState {
 			mouse_state: MouseState::default(),
 			mod_keys: ModKeys::default(),
 			trace: Trace::new(),
 			primary_color: Color::BLACK,
 			secondary_color: Color::WHITE,
-			active_tool_type: ToolType::Select,
+			active_tool_type: ToolType::Rectangle,
 			tools: gen_tools_hash_map! {
 				Select => select::Select,
 				Crop => crop::Crop,
@@ -56,7 +62,7 @@ impl Default for ToolState {
 	}
 }
 
-impl ToolState {
+impl ToolFsmState {
 	pub fn new() -> Self {
 		Self::default()
 	}
@@ -70,6 +76,10 @@ impl ToolState {
 
 	pub fn active_tool(&mut self) -> Result<&mut Box<dyn Tool>, EditorError> {
 		self.tools.get_mut(&self.active_tool_type).ok_or(EditorError::UnknownTool)
+	}
+
+	pub fn swap_colors(&mut self) {
+		std::mem::swap(&mut self.primary_color, &mut self.secondary_color);
 	}
 }
 

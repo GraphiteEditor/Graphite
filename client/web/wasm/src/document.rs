@@ -1,6 +1,6 @@
-use crate::shims::Error;
-use crate::wrappers::{translate_tool, Color};
+use crate::wrappers::{translate_key, translate_tool, Color};
 use crate::EDITOR_STATE;
+use crate::{shims::Error, utils};
 use editor_core::events;
 use wasm_bindgen::prelude::*;
 
@@ -18,7 +18,7 @@ pub fn select_tool(tool: String) -> Result<(), JsValue> {
 #[wasm_bindgen]
 pub fn on_mouse_move(x: u32, y: u32) -> Result<(), JsValue> {
 	// TODO: Convert these screenspace viewport coordinates to canvas coordinates based on the current zoom and pan
-	let ev = events::Event::MouseMovement(events::ViewportPosition { x, y });
+	let ev = events::Event::MouseMove(events::ViewportPosition { x, y });
 	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_event(ev)).map_err(|err| Error::new(&err.to_string()).into())
 }
 
@@ -43,6 +43,24 @@ pub fn on_mouse_up(x: u32, y: u32, mouse_keys: u8) -> Result<(), JsValue> {
 		position: events::ViewportPosition { x, y },
 		mouse_keys,
 	});
+	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_event(ev)).map_err(|err| Error::new(&err.to_string()).into())
+}
+
+/// A keyboard button depressed within screenspace the bounds of the viewport
+#[wasm_bindgen]
+pub fn on_key_down(name: String) -> Result<(), JsValue> {
+	let key = translate_key(&name);
+	log::trace!("key down {:?}, name: {}", key, name);
+	let ev = events::Event::KeyDown(key);
+	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_event(ev)).map_err(|err| Error::new(&err.to_string()).into())
+}
+
+/// A keyboard button released
+#[wasm_bindgen]
+pub fn on_key_up(name: String) -> Result<(), JsValue> {
+	let key = translate_key(&name);
+	log::trace!("key up {:?}, name: {}", key, name);
+	let ev = events::Event::KeyUp(key);
 	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_event(ev)).map_err(|err| Error::new(&err.to_string()).into())
 }
 

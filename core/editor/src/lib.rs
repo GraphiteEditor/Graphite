@@ -22,11 +22,11 @@ pub use dispatcher::Callback;
 
 use dispatcher::Dispatcher;
 use document_core::Document;
-use tools::ToolState;
+use tools::ToolFsmState;
 use workspace::Workspace;
 
 pub struct EditorState {
-	tool_state: ToolState,
+	tool_state: ToolFsmState,
 	workspace: Workspace,
 	document: Document,
 }
@@ -41,7 +41,7 @@ impl Editor {
 	pub fn new(callback: Callback) -> Self {
 		Self {
 			state: EditorState {
-				tool_state: ToolState::new(),
+				tool_state: ToolFsmState::new(),
 				workspace: Workspace::new(),
 				document: Document::default(),
 			},
@@ -50,6 +50,6 @@ impl Editor {
 	}
 
 	pub fn handle_event(&mut self, event: events::Event) -> Result<(), EditorError> {
-		self.dispatcher.handle_event(&mut self.state, event)
+		self.dispatcher.handle_event(&mut self.state, &event)
 	}
 }

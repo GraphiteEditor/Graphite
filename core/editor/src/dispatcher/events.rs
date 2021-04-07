@@ -13,14 +13,14 @@ pub enum Event {
 	ResetColors,
 	MouseDown(MouseState),
 	MouseUp(MouseState),
-	MouseMovement(ViewportPosition),
-	ModifierKeyDown(ModKeys),
-	ModifierKeyUp(ModKeys),
-	KeyPress(Key),
+	MouseMove(ViewportPosition),
+	KeyUp(Key),
+	KeyDown(Key),
 }
 
 #[derive(Debug, Clone)]
 #[repr(C)]
+// TODO - Make Copy when possible
 pub enum Response {
 	UpdateCanvas { document: String },
 }
@@ -55,6 +55,14 @@ pub struct ViewportPosition {
 	pub y: u32,
 }
 
+impl ViewportPosition {
+	pub fn distance(&self, other: &Self) -> f64 {
+		let x_diff = other.x as f64 - self.x as f64;
+		let y_diff = other.y as f64 - self.y as f64;
+		f64::sqrt(x_diff * x_diff + y_diff * y_diff)
+	}
+}
+
 #[derive(Debug, Copy, Clone, Default, Eq, PartialEq)]
 pub struct TracePoint {
 	pub mouse_state: MouseState,
@@ -83,6 +91,20 @@ impl MouseState {
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub enum Key {
 	UnknownKey,
+	KeyR,
+	KeyM,
+	KeyE,
+	KeyX,
+	Key0,
+	Key1,
+	Key2,
+	Key3,
+	Key4,
+	Key5,
+	Key6,
+	Key7,
+	Key8,
+	Key9,
 }
 
 bitflags! {
