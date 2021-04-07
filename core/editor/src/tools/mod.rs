@@ -21,7 +21,8 @@ pub trait Tool {
 }
 
 pub trait Fsm {
-	fn transition(self, event: &Event, document: &Document, responses: &mut Vec<Response>, operations: &mut Vec<Operation>) -> Self;
+	type ToolData;
+	fn transition(self, event: &Event, document: &Document, data: &mut Self::ToolData, responses: &mut Vec<Response>, operations: &mut Vec<Operation>) -> Self;
 }
 
 pub struct ToolFsmState {
@@ -43,7 +44,7 @@ impl Default for ToolFsmState {
 			trace: Trace::new(),
 			primary_color: Color::BLACK,
 			secondary_color: Color::WHITE,
-			active_tool_type: ToolType::Ellipse,
+			active_tool_type: ToolType::Rectangle,
 			tools: gen_tools_hash_map! {
 				Select => select::Select,
 				Crop => crop::Crop,

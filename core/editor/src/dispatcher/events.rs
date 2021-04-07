@@ -55,6 +55,14 @@ pub struct ViewportPosition {
 	pub y: u32,
 }
 
+impl ViewportPosition {
+	pub fn distance(&self, other: &Self) -> f64 {
+		let x_diff = other.x as f64 - self.x as f64;
+		let y_diff = other.y as f64 - self.y as f64;
+		f64::sqrt(x_diff * x_diff + y_diff * y_diff)
+	}
+}
+
 #[derive(Debug, Copy, Clone, Default, Eq, PartialEq)]
 pub struct TracePoint {
 	pub mouse_state: MouseState,
