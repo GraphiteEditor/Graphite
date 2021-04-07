@@ -1,7 +1,7 @@
 pub mod events;
-use crate::{Color, Document, EditorError, EditorState};
+use crate::{tools::ToolType, Color, Document, EditorError, EditorState};
 use document_core::Operation;
-use events::{Event, Response};
+use events::{Event, Key, Response};
 
 pub type Callback = Box<dyn Fn(Response)>;
 pub struct Dispatcher {
@@ -23,7 +23,7 @@ impl Dispatcher {
 				editor_state.tool_state.secondary_color = *color;
 			}
 			Event::SwapColors => {
-				std::mem::swap(&mut editor_state.tool_state.primary_color, &mut editor_state.tool_state.secondary_color);
+				editor_state.tool_state.swap_colors();
 			}
 			Event::ResetColors => {
 				editor_state.tool_state.primary_color = Color::BLACK;
@@ -38,8 +38,36 @@ impl Dispatcher {
 			Event::MouseMove(pos) => {
 				editor_state.tool_state.mouse_state.position = *pos;
 			}
-			Event::KeyUp(key) => todo!(),
-			Event::KeyDown(key) => todo!(),
+			Event::KeyUp(key) => (),
+			Event::KeyDown(key) => {
+				log::trace!("pressed key {:?}", key);
+				log::debug!("pressed key {:?}", key);
+
+				match key {
+					Key::Key0 => {
+						log::set_max_level(log::LevelFilter::Info);
+						log::debug!("set log verbosity to info");
+					}
+					Key::Key1 => {
+						log::set_max_level(log::LevelFilter::Debug);
+						log::debug!("set log verbosity to debug");
+					}
+					Key::Key2 => {
+						log::set_max_level(log::LevelFilter::Trace);
+						log::debug!("set log verbosity to trace");
+					}
+					Key::KeyM => {
+						editor_state.tool_state.active_tool_type = ToolType::Rectangle;
+					}
+					Key::KeyE => {
+						editor_state.tool_state.active_tool_type = ToolType::Ellipse;
+					}
+					Key::KeyX => {
+						editor_state.tool_state.swap_colors();
+					}
+					_ => (),
+				}
+			}
 		}
 
 		let (responses, operations) = editor_state.tool_state.active_tool()?.handle_input(event, &editor_state.document);

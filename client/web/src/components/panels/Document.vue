@@ -109,6 +109,19 @@ export default defineComponent({
 			const { on_mouse_move } = await wasm;
 			on_mouse_move(e.offsetX, e.offsetY);
 		},
+		async keyDown(e: KeyboardEvent) {
+			const { on_key_down } = await wasm;
+			on_key_down(e.key);
+		},
+		async keyUp(e: KeyboardEvent) {
+			const { on_key_up } = await wasm;
+			on_key_up(e.key);
+		},
 	},
+    mounted() {
+        let self = this;
+        window.addEventListener("keyup", (evt: KeyboardEvent) => {self.keyUp(evt)})
+        window.addEventListener("keydown", (evt: KeyboardEvent) => {self.keyDown(evt)})
+    },
 });
 </script>

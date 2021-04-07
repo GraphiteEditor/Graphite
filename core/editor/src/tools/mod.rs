@@ -77,6 +77,10 @@ impl ToolFsmState {
 	pub fn active_tool(&mut self) -> Result<&mut Box<dyn Tool>, EditorError> {
 		self.tools.get_mut(&self.active_tool_type).ok_or(EditorError::UnknownTool)
 	}
+
+	pub fn swap_colors(&mut self) {
+		std::mem::swap(&mut self.primary_color, &mut self.secondary_color);
+	}
 }
 
 fn default_tool_settings() -> HashMap<ToolType, ToolSettings> {
