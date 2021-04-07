@@ -20,11 +20,11 @@ pub use dispatcher::Callback;
 
 use dispatcher::Dispatcher;
 use document_core::Document;
-use tools::ToolState;
+use tools::ToolFsmState;
 use workspace::Workspace;
 
 pub struct EditorState {
-	tool_state: ToolState,
+	tool_state: ToolFsmState,
 	workspace: Workspace,
 	document: Document,
 }
@@ -39,7 +39,7 @@ impl Editor {
 	pub fn new(callback: Callback) -> Self {
 		Self {
 			state: EditorState {
-				tool_state: ToolState::new(),
+				tool_state: ToolFsmState::new(),
 				workspace: Workspace::new(),
 				document: Document::default(),
 			},

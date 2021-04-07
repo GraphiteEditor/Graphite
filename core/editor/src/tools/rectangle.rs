@@ -12,7 +12,7 @@ impl Tool for Rectangle {
 	}
 }
 
-enum RectangleToolState {
+enum RectangleToolFsmState {
 	Ready,
 	Dragging,
 }

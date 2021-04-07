@@ -24,7 +24,7 @@ pub trait Fsm {
 	fn transition(self, event: &Event, document: &Document, responses: &mut Vec<Response>, operations: &mut Vec<Operation>) -> Self;
 }
 
-pub struct ToolState {
+pub struct ToolFsmState {
 	pub mouse_state: MouseState,
 	pub mod_keys: ModKeys,
 	pub trace: Trace,
@@ -35,9 +35,9 @@ pub struct ToolState {
 	tool_settings: HashMap<ToolType, ToolSettings>,
 }
 
-impl Default for ToolState {
+impl Default for ToolFsmState {
 	fn default() -> Self {
-		ToolState {
+		ToolFsmState {
 			mouse_state: MouseState::default(),
 			mod_keys: ModKeys::default(),
 			trace: Trace::new(),
@@ -61,7 +61,7 @@ impl Default for ToolState {
 	}
 }
 
-impl ToolState {
+impl ToolFsmState {
 	pub fn new() -> Self {
 		Self::default()
 	}
