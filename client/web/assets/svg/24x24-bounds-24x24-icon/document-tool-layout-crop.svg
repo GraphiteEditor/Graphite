@@ -1,0 +1,8 @@
+<svg viewBox="0 0 24 24">
+	<path style="fill:#FFFFFF;" d="M20,4H7v2h11v18h2V4z" />
+	<path style="fill:#FFFFFF;" d="M6,18V0H4v20h13v-2H6z" />
+	<rect style="fill:#FFFFFF;" x="21" y="18" width="3" height="2" />
+	<rect style="fill:#FFFFFF;" x="0" y="4" width="3" height="2" />
+	<path style="fill:#C5C5C5;" d="M21,5l3-3l-1-1l-2,2V5z" />
+	<path style="fill:#C5C5C5;" d="M17,7L7,17h2l8-8V7z" />
+</svg>
