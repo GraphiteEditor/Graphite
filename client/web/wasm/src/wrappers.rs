@@ -54,6 +54,7 @@ pub fn translate_key(name: &str) -> events::Key {
 	use events::Key as K;
 	match name {
 		"e" => K::KeyE,
+		"v" => K::KeyV,
 		"r" => K::KeyR,
 		"m" => K::KeyM,
 		"x" => K::KeyX,

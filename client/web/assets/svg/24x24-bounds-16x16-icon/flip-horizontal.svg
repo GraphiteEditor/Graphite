@@ -1,0 +1,8 @@
+<svg viewBox="0 0 24 24">
+	<path d="M20,8.62v6.76l-4-2v-2.76L20,8.62 M21,7l-6,3v4l6,3V7L21,7z" />
+	<polygon points="10,14 4,17 4,7 10,10" />
+	<rect x="12" y="17" width="1" height="2" />
+	<rect x="12" y="13" width="1" height="2" />
+	<rect x="12" y="9" width="1" height="2" />
+	<rect x="12" y="5" width="1" height="2" />
+</svg>

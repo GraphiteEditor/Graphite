@@ -9,6 +9,10 @@
 	display: flex;
 	flex-direction: column;
 	flex-grow: 1;
+
+	.spacer {
+		flex: 1 1 100%;
+	}
 }
 </style>
 
