@@ -37,8 +37,7 @@
       One of many possible frontend implementations,
       such as the native or web client.
   ]
-  [Frontend Implementation] Response <-> Event [Dispatcher]
-  [Frontend Implementation] <-- Rendered Viewport [<renderer> From: Final Render Assembler]
+  [Frontend Implementation] Send Rendered Viewport to Client <-- [<renderer> (Backchannel) From: Final Render Assembler]
 
   [<client> CLI Implementation|
       A possible text-based CLI program that
@@ -49,7 +48,6 @@
       pass a .gdd document and request a
       render. Caches are saved to disk.
   ]
-  [CLI Implementation] -> [Design Document Maintainer]
 
   // Editor
 
@@ -60,32 +58,35 @@
       file. Operations and document-specific Actions
       include the document ID in the call.
   ]
-  [Dispatcher] <-> Action [Editor State Store]
-  [Dispatcher] <-> Action [Open Documents State Store]
-  [Dispatcher] -> Update Bounds [Scheduler]
-  [Dispatcher] -> Operation [Design Document Maintainer]
+  [Dispatcher] --> Set New Bounds [<renderer> (Backchannel) To: Scheduler]
+  [Dispatcher] -> Operations [Design Document Maintainer]
+  
+  [CLI Implementation] -> CLI Arguments [Design Document Maintainer]
 
-  [<editor> Open Documents State Store|
-      For each open document:|
-      [<state> Pan and zoom canvas bounds]|
-      [<state> Selected layers]
-  ]
-  [Tool State Machine] <- [Open Documents State Store]
+  [<editor> State Stores|
+    [<editor> Open Documents State Store|
+        For each open document:|
+        [<state> Pan and zoom canvas bounds]|
+        [<state> Selected layers]
+    ]
 
-  [<editor> Editor State Store|
-      [<state> Panel Layout]|
-      [<state> Working Colors]|
-      [<state> Active Tool]|
-      [<state> Tool Options]|
-      [<state> Modifier Key Input]|
-      [<state> Currently Hovered Panel]
+    [<editor> Editor State Store|
+        [<state> Panel Layout]|
+        [<state> Working Colors]|
+        [<state> Active Tool]|
+        [<state> Tool Options]|
+        [<state> Modifier Key Input]|
+        [<state> Currently Hovered Panel]
+    ]
   ]
-  [Editor State Store] -> [Tool State Machine]
 
   [<editor> Tool State Machine|
       List the possible operations in current context
   ]
-  [Tool State Machine] -> [Dispatcher]
+  [Tool State Machine] <:- [State Stores]
+  [Tool State Machine] -> Send Responses & Operations [Dispatcher]
+  [Frontend Implementation] Send Responses <-> Send Events [Dispatcher]
+  [Dispatcher] <:-> Send Actions [State Stores]
 
   // Document
 
@@ -95,8 +96,8 @@
       the previous operation if it's the same as this one and append partial
       updates to operations from in-progress interactive tools.
   ]
-  [Design Document Maintainer] -> Design Document Diff [Render Graph Maintainer]
-  [Design Document Maintainer] <-> Design Document [Open Documents File Store]
+  [Design Document Maintainer] -> Send Design Document Diff [Render Graph Maintainer]
+  [Design Document Maintainer] <:-> Write Updated GDD [Open Documents File Store]
 
   [<document> Render Graph Maintainer|
       Bake operations into a complete graph including history references.
@@ -106,8 +107,8 @@
       between the live graph and each additional history reference so
       changed nodes in history are "ghost variants" living in the live graph.
   ]
-  [Render Graph Maintainer] -> Render Graph [Scheduler]
-  [Render Graph Maintainer] <-> Render Graph [Open Documents File Store]
+  [Render Graph Maintainer] <:-> Write Updated GRD [Open Documents File Store]
+  [Render Graph Maintainer] -> Send Render Graph [Scheduler]
 
   [<document>Open Documents File Store|
       Kept in-memory or written to disk.|
@@ -129,9 +130,10 @@
       onscreen latency. Also notifies the Final Render Assembler when the cache
       tiles for the root document visible in bounds have finished being updated.
   ]
-  [Scheduler] -> [Node Rasterizer] 
-  [Scheduler] <-> [Node Cache Manager] 
-  [Scheduler] -> [Final Render Assembler] 
+  [Scheduler] Set New Bounds <-- [<editor> (Backchannel) From: Dispatcher]
+  [Scheduler] -> Rasterize Tiles [Node Rasterizer] 
+  [Scheduler] <:-> Write Dirty Status [Node Cache Manager] 
+  [Scheduler] -> Invoke [Final Render Assembler] 
 
   [<renderer> Node Cache Manager|
       Purges old or less useful cached data
@@ -147,14 +149,14 @@
           Reuse when panning.
       ]
   ]
-  [Node Cache Manager] -> [Final Render Assembler]
+  [Node Cache Manager] -:> [Final Render Assembler]
 
   [<renderer> Node Rasterizer|
       Rasterize and update the cache for a specified node
       given a preferred bounds (but it can give a different
       sized output), resolution, and quality level.
   ]
-  [Node Rasterizer] <-> [Node Cache Manager]
+  [Node Rasterizer] <:-> Write Tiles [Node Cache Manager]
 
   [<renderer> Final Render Assembler|
       Look up the rasterized cached tiles from
@@ -163,5 +165,5 @@
       Operates when woken up by the scheduler
       when root tiles or render bounds are updated.
   ]
-  [Final Render Assembler] --> Rendered Viewport [<client> To: Frontend Implementation]
+  [Final Render Assembler] --> Send Rendered Viewport to Client [<client> (Backchannel) To: Frontend Implementation]
 ]
