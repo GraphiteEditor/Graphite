@@ -62,6 +62,9 @@ impl Dispatcher {
 					Key::KeyE => {
 						editor_state.tool_state.active_tool_type = ToolType::Ellipse;
 					}
+					Key::KeyV => {
+						editor_state.tool_state.active_tool_type = ToolType::Select;
+					}
 					Key::KeyX => {
 						editor_state.tool_state.swap_colors();
 					}

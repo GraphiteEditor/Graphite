@@ -4,14 +4,12 @@
 			<div class="tab-group">
 				<div class="tab" :class="{ active: tabIndex === tabActiveIndex }" v-for="(tabLabel, tabIndex) in tabLabels" :key="tabLabel">
 					<span>{{tabLabel}}</span>
-					<button v-if="tabCloseButtons">
-						<CloseX width="16" height="16" />
-					</button>
+					<IconButton :size="16" v-if="tabCloseButtons">
+						<CloseX />
+					</IconButton>
 				</div>
 			</div>
-			<div class="panel-options-ellipsis">
-				<VerticalEllipsis />
-			</div>
+			<DropdownButton :icon="DropdownButtonIcon.VerticalEllipsis" />
 		</div>
 		<div class="panel-content">
 			<component :is="panelType" />
@@ -88,26 +86,8 @@
 					line-height: 28px;
 				}
 
-				button {
-					flex: 0 0 auto;
-					outline: none;
-					border: none;
-					padding: 0;
-					width: 16px;
-					height: 16px;
-					background: none;
-					color: #ddd;
-					font-weight: bold;
-					font-size: 10px;
-					border-radius: 2px;
+				.icon-button {
 					margin-left: 8px;
-					fill: #ddd;
-
-					&:hover {
-						background: #555;
-						color: white;
-						fill: white;
-					}
 				}
 
 				&:not(.active) + .tab:not(.active) {
@@ -137,24 +117,6 @@
 				}
 			}
 		}
-
-		.panel-options-ellipsis {
-			width: 16px;
-			height: 24px;
-			margin: 2px 4px;
-
-			svg {
-				width: 16px;
-				height: 24px;
-				border-radius: 2px;
-				fill: #ddd;
-			}
-
-			&:hover svg {
-				background: #555;
-				fill: #fff;
-			}
-		}
 	}
 
 	.panel-content {
@@ -170,6 +132,8 @@ import Document from "../panels/Document.vue";
 import Properties from "../panels/Properties.vue";
 import LayerTree from "../panels/LayerTree.vue";
 import Minimap from "../panels/Minimap.vue";
+import IconButton from "../widgets/IconButton.vue";
+import DropdownButton, { DropdownButtonIcon } from "../widgets/DropdownButton.vue";
 import VerticalEllipsis from "../../../assets/svg/16x24-bounds-8x16-icon/vertical-ellipsis.svg";
 import CloseX from "../../../assets/svg/16x16-bounds-12x12-icon/close-x.svg";
 
@@ -179,6 +143,8 @@ export default defineComponent({
 		Properties,
 		LayerTree,
 		Minimap,
+		IconButton,
+		DropdownButton,
 		CloseX,
 		VerticalEllipsis,
 	},
@@ -188,6 +154,11 @@ export default defineComponent({
 		tabLabels: { type: Array, required: true },
 		tabActiveIndex: { type: Number, required: true },
 		panelType: { type: String, required: true },
+	},
+	data() {
+		return {
+			DropdownButtonIcon,
+		};
 	},
 });
 </script>
