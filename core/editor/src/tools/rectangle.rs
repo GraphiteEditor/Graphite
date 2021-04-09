@@ -1,5 +1,5 @@
 use crate::events::{Event, Response};
-use crate::events::{MouseKeys, ViewportPosition};
+use crate::events::{Key, MouseKeys, ViewportPosition};
 use crate::tools::{Fsm, Tool};
 use crate::Document;
 use document_core::Operation;
@@ -45,6 +45,14 @@ impl Fsm for RectangleToolFsmState {
 			(RectangleToolFsmState::Ready, Event::MouseDown(mouse_state)) if mouse_state.mouse_keys.contains(MouseKeys::LEFT) => {
 				data.drag_start = mouse_state.position;
 				RectangleToolFsmState::LmbDown
+			}
+			(RectangleToolFsmState::Ready, Event::KeyDown(Key::KeyZ)) => {
+				if data.index > 0 {
+					let name = format!("rectangles/rectangle-{}", data.index);
+					data.index -= 1;
+					operations.push(Operation::DeleteElement { path: name });
+				}
+				RectangleToolFsmState::Ready
 			}
 
 			// TODO - Check for left mouse button

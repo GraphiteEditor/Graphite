@@ -149,6 +149,7 @@ impl Document {
 
 	pub fn delete(&mut self, path: &str) -> Result<(), DocumentError> {
 		let (folder, name) = self.resolve_path(path)?;
+		log::debug!("removing {} from folder: {:?}", name, folder);
 		folder.remove_element(name)?;
 		Ok(())
 	}
@@ -165,7 +166,10 @@ impl Document {
 
 				update_frontend(self.render());
 			}
-			Operation::DeleteElement { path } => self.delete(&path)?,
+			Operation::DeleteElement { path } => {
+				self.delete(&path)?;
+				update_frontend(self.render());
+			}
 			Operation::AddFolder { path } => self.write(&path, SvgElement::Folder(Folder::default()))?,
 		}
 		Ok(())

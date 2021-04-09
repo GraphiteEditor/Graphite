@@ -1,5 +1,5 @@
 use crate::events::{Event, Response};
-use crate::events::{MouseKeys, ViewportPosition};
+use crate::events::{Key, MouseKeys, ViewportPosition};
 use crate::tools::{Fsm, Tool};
 use crate::Document;
 use document_core::Operation;
@@ -46,11 +46,19 @@ impl Fsm for EllipseToolFsmState {
 				data.drag_start = mouse_state.position;
 				EllipseToolFsmState::LmbDown
 			}
+			(EllipseToolFsmState::Ready, Event::KeyDown(Key::KeyZ)) => {
+				if data.index > 0 {
+					data.index -= 1;
+					let name = format!("ellipses/ellipse-{}", data.index);
+					operations.push(Operation::DeleteElement { path: name });
+				}
+				EllipseToolFsmState::Ready
+			}
 
 			// TODO - Check for left mouse button
 			(EllipseToolFsmState::LmbDown, Event::MouseUp(mouse_state)) => {
 				let r = data.drag_start.distance(&mouse_state.position);
-				log::info!("draw ellipse with radius: {:.2}", r);
+				log::info!("draw ellipse with radius: {:.2} with index: {}", r, data.index);
 				let name = format!("ellipses/ellipse-{}", data.index);
 				if data.index == 0 {
 					operations.push(Operation::AddFolder { path: "ellipses".to_string() });

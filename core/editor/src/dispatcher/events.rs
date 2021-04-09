@@ -113,6 +113,7 @@ pub enum Key {
 	KeyE,
 	KeyV,
 	KeyX,
+	KeyZ,
 	Key0,
 	Key1,
 	Key2,
