@@ -34,6 +34,7 @@ impl Default for EllipseToolFsmState {
 #[derive(Clone, Debug, Default)]
 struct EllipseToolData {
 	drag_start: ViewportPosition,
+	index: u64,
 }
 
 impl Fsm for EllipseToolFsmState {
@@ -50,7 +51,13 @@ impl Fsm for EllipseToolFsmState {
 			(EllipseToolFsmState::LmbDown, Event::MouseUp(mouse_state)) => {
 				let r = data.drag_start.distance(&mouse_state.position);
 				log::info!("draw ellipse with radius: {:.2}", r);
+				let name = format!("ellipses/ellipse-{}", data.index);
+				if data.index == 0 {
+					operations.push(Operation::AddFolder { path: "ellipses".to_string() });
+				}
+				data.index += 1;
 				operations.push(Operation::AddCircle {
+					path: name,
 					cx: data.drag_start.x as f64,
 					cy: data.drag_start.y as f64,
 					r: data.drag_start.distance(&mouse_state.position),

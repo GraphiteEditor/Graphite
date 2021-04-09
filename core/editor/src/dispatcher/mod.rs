@@ -85,28 +85,28 @@ impl Dispatcher {
 
 		let (responses, operations) = editor_state.tool_state.active_tool()?.handle_input(event, &editor_state.document);
 
-		self.dispatch_operations(&mut editor_state.document, &operations);
+		self.dispatch_operations(&mut editor_state.document, operations);
 		// TODO - Dispatch Responses
 
 		Ok(())
 	}
 
-	fn dispatch_operations(&self, document: &mut Document, operations: &[Operation]) {
+	fn dispatch_operations<I: IntoIterator<Item = Operation>>(&self, document: &mut Document, operations: I) {
 		for operation in operations {
-			self.dispatch_operation(document, operation);
+			if let Err(error) = self.dispatch_operation(document, operation) {
+				log::error!("{}", error);
+			}
 		}
 	}
 
-	fn dispatch_operation(&self, document: &mut Document, operation: &Operation) {
-		document.handle_operation(operation, |svg: String| {
-			self.dispatch_response(Response::UpdateCanvas { document: svg });
-		});
+	fn dispatch_operation(&self, document: &mut Document, operation: Operation) -> Result<(), EditorError> {
+		document.handle_operation(operation, |svg: String| self.dispatch_response(Response::UpdateCanvas { document: svg }))?;
+		Ok(())
 	}
 
-	pub fn dispatch_responses(&self, responses: &[Response]) {
+	pub fn dispatch_responses<I: IntoIterator<Item = Response>>(&self, responses: I) {
 		for response in responses {
-			// TODO - Remove clone when Response is Copy
-			self.dispatch_response(response.clone());
+			self.dispatch_response(response);
 		}
 	}
 
