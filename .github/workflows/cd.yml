@@ -22,7 +22,11 @@ jobs:
       run: cd client/web && npm install
     - name: build node
       run: cd client/web && npm run build
-    - name: Deploy to Cloudflare Workers
-      uses: cloudflare/wrangler-action@1.2.0
+    - name: Deploy 🚀
+      uses: JamesIves/github-pages-deploy-action@4.1.1
       with:
-        apiToken: ${{ secrets.CF_API_TOKEN }}
+        branch: deploy # The branch the action should deploy to.
+        folder: client/web/dist # The folder the action should deploy.
+        clean: true
+        single-commit: true
+        git-config-name: Deploy Bot
