@@ -26,12 +26,14 @@ pub enum Event {
 // TODO - Make Copy when possible
 pub enum Response {
 	UpdateCanvas { document: String },
+	SetActiveTool { tool_name: String },
 }
 
 impl fmt::Display for Response {
 	fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
 		match self {
 			Response::UpdateCanvas { document: _ } => write!(formatter, "UpdateCanvas"),
+			Response::SetActiveTool { tool_name: _ } => write!(formatter, "SetActiveTool"),
 		}
 	}
 }

@@ -35,36 +35,36 @@
 		<LayoutRow :class="'shelf-and-viewport'">
 			<LayoutCol :class="'shelf'">
 				<div class="tools">
-					<ShelfItem active title="Select Tool (V)"><SelectTool /></ShelfItem>
-					<ShelfItem title="Crop Tool"><CropTool /></ShelfItem>
-					<ShelfItem title="Navigate Tool"><NavigateTool /></ShelfItem>
-					<ShelfItem title="Sample Tool"><SampleTool /></ShelfItem>
+					<ShelfItem title="Select Tool (V)" :active="activeTool === 'Select'" @click="selectTool('Select')"><SelectTool /></ShelfItem>
+					<ShelfItem title="Crop Tool" :active="activeTool === 'Crop'" @click="'tool not implemented' || selectTool('Crop')"><CropTool /></ShelfItem>
+					<ShelfItem title="Navigate Tool" :active="activeTool === 'Navigate'" @click="'tool not implemented' || selectTool('Navigate')"><NavigateTool /></ShelfItem>
+					<ShelfItem title="Sample Tool" :active="activeTool === 'Sample'" @click="'tool not implemented' || selectTool('Sample')"><SampleTool /></ShelfItem>
 
 					<ItemDivider horizontal />
 
-					<ShelfItem title="Text Tool"><TextTool /></ShelfItem>
-					<ShelfItem title="Fill Tool"><FillTool /></ShelfItem>
-					<ShelfItem title="Gradient Tool"><GradientTool /></ShelfItem>
+					<ShelfItem title="Text Tool" :active="activeTool === 'Text'" @click="'tool not implemented' || selectTool('Text')"><TextTool /></ShelfItem>
+					<ShelfItem title="Fill Tool" :active="activeTool === 'Fill'" @click="'tool not implemented' || selectTool('Fill')"><FillTool /></ShelfItem>
+					<ShelfItem title="Gradient Tool" :active="activeTool === 'Gradient'" @click="'tool not implemented' || selectTool('Gradient')"><GradientTool /></ShelfItem>
 
 					<ItemDivider horizontal />
 
-					<ShelfItem title="Brush Tool"><BrushTool /></ShelfItem>
-					<ShelfItem title="Heal Tool"><HealTool /></ShelfItem>
-					<ShelfItem title="Clone Tool"><CloneTool /></ShelfItem>
-					<ShelfItem title="Patch Tool"><PatchTool /></ShelfItem>
-					<ShelfItem title="Blur/Sharpen Tool"><BlurSharpenTool /></ShelfItem>
-					<ShelfItem title="Relight Tool"><RelightTool /></ShelfItem>
+					<ShelfItem title="Brush Tool" :active="activeTool === 'Brush'" @click="'tool not implemented' || selectTool('Brush')"><BrushTool /></ShelfItem>
+					<ShelfItem title="Heal Tool" :active="activeTool === 'Heal'" @click="'tool not implemented' || selectTool('Heal')"><HealTool /></ShelfItem>
+					<ShelfItem title="Clone Tool" :active="activeTool === 'Clone'" @click="'tool not implemented' || selectTool('Clone')"><CloneTool /></ShelfItem>
+					<ShelfItem title="Patch Tool" :active="activeTool === 'Patch'" @click="'tool not implemented' || selectTool('Patch')"><PatchTool /></ShelfItem>
+					<ShelfItem title="Blur/Sharpen Tool" :active="activeTool === 'BlurSharpen'" @click="'tool not implemented' || selectTool('BlurSharpen')"><BlurSharpenTool /></ShelfItem>
+					<ShelfItem title="Relight Tool" :active="activeTool === 'Relight'" @click="'tool not implemented' || selectTool('Relight')"><RelightTool /></ShelfItem>
 
 					<ItemDivider horizontal />
 
-					<ShelfItem title="Path Tool"><PathTool /></ShelfItem>
-					<ShelfItem title="Pen Tool"><PenTool /></ShelfItem>
-					<ShelfItem title="Freehand Tool"><FreehandTool /></ShelfItem>
-					<ShelfItem title="Spline Tool"><SplineTool /></ShelfItem>
-					<ShelfItem title="Line Tool"><LineTool /></ShelfItem>
-					<ShelfItem title="Rectangle Tool (M)"><RectangleTool /></ShelfItem>
-					<ShelfItem title="Ellipse Tool (E)"><EllipseTool /></ShelfItem>
-					<ShelfItem title="Shape Tool"><ShapeTool /></ShelfItem>
+					<ShelfItem title="Path Tool" :active="activeTool === 'Path'" @click="'tool not implemented' || selectTool('Path')"><PathTool /></ShelfItem>
+					<ShelfItem title="Pen Tool" :active="activeTool === 'Pen'" @click="'tool not implemented' || selectTool('Pen')"><PenTool /></ShelfItem>
+					<ShelfItem title="Freehand Tool" :active="activeTool === 'Freehand'" @click="'tool not implemented' || selectTool('Freehand')"><FreehandTool /></ShelfItem>
+					<ShelfItem title="Spline Tool" :active="activeTool === 'Spline'" @click="'tool not implemented' || selectTool('Spline')"><SplineTool /></ShelfItem>
+					<ShelfItem title="Line Tool" :active="activeTool === 'Line'" @click="'tool not implemented' || selectTool('Line')"><LineTool /></ShelfItem>
+					<ShelfItem title="Rectangle Tool (M)" :active="activeTool === 'Rectangle'" @click="selectTool('Rectangle')"><RectangleTool /></ShelfItem>
+					<ShelfItem title="Ellipse Tool (E)" :active="activeTool === 'Ellipse'" @click="selectTool('Ellipse')"><EllipseTool /></ShelfItem>
+					<ShelfItem title="Shape Tool" :active="activeTool === 'Shape'" @click="'tool not implemented' || selectTool('Shape')"><ShapeTool /></ShelfItem>
 				</div>
 				<div class="spacer"></div>
 				<div class="working-colors">
@@ -293,17 +293,26 @@ export default defineComponent({
 			const { on_key_up } = await wasm;
 			on_key_up(e.key);
 		},
+		async selectTool(toolName: string) {
+			const { select_tool } = await wasm;
+			select_tool(toolName);
+		},
 	},
 	mounted() {
 		registerResponseHandler(ResponseType.UpdateCanvas, (responseData) => {
-			this.viewportSvg = responseData;
+			this.viewportSvg = responseData.split("\n").map((shape, i) => shape.replace("#fff", `#${Math.floor(Math.abs(Math.sin(i + 1)) * 16777215).toString(16)}`)).join("\n");
 		});
+		registerResponseHandler(ResponseType.SetActiveTool, (responseData) => {
+			this.activeTool = responseData;
+		});
+
 		window.addEventListener("keyup", (e: KeyboardEvent) => this.keyUp(e));
 		window.addEventListener("keydown", (e: KeyboardEvent) => this.keyDown(e));
 	},
 	data() {
 		return {
 			viewportSvg: "",
+			activeTool: "Select",
 		};
 	},
 });

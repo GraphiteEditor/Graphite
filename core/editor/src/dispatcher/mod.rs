@@ -13,8 +13,9 @@ impl Dispatcher {
 		log::trace!("{:?}", event);
 
 		match event {
-			Event::SelectTool(tool_type) => {
-				editor_state.tool_state.active_tool_type = *tool_type;
+			Event::SelectTool(tool_name) => {
+				editor_state.tool_state.active_tool_type = *tool_name;
+				self.dispatch_response(Response::SetActiveTool { tool_name: tool_name.to_string() });
 			}
 			Event::SelectPrimaryColor(color) => {
 				editor_state.tool_state.primary_color = *color;
@@ -56,14 +57,23 @@ impl Dispatcher {
 						log::set_max_level(log::LevelFilter::Trace);
 						log::debug!("set log verbosity to trace");
 					}
+					Key::KeyV => {
+						editor_state.tool_state.active_tool_type = ToolType::Select;
+						self.dispatch_response(Response::SetActiveTool {
+							tool_name: ToolType::Select.to_string(),
+						});
+					}
 					Key::KeyM => {
 						editor_state.tool_state.active_tool_type = ToolType::Rectangle;
+						self.dispatch_response(Response::SetActiveTool {
+							tool_name: ToolType::Rectangle.to_string(),
+						});
 					}
 					Key::KeyE => {
 						editor_state.tool_state.active_tool_type = ToolType::Ellipse;
-					}
-					Key::KeyV => {
-						editor_state.tool_state.active_tool_type = ToolType::Select;
+						self.dispatch_response(Response::SetActiveTool {
+							tool_name: ToolType::Ellipse.to_string(),
+						});
 					}
 					Key::KeyX => {
 						editor_state.tool_state.swap_colors();

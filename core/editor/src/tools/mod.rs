@@ -14,7 +14,7 @@ use crate::Color;
 use crate::Document;
 use crate::EditorError;
 use document_core::Operation;
-use std::collections::HashMap;
+use std::{collections::HashMap, fmt};
 
 pub trait Tool {
 	fn handle_input(&mut self, event: &Event, document: &Document) -> (Vec<Response>, Vec<Operation>);
@@ -44,7 +44,7 @@ impl Default for ToolFsmState {
 			trace: Trace::new(),
 			primary_color: Color::BLACK,
 			secondary_color: Color::WHITE,
-			active_tool_type: ToolType::Rectangle,
+			active_tool_type: ToolType::Select,
 			tools: gen_tools_hash_map! {
 				Select => select::Select,
 				Crop => crop::Crop,
@@ -103,13 +103,51 @@ pub enum ToolType {
 	Crop,
 	Navigate,
 	Sample,
+	Text,
+	Fill,
+	Gradient,
+	Brush,
+	Heal,
+	Clone,
+	Patch,
+	BlurSharpen,
+	Relight,
 	Path,
 	Pen,
+	Freehand,
+	Spline,
 	Line,
 	Rectangle,
 	Ellipse,
 	Shape,
-	// all discriminats must be strictly smaller than TOOL_COUNT!
+}
+
+impl fmt::Display for ToolType {
+	fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+		match self {
+			ToolType::Select => write!(formatter, "Select"),
+			ToolType::Crop => write!(formatter, "Crop"),
+			ToolType::Navigate => write!(formatter, "Navigate"),
+			ToolType::Sample => write!(formatter, "Sample"),
+			ToolType::Text => write!(formatter, "Text"),
+			ToolType::Fill => write!(formatter, "Fill"),
+			ToolType::Gradient => write!(formatter, "Gradient"),
+			ToolType::Brush => write!(formatter, "Brush"),
+			ToolType::Heal => write!(formatter, "Heal"),
+			ToolType::Clone => write!(formatter, "Clone"),
+			ToolType::Patch => write!(formatter, "Patch"),
+			ToolType::BlurSharpen => write!(formatter, "BlurSharpen"),
+			ToolType::Relight => write!(formatter, "Relight"),
+			ToolType::Path => write!(formatter, "Path"),
+			ToolType::Pen => write!(formatter, "Pen"),
+			ToolType::Freehand => write!(formatter, "Freehand"),
+			ToolType::Spline => write!(formatter, "Spline"),
+			ToolType::Line => write!(formatter, "Line"),
+			ToolType::Rectangle => write!(formatter, "Rectangle"),
+			ToolType::Ellipse => write!(formatter, "Ellipse"),
+			ToolType::Shape => write!(formatter, "Shape"),
+		}
+	}
 }
 
 impl ToolType {
