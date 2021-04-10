@@ -1,0 +1,28 @@
+name: Graphite Continuous Deployment
+
+on:
+  push:
+    branches: [ master ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v2
+    - name: Setup Node
+      uses: actions/setup-node@v1
+      with:
+        node-version: '14.x'
+    - name: Install Dependencies
+      run: cd client/web && npm install
+    - name: build node
+      run: cd client/web && npm run build
+    - name: Deploy to Cloudflare Workers
+        uses: cloudflare/wrangler-action@1.2.0
+        with:
+          apiToken: ${{ secrets.CF_API_TOKEN }}
