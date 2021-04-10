@@ -79,7 +79,7 @@ macro_rules! match_variant_name {
     (match ($e:expr) { $($v:ident),* $(,)? }) => {
 		match $e {
 			$(
-				$v { .. } => stringify!(v)
+				$v { .. } => stringify!($v)
 			),*
 		}
 	};
