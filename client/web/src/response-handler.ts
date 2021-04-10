@@ -8,6 +8,7 @@ declare global {
 
 export enum ResponseType {
 	UpdateCanvas = "UpdateCanvas",
+	SetActiveTool = "SetActiveTool",
 }
 
 export function attachResponseHandlerToPage() {

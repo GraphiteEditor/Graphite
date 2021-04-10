@@ -24,6 +24,7 @@ fn handle_response(response: Response) {
 	let response_type = response.to_string();
 	match response {
 		Response::UpdateCanvas { document } => handleResponse(response_type, document),
+		Response::SetActiveTool { tool_name } => handleResponse(response_type, tool_name),
 	}
 }
 
