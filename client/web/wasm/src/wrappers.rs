@@ -24,41 +24,54 @@ impl Color {
 	}
 }
 
+macro_rules! match_string_to_enum {
+    (match ($e:expr) {$($var:ident),* $(,)?}) => {
+		match $e {
+			$(
+			stringify!($var) => Some($var),
+			)*
+			_ => None
+		}
+	};
+}
+
 pub fn translate_tool(name: &str) -> Option<ToolType> {
-	match name {
-		"Select" => Some(ToolType::Select),
-		"Crop" => Some(ToolType::Crop),
-		"Navigate" => Some(ToolType::Navigate),
-		"Sample" => Some(ToolType::Sample),
-		"Text" => Some(ToolType::Text),
-		"Fill" => Some(ToolType::Fill),
-		"Gradient" => Some(ToolType::Gradient),
-		"Brush" => Some(ToolType::Brush),
-		"Heal" => Some(ToolType::Heal),
-		"Clone" => Some(ToolType::Clone),
-		"Patch" => Some(ToolType::Patch),
-		"BlurSharpen" => Some(ToolType::BlurSharpen),
-		"Relight" => Some(ToolType::Relight),
-		"Path" => Some(ToolType::Path),
-		"Pen" => Some(ToolType::Pen),
-		"Freehand" => Some(ToolType::Freehand),
-		"Spline" => Some(ToolType::Spline),
-		"Line" => Some(ToolType::Line),
-		"Rectangle" => Some(ToolType::Rectangle),
-		"Ellipse" => Some(ToolType::Ellipse),
-		"Shape" => Some(ToolType::Shape),
-		_ => None,
-	}
+	use ToolType::*;
+
+	match_string_to_enum!(match (name) {
+		Select,
+		Crop,
+		Navigate,
+		Sample,
+		Text,
+		Fill,
+		Gradient,
+		Brush,
+		Heal,
+		Clone,
+		Patch,
+		BlurSharpen,
+		Relight,
+		Path,
+		Pen,
+		Freehand,
+		Spline,
+		Line,
+		Rectangle,
+		Ellipse,
+		Shape
+	})
 }
 
 pub fn translate_append_mode(name: &str) -> Option<SelectAppendMode> {
-	match name {
-		"New" => Some(SelectAppendMode::New),
-		"Add" => Some(SelectAppendMode::Add),
-		"Subtract" => Some(SelectAppendMode::Subtract),
-		"Intersect" => Some(SelectAppendMode::Intersect),
-		_ => None,
-	}
+	use SelectAppendMode::*;
+
+	match_string_to_enum!(match (name) {
+		New,
+		Add,
+		Subtract,
+		Intersect
+	})
 }
 
 pub fn translate_key(name: &str) -> events::Key {

@@ -31,10 +31,14 @@ pub enum Response {
 
 impl fmt::Display for Response {
 	fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-		match self {
-			Response::UpdateCanvas { document: _ } => write!(formatter, "UpdateCanvas"),
-			Response::SetActiveTool { tool_name: _ } => write!(formatter, "SetActiveTool"),
-		}
+		use Response::*;
+
+		let name = match_variant_name!(match (self) {
+			UpdateCanvas,
+			SetActiveTool
+		});
+
+		formatter.write_str(name)
 	}
 }
 
