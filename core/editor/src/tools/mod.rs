@@ -124,29 +124,33 @@ pub enum ToolType {
 
 impl fmt::Display for ToolType {
 	fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-		match self {
-			ToolType::Select => write!(formatter, "Select"),
-			ToolType::Crop => write!(formatter, "Crop"),
-			ToolType::Navigate => write!(formatter, "Navigate"),
-			ToolType::Sample => write!(formatter, "Sample"),
-			ToolType::Text => write!(formatter, "Text"),
-			ToolType::Fill => write!(formatter, "Fill"),
-			ToolType::Gradient => write!(formatter, "Gradient"),
-			ToolType::Brush => write!(formatter, "Brush"),
-			ToolType::Heal => write!(formatter, "Heal"),
-			ToolType::Clone => write!(formatter, "Clone"),
-			ToolType::Patch => write!(formatter, "Patch"),
-			ToolType::BlurSharpen => write!(formatter, "BlurSharpen"),
-			ToolType::Relight => write!(formatter, "Relight"),
-			ToolType::Path => write!(formatter, "Path"),
-			ToolType::Pen => write!(formatter, "Pen"),
-			ToolType::Freehand => write!(formatter, "Freehand"),
-			ToolType::Spline => write!(formatter, "Spline"),
-			ToolType::Line => write!(formatter, "Line"),
-			ToolType::Rectangle => write!(formatter, "Rectangle"),
-			ToolType::Ellipse => write!(formatter, "Ellipse"),
-			ToolType::Shape => write!(formatter, "Shape"),
-		}
+		use ToolType::*;
+
+		let name = match_variant_name!(match (self) {
+			Select,
+			Crop,
+			Navigate,
+			Sample,
+			Text,
+			Fill,
+			Gradient,
+			Brush,
+			Heal,
+			Clone,
+			Patch,
+			BlurSharpen,
+			Relight,
+			Path,
+			Pen,
+			Freehand,
+			Spline,
+			Line,
+			Rectangle,
+			Ellipse,
+			Shape
+		});
+
+		formatter.write_str(name)
 	}
 }
 

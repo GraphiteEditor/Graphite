@@ -47,3 +47,40 @@ macro_rules! gen_tools_hash_map {
 		hash_map
 	}};
 }
+
+/// Creates a string representation of an enum value that exactly matches the given name of each enum variant
+///
+/// # Example
+///
+/// ```ignore
+/// enum E {
+/// 	A(u8),
+/// 	B
+/// }
+///
+/// // this line is important
+/// use E::*;
+///
+/// let a = E::A(7);
+/// let s = match_variant_name!(match (a) { A, B });
+/// ```
+///
+/// expands to
+///
+/// ```ignore
+/// // ...
+///
+/// let s = match a {
+/// 	A { .. } => "A",
+/// 	B { .. } => "B"
+/// };
+/// ```
+macro_rules! match_variant_name {
+    (match ($e:expr) { $($v:ident),* $(,)? }) => {
+		match $e {
+			$(
+				$v { .. } => stringify!(v)
+			),*
+		}
+	};
+}
