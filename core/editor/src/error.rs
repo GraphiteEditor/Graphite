@@ -1,31 +1,21 @@
 use crate::events::Event;
 use crate::Color;
-use std::error::Error;
-use std::fmt::{self, Display};
+use thiserror::Error;
 
 /// The error type used by the Graphite editor.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Error)]
 pub enum EditorError {
+	#[error("Failed to execute operation: {0}")]
 	InvalidOperation(String),
+	#[error("Failed to dispatch event: {0}")]
 	InvalidEvent(String),
+	#[error("{0}")]
 	Misc(String),
+	#[error("Tried to construct an invalid color {0:?}")]
 	Color(String),
+	#[error("The requested tool does not exist")]
 	UnknownTool,
 }
-
-impl Display for EditorError {
-	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-		match self {
-			EditorError::InvalidOperation(e) => write!(f, "Failed to execute operation: {}", e),
-			EditorError::InvalidEvent(e) => write!(f, "Failed to dispatch event: {}", e),
-			EditorError::Misc(e) => write!(f, "{}", e),
-			EditorError::Color(c) => write!(f, "Tried to construct an invalid color {:?}", c),
-			EditorError::UnknownTool => write!(f, "The requested tool does not exist"),
-		}
-	}
-}
-
-impl Error for EditorError {}
 
 macro_rules! derive_from {
 	($type:ty, $kind:ident) => {
