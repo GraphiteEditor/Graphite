@@ -14,7 +14,7 @@
 	}
 
 	&.active {
-		background: #428bbb;
+		background: #3194d6;
 	}
 
 	svg {

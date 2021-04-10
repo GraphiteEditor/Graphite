@@ -6,53 +6,27 @@
 
 				<ItemDivider />
 
-				<IconButton :size="24" title="Horizontal Align Left">
-					<AlignHorizontalLeft />
-				</IconButton>
-				<IconButton :size="24" title="Horizontal Align Center">
-					<AlignHorizontalCenter />
-				</IconButton>
-				<IconButton :size="24" gapAfter title="Horizontal Align Right">
-					<AlignHorizontalRight />
-				</IconButton>
-				<IconButton :size="24" title="Vertical Align Top">
-					<AlignVerticalTop />
-				</IconButton>
-				<IconButton :size="24" title="Vertical Align Center">
-					<AlignVerticalCenter />
-				</IconButton>
-				<IconButton :size="24" title="Vertical Align Bottom">
-					<AlignVerticalBottom />
-				</IconButton>
+				<IconButton :size="24" title="Horizontal Align Left"><AlignHorizontalLeft /></IconButton>
+				<IconButton :size="24" title="Horizontal Align Center"><AlignHorizontalCenter /></IconButton>
+				<IconButton :size="24" gapAfter title="Horizontal Align Right"><AlignHorizontalRight /></IconButton>
+				<IconButton :size="24" title="Vertical Align Top"><AlignVerticalTop /></IconButton>
+				<IconButton :size="24" title="Vertical Align Center"><AlignVerticalCenter /></IconButton>
+				<IconButton :size="24" title="Vertical Align Bottom"><AlignVerticalBottom /></IconButton>
 				<DropdownButton />
 
 				<ItemDivider />
 
-				<IconButton :size="24" title="Flip Horizontal">
-					<FlipHorizontal />
-				</IconButton>
-				<IconButton :size="24" title="Flip Vertical">
-					<FlipVertical />
-				</IconButton>
+				<IconButton :size="24" title="Flip Horizontal"><FlipHorizontal /></IconButton>
+				<IconButton :size="24" title="Flip Vertical"><FlipVertical /></IconButton>
 				<DropdownButton />
 
 				<ItemDivider />
 
-				<IconButton :size="24" title="Boolean Union">
-					<BooleanUnion />
-				</IconButton>
-				<IconButton :size="24" title="Boolean Subtract Front">
-					<BooleanSubtractFront />
-				</IconButton>
-				<IconButton :size="24" title="Boolean Subtract Back">
-					<BooleanSubtractBack />
-				</IconButton>
-				<IconButton :size="24" title="Boolean Intersect">
-					<BooleanIntersect />
-				</IconButton>
-				<IconButton :size="24" title="Boolean Difference">
-					<BooleanDifference />
-				</IconButton>
+				<IconButton :size="24" title="Boolean Union"><BooleanUnion /></IconButton>
+				<IconButton :size="24" title="Boolean Subtract Front"><BooleanSubtractFront /></IconButton>
+				<IconButton :size="24" title="Boolean Subtract Back"><BooleanSubtractBack /></IconButton>
+				<IconButton :size="24" title="Boolean Intersect"><BooleanIntersect /></IconButton>
+				<IconButton :size="24" title="Boolean Difference"><BooleanDifference /></IconButton>
 				<DropdownButton />
 			</div>
 			<div class="spacer"></div>
@@ -61,72 +35,36 @@
 		<LayoutRow :class="'shelf-and-viewport'">
 			<LayoutCol :class="'shelf'">
 				<div class="tools">
-					<ShelfItem active title="Select Tool (V)">
-						<SelectTool />
-					</ShelfItem>
-					<ShelfItem title="Crop Tool">
-						<CropTool />
-					</ShelfItem>
-					<ShelfItem title="Navigate Tool">
-						<NavigateTool />
-					</ShelfItem>
-					<ShelfItem title="Sample Tool">
-						<SampleTool />
-					</ShelfItem>
+					<ShelfItem active title="Select Tool (V)"><SelectTool /></ShelfItem>
+					<ShelfItem title="Crop Tool"><CropTool /></ShelfItem>
+					<ShelfItem title="Navigate Tool"><NavigateTool /></ShelfItem>
+					<ShelfItem title="Sample Tool"><SampleTool /></ShelfItem>
+
 					<ItemDivider horizontal />
-					<ShelfItem title="Text Tool">
-						<TextTool />
-					</ShelfItem>
-					<ShelfItem title="Fill Tool">
-						<FillTool />
-					</ShelfItem>
-					<ShelfItem title="Gradient Tool">
-						<GradientTool />
-					</ShelfItem>
+
+					<ShelfItem title="Text Tool"><TextTool /></ShelfItem>
+					<ShelfItem title="Fill Tool"><FillTool /></ShelfItem>
+					<ShelfItem title="Gradient Tool"><GradientTool /></ShelfItem>
+
 					<ItemDivider horizontal />
-					<ShelfItem title="Brush Tool">
-						<BrushTool />
-					</ShelfItem>
-					<ShelfItem title="Heal Tool">
-						<HealTool />
-					</ShelfItem>
-					<ShelfItem title="Clone Tool">
-						<CloneTool />
-					</ShelfItem>
-					<ShelfItem title="Patch Tool">
-						<PatchTool />
-					</ShelfItem>
-					<ShelfItem title="Blur/Sharpen Tool">
-						<BlurSharpenTool />
-					</ShelfItem>
-					<ShelfItem title="Relight Tool">
-						<RelightTool />
-					</ShelfItem>
+
+					<ShelfItem title="Brush Tool"><BrushTool /></ShelfItem>
+					<ShelfItem title="Heal Tool"><HealTool /></ShelfItem>
+					<ShelfItem title="Clone Tool"><CloneTool /></ShelfItem>
+					<ShelfItem title="Patch Tool"><PatchTool /></ShelfItem>
+					<ShelfItem title="Blur/Sharpen Tool"><BlurSharpenTool /></ShelfItem>
+					<ShelfItem title="Relight Tool"><RelightTool /></ShelfItem>
+
 					<ItemDivider horizontal />
-					<ShelfItem title="Path Tool">
-						<PathTool />
-					</ShelfItem>
-					<ShelfItem title="Pen Tool">
-						<PenTool />
-					</ShelfItem>
-					<ShelfItem title="Freehand Tool">
-						<FreehandTool />
-					</ShelfItem>
-					<ShelfItem title="Spline Tool">
-						<SplineTool />
-					</ShelfItem>
-					<ShelfItem title="Line Tool">
-						<LineTool />
-					</ShelfItem>
-					<ShelfItem title="Rectangle Tool (M)">
-						<RectangleTool />
-					</ShelfItem>
-					<ShelfItem title="Ellipse Tool (E)">
-						<EllipseTool />
-					</ShelfItem>
-					<ShelfItem title="Shape Tool">
-						<ShapeTool />
-					</ShelfItem>
+
+					<ShelfItem title="Path Tool"><PathTool /></ShelfItem>
+					<ShelfItem title="Pen Tool"><PenTool /></ShelfItem>
+					<ShelfItem title="Freehand Tool"><FreehandTool /></ShelfItem>
+					<ShelfItem title="Spline Tool"><SplineTool /></ShelfItem>
+					<ShelfItem title="Line Tool"><LineTool /></ShelfItem>
+					<ShelfItem title="Rectangle Tool (M)"><RectangleTool /></ShelfItem>
+					<ShelfItem title="Ellipse Tool (E)"><EllipseTool /></ShelfItem>
+					<ShelfItem title="Shape Tool"><ShapeTool /></ShelfItem>
 				</div>
 				<div class="spacer"></div>
 				<div class="working-colors">
@@ -157,7 +95,7 @@
 					@mouseup="canvasMouseUp"
 					@mousemove="canvasMouseMove"
 				>
-					<svg></svg>
+					<svg v-html="viewportSvg"></svg>
 				</div>
 			</LayoutCol>
 		</LayoutRow>
@@ -243,6 +181,7 @@
 
 <script lang="ts">
 import { defineComponent } from "vue";
+import { registerResponseHandler, ResponseType } from "../../response-handler";
 import LayoutRow from "../layout/LayoutRow.vue";
 import LayoutCol from "../layout/LayoutCol.vue";
 import ShelfItem from "../widgets/ShelfItem.vue";
@@ -356,8 +295,16 @@ export default defineComponent({
 		},
 	},
 	mounted() {
+		registerResponseHandler(ResponseType.UpdateCanvas, (responseData) => {
+			this.viewportSvg = responseData;
+		});
 		window.addEventListener("keyup", (e: KeyboardEvent) => this.keyUp(e));
 		window.addEventListener("keydown", (e: KeyboardEvent) => this.keyDown(e));
+	},
+	data() {
+		return {
+			viewportSvg: "",
+		};
 	},
 });
 </script>

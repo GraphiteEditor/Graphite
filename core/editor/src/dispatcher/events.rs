@@ -1,7 +1,10 @@
 use crate::tools::ToolType;
 use crate::Color;
 use bitflags::bitflags;
-use std::ops::{Deref, DerefMut};
+use std::{
+	fmt,
+	ops::{Deref, DerefMut},
+};
 
 #[derive(Debug, Clone)]
 #[repr(C)]
@@ -23,6 +26,14 @@ pub enum Event {
 // TODO - Make Copy when possible
 pub enum Response {
 	UpdateCanvas { document: String },
+}
+
+impl fmt::Display for Response {
+	fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+		match self {
+			Response::UpdateCanvas { document: _ } => write!(formatter, "UpdateCanvas"),
+		}
+	}
 }
 
 #[derive(Debug, Clone, Default)]

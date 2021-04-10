@@ -21,14 +21,15 @@ pub fn init() {
 }
 
 fn handle_response(response: Response) {
+	let response_type = response.to_string();
 	match response {
-		Response::UpdateCanvas { document } => updateCanvas(document),
+		Response::UpdateCanvas { document } => handleResponse(response_type, document),
 	}
 }
 
-#[wasm_bindgen(module = "/../src/wasm-callback-processor.js")]
+#[wasm_bindgen(module = "/../src/response-handler.ts")]
 extern "C" {
-	fn updateCanvas(svg: String);
+	fn handleResponse(responseType: String, responseData: String);
 }
 
 #[wasm_bindgen]
