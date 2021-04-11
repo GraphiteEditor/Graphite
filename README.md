@@ -72,14 +72,15 @@ A good starting point for learning about the code structure and architecture is 
 
 ### Web client
 
-This is the primary means of running and developing the project. You may need to download and install [Rust](https://www.rust-lang.org/), [Node.js](https://nodejs.org/) and [wasm-pack](https://rustwasm.github.io/wasm-pack/).
+This is the primary means of running and developing the project. You may need to download and install a recent version of [Rust](https://www.rust-lang.org/) and [Node.js](https://nodejs.org/).
 
 ```
-cd client
-cd web
-npm install
 npm run serve
 ```
+
+After editing some Rust and TypeScript code, you may need to manually restart the developments server because this is not properly watching all files right now. (Please submit a PR to help fix this!)
+
+You can also use `npm run build` and the static files will end up in `/client/web/dist` as well as `npm run lint`.
 
 ### CLI client
 
@@ -94,7 +95,6 @@ cargo run
 This will be run and tested mainly through the web frontend, which builds the Rust code into WebAssembly automatically. But if you need to build the code on its own:
 
 ```
-cd core
-cd editor
+cd core/editor
 cargo build
 ```
