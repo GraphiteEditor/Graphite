@@ -8,7 +8,7 @@
 
 <style lang="scss">
 .number-input {
-	width: 96px;
+	width: 64px;
 	height: 22px;
 	position: relative;
 	border: 1px solid #888;
@@ -26,6 +26,7 @@
 		color: #ddd;
 		font-size: 14px;
 		text-align: center;
+		font-family: inherit;
 
 		&::selection {
 			background: #3194d6;
