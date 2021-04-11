@@ -31,6 +31,15 @@
 			</div>
 			<div class="spacer"></div>
 			<div class="right side">
+				<RadioPicker :initialIndex="0" @changed="viewModeChanged">
+					<IconButton :size="24" title="View Mode: Normal"><ViewModeNormal /></IconButton>
+					<IconButton :size="24" title="View Mode: Outline"><ViewModeOutline /></IconButton>
+					<IconButton :size="24" title="View Mode: Pixels"><ViewModePixels /></IconButton>
+					<DropdownButton />
+				</RadioPicker>
+
+				<ItemDivider />
+
 				<IconButton :size="24" title="Zoom Out"><ZoomOut /></IconButton>
 				<IconButton :size="24" title="Zoom In"><ZoomIn /></IconButton>
 				<IconButton :size="24" title="Zoom to 100%"><ZoomReset /></IconButton>
@@ -116,7 +125,7 @@
 
 		.side {
 			height: 100%;
-			flex: 0 1 auto;
+			flex: 0 0 auto;
 			display: flex;
 			align-items: center;
 			margin: 0 8px;
@@ -193,6 +202,7 @@ import ShelfItem from "../widgets/ShelfItem.vue";
 import ItemDivider from "../widgets/ItemDivider.vue";
 import IconButton from "../widgets/IconButton.vue";
 import DropdownButton from "../widgets/DropdownButton.vue";
+import RadioPicker from "../widgets/RadioPicker.vue";
 import NumberInput from "../widgets/NumberInput.vue";
 import SwapButton from "../../../assets/svg/16x16-bounds-12x12-icon/swap.svg";
 import ResetColorsButton from "../../../assets/svg/16x16-bounds-12x12-icon/reset-colors.svg";
@@ -233,6 +243,9 @@ import BooleanDifference from "../../../assets/svg/24x24-bounds-16x16-icon/boole
 import ZoomReset from "../../../assets/svg/24x24-bounds-16x16-icon/zoom-reset.svg";
 import ZoomIn from "../../../assets/svg/24x24-bounds-16x16-icon/zoom-in.svg";
 import ZoomOut from "../../../assets/svg/24x24-bounds-16x16-icon/zoom-out.svg";
+import ViewModeNormal from "../../../assets/svg/24x24-bounds-16x16-icon/view-mode-normal.svg";
+import ViewModeOutline from "../../../assets/svg/24x24-bounds-16x16-icon/view-mode-outline.svg";
+import ViewModePixels from "../../../assets/svg/24x24-bounds-16x16-icon/view-mode-pixels.svg";
 
 const wasm = import("../../../wasm/pkg");
 
@@ -244,6 +257,7 @@ export default defineComponent({
 		ItemDivider,
 		IconButton,
 		DropdownButton,
+		RadioPicker,
 		NumberInput,
 		SwapButton,
 		ResetColorsButton,
@@ -284,6 +298,9 @@ export default defineComponent({
 		ZoomReset,
 		ZoomIn,
 		ZoomOut,
+		ViewModeNormal,
+		ViewModeOutline,
+		ViewModePixels,
 	},
 	methods: {
 		async canvasMouseDown(e: MouseEvent) {
@@ -309,6 +326,9 @@ export default defineComponent({
 		async selectTool(toolName: string) {
 			const { select_tool } = await wasm;
 			select_tool(toolName);
+		},
+		async viewModeChanged(toolIndex: number) {
+			console.log(`The view mode has been changed to index match the icon at index ${toolIndex}`);
 		},
 	},
 	mounted() {
