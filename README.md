@@ -80,7 +80,7 @@ npm run serve
 
 After editing some Rust and TypeScript code, you may need to manually restart the developments server because this is not properly watching all files right now. (Please submit a PR to help fix this!)
 
-You can also use `npm run build` and the static files will end up in `/client/web/dist` as well as `npm run lint`.
+You can also use `npm run lint` as well as `npm run build` (the static files will end up in `/client/web/dist`).
 
 ### CLI client
 

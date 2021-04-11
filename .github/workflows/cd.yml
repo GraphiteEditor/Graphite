@@ -1,4 +1,4 @@
-name: Graphite Continuous Deployment
+name: Continuous Deployment
 
 on:
   push:
@@ -9,24 +9,26 @@ env:
 
 jobs:
   build:
-
     runs-on: ubuntu-latest
 
     steps:
     - uses: actions/checkout@v2
-    - name: Setup Node
+
+    - name: 🔧 Set up Node
       uses: actions/setup-node@v1
       with:
         node-version: '14.x'
-    - name: Install Dependencies
+
+    - name: 🚧 Install Node dependencies
       run: cd client/web && npm install
-    - name: build node
+
+    - name: 👷 Build Graphite web client
       run: cd client/web && npm run build
-    - name: Deploy 🚀
+
+    - name: 🚀 Deploy web client
       uses: JamesIves/github-pages-deploy-action@4.1.1
       with:
-        branch: deploy # The branch the action should deploy to.
-        folder: client/web/dist # The folder the action should deploy.
-        clean: true
+        branch: deploy
+        folder: client/web/dist
         single-commit: true
-        git-config-name: Deploy Bot
+        git-config-name: GitHub Actions
