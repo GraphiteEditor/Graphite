@@ -3,7 +3,9 @@
 </template>
 
 <style lang="scss">
-html, body, #app {
+html,
+body,
+#app {
 	margin: 0;
 	height: 100%;
 	font-family: "Source Sans Pro", Arial, sans-serif;
@@ -18,8 +20,11 @@ html, body, #app {
 <script lang="ts">
 import { defineComponent } from "vue";
 import MainWindow from "./components/window/MainWindow.vue";
+import { NC } from "./events/NotificationCenter";
 
-const wasm = import("../wasm/pkg");
+const _wasm = import("../wasm/pkg");
+type InferPromise<T> = T extends Promise<infer U> ? U : any;
+type Wasm = InferPromise<typeof _wasm>;
 
 export default defineComponent({
 	components: { MainWindow },
@@ -28,9 +33,26 @@ export default defineComponent({
 	},
 	methods: {
 		async greet() {
-			const { greet } = await wasm;
+			const {
+				greet,
+				Color,
+				update_primary_color,
+				update_secondary_color
+			} = await _wasm;
 			console.log(greet("Graphite"));
-		},
-	},
+
+			NC.on("update_primary_color", ({ value }) => {
+				update_primary_color(
+					new Color(value.color.r, value.color.g, value.color.b, 1)
+				);
+			});
+
+			NC.on("update_secondary_color", ({ value }) => {
+				update_secondary_color(
+					new Color(value.color.r, value.color.g, value.color.b, 1)
+				);
+			});
+		}
+	}
 });
 </script>

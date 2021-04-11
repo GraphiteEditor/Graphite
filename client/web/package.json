@@ -16,6 +16,8 @@
 	"license": "Apache-2.0",
 	"homepage": "https://www.graphite.design",
 	"dependencies": {
+		"lol": "github:wk-js/lol.js",
+		"simple-color-picker": "^1.0.4",
 		"vue": "^3.0.7",
 		"vue-class-component": "^8.0.0-0",
 		"vue-loader": "^16.1.2"
