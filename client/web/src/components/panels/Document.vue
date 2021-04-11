@@ -30,7 +30,12 @@
 				<DropdownButton />
 			</div>
 			<div class="spacer"></div>
-			<div class="right side"></div>
+			<div class="right side">
+				<IconButton :size="24" title="Zoom Out"><ZoomOut /></IconButton>
+				<IconButton :size="24" title="Zoom In"><ZoomIn /></IconButton>
+				<IconButton :size="24" title="Zoom to 100%"><ZoomReset /></IconButton>
+				<NumberInput />
+			</div>
 		</LayoutRow>
 		<LayoutRow :class="'shelf-and-viewport'">
 			<LayoutCol :class="'shelf'">
@@ -188,6 +193,7 @@ import ShelfItem from "../widgets/ShelfItem.vue";
 import ItemDivider from "../widgets/ItemDivider.vue";
 import IconButton from "../widgets/IconButton.vue";
 import DropdownButton from "../widgets/DropdownButton.vue";
+import NumberInput from "../widgets/NumberInput.vue";
 import SwapButton from "../../../assets/svg/16x16-bounds-12x12-icon/swap.svg";
 import ResetColorsButton from "../../../assets/svg/16x16-bounds-12x12-icon/reset-colors.svg";
 import SelectTool from "../../../assets/svg/24x24-bounds-24x24-icon/document-tool-layout-select.svg";
@@ -224,6 +230,9 @@ import BooleanSubtractFront from "../../../assets/svg/24x24-bounds-16x16-icon/bo
 import BooleanSubtractBack from "../../../assets/svg/24x24-bounds-16x16-icon/boolean-subtract-back.svg";
 import BooleanIntersect from "../../../assets/svg/24x24-bounds-16x16-icon/boolean-intersect.svg";
 import BooleanDifference from "../../../assets/svg/24x24-bounds-16x16-icon/boolean-difference.svg";
+import ZoomReset from "../../../assets/svg/24x24-bounds-16x16-icon/zoom-reset.svg";
+import ZoomIn from "../../../assets/svg/24x24-bounds-16x16-icon/zoom-in.svg";
+import ZoomOut from "../../../assets/svg/24x24-bounds-16x16-icon/zoom-out.svg";
 
 const wasm = import("../../../wasm/pkg");
 
@@ -235,6 +244,7 @@ export default defineComponent({
 		ItemDivider,
 		IconButton,
 		DropdownButton,
+		NumberInput,
 		SwapButton,
 		ResetColorsButton,
 		SelectTool,
@@ -271,6 +281,9 @@ export default defineComponent({
 		BooleanSubtractBack,
 		BooleanIntersect,
 		BooleanDifference,
+		ZoomReset,
+		ZoomIn,
+		ZoomOut,
 	},
 	methods: {
 		async canvasMouseDown(e: MouseEvent) {
