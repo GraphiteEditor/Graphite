@@ -23,18 +23,18 @@
 	}
 
 	.icon-button {
-		background: #888;
-
-		& + .icon-button {
-			margin-left: 1px;
-		}
+		background: #555;
 
 		&:hover {
-			background: #555;
+			background: #666;
 		}
 
 		&.active {
 			background: #3194d6;
+		}
+
+		& + .icon-button {
+			margin-left: 1px;
 		}
 	}
 }
