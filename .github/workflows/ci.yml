@@ -1,8 +1,9 @@
-name: Graphite Continuous Integration
+name: Continuous Integration
 
 on:
   push:
     branches: [ master ]
+
   pull_request:
     branches: [ master ]
 
@@ -11,22 +12,27 @@ env:
 
 jobs:
   build:
-
     runs-on: ubuntu-latest
 
     steps:
     - uses: actions/checkout@v2
-    - name: Setup Node
+
+    - name: 🔧 Set up Node
       uses: actions/setup-node@v1
       with:
         node-version: '14.x'
-    - name: Install Dependencies
+
+    - name: 🚧 Install Node dependencies
       run: cd client/web && npm install
-    - name: build node
+
+    - name: 👷 Build Graphite web client
       run: cd client/web && npm run build
-    - name: Format
+
+    - name: 🔬 Check Rust formatting
       run: cargo fmt --all -- --check
-    - name: Build
+
+    - name: 🦀 Build Rust code
       run: cargo build --verbose
-    - name: Run tests
+
+    - name: 🧪 Run Rust tests
       run: cargo test --verbose
