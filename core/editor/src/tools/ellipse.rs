@@ -46,8 +46,8 @@ impl Fsm for EllipseToolFsmState {
 				EllipseToolFsmState::LmbDown
 			}
 			(EllipseToolFsmState::Ready, Event::KeyDown(Key::KeyZ)) => {
-				if let Some(id) = document.root.list().last() {
-					operations.push(Operation::DeleteElement { path: vec![*id] })
+				if let Some(id) = document.root.list_layers().last() {
+					operations.push(Operation::DeleteLayer { path: vec![*id] })
 				}
 				EllipseToolFsmState::Ready
 			}

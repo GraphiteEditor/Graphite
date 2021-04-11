@@ -1,7 +1,5 @@
 pub mod operation;
 
-use std::collections::{hash_map::Keys, HashMap};
-
 pub use kurbo::{Circle, Point, Rect};
 pub use operation::Operation;
 
@@ -28,9 +26,7 @@ impl LayerType {
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum DocumentError {
-	ElementNotFound,
-	NotAShape,
-	ElementAlreadyExists,
+	LayerNotFound,
 	InvalidPath,
 	IndexOutOfBounds,
 }
@@ -53,53 +49,55 @@ impl Layer {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Folder {
 	next_assignment_id: LayerId,
-	indicies: Vec<LayerId>,
-	elements: Vec<Layer>,
+	layer_ids: Vec<LayerId>,
+	layers: Vec<Layer>,
 }
 
 impl Folder {
 	pub fn render(&self) -> String {
-		self.elements
+		self.layers
 			.iter()
 			.filter(|layer| layer.visible)
 			.map(|layer| layer.data.render())
-			.fold(String::with_capacity(self.elements.len() * 30), |s, n| s + "\n" + &n)
+			.fold(String::with_capacity(self.layers.len() * 30), |s, n| s + "\n" + &n)
 	}
 
 	fn add_layer(&mut self, layer: Layer, insert_index: isize) -> Option<LayerId> {
 		let mut insert_index = insert_index as i128;
 		if insert_index < 0 {
-			insert_index = self.elements.len() as i128 + insert_index as i128 + 1;
+			insert_index = self.layers.len() as i128 + insert_index as i128 + 1;
 		}
-		if insert_index <= self.elements.len() as i128 && insert_index >= 0 {
-			self.elements.insert(insert_index as usize, layer);
-			self.indicies.insert(insert_index as usize, self.next_assignment_id);
+
+		if insert_index <= self.layers.len() as i128 && insert_index >= 0 {
+			self.layers.insert(insert_index as usize, layer);
+			self.layer_ids.insert(insert_index as usize, self.next_assignment_id);
+			self.next_assignment_id += 1;
+			Some(self.next_assignment_id - 1)
 		} else {
-			return None;
+			None
 		}
-		self.next_assignment_id += 1;
-		Some(self.next_assignment_id - 1)
 	}
 
 	fn remove_layer(&mut self, id: LayerId) -> Result<(), DocumentError> {
-		let pos = self.indicies.iter().position(|x| *x == id).ok_or(DocumentError::ElementNotFound)?;
-		self.elements.remove(pos);
-		self.indicies.remove(pos);
+		let pos = self.layer_ids.iter().position(|x| *x == id).ok_or(DocumentError::LayerNotFound)?;
+		self.layers.remove(pos);
+		self.layer_ids.remove(pos);
 		Ok(())
 	}
 
-	/// Returns a list of elements in the folder
-	pub fn list(&self) -> &[LayerId] {
-		self.indicies.as_slice()
+	/// Returns a list of layers in the folder
+	pub fn list_layers(&self) -> &[LayerId] {
+		self.layer_ids.as_slice()
 	}
 
 	fn layer(&self, id: LayerId) -> Option<&Layer> {
-		self.indicies.iter().position(|x| *x == id).map(|pos| &self.elements[pos])
+		let pos = self.layer_ids.iter().position(|x| *x == id)?;
+		Some(&self.layers[pos])
 	}
 
 	fn layer_mut(&mut self, id: LayerId) -> Option<&mut Layer> {
-		let pos = self.indicies.iter().position(|x| *x == id)?;
-		Some(&mut self.elements[pos])
+		let pos = self.layer_ids.iter().position(|x| *x == id)?;
+		Some(&mut self.layers[pos])
 	}
 
 	fn folder(&self, id: LayerId) -> Option<&Folder> {
@@ -120,8 +118,8 @@ impl Folder {
 impl Default for Folder {
 	fn default() -> Self {
 		Self {
-			indicies: vec![],
-			elements: vec![],
+			layer_ids: vec![],
+			layers: vec![],
 			next_assignment_id: 0,
 		}
 	}
@@ -138,7 +136,7 @@ impl Default for Document {
 	}
 }
 
-fn split_path<'a>(path: &'a [LayerId]) -> Result<(&'a [LayerId], LayerId), DocumentError> {
+fn split_path(path: &[LayerId]) -> Result<(&[LayerId], LayerId), DocumentError> {
 	let id = path.last().ok_or(DocumentError::InvalidPath)?;
 	let folder_path = &path[0..path.len() - 1];
 	Ok((folder_path, *id))
@@ -152,7 +150,7 @@ impl Document {
 	pub fn folder(&self, path: &[LayerId]) -> Result<&Folder, DocumentError> {
 		let mut root = &self.root;
 		for id in path {
-			root = root.folder(*id).ok_or(DocumentError::ElementNotFound)?;
+			root = root.folder(*id).ok_or(DocumentError::LayerNotFound)?;
 		}
 		Ok(root)
 	}
@@ -160,33 +158,32 @@ impl Document {
 	pub fn folder_mut(&mut self, path: &[LayerId]) -> Result<&mut Folder, DocumentError> {
 		let mut root = &mut self.root;
 		for id in path {
-			root = root.folder_mut(*id).ok_or(DocumentError::ElementNotFound)?;
+			root = root.folder_mut(*id).ok_or(DocumentError::LayerNotFound)?;
 		}
 		Ok(root)
 	}
 
-	pub fn get_mut(&mut self, path: &[LayerId]) -> Result<&mut Layer, DocumentError> {
-		let (folder, id) = split_path(path)?;
-		self.folder_mut(folder)?.layer_mut(id).ok_or(DocumentError::ElementNotFound)
+	pub fn layer(&self, path: &[LayerId]) -> Result<&Layer, DocumentError> {
+		let (path, id) = split_path(path)?;
+		self.folder(path)?.layer(id).ok_or(DocumentError::LayerNotFound)
 	}
 
-	pub fn set(&mut self, path: &[LayerId], layer: Layer) -> Result<(), DocumentError> {
+	pub fn layer_mut(&mut self, path: &[LayerId]) -> Result<&mut Layer, DocumentError> {
+		let (path, id) = split_path(path)?;
+		self.folder_mut(path)?.layer_mut(id).ok_or(DocumentError::LayerNotFound)
+	}
+
+	pub fn set_layer(&mut self, path: &[LayerId], layer: Layer) -> Result<(), DocumentError> {
 		let mut folder = &mut self.root;
 		if let Ok((path, id)) = split_path(path) {
 			folder = self.folder_mut(path)?;
-			if let Some(flayer) = folder.layer_mut(id) {
-				*flayer = layer;
+			if let Some(folder_layer) = folder.layer_mut(id) {
+				*folder_layer = layer;
 				return Ok(());
 			}
-		} else {
-			folder.add_layer(layer, -1).ok_or(DocumentError::IndexOutOfBounds)?;
 		}
+		folder.add_layer(layer, -1).ok_or(DocumentError::IndexOutOfBounds)?;
 		Ok(())
-	}
-
-	pub fn get(&self, path: &[LayerId]) -> Result<&Layer, DocumentError> {
-		let (folder, id) = split_path(path)?;
-		self.folder(folder)?.layer(id).ok_or(DocumentError::ElementNotFound)
 	}
 
 	/// Passing a negative `insert_index` indexes relative to the end
@@ -197,8 +194,8 @@ impl Document {
 	}
 
 	pub fn delete(&mut self, path: &[LayerId]) -> Result<(), DocumentError> {
-		let (folder, id) = split_path(path)?;
-		self.folder_mut(folder)?.remove_layer(id)?;
+		let (path, id) = split_path(path)?;
+		self.folder_mut(path)?.remove_layer(id)?;
 		Ok(())
 	}
 
@@ -214,11 +211,12 @@ impl Document {
 
 				update_frontend(self.render());
 			}
-			Operation::DeleteElement { path } => {
+			Operation::DeleteLayer { path } => {
 				self.delete(&path)?;
+
 				update_frontend(self.render());
 			}
-			Operation::AddFolder { path } => self.set(&path, Layer::new(LayerType::Folder(Folder::default())))?,
+			Operation::AddFolder { path } => self.set_layer(&path, Layer::new(LayerType::Folder(Folder::default())))?,
 		}
 		Ok(())
 	}

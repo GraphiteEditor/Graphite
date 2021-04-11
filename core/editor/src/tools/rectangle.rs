@@ -34,7 +34,6 @@ impl Default for RectangleToolFsmState {
 #[derive(Clone, Debug, Default)]
 struct RectangleToolData {
 	drag_start: ViewportPosition,
-	index: u64,
 }
 
 impl Fsm for RectangleToolFsmState {
@@ -47,8 +46,8 @@ impl Fsm for RectangleToolFsmState {
 				RectangleToolFsmState::LmbDown
 			}
 			(RectangleToolFsmState::Ready, Event::KeyDown(Key::KeyZ)) => {
-				if let Some(id) = document.root.list().last() {
-					operations.push(Operation::DeleteElement { path: vec![*id] })
+				if let Some(id) = document.root.list_layers().last() {
+					operations.push(Operation::DeleteLayer { path: vec![*id] })
 				}
 				RectangleToolFsmState::Ready
 			}

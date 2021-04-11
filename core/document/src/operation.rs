@@ -16,7 +16,7 @@ pub enum Operation {
 		x1: f64,
 		y1: f64,
 	},
-	DeleteElement {
+	DeleteLayer {
 		path: Vec<LayerId>,
 	},
 	AddFolder {
