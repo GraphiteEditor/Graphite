@@ -4,9 +4,9 @@
 	"description": "Graphite's web app frontend. Planned to be replaced by a Rust native GUI framework in the future.",
 	"private": true,
 	"scripts": {
-		"serve": "vue-cli-service serve",
-		"build": "vue-cli-service build",
-		"lint": "vue-cli-service lint"
+		"serve": "vue-cli-service serve || npm install && vue-cli-service serve",
+		"build": "vue-cli-service build || npm install && vue-cli-service build",
+		"lint": "vue-cli-service lint || npm install && vue-cli-service lint"
 	},
 	"repository": {
 		"type": "git",
@@ -38,7 +38,8 @@
 		"sass-loader": "^8.0.2",
 		"typescript": "~3.9.3",
 		"vue-svg-loader": "^0.17.0-beta.2",
-		"vue-template-compiler": "^2.6.12"
+		"vue-template-compiler": "^2.6.12",
+		"wasm-pack": "^0.9.1"
 	},
 	"gitHooks": {
 		"pre-commit": "lint-staged"
