@@ -82,6 +82,7 @@ pub fn translate_key(name: &str) -> events::Key {
 		"r" => K::KeyR,
 		"m" => K::KeyM,
 		"x" => K::KeyX,
+		"z" => K::KeyZ,
 		"0" => K::Key0,
 		"1" => K::Key1,
 		"2" => K::Key2,

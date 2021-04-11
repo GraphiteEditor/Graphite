@@ -45,7 +45,7 @@
 		background: #333;
 
 		&:hover {
-			background: #555;
+			background: #666;
 		}
 
 		&.right {

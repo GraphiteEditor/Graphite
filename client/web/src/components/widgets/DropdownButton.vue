@@ -17,7 +17,7 @@
 	fill: #ddd;
 
 	&:hover {
-		background: #555;
+		background: #666;
 		fill: #fff;
 	}
 }
