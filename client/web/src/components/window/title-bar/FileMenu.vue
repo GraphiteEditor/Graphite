@@ -21,7 +21,7 @@
 	}
 
 	&:hover {
-		background: #555;
+		background: #666;
 
 		svg {
 			fill: #fff;

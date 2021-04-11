@@ -10,7 +10,7 @@
 	border-radius: 4px;
 
 	&:hover {
-		background: #555;
+		background: #666;
 	}
 
 	&.active {
