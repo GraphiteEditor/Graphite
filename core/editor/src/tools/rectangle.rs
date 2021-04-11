@@ -1,5 +1,5 @@
 use crate::events::{Event, Response};
-use crate::events::{MouseKeys, ViewportPosition};
+use crate::events::{Key, MouseKeys, ViewportPosition};
 use crate::tools::{Fsm, Tool};
 use crate::Document;
 use document_core::Operation;
@@ -45,6 +45,12 @@ impl Fsm for RectangleToolFsmState {
 				data.drag_start = mouse_state.position;
 				RectangleToolFsmState::LmbDown
 			}
+			(RectangleToolFsmState::Ready, Event::KeyDown(Key::KeyZ)) => {
+				if let Some(id) = document.root.list_layers().last() {
+					operations.push(Operation::DeleteLayer { path: vec![*id] })
+				}
+				RectangleToolFsmState::Ready
+			}
 
 			// TODO - Check for left mouse button
 			(RectangleToolFsmState::LmbDown, Event::MouseUp(mouse_state)) => {
@@ -53,6 +59,8 @@ impl Fsm for RectangleToolFsmState {
 				let start = data.drag_start;
 				let end = mouse_state.position;
 				operations.push(Operation::AddRect {
+					path: vec![],
+					insert_index: -1,
 					x0: start.x as f64,
 					y0: start.y as f64,
 					x1: end.x as f64,

@@ -1,5 +1,6 @@
 use crate::events::Event;
 use crate::Color;
+use document_core::DocumentError;
 use thiserror::Error;
 
 /// The error type used by the Graphite editor.
@@ -15,6 +16,8 @@ pub enum EditorError {
 	Color(String),
 	#[error("The requested tool does not exist")]
 	UnknownTool,
+	#[error("The operation caused a document error {0:?}")]
+	Document(String),
 }
 
 macro_rules! derive_from {
@@ -31,3 +34,4 @@ derive_from!(&str, Misc);
 derive_from!(String, Misc);
 derive_from!(Color, Color);
 derive_from!(Event, InvalidEvent);
+derive_from!(DocumentError, Document);
