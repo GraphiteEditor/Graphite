@@ -6,16 +6,16 @@ pub use kurbo::{Circle, Point, Rect};
 pub use operation::Operation;
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum SvgElement {
+pub enum LayerType {
 	Folder(Folder),
 	Circle(Circle),
 	Rect(Rect),
 }
 
-impl SvgElement {
+impl LayerType {
 	pub fn render(&self) -> String {
 		match self {
-			Self::Folder(f) => f.elements.values().map(|e| e.render()).fold(String::with_capacity(f.elements.len() * 30), |s, e| s + &e),
+			Self::Folder(f) => f.render(),
 			Self::Circle(c) => {
 				format!(r#"<circle cx="{}" cy="{}" r="{}" style="fill: #fff;" />"#, c.center.x, c.center.y, c.radius)
 			}
@@ -32,137 +32,185 @@ pub enum DocumentError {
 	NotAShape,
 	ElementAlreadyExists,
 	InvalidPath,
+	IndexOutOfBounds,
+}
+
+type LayerId = u64;
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Layer {
+	visible: bool,
+	name: Option<String>,
+	data: LayerType,
+}
+
+impl Layer {
+	pub fn new(data: LayerType) -> Self {
+		Self { visible: true, name: None, data }
+	}
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Folder {
-	elements: HashMap<String, SvgElement>,
+	next_assignment_id: LayerId,
+	indicies: Vec<LayerId>,
+	elements: Vec<Layer>,
 }
 
 impl Folder {
-	fn add_element(&mut self, name: String, svg: SvgElement) -> Result<(), DocumentError> {
-		#[allow(clippy::map_entry)]
-		if self.elements.contains_key(&name) {
-			Err(DocumentError::ElementAlreadyExists)
-		} else {
-			self.elements.insert(name, svg);
-			Ok(())
-		}
+	pub fn render(&self) -> String {
+		self.elements
+			.iter()
+			.filter(|layer| layer.visible)
+			.map(|layer| layer.data.render())
+			.fold(String::with_capacity(self.elements.len() * 30), |s, n| s + "\n" + &n)
 	}
 
-	fn remove_element(&mut self, name: &str) -> Result<(), DocumentError> {
-		self.elements.remove(name).map_or(Err(DocumentError::ElementNotFound), |_| Ok(()))
+	fn add_layer(&mut self, layer: Layer, insert_index: isize) -> Option<LayerId> {
+		let mut insert_index = insert_index as i128;
+		if insert_index < 0 {
+			insert_index = self.elements.len() as i128 + insert_index as i128 + 1;
+		}
+		if insert_index <= self.elements.len() as i128 && insert_index >= 0 {
+			self.elements.insert(insert_index as usize, layer);
+			self.indicies.insert(insert_index as usize, self.next_assignment_id);
+		} else {
+			return None;
+		}
+		self.next_assignment_id += 1;
+		Some(self.next_assignment_id - 1)
+	}
+
+	fn remove_layer(&mut self, id: LayerId) -> Result<(), DocumentError> {
+		let pos = self.indicies.iter().position(|x| *x == id).ok_or(DocumentError::ElementNotFound)?;
+		self.elements.remove(pos);
+		self.indicies.remove(pos);
+		Ok(())
 	}
 
 	/// Returns a list of elements in the folder
-	pub fn list(&self) -> Keys<String, SvgElement> {
-		self.elements.keys()
+	pub fn list(&self) -> &[LayerId] {
+		self.indicies.as_slice()
 	}
 
-	fn element(&self, name: &str) -> Option<&SvgElement> {
-		self.elements.get(name)
+	fn layer(&self, id: LayerId) -> Option<&Layer> {
+		self.indicies.iter().position(|x| *x == id).map(|pos| &self.elements[pos])
 	}
 
-	fn mut_element(&mut self, name: &str) -> Option<&mut SvgElement> {
-		self.elements.get_mut(name)
+	fn layer_mut(&mut self, id: LayerId) -> Option<&mut Layer> {
+		let pos = self.indicies.iter().position(|x| *x == id)?;
+		Some(&mut self.elements[pos])
+	}
+
+	fn folder(&self, id: LayerId) -> Option<&Folder> {
+		match self.layer(id) {
+			Some(Layer { data: LayerType::Folder(folder), .. }) => Some(&folder),
+			_ => None,
+		}
+	}
+
+	fn folder_mut(&mut self, id: LayerId) -> Option<&mut Folder> {
+		match self.layer_mut(id) {
+			Some(Layer { data: LayerType::Folder(folder), .. }) => Some(folder),
+			_ => None,
+		}
 	}
 }
 
 impl Default for Folder {
 	fn default() -> Self {
-		Self { elements: HashMap::new() }
+		Self {
+			indicies: vec![],
+			elements: vec![],
+			next_assignment_id: 0,
+		}
 	}
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Document {
-	pub svg: SvgElement,
+	pub root: Folder,
 }
 
 impl Default for Document {
 	fn default() -> Self {
-		Self {
-			svg: SvgElement::Folder(Folder::default()),
-		}
+		Self { root: Folder::default() }
 	}
+}
+
+fn split_path<'a>(path: &'a [LayerId]) -> Result<(&'a [LayerId], LayerId), DocumentError> {
+	let id = path.last().ok_or(DocumentError::InvalidPath)?;
+	let folder_path = &path[0..path.len() - 1];
+	Ok((folder_path, *id))
 }
 
 impl Document {
 	pub fn render(&self) -> String {
-		self.svg.render()
+		self.root.render()
 	}
 
-	pub fn open(&self, path: &str) -> Result<&SvgElement, DocumentError> {
-		assert!(matches!(self.svg, SvgElement::Folder(_)), "SVG root has to be of type Folder");
-		let mut root = &self.svg;
-		for s in path.split('/') {
-			if s.is_empty() {
-				continue;
-			}
-			if let SvgElement::Folder(f) = root {
-				match f.element(s).ok_or(DocumentError::ElementNotFound)? {
-					f if matches!(f, &SvgElement::Folder(_)) => root = f,
-					e => return Ok(e),
-				}
-			}
+	pub fn folder(&self, path: &[LayerId]) -> Result<&Folder, DocumentError> {
+		let mut root = &self.root;
+		for id in path {
+			root = root.folder(*id).ok_or(DocumentError::ElementNotFound)?;
 		}
 		Ok(root)
 	}
 
-	pub fn open_mut(&mut self, path: &str) -> Result<&mut SvgElement, DocumentError> {
-		assert!(matches!(self.svg, SvgElement::Folder(_)), "SVG root has to be of type Folder");
-		let mut root = &mut self.svg;
-		for s in path.split('/') {
-			if s.is_empty() {
-				continue;
-			}
-			if let SvgElement::Folder(f) = root {
-				match f.mut_element(s).ok_or(DocumentError::ElementNotFound)? {
-					f if matches!(f, &mut SvgElement::Folder(_)) => root = f,
-					e => return Ok(e),
-				}
-			}
+	pub fn folder_mut(&mut self, path: &[LayerId]) -> Result<&mut Folder, DocumentError> {
+		let mut root = &mut self.root;
+		for id in path {
+			root = root.folder_mut(*id).ok_or(DocumentError::ElementNotFound)?;
 		}
 		Ok(root)
 	}
 
-	fn resolve_path<'a>(&mut self, path: &'a str) -> Result<(&mut Folder, &'a str), DocumentError> {
-		let name = path.split('/').last().ok_or(DocumentError::InvalidPath)?;
-		let len = path.len() - name.len();
-		if let SvgElement::Folder(folder) = self.open_mut(&path[..len])? {
-			Ok((folder, name))
-		} else {
-			Err(DocumentError::InvalidPath)
-		}
+	pub fn get_mut(&mut self, path: &[LayerId]) -> Result<&mut Layer, DocumentError> {
+		let (folder, id) = split_path(path)?;
+		self.folder_mut(folder)?.layer_mut(id).ok_or(DocumentError::ElementNotFound)
 	}
 
-	pub fn write(&mut self, path: &str, element: SvgElement) -> Result<(), DocumentError> {
-		let (folder, name) = self.resolve_path(path)?;
-		if let Some(e) = folder.mut_element(&name) {
-			// TODO: We should decide on whether we should just silently overwrite old elements
-			*e = element;
+	pub fn set(&mut self, path: &[LayerId], layer: Layer) -> Result<(), DocumentError> {
+		let mut folder = &mut self.root;
+		if let Ok((path, id)) = split_path(path) {
+			folder = self.folder_mut(path)?;
+			if let Some(flayer) = folder.layer_mut(id) {
+				*flayer = layer;
+				return Ok(());
+			}
 		} else {
-			folder.add_element(name.to_string(), element)?;
+			folder.add_layer(layer, -1).ok_or(DocumentError::IndexOutOfBounds)?;
 		}
 		Ok(())
 	}
 
-	pub fn delete(&mut self, path: &str) -> Result<(), DocumentError> {
-		let (folder, name) = self.resolve_path(path)?;
-		log::debug!("removing {} from folder: {:?}", name, folder);
-		folder.remove_element(name)?;
+	pub fn get(&self, path: &[LayerId]) -> Result<&Layer, DocumentError> {
+		let (folder, id) = split_path(path)?;
+		self.folder(folder)?.layer(id).ok_or(DocumentError::ElementNotFound)
+	}
+
+	/// Passing a negative `insert_index` indexes relative to the end
+	/// -1 is equivalent to adding the layer to the top
+	pub fn add_layer(&mut self, path: &[LayerId], layer: Layer, insert_index: isize) -> Result<LayerId, DocumentError> {
+		let folder = self.folder_mut(path)?;
+		folder.add_layer(layer, insert_index).ok_or(DocumentError::IndexOutOfBounds)
+	}
+
+	pub fn delete(&mut self, path: &[LayerId]) -> Result<(), DocumentError> {
+		let (folder, id) = split_path(path)?;
+		self.folder_mut(folder)?.remove_layer(id)?;
 		Ok(())
 	}
 
 	pub fn handle_operation<F: Fn(String)>(&mut self, operation: Operation, update_frontend: F) -> Result<(), DocumentError> {
 		match operation {
-			Operation::AddCircle { path, cx, cy, r } => {
-				self.write(&path, SvgElement::Circle(Circle::new(Point::new(cx, cy), r)))?;
+			Operation::AddCircle { path, insert_index, cx, cy, r } => {
+				self.add_layer(&path, Layer::new(LayerType::Circle(Circle::new(Point::new(cx, cy), r))), insert_index)?;
 
 				update_frontend(self.render());
 			}
-			Operation::AddRect { path, x0, y0, x1, y1 } => {
-				self.write(&path, SvgElement::Rect(Rect::from_points(Point::new(x0, y0), Point::new(x1, y1))))?;
+			Operation::AddRect { path, insert_index, x0, y0, x1, y1 } => {
+				self.add_layer(&path, Layer::new(LayerType::Rect(Rect::from_points(Point::new(x0, y0), Point::new(x1, y1)))), insert_index)?;
 
 				update_frontend(self.render());
 			}
@@ -170,7 +218,7 @@ impl Document {
 				self.delete(&path)?;
 				update_frontend(self.render());
 			}
-			Operation::AddFolder { path } => self.write(&path, SvgElement::Folder(Folder::default()))?,
+			Operation::AddFolder { path } => self.set(&path, Layer::new(LayerType::Folder(Folder::default())))?,
 		}
 		Ok(())
 	}

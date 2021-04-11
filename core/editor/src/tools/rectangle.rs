@@ -47,10 +47,8 @@ impl Fsm for RectangleToolFsmState {
 				RectangleToolFsmState::LmbDown
 			}
 			(RectangleToolFsmState::Ready, Event::KeyDown(Key::KeyZ)) => {
-				if data.index > 0 {
-					let name = format!("rectangles/rectangle-{}", data.index);
-					data.index -= 1;
-					operations.push(Operation::DeleteElement { path: name });
+				if let Some(id) = document.root.list().last() {
+					operations.push(Operation::DeleteElement { path: vec![*id] })
 				}
 				RectangleToolFsmState::Ready
 			}
@@ -61,13 +59,9 @@ impl Fsm for RectangleToolFsmState {
 				log::info!("draw rectangle with radius: {:.2}", r);
 				let start = data.drag_start;
 				let end = mouse_state.position;
-				if data.index == 0 {
-					operations.push(Operation::AddFolder { path: "rectangles".to_string() });
-				}
-				data.index += 1;
-				let name = format!("rectangles/rectangle-{}", data.index);
 				operations.push(Operation::AddRect {
-					path: name,
+					path: vec![],
+					insert_index: -1,
 					x0: start.x as f64,
 					y0: start.y as f64,
 					x1: end.x as f64,
