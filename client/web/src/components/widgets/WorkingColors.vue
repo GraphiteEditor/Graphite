@@ -74,8 +74,9 @@ import { defineComponent } from "vue";
 import IconButton from "../widgets/IconButton.vue";
 import SwapButton from "../../../assets/svg/16x16-bounds-12x12-icon/swap.svg";
 import ResetColorsButton from "../../../assets/svg/16x16-bounds-12x12-icon/reset-colors.svg";
-import ColorPicker, { RGBAColor } from "./ColorPicker.vue";
+import ColorPicker from "./ColorPicker.vue";
 import { NC } from "../../events/NotificationCenter";
+import { RGBAColor } from "@/lib/ColorPicker";
 
 type WorkingColorState = "none" | "primary" | "secondary";
 
