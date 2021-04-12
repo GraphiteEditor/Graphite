@@ -1,4 +1,4 @@
-import { Emitter, EmitterCallback, EmitterEvent } from "lol/js/emitter"
+import { Emitter, EmitterCallback, EmitterEvent } from "../lib/EventEmitter"
 
 interface NCEvents {
   "update_primary_color": { color: { r: number, g: number, b: number } }

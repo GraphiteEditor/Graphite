@@ -22,9 +22,9 @@ import { defineComponent } from "vue";
 import MainWindow from "./components/window/MainWindow.vue";
 import { NC } from "./events/NotificationCenter";
 
-const _wasm = import("../wasm/pkg");
+const wasm = import("../wasm/pkg");
 type InferPromise<T> = T extends Promise<infer U> ? U : any;
-type Wasm = InferPromise<typeof _wasm>;
+type Wasm = InferPromise<typeof wasm>;
 
 export default defineComponent({
 	components: { MainWindow },
@@ -38,7 +38,7 @@ export default defineComponent({
 				Color,
 				update_primary_color,
 				update_secondary_color
-			} = await _wasm;
+			} = await wasm;
 			console.log(greet("Graphite"));
 
 			NC.on("update_primary_color", ({ value }) => {

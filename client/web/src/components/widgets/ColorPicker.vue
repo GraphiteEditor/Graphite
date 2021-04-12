@@ -7,32 +7,7 @@
 
 <script lang="ts">
 import { defineComponent } from "vue";
-import ColorPicker from "simple-color-picker";
-
-export type RGBAColor = {
-	r: number;
-	g: number;
-	b: number;
-	a?: number;
-};
-
-function rgbToHex(color: RGBAColor): string {
-	const { r, g, b } = color;
-	const hex = [
-		"#",
-		Math.round(r * 255)
-			.toString(16)
-			.padStart(2, "0"),
-		Math.round(g * 255)
-			.toString(16)
-			.padStart(2, "0"),
-		Math.round(b * 255)
-			.toString(16)
-			.padStart(2, "0")
-	];
-
-	return hex.join("").toUpperCase();
-}
+import { ColorPicker, RGBAColor } from "../../lib/ColorPicker";
 
 export default defineComponent({
 	props: {
@@ -50,8 +25,7 @@ export default defineComponent({
 			el: this.$el
 		}));
 
-		// @ts-ignore
-		picker.setColor(rgbToHex(this.color));
+		picker.setColor(this.color as RGBAColor);
 		picker.onChange(() => {
 			const rgb = picker.getRGB();
 			this.color.r = rgb.r;
