@@ -16,6 +16,14 @@ pub enum Operation {
 		x1: f64,
 		y1: f64,
 	},
+	AddLine {
+		path: Vec<LayerId>,
+		insert_index: isize,
+		x0: f64,
+		y0: f64,
+		x1: f64,
+		y1: f64,
+	},
 	DeleteLayer {
 		path: Vec<LayerId>,
 	},

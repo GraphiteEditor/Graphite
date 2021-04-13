@@ -79,6 +79,7 @@ pub fn translate_key(name: &str) -> events::Key {
 	match name {
 		"e" => K::KeyE,
 		"v" => K::KeyV,
+		"l" => K::KeyL,
 		"r" => K::KeyR,
 		"m" => K::KeyM,
 		"x" => K::KeyX,

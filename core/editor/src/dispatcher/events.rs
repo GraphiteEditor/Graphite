@@ -111,6 +111,7 @@ pub enum Key {
 	KeyR,
 	KeyM,
 	KeyE,
+	KeyL,
 	KeyV,
 	KeyX,
 	KeyZ,
