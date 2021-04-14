@@ -1,6 +1,6 @@
 pub mod operation;
 
-pub use kurbo::{Circle, Point, Rect};
+pub use kurbo::{Circle, Line, Point, Rect};
 pub use operation::Operation;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -8,6 +8,7 @@ pub enum LayerType {
 	Folder(Folder),
 	Circle(Circle),
 	Rect(Rect),
+	Line(Line),
 }
 
 impl LayerType {
@@ -19,6 +20,9 @@ impl LayerType {
 			}
 			Self::Rect(r) => {
 				format!(r#"<rect x="{}" y="{}" width="{}" height="{}" style="fill: #fff;" />"#, r.min_x(), r.min_y(), r.width(), r.height())
+			}
+			Self::Line(l) => {
+				format!(r#"<line x1="{}" y1="{}" x2="{}" y2="{}" style="stroke: #fff;" />"#, l.p0.x, l.p0.y, l.p1.x, l.p1.y)
 			}
 		}
 	}
@@ -208,6 +212,11 @@ impl Document {
 			}
 			Operation::AddRect { path, insert_index, x0, y0, x1, y1 } => {
 				self.add_layer(&path, Layer::new(LayerType::Rect(Rect::from_points(Point::new(x0, y0), Point::new(x1, y1)))), insert_index)?;
+
+				update_frontend(self.render());
+			}
+			Operation::AddLine { path, insert_index, x0, y0, x1, y1 } => {
+				self.add_layer(&path, Layer::new(LayerType::Line(Line::new(Point::new(x0, y0), Point::new(x1, y1)))), insert_index)?;
 
 				update_frontend(self.render());
 			}

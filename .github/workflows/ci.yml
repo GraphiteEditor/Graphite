@@ -25,8 +25,11 @@ jobs:
     - name: 🚧 Install Node dependencies
       run: cd client/web && npm install
 
-    - name: 👷 Build Graphite web client
+    - name: 🌐 Build Graphite web code
       run: cd client/web && npm run build
+
+    - name: 👕 Lint Graphite web formatting
+      run: export NODE_ENV=production && cd client/web && npm run lint
 
     - name: 🔬 Check Rust formatting
       run: cargo fmt --all -- --check
