@@ -3,7 +3,7 @@
 		<div class="tab-bar" :class="{ 'min-widths': tabMinWidths }">
 			<div class="tab-group">
 				<div class="tab" :class="{ active: tabIndex === tabActiveIndex }" v-for="(tabLabel, tabIndex) in tabLabels" :key="tabLabel">
-					<span>{{tabLabel}}</span>
+					<span>{{ tabLabel }}</span>
 					<IconButton :size="16" v-if="tabCloseButtons">
 						<CloseX />
 					</IconButton>
@@ -54,7 +54,8 @@
 					border-radius: 8px 8px 0 0;
 					position: relative;
 
-					&::before, &::after {
+					&::before,
+					&::after {
 						content: "";
 						width: 16px;
 						height: 8px;

@@ -3,7 +3,9 @@ type ResponseMap = {
 	[response: string]: ResponseCallback | undefined;
 };
 declare global {
-	interface Window { responseMap: ResponseMap }
+	interface Window {
+		responseMap: ResponseMap;
+	}
 }
 
 export enum ResponseType {

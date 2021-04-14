@@ -16,9 +16,9 @@
 	"license": "Apache-2.0",
 	"homepage": "https://www.graphite.design",
 	"dependencies": {
-		"vue": "^3.0.7",
+		"vue": "^3.0.11",
 		"vue-class-component": "^8.0.0-0",
-		"vue-loader": "^16.1.2"
+		"vue-loader": "^16.2.0"
 	},
 	"devDependencies": {
 		"@typescript-eslint/eslint-plugin": "^2.33.0",
@@ -26,14 +26,17 @@
 		"@vue/cli-plugin-eslint": "^4.5.12",
 		"@vue/cli-plugin-typescript": "^4.5.12",
 		"@vue/cli-service": "^4.5.12",
-		"@vue/compiler-sfc": "^3.0.7",
+		"@vue/compiler-sfc": "^3.0.11",
 		"@vue/eslint-config-airbnb": "^5.0.2",
 		"@vue/eslint-config-typescript": "^5.0.2",
 		"@wasm-tool/wasm-pack-plugin": "github:wasm-tool/wasm-pack-plugin",
-		"eslint": "^6.7.2",
+		"eslint": "^6.8.0",
+		"eslint-config-prettier": "^8.2.0",
 		"eslint-plugin-import": "^2.20.2",
-		"eslint-plugin-vue": "^7.8.0",
+		"eslint-plugin-prettier-vue": "^3.0.0-alpha.2",
+		"eslint-plugin-vue": "^7.9.0",
 		"lint-staged": "^9.5.0",
+		"prettier": "^2.2.1",
 		"sass": "^1.32.8",
 		"sass-loader": "^8.0.2",
 		"typescript": "~3.9.3",
@@ -45,7 +48,7 @@
 		"pre-commit": "lint-staged"
 	},
 	"lint-staged": {
-		"*.{js,jsx,vue,ts,tsx}": [
+		"*.{ts,js,json,vue}": [
 			"vue-cli-service lint",
 			"git add"
 		]

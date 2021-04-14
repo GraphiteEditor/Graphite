@@ -44,8 +44,7 @@
 import { defineComponent } from "vue";
 
 export default defineComponent({
-	components: {
-	},
+	components: {},
 	props: {
 		initialIndex: { type: Number, required: true },
 		setIndex: { type: Function, required: false },
@@ -66,7 +65,9 @@ export default defineComponent({
 		});
 	},
 	watch: {
-		activeIndex() { this.updateActiveIconButton(); },
+		activeIndex() {
+			this.updateActiveIconButton();
+		},
 	},
 	methods: {
 		// This method may be called by the user of this component by setting a `ref="radioPicker"` attribute and calling `(this.$refs.viewModePicker as typeof RadioPicker).setActive(...)`

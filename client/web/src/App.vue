@@ -3,7 +3,9 @@
 </template>
 
 <style lang="scss">
-html, body, #app {
+html,
+body,
+#app {
 	margin: 0;
 	height: 100%;
 	font-family: "Source Sans Pro", Arial, sans-serif;
