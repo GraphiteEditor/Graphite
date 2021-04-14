@@ -29,7 +29,7 @@ export default defineComponent({
 	methods: {
 		async greet() {
 			const { greet } = await wasm;
-			console.log(greet("Graphite"));
+			greet("Graphite");
 		},
 	},
 });

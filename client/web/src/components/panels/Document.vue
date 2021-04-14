@@ -328,7 +328,8 @@ export default defineComponent({
 			select_tool(toolName);
 		},
 		async viewModeChanged(toolIndex: number) {
-			console.log(`The view mode has been changed to index match the icon at index ${toolIndex}`);
+			function todo(_: number) { return _; }
+			todo(toolIndex);
 		},
 	},
 	mounted() {
