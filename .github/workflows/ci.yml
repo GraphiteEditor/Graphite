@@ -28,6 +28,9 @@ jobs:
     - name: 👷 Build Graphite web client
       run: cd client/web && npm run build
 
+    - name: 👕 Lint Graphite web formatting
+      run: cd client/web && npm run lint
+
     - name: 🔬 Check Rust formatting
       run: cargo fmt --all -- --check
 

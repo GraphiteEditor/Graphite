@@ -24,8 +24,7 @@ export function handleResponse(responseType: ResponseType, responseData: string)
 
 	if (callback) {
 		callback(responseData);
-	}
-	else {
+	} else {
 		console.error(`Received a Response of type "${responseType}" but no handler was registered for it from the client.`);
 	}
 }
