@@ -66,10 +66,8 @@ export default defineComponent({
 	props: {
 		color: {
 			type: Object,
-			default: () => {
-				return { r: 0, g: 0, b: 0 };
-			}
-		}
+			default: () => ({ r: 0, g: 0, b: 0 }),
+		},
 	},
 
 	data() {
@@ -78,19 +76,19 @@ export default defineComponent({
 			rgb: {
 				r: 0,
 				g: 0,
-				b: 0
+				b: 0,
 			},
 			hsv: {
 				h: 0,
 				s: 0,
-				v: 0
-			}
+				v: 0,
+			},
 		};
 	},
 
 	mounted() {
 		const picker = new ColorPicker({
-			el: this.$el as Element
+			el: this.$el as Element,
 		});
 
 		// @ts-ignore
@@ -121,7 +119,7 @@ export default defineComponent({
 			// @ts-ignore
 			const picker = this.picker as ColorPicker;
 			picker.setFloats(this.color.r, this.color.g, this.color.b);
-			this.hex = "#" + picker.getHexString();
+			this.hex = `#${picker.getHexString()}`;
 			const { r, g, b } = picker.getFloats();
 			this.rgb.r = r;
 			this.rgb.g = g;
@@ -130,7 +128,7 @@ export default defineComponent({
 			this.hsv.h = h;
 			this.hsv.s = s;
 			this.hsv.v = v;
-		}
-	}
+		},
+	},
 });
 </script>

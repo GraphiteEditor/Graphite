@@ -71,24 +71,32 @@
 
 <script lang="ts">
 import { defineComponent } from "vue";
-import IconButton from "../widgets/IconButton.vue";
+import { RGB } from "@/lib/utils";
+import IconButton from "./IconButton.vue";
 import SwapButton from "../../../assets/svg/16x16-bounds-12x12-icon/swap.svg";
 import ResetColorsButton from "../../../assets/svg/16x16-bounds-12x12-icon/reset-colors.svg";
 import ColorPicker from "./ColorPicker.vue";
 import { NC } from "../../events/notification-center";
-import { RGB } from "@/lib/utils";
 
 type WorkingColorState = "none" | "primary" | "secondary";
 
 export default defineComponent({
 	data() {
 		return {
-			primaryColor: { r: 0, g: 0, b: 0, a: 1 },
-			secondaryColor: { r: 1, g: 1, b: 1, a: 1 },
-			tmpColor: { r: 1, g: 1, b: 1, a: 1 },
+			primaryColor: {
+				r: 0, g: 0, b: 0, a: 1,
+			},
+			secondaryColor: {
+				r: 1, g: 1, b: 1, a: 1,
+			},
+			tmpColor: {
+				r: 1, g: 1, b: 1, a: 1,
+			},
 			colorPickerOpened: false,
-			colorPickerColor: { r: 1, g: 1, b: 1, a: 1 },
-			active: "none" as WorkingColorState
+			colorPickerColor: {
+				r: 1, g: 1, b: 1, a: 1,
+			},
+			active: "none" as WorkingColorState,
 		};
 	},
 
@@ -104,14 +112,14 @@ export default defineComponent({
 			const g = Math.round(255 * this.secondaryColor.g);
 			const b = Math.round(255 * this.secondaryColor.b);
 			return `rgb(${r}, ${g}, ${b})`;
-		}
+		},
 	},
 
 	components: {
 		IconButton,
 		ResetColorsButton,
 		SwapButton,
-		ColorPicker
+		ColorPicker,
 	},
 
 	methods: {
@@ -119,7 +127,7 @@ export default defineComponent({
 			this.setColorPicker(this.active, false);
 		},
 
-		onClick(target: WorkingColorState, e: MouseEvent) {
+		onClick(target: WorkingColorState) {
 			this.toggle(target);
 		},
 
@@ -138,37 +146,41 @@ export default defineComponent({
 			if (enabled) {
 				this.active = target;
 				switch (this.active) {
-					case "primary":
-						this.colorPickerColor = this.primaryColor;
-						break;
-					case "secondary":
-						this.colorPickerColor = this.secondaryColor;
-						break;
+				case "primary":
+					this.colorPickerColor = this.primaryColor;
+					break;
+				case "secondary":
+					this.colorPickerColor = this.secondaryColor;
+					break;
+				default:
+					break;
 				}
 			} else {
 				switch (this.active) {
-					case "primary":
-						this.colorPickerColor = this.tmpColor;
-						NC.dispatch("update_primary_color", {
-							color: this.primaryColor
-						});
-						break;
-					case "secondary":
-						this.colorPickerColor = this.tmpColor;
-						NC.dispatch("update_secondary_color", {
-							color: this.secondaryColor
-						});
-						break;
+				case "primary":
+					this.colorPickerColor = this.tmpColor;
+					NC.dispatch("update_primary_color", {
+						color: this.primaryColor,
+					});
+					break;
+				case "secondary":
+					this.colorPickerColor = this.tmpColor;
+					NC.dispatch("update_secondary_color", {
+						color: this.secondaryColor,
+					});
+					break;
+				default:
+					break;
 				}
 				this.active = "none";
 			}
 		},
 
-		setColor(c0: RGB, c1: RGB) {
-			c0.r = c1.r;
-			c0.g = c1.g;
-			c0.b = c1.b;
-		}
-	}
+		setColor(to: RGB, from: RGB) {
+			to.r = from.r;
+			to.g = from.g;
+			to.b = from.b;
+		},
+	},
 });
 </script>

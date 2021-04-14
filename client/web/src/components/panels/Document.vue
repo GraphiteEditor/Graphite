@@ -356,7 +356,7 @@ export default defineComponent({
 		ViewModeNormal,
 		ViewModeOutline,
 		ViewModePixels,
-		WorkingColors
+		WorkingColors,
 	},
 	methods: {
 		async canvasMouseDown(e: MouseEvent) {
@@ -389,33 +389,29 @@ export default defineComponent({
 		},
 	},
 	mounted() {
-		registerResponseHandler(ResponseType.UpdateCanvas, responseData => {
+		registerResponseHandler(ResponseType.UpdateCanvas, (responseData) => {
 			this.viewportSvg = responseData
 				.split("\n")
-				.map((shape, i) =>
-					shape.replace(
-						"#fff",
-						`#${Math.floor(
-							Math.abs(Math.sin(i + 1)) * 16777215
-						).toString(16)}`
-					)
-				)
+				.map((shape, i) => shape.replace(
+					"#fff",
+					`#${Math.floor(
+						Math.abs(Math.sin(i + 1)) * 16777215,
+					).toString(16)}`,
+				))
 				.join("\n");
 		});
-		registerResponseHandler(ResponseType.SetActiveTool, responseData => {
+		registerResponseHandler(ResponseType.SetActiveTool, (responseData) => {
 			this.activeTool = responseData;
 		});
 
 		window.addEventListener("keyup", (e: KeyboardEvent) => this.keyUp(e));
-		window.addEventListener("keydown", (e: KeyboardEvent) =>
-			this.keyDown(e)
-		);
+		window.addEventListener("keydown", (e: KeyboardEvent) => this.keyDown(e));
 	},
 	data() {
 		return {
 			viewportSvg: "",
-			activeTool: "Select"
+			activeTool: "Select",
 		};
-	}
+	},
 });
 </script>
