@@ -9,5 +9,3 @@ declare module "*.svg" {
 	const component: DefineComponent;
 	export default component;
 }
-
-declare module "simple-color-picker";

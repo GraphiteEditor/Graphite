@@ -20,7 +20,7 @@ body,
 <script lang="ts">
 import { defineComponent } from "vue";
 import MainWindow from "./components/window/MainWindow.vue";
-import { NC } from "./events/NotificationCenter";
+import { NC } from "./events/notification-center";
 
 const wasm = import("../wasm/pkg");
 type InferPromise<T> = T extends Promise<infer U> ? U : any;

@@ -63,4 +63,8 @@ export class Emitter<T = any> {
       }
     }
   }
+
+  clear() {
+    this.listeners = {}
+  }
 }

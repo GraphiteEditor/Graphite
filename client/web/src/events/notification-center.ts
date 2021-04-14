@@ -1,4 +1,4 @@
-import { Emitter, EmitterCallback, EmitterEvent } from "../lib/EventEmitter"
+import { Emitter, EmitterCallback, EmitterEvent } from "../lib/event-emitter"
 
 interface NCEvents {
   "update_primary_color": { color: { r: number, g: number, b: number } }

@@ -75,18 +75,19 @@ import IconButton from "../widgets/IconButton.vue";
 import SwapButton from "../../../assets/svg/16x16-bounds-12x12-icon/swap.svg";
 import ResetColorsButton from "../../../assets/svg/16x16-bounds-12x12-icon/reset-colors.svg";
 import ColorPicker from "./ColorPicker.vue";
-import { NC } from "../../events/NotificationCenter";
-import { RGBAColor } from "@/lib/ColorPicker";
+import { NC } from "../../events/notification-center";
+import { RGB } from "@/lib/utils";
 
 type WorkingColorState = "none" | "primary" | "secondary";
 
 export default defineComponent({
 	data() {
 		return {
-			primaryColor: { r: 0, g: 0, b: 0 },
-			secondaryColor: { r: 1, g: 1, b: 1 },
+			primaryColor: { r: 0, g: 0, b: 0, a: 1 },
+			secondaryColor: { r: 1, g: 1, b: 1, a: 1 },
+			tmpColor: { r: 1, g: 1, b: 1, a: 1 },
 			colorPickerOpened: false,
-			colorPickerColor: { r: 1, g: 1, b: 1 },
+			colorPickerColor: { r: 1, g: 1, b: 1, a: 1 },
 			active: "none" as WorkingColorState
 		};
 	},
@@ -111,10 +112,6 @@ export default defineComponent({
 		ResetColorsButton,
 		SwapButton,
 		ColorPicker
-	},
-
-	mounted() {
-		this.$watch("colorPickerColor", this.onColorChange, { deep: true });
 	},
 
 	methods: {
@@ -142,28 +139,22 @@ export default defineComponent({
 				this.active = target;
 				switch (this.active) {
 					case "primary":
-						this.setColor(this.colorPickerColor, this.primaryColor);
+						this.colorPickerColor = this.primaryColor;
 						break;
 					case "secondary":
-						this.setColor(
-							this.colorPickerColor,
-							this.secondaryColor
-						);
+						this.colorPickerColor = this.secondaryColor;
 						break;
 				}
 			} else {
 				switch (this.active) {
 					case "primary":
-						this.setColor(this.primaryColor, this.colorPickerColor);
+						this.colorPickerColor = this.tmpColor;
 						NC.dispatch("update_primary_color", {
 							color: this.primaryColor
 						});
 						break;
 					case "secondary":
-						this.setColor(
-							this.secondaryColor,
-							this.colorPickerColor
-						);
+						this.colorPickerColor = this.tmpColor;
 						NC.dispatch("update_secondary_color", {
 							color: this.secondaryColor
 						});
@@ -173,22 +164,10 @@ export default defineComponent({
 			}
 		},
 
-		setColor(c0: RGBAColor, c1: RGBAColor) {
+		setColor(c0: RGB, c1: RGB) {
 			c0.r = c1.r;
 			c0.g = c1.g;
 			c0.b = c1.b;
-		},
-
-		onColorChange() {
-			switch (this.active) {
-				case "primary":
-					this.setColor(this.primaryColor, this.colorPickerColor);
-					break;
-				case "secondary":
-					this.secondaryColor = this.colorPickerColor;
-					this.setColor(this.secondaryColor, this.colorPickerColor);
-					break;
-			}
 		}
 	}
 });
