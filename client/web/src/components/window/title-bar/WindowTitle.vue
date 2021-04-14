@@ -1,6 +1,6 @@
 <template>
 	<div class="window-title">
-		<span>{{title}}</span>
+		<span>{{ title }}</span>
 	</div>
 </template>
 

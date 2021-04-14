@@ -1,19 +1,14 @@
 <template>
-	<div>
-	</div>
+	<div></div>
 </template>
 
-<style lang="scss">
-
-</style>
+<style lang="scss"></style>
 
 <script lang="ts">
 import { defineComponent } from "vue";
 
 export default defineComponent({
-	components: {
-	},
-	props: {
-	},
+	components: {},
+	props: {},
 });
 </script>

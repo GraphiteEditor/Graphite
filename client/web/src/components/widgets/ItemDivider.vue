@@ -42,8 +42,7 @@
 import { defineComponent } from "vue";
 
 export default defineComponent({
-	components: {
-	},
+	components: {},
 	props: {
 		horizontal: { type: Boolean, default: false },
 	},

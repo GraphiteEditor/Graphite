@@ -83,14 +83,8 @@
 				<div class="spacer"></div>
 				<div class="working-colors">
 					<div class="swatch-pair">
-						<button
-							class="secondary swatch"
-							style="background: white;"
-						></button>
-						<button
-							class="primary swatch"
-							style="background: black;"
-						></button>
+						<button class="secondary swatch" style="background: white"></button>
+						<button class="primary swatch" style="background: black"></button>
 					</div>
 					<div class="swap-and-reset">
 						<IconButton :size="16">
@@ -103,12 +97,7 @@
 				</div>
 			</LayoutCol>
 			<LayoutCol :class="'viewport'">
-				<div
-					class="canvas"
-					@mousedown="canvasMouseDown"
-					@mouseup="canvasMouseUp"
-					@mousemove="canvasMouseMove"
-				>
+				<div class="canvas" @mousedown="canvasMouseDown" @mouseup="canvasMouseUp" @mousemove="canvasMouseMove">
 					<svg v-html="viewportSvg"></svg>
 				</div>
 			</LayoutCol>
@@ -195,7 +184,7 @@
 
 <script lang="ts">
 import { defineComponent } from "vue";
-import { registerResponseHandler, ResponseType } from "../../response-handler";
+import { ResponseType, registerResponseHandler } from "../../response-handler";
 import LayoutRow from "../layout/LayoutRow.vue";
 import LayoutCol from "../layout/LayoutCol.vue";
 import ShelfItem from "../widgets/ShelfItem.vue";
@@ -328,13 +317,18 @@ export default defineComponent({
 			select_tool(toolName);
 		},
 		async viewModeChanged(toolIndex: number) {
-			function todo(_: number) { return _; }
+			function todo(_: number) {
+				return _;
+			}
 			todo(toolIndex);
 		},
 	},
 	mounted() {
 		registerResponseHandler(ResponseType.UpdateCanvas, (responseData) => {
-			this.viewportSvg = responseData.split("\n").map((shape, i) => shape.replace("#fff", `#${Math.floor(Math.abs(Math.sin(i + 1)) * 16777215).toString(16)}`)).join("\n");
+			this.viewportSvg = responseData
+				.split("\n")
+				.map((shape, i) => shape.replace("#fff", `#${Math.floor(Math.abs(Math.sin(i + 1)) * 16777215).toString(16)}`))
+				.join("\n");
 		});
 		registerResponseHandler(ResponseType.SetActiveTool, (responseData) => {
 			this.activeTool = responseData;

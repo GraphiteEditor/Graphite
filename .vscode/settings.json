@@ -4,34 +4,32 @@
 		"editor.formatOnPaste": true
 	},
 	"[vue]": {
-		"editor.codeActionsOnSave": {
-			"source.fixAll.eslint": true
-		},
+		"editor.codeActionsOnSave": { "source.fixAll.eslint": true },
 		"editor.formatOnSave": true,
 	},
 	"[javascript]": {
-		"editor.codeActionsOnSave": {
-			"source.fixAll.eslint": true
-		},
+		"editor.codeActionsOnSave": { "source.fixAll.eslint": true },
 		"editor.formatOnSave": true,
 	},
-	"[typescript]": {
-		"editor.codeActionsOnSave": {
-			"source.fixAll.eslint": true
-		},
+	"[json]": {
+		"editor.codeActionsOnSave": { "source.fixAll.eslint": true },
+		"editor.formatOnSave": true,
+	},
+	"[typescript, json]": {
+		"editor.codeActionsOnSave": { "source.fixAll.eslint": true },
 		"editor.formatOnSave": true,
 	},
 	"rust-analyzer.diagnostics.disabled": [
 		"missing-unsafe" // Remove when rust-analyzer bug fixes unsafe code on WASM JavaScript https://github.com/rust-analyzer/rust-analyzer/issues/5412
 	],
-	"vetur.format.options.useTabs": true,
-	"eslint.format.enable": true,
-	"eslint.workingDirectories": [
-		"./client/web"
-	],
 	"files.eol": "\n",
 	"html.format.wrapLineLength": 200,
-	"vetur.validation.interpolation": false,
-	"vetur.format.options.tabSize": 4,
-	"vetur.experimental.templateInterpolationService": true
+	"editor.defaultFormatter": "dbaeumer.vscode-eslint",
+	"eslint.format.enable": true,
+	"eslint.workingDirectories": ["./client/web"],
+	"eslint.validate": [
+		"javascript",
+		"typescript",
+	],
+	"vetur.format.enable": false,
 }
