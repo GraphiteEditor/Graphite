@@ -26,6 +26,9 @@
 	],
 	"vetur.format.options.useTabs": true,
 	"eslint.format.enable": true,
+	"eslint.workingDirectories": [
+		"./client/web"
+	],
 	"files.eol": "\n",
 	"html.format.wrapLineLength": 200,
 	"vetur.validation.interpolation": false,
