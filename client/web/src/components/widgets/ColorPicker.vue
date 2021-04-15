@@ -55,6 +55,8 @@ import { defineComponent } from "vue";
 import ColorPicker from "../../lib/color-picker";
 
 export default defineComponent({
+	picker: new ColorPicker(),
+
 	props: {
 		red: {
 			type: Number,
@@ -91,12 +93,8 @@ export default defineComponent({
 	},
 
 	mounted() {
-		const picker = new ColorPicker({
-			el: this.$el as Element,
-		});
-
-		// @ts-ignore
-		this.picker = picker;
+		const { picker } = this.$options as { picker: ColorPicker };
+		picker.setParent(this.$el);
 
 		this.updateColor();
 
@@ -114,15 +112,13 @@ export default defineComponent({
 	},
 
 	unmounted() {
-		// @ts-ignore
-		const picker = this.picker as ColorPicker;
+		const { picker } = this.$options as { picker: ColorPicker };
 		picker.dispose();
 	},
 
 	methods: {
 		updateColor() {
-			// @ts-ignore
-			const picker = this.picker as ColorPicker;
+			const { picker } = this.$options as { picker: ColorPicker };
 			picker.setFloats(this.red, this.green, this.blue);
 			picker.setAlpha(this.alpha);
 		},

@@ -105,6 +105,10 @@ export default class ColorPicker {
 		this.$brightness = brightness;
 	}
 
+	setParent(element: Element) {
+		element.append(this.$picker);
+	}
+
 	setSize(width: number, height: number) {
 		this.size[0] = width;
 		this.size[1] = height;
