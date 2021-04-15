@@ -28,10 +28,8 @@
 	"include": [
 		"src/**/*.ts",
 		"src/**/*.d.ts",
-		"src/**/*.tsx",
 		"src/**/*.vue",
 		"tests/**/*.ts",
-		"tests/**/*.tsx"
 	],
 	"exclude": [
 		"node_modules"

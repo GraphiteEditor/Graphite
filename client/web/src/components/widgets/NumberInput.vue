@@ -78,7 +78,6 @@
 			}
 		}
 	}
-
 }
 </style>
 
@@ -86,9 +85,7 @@
 import { defineComponent } from "vue";
 
 export default defineComponent({
-	components: {
-	},
-	props: {
-	},
+	components: {},
+	props: {},
 });
 </script>

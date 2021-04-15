@@ -1,7 +1,7 @@
 <template>
 	<div class="input-hint">
 		<span class="input-key" v-for="inputKey in inputKeys" :key="inputKey" :class="keyCapWidth(inputKey)">
-			{{inputKey}}
+			{{ inputKey }}
 		</span>
 		<span class="input-mouse" v-if="inputMouse">
 			<MouseHintNone v-if="inputMouse === MouseInputInteraction.None" width="16" height="16" />
@@ -29,7 +29,8 @@
 	align-items: center;
 	white-space: nowrap;
 
-	.input-key, .input-mouse {
+	.input-key,
+	.input-mouse {
 		margin-right: 4px;
 	}
 

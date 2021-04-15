@@ -189,12 +189,7 @@
 				<WorkingColors></WorkingColors>
 			</LayoutCol>
 			<LayoutCol :class="'viewport'">
-				<div
-					class="canvas"
-					@mousedown="canvasMouseDown"
-					@mouseup="canvasMouseUp"
-					@mousemove="canvasMouseMove"
-				>
+				<div class="canvas" @mousedown="canvasMouseDown" @mouseup="canvasMouseUp" @mousemove="canvasMouseMove">
 					<svg v-html="viewportSvg"></svg>
 				</div>
 			</LayoutCol>
@@ -253,7 +248,7 @@
 
 <script lang="ts">
 import { defineComponent } from "vue";
-import { registerResponseHandler, ResponseType } from "../../response-handler";
+import { ResponseType, registerResponseHandler } from "../../response-handler";
 import LayoutRow from "../layout/LayoutRow.vue";
 import LayoutCol from "../layout/LayoutCol.vue";
 import ShelfItem from "../widgets/ShelfItem.vue";
@@ -384,7 +379,9 @@ export default defineComponent({
 			select_tool(toolName);
 		},
 		async viewModeChanged(toolIndex: number) {
-			function todo(_: number) { return _; }
+			function todo(_: number) {
+				return _;
+			}
 			todo(toolIndex);
 		},
 	},
@@ -392,12 +389,7 @@ export default defineComponent({
 		registerResponseHandler(ResponseType.UpdateCanvas, (responseData) => {
 			this.viewportSvg = responseData
 				.split("\n")
-				.map((shape, i) => shape.replace(
-					"#fff",
-					`#${Math.floor(
-						Math.abs(Math.sin(i + 1)) * 16777215,
-					).toString(16)}`,
-				))
+				.map((shape, i) => shape.replace("#fff", `#${Math.floor(Math.abs(Math.sin(i + 1)) * 16777215).toString(16)}`))
 				.join("\n");
 		});
 		registerResponseHandler(ResponseType.SetActiveTool, (responseData) => {
