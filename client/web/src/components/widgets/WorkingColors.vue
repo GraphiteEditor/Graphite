@@ -13,7 +13,15 @@
 			</IconButton>
 		</div>
 		<keep-alive>
-			<ColorPicker ref="colorPicker" v-if="colorPickerOpened" v-model:color="colorPickerColor" @mouseleave="onClose"></ColorPicker>
+			<ColorPicker
+				ref="colorPicker"
+				v-if="colorPickerOpened"
+				v-model:red="colorPickerColor.red"
+				v-model:green="colorPickerColor.green"
+				v-model:blue="colorPickerColor.blue"
+				v-model:alpha="colorPickerColor.alpha"
+				@mouseleave="onClose"
+			></ColorPicker>
 		</keep-alive>
 	</div>
 </template>
@@ -58,7 +66,6 @@
 
 <script lang="ts">
 import { defineComponent } from "vue";
-import { RGB } from "@/lib/utils";
 import IconButton from "./IconButton.vue";
 import SwapButton from "../../../assets/svg/16x16-bounds-12x12-icon/swap.svg";
 import ResetColorsButton from "../../../assets/svg/16x16-bounds-12x12-icon/reset-colors.svg";
@@ -71,29 +78,29 @@ export default defineComponent({
 	data() {
 		return {
 			primaryColor: {
-				r: 0,
-				g: 0,
-				b: 0,
-				a: 1,
+				red: 0,
+				green: 0,
+				blue: 0,
+				alpha: 1,
 			},
 			secondaryColor: {
-				r: 1,
-				g: 1,
-				b: 1,
-				a: 1,
+				red: 1,
+				green: 1,
+				blue: 1,
+				alpha: 1,
 			},
 			tmpColor: {
-				r: 1,
-				g: 1,
-				b: 1,
-				a: 1,
+				red: 1,
+				green: 1,
+				blue: 1,
+				alpha: 1,
 			},
 			colorPickerOpened: false,
 			colorPickerColor: {
-				r: 1,
-				g: 1,
-				b: 1,
-				a: 1,
+				red: 1,
+				green: 1,
+				blue: 1,
+				alpha: 1,
 			},
 			active: "none" as WorkingColorState,
 		};
@@ -101,15 +108,15 @@ export default defineComponent({
 
 	computed: {
 		primaryColorCSS() {
-			const r = Math.round(255 * this.primaryColor.r);
-			const g = Math.round(255 * this.primaryColor.g);
-			const b = Math.round(255 * this.primaryColor.b);
+			const r = Math.round(255 * this.primaryColor.red);
+			const g = Math.round(255 * this.primaryColor.green);
+			const b = Math.round(255 * this.primaryColor.blue);
 			return `rgb(${r}, ${g}, ${b})`;
 		},
 		secondaryColorCSS() {
-			const r = Math.round(255 * this.secondaryColor.r);
-			const g = Math.round(255 * this.secondaryColor.g);
-			const b = Math.round(255 * this.secondaryColor.b);
+			const r = Math.round(255 * this.secondaryColor.red);
+			const g = Math.round(255 * this.secondaryColor.green);
+			const b = Math.round(255 * this.secondaryColor.blue);
 			return `rgb(${r}, ${g}, ${b})`;
 		},
 	},
@@ -159,13 +166,23 @@ export default defineComponent({
 				case "primary":
 					this.colorPickerColor = this.tmpColor;
 					NC.dispatch("update_primary_color", {
-						color: this.primaryColor,
+						color: {
+							r: this.primaryColor.red,
+							g: this.primaryColor.green,
+							b: this.primaryColor.blue,
+							a: this.primaryColor.alpha,
+						},
 					});
 					break;
 				case "secondary":
 					this.colorPickerColor = this.tmpColor;
 					NC.dispatch("update_secondary_color", {
-						color: this.secondaryColor,
+						color: {
+							r: this.secondaryColor.red,
+							g: this.secondaryColor.green,
+							b: this.secondaryColor.blue,
+							a: this.secondaryColor.alpha,
+						},
 					});
 					break;
 				default:
@@ -173,12 +190,6 @@ export default defineComponent({
 				}
 				this.active = "none";
 			}
-		},
-
-		setColor(to: RGB, from: RGB) {
-			to.r = from.r;
-			to.g = from.g;
-			to.b = from.b;
 		},
 	},
 });

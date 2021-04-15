@@ -1,6 +1,6 @@
 import { Hex2String, Hex2RGB, RGB2Floats, Floats2HSV, RGB2Hex, Floats2RGB, HSV2Floats, HSV, RGB, RGBFloats } from "./utils";
 
-export class Color {
+export default class Color {
 	floats: RGBFloats = {
 		r: 0,
 		g: 0,

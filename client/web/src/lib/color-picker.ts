@@ -1,4 +1,4 @@
-import { Color } from "./color";
+import Color from "./color";
 import { clamp } from "./utils";
 
 interface ColorPickerOptions {
@@ -7,7 +7,7 @@ interface ColorPickerOptions {
 	cssClassPrefix: string;
 }
 
-export class ColorPicker {
+export default class ColorPicker {
 	// DOM Elements
 	private $picker!: HTMLDivElement;
 
@@ -137,6 +137,10 @@ export class ColorPicker {
 	setColor(color: Color) {
 		Color.copy(color, this.color);
 		this.updateColor();
+	}
+
+	setAlpha(alpha: number) {
+		this.color.alpha = alpha;
 	}
 
 	private updateColor() {

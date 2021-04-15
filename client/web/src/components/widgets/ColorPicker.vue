@@ -52,13 +52,25 @@
 
 <script lang="ts">
 import { defineComponent } from "vue";
-import { ColorPicker } from "../../lib/color-picker";
+import ColorPicker from "../../lib/color-picker";
 
 export default defineComponent({
 	props: {
-		color: {
-			type: Object,
-			default: () => ({ r: 0, g: 0, b: 0 }),
+		red: {
+			type: Number,
+			default: 0,
+		},
+		green: {
+			type: Number,
+			default: 0,
+		},
+		blue: {
+			type: Number,
+			default: 0,
+		},
+		alpha: {
+			type: Number,
+			default: 1,
 		},
 	},
 
@@ -90,9 +102,10 @@ export default defineComponent({
 
 		picker.onChange(() => {
 			const rgb = picker.getFloats();
-			this.color.r = rgb.r;
-			this.color.g = rgb.g;
-			this.color.b = rgb.b;
+			this.$emit("update:red", rgb.r);
+			this.$emit("update:green", rgb.g);
+			this.$emit("update:blue", rgb.b);
+			this.$emit("update:alpha", rgb.a);
 		});
 	},
 
@@ -110,16 +123,8 @@ export default defineComponent({
 		updateColor() {
 			// @ts-ignore
 			const picker = this.picker as ColorPicker;
-			picker.setFloats(this.color.r, this.color.g, this.color.b);
-			this.hex = `#${picker.getHexString()}`;
-			const { r, g, b } = picker.getFloats();
-			this.rgb.r = r;
-			this.rgb.g = g;
-			this.rgb.b = b;
-			const { h, s, v } = picker.getHSV();
-			this.hsv.h = h;
-			this.hsv.s = s;
-			this.hsv.v = v;
+			picker.setFloats(this.red, this.green, this.blue);
+			picker.setAlpha(this.alpha);
 		},
 	},
 });
