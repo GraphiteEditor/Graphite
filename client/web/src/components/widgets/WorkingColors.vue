@@ -1,16 +1,8 @@
 <template>
 	<div class="working-colors">
 		<div class="swatch-pair">
-			<button
-				class="secondary swatch"
-				:style="{ 'background-color': secondaryColorCSS }"
-				@click="onClick('secondary', $event)"
-			></button>
-			<button
-				class="primary swatch"
-				:style="{ 'background-color': primaryColorCSS }"
-				@click="onClick('primary', $event)"
-			></button>
+			<button class="secondary swatch" :style="{ 'background-color': secondaryColorCSS }" @click="onClick('secondary', $event)"></button>
+			<button class="primary swatch" :style="{ 'background-color': primaryColorCSS }" @click="onClick('primary', $event)"></button>
 		</div>
 		<div class="swap-and-reset">
 			<IconButton :size="16">
@@ -21,12 +13,7 @@
 			</IconButton>
 		</div>
 		<keep-alive>
-			<ColorPicker
-				ref="colorPicker"
-				v-if="colorPickerOpened"
-				v-model:color="colorPickerColor"
-				@mouseleave="onClose"
-			></ColorPicker>
+			<ColorPicker ref="colorPicker" v-if="colorPickerOpened" v-model:color="colorPickerColor" @mouseleave="onClose"></ColorPicker>
 		</keep-alive>
 	</div>
 </template>
@@ -84,17 +71,29 @@ export default defineComponent({
 	data() {
 		return {
 			primaryColor: {
-				r: 0, g: 0, b: 0, a: 1,
+				r: 0,
+				g: 0,
+				b: 0,
+				a: 1,
 			},
 			secondaryColor: {
-				r: 1, g: 1, b: 1, a: 1,
+				r: 1,
+				g: 1,
+				b: 1,
+				a: 1,
 			},
 			tmpColor: {
-				r: 1, g: 1, b: 1, a: 1,
+				r: 1,
+				g: 1,
+				b: 1,
+				a: 1,
 			},
 			colorPickerOpened: false,
 			colorPickerColor: {
-				r: 1, g: 1, b: 1, a: 1,
+				r: 1,
+				g: 1,
+				b: 1,
+				a: 1,
 			},
 			active: "none" as WorkingColorState,
 		};

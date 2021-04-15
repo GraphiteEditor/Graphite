@@ -33,21 +33,15 @@ export default defineComponent({
 	},
 	methods: {
 		async greet() {
-			const {
-				greet, Color, update_primary_color, update_secondary_color,
-			} = await wasm;
+			const { greet, Color, update_primary_color, update_secondary_color } = await wasm;
 			greet("Graphite");
 
 			NC.on("update_primary_color", ({ value }) => {
-				update_primary_color(
-					new Color(value.color.r, value.color.g, value.color.b, value.color.a),
-				);
+				update_primary_color(new Color(value.color.r, value.color.g, value.color.b, value.color.a));
 			});
 
 			NC.on("update_secondary_color", ({ value }) => {
-				update_secondary_color(
-					new Color(value.color.r, value.color.g, value.color.b, value.color.a),
-				);
+				update_secondary_color(new Color(value.color.r, value.color.g, value.color.b, value.color.a));
 			});
 		},
 	},

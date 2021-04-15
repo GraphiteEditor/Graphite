@@ -13,15 +13,7 @@
 
 	&__hue {
 		position: relative;
-		background: linear-gradient(
-			rgb(255, 0, 0) 0%,
-			rgb(255, 0, 255) 17%,
-			rgb(0, 0, 255) 34%,
-			rgb(0, 255, 255) 50%,
-			rgb(0, 255, 0) 67%,
-			rgb(255, 255, 0) 84%,
-			rgb(255, 0, 0) 100%
-		);
+		background: linear-gradient(rgb(255, 0, 0) 0%, rgb(255, 0, 255) 17%, rgb(0, 0, 255) 34%, rgb(0, 255, 255) 50%, rgb(0, 255, 0) 67%, rgb(255, 255, 0) 84%, rgb(255, 0, 0) 100%);
 	}
 
 	&__hue-selector {

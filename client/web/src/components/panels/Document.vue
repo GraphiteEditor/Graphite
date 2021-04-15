@@ -6,67 +6,35 @@
 
 				<ItemDivider />
 
-				<IconButton :size="24" title="Horizontal Align Left"
-					><AlignHorizontalLeft
-				/></IconButton>
-				<IconButton :size="24" title="Horizontal Align Center"
-					><AlignHorizontalCenter
-				/></IconButton>
-				<IconButton :size="24" gapAfter title="Horizontal Align Right"
-					><AlignHorizontalRight
-				/></IconButton>
-				<IconButton :size="24" title="Vertical Align Top"
-					><AlignVerticalTop
-				/></IconButton>
-				<IconButton :size="24" title="Vertical Align Center"
-					><AlignVerticalCenter
-				/></IconButton>
-				<IconButton :size="24" title="Vertical Align Bottom"
-					><AlignVerticalBottom
-				/></IconButton>
+				<IconButton :size="24" title="Horizontal Align Left"><AlignHorizontalLeft /></IconButton>
+				<IconButton :size="24" title="Horizontal Align Center"><AlignHorizontalCenter /></IconButton>
+				<IconButton :size="24" gapAfter title="Horizontal Align Right"><AlignHorizontalRight /></IconButton>
+				<IconButton :size="24" title="Vertical Align Top"><AlignVerticalTop /></IconButton>
+				<IconButton :size="24" title="Vertical Align Center"><AlignVerticalCenter /></IconButton>
+				<IconButton :size="24" title="Vertical Align Bottom"><AlignVerticalBottom /></IconButton>
 				<DropdownButton />
 
 				<ItemDivider />
 
-				<IconButton :size="24" title="Flip Horizontal"
-					><FlipHorizontal
-				/></IconButton>
-				<IconButton :size="24" title="Flip Vertical"
-					><FlipVertical
-				/></IconButton>
+				<IconButton :size="24" title="Flip Horizontal"><FlipHorizontal /></IconButton>
+				<IconButton :size="24" title="Flip Vertical"><FlipVertical /></IconButton>
 				<DropdownButton />
 
 				<ItemDivider />
 
-				<IconButton :size="24" title="Boolean Union"
-					><BooleanUnion
-				/></IconButton>
-				<IconButton :size="24" title="Boolean Subtract Front"
-					><BooleanSubtractFront
-				/></IconButton>
-				<IconButton :size="24" title="Boolean Subtract Back"
-					><BooleanSubtractBack
-				/></IconButton>
-				<IconButton :size="24" title="Boolean Intersect"
-					><BooleanIntersect
-				/></IconButton>
-				<IconButton :size="24" title="Boolean Difference"
-					><BooleanDifference
-				/></IconButton>
+				<IconButton :size="24" title="Boolean Union"><BooleanUnion /></IconButton>
+				<IconButton :size="24" title="Boolean Subtract Front"><BooleanSubtractFront /></IconButton>
+				<IconButton :size="24" title="Boolean Subtract Back"><BooleanSubtractBack /></IconButton>
+				<IconButton :size="24" title="Boolean Intersect"><BooleanIntersect /></IconButton>
+				<IconButton :size="24" title="Boolean Difference"><BooleanDifference /></IconButton>
 				<DropdownButton />
 			</div>
 			<div class="spacer"></div>
 			<div class="right side">
 				<RadioPicker :initialIndex="0" @changed="viewModeChanged">
-					<IconButton :size="24" title="View Mode: Normal"
-						><ViewModeNormal
-					/></IconButton>
-					<IconButton :size="24" title="View Mode: Outline"
-						><ViewModeOutline
-					/></IconButton>
-					<IconButton :size="24" title="View Mode: Pixels"
-						><ViewModePixels
-					/></IconButton>
+					<IconButton :size="24" title="View Mode: Normal"><ViewModeNormal /></IconButton>
+					<IconButton :size="24" title="View Mode: Outline"><ViewModeOutline /></IconButton>
+					<IconButton :size="24" title="View Mode: Pixels"><ViewModePixels /></IconButton>
 					<DropdownButton />
 				</RadioPicker>
 
@@ -74,105 +42,32 @@
 
 				<IconButton :size="24" title="Zoom Out"><ZoomOut /></IconButton>
 				<IconButton :size="24" title="Zoom In"><ZoomIn /></IconButton>
-				<IconButton :size="24" title="Zoom to 100%"
-					><ZoomReset
-				/></IconButton>
+				<IconButton :size="24" title="Zoom to 100%"><ZoomReset /></IconButton>
 				<NumberInput />
 			</div>
 		</LayoutRow>
 		<LayoutRow :class="'shelf-and-viewport'">
 			<LayoutCol :class="'shelf'">
 				<div class="tools">
-					<ShelfItem
-						title="Select Tool (V)"
-						:active="activeTool === 'Select'"
-						@click="selectTool('Select')"
-						><SelectTool
-					/></ShelfItem>
-					<ShelfItem
-						title="Crop Tool"
-						:active="activeTool === 'Crop'"
-						@click="'tool not implemented' || selectTool('Crop')"
-						><CropTool
-					/></ShelfItem>
-					<ShelfItem
-						title="Navigate Tool"
-						:active="activeTool === 'Navigate'"
-						@click="
-							'tool not implemented' || selectTool('Navigate')
-						"
-						><NavigateTool
-					/></ShelfItem>
-					<ShelfItem
-						title="Sample Tool"
-						:active="activeTool === 'Sample'"
-						@click="'tool not implemented' || selectTool('Sample')"
-						><SampleTool
-					/></ShelfItem>
+					<ShelfItem title="Select Tool (V)" :active="activeTool === 'Select'" @click="selectTool('Select')"><SelectTool /></ShelfItem>
+					<ShelfItem title="Crop Tool" :active="activeTool === 'Crop'" @click="'tool not implemented' || selectTool('Crop')"><CropTool /></ShelfItem>
+					<ShelfItem title="Navigate Tool" :active="activeTool === 'Navigate'" @click="'tool not implemented' || selectTool('Navigate')"><NavigateTool /></ShelfItem>
+					<ShelfItem title="Sample Tool" :active="activeTool === 'Sample'" @click="'tool not implemented' || selectTool('Sample')"><SampleTool /></ShelfItem>
 
 					<ItemDivider horizontal />
 
-					<ShelfItem
-						title="Text Tool"
-						:active="activeTool === 'Text'"
-						@click="'tool not implemented' || selectTool('Text')"
-						><TextTool
-					/></ShelfItem>
-					<ShelfItem
-						title="Fill Tool"
-						:active="activeTool === 'Fill'"
-						@click="'tool not implemented' || selectTool('Fill')"
-						><FillTool
-					/></ShelfItem>
-					<ShelfItem
-						title="Gradient Tool"
-						:active="activeTool === 'Gradient'"
-						@click="
-							'tool not implemented' || selectTool('Gradient')
-						"
-						><GradientTool
-					/></ShelfItem>
+					<ShelfItem title="Text Tool" :active="activeTool === 'Text'" @click="'tool not implemented' || selectTool('Text')"><TextTool /></ShelfItem>
+					<ShelfItem title="Fill Tool" :active="activeTool === 'Fill'" @click="'tool not implemented' || selectTool('Fill')"><FillTool /></ShelfItem>
+					<ShelfItem title="Gradient Tool" :active="activeTool === 'Gradient'" @click="'tool not implemented' || selectTool('Gradient')"><GradientTool /></ShelfItem>
 
 					<ItemDivider horizontal />
 
-					<ShelfItem
-						title="Brush Tool"
-						:active="activeTool === 'Brush'"
-						@click="'tool not implemented' || selectTool('Brush')"
-						><BrushTool
-					/></ShelfItem>
-					<ShelfItem
-						title="Heal Tool"
-						:active="activeTool === 'Heal'"
-						@click="'tool not implemented' || selectTool('Heal')"
-						><HealTool
-					/></ShelfItem>
-					<ShelfItem
-						title="Clone Tool"
-						:active="activeTool === 'Clone'"
-						@click="'tool not implemented' || selectTool('Clone')"
-						><CloneTool
-					/></ShelfItem>
-					<ShelfItem
-						title="Patch Tool"
-						:active="activeTool === 'Patch'"
-						@click="'tool not implemented' || selectTool('Patch')"
-						><PatchTool
-					/></ShelfItem>
-					<ShelfItem
-						title="Blur/Sharpen Tool"
-						:active="activeTool === 'BlurSharpen'"
-						@click="
-							'tool not implemented' || selectTool('BlurSharpen')
-						"
-						><BlurSharpenTool
-					/></ShelfItem>
-					<ShelfItem
-						title="Relight Tool"
-						:active="activeTool === 'Relight'"
-						@click="'tool not implemented' || selectTool('Relight')"
-						><RelightTool
-					/></ShelfItem>
+					<ShelfItem title="Brush Tool" :active="activeTool === 'Brush'" @click="'tool not implemented' || selectTool('Brush')"><BrushTool /></ShelfItem>
+					<ShelfItem title="Heal Tool" :active="activeTool === 'Heal'" @click="'tool not implemented' || selectTool('Heal')"><HealTool /></ShelfItem>
+					<ShelfItem title="Clone Tool" :active="activeTool === 'Clone'" @click="'tool not implemented' || selectTool('Clone')"><CloneTool /></ShelfItem>
+					<ShelfItem title="Patch Tool" :active="activeTool === 'Patch'" @click="'tool not implemented' || selectTool('Patch')"><PatchTool /></ShelfItem>
+					<ShelfItem title="Blur/Sharpen Tool" :active="activeTool === 'BlurSharpen'" @click="'tool not implemented' || selectTool('BlurSharpen')"><BlurSharpenTool /></ShelfItem>
+					<ShelfItem title="Relight Tool" :active="activeTool === 'Relight'" @click="'tool not implemented' || selectTool('Relight')"><RelightTool /></ShelfItem>
 
 					<ItemDivider horizontal />
 
