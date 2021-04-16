@@ -1,6 +1,7 @@
 pub mod operation;
 
-pub use kurbo::{Circle, Line, Point, Rect};
+mod shape_points;
+pub use kurbo::{Circle, Line, Point, Rect, Vec2};
 pub use operation::Operation;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -9,6 +10,7 @@ pub enum LayerType {
 	Circle(Circle),
 	Rect(Rect),
 	Line(Line),
+	Shape(shape_points::ShapePoints),
 }
 
 impl LayerType {
@@ -23,6 +25,9 @@ impl LayerType {
 			}
 			Self::Line(l) => {
 				format!(r#"<line x1="{}" y1="{}" x2="{}" y2="{}" style="stroke: #fff;" />"#, l.p0.x, l.p0.y, l.p1.x, l.p1.y)
+			}
+			Self::Shape(s) => {
+				format!(r#"<polygon points="{}" style="fill: #fff; stroke: white;" />"#, s)
 			}
 		}
 	}
@@ -217,6 +222,20 @@ impl Document {
 			}
 			Operation::AddLine { path, insert_index, x0, y0, x1, y1 } => {
 				self.add_layer(&path, Layer::new(LayerType::Line(Line::new(Point::new(x0, y0), Point::new(x1, y1)))), insert_index)?;
+
+				update_frontend(self.render());
+			}
+			Operation::AddShape {
+				path,
+				insert_index,
+				x0,
+				y0,
+				x1,
+				y1,
+				sides,
+			} => {
+				let s = shape_points::ShapePoints::new(Point::new(x0, y0), Vec2 { x: x0 - x1, y: y0 - y1 }, sides);
+				self.add_layer(&path, Layer::new(LayerType::Shape(s)), insert_index)?;
 
 				update_frontend(self.render());
 			}
