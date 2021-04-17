@@ -75,7 +75,7 @@ impl Dispatcher {
 							tool_name: ToolType::Rectangle.to_string(),
 						});
 					}
-					Key::KeyS => {
+					Key::KeyN => {
 						editor_state.tool_state.active_tool_type = ToolType::Shape;
 						self.dispatch_response(Response::SetActiveTool {
 							tool_name: ToolType::Shape.to_string(),

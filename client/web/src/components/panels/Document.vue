@@ -78,7 +78,7 @@
 					<ShelfItem title="Line Tool" :active="activeTool === 'Line'" @click="selectTool('Line')"><LineTool /></ShelfItem>
 					<ShelfItem title="Rectangle Tool (M)" :active="activeTool === 'Rectangle'" @click="selectTool('Rectangle')"><RectangleTool /></ShelfItem>
 					<ShelfItem title="Ellipse Tool (E)" :active="activeTool === 'Ellipse'" @click="selectTool('Ellipse')"><EllipseTool /></ShelfItem>
-					<ShelfItem title="Shape Tool" :active="activeTool === 'Shape'" @click="selectTool('Shape')"><ShapeTool /></ShelfItem>
+					<ShelfItem title="Shape Tool (N)" :active="activeTool === 'Shape'" @click="selectTool('Shape')"><ShapeTool /></ShelfItem>
 				</div>
 				<div class="spacer"></div>
 				<div class="working-colors">
