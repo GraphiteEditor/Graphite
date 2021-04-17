@@ -27,7 +27,7 @@ impl LayerType {
 				format!(r#"<line x1="{}" y1="{}" x2="{}" y2="{}" style="stroke: #fff;" />"#, l.p0.x, l.p0.y, l.p1.x, l.p1.y)
 			}
 			Self::Shape(s) => {
-				format!(r#"<polygon points="{}" style="fill: #fff; stroke: white;" />"#, s)
+				format!(r#"<polygon points="{}" style="fill: #fff;" />"#, s)
 			}
 		}
 	}
