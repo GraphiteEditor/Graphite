@@ -35,7 +35,7 @@ impl ShapePoints {
 
 	// Gets the length of one side
 	#[inline]
-	pub fn side(&self) -> f64 {
+	pub fn side_length(&self) -> f64 {
 		self.apothem_offset_angle().sin() * (self.sides as f64) * (2 as f64)
 	}
 }
@@ -43,9 +43,9 @@ impl ShapePoints {
 impl std::fmt::Display for ShapePoints {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		fn rotate(v: &Vec2, theta: f64) -> Vec2 {
-			let cs = theta.cos();
-			let sn = theta.sin();
-			return Vec2::new(v.x * cs - v.y * sn, v.x * sn + v.y * cs);
+			let cosine = theta.cos();
+			let sine = theta.sin();
+			return Vec2::new(v.x * cosine - v.y * sine, v.x * sine + v.y * cosine);
 		}
 		info!("sides{}", self.sides);
 		for i in 0..self.sides {
@@ -70,9 +70,9 @@ impl Iterator for ShapePathIter {
 
 	fn next(&mut self) -> Option<PathEl> {
 		fn rotate(v: &Vec2, theta: f64) -> Vec2 {
-			let cs = theta.cos();
-			let sn = theta.sin();
-			return Vec2::new(v.x * cs - v.y * sn, v.x * sn + v.y * cs);
+			let cosine = theta.cos();
+			let sine = theta.sin();
+			return Vec2::new(v.x * cosine - v.y * sine, v.x * sine + v.y * cosine);
 		}
 		self.ix += 1;
 		match self.ix {
@@ -91,9 +91,9 @@ impl Add<Vec2> for ShapePoints {
 	type Output = ShapePoints;
 
 	#[inline]
-	fn add(self, v: Vec2) -> ShapePoints {
+	fn add(self, movement: Vec2) -> ShapePoints {
 		ShapePoints {
-			center: self.center + v,
+			center: self.center + movement,
 			extent: self.extent,
 			sides: self.sides,
 		}
@@ -104,7 +104,7 @@ impl kurbo::Shape for ShapePoints {
 	type PathElementsIter = ShapePathIter;
 	#[inline]
 	fn perimeter(&self, _accuracy: f64) -> f64 {
-		self.side() * (self.sides as f64)
+		self.side_length() * (self.sides as f64)
 	}
 
 	#[inline]
