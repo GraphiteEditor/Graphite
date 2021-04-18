@@ -1,5 +1,6 @@
 use crate::LayerId;
 
+#[derive(Debug, Clone, PartialEq)]
 pub enum Operation {
 	AddCircle {
 		path: Vec<LayerId>,
@@ -39,4 +40,8 @@ pub enum Operation {
 	AddFolder {
 		path: Vec<LayerId>,
 	},
+	MountTempFolder {
+		path: Vec<LayerId>,
+	},
+	CommitTransaction,
 }
