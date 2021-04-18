@@ -43,5 +43,6 @@ pub enum Operation {
 	MountTempFolder {
 		path: Vec<LayerId>,
 	},
+	DiscardTempFolder,
 	CommitTransaction,
 }

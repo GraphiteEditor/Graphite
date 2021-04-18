@@ -112,7 +112,7 @@ impl Dispatcher {
 	}
 
 	fn dispatch_operation(&self, document: &mut Document, operation: Operation) -> Result<(), EditorError> {
-		document.handle_operation(operation, |svg: String| self.dispatch_response(Response::UpdateCanvas { document: svg }))?;
+		document.handle_operation(operation, &|svg: String| self.dispatch_response(Response::UpdateCanvas { document: svg }))?;
 		Ok(())
 	}
 
