@@ -43,8 +43,10 @@ impl Fsm for EllipseToolFsmState {
 		match (self, event) {
 			(EllipseToolFsmState::Ready, Event::MouseDown(mouse_state)) if mouse_state.mouse_keys.contains(MouseKeys::LEFT) => {
 				data.drag_start = mouse_state.position;
+				operations.push(Operation::MountTempFolder { path: vec![] });
 				EllipseToolFsmState::LmbDown
 			}
+
 			(EllipseToolFsmState::Ready, Event::KeyDown(Key::KeyZ)) => {
 				if let Some(id) = document.root.list_layers().last() {
 					operations.push(Operation::DeleteLayer { path: vec![*id] })
@@ -52,10 +54,24 @@ impl Fsm for EllipseToolFsmState {
 				EllipseToolFsmState::Ready
 			}
 
+			(EllipseToolFsmState::LmbDown, Event::MouseMove(mouse_state)) => {
+				operations.push(Operation::MountTempFolder { path: vec![] });
+				operations.push(Operation::AddCircle {
+					path: vec![],
+					insert_index: -1,
+					cx: data.drag_start.x as f64,
+					cy: data.drag_start.y as f64,
+					r: data.drag_start.distance(&mouse_state),
+				});
+
+				EllipseToolFsmState::LmbDown
+			}
+
 			// TODO - Check for left mouse button
 			(EllipseToolFsmState::LmbDown, Event::MouseUp(mouse_state)) => {
 				let r = data.drag_start.distance(&mouse_state.position);
 				log::info!("draw ellipse with radius: {:.2}", r);
+				operations.push(Operation::MountTempFolder { path: vec![] });
 				operations.push(Operation::AddCircle {
 					path: vec![],
 					insert_index: -1,
@@ -63,6 +79,7 @@ impl Fsm for EllipseToolFsmState {
 					cy: data.drag_start.y as f64,
 					r: data.drag_start.distance(&mouse_state.position),
 				});
+				operations.push(Operation::CommitTransaction);
 
 				EllipseToolFsmState::Ready
 			}
