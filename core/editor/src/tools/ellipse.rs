@@ -55,7 +55,7 @@ impl Fsm for EllipseToolFsmState {
 			}
 
 			(EllipseToolFsmState::LmbDown, Event::MouseMove(mouse_state)) => {
-				operations.push(Operation::MountTempFolder { path: vec![] });
+				operations.push(Operation::ClearTempFolder);
 				operations.push(Operation::AddCircle {
 					path: vec![],
 					insert_index: -1,
@@ -71,7 +71,7 @@ impl Fsm for EllipseToolFsmState {
 			(EllipseToolFsmState::LmbDown, Event::MouseUp(mouse_state)) => {
 				let r = data.drag_start.distance(&mouse_state.position);
 				log::info!("draw ellipse with radius: {:.2}", r);
-				operations.push(Operation::MountTempFolder { path: vec![] });
+				operations.push(Operation::ClearTempFolder);
 				operations.push(Operation::AddCircle {
 					path: vec![],
 					insert_index: -1,

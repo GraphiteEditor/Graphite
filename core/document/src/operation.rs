@@ -44,5 +44,6 @@ pub enum Operation {
 		path: Vec<LayerId>,
 	},
 	DiscardTempFolder,
+	ClearTempFolder,
 	CommitTransaction,
 }

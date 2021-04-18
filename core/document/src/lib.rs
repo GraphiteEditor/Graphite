@@ -317,6 +317,10 @@ impl Document {
 				self.temp = Folder::default();
 				self.temp_mounted = false;
 			}
+			Operation::ClearTempFolder => {
+				self.temp_operations.clear();
+				self.temp = Folder::default();
+			}
 			Operation::CommitTransaction => {
 				let mut ops = Vec::new();
 				std::mem::swap(&mut ops, &mut self.temp_operations);
