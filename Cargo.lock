@@ -82,6 +82,7 @@ name = "graphite-wasm-wrapper"
 version = "0.1.0"
 dependencies = [
  "console_error_panic_hook",
+ "graphite-document-core",
  "graphite-editor-core",
  "log",
  "wasm-bindgen",

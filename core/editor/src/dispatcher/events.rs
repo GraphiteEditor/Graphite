@@ -1,6 +1,6 @@
 use crate::tools::ToolType;
-use crate::Color;
 use bitflags::bitflags;
+use document_core::color::Color;
 use std::{
 	fmt,
 	ops::{Deref, DerefMut},

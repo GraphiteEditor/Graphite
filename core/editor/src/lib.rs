@@ -1,7 +1,6 @@
 #[macro_use]
 mod macros;
 
-mod color;
 mod dispatcher;
 mod error;
 pub mod hint;
@@ -12,7 +11,7 @@ pub mod workspace;
 pub use error::EditorError;
 
 #[doc(inline)]
-pub use color::Color;
+pub use document_core::color::Color;
 
 #[doc(inline)]
 pub use dispatcher::events;
@@ -21,7 +20,7 @@ pub use dispatcher::events;
 pub use dispatcher::Callback;
 
 use dispatcher::Dispatcher;
-use document_core::Document;
+use document_core::document::Document;
 use tools::ToolFsmState;
 use workspace::Workspace;
 

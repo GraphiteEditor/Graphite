@@ -2,7 +2,10 @@ use crate::events::{Event, Response};
 use crate::events::{Key, MouseKeys, ViewportPosition};
 use crate::tools::{Fsm, Tool};
 use crate::Document;
+use document_core::layers::layer_props;
 use document_core::Operation;
+
+use super::DocumentToolData;
 
 #[derive(Default)]
 pub struct Line {
@@ -11,10 +14,10 @@ pub struct Line {
 }
 
 impl Tool for Line {
-	fn handle_input(&mut self, event: &Event, document: &Document) -> (Vec<Response>, Vec<Operation>) {
+	fn handle_input(&mut self, event: &Event, document: &Document, tool_data: &DocumentToolData) -> (Vec<Response>, Vec<Operation>) {
 		let mut responses = Vec::new();
 		let mut operations = Vec::new();
-		self.fsm_state = self.fsm_state.transition(event, document, &mut self.data, &mut responses, &mut operations);
+		self.fsm_state = self.fsm_state.transition(event, document, tool_data, &mut self.data, &mut responses, &mut operations);
 
 		(responses, operations)
 	}
@@ -39,7 +42,7 @@ struct LineToolData {
 impl Fsm for LineToolFsmState {
 	type ToolData = LineToolData;
 
-	fn transition(self, event: &Event, document: &Document, data: &mut Self::ToolData, responses: &mut Vec<Response>, operations: &mut Vec<Operation>) -> Self {
+	fn transition(self, event: &Event, document: &Document, tool_data: &DocumentToolData, data: &mut Self::ToolData, responses: &mut Vec<Response>, operations: &mut Vec<Operation>) -> Self {
 		match (self, event) {
 			(LineToolFsmState::Ready, Event::MouseDown(mouse_state)) if mouse_state.mouse_keys.contains(MouseKeys::LEFT) => {
 				data.drag_start = mouse_state.position;
@@ -64,6 +67,7 @@ impl Fsm for LineToolFsmState {
 					y0: start.y as f64,
 					x1: end.x as f64,
 					y1: end.y as f64,
+					stroke: layer_props::Stroke::new(tool_data.primary_color, 5.0),
 				});
 
 				LineToolFsmState::Ready

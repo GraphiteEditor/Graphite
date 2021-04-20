@@ -1,4 +1,4 @@
-use crate::LayerId;
+use crate::{layers::layer_props, LayerId};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Operation {
@@ -8,6 +8,8 @@ pub enum Operation {
 		cx: f64,
 		cy: f64,
 		r: f64,
+		stroke: layer_props::Stroke,
+		fill: layer_props::Fill,
 	},
 	AddRect {
 		path: Vec<LayerId>,
@@ -16,6 +18,8 @@ pub enum Operation {
 		y0: f64,
 		x1: f64,
 		y1: f64,
+		stroke: layer_props::Stroke,
+		fill: layer_props::Fill,
 	},
 	AddLine {
 		path: Vec<LayerId>,
@@ -24,6 +28,7 @@ pub enum Operation {
 		y0: f64,
 		x1: f64,
 		y1: f64,
+		stroke: layer_props::Stroke,
 	},
 	AddShape {
 		path: Vec<LayerId>,
@@ -33,6 +38,8 @@ pub enum Operation {
 		x1: f64,
 		y1: f64,
 		sides: u8,
+		stroke: layer_props::Stroke,
+		fill: layer_props::Fill,
 	},
 	DeleteLayer {
 		path: Vec<LayerId>,
