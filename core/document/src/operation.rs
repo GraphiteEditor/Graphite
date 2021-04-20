@@ -40,10 +40,10 @@ pub enum Operation {
 	AddFolder {
 		path: Vec<LayerId>,
 	},
-	MountTempFolder {
+	MountWorkingFolder {
 		path: Vec<LayerId>,
 	},
-	DiscardTempFolder,
-	ClearTempFolder,
+	DiscardWorkingFolder,
+	ClearWorkingFolder,
 	CommitTransaction,
 }

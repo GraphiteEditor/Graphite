@@ -137,20 +137,20 @@ impl Default for Folder {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Document {
 	pub root: Folder,
-	pub temp: Folder,
-	pub temp_mount_path: Vec<LayerId>,
-	pub temp_operations: Vec<Operation>,
-	pub temp_mounted: bool,
+	pub work: Folder,
+	pub work_mount_path: Vec<LayerId>,
+	pub work_operations: Vec<Operation>,
+	pub work_mounted: bool,
 }
 
 impl Default for Document {
 	fn default() -> Self {
 		Self {
 			root: Folder::default(),
-			temp: Folder::default(),
-			temp_mount_path: Vec::new(),
-			temp_operations: Vec::new(),
-			temp_mounted: false,
+			work: Folder::default(),
+			work_mount_path: Vec::new(),
+			work_operations: Vec::new(),
+			work_mounted: false,
 		}
 	}
 }
@@ -163,7 +163,7 @@ fn split_path(path: &[LayerId]) -> Result<(&[LayerId], LayerId), DocumentError> 
 
 impl Document {
 	pub fn render(&self, path: &mut Vec<LayerId>) -> String {
-		if !self.temp_mount_path.as_slice().starts_with(path) {
+		if !self.work_mount_path.as_slice().starts_with(path) {
 			match &self.layer(path).unwrap().data {
 				LayerType::Folder(_) => (),
 				element => {
@@ -172,9 +172,9 @@ impl Document {
 				}
 			}
 		}
-		if path.as_slice() == self.temp_mount_path {
+		if path.as_slice() == self.work_mount_path {
 			let mut out = self.document_folder(path).unwrap().render();
-			out += self.temp.render().as_str();
+			out += self.work.render().as_str();
 			path.pop();
 			return out;
 		}
@@ -187,14 +187,14 @@ impl Document {
 	}
 
 	fn is_mounted(&self, mount_path: &[LayerId], path: &[LayerId]) -> bool {
-		path.starts_with(mount_path) && self.temp_mounted
+		path.starts_with(mount_path) && self.work_mounted
 	}
 
 	pub fn folder(&self, mut path: &[LayerId]) -> Result<&Folder, DocumentError> {
 		let mut root = &self.root;
-		if self.is_mounted(self.temp_mount_path.as_slice(), path) {
-			path = &path[self.temp_mount_path.len()..];
-			root = &self.temp;
+		if self.is_mounted(self.work_mount_path.as_slice(), path) {
+			path = &path[self.work_mount_path.len()..];
+			root = &self.work;
 		}
 		for id in path {
 			root = root.folder(*id).ok_or(DocumentError::LayerNotFound)?;
@@ -203,9 +203,9 @@ impl Document {
 	}
 
 	pub fn folder_mut(&mut self, mut path: &[LayerId]) -> Result<&mut Folder, DocumentError> {
-		let mut root = if self.is_mounted(self.temp_mount_path.as_slice(), path) {
-			path = &path[self.temp_mount_path.len()..];
-			&mut self.temp
+		let mut root = if self.is_mounted(self.work_mount_path.as_slice(), path) {
+			path = &path[self.work_mount_path.len()..];
+			&mut self.work
 		} else {
 			&mut self.root
 		};
@@ -268,7 +268,7 @@ impl Document {
 	}
 
 	pub fn handle_operation<F: Fn(String)>(&mut self, operation: Operation, update_frontend: &F) -> Result<(), DocumentError> {
-		self.temp_operations.push(operation.clone());
+		self.work_operations.push(operation.clone());
 		match operation {
 			Operation::AddCircle { path, insert_index, cx, cy, r } => {
 				self.add_layer(&path, Layer::new(LayerType::Circle(Circle::new(Point::new(cx, cy), r))), insert_index)?;
@@ -305,29 +305,29 @@ impl Document {
 				update_frontend(self.render(&mut vec![]));
 			}
 			Operation::AddFolder { path } => self.set_layer(&path, Layer::new(LayerType::Folder(Folder::default())))?,
-			Operation::MountTempFolder { path } => {
-				self.temp_operations.clear();
-				self.temp_mount_path = path;
-				self.temp = Folder::default();
-				self.temp_mounted = true;
+			Operation::MountWorkingFolder { path } => {
+				self.work_operations.clear();
+				self.work_mount_path = path;
+				self.work = Folder::default();
+				self.work_mounted = true;
 			}
-			Operation::DiscardTempFolder => {
-				self.temp_operations.clear();
-				self.temp_mount_path = vec![];
-				self.temp = Folder::default();
-				self.temp_mounted = false;
+			Operation::DiscardWorkingFolder => {
+				self.work_operations.clear();
+				self.work_mount_path = vec![];
+				self.work = Folder::default();
+				self.work_mounted = false;
 			}
-			Operation::ClearTempFolder => {
-				self.temp_operations.clear();
-				self.temp = Folder::default();
+			Operation::ClearWorkingFolder => {
+				self.work_operations.clear();
+				self.work = Folder::default();
 			}
 			Operation::CommitTransaction => {
 				let mut ops = Vec::new();
-				std::mem::swap(&mut ops, &mut self.temp_operations);
+				std::mem::swap(&mut ops, &mut self.work_operations);
 				let len = ops.len() - 1;
-				self.temp_mounted = false;
-				self.temp_mount_path = vec![];
-				self.temp = Folder::default();
+				self.work_mounted = false;
+				self.work_mount_path = vec![];
+				self.work = Folder::default();
 				for operation in ops.into_iter().take(len) {
 					self.handle_operation(operation, update_frontend)?
 				}
