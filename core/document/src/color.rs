@@ -1,7 +1,5 @@
-use crate::EditorError;
-
 #[repr(C)]
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Color {
 	red: f32,
 	green: f32,
@@ -16,12 +14,12 @@ impl Color {
 	pub const GREEN: Color = Color::from_unsafe(0., 1., 0.);
 	pub const BLUE: Color = Color::from_unsafe(0., 0., 1.);
 
-	pub fn from_rgbaf32(red: f32, green: f32, blue: f32, alpha: f32) -> Result<Color, EditorError> {
+	pub fn from_rgbaf32(red: f32, green: f32, blue: f32, alpha: f32) -> Option<Color> {
 		let color = Color { red, green, blue, alpha };
 		if [red, green, blue, alpha].iter().any(|c| c.is_sign_negative() || !c.is_finite()) {
-			Err(color)?
+			return None;
 		}
-		Ok(color)
+		Some(color)
 	}
 
 	const fn from_unsafe(red: f32, green: f32, blue: f32) -> Color {
@@ -54,5 +52,14 @@ impl Color {
 	}
 	pub fn components(&self) -> (f32, f32, f32, f32) {
 		(self.red, self.green, self.blue, self.alpha)
+	}
+	pub fn as_hex(&self) -> String {
+		format!(
+			"{:02X?}{:02X?}{:02X?}{:02X?}",
+			(self.r() * 255.) as u8,
+			(self.g() * 255.) as u8,
+			(self.b() * 255.) as u8,
+			(self.a() * 255.) as u8,
+		)
 	}
 }

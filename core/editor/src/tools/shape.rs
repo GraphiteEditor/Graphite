@@ -2,7 +2,10 @@ use crate::events::{Event, Response};
 use crate::events::{Key, MouseKeys, ViewportPosition};
 use crate::tools::{Fsm, Tool};
 use crate::Document;
+use document_core::layers::layer_props;
 use document_core::Operation;
+
+use super::DocumentToolData;
 
 #[derive(Default)]
 pub struct Shape {
@@ -11,10 +14,10 @@ pub struct Shape {
 }
 
 impl Tool for Shape {
-	fn handle_input(&mut self, event: &Event, document: &Document) -> (Vec<Response>, Vec<Operation>) {
+	fn handle_input(&mut self, event: &Event, document: &Document, tool_data: &DocumentToolData) -> (Vec<Response>, Vec<Operation>) {
 		let mut responses = Vec::new();
 		let mut operations = Vec::new();
-		self.fsm_state = self.fsm_state.transition(event, document, &mut self.data, &mut responses, &mut operations);
+		self.fsm_state = self.fsm_state.transition(event, document, tool_data, &mut self.data, &mut responses, &mut operations);
 
 		(responses, operations)
 	}
@@ -40,7 +43,7 @@ struct ShapeToolData {
 impl Fsm for ShapeToolFsmState {
 	type ToolData = ShapeToolData;
 
-	fn transition(self, event: &Event, document: &Document, data: &mut Self::ToolData, responses: &mut Vec<Response>, operations: &mut Vec<Operation>) -> Self {
+	fn transition(self, event: &Event, document: &Document, tool_data: &DocumentToolData, data: &mut Self::ToolData, responses: &mut Vec<Response>, operations: &mut Vec<Operation>) -> Self {
 		match (self, event) {
 			(ShapeToolFsmState::Ready, Event::MouseDown(mouse_state)) if mouse_state.mouse_keys.contains(MouseKeys::LEFT) => {
 				data.drag_start = mouse_state.position;
@@ -60,6 +63,7 @@ impl Fsm for ShapeToolFsmState {
 
 				let start = data.drag_start;
 				let end = mouse_state.position;
+				// TODO: Set the sides value and use it for the operation.
 				let sides = data.sides;
 				operations.push(Operation::AddShape {
 					path: vec![],
@@ -69,6 +73,8 @@ impl Fsm for ShapeToolFsmState {
 					x1: end.x as f64,
 					y1: end.y as f64,
 					sides: 6,
+					stroke: layer_props::Stroke::None(),
+					fill: layer_props::Fill::new(tool_data.primary_color),
 				});
 
 				ShapeToolFsmState::Ready
