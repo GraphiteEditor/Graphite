@@ -1,5 +1,5 @@
 #[repr(C)]
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct Color {
 	red: f32,
 	green: f32,
