@@ -81,8 +81,8 @@ impl Fsm for EllipseToolFsmState {
 					cx: data.drag_start.x as f64,
 					cy: data.drag_start.y as f64,
 					r: data.drag_start.distance(&mouse_state.position),
-					stroke: layer_props::Stroke::None(),
-					fill: layer_props::Fill::new(tool_data.primary_color),
+					stroke: None,
+					fill: Some(layer_props::Fill::new(tool_data.primary_color)),
 				});
 				operations.push(Operation::CommitTransaction);
 

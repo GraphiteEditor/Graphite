@@ -1,36 +1,31 @@
 use crate::color::Color;
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum Fill {
-	None(),
-	Some(Color),
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct Fill {
+	color: Color,
 }
 impl Fill {
-	pub fn new(col: Color) -> Self {
-		Self::Some(col)
+	pub fn new(color: Color) -> Self {
+		Self { color }
 	}
 	pub fn render(&self) -> String {
-		match self {
-			Fill::None() => String::new(),
-			Fill::Some(col) => format!("fill: #{};", col.as_hex()),
-		}
+		format!("fill: #{};", self.color.as_hex())
 	}
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum Stroke {
-	None(),
-	Some(Color, f32),
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct Stroke {
+	color: Color,
+	width: f32,
 }
 
 impl Stroke {
-	pub fn new(col: Color, width: f32) -> Self {
-		Self::Some(col, width)
+	pub fn new(color: Color, width: f32) -> Self {
+		Self { color, width }
 	}
 	pub fn render(&self) -> String {
-		match self {
-			Stroke::None() => String::new(),
-			Stroke::Some(col, width) => format!("stroke: #{};stroke-width:{};", col.as_hex(), width),
-		}
+		format!("stroke: #{};stroke-width:{};", self.color.as_hex(), self.width)
 	}
 }

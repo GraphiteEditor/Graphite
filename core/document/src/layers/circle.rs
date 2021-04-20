@@ -1,15 +1,15 @@
 use super::layer_props;
 use super::LayerData;
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct Circle {
 	shape: kurbo::Circle,
-	stroke: layer_props::Stroke,
-	fill: layer_props::Fill,
+	stroke: Option<layer_props::Stroke>,
+	fill: Option<layer_props::Fill>,
 }
 
 impl Circle {
-	pub fn new(center: impl Into<kurbo::Point>, radius: f64, stroke: layer_props::Stroke, fill: layer_props::Fill) -> Circle {
+	pub fn new(center: impl Into<kurbo::Point>, radius: f64, stroke: Option<layer_props::Stroke>, fill: Option<layer_props::Fill>) -> Circle {
 		Circle {
 			shape: kurbo::Circle::new(center, radius),
 			stroke,
@@ -25,8 +25,14 @@ impl LayerData for Circle {
 			self.shape.center.x,
 			self.shape.center.y,
 			self.shape.radius,
-			self.fill.render(),
-			self.stroke.render(),
+			match self.fill {
+				Some(fill) => fill.render(),
+				None => String::new(),
+			},
+			match self.stroke {
+				Some(stroke) => stroke.render(),
+				None => String::new(),
+			},
 		)
 	}
 }

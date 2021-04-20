@@ -67,7 +67,7 @@ impl Fsm for LineToolFsmState {
 					y0: start.y as f64,
 					x1: end.x as f64,
 					y1: end.y as f64,
-					stroke: layer_props::Stroke::new(tool_data.primary_color, 5.0),
+					stroke: Some(layer_props::Stroke::new(tool_data.primary_color, 5.0)),
 				});
 
 				LineToolFsmState::Ready

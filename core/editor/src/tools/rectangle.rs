@@ -68,8 +68,8 @@ impl Fsm for RectangleToolFsmState {
 					y0: start.y as f64,
 					x1: end.x as f64,
 					y1: end.y as f64,
-					stroke: layer_props::Stroke::None(),
-					fill: layer_props::Fill::new(tool_data.primary_color),
+					stroke: None,
+					fill: Some(layer_props::Fill::new(tool_data.primary_color)),
 				});
 
 				RectangleToolFsmState::Ready
