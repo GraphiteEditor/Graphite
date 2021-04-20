@@ -137,11 +137,21 @@ impl Default for Folder {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Document {
 	pub root: Folder,
+	pub work: Folder,
+	pub work_mount_path: Vec<LayerId>,
+	pub work_operations: Vec<Operation>,
+	pub work_mounted: bool,
 }
 
 impl Default for Document {
 	fn default() -> Self {
-		Self { root: Folder::default() }
+		Self {
+			root: Folder::default(),
+			work: Folder::default(),
+			work_mount_path: Vec::new(),
+			work_operations: Vec::new(),
+			work_mounted: false,
+		}
 	}
 }
 
@@ -152,11 +162,60 @@ fn split_path(path: &[LayerId]) -> Result<(&[LayerId], LayerId), DocumentError> 
 }
 
 impl Document {
-	pub fn render(&self) -> String {
-		self.root.render()
+	pub fn render(&self, path: &mut Vec<LayerId>) -> String {
+		if !self.work_mount_path.as_slice().starts_with(path) {
+			match &self.layer(path).unwrap().data {
+				LayerType::Folder(_) => (),
+				element => {
+					path.pop();
+					return element.render();
+				}
+			}
+		}
+		if path.as_slice() == self.work_mount_path {
+			let mut out = self.document_folder(path).unwrap().render();
+			out += self.work.render().as_str();
+			path.pop();
+			return out;
+		}
+		let mut out = String::with_capacity(30);
+		for element in self.folder(path).unwrap().layer_ids.iter() {
+			path.push(*element);
+			out += self.render(path).as_str();
+		}
+		out
 	}
 
-	pub fn folder(&self, path: &[LayerId]) -> Result<&Folder, DocumentError> {
+	fn is_mounted(&self, mount_path: &[LayerId], path: &[LayerId]) -> bool {
+		path.starts_with(mount_path) && self.work_mounted
+	}
+
+	pub fn folder(&self, mut path: &[LayerId]) -> Result<&Folder, DocumentError> {
+		let mut root = &self.root;
+		if self.is_mounted(self.work_mount_path.as_slice(), path) {
+			path = &path[self.work_mount_path.len()..];
+			root = &self.work;
+		}
+		for id in path {
+			root = root.folder(*id).ok_or(DocumentError::LayerNotFound)?;
+		}
+		Ok(root)
+	}
+
+	pub fn folder_mut(&mut self, mut path: &[LayerId]) -> Result<&mut Folder, DocumentError> {
+		let mut root = if self.is_mounted(self.work_mount_path.as_slice(), path) {
+			path = &path[self.work_mount_path.len()..];
+			&mut self.work
+		} else {
+			&mut self.root
+		};
+		for id in path {
+			root = root.folder_mut(*id).ok_or(DocumentError::LayerNotFound)?;
+		}
+		Ok(root)
+	}
+
+	pub fn document_folder(&self, path: &[LayerId]) -> Result<&Folder, DocumentError> {
 		let mut root = &self.root;
 		for id in path {
 			root = root.folder(*id).ok_or(DocumentError::LayerNotFound)?;
@@ -164,7 +223,7 @@ impl Document {
 		Ok(root)
 	}
 
-	pub fn folder_mut(&mut self, path: &[LayerId]) -> Result<&mut Folder, DocumentError> {
+	pub fn document_folder_mut(&mut self, path: &[LayerId]) -> Result<&mut Folder, DocumentError> {
 		let mut root = &mut self.root;
 		for id in path {
 			root = root.folder_mut(*id).ok_or(DocumentError::LayerNotFound)?;
@@ -208,22 +267,23 @@ impl Document {
 		Ok(())
 	}
 
-	pub fn handle_operation<F: Fn(String)>(&mut self, operation: Operation, update_frontend: F) -> Result<(), DocumentError> {
+	pub fn handle_operation<F: Fn(String)>(&mut self, operation: Operation, update_frontend: &F) -> Result<(), DocumentError> {
+		self.work_operations.push(operation.clone());
 		match operation {
 			Operation::AddCircle { path, insert_index, cx, cy, r } => {
 				self.add_layer(&path, Layer::new(LayerType::Circle(Circle::new(Point::new(cx, cy), r))), insert_index)?;
 
-				update_frontend(self.render());
+				update_frontend(self.render(&mut vec![]));
 			}
 			Operation::AddRect { path, insert_index, x0, y0, x1, y1 } => {
 				self.add_layer(&path, Layer::new(LayerType::Rect(Rect::from_points(Point::new(x0, y0), Point::new(x1, y1)))), insert_index)?;
 
-				update_frontend(self.render());
+				update_frontend(self.render(&mut vec![]));
 			}
 			Operation::AddLine { path, insert_index, x0, y0, x1, y1 } => {
 				self.add_layer(&path, Layer::new(LayerType::Line(Line::new(Point::new(x0, y0), Point::new(x1, y1)))), insert_index)?;
 
-				update_frontend(self.render());
+				update_frontend(self.render(&mut vec![]));
 			}
 			Operation::AddShape {
 				path,
@@ -237,14 +297,43 @@ impl Document {
 				let s = shape_points::ShapePoints::new(Point::new(x0, y0), Vec2 { x: x0 - x1, y: y0 - y1 }, sides);
 				self.add_layer(&path, Layer::new(LayerType::Shape(s)), insert_index)?;
 
-				update_frontend(self.render());
+				update_frontend(self.render(&mut vec![]));
 			}
 			Operation::DeleteLayer { path } => {
 				self.delete(&path)?;
 
-				update_frontend(self.render());
+				update_frontend(self.render(&mut vec![]));
 			}
 			Operation::AddFolder { path } => self.set_layer(&path, Layer::new(LayerType::Folder(Folder::default())))?,
+			Operation::MountWorkingFolder { path } => {
+				self.work_operations.clear();
+				self.work_mount_path = path;
+				self.work = Folder::default();
+				self.work_mounted = true;
+			}
+			Operation::DiscardWorkingFolder => {
+				self.work_operations.clear();
+				self.work_mount_path = vec![];
+				self.work = Folder::default();
+				self.work_mounted = false;
+			}
+			Operation::ClearWorkingFolder => {
+				self.work_operations.clear();
+				self.work = Folder::default();
+			}
+			Operation::CommitTransaction => {
+				let mut ops = Vec::new();
+				std::mem::swap(&mut ops, &mut self.work_operations);
+				let len = ops.len() - 1;
+				self.work_mounted = false;
+				self.work_mount_path = vec![];
+				self.work = Folder::default();
+				for operation in ops.into_iter().take(len) {
+					self.handle_operation(operation, update_frontend)?
+				}
+
+				update_frontend(self.render(&mut vec![]));
+			}
 		}
 		Ok(())
 	}
