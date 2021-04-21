@@ -12,8 +12,8 @@ impl Color {
 	#[wasm_bindgen(constructor)]
 	pub fn new(red: f32, green: f32, blue: f32, alpha: f32) -> Result<Color, JsValue> {
 		match InnerColor::from_rgbaf32(red, green, blue, alpha) {
-			Ok(v) => Ok(Self(v)),
-			Err(e) => Err(Error::new(&e.to_string()).into()),
+			Some(v) => Ok(Self(v)),
+			None => Err(Error::new("invalid color").into()),
 		}
 	}
 }
