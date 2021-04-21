@@ -12,7 +12,8 @@ mod shape;
 use crate::events::{Event, ModKeys, MouseState, Response, Trace, TracePoint};
 use crate::Document;
 use crate::EditorError;
-use document_core::{color::Color, Operation};
+use crate::Color;
+use document_core::Operation;
 use std::{collections::HashMap, fmt};
 
 pub trait Tool {
