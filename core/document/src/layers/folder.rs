@@ -5,7 +5,7 @@ use super::{Layer, LayerData, LayerDataTypes};
 #[derive(Debug, Clone, PartialEq)]
 pub struct Folder {
 	next_assignment_id: LayerId,
-	layer_ids: Vec<LayerId>,
+	pub layer_ids: Vec<LayerId>,
 	layers: Vec<Layer>,
 }
 

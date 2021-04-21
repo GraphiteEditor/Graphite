@@ -42,9 +42,9 @@ impl LayerDataTypes {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Layer {
-	visible: bool,
-	name: Option<String>,
-	data: LayerDataTypes,
+	pub visible: bool,
+	pub name: Option<String>,
+	pub data: LayerDataTypes,
 }
 
 impl Layer {
