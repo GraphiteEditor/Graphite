@@ -1,4 +1,4 @@
-pub mod layer_props;
+pub mod style;
 
 pub mod circle;
 pub use circle::Circle;

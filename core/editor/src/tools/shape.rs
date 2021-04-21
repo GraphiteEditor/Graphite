@@ -2,7 +2,7 @@ use crate::events::{Event, Response};
 use crate::events::{Key, MouseKeys, ViewportPosition};
 use crate::tools::{Fsm, Tool};
 use crate::Document;
-use document_core::layers::layer_props;
+use document_core::layers::style;
 use document_core::Operation;
 
 use super::DocumentToolData;
@@ -73,8 +73,7 @@ impl Fsm for ShapeToolFsmState {
 					x1: end.x as f64,
 					y1: end.y as f64,
 					sides: 6,
-					stroke: None,
-					fill: Some(layer_props::Fill::new(tool_data.primary_color)),
+					style: style::PathStyle::new(None, Some(style::Fill::new(tool_data.primary_color))),
 				});
 
 				ShapeToolFsmState::Ready

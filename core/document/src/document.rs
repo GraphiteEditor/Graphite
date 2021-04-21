@@ -79,16 +79,8 @@ impl Document {
 
 	pub fn handle_operation<F: Fn(String)>(&mut self, operation: Operation, update_frontend: F) -> Result<(), DocumentError> {
 		match operation {
-			Operation::AddCircle {
-				path,
-				insert_index,
-				cx,
-				cy,
-				r,
-				stroke,
-				fill,
-			} => {
-				self.add_layer(&path, Layer::new(LayerDataTypes::Circle(layers::Circle::new(kurbo::Point::new(cx, cy), r, stroke, fill))), insert_index)?;
+			Operation::AddCircle { path, insert_index, cx, cy, r, style } => {
+				self.add_layer(&path, Layer::new(LayerDataTypes::Circle(layers::Circle::new(kurbo::Point::new(cx, cy), r, style))), insert_index)?;
 
 				update_frontend(self.render());
 			}
@@ -99,12 +91,11 @@ impl Document {
 				y0,
 				x1,
 				y1,
-				stroke,
-				fill,
+				style,
 			} => {
 				self.add_layer(
 					&path,
-					Layer::new(LayerDataTypes::Rect(Rect::new(kurbo::Point::new(x0, y0), kurbo::Point::new(x1, y1), stroke, fill))),
+					Layer::new(LayerDataTypes::Rect(Rect::new(kurbo::Point::new(x0, y0), kurbo::Point::new(x1, y1), style))),
 					insert_index,
 				)?;
 
@@ -117,11 +108,11 @@ impl Document {
 				y0,
 				x1,
 				y1,
-				stroke,
+				style,
 			} => {
 				self.add_layer(
 					&path,
-					Layer::new(LayerDataTypes::Line(Line::new(kurbo::Point::new(x0, y0), kurbo::Point::new(x1, y1), stroke))),
+					Layer::new(LayerDataTypes::Line(Line::new(kurbo::Point::new(x0, y0), kurbo::Point::new(x1, y1), style))),
 					insert_index,
 				)?;
 
@@ -135,10 +126,9 @@ impl Document {
 				x1,
 				y1,
 				sides,
-				stroke,
-				fill,
+				style,
 			} => {
-				let s = Shape::new(kurbo::Point::new(x0, y0), kurbo::Vec2 { x: x0 - x1, y: y0 - y1 }, sides, stroke, fill);
+				let s = Shape::new(kurbo::Point::new(x0, y0), kurbo::Vec2 { x: x0 - x1, y: y0 - y1 }, sides, style);
 				self.add_layer(&path, Layer::new(LayerDataTypes::Shape(s)), insert_index)?;
 
 				update_frontend(self.render());
