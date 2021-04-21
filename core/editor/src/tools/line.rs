@@ -2,7 +2,7 @@ use crate::events::{Event, Response};
 use crate::events::{Key, MouseKeys, ViewportPosition};
 use crate::tools::{Fsm, Tool};
 use crate::Document;
-use document_core::layers::layer_props;
+use document_core::layers::style;
 use document_core::Operation;
 
 use super::DocumentToolData;
@@ -67,7 +67,7 @@ impl Fsm for LineToolFsmState {
 					y0: start.y as f64,
 					x1: end.x as f64,
 					y1: end.y as f64,
-					stroke: Some(layer_props::Stroke::new(tool_data.primary_color, 5.0)),
+					style: style::PathStyle::new(Some(style::Stroke::new(tool_data.primary_color, 5.)), None),
 				});
 
 				LineToolFsmState::Ready

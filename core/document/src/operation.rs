@@ -1,4 +1,4 @@
-use crate::{layers::layer_props, LayerId};
+use crate::{layers::style, LayerId};
 
 pub enum Operation {
 	AddCircle {
@@ -7,8 +7,7 @@ pub enum Operation {
 		cx: f64,
 		cy: f64,
 		r: f64,
-		stroke: Option<layer_props::Stroke>,
-		fill: Option<layer_props::Fill>,
+		style: style::PathStyle,
 	},
 	AddRect {
 		path: Vec<LayerId>,
@@ -17,8 +16,7 @@ pub enum Operation {
 		y0: f64,
 		x1: f64,
 		y1: f64,
-		stroke: Option<layer_props::Stroke>,
-		fill: Option<layer_props::Fill>,
+		style: style::PathStyle,
 	},
 	AddLine {
 		path: Vec<LayerId>,
@@ -27,7 +25,7 @@ pub enum Operation {
 		y0: f64,
 		x1: f64,
 		y1: f64,
-		stroke: Option<layer_props::Stroke>,
+		style: style::PathStyle,
 	},
 	AddShape {
 		path: Vec<LayerId>,
@@ -37,8 +35,7 @@ pub enum Operation {
 		x1: f64,
 		y1: f64,
 		sides: u8,
-		stroke: Option<layer_props::Stroke>,
-		fill: Option<layer_props::Fill>,
+		style: style::PathStyle,
 	},
 	DeleteLayer {
 		path: Vec<LayerId>,
