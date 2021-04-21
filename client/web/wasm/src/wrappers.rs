@@ -1,5 +1,5 @@
 use crate::shims::Error;
-use document_core::color::Color as InnerColor;
+use editor_core::Color as InnerColor;
 use editor_core::events;
 use editor_core::tools::{SelectAppendMode, ToolType};
 use wasm_bindgen::prelude::*;

@@ -18,7 +18,6 @@ default = ["console_error_panic_hook"]
 [dependencies]
 console_error_panic_hook = { version = "0.1.6", optional = true }
 editor-core = { path = "../../../core/editor", package = "graphite-editor-core" }
-document-core = { path = "../../../core/document", package = "graphite-document-core" }
 wasm-bindgen = "0.2.72"
 log = "0.4"
 
