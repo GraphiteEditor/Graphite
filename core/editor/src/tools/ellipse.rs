@@ -2,7 +2,10 @@ use crate::events::{Event, Response};
 use crate::events::{Key, MouseKeys, ViewportPosition};
 use crate::tools::{Fsm, Tool};
 use crate::Document;
+use document_core::layers::style;
 use document_core::Operation;
+
+use super::DocumentToolData;
 
 #[derive(Default)]
 pub struct Ellipse {
@@ -11,10 +14,10 @@ pub struct Ellipse {
 }
 
 impl Tool for Ellipse {
-	fn handle_input(&mut self, event: &Event, document: &Document) -> (Vec<Response>, Vec<Operation>) {
+	fn handle_input(&mut self, event: &Event, document: &Document, tool_data: &DocumentToolData) -> (Vec<Response>, Vec<Operation>) {
 		let mut responses = Vec::new();
 		let mut operations = Vec::new();
-		self.fsm_state = self.fsm_state.transition(event, document, &mut self.data, &mut responses, &mut operations);
+		self.fsm_state = self.fsm_state.transition(event, document, tool_data, &mut self.data, &mut responses, &mut operations);
 
 		(responses, operations)
 	}
@@ -39,7 +42,7 @@ struct EllipseToolData {
 impl Fsm for EllipseToolFsmState {
 	type ToolData = EllipseToolData;
 
-	fn transition(self, event: &Event, document: &Document, data: &mut Self::ToolData, responses: &mut Vec<Response>, operations: &mut Vec<Operation>) -> Self {
+	fn transition(self, event: &Event, document: &Document, tool_data: &DocumentToolData, data: &mut Self::ToolData, responses: &mut Vec<Response>, operations: &mut Vec<Operation>) -> Self {
 		match (self, event) {
 			(EllipseToolFsmState::Ready, Event::MouseDown(mouse_state)) if mouse_state.mouse_keys.contains(MouseKeys::LEFT) => {
 				data.drag_start = mouse_state.position;
@@ -62,6 +65,7 @@ impl Fsm for EllipseToolFsmState {
 					cx: data.drag_start.x as f64,
 					cy: data.drag_start.y as f64,
 					r: data.drag_start.distance(&mouse_state),
+					style: style::PathStyle::new(None, Some(style::Fill::new(tool_data.primary_color))),
 				});
 
 				EllipseToolFsmState::LmbDown
@@ -78,6 +82,7 @@ impl Fsm for EllipseToolFsmState {
 					cx: data.drag_start.x as f64,
 					cy: data.drag_start.y as f64,
 					r: data.drag_start.distance(&mouse_state.position),
+					style: style::PathStyle::new(None, Some(style::Fill::new(tool_data.primary_color))),
 				});
 				operations.push(Operation::CommitTransaction);
 
