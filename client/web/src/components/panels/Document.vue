@@ -338,7 +338,7 @@ export default defineComponent({
 		window.addEventListener("keyup", (e: KeyboardEvent) => this.keyUp(e));
 		window.addEventListener("keydown", (e: KeyboardEvent) => this.keyDown(e));
 
-		// TODO: Implement actuall UI for chosing colours (this is completly temporary)
+		// TODO: Implement actuall UI for chosing colors (this is completly temporary)
 		this.updatePrimaryColor({ r: 0.29, g: 0.52, b: 0.29, a: 0.6 });
 	},
 	data() {
