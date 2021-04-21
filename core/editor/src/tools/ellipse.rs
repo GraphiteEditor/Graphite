@@ -65,7 +65,7 @@ impl Fsm for EllipseToolFsmState {
 					cx: data.drag_start.x as f64,
 					cy: data.drag_start.y as f64,
 					r: data.drag_start.distance(&mouse_state),
-					style: style::PathStyle::new(None, Some(style::Fill::new(tool_data.primary_color)))
+					style: style::PathStyle::new(None, Some(style::Fill::new(tool_data.primary_color))),
 				});
 
 				EllipseToolFsmState::LmbDown

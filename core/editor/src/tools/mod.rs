@@ -10,9 +10,9 @@ mod select;
 mod shape;
 
 use crate::events::{Event, ModKeys, MouseState, Response, Trace, TracePoint};
+use crate::Color;
 use crate::Document;
 use crate::EditorError;
-use crate::Color;
 use document_core::Operation;
 use std::{collections::HashMap, fmt};
 
