@@ -28,6 +28,12 @@ pub enum Operation {
 		y1: f64,
 		style: style::PathStyle,
 	},
+	AddPen {
+		path: Vec<LayerId>,
+		insert_index: isize,
+		points: Vec<(f64, f64)>,
+		style: style::PathStyle,
+	},
 	AddShape {
 		path: Vec<LayerId>,
 		insert_index: isize,
