@@ -4,11 +4,15 @@ use crate::EDITOR_STATE;
 use editor_core::events;
 use wasm_bindgen::prelude::*;
 
+fn convert_error(err: editor_core::EditorError) -> JsValue {
+	Error::new(&err.to_string()).into()
+}
+
 /// Modify the currently selected tool in the document state store
 #[wasm_bindgen]
 pub fn select_tool(tool: String) -> Result<(), JsValue> {
 	EDITOR_STATE.with(|editor| match translate_tool(&tool) {
-		Some(tool) => editor.borrow_mut().handle_event(events::Event::SelectTool(tool)).map_err(|err| Error::new(&err.to_string()).into()),
+		Some(tool) => editor.borrow_mut().handle_event(events::Event::SelectTool(tool)).map_err(convert_error),
 		None => Err(Error::new(&format!("Couldn't select {} because it was not recognized as a valid tool", tool)).into()),
 	})
 }
@@ -19,7 +23,7 @@ pub fn select_tool(tool: String) -> Result<(), JsValue> {
 pub fn on_mouse_move(x: u32, y: u32) -> Result<(), JsValue> {
 	// TODO: Convert these screenspace viewport coordinates to canvas coordinates based on the current zoom and pan
 	let ev = events::Event::MouseMove(events::ViewportPosition { x, y });
-	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_event(ev)).map_err(|err| Error::new(&err.to_string()).into())
+	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_event(ev)).map_err(convert_error)
 }
 
 /// A mouse button depressed within screenspace the bounds of the viewport
@@ -31,7 +35,7 @@ pub fn on_mouse_down(x: u32, y: u32, mouse_keys: u8) -> Result<(), JsValue> {
 		position: events::ViewportPosition { x, y },
 		mouse_keys,
 	});
-	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_event(ev)).map_err(|err| Error::new(&err.to_string()).into())
+	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_event(ev)).map_err(convert_error)
 }
 
 /// A mouse button released
@@ -43,7 +47,7 @@ pub fn on_mouse_up(x: u32, y: u32, mouse_keys: u8) -> Result<(), JsValue> {
 		position: events::ViewportPosition { x, y },
 		mouse_keys,
 	});
-	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_event(ev)).map_err(|err| Error::new(&err.to_string()).into())
+	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_event(ev)).map_err(convert_error)
 }
 
 /// A keyboard button depressed within screenspace the bounds of the viewport
@@ -52,7 +56,7 @@ pub fn on_key_down(name: String) -> Result<(), JsValue> {
 	let key = translate_key(&name);
 	log::trace!("key down {:?}, name: {}", key, name);
 	let ev = events::Event::KeyDown(key);
-	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_event(ev)).map_err(|err| Error::new(&err.to_string()).into())
+	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_event(ev)).map_err(convert_error)
 }
 
 /// A keyboard button released
@@ -61,7 +65,7 @@ pub fn on_key_up(name: String) -> Result<(), JsValue> {
 	let key = translate_key(&name);
 	log::trace!("key up {:?}, name: {}", key, name);
 	let ev = events::Event::KeyUp(key);
-	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_event(ev)).map_err(|err| Error::new(&err.to_string()).into())
+	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_event(ev)).map_err(convert_error)
 }
 
 /// Update primary color
@@ -69,7 +73,7 @@ pub fn on_key_up(name: String) -> Result<(), JsValue> {
 pub fn update_primary_color(primary_color: Color) -> Result<(), JsValue> {
 	EDITOR_STATE
 		.with(|editor| editor.borrow_mut().handle_event(events::Event::SelectPrimaryColor(primary_color.inner())))
-		.map_err(|err: editor_core::EditorError| Error::new(&err.to_string()).into())
+		.map_err(convert_error)
 }
 
 /// Update secondary color
@@ -77,21 +81,17 @@ pub fn update_primary_color(primary_color: Color) -> Result<(), JsValue> {
 pub fn update_secondary_color(secondary_color: Color) -> Result<(), JsValue> {
 	EDITOR_STATE
 		.with(|editor| editor.borrow_mut().handle_event(events::Event::SelectSecondaryColor(secondary_color.inner())))
-		.map_err(|err: editor_core::EditorError| Error::new(&err.to_string()).into())
+		.map_err(convert_error)
 }
 
 /// Swap primary and secondary color
 #[wasm_bindgen]
 pub fn swap_colors() -> Result<(), JsValue> {
-	EDITOR_STATE
-		.with(|editor| editor.borrow_mut().handle_event(events::Event::SwapColors))
-		.map_err(|err: editor_core::EditorError| Error::new(&err.to_string()).into())
+	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_event(events::Event::SwapColors)).map_err(convert_error)
 }
 
 /// Reset primary and secondary colors to their defaults
 #[wasm_bindgen]
 pub fn reset_colors() -> Result<(), JsValue> {
-	EDITOR_STATE
-		.with(|editor| editor.borrow_mut().handle_event(events::Event::ResetColors))
-		.map_err(|err: editor_core::EditorError| Error::new(&err.to_string()).into())
+	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_event(events::Event::ResetColors)).map_err(convert_error)
 }
