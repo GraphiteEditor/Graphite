@@ -17,7 +17,7 @@ impl ShapePoints {
 		ShapePoints {
 			center: center.into(),
 			extent: extent.into(),
-			sides: sides,
+			sides,
 		}
 	}
 
@@ -36,7 +36,7 @@ impl ShapePoints {
 	// Gets the length of one side
 	#[inline]
 	pub fn side_length(&self) -> f64 {
-		self.apothem_offset_angle().sin() * (self.sides as f64) * (2 as f64)
+		self.apothem_offset_angle().sin() * (self.sides as f64) * 2f64
 	}
 }
 
@@ -45,7 +45,7 @@ impl std::fmt::Display for ShapePoints {
 		fn rotate(v: &Vec2, theta: f64) -> Vec2 {
 			let cosine = theta.cos();
 			let sine = theta.sin();
-			return Vec2::new(v.x * cosine - v.y * sine, v.x * sine + v.y * cosine);
+			Vec2::new(v.x * cosine - v.y * sine, v.x * sine + v.y * cosine)
 		}
 		info!("sides{}", self.sides);
 		for i in 0..self.sides {
@@ -72,7 +72,7 @@ impl Iterator for ShapePathIter {
 		fn rotate(v: &Vec2, theta: f64) -> Vec2 {
 			let cosine = theta.cos();
 			let sine = theta.sin();
-			return Vec2::new(v.x * cosine - v.y * sine, v.x * sine + v.y * cosine);
+			Vec2::new(v.x * cosine - v.y * sine, v.x * sine + v.y * cosine)
 		}
 		self.ix += 1;
 		match self.ix {
@@ -102,9 +102,9 @@ impl Add<Vec2> for ShapePoints {
 
 impl kurbo::Shape for ShapePoints {
 	type PathElementsIter = ShapePathIter;
-	#[inline]
-	fn perimeter(&self, _accuracy: f64) -> f64 {
-		self.side_length() * (self.sides as f64)
+
+	fn path_elements(&self, _tolerance: f64) -> Self::PathElementsIter {
+		todo!()
 	}
 
 	#[inline]
@@ -112,8 +112,9 @@ impl kurbo::Shape for ShapePoints {
 		self.apothem() * self.perimeter(2.1)
 	}
 
-	fn path_elements(&self, _tolerance: f64) -> Self::PathElementsIter {
-		todo!()
+	#[inline]
+	fn perimeter(&self, _accuracy: f64) -> f64 {
+		self.side_length() * (self.sides as f64)
 	}
 
 	fn winding(&self, _pt: Point) -> i32 {

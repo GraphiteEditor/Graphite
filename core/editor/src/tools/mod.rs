@@ -25,12 +25,14 @@ pub trait Fsm {
 	fn transition(self, event: &Event, document: &Document, tool_data: &DocumentToolData, data: &mut Self::ToolData, responses: &mut Vec<Response>, operations: &mut Vec<Operation>) -> Self;
 }
 
+#[derive(Debug)]
 pub struct DocumentToolData {
 	pub mouse_state: MouseState,
 	pub mod_keys: ModKeys,
 	pub primary_color: Color,
 	pub secondary_color: Color,
 }
+
 pub struct ToolData {
 	pub active_tool_type: ToolType,
 	pub tools: HashMap<ToolType, Box<dyn Tool>>,
@@ -97,11 +99,11 @@ impl ToolFsmState {
 }
 
 fn default_tool_settings() -> HashMap<ToolType, ToolSettings> {
-	let tool_init = |tool: &ToolType| (*tool, tool.default_settings());
+	let tool_init = |tool: ToolType| (tool, tool.default_settings());
 	std::array::IntoIter::new([
-		tool_init(&ToolType::Select),
-		tool_init(&ToolType::Ellipse),
-		tool_init(&ToolType::Shape), // TODO: Add more tool defaults
+		tool_init(ToolType::Select),
+		tool_init(ToolType::Ellipse),
+		tool_init(ToolType::Shape), // TODO: Add more tool defaults
 	])
 	.collect()
 }
