@@ -80,6 +80,7 @@ pub fn translate_key(name: &str) -> events::Key {
 		"e" => K::KeyE,
 		"v" => K::KeyV,
 		"l" => K::KeyL,
+		"p" => K::KeyP,
 		"r" => K::KeyR,
 		"m" => K::KeyM,
 		"x" => K::KeyX,
@@ -95,6 +96,7 @@ pub fn translate_key(name: &str) -> events::Key {
 		"7" => K::Key7,
 		"8" => K::Key8,
 		"9" => K::Key9,
+		"Enter" => K::KeyEnter,
 		_ => K::UnknownKey,
 	}
 }

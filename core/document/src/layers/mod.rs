@@ -9,6 +9,9 @@ pub use line::Line;
 pub mod rect;
 pub use rect::Rect;
 
+pub mod polyline;
+pub use polyline::PolyLine;
+
 pub mod shape;
 pub use shape::Shape;
 
@@ -25,6 +28,7 @@ pub enum LayerDataTypes {
 	Circle(Circle),
 	Rect(Rect),
 	Line(Line),
+	PolyLine(PolyLine),
 	Shape(Shape),
 }
 
@@ -35,6 +39,7 @@ impl LayerDataTypes {
 			Self::Circle(c) => c.render(),
 			Self::Rect(r) => r.render(),
 			Self::Line(l) => l.render(),
+			Self::PolyLine(pl) => pl.render(),
 			Self::Shape(s) => s.render(),
 		}
 	}
