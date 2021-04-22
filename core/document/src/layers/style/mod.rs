@@ -3,14 +3,20 @@ use crate::color::Color;
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct Fill {
-	color: Color,
+	color: Option<Color>,
 }
 impl Fill {
 	pub fn new(color: Color) -> Self {
-		Self { color }
+		Self { color: Some(color) }
+	}
+	pub fn none() -> Self {
+		Self { color: None }
 	}
 	pub fn render(&self) -> String {
-		format!("fill: #{};", self.color.as_hex())
+		match self.color {
+			Some(c) => format!("fill: #{};", c.as_hex()),
+			None => format!("fill: none;"),
+		}
 	}
 }
 
