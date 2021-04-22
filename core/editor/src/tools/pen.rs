@@ -44,6 +44,10 @@ impl Fsm for PenToolFsmState {
 	type ToolData = PenToolData;
 
 	fn transition(self, event: &Event, document: &Document, tool_data: &DocumentToolData, data: &mut Self::ToolData, _responses: &mut Vec<Response>, operations: &mut Vec<Operation>) -> Self {
+		let stroke = style::Stroke::new(tool_data.primary_color, 5.);
+		let fill = style::Fill::none();
+		let style = style::PathStyle::new(Some(stroke), Some(fill));
+
 		match (self, event) {
 			(PenToolFsmState::Ready, Event::MouseDown(mouse_state)) if mouse_state.mouse_keys.contains(MouseKeys::LEFT) => {
 				operations.push(Operation::MountWorkingFolder { path: vec![] });
@@ -70,7 +74,7 @@ impl Fsm for PenToolFsmState {
 					path: vec![],
 					insert_index: -1,
 					points,
-					style: style::PathStyle::new(Some(style::Stroke::new(tool_data.primary_color, 5.)), Some(style::Fill::none())),
+					style,
 				});
 				PenToolFsmState::LmbDown
 			}
@@ -81,7 +85,7 @@ impl Fsm for PenToolFsmState {
 					path: vec![],
 					insert_index: -1,
 					points,
-					style: style::PathStyle::new(Some(style::Stroke::new(tool_data.primary_color, 5.)), Some(style::Fill::none())),
+					style,
 				});
 				operations.push(Operation::CommitTransaction);
 				PenToolFsmState::Ready
