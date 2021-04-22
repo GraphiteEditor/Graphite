@@ -1,3 +1,5 @@
+use layers::PolyLine;
+
 use crate::{
 	layers::{self, Folder, Layer, LayerData, LayerDataTypes, Line, Rect, Shape},
 	DocumentError, LayerId, Operation,
@@ -176,6 +178,12 @@ impl Document {
 					insert_index,
 				)?;
 
+				update_frontend(self.render(&mut vec![]));
+			}
+			Operation::AddPen { path, insert_index, points, style } => {
+				let points: Vec<kurbo::Point> = points.into_iter().map(|it| it.into()).collect();
+				let polyline = PolyLine::new(points, style);
+				self.add_layer(&path, Layer::new(LayerDataTypes::PolyLine(polyline)), insert_index)?;
 				update_frontend(self.render(&mut vec![]));
 			}
 			Operation::AddShape {
