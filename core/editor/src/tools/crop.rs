@@ -1,6 +1,3 @@
-// TODO: remove when this is properly implemented
-#![allow(unused_variables)]
-
 use crate::events::{Event, Response};
 use crate::tools::Tool;
 use crate::Document;
@@ -13,6 +10,6 @@ pub struct Crop;
 
 impl Tool for Crop {
 	fn handle_input(&mut self, event: &Event, document: &Document, tool_data: &DocumentToolData) -> (Vec<Response>, Vec<Operation>) {
-		todo!()
+		todo!("{}::handle_input {:?} {:?} {:?}", module_path!(), event, document, tool_data)
 	}
 }
