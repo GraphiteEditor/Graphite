@@ -1,6 +1,6 @@
+use crate::shims::Error;
 use crate::wrappers::{translate_key, translate_tool, Color};
 use crate::EDITOR_STATE;
-use crate::{shims::Error, utils};
 use editor_core::events;
 use wasm_bindgen::prelude::*;
 

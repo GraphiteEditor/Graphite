@@ -1,3 +1,6 @@
+// TODO: remove when this is properly implemented
+#![allow(unused_imports, dead_code)]
+
 use crate::EditorError;
 pub type PanelId = usize;
 

@@ -1,3 +1,6 @@
+// TODO: remove when this is properly implemented
+#![allow(unused_variables)]
+
 use wasm_bindgen::prelude::*;
 
 type DocumentId = u32;
@@ -30,7 +33,7 @@ pub fn panel_hover_enter(panel_id: PanelId) {
 /// Query a list of currently available operations
 #[wasm_bindgen]
 pub fn get_available_operations() -> Vec<JsValue> {
-	todo!();
+	todo!()
 	// vec!["example1", "example2"].into_iter().map(JsValue::from).collect()
 }
 
