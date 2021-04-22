@@ -97,11 +97,11 @@ impl ToolFsmState {
 }
 
 fn default_tool_settings() -> HashMap<ToolType, ToolSettings> {
-	let tool_init = |tool: &ToolType| (*tool, tool.default_settings());
+	let tool_init = |tool: ToolType| (tool, tool.default_settings());
 	std::array::IntoIter::new([
-		tool_init(&ToolType::Select),
-		tool_init(&ToolType::Ellipse),
-		tool_init(&ToolType::Shape), // TODO: Add more tool defaults
+		tool_init(ToolType::Select),
+		tool_init(ToolType::Ellipse),
+		tool_init(ToolType::Shape), // TODO: Add more tool defaults
 	])
 	.collect()
 }
