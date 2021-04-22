@@ -1,9 +1,8 @@
-use crate::EditorError;
 pub type PanelId = usize;
 
 pub struct Workspace {
-	hovered_panel: PanelId,
-	root: PanelGroup,
+	pub hovered_panel: PanelId,
+	pub root: PanelGroup,
 }
 
 impl Workspace {
@@ -19,9 +18,9 @@ impl Workspace {
 	// get_serialized_layout()
 }
 
-struct PanelGroup {
-	contents: Vec<Contents>,
-	layout_direction: LayoutDirection,
+pub struct PanelGroup {
+	pub contents: Vec<Contents>,
+	pub layout_direction: LayoutDirection,
 }
 
 impl PanelGroup {
@@ -33,17 +32,17 @@ impl PanelGroup {
 	}
 }
 
-enum Contents {
+pub enum Contents {
 	PanelArea(PanelArea),
 	Group(PanelGroup),
 }
 
-struct PanelArea {
-	panels: Vec<PanelId>,
-	active: PanelId,
+pub struct PanelArea {
+	pub panels: Vec<PanelId>,
+	pub active: PanelId,
 }
 
-enum LayoutDirection {
+pub enum LayoutDirection {
 	Horizontal,
 	Vertical,
 }

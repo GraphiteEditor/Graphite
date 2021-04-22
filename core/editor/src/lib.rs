@@ -1,3 +1,6 @@
+// since our policy is tabs, we want to stop clippy from warning about that
+#![allow(clippy::tabs_in_doc_comments)]
+
 #[macro_use]
 mod macros;
 

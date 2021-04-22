@@ -10,6 +10,6 @@ pub struct Path;
 
 impl Tool for Path {
 	fn handle_input(&mut self, event: &Event, document: &Document, tool_data: &DocumentToolData) -> (Vec<Response>, Vec<Operation>) {
-		todo!();
+		todo!("{}::handle_input {:?} {:?} {:?}", module_path!(), event, document, tool_data)
 	}
 }
