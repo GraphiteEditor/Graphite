@@ -72,10 +72,10 @@
 					<ItemDivider horizontal />
 
 					<ShelfItem title="Path Tool" :active="activeTool === 'Path'" @click="'tool not implemented' || selectTool('Path')"><PathTool /></ShelfItem>
-					<ShelfItem title="Pen Tool" :active="activeTool === 'Pen'" @click="'tool not implemented' || selectTool('Pen')"><PenTool /></ShelfItem>
+					<ShelfItem title="Pen Tool (P)" :active="activeTool === 'Pen'" @click="selectTool('Pen')"><PenTool /></ShelfItem>
 					<ShelfItem title="Freehand Tool" :active="activeTool === 'Freehand'" @click="'tool not implemented' || selectTool('Freehand')"><FreehandTool /></ShelfItem>
 					<ShelfItem title="Spline Tool" :active="activeTool === 'Spline'" @click="'tool not implemented' || selectTool('Spline')"><SplineTool /></ShelfItem>
-					<ShelfItem title="Line Tool" :active="activeTool === 'Line'" @click="selectTool('Line')"><LineTool /></ShelfItem>
+					<ShelfItem title="Line Tool (L)" :active="activeTool === 'Line'" @click="selectTool('Line')"><LineTool /></ShelfItem>
 					<ShelfItem title="Rectangle Tool (M)" :active="activeTool === 'Rectangle'" @click="selectTool('Rectangle')"><RectangleTool /></ShelfItem>
 					<ShelfItem title="Ellipse Tool (E)" :active="activeTool === 'Ellipse'" @click="selectTool('Ellipse')"><EllipseTool /></ShelfItem>
 					<ShelfItem title="Shape Tool (Y)" :active="activeTool === 'Shape'" @click="selectTool('Shape')"><ShapeTool /></ShelfItem>
