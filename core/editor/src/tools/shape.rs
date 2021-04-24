@@ -47,6 +47,7 @@ impl Fsm for ShapeToolFsmState {
 		match (self, event) {
 			(ShapeToolFsmState::Ready, Event::MouseDown(mouse_state)) if mouse_state.mouse_keys.contains(MouseKeys::LEFT) => {
 				data.drag_start = mouse_state.position;
+				operations.push(Operation::MountWorkingFolder { path: vec![] });
 				ShapeToolFsmState::LmbDown
 			}
 			(ShapeToolFsmState::Ready, Event::KeyDown(Key::KeyZ)) => {
@@ -55,16 +56,10 @@ impl Fsm for ShapeToolFsmState {
 				}
 				ShapeToolFsmState::Ready
 			}
-
-			// TODO - Check for left mouse button
-			(ShapeToolFsmState::LmbDown, Event::MouseUp(mouse_state)) => {
-				let r = data.drag_start.distance(&mouse_state.position);
-				log::info!("Draw Shape with radius: {:.2}", r);
-
+			(ShapeToolFsmState::LmbDown, Event::MouseMove(mouse_state)) => {
+				operations.push(Operation::ClearWorkingFolder);
 				let start = data.drag_start;
-				let end = mouse_state.position;
-				// TODO: Set the sides value and use it for the operation.
-				let sides = data.sides;
+				let end = mouse_state;
 				operations.push(Operation::AddShape {
 					path: vec![],
 					insert_index: -1,
@@ -75,6 +70,30 @@ impl Fsm for ShapeToolFsmState {
 					sides: 6,
 					style: style::PathStyle::new(None, Some(style::Fill::new(tool_data.primary_color))),
 				});
+
+				ShapeToolFsmState::LmbDown
+			}
+			// TODO - Check for left mouse button
+			(ShapeToolFsmState::LmbDown, Event::MouseUp(mouse_state)) => {
+				let r = data.drag_start.distance(&mouse_state.position);
+				log::info!("Draw Shape with radius: {:.2}", r);
+
+				let start = data.drag_start;
+				let end = mouse_state.position;
+				// TODO: Set the sides value and use it for the operation.
+				let sides = data.sides;
+				operations.push(Operation::ClearWorkingFolder);
+				operations.push(Operation::AddShape {
+					path: vec![],
+					insert_index: -1,
+					x0: start.x as f64,
+					y0: start.y as f64,
+					x1: end.x as f64,
+					y1: end.y as f64,
+					sides: 6,
+					style: style::PathStyle::new(None, Some(style::Fill::new(tool_data.primary_color))),
+				});
+				operations.push(Operation::CommitTransaction);
 
 				ShapeToolFsmState::Ready
 			}
