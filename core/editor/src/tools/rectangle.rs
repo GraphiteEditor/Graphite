@@ -46,6 +46,7 @@ impl Fsm for RectangleToolFsmState {
 		match (self, event) {
 			(RectangleToolFsmState::Ready, Event::MouseDown(mouse_state)) if mouse_state.mouse_keys.contains(MouseKeys::LEFT) => {
 				data.drag_start = mouse_state.position;
+				operations.push(Operation::MountWorkingFolder { path: vec![] });
 				RectangleToolFsmState::LmbDown
 			}
 			(RectangleToolFsmState::Ready, Event::KeyDown(Key::KeyZ)) => {
@@ -54,11 +55,27 @@ impl Fsm for RectangleToolFsmState {
 				}
 				RectangleToolFsmState::Ready
 			}
+(RectangleToolFsmState::LmbDown, Event::MouseMove(mouse_state)) => {
+				operations.push(Operation::ClearWorkingFolder);
+				let start = data.drag_start;
+				let end = mouse_state;
+				operations.push(Operation::AddRect {
+					path: vec![],
+					insert_index: -1,
+					x0: start.x as f64,
+					y0: start.y as f64,
+					x1: end.x as f64,
+					y1: end.y as f64,
+					style: style::PathStyle::new(None, Some(style::Fill::new(tool_data.primary_color))),
+				});
 
+				RectangleToolFsmState::LmbDown
+			}
 			// TODO - Check for left mouse button
 			(RectangleToolFsmState::LmbDown, Event::MouseUp(mouse_state)) => {
 				let r = data.drag_start.distance(&mouse_state.position);
 				log::info!("draw rectangle with radius: {:.2}", r);
+								operations.push(Operation::ClearWorkingFolder);
 				let start = data.drag_start;
 				let end = mouse_state.position;
 				operations.push(Operation::AddRect {
@@ -70,6 +87,7 @@ impl Fsm for RectangleToolFsmState {
 					y1: end.y as f64,
 					style: style::PathStyle::new(None, Some(style::Fill::new(tool_data.primary_color))),
 				});
+				operations.push(Operation::CommitTransaction);
 
 				RectangleToolFsmState::Ready
 			}

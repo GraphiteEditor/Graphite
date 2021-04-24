@@ -46,6 +46,7 @@ impl Fsm for LineToolFsmState {
 		match (self, event) {
 			(LineToolFsmState::Ready, Event::MouseDown(mouse_state)) if mouse_state.mouse_keys.contains(MouseKeys::LEFT) => {
 				data.drag_start = mouse_state.position;
+				operations.push(Operation::MountWorkingFolder { path: vec![] });
 				LineToolFsmState::LmbDown
 			}
 			(LineToolFsmState::Ready, Event::KeyDown(Key::KeyZ)) => {
@@ -54,10 +55,27 @@ impl Fsm for LineToolFsmState {
 				}
 				LineToolFsmState::Ready
 			}
+			(LineToolFsmState::LmbDown, Event::MouseMove(mouse_state)) => {
+				operations.push(Operation::ClearWorkingFolder);
+				let start = data.drag_start;
+				let end = mouse_state;
+				operations.push(Operation::AddLine {
+					path: vec![],
+					insert_index: -1,
+					x0: start.x as f64,
+					y0: start.y as f64,
+					x1: end.x as f64,
+					y1: end.y as f64,
+					style: style::PathStyle::new(Some(style::Stroke::new(tool_data.primary_color, 5.)), None),
+				});
+
+				LineToolFsmState::LmbDown
+			}
 			// TODO - Check for left mouse button
 			(LineToolFsmState::LmbDown, Event::MouseUp(mouse_state)) => {
 				let distance = data.drag_start.distance(&mouse_state.position);
 				log::info!("draw Line with distance: {:.2}", distance);
+				operations.push(Operation::ClearWorkingFolder);
 				let start = data.drag_start;
 				let end = mouse_state.position;
 				operations.push(Operation::AddLine {
@@ -69,6 +87,7 @@ impl Fsm for LineToolFsmState {
 					y1: end.y as f64,
 					style: style::PathStyle::new(Some(style::Stroke::new(tool_data.primary_color, 5.)), None),
 				});
+				operations.push(Operation::CommitTransaction);
 
 				LineToolFsmState::Ready
 			}
