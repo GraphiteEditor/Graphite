@@ -56,7 +56,7 @@ impl Fsm for ShapeToolFsmState {
 				}
 				ShapeToolFsmState::Ready
 			}
-(ShapeToolFsmState::LmbDown, Event::MouseMove(mouse_state)) => {
+			(ShapeToolFsmState::LmbDown, Event::MouseMove(mouse_state)) => {
 				operations.push(Operation::ClearWorkingFolder);
 				let start = data.drag_start;
 				let end = mouse_state;
