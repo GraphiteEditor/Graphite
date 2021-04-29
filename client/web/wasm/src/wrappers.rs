@@ -42,7 +42,7 @@ pub fn translate_tool(name: &str) -> Option<ToolType> {
 		Select,
 		Crop,
 		Navigate,
-		Sample,
+		Eyedropper,
 		Text,
 		Fill,
 		Gradient,
