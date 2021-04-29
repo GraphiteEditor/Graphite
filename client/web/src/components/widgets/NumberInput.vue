@@ -9,11 +9,11 @@
 <style lang="scss">
 .number-input {
 	width: 64px;
-	height: 22px;
+	height: 24px;
 	position: relative;
-	border: 1px solid #888;
 	border-radius: 2px;
 	background: #111;
+	overflow: hidden;
 
 	input {
 		width: calc(100% - 8px);
@@ -42,15 +42,25 @@
 		top: 0;
 		outline: none;
 		border: none;
-		background: #333;
+		background: none;
+		padding: 9px 0;
 
 		&:hover {
 			background: #666;
+
+			&.right::before {
+				border-color: transparent transparent transparent #fff;
+			}
+
+			&.left::after {
+				border-color: transparent #fff transparent transparent;
+			}
 		}
 
 		&.right {
 			right: 0;
-			padding: 8px 6px 8px 7px;
+			padding-left: 7px;
+			padding-right: 6px;
 
 			&::before {
 				content: "";
@@ -65,7 +75,8 @@
 
 		&.left {
 			left: 0;
-			padding: 8px 7px 8px 6px;
+			padding-left: 6px;
+			padding-right: 7px;
 
 			&::after {
 				content: "";
