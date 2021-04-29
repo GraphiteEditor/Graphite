@@ -69,6 +69,8 @@ Work in progress.
 	- Parametric tool group
 	- Raster tool group
 	- Vector tool group
+- Masking
+	- Mask mode
 - Vector editing
 	- Data types
 	- Data flow
