@@ -5,3 +5,4 @@ Notes and details about the product design, workflow, user experience, and UI fo
 - [Feature goals](feature-goals.md)
 	- [Possible use cases](feature-goals.md#possible-use-cases)
 	- [User stories](feature-goals.md#user-stories)
+- [Inputs and keybindings](inputs-and-keybindings.md)
