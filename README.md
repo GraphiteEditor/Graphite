@@ -53,7 +53,7 @@ We are also focusing initial feature development on a destructive SVG vector edi
 - Tool system
 - Tools: Line, rectangle, ellipse, and shape
 - Tools: Pen and path
-- Tools: Select, crop, navigate, sample
+- Tools: Select, crop, navigate, eyedropper
 - SVG import and export
 
 ## Technology stack

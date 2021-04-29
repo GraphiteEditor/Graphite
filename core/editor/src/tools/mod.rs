@@ -1,11 +1,11 @@
 mod crop;
 mod ellipse;
+mod eyedropper;
 mod line;
 mod navigate;
 mod path;
 mod pen;
 mod rectangle;
-mod sample;
 mod select;
 mod shape;
 
@@ -61,7 +61,7 @@ impl Default for ToolFsmState {
 					Select => select::Select,
 					Crop => crop::Crop,
 					Navigate => navigate::Navigate,
-					Sample => sample::Sample,
+					Eyedropper => eyedropper::Eyedropper,
 					Path => path::Path,
 					Pen => pen::Pen,
 					Line => line::Line,
@@ -114,7 +114,7 @@ pub enum ToolType {
 	Select,
 	Crop,
 	Navigate,
-	Sample,
+	Eyedropper,
 	Text,
 	Fill,
 	Gradient,
@@ -142,7 +142,7 @@ impl fmt::Display for ToolType {
 			Select,
 			Crop,
 			Navigate,
-			Sample,
+			Eyedropper,
 			Text,
 			Fill,
 			Gradient,
