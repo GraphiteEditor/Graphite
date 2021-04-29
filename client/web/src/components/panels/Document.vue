@@ -52,7 +52,7 @@
 					<ShelfItem title="Select Tool (V)" :active="activeTool === 'Select'" @click="selectTool('Select')"><SelectTool /></ShelfItem>
 					<ShelfItem title="Crop Tool" :active="activeTool === 'Crop'" @click="'tool not implemented' || selectTool('Crop')"><CropTool /></ShelfItem>
 					<ShelfItem title="Navigate Tool" :active="activeTool === 'Navigate'" @click="'tool not implemented' || selectTool('Navigate')"><NavigateTool /></ShelfItem>
-					<ShelfItem title="Sample Tool" :active="activeTool === 'Sample'" @click="'tool not implemented' || selectTool('Sample')"><SampleTool /></ShelfItem>
+					<ShelfItem title="Eyedropper Tool" :active="activeTool === 'Eyedropper'" @click="'tool not implemented' || selectTool('Eyedropper')"><EyedropperTool /></ShelfItem>
 
 					<ItemDivider horizontal />
 
@@ -66,19 +66,19 @@
 					<ShelfItem title="Heal Tool" :active="activeTool === 'Heal'" @click="'tool not implemented' || selectTool('Heal')"><HealTool /></ShelfItem>
 					<ShelfItem title="Clone Tool" :active="activeTool === 'Clone'" @click="'tool not implemented' || selectTool('Clone')"><CloneTool /></ShelfItem>
 					<ShelfItem title="Patch Tool" :active="activeTool === 'Patch'" @click="'tool not implemented' || selectTool('Patch')"><PatchTool /></ShelfItem>
-					<ShelfItem title="Blur/Sharpen Tool" :active="activeTool === 'BlurSharpen'" @click="'tool not implemented' || selectTool('BlurSharpen')"><BlurSharpenTool /></ShelfItem>
+					<ShelfItem title="Detail Tool" :active="activeTool === 'BlurSharpen'" @click="'tool not implemented' || selectTool('BlurSharpen')"><BlurSharpenTool /></ShelfItem>
 					<ShelfItem title="Relight Tool" :active="activeTool === 'Relight'" @click="'tool not implemented' || selectTool('Relight')"><RelightTool /></ShelfItem>
 
 					<ItemDivider horizontal />
 
 					<ShelfItem title="Path Tool" :active="activeTool === 'Path'" @click="'tool not implemented' || selectTool('Path')"><PathTool /></ShelfItem>
-					<ShelfItem title="Pen Tool" :active="activeTool === 'Pen'" @click="'tool not implemented' || selectTool('Pen')"><PenTool /></ShelfItem>
+					<ShelfItem title="Pen Tool (P)" :active="activeTool === 'Pen'" @click="selectTool('Pen')"><PenTool /></ShelfItem>
 					<ShelfItem title="Freehand Tool" :active="activeTool === 'Freehand'" @click="'tool not implemented' || selectTool('Freehand')"><FreehandTool /></ShelfItem>
 					<ShelfItem title="Spline Tool" :active="activeTool === 'Spline'" @click="'tool not implemented' || selectTool('Spline')"><SplineTool /></ShelfItem>
-					<ShelfItem title="Line Tool" :active="activeTool === 'Line'" @click="selectTool('Line')"><LineTool /></ShelfItem>
+					<ShelfItem title="Line Tool (L)" :active="activeTool === 'Line'" @click="selectTool('Line')"><LineTool /></ShelfItem>
 					<ShelfItem title="Rectangle Tool (M)" :active="activeTool === 'Rectangle'" @click="selectTool('Rectangle')"><RectangleTool /></ShelfItem>
 					<ShelfItem title="Ellipse Tool (E)" :active="activeTool === 'Ellipse'" @click="selectTool('Ellipse')"><EllipseTool /></ShelfItem>
-					<ShelfItem title="Shape Tool" :active="activeTool === 'Shape'" @click="'tool not implemented' || selectTool('Shape')"><ShapeTool /></ShelfItem>
+					<ShelfItem title="Shape Tool (Y)" :active="activeTool === 'Shape'" @click="selectTool('Shape')"><ShapeTool /></ShelfItem>
 				</div>
 				<div class="spacer"></div>
 				<WorkingColors></WorkingColors>
@@ -156,7 +156,7 @@ import WorkingColors from "../widgets/WorkingColors.vue";
 import SelectTool from "../../../assets/svg/24x24-bounds-24x24-icon/document-tool-layout-select.svg";
 import CropTool from "../../../assets/svg/24x24-bounds-24x24-icon/document-tool-layout-crop.svg";
 import NavigateTool from "../../../assets/svg/24x24-bounds-24x24-icon/document-tool-layout-navigate.svg";
-import SampleTool from "../../../assets/svg/24x24-bounds-24x24-icon/document-tool-layout-sample.svg";
+import EyedropperTool from "../../../assets/svg/24x24-bounds-24x24-icon/document-tool-layout-eyedropper.svg";
 import TextTool from "../../../assets/svg/24x24-bounds-24x24-icon/document-tool-parametric-text.svg";
 import FillTool from "../../../assets/svg/24x24-bounds-24x24-icon/document-tool-parametric-fill.svg";
 import GradientTool from "../../../assets/svg/24x24-bounds-24x24-icon/document-tool-parametric-gradient.svg";
@@ -164,7 +164,7 @@ import BrushTool from "../../../assets/svg/24x24-bounds-24x24-icon/document-tool
 import HealTool from "../../../assets/svg/24x24-bounds-24x24-icon/document-tool-raster-heal.svg";
 import CloneTool from "../../../assets/svg/24x24-bounds-24x24-icon/document-tool-raster-clone.svg";
 import PatchTool from "../../../assets/svg/24x24-bounds-24x24-icon/document-tool-raster-patch.svg";
-import BlurSharpenTool from "../../../assets/svg/24x24-bounds-24x24-icon/document-tool-raster-blur-sharpen.svg";
+import BlurSharpenTool from "../../../assets/svg/24x24-bounds-24x24-icon/document-tool-raster-detail.svg";
 import RelightTool from "../../../assets/svg/24x24-bounds-24x24-icon/document-tool-raster-relight.svg";
 import PathTool from "../../../assets/svg/24x24-bounds-24x24-icon/document-tool-vector-path.svg";
 import PenTool from "../../../assets/svg/24x24-bounds-24x24-icon/document-tool-vector-pen.svg";
@@ -209,7 +209,7 @@ export default defineComponent({
 		SelectTool,
 		CropTool,
 		NavigateTool,
-		SampleTool,
+		EyedropperTool,
 		TextTool,
 		FillTool,
 		GradientTool,
@@ -279,13 +279,14 @@ export default defineComponent({
 			}
 			todo(toolIndex);
 		},
+		async updatePrimaryColor(c: { r: number; g: number; b: number; a: number }) {
+			const { update_primary_color, Color } = await wasm;
+			update_primary_color(new Color(c.r, c.g, c.b, c.a));
+		},
 	},
 	mounted() {
 		registerResponseHandler(ResponseType.UpdateCanvas, (responseData) => {
-			this.viewportSvg = responseData
-				.split("\n")
-				.map((shape, i) => shape.replace("#fff", `#${Math.floor(Math.abs(Math.sin(i + 1)) * 16777215).toString(16)}`))
-				.join("\n");
+			this.viewportSvg = responseData;
 		});
 		registerResponseHandler(ResponseType.SetActiveTool, (responseData) => {
 			this.activeTool = responseData;
@@ -293,6 +294,9 @@ export default defineComponent({
 
 		window.addEventListener("keyup", (e: KeyboardEvent) => this.keyUp(e));
 		window.addEventListener("keydown", (e: KeyboardEvent) => this.keyDown(e));
+
+		// TODO: Implement actuall UI for chosing colors (this is completly temporary)
+		this.updatePrimaryColor({ r: 0.29, g: 0.52, b: 0.29, a: 0.6 });
 	},
 	data() {
 		return {

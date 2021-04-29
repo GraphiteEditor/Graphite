@@ -14,30 +14,30 @@ impl Dispatcher {
 
 		match event {
 			Event::SelectTool(tool_name) => {
-				editor_state.tool_state.active_tool_type = *tool_name;
+				editor_state.tool_state.tool_data.active_tool_type = *tool_name;
 				self.dispatch_response(Response::SetActiveTool { tool_name: tool_name.to_string() });
 			}
 			Event::SelectPrimaryColor(color) => {
-				editor_state.tool_state.primary_color = *color;
+				editor_state.tool_state.document_tool_data.primary_color = *color;
 			}
 			Event::SelectSecondaryColor(color) => {
-				editor_state.tool_state.secondary_color = *color;
+				editor_state.tool_state.document_tool_data.secondary_color = *color;
 			}
 			Event::SwapColors => {
 				editor_state.tool_state.swap_colors();
 			}
 			Event::ResetColors => {
-				editor_state.tool_state.primary_color = Color::BLACK;
-				editor_state.tool_state.secondary_color = Color::WHITE;
+				editor_state.tool_state.document_tool_data.primary_color = Color::BLACK;
+				editor_state.tool_state.document_tool_data.secondary_color = Color::WHITE;
 			}
 			Event::MouseDown(mouse_state) => {
-				editor_state.tool_state.mouse_state = *mouse_state;
+				editor_state.tool_state.document_tool_data.mouse_state = *mouse_state;
 			}
 			Event::MouseUp(mouse_state) => {
-				editor_state.tool_state.mouse_state = *mouse_state;
+				editor_state.tool_state.document_tool_data.mouse_state = *mouse_state;
 			}
 			Event::MouseMove(pos) => {
-				editor_state.tool_state.mouse_state.position = *pos;
+				editor_state.tool_state.document_tool_data.mouse_state.position = *pos;
 			}
 			Event::KeyUp(key) => (),
 			Event::KeyDown(key) => {
@@ -58,25 +58,31 @@ impl Dispatcher {
 						log::debug!("set log verbosity to trace");
 					}
 					Key::KeyV => {
-						editor_state.tool_state.active_tool_type = ToolType::Select;
+						editor_state.tool_state.tool_data.active_tool_type = ToolType::Select;
 						self.dispatch_response(Response::SetActiveTool {
 							tool_name: ToolType::Select.to_string(),
 						});
 					}
 					Key::KeyL => {
-						editor_state.tool_state.active_tool_type = ToolType::Line;
+						editor_state.tool_state.tool_data.active_tool_type = ToolType::Line;
 						self.dispatch_response(Response::SetActiveTool {
 							tool_name: ToolType::Line.to_string(),
 						});
 					}
 					Key::KeyM => {
-						editor_state.tool_state.active_tool_type = ToolType::Rectangle;
+						editor_state.tool_state.tool_data.active_tool_type = ToolType::Rectangle;
 						self.dispatch_response(Response::SetActiveTool {
 							tool_name: ToolType::Rectangle.to_string(),
 						});
 					}
+					Key::KeyY => {
+						editor_state.tool_state.tool_data.active_tool_type = ToolType::Shape;
+						self.dispatch_response(Response::SetActiveTool {
+							tool_name: ToolType::Shape.to_string(),
+						});
+					}
 					Key::KeyE => {
-						editor_state.tool_state.active_tool_type = ToolType::Ellipse;
+						editor_state.tool_state.tool_data.active_tool_type = ToolType::Ellipse;
 						self.dispatch_response(Response::SetActiveTool {
 							tool_name: ToolType::Ellipse.to_string(),
 						});
@@ -89,7 +95,11 @@ impl Dispatcher {
 			}
 		}
 
-		let (responses, operations) = editor_state.tool_state.active_tool()?.handle_input(event, &editor_state.document);
+		let (responses, operations) = editor_state
+			.tool_state
+			.tool_data
+			.active_tool()?
+			.handle_input(event, &editor_state.document, &editor_state.tool_state.document_tool_data);
 
 		self.dispatch_operations(&mut editor_state.document, operations);
 		// TODO - Dispatch Responses
@@ -106,7 +116,7 @@ impl Dispatcher {
 	}
 
 	fn dispatch_operation(&self, document: &mut Document, operation: Operation) -> Result<(), EditorError> {
-		document.handle_operation(operation, |svg: String| self.dispatch_response(Response::UpdateCanvas { document: svg }))?;
+		document.handle_operation(operation, &|svg: String| self.dispatch_response(Response::UpdateCanvas { document: svg }))?;
 		Ok(())
 	}
 

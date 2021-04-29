@@ -7,7 +7,8 @@
 <style lang="scss">
 .shelf-item {
 	padding: 4px;
-	border-radius: 4px;
+	border-radius: 2px;
+	font-size: 0;
 
 	&:hover {
 		background: #666;

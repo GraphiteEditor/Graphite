@@ -12,8 +12,8 @@ impl Color {
 	#[wasm_bindgen(constructor)]
 	pub fn new(red: f32, green: f32, blue: f32, alpha: f32) -> Result<Color, JsValue> {
 		match InnerColor::from_rgbaf32(red, green, blue, alpha) {
-			Ok(v) => Ok(Self(v)),
-			Err(e) => Err(Error::new(&e.to_string()).into()),
+			Some(v) => Ok(Self(v)),
+			None => Err(Error::new("invalid color").into()),
 		}
 	}
 }
@@ -42,7 +42,7 @@ pub fn translate_tool(name: &str) -> Option<ToolType> {
 		Select,
 		Crop,
 		Navigate,
-		Sample,
+		Eyedropper,
 		Text,
 		Fill,
 		Gradient,
@@ -80,10 +80,12 @@ pub fn translate_key(name: &str) -> events::Key {
 		"e" => K::KeyE,
 		"v" => K::KeyV,
 		"l" => K::KeyL,
+		"p" => K::KeyP,
 		"r" => K::KeyR,
 		"m" => K::KeyM,
 		"x" => K::KeyX,
 		"z" => K::KeyZ,
+		"y" => K::KeyY,
 		"0" => K::Key0,
 		"1" => K::Key1,
 		"2" => K::Key2,
@@ -94,6 +96,7 @@ pub fn translate_key(name: &str) -> events::Key {
 		"7" => K::Key7,
 		"8" => K::Key8,
 		"9" => K::Key9,
+		"Enter" => K::KeyEnter,
 		_ => K::UnknownKey,
 	}
 }
