@@ -1,7 +1,7 @@
 pub mod events;
 use crate::{tools::ToolType, Color, Document, EditorError, EditorState};
 use document_core::Operation;
-use events::{Event, Key, Response};
+use events::{Event, Key, Response, ToolResponse};
 
 pub type Callback = Box<dyn Fn(Response)>;
 pub struct Dispatcher {
@@ -15,7 +15,7 @@ impl Dispatcher {
 		match event {
 			Event::SelectTool(tool_name) => {
 				editor_state.tool_state.tool_data.active_tool_type = *tool_name;
-				self.dispatch_response(Response::SetActiveTool { tool_name: tool_name.to_string() });
+				self.dispatch_response(ToolResponse::SetActiveTool { tool_name: tool_name.to_string() });
 			}
 			Event::SelectPrimaryColor(color) => {
 				editor_state.tool_state.document_tool_data.primary_color = *color;
@@ -71,31 +71,31 @@ impl Dispatcher {
 					}
 					Key::KeyV => {
 						editor_state.tool_state.tool_data.active_tool_type = ToolType::Select;
-						self.dispatch_response(Response::SetActiveTool {
+						self.dispatch_response(ToolResponse::SetActiveTool {
 							tool_name: ToolType::Select.to_string(),
 						});
 					}
 					Key::KeyL => {
 						editor_state.tool_state.tool_data.active_tool_type = ToolType::Line;
-						self.dispatch_response(Response::SetActiveTool {
+						self.dispatch_response(ToolResponse::SetActiveTool {
 							tool_name: ToolType::Line.to_string(),
 						});
 					}
 					Key::KeyM => {
 						editor_state.tool_state.tool_data.active_tool_type = ToolType::Rectangle;
-						self.dispatch_response(Response::SetActiveTool {
+						self.dispatch_response(ToolResponse::SetActiveTool {
 							tool_name: ToolType::Rectangle.to_string(),
 						});
 					}
 					Key::KeyY => {
 						editor_state.tool_state.tool_data.active_tool_type = ToolType::Shape;
-						self.dispatch_response(Response::SetActiveTool {
+						self.dispatch_response(ToolResponse::SetActiveTool {
 							tool_name: ToolType::Shape.to_string(),
 						});
 					}
 					Key::KeyE => {
 						editor_state.tool_state.tool_data.active_tool_type = ToolType::Ellipse;
-						self.dispatch_response(Response::SetActiveTool {
+						self.dispatch_response(ToolResponse::SetActiveTool {
 							tool_name: ToolType::Ellipse.to_string(),
 						});
 					}
@@ -128,19 +128,19 @@ impl Dispatcher {
 	}
 
 	fn dispatch_operation(&self, document: &mut Document, operation: Operation) -> Result<(), EditorError> {
-		document.handle_operation(operation, &|svg: String| self.dispatch_response(Response::UpdateCanvas { document: svg }))?;
+		document.handle_operation(operation, &|responses| self.dispatch_responses(responses))?;
 		Ok(())
 	}
 
-	pub fn dispatch_responses<I: IntoIterator<Item = Response>>(&self, responses: I) {
+	pub fn dispatch_responses<T: Into<Response>, I: IntoIterator<Item = T>>(&self, responses: I) {
 		for response in responses {
 			self.dispatch_response(response);
 		}
 	}
 
-	pub fn dispatch_response(&self, response: Response) {
+	pub fn dispatch_response<T: Into<Response>>(&self, response: T) {
 		let func = &self.callback;
-		func(response)
+		func(response.into())
 	}
 
 	pub fn new(callback: Callback) -> Dispatcher {
