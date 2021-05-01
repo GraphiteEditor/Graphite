@@ -1,5 +1,5 @@
 use crate::events::{Event, Response};
-use crate::events::{Key, MouseKeys, ViewportPosition};
+use crate::events::{Key, ViewportPosition};
 use crate::tools::{Fsm, Tool};
 use crate::Document;
 use document_core::layers::style;
@@ -43,9 +43,9 @@ struct ShapeToolData {
 impl Fsm for ShapeToolFsmState {
 	type ToolData = ShapeToolData;
 
-	fn transition(self, event: &Event, document: &Document, tool_data: &DocumentToolData, data: &mut Self::ToolData, responses: &mut Vec<Response>, operations: &mut Vec<Operation>) -> Self {
+	fn transition(self, event: &Event, document: &Document, tool_data: &DocumentToolData, data: &mut Self::ToolData, _responses: &mut Vec<Response>, operations: &mut Vec<Operation>) -> Self {
 		match (self, event) {
-			(ShapeToolFsmState::Ready, Event::MouseDown(mouse_state)) if mouse_state.mouse_keys.contains(MouseKeys::LEFT) => {
+			(ShapeToolFsmState::Ready, Event::LmbDown(mouse_state)) => {
 				data.drag_start = mouse_state.position;
 				operations.push(Operation::MountWorkingFolder { path: vec![] });
 				ShapeToolFsmState::LmbDown
@@ -73,15 +73,15 @@ impl Fsm for ShapeToolFsmState {
 
 				ShapeToolFsmState::LmbDown
 			}
-			// TODO - Check for left mouse button
-			(ShapeToolFsmState::LmbDown, Event::MouseUp(mouse_state)) => {
+			(ShapeToolFsmState::LmbDown, Event::LmbUp(mouse_state)) => {
 				let r = data.drag_start.distance(&mouse_state.position);
 				log::info!("Draw Shape with radius: {:.2}", r);
 
 				let start = data.drag_start;
 				let end = mouse_state.position;
 				// TODO: Set the sides value and use it for the operation.
-				let sides = data.sides;
+				// let sides = data.sides;
+				let sides = 6;
 				operations.push(Operation::ClearWorkingFolder);
 				operations.push(Operation::AddShape {
 					path: vec![],
@@ -90,7 +90,7 @@ impl Fsm for ShapeToolFsmState {
 					y0: start.y as f64,
 					x1: end.x as f64,
 					y1: end.y as f64,
-					sides: 6,
+					sides,
 					style: style::PathStyle::new(None, Some(style::Fill::new(tool_data.primary_color))),
 				});
 				operations.push(Operation::CommitTransaction);

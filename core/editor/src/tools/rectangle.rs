@@ -1,5 +1,5 @@
 use crate::events::{Event, Response};
-use crate::events::{Key, MouseKeys, ViewportPosition};
+use crate::events::{Key, ViewportPosition};
 use crate::tools::{Fsm, Tool};
 use crate::Document;
 use document_core::layers::style;
@@ -42,9 +42,9 @@ struct RectangleToolData {
 impl Fsm for RectangleToolFsmState {
 	type ToolData = RectangleToolData;
 
-	fn transition(self, event: &Event, document: &Document, tool_data: &DocumentToolData, data: &mut Self::ToolData, responses: &mut Vec<Response>, operations: &mut Vec<Operation>) -> Self {
+	fn transition(self, event: &Event, document: &Document, tool_data: &DocumentToolData, data: &mut Self::ToolData, _responses: &mut Vec<Response>, operations: &mut Vec<Operation>) -> Self {
 		match (self, event) {
-			(RectangleToolFsmState::Ready, Event::MouseDown(mouse_state)) if mouse_state.mouse_keys.contains(MouseKeys::LEFT) => {
+			(RectangleToolFsmState::Ready, Event::LmbDown(mouse_state)) => {
 				data.drag_start = mouse_state.position;
 				operations.push(Operation::MountWorkingFolder { path: vec![] });
 				RectangleToolFsmState::LmbDown
@@ -71,8 +71,7 @@ impl Fsm for RectangleToolFsmState {
 
 				RectangleToolFsmState::LmbDown
 			}
-			// TODO - Check for left mouse button
-			(RectangleToolFsmState::LmbDown, Event::MouseUp(mouse_state)) => {
+			(RectangleToolFsmState::LmbDown, Event::LmbUp(mouse_state)) => {
 				let r = data.drag_start.distance(&mouse_state.position);
 				log::info!("draw rectangle with radius: {:.2}", r);
 				operations.push(Operation::ClearWorkingFolder);
