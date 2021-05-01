@@ -328,10 +328,10 @@ export default defineComponent({
 		},
 	},
 	mounted() {
-		registerResponseHandler(ResponseType.UpdateCanvas, (responseData) => {
+		registerResponseHandler(ResponseType["Document::UpdateCanvas"], (responseData) => {
 			this.viewportSvg = responseData;
 		});
-		registerResponseHandler(ResponseType.SetActiveTool, (responseData) => {
+		registerResponseHandler(ResponseType["Tool::SetActiveTool"], (responseData) => {
 			this.activeTool = responseData;
 		});
 

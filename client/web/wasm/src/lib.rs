@@ -4,7 +4,10 @@ pub mod utils;
 pub mod window;
 pub mod wrappers;
 
-use editor_core::{events::Response, Editor};
+use editor_core::{
+	events::{DocumentResponse, Response, ToolResponse},
+	Editor, LayerId,
+};
 use std::cell::RefCell;
 use utils::WasmLog;
 use wasm_bindgen::prelude::*;
@@ -20,17 +23,36 @@ pub fn init() {
 	log::set_max_level(log::LevelFilter::Debug);
 }
 
+fn path_to_string(path: Vec<LayerId>) -> String {
+	path.iter().map(|x| x.to_string()).collect::<Vec<String>>().join(",")
+}
+
 fn handle_response(response: Response) {
 	let response_type = response.to_string();
 	match response {
-		Response::UpdateCanvas { document } => handleResponse(response_type, document),
-		Response::SetActiveTool { tool_name } => handleResponse(response_type, tool_name),
+		Response::Document(doc) => match doc {
+			DocumentResponse::UpdateCanvas { document } => send_response(response_type, &[document]),
+			DocumentResponse::ExpandFolder { path, children } => {
+				let children = children
+					.iter()
+					.map(|c| format!("name:{},visible:{},type:{}", c.name, c.visible, c.layer_type))
+					.collect::<Vec<String>>()
+					.join(";");
+				send_response(response_type, &[path_to_string(path), children])
+			}
+			DocumentResponse::CollapseFolder { path } => send_response(response_type, &[path_to_string(path)]),
+		},
+		Response::Tool(ToolResponse::SetActiveTool { tool_name }) => send_response(response_type, &[tool_name]),
 	}
+}
+fn send_response(response_type: String, response_data: &[String]) {
+	let data = response_data.iter().map(JsValue::from).collect();
+	handleResponse(response_type, data);
 }
 
 #[wasm_bindgen(module = "/../src/response-handler.ts")]
 extern "C" {
-	fn handleResponse(responseType: String, responseData: String);
+	fn handleResponse(responseType: String, responseData: Vec<JsValue>);
 }
 
 #[wasm_bindgen]

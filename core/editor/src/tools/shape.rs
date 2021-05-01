@@ -1,4 +1,4 @@
-use crate::events::{Event, Response};
+use crate::events::{Event, ToolResponse};
 use crate::events::{Key, ViewportPosition};
 use crate::tools::{Fsm, Tool};
 use crate::Document;
@@ -14,7 +14,7 @@ pub struct Shape {
 }
 
 impl Tool for Shape {
-	fn handle_input(&mut self, event: &Event, document: &Document, tool_data: &DocumentToolData) -> (Vec<Response>, Vec<Operation>) {
+	fn handle_input(&mut self, event: &Event, document: &Document, tool_data: &DocumentToolData) -> (Vec<ToolResponse>, Vec<Operation>) {
 		let mut responses = Vec::new();
 		let mut operations = Vec::new();
 		self.fsm_state = self.fsm_state.transition(event, document, tool_data, &mut self.data, &mut responses, &mut operations);
@@ -43,7 +43,7 @@ struct ShapeToolData {
 impl Fsm for ShapeToolFsmState {
 	type ToolData = ShapeToolData;
 
-	fn transition(self, event: &Event, document: &Document, tool_data: &DocumentToolData, data: &mut Self::ToolData, _responses: &mut Vec<Response>, operations: &mut Vec<Operation>) -> Self {
+	fn transition(self, event: &Event, document: &Document, tool_data: &DocumentToolData, data: &mut Self::ToolData, _responses: &mut Vec<ToolResponse>, operations: &mut Vec<Operation>) -> Self {
 		match (self, event) {
 			(ShapeToolFsmState::Ready, Event::LmbDown(mouse_state)) => {
 				data.drag_start = mouse_state.position;
