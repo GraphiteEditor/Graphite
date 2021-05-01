@@ -30,16 +30,28 @@ impl Dispatcher {
 				editor_state.tool_state.document_tool_data.primary_color = Color::BLACK;
 				editor_state.tool_state.document_tool_data.secondary_color = Color::WHITE;
 			}
-			Event::MouseDown(mouse_state) => {
+			Event::LmbDown(mouse_state) => {
 				editor_state.tool_state.document_tool_data.mouse_state = *mouse_state;
 			}
-			Event::MouseUp(mouse_state) => {
+			Event::RmbDown(mouse_state) => {
+				editor_state.tool_state.document_tool_data.mouse_state = *mouse_state;
+			}
+			Event::MmbDown(mouse_state) => {
+				editor_state.tool_state.document_tool_data.mouse_state = *mouse_state;
+			}
+			Event::LmbUp(mouse_state) => {
+				editor_state.tool_state.document_tool_data.mouse_state = *mouse_state;
+			}
+			Event::RmbUp(mouse_state) => {
+				editor_state.tool_state.document_tool_data.mouse_state = *mouse_state;
+			}
+			Event::MmbUp(mouse_state) => {
 				editor_state.tool_state.document_tool_data.mouse_state = *mouse_state;
 			}
 			Event::MouseMove(pos) => {
 				editor_state.tool_state.document_tool_data.mouse_state.position = *pos;
 			}
-			Event::KeyUp(key) => (),
+			Event::KeyUp(_key) => (),
 			Event::KeyDown(key) => {
 				log::trace!("pressed key {:?}", key);
 				log::debug!("pressed key {:?}", key);
@@ -102,7 +114,7 @@ impl Dispatcher {
 			.handle_input(event, &editor_state.document, &editor_state.tool_state.document_tool_data);
 
 		self.dispatch_operations(&mut editor_state.document, operations);
-		// TODO - Dispatch Responses
+		self.dispatch_responses(responses);
 
 		Ok(())
 	}
@@ -128,7 +140,6 @@ impl Dispatcher {
 
 	pub fn dispatch_response(&self, response: Response) {
 		let func = &self.callback;
-		// TODO - Remove clone if possible
 		func(response)
 	}
 

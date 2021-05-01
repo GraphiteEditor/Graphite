@@ -1,5 +1,5 @@
 use crate::events::{Event, Response};
-use crate::events::{Key, MouseKeys, ViewportPosition};
+use crate::events::{Key, ViewportPosition};
 use crate::tools::{Fsm, Tool};
 use crate::Document;
 
@@ -49,7 +49,7 @@ impl Fsm for PenToolFsmState {
 		let style = style::PathStyle::new(Some(stroke), Some(fill));
 
 		match (self, event) {
-			(PenToolFsmState::Ready, Event::MouseDown(mouse_state)) if mouse_state.mouse_keys.contains(MouseKeys::LEFT) => {
+			(PenToolFsmState::Ready, Event::LmbDown(mouse_state)) => {
 				operations.push(Operation::MountWorkingFolder { path: vec![] });
 				data.points.push(mouse_state.position);
 				PenToolFsmState::LmbDown
@@ -60,8 +60,7 @@ impl Fsm for PenToolFsmState {
 				}
 				PenToolFsmState::Ready
 			}
-			// TODO - Check for left mouse button
-			(PenToolFsmState::LmbDown, Event::MouseDown(mouse_state)) => {
+			(PenToolFsmState::LmbDown, Event::LmbUp(mouse_state)) => {
 				data.points.push(mouse_state.position);
 				PenToolFsmState::LmbDown
 			}

@@ -1,4 +1,3 @@
-use crate::events::MouseKeys;
 use crate::events::{Event, Response};
 use crate::tools::{Fsm, Tool};
 use crate::Document;
@@ -41,17 +40,17 @@ struct SelectToolData;
 impl Fsm for SelectToolFsmState {
 	type ToolData = SelectToolData;
 
-	fn transition(self, event: &Event, document: &Document, tool_data: &DocumentToolData, data: &mut Self::ToolData, responses: &mut Vec<Response>, operations: &mut Vec<Operation>) -> Self {
+	fn transition(self, event: &Event, _document: &Document, _tool_data: &DocumentToolData, _data: &mut Self::ToolData, _responses: &mut Vec<Response>, _operations: &mut Vec<Operation>) -> Self {
 		match (self, event) {
-			(SelectToolFsmState::Ready, Event::MouseDown(mouse_state)) if mouse_state.mouse_keys.contains(MouseKeys::LEFT) => SelectToolFsmState::LmbDown,
+			(SelectToolFsmState::Ready, Event::LmbDown(_mouse_state)) => SelectToolFsmState::LmbDown,
 
-			(SelectToolFsmState::LmbDown, Event::MouseUp(mouse_state)) if mouse_state.mouse_keys.contains(MouseKeys::LEFT) => SelectToolFsmState::Ready,
+			(SelectToolFsmState::LmbDown, Event::LmbUp(_mouse_state)) => SelectToolFsmState::Ready,
 
-			(SelectToolFsmState::LmbDown, Event::MouseMove(mouse_state)) => SelectToolFsmState::TransformSelected,
+			(SelectToolFsmState::LmbDown, Event::MouseMove(_mouse_state)) => SelectToolFsmState::TransformSelected,
 
-			(SelectToolFsmState::TransformSelected, Event::MouseMove(mouse_state)) => self,
+			(SelectToolFsmState::TransformSelected, Event::MouseMove(_mouse_state)) => self,
 
-			(SelectToolFsmState::TransformSelected, Event::MouseUp(mouse_state)) if mouse_state.mouse_keys.contains(MouseKeys::LEFT) => SelectToolFsmState::Ready,
+			(SelectToolFsmState::TransformSelected, Event::LmbUp(_mouse_state)) => SelectToolFsmState::Ready,
 
 			_ => self,
 		}
