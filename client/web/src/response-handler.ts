@@ -9,8 +9,10 @@ declare global {
 }
 
 export enum ResponseType {
-	UpdateCanvas = "UpdateCanvas",
-	SetActiveTool = "SetActiveTool",
+	"Document::UpdateCanvas" = "Document::UpdateCanvas",
+	"Document::ExpandFolder" = "Document::ExpandFolder",
+	"Document::CollapseFolder" = "Document::CollapseFolder",
+	"Tool::SetActiveTool" = "Tool::SetActiveTool",
 }
 
 export function attachResponseHandlerToPage() {

@@ -17,6 +17,9 @@ pub use error::EditorError;
 pub use document_core::color::Color;
 
 #[doc(inline)]
+pub use document_core::LayerId;
+
+#[doc(inline)]
 pub use dispatcher::events;
 
 #[doc(inline)]
