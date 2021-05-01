@@ -37,7 +37,6 @@
       One of many possible frontend implementations,
       such as the native or web client.
   ]
-  [Frontend Implementation] Send Rendered Viewport to Client <-- [<renderer> (Backchannel) From: Final Render Assembler]
 
   [<client> CLI Implementation|
       A possible text-based CLI program that
@@ -59,9 +58,9 @@
       include the document ID in the call.
   ]
   [Dispatcher] --> Set New Bounds [<renderer> (Backchannel) To: Scheduler]
-  [Dispatcher] -> Operations [Design Document Maintainer]
+  [Dispatcher] Send Responses <-> Operations [Design Document Maintainer]
   
-  [CLI Implementation] -> CLI Arguments [Design Document Maintainer]
+  [CLI Implementation] -> Send CLI Arguments [Design Document Maintainer]
 
   [<editor> State Stores|
     [<editor> Open Documents State Store|
@@ -87,6 +86,7 @@
   [Tool State Machine] -> Send Responses & Operations [Dispatcher]
   [Frontend Implementation] Send Responses <-> Send Events [Dispatcher]
   [Dispatcher] <:-> Send Actions [State Stores]
+  [<renderer> (Backchannel) From: Final Render Assembler] --> Send Responses with Rendered Viewport [Dispatcher]
 
   // Document
 
