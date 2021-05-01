@@ -2,7 +2,8 @@ use layers::PolyLine;
 
 use crate::{
 	layers::{self, Folder, Layer, LayerData, LayerDataTypes, Line, Rect, Shape},
-	DocumentError, LayerId, Operation,
+	response::{LayerPanelEntry, LayerType},
+	DocumentError, DocumentResponse, LayerId, Operation,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -55,6 +56,11 @@ impl Document {
 			out += self.render(path).as_str();
 		}
 		out
+	}
+
+	/// Wrapper around render, that returns the whole document as a Response
+	pub fn render_root(&self) -> DocumentResponse {
+		DocumentResponse::UpdateCanvas { document: self.render(&mut vec![]) }
 	}
 
 	fn is_mounted(&self, mount_path: &[LayerId], path: &[LayerId]) -> bool {
@@ -138,13 +144,28 @@ impl Document {
 		Ok(())
 	}
 
-	pub fn handle_operation<F: Fn(String)>(&mut self, operation: Operation, update_frontend: &F) -> Result<(), DocumentError> {
+	pub fn layer_panel(&self, path: &[LayerId]) -> Result<Vec<LayerPanelEntry>, DocumentError> {
+		let folder = self.document_folder(path)?;
+		let l_type = |layer: &LayerDataTypes| match layer {
+			LayerDataTypes::Folder(_) => LayerType::Folder,
+			_ => LayerType::Shape,
+		};
+		let translate = |layer: &Layer| LayerPanelEntry {
+			name: layer.name.clone().unwrap_or_else(|| String::from("UnnamedFolder")),
+			visible: layer.visible,
+			layer_type: l_type(&layer.data),
+		};
+		let entries = folder.layers().iter().map(|layer| translate(layer)).collect();
+		Ok(entries)
+	}
+
+	pub fn handle_operation<F: Fn(Vec<DocumentResponse>)>(&mut self, operation: Operation, send_response: &F) -> Result<(), DocumentError> {
 		self.work_operations.push(operation.clone());
 		match operation {
 			Operation::AddCircle { path, insert_index, cx, cy, r, style } => {
 				self.add_layer(&path, Layer::new(LayerDataTypes::Circle(layers::Circle::new(kurbo::Point::new(cx, cy), r, style))), insert_index)?;
 
-				update_frontend(self.render(&mut vec![]));
+				send_response(vec![self.render_root()]);
 			}
 			Operation::AddRect {
 				path,
@@ -161,7 +182,7 @@ impl Document {
 					insert_index,
 				)?;
 
-				update_frontend(self.render(&mut vec![]));
+				send_response(vec![self.render_root()]);
 			}
 			Operation::AddLine {
 				path,
@@ -178,13 +199,13 @@ impl Document {
 					insert_index,
 				)?;
 
-				update_frontend(self.render(&mut vec![]));
+				send_response(vec![self.render_root()]);
 			}
 			Operation::AddPen { path, insert_index, points, style } => {
 				let points: Vec<kurbo::Point> = points.into_iter().map(|it| it.into()).collect();
 				let polyline = PolyLine::new(points, style);
 				self.add_layer(&path, Layer::new(LayerDataTypes::PolyLine(polyline)), insert_index)?;
-				update_frontend(self.render(&mut vec![]));
+				send_response(vec![self.render_root()]);
 			}
 			Operation::AddShape {
 				path,
@@ -199,12 +220,12 @@ impl Document {
 				let s = Shape::new(kurbo::Point::new(x0, y0), kurbo::Vec2 { x: x0 - x1, y: y0 - y1 }, sides, style);
 				self.add_layer(&path, Layer::new(LayerDataTypes::Shape(s)), insert_index)?;
 
-				update_frontend(self.render(&mut vec![]));
+				send_response(vec![self.render_root()]);
 			}
 			Operation::DeleteLayer { path } => {
 				self.delete(&path)?;
 
-				update_frontend(self.render(&mut vec![]));
+				send_response(vec![self.render_root()]);
 			}
 			Operation::AddFolder { path } => self.set_layer(&path, Layer::new(LayerDataTypes::Folder(Folder::default())))?,
 			Operation::MountWorkingFolder { path } => {
@@ -225,16 +246,19 @@ impl Document {
 			}
 			Operation::CommitTransaction => {
 				let mut ops = Vec::new();
+				let mut path: Vec<LayerId> = vec![];
+				std::mem::swap(&mut path, &mut self.work_mount_path);
 				std::mem::swap(&mut ops, &mut self.work_operations);
 				let len = ops.len() - 1;
 				self.work_mounted = false;
 				self.work_mount_path = vec![];
 				self.work = Folder::default();
 				for operation in ops.into_iter().take(len) {
-					self.handle_operation(operation, update_frontend)?
+					self.handle_operation(operation, send_response)?
 				}
 
-				update_frontend(self.render(&mut vec![]));
+				let children = self.layer_panel(path.as_slice())?;
+				send_response(vec![self.render_root(), DocumentResponse::ExpandFolder { path, children }]);
 			}
 		}
 		Ok(())
