@@ -332,7 +332,8 @@ export default defineComponent({
 			this.viewportSvg = responseData;
 		});
 		registerResponseHandler(ResponseType["Tool::SetActiveTool"], (responseData) => {
-			this.activeTool = responseData;
+			const [activeTool] = responseData;
+			this.activeTool = activeTool;
 		});
 
 		window.addEventListener("keyup", (e: KeyboardEvent) => this.keyUp(e));
