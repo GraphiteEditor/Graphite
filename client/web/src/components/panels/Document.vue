@@ -81,20 +81,7 @@
 					<ShelfItem title="Shape Tool (Y)" :active="activeTool === 'Shape'" @click="selectTool('Shape')"><ShapeTool /></ShelfItem>
 				</div>
 				<div class="spacer"></div>
-				<div class="working-colors">
-					<div class="swatch-pair">
-						<button class="secondary swatch" style="background: white"></button>
-						<button class="primary swatch" style="background: black"></button>
-					</div>
-					<div class="swap-and-reset">
-						<IconButton :size="16">
-							<SwapButton />
-						</IconButton>
-						<IconButton :size="16">
-							<ResetColorsButton />
-						</IconButton>
-					</div>
-				</div>
+				<WorkingColors />
 			</LayoutCol>
 			<LayoutCol :class="'viewport'">
 				<div class="canvas" @mousedown="canvasMouseDown" @mouseup="canvasMouseUp" @mousemove="canvasMouseMove">
@@ -129,30 +116,6 @@
 	.shelf-and-viewport {
 		.shelf {
 			flex: 0 0 32px;
-
-			.swatch-pair {
-				display: flex;
-				// Reversed order of elements paired with `column-reverse` allows primary to overlap secondary without relying on `z-index`
-				flex-direction: column-reverse;
-			}
-
-			.working-colors {
-				.swatch {
-					width: 24px;
-					height: 24px;
-					border-radius: 50%;
-					border: 2px #888 solid;
-					box-shadow: 0 0 0 2px #333;
-					margin: 2px;
-					padding: 0;
-					box-sizing: unset;
-					outline: none;
-				}
-
-				.primary.swatch {
-					margin-bottom: -8px;
-				}
-			}
 		}
 
 		.viewport {
@@ -183,14 +146,13 @@ import { defineComponent } from "vue";
 import { ResponseType, registerResponseHandler, Response, UpdateCanvas, SetActiveTool } from "../../response-handler";
 import LayoutRow from "../layout/LayoutRow.vue";
 import LayoutCol from "../layout/LayoutCol.vue";
+import WorkingColors from "../widgets/WorkingColors.vue";
 import ShelfItem from "../widgets/ShelfItem.vue";
 import ItemDivider from "../widgets/ItemDivider.vue";
 import IconButton from "../widgets/IconButton.vue";
 import DropdownButton from "../widgets/DropdownButton.vue";
 import RadioPicker from "../widgets/RadioPicker.vue";
 import NumberInput from "../widgets/NumberInput.vue";
-import SwapButton from "../../../assets/svg/16x16-bounds-12x12-icon/swap.svg";
-import ResetColorsButton from "../../../assets/svg/16x16-bounds-12x12-icon/reset-colors.svg";
 import SelectTool from "../../../assets/svg/24x24-bounds-24x24-icon/document-tool-layout-select.svg";
 import CropTool from "../../../assets/svg/24x24-bounds-24x24-icon/document-tool-layout-crop.svg";
 import NavigateTool from "../../../assets/svg/24x24-bounds-24x24-icon/document-tool-layout-navigate.svg";
@@ -238,14 +200,13 @@ export default defineComponent({
 	components: {
 		LayoutRow,
 		LayoutCol,
+		WorkingColors,
 		ShelfItem,
 		ItemDivider,
 		IconButton,
 		DropdownButton,
 		RadioPicker,
 		NumberInput,
-		SwapButton,
-		ResetColorsButton,
 		SelectTool,
 		CropTool,
 		NavigateTool,
