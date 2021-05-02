@@ -102,15 +102,54 @@ export default defineComponent({
 		},
 	},
 	mounted() {
-		registerResponseHandler(ResponseType["Document::ExpandFolder"], (responseData) => {
+		registerResponseHandler(ResponseType["Document::ExpandFolder"], (responseData: Response) => {
 			console.log("ExpandFolder: ", responseData);
+            const responsePath = responseData.Document.ExpandFolder.path;
+            const responseLayers = responseData.Document.ExpandFolder.children;
+
+            if (responsePath.length > 0) console.error("Non root paths are currently not implemented");
+
+            this.layers = responseLayers;
 		});
 		registerResponseHandler(ResponseType["Document::CollapseFolder"], (responseData) => {
 			console.log("CollapseFolder: ", responseData);
 		});
 	},
 	data() {
-		return {};
+		return {
+            layers: [],
+        };
 	},
 });
+
+type Response =  Document;
+type Tool = ToolResponse;
+type Document = DocumentResponse;
+
+interface LayerPanelEntry {
+	name: string,
+	visible: boolean,
+	layer_type: LayerType,
+}
+
+enum LayerType {
+	Folder,
+	Shape,
+}
+
+type ToolResponse = SetActiveTool | UpdateCanvas;
+
+interface SetActiveTool {
+    tool_name: string
+}
+
+interface UpdateCanvas {
+    document: string
+}
+
+type DocumentResponse = DocumentChanged | CollapseFolder | ExpandFolder;
+
+interface DocumentChanged {}
+interface CollapseFolder { path: Array<number>}
+interface ExpandFolder { path: Array<number>, children: Array<LayerPanelEntry>}
 </script>
