@@ -1,6 +1,8 @@
 use super::style;
 use super::LayerData;
 
+use std::fmt::Write;
+
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct Circle {
 	shape: kurbo::Circle,
@@ -17,13 +19,14 @@ impl Circle {
 }
 
 impl LayerData for Circle {
-	fn render(&self) -> String {
-		format!(
+	fn render(&mut self, svg: &mut String) {
+		let _ = write!(
+			svg,
 			r#"<circle cx="{}" cy="{}" r="{}" {} />"#,
 			self.shape.center.x,
 			self.shape.center.y,
 			self.shape.radius,
 			self.style.render(),
-		)
+		);
 	}
 }
