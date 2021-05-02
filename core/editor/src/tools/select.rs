@@ -1,5 +1,4 @@
-use crate::events::MouseKeys;
-use crate::events::{Event, Response};
+use crate::events::{Event, ToolResponse};
 use crate::tools::{Fsm, Tool};
 use crate::Document;
 use document_core::Operation;
@@ -13,7 +12,7 @@ pub struct Select {
 }
 
 impl Tool for Select {
-	fn handle_input(&mut self, event: &Event, document: &Document, tool_data: &DocumentToolData) -> (Vec<Response>, Vec<Operation>) {
+	fn handle_input(&mut self, event: &Event, document: &Document, tool_data: &DocumentToolData) -> (Vec<ToolResponse>, Vec<Operation>) {
 		let mut responses = Vec::new();
 		let mut operations = Vec::new();
 		self.fsm_state = self.fsm_state.transition(event, document, tool_data, &mut self.data, &mut responses, &mut operations);
@@ -41,17 +40,17 @@ struct SelectToolData;
 impl Fsm for SelectToolFsmState {
 	type ToolData = SelectToolData;
 
-	fn transition(self, event: &Event, document: &Document, tool_data: &DocumentToolData, data: &mut Self::ToolData, responses: &mut Vec<Response>, operations: &mut Vec<Operation>) -> Self {
+	fn transition(self, event: &Event, _document: &Document, _tool_data: &DocumentToolData, _data: &mut Self::ToolData, _responses: &mut Vec<ToolResponse>, _operations: &mut Vec<Operation>) -> Self {
 		match (self, event) {
-			(SelectToolFsmState::Ready, Event::MouseDown(mouse_state)) if mouse_state.mouse_keys.contains(MouseKeys::LEFT) => SelectToolFsmState::LmbDown,
+			(SelectToolFsmState::Ready, Event::LmbDown(_mouse_state)) => SelectToolFsmState::LmbDown,
 
-			(SelectToolFsmState::LmbDown, Event::MouseUp(mouse_state)) if mouse_state.mouse_keys.contains(MouseKeys::LEFT) => SelectToolFsmState::Ready,
+			(SelectToolFsmState::LmbDown, Event::LmbUp(_mouse_state)) => SelectToolFsmState::Ready,
 
-			(SelectToolFsmState::LmbDown, Event::MouseMove(mouse_state)) => SelectToolFsmState::TransformSelected,
+			(SelectToolFsmState::LmbDown, Event::MouseMove(_mouse_state)) => SelectToolFsmState::TransformSelected,
 
-			(SelectToolFsmState::TransformSelected, Event::MouseMove(mouse_state)) => self,
+			(SelectToolFsmState::TransformSelected, Event::MouseMove(_mouse_state)) => self,
 
-			(SelectToolFsmState::TransformSelected, Event::MouseUp(mouse_state)) if mouse_state.mouse_keys.contains(MouseKeys::LEFT) => SelectToolFsmState::Ready,
+			(SelectToolFsmState::TransformSelected, Event::LmbUp(_mouse_state)) => SelectToolFsmState::Ready,
 
 			_ => self,
 		}

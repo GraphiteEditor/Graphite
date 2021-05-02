@@ -1,6 +1,10 @@
 use crate::tools::ToolType;
 use crate::Color;
 use bitflags::bitflags;
+
+#[doc(inline)]
+pub use document_core::DocumentResponse;
+
 use std::{
 	fmt,
 	ops::{Deref, DerefMut},
@@ -14,8 +18,12 @@ pub enum Event {
 	SelectSecondaryColor(Color),
 	SwapColors,
 	ResetColors,
-	MouseDown(MouseState),
-	MouseUp(MouseState),
+	LmbDown(MouseState),
+	RmbDown(MouseState),
+	MmbDown(MouseState),
+	LmbUp(MouseState),
+	RmbUp(MouseState),
+	MmbUp(MouseState),
 	MouseMove(ViewportPosition),
 	KeyUp(Key),
 	KeyDown(Key),
@@ -23,10 +31,40 @@ pub enum Event {
 
 #[derive(Debug, Clone)]
 #[repr(C)]
+pub enum ToolResponse {
+	SetActiveTool { tool_name: String },
+}
+
+impl fmt::Display for ToolResponse {
+	fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+		use ToolResponse::*;
+
+		let name = match_variant_name!(match (self) {
+			SetActiveTool,
+		});
+
+		formatter.write_str(name)
+	}
+}
+
+#[derive(Debug, Clone)]
+#[repr(C)]
 // TODO - Make Copy when possible
 pub enum Response {
-	UpdateCanvas { document: String },
-	SetActiveTool { tool_name: String },
+	Tool(ToolResponse),
+	Document(DocumentResponse),
+}
+
+impl From<ToolResponse> for Response {
+	fn from(response: ToolResponse) -> Self {
+		Response::Tool(response)
+	}
+}
+
+impl From<DocumentResponse> for Response {
+	fn from(response: DocumentResponse) -> Self {
+		Response::Document(response)
+	}
 }
 
 impl fmt::Display for Response {
@@ -34,11 +72,15 @@ impl fmt::Display for Response {
 		use Response::*;
 
 		let name = match_variant_name!(match (self) {
-			UpdateCanvas,
-			SetActiveTool
+			Tool,
+			Document
 		});
+		let appendix = match self {
+			Tool(t) => t.to_string(),
+			Document(d) => d.to_string(),
+		};
 
-		formatter.write_str(name)
+		formatter.write_str(format!("{}::{}", name, appendix).as_str())
 	}
 }
 

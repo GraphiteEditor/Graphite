@@ -1,5 +1,5 @@
-use crate::events::{Event, Response};
-use crate::events::{Key, MouseKeys, ViewportPosition};
+use crate::events::{Event, ToolResponse};
+use crate::events::{Key, ViewportPosition};
 use crate::tools::{Fsm, Tool};
 use crate::Document;
 
@@ -15,7 +15,7 @@ pub struct Pen {
 }
 
 impl Tool for Pen {
-	fn handle_input(&mut self, event: &Event, document: &Document, tool_data: &DocumentToolData) -> (Vec<Response>, Vec<Operation>) {
+	fn handle_input(&mut self, event: &Event, document: &Document, tool_data: &DocumentToolData) -> (Vec<ToolResponse>, Vec<Operation>) {
 		let mut responses = Vec::new();
 		let mut operations = Vec::new();
 		self.fsm_state = self.fsm_state.transition(event, document, tool_data, &mut self.data, &mut responses, &mut operations);
@@ -43,13 +43,13 @@ struct PenToolData {
 impl Fsm for PenToolFsmState {
 	type ToolData = PenToolData;
 
-	fn transition(self, event: &Event, document: &Document, tool_data: &DocumentToolData, data: &mut Self::ToolData, _responses: &mut Vec<Response>, operations: &mut Vec<Operation>) -> Self {
+	fn transition(self, event: &Event, document: &Document, tool_data: &DocumentToolData, data: &mut Self::ToolData, _responses: &mut Vec<ToolResponse>, operations: &mut Vec<Operation>) -> Self {
 		let stroke = style::Stroke::new(tool_data.primary_color, 5.);
 		let fill = style::Fill::none();
 		let style = style::PathStyle::new(Some(stroke), Some(fill));
 
 		match (self, event) {
-			(PenToolFsmState::Ready, Event::MouseDown(mouse_state)) if mouse_state.mouse_keys.contains(MouseKeys::LEFT) => {
+			(PenToolFsmState::Ready, Event::LmbDown(mouse_state)) => {
 				operations.push(Operation::MountWorkingFolder { path: vec![] });
 				data.points.push(mouse_state.position);
 				PenToolFsmState::LmbDown
@@ -60,8 +60,7 @@ impl Fsm for PenToolFsmState {
 				}
 				PenToolFsmState::Ready
 			}
-			// TODO - Check for left mouse button
-			(PenToolFsmState::LmbDown, Event::MouseDown(mouse_state)) => {
+			(PenToolFsmState::LmbDown, Event::LmbUp(mouse_state)) => {
 				data.points.push(mouse_state.position);
 				PenToolFsmState::LmbDown
 			}

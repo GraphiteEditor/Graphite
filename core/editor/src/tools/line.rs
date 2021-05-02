@@ -1,5 +1,5 @@
-use crate::events::{Event, Response};
-use crate::events::{Key, MouseKeys, ViewportPosition};
+use crate::events::{Event, ToolResponse};
+use crate::events::{Key, ViewportPosition};
 use crate::tools::{Fsm, Tool};
 use crate::Document;
 use document_core::layers::style;
@@ -14,7 +14,7 @@ pub struct Line {
 }
 
 impl Tool for Line {
-	fn handle_input(&mut self, event: &Event, document: &Document, tool_data: &DocumentToolData) -> (Vec<Response>, Vec<Operation>) {
+	fn handle_input(&mut self, event: &Event, document: &Document, tool_data: &DocumentToolData) -> (Vec<ToolResponse>, Vec<Operation>) {
 		let mut responses = Vec::new();
 		let mut operations = Vec::new();
 		self.fsm_state = self.fsm_state.transition(event, document, tool_data, &mut self.data, &mut responses, &mut operations);
@@ -42,9 +42,9 @@ struct LineToolData {
 impl Fsm for LineToolFsmState {
 	type ToolData = LineToolData;
 
-	fn transition(self, event: &Event, document: &Document, tool_data: &DocumentToolData, data: &mut Self::ToolData, responses: &mut Vec<Response>, operations: &mut Vec<Operation>) -> Self {
+	fn transition(self, event: &Event, document: &Document, tool_data: &DocumentToolData, data: &mut Self::ToolData, _responses: &mut Vec<ToolResponse>, operations: &mut Vec<Operation>) -> Self {
 		match (self, event) {
-			(LineToolFsmState::Ready, Event::MouseDown(mouse_state)) if mouse_state.mouse_keys.contains(MouseKeys::LEFT) => {
+			(LineToolFsmState::Ready, Event::LmbDown(mouse_state)) => {
 				data.drag_start = mouse_state.position;
 				operations.push(Operation::MountWorkingFolder { path: vec![] });
 				LineToolFsmState::LmbDown
@@ -71,8 +71,7 @@ impl Fsm for LineToolFsmState {
 
 				LineToolFsmState::LmbDown
 			}
-			// TODO - Check for left mouse button
-			(LineToolFsmState::LmbDown, Event::MouseUp(mouse_state)) => {
+			(LineToolFsmState::LmbDown, Event::LmbUp(mouse_state)) => {
 				let distance = data.drag_start.distance(&mouse_state.position);
 				log::info!("draw Line with distance: {:.2}", distance);
 				operations.push(Operation::ClearWorkingFolder);
