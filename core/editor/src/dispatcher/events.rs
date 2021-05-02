@@ -33,6 +33,7 @@ pub enum Event {
 #[repr(C)]
 pub enum ToolResponse {
 	SetActiveTool { tool_name: String },
+	UpdateCanvas { document: String },
 }
 
 impl fmt::Display for ToolResponse {
@@ -41,6 +42,7 @@ impl fmt::Display for ToolResponse {
 
 		let name = match_variant_name!(match (self) {
 			SetActiveTool,
+			UpdateCanvas,
 		});
 
 		formatter.write_str(name)

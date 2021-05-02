@@ -19,24 +19,26 @@ impl PolyLine {
 }
 
 impl LayerData for PolyLine {
-	fn render(&self) -> String {
+	fn render(&mut self, svg: &mut String) {
 		if self.points.is_empty() {
-			return String::new();
+			return;
 		}
-		let points = self.points.iter().fold(String::new(), |mut acc, p| {
-			let _ = write!(&mut acc, " {:.3} {:.3}", p.x, p.y);
-			acc
+		let _ = write!(svg, r#"<polyline points=""#);
+		self.points.iter().for_each(|p| {
+			let _ = write!(svg, " {:.3} {:.3}", p.x, p.y);
 		});
-		format!(r#"<polyline points="{}" {}/>"#, &points[1..], self.style.render())
+		let _ = write!(svg, r#"" {}/>"#, self.style.render());
 	}
 }
 
 #[test]
 fn polyline_should_render() {
-	let polyline = PolyLine {
+	let mut polyline = PolyLine {
 		points: vec![kurbo::Point::new(3.0, 4.12354), kurbo::Point::new(1.0, 5.54)],
 		style: style::PathStyle::new(Some(style::Stroke::new(crate::color::Color::GREEN, 0.4)), None),
 	};
 
-	assert_eq!(r#"<polyline points="3.000 4.124 1.000 5.540" style="stroke: #00FF00FF;stroke-width:0.4;"/>"#, polyline.render());
+	let mut svg = String::new();
+	polyline.render(&mut svg);
+	assert_eq!(r#"<polyline points=" 3.000 4.124 1.000 5.540" style="stroke: #00FF00FF;stroke-width:0.4;"/>"#, svg);
 }

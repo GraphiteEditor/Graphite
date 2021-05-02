@@ -2,6 +2,8 @@ use crate::{DocumentError, LayerId};
 
 use super::{Layer, LayerData, LayerDataTypes};
 
+use std::fmt::Write;
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Folder {
 	next_assignment_id: LayerId,
@@ -10,12 +12,10 @@ pub struct Folder {
 }
 
 impl LayerData for Folder {
-	fn render(&self) -> String {
-		self.layers
-			.iter()
-			.filter(|layer| layer.visible)
-			.map(|layer| layer.data.render())
-			.fold(String::with_capacity(self.layers.len() * 30), |s, n| s + "\n" + &n)
+	fn render(&mut self, svg: &mut String) {
+		self.layers.iter_mut().for_each(|layer| {
+			let _ = writeln!(svg, "{}", layer.render());
+		});
 	}
 }
 impl Folder {
