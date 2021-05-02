@@ -29,7 +29,7 @@ impl fmt::Display for LayerType {
 #[repr(C)]
 // TODO - Make Copy when possible
 pub enum DocumentResponse {
-	UpdateCanvas { document: String },
+	DocumentChanged,
 	CollapseFolder { path: Vec<LayerId> },
 	ExpandFolder { path: Vec<LayerId>, children: Vec<LayerPanelEntry> },
 }
@@ -37,7 +37,7 @@ pub enum DocumentResponse {
 impl fmt::Display for DocumentResponse {
 	fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
 		let name = match self {
-			DocumentResponse::UpdateCanvas { .. } => "UpdateCanvas",
+			DocumentResponse::DocumentChanged { .. } => "DocumentChanged",
 			DocumentResponse::CollapseFolder { .. } => "CollapseFolder",
 			DocumentResponse::ExpandFolder { .. } => "ExpandFolder",
 		};

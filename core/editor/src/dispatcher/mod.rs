@@ -107,13 +107,29 @@ impl Dispatcher {
 			}
 		}
 
-		let (tool_responses, operations) = editor_state
+		let (mut tool_responses, operations) = editor_state
 			.tool_state
 			.tool_data
 			.active_tool()?
 			.handle_input(event, &editor_state.document, &editor_state.tool_state.document_tool_data);
 
-		let document_responses = self.dispatch_operations(&mut editor_state.document, operations);
+		let mut document_responses = self.dispatch_operations(&mut editor_state.document, operations);
+		//let changes = document_responses.drain_filter(|x| x == DocumentResponse::DocumentChanged);
+		let mut canvas_dirty = false;
+		let mut i = 0;
+		while i < document_responses.len() {
+			if matches!(document_responses[i], DocumentResponse::DocumentChanged) {
+				canvas_dirty = true;
+				document_responses.remove(i);
+			} else {
+				i += 1;
+			}
+		}
+		if canvas_dirty {
+			tool_responses.push(ToolResponse::UpdateCanvas {
+				document: editor_state.document.render_root(),
+			})
+		}
 		self.dispatch_responses(tool_responses);
 		self.dispatch_responses(document_responses);
 
