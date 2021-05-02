@@ -140,7 +140,9 @@ impl Dispatcher {
 
 	pub fn dispatch_response<T: Into<Response>>(&self, response: T) {
 		let func = &self.callback;
-		func(response.into())
+		let response: Response = response.into();
+		log::trace!("Sending {} Response", response);
+		func(response)
 	}
 
 	pub fn new(callback: Callback) -> Dispatcher {
