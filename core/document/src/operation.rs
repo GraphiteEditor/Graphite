@@ -1,6 +1,8 @@
 use crate::{layers::style, LayerId};
 
-#[derive(Debug, Clone, PartialEq)]
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub enum Operation {
 	AddCircle {
 		path: Vec<LayerId>,

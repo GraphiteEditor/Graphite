@@ -1,7 +1,8 @@
 use crate::color::Color;
+use serde::{Deserialize, Serialize};
 
 #[repr(C)]
-#[derive(Debug, Clone, Copy, PartialEq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize)]
 pub struct Fill {
 	color: Option<Color>,
 }
@@ -21,7 +22,7 @@ impl Fill {
 }
 
 #[repr(C)]
-#[derive(Debug, Clone, Copy, PartialEq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize)]
 pub struct Stroke {
 	color: Color,
 	width: f32,
@@ -37,7 +38,7 @@ impl Stroke {
 }
 
 #[repr(C)]
-#[derive(Debug, Clone, Copy, PartialEq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize)]
 pub struct PathStyle {
 	stroke: Option<Stroke>,
 	fill: Option<Fill>,
