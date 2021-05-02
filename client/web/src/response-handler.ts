@@ -23,7 +23,8 @@ export function registerResponseHandler(responseType: ResponseType, callback: Re
 	window.responseMap[responseType] = callback;
 }
 
-export function handleResponse(responseType: ResponseType, responseData: string) {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function handleResponse(responseType: ResponseType, responseData: any) {
 	const callback = window.responseMap[responseType];
 
 	if (callback) {
