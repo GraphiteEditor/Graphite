@@ -6,6 +6,7 @@
 	"scripts": {
 		"serve": "cd client && cd web && npm run serve",
 		"build": "cd client && cd web && npm run build",
-		"lint": "cd client && cd web && npm run lint"
+		"lint": "cd client && cd web && npm run lint",
+		"lint-no-fix": "cd client && cd web && npm run lint-no-fix"
 	}
 }
