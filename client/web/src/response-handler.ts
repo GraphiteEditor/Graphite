@@ -9,7 +9,7 @@ declare global {
 }
 
 export enum ResponseType {
-	"Document::UpdateCanvas" = "Document::UpdateCanvas",
+	"Tool::UpdateCanvas" = "Tool::UpdateCanvas",
 	"Document::ExpandFolder" = "Document::ExpandFolder",
 	"Document::CollapseFolder" = "Document::CollapseFolder",
 	"Tool::SetActiveTool" = "Tool::SetActiveTool",

@@ -19,7 +19,7 @@ pub mod folder;
 pub use folder::Folder;
 
 pub trait LayerData {
-	fn render(&self) -> String;
+	fn render(&mut self, svg: &mut String);
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -33,14 +33,14 @@ pub enum LayerDataTypes {
 }
 
 impl LayerDataTypes {
-	pub fn render(&self) -> String {
+	pub fn render(&mut self, svg: &mut String) {
 		match self {
-			Self::Folder(f) => f.render(),
-			Self::Circle(c) => c.render(),
-			Self::Rect(r) => r.render(),
-			Self::Line(l) => l.render(),
-			Self::PolyLine(pl) => pl.render(),
-			Self::Shape(s) => s.render(),
+			Self::Folder(f) => f.render(svg),
+			Self::Circle(c) => c.render(svg),
+			Self::Rect(r) => r.render(svg),
+			Self::Line(l) => l.render(svg),
+			Self::PolyLine(pl) => pl.render(svg),
+			Self::Shape(s) => s.render(svg),
 		}
 	}
 }
@@ -50,10 +50,30 @@ pub struct Layer {
 	pub visible: bool,
 	pub name: Option<String>,
 	pub data: LayerDataTypes,
+	pub cache: String,
+	pub cache_dirty: bool,
 }
 
 impl Layer {
 	pub fn new(data: LayerDataTypes) -> Self {
-		Self { visible: true, name: None, data }
+		Self {
+			visible: true,
+			name: None,
+			data,
+			cache: String::new(),
+			cache_dirty: true,
+		}
+	}
+
+	pub fn render(&mut self) -> &str {
+		if !self.visible {
+			return "";
+		}
+		if self.cache_dirty {
+			self.cache.clear();
+			self.data.render(&mut self.cache);
+			self.cache_dirty = false;
+		}
+		self.cache.as_str()
 	}
 }

@@ -3,6 +3,8 @@ use crate::shape_points;
 use super::style;
 use super::LayerData;
 
+use std::fmt::Write;
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Shape {
 	shape: shape_points::ShapePoints,
@@ -19,7 +21,7 @@ impl Shape {
 }
 
 impl LayerData for Shape {
-	fn render(&self) -> String {
-		format!(r#"<polygon points="{}" {} />"#, self.shape, self.style.render(),)
+	fn render(&mut self, svg: &mut String) {
+		let _ = write!(svg, r#"<polygon points="{}" {} />"#, self.shape, self.style.render(),);
 	}
 }

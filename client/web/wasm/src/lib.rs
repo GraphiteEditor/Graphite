@@ -31,7 +31,6 @@ fn handle_response(response: Response) {
 	let response_type = response.to_string();
 	match response {
 		Response::Document(doc) => match doc {
-			DocumentResponse::UpdateCanvas { document } => send_response(response_type, &[document]),
 			DocumentResponse::ExpandFolder { path, children } => {
 				let children = children
 					.iter()
@@ -41,7 +40,9 @@ fn handle_response(response: Response) {
 				send_response(response_type, &[path_to_string(path), children])
 			}
 			DocumentResponse::CollapseFolder { path } => send_response(response_type, &[path_to_string(path)]),
+			DocumentResponse::DocumentChanged => log::error!("Wasm wrapper got request to update the document"),
 		},
+		Response::Tool(ToolResponse::UpdateCanvas { document }) => send_response(response_type, &[document]),
 		Response::Tool(ToolResponse::SetActiveTool { tool_name }) => send_response(response_type, &[tool_name]),
 	}
 }
