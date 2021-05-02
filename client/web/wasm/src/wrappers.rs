@@ -2,6 +2,8 @@ use crate::shims::Error;
 use editor_core::events;
 use editor_core::tools::{SelectAppendMode, ToolType};
 use editor_core::Color as InnerColor;
+use events::Response;
+use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen]
@@ -21,6 +23,15 @@ impl Color {
 impl Color {
 	pub fn inner(&self) -> InnerColor {
 		self.0
+	}
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct WasmResponse(Response);
+
+impl WasmResponse {
+	pub fn new(response: Response) -> Self {
+		Self(response)
 	}
 }
 

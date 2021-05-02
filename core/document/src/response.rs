@@ -1,14 +1,15 @@
 use crate::LayerId;
+use serde::{Deserialize, Serialize};
 use std::fmt;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LayerPanelEntry {
 	pub name: String,
 	pub visible: bool,
 	pub layer_type: LayerType,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum LayerType {
 	Folder,
 	Shape,
@@ -25,7 +26,7 @@ impl fmt::Display for LayerType {
 	}
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[repr(C)]
 // TODO - Make Copy when possible
 pub enum DocumentResponse {

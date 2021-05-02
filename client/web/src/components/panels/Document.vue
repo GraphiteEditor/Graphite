@@ -328,12 +328,13 @@ export default defineComponent({
 		},
 	},
 	mounted() {
-		registerResponseHandler(ResponseType["Tool::UpdateCanvas"], (responseData) => {
-			this.viewportSvg = responseData;
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		registerResponseHandler(ResponseType["Tool::UpdateCanvas"], (responseData: any) => {
+			this.viewportSvg = responseData.Tool.UpdateCanvas.document;
 		});
-		registerResponseHandler(ResponseType["Tool::SetActiveTool"], (responseData) => {
-			const [activeTool] = responseData;
-			this.activeTool = activeTool;
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		registerResponseHandler(ResponseType["Tool::SetActiveTool"], (responseData: any) => {
+			this.activeTool = responseData.Tool.SetActiveTool.tool_name;
 		});
 
 		window.addEventListener("keyup", (e: KeyboardEvent) => this.keyUp(e));

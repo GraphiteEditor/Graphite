@@ -2,6 +2,8 @@ use crate::tools::ToolType;
 use crate::Color;
 use bitflags::bitflags;
 
+use serde::{Deserialize, Serialize};
+
 #[doc(inline)]
 pub use document_core::DocumentResponse;
 
@@ -29,7 +31,7 @@ pub enum Event {
 	KeyDown(Key),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[repr(C)]
 pub enum ToolResponse {
 	SetActiveTool { tool_name: String },
@@ -49,7 +51,7 @@ impl fmt::Display for ToolResponse {
 	}
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[repr(C)]
 // TODO - Make Copy when possible
 pub enum Response {
