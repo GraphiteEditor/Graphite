@@ -1,7 +1,7 @@
 pub mod events;
 use crate::{tools::ToolType, Color, Document, EditorError, EditorState};
 use document_core::Operation;
-use events::{Event, Key, Response, ToolResponse};
+use events::{DocumentResponse, Event, Key, Response, ToolResponse};
 
 pub type Callback = Box<dyn Fn(Response)>;
 pub struct Dispatcher {
@@ -107,29 +107,35 @@ impl Dispatcher {
 			}
 		}
 
-		let (responses, operations) = editor_state
+		let (tool_responses, operations) = editor_state
 			.tool_state
 			.tool_data
 			.active_tool()?
 			.handle_input(event, &editor_state.document, &editor_state.tool_state.document_tool_data);
 
-		self.dispatch_operations(&mut editor_state.document, operations);
-		self.dispatch_responses(responses);
+		let document_responses = self.dispatch_operations(&mut editor_state.document, operations);
+		self.dispatch_responses(tool_responses);
+		self.dispatch_responses(document_responses);
 
 		Ok(())
 	}
 
-	fn dispatch_operations<I: IntoIterator<Item = Operation>>(&self, document: &mut Document, operations: I) {
+	fn dispatch_operations<I: IntoIterator<Item = Operation>>(&self, document: &mut Document, operations: I) -> Vec<DocumentResponse> {
+		let mut responses = vec![];
 		for operation in operations {
-			if let Err(error) = self.dispatch_operation(document, operation) {
-				log::error!("{}", error);
+			match self.dispatch_operation(document, operation) {
+				Ok(Some(mut res)) => {
+					responses.append(&mut res);
+				}
+				Ok(None) => (),
+				Err(error) => log::error!("{}", error),
 			}
 		}
+		responses
 	}
 
-	fn dispatch_operation(&self, document: &mut Document, operation: Operation) -> Result<(), EditorError> {
-		document.handle_operation(operation, &|responses| self.dispatch_responses(responses))?;
-		Ok(())
+	fn dispatch_operation(&self, document: &mut Document, operation: Operation) -> Result<Option<Vec<DocumentResponse>>, EditorError> {
+		Ok(document.handle_operation(operation)?)
 	}
 
 	pub fn dispatch_responses<T: Into<Response>, I: IntoIterator<Item = T>>(&self, responses: I) {

@@ -34,6 +34,9 @@ fn split_path(path: &[LayerId]) -> Result<(&[LayerId], LayerId), DocumentError> 
 }
 
 impl Document {
+	/// Renders the layer graph with the root `path` as an SVG string
+	/// This operation merges currently mounted folder and document_folder
+	/// contents together
 	pub fn render(&self, path: &mut Vec<LayerId>) -> String {
 		if !self.work_mount_path.as_slice().starts_with(path) {
 			match &self.layer(path).unwrap().data {
@@ -67,6 +70,10 @@ impl Document {
 		path.starts_with(mount_path) && self.work_mounted
 	}
 
+	/// Returns a reference to the requested folder. Fails if the path does not exist,
+	/// or if the requested layer is not of type folder
+	/// This function respects mounted folders and will thus not contain the layers already
+	/// present in the document it a temporary folder is mounted on top
 	pub fn folder(&self, mut path: &[LayerId]) -> Result<&Folder, DocumentError> {
 		let mut root = &self.root;
 		if self.is_mounted(self.work_mount_path.as_slice(), path) {
@@ -79,6 +86,10 @@ impl Document {
 		Ok(root)
 	}
 
+	/// Returns a mutable reference to the requested folder. Fails if the path does not exist,
+	/// or if the requested layer is not of type folder
+	/// This function respects mounted folders and will thus not contain the layers already
+	/// present in the document it a temporary folder is mounted on top
 	pub fn folder_mut(&mut self, mut path: &[LayerId]) -> Result<&mut Folder, DocumentError> {
 		let mut root = if self.is_mounted(self.work_mount_path.as_slice(), path) {
 			path = &path[self.work_mount_path.len()..];
@@ -92,6 +103,10 @@ impl Document {
 		Ok(root)
 	}
 
+	/// Returns a reference to the requested folder. Fails if the path does not exist,
+	/// or if the requested layer is not of type folder
+	/// This function does **not** respect mounted folders and will always return the current
+	/// state of the document, disregarding any temporary modifications
 	pub fn document_folder(&self, path: &[LayerId]) -> Result<&Folder, DocumentError> {
 		let mut root = &self.root;
 		for id in path {
@@ -100,6 +115,10 @@ impl Document {
 		Ok(root)
 	}
 
+	/// Returns a mutable reference to the requested folder. Fails if the path does not exist,
+	/// or if the requested layer is not of type folder
+	/// This function does **not** respect mounted folders and will always return the current
+	/// state of the document, disregarding any temporary modifications
 	pub fn document_folder_mut(&mut self, path: &[LayerId]) -> Result<&mut Folder, DocumentError> {
 		let mut root = &mut self.root;
 		for id in path {
@@ -108,16 +127,19 @@ impl Document {
 		Ok(root)
 	}
 
+	/// Returns a reference to the layer struct at the specified `path`
 	pub fn layer(&self, path: &[LayerId]) -> Result<&Layer, DocumentError> {
 		let (path, id) = split_path(path)?;
 		self.folder(path)?.layer(id).ok_or(DocumentError::LayerNotFound)
 	}
 
+	/// Returns a mutable reference to the layer struct at the specified `path`
 	pub fn layer_mut(&mut self, path: &[LayerId]) -> Result<&mut Layer, DocumentError> {
 		let (path, id) = split_path(path)?;
 		self.folder_mut(path)?.layer_mut(id).ok_or(DocumentError::LayerNotFound)
 	}
 
+	/// Replaces the layer at the specified `path` with `layer`
 	pub fn set_layer(&mut self, path: &[LayerId], layer: Layer) -> Result<(), DocumentError> {
 		let mut folder = &mut self.root;
 		if let Ok((path, id)) = split_path(path) {
@@ -131,6 +153,7 @@ impl Document {
 		Ok(())
 	}
 
+	/// Adds a new layer to the folder specified by `path`
 	/// Passing a negative `insert_index` indexes relative to the end
 	/// -1 is equivalent to adding the layer to the top
 	pub fn add_layer(&mut self, path: &[LayerId], layer: Layer, insert_index: isize) -> Result<LayerId, DocumentError> {
@@ -138,12 +161,15 @@ impl Document {
 		folder.add_layer(layer, insert_index).ok_or(DocumentError::IndexOutOfBounds)
 	}
 
+	/// Deletes the layer specified by `path`
 	pub fn delete(&mut self, path: &[LayerId]) -> Result<(), DocumentError> {
 		let (path, id) = split_path(path)?;
 		self.document_folder_mut(path)?.remove_layer(id)?;
 		Ok(())
 	}
 
+	/// Returns a list of `LayerPanelEntry`'s intended for display purposes. These don't contain
+	/// any actual data, but rather meta data such as visibility and name of the layers
 	pub fn layer_panel(&self, path: &[LayerId]) -> Result<Vec<LayerPanelEntry>, DocumentError> {
 		let folder = self.document_folder(path)?;
 		let l_type = |layer: &LayerDataTypes| match layer {
@@ -159,13 +185,15 @@ impl Document {
 		Ok(entries)
 	}
 
-	pub fn handle_operation<F: Fn(Vec<DocumentResponse>)>(&mut self, operation: Operation, send_response: &F) -> Result<(), DocumentError> {
+	/// Mutate the document by applying the `operation` to it. If the operation necessitates a
+	/// reaction from the frontend, responses may be returned
+	pub fn handle_operation(&mut self, operation: Operation) -> Result<Option<Vec<DocumentResponse>>, DocumentError> {
 		self.work_operations.push(operation.clone());
-		match operation {
+		let responses = match operation {
 			Operation::AddCircle { path, insert_index, cx, cy, r, style } => {
 				self.add_layer(&path, Layer::new(LayerDataTypes::Circle(layers::Circle::new(kurbo::Point::new(cx, cy), r, style))), insert_index)?;
 
-				send_response(vec![self.render_root()]);
+				Some(vec![self.render_root()])
 			}
 			Operation::AddRect {
 				path,
@@ -182,7 +210,7 @@ impl Document {
 					insert_index,
 				)?;
 
-				send_response(vec![self.render_root()]);
+				Some(vec![self.render_root()])
 			}
 			Operation::AddLine {
 				path,
@@ -199,13 +227,13 @@ impl Document {
 					insert_index,
 				)?;
 
-				send_response(vec![self.render_root()]);
+				Some(vec![self.render_root()])
 			}
 			Operation::AddPen { path, insert_index, points, style } => {
 				let points: Vec<kurbo::Point> = points.into_iter().map(|it| it.into()).collect();
 				let polyline = PolyLine::new(points, style);
 				self.add_layer(&path, Layer::new(LayerDataTypes::PolyLine(polyline)), insert_index)?;
-				send_response(vec![self.render_root()]);
+				Some(vec![self.render_root()])
 			}
 			Operation::AddShape {
 				path,
@@ -220,29 +248,36 @@ impl Document {
 				let s = Shape::new(kurbo::Point::new(x0, y0), kurbo::Vec2 { x: x0 - x1, y: y0 - y1 }, sides, style);
 				self.add_layer(&path, Layer::new(LayerDataTypes::Shape(s)), insert_index)?;
 
-				send_response(vec![self.render_root()]);
+				Some(vec![self.render_root()])
 			}
 			Operation::DeleteLayer { path } => {
 				self.delete(&path)?;
 
-				send_response(vec![self.render_root()]);
+				Some(vec![self.render_root()])
 			}
-			Operation::AddFolder { path } => self.set_layer(&path, Layer::new(LayerDataTypes::Folder(Folder::default())))?,
+			Operation::AddFolder { path } => {
+				self.set_layer(&path, Layer::new(LayerDataTypes::Folder(Folder::default())))?;
+
+				Some(vec![self.render_root()])
+			}
 			Operation::MountWorkingFolder { path } => {
 				self.work_operations.clear();
 				self.work_mount_path = path;
 				self.work = Folder::default();
 				self.work_mounted = true;
+				None
 			}
 			Operation::DiscardWorkingFolder => {
 				self.work_operations.clear();
 				self.work_mount_path = vec![];
 				self.work = Folder::default();
 				self.work_mounted = false;
+				None
 			}
 			Operation::ClearWorkingFolder => {
 				self.work_operations.clear();
 				self.work = Folder::default();
+				None
 			}
 			Operation::CommitTransaction => {
 				let mut ops = Vec::new();
@@ -253,14 +288,21 @@ impl Document {
 				self.work_mounted = false;
 				self.work_mount_path = vec![];
 				self.work = Folder::default();
+				let mut responses = vec![];
 				for operation in ops.into_iter().take(len) {
-					self.handle_operation(operation, send_response)?
+					if let Some(op_responses) = self.handle_operation(operation)? {
+						for response in op_responses {
+							if !matches!(response, DocumentResponse::UpdateCanvas { .. }) {
+								responses.push(response);
+							}
+						}
+					}
 				}
 
 				let children = self.layer_panel(path.as_slice())?;
-				send_response(vec![self.render_root(), DocumentResponse::ExpandFolder { path, children }]);
+				Some(vec![self.render_root(), DocumentResponse::ExpandFolder { path, children }])
 			}
-		}
-		Ok(())
+		};
+		Ok(responses)
 	}
 }
