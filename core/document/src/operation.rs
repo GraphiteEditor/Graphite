@@ -12,6 +12,16 @@ pub enum Operation {
 		r: f64,
 		style: style::PathStyle,
 	},
+	AddEllipse {
+		path: Vec<LayerId>,
+		insert_index: isize,
+		cx: f64,
+		cy: f64,
+		rx: f64,
+		ry: f64,
+		rot: f64,
+		style: style::PathStyle,
+	},
 	AddRect {
 		path: Vec<LayerId>,
 		insert_index: isize,

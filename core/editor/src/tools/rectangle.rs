@@ -72,8 +72,6 @@ impl Fsm for RectangleToolFsmState {
 				RectangleToolFsmState::LmbDown
 			}
 			(RectangleToolFsmState::LmbDown, Event::LmbUp(mouse_state)) => {
-				let r = data.drag_start.distance(&mouse_state.position);
-				log::info!("draw rectangle with radius: {:.2}", r);
 				operations.push(Operation::ClearWorkingFolder);
 				let start = data.drag_start;
 				let end = mouse_state.position;

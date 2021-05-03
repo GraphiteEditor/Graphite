@@ -197,6 +197,24 @@ impl Document {
 
 				Some(vec![DocumentResponse::DocumentChanged])
 			}
+			Operation::AddEllipse {
+				path,
+				insert_index,
+				cx,
+				cy,
+				rx,
+				ry,
+				rot,
+				style,
+			} => {
+				self.add_layer(
+					&path,
+					Layer::new(LayerDataTypes::Ellipse(layers::Ellipse::new(kurbo::Point::new(cx, cy), kurbo::Vec2::new(rx, ry), rot, style))),
+					insert_index,
+				)?;
+
+				Some(vec![DocumentResponse::DocumentChanged])
+			}
 			Operation::AddRect {
 				path,
 				insert_index,

@@ -174,6 +174,8 @@ pub enum Key {
 	Key7,
 	Key8,
 	Key9,
+	KeyShift,
+	KeyAlt,
 }
 
 bitflags! {
