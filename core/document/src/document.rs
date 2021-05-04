@@ -193,7 +193,21 @@ impl Document {
 		self.work_operations.push(operation.clone());
 		let responses = match operation {
 			Operation::AddCircle { path, insert_index, cx, cy, r, style } => {
-				self.add_layer(&path, Layer::new(LayerDataTypes::Circle(layers::Circle::new(kurbo::Point::new(cx, cy), r, style))), insert_index)?;
+				self.add_layer(&path, Layer::new(LayerDataTypes::Circle(layers::Circle::new((cx, cy), r, style))), insert_index)?;
+
+				Some(vec![DocumentResponse::DocumentChanged])
+			}
+			Operation::AddEllipse {
+				path,
+				insert_index,
+				cx,
+				cy,
+				rx,
+				ry,
+				rot,
+				style,
+			} => {
+				self.add_layer(&path, Layer::new(LayerDataTypes::Ellipse(layers::Ellipse::new((cx, cy), (rx, ry), rot, style))), insert_index)?;
 
 				Some(vec![DocumentResponse::DocumentChanged])
 			}
@@ -206,11 +220,7 @@ impl Document {
 				y1,
 				style,
 			} => {
-				self.add_layer(
-					&path,
-					Layer::new(LayerDataTypes::Rect(Rect::new(kurbo::Point::new(x0, y0), kurbo::Point::new(x1, y1), style))),
-					insert_index,
-				)?;
+				self.add_layer(&path, Layer::new(LayerDataTypes::Rect(Rect::new((x0, y0), (x1, y1), style))), insert_index)?;
 
 				Some(vec![DocumentResponse::DocumentChanged])
 			}
@@ -223,11 +233,7 @@ impl Document {
 				y1,
 				style,
 			} => {
-				self.add_layer(
-					&path,
-					Layer::new(LayerDataTypes::Line(Line::new(kurbo::Point::new(x0, y0), kurbo::Point::new(x1, y1), style))),
-					insert_index,
-				)?;
+				self.add_layer(&path, Layer::new(LayerDataTypes::Line(Line::new((x0, y0), (x1, y1), style))), insert_index)?;
 
 				Some(vec![DocumentResponse::DocumentChanged])
 			}
@@ -247,7 +253,7 @@ impl Document {
 				sides,
 				style,
 			} => {
-				let s = Shape::new(kurbo::Point::new(x0, y0), kurbo::Vec2 { x: x0 - x1, y: y0 - y1 }, sides, style);
+				let s = Shape::new((x0, y0), (x0 - x1, y0 - y1), sides, style);
 				self.add_layer(&path, Layer::new(LayerDataTypes::Shape(s)), insert_index)?;
 
 				Some(vec![DocumentResponse::DocumentChanged])
