@@ -30,22 +30,7 @@ impl Dispatcher {
 				editor_state.tool_state.document_tool_data.primary_color = Color::BLACK;
 				editor_state.tool_state.document_tool_data.secondary_color = Color::WHITE;
 			}
-			Event::LmbDown(mouse_state) => {
-				editor_state.tool_state.document_tool_data.mouse_state = *mouse_state;
-			}
-			Event::RmbDown(mouse_state) => {
-				editor_state.tool_state.document_tool_data.mouse_state = *mouse_state;
-			}
-			Event::MmbDown(mouse_state) => {
-				editor_state.tool_state.document_tool_data.mouse_state = *mouse_state;
-			}
-			Event::LmbUp(mouse_state) => {
-				editor_state.tool_state.document_tool_data.mouse_state = *mouse_state;
-			}
-			Event::RmbUp(mouse_state) => {
-				editor_state.tool_state.document_tool_data.mouse_state = *mouse_state;
-			}
-			Event::MmbUp(mouse_state) => {
+			Event::LmbDown(mouse_state) | Event::RmbDown(mouse_state) | Event::MmbDown(mouse_state) | Event::LmbUp(mouse_state) | Event::RmbUp(mouse_state) | Event::MmbUp(mouse_state) => {
 				editor_state.tool_state.document_tool_data.mouse_state = *mouse_state;
 			}
 			Event::MouseMove(pos) => {

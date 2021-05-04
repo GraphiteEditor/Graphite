@@ -24,13 +24,14 @@ impl LayerData for PolyLine {
 			return;
 		}
 		let _ = write!(svg, r#"<polyline points=""#);
-		self.points.iter().for_each(|p| {
+		for p in &self.points {
 			let _ = write!(svg, " {:.3} {:.3}", p.x, p.y);
-		});
+		}
 		let _ = write!(svg, r#"" {}/>"#, self.style.render());
 	}
 }
 
+#[cfg(test)]
 #[test]
 fn polyline_should_render() {
 	let mut polyline = PolyLine {

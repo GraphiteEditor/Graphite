@@ -38,7 +38,7 @@ impl log::Log for WasmLog {
 			log::Level::Info => (info, "info", "color:#1b8"),
 			log::Level::Error => (error, "error", "color:red"),
 		};
-		let msg = &format!("{}", format_args!("%c{}\t{}", name, record.args()));
+		let msg = &format!("%c{}\t{}", name, record.args());
 		log(msg, color)
 	}
 	fn flush(&self) {}
