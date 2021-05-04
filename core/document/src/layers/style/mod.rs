@@ -15,8 +15,8 @@ impl Fill {
 	}
 	pub fn render(&self) -> String {
 		match self.color {
-			Some(c) => format!("fill: #{};", c.as_hex()),
-			None => format!("fill: none;"),
+			Some(c) => format!("fill: #{};", c.to_hex()),
+			None => "fill: none;".to_string(),
 		}
 	}
 }

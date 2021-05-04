@@ -31,6 +31,7 @@ impl LayerData for PolyLine {
 	}
 }
 
+#[cfg(test)]
 #[test]
 fn polyline_should_render() {
 	let mut polyline = PolyLine {
