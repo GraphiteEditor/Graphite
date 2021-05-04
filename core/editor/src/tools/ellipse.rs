@@ -138,7 +138,7 @@ fn make_operation(data: &EllipseToolData, tool_data: &DocumentToolData) -> Opera
 	let (cx, cy, r_scale) = if data.center_around_cursor { (x0, y0, 1.0) } else { ((x0 + x1) * 0.5, (y0 + y1) * 0.5, 0.5) };
 
 	if data.constrain_to_circle {
-		let r = f64::max((x1 - x0).abs(), (y1 - y0).abs()) * r_scale;
+		let r = ((x1 - x0).abs() + (y1 - y0).abs()) * 0.5 * r_scale;
 		Operation::AddCircle {
 			path: vec![],
 			insert_index: -1,
