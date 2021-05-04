@@ -3,6 +3,9 @@ pub mod style;
 pub mod circle;
 pub use circle::Circle;
 
+pub mod ellipse;
+pub use ellipse::Ellipse;
+
 pub mod line;
 pub use line::Line;
 
@@ -26,6 +29,7 @@ pub trait LayerData {
 pub enum LayerDataTypes {
 	Folder(Folder),
 	Circle(Circle),
+	Ellipse(Ellipse),
 	Rect(Rect),
 	Line(Line),
 	PolyLine(PolyLine),
@@ -37,6 +41,7 @@ impl LayerDataTypes {
 		match self {
 			Self::Folder(f) => f.render(svg),
 			Self::Circle(c) => c.render(svg),
+			Self::Ellipse(e) => e.render(svg),
 			Self::Rect(r) => r.render(svg),
 			Self::Line(l) => l.render(svg),
 			Self::PolyLine(pl) => pl.render(svg),
