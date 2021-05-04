@@ -33,7 +33,7 @@ impl Stroke {
 		Self { color, width }
 	}
 	pub fn render(&self) -> String {
-		format!("stroke: #{};stroke-width:{};", self.color.as_hex(), self.width)
+		format!("stroke: #{};stroke-width:{};", self.color.to_hex(), self.width)
 	}
 }
 
