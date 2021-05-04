@@ -62,7 +62,7 @@ impl std::fmt::Display for ShapePoints {
 #[doc(hidden)]
 pub struct ShapePathIter {
 	shape: ShapePoints,
-	ix: usize,
+	index: usize,
 }
 
 impl Iterator for ShapePathIter {
@@ -74,11 +74,11 @@ impl Iterator for ShapePathIter {
 			let sine = theta.sin();
 			Vec2::new(v.x * cosine - v.y * sine, v.x * sine + v.y * cosine)
 		}
-		self.ix += 1;
-		match self.ix {
+		self.index += 1;
+		match self.index {
 			1 => Some(PathEl::MoveTo(self.shape.center + self.shape.extent)),
 			_ => {
-				let radians = self.shape.apothem_offset_angle() * ((self.ix * 2 + (self.shape.sides % 2) as usize) as f64);
+				let radians = self.shape.apothem_offset_angle() * ((self.index * 2 + (self.shape.sides % 2) as usize) as f64);
 				let offset = rotate(&self.shape.extent, radians);
 				let point = self.shape.center + offset;
 				Some(PathEl::LineTo(point))

@@ -1,7 +1,5 @@
-use layers::PolyLine;
-
 use crate::{
-	layers::{self, Folder, Layer, LayerData, LayerDataTypes, Line, Rect, Shape},
+	layers::{self, Folder, Layer, LayerData, LayerDataTypes, Line, PolyLine, Rect, Shape},
 	response::{LayerPanelEntry, LayerType},
 	DocumentError, DocumentResponse, LayerId, Operation,
 };

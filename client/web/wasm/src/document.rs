@@ -7,6 +7,7 @@ use wasm_bindgen::prelude::*;
 fn convert_error(err: editor_core::EditorError) -> JsValue {
 	Error::new(&err.to_string()).into()
 }
+
 mod mouse_state {
 	pub(super) type MouseKeys = u8;
 	use editor_core::events::{self, Event, MouseState, ViewportPosition};
@@ -35,6 +36,7 @@ mod mouse_state {
 		}
 	}
 }
+
 /// Modify the currently selected tool in the document state store
 #[wasm_bindgen]
 pub fn select_tool(tool: String) -> Result<(), JsValue> {

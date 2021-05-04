@@ -55,7 +55,7 @@ impl Color {
 	pub fn components(&self) -> (f32, f32, f32, f32) {
 		(self.red, self.green, self.blue, self.alpha)
 	}
-	pub fn as_hex(&self) -> String {
+	pub fn to_hex(&self) -> String {
 		format!(
 			"{:02X?}{:02X?}{:02X?}{:02X?}",
 			(self.r() * 255.) as u8,

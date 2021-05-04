@@ -13,11 +13,12 @@ pub struct Folder {
 
 impl LayerData for Folder {
 	fn render(&mut self, svg: &mut String) {
-		self.layers.iter_mut().for_each(|layer| {
+		for layer in &mut self.layers {
 			let _ = writeln!(svg, "{}", layer.render());
-		});
+		}
 	}
 }
+
 impl Folder {
 	pub fn add_layer(&mut self, layer: Layer, insert_index: isize) -> Option<LayerId> {
 		let mut insert_index = insert_index as i128;

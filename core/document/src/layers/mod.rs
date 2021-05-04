@@ -36,16 +36,26 @@ pub enum LayerDataTypes {
 	Shape(Shape),
 }
 
+macro_rules! call_render {
+    ($self:ident.render($svg:ident) { $($variant:ident),* }) => {
+		match $self {
+			$(Self::$variant(x) => x.render($svg)),*
+		}
+	};
+}
+
 impl LayerDataTypes {
 	pub fn render(&mut self, svg: &mut String) {
-		match self {
-			Self::Folder(f) => f.render(svg),
-			Self::Circle(c) => c.render(svg),
-			Self::Ellipse(e) => e.render(svg),
-			Self::Rect(r) => r.render(svg),
-			Self::Line(l) => l.render(svg),
-			Self::PolyLine(pl) => pl.render(svg),
-			Self::Shape(s) => s.render(svg),
+		call_render! {
+			self.render(svg) {
+				Folder,
+				Circle,
+				Ellipse,
+				Rect,
+				Line,
+				PolyLine,
+				Shape
+			}
 		}
 	}
 }
