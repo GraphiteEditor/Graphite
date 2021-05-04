@@ -37,6 +37,9 @@ impl Default for EllipseToolFsmState {
 #[derive(Clone, Debug, Default)]
 struct EllipseToolData {
 	drag_start: ViewportPosition,
+	drag_current: ViewportPosition,
+	constrain_to_circle: bool,
+	center_around_cursor: bool,
 }
 
 impl Fsm for EllipseToolFsmState {
@@ -46,6 +49,7 @@ impl Fsm for EllipseToolFsmState {
 		match (self, event) {
 			(EllipseToolFsmState::Ready, Event::LmbDown(mouse_state)) => {
 				data.drag_start = mouse_state.position;
+				data.drag_current = mouse_state.position;
 				operations.push(Operation::MountWorkingFolder { path: vec![] });
 				EllipseToolFsmState::LmbDown
 			}
@@ -58,37 +62,102 @@ impl Fsm for EllipseToolFsmState {
 			}
 
 			(EllipseToolFsmState::LmbDown, Event::MouseMove(mouse_state)) => {
+				data.drag_current = *mouse_state;
+
 				operations.push(Operation::ClearWorkingFolder);
-				operations.push(Operation::AddCircle {
-					path: vec![],
-					insert_index: -1,
-					cx: data.drag_start.x as f64,
-					cy: data.drag_start.y as f64,
-					r: data.drag_start.distance(&mouse_state),
-					style: style::PathStyle::new(None, Some(style::Fill::new(tool_data.primary_color))),
-				});
+				operations.push(make_operation(data, tool_data));
 
 				EllipseToolFsmState::LmbDown
 			}
 
 			(EllipseToolFsmState::LmbDown, Event::LmbUp(mouse_state)) => {
-				let r = data.drag_start.distance(&mouse_state.position);
-				log::info!("draw ellipse with radius: {:.2}", r);
+				data.drag_current = mouse_state.position;
+
 				operations.push(Operation::ClearWorkingFolder);
-				operations.push(Operation::AddCircle {
-					path: vec![],
-					insert_index: -1,
-					cx: data.drag_start.x as f64,
-					cy: data.drag_start.y as f64,
-					r: data.drag_start.distance(&mouse_state.position),
-					style: style::PathStyle::new(None, Some(style::Fill::new(tool_data.primary_color))),
-				});
+				operations.push(make_operation(data, tool_data));
 				operations.push(Operation::CommitTransaction);
 
 				EllipseToolFsmState::Ready
 			}
 
+			(state, Event::KeyDown(Key::KeyShift)) => {
+				data.constrain_to_circle = true;
+
+				if state == EllipseToolFsmState::LmbDown {
+					operations.push(Operation::ClearWorkingFolder);
+					operations.push(make_operation(data, tool_data));
+				}
+
+				self
+			}
+
+			(state, Event::KeyUp(Key::KeyShift)) => {
+				data.constrain_to_circle = false;
+
+				if state == EllipseToolFsmState::LmbDown {
+					operations.push(Operation::ClearWorkingFolder);
+					operations.push(make_operation(data, tool_data));
+				}
+
+				self
+			}
+
+			(state, Event::KeyDown(Key::KeyAlt)) => {
+				data.center_around_cursor = true;
+
+				if state == EllipseToolFsmState::LmbDown {
+					operations.push(Operation::ClearWorkingFolder);
+					operations.push(make_operation(data, tool_data));
+				}
+
+				self
+			}
+
+			(state, Event::KeyUp(Key::KeyAlt)) => {
+				data.center_around_cursor = false;
+
+				if state == EllipseToolFsmState::LmbDown {
+					operations.push(Operation::ClearWorkingFolder);
+					operations.push(make_operation(data, tool_data));
+				}
+
+				self
+			}
+
 			_ => self,
+		}
+	}
+}
+
+fn make_operation(data: &EllipseToolData, tool_data: &DocumentToolData) -> Operation {
+	let x0 = data.drag_start.x as f64;
+	let y0 = data.drag_start.y as f64;
+	let x1 = data.drag_current.x as f64;
+	let y1 = data.drag_current.y as f64;
+
+	let (cx, cy, r_scale) = if data.center_around_cursor { (x0, y0, 1.0) } else { ((x0 + x1) * 0.5, (y0 + y1) * 0.5, 0.5) };
+
+	if data.constrain_to_circle {
+		let r = f64::max((x1 - x0).abs(), (y1 - y0).abs()) * r_scale;
+		Operation::AddCircle {
+			path: vec![],
+			insert_index: -1,
+			cx,
+			cy,
+			r,
+			style: style::PathStyle::new(None, Some(style::Fill::new(tool_data.primary_color))),
+		}
+	} else {
+		let (rx, ry) = ((x1 - x0).abs() * r_scale, (y1 - y0).abs() * r_scale);
+		Operation::AddEllipse {
+			path: vec![],
+			insert_index: -1,
+			cx,
+			cy,
+			rx,
+			ry,
+			rot: 0.0,
+			style: style::PathStyle::new(None, Some(style::Fill::new(tool_data.primary_color))),
 		}
 	}
 }
