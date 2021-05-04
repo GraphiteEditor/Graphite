@@ -20,14 +20,9 @@ impl Line {
 
 impl LayerData for Line {
 	fn render(&mut self, svg: &mut String) {
-		let _ = write!(
-			svg,
-			r#"<line x1="{}" y1="{}" x2="{}" y2="{}" {} />"#,
-			self.shape.p0.x,
-			self.shape.p0.y,
-			self.shape.p1.x,
-			self.shape.p1.y,
-			self.style.render(),
-		);
+		let kurbo::Point { x: x1, y: y1 } = self.shape.p0;
+		let kurbo::Point { x: x2, y: y2 } = self.shape.p1;
+
+		let _ = write!(svg, r#"<line x1="{}" y1="{}" x2="{}" y2="{}" {} />"#, x1, y1, x2, y2, self.style.render(),);
 	}
 }
