@@ -1,6 +1,8 @@
 use super::style;
 use super::LayerData;
 
+use std::fmt::Write;
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Line {
 	shape: kurbo::Line,
@@ -17,14 +19,15 @@ impl Line {
 }
 
 impl LayerData for Line {
-	fn render(&self) -> String {
-		format!(
+	fn render(&mut self, svg: &mut String) {
+		let _ = write!(
+			svg,
 			r#"<line x1="{}" y1="{}" x2="{}" y2="{}" {} />"#,
 			self.shape.p0.x,
 			self.shape.p0.y,
 			self.shape.p1.x,
 			self.shape.p1.y,
 			self.style.render(),
-		)
+		);
 	}
 }

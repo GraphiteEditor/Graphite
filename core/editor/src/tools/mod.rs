@@ -1,15 +1,15 @@
 mod crop;
 mod ellipse;
+mod eyedropper;
 mod line;
 mod navigate;
 mod path;
 mod pen;
 mod rectangle;
-mod sample;
 mod select;
 mod shape;
 
-use crate::events::{Event, ModKeys, MouseState, Response, Trace, TracePoint};
+use crate::events::{Event, ModKeys, MouseState, ToolResponse, Trace, TracePoint};
 use crate::Color;
 use crate::Document;
 use crate::EditorError;
@@ -17,12 +17,12 @@ use document_core::Operation;
 use std::{collections::HashMap, fmt};
 
 pub trait Tool {
-	fn handle_input(&mut self, event: &Event, document: &Document, tool_data: &DocumentToolData) -> (Vec<Response>, Vec<Operation>);
+	fn handle_input(&mut self, event: &Event, document: &Document, tool_data: &DocumentToolData) -> (Vec<ToolResponse>, Vec<Operation>);
 }
 
 pub trait Fsm {
 	type ToolData;
-	fn transition(self, event: &Event, document: &Document, tool_data: &DocumentToolData, data: &mut Self::ToolData, responses: &mut Vec<Response>, operations: &mut Vec<Operation>) -> Self;
+	fn transition(self, event: &Event, document: &Document, tool_data: &DocumentToolData, data: &mut Self::ToolData, responses: &mut Vec<ToolResponse>, operations: &mut Vec<Operation>) -> Self;
 }
 
 #[derive(Debug)]
@@ -61,7 +61,7 @@ impl Default for ToolFsmState {
 					Select => select::Select,
 					Crop => crop::Crop,
 					Navigate => navigate::Navigate,
-					Sample => sample::Sample,
+					Eyedropper => eyedropper::Eyedropper,
 					Path => path::Path,
 					Pen => pen::Pen,
 					Line => line::Line,
@@ -114,7 +114,7 @@ pub enum ToolType {
 	Select,
 	Crop,
 	Navigate,
-	Sample,
+	Eyedropper,
 	Text,
 	Fill,
 	Gradient,
@@ -142,7 +142,7 @@ impl fmt::Display for ToolType {
 			Select,
 			Crop,
 			Navigate,
-			Sample,
+			Eyedropper,
 			Text,
 			Fill,
 			Gradient,

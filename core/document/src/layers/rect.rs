@@ -1,6 +1,8 @@
 use super::style;
 use super::LayerData;
 
+use std::fmt::Write;
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Rect {
 	shape: kurbo::Rect,
@@ -17,14 +19,15 @@ impl Rect {
 }
 
 impl LayerData for Rect {
-	fn render(&self) -> String {
-		format!(
+	fn render(&mut self, svg: &mut String) {
+		let _ = write!(
+			svg,
 			r#"<rect x="{}" y="{}" width="{}" height="{}" {} />"#,
 			self.shape.min_x(),
 			self.shape.min_y(),
 			self.shape.width(),
 			self.shape.height(),
 			self.style.render(),
-		)
+		);
 	}
 }

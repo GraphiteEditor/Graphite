@@ -6,7 +6,8 @@
 	"scripts": {
 		"serve": "vue-cli-service serve || npm install && vue-cli-service serve",
 		"build": "vue-cli-service build || npm install && vue-cli-service build",
-		"lint": "vue-cli-service lint || npm install && vue-cli-service lint"
+		"lint": "vue-cli-service lint || (npm install && vue-cli-service lint)",
+		"lint-no-fix": "vue-cli-service lint --no-fix || (echo 'Please run `npm run lint`. If the linter execution fails, try running `npm install` first.' && false)"
 	},
 	"repository": {
 		"type": "git",

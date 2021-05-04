@@ -9,7 +9,7 @@
 	font-size: 0;
 
 	button {
-		fill: #fff;
+		fill: #ddd;
 		border-radius: 0;
 		margin: 0;
 
@@ -31,6 +31,7 @@
 
 		&.active {
 			background: #3194d6;
+			fill: #fff;
 		}
 
 		& + .icon-button {

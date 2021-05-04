@@ -1,6 +1,8 @@
 use crate::{layers::style, LayerId};
 
-#[derive(Debug, Clone, PartialEq)]
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub enum Operation {
 	AddCircle {
 		path: Vec<LayerId>,
@@ -8,6 +10,16 @@ pub enum Operation {
 		cx: f64,
 		cy: f64,
 		r: f64,
+		style: style::PathStyle,
+	},
+	AddEllipse {
+		path: Vec<LayerId>,
+		insert_index: isize,
+		cx: f64,
+		cy: f64,
+		rx: f64,
+		ry: f64,
+		rot: f64,
 		style: style::PathStyle,
 	},
 	AddRect {
@@ -26,6 +38,12 @@ pub enum Operation {
 		y0: f64,
 		x1: f64,
 		y1: f64,
+		style: style::PathStyle,
+	},
+	AddPen {
+		path: Vec<LayerId>,
+		insert_index: isize,
+		points: Vec<(f64, f64)>,
 		style: style::PathStyle,
 	},
 	AddShape {

@@ -8,6 +8,35 @@ fn convert_error(err: editor_core::EditorError) -> JsValue {
 	Error::new(&err.to_string()).into()
 }
 
+mod mouse_state {
+	pub(super) type MouseKeys = u8;
+	use editor_core::events::{self, Event, MouseState, ViewportPosition};
+	static mut MOUSE_STATE: MouseKeys = 0;
+
+	pub(super) fn translate_mouse_down(mod_keys: MouseKeys, position: ViewportPosition) -> Event {
+		translate_mouse_event(mod_keys, position, true)
+	}
+	pub(super) fn translate_mouse_up(mod_keys: MouseKeys, position: ViewportPosition) -> Event {
+		translate_mouse_event(mod_keys, position, false)
+	}
+
+	fn translate_mouse_event(mod_keys: MouseKeys, position: ViewportPosition, down: bool) -> Event {
+		let diff = unsafe { MOUSE_STATE } ^ mod_keys;
+		unsafe { MOUSE_STATE = mod_keys };
+		let mouse_keys = events::MouseKeys::from_bits(mod_keys).expect("invalid modifier keys");
+		let state = MouseState { position, mouse_keys };
+		match (down, diff) {
+			(true, 1) => Event::LmbDown(state),
+			(true, 2) => Event::RmbDown(state),
+			(true, 4) => Event::MmbDown(state),
+			(false, 1) => Event::LmbUp(state),
+			(false, 2) => Event::RmbUp(state),
+			(false, 4) => Event::MmbUp(state),
+			_ => panic!("two buttons where modified at the same time. modification: {:#010b}", diff),
+		}
+	}
+}
+
 /// Modify the currently selected tool in the document state store
 #[wasm_bindgen]
 pub fn select_tool(tool: String) -> Result<(), JsValue> {
@@ -30,11 +59,8 @@ pub fn on_mouse_move(x: u32, y: u32) -> Result<(), JsValue> {
 #[wasm_bindgen]
 pub fn on_mouse_down(x: u32, y: u32, mouse_keys: u8) -> Result<(), JsValue> {
 	// TODO: Convert these screenspace viewport coordinates to canvas coordinates based on the current zoom and pan
-	let mouse_keys = events::MouseKeys::from_bits(mouse_keys).expect("invalid modifier keys");
-	let ev = events::Event::MouseDown(events::MouseState {
-		position: events::ViewportPosition { x, y },
-		mouse_keys,
-	});
+	let pos = events::ViewportPosition { x, y };
+	let ev = mouse_state::translate_mouse_down(mouse_keys, pos);
 	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_event(ev)).map_err(convert_error)
 }
 
@@ -42,11 +68,8 @@ pub fn on_mouse_down(x: u32, y: u32, mouse_keys: u8) -> Result<(), JsValue> {
 #[wasm_bindgen]
 pub fn on_mouse_up(x: u32, y: u32, mouse_keys: u8) -> Result<(), JsValue> {
 	// TODO: Convert these screenspace viewport coordinates to canvas coordinates based on the current zoom and pan
-	let mouse_keys = events::MouseKeys::from_bits(mouse_keys).expect("invalid modifier keys");
-	let ev = events::Event::MouseUp(events::MouseState {
-		position: events::ViewportPosition { x, y },
-		mouse_keys,
-	});
+	let pos = events::ViewportPosition { x, y };
+	let ev = mouse_state::translate_mouse_up(mouse_keys, pos);
 	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_event(ev)).map_err(convert_error)
 }
 
