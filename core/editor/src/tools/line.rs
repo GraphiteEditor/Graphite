@@ -7,6 +7,8 @@ use document_core::Operation;
 
 use super::DocumentToolData;
 
+use std::f64::consts::PI;
+
 #[derive(Default)]
 pub struct Line {
 	fsm_state: LineToolFsmState,
@@ -37,6 +39,11 @@ impl Default for LineToolFsmState {
 #[derive(Clone, Debug, Default)]
 struct LineToolData {
 	drag_start: ViewportPosition,
+	drag_current: ViewportPosition,
+	angle: f64,
+	snap_angle: bool,
+	lock_angle: bool,
+	center_around_cursor: bool,
 }
 
 impl Fsm for LineToolFsmState {
@@ -46,52 +53,143 @@ impl Fsm for LineToolFsmState {
 		match (self, event) {
 			(LineToolFsmState::Ready, Event::LmbDown(mouse_state)) => {
 				data.drag_start = mouse_state.position;
+				data.drag_current = mouse_state.position;
+
 				operations.push(Operation::MountWorkingFolder { path: vec![] });
+
 				LineToolFsmState::LmbDown
 			}
 			(LineToolFsmState::Ready, Event::KeyDown(Key::KeyZ)) => {
 				if let Some(id) = document.root.list_layers().last() {
 					operations.push(Operation::DeleteLayer { path: vec![*id] })
 				}
+
 				LineToolFsmState::Ready
 			}
 			(LineToolFsmState::LmbDown, Event::MouseMove(mouse_state)) => {
+				data.drag_current = *mouse_state;
+
 				operations.push(Operation::ClearWorkingFolder);
-				let start = data.drag_start;
-				let end = mouse_state;
-				operations.push(Operation::AddLine {
-					path: vec![],
-					insert_index: -1,
-					x0: start.x as f64,
-					y0: start.y as f64,
-					x1: end.x as f64,
-					y1: end.y as f64,
-					style: style::PathStyle::new(Some(style::Stroke::new(tool_data.primary_color, 5.)), None),
-				});
+				operations.push(make_operation(data, tool_data));
 
 				LineToolFsmState::LmbDown
 			}
 			(LineToolFsmState::LmbDown, Event::LmbUp(mouse_state)) => {
-				let distance = data.drag_start.distance(&mouse_state.position);
-				log::info!("draw Line with distance: {:.2}", distance);
+				data.drag_current = mouse_state.position;
+
 				operations.push(Operation::ClearWorkingFolder);
-				let start = data.drag_start;
-				let end = mouse_state.position;
-				operations.push(Operation::AddLine {
-					path: vec![],
-					insert_index: -1,
-					x0: start.x as f64,
-					y0: start.y as f64,
-					x1: end.x as f64,
-					y1: end.y as f64,
-					style: style::PathStyle::new(Some(style::Stroke::new(tool_data.primary_color, 5.)), None),
-				});
-				operations.push(Operation::CommitTransaction);
+				if data.drag_start != data.drag_current {
+					operations.push(make_operation(data, tool_data));
+					operations.push(Operation::CommitTransaction);
+				}
 
 				LineToolFsmState::Ready
 			}
 
+			(state, Event::KeyDown(Key::KeyShift)) => {
+				data.snap_angle = true;
+
+				if state == LineToolFsmState::LmbDown {
+					operations.push(Operation::ClearWorkingFolder);
+					operations.push(make_operation(data, tool_data));
+				}
+
+				self
+			}
+
+			(state, Event::KeyUp(Key::KeyShift)) => {
+				data.snap_angle = false;
+
+				if state == LineToolFsmState::LmbDown {
+					operations.push(Operation::ClearWorkingFolder);
+					operations.push(make_operation(data, tool_data));
+				}
+
+				self
+			}
+
+			(state, Event::KeyDown(Key::KeyControl)) => {
+				data.lock_angle = true;
+
+				if state == LineToolFsmState::LmbDown {
+					operations.push(Operation::ClearWorkingFolder);
+					operations.push(make_operation(data, tool_data));
+				}
+
+				self
+			}
+
+			(state, Event::KeyUp(Key::KeyControl)) => {
+				data.lock_angle = false;
+
+				if state == LineToolFsmState::LmbDown {
+					operations.push(Operation::ClearWorkingFolder);
+					operations.push(make_operation(data, tool_data));
+				}
+
+				self
+			}
+
+			(state, Event::KeyDown(Key::KeyAlt)) => {
+				data.center_around_cursor = true;
+
+				if state == LineToolFsmState::LmbDown {
+					operations.push(Operation::ClearWorkingFolder);
+					operations.push(make_operation(data, tool_data));
+				}
+
+				self
+			}
+
+			(state, Event::KeyUp(Key::KeyAlt)) => {
+				data.center_around_cursor = false;
+
+				if state == LineToolFsmState::LmbDown {
+					operations.push(Operation::ClearWorkingFolder);
+					operations.push(make_operation(data, tool_data));
+				}
+
+				self
+			}
+
 			_ => self,
 		}
+	}
+}
+
+fn make_operation(data: &mut LineToolData, tool_data: &DocumentToolData) -> Operation {
+	let x0 = data.drag_start.x as f64;
+	let y0 = data.drag_start.y as f64;
+	let x1 = data.drag_current.x as f64;
+	let y1 = data.drag_current.y as f64;
+
+	let (dx, dy) = (x1 - x0, y1 - y0);
+	let mut angle = f64::atan2(dx, dy);
+
+	if data.lock_angle {
+		angle = data.angle
+	};
+
+	if data.snap_angle {
+		let snap_resolution = 12.0;
+		angle = (angle * snap_resolution / PI).round() / snap_resolution * PI;
+	}
+
+	data.angle = angle;
+
+	let (dir_x, dir_y) = (f64::sin(angle), f64::cos(angle));
+	let projected_length = dx * dir_x + dy * dir_y;
+	let (x1, y1) = (x0 + dir_x * projected_length, y0 + dir_y * projected_length);
+
+	let (x0, y0) = if data.center_around_cursor { (x0 - (x1 - x0), y0 - (y1 - y0)) } else { (x0, y0) };
+
+	Operation::AddLine {
+		path: vec![],
+		insert_index: -1,
+		x0,
+		y0,
+		x1,
+		y1,
+		style: style::PathStyle::new(Some(style::Stroke::new(tool_data.primary_color, 5.)), None),
 	}
 }

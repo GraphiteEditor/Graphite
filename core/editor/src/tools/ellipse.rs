@@ -74,8 +74,10 @@ impl Fsm for EllipseToolFsmState {
 				data.drag_current = mouse_state.position;
 
 				operations.push(Operation::ClearWorkingFolder);
-				operations.push(make_operation(data, tool_data));
-				operations.push(Operation::CommitTransaction);
+				if data.drag_start != data.drag_current {
+					operations.push(make_operation(data, tool_data));
+					operations.push(Operation::CommitTransaction);
+				}
 
 				EllipseToolFsmState::Ready
 			}
