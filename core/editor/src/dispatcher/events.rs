@@ -165,8 +165,8 @@ impl Default for CanvasTransform {
 	fn default() -> Self {
 		Self {
 			location: CanvasPosition::default(),
-			scale: 2.,
-			rotation: 0.,
+			scale: 1.,
+			rotation: 45.,
 		}
 	}
 }
