@@ -34,6 +34,7 @@ pub enum Event {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[repr(C)]
 pub enum ToolResponse {
+	// These may not have the same names as any of the DocumentResponses
 	SetActiveTool { tool_name: String },
 	UpdateCanvas { document: String },
 }

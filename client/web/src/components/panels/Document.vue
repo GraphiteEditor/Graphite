@@ -180,7 +180,7 @@
 
 <script lang="ts">
 import { defineComponent } from "vue";
-import { ResponseType, registerResponseHandler } from "../../response-handler";
+import { ResponseType, registerResponseHandler, Response, UpdateCanvas, SetActiveTool } from "../../response-handler";
 import LayoutRow from "../layout/LayoutRow.vue";
 import LayoutCol from "../layout/LayoutCol.vue";
 import ShelfItem from "../widgets/ShelfItem.vue";
@@ -324,13 +324,13 @@ export default defineComponent({
 		},
 	},
 	mounted() {
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any
-		registerResponseHandler(ResponseType["Tool::UpdateCanvas"], (responseData: any) => {
-			this.viewportSvg = responseData.Tool.UpdateCanvas.document;
+		registerResponseHandler(ResponseType.UpdateCanvas, (responseData: Response) => {
+			const updateData = responseData as UpdateCanvas;
+			if (updateData.document) this.viewportSvg = updateData.document;
 		});
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any
-		registerResponseHandler(ResponseType["Tool::SetActiveTool"], (responseData: any) => {
-			this.activeTool = responseData.Tool.SetActiveTool.tool_name;
+		registerResponseHandler(ResponseType.SetActiveTool, (responseData: Response) => {
+			const toolData = responseData as SetActiveTool;
+			if (toolData.tool_name) this.activeTool = toolData.tool_name;
 		});
 
 		window.addEventListener("keyup", (e: KeyboardEvent) => this.keyUp(e));
