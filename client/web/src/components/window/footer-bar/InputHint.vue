@@ -70,14 +70,16 @@
 	}
 
 	.input-mouse {
-		font-size: 0;
-
 		.bright {
 			fill: #ddd;
 		}
 
 		.dim {
 			fill: #888;
+		}
+
+		svg {
+			vertical-align: top;
 		}
 	}
 }

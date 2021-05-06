@@ -24,7 +24,7 @@
 		padding: 0;
 		line-height: 22px;
 		color: #ddd;
-		font-size: 14px;
+		font-size: inherit;
 		text-align: center;
 		font-family: inherit;
 
