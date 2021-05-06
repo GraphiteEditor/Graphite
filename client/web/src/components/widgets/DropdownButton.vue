@@ -13,6 +13,7 @@
 	outline: none;
 	border: none;
 	border-radius: 2px;
+	vertical-align: top;
 	background: #111;
 	fill: #ddd;
 

@@ -8,17 +8,10 @@
 .icon-container {
 	display: inline-block;
 	flex: 0 0 auto;
-	outline: none;
-	border: none;
-	padding: 0;
+	fill: #ddd;
+	vertical-align: top;
 	width: 16px;
 	height: 16px;
-	background: none;
-	font-weight: bold;
-	font-size: 10px;
-	border-radius: 2px;
-	color: #ddd;
-	fill: #ddd;
 
 	&:not(.gap-after) + .icon-container {
 		margin-left: 0;
