@@ -18,12 +18,14 @@
 						<IconButton v-if="layerId % 2 == 0" @click="hideLayer(layerId)" :size="24" title="Visible"><EyeVisible /></IconButton>
 						<IconButton v-if="layerId % 2 == 1" @click="showLayer(layerId)" :size="24" title="Hidden"><EyeHidden /></IconButton>
 					</div>
-					<div class="layer-thumbnail"></div>
-					<div class="layer-type-icon">
-						<IconContainer :size="24" title="Path"><NodeTypePath /></IconContainer>
-					</div>
-					<div class="layer-name">
-						<span>Foo bar</span>
+					<div class="layer">
+						<div class="layer-thumbnail"></div>
+						<div class="layer-type-icon">
+							<IconContainer :size="24" title="Path"><NodeTypePath /></IconContainer>
+						</div>
+						<div class="layer-name">
+							<span>Foo bar</span>
+						</div>
 					</div>
 				</div>
 			</LayoutCol>
@@ -41,15 +43,27 @@
 
 	.layer-row {
 		display: flex;
-		height: 24px;
+		height: 36px;
 		align-items: center;
+		margin: 0 8px;
+
+		.layer {
+			display: flex;
+			align-items: center;
+			background: #555;
+			border-radius: 4px;
+			width: 100%;
+			height: 100%;
+			margin-left: 4px;
+			padding-left: 16px;
+		}
 
 		& + .layer-row {
 			margin-top: 2px;
 		}
 
 		.layer-thumbnail {
-			width: 36px;
+			width: 64px;
 			height: 100%;
 			background: white;
 		}
