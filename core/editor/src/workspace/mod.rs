@@ -1,5 +1,8 @@
-pub type PanelId = usize;
+use serde::{Deserialize, Serialize};
 
+pub type PanelId = u32;
+
+#[derive(Debug, Default, Serialize, Deserialize)]
 pub struct Workspace {
 	pub hovered_panel: PanelId,
 	pub root: PanelGroup,
@@ -15,12 +18,18 @@ impl Workspace {
 	// add panel / panel group
 	// delete panel / panel group
 	// move panel / panel group
-	// get_serialized_layout()
 }
 
+#[derive(Debug, Serialize, Deserialize)]
 pub struct PanelGroup {
 	pub contents: Vec<Contents>,
 	pub layout_direction: LayoutDirection,
+}
+
+impl Default for PanelGroup {
+	fn default() -> Self {
+		Self::new()
+	}
 }
 
 impl PanelGroup {
@@ -32,16 +41,19 @@ impl PanelGroup {
 	}
 }
 
+#[derive(Debug, Serialize, Deserialize)]
 pub enum Contents {
 	PanelArea(PanelArea),
 	Group(PanelGroup),
 }
 
+#[derive(Debug, Serialize, Deserialize)]
 pub struct PanelArea {
 	pub panels: Vec<PanelId>,
 	pub active: PanelId,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
 pub enum LayoutDirection {
 	Horizontal,
 	Vertical,
