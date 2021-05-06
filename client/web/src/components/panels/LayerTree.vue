@@ -9,21 +9,19 @@
 			<LayoutCol :class="'list'">
 				<div
 					class="layer-row"
-					v-for="layerId in Array(5)
-						.fill()
-						.map((_, i) => i)"
-					:key="layerId"
+					v-for="layer in layers"
+					:key="layer.path"
 				>
 					<div class="layer-visibility">
-						<IconButton @click="hideLayer(layerId)" :size="24" title="Visible"><EyeVisible /></IconButton>
-						<IconButton @click="showLayer(layerId)" :size="24" title="Hidden"><EyeHidden /></IconButton>
+						<IconButton @click="hideLayer(layer.path)" :size="24" title="Visible"><EyeVisible /></IconButton>
+						<IconButton @click="showLayer(layer.path)" :size="24" title="Hidden"><EyeHidden /></IconButton>
 					</div>
 					<div class="layer-thumbnail"></div>
 					<div class="layer-type-icon">
 						<IconContainer :size="24" title="Path"><NodeTypePath /></IconContainer>
 					</div>
 					<div class="layer-name">
-						<span>Foo bar</span>
+						<span>{{layer.name}}</span>
 					</div>
 				</div>
 			</LayoutCol>
@@ -94,10 +92,10 @@ export default defineComponent({
 	},
 	props: {},
 	methods: {
-		hideLayer(layerId: number) {
+		hideLayer(layerId: LayerPanelEntry) {
 			console.log(`Hidden layer ID: ${layerId}`);
 		},
-		showLayer(layerId: number) {
+		showLayer(layerId: LayerPanelEntry) {
 			console.log(`Shown layer ID: ${layerId}`);
 		},
 	},
