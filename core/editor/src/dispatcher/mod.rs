@@ -105,6 +105,7 @@ impl Dispatcher {
 					_ => (),
 				}
 			}
+			_ => todo!("Implement layer handling"),
 		}
 
 		let (mut tool_responses, operations) = editor_state

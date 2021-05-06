@@ -2,6 +2,7 @@ use crate::tools::ToolType;
 use crate::Color;
 use bitflags::bitflags;
 
+use document_core::LayerId;
 use serde::{Deserialize, Serialize};
 
 #[doc(inline)]
@@ -18,6 +19,12 @@ pub enum Event {
 	SelectTool(ToolType),
 	SelectPrimaryColor(Color),
 	SelectSecondaryColor(Color),
+	SelectLayer(Vec<LayerId>),
+	ToggleLayerVisibility(Vec<LayerId>),
+	ToggleLayerExpansion(Vec<LayerId>),
+	DeleteLayer(Vec<LayerId>),
+	AddLayer(Vec<LayerId>),
+	RenameLayer(Vec<LayerId>, String),
 	SwapColors,
 	ResetColors,
 	LmbDown(MouseState),

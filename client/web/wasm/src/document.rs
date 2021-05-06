@@ -1,7 +1,7 @@
 use crate::shims::Error;
 use crate::wrappers::{translate_key, translate_tool, Color};
 use crate::EDITOR_STATE;
-use editor_core::events;
+use editor_core::{events, LayerId};
 use wasm_bindgen::prelude::*;
 
 fn convert_error(err: editor_core::EditorError) -> JsValue {
@@ -115,4 +115,46 @@ pub fn swap_colors() -> Result<(), JsValue> {
 #[wasm_bindgen]
 pub fn reset_colors() -> Result<(), JsValue> {
 	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_event(events::Event::ResetColors)).map_err(convert_error)
+}
+
+/// Select a layer from the layer list
+#[wasm_bindgen]
+pub fn select_layer(path: Vec<LayerId>) -> Result<(), JsValue> {
+	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_event(events::Event::SelectLayer(path))).map_err(convert_error)
+}
+
+/// Toggle visibility of a layer from the layer list
+#[wasm_bindgen]
+pub fn toggle_layer_visibility(path: Vec<LayerId>) -> Result<(), JsValue> {
+	EDITOR_STATE
+		.with(|editor| editor.borrow_mut().handle_event(events::Event::ToggleLayerVisibility(path)))
+		.map_err(convert_error)
+}
+
+/// Toggle expansions state of a layer from the layer list
+#[wasm_bindgen]
+pub fn toggle_layer_expansion(path: Vec<LayerId>) -> Result<(), JsValue> {
+	EDITOR_STATE
+		.with(|editor| editor.borrow_mut().handle_event(events::Event::ToggleLayerExpansion(path)))
+		.map_err(convert_error)
+}
+
+///  Renames a layer from the layer list
+#[wasm_bindgen]
+pub fn rename_layer(path: Vec<LayerId>, name: String) -> Result<(), JsValue> {
+	EDITOR_STATE
+		.with(|editor| editor.borrow_mut().handle_event(events::Event::RenameLayer(path, name)))
+		.map_err(convert_error)
+}
+
+///  Deletes a layer from the layer list
+#[wasm_bindgen]
+pub fn delete_layer(path: Vec<LayerId>, name: String) -> Result<(), JsValue> {
+	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_event(events::Event::DeleteLayer(path))).map_err(convert_error)
+}
+
+///  Deletes a layer from the layer list
+#[wasm_bindgen]
+pub fn add_layer(path: Vec<LayerId>) -> Result<(), JsValue> {
+	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_event(events::Event::AddLayer(path))).map_err(convert_error)
 }
