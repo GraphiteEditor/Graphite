@@ -8,7 +8,6 @@
 .shelf-item {
 	padding: 4px;
 	border-radius: 2px;
-	font-size: 0;
 
 	&:hover {
 		background: #666;
@@ -21,6 +20,7 @@
 	svg {
 		width: 24px;
 		height: 24px;
+		vertical-align: top;
 	}
 }
 </style>

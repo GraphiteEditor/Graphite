@@ -8,17 +8,15 @@
 .icon-button {
 	display: inline-block;
 	flex: 0 0 auto;
+	padding: 0;
 	outline: none;
 	border: none;
-	padding: 0;
+	border-radius: 2px;
+	background: none;
+	vertical-align: top;
+	fill: #ddd;
 	width: 16px;
 	height: 16px;
-	background: none;
-	font-weight: bold;
-	font-size: 10px;
-	border-radius: 2px;
-	color: #ddd;
-	fill: #ddd;
 
 	&:not(.gap-after) + .icon-button {
 		margin-left: 0;

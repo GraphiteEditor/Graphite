@@ -153,10 +153,6 @@
 					margin-bottom: -8px;
 				}
 			}
-
-			.swap-and-reset {
-				font-size: 0;
-			}
 		}
 
 		.viewport {
