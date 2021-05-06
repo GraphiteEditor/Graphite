@@ -1,4 +1,4 @@
-use crate::events::{Event, ToolResponse};
+use crate::events::{CanvasTransform, Event, ToolResponse};
 use crate::events::{Key, ViewportPosition};
 use crate::tools::{Fsm, Tool};
 use crate::Document;
@@ -14,10 +14,10 @@ pub struct Ellipse {
 }
 
 impl Tool for Ellipse {
-	fn handle_input(&mut self, event: &Event, document: &Document, tool_data: &DocumentToolData) -> (Vec<ToolResponse>, Vec<Operation>) {
+	fn handle_input(&mut self, event: &Event, document: &Document, tool_data: &DocumentToolData, canvas_transform: &CanvasTransform) -> (Vec<ToolResponse>, Vec<Operation>) {
 		let mut responses = Vec::new();
 		let mut operations = Vec::new();
-		self.fsm_state = self.fsm_state.transition(event, document, tool_data, &mut self.data, &mut responses, &mut operations);
+		self.fsm_state = self.fsm_state.transition(event, document, tool_data, &mut self.data, canvas_transform, &mut responses, &mut operations);
 
 		(responses, operations)
 	}
@@ -45,7 +45,16 @@ struct EllipseToolData {
 impl Fsm for EllipseToolFsmState {
 	type ToolData = EllipseToolData;
 
-	fn transition(self, event: &Event, document: &Document, tool_data: &DocumentToolData, data: &mut Self::ToolData, _responses: &mut Vec<ToolResponse>, operations: &mut Vec<Operation>) -> Self {
+	fn transition(
+		self,
+		event: &Event,
+		document: &Document,
+		tool_data: &DocumentToolData,
+		data: &mut Self::ToolData,
+		canvas_transform: &CanvasTransform,
+		_responses: &mut Vec<ToolResponse>,
+		operations: &mut Vec<Operation>,
+	) -> Self {
 		match (self, event) {
 			(EllipseToolFsmState::Ready, Event::LmbDown(mouse_state)) => {
 				data.drag_start = mouse_state.position;
@@ -65,7 +74,7 @@ impl Fsm for EllipseToolFsmState {
 				data.drag_current = *mouse_state;
 
 				operations.push(Operation::ClearWorkingFolder);
-				operations.push(make_operation(data, tool_data));
+				operations.push(make_operation(data, tool_data, canvas_transform));
 
 				EllipseToolFsmState::LmbDown
 			}
@@ -74,7 +83,7 @@ impl Fsm for EllipseToolFsmState {
 				data.drag_current = mouse_state.position;
 
 				operations.push(Operation::ClearWorkingFolder);
-				operations.push(make_operation(data, tool_data));
+				operations.push(make_operation(data, tool_data, canvas_transform));
 				operations.push(Operation::CommitTransaction);
 
 				EllipseToolFsmState::Ready
@@ -85,7 +94,7 @@ impl Fsm for EllipseToolFsmState {
 
 				if state == EllipseToolFsmState::LmbDown {
 					operations.push(Operation::ClearWorkingFolder);
-					operations.push(make_operation(data, tool_data));
+					operations.push(make_operation(data, tool_data, canvas_transform));
 				}
 
 				self
@@ -96,7 +105,7 @@ impl Fsm for EllipseToolFsmState {
 
 				if state == EllipseToolFsmState::LmbDown {
 					operations.push(Operation::ClearWorkingFolder);
-					operations.push(make_operation(data, tool_data));
+					operations.push(make_operation(data, tool_data, canvas_transform));
 				}
 
 				self
@@ -107,7 +116,7 @@ impl Fsm for EllipseToolFsmState {
 
 				if state == EllipseToolFsmState::LmbDown {
 					operations.push(Operation::ClearWorkingFolder);
-					operations.push(make_operation(data, tool_data));
+					operations.push(make_operation(data, tool_data, canvas_transform));
 				}
 
 				self
@@ -118,7 +127,7 @@ impl Fsm for EllipseToolFsmState {
 
 				if state == EllipseToolFsmState::LmbDown {
 					operations.push(Operation::ClearWorkingFolder);
-					operations.push(make_operation(data, tool_data));
+					operations.push(make_operation(data, tool_data, canvas_transform));
 				}
 
 				self
@@ -129,11 +138,11 @@ impl Fsm for EllipseToolFsmState {
 	}
 }
 
-fn make_operation(data: &EllipseToolData, tool_data: &DocumentToolData) -> Operation {
-	let x0 = data.drag_start.x as f64;
-	let y0 = data.drag_start.y as f64;
-	let x1 = data.drag_current.x as f64;
-	let y1 = data.drag_current.y as f64;
+fn make_operation(data: &EllipseToolData, tool_data: &DocumentToolData, canvas_transform: &CanvasTransform) -> Operation {
+	let x0 = data.drag_start.to_canvas_position(canvas_transform).x;
+	let y0 = data.drag_start.to_canvas_position(canvas_transform).y;
+	let x1 = data.drag_current.to_canvas_position(canvas_transform).x;
+	let y1 = data.drag_current.to_canvas_position(canvas_transform).y;
 
 	if data.constrain_to_circle {
 		let (cx, cy, r) = if data.center_around_cursor {

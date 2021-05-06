@@ -9,7 +9,7 @@ mod rectangle;
 mod select;
 mod shape;
 
-use crate::events::{Event, ModKeys, MouseState, ToolResponse, Trace, TracePoint};
+use crate::events::{CanvasTransform, Event, ModKeys, MouseState, ToolResponse, Trace, TracePoint};
 use crate::Color;
 use crate::Document;
 use crate::EditorError;
@@ -17,12 +17,21 @@ use document_core::Operation;
 use std::{collections::HashMap, fmt};
 
 pub trait Tool {
-	fn handle_input(&mut self, event: &Event, document: &Document, tool_data: &DocumentToolData) -> (Vec<ToolResponse>, Vec<Operation>);
+	fn handle_input(&mut self, event: &Event, document: &Document, tool_data: &DocumentToolData, canvas_transform: &CanvasTransform) -> (Vec<ToolResponse>, Vec<Operation>);
 }
 
 pub trait Fsm {
 	type ToolData;
-	fn transition(self, event: &Event, document: &Document, tool_data: &DocumentToolData, data: &mut Self::ToolData, responses: &mut Vec<ToolResponse>, operations: &mut Vec<Operation>) -> Self;
+	fn transition(
+		self,
+		event: &Event,
+		document: &Document,
+		tool_data: &DocumentToolData,
+		data: &mut Self::ToolData,
+		canvas_transform: &CanvasTransform,
+		responses: &mut Vec<ToolResponse>,
+		operations: &mut Vec<Operation>,
+	) -> Self;
 }
 
 #[derive(Debug)]

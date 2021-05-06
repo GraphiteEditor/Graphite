@@ -1,5 +1,5 @@
-use crate::events::{Event, ToolResponse};
-use crate::events::{Key, ViewportPosition};
+use crate::events::{CanvasPosition, Key, ViewportPosition};
+use crate::events::{CanvasTransform, Event, ToolResponse};
 use crate::tools::{Fsm, Tool};
 use crate::Document;
 use document_core::layers::style;
@@ -14,10 +14,10 @@ pub struct Shape {
 }
 
 impl Tool for Shape {
-	fn handle_input(&mut self, event: &Event, document: &Document, tool_data: &DocumentToolData) -> (Vec<ToolResponse>, Vec<Operation>) {
+	fn handle_input(&mut self, event: &Event, document: &Document, tool_data: &DocumentToolData, canvas_transform: &CanvasTransform) -> (Vec<ToolResponse>, Vec<Operation>) {
 		let mut responses = Vec::new();
 		let mut operations = Vec::new();
-		self.fsm_state = self.fsm_state.transition(event, document, tool_data, &mut self.data, &mut responses, &mut operations);
+		self.fsm_state = self.fsm_state.transition(event, document, tool_data, &mut self.data, canvas_transform, &mut responses, &mut operations);
 
 		(responses, operations)
 	}
@@ -43,7 +43,16 @@ struct ShapeToolData {
 impl Fsm for ShapeToolFsmState {
 	type ToolData = ShapeToolData;
 
-	fn transition(self, event: &Event, document: &Document, tool_data: &DocumentToolData, data: &mut Self::ToolData, _responses: &mut Vec<ToolResponse>, operations: &mut Vec<Operation>) -> Self {
+	fn transition(
+		self,
+		event: &Event,
+		document: &Document,
+		tool_data: &DocumentToolData,
+		data: &mut Self::ToolData,
+		canvas_transform: &CanvasTransform,
+		_responses: &mut Vec<ToolResponse>,
+		operations: &mut Vec<Operation>,
+	) -> Self {
 		match (self, event) {
 			(ShapeToolFsmState::Ready, Event::LmbDown(mouse_state)) => {
 				data.drag_start = mouse_state.position;
@@ -58,15 +67,15 @@ impl Fsm for ShapeToolFsmState {
 			}
 			(ShapeToolFsmState::LmbDown, Event::MouseMove(mouse_state)) => {
 				operations.push(Operation::ClearWorkingFolder);
-				let start = data.drag_start;
-				let end = mouse_state;
+				let start = data.drag_start.to_canvas_position(canvas_transform);
+				let end = mouse_state.to_canvas_position(canvas_transform);
 				operations.push(Operation::AddShape {
 					path: vec![],
 					insert_index: -1,
-					x0: start.x as f64,
-					y0: start.y as f64,
-					x1: end.x as f64,
-					y1: end.y as f64,
+					x0: start.x,
+					y0: start.y,
+					x1: end.x,
+					y1: end.y,
 					sides: 6,
 					style: style::PathStyle::new(None, Some(style::Fill::new(tool_data.primary_color))),
 				});
@@ -77,19 +86,20 @@ impl Fsm for ShapeToolFsmState {
 				let r = data.drag_start.distance(&mouse_state.position);
 				log::info!("Draw Shape with radius: {:.2}", r);
 
-				let start = data.drag_start;
-				let end = mouse_state.position;
+				let start = data.drag_start.to_canvas_position(canvas_transform);
+				let end = mouse_state.position.to_canvas_position(canvas_transform);
 				// TODO: Set the sides value and use it for the operation.
 				// let sides = data.sides;
 				let sides = 6;
 				operations.push(Operation::ClearWorkingFolder);
+				log::info!("Shape: start {},{} end {},{}", start.x, start.y, end.x, end.y);
 				operations.push(Operation::AddShape {
 					path: vec![],
 					insert_index: -1,
-					x0: start.x as f64,
-					y0: start.y as f64,
-					x1: end.x as f64,
-					y1: end.y as f64,
+					x0: start.x,
+					y0: start.y,
+					x1: end.x,
+					y1: end.y,
 					sides,
 					style: style::PathStyle::new(None, Some(style::Fill::new(tool_data.primary_color))),
 				});

@@ -1,5 +1,5 @@
 use crate::events::{Event, ToolResponse};
-use crate::events::{Key, ViewportPosition};
+use crate::events::{Key, CanvasPosition, CanvasTransform};
 use crate::tools::{Fsm, Tool};
 use crate::Document;
 
@@ -15,10 +15,10 @@ pub struct Pen {
 }
 
 impl Tool for Pen {
-	fn handle_input(&mut self, event: &Event, document: &Document, tool_data: &DocumentToolData) -> (Vec<ToolResponse>, Vec<Operation>) {
+	fn handle_input(&mut self, event: &Event, document: &Document, tool_data: &DocumentToolData, canvas_transform: &CanvasTransform) -> (Vec<ToolResponse>, Vec<Operation>) {
 		let mut responses = Vec::new();
 		let mut operations = Vec::new();
-		self.fsm_state = self.fsm_state.transition(event, document, tool_data, &mut self.data, &mut responses, &mut operations);
+		self.fsm_state = self.fsm_state.transition(event, document, tool_data, &mut self.data, canvas_transform, &mut responses, &mut operations);
 
 		(responses, operations)
 	}
@@ -37,13 +37,22 @@ impl Default for PenToolFsmState {
 }
 #[derive(Clone, Debug, Default)]
 struct PenToolData {
-	points: Vec<ViewportPosition>,
+	points: Vec<CanvasPosition>,
 }
 
 impl Fsm for PenToolFsmState {
 	type ToolData = PenToolData;
 
-	fn transition(self, event: &Event, document: &Document, tool_data: &DocumentToolData, data: &mut Self::ToolData, _responses: &mut Vec<ToolResponse>, operations: &mut Vec<Operation>) -> Self {
+	fn transition(
+		self,
+		event: &Event,
+		document: &Document,
+		tool_data: &DocumentToolData,
+		data: &mut Self::ToolData,
+		canvas_transform: &CanvasTransform,
+		_responses: &mut Vec<ToolResponse>,
+		operations: &mut Vec<Operation>,
+	) -> Self {
 		let stroke = style::Stroke::new(tool_data.primary_color, 5.);
 		let fill = style::Fill::none();
 		let style = style::PathStyle::new(Some(stroke), Some(fill));
@@ -51,7 +60,7 @@ impl Fsm for PenToolFsmState {
 		match (self, event) {
 			(PenToolFsmState::Ready, Event::LmbDown(mouse_state)) => {
 				operations.push(Operation::MountWorkingFolder { path: vec![] });
-				data.points.push(mouse_state.position);
+				data.points.push(mouse_state.position.to_canvas_position(canvas_transform));
 				PenToolFsmState::LmbDown
 			}
 			(PenToolFsmState::Ready, Event::KeyDown(Key::KeyZ)) => {
@@ -61,12 +70,13 @@ impl Fsm for PenToolFsmState {
 				PenToolFsmState::Ready
 			}
 			(PenToolFsmState::LmbDown, Event::LmbUp(mouse_state)) => {
-				data.points.push(mouse_state.position);
+				data.points.push(mouse_state.position.to_canvas_position(canvas_transform));
 				PenToolFsmState::LmbDown
 			}
 			(PenToolFsmState::LmbDown, Event::MouseMove(mouse_state)) => {
-				let mut points: Vec<_> = data.points.iter().map(|p| (p.x as f64, p.y as f64)).collect();
-				points.push((mouse_state.x as f64, mouse_state.y as f64));
+				let mut points: Vec<_> = data.points.iter().map(|p: &CanvasPosition| (p.x, p.y)).collect();
+				let pos = mouse_state.to_canvas_position(canvas_transform);
+				points.push((pos.x, pos.y));
 
 				operations.push(Operation::ClearWorkingFolder);
 				operations.push(Operation::AddPen {
@@ -78,7 +88,7 @@ impl Fsm for PenToolFsmState {
 				PenToolFsmState::LmbDown
 			}
 			(PenToolFsmState::LmbDown, Event::KeyDown(Key::KeyEnter)) => {
-				let points = data.points.drain(..).map(|p| (p.x as f64, p.y as f64)).collect();
+				let points = data.points.drain(..).map(|p| (p.x, p.y)).collect();
 				operations.push(Operation::ClearWorkingFolder);
 				operations.push(Operation::AddPen {
 					path: vec![],

@@ -25,7 +25,7 @@ pub use dispatcher::events;
 #[doc(inline)]
 pub use dispatcher::Callback;
 
-use dispatcher::Dispatcher;
+use dispatcher::{events::CanvasTransform, Dispatcher};
 use document_core::document::Document;
 use tools::ToolFsmState;
 use workspace::Workspace;
@@ -34,6 +34,7 @@ pub struct EditorState {
 	tool_state: ToolFsmState,
 	workspace: Workspace,
 	document: Document,
+	canvas_transform: CanvasTransform,
 }
 
 // TODO: serialize with serde to save the current editor state
@@ -49,6 +50,7 @@ impl Editor {
 				tool_state: ToolFsmState::new(),
 				workspace: Workspace::new(),
 				document: Document::default(),
+				canvas_transform: CanvasTransform::default(),
 			},
 			dispatcher: Dispatcher::new(callback),
 		}
