@@ -132,11 +132,14 @@ impl CanvasPosition {
 		let y_diff = other.y - self.y;
 		f64::sqrt(x_diff * x_diff + y_diff * y_diff)
 	}
-	pub fn to_canvas_position(&self, canvas_transform: &CanvasTransform) -> CanvasPosition {
-		CanvasPosition {
-			x: self.x as f64 * canvas_transform.scale + canvas_transform.location.x,
-			y: self.y as f64 * canvas_transform.scale + canvas_transform.location.y,
-		}
+	pub fn rotate(&mut self, theta: f64) -> &mut Self {
+		let cosine = theta.cos();
+		let sine = theta.sin();
+		log::info!("Before {},{}", self.x, self.y);
+		self.x = self.x * cosine - self.y * sine;
+		self.y = self.x * sine + self.y * cosine;
+		log::info!("After {},{}", self.x, self.y);
+		self
 	}
 }
 
@@ -152,8 +155,8 @@ impl Default for CanvasTransform {
 	fn default() -> Self {
 		Self {
 			location: CanvasPosition::default(),
-			scale: 2.,
-			rotation: 0.,
+			scale: 1.,
+			rotation: 45.,
 		}
 	}
 }
@@ -165,10 +168,11 @@ impl ViewportPosition {
 		f64::sqrt(x_diff * x_diff + y_diff * y_diff)
 	}
 	pub fn to_canvas_position(&self, canvas_transform: &CanvasTransform) -> CanvasPosition {
-		CanvasPosition {
+		*CanvasPosition {
 			x: self.x as f64 * canvas_transform.scale + canvas_transform.location.x,
 			y: self.y as f64 * canvas_transform.scale + canvas_transform.location.y,
 		}
+		.rotate(canvas_transform.rotation)
 	}
 }
 

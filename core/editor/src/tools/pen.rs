@@ -1,5 +1,5 @@
+use crate::events::{CanvasPosition, CanvasTransform, Key};
 use crate::events::{Event, ToolResponse};
-use crate::events::{Key, CanvasPosition, CanvasTransform};
 use crate::tools::{Fsm, Tool};
 use crate::Document;
 
