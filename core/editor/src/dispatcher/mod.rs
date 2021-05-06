@@ -100,8 +100,7 @@ impl Dispatcher {
 			_ => todo!("Implement layer handling"),
 		}
 
-		let (mut tool_responses, operations) =
-			editor_state
+		let (mut tool_responses, operations) = editor_state
 				.tool_state
 				.tool_data
 				.active_tool()?
