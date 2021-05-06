@@ -47,7 +47,6 @@ impl std::fmt::Display for ShapePoints {
 			let sine = theta.sin();
 			Vec2::new(v.x * cosine - v.y * sine, v.x * sine + v.y * cosine)
 		}
-		info!("sides{}", self.sides);
 		for i in 0..self.sides {
 			let radians = self.apothem_offset_angle() * ((i * 2 + (self.sides % 2)) as f64);
 			let offset = rotate(&self.extent, radians);

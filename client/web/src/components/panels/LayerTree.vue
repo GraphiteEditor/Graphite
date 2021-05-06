@@ -69,7 +69,7 @@
 
 <script lang="ts">
 import { defineComponent } from "vue";
-import { ResponseType, registerResponseHandler } from "../../response-handler";
+import { ResponseType, registerResponseHandler, Response, ExpandFolder, LayerPanelEntry } from "../../response-handler";
 import LayoutRow from "../layout/LayoutRow.vue";
 import LayoutCol from "../layout/LayoutCol.vue";
 import NumberInput from "../widgets/NumberInput.vue";
@@ -102,54 +102,25 @@ export default defineComponent({
 		},
 	},
 	mounted() {
-		registerResponseHandler(ResponseType["Document::ExpandFolder"], (responseData: Response) => {
+		registerResponseHandler(ResponseType.ExpandFolder, (responseData: Response) => {
 			console.log("ExpandFolder: ", responseData);
-            const responsePath = responseData.Document.ExpandFolder.path;
-            const responseLayers = responseData.Document.ExpandFolder.children;
+			const expandData = responseData as ExpandFolder;
+			if (expandData.path) {
+				const responsePath = expandData.path;
+				const responseLayers = expandData.children as Array<LayerPanelEntry>;
+				if (responsePath.length > 0) console.error("Non root paths are currently not implemented");
 
-            if (responsePath.length > 0) console.error("Non root paths are currently not implemented");
-
-            this.layers = responseLayers;
+				this.layers = responseLayers;
+			}
 		});
-		registerResponseHandler(ResponseType["Document::CollapseFolder"], (responseData) => {
+		registerResponseHandler(ResponseType.CollapseFolder, (responseData) => {
 			console.log("CollapseFolder: ", responseData);
 		});
 	},
 	data() {
 		return {
-            layers: [],
-        };
+			layers: [] as Array<LayerPanelEntry>,
+		};
 	},
 });
-
-type Response =  Document;
-type Tool = ToolResponse;
-type Document = DocumentResponse;
-
-interface LayerPanelEntry {
-	name: string,
-	visible: boolean,
-	layer_type: LayerType,
-}
-
-enum LayerType {
-	Folder,
-	Shape,
-}
-
-type ToolResponse = SetActiveTool | UpdateCanvas;
-
-interface SetActiveTool {
-    tool_name: string
-}
-
-interface UpdateCanvas {
-    document: string
-}
-
-type DocumentResponse = DocumentChanged | CollapseFolder | ExpandFolder;
-
-interface DocumentChanged {}
-interface CollapseFolder { path: Array<number>}
-interface ExpandFolder { path: Array<number>, children: Array<LayerPanelEntry>}
 </script>
