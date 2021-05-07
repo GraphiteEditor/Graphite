@@ -235,6 +235,7 @@ pub enum Key {
 	Key8,
 	Key9,
 	KeyShift,
+	KeyControl,
 	KeyAlt,
 }
 

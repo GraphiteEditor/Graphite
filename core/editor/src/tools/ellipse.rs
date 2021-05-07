@@ -83,8 +83,10 @@ impl Fsm for EllipseToolFsmState {
 				data.drag_current = mouse_state.position;
 
 				operations.push(Operation::ClearWorkingFolder);
-				operations.push(make_operation(data, tool_data, canvas_transform));
-				operations.push(Operation::CommitTransaction);
+				if data.drag_start != data.drag_current {
+					operations.push(make_operation(data, tool_data, canvas_transform));
+					operations.push(Operation::CommitTransaction);
+				}
 
 				EllipseToolFsmState::Ready
 			}
@@ -139,10 +141,12 @@ impl Fsm for EllipseToolFsmState {
 }
 
 fn make_operation(data: &EllipseToolData, tool_data: &DocumentToolData, canvas_transform: &CanvasTransform) -> Operation {
-	let x0 = data.drag_start.to_canvas_position(canvas_transform).x;
-	let y0 = data.drag_start.to_canvas_position(canvas_transform).y;
-	let x1 = data.drag_current.to_canvas_position(canvas_transform).x;
-	let y1 = data.drag_current.to_canvas_position(canvas_transform).y;
+	let start = data.drag_start.to_canvas_position(canvas_transform);
+	let end = data.drag_current.to_canvas_position(canvas_transform);
+	let x0 = start.x;
+	let y0 = start.y;
+	let x1 = end.x;
+	let y1 = end.y;
 
 	if data.constrain_to_circle {
 		let (cx, cy, r) = if data.center_around_cursor {
