@@ -66,6 +66,10 @@ impl Dispatcher {
 							tool_name: ToolType::Line.to_string(),
 						});
 					}
+					Key::KeyP => {
+						editor_state.tool_state.tool_data.active_tool_type = ToolType::Pen;
+						self.dispatch_response(ToolResponse::SetActiveTool { tool_name: ToolType::Pen.to_string() });
+					}
 					Key::KeyM => {
 						editor_state.tool_state.tool_data.active_tool_type = ToolType::Rectangle;
 						self.dispatch_response(ToolResponse::SetActiveTool {
