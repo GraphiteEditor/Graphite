@@ -13,8 +13,8 @@
 					:key="layer.path"
 				>
 					<div class="layer-visibility">
-						<IconButton @click="hideLayer(layer.path)" :size="24" title="Visible"><EyeVisible /></IconButton>
-						<IconButton @click="showLayer(layer.path)" :size="24" title="Hidden"><EyeHidden /></IconButton>
+						<IconButton v-if="layer.visible" @click="hideLayer(layer.path)" :size="24" title="Visible"><EyeVisible /></IconButton>
+						<IconButton v-if="!layer.visible" @click="showLayer(layer.path)" :size="24" title="Hidden"><EyeHidden /></IconButton>
 					</div>
 					<div class="layer">
 						<div class="layer-thumbnail"></div>

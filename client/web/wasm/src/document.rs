@@ -132,16 +132,12 @@ pub fn select_layer(path: Vec<LayerId>) -> Result<(), JsValue> {
 	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_event(events::Event::SelectLayer(path))).map_err(convert_error)
 }
 
-/// Change visibility of a layer from the layer list
+/// Toggle visibility of a layer from the layer list
 #[wasm_bindgen]
-pub fn show_layer(path: Vec<LayerId>) -> Result<(), JsValue> {
-	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_event(events::Event::HideLayer(path))).map_err(convert_error)
-}
-
-/// Change visibility of a layer from the layer list
-#[wasm_bindgen]
-pub fn hide_layer(path: Vec<LayerId>) -> Result<(), JsValue> {
-	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_event(events::Event::ShowLayer(path))).map_err(convert_error)
+pub fn toggle_layer_visibility(path: Vec<LayerId>) -> Result<(), JsValue> {
+	EDITOR_STATE
+		.with(|editor| editor.borrow_mut().handle_event(events::Event::ToggleLayerVisibility(path)))
+		.map_err(convert_error)
 }
 
 /// Toggle expansions state of a layer from the layer list
