@@ -111,7 +111,7 @@ export default defineComponent({
 		registerResponseHandler(ResponseType.ExpandFolder, (responseData: Response) => {
 			console.log("ExpandFolder: ", responseData);
 			const expandData = responseData as ExpandFolder;
-			if (expandData.path) {
+			if (expandData) {
 				const responsePath = expandData.path;
 				const responseLayers = expandData.children as Array<LayerPanelEntry>;
 				if (responsePath.length > 0) console.error("Non root paths are currently not implemented");

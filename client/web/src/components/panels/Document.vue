@@ -326,11 +326,11 @@ export default defineComponent({
 	mounted() {
 		registerResponseHandler(ResponseType.UpdateCanvas, (responseData: Response) => {
 			const updateData = responseData as UpdateCanvas;
-			if (updateData.document) this.viewportSvg = updateData.document;
+			if (updateData) this.viewportSvg = updateData.document;
 		});
 		registerResponseHandler(ResponseType.SetActiveTool, (responseData: Response) => {
 			const toolData = responseData as SetActiveTool;
-			if (toolData.tool_name) this.activeTool = toolData.tool_name;
+			if (toolData) this.activeTool = toolData.tool_name;
 		});
 
 		window.addEventListener("keyup", (e: KeyboardEvent) => this.keyUp(e));

@@ -24,39 +24,41 @@ export function registerResponseHandler(responseType: ResponseType, callback: Re
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function parseResponse(origin: string, type: string, data: any): Response {
+function parseResponse(origin: string, responseType: string, data: any): Response {
 	switch (origin) {
 		case "Document":
-			switch (type) {
+			switch (responseType) {
 				case "DocumentChanged":
-					return data.Document.DocumentChanged as Response;
+					return (data.Document.DocumentChanged as DocumentChanged) as Response;
 				case "CollapseFolder":
-					return data.Document.CollapseFolder as Response;
+					return (data.Document.CollapseFolder as CollapseFolder) as Response;
 				case "ExpandFolder":
 					return (data.Document.ExpandFolder as ExpandFolder) as Response;
 			}
 		case "Tool":
-			switch (type) {
+			switch (responseType) {
 				case "SetActiveTool":
-					return data.Tool.SetActiveTool as Response;
+					return (data.Tool.SetActiveTool as SetActiveTool) as Response;
 				case "UpdateCanvas":
-					return data.Tool.UpdateCanvas as Response;
+					return (data.Tool.UpdateCanvas as UpdateCanvas) as Response;
 			}
 		default:
-			throw new Error("ResponseType not recognized");
+			throw new Error("ResponseType not recognized.");
 	}
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function handleResponse(responseType: ResponseType, responseData: any) {
-	const [origin, type] = responseType.split("::", 2);
-	const callback = window.responseMap[type];
-	const data = parseResponse(origin, type, responseData);
+export function handleResponse(responseIdentifier: string, responseData: any) {
+	const [origin, responesType] = responseIdentifier.split("::", 2);
+	const callback = window.responseMap[responesType];
+	const data = parseResponse(origin, responesType, responseData);
 
-	if (callback) {
+	if (callback && data) {
 		callback(data);
+	} else if (data) {
+		console.error(`Received a Response of type "${responseIdentifier}" but no handler was registered for it from the client.`);
 	} else {
-		console.error(`Received a Response of type "${responseType}" but no handler was registered for it from the client.`);
+		console.error(`Received a Response of type "${responseIdentifier}" but but was not able to parse the data.`);
 	}
 }
 

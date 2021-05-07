@@ -1,7 +1,6 @@
 use std::{fmt, ops::Add};
 
 use kurbo::{PathEl, Point, Vec2};
-use log::info;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ShapePoints {
