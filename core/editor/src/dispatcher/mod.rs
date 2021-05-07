@@ -1,9 +1,18 @@
+pub mod document_event_handler;
 pub mod events;
+pub mod global_event_handler;
+pub mod input_manager;
+
 use crate::{tools::ToolType, Color, Document, EditorError, EditorState};
 use document_core::Operation;
 use events::{DocumentResponse, Event, Key, Response, ToolResponse};
 
 pub type Callback = Box<dyn Fn(Response)>;
+
+pub trait EventHandler {
+	fn events(&self) -> &[String];
+}
+
 pub struct Dispatcher {
 	callback: Callback,
 }
