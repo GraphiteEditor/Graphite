@@ -7,11 +7,7 @@
 		</LayoutRow>
 		<LayoutRow :class="'layer-tree'">
 			<LayoutCol :class="'list'">
-				<div
-					class="layer-row"
-					v-for="layer in layers"
-					:key="layer.path"
-				>
+				<div class="layer-row" v-for="layer in layers" :key="layer.path">
 					<div class="layer-visibility">
 						<IconButton v-if="layer.visible" @click="hideLayer(layer)" :size="24" title="Visible"><EyeVisible /></IconButton>
 						<IconButton v-if="!layer.visible" @click="showLayer(layer)" :size="24" title="Hidden"><EyeHidden /></IconButton>
@@ -22,7 +18,7 @@
 							<IconContainer :size="24" title="Path"><NodeTypePath /></IconContainer>
 						</div>
 						<div class="layer-name">
-							<span>{{layer.name}}</span>
+							<span>{{ layer.name }}</span>
 						</div>
 					</div>
 				</div>
@@ -101,19 +97,19 @@ export default defineComponent({
 	props: {},
 	methods: {
 		hideLayer(layerId: LayerPanelEntry) {
-			const  layer = layerId as LayerPanelEntry;
+			const layer = layerId as LayerPanelEntry;
 			if (layer) {
 				console.log(`Hidden layer ID: ${layer.path}`);
 			} else {
-				console.error(`hideLayer did not receive valid arguments`);
+				console.error("hideLayer did not receive valid arguments");
 			}
 		},
 		showLayer(layerId: LayerPanelEntry) {
-			const  layer = layerId as LayerPanelEntry;
+			const layer = layerId as LayerPanelEntry;
 			if (layer) {
 				console.log(`Shown layer: ${layer.path}`);
 			} else {
-				console.error(`showLayer did not receive valid arguments`);
+				console.error("showLayer did not receive valid arguments");
 			}
 		},
 	},

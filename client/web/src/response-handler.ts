@@ -25,8 +25,10 @@ export function registerResponseHandler(responseType: ResponseType, callback: Re
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function parseResponse(origin: string, responseType: string, data: any): Response {
-	switch (origin) {
-		case "Document":
+	type OriginNames = "Document" | "Tool";
+
+	const originHandlers = {
+		Document: () => {
 			switch (responseType) {
 				case "DocumentChanged":
 					return (data.Document.DocumentChanged as DocumentChanged) as Response;
@@ -34,17 +36,27 @@ function parseResponse(origin: string, responseType: string, data: any): Respons
 					return (data.Document.CollapseFolder as CollapseFolder) as Response;
 				case "ExpandFolder":
 					return (data.Document.ExpandFolder as ExpandFolder) as Response;
+				default:
+					return undefined;
 			}
-		case "Tool":
+		},
+		Tool: () => {
 			switch (responseType) {
 				case "SetActiveTool":
 					return (data.Tool.SetActiveTool as SetActiveTool) as Response;
 				case "UpdateCanvas":
 					return (data.Tool.UpdateCanvas as UpdateCanvas) as Response;
+				default:
+					return undefined;
 			}
-		default:
-			throw new Error("ResponseType not recognized.");
-	}
+		},
+	};
+
+	// TODO: Optional chaining would be nice here when we can upgrade to Webpack 5: https://github.com/webpack/webpack/issues/10227
+	// const response = originHandlers[origin as OriginNames]?.();
+	const response = originHandlers[origin as OriginNames] && originHandlers[origin as OriginNames]();
+	if (!response) throw new Error("ResponseType not recognized.");
+	return response;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -70,7 +82,7 @@ export interface SetActiveTool {
 export interface UpdateCanvas {
 	document: string;
 }
-export interface DocumentChanged {}
+export type DocumentChanged = {};
 export interface CollapseFolder {
 	path: Array<number>;
 }
@@ -83,7 +95,7 @@ export interface LayerPanelEntry {
 	name: string;
 	visible: boolean;
 	layer_type: LayerType;
-	collapsed: boolean,
+	collapsed: boolean;
 	path: Array<number>;
 }
 
