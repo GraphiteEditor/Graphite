@@ -2,6 +2,7 @@ use crate::tools::ToolType;
 use crate::Color;
 use bitflags::bitflags;
 
+use document_core::LayerId;
 use serde::{Deserialize, Serialize};
 
 #[doc(inline)]
@@ -18,8 +19,16 @@ pub enum Event {
 	SelectTool(ToolType),
 	SelectPrimaryColor(Color),
 	SelectSecondaryColor(Color),
+	SelectLayer(Vec<LayerId>),
+	ToggleLayerVisibility(Vec<LayerId>),
+	ToggleLayerExpansion(Vec<LayerId>),
+	DeleteLayer(Vec<LayerId>),
+	AddLayer(Vec<LayerId>),
+	RenameLayer(Vec<LayerId>, String),
 	SwapColors,
 	ResetColors,
+	AmbiguousMouseDown(MouseState),
+	AmbiguousMouseUp(MouseState),
 	LmbDown(MouseState),
 	RmbDown(MouseState),
 	MmbDown(MouseState),
@@ -34,6 +43,7 @@ pub enum Event {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[repr(C)]
 pub enum ToolResponse {
+	// These may not have the same names as any of the DocumentResponses
 	SetActiveTool { tool_name: String },
 	UpdateCanvas { document: String },
 }

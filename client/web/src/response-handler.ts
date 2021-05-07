@@ -1,4 +1,4 @@
-type ResponseCallback = (responseData: string) => void;
+type ResponseCallback = (responseData: Response) => void;
 type ResponseMap = {
 	[response: string]: ResponseCallback | undefined;
 };
@@ -9,10 +9,10 @@ declare global {
 }
 
 export enum ResponseType {
-	"Tool::UpdateCanvas" = "Tool::UpdateCanvas",
-	"Document::ExpandFolder" = "Document::ExpandFolder",
-	"Document::CollapseFolder" = "Document::CollapseFolder",
-	"Tool::SetActiveTool" = "Tool::SetActiveTool",
+	UpdateCanvas = "UpdateCanvas",
+	ExpandFolder = "ExpandFolder",
+	CollapseFolder = "CollapseFolder",
+	SetActiveTool = "SetActiveTool",
 }
 
 export function attachResponseHandlerToPage() {
@@ -24,12 +24,82 @@ export function registerResponseHandler(responseType: ResponseType, callback: Re
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function handleResponse(responseType: ResponseType, responseData: any) {
-	const callback = window.responseMap[responseType];
+function parseResponse(origin: string, responseType: string, data: any): Response {
+	type OriginNames = "Document" | "Tool";
 
-	if (callback) {
-		callback(responseData);
+	const originHandlers = {
+		Document: () => {
+			switch (responseType) {
+				case "DocumentChanged":
+					return (data.Document.DocumentChanged as DocumentChanged) as Response;
+				case "CollapseFolder":
+					return (data.Document.CollapseFolder as CollapseFolder) as Response;
+				case "ExpandFolder":
+					return (data.Document.ExpandFolder as ExpandFolder) as Response;
+				default:
+					return undefined;
+			}
+		},
+		Tool: () => {
+			switch (responseType) {
+				case "SetActiveTool":
+					return (data.Tool.SetActiveTool as SetActiveTool) as Response;
+				case "UpdateCanvas":
+					return (data.Tool.UpdateCanvas as UpdateCanvas) as Response;
+				default:
+					return undefined;
+			}
+		},
+	};
+
+	// TODO: Optional chaining would be nice here when we can upgrade to Webpack 5: https://github.com/webpack/webpack/issues/10227
+	// const response = originHandlers[origin as OriginNames]?.();
+	const response = originHandlers[origin as OriginNames] && originHandlers[origin as OriginNames]();
+	if (!response) throw new Error("ResponseType not recognized.");
+	return response;
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function handleResponse(responseIdentifier: string, responseData: any) {
+	const [origin, responesType] = responseIdentifier.split("::", 2);
+	const callback = window.responseMap[responesType];
+	const data = parseResponse(origin, responesType, responseData);
+
+	if (callback && data) {
+		callback(data);
+	} else if (data) {
+		console.error(`Received a Response of type "${responseIdentifier}" but no handler was registered for it from the client.`);
 	} else {
-		console.error(`Received a Response of type "${responseType}" but no handler was registered for it from the client.`);
+		console.error(`Received a Response of type "${responseIdentifier}" but but was not able to parse the data.`);
 	}
+}
+
+export type Response = SetActiveTool | UpdateCanvas | DocumentChanged | CollapseFolder | ExpandFolder;
+
+export interface SetActiveTool {
+	tool_name: string;
+}
+export interface UpdateCanvas {
+	document: string;
+}
+export type DocumentChanged = {};
+export interface CollapseFolder {
+	path: Array<number>;
+}
+export interface ExpandFolder {
+	path: Array<number>;
+	children: Array<LayerPanelEntry>;
+}
+
+export interface LayerPanelEntry {
+	name: string;
+	visible: boolean;
+	layer_type: LayerType;
+	collapsed: boolean;
+	path: Array<number>;
+}
+
+export enum LayerType {
+	Folder,
+	Shape,
 }

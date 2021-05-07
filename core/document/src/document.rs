@@ -1,6 +1,6 @@
 use crate::{
 	layers::{self, Folder, Layer, LayerData, LayerDataTypes, Line, PolyLine, Rect, Shape},
-	response::{LayerPanelEntry, LayerType},
+	response::LayerPanelEntry,
 	DocumentError, DocumentResponse, LayerId, Operation,
 };
 
@@ -172,16 +172,12 @@ impl Document {
 	/// any actual data, but rather metadata such as visibility and names of the layers.
 	pub fn layer_panel(&self, path: &[LayerId]) -> Result<Vec<LayerPanelEntry>, DocumentError> {
 		let folder = self.document_folder(path)?;
-		let l_type = |layer: &LayerDataTypes| match layer {
-			LayerDataTypes::Folder(_) => LayerType::Folder,
-			_ => LayerType::Shape,
-		};
-		let translate = |layer: &Layer| LayerPanelEntry {
-			name: layer.name.clone().unwrap_or_else(|| String::from("UnnamedFolder")),
-			visible: layer.visible,
-			layer_type: l_type(&layer.data),
-		};
-		let entries = folder.layers().iter().map(|layer| translate(layer)).collect();
+		let entries = folder
+			.layers()
+			.iter()
+			.zip(folder.layer_ids.iter())
+			.map(|(layer, id)| LayerPanelEntry::from_layer(layer, [path, &[*id]].concat()))
+			.collect();
 		Ok(entries)
 	}
 
