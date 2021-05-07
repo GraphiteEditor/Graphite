@@ -13,8 +13,8 @@
 					:key="layer.path"
 				>
 					<div class="layer-visibility">
-						<IconButton v-if="layer.visible" @click="hideLayer(layer.path)" :size="24" title="Visible"><EyeVisible /></IconButton>
-						<IconButton v-if="!layer.visible" @click="showLayer(layer.path)" :size="24" title="Hidden"><EyeHidden /></IconButton>
+						<IconButton v-if="layer.visible" @click="hideLayer(layer)" :size="24" title="Visible"><EyeVisible /></IconButton>
+						<IconButton v-if="!layer.visible" @click="showLayer(layer)" :size="24" title="Hidden"><EyeHidden /></IconButton>
 					</div>
 					<div class="layer">
 						<div class="layer-thumbnail"></div>
@@ -101,15 +101,24 @@ export default defineComponent({
 	props: {},
 	methods: {
 		hideLayer(layerId: LayerPanelEntry) {
-			console.log(`Hidden layer ID: ${layerId}`);
+			const  layer = layerId as LayerPanelEntry;
+			if (layer) {
+				console.log(`Hidden layer ID: ${layer.path}`);
+			} else {
+				console.error(`hideLayer did not receive valid arguments`);
+			}
 		},
 		showLayer(layerId: LayerPanelEntry) {
-			console.log(`Shown layer ID: ${layerId}`);
+			const  layer = layerId as LayerPanelEntry;
+			if (layer) {
+				console.log(`Shown layer: ${layer.path}`);
+			} else {
+				console.error(`showLayer did not receive valid arguments`);
+			}
 		},
 	},
 	mounted() {
 		registerResponseHandler(ResponseType.ExpandFolder, (responseData: Response) => {
-			console.log("ExpandFolder: ", responseData);
 			const expandData = responseData as ExpandFolder;
 			if (expandData) {
 				const responsePath = expandData.path;

@@ -11,6 +11,7 @@ pub struct LayerPanelEntry {
 	pub visible: bool,
 	pub layer_type: LayerType,
 	pub collapsed: bool,
+	pub path: Vec<LayerId>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -55,8 +56,8 @@ impl From<&LayerDataTypes> for LayerType {
 	}
 }
 
-impl From<&Layer> for LayerPanelEntry {
-	fn from(layer: &Layer) -> Self {
+impl LayerPanelEntry {
+	pub fn from_layer(layer: &Layer, path: Vec<LayerId>) -> Self {
 		let layer_type: LayerType = (&layer.data).into();
 		let name = layer.name.clone().unwrap_or_else(|| format!("Unnamed {}", layer_type));
 		let collapsed = if let LayerDataTypes::Folder(f) = &layer.data { f.collapsed } else { true };
@@ -65,6 +66,7 @@ impl From<&Layer> for LayerPanelEntry {
 			visible: layer.visible,
 			layer_type,
 			collapsed,
+			path,
 		}
 	}
 }

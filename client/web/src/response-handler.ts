@@ -83,6 +83,8 @@ export interface LayerPanelEntry {
 	name: string;
 	visible: boolean;
 	layer_type: LayerType;
+	collapsed: boolean,
+	path: Array<number>;
 }
 
 export enum LayerType {
