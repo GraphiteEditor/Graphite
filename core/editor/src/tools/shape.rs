@@ -1,5 +1,6 @@
 use crate::events::{CanvasPosition, Key, ViewportPosition};
 use crate::events::{CanvasTransform, Event, ToolResponse};
+use crate::events::{Key, ViewportPosition};
 use crate::tools::{Fsm, Tool};
 use crate::Document;
 use document_core::layers::style;

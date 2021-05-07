@@ -164,9 +164,9 @@ pub struct CanvasTransform {
 impl Default for CanvasTransform {
 	fn default() -> Self {
 		Self {
-			location: CanvasPosition::default(),
+			location: CanvasPosition{x:100.,y:100.},
 			scale: 1.,
-			rotation: 45.,
+			rotation: 0.,
 		}
 	}
 }

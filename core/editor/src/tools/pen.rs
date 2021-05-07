@@ -44,7 +44,16 @@ struct PenToolData {
 impl Fsm for PenToolFsmState {
 	type ToolData = PenToolData;
 
-	fn transition(self, event: &Event, document: &Document, tool_data: &DocumentToolData, data: &mut Self::ToolData, canvas_transform: &CanvasTransform, _responses: &mut Vec<ToolResponse>, operations: &mut Vec<Operation>) -> Self {
+	fn transition(
+		self,
+		event: &Event,
+		document: &Document,
+		tool_data: &DocumentToolData,
+		data: &mut Self::ToolData,
+		canvas_transform: &CanvasTransform,
+		_responses: &mut Vec<ToolResponse>,
+		operations: &mut Vec<Operation>,
+	) -> Self {
 		match (self, event) {
 			(PenToolFsmState::Ready, Event::LmbDown(mouse_state)) => {
 				operations.push(Operation::MountWorkingFolder { path: vec![] });
