@@ -21,7 +21,7 @@ module.exports = {
 		},
 	},
 	rules: {
-		indent: ["error", "tab"],
+		indent: ["error", "tab", { SwitchCase: 1 }],
 		quotes: ["error", "double"],
 		"linebreak-style": ["error", "unix"],
 		"eol-last": ["error", "always"],
@@ -29,7 +29,7 @@ module.exports = {
 		"no-debugger": process.env.NODE_ENV === "production" ? "warn" : "off",
 		"max-len": ["error", { code: 200, tabWidth: 4 }],
 		"@typescript-eslint/camelcase": "off",
-		camelcase: ["error", { ignoreImports: true, ignoreDestructuring: true }],
+		camelcase: ["error", { allow: ["^(?:[a-z]+_)*[a-z]+$"] }],
 		"prettier-vue/prettier": [
 			"error",
 			{
