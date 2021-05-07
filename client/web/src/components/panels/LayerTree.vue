@@ -7,16 +7,10 @@
 		</LayoutRow>
 		<LayoutRow :class="'layer-tree'">
 			<LayoutCol :class="'list'">
-				<div
-					class="layer-row"
-					v-for="layerId in Array(5)
-						.fill()
-						.map((_, i) => i)"
-					:key="layerId"
-				>
+				<div class="layer-row" v-for="layer in layers" :key="layer.path">
 					<div class="layer-visibility">
-						<IconButton v-if="layerId % 2 == 0" @click="hideLayer(layerId)" :size="24" title="Visible"><EyeVisible /></IconButton>
-						<IconButton v-if="layerId % 2 == 1" @click="showLayer(layerId)" :size="24" title="Hidden"><EyeHidden /></IconButton>
+						<IconButton v-if="layer.visible" @click="hideLayer(layer)" :size="24" title="Visible"><EyeVisible /></IconButton>
+						<IconButton v-if="!layer.visible" @click="showLayer(layer)" :size="24" title="Hidden"><EyeHidden /></IconButton>
 					</div>
 					<div class="layer">
 						<div class="layer-thumbnail"></div>
@@ -24,7 +18,7 @@
 							<IconContainer :size="24" title="Path"><NodeTypePath /></IconContainer>
 						</div>
 						<div class="layer-name">
-							<span>Foo bar</span>
+							<span>{{ layer.name }}</span>
 						</div>
 					</div>
 				</div>
@@ -77,7 +71,7 @@
 
 <script lang="ts">
 import { defineComponent } from "vue";
-import { ResponseType, registerResponseHandler } from "../../response-handler";
+import { ResponseType, registerResponseHandler, Response, ExpandFolder, LayerPanelEntry } from "../../response-handler";
 import LayoutRow from "../layout/LayoutRow.vue";
 import LayoutCol from "../layout/LayoutCol.vue";
 import NumberInput from "../widgets/NumberInput.vue";
@@ -102,23 +96,42 @@ export default defineComponent({
 	},
 	props: {},
 	methods: {
-		hideLayer(layerId: number) {
-			console.log(`Hidden layer ID: ${layerId}`);
+		hideLayer(layerId: LayerPanelEntry) {
+			const layer = layerId as LayerPanelEntry;
+			if (layer) {
+				console.log(`Hidden layer ID: ${layer.path}`);
+			} else {
+				console.error("hideLayer did not receive valid arguments");
+			}
 		},
-		showLayer(layerId: number) {
-			console.log(`Shown layer ID: ${layerId}`);
+		showLayer(layerId: LayerPanelEntry) {
+			const layer = layerId as LayerPanelEntry;
+			if (layer) {
+				console.log(`Shown layer: ${layer.path}`);
+			} else {
+				console.error("showLayer did not receive valid arguments");
+			}
 		},
 	},
 	mounted() {
-		registerResponseHandler(ResponseType["Document::ExpandFolder"], (responseData) => {
-			console.log("ExpandFolder: ", responseData);
+		registerResponseHandler(ResponseType.ExpandFolder, (responseData: Response) => {
+			const expandData = responseData as ExpandFolder;
+			if (expandData) {
+				const responsePath = expandData.path;
+				const responseLayers = expandData.children as Array<LayerPanelEntry>;
+				if (responsePath.length > 0) console.error("Non root paths are currently not implemented");
+
+				this.layers = responseLayers;
+			}
 		});
-		registerResponseHandler(ResponseType["Document::CollapseFolder"], (responseData) => {
+		registerResponseHandler(ResponseType.CollapseFolder, (responseData) => {
 			console.log("CollapseFolder: ", responseData);
 		});
 	},
 	data() {
-		return {};
+		return {
+			layers: [] as Array<LayerPanelEntry>,
+		};
 	},
 });
 </script>
