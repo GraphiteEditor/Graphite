@@ -36,6 +36,9 @@ impl Dispatcher {
 			Event::MouseMove(pos) => {
 				editor_state.tool_state.document_tool_data.mouse_state.position = *pos;
 			}
+			Event::ToggleLayerVisibility(path) => {
+				log::debug!("Toggling layer visibility not yet implemented in the Editor Library");
+			}
 			Event::KeyUp(_key) => (),
 			Event::KeyDown(key) => {
 				log::trace!("pressed key {:?}", key);
