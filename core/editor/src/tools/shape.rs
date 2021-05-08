@@ -80,7 +80,17 @@ impl Fsm for ShapeToolFsmState {
 
 				ShapeToolFsmState::Ready
 			}
+			// TODO - join match arms with or_patterns when available in stable rust (https://github.com/rust-lang/rust/issues/54883)
+			(ShapeToolFsmState::LmbDown, Event::KeyUp(Key::KeyEscape)) => {
+				operations.push(Operation::DiscardWorkingFolder);
 
+				ShapeToolFsmState::Ready
+			}
+			(ShapeToolFsmState::LmbDown, Event::RmbDown(_)) => {
+				operations.push(Operation::DiscardWorkingFolder);
+
+				ShapeToolFsmState::Ready
+			}
 			(state, Event::KeyDown(Key::KeyShift)) => {
 				data.constrain_to_square = true;
 
@@ -91,7 +101,6 @@ impl Fsm for ShapeToolFsmState {
 
 				self
 			}
-
 			(state, Event::KeyUp(Key::KeyShift)) => {
 				data.constrain_to_square = false;
 
@@ -102,7 +111,6 @@ impl Fsm for ShapeToolFsmState {
 
 				self
 			}
-
 			(state, Event::KeyDown(Key::KeyAlt)) => {
 				data.center_around_cursor = true;
 
@@ -113,7 +121,6 @@ impl Fsm for ShapeToolFsmState {
 
 				self
 			}
-
 			(state, Event::KeyUp(Key::KeyAlt)) => {
 				data.center_around_cursor = false;
 
@@ -124,7 +131,6 @@ impl Fsm for ShapeToolFsmState {
 
 				self
 			}
-
 			_ => self,
 		}
 	}

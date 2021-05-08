@@ -53,14 +53,12 @@ impl Fsm for EllipseToolFsmState {
 				operations.push(Operation::MountWorkingFolder { path: vec![] });
 				EllipseToolFsmState::LmbDown
 			}
-
 			(EllipseToolFsmState::Ready, Event::KeyDown(Key::KeyZ)) => {
 				if let Some(id) = document.root.list_layers().last() {
 					operations.push(Operation::DeleteLayer { path: vec![*id] })
 				}
 				EllipseToolFsmState::Ready
 			}
-
 			(EllipseToolFsmState::LmbDown, Event::MouseMove(mouse_state)) => {
 				data.drag_current = *mouse_state;
 
@@ -69,7 +67,6 @@ impl Fsm for EllipseToolFsmState {
 
 				EllipseToolFsmState::LmbDown
 			}
-
 			(EllipseToolFsmState::LmbDown, Event::LmbUp(mouse_state)) => {
 				data.drag_current = mouse_state.position;
 
@@ -81,7 +78,17 @@ impl Fsm for EllipseToolFsmState {
 
 				EllipseToolFsmState::Ready
 			}
+			// TODO - join match arms with or_patterns when available in stable rust (https://github.com/rust-lang/rust/issues/54883)
+			(EllipseToolFsmState::LmbDown, Event::KeyUp(Key::KeyEscape)) => {
+				operations.push(Operation::DiscardWorkingFolder);
 
+				EllipseToolFsmState::Ready
+			}
+			(EllipseToolFsmState::LmbDown, Event::RmbDown(_)) => {
+				operations.push(Operation::DiscardWorkingFolder);
+
+				EllipseToolFsmState::Ready
+			}
 			(state, Event::KeyDown(Key::KeyShift)) => {
 				data.constrain_to_circle = true;
 
@@ -92,7 +99,6 @@ impl Fsm for EllipseToolFsmState {
 
 				self
 			}
-
 			(state, Event::KeyUp(Key::KeyShift)) => {
 				data.constrain_to_circle = false;
 
@@ -103,7 +109,6 @@ impl Fsm for EllipseToolFsmState {
 
 				self
 			}
-
 			(state, Event::KeyDown(Key::KeyAlt)) => {
 				data.center_around_cursor = true;
 
@@ -114,7 +119,6 @@ impl Fsm for EllipseToolFsmState {
 
 				self
 			}
-
 			(state, Event::KeyUp(Key::KeyAlt)) => {
 				data.center_around_cursor = false;
 
@@ -125,7 +129,6 @@ impl Fsm for EllipseToolFsmState {
 
 				self
 			}
-
 			_ => self,
 		}
 	}

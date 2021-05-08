@@ -85,7 +85,17 @@ impl Fsm for LineToolFsmState {
 
 				LineToolFsmState::Ready
 			}
+			// TODO - join match arms with or_patterns when available in stable rust (https://github.com/rust-lang/rust/issues/54883)
+			(LineToolFsmState::LmbDown, Event::KeyUp(Key::KeyEscape)) => {
+				operations.push(Operation::DiscardWorkingFolder);
 
+				LineToolFsmState::Ready
+			}
+			(LineToolFsmState::LmbDown, Event::RmbDown(_)) => {
+				operations.push(Operation::DiscardWorkingFolder);
+
+				LineToolFsmState::Ready
+			}
 			(state, Event::KeyDown(Key::KeyShift)) => {
 				data.snap_angle = true;
 
@@ -96,7 +106,6 @@ impl Fsm for LineToolFsmState {
 
 				self
 			}
-
 			(state, Event::KeyUp(Key::KeyShift)) => {
 				data.snap_angle = false;
 
@@ -107,7 +116,6 @@ impl Fsm for LineToolFsmState {
 
 				self
 			}
-
 			(state, Event::KeyDown(Key::KeyControl)) => {
 				data.lock_angle = true;
 
@@ -118,7 +126,6 @@ impl Fsm for LineToolFsmState {
 
 				self
 			}
-
 			(state, Event::KeyUp(Key::KeyControl)) => {
 				data.lock_angle = false;
 
@@ -129,7 +136,6 @@ impl Fsm for LineToolFsmState {
 
 				self
 			}
-
 			(state, Event::KeyDown(Key::KeyAlt)) => {
 				data.center_around_cursor = true;
 
@@ -140,7 +146,6 @@ impl Fsm for LineToolFsmState {
 
 				self
 			}
-
 			(state, Event::KeyUp(Key::KeyAlt)) => {
 				data.center_around_cursor = false;
 
@@ -151,7 +156,6 @@ impl Fsm for LineToolFsmState {
 
 				self
 			}
-
 			_ => self,
 		}
 	}
