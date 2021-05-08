@@ -111,6 +111,7 @@ pub fn translate_key(name: &str) -> events::Key {
 		"Shift" => KeyShift,
 		"Control" => KeyControl,
 		"Alt" => KeyAlt,
+		"Escape" => KeyEscape,
 		_ => UnknownKey,
 	}
 }
