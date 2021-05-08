@@ -40,8 +40,8 @@
 
 				<ItemDivider />
 
-				<IconButton :size="24" title="Zoom Out"><ZoomOut /></IconButton>
 				<IconButton :size="24" title="Zoom In"><ZoomIn /></IconButton>
+				<IconButton :size="24" title="Zoom Out"><ZoomOut /></IconButton>
 				<IconButton :size="24" title="Zoom to 100%"><ZoomReset /></IconButton>
 				<NumberInput />
 			</div>
@@ -336,8 +336,8 @@ export default defineComponent({
 		window.addEventListener("keyup", (e: KeyboardEvent) => this.keyUp(e));
 		window.addEventListener("keydown", (e: KeyboardEvent) => this.keyDown(e));
 
-		// TODO: Implement actuall UI for chosing colors (this is completly temporary)
-		this.updatePrimaryColor({ r: 0.29, g: 0.52, b: 0.29, a: 0.6 });
+		// TODO: Implement an actual UI for chosing colors (this is completely temporary)
+		this.updatePrimaryColor({ r: 247 / 255, g: 76 / 255, b: 0 / 255, a: 0.6 });
 	},
 	data() {
 		return {
