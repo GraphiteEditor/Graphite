@@ -9,7 +9,7 @@
 			<LayoutCol :class="'list'">
 				<div class="layer-row" v-for="layer in layers" :key="layer.path">
 					<div class="layer-visibility">
-						<IconButton @click="toggleLayerVisibility(layer)" :size="24" title="layer.visible ? 'Visible' : 'Hidden">
+						<IconButton @click="toggleLayerVisibility(layer)" :size="24" :title="layer.visible ? 'Visible' : 'Hidden'">
 							<EyeVisible v-if="layer.visible" />
 							<EyeHidden v-if="!layer.visible" />
 						</IconButton>
