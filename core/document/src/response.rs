@@ -28,13 +28,13 @@ pub enum LayerType {
 impl fmt::Display for LayerType {
 	fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
 		let name = match self {
-			LayerType::Folder => "folder",
-			LayerType::Shape => "shape",
-			LayerType::Rect => "rect",
-			LayerType::Line => "line",
-			LayerType::Circle => "circle",
-			LayerType::PolyLine => "poly line",
-			LayerType::Ellipse => "ellipse",
+			LayerType::Folder => "Folder",
+			LayerType::Shape => "Shape",
+			LayerType::Rect => "Rectangle",
+			LayerType::Line => "Line",
+			LayerType::Circle => "Circle",
+			LayerType::PolyLine => "Polyline",
+			LayerType::Ellipse => "Ellipse",
 		};
 
 		formatter.write_str(name)
