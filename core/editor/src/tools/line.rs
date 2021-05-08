@@ -78,6 +78,7 @@ impl Fsm for LineToolFsmState {
 				data.drag_current = mouse_state.position;
 
 				operations.push(Operation::ClearWorkingFolder);
+				// TODO - introduce comparison threshold when operating with canvas coordinates (https://github.com/GraphiteEditor/Graphite/issues/100)
 				if data.drag_start != data.drag_current {
 					operations.push(make_operation(data, tool_data));
 					operations.push(Operation::CommitTransaction);
@@ -85,7 +86,12 @@ impl Fsm for LineToolFsmState {
 
 				LineToolFsmState::Ready
 			}
+			// TODO - simplify with or_patterns when rust 1.53.0 is stable (https://github.com/rust-lang/rust/issues/54883)
+			(LineToolFsmState::LmbDown, Event::KeyUp(Key::KeyEscape)) | (LineToolFsmState::LmbDown, Event::RmbDown(_)) => {
+				operations.push(Operation::DiscardWorkingFolder);
 
+				LineToolFsmState::Ready
+			}
 			(state, Event::KeyDown(Key::KeyShift)) => {
 				data.snap_angle = true;
 
@@ -96,7 +102,6 @@ impl Fsm for LineToolFsmState {
 
 				self
 			}
-
 			(state, Event::KeyUp(Key::KeyShift)) => {
 				data.snap_angle = false;
 
@@ -107,7 +112,6 @@ impl Fsm for LineToolFsmState {
 
 				self
 			}
-
 			(state, Event::KeyDown(Key::KeyControl)) => {
 				data.lock_angle = true;
 
@@ -118,7 +122,6 @@ impl Fsm for LineToolFsmState {
 
 				self
 			}
-
 			(state, Event::KeyUp(Key::KeyControl)) => {
 				data.lock_angle = false;
 
@@ -129,7 +132,6 @@ impl Fsm for LineToolFsmState {
 
 				self
 			}
-
 			(state, Event::KeyDown(Key::KeyAlt)) => {
 				data.center_around_cursor = true;
 
@@ -140,7 +142,6 @@ impl Fsm for LineToolFsmState {
 
 				self
 			}
-
 			(state, Event::KeyUp(Key::KeyAlt)) => {
 				data.center_around_cursor = false;
 
@@ -151,7 +152,6 @@ impl Fsm for LineToolFsmState {
 
 				self
 			}
-
 			_ => self,
 		}
 	}
