@@ -9,8 +9,10 @@
 			<LayoutCol :class="'list'">
 				<div class="layer-row" v-for="layer in layers" :key="layer.path">
 					<div class="layer-visibility">
-						<IconButton v-if="layer.visible" @click="hideLayer(layer)" :size="24" title="Visible"><EyeVisible /></IconButton>
-						<IconButton v-if="!layer.visible" @click="showLayer(layer)" :size="24" title="Hidden"><EyeHidden /></IconButton>
+						<IconButton @click="toggleLayerVisibility(layer)" :size="24" title="layer.visible ? 'Visible' : 'Hidden">
+							<EyeVisible v-if="layer.visible" />
+							<EyeHidden v-if="!layer.visible" />
+						</IconButton>
 					</div>
 					<div class="layer">
 						<div class="layer-thumbnail"></div>
@@ -82,6 +84,8 @@ import EyeVisible from "../../../assets/svg/24x24-bounds-16x16-icon/visibility-e
 import EyeHidden from "../../../assets/svg/24x24-bounds-16x16-icon/visibility-eye-hidden.svg";
 import NodeTypePath from "../../../assets/svg/24x24-node-type-icon/node-type-path.svg";
 
+const wasm = import("../../../wasm/pkg");
+
 export default defineComponent({
 	components: {
 		LayoutRow,
@@ -96,21 +100,9 @@ export default defineComponent({
 	},
 	props: {},
 	methods: {
-		hideLayer(layerId: LayerPanelEntry) {
-			const layer = layerId as LayerPanelEntry;
-			if (layer) {
-				console.log(`Hidden layer ID: ${layer.path}`);
-			} else {
-				console.error("hideLayer did not receive valid arguments");
-			}
-		},
-		showLayer(layerId: LayerPanelEntry) {
-			const layer = layerId as LayerPanelEntry;
-			if (layer) {
-				console.log(`Shown layer: ${layer.path}`);
-			} else {
-				console.error("showLayer did not receive valid arguments");
-			}
+		async toggleLayerVisibility(path: BigUint64Array) {
+			const { toggle_layer_visibility } = await wasm;
+			toggle_layer_visibility(path);
 		},
 	},
 	mounted() {
