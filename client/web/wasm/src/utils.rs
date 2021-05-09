@@ -33,9 +33,9 @@ impl log::Log for WasmLog {
 	fn log(&self, record: &log::Record) {
 		let (log, name, color): (fn(&str, &str), &str, &str) = match record.level() {
 			log::Level::Trace => (log, "trace", "color:plum"),
-			log::Level::Debug => (log, "debug", "color:blue"),
-			log::Level::Warn => (warn, "warn", "color:#fa2"),
-			log::Level::Info => (info, "info", "color:#1b8"),
+			log::Level::Debug => (log, "debug", "color:cyan"),
+			log::Level::Warn => (warn, "warn", "color:goldenrod"),
+			log::Level::Info => (info, "info", "color:mediumseagreen"),
 			log::Level::Error => (error, "error", "color:red"),
 		};
 		let msg = &format!("%c{}\t{}", name, record.args());
