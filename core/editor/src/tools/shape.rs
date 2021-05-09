@@ -156,7 +156,14 @@ fn make_operation(data: &ShapeToolData, tool_data: &DocumentToolData, canvas_tra
 			(x0, y0, x0 + max_dist * x_dir, y0 + max_dist * y_dir)
 		}
 	} else {
-		let (x0, y0) = if data.center_around_cursor { (x0 - 2.0 * (x1 - x0), y0 - 2.0 * (y1 - y0)) } else { (x0, y0) };
+		let (x0, y0) = if data.center_around_cursor {
+			let delta_x = x1 - x0;
+			let delta_y = y1 - y0;
+
+			(x0 - delta_x, y0 - delta_y)
+		} else {
+			(x0, y0)
+		};
 		(x0, y0, x1, y1)
 	};
 
