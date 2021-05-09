@@ -274,12 +274,12 @@ impl Document {
 				self.work_mount_path = vec![];
 				self.work = Folder::default();
 				self.work_mounted = false;
-				None
+				Some(vec![DocumentResponse::DocumentChanged])
 			}
 			Operation::ClearWorkingFolder => {
 				self.work_operations.clear();
 				self.work = Folder::default();
-				None
+				Some(vec![DocumentResponse::DocumentChanged])
 			}
 			Operation::CommitTransaction => {
 				let mut ops = Vec::new();

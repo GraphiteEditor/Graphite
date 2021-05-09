@@ -187,6 +187,7 @@ pub enum Key {
 	KeyShift,
 	KeyControl,
 	KeyAlt,
+	KeyEscape,
 }
 
 bitflags! {
