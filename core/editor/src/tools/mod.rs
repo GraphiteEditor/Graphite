@@ -9,38 +9,37 @@ mod rectangle;
 mod select;
 mod shape;
 
-use crate::events::{Event, ModKeys, MouseState, ToolResponse, Trace, TracePoint};
-use crate::Color;
-use crate::Document;
 use crate::EditorError;
+use crate::SvgDocument;
+use crate::{
+	dispatcher::Action,
+	events::{ToolResponse, Trace, TracePoint},
+};
+use crate::{dispatcher::ActionHandler, Color};
 use document_core::Operation;
 use std::{collections::HashMap, fmt};
 
-pub trait Tool {
-	fn handle_input(&mut self, event: &Event, document: &Document, tool_data: &DocumentToolData) -> (Vec<ToolResponse>, Vec<Operation>);
-}
+pub type ToolActionHandlerData<'a> = (&'a SvgDocument, &'a DocumentToolData);
 
 pub trait Fsm {
 	type ToolData;
-	fn transition(self, event: &Event, document: &Document, tool_data: &DocumentToolData, data: &mut Self::ToolData, responses: &mut Vec<ToolResponse>, operations: &mut Vec<Operation>) -> Self;
+	fn transition(self, action: &Action, document: &SvgDocument, tool_data: &DocumentToolData, data: &mut Self::ToolData, responses: &mut Vec<ToolResponse>, operations: &mut Vec<Operation>) -> Self;
 }
 
 #[derive(Debug)]
 pub struct DocumentToolData {
-	pub mouse_state: MouseState,
-	pub mod_keys: ModKeys,
 	pub primary_color: Color,
 	pub secondary_color: Color,
-}
-
-pub struct ToolData {
-	pub active_tool_type: ToolType,
-	pub tools: HashMap<ToolType, Box<dyn Tool>>,
 	tool_settings: HashMap<ToolType, ToolSettings>,
 }
 
-impl ToolData {
-	pub fn active_tool(&mut self) -> Result<&mut Box<dyn Tool>, EditorError> {
+pub struct ToolData<'a> {
+	pub active_tool_type: ToolType,
+	pub tools: HashMap<ToolType, Box<dyn ActionHandler<(&'a SvgDocument, &'a DocumentToolData)>>>,
+}
+
+impl ToolData<'_> {
+	pub fn active_tool<'a>(&mut self) -> Result<&mut dyn ActionHandler<ToolActionHandlerData<'a>>, EditorError> {
 		self.tools.get_mut(&self.active_tool_type).ok_or(EditorError::UnknownTool)
 	}
 }
@@ -69,13 +68,11 @@ impl Default for ToolFsmState {
 					Ellipse => ellipse::Ellipse,
 					Shape => shape::Shape,
 				},
-				tool_settings: default_tool_settings(),
 			},
 			document_tool_data: DocumentToolData {
-				mouse_state: MouseState::default(),
-				mod_keys: ModKeys::default(),
 				primary_color: Color::BLACK,
 				secondary_color: Color::WHITE,
+				tool_settings: default_tool_settings(),
 			},
 		}
 	}

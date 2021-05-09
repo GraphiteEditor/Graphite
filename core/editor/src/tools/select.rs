@@ -1,9 +1,11 @@
 use crate::events::{Event, ToolResponse};
-use crate::tools::{Fsm, Tool};
+use crate::tools::Fsm;
 use crate::Document;
+use crate::{
+	dispatcher::{Action, ActionHandler, InputPreprocessor, Response},
+	tools::{DocumentToolData, ToolActionHandlerData},
+};
 use document_core::Operation;
-
-use super::DocumentToolData;
 
 #[derive(Default)]
 pub struct Select {
@@ -11,13 +13,11 @@ pub struct Select {
 	data: SelectToolData,
 }
 
-impl Tool for Select {
-	fn handle_input(&mut self, event: &Event, document: &Document, tool_data: &DocumentToolData) -> (Vec<ToolResponse>, Vec<Operation>) {
-		let mut responses = Vec::new();
-		let mut operations = Vec::new();
-		self.fsm_state = self.fsm_state.transition(event, document, tool_data, &mut self.data, &mut responses, &mut operations);
+impl<'a> ActionHandler<ToolActionHandlerData<'a>> for Select {
+	fn process_action(&mut self, data: ToolActionHandlerData<'a>, input_preprocessor: &InputPreprocessor, action: &Action, responses: &mut Vec<Response>, operations: &mut Vec<Operation>) -> bool {
+		self.fsm_state = self.fsm_state.transition(action, data.0, data.1, &mut self.data, &mut responses, &mut operations);
 
-		(responses, operations)
+		false
 	}
 }
 
