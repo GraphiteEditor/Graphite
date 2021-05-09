@@ -80,6 +80,7 @@ impl Fsm for RectangleToolFsmState {
 				data.drag_current = mouse_state.position;
 
 				operations.push(Operation::ClearWorkingFolder);
+				// TODO - introduce comparison threshold when operating with canvas coordinates (https://github.com/GraphiteEditor/Graphite/issues/100)
 				if data.drag_start != data.drag_current {
 					operations.push(make_operation(data, tool_data, canvas_transform));
 					operations.push(Operation::CommitTransaction);
@@ -87,7 +88,12 @@ impl Fsm for RectangleToolFsmState {
 
 				RectangleToolFsmState::Ready
 			}
+			// TODO - simplify with or_patterns when rust 1.53.0 is stable (https://github.com/rust-lang/rust/issues/54883)
+			(RectangleToolFsmState::LmbDown, Event::KeyUp(Key::KeyEscape)) | (RectangleToolFsmState::LmbDown, Event::RmbDown(_)) => {
+				operations.push(Operation::DiscardWorkingFolder);
 
+				RectangleToolFsmState::Ready
+			}
 			(state, Event::KeyDown(Key::KeyShift)) => {
 				data.constrain_to_square = true;
 
@@ -98,7 +104,6 @@ impl Fsm for RectangleToolFsmState {
 
 				self
 			}
-
 			(state, Event::KeyUp(Key::KeyShift)) => {
 				data.constrain_to_square = false;
 
@@ -109,7 +114,6 @@ impl Fsm for RectangleToolFsmState {
 
 				self
 			}
-
 			(state, Event::KeyDown(Key::KeyAlt)) => {
 				data.center_around_cursor = true;
 
@@ -120,7 +124,6 @@ impl Fsm for RectangleToolFsmState {
 
 				self
 			}
-
 			(state, Event::KeyUp(Key::KeyAlt)) => {
 				data.center_around_cursor = false;
 
@@ -131,7 +134,6 @@ impl Fsm for RectangleToolFsmState {
 
 				self
 			}
-
 			_ => self,
 		}
 	}
