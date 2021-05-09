@@ -33,13 +33,13 @@ pub struct DocumentToolData {
 	tool_settings: HashMap<ToolType, ToolSettings>,
 }
 
-pub struct ToolData<'a> {
+pub struct ToolData {
 	pub active_tool_type: ToolType,
-	pub tools: HashMap<ToolType, Box<dyn ActionHandler<(&'a SvgDocument, &'a DocumentToolData)>>>,
+	pub tools: HashMap<ToolType, Box<dyn for<'a> ActionHandler<(&'a SvgDocument, &'a DocumentToolData)>>>,
 }
 
-impl ToolData<'_> {
-	pub fn active_tool<'a>(&mut self) -> Result<&mut dyn ActionHandler<ToolActionHandlerData<'a>>, EditorError> {
+impl ToolData {
+	pub fn active_tool(&mut self) -> Result<&mut Box<dyn for<'a> ActionHandler<ToolActionHandlerData<'a>>>, EditorError> {
 		self.tools.get_mut(&self.active_tool_type).ok_or(EditorError::UnknownTool)
 	}
 }

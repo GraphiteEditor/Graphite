@@ -5,10 +5,10 @@ use crate::SvgDocument;
 #[derive(Debug, Default, Clone)]
 pub struct DocumentActionHandler {}
 
-impl<'a> ActionHandler<(&mut SvgDocument, &mut dyn ActionHandler<ToolActionHandlerData<'a>>, &DocumentToolData)> for DocumentActionHandler {
+impl ActionHandler<(&mut SvgDocument, &mut dyn for<'a> ActionHandler<ToolActionHandlerData<'a>>, &DocumentToolData)> for DocumentActionHandler {
 	fn process_action(
 		&mut self,
-		data: (&mut SvgDocument, &mut dyn ActionHandler<ToolActionHandlerData<'a>>, &DocumentToolData),
+		data: (&mut SvgDocument, &mut dyn for<'a> ActionHandler<ToolActionHandlerData<'a>>, &DocumentToolData),
 		input: &InputPreprocessor,
 		action: &Action,
 		responses: &mut Vec<Response>,
