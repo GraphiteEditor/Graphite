@@ -143,7 +143,6 @@ fn make_operation(data: &RectangleToolData, tool_data: &DocumentToolData) -> Ope
 			(x0, y0, x0 + max_dist * x_dir, y0 + max_dist * y_dir)
 		}
 	} else {
-		// This is what was before
 		let (x0, y0) = if data.center_around_cursor { 
 			let delta_x = x1 - x0;
 			let delta_y = y1 - y0;
