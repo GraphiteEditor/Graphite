@@ -57,7 +57,7 @@ impl ActionHandler<(&mut SvgDocument, &mut dyn for<'a> ActionHandler<ToolActionH
 
 		consumed
 	}
-	actions!(Action::Undo, Action::DeleteLayer(vec![]));
+	actions_fn!(Action::Undo, Action::DeleteLayer(vec![]));
 }
 
 impl DocumentActionHandler {

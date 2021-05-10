@@ -30,7 +30,6 @@ pub use dispatcher::events;
 pub use dispatcher::Callback;
 
 use dispatcher::Dispatcher;
-use document::Document;
 
 // TODO: serialize with serde to save the current editor state
 pub struct Editor {

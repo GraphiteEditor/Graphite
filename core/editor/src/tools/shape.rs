@@ -20,7 +20,7 @@ impl<'a> ActionHandler<ToolActionHandlerData<'a>> for Shape {
 		self.fsm_state = state;
 		consumed
 	}
-	actions!();
+	actions_fn!();
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

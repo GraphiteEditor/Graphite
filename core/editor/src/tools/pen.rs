@@ -21,7 +21,7 @@ impl<'a> ActionHandler<ToolActionHandlerData<'a>> for Pen {
 		self.fsm_state = state;
 		consumed
 	}
-	actions!();
+	actions_fn!();
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

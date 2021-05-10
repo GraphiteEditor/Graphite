@@ -23,7 +23,7 @@ impl<'a> ActionHandler<ToolActionHandlerData<'a>> for Line {
 		consumed
 	}
 
-	actions!(Action::Undo);
+	actions_fn!(Action::Undo);
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
