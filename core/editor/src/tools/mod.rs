@@ -54,8 +54,11 @@ impl fmt::Debug for ToolData {
 }
 
 impl ToolData {
-	pub fn active_tool(&mut self) -> Result<&mut Box<dyn for<'a> ActionHandler<ToolActionHandlerData<'a>>>, EditorError> {
+	pub fn active_tool_mut(&mut self) -> Result<&mut Box<dyn for<'a> ActionHandler<ToolActionHandlerData<'a>>>, EditorError> {
 		self.tools.get_mut(&self.active_tool_type).ok_or(EditorError::UnknownTool)
+	}
+	pub fn active_tool(&self) -> Result<&Box<dyn for<'a> ActionHandler<ToolActionHandlerData<'a>>>, EditorError> {
+		self.tools.get(&self.active_tool_type).ok_or(EditorError::UnknownTool)
 	}
 }
 

@@ -254,12 +254,15 @@ impl Document {
 			Operation::DeleteLayer { path } => {
 				self.delete(&path)?;
 
-				Some(vec![DocumentResponse::DocumentChanged])
+				let (path, _) = split_path(path.as_slice()).unwrap_or_else(|_| (&[], 0));
+				let children = self.layer_panel(path)?;
+				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::ExpandFolder { path: path.to_vec(), children }])
 			}
 			Operation::AddFolder { path } => {
 				self.set_layer(&path, Layer::new(LayerDataTypes::Folder(Folder::default())))?;
 
-				Some(vec![DocumentResponse::DocumentChanged])
+				let children = self.layer_panel(path.as_slice())?;
+				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::ExpandFolder { path: path.clone(), children }])
 			}
 			Operation::MountWorkingFolder { path } => {
 				self.work_mount_path = path.clone();
@@ -285,23 +288,27 @@ impl Document {
 				let mut path: Vec<LayerId> = vec![];
 				std::mem::swap(&mut path, &mut self.work_mount_path);
 				std::mem::swap(&mut ops, &mut self.work_operations);
-				let len = ops.len() - 1;
 				self.work_mounted = false;
 				self.work_mount_path = vec![];
 				self.work = Folder::default();
-				log::debug!("commit: {:?}", ops);
 				let mut responses = vec![];
-				for operation in ops.into_iter().take(len) {
+				for operation in ops.into_iter() {
 					if let Some(mut op_responses) = self.handle_operation(operation)? {
 						responses.append(&mut op_responses);
 					}
 				}
 
 				let children = self.layer_panel(path.as_slice())?;
+				// TODO: Return `responses` and add deduplication in the future
 				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::ExpandFolder { path, children }])
 			}
 		};
-		self.work_operations.push(operation);
+		if !matches!(
+			operation,
+			Operation::CommitTransaction | Operation::MountWorkingFolder { .. } | Operation::DiscardWorkingFolder | Operation::ClearWorkingFolder
+		) {
+			self.work_operations.push(operation);
+		}
 		Ok(responses)
 	}
 }

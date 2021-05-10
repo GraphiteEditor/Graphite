@@ -86,9 +86,10 @@ macro_rules! match_variant_name {
 }
 
 macro_rules! actions {
-	($($v:ident), * $(,)?) => {
-		fn actions(&self) -> &[(&str, Action)] {
-			&[$(("", Action::$v),),*]
+	($($v:expr), * $(,)?) => {
+		fn actions(&self) -> &[(String, Action)] {
+			const TEST: &[(String, Action)] =  &[$((String::new(), $v)),*];
+			TEST
 		}
 	};
 }

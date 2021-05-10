@@ -8,8 +8,8 @@ use crate::EditorError;
 use document_core::Operation;
 pub use events::{DocumentResponse, Event, Key, Response, ToolResponse};
 
-use self::global_event_handler::GlobalEventHandler;
 pub use self::input_manager::InputPreprocessor;
+use self::{global_event_handler::GlobalEventHandler, input_manager::InputMapper};
 
 pub use actions::Action;
 
@@ -18,12 +18,13 @@ pub type Callback = Box<dyn Fn(Response)>;
 pub trait ActionHandler<T> {
 	/// Return true if the Action is consumed.
 	fn process_action(&mut self, data: T, input_preprocessor: &InputPreprocessor, action: &Action, responses: &mut Vec<Response>, operations: &mut Vec<Operation>) -> bool;
-	fn actions(&self) -> &[(&str, Action)];
+	fn actions(&self) -> &[(String, Action)];
 }
 
 pub struct Dispatcher {
 	callback: Callback,
 	input_preprocessor: InputPreprocessor,
+	input_mapper: InputMapper,
 	global_event_handler: GlobalEventHandler,
 	operations: Vec<Operation>,
 	responses: Vec<Response>,
@@ -35,9 +36,12 @@ impl Dispatcher {
 
 		self.operations.clear();
 		self.responses.clear();
-		let actions = self.input_preprocessor.handle_user_input(event);
-		for action in actions {
-			self.handle_action(action);
+		let events = self.input_preprocessor.handle_user_input(event);
+		for event in events {
+			let actions = self.input_mapper.translate_event(event, &self.input_preprocessor, self.global_event_handler.actions());
+			for action in actions {
+				self.handle_action(action);
+			}
 		}
 
 		Ok(())
@@ -74,6 +78,7 @@ impl Dispatcher {
 			callback,
 			input_preprocessor: InputPreprocessor::default(),
 			global_event_handler: GlobalEventHandler::new(),
+			input_mapper: InputMapper::default(),
 			operations: Vec::new(),
 			responses: Vec::new(),
 		}

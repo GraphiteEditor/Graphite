@@ -166,6 +166,7 @@ pub enum Key {
 	Key8,
 	Key9,
 	KeyShift,
+	KeyCaps,
 	KeyControl,
 	KeyAlt,
 	KeyEscape,

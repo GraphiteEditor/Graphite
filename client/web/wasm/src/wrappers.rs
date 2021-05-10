@@ -86,6 +86,7 @@ pub fn translate_append_mode(name: &str) -> Option<SelectAppendMode> {
 }
 
 pub fn translate_key(name: &str) -> events::Key {
+	log::trace!("pressed key: {}", name);
 	use events::Key::*;
 	match name {
 		"e" => KeyE,
@@ -109,6 +110,7 @@ pub fn translate_key(name: &str) -> events::Key {
 		"9" => Key9,
 		"Enter" => KeyEnter,
 		"Shift" => KeyShift,
+		"CapsLock" => KeyCaps,
 		"Control" => KeyControl,
 		"Alt" => KeyAlt,
 		"Escape" => KeyEscape,

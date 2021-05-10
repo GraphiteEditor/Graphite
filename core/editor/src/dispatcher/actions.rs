@@ -4,6 +4,7 @@ use crate::tools::ToolType;
 
 #[derive(Debug, Clone)]
 pub enum Action {
+	NoOp,
 	SelectTool(ToolType),
 	SelectPrimaryColor(Color),
 	SelectSecondaryColor(Color),
@@ -29,6 +30,9 @@ pub enum Action {
 	IncreaseSize,
 	DecreaseSize,
 	Save,
+	LogInfo,
+	LogDebug,
+	LogTrace,
 	// …
 	LmbDown,
 	RmbDown,

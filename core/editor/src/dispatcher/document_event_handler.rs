@@ -48,7 +48,6 @@ impl ActionHandler<(&mut SvgDocument, &mut dyn for<'a> ActionHandler<ToolActionH
 			}
 		}
 
-		log::debug!("operations: {:?}", operations);
 		let mut document_responses = self.dispatch_operations(doc, operations.drain(..));
 		let canvas_dirty = self.filter_document_responses(&mut document_responses);
 		responses.extend(document_responses.drain(..).map(Into::into));
@@ -58,9 +57,7 @@ impl ActionHandler<(&mut SvgDocument, &mut dyn for<'a> ActionHandler<ToolActionH
 
 		consumed
 	}
-	fn actions(&self) -> &[(&str, Action)] {
-		&[("", Action::Save)]
-	}
+	actions!(Action::Undo, Action::DeleteLayer(vec![]));
 }
 
 impl DocumentActionHandler {
