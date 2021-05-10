@@ -10,7 +10,6 @@ pub struct Crop;
 impl<'a> ActionHandler<ToolActionHandlerData<'a>> for Crop {
 	fn process_action(&mut self, data: ToolActionHandlerData<'a>, input_preprocessor: &InputPreprocessor, action: &Action, responses: &mut Vec<Response>, operations: &mut Vec<Operation>) -> bool {
 		todo!("{}::handle_input {:?} {:?} {:?} {:?}", module_path!(), action, data, responses, operations);
-
-		false
 	}
+	actions!();
 }

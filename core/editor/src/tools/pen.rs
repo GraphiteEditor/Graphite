@@ -1,7 +1,6 @@
-use crate::events::{Event, ToolResponse};
-use crate::events::{Key, ViewportPosition};
+use crate::events::ViewportPosition;
 use crate::tools::Fsm;
-use crate::Document;
+use crate::SvgDocument;
 
 use crate::{
 	dispatcher::{Action, ActionHandler, InputPreprocessor, Response},
@@ -18,10 +17,11 @@ pub struct Pen {
 
 impl<'a> ActionHandler<ToolActionHandlerData<'a>> for Pen {
 	fn process_action(&mut self, data: ToolActionHandlerData<'a>, input_preprocessor: &InputPreprocessor, action: &Action, responses: &mut Vec<Response>, operations: &mut Vec<Operation>) -> bool {
-		self.fsm_state = self.fsm_state.transition(action, data.0, data.1, &mut self.data, &mut responses, &mut operations);
+		self.fsm_state = self.fsm_state.transition(action, data.0, data.1, &mut self.data, input_preprocessor, &mut responses, &mut operations);
 
 		false
 	}
+	actions!();
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -44,34 +44,36 @@ struct PenToolData {
 impl Fsm for PenToolFsmState {
 	type ToolData = PenToolData;
 
-	fn transition(self, event: &Event, document: &Document, tool_data: &DocumentToolData, data: &mut Self::ToolData, _responses: &mut Vec<ToolResponse>, operations: &mut Vec<Operation>) -> Self {
+	fn transition(
+		self,
+		event: &Action,
+		document: &SvgDocument,
+		tool_data: &DocumentToolData,
+		data: &mut Self::ToolData,
+		input: &InputPreprocessor,
+		_responses: &mut Vec<Response>,
+		operations: &mut Vec<Operation>,
+	) -> Self {
 		match (self, event) {
-			(PenToolFsmState::Ready, Event::LmbDown(mouse_state)) => {
+			(PenToolFsmState::Ready, Action::LmbDown) => {
 				operations.push(Operation::MountWorkingFolder { path: vec![] });
 
-				data.points.push(mouse_state.position);
-				data.next_point = mouse_state.position;
+				data.points.push(input.mouse_state.position);
+				data.next_point = input.mouse_state.position;
 
 				PenToolFsmState::LmbDown
 			}
-			(PenToolFsmState::Ready, Event::KeyDown(Key::KeyZ)) => {
-				if let Some(id) = document.root.list_layers().last() {
-					operations.push(Operation::DeleteLayer { path: vec![*id] })
-				}
-
-				PenToolFsmState::Ready
-			}
-			(PenToolFsmState::LmbDown, Event::LmbUp(mouse_state)) => {
+			(PenToolFsmState::LmbDown, Action::LmbUp) => {
 				// TODO - introduce comparison threshold when operating with canvas coordinates (https://github.com/GraphiteEditor/Graphite/issues/100)
-				if data.points.last() != Some(&mouse_state.position) {
-					data.points.push(mouse_state.position);
-					data.next_point = mouse_state.position;
+				if data.points.last() != Some(&input.mouse_state.position) {
+					data.points.push(input.mouse_state.position);
+					data.next_point = input.mouse_state.position;
 				}
 
 				PenToolFsmState::LmbDown
 			}
-			(PenToolFsmState::LmbDown, Event::MouseMove(mouse_state)) => {
-				data.next_point = *mouse_state;
+			(PenToolFsmState::LmbDown, Action::MouseMove) => {
+				data.next_point = input.mouse_state.position;
 
 				operations.push(Operation::ClearWorkingFolder);
 				operations.push(make_operation(data, tool_data, true));
@@ -79,7 +81,7 @@ impl Fsm for PenToolFsmState {
 				PenToolFsmState::LmbDown
 			}
 			// TODO - simplify with or_patterns when rust 1.53.0 is stable  (https://github.com/rust-lang/rust/issues/54883)
-			(PenToolFsmState::LmbDown, Event::KeyDown(Key::KeyEnter)) | (PenToolFsmState::LmbDown, Event::KeyDown(Key::KeyEscape)) | (PenToolFsmState::LmbDown, Event::RmbDown(_)) => {
+			(PenToolFsmState::LmbDown, Action::Confirm) | (PenToolFsmState::LmbDown, Action::Abort) | (PenToolFsmState::LmbDown, Action::RmbDown) => {
 				operations.push(Operation::ClearWorkingFolder);
 
 				if data.points.len() >= 2 {

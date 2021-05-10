@@ -9,13 +9,13 @@ mod rectangle;
 mod select;
 mod shape;
 
-use crate::EditorError;
 use crate::SvgDocument;
-use crate::{
-	dispatcher::Action,
-	events::{ToolResponse, Trace, TracePoint},
-};
 use crate::{dispatcher::ActionHandler, Color};
+use crate::{dispatcher::InputPreprocessor, EditorError};
+use crate::{
+	dispatcher::{Action, Response},
+	events::{Trace, TracePoint},
+};
 use document_core::Operation;
 use std::{collections::HashMap, fmt};
 
@@ -23,7 +23,16 @@ pub type ToolActionHandlerData<'a> = (&'a SvgDocument, &'a DocumentToolData);
 
 pub trait Fsm {
 	type ToolData;
-	fn transition(self, action: &Action, document: &SvgDocument, tool_data: &DocumentToolData, data: &mut Self::ToolData, responses: &mut Vec<ToolResponse>, operations: &mut Vec<Operation>) -> Self;
+	fn transition(
+		self,
+		action: &Action,
+		document: &SvgDocument,
+		tool_data: &DocumentToolData,
+		data: &mut Self::ToolData,
+		input: &InputPreprocessor,
+		responses: &mut Vec<Response>,
+		operations: &mut Vec<Operation>,
+	) -> Self;
 }
 
 #[derive(Debug)]
@@ -81,13 +90,6 @@ impl Default for ToolFsmState {
 impl ToolFsmState {
 	pub fn new() -> Self {
 		Self::default()
-	}
-
-	pub fn record_trace_point(&mut self) {
-		self.trace.push(TracePoint {
-			mouse_state: self.document_tool_data.mouse_state,
-			mod_keys: self.document_tool_data.mod_keys,
-		})
 	}
 
 	pub fn swap_colors(&mut self) {

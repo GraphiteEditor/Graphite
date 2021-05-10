@@ -4,6 +4,7 @@ use super::{
 };
 use std::collections::HashMap;
 
+#[derive(Debug, Default)]
 pub struct KeyState {
 	depressed: bool,
 	// time of last press
@@ -11,10 +12,12 @@ pub struct KeyState {
 	// …
 }
 
+#[derive(Debug, Default)]
 pub struct InputPreprocessor {
 	mouse_keys: MouseState,
 	keyboard: HashMap<Key, KeyState>,
-	key_translation: HashMap<Key, VirtualInputAction>,
+	//key_translation: HashMap<Key, VirtualInputAction>,
+	pub mouse_state: MouseState,
 }
 
 impl InputPreprocessor {
@@ -25,16 +28,6 @@ impl InputPreprocessor {
 		// transform canvas coordinates to document coordinates
 		// Last pressed key
 		// respect text input mode
-		Some(vec![event])
+		Some(vec![])
 	}
-}
-
-pub enum VirtualInputAction {
-	SelectSelectTool,
-	SelectEllipseTool,
-	Undo,
-	Redo,
-	IncreaseSize,
-	DecreaseSize,
-	// …
 }

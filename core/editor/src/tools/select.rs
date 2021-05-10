@@ -1,6 +1,5 @@
-use crate::events::{Event, ToolResponse};
 use crate::tools::Fsm;
-use crate::Document;
+use crate::SvgDocument;
 use crate::{
 	dispatcher::{Action, ActionHandler, InputPreprocessor, Response},
 	tools::{DocumentToolData, ToolActionHandlerData},
@@ -15,10 +14,11 @@ pub struct Select {
 
 impl<'a> ActionHandler<ToolActionHandlerData<'a>> for Select {
 	fn process_action(&mut self, data: ToolActionHandlerData<'a>, input_preprocessor: &InputPreprocessor, action: &Action, responses: &mut Vec<Response>, operations: &mut Vec<Operation>) -> bool {
-		self.fsm_state = self.fsm_state.transition(action, data.0, data.1, &mut self.data, &mut responses, &mut operations);
+		self.fsm_state = self.fsm_state.transition(action, data.0, data.1, &mut self.data, input_preprocessor, responses, operations);
 
 		false
 	}
+	actions!();
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -40,17 +40,26 @@ struct SelectToolData;
 impl Fsm for SelectToolFsmState {
 	type ToolData = SelectToolData;
 
-	fn transition(self, event: &Event, _document: &Document, _tool_data: &DocumentToolData, _data: &mut Self::ToolData, _responses: &mut Vec<ToolResponse>, _operations: &mut Vec<Operation>) -> Self {
+	fn transition(
+		self,
+		event: &Action,
+		_document: &SvgDocument,
+		_tool_data: &DocumentToolData,
+		_data: &mut Self::ToolData,
+		input: &InputPreprocessor,
+		_responses: &mut Vec<Response>,
+		_operations: &mut Vec<Operation>,
+	) -> Self {
 		match (self, event) {
-			(SelectToolFsmState::Ready, Event::LmbDown(_mouse_state)) => SelectToolFsmState::LmbDown,
+			(SelectToolFsmState::Ready, Action::LmbDown) => SelectToolFsmState::LmbDown,
 
-			(SelectToolFsmState::LmbDown, Event::LmbUp(_mouse_state)) => SelectToolFsmState::Ready,
+			(SelectToolFsmState::LmbDown, Action::LmbUp) => SelectToolFsmState::Ready,
 
-			(SelectToolFsmState::LmbDown, Event::MouseMove(_mouse_state)) => SelectToolFsmState::TransformSelected,
+			(SelectToolFsmState::LmbDown, Action::MouseMove) => SelectToolFsmState::TransformSelected,
 
-			(SelectToolFsmState::TransformSelected, Event::MouseMove(_mouse_state)) => self,
+			(SelectToolFsmState::TransformSelected, Action::MouseMove) => self,
 
-			(SelectToolFsmState::TransformSelected, Event::LmbUp(_mouse_state)) => SelectToolFsmState::Ready,
+			(SelectToolFsmState::TransformSelected, Action::LmbUp) => SelectToolFsmState::Ready,
 
 			_ => self,
 		}

@@ -1,7 +1,6 @@
-use crate::events::{Event, ToolResponse};
-use crate::events::{Key, ViewportPosition};
+use crate::events::ViewportPosition;
 use crate::tools::Fsm;
-use crate::Document;
+use crate::SvgDocument;
 use document_core::layers::style;
 use document_core::Operation;
 
@@ -17,10 +16,11 @@ use crate::{
 };
 impl<'a> ActionHandler<ToolActionHandlerData<'a>> for Ellipse {
 	fn process_action(&mut self, data: ToolActionHandlerData<'a>, input_preprocessor: &InputPreprocessor, action: &Action, responses: &mut Vec<Response>, operations: &mut Vec<Operation>) -> bool {
-		self.fsm_state = self.fsm_state.transition(action, data.0, data.1, &mut self.data, &mut responses, &mut operations);
+		self.fsm_state = self.fsm_state.transition(action, data.0, data.1, &mut self.data, input_preprocessor, &mut responses, &mut operations);
 
 		false
 	}
+	actions!();
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -45,30 +45,33 @@ struct EllipseToolData {
 impl Fsm for EllipseToolFsmState {
 	type ToolData = EllipseToolData;
 
-	fn transition(self, event: &Event, document: &Document, tool_data: &DocumentToolData, data: &mut Self::ToolData, _responses: &mut Vec<ToolResponse>, operations: &mut Vec<Operation>) -> Self {
+	fn transition(
+		self,
+		event: &Action,
+		document: &SvgDocument,
+		tool_data: &DocumentToolData,
+		data: &mut Self::ToolData,
+		input: &InputPreprocessor,
+		_responses: &mut Vec<Response>,
+		operations: &mut Vec<Operation>,
+	) -> Self {
 		match (self, event) {
-			(EllipseToolFsmState::Ready, Event::LmbDown(mouse_state)) => {
-				data.drag_start = mouse_state.position;
-				data.drag_current = mouse_state.position;
+			(EllipseToolFsmState::Ready, Action::LmbDown) => {
+				data.drag_start = input.mouse_state.position;
+				data.drag_current = input.mouse_state.position;
 				operations.push(Operation::MountWorkingFolder { path: vec![] });
 				EllipseToolFsmState::LmbDown
 			}
-			(EllipseToolFsmState::Ready, Event::KeyDown(Key::KeyZ)) => {
-				if let Some(id) = document.root.list_layers().last() {
-					operations.push(Operation::DeleteLayer { path: vec![*id] })
-				}
-				EllipseToolFsmState::Ready
-			}
-			(EllipseToolFsmState::LmbDown, Event::MouseMove(mouse_state)) => {
-				data.drag_current = *mouse_state;
+			(EllipseToolFsmState::LmbDown, Action::MouseMove) => {
+				data.drag_current = input.mouse_state.position;
 
 				operations.push(Operation::ClearWorkingFolder);
 				operations.push(make_operation(data, tool_data));
 
 				EllipseToolFsmState::LmbDown
 			}
-			(EllipseToolFsmState::LmbDown, Event::LmbUp(mouse_state)) => {
-				data.drag_current = mouse_state.position;
+			(EllipseToolFsmState::LmbDown, Action::LmbUp) => {
+				data.drag_current = input.mouse_state.position;
 
 				operations.push(Operation::ClearWorkingFolder);
 				// TODO - introduce comparison threshold when operating with canvas coordinates (https://github.com/GraphiteEditor/Graphite/issues/100)
@@ -80,12 +83,12 @@ impl Fsm for EllipseToolFsmState {
 				EllipseToolFsmState::Ready
 			}
 			// TODO - simplify with or_patterns when rust 1.53.0 is stable (https://github.com/rust-lang/rust/issues/54883)
-			(EllipseToolFsmState::LmbDown, Event::KeyUp(Key::KeyEscape)) | (EllipseToolFsmState::LmbDown, Event::RmbDown(_)) => {
+			(EllipseToolFsmState::LmbDown, Action::Abort) | (EllipseToolFsmState::LmbDown, Action::RmbDown) => {
 				operations.push(Operation::DiscardWorkingFolder);
 
 				EllipseToolFsmState::Ready
 			}
-			(state, Event::KeyDown(Key::KeyShift)) => {
+			(state, Action::LockAspectRatio) => {
 				data.constrain_to_circle = true;
 
 				if state == EllipseToolFsmState::LmbDown {
@@ -95,7 +98,7 @@ impl Fsm for EllipseToolFsmState {
 
 				self
 			}
-			(state, Event::KeyUp(Key::KeyShift)) => {
+			(state, Action::UnlockAspectRatio) => {
 				data.constrain_to_circle = false;
 
 				if state == EllipseToolFsmState::LmbDown {
@@ -105,7 +108,7 @@ impl Fsm for EllipseToolFsmState {
 
 				self
 			}
-			(state, Event::KeyDown(Key::KeyAlt)) => {
+			(state, Action::Center) => {
 				data.center_around_cursor = true;
 
 				if state == EllipseToolFsmState::LmbDown {
@@ -115,7 +118,7 @@ impl Fsm for EllipseToolFsmState {
 
 				self
 			}
-			(state, Event::KeyUp(Key::KeyAlt)) => {
+			(state, Action::UnCenter) => {
 				data.center_around_cursor = false;
 
 				if state == EllipseToolFsmState::LmbDown {

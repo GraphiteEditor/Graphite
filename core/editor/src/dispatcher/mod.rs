@@ -147,24 +147,6 @@ impl Dispatcher {
 		Ok(())
 	}
 
-	fn dispatch_operations<I: IntoIterator<Item = Operation>>(&self, document: &mut Document, operations: I) -> Vec<DocumentResponse> {
-		let mut responses = vec![];
-		for operation in operations {
-			match self.dispatch_operation(document, operation) {
-				Ok(Some(mut res)) => {
-					responses.append(&mut res);
-				}
-				Ok(None) => (),
-				Err(error) => log::error!("{}", error),
-			}
-		}
-		responses
-	}
-
-	fn dispatch_operation(&self, document: &mut Document, operation: Operation) -> Result<Option<Vec<DocumentResponse>>, EditorError> {
-		Ok(document.handle_operation(operation)?)
-	}
-
 	pub fn dispatch_responses<T: Into<Response>, I: IntoIterator<Item = T>>(&self, responses: I) {
 		for response in responses {
 			self.dispatch_response(response);
@@ -179,6 +161,9 @@ impl Dispatcher {
 	}
 
 	pub fn new(callback: Callback) -> Dispatcher {
-		Dispatcher { callback }
+		Dispatcher {
+			callback,
+			input_preprocessor: InputPreprocessor::default(),
+		}
 	}
 }
