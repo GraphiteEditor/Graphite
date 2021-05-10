@@ -3,7 +3,7 @@ use crate::document::Document;
 use super::{input_manager::InputPreprocessor, Action, ActionHandler, Operation, Response};
 use crate::tools::ToolFsmState;
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct GlobalEventHandler {
 	documents: Vec<Document>,
 	active_document: usize,
@@ -34,11 +34,13 @@ impl ActionHandler<()> for GlobalEventHandler {
 		use Action::*;
 		match action {
 			SelectDocument(id) => self.active_document = *id,
+			SelectTool(tool) => self.tool_state.tool_data.active_tool_type = *tool,
 			_ => consumed = false,
 		}
 
 		// pass action to the next level if it was not consumed
 		if !consumed {
+			consumed = true;
 			let doc = &mut self.documents[self.active_document];
 			let tool = self.tool_state.tool_data.active_tool().unwrap().as_mut();
 			let document_tool_data = &self.tool_state.document_tool_data;

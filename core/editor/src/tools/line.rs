@@ -18,9 +18,9 @@ pub struct Line {
 
 impl<'a> ActionHandler<ToolActionHandlerData<'a>> for Line {
 	fn process_action(&mut self, data: ToolActionHandlerData<'a>, input_preprocessor: &InputPreprocessor, action: &Action, responses: &mut Vec<Response>, operations: &mut Vec<Operation>) -> bool {
-		self.fsm_state = self.fsm_state.transition(action, data.0, data.1, &mut self.data, input_preprocessor, responses, operations);
-
-		false
+		let (consumed, state) = self.fsm_state.transition(action, data.0, data.1, &mut self.data, input_preprocessor, responses, operations);
+		self.fsm_state = state;
+		consumed
 	}
 
 	actions!(Undo);
@@ -59,7 +59,7 @@ impl Fsm for LineToolFsmState {
 		input: &InputPreprocessor,
 		_responses: &mut Vec<Response>,
 		operations: &mut Vec<Operation>,
-	) -> Self {
+	) -> (bool, Self) {
 		match (self, event) {
 			(LineToolFsmState::Ready, Action::LmbDown) => {
 				data.drag_start = input.mouse_state.position;
@@ -67,7 +67,7 @@ impl Fsm for LineToolFsmState {
 
 				operations.push(Operation::MountWorkingFolder { path: vec![] });
 
-				LineToolFsmState::LmbDown
+				(true, LineToolFsmState::LmbDown)
 			}
 			(LineToolFsmState::LmbDown, Action::MouseMove) => {
 				data.drag_current = input.mouse_state.position;
@@ -75,7 +75,7 @@ impl Fsm for LineToolFsmState {
 				operations.push(Operation::ClearWorkingFolder);
 				operations.push(make_operation(data, tool_data));
 
-				LineToolFsmState::LmbDown
+				(true, LineToolFsmState::LmbDown)
 			}
 			(LineToolFsmState::LmbDown, Action::LmbUp) => {
 				data.drag_current = input.mouse_state.position;
@@ -87,13 +87,13 @@ impl Fsm for LineToolFsmState {
 					operations.push(Operation::CommitTransaction);
 				}
 
-				LineToolFsmState::Ready
+				(true, LineToolFsmState::Ready)
 			}
 			// TODO - simplify with or_patterns when rust 1.53.0 is stable (https://github.com/rust-lang/rust/issues/54883)
 			(LineToolFsmState::LmbDown, Action::Abort) | (LineToolFsmState::LmbDown, Action::RmbDown) => {
 				operations.push(Operation::DiscardWorkingFolder);
 
-				LineToolFsmState::Ready
+				(true, LineToolFsmState::Ready)
 			}
 			(state, Action::LockAspectRatio) => {
 				data.snap_angle = true;
@@ -103,7 +103,7 @@ impl Fsm for LineToolFsmState {
 					operations.push(make_operation(data, tool_data));
 				}
 
-				self
+				(true, self)
 			}
 			(state, Action::UnlockAspectRatio) => {
 				data.snap_angle = false;
@@ -113,7 +113,7 @@ impl Fsm for LineToolFsmState {
 					operations.push(make_operation(data, tool_data));
 				}
 
-				self
+				(true, self)
 			}
 			(state, Action::SnapAngle) => {
 				data.lock_angle = true;
@@ -123,7 +123,7 @@ impl Fsm for LineToolFsmState {
 					operations.push(make_operation(data, tool_data));
 				}
 
-				self
+				(true, self)
 			}
 			(state, Action::UnSnapAngle) => {
 				data.lock_angle = false;
@@ -133,7 +133,7 @@ impl Fsm for LineToolFsmState {
 					operations.push(make_operation(data, tool_data));
 				}
 
-				self
+				(true, self)
 			}
 			(state, Action::Center) => {
 				data.center_around_cursor = true;
@@ -143,7 +143,7 @@ impl Fsm for LineToolFsmState {
 					operations.push(make_operation(data, tool_data));
 				}
 
-				self
+				(true, self)
 			}
 			(state, Action::UnCenter) => {
 				data.center_around_cursor = false;
@@ -153,9 +153,9 @@ impl Fsm for LineToolFsmState {
 					operations.push(make_operation(data, tool_data));
 				}
 
-				self
+				(true, self)
 			}
-			_ => self,
+			_ => (false, self),
 		}
 	}
 }

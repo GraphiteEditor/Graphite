@@ -184,7 +184,6 @@ impl Document {
 	/// Mutate the document by applying the `operation` to it. If the operation necessitates a
 	/// reaction from the frontend, responses may be returned.
 	pub fn handle_operation(&mut self, operation: Operation) -> Result<Option<Vec<DocumentResponse>>, DocumentError> {
-		let operation = operation;
 		let responses = match &operation {
 			Operation::AddCircle { path, insert_index, cx, cy, r, style } => {
 				self.add_layer(&path, Layer::new(LayerDataTypes::Circle(layers::Circle::new((*cx, *cy), *r, *style))), *insert_index)?;
@@ -290,6 +289,7 @@ impl Document {
 				self.work_mounted = false;
 				self.work_mount_path = vec![];
 				self.work = Folder::default();
+				log::debug!("commit: {:?}", ops);
 				let mut responses = vec![];
 				for operation in ops.into_iter().take(len) {
 					if let Some(mut op_responses) = self.handle_operation(operation)? {

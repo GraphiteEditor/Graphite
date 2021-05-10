@@ -16,9 +16,9 @@ use crate::{
 };
 impl<'a> ActionHandler<ToolActionHandlerData<'a>> for Ellipse {
 	fn process_action(&mut self, data: ToolActionHandlerData<'a>, input_preprocessor: &InputPreprocessor, action: &Action, responses: &mut Vec<Response>, operations: &mut Vec<Operation>) -> bool {
-		self.fsm_state = self.fsm_state.transition(action, data.0, data.1, &mut self.data, input_preprocessor, responses, operations);
-
-		false
+		let (consumed, state) = self.fsm_state.transition(action, data.0, data.1, &mut self.data, input_preprocessor, responses, operations);
+		self.fsm_state = state;
+		consumed
 	}
 	actions!();
 }
@@ -54,13 +54,13 @@ impl Fsm for EllipseToolFsmState {
 		input: &InputPreprocessor,
 		_responses: &mut Vec<Response>,
 		operations: &mut Vec<Operation>,
-	) -> Self {
+	) -> (bool, Self) {
 		match (self, event) {
 			(EllipseToolFsmState::Ready, Action::LmbDown) => {
 				data.drag_start = input.mouse_state.position;
 				data.drag_current = input.mouse_state.position;
 				operations.push(Operation::MountWorkingFolder { path: vec![] });
-				EllipseToolFsmState::LmbDown
+				(true, EllipseToolFsmState::LmbDown)
 			}
 			(EllipseToolFsmState::LmbDown, Action::MouseMove) => {
 				data.drag_current = input.mouse_state.position;
@@ -68,7 +68,7 @@ impl Fsm for EllipseToolFsmState {
 				operations.push(Operation::ClearWorkingFolder);
 				operations.push(make_operation(data, tool_data));
 
-				EllipseToolFsmState::LmbDown
+				(true, EllipseToolFsmState::LmbDown)
 			}
 			(EllipseToolFsmState::LmbDown, Action::LmbUp) => {
 				data.drag_current = input.mouse_state.position;
@@ -80,13 +80,13 @@ impl Fsm for EllipseToolFsmState {
 					operations.push(Operation::CommitTransaction);
 				}
 
-				EllipseToolFsmState::Ready
+				(true, EllipseToolFsmState::Ready)
 			}
 			// TODO - simplify with or_patterns when rust 1.53.0 is stable (https://github.com/rust-lang/rust/issues/54883)
 			(EllipseToolFsmState::LmbDown, Action::Abort) | (EllipseToolFsmState::LmbDown, Action::RmbDown) => {
 				operations.push(Operation::DiscardWorkingFolder);
 
-				EllipseToolFsmState::Ready
+				(true, EllipseToolFsmState::Ready)
 			}
 			(state, Action::LockAspectRatio) => {
 				data.constrain_to_circle = true;
@@ -96,7 +96,7 @@ impl Fsm for EllipseToolFsmState {
 					operations.push(make_operation(data, tool_data));
 				}
 
-				self
+				(true, self)
 			}
 			(state, Action::UnlockAspectRatio) => {
 				data.constrain_to_circle = false;
@@ -106,7 +106,7 @@ impl Fsm for EllipseToolFsmState {
 					operations.push(make_operation(data, tool_data));
 				}
 
-				self
+				(true, self)
 			}
 			(state, Action::Center) => {
 				data.center_around_cursor = true;
@@ -116,7 +116,7 @@ impl Fsm for EllipseToolFsmState {
 					operations.push(make_operation(data, tool_data));
 				}
 
-				self
+				(true, self)
 			}
 			(state, Action::UnCenter) => {
 				data.center_around_cursor = false;
@@ -126,9 +126,9 @@ impl Fsm for EllipseToolFsmState {
 					operations.push(make_operation(data, tool_data));
 				}
 
-				self
+				(true, self)
 			}
-			_ => self,
+			_ => (false, self),
 		}
 	}
 }

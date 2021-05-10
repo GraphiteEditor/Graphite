@@ -16,9 +16,9 @@ pub struct Shape {
 
 impl<'a> ActionHandler<ToolActionHandlerData<'a>> for Shape {
 	fn process_action(&mut self, data: ToolActionHandlerData<'a>, input_preprocessor: &InputPreprocessor, action: &Action, responses: &mut Vec<Response>, operations: &mut Vec<Operation>) -> bool {
-		self.fsm_state = self.fsm_state.transition(action, data.0, data.1, &mut self.data, input_preprocessor, responses, operations);
-
-		false
+		let (consumed, state) = self.fsm_state.transition(action, data.0, data.1, &mut self.data, input_preprocessor, responses, operations);
+		self.fsm_state = state;
+		consumed
 	}
 	actions!();
 }
@@ -55,7 +55,7 @@ impl Fsm for ShapeToolFsmState {
 		input: &InputPreprocessor,
 		_responses: &mut Vec<Response>,
 		operations: &mut Vec<Operation>,
-	) -> Self {
+	) -> (bool, Self) {
 		match (self, event) {
 			(ShapeToolFsmState::Ready, Action::LmbDown) => {
 				data.drag_start = input.mouse_state.position;
@@ -64,14 +64,14 @@ impl Fsm for ShapeToolFsmState {
 				data.sides = 6;
 
 				operations.push(Operation::MountWorkingFolder { path: vec![] });
-				ShapeToolFsmState::LmbDown
+				(true, ShapeToolFsmState::LmbDown)
 			}
 			(ShapeToolFsmState::LmbDown, Action::MouseMove) => {
 				data.drag_current = input.mouse_state.position;
 				operations.push(Operation::ClearWorkingFolder);
 				operations.push(make_operation(data, tool_data));
 
-				ShapeToolFsmState::LmbDown
+				(true, ShapeToolFsmState::LmbDown)
 			}
 			(ShapeToolFsmState::LmbDown, Action::LmbUp) => {
 				data.drag_current = input.mouse_state.position;
@@ -82,13 +82,13 @@ impl Fsm for ShapeToolFsmState {
 					operations.push(Operation::CommitTransaction);
 				}
 
-				ShapeToolFsmState::Ready
+				(true, ShapeToolFsmState::Ready)
 			}
 			// TODO - simplify with or_patterns when rust 1.53.0 is stable (https://github.com/rust-lang/rust/issues/54883)
 			(ShapeToolFsmState::LmbDown, Action::Abort) | (ShapeToolFsmState::LmbDown, Action::RmbDown) => {
 				operations.push(Operation::DiscardWorkingFolder);
 
-				ShapeToolFsmState::Ready
+				(true, ShapeToolFsmState::Ready)
 			}
 			(state, Action::LockAspectRatio) => {
 				data.constrain_to_square = true;
@@ -98,7 +98,7 @@ impl Fsm for ShapeToolFsmState {
 					operations.push(make_operation(data, tool_data));
 				}
 
-				self
+				(true, self)
 			}
 			(state, Action::UnlockAspectRatio) => {
 				data.constrain_to_square = false;
@@ -108,7 +108,7 @@ impl Fsm for ShapeToolFsmState {
 					operations.push(make_operation(data, tool_data));
 				}
 
-				self
+				(true, self)
 			}
 			(state, Action::Center) => {
 				data.center_around_cursor = true;
@@ -118,7 +118,7 @@ impl Fsm for ShapeToolFsmState {
 					operations.push(make_operation(data, tool_data));
 				}
 
-				self
+				(true, self)
 			}
 			(state, Action::UnCenter) => {
 				data.center_around_cursor = false;
@@ -128,9 +128,9 @@ impl Fsm for ShapeToolFsmState {
 					operations.push(make_operation(data, tool_data));
 				}
 
-				self
+				(true, self)
 			}
-			_ => self,
+			_ => (false, self),
 		}
 	}
 }

@@ -14,9 +14,9 @@ pub struct Select {
 
 impl<'a> ActionHandler<ToolActionHandlerData<'a>> for Select {
 	fn process_action(&mut self, data: ToolActionHandlerData<'a>, input_preprocessor: &InputPreprocessor, action: &Action, responses: &mut Vec<Response>, operations: &mut Vec<Operation>) -> bool {
-		self.fsm_state = self.fsm_state.transition(action, data.0, data.1, &mut self.data, input_preprocessor, responses, operations);
-
-		false
+		let (consumed, state) = self.fsm_state.transition(action, data.0, data.1, &mut self.data, input_preprocessor, responses, operations);
+		self.fsm_state = state;
+		consumed
 	}
 	actions!();
 }
@@ -49,19 +49,19 @@ impl Fsm for SelectToolFsmState {
 		input: &InputPreprocessor,
 		_responses: &mut Vec<Response>,
 		_operations: &mut Vec<Operation>,
-	) -> Self {
+	) -> (bool, Self) {
 		match (self, event) {
-			(SelectToolFsmState::Ready, Action::LmbDown) => SelectToolFsmState::LmbDown,
+			(SelectToolFsmState::Ready, Action::LmbDown) => (true, SelectToolFsmState::LmbDown),
 
-			(SelectToolFsmState::LmbDown, Action::LmbUp) => SelectToolFsmState::Ready,
+			(SelectToolFsmState::LmbDown, Action::LmbUp) => (true, SelectToolFsmState::Ready),
 
-			(SelectToolFsmState::LmbDown, Action::MouseMove) => SelectToolFsmState::TransformSelected,
+			(SelectToolFsmState::LmbDown, Action::MouseMove) => (true, SelectToolFsmState::TransformSelected),
 
-			(SelectToolFsmState::TransformSelected, Action::MouseMove) => self,
+			(SelectToolFsmState::TransformSelected, Action::MouseMove) => (true, self),
 
-			(SelectToolFsmState::TransformSelected, Action::LmbUp) => SelectToolFsmState::Ready,
+			(SelectToolFsmState::TransformSelected, Action::LmbUp) => (true, SelectToolFsmState::Ready),
 
-			_ => self,
+			_ => (false, self),
 		}
 	}
 }

@@ -16,9 +16,9 @@ pub struct Rectangle {
 
 impl<'a> ActionHandler<ToolActionHandlerData<'a>> for Rectangle {
 	fn process_action(&mut self, data: ToolActionHandlerData<'a>, input_preprocessor: &InputPreprocessor, action: &Action, responses: &mut Vec<Response>, operations: &mut Vec<Operation>) -> bool {
-		self.fsm_state = self.fsm_state.transition(action, data.0, data.1, &mut self.data, input_preprocessor, responses, operations);
-
-		false
+		let (consumed, state) = self.fsm_state.transition(action, data.0, data.1, &mut self.data, input_preprocessor, responses, operations);
+		self.fsm_state = state;
+		consumed
 	}
 	actions!();
 }
@@ -54,13 +54,13 @@ impl Fsm for RectangleToolFsmState {
 		input: &InputPreprocessor,
 		_responses: &mut Vec<Response>,
 		operations: &mut Vec<Operation>,
-	) -> Self {
+	) -> (bool, Self) {
 		match (self, event) {
 			(RectangleToolFsmState::Ready, Action::LmbDown) => {
 				data.drag_start = input.mouse_state.position;
 				data.drag_current = input.mouse_state.position;
 				operations.push(Operation::MountWorkingFolder { path: vec![] });
-				RectangleToolFsmState::LmbDown
+				(true, RectangleToolFsmState::LmbDown)
 			}
 			(RectangleToolFsmState::LmbDown, Action::MouseMove) => {
 				data.drag_current = input.mouse_state.position;
@@ -68,7 +68,7 @@ impl Fsm for RectangleToolFsmState {
 				operations.push(Operation::ClearWorkingFolder);
 				operations.push(make_operation(data, tool_data));
 
-				RectangleToolFsmState::LmbDown
+				(true, RectangleToolFsmState::LmbDown)
 			}
 			(RectangleToolFsmState::LmbDown, Action::LmbUp) => {
 				data.drag_current = input.mouse_state.position;
@@ -80,13 +80,13 @@ impl Fsm for RectangleToolFsmState {
 					operations.push(Operation::CommitTransaction);
 				}
 
-				RectangleToolFsmState::Ready
+				(true, RectangleToolFsmState::Ready)
 			}
 			// TODO - simplify with or_patterns when rust 1.53.0 is stable (https://github.com/rust-lang/rust/issues/54883)
 			(RectangleToolFsmState::LmbDown, Action::Abort) | (RectangleToolFsmState::LmbDown, Action::RmbDown) => {
 				operations.push(Operation::DiscardWorkingFolder);
 
-				RectangleToolFsmState::Ready
+				(true, RectangleToolFsmState::Ready)
 			}
 			(state, Action::LockAspectRatio) => {
 				data.constrain_to_square = true;
@@ -96,7 +96,7 @@ impl Fsm for RectangleToolFsmState {
 					operations.push(make_operation(data, tool_data));
 				}
 
-				self
+				(true, self)
 			}
 			(state, Action::UnlockAspectRatio) => {
 				data.constrain_to_square = false;
@@ -106,7 +106,7 @@ impl Fsm for RectangleToolFsmState {
 					operations.push(make_operation(data, tool_data));
 				}
 
-				self
+				(true, self)
 			}
 			(state, Action::Center) => {
 				data.center_around_cursor = true;
@@ -116,7 +116,7 @@ impl Fsm for RectangleToolFsmState {
 					operations.push(make_operation(data, tool_data));
 				}
 
-				self
+				(true, self)
 			}
 			(state, Action::UnCenter) => {
 				data.center_around_cursor = false;
@@ -126,9 +126,9 @@ impl Fsm for RectangleToolFsmState {
 					operations.push(make_operation(data, tool_data));
 				}
 
-				self
+				(true, self)
 			}
-			_ => self,
+			_ => (false, self),
 		}
 	}
 }

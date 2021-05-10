@@ -36,6 +36,7 @@ impl ActionHandler<(&mut SvgDocument, &mut dyn for<'a> ActionHandler<ToolActionH
 
 		// post process action if it was not consumed
 		if !consumed {
+			consumed = true;
 			match action {
 				Undo => {
 					// this is a temporary fix and will be addressed by #123
@@ -47,6 +48,7 @@ impl ActionHandler<(&mut SvgDocument, &mut dyn for<'a> ActionHandler<ToolActionH
 			}
 		}
 
+		log::debug!("operations: {:?}", operations);
 		let mut document_responses = self.dispatch_operations(doc, operations.drain(..));
 		let canvas_dirty = self.filter_document_responses(&mut document_responses);
 		responses.extend(document_responses.drain(..).map(Into::into));

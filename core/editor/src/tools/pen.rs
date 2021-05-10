@@ -17,9 +17,9 @@ pub struct Pen {
 
 impl<'a> ActionHandler<ToolActionHandlerData<'a>> for Pen {
 	fn process_action(&mut self, data: ToolActionHandlerData<'a>, input_preprocessor: &InputPreprocessor, action: &Action, responses: &mut Vec<Response>, operations: &mut Vec<Operation>) -> bool {
-		self.fsm_state = self.fsm_state.transition(action, data.0, data.1, &mut self.data, input_preprocessor, responses, operations);
-
-		false
+		let (consumed, state) = self.fsm_state.transition(action, data.0, data.1, &mut self.data, input_preprocessor, responses, operations);
+		self.fsm_state = state;
+		consumed
 	}
 	actions!();
 }
@@ -53,7 +53,7 @@ impl Fsm for PenToolFsmState {
 		input: &InputPreprocessor,
 		_responses: &mut Vec<Response>,
 		operations: &mut Vec<Operation>,
-	) -> Self {
+	) -> (bool, Self) {
 		match (self, event) {
 			(PenToolFsmState::Ready, Action::LmbDown) => {
 				operations.push(Operation::MountWorkingFolder { path: vec![] });
@@ -61,7 +61,7 @@ impl Fsm for PenToolFsmState {
 				data.points.push(input.mouse_state.position);
 				data.next_point = input.mouse_state.position;
 
-				PenToolFsmState::LmbDown
+				(true, PenToolFsmState::LmbDown)
 			}
 			(PenToolFsmState::LmbDown, Action::LmbUp) => {
 				// TODO - introduce comparison threshold when operating with canvas coordinates (https://github.com/GraphiteEditor/Graphite/issues/100)
@@ -70,7 +70,7 @@ impl Fsm for PenToolFsmState {
 					data.next_point = input.mouse_state.position;
 				}
 
-				PenToolFsmState::LmbDown
+				(true, PenToolFsmState::LmbDown)
 			}
 			(PenToolFsmState::LmbDown, Action::MouseMove) => {
 				data.next_point = input.mouse_state.position;
@@ -78,7 +78,7 @@ impl Fsm for PenToolFsmState {
 				operations.push(Operation::ClearWorkingFolder);
 				operations.push(make_operation(data, tool_data, true));
 
-				PenToolFsmState::LmbDown
+				(true, PenToolFsmState::LmbDown)
 			}
 			// TODO - simplify with or_patterns when rust 1.53.0 is stable  (https://github.com/rust-lang/rust/issues/54883)
 			(PenToolFsmState::LmbDown, Action::Confirm) | (PenToolFsmState::LmbDown, Action::Abort) | (PenToolFsmState::LmbDown, Action::RmbDown) => {
@@ -93,9 +93,9 @@ impl Fsm for PenToolFsmState {
 
 				data.points.clear();
 
-				PenToolFsmState::Ready
+				(true, PenToolFsmState::Ready)
 			}
-			_ => self,
+			_ => (false, self),
 		}
 	}
 }

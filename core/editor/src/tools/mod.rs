@@ -32,7 +32,7 @@ pub trait Fsm {
 		input: &InputPreprocessor,
 		responses: &mut Vec<Response>,
 		operations: &mut Vec<Operation>,
-	) -> Self;
+	) -> (bool, Self);
 }
 
 #[derive(Debug)]
