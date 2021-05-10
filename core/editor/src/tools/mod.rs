@@ -9,15 +9,15 @@ mod rectangle;
 mod select;
 mod shape;
 
+use crate::dispatcher::{Action, Response};
 use crate::SvgDocument;
 use crate::{dispatcher::ActionHandler, Color};
 use crate::{dispatcher::InputPreprocessor, EditorError};
-use crate::{
-	dispatcher::{Action, Response},
-	events::{Trace, TracePoint},
-};
 use document_core::Operation;
-use std::{collections::HashMap, fmt};
+use std::{
+	collections::HashMap,
+	fmt::{self, Debug},
+};
 
 pub type ToolActionHandlerData<'a> = (&'a SvgDocument, &'a DocumentToolData);
 
@@ -47,12 +47,19 @@ pub struct ToolData {
 	pub tools: HashMap<ToolType, Box<dyn for<'a> ActionHandler<(&'a SvgDocument, &'a DocumentToolData)>>>,
 }
 
+impl fmt::Debug for ToolData {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		f.debug_struct("ToolData").field("active_tool_type", &self.active_tool_type).field("tool_settings", &"[…]").finish()
+	}
+}
+
 impl ToolData {
 	pub fn active_tool(&mut self) -> Result<&mut Box<dyn for<'a> ActionHandler<ToolActionHandlerData<'a>>>, EditorError> {
 		self.tools.get_mut(&self.active_tool_type).ok_or(EditorError::UnknownTool)
 	}
 }
 
+#[derive(Debug)]
 pub struct ToolFsmState {
 	pub document_tool_data: DocumentToolData,
 	pub tool_data: ToolData,

@@ -4,10 +4,11 @@ pub mod events;
 pub mod global_event_handler;
 pub mod input_manager;
 
-use crate::{tools::ToolType, Color, Document, EditorError};
+use crate::EditorError;
 use document_core::Operation;
 pub use events::{DocumentResponse, Event, Key, Response, ToolResponse};
 
+use self::global_event_handler::GlobalEventHandler;
 pub use self::input_manager::InputPreprocessor;
 
 pub use actions::Action;
@@ -23,12 +24,21 @@ pub trait ActionHandler<T> {
 pub struct Dispatcher {
 	callback: Callback,
 	input_preprocessor: InputPreprocessor,
+	global_event_handler: GlobalEventHandler,
+	operations: Vec<Operation>,
+	responses: Vec<Response>,
 }
 
 impl Dispatcher {
-	pub fn handle_event(&self, event: &Event) -> Result<(), EditorError> {
+	pub fn handle_event(&mut self, event: Event) -> Result<(), EditorError> {
 		log::trace!("{:?}", event);
 
+		self.operations.clear();
+		self.responses.clear();
+		let actions = self.input_preprocessor.handle_user_input(event);
+		for action in actions {
+			self.handle_action(action);
+		}
 		/*match event {
 				Event::SelectTool(tool_name) => {
 					editor_state.tool_state.tool_data.active_tool_type = *tool_name;
@@ -116,54 +126,44 @@ impl Dispatcher {
 				}
 				_ => todo!("Implement layer handling"),
 			}
-
-		let (mut tool_responses, operations) = editor_state
-			.tool_state
-			.tool_data
-			.active_tool()?
-			.handle_input(event, &editor_state.document, &editor_state.tool_state.document_tool_data);
-
-		let mut document_responses = self.dispatch_operations(&mut editor_state.document, operations);
-		//let changes = document_responses.drain_filter(|x| x == DocumentResponse::DocumentChanged);
-		let mut canvas_dirty = false;
-		let mut i = 0;
-		while i < document_responses.len() {
-			if matches!(document_responses[i], DocumentResponse::DocumentChanged) {
-				canvas_dirty = true;
-				document_responses.remove(i);
-			} else {
-				i += 1;
-			}
-		}
-		if canvas_dirty {
-			tool_responses.push(ToolResponse::UpdateCanvas {
-				document: editor_state.document.render_root(),
-			})
-		}
-		self.dispatch_responses(tool_responses);
-		self.dispatch_responses(document_responses);
 		*/
 
 		Ok(())
 	}
 
-	pub fn dispatch_responses<T: Into<Response>, I: IntoIterator<Item = T>>(&self, responses: I) {
-		for response in responses {
-			self.dispatch_response(response);
+	fn handle_action(&mut self, action: Action) {
+		let consumed = self
+			.global_event_handler
+			.process_action((), &self.input_preprocessor, &action, &mut self.responses, &mut self.operations);
+
+		debug_assert!(self.operations.is_empty());
+
+		self.dispatch_responses();
+
+		if !consumed {
+			log::warn!("Unhandled action {:?}", action);
 		}
 	}
 
-	pub fn dispatch_response<T: Into<Response>>(&self, response: T) {
-		let func = &self.callback;
+	pub fn dispatch_responses(&mut self) {
+		for response in self.responses.drain(..) {
+			Self::dispatch_response(response, &self.callback);
+		}
+	}
+
+	pub fn dispatch_response<T: Into<Response>>(response: T, callback: &Callback) {
 		let response: Response = response.into();
 		log::trace!("Sending {} Response", response);
-		func(response)
+		callback(response)
 	}
 
 	pub fn new(callback: Callback) -> Dispatcher {
 		Dispatcher {
 			callback,
 			input_preprocessor: InputPreprocessor::default(),
+			global_event_handler: GlobalEventHandler::default(),
+			operations: Vec::new(),
+			responses: Vec::new(),
 		}
 	}
 }

@@ -102,29 +102,6 @@ impl fmt::Display for Response {
 	}
 }
 
-#[derive(Debug, Clone, Default)]
-pub struct Trace(Vec<TracePoint>);
-
-impl Deref for Trace {
-	type Target = Vec<TracePoint>;
-
-	fn deref(&self) -> &Self::Target {
-		&self.0
-	}
-}
-
-impl DerefMut for Trace {
-	fn deref_mut(&mut self) -> &mut Self::Target {
-		&mut self.0
-	}
-}
-
-impl Trace {
-	pub fn new() -> Self {
-		Self::default()
-	}
-}
-
 // origin is top left
 #[derive(Debug, Copy, Clone, Default, Eq, PartialEq)]
 pub struct ViewportPosition {

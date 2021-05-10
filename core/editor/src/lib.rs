@@ -45,6 +45,6 @@ impl Editor {
 	}
 
 	pub fn handle_event(&mut self, event: events::Event) -> Result<(), EditorError> {
-		self.dispatcher.handle_event(&event)
+		self.dispatcher.handle_event(event)
 	}
 }

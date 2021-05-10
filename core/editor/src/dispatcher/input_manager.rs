@@ -21,13 +21,13 @@ pub struct InputPreprocessor {
 }
 
 impl InputPreprocessor {
-	pub fn handle_user_input(&mut self, event: Event) -> Option<Vec<Action>> {
+	pub fn handle_user_input(&mut self, event: Event) -> Vec<Action> {
 		// clean user input and if possible reconstruct it
 		// store the changes in the keyboard if it is a key event
 		// translate the key events to VirtualKeyActions and return them
 		// transform canvas coordinates to document coordinates
 		// Last pressed key
 		// respect text input mode
-		Some(vec![])
+		vec![]
 	}
 }

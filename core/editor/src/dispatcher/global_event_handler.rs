@@ -3,6 +3,7 @@ use crate::document::Document;
 use super::{input_manager::InputPreprocessor, Action, ActionHandler, Operation, Response};
 use crate::tools::ToolFsmState;
 
+#[derive(Debug, Default)]
 pub struct GlobalEventHandler {
 	documents: Vec<Document>,
 	active_document: usize,
@@ -10,17 +11,17 @@ pub struct GlobalEventHandler {
 }
 
 impl GlobalEventHandler {
-	fn new() -> Self {
+	pub fn new() -> Self {
 		Self {
 			documents: vec![Document::default()],
 			active_document: 0,
 			tool_state: ToolFsmState::default(),
 		}
 	}
-	fn active_document(&self) -> &Document {
+	pub fn active_document(&self) -> &Document {
 		&self.documents[self.active_document]
 	}
-	fn active_document_mut(&mut self) -> &mut Document {
+	pub fn active_document_mut(&mut self) -> &mut Document {
 		&mut self.documents[self.active_document]
 	}
 }

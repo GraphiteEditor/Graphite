@@ -184,10 +184,10 @@ impl Document {
 	/// Mutate the document by applying the `operation` to it. If the operation necessitates a
 	/// reaction from the frontend, responses may be returned.
 	pub fn handle_operation(&mut self, operation: Operation) -> Result<Option<Vec<DocumentResponse>>, DocumentError> {
-		self.work_operations.push(operation.clone());
-		let responses = match operation {
+		let operation = operation;
+		let responses = match &operation {
 			Operation::AddCircle { path, insert_index, cx, cy, r, style } => {
-				self.add_layer(&path, Layer::new(LayerDataTypes::Circle(layers::Circle::new((cx, cy), r, style))), insert_index)?;
+				self.add_layer(&path, Layer::new(LayerDataTypes::Circle(layers::Circle::new((*cx, *cy), *r, *style))), *insert_index)?;
 
 				Some(vec![DocumentResponse::DocumentChanged])
 			}
@@ -201,7 +201,7 @@ impl Document {
 				rot,
 				style,
 			} => {
-				self.add_layer(&path, Layer::new(LayerDataTypes::Ellipse(layers::Ellipse::new((cx, cy), (rx, ry), rot, style))), insert_index)?;
+				self.add_layer(&path, Layer::new(LayerDataTypes::Ellipse(layers::Ellipse::new((*cx, *cy), (*rx, *ry), *rot, *style))), *insert_index)?;
 
 				Some(vec![DocumentResponse::DocumentChanged])
 			}
@@ -214,7 +214,7 @@ impl Document {
 				y1,
 				style,
 			} => {
-				self.add_layer(&path, Layer::new(LayerDataTypes::Rect(Rect::new((x0, y0), (x1, y1), style))), insert_index)?;
+				self.add_layer(&path, Layer::new(LayerDataTypes::Rect(Rect::new((*x0, *y0), (*x1, *y1), *style))), *insert_index)?;
 
 				Some(vec![DocumentResponse::DocumentChanged])
 			}
@@ -227,14 +227,14 @@ impl Document {
 				y1,
 				style,
 			} => {
-				self.add_layer(&path, Layer::new(LayerDataTypes::Line(Line::new((x0, y0), (x1, y1), style))), insert_index)?;
+				self.add_layer(&path, Layer::new(LayerDataTypes::Line(Line::new((*x0, *y0), (*x1, *y1), *style))), *insert_index)?;
 
 				Some(vec![DocumentResponse::DocumentChanged])
 			}
 			Operation::AddPen { path, insert_index, points, style } => {
-				let points: Vec<kurbo::Point> = points.into_iter().map(|it| it.into()).collect();
-				let polyline = PolyLine::new(points, style);
-				self.add_layer(&path, Layer::new(LayerDataTypes::PolyLine(polyline)), insert_index)?;
+				let points: Vec<kurbo::Point> = points.iter().map(|&it| it.into()).collect();
+				let polyline = PolyLine::new(points, *style);
+				self.add_layer(&path, Layer::new(LayerDataTypes::PolyLine(polyline)), *insert_index)?;
 				Some(vec![DocumentResponse::DocumentChanged])
 			}
 			Operation::AddShape {
@@ -247,8 +247,8 @@ impl Document {
 				sides,
 				style,
 			} => {
-				let s = Shape::new((x0, y0), (x1, y1), sides, style);
-				self.add_layer(&path, Layer::new(LayerDataTypes::Shape(s)), insert_index)?;
+				let s = Shape::new((*x0, *y0), (*x1, *y1), *sides, *style);
+				self.add_layer(&path, Layer::new(LayerDataTypes::Shape(s)), *insert_index)?;
 
 				Some(vec![DocumentResponse::DocumentChanged])
 			}
@@ -263,8 +263,8 @@ impl Document {
 				Some(vec![DocumentResponse::DocumentChanged])
 			}
 			Operation::MountWorkingFolder { path } => {
+				self.work_mount_path = path.clone();
 				self.work_operations.clear();
-				self.work_mount_path = path;
 				self.work = Folder::default();
 				self.work_mounted = true;
 				None
@@ -301,6 +301,7 @@ impl Document {
 				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::ExpandFolder { path, children }])
 			}
 		};
+		self.work_operations.push(operation);
 		Ok(responses)
 	}
 }
