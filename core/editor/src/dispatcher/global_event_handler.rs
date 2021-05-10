@@ -20,13 +20,13 @@ impl GlobalEventHandler {
 	fn active_document(&self) -> &Document {
 		&self.documents[self.active_document]
 	}
-	fn active_document_mut(&self) -> &mut Document {
+	fn active_document_mut(&mut self) -> &mut Document {
 		&mut self.documents[self.active_document]
 	}
 }
 
 impl ActionHandler<()> for GlobalEventHandler {
-	fn process_action(&mut self, data: (), input: &InputPreprocessor, action: &Action, responses: &mut Vec<Response>, operations: &mut Vec<Operation>) -> bool {
+	fn process_action(&mut self, _data: (), input: &InputPreprocessor, action: &Action, responses: &mut Vec<Response>, operations: &mut Vec<Operation>) -> bool {
 		let mut consumed = true;
 
 		// process action before passing them further down
@@ -38,14 +38,10 @@ impl ActionHandler<()> for GlobalEventHandler {
 
 		// pass action to the next level if it was not consumed
 		if !consumed {
-			let doc = self.active_document_mut();
-			consumed = doc.handler.process_action(
-				(&mut doc.document, self.tool_state.tool_data.active_tool().unwrap().as_mut(), &self.tool_state.document_tool_data),
-				&input,
-				action,
-				responses,
-				operations,
-			)
+			let doc = &mut self.documents[self.active_document];
+			let tool = self.tool_state.tool_data.active_tool().unwrap().as_mut();
+			let document_tool_data = &self.tool_state.document_tool_data;
+			consumed = doc.handler.process_action((&mut doc.document, tool, document_tool_data), &input, action, responses, operations)
 		}
 
 		// post process action if it was not consumed

@@ -56,13 +56,11 @@ impl ToolData {
 pub struct ToolFsmState {
 	pub document_tool_data: DocumentToolData,
 	pub tool_data: ToolData,
-	pub trace: Trace,
 }
 
 impl Default for ToolFsmState {
 	fn default() -> Self {
 		ToolFsmState {
-			trace: Trace::new(),
 			tool_data: ToolData {
 				active_tool_type: ToolType::Select,
 				tools: gen_tools_hash_map! {

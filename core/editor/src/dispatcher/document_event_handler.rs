@@ -24,7 +24,7 @@ impl ActionHandler<(&mut SvgDocument, &mut dyn for<'a> ActionHandler<ToolActionH
 		// process action before passing them further down
 		use Action::*;
 		match action {
-			&DeleteLayer(path) => operations.push(Operation::DeleteLayer { path }),
+			DeleteLayer(path) => operations.push(Operation::DeleteLayer { path: path.clone() }),
 			_ => consumed = false,
 		}
 

@@ -57,6 +57,8 @@ impl fmt::Display for ToolResponse {
 		let name = match_variant_name!(match (self) {
 			SetActiveTool,
 			UpdateCanvas,
+			EnableTextInput,
+			DisableTextInput,
 		});
 
 		formatter.write_str(name)
