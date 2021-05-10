@@ -63,6 +63,7 @@ impl InputMapper {
 			Event::RmbUp(_) => Action::RmbUp,
 			Event::MmbDown(_) => Action::MmbDown,
 			Event::MmbUp(_) => Action::MmbUp,
+			Event::AmbiguousMouseUp(_) | Event::AmbiguousMouseDown(_) => Action::NoOp,
 
 			event => self.translate_key(event, input),
 		}
