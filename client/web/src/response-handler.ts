@@ -61,9 +61,9 @@ function parseResponse(origin: string, responseType: string, data: any): Respons
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function handleResponse(responseIdentifier: string, responseData: any) {
-	const [origin, responesType] = responseIdentifier.split("::", 2);
-	const callback = window.responseMap[responesType];
-	const data = parseResponse(origin, responesType, responseData);
+	const [origin, responseType] = responseIdentifier.split("::", 2);
+	const callback = window.responseMap[responseType];
+	const data = parseResponse(origin, responseType, responseData);
 
 	if (callback && data) {
 		callback(data);
