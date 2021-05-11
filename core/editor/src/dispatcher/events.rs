@@ -8,10 +8,7 @@ use serde::{Deserialize, Serialize};
 #[doc(inline)]
 pub use document_core::DocumentResponse;
 
-use std::{
-	fmt,
-	ops::{Deref, DerefMut},
-};
+use std::fmt;
 
 #[derive(Debug, Clone)]
 #[repr(C)]

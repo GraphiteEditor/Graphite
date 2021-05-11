@@ -23,6 +23,7 @@ pub type ToolActionHandlerData<'a> = (&'a SvgDocument, &'a DocumentToolData);
 
 pub trait Fsm {
 	type ToolData;
+	#[allow(clippy::clippy::too_many_arguments)]
 	fn transition(
 		self,
 		action: &Action,
@@ -44,7 +45,7 @@ pub struct DocumentToolData {
 
 pub struct ToolData {
 	pub active_tool_type: ToolType,
-	pub tools: HashMap<ToolType, Box<dyn for<'a> ActionHandler<(&'a SvgDocument, &'a DocumentToolData)>>>,
+	pub tools: HashMap<ToolType, Box<dyn for<'a> ActionHandler<ToolActionHandlerData<'a>>>>,
 }
 
 impl fmt::Debug for ToolData {
@@ -57,8 +58,8 @@ impl ToolData {
 	pub fn active_tool_mut(&mut self) -> Result<&mut Box<dyn for<'a> ActionHandler<ToolActionHandlerData<'a>>>, EditorError> {
 		self.tools.get_mut(&self.active_tool_type).ok_or(EditorError::UnknownTool)
 	}
-	pub fn active_tool(&self) -> Result<&Box<dyn for<'a> ActionHandler<ToolActionHandlerData<'a>>>, EditorError> {
-		self.tools.get(&self.active_tool_type).ok_or(EditorError::UnknownTool)
+	pub fn active_tool(&self) -> Result<&dyn for<'a> ActionHandler<ToolActionHandlerData<'a>>, EditorError> {
+		self.tools.get(&self.active_tool_type).map(|x| x.as_ref()).ok_or(EditorError::UnknownTool)
 	}
 }
 

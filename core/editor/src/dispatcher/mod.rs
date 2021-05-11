@@ -15,10 +15,12 @@ pub use actions::Action;
 
 pub type Callback = Box<dyn Fn(Response)>;
 
+pub type ActionList<'a> = &'a [(String, Action)];
+
 pub trait ActionHandler<T> {
 	/// Return true if the Action is consumed.
 	fn process_action(&mut self, data: T, input_preprocessor: &InputPreprocessor, action: &Action, responses: &mut Vec<Response>, operations: &mut Vec<Operation>) -> bool;
-	fn actions(&self) -> &[(String, Action)];
+	fn actions(&self) -> ActionList;
 }
 
 pub struct Dispatcher {

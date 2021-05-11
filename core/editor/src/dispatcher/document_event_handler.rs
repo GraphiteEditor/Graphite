@@ -26,6 +26,7 @@ impl ActionHandler<(&mut SvgDocument, &mut dyn for<'a> ActionHandler<ToolActionH
 		use Action::*;
 		match action {
 			DeleteLayer(path) => operations.push(Operation::DeleteLayer { path: path.clone() }),
+			AddFolder(path) => operations.push(Operation::AddFolder { path: path.clone() }),
 			_ => consumed = false,
 		}
 
@@ -57,7 +58,7 @@ impl ActionHandler<(&mut SvgDocument, &mut dyn for<'a> ActionHandler<ToolActionH
 
 		consumed
 	}
-	actions_fn!(Action::Undo, Action::DeleteLayer(vec![]));
+	actions_fn!(Action::Undo, Action::DeleteLayer(vec![]), Action::AddFolder(vec![]));
 }
 
 impl DocumentActionHandler {

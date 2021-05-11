@@ -69,7 +69,7 @@ impl InputMapper {
 		}
 	}
 
-	fn translate_key(&self, event: Event, input: &InputPreprocessor) -> Action {
+	fn translate_key(&self, event: Event, _input: &InputPreprocessor) -> Action {
 		use Key::*;
 		match event {
 			Event::KeyUp(key) => match key {

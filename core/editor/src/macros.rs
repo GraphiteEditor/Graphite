@@ -87,14 +87,14 @@ macro_rules! match_variant_name {
 
 macro_rules! actions {
 	($($v:expr), * $(,)?) => {{
-		const ACTIONS: &[(String, Action)] =  &[$((String::new(), $v)),*];
+		const ACTIONS: $crate::dispatcher::ActionList =  &[$((String::new(), $v)),*];
 		ACTIONS
 	}}
 }
 
 macro_rules! actions_fn {
 	($($v:expr), * $(,)?) => {
-		fn actions(&self) -> &[(String, Action)] {
+		fn actions(&self) -> $crate::dispatcher::ActionList {
 			 actions!($($v),*)
 		}
 	};

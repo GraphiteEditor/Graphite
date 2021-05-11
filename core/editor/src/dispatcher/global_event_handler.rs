@@ -1,9 +1,7 @@
-use crate::{document::Document, events::ToolResponse};
+use crate::{document::Document, events::ToolResponse, tools::ToolType, Color};
 
-use super::{input_manager::InputPreprocessor, Action, ActionHandler, Operation, Response};
+use super::{input_manager::InputPreprocessor, Action, ActionHandler, ActionList, Operation, Response};
 use crate::tools::ToolFsmState;
-
-const ACTIONS: &[(String, Action)] = &[(String::new(), Action::Undo)];
 
 #[derive(Debug)]
 pub struct GlobalEventHandler {
@@ -22,15 +20,21 @@ impl GlobalEventHandler {
 			actions: Vec::new(),
 		}
 	}
-	pub fn active_document(&self) -> &Document {
-		&self.documents[self.active_document]
-	}
-	pub fn active_document_mut(&mut self) -> &mut Document {
-		&mut self.documents[self.active_document]
+	fn current_actions<'a>() -> ActionList<'a> {
+		use Action::*;
+		actions!(
+			SelectDocument(0),
+			SelectTool(ToolType::Select),
+			LogInfo,
+			LogDebug,
+			LogTrace,
+			SelectPrimaryColor(Color::WHITE),
+			SelectSecondaryColor(Color::BLACK)
+		)
 	}
 	fn update_actions(&mut self) {
 		self.actions.clear();
-		self.actions.extend_from_slice(ACTIONS);
+		self.actions.extend_from_slice(Self::current_actions());
 		let tool_name = format!(".tool.{}", self.tool_state.tool_data.active_tool_type);
 		if let Ok(tool) = self.tool_state.tool_data.active_tool() {
 			self.actions.extend(tool.actions().iter().map(|(name, action)| (format!("{}{}", tool_name, name), action.clone())));
@@ -48,10 +52,14 @@ impl ActionHandler<()> for GlobalEventHandler {
 		// process action before passing them further down
 		use Action::*;
 		match action {
-			SelectDocument(id) => self.active_document = *id,
+			SelectDocument(id) => {
+				self.active_document = *id;
+				self.update_actions()
+			}
 			SelectTool(tool) => {
 				self.tool_state.tool_data.active_tool_type = *tool;
 				responses.push(ToolResponse::SetActiveTool { tool_name: tool.to_string() }.into());
+				self.update_actions();
 			}
 			SelectPrimaryColor(color) => self.tool_state.document_tool_data.primary_color = *color,
 			SelectSecondaryColor(color) => self.tool_state.document_tool_data.secondary_color = *color,
@@ -83,7 +91,7 @@ impl ActionHandler<()> for GlobalEventHandler {
 
 		consumed
 	}
-	fn actions(&self) -> &[(String, Action)] {
+	fn actions(&self) -> ActionList {
 		self.actions.as_slice()
 	}
 }

@@ -13,7 +13,7 @@ pub enum Action {
 	ToggleLayerVisibility(Vec<LayerId>),
 	ToggleLayerExpansion(Vec<LayerId>),
 	DeleteLayer(Vec<LayerId>),
-	AddLayer(Vec<LayerId>),
+	AddFolder(Vec<LayerId>),
 	RenameLayer(Vec<LayerId>, String),
 	SwapColors,
 	ResetColors,

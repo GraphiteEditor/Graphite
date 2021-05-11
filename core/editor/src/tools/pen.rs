@@ -47,7 +47,7 @@ impl Fsm for PenToolFsmState {
 	fn transition(
 		self,
 		event: &Action,
-		document: &SvgDocument,
+		_document: &SvgDocument,
 		tool_data: &DocumentToolData,
 		data: &mut Self::ToolData,
 		input: &InputPreprocessor,

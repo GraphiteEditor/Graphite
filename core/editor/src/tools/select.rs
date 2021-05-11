@@ -46,7 +46,7 @@ impl Fsm for SelectToolFsmState {
 		_document: &SvgDocument,
 		_tool_data: &DocumentToolData,
 		_data: &mut Self::ToolData,
-		input: &InputPreprocessor,
+		_input: &InputPreprocessor,
 		_responses: &mut Vec<Response>,
 		_operations: &mut Vec<Operation>,
 	) -> (bool, Self) {
