@@ -41,6 +41,28 @@ impl InputPreprocessor {
 	}
 }
 
+macro_rules! key {
+	($path:expr, $action:expr, $k:ident, ($($s:ident),*)) => {
+		($path, $action, Event::KeyDown(Key::$k), &[$(Key::$s,)*])
+	};
+	($action:expr, $k:ident, ($($s:ident),*)) => {
+		key!("*", $action, $k, ($($s),*))
+	};
+	($path:expr, $action:expr, $k:ident) => {
+		key!($path, $action, $k, ())
+	};
+	($action:expr, $k:ident) => {
+		key!("*", $action, $k, ())
+	};
+}
+
+const DEFAULT_MAPPING: &[(&str, &str, Event, &[Key])] = &[
+	key!("Undo", KeyZ, (KeyControl)),
+	key!("*", "Redo", KeyZ, (KeyControl, KeyShift)),
+	key!("Redo", KeyZ, (KeyControl, KeyCaps)),
+	key!("Center", KeyAlt),
+];
+
 #[derive(Debug, Default)]
 pub struct InputMapper {}
 
@@ -64,6 +86,7 @@ impl InputMapper {
 			Event::MmbDown(_) => Action::MmbDown,
 			Event::MmbUp(_) => Action::MmbUp,
 			Event::AmbiguousMouseUp(_) | Event::AmbiguousMouseDown(_) => Action::NoOp,
+			Event::Action(a) => a,
 
 			event => self.translate_key(event, input),
 		}

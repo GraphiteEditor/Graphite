@@ -10,6 +10,8 @@ pub use document_core::DocumentResponse;
 
 use std::fmt;
 
+use super::Action;
+
 #[derive(Debug, Clone)]
 #[repr(C)]
 pub enum Event {
@@ -35,6 +37,7 @@ pub enum Event {
 	MouseMove(ViewportPosition),
 	KeyUp(Key),
 	KeyDown(Key),
+	Action(Action),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
