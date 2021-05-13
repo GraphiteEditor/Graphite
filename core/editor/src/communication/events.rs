@@ -2,7 +2,7 @@ use crate::tools::ToolType;
 use crate::Color;
 use bitflags::bitflags;
 
-use document_core::LayerId;
+use document_core::{LayerId, Operation};
 use serde::{Deserialize, Serialize};
 
 #[doc(inline)]
@@ -71,6 +71,7 @@ impl fmt::Display for ToolResponse {
 pub enum Response {
 	Tool(ToolResponse),
 	Document(DocumentResponse),
+	Operation(Operation),
 }
 
 impl From<ToolResponse> for Response {
@@ -91,11 +92,13 @@ impl fmt::Display for Response {
 
 		let name = match_variant_name!(match (self) {
 			Tool,
-			Document
+			Document,
+			Operation
 		});
 		let appendix = match self {
 			Tool(t) => t.to_string(),
 			Document(d) => d.to_string(),
+			Operation(o) => o.to_string(),
 		};
 
 		formatter.write_str(format!("{}::{}", name, appendix).as_str())
@@ -111,16 +114,10 @@ pub struct ViewportPosition {
 
 impl ViewportPosition {
 	pub fn distance(&self, other: &Self) -> f64 {
-		let x_diff = other.x as f64 - self.x as f64;
-		let y_diff = other.y as f64 - self.y as f64;
+		let x_diff = other.x as i32 - self.x as i32;
+		let y_diff = other.y as i32 - self.y as i32;
 		f64::sqrt(x_diff * x_diff + y_diff * y_diff)
 	}
-}
-
-#[derive(Debug, Copy, Clone, Default, Eq, PartialEq)]
-pub struct TracePoint {
-	pub mouse_state: MouseState,
-	pub mod_keys: ModKeys,
 }
 
 #[derive(Debug, Copy, Clone, Default, Eq, PartialEq)]

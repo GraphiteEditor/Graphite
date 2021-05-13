@@ -1,17 +1,32 @@
-use crate::{document::Document, events::ToolResponse, tools::ToolType, Color};
+use document_core::DocumentResponse;
 
-use super::{input_manager::InputPreprocessor, Action, ActionHandler, ActionList, Operation, Response};
+use crate::{document::Document, events::ToolResponse, tools::ToolType, Color, SvgDocument};
+
+use super::{document_action_handler::DocumentMessage, tool_action_handler::ToolMessage};
+use super::{input_manager::InputPreprocessor, Action, ActionHandler, ActionList, Response};
 use crate::tools::ToolFsmState;
 
+use strum_macros::{AsRefStr, Display, EnumDiscriminants, EnumIter, EnumString};
+
+#[derive(Debug, Clone, Display, AsRefStr, EnumDiscriminants, EnumIter, EnumString)]
+pub enum GlobalAction {
+	Document(DocumentMessage),
+	Tool(ToolMessage),
+	LogInfo,
+	LogDebug,
+	LogTrace,
+	SelectDocument(usize),
+}
+
 #[derive(Debug)]
-pub struct GlobalEventHandler {
+pub struct GlobalActionHandler {
 	documents: Vec<Document>,
 	active_document: usize,
 	tool_state: ToolFsmState,
-	actions: Vec<(String, Action)>,
+	actions: Vec<&'static [&'static str]>,
 }
 
-impl GlobalEventHandler {
+impl GlobalActionHandler {
 	pub fn new() -> Self {
 		Self {
 			documents: vec![Document::default()],
@@ -20,8 +35,8 @@ impl GlobalEventHandler {
 			actions: Vec::new(),
 		}
 	}
-	fn current_actions<'a>() -> ActionList<'a> {
-		use Action::*;
+	fn current_actions<'a>() -> dyn FnOnce(&Self) -> ActionList<'a> {
+		/*use Action::*;
 		actions!(
 			SelectDocument(0),
 			SelectTool(ToolType::Select),
@@ -30,27 +45,41 @@ impl GlobalEventHandler {
 			LogTrace,
 			SelectPrimaryColor(Color::WHITE),
 			SelectSecondaryColor(Color::BLACK)
-		)
+		)*/
+		|| &[&[]]
 	}
 	fn update_actions(&mut self) {
 		self.actions.clear();
-		self.actions.extend_from_slice(Self::current_actions());
-		let tool_name = format!(".tool.{}", self.tool_state.tool_data.active_tool_type);
+		self.actions.extend(Self::current_actions()(&self));
 		if let Ok(tool) = self.tool_state.tool_data.active_tool() {
-			self.actions.extend(tool.actions().iter().map(|(name, action)| (format!("{}{}", tool_name, name), action.clone())));
+			self.actions.extend(tool.actions());
 		}
 		let document = &self.documents[self.active_document];
-		self.actions
-			.extend(document.handler.actions().iter().map(|(name, action)| (format!(".document{}", name), action.clone())));
+		self.actions.extend(document.handler.actions());
+	}
+
+	fn filter_document_responses(&self, document_responses: &mut Vec<DocumentResponse>) -> bool {
+		//let changes = document_responses.drain_filter(|x| x == DocumentResponse::DocumentChanged);
+		let mut canvas_dirty = false;
+		let mut i = 0;
+		while i < document_responses.len() {
+			if matches!(document_responses[i], DocumentResponse::DocumentChanged) {
+				canvas_dirty = true;
+				document_responses.remove(i);
+			} else {
+				i += 1;
+			}
+		}
+		canvas_dirty
 	}
 }
 
-impl ActionHandler<()> for GlobalEventHandler {
-	fn process_action(&mut self, _data: (), input: &InputPreprocessor, action: &Action, responses: &mut Vec<Response>, operations: &mut Vec<Operation>) -> bool {
+impl ActionHandler<GlobalAction, &InputPreprocessor> for GlobalActionHandler {
+	fn process_action(&mut self, action: GlobalAction, data: &InputPreprocessor, responses: &mut Vec<Response>) {
 		let mut consumed = true;
 
 		// process action before passing them further down
-		use Action::*;
+		/*use Action::*;
 		match action {
 			SelectDocument(id) => {
 				self.active_document = *id;
@@ -90,6 +119,7 @@ impl ActionHandler<()> for GlobalEventHandler {
 		if !consumed {}
 
 		consumed
+		*/
 	}
 	fn actions(&self) -> ActionList {
 		self.actions.as_slice()

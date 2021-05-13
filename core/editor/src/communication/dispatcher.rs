@@ -1,25 +1,24 @@
-pub mod actions;
-pub mod document_event_handler;
-pub mod events;
-pub mod global_event_handler;
-pub mod input_manager;
 
 use crate::EditorError;
 use document_core::Operation;
 pub use events::{DocumentResponse, Event, Key, Response, ToolResponse};
 
 pub use self::input_manager::InputPreprocessor;
-use self::{global_event_handler::GlobalEventHandler, input_manager::InputMapper};
+use self::{global_action_handler::GlobalActionHandler, input_manager::InputMapper};
+
+pub use global_action_handler::GlobalAction;
 
 pub use actions::Action;
 
 pub type Callback = Box<dyn Fn(Response)>;
 
-pub type ActionList<'a> = &'a [(String, Action)];
+pub type ActionList<'a> = &'a [&'static [GlobalAction]];
 
-pub trait ActionHandler<T> {
+pub trait ActionHandlerData: Clone + Sized {}
+
+pub trait ActionHandler<A: Action, T: ActionHandlerData> {
 	/// Return true if the Action is consumed.
-	fn process_action(&mut self, data: T, input_preprocessor: &InputPreprocessor, action: &Action, responses: &mut Vec<Response>, operations: &mut Vec<Operation>) -> bool;
+	fn process_action(&mut self, action: A, data: T, responses: &mut Vec<GlobalAction>);
 	fn actions(&self) -> ActionList;
 }
 
@@ -27,13 +26,13 @@ pub struct Dispatcher {
 	callback: Callback,
 	input_preprocessor: InputPreprocessor,
 	input_mapper: InputMapper,
-	global_event_handler: GlobalEventHandler,
+	global_event_handler: GlobalActionHandler,
 	operations: Vec<Operation>,
 	responses: Vec<Response>,
 }
 
 impl Dispatcher {
-	pub fn handle_event(&mut self, event: Event) -> Result<(), EditorError> {
+	pub fn handle_event(&mut self, event: Event) -> Result<Vec<FrontendResponse> EditorError> {
 		log::trace!("{:?}", event);
 
 		self.operations.clear();
@@ -49,7 +48,7 @@ impl Dispatcher {
 		Ok(())
 	}
 
-	fn handle_action(&mut self, action: Action) {
+	fn handle_action(&mut self, action: GlobalAction) {
 		let consumed = self
 			.global_event_handler
 			.process_action((), &self.input_preprocessor, &action, &mut self.responses, &mut self.operations);
@@ -79,7 +78,7 @@ impl Dispatcher {
 		Dispatcher {
 			callback,
 			input_preprocessor: InputPreprocessor::default(),
-			global_event_handler: GlobalEventHandler::new(),
+			global_event_handler: GlobalActionHandler::new(),
 			input_mapper: InputMapper::default(),
 			operations: Vec::new(),
 			responses: Vec::new(),

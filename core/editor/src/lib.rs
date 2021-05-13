@@ -4,7 +4,7 @@
 #[macro_use]
 mod macros;
 
-mod dispatcher;
+mod communication;
 mod document;
 mod error;
 pub mod hint;
@@ -24,13 +24,12 @@ pub use document_core::LayerId;
 pub use document_core::document::Document as SvgDocument;
 
 #[doc(inline)]
-pub use dispatcher::events;
+pub use communication::events;
 
 #[doc(inline)]
-pub use dispatcher::Callback;
+pub use communication::Callback;
 
-use dispatcher::Dispatcher;
-
+use communication::dispatcher::Dispatcher;
 // TODO: serialize with serde to save the current editor state
 pub struct Editor {
 	dispatcher: Dispatcher,
