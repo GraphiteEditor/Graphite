@@ -145,10 +145,8 @@ impl CanvasPosition {
 	pub fn rotate(&mut self, theta: f64) -> &mut Self {
 		let cosine = theta.cos();
 		let sine = theta.sin();
-		log::info!("Before {},{}", self.x, self.y);
 		self.x = self.x * cosine - self.y * sine;
 		self.y = self.x * sine + self.y * cosine;
-		log::info!("After {},{}", self.x, self.y);
 		self
 	}
 }
