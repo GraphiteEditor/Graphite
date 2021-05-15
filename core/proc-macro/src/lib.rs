@@ -118,32 +118,113 @@ fn derive_message_impl(input_item: TokenStream2) -> TokenStream2 {
 
 	let ident = input.ident;
 	let (super_parent, parent, parent_variant) = parse_message_helper_attrs(input.attrs.as_slice()).unwrap();
-	let parent_path = to_path(parent.clone(), parent_variant);
+	let parent_path = to_path(parent.clone(), parent_variant.clone());
+	let discriminant = Ident::new(format!("{}Discriminant", ident).as_str(), Span::call_site());
+	let super_discriminant = Ident::new(format!("{}Discriminant", super_parent).as_str(), Span::call_site());
+	let parent_discriminant = Ident::new(format!("{}Discriminant", parent).as_str(), Span::call_site());
+	let parent_discriminant_path = to_path(parent_discriminant.clone(), parent_variant);
 
 	if let Data::Enum(data) = input.data {
 		let variants = data.variants.iter().map(|var: &Variant| to_path(ident.clone(), var.ident.clone())).collect::<Vec<_>>();
+		let discriminant_variants = data.variants.iter().map(|var: &Variant| to_path(discriminant.clone(), var.ident.clone())).collect::<Vec<_>>();
+		let variant_fields = data.variants.iter().map(|var: &Variant| var.fields.clone()).collect::<Vec<_>>();
+		let data_variant_fields: Vec<TokenStream2> = variant_fields
+			.iter()
+			.map(|field| {
+				if let Some(syn::Field { ty: syn::Type::Path(path), .. }) = field.iter().next() {
+					let last = path.path.segments.last().unwrap();
+					let new_ident = Ident::new(format!("{}Discriminant", last.ident).as_str(), Span::call_site());
+					quote::quote! {
+						(#new_ident)
+					}
+				} else {
+					quote::quote! {}
+				}
+			})
+			.collect();
+		let convert_variant_fields: Vec<TokenStream2> = data
+			.variants
+			.iter()
+			.zip(variant_fields.iter())
+			.map(|(var, field)| {
+				let var_path = to_path(ident.clone(), var.ident.clone());
+				let dis_path = to_path(discriminant.clone(), var.ident.clone());
+				if let Some(syn::Field { ty: syn::Type::Path(path), .. }) = field.iter().next() {
+					quote::quote! {
+						#var_path(x) => #dis_path(x.into()),
+					}
+				} else {
+					quote::quote! {
+						#var_path => #dis_path,
+					}
+				}
+			})
+			.collect();
 		let data_variants: Vec<Ident> = data.variants.iter().map(|v| v.ident.clone()).collect();
+
+		let into_impl = |from, to, path| {
+			quote::quote! {
+				#[allow(clippy::from_over_into)]
+				impl Into<#to> for #from {
+					fn into(self) -> #to {
+						#path(self)
+					}
+				}
+				#[allow(clippy::from_over_into)]
+				impl Into<#to> for &#from {
+					fn into(self) -> #to {
+						#path(self.clone())
+					}
+				}
+			}
+		};
+		let into_super_impl = |from, to, path| {
+			quote::quote! {
+				#[allow(clippy::from_over_into)]
+				impl Into<#to> for #from {
+					fn into(self) -> #to {
+						#path(self).into()
+					}
+				}
+				#[allow(clippy::from_over_into)]
+				impl Into<#to> for &#from {
+					fn into(self) -> #to {
+						#path(self.clone()).into()
+					}
+				}
+			}
+		};
+		let super_impl = into_super_impl(ident.clone(), super_parent.clone(), parent_path.clone());
+		let discriminant_super_impl = into_super_impl(discriminant.clone(), super_discriminant.clone(), parent_discriminant_path.clone());
 
 		let super_impl = if parent == super_parent {
 			TokenStream2::new()
 		} else {
 			quote::quote! {
+				#super_impl
+				#discriminant_super_impl
 				#[allow(clippy::from_over_into)]
-				impl Into<#super_parent> for #ident {
-					fn into(self) -> #super_parent {
-						#parent_path(self).into()
-					}
-				}
-				#[allow(clippy::from_over_into)]
-				impl Into<#super_parent> for &#ident {
-					fn into(self) -> #super_parent {
-						#parent_path(self.clone()).into()
+				impl Into<#super_discriminant> for &#ident {
+					fn into(self) -> #super_discriminant {
+						let dis: #discriminant = self.into();
+						let parent: #parent_discriminant = self.into();
+						parent.into()
 					}
 				}
 			}
 		};
 
-		quote::quote! {
+		let into_parent = into_impl(ident.clone(), parent.clone(), parent_path);
+		let into_parent_discriminant = into_impl(discriminant.clone(), parent_discriminant.clone(), parent_discriminant_path.clone());
+
+		let res = quote::quote! {
+			#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+			pub enum #discriminant {
+				#(
+					#data_variants #data_variant_fields ,
+				)*
+			}
+
 			impl AsMessage for #ident {
 				fn suffix(&self) -> &'static str {
 					match *self {
@@ -160,20 +241,39 @@ fn derive_message_impl(input_item: TokenStream2) -> TokenStream2 {
 				fn name(&self) -> String {
 					format!("{}.{}", Self::prefix(), self.suffix())
 				}
+				fn get_discriminant(&self) -> #super_discriminant {
+					let dis: #discriminant = self.into();
+					let par: #parent_discriminant = dis.into();
+					par.into()
+				}
+
 			}
 			#super_impl
-			#[allow(clippy::from_over_into)]
-			impl Into<#parent> for #ident {
-				fn into(self) -> #parent {
-					#parent_path(self)
+			#into_parent
+			#into_parent_discriminant
+
+			impl From<#ident> for #discriminant {
+				fn from(ident: #ident) -> Self {
+					match ident {
+						#( 	#convert_variant_fields		)*
+					}
 				}
 			}
-			#[allow(clippy::from_over_into)]
-			impl Into<#parent> for &#ident {
-				fn into(self) -> #parent {
-					#parent_path(self.clone())
+			impl From<&#ident> for #discriminant {
+				fn from(ident: &#ident) -> Self {
+					match ident.clone() {
+						#( 	#convert_variant_fields		)*
+					}
 				}
 			}
+
+			#[allow(clippy::from_over_into)]
+			impl Into<#parent_discriminant> for &#ident {
+				fn into(self) -> #parent_discriminant {
+					#parent_discriminant_path(self.into())
+				}
+			}
+
 			impl Display for #ident {
 				fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
 					let message: #super_parent =  self.into();
@@ -187,7 +287,8 @@ fn derive_message_impl(input_item: TokenStream2) -> TokenStream2 {
 					message == *other
 				}
 			}
-		}
+		};
+		res
 	} else {
 		panic!("Tried to use derive macro on non enum")
 	}
