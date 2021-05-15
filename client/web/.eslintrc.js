@@ -29,6 +29,8 @@ module.exports = {
 		"no-debugger": process.env.NODE_ENV === "production" ? "warn" : "off",
 		"max-len": ["error", { code: 200, tabWidth: 4 }],
 		"@typescript-eslint/camelcase": "off",
+		"@typescript-eslint/no-use-before-define": "off",
+		"@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_" }],
 		camelcase: ["error", { allow: ["^(?:[a-z]+_)*[a-z]+$"] }],
 		"prettier-vue/prettier": [
 			"error",
