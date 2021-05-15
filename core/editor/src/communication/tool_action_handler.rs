@@ -1,6 +1,6 @@
 use document_core::{color::Color, DocumentResponse, LayerId};
 
-use super::{Action, ActionHandler, InputPreprocessor, Operation, Response};
+use super::{Action, InputPreprocessor, MessageHandler, Operation, Response};
 use crate::{events::ToolResponse, tools::ToolType, SvgDocument};
 use crate::{
 	tools::{DocumentToolData, ToolActionHandlerData},
@@ -22,7 +22,7 @@ pub enum ToolMessage {
 #[derive(Debug, Default, Clone)]
 pub struct ToolActionHandler {}
 
-impl ActionHandler<ToolMessage, &mut SvgDocument> for ToolActionHandler {
+impl MessageHandler<ToolMessage, &mut SvgDocument> for ToolActionHandler {
 	fn process_action(&mut self, action: ToolMessage, document: &mut SvgDocument, responses: &mut Vec<Response>) {}
 	actions_fn!(Action::Undo, Action::DeleteLayer(vec![]), Action::AddFolder(vec![]));
 }

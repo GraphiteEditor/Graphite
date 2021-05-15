@@ -1,11 +1,14 @@
 mod helpers;
 mod structs;
 
-use crate::helpers::{fold_error_iter, two_path};
+use std::fmt::Display;
+
+use crate::helpers::{fold_error_iter, to_path};
 use crate::structs::{AttrInnerKeyStringMap, AttrInnerSingleString};
 use proc_macro::TokenStream;
 use proc_macro2::{Span, TokenStream as TokenStream2};
-use syn::{parse_macro_input, Attribute, Data, DeriveInput, LitStr, Variant};
+use structs::IdentList;
+use syn::{parse_macro_input, Attribute, Data, DeriveInput, Ident, LitStr, Variant};
 
 fn parse_hint_helper_attrs(attrs: &[Attribute]) -> syn::Result<(Vec<LitStr>, Vec<LitStr>)> {
 	fold_error_iter(
@@ -32,6 +35,22 @@ fn parse_hint_helper_attrs(attrs: &[Attribute]) -> syn::Result<(Vec<LitStr>, Vec
 	.map(|v| v.into_iter().unzip())
 }
 
+fn parse_message_helper_attrs(attrs: &[Attribute]) -> syn::Result<(Ident, Ident, Ident)> {
+	attrs
+		.iter()
+		.filter(|a| a.path.get_ident().map_or(false, |i| i == "message"))
+		.map(|attr| syn::parse2::<IdentList>(attr.tokens.clone()))
+		.next()
+		.expect("error: #[message… attr not found")
+		.and_then(|v: IdentList| match v.parts.len() {
+			3 => {
+				let mut parts = v.parts.iter();
+				Ok((parts.next().cloned().unwrap(), parts.next().cloned().unwrap(), parts.next().cloned().unwrap()))
+			}
+			_ => panic!("error: #[message… takes 3 arguments, …"),
+		})
+}
+
 fn derive_hint_impl(input_item: TokenStream2) -> syn::Result<TokenStream2> {
 	let input = syn::parse2::<DeriveInput>(input_item)?;
 
@@ -39,7 +58,7 @@ fn derive_hint_impl(input_item: TokenStream2) -> syn::Result<TokenStream2> {
 
 	match input.data {
 		Data::Enum(data) => {
-			let variants = data.variants.iter().map(|var: &Variant| two_path(ident.clone(), var.ident.clone())).collect::<Vec<_>>();
+			let variants = data.variants.iter().map(|var: &Variant| to_path(ident.clone(), var.ident.clone())).collect::<Vec<_>>();
 
 			let hint_result = fold_error_iter(data.variants.into_iter().map(|var: Variant| parse_hint_helper_attrs(&var.attrs)));
 
@@ -85,6 +104,92 @@ fn derive_hint_impl(input_item: TokenStream2) -> syn::Result<TokenStream2> {
 				}
 			})
 		}
+	}
+}
+
+#[proc_macro_derive(AsMessage, attributes(message))]
+pub fn derive_message(input_item: TokenStream) -> TokenStream {
+	TokenStream::from(derive_message_impl(input_item.into()))
+	//TokenStream::from(derive_message_impl(input_item.into()).unwrap_or_else(|err| err.to_compile_error()))
+}
+
+fn derive_message_impl(input_item: TokenStream2) -> TokenStream2 {
+	let input = syn::parse2::<DeriveInput>(input_item).unwrap();
+
+	let ident = input.ident;
+	let (super_parent, parent, parent_variant) = parse_message_helper_attrs(input.attrs.as_slice()).unwrap();
+	let parent_path = to_path(parent.clone(), parent_variant);
+
+	if let Data::Enum(data) = input.data {
+		let variants = data.variants.iter().map(|var: &Variant| to_path(ident.clone(), var.ident.clone())).collect::<Vec<_>>();
+		let data_variants: Vec<Ident> = data.variants.iter().map(|v| v.ident.clone()).collect();
+
+		let super_impl = if parent == super_parent {
+			TokenStream2::new()
+		} else {
+			quote::quote! {
+				#[allow(clippy::from_over_into)]
+				impl Into<#super_parent> for #ident {
+					fn into(self) -> #super_parent {
+						#parent_path(self).into()
+					}
+				}
+				#[allow(clippy::from_over_into)]
+				impl Into<#super_parent> for &#ident {
+					fn into(self) -> #super_parent {
+						#parent_path(self.clone()).into()
+					}
+				}
+			}
+		};
+
+		quote::quote! {
+			impl AsMessage for #ident {
+				fn suffix(&self) -> &'static str {
+					match *self {
+						#(
+							#variants { .. } => {
+								stringify!(#data_variants)
+							}
+						)*
+					}
+				}
+				fn prefix() -> String {
+					format!("{}.{}", #parent::prefix(), stringify!(#ident))
+				}
+				fn name(&self) -> String {
+					format!("{}.{}", Self::prefix(), self.suffix())
+				}
+			}
+			#super_impl
+			#[allow(clippy::from_over_into)]
+			impl Into<#parent> for #ident {
+				fn into(self) -> #parent {
+					#parent_path(self)
+				}
+			}
+			#[allow(clippy::from_over_into)]
+			impl Into<#parent> for &#ident {
+				fn into(self) -> #parent {
+					#parent_path(self.clone())
+				}
+			}
+			impl Display for #ident {
+				fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+					let message: #super_parent =  self.into();
+					write!(f, "{}", message)
+				}
+
+			}
+			impl PartialEq<#super_parent> for #ident {
+				fn eq(&self, other: &#super_parent) -> bool {
+					let message: #super_parent =  self.into();
+					message == *other
+				}
+			}
+		}
+	} else {
+		panic!("Tried to use derive macro on non enum")
 	}
 }
 
@@ -158,6 +263,18 @@ mod tests {
 		// so there are at least no false negatives
 		assert_eq!(l.to_string(), r.to_string());
 	}
+
+	/*#[test]
+	fn foo() {
+		let res = derive_message_impl(quote::quote! {
+			enum E {
+				S { a: u8, b: String, c: bool },
+				X,
+				Y
+			}
+		}
+		panic!("{:?}", res)
+	}*/
 
 	#[test]
 	fn test_derive_hint() {

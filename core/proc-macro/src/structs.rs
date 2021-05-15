@@ -5,6 +5,20 @@ use syn::punctuated::Punctuated;
 use syn::token::Paren;
 use syn::{parenthesized, LitStr, Token};
 
+pub struct IdentList {
+	pub parts: Punctuated<Ident, Token![,]>,
+}
+
+impl Parse for IdentList {
+	fn parse(input: ParseStream) -> syn::Result<Self> {
+		let content;
+		let _paren_token = parenthesized!(content in input);
+		Ok(Self {
+			parts: Punctuated::parse_terminated(&content)?,
+		})
+	}
+}
+
 /// Parses `("some text")`
 pub struct AttrInnerSingleString {
 	_paren_token: Paren,

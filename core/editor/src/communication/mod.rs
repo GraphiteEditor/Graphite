@@ -10,7 +10,7 @@ pub use dispatcher::*;
 pub use events::{DocumentResponse, Event, Key, Response, ToolResponse};
 
 pub use self::input_manager::InputPreprocessor;
-use self::{global_action_handler::GlobalActionHandler, input_manager::InputMapper};
+use self::{global_action_handler::GlobalActionHandler, input_manager::InputMapper, message::AsMessage};
 
 pub use global_action_handler::GlobalAction;
 
@@ -18,9 +18,11 @@ pub type Callback = Box<dyn Fn(Response)>;
 
 pub type ActionList<'a> = &'a [&'static [MessageDiscriminant]];
 
+// TODO: Add Send + Sync requirement
+// Use something like rw locks for synchronization
 pub trait MessageHandlerData {}
 
-pub trait MessageHandler<A: Action, T: MessageHandlerData> {
+pub trait MessageHandler<A: AsMessage, T: MessageHandlerData> {
 	/// Return true if the Action is consumed.
 	fn process_action(&mut self, action: A, data: T, responses: &mut Vec<GlobalAction>);
 	fn actions(&self) -> ActionList;

@@ -21,20 +21,6 @@ pub enum DocumentMessage {
 	Redo,
 	Save,
 }
-impl AsMessage for DocumentMessage {
-	fn as_discriminant(&self) -> MessageDiscriminant {
-		match self {
-			SelectLayer(_) => SelectLayer,
-		}
-	}
-}
-pub enum DocumentMessageDiscriminant {
-	SelectLayer,
-	DeleteLayer,
-	Undo,
-	Redo,
-	Save,
-}
 
 #[derive(Debug, Default, Clone)]
 pub struct DocumentActionHandler {}

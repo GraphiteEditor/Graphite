@@ -2,7 +2,7 @@ use document_core::DocumentResponse;
 
 use crate::{document::Document, events::ToolResponse, tools::ToolType, Color, SvgDocument};
 
-use super::{document_action_handler::DocumentMessage, tool_action_handler::ToolMessage};
+use super::{document_action_handler::DocumentAction, tool_action_handler::ToolAction};
 use super::{input_manager::InputPreprocessor, Action, ActionHandler, ActionList, Response};
 use crate::tools::ToolFsmState;
 
@@ -10,8 +10,8 @@ use strum_macros::{AsRefStr, Display, EnumDiscriminants, EnumIter, EnumString};
 
 #[derive(Debug, Clone, Display, AsRefStr, EnumDiscriminants, EnumIter, EnumString)]
 pub enum GlobalAction {
-	Document(DocumentMessage),
-	Tool(ToolMessage),
+	Document(DocumentAction),
+	Tool(ToolAction),
 	LogInfo,
 	LogDebug,
 	LogTrace,

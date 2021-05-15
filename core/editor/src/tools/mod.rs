@@ -9,7 +9,6 @@ mod rectangle;
 mod select;
 mod shape;
 
-use crate::dispatcher::{Action, Response};
 use crate::SvgDocument;
 use crate::{dispatcher::ActionHandler, Color};
 use crate::{dispatcher::InputPreprocessor, EditorError};
@@ -24,6 +23,7 @@ pub type ToolActionHandlerData<'a> = (&'a SvgDocument, &'a DocumentToolData);
 pub trait Fsm {
 	type ToolData;
 	#[allow(clippy::clippy::too_many_arguments)]
+
 	fn transition(
 		self,
 		action: &Action,
