@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+
 type ResponseCallback = (responseData: Response) => void;
 type ResponseMap = {
 	[response: string]: ResponseCallback | undefined;
@@ -24,42 +26,6 @@ export function registerResponseHandler(responseType: ResponseType, callback: Re
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function parseResponse(origin: string, responseType: string, data: any): Response {
-	type OriginNames = "Document" | "Tool";
-
-	const originHandlers = {
-		Document: () => {
-			switch (responseType) {
-				case "DocumentChanged":
-					return (data.Document.DocumentChanged as DocumentChanged) as Response;
-				case "CollapseFolder":
-					return (data.Document.CollapseFolder as CollapseFolder) as Response;
-				case "ExpandFolder":
-					return (data.Document.ExpandFolder as ExpandFolder) as Response;
-				default:
-					return undefined;
-			}
-		},
-		Tool: () => {
-			switch (responseType) {
-				case "SetActiveTool":
-					return (data.Tool.SetActiveTool as SetActiveTool) as Response;
-				case "UpdateCanvas":
-					return (data.Tool.UpdateCanvas as UpdateCanvas) as Response;
-				default:
-					return undefined;
-			}
-		},
-	};
-
-	// TODO: Optional chaining would be nice here when we can upgrade to Webpack 5: https://github.com/webpack/webpack/issues/10227
-	// const response = originHandlers[origin as OriginNames]?.();
-	const response = originHandlers[origin as OriginNames] && originHandlers[origin as OriginNames]();
-	if (!response) throw new Error("ResponseType not recognized.");
-	return response;
-}
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function handleResponse(responseIdentifier: string, responseData: any) {
 	const [origin, responesType] = responseIdentifier.split("::", 2);
 	const callback = window.responseMap[responesType];
@@ -74,21 +40,86 @@ export function handleResponse(responseIdentifier: string, responseData: any) {
 	}
 }
 
+enum OriginNames {
+	Document = "Document",
+	Tool = "Tool",
+}
+
+function parseResponse(origin: string, responseType: string, data: any): Response {
+	const response = (() => {
+		switch (origin) {
+			case OriginNames.Document:
+				switch (responseType) {
+					case "DocumentChanged":
+						return newDocumentChanged(data.Document.DocumentChanged);
+					case "CollapseFolder":
+						return newCollapseFolder(data.Document.CollapseFolder);
+					case "ExpandFolder":
+						return newExpandFolder(data.Document.ExpandFolder);
+					default:
+						return undefined;
+				}
+			case OriginNames.Tool:
+				switch (responseType) {
+					case "SetActiveTool":
+						return newSetActiveTool(data.Tool.SetActiveTool);
+					case "UpdateCanvas":
+						return newUpdateCanvas(data.Tool.UpdateCanvas);
+					default:
+						return undefined;
+				}
+			default:
+				return undefined;
+		}
+	})();
+
+	if (!response) throw new Error(`Unrecognized origin/responseType pair: ${origin}, ${responseType}`);
+	return response;
+}
+
 export type Response = SetActiveTool | UpdateCanvas | DocumentChanged | CollapseFolder | ExpandFolder;
 
 export interface SetActiveTool {
 	tool_name: string;
 }
+function newSetActiveTool(input: any): SetActiveTool {
+	return {
+		tool_name: input.tool_name,
+	};
+}
+
 export interface UpdateCanvas {
 	document: string;
 }
-export type DocumentChanged = {};
-export interface CollapseFolder {
-	path: Array<number>;
+function newUpdateCanvas(input: any): UpdateCanvas {
+	return {
+		document: input.document,
+	};
 }
+
+export type DocumentChanged = {};
+function newDocumentChanged(_: any): DocumentChanged {
+	return {};
+}
+
+export interface CollapseFolder {
+	path: BigUint64Array;
+}
+function newCollapseFolder(input: any): CollapseFolder {
+	return {
+		path: new BigUint64Array(input.path.map((n: number) => BigInt(n))),
+	};
+}
+
 export interface ExpandFolder {
-	path: Array<number>;
+	path: BigUint64Array;
 	children: Array<LayerPanelEntry>;
+}
+function newExpandFolder(input: any): ExpandFolder {
+	return {
+		path: new BigUint64Array(input.path.map((n: number) => BigInt(n))),
+		children: input.children.map((child: any) => newLayerPanelEntry(child)),
+	};
 }
 
 export interface LayerPanelEntry {
@@ -96,10 +127,44 @@ export interface LayerPanelEntry {
 	visible: boolean;
 	layer_type: LayerType;
 	collapsed: boolean;
-	path: Array<number>;
+	path: BigUint64Array;
+}
+function newLayerPanelEntry(input: any): LayerPanelEntry {
+	return {
+		name: input.name,
+		visible: input.visible,
+		layer_type: newLayerType(input.layer_type),
+		collapsed: input.collapsed,
+		path: new BigUint64Array(input.path.map((n: number) => BigInt(n))),
+	};
 }
 
 export enum LayerType {
-	Folder,
-	Shape,
+	Folder = "Folder",
+	Shape = "Shape",
+	Circle = "Circle",
+	Rect = "Rect",
+	Line = "Line",
+	PolyLine = "PolyLine",
+	Ellipse = "Ellipse",
+}
+function newLayerType(input: any): LayerType {
+	switch (input) {
+		case "Folder":
+			return LayerType.Folder;
+		case "Shape":
+			return LayerType.Shape;
+		case "Circle":
+			return LayerType.Circle;
+		case "Rect":
+			return LayerType.Rect;
+		case "Line":
+			return LayerType.Line;
+		case "PolyLine":
+			return LayerType.PolyLine;
+		case "Ellipse":
+			return LayerType.Ellipse;
+		default:
+			throw Error(`Received invalid input as an enum variant for LayerType: ${input}`);
+	}
 }
