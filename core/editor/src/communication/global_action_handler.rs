@@ -1,17 +1,13 @@
 use document_core::DocumentResponse;
+use proc_macros::MessageImpl;
 
 use crate::{document::Document, events::ToolResponse, tools::ToolType, Color, SvgDocument};
 
-use super::{document_action_handler::DocumentAction, tool_action_handler::ToolAction};
-use super::{input_manager::InputPreprocessor, Action, ActionHandler, ActionList, Response};
-use crate::tools::ToolFsmState;
+use super::{ActionList, AsMessage, Message, MessageDiscriminant, MessageHandler};
 
-use strum_macros::{AsRefStr, Display, EnumDiscriminants, EnumIter, EnumString};
-
-#[derive(Debug, Clone, Display, AsRefStr, EnumDiscriminants, EnumIter, EnumString)]
-pub enum GlobalAction {
-	Document(DocumentAction),
-	Tool(ToolAction),
+#[derive(MessageImpl, PartialEq, Clone)]
+#[message(Message, Message, Global)]
+pub enum GlobalMessage {
 	LogInfo,
 	LogDebug,
 	LogTrace,
@@ -22,8 +18,6 @@ pub enum GlobalAction {
 pub struct GlobalActionHandler {
 	documents: Vec<Document>,
 	active_document: usize,
-	tool_state: ToolFsmState,
-	actions: Vec<&'static [&'static str]>,
 }
 
 impl GlobalActionHandler {
@@ -31,24 +25,9 @@ impl GlobalActionHandler {
 		Self {
 			documents: vec![Document::default()],
 			active_document: 0,
-			tool_state: ToolFsmState::default(),
-			actions: Vec::new(),
 		}
 	}
-	fn current_actions<'a>() -> dyn FnOnce(&Self) -> ActionList<'a> {
-		/*use Action::*;
-		actions!(
-			SelectDocument(0),
-			SelectTool(ToolType::Select),
-			LogInfo,
-			LogDebug,
-			LogTrace,
-			SelectPrimaryColor(Color::WHITE),
-			SelectSecondaryColor(Color::BLACK)
-		)*/
-		|| &[&[]]
-	}
-	fn update_actions(&mut self) {
+	/*fn update_actions(&mut self) {
 		self.actions.clear();
 		self.actions.extend(Self::current_actions()(&self));
 		if let Ok(tool) = self.tool_state.tool_data.active_tool() {
@@ -56,9 +35,9 @@ impl GlobalActionHandler {
 		}
 		let document = &self.documents[self.active_document];
 		self.actions.extend(document.handler.actions());
-	}
+	}*/
 
-	fn filter_document_responses(&self, document_responses: &mut Vec<DocumentResponse>) -> bool {
+	/*fn filter_document_responses(&self, document_responses: &mut Vec<DocumentResponse>) -> bool {
 		//let changes = document_responses.drain_filter(|x| x == DocumentResponse::DocumentChanged);
 		let mut canvas_dirty = false;
 		let mut i = 0;
@@ -71,12 +50,11 @@ impl GlobalActionHandler {
 			}
 		}
 		canvas_dirty
-	}
+	}*/
 }
 
-impl ActionHandler<GlobalAction, &InputPreprocessor> for GlobalActionHandler {
-	fn process_action(&mut self, action: GlobalAction, data: &InputPreprocessor, responses: &mut Vec<Response>) {
-		let mut consumed = true;
+impl MessageHandler<GlobalMessage, ()> for GlobalActionHandler {
+	fn process_action(&mut self, message: GlobalMessage, data: (), responses: &mut Vec<Message>) {
 
 		// process action before passing them further down
 		/*use Action::*;
@@ -122,6 +100,11 @@ impl ActionHandler<GlobalAction, &InputPreprocessor> for GlobalActionHandler {
 		*/
 	}
 	fn actions(&self) -> ActionList {
-		self.actions.as_slice()
+		actions!(
+			GlobalMessageDiscriminant::LogInfo,
+			GlobalMessageDiscriminant::LogDebug,
+			GlobalMessageDiscriminant::LogTrace,
+			GlobalMessageDiscriminant::SelectDocument,
+		);
 	}
 }

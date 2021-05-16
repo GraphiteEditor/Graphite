@@ -1,54 +1,39 @@
-
 use crate::EditorError;
 use document_core::Operation;
-pub use events::{DocumentResponse, Event, Key, Response, ToolResponse};
 
-pub use self::input_manager::InputPreprocessor;
-use self::{global_action_handler::GlobalActionHandler, input_manager::InputMapper};
+use super::input_manager::InputMapper;
+pub use super::input_manager::InputPreprocessor;
 
-pub use global_action_handler::GlobalAction;
+use super::global_action_handler::GlobalActionHandler;
+use super::FrontendMessage;
+use super::Message;
 
-pub use actions::Action;
-
-pub type Callback = Box<dyn Fn(Response)>;
-
-pub type ActionList<'a> = &'a [&'static [GlobalAction]];
-
-pub trait ActionHandlerData: Clone + Sized {}
-
-pub trait ActionHandler<A: Action, T: ActionHandlerData> {
-	/// Return true if the Action is consumed.
-	fn process_action(&mut self, action: A, data: T, responses: &mut Vec<GlobalAction>);
-	fn actions(&self) -> ActionList;
-}
+pub type Callback = Box<dyn Fn(FrontendMessage)>;
 
 pub struct Dispatcher {
 	callback: Callback,
 	input_preprocessor: InputPreprocessor,
 	input_mapper: InputMapper,
 	global_event_handler: GlobalActionHandler,
-	operations: Vec<Operation>,
-	responses: Vec<Response>,
+	messages: Vec<Message>,
 }
 
 impl Dispatcher {
-	pub fn handle_event(&mut self, event: Event) -> Result<Vec<FrontendResponse> EditorError> {
-		log::trace!("{:?}", event);
-
-		self.operations.clear();
-		self.responses.clear();
-		let events = self.input_preprocessor.handle_user_input(event);
+	pub fn handle_message(&mut self, message: Message) -> Result<(), EditorError> {
+		self.messages.clear();
+		/*let events = self.input_preprocessor.handle_user_input(event);
 		for event in events {
 			let actions = self.input_mapper.translate_event(event, &self.input_preprocessor, self.global_event_handler.actions());
 			for action in actions {
 				self.handle_action(action);
 			}
 		}
+		*/
 
 		Ok(())
 	}
 
-	fn handle_action(&mut self, action: GlobalAction) {
+	/*fn handle_action(&mut self, action: GlobalAction) {
 		let consumed = self
 			.global_event_handler
 			.process_action((), &self.input_preprocessor, &action, &mut self.responses, &mut self.operations);
@@ -60,16 +45,16 @@ impl Dispatcher {
 		if !consumed {
 			log::trace!("Unhandled action {:?}", action);
 		}
-	}
+	}*/
 
-	pub fn dispatch_responses(&mut self) {
+	/*pub fn dispatch_responses(&mut self) {
 		for response in self.responses.drain(..) {
 			Self::dispatch_response(response, &self.callback);
 		}
-	}
+	}*/
 
-	pub fn dispatch_response<T: Into<Response>>(response: T, callback: &Callback) {
-		let response: Response = response.into();
+	pub fn dispatch_response<T: Into<FrontendMessage>>(response: T, callback: &Callback) {
+		let response: FrontendMessage = response.into();
 		log::trace!("Sending {} Response", response);
 		callback(response)
 	}
@@ -80,8 +65,7 @@ impl Dispatcher {
 			input_preprocessor: InputPreprocessor::default(),
 			global_event_handler: GlobalActionHandler::new(),
 			input_mapper: InputMapper::default(),
-			operations: Vec::new(),
-			responses: Vec::new(),
+			messages: Vec::new(),
 		}
 	}
 }

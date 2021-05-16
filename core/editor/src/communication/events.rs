@@ -10,9 +10,7 @@ pub use document_core::DocumentResponse;
 
 use std::fmt;
 
-use super::Action;
-
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 #[repr(C)]
 pub enum Event {
 	SelectTool(ToolType),
@@ -37,7 +35,6 @@ pub enum Event {
 	MouseMove(ViewportPosition),
 	KeyUp(Key),
 	KeyDown(Key),
-	Action(Action),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -65,46 +62,6 @@ impl fmt::Display for ToolResponse {
 	}
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[repr(C)]
-// TODO - Make Copy when possible
-pub enum Response {
-	Tool(ToolResponse),
-	Document(DocumentResponse),
-	Operation(Operation),
-}
-
-impl From<ToolResponse> for Response {
-	fn from(response: ToolResponse) -> Self {
-		Response::Tool(response)
-	}
-}
-
-impl From<DocumentResponse> for Response {
-	fn from(response: DocumentResponse) -> Self {
-		Response::Document(response)
-	}
-}
-
-impl fmt::Display for Response {
-	fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-		use Response::*;
-
-		let name = match_variant_name!(match (self) {
-			Tool,
-			Document,
-			Operation
-		});
-		let appendix = match self {
-			Tool(t) => t.to_string(),
-			Document(d) => d.to_string(),
-			Operation(o) => o.to_string(),
-		};
-
-		formatter.write_str(format!("{}::{}", name, appendix).as_str())
-	}
-}
-
 // origin is top left
 #[derive(Debug, Copy, Clone, Default, Eq, PartialEq)]
 pub struct ViewportPosition {
@@ -116,7 +73,7 @@ impl ViewportPosition {
 	pub fn distance(&self, other: &Self) -> f64 {
 		let x_diff = other.x as i32 - self.x as i32;
 		let y_diff = other.y as i32 - self.y as i32;
-		f64::sqrt(x_diff * x_diff + y_diff * y_diff)
+		f64::sqrt((x_diff * x_diff + y_diff * y_diff) as f64)
 	}
 }
 

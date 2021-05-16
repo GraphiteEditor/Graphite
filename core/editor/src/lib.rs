@@ -35,6 +35,8 @@ pub struct Editor {
 	dispatcher: Dispatcher,
 }
 
+use communication::message::prelude::*;
+
 impl Editor {
 	pub fn new(callback: Callback) -> Self {
 		Self {
@@ -43,6 +45,6 @@ impl Editor {
 	}
 
 	pub fn handle_event(&mut self, event: events::Event) -> Result<(), EditorError> {
-		self.dispatcher.handle_event(event)
+		self.dispatcher.handle_message(InputPreprocessorMessage::Event(event).into())
 	}
 }

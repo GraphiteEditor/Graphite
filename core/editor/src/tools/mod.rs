@@ -1,18 +1,23 @@
-mod crop;
-mod ellipse;
-mod eyedropper;
-mod line;
-mod navigate;
-mod path;
-mod pen;
-mod rectangle;
-mod select;
-mod shape;
+//mod crop;
+//mod ellipse;
+//mod eyedropper;
+//mod line;
+//mod navigate;
+//mod path;
+//mod pen;
+//mod rectangle;
+//mod select;
+//mod shape;
 
+use crate::communication::message::prelude::*;
 use crate::SvgDocument;
-use crate::{dispatcher::ActionHandler, Color};
-use crate::{dispatcher::InputPreprocessor, EditorError};
+use crate::{communication::input_manager::InputPreprocessor, EditorError};
+use crate::{
+	communication::{AsMessage, Message, MessageDiscriminant, MessageHandler},
+	Color,
+};
 use document_core::Operation;
+use proc_macros::MessageImpl;
 use std::{
 	collections::HashMap,
 	fmt::{self, Debug},
@@ -24,19 +29,10 @@ pub trait Fsm {
 	type ToolData;
 	#[allow(clippy::clippy::too_many_arguments)]
 
-	fn transition(
-		self,
-		action: &Action,
-		document: &SvgDocument,
-		tool_data: &DocumentToolData,
-		data: &mut Self::ToolData,
-		input: &InputPreprocessor,
-		responses: &mut Vec<Response>,
-		operations: &mut Vec<Operation>,
-	) -> (bool, Self);
+	fn transition(self, message: ToolMessage, document: &SvgDocument, tool_data: &DocumentToolData, data: &mut Self::ToolData, input: &InputPreprocessor, messages: &mut Vec<Message>) -> Self;
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct DocumentToolData {
 	pub primary_color: Color,
 	pub secondary_color: Color,
@@ -45,7 +41,7 @@ pub struct DocumentToolData {
 
 pub struct ToolData {
 	pub active_tool_type: ToolType,
-	pub tools: HashMap<ToolType, Box<dyn for<'a> ActionHandler<ToolActionHandlerData<'a>>>>,
+	pub tools: HashMap<ToolType, Box<dyn for<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>>>>,
 }
 
 impl fmt::Debug for ToolData {
@@ -55,10 +51,10 @@ impl fmt::Debug for ToolData {
 }
 
 impl ToolData {
-	pub fn active_tool_mut(&mut self) -> Result<&mut Box<dyn for<'a> ActionHandler<ToolActionHandlerData<'a>>>, EditorError> {
+	pub fn active_tool_mut(&mut self) -> Result<&mut Box<dyn for<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>>>, EditorError> {
 		self.tools.get_mut(&self.active_tool_type).ok_or(EditorError::UnknownTool)
 	}
-	pub fn active_tool(&self) -> Result<&dyn for<'a> ActionHandler<ToolActionHandlerData<'a>>, EditorError> {
+	pub fn active_tool(&self) -> Result<&dyn for<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>>, EditorError> {
 		self.tools.get(&self.active_tool_type).map(|x| x.as_ref()).ok_or(EditorError::UnknownTool)
 	}
 }
@@ -75,7 +71,7 @@ impl Default for ToolFsmState {
 			tool_data: ToolData {
 				active_tool_type: ToolType::Select,
 				tools: gen_tools_hash_map! {
-					Select => select::Select,
+					/*Select => select::Select,
 					Crop => crop::Crop,
 					Navigate => navigate::Navigate,
 					Eyedropper => eyedropper::Eyedropper,
@@ -84,7 +80,7 @@ impl Default for ToolFsmState {
 					Line => line::Line,
 					Rectangle => rectangle::Rectangle,
 					Ellipse => ellipse::Ellipse,
-					Shape => shape::Shape,
+					Shape => shape::Shape,*/
 				},
 			},
 			document_tool_data: DocumentToolData {

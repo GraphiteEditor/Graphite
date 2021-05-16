@@ -7,6 +7,7 @@ use crate::helpers::{fold_error_iter, to_path};
 use crate::structs::{AttrInnerKeyStringMap, AttrInnerSingleString};
 use proc_macro::TokenStream;
 use proc_macro2::{Span, TokenStream as TokenStream2};
+use quote::ToTokens;
 use structs::IdentList;
 use syn::{parse_macro_input, Attribute, Data, DeriveInput, Ident, LitStr, Variant};
 
@@ -126,7 +127,6 @@ fn derive_message_impl(input_item: TokenStream2) -> TokenStream2 {
 
 	if let Data::Enum(data) = input.data {
 		let variants = data.variants.iter().map(|var: &Variant| to_path(ident.clone(), var.ident.clone())).collect::<Vec<_>>();
-		let discriminant_variants = data.variants.iter().map(|var: &Variant| to_path(discriminant.clone(), var.ident.clone())).collect::<Vec<_>>();
 		let variant_fields = data.variants.iter().map(|var: &Variant| var.fields.clone()).collect::<Vec<_>>();
 		let data_variant_fields: Vec<TokenStream2> = data
 			.variants
@@ -134,7 +134,7 @@ fn derive_message_impl(input_item: TokenStream2) -> TokenStream2 {
 			.zip(variant_fields.iter())
 			.map(|(var, field)| {
 				if let Some(syn::Field { ty: syn::Type::Path(path), .. }) = field.iter().next() {
-					if var.attrs.iter().any(|a| matches!(a.parse_args::<Ident>().map(|i| stringify!(i)), Ok("child"))) {
+					if var.attrs.iter().any(|name| name.path.to_token_stream().to_string().as_str() == "child") {
 						let last = path.path.segments.last().unwrap();
 						let new_ident = Ident::new(format!("{}Discriminant", last.ident).as_str(), Span::call_site());
 						quote::quote! {

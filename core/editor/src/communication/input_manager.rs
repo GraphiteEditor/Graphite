@@ -1,8 +1,9 @@
 use crate::tools::ToolType;
+use proc_macros::MessageImpl;
 
 use super::{
 	events::{Event, Key, MouseState},
-	Action,
+	AsMessage, Message, MessageDiscriminant, MessageHandler,
 };
 use std::collections::HashMap;
 
@@ -22,8 +23,21 @@ pub struct InputPreprocessor {
 	pub mouse_state: MouseState,
 }
 
-impl InputPreprocessor {
-	pub fn handle_user_input(&mut self, event: Event) -> Vec<Event> {
+#[derive(MessageImpl, PartialEq, Clone)]
+#[message(Message, Message, InputPreprocessor)]
+pub enum InputPreprocessorMessage {
+	Event(Event),
+}
+
+#[derive(MessageImpl, PartialEq, Clone)]
+#[message(Message, Message, InputMapper)]
+pub enum InputMapperMessage {}
+
+impl MessageHandler<InputPreprocessorMessage, ()> for InputPreprocessor {
+	fn process_action(&mut self, message: InputPreprocessorMessage, data: (), responses: &mut Vec<Message>) {
+		responses.clear()
+	}
+	/*pub fn handle_user_input(&mut self, event: Event) -> Vec<Event> {
 		// clean user input and if possible reconstruct it
 		// store the changes in the keyboard if it is a key event
 		// translate the key events to VirtualKeyActions and return them
@@ -38,7 +52,8 @@ impl InputPreprocessor {
 			_ => (),
 		}
 		vec![event]
-	}
+	}*/
+	actions_fn!();
 }
 
 macro_rules! key {
@@ -66,11 +81,11 @@ const DEFAULT_MAPPING: &[(&str, &str, Event, &[Key])] = &[
 #[derive(Debug, Default)]
 pub struct InputMapper {}
 
-impl InputMapper {
-	pub fn translate_event(&mut self, event: Event, input: &InputPreprocessor, _actions: &[(String, Action)]) -> Vec<Action> {
-		vec![self.dummy_translation(event, input)]
+impl MessageHandler<InputMapperMessage, ()> for InputMapper {
+	fn process_action(&mut self, message: InputMapperMessage, data: (), responses: &mut Vec<Message>) {
+		responses.clear()
 	}
-	fn dummy_translation(&mut self, event: Event, input: &InputPreprocessor) -> Action {
+	/*fn dummy_translation(&mut self, event: Event, input: &InputPreprocessor) -> Action {
 		match event {
 			Event::SelectTool(tool_name) => Action::SelectTool(tool_name),
 			Event::SelectPrimaryColor(color) => Action::SelectPrimaryColor(color),
@@ -119,5 +134,5 @@ impl InputMapper {
 			},
 			_ => todo!("Implement layer handling"),
 		}
-	}
+	}*/
 }

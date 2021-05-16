@@ -1,9 +1,9 @@
 use proc_macros::MessageImpl;
 use std::fmt::Display;
 
-use super::{document_action_handler::DocumentMessage, frontend::FrontendMessage, tool_action_handler::ToolMessage};
+use prelude::*;
 
-pub trait AsMessage: Sized + Into<Message> + Send + Sync + PartialEq<Message> + Display {
+pub trait AsMessage: Sized + Into<Message> + Send + Sync + PartialEq<Message> + Display + Clone {
 	fn name(&self) -> String;
 	fn suffix(&self) -> &'static str;
 	fn prefix() -> String;
@@ -16,6 +16,8 @@ pub enum Message {
 	#[child]
 	Document(DocumentMessage),
 	#[child]
+	Global(GlobalMessage),
+	#[child]
 	Tool(ToolMessage),
 	#[child]
 	Frontend(FrontendMessage),
@@ -25,8 +27,15 @@ pub enum Message {
 	InputMapper(InputMapperMessage),
 }
 
-pub enum InputPreprocessorMessage {}
-pub enum InputMapperMessage {}
+pub mod prelude {
+	pub use super::super::{
+		document_action_handler::{DocumentMessage, DocumentMessageDiscriminant},
+		frontend::{FrontendMessage, FrontendMessageDiscriminant},
+		global_action_handler::{GlobalMessage, GlobalMessageDiscriminant},
+		input_manager::{InputMapperMessage, InputMapperMessageDiscriminant, InputPreprocessorMessage, InputPreprocessorMessageDiscriminant},
+		tool_action_handler::{ToolMessage, ToolMessageDiscriminant},
+	};
+}
 
 /*SelectTool(ToolType),
 SelectPrimaryColor(Color),

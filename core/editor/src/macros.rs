@@ -41,7 +41,7 @@ macro_rules! count_args {
 /// ```
 macro_rules! gen_tools_hash_map {
 	($($enum_variant:ident => $struct_path:ty),* $(,)?) => {{
-		let mut hash_map: ::std::collections::HashMap<$crate::tools::ToolType, ::std::boxed::Box<dyn for<'a> $crate::tools::ActionHandler<$crate::tools::ToolActionHandlerData<'a>>>> = ::std::collections::HashMap::with_capacity(count_args!($(($enum_variant)),*));
+		let mut hash_map: ::std::collections::HashMap<$crate::tools::ToolType, ::std::boxed::Box<dyn for<'a> $crate::tools::MessageHandler<$crate::tools::ToolMessage,$crate::tools::ToolActionHandlerData<'a>>>> = ::std::collections::HashMap::with_capacity(count_args!($(($enum_variant)),*));
 		$(hash_map.insert($crate::tools::ToolType::$enum_variant, ::std::boxed::Box::new(<$struct_path>::default()));)*
 
 		hash_map
@@ -86,15 +86,15 @@ macro_rules! match_variant_name {
 }
 
 macro_rules! actions {
-	($($v:expr), * $(,)?) => {{
-		const ACTIONS: $crate::dispatcher::ActionList =  &[$((String::new(), $v)),*];
+	($($v:expr),*) => {{
+		const ACTIONS: $crate::communication::ActionList =  &[$(&[$v.into()]),*];
 		ACTIONS
 	}}
 }
 
 macro_rules! actions_fn {
-	($($v:expr), * $(,)?) => {
-		fn actions(&self) -> $crate::dispatcher::ActionList {
+	($($v:expr),*) => {
+		fn actions(&self) -> $crate::communication::ActionList {
 			 actions!($($v),*)
 		}
 	};

@@ -1,15 +1,19 @@
 use document_core::{color::Color, DocumentResponse, LayerId};
+use proc_macros::MessageImpl;
 
-use super::{Action, InputPreprocessor, MessageHandler, Operation, Response};
-use crate::{events::ToolResponse, tools::ToolType, SvgDocument};
+use super::{AsMessage, Message, MessageDiscriminant, MessageHandler};
+use crate::{
+	events::ToolResponse,
+	tools::{ToolFsmState, ToolType},
+	SvgDocument,
+};
 use crate::{
 	tools::{DocumentToolData, ToolActionHandlerData},
 	EditorError,
 };
 
-use strum_macros::{AsRefStr, Display, EnumDiscriminants, EnumIter, EnumString};
-
-#[derive(Debug, Clone, Display, AsRefStr, EnumDiscriminants, EnumIter, EnumString)]
+#[derive(MessageImpl, PartialEq, Clone)]
+#[message(Message, Message, Tool)]
 pub enum ToolMessage {
 	SelectTool(ToolType),
 	SelectPrimaryColor(Color),
@@ -19,10 +23,18 @@ pub enum ToolMessage {
 	Save,
 }
 
-#[derive(Debug, Default, Clone)]
-pub struct ToolActionHandler {}
-
+#[derive(Debug, Default)]
+pub struct ToolActionHandler {
+	tool_state: ToolFsmState,
+	actions: Vec<&'static [&'static str]>,
+}
 impl MessageHandler<ToolMessage, &mut SvgDocument> for ToolActionHandler {
-	fn process_action(&mut self, action: ToolMessage, document: &mut SvgDocument, responses: &mut Vec<Response>) {}
-	actions_fn!(Action::Undo, Action::DeleteLayer(vec![]), Action::AddFolder(vec![]));
+	fn process_action(&mut self, action: ToolMessage, document: &mut SvgDocument, responses: &mut Vec<Message>) {}
+	actions_fn!(
+		ToolMessageDiscriminant::Undo,
+		ToolMessageDiscriminant::Redo,
+		ToolMessageDiscriminant::SelectSecondaryColor,
+		ToolMessageDiscriminant::SelectPrimaryColor,
+		ToolMessageDiscriminant::SelectTool
+	);
 }

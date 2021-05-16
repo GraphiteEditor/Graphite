@@ -1,8 +1,7 @@
 use graphite_proc_macros::MessageImpl;
 use std::fmt::Display;
 
-/*
-trait AsMessage: Sized + Into<Message> + Send + Sync + PartialEq<Message> + Display {
+trait AsMessage: Sized + Into<Message> + Send + Sync + PartialEq<Message> + Display + Clone {
 	//trait AsMessage: Sized + Send + Sync {
 	//trait AsMessage: Sized + Send + Sync + Into<Message> + Display + PartialEq<Message> {
 	//trait AsMessage: Sized + Send + Sync + Into<Message> + Display {
@@ -23,6 +22,7 @@ enum Message {
 #[message(Message, Message, Child)]
 pub enum Child {
 	Foo,
+	#[child]
 	Document(DocumentMessage),
 }
 
@@ -30,9 +30,8 @@ pub enum Child {
 #[message(Message, Child, Document)]
 pub enum DocumentMessage {
 	Foo,
-	Bar,
+	Bar(usize),
 }
-*/
 
 fn main() {
 	println!("Hello, world!");

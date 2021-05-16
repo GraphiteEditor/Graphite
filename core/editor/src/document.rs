@@ -1,6 +1,6 @@
 use document_core::document::Document as InteralDocument;
 
-use crate::dispatcher::document_event_handler::DocumentActionHandler;
+use crate::communication::document_action_handler::DocumentActionHandler;
 
 #[derive(Clone, Debug, Default)]
 pub struct Document {
