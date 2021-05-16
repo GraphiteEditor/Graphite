@@ -2,7 +2,7 @@ use crate::tools::ToolType;
 use crate::Color;
 use bitflags::bitflags;
 
-use document_core::{LayerId, Operation};
+use document_core::LayerId;
 use serde::{Deserialize, Serialize};
 
 #[doc(inline)]
@@ -37,7 +37,7 @@ pub enum Event {
 	KeyDown(Key),
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
 #[repr(C)]
 pub enum ToolResponse {
 	// These may not have the same names as any of the DocumentResponses

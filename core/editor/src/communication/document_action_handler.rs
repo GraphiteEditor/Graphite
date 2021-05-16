@@ -1,15 +1,11 @@
+use super::message::prelude::*;
 use document_core::{DocumentResponse, LayerId, Operation as DocumentOperation};
-use proc_macros::MessageImpl;
 
-use super::{AsMessage, Message, MessageDiscriminant, MessageHandler};
-use crate::{events::ToolResponse, SvgDocument};
-use crate::{
-	tools::{DocumentToolData, ToolActionHandlerData},
-	EditorError,
-};
+use super::{Message, MessageDiscriminant, MessageHandler};
+use crate::{document::Document, events::ToolResponse};
 
-#[derive(MessageImpl, PartialEq, Clone)]
-#[message(Message, Message, Document)]
+#[impl_message(Message, Document)]
+#[derive(PartialEq, Clone)]
 pub enum DocumentMessage {
 	Operation(DocumentOperation),
 	SelectLayer(Vec<LayerId>),
@@ -18,6 +14,8 @@ pub enum DocumentMessage {
 	RenameLayer(Vec<LayerId>, String),
 	ToggleLayerVisibility(Vec<LayerId>),
 	ToggleLayerExpansion(Vec<LayerId>),
+	SelectDocument(usize),
+	RenderDocument,
 	Undo,
 	Redo,
 	Save,
@@ -34,33 +32,74 @@ impl From<DocumentOperation> for Message {
 	}
 }
 
-#[derive(Debug, Default, Clone)]
-pub struct DocumentActionHandler {}
+#[derive(Debug, Clone)]
+pub struct DocumentActionHandler {
+	documents: Vec<Document>,
+	active_document: usize,
+}
 
-impl MessageHandler<DocumentMessage, &mut SvgDocument> for DocumentActionHandler {
-	fn process_action(&mut self, message: DocumentMessage, document: &mut SvgDocument, responses: &mut Vec<Message>) {
+impl DocumentActionHandler {
+	pub fn active_document(&self) -> &Document {
+		&self.documents[self.active_document]
+	}
+	pub fn active_document_mut(&mut self) -> &mut Document {
+		&mut self.documents[self.active_document]
+	}
+	fn filter_document_responses(&self, document_responses: &mut Vec<DocumentResponse>) -> bool {
+		//let changes = document_responses.drain_filter(|x| x == DocumentResponse::DocumentChanged);
+		let mut canvas_dirty = false;
+		let mut i = 0;
+		while i < document_responses.len() {
+			if matches!(document_responses[i], DocumentResponse::DocumentChanged) {
+				canvas_dirty = true;
+				document_responses.remove(i);
+			} else {
+				i += 1;
+			}
+		}
+		canvas_dirty
+	}
+}
+
+impl Default for DocumentActionHandler {
+	fn default() -> Self {
+		Self {
+			documents: vec![Document::default()],
+			active_document: 0,
+		}
+	}
+}
+
+impl MessageHandler<DocumentMessage, ()> for DocumentActionHandler {
+	fn process_action(&mut self, message: DocumentMessage, _data: (), responses: &mut Vec<Message>) {
 		use DocumentMessage::*;
 		match message {
-			DeleteLayer(path) => responses.push(DocumentOperation::DeleteLayer { path: path.clone() }.into()),
-			AddFolder(path) => responses.push(DocumentOperation::AddFolder { path: path.clone() }.into()),
+			DeleteLayer(path) => responses.push(DocumentOperation::DeleteLayer { path }.into()),
+			AddFolder(path) => responses.push(DocumentOperation::AddFolder { path }.into()),
+			SelectDocument(id) => self.active_document = id,
 			Undo => {
 				// this is a temporary fix and will be addressed by #123
-				if let Some(id) = document.root.list_layers().last() {
+				if let Some(id) = self.active_document().document.root.list_layers().last() {
 					responses.push(DocumentOperation::DeleteLayer { path: vec![*id] }.into())
 				}
 			}
+			Operation(op) => {
+				if let Ok(Some(mut document_responses)) = self.active_document_mut().document.handle_operation(op) {
+					let canvas_dirty = self.filter_document_responses(&mut document_responses);
+					responses.extend(document_responses.drain(..).map(Into::into));
+					if canvas_dirty {
+						responses.push(RenderDocument.into())
+					}
+				}
+			}
+			RenderDocument => responses.push(
+				ToolResponse::UpdateCanvas {
+					document: self.active_document_mut().document.render_root(),
+				}
+				.into(),
+			),
 			_ => (),
 		}
-
-		/*
-		let mut document_responses = self.dispatch_operations(doc, operations.drain(..));
-		let canvas_dirty = self.filter_document_responses(&mut document_responses);
-		responses.extend(document_responses.drain(..).map(Into::into));
-		if canvas_dirty {
-			responses.push(ToolResponse::UpdateCanvas { document: doc.render_root() }.into())
-		}
-
-		consumed*/
 	}
 	actions_fn!(DocumentMessageDiscriminant::Undo, DocumentMessageDiscriminant::Redo, DocumentMessageDiscriminant::Save);
 }

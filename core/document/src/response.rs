@@ -5,7 +5,7 @@ use crate::{
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub struct LayerPanelEntry {
 	pub name: String,
 	pub visible: bool,
@@ -14,7 +14,7 @@ pub struct LayerPanelEntry {
 	pub path: Vec<LayerId>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub enum LayerType {
 	Folder,
 	Shape,
@@ -71,7 +71,7 @@ impl LayerPanelEntry {
 	}
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
 #[repr(C)]
 // TODO - Make Copy when possible
 pub enum DocumentResponse {

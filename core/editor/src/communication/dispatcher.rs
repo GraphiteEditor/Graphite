@@ -1,8 +1,13 @@
-use crate::EditorError;
-use document_core::Operation;
+use crate::{
+	communication::{
+		message::{AsMessage, ToDiscriminant},
+		MessageHandler,
+	},
+	EditorError,
+};
 
-use super::input_manager::InputMapper;
 pub use super::input_manager::InputPreprocessor;
+use super::{document_action_handler::DocumentActionHandler, input_manager::InputMapper, tool_action_handler::ToolActionHandler};
 
 use super::global_action_handler::GlobalActionHandler;
 use super::FrontendMessage;
@@ -15,47 +20,35 @@ pub struct Dispatcher {
 	input_preprocessor: InputPreprocessor,
 	input_mapper: InputMapper,
 	global_event_handler: GlobalActionHandler,
+	tool_action_handler: ToolActionHandler,
+	document_action_handler: DocumentActionHandler,
 	messages: Vec<Message>,
 }
 
 impl Dispatcher {
 	pub fn handle_message(&mut self, message: Message) -> Result<(), EditorError> {
-		self.messages.clear();
-		/*let events = self.input_preprocessor.handle_user_input(event);
-		for event in events {
-			let actions = self.input_mapper.translate_event(event, &self.input_preprocessor, self.global_event_handler.actions());
-			for action in actions {
-				self.handle_action(action);
-			}
+		use Message::*;
+		match message {
+			NoOp => (),
+			Document(message) => self.document_action_handler.process_action(message, (), &mut self.messages),
+			Global(message) => self.global_event_handler.process_action(message, (), &mut self.messages),
+			Tool(message) => self
+				.tool_action_handler
+				.process_action(message, (&self.document_action_handler.active_document().document, &self.input_preprocessor), &mut self.messages),
+			Frontend(message) => Self::dispatch_response(message, &self.callback),
+			InputPreprocessor(message) => self.input_preprocessor.process_action(message, (), &mut self.messages),
+			InputMapper(message) => self.input_mapper.process_action(message, &self.input_preprocessor, &mut self.messages),
 		}
-		*/
-
+		let message = self.messages.drain(..1).next();
+		if let Some(message) = message {
+			self.handle_message(message)?;
+		}
 		Ok(())
 	}
 
-	/*fn handle_action(&mut self, action: GlobalAction) {
-		let consumed = self
-			.global_event_handler
-			.process_action((), &self.input_preprocessor, &action, &mut self.responses, &mut self.operations);
-
-		debug_assert!(self.operations.is_empty());
-
-		self.dispatch_responses();
-
-		if !consumed {
-			log::trace!("Unhandled action {:?}", action);
-		}
-	}*/
-
-	/*pub fn dispatch_responses(&mut self) {
-		for response in self.responses.drain(..) {
-			Self::dispatch_response(response, &self.callback);
-		}
-	}*/
-
 	pub fn dispatch_response<T: Into<FrontendMessage>>(response: T, callback: &Callback) {
 		let response: FrontendMessage = response.into();
-		log::trace!("Sending {} Response", response);
+		log::trace!("Sending {} Response", response.to_discriminant().global_name());
 		callback(response)
 	}
 
@@ -65,6 +58,8 @@ impl Dispatcher {
 			input_preprocessor: InputPreprocessor::default(),
 			global_event_handler: GlobalActionHandler::new(),
 			input_mapper: InputMapper::default(),
+			document_action_handler: DocumentActionHandler::default(),
+			tool_action_handler: ToolActionHandler::default(),
 			messages: Vec::new(),
 		}
 	}

@@ -1,18 +1,31 @@
-use proc_macros::MessageImpl;
-use std::fmt::Display;
-
 use prelude::*;
+pub use proc_macros::{AsMessage, ToDiscriminant, TransitiveChild};
 
-pub trait AsMessage: Sized + Into<Message> + Send + Sync + PartialEq<Message> + Display + Clone {
-	fn name(&self) -> String;
-	fn suffix(&self) -> &'static str;
-	fn prefix() -> String;
-	fn get_discriminant(&self) -> MessageDiscriminant;
+pub trait AsMessage: TransitiveChild
+where
+	Self::TopParent: TransitiveChild<Parent = Self::TopParent, TopParent = Self::TopParent> + AsMessage,
+{
+	fn local_name(self) -> String;
+	fn global_name(self) -> String {
+		<Self as Into<Self::TopParent>>::into(self).local_name()
+	}
 }
 
-#[derive(MessageImpl, PartialEq, Clone)]
-#[message(Message, Message, Child)]
+pub trait ToDiscriminant {
+	type Discriminant;
+
+	fn to_discriminant(&self) -> Self::Discriminant;
+}
+
+pub trait TransitiveChild: Into<Self::Parent> + Into<Self::TopParent> {
+	type TopParent;
+	type Parent;
+}
+
+#[impl_message]
+#[derive(PartialEq, Clone)]
 pub enum Message {
+	NoOp,
 	#[child]
 	Document(DocumentMessage),
 	#[child]
@@ -29,48 +42,13 @@ pub enum Message {
 
 pub mod prelude {
 	pub use super::super::{
+		super::tools::rectangle::{RectangleMessage, RectangleMessageDiscriminant},
 		document_action_handler::{DocumentMessage, DocumentMessageDiscriminant},
 		frontend::{FrontendMessage, FrontendMessageDiscriminant},
 		global_action_handler::{GlobalMessage, GlobalMessageDiscriminant},
 		input_manager::{InputMapperMessage, InputMapperMessageDiscriminant, InputPreprocessorMessage, InputPreprocessorMessageDiscriminant},
 		tool_action_handler::{ToolMessage, ToolMessageDiscriminant},
 	};
+	pub use super::{AsMessage, ToDiscriminant, TransitiveChild};
+	pub use proc_macros::impl_message;
 }
-
-/*SelectTool(ToolType),
-SelectPrimaryColor(Color),
-SelectSecondaryColor(Color),
-SelectLayer(Vec<LayerId>),
-SelectDocument(usize),
-ToggleLayerVisibility(Vec<LayerId>),
-ToggleLayerExpansion(Vec<LayerId>),
-DeleteLayer(Vec<LayerId>),
-AddFolder(Vec<LayerId>),
-RenameLayer(Vec<LayerId>, String),
-SwapColors,
-ResetColors,
-Undo,
-Redo,
-Center,
-UnCenter,
-Confirm,
-SnapAngle,
-UnSnapAngle,
-LockAspectRatio,
-UnlockAspectRatio,
-Abort,
-IncreaseSize,
-DecreaseSize,
-Save,
-LogInfo,
-LogDebug,
-LogTrace,
-// …
-LmbDown,
-RmbDown,
-MmbDown,
-LmbUp,
-RmbUp,
-MmbUp,
-MouseMove,
-TextKeyPress(char),*/

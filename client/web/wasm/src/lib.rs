@@ -4,7 +4,13 @@ pub mod utils;
 pub mod window;
 pub mod wrappers;
 
-use editor_core::{communication::FrontendMessage, Editor};
+use editor_core::{
+	communication::{
+		message::{AsMessage, ToDiscriminant},
+		FrontendMessage,
+	},
+	Editor,
+};
 use std::cell::RefCell;
 use utils::WasmLog;
 use wasm_bindgen::prelude::*;
@@ -22,7 +28,7 @@ pub fn init() {
 }
 
 fn handle_response(response: FrontendMessage) {
-	let response_type = response.to_string();
+	let response_type = response.to_discriminant().global_name();
 	send_response(response_type, response);
 }
 

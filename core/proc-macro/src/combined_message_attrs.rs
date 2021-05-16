@@ -102,5 +102,20 @@ fn top_level_impl(input_item: TokenStream) -> syn::Result<TokenStream> {
 		}
 	}
 
-	Ok(input.into_token_stream())
+	let input_type = &input.ident;
+	let discriminant = call_site_ident(format!("{}Discriminant", input_type));
+
+	Ok(quote::quote! {
+		#input
+
+		impl TransitiveChild for #input_type {
+			type TopParent = Self;
+			type Parent = Self;
+		}
+
+		impl TransitiveChild for #discriminant {
+			type TopParent = Self;
+			type Parent = Self;
+		}
+	})
 }

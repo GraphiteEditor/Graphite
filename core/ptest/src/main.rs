@@ -23,48 +23,38 @@ pub trait TransitiveChild: Into<Self::Parent> + Into<Self::TopParent> {
 
 #[impl_message]
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub enum Message2 {
+pub enum Message {
 	Foo,
 	Bar(usize),
 	Qux {
 		x: usize,
 	},
 	#[child]
-	Child(Child2),
+	Child(Child),
 }
 
-impl TransitiveChild for Message2 {
-	type TopParent = Self;
-	type Parent = Self;
-}
-
-impl TransitiveChild for Message2Discriminant {
-	type TopParent = Self;
-	type Parent = Self;
-}
-
-#[impl_message(Message2, Child)]
+#[impl_message(Message, Child)]
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub enum Child2 {
+pub enum Child {
 	Foo,
 	Bar(usize),
 	#[child]
-	SubChild(Child3),
+	SubChild(Child2),
 }
 
-#[impl_message(Message2, Child2, SubChild)]
+#[impl_message(Message, Child, SubChild)]
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub enum Child3 {
+pub enum Child2 {
 	Foo,
 	Bar,
 }
 
 fn main() {
-	let c3 = Child3::Foo;
-	assert_eq!(Message2::from(c3), Message2::Child(Child2::SubChild(c3)));
+	let c3 = Child2::Foo;
+	assert_eq!(Message::from(c3), Message::Child(Child::SubChild(c3)));
 	assert_eq!(
-		Message2Discriminant::from(Child3Discriminant::from(&c3)),
-		Message2Discriminant::Child(Child2Discriminant::SubChild(Child3Discriminant::Foo))
+		MessageDiscriminant::from(Child2Discriminant::from(&c3)),
+		MessageDiscriminant::Child(ChildDiscriminant::SubChild(Child2Discriminant::Foo))
 	);
-	println!("{}", Child3::Bar.to_discriminant().global_name());
+	println!("{}", Child2::Bar.to_discriminant().global_name());
 }

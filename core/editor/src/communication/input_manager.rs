@@ -1,9 +1,9 @@
 use crate::tools::ToolType;
-use proc_macros::MessageImpl;
 
 use super::{
 	events::{Event, Key, MouseState},
-	AsMessage, Message, MessageDiscriminant, MessageHandler,
+	message::prelude::*,
+	Message, MessageDiscriminant, MessageHandler,
 };
 use std::collections::HashMap;
 
@@ -19,28 +19,32 @@ pub struct KeyState {
 pub struct InputPreprocessor {
 	mouse_keys: MouseState,
 	keyboard: HashMap<Key, KeyState>,
-	//key_translation: HashMap<Key, VirtualInputAction>,
+	//key_translation: HashMap<Key, VirtualInputToolMessage>,
 	pub mouse_state: MouseState,
 }
 
-#[derive(MessageImpl, PartialEq, Clone)]
-#[message(Message, Message, InputPreprocessor)]
+#[impl_message(Message, InputPreprocessor)]
+#[derive(PartialEq, Clone)]
 pub enum InputPreprocessorMessage {
 	Event(Event),
 }
 
-#[derive(MessageImpl, PartialEq, Clone)]
-#[message(Message, Message, InputMapper)]
-pub enum InputMapperMessage {}
+#[impl_message(Message, InputMapper)]
+#[derive(PartialEq, Clone)]
+pub enum InputMapperMessage {
+	Event(Event),
+}
 
 impl MessageHandler<InputPreprocessorMessage, ()> for InputPreprocessor {
-	fn process_action(&mut self, message: InputPreprocessorMessage, data: (), responses: &mut Vec<Message>) {
-		responses.clear()
+	fn process_action(&mut self, message: InputPreprocessorMessage, _data: (), responses: &mut Vec<Message>) {
+		match message {
+			InputPreprocessorMessage::Event(e) => responses.push(InputMapperMessage::Event(e).into()),
+		}
 	}
 	/*pub fn handle_user_input(&mut self, event: Event) -> Vec<Event> {
 		// clean user input and if possible reconstruct it
 		// store the changes in the keyboard if it is a key event
-		// translate the key events to VirtualKeyActions and return them
+		// translate the key events to VirtualKeyToolMessages and return them
 		// transform canvas coordinates to document coordinates
 		// Last pressed key
 		// respect t {
@@ -71,7 +75,7 @@ macro_rules! key {
 	};
 }
 
-const DEFAULT_MAPPING: &[(&str, &str, Event, &[Key])] = &[
+const _DEFAULT_MAPPING: &[(&str, &str, Event, &[Key])] = &[
 	key!("Undo", KeyZ, (KeyControl)),
 	key!("*", "Redo", KeyZ, (KeyControl, KeyShift)),
 	key!("Redo", KeyZ, (KeyControl, KeyCaps)),
@@ -81,59 +85,55 @@ const DEFAULT_MAPPING: &[(&str, &str, Event, &[Key])] = &[
 #[derive(Debug, Default)]
 pub struct InputMapper {}
 
-impl MessageHandler<InputMapperMessage, ()> for InputMapper {
-	fn process_action(&mut self, message: InputMapperMessage, data: (), responses: &mut Vec<Message>) {
-		responses.clear()
+impl MessageHandler<InputMapperMessage, &InputPreprocessor> for InputMapper {
+	fn process_action(&mut self, message: InputMapperMessage, input: &InputPreprocessor, responses: &mut Vec<Message>) {
+		let res = match message {
+			InputMapperMessage::Event(e) => match e {
+				Event::SelectTool(tool_name) => ToolMessage::SelectTool(tool_name).into(),
+				Event::SelectPrimaryColor(color) => ToolMessage::SelectPrimaryColor(color).into(),
+				Event::SelectSecondaryColor(color) => ToolMessage::SelectSecondaryColor(color).into(),
+				Event::SwapColors => ToolMessage::SwapColors.into(),
+				Event::ResetColors => ToolMessage::ResetColors.into(),
+				Event::MouseMove(_) => RectangleMessage::MouseMove.into(),
+				Event::ToggleLayerVisibility(path) => DocumentMessage::ToggleLayerVisibility(path).into(),
+				Event::LmbDown(_) => RectangleMessage::DragStart.into(),
+				Event::LmbUp(_) => RectangleMessage::DragStop.into(),
+				Event::RmbDown(_) => RectangleMessage::Abort.into(),
+
+				event => self.translate_key(event, input),
+			},
+		};
+		responses.push(res);
 	}
 	actions_fn!();
-	/*fn dummy_translation(&mut self, event: Event, input: &InputPreprocessor) -> Action {
-		match event {
-			Event::SelectTool(tool_name) => Action::SelectTool(tool_name),
-			Event::SelectPrimaryColor(color) => Action::SelectPrimaryColor(color),
-			Event::SelectSecondaryColor(color) => Action::SelectSecondaryColor(color),
-			Event::SwapColors => Action::SwapColors,
-			Event::ResetColors => Action::ResetColors,
-			Event::MouseMove(_) => Action::MouseMove,
-			Event::ToggleLayerVisibility(path) => Action::ToggleLayerVisibility(path),
-			Event::LmbDown(_) => Action::LmbDown,
-			Event::LmbUp(_) => Action::LmbUp,
-			Event::RmbDown(_) => Action::RmbDown,
-			Event::RmbUp(_) => Action::RmbUp,
-			Event::MmbDown(_) => Action::MmbDown,
-			Event::MmbUp(_) => Action::MmbUp,
-			Event::AmbiguousMouseUp(_) | Event::AmbiguousMouseDown(_) => Action::NoOp,
-			Event::Action(a) => a,
-
-			event => self.translate_key(event, input),
-		}
-	}
-
-	fn translate_key(&self, event: Event, _input: &InputPreprocessor) -> Action {
+}
+impl InputMapper {
+	fn translate_key(&self, event: Event, _input: &InputPreprocessor) -> Message {
 		use Key::*;
 		match event {
 			Event::KeyUp(key) => match key {
-				KeyAlt => Action::UnCenter,
-				KeyShift | KeyCaps => Action::UnlockAspectRatio,
-				_ => Action::NoOp,
+				KeyAlt => RectangleMessage::UnCenter.into(),
+				KeyShift | KeyCaps => RectangleMessage::UnlockAspectRatio.into(),
+				_ => Message::NoOp.into(),
 			},
 			Event::KeyDown(key) => match key {
-				Key1 => Action::LogInfo,
-				Key2 => Action::LogDebug,
-				Key3 => Action::LogTrace,
-				KeyV => Action::SelectTool(ToolType::Select),
-				KeyL => Action::SelectTool(ToolType::Line),
-				KeyP => Action::SelectTool(ToolType::Pen),
-				KeyM => Action::SelectTool(ToolType::Rectangle),
-				KeyY => Action::SelectTool(ToolType::Shape),
-				KeyE => Action::SelectTool(ToolType::Ellipse),
-				KeyX => Action::SwapColors,
-				KeyZ => Action::Undo,
-				KeyEnter => Action::Confirm,
-				KeyAlt => Action::Center,
-				KeyShift | KeyCaps => Action::LockAspectRatio,
-				_ => Action::NoOp,
+				Key1 => GlobalMessage::LogInfo.into(),
+				Key2 => GlobalMessage::LogDebug.into(),
+				Key3 => GlobalMessage::LogTrace.into(),
+				KeyV => ToolMessage::SelectTool(ToolType::Select).into(),
+				KeyL => ToolMessage::SelectTool(ToolType::Line).into(),
+				KeyP => ToolMessage::SelectTool(ToolType::Pen).into(),
+				KeyM => ToolMessage::SelectTool(ToolType::Rectangle).into(),
+				KeyY => ToolMessage::SelectTool(ToolType::Shape).into(),
+				KeyE => ToolMessage::SelectTool(ToolType::Ellipse).into(),
+				KeyX => ToolMessage::SwapColors.into(),
+				KeyZ => DocumentMessage::Undo.into(),
+				//KeyEnter => RectangleMessage::Confirm.into(),
+				KeyAlt => RectangleMessage::Center.into(),
+				KeyShift | KeyCaps => RectangleMessage::LockAspectRatio.into(),
+				_ => Message::NoOp.into(),
 			},
 			_ => todo!("Implement layer handling"),
 		}
-	}*/
+	}
 }

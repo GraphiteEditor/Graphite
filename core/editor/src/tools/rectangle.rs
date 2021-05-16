@@ -1,8 +1,8 @@
 use crate::events::ViewportPosition;
 use crate::tools::Fsm;
 use crate::{
-	dispatcher::{Action, ActionHandler, InputPreprocessor, Response},
-	tools::{DocumentToolData, ToolActionHandlerData},
+	communication::{message::prelude::*, AsMessage, InputPreprocessor, Message, MessageHandler},
+	tools::{DocumentToolData, ToolActionHandlerData, ToolMessage, ToolMessageDiscriminant},
 	SvgDocument,
 };
 use document_core::layers::style;
@@ -14,11 +14,23 @@ pub struct Rectangle {
 	data: RectangleToolData,
 }
 
-impl<'a> ActionHandler<ToolActionHandlerData<'a>> for Rectangle {
-	fn process_action(&mut self, data: ToolActionHandlerData<'a>, input_preprocessor: &InputPreprocessor, action: &Action, responses: &mut Vec<Response>, operations: &mut Vec<Operation>) -> bool {
-		let (consumed, state) = self.fsm_state.transition(action, data.0, data.1, &mut self.data, input_preprocessor, responses, operations);
-		self.fsm_state = state;
-		consumed
+#[impl_message(Message, ToolMessage, Rectangle)]
+#[derive(PartialEq, Clone)]
+pub enum RectangleMessage {
+	Undo,
+	DragStart,
+	DragStop,
+	MouseMove,
+	Abort,
+	Center,
+	UnCenter,
+	LockAspectRatio,
+	UnlockAspectRatio,
+}
+
+impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Rectangle {
+	fn process_action(&mut self, action: ToolMessage, data: ToolActionHandlerData<'a>, responses: &mut Vec<Message>) {
+		self.fsm_state = self.fsm_state.transition(action, data.0, data.1, &mut self.data, data.2, responses);
 	}
 	actions_fn!();
 }
@@ -45,90 +57,85 @@ struct RectangleToolData {
 impl Fsm for RectangleToolFsmState {
 	type ToolData = RectangleToolData;
 
-	fn transition(
-		self,
-		event: &Action,
-		_document: &SvgDocument,
-		tool_data: &DocumentToolData,
-		data: &mut Self::ToolData,
-		input: &InputPreprocessor,
-		_responses: &mut Vec<Response>,
-		operations: &mut Vec<Operation>,
-	) -> (bool, Self) {
-		match (self, event) {
-			(RectangleToolFsmState::Ready, Action::LmbDown) => {
-				data.drag_start = input.mouse_state.position;
-				data.drag_current = input.mouse_state.position;
-				operations.push(Operation::MountWorkingFolder { path: vec![] });
-				(true, RectangleToolFsmState::LmbDown)
-			}
-			(RectangleToolFsmState::LmbDown, Action::MouseMove) => {
-				data.drag_current = input.mouse_state.position;
-
-				operations.push(Operation::ClearWorkingFolder);
-				operations.push(make_operation(data, tool_data));
-
-				(true, RectangleToolFsmState::LmbDown)
-			}
-			(RectangleToolFsmState::LmbDown, Action::LmbUp) => {
-				data.drag_current = input.mouse_state.position;
-
-				operations.push(Operation::ClearWorkingFolder);
-				// TODO - introduce comparison threshold when operating with canvas coordinates (https://github.com/GraphiteEditor/Graphite/issues/100)
-				if data.drag_start != data.drag_current {
-					operations.push(make_operation(data, tool_data));
-					operations.push(Operation::CommitTransaction);
+	fn transition(self, event: ToolMessage, _document: &SvgDocument, tool_data: &DocumentToolData, data: &mut Self::ToolData, input: &InputPreprocessor, responses: &mut Vec<Message>) -> Self {
+		if let ToolMessage::Rectangle(event) = event {
+			match (self, event) {
+				(RectangleToolFsmState::Ready, RectangleMessage::DragStart) => {
+					data.drag_start = input.mouse_state.position;
+					data.drag_current = input.mouse_state.position;
+					responses.push(Operation::MountWorkingFolder { path: vec![] }.into());
+					RectangleToolFsmState::LmbDown
 				}
+				(RectangleToolFsmState::LmbDown, RectangleMessage::MouseMove) => {
+					data.drag_current = input.mouse_state.position;
 
-				(true, RectangleToolFsmState::Ready)
-			}
-			// TODO - simplify with or_patterns when rust 1.53.0 is stable (https://github.com/rust-lang/rust/issues/54883)
-			(RectangleToolFsmState::LmbDown, Action::Abort) | (RectangleToolFsmState::LmbDown, Action::RmbDown) => {
-				operations.push(Operation::DiscardWorkingFolder);
+					responses.push(Operation::ClearWorkingFolder.into());
+					responses.push(make_operation(data, tool_data).into());
 
-				(true, RectangleToolFsmState::Ready)
-			}
-			(state, Action::LockAspectRatio) => {
-				data.constrain_to_square = true;
-
-				if state == RectangleToolFsmState::LmbDown {
-					operations.push(Operation::ClearWorkingFolder);
-					operations.push(make_operation(data, tool_data));
+					RectangleToolFsmState::LmbDown
 				}
+				(RectangleToolFsmState::LmbDown, RectangleMessage::DragStop) => {
+					data.drag_current = input.mouse_state.position;
 
-				(true, self)
-			}
-			(state, Action::UnlockAspectRatio) => {
-				data.constrain_to_square = false;
+					responses.push(Operation::ClearWorkingFolder.into());
+					// TODO - introduce comparison threshold when operating with canvas coordinates (https://github.com/GraphiteEditor/Graphite/issues/100)
+					if data.drag_start != data.drag_current {
+						responses.push(make_operation(data, tool_data).into());
+						responses.push(Operation::CommitTransaction.into());
+					}
 
-				if state == RectangleToolFsmState::LmbDown {
-					operations.push(Operation::ClearWorkingFolder);
-					operations.push(make_operation(data, tool_data));
+					RectangleToolFsmState::Ready
 				}
+				// TODO - simplify with or_patterns when rust 1.53.0 is stable (https://github.com/rust-lang/rust/issues/54883)
+				(RectangleToolFsmState::LmbDown, RectangleMessage::Abort) => {
+					responses.push(Operation::DiscardWorkingFolder.into());
 
-				(true, self)
-			}
-			(state, Action::Center) => {
-				data.center_around_cursor = true;
-
-				if state == RectangleToolFsmState::LmbDown {
-					operations.push(Operation::ClearWorkingFolder);
-					operations.push(make_operation(data, tool_data));
+					RectangleToolFsmState::Ready
 				}
+				(state, RectangleMessage::LockAspectRatio) => {
+					data.constrain_to_square = true;
 
-				(true, self)
-			}
-			(state, Action::UnCenter) => {
-				data.center_around_cursor = false;
+					if state == RectangleToolFsmState::LmbDown {
+						responses.push(Operation::ClearWorkingFolder.into());
+						responses.push(make_operation(data, tool_data).into());
+					}
 
-				if state == RectangleToolFsmState::LmbDown {
-					operations.push(Operation::ClearWorkingFolder);
-					operations.push(make_operation(data, tool_data));
+					self
 				}
+				(state, RectangleMessage::UnlockAspectRatio) => {
+					data.constrain_to_square = false;
 
-				(true, self)
+					if state == RectangleToolFsmState::LmbDown {
+						responses.push(Operation::ClearWorkingFolder.into());
+						responses.push(make_operation(data, tool_data).into());
+					}
+
+					self
+				}
+				(state, RectangleMessage::Center) => {
+					data.center_around_cursor = true;
+
+					if state == RectangleToolFsmState::LmbDown {
+						responses.push(Operation::ClearWorkingFolder.into());
+						responses.push(make_operation(data, tool_data).into());
+					}
+
+					self
+				}
+				(state, RectangleMessage::UnCenter) => {
+					data.center_around_cursor = false;
+
+					if state == RectangleToolFsmState::LmbDown {
+						responses.push(Operation::ClearWorkingFolder.into());
+						responses.push(make_operation(data, tool_data).into());
+					}
+
+					self
+				}
+				_ => self,
 			}
-			_ => (false, self),
+		} else {
+			self
 		}
 	}
 }

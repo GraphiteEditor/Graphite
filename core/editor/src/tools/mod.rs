@@ -5,7 +5,7 @@
 //mod navigate;
 //mod path;
 //mod pen;
-//mod rectangle;
+pub mod rectangle;
 //mod select;
 //mod shape;
 
@@ -13,21 +13,18 @@ use crate::communication::message::prelude::*;
 use crate::SvgDocument;
 use crate::{communication::input_manager::InputPreprocessor, EditorError};
 use crate::{
-	communication::{AsMessage, Message, MessageDiscriminant, MessageHandler},
+	communication::{Message, MessageHandler},
 	Color,
 };
-use document_core::Operation;
-use proc_macros::MessageImpl;
 use std::{
 	collections::HashMap,
 	fmt::{self, Debug},
 };
 
-pub type ToolActionHandlerData<'a> = (&'a SvgDocument, &'a DocumentToolData);
+pub type ToolActionHandlerData<'a> = (&'a SvgDocument, &'a DocumentToolData, &'a InputPreprocessor);
 
 pub trait Fsm {
 	type ToolData;
-	#[allow(clippy::clippy::too_many_arguments)]
 
 	fn transition(self, message: ToolMessage, document: &SvgDocument, tool_data: &DocumentToolData, data: &mut Self::ToolData, input: &InputPreprocessor, messages: &mut Vec<Message>) -> Self;
 }
@@ -71,6 +68,7 @@ impl Default for ToolFsmState {
 			tool_data: ToolData {
 				active_tool_type: ToolType::Select,
 				tools: gen_tools_hash_map! {
+					Rectangle => rectangle::Rectangle,
 					/*Select => select::Select,
 					Crop => crop::Crop,
 					Navigate => navigate::Navigate,
@@ -78,7 +76,6 @@ impl Default for ToolFsmState {
 					Path => path::Path,
 					Pen => pen::Pen,
 					Line => line::Line,
-					Rectangle => rectangle::Rectangle,
 					Ellipse => ellipse::Ellipse,
 					Shape => shape::Shape,*/
 				},
