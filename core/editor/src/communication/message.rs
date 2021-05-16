@@ -13,9 +13,10 @@ pub enum Message {
 	Frontend(FrontendMessage),
 }
 pub enum MessageDiscriminant {
-	/*Document(DocumentMessageDiscriminant),
-Tool(ToolMessageDiscriminant),
-Frontend(FrontendMessageDiscriminant),*/}
+	Document(DocumentMessageDiscriminant),
+	Tool(ToolMessageDiscriminant),
+	Frontend(FrontendMessageDiscriminant),
+}
 
 /*SelectTool(ToolType),
 SelectPrimaryColor(Color),

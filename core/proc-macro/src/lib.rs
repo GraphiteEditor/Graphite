@@ -122,7 +122,7 @@ fn derive_message_impl(input_item: TokenStream2) -> TokenStream2 {
 	let discriminant = Ident::new(format!("{}Discriminant", ident).as_str(), Span::call_site());
 	let super_discriminant = Ident::new(format!("{}Discriminant", super_parent).as_str(), Span::call_site());
 	let parent_discriminant = Ident::new(format!("{}Discriminant", parent).as_str(), Span::call_site());
-	let parent_discriminant_path = to_path(parent_discriminant.clone(), parent_variant);
+	let parent_discriminant_path = to_path(parent_discriminant.clone(), parent_variant.clone());
 
 	if let Data::Enum(data) = input.data {
 		let variants = data.variants.iter().map(|var: &Variant| to_path(ident.clone(), var.ident.clone())).collect::<Vec<_>>();
@@ -149,9 +149,9 @@ fn derive_message_impl(input_item: TokenStream2) -> TokenStream2 {
 			.map(|(var, field)| {
 				let var_path = to_path(ident.clone(), var.ident.clone());
 				let dis_path = to_path(discriminant.clone(), var.ident.clone());
-				if let Some(syn::Field { ty: syn::Type::Path(path), .. }) = field.iter().next() {
+				if field.iter().next().is_some() {
 					quote::quote! {
-						#var_path(x) => #dis_path(x.into()),
+						#var_path(x) => #dis_path(x.clone().into()),
 					}
 				} else {
 					quote::quote! {
@@ -207,15 +207,49 @@ fn derive_message_impl(input_item: TokenStream2) -> TokenStream2 {
 				impl Into<#super_discriminant> for &#ident {
 					fn into(self) -> #super_discriminant {
 						let dis: #discriminant = self.into();
-						let parent: #parent_discriminant = self.into();
-						parent.into()
+						dis.into()
 					}
 				}
 			}
 		};
-
+		let prefix_impl = if ident == super_parent {
+			quote::quote! {
+				format!("")
+			}
+		} else {
+			quote::quote! {
+				format!("{}.{}", #parent::prefix(), stringify!(#parent_variant))
+			}
+		};
 		let into_parent = into_impl(ident.clone(), parent.clone(), parent_path);
 		let into_parent_discriminant = into_impl(discriminant.clone(), parent_discriminant.clone(), parent_discriminant_path.clone());
+		let super_discriminant_impl = if ident == super_parent {
+			quote::quote! {
+				impl From<&#ident> for #ident {
+					fn from(ident: &#ident) -> Self {
+						ident.clone()
+					}
+				}
+
+			}
+		} else {
+			quote::quote! {
+				#[allow(clippy::from_over_into)]
+				impl Into<#parent_discriminant> for &#ident {
+					fn into(self) -> #parent_discriminant {
+						#parent_discriminant_path(self.into())
+					}
+				}
+				impl PartialEq<#super_parent> for #ident {
+					fn eq(&self, other: &#super_parent) -> bool {
+						let message: #super_parent =  self.into();
+						message == *other
+					}
+				}
+				#into_parent
+				#into_parent_discriminant
+			}
+		};
 
 		let res = quote::quote! {
 			#[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -236,21 +270,20 @@ fn derive_message_impl(input_item: TokenStream2) -> TokenStream2 {
 					}
 				}
 				fn prefix() -> String {
-					format!("{}.{}", #parent::prefix(), stringify!(#ident))
+					#prefix_impl
 				}
 				fn name(&self) -> String {
 					format!("{}.{}", Self::prefix(), self.suffix())
 				}
 				fn get_discriminant(&self) -> #super_discriminant {
 					let dis: #discriminant = self.into();
-					let par: #parent_discriminant = dis.into();
-					par.into()
+					dis.into()
 				}
 
 			}
 			#super_impl
-			#into_parent
-			#into_parent_discriminant
+			#super_discriminant_impl
+
 
 			impl From<#ident> for #discriminant {
 				fn from(ident: #ident) -> Self {
@@ -266,26 +299,12 @@ fn derive_message_impl(input_item: TokenStream2) -> TokenStream2 {
 					}
 				}
 			}
-
-			#[allow(clippy::from_over_into)]
-			impl Into<#parent_discriminant> for &#ident {
-				fn into(self) -> #parent_discriminant {
-					#parent_discriminant_path(self.into())
-				}
-			}
-
 			impl Display for #ident {
 				fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
 					let message: #super_parent =  self.into();
 					write!(f, "{}", message)
 				}
 
-			}
-			impl PartialEq<#super_parent> for #ident {
-				fn eq(&self, other: &#super_parent) -> bool {
-					let message: #super_parent =  self.into();
-					message == *other
-				}
 			}
 		};
 		res

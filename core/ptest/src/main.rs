@@ -11,37 +11,10 @@ trait AsMessage: Sized + Into<Message> + Send + Sync + PartialEq<Message> + Disp
 	fn get_discriminant(&self) -> MessageDiscriminant;
 }
 
-#[derive(PartialEq, Clone)]
+#[derive(AsMessage, PartialEq, Clone)]
+#[message(Message, Message, Child)]
 enum Message {
 	Child(Child),
-}
-enum MessageDiscriminant {
-	Child(ChildDiscriminant),
-}
-
-impl AsMessage for Message {
-	fn prefix() -> String {
-		"".into()
-	}
-	fn suffix(&self) -> &'static str {
-		match self {
-			Self::Child(_) => "Child",
-		}
-	}
-	fn name(&self) -> String {
-		".Child".into()
-	}
-	fn get_discriminant(&self) -> MessageDiscriminant {
-		match self {
-			Self::Child(c) => c.get_discriminant(),
-		}
-	}
-}
-
-impl Display for Message {
-	fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-		write!(f, "{}", stringify!(self))
-	}
 }
 
 #[derive(AsMessage, PartialEq, Clone)]
