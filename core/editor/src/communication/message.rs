@@ -29,6 +29,7 @@ pub enum Message {
 
 pub mod prelude {
 	pub use super::super::{
+		super::tools::rectangle::{RectangleMessage, RectangleMessageDiscriminant},
 		document_action_handler::{DocumentMessage, DocumentMessageDiscriminant},
 		frontend::{FrontendMessage, FrontendMessageDiscriminant},
 		global_action_handler::{GlobalMessage, GlobalMessageDiscriminant},
@@ -36,41 +37,3 @@ pub mod prelude {
 		tool_action_handler::{ToolMessage, ToolMessageDiscriminant},
 	};
 }
-
-/*SelectTool(ToolType),
-SelectPrimaryColor(Color),
-SelectSecondaryColor(Color),
-SelectLayer(Vec<LayerId>),
-SelectDocument(usize),
-ToggleLayerVisibility(Vec<LayerId>),
-ToggleLayerExpansion(Vec<LayerId>),
-DeleteLayer(Vec<LayerId>),
-AddFolder(Vec<LayerId>),
-RenameLayer(Vec<LayerId>, String),
-SwapColors,
-ResetColors,
-Undo,
-Redo,
-Center,
-UnCenter,
-Confirm,
-SnapAngle,
-UnSnapAngle,
-LockAspectRatio,
-UnlockAspectRatio,
-Abort,
-IncreaseSize,
-DecreaseSize,
-Save,
-LogInfo,
-LogDebug,
-LogTrace,
-// …
-LmbDown,
-RmbDown,
-MmbDown,
-LmbUp,
-RmbUp,
-MmbUp,
-MouseMove,
-TextKeyPress(char),*/

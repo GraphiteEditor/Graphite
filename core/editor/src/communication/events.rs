@@ -37,7 +37,7 @@ pub enum Event {
 	KeyDown(Key),
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
 #[repr(C)]
 pub enum ToolResponse {
 	// These may not have the same names as any of the DocumentResponses

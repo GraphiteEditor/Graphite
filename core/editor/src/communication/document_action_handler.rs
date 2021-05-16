@@ -2,11 +2,7 @@ use document_core::{DocumentResponse, LayerId, Operation as DocumentOperation};
 use proc_macros::MessageImpl;
 
 use super::{AsMessage, Message, MessageDiscriminant, MessageHandler};
-use crate::{events::ToolResponse, SvgDocument};
-use crate::{
-	tools::{DocumentToolData, ToolActionHandlerData},
-	EditorError,
-};
+use crate::{document::Document, events::ToolResponse, SvgDocument};
 
 #[derive(MessageImpl, PartialEq, Clone)]
 #[message(Message, Message, Document)]
@@ -18,6 +14,7 @@ pub enum DocumentMessage {
 	RenameLayer(Vec<LayerId>, String),
 	ToggleLayerVisibility(Vec<LayerId>),
 	ToggleLayerExpansion(Vec<LayerId>),
+	SelectDocument(usize),
 	Undo,
 	Redo,
 	Save,
@@ -34,18 +31,37 @@ impl From<DocumentOperation> for Message {
 	}
 }
 
-#[derive(Debug, Default, Clone)]
-pub struct DocumentActionHandler {}
+#[derive(Debug, Clone)]
+pub struct DocumentActionHandler {
+	documents: Vec<Document>,
+	active_document: usize,
+}
 
-impl MessageHandler<DocumentMessage, &mut SvgDocument> for DocumentActionHandler {
-	fn process_action(&mut self, message: DocumentMessage, document: &mut SvgDocument, responses: &mut Vec<Message>) {
+impl DocumentActionHandler {
+	pub fn active_document(&self) -> &Document {
+		&self.documents[self.active_document]
+	}
+}
+
+impl Default for DocumentActionHandler {
+	fn default() -> Self {
+		Self {
+			documents: vec![Document::default()],
+			active_document: 0,
+		}
+	}
+}
+
+impl MessageHandler<DocumentMessage, ()> for DocumentActionHandler {
+	fn process_action(&mut self, message: DocumentMessage, _data: (), responses: &mut Vec<Message>) {
 		use DocumentMessage::*;
 		match message {
 			DeleteLayer(path) => responses.push(DocumentOperation::DeleteLayer { path: path.clone() }.into()),
 			AddFolder(path) => responses.push(DocumentOperation::AddFolder { path: path.clone() }.into()),
+			SelectDocument(id) => self.active_document = id,
 			Undo => {
 				// this is a temporary fix and will be addressed by #123
-				if let Some(id) = document.root.list_layers().last() {
+				if let Some(id) = self.active_document().document.root.list_layers().last() {
 					responses.push(DocumentOperation::DeleteLayer { path: vec![*id] }.into())
 				}
 			}

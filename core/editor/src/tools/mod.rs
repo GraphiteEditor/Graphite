@@ -5,7 +5,7 @@
 //mod navigate;
 //mod path;
 //mod pen;
-//mod rectangle;
+pub mod rectangle;
 //mod select;
 //mod shape;
 
@@ -23,11 +23,10 @@ use std::{
 	fmt::{self, Debug},
 };
 
-pub type ToolActionHandlerData<'a> = (&'a SvgDocument, &'a DocumentToolData);
+pub type ToolActionHandlerData<'a> = (&'a SvgDocument, &'a DocumentToolData, &'a InputPreprocessor);
 
 pub trait Fsm {
 	type ToolData;
-	#[allow(clippy::clippy::too_many_arguments)]
 
 	fn transition(self, message: ToolMessage, document: &SvgDocument, tool_data: &DocumentToolData, data: &mut Self::ToolData, input: &InputPreprocessor, messages: &mut Vec<Message>) -> Self;
 }
