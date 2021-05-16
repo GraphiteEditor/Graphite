@@ -13,11 +13,9 @@ use crate::communication::message::prelude::*;
 use crate::SvgDocument;
 use crate::{communication::input_manager::InputPreprocessor, EditorError};
 use crate::{
-	communication::{AsMessage, Message, MessageDiscriminant, MessageHandler},
+	communication::{Message, MessageHandler},
 	Color,
 };
-use document_core::Operation;
-use proc_macros::MessageImpl;
 use std::{
 	collections::HashMap,
 	fmt::{self, Debug},

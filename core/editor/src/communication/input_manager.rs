@@ -34,7 +34,7 @@ pub enum InputPreprocessorMessage {
 pub enum InputMapperMessage {}
 
 impl MessageHandler<InputPreprocessorMessage, ()> for InputPreprocessor {
-	fn process_action(&mut self, message: InputPreprocessorMessage, data: (), responses: &mut Vec<Message>) {
+	fn process_action(&mut self, _message: InputPreprocessorMessage, _data: (), responses: &mut Vec<Message>) {
 		responses.clear()
 	}
 	/*pub fn handle_user_input(&mut self, event: Event) -> Vec<Event> {
@@ -71,7 +71,7 @@ macro_rules! key {
 	};
 }
 
-const DEFAULT_MAPPING: &[(&str, &str, Event, &[Key])] = &[
+const _DEFAULT_MAPPING: &[(&str, &str, Event, &[Key])] = &[
 	key!("Undo", KeyZ, (KeyControl)),
 	key!("*", "Redo", KeyZ, (KeyControl, KeyShift)),
 	key!("Redo", KeyZ, (KeyControl, KeyCaps)),
@@ -82,7 +82,7 @@ const DEFAULT_MAPPING: &[(&str, &str, Event, &[Key])] = &[
 pub struct InputMapper {}
 
 impl MessageHandler<InputMapperMessage, ()> for InputMapper {
-	fn process_action(&mut self, message: InputMapperMessage, data: (), responses: &mut Vec<Message>) {
+	fn process_action(&mut self, _message: InputMapperMessage, _data: (), responses: &mut Vec<Message>) {
 		responses.clear()
 	}
 	actions_fn!();
