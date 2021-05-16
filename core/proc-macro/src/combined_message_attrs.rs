@@ -26,6 +26,22 @@ impl Parse for MessageArgs {
 	}
 }
 
+struct TopLevelMessageArgs {
+	pub parent: TypePath,
+	pub comma2: Token![,],
+	pub variant: Ident,
+}
+
+impl Parse for TopLevelMessageArgs {
+	fn parse(input: ParseStream) -> syn::Result<Self> {
+		Ok(Self {
+			parent: input.parse()?,
+			comma2: input.parse()?,
+			variant: input.parse()?,
+		})
+	}
+}
+
 pub fn combined_message_attrs_impl(attr: TokenStream, input_item: TokenStream) -> syn::Result<TokenStream> {
 	if attr.is_empty() {
 		return top_level_impl(input_item);
@@ -33,9 +49,14 @@ pub fn combined_message_attrs_impl(attr: TokenStream, input_item: TokenStream) -
 
 	let mut input = syn::parse2::<ItemEnum>(input_item)?;
 
-	let MessageArgs { top_parent, parent, variant, .. } = syn::parse2::<MessageArgs>(attr)?;
+	let (parent_is_top, parent, variant) = match syn::parse2::<MessageArgs>(attr.clone()) {
+		Ok(x) => (false, x.parent, x.variant),
+		Err(_) => {
+			let x = syn::parse2::<TopLevelMessageArgs>(attr)?;
+			(true, x.parent, x.variant)
+		}
+	};
 
-	let parent_is_top = parent.to_token_stream().to_string() == top_parent.to_token_stream().to_string();
 	let parent_discriminant = {
 		let mut res = parent.clone();
 		let last_segment = &mut res.path.segments.last_mut().unwrap().ident;

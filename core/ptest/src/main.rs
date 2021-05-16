@@ -43,7 +43,7 @@ impl TransitiveChild for Message2Discriminant {
 	type Parent = Self;
 }
 
-#[impl_message(Message2, Message2, Child)]
+#[impl_message(Message2, Child)]
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum Child2 {
 	Foo,
