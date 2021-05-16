@@ -155,14 +155,30 @@ fn derive_message_impl(input_item: TokenStream2) -> TokenStream2 {
 			.map(|(var, field)| {
 				let var_path = to_path(ident.clone(), var.ident.clone());
 				let dis_path = to_path(discriminant.clone(), var.ident.clone());
+				let appendix = if var.attrs.iter().any(|name| name.path.to_token_stream().to_string().as_str() == "child") {
+					quote::quote! {(x.clone().into())}
+				} else {
+					quote::quote! {}
+				};
 				if field.iter().next().is_some() {
 					quote::quote! {
-						#var_path(x) => #dis_path(x.clone().into()),
+						#var_path(x, ..) => #dis_path#appendix,
 					}
 				} else {
 					quote::quote! {
 						#var_path => #dis_path,
 					}
+				}
+			})
+			.collect();
+		let variant_glob: Vec<TokenStream2> = variant_fields
+			.iter()
+			.map(|field| {
+				use syn::Fields::*;
+				match field {
+					Unit => quote::quote! {},
+					Unnamed(..) => quote::quote! { (..) },
+					Named(..) => quote::quote! { {..} },
 				}
 			})
 			.collect();
@@ -258,7 +274,8 @@ fn derive_message_impl(input_item: TokenStream2) -> TokenStream2 {
 		};
 
 		let res = quote::quote! {
-			#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+			#[derive(Clone, Copy)]
+			//#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 			pub enum #discriminant {
 				#(
 					#data_variants #data_variant_fields ,
@@ -269,7 +286,7 @@ fn derive_message_impl(input_item: TokenStream2) -> TokenStream2 {
 				fn suffix(&self) -> &'static str {
 					match *self {
 						#(
-							#variants { .. } => {
+							#variants #variant_glob => {
 								stringify!(#data_variants)
 							}
 						)*

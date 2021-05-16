@@ -54,57 +54,49 @@ impl GlobalActionHandler {
 }
 
 impl MessageHandler<GlobalMessage, ()> for GlobalActionHandler {
-	fn process_action(&mut self, message: GlobalMessage, data: (), responses: &mut Vec<Message>) {
+	fn process_action(&mut self, message: GlobalMessage, data: (), responses: &mut Vec<Message>) {}
 
-		// process action before passing them further down
-		/*use Action::*;
-		match action {
-			SelectDocument(id) => {
-				self.active_document = *id;
-				self.update_actions()
-			}
-			SelectTool(tool) => {
-				self.tool_state.tool_data.active_tool_type = *tool;
-				responses.push(ToolResponse::SetActiveTool { tool_name: tool.to_string() }.into());
-				self.update_actions();
-			}
-			SelectPrimaryColor(color) => self.tool_state.document_tool_data.primary_color = *color,
-			SelectSecondaryColor(color) => self.tool_state.document_tool_data.secondary_color = *color,
-			LogInfo => {
-				log::set_max_level(log::LevelFilter::Info);
-				log::info!("set log verbosity to info");
-			}
-			LogDebug => {
-				log::set_max_level(log::LevelFilter::Debug);
-				log::info!("set log verbosity to debug");
-			}
-			LogTrace => {
-				log::set_max_level(log::LevelFilter::Trace);
-				log::info!("set log verbosity to trace");
-			}
-			_ => consumed = false,
+	actions_fn!(GlobalMessageDiscriminant::LogInfo,);
+	// process action before passing them further down
+	/*use Action::*;
+	match action {
+		SelectDocument(id) => {
+			self.active_document = *id;
+			self.update_actions()
 		}
-
-		// pass action to the next level if it was not consumed
-		if !consumed {
-			let doc = &mut self.documents[self.active_document];
-			let tool = self.tool_state.tool_data.active_tool_mut().unwrap().as_mut();
-			let document_tool_data = &self.tool_state.document_tool_data;
-			consumed = doc.handler.process_action((&mut doc.document, tool, document_tool_data), &input, action, responses, operations)
+		SelectTool(tool) => {
+			self.tool_state.tool_data.active_tool_type = *tool;
+			responses.push(ToolResponse::SetActiveTool { tool_name: tool.to_string() }.into());
+			self.update_actions();
 		}
-
-		// post process action if it was not consumed
-		if !consumed {}
-
-		consumed
-		*/
+		SelectPrimaryColor(color) => self.tool_state.document_tool_data.primary_color = *color,
+		SelectSecondaryColor(color) => self.tool_state.document_tool_data.secondary_color = *color,
+		LogInfo => {
+			log::set_max_level(log::LevelFilter::Info);
+			log::info!("set log verbosity to info");
+		}
+		LogDebug => {
+			log::set_max_level(log::LevelFilter::Debug);
+			log::info!("set log verbosity to debug");
+		}
+		LogTrace => {
+			log::set_max_level(log::LevelFilter::Trace);
+			log::info!("set log verbosity to trace");
+		}
+		_ => consumed = false,
 	}
-	fn actions(&self) -> ActionList {
-		actions!(
-			GlobalMessageDiscriminant::LogInfo,
-			GlobalMessageDiscriminant::LogDebug,
-			GlobalMessageDiscriminant::LogTrace,
-			GlobalMessageDiscriminant::SelectDocument,
-		);
+
+	// pass action to the next level if it was not consumed
+	if !consumed {
+		let doc = &mut self.documents[self.active_document];
+		let tool = self.tool_state.tool_data.active_tool_mut().unwrap().as_mut();
+		let document_tool_data = &self.tool_state.document_tool_data;
+		consumed = doc.handler.process_action((&mut doc.document, tool, document_tool_data), &input, action, responses, operations)
 	}
+
+	// post process action if it was not consumed
+	if !consumed {}
+
+	consumed
+	*/
 }

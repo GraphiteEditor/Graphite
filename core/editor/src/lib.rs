@@ -4,7 +4,7 @@
 #[macro_use]
 mod macros;
 
-mod communication;
+pub mod communication;
 mod document;
 mod error;
 pub mod hint;

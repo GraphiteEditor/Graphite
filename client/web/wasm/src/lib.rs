@@ -4,7 +4,7 @@ pub mod utils;
 pub mod window;
 pub mod wrappers;
 
-use editor_core::{events::Response, Editor};
+use editor_core::{communication::FrontendMessage, Editor};
 use std::cell::RefCell;
 use utils::WasmLog;
 use wasm_bindgen::prelude::*;
@@ -21,12 +21,12 @@ pub fn init() {
 	log::set_max_level(log::LevelFilter::Debug);
 }
 
-fn handle_response(response: Response) {
+fn handle_response(response: FrontendMessage) {
 	let response_type = response.to_string();
 	send_response(response_type, response);
 }
 
-fn send_response(response_type: String, response_data: Response) {
+fn send_response(response_type: String, response_data: FrontendMessage) {
 	let response_data = JsValue::from_serde(&WasmResponse::new(response_data)).expect("Failed to serialize response");
 	handleResponse(response_type, response_data);
 }

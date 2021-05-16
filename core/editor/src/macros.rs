@@ -86,14 +86,13 @@ macro_rules! match_variant_name {
 }
 
 macro_rules! actions {
-	($($v:expr),*) => {{
-		const ACTIONS: $crate::communication::ActionList =  &[$(&[$v.into()]),*];
-		ACTIONS
+	($($v:expr),* $(,)?) => {{
+		 vec![$(vec![$v.into()]),*]
 	}}
 }
 
 macro_rules! actions_fn {
-	($($v:expr),*) => {
+	($($v:expr),* $(,)?) => {
 		fn actions(&self) -> $crate::communication::ActionList {
 			 actions!($($v),*)
 		}

@@ -1,8 +1,7 @@
 use crate::shims::Error;
-use editor_core::events;
 use editor_core::tools::{SelectAppendMode, ToolType};
 use editor_core::Color as InnerColor;
-use events::Response;
+use editor_core::{communication::FrontendMessage, events};
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
 
@@ -27,10 +26,10 @@ impl Color {
 }
 
 #[derive(Serialize, Deserialize)]
-pub struct WasmResponse(Response);
+pub struct WasmResponse(FrontendMessage);
 
 impl WasmResponse {
-	pub fn new(response: Response) -> Self {
+	pub fn new(response: FrontendMessage) -> Self {
 		Self(response)
 	}
 }

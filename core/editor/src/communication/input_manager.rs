@@ -85,6 +85,7 @@ impl MessageHandler<InputMapperMessage, ()> for InputMapper {
 	fn process_action(&mut self, message: InputMapperMessage, data: (), responses: &mut Vec<Message>) {
 		responses.clear()
 	}
+	actions_fn!();
 	/*fn dummy_translation(&mut self, event: Event, input: &InputPreprocessor) -> Action {
 		match event {
 			Event::SelectTool(tool_name) => Action::SelectTool(tool_name),

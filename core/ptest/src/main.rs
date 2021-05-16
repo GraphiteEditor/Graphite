@@ -14,6 +14,7 @@ trait AsMessage: Sized + Into<Message> + Send + Sync + PartialEq<Message> + Disp
 #[derive(MessageImpl, PartialEq, Clone)]
 #[message(Message, Message, Child)]
 enum Message {
+	Foo(usize),
 	#[child]
 	Child(Child),
 }
@@ -21,7 +22,7 @@ enum Message {
 #[derive(MessageImpl, PartialEq, Clone)]
 #[message(Message, Message, Child)]
 pub enum Child {
-	Foo,
+	Foo(usize),
 	#[child]
 	Document(DocumentMessage),
 }

@@ -7,16 +7,16 @@ pub mod input_manager;
 pub mod message;
 pub mod tool_action_handler;
 pub use dispatcher::*;
-pub use events::{DocumentResponse, Event, Key, Response, ToolResponse};
+pub use events::{DocumentResponse, Event, Key, ToolResponse};
 pub use frontend::FrontendMessage;
 pub use message::{AsMessage, Message, MessageDiscriminant};
 pub use proc_macros::MessageImpl;
 
 pub use self::input_manager::InputPreprocessor;
 
-pub type Callback = Box<dyn Fn(Response)>;
+pub type Callback = Box<dyn Fn(FrontendMessage)>;
 
-pub type ActionList<'a> = &'a [&'static [MessageDiscriminant]];
+pub type ActionList = Vec<Vec<MessageDiscriminant>>;
 
 // TODO: Add Send + Sync requirement
 // Use something like rw locks for synchronization
