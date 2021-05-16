@@ -1,339 +1,39 @@
+mod as_message;
+mod combined_message_attrs;
+mod discriminant;
+mod helper_structs;
 mod helpers;
-mod structs;
+mod hint;
+mod transitive_child;
 
-use std::fmt::Display;
-
-use crate::helpers::{fold_error_iter, to_path};
-use crate::structs::{AttrInnerKeyStringMap, AttrInnerSingleString};
+use crate::as_message::derive_as_message_impl;
+use crate::combined_message_attrs::combined_message_attrs_impl;
+use crate::discriminant::derive_discriminant_impl;
+use crate::helper_structs::AttrInnerSingleString;
+use crate::hint::derive_hint_impl;
+use crate::transitive_child::derive_transitive_child_impl;
 use proc_macro::TokenStream;
-use proc_macro2::{Span, TokenStream as TokenStream2};
-use quote::ToTokens;
-use structs::IdentList;
-use syn::{parse_macro_input, Attribute, Data, DeriveInput, Ident, LitStr, Variant};
+use syn::parse_macro_input;
 
-fn parse_hint_helper_attrs(attrs: &[Attribute]) -> syn::Result<(Vec<LitStr>, Vec<LitStr>)> {
-	fold_error_iter(
-		attrs
-			.iter()
-			.filter(|a| a.path.get_ident().map_or(false, |i| i == "hint"))
-			.map(|attr| syn::parse2::<AttrInnerKeyStringMap>(attr.tokens.clone())),
-	)
-	.and_then(|v: Vec<AttrInnerKeyStringMap>| {
-		fold_error_iter(AttrInnerKeyStringMap::multi_into_iter(v).map(|(k, mut v)| match v.len() {
-			0 => panic!("internal error: a key without values was somehow inserted into the hashmap"),
-			1 => {
-				let single_val = v.pop().unwrap();
-				Ok((LitStr::new(&k.to_string(), Span::call_site()), single_val))
-			}
-			_ => {
-				// the first value is ok, the other ones should error
-				let after_first = v.into_iter().skip(1);
-				// this call to fold_error_iter will always return Err with a combined error
-				fold_error_iter(after_first.map(|lit| Err(syn::Error::new(lit.span(), format!("value for key {} was already given", k))))).map(|_: Vec<()>| unreachable!())
-			}
-		}))
-	})
-	.map(|v| v.into_iter().unzip())
+#[proc_macro_derive(ToDiscriminant, attributes(child, discriminant_derive, discriminant_attr))]
+pub fn derive_discriminant(input_item: TokenStream) -> TokenStream {
+	TokenStream::from(derive_discriminant_impl(input_item.into()).unwrap_or_else(|err| err.to_compile_error()))
 }
 
-fn parse_message_helper_attrs(attrs: &[Attribute]) -> syn::Result<(Ident, Ident, Ident)> {
-	attrs
-		.iter()
-		.filter(|a| a.path.get_ident().map_or(false, |i| i == "message"))
-		.map(|attr| syn::parse2::<IdentList>(attr.tokens.clone()))
-		.next()
-		.expect("error: #[message… attr not found")
-		.and_then(|v: IdentList| match v.parts.len() {
-			3 => {
-				let mut parts = v.parts.iter();
-				Ok((parts.next().cloned().unwrap(), parts.next().cloned().unwrap(), parts.next().cloned().unwrap()))
-			}
-			_ => panic!("error: #[message… takes 3 arguments, …"),
-		})
+// todo: revert so that parent takes an expr as second arg again
+#[proc_macro_derive(TransitiveChild, attributes(parent, parent_is_top))]
+pub fn derive_transitive_child(input_item: TokenStream) -> TokenStream {
+	TokenStream::from(derive_transitive_child_impl(input_item.into()).unwrap_or_else(|err| err.to_compile_error()))
 }
 
-fn derive_hint_impl(input_item: TokenStream2) -> syn::Result<TokenStream2> {
-	let input = syn::parse2::<DeriveInput>(input_item)?;
-
-	let ident = input.ident;
-
-	match input.data {
-		Data::Enum(data) => {
-			let variants = data.variants.iter().map(|var: &Variant| to_path(ident.clone(), var.ident.clone())).collect::<Vec<_>>();
-
-			let hint_result = fold_error_iter(data.variants.into_iter().map(|var: Variant| parse_hint_helper_attrs(&var.attrs)));
-
-			hint_result.map(|hints: Vec<(Vec<LitStr>, Vec<LitStr>)>| {
-				let (keys, values): (Vec<Vec<LitStr>>, Vec<Vec<LitStr>>) = hints.into_iter().unzip();
-				let cap: Vec<usize> = keys.iter().map(|v| v.len()).collect();
-
-				quote::quote! {
-					impl Hint for #ident {
-						fn hints(&self) -> ::std::collections::HashMap<String, String> {
-							match self {
-								#(
-									#variants { .. } => {
-										let mut hm = ::std::collections::HashMap::with_capacity(#cap);
-										#(
-											hm.insert(#keys.to_string(), #values.to_string());
-										)*
-										hm
-									}
-								)*
-							}
-						}
-					}
-				}
-			})
-		}
-		Data::Struct(_) | Data::Union(_) => {
-			let hint_result = parse_hint_helper_attrs(&input.attrs);
-
-			hint_result.map(|(keys, values)| {
-				let cap = keys.len();
-
-				quote::quote! {
-					impl Hint for #ident {
-						fn hints(&self) -> ::std::collections::HashMap<String, String> {
-							let mut hm = ::std::collections::HashMap::with_capacity(#cap);
-							#(
-								hm.insert(#keys.to_string(), #values.to_string());
-							)*
-							hm
-						}
-					}
-				}
-			})
-		}
-	}
-}
-
-#[proc_macro_derive(MessageImpl, attributes(message, child))]
+#[proc_macro_derive(AsMessage, attributes(child))]
 pub fn derive_message(input_item: TokenStream) -> TokenStream {
-	TokenStream::from(derive_message_impl(input_item.into()))
-	//TokenStream::from(derive_message_impl(input_item.into()).unwrap_or_else(|err| err.to_compile_error()))
+	TokenStream::from(derive_as_message_impl(input_item.into()).unwrap_or_else(|err| err.to_compile_error()))
 }
 
-fn derive_message_impl(input_item: TokenStream2) -> TokenStream2 {
-	let input = syn::parse2::<DeriveInput>(input_item).unwrap();
-
-	let ident = input.ident;
-	let (super_parent, parent, parent_variant) = parse_message_helper_attrs(input.attrs.as_slice()).unwrap();
-	let parent_path = to_path(parent.clone(), parent_variant.clone());
-	let discriminant = Ident::new(format!("{}Discriminant", ident).as_str(), Span::call_site());
-	let super_discriminant = Ident::new(format!("{}Discriminant", super_parent).as_str(), Span::call_site());
-	let parent_discriminant = Ident::new(format!("{}Discriminant", parent).as_str(), Span::call_site());
-	let parent_discriminant_path = to_path(parent_discriminant.clone(), parent_variant.clone());
-
-	if let Data::Enum(data) = input.data {
-		let variants = data.variants.iter().map(|var: &Variant| to_path(ident.clone(), var.ident.clone())).collect::<Vec<_>>();
-		let variant_fields = data.variants.iter().map(|var: &Variant| var.fields.clone()).collect::<Vec<_>>();
-		let data_variant_fields: Vec<TokenStream2> = data
-			.variants
-			.iter()
-			.zip(variant_fields.iter())
-			.map(|(var, field)| {
-				if let Some(syn::Field { ty: syn::Type::Path(path), .. }) = field.iter().next() {
-					if var.attrs.iter().any(|name| name.path.to_token_stream().to_string().as_str() == "child") {
-						let last = path.path.segments.last().unwrap();
-						let new_ident = Ident::new(format!("{}Discriminant", last.ident).as_str(), Span::call_site());
-						quote::quote! {
-							(#new_ident)
-						}
-					} else {
-						quote::quote! {}
-					}
-				} else {
-					quote::quote! {}
-				}
-			})
-			.collect();
-		let convert_variant_fields: Vec<TokenStream2> = data
-			.variants
-			.iter()
-			.zip(variant_fields.iter())
-			.map(|(var, field)| {
-				let var_path = to_path(ident.clone(), var.ident.clone());
-				let dis_path = to_path(discriminant.clone(), var.ident.clone());
-				let appendix = if var.attrs.iter().any(|name| name.path.to_token_stream().to_string().as_str() == "child") {
-					quote::quote! {(x.clone().into())}
-				} else {
-					quote::quote! {}
-				};
-				if field.iter().next().is_some() {
-					quote::quote! {
-						#var_path(x, ..) => #dis_path#appendix,
-					}
-				} else {
-					quote::quote! {
-						#var_path => #dis_path,
-					}
-				}
-			})
-			.collect();
-		let variant_glob: Vec<TokenStream2> = variant_fields
-			.iter()
-			.map(|field| {
-				use syn::Fields::*;
-				match field {
-					Unit => quote::quote! {},
-					Unnamed(..) => quote::quote! { (..) },
-					Named(..) => quote::quote! { {..} },
-				}
-			})
-			.collect();
-		let data_variants: Vec<Ident> = data.variants.iter().map(|v| v.ident.clone()).collect();
-
-		let into_impl = |from, to, path| {
-			quote::quote! {
-				#[allow(clippy::from_over_into)]
-				impl Into<#to> for #from {
-					fn into(self) -> #to {
-						#path(self)
-					}
-				}
-				#[allow(clippy::from_over_into)]
-				impl Into<#to> for &#from {
-					fn into(self) -> #to {
-						#path(self.clone())
-					}
-				}
-			}
-		};
-		let into_super_impl = |from, to, path| {
-			quote::quote! {
-				#[allow(clippy::from_over_into)]
-				impl Into<#to> for #from {
-					fn into(self) -> #to {
-						#path(self).into()
-					}
-				}
-				#[allow(clippy::from_over_into)]
-				impl Into<#to> for &#from {
-					fn into(self) -> #to {
-						#path(self.clone()).into()
-					}
-				}
-			}
-		};
-		let super_impl = into_super_impl(ident.clone(), super_parent.clone(), parent_path.clone());
-		let discriminant_super_impl = into_super_impl(discriminant.clone(), super_discriminant.clone(), parent_discriminant_path.clone());
-
-		let super_impl = if parent == super_parent {
-			TokenStream2::new()
-		} else {
-			quote::quote! {
-				#super_impl
-				#discriminant_super_impl
-				#[allow(clippy::from_over_into)]
-				impl Into<#super_discriminant> for &#ident {
-					fn into(self) -> #super_discriminant {
-						let dis: #discriminant = self.into();
-						dis.into()
-					}
-				}
-			}
-		};
-		let prefix_impl = if ident == super_parent {
-			quote::quote! {
-				format!("")
-			}
-		} else {
-			quote::quote! {
-				format!("{}.{}", #parent::prefix(), stringify!(#parent_variant))
-			}
-		};
-		let into_parent = into_impl(ident.clone(), parent.clone(), parent_path);
-		let into_parent_discriminant = into_impl(discriminant.clone(), parent_discriminant.clone(), parent_discriminant_path.clone());
-		let super_discriminant_impl = if ident == super_parent {
-			quote::quote! {
-				impl From<&#ident> for #ident {
-					fn from(ident: &#ident) -> Self {
-						ident.clone()
-					}
-				}
-
-			}
-		} else {
-			quote::quote! {
-				#[allow(clippy::from_over_into)]
-				impl Into<#parent_discriminant> for &#ident {
-					fn into(self) -> #parent_discriminant {
-						#parent_discriminant_path(self.into())
-					}
-				}
-				impl PartialEq<#super_parent> for #ident {
-					fn eq(&self, other: &#super_parent) -> bool {
-						let message: #super_parent =  self.into();
-						message == *other
-					}
-				}
-				#into_parent
-				#into_parent_discriminant
-			}
-		};
-
-		let res = quote::quote! {
-			#[derive(Clone, Copy)]
-			//#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-			pub enum #discriminant {
-				#(
-					#data_variants #data_variant_fields ,
-				)*
-			}
-
-			impl AsMessage for #ident {
-				fn suffix(&self) -> &'static str {
-					match *self {
-						#(
-							#variants #variant_glob => {
-								stringify!(#data_variants)
-							}
-						)*
-					}
-				}
-				fn prefix() -> String {
-					#prefix_impl
-				}
-				fn name(&self) -> String {
-					format!("{}.{}", Self::prefix(), self.suffix())
-				}
-				fn get_discriminant(&self) -> #super_discriminant {
-					let dis: #discriminant = self.into();
-					dis.into()
-				}
-
-			}
-			#super_impl
-			#super_discriminant_impl
-
-
-			impl From<#ident> for #discriminant {
-				fn from(ident: #ident) -> Self {
-					match ident {
-						#( 	#convert_variant_fields		)*
-					}
-				}
-			}
-			impl From<&#ident> for #discriminant {
-				fn from(ident: &#ident) -> Self {
-					match ident.clone() {
-						#( 	#convert_variant_fields		)*
-					}
-				}
-			}
-			impl std::fmt::Display for #ident {
-				fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-					let message: #super_parent =  self.into();
-					write!(f, "{}", message)
-				}
-
-			}
-		};
-		res
-	} else {
-		panic!("Tried to use derive macro on non enum")
-	}
+#[proc_macro_attribute]
+pub fn impl_message(attr: TokenStream, input_item: TokenStream) -> TokenStream {
+	TokenStream::from(combined_message_attrs_impl(attr.into(), input_item.into()).unwrap_or_else(|err| err.to_compile_error()))
 }
 
 /// Derive the `Hint` trait

@@ -1,39 +1,70 @@
-use graphite_proc_macros::MessageImpl;
-use std::fmt::Display;
+use graphite_proc_macros::*;
 
-trait AsMessage: Sized + Into<Message> + Send + Sync + PartialEq<Message> + Display + Clone {
-	//trait AsMessage: Sized + Send + Sync {
-	//trait AsMessage: Sized + Send + Sync + Into<Message> + Display + PartialEq<Message> {
-	//trait AsMessage: Sized + Send + Sync + Into<Message> + Display {
-	fn name(&self) -> String;
-	fn suffix(&self) -> &'static str;
-	fn prefix() -> String;
-	fn get_discriminant(&self) -> MessageDiscriminant;
+pub trait AsMessage: TransitiveChild
+where
+	Self::TopParent: TransitiveChild<Parent = Self::TopParent, TopParent = Self::TopParent> + AsMessage,
+{
+	fn local_name(self) -> String;
+	fn global_name(self) -> String {
+		<Self as Into<Self::TopParent>>::into(self).local_name()
+	}
 }
 
-#[derive(MessageImpl, PartialEq, Clone)]
-#[message(Message, Message, Child)]
-enum Message {
-	Foo(usize),
-	#[child]
-	Child(Child),
+pub trait ToDiscriminant {
+	type Discriminant;
+
+	fn to_discriminant(&self) -> Self::Discriminant;
 }
 
-#[derive(MessageImpl, PartialEq, Clone)]
-#[message(Message, Message, Child)]
-pub enum Child {
-	Foo(usize),
-	#[child]
-	Document(DocumentMessage),
+pub trait TransitiveChild: Into<Self::Parent> + Into<Self::TopParent> {
+	type TopParent;
+	type Parent;
 }
 
-#[derive(MessageImpl, PartialEq, Clone)]
-#[message(Message, Child, Document)]
-pub enum DocumentMessage {
+#[impl_message]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum Message2 {
 	Foo,
 	Bar(usize),
+	Qux {
+		x: usize,
+	},
+	#[child]
+	Child(Child2),
+}
+
+impl TransitiveChild for Message2 {
+	type TopParent = Self;
+	type Parent = Self;
+}
+
+impl TransitiveChild for Message2Discriminant {
+	type TopParent = Self;
+	type Parent = Self;
+}
+
+#[impl_message(Message2, Message2, Child)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum Child2 {
+	Foo,
+	Bar(usize),
+	#[child]
+	SubChild(Child3),
+}
+
+#[impl_message(Message2, Child2, SubChild)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum Child3 {
+	Foo,
+	Bar,
 }
 
 fn main() {
-	println!("Hello, world!");
+	let c3 = Child3::Foo;
+	assert_eq!(Message2::from(c3), Message2::Child(Child2::SubChild(c3)));
+	assert_eq!(
+		Message2Discriminant::from(Child3Discriminant::from(&c3)),
+		Message2Discriminant::Child(Child2Discriminant::SubChild(Child3Discriminant::Foo))
+	);
+	println!("{}", Child3::Bar.to_discriminant().global_name());
 }

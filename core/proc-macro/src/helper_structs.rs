@@ -1,4 +1,4 @@
-use proc_macro2::Ident;
+use proc_macro2::{Ident, TokenStream};
 use std::collections::HashMap;
 use syn::parse::{Parse, ParseStream};
 use syn::punctuated::Punctuated;
@@ -91,6 +91,55 @@ impl AttrInnerKeyStringMap {
 		}
 
 		res.into_iter()
+	}
+}
+
+/// Parses `(left, right)`
+pub struct Pair<F, S> {
+	pub paren_token: Paren,
+	pub first: F,
+	pub sep: Token![,],
+	pub second: S,
+}
+
+impl<F, S> Parse for Pair<F, S>
+where
+	F: Parse,
+	S: Parse,
+{
+	fn parse(input: ParseStream) -> syn::Result<Self> {
+		let content;
+		let paren_token = parenthesized!(content in input);
+		Ok(Self {
+			paren_token,
+			first: content.parse()?,
+			sep: content.parse()?,
+			second: content.parse()?,
+		})
+	}
+}
+
+/// parses `(...)`
+pub struct ParenthesizedTokens {
+	pub paren: Paren,
+	pub tokens: TokenStream,
+}
+
+impl Parse for ParenthesizedTokens {
+	fn parse(input: ParseStream) -> syn::Result<Self> {
+		let content;
+		let paren = parenthesized!(content in input);
+		Ok(Self { paren, tokens: content.parse()? })
+	}
+}
+
+/// parses a comma-delimeted list of `T`s with optional trailing comma
+pub struct SimpleCommaDelimeted<T>(pub Vec<T>);
+
+impl<T: Parse> Parse for SimpleCommaDelimeted<T> {
+	fn parse(input: ParseStream) -> syn::Result<Self> {
+		let punct = Punctuated::<T, Token![,]>::parse_terminated(input)?;
+		Ok(Self(punct.into_iter().collect()))
 	}
 }
 
