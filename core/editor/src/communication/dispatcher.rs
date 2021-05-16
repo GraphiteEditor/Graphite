@@ -21,9 +21,9 @@ pub struct Dispatcher {
 
 impl Dispatcher {
 	pub fn handle_message(&mut self, message: Message) -> Result<(), EditorError> {
-		self.messages.clear();
 		use Message::*;
 		match message {
+			NoOp => (),
 			Document(message) => self.document_action_handler.process_action(message, (), &mut self.messages),
 			Global(message) => self.global_event_handler.process_action(message, (), &mut self.messages),
 			Tool(message) => self
@@ -31,7 +31,11 @@ impl Dispatcher {
 				.process_action(message, (&self.document_action_handler.active_document().document, &self.input_preprocessor), &mut self.messages),
 			Frontend(message) => Self::dispatch_response(message, &self.callback),
 			InputPreprocessor(message) => self.input_preprocessor.process_action(message, (), &mut self.messages),
-			InputMapper(message) => self.input_mapper.process_action(message, (), &mut self.messages),
+			InputMapper(message) => self.input_mapper.process_action(message, &self.input_preprocessor, &mut self.messages),
+		}
+		let message = self.messages.drain(..1).next();
+		if let Some(message) = message {
+			self.handle_message(message)?;
 		}
 		Ok(())
 	}

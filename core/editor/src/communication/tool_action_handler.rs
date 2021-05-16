@@ -12,6 +12,8 @@ pub enum ToolMessage {
 	SelectTool(ToolType),
 	SelectPrimaryColor(Color),
 	SelectSecondaryColor(Color),
+	SwapColors,
+	ResetColors,
 	#[child]
 	Rectangle(RectangleMessage),
 }
@@ -29,6 +31,15 @@ impl MessageHandler<ToolMessage, (&SvgDocument, &InputPreprocessor)> for ToolAct
 			SelectPrimaryColor(c) => self.tool_state.document_tool_data.primary_color = c,
 			SelectSecondaryColor(c) => self.tool_state.document_tool_data.secondary_color = c,
 			SelectTool(tool) => self.tool_state.tool_data.active_tool_type = tool,
+			SwapColors => {
+				let doc_data = &mut self.tool_state.document_tool_data;
+				std::mem::swap(&mut doc_data.primary_color, &mut doc_data.secondary_color)
+			}
+			ResetColors => {
+				let doc_data = &mut self.tool_state.document_tool_data;
+				doc_data.primary_color = Color::WHITE;
+				doc_data.secondary_color = Color::BLACK;
+			}
 			Rectangle(_) => {
 				let tool = self.tool_state.tool_data.tools.get_mut(&ToolType::Rectangle).unwrap();
 				tool.process_action(action, (&document, &self.tool_state.document_tool_data, input), responses);

@@ -13,6 +13,7 @@ pub trait AsMessage: Sized + Into<Message> + Send + Sync + PartialEq<Message> + 
 #[derive(MessageImpl, PartialEq, Clone)]
 #[message(Message, Message, Child)]
 pub enum Message {
+	NoOp,
 	#[child]
 	Document(DocumentMessage),
 	#[child]
