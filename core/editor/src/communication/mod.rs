@@ -8,9 +8,11 @@ pub mod message;
 pub mod tool_action_handler;
 pub use dispatcher::*;
 pub use events::{DocumentResponse, Event, Key, Response, ToolResponse};
+pub use message::{AsMessage, Message, MessageDiscriminant};
+pub use proc_macros::MessageImpl;
 
 pub use self::input_manager::InputPreprocessor;
-use self::{global_action_handler::GlobalActionHandler, input_manager::InputMapper, message::AsMessage};
+use self::{global_action_handler::GlobalActionHandler, input_manager::InputMapper};
 
 pub use global_action_handler::GlobalAction;
 

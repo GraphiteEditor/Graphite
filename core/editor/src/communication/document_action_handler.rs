@@ -1,15 +1,15 @@
 use document_core::{DocumentResponse, LayerId};
+use proc_macros::MessageImpl;
 
-use super::{Action, InputPreprocessor, MessageHandler, Operation, Response};
+use super::{AsMessage, Message, MessageDiscriminant, MessageHandler};
 use crate::{events::ToolResponse, SvgDocument};
 use crate::{
 	tools::{DocumentToolData, ToolActionHandlerData},
 	EditorError,
 };
 
-use strum_macros::{AsRefStr, Display, EnumDiscriminants, EnumIter, EnumString};
-
-#[derive(Debug, Clone, Display, AsRefStr, EnumDiscriminants, EnumIter, EnumString)]
+#[derive(MessageImpl, PartialEq, Clone)]
+#[message(Message, Message, Document)]
 pub enum DocumentMessage {
 	SelectLayer(Vec<LayerId>),
 	DeleteLayer(Vec<LayerId>),

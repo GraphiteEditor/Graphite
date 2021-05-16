@@ -107,7 +107,7 @@ fn derive_hint_impl(input_item: TokenStream2) -> syn::Result<TokenStream2> {
 	}
 }
 
-#[proc_macro_derive(AsMessage, attributes(message))]
+#[proc_macro_derive(MessageImpl, attributes(message, child))]
 pub fn derive_message(input_item: TokenStream) -> TokenStream {
 	TokenStream::from(derive_message_impl(input_item.into()))
 	//TokenStream::from(derive_message_impl(input_item.into()).unwrap_or_else(|err| err.to_compile_error()))
@@ -128,14 +128,20 @@ fn derive_message_impl(input_item: TokenStream2) -> TokenStream2 {
 		let variants = data.variants.iter().map(|var: &Variant| to_path(ident.clone(), var.ident.clone())).collect::<Vec<_>>();
 		let discriminant_variants = data.variants.iter().map(|var: &Variant| to_path(discriminant.clone(), var.ident.clone())).collect::<Vec<_>>();
 		let variant_fields = data.variants.iter().map(|var: &Variant| var.fields.clone()).collect::<Vec<_>>();
-		let data_variant_fields: Vec<TokenStream2> = variant_fields
+		let data_variant_fields: Vec<TokenStream2> = data
+			.variants
 			.iter()
-			.map(|field| {
+			.zip(variant_fields.iter())
+			.map(|(var, field)| {
 				if let Some(syn::Field { ty: syn::Type::Path(path), .. }) = field.iter().next() {
-					let last = path.path.segments.last().unwrap();
-					let new_ident = Ident::new(format!("{}Discriminant", last.ident).as_str(), Span::call_site());
-					quote::quote! {
-						(#new_ident)
+					if var.attrs.iter().any(|a| matches!(a.parse_args::<Ident>().map(|i| stringify!(i)), Ok("child"))) {
+						let last = path.path.segments.last().unwrap();
+						let new_ident = Ident::new(format!("{}Discriminant", last.ident).as_str(), Span::call_site());
+						quote::quote! {
+							(#new_ident)
+						}
+					} else {
+						quote::quote! {}
 					}
 				} else {
 					quote::quote! {}
@@ -299,7 +305,7 @@ fn derive_message_impl(input_item: TokenStream2) -> TokenStream2 {
 					}
 				}
 			}
-			impl Display for #ident {
+			impl std::fmt::Display for #ident {
 				fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
 					let message: #super_parent =  self.into();
 					write!(f, "{}", message)

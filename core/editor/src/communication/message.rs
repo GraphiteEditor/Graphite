@@ -1,22 +1,32 @@
+use proc_macros::MessageImpl;
 use std::fmt::Display;
 
 use super::{document_action_handler::DocumentMessage, frontend::FrontendMessage, tool_action_handler::ToolMessage};
 
 pub trait AsMessage: Sized + Into<Message> + Send + Sync + PartialEq<Message> + Display {
-	fn name(&self) -> &str {}
-	fn suffix(&self) -> &'static str {}
+	fn name(&self) -> String;
+	fn suffix(&self) -> &'static str;
+	fn prefix() -> String;
+	fn get_discriminant(&self) -> MessageDiscriminant;
 }
 
+#[derive(MessageImpl, PartialEq, Clone)]
+#[message(Message, Message, Child)]
 pub enum Message {
+	#[child]
 	Document(DocumentMessage),
+	#[child]
 	Tool(ToolMessage),
+	#[child]
 	Frontend(FrontendMessage),
+	#[child]
+	InputPreprocessor(InputPreprocessorMessage),
+	#[child]
+	InputMapper(InputMapperMessage),
 }
-pub enum MessageDiscriminant {
-	Document(DocumentMessageDiscriminant),
-	Tool(ToolMessageDiscriminant),
-	Frontend(FrontendMessageDiscriminant),
-}
+
+pub enum InputPreprocessorMessage {}
+pub enum InputMapperMessage {}
 
 /*SelectTool(ToolType),
 SelectPrimaryColor(Color),
