@@ -1,5 +1,5 @@
 <template>
-	<div class="panel">
+	<div class="workspace-panel">
 		<div class="tab-bar" :class="{ 'min-widths': tabMinWidths }">
 			<div class="tab-group">
 				<div class="tab" :class="{ active: tabIndex === tabActiveIndex }" v-for="(tabLabel, tabIndex) in tabLabels" :key="tabLabel">
@@ -11,14 +11,14 @@
 			</div>
 			<DropdownButton :icon="DropdownButtonIcon.VerticalEllipsis" />
 		</div>
-		<div class="panel-content">
+		<div class="panel-body">
 			<component :is="panelType" />
 		</div>
 	</div>
 </template>
 
 <style lang="scss">
-.panel {
+.workspace-panel {
 	background: #111;
 	border-radius: 8px;
 	flex-grow: 1;
@@ -120,7 +120,7 @@
 		}
 	}
 
-	.panel-content {
+	.panel-body {
 		background: #333;
 		flex-grow: 1;
 	}
