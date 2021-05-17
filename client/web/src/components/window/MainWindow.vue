@@ -3,8 +3,8 @@
 		<LayoutRow :class="'title-bar'">
 			<TitleBar :platform="platform" :maximized="maximized" />
 		</LayoutRow>
-		<LayoutRow :class="'panel-container'">
-			<PanelArea />
+		<LayoutRow :class="'workspace'">
+			<Workspace />
 		</LayoutRow>
 		<LayoutRow :class="'status-bar'">
 			<StatusBar />
@@ -22,7 +22,7 @@
 	flex: 0 0 auto;
 }
 
-.panel-container {
+.workspace {
 	flex: 1 1 100%;
 	height: 100%;
 }
@@ -37,7 +37,7 @@
 import { defineComponent } from "vue";
 import LayoutRow from "../layout/LayoutRow.vue";
 import LayoutCol from "../layout/LayoutCol.vue";
-import PanelArea from "../panel-system/PanelArea.vue";
+import Workspace from "../workspace/Workspace.vue";
 import TitleBar from "./title-bar/TitleBar.vue";
 import StatusBar from "./status-bar/StatusBar.vue";
 
@@ -53,7 +53,7 @@ export default defineComponent({
 		LayoutRow,
 		LayoutCol,
 		TitleBar,
-		PanelArea,
+		Workspace,
 		StatusBar,
 	},
 	data() {
