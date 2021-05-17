@@ -6,8 +6,8 @@
 		<LayoutRow :class="'panel-container'">
 			<PanelArea />
 		</LayoutRow>
-		<LayoutRow :class="'footer-bar'">
-			<FooterBar />
+		<LayoutRow :class="'status-bar'">
+			<StatusBar />
 		</LayoutRow>
 	</LayoutCol>
 </template>
@@ -27,7 +27,7 @@
 	height: 100%;
 }
 
-.footer-bar {
+.status-bar {
 	height: 24px;
 	flex: 0 0 auto;
 }
@@ -39,7 +39,7 @@ import LayoutRow from "../layout/LayoutRow.vue";
 import LayoutCol from "../layout/LayoutCol.vue";
 import PanelArea from "../panel-system/PanelArea.vue";
 import TitleBar from "./title-bar/TitleBar.vue";
-import FooterBar from "./footer-bar/FooterBar.vue";
+import StatusBar from "./status-bar/StatusBar.vue";
 
 export enum ApplicationPlatform {
 	"Windows" = "Windows",
@@ -54,7 +54,7 @@ export default defineComponent({
 		LayoutCol,
 		TitleBar,
 		PanelArea,
-		FooterBar,
+		StatusBar,
 	},
 	data() {
 		return {
