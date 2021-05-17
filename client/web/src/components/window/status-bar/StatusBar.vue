@@ -1,5 +1,5 @@
 <template>
-	<div class="hint-area footer-area">
+	<div class="status-bar">
 		<InputHint :inputMouse="'LMB'">Select Object</InputHint>
 		<span class="plus">+</span>
 		<InputHint :inputKeys="['⇧']">Grow/Shrink Selection</InputHint>
@@ -19,27 +19,11 @@
 		<InputHint :inputKeys="['Alt']" :inputMouse="'LMBDrag'">Move Duplicate</InputHint>
 		<InputHint :inputKeys="['Ctrl', 'D']">Duplicate</InputHint>
 	</div>
-	<div class="status-area footer-area">
-		<div>
-			<span>Graphite 0.0.1</span>
-		</div>
-	</div>
 </template>
 
 <style lang="scss">
-.footer-area {
+.status-bar {
 	display: flex;
-
-	&.hint-area {
-		flex: 1 1 100%;
-	}
-
-	&.status-area div {
-		margin: 0 8px;
-		display: flex;
-		align-items: center;
-		white-space: nowrap;
-	}
 }
 
 .plus {
