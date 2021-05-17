@@ -8,12 +8,18 @@ body,
 #app {
 	margin: 0;
 	height: 100%;
+	background: #222;
+	user-select: none;
+}
+
+body,
+input,
+textarea,
+button {
 	font-family: "Source Sans Pro", Arial, sans-serif;
 	font-size: 14px;
 	line-height: 1;
 	color: #ddd;
-	background: #222;
-	user-select: none;
 }
 </style>
 
