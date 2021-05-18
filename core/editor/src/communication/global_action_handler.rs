@@ -1,6 +1,7 @@
 use super::message::prelude::*;
 use super::MessageHandler;
 use graphite_proc_macros::*;
+use std::collections::VecDeque;
 
 #[impl_message(Message, Global)]
 #[derive(PartialEq, Clone, Debug)]
@@ -20,7 +21,7 @@ impl GlobalActionHandler {
 }
 
 impl MessageHandler<GlobalMessage, ()> for GlobalActionHandler {
-	fn process_action(&mut self, message: GlobalMessage, _data: (), _responses: &mut Vec<Message>) {
+	fn process_action(&mut self, message: GlobalMessage, _data: (), _responses: &mut VecDeque<Message>) {
 		// process action before passing them further down
 		use GlobalMessage::*;
 		match message {

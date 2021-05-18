@@ -16,6 +16,7 @@ use crate::{
 	communication::{message::Message, MessageHandler},
 	Color,
 };
+use std::collections::VecDeque;
 use std::{
 	collections::HashMap,
 	fmt::{self, Debug},
@@ -26,7 +27,7 @@ pub type ToolActionHandlerData<'a> = (&'a SvgDocument, &'a DocumentToolData, &'a
 pub trait Fsm {
 	type ToolData;
 
-	fn transition(self, message: ToolMessage, document: &SvgDocument, tool_data: &DocumentToolData, data: &mut Self::ToolData, input: &InputPreprocessor, messages: &mut Vec<Message>) -> Self;
+	fn transition(self, message: ToolMessage, document: &SvgDocument, tool_data: &DocumentToolData, data: &mut Self::ToolData, input: &InputPreprocessor, messages: &mut VecDeque<Message>) -> Self;
 }
 
 #[derive(Debug, Clone)]

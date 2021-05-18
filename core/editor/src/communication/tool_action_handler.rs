@@ -6,6 +6,7 @@ use crate::{
 	tools::{rectangle::RectangleMessage, ToolFsmState, ToolType},
 	SvgDocument,
 };
+use std::collections::VecDeque;
 
 #[impl_message(Message, Tool)]
 #[derive(PartialEq, Clone, Debug)]
@@ -25,7 +26,7 @@ pub struct ToolActionHandler {
 	actions: Vec<&'static [&'static str]>,
 }
 impl MessageHandler<ToolMessage, (&SvgDocument, &InputPreprocessor)> for ToolActionHandler {
-	fn process_action(&mut self, action: ToolMessage, data: (&SvgDocument, &InputPreprocessor), responses: &mut Vec<Message>) {
+	fn process_action(&mut self, action: ToolMessage, data: (&SvgDocument, &InputPreprocessor), responses: &mut VecDeque<Message>) {
 		let (document, input) = data;
 		use ToolMessage::*;
 		match action {
@@ -33,7 +34,7 @@ impl MessageHandler<ToolMessage, (&SvgDocument, &InputPreprocessor)> for ToolAct
 			SelectSecondaryColor(c) => self.tool_state.document_tool_data.secondary_color = c,
 			SelectTool(tool) => {
 				self.tool_state.tool_data.active_tool_type = tool;
-				responses.push(FrontendMessage::SetActiveTool { tool_name: tool.to_string() }.into())
+				responses.push_back(FrontendMessage::SetActiveTool { tool_name: tool.to_string() }.into())
 			}
 			SwapColors => {
 				let doc_data = &mut self.tool_state.document_tool_data;

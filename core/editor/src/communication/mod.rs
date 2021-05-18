@@ -12,6 +12,7 @@ use message::prelude::*;
 
 pub use self::input_manager::InputPreprocessor;
 use crate::communication::message::{ToDiscriminant, TransitiveChild};
+use std::collections::VecDeque;
 
 pub type Callback = Box<dyn Fn(FrontendMessage)>;
 
@@ -27,6 +28,6 @@ where
 	<A::Discriminant as TransitiveChild>::TopParent: TransitiveChild<Parent = <A::Discriminant as TransitiveChild>::TopParent, TopParent = <A::Discriminant as TransitiveChild>::TopParent> + AsMessage,
 {
 	/// Return true if the Action is consumed.
-	fn process_action(&mut self, action: A, data: T, responses: &mut Vec<Message>);
+	fn process_action(&mut self, action: A, data: T, responses: &mut VecDeque<Message>);
 	fn actions(&self) -> ActionList;
 }

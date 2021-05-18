@@ -8,6 +8,7 @@ use crate::{
 use document_core::layers::style;
 use document_core::Operation;
 use graphite_proc_macros::*;
+use std::collections::VecDeque;
 
 #[derive(Default)]
 pub struct Rectangle {
@@ -31,7 +32,7 @@ pub enum RectangleMessage {
 }
 
 impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Rectangle {
-	fn process_action(&mut self, action: ToolMessage, data: ToolActionHandlerData<'a>, responses: &mut Vec<Message>) {
+	fn process_action(&mut self, action: ToolMessage, data: ToolActionHandlerData<'a>, responses: &mut VecDeque<Message>) {
 		self.fsm_state = self.fsm_state.transition(action, data.0, data.1, &mut self.data, data.2, responses);
 	}
 	actions_fn!();
@@ -59,38 +60,38 @@ struct RectangleToolData {
 impl Fsm for RectangleToolFsmState {
 	type ToolData = RectangleToolData;
 
-	fn transition(self, event: ToolMessage, _document: &SvgDocument, tool_data: &DocumentToolData, data: &mut Self::ToolData, input: &InputPreprocessor, responses: &mut Vec<Message>) -> Self {
+	fn transition(self, event: ToolMessage, _document: &SvgDocument, tool_data: &DocumentToolData, data: &mut Self::ToolData, input: &InputPreprocessor, responses: &mut VecDeque<Message>) -> Self {
 		if let ToolMessage::Rectangle(event) = event {
 			match (self, event) {
 				(RectangleToolFsmState::Ready, RectangleMessage::DragStart) => {
 					data.drag_start = input.mouse_state.position;
 					data.drag_current = input.mouse_state.position;
-					responses.push(Operation::MountWorkingFolder { path: vec![] }.into());
+					responses.push_back(Operation::MountWorkingFolder { path: vec![] }.into());
 					RectangleToolFsmState::LmbDown
 				}
 				(RectangleToolFsmState::LmbDown, RectangleMessage::MouseMove) => {
 					data.drag_current = input.mouse_state.position;
 
-					responses.push(Operation::ClearWorkingFolder.into());
-					responses.push(make_operation(data, tool_data).into());
+					responses.push_back(Operation::ClearWorkingFolder.into());
+					responses.push_back(make_operation(data, tool_data).into());
 
 					RectangleToolFsmState::LmbDown
 				}
 				(RectangleToolFsmState::LmbDown, RectangleMessage::DragStop) => {
 					data.drag_current = input.mouse_state.position;
 
-					responses.push(Operation::ClearWorkingFolder.into());
+					responses.push_back(Operation::ClearWorkingFolder.into());
 					// TODO - introduce comparison threshold when operating with canvas coordinates (https://github.com/GraphiteEditor/Graphite/issues/100)
 					if data.drag_start != data.drag_current {
-						responses.push(make_operation(data, tool_data).into());
-						responses.push(Operation::CommitTransaction.into());
+						responses.push_back(make_operation(data, tool_data).into());
+						responses.push_back(Operation::CommitTransaction.into());
 					}
 
 					RectangleToolFsmState::Ready
 				}
 				// TODO - simplify with or_patterns when rust 1.53.0 is stable (https://github.com/rust-lang/rust/issues/54883)
 				(RectangleToolFsmState::LmbDown, RectangleMessage::Abort) => {
-					responses.push(Operation::DiscardWorkingFolder.into());
+					responses.push_back(Operation::DiscardWorkingFolder.into());
 
 					RectangleToolFsmState::Ready
 				}
@@ -98,8 +99,8 @@ impl Fsm for RectangleToolFsmState {
 					data.constrain_to_square = true;
 
 					if state == RectangleToolFsmState::LmbDown {
-						responses.push(Operation::ClearWorkingFolder.into());
-						responses.push(make_operation(data, tool_data).into());
+						responses.push_back(Operation::ClearWorkingFolder.into());
+						responses.push_back(make_operation(data, tool_data).into());
 					}
 
 					self
@@ -108,8 +109,8 @@ impl Fsm for RectangleToolFsmState {
 					data.constrain_to_square = false;
 
 					if state == RectangleToolFsmState::LmbDown {
-						responses.push(Operation::ClearWorkingFolder.into());
-						responses.push(make_operation(data, tool_data).into());
+						responses.push_back(Operation::ClearWorkingFolder.into());
+						responses.push_back(make_operation(data, tool_data).into());
 					}
 
 					self
@@ -118,8 +119,8 @@ impl Fsm for RectangleToolFsmState {
 					data.center_around_cursor = true;
 
 					if state == RectangleToolFsmState::LmbDown {
-						responses.push(Operation::ClearWorkingFolder.into());
-						responses.push(make_operation(data, tool_data).into());
+						responses.push_back(Operation::ClearWorkingFolder.into());
+						responses.push_back(make_operation(data, tool_data).into());
 					}
 
 					self
@@ -128,8 +129,8 @@ impl Fsm for RectangleToolFsmState {
 					data.center_around_cursor = false;
 
 					if state == RectangleToolFsmState::LmbDown {
-						responses.push(Operation::ClearWorkingFolder.into());
-						responses.push(make_operation(data, tool_data).into());
+						responses.push_back(Operation::ClearWorkingFolder.into());
+						responses.push_back(make_operation(data, tool_data).into());
 					}
 
 					self

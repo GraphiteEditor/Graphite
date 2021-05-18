@@ -4,6 +4,7 @@ use document_core::{DocumentResponse, LayerId, Operation as DocumentOperation};
 use super::MessageHandler;
 use crate::document::Document;
 use graphite_proc_macros::*;
+use std::collections::VecDeque;
 
 #[impl_message(Message, Document)]
 #[derive(PartialEq, Clone, Debug)]
@@ -72,16 +73,16 @@ impl Default for DocumentActionHandler {
 }
 
 impl MessageHandler<DocumentMessage, ()> for DocumentActionHandler {
-	fn process_action(&mut self, message: DocumentMessage, _data: (), responses: &mut Vec<Message>) {
+	fn process_action(&mut self, message: DocumentMessage, _data: (), responses: &mut VecDeque<Message>) {
 		use DocumentMessage::*;
 		match message {
-			DeleteLayer(path) => responses.push(DocumentOperation::DeleteLayer { path }.into()),
-			AddFolder(path) => responses.push(DocumentOperation::AddFolder { path }.into()),
+			DeleteLayer(path) => responses.push_back(DocumentOperation::DeleteLayer { path }.into()),
+			AddFolder(path) => responses.push_back(DocumentOperation::AddFolder { path }.into()),
 			SelectDocument(id) => self.active_document = id,
 			Undo => {
 				// this is a temporary fix and will be addressed by #123
 				if let Some(id) = self.active_document().document.root.list_layers().last() {
-					responses.push(DocumentOperation::DeleteLayer { path: vec![*id] }.into())
+					responses.push_back(DocumentOperation::DeleteLayer { path: vec![*id] }.into())
 				}
 			}
 			Operation(op) => {
@@ -89,11 +90,11 @@ impl MessageHandler<DocumentMessage, ()> for DocumentActionHandler {
 					let canvas_dirty = self.filter_document_responses(&mut document_responses);
 					responses.extend(document_responses.drain(..).map(Into::into));
 					if canvas_dirty {
-						responses.push(RenderDocument.into())
+						responses.push_back(RenderDocument.into())
 					}
 				}
 			}
-			RenderDocument => responses.push(
+			RenderDocument => responses.push_back(
 				FrontendMessage::UpdateCanvas {
 					document: self.active_document_mut().document.render_root(),
 				}

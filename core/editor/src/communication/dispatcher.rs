@@ -13,6 +13,7 @@ use super::{document_action_handler::DocumentActionHandler, input_manager::Input
 use super::global_action_handler::GlobalActionHandler;
 use super::FrontendMessage;
 use super::Message;
+use std::collections::VecDeque;
 
 pub type Callback = Box<dyn Fn(FrontendMessage)>;
 
@@ -23,7 +24,7 @@ pub struct Dispatcher {
 	global_event_handler: GlobalActionHandler,
 	tool_action_handler: ToolActionHandler,
 	document_action_handler: DocumentActionHandler,
-	messages: Vec<Message>,
+	messages: VecDeque<Message>,
 }
 
 impl Dispatcher {
@@ -46,11 +47,8 @@ impl Dispatcher {
 			InputPreprocessor(message) => self.input_preprocessor.process_action(message, (), &mut self.messages),
 			InputMapper(message) => self.input_mapper.process_action(message, &self.input_preprocessor, &mut self.messages),
 		}
-		if !self.messages.is_empty() {
-			let message = self.messages.drain(..1).next();
-			if let Some(message) = message {
-				self.handle_message(message)?;
-			}
+		if let Some(message) = self.messages.pop_front() {
+			self.handle_message(message)?;
 		}
 		Ok(())
 	}
@@ -69,7 +67,7 @@ impl Dispatcher {
 			input_mapper: InputMapper::default(),
 			document_action_handler: DocumentActionHandler::default(),
 			tool_action_handler: ToolActionHandler::default(),
-			messages: Vec::new(),
+			messages: VecDeque::new(),
 		}
 	}
 }

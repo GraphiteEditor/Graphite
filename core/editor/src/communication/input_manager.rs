@@ -6,7 +6,7 @@ use super::{
 	message::prelude::*,
 	MessageHandler,
 };
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 
 #[derive(Debug, Default)]
 pub struct KeyState {
@@ -37,9 +37,9 @@ pub enum InputMapperMessage {
 }
 
 impl MessageHandler<InputPreprocessorMessage, ()> for InputPreprocessor {
-	fn process_action(&mut self, message: InputPreprocessorMessage, _data: (), responses: &mut Vec<Message>) {
+	fn process_action(&mut self, message: InputPreprocessorMessage, _data: (), responses: &mut VecDeque<Message>) {
 		match message {
-			InputPreprocessorMessage::Event(e) => responses.push(InputMapperMessage::Event(e).into()),
+			InputPreprocessorMessage::Event(e) => responses.push_back(InputMapperMessage::Event(e).into()),
 		}
 	}
 	// clean user input and if possible reconstruct it
@@ -76,7 +76,7 @@ const _DEFAULT_MAPPING: &[(&str, &str, Event, &[Key])] = &[
 pub struct InputMapper {}
 
 impl MessageHandler<InputMapperMessage, &InputPreprocessor> for InputMapper {
-	fn process_action(&mut self, message: InputMapperMessage, input: &InputPreprocessor, responses: &mut Vec<Message>) {
+	fn process_action(&mut self, message: InputMapperMessage, input: &InputPreprocessor, responses: &mut VecDeque<Message>) {
 		let res = match message {
 			InputMapperMessage::Event(e) => match e {
 				Event::SelectTool(tool_name) => ToolMessage::SelectTool(tool_name).into(),
@@ -94,7 +94,7 @@ impl MessageHandler<InputMapperMessage, &InputPreprocessor> for InputMapper {
 				e => todo!("Unhandled event: {:?}", e),
 			},
 		};
-		responses.push(res);
+		responses.push_back(res);
 	}
 	actions_fn!();
 }
