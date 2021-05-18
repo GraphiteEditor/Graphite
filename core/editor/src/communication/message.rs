@@ -1,3 +1,4 @@
+pub use crate::derivable_custom_traits::{ToDiscriminant, TransitiveChild};
 use graphite_proc_macros::impl_message;
 use graphite_proc_macros::*;
 pub use prelude::*;
@@ -10,17 +11,6 @@ where
 	fn global_name(self) -> String {
 		<Self as Into<Self::TopParent>>::into(self).local_name()
 	}
-}
-
-pub trait ToDiscriminant {
-	type Discriminant;
-
-	fn to_discriminant(&self) -> Self::Discriminant;
-}
-
-pub trait TransitiveChild: Into<Self::Parent> + Into<Self::TopParent> {
-	type TopParent;
-	type Parent;
 }
 
 #[impl_message]

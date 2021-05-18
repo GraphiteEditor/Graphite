@@ -7,9 +7,9 @@ extern crate graphite_proc_macros;
 mod macros;
 
 pub mod communication;
+pub mod derivable_custom_traits;
 mod document;
 mod error;
-pub mod hint;
 pub mod tools;
 pub mod workspace;
 

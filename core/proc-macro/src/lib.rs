@@ -40,7 +40,7 @@ pub fn impl_message(attr: TokenStream, input_item: TokenStream) -> TokenStream {
 /// # Example
 /// ```
 /// # use graphite_proc_macros::Hint;
-/// # use editor_core::hint::Hint;
+/// # use editor_core::derivable_custom_traits::Hint;
 ///
 /// #[derive(Hint)]
 /// pub enum StateMachine {
