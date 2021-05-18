@@ -57,11 +57,8 @@ pub fn combined_message_attrs_impl(attr: TokenStream, input_item: TokenStream) -
 		}
 	};
 
-	let parent_discriminant = {
-		let mut res = parent.clone();
-		let last_segment = &mut res.path.segments.last_mut().unwrap().ident;
-		*last_segment = call_site_ident(format!("{}Discriminant", last_segment));
-		res
+	let parent_discriminant = quote::quote! {
+		<#parent as ToDiscriminant>::Discriminant
 	};
 
 	input.attrs.push(syn::parse_quote! { #[derive(ToDiscriminant, TransitiveChild)] });

@@ -23,7 +23,7 @@ use syn::parse_macro_input;
 /// *) The exception to that rule is the `#[child]` attribute
 ///
 /// # Helper attributes
-/// - `#[sub_discriminant]`: only usable on tuple variants with a single field; instead of no fields, the discriminant of the single field will be included in the discriminant,
+/// - `#[sub_discriminant]`: only usable on variants with a single field; instead of no fields, the discriminant of the single field will be included in the discriminant,
 ///     acting as a sub-discriminant.
 /// - `#[discriminant_attr(…)]`: usable on the enum itself or on any variant; applies `#[…]` in its place on the discriminant.
 ///
@@ -120,11 +120,93 @@ pub fn derive_transitive_child(input_item: TokenStream) -> TokenStream {
 	TokenStream::from(derive_transitive_child_impl(input_item.into()).unwrap_or_else(|err| err.to_compile_error()))
 }
 
+/// Derive the `AsMessage` trait
+///
+/// # Helper Attributes
+/// - `#[child]`: only on tuple variants with a single field; Denote that the message path should continue inside the variant
+///
+/// # Example
+/// See also [`TransitiveChild`]
+/// ```
+/// # use graphite_proc_macros::{TransitiveChild, AsMessage};
+/// # use editor_core::derivable_custom_traits::TransitiveChild;
+/// # use editor_core::communication::message::AsMessage;
+///
+/// #[derive(AsMessage)]
+/// pub enum TopMessage {
+///     A(u8),
+///     B(u16),
+///     #[child]
+///     C(MessageC),
+///     #[child]
+///     D(MessageD)
+/// }
+///
+/// impl TransitiveChild for TopMessage {
+///     type Parent = Self;
+///     type TopParent = Self;
+/// }
+///
+/// #[derive(TransitiveChild, AsMessage, Copy, Clone)]
+/// #[parent(TopMessage, TopMessage::C)]
+/// #[parent_is_top]
+/// pub enum MessageC {
+///     X1,
+///     X2
+/// }
+///
+/// #[derive(TransitiveChild, AsMessage, Copy, Clone)]
+/// #[parent(TopMessage, TopMessage::D)]
+/// #[parent_is_top]
+/// pub enum MessageD {
+///     Y1,
+///     #[child]
+///     Y2(MessageE)
+/// }
+///
+/// #[derive(TransitiveChild, AsMessage, Copy, Clone)]
+/// #[parent(MessageD, MessageD::Y2)]
+/// pub enum MessageE {
+///     Alpha,
+///     Beta
+/// }
+///
+/// let c = MessageC::X1;
+/// assert_eq!(c.local_name(), "X1");
+/// assert_eq!(c.global_name(), "C.X1");
+/// let d = MessageD::Y2(MessageE::Alpha);
+/// assert_eq!(d.local_name(), "Y2.Alpha");
+/// assert_eq!(d.global_name(), "D.Y2.Alpha");
+/// let e = MessageE::Beta;
+/// assert_eq!(e.local_name(), "Beta");
+/// assert_eq!(e.global_name(), "D.Y2.Beta");
+/// ```
 #[proc_macro_derive(AsMessage, attributes(child))]
 pub fn derive_message(input_item: TokenStream) -> TokenStream {
 	TokenStream::from(derive_as_message_impl(input_item.into()).unwrap_or_else(|err| err.to_compile_error()))
 }
 
+/// This macro is basically an abbreviation for the usual [`ToDiscriminant`], [`TransitiveChild`] and [`AsMessage`] invokations
+///
+/// This macro is enum-only.
+///
+/// Also note that all three of those derives have to be in scope.
+///
+/// # Usage
+/// There are three possible argument syntaxes you can use:
+/// 1. no arguments: this is for the top-level message enum. It derives `ToDiscriminant`, `AsMessage` on the discriminant, and implements `TransitiveChild` on both
+///     (the parent and top parent being the respective types themselves).
+///     It also derives the following `std` traits on the discriminant: `Debug, Copy, Clone, PartialEq, Eq, Hash`.
+/// 2. two arguments: this is for message enums whose direct parent is the top level message enum. The syntax is `#[impl_message(<Type>, <Ident>)]`,
+///     where `<Type>` is the parent message type and `<Ident>` is the identifier of the variant used to construct this child.
+///     It derives `ToDiscriminant`, `AsMessage` on the discriminant, and `TransitiveChild` on both (adding `#[parent_is_top]` to both).
+///     It also derives the following `std` traits on the discriminant: `Debug, Copy, Clone, PartialEq, Eq, Hash`.
+/// 3. three arguments: this is for all other message enums that are transitive children of the top level message enum. The syntax is
+///     `#[impl_message(<Type>, <Type>, <Ident>)]`, where the first `<Type>` is the top parent message type, the secont `<Type>` is the parent message type
+///     and `<Ident>` is the identifier of the variant used to construct this child.
+///     It derives `ToDiscriminant`, `AsMessage` on the discriminant, and `TransitiveChild` on both.
+///     It also derives the following `std` traits on the discriminant: `Debug, Copy, Clone, PartialEq, Eq, Hash`.
+///     **This third option will likely change in the future**
 #[proc_macro_attribute]
 pub fn impl_message(attr: TokenStream, input_item: TokenStream) -> TokenStream {
 	TokenStream::from(combined_message_attrs_impl(attr.into(), input_item.into()).unwrap_or_else(|err| err.to_compile_error()))

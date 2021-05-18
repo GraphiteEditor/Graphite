@@ -29,7 +29,7 @@ pub fn derive_as_message_impl(input_item: TokenStream) -> syn::Result<TokenStrea
 			} else {
 				(
 					quote::quote! {
-						#input_type::#var_name
+						#input_type::#var_name { .. }
 					},
 					quote::quote! {
 						#var_name_s.to_string()
