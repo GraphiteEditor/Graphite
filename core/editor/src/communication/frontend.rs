@@ -5,7 +5,7 @@ use graphite_proc_macros::*;
 use serde::{Deserialize, Serialize};
 
 #[impl_message(Message, Frontend)]
-#[derive(PartialEq, Clone, Deserialize, Serialize)]
+#[derive(PartialEq, Clone, Deserialize, Serialize, Debug)]
 pub enum FrontendMessage {
 	Document(DocumentResponse),
 	Tool(ToolResponse),

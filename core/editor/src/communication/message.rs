@@ -24,7 +24,7 @@ pub trait TransitiveChild: Into<Self::Parent> + Into<Self::TopParent> {
 }
 
 #[impl_message]
-#[derive(PartialEq, Clone)]
+#[derive(PartialEq, Clone, Debug)]
 pub enum Message {
 	NoOp,
 	#[child]

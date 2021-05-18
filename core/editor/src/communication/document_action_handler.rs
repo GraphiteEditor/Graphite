@@ -6,7 +6,7 @@ use crate::{document::Document, events::ToolResponse};
 use graphite_proc_macros::*;
 
 #[impl_message(Message, Document)]
-#[derive(PartialEq, Clone)]
+#[derive(PartialEq, Clone, Debug)]
 pub enum DocumentMessage {
 	Operation(DocumentOperation),
 	SelectLayer(Vec<LayerId>),

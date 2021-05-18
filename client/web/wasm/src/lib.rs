@@ -29,6 +29,7 @@ pub fn init() {
 
 fn handle_response(response: FrontendMessage) {
 	let response_type = response.to_discriminant().global_name();
+	log::warn!("{}", response_type);
 	send_response(response_type, response);
 }
 

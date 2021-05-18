@@ -25,13 +25,13 @@ pub struct InputPreprocessor {
 }
 
 #[impl_message(Message, InputPreprocessor)]
-#[derive(PartialEq, Clone)]
+#[derive(PartialEq, Clone, Debug)]
 pub enum InputPreprocessorMessage {
 	Event(Event),
 }
 
 #[impl_message(Message, InputMapper)]
-#[derive(PartialEq, Clone)]
+#[derive(PartialEq, Clone, Debug)]
 pub enum InputMapperMessage {
 	Event(Event),
 }

@@ -3,7 +3,7 @@ use super::MessageHandler;
 use graphite_proc_macros::*;
 
 #[impl_message(Message, Global)]
-#[derive(PartialEq, Clone)]
+#[derive(PartialEq, Clone, Debug)]
 pub enum GlobalMessage {
 	LogInfo,
 	LogDebug,

@@ -55,13 +55,14 @@ function parseResponse(origin: string, responseType: string, data: any): Respons
 	// TODO: Optional chaining would be nice here when we can upgrade to Webpack 5: https://github.com/webpack/webpack/issues/10227
 	// const response = originHandlers[origin as OriginNames]?.();
 	const response = originHandlers[origin as OriginNames] && originHandlers[origin as OriginNames]();
-	if (!response) throw new Error("ResponseType not recognized.");
+	if (!response) throw new Error("ResponseType not recognized. Received: " + responseType );
 	return response;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function handleResponse(responseIdentifier: string, responseData: any) {
-	const [origin, responseType] = responseIdentifier.split("::", 2);
+	console.error(responseIdentifier)
+	const [origin, responseType] = responseIdentifier.split(".", 2);
 	const callback = window.responseMap[responseType];
 	const data = parseResponse(origin, responseType, responseData);
 

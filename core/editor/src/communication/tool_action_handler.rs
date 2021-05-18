@@ -3,12 +3,13 @@ use graphite_proc_macros::*;
 
 use super::{message::prelude::*, InputPreprocessor, MessageHandler};
 use crate::{
+	events::ToolResponse,
 	tools::{rectangle::RectangleMessage, ToolFsmState, ToolType},
 	SvgDocument,
 };
 
 #[impl_message(Message, Tool)]
-#[derive(PartialEq, Clone)]
+#[derive(PartialEq, Clone, Debug)]
 pub enum ToolMessage {
 	SelectTool(ToolType),
 	SelectPrimaryColor(Color),
@@ -31,10 +32,13 @@ impl MessageHandler<ToolMessage, (&SvgDocument, &InputPreprocessor)> for ToolAct
 		match action {
 			SelectPrimaryColor(c) => self.tool_state.document_tool_data.primary_color = c,
 			SelectSecondaryColor(c) => self.tool_state.document_tool_data.secondary_color = c,
-			SelectTool(tool) => self.tool_state.tool_data.active_tool_type = tool,
+			SelectTool(tool) => {
+				self.tool_state.tool_data.active_tool_type = tool;
+				responses.push(FrontendMessage::Tool(ToolResponse::SetActiveTool { tool_name: tool.to_string() }).into())
+			}
 			SwapColors => {
 				let doc_data = &mut self.tool_state.document_tool_data;
-				std::mem::swap(&mut doc_data.primary_color, &mut doc_data.secondary_color)
+				std::mem::swap(&mut doc_data.primary_color, &mut doc_data.secondary_color);
 			}
 			ResetColors => {
 				let doc_data = &mut self.tool_state.document_tool_data;

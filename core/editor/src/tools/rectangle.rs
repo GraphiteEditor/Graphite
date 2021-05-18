@@ -16,7 +16,7 @@ pub struct Rectangle {
 }
 
 #[impl_message(Message, ToolMessage, Rectangle)]
-#[derive(PartialEq, Clone)]
+#[derive(PartialEq, Clone, Debug)]
 pub enum RectangleMessage {
 	Undo,
 	DragStart,

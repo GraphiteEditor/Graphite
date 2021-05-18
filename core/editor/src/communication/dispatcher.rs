@@ -28,6 +28,7 @@ pub struct Dispatcher {
 impl Dispatcher {
 	pub fn handle_message(&mut self, message: Message) -> Result<(), EditorError> {
 		use Message::*;
+		log::debug!("Message: {}", message.to_discriminant().global_name());
 		match message {
 			NoOp => (),
 			Document(message) => self.document_action_handler.process_action(message, (), &mut self.messages),
@@ -39,9 +40,11 @@ impl Dispatcher {
 			InputPreprocessor(message) => self.input_preprocessor.process_action(message, (), &mut self.messages),
 			InputMapper(message) => self.input_mapper.process_action(message, &self.input_preprocessor, &mut self.messages),
 		}
-		let message = self.messages.drain(..1).next();
-		if let Some(message) = message {
-			self.handle_message(message)?;
+		if !self.messages.is_empty() {
+			let message = self.messages.drain(..1).next();
+			if let Some(message) = message {
+				self.handle_message(message)?;
+			}
 		}
 		Ok(())
 	}
