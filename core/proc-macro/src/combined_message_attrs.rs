@@ -80,7 +80,9 @@ pub fn combined_message_attrs_impl(attr: TokenStream, input_item: TokenStream) -
 	}
 
 	for var in &mut input.variants {
-		if var.attrs.iter().any(|a| a.path.is_ident("child")) {
+		if let Some(attr) = var.attrs.iter_mut().find(|a| a.path.is_ident("child")) {
+			let last_segment = attr.path.segments.last_mut().unwrap();
+			last_segment.ident = call_site_ident("sub_discriminant");
 			var.attrs.push(syn::parse_quote! {
 				#[discriminant_attr(child)]
 			});
@@ -97,7 +99,9 @@ fn top_level_impl(input_item: TokenStream) -> syn::Result<TokenStream> {
 	input.attrs.push(syn::parse_quote! { #[discriminant_attr(derive(Debug, Copy, Clone, PartialEq, Eq, Hash, AsMessage))] });
 
 	for var in &mut input.variants {
-		if var.attrs.iter().any(|a| a.path.is_ident("child")) {
+		if let Some(attr) = var.attrs.iter_mut().find(|a| a.path.is_ident("child")) {
+			let last_segment = attr.path.segments.last_mut().unwrap();
+			last_segment.ident = call_site_ident("sub_discriminant");
 			var.attrs.push(syn::parse_quote! {
 				#[discriminant_attr(child)]
 			});

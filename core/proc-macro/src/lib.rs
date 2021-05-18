@@ -15,7 +15,7 @@ use crate::transitive_child::derive_transitive_child_impl;
 use proc_macro::TokenStream;
 use syn::parse_macro_input;
 
-/// Derive the `ToDiscriminant` trait and create a `<Type Name>Discriminant` enum.
+/// Derive the `ToDiscriminant` trait and create a `<Type Name>Discriminant` enum
 ///
 /// This derive macro is enum-only.
 ///
@@ -23,7 +23,7 @@ use syn::parse_macro_input;
 /// *) The exception to that rule is the `#[child]` attribute
 ///
 /// # Helper attributes
-/// - `#[child]`: only usable on tuple variants with a single field; instead of no fields, the discriminant of the single field will be included in the discriminant,
+/// - `#[sub_discriminant]`: only usable on tuple variants with a single field; instead of no fields, the discriminant of the single field will be included in the discriminant,
 ///     acting as a sub-discriminant.
 /// - `#[discriminant_attr(…)]`: usable on the enum itself or on any variant; applies `#[…]` in its place on the discriminant.
 ///
@@ -41,7 +41,7 @@ use syn::parse_macro_input;
 /// #[discriminant_attr(derive(Debug, Eq, PartialEq))]
 /// pub enum EnumA {
 ///     A(u8),
-///     #[child]
+///     #[sub_discriminant]
 ///     B(EnumB)
 /// }
 ///
@@ -61,7 +61,7 @@ use syn::parse_macro_input;
 /// let b = EnumA::B(EnumB::Bar("bar".to_string()));
 /// assert_eq!(b.to_discriminant(), EnumADiscriminant::B(EnumBDiscriminant::Bar));
 /// ```
-#[proc_macro_derive(ToDiscriminant, attributes(child, discriminant_attr))]
+#[proc_macro_derive(ToDiscriminant, attributes(sub_discriminant, discriminant_attr))]
 pub fn derive_discriminant(input_item: TokenStream) -> TokenStream {
 	TokenStream::from(derive_discriminant_impl(input_item.into()).unwrap_or_else(|err| err.to_compile_error()))
 }

@@ -12,24 +12,24 @@ pub fn derive_discriminant_impl(input_item: TokenStream) -> syn::Result<TokenStr
 		_ => return Err(syn::Error::new(Span::call_site(), "Tried to derive a discriminant for non-enum")),
 	};
 
-	let mut is_child = vec![];
+	let mut is_sub_discriminant = vec![];
 	let mut attr_errs = vec![];
 
 	for var in &mut data.variants {
-		if var.attrs.iter().any(|a| a.path.is_ident("child")) {
+		if var.attrs.iter().any(|a| a.path.is_ident("sub_discriminant")) {
 			match var.fields.len() {
 				1 => {
 					let Field { ty, .. } = var.fields.iter_mut().next().unwrap();
 					*ty = syn::parse_quote! {
 						<#ty as ToDiscriminant>::Discriminant
 					};
-					is_child.push(true);
+					is_sub_discriminant.push(true);
 				}
-				n => unimplemented!("#[child] on variants with {} fields is not supported (for now)", n),
+				n => unimplemented!("#[sub_discriminant] on variants with {} fields is not supported (for now)", n),
 			}
 		} else {
 			var.fields = Fields::Unit;
-			is_child.push(false);
+			is_sub_discriminant.push(false);
 		}
 		let mut retain = vec![];
 		for (i, a) in var.attrs.iter_mut().enumerate() {
@@ -99,7 +99,7 @@ pub fn derive_discriminant_impl(input_item: TokenStream) -> syn::Result<TokenStr
 	let discriminant_type = &discriminant.ident;
 	let variant = &discriminant.variants.iter().map(|var| &var.ident).collect::<Vec<&Ident>>();
 
-	let (pattern, value) = is_child
+	let (pattern, value) = is_sub_discriminant
 		.into_iter()
 		.map(|b| {
 			(
