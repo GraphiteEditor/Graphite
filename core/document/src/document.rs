@@ -305,7 +305,7 @@ impl Document {
 					layer.visible = !layer.visible;
 					layer.cache_dirty = true;
 				});
-				let children = self.layer_panel(&[])?;
+				let children = self.layer_panel(&path.as_slice()[..path.len() - 1])?;
 				Some(vec![DocumentResponse::ExpandFolder { path: vec![], children }])
 			}
 		};
