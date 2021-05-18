@@ -9,7 +9,7 @@ module.exports = {
 	},
 	settings: {
 		"import/resolver": {
-			// `node` must be listed first
+			// `node` must be listed first!
 			node: {},
 			webpack: { config: require.resolve("@vue/cli-service/webpack.config.js") },
 		},
@@ -20,6 +20,7 @@ module.exports = {
 			},
 		},
 	},
+	ignorePatterns: ["node_modules/", "dist/", "pkg/", "wasm/pkg/*", "!.*.js", "!.*.ts", "!.*.json"],
 	rules: {
 		indent: ["error", "tab", { SwitchCase: 1 }],
 		quotes: ["error", "double"],
