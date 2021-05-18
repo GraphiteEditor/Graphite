@@ -28,13 +28,13 @@ pub fn init() {
 }
 
 fn handle_response(response: FrontendMessage) {
-	let response_type = response.to_discriminant().global_name();
+	let response_type = response.to_discriminant().local_name();
 	log::warn!("{}", response_type);
 	send_response(response_type, response);
 }
 
 fn send_response(response_type: String, response_data: FrontendMessage) {
-	let response_data = JsValue::from_serde(&WasmResponse::new(response_data)).expect("Failed to serialize response");
+	let response_data = JsValue::from_serde(&response_data).expect("Failed to serialize response");
 	handleResponse(response_type, response_data);
 }
 

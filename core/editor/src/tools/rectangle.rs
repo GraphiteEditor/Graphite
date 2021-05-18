@@ -24,6 +24,7 @@ pub enum RectangleMessage {
 	MouseMove,
 	Abort,
 	Center,
+	Confirm,
 	UnCenter,
 	LockAspectRatio,
 	UnlockAspectRatio,

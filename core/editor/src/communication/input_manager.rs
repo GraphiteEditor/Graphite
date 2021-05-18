@@ -42,22 +42,11 @@ impl MessageHandler<InputPreprocessorMessage, ()> for InputPreprocessor {
 			InputPreprocessorMessage::Event(e) => responses.push(InputMapperMessage::Event(e).into()),
 		}
 	}
-	/*pub fn handle_user_input(&mut self, event: Event) -> Vec<Event> {
-		// clean user input and if possible reconstruct it
-		// store the changes in the keyboard if it is a key event
-		// translate the key events to VirtualKeyToolMessages and return them
-		// transform canvas coordinates to document coordinates
-		// Last pressed key
-		// respect t {
-		match event {
-			Event::MouseMove(pos) => self.mouse_state.position = pos,
-			Event::LmbDown(mouse_state) | Event::RmbDown(mouse_state) | Event::MmbDown(mouse_state) | Event::LmbUp(mouse_state) | Event::RmbUp(mouse_state) | Event::MmbUp(mouse_state) => {
-				self.mouse_state = mouse_state;
-			}
-			_ => (),
-		}
-		vec![event]
-	}*/
+	// clean user input and if possible reconstruct it
+	// store the changes in the keyboard if it is a key event
+	// translate the key events to VirtualKeyToolMessages and return them
+	// transform canvas coordinates to document coordinates
+	// Last pressed key
 	actions_fn!();
 }
 
@@ -100,8 +89,9 @@ impl MessageHandler<InputMapperMessage, &InputPreprocessor> for InputMapper {
 				Event::LmbDown(_) => RectangleMessage::DragStart.into(),
 				Event::LmbUp(_) => RectangleMessage::DragStop.into(),
 				Event::RmbDown(_) => RectangleMessage::Abort.into(),
-
-				event => self.translate_key(event, input),
+				Event::KeyDown(key) => self.translate_key_down(key, input),
+				Event::KeyUp(key) => self.translate_key_up(key, input),
+				e => todo!("Unhandled event: {:?}", e),
 			},
 		};
 		responses.push(res);
@@ -109,32 +99,32 @@ impl MessageHandler<InputMapperMessage, &InputPreprocessor> for InputMapper {
 	actions_fn!();
 }
 impl InputMapper {
-	fn translate_key(&self, event: Event, _input: &InputPreprocessor) -> Message {
+	fn translate_key_up(&self, key: Key, _input: &InputPreprocessor) -> Message {
 		use Key::*;
-		match event {
-			Event::KeyUp(key) => match key {
-				KeyAlt => RectangleMessage::UnCenter.into(),
-				KeyShift | KeyCaps => RectangleMessage::UnlockAspectRatio.into(),
-				_ => Message::NoOp.into(),
-			},
-			Event::KeyDown(key) => match key {
-				Key1 => GlobalMessage::LogInfo.into(),
-				Key2 => GlobalMessage::LogDebug.into(),
-				Key3 => GlobalMessage::LogTrace.into(),
-				KeyV => ToolMessage::SelectTool(ToolType::Select).into(),
-				KeyL => ToolMessage::SelectTool(ToolType::Line).into(),
-				KeyP => ToolMessage::SelectTool(ToolType::Pen).into(),
-				KeyM => ToolMessage::SelectTool(ToolType::Rectangle).into(),
-				KeyY => ToolMessage::SelectTool(ToolType::Shape).into(),
-				KeyE => ToolMessage::SelectTool(ToolType::Ellipse).into(),
-				KeyX => ToolMessage::SwapColors.into(),
-				KeyZ => DocumentMessage::Undo.into(),
-				//KeyEnter => RectangleMessage::Confirm.into(),
-				KeyAlt => RectangleMessage::Center.into(),
-				KeyShift | KeyCaps => RectangleMessage::LockAspectRatio.into(),
-				_ => Message::NoOp.into(),
-			},
-			_ => todo!("Implement layer handling"),
+		match key {
+			KeyAlt => RectangleMessage::UnCenter.into(),
+			KeyShift | KeyCaps => RectangleMessage::UnlockAspectRatio.into(),
+			_ => Message::NoOp,
+		}
+	}
+	fn translate_key_down(&self, key: Key, _input: &InputPreprocessor) -> Message {
+		use Key::*;
+		match key {
+			Key1 => GlobalMessage::LogInfo.into(),
+			Key2 => GlobalMessage::LogDebug.into(),
+			Key3 => GlobalMessage::LogTrace.into(),
+			KeyV => ToolMessage::SelectTool(ToolType::Select).into(),
+			KeyL => ToolMessage::SelectTool(ToolType::Line).into(),
+			KeyP => ToolMessage::SelectTool(ToolType::Pen).into(),
+			KeyM => ToolMessage::SelectTool(ToolType::Rectangle).into(),
+			KeyY => ToolMessage::SelectTool(ToolType::Shape).into(),
+			KeyE => ToolMessage::SelectTool(ToolType::Ellipse).into(),
+			KeyX => ToolMessage::SwapColors.into(),
+			KeyZ => DocumentMessage::Undo.into(),
+			KeyEnter => RectangleMessage::Confirm.into(),
+			KeyAlt => RectangleMessage::Center.into(),
+			KeyShift | KeyCaps => RectangleMessage::LockAspectRatio.into(),
+			_ => Message::NoOp,
 		}
 	}
 }

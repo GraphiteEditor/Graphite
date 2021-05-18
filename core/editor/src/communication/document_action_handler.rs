@@ -2,7 +2,7 @@ use super::message::prelude::*;
 use document_core::{DocumentResponse, LayerId, Operation as DocumentOperation};
 
 use super::MessageHandler;
-use crate::{document::Document, events::ToolResponse};
+use crate::document::Document;
 use graphite_proc_macros::*;
 
 #[impl_message(Message, Document)]
@@ -94,7 +94,7 @@ impl MessageHandler<DocumentMessage, ()> for DocumentActionHandler {
 				}
 			}
 			RenderDocument => responses.push(
-				ToolResponse::UpdateCanvas {
+				FrontendMessage::UpdateCanvas {
 					document: self.active_document_mut().document.render_root(),
 				}
 				.into(),

@@ -7,7 +7,6 @@ pub mod input_manager;
 pub mod message;
 pub mod tool_action_handler;
 pub use dispatcher::*;
-pub use events::{DocumentResponse, Event, Key, ToolResponse};
 pub use frontend::FrontendMessage;
 use message::prelude::*;
 

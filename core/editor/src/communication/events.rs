@@ -37,31 +37,6 @@ pub enum Event {
 	KeyDown(Key),
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
-#[repr(C)]
-pub enum ToolResponse {
-	// These may not have the same names as any of the DocumentResponses
-	SetActiveTool { tool_name: String },
-	UpdateCanvas { document: String },
-	EnableTextInput,
-	DisableTextInput,
-}
-
-impl fmt::Display for ToolResponse {
-	fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-		use ToolResponse::*;
-
-		let name = match_variant_name!(match (self) {
-			SetActiveTool,
-			UpdateCanvas,
-			EnableTextInput,
-			DisableTextInput,
-		});
-
-		formatter.write_str(name)
-	}
-}
-
 // origin is top left
 #[derive(Debug, Copy, Clone, Default, Eq, PartialEq)]
 pub struct ViewportPosition {

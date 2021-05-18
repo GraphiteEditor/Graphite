@@ -3,7 +3,6 @@ use graphite_proc_macros::*;
 
 use super::{message::prelude::*, InputPreprocessor, MessageHandler};
 use crate::{
-	events::ToolResponse,
 	tools::{rectangle::RectangleMessage, ToolFsmState, ToolType},
 	SvgDocument,
 };
@@ -34,7 +33,7 @@ impl MessageHandler<ToolMessage, (&SvgDocument, &InputPreprocessor)> for ToolAct
 			SelectSecondaryColor(c) => self.tool_state.document_tool_data.secondary_color = c,
 			SelectTool(tool) => {
 				self.tool_state.tool_data.active_tool_type = tool;
-				responses.push(FrontendMessage::Tool(ToolResponse::SetActiveTool { tool_name: tool.to_string() }).into())
+				responses.push(FrontendMessage::SetActiveTool { tool_name: tool.to_string() }.into())
 			}
 			SwapColors => {
 				let doc_data = &mut self.tool_state.document_tool_data;

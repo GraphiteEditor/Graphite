@@ -24,54 +24,34 @@ export function registerResponseHandler(responseType: ResponseType, callback: Re
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function parseResponse(origin: string, responseType: string, data: any): Response {
-	type OriginNames = "Document" | "Tool";
-
-	const originHandlers = {
-		Document: () => {
-			switch (responseType) {
-				case "DocumentChanged":
-					return (data.Document.DocumentChanged as DocumentChanged) as Response;
-				case "CollapseFolder":
-					return (data.Document.CollapseFolder as CollapseFolder) as Response;
-				case "ExpandFolder":
-					return (data.Document.ExpandFolder as ExpandFolder) as Response;
-				default:
-					return undefined;
-			}
-		},
-		Tool: () => {
-			switch (responseType) {
-				case "SetActiveTool":
-					return (data.Tool.SetActiveTool as SetActiveTool) as Response;
-				case "UpdateCanvas":
-					return (data.Tool.UpdateCanvas as UpdateCanvas) as Response;
-				default:
-					return undefined;
-			}
-		},
-	};
-
-	// TODO: Optional chaining would be nice here when we can upgrade to Webpack 5: https://github.com/webpack/webpack/issues/10227
-	// const response = originHandlers[origin as OriginNames]?.();
-	const response = originHandlers[origin as OriginNames] && originHandlers[origin as OriginNames]();
-	if (!response) throw new Error("ResponseType not recognized. Received: " + responseType );
-	return response;
+function parseResponse(responseType: string, data: any): Response {
+	switch (responseType) {
+		case "DocumentChanged":
+			return (data.DocumentChanged as DocumentChanged) as Response;
+		case "CollapseFolder":
+			return (data.CollapseFolder as CollapseFolder) as Response;
+		case "ExpandFolder":
+			return (data.ExpandFolder as ExpandFolder) as Response;
+		case "SetActiveTool":
+			return (data.SetActiveTool as SetActiveTool) as Response;
+		case "UpdateCanvas":
+			return (data.UpdateCanvas as UpdateCanvas) as Response;
+		default:
+			throw new Error("ResponseType not recognized");
+	}
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function handleResponse(responseIdentifier: string, responseData: any) {
-	console.error(responseIdentifier)
-	const [origin, responseType] = responseIdentifier.split(".", 2);
+export function handleResponse(responseType: string, responseData: any) {
 	const callback = window.responseMap[responseType];
-	const data = parseResponse(origin, responseType, responseData);
+	const data = parseResponse(responseType, responseData);
 
 	if (callback && data) {
 		callback(data);
 	} else if (data) {
-		console.error(`Received a Response of type "${responseIdentifier}" but no handler was registered for it from the client.`);
+		console.error(`Received a Response of type "${responseType}" but no handler was registered for it from the client.`);
 	} else {
-		console.error(`Received a Response of type "${responseIdentifier}" but but was not able to parse the data.`);
+		console.error(`Received a Response of type "${responseType}" but but was not able to parse the data.`);
 	}
 }
 

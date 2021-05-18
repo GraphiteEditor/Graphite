@@ -1,8 +1,9 @@
 use crate::{
 	communication::{
-		message::{AsMessage, ToDiscriminant},
+		message::{AsMessage, ToDiscriminant, ToolMessage},
 		MessageHandler,
 	},
+	tools::rectangle::RectangleMessage,
 	EditorError,
 };
 
@@ -28,7 +29,12 @@ pub struct Dispatcher {
 impl Dispatcher {
 	pub fn handle_message(&mut self, message: Message) -> Result<(), EditorError> {
 		use Message::*;
-		log::debug!("Message: {}", message.to_discriminant().global_name());
+		if !matches!(
+			message,
+			Message::InputPreprocessor(_) | Message::InputMapper(_) | Message::Tool(ToolMessage::Rectangle(RectangleMessage::MouseMove))
+		) {
+			log::trace!("Message: {}", message.to_discriminant().global_name());
+		}
 		match message {
 			NoOp => (),
 			Document(message) => self.document_action_handler.process_action(message, (), &mut self.messages),
