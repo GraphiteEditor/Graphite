@@ -66,6 +66,55 @@ pub fn derive_discriminant(input_item: TokenStream) -> TokenStream {
 	TokenStream::from(derive_discriminant_impl(input_item.into()).unwrap_or_else(|err| err.to_compile_error()))
 }
 
+/// Derive the `TransitiveChild` trait and generate `From` impls to convert into the parent, as well as the top parent type
+///
+/// This macro cannot be invoked on the top parent (which has no parent but itself). Instead, implement `TransitiveChild` manually
+/// like in the example.
+///
+/// # Helper Attributes
+/// - `#[parent(<Type>, <Expr>)]` (**required**): declare the parent type (`<Type>`)
+///     and a function (`<Expr>`, has to evaluate to a single arg function) for converting a value of this type to the parent type
+/// - `#[parent_is_top]`: Denote that the parent type has no further parent type (this is required because otherwise the `From` impls for parent and top parent would overlap)
+///
+/// # Example
+/// ```
+/// # use graphite_proc_macros::TransitiveChild;
+/// # use editor_core::derivable_custom_traits::TransitiveChild;
+///
+/// #[derive(Debug, Eq, PartialEq)]
+/// struct A { u: u8, b: B };
+///
+/// impl A {
+///     pub fn from_b(b: B) -> Self {
+///         Self { u: 7, b }
+///     }
+/// }
+///
+/// impl TransitiveChild for A {
+///     type Parent = Self;
+///     type TopParent = Self;
+/// }
+///
+/// #[derive(TransitiveChild, Debug, Eq, PartialEq)]
+/// #[parent(A, A::from_b)]
+/// #[parent_is_top]
+/// enum B {
+///     Foo,
+///     Bar,
+///     Child(C)
+/// }
+///
+/// #[derive(TransitiveChild, Debug, Eq, PartialEq)]
+/// #[parent(B, B::Child)]
+/// struct C(D);
+///
+/// #[derive(TransitiveChild, Debug, Eq, PartialEq)]
+/// #[parent(C, C)]
+/// struct D;
+///
+/// let d = D;
+/// assert_eq!(A::from(d), A { u: 7, b: B::Child(C(D)) });
+/// ```
 #[proc_macro_derive(TransitiveChild, attributes(parent, parent_is_top))]
 pub fn derive_transitive_child(input_item: TokenStream) -> TokenStream {
 	TokenStream::from(derive_transitive_child_impl(input_item.into()).unwrap_or_else(|err| err.to_compile_error()))
