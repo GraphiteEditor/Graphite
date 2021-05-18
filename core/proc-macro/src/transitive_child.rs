@@ -1,6 +1,6 @@
 use crate::helper_structs::Pair;
-use proc_macro2::{Ident, Span, TokenStream};
-use syn::{Attribute, DeriveInput, Type};
+use proc_macro2::{Span, TokenStream};
+use syn::{Attribute, DeriveInput, Expr, Type};
 
 pub fn derive_transitive_child_impl(input_item: TokenStream) -> syn::Result<TokenStream> {
 	let input = syn::parse2::<DeriveInput>(input_item).unwrap();
@@ -14,8 +14,10 @@ pub fn derive_transitive_child_impl(input_item: TokenStream) -> syn::Result<Toke
 	let parent_is_top = input.attrs.iter().any(|a| a.path.is_ident("parent_is_top"));
 
 	let Pair {
-		first: parent_type, second: variant, ..
-	} = syn::parse2::<Pair<Type, Ident>>(tokens.clone())?;
+		first: parent_type,
+		second: to_parent,
+		..
+	} = syn::parse2::<Pair<Type, Expr>>(tokens.clone())?;
 
 	let top_parent_type: Type = syn::parse_quote! { <#parent_type as TransitiveChild>::TopParent };
 
@@ -28,25 +30,25 @@ pub fn derive_transitive_child_impl(input_item: TokenStream) -> syn::Result<Toke
 		}
 	};
 
-	let from_parent = quote::quote! {
+	let from_for_parent = quote::quote! {
 		impl From<#input_type> for #parent_type {
 			fn from(x: #input_type) -> #parent_type {
-				#parent_type::#variant(x)
+				(#to_parent)(x)
 			}
 		}
 	};
 
-	let from_top = quote::quote! {
+	let from_for_top = quote::quote! {
 		impl From<#input_type> for #top_parent_type {
 			fn from(x: #input_type) -> #top_parent_type {
-				#top_parent_type::from(#parent_type::#variant(x))
+				#top_parent_type::from((#to_parent)(x))
 			}
 		}
 	};
 
 	Ok(if parent_is_top {
-		quote::quote! { #trait_impl #from_parent }
+		quote::quote! { #trait_impl #from_for_parent }
 	} else {
-		quote::quote! { #trait_impl #from_parent #from_top }
+		quote::quote! { #trait_impl #from_for_parent #from_for_top }
 	})
 }

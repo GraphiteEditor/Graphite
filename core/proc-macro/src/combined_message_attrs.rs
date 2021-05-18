@@ -65,14 +65,16 @@ pub fn combined_message_attrs_impl(attr: TokenStream, input_item: TokenStream) -
 	};
 
 	input.attrs.push(syn::parse_quote! { #[derive(ToDiscriminant, TransitiveChild)] });
-	input.attrs.push(syn::parse_quote! { #[parent(#parent, #variant)] });
+	input.attrs.push(syn::parse_quote! { #[parent(#parent, #parent::#variant)] });
 	if parent_is_top {
 		input.attrs.push(syn::parse_quote! { #[parent_is_top] });
 	}
 	input
 		.attrs
 		.push(syn::parse_quote! { #[discriminant_derive(Debug, Copy, Clone, PartialEq, Eq, Hash, AsMessage, TransitiveChild)] });
-	input.attrs.push(syn::parse_quote! { #[discriminant_attr(parent(#parent_discriminant, #variant))] });
+	input
+		.attrs
+		.push(syn::parse_quote! { #[discriminant_attr(parent(#parent_discriminant, #parent_discriminant::#variant))] });
 	if parent_is_top {
 		input.attrs.push(syn::parse_quote! { #[discriminant_attr(parent_is_top)] });
 	}
