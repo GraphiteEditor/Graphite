@@ -37,7 +37,11 @@ impl Dispatcher {
 				editor_state.tool_state.document_tool_data.mouse_state.position = *pos;
 			}
 			Event::ToggleLayerVisibility(path) => {
-				log::debug!("Toggling layer visibility not yet implemented in the Editor Library");
+				let document_responses = self.dispatch_operations(&mut editor_state.document, vec![Operation::ToggleVisibility { path: path.clone() }]);
+				self.dispatch_response(ToolResponse::UpdateCanvas {
+					document: editor_state.document.render_root(),
+				});
+				self.dispatch_responses(document_responses);
 			}
 			Event::KeyUp(_key) => (),
 			Event::KeyDown(key) => {
