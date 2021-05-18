@@ -39,6 +39,10 @@ pub enum InputMapperMessage {
 impl MessageHandler<InputPreprocessorMessage, ()> for InputPreprocessor {
 	fn process_action(&mut self, message: InputPreprocessorMessage, _data: (), responses: &mut VecDeque<Message>) {
 		match message {
+			InputPreprocessorMessage::Event(Event::MouseMove(pos)) => {
+				self.mouse_state.position = pos;
+				responses.push_back(InputMapperMessage::Event(Event::MouseMove(pos)).into())
+			}
 			InputPreprocessorMessage::Event(e) => responses.push_back(InputMapperMessage::Event(e).into()),
 		}
 	}

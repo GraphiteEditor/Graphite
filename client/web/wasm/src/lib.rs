@@ -14,7 +14,6 @@ use editor_core::{
 use std::cell::RefCell;
 use utils::WasmLog;
 use wasm_bindgen::prelude::*;
-use wrappers::WasmResponse;
 
 // the thread_local macro provides a way to initialize static variables with non-constant functions
 thread_local! { pub static EDITOR_STATE: RefCell<Editor> = RefCell::new(Editor::new(Box::new(handle_response))) }
@@ -29,12 +28,12 @@ pub fn init() {
 
 fn handle_response(response: FrontendMessage) {
 	let response_type = response.to_discriminant().local_name();
-	log::warn!("{}", response_type);
 	send_response(response_type, response);
 }
 
 fn send_response(response_type: String, response_data: FrontendMessage) {
 	let response_data = JsValue::from_serde(&response_data).expect("Failed to serialize response");
+	log::info!("{:?}", response_data);
 	handleResponse(response_type, response_data);
 }
 
