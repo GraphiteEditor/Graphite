@@ -1,7 +1,7 @@
 use super::message::prelude::*;
-use super::{Message, MessageDiscriminant};
 use crate::communication::events::ToolResponse;
 use document_core::DocumentResponse;
+use graphite_proc_macros::*;
 use serde::{Deserialize, Serialize};
 
 #[impl_message(Message, Frontend)]

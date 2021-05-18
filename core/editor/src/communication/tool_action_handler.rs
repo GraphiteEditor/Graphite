@@ -1,6 +1,7 @@
 use document_core::color::Color;
+use graphite_proc_macros::*;
 
-use super::{message::prelude::*, InputPreprocessor, Message, MessageDiscriminant, MessageHandler};
+use super::{message::prelude::*, InputPreprocessor, MessageHandler};
 use crate::{
 	tools::{rectangle::RectangleMessage, ToolFsmState, ToolType},
 	SvgDocument,

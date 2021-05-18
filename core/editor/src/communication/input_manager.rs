@@ -1,9 +1,10 @@
 use crate::tools::ToolType;
+use graphite_proc_macros::*;
 
 use super::{
 	events::{Event, Key, MouseState},
 	message::prelude::*,
-	Message, MessageDiscriminant, MessageHandler,
+	MessageHandler,
 };
 use std::collections::HashMap;
 

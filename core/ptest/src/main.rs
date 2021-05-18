@@ -1,3 +1,4 @@
+extern crate graphite_proc_macros;
 use graphite_proc_macros::*;
 
 pub trait AsMessage: TransitiveChild

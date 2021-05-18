@@ -1,5 +1,6 @@
-use prelude::*;
-pub use proc_macros::{AsMessage, ToDiscriminant, TransitiveChild};
+use graphite_proc_macros::impl_message;
+use graphite_proc_macros::*;
+pub use prelude::*;
 
 pub trait AsMessage: TransitiveChild
 where
@@ -49,6 +50,6 @@ pub mod prelude {
 		input_manager::{InputMapperMessage, InputMapperMessageDiscriminant, InputPreprocessorMessage, InputPreprocessorMessageDiscriminant},
 		tool_action_handler::{ToolMessage, ToolMessageDiscriminant},
 	};
-	pub use super::{AsMessage, ToDiscriminant, TransitiveChild};
-	pub use proc_macros::impl_message;
+	pub use super::{AsMessage, Message, MessageDiscriminant, ToDiscriminant, TransitiveChild};
+	pub use graphite_proc_macros::*;
 }

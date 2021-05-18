@@ -1,8 +1,9 @@
 use super::message::prelude::*;
 use document_core::{DocumentResponse, LayerId, Operation as DocumentOperation};
 
-use super::{Message, MessageDiscriminant, MessageHandler};
+use super::MessageHandler;
 use crate::{document::Document, events::ToolResponse};
+use graphite_proc_macros::*;
 
 #[impl_message(Message, Document)]
 #[derive(PartialEq, Clone)]

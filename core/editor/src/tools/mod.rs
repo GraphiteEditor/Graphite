@@ -13,7 +13,7 @@ use crate::communication::message::prelude::*;
 use crate::SvgDocument;
 use crate::{communication::input_manager::InputPreprocessor, EditorError};
 use crate::{
-	communication::{Message, MessageHandler},
+	communication::{message::Message, MessageHandler},
 	Color,
 };
 use std::{

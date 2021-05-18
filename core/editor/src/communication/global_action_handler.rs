@@ -1,5 +1,6 @@
 use super::message::prelude::*;
-use super::{Message, MessageDiscriminant, MessageHandler};
+use super::MessageHandler;
+use graphite_proc_macros::*;
 
 #[impl_message(Message, Global)]
 #[derive(PartialEq, Clone)]

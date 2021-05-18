@@ -1,6 +1,8 @@
 // since our policy is tabs, we want to stop clippy from warning about that
 #![allow(clippy::tabs_in_doc_comments)]
 
+extern crate graphite_proc_macros;
+
 #[macro_use]
 mod macros;
 

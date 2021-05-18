@@ -9,7 +9,7 @@ pub mod tool_action_handler;
 pub use dispatcher::*;
 pub use events::{DocumentResponse, Event, Key, ToolResponse};
 pub use frontend::FrontendMessage;
-pub use message::{AsMessage, Message, MessageDiscriminant};
+use message::prelude::*;
 
 pub use self::input_manager::InputPreprocessor;
 use crate::communication::message::{ToDiscriminant, TransitiveChild};
