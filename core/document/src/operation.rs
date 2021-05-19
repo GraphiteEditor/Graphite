@@ -69,4 +69,7 @@ pub enum Operation {
 	DiscardWorkingFolder,
 	ClearWorkingFolder,
 	CommitTransaction,
+	ToggleVisibility {
+		path: Vec<LayerId>,
+	},
 }

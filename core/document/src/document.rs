@@ -302,6 +302,14 @@ impl Document {
 				// TODO: Return `responses` and add deduplication in the future
 				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::ExpandFolder { path, children }])
 			}
+			Operation::ToggleVisibility { path } => {
+				let _ = self.layer_mut(&path).map(|layer| {
+					layer.visible = !layer.visible;
+					layer.cache_dirty = true;
+				});
+				let children = self.layer_panel(&path.as_slice()[..path.len() - 1])?;
+				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::ExpandFolder { path: vec![], children }])
+			}
 		};
 		if !matches!(
 			operation,

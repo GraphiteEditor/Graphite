@@ -9,7 +9,7 @@ module.exports = {
 	},
 	settings: {
 		"import/resolver": {
-			// `node` must be listed first
+			// `node` must be listed first!
 			node: {},
 			webpack: { config: require.resolve("@vue/cli-service/webpack.config.js") },
 		},
@@ -20,6 +20,7 @@ module.exports = {
 			},
 		},
 	},
+	ignorePatterns: ["node_modules/", "dist/", "pkg/", "wasm/pkg/*", "!.*.js", "!.*.ts", "!.*.json"],
 	rules: {
 		indent: ["error", "tab", { SwitchCase: 1 }],
 		quotes: ["error", "double"],
@@ -29,6 +30,8 @@ module.exports = {
 		"no-debugger": process.env.NODE_ENV === "production" ? "warn" : "off",
 		"max-len": ["error", { code: 200, tabWidth: 4 }],
 		"@typescript-eslint/camelcase": "off",
+		"@typescript-eslint/no-use-before-define": "off",
+		"@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_" }],
 		camelcase: ["error", { allow: ["^(?:[a-z]+_)*[a-z]+$"] }],
 		"prettier-vue/prettier": [
 			"error",

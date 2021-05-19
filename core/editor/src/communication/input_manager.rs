@@ -69,6 +69,48 @@ macro_rules! key {
 	};
 }
 
+/*
+				   Key::KeyV => {
+					   editor_state.tool_state.tool_data.active_tool_type = ToolType::Select;
+					   self.dispatch_response(ToolResponse::SetActiveTool {
+						   tool_name: ToolType::Select.to_string(),
+					   });
+				   }
+				   Key::KeyL => {
+					   editor_state.tool_state.tool_data.active_tool_type = ToolType::Line;
+					   self.dispatch_response(ToolResponse::SetActiveTool {
+						   tool_name: ToolType::Line.to_string(),
+					   });
+				   }
+				   Key::KeyP => {
+					   editor_state.tool_state.tool_data.active_tool_type = ToolType::Pen;
+					   self.dispatch_response(ToolResponse::SetActiveTool { tool_name: ToolType::Pen.to_string() });
+				   }
+				   Key::KeyM => {
+					   editor_state.tool_state.tool_data.active_tool_type = ToolType::Rectangle;
+					   self.dispatch_response(ToolResponse::SetActiveTool {
+						   tool_name: ToolType::Rectangle.to_string(),
+					   });
+				   }
+				   Key::KeyY => {
+					   editor_state.tool_state.tool_data.active_tool_type = ToolType::Shape;
+					   self.dispatch_response(ToolResponse::SetActiveTool {
+						   tool_name: ToolType::Shape.to_string(),
+					   });
+				   }
+				   Key::KeyE => {
+					   editor_state.tool_state.tool_data.active_tool_type = ToolType::Ellipse;
+					   self.dispatch_response(ToolResponse::SetActiveTool {
+						   tool_name: ToolType::Ellipse.to_string(),
+					   });
+				   }
+				   Key::KeyX => {
+					   editor_state.tool_state.swap_colors();
+				   }
+				   _ => (),
+			   }
+*/
+
 const _DEFAULT_MAPPING: &[(&str, &str, Event, &[Key])] = &[
 	key!("Undo", KeyZ, (KeyControl)),
 	key!("*", "Redo", KeyZ, (KeyControl, KeyShift)),

@@ -79,6 +79,9 @@ impl MessageHandler<DocumentMessage, ()> for DocumentActionHandler {
 			DeleteLayer(path) => responses.push_back(DocumentOperation::DeleteLayer { path }.into()),
 			AddFolder(path) => responses.push_back(DocumentOperation::AddFolder { path }.into()),
 			SelectDocument(id) => self.active_document = id,
+			ToggleLayerVisibility(path) => {
+				responses.push_back(DocumentOperation::ToggleVisibility { path }.into());
+			}
 			Undo => {
 				// this is a temporary fix and will be addressed by #123
 				if let Some(id) = self.active_document().document.root.list_layers().last() {
@@ -100,7 +103,7 @@ impl MessageHandler<DocumentMessage, ()> for DocumentActionHandler {
 				}
 				.into(),
 			),
-			_ => (),
+			message => todo!("document_action_handler does not implement: {}", message.to_discriminant().global_name()),
 		}
 	}
 	actions_fn!(DocumentMessageDiscriminant::Undo, DocumentMessageDiscriminant::Redo, DocumentMessageDiscriminant::Save);
