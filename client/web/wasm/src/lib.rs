@@ -33,7 +33,6 @@ fn handle_response(response: FrontendMessage) {
 
 fn send_response(response_type: String, response_data: FrontendMessage) {
 	let response_data = JsValue::from_serde(&response_data).expect("Failed to serialize response");
-	log::info!("{:?}", response_data);
 	handleResponse(response_type, response_data);
 }
 
