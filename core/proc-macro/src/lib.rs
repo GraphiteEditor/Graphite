@@ -34,7 +34,7 @@ use syn::parse_macro_input;
 /// # Example
 /// ```
 /// # use graphite_proc_macros::ToDiscriminant;
-/// # use editor_core::derivable_custom_traits::ToDiscriminant;
+/// # use editor_core::misc::derivable_custom_traits::ToDiscriminant;
 /// # use std::ffi::OsString;
 ///
 /// #[derive(ToDiscriminant)]
@@ -79,7 +79,7 @@ pub fn derive_discriminant(input_item: TokenStream) -> TokenStream {
 /// # Example
 /// ```
 /// # use graphite_proc_macros::TransitiveChild;
-/// # use editor_core::derivable_custom_traits::TransitiveChild;
+/// # use editor_core::misc::derivable_custom_traits::TransitiveChild;
 ///
 /// #[derive(Debug, Eq, PartialEq)]
 /// struct A { u: u8, b: B };
@@ -129,8 +129,8 @@ pub fn derive_transitive_child(input_item: TokenStream) -> TokenStream {
 /// See also [`TransitiveChild`]
 /// ```
 /// # use graphite_proc_macros::{TransitiveChild, AsMessage};
-/// # use editor_core::derivable_custom_traits::TransitiveChild;
-/// # use editor_core::communication::message::AsMessage;
+/// # use editor_core::misc::derivable_custom_traits::TransitiveChild;
+/// # use editor_core::message_prelude::*;
 ///
 /// #[derive(AsMessage)]
 /// pub enum TopMessage {
@@ -217,7 +217,7 @@ pub fn impl_message(attr: TokenStream, input_item: TokenStream) -> TokenStream {
 /// # Example
 /// ```
 /// # use graphite_proc_macros::Hint;
-/// # use editor_core::derivable_custom_traits::Hint;
+/// # use editor_core::misc::derivable_custom_traits::Hint;
 ///
 /// #[derive(Hint)]
 /// pub enum StateMachine {

@@ -5,7 +5,7 @@ extern crate graphite_proc_macros;
 
 mod communication;
 #[macro_use]
-mod misc;
+pub mod misc;
 mod document;
 mod frontend;
 mod global;
