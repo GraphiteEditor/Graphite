@@ -52,11 +52,11 @@ impl fmt::Debug for ToolData {
 }
 
 impl ToolData {
-	pub fn active_tool_mut(&mut self) -> Result<&mut Box<dyn for<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>>>, EditorError> {
-		self.tools.get_mut(&self.active_tool_type).ok_or(EditorError::UnknownTool)
+	pub fn active_tool_mut(&mut self) -> &mut Box<dyn for<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>>> {
+		self.tools.get_mut(&self.active_tool_type).expect("The active tool is not initialized")
 	}
-	pub fn active_tool(&self) -> Result<&dyn for<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>>, EditorError> {
-		self.tools.get(&self.active_tool_type).map(|x| x.as_ref()).ok_or(EditorError::UnknownTool)
+	pub fn active_tool(&self) -> &dyn for<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> {
+		self.tools.get(&self.active_tool_type).map(|x| x.as_ref()).expect("The active tool is not initialized")
 	}
 }
 

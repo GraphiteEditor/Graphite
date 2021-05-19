@@ -48,10 +48,19 @@ impl MessageHandler<ToolMessage, (&SvgDocument, &InputPreprocessor)> for ToolMes
 				doc_data.secondary_color = Color::BLACK;
 			}
 			message => {
-				let tool = self.tool_state.tool_data.tools.get_mut(&ToolType::Rectangle).unwrap();
+				let tool_type = match message {
+					Rectangle(_) => ToolType::Rectangle,
+					Ellipse(_) => ToolType::Ellipse,
+					_ => unreachable!(),
+				};
+				let tool = self.tool_state.tool_data.tools.get_mut(&tool_type).unwrap();
 				tool.process_action(message, (&document, &self.tool_state.document_tool_data, input), responses);
 			}
 		}
 	}
-	actions_fn!(ToolMessageDiscriminant; ResetColors, SwapColors);
+	fn actions(&self) -> ActionList {
+		let mut list = actions!(ToolMessageDiscriminant; ResetColors, SwapColors);
+		list.extend(self.tool_state.tool_data.active_tool().actions());
+		list
+	}
 }

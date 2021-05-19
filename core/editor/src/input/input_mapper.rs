@@ -43,8 +43,9 @@ const _DEFAULT_MAPPING: &[(&str, &str, Message, &[Key])] = &[
 #[derive(Debug, Default)]
 pub struct InputMapper {}
 
-impl MessageHandler<InputMapperMessage, &InputPreprocessor> for InputMapper {
-	fn process_action(&mut self, message: InputMapperMessage, input: &InputPreprocessor, responses: &mut VecDeque<Message>) {
+impl MessageHandler<InputMapperMessage, (&InputPreprocessor, ActionList)> for InputMapper {
+	fn process_action(&mut self, message: InputMapperMessage, data: (&InputPreprocessor, ActionList), responses: &mut VecDeque<Message>) {
+		let (input, actions) = data;
 		use InputMapperMessage::*;
 		let res = match message {
 			MouseMove => RectangleMessage::MouseMove.into(),
