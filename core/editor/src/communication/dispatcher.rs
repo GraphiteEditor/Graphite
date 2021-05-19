@@ -1,19 +1,19 @@
 use crate::{frontend::FrontendMessageHandler, message_prelude::*, Callback, EditorError};
 
-pub use crate::document::DocumentActionHandler;
+pub use crate::document::DocumentMessageHandler;
 pub use crate::input::{InputMapper, InputPreprocessor};
-pub use crate::tool::ToolActionHandler;
+pub use crate::tool::ToolMessageHandler;
 
-use crate::global::GlobalActionHandler;
+use crate::global::GlobalMessageHandler;
 use std::collections::VecDeque;
 
 pub struct Dispatcher {
 	frontend_message_handler: FrontendMessageHandler,
 	input_preprocessor: InputPreprocessor,
 	input_mapper: InputMapper,
-	global_event_handler: GlobalActionHandler,
-	tool_action_handler: ToolActionHandler,
-	document_action_handler: DocumentActionHandler,
+	global_event_handler: GlobalMessageHandler,
+	tool_action_handler: ToolMessageHandler,
+	document_action_handler: DocumentMessageHandler,
 	messages: VecDeque<Message>,
 }
 
@@ -48,10 +48,10 @@ impl Dispatcher {
 		Dispatcher {
 			frontend_message_handler: FrontendMessageHandler::new(callback),
 			input_preprocessor: InputPreprocessor::default(),
-			global_event_handler: GlobalActionHandler::new(),
+			global_event_handler: GlobalMessageHandler::new(),
 			input_mapper: InputMapper::default(),
-			document_action_handler: DocumentActionHandler::default(),
-			tool_action_handler: ToolActionHandler::default(),
+			document_action_handler: DocumentMessageHandler::default(),
+			tool_action_handler: ToolMessageHandler::default(),
 			messages: VecDeque::new(),
 		}
 	}

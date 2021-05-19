@@ -18,18 +18,20 @@ pub enum ToolMessage {
 	ResetColors,
 	#[child]
 	Rectangle(RectangleMessage),
+	#[child]
+	Ellipse(EllipseMessage),
 }
 
 #[derive(Debug, Default)]
-pub struct ToolActionHandler {
+pub struct ToolMessageHandler {
 	tool_state: ToolFsmState,
 	actions: Vec<&'static [&'static str]>,
 }
-impl MessageHandler<ToolMessage, (&SvgDocument, &InputPreprocessor)> for ToolActionHandler {
-	fn process_action(&mut self, action: ToolMessage, data: (&SvgDocument, &InputPreprocessor), responses: &mut VecDeque<Message>) {
+impl MessageHandler<ToolMessage, (&SvgDocument, &InputPreprocessor)> for ToolMessageHandler {
+	fn process_action(&mut self, message: ToolMessage, data: (&SvgDocument, &InputPreprocessor), responses: &mut VecDeque<Message>) {
 		let (document, input) = data;
 		use ToolMessage::*;
-		match action {
+		match message {
 			SelectPrimaryColor(c) => self.tool_state.document_tool_data.primary_color = c,
 			SelectSecondaryColor(c) => self.tool_state.document_tool_data.secondary_color = c,
 			SelectTool(tool) => {
@@ -45,9 +47,9 @@ impl MessageHandler<ToolMessage, (&SvgDocument, &InputPreprocessor)> for ToolAct
 				doc_data.primary_color = Color::WHITE;
 				doc_data.secondary_color = Color::BLACK;
 			}
-			Rectangle(_) => {
+			message => {
 				let tool = self.tool_state.tool_data.tools.get_mut(&ToolType::Rectangle).unwrap();
-				tool.process_action(action, (&document, &self.tool_state.document_tool_data, input), responses);
+				tool.process_action(message, (&document, &self.tool_state.document_tool_data, input), responses);
 			}
 		}
 	}

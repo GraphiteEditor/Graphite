@@ -14,13 +14,14 @@ use std::{
 	collections::HashMap,
 	fmt::{self, Debug},
 };
-pub use tool_message_handler::ToolActionHandler;
+pub use tool_message_handler::ToolMessageHandler;
 use tool_settings::ToolSettings;
 pub use tool_settings::*;
 use tools::*;
 
 pub mod tool_messages {
 	pub use super::tool_message_handler::{ToolMessage, ToolMessageDiscriminant};
+	pub use super::tools::ellipse::{EllipseMessage, EllipseMessageDiscriminant};
 	pub use super::tools::rectangle::{RectangleMessage, RectangleMessageDiscriminant};
 }
 

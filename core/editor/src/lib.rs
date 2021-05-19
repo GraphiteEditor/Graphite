@@ -49,7 +49,7 @@ impl Editor {
 
 pub mod message_prelude {
 	pub use super::communication::message::{AsMessage, Message, MessageDiscriminant};
-	pub use super::communication::MessageHandler;
+	pub use super::communication::{ActionList, MessageHandler};
 	pub use super::document::{DocumentMessage, DocumentMessageDiscriminant};
 	pub use super::frontend::{FrontendMessage, FrontendMessageDiscriminant};
 	pub use super::global::{GlobalMessage, GlobalMessageDiscriminant};

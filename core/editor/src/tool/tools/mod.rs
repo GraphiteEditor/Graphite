@@ -1,5 +1,5 @@
 //mod crop;
-//mod ellipse;
+pub mod ellipse;
 //mod eyedropper;
 //mod line;
 //mod navigate;

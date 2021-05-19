@@ -82,7 +82,7 @@ impl InputMapper {
 			KeyE => ToolMessage::SelectTool(ToolType::Ellipse).into(),
 			KeyX => ToolMessage::SwapColors.into(),
 			KeyZ => DocumentMessage::Undo.into(),
-			KeyEnter => RectangleMessage::Confirm.into(),
+			//KeyEnter => RectangleMessage::Confirm.into(),
 			KeyAlt => RectangleMessage::Center.into(),
 			KeyShift | KeyCaps => RectangleMessage::LockAspectRatio.into(),
 			_ => Message::NoOp,

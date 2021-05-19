@@ -31,12 +31,12 @@ impl From<DocumentOperation> for Message {
 }
 
 #[derive(Debug, Clone)]
-pub struct DocumentActionHandler {
+pub struct DocumentMessageHandler {
 	documents: Vec<Document>,
 	active_document: usize,
 }
 
-impl DocumentActionHandler {
+impl DocumentMessageHandler {
 	pub fn active_document(&self) -> &Document {
 		&self.documents[self.active_document]
 	}
@@ -59,7 +59,7 @@ impl DocumentActionHandler {
 	}
 }
 
-impl Default for DocumentActionHandler {
+impl Default for DocumentMessageHandler {
 	fn default() -> Self {
 		Self {
 			documents: vec![Document::default()],
@@ -68,7 +68,7 @@ impl Default for DocumentActionHandler {
 	}
 }
 
-impl MessageHandler<DocumentMessage, ()> for DocumentActionHandler {
+impl MessageHandler<DocumentMessage, ()> for DocumentMessageHandler {
 	fn process_action(&mut self, message: DocumentMessage, _data: (), responses: &mut VecDeque<Message>) {
 		use DocumentMessage::*;
 		match message {

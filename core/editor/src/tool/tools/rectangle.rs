@@ -1,10 +1,7 @@
-use crate::input::mouse::ViewportPosition;
+use crate::input::{mouse::ViewportPosition, InputPreprocessor};
 use crate::tool::{DocumentToolData, Fsm, ToolActionHandlerData};
-use crate::{input::InputPreprocessor, message_prelude::*, SvgDocument};
-use document_core::layers::style;
-use document_core::Operation;
-use graphite_proc_macros::*;
-use std::collections::VecDeque;
+use crate::{message_prelude::*, SvgDocument};
+use document_core::{layers::style, Operation};
 
 #[derive(Default)]
 pub struct Rectangle {
@@ -21,7 +18,6 @@ pub enum RectangleMessage {
 	MouseMove,
 	Abort,
 	Center,
-	Confirm,
 	UnCenter,
 	LockAspectRatio,
 	UnlockAspectRatio,
@@ -31,13 +27,19 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Rectangle {
 	fn process_action(&mut self, action: ToolMessage, data: ToolActionHandlerData<'a>, responses: &mut VecDeque<Message>) {
 		self.fsm_state = self.fsm_state.transition(action, data.0, data.1, &mut self.data, data.2, responses);
 	}
-	actions_fn!();
+	fn actions(&self) -> ActionList {
+		use RectangleToolFsmState::*;
+		match self.fsm_state {
+			Ready => actions!(RectangleMessageDiscriminant; Undo, DragStart, Center, UnCenter, LockAspectRatio, UnlockAspectRatio),
+			Dragging => actions!(RectangleMessageDiscriminant; DragStop, Center, UnCenter, LockAspectRatio, UnlockAspectRatio, MouseMove, Abort),
+		}
+	}
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum RectangleToolFsmState {
 	Ready,
-	LmbDown,
+	Dragging,
 }
 
 impl Default for RectangleToolFsmState {
@@ -63,17 +65,17 @@ impl Fsm for RectangleToolFsmState {
 					data.drag_start = input.mouse_state.position;
 					data.drag_current = input.mouse_state.position;
 					responses.push_back(Operation::MountWorkingFolder { path: vec![] }.into());
-					RectangleToolFsmState::LmbDown
+					RectangleToolFsmState::Dragging
 				}
-				(RectangleToolFsmState::LmbDown, RectangleMessage::MouseMove) => {
+				(RectangleToolFsmState::Dragging, RectangleMessage::MouseMove) => {
 					data.drag_current = input.mouse_state.position;
 
 					responses.push_back(Operation::ClearWorkingFolder.into());
 					responses.push_back(make_operation(data, tool_data).into());
 
-					RectangleToolFsmState::LmbDown
+					RectangleToolFsmState::Dragging
 				}
-				(RectangleToolFsmState::LmbDown, RectangleMessage::DragStop) => {
+				(RectangleToolFsmState::Dragging, RectangleMessage::DragStop) => {
 					data.drag_current = input.mouse_state.position;
 
 					responses.push_back(Operation::ClearWorkingFolder.into());
@@ -86,7 +88,7 @@ impl Fsm for RectangleToolFsmState {
 					RectangleToolFsmState::Ready
 				}
 				// TODO - simplify with or_patterns when rust 1.53.0 is stable (https://github.com/rust-lang/rust/issues/54883)
-				(RectangleToolFsmState::LmbDown, RectangleMessage::Abort) => {
+				(RectangleToolFsmState::Dragging, RectangleMessage::Abort) => {
 					responses.push_back(Operation::DiscardWorkingFolder.into());
 
 					RectangleToolFsmState::Ready
@@ -94,7 +96,7 @@ impl Fsm for RectangleToolFsmState {
 				(state, RectangleMessage::LockAspectRatio) => {
 					data.constrain_to_square = true;
 
-					if state == RectangleToolFsmState::LmbDown {
+					if state == RectangleToolFsmState::Dragging {
 						responses.push_back(Operation::ClearWorkingFolder.into());
 						responses.push_back(make_operation(data, tool_data).into());
 					}
@@ -104,7 +106,7 @@ impl Fsm for RectangleToolFsmState {
 				(state, RectangleMessage::UnlockAspectRatio) => {
 					data.constrain_to_square = false;
 
-					if state == RectangleToolFsmState::LmbDown {
+					if state == RectangleToolFsmState::Dragging {
 						responses.push_back(Operation::ClearWorkingFolder.into());
 						responses.push_back(make_operation(data, tool_data).into());
 					}
@@ -114,7 +116,7 @@ impl Fsm for RectangleToolFsmState {
 				(state, RectangleMessage::Center) => {
 					data.center_around_cursor = true;
 
-					if state == RectangleToolFsmState::LmbDown {
+					if state == RectangleToolFsmState::Dragging {
 						responses.push_back(Operation::ClearWorkingFolder.into());
 						responses.push_back(make_operation(data, tool_data).into());
 					}
@@ -124,7 +126,7 @@ impl Fsm for RectangleToolFsmState {
 				(state, RectangleMessage::UnCenter) => {
 					data.center_around_cursor = false;
 
-					if state == RectangleToolFsmState::LmbDown {
+					if state == RectangleToolFsmState::Dragging {
 						responses.push_back(Operation::ClearWorkingFolder.into());
 						responses.push_back(make_operation(data, tool_data).into());
 					}

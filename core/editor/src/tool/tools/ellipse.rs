@@ -1,8 +1,7 @@
-use crate::events::ViewportPosition;
-use crate::tools::Fsm;
-use crate::SvgDocument;
-use document_core::layers::style;
-use document_core::Operation;
+use crate::input::{mouse::ViewportPosition, InputPreprocessor};
+use crate::tool::{DocumentToolData, Fsm, ToolActionHandlerData};
+use crate::{message_prelude::*, SvgDocument};
+use document_core::{layers::style, Operation};
 
 #[derive(Default)]
 pub struct Ellipse {
@@ -10,23 +9,37 @@ pub struct Ellipse {
 	data: EllipseToolData,
 }
 
-use crate::{
-	dispatcher::{Action, ActionHandler, InputPreprocessor, Response},
-	tools::{DocumentToolData, ToolActionHandlerData},
-};
-impl<'a> ActionHandler<ToolActionHandlerData<'a>> for Ellipse {
-	fn process_action(&mut self, data: ToolActionHandlerData<'a>, input_preprocessor: &InputPreprocessor, action: &Action, responses: &mut Vec<Response>, operations: &mut Vec<Operation>) -> bool {
-		let (consumed, state) = self.fsm_state.transition(action, data.0, data.1, &mut self.data, input_preprocessor, responses, operations);
-		self.fsm_state = state;
-		consumed
+#[impl_message(Message, ToolMessage, Ellipse)]
+#[derive(PartialEq, Clone, Debug)]
+pub enum EllipseMessage {
+	Undo,
+	DragStart,
+	DragStop,
+	MouseMove,
+	Abort,
+	Center,
+	UnCenter,
+	LockAspectRatio,
+	UnlockAspectRatio,
+}
+
+impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Ellipse {
+	fn process_action(&mut self, action: ToolMessage, data: ToolActionHandlerData<'a>, responses: &mut VecDeque<Message>) {
+		self.fsm_state = self.fsm_state.transition(action, data.0, data.1, &mut self.data, data.2, responses);
 	}
-	actions_fn!();
+	fn actions(&self) -> ActionList {
+		use EllipseToolFsmState::*;
+		match self.fsm_state {
+			Ready => actions!(EllipseMessageDiscriminant; Undo, DragStart, Center, UnCenter, LockAspectRatio, UnlockAspectRatio),
+			Dragging => actions!(EllipseMessageDiscriminant; DragStop, Center, UnCenter, LockAspectRatio, UnlockAspectRatio, MouseMove, Abort),
+		}
+	}
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum EllipseToolFsmState {
 	Ready,
-	LmbDown,
+	Dragging,
 }
 
 impl Default for EllipseToolFsmState {
@@ -45,95 +58,90 @@ struct EllipseToolData {
 impl Fsm for EllipseToolFsmState {
 	type ToolData = EllipseToolData;
 
-	fn transition(
-		self,
-		event: &Action,
-		_document: &SvgDocument,
-		tool_data: &DocumentToolData,
-		data: &mut Self::ToolData,
-		input: &InputPreprocessor,
-		_responses: &mut Vec<Response>,
-		operations: &mut Vec<Operation>,
-	) -> (bool, Self) {
-		match (self, event) {
-			(EllipseToolFsmState::Ready, Action::LmbDown) => {
-				data.drag_start = input.mouse_state.position;
-				data.drag_current = input.mouse_state.position;
-				operations.push(Operation::MountWorkingFolder { path: vec![] });
-				(true, EllipseToolFsmState::LmbDown)
-			}
-			(EllipseToolFsmState::LmbDown, Action::MouseMove) => {
-				data.drag_current = input.mouse_state.position;
-
-				operations.push(Operation::ClearWorkingFolder);
-				operations.push(make_operation(data, tool_data));
-
-				(true, EllipseToolFsmState::LmbDown)
-			}
-			(EllipseToolFsmState::LmbDown, Action::LmbUp) => {
-				data.drag_current = input.mouse_state.position;
-
-				operations.push(Operation::ClearWorkingFolder);
-				// TODO - introduce comparison threshold when operating with canvas coordinates (https://github.com/GraphiteEditor/Graphite/issues/100)
-				if data.drag_start != data.drag_current {
-					operations.push(make_operation(data, tool_data));
-					operations.push(Operation::CommitTransaction);
+	fn transition(self, event: ToolMessage, _document: &SvgDocument, tool_data: &DocumentToolData, data: &mut Self::ToolData, input: &InputPreprocessor, responses: &mut VecDeque<Message>) -> Self {
+		if let ToolMessage::Ellipse(event) = event {
+			match (self, event) {
+				(EllipseToolFsmState::Ready, EllipseMessage::DragStart) => {
+					data.drag_start = input.mouse_state.position;
+					data.drag_current = input.mouse_state.position;
+					responses.push_back(Operation::MountWorkingFolder { path: vec![] }.into());
+					EllipseToolFsmState::Dragging
 				}
+				(EllipseToolFsmState::Dragging, EllipseMessage::MouseMove) => {
+					data.drag_current = input.mouse_state.position;
 
-				(true, EllipseToolFsmState::Ready)
-			}
-			// TODO - simplify with or_patterns when rust 1.53.0 is stable (https://github.com/rust-lang/rust/issues/54883)
-			(EllipseToolFsmState::LmbDown, Action::Abort) | (EllipseToolFsmState::LmbDown, Action::RmbDown) => {
-				operations.push(Operation::DiscardWorkingFolder);
+					responses.push_back(Operation::ClearWorkingFolder.into());
+					responses.push_back(make_operation(data, tool_data));
 
-				(true, EllipseToolFsmState::Ready)
-			}
-			(state, Action::LockAspectRatio) => {
-				data.constrain_to_circle = true;
-
-				if state == EllipseToolFsmState::LmbDown {
-					operations.push(Operation::ClearWorkingFolder);
-					operations.push(make_operation(data, tool_data));
+					EllipseToolFsmState::Dragging
 				}
+				(EllipseToolFsmState::Dragging, EllipseMessage::DragStop) => {
+					data.drag_current = input.mouse_state.position;
 
-				(true, self)
-			}
-			(state, Action::UnlockAspectRatio) => {
-				data.constrain_to_circle = false;
+					responses.push_back(Operation::ClearWorkingFolder.into());
+					// TODO - introduce comparison threshold when operating with canvas coordinates (https://github.com/GraphiteEditor/Graphite/issues/100)
+					if data.drag_start != data.drag_current {
+						responses.push_back(make_operation(data, tool_data));
+						responses.push_back(Operation::CommitTransaction.into());
+					}
 
-				if state == EllipseToolFsmState::LmbDown {
-					operations.push(Operation::ClearWorkingFolder);
-					operations.push(make_operation(data, tool_data));
+					EllipseToolFsmState::Ready
 				}
+				// TODO - simplify with or_patterns when rust 1.53.0 is stable (https://github.com/rust-lang/rust/issues/54883)
+				(EllipseToolFsmState::Dragging, EllipseMessage::Abort) => {
+					responses.push_back(Operation::DiscardWorkingFolder.into());
 
-				(true, self)
-			}
-			(state, Action::Center) => {
-				data.center_around_cursor = true;
-
-				if state == EllipseToolFsmState::LmbDown {
-					operations.push(Operation::ClearWorkingFolder);
-					operations.push(make_operation(data, tool_data));
+					EllipseToolFsmState::Ready
 				}
+				(state, EllipseMessage::LockAspectRatio) => {
+					data.constrain_to_circle = true;
 
-				(true, self)
-			}
-			(state, Action::UnCenter) => {
-				data.center_around_cursor = false;
+					if state == EllipseToolFsmState::Dragging {
+						responses.push_back(Operation::ClearWorkingFolder.into());
+						responses.push_back(make_operation(data, tool_data));
+					}
 
-				if state == EllipseToolFsmState::LmbDown {
-					operations.push(Operation::ClearWorkingFolder);
-					operations.push(make_operation(data, tool_data));
+					self
 				}
+				(state, EllipseMessage::UnlockAspectRatio) => {
+					data.constrain_to_circle = false;
 
-				(true, self)
+					if state == EllipseToolFsmState::Dragging {
+						responses.push_back(Operation::ClearWorkingFolder.into());
+						responses.push_back(make_operation(data, tool_data));
+					}
+
+					self
+				}
+				(state, EllipseMessage::Center) => {
+					data.center_around_cursor = true;
+
+					if state == EllipseToolFsmState::Dragging {
+						responses.push_back(Operation::ClearWorkingFolder.into());
+						responses.push_back(make_operation(data, tool_data));
+					}
+
+					self
+				}
+				(state, EllipseMessage::UnCenter) => {
+					data.center_around_cursor = false;
+
+					if state == EllipseToolFsmState::Dragging {
+						responses.push_back(Operation::ClearWorkingFolder.into());
+						responses.push_back(make_operation(data, tool_data));
+					}
+
+					self
+				}
+				_ => self,
 			}
-			_ => (false, self),
+		} else {
+			self
 		}
 	}
 }
 
-fn make_operation(data: &EllipseToolData, tool_data: &DocumentToolData) -> Operation {
+fn make_operation(data: &EllipseToolData, tool_data: &DocumentToolData) -> Message {
 	let x0 = data.drag_start.x as f64;
 	let y0 = data.drag_start.y as f64;
 	let x1 = data.drag_current.x as f64;
@@ -169,4 +177,5 @@ fn make_operation(data: &EllipseToolData, tool_data: &DocumentToolData) -> Opera
 			style: style::PathStyle::new(None, Some(style::Fill::new(tool_data.primary_color))),
 		}
 	}
+	.into()
 }

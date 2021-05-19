@@ -10,15 +10,15 @@ pub enum GlobalMessage {
 }
 
 #[derive(Debug, Default)]
-pub struct GlobalActionHandler {}
+pub struct GlobalMessageHandler {}
 
-impl GlobalActionHandler {
+impl GlobalMessageHandler {
 	pub fn new() -> Self {
 		Self::default()
 	}
 }
 
-impl MessageHandler<GlobalMessage, ()> for GlobalActionHandler {
+impl MessageHandler<GlobalMessage, ()> for GlobalMessageHandler {
 	fn process_action(&mut self, message: GlobalMessage, _data: (), _responses: &mut VecDeque<Message>) {
 		// process action before passing them further down
 		use GlobalMessage::*;
