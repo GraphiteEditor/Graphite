@@ -1,10 +1,6 @@
-use crate::events::ViewportPosition;
-use crate::tools::Fsm;
-use crate::{
-	communication::{message::prelude::*, InputPreprocessor, MessageHandler},
-	tools::{DocumentToolData, ToolActionHandlerData, ToolMessage, ToolMessageDiscriminant},
-	SvgDocument,
-};
+use crate::input::mouse::ViewportPosition;
+use crate::tool::{DocumentToolData, Fsm, ToolActionHandlerData};
+use crate::{input::InputPreprocessor, message_prelude::*, SvgDocument};
 use document_core::layers::style;
 use document_core::Operation;
 use graphite_proc_macros::*;

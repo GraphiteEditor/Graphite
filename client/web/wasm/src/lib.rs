@@ -4,13 +4,7 @@ pub mod utils;
 pub mod window;
 pub mod wrappers;
 
-use editor_core::{
-	communication::{
-		message::{AsMessage, ToDiscriminant},
-		FrontendMessage,
-	},
-	Editor,
-};
+use editor_core::{message_prelude::*, Editor};
 use std::cell::RefCell;
 use utils::WasmLog;
 use wasm_bindgen::prelude::*;
@@ -33,12 +27,13 @@ fn handle_response(response: FrontendMessage) {
 
 fn send_response(response_type: String, response_data: FrontendMessage) {
 	let response_data = JsValue::from_serde(&response_data).expect("Failed to serialize response");
-	handleResponse(response_type, response_data);
+	handleResponse(response_type, response_data).map_err(|error| log::error!("javascript threw an error: {:?}", error));
 }
 
 #[wasm_bindgen(module = "/../src/response-handler.ts")]
 extern "C" {
-	fn handleResponse(responseType: String, responseData: JsValue);
+	#[wasm_bindgen(catch)]
+	fn handleResponse(responseType: String, responseData: JsValue) -> Result<(), JsValue>;
 }
 
 #[wasm_bindgen]

@@ -1,6 +1,4 @@
-use super::message::prelude::*;
-use super::MessageHandler;
-use graphite_proc_macros::*;
+use crate::message_prelude::*;
 use std::collections::VecDeque;
 
 #[impl_message(Message, Global)]

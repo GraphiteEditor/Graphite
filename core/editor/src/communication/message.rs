@@ -1,7 +1,5 @@
-pub use crate::derivable_custom_traits::{ToDiscriminant, TransitiveChild};
-use graphite_proc_macros::impl_message;
+use crate::message_prelude::*;
 use graphite_proc_macros::*;
-pub use prelude::*;
 
 pub trait AsMessage: TransitiveChild
 where
@@ -29,17 +27,4 @@ pub enum Message {
 	InputPreprocessor(InputPreprocessorMessage),
 	#[child]
 	InputMapper(InputMapperMessage),
-}
-
-pub mod prelude {
-	pub use super::super::{
-		super::tools::rectangle::{RectangleMessage, RectangleMessageDiscriminant},
-		document_action_handler::{DocumentMessage, DocumentMessageDiscriminant},
-		frontend::{FrontendMessage, FrontendMessageDiscriminant},
-		global_action_handler::{GlobalMessage, GlobalMessageDiscriminant},
-		input_manager::{InputMapperMessage, InputMapperMessageDiscriminant, InputPreprocessorMessage, InputPreprocessorMessageDiscriminant},
-		tool_action_handler::{ToolMessage, ToolMessageDiscriminant},
-	};
-	pub use super::{AsMessage, Message, MessageDiscriminant, ToDiscriminant, TransitiveChild};
-	pub use graphite_proc_macros::*;
 }

@@ -1,24 +1,14 @@
-use crate::{
-	communication::{
-		message::{AsMessage, ToDiscriminant, ToolMessage},
-		MessageHandler,
-	},
-	tools::rectangle::RectangleMessage,
-	EditorError,
-};
+use crate::{frontend::FrontendMessageHandler, message_prelude::*, Callback, EditorError};
 
-pub use super::input_manager::InputPreprocessor;
-use super::{document_action_handler::DocumentActionHandler, input_manager::InputMapper, tool_action_handler::ToolActionHandler};
+pub use crate::document::DocumentActionHandler;
+pub use crate::input::{InputMapper, InputPreprocessor};
+pub use crate::tool::ToolActionHandler;
 
-use super::global_action_handler::GlobalActionHandler;
-use super::FrontendMessage;
-use super::Message;
+use crate::global::GlobalActionHandler;
 use std::collections::VecDeque;
 
-pub type Callback = Box<dyn Fn(FrontendMessage)>;
-
 pub struct Dispatcher {
-	callback: Callback,
+	frontend_message_handler: FrontendMessageHandler,
 	input_preprocessor: InputPreprocessor,
 	input_mapper: InputMapper,
 	global_event_handler: GlobalActionHandler,
@@ -28,7 +18,8 @@ pub struct Dispatcher {
 }
 
 impl Dispatcher {
-	pub fn handle_message(&mut self, message: Message) -> Result<(), EditorError> {
+	pub fn handle_message<T: Into<Message>>(&mut self, message: T) -> Result<(), EditorError> {
+		let message = message.into();
 		use Message::*;
 		if !matches!(
 			message,
@@ -43,7 +34,7 @@ impl Dispatcher {
 			Tool(message) => self
 				.tool_action_handler
 				.process_action(message, (&self.document_action_handler.active_document().document, &self.input_preprocessor), &mut self.messages),
-			Frontend(message) => Self::dispatch_response(message, &self.callback),
+			Frontend(message) => self.frontend_message_handler.process_action(message, (), &mut self.messages),
 			InputPreprocessor(message) => self.input_preprocessor.process_action(message, (), &mut self.messages),
 			InputMapper(message) => self.input_mapper.process_action(message, &self.input_preprocessor, &mut self.messages),
 		}
@@ -53,15 +44,9 @@ impl Dispatcher {
 		Ok(())
 	}
 
-	pub fn dispatch_response<T: Into<FrontendMessage>>(response: T, callback: &Callback) {
-		let response: FrontendMessage = response.into();
-		log::trace!("Sending {} Response", response.to_discriminant().global_name());
-		callback(response)
-	}
-
 	pub fn new(callback: Callback) -> Dispatcher {
 		Dispatcher {
-			callback,
+			frontend_message_handler: FrontendMessageHandler::new(callback),
 			input_preprocessor: InputPreprocessor::default(),
 			global_event_handler: GlobalActionHandler::new(),
 			input_mapper: InputMapper::default(),

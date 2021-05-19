@@ -1,9 +1,7 @@
-use super::message::prelude::*;
+use crate::message_prelude::*;
 use document_core::{DocumentResponse, LayerId, Operation as DocumentOperation};
 
-use super::MessageHandler;
 use crate::document::Document;
-use graphite_proc_macros::*;
 use std::collections::VecDeque;
 
 #[impl_message(Message, Document)]

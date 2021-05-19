@@ -1,9 +1,9 @@
+use crate::message_prelude::*;
 use document_core::color::Color;
-use graphite_proc_macros::*;
 
-use super::{message::prelude::*, InputPreprocessor, MessageHandler};
+use crate::input::InputPreprocessor;
 use crate::{
-	tools::{rectangle::RectangleMessage, ToolFsmState, ToolType},
+	tool::{ToolFsmState, ToolType},
 	SvgDocument,
 };
 use std::collections::VecDeque;

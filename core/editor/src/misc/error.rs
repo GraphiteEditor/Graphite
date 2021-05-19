@@ -1,4 +1,3 @@
-use crate::events::Event;
 use crate::Color;
 use document_core::DocumentError;
 use thiserror::Error;
@@ -8,8 +7,6 @@ use thiserror::Error;
 pub enum EditorError {
 	#[error("Failed to execute operation: {0}")]
 	InvalidOperation(String),
-	#[error("Failed to dispatch event: {0}")]
-	InvalidEvent(String),
 	#[error("{0}")]
 	Misc(String),
 	#[error("Tried to construct an invalid color {0:?}")]
@@ -33,5 +30,4 @@ macro_rules! derive_from {
 derive_from!(&str, Misc);
 derive_from!(String, Misc);
 derive_from!(Color, Color);
-derive_from!(Event, InvalidEvent);
 derive_from!(DocumentError, Document);

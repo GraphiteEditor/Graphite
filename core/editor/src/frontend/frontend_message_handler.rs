@@ -1,7 +1,8 @@
-use super::message::prelude::*;
+use crate::message_prelude::*;
 use document_core::{response::LayerPanelEntry, DocumentResponse, LayerId};
-use graphite_proc_macros::*;
 use serde::{Deserialize, Serialize};
+
+pub type Callback = Box<dyn Fn(FrontendMessage)>;
 
 #[impl_message(Message, Frontend)]
 #[derive(PartialEq, Clone, Deserialize, Serialize, Debug)]
@@ -28,4 +29,22 @@ impl From<DocumentResponse> for FrontendMessage {
 			_ => unimplemented!("The frontend does not handle {:?}", response),
 		}
 	}
+}
+
+pub struct FrontendMessageHandler {
+	callback: crate::Callback,
+}
+
+impl FrontendMessageHandler {
+	pub fn new(callback: Callback) -> Self {
+		Self { callback }
+	}
+}
+
+impl MessageHandler<FrontendMessage, ()> for FrontendMessageHandler {
+	fn process_action(&mut self, message: FrontendMessage, _data: (), _responses: &mut VecDeque<Message>) {
+		log::trace!("Sending {} Response", message.to_discriminant().global_name());
+		(self.callback)(message)
+	}
+	actions_fn!();
 }

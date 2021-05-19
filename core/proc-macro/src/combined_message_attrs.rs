@@ -7,20 +7,20 @@ use syn::Token;
 use syn::{ItemEnum, TypePath};
 
 struct MessageArgs {
-	pub top_parent: TypePath,
-	pub comma1: Token![,],
+	pub _top_parent: TypePath,
+	pub _comma1: Token![,],
 	pub parent: TypePath,
-	pub comma2: Token![,],
+	pub _comma2: Token![,],
 	pub variant: Ident,
 }
 
 impl Parse for MessageArgs {
 	fn parse(input: ParseStream) -> syn::Result<Self> {
 		Ok(Self {
-			top_parent: input.parse()?,
-			comma1: input.parse()?,
+			_top_parent: input.parse()?,
+			_comma1: input.parse()?,
 			parent: input.parse()?,
-			comma2: input.parse()?,
+			_comma2: input.parse()?,
 			variant: input.parse()?,
 		})
 	}
@@ -28,7 +28,7 @@ impl Parse for MessageArgs {
 
 struct TopLevelMessageArgs {
 	pub parent: TypePath,
-	pub comma2: Token![,],
+	pub _comma2: Token![,],
 	pub variant: Ident,
 }
 
@@ -36,7 +36,7 @@ impl Parse for TopLevelMessageArgs {
 	fn parse(input: ParseStream) -> syn::Result<Self> {
 		Ok(Self {
 			parent: input.parse()?,
-			comma2: input.parse()?,
+			_comma2: input.parse()?,
 			variant: input.parse()?,
 		})
 	}

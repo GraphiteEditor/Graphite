@@ -1,26 +1,28 @@
-//mod crop;
-//mod ellipse;
-//mod eyedropper;
-//mod line;
-//mod navigate;
-//mod path;
-//mod pen;
-pub mod rectangle;
-//mod select;
-//mod shape;
+pub mod tool_message_handler;
+pub mod tool_settings;
+pub mod tools;
 
-use crate::communication::message::prelude::*;
+use crate::message_prelude::*;
 use crate::SvgDocument;
-use crate::{communication::input_manager::InputPreprocessor, EditorError};
 use crate::{
 	communication::{message::Message, MessageHandler},
 	Color,
 };
+use crate::{input::InputPreprocessor, EditorError};
 use std::collections::VecDeque;
 use std::{
 	collections::HashMap,
 	fmt::{self, Debug},
 };
+pub use tool_message_handler::ToolActionHandler;
+use tool_settings::ToolSettings;
+pub use tool_settings::*;
+use tools::*;
+
+pub mod tool_messages {
+	pub use super::tool_message_handler::{ToolMessage, ToolMessageDiscriminant};
+	pub use super::tools::rectangle::{RectangleMessage, RectangleMessageDiscriminant};
+}
 
 pub type ToolActionHandlerData<'a> = (&'a SvgDocument, &'a DocumentToolData, &'a InputPreprocessor);
 
@@ -179,25 +181,4 @@ impl ToolType {
 			_ => todo!(),
 		}
 	}
-}
-
-#[derive(Debug, Clone, Copy, Eq, PartialEq)]
-pub enum ToolSettings {
-	Select { append_mode: SelectAppendMode },
-	Ellipse,
-	Shape { shape: Shape },
-}
-
-#[derive(Debug, Clone, Copy, Eq, PartialEq)]
-pub enum SelectAppendMode {
-	New,
-	Add,
-	Subtract,
-	Intersect,
-}
-
-#[derive(Debug, Clone, Copy, Eq, PartialEq)]
-pub enum Shape {
-	Star { vertices: u32 },
-	Polygon { vertices: u32 },
 }

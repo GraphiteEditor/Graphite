@@ -1,20 +1,10 @@
 pub mod dispatcher;
-pub mod document_action_handler;
-pub mod events;
-pub mod frontend;
-pub mod global_action_handler;
-pub mod input_manager;
 pub mod message;
-pub mod tool_action_handler;
+use crate::message_prelude::*;
 pub use dispatcher::*;
-pub use frontend::FrontendMessage;
-use message::prelude::*;
 
-pub use self::input_manager::InputPreprocessor;
-use crate::communication::message::{ToDiscriminant, TransitiveChild};
+pub use crate::input::InputPreprocessor;
 use std::collections::VecDeque;
-
-pub type Callback = Box<dyn Fn(FrontendMessage)>;
 
 pub type ActionList = Vec<Vec<MessageDiscriminant>>;
 
