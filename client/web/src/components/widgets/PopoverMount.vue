@@ -76,8 +76,11 @@ import { defineComponent } from "vue";
 
 export default defineComponent({
 	components: {},
-	props: {
-		open: { type: Boolean, default: false },
+	data() {
+		return {
+			open: false,
+			mouseStillDown: false,
+		};
 	},
 	updated() {
 		const popoverContent = this.$refs.popoverContent as HTMLElement;
@@ -90,6 +93,89 @@ export default defineComponent({
 			const bottomOffset = workspaceBounds.bottom - popoverBounds.bottom - 8;
 			if (bottomOffset < 0) popoverContent.style.top = `${bottomOffset}px`;
 		}
+	},
+	methods: {
+		setOpen() {
+			this.open = true;
+		},
+		setClosed() {
+			this.open = false;
+		},
+		mouseMoveHandler(e: MouseEvent) {
+			const MOUSE_STRAY_DISTANCE = 100;
+
+			// Close the popover if the mouse has strayed far enough from its bounds
+			if (this.isMouseEventOutsidePopover(e, MOUSE_STRAY_DISTANCE)) {
+				this.setClosed();
+			}
+
+			// eslint-disable-next-line no-bitwise
+			const eventIncludesLmb = Boolean(e.buttons & 1);
+
+			// Clean up any messes from lost mouseup events
+			if (!this.open && !eventIncludesLmb) {
+				this.mouseStillDown = false;
+				window.removeEventListener("mouseup", this.mouseUpHandler);
+			}
+		},
+		mouseDownHandler(e: MouseEvent) {
+			// Close the popover if the mouse clicked outside the popover (but within stray distance)
+			if (this.isMouseEventOutsidePopover(e)) {
+				this.setClosed();
+
+				// Track if the left mouse button is now down so its later click event can be canceled
+				const eventIsForLmb = e.button === 0;
+				if (eventIsForLmb) this.mouseStillDown = true;
+			}
+		},
+		mouseUpHandler(e: MouseEvent) {
+			const eventIsForLmb = e.button === 0;
+
+			if (this.mouseStillDown && eventIsForLmb) {
+				// Clean up self
+				this.mouseStillDown = false;
+				window.removeEventListener("mouseup", this.mouseUpHandler);
+
+				// Prevent the click event from firing, which would normally occur right after this mouseup event
+				window.addEventListener("click", this.clickHandlerCapture, true);
+			}
+		},
+		clickHandlerCapture(e: MouseEvent) {
+			// Stop the click event from reopening this popover if the click event targets the popover's button
+			e.stopPropagation();
+
+			// Clean up self
+			window.removeEventListener("click", this.clickHandlerCapture, true);
+		},
+		isMouseEventOutsidePopover(e: MouseEvent, extraDistanceAllowed = 0): boolean {
+			const popoverContent = this.$refs.popoverContent as HTMLElement;
+			const popoverBounds = popoverContent.getBoundingClientRect();
+
+			if (popoverBounds.left - e.clientX >= extraDistanceAllowed) return true;
+			if (e.clientX - popoverBounds.right >= extraDistanceAllowed) return true;
+			if (popoverBounds.top - e.clientY >= extraDistanceAllowed) return true;
+			if (e.clientY - popoverBounds.bottom >= extraDistanceAllowed) return true;
+
+			return false;
+		},
+	},
+	watch: {
+		open(newState: boolean, oldState: boolean) {
+			if (newState && !oldState) {
+				// Close popover if mouse strays far enough away
+				window.addEventListener("mousemove", this.mouseMoveHandler);
+
+				// Close popover if mouse is outside (but within stray distance)
+				window.addEventListener("mousedown", this.mouseDownHandler);
+
+				// Cancel the subsequent click event to prevent the popover from reopening if the popover's button is the click event target
+				window.addEventListener("mouseup", this.mouseUpHandler);
+			}
+			if (!newState && oldState) {
+				window.removeEventListener("mousemove", this.mouseMoveHandler);
+				window.removeEventListener("mousedown", this.mouseDownHandler);
+			}
+		},
 	},
 });
 </script>

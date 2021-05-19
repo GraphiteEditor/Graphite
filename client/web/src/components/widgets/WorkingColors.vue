@@ -1,13 +1,13 @@
 <template>
 	<div class="working-colors">
 		<div class="swatch-pair">
-			<button @click="clickSwatch(SwatchSelection.Secondary)" class="secondary swatch" style="background: white">
-				<PopoverMount :open="swatchOpen === SwatchSelection.Secondary">
+			<button @click="clickSecondarySwatch" class="secondary swatch" style="background: white">
+				<PopoverMount ref="secondarySwatchPopover">
 					<ColorPicker />
 				</PopoverMount>
 			</button>
-			<button @click="clickSwatch(SwatchSelection.Primary)" class="primary swatch" style="background: black">
-				<PopoverMount :open="swatchOpen === SwatchSelection.Primary">
+			<button @click="clickPrimarySwatch" class="primary swatch" style="background: black">
+				<PopoverMount ref="primarySwatchPopover">
 					<ColorPicker />
 				</PopoverMount>
 			</button>
@@ -66,12 +66,6 @@ import IconButton from "./IconButton.vue";
 import SwapButton from "../../../assets/svg/16x16-bounds-12x12-icon/swap.svg";
 import ResetColorsButton from "../../../assets/svg/16x16-bounds-12x12-icon/reset-colors.svg";
 
-export enum SwatchSelection {
-	"None" = "None",
-	"Primary" = "Primary",
-	"Secondary" = "Secondary",
-}
-
 export default defineComponent({
 	components: {
 		PopoverMount,
@@ -80,16 +74,14 @@ export default defineComponent({
 		SwapButton,
 		ResetColorsButton,
 	},
-	data() {
-		return {
-			swatchOpen: SwatchSelection.None,
-			SwatchSelection,
-		};
-	},
 	methods: {
-		clickSwatch(selection: SwatchSelection) {
-			if (this.swatchOpen !== selection) this.swatchOpen = selection;
-			else this.swatchOpen = SwatchSelection.None;
+		clickPrimarySwatch() {
+			(this.$refs.primarySwatchPopover as typeof PopoverMount).setOpen();
+			(this.$refs.secondarySwatchPopover as typeof PopoverMount).setClosed();
+		},
+		clickSecondarySwatch() {
+			(this.$refs.secondarySwatchPopover as typeof PopoverMount).setOpen();
+			(this.$refs.primarySwatchPopover as typeof PopoverMount).setClosed();
 		},
 	},
 });
