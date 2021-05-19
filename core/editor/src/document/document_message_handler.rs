@@ -17,8 +17,6 @@ pub enum DocumentMessage {
 	SelectDocument(usize),
 	RenderDocument,
 	Undo,
-	Redo,
-	Save,
 }
 
 impl From<DocumentOperation> for DocumentMessage {
@@ -104,5 +102,5 @@ impl MessageHandler<DocumentMessage, ()> for DocumentActionHandler {
 			message => todo!("document_action_handler does not implement: {}", message.to_discriminant().global_name()),
 		}
 	}
-	actions_fn!(DocumentMessageDiscriminant::Undo, DocumentMessageDiscriminant::Redo, DocumentMessageDiscriminant::Save);
+	actions_fn!(DocumentMessageDiscriminant; Undo, RenderDocument);
 }

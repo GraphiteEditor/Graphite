@@ -27,7 +27,7 @@ fn handle_response(response: FrontendMessage) {
 
 fn send_response(response_type: String, response_data: FrontendMessage) {
 	let response_data = JsValue::from_serde(&response_data).expect("Failed to serialize response");
-	handleResponse(response_type, response_data).map_err(|error| log::error!("javascript threw an error: {:?}", error));
+	let _ = handleResponse(response_type, response_data).map_err(|error| log::error!("javascript threw an error: {:?}", error));
 }
 
 #[wasm_bindgen(module = "/../src/response-handler.ts")]

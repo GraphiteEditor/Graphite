@@ -46,5 +46,12 @@ impl MessageHandler<FrontendMessage, ()> for FrontendMessageHandler {
 		log::trace!("Sending {} Response", message.to_discriminant().global_name());
 		(self.callback)(message)
 	}
-	actions_fn!();
+	actions_fn!(
+		FrontendMessageDiscriminant; CollapseFolder,
+		ExpandFolder,
+		SetActiveTool,
+		UpdateCanvas,
+		EnableTextInput,
+		DisableTextInput
+	);
 }

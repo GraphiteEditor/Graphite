@@ -51,9 +51,5 @@ impl MessageHandler<ToolMessage, (&SvgDocument, &InputPreprocessor)> for ToolAct
 			}
 		}
 	}
-	actions_fn!(
-		ToolMessageDiscriminant::SelectSecondaryColor,
-		ToolMessageDiscriminant::SelectPrimaryColor,
-		ToolMessageDiscriminant::SelectTool
-	);
+	actions_fn!(ToolMessageDiscriminant; ResetColors, SwapColors);
 }

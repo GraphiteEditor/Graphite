@@ -88,7 +88,10 @@ macro_rules! match_variant_name {
 macro_rules! actions {
 	($($v:expr),* $(,)?) => {{
 		 vec![$(vec![$v.into()]),*]
-	}}
+	}};
+	($name:ident; $($v:ident),* $(,)?) => {{
+		 vec![vec![$(($name::$v).into()),*]]
+	}};
 }
 
 macro_rules! actions_fn {
@@ -97,4 +100,9 @@ macro_rules! actions_fn {
 			 actions!($($v),*)
 		}
 	};
+	($name:ident; $($v:ident),* $(,)?) => {
+		fn actions(&self) -> $crate::communication::ActionList {
+			 actions!($name; $($v),*)
+		}
+	}
 }

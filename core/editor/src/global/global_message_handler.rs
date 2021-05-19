@@ -37,5 +37,5 @@ impl MessageHandler<GlobalMessage, ()> for GlobalActionHandler {
 			}
 		}
 	}
-	actions_fn!(GlobalMessageDiscriminant::LogInfo, GlobalMessageDiscriminant::LogDebug, GlobalMessageDiscriminant::LogTrace,);
+	actions_fn!(GlobalMessageDiscriminant; LogInfo, LogDebug, LogTrace,);
 }
