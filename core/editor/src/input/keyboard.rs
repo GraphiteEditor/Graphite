@@ -1,3 +1,11 @@
+pub const NUMBER_OF_KEYS: usize = Key::NumKeys as usize;
+// Edit this to specify the storage type used
+pub type StorageType = u128;
+const STORAGE_SIZE: u32 = std::mem::size_of::<usize>() as u32 * 8 + 2 - std::mem::size_of::<StorageType>().leading_zeros();
+const STORAGE_SIZE_BITS: usize = 1 << STORAGE_SIZE;
+const KEY_MASK_STORAGE_LENGHT: usize = NUMBER_OF_KEYS + STORAGE_SIZE_BITS - 1 >> STORAGE_SIZE;
+pub type Keyboard = KeyStore<KEY_MASK_STORAGE_LENGHT>;
+
 #[derive(Debug, Default)]
 pub struct KeyState {
 	depressed: bool,
@@ -9,6 +17,10 @@ pub struct KeyState {
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub enum Key {
 	UnknownKey,
+	// MouseKeys
+	LMB,
+	RMB,
+	MMB,
 
 	// Keyboard keys
 	KeyR,
@@ -41,13 +53,6 @@ pub enum Key {
 	NumKeys,
 }
 
-const NUMBER_OF_KEYS: usize = Key::NumKeys as usize;
-const STORAGE_SIZE: u8 = 7;
-type StorageType = u128;
-const STORAGE_SIZE_BITS: usize = 1 << STORAGE_SIZE;
-const KEY_MASK_STORAGE_LENGHT: usize = NUMBER_OF_KEYS + STORAGE_SIZE_BITS - 1 >> STORAGE_SIZE;
-pub type Keyboard = KeyStore<KEY_MASK_STORAGE_LENGHT>;
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct KeyStore<const LENGTH: usize>([StorageType; LENGTH]);
 
@@ -60,7 +65,7 @@ impl<const LENGTH: usize> KeyStore<LENGTH> {
 		let offset = index >> STORAGE_SIZE;
 		(offset, bit)
 	}
-	pub fn new() -> Self {
+	pub const fn new() -> Self {
 		Self([0; LENGTH])
 	}
 	pub fn set(&mut self, index: usize) {
@@ -76,6 +81,13 @@ impl<const LENGTH: usize> KeyStore<LENGTH> {
 		self.0[offset] ^= bit;
 	}
 }
+
+impl<const LENGTH: usize> Default for KeyStore<LENGTH> {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 macro_rules! bit_ops {
 	($(($op:ident, $func:ident)),* $(,)?) => {
 		$(impl<const LENGTH: usize> $op for KeyStore<LENGTH> {

@@ -6,12 +6,6 @@ use super::{keyboard::Key, InputPreprocessor};
 #[impl_message(Message, InputMapper)]
 #[derive(PartialEq, Clone, Debug)]
 pub enum InputMapperMessage {
-	LmbDown,
-	RmbDown,
-	MmbDown,
-	LmbUp,
-	RmbUp,
-	MmbUp,
 	MouseMove,
 	KeyUp(Key),
 	KeyDown(Key),
@@ -49,12 +43,11 @@ impl MessageHandler<InputMapperMessage, (&InputPreprocessor, ActionList)> for In
 		use InputMapperMessage::*;
 		let res = match message {
 			MouseMove => RectangleMessage::MouseMove.into(),
-			LmbDown => RectangleMessage::DragStart.into(),
-			LmbUp => RectangleMessage::DragStop.into(),
-			RmbDown => RectangleMessage::Abort.into(),
+			//LmbDown => RectangleMessage::DragStart.into(),
+			//LmbUp => RectangleMessage::DragStop.into(),
+			//RmbDown => RectangleMessage::Abort.into(),
 			KeyDown(key) => self.translate_key_down(key, input),
 			KeyUp(key) => self.translate_key_up(key, input),
-			e => todo!("Unhandled event: {:?}", e),
 		};
 		responses.push_back(res);
 	}

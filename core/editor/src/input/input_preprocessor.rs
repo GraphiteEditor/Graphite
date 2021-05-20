@@ -1,11 +1,9 @@
-use super::keyboard::{Key, KeyState};
+use super::keyboard::{Key, KeyState, Keyboard};
 use super::mouse::{MouseKeys, MouseState, ViewportPosition};
 use crate::message_prelude::*;
 
 #[doc(inline)]
 pub use document_core::DocumentResponse;
-
-use std::collections::HashMap;
 
 #[impl_message(Message, InputPreprocessor)]
 #[derive(PartialEq, Clone, Debug)]
@@ -19,8 +17,7 @@ pub enum InputPreprocessorMessage {
 
 #[derive(Debug, Default)]
 pub struct InputPreprocessor {
-	keyboard: HashMap<Key, KeyState>,
-	//key_translation: HashMap<Key, VirtualInputToolMessage>,
+	keyboard: Keyboard,
 	pub mouse_state: MouseState,
 }
 
@@ -33,8 +30,14 @@ impl MessageHandler<InputPreprocessorMessage, ()> for InputPreprocessor {
 			}
 			InputPreprocessorMessage::MouseDown(state) => self.translate_mouse_event(state, true),
 			InputPreprocessorMessage::MouseUp(state) => self.translate_mouse_event(state, false),
-			InputPreprocessorMessage::KeyDown(key) => InputMapperMessage::KeyDown(key).into(),
-			InputPreprocessorMessage::KeyUp(key) => InputMapperMessage::KeyUp(key).into(),
+			InputPreprocessorMessage::KeyDown(key) => {
+				self.keyboard.set(key as usize);
+				InputMapperMessage::KeyDown(key).into()
+			}
+			InputPreprocessorMessage::KeyUp(key) => {
+				self.keyboard.unset(key as usize);
+				InputMapperMessage::KeyUp(key).into()
+			}
 		};
 		responses.push_back(response)
 	}
@@ -50,17 +53,18 @@ impl InputPreprocessor {
 	fn translate_mouse_event(&mut self, new_state: MouseState, down: bool) -> Message {
 		let diff = self.mouse_state.mouse_keys ^ new_state.mouse_keys;
 		self.mouse_state = new_state;
-		match (down, diff) {
-			(true, MouseKeys::LEFT) => InputMapperMessage::LmbDown.into(),
-			(true, MouseKeys::RIGHT) => InputMapperMessage::RmbDown.into(),
-			(true, MouseKeys::MIDDLE) => InputMapperMessage::MmbDown.into(),
-			(false, MouseKeys::LEFT) => InputMapperMessage::LmbUp.into(),
-			(false, MouseKeys::RIGHT) => InputMapperMessage::RmbUp.into(),
-			(false, MouseKeys::MIDDLE) => InputMapperMessage::MmbUp.into(),
-			(_, _) => {
+		let key = match diff {
+			MouseKeys::LEFT => Key::LMB,
+			MouseKeys::RIGHT => Key::RMB,
+			MouseKeys::MIDDLE => Key::MMB,
+			_ => {
 				log::warn!("The number of buttons modified at the same time was not equal to 1. Modification: {:#010b}", diff);
-				Message::NoOp
+				Key::UnknownKey
 			}
+		};
+		match down {
+			true => InputMapperMessage::KeyDown(key).into(),
+			false => InputMapperMessage::KeyUp(key).into(),
 		}
 	}
 }
