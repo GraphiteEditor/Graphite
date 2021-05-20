@@ -21,6 +21,7 @@ pub enum Key {
 	LMB,
 	RMB,
 	MMB,
+	MouseMove,
 
 	// Keyboard keys
 	KeyR,

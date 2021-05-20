@@ -1,4 +1,4 @@
-use super::keyboard::{Key, KeyState, Keyboard};
+use super::keyboard::{Key, Keyboard};
 use super::mouse::{MouseKeys, MouseState, ViewportPosition};
 use crate::message_prelude::*;
 
@@ -26,7 +26,7 @@ impl MessageHandler<InputPreprocessorMessage, ()> for InputPreprocessor {
 		let response = match message {
 			InputPreprocessorMessage::MouseMove(pos) => {
 				self.mouse_state.position = pos;
-				InputMapperMessage::MouseMove.into()
+				InputMapperMessage::KeyDown(Key::MouseMove).into()
 			}
 			InputPreprocessorMessage::MouseDown(state) => self.translate_mouse_event(state, true),
 			InputPreprocessorMessage::MouseUp(state) => self.translate_mouse_event(state, false),

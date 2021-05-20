@@ -1,39 +1,74 @@
 use crate::message_prelude::*;
 use crate::tool::ToolType;
 
-use super::{keyboard::Key, InputPreprocessor};
+use super::{
+	keyboard::{Key, Keyboard, NUMBER_OF_KEYS},
+	InputPreprocessor,
+};
 
 #[impl_message(Message, InputMapper)]
 #[derive(PartialEq, Clone, Debug)]
 pub enum InputMapperMessage {
-	MouseMove,
 	KeyUp(Key),
 	KeyDown(Key),
 }
 
-/*
-macro_rules! key {
-	($path:expr, $action:expr, $k:ident, ($($s:ident),*)) => {
-		($path, $action, Event::KeyDown(Key::$k), &[$(Key::$s,)*])
-	};
-	($action:expr, $k:ident, ($($s:ident),*)) => {
-		key!("*", $action, $k, ($($s),*))
-	};
-	($path:expr, $action:expr, $k:ident) => {
-		key!($path, $action, $k, ())
-	};
-	($action:expr, $k:ident) => {
-		key!("*", $action, $k, ())
-	};
+#[derive(PartialEq, Clone, Debug)]
+struct MappingEntry {
+	modifiers: Keyboard,
+	action: Message,
 }
 
-const _DEFAULT_MAPPING: &[(&str, &str, Message, &[Key])] = &[
-	key!("Undo", KeyZ, (KeyControl)),
-	key!("*", "Redo", KeyZ, (KeyControl, KeyShift)),
-	key!("Redo", KeyZ, (KeyControl, KeyCaps)),
-	key!("Center", KeyAlt),
-];
-*/
+struct Mapping {
+	up: [Vec<MappingEntry>; NUMBER_OF_KEYS],
+	down: [Vec<MappingEntry>; NUMBER_OF_KEYS],
+}
+
+macro_rules! modifiers {
+	($($m:ident),*) => {{
+		#[allow(unused_mut)]
+		let mut state = Keyboard::new();
+		$(
+			state.set(Key::$m as usize);
+		),*
+		state
+	}};
+}
+macro_rules! mapping {
+	[$(<action=$action:expr; key=$key:expr; $(modifiers=[$($m:ident),* $(,)?];)?>)*] => {{
+		let mut up: [Vec<MappingEntry>; NUMBER_OF_KEYS] = Default::default();
+		let mut down: [Vec<MappingEntry>; NUMBER_OF_KEYS] = Default::default();
+		$({
+			let  (arr, key) =  match $key {
+				InputMapperMessage::KeyDown(key) => (&mut down, key),
+				InputMapperMessage::KeyUp(key) => (&mut up, key),
+			};
+			arr[key as usize].push( MappingEntry {modifiers: modifiers!($($($m),*)?), action: $action.into()});
+		})*
+		(up, down)
+	}};
+}
+
+impl Default for Mapping {
+	fn default() -> Self {
+		use InputMapperMessage::*;
+		let (up, down) = mapping![
+			<action=DocumentMessage::Undo; key=KeyDown(Key::KeyZ); modifiers=[KeyControl];>
+			<action=RectangleMessage::Center; key=KeyDown(Key::KeyAlt);>
+			<action=RectangleMessage::UnCenter; key=KeyUp(Key::KeyAlt);>
+			<action=RectangleMessage::MouseMove; key=KeyDown(Key::MouseMove);>
+			<action=RectangleMessage::DragStart; key=KeyDown(Key::LMB);>
+			<action=RectangleMessage::DragStop; key=KeyUp(Key::LMB);>
+			<action=RectangleMessage::Abort; key=KeyDown(Key::RMB);>
+			<action=RectangleMessage::Abort; key=KeyDown(Key::KeyEscape);>
+			<action=RectangleMessage::LockAspectRatio; key=KeyDown(Key::KeyAlt);>
+			<action=RectangleMessage::UnlockAspectRatio; key=KeyUp(Key::KeyAlt);>
+
+		];
+		Self { up, down }
+	}
+}
+
 #[derive(Debug, Default)]
 pub struct InputMapper {}
 
@@ -42,10 +77,6 @@ impl MessageHandler<InputMapperMessage, (&InputPreprocessor, ActionList)> for In
 		let (input, actions) = data;
 		use InputMapperMessage::*;
 		let res = match message {
-			MouseMove => RectangleMessage::MouseMove.into(),
-			//LmbDown => RectangleMessage::DragStart.into(),
-			//LmbUp => RectangleMessage::DragStop.into(),
-			//RmbDown => RectangleMessage::Abort.into(),
 			KeyDown(key) => self.translate_key_down(key, input),
 			KeyUp(key) => self.translate_key_up(key, input),
 		};

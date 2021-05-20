@@ -2,13 +2,13 @@ pub mod tool_message_handler;
 pub mod tool_settings;
 pub mod tools;
 
+use crate::input::InputPreprocessor;
 use crate::message_prelude::*;
 use crate::SvgDocument;
 use crate::{
 	communication::{message::Message, MessageHandler},
 	Color,
 };
-use crate::{input::InputPreprocessor, EditorError};
 use std::collections::VecDeque;
 use std::{
 	collections::HashMap,

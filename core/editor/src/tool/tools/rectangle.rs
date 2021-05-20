@@ -12,7 +12,6 @@ pub struct Rectangle {
 #[impl_message(Message, ToolMessage, Rectangle)]
 #[derive(PartialEq, Clone, Debug)]
 pub enum RectangleMessage {
-	Undo,
 	DragStart,
 	DragStop,
 	MouseMove,
@@ -30,7 +29,7 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Rectangle {
 	fn actions(&self) -> ActionList {
 		use RectangleToolFsmState::*;
 		match self.fsm_state {
-			Ready => actions!(RectangleMessageDiscriminant; Undo, DragStart, Center, UnCenter, LockAspectRatio, UnlockAspectRatio),
+			Ready => actions!(RectangleMessageDiscriminant;  DragStart, Center, UnCenter, LockAspectRatio, UnlockAspectRatio),
 			Dragging => actions!(RectangleMessageDiscriminant; DragStop, Center, UnCenter, LockAspectRatio, UnlockAspectRatio, MouseMove, Abort),
 		}
 	}

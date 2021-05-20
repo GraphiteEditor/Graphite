@@ -16,6 +16,7 @@ pub enum ToolMessage {
 	SelectSecondaryColor(Color),
 	SwapColors,
 	ResetColors,
+	MouseMove,
 	#[child]
 	Rectangle(RectangleMessage),
 	#[child]
