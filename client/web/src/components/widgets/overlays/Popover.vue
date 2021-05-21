@@ -1,7 +1,7 @@
 <template>
-	<div class="popover-mount" :class="direction.toLowerCase()" v-if="open">
+	<div class="popover" :class="direction.toLowerCase()" v-if="open">
 		<div class="tail"></div>
-		<div class="popover" ref="popover">
+		<div class="popover-container" ref="popoverContainer">
 			<div class="popover-content" ref="popoverContent">
 				<slot></slot>
 			</div>
@@ -10,7 +10,7 @@
 </template>
 
 <style lang="scss">
-.popover-mount {
+.popover {
 	position: absolute;
 	width: 0;
 	height: 0;
@@ -62,7 +62,7 @@
 	}
 }
 
-.popover {
+.popover-container {
 	display: flex;
 
 	.top > & {
@@ -124,8 +124,8 @@ export default defineComponent({
 		};
 	},
 	updated() {
+		const popoverContainer = this.$refs.popoverContainer as HTMLElement;
 		const popoverContent = this.$refs.popoverContent as HTMLElement;
-		const popover = this.$refs.popover as HTMLElement;
 		const workspace = document.querySelector(".workspace");
 
 		if (popoverContent && workspace) {
@@ -134,18 +134,18 @@ export default defineComponent({
 
 			if (this.direction === PopoverDirection.Left || this.direction === PopoverDirection.Right) {
 				const topOffset = popoverBounds.top - workspaceBounds.top - 8;
-				if (topOffset < 0) popover.style.transform = `translate(0, ${-topOffset}px)`;
+				if (topOffset < 0) popoverContainer.style.transform = `translate(0, ${-topOffset}px)`;
 
 				const bottomOffset = workspaceBounds.bottom - popoverBounds.bottom - 8;
-				if (bottomOffset < 0) popover.style.transform = `translate(0, ${bottomOffset}px)`;
+				if (bottomOffset < 0) popoverContainer.style.transform = `translate(0, ${bottomOffset}px)`;
 			}
 
 			if (this.direction === PopoverDirection.Top || this.direction === PopoverDirection.Bottom) {
 				const leftOffset = popoverBounds.left - workspaceBounds.left - 8;
-				if (leftOffset < 0) popover.style.transform = `translate(${-leftOffset}px, 0)`;
+				if (leftOffset < 0) popoverContainer.style.transform = `translate(${-leftOffset}px, 0)`;
 
 				const rightOffset = workspaceBounds.right - popoverBounds.right - 8;
-				if (rightOffset < 0) popover.style.transform = `translate(${rightOffset}px, 0)`;
+				if (rightOffset < 0) popoverContainer.style.transform = `translate(${rightOffset}px, 0)`;
 			}
 		}
 	},
