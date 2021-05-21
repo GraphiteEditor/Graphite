@@ -6,5 +6,5 @@ pub mod ellipse;
 //mod path;
 //mod pen;
 pub mod rectangle;
-//mod select;
-//mod shape;
+pub mod select;
+//pub mod shape;

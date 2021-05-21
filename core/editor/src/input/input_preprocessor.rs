@@ -17,7 +17,7 @@ pub enum InputPreprocessorMessage {
 
 #[derive(Debug, Default)]
 pub struct InputPreprocessor {
-	keyboard: Keyboard,
+	pub keyboard: Keyboard,
 	pub mouse_state: MouseState,
 }
 
@@ -26,7 +26,7 @@ impl MessageHandler<InputPreprocessorMessage, ()> for InputPreprocessor {
 		let response = match message {
 			InputPreprocessorMessage::MouseMove(pos) => {
 				self.mouse_state.position = pos;
-				InputMapperMessage::KeyDown(Key::MouseMove).into()
+				InputMapperMessage::MouseMove.into()
 			}
 			InputPreprocessorMessage::MouseDown(state) => self.translate_mouse_event(state, true),
 			InputPreprocessorMessage::MouseUp(state) => self.translate_mouse_event(state, false),

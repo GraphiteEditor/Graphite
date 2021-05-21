@@ -21,6 +21,8 @@ pub enum ToolMessage {
 	Rectangle(RectangleMessage),
 	#[child]
 	Ellipse(EllipseMessage),
+	#[child]
+	Select(SelectMessage),
 }
 
 #[derive(Debug, Default)]
@@ -54,8 +56,9 @@ impl MessageHandler<ToolMessage, (&SvgDocument, &InputPreprocessor)> for ToolMes
 					Ellipse(_) => ToolType::Ellipse,
 					_ => unreachable!(),
 				};
-				let tool = self.tool_state.tool_data.tools.get_mut(&tool_type).unwrap();
-				tool.process_action(message, (&document, &self.tool_state.document_tool_data, input), responses);
+				if let Some(tool) = self.tool_state.tool_data.tools.get_mut(&tool_type) {
+					tool.process_action(message, (&document, &self.tool_state.document_tool_data, input), responses);
+				}
 			}
 		}
 	}

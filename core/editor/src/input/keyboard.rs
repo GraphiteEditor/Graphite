@@ -21,7 +21,6 @@ pub enum Key {
 	Lmb,
 	Rmb,
 	Mmb,
-	MouseMove,
 
 	// Keyboard keys
 	KeyR,
@@ -81,6 +80,13 @@ impl<const LENGTH: usize> KeyStore<LENGTH> {
 		let (offset, bit) = Self::convert_index(index);
 		self.0[offset] ^= bit;
 	}
+	pub fn is_empty(&self) -> bool {
+		let mut result = 0;
+		for storage in self.0.iter() {
+			result |= storage;
+		}
+		result == 0
+	}
 }
 
 impl<const LENGTH: usize> Default for KeyStore<LENGTH> {
@@ -91,16 +97,28 @@ impl<const LENGTH: usize> Default for KeyStore<LENGTH> {
 
 macro_rules! bit_ops {
 	($(($op:ident, $func:ident)),* $(,)?) => {
-		$(impl<const LENGTH: usize> $op for KeyStore<LENGTH> {
-			type Output = Self;
-			fn $func(self, right: Self) -> Self::Output {
-				let mut result = Self::new();
-				for ((left, right), new) in self.0.iter().zip(right.0.iter()).zip(result.0.iter_mut()) {
-					*new = $op::$func(left, right);
+		$(
+			impl<const LENGTH: usize> $op for KeyStore<LENGTH> {
+				type Output = Self;
+				fn $func(self, right: Self) -> Self::Output {
+					let mut result = Self::new();
+					for ((left, right), new) in self.0.iter().zip(right.0.iter()).zip(result.0.iter_mut()) {
+						*new = $op::$func(left, right);
+					}
+					result
 				}
-				result
 			}
-		})*
+			impl<const LENGTH: usize> $op for &KeyStore<LENGTH> {
+				type Output = KeyStore<LENGTH>;
+				fn $func(self, right: Self) -> Self::Output {
+					let mut result = KeyStore::<LENGTH>::new();
+					for ((left, right), new) in self.0.iter().zip(right.0.iter()).zip(result.0.iter_mut()) {
+						*new = $op::$func(left, right);
+					}
+					result
+				}
+			}
+		)*
 	};
 }
 macro_rules! bit_ops_assign {

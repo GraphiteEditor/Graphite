@@ -73,15 +73,15 @@ impl Default for ToolFsmState {
 				active_tool_type: ToolType::Select,
 				tools: gen_tools_hash_map! {
 					Rectangle => rectangle::Rectangle,
-					/*Select => select::Select,
-					Crop => crop::Crop,
+					Select => select::Select,
+					/*Crop => crop::Crop,
 					Navigate => navigate::Navigate,
 					Eyedropper => eyedropper::Eyedropper,
 					Path => path::Path,
 					Pen => pen::Pen,
 					Line => line::Line,
-					Ellipse => ellipse::Ellipse,
 					Shape => shape::Shape,*/
+					Ellipse => ellipse::Ellipse,
 				},
 			},
 			document_tool_data: DocumentToolData {

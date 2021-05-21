@@ -57,6 +57,7 @@ pub mod message_prelude {
 	pub use super::misc::derivable_custom_traits::{ToDiscriminant, TransitiveChild};
 	pub use super::tool::tool_messages::*;
 	pub use super::tool::tools::rectangle::{RectangleMessage, RectangleMessageDiscriminant};
+	pub use super::tool::tools::select::{SelectMessage, SelectMessageDiscriminant};
 	pub use graphite_proc_macros::*;
 	pub use std::collections::VecDeque;
 }

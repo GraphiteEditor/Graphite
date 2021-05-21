@@ -1,10 +1,6 @@
-use crate::tools::Fsm;
-use crate::SvgDocument;
-use crate::{
-	dispatcher::{Action, ActionHandler, InputPreprocessor, Response},
-	tools::{DocumentToolData, ToolActionHandlerData},
-};
-use document_core::Operation;
+use crate::input::InputPreprocessor;
+use crate::tool::{DocumentToolData, Fsm, ToolActionHandlerData};
+use crate::{message_prelude::*, SvgDocument};
 
 #[derive(Default)]
 pub struct Select {
@@ -12,11 +8,15 @@ pub struct Select {
 	data: SelectToolData,
 }
 
-impl<'a> ActionHandler<ToolActionHandlerData<'a>> for Select {
-	fn process_action(&mut self, data: ToolActionHandlerData<'a>, input_preprocessor: &InputPreprocessor, action: &Action, responses: &mut Vec<Response>, operations: &mut Vec<Operation>) -> bool {
-		let (consumed, state) = self.fsm_state.transition(action, data.0, data.1, &mut self.data, input_preprocessor, responses, operations);
-		self.fsm_state = state;
-		consumed
+#[impl_message(Message, ToolMessage, Select)]
+#[derive(PartialEq, Clone, Debug)]
+pub enum SelectMessage {
+	MouseMove,
+}
+
+impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Select {
+	fn process_action(&mut self, action: ToolMessage, data: ToolActionHandlerData<'a>, responses: &mut VecDeque<Message>) {
+		self.fsm_state = self.fsm_state.transition(action, data.0, data.1, &mut self.data, data.2, responses);
 	}
 	actions_fn!();
 }
@@ -24,8 +24,6 @@ impl<'a> ActionHandler<ToolActionHandlerData<'a>> for Select {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum SelectToolFsmState {
 	Ready,
-	LmbDown,
-	TransformSelected,
 }
 
 impl Default for SelectToolFsmState {
@@ -42,26 +40,21 @@ impl Fsm for SelectToolFsmState {
 
 	fn transition(
 		self,
-		event: &Action,
+		event: ToolMessage,
 		_document: &SvgDocument,
 		_tool_data: &DocumentToolData,
 		_data: &mut Self::ToolData,
 		_input: &InputPreprocessor,
-		_responses: &mut Vec<Response>,
-		_operations: &mut Vec<Operation>,
-	) -> (bool, Self) {
-		match (self, event) {
-			(SelectToolFsmState::Ready, Action::LmbDown) => (true, SelectToolFsmState::LmbDown),
-
-			(SelectToolFsmState::LmbDown, Action::LmbUp) => (true, SelectToolFsmState::Ready),
-
-			(SelectToolFsmState::LmbDown, Action::MouseMove) => (true, SelectToolFsmState::TransformSelected),
-
-			(SelectToolFsmState::TransformSelected, Action::MouseMove) => (true, self),
-
-			(SelectToolFsmState::TransformSelected, Action::LmbUp) => (true, SelectToolFsmState::Ready),
-
-			_ => (false, self),
+		_responses: &mut VecDeque<Message>,
+	) -> Self {
+		use SelectMessage::*;
+		use SelectToolFsmState::*;
+		if let ToolMessage::Select(event) = event {
+			match (self, event) {
+				(Ready, MouseMove) => self,
+			}
+		} else {
+			self
 		}
 	}
 }
