@@ -14,13 +14,13 @@ pub struct KeyState {
 	// …
 }
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Key {
 	UnknownKey,
 	// MouseKeys
-	LMB,
-	RMB,
-	MMB,
+	Lmb,
+	Rmb,
+	Mmb,
 	MouseMove,
 
 	// Keyboard keys

@@ -9,6 +9,7 @@ use super::{
 #[impl_message(Message, InputMapper)]
 #[derive(PartialEq, Clone, Debug)]
 pub enum InputMapperMessage {
+	MouseMove,
 	KeyUp(Key),
 	KeyDown(Key),
 }
@@ -19,9 +20,11 @@ struct MappingEntry {
 	action: Message,
 }
 
+#[derive(Debug, Clone)]
 struct Mapping {
 	up: [Vec<MappingEntry>; NUMBER_OF_KEYS],
 	down: [Vec<MappingEntry>; NUMBER_OF_KEYS],
+	mouse_move: Vec<MappingEntry>,
 }
 
 macro_rules! modifiers {
@@ -34,43 +37,60 @@ macro_rules! modifiers {
 		state
 	}};
 }
+macro_rules! entry {
+	{action=$action:expr, key_down=$key:ident $(, modifiers=[$($m:ident),* $(,)?])?} => {{
+		entry!{action=$action, message=InputMapperMessage::KeyDown(Key::$key) $(, modifiers=[$($m),*])?}
+	}};
+	{action=$action:expr, key_up=$key:ident $(, modifiers=[$($m:ident),* $(,)?])?} => {{
+		entry!{action=$action, message=InputMapperMessage::KeyUp(Key::$key) $(, modifiers=[$($m),* ])?}
+	}};
+	{action=$action:expr, message=$message:expr $(, modifiers=[$($m:ident),* $(,)?])?} => {{
+		MappingEntry {modifiers: modifiers!($($($m),*)?), action: $action.into()}
+	}};
+}
 macro_rules! mapping {
-	[$(<action=$action:expr; key=$key:expr; $(modifiers=[$($m:ident),* $(,)?];)?>)*] => {{
+	//[$(<action=$action:expr; message=$key:expr; $(modifiers=[$($m:ident),* $(,)?];)?>)*] => {{
+	[$($entry:expr),* $(,)?] => {{
 		let mut up: [Vec<MappingEntry>; NUMBER_OF_KEYS] = Default::default();
 		let mut down: [Vec<MappingEntry>; NUMBER_OF_KEYS] = Default::default();
-		$({
-			let  (arr, key) =  match $key {
-				InputMapperMessage::KeyDown(key) => (&mut down, key),
-				InputMapperMessage::KeyUp(key) => (&mut up, key),
+		let mut mouse_move: Vec<MappingEntry> = Default::default();
+		$(
+			if let Message::InputMapper(message) = $entry.action {
+			let arr = match message {
+				InputMapperMessage::KeyDown(key) => &mut down[key as usize],
+				InputMapperMessage::KeyUp(key) => &mut up[key as usize],
+				InputMapperMessage::MouseMove => &mut mouse_move,
 			};
-			arr[key as usize].push( MappingEntry {modifiers: modifiers!($($($m),*)?), action: $action.into()});
-		})*
-		(up, down)
+			arr.push($entry);
+			}
+        );*
+		(up, down, mouse_move)
 	}};
 }
 
 impl Default for Mapping {
 	fn default() -> Self {
 		use InputMapperMessage::*;
-		let (up, down) = mapping![
-			<action=DocumentMessage::Undo; key=KeyDown(Key::KeyZ); modifiers=[KeyControl];>
-			<action=RectangleMessage::Center; key=KeyDown(Key::KeyAlt);>
-			<action=RectangleMessage::UnCenter; key=KeyUp(Key::KeyAlt);>
-			<action=RectangleMessage::MouseMove; key=KeyDown(Key::MouseMove);>
-			<action=RectangleMessage::DragStart; key=KeyDown(Key::LMB);>
-			<action=RectangleMessage::DragStop; key=KeyUp(Key::LMB);>
-			<action=RectangleMessage::Abort; key=KeyDown(Key::RMB);>
-			<action=RectangleMessage::Abort; key=KeyDown(Key::KeyEscape);>
-			<action=RectangleMessage::LockAspectRatio; key=KeyDown(Key::KeyAlt);>
-			<action=RectangleMessage::UnlockAspectRatio; key=KeyUp(Key::KeyAlt);>
-
+		let (up, down, mouse_move) = mapping![
+			entry! {action=RectangleMessage::Center, key_down=KeyAlt},
+			entry! {action=RectangleMessage::UnCenter, key_up=KeyAlt},
+			entry! {action=RectangleMessage::MouseMove, message=MouseMove},
+			entry! {action=RectangleMessage::DragStart, key_down=Lmb},
+			entry! {action=RectangleMessage::DragStop, key_up=Lmb},
+			entry! {action=RectangleMessage::Abort, key_down=Rmb},
+			entry! {action=RectangleMessage::Abort, key_down=KeyEscape},
+			entry! {action=RectangleMessage::LockAspectRatio, key_down=KeyAlt},
+			entry! {action=RectangleMessage::UnlockAspectRatio, key_up=KeyAlt},
+			entry! {action=DocumentMessage::Undo, key_down=KeyZ, modifiers=[KeyControl]},
 		];
-		Self { up, down }
+		Self { up, down, mouse_move }
 	}
 }
 
 #[derive(Debug, Default)]
-pub struct InputMapper {}
+pub struct InputMapper {
+	mapping: Mapping,
+}
 
 impl MessageHandler<InputMapperMessage, (&InputPreprocessor, ActionList)> for InputMapper {
 	fn process_action(&mut self, message: InputMapperMessage, data: (&InputPreprocessor, ActionList), responses: &mut VecDeque<Message>) {
@@ -79,6 +99,7 @@ impl MessageHandler<InputMapperMessage, (&InputPreprocessor, ActionList)> for In
 		let res = match message {
 			KeyDown(key) => self.translate_key_down(key, input),
 			KeyUp(key) => self.translate_key_up(key, input),
+			MouseMove => self.translate_key_down(Key::MouseMove, input),
 		};
 		responses.push_back(res);
 	}

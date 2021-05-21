@@ -54,9 +54,9 @@ impl InputPreprocessor {
 		let diff = self.mouse_state.mouse_keys ^ new_state.mouse_keys;
 		self.mouse_state = new_state;
 		let key = match diff {
-			MouseKeys::LEFT => Key::LMB,
-			MouseKeys::RIGHT => Key::RMB,
-			MouseKeys::MIDDLE => Key::MMB,
+			MouseKeys::LEFT => Key::Lmb,
+			MouseKeys::RIGHT => Key::Rmb,
+			MouseKeys::MIDDLE => Key::Mmb,
 			_ => {
 				log::warn!("The number of buttons modified at the same time was not equal to 1. Modification: {:#010b}", diff);
 				Key::UnknownKey
