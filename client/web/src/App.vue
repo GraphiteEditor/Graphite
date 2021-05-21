@@ -22,6 +22,11 @@ button {
 	color: #ddd;
 }
 
+svg,
+img {
+	display: block;
+}
+
 // For placeholder messages (remove eventually)
 .popover {
 	h1,
