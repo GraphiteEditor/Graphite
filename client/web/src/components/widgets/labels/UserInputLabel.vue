@@ -1,5 +1,5 @@
 <template>
-	<div class="input-hint">
+	<div class="user-input-label">
 		<span class="input-key" v-for="inputKey in inputKeys" :key="inputKey" :class="keyCapWidth(inputKey)">
 			{{ inputKey }}
 		</span>
@@ -22,7 +22,7 @@
 </template>
 
 <style lang="scss">
-.input-hint {
+.user-input-label {
 	height: 100%;
 	margin: 0 8px;
 	display: flex;

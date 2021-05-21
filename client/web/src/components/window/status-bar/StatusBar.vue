@@ -1,23 +1,23 @@
 <template>
 	<div class="status-bar">
-		<InputHint :inputMouse="'LMB'">Select Object</InputHint>
+		<UserInputLabel :inputMouse="'LMB'">Select Object</UserInputLabel>
 		<span class="plus">+</span>
-		<InputHint :inputKeys="['⇧']">Grow/Shrink Selection</InputHint>
+		<UserInputLabel :inputKeys="['⇧']">Grow/Shrink Selection</UserInputLabel>
 		<div class="divider"></div>
-		<InputHint :inputMouse="'LMBDrag'">Select Area</InputHint>
+		<UserInputLabel :inputMouse="'LMBDrag'">Select Area</UserInputLabel>
 		<span class="plus">+</span>
-		<InputHint :inputKeys="['⇧']">Grow/Shrink Selection</InputHint>
+		<UserInputLabel :inputKeys="['⇧']">Grow/Shrink Selection</UserInputLabel>
 		<div class="divider"></div>
-		<InputHint :inputKeys="['G']">Grab Selected</InputHint>
-		<InputHint :inputKeys="['R']">Rotate Selected</InputHint>
-		<InputHint :inputKeys="['S']">Scale Selected</InputHint>
+		<UserInputLabel :inputKeys="['G']">Grab Selected</UserInputLabel>
+		<UserInputLabel :inputKeys="['R']">Rotate Selected</UserInputLabel>
+		<UserInputLabel :inputKeys="['S']">Scale Selected</UserInputLabel>
 		<div class="divider"></div>
-		<InputHint :inputKeys="['↑', '→', '↓', '←']">Nudge Selected</InputHint>
+		<UserInputLabel :inputKeys="['↑', '→', '↓', '←']">Nudge Selected</UserInputLabel>
 		<span class="plus">+</span>
-		<InputHint :inputKeys="['⇧']">Big Increment Nudge</InputHint>
+		<UserInputLabel :inputKeys="['⇧']">Big Increment Nudge</UserInputLabel>
 		<div class="divider"></div>
-		<InputHint :inputKeys="['Alt']" :inputMouse="'LMBDrag'">Move Duplicate</InputHint>
-		<InputHint :inputKeys="['Ctrl', 'D']">Duplicate</InputHint>
+		<UserInputLabel :inputKeys="['Alt']" :inputMouse="'LMBDrag'">Move Duplicate</UserInputLabel>
+		<UserInputLabel :inputKeys="['Ctrl', 'D']">Duplicate</UserInputLabel>
 	</div>
 </template>
 
@@ -39,18 +39,18 @@
 	background: #888;
 }
 
-.input-hint + .input-hint {
+.user-input-label + .user-input-label {
 	margin-left: 0;
 }
 </style>
 
 <script lang="ts">
 import { defineComponent } from "vue";
-import InputHint from "./InputHint.vue";
+import UserInputLabel from "../../widgets/labels/UserInputLabel.vue";
 
 export default defineComponent({
 	components: {
-		InputHint,
+		UserInputLabel,
 	},
 });
 </script>

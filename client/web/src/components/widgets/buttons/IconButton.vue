@@ -1,20 +1,36 @@
 <template>
-	<div class="icon-container" :class="[`size-${String(size)}`, gapAfter && 'gap-after']">
+	<button class="icon-button" :class="[`size-${String(size)}`, gapAfter && 'gap-after']">
 		<slot></slot>
-	</div>
+	</button>
 </template>
 
 <style lang="scss">
-.icon-container {
+.icon-button {
 	display: inline-block;
 	flex: 0 0 auto;
-	fill: #ddd;
+	padding: 0;
+	outline: none;
+	border: none;
+	border-radius: 2px;
+	background: none;
 	vertical-align: top;
+	fill: #ddd;
 	width: 16px;
 	height: 16px;
 
-	&:not(.gap-after) + .icon-container {
+	// The `where` pseduo-class does not contribtue to specificity
+	& + :where(.icon-button) {
 		margin-left: 0;
+	}
+
+	&.gap-after + .icon-button {
+		margin-left: 8px;
+	}
+
+	&:hover {
+		background: #666;
+		color: white;
+		fill: white;
 	}
 
 	&.size-10 {

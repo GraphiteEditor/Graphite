@@ -1,23 +1,23 @@
 <template>
-	<div class="dropdown-button">
+	<div class="popover-button">
 		<button @click="clickButton">
 			<component :is="icon" />
 		</button>
-		<PopoverMount :direction="PopoverDirection.Bottom" ref="popover">
+		<Popover :direction="PopoverDirection.Bottom" ref="popover">
 			<slot></slot>
-		</PopoverMount>
+		</Popover>
 	</div>
 </template>
 
 <style lang="scss">
-.dropdown-button {
+.popover-button {
 	display: inline-block;
 	position: relative;
 	width: 16px;
 	height: 24px;
 	margin: 2px 4px;
 
-	.popover-mount {
+	.popover {
 		left: 50%;
 	}
 
@@ -42,11 +42,11 @@
 
 <script lang="ts">
 import { defineComponent } from "vue";
-import DropdownArrow from "../../../assets/svg/16x24-bounds-8x16-icon/dropdown-arrow.svg";
-import VerticalEllipsis from "../../../assets/svg/16x24-bounds-8x16-icon/vertical-ellipsis.svg";
-import PopoverMount, { PopoverDirection } from "./PopoverMount.vue";
+import DropdownArrow from "../../../../assets/svg/16x24-bounds-8x16-icon/dropdown-arrow.svg";
+import VerticalEllipsis from "../../../../assets/svg/16x24-bounds-8x16-icon/vertical-ellipsis.svg";
+import Popover, { PopoverDirection } from "../overlays/Popover.vue";
 
-export enum DropdownButtonIcon {
+export enum PopoverButtonIcon {
 	"DropdownArrow" = "DropdownArrow",
 	"VerticalEllipsis" = "VerticalEllipsis",
 }
@@ -55,15 +55,15 @@ export default defineComponent({
 	components: {
 		VerticalEllipsis,
 		DropdownArrow,
-		PopoverMount,
+		Popover,
 		PopoverDirection,
 	},
 	props: {
-		icon: { type: String, default: DropdownButtonIcon.DropdownArrow },
+		icon: { type: String, default: PopoverButtonIcon.DropdownArrow },
 	},
 	methods: {
 		clickButton() {
-			(this.$refs.popover as typeof PopoverMount).setOpen();
+			(this.$refs.popover as typeof Popover).setOpen();
 		},
 	},
 	data() {
