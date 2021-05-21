@@ -1,7 +1,7 @@
 <template>
 	<div class="header-third">
 		<WindowButtonsMac :maximized="maximized" v-if="platform === ApplicationPlatform.Mac" />
-		<FileMenu v-if="platform !== ApplicationPlatform.Mac" />
+		<MenuBarInput v-if="platform !== ApplicationPlatform.Mac" />
 	</div>
 	<div class="header-third">
 		<WindowTitle :title="'X-35B Over Death Valley.gdd* - Graphite'" />
@@ -32,7 +32,7 @@
 
 <script lang="ts">
 import { defineComponent } from "vue";
-import FileMenu from "./FileMenu.vue";
+import MenuBarInput from "../../widgets/inputs/MenuBarInput.vue";
 import WindowTitle from "./WindowTitle.vue";
 import WindowButtonsWindows from "./WindowButtonsWindows.vue";
 import WindowButtonsMac from "./WindowButtonsMac.vue";
@@ -40,7 +40,7 @@ import { ApplicationPlatform } from "../MainWindow.vue";
 
 export default defineComponent({
 	components: {
-		FileMenu,
+		MenuBarInput,
 		WindowTitle,
 		WindowButtonsWindows,
 		WindowButtonsMac,
