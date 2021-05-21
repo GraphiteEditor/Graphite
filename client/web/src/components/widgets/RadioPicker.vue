@@ -6,7 +6,8 @@
 
 <style lang="scss">
 .radio-picker {
-	button {
+	button,
+	.dropdown-button {
 		fill: #ddd;
 		border-radius: 0;
 		margin: 0;

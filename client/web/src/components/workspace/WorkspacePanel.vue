@@ -9,7 +9,10 @@
 					</IconButton>
 				</div>
 			</div>
-			<DropdownButton :icon="DropdownButtonIcon.VerticalEllipsis" />
+			<DropdownButton :icon="DropdownButtonIcon.VerticalEllipsis">
+				<h3>Panel Options</h3>
+				<p>More panel-related options will be here</p>
+			</DropdownButton>
 		</div>
 		<div class="panel-body">
 			<component :is="panelType" />
@@ -54,17 +57,16 @@
 					border-radius: 8px 8px 0 0;
 					position: relative;
 
-					&::before,
+					&:not(:first-child)::before,
 					&::after {
 						content: "";
 						width: 16px;
 						height: 8px;
 						position: absolute;
 						bottom: 0;
-						box-shadow: #333;
 					}
 
-					&::before {
+					&:not(:first-child)::before {
 						left: -16px;
 						border-bottom-right-radius: 8px;
 						box-shadow: 8px 0 0 0 #333;
@@ -135,6 +137,7 @@ import LayerTree from "../panels/LayerTree.vue";
 import Minimap from "../panels/Minimap.vue";
 import IconButton from "../widgets/IconButton.vue";
 import DropdownButton, { DropdownButtonIcon } from "../widgets/DropdownButton.vue";
+import { PopoverDirection } from "../widgets/PopoverMount.vue";
 import VerticalEllipsis from "../../../assets/svg/16x24-bounds-8x16-icon/vertical-ellipsis.svg";
 import CloseX from "../../../assets/svg/16x16-bounds-12x12-icon/close-x.svg";
 
@@ -159,6 +162,7 @@ export default defineComponent({
 	data() {
 		return {
 			DropdownButtonIcon,
+			PopoverDirection,
 		};
 	},
 });

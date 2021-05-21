@@ -12,13 +12,19 @@
 				<IconButton :size="24" title="Vertical Align Top"><AlignVerticalTop /></IconButton>
 				<IconButton :size="24" title="Vertical Align Center"><AlignVerticalCenter /></IconButton>
 				<IconButton :size="24" title="Vertical Align Bottom"><AlignVerticalBottom /></IconButton>
-				<DropdownButton />
+				<DropdownButton>
+					<h3>Align</h3>
+					<p>More alignment-related buttons will be here</p>
+				</DropdownButton>
 
 				<ItemDivider />
 
 				<IconButton :size="24" title="Flip Horizontal"><FlipHorizontal /></IconButton>
 				<IconButton :size="24" title="Flip Vertical"><FlipVertical /></IconButton>
-				<DropdownButton />
+				<DropdownButton>
+					<h3>Flip</h3>
+					<p>More flip-related buttons will be here</p>
+				</DropdownButton>
 
 				<ItemDivider />
 
@@ -27,7 +33,10 @@
 				<IconButton :size="24" title="Boolean Subtract Back"><BooleanSubtractBack /></IconButton>
 				<IconButton :size="24" title="Boolean Intersect"><BooleanIntersect /></IconButton>
 				<IconButton :size="24" title="Boolean Difference"><BooleanDifference /></IconButton>
-				<DropdownButton />
+				<DropdownButton>
+					<h3>Boolean</h3>
+					<p>More boolean-related buttons will be here</p>
+				</DropdownButton>
 			</div>
 			<div class="spacer"></div>
 			<div class="right side">
@@ -35,7 +44,10 @@
 					<IconButton :size="24" title="View Mode: Normal"><ViewModeNormal /></IconButton>
 					<IconButton :size="24" title="View Mode: Outline"><ViewModeOutline /></IconButton>
 					<IconButton :size="24" title="View Mode: Pixels"><ViewModePixels /></IconButton>
-					<DropdownButton />
+					<DropdownButton>
+						<h3>Display Mode</h3>
+						<p>More display mode options will be here</p>
+					</DropdownButton>
 				</RadioPicker>
 
 				<ItemDivider />
@@ -147,6 +159,7 @@ import { ResponseType, registerResponseHandler, Response, UpdateCanvas, SetActiv
 import LayoutRow from "../layout/LayoutRow.vue";
 import LayoutCol from "../layout/LayoutCol.vue";
 import WorkingColors from "../widgets/WorkingColors.vue";
+import { PopoverDirection } from "../widgets/PopoverMount.vue";
 import ShelfItem from "../widgets/ShelfItem.vue";
 import ItemDivider from "../widgets/ItemDivider.vue";
 import IconButton from "../widgets/IconButton.vue";
@@ -304,6 +317,7 @@ export default defineComponent({
 		return {
 			viewportSvg: "",
 			activeTool: "Select",
+			PopoverDirection,
 		};
 	},
 });
