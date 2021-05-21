@@ -1,16 +1,18 @@
 <template>
 	<div class="working-colors">
 		<div class="swatch-pair">
-			<button @click="clickSecondarySwatch" class="secondary swatch" style="background: white">
-				<PopoverMount ref="secondarySwatchPopover">
+			<div class="secondary swatch">
+				<button @click="clickSecondarySwatch" style="background: white"></button>
+				<PopoverMount :direction="PopoverDirection.Right" horizontal ref="secondarySwatchPopover">
 					<ColorPicker />
 				</PopoverMount>
-			</button>
-			<button @click="clickPrimarySwatch" class="primary swatch" style="background: black">
-				<PopoverMount ref="primarySwatchPopover">
+			</div>
+			<div class="primary swatch">
+				<button @click="clickPrimarySwatch" style="background: black"></button>
+				<PopoverMount :direction="PopoverDirection.Right" horizontal ref="primarySwatchPopover">
 					<ColorPicker />
 				</PopoverMount>
-			</button>
+			</div>
 		</div>
 		<div class="swap-and-reset">
 			<IconButton :size="16">
@@ -32,24 +34,31 @@
 	}
 
 	.swatch {
-		width: 24px;
-		height: 24px;
-		border-radius: 50%;
-		border: 2px #888 solid;
-		box-shadow: 0 0 0 2px #333;
+		width: 28px;
+		height: 28px;
 		margin: 2px;
-		padding: 0;
-		box-sizing: unset;
-		outline: none;
 		position: relative;
 
-		.popover-mount {
-			right: -4px;
+		button {
+			width: 100%;
+			height: 100%;
+			border-radius: 50%;
+			border: 2px #888 solid;
+			box-shadow: 0 0 0 2px #333;
+			margin: 0;
+			padding: 0;
+			box-sizing: border-box;
+			outline: none;
 		}
-	}
 
-	.primary.swatch {
-		margin-bottom: -8px;
+		.popover-mount {
+			top: 50%;
+			right: -2px;
+		}
+
+		&.primary {
+			margin-bottom: -8px;
+		}
 	}
 
 	.swap-and-reset {
@@ -60,7 +69,7 @@
 
 <script lang="ts">
 import { defineComponent } from "vue";
-import PopoverMount from "./PopoverMount.vue";
+import PopoverMount, { PopoverDirection } from "./PopoverMount.vue";
 import ColorPicker from "../popovers/ColorPicker.vue";
 import IconButton from "./IconButton.vue";
 import SwapButton from "../../../assets/svg/16x16-bounds-12x12-icon/swap.svg";
@@ -83,6 +92,11 @@ export default defineComponent({
 			(this.$refs.secondarySwatchPopover as typeof PopoverMount).setOpen();
 			(this.$refs.primarySwatchPopover as typeof PopoverMount).setClosed();
 		},
+	},
+	data() {
+		return {
+			PopoverDirection,
+		};
 	},
 });
 </script>
