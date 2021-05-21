@@ -1,7 +1,7 @@
 <template>
-	<div class="popover-mount" v-if="open">
-		<div class="tail left"></div>
-		<div class="popover">
+	<div class="popover-mount" :class="direction.toLowerCase()" v-if="open">
+		<div class="tail"></div>
+		<div class="popover" ref="popover">
 			<div class="popover-content" ref="popoverContent">
 				<slot></slot>
 			</div>
@@ -15,46 +15,75 @@
 	width: 0;
 	height: 0;
 	display: flex;
+	// Overlays begin at a z-index of 1000
+	z-index: 1000;
+
+	&.top,
+	&.bottom {
+		flex-direction: column;
+	}
 }
 
 .tail {
 	width: 0;
 	height: 0;
 	border-style: solid;
+	// Put the tail above the popover's shadow
 	z-index: 1;
+	// Draw over the application without being clipped by the containing panel's `overflow: hidden`
+	position: fixed;
 
-	&.top {
-		border-width: 0 6px 8px 6px;
-		border-color: transparent transparent #222222e6 transparent;
-		margin-left: -6px;
-		margin-top: 2px;
-	}
-
-	&.bottom {
+	.top > & {
 		border-width: 8px 6px 0 6px;
 		border-color: #222222e6 transparent transparent transparent;
 		margin-left: -6px;
 		margin-bottom: 2px;
 	}
 
-	&.left {
-		border-width: 6px 8px 6px 0;
-		border-color: transparent #222222e6 transparent transparent;
-		margin-top: -6px;
-		margin-left: 2px;
+	.bottom > & {
+		border-width: 0 6px 8px 6px;
+		border-color: transparent transparent #222222e6 transparent;
+		margin-left: -6px;
+		margin-top: 2px;
 	}
 
-	&.right {
+	.left > & {
 		border-width: 6px 0 6px 8px;
 		border-color: transparent transparent transparent #222222e6;
 		margin-top: -6px;
 		margin-right: 2px;
 	}
+
+	.right > & {
+		border-width: 6px 8px 6px 0;
+		border-color: transparent #222222e6 transparent transparent;
+		margin-top: -6px;
+		margin-left: 2px;
+	}
 }
 
 .popover {
 	display: flex;
-	align-items: center;
+
+	.top > & {
+		justify-content: center;
+		margin-bottom: 10px;
+	}
+
+	.bottom > & {
+		justify-content: center;
+		margin-top: 10px;
+	}
+
+	.left > & {
+		align-items: center;
+		margin-right: 10px;
+	}
+
+	.right > & {
+		align-items: center;
+		margin-left: 10px;
+	}
 
 	.popover-content {
 		background: #222222e6;
@@ -65,8 +94,9 @@
 		padding: 8px;
 		z-index: 0;
 		display: flex;
-		// This `position: relative` is used to allow `top`/`right`/`bottom`/`left` properties to shift the content back from overflowing the workspace
-		position: relative;
+		flex-direction: column;
+		// Draw over the application without being clipped by the containing panel's `overflow: hidden`
+		position: fixed;
 	}
 }
 </style>
@@ -74,24 +104,49 @@
 <script lang="ts">
 import { defineComponent } from "vue";
 
+export enum PopoverDirection {
+	Top = "Top",
+	Bottom = "Bottom",
+	Left = "Left",
+	Right = "Right",
+}
+
 export default defineComponent({
 	components: {},
+	props: {
+		direction: { type: String, default: PopoverDirection.Bottom },
+	},
 	data() {
 		return {
 			open: false,
 			mouseStillDown: false,
+			PopoverDirection,
 		};
 	},
 	updated() {
 		const popoverContent = this.$refs.popoverContent as HTMLElement;
+		const popover = this.$refs.popover as HTMLElement;
 		const workspace = document.querySelector(".workspace");
+
 		if (popoverContent && workspace) {
 			const workspaceBounds = workspace.getBoundingClientRect();
-
 			const popoverBounds = popoverContent.getBoundingClientRect();
 
-			const bottomOffset = workspaceBounds.bottom - popoverBounds.bottom - 8;
-			if (bottomOffset < 0) popoverContent.style.top = `${bottomOffset}px`;
+			if (this.direction === PopoverDirection.Left || this.direction === PopoverDirection.Right) {
+				const topOffset = popoverBounds.top - workspaceBounds.top - 8;
+				if (topOffset < 0) popover.style.transform = `translate(0, ${-topOffset}px)`;
+
+				const bottomOffset = workspaceBounds.bottom - popoverBounds.bottom - 8;
+				if (bottomOffset < 0) popover.style.transform = `translate(0, ${bottomOffset}px)`;
+			}
+
+			if (this.direction === PopoverDirection.Top || this.direction === PopoverDirection.Bottom) {
+				const leftOffset = popoverBounds.left - workspaceBounds.left - 8;
+				if (leftOffset < 0) popover.style.transform = `translate(${-leftOffset}px, 0)`;
+
+				const rightOffset = workspaceBounds.right - popoverBounds.right - 8;
+				if (rightOffset < 0) popover.style.transform = `translate(${rightOffset}px, 0)`;
+			}
 		}
 	},
 	methods: {

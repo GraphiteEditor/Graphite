@@ -3,7 +3,10 @@
 		<LayoutRow :class="'options-bar'">
 			<NumberInput />
 			<NumberInput />
-			<DropdownButton />
+			<DropdownButton>
+				<h3>Compositing Options</h3>
+				<p>More blend and compositing options will be here</p>
+			</DropdownButton>
 		</LayoutRow>
 		<LayoutRow :class="'layer-tree'">
 			<LayoutCol :class="'list'">
@@ -78,6 +81,7 @@ import LayoutRow from "../layout/LayoutRow.vue";
 import LayoutCol from "../layout/LayoutCol.vue";
 import NumberInput from "../widgets/NumberInput.vue";
 import DropdownButton from "../widgets/DropdownButton.vue";
+import { PopoverDirection } from "../widgets/PopoverMount.vue";
 import IconButton from "../widgets/IconButton.vue";
 import IconContainer from "../widgets/IconContainer.vue";
 import EyeVisible from "../../../assets/svg/24x24-bounds-16x16-icon/visibility-eye-visible.svg";
@@ -122,6 +126,7 @@ export default defineComponent({
 	},
 	data() {
 		return {
+			PopoverDirection,
 			layers: [] as Array<LayerPanelEntry>,
 		};
 	},
