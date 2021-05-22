@@ -26,7 +26,7 @@ impl MessageHandler<InputPreprocessorMessage, ()> for InputPreprocessor {
 		let response = match message {
 			InputPreprocessorMessage::MouseMove(pos) => {
 				self.mouse_state.position = pos;
-				InputMapperMessage::MouseMove.into()
+				InputMapperMessage::PointerMove.into()
 			}
 			InputPreprocessorMessage::MouseDown(state) => self.translate_mouse_event(state, true),
 			InputPreprocessorMessage::MouseUp(state) => self.translate_mouse_event(state, false),

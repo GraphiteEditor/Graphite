@@ -8,7 +8,7 @@ use super::{
 #[impl_message(Message, InputMapper)]
 #[derive(PartialEq, Clone, Debug)]
 pub enum InputMapperMessage {
-	MouseMove,
+	PointerMove,
 	KeyUp(Key),
 	KeyDown(Key),
 }
@@ -75,7 +75,7 @@ macro_rules! mapping {
 			let arr = match $entry.cause {
 				InputMapperMessage::KeyDown(key) => &mut down[key as usize],
 				InputMapperMessage::KeyUp(key) => &mut up[key as usize],
-				InputMapperMessage::MouseMove => &mut mouse_move,
+				InputMapperMessage::PointerMove => &mut mouse_move,
 			};
 			arr.push($entry);
         )*
@@ -89,7 +89,7 @@ impl Default for Mappings {
 			// Rectangle
 			entry! {action=RectangleMessage::Center, key_down=KeyAlt},
 			entry! {action=RectangleMessage::UnCenter, key_up=KeyAlt},
-			entry! {action=RectangleMessage::MouseMove, message=InputMapperMessage::MouseMove},
+			entry! {action=RectangleMessage::MouseMove, message=InputMapperMessage::PointerMove},
 			entry! {action=RectangleMessage::DragStart, key_down=Lmb},
 			entry! {action=RectangleMessage::DragStop, key_up=Lmb},
 			entry! {action=RectangleMessage::Abort, key_down=Rmb},
@@ -101,7 +101,7 @@ impl Default for Mappings {
 			// Ellipse
 			entry! {action=EllipseMessage::Center, key_down=KeyAlt},
 			entry! {action=EllipseMessage::UnCenter, key_up=KeyAlt},
-			entry! {action=EllipseMessage::MouseMove, message=InputMapperMessage::MouseMove},
+			entry! {action=EllipseMessage::MouseMove, message=InputMapperMessage::PointerMove},
 			entry! {action=EllipseMessage::DragStart, key_down=Lmb},
 			entry! {action=EllipseMessage::DragStop, key_up=Lmb},
 			entry! {action=EllipseMessage::Abort, key_down=Rmb},
@@ -113,7 +113,7 @@ impl Default for Mappings {
 			// Shape
 			entry! {action=ShapeMessage::Center, key_down=KeyAlt},
 			entry! {action=ShapeMessage::UnCenter, key_up=KeyAlt},
-			entry! {action=ShapeMessage::MouseMove, message=InputMapperMessage::MouseMove},
+			entry! {action=ShapeMessage::MouseMove, message=InputMapperMessage::PointerMove},
 			entry! {action=ShapeMessage::DragStart, key_down=Lmb},
 			entry! {action=ShapeMessage::DragStop, key_up=Lmb},
 			entry! {action=ShapeMessage::Abort, key_down=Rmb},
@@ -125,7 +125,7 @@ impl Default for Mappings {
 			// Line
 			entry! {action=LineMessage::Center, key_down=KeyAlt},
 			entry! {action=LineMessage::UnCenter, key_up=KeyAlt},
-			entry! {action=LineMessage::MouseMove, message=InputMapperMessage::MouseMove},
+			entry! {action=LineMessage::MouseMove, message=InputMapperMessage::PointerMove},
 			entry! {action=LineMessage::DragStart, key_down=Lmb},
 			entry! {action=LineMessage::DragStop, key_up=Lmb},
 			entry! {action=LineMessage::Abort, key_down=Rmb},
@@ -137,7 +137,7 @@ impl Default for Mappings {
 			entry! {action=LineMessage::SnapToAngle, key_down=KeyCaps},
 			entry! {action=LineMessage::UnSnapToAngle, key_up=KeyCaps},
 			// Pen
-			entry! {action=PenMessage::MouseMove, message=InputMapperMessage::MouseMove},
+			entry! {action=PenMessage::MouseMove, message=InputMapperMessage::PointerMove},
 			entry! {action=PenMessage::DragStart, key_down=Lmb},
 			entry! {action=PenMessage::DragStop, key_up=Lmb},
 			entry! {action=PenMessage::Confirm, key_down=Rmb},
@@ -160,7 +160,7 @@ impl Mappings {
 		let list = match message {
 			KeyDown(key) => &self.down[key as usize],
 			KeyUp(key) => &self.up[key as usize],
-			MouseMove => &self.mouse_move,
+			PointerMove => &self.mouse_move,
 		};
 		list.match_mapping(keys, actions)
 	}
