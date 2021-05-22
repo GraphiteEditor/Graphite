@@ -22,9 +22,9 @@ struct MappingEntry {
 }
 
 #[derive(Debug, Clone, Default)]
-struct KeyMappings(Vec<MappingEntry>);
+struct KeyMappingEntries(Vec<MappingEntry>);
 
-impl KeyMappings {
+impl KeyMappingEntries {
 	fn match_mapping(&self, keys: &Keyboard, actions: ActionList) -> Option<Message> {
 		for entry in self.0.iter() {
 			if ((*keys & entry.modifiers) ^ entry.modifiers).is_empty() && actions.iter().flatten().any(|action| entry.action.to_discriminant() == *action) {
@@ -40,9 +40,9 @@ impl KeyMappings {
 
 #[derive(Debug, Clone)]
 struct Mapping {
-	up: [KeyMappings; NUMBER_OF_KEYS],
-	down: [KeyMappings; NUMBER_OF_KEYS],
-	mouse_move: KeyMappings,
+	up: [KeyMappingEntries; NUMBER_OF_KEYS],
+	down: [KeyMappingEntries; NUMBER_OF_KEYS],
+	mouse_move: KeyMappingEntries,
 }
 
 macro_rules! modifiers {
@@ -69,9 +69,9 @@ macro_rules! entry {
 macro_rules! mapping {
 	//[$(<action=$action:expr; message=$key:expr; $(modifiers=[$($m:ident),* $(,)?];)?>)*] => {{
 	[$($entry:expr),* $(,)?] => {{
-		let mut up: [KeyMappings; NUMBER_OF_KEYS] = Default::default();
-		let mut down: [KeyMappings; NUMBER_OF_KEYS] = Default::default();
-		let mut mouse_move: KeyMappings = Default::default();
+		let mut up: [KeyMappingEntries; NUMBER_OF_KEYS] = Default::default();
+		let mut down: [KeyMappingEntries; NUMBER_OF_KEYS] = Default::default();
+		let mut mouse_move: KeyMappingEntries = Default::default();
 		$(
 			let arr = match $entry.cause {
 				InputMapperMessage::KeyDown(key) => &mut down[key as usize],
