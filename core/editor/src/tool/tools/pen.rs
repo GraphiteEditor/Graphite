@@ -33,8 +33,8 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Pen {
 	fn actions(&self) -> ActionList {
 		use PenToolFsmState::*;
 		match self.fsm_state {
-			Ready => actions!(EllipseMessageDiscriminant; Undo, DragStart, Center, UnCenter, LockAspectRatio, UnlockAspectRatio),
-			Dragging => actions!(EllipseMessageDiscriminant; DragStop, Center, UnCenter, LockAspectRatio, UnlockAspectRatio, MouseMove, Abort),
+			Ready => actions!(PenMessageDiscriminant; Undo, DragStart, DragStop, Confirm, Abort),
+			Dragging => actions!(PenMessageDiscriminant; Undo, DragStop, MouseMove, Confirm, Abort),
 		}
 	}
 }

@@ -33,8 +33,8 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Line {
 	fn actions(&self) -> ActionList {
 		use LineToolFsmState::*;
 		match self.fsm_state {
-			Ready => actions!(LineMessageDiscriminant;  DragStart, Center, UnCenter, SnapToAngle, UnSnapToAngle),
-			Dragging => actions!(LineMessageDiscriminant; DragStop, MouseMove, Abort, Center, UnCenter,  SnapToAngle, UnSnapToAngle),
+			Ready => actions!(LineMessageDiscriminant;  DragStart, Center, UnCenter, LockAngle, UnlockAngle, SnapToAngle, UnSnapToAngle),
+			Dragging => actions!(LineMessageDiscriminant; DragStop, MouseMove, Abort, Center, UnCenter, LockAngle, UnlockAngle,  SnapToAngle, UnSnapToAngle),
 		}
 	}
 }
@@ -84,7 +84,7 @@ impl Fsm for LineToolFsmState {
 
 					Dragging
 				}
-				(Dragging, DragStart) => {
+				(Dragging, DragStop) => {
 					data.drag_current = input.mouse_state.position;
 
 					responses.push_back(Operation::ClearWorkingFolder.into());

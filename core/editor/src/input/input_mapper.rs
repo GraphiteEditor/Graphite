@@ -116,6 +116,24 @@ impl Default for Mappings {
 			entry! {action=ShapeMessage::Abort, key_down=KeyEscape},
 			entry! {action=ShapeMessage::LockAspectRatio, key_down=KeyShift},
 			entry! {action=ShapeMessage::UnlockAspectRatio, key_up=KeyShift},
+			// Line
+			entry! {action=LineMessage::Center, key_down=KeyAlt},
+			entry! {action=LineMessage::UnCenter, key_up=KeyAlt},
+			entry! {action=LineMessage::MouseMove, message=InputMapperMessage::MouseMove},
+			entry! {action=LineMessage::DragStart, key_down=Lmb},
+			entry! {action=LineMessage::DragStop, key_up=Lmb},
+			entry! {action=LineMessage::Abort, key_down=Rmb},
+			entry! {action=LineMessage::Abort, key_down=KeyEscape},
+			entry! {action=LineMessage::LockAngle, key_down=KeyControl},
+			entry! {action=LineMessage::UnlockAngle, key_up=KeyControl},
+			entry! {action=LineMessage::SnapToAngle, key_down=KeyShift},
+			entry! {action=LineMessage::UnSnapToAngle, key_up=KeyShift},
+			// Pen
+			entry! {action=PenMessage::MouseMove, message=InputMapperMessage::MouseMove},
+			entry! {action=PenMessage::DragStart, key_down=Lmb},
+			entry! {action=PenMessage::DragStop, key_up=Lmb},
+			entry! {action=PenMessage::Confirm, key_down=Rmb},
+			entry! {action=PenMessage::Confirm, key_down=KeyEscape},
 			// Document Actions
 			entry! {action=DocumentMessage::Undo, key_down=KeyZ, modifiers=[KeyControl]},
 			// Global Actions
