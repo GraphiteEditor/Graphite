@@ -1,91 +1,215 @@
+mod as_message;
+mod combined_message_attrs;
+mod discriminant;
+mod helper_structs;
 mod helpers;
-mod structs;
+mod hint;
+mod transitive_child;
 
-use crate::helpers::{fold_error_iter, two_path};
-use crate::structs::{AttrInnerKeyStringMap, AttrInnerSingleString};
+use crate::as_message::derive_as_message_impl;
+use crate::combined_message_attrs::combined_message_attrs_impl;
+use crate::discriminant::derive_discriminant_impl;
+use crate::helper_structs::AttrInnerSingleString;
+use crate::hint::derive_hint_impl;
+use crate::transitive_child::derive_transitive_child_impl;
 use proc_macro::TokenStream;
-use proc_macro2::{Span, TokenStream as TokenStream2};
-use syn::{parse_macro_input, Attribute, Data, DeriveInput, LitStr, Variant};
+use syn::parse_macro_input;
 
-fn parse_hint_helper_attrs(attrs: &[Attribute]) -> syn::Result<(Vec<LitStr>, Vec<LitStr>)> {
-	fold_error_iter(
-		attrs
-			.iter()
-			.filter(|a| a.path.get_ident().map_or(false, |i| i == "hint"))
-			.map(|attr| syn::parse2::<AttrInnerKeyStringMap>(attr.tokens.clone())),
-	)
-	.and_then(|v: Vec<AttrInnerKeyStringMap>| {
-		fold_error_iter(AttrInnerKeyStringMap::multi_into_iter(v).map(|(k, mut v)| match v.len() {
-			0 => panic!("internal error: a key without values was somehow inserted into the hashmap"),
-			1 => {
-				let single_val = v.pop().unwrap();
-				Ok((LitStr::new(&k.to_string(), Span::call_site()), single_val))
-			}
-			_ => {
-				// the first value is ok, the other ones should error
-				let after_first = v.into_iter().skip(1);
-				// this call to fold_error_iter will always return Err with a combined error
-				fold_error_iter(after_first.map(|lit| Err(syn::Error::new(lit.span(), format!("value for key {} was already given", k))))).map(|_: Vec<()>| unreachable!())
-			}
-		}))
-	})
-	.map(|v| v.into_iter().unzip())
+/// Derive the `ToDiscriminant` trait and create a `<Type Name>Discriminant` enum
+///
+/// This derive macro is enum-only.
+///
+/// The discriminant enum is a copy of the input enum with all fields of every variant removed.\
+/// *) The exception to that rule is the `#[child]` attribute
+///
+/// # Helper attributes
+/// - `#[sub_discriminant]`: only usable on variants with a single field; instead of no fields, the discriminant of the single field will be included in the discriminant,
+///     acting as a sub-discriminant.
+/// - `#[discriminant_attr(…)]`: usable on the enum itself or on any variant; applies `#[…]` in its place on the discriminant.
+///
+/// # Attributes on the Discriminant
+/// All attributes on variants and the type itself are cleared when constructing the discriminant.
+/// If the discriminant is supposed to also have an attribute, you must double it with `#[discriminant_attr(…)]`
+///
+/// # Example
+/// ```
+/// # use graphite_proc_macros::ToDiscriminant;
+/// # use editor_core::misc::derivable_custom_traits::ToDiscriminant;
+/// # use std::ffi::OsString;
+///
+/// #[derive(ToDiscriminant)]
+/// #[discriminant_attr(derive(Debug, Eq, PartialEq))]
+/// pub enum EnumA {
+///     A(u8),
+///     #[sub_discriminant]
+///     B(EnumB)
+/// }
+///
+/// #[derive(ToDiscriminant)]
+/// #[discriminant_attr(derive(Debug, Eq, PartialEq))]
+/// #[discriminant_attr(repr(u8))]
+/// pub enum EnumB {
+///     Foo(u8),
+///     Bar(String),
+///     #[cfg(feature = "some-feature")]
+///     #[discriminant_attr(cfg(feature = "some-feature"))]
+///     WindowsBar(OsString)
+/// }
+///
+/// let a = EnumA::A(1);
+/// assert_eq!(a.to_discriminant(), EnumADiscriminant::A);
+/// let b = EnumA::B(EnumB::Bar("bar".to_string()));
+/// assert_eq!(b.to_discriminant(), EnumADiscriminant::B(EnumBDiscriminant::Bar));
+/// ```
+#[proc_macro_derive(ToDiscriminant, attributes(sub_discriminant, discriminant_attr))]
+pub fn derive_discriminant(input_item: TokenStream) -> TokenStream {
+	TokenStream::from(derive_discriminant_impl(input_item.into()).unwrap_or_else(|err| err.to_compile_error()))
 }
 
-fn derive_hint_impl(input_item: TokenStream2) -> syn::Result<TokenStream2> {
-	let input = syn::parse2::<DeriveInput>(input_item)?;
+/// Derive the `TransitiveChild` trait and generate `From` impls to convert into the parent, as well as the top parent type
+///
+/// This macro cannot be invoked on the top parent (which has no parent but itself). Instead, implement `TransitiveChild` manually
+/// like in the example.
+///
+/// # Helper Attributes
+/// - `#[parent(<Type>, <Expr>)]` (**required**): declare the parent type (`<Type>`)
+///     and a function (`<Expr>`, has to evaluate to a single arg function) for converting a value of this type to the parent type
+/// - `#[parent_is_top]`: Denote that the parent type has no further parent type (this is required because otherwise the `From` impls for parent and top parent would overlap)
+///
+/// # Example
+/// ```
+/// # use graphite_proc_macros::TransitiveChild;
+/// # use editor_core::misc::derivable_custom_traits::TransitiveChild;
+///
+/// #[derive(Debug, Eq, PartialEq)]
+/// struct A { u: u8, b: B };
+///
+/// impl A {
+///     pub fn from_b(b: B) -> Self {
+///         Self { u: 7, b }
+///     }
+/// }
+///
+/// impl TransitiveChild for A {
+///     type Parent = Self;
+///     type TopParent = Self;
+/// }
+///
+/// #[derive(TransitiveChild, Debug, Eq, PartialEq)]
+/// #[parent(A, A::from_b)]
+/// #[parent_is_top]
+/// enum B {
+///     Foo,
+///     Bar,
+///     Child(C)
+/// }
+///
+/// #[derive(TransitiveChild, Debug, Eq, PartialEq)]
+/// #[parent(B, B::Child)]
+/// struct C(D);
+///
+/// #[derive(TransitiveChild, Debug, Eq, PartialEq)]
+/// #[parent(C, C)]
+/// struct D;
+///
+/// let d = D;
+/// assert_eq!(A::from(d), A { u: 7, b: B::Child(C(D)) });
+/// ```
+#[proc_macro_derive(TransitiveChild, attributes(parent, parent_is_top))]
+pub fn derive_transitive_child(input_item: TokenStream) -> TokenStream {
+	TokenStream::from(derive_transitive_child_impl(input_item.into()).unwrap_or_else(|err| err.to_compile_error()))
+}
 
-	let ident = input.ident;
+/// Derive the `AsMessage` trait
+///
+/// # Helper Attributes
+/// - `#[child]`: only on tuple variants with a single field; Denote that the message path should continue inside the variant
+///
+/// # Example
+/// See also [`TransitiveChild`]
+/// ```
+/// # use graphite_proc_macros::{TransitiveChild, AsMessage};
+/// # use editor_core::misc::derivable_custom_traits::TransitiveChild;
+/// # use editor_core::message_prelude::*;
+///
+/// #[derive(AsMessage)]
+/// pub enum TopMessage {
+///     A(u8),
+///     B(u16),
+///     #[child]
+///     C(MessageC),
+///     #[child]
+///     D(MessageD)
+/// }
+///
+/// impl TransitiveChild for TopMessage {
+///     type Parent = Self;
+///     type TopParent = Self;
+/// }
+///
+/// #[derive(TransitiveChild, AsMessage, Copy, Clone)]
+/// #[parent(TopMessage, TopMessage::C)]
+/// #[parent_is_top]
+/// pub enum MessageC {
+///     X1,
+///     X2
+/// }
+///
+/// #[derive(TransitiveChild, AsMessage, Copy, Clone)]
+/// #[parent(TopMessage, TopMessage::D)]
+/// #[parent_is_top]
+/// pub enum MessageD {
+///     Y1,
+///     #[child]
+///     Y2(MessageE)
+/// }
+///
+/// #[derive(TransitiveChild, AsMessage, Copy, Clone)]
+/// #[parent(MessageD, MessageD::Y2)]
+/// pub enum MessageE {
+///     Alpha,
+///     Beta
+/// }
+///
+/// let c = MessageC::X1;
+/// assert_eq!(c.local_name(), "X1");
+/// assert_eq!(c.global_name(), "C.X1");
+/// let d = MessageD::Y2(MessageE::Alpha);
+/// assert_eq!(d.local_name(), "Y2.Alpha");
+/// assert_eq!(d.global_name(), "D.Y2.Alpha");
+/// let e = MessageE::Beta;
+/// assert_eq!(e.local_name(), "Beta");
+/// assert_eq!(e.global_name(), "D.Y2.Beta");
+/// ```
+#[proc_macro_derive(AsMessage, attributes(child))]
+pub fn derive_message(input_item: TokenStream) -> TokenStream {
+	TokenStream::from(derive_as_message_impl(input_item.into()).unwrap_or_else(|err| err.to_compile_error()))
+}
 
-	match input.data {
-		Data::Enum(data) => {
-			let variants = data.variants.iter().map(|var: &Variant| two_path(ident.clone(), var.ident.clone())).collect::<Vec<_>>();
-
-			let hint_result = fold_error_iter(data.variants.into_iter().map(|var: Variant| parse_hint_helper_attrs(&var.attrs)));
-
-			hint_result.map(|hints: Vec<(Vec<LitStr>, Vec<LitStr>)>| {
-				let (keys, values): (Vec<Vec<LitStr>>, Vec<Vec<LitStr>>) = hints.into_iter().unzip();
-				let cap: Vec<usize> = keys.iter().map(|v| v.len()).collect();
-
-				quote::quote! {
-					impl Hint for #ident {
-						fn hints(&self) -> ::std::collections::HashMap<String, String> {
-							match self {
-								#(
-									#variants { .. } => {
-										let mut hm = ::std::collections::HashMap::with_capacity(#cap);
-										#(
-											hm.insert(#keys.to_string(), #values.to_string());
-										)*
-										hm
-									}
-								)*
-							}
-						}
-					}
-				}
-			})
-		}
-		Data::Struct(_) | Data::Union(_) => {
-			let hint_result = parse_hint_helper_attrs(&input.attrs);
-
-			hint_result.map(|(keys, values)| {
-				let cap = keys.len();
-
-				quote::quote! {
-					impl Hint for #ident {
-						fn hints(&self) -> ::std::collections::HashMap<String, String> {
-							let mut hm = ::std::collections::HashMap::with_capacity(#cap);
-							#(
-								hm.insert(#keys.to_string(), #values.to_string());
-							)*
-							hm
-						}
-					}
-				}
-			})
-		}
-	}
+/// This macro is basically an abbreviation for the usual [`ToDiscriminant`], [`TransitiveChild`] and [`AsMessage`] invokations
+///
+/// This macro is enum-only.
+///
+/// Also note that all three of those derives have to be in scope.
+///
+/// # Usage
+/// There are three possible argument syntaxes you can use:
+/// 1. no arguments: this is for the top-level message enum. It derives `ToDiscriminant`, `AsMessage` on the discriminant, and implements `TransitiveChild` on both
+///     (the parent and top parent being the respective types themselves).
+///     It also derives the following `std` traits on the discriminant: `Debug, Copy, Clone, PartialEq, Eq, Hash`.
+/// 2. two arguments: this is for message enums whose direct parent is the top level message enum. The syntax is `#[impl_message(<Type>, <Ident>)]`,
+///     where `<Type>` is the parent message type and `<Ident>` is the identifier of the variant used to construct this child.
+///     It derives `ToDiscriminant`, `AsMessage` on the discriminant, and `TransitiveChild` on both (adding `#[parent_is_top]` to both).
+///     It also derives the following `std` traits on the discriminant: `Debug, Copy, Clone, PartialEq, Eq, Hash`.
+/// 3. three arguments: this is for all other message enums that are transitive children of the top level message enum. The syntax is
+///     `#[impl_message(<Type>, <Type>, <Ident>)]`, where the first `<Type>` is the top parent message type, the secont `<Type>` is the parent message type
+///     and `<Ident>` is the identifier of the variant used to construct this child.
+///     It derives `ToDiscriminant`, `AsMessage` on the discriminant, and `TransitiveChild` on both.
+///     It also derives the following `std` traits on the discriminant: `Debug, Copy, Clone, PartialEq, Eq, Hash`.
+///     **This third option will likely change in the future**
+#[proc_macro_attribute]
+pub fn impl_message(attr: TokenStream, input_item: TokenStream) -> TokenStream {
+	TokenStream::from(combined_message_attrs_impl(attr.into(), input_item.into()).unwrap_or_else(|err| err.to_compile_error()))
 }
 
 /// Derive the `Hint` trait
@@ -93,7 +217,7 @@ fn derive_hint_impl(input_item: TokenStream2) -> syn::Result<TokenStream2> {
 /// # Example
 /// ```
 /// # use graphite_proc_macros::Hint;
-/// # use editor_core::hint::Hint;
+/// # use editor_core::misc::derivable_custom_traits::Hint;
 ///
 /// #[derive(Hint)]
 /// pub enum StateMachine {
@@ -152,6 +276,7 @@ pub fn edge(attr: TokenStream, item: TokenStream) -> TokenStream {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use proc_macro2::TokenStream as TokenStream2;
 
 	fn ts_assert_eq(l: TokenStream2, r: TokenStream2) {
 		// not sure if this is the best way of doing things but if two TokenStreams are equal, their `to_string` is also equal

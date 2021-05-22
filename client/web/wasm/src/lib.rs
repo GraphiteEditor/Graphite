@@ -4,11 +4,10 @@ pub mod utils;
 pub mod window;
 pub mod wrappers;
 
-use editor_core::{events::Response, Editor};
+use editor_core::{message_prelude::*, Editor};
 use std::cell::RefCell;
 use utils::WasmLog;
 use wasm_bindgen::prelude::*;
-use wrappers::WasmResponse;
 
 // the thread_local macro provides a way to initialize static variables with non-constant functions
 thread_local! { pub static EDITOR_STATE: RefCell<Editor> = RefCell::new(Editor::new(Box::new(handle_response))) }
@@ -21,19 +20,20 @@ pub fn init() {
 	log::set_max_level(log::LevelFilter::Debug);
 }
 
-fn handle_response(response: Response) {
-	let response_type = response.to_string();
+fn handle_response(response: FrontendMessage) {
+	let response_type = response.to_discriminant().local_name();
 	send_response(response_type, response);
 }
 
-fn send_response(response_type: String, response_data: Response) {
-	let response_data = JsValue::from_serde(&WasmResponse::new(response_data)).expect("Failed to serialize response");
-	handleResponse(response_type, response_data);
+fn send_response(response_type: String, response_data: FrontendMessage) {
+	let response_data = JsValue::from_serde(&response_data).expect("Failed to serialize response");
+	let _ = handleResponse(response_type, response_data).map_err(|error| log::error!("javascript threw an error: {:?}", error));
 }
 
 #[wasm_bindgen(module = "/../src/response-handler.ts")]
 extern "C" {
-	fn handleResponse(responseType: String, responseData: JsValue);
+	#[wasm_bindgen(catch)]
+	fn handleResponse(responseType: String, responseData: JsValue) -> Result<(), JsValue>;
 }
 
 #[wasm_bindgen]

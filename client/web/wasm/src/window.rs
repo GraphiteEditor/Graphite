@@ -20,7 +20,7 @@ pub fn get_active_document() -> DocumentId {
 	todo!("get_active_document")
 }
 
-use editor_core::workspace::PanelId;
+type PanelId = u32;
 /// Notify the editor that the mouse hovers above a panel
 #[wasm_bindgen]
 pub fn panel_hover_enter(panel_id: PanelId) {

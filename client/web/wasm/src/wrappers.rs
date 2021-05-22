@@ -1,9 +1,7 @@
 use crate::shims::Error;
-use editor_core::events;
-use editor_core::tools::{SelectAppendMode, ToolType};
+use editor_core::input::keyboard::Key;
+use editor_core::tool::{SelectAppendMode, ToolType};
 use editor_core::Color as InnerColor;
-use events::Response;
-use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen]
@@ -23,15 +21,6 @@ impl Color {
 impl Color {
 	pub fn inner(&self) -> InnerColor {
 		self.0
-	}
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct WasmResponse(Response);
-
-impl WasmResponse {
-	pub fn new(response: Response) -> Self {
-		Self(response)
 	}
 }
 
@@ -85,8 +74,9 @@ pub fn translate_append_mode(name: &str) -> Option<SelectAppendMode> {
 	})
 }
 
-pub fn translate_key(name: &str) -> events::Key {
-	use events::Key::*;
+pub fn translate_key(name: &str) -> Key {
+	log::trace!("pressed key: {}", name);
+	use Key::*;
 	match name {
 		"e" => KeyE,
 		"v" => KeyV,
@@ -109,6 +99,7 @@ pub fn translate_key(name: &str) -> events::Key {
 		"9" => Key9,
 		"Enter" => KeyEnter,
 		"Shift" => KeyShift,
+		"CapsLock" => KeyCaps,
 		"Control" => KeyControl,
 		"Alt" => KeyAlt,
 		"Escape" => KeyEscape,

@@ -26,55 +26,35 @@ export function registerResponseHandler(responseType: ResponseType, callback: Re
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function handleResponse(responseIdentifier: string, responseData: any) {
-	const [origin, responesType] = responseIdentifier.split("::", 2);
-	const callback = window.responseMap[responesType];
-	const data = parseResponse(origin, responesType, responseData);
+export function handleResponse(responseType: string, responseData: any) {
+	const callback = window.responseMap[responseType];
+	const data = parseResponse(responseType, responseData);
 
 	if (callback && data) {
 		callback(data);
 	} else if (data) {
-		console.error(`Received a Response of type "${responseIdentifier}" but no handler was registered for it from the client.`);
+		console.error(`Received a Response of type "${responseType}" but no handler was registered for it from the client.`);
 	} else {
-		console.error(`Received a Response of type "${responseIdentifier}" but but was not able to parse the data.`);
+		console.error(`Received a Response of type "${responseType}" but but was not able to parse the data.`);
 	}
 }
 
-enum OriginNames {
-	Document = "Document",
-	Tool = "Tool",
-}
-
-function parseResponse(origin: string, responseType: string, data: any): Response {
-	const response = (() => {
-		switch (origin) {
-			case OriginNames.Document:
-				switch (responseType) {
-					case "DocumentChanged":
-						return newDocumentChanged(data.Document.DocumentChanged);
-					case "CollapseFolder":
-						return newCollapseFolder(data.Document.CollapseFolder);
-					case "ExpandFolder":
-						return newExpandFolder(data.Document.ExpandFolder);
-					default:
-						return undefined;
-				}
-			case OriginNames.Tool:
-				switch (responseType) {
-					case "SetActiveTool":
-						return newSetActiveTool(data.Tool.SetActiveTool);
-					case "UpdateCanvas":
-						return newUpdateCanvas(data.Tool.UpdateCanvas);
-					default:
-						return undefined;
-				}
-			default:
-				return undefined;
-		}
-	})();
-
-	if (!response) throw new Error(`Unrecognized origin/responseType pair: ${origin}, ${responseType}`);
-	return response;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function parseResponse(responseType: string, data: any): Response {
+	switch (responseType) {
+		case "DocumentChanged":
+			return newDocumentChanged(data.DocumentChanged);
+		case "CollapseFolder":
+			return newCollapseFolder(data.CollapseFolder);
+		case "ExpandFolder":
+			return newExpandFolder(data.ExpandFolder);
+		case "SetActiveTool":
+			return newSetActiveTool(data.SetActiveTool);
+		case "UpdateCanvas":
+			return newUpdateCanvas(data.UpdateCanvas);
+		default:
+			throw new Error(`Unrecognized origin/responseType pair: ${origin}, ${responseType}`);
+	}
 }
 
 export type Response = SetActiveTool | UpdateCanvas | DocumentChanged | CollapseFolder | ExpandFolder;

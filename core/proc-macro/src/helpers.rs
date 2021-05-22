@@ -1,4 +1,4 @@
-use proc_macro2::Ident;
+use proc_macro2::{Ident, Span};
 use syn::punctuated::Punctuated;
 use syn::{Path, PathArguments, PathSegment, Token};
 
@@ -19,8 +19,13 @@ pub fn fold_error_iter<T>(iter: impl Iterator<Item = syn::Result<T>>) -> syn::Re
 	})
 }
 
+/// Creates an ident at the call site
+pub fn call_site_ident<S: AsRef<str>>(s: S) -> Ident {
+	Ident::new(s.as_ref(), Span::call_site())
+}
+
 /// Creates the path `left::right` from the idents `left` and `right`
-pub fn two_path(left_ident: Ident, right_ident: Ident) -> Path {
+pub fn two_segment_path(left_ident: Ident, right_ident: Ident) -> Path {
 	let mut segments: Punctuated<PathSegment, Token![::]> = Punctuated::new();
 	segments.push(PathSegment {
 		ident: left_ident,
@@ -57,6 +62,6 @@ mod tests {
 	#[test]
 	fn test_two_path() {
 		let _span = quote::quote! { "" }.span();
-		assert_eq!(two_path(Ident::new("a", _span), Ident::new("b", _span)).to_token_stream().to_string(), "a :: b");
+		assert_eq!(two_segment_path(Ident::new("a", _span), Ident::new("b", _span)).to_token_stream().to_string(), "a :: b");
 	}
 }
