@@ -1,18 +1,11 @@
 pub const NUMBER_OF_KEYS: usize = Key::NumKeys as usize;
 // Edit this to specify the storage type used
-pub type StorageType = u32;
+// TODO: Increase size of type
+pub type StorageType = u8;
 const STORAGE_SIZE: u32 = std::mem::size_of::<usize>() as u32 * 8 + 2 - std::mem::size_of::<StorageType>().leading_zeros();
 const STORAGE_SIZE_BITS: usize = 1 << STORAGE_SIZE;
-const KEY_MASK_STORAGE_LENGHT: usize = NUMBER_OF_KEYS + STORAGE_SIZE_BITS - 1 >> STORAGE_SIZE;
+const KEY_MASK_STORAGE_LENGHT: usize = (NUMBER_OF_KEYS + STORAGE_SIZE_BITS - 1) >> STORAGE_SIZE;
 pub type Keyboard = KeyStore<KEY_MASK_STORAGE_LENGHT>;
-
-#[derive(Debug, Default)]
-pub struct KeyState {
-	depressed: bool,
-	// time of last press
-	// mod keys held down while pressing
-	// …
-}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Key {
@@ -56,12 +49,16 @@ pub enum Key {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct KeyStore<const LENGTH: usize>([StorageType; LENGTH]);
 
-use std::ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign};
+use std::{
+	fmt::{Display, Formatter},
+	ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign},
+	usize,
+};
 
 impl<const LENGTH: usize> KeyStore<LENGTH> {
 	#[inline]
 	fn convert_index(index: usize) -> (usize, StorageType) {
-		let bit = 1 << index & STORAGE_SIZE as StorageType - 1;
+		let bit = 1 << (index & (STORAGE_SIZE_BITS as StorageType - 1) as usize);
 		let offset = index >> STORAGE_SIZE;
 		(offset, bit)
 	}
@@ -92,6 +89,15 @@ impl<const LENGTH: usize> KeyStore<LENGTH> {
 impl<const LENGTH: usize> Default for KeyStore<LENGTH> {
 	fn default() -> Self {
 		Self::new()
+	}
+}
+
+impl<const LENGTH: usize> Display for KeyStore<LENGTH> {
+	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+		for storage in self.0.iter().rev() {
+			write!(f, "{:0width$b}", storage, width = STORAGE_SIZE_BITS)?;
+		}
+		Ok(())
 	}
 }
 

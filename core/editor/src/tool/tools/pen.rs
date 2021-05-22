@@ -34,7 +34,7 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Pen {
 		use PenToolFsmState::*;
 		match self.fsm_state {
 			Ready => actions!(PenMessageDiscriminant; Undo, DragStart, DragStop, Confirm, Abort),
-			Dragging => actions!(PenMessageDiscriminant; Undo, DragStop, MouseMove, Confirm, Abort),
+			Dragging => actions!(PenMessageDiscriminant; DragStop, MouseMove, Confirm, Abort),
 		}
 	}
 }
@@ -66,12 +66,15 @@ impl Fsm for PenToolFsmState {
 
 					Dragging
 				}
-				(Dragging, DragStart) => {
+				(Dragging, DragStop) => {
 					// TODO - introduce comparison threshold when operating with canvas coordinates (https://github.com/GraphiteEditor/Graphite/issues/100)
 					if data.points.last() != Some(&input.mouse_state.position) {
 						data.points.push(input.mouse_state.position);
 						data.next_point = input.mouse_state.position;
 					}
+
+					responses.push_back(Operation::ClearWorkingFolder.into());
+					responses.push_back(make_operation(data, tool_data, true));
 
 					Dragging
 				}

@@ -26,7 +26,7 @@ struct MappingList(Vec<MappingEntry>);
 impl MappingList {
 	fn match_mapping(&self, keys: &Keyboard, actions: ActionList) -> Option<Message> {
 		for entry in self.0.iter() {
-			if (*keys & entry.modifiers ^ *keys).is_empty() && actions.iter().flatten().any(|action| entry.action.to_discriminant() == *action) {
+			if ((*keys & entry.modifiers) ^ entry.modifiers).is_empty() && actions.iter().flatten().any(|action| entry.action.to_discriminant() == *action) {
 				return Some(entry.action.clone());
 			}
 		}
@@ -96,6 +96,8 @@ impl Default for Mappings {
 			entry! {action=RectangleMessage::Abort, key_down=KeyEscape},
 			entry! {action=RectangleMessage::LockAspectRatio, key_down=KeyShift},
 			entry! {action=RectangleMessage::UnlockAspectRatio, key_up=KeyShift},
+			entry! {action=RectangleMessage::LockAspectRatio, key_down=KeyCaps},
+			entry! {action=RectangleMessage::UnlockAspectRatio, key_up=KeyCaps},
 			// Ellipse
 			entry! {action=EllipseMessage::Center, key_down=KeyAlt},
 			entry! {action=EllipseMessage::UnCenter, key_up=KeyAlt},
@@ -106,6 +108,8 @@ impl Default for Mappings {
 			entry! {action=EllipseMessage::Abort, key_down=KeyEscape},
 			entry! {action=EllipseMessage::LockAspectRatio, key_down=KeyShift},
 			entry! {action=EllipseMessage::UnlockAspectRatio, key_up=KeyShift},
+			entry! {action=EllipseMessage::LockAspectRatio, key_down=KeyCaps},
+			entry! {action=EllipseMessage::UnlockAspectRatio, key_up=KeyCaps},
 			// Shape
 			entry! {action=ShapeMessage::Center, key_down=KeyAlt},
 			entry! {action=ShapeMessage::UnCenter, key_up=KeyAlt},
@@ -116,6 +120,8 @@ impl Default for Mappings {
 			entry! {action=ShapeMessage::Abort, key_down=KeyEscape},
 			entry! {action=ShapeMessage::LockAspectRatio, key_down=KeyShift},
 			entry! {action=ShapeMessage::UnlockAspectRatio, key_up=KeyShift},
+			entry! {action=ShapeMessage::LockAspectRatio, key_down=KeyCaps},
+			entry! {action=ShapeMessage::UnlockAspectRatio, key_up=KeyCaps},
 			// Line
 			entry! {action=LineMessage::Center, key_down=KeyAlt},
 			entry! {action=LineMessage::UnCenter, key_up=KeyAlt},
@@ -128,12 +134,15 @@ impl Default for Mappings {
 			entry! {action=LineMessage::UnlockAngle, key_up=KeyControl},
 			entry! {action=LineMessage::SnapToAngle, key_down=KeyShift},
 			entry! {action=LineMessage::UnSnapToAngle, key_up=KeyShift},
+			entry! {action=LineMessage::SnapToAngle, key_down=KeyCaps},
+			entry! {action=LineMessage::UnSnapToAngle, key_up=KeyCaps},
 			// Pen
 			entry! {action=PenMessage::MouseMove, message=InputMapperMessage::MouseMove},
 			entry! {action=PenMessage::DragStart, key_down=Lmb},
 			entry! {action=PenMessage::DragStop, key_up=Lmb},
 			entry! {action=PenMessage::Confirm, key_down=Rmb},
 			entry! {action=PenMessage::Confirm, key_down=KeyEscape},
+			entry! {action=PenMessage::Confirm, key_down=KeyEnter},
 			// Document Actions
 			entry! {action=DocumentMessage::Undo, key_down=KeyZ, modifiers=[KeyControl]},
 			// Global Actions
