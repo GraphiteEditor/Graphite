@@ -59,23 +59,25 @@ impl Fsm for EllipseToolFsmState {
 	type ToolData = EllipseToolData;
 
 	fn transition(self, event: ToolMessage, _document: &SvgDocument, tool_data: &DocumentToolData, data: &mut Self::ToolData, input: &InputPreprocessor, responses: &mut VecDeque<Message>) -> Self {
+		use EllipseMessage::*;
+		use EllipseToolFsmState::*;
 		if let ToolMessage::Ellipse(event) = event {
 			match (self, event) {
-				(EllipseToolFsmState::Ready, EllipseMessage::DragStart) => {
+				(Ready, DragStart) => {
 					data.drag_start = input.mouse_state.position;
 					data.drag_current = input.mouse_state.position;
 					responses.push_back(Operation::MountWorkingFolder { path: vec![] }.into());
-					EllipseToolFsmState::Dragging
+					Dragging
 				}
-				(EllipseToolFsmState::Dragging, EllipseMessage::MouseMove) => {
+				(Dragging, MouseMove) => {
 					data.drag_current = input.mouse_state.position;
 
 					responses.push_back(Operation::ClearWorkingFolder.into());
 					responses.push_back(make_operation(data, tool_data));
 
-					EllipseToolFsmState::Dragging
+					Dragging
 				}
-				(EllipseToolFsmState::Dragging, EllipseMessage::DragStop) => {
+				(Dragging, DragStop) => {
 					data.drag_current = input.mouse_state.position;
 
 					responses.push_back(Operation::ClearWorkingFolder.into());
@@ -85,60 +87,50 @@ impl Fsm for EllipseToolFsmState {
 						responses.push_back(Operation::CommitTransaction.into());
 					}
 
-					EllipseToolFsmState::Ready
+					Ready
 				}
 				// TODO - simplify with or_patterns when rust 1.53.0 is stable (https://github.com/rust-lang/rust/issues/54883)
-				(EllipseToolFsmState::Dragging, EllipseMessage::Abort) => {
+				(Dragging, Abort) => {
 					responses.push_back(Operation::DiscardWorkingFolder.into());
 
-					EllipseToolFsmState::Ready
+					Ready
 				}
-				(state, EllipseMessage::LockAspectRatio) => {
-					data.constrain_to_circle = true;
+				(Ready, LockAspectRatio) => update_state_no_op(&mut data.constrain_to_circle, true, Ready),
+				(Ready, UnlockAspectRatio) => update_state_no_op(&mut data.constrain_to_circle, false, Ready),
+				(Dragging, LockAspectRatio) => update_state(|data| &mut data.constrain_to_circle, true, tool_data, data, responses, Dragging),
+				(Dragging, UnlockAspectRatio) => update_state(|data| &mut data.constrain_to_circle, false, tool_data, data, responses, Dragging),
 
-					if state == EllipseToolFsmState::Dragging {
-						responses.push_back(Operation::ClearWorkingFolder.into());
-						responses.push_back(make_operation(data, tool_data));
-					}
-
-					self
-				}
-				(state, EllipseMessage::UnlockAspectRatio) => {
-					data.constrain_to_circle = false;
-
-					if state == EllipseToolFsmState::Dragging {
-						responses.push_back(Operation::ClearWorkingFolder.into());
-						responses.push_back(make_operation(data, tool_data));
-					}
-
-					self
-				}
-				(state, EllipseMessage::Center) => {
-					data.center_around_cursor = true;
-
-					if state == EllipseToolFsmState::Dragging {
-						responses.push_back(Operation::ClearWorkingFolder.into());
-						responses.push_back(make_operation(data, tool_data));
-					}
-
-					self
-				}
-				(state, EllipseMessage::UnCenter) => {
-					data.center_around_cursor = false;
-
-					if state == EllipseToolFsmState::Dragging {
-						responses.push_back(Operation::ClearWorkingFolder.into());
-						responses.push_back(make_operation(data, tool_data));
-					}
-
-					self
-				}
+				(Ready, Center) => update_state_no_op(&mut data.center_around_cursor, true, Ready),
+				(Ready, UnCenter) => update_state_no_op(&mut data.center_around_cursor, false, Ready),
+				(Dragging, Center) => update_state(|data| &mut data.center_around_cursor, true, tool_data, data, responses, Dragging),
+				(Dragging, UnCenter) => update_state(|data| &mut data.center_around_cursor, false, tool_data, data, responses, Dragging),
 				_ => self,
 			}
 		} else {
 			self
 		}
 	}
+}
+
+fn update_state_no_op(state: &mut bool, value: bool, new_state: EllipseToolFsmState) -> EllipseToolFsmState {
+	*state = value;
+	new_state
+}
+
+fn update_state(
+	state: fn(&mut EllipseToolData) -> &mut bool,
+	value: bool,
+	tool_data: &DocumentToolData,
+	data: &mut EllipseToolData,
+	responses: &mut VecDeque<Message>,
+	new_state: EllipseToolFsmState,
+) -> EllipseToolFsmState {
+	*(state(data)) = value;
+
+	responses.push_back(Operation::ClearWorkingFolder.into());
+	responses.push_back(make_operation(&data, tool_data).into());
+
+	new_state
 }
 
 fn make_operation(data: &EllipseToolData, tool_data: &DocumentToolData) -> Message {

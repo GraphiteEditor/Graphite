@@ -74,13 +74,13 @@ impl Default for ToolFsmState {
 				tools: gen_tools_hash_map! {
 					Rectangle => rectangle::Rectangle,
 					Select => select::Select,
-					/*Crop => crop::Crop,
+					Crop => crop::Crop,
 					Navigate => navigate::Navigate,
 					Eyedropper => eyedropper::Eyedropper,
 					Path => path::Path,
 					Pen => pen::Pen,
 					Line => line::Line,
-					Shape => shape::Shape,*/
+					Shape => shape::Shape,
 					Ellipse => ellipse::Ellipse,
 				},
 			},

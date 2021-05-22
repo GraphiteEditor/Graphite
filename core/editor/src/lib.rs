@@ -56,8 +56,15 @@ pub mod message_prelude {
 	pub use super::input::{InputMapperMessage, InputMapperMessageDiscriminant, InputPreprocessorMessage, InputPreprocessorMessageDiscriminant};
 	pub use super::misc::derivable_custom_traits::{ToDiscriminant, TransitiveChild};
 	pub use super::tool::tool_messages::*;
+	pub use super::tool::tools::crop::{CropMessage, CropMessageDiscriminant};
+	pub use super::tool::tools::eyedropper::{EyedropperMessage, EyedropperMessageDiscriminant};
+	pub use super::tool::tools::line::{LineMessage, LineMessageDiscriminant};
+	pub use super::tool::tools::navigate::{NavigateMessage, NavigateMessageDiscriminant};
+	pub use super::tool::tools::path::{PathMessage, PathMessageDiscriminant};
+	pub use super::tool::tools::pen::{PenMessage, PenMessageDiscriminant};
 	pub use super::tool::tools::rectangle::{RectangleMessage, RectangleMessageDiscriminant};
 	pub use super::tool::tools::select::{SelectMessage, SelectMessageDiscriminant};
+	pub use super::tool::tools::shape::{ShapeMessage, ShapeMessageDiscriminant};
 	pub use graphite_proc_macros::*;
 	pub use std::collections::VecDeque;
 }

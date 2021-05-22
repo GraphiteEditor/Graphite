@@ -1,12 +1,7 @@
-use crate::events::ViewportPosition;
-use crate::tools::Fsm;
-use crate::SvgDocument;
-use crate::{
-	dispatcher::{Action, ActionHandler, InputPreprocessor, Response},
-	tools::{DocumentToolData, ToolActionHandlerData},
-};
-use document_core::layers::style;
-use document_core::Operation;
+use crate::input::{mouse::ViewportPosition, InputPreprocessor};
+use crate::tool::{DocumentToolData, Fsm, ToolActionHandlerData};
+use crate::{message_prelude::*, SvgDocument};
+use document_core::{layers::style, Operation};
 
 use std::f64::consts::PI;
 
@@ -16,20 +11,38 @@ pub struct Line {
 	data: LineToolData,
 }
 
-impl<'a> ActionHandler<ToolActionHandlerData<'a>> for Line {
-	fn process_action(&mut self, data: ToolActionHandlerData<'a>, input_preprocessor: &InputPreprocessor, action: &Action, responses: &mut Vec<Response>, operations: &mut Vec<Operation>) -> bool {
-		let (consumed, state) = self.fsm_state.transition(action, data.0, data.1, &mut self.data, input_preprocessor, responses, operations);
-		self.fsm_state = state;
-		consumed
-	}
+#[impl_message(Message, ToolMessage, Line)]
+#[derive(PartialEq, Clone, Debug)]
+pub enum LineMessage {
+	DragStart,
+	DragStop,
+	MouseMove,
+	Abort,
+	Center,
+	UnCenter,
+	LockAngle,
+	UnlockAngle,
+	SnapToAngle,
+	UnSnapToAngle,
+}
 
-	actions_fn!(Action::Undo);
+impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Line {
+	fn process_action(&mut self, action: ToolMessage, data: ToolActionHandlerData<'a>, responses: &mut VecDeque<Message>) {
+		self.fsm_state = self.fsm_state.transition(action, data.0, data.1, &mut self.data, data.2, responses);
+	}
+	fn actions(&self) -> ActionList {
+		use LineToolFsmState::*;
+		match self.fsm_state {
+			Ready => actions!(LineMessageDiscriminant;  DragStart, Center, UnCenter, SnapToAngle, UnSnapToAngle),
+			Dragging => actions!(LineMessageDiscriminant; DragStop, MouseMove, Abort, Center, UnCenter,  SnapToAngle, UnSnapToAngle),
+		}
+	}
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum LineToolFsmState {
 	Ready,
-	LmbDown,
+	Dragging,
 }
 
 impl Default for LineToolFsmState {
@@ -50,117 +63,89 @@ struct LineToolData {
 impl Fsm for LineToolFsmState {
 	type ToolData = LineToolData;
 
-	fn transition(
-		self,
-		event: &Action,
-		_document: &SvgDocument,
-		tool_data: &DocumentToolData,
-		data: &mut Self::ToolData,
-		input: &InputPreprocessor,
-		_responses: &mut Vec<Response>,
-		operations: &mut Vec<Operation>,
-	) -> (bool, Self) {
-		match (self, event) {
-			(LineToolFsmState::Ready, Action::LmbDown) => {
-				data.drag_start = input.mouse_state.position;
-				data.drag_current = input.mouse_state.position;
+	fn transition(self, event: ToolMessage, _document: &SvgDocument, tool_data: &DocumentToolData, data: &mut Self::ToolData, input: &InputPreprocessor, responses: &mut VecDeque<Message>) -> Self {
+		use LineMessage::*;
+		use LineToolFsmState::*;
+		if let ToolMessage::Line(event) = event {
+			match (self, event) {
+				(Ready, DragStart) => {
+					data.drag_start = input.mouse_state.position;
+					data.drag_current = input.mouse_state.position;
 
-				operations.push(Operation::MountWorkingFolder { path: vec![] });
+					responses.push_back(Operation::MountWorkingFolder { path: vec![] }.into());
 
-				(true, LineToolFsmState::LmbDown)
-			}
-			(LineToolFsmState::LmbDown, Action::MouseMove) => {
-				data.drag_current = input.mouse_state.position;
-
-				operations.push(Operation::ClearWorkingFolder);
-				operations.push(make_operation(data, tool_data));
-
-				(true, LineToolFsmState::LmbDown)
-			}
-			(LineToolFsmState::LmbDown, Action::LmbUp) => {
-				data.drag_current = input.mouse_state.position;
-
-				operations.push(Operation::ClearWorkingFolder);
-				// TODO - introduce comparison threshold when operating with canvas coordinates (https://github.com/GraphiteEditor/Graphite/issues/100)
-				if data.drag_start != data.drag_current {
-					operations.push(make_operation(data, tool_data));
-					operations.push(Operation::CommitTransaction);
+					Dragging
 				}
+				(Dragging, MouseMove) => {
+					data.drag_current = input.mouse_state.position;
 
-				(true, LineToolFsmState::Ready)
-			}
-			// TODO - simplify with or_patterns when rust 1.53.0 is stable (https://github.com/rust-lang/rust/issues/54883)
-			(LineToolFsmState::LmbDown, Action::Abort) | (LineToolFsmState::LmbDown, Action::RmbDown) => {
-				operations.push(Operation::DiscardWorkingFolder);
+					responses.push_back(Operation::ClearWorkingFolder.into());
+					responses.push_back(make_operation(data, tool_data));
 
-				(true, LineToolFsmState::Ready)
-			}
-			(state, Action::LockAspectRatio) => {
-				data.snap_angle = true;
-
-				if state == LineToolFsmState::LmbDown {
-					operations.push(Operation::ClearWorkingFolder);
-					operations.push(make_operation(data, tool_data));
+					Dragging
 				}
+				(Dragging, DragStart) => {
+					data.drag_current = input.mouse_state.position;
 
-				(true, self)
-			}
-			(state, Action::UnlockAspectRatio) => {
-				data.snap_angle = false;
+					responses.push_back(Operation::ClearWorkingFolder.into());
+					// TODO - introduce comparison threshold when operating with canvas coordinates (https://github.com/GraphiteEditor/Graphite/issues/100)
+					if data.drag_start != data.drag_current {
+						responses.push_back(make_operation(data, tool_data));
+						responses.push_back(Operation::CommitTransaction.into());
+					}
 
-				if state == LineToolFsmState::LmbDown {
-					operations.push(Operation::ClearWorkingFolder);
-					operations.push(make_operation(data, tool_data));
+					Ready
 				}
+				// TODO - simplify with or_patterns when rust 1.53.0 is stable (https://github.com/rust-lang/rust/issues/54883)
+				(Dragging, Abort) => {
+					responses.push_back(Operation::DiscardWorkingFolder.into());
 
-				(true, self)
-			}
-			(state, Action::SnapAngle) => {
-				data.lock_angle = true;
-
-				if state == LineToolFsmState::LmbDown {
-					operations.push(Operation::ClearWorkingFolder);
-					operations.push(make_operation(data, tool_data));
+					Ready
 				}
+				(Ready, LockAngle) => update_state_no_op(&mut data.lock_angle, true, Ready),
+				(Ready, UnlockAngle) => update_state_no_op(&mut data.lock_angle, false, Ready),
+				(Dragging, LockAngle) => update_state(|data| &mut data.lock_angle, true, tool_data, data, responses, Dragging),
+				(Dragging, UnlockAngle) => update_state(|data| &mut data.lock_angle, false, tool_data, data, responses, Dragging),
 
-				(true, self)
+				(Ready, SnapToAngle) => update_state_no_op(&mut data.snap_angle, true, Ready),
+				(Ready, UnSnapToAngle) => update_state_no_op(&mut data.snap_angle, false, Ready),
+				(Dragging, SnapToAngle) => update_state(|data| &mut data.snap_angle, true, tool_data, data, responses, Dragging),
+				(Dragging, UnSnapToAngle) => update_state(|data| &mut data.snap_angle, false, tool_data, data, responses, Dragging),
+
+				(Ready, Center) => update_state_no_op(&mut data.center_around_cursor, true, Ready),
+				(Ready, UnCenter) => update_state_no_op(&mut data.center_around_cursor, false, Ready),
+				(Dragging, Center) => update_state(|data| &mut data.center_around_cursor, true, tool_data, data, responses, Dragging),
+				(Dragging, UnCenter) => update_state(|data| &mut data.center_around_cursor, false, tool_data, data, responses, Dragging),
+				_ => self,
 			}
-			(state, Action::UnSnapAngle) => {
-				data.lock_angle = false;
-
-				if state == LineToolFsmState::LmbDown {
-					operations.push(Operation::ClearWorkingFolder);
-					operations.push(make_operation(data, tool_data));
-				}
-
-				(true, self)
-			}
-			(state, Action::Center) => {
-				data.center_around_cursor = true;
-
-				if state == LineToolFsmState::LmbDown {
-					operations.push(Operation::ClearWorkingFolder);
-					operations.push(make_operation(data, tool_data));
-				}
-
-				(true, self)
-			}
-			(state, Action::UnCenter) => {
-				data.center_around_cursor = false;
-
-				if state == LineToolFsmState::LmbDown {
-					operations.push(Operation::ClearWorkingFolder);
-					operations.push(make_operation(data, tool_data));
-				}
-
-				(true, self)
-			}
-			_ => (false, self),
+		} else {
+			self
 		}
 	}
 }
 
-fn make_operation(data: &mut LineToolData, tool_data: &DocumentToolData) -> Operation {
+fn update_state_no_op(state: &mut bool, value: bool, new_state: LineToolFsmState) -> LineToolFsmState {
+	*state = value;
+	new_state
+}
+
+fn update_state(
+	state: fn(&mut LineToolData) -> &mut bool,
+	value: bool,
+	tool_data: &DocumentToolData,
+	data: &mut LineToolData,
+	responses: &mut VecDeque<Message>,
+	new_state: LineToolFsmState,
+) -> LineToolFsmState {
+	*(state(data)) = value;
+
+	responses.push_back(Operation::ClearWorkingFolder.into());
+	responses.push_back(make_operation(data, tool_data));
+
+	new_state
+}
+
+fn make_operation(data: &mut LineToolData, tool_data: &DocumentToolData) -> Message {
 	let x0 = data.drag_start.x as f64;
 	let y0 = data.drag_start.y as f64;
 	let x1 = data.drag_current.x as f64;
@@ -195,4 +180,5 @@ fn make_operation(data: &mut LineToolData, tool_data: &DocumentToolData) -> Oper
 		y1,
 		style: style::PathStyle::new(Some(style::Stroke::new(tool_data.primary_color, 5.)), None),
 	}
+	.into()
 }

@@ -23,6 +23,20 @@ pub enum ToolMessage {
 	Ellipse(EllipseMessage),
 	#[child]
 	Select(SelectMessage),
+	#[child]
+	Line(LineMessage),
+	#[child]
+	Crop(CropMessage),
+	#[child]
+	Eyedropper(EyedropperMessage),
+	#[child]
+	Navigate(NavigateMessage),
+	#[child]
+	Path(PathMessage),
+	#[child]
+	Pen(PenMessage),
+	#[child]
+	Shape(ShapeMessage),
 }
 
 #[derive(Debug, Default)]
@@ -38,7 +52,18 @@ impl MessageHandler<ToolMessage, (&SvgDocument, &InputPreprocessor)> for ToolMes
 			SelectPrimaryColor(c) => self.tool_state.document_tool_data.primary_color = c,
 			SelectSecondaryColor(c) => self.tool_state.document_tool_data.secondary_color = c,
 			SelectTool(tool) => {
+				let mut reset = |tool| match tool {
+					ToolType::Ellipse => responses.push_back(EllipseMessage::Abort.into()),
+					ToolType::Rectangle => responses.push_back(RectangleMessage::Abort.into()),
+					ToolType::Shape => responses.push_back(ShapeMessage::Abort.into()),
+					ToolType::Line => responses.push_back(LineMessage::Abort.into()),
+					ToolType::Pen => responses.push_back(PenMessage::Abort.into()),
+					_ => (),
+				};
+				reset(tool);
+				reset(self.tool_state.tool_data.active_tool_type);
 				self.tool_state.tool_data.active_tool_type = tool;
+
 				responses.push_back(FrontendMessage::SetActiveTool { tool_name: tool.to_string() }.into())
 			}
 			SwapColors => {
@@ -54,6 +79,14 @@ impl MessageHandler<ToolMessage, (&SvgDocument, &InputPreprocessor)> for ToolMes
 				let tool_type = match message {
 					Rectangle(_) => ToolType::Rectangle,
 					Ellipse(_) => ToolType::Ellipse,
+					Shape(_) => ToolType::Shape,
+					Line(_) => ToolType::Line,
+					Pen(_) => ToolType::Pen,
+					Select(_) => ToolType::Select,
+					Crop(_) => ToolType::Crop,
+					Eyedropper(_) => ToolType::Eyedropper,
+					Navigate(_) => ToolType::Navigate,
+					Path(_) => ToolType::Path,
 					_ => unreachable!(),
 				};
 				if let Some(tool) = self.tool_state.tool_data.tools.get_mut(&tool_type) {

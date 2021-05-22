@@ -1,13 +1,7 @@
-use crate::events::ViewportPosition;
-use crate::tools::Fsm;
-use crate::SvgDocument;
-
-use crate::{
-	dispatcher::{Action, ActionHandler, InputPreprocessor, Response},
-	tools::{DocumentToolData, ToolActionHandlerData},
-};
-use document_core::layers::style;
-use document_core::Operation;
+use crate::input::{mouse::ViewportPosition, InputPreprocessor};
+use crate::tool::{DocumentToolData, Fsm, ToolActionHandlerData};
+use crate::{message_prelude::*, SvgDocument};
+use document_core::{layers::style, Operation};
 
 #[derive(Default)]
 pub struct Pen {
@@ -15,19 +9,34 @@ pub struct Pen {
 	data: PenToolData,
 }
 
-impl<'a> ActionHandler<ToolActionHandlerData<'a>> for Pen {
-	fn process_action(&mut self, data: ToolActionHandlerData<'a>, input_preprocessor: &InputPreprocessor, action: &Action, responses: &mut Vec<Response>, operations: &mut Vec<Operation>) -> bool {
-		let (consumed, state) = self.fsm_state.transition(action, data.0, data.1, &mut self.data, input_preprocessor, responses, operations);
-		self.fsm_state = state;
-		consumed
-	}
-	actions_fn!();
+#[impl_message(Message, ToolMessage, Pen)]
+#[derive(PartialEq, Clone, Debug)]
+pub enum PenMessage {
+	Undo,
+	DragStart,
+	DragStop,
+	MouseMove,
+	Confirm,
+	Abort,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum PenToolFsmState {
 	Ready,
-	LmbDown,
+	Dragging,
+}
+
+impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Pen {
+	fn process_action(&mut self, action: ToolMessage, data: ToolActionHandlerData<'a>, responses: &mut VecDeque<Message>) {
+		self.fsm_state = self.fsm_state.transition(action, data.0, data.1, &mut self.data, data.2, responses);
+	}
+	fn actions(&self) -> ActionList {
+		use PenToolFsmState::*;
+		match self.fsm_state {
+			Ready => actions!(EllipseMessageDiscriminant; Undo, DragStart, Center, UnCenter, LockAspectRatio, UnlockAspectRatio),
+			Dragging => actions!(EllipseMessageDiscriminant; DragStop, Center, UnCenter, LockAspectRatio, UnlockAspectRatio, MouseMove, Abort),
+		}
+	}
 }
 
 impl Default for PenToolFsmState {
@@ -44,63 +53,66 @@ struct PenToolData {
 impl Fsm for PenToolFsmState {
 	type ToolData = PenToolData;
 
-	fn transition(
-		self,
-		event: &Action,
-		_document: &SvgDocument,
-		tool_data: &DocumentToolData,
-		data: &mut Self::ToolData,
-		input: &InputPreprocessor,
-		_responses: &mut Vec<Response>,
-		operations: &mut Vec<Operation>,
-	) -> (bool, Self) {
-		match (self, event) {
-			(PenToolFsmState::Ready, Action::LmbDown) => {
-				operations.push(Operation::MountWorkingFolder { path: vec![] });
+	fn transition(self, event: ToolMessage, _document: &SvgDocument, tool_data: &DocumentToolData, data: &mut Self::ToolData, input: &InputPreprocessor, responses: &mut VecDeque<Message>) -> Self {
+		use PenMessage::*;
+		use PenToolFsmState::*;
+		if let ToolMessage::Pen(event) = event {
+			match (self, event) {
+				(Ready, DragStart) => {
+					responses.push_back(Operation::MountWorkingFolder { path: vec![] }.into());
 
-				data.points.push(input.mouse_state.position);
-				data.next_point = input.mouse_state.position;
-
-				(true, PenToolFsmState::LmbDown)
-			}
-			(PenToolFsmState::LmbDown, Action::LmbUp) => {
-				// TODO - introduce comparison threshold when operating with canvas coordinates (https://github.com/GraphiteEditor/Graphite/issues/100)
-				if data.points.last() != Some(&input.mouse_state.position) {
 					data.points.push(input.mouse_state.position);
 					data.next_point = input.mouse_state.position;
+
+					Dragging
 				}
+				(Dragging, DragStart) => {
+					// TODO - introduce comparison threshold when operating with canvas coordinates (https://github.com/GraphiteEditor/Graphite/issues/100)
+					if data.points.last() != Some(&input.mouse_state.position) {
+						data.points.push(input.mouse_state.position);
+						data.next_point = input.mouse_state.position;
+					}
 
-				(true, PenToolFsmState::LmbDown)
-			}
-			(PenToolFsmState::LmbDown, Action::MouseMove) => {
-				data.next_point = input.mouse_state.position;
-
-				operations.push(Operation::ClearWorkingFolder);
-				operations.push(make_operation(data, tool_data, true));
-
-				(true, PenToolFsmState::LmbDown)
-			}
-			// TODO - simplify with or_patterns when rust 1.53.0 is stable  (https://github.com/rust-lang/rust/issues/54883)
-			(PenToolFsmState::LmbDown, Action::Confirm) | (PenToolFsmState::LmbDown, Action::Abort) | (PenToolFsmState::LmbDown, Action::RmbDown) => {
-				operations.push(Operation::ClearWorkingFolder);
-
-				if data.points.len() >= 2 {
-					operations.push(make_operation(data, tool_data, false));
-					operations.push(Operation::CommitTransaction);
-				} else {
-					operations.push(Operation::DiscardWorkingFolder);
+					Dragging
 				}
+				(Dragging, MouseMove) => {
+					data.next_point = input.mouse_state.position;
 
-				data.points.clear();
+					responses.push_back(Operation::ClearWorkingFolder.into());
+					responses.push_back(make_operation(data, tool_data, true));
 
-				(true, PenToolFsmState::Ready)
+					Dragging
+				}
+				// TODO - simplify with or_patterns when rust 1.53.0 is stable  (https://github.com/rust-lang/rust/issues/54883)
+				(Dragging, Confirm) => {
+					responses.push_back(Operation::ClearWorkingFolder.into());
+
+					if data.points.len() >= 2 {
+						responses.push_back(make_operation(data, tool_data, false));
+						responses.push_back(Operation::CommitTransaction.into());
+					} else {
+						responses.push_back(Operation::DiscardWorkingFolder.into());
+					}
+
+					data.points.clear();
+
+					Ready
+				}
+				(Dragging, Abort) => {
+					responses.push_back(Operation::DiscardWorkingFolder.into());
+					data.points.clear();
+
+					Ready
+				}
+				_ => self,
 			}
-			_ => (false, self),
+		} else {
+			self
 		}
 	}
 }
 
-fn make_operation(data: &PenToolData, tool_data: &DocumentToolData, show_preview: bool) -> Operation {
+fn make_operation(data: &PenToolData, tool_data: &DocumentToolData, show_preview: bool) -> Message {
 	let mut points: Vec<(f64, f64)> = data.points.iter().map(|p| (p.x as f64, p.y as f64)).collect();
 	if show_preview {
 		points.push((data.next_point.x as f64, data.next_point.y as f64))
@@ -111,4 +123,5 @@ fn make_operation(data: &PenToolData, tool_data: &DocumentToolData, show_preview
 		points,
 		style: style::PathStyle::new(Some(style::Stroke::new(tool_data.primary_color, 5.)), Some(style::Fill::none())),
 	}
+	.into()
 }

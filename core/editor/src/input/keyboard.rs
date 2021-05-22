@@ -1,6 +1,6 @@
 pub const NUMBER_OF_KEYS: usize = Key::NumKeys as usize;
 // Edit this to specify the storage type used
-pub type StorageType = u128;
+pub type StorageType = u32;
 const STORAGE_SIZE: u32 = std::mem::size_of::<usize>() as u32 * 8 + 2 - std::mem::size_of::<StorageType>().leading_zeros();
 const STORAGE_SIZE_BITS: usize = 1 << STORAGE_SIZE;
 const KEY_MASK_STORAGE_LENGHT: usize = NUMBER_OF_KEYS + STORAGE_SIZE_BITS - 1 >> STORAGE_SIZE;
