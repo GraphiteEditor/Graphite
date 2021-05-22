@@ -40,7 +40,7 @@ pub struct DocumentToolData {
 	tool_settings: HashMap<ToolType, ToolSettings>,
 }
 
-type SubToolMessageHandler = dyn for<'a>  MessageHandler<ToolMessage, ToolActionHandlerData<'a>>;
+type SubToolMessageHandler = dyn for<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>>;
 pub struct ToolData {
 	pub active_tool_type: ToolType,
 	pub tools: HashMap<ToolType, Box<SubToolMessageHandler>>,

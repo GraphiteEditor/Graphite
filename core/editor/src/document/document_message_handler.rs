@@ -45,9 +45,7 @@ impl DocumentMessageHandler {
 	}
 	fn filter_document_responses(&self, document_responses: &mut Vec<DocumentResponse>) -> bool {
 		let len = document_responses.len();
-		document_responses.retain(|response| {
-			!matches!(response, DocumentResponse::DocumentChanged)
-		});
+		document_responses.retain(|response| !matches!(response, DocumentResponse::DocumentChanged));
 		document_responses.len() != len
 	}
 }
