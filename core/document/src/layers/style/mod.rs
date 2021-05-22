@@ -15,7 +15,7 @@ impl Fill {
 	}
 	pub fn render(&self) -> String {
 		match self.color {
-			Some(c) => format!("fill: #{};", c.to_hex()),
+			Some(c) => format!("fill: #{};", c.as_hex()),
 			None => "fill: none;".to_string(),
 		}
 	}
@@ -33,7 +33,7 @@ impl Stroke {
 		Self { color, width }
 	}
 	pub fn render(&self) -> String {
-		format!("stroke: #{};stroke-width:{};", self.color.to_hex(), self.width)
+		format!("stroke: #{};stroke-width:{};", self.color.as_hex(), self.width)
 	}
 }
 

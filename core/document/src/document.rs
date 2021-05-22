@@ -184,10 +184,9 @@ impl Document {
 	/// Mutate the document by applying the `operation` to it. If the operation necessitates a
 	/// reaction from the frontend, responses may be returned.
 	pub fn handle_operation(&mut self, operation: Operation) -> Result<Option<Vec<DocumentResponse>>, DocumentError> {
-		self.work_operations.push(operation.clone());
-		let responses = match operation {
+		let responses = match &operation {
 			Operation::AddCircle { path, insert_index, cx, cy, r, style } => {
-				self.add_layer(&path, Layer::new(LayerDataTypes::Circle(layers::Circle::new((cx, cy), r, style))), insert_index)?;
+				self.add_layer(&path, Layer::new(LayerDataTypes::Circle(layers::Circle::new((*cx, *cy), *r, *style))), *insert_index)?;
 
 				Some(vec![DocumentResponse::DocumentChanged])
 			}
@@ -201,7 +200,7 @@ impl Document {
 				rot,
 				style,
 			} => {
-				self.add_layer(&path, Layer::new(LayerDataTypes::Ellipse(layers::Ellipse::new((cx, cy), (rx, ry), rot, style))), insert_index)?;
+				self.add_layer(&path, Layer::new(LayerDataTypes::Ellipse(layers::Ellipse::new((*cx, *cy), (*rx, *ry), *rot, *style))), *insert_index)?;
 
 				Some(vec![DocumentResponse::DocumentChanged])
 			}
@@ -214,7 +213,7 @@ impl Document {
 				y1,
 				style,
 			} => {
-				self.add_layer(&path, Layer::new(LayerDataTypes::Rect(Rect::new((x0, y0), (x1, y1), style))), insert_index)?;
+				self.add_layer(&path, Layer::new(LayerDataTypes::Rect(Rect::new((*x0, *y0), (*x1, *y1), *style))), *insert_index)?;
 
 				Some(vec![DocumentResponse::DocumentChanged])
 			}
@@ -227,14 +226,14 @@ impl Document {
 				y1,
 				style,
 			} => {
-				self.add_layer(&path, Layer::new(LayerDataTypes::Line(Line::new((x0, y0), (x1, y1), style))), insert_index)?;
+				self.add_layer(&path, Layer::new(LayerDataTypes::Line(Line::new((*x0, *y0), (*x1, *y1), *style))), *insert_index)?;
 
 				Some(vec![DocumentResponse::DocumentChanged])
 			}
 			Operation::AddPen { path, insert_index, points, style } => {
-				let points: Vec<kurbo::Point> = points.into_iter().map(|it| it.into()).collect();
-				let polyline = PolyLine::new(points, style);
-				self.add_layer(&path, Layer::new(LayerDataTypes::PolyLine(polyline)), insert_index)?;
+				let points: Vec<kurbo::Point> = points.iter().map(|&it| it.into()).collect();
+				let polyline = PolyLine::new(points, *style);
+				self.add_layer(&path, Layer::new(LayerDataTypes::PolyLine(polyline)), *insert_index)?;
 				Some(vec![DocumentResponse::DocumentChanged])
 			}
 			Operation::AddShape {
@@ -247,24 +246,27 @@ impl Document {
 				sides,
 				style,
 			} => {
-				let s = Shape::new((x0, y0), (x1, y1), sides, style);
-				self.add_layer(&path, Layer::new(LayerDataTypes::Shape(s)), insert_index)?;
+				let s = Shape::new((*x0, *y0), (*x1, *y1), *sides, *style);
+				self.add_layer(&path, Layer::new(LayerDataTypes::Shape(s)), *insert_index)?;
 
 				Some(vec![DocumentResponse::DocumentChanged])
 			}
 			Operation::DeleteLayer { path } => {
 				self.delete(&path)?;
 
-				Some(vec![DocumentResponse::DocumentChanged])
+				let (path, _) = split_path(path.as_slice()).unwrap_or_else(|_| (&[], 0));
+				let children = self.layer_panel(path)?;
+				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::ExpandFolder { path: path.to_vec(), children }])
 			}
 			Operation::AddFolder { path } => {
 				self.set_layer(&path, Layer::new(LayerDataTypes::Folder(Folder::default())))?;
 
-				Some(vec![DocumentResponse::DocumentChanged])
+				let children = self.layer_panel(path.as_slice())?;
+				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::ExpandFolder { path: path.clone(), children }])
 			}
 			Operation::MountWorkingFolder { path } => {
+				self.work_mount_path = path.clone();
 				self.work_operations.clear();
-				self.work_mount_path = path;
 				self.work = Folder::default();
 				self.work_mounted = true;
 				None
@@ -286,18 +288,18 @@ impl Document {
 				let mut path: Vec<LayerId> = vec![];
 				std::mem::swap(&mut path, &mut self.work_mount_path);
 				std::mem::swap(&mut ops, &mut self.work_operations);
-				let len = ops.len() - 1;
 				self.work_mounted = false;
 				self.work_mount_path = vec![];
 				self.work = Folder::default();
 				let mut responses = vec![];
-				for operation in ops.into_iter().take(len) {
+				for operation in ops.into_iter() {
 					if let Some(mut op_responses) = self.handle_operation(operation)? {
 						responses.append(&mut op_responses);
 					}
 				}
 
 				let children = self.layer_panel(path.as_slice())?;
+				// TODO: Return `responses` and add deduplication in the future
 				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::ExpandFolder { path, children }])
 			}
 			Operation::ToggleVisibility { path } => {
@@ -306,9 +308,15 @@ impl Document {
 					layer.cache_dirty = true;
 				});
 				let children = self.layer_panel(&path.as_slice()[..path.len() - 1])?;
-				Some(vec![DocumentResponse::ExpandFolder { path: vec![], children }])
+				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::ExpandFolder { path: vec![], children }])
 			}
 		};
+		if !matches!(
+			operation,
+			Operation::CommitTransaction | Operation::MountWorkingFolder { .. } | Operation::DiscardWorkingFolder | Operation::ClearWorkingFolder
+		) {
+			self.work_operations.push(operation);
+		}
 		Ok(responses)
 	}
 }

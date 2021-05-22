@@ -2,6 +2,7 @@ use crate::{layers::style, LayerId};
 
 use serde::{Deserialize, Serialize};
 
+#[repr(C)]
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub enum Operation {
 	AddCircle {
