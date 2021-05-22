@@ -21,6 +21,27 @@ button {
 	line-height: 1;
 	color: #ddd;
 }
+
+svg,
+img {
+	display: block;
+}
+
+// For placeholder messages (remove eventually)
+.popover {
+	h1,
+	h2,
+	h3,
+	h4,
+	h5,
+	h6,
+	p {
+		margin: 0;
+	}
+	p {
+		margin-top: 8px;
+	}
+}
 </style>
 
 <script lang="ts">

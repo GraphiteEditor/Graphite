@@ -3,7 +3,10 @@
 		<LayoutRow :class="'options-bar'">
 			<NumberInput />
 			<NumberInput />
-			<DropdownButton />
+			<PopoverButton>
+				<h3>Compositing Options</h3>
+				<p>More blend and compositing options will be here</p>
+			</PopoverButton>
 		</LayoutRow>
 		<LayoutRow :class="'layer-tree'">
 			<LayoutCol :class="'list'">
@@ -17,7 +20,7 @@
 					<div class="layer">
 						<div class="layer-thumbnail"></div>
 						<div class="layer-type-icon">
-							<IconContainer :size="24" title="Path"><NodeTypePath /></IconContainer>
+							<Icon :size="24" title="Path"><NodeTypePath /></Icon>
 						</div>
 						<div class="layer-name">
 							<span>{{ layer.name }}</span>
@@ -76,10 +79,11 @@ import { defineComponent } from "vue";
 import { ResponseType, registerResponseHandler, Response, ExpandFolder, LayerPanelEntry } from "../../response-handler";
 import LayoutRow from "../layout/LayoutRow.vue";
 import LayoutCol from "../layout/LayoutCol.vue";
-import NumberInput from "../widgets/NumberInput.vue";
-import DropdownButton from "../widgets/DropdownButton.vue";
-import IconButton from "../widgets/IconButton.vue";
-import IconContainer from "../widgets/IconContainer.vue";
+import NumberInput from "../widgets/inputs/NumberInput.vue";
+import PopoverButton from "../widgets/buttons/PopoverButton.vue";
+import { PopoverDirection } from "../widgets/overlays/Popover.vue";
+import IconButton from "../widgets/buttons/IconButton.vue";
+import Icon from "../widgets/labels/Icon.vue";
 import EyeVisible from "../../../assets/svg/24x24-bounds-16x16-icon/visibility-eye-visible.svg";
 import EyeHidden from "../../../assets/svg/24x24-bounds-16x16-icon/visibility-eye-hidden.svg";
 import NodeTypePath from "../../../assets/svg/24x24-node-type-icon/node-type-path.svg";
@@ -90,10 +94,10 @@ export default defineComponent({
 	components: {
 		LayoutRow,
 		LayoutCol,
-		DropdownButton,
+		PopoverButton,
 		NumberInput,
 		IconButton,
-		IconContainer,
+		Icon,
 		EyeVisible,
 		EyeHidden,
 		NodeTypePath,
@@ -122,6 +126,7 @@ export default defineComponent({
 	},
 	data() {
 		return {
+			PopoverDirection,
 			layers: [] as Array<LayerPanelEntry>,
 		};
 	},

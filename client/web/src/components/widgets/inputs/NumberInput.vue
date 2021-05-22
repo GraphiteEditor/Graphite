@@ -22,7 +22,7 @@
 		border: none;
 		background: none;
 		padding: 0;
-		line-height: 22px;
+		line-height: 24px;
 		color: #ddd;
 		font-size: inherit;
 		text-align: center;

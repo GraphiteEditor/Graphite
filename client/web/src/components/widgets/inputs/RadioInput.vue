@@ -1,27 +1,37 @@
 <template>
-	<div class="radio-picker" ref="radioPicker">
+	<div class="radio-input" ref="radioInput">
 		<slot></slot>
 	</div>
 </template>
 
 <style lang="scss">
-.radio-picker {
-	button {
-		fill: #ddd;
+.radio-input {
+	.popover-button button {
+		border-radius: 0;
+	}
+
+	& > * {
 		border-radius: 0;
 		margin: 0;
 
-		&:first-child {
+		&:first-child,
+		&:first-child button {
 			border-radius: 2px 0 0 2px;
 		}
 
-		&:last-child {
+		&:last-child,
+		&:last-child button {
 			border-radius: 0 2px 2px 0;
+		}
+
+		& + * {
+			margin-left: 1px;
 		}
 	}
 
-	.icon-button {
+	button {
 		background: #555;
+		fill: #ddd;
 
 		&:hover {
 			background: #666;
@@ -30,10 +40,6 @@
 		&.active {
 			background: #3194d6;
 			fill: #fff;
-		}
-
-		& + .icon-button {
-			margin-left: 1px;
 		}
 	}
 }
@@ -56,7 +62,7 @@ export default defineComponent({
 	mounted() {
 		this.updateActiveIconButton();
 
-		(this.$refs.radioPicker as Element).querySelectorAll(".icon-button").forEach((iconButton, index) => {
+		(this.$refs.radioInput as Element).querySelectorAll(".icon-button").forEach((iconButton, index) => {
 			iconButton.addEventListener("click", () => {
 				this.activeIndex = index;
 				this.$emit("changed", index);
@@ -69,12 +75,12 @@ export default defineComponent({
 		},
 	},
 	methods: {
-		// This method may be called by the user of this component by setting a `ref="radioPicker"` attribute and calling `(this.$refs.viewModePicker as typeof RadioPicker).setActive(...)`
+		// This method may be called by the user of this component by setting a `ref="radioInput"` attribute and calling `(this.$refs.viewModePicker as typeof RadioInput).setActive(...)`
 		setActive(index: number) {
 			this.activeIndex = index;
 		},
 		updateActiveIconButton() {
-			const iconButtons = (this.$refs.radioPicker as Element).querySelectorAll(".icon-button");
+			const iconButtons = (this.$refs.radioInput as Element).querySelectorAll(".icon-button");
 			iconButtons.forEach((iconButton) => iconButton.classList.remove("active"));
 			iconButtons[this.activeIndex].classList.add("active");
 		},

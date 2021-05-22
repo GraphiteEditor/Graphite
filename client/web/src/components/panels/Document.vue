@@ -12,13 +12,19 @@
 				<IconButton :size="24" title="Vertical Align Top"><AlignVerticalTop /></IconButton>
 				<IconButton :size="24" title="Vertical Align Center"><AlignVerticalCenter /></IconButton>
 				<IconButton :size="24" title="Vertical Align Bottom"><AlignVerticalBottom /></IconButton>
-				<DropdownButton />
+				<PopoverButton>
+					<h3>Align</h3>
+					<p>More alignment-related buttons will be here</p>
+				</PopoverButton>
 
 				<ItemDivider />
 
 				<IconButton :size="24" title="Flip Horizontal"><FlipHorizontal /></IconButton>
 				<IconButton :size="24" title="Flip Vertical"><FlipVertical /></IconButton>
-				<DropdownButton />
+				<PopoverButton>
+					<h3>Flip</h3>
+					<p>More flip-related buttons will be here</p>
+				</PopoverButton>
 
 				<ItemDivider />
 
@@ -27,16 +33,22 @@
 				<IconButton :size="24" title="Boolean Subtract Back"><BooleanSubtractBack /></IconButton>
 				<IconButton :size="24" title="Boolean Intersect"><BooleanIntersect /></IconButton>
 				<IconButton :size="24" title="Boolean Difference"><BooleanDifference /></IconButton>
-				<DropdownButton />
+				<PopoverButton>
+					<h3>Boolean</h3>
+					<p>More boolean-related buttons will be here</p>
+				</PopoverButton>
 			</div>
 			<div class="spacer"></div>
 			<div class="right side">
-				<RadioPicker :initialIndex="0" @changed="viewModeChanged">
+				<RadioInput :initialIndex="0" @changed="viewModeChanged">
 					<IconButton :size="24" title="View Mode: Normal"><ViewModeNormal /></IconButton>
 					<IconButton :size="24" title="View Mode: Outline"><ViewModeOutline /></IconButton>
 					<IconButton :size="24" title="View Mode: Pixels"><ViewModePixels /></IconButton>
-					<DropdownButton />
-				</RadioPicker>
+					<PopoverButton>
+						<h3>Display Mode</h3>
+						<p>More display mode options will be here</p>
+					</PopoverButton>
+				</RadioInput>
 
 				<ItemDivider />
 
@@ -147,12 +159,13 @@ import { ResponseType, registerResponseHandler, Response, UpdateCanvas, SetActiv
 import LayoutRow from "../layout/LayoutRow.vue";
 import LayoutCol from "../layout/LayoutCol.vue";
 import WorkingColors from "../widgets/WorkingColors.vue";
+import { PopoverDirection } from "../widgets/overlays/Popover.vue";
 import ShelfItem from "../widgets/ShelfItem.vue";
 import ItemDivider from "../widgets/ItemDivider.vue";
-import IconButton from "../widgets/IconButton.vue";
-import DropdownButton from "../widgets/DropdownButton.vue";
-import RadioPicker from "../widgets/RadioPicker.vue";
-import NumberInput from "../widgets/NumberInput.vue";
+import IconButton from "../widgets/buttons/IconButton.vue";
+import PopoverButton from "../widgets/buttons/PopoverButton.vue";
+import RadioInput from "../widgets/inputs/RadioInput.vue";
+import NumberInput from "../widgets/inputs/NumberInput.vue";
 import SelectTool from "../../../assets/svg/24x24-bounds-24x24-icon/document-tool-layout-select.svg";
 import CropTool from "../../../assets/svg/24x24-bounds-24x24-icon/document-tool-layout-crop.svg";
 import NavigateTool from "../../../assets/svg/24x24-bounds-24x24-icon/document-tool-layout-navigate.svg";
@@ -204,8 +217,8 @@ export default defineComponent({
 		ShelfItem,
 		ItemDivider,
 		IconButton,
-		DropdownButton,
-		RadioPicker,
+		PopoverButton,
+		RadioInput,
 		NumberInput,
 		SelectTool,
 		CropTool,
@@ -304,6 +317,7 @@ export default defineComponent({
 		return {
 			viewportSvg: "",
 			activeTool: "Select",
+			PopoverDirection,
 		};
 	},
 });

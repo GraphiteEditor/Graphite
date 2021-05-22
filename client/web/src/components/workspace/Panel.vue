@@ -1,5 +1,5 @@
 <template>
-	<div class="workspace-panel">
+	<div class="panel">
 		<div class="tab-bar" :class="{ 'min-widths': tabMinWidths }">
 			<div class="tab-group">
 				<div class="tab" :class="{ active: tabIndex === tabActiveIndex }" v-for="(tabLabel, tabIndex) in tabLabels" :key="tabLabel">
@@ -9,7 +9,10 @@
 					</IconButton>
 				</div>
 			</div>
-			<DropdownButton :icon="DropdownButtonIcon.VerticalEllipsis" />
+			<PopoverButton :icon="PopoverButtonIcon.VerticalEllipsis">
+				<h3>Panel Options</h3>
+				<p>More panel-related options will be here</p>
+			</PopoverButton>
 		</div>
 		<div class="panel-body">
 			<component :is="panelType" />
@@ -18,7 +21,7 @@
 </template>
 
 <style lang="scss">
-.workspace-panel {
+.panel {
 	background: #111;
 	border-radius: 8px;
 	flex-grow: 1;
@@ -54,17 +57,16 @@
 					border-radius: 8px 8px 0 0;
 					position: relative;
 
-					&::before,
+					&:not(:first-child)::before,
 					&::after {
 						content: "";
 						width: 16px;
 						height: 8px;
 						position: absolute;
 						bottom: 0;
-						box-shadow: #333;
 					}
 
-					&::before {
+					&:not(:first-child)::before {
 						left: -16px;
 						border-bottom-right-radius: 8px;
 						box-shadow: 8px 0 0 0 #333;
@@ -133,8 +135,9 @@ import Document from "../panels/Document.vue";
 import Properties from "../panels/Properties.vue";
 import LayerTree from "../panels/LayerTree.vue";
 import Minimap from "../panels/Minimap.vue";
-import IconButton from "../widgets/IconButton.vue";
-import DropdownButton, { DropdownButtonIcon } from "../widgets/DropdownButton.vue";
+import IconButton from "../widgets/buttons/IconButton.vue";
+import PopoverButton, { PopoverButtonIcon } from "../widgets/buttons/PopoverButton.vue";
+import { PopoverDirection } from "../widgets/overlays/Popover.vue";
 import VerticalEllipsis from "../../../assets/svg/16x24-bounds-8x16-icon/vertical-ellipsis.svg";
 import CloseX from "../../../assets/svg/16x16-bounds-12x12-icon/close-x.svg";
 
@@ -145,7 +148,7 @@ export default defineComponent({
 		LayerTree,
 		Minimap,
 		IconButton,
-		DropdownButton,
+		PopoverButton,
 		CloseX,
 		VerticalEllipsis,
 	},
@@ -158,7 +161,8 @@ export default defineComponent({
 	},
 	data() {
 		return {
-			DropdownButtonIcon,
+			PopoverButtonIcon,
+			PopoverDirection,
 		};
 	},
 });

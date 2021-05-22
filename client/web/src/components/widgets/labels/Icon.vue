@@ -1,31 +1,20 @@
 <template>
-	<button class="icon-button" :class="[`size-${String(size)}`, gapAfter && 'gap-after']">
+	<div class="icon" :class="[`size-${String(size)}`, gapAfter && 'gap-after']">
 		<slot></slot>
-	</button>
+	</div>
 </template>
 
 <style lang="scss">
-.icon-button {
+.icon {
 	display: inline-block;
 	flex: 0 0 auto;
-	padding: 0;
-	outline: none;
-	border: none;
-	border-radius: 2px;
-	background: none;
-	vertical-align: top;
 	fill: #ddd;
+	vertical-align: top;
 	width: 16px;
 	height: 16px;
 
-	&:not(.gap-after) + .icon-button {
+	&:not(.gap-after) + .icon {
 		margin-left: 0;
-	}
-
-	&:hover {
-		background: #666;
-		color: white;
-		fill: white;
 	}
 
 	&.size-10 {
