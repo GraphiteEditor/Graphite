@@ -61,16 +61,16 @@ impl Fsm for PenToolFsmState {
 				(Ready, DragStart) => {
 					responses.push_back(Operation::MountWorkingFolder { path: vec![] }.into());
 
-					data.points.push(input.mouse_state.position);
-					data.next_point = input.mouse_state.position;
+					data.points.push(input.mouse.position);
+					data.next_point = input.mouse.position;
 
 					Dragging
 				}
 				(Dragging, DragStop) => {
 					// TODO - introduce comparison threshold when operating with canvas coordinates (https://github.com/GraphiteEditor/Graphite/issues/100)
-					if data.points.last() != Some(&input.mouse_state.position) {
-						data.points.push(input.mouse_state.position);
-						data.next_point = input.mouse_state.position;
+					if data.points.last() != Some(&input.mouse.position) {
+						data.points.push(input.mouse.position);
+						data.next_point = input.mouse.position;
 					}
 
 					responses.push_back(Operation::ClearWorkingFolder.into());
@@ -79,7 +79,7 @@ impl Fsm for PenToolFsmState {
 					Dragging
 				}
 				(Dragging, MouseMove) => {
-					data.next_point = input.mouse_state.position;
+					data.next_point = input.mouse.position;
 
 					responses.push_back(Operation::ClearWorkingFolder.into());
 					responses.push_back(make_operation(data, tool_data, true));

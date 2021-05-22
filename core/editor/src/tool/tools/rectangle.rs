@@ -63,13 +63,13 @@ impl Fsm for RectangleToolFsmState {
 		if let ToolMessage::Rectangle(event) = event {
 			match (self, event) {
 				(Ready, DragStart) => {
-					data.drag_start = input.mouse_state.position;
-					data.drag_current = input.mouse_state.position;
+					data.drag_start = input.mouse.position;
+					data.drag_current = input.mouse.position;
 					responses.push_back(Operation::MountWorkingFolder { path: vec![] }.into());
 					Dragging
 				}
 				(Dragging, MouseMove) => {
-					data.drag_current = input.mouse_state.position;
+					data.drag_current = input.mouse.position;
 
 					responses.push_back(Operation::ClearWorkingFolder.into());
 					responses.push_back(make_operation(data, tool_data));
@@ -77,7 +77,7 @@ impl Fsm for RectangleToolFsmState {
 					Dragging
 				}
 				(Dragging, DragStop) => {
-					data.drag_current = input.mouse_state.position;
+					data.drag_current = input.mouse.position;
 
 					responses.push_back(Operation::ClearWorkingFolder.into());
 					// TODO - introduce comparison threshold when operating with canvas coordinates (https://github.com/GraphiteEditor/Graphite/issues/100)

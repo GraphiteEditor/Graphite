@@ -2,7 +2,7 @@ use crate::message_prelude::*;
 use crate::tool::ToolType;
 
 use super::{
-	keyboard::{Key, Keyboard, NUMBER_OF_KEYS},
+	keyboard::{Key, KeyStates, NUMBER_OF_KEYS},
 	InputPreprocessor,
 };
 
@@ -16,18 +16,19 @@ pub enum InputMapperMessage {
 
 #[derive(PartialEq, Clone, Debug)]
 struct MappingEntry {
-	modifiers: Keyboard,
+	trigger: InputMapperMessage,
+	modifiers: KeyStates,
 	action: Message,
-	cause: InputMapperMessage,
 }
 
 #[derive(Debug, Clone, Default)]
 struct KeyMappingEntries(Vec<MappingEntry>);
 
 impl KeyMappingEntries {
-	fn match_mapping(&self, keys: &Keyboard, actions: ActionList) -> Option<Message> {
+	fn match_mapping(&self, keys: &KeyStates, actions: ActionList) -> Option<Message> {
 		for entry in self.0.iter() {
-			if ((*keys & entry.modifiers) ^ entry.modifiers).is_empty() && actions.iter().flatten().any(|action| entry.action.to_discriminant() == *action) {
+			let all_required_modifiers_pressed = ((*keys & entry.modifiers) ^ entry.modifiers).is_empty();
+			if all_required_modifiers_pressed && actions.iter().flatten().any(|action| entry.action.to_discriminant() == *action) {
 				return Some(entry.action.clone());
 			}
 		}
@@ -42,13 +43,13 @@ impl KeyMappingEntries {
 struct Mapping {
 	up: [KeyMappingEntries; NUMBER_OF_KEYS],
 	down: [KeyMappingEntries; NUMBER_OF_KEYS],
-	mouse_move: KeyMappingEntries,
+	pointer_move: KeyMappingEntries,
 }
 
 macro_rules! modifiers {
 	($($m:ident),*) => {{
 		#[allow(unused_mut)]
-		let mut state = Keyboard::new();
+		let mut state = KeyStates::new();
 		$(
 			state.set(Key::$m as usize);
 		),*
@@ -63,7 +64,7 @@ macro_rules! entry {
 		entry!{action=$action, message=InputMapperMessage::KeyUp(Key::$key) $(, modifiers=[$($m),* ])?}
 	}};
 	{action=$action:expr, message=$message:expr $(, modifiers=[$($m:ident),* $(,)?])?} => {{
-		MappingEntry {cause: $message, modifiers: modifiers!($($($m),*)?), action: $action.into()}
+		MappingEntry {trigger: $message, modifiers: modifiers!($($($m),*)?), action: $action.into()}
 	}};
 }
 macro_rules! mapping {
@@ -71,22 +72,22 @@ macro_rules! mapping {
 	[$($entry:expr),* $(,)?] => {{
 		let mut up: [KeyMappingEntries; NUMBER_OF_KEYS] = Default::default();
 		let mut down: [KeyMappingEntries; NUMBER_OF_KEYS] = Default::default();
-		let mut mouse_move: KeyMappingEntries = Default::default();
+		let mut pointer_move: KeyMappingEntries = Default::default();
 		$(
-			let arr = match $entry.cause {
+			let arr = match $entry.trigger {
 				InputMapperMessage::KeyDown(key) => &mut down[key as usize],
 				InputMapperMessage::KeyUp(key) => &mut up[key as usize],
-				InputMapperMessage::PointerMove => &mut mouse_move,
+				InputMapperMessage::PointerMove => &mut pointer_move,
 			};
 			arr.push($entry);
-        )*
-		(up, down, mouse_move)
+		)*
+		(up, down, pointer_move)
 	}};
 }
 
 impl Default for Mapping {
 	fn default() -> Self {
-		let (up, down, mouse_move) = mapping![
+		let (up, down, pointer_move) = mapping![
 			// Rectangle
 			entry! {action=RectangleMessage::Center, key_down=KeyAlt},
 			entry! {action=RectangleMessage::UnCenter, key_up=KeyAlt},
@@ -152,23 +153,23 @@ impl Default for Mapping {
 			entry! {action=ToolMessage::SelectTool(ToolType::Select), key_down=KeyV},
 			entry! {action=ToolMessage::SelectTool(ToolType::Line), key_down=KeyL},
 			entry! {action=ToolMessage::SelectTool(ToolType::Shape), key_down=KeyY},
-			entry! {action=ToolMessage::SwapColors, key_down=KeyX},
+			entry! {action=ToolMessage::SwapColors, key_down=KeyX, modifiers=[KeyShift]},
 			// Global Actions
 			entry! {action=GlobalMessage::LogInfo, key_down=Key1},
 			entry! {action=GlobalMessage::LogDebug, key_down=Key2},
 			entry! {action=GlobalMessage::LogTrace, key_down=Key3},
 		];
-		Self { up, down, mouse_move }
+		Self { up, down, pointer_move }
 	}
 }
 
 impl Mapping {
-	fn match_message(&self, message: InputMapperMessage, keys: &Keyboard, actions: ActionList) -> Option<Message> {
+	fn match_message(&self, message: InputMapperMessage, keys: &KeyStates, actions: ActionList) -> Option<Message> {
 		use InputMapperMessage::*;
 		let list = match message {
 			KeyDown(key) => &self.down[key as usize],
 			KeyUp(key) => &self.up[key as usize],
-			PointerMove => &self.mouse_move,
+			PointerMove => &self.pointer_move,
 		};
 		list.match_mapping(keys, actions)
 	}
@@ -186,5 +187,5 @@ impl MessageHandler<InputMapperMessage, (&InputPreprocessor, ActionList)> for In
 			responses.push_back(message);
 		}
 	}
-	actions_fn!();
+	advertise_actions!();
 }

@@ -1,4 +1,4 @@
-use super::keyboard::{Key, Keyboard};
+use super::keyboard::{Key, KeyStates};
 use super::mouse::{MouseKeys, MouseState, ViewportPosition};
 use crate::message_prelude::*;
 
@@ -17,19 +17,24 @@ pub enum InputPreprocessorMessage {
 
 #[derive(Debug, Default)]
 pub struct InputPreprocessor {
-	pub keyboard: Keyboard,
-	pub mouse_state: MouseState,
+	pub keyboard: KeyStates,
+	pub mouse: MouseState,
+}
+
+enum KeyPosition {
+	Pressed,
+	Released,
 }
 
 impl MessageHandler<InputPreprocessorMessage, ()> for InputPreprocessor {
 	fn process_action(&mut self, message: InputPreprocessorMessage, _data: (), responses: &mut VecDeque<Message>) {
 		let response = match message {
 			InputPreprocessorMessage::MouseMove(pos) => {
-				self.mouse_state.position = pos;
+				self.mouse.position = pos;
 				InputMapperMessage::PointerMove.into()
 			}
-			InputPreprocessorMessage::MouseDown(state) => self.translate_mouse_event(state, true),
-			InputPreprocessorMessage::MouseUp(state) => self.translate_mouse_event(state, false),
+			InputPreprocessorMessage::MouseDown(state) => self.translate_mouse_event(state, KeyPosition::Pressed),
+			InputPreprocessorMessage::MouseUp(state) => self.translate_mouse_event(state, KeyPosition::Released),
 			InputPreprocessorMessage::KeyDown(key) => {
 				self.keyboard.set(key as usize);
 				InputMapperMessage::KeyDown(key).into()
@@ -43,16 +48,15 @@ impl MessageHandler<InputPreprocessorMessage, ()> for InputPreprocessor {
 	}
 	// clean user input and if possible reconstruct it
 	// store the changes in the keyboard if it is a key event
-	// translate the key events to VirtualKeyToolMessages and return them
 	// transform canvas coordinates to document coordinates
-	// Last pressed key
-	actions_fn!();
+	advertise_actions!();
 }
 
 impl InputPreprocessor {
-	fn translate_mouse_event(&mut self, new_state: MouseState, down: bool) -> Message {
-		let diff = self.mouse_state.mouse_keys ^ new_state.mouse_keys;
-		self.mouse_state = new_state;
+	fn translate_mouse_event(&mut self, new_state: MouseState, position: KeyPosition) -> Message {
+		// Calculate the difference between the two key states (binary xor)
+		let diff = self.mouse.mouse_keys ^ new_state.mouse_keys;
+		self.mouse = new_state;
 		let key = match diff {
 			MouseKeys::LEFT => Key::Lmb,
 			MouseKeys::RIGHT => Key::Rmb,
@@ -62,9 +66,9 @@ impl InputPreprocessor {
 				Key::UnknownKey
 			}
 		};
-		match down {
-			true => InputMapperMessage::KeyDown(key).into(),
-			false => InputMapperMessage::KeyUp(key).into(),
+		match position {
+			KeyPosition::Pressed => InputMapperMessage::KeyDown(key).into(),
+			KeyPosition::Released => InputMapperMessage::KeyUp(key).into(),
 		}
 	}
 }

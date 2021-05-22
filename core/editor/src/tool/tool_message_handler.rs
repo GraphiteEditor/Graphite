@@ -16,7 +16,6 @@ pub enum ToolMessage {
 	SelectSecondaryColor(Color),
 	SwapColors,
 	ResetColors,
-	MouseMove,
 	#[child]
 	Rectangle(RectangleMessage),
 	#[child]
@@ -42,7 +41,6 @@ pub enum ToolMessage {
 #[derive(Debug, Default)]
 pub struct ToolMessageHandler {
 	tool_state: ToolFsmState,
-	actions: Vec<&'static [&'static str]>,
 }
 impl MessageHandler<ToolMessage, (&SvgDocument, &InputPreprocessor)> for ToolMessageHandler {
 	fn process_action(&mut self, message: ToolMessage, data: (&SvgDocument, &InputPreprocessor), responses: &mut VecDeque<Message>) {

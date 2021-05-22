@@ -65,8 +65,8 @@ impl Fsm for ShapeToolFsmState {
 		if let ToolMessage::Shape(event) = event {
 			match (self, event) {
 				(Ready, DragStart) => {
-					data.drag_start = input.mouse_state.position;
-					data.drag_current = input.mouse_state.position;
+					data.drag_start = input.mouse.position;
+					data.drag_current = input.mouse.position;
 
 					data.sides = 6;
 
@@ -74,14 +74,14 @@ impl Fsm for ShapeToolFsmState {
 					Dragging
 				}
 				(Dragging, MouseMove) => {
-					data.drag_current = input.mouse_state.position;
+					data.drag_current = input.mouse.position;
 					responses.push_back(Operation::ClearWorkingFolder.into());
 					responses.push_back(make_operation(data, tool_data));
 
 					Dragging
 				}
 				(Dragging, DragStop) => {
-					data.drag_current = input.mouse_state.position;
+					data.drag_current = input.mouse.position;
 					responses.push_back(Operation::ClearWorkingFolder.into());
 					// TODO - introduce comparison threshold when operating with canvas coordinates (https://github.com/GraphiteEditor/Graphite/issues/100)
 					if data.drag_start != data.drag_current {

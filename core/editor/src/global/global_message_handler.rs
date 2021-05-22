@@ -20,7 +20,6 @@ impl GlobalMessageHandler {
 
 impl MessageHandler<GlobalMessage, ()> for GlobalMessageHandler {
 	fn process_action(&mut self, message: GlobalMessage, _data: (), _responses: &mut VecDeque<Message>) {
-		// process action before passing them further down
 		use GlobalMessage::*;
 		match message {
 			LogInfo => {
@@ -37,5 +36,5 @@ impl MessageHandler<GlobalMessage, ()> for GlobalMessageHandler {
 			}
 		}
 	}
-	actions_fn!(GlobalMessageDiscriminant; LogInfo, LogDebug, LogTrace,);
+	advertise_actions!(GlobalMessageDiscriminant; LogInfo, LogDebug, LogTrace);
 }

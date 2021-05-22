@@ -31,10 +31,10 @@ macro_rules! count_args {
 /// expands to
 /// ```ignore
 /// let tools = {
-/// 	let mut hash_map: std::collections::HashMap<crate::tools::ToolType, Box<dyn crate::tools::Tool>> = std::collections::HashMap::with_capacity(count_args!(/* Macro args */));
+/// 	let mut hash_map: std::collections::HashMap<crate::tool::ToolType, Box<dyn crate::tool::Tool>> = std::collections::HashMap::with_capacity(count_args!(/* Macro args */));
 ///
-/// 	hash_map.insert(crate::tools::ToolType::Select, Box::new(select::Select::default()));
-/// 	hash_map.insert(crate::tools::ToolType::Crop, Box::new(crop::Crop::default()));
+/// 	hash_map.insert(crate::tool::ToolType::Select, Box::new(select::Select::default()));
+/// 	hash_map.insert(crate::tool::ToolType::Crop, Box::new(crop::Crop::default()));
 ///
 /// 	hash_map
 /// };
@@ -124,7 +124,7 @@ macro_rules! actions {
 ///		actions!(…)
 /// }
 /// ```
-macro_rules! actions_fn {
+macro_rules! advertise_actions {
 	($($v:expr),* $(,)?) => {
 		fn actions(&self) -> $crate::communication::ActionList {
 			 actions!($($v),*)

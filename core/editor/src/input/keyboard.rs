@@ -5,7 +5,7 @@ pub type StorageType = u8;
 const STORAGE_SIZE: u32 = std::mem::size_of::<usize>() as u32 * 8 + 2 - std::mem::size_of::<StorageType>().leading_zeros();
 const STORAGE_SIZE_BITS: usize = 1 << STORAGE_SIZE;
 const KEY_MASK_STORAGE_LENGTH: usize = (NUMBER_OF_KEYS + STORAGE_SIZE_BITS - 1) >> STORAGE_SIZE;
-pub type Keyboard = KeyStore<KEY_MASK_STORAGE_LENGTH>;
+pub type KeyStates = BitVector<KEY_MASK_STORAGE_LENGTH>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Key {
@@ -47,7 +47,7 @@ pub enum Key {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct KeyStore<const LENGTH: usize>([StorageType; LENGTH]);
+pub struct BitVector<const LENGTH: usize>([StorageType; LENGTH]);
 
 use std::{
 	fmt::{Display, Formatter},
@@ -55,26 +55,26 @@ use std::{
 	usize,
 };
 
-impl<const LENGTH: usize> KeyStore<LENGTH> {
+impl<const LENGTH: usize> BitVector<LENGTH> {
 	#[inline]
-	fn convert_index(index: usize) -> (usize, StorageType) {
-		let bit = 1 << (index & (STORAGE_SIZE_BITS as StorageType - 1) as usize);
-		let offset = index >> STORAGE_SIZE;
+	fn convert_index(bitvector_index: usize) -> (usize, StorageType) {
+		let bit = 1 << (bitvector_index & (STORAGE_SIZE_BITS as StorageType - 1) as usize);
+		let offset = bitvector_index >> STORAGE_SIZE;
 		(offset, bit)
 	}
 	pub const fn new() -> Self {
 		Self([0; LENGTH])
 	}
-	pub fn set(&mut self, index: usize) {
-		let (offset, bit) = Self::convert_index(index);
+	pub fn set(&mut self, bitvector_index: usize) {
+		let (offset, bit) = Self::convert_index(bitvector_index);
 		self.0[offset] |= bit;
 	}
-	pub fn unset(&mut self, index: usize) {
-		let (offset, bit) = Self::convert_index(index);
+	pub fn unset(&mut self, bitvector_index: usize) {
+		let (offset, bit) = Self::convert_index(bitvector_index);
 		self.0[offset] &= !bit;
 	}
-	pub fn toggle(&mut self, index: usize) {
-		let (offset, bit) = Self::convert_index(index);
+	pub fn toggle(&mut self, bitvector_index: usize) {
+		let (offset, bit) = Self::convert_index(bitvector_index);
 		self.0[offset] ^= bit;
 	}
 	pub fn is_empty(&self) -> bool {
@@ -86,13 +86,13 @@ impl<const LENGTH: usize> KeyStore<LENGTH> {
 	}
 }
 
-impl<const LENGTH: usize> Default for KeyStore<LENGTH> {
+impl<const LENGTH: usize> Default for BitVector<LENGTH> {
 	fn default() -> Self {
 		Self::new()
 	}
 }
 
-impl<const LENGTH: usize> Display for KeyStore<LENGTH> {
+impl<const LENGTH: usize> Display for BitVector<LENGTH> {
 	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
 		for storage in self.0.iter().rev() {
 			write!(f, "{:0width$b}", storage, width = STORAGE_SIZE_BITS)?;
@@ -104,7 +104,7 @@ impl<const LENGTH: usize> Display for KeyStore<LENGTH> {
 macro_rules! bit_ops {
 	($(($op:ident, $func:ident)),* $(,)?) => {
 		$(
-			impl<const LENGTH: usize> $op for KeyStore<LENGTH> {
+			impl<const LENGTH: usize> $op for BitVector<LENGTH> {
 				type Output = Self;
 				fn $func(self, right: Self) -> Self::Output {
 					let mut result = Self::new();
@@ -114,10 +114,10 @@ macro_rules! bit_ops {
 					result
 				}
 			}
-			impl<const LENGTH: usize> $op for &KeyStore<LENGTH> {
-				type Output = KeyStore<LENGTH>;
+			impl<const LENGTH: usize> $op for &BitVector<LENGTH> {
+				type Output = BitVector<LENGTH>;
 				fn $func(self, right: Self) -> Self::Output {
-					let mut result = KeyStore::<LENGTH>::new();
+					let mut result = BitVector::<LENGTH>::new();
 					for ((left, right), new) in self.0.iter().zip(right.0.iter()).zip(result.0.iter_mut()) {
 						*new = $op::$func(left, right);
 					}
@@ -129,7 +129,7 @@ macro_rules! bit_ops {
 }
 macro_rules! bit_ops_assign {
 	($(($op:ident, $func:ident)),* $(,)?) => {
-		$(impl<const LENGTH: usize> $op for KeyStore<LENGTH> {
+		$(impl<const LENGTH: usize> $op for BitVector<LENGTH> {
 			fn $func(&mut self, right: Self)  {
 				for (left, right) in self.0.iter_mut().zip(right.0.iter()) {
 					$op::$func(left, right);

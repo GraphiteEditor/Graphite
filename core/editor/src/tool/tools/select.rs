@@ -18,7 +18,7 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Select {
 	fn process_action(&mut self, action: ToolMessage, data: ToolActionHandlerData<'a>, responses: &mut VecDeque<Message>) {
 		self.fsm_state = self.fsm_state.transition(action, data.0, data.1, &mut self.data, data.2, responses);
 	}
-	actions_fn!();
+	advertise_actions!();
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

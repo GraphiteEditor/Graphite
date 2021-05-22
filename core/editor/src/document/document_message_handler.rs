@@ -65,7 +65,10 @@ impl MessageHandler<DocumentMessage, ()> for DocumentMessageHandler {
 		match message {
 			DeleteLayer(path) => responses.push_back(DocumentOperation::DeleteLayer { path }.into()),
 			AddFolder(path) => responses.push_back(DocumentOperation::AddFolder { path }.into()),
-			SelectDocument(id) => self.active_document = id,
+			SelectDocument(id) => {
+				assert!(id < self.documents.len(), "Tried to select a document that was not initialized");
+				self.active_document = id;
+			}
 			ToggleLayerVisibility(path) => {
 				responses.push_back(DocumentOperation::ToggleVisibility { path }.into());
 			}
@@ -78,7 +81,7 @@ impl MessageHandler<DocumentMessage, ()> for DocumentMessageHandler {
 			DispatchOperation(op) => {
 				if let Ok(Some(mut document_responses)) = self.active_document_mut().document.handle_operation(op) {
 					let canvas_dirty = self.filter_document_responses(&mut document_responses);
-					responses.extend(document_responses.drain(..).map(Into::into));
+					responses.extend(document_responses.into_iter().map(Into::into));
 					if canvas_dirty {
 						responses.push_back(RenderDocument.into())
 					}
@@ -93,5 +96,5 @@ impl MessageHandler<DocumentMessage, ()> for DocumentMessageHandler {
 			message => todo!("document_action_handler does not implement: {}", message.to_discriminant().global_name()),
 		}
 	}
-	actions_fn!(DocumentMessageDiscriminant; Undo, RenderDocument);
+	advertise_actions!(DocumentMessageDiscriminant; Undo, RenderDocument);
 }
