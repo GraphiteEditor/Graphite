@@ -4,8 +4,8 @@ pub const NUMBER_OF_KEYS: usize = Key::NumKeys as usize;
 pub type StorageType = u8;
 const STORAGE_SIZE: u32 = std::mem::size_of::<usize>() as u32 * 8 + 2 - std::mem::size_of::<StorageType>().leading_zeros();
 const STORAGE_SIZE_BITS: usize = 1 << STORAGE_SIZE;
-const KEY_MASK_STORAGE_LENGHT: usize = (NUMBER_OF_KEYS + STORAGE_SIZE_BITS - 1) >> STORAGE_SIZE;
-pub type Keyboard = KeyStore<KEY_MASK_STORAGE_LENGHT>;
+const KEY_MASK_STORAGE_LENGTH: usize = (NUMBER_OF_KEYS + STORAGE_SIZE_BITS - 1) >> STORAGE_SIZE;
+pub type Keyboard = KeyStore<KEY_MASK_STORAGE_LENGTH>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Key {

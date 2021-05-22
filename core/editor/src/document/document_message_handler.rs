@@ -7,7 +7,7 @@ use std::collections::VecDeque;
 #[impl_message(Message, Document)]
 #[derive(PartialEq, Clone, Debug)]
 pub enum DocumentMessage {
-	Operation(DocumentOperation),
+	DispatchOperation(DocumentOperation),
 	SelectLayer(Vec<LayerId>),
 	DeleteLayer(Vec<LayerId>),
 	AddFolder(Vec<LayerId>),
@@ -21,12 +21,12 @@ pub enum DocumentMessage {
 
 impl From<DocumentOperation> for DocumentMessage {
 	fn from(operation: DocumentOperation) -> DocumentMessage {
-		Self::Operation(operation)
+		Self::DispatchOperation(operation)
 	}
 }
 impl From<DocumentOperation> for Message {
 	fn from(operation: DocumentOperation) -> Message {
-		DocumentMessage::Operation(operation).into()
+		DocumentMessage::DispatchOperation(operation).into()
 	}
 }
 
@@ -75,7 +75,7 @@ impl MessageHandler<DocumentMessage, ()> for DocumentMessageHandler {
 					responses.push_back(DocumentOperation::DeleteLayer { path: vec![*id] }.into())
 				}
 			}
-			Operation(op) => {
+			DispatchOperation(op) => {
 				if let Ok(Some(mut document_responses)) = self.active_document_mut().document.handle_operation(op) {
 					let canvas_dirty = self.filter_document_responses(&mut document_responses);
 					responses.extend(document_responses.drain(..).map(Into::into));

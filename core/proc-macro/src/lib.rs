@@ -19,7 +19,7 @@ use syn::parse_macro_input;
 ///
 /// This derive macro is enum-only.
 ///
-/// The discriminant enum is a copy of the input enum with all fields of every* variant removed.\
+/// The discriminant enum is a copy of the input enum with all fields of every variant removed.\
 /// *) The exception to that rule is the `#[child]` attribute
 ///
 /// # Helper attributes

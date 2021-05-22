@@ -22,9 +22,9 @@ struct MappingEntry {
 }
 
 #[derive(Debug, Clone, Default)]
-struct MappingList(Vec<MappingEntry>);
+struct KeyMappings(Vec<MappingEntry>);
 
-impl MappingList {
+impl KeyMappings {
 	fn match_mapping(&self, keys: &Keyboard, actions: ActionList) -> Option<Message> {
 		for entry in self.0.iter() {
 			if ((*keys & entry.modifiers) ^ entry.modifiers).is_empty() && actions.iter().flatten().any(|action| entry.action.to_discriminant() == *action) {
@@ -39,10 +39,10 @@ impl MappingList {
 }
 
 #[derive(Debug, Clone)]
-struct Mappings {
-	up: [MappingList; NUMBER_OF_KEYS],
-	down: [MappingList; NUMBER_OF_KEYS],
-	mouse_move: MappingList,
+struct Mapping {
+	up: [KeyMappings; NUMBER_OF_KEYS],
+	down: [KeyMappings; NUMBER_OF_KEYS],
+	mouse_move: KeyMappings,
 }
 
 macro_rules! modifiers {
@@ -69,9 +69,9 @@ macro_rules! entry {
 macro_rules! mapping {
 	//[$(<action=$action:expr; message=$key:expr; $(modifiers=[$($m:ident),* $(,)?];)?>)*] => {{
 	[$($entry:expr),* $(,)?] => {{
-		let mut up: [MappingList; NUMBER_OF_KEYS] = Default::default();
-		let mut down: [MappingList; NUMBER_OF_KEYS] = Default::default();
-		let mut mouse_move: MappingList = Default::default();
+		let mut up: [KeyMappings; NUMBER_OF_KEYS] = Default::default();
+		let mut down: [KeyMappings; NUMBER_OF_KEYS] = Default::default();
+		let mut mouse_move: KeyMappings = Default::default();
 		$(
 			let arr = match $entry.cause {
 				InputMapperMessage::KeyDown(key) => &mut down[key as usize],
@@ -84,7 +84,7 @@ macro_rules! mapping {
 	}};
 }
 
-impl Default for Mappings {
+impl Default for Mapping {
 	fn default() -> Self {
 		let (up, down, mouse_move) = mapping![
 			// Rectangle
@@ -162,7 +162,7 @@ impl Default for Mappings {
 	}
 }
 
-impl Mappings {
+impl Mapping {
 	fn match_message(&self, message: InputMapperMessage, keys: &Keyboard, actions: ActionList) -> Option<Message> {
 		use InputMapperMessage::*;
 		let list = match message {
@@ -176,7 +176,7 @@ impl Mappings {
 
 #[derive(Debug, Default)]
 pub struct InputMapper {
-	mapping: Mappings,
+	mapping: Mapping,
 }
 
 impl MessageHandler<InputMapperMessage, (&InputPreprocessor, ActionList)> for InputMapper {
