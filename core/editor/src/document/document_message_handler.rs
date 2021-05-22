@@ -44,18 +44,11 @@ impl DocumentMessageHandler {
 		&mut self.documents[self.active_document]
 	}
 	fn filter_document_responses(&self, document_responses: &mut Vec<DocumentResponse>) -> bool {
-		//let changes = document_responses.drain_filter(|x| x == DocumentResponse::DocumentChanged);
-		let mut canvas_dirty = false;
-		let mut i = 0;
-		while i < document_responses.len() {
-			if matches!(document_responses[i], DocumentResponse::DocumentChanged) {
-				canvas_dirty = true;
-				document_responses.remove(i);
-			} else {
-				i += 1;
-			}
-		}
-		canvas_dirty
+		let len = document_responses.len();
+		document_responses.retain(|response| {
+			!matches!(response, DocumentResponse::DocumentChanged)
+		});
+		document_responses.len() != len
 	}
 }
 

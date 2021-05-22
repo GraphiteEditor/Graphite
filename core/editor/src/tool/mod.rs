@@ -40,9 +40,10 @@ pub struct DocumentToolData {
 	tool_settings: HashMap<ToolType, ToolSettings>,
 }
 
+type SubToolMessageHandler = dyn for<'a>  MessageHandler<ToolMessage, ToolActionHandlerData<'a>>;
 pub struct ToolData {
 	pub active_tool_type: ToolType,
-	pub tools: HashMap<ToolType, Box<dyn for<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>>>>,
+	pub tools: HashMap<ToolType, Box<SubToolMessageHandler>>,
 }
 
 impl fmt::Debug for ToolData {
@@ -52,10 +53,10 @@ impl fmt::Debug for ToolData {
 }
 
 impl ToolData {
-	pub fn active_tool_mut(&mut self) -> &mut Box<dyn for<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>>> {
+	pub fn active_tool_mut(&mut self) -> &mut Box<SubToolMessageHandler> {
 		self.tools.get_mut(&self.active_tool_type).expect("The active tool is not initialized")
 	}
-	pub fn active_tool(&self) -> &dyn for<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> {
+	pub fn active_tool(&self) -> &SubToolMessageHandler {
 		self.tools.get(&self.active_tool_type).map(|x| x.as_ref()).expect("The active tool is not initialized")
 	}
 }

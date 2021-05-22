@@ -9,8 +9,8 @@ pub struct ViewportPosition {
 
 impl ViewportPosition {
 	pub fn distance(&self, other: &Self) -> f64 {
-		let x_diff = other.x as i32 - self.x as i32;
-		let y_diff = other.y as i32 - self.y as i32;
+		let x_diff = other.x as i64 - self.x as i64;
+		let y_diff = other.y as i64 - self.y as i64;
 		f64::sqrt((x_diff * x_diff + y_diff * y_diff) as f64)
 	}
 }

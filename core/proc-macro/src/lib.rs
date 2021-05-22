@@ -284,18 +284,6 @@ mod tests {
 		assert_eq!(l.to_string(), r.to_string());
 	}
 
-	/*#[test]
-	fn foo() {
-		let res = derive_message_impl(quote::quote! {
-			enum E {
-				S { a: u8, b: String, c: bool },
-				X,
-				Y
-			}
-		}
-		panic!("{:?}", res)
-	}*/
-
 	#[test]
 	fn test_derive_hint() {
 		let res = derive_hint_impl(quote::quote! {

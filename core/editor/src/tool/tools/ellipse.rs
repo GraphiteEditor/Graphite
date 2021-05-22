@@ -128,7 +128,7 @@ fn update_state(
 	*(state(data)) = value;
 
 	responses.push_back(Operation::ClearWorkingFolder.into());
-	responses.push_back(make_operation(&data, tool_data).into());
+	responses.push_back(make_operation(&data, tool_data));
 
 	new_state
 }
