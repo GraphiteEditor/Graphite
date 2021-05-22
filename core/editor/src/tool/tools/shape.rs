@@ -30,8 +30,8 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Shape {
 	fn actions(&self) -> ActionList {
 		use ShapeToolFsmState::*;
 		match self.fsm_state {
-			Ready => actions!(EllipseMessageDiscriminant; Undo, DragStart, Center, UnCenter, LockAspectRatio, UnlockAspectRatio),
-			Dragging => actions!(EllipseMessageDiscriminant; DragStop, Center, UnCenter, LockAspectRatio, UnlockAspectRatio, MouseMove, Abort),
+			Ready => actions!(ShapeMessageDiscriminant; Undo, DragStart, Center, UnCenter, LockAspectRatio, UnlockAspectRatio),
+			Dragging => actions!(ShapeMessageDiscriminant; DragStop, Center, UnCenter, LockAspectRatio, UnlockAspectRatio, MouseMove, Abort),
 		}
 	}
 }

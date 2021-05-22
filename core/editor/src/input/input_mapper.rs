@@ -106,6 +106,16 @@ impl Default for Mappings {
 			entry! {action=EllipseMessage::Abort, key_down=KeyEscape},
 			entry! {action=EllipseMessage::LockAspectRatio, key_down=KeyShift},
 			entry! {action=EllipseMessage::UnlockAspectRatio, key_up=KeyShift},
+			// Shape
+			entry! {action=ShapeMessage::Center, key_down=KeyAlt},
+			entry! {action=ShapeMessage::UnCenter, key_up=KeyAlt},
+			entry! {action=ShapeMessage::MouseMove, message=InputMapperMessage::MouseMove},
+			entry! {action=ShapeMessage::DragStart, key_down=Lmb},
+			entry! {action=ShapeMessage::DragStop, key_up=Lmb},
+			entry! {action=ShapeMessage::Abort, key_down=Rmb},
+			entry! {action=ShapeMessage::Abort, key_down=KeyEscape},
+			entry! {action=ShapeMessage::LockAspectRatio, key_down=KeyShift},
+			entry! {action=ShapeMessage::UnlockAspectRatio, key_up=KeyShift},
 			// Document Actions
 			entry! {action=DocumentMessage::Undo, key_down=KeyZ, modifiers=[KeyControl]},
 			// Global Actions
