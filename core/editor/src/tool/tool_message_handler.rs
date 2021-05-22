@@ -96,7 +96,7 @@ impl MessageHandler<ToolMessage, (&SvgDocument, &InputPreprocessor)> for ToolMes
 		}
 	}
 	fn actions(&self) -> ActionList {
-		let mut list = actions!(ToolMessageDiscriminant; ResetColors, SwapColors);
+		let mut list = actions!(ToolMessageDiscriminant; ResetColors, SwapColors, SelectTool);
 		list.extend(self.tool_state.tool_data.active_tool().actions());
 		list
 	}
