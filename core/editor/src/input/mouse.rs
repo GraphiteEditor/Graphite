@@ -21,6 +21,11 @@ impl CanvasPosition {
 		self
 	}
 }
+impl From<CanvasPosition> for (f64, f64) {
+	fn from(item: CanvasPosition) -> Self {
+		(item.x, item.y)
+	}
+}
 
 // The location of the viewport (or anything else) in the canvas
 #[derive(Debug, Copy, Clone, PartialEq)]
@@ -34,7 +39,7 @@ pub struct CanvasTransform {
 impl Default for CanvasTransform {
 	fn default() -> Self {
 		Self {
-			location: CanvasPosition{x:100., y:100.},
+			location: CanvasPosition { x: 100., y: 100. },
 			scale: 1.,
 			rotation: 0.,
 			center: ViewportPosition::default(),
@@ -58,7 +63,7 @@ impl ViewportPosition {
 	pub fn to_canvas_position(&self, canvas_transform: &CanvasTransform) -> CanvasPosition {
 		*CanvasPosition {
 			x: (self.x - canvas_transform.center.x) as f64 * canvas_transform.scale + canvas_transform.location.x,
-			y: (self.x - canvas_transform.center.x) as f64 * canvas_transform.scale + canvas_transform.location.y,
+			y: (self.y - canvas_transform.center.y) as f64 * canvas_transform.scale + canvas_transform.location.y,
 		}
 		.rotate(canvas_transform.rotation)
 	}
