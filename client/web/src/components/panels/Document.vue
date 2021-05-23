@@ -97,7 +97,9 @@
 			</LayoutCol>
 			<LayoutCol :class="'viewport'">
 				<div class="canvas" @mousedown="canvasMouseDown" @mouseup="canvasMouseUp" @mousemove="canvasMouseMove">
-					<svg v-html="viewportSvg"></svg>
+					<svg>
+						<g v-html="viewportSvg" transform="translate(-100,-100)"></g>
+					</svg>
 				</div>
 			</LayoutCol>
 		</LayoutRow>
