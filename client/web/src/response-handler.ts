@@ -12,6 +12,7 @@ declare global {
 
 export enum ResponseType {
 	UpdateCanvas = "UpdateCanvas",
+	UpdateCanvasTransform = "UpdateCanvasTransform",
 	ExpandFolder = "ExpandFolder",
 	CollapseFolder = "CollapseFolder",
 	SetActiveTool = "SetActiveTool",
@@ -52,12 +53,14 @@ function parseResponse(responseType: string, data: any): Response {
 			return newSetActiveTool(data.SetActiveTool);
 		case "UpdateCanvas":
 			return newUpdateCanvas(data.UpdateCanvas);
+		case "UpdateCanvasTransform":
+			return newUpdateCanvasTransform(data.UpdateCanvasTransform);
 		default:
 			throw new Error(`Unrecognized origin/responseType pair: ${origin}, ${responseType}`);
 	}
 }
 
-export type Response = SetActiveTool | UpdateCanvas | DocumentChanged | CollapseFolder | ExpandFolder;
+export type Response = SetActiveTool | UpdateCanvas | UpdateCanvasTransform | DocumentChanged | CollapseFolder | ExpandFolder;
 
 export interface SetActiveTool {
 	tool_name: string;
@@ -74,6 +77,14 @@ export interface UpdateCanvas {
 function newUpdateCanvas(input: any): UpdateCanvas {
 	return {
 		document: input.document,
+	};
+}
+export interface UpdateCanvasTransform {
+	transform: string;
+}
+function newUpdateCanvasTransform(input: any): UpdateCanvasTransform {
+	return {
+		transform: input.transform,
 	};
 }
 

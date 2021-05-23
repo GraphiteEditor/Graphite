@@ -98,7 +98,7 @@
 			<LayoutCol :class="'viewport'">
 				<div class="canvas" ref="canvas" @mousedown="canvasMouseDown" @mouseup="canvasMouseUp" @mousemove="canvasMouseMove">
 					<svg>
-						<g v-html="viewportSvg" transform="translate(-100,-100)"></g>
+						<g v-html="viewportSvg" :transform="viewportTransform"></g>
 					</svg>
 				</div>
 			</LayoutCol>
@@ -157,7 +157,7 @@
 
 <script lang="ts">
 import { defineComponent } from "vue";
-import { ResponseType, registerResponseHandler, Response, UpdateCanvas, SetActiveTool } from "../../response-handler";
+import { ResponseType, registerResponseHandler, Response, UpdateCanvas, UpdateCanvasTransform, SetActiveTool } from "../../response-handler";
 import LayoutRow from "../layout/LayoutRow.vue";
 import LayoutCol from "../layout/LayoutCol.vue";
 import WorkingColors from "../widgets/WorkingColors.vue";
@@ -309,6 +309,10 @@ export default defineComponent({
 			const updateData = responseData as UpdateCanvas;
 			if (updateData) this.viewportSvg = updateData.document;
 		});
+		registerResponseHandler(ResponseType.UpdateCanvasTransform, (responseData: Response) => {
+			const updateData = responseData as UpdateCanvasTransform;
+			if (updateData) this.viewportTransform = updateData.transform;
+		});
 		registerResponseHandler(ResponseType.SetActiveTool, (responseData: Response) => {
 			const toolData = responseData as SetActiveTool;
 			if (toolData) this.activeTool = toolData.tool_name;
@@ -325,6 +329,7 @@ export default defineComponent({
 	data() {
 		return {
 			viewportSvg: "",
+			viewportTransform: "",
 			activeTool: "Select",
 			PopoverDirection,
 		};

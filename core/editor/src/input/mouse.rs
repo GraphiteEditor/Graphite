@@ -13,12 +13,19 @@ impl CanvasPosition {
 		let y_diff = other.y - self.y;
 		f64::sqrt(x_diff * x_diff + y_diff * y_diff)
 	}
-	pub fn rotate(&mut self, theta: f64) -> &mut Self {
+	pub fn rotate(&self, theta: f64) -> Self {
 		let cosine = theta.cos();
 		let sine = theta.sin();
-		self.x = self.x * cosine - self.y * sine;
-		self.y = self.x * sine + self.y * cosine;
-		self
+		Self {
+			x: self.x * cosine - self.y * sine,
+			y: self.x * sine + self.y * cosine,
+		}
+	}
+	pub fn add(&self, x: f64, y: f64) -> Self {
+		Self { x: self.x + x, y: self.y + y }
+	}
+	pub fn multiply(&self, x: f64) -> Self {
+		Self { x: self.x * x, y: self.y * x }
 	}
 }
 impl From<CanvasPosition> for (f64, f64) {
@@ -40,10 +47,28 @@ impl Default for CanvasTransform {
 	fn default() -> Self {
 		Self {
 			location: CanvasPosition { x: 100., y: 100. },
-			scale: 1.,
-			rotation: 0.,
+			scale: 2.,
+			rotation: 0.785398163, // 90 degrees in radians
 			size: ViewportPosition::default(),
 		}
+	}
+}
+
+impl CanvasTransform {
+	pub fn transform_string(&self) -> String {
+		let inverse_scale = 1. / self.scale;
+		let size = CanvasPosition {
+			x: self.size.x as f64 / 2.,
+			y: self.size.y as f64 / 2.,
+		};
+		let translation = self.location.multiply(-inverse_scale).rotate(-self.rotation);
+		format!(
+			"translate({},{}) scale({}) rotate({})",
+			translation.x + size.x,
+			translation.y + size.y,
+			inverse_scale,
+			self.rotation * -57.295779513, // 180 / pi
+		)
 	}
 }
 
@@ -61,11 +86,11 @@ impl ViewportPosition {
 		f64::sqrt((x_diff * x_diff + y_diff * y_diff) as f64)
 	}
 	pub fn to_canvas_position(&self, canvas_transform: &CanvasTransform) -> CanvasPosition {
-		*CanvasPosition {
-			x: (self.x as f64 - canvas_transform.size.x as f64 / 2.) * canvas_transform.scale + canvas_transform.location.x,
-			y: (self.y as f64 - canvas_transform.size.y as f64 / 2.) * canvas_transform.scale + canvas_transform.location.y,
-		}
-		.rotate(canvas_transform.rotation)
+		CanvasPosition { x: self.x as f64, y: self.y as f64 }
+			.add(canvas_transform.size.x as f64 * -0.5, canvas_transform.size.y as f64 * -0.5)
+			.rotate(canvas_transform.rotation)
+			.multiply(canvas_transform.scale)
+			.add(canvas_transform.location.x, canvas_transform.location.y)
 	}
 }
 
