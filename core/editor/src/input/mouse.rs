@@ -33,7 +33,7 @@ pub struct CanvasTransform {
 	pub location: CanvasPosition,
 	pub rotation: f64,
 	pub scale: f64,
-	pub center: ViewportPosition,
+	pub size: ViewportPosition,
 }
 
 impl Default for CanvasTransform {
@@ -42,7 +42,7 @@ impl Default for CanvasTransform {
 			location: CanvasPosition { x: 100., y: 100. },
 			scale: 1.,
 			rotation: 0.,
-			center: ViewportPosition::default(),
+			size: ViewportPosition::default(),
 		}
 	}
 }
@@ -62,8 +62,8 @@ impl ViewportPosition {
 	}
 	pub fn to_canvas_position(&self, canvas_transform: &CanvasTransform) -> CanvasPosition {
 		*CanvasPosition {
-			x: (self.x - canvas_transform.center.x) as f64 * canvas_transform.scale + canvas_transform.location.x,
-			y: (self.y - canvas_transform.center.y) as f64 * canvas_transform.scale + canvas_transform.location.y,
+			x: (self.x as f64 - canvas_transform.size.x as f64 / 2.) * canvas_transform.scale + canvas_transform.location.x,
+			y: (self.y as f64 - canvas_transform.size.y as f64 / 2.) * canvas_transform.scale + canvas_transform.location.y,
 		}
 		.rotate(canvas_transform.rotation)
 	}

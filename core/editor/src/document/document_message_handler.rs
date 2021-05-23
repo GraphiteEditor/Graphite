@@ -1,4 +1,4 @@
-use crate::message_prelude::*;
+use crate::{input::{InputPreprocessor, mouse::ViewportPosition}, message_prelude::*};
 use document_core::{DocumentResponse, LayerId, Operation as DocumentOperation};
 
 use crate::document::Document;
@@ -7,6 +7,7 @@ use std::collections::VecDeque;
 #[impl_message(Message, Document)]
 #[derive(PartialEq, Clone, Debug)]
 pub enum DocumentMessage {
+	DocumentResize(ViewportPosition),
 	DispatchOperation(DocumentOperation),
 	SelectLayer(Vec<LayerId>),
 	DeleteLayer(Vec<LayerId>),
@@ -59,10 +60,11 @@ impl Default for DocumentMessageHandler {
 	}
 }
 
-impl MessageHandler<DocumentMessage, ()> for DocumentMessageHandler {
-	fn process_action(&mut self, message: DocumentMessage, _data: (), responses: &mut VecDeque<Message>) {
+impl MessageHandler<DocumentMessage, &mut InputPreprocessor> for DocumentMessageHandler {
+	fn process_action(&mut self, message: DocumentMessage, data: &mut InputPreprocessor, responses: &mut VecDeque<Message>) {
 		use DocumentMessage::*;
 		match message {
+			DocumentResize(size) => data.canvas_transform.size = size,
 			DeleteLayer(path) => responses.push_back(DocumentOperation::DeleteLayer { path }.into()),
 			AddFolder(path) => responses.push_back(DocumentOperation::AddFolder { path }.into()),
 			SelectDocument(id) => {
