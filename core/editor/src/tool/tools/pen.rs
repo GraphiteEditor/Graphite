@@ -1,4 +1,4 @@
-use crate::input::{mouse::ViewportPosition, InputPreprocessor};
+use crate::input::{InputPreprocessor, mouse::CanvasPosition};
 use crate::tool::{DocumentToolData, Fsm, ToolActionHandlerData};
 use crate::{message_prelude::*, SvgDocument};
 use document_core::{layers::style, Operation};
@@ -46,8 +46,8 @@ impl Default for PenToolFsmState {
 }
 #[derive(Clone, Debug, Default)]
 struct PenToolData {
-	points: Vec<ViewportPosition>,
-	next_point: ViewportPosition,
+	points: Vec<CanvasPosition>,
+	next_point: CanvasPosition,
 }
 
 impl Fsm for PenToolFsmState {
@@ -61,16 +61,18 @@ impl Fsm for PenToolFsmState {
 				(Ready, DragStart) => {
 					responses.push_back(Operation::MountWorkingFolder { path: vec![] }.into());
 
-					data.points.push(input.mouse.position);
-					data.next_point = input.mouse.position;
+					let canvas_position = input.mouse.position.to_canvas_position(&input.canvas_transform);
+					data.points.push(canvas_position);
+					data.next_point = canvas_position;
 
 					Dragging
 				}
 				(Dragging, DragStop) => {
+					let canvas_position = input.mouse.position.to_canvas_position(&input.canvas_transform);
 					// TODO - introduce comparison threshold when operating with canvas coordinates (https://github.com/GraphiteEditor/Graphite/issues/100)
-					if data.points.last() != Some(&input.mouse.position) {
-						data.points.push(input.mouse.position);
-						data.next_point = input.mouse.position;
+					if data.points.last() != Some(&canvas_position) {
+						data.points.push(canvas_position);
+						data.next_point = canvas_position;
 					}
 
 					responses.push_back(Operation::ClearWorkingFolder.into());
@@ -79,7 +81,7 @@ impl Fsm for PenToolFsmState {
 					Dragging
 				}
 				(Dragging, MouseMove) => {
-					data.next_point = input.mouse.position;
+					data.next_point = input.mouse.position.to_canvas_position(&input.canvas_transform);
 
 					responses.push_back(Operation::ClearWorkingFolder.into());
 					responses.push_back(make_operation(data, tool_data, true));

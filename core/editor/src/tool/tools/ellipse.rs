@@ -1,4 +1,4 @@
-use crate::input::{mouse::ViewportPosition, InputPreprocessor};
+use crate::input::{InputPreprocessor, mouse::ViewportPosition};
 use crate::tool::{DocumentToolData, Fsm, ToolActionHandlerData};
 use crate::{message_prelude::*, SvgDocument};
 use document_core::{layers::style, Operation};
@@ -73,7 +73,7 @@ impl Fsm for EllipseToolFsmState {
 					data.drag_current = input.mouse.position;
 
 					responses.push_back(Operation::ClearWorkingFolder.into());
-					responses.push_back(make_operation(data, tool_data));
+					responses.push_back(make_operation(data, tool_data, input));
 
 					Dragging
 				}
@@ -83,7 +83,7 @@ impl Fsm for EllipseToolFsmState {
 					responses.push_back(Operation::ClearWorkingFolder.into());
 					// TODO - introduce comparison threshold when operating with canvas coordinates (https://github.com/GraphiteEditor/Graphite/issues/100)
 					if data.drag_start != data.drag_current {
-						responses.push_back(make_operation(data, tool_data));
+						responses.push_back(make_operation(data, tool_data, input));
 						responses.push_back(Operation::CommitTransaction.into());
 					}
 
@@ -97,13 +97,13 @@ impl Fsm for EllipseToolFsmState {
 				}
 				(Ready, LockAspectRatio) => update_state_no_op(&mut data.constrain_to_circle, true, Ready),
 				(Ready, UnlockAspectRatio) => update_state_no_op(&mut data.constrain_to_circle, false, Ready),
-				(Dragging, LockAspectRatio) => update_state(|data| &mut data.constrain_to_circle, true, tool_data, data, responses, Dragging),
-				(Dragging, UnlockAspectRatio) => update_state(|data| &mut data.constrain_to_circle, false, tool_data, data, responses, Dragging),
+				(Dragging, LockAspectRatio) => update_state(|data| &mut data.constrain_to_circle, true, tool_data, data, input, responses, Dragging),
+				(Dragging, UnlockAspectRatio) => update_state(|data| &mut data.constrain_to_circle, false, tool_data, data, input, responses, Dragging),
 
 				(Ready, Center) => update_state_no_op(&mut data.center_around_cursor, true, Ready),
 				(Ready, UnCenter) => update_state_no_op(&mut data.center_around_cursor, false, Ready),
-				(Dragging, Center) => update_state(|data| &mut data.center_around_cursor, true, tool_data, data, responses, Dragging),
-				(Dragging, UnCenter) => update_state(|data| &mut data.center_around_cursor, false, tool_data, data, responses, Dragging),
+				(Dragging, Center) => update_state(|data| &mut data.center_around_cursor, true, tool_data, data, input, responses, Dragging),
+				(Dragging, UnCenter) => update_state(|data| &mut data.center_around_cursor, false, tool_data, data, input, responses, Dragging),
 				_ => self,
 			}
 		} else {
@@ -122,22 +122,21 @@ fn update_state(
 	value: bool,
 	tool_data: &DocumentToolData,
 	data: &mut EllipseToolData,
+	input: &InputPreprocessor,
 	responses: &mut VecDeque<Message>,
 	new_state: EllipseToolFsmState,
 ) -> EllipseToolFsmState {
 	*(state(data)) = value;
 
 	responses.push_back(Operation::ClearWorkingFolder.into());
-	responses.push_back(make_operation(&data, tool_data));
+	responses.push_back(make_operation(&data, tool_data, input));
 
 	new_state
 }
 
-fn make_operation(data: &EllipseToolData, tool_data: &DocumentToolData) -> Message {
-	let x0 = data.drag_start.x as f64;
-	let y0 = data.drag_start.y as f64;
-	let x1 = data.drag_current.x as f64;
-	let y1 = data.drag_current.y as f64;
+fn make_operation(data: &EllipseToolData, tool_data: &DocumentToolData, input: &InputPreprocessor) -> Message {
+	let (x0, y0) = data.drag_start.to_canvas_position(&input.canvas_transform).into();
+	let (x1, y1) = data.drag_current.to_canvas_position(&input.canvas_transform).into();
 
 	if data.constrain_to_circle {
 		let (cx, cy, r) = if data.center_around_cursor {

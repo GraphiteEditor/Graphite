@@ -80,7 +80,7 @@ impl Fsm for LineToolFsmState {
 					data.drag_current = input.mouse.position;
 
 					responses.push_back(Operation::ClearWorkingFolder.into());
-					responses.push_back(make_operation(data, tool_data));
+					responses.push_back(make_operation(data, tool_data, input));
 
 					Dragging
 				}
@@ -90,7 +90,7 @@ impl Fsm for LineToolFsmState {
 					responses.push_back(Operation::ClearWorkingFolder.into());
 					// TODO - introduce comparison threshold when operating with canvas coordinates (https://github.com/GraphiteEditor/Graphite/issues/100)
 					if data.drag_start != data.drag_current {
-						responses.push_back(make_operation(data, tool_data));
+						responses.push_back(make_operation(data, tool_data, input));
 						responses.push_back(Operation::CommitTransaction.into());
 					}
 
@@ -104,18 +104,18 @@ impl Fsm for LineToolFsmState {
 				}
 				(Ready, LockAngle) => update_state_no_op(&mut data.lock_angle, true, Ready),
 				(Ready, UnlockAngle) => update_state_no_op(&mut data.lock_angle, false, Ready),
-				(Dragging, LockAngle) => update_state(|data| &mut data.lock_angle, true, tool_data, data, responses, Dragging),
-				(Dragging, UnlockAngle) => update_state(|data| &mut data.lock_angle, false, tool_data, data, responses, Dragging),
+				(Dragging, LockAngle) => update_state(|data| &mut data.lock_angle, true, tool_data, data, input, responses, Dragging),
+				(Dragging, UnlockAngle) => update_state(|data| &mut data.lock_angle, false, tool_data, data, input, responses, Dragging),
 
 				(Ready, SnapToAngle) => update_state_no_op(&mut data.snap_angle, true, Ready),
 				(Ready, UnSnapToAngle) => update_state_no_op(&mut data.snap_angle, false, Ready),
-				(Dragging, SnapToAngle) => update_state(|data| &mut data.snap_angle, true, tool_data, data, responses, Dragging),
-				(Dragging, UnSnapToAngle) => update_state(|data| &mut data.snap_angle, false, tool_data, data, responses, Dragging),
+				(Dragging, SnapToAngle) => update_state(|data| &mut data.snap_angle, true, tool_data, data, input, responses, Dragging),
+				(Dragging, UnSnapToAngle) => update_state(|data| &mut data.snap_angle, false, tool_data, data, input, responses, Dragging),
 
 				(Ready, Center) => update_state_no_op(&mut data.center_around_cursor, true, Ready),
 				(Ready, UnCenter) => update_state_no_op(&mut data.center_around_cursor, false, Ready),
-				(Dragging, Center) => update_state(|data| &mut data.center_around_cursor, true, tool_data, data, responses, Dragging),
-				(Dragging, UnCenter) => update_state(|data| &mut data.center_around_cursor, false, tool_data, data, responses, Dragging),
+				(Dragging, Center) => update_state(|data| &mut data.center_around_cursor, true, tool_data, data, input, responses, Dragging),
+				(Dragging, UnCenter) => update_state(|data| &mut data.center_around_cursor, false, tool_data, data, input, responses, Dragging),
 				_ => self,
 			}
 		} else {
@@ -134,23 +134,21 @@ fn update_state(
 	value: bool,
 	tool_data: &DocumentToolData,
 	data: &mut LineToolData,
+	input: &InputPreprocessor,
 	responses: &mut VecDeque<Message>,
 	new_state: LineToolFsmState,
 ) -> LineToolFsmState {
 	*(state(data)) = value;
 
 	responses.push_back(Operation::ClearWorkingFolder.into());
-	responses.push_back(make_operation(data, tool_data));
+	responses.push_back(make_operation(data, tool_data, input));
 
 	new_state
 }
 
-fn make_operation(data: &mut LineToolData, tool_data: &DocumentToolData) -> Message {
-	let x0 = data.drag_start.x as f64;
-	let y0 = data.drag_start.y as f64;
-	let x1 = data.drag_current.x as f64;
-	let y1 = data.drag_current.y as f64;
-
+fn make_operation(data: &mut LineToolData, tool_data: &DocumentToolData, input: &InputPreprocessor) -> Message {
+	let (x0, y0) = data.drag_start.to_canvas_position(&input.canvas_transform).into();
+	let (x1, y1) = data.drag_current.to_canvas_position(&input.canvas_transform).into();
 	let (dx, dy) = (x1 - x0, y1 - y0);
 	let mut angle = f64::atan2(dx, dy);
 
