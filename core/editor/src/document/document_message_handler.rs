@@ -1,4 +1,7 @@
-use crate::{input::{InputPreprocessor, mouse::ViewportPosition}, message_prelude::*};
+use crate::{
+	input::{mouse::ViewportPosition, InputPreprocessor},
+	message_prelude::*,
+};
 use document_core::{DocumentResponse, LayerId, Operation as DocumentOperation};
 
 use crate::document::Document;
@@ -64,7 +67,15 @@ impl MessageHandler<DocumentMessage, &mut InputPreprocessor> for DocumentMessage
 	fn process_action(&mut self, message: DocumentMessage, data: &mut InputPreprocessor, responses: &mut VecDeque<Message>) {
 		use DocumentMessage::*;
 		match message {
-			DocumentResize(size) => data.canvas_transform.size = size,
+			DocumentResize(size) => {
+				data.canvas_transform.size = size;
+				responses.push_back(
+					FrontendMessage::UpdateCanvasTransform {
+						transform: data.canvas_transform.transform_string(),
+					}
+					.into(),
+				)
+			}
 			DeleteLayer(path) => responses.push_back(DocumentOperation::DeleteLayer { path }.into()),
 			AddFolder(path) => responses.push_back(DocumentOperation::AddFolder { path }.into()),
 			SelectDocument(id) => {

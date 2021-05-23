@@ -29,9 +29,7 @@ impl Dispatcher {
 		}
 		match message {
 			NoOp => (),
-			Document(message) => self
-				.document_message_handler
-				.process_action(message, &mut self.input_preprocessor, &mut self.messages),
+			Document(message) => self.document_message_handler.process_action(message, &mut self.input_preprocessor, &mut self.messages),
 			Global(message) => self.global_message_handler.process_action(message, (), &mut self.messages),
 			Tool(message) => self
 				.tool_message_handler

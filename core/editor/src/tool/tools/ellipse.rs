@@ -1,4 +1,4 @@
-use crate::input::{InputPreprocessor, mouse::ViewportPosition};
+use crate::input::{mouse::ViewportPosition, InputPreprocessor};
 use crate::tool::{DocumentToolData, Fsm, ToolActionHandlerData};
 use crate::{message_prelude::*, SvgDocument};
 use document_core::{layers::style, Operation};
