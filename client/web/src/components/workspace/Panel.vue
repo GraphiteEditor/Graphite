@@ -22,7 +22,7 @@
 
 <style lang="scss">
 .panel {
-	background: #111;
+	background: var(--color-1-nearblack);
 	border-radius: 8px;
 	flex-grow: 1;
 	display: flex;
@@ -35,7 +35,7 @@
 		flex-direction: row;
 
 		&.min-widths .tab-group .tab {
-			min-width: 120px;
+			min-width: 124px;
 			max-width: 360px;
 		}
 
@@ -47,13 +47,13 @@
 
 			.tab {
 				height: 100%;
-				padding: 0 10px;
+				padding: 0 8px;
 				display: flex;
 				align-items: center;
 				position: relative;
 
 				&.active {
-					background: #333;
+					background: var(--color-3-darkgray);
 					border-radius: 8px 8px 0 0;
 					position: relative;
 
@@ -69,13 +69,13 @@
 					&:not(:first-child)::before {
 						left: -16px;
 						border-bottom-right-radius: 8px;
-						box-shadow: 8px 0 0 0 #333;
+						box-shadow: 8px 0 0 0 var(--color-3-darkgray);
 					}
 
 					&::after {
 						right: -16px;
 						border-bottom-left-radius: 8px;
-						box-shadow: -8px 0 0 0 #333;
+						box-shadow: -8px 0 0 0 var(--color-3-darkgray);
 					}
 				}
 
@@ -102,7 +102,7 @@
 						left: -1px;
 						width: 1px;
 						height: 16px;
-						background: #444;
+						background: var(--color-4-dimgray);
 					}
 				}
 
@@ -115,15 +115,19 @@
 						right: -1px;
 						width: 1px;
 						height: 16px;
-						background: #444;
+						background: var(--color-4-dimgray);
 					}
 				}
 			}
 		}
+
+		.popover-button {
+			margin: 2px 4px;
+		}
 	}
 
 	.panel-body {
-		background: #333;
+		background: var(--color-3-darkgray);
 		flex-grow: 1;
 	}
 }

@@ -1,12 +1,12 @@
 <template>
 	<LayoutCol class="main-window">
-		<LayoutRow :class="'title-bar'">
+		<LayoutRow :class="'title-bar-row'">
 			<TitleBar :platform="platform" :maximized="maximized" />
 		</LayoutRow>
-		<LayoutRow :class="'workspace'">
+		<LayoutRow :class="'workspace-row'">
 			<Workspace />
 		</LayoutRow>
-		<LayoutRow :class="'status-bar'">
+		<LayoutRow :class="'status-bar-row'">
 			<StatusBar />
 		</LayoutRow>
 	</LayoutCol>
@@ -17,17 +17,17 @@
 	height: 100%;
 }
 
-.title-bar {
+.title-bar-row {
 	height: 28px;
 	flex: 0 0 auto;
 }
 
-.workspace {
+.workspace-row {
 	flex: 1 1 100%;
 	height: 100%;
 }
 
-.status-bar {
+.status-bar-row {
 	height: 24px;
 	flex: 0 0 auto;
 }

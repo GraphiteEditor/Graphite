@@ -29,17 +29,17 @@
 		}
 	}
 
-	button {
-		background: #555;
-		fill: #ddd;
+	& > button {
+		background: var(--color-5-dullgray);
+		fill: var(--color-e-nearwhite);
 
 		&:hover {
-			background: #666;
+			background: var(--color-6-lowergray);
 		}
 
 		&.active {
-			background: #3194d6;
-			fill: #fff;
+			background: var(--color-accent);
+			fill: var(--color-f-white);
 		}
 	}
 }

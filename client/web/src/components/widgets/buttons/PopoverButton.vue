@@ -15,7 +15,7 @@
 	position: relative;
 	width: 16px;
 	height: 24px;
-	margin: 2px 4px;
+	flex: 0 0 auto;
 
 	.popover {
 		left: 50%;
@@ -29,12 +29,12 @@
 		border: none;
 		border-radius: 2px;
 		vertical-align: top;
-		background: #111;
-		fill: #ddd;
+		background: var(--color-1-nearblack);
+		fill: var(--color-e-nearwhite);
 
 		&:hover {
-			background: #666;
-			fill: #fff;
+			background: var(--color-6-lowergray);
+			fill: var(--color-f-white);
 		}
 	}
 }
