@@ -166,7 +166,7 @@
 
 <script lang="ts">
 import { defineComponent } from "vue";
-import { ResponseType, registerResponseHandler, Response, UpdateCanvas, SetActiveTool } from "../../response-handler";
+import { ResponseType, registerResponseHandler, Response, UpdateCanvas, SetActiveTool, ExportDocument } from "../../response-handler";
 import LayoutRow from "../layout/LayoutRow.vue";
 import LayoutCol from "../layout/LayoutCol.vue";
 import WorkingColors from "../widgets/WorkingColors.vue";
@@ -223,11 +223,27 @@ export default defineComponent({
 			}
 			todo(toolIndex);
 		},
+		download(filename: string, text: string) {
+			var element = document.createElement('a');
+			element.setAttribute('href', 'data:text/plain;charset=utf-8,' + encodeURIComponent(text));
+			element.setAttribute('download', filename);
+
+			element.style.display = 'none';
+			document.body.appendChild(element);
+
+			element.click();
+
+			document.body.removeChild(element);
+		},
 	},
 	mounted() {
 		registerResponseHandler(ResponseType.UpdateCanvas, (responseData: Response) => {
 			const updateData = responseData as UpdateCanvas;
 			if (updateData) this.viewportSvg = updateData.document;
+		});
+		registerResponseHandler(ResponseType.ExportDocument, (responseData: Response) => {
+			const updateData = responseData as ExportDocument;
+			if (updateData) this.download("canvas.svg", updateData.document);
 		});
 		registerResponseHandler(ResponseType.SetActiveTool, (responseData: Response) => {
 			const toolData = responseData as SetActiveTool;

@@ -87,6 +87,8 @@ pub fn translate_key(name: &str) -> Key {
 		"x" => KeyX,
 		"z" => KeyZ,
 		"y" => KeyY,
+		"s" => KeyS,
+		"S" => KeyS,
 		"0" => Key0,
 		"1" => Key1,
 		"2" => Key2,

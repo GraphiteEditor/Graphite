@@ -25,6 +25,7 @@ pub enum Key {
 	KeyX,
 	KeyZ,
 	KeyY,
+	KeyS,
 	KeyEnter,
 	Key0,
 	Key1,

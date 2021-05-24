@@ -15,6 +15,7 @@ pub enum DocumentMessage {
 	ToggleLayerVisibility(Vec<LayerId>),
 	ToggleLayerExpansion(Vec<LayerId>),
 	SelectDocument(usize),
+	ExportDocument,
 	RenderDocument,
 	Undo,
 }
@@ -69,6 +70,12 @@ impl MessageHandler<DocumentMessage, ()> for DocumentMessageHandler {
 				assert!(id < self.documents.len(), "Tried to select a document that was not initialized");
 				self.active_document = id;
 			}
+			ExportDocument => responses.push_back(
+				FrontendMessage::ExportDocument {
+					document: format!("<svg>{}</svg>", self.active_document_mut().document.render_root()),
+				}
+				.into(),
+			),
 			ToggleLayerVisibility(path) => {
 				responses.push_back(DocumentOperation::ToggleVisibility { path }.into());
 			}
@@ -96,5 +103,5 @@ impl MessageHandler<DocumentMessage, ()> for DocumentMessageHandler {
 			message => todo!("document_action_handler does not implement: {}", message.to_discriminant().global_name()),
 		}
 	}
-	advertise_actions!(DocumentMessageDiscriminant; Undo, RenderDocument);
+	advertise_actions!(DocumentMessageDiscriminant; Undo, RenderDocument, ExportDocument);
 }

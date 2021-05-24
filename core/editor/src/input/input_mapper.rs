@@ -52,7 +52,7 @@ macro_rules! modifiers {
 		let mut state = KeyStates::new();
 		$(
 			state.set(Key::$m as usize);
-		),*
+		)*
 		state
 	}};
 }
@@ -147,6 +147,8 @@ impl Default for Mapping {
 			entry! {action=PenMessage::Confirm, key_down=KeyEnter},
 			// Document Actions
 			entry! {action=DocumentMessage::Undo, key_down=KeyZ, modifiers=[KeyControl]},
+			entry! {action=DocumentMessage::ExportDocument, key_down=KeyS, modifiers=[KeyControl, KeyCaps]},
+			entry! {action=DocumentMessage::ExportDocument, key_down=KeyS, modifiers=[KeyControl, KeyShift]},
 			// Tool Actions
 			entry! {action=ToolMessage::SelectTool(ToolType::Rectangle), key_down=KeyM},
 			entry! {action=ToolMessage::SelectTool(ToolType::Ellipse), key_down=KeyE},
