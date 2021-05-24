@@ -1,8 +1,10 @@
 <template>
 	<LayoutCol :class="'layer-tree-panel'">
 		<LayoutRow :class="'options-bar'">
-			<NumberInput />
-			<NumberInput />
+			<NumberInput :value="100" :unit="`%`" />
+
+			<Separator :type="SeparatorType.Related" />
+
 			<PopoverButton>
 				<h3>Compositing Options</h3>
 				<p>More blend and compositing options will be here</p>
@@ -36,8 +38,12 @@
 .layer-tree-panel {
 	.options-bar {
 		height: 32px;
-		margin: 0 8px;
+		margin: 0 4px;
 		align-items: center;
+
+		.number-input {
+			flex: 1 1 100%;
+		}
 	}
 
 	.layer-row {
@@ -49,7 +55,7 @@
 		.layer {
 			display: flex;
 			align-items: center;
-			background: #555;
+			background: var(--color-5-dullgray);
 			border-radius: 4px;
 			width: 100%;
 			height: 100%;
@@ -79,6 +85,7 @@ import { defineComponent } from "vue";
 import { ResponseType, registerResponseHandler, Response, ExpandFolder, LayerPanelEntry } from "../../response-handler";
 import LayoutRow from "../layout/LayoutRow.vue";
 import LayoutCol from "../layout/LayoutCol.vue";
+import Separator, { SeparatorType } from "../widgets/Separator.vue";
 import NumberInput from "../widgets/inputs/NumberInput.vue";
 import PopoverButton from "../widgets/buttons/PopoverButton.vue";
 import { PopoverDirection } from "../widgets/overlays/Popover.vue";
@@ -94,6 +101,7 @@ export default defineComponent({
 	components: {
 		LayoutRow,
 		LayoutCol,
+		Separator,
 		PopoverButton,
 		NumberInput,
 		IconButton,
@@ -127,6 +135,7 @@ export default defineComponent({
 	data() {
 		return {
 			PopoverDirection,
+			SeparatorType,
 			layers: [] as Array<LayerPanelEntry>,
 		};
 	},

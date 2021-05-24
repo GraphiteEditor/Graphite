@@ -2,7 +2,7 @@
 	<div class="number-input">
 		<button class="arrow left"></button>
 		<button class="arrow right"></button>
-		<input type="text" spellcheck="false" value="25%" />
+		<input type="text" spellcheck="false" :value="`${value}${unit}`" />
 	</div>
 </template>
 
@@ -12,7 +12,7 @@
 	height: 24px;
 	position: relative;
 	border-radius: 2px;
-	background: #111;
+	background: var(--color-1-nearblack);
 	overflow: hidden;
 
 	input {
@@ -23,13 +23,13 @@
 		background: none;
 		padding: 0;
 		line-height: 24px;
-		color: #ddd;
+		color: var(--color-e-nearwhite);
 		font-size: inherit;
 		text-align: center;
 		font-family: inherit;
 
 		&::selection {
-			background: #3194d6;
+			background: var(--color-accent);
 		}
 	}
 
@@ -46,14 +46,14 @@
 		padding: 9px 0;
 
 		&:hover {
-			background: #666;
+			background: var(--color-6-lowergray);
 
 			&.right::before {
-				border-color: transparent transparent transparent #fff;
+				border-color: transparent transparent transparent var(--color-f-white);
 			}
 
 			&.left::after {
-				border-color: transparent #fff transparent transparent;
+				border-color: transparent var(--color-f-white) transparent transparent;
 			}
 		}
 
@@ -68,7 +68,7 @@
 				height: 0;
 				border-style: solid;
 				border-width: 3px 0 3px 3px;
-				border-color: transparent transparent transparent #ddd;
+				border-color: transparent transparent transparent var(--color-e-nearwhite);
 				display: block;
 			}
 		}
@@ -84,7 +84,7 @@
 				height: 0;
 				border-style: solid;
 				border-width: 3px 3px 3px 0;
-				border-color: transparent #ddd transparent transparent;
+				border-color: transparent var(--color-e-nearwhite) transparent transparent;
 				display: block;
 			}
 		}
@@ -97,6 +97,9 @@ import { defineComponent } from "vue";
 
 export default defineComponent({
 	components: {},
-	props: {},
+	props: {
+		value: { type: Number, required: true },
+		unit: { type: String, default: "" },
+	},
 });
 </script>

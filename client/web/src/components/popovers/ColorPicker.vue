@@ -53,8 +53,8 @@
 			display: block;
 			width: 100%;
 			height: 100%;
-			background: linear-gradient(45deg, #ccc 25%, transparent 25%, transparent 75%, #ccc 75%), linear-gradient(45deg, #ccc 25%, transparent 25%, transparent 75%, #ccc 75%),
-				linear-gradient(#fff, #fff);
+			background: linear-gradient(45deg, #cccccc 25%, transparent 25%, transparent 75%, #cccccc 75%), linear-gradient(45deg, #cccccc 25%, transparent 25%, transparent 75%, #cccccc 75%),
+				linear-gradient(#ffffff, #ffffff);
 			background-size: 16px 16px;
 			background-position: 0 0, 8px 8px;
 			position: relative;
@@ -97,7 +97,7 @@
 			left: 0;
 			border-style: solid;
 			border-width: 4px 0 4px 4px;
-			border-color: transparent transparent transparent black;
+			border-color: transparent transparent transparent #000000;
 		}
 
 		&::after {
@@ -107,7 +107,7 @@
 			right: 0;
 			border-style: solid;
 			border-width: 4px 4px 4px 0;
-			border-color: transparent black transparent transparent;
+			border-color: transparent #000000 transparent transparent;
 		}
 	}
 }

@@ -1,5 +1,5 @@
 <template>
-	<button class="icon-button" :class="[`size-${String(size)}`, gapAfter && 'gap-after']">
+	<button class="icon-button" :class="`size-${String(size)}`">
 		<slot></slot>
 	</button>
 </template>
@@ -14,7 +14,7 @@
 	border-radius: 2px;
 	background: none;
 	vertical-align: top;
-	fill: #ddd;
+	fill: var(--color-e-nearwhite);
 	width: 16px;
 	height: 16px;
 
@@ -23,14 +23,10 @@
 		margin-left: 0;
 	}
 
-	&.gap-after + .icon-button {
-		margin-left: 8px;
-	}
-
 	&:hover {
-		background: #666;
-		color: white;
-		fill: white;
+		background: var(--color-6-lowergray);
+		color: var(--color-f-white);
+		fill: var(--color-f-white);
 	}
 
 	&.size-10 {
