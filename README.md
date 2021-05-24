@@ -1,8 +1,8 @@
 ![Graphite Logo](graphite_splash.png)
 
-# Powerful 2D vector and raster editing, made procedural and nondestructive.
+# Powerful 2D vector and raster editing: procedural and nondestructive.
 
-Graphite is an in-development desktop graphics editor that strives to be the most powerful, intuitive, and versatile tool for fully-nondestructive vector and raster editing. It is early in development but the UI and UX design is relatively complete and highly promising. The first release, Graphite 0.1, will focus on SVG editing. Then 0.2 will make that nondestructive with a node graph. Later revisions will provide full resolution-agnostic raster editing capabilities.
+Graphite is an in-development desktop graphics editor that strives to be the most powerful, intuitive, and versatile tool for nondestructive vector and raster art creation. While still early in development, implementation progress is moving forward at a swift pace and the product design, UI, and UX are relatively complete. The first release, Graphite 0.1, will focus on SVG editing. Then 0.2 will make that nondestructive with a node graph. Later revisions will provide full resolution-agnostic raster editing capabilities.
 
 We need Rust and web developers! Feel free to peruse the [documentation](docs/index.md) and hop onto Discord to ask where to start:
 
@@ -12,9 +12,9 @@ If the Graphite project strikes your fancy, join our Discord community to chat w
 
 ## Design mockup
 
-This is a **work-in-progress mockup** of the Document, Properties, and Layer Tree panels. The mockup is a nonfunctional pixel-perfect prototype, not code. It is presently being replicated by a functional web UI.
+This is a **work-in-progress mockup** of the Document, Properties, and Layer Tree panels in a state of editing a raster-based workflow (raster editing will be part of version 0.3 and later). The mockup is a nonfunctional pixel-perfect design prototype and is not yet fully implemented in code.
 
-![Demo UI mockup](https://files.keavon.com/-/FatherlyGorgeousAmphiuma/capture.png)
+![Demo UI mockup](https://files.keavon.com/-/SturdyElasticSnowdog/capture.png)
 
 ## Vision
 
@@ -30,31 +30,13 @@ On the surface, Graphite is an artistic medium for drawing anything imaginableâ€
 
 ## Roadmap
 
-We have recently scrapped the custom GUI library effort from 2020 and will use the web through HTML/CSS/Vue.js to quickly build a temporary user interface for the minimum viable product (MVP). While the UI remains web-based, Graphite will only compile to the web and Rust code will be run through WebAssembly (WASM) in the browser. The web UI will be replaced by a native interface when Rust GUI frameworks mature.
+We have recently scrapped the custom GUI library effort from 2020 and now use a web-based UI through HTML/CSS/Vue.js to rapidly build a temporary user interface for the minimum viable product (MVP). While the UI remains web-based, Graphite will only compile to the web and Rust code will be run through WebAssembly (WASM) in the browser. The web UI will be replaced by a native interface when Rust GUI frameworks mature, although Graphtie will still compile to the web using the WebGPU API for rendering. We are also focusing initial feature development on a destructive SVG vector editor for the 0.1 release. This will have all the basic vector editing features to read and write SVG files and edit with an improved user experience compared to Inkscape and Illustrator.
 
-We are also focusing initial feature development on a destructive SVG vector editor for the 0.1 release. This will have all the basic vector editing features to read and write SVG files and edit with an improved user experience compared to Inkscape and Illustrator. Following this MVP release, these destructive features will be slotted into a fleshed-out node graph system to offer innovative nondestructive vector editing capabilities in a 0.2 release.
+Following this MVP release, these destructive features will be slotted into a fleshed-out node graph system to offer innovative nondestructive vector editing capabilities in a 0.2 release.
 
-### Immediate tasks in progress
+The 0.3 release will add support for the Graphite concept node-based raster editing. It will extend the tools from only vector editing to a fully combined raster and vector workflow. The Charcoal render engine will be the major feature in this release to power raster-based graphics processing.
 
-- Write and publish formal product design documents based on scattered design notes
-- Finish building all the Vue components for the main Graphite user interface
-- Build the core editor state system in Rust that powers the Graphite frontend
-- Launch a website at www.graphite.design with a home page, blog, manual, and code documentation
-
-### Remaining tasks for the MVP (0.1 release)
-- Editor Core Library
-- WASM wrapper for Editor Core Library
-- Panel system
-- Drawing vector shapes on screen
-- Properties panel and vector styling
-- Layers/groups system
-- Operator system
-- Operators: boolean, align, apply shape
-- Tool system
-- Tools: Line, rectangle, ellipse, and shape
-- Tools: Pen and path
-- Tools: Select, crop, navigate, eyedropper
-- SVG import and export
+Development is broken into monthly sprints culminating in a presentation at the [Rust Gamedev Meetup](https://www.youtube.com/channel/UCrbatFmtTIvX3BCgsXOy96w) and a post in the [Rust Gamedev Newsletter](https://gamedev.rs/news/). [Check out the sprint list](https://github.com/GraphiteEditor/Graphite/milestones) to see the current tasks and features being built.
 
 ## Technology stack
 
@@ -84,7 +66,7 @@ You can also use `npm run lint` as well as `npm run build` (the static files wil
 
 ### CLI client
 
-This may be useful for testing at some point.
+This may be useful for testing at some point in the future.
 
 ```
 cargo run
