@@ -5,21 +5,21 @@
 				:panelType="'Document'"
 				:tabCloseButtons="true"
 				:tabMinWidths="true"
-				:tabLabels="['X-35B Over Death Valley*', 'Document 2', 'Document 3', 'Document 4', 'Document 5']"
+				:tabLabels="['X-35B Over Death Valley*', 'Document 1', 'Document 2', 'Document 3', 'Document 4', 'Document 5']"
 				:tabActiveIndex="0"
 			/>
 		</LayoutCol>
 		<LayoutCol class="workspace-grid-resize-gutter"></LayoutCol>
 		<LayoutCol class="workspace-grid-subdivision" style="flex-grow: 319">
-			<LayoutRow class="workspace-grid-subdivision">
+			<LayoutRow class="workspace-grid-subdivision" style="flex-grow: 402">
 				<Panel :panelType="'Properties'" :tabLabels="['Properties', 'Spreadsheet', 'Palettes']" :tabActiveIndex="0" />
 			</LayoutRow>
 			<LayoutRow class="workspace-grid-resize-gutter"></LayoutRow>
-			<LayoutRow class="workspace-grid-subdivision">
+			<LayoutRow class="workspace-grid-subdivision" style="flex-grow: 590">
 				<Panel :panelType="'LayerTree'" :tabLabels="['Layer Tree']" :tabActiveIndex="0" />
 			</LayoutRow>
 			<LayoutRow class="workspace-grid-resize-gutter"></LayoutRow>
-			<LayoutRow class="workspace-grid-subdivision" style="flex-grow: 0; height: 0">
+			<LayoutRow class="workspace-grid-subdivision folded">
 				<Panel :panelType="'Minimap'" :tabLabels="['Minimap', 'Asset Manager']" :tabActiveIndex="0" />
 			</LayoutRow>
 		</LayoutCol>
@@ -29,6 +29,12 @@
 <style lang="scss">
 .workspace-grid-subdivision {
 	min-height: 28px;
+	flex: 1 1 0;
+
+	&.folded {
+		flex-grow: 0;
+		height: 0;
+	}
 }
 
 .workspace-grid-resize-gutter {

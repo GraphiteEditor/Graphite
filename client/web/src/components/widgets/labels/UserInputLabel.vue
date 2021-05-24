@@ -38,12 +38,12 @@
 		font-family: "Inconsolata", monospace;
 		font-weight: bold;
 		text-align: center;
-		color: #111;
-		background: #ddd;
+		color: var(--color-2-mildblack);
+		background: var(--color-e-nearwhite);
 		border: 1px;
 		box-sizing: border-box;
 		border-style: solid;
-		border-color: #888;
+		border-color: var(--color-7-middlegray);
 		border-radius: 4px;
 		height: 16px;
 		line-height: 16px;
@@ -71,11 +71,11 @@
 
 	.input-mouse {
 		.bright {
-			fill: #ddd;
+			fill: var(--color-e-nearwhite);
 		}
 
 		.dim {
-			fill: #888;
+			fill: var(--color-7-middlegray);
 		}
 
 		svg {

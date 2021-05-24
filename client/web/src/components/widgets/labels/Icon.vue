@@ -1,5 +1,5 @@
 <template>
-	<div class="icon" :class="[`size-${String(size)}`, gapAfter && 'gap-after']">
+	<div class="icon" :class="`size-${String(size)}`">
 		<slot></slot>
 	</div>
 </template>
@@ -8,14 +8,11 @@
 .icon {
 	display: inline-block;
 	flex: 0 0 auto;
-	fill: #ddd;
+	fill: var(--color-e-nearwhite);
 	vertical-align: top;
 	width: 16px;
 	height: 16px;
-
-	&:not(.gap-after) + .icon {
-		margin-left: 0;
-	}
+	margin-left: 0;
 
 	&.size-10 {
 		width: 10px;
