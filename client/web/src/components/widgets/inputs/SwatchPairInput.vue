@@ -1,15 +1,15 @@
 <template>
 	<div class="swatch-pair">
 		<div class="secondary swatch">
-			<button @click="clickSecondarySwatch" style="background: #ffffff"></button>
+			<button @click="clickSecondarySwatch" :style="{ background: primaryCSSColor }"></button>
 			<Popover :direction="PopoverDirection.Right" horizontal ref="secondarySwatchPopover">
-				<ColorPicker />
+				<ColorPicker v-model:color="primaryColor" />
 			</Popover>
 		</div>
 		<div class="primary swatch">
-			<button @click="clickPrimarySwatch" style="background: #000000"></button>
+			<button @click="clickPrimarySwatch" :style="{ background: secondaryCSSColor }"></button>
 			<Popover :direction="PopoverDirection.Right" horizontal ref="primarySwatchPopover">
-				<ColorPicker />
+				<ColorPicker v-model:color="secondaryColor" />
 			</Popover>
 		</div>
 	</div>
@@ -52,6 +52,7 @@
 </style>
 
 <script lang="ts">
+import { handleResponse, ResponseType } from "@/response-handler";
 import { defineComponent } from "vue";
 import ColorPicker from "../../popovers/ColorPicker.vue";
 import Popover, { PopoverDirection } from "../overlays/Popover.vue";
@@ -75,7 +76,41 @@ export default defineComponent({
 	data() {
 		return {
 			PopoverDirection,
+			primaryColor: {
+				r: 255,
+				g: 255,
+				b: 255,
+				a: 1,
+			},
+			secondaryColor: {
+				r: 0,
+				g: 0,
+				b: 0,
+				a: 1,
+			},
 		};
 	},
+	computed: {
+		primaryCSSColor() {
+			// @ts-ignore
+			return `rgba(${this.primaryColor.r}, ${this.primaryColor.g}, ${this.primaryColor.b}, ${this.primaryColor.a})`
+		},
+		secondaryCSSColor() {
+			// @ts-ignore
+			return `rgba(${this.secondaryColor.r}, ${this.secondaryColor.g}, ${this.secondaryColor.b}, ${this.secondaryColor.a})`
+		},
+	},
+	mounted() {
+		this.$watch("primaryColor", () => {
+			handleResponse(ResponseType.UpdatePrimaryColor, {
+				UpdatePrimaryColor: this.primaryColor,
+			});
+		});
+		this.$watch("secondaryColor", () => {
+			handleResponse(ResponseType.UpdateSecondaryColor, {
+				UpdateSecondaryColor: this.secondaryColor,
+			});
+		});
+	}
 });
 </script>

@@ -74,6 +74,7 @@ img {
 <script lang="ts">
 import { defineComponent } from "vue";
 import MainWindow from "./components/window/MainWindow.vue";
+import { registerResponseHandler, ResponseType, RGBColor } from "./response-handler";
 
 const wasm = import("../wasm/pkg");
 
@@ -84,8 +85,16 @@ export default defineComponent({
 	},
 	methods: {
 		async greet() {
-			const { greet } = await wasm;
+			const { greet, Color, update_primary_color, update_secondary_color } = await wasm;
 			greet("Graphite");
+			registerResponseHandler(ResponseType.UpdatePrimaryColor, (responseData) => {
+				const color = responseData as RGBColor;
+				if (color) update_primary_color(new Color(color.r, color.g, color.b, color.a));
+			});
+			registerResponseHandler(ResponseType.UpdateSecondaryColor, (responseData) => {
+				const color = responseData as RGBColor;
+				if (color) update_secondary_color(new Color(color.r, color.g, color.b, color.a));
+			});
 		},
 	},
 });

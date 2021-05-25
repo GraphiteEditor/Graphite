@@ -15,6 +15,8 @@ export enum ResponseType {
 	ExpandFolder = "ExpandFolder",
 	CollapseFolder = "CollapseFolder",
 	SetActiveTool = "SetActiveTool",
+	UpdatePrimaryColor = "UpdatePrimaryColor",
+	UpdateSecondaryColor = "UpdateSecondaryColor",
 }
 
 export function attachResponseHandlerToPage() {
@@ -52,12 +54,16 @@ function parseResponse(responseType: string, data: any): Response {
 			return newSetActiveTool(data.SetActiveTool);
 		case "UpdateCanvas":
 			return newUpdateCanvas(data.UpdateCanvas);
+		case "UpdatePrimaryColor":
+			return data.UpdatePrimaryColor;
+		case "UpdateSecondaryColor":
+			return data.UpdateSecondaryColor;
 		default:
 			throw new Error(`Unrecognized origin/responseType pair: ${origin}, ${responseType}`);
 	}
 }
 
-export type Response = SetActiveTool | UpdateCanvas | DocumentChanged | CollapseFolder | ExpandFolder;
+export type Response = SetActiveTool | UpdateCanvas | DocumentChanged | CollapseFolder | ExpandFolder | RGBColor;
 
 export interface SetActiveTool {
 	tool_name: string;
@@ -147,4 +153,11 @@ function newLayerType(input: any): LayerType {
 		default:
 			throw Error(`Received invalid input as an enum variant for LayerType: ${input}`);
 	}
+}
+
+export interface RGBColor {
+	r: number;
+	g: number;
+	b: number;
+	a: number;
 }
