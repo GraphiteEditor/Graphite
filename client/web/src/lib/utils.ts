@@ -31,7 +31,7 @@ export function HSV2RGB(hsv: HSV): RGB {
 }
 
 export function RGB2HSV(rgb: RGB) {
-	const { r, g, b }= rgb;
+	const { r, g, b } = rgb;
 	const max = Math.max(r / 255, g / 255, b / 255);
 	const min = Math.min(r / 255, g / 255, b / 255);
 	const d = max - min;
@@ -42,21 +42,25 @@ export function RGB2HSV(rgb: RGB) {
 		h = 0;
 	} else {
 		switch (max) {
-			case r:
-			h = (g - b) / d + (g < b ? 6 : 0);
-			break;
-			case g:
-			h = (b - r) / d + 2;
-			break;
-			case b:
-			h = (r - g) / d + 4;
-			break;
+			case r: {
+				h = (g - b) / d + (g < b ? 6 : 0);
+				break;
+			}
+			case g: {
+				h = (b - r) / d + 2;
+				break;
+			}
+			case b: {
+				h = (r - g) / d + 4;
+				break;
+			}
+			default:
 		}
 		h /= 6;
 	}
 	return { h, s, v, a: rgb.a };
 }
 
-export function clamp(value: number, min: number = 0, max: number = 1) {
+export function clamp(value: number, min = 0, max = 1) {
 	return Math.max(min, Math.min(value, max));
 }

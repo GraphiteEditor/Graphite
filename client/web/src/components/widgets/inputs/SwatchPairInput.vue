@@ -92,12 +92,14 @@ export default defineComponent({
 	},
 	computed: {
 		primaryCSSColor() {
+			// eslint-disable-next-line @typescript-eslint/ban-ts-ignore
 			// @ts-ignore
-			return `rgba(${this.primaryColor.r}, ${this.primaryColor.g}, ${this.primaryColor.b}, ${this.primaryColor.a})`
+			return `rgba(${this.primaryColor.r}, ${this.primaryColor.g}, ${this.primaryColor.b}, ${this.primaryColor.a})`;
 		},
 		secondaryCSSColor() {
+			// eslint-disable-next-line @typescript-eslint/ban-ts-ignore
 			// @ts-ignore
-			return `rgba(${this.secondaryColor.r}, ${this.secondaryColor.g}, ${this.secondaryColor.b}, ${this.secondaryColor.a})`
+			return `rgba(${this.secondaryColor.r}, ${this.secondaryColor.g}, ${this.secondaryColor.b}, ${this.secondaryColor.a})`;
 		},
 	},
 	mounted() {
@@ -111,6 +113,6 @@ export default defineComponent({
 				UpdateSecondaryColor: this.secondaryColor,
 			});
 		});
-	}
+	},
 });
 </script>

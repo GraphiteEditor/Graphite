@@ -185,11 +185,15 @@ export default defineComponent({
 		};
 	},
 	mounted() {
-		this.$watch("color", () => {
-			if (this.state === "idle") {
-				this.updateColor()
-			}
-		}, { immediate: true });
+		this.$watch(
+			"color",
+			() => {
+				if (this.state === "idle") {
+					this.updateColor();
+				}
+			},
+			{ immediate: true }
+		);
 	},
 	methods: {
 		onPointerDown(e: PointerEvent) {
@@ -227,17 +231,17 @@ export default defineComponent({
 		updateRects() {
 			const { colorPicker } = this.$options as { colorPicker: ColorPickerData };
 
-			const saturationPicker = this.$refs['saturationPicker'] as HTMLDivElement;
+			const saturationPicker = this.$refs.saturationPicker as HTMLDivElement;
 			const saturation = saturationPicker.getBoundingClientRect();
 			colorPicker.saturation.size.width = saturation.width;
 			colorPicker.saturation.size.height = saturation.height;
 
-			const huePicker = this.$refs['huePicker'] as HTMLDivElement;
+			const huePicker = this.$refs.huePicker as HTMLDivElement;
 			const hue = huePicker.getBoundingClientRect();
 			colorPicker.hue.size.width = hue.width;
 			colorPicker.hue.size.height = hue.height;
 
-			const opacityPicker = this.$refs['opacityPicker'] as HTMLDivElement;
+			const opacityPicker = this.$refs.opacityPicker as HTMLDivElement;
 			const opacity = opacityPicker.getBoundingClientRect();
 			colorPicker.opacity.size.width = opacity.width;
 			colorPicker.opacity.size.height = opacity.height;
@@ -245,11 +249,8 @@ export default defineComponent({
 
 		setSaturationPosition(x: number, y: number) {
 			const { colorPicker } = this.$options as { colorPicker: ColorPickerData };
-			const saturationCursor = this.$refs['saturationCursor'] as HTMLDivElement;
-			const saturationPosition = [
-				clamp(x, 0, colorPicker.saturation.size.width),
-				clamp(y, 0, colorPicker.saturation.size.height),
-			];
+			const saturationCursor = this.$refs.saturationCursor as HTMLDivElement;
+			const saturationPosition = [clamp(x, 0, colorPicker.saturation.size.width), clamp(y, 0, colorPicker.saturation.size.height)];
 			saturationCursor.style.transform = `matrix(1, 0, 0, 1, ${saturationPosition[0]}, ${saturationPosition[1]})`;
 			colorPicker.color.s = saturationPosition[0] / colorPicker.saturation.size.width;
 			colorPicker.color.v = 1 - saturationPosition[1] / colorPicker.saturation.size.height;
@@ -257,7 +258,7 @@ export default defineComponent({
 
 		setHuePosition(y: number) {
 			const { colorPicker } = this.$options as { colorPicker: ColorPickerData };
-			const hueCursor = this.$refs['hueCursor'] as HTMLDivElement;
+			const hueCursor = this.$refs.hueCursor as HTMLDivElement;
 			const huePosition = clamp(y, 0, colorPicker.hue.size.height);
 			hueCursor.style.transform = `matrix(1, 0, 0, 1, 0, ${huePosition})`;
 			colorPicker.color.h = clamp(1 - huePosition / colorPicker.hue.size.height);
@@ -265,7 +266,7 @@ export default defineComponent({
 
 		setOpacityPosition(y: number) {
 			const { colorPicker } = this.$options as { colorPicker: ColorPickerData };
-			const opacityCursor = this.$refs['opacityCursor'] as HTMLDivElement;
+			const opacityCursor = this.$refs.opacityCursor as HTMLDivElement;
 			const opacityPosition = clamp(y, 0, colorPicker.opacity.size.height);
 			opacityCursor.style.transform = `matrix(1, 0, 0, 1, 0, ${opacityPosition})`;
 			colorPicker.color.a = clamp(1 - opacityPosition / colorPicker.opacity.size.height);
@@ -280,17 +281,14 @@ export default defineComponent({
 				a: 1,
 			});
 			console.log(colorPicker.color.h);
-			this.$el.style.setProperty('--hue', `rgb(${hueColor.r}, ${hueColor.g}, ${hueColor.b})`);
+			this.$el.style.setProperty("--hue", `rgb(${hueColor.r}, ${hueColor.g}, ${hueColor.b})`);
 		},
 
 		updateColor() {
 			const { colorPicker } = this.$options as { colorPicker: ColorPickerData };
 			colorPicker.color = RGB2HSV(this.color as RGB);
 			this.updateRects();
-			this.setSaturationPosition(
-				colorPicker.color.s * colorPicker.saturation.size.width,
-				(1 - colorPicker.color.v) * colorPicker.saturation.size.height
-			);
+			this.setSaturationPosition(colorPicker.color.s * colorPicker.saturation.size.width, (1 - colorPicker.color.v) * colorPicker.saturation.size.height);
 			this.setOpacityPosition((1 - colorPicker.color.a) * colorPicker.opacity.size.height);
 			this.setHuePosition((1 - colorPicker.color.h) * colorPicker.hue.size.height);
 			console.log(colorPicker.color);
