@@ -52,10 +52,12 @@
 </style>
 
 <script lang="ts">
-import { handleResponse, ResponseType } from "@/response-handler";
+import { RGB } from "@/lib/utils";
 import { defineComponent } from "vue";
 import ColorPicker from "../../popovers/ColorPicker.vue";
 import Popover, { PopoverDirection } from "../overlays/Popover.vue";
+
+const wasm = import("../../../../wasm/pkg");
 
 export default defineComponent({
 	components: {
@@ -71,6 +73,14 @@ export default defineComponent({
 		clickSecondarySwatch() {
 			(this.$refs.secondarySwatchPopover as typeof Popover).setOpen();
 			(this.$refs.primarySwatchPopover as typeof Popover).setClosed();
+		},
+		async updatePrimaryColor(color: RGB) {
+			const { update_primary_color, Color } = await wasm;
+			update_primary_color(new Color(color.r / 255, color.g / 255, color.b / 255, this.primaryColor.a));
+		},
+		async updateSecondaryColor(color: RGB) {
+			const { update_secondary_color, Color } = await wasm;
+			update_secondary_color(new Color(color.r / 255, color.g / 255, color.b / 255, this.primaryColor.a));
 		},
 	},
 	data() {
@@ -103,16 +113,8 @@ export default defineComponent({
 		},
 	},
 	mounted() {
-		this.$watch("primaryColor", () => {
-			handleResponse(ResponseType.UpdatePrimaryColor, {
-				UpdatePrimaryColor: this.primaryColor,
-			});
-		});
-		this.$watch("secondaryColor", () => {
-			handleResponse(ResponseType.UpdateSecondaryColor, {
-				UpdateSecondaryColor: this.secondaryColor,
-			});
-		});
+		this.$watch("primaryColor", this.updatePrimaryColor, { immediate: true });
+		this.$watch("secondaryColor", this.updateSecondaryColor, { immediate: true });
 	},
 });
 </script>
