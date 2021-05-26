@@ -4,35 +4,47 @@
 			<div class="left side">
 				<span class="label">Select</span>
 
-				<ItemDivider />
+				<Separator :type="SeparatorType.Section" />
 
 				<IconButton :size="24" title="Horizontal Align Left"><AlignHorizontalLeft /></IconButton>
 				<IconButton :size="24" title="Horizontal Align Center"><AlignHorizontalCenter /></IconButton>
 				<IconButton :size="24" gapAfter title="Horizontal Align Right"><AlignHorizontalRight /></IconButton>
+
+				<Separator :type="SeparatorType.Unrelated" />
+
 				<IconButton :size="24" title="Vertical Align Top"><AlignVerticalTop /></IconButton>
 				<IconButton :size="24" title="Vertical Align Center"><AlignVerticalCenter /></IconButton>
 				<IconButton :size="24" title="Vertical Align Bottom"><AlignVerticalBottom /></IconButton>
+
+				<Separator :type="SeparatorType.Related" />
+
 				<PopoverButton>
 					<h3>Align</h3>
 					<p>More alignment-related buttons will be here</p>
 				</PopoverButton>
 
-				<ItemDivider />
+				<Separator :type="SeparatorType.Section" />
 
 				<IconButton :size="24" title="Flip Horizontal"><FlipHorizontal /></IconButton>
 				<IconButton :size="24" title="Flip Vertical"><FlipVertical /></IconButton>
+
+				<Separator :type="SeparatorType.Related" />
+
 				<PopoverButton>
 					<h3>Flip</h3>
 					<p>More flip-related buttons will be here</p>
 				</PopoverButton>
 
-				<ItemDivider />
+				<Separator :type="SeparatorType.Section" />
 
 				<IconButton :size="24" title="Boolean Union"><BooleanUnion /></IconButton>
 				<IconButton :size="24" title="Boolean Subtract Front"><BooleanSubtractFront /></IconButton>
 				<IconButton :size="24" title="Boolean Subtract Back"><BooleanSubtractBack /></IconButton>
 				<IconButton :size="24" title="Boolean Intersect"><BooleanIntersect /></IconButton>
 				<IconButton :size="24" title="Boolean Difference"><BooleanDifference /></IconButton>
+
+				<Separator :type="SeparatorType.Related" />
+
 				<PopoverButton>
 					<h3>Boolean</h3>
 					<p>More boolean-related buttons will be here</p>
@@ -50,12 +62,15 @@
 					</PopoverButton>
 				</RadioInput>
 
-				<ItemDivider />
+				<Separator :type="SeparatorType.Section" />
 
 				<IconButton :size="24" title="Zoom In"><ZoomIn /></IconButton>
 				<IconButton :size="24" title="Zoom Out"><ZoomOut /></IconButton>
 				<IconButton :size="24" title="Zoom to 100%"><ZoomReset /></IconButton>
-				<NumberInput />
+
+				<Separator :type="SeparatorType.Related" />
+
+				<NumberInput :value="25" :unit="`%`" />
 			</div>
 		</LayoutRow>
 		<LayoutRow :class="'shelf-and-viewport'">
@@ -66,13 +81,13 @@
 					<ShelfItem title="Navigate Tool" :active="activeTool === 'Navigate'" @click="'tool not implemented' || selectTool('Navigate')"><NavigateTool /></ShelfItem>
 					<ShelfItem title="Eyedropper Tool" :active="activeTool === 'Eyedropper'" @click="'tool not implemented' || selectTool('Eyedropper')"><EyedropperTool /></ShelfItem>
 
-					<ItemDivider horizontal />
+					<Separator :type="SeparatorType.Section" :direction="SeparatorDirection.Vertical" />
 
 					<ShelfItem title="Text Tool" :active="activeTool === 'Text'" @click="'tool not implemented' || selectTool('Text')"><TextTool /></ShelfItem>
 					<ShelfItem title="Fill Tool" :active="activeTool === 'Fill'" @click="'tool not implemented' || selectTool('Fill')"><FillTool /></ShelfItem>
 					<ShelfItem title="Gradient Tool" :active="activeTool === 'Gradient'" @click="'tool not implemented' || selectTool('Gradient')"><GradientTool /></ShelfItem>
 
-					<ItemDivider horizontal />
+					<Separator :type="SeparatorType.Section" :direction="SeparatorDirection.Vertical" />
 
 					<ShelfItem title="Brush Tool" :active="activeTool === 'Brush'" @click="'tool not implemented' || selectTool('Brush')"><BrushTool /></ShelfItem>
 					<ShelfItem title="Heal Tool" :active="activeTool === 'Heal'" @click="'tool not implemented' || selectTool('Heal')"><HealTool /></ShelfItem>
@@ -81,7 +96,7 @@
 					<ShelfItem title="Detail Tool" :active="activeTool === 'BlurSharpen'" @click="'tool not implemented' || selectTool('BlurSharpen')"><BlurSharpenTool /></ShelfItem>
 					<ShelfItem title="Relight Tool" :active="activeTool === 'Relight'" @click="'tool not implemented' || selectTool('Relight')"><RelightTool /></ShelfItem>
 
-					<ItemDivider horizontal />
+					<Separator :type="SeparatorType.Section" :direction="SeparatorDirection.Vertical" />
 
 					<ShelfItem title="Path Tool" :active="activeTool === 'Path'" @click="'tool not implemented' || selectTool('Path')"><PathTool /></ShelfItem>
 					<ShelfItem title="Pen Tool (P)" :active="activeTool === 'Pen'" @click="selectTool('Pen')"><PenTool /></ShelfItem>
@@ -118,7 +133,7 @@
 			flex: 0 0 auto;
 			display: flex;
 			align-items: center;
-			margin: 0 8px;
+			margin: 0 4px;
 
 			.label {
 				white-space: nowrap;
@@ -136,7 +151,7 @@
 			flex: 1 1 100%;
 
 			.canvas {
-				background: #111;
+				background: var(--color-1-nearblack);
 				width: 100%;
 				height: 100%;
 
@@ -148,11 +163,6 @@
 		}
 	}
 }
-
-// The `where` pseduo-class does not contribtue to specificity
-:where(.document .options-bar .side > :not(:first-child)) {
-	margin-left: 8px;
-}
 </style>
 
 <script lang="ts">
@@ -163,7 +173,7 @@ import LayoutCol from "../layout/LayoutCol.vue";
 import WorkingColors from "../widgets/WorkingColors.vue";
 import { PopoverDirection } from "../widgets/overlays/Popover.vue";
 import ShelfItem from "../widgets/ShelfItem.vue";
-import ItemDivider from "../widgets/ItemDivider.vue";
+import Separator, { SeparatorDirection, SeparatorType } from "../widgets/Separator.vue";
 import IconButton from "../widgets/buttons/IconButton.vue";
 import PopoverButton from "../widgets/buttons/PopoverButton.vue";
 import RadioInput from "../widgets/inputs/RadioInput.vue";
@@ -217,7 +227,7 @@ export default defineComponent({
 		LayoutCol,
 		WorkingColors,
 		ShelfItem,
-		ItemDivider,
+		Separator,
 		IconButton,
 		PopoverButton,
 		RadioInput,
@@ -332,6 +342,8 @@ export default defineComponent({
 			viewportTransform: "",
 			activeTool: "Select",
 			PopoverDirection,
+			SeparatorDirection,
+			SeparatorType,
 		};
 	},
 });

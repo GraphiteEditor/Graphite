@@ -20,18 +20,18 @@
 		padding: 0 8px;
 
 		svg {
-			fill: #ddd;
+			fill: var(--color-e-nearwhite);
 		}
 
 		&:hover {
-			background: #666;
+			background: var(--color-6-lowergray);
 
 			svg {
-				fill: #fff;
+				fill: var(--color-f-white);
 			}
 
 			span {
-				color: #fff;
+				color: var(--color-f-white);
 			}
 		}
 	}

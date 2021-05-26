@@ -35,28 +35,28 @@
 
 	.top > & {
 		border-width: 8px 6px 0 6px;
-		border-color: #222222e6 transparent transparent transparent;
+		border-color: var(--popover-opacity-color-2-mildblack) transparent transparent transparent;
 		margin-left: -6px;
 		margin-bottom: 2px;
 	}
 
 	.bottom > & {
 		border-width: 0 6px 8px 6px;
-		border-color: transparent transparent #222222e6 transparent;
+		border-color: transparent transparent var(--popover-opacity-color-2-mildblack) transparent;
 		margin-left: -6px;
 		margin-top: 2px;
 	}
 
 	.left > & {
 		border-width: 6px 0 6px 8px;
-		border-color: transparent transparent transparent #222222e6;
+		border-color: transparent transparent transparent var(--popover-opacity-color-2-mildblack);
 		margin-top: -6px;
 		margin-right: 2px;
 	}
 
 	.right > & {
 		border-width: 6px 8px 6px 0;
-		border-color: transparent #222222e6 transparent transparent;
+		border-color: transparent var(--popover-opacity-color-2-mildblack) transparent transparent;
 		margin-top: -6px;
 		margin-left: 2px;
 	}
@@ -86,10 +86,10 @@
 	}
 
 	.popover-content {
-		background: #222222e6;
-		box-shadow: #000 0 0 4px;
+		background: var(--popover-opacity-color-2-mildblack);
+		box-shadow: var(--color-0-black) 0 0 4px;
 		border-radius: 4px;
-		color: #eee;
+		color: var(--color-e-nearwhite);
 		font-size: inherit;
 		padding: 8px;
 		z-index: 0;
@@ -126,7 +126,7 @@ export default defineComponent({
 	updated() {
 		const popoverContainer = this.$refs.popoverContainer as HTMLElement;
 		const popoverContent = this.$refs.popoverContent as HTMLElement;
-		const workspace = document.querySelector(".workspace");
+		const workspace = document.querySelector(".workspace-row");
 
 		if (popoverContent && workspace) {
 			const workspaceBounds = workspace.getBoundingClientRect();

@@ -1,13 +1,13 @@
 <template>
 	<div class="swatch-pair">
 		<div class="secondary swatch">
-			<button @click="clickSecondarySwatch" style="background: white"></button>
+			<button @click="clickSecondarySwatch" style="background: #ffffff"></button>
 			<Popover :direction="PopoverDirection.Right" horizontal ref="secondarySwatchPopover">
 				<ColorPicker />
 			</Popover>
 		</div>
 		<div class="primary swatch">
-			<button @click="clickPrimarySwatch" style="background: black"></button>
+			<button @click="clickPrimarySwatch" style="background: #000000"></button>
 			<Popover :direction="PopoverDirection.Right" horizontal ref="primarySwatchPopover">
 				<ColorPicker />
 			</Popover>
@@ -24,15 +24,15 @@
 	.swatch {
 		width: 28px;
 		height: 28px;
-		margin: 2px;
+		margin: 0 2px;
 		position: relative;
 
 		button {
 			width: 100%;
 			height: 100%;
 			border-radius: 50%;
-			border: 2px #888 solid;
-			box-shadow: 0 0 0 2px #333;
+			border: 2px var(--color-7-middlegray) solid;
+			box-shadow: 0 0 0 2px var(--color-3-darkgray);
 			margin: 0;
 			padding: 0;
 			box-sizing: border-box;

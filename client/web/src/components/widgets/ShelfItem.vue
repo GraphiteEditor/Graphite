@@ -10,11 +10,11 @@
 	border-radius: 2px;
 
 	&:hover {
-		background: #666;
+		background: var(--color-6-lowergray);
 	}
 
 	&.active {
-		background: #3194d6;
+		background: var(--color-accent);
 	}
 
 	svg {
