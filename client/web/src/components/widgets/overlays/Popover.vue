@@ -10,8 +10,6 @@
 </template>
 
 <style lang="scss">
-@use "sass:color";
-
 .popover {
 	position: absolute;
 	width: 0;
@@ -128,7 +126,7 @@ export default defineComponent({
 	updated() {
 		const popoverContainer = this.$refs.popoverContainer as HTMLElement;
 		const popoverContent = this.$refs.popoverContent as HTMLElement;
-		const workspace = document.querySelector(".workspace");
+		const workspace = document.querySelector(".workspace-row");
 
 		if (popoverContent && workspace) {
 			const workspaceBounds = workspace.getBoundingClientRect();
