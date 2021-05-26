@@ -117,7 +117,7 @@
 
 <script lang="ts">
 import { defineComponent } from "vue";
-import { clamp, HSV2RGB, RGB, RGB2HSV } from "../../lib/utils";
+import { clamp, HSV2RGB, RGB2HSV, RGB } from "../../lib/utils";
 
 interface ColorPickerData {
 	color: {
@@ -219,7 +219,6 @@ export default defineComponent({
 			if (this.state !== "idle") {
 				const { colorPicker } = this.$options as { colorPicker: ColorPickerData };
 				this.updateHue();
-				console.log("SEND", colorPicker.color, HSV2RGB(colorPicker.color));
 				this.$emit("update:color", HSV2RGB(colorPicker.color));
 			}
 		},
@@ -253,7 +252,7 @@ export default defineComponent({
 			const saturationPosition = [clamp(x, 0, colorPicker.saturation.size.width), clamp(y, 0, colorPicker.saturation.size.height)];
 			saturationCursor.style.transform = `matrix(1, 0, 0, 1, ${saturationPosition[0]}, ${saturationPosition[1]})`;
 			colorPicker.color.s = saturationPosition[0] / colorPicker.saturation.size.width;
-			colorPicker.color.v = 1 - saturationPosition[1] / colorPicker.saturation.size.height;
+			colorPicker.color.v = (1 - saturationPosition[1] / colorPicker.saturation.size.height) * 255;
 		},
 
 		setHuePosition(y: number) {
@@ -277,10 +276,9 @@ export default defineComponent({
 			const hueColor = HSV2RGB({
 				h: colorPicker.color.h,
 				s: 1,
-				v: 1,
+				v: 255,
 				a: 1,
 			});
-			console.log(colorPicker.color.h);
 			this.$el.style.setProperty("--hue", `rgb(${hueColor.r}, ${hueColor.g}, ${hueColor.b})`);
 		},
 
@@ -288,10 +286,9 @@ export default defineComponent({
 			const { colorPicker } = this.$options as { colorPicker: ColorPickerData };
 			colorPicker.color = RGB2HSV(this.color as RGB);
 			this.updateRects();
-			this.setSaturationPosition(colorPicker.color.s * colorPicker.saturation.size.width, (1 - colorPicker.color.v) * colorPicker.saturation.size.height);
+			this.setSaturationPosition(colorPicker.color.s * colorPicker.saturation.size.width, (1 - colorPicker.color.v / 255) * colorPicker.saturation.size.height);
 			this.setOpacityPosition((1 - colorPicker.color.a) * colorPicker.opacity.size.height);
 			this.setHuePosition((1 - colorPicker.color.h) * colorPicker.hue.size.height);
-			console.log(colorPicker.color);
 			this.updateHue();
 		},
 	},

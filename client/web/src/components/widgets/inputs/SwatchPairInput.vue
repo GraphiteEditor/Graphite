@@ -52,7 +52,7 @@
 </style>
 
 <script lang="ts">
-import { RGB } from "@/lib/utils";
+import { RGB2Floats } from "@/lib/utils";
 import { defineComponent } from "vue";
 import ColorPicker from "../../popovers/ColorPicker.vue";
 import Popover, { PopoverDirection } from "../overlays/Popover.vue";
@@ -74,13 +74,15 @@ export default defineComponent({
 			(this.$refs.secondarySwatchPopover as typeof Popover).setOpen();
 			(this.$refs.primarySwatchPopover as typeof Popover).setClosed();
 		},
-		async updatePrimaryColor(color: RGB) {
+		async updatePrimaryColor() {
 			const { update_primary_color, Color } = await wasm;
-			update_primary_color(new Color(color.r / 255, color.g / 255, color.b / 255, this.primaryColor.a));
+			const color = RGB2Floats(this.primaryColor);
+			update_primary_color(new Color(color.r, color.g, color.b, color.a));
 		},
-		async updateSecondaryColor(color: RGB) {
+		async updateSecondaryColor() {
 			const { update_secondary_color, Color } = await wasm;
-			update_secondary_color(new Color(color.r / 255, color.g / 255, color.b / 255, this.primaryColor.a));
+			const color = RGB2Floats(this.primaryColor);
+			update_secondary_color(new Color(color.r, color.g, color.b, color.a));
 		},
 	},
 	data() {
