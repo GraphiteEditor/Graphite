@@ -1,15 +1,15 @@
 <template>
 	<div class="swatch-pair">
 		<div class="secondary swatch">
-			<button @click="clickSecondarySwatch" :style="{ background: primaryCSSColor }"></button>
+			<button @click="clickSecondarySwatch" ref="secondaryButton"></button>
 			<Popover :direction="PopoverDirection.Right" horizontal ref="secondarySwatchPopover">
-				<ColorPicker v-model:color="primaryColor" />
+				<ColorPicker v-model:color="secondaryColor" />
 			</Popover>
 		</div>
 		<div class="primary swatch">
-			<button @click="clickPrimarySwatch" :style="{ background: secondaryCSSColor }"></button>
+			<button @click="clickPrimarySwatch" ref="primaryButton"></button>
 			<Popover :direction="PopoverDirection.Right" horizontal ref="primarySwatchPopover">
-				<ColorPicker v-model:color="secondaryColor" />
+				<ColorPicker v-model:color="primaryColor" />
 			</Popover>
 		</div>
 	</div>
@@ -28,6 +28,7 @@
 		position: relative;
 
 		button {
+			--swatch-color: white;
 			width: 100%;
 			height: 100%;
 			border-radius: 50%;
@@ -37,6 +38,21 @@
 			padding: 0;
 			box-sizing: border-box;
 			outline: none;
+			background: linear-gradient(45deg, #cccccc 25%, transparent 25%, transparent 75%, #cccccc 75%), linear-gradient(45deg, #cccccc 25%, transparent 25%, transparent 75%, #cccccc 75%),
+				linear-gradient(#ffffff, #ffffff);
+			background-size: 16px 16px;
+			background-position: 0 0, 8px 8px;
+
+			&::before {
+				content: "";
+				display: block;
+				width: 100%;
+				height: 100%;
+				background: var(--swatch-color);
+				background-size: 16px 16px;
+				background-position: 0 0, 8px 8px;
+				border-radius: 50%;
+			}
 		}
 
 		.popover {
@@ -76,12 +92,22 @@ export default defineComponent({
 		},
 		async updatePrimaryColor() {
 			const { update_primary_color, Color } = await wasm;
-			const color = RGB2Floats(this.primaryColor);
+
+			let color = this.primaryColor;
+			const button = this.$refs.primaryButton as HTMLButtonElement;
+			button.style.setProperty("--swatch-color", `rgba(${color.r}, ${color.g}, ${color.b}, ${color.a})`);
+
+			color = RGB2Floats(this.primaryColor);
 			update_primary_color(new Color(color.r, color.g, color.b, color.a));
 		},
 		async updateSecondaryColor() {
 			const { update_secondary_color, Color } = await wasm;
-			const color = RGB2Floats(this.primaryColor);
+
+			let color = this.secondaryColor;
+			const button = this.$refs.secondaryButton as HTMLButtonElement;
+			button.style.setProperty("--swatch-color", `rgba(${color.r}, ${color.g}, ${color.b}, ${color.a})`);
+
+			color = RGB2Floats(this.secondaryColor);
 			update_secondary_color(new Color(color.r, color.g, color.b, color.a));
 		},
 	},
@@ -101,18 +127,6 @@ export default defineComponent({
 				a: 1,
 			},
 		};
-	},
-	computed: {
-		primaryCSSColor() {
-			// eslint-disable-next-line @typescript-eslint/ban-ts-ignore
-			// @ts-ignore
-			return `rgba(${this.primaryColor.r}, ${this.primaryColor.g}, ${this.primaryColor.b}, ${this.primaryColor.a})`;
-		},
-		secondaryCSSColor() {
-			// eslint-disable-next-line @typescript-eslint/ban-ts-ignore
-			// @ts-ignore
-			return `rgba(${this.secondaryColor.r}, ${this.secondaryColor.g}, ${this.secondaryColor.b}, ${this.secondaryColor.a})`;
-		},
 	},
 	mounted() {
 		this.$watch("primaryColor", this.updatePrimaryColor, { immediate: true });
