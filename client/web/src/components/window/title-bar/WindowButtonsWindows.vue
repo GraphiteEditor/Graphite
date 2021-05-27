@@ -1,15 +1,15 @@
 <template>
 	<div class="windows window-button minimize" title="Minimize">
-		<WindowButtonWinMinimize width="12" height="12" />
+		<Icon :icon="'WindowButtonWinMinimize'" />
 	</div>
 	<div class="windows window-button maximize" title="Maximize" v-if="!maximized">
-		<WindowButtonWinMaximize width="12" height="12" />
+		<Icon :icon="'WindowButtonWinMaximize'" />
 	</div>
 	<div class="windows window-button restore-down" title="Restore Down" v-if="maximized">
-		<WindowButtonWinRestoreDown width="12" height="12" />
+		<Icon :icon="'WindowButtonWinRestoreDown'" />
 	</div>
 	<div class="windows window-button close" title="Close">
-		<WindowButtonWinClose width="12" height="12" />
+		<Icon :icon="'WindowButtonWinClose'" />
 	</div>
 </template>
 
@@ -39,18 +39,10 @@
 
 <script lang="ts">
 import { defineComponent } from "vue";
-import WindowButtonWinMinimize from "../../../../assets/12px-solid/window-button-win-minimize.svg";
-import WindowButtonWinMaximize from "../../../../assets/12px-solid/window-button-win-maximize.svg";
-import WindowButtonWinRestoreDown from "../../../../assets/12px-solid/window-button-win-restore-down.svg";
-import WindowButtonWinClose from "../../../../assets/12px-solid/window-button-win-close.svg";
+import Icon from "../../widgets/labels/Icon.vue";
 
 export default defineComponent({
-	components: {
-		WindowButtonWinMinimize,
-		WindowButtonWinMaximize,
-		WindowButtonWinRestoreDown,
-		WindowButtonWinClose,
-	},
+	components: { Icon },
 	props: {
 		maximized: { type: Boolean, default: false },
 	},

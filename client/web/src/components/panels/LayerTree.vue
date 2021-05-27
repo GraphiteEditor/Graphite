@@ -14,15 +14,12 @@
 			<LayoutCol :class="'list'">
 				<div class="layer-row" v-for="layer in layers" :key="layer.path">
 					<div class="layer-visibility">
-						<IconButton @click="toggleLayerVisibility(layer.path)" :size="24" :iconSize="16" :title="layer.visible ? 'Visible' : 'Hidden'">
-							<EyeVisible v-if="layer.visible" />
-							<EyeHidden v-if="!layer.visible" />
-						</IconButton>
+						<IconButton :icon="layer.visible ? 'Visible' : 'Hidden'" @click="toggleLayerVisibility(layer.path)" :size="24" :title="layer.visible ? 'Visible' : 'Hidden'" />
 					</div>
 					<div class="layer">
 						<div class="layer-thumbnail"></div>
 						<div class="layer-type-icon">
-							<Icon :size="24" title="Path"><NodeTypePath /></Icon>
+							<Icon :icon="'NodeTypePath'" title="Path" />
 						</div>
 						<div class="layer-name">
 							<span>{{ layer.name }}</span>
@@ -91,9 +88,6 @@ import PopoverButton from "../widgets/buttons/PopoverButton.vue";
 import { PopoverDirection } from "../widgets/overlays/Popover.vue";
 import IconButton from "../widgets/buttons/IconButton.vue";
 import Icon from "../widgets/labels/Icon.vue";
-import EyeVisible from "../../../assets/16px-solid/visibility-eye-visible.svg";
-import EyeHidden from "../../../assets/16px-solid/visibility-eye-hidden.svg";
-import NodeTypePath from "../../../assets/24px-full-color/node-type-path.svg";
 
 const wasm = import("../../../wasm/pkg");
 
@@ -106,9 +100,6 @@ export default defineComponent({
 		NumberInput,
 		IconButton,
 		Icon,
-		EyeVisible,
-		EyeHidden,
-		NodeTypePath,
 	},
 	props: {},
 	methods: {
