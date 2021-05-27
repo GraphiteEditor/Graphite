@@ -1,12 +1,14 @@
 <template>
-	<button class="icon-button" :class="`size-${String(size)} icon-size-${String(iconSize)}`">
-		<slot></slot>
+	<button class="icon-button" :class="`size-${String(size)}`">
+		<Icon :icon="icon" />
 	</button>
 </template>
 
 <style lang="scss">
 .icon-button {
-	display: inline-block;
+	display: inline-flex;
+	justify-content: center;
+	align-items: center;
 	flex: 0 0 auto;
 	padding: 0;
 	outline: none;
@@ -27,50 +29,38 @@
 		fill: var(--color-f-white);
 	}
 
-	&.icon-size-12 {
-		svg {
-			width: 12px;
-			height: 12px;
-		}
-
-		&.size-16 {
-			padding: (16px - 12px) / 2;
-		}
-
-		&.size-24 {
-			padding: (24px - 12px) / 2;
-		}
-
-		&.size-32 {
-			padding: (32px - 12px) / 2;
-		}
+	&.size-12 {
+		width: 12px;
+		height: 12px;
 	}
 
-	&.icon-size-16 {
-		svg {
-			width: 16px;
-			height: 16px;
-		}
+	&.size-16 {
+		width: 16px;
+		height: 16px;
+	}
 
-		&.size-24 {
-			padding: (24px - 16px) / 2;
-		}
+	&.size-24 {
+		width: 24px;
+		height: 24px;
+	}
 
-		&.size-32 {
-			padding: (32px - 16px) / 2;
-		}
+	&.size-32 {
+		width: 32px;
+		height: 32px;
 	}
 }
 </style>
 
 <script lang="ts">
 import { defineComponent } from "vue";
+import Icon from "../labels/Icon.vue";
 
 export default defineComponent({
 	props: {
+		icon: { type: String, required: true },
 		size: { type: Number, required: true },
-		iconSize: { type: Number, required: true },
 		gapAfter: { type: Boolean, default: false },
 	},
+	components: { Icon },
 });
 </script>

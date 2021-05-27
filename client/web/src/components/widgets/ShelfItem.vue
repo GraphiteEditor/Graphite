@@ -1,12 +1,11 @@
 <template>
 	<div class="shelf-item" :class="{ active: active }">
-		<slot></slot>
+		<IconButton :icon="icon" :size="32" />
 	</div>
 </template>
 
 <style lang="scss">
 .shelf-item {
-	padding: 4px;
 	border-radius: 2px;
 
 	&:hover {
@@ -27,9 +26,12 @@
 
 <script lang="ts">
 import { defineComponent } from "vue";
+import IconButton from "./buttons/IconButton.vue";
 
 export default defineComponent({
+	components: { IconButton },
 	props: {
+		icon: { type: String, required: true },
 		active: { type: Boolean, default: false },
 	},
 });
