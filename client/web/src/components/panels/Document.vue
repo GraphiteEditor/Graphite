@@ -194,10 +194,10 @@ export default defineComponent({
 		NumberInput,
 	},
 	methods: {
-		async canvasResize() {
-			const { on_canvas_resize } = await wasm;
+		async viewportResize() {
+			const { on_viewport_resize } = await wasm;
 			const canvas = this.$refs.canvas as HTMLDivElement;
-			on_canvas_resize(canvas.clientWidth, canvas.clientHeight);
+			on_viewport_resize(canvas.clientWidth, canvas.clientHeight);
 		},
 		async canvasMouseDown(e: MouseEvent) {
 			const { on_mouse_down } = await wasm;
@@ -250,8 +250,8 @@ export default defineComponent({
 
 		window.addEventListener("keyup", (e: KeyboardEvent) => this.keyUp(e));
 		window.addEventListener("keydown", (e: KeyboardEvent) => this.keyDown(e));
-		window.addEventListener("resize", () => this.canvasResize());
-		window.addEventListener("load", () => this.canvasResize());
+		window.addEventListener("resize", () => this.viewportResize());
+		window.addEventListener("load", () => this.viewportResize());
 
 		// TODO: Implement an actual UI for chosing colors (this is completely temporary)
 		this.updatePrimaryColor({ r: 247 / 255, g: 76 / 255, b: 0 / 255, a: 0.6 });

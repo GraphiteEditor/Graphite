@@ -22,9 +22,9 @@ pub fn select_tool(tool: String) -> Result<(), JsValue> {
 }
 
 // TODO: Call event when the panels are resized
-/// Mouse movement within the screenspace bounds of the viewport
+/// Viewport resized
 #[wasm_bindgen]
-pub fn on_canvas_resize(new_width: u32, new_height: u32) -> Result<(), JsValue> {
+pub fn on_viewport_resize(new_width: u32, new_height: u32) -> Result<(), JsValue> {
 	let ev = DocumentMessage::DocumentResize(ViewportPosition { x: new_width, y: new_height });
 	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(ev)).map_err(convert_error)
 }
