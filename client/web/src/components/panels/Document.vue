@@ -6,15 +6,15 @@
 
 				<Separator :type="SeparatorType.Section" />
 
-				<IconButton :size="24" title="Horizontal Align Left"><AlignHorizontalLeft /></IconButton>
-				<IconButton :size="24" title="Horizontal Align Center"><AlignHorizontalCenter /></IconButton>
-				<IconButton :size="24" gapAfter title="Horizontal Align Right"><AlignHorizontalRight /></IconButton>
+				<IconButton :size="24" :iconSize="16" title="Horizontal Align Left"><AlignHorizontalLeft /></IconButton>
+				<IconButton :size="24" :iconSize="16" title="Horizontal Align Center"><AlignHorizontalCenter /></IconButton>
+				<IconButton :size="24" :iconSize="16" gapAfter title="Horizontal Align Right"><AlignHorizontalRight /></IconButton>
 
 				<Separator :type="SeparatorType.Unrelated" />
 
-				<IconButton :size="24" title="Vertical Align Top"><AlignVerticalTop /></IconButton>
-				<IconButton :size="24" title="Vertical Align Center"><AlignVerticalCenter /></IconButton>
-				<IconButton :size="24" title="Vertical Align Bottom"><AlignVerticalBottom /></IconButton>
+				<IconButton :size="24" :iconSize="16" title="Vertical Align Top"><AlignVerticalTop /></IconButton>
+				<IconButton :size="24" :iconSize="16" title="Vertical Align Center"><AlignVerticalCenter /></IconButton>
+				<IconButton :size="24" :iconSize="16" title="Vertical Align Bottom"><AlignVerticalBottom /></IconButton>
 
 				<Separator :type="SeparatorType.Related" />
 
@@ -25,8 +25,8 @@
 
 				<Separator :type="SeparatorType.Section" />
 
-				<IconButton :size="24" title="Flip Horizontal"><FlipHorizontal /></IconButton>
-				<IconButton :size="24" title="Flip Vertical"><FlipVertical /></IconButton>
+				<IconButton :size="24" :iconSize="16" title="Flip Horizontal"><FlipHorizontal /></IconButton>
+				<IconButton :size="24" :iconSize="16" title="Flip Vertical"><FlipVertical /></IconButton>
 
 				<Separator :type="SeparatorType.Related" />
 
@@ -37,11 +37,11 @@
 
 				<Separator :type="SeparatorType.Section" />
 
-				<IconButton :size="24" title="Boolean Union"><BooleanUnion /></IconButton>
-				<IconButton :size="24" title="Boolean Subtract Front"><BooleanSubtractFront /></IconButton>
-				<IconButton :size="24" title="Boolean Subtract Back"><BooleanSubtractBack /></IconButton>
-				<IconButton :size="24" title="Boolean Intersect"><BooleanIntersect /></IconButton>
-				<IconButton :size="24" title="Boolean Difference"><BooleanDifference /></IconButton>
+				<IconButton :size="24" :iconSize="16" title="Boolean Union"><BooleanUnion /></IconButton>
+				<IconButton :size="24" :iconSize="16" title="Boolean Subtract Front"><BooleanSubtractFront /></IconButton>
+				<IconButton :size="24" :iconSize="16" title="Boolean Subtract Back"><BooleanSubtractBack /></IconButton>
+				<IconButton :size="24" :iconSize="16" title="Boolean Intersect"><BooleanIntersect /></IconButton>
+				<IconButton :size="24" :iconSize="16" title="Boolean Difference"><BooleanDifference /></IconButton>
 
 				<Separator :type="SeparatorType.Related" />
 
@@ -53,9 +53,9 @@
 			<div class="spacer"></div>
 			<div class="right side">
 				<RadioInput :initialIndex="0" @changed="viewModeChanged">
-					<IconButton :size="24" title="View Mode: Normal"><ViewModeNormal /></IconButton>
-					<IconButton :size="24" title="View Mode: Outline"><ViewModeOutline /></IconButton>
-					<IconButton :size="24" title="View Mode: Pixels"><ViewModePixels /></IconButton>
+					<IconButton :size="24" :iconSize="16" title="View Mode: Normal"><ViewModeNormal /></IconButton>
+					<IconButton :size="24" :iconSize="16" title="View Mode: Outline"><ViewModeOutline /></IconButton>
+					<IconButton :size="24" :iconSize="16" title="View Mode: Pixels"><ViewModePixels /></IconButton>
 					<PopoverButton>
 						<h3>Display Mode</h3>
 						<p>More display mode options will be here</p>
@@ -64,9 +64,9 @@
 
 				<Separator :type="SeparatorType.Section" />
 
-				<IconButton :size="24" title="Zoom In"><ZoomIn /></IconButton>
-				<IconButton :size="24" title="Zoom Out"><ZoomOut /></IconButton>
-				<IconButton :size="24" title="Zoom to 100%"><ZoomReset /></IconButton>
+				<IconButton :size="24" :iconSize="16" title="Zoom In"><ZoomIn /></IconButton>
+				<IconButton :size="24" :iconSize="16" title="Zoom Out"><ZoomOut /></IconButton>
+				<IconButton :size="24" :iconSize="16" title="Zoom to 100%"><ZoomReset /></IconButton>
 
 				<Separator :type="SeparatorType.Related" />
 
@@ -176,46 +176,46 @@ import IconButton from "../widgets/buttons/IconButton.vue";
 import PopoverButton from "../widgets/buttons/PopoverButton.vue";
 import RadioInput from "../widgets/inputs/RadioInput.vue";
 import NumberInput from "../widgets/inputs/NumberInput.vue";
-import SelectTool from "../../../assets/svg/24x24-bounds-24x24-icon/document-tool-layout-select.svg";
-import CropTool from "../../../assets/svg/24x24-bounds-24x24-icon/document-tool-layout-crop.svg";
-import NavigateTool from "../../../assets/svg/24x24-bounds-24x24-icon/document-tool-layout-navigate.svg";
-import EyedropperTool from "../../../assets/svg/24x24-bounds-24x24-icon/document-tool-layout-eyedropper.svg";
-import TextTool from "../../../assets/svg/24x24-bounds-24x24-icon/document-tool-parametric-text.svg";
-import FillTool from "../../../assets/svg/24x24-bounds-24x24-icon/document-tool-parametric-fill.svg";
-import GradientTool from "../../../assets/svg/24x24-bounds-24x24-icon/document-tool-parametric-gradient.svg";
-import BrushTool from "../../../assets/svg/24x24-bounds-24x24-icon/document-tool-raster-brush.svg";
-import HealTool from "../../../assets/svg/24x24-bounds-24x24-icon/document-tool-raster-heal.svg";
-import CloneTool from "../../../assets/svg/24x24-bounds-24x24-icon/document-tool-raster-clone.svg";
-import PatchTool from "../../../assets/svg/24x24-bounds-24x24-icon/document-tool-raster-patch.svg";
-import BlurSharpenTool from "../../../assets/svg/24x24-bounds-24x24-icon/document-tool-raster-detail.svg";
-import RelightTool from "../../../assets/svg/24x24-bounds-24x24-icon/document-tool-raster-relight.svg";
-import PathTool from "../../../assets/svg/24x24-bounds-24x24-icon/document-tool-vector-path.svg";
-import PenTool from "../../../assets/svg/24x24-bounds-24x24-icon/document-tool-vector-pen.svg";
-import FreehandTool from "../../../assets/svg/24x24-bounds-24x24-icon/document-tool-vector-freehand.svg";
-import SplineTool from "../../../assets/svg/24x24-bounds-24x24-icon/document-tool-vector-spline.svg";
-import LineTool from "../../../assets/svg/24x24-bounds-24x24-icon/document-tool-vector-line.svg";
-import RectangleTool from "../../../assets/svg/24x24-bounds-24x24-icon/document-tool-vector-rectangle.svg";
-import EllipseTool from "../../../assets/svg/24x24-bounds-24x24-icon/document-tool-vector-ellipse.svg";
-import ShapeTool from "../../../assets/svg/24x24-bounds-24x24-icon/document-tool-vector-shape.svg";
-import AlignHorizontalLeft from "../../../assets/svg/24x24-bounds-16x16-icon/align-horizontal-left.svg";
-import AlignHorizontalCenter from "../../../assets/svg/24x24-bounds-16x16-icon/align-horizontal-center.svg";
-import AlignHorizontalRight from "../../../assets/svg/24x24-bounds-16x16-icon/align-horizontal-right.svg";
-import AlignVerticalTop from "../../../assets/svg/24x24-bounds-16x16-icon/align-vertical-top.svg";
-import AlignVerticalCenter from "../../../assets/svg/24x24-bounds-16x16-icon/align-vertical-center.svg";
-import AlignVerticalBottom from "../../../assets/svg/24x24-bounds-16x16-icon/align-vertical-bottom.svg";
-import FlipHorizontal from "../../../assets/svg/24x24-bounds-16x16-icon/flip-horizontal.svg";
-import FlipVertical from "../../../assets/svg/24x24-bounds-16x16-icon/flip-vertical.svg";
-import BooleanUnion from "../../../assets/svg/24x24-bounds-16x16-icon/boolean-union.svg";
-import BooleanSubtractFront from "../../../assets/svg/24x24-bounds-16x16-icon/boolean-subtract-front.svg";
-import BooleanSubtractBack from "../../../assets/svg/24x24-bounds-16x16-icon/boolean-subtract-back.svg";
-import BooleanIntersect from "../../../assets/svg/24x24-bounds-16x16-icon/boolean-intersect.svg";
-import BooleanDifference from "../../../assets/svg/24x24-bounds-16x16-icon/boolean-difference.svg";
-import ZoomReset from "../../../assets/svg/24x24-bounds-16x16-icon/zoom-reset.svg";
-import ZoomIn from "../../../assets/svg/24x24-bounds-16x16-icon/zoom-in.svg";
-import ZoomOut from "../../../assets/svg/24x24-bounds-16x16-icon/zoom-out.svg";
-import ViewModeNormal from "../../../assets/svg/24x24-bounds-16x16-icon/view-mode-normal.svg";
-import ViewModeOutline from "../../../assets/svg/24x24-bounds-16x16-icon/view-mode-outline.svg";
-import ViewModePixels from "../../../assets/svg/24x24-bounds-16x16-icon/view-mode-pixels.svg";
+import SelectTool from "../../../assets/24px-two-tone/document-tool-layout-select.svg";
+import CropTool from "../../../assets/24px-two-tone/document-tool-layout-crop.svg";
+import NavigateTool from "../../../assets/24px-two-tone/document-tool-layout-navigate.svg";
+import EyedropperTool from "../../../assets/24px-two-tone/document-tool-layout-eyedropper.svg";
+import TextTool from "../../../assets/24px-two-tone/document-tool-parametric-text.svg";
+import FillTool from "../../../assets/24px-two-tone/document-tool-parametric-fill.svg";
+import GradientTool from "../../../assets/24px-two-tone/document-tool-parametric-gradient.svg";
+import BrushTool from "../../../assets/24px-two-tone/document-tool-raster-brush.svg";
+import HealTool from "../../../assets/24px-two-tone/document-tool-raster-heal.svg";
+import CloneTool from "../../../assets/24px-two-tone/document-tool-raster-clone.svg";
+import PatchTool from "../../../assets/24px-two-tone/document-tool-raster-patch.svg";
+import BlurSharpenTool from "../../../assets/24px-two-tone/document-tool-raster-detail.svg";
+import RelightTool from "../../../assets/24px-two-tone/document-tool-raster-relight.svg";
+import PathTool from "../../../assets/24px-two-tone/document-tool-vector-path.svg";
+import PenTool from "../../../assets/24px-two-tone/document-tool-vector-pen.svg";
+import FreehandTool from "../../../assets/24px-two-tone/document-tool-vector-freehand.svg";
+import SplineTool from "../../../assets/24px-two-tone/document-tool-vector-spline.svg";
+import LineTool from "../../../assets/24px-two-tone/document-tool-vector-line.svg";
+import RectangleTool from "../../../assets/24px-two-tone/document-tool-vector-rectangle.svg";
+import EllipseTool from "../../../assets/24px-two-tone/document-tool-vector-ellipse.svg";
+import ShapeTool from "../../../assets/24px-two-tone/document-tool-vector-shape.svg";
+import AlignHorizontalLeft from "../../../assets/16px-solid/align-horizontal-left.svg";
+import AlignHorizontalCenter from "../../../assets/16px-solid/align-horizontal-center.svg";
+import AlignHorizontalRight from "../../../assets/16px-solid/align-horizontal-right.svg";
+import AlignVerticalTop from "../../../assets/16px-solid/align-vertical-top.svg";
+import AlignVerticalCenter from "../../../assets/16px-solid/align-vertical-center.svg";
+import AlignVerticalBottom from "../../../assets/16px-solid/align-vertical-bottom.svg";
+import FlipHorizontal from "../../../assets/16px-solid/flip-horizontal.svg";
+import FlipVertical from "../../../assets/16px-solid/flip-vertical.svg";
+import BooleanUnion from "../../../assets/16px-solid/boolean-union.svg";
+import BooleanSubtractFront from "../../../assets/16px-solid/boolean-subtract-front.svg";
+import BooleanSubtractBack from "../../../assets/16px-solid/boolean-subtract-back.svg";
+import BooleanIntersect from "../../../assets/16px-solid/boolean-intersect.svg";
+import BooleanDifference from "../../../assets/16px-solid/boolean-difference.svg";
+import ZoomReset from "../../../assets/16px-solid/zoom-reset.svg";
+import ZoomIn from "../../../assets/16px-solid/zoom-in.svg";
+import ZoomOut from "../../../assets/16px-solid/zoom-out.svg";
+import ViewModeNormal from "../../../assets/16px-solid/view-mode-normal.svg";
+import ViewModeOutline from "../../../assets/16px-solid/view-mode-outline.svg";
+import ViewModePixels from "../../../assets/16px-solid/view-mode-pixels.svg";
 
 const wasm = import("../../../wasm/pkg");
 

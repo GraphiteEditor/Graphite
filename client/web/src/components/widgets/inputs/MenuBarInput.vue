@@ -41,7 +41,7 @@
 <script lang="ts">
 import { defineComponent } from "vue";
 import { ApplicationPlatform } from "../../window/MainWindow.vue";
-import GraphiteLogo from "../../../../assets/svg/16x16-bounds-16x16-icon/graphite-logo.svg";
+import GraphiteLogo from "../../../../assets/16px-solid/graphite-logo.svg";
 
 export default defineComponent({
 	components: { GraphiteLogo },
