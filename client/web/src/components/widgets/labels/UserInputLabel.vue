@@ -4,16 +4,7 @@
 			{{ inputKey }}
 		</span>
 		<span class="input-mouse" v-if="inputMouse">
-			<MouseHintNone v-if="inputMouse === MouseInputInteraction.None" width="16" height="16" />
-			<MouseHintLMB v-if="inputMouse === MouseInputInteraction.LMB" width="16" height="16" />
-			<MouseHintRMB v-if="inputMouse === MouseInputInteraction.RMB" width="16" height="16" />
-			<MouseHintMMB v-if="inputMouse === MouseInputInteraction.MMB" width="16" height="16" />
-			<MouseHintScrollUp v-if="inputMouse === MouseInputInteraction.ScrollUp" width="16" height="16" />
-			<MouseHintScrollDown v-if="inputMouse === MouseInputInteraction.ScrollDown" width="16" height="16" />
-			<MouseHintDrag v-if="inputMouse === MouseInputInteraction.Drag" width="16" height="16" />
-			<MouseHintLMBDrag v-if="inputMouse === MouseInputInteraction.LMBDrag" width="16" height="16" />
-			<MouseHintRMBDrag v-if="inputMouse === MouseInputInteraction.RMBDrag" width="16" height="16" />
-			<MouseHintMMBDrag v-if="inputMouse === MouseInputInteraction.MMBDrag" width="16" height="16" />
+			<Icon :icon="mouseInputInteractionToIcon(inputMouse)" />
 		</span>
 		<span class="hint-text">
 			<slot></slot>
@@ -87,16 +78,7 @@
 
 <script lang="ts">
 import { defineComponent } from "vue";
-import MouseHintNone from "../../../../assets/svg/16x16-bounds-16x16-icon/mouse-hint-none.svg";
-import MouseHintLMB from "../../../../assets/svg/16x16-bounds-16x16-icon/mouse-hint-lmb.svg";
-import MouseHintRMB from "../../../../assets/svg/16x16-bounds-16x16-icon/mouse-hint-rmb.svg";
-import MouseHintMMB from "../../../../assets/svg/16x16-bounds-16x16-icon/mouse-hint-mmb.svg";
-import MouseHintScrollUp from "../../../../assets/svg/16x16-bounds-16x16-icon/mouse-hint-scroll-up.svg";
-import MouseHintScrollDown from "../../../../assets/svg/16x16-bounds-16x16-icon/mouse-hint-scroll-down.svg";
-import MouseHintDrag from "../../../../assets/svg/16x16-bounds-16x16-icon/mouse-hint-drag.svg";
-import MouseHintLMBDrag from "../../../../assets/svg/16x16-bounds-16x16-icon/mouse-hint-lmb-drag.svg";
-import MouseHintRMBDrag from "../../../../assets/svg/16x16-bounds-16x16-icon/mouse-hint-rmb-drag.svg";
-import MouseHintMMBDrag from "../../../../assets/svg/16x16-bounds-16x16-icon/mouse-hint-mmb-drag.svg";
+import Icon from "./Icon.vue";
 
 export enum MouseInputInteraction {
 	"None" = "None",
@@ -112,18 +94,7 @@ export enum MouseInputInteraction {
 }
 
 export default defineComponent({
-	components: {
-		MouseHintNone,
-		MouseHintLMB,
-		MouseHintRMB,
-		MouseHintMMB,
-		MouseHintScrollUp,
-		MouseHintScrollDown,
-		MouseHintDrag,
-		MouseHintLMBDrag,
-		MouseHintRMBDrag,
-		MouseHintMMBDrag,
-	},
+	components: { Icon },
 	props: {
 		inputKeys: { type: Array, default: () => [] },
 		inputMouse: { type: String },
@@ -131,6 +102,31 @@ export default defineComponent({
 	methods: {
 		keyCapWidth(keyText: string) {
 			return `width-${keyText.length * 8 + 8}`;
+		},
+		mouseInputInteractionToIcon(mouseInputInteraction: MouseInputInteraction) {
+			switch (mouseInputInteraction) {
+				case MouseInputInteraction.LMB:
+					return "MouseHintLMB";
+				case MouseInputInteraction.RMB:
+					return "MouseHintRMB";
+				case MouseInputInteraction.MMB:
+					return "MouseHintMMB";
+				case MouseInputInteraction.ScrollUp:
+					return "MouseHintScrollUp";
+				case MouseInputInteraction.ScrollDown:
+					return "MouseHintScrollDown";
+				case MouseInputInteraction.Drag:
+					return "MouseHintDrag";
+				case MouseInputInteraction.LMBDrag:
+					return "MouseHintLMBDrag";
+				case MouseInputInteraction.RMBDrag:
+					return "MouseHintRMBDrag";
+				case MouseInputInteraction.MMBDrag:
+					return "MouseHintMMBDrag";
+				default:
+				case MouseInputInteraction.None:
+					return "MouseHintNone";
+			}
 		},
 	},
 	data() {

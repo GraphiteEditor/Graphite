@@ -1,8 +1,6 @@
 <template>
 	<div class="popover-button">
-		<button @click="clickButton">
-			<component :is="icon" />
-		</button>
+		<IconButton :icon="icon" :size="16" @click="clickButton" />
 		<Popover :direction="PopoverDirection.Bottom" ref="popover">
 			<slot></slot>
 		</Popover>
@@ -21,7 +19,7 @@
 		left: 50%;
 	}
 
-	button {
+	.icon-button {
 		width: 100%;
 		height: 100%;
 		padding: 0;
@@ -42,8 +40,7 @@
 
 <script lang="ts">
 import { defineComponent } from "vue";
-import DropdownArrow from "../../../../assets/svg/16x24-bounds-8x16-icon/dropdown-arrow.svg";
-import VerticalEllipsis from "../../../../assets/svg/16x24-bounds-8x16-icon/vertical-ellipsis.svg";
+import IconButton from "./IconButton.vue";
 import Popover, { PopoverDirection } from "../overlays/Popover.vue";
 
 export enum PopoverButtonIcon {
@@ -53,10 +50,8 @@ export enum PopoverButtonIcon {
 
 export default defineComponent({
 	components: {
-		VerticalEllipsis,
-		DropdownArrow,
 		Popover,
-		PopoverDirection,
+		IconButton,
 	},
 	props: {
 		icon: { type: String, default: PopoverButtonIcon.DropdownArrow },
