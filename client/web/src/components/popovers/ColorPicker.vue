@@ -14,13 +14,14 @@
 
 <style lang="scss">
 .popover-color-picker {
-	--hue: #ff0000;
+	--hue-picker-color: #ff0000;
+	--opacity-picker-color: #ff0000;
 	display: flex;
 
 	.saturation-picker {
 		width: 256px;
 		background-blend-mode: multiply;
-		background: linear-gradient(to bottom, #ffffff, #000000), linear-gradient(to right, #ffffff, var(--hue));
+		background: linear-gradient(to bottom, #ffffff, #000000), linear-gradient(to right, #ffffff, var(--hue-picker-color));
 		position: relative;
 	}
 
@@ -46,7 +47,7 @@
 	}
 
 	.opacity-picker {
-		background: linear-gradient(to bottom, var(--hue), transparent);
+		background: linear-gradient(to bottom, var(--opacity-picker-color), transparent);
 
 		&::before {
 			content: "";
@@ -275,8 +276,10 @@ export default defineComponent({
 
 		updateHue() {
 			const { colorPicker } = this.$data._;
-			const hueColor = hsvToRgb({ h: colorPicker.color.h, s: 1, v: 255, a: 1 });
-			this.$el.style.setProperty("--hue", `rgb(${hueColor.r}, ${hueColor.g}, ${hueColor.b})`);
+			let color = hsvToRgb({ h: colorPicker.color.h, s: 1, v: 255, a: 1 });
+			this.$el.style.setProperty("--hue-picker-color", `rgb(${color.r}, ${color.g}, ${color.b})`);
+			color = hsvToRgb(colorPicker.color);
+			this.$el.style.setProperty("--opacity-picker-color", `rgb(${color.r}, ${color.g}, ${color.b})`);
 		},
 
 		updateColor() {

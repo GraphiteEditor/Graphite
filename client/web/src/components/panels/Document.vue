@@ -149,11 +149,12 @@
 			flex: 1 1 100%;
 
 			.canvas {
-				background: #ffffff;
+				background: var(--color-1-nearblack);
 				width: 100%;
 				height: 100%;
 
 				svg {
+					background: #ffffff;
 					width: 100%;
 					height: 100%;
 				}

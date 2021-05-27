@@ -42,6 +42,7 @@
 				linear-gradient(#ffffff, #ffffff);
 			background-size: 16px 16px;
 			background-position: 0 0, 8px 8px;
+			overflow: hidden;
 
 			&::before {
 				content: "";
@@ -49,9 +50,6 @@
 				width: 100%;
 				height: 100%;
 				background: var(--swatch-color);
-				background-size: 16px 16px;
-				background-position: 0 0, 8px 8px;
-				border-radius: 50%;
 			}
 		}
 
