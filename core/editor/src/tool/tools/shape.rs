@@ -137,7 +137,7 @@ fn update_state(
 }
 
 fn make_operation(data: &ShapeToolData, tool_data: &DocumentToolData, input: &InputPreprocessor) -> Message {
-	let (x0, y0) = data.drag_start.to_canvas_position(&input.canvas_transform,false).into();
+	let (x0, y0) = data.drag_start.to_canvas_position(&input.canvas_transform, false).into();
 	let (x1, y1) = data.drag_current.to_canvas_position(&input.canvas_transform, false).into();
 
 	let (x0, y0, x1, y1) = if data.constrain_to_square {
@@ -168,7 +168,7 @@ fn make_operation(data: &ShapeToolData, tool_data: &DocumentToolData, input: &In
 		x1,
 		y1,
 		sides: data.sides,
-		rotation:input.canvas_transform.degrees,
+		rotation: input.canvas_transform.degrees,
 		style: style::PathStyle::new(None, Some(style::Fill::new(tool_data.primary_color))),
 	}
 	.into()

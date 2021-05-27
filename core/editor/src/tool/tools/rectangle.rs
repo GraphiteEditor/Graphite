@@ -164,7 +164,7 @@ fn make_operation(data: &RectangleToolData, tool_data: &DocumentToolData, input:
 		y0,
 		x1,
 		y1,
-		rotation:input.canvas_transform.degrees,
+		rotation: input.canvas_transform.degrees,
 		style: style::PathStyle::new(None, Some(style::Fill::new(tool_data.primary_color))),
 	}
 	.into()

@@ -88,19 +88,19 @@ impl ViewportPosition {
 		f64::sqrt((x_diff * x_diff + y_diff * y_diff) as f64)
 	}
 	pub fn to_canvas_position(&self, canvas_transform: &CanvasTransform, apply_rotation: bool) -> CanvasPosition {
-		if apply_rotation{
+		if apply_rotation {
 			CanvasPosition { x: self.x as f64, y: self.y as f64 }
 				.add(canvas_transform.size.x as f64 * -0.5, canvas_transform.size.y as f64 * -0.5)
 				.rotate(canvas_transform.radians)
 				.multiply(canvas_transform.scale)
 				.add(canvas_transform.location.x, canvas_transform.location.y)
-		}else{
-			let (canvas_location_x, canvas_location_y): (f64,f64) = {
+		} else {
+			let (canvas_location_x, canvas_location_y): (f64, f64) = {
 				let cosine = (-canvas_transform.radians).cos();
 				let sine = (-canvas_transform.radians).sin();
 				(
 					canvas_transform.location.x * cosine - canvas_transform.location.y * sine,
-					canvas_transform.location.x * sine + canvas_transform.location.y * cosine
+					canvas_transform.location.x * sine + canvas_transform.location.y * cosine,
 				)
 			};
 			CanvasPosition { x: self.x as f64, y: self.y as f64 }
