@@ -117,7 +117,7 @@
 
 <script lang="ts">
 import { defineComponent } from "vue";
-import { clamp, hsvToRgb, rgbToHsv, RGB, isRGB } from "../../lib/utils";
+import { clamp, hsvToRgb, rgbToHsv, isRGB } from "../../lib/utils";
 
 const enum ColorPickerState {
 	Idle = "Idle",
@@ -136,6 +136,9 @@ export default defineComponent({
 	data() {
 		return {
 			state: ColorPickerState.Idle,
+			// Disable proxy on this object
+			// https://v3.vuejs.org/api/options-data.html#data-2
+			// eslint-disable-next-line vue/no-reserved-keys
 			_: {
 				colorPicker: {
 					color: { h: 0, s: 0, v: 0, a: 1 },
