@@ -14,14 +14,14 @@
 
 <style lang="scss">
 .popover-color-picker {
-	--hue-picker-color: #ff0000;
+	--saturation-picker-color: #ff0000;
 	--opacity-picker-color: #ff0000;
 	display: flex;
 
 	.saturation-picker {
 		width: 256px;
 		background-blend-mode: multiply;
-		background: linear-gradient(to bottom, #ffffff, #000000), linear-gradient(to right, #ffffff, var(--hue-picker-color));
+		background: linear-gradient(to bottom, #ffffff, #000000), linear-gradient(to right, #ffffff, var(--saturation-picker-color));
 		position: relative;
 	}
 
@@ -277,7 +277,7 @@ export default defineComponent({
 		updateHue() {
 			const { colorPicker } = this.$data._;
 			let color = hsvToRgb({ h: colorPicker.color.h, s: 1, v: 255, a: 1 });
-			this.$el.style.setProperty("--hue-picker-color", `rgb(${color.r}, ${color.g}, ${color.b})`);
+			this.$el.style.setProperty("--saturation-picker-color", `rgb(${color.r}, ${color.g}, ${color.b})`);
 			color = hsvToRgb(colorPicker.color);
 			this.$el.style.setProperty("--opacity-picker-color", `rgb(${color.r}, ${color.g}, ${color.b})`);
 		},
