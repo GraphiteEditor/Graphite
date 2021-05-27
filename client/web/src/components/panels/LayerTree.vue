@@ -20,7 +20,7 @@
 					<div class="layer-visibility">
 						<IconButton :icon="layer.visible ? 'EyeVisible' : 'EyeHidden'" @click="toggleLayerVisibility(layer.path)" :size="24" :title="layer.visible ? 'Visible' : 'Hidden'" />
 					</div>
-					<div class="layer">
+					<div class="layer" @click="handleClick(layer.path)">
 						<div class="layer-thumbnail"></div>
 						<div class="layer-type-icon">
 							<Icon :icon="'NodeTypePath'" title="Path" />
@@ -117,6 +117,9 @@ export default defineComponent({
 		async toggleLayerVisibility(path: BigUint64Array) {
 			const { toggle_layer_visibility } = await wasm;
 			toggle_layer_visibility(path);
+		},
+		async handleClick(path: BigUint64Array) {
+			console.log(`A layer was clicked: ${path}`);
 		},
 	},
 	mounted() {
