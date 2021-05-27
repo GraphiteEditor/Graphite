@@ -12,7 +12,7 @@ export interface HSV {
 	a: number;
 }
 
-export function HSV2RGB(hsv: HSV): RGB {
+export function hsvToRgb(hsv: HSV): RGB {
 	let { h } = hsv;
 	const { s, v } = hsv;
 	h *= 6;
@@ -28,7 +28,7 @@ export function HSV2RGB(hsv: HSV): RGB {
 	return { r, g, b, a: hsv.a };
 }
 
-export function RGB2HSV(rgb: RGB) {
+export function rgbToHsv(rgb: RGB) {
 	const { r, g, b } = rgb;
 	const max = Math.max(r, g, b);
 	const min = Math.min(r, g, b);
@@ -56,7 +56,7 @@ export function RGB2HSV(rgb: RGB) {
 	return { h, s, v, a: rgb.a };
 }
 
-export function RGB2Floats(rgb: RGB) {
+export function rgbToDecimalRgb(rgb: RGB) {
 	const r = rgb.r / 255;
 	const g = rgb.g / 255;
 	const b = rgb.b / 255;
@@ -65,4 +65,18 @@ export function RGB2Floats(rgb: RGB) {
 
 export function clamp(value: number, min = 0, max = 1) {
 	return Math.max(min, Math.min(value, max));
+}
+
+export function isRGB(data: any): data is RGB {
+	if (typeof data !== "object" || data === null) return false;
+	return (
+		typeof data.r === "number" &&
+		!Number.isNaN(data.r) &&
+		typeof data.g === "number" &&
+		!Number.isNaN(data.g) &&
+		typeof data.b === "number" &&
+		!Number.isNaN(data.b) &&
+		typeof data.a === "number" &&
+		!Number.isNaN(data.a)
+	);
 }

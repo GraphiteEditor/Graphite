@@ -149,7 +149,7 @@
 			flex: 1 1 100%;
 
 			.canvas {
-				background: var(--color-1-nearblack);
+				background: #ffffff;
 				width: 100%;
 				height: 100%;
 

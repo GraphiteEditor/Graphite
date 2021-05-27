@@ -28,7 +28,7 @@
 		position: relative;
 
 		button {
-			--swatch-color: white;
+			--swatch-color: #ffffff;
 			width: 100%;
 			height: 100%;
 			border-radius: 50%;
@@ -68,7 +68,7 @@
 </style>
 
 <script lang="ts">
-import { RGB2Floats } from "@/lib/utils";
+import { rgbToDecimalRgb } from "@/lib/utils";
 import { defineComponent } from "vue";
 import ColorPicker from "../../popovers/ColorPicker.vue";
 import Popover, { PopoverDirection } from "../overlays/Popover.vue";
@@ -83,49 +83,46 @@ export default defineComponent({
 	props: {},
 	methods: {
 		clickPrimarySwatch() {
-			(this.$refs.primarySwatchPopover as typeof Popover).setOpen();
-			(this.$refs.secondarySwatchPopover as typeof Popover).setClosed();
+			this.getRef<typeof Popover>("primarySwatchPopover").setOpen();
+			this.getRef<typeof Popover>("secondarySwatchPopover").setClosed();
 		},
+
 		clickSecondarySwatch() {
-			(this.$refs.secondarySwatchPopover as typeof Popover).setOpen();
-			(this.$refs.primarySwatchPopover as typeof Popover).setClosed();
+			this.getRef<typeof Popover>("secondarySwatchPopover").setOpen();
+			this.getRef<typeof Popover>("primarySwatchPopover").setClosed();
 		},
+
+		getRef<T>(name: string) {
+			return this.$refs[name] as T;
+		},
+
 		async updatePrimaryColor() {
 			const { update_primary_color, Color } = await wasm;
 
 			let color = this.primaryColor;
-			const button = this.$refs.primaryButton as HTMLButtonElement;
+			const button = this.getRef<HTMLButtonElement>("primaryButton");
 			button.style.setProperty("--swatch-color", `rgba(${color.r}, ${color.g}, ${color.b}, ${color.a})`);
 
-			color = RGB2Floats(this.primaryColor);
+			color = rgbToDecimalRgb(this.primaryColor);
 			update_primary_color(new Color(color.r, color.g, color.b, color.a));
 		},
+
 		async updateSecondaryColor() {
 			const { update_secondary_color, Color } = await wasm;
 
 			let color = this.secondaryColor;
-			const button = this.$refs.secondaryButton as HTMLButtonElement;
+			const button = this.getRef<HTMLButtonElement>("secondaryButton");
 			button.style.setProperty("--swatch-color", `rgba(${color.r}, ${color.g}, ${color.b}, ${color.a})`);
 
-			color = RGB2Floats(this.secondaryColor);
+			color = rgbToDecimalRgb(this.secondaryColor);
 			update_secondary_color(new Color(color.r, color.g, color.b, color.a));
 		},
 	},
 	data() {
 		return {
 			PopoverDirection,
-			primaryColor: {
-				r: 255,
-				g: 255,
-				b: 255,
-				a: 1,
-			},
-			secondaryColor: {
-				r: 0,
-				g: 0,
-				b: 0,
-				a: 1,
-			},
+			primaryColor: { r: 0, g: 0, b: 0, a: 1 },
+			secondaryColor: { r: 255, g: 255, b: 255, a: 1 },
 		};
 	},
 	mounted() {
