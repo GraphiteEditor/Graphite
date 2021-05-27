@@ -87,16 +87,16 @@
 
 <script lang="ts">
 import { defineComponent } from "vue";
-import MouseHintNone from "../../../../assets/svg/16x16-bounds-16x16-icon/mouse-hint-none.svg";
-import MouseHintLMB from "../../../../assets/svg/16x16-bounds-16x16-icon/mouse-hint-lmb.svg";
-import MouseHintRMB from "../../../../assets/svg/16x16-bounds-16x16-icon/mouse-hint-rmb.svg";
-import MouseHintMMB from "../../../../assets/svg/16x16-bounds-16x16-icon/mouse-hint-mmb.svg";
-import MouseHintScrollUp from "../../../../assets/svg/16x16-bounds-16x16-icon/mouse-hint-scroll-up.svg";
-import MouseHintScrollDown from "../../../../assets/svg/16x16-bounds-16x16-icon/mouse-hint-scroll-down.svg";
-import MouseHintDrag from "../../../../assets/svg/16x16-bounds-16x16-icon/mouse-hint-drag.svg";
-import MouseHintLMBDrag from "../../../../assets/svg/16x16-bounds-16x16-icon/mouse-hint-lmb-drag.svg";
-import MouseHintRMBDrag from "../../../../assets/svg/16x16-bounds-16x16-icon/mouse-hint-rmb-drag.svg";
-import MouseHintMMBDrag from "../../../../assets/svg/16x16-bounds-16x16-icon/mouse-hint-mmb-drag.svg";
+import MouseHintNone from "../../../../assets/16px-two-tone/mouse-hint-none.svg";
+import MouseHintLMB from "../../../../assets/16px-two-tone/mouse-hint-lmb.svg";
+import MouseHintRMB from "../../../../assets/16px-two-tone/mouse-hint-rmb.svg";
+import MouseHintMMB from "../../../../assets/16px-two-tone/mouse-hint-mmb.svg";
+import MouseHintScrollUp from "../../../../assets/16px-two-tone/mouse-hint-scroll-up.svg";
+import MouseHintScrollDown from "../../../../assets/16px-two-tone/mouse-hint-scroll-down.svg";
+import MouseHintDrag from "../../../../assets/16px-two-tone/mouse-hint-drag.svg";
+import MouseHintLMBDrag from "../../../../assets/16px-two-tone/mouse-hint-lmb-drag.svg";
+import MouseHintRMBDrag from "../../../../assets/16px-two-tone/mouse-hint-rmb-drag.svg";
+import MouseHintMMBDrag from "../../../../assets/16px-two-tone/mouse-hint-mmb-drag.svg";
 
 export enum MouseInputInteraction {
 	"None" = "None",

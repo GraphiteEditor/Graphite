@@ -1,5 +1,5 @@
 <template>
-	<button class="icon-button" :class="`size-${String(size)}`">
+	<button class="icon-button" :class="`size-${String(size)} icon-size-${String(iconSize)}`">
 		<slot></slot>
 	</button>
 </template>
@@ -15,8 +15,6 @@
 	background: none;
 	vertical-align: top;
 	fill: var(--color-e-nearwhite);
-	width: 16px;
-	height: 16px;
 
 	// The `where` pseduo-class does not contribtue to specificity
 	& + :where(.icon-button) {
@@ -29,24 +27,38 @@
 		fill: var(--color-f-white);
 	}
 
-	&.size-10 {
-		width: 10px;
-		height: 10px;
+	&.icon-size-12 {
+		svg {
+			width: 12px;
+			height: 12px;
+		}
+
+		&.size-16 {
+			padding: (16px - 12px) / 2;
+		}
+
+		&.size-24 {
+			padding: (24px - 12px) / 2;
+		}
+
+		&.size-32 {
+			padding: (32px - 12px) / 2;
+		}
 	}
 
-	&.size-12 {
-		width: 12px;
-		height: 12px;
-	}
+	&.icon-size-16 {
+		svg {
+			width: 16px;
+			height: 16px;
+		}
 
-	&.size-16 {
-		width: 16px;
-		height: 16px;
-	}
+		&.size-24 {
+			padding: (24px - 16px) / 2;
+		}
 
-	&.size-24 {
-		width: 24px;
-		height: 24px;
+		&.size-32 {
+			padding: (32px - 16px) / 2;
+		}
 	}
 }
 </style>
@@ -57,6 +69,7 @@ import { defineComponent } from "vue";
 export default defineComponent({
 	props: {
 		size: { type: Number, required: true },
+		iconSize: { type: Number, required: true },
 		gapAfter: { type: Boolean, default: false },
 	},
 });

@@ -4,7 +4,7 @@
 			<div class="tab-group">
 				<div class="tab" :class="{ active: tabIndex === tabActiveIndex }" v-for="(tabLabel, tabIndex) in tabLabels" :key="tabLabel">
 					<span>{{ tabLabel }}</span>
-					<IconButton :size="16" v-if="tabCloseButtons">
+					<IconButton :size="16" :iconSize="12" v-if="tabCloseButtons">
 						<CloseX />
 					</IconButton>
 				</div>
@@ -142,8 +142,7 @@ import Minimap from "../panels/Minimap.vue";
 import IconButton from "../widgets/buttons/IconButton.vue";
 import PopoverButton, { PopoverButtonIcon } from "../widgets/buttons/PopoverButton.vue";
 import { PopoverDirection } from "../widgets/overlays/Popover.vue";
-import VerticalEllipsis from "../../../assets/svg/16x24-bounds-8x16-icon/vertical-ellipsis.svg";
-import CloseX from "../../../assets/svg/16x16-bounds-12x12-icon/close-x.svg";
+import CloseX from "../../../assets/12px-solid/close-x.svg";
 
 export default defineComponent({
 	components: {
@@ -154,7 +153,6 @@ export default defineComponent({
 		IconButton,
 		PopoverButton,
 		CloseX,
-		VerticalEllipsis,
 	},
 	props: {
 		tabMinWidths: { type: Boolean, default: false },
