@@ -11,6 +11,7 @@ pub enum Operation {
 		cx: f64,
 		cy: f64,
 		r: f64,
+		rotation: f64,
 		style: style::PathStyle,
 	},
 	AddEllipse {
@@ -20,7 +21,7 @@ pub enum Operation {
 		cy: f64,
 		rx: f64,
 		ry: f64,
-		rot: f64,
+		rotation: f64,
 		style: style::PathStyle,
 	},
 	AddRect {
@@ -30,6 +31,7 @@ pub enum Operation {
 		y0: f64,
 		x1: f64,
 		y1: f64,
+		rotation: f64,
 		style: style::PathStyle,
 	},
 	AddLine {
@@ -55,6 +57,7 @@ pub enum Operation {
 		x1: f64,
 		y1: f64,
 		sides: u8,
+		rotation: f64,
 		style: style::PathStyle,
 	},
 	DeleteLayer {

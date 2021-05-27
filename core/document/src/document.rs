@@ -185,8 +185,8 @@ impl Document {
 	/// reaction from the frontend, responses may be returned.
 	pub fn handle_operation(&mut self, operation: Operation) -> Result<Option<Vec<DocumentResponse>>, DocumentError> {
 		let responses = match &operation {
-			Operation::AddCircle { path, insert_index, cx, cy, r, style } => {
-				self.add_layer(&path, Layer::new(LayerDataTypes::Circle(layers::Circle::new((*cx, *cy), *r, *style))), *insert_index)?;
+			Operation::AddCircle { path, insert_index, cx, cy, r, rotation, style } => {
+				self.add_layer(&path, Layer::new(LayerDataTypes::Circle(layers::Circle::new((*cx, *cy), *r, *rotation, *style))), *insert_index)?;
 
 				Some(vec![DocumentResponse::DocumentChanged])
 			}
@@ -197,10 +197,10 @@ impl Document {
 				cy,
 				rx,
 				ry,
-				rot,
+				rotation,
 				style,
 			} => {
-				self.add_layer(&path, Layer::new(LayerDataTypes::Ellipse(layers::Ellipse::new((*cx, *cy), (*rx, *ry), *rot, *style))), *insert_index)?;
+				self.add_layer(&path, Layer::new(LayerDataTypes::Ellipse(layers::Ellipse::new((*cx, *cy), (*rx, *ry), *rotation, *style))), *insert_index)?;
 
 				Some(vec![DocumentResponse::DocumentChanged])
 			}
@@ -211,9 +211,10 @@ impl Document {
 				y0,
 				x1,
 				y1,
+				rotation,
 				style,
 			} => {
-				self.add_layer(&path, Layer::new(LayerDataTypes::Rect(Rect::new((*x0, *y0), (*x1, *y1), *style))), *insert_index)?;
+				self.add_layer(&path, Layer::new(LayerDataTypes::Rect(Rect::new((*x0, *y0), (*x1, *y1), *rotation, *style))), *insert_index)?;
 
 				Some(vec![DocumentResponse::DocumentChanged])
 			}
@@ -244,9 +245,10 @@ impl Document {
 				x1,
 				y1,
 				sides,
+				rotation,
 				style,
 			} => {
-				let s = Shape::new((*x0, *y0), (*x1, *y1), *sides, *style);
+				let s = Shape::new((*x0, *y0), (*x1, *y1), *sides, *rotation, *style);
 				self.add_layer(&path, Layer::new(LayerDataTypes::Shape(s)), *insert_index)?;
 
 				Some(vec![DocumentResponse::DocumentChanged])
