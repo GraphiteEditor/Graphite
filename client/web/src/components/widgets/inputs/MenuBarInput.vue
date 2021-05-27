@@ -1,6 +1,6 @@
 <template>
 	<div class="menu-bar-input">
-		<div class="entry"><GraphiteLogo width="16" height="16" /></div>
+		<div class="entry"><Icon :icon="'GraphiteLogo'" /></div>
 		<div class="entry"><span>File</span></div>
 		<div class="entry"><span>Edit</span></div>
 		<div class="entry"><span>Document</span></div>
@@ -40,11 +40,11 @@
 
 <script lang="ts">
 import { defineComponent } from "vue";
+import Icon from "../labels/Icon.vue";
 import { ApplicationPlatform } from "../../window/MainWindow.vue";
-import GraphiteLogo from "../../../../assets/svg/16x16-bounds-16x16-icon/graphite-logo.svg";
 
 export default defineComponent({
-	components: { GraphiteLogo },
+	components: { Icon },
 	data() {
 		return {
 			ApplicationPlatform,

@@ -1,15 +1,15 @@
 <template>
 	<div class="windows window-button minimize" title="Minimize">
-		<WindowButtonWinMinimize width="10" height="10" />
+		<Icon :icon="'WindowButtonWinMinimize'" />
 	</div>
 	<div class="windows window-button maximize" title="Maximize" v-if="!maximized">
-		<WindowButtonWinMaximize width="10" height="10" />
+		<Icon :icon="'WindowButtonWinMaximize'" />
 	</div>
 	<div class="windows window-button restore-down" title="Restore Down" v-if="maximized">
-		<WindowButtonWinRestoreDown width="10" height="10" />
+		<Icon :icon="'WindowButtonWinRestoreDown'" />
 	</div>
 	<div class="windows window-button close" title="Close">
-		<WindowButtonWinClose width="10" height="10" />
+		<Icon :icon="'WindowButtonWinClose'" />
 	</div>
 </template>
 
@@ -17,7 +17,7 @@
 .windows.window-button {
 	display: flex;
 	align-items: center;
-	padding: 0 20px;
+	padding: 0 17px;
 
 	svg {
 		fill: var(--color-e-nearwhite);
@@ -39,18 +39,10 @@
 
 <script lang="ts">
 import { defineComponent } from "vue";
-import WindowButtonWinMinimize from "../../../../assets/svg/10x10-bounds-10x10-icon/window-button-win-minimize.svg";
-import WindowButtonWinMaximize from "../../../../assets/svg/10x10-bounds-10x10-icon/window-button-win-maximize.svg";
-import WindowButtonWinRestoreDown from "../../../../assets/svg/10x10-bounds-10x10-icon/window-button-win-restore-down.svg";
-import WindowButtonWinClose from "../../../../assets/svg/10x10-bounds-10x10-icon/window-button-win-close.svg";
+import Icon from "../../widgets/labels/Icon.vue";
 
 export default defineComponent({
-	components: {
-		WindowButtonWinMinimize,
-		WindowButtonWinMaximize,
-		WindowButtonWinRestoreDown,
-		WindowButtonWinClose,
-	},
+	components: { Icon },
 	props: {
 		maximized: { type: Boolean, default: false },
 	},

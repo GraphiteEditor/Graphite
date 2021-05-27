@@ -1,12 +1,14 @@
 <template>
 	<button class="icon-button" :class="`size-${String(size)}`">
-		<slot></slot>
+		<Icon :icon="icon" />
 	</button>
 </template>
 
 <style lang="scss">
 .icon-button {
-	display: inline-block;
+	display: inline-flex;
+	justify-content: center;
+	align-items: center;
 	flex: 0 0 auto;
 	padding: 0;
 	outline: none;
@@ -15,8 +17,6 @@
 	background: none;
 	vertical-align: top;
 	fill: var(--color-e-nearwhite);
-	width: 16px;
-	height: 16px;
 
 	// The `where` pseduo-class does not contribtue to specificity
 	& + :where(.icon-button) {
@@ -27,11 +27,6 @@
 		background: var(--color-6-lowergray);
 		color: var(--color-f-white);
 		fill: var(--color-f-white);
-	}
-
-	&.size-10 {
-		width: 10px;
-		height: 10px;
 	}
 
 	&.size-12 {
@@ -48,16 +43,24 @@
 		width: 24px;
 		height: 24px;
 	}
+
+	&.size-32 {
+		width: 32px;
+		height: 32px;
+	}
 }
 </style>
 
 <script lang="ts">
 import { defineComponent } from "vue";
+import Icon from "../labels/Icon.vue";
 
 export default defineComponent({
 	props: {
+		icon: { type: String, required: true },
 		size: { type: Number, required: true },
 		gapAfter: { type: Boolean, default: false },
 	},
+	components: { Icon },
 });
 </script>

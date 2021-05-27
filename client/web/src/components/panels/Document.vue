@@ -6,15 +6,15 @@
 
 				<Separator :type="SeparatorType.Section" />
 
-				<IconButton :size="24" title="Horizontal Align Left"><AlignHorizontalLeft /></IconButton>
-				<IconButton :size="24" title="Horizontal Align Center"><AlignHorizontalCenter /></IconButton>
-				<IconButton :size="24" gapAfter title="Horizontal Align Right"><AlignHorizontalRight /></IconButton>
+				<IconButton :icon="'AlignHorizontalLeft'" :size="24" title="Horizontal Align Left" />
+				<IconButton :icon="'AlignHorizontalCenter'" :size="24" title="Horizontal Align Center" />
+				<IconButton :icon="'AlignHorizontalRight'" :size="24" gapAfter title="Horizontal Align Right" />
 
 				<Separator :type="SeparatorType.Unrelated" />
 
-				<IconButton :size="24" title="Vertical Align Top"><AlignVerticalTop /></IconButton>
-				<IconButton :size="24" title="Vertical Align Center"><AlignVerticalCenter /></IconButton>
-				<IconButton :size="24" title="Vertical Align Bottom"><AlignVerticalBottom /></IconButton>
+				<IconButton :icon="'AlignVerticalTop'" :size="24" title="Vertical Align Top" />
+				<IconButton :icon="'AlignVerticalCenter'" :size="24" title="Vertical Align Center" />
+				<IconButton :icon="'AlignVerticalBottom'" :size="24" title="Vertical Align Bottom" />
 
 				<Separator :type="SeparatorType.Related" />
 
@@ -25,8 +25,8 @@
 
 				<Separator :type="SeparatorType.Section" />
 
-				<IconButton :size="24" title="Flip Horizontal"><FlipHorizontal /></IconButton>
-				<IconButton :size="24" title="Flip Vertical"><FlipVertical /></IconButton>
+				<IconButton :icon="'FlipHorizontal'" :size="24" title="Flip Horizontal" />
+				<IconButton :icon="'FlipVertical'" :size="24" title="Flip Vertical" />
 
 				<Separator :type="SeparatorType.Related" />
 
@@ -37,11 +37,11 @@
 
 				<Separator :type="SeparatorType.Section" />
 
-				<IconButton :size="24" title="Boolean Union"><BooleanUnion /></IconButton>
-				<IconButton :size="24" title="Boolean Subtract Front"><BooleanSubtractFront /></IconButton>
-				<IconButton :size="24" title="Boolean Subtract Back"><BooleanSubtractBack /></IconButton>
-				<IconButton :size="24" title="Boolean Intersect"><BooleanIntersect /></IconButton>
-				<IconButton :size="24" title="Boolean Difference"><BooleanDifference /></IconButton>
+				<IconButton :icon="'BooleanUnion'" :size="24" title="Boolean Union" />
+				<IconButton :icon="'BooleanSubtractFront'" :size="24" title="Boolean Subtract Front" />
+				<IconButton :icon="'BooleanSubtractBack'" :size="24" title="Boolean Subtract Back" />
+				<IconButton :icon="'BooleanIntersect'" :size="24" title="Boolean Intersect" />
+				<IconButton :icon="'BooleanDifference'" :size="24" title="Boolean Difference" />
 
 				<Separator :type="SeparatorType.Related" />
 
@@ -53,9 +53,9 @@
 			<div class="spacer"></div>
 			<div class="right side">
 				<RadioInput :initialIndex="0" @changed="viewModeChanged">
-					<IconButton :size="24" title="View Mode: Normal"><ViewModeNormal /></IconButton>
-					<IconButton :size="24" title="View Mode: Outline"><ViewModeOutline /></IconButton>
-					<IconButton :size="24" title="View Mode: Pixels"><ViewModePixels /></IconButton>
+					<IconButton :icon="'ViewModeNormal'" :size="24" title="View Mode: Normal" />
+					<IconButton :icon="'ViewModeOutline'" :size="24" title="View Mode: Outline" />
+					<IconButton :icon="'ViewModePixels'" :size="24" title="View Mode: Pixels" />
 					<PopoverButton>
 						<h3>Display Mode</h3>
 						<p>More display mode options will be here</p>
@@ -64,9 +64,9 @@
 
 				<Separator :type="SeparatorType.Section" />
 
-				<IconButton :size="24" title="Zoom In"><ZoomIn /></IconButton>
-				<IconButton :size="24" title="Zoom Out"><ZoomOut /></IconButton>
-				<IconButton :size="24" title="Zoom to 100%"><ZoomReset /></IconButton>
+				<IconButton :icon="'ZoomIn'" :size="24" title="Zoom In" />
+				<IconButton :icon="'ZoomOut'" :size="24" title="Zoom Out" />
+				<IconButton :icon="'ZoomReset'" :size="24" title="Zoom to 100%" />
 
 				<Separator :type="SeparatorType.Related" />
 
@@ -76,36 +76,36 @@
 		<LayoutRow :class="'shelf-and-viewport'">
 			<LayoutCol :class="'shelf'">
 				<div class="tools">
-					<ShelfItem title="Select Tool (V)" :active="activeTool === 'Select'" @click="selectTool('Select')"><SelectTool /></ShelfItem>
-					<ShelfItem title="Crop Tool" :active="activeTool === 'Crop'" @click="'tool not implemented' || selectTool('Crop')"><CropTool /></ShelfItem>
-					<ShelfItem title="Navigate Tool" :active="activeTool === 'Navigate'" @click="'tool not implemented' || selectTool('Navigate')"><NavigateTool /></ShelfItem>
-					<ShelfItem title="Eyedropper Tool" :active="activeTool === 'Eyedropper'" @click="'tool not implemented' || selectTool('Eyedropper')"><EyedropperTool /></ShelfItem>
+					<ShelfItem :icon="'SelectTool'" title="Select Tool (V)" :active="activeTool === 'Select'" @click="selectTool('Select')" />
+					<ShelfItem :icon="'CropTool'" title="Crop Tool" :active="activeTool === 'Crop'" @click="'tool not implemented' || selectTool('Crop')" />
+					<ShelfItem :icon="'NavigateTool'" title="Navigate Tool" :active="activeTool === 'Navigate'" @click="'tool not implemented' || selectTool('Navigate')" />
+					<ShelfItem :icon="'EyedropperTool'" title="Eyedropper Tool" :active="activeTool === 'Eyedropper'" @click="'tool not implemented' || selectTool('Eyedropper')" />
 
 					<Separator :type="SeparatorType.Section" :direction="SeparatorDirection.Vertical" />
 
-					<ShelfItem title="Text Tool" :active="activeTool === 'Text'" @click="'tool not implemented' || selectTool('Text')"><TextTool /></ShelfItem>
-					<ShelfItem title="Fill Tool" :active="activeTool === 'Fill'" @click="'tool not implemented' || selectTool('Fill')"><FillTool /></ShelfItem>
-					<ShelfItem title="Gradient Tool" :active="activeTool === 'Gradient'" @click="'tool not implemented' || selectTool('Gradient')"><GradientTool /></ShelfItem>
+					<ShelfItem :icon="'TextTool'" title="Text Tool" :active="activeTool === 'Text'" @click="'tool not implemented' || selectTool('Text')" />
+					<ShelfItem :icon="'FillTool'" title="Fill Tool" :active="activeTool === 'Fill'" @click="'tool not implemented' || selectTool('Fill')" />
+					<ShelfItem :icon="'GradientTool'" title="Gradient Tool" :active="activeTool === 'Gradient'" @click="'tool not implemented' || selectTool('Gradient')" />
 
 					<Separator :type="SeparatorType.Section" :direction="SeparatorDirection.Vertical" />
 
-					<ShelfItem title="Brush Tool" :active="activeTool === 'Brush'" @click="'tool not implemented' || selectTool('Brush')"><BrushTool /></ShelfItem>
-					<ShelfItem title="Heal Tool" :active="activeTool === 'Heal'" @click="'tool not implemented' || selectTool('Heal')"><HealTool /></ShelfItem>
-					<ShelfItem title="Clone Tool" :active="activeTool === 'Clone'" @click="'tool not implemented' || selectTool('Clone')"><CloneTool /></ShelfItem>
-					<ShelfItem title="Patch Tool" :active="activeTool === 'Patch'" @click="'tool not implemented' || selectTool('Patch')"><PatchTool /></ShelfItem>
-					<ShelfItem title="Detail Tool" :active="activeTool === 'BlurSharpen'" @click="'tool not implemented' || selectTool('BlurSharpen')"><BlurSharpenTool /></ShelfItem>
-					<ShelfItem title="Relight Tool" :active="activeTool === 'Relight'" @click="'tool not implemented' || selectTool('Relight')"><RelightTool /></ShelfItem>
+					<ShelfItem :icon="'BrushTool'" title="Brush Tool" :active="activeTool === 'Brush'" @click="'tool not implemented' || selectTool('Brush')" />
+					<ShelfItem :icon="'HealTool'" title="Heal Tool" :active="activeTool === 'Heal'" @click="'tool not implemented' || selectTool('Heal')" />
+					<ShelfItem :icon="'CloneTool'" title="Clone Tool" :active="activeTool === 'Clone'" @click="'tool not implemented' || selectTool('Clone')" />
+					<ShelfItem :icon="'PatchTool'" title="Patch Tool" :active="activeTool === 'Patch'" @click="'tool not implemented' || selectTool('Patch')" />
+					<ShelfItem :icon="'BlurSharpenTool'" title="Detail Tool" :active="activeTool === 'BlurSharpen'" @click="'tool not implemented' || selectTool('BlurSharpen')" />
+					<ShelfItem :icon="'RelightTool'" title="Relight Tool" :active="activeTool === 'Relight'" @click="'tool not implemented' || selectTool('Relight')" />
 
 					<Separator :type="SeparatorType.Section" :direction="SeparatorDirection.Vertical" />
 
-					<ShelfItem title="Path Tool" :active="activeTool === 'Path'" @click="'tool not implemented' || selectTool('Path')"><PathTool /></ShelfItem>
-					<ShelfItem title="Pen Tool (P)" :active="activeTool === 'Pen'" @click="selectTool('Pen')"><PenTool /></ShelfItem>
-					<ShelfItem title="Freehand Tool" :active="activeTool === 'Freehand'" @click="'tool not implemented' || selectTool('Freehand')"><FreehandTool /></ShelfItem>
-					<ShelfItem title="Spline Tool" :active="activeTool === 'Spline'" @click="'tool not implemented' || selectTool('Spline')"><SplineTool /></ShelfItem>
-					<ShelfItem title="Line Tool (L)" :active="activeTool === 'Line'" @click="selectTool('Line')"><LineTool /></ShelfItem>
-					<ShelfItem title="Rectangle Tool (M)" :active="activeTool === 'Rectangle'" @click="selectTool('Rectangle')"><RectangleTool /></ShelfItem>
-					<ShelfItem title="Ellipse Tool (E)" :active="activeTool === 'Ellipse'" @click="selectTool('Ellipse')"><EllipseTool /></ShelfItem>
-					<ShelfItem title="Shape Tool (Y)" :active="activeTool === 'Shape'" @click="selectTool('Shape')"><ShapeTool /></ShelfItem>
+					<ShelfItem :icon="'PathTool'" title="Path Tool" :active="activeTool === 'Path'" @click="'tool not implemented' || selectTool('Path')" />
+					<ShelfItem :icon="'PenTool'" title="Pen Tool (P)" :active="activeTool === 'Pen'" @click="selectTool('Pen')" />
+					<ShelfItem :icon="'FreehandTool'" title="Freehand Tool" :active="activeTool === 'Freehand'" @click="'tool not implemented' || selectTool('Freehand')" />
+					<ShelfItem :icon="'SplineTool'" title="Spline Tool" :active="activeTool === 'Spline'" @click="'tool not implemented' || selectTool('Spline')" />
+					<ShelfItem :icon="'LineTool'" title="Line Tool (L)" :active="activeTool === 'Line'" @click="selectTool('Line')" />
+					<ShelfItem :icon="'RectangleTool'" title="Rectangle Tool (M)" :active="activeTool === 'Rectangle'" @click="selectTool('Rectangle')" />
+					<ShelfItem :icon="'EllipseTool'" title="Ellipse Tool (E)" :active="activeTool === 'Ellipse'" @click="selectTool('Ellipse')" />
+					<ShelfItem :icon="'ShapeTool'" title="Shape Tool (Y)" :active="activeTool === 'Shape'" @click="selectTool('Shape')" />
 				</div>
 				<div class="spacer"></div>
 				<WorkingColors />
@@ -177,46 +177,6 @@ import IconButton from "../widgets/buttons/IconButton.vue";
 import PopoverButton from "../widgets/buttons/PopoverButton.vue";
 import RadioInput from "../widgets/inputs/RadioInput.vue";
 import NumberInput from "../widgets/inputs/NumberInput.vue";
-import SelectTool from "../../../assets/svg/24x24-bounds-24x24-icon/document-tool-layout-select.svg";
-import CropTool from "../../../assets/svg/24x24-bounds-24x24-icon/document-tool-layout-crop.svg";
-import NavigateTool from "../../../assets/svg/24x24-bounds-24x24-icon/document-tool-layout-navigate.svg";
-import EyedropperTool from "../../../assets/svg/24x24-bounds-24x24-icon/document-tool-layout-eyedropper.svg";
-import TextTool from "../../../assets/svg/24x24-bounds-24x24-icon/document-tool-parametric-text.svg";
-import FillTool from "../../../assets/svg/24x24-bounds-24x24-icon/document-tool-parametric-fill.svg";
-import GradientTool from "../../../assets/svg/24x24-bounds-24x24-icon/document-tool-parametric-gradient.svg";
-import BrushTool from "../../../assets/svg/24x24-bounds-24x24-icon/document-tool-raster-brush.svg";
-import HealTool from "../../../assets/svg/24x24-bounds-24x24-icon/document-tool-raster-heal.svg";
-import CloneTool from "../../../assets/svg/24x24-bounds-24x24-icon/document-tool-raster-clone.svg";
-import PatchTool from "../../../assets/svg/24x24-bounds-24x24-icon/document-tool-raster-patch.svg";
-import BlurSharpenTool from "../../../assets/svg/24x24-bounds-24x24-icon/document-tool-raster-detail.svg";
-import RelightTool from "../../../assets/svg/24x24-bounds-24x24-icon/document-tool-raster-relight.svg";
-import PathTool from "../../../assets/svg/24x24-bounds-24x24-icon/document-tool-vector-path.svg";
-import PenTool from "../../../assets/svg/24x24-bounds-24x24-icon/document-tool-vector-pen.svg";
-import FreehandTool from "../../../assets/svg/24x24-bounds-24x24-icon/document-tool-vector-freehand.svg";
-import SplineTool from "../../../assets/svg/24x24-bounds-24x24-icon/document-tool-vector-spline.svg";
-import LineTool from "../../../assets/svg/24x24-bounds-24x24-icon/document-tool-vector-line.svg";
-import RectangleTool from "../../../assets/svg/24x24-bounds-24x24-icon/document-tool-vector-rectangle.svg";
-import EllipseTool from "../../../assets/svg/24x24-bounds-24x24-icon/document-tool-vector-ellipse.svg";
-import ShapeTool from "../../../assets/svg/24x24-bounds-24x24-icon/document-tool-vector-shape.svg";
-import AlignHorizontalLeft from "../../../assets/svg/24x24-bounds-16x16-icon/align-horizontal-left.svg";
-import AlignHorizontalCenter from "../../../assets/svg/24x24-bounds-16x16-icon/align-horizontal-center.svg";
-import AlignHorizontalRight from "../../../assets/svg/24x24-bounds-16x16-icon/align-horizontal-right.svg";
-import AlignVerticalTop from "../../../assets/svg/24x24-bounds-16x16-icon/align-vertical-top.svg";
-import AlignVerticalCenter from "../../../assets/svg/24x24-bounds-16x16-icon/align-vertical-center.svg";
-import AlignVerticalBottom from "../../../assets/svg/24x24-bounds-16x16-icon/align-vertical-bottom.svg";
-import FlipHorizontal from "../../../assets/svg/24x24-bounds-16x16-icon/flip-horizontal.svg";
-import FlipVertical from "../../../assets/svg/24x24-bounds-16x16-icon/flip-vertical.svg";
-import BooleanUnion from "../../../assets/svg/24x24-bounds-16x16-icon/boolean-union.svg";
-import BooleanSubtractFront from "../../../assets/svg/24x24-bounds-16x16-icon/boolean-subtract-front.svg";
-import BooleanSubtractBack from "../../../assets/svg/24x24-bounds-16x16-icon/boolean-subtract-back.svg";
-import BooleanIntersect from "../../../assets/svg/24x24-bounds-16x16-icon/boolean-intersect.svg";
-import BooleanDifference from "../../../assets/svg/24x24-bounds-16x16-icon/boolean-difference.svg";
-import ZoomReset from "../../../assets/svg/24x24-bounds-16x16-icon/zoom-reset.svg";
-import ZoomIn from "../../../assets/svg/24x24-bounds-16x16-icon/zoom-in.svg";
-import ZoomOut from "../../../assets/svg/24x24-bounds-16x16-icon/zoom-out.svg";
-import ViewModeNormal from "../../../assets/svg/24x24-bounds-16x16-icon/view-mode-normal.svg";
-import ViewModeOutline from "../../../assets/svg/24x24-bounds-16x16-icon/view-mode-outline.svg";
-import ViewModePixels from "../../../assets/svg/24x24-bounds-16x16-icon/view-mode-pixels.svg";
 
 const wasm = import("../../../wasm/pkg");
 
@@ -231,46 +191,6 @@ export default defineComponent({
 		PopoverButton,
 		RadioInput,
 		NumberInput,
-		SelectTool,
-		CropTool,
-		NavigateTool,
-		EyedropperTool,
-		TextTool,
-		FillTool,
-		GradientTool,
-		BrushTool,
-		HealTool,
-		CloneTool,
-		PatchTool,
-		BlurSharpenTool,
-		RelightTool,
-		PathTool,
-		PenTool,
-		FreehandTool,
-		SplineTool,
-		LineTool,
-		RectangleTool,
-		EllipseTool,
-		ShapeTool,
-		AlignHorizontalLeft,
-		AlignHorizontalCenter,
-		AlignHorizontalRight,
-		AlignVerticalTop,
-		AlignVerticalCenter,
-		AlignVerticalBottom,
-		FlipHorizontal,
-		FlipVertical,
-		BooleanUnion,
-		BooleanSubtractFront,
-		BooleanSubtractBack,
-		BooleanIntersect,
-		BooleanDifference,
-		ZoomReset,
-		ZoomIn,
-		ZoomOut,
-		ViewModeNormal,
-		ViewModeOutline,
-		ViewModePixels,
 	},
 	methods: {
 		async canvasMouseDown(e: MouseEvent) {
