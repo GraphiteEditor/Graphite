@@ -39,6 +39,9 @@ impl ShapePoints {
 	}
 }
 
+// TODO: The display impl and iter impl share large amounts of code and should be refactored. (Display should use the Iterator)
+// TODO: Once that is done, the trailing space from the display impl should be removed
+// Also consider implementing index
 impl std::fmt::Display for ShapePoints {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		fn rotate(v: &Vec2, theta: f64) -> Vec2 {
