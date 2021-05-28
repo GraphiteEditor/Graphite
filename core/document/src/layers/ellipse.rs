@@ -25,7 +25,7 @@ impl LayerData for Ellipse {
 
 		let _ = write!(
 			svg,
-			r#"<ellipse cx="0" cy="0" rx="{}" ry="{}" transform="translate({} {}) rotate({})" {} />"#,
+			r#"<ellipse cx="0" cy="0" rx="{}" ry="{}" transform="translate({} {}) rotate({})"{}/>"#,
 			rx,
 			ry,
 			cx,

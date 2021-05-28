@@ -1,5 +1,14 @@
 use crate::color::Color;
 use serde::{Deserialize, Serialize};
+const OPACITY_PERCISION: usize = 3;
+
+fn format_opacity(name: &str, opacity: f32) -> String {
+	if (opacity - 1.).abs() > 10f32.powi(-(OPACITY_PERCISION as i32)) {
+		format!(r#" {}-opacity="{:.percision$}""#, name, opacity, percision = OPACITY_PERCISION)
+	} else {
+		String::new()
+	}
+}
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize)]
@@ -15,8 +24,8 @@ impl Fill {
 	}
 	pub fn render(&self) -> String {
 		match self.color {
-			Some(c) => format!("fill=\"#{}\" fill-opacity=\"{:.3}\" ", c.rgb_hex(), c.a()),
-			None => "fill=\"none\" ".to_string(),
+			Some(c) => format!(r##" fill="#{}"{}"##, c.rgb_hex(), format_opacity("fill", c.a())),
+			None => r#" fill="none""#.to_string(),
 		}
 	}
 }
@@ -33,7 +42,7 @@ impl Stroke {
 		Self { color, width }
 	}
 	pub fn render(&self) -> String {
-		format!("stroke=\"#{}\" stroke-opacity=\"{:.3}\" stroke-width=\"{}\" ", self.color.rgb_hex(), self.color.a(), self.width)
+		format!(r##" stroke="#{}"{} stroke-width="{}""##, self.color.rgb_hex(), format_opacity("stroke", self.color.a()), self.width)
 	}
 }
 

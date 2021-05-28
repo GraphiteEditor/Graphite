@@ -74,9 +74,9 @@ impl MessageHandler<DocumentMessage, ()> for DocumentMessageHandler {
 				FrontendMessage::ExportDocument {
 					//TODO: Add canvas size instead of using 1080p per default
 					document: format!(
-						r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1080">{}</svg>{}"#,
+						r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1080">{}{}</svg>"#,
+						"\n",
 						self.active_document_mut().document.render_root(),
-						"\n"
 					),
 				}
 				.into(),
