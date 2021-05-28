@@ -157,6 +157,7 @@ impl Default for Mapping {
 			entry! {action=ToolMessage::SelectTool(ToolType::Pen), key_down=KeyP},
 			entry! {action=ToolMessage::SelectTool(ToolType::Shape), key_down=KeyY},
 			entry! {action=ToolMessage::SwapColors, key_down=KeyX, modifiers=[KeyShift]},
+			entry! {action=ToolMessage::SwapColors, key_down=KeyX, modifiers=[KeyCaps]},
 			// Global Actions
 			entry! {action=GlobalMessage::LogInfo, key_down=Key1},
 			entry! {action=GlobalMessage::LogDebug, key_down=Key2},

@@ -223,16 +223,17 @@ export default defineComponent({
 			}
 			todo(toolIndex);
 		},
-		download(filename: string, text: string) {
-			var element = document.createElement('a');
-			element.setAttribute('href', 'data:text/plain;charset=utf-8,' + encodeURIComponent(text));
-			element.setAttribute('download', filename);
+		download(filename: string, svgData: string) {
+			const svgBlob = new Blob([svgData], { type: "image/svg+xml;charset=utf-8" });
+			const svgUrl = URL.createObjectURL(svgBlob);
+			const element = document.createElement("a");
 
-			element.style.display = 'none';
+			element.href = svgUrl;
+			element.setAttribute("download", filename);
+			element.style.display = "none";
+
 			document.body.appendChild(element);
-
 			element.click();
-
 			document.body.removeChild(element);
 		},
 	},
