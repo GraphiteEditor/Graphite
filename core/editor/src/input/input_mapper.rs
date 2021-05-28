@@ -37,6 +37,14 @@ impl KeyMappingEntries {
 	fn push(&mut self, entry: MappingEntry) {
 		self.0.push(entry)
 	}
+
+	fn key_array() -> [Self; NUMBER_OF_KEYS] {
+		let mut array: [KeyMappingEntries; NUMBER_OF_KEYS] = unsafe { std::mem::zeroed() };
+		for key in array.iter_mut() {
+			*key = KeyMappingEntries::default();
+		}
+		array
+	}
 }
 
 #[derive(Debug, Clone)]
@@ -70,8 +78,8 @@ macro_rules! entry {
 macro_rules! mapping {
 	//[$(<action=$action:expr; message=$key:expr; $(modifiers=[$($m:ident),* $(,)?];)?>)*] => {{
 	[$($entry:expr),* $(,)?] => {{
-		let mut up: [KeyMappingEntries; NUMBER_OF_KEYS] = Default::default();
-		let mut down: [KeyMappingEntries; NUMBER_OF_KEYS] = Default::default();
+		let mut up =  KeyMappingEntries::key_array();
+		let mut down = KeyMappingEntries::key_array();
 		let mut pointer_move: KeyMappingEntries = Default::default();
 		$(
 			let arr = match $entry.trigger {
