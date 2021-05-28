@@ -156,6 +156,7 @@
 				height: 100%;
 
 				svg {
+					background: #ffffff;
 					width: 100%;
 					height: 100%;
 				}
@@ -229,10 +230,6 @@ export default defineComponent({
 			}
 			todo(toolIndex);
 		},
-		async updatePrimaryColor(c: { r: number; g: number; b: number; a: number }) {
-			const { update_primary_color, Color } = await wasm;
-			update_primary_color(new Color(c.r, c.g, c.b, c.a));
-		},
 	},
 	mounted() {
 		registerResponseHandler(ResponseType.UpdateCanvas, (responseData: Response) => {
@@ -252,9 +249,6 @@ export default defineComponent({
 		window.addEventListener("keydown", (e: KeyboardEvent) => this.keyDown(e));
 		window.addEventListener("resize", () => this.viewportResize());
 		window.addEventListener("load", () => this.viewportResize());
-
-		// TODO: Implement an actual UI for chosing colors (this is completely temporary)
-		this.updatePrimaryColor({ r: 247 / 255, g: 76 / 255, b: 0 / 255, a: 0.6 });
 	},
 	data() {
 		return {

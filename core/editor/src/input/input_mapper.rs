@@ -152,6 +152,7 @@ impl Default for Mapping {
 			entry! {action=ToolMessage::SelectTool(ToolType::Ellipse), key_down=KeyE},
 			entry! {action=ToolMessage::SelectTool(ToolType::Select), key_down=KeyV},
 			entry! {action=ToolMessage::SelectTool(ToolType::Line), key_down=KeyL},
+			entry! {action=ToolMessage::SelectTool(ToolType::Pen), key_down=KeyP},
 			entry! {action=ToolMessage::SelectTool(ToolType::Shape), key_down=KeyY},
 			entry! {action=ToolMessage::SwapColors, key_down=KeyX, modifiers=[KeyShift]},
 			// Global Actions
