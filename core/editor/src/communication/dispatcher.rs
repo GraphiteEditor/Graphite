@@ -29,11 +29,11 @@ impl Dispatcher {
 		}
 		match message {
 			NoOp => (),
-			Document(message) => self.document_message_handler.process_action(message, &mut self.input_preprocessor, &mut self.messages),
+			Document(message) => self.document_message_handler.process_action(message, (), &mut self.messages),
 			Global(message) => self.global_message_handler.process_action(message, (), &mut self.messages),
 			Tool(message) => self
 				.tool_message_handler
-				.process_action(message, (&self.document_message_handler.active_document().document, &self.input_preprocessor), &mut self.messages),
+				.process_action(message, (self.document_message_handler.active_document(), &self.input_preprocessor), &mut self.messages),
 			Frontend(message) => self.frontend_message_handler.process_action(message, (), &mut self.messages),
 			InputPreprocessor(message) => self.input_preprocessor.process_action(message, (), &mut self.messages),
 			InputMapper(message) => {

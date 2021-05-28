@@ -1,8 +1,5 @@
+use super::keyboard::{Key, KeyStates};
 use super::mouse::{MouseKeys, MouseState, ViewportPosition};
-use super::{
-	keyboard::{Key, KeyStates},
-	mouse::DocumentTransform,
-};
 use crate::message_prelude::*;
 
 #[doc(inline)]
@@ -22,7 +19,6 @@ pub enum InputPreprocessorMessage {
 pub struct InputPreprocessor {
 	pub keyboard: KeyStates,
 	pub mouse: MouseState,
-	pub document_transform: DocumentTransform,
 }
 
 enum KeyPosition {

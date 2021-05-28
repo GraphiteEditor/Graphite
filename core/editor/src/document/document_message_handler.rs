@@ -1,7 +1,4 @@
-use crate::{
-	input::{mouse::ViewportPosition, InputPreprocessor},
-	message_prelude::*,
-};
+use crate::{input::mouse::ViewportPosition, message_prelude::*};
 use document_core::{DocumentResponse, LayerId, Operation as DocumentOperation};
 
 use crate::document::Document;
@@ -45,6 +42,9 @@ impl DocumentMessageHandler {
 	pub fn active_document(&self) -> &Document {
 		&self.documents[self.active_document]
 	}
+	pub fn mut_active_document(&mut self) -> &mut Document {
+		&mut self.documents[self.active_document]
+	}
 	pub fn active_document_mut(&mut self) -> &mut Document {
 		&mut self.documents[self.active_document]
 	}
@@ -64,15 +64,15 @@ impl Default for DocumentMessageHandler {
 	}
 }
 
-impl MessageHandler<DocumentMessage, &mut InputPreprocessor> for DocumentMessageHandler {
-	fn process_action(&mut self, message: DocumentMessage, data: &mut InputPreprocessor, responses: &mut VecDeque<Message>) {
+impl MessageHandler<DocumentMessage, ()> for DocumentMessageHandler {
+	fn process_action(&mut self, message: DocumentMessage, _data: (), responses: &mut VecDeque<Message>) {
 		use DocumentMessage::*;
 		match message {
 			DocumentResize(size) => {
-				data.document_transform.size = size;
+				self.mut_active_document().document_transform.size = size;
 				responses.push_back(
 					FrontendMessage::UpdateDocumentTransform {
-						transform: data.document_transform.transform_string(),
+						transform: self.active_document().document_transform.transform_string(),
 					}
 					.into(),
 				)

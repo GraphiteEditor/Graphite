@@ -1,6 +1,7 @@
+use crate::document::Document;
 use crate::input::{mouse::ViewportPosition, InputPreprocessor};
+use crate::message_prelude::*;
 use crate::tool::{DocumentToolData, Fsm, ToolActionHandlerData};
-use crate::{message_prelude::*, SvgDocument};
 use document_core::{layers::style, Operation};
 
 #[derive(Default)]
@@ -59,7 +60,7 @@ struct ShapeToolData {
 impl Fsm for ShapeToolFsmState {
 	type ToolData = ShapeToolData;
 
-	fn transition(self, event: ToolMessage, _document: &SvgDocument, tool_data: &DocumentToolData, data: &mut Self::ToolData, input: &InputPreprocessor, responses: &mut VecDeque<Message>) -> Self {
+	fn transition(self, event: ToolMessage, document: &Document, tool_data: &DocumentToolData, data: &mut Self::ToolData, input: &InputPreprocessor, responses: &mut VecDeque<Message>) -> Self {
 		use ShapeMessage::*;
 		use ShapeToolFsmState::*;
 		if let ToolMessage::Shape(event) = event {
@@ -76,7 +77,7 @@ impl Fsm for ShapeToolFsmState {
 				(Dragging, MouseMove) => {
 					data.drag_current = input.mouse.position;
 					responses.push_back(Operation::ClearWorkingFolder.into());
-					responses.push_back(make_operation(data, tool_data, input));
+					responses.push_back(make_operation(document, data, tool_data));
 
 					Dragging
 				}
@@ -85,7 +86,7 @@ impl Fsm for ShapeToolFsmState {
 					responses.push_back(Operation::ClearWorkingFolder.into());
 					// TODO - introduce comparison threshold when operating with canvas coordinates (https://github.com/GraphiteEditor/Graphite/issues/100)
 					if data.drag_start != data.drag_current {
-						responses.push_back(make_operation(data, tool_data, input));
+						responses.push_back(make_operation(document, data, tool_data));
 						responses.push_back(Operation::CommitTransaction.into());
 					}
 
@@ -99,13 +100,13 @@ impl Fsm for ShapeToolFsmState {
 
 				(Ready, LockAspectRatio) => update_state_no_op(&mut data.constrain_to_square, true, Ready),
 				(Ready, UnlockAspectRatio) => update_state_no_op(&mut data.constrain_to_square, false, Ready),
-				(Dragging, LockAspectRatio) => update_state(|data| &mut data.constrain_to_square, true, tool_data, data, input, responses, Dragging),
-				(Dragging, UnlockAspectRatio) => update_state(|data| &mut data.constrain_to_square, false, tool_data, data, input, responses, Dragging),
+				(Dragging, LockAspectRatio) => update_state(document, |data| &mut data.constrain_to_square, true, tool_data, data, responses, Dragging),
+				(Dragging, UnlockAspectRatio) => update_state(document, |data| &mut data.constrain_to_square, false, tool_data, data, responses, Dragging),
 
 				(Ready, Center) => update_state_no_op(&mut data.center_around_cursor, true, Ready),
 				(Ready, UnCenter) => update_state_no_op(&mut data.center_around_cursor, false, Ready),
-				(Dragging, Center) => update_state(|data| &mut data.center_around_cursor, true, tool_data, data, input, responses, Dragging),
-				(Dragging, UnCenter) => update_state(|data| &mut data.center_around_cursor, false, tool_data, data, input, responses, Dragging),
+				(Dragging, Center) => update_state(document, |data| &mut data.center_around_cursor, true, tool_data, data, responses, Dragging),
+				(Dragging, UnCenter) => update_state(document, |data| &mut data.center_around_cursor, false, tool_data, data, responses, Dragging),
 				_ => self,
 			}
 		} else {
@@ -120,25 +121,25 @@ fn update_state_no_op(state: &mut bool, value: bool, new_state: ShapeToolFsmStat
 }
 
 fn update_state(
+	document: &Document,
 	state: fn(&mut ShapeToolData) -> &mut bool,
 	value: bool,
 	tool_data: &DocumentToolData,
 	data: &mut ShapeToolData,
-	input: &InputPreprocessor,
 	responses: &mut VecDeque<Message>,
 	new_state: ShapeToolFsmState,
 ) -> ShapeToolFsmState {
 	*(state(data)) = value;
 
 	responses.push_back(Operation::ClearWorkingFolder.into());
-	responses.push_back(make_operation(data, tool_data, input));
+	responses.push_back(make_operation(document, data, tool_data));
 
 	new_state
 }
 
-fn make_operation(data: &ShapeToolData, tool_data: &DocumentToolData, input: &InputPreprocessor) -> Message {
-	let (x0, y0) = data.drag_start.to_document_position(&input.document_transform, false).into();
-	let (x1, y1) = data.drag_current.to_document_position(&input.document_transform, false).into();
+fn make_operation(document: &Document, data: &ShapeToolData, tool_data: &DocumentToolData) -> Message {
+	let (x0, y0) = data.drag_start.to_document_position(&document.document_transform, false).into();
+	let (x1, y1) = data.drag_current.to_document_position(&document.document_transform, false).into();
 
 	let (x0, y0, x1, y1) = if data.constrain_to_square {
 		let (x_dir, y_dir) = ((x1 - x0).signum(), (y1 - y0).signum());
@@ -168,7 +169,7 @@ fn make_operation(data: &ShapeToolData, tool_data: &DocumentToolData, input: &In
 		x1,
 		y1,
 		sides: data.sides,
-		rotation: input.document_transform.degrees,
+		rotation: document.document_transform.degrees,
 		style: style::PathStyle::new(None, Some(style::Fill::new(tool_data.primary_color))),
 	}
 	.into()

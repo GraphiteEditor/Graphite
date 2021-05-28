@@ -1,6 +1,7 @@
+use crate::document::Document;
 use crate::input::InputPreprocessor;
+use crate::message_prelude::*;
 use crate::tool::{DocumentToolData, Fsm, ToolActionHandlerData};
-use crate::{message_prelude::*, SvgDocument};
 
 #[derive(Default)]
 pub struct Select {
@@ -38,15 +39,7 @@ struct SelectToolData;
 impl Fsm for SelectToolFsmState {
 	type ToolData = SelectToolData;
 
-	fn transition(
-		self,
-		event: ToolMessage,
-		_document: &SvgDocument,
-		_tool_data: &DocumentToolData,
-		_data: &mut Self::ToolData,
-		_input: &InputPreprocessor,
-		_responses: &mut VecDeque<Message>,
-	) -> Self {
+	fn transition(self, event: ToolMessage, _document: &Document, _tool_data: &DocumentToolData, _data: &mut Self::ToolData, _input: &InputPreprocessor, _responses: &mut VecDeque<Message>) -> Self {
 		use SelectMessage::*;
 		use SelectToolFsmState::*;
 		if let ToolMessage::Select(event) = event {

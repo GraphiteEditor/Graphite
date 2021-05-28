@@ -1,6 +1,7 @@
+use crate::document::Document;
 use crate::input::{mouse::DocumentPosition, InputPreprocessor};
+use crate::message_prelude::*;
 use crate::tool::{DocumentToolData, Fsm, ToolActionHandlerData};
-use crate::{message_prelude::*, SvgDocument};
 use document_core::{layers::style, Operation};
 
 #[derive(Default)]
@@ -53,7 +54,7 @@ struct PenToolData {
 impl Fsm for PenToolFsmState {
 	type ToolData = PenToolData;
 
-	fn transition(self, event: ToolMessage, _document: &SvgDocument, tool_data: &DocumentToolData, data: &mut Self::ToolData, input: &InputPreprocessor, responses: &mut VecDeque<Message>) -> Self {
+	fn transition(self, event: ToolMessage, document: &Document, tool_data: &DocumentToolData, data: &mut Self::ToolData, input: &InputPreprocessor, responses: &mut VecDeque<Message>) -> Self {
 		use PenMessage::*;
 		use PenToolFsmState::*;
 		if let ToolMessage::Pen(event) = event {
@@ -61,14 +62,14 @@ impl Fsm for PenToolFsmState {
 				(Ready, DragStart) => {
 					responses.push_back(Operation::MountWorkingFolder { path: vec![] }.into());
 
-					let document_position = input.mouse.position.to_document_position(&input.document_transform, true);
+					let document_position = input.mouse.position.to_document_position(&document.document_transform, true);
 					data.points.push(document_position);
 					data.next_point = document_position;
 
 					Dragging
 				}
 				(Dragging, DragStop) => {
-					let document_position = input.mouse.position.to_document_position(&input.document_transform, true);
+					let document_position = input.mouse.position.to_document_position(&document.document_transform, true);
 					// TODO - introduce comparison threshold when operating with canvas coordinates (https://github.com/GraphiteEditor/Graphite/issues/100)
 					if data.points.last() != Some(&document_position) {
 						data.points.push(document_position);
@@ -81,7 +82,7 @@ impl Fsm for PenToolFsmState {
 					Dragging
 				}
 				(Dragging, MouseMove) => {
-					data.next_point = input.mouse.position.to_document_position(&input.document_transform, true);
+					data.next_point = input.mouse.position.to_document_position(&document.document_transform, true);
 
 					responses.push_back(Operation::ClearWorkingFolder.into());
 					responses.push_back(make_operation(data, tool_data, true));
