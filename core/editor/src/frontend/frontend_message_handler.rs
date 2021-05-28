@@ -12,6 +12,7 @@ pub enum FrontendMessage {
 	SetActiveTool { tool_name: String },
 	UpdateCanvas { document: String },
 	UpdateDocumentTransform { transform: String },
+	ExportDocument { document: String },
 	EnableTextInput,
 	DisableTextInput,
 }

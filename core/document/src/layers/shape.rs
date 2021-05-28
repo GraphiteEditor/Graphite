@@ -28,7 +28,7 @@ impl LayerData for Shape {
 	fn render(&mut self, svg: &mut String) {
 		let _ = write!(
 			svg,
-			r#"<polygon points="{}" transform="rotate({}) translate({} {}) scale({} {})" {} />"#,
+			r#"<polygon points="{}" transform="rotate({}) translate({} {}) scale({} {})"{} />"#,
 			self.shape,
 			self.rotation,
 			self.bounding_rect.origin().x,
