@@ -22,7 +22,7 @@ impl LayerData for Rect {
 	fn render(&mut self, svg: &mut String) {
 		let _ = write!(
 			svg,
-			r#"<rect x="{}" y="{}" width="{}" height="{}"{}/>"#,
+			r#"<rect x="{}" y="{}" width="{}" height="{}"{} />"#,
 			self.shape.min_x(),
 			self.shape.min_y(),
 			self.shape.width(),

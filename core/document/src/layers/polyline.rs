@@ -30,7 +30,7 @@ impl LayerData for PolyLine {
 		for point in points {
 			let _ = write!(svg, " {:.3} {:.3}", point.x, point.y);
 		}
-		let _ = write!(svg, r#""{}/>"#, self.style.render());
+		let _ = write!(svg, r#""{} />"#, self.style.render());
 	}
 }
 
@@ -44,5 +44,5 @@ fn polyline_should_render() {
 
 	let mut svg = String::new();
 	polyline.render(&mut svg);
-	assert_eq!(r##"<polyline points="3.000 4.124 1.000 5.540" stroke="#00FF00" stroke-width="0.4"/>"##, svg);
+	assert_eq!(r##"<polyline points="3.000 4.124 1.000 5.540" stroke="#00FF00" stroke-width="0.4" />"##, svg);
 }
