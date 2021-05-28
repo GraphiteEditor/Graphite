@@ -22,7 +22,7 @@ impl LayerData for Circle {
 	fn render(&mut self, svg: &mut String) {
 		let _ = write!(
 			svg,
-			r#"<circle cx="{}" cy="{}" r="{}" {} />"#,
+			r#"<circle cx="{}" cy="{}" r="{}"{} />"#,
 			self.shape.center.x,
 			self.shape.center.y,
 			self.shape.radius,
