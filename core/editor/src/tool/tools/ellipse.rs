@@ -135,8 +135,8 @@ fn update_state(
 }
 
 fn make_operation(data: &EllipseToolData, tool_data: &DocumentToolData, input: &InputPreprocessor) -> Message {
-	let (x0, y0) = data.drag_start.to_canvas_position(&input.canvas_transform, false).into();
-	let (x1, y1) = data.drag_current.to_canvas_position(&input.canvas_transform, false).into();
+	let (x0, y0) = data.drag_start.to_document_position(&input.document_transform, false).into();
+	let (x1, y1) = data.drag_current.to_document_position(&input.document_transform, false).into();
 
 	if data.constrain_to_circle {
 		let (cx, cy, r) = if data.center_around_cursor {
@@ -152,7 +152,7 @@ fn make_operation(data: &EllipseToolData, tool_data: &DocumentToolData, input: &
 			cx,
 			cy,
 			r,
-			rotation: input.canvas_transform.degrees,
+			rotation: input.document_transform.degrees,
 			style: style::PathStyle::new(None, Some(style::Fill::new(tool_data.primary_color))),
 		}
 	} else {
@@ -165,7 +165,7 @@ fn make_operation(data: &EllipseToolData, tool_data: &DocumentToolData, input: &
 			cy,
 			rx,
 			ry,
-			rotation: input.canvas_transform.degrees,
+			rotation: input.document_transform.degrees,
 			style: style::PathStyle::new(None, Some(style::Fill::new(tool_data.primary_color))),
 		}
 	}

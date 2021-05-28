@@ -147,8 +147,8 @@ fn update_state(
 }
 
 fn make_operation(data: &mut LineToolData, tool_data: &DocumentToolData, input: &InputPreprocessor) -> Message {
-	let (x0, y0) = data.drag_start.to_canvas_position(&input.canvas_transform, true).into();
-	let (x1, y1) = data.drag_current.to_canvas_position(&input.canvas_transform, true).into();
+	let (x0, y0) = data.drag_start.to_document_position(&input.document_transform, true).into();
+	let (x1, y1) = data.drag_current.to_document_position(&input.document_transform, true).into();
 	let (dx, dy) = (x1 - x0, y1 - y0);
 	let mut angle = f64::atan2(dx, dy);
 

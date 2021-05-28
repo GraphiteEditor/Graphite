@@ -1,7 +1,7 @@
 use super::mouse::{MouseKeys, MouseState, ViewportPosition};
 use super::{
 	keyboard::{Key, KeyStates},
-	mouse::CanvasTransform,
+	mouse::DocumentTransform,
 };
 use crate::message_prelude::*;
 
@@ -22,7 +22,7 @@ pub enum InputPreprocessorMessage {
 pub struct InputPreprocessor {
 	pub keyboard: KeyStates,
 	pub mouse: MouseState,
-	pub canvas_transform: CanvasTransform,
+	pub document_transform: DocumentTransform,
 }
 
 enum KeyPosition {

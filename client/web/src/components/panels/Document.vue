@@ -168,7 +168,7 @@
 
 <script lang="ts">
 import { defineComponent } from "vue";
-import { ResponseType, registerResponseHandler, Response, UpdateCanvas, UpdateCanvasTransform, SetActiveTool } from "../../response-handler";
+import { ResponseType, registerResponseHandler, Response, UpdateCanvas, UpdateDocumentTransform, SetActiveTool } from "../../response-handler";
 import LayoutRow from "../layout/LayoutRow.vue";
 import LayoutCol from "../layout/LayoutCol.vue";
 import WorkingColors from "../widgets/WorkingColors.vue";
@@ -236,8 +236,8 @@ export default defineComponent({
 			const updateData = responseData as UpdateCanvas;
 			if (updateData) this.viewportSvg = updateData.document;
 		});
-		registerResponseHandler(ResponseType.UpdateCanvasTransform, (responseData: Response) => {
-			const updateData = responseData as UpdateCanvasTransform;
+		registerResponseHandler(ResponseType.UpdateDocumentTransform, (responseData: Response) => {
+			const updateData = responseData as UpdateDocumentTransform;
 			if (updateData) this.viewportTransform = updateData.transform;
 		});
 		registerResponseHandler(ResponseType.SetActiveTool, (responseData: Response) => {

@@ -68,10 +68,10 @@ impl MessageHandler<DocumentMessage, &mut InputPreprocessor> for DocumentMessage
 		use DocumentMessage::*;
 		match message {
 			DocumentResize(size) => {
-				data.canvas_transform.size = size;
+				data.document_transform.size = size;
 				responses.push_back(
-					FrontendMessage::UpdateCanvasTransform {
-						transform: data.canvas_transform.transform_string(),
+					FrontendMessage::UpdateDocumentTransform {
+						transform: data.document_transform.transform_string(),
 					}
 					.into(),
 				)

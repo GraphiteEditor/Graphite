@@ -2,12 +2,12 @@ use bitflags::bitflags;
 
 // A position on the infinite canvas
 #[derive(Debug, Copy, Clone, Default, PartialEq)]
-pub struct CanvasPosition {
+pub struct DocumentPosition {
 	pub x: f64,
 	pub y: f64,
 }
 
-impl CanvasPosition {
+impl DocumentPosition {
 	pub fn distance(&self, other: &Self) -> f64 {
 		let x_diff = other.x - self.x;
 		let y_diff = other.y - self.y;
@@ -28,26 +28,26 @@ impl CanvasPosition {
 		Self { x: self.x * x, y: self.y * x }
 	}
 }
-impl From<CanvasPosition> for (f64, f64) {
-	fn from(item: CanvasPosition) -> Self {
+impl From<DocumentPosition> for (f64, f64) {
+	fn from(item: DocumentPosition) -> Self {
 		(item.x, item.y)
 	}
 }
 
 // The location of the viewport (or anything else) in the canvas
 #[derive(Debug, Copy, Clone, PartialEq)]
-pub struct CanvasTransform {
-	pub location: CanvasPosition,
+pub struct DocumentTransform {
+	pub location: DocumentPosition,
 	pub radians: f64,
 	pub degrees: f64,
 	pub scale: f64,
 	pub size: ViewportPosition,
 }
 
-impl Default for CanvasTransform {
+impl Default for DocumentTransform {
 	fn default() -> Self {
 		Self {
-			location: CanvasPosition { x: 800., y: 800. },
+			location: DocumentPosition { x: 800., y: 800. },
 			scale: 2.4,
 			radians: 0.785398163, // 45 degrees in radians
 			degrees: 45.,
@@ -56,10 +56,10 @@ impl Default for CanvasTransform {
 	}
 }
 
-impl CanvasTransform {
+impl DocumentTransform {
 	pub fn transform_string(&self) -> String {
 		let inverse_scale = 1. / self.scale;
-		let size = CanvasPosition {
+		let size = DocumentPosition {
 			x: self.size.x as f64 / 2.,
 			y: self.size.y as f64 / 2.,
 		};
@@ -87,27 +87,26 @@ impl ViewportPosition {
 		let y_diff = other.y as i64 - self.y as i64;
 		f64::sqrt((x_diff * x_diff + y_diff * y_diff) as f64)
 	}
-	pub fn to_canvas_position(&self, canvas_transform: &CanvasTransform, apply_rotation: bool) -> CanvasPosition {
+	pub fn to_document_position(&self, document_transform: &DocumentTransform, apply_rotation: bool) -> DocumentPosition {
 		if apply_rotation {
-			CanvasPosition { x: self.x as f64, y: self.y as f64 }
-				.add(canvas_transform.size.x as f64 * -0.5, canvas_transform.size.y as f64 * -0.5)
-				.rotate(canvas_transform.radians)
-				.multiply(canvas_transform.scale)
-				.add(canvas_transform.location.x, canvas_transform.location.y)
+			DocumentPosition { x: self.x as f64, y: self.y as f64 }
+				.add(document_transform.size.x as f64 * -0.5, document_transform.size.y as f64 * -0.5)
+				.rotate(document_transform.radians)
+				.multiply(document_transform.scale)
+				.add(document_transform.location.x, document_transform.location.y)
 		} else {
-			let (canvas_location_x, canvas_location_y): (f64, f64) = {
-				let cosine = (-canvas_transform.radians).cos();
-				let sine = (-canvas_transform.radians).sin();
+			let (document_location_x, document_location_y): (f64, f64) = {
+				let cosine = (-document_transform.radians).cos();
+				let sine = (-document_transform.radians).sin();
 				(
-					canvas_transform.location.x * cosine - canvas_transform.location.y * sine,
-					canvas_transform.location.x * sine + canvas_transform.location.y * cosine,
+					document_transform.location.x * cosine - document_transform.location.y * sine,
+					document_transform.location.x * sine + document_transform.location.y * cosine,
 				)
 			};
-			CanvasPosition { x: self.x as f64, y: self.y as f64 }
-				.add(canvas_transform.size.x as f64 * -0.5, canvas_transform.size.y as f64 * -0.5)
-				//.rotate(canvas_transform.radians)
-				.multiply(canvas_transform.scale)
-				.add(canvas_location_x, canvas_location_y)
+			DocumentPosition { x: self.x as f64, y: self.y as f64 }
+				.add(document_transform.size.x as f64 * -0.5, document_transform.size.y as f64 * -0.5)
+				.multiply(document_transform.scale)
+				.add(document_location_x, document_location_y)
 		}
 	}
 }

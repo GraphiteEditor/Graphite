@@ -33,7 +33,7 @@ pub fn on_viewport_resize(new_width: u32, new_height: u32) -> Result<(), JsValue
 /// Mouse movement within the screenspace bounds of the viewport
 #[wasm_bindgen]
 pub fn on_mouse_move(x: u32, y: u32) -> Result<(), JsValue> {
-	// TODO: Convert these screenspace viewport coordinates to canvas coordinates based on the current zoom and pan
+	// TODO: Convert these screenspace viewport coordinates to document coordinates based on the current zoom and pan
 	let ev = InputPreprocessorMessage::MouseMove(ViewportPosition { x, y });
 	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(ev)).map_err(convert_error)
 }

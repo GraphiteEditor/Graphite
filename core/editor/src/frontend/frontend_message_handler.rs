@@ -11,7 +11,7 @@ pub enum FrontendMessage {
 	ExpandFolder { path: Vec<LayerId>, children: Vec<LayerPanelEntry> },
 	SetActiveTool { tool_name: String },
 	UpdateCanvas { document: String },
-	UpdateCanvasTransform { transform: String },
+	UpdateDocumentTransform { transform: String },
 	EnableTextInput,
 	DisableTextInput,
 }
@@ -54,7 +54,7 @@ impl MessageHandler<FrontendMessage, ()> for FrontendMessageHandler {
 		ExpandFolder,
 		SetActiveTool,
 		UpdateCanvas,
-		UpdateCanvasTransform,
+		UpdateDocumentTransform,
 		EnableTextInput,
 		DisableTextInput,
 	);
