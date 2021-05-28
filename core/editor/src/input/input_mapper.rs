@@ -98,8 +98,6 @@ impl Default for Mapping {
 			entry! {action=RectangleMessage::Abort, key_down=KeyEscape},
 			entry! {action=RectangleMessage::LockAspectRatio, key_down=KeyShift},
 			entry! {action=RectangleMessage::UnlockAspectRatio, key_up=KeyShift},
-			entry! {action=RectangleMessage::LockAspectRatio, key_down=KeyCaps},
-			entry! {action=RectangleMessage::UnlockAspectRatio, key_up=KeyCaps},
 			// Ellipse
 			entry! {action=EllipseMessage::Center, key_down=KeyAlt},
 			entry! {action=EllipseMessage::UnCenter, key_up=KeyAlt},
@@ -110,8 +108,6 @@ impl Default for Mapping {
 			entry! {action=EllipseMessage::Abort, key_down=KeyEscape},
 			entry! {action=EllipseMessage::LockAspectRatio, key_down=KeyShift},
 			entry! {action=EllipseMessage::UnlockAspectRatio, key_up=KeyShift},
-			entry! {action=EllipseMessage::LockAspectRatio, key_down=KeyCaps},
-			entry! {action=EllipseMessage::UnlockAspectRatio, key_up=KeyCaps},
 			// Shape
 			entry! {action=ShapeMessage::Center, key_down=KeyAlt},
 			entry! {action=ShapeMessage::UnCenter, key_up=KeyAlt},
@@ -122,8 +118,6 @@ impl Default for Mapping {
 			entry! {action=ShapeMessage::Abort, key_down=KeyEscape},
 			entry! {action=ShapeMessage::LockAspectRatio, key_down=KeyShift},
 			entry! {action=ShapeMessage::UnlockAspectRatio, key_up=KeyShift},
-			entry! {action=ShapeMessage::LockAspectRatio, key_down=KeyCaps},
-			entry! {action=ShapeMessage::UnlockAspectRatio, key_up=KeyCaps},
 			// Line
 			entry! {action=LineMessage::Center, key_down=KeyAlt},
 			entry! {action=LineMessage::UnCenter, key_up=KeyAlt},
@@ -136,8 +130,6 @@ impl Default for Mapping {
 			entry! {action=LineMessage::UnlockAngle, key_up=KeyControl},
 			entry! {action=LineMessage::SnapToAngle, key_down=KeyShift},
 			entry! {action=LineMessage::UnSnapToAngle, key_up=KeyShift},
-			entry! {action=LineMessage::SnapToAngle, key_down=KeyCaps},
-			entry! {action=LineMessage::UnSnapToAngle, key_up=KeyCaps},
 			// Pen
 			entry! {action=PenMessage::MouseMove, message=InputMapperMessage::PointerMove},
 			entry! {action=PenMessage::DragStart, key_down=Lmb},
@@ -147,7 +139,6 @@ impl Default for Mapping {
 			entry! {action=PenMessage::Confirm, key_down=KeyEnter},
 			// Document Actions
 			entry! {action=DocumentMessage::Undo, key_down=KeyZ, modifiers=[KeyControl]},
-			entry! {action=DocumentMessage::ExportDocument, key_down=KeyS, modifiers=[KeyControl, KeyCaps]},
 			entry! {action=DocumentMessage::ExportDocument, key_down=KeyS, modifiers=[KeyControl, KeyShift]},
 			entry! {action=DocumentMessage::ExportDocument, key_down=KeyE, modifiers=[KeyControl]},
 			// Tool Actions
@@ -158,7 +149,6 @@ impl Default for Mapping {
 			entry! {action=ToolMessage::SelectTool(ToolType::Pen), key_down=KeyP},
 			entry! {action=ToolMessage::SelectTool(ToolType::Shape), key_down=KeyY},
 			entry! {action=ToolMessage::SwapColors, key_down=KeyX, modifiers=[KeyShift]},
-			entry! {action=ToolMessage::SwapColors, key_down=KeyX, modifiers=[KeyCaps]},
 			// Global Actions
 			entry! {action=GlobalMessage::LogInfo, key_down=Key1},
 			entry! {action=GlobalMessage::LogDebug, key_down=Key2},
