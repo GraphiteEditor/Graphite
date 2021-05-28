@@ -15,8 +15,8 @@ impl Fill {
 	}
 	pub fn render(&self) -> String {
 		match self.color {
-			Some(c) => format!("fill: #{};", c.as_hex()),
-			None => "fill: none;".to_string(),
+			Some(c) => format!("fill=\"#{}\" fill-opacity=\"{:.3}\"", c.rgb_hex(), c.a()),
+			None => "fill=\"none\"".to_string(),
 		}
 	}
 }
@@ -33,7 +33,7 @@ impl Stroke {
 		Self { color, width }
 	}
 	pub fn render(&self) -> String {
-		format!("stroke: #{};stroke-width:{};", self.color.as_hex(), self.width)
+		format!("stroke=\"#{}\" stroke-opacity=\"{:.3}\" stroke-width=\"{}\"", self.color.rgb_hex(), self.color.a(), self.width)
 	}
 }
 
@@ -49,7 +49,7 @@ impl PathStyle {
 	}
 	pub fn render(&self) -> String {
 		format!(
-			"style=\"{}{}\"",
+			"{}{}",
 			match self.fill {
 				Some(fill) => fill.render(),
 				None => String::new(),
