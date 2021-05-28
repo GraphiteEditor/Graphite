@@ -77,7 +77,7 @@ pub fn translate_append_mode(name: &str) -> Option<SelectAppendMode> {
 pub fn translate_key(name: &str) -> Key {
 	log::trace!("pressed key: {}", name);
 	use Key::*;
-	match name {
+	match name.to_lowercase().as_str() {
 		"e" => KeyE,
 		"v" => KeyV,
 		"l" => KeyL,
@@ -85,11 +85,9 @@ pub fn translate_key(name: &str) -> Key {
 		"r" => KeyR,
 		"m" => KeyM,
 		"x" => KeyX,
-		"X" => KeyX,
 		"z" => KeyZ,
 		"y" => KeyY,
 		"s" => KeyS,
-		"S" => KeyS,
 		"0" => Key0,
 		"1" => Key1,
 		"2" => Key2,
@@ -100,12 +98,12 @@ pub fn translate_key(name: &str) -> Key {
 		"7" => Key7,
 		"8" => Key8,
 		"9" => Key9,
-		"Enter" => KeyEnter,
-		"Shift" => KeyShift,
-		"CapsLock" => KeyCaps,
-		"Control" => KeyControl,
-		"Alt" => KeyAlt,
-		"Escape" => KeyEscape,
+		"enter" => KeyEnter,
+		"shift" => KeyShift,
+		"capslock" => KeyCaps,
+		"control" => KeyControl,
+		"alt" => KeyAlt,
+		"escape" => KeyEscape,
 		_ => UnknownKey,
 	}
 }
