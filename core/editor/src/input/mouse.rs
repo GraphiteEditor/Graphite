@@ -1,3 +1,5 @@
+use std::ops::{Add, Mul};
+
 use bitflags::bitflags;
 
 // A position on the infinite canvas
@@ -21,11 +23,19 @@ impl DocumentPosition {
 			y: self.x * sine + self.y * cosine,
 		}
 	}
-	pub fn add(&self, x: f64, y: f64) -> Self {
-		Self { x: self.x + x, y: self.y + y }
+}
+impl Mul<f64> for DocumentPosition {
+	// The multiplication of rational numbers is a closed operation.
+	type Output = Self;
+
+	fn mul(self, rhs: f64) -> Self {
+		Self { x: self.x * rhs, y: self.y * rhs }
 	}
-	pub fn multiply(&self, x: f64) -> Self {
-		Self { x: self.x * x, y: self.y * x }
+}
+impl Add<(f64, f64)> for DocumentPosition {
+	type Output = DocumentPosition;
+	fn add(self, rhs: (f64, f64)) -> Self {
+		Self { x: self.x + rhs.0, y: self.y + rhs.1 }
 	}
 }
 impl From<DocumentPosition> for (f64, f64) {
@@ -63,7 +73,7 @@ impl DocumentTransform {
 			x: self.size.x as f64 / 2.,
 			y: self.size.y as f64 / 2.,
 		};
-		let translation = self.location.multiply(-inverse_scale).rotate(-self.radians);
+		let translation = (self.location * -inverse_scale).rotate(-self.radians);
 		format!(
 			"translate({},{}) scale({}) rotate({})",
 			translation.x + size.x,
@@ -90,10 +100,10 @@ impl ViewportPosition {
 	pub fn to_document_position(&self, document_transform: &DocumentTransform, apply_rotation: bool) -> DocumentPosition {
 		if apply_rotation {
 			DocumentPosition { x: self.x as f64, y: self.y as f64 }
-				.add(document_transform.size.x as f64 * -0.5, document_transform.size.y as f64 * -0.5)
+				.add((document_transform.size.x as f64 * -0.5, document_transform.size.y as f64 * -0.5))
 				.rotate(document_transform.radians)
-				.multiply(document_transform.scale)
-				.add(document_transform.location.x, document_transform.location.y)
+				.mul(document_transform.scale)
+				.add((document_transform.location.x, document_transform.location.y))
 		} else {
 			let (document_location_x, document_location_y): (f64, f64) = {
 				let cosine = (-document_transform.radians).cos();
@@ -104,9 +114,9 @@ impl ViewportPosition {
 				)
 			};
 			DocumentPosition { x: self.x as f64, y: self.y as f64 }
-				.add(document_transform.size.x as f64 * -0.5, document_transform.size.y as f64 * -0.5)
-				.multiply(document_transform.scale)
-				.add(document_location_x, document_location_y)
+				.add((document_transform.size.x as f64 * -0.5, document_transform.size.y as f64 * -0.5))
+				.mul(document_transform.scale)
+				.add((document_location_x, document_location_y))
 		}
 	}
 }
