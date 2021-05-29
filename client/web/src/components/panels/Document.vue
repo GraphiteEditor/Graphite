@@ -250,7 +250,7 @@ export default defineComponent({
 		registerResponseHandler(ResponseType.UpdateDocumentTransform, (responseData: Response) => {
 			const updateData = responseData as UpdateDocumentTransform;
 			if (updateData) this.viewportTransform = updateData.transform;
-    });
+		});
 		registerResponseHandler(ResponseType.ExportDocument, (responseData: Response) => {
 			const updateData = responseData as ExportDocument;
 			if (updateData) this.download("canvas.svg", updateData.document);
