@@ -79,7 +79,7 @@ impl DocumentTransform {
 			translation.x + size.x,
 			translation.y + size.y,
 			inverse_scale,
-			self.radians * -57.295779513, // 180 / pi
+			self.degrees,
 		)
 	}
 }
