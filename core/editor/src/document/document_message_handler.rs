@@ -42,9 +42,6 @@ impl DocumentMessageHandler {
 	pub fn active_document(&self) -> &Document {
 		&self.documents[self.active_document]
 	}
-	pub fn mut_active_document(&mut self) -> &mut Document {
-		&mut self.documents[self.active_document]
-	}
 	pub fn active_document_mut(&mut self) -> &mut Document {
 		&mut self.documents[self.active_document]
 	}
@@ -69,7 +66,7 @@ impl MessageHandler<DocumentMessage, ()> for DocumentMessageHandler {
 		use DocumentMessage::*;
 		match message {
 			DocumentResize(size) => {
-				self.mut_active_document().document_transform.size = size;
+				self.active_document_mut().document_transform.size = size;
 				responses.push_back(
 					FrontendMessage::UpdateDocumentTransform {
 						transform: self.active_document().document_transform.transform_string(),
