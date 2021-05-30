@@ -170,7 +170,7 @@ import { ResponseType, registerResponseHandler, Response, UpdateCanvas, SetActiv
 import LayoutRow from "../layout/LayoutRow.vue";
 import LayoutCol from "../layout/LayoutCol.vue";
 import WorkingColors from "../widgets/WorkingColors.vue";
-import { PopoverDirection } from "../widgets/overlays/Popover.vue";
+import { MenuDirection } from "../widgets/floating-menus/FloatingMenu.vue";
 import ShelfItem from "../widgets/ShelfItem.vue";
 import Separator, { SeparatorDirection, SeparatorType } from "../widgets/Separator.vue";
 import IconButton from "../widgets/buttons/IconButton.vue";
@@ -256,7 +256,7 @@ export default defineComponent({
 		return {
 			viewportSvg: "",
 			activeTool: "Select",
-			PopoverDirection,
+			MenuDirection,
 			SeparatorDirection,
 			SeparatorType,
 		};
