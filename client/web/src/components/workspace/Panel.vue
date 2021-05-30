@@ -139,7 +139,7 @@ import LayerTree from "../panels/LayerTree.vue";
 import Minimap from "../panels/Minimap.vue";
 import IconButton from "../widgets/buttons/IconButton.vue";
 import PopoverButton, { PopoverButtonIcon } from "../widgets/buttons/PopoverButton.vue";
-import { PopoverDirection } from "../widgets/overlays/Popover.vue";
+import { MenuDirection } from "../widgets/floating-menus/FloatingMenu.vue";
 
 export default defineComponent({
 	components: {
@@ -160,7 +160,7 @@ export default defineComponent({
 	data() {
 		return {
 			PopoverButtonIcon,
-			PopoverDirection,
+			MenuDirection,
 		};
 	},
 });
