@@ -2,26 +2,26 @@
 	<div class="status-bar">
 		<UserInputLabel :inputMouse="'LMBDrag'">Drag Selected</UserInputLabel>
 		<Separator :type="SeparatorType.Section" />
-		<UserInputLabel :inputKeys="['G']">Grab Selected</UserInputLabel>
-		<UserInputLabel :inputKeys="['R']">Rotate Selected</UserInputLabel>
-		<UserInputLabel :inputKeys="['S']">Scale Selected</UserInputLabel>
+		<UserInputLabel :inputKeys="[['G']]">Grab Selected</UserInputLabel>
+		<UserInputLabel :inputKeys="[['R']]">Rotate Selected</UserInputLabel>
+		<UserInputLabel :inputKeys="[['S']]">Scale Selected</UserInputLabel>
 		<Separator :type="SeparatorType.Section" />
 		<UserInputLabel :inputMouse="'LMB'">Select Object</UserInputLabel>
 		<span class="plus">+</span>
-		<UserInputLabel :inputKeys="['Ctrl']">Innermost</UserInputLabel>
+		<UserInputLabel :inputKeys="[['Ctrl']]">Innermost</UserInputLabel>
 		<span class="plus">+</span>
-		<UserInputLabel :inputKeys="['⇧']">Grow/Shrink Selection</UserInputLabel>
+		<UserInputLabel :inputKeys="[['⇧']]">Grow/Shrink Selection</UserInputLabel>
 		<Separator :type="SeparatorType.Section" />
 		<UserInputLabel :inputMouse="'LMBDrag'">Select Area</UserInputLabel>
 		<span class="plus">+</span>
-		<UserInputLabel :inputKeys="['⇧']">Grow/Shrink Selection</UserInputLabel>
+		<UserInputLabel :inputKeys="[['⇧']]">Grow/Shrink Selection</UserInputLabel>
 		<Separator :type="SeparatorType.Section" />
-		<UserInputLabel :inputKeys="['↑', '→', '↓', '←']">Nudge Selected</UserInputLabel>
+		<UserInputLabel :inputKeys="[['↑'], ['→'], ['↓'], ['←']]">Nudge Selected</UserInputLabel>
 		<span class="plus">+</span>
-		<UserInputLabel :inputKeys="['⇧']">Big Increment Nudge</UserInputLabel>
+		<UserInputLabel :inputKeys="[['⇧']]">Big Increment Nudge</UserInputLabel>
 		<Separator :type="SeparatorType.Section" />
-		<UserInputLabel :inputKeys="['Alt']" :inputMouse="'LMBDrag'">Move Duplicate</UserInputLabel>
-		<UserInputLabel :inputKeys="['Ctrl', 'D']">Duplicate</UserInputLabel>
+		<UserInputLabel :inputKeys="[['Alt']]" :inputMouse="'LMBDrag'">Move Duplicate</UserInputLabel>
+		<UserInputLabel :inputKeys="[['Ctrl', 'D']]">Duplicate</UserInputLabel>
 	</div>
 </template>
 
