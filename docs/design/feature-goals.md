@@ -64,6 +64,7 @@ Contributions welcome! If you think of something Graphite would be great for, su
 - Creating a chart from a CSV
 - Rendering an always-up-to-date chart powered by real-time updates from a database
 - Data-driven infographics like an org chart that can be updated with text instead of manual design work
+- Request the weather from an API and render live visualizations which gets displayed on a monitor in your house or a museum (export to a Windows screen saver?)
 
 ## Digital painting
 - Creating a digital acrylic or oil painting using various brushes

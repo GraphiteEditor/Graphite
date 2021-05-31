@@ -1,5 +1,5 @@
 <template>
-	<div class="floating-menu" :class="[direction.toLowerCase(), type.toLowerCase()]" v-if="open">
+	<div class="floating-menu" :class="[direction.toLowerCase(), type.toLowerCase()]" v-if="open" ref="floatingMenu">
 		<div class="tail" v-if="type === MenuType.Popover"></div>
 		<div class="floating-menu-container" ref="floatingMenuContainer">
 			<div class="floating-menu-content" ref="floatingMenuContent">
@@ -18,7 +18,11 @@
 	// Floating menus begin at a z-index of 1000
 	z-index: 1000;
 	--floating-menu-content-offset: 0;
-	--floating-menu-content-border-radius: 0 0 4px 4px;
+	--floating-menu-content-border-radius: 4px;
+
+	&.bottom {
+		--floating-menu-content-border-radius: 0 0 4px 4px;
+	}
 
 	.tail {
 		width: 0;
@@ -35,7 +39,7 @@
 
 		.floating-menu-content {
 			background: var(--floating-menu-opacity-color-2-mildblack);
-			box-shadow: var(--color-0-black) 0 0 4px;
+			box-shadow: var(--floating-menu-shadow) 0 2px 4px;
 			border-radius: var(--floating-menu-content-border-radius);
 			color: var(--color-e-nearwhite);
 			font-size: inherit;
@@ -46,6 +50,61 @@
 			// Draw over the application without being clipped by the containing panel's `overflow: hidden`
 			position: fixed;
 		}
+	}
+
+	&.dropdown {
+		&.top {
+			width: 100%;
+			left: 0;
+			top: 0;
+		}
+
+		&.bottom {
+			width: 100%;
+			left: 0;
+			bottom: 0;
+		}
+
+		&.left {
+			height: 100%;
+			top: 0;
+			left: 0;
+		}
+
+		&.right {
+			height: 100%;
+			top: 0;
+			right: 0;
+		}
+
+		&.topleft {
+			top: 0;
+			left: 0;
+			margin-top: -4px;
+		}
+
+		&.topright {
+			top: 0;
+			right: 0;
+			margin-top: -4px;
+		}
+
+		&.topleft {
+			bottom: 0;
+			left: 0;
+			margin-bottom: -4px;
+		}
+
+		&.topright {
+			bottom: 0;
+			right: 0;
+			margin-bottom: -4px;
+		}
+	}
+
+	&.top.dropdown .floating-menu-container,
+	&.bottom.dropdown .floating-menu-container {
+		justify-content: left;
 	}
 
 	&.popover {
@@ -116,6 +175,10 @@ export enum MenuDirection {
 	Bottom = "Bottom",
 	Left = "Left",
 	Right = "Right",
+	TopLeft = "TopLeft",
+	TopRight = "TopRight",
+	BottomLeft = "BottomLeft",
+	BottomRight = "BottomRight",
 }
 
 export enum MenuType {
@@ -128,6 +191,7 @@ export default defineComponent({
 	props: {
 		direction: { type: String, default: MenuDirection.Bottom },
 		type: { type: String, required: true },
+		windowEdgeMargin: { type: Number, default: 8 },
 	},
 	data() {
 		return {
@@ -147,18 +211,18 @@ export default defineComponent({
 			const floatingMenuBounds = floatingMenuContent.getBoundingClientRect();
 
 			if (this.direction === MenuDirection.Left || this.direction === MenuDirection.Right) {
-				const topOffset = floatingMenuBounds.top - workspaceBounds.top - 8;
+				const topOffset = floatingMenuBounds.top - workspaceBounds.top - this.windowEdgeMargin;
 				if (topOffset < 0) floatingMenuContainer.style.transform = `translate(0, ${-topOffset}px)`;
 
-				const bottomOffset = workspaceBounds.bottom - floatingMenuBounds.bottom - 8;
+				const bottomOffset = workspaceBounds.bottom - floatingMenuBounds.bottom - this.windowEdgeMargin;
 				if (bottomOffset < 0) floatingMenuContainer.style.transform = `translate(0, ${bottomOffset}px)`;
 			}
 
 			if (this.direction === MenuDirection.Top || this.direction === MenuDirection.Bottom) {
-				const leftOffset = floatingMenuBounds.left - workspaceBounds.left - 8;
+				const leftOffset = floatingMenuBounds.left - workspaceBounds.left - this.windowEdgeMargin;
 				if (leftOffset < 0) floatingMenuContainer.style.transform = `translate(${-leftOffset}px, 0)`;
 
-				const rightOffset = workspaceBounds.right - floatingMenuBounds.right - 8;
+				const rightOffset = workspaceBounds.right - floatingMenuBounds.right - this.windowEdgeMargin;
 				if (rightOffset < 0) floatingMenuContainer.style.transform = `translate(${rightOffset}px, 0)`;
 			}
 		}
@@ -170,11 +234,28 @@ export default defineComponent({
 		setClosed() {
 			this.open = false;
 		},
+		isOpen(): boolean {
+			return this.open;
+		},
 		mouseMoveHandler(e: MouseEvent) {
 			const MOUSE_STRAY_DISTANCE = 100;
+			const target = e.target as HTMLElement;
+			const mouseOverFloatingMenuKeepOpen = target && (target.closest("[data-hover-menu-keep-open]") as HTMLElement);
+			const mouseOverFloatingMenuSpawner = target && (target.closest("[data-hover-menu-spawner]") as HTMLElement);
+			// TODO: Simplify the following expression when optional chaining is supported by the build system
+			const mouseOverOwnFloatingMenuSpawner =
+				mouseOverFloatingMenuSpawner && mouseOverFloatingMenuSpawner.parentElement && mouseOverFloatingMenuSpawner.parentElement.contains(this.$refs.floatingMenu as HTMLElement);
+
+			// Swap this open floating menu with the one created by the floating menu spawner being hovered over
+			if (mouseOverFloatingMenuSpawner && !mouseOverOwnFloatingMenuSpawner) {
+				this.setClosed();
+				mouseOverFloatingMenuSpawner.click();
+			}
 
 			// Close the floating menu if the mouse has strayed far enough from its bounds
-			if (this.isMouseEventOutsideFloatingMenu(e, MOUSE_STRAY_DISTANCE)) {
+			if (this.isMouseEventOutsideFloatingMenu(e, MOUSE_STRAY_DISTANCE) && !mouseOverOwnFloatingMenuSpawner && !mouseOverFloatingMenuKeepOpen) {
+				// TODO: Extend this rectangle bounds check to all `data-hover-menu-keep-open` element bounds up the DOM tree since currently
+				// submenus disappear with zero stray distance if the cursor is further than the stray distance from only the top-level menu
 				this.setClosed();
 			}
 

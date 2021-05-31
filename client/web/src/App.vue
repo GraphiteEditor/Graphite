@@ -27,6 +27,7 @@
 	// See https://developer.mozilla.org/en-US/docs/Web/CSS/color_value/color() and https://caniuse.com/css-color-function
 	// E6 = 90% alpha
 	--floating-menu-opacity-color-2-mildblack: #222222e6;
+	--floating-menu-shadow: rgba(0, 0, 0, 50%);
 }
 
 html,

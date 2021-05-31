@@ -1,13 +1,13 @@
 <template>
 	<div class="swatch-pair">
 		<div class="secondary swatch">
-			<button @click="clickSecondarySwatch" ref="secondaryButton"></button>
+			<button @click="clickSecondarySwatch" ref="secondaryButton" data-hover-menu-spawner></button>
 			<FloatingMenu :type="MenuType.Popover" :direction="MenuDirection.Right" horizontal ref="secondarySwatchFloatingMenu">
 				<ColorPicker v-model:color="secondaryColor" />
 			</FloatingMenu>
 		</div>
 		<div class="primary swatch">
-			<button @click="clickPrimarySwatch" ref="primaryButton"></button>
+			<button @click="clickPrimarySwatch" ref="primaryButton" data-hover-menu-spawner></button>
 			<FloatingMenu :type="MenuType.Popover" :direction="MenuDirection.Right" horizontal ref="primarySwatchFloatingMenu">
 				<ColorPicker v-model:color="primaryColor" />
 			</FloatingMenu>
