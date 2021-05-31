@@ -1,6 +1,6 @@
 <template>
 	<div class="popover-button">
-		<IconButton :icon="icon" :size="16" @click="clickButton" />
+		<IconButton :icon="icon" :size="16" @click="clickButton" data-hover-menu-spawner />
 		<FloatingMenu :type="MenuType.Popover" :direction="MenuDirection.Bottom" ref="floatingMenu">
 			<slot></slot>
 		</FloatingMenu>
