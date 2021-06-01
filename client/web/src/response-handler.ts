@@ -120,6 +120,7 @@ export interface LayerPanelEntry {
 	layer_type: LayerType;
 	collapsed: boolean;
 	path: BigUint64Array;
+	selected: boolean;
 }
 function newLayerPanelEntry(input: any): LayerPanelEntry {
 	return {
@@ -128,6 +129,7 @@ function newLayerPanelEntry(input: any): LayerPanelEntry {
 		layer_type: newLayerType(input.layer_type),
 		collapsed: input.collapsed,
 		path: new BigUint64Array(input.path.map((n: number) => BigInt(n))),
+		selected: false,
 	};
 }
 

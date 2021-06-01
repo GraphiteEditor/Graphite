@@ -20,7 +20,7 @@
 					<div class="layer-visibility">
 						<IconButton :icon="layer.visible ? 'EyeVisible' : 'EyeHidden'" @click="toggleLayerVisibility(layer.path)" :size="24" :title="layer.visible ? 'Visible' : 'Hidden'" />
 					</div>
-					<div class="layer" @click="handleClick(layer.path)">
+					<div class="layer" :class="layer.selected ? 'selected' : ''" @click.shift.exact="handleClickRange(layer.path)" @click.alt.exact="handleAnotherClick(layer.path)" @click.exact="handleClick(layer.path)">
 						<div class="layer-thumbnail"></div>
 						<div class="layer-type-icon">
 							<Icon :icon="'NodeTypePath'" title="Path" />
@@ -67,6 +67,10 @@
 			height: 100%;
 			margin-left: 4px;
 			padding-left: 16px;
+		}
+		
+		.selected {
+			background: #ff0000;
 		}
 
 		& + .layer-row {
@@ -118,8 +122,78 @@ export default defineComponent({
 			const { toggle_layer_visibility } = await wasm;
 			toggle_layer_visibility(path);
 		},
+		async handleAnotherClick(path: BigUint64Array) {
+			// Keep everything else the same, toggle path
+			// Change mainPath
+			let i = 0;
+			this.reset = false;
+			for (const layer of this.layers) {
+					if (layer.path === path) {
+						layer.selected = !layer.selected;
+						if (layer.selected) {
+							this.mainPath = path;
+						} else {
+							if (layer !== this.layers[this.layers.length-1]) {
+								this.mainPath = this.layers[i+1].path; 
+							} else {
+								// last layer
+								this.mainPath = i > 0 ? this.layers[i-1].path : new BigUint64Array([]);
+							}
+						}
+					}
+					i += 1;
+			}
+			console.log("Ctrl + Click");
+		},
+		async handleClickRange(path: BigUint64Array) {
+			//this.reset = false;
+			if (this.mainPath.length === 0) {
+				console.log("MainPath is []");
+				for (const layer of this.layers) {
+					if (layer.path < path) {
+						layer.selected = !layer.selected;
+					} else if (layer.path === path) {
+						layer.selected = true
+					}
+				}
+				this.mainPath = path;
+			} else {
+				if (path <= this.mainPath) {
+					// UP	
+					for (const layer of this.layers) {
+						if ((layer.path >= path && layer.path <= this.mainPath) || (layer.path <= path && layer.path >= this.mainPath)) {
+							layer.selected = true;
+						} else {
+							layer.selected = false;
+						}
+					}
+				} else {
+					// DOWN	
+					for (const layer of this.layers) {
+						if ((layer.path >= path && layer.path <= this.mainPath) || (layer.path <= path && layer.path >= this.mainPath)) {
+							layer.selected = true;
+						} else {
+							if (this.reset) {
+								layer.selected = false;
+							}
+						}
+					}
+				}
+			}
+			console.log("Shift + Click");
+		},
 		async handleClick(path: BigUint64Array) {
-			console.log(`A layer was clicked: ${path}`);
+			const { select_layer } = await wasm;
+			this.mainPath = path;
+			this.reset = true;
+			for (const layer of this.layers) {
+					if (layer.path === path) {
+						layer.selected = true;
+					} else {
+						layer.selected = false;
+					}
+			}
+			//console.log(`A layer was clicked: ${path}`);
 		},
 	},
 	mounted() {
@@ -143,6 +217,8 @@ export default defineComponent({
 			MenuDirection,
 			SeparatorType,
 			layers: [] as Array<LayerPanelEntry>,
+			mainPath: new BigUint64Array([]),
+			reset: true,
 		};
 	},
 	components: {
