@@ -98,6 +98,12 @@ pub fn undo() -> Result<(), JsValue> {
 	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(DocumentMessage::Undo)).map_err(convert_error)
 }
 
+/// Export the document
+#[wasm_bindgen]
+pub fn export_document() -> Result<(), JsValue> {
+	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(DocumentMessage::ExportDocument)).map_err(convert_error)
+}
+
 /// Select a layer from the layer list
 #[wasm_bindgen]
 pub fn select_layer(path: Vec<LayerId>) -> Result<(), JsValue> {

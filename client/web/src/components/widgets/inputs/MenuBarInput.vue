@@ -65,7 +65,7 @@ const menuEntries: MenuListEntries = [
 		ref: undefined,
 		children: [
 			[
-				{ label: "New", icon: "FileNew", shortcut: ["Ctrl", "N"] },
+				{ label: "New", icon: "File", shortcut: ["Ctrl", "N"] },
 				{ label: "Open…", shortcut: ["Ctrl", "O"] },
 				{
 					label: "Open Recent",
@@ -94,7 +94,7 @@ const menuEntries: MenuListEntries = [
 			],
 			[
 				{ label: "Import…", shortcut: ["Ctrl", "I"] },
-				{ label: "Export…", shortcut: ["Ctrl", "E"] },
+				{ label: "Export…", shortcut: ["Ctrl", "E"], action: async () => (await wasm).export_document() },
 			],
 			[{ label: "Quit", shortcut: ["Ctrl", "Q"] }],
 		],
@@ -104,13 +104,13 @@ const menuEntries: MenuListEntries = [
 		ref: undefined,
 		children: [
 			[
-				{ label: "Undo", shortcut: ["Ctrl", "Z"], action: async () => (await wasm).undo()},
+				{ label: "Undo", shortcut: ["Ctrl", "Z"], action: async () => (await wasm).undo() },
 				{ label: "Redo", shortcut: ["Ctrl", "⇧", "Z"] },
 			],
 			[
 				{ label: "Cut", shortcut: ["Ctrl", "X"] },
-				{ label: "Copy", shortcut: ["Ctrl", "C"] },
-				{ label: "Paste", shortcut: ["Ctrl", "V"] },
+				{ label: "Copy", icon: "Copy", shortcut: ["Ctrl", "C"] },
+				{ label: "Paste", icon: "Paste", shortcut: ["Ctrl", "V"] },
 			],
 		],
 	},

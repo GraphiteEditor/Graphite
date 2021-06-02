@@ -74,7 +74,9 @@ import ViewModePixels from "../../../../assets/16px-solid/view-mode-pixels.svg";
 import EyeVisible from "../../../../assets/16px-solid/visibility-eye-visible.svg";
 import EyeHidden from "../../../../assets/16px-solid/visibility-eye-hidden.svg";
 import GraphiteLogo from "../../../../assets/16px-solid/graphite-logo.svg";
-import FileNew from "../../../../assets/16px-solid/file-new.svg";
+import File from "../../../../assets/16px-solid/file.svg";
+import Copy from "../../../../assets/16px-solid/copy.svg";
+import Paste from "../../../../assets/16px-solid/paste.svg";
 
 import SwapButton from "../../../../assets/12px-solid/swap.svg";
 import ResetColorsButton from "../../../../assets/12px-solid/reset-colors.svg";
@@ -143,7 +145,9 @@ const icons = {
 	EyeVisible: { component: EyeVisible, size: 16 },
 	EyeHidden: { component: EyeHidden, size: 16 },
 	GraphiteLogo: { component: GraphiteLogo, size: 16 },
-	FileNew: { component: FileNew, size: 16 },
+	File: { component: File, size: 16 },
+	Copy: { component: Copy, size: 16 },
+	Paste: { component: Paste, size: 16 },
 	SwapButton: { component: SwapButton, size: 12 },
 	ResetColorsButton: { component: ResetColorsButton, size: 12 },
 	DropdownArrow: { component: DropdownArrow, size: 12 },
