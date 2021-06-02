@@ -109,12 +109,9 @@ export default defineComponent({
 	methods: {
 		async toggleLayerVisibility(path: BigUint64Array) {
 			const { toggle_layer_visibility } = await wasm;
-			//console.log(`PPP: ${path.length}`);
 			toggle_layer_visibility(path);
 		},
 		async handleControlClick(path: BigUint64Array) {
-			// Keep everything else the same, toggle path
-			// Change mainPath
 			let i = 0;
 			this.endPath = new BigUint64Array([]);
 			for (const layer of this.layers) {
@@ -123,11 +120,10 @@ export default defineComponent({
 						if (layer.selected) {
 							this.startPath = path;
 						} else {
-							console.log("HEROE");
 							let j = i+1;
 							while (j < this.layers.length) {
+								// Look for a selected layer below to assign to startPath
 								if (this.layers[j].selected) {
-									console.log("BELOW");
 									this.startPath = this.layers[j].path;
 									break;
 								}
@@ -147,14 +143,12 @@ export default defineComponent({
 							}
 							if (j < 0) {
 								// RESET
-								console.log("RESEET");
 								this.startPath = new BigUint64Array([]);
 							}
 						}
 					}
 					i += 1;
 			}
-			//console.log("Ctrl + Click");
 		},
 		async handleShiftClick(path: BigUint64Array) {
 			// The two paths of the range are stored in startPath and endPath
@@ -187,7 +181,6 @@ export default defineComponent({
 				for (const layer of this.layers) {
 					if ((layer.path[0] >= path[0] && layer.path[0] <= this.startPath[0]) || (layer.path[0] <= path[0] && layer.path[0] >= this.startPath[0])) {
 						layer.selected = true;
-						console.log(`THIS: ${layer.path} in ${this.startPath} from ${this.endPath}`);
 					}
 				}
 			}
@@ -195,19 +188,9 @@ export default defineComponent({
 		
 
 		async handleClick(path: BigUint64Array) {
-			//const { select_layer } = await wasm;
-			console.log(`mainPath: ${this.startPath}`);
 			this.startPath = path;
 			this.endPath = new BigUint64Array([]);
-			//this.endPath = path;
 			
-			console.log(`PATH: ${path}, ${path[0]}, ${path[1]}`);
-			/*
-			console.log(`PATH: ${this.mainPath}`);
-			console.log(`WHATPATH: ${typeof path}`);
-			console.log(`WHATPATH: ${Object.keys(path)}`);
-			console.log(`NAME: ${path.keys()}`);
-			*/
 			for (const layer of this.layers) {
 					// Can we directly index into `layers`? Is the path `i` at the `i`th index in layers?
 					// Delete layer op may affect the order of layers and the paths.

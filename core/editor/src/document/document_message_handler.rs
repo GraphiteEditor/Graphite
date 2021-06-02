@@ -72,9 +72,6 @@ impl MessageHandler<DocumentMessage, ()> for DocumentMessageHandler {
 			ToggleLayerVisibility(path) => {
 				responses.push_back(DocumentOperation::ToggleVisibility { path }.into());
 			}
-			SelectLayer(path) => {
-				responses.push_back(DocumentOperation::CommitTransaction.into());
-			}
 			Undo => {
 				// this is a temporary fix and will be addressed by #123
 				if let Some(id) = self.active_document().document.root.list_layers().last() {
