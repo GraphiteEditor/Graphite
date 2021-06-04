@@ -1,12 +1,15 @@
 <template>
 	<div class="user-input-label">
-		<span class="input-key" v-for="inputKey in inputKeys" :key="inputKey" :class="keyCapWidth(inputKey)">
-			{{ inputKey }}
-		</span>
+		<template v-for="(keyGroup, keyGroupIndex) in inputKeys" :key="keyGroupIndex">
+			<span class="group-gap" v-if="keyGroupIndex > 0"></span>
+			<span class="input-key" v-for="inputKey in keyGroup" :key="inputKey" :class="keyCapWidth(inputKey)">
+				{{ inputKey }}
+			</span>
+		</template>
 		<span class="input-mouse" v-if="inputMouse">
 			<Icon :icon="mouseInputInteractionToIcon(inputMouse)" />
 		</span>
-		<span class="hint-text">
+		<span class="hint-text" v-if="hasSlotContent">
 			<slot></slot>
 		</span>
 	</div>
@@ -20,17 +23,22 @@
 	align-items: center;
 	white-space: nowrap;
 
+	.group-gap {
+		width: 4px;
+	}
+
 	.input-key,
 	.input-mouse {
-		margin-right: 4px;
+		& + .input-key,
+		& + .input-mouse {
+			margin-left: 2px;
+		}
 	}
 
 	.input-key {
 		font-family: "Inconsolata", monospace;
-		font-weight: bold;
 		text-align: center;
-		color: var(--color-2-mildblack);
-		background: var(--color-e-nearwhite);
+		color: var(--color-e-nearwhite);
 		border: 1px;
 		box-sizing: border-box;
 		border-style: solid;
@@ -73,6 +81,10 @@
 			vertical-align: top;
 		}
 	}
+
+	.hint-text {
+		margin-left: 4px;
+	}
 }
 </style>
 
@@ -98,6 +110,11 @@ export default defineComponent({
 	props: {
 		inputKeys: { type: Array, default: () => [] },
 		inputMouse: { type: String },
+	},
+	computed: {
+		hasSlotContent(): boolean {
+			return Boolean(this.$slots.default);
+		},
 	},
 	methods: {
 		keyCapWidth(keyText: string) {

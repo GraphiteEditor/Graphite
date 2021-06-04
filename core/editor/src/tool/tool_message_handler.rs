@@ -68,8 +68,8 @@ impl MessageHandler<ToolMessage, (&Document, &InputPreprocessor)> for ToolMessag
 			}
 			ResetColors => {
 				let doc_data = &mut self.tool_state.document_tool_data;
-				doc_data.primary_color = Color::WHITE;
-				doc_data.secondary_color = Color::BLACK;
+				doc_data.primary_color = Color::BLACK;
+				doc_data.secondary_color = Color::WHITE;
 			}
 			message => {
 				let tool_type = match message {

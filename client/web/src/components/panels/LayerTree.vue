@@ -85,7 +85,7 @@ import LayoutCol from "../layout/LayoutCol.vue";
 import Separator, { SeparatorType } from "../widgets/Separator.vue";
 import NumberInput from "../widgets/inputs/NumberInput.vue";
 import PopoverButton from "../widgets/buttons/PopoverButton.vue";
-import { PopoverDirection } from "../widgets/overlays/Popover.vue";
+import { MenuDirection } from "../widgets/floating-menus/FloatingMenu.vue";
 import IconButton from "../widgets/buttons/IconButton.vue";
 import Icon from "../widgets/labels/Icon.vue";
 
@@ -125,7 +125,7 @@ export default defineComponent({
 	},
 	data() {
 		return {
-			PopoverDirection,
+			MenuDirection,
 			SeparatorType,
 			layers: [] as Array<LayerPanelEntry>,
 		};

@@ -1,9 +1,9 @@
 <template>
 	<div class="popover-button">
-		<IconButton :icon="icon" :size="16" @click="clickButton" />
-		<Popover :direction="PopoverDirection.Bottom" ref="popover">
+		<IconButton :icon="icon" :size="16" @click="clickButton" data-hover-menu-spawner />
+		<FloatingMenu :type="MenuType.Popover" :direction="MenuDirection.Bottom" ref="floatingMenu">
 			<slot></slot>
-		</Popover>
+		</FloatingMenu>
 	</div>
 </template>
 
@@ -15,7 +15,7 @@
 	height: 24px;
 	flex: 0 0 auto;
 
-	.popover {
+	.floating-menu {
 		left: 50%;
 	}
 
@@ -41,7 +41,7 @@
 <script lang="ts">
 import { defineComponent } from "vue";
 import IconButton from "./IconButton.vue";
-import Popover, { PopoverDirection } from "../overlays/Popover.vue";
+import FloatingMenu, { MenuDirection, MenuType } from "../floating-menus/FloatingMenu.vue";
 
 export enum PopoverButtonIcon {
 	"DropdownArrow" = "DropdownArrow",
@@ -50,7 +50,7 @@ export enum PopoverButtonIcon {
 
 export default defineComponent({
 	components: {
-		Popover,
+		FloatingMenu,
 		IconButton,
 	},
 	props: {
@@ -58,12 +58,13 @@ export default defineComponent({
 	},
 	methods: {
 		clickButton() {
-			(this.$refs.popover as typeof Popover).setOpen();
+			(this.$refs.floatingMenu as typeof FloatingMenu).setOpen();
 		},
 	},
 	data() {
 		return {
-			PopoverDirection,
+			MenuDirection,
+			MenuType,
 		};
 	},
 });

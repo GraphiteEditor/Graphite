@@ -1,16 +1,16 @@
 <template>
 	<div class="swatch-pair">
 		<div class="secondary swatch">
-			<button @click="clickSecondarySwatch" ref="secondaryButton"></button>
-			<Popover :direction="PopoverDirection.Right" horizontal ref="secondarySwatchPopover">
+			<button @click="clickSecondarySwatch" ref="secondaryButton" data-hover-menu-spawner></button>
+			<FloatingMenu :type="MenuType.Popover" :direction="MenuDirection.Right" horizontal ref="secondarySwatchFloatingMenu">
 				<ColorPicker v-model:color="secondaryColor" />
-			</Popover>
+			</FloatingMenu>
 		</div>
 		<div class="primary swatch">
-			<button @click="clickPrimarySwatch" ref="primaryButton"></button>
-			<Popover :direction="PopoverDirection.Right" horizontal ref="primarySwatchPopover">
+			<button @click="clickPrimarySwatch" ref="primaryButton" data-hover-menu-spawner></button>
+			<FloatingMenu :type="MenuType.Popover" :direction="MenuDirection.Right" horizontal ref="primarySwatchFloatingMenu">
 				<ColorPicker v-model:color="primaryColor" />
-			</Popover>
+			</FloatingMenu>
 		</div>
 	</div>
 </template>
@@ -53,7 +53,7 @@
 			}
 		}
 
-		.popover {
+		.floating-menu {
 			top: 50%;
 			right: -2px;
 		}
@@ -68,26 +68,26 @@
 <script lang="ts">
 import { rgbToDecimalRgb } from "@/lib/utils";
 import { defineComponent } from "vue";
-import ColorPicker from "../../popovers/ColorPicker.vue";
-import Popover, { PopoverDirection } from "../overlays/Popover.vue";
+import ColorPicker from "../floating-menus/ColorPicker.vue";
+import FloatingMenu, { MenuDirection, MenuType } from "../floating-menus/FloatingMenu.vue";
 
 const wasm = import("../../../../wasm/pkg");
 
 export default defineComponent({
 	components: {
-		Popover,
+		FloatingMenu,
 		ColorPicker,
 	},
 	props: {},
 	methods: {
 		clickPrimarySwatch() {
-			this.getRef<typeof Popover>("primarySwatchPopover").setOpen();
-			this.getRef<typeof Popover>("secondarySwatchPopover").setClosed();
+			this.getRef<typeof FloatingMenu>("primarySwatchFloatingMenu").setOpen();
+			this.getRef<typeof FloatingMenu>("secondarySwatchFloatingMenu").setClosed();
 		},
 
 		clickSecondarySwatch() {
-			this.getRef<typeof Popover>("secondarySwatchPopover").setOpen();
-			this.getRef<typeof Popover>("primarySwatchPopover").setClosed();
+			this.getRef<typeof FloatingMenu>("secondarySwatchFloatingMenu").setOpen();
+			this.getRef<typeof FloatingMenu>("primarySwatchFloatingMenu").setClosed();
 		},
 
 		getRef<T>(name: string) {
@@ -118,7 +118,8 @@ export default defineComponent({
 	},
 	data() {
 		return {
-			PopoverDirection,
+			MenuDirection,
+			MenuType,
 			primaryColor: { r: 0, g: 0, b: 0, a: 1 },
 			secondaryColor: { r: 255, g: 255, b: 255, a: 1 },
 		};
