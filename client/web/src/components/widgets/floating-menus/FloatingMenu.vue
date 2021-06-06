@@ -2,7 +2,7 @@
 	<div class="floating-menu" :class="[direction.toLowerCase(), type.toLowerCase()]" v-if="open" ref="floatingMenu">
 		<div class="tail" v-if="type === MenuType.Popover"></div>
 		<div class="floating-menu-container" ref="floatingMenuContainer">
-			<div class="floating-menu-content" ref="floatingMenuContent">
+			<div class="floating-menu-content" ref="floatingMenuContent" :style="{ minWidth: minWidth > 0 ? `${minWidth}px` : undefined }">
 				<slot></slot>
 			</div>
 		</div>
@@ -192,6 +192,7 @@ export default defineComponent({
 		direction: { type: String, default: MenuDirection.Bottom },
 		type: { type: String, required: true },
 		windowEdgeMargin: { type: Number, default: 8 },
+		minWidth: { type: Number, default: 0 },
 	},
 	data() {
 		return {
@@ -236,6 +237,27 @@ export default defineComponent({
 		},
 		isOpen(): boolean {
 			return this.open;
+		},
+		getWidth(callback: (width: number) => void) {
+			this.$nextTick(() => {
+				const floatingMenuContent = this.$refs.floatingMenuContent as HTMLElement;
+				const width = floatingMenuContent.clientWidth;
+
+				callback(width);
+			});
+		},
+		disableMinWidth(callback: (minWidth: string) => void) {
+			this.$nextTick(() => {
+				const floatingMenuContent = this.$refs.floatingMenuContent as HTMLElement;
+				const initialMinWidth = floatingMenuContent.style.minWidth;
+				floatingMenuContent.style.minWidth = "0";
+
+				callback(initialMinWidth);
+			});
+		},
+		enableMinWidth(minWidth: string) {
+			const floatingMenuContent = this.$refs.floatingMenuContent as HTMLElement;
+			floatingMenuContent.style.minWidth = minWidth;
 		},
 		mouseMoveHandler(e: MouseEvent) {
 			const MOUSE_STRAY_DISTANCE = 100;
@@ -299,6 +321,7 @@ export default defineComponent({
 		},
 		isMouseEventOutsideFloatingMenu(e: MouseEvent, extraDistanceAllowed = 0): boolean {
 			const floatingMenuContent = this.$refs.floatingMenuContent as HTMLElement;
+			if (!floatingMenuContent) return true;
 			const floatingMenuBounds = floatingMenuContent.getBoundingClientRect();
 
 			if (floatingMenuBounds.left - e.clientX >= extraDistanceAllowed) return true;

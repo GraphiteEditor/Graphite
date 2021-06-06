@@ -6,19 +6,28 @@
 				v-for="(entry, entryIndex) in section"
 				:key="entryIndex"
 				class="row"
-				:class="{ open: isMenuEntryOpen(entry) }"
+				:class="{ open: isMenuEntryOpen(entry), active: entry === activeEntry }"
 				@click="handleEntryClick(entry)"
 				@mouseenter="handleEntryMouseEnter(entry)"
 				@mouseleave="handleEntryMouseLeave(entry)"
 				:data-hover-menu-spawner-extend="entry.children && []"
 			>
-				<Icon :icon="entry.icon" v-if="entry.icon" />
-				<div class="no-icon" v-else />
-				<span class="label">{{ entry.label }}</span>
+				<Icon :icon="entry.icon" v-if="entry.icon && drawIcon" />
+				<div class="no-icon" v-else-if="drawIcon" />
+				<span class="entry-label">{{ entry.label }}</span>
 				<UserInputLabel v-if="entry.shortcut && entry.shortcut.length" :inputKeys="[entry.shortcut]" />
 				<div class="submenu-arrow" v-if="entry.children && entry.children.length"></div>
 				<div class="no-submenu-arrow" v-else></div>
-				<MenuList v-if="entry.children" :menuEntries="entry.children" :direction="MenuDirection.TopRight" :ref="(ref) => setEntryRefs(entry, ref)" />
+				<MenuList
+					v-if="entry.children"
+					:direction="MenuDirection.TopRight"
+					:menuEntries="entry.children"
+					:activeEntry="activeEntry"
+					:minWidth="minWidth"
+					:defaultAction="defaultAction"
+					:drawIcon="drawIcon"
+					:ref="(ref) => setEntryRefs(entry, ref)"
+				/>
 			</div>
 		</template>
 	</FloatingMenu>
@@ -27,8 +36,9 @@
 <style lang="scss">
 .menu-list {
 	.floating-menu-container .floating-menu-content {
-		min-width: 240px;
 		padding: 4px 0;
+		position: absolute;
+		min-width: 100%;
 
 		.row {
 			height: 20px;
@@ -36,6 +46,7 @@
 			align-items: center;
 			white-space: nowrap;
 			position: relative;
+			flex: 0 0 auto;
 
 			& > * {
 				flex: 0 0 auto;
@@ -49,18 +60,23 @@
 				width: 16px;
 			}
 
-			.label {
+			.entry-label {
 				flex: 1 1 100%;
+				margin-left: 8px;
 			}
 
 			.icon,
-			.no-icon,
-			.label {
+			.no-icon {
 				margin: 0 4px;
+
+				& + .entry-label {
+					margin-left: 0;
+				}
 			}
 
 			.user-input-label {
 				margin: 0;
+				margin-left: 4px;
 			}
 
 			.submenu-arrow {
@@ -77,13 +93,18 @@
 
 			.submenu-arrow,
 			.no-submenu-arrow {
-				margin-left: 4px;
-				margin-right: 2px;
+				margin-left: 6px;
+				margin-right: 4px;
 			}
 
 			&:hover,
-			&.open {
+			&.open,
+			&.active {
 				background: var(--color-6-lowergray);
+
+				&.active {
+					background: var(--color-accent);
+				}
 
 				svg {
 					fill: var(--color-f-white);
@@ -106,28 +127,38 @@ import Icon from "../labels/Icon.vue";
 import UserInputLabel from "../labels/UserInputLabel.vue";
 
 export type MenuListEntries = Array<MenuListEntry>;
+export type SectionsOfMenuListEntries = Array<MenuListEntries>;
 
-export interface MenuListEntry {
+interface MenuListEntryData {
 	label?: string;
 	icon?: string;
 	// TODO: Add `checkbox` (which overrides any `icon`)
 	shortcut?: Array<string>;
 	action?: Function;
-	children?: Array<Array<MenuListEntry>>;
-	ref?: typeof FloatingMenu | typeof MenuList;
+	children?: SectionsOfMenuListEntries;
 }
+
+export type MenuListEntry = MenuListEntryData & { ref?: typeof FloatingMenu | typeof MenuList };
+
 const MenuList = defineComponent({
 	props: {
-		direction: { type: String as PropType<MenuDirection>, value: MenuDirection.Bottom },
-		menuEntries: { type: Array as PropType<MenuListEntries>, required: true },
+		direction: { type: String as PropType<MenuDirection>, default: MenuDirection.Bottom },
+		menuEntries: { type: Array as PropType<SectionsOfMenuListEntries>, required: true },
+		activeEntry: { type: Object as PropType<MenuListEntry>, required: false },
+		minWidth: { type: Number, default: 0 },
+		defaultAction: { type: Function, required: false },
+		widthChanged: { type: Function, required: false },
+		drawIcon: { type: Boolean, default: false },
 	},
 	methods: {
 		setEntryRefs(menuEntry: MenuListEntry, ref: typeof FloatingMenu) {
 			if (ref) menuEntry.ref = ref;
 		},
 		handleEntryClick(menuEntry: MenuListEntry) {
+			(this.$refs.floatingMenu as typeof FloatingMenu).setClosed();
+
 			if (menuEntry.action) menuEntry.action();
-			else alert("This action is not yet implemented");
+			else if (this.defaultAction) this.defaultAction(menuEntry);
 		},
 		handleEntryMouseEnter(menuEntry: MenuListEntry) {
 			if (!menuEntry.children || !menuEntry.children.length) return;
@@ -160,6 +191,57 @@ const MenuList = defineComponent({
 		isOpen(): boolean {
 			const floatingMenu = this.$refs.floatingMenu as typeof FloatingMenu;
 			return Boolean(floatingMenu && floatingMenu.isOpen());
+		},
+		measureAndReportWidth() {
+			const { widthChanged } = this;
+			if (!widthChanged) return;
+
+			// API is experimental but supported in all browsers - https://developer.mozilla.org/en-US/docs/Web/API/FontFaceSet
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			(document as any).fonts.ready.then(() => {
+				const floatingMenu = this.$refs.floatingMenu as typeof FloatingMenu;
+
+				// Save open/closed state before forcing open, if necessary, for measurement
+				const initiallyOpen = floatingMenu.isOpen();
+				if (!initiallyOpen) floatingMenu.setOpen();
+
+				floatingMenu.disableMinWidth((initialMinWidth: string) => {
+					floatingMenu.getWidth((width: number) => {
+						floatingMenu.enableMinWidth(initialMinWidth);
+
+						// Restore open/closed state if it was forced open for measurement
+						if (!initiallyOpen) floatingMenu.setClosed();
+
+						widthChanged(width);
+					});
+				});
+			});
+		},
+	},
+	computed: {
+		menuEntriesWithoutRefs(): Array<Array<MenuListEntryData>> {
+			const { menuEntries } = this;
+			return menuEntries.map((entries) =>
+				entries.map((entry) => {
+					// eslint-disable-next-line @typescript-eslint/no-unused-vars
+					const { ref, ...entryWithoutRef } = entry;
+					return entryWithoutRef;
+				})
+			);
+		},
+	},
+	mounted() {
+		this.measureAndReportWidth();
+	},
+	updated() {
+		this.measureAndReportWidth();
+	},
+	watch: {
+		menuEntriesWithoutRefs: {
+			handler() {
+				this.measureAndReportWidth();
+			},
+			deep: true,
 		},
 	},
 	data() {

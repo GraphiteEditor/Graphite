@@ -77,6 +77,8 @@ import GraphiteLogo from "../../../../assets/16px-solid/graphite-logo.svg";
 import File from "../../../../assets/16px-solid/file.svg";
 import Copy from "../../../../assets/16px-solid/copy.svg";
 import Paste from "../../../../assets/16px-solid/paste.svg";
+import ViewportDesignMode from "../../../../assets/16px-solid/viewport-design-mode.svg";
+import ViewportSelectMode from "../../../../assets/16px-solid/viewport-select-mode.svg";
 
 import SwapButton from "../../../../assets/12px-solid/swap.svg";
 import ResetColorsButton from "../../../../assets/12px-solid/reset-colors.svg";
@@ -148,6 +150,8 @@ const icons = {
 	File: { component: File, size: 16 },
 	Copy: { component: Copy, size: 16 },
 	Paste: { component: Paste, size: 16 },
+	ViewportDesignMode: { component: ViewportDesignMode, size: 16 },
+	ViewportSelectMode: { component: ViewportSelectMode, size: 16 },
 	SwapButton: { component: SwapButton, size: 12 },
 	ResetColorsButton: { component: ResetColorsButton, size: 12 },
 	DropdownArrow: { component: DropdownArrow, size: 12 },

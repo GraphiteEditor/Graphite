@@ -5,7 +5,15 @@
 				<Icon :icon="entry.icon" v-if="entry.icon" />
 				<span v-if="entry.label">{{ entry.label }}</span>
 			</div>
-			<MenuList :menuEntries="entry.children" :direction="MenuDirection.Bottom" :ref="(ref) => setEntryRefs(entry, ref)" />
+			<MenuList
+				:ourEntry="entry"
+				:menuEntries="entry.children"
+				:direction="MenuDirection.Bottom"
+				:minWidth="240"
+				:drawIcon="true"
+				:defaultAction="actionNotImplemented"
+				:ref="(ref) => setEntryRefs(entry, ref)"
+			/>
 		</div>
 	</div>
 </template>
@@ -139,6 +147,9 @@ export default defineComponent({
 		handleEntryClick(menuEntry: MenuListEntry) {
 			if (menuEntry.ref) menuEntry.ref.setOpen();
 			else throw new Error("The menu bar floating menu has no associated ref");
+		},
+		actionNotImplemented() {
+			alert("This action is not yet implemented");
 		},
 	},
 	data() {

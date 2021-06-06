@@ -2,7 +2,7 @@
 	<LayoutCol :class="'document'">
 		<LayoutRow :class="'options-bar'">
 			<div class="left side">
-				<span class="label">Select</span>
+				<DropdownInput :menuEntries="modeMenuEntries" :default="modeMenuEntries[0][0]" :drawIcon="true" />
 
 				<Separator :type="SeparatorType.Section" />
 
@@ -132,11 +132,6 @@
 			display: flex;
 			align-items: center;
 			margin: 0 4px;
-
-			.label {
-				white-space: nowrap;
-				font-weight: bold;
-			}
 		}
 	}
 
@@ -177,21 +172,19 @@ import IconButton from "../widgets/buttons/IconButton.vue";
 import PopoverButton from "../widgets/buttons/PopoverButton.vue";
 import RadioInput from "../widgets/inputs/RadioInput.vue";
 import NumberInput from "../widgets/inputs/NumberInput.vue";
+import DropdownInput from "../widgets/inputs/DropdownInput.vue";
+import { SectionsOfMenuListEntries } from "../widgets/floating-menus/MenuList.vue";
+
+const modeMenuEntries: SectionsOfMenuListEntries = [
+	[
+		{ label: "Design Mode", icon: "ViewportDesignMode" },
+		{ label: "Select Mode", icon: "ViewportSelectMode" },
+	],
+];
 
 const wasm = import("../../../wasm/pkg");
 
 export default defineComponent({
-	components: {
-		LayoutRow,
-		LayoutCol,
-		WorkingColors,
-		ShelfItem,
-		Separator,
-		IconButton,
-		PopoverButton,
-		RadioInput,
-		NumberInput,
-	},
 	methods: {
 		async canvasMouseDown(e: MouseEvent) {
 			const { on_mouse_down } = await wasm;
@@ -259,7 +252,20 @@ export default defineComponent({
 			MenuDirection,
 			SeparatorDirection,
 			SeparatorType,
+			modeMenuEntries,
 		};
+	},
+	components: {
+		LayoutRow,
+		LayoutCol,
+		WorkingColors,
+		ShelfItem,
+		Separator,
+		IconButton,
+		PopoverButton,
+		RadioInput,
+		NumberInput,
+		DropdownInput,
 	},
 });
 </script>
