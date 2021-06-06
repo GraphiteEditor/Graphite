@@ -43,7 +43,7 @@
 		align-items: center;
 
 		.dropdown-input {
-			flex: 1 1 100%;
+			flex: 0 0 auto;
 		}
 
 		.number-input {

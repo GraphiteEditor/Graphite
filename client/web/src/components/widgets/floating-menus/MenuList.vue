@@ -196,18 +196,24 @@ const MenuList = defineComponent({
 			const { widthChanged } = this;
 			if (!widthChanged) return;
 
-			const floatingMenu = this.$refs.floatingMenu as typeof FloatingMenu;
+			// API is experimental but supported in all browsers - https://developer.mozilla.org/en-US/docs/Web/API/FontFaceSet
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			(document as any).fonts.ready.then(() => {
+				const floatingMenu = this.$refs.floatingMenu as typeof FloatingMenu;
 
-			const initiallyOpen = floatingMenu.isOpen();
-			if (!initiallyOpen) floatingMenu.setOpen();
+				// Save open/closed state before forcing open, if necessary, for measurement
+				const initiallyOpen = floatingMenu.isOpen();
+				if (!initiallyOpen) floatingMenu.setOpen();
 
-			floatingMenu.disableMinWidth((initialMinWidth: string) => {
-				floatingMenu.getWidth((width: number) => {
-					floatingMenu.enableMinWidth(initialMinWidth);
+				floatingMenu.disableMinWidth((initialMinWidth: string) => {
+					floatingMenu.getWidth((width: number) => {
+						floatingMenu.enableMinWidth(initialMinWidth);
 
-					if (!initiallyOpen) floatingMenu.setClosed();
+						// Restore open/closed state if it was forced open for measurement
+						if (!initiallyOpen) floatingMenu.setClosed();
 
-					widthChanged(width);
+						widthChanged(width);
+					});
 				});
 			});
 		},
@@ -223,6 +229,9 @@ const MenuList = defineComponent({
 				})
 			);
 		},
+	},
+	mounted() {
+		this.measureAndReportWidth();
 	},
 	updated() {
 		this.measureAndReportWidth();
