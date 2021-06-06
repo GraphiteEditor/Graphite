@@ -1,6 +1,10 @@
 <template>
 	<LayoutCol :class="'layer-tree-panel'">
 		<LayoutRow :class="'options-bar'">
+			<DropdownInput :menuEntries="blendModeMenuEntries" :default="blendModeMenuEntries[0][0]" />
+
+			<Separator :type="SeparatorType.Related" />
+
 			<NumberInput :value="100" :unit="`%`" />
 
 			<Separator :type="SeparatorType.Related" />
@@ -37,6 +41,10 @@
 		height: 32px;
 		margin: 0 4px;
 		align-items: center;
+
+		.dropdown-input {
+			flex: 1 1 100%;
+		}
 
 		.number-input {
 			flex: 1 1 100%;
@@ -88,19 +96,21 @@ import PopoverButton from "../widgets/buttons/PopoverButton.vue";
 import { MenuDirection } from "../widgets/floating-menus/FloatingMenu.vue";
 import IconButton from "../widgets/buttons/IconButton.vue";
 import Icon from "../widgets/labels/Icon.vue";
+import DropdownInput from "../widgets/inputs/DropdownInput.vue";
+import { SectionsOfMenuListEntries } from "../widgets/floating-menus/MenuList.vue";
 
 const wasm = import("../../../wasm/pkg");
 
+const blendModeMenuEntries: SectionsOfMenuListEntries = [
+	[{ label: "Normal" }],
+	[{ label: "Multiply" }, { label: "Darken" }, { label: "Color Burn" }, { label: "Linear Burn" }, { label: "Darker Color" }],
+	[{ label: "Screen" }, { label: "Lighten" }, { label: "Color Dodge" }, { label: "Linear Dodge (Add)" }, { label: "Lighter Color" }],
+	[{ label: "Overlay" }, { label: "Soft Light" }, { label: "Hard Light" }, { label: "Vivid Light" }, { label: "Linear Light" }, { label: "Pin Light" }, { label: "Hard Mix" }],
+	[{ label: "Difference" }, { label: "Exclusion" }, { label: "Subtract" }, { label: "Divide" }],
+	[{ label: "Hue" }, { label: "Saturation" }, { label: "Color" }, { label: "Luminosity" }],
+];
+
 export default defineComponent({
-	components: {
-		LayoutRow,
-		LayoutCol,
-		Separator,
-		PopoverButton,
-		NumberInput,
-		IconButton,
-		Icon,
-	},
 	props: {},
 	methods: {
 		async toggleLayerVisibility(path: BigUint64Array) {
@@ -125,10 +135,21 @@ export default defineComponent({
 	},
 	data() {
 		return {
+			blendModeMenuEntries,
 			MenuDirection,
 			SeparatorType,
 			layers: [] as Array<LayerPanelEntry>,
 		};
+	},
+	components: {
+		LayoutRow,
+		LayoutCol,
+		Separator,
+		PopoverButton,
+		NumberInput,
+		IconButton,
+		Icon,
+		DropdownInput,
 	},
 });
 </script>
