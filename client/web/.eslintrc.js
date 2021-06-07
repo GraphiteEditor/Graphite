@@ -30,7 +30,6 @@ module.exports = {
 		"no-debugger": process.env.NODE_ENV === "production" ? "warn" : "off",
 		"no-param-reassign": ["error", { props: false }],
 		"max-len": ["error", { code: 200, tabWidth: 4 }],
-		"no-param-reassign": [2, { "props": false }],
 		"@typescript-eslint/camelcase": "off",
 		"@typescript-eslint/no-use-before-define": "off",
 		"@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_" }],
