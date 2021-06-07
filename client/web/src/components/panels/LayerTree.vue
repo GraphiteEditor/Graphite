@@ -20,7 +20,13 @@
 					<div class="layer-visibility">
 						<IconButton :icon="layer.visible ? 'EyeVisible' : 'EyeHidden'" @click="toggleLayerVisibility(layer.path)" :size="24" :title="layer.visible ? 'Visible' : 'Hidden'" />
 					</div>
-					<div class="layer" :class="layer.selected ? 'selected' : ''" @click.shift.exact="handleShiftClick(layer.path)" @click.alt.exact="handleControlClick(layer.path)" @click.exact="handleClick(layer.path)">
+					<div
+						class="layer"
+						:class="layer.selected ? 'selected' : ''"
+						@click.shift.exact="handleShiftClick(layer.path)"
+						@click.alt.exact="handleControlClick(layer.path)"
+						@click.exact="handleClick(layer.path)"
+					>
 						<div class="layer-thumbnail"></div>
 						<div class="layer-type-icon">
 							<Icon :icon="'NodeTypePath'" title="Path" />
@@ -68,7 +74,6 @@
 			margin-left: 4px;
 			padding-left: 16px;
 		}
-		
 		.selected {
 			background: #ff0000;
 		}
@@ -124,89 +129,73 @@ export default defineComponent({
 		},
 		async handleControlClick(path: BigUint64Array) {
 			let i = 0;
-			this.endPath = new BigUint64Array([]);
-			for (const layer of this.layers) {
-					if (layer.path === path) {
-						layer.selected = !layer.selected;
-						if (layer.selected) {
-							this.startPath = path;
-						} else {
-							let j = i+1;
-							while (j < this.layers.length) {
-								// Look for a selected layer below to assign to startPath
+			this.endPath = -1n;
+			this.layers.forEach((layer, idx, layers) => {
+				if (layer.path === path) {
+					layers[idx].selected = !layer.selected;
+					if (layer.selected) {
+						[this.startPath] = path;
+					} else {
+						let j = i + 1;
+						while (j < this.layers.length) {
+							// Look for a selected layer below to assign to startPath
+							if (this.layers[j].selected) {
+								[this.startPath] = this.layers[j].path;
+								break;
+							}
+							j += 1;
+						}
+						if (j >= this.layers.length) {
+							// Look above
+							j = i - 1;
+							while (j >= 0) {
 								if (this.layers[j].selected) {
-									this.startPath = this.layers[j].path;
+									console.log("ABOVE");
+									[this.startPath] = this.layers[j].path;
 									break;
 								}
-								j += 1;
-							}
-							if(j >= this.layers.length) {
-								// Look above
-								j = i-1;
-								while (j >= 0) {
-									if (this.layers[j].selected) {
-										console.log("ABOVE");
-										this.startPath = this.layers[j].path;
-										break;
-									}
-									j -= 1;
-								}
-							}
-							if (j < 0) {
-								// RESET
-								this.startPath = new BigUint64Array([]);
+								j -= 1;
 							}
 						}
+						if (j < 0) {
+							// RESET
+							this.startPath = -1n;
+						}
 					}
-					i += 1;
-			}
+				}
+				i += 1;
+			});
 		},
 		async handleShiftClick(path: BigUint64Array) {
 			// The two paths of the range are stored in startPath and endPath
-	 		// So for a new Shift+Click, unselect all paths between startPath and endPath(stored in prev Sft+C)
+			// So for a new Shift+Click, unselect all paths between startPath and endPath(stored in prev Sft+C)
 			// Then select all paths between startPath and path(new endPath) and assign path to endPath
-			
-			if (this.startPath.length === 0) {
+			if (this.startPath === -1n) {
 				// If nothing was selected before, usually at the start of the app
 				// Also if the user manually deselects all the layers
-				for (const layer of this.layers) {
-					if (layer.path[0] < path[0]) {
-						layer.selected = !layer.selected;
-					} else if (layer.path[0] === path[0]) {
-						layer.selected = true
-					}
-				}
-				this.startPath = path;
-				this.endPath = this.layers[0].path;
-			} else {
-				
-				if (this.endPath.length !== 0) {
-					for (const layer of this.layers) {
-						if ((layer.path[0] >= this.endPath[0] && layer.path[0] < this.startPath[0]) || (layer.path[0] <= this.endPath[0] && layer.path[0] > this.startPath[0])) {
-							layer.selected = false;
-						}
-					}
-				}
-				
-				this.endPath = path;
-				for (const layer of this.layers) {
-					if ((layer.path[0] >= path[0] && layer.path[0] <= this.startPath[0]) || (layer.path[0] <= path[0] && layer.path[0] >= this.startPath[0])) {
+				this.layers.forEach((layer) => {
+					if (layer.path[0] <= path[0]) {
 						layer.selected = true;
 					}
-				}
+				});
+			} else {
+				[this.endPath] = path;
+				this.layers.forEach((layer) => {
+					if ((layer.path[0] >= path[0] && layer.path[0] <= this.startPath) || (layer.path[0] <= path[0] && layer.path[0] >= this.startPath)) {
+						layer.selected = true;
+					}
+				});
 			}
 		},
-		
 
 		async handleClick(path: BigUint64Array) {
-			this.startPath = path;
-			this.endPath = new BigUint64Array([]);
-			
-			for (const layer of this.layers) {
-					// Can we directly index into `layers`? Is the path `i` at the `i`th index in layers?
-					// Delete layer op may affect the order of layers and the paths.
-					layer.selected = layer.path === path;
-			}
+			[this.startPath] = path;
+			[this.endPath] = path;
+			this.layers.forEach((layer) => {
+				// Can we directly index into `layers`? Is the path `i` at the `i`th index in layers?
+				// Delete layer op may affect the order of layers and the paths.
+				layer.selected = layer.path === path;
+			});
 		},
 	},
 	mounted() {
@@ -230,8 +219,8 @@ export default defineComponent({
 			MenuDirection,
 			SeparatorType,
 			layers: [] as Array<LayerPanelEntry>,
-			startPath: new BigUint64Array([]),
-			endPath: new BigUint64Array([]),
+			startPath: -1n,
+			endPath: -1n,
 		};
 	},
 	components: {
