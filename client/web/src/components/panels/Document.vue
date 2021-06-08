@@ -124,7 +124,8 @@
 	height: 100%;
 
 	.options-bar {
-		flex: 0 0 32px;
+		height: 32px;
+		flex: 0 0 auto;
 
 		.side {
 			height: 100%;
@@ -137,7 +138,9 @@
 
 	.shelf-and-viewport {
 		.shelf {
-			flex: 0 0 32px;
+			flex: 0 0 auto;
+			display: flex;
+			flex-direction: column;
 		}
 
 		.viewport {
