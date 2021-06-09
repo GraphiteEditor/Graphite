@@ -20,7 +20,14 @@
 					<div class="layer-visibility">
 						<IconButton :icon="layer.visible ? 'EyeVisible' : 'EyeHidden'" @click="toggleLayerVisibility(layer.path)" :size="24" :title="layer.visible ? 'Visible' : 'Hidden'" />
 					</div>
-					<div class="layer">
+					<div
+						class="layer"
+						:class="{ selected: layer.layer_data.selected }"
+						@click.shift.exact="handleShiftClick(layer)"
+						@click.ctrl.exact="handleControlClick(layer)"
+						@click.alt.exact="handleControlClick(layer)"
+						@click.exact="handleClick(layer)"
+					>
 						<div class="layer-thumbnail"></div>
 						<div class="layer-type-icon">
 							<Icon :icon="'NodeTypePath'" title="Path" />
@@ -67,6 +74,10 @@
 			height: 100%;
 			margin-left: 4px;
 			padding-left: 16px;
+		}
+		.selected {
+			background: var(--color-accent);
+			color: var(--color-f-white);
 		}
 
 		& + .layer-row {
@@ -118,6 +129,65 @@ export default defineComponent({
 			const { toggle_layer_visibility } = await wasm;
 			toggle_layer_visibility(path);
 		},
+		async handleControlClick(clickedLayer: LayerPanelEntry) {
+			const index = this.layers.indexOf(clickedLayer);
+			clickedLayer.layer_data.selected = !clickedLayer.layer_data.selected;
+			this.selectionRangeEndLayer = undefined;
+			this.selectionRangeStartLayer =
+				this.layers.slice(index).filter((layer) => layer.layer_data.selected)[0] ||
+				this.layers
+					.slice(0, index)
+					.reverse()
+					.filter((layer) => layer.layer_data.selected)[0];
+			this.updateSelection();
+		},
+		async handleShiftClick(clickedLayer: LayerPanelEntry) {
+			// The two paths of the range are stored in selectionRangeStartLayer and selectionRangeEndLayer
+			// So for a new Shift+Click, select all layers between selectionRangeStartLayer and selectionRangeEndLayer(stored in prev Sft+C)
+			this.selectionRangeEndLayer = clickedLayer;
+			this.selectionRangeStartLayer = (this.selectionRangeStartLayer as LayerPanelEntry) || clickedLayer;
+			this.clearSelection();
+			this.fillSelectionRange(this.selectionRangeStartLayer, this.selectionRangeEndLayer, true);
+			this.updateSelection();
+		},
+
+		async handleClick(clickedLayer: LayerPanelEntry) {
+			this.selectionRangeStartLayer = clickedLayer;
+			this.selectionRangeEndLayer = clickedLayer;
+			this.clearSelection();
+			clickedLayer.layer_data.selected = true;
+			this.updateSelection();
+		},
+		async fillSelectionRange(start: LayerPanelEntry, end: LayerPanelEntry, selected = true) {
+			const startIndex = this.layers.indexOf(start);
+			const endIndex = this.layers.indexOf(end);
+			const [min, max] = [startIndex, endIndex].sort();
+			for (let i = min; i <= max; i += 1) {
+				this.layers[i].layer_data.selected = selected;
+			}
+		},
+		async clearSelection() {
+			this.layers.forEach((layer) => {
+				layer.layer_data.selected = false;
+			});
+		},
+		async updateSelection() {
+			const paths = this.layers.filter((layer) => layer.layer_data.selected).map((layer) => layer.path);
+			const length = paths.reduce((acc, cur) => acc + cur.length, 0) + paths.length - 1;
+			const output = new BigUint64Array(length);
+			let i = 0;
+			paths.forEach((path, index) => {
+				output.set(path, i);
+				i += path.length;
+				if (index < paths.length) {
+					// eslint-disable-next-line no-bitwise
+					output[i] = (1n << 64n) - 1n;
+				}
+				i += 1;
+			});
+			const { select_layers } = await wasm;
+			select_layers(output);
+		},
 	},
 	mounted() {
 		registerResponseHandler(ResponseType.ExpandFolder, (responseData: Response) => {
@@ -140,6 +210,8 @@ export default defineComponent({
 			MenuDirection,
 			SeparatorType,
 			layers: [] as Array<LayerPanelEntry>,
+			selectionRangeStartLayer: undefined as LayerPanelEntry | undefined,
+			selectionRangeEndLayer: undefined as LayerPanelEntry | undefined,
 		};
 	},
 	components: {
