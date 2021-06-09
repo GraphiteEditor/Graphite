@@ -25,6 +25,7 @@
 						:class="{ selected: layer.layer_data.selected }"
 						@click.shift.exact="handleShiftClick(layer)"
 						@click.ctrl.exact="handleControlClick(layer)"
+						@click.alt.exact="handleControlClick(layer)"
 						@click.exact="handleClick(layer)"
 					>
 						<div class="layer-thumbnail"></div>
