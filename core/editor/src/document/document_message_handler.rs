@@ -10,6 +10,7 @@ pub enum DocumentMessage {
 	DispatchOperation(DocumentOperation),
 	SelectLayers(Vec<Vec<LayerId>>),
 	DeleteLayer(Vec<LayerId>),
+	DeleteSelectedLayers,
 	AddFolder(Vec<LayerId>),
 	RenameLayer(Vec<LayerId>, String),
 	ToggleLayerVisibility(Vec<LayerId>),
@@ -95,11 +96,24 @@ impl MessageHandler<DocumentMessage, ()> for DocumentMessageHandler {
 				self.active_document_mut().layer_data(&path).expanded ^= true;
 				responses.extend(self.handle_folder_changed(path));
 			}
+			DeleteSelectedLayers => {
+				// TODO: Replace with drain_filter https://github.com/rust-lang/rust/issues/59618
+				log::debug!("{:?}", self.active_document().layer_data);
+				let paths: Vec<Vec<LayerId>> = self.active_document().layer_data.iter().filter_map(|(path, data)| data.selected.then(|| path.clone())).collect();
+				log::debug!("{:?}", paths);
+				for path in paths {
+					self.active_document_mut().layer_data.remove(&path);
+					responses.push_back(DocumentOperation::DeleteLayer { path }.into())
+				}
+				log::debug!("{:?}", self.active_document().layer_data);
+			}
 			SelectLayers(paths) => {
 				for path in paths {
 					self.active_document_mut().layer_data(&path).selected ^= true;
-					responses.extend(self.handle_folder_changed(path));
-					// TODO: Add deduplication
+					if !path.is_empty() {
+						responses.extend(self.handle_folder_changed(path[..path.len() - 1].to_vec()));
+						// TODO: Add deduplication
+					}
 				}
 			}
 			Undo => {
@@ -134,5 +148,11 @@ impl MessageHandler<DocumentMessage, ()> for DocumentMessageHandler {
 			message => todo!("document_action_handler does not implement: {}", message.to_discriminant().global_name()),
 		}
 	}
-	advertise_actions!(DocumentMessageDiscriminant; Undo, RenderDocument, ExportDocument);
+	fn actions(&self) -> ActionList {
+		if self.active_document().layer_data.values().any(|data| data.selected) {
+			actions!(DocumentMessageDiscriminant; Undo, DeleteSelectedLayers, RenderDocument, ExportDocument)
+		} else {
+			actions!(DocumentMessageDiscriminant; Undo, RenderDocument, ExportDocument)
+		}
+	}
 }

@@ -55,6 +55,7 @@ pub enum Key {
 	KeyEnter,
 	KeyShift,
 	KeyControl,
+	KeyDelete,
 	KeyAlt,
 	KeyEscape,
 
