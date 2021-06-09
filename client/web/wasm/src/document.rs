@@ -104,11 +104,12 @@ pub fn export_document() -> Result<(), JsValue> {
 	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(DocumentMessage::ExportDocument)).map_err(convert_error)
 }
 
-/// Select a layer from the layer list
+/// Update the list of selected layers. The layer paths have to be stored in one array and are separated by LayerId::MAX
 #[wasm_bindgen]
-pub fn select_layer(path: Vec<LayerId>) -> Result<(), JsValue> {
+pub fn select_layer(paths: Vec<LayerId>) -> Result<(), JsValue> {
+	let paths = paths.split(|id| *id == LayerId::MAX).map(|path| path.to_vec()).collect();
 	EDITOR_STATE
-		.with(|editor| editor.borrow_mut().handle_message(DocumentMessage::SelectLayer(path)))
+		.with(|editor| editor.borrow_mut().handle_message(DocumentMessage::SelectLayers(paths)))
 		.map_err(convert_error)
 }
 
