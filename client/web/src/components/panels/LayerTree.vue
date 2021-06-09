@@ -22,10 +22,10 @@
 					</div>
 					<div
 						class="layer"
-						:class="layer.selected ? 'selected' : ''"
-						@click.shift.exact="handleShiftClick(layer.path)"
-						@click.alt.exact="handleControlClick(layer.path)"
-						@click.exact="handleClick(layer.path)"
+						:class="{ selected: layer.layer_data.selected }"
+						@click.shift.exact="handleShiftClick(layer)"
+						@click.alt.exact="handleControlClick(layer)"
+						@click.exact="handleClick(layer)"
 					>
 						<div class="layer-thumbnail"></div>
 						<div class="layer-type-icon">
@@ -75,7 +75,7 @@
 			padding-left: 16px;
 		}
 		.selected {
-			background: #ff0000;
+			background: var(--color-accent);
 		}
 
 		& + .layer-row {
@@ -127,75 +127,64 @@ export default defineComponent({
 			const { toggle_layer_visibility } = await wasm;
 			toggle_layer_visibility(path);
 		},
-		async handleControlClick(path: BigUint64Array) {
+		async handleControlClick(clickedLayer: LayerPanelEntry) {
+			const index = this.layers.indexOf(clickedLayer);
+			clickedLayer.layer_data.selected = !clickedLayer.layer_data.selected;
+			this.selectionRangeEndLayer = undefined;
+			this.selectionRangeStartLayer =
+				this.layers.slice(index).filter((layer) => layer.layer_data.selected)[0] ||
+				this.layers
+					.slice(0, index)
+					.reverse()
+					.filter((layer) => layer.layer_data.selected)[0];
+			this.updateSelection();
+		},
+		async handleShiftClick(clickedLayer: LayerPanelEntry) {
+			// The two paths of the range are stored in selectionRangeStartLayer and selectionRangeEndLayer
+			// So for a new Shift+Click, select all layers between selectionRangeStartLayer and selectionRangeEndLayer(stored in prev Sft+C)
+			this.selectionRangeEndLayer = clickedLayer;
+			this.selectionRangeStartLayer = (this.selectionRangeStartLayer as LayerPanelEntry) || clickedLayer;
+			this.clearSelection();
+			this.fillSelectionRange(this.selectionRangeStartLayer, this.selectionRangeEndLayer, true);
+			this.updateSelection();
+		},
+
+		async handleClick(clickedLayer: LayerPanelEntry) {
+			this.selectionRangeStartLayer = clickedLayer;
+			this.selectionRangeEndLayer = clickedLayer;
+			this.clearSelection();
+			clickedLayer.layer_data.selected = true;
+			this.updateSelection();
+		},
+		async fillSelectionRange(start: LayerPanelEntry, end: LayerPanelEntry, selected = true) {
+			const startIndex = this.layers.indexOf(start);
+			const endIndex = this.layers.indexOf(end);
+			const [min, max] = [startIndex, endIndex].sort();
+			for (let i = min; i <= max; i += 1) {
+				this.layers[i].layer_data.selected = selected;
+			}
+		},
+		async clearSelection() {
+			this.layers.forEach((layer) => {
+				layer.layer_data.selected = false;
+			});
+		},
+		async updateSelection() {
+			const paths = this.layers.filter((layer) => layer.layer_data.selected).map((layer) => layer.path);
+			const length = paths.reduce((acc, cur) => acc + cur.length, 0) + paths.length - 1;
+			const output = new BigUint64Array(length);
 			let i = 0;
-			this.endPath = -1n;
-			this.layers.forEach((layer, idx, layers) => {
-				if (layer.path === path) {
-					layers[idx].selected = !layer.selected;
-					if (layer.selected) {
-						[this.startPath] = path;
-					} else {
-						let j = i + 1;
-						while (j < this.layers.length) {
-							// Look for a selected layer below to assign to startPath
-							if (this.layers[j].selected) {
-								[this.startPath] = this.layers[j].path;
-								break;
-							}
-							j += 1;
-						}
-						if (j >= this.layers.length) {
-							// Look above
-							j = i - 1;
-							while (j >= 0) {
-								if (this.layers[j].selected) {
-									console.log("ABOVE");
-									[this.startPath] = this.layers[j].path;
-									break;
-								}
-								j -= 1;
-							}
-						}
-						if (j < 0) {
-							// RESET
-							this.startPath = -1n;
-						}
-					}
+			paths.forEach((path, index) => {
+				output.set(path, i);
+				i += path.length;
+				if (index < paths.length) {
+					// eslint-disable-next-line no-bitwise
+					output[i] = (1n << 64n) - 1n;
 				}
 				i += 1;
 			});
-		},
-		async handleShiftClick(path: BigUint64Array) {
-			// The two paths of the range are stored in startPath and endPath
-			// So for a new Shift+Click, unselect all paths between startPath and endPath(stored in prev Sft+C)
-			// Then select all paths between startPath and path(new endPath) and assign path to endPath
-			if (this.startPath === -1n) {
-				// If nothing was selected before, usually at the start of the app
-				// Also if the user manually deselects all the layers
-				this.layers.forEach((layer) => {
-					if (layer.path[0] <= path[0]) {
-						layer.selected = true;
-					}
-				});
-			} else {
-				[this.endPath] = path;
-				this.layers.forEach((layer) => {
-					if ((layer.path[0] >= path[0] && layer.path[0] <= this.startPath) || (layer.path[0] <= path[0] && layer.path[0] >= this.startPath)) {
-						layer.selected = true;
-					}
-				});
-			}
-		},
-
-		async handleClick(path: BigUint64Array) {
-			[this.startPath] = path;
-			[this.endPath] = path;
-			this.layers.forEach((layer) => {
-				// Can we directly index into `layers`? Is the path `i` at the `i`th index in layers?
-				// Delete layer op may affect the order of layers and the paths.
-				layer.selected = layer.path === path;
-			});
+			const { select_layers } = await wasm;
+			select_layers(output);
 		},
 	},
 	mounted() {
@@ -219,8 +208,8 @@ export default defineComponent({
 			MenuDirection,
 			SeparatorType,
 			layers: [] as Array<LayerPanelEntry>,
-			startPath: -1n,
-			endPath: -1n,
+			selectionRangeStartLayer: undefined as LayerPanelEntry | undefined,
+			selectionRangeEndLayer: undefined as LayerPanelEntry | undefined,
 		};
 	},
 	components: {
