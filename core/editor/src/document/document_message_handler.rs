@@ -98,18 +98,16 @@ impl MessageHandler<DocumentMessage, ()> for DocumentMessageHandler {
 			}
 			DeleteSelectedLayers => {
 				// TODO: Replace with drain_filter https://github.com/rust-lang/rust/issues/59618
-				log::debug!("{:?}", self.active_document().layer_data);
 				let paths: Vec<Vec<LayerId>> = self.active_document().layer_data.iter().filter_map(|(path, data)| data.selected.then(|| path.clone())).collect();
-				log::debug!("{:?}", paths);
 				for path in paths {
 					self.active_document_mut().layer_data.remove(&path);
 					responses.push_back(DocumentOperation::DeleteLayer { path }.into())
 				}
-				log::debug!("{:?}", self.active_document().layer_data);
 			}
 			SelectLayers(paths) => {
+				self.active_document_mut().layer_data.values_mut().for_each(|layer_data| layer_data.selected = false);
 				for path in paths {
-					self.active_document_mut().layer_data(&path).selected ^= true;
+					self.active_document_mut().layer_data(&path).selected = true;
 					if !path.is_empty() {
 						responses.extend(self.handle_folder_changed(path[..path.len() - 1].to_vec()));
 						// TODO: Add deduplication
