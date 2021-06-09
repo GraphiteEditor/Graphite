@@ -144,9 +144,9 @@ export default defineComponent({
 		async handleShiftClick(clickedLayer: LayerPanelEntry) {
 			// The two paths of the range are stored in selectionRangeStartLayer and selectionRangeEndLayer
 			// So for a new Shift+Click, select all layers between selectionRangeStartLayer and selectionRangeEndLayer(stored in prev Sft+C)
-			this.selectionRangeEndLayer = clickedLayer;
-			this.selectionRangeStartLayer = (this.selectionRangeStartLayer as LayerPanelEntry) || clickedLayer;
 			this.clearSelection();
+			this.selectionRangeEndLayer = clickedLayer;
+			if (!this.selectionRangeStartLayer) this.selectionRangeStartLayer = clickedLayer;
 			this.fillSelectionRange(this.selectionRangeStartLayer, this.selectionRangeEndLayer, true);
 			this.updateSelection();
 		},
@@ -159,11 +159,13 @@ export default defineComponent({
 			this.updateSelection();
 		},
 		async fillSelectionRange(start: LayerPanelEntry, end: LayerPanelEntry, selected = true) {
-			const startIndex = this.layers.indexOf(start);
-			const endIndex = this.layers.indexOf(end);
+			const startIndex = this.layers.findIndex((layer) => layer.path.join() === start.path.join());
+			const endIndex = this.layers.findIndex((layer) => layer.path.join() === end.path.join());
 			const [min, max] = [startIndex, endIndex].sort();
-			for (let i = min; i <= max; i += 1) {
-				this.layers[i].layer_data.selected = selected;
+			if (min !== -1) {
+				for (let i = min; i <= max; i += 1) {
+					this.layers[i].layer_data.selected = selected;
+				}
 			}
 		},
 		async clearSelection() {
@@ -173,6 +175,7 @@ export default defineComponent({
 		},
 		async updateSelection() {
 			const paths = this.layers.filter((layer) => layer.layer_data.selected).map((layer) => layer.path);
+			if (paths.length === 0) return;
 			const length = paths.reduce((acc, cur) => acc + cur.length, 0) + paths.length - 1;
 			const output = new BigUint64Array(length);
 			let i = 0;

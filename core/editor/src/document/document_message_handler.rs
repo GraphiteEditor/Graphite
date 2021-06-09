@@ -57,6 +57,9 @@ impl DocumentMessageHandler {
 			FrontendMessage::ExpandFolder { path, children }.into()
 		})
 	}
+	fn clear_selection(&mut self) {
+		self.active_document_mut().layer_data.values_mut().for_each(|layer_data| layer_data.selected = false);
+	}
 }
 
 impl Default for DocumentMessageHandler {
@@ -105,7 +108,7 @@ impl MessageHandler<DocumentMessage, ()> for DocumentMessageHandler {
 				}
 			}
 			SelectLayers(paths) => {
-				self.active_document_mut().layer_data.values_mut().for_each(|layer_data| layer_data.selected = false);
+				self.clear_selection();
 				for path in paths {
 					self.active_document_mut().layer_data(&path).selected = true;
 					if !path.is_empty() {
