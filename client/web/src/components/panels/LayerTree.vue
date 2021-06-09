@@ -24,7 +24,7 @@
 						class="layer"
 						:class="{ selected: layer.layer_data.selected }"
 						@click.shift.exact="handleShiftClick(layer)"
-						@click.alt.exact="handleControlClick(layer)"
+						@click.ctrl.exact="handleControlClick(layer)"
 						@click.exact="handleClick(layer)"
 					>
 						<div class="layer-thumbnail"></div>
@@ -76,6 +76,7 @@
 		}
 		.selected {
 			background: var(--color-accent);
+			color: var(--color-f-white);
 		}
 
 		& + .layer-row {
