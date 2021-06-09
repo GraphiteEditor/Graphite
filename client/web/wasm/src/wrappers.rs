@@ -119,6 +119,7 @@ pub fn translate_key(name: &str) -> Key {
 		// When using linux + chrome + the neo keyboard layout, the shift key is recognized as caps
 		"capslock" => KeyShift,
 		"control" => KeyControl,
+		"delete" => KeyDelete,
 		"alt" => KeyAlt,
 		"escape" => KeyEscape,
 		_ => UnknownKey,
