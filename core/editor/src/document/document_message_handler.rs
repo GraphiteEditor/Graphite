@@ -60,6 +60,11 @@ impl DocumentMessageHandler {
 	fn clear_selection(&mut self) {
 		self.active_document_mut().layer_data.values_mut().for_each(|layer_data| layer_data.selected = false);
 	}
+	fn select_layer(&mut self, path: &[LayerId]) -> Option<Message> {
+		self.active_document_mut().layer_data(&path).selected = true;
+		// TODO: Add deduplication
+		(!path.is_empty()).then(|| self.handle_folder_changed(path[..path.len() - 1].to_vec())).flatten()
+	}
 }
 
 impl Default for DocumentMessageHandler {
@@ -110,11 +115,7 @@ impl MessageHandler<DocumentMessage, ()> for DocumentMessageHandler {
 			SelectLayers(paths) => {
 				self.clear_selection();
 				for path in paths {
-					self.active_document_mut().layer_data(&path).selected = true;
-					if !path.is_empty() {
-						responses.extend(self.handle_folder_changed(path[..path.len() - 1].to_vec()));
-						// TODO: Add deduplication
-					}
+					responses.extend(self.select_layer(&path));
 				}
 			}
 			Undo => {
@@ -131,6 +132,14 @@ impl MessageHandler<DocumentMessage, ()> for DocumentMessageHandler {
 							.into_iter()
 							.map(|response| match response {
 								DocumentResponse::FolderChanged { path } => self.handle_folder_changed(path),
+								DocumentResponse::SelectLayer { path } => {
+									if !self.active_document().document.work_mounted {
+										self.clear_selection();
+										self.select_layer(&path)
+									} else {
+										None
+									}
+								}
 								DocumentResponse::DocumentChanged => unreachable!(),
 							})
 							.flatten(),
