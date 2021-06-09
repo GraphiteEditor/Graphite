@@ -106,7 +106,7 @@ pub fn export_document() -> Result<(), JsValue> {
 
 /// Update the list of selected layers. The layer paths have to be stored in one array and are separated by LayerId::MAX
 #[wasm_bindgen]
-pub fn select_layer(paths: Vec<LayerId>) -> Result<(), JsValue> {
+pub fn select_layers(paths: Vec<LayerId>) -> Result<(), JsValue> {
 	let paths = paths.split(|id| *id == LayerId::MAX).map(|path| path.to_vec()).collect();
 	EDITOR_STATE
 		.with(|editor| editor.borrow_mut().handle_message(DocumentMessage::SelectLayers(paths)))
