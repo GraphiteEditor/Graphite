@@ -8,7 +8,7 @@ use std::collections::VecDeque;
 #[derive(PartialEq, Clone, Debug)]
 pub enum DocumentMessage {
 	DispatchOperation(DocumentOperation),
-	SelectLayer(Vec<LayerId>),
+	SelectLayers(Vec<Vec<LayerId>>),
 	DeleteLayer(Vec<LayerId>),
 	AddFolder(Vec<LayerId>),
 	RenameLayer(Vec<LayerId>, String),
@@ -49,6 +49,13 @@ impl DocumentMessageHandler {
 		document_responses.retain(|response| !matches!(response, DocumentResponse::DocumentChanged));
 		document_responses.len() != len
 	}
+	fn handle_folder_changed(&mut self, path: Vec<LayerId>) -> Option<Message> {
+		let document = self.active_document_mut();
+		document.layer_data(&path).expanded.then(|| {
+			let children = document.layer_panel(path.as_slice()).expect("The provided Path was not valid");
+			FrontendMessage::ExpandFolder { path, children }.into()
+		})
+	}
 }
 
 impl Default for DocumentMessageHandler {
@@ -84,6 +91,17 @@ impl MessageHandler<DocumentMessage, ()> for DocumentMessageHandler {
 			ToggleLayerVisibility(path) => {
 				responses.push_back(DocumentOperation::ToggleVisibility { path }.into());
 			}
+			ToggleLayerExpansion(path) => {
+				self.active_document_mut().layer_data(&path).expanded ^= true;
+				responses.extend(self.handle_folder_changed(path));
+			}
+			SelectLayers(paths) => {
+				for path in paths {
+					self.active_document_mut().layer_data(&path).selected ^= true;
+					responses.extend(self.handle_folder_changed(path));
+					// TODO: Add deduplication
+				}
+			}
 			Undo => {
 				// this is a temporary fix and will be addressed by #123
 				if let Some(id) = self.active_document().document.root.list_layers().last() {
@@ -93,7 +111,15 @@ impl MessageHandler<DocumentMessage, ()> for DocumentMessageHandler {
 			DispatchOperation(op) => {
 				if let Ok(Some(mut document_responses)) = self.active_document_mut().document.handle_operation(op) {
 					let canvas_dirty = self.filter_document_responses(&mut document_responses);
-					responses.extend(document_responses.into_iter().map(Into::into));
+					responses.extend(
+						document_responses
+							.into_iter()
+							.map(|response| match response {
+								DocumentResponse::FolderChanged { path } => self.handle_folder_changed(path),
+								DocumentResponse::DocumentChanged => unreachable!(),
+							})
+							.flatten(),
+					);
 					if canvas_dirty {
 						responses.push_back(RenderDocument.into())
 					}

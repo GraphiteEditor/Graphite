@@ -1,6 +1,5 @@
 use crate::{
 	layers::{self, Folder, Layer, LayerData, LayerDataTypes, Line, PolyLine, Rect, Shape},
-	response::LayerPanelEntry,
 	DocumentError, DocumentResponse, LayerId, Operation,
 };
 
@@ -168,19 +167,6 @@ impl Document {
 		Ok(())
 	}
 
-	/// Returns a list of `LayerPanelEntry`s intended for display purposes. These don't contain
-	/// any actual data, but rather metadata such as visibility and names of the layers.
-	pub fn layer_panel(&self, path: &[LayerId]) -> Result<Vec<LayerPanelEntry>, DocumentError> {
-		let folder = self.document_folder(path)?;
-		let entries = folder
-			.layers()
-			.iter()
-			.zip(folder.layer_ids.iter())
-			.map(|(layer, id)| LayerPanelEntry::from_layer(layer, [path, &[*id]].concat()))
-			.collect();
-		Ok(entries)
-	}
-
 	/// Mutate the document by applying the `operation` to it. If the operation necessitates a
 	/// reaction from the frontend, responses may be returned.
 	pub fn handle_operation(&mut self, operation: Operation) -> Result<Option<Vec<DocumentResponse>>, DocumentError> {
@@ -255,14 +241,12 @@ impl Document {
 				self.delete(&path)?;
 
 				let (path, _) = split_path(path.as_slice()).unwrap_or_else(|_| (&[], 0));
-				let children = self.layer_panel(path)?;
-				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::ExpandFolder { path: path.to_vec(), children }])
+				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::FolderChanged { path: path.to_vec() }])
 			}
 			Operation::AddFolder { path } => {
 				self.set_layer(&path, Layer::new(LayerDataTypes::Folder(Folder::default())))?;
 
-				let children = self.layer_panel(path.as_slice())?;
-				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::ExpandFolder { path: path.clone(), children }])
+				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::FolderChanged { path: path.clone() }])
 			}
 			Operation::MountWorkingFolder { path } => {
 				self.work_mount_path = path.clone();
@@ -298,17 +282,15 @@ impl Document {
 					}
 				}
 
-				let children = self.layer_panel(path.as_slice())?;
-				// TODO: Return `responses` and add deduplication in the future
-				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::ExpandFolder { path, children }])
+				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::FolderChanged { path }])
 			}
 			Operation::ToggleVisibility { path } => {
 				let _ = self.layer_mut(&path).map(|layer| {
 					layer.visible = !layer.visible;
 					layer.cache_dirty = true;
 				});
-				let children = self.layer_panel(&path.as_slice()[..path.len() - 1])?;
-				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::ExpandFolder { path: vec![], children }])
+				let path = path.as_slice()[..path.len() - 1].to_vec();
+				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::FolderChanged { path }])
 			}
 		};
 		if !matches!(
