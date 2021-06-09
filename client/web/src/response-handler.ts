@@ -118,16 +118,27 @@ export interface LayerPanelEntry {
 	name: string;
 	visible: boolean;
 	layer_type: LayerType;
-	collapsed: boolean;
 	path: BigUint64Array;
+	layer_data: LayerData;
 }
 function newLayerPanelEntry(input: any): LayerPanelEntry {
 	return {
 		name: input.name,
 		visible: input.visible,
 		layer_type: newLayerType(input.layer_type),
-		collapsed: input.collapsed,
+		layer_data: newLayerData(input.layer_data),
 		path: new BigUint64Array(input.path.map((n: number) => BigInt(n))),
+	};
+}
+
+export interface LayerData {
+	expanded: boolean;
+	selected: boolean;
+}
+function newLayerData(input: any): LayerData {
+	return {
+		expanded: input.expanded,
+		selected: input.selected,
 	};
 }
 
