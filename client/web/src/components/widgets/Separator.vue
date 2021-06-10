@@ -1,6 +1,6 @@
 <template>
 	<div class="separator" :class="[direction.toLowerCase(), type.toLowerCase()]">
-		<div v-if="type === SeparatorType.Section"></div>
+		<div v-if="[SeparatorType.Section, SeparatorType.List].includes(type)"></div>
 	</div>
 </template>
 
@@ -15,9 +15,9 @@
 			margin-top: 8px;
 		}
 
-		&.section {
+		&.section,
+		&.list {
 			width: 100%;
-			margin: 8px 0;
 
 			div {
 				height: 1px;
@@ -25,6 +25,14 @@
 				margin: 0 4px;
 				background: var(--color-7-middlegray);
 			}
+		}
+
+		&.section {
+			margin: 8px 0;
+		}
+
+		&.list {
+			margin: 4px 0;
 		}
 	}
 
@@ -37,9 +45,9 @@
 			margin-left: 8px;
 		}
 
-		&.section {
+		&.section,
+		&.list {
 			height: 100%;
-			margin: 0 8px;
 
 			div {
 				height: calc(100% - 8px);
@@ -47,6 +55,14 @@
 				margin: 4px 0;
 				background: var(--color-7-middlegray);
 			}
+		}
+
+		&.section {
+			margin: 0 8px;
+		}
+
+		&.list {
+			margin: 0 4px;
 		}
 	}
 }
@@ -64,6 +80,7 @@ export enum SeparatorType {
 	"Related" = "Related",
 	"Unrelated" = "Unrelated",
 	"Section" = "Section",
+	"List" = "List",
 }
 
 export default defineComponent({

@@ -26,7 +26,8 @@
 	// TODO: Replace with CSS color() function to calculate alpha when browsers support it
 	// See https://developer.mozilla.org/en-US/docs/Web/CSS/color_value/color() and https://caniuse.com/css-color-function
 	// E6 = 90% alpha
-	--popover-opacity-color-2-mildblack: #222222e6;
+	--floating-menu-opacity-color-2-mildblack: #222222e6;
+	--floating-menu-shadow: rgba(0, 0, 0, 50%);
 }
 
 html,
@@ -54,7 +55,7 @@ img {
 }
 
 // For placeholder messages (remove eventually)
-.popover {
+.floating-menu {
 	h1,
 	h2,
 	h3,
@@ -75,18 +76,7 @@ img {
 import { defineComponent } from "vue";
 import MainWindow from "./components/window/MainWindow.vue";
 
-const wasm = import("../wasm/pkg");
-
 export default defineComponent({
 	components: { MainWindow },
-	created() {
-		this.greet();
-	},
-	methods: {
-		async greet() {
-			const { greet } = await wasm;
-			greet("Graphite");
-		},
-	},
 });
 </script>

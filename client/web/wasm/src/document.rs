@@ -21,6 +21,14 @@ pub fn select_tool(tool: String) -> Result<(), JsValue> {
 	})
 }
 
+#[wasm_bindgen]
+pub fn select_document(document: usize) -> Result<(), JsValue> {
+	EDITOR_STATE.with(|editor| {
+		editor.borrow_mut().handle_message(DocumentMessage::SelectDocument(document)).map_err(convert_error)
+	})
+
+}
+
 // TODO: When a mouse button is down that started in the viewport, this should trigger even when the mouse is outside the viewport (or even the browser window if the browser supports it)
 /// Mouse movement within the screenspace bounds of the viewport
 #[wasm_bindgen]
@@ -92,11 +100,24 @@ pub fn reset_colors() -> Result<(), JsValue> {
 	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(ToolMessage::ResetColors)).map_err(convert_error)
 }
 
-/// Select a layer from the layer list
+/// Undo history one step
 #[wasm_bindgen]
-pub fn select_layer(path: Vec<LayerId>) -> Result<(), JsValue> {
+pub fn undo() -> Result<(), JsValue> {
+	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(DocumentMessage::Undo)).map_err(convert_error)
+}
+
+/// Export the document
+#[wasm_bindgen]
+pub fn export_document() -> Result<(), JsValue> {
+	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(DocumentMessage::ExportDocument)).map_err(convert_error)
+}
+
+/// Update the list of selected layers. The layer paths have to be stored in one array and are separated by LayerId::MAX
+#[wasm_bindgen]
+pub fn select_layers(paths: Vec<LayerId>) -> Result<(), JsValue> {
+	let paths = paths.split(|id| *id == LayerId::MAX).map(|path| path.to_vec()).collect();
 	EDITOR_STATE
-		.with(|editor| editor.borrow_mut().handle_message(DocumentMessage::SelectLayer(path)))
+		.with(|editor| editor.borrow_mut().handle_message(DocumentMessage::SelectLayers(paths)))
 		.map_err(convert_error)
 }
 

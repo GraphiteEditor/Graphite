@@ -2,8 +2,8 @@
 	<div class="working-colors">
 		<SwatchPairInput />
 		<div class="swap-and-reset">
-			<IconButton :icon="'SwapButton'" :size="16" />
-			<IconButton :icon="'ResetColorsButton'" :size="16" />
+			<IconButton @click="swapColors" :icon="'SwapButton'" title="Swap (Shift+X)" :size="16" />
+			<IconButton @click="resetColors" :icon="'ResetColorsButton'" title="Reset (Ctrl+Shift+X)" :size="16" />
 		</div>
 	</div>
 </template>
@@ -21,7 +21,19 @@ import { defineComponent } from "vue";
 import SwatchPairInput from "./inputs/SwatchPairInput.vue";
 import IconButton from "./buttons/IconButton.vue";
 
+const wasm = import("../../../wasm/pkg");
+
 export default defineComponent({
+	methods: {
+		async swapColors() {
+			const { swap_colors } = await wasm;
+			swap_colors();
+		},
+		async resetColors() {
+			const { reset_colors } = await wasm;
+			reset_colors();
+		},
+	},
 	components: {
 		SwatchPairInput,
 		IconButton,
