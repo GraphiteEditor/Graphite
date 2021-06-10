@@ -3,31 +3,26 @@ use super::LayerData;
 
 use std::fmt::Write;
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Rect {
-	shape: kurbo::Rect,
+	shape: kurbo::BezPath,
 	style: style::PathStyle,
 }
 
 impl Rect {
-	pub fn new(p0: impl Into<kurbo::Point>, p1: impl Into<kurbo::Point>, style: style::PathStyle) -> Rect {
-		Rect {
-			shape: kurbo::Rect::from_points(p0, p1),
-			style,
-		}
+	pub fn new(x0: f64, y0: f64, x1: f64, y1: f64, style: style::PathStyle) -> Rect {
+		let mut path = kurbo::BezPath::new();
+		path.move_to((x0, y0));
+		path.line_to((x1, y0));
+		path.line_to((x1, y1));
+		path.line_to((x0, y1));
+		path.close_path();
+		Rect { shape: path, style }
 	}
 }
 
 impl LayerData for Rect {
 	fn render(&mut self, svg: &mut String) {
-		let _ = write!(
-			svg,
-			r#"<rect x="{}" y="{}" width="{}" height="{}"{} />"#,
-			self.shape.min_x(),
-			self.shape.min_y(),
-			self.shape.width(),
-			self.shape.height(),
-			self.style.render(),
-		);
+		let _ = write!(svg, r#"<path d="{}"{} />"#, self.shape.to_svg(), self.style.render());
 	}
 }

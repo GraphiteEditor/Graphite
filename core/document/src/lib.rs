@@ -3,7 +3,6 @@ pub mod document;
 pub mod layers;
 pub mod operation;
 pub mod response;
-mod shape_points;
 
 pub use operation::Operation;
 pub use response::DocumentResponse;

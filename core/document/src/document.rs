@@ -213,7 +213,7 @@ impl Document {
 				y1,
 				style,
 			} => {
-				self.add_layer(&path, Layer::new(LayerDataTypes::Rect(Rect::new((*x0, *y0), (*x1, *y1), *style))), *insert_index)?;
+				self.add_layer(&path, Layer::new(LayerDataTypes::Rect(Rect::new(*x0, *y0, *x1, *y1, *style))), *insert_index)?;
 
 				Some(vec![DocumentResponse::DocumentChanged])
 			}
@@ -246,7 +246,7 @@ impl Document {
 				sides,
 				style,
 			} => {
-				let s = Shape::new((*x0, *y0), (*x1, *y1), *sides, *style);
+				let s = Shape::new((*x0, *y0).into(), (*x1, *y1).into(), *sides, *style);
 				self.add_layer(&path, Layer::new(LayerDataTypes::Shape(s)), *insert_index)?;
 
 				Some(vec![DocumentResponse::DocumentChanged])
