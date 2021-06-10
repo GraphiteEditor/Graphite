@@ -1,5 +1,6 @@
 pub mod color;
 pub mod document;
+pub mod intersection;
 pub mod layers;
 pub mod operation;
 pub mod response;

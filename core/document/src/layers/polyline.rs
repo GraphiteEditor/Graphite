@@ -1,3 +1,5 @@
+use kurbo::Point;
+
 use super::style;
 use super::LayerData;
 
@@ -5,12 +7,12 @@ use std::fmt::Write;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct PolyLine {
-	points: Vec<kurbo::Point>,
+	points: Vec<Point>,
 	style: style::PathStyle,
 }
 
 impl PolyLine {
-	pub fn new(points: Vec<impl Into<kurbo::Point>>, style: style::PathStyle) -> PolyLine {
+	pub fn new(points: Vec<impl Into<Point>>, style: style::PathStyle) -> PolyLine {
 		PolyLine {
 			points: points.into_iter().map(|it| it.into()).collect(),
 			style,
@@ -32,13 +34,21 @@ impl LayerData for PolyLine {
 		}
 		let _ = write!(svg, r#""{} />"#, self.style.render());
 	}
+
+	fn contains(&self, point: Point) -> bool {
+		false
+	}
+
+	fn intersects_quad(&self, quad: [Point; 4]) -> bool {
+		false
+	}
 }
 
 #[cfg(test)]
 #[test]
 fn polyline_should_render() {
 	let mut polyline = PolyLine {
-		points: vec![kurbo::Point::new(3.0, 4.12354), kurbo::Point::new(1.0, 5.54)],
+		points: vec![Point::new(3.0, 4.12354), Point::new(1.0, 5.54)],
 		style: style::PathStyle::new(Some(style::Stroke::new(crate::color::Color::GREEN, 0.4)), None),
 	};
 

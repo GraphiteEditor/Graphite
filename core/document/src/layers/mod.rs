@@ -7,6 +7,7 @@ pub mod ellipse;
 pub use ellipse::Ellipse;
 
 pub mod line;
+use kurbo::Point;
 pub use line::Line;
 
 pub mod rect;
@@ -23,6 +24,8 @@ pub use folder::Folder;
 
 pub trait LayerData {
 	fn render(&mut self, svg: &mut String);
+	fn contains(&self, point: Point) -> bool;
+	fn intersects_quad(&self, quad: [Point; 4]) -> bool;
 }
 
 #[derive(Debug, Clone, PartialEq)]

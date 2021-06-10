@@ -1,3 +1,8 @@
+use kurbo::Point;
+use kurbo::Shape;
+
+use crate::intersection::intersect_quad_bez_path;
+
 use super::style;
 use super::LayerData;
 
@@ -10,7 +15,7 @@ pub struct Rect {
 }
 
 impl Rect {
-	pub fn new(p0: impl Into<kurbo::Point>, p1: impl Into<kurbo::Point>, style: style::PathStyle) -> Rect {
+	pub fn new(p0: impl Into<Point>, p1: impl Into<Point>, style: style::PathStyle) -> Rect {
 		Rect {
 			shape: kurbo::Rect::from_points(p0, p1),
 			style,
@@ -29,5 +34,13 @@ impl LayerData for Rect {
 			self.shape.height(),
 			self.style.render(),
 		);
+	}
+
+	fn contains(&self, point: Point) -> bool {
+		self.shape.contains(point)
+	}
+
+	fn intersects_quad(&self, quad: [Point; 4]) -> bool {
+		intersect_quad_bez_path(quad, &self.shape.to_path(0.0001))
 	}
 }

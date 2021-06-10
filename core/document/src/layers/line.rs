@@ -1,3 +1,5 @@
+use kurbo::Point;
+
 use super::style;
 use super::LayerData;
 
@@ -10,7 +12,7 @@ pub struct Line {
 }
 
 impl Line {
-	pub fn new(p0: impl Into<kurbo::Point>, p1: impl Into<kurbo::Point>, style: style::PathStyle) -> Line {
+	pub fn new(p0: impl Into<Point>, p1: impl Into<Point>, style: style::PathStyle) -> Line {
 		Line {
 			shape: kurbo::Line::new(p0, p1),
 			style,
@@ -24,5 +26,13 @@ impl LayerData for Line {
 		let kurbo::Point { x: x2, y: y2 } = self.shape.p1;
 
 		let _ = write!(svg, r#"<line x1="{}" y1="{}" x2="{}" y2="{}"{} />"#, x1, y1, x2, y2, self.style.render(),);
+	}
+
+	fn contains(&self, _point: Point) -> bool {
+		false
+	}
+
+	fn intersects_quad(&self, _quad: [Point; 4]) -> bool {
+		false
 	}
 }

@@ -1,3 +1,5 @@
+use kurbo::Point;
+
 use crate::{DocumentError, LayerId};
 
 use super::{Layer, LayerData, LayerDataTypes};
@@ -16,6 +18,14 @@ impl LayerData for Folder {
 		for layer in &mut self.layers {
 			let _ = writeln!(svg, "{}", layer.render());
 		}
+	}
+
+	fn contains(&self, _point: Point) -> bool {
+		false
+	}
+
+	fn intersects_quad(&self, _quad: [Point; 4]) -> bool {
+		false
 	}
 }
 

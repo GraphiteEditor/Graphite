@@ -1,4 +1,5 @@
 use crate::message_prelude::*;
+use crate::tool::tools::select::Select;
 use crate::tool::ToolType;
 
 use super::{
@@ -96,6 +97,12 @@ macro_rules! mapping {
 impl Default for Mapping {
 	fn default() -> Self {
 		let (up, down, pointer_move) = mapping![
+			// Select
+			entry! {action=SelectMessage::MouseMove, message=InputMapperMessage::PointerMove},
+			entry! {action=SelectMessage::DragStart, key_down=Lmb},
+			entry! {action=SelectMessage::DragStop, key_up=Lmb},
+			entry! {action=SelectMessage::Abort, key_down=Rmb},
+			entry! {action=SelectMessage::Abort, key_down=KeyEscape},
 			// Rectangle
 			entry! {action=RectangleMessage::Center, key_down=KeyAlt},
 			entry! {action=RectangleMessage::UnCenter, key_up=KeyAlt},

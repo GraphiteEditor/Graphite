@@ -1,3 +1,8 @@
+use kurbo::Point;
+use kurbo::Shape;
+
+use crate::intersection::intersect_quad_bez_path;
+
 use super::style;
 use super::LayerData;
 
@@ -28,5 +33,13 @@ impl LayerData for Circle {
 			self.shape.radius,
 			self.style.render(),
 		);
+	}
+
+	fn contains(&self, point: Point) -> bool {
+		self.shape.contains(point)
+	}
+
+	fn intersects_quad(&self, quad: [Point; 4]) -> bool {
+		intersect_quad_bez_path(quad, &self.shape.to_path(self.shape.radius * 0.0001))
 	}
 }

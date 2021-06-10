@@ -1,3 +1,5 @@
+use kurbo::Point;
+
 use crate::shape_points;
 
 use super::style;
@@ -13,10 +15,10 @@ pub struct Shape {
 }
 
 impl Shape {
-	pub fn new(p0: impl Into<kurbo::Point>, p1: impl Into<kurbo::Point>, sides: u8, style: style::PathStyle) -> Shape {
+	pub fn new(p0: impl Into<Point>, p1: impl Into<Point>, sides: u8, style: style::PathStyle) -> Shape {
 		Shape {
 			bounding_rect: kurbo::Rect::from_points(p0, p1),
-			shape: shape_points::ShapePoints::new(kurbo::Point::new(0.5, 0.5), kurbo::Vec2::new(0.5, 0.0), sides),
+			shape: shape_points::ShapePoints::new(Point::new(0.5, 0.5), kurbo::Vec2::new(0.5, 0.0), sides),
 			style,
 		}
 	}
@@ -34,5 +36,13 @@ impl LayerData for Shape {
 			self.bounding_rect.height(),
 			self.style.render(),
 		);
+	}
+
+	fn contains(&self, _point: Point) -> bool {
+		false
+	}
+
+	fn intersects_quad(&self, _quad: [Point; 4]) -> bool {
+		false
 	}
 }
