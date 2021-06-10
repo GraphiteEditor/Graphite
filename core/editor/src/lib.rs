@@ -65,6 +65,7 @@ pub mod message_prelude {
 	pub use super::tool::tools::rectangle::{RectangleMessage, RectangleMessageDiscriminant};
 	pub use super::tool::tools::select::{SelectMessage, SelectMessageDiscriminant};
 	pub use super::tool::tools::shape::{ShapeMessage, ShapeMessageDiscriminant};
+	pub use crate::LayerId;
 	pub use graphite_proc_macros::*;
 	pub use std::collections::VecDeque;
 }

@@ -21,11 +21,16 @@ impl Dispatcher {
 	pub fn handle_message<T: Into<Message>>(&mut self, message: T) -> Result<(), EditorError> {
 		let message = message.into();
 		use Message::*;
-		if !matches!(
+		if !(matches!(
 			message,
-			Message::InputPreprocessor(_) | Message::InputMapper(_) | Message::Tool(ToolMessage::Rectangle(RectangleMessage::MouseMove))
-		) {
-			log::trace!("Message: {}", message.to_discriminant().global_name());
+			Message::InputPreprocessor(_)
+				| Message::InputMapper(_)
+				| Message::Document(DocumentMessage::RenderDocument)
+				| Message::Frontend(FrontendMessage::UpdateCanvas { .. })
+				| Message::Document(DocumentMessage::DispatchOperation { .. })
+		) || MessageDiscriminant::from(&message).local_name().ends_with("MouseMove"))
+		{
+			log::trace!("Message: {}", message.to_discriminant().local_name());
 		}
 		match message {
 			NoOp => (),

@@ -126,7 +126,9 @@
 
 	.panel-body {
 		background: var(--color-3-darkgray);
-		flex-grow: 1;
+		flex: 1 1 100%;
+		display: flex;
+		flex-direction: column;
 	}
 }
 </style>

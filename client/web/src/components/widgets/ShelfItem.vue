@@ -6,6 +6,7 @@
 
 <style lang="scss">
 .shelf-item {
+	flex: 0 0 auto;
 	border-radius: 2px;
 
 	&:hover {

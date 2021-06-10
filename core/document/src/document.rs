@@ -1,6 +1,5 @@
 use crate::{
 	layers::{self, Folder, Layer, LayerData, LayerDataTypes, Line, PolyLine, Rect, Shape},
-	response::LayerPanelEntry,
 	DocumentError, DocumentResponse, LayerId, Operation,
 };
 
@@ -168,27 +167,15 @@ impl Document {
 		Ok(())
 	}
 
-	/// Returns a list of `LayerPanelEntry`s intended for display purposes. These don't contain
-	/// any actual data, but rather metadata such as visibility and names of the layers.
-	pub fn layer_panel(&self, path: &[LayerId]) -> Result<Vec<LayerPanelEntry>, DocumentError> {
-		let folder = self.document_folder(path)?;
-		let entries = folder
-			.layers()
-			.iter()
-			.zip(folder.layer_ids.iter())
-			.map(|(layer, id)| LayerPanelEntry::from_layer(layer, [path, &[*id]].concat()))
-			.collect();
-		Ok(entries)
-	}
-
 	/// Mutate the document by applying the `operation` to it. If the operation necessitates a
 	/// reaction from the frontend, responses may be returned.
 	pub fn handle_operation(&mut self, operation: Operation) -> Result<Option<Vec<DocumentResponse>>, DocumentError> {
 		let responses = match &operation {
 			Operation::AddCircle { path, insert_index, cx, cy, r, style } => {
-				self.add_layer(&path, Layer::new(LayerDataTypes::Circle(layers::Circle::new((*cx, *cy), *r, *style))), *insert_index)?;
+				let id = self.add_layer(&path, Layer::new(LayerDataTypes::Circle(layers::Circle::new((*cx, *cy), *r, *style))), *insert_index)?;
+				let path = [path.clone(), vec![id]].concat();
 
-				Some(vec![DocumentResponse::DocumentChanged])
+				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::SelectLayer { path }])
 			}
 			Operation::AddEllipse {
 				path,
@@ -200,9 +187,10 @@ impl Document {
 				rot,
 				style,
 			} => {
-				self.add_layer(&path, Layer::new(LayerDataTypes::Ellipse(layers::Ellipse::new((*cx, *cy), (*rx, *ry), *rot, *style))), *insert_index)?;
+				let id = self.add_layer(&path, Layer::new(LayerDataTypes::Ellipse(layers::Ellipse::new((*cx, *cy), (*rx, *ry), *rot, *style))), *insert_index)?;
+				let path = [path.clone(), vec![id]].concat();
 
-				Some(vec![DocumentResponse::DocumentChanged])
+				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::SelectLayer { path }])
 			}
 			Operation::AddRect {
 				path,
@@ -213,9 +201,10 @@ impl Document {
 				y1,
 				style,
 			} => {
-				self.add_layer(&path, Layer::new(LayerDataTypes::Rect(Rect::new(*x0, *y0, *x1, *y1, *style))), *insert_index)?;
+				let id = self.add_layer(&path, Layer::new(LayerDataTypes::Rect(Rect::new(*x0, *y0, *x1, *y1, *style))), *insert_index)?;
+				let path = [path.clone(), vec![id]].concat();
 
-				Some(vec![DocumentResponse::DocumentChanged])
+				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::SelectLayer { path }])
 			}
 			Operation::AddLine {
 				path,
@@ -226,9 +215,10 @@ impl Document {
 				y1,
 				style,
 			} => {
-				self.add_layer(&path, Layer::new(LayerDataTypes::Line(Line::new((*x0, *y0), (*x1, *y1), *style))), *insert_index)?;
+				let id = self.add_layer(&path, Layer::new(LayerDataTypes::Line(Line::new((*x0, *y0), (*x1, *y1), *style))), *insert_index)?;
+				let path = [path.clone(), vec![id]].concat();
 
-				Some(vec![DocumentResponse::DocumentChanged])
+				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::SelectLayer { path }])
 			}
 			Operation::AddPen { path, insert_index, points, style } => {
 				let points: Vec<kurbo::Point> = points.iter().map(|&it| it.into()).collect();
@@ -247,22 +237,21 @@ impl Document {
 				style,
 			} => {
 				let s = Shape::new((*x0, *y0).into(), (*x1, *y1).into(), *sides, *style);
-				self.add_layer(&path, Layer::new(LayerDataTypes::Shape(s)), *insert_index)?;
+				let id = self.add_layer(&path, Layer::new(LayerDataTypes::Shape(s)), *insert_index)?;
+				let path = [path.clone(), vec![id]].concat();
 
-				Some(vec![DocumentResponse::DocumentChanged])
+				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::SelectLayer { path }])
 			}
 			Operation::DeleteLayer { path } => {
 				self.delete(&path)?;
 
 				let (path, _) = split_path(path.as_slice()).unwrap_or_else(|_| (&[], 0));
-				let children = self.layer_panel(path)?;
-				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::ExpandFolder { path: path.to_vec(), children }])
+				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::FolderChanged { path: path.to_vec() }])
 			}
 			Operation::AddFolder { path } => {
 				self.set_layer(&path, Layer::new(LayerDataTypes::Folder(Folder::default())))?;
 
-				let children = self.layer_panel(path.as_slice())?;
-				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::ExpandFolder { path: path.clone(), children }])
+				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::FolderChanged { path: path.clone() }])
 			}
 			Operation::MountWorkingFolder { path } => {
 				self.work_mount_path = path.clone();
@@ -297,18 +286,17 @@ impl Document {
 						responses.append(&mut op_responses);
 					}
 				}
+				responses.extend(vec![DocumentResponse::DocumentChanged, DocumentResponse::FolderChanged { path }]);
 
-				let children = self.layer_panel(path.as_slice())?;
-				// TODO: Return `responses` and add deduplication in the future
-				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::ExpandFolder { path, children }])
+				Some(responses)
 			}
 			Operation::ToggleVisibility { path } => {
 				let _ = self.layer_mut(&path).map(|layer| {
 					layer.visible = !layer.visible;
 					layer.cache_dirty = true;
 				});
-				let children = self.layer_panel(&path.as_slice()[..path.len() - 1])?;
-				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::ExpandFolder { path: vec![], children }])
+				let path = path.as_slice()[..path.len() - 1].to_vec();
+				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::FolderChanged { path }])
 			}
 		};
 		if !matches!(
