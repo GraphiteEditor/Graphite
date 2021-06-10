@@ -53,6 +53,7 @@ impl Document {
 			.layers()
 			.iter()
 			.zip(folder.layer_ids.iter())
+			.rev()
 			.map(|(layer, id)| {
 				let path = [path, &[*id]].concat();
 				layer_panel_entry(layer_data(self_layer_data, &path), layer, path)
