@@ -14,3 +14,4 @@ log = "0.4"
 #kurbo = "0.8.0"
 kurbo = {git="https://github.com/0HyperCube/kurbo.git", branch="bezpath-partial-eq"}
 serde = { version = "1.0", features = ["derive"] }
+glam = "0.16"

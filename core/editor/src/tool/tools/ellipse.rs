@@ -2,6 +2,7 @@ use crate::input::{mouse::ViewportPosition, InputPreprocessor};
 use crate::tool::{DocumentToolData, Fsm, ToolActionHandlerData};
 use crate::{message_prelude::*, SvgDocument};
 use document_core::{layers::style, Operation};
+use glam::DVec2;
 
 #[derive(Default)]
 pub struct Ellipse {
@@ -147,12 +148,10 @@ fn make_operation(data: &EllipseToolData, tool_data: &DocumentToolData) -> Messa
 			let (x2, y2) = (x0 + (x1 - x0).signum() * diameter, y0 + (y1 - y0).signum() * diameter);
 			((x0 + x2) * 0.5, (y0 + y2) * 0.5, diameter * 0.5)
 		};
-		Operation::AddCircle {
+		Operation::AddEllipse {
 			path: vec![],
 			insert_index: -1,
-			cx,
-			cy,
-			r,
+			cols: glam::DAffine2::from_scale_angle_translation(DVec2::new(r, r), 0., DVec2::new(cx, cy)).to_cols_array(),
 			style: style::PathStyle::new(None, Some(style::Fill::new(tool_data.primary_color))),
 		}
 	} else {
@@ -161,11 +160,7 @@ fn make_operation(data: &EllipseToolData, tool_data: &DocumentToolData) -> Messa
 		Operation::AddEllipse {
 			path: vec![],
 			insert_index: -1,
-			cx,
-			cy,
-			rx,
-			ry,
-			rot: 0.0,
+			cols: glam::DAffine2::from_scale_angle_translation(DVec2::new(rx, ry), 0., DVec2::new(cx, cy)).to_cols_array(),
 			style: style::PathStyle::new(None, Some(style::Fill::new(tool_data.primary_color))),
 		}
 	}

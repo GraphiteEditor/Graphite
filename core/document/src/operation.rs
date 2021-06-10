@@ -5,22 +5,10 @@ use serde::{Deserialize, Serialize};
 #[repr(C)]
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub enum Operation {
-	AddCircle {
-		path: Vec<LayerId>,
-		insert_index: isize,
-		cx: f64,
-		cy: f64,
-		r: f64,
-		style: style::PathStyle,
-	},
 	AddEllipse {
 		path: Vec<LayerId>,
 		insert_index: isize,
-		cx: f64,
-		cy: f64,
-		rx: f64,
-		ry: f64,
-		rot: f64,
+		cols:[f64;6],
 		style: style::PathStyle,
 	},
 	AddRect {

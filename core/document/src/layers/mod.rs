@@ -1,8 +1,5 @@
 pub mod style;
 
-pub mod circle;
-pub use circle::Circle;
-
 pub mod ellipse;
 pub use ellipse::Ellipse;
 
@@ -28,7 +25,6 @@ pub trait LayerData {
 #[derive(Debug, Clone, PartialEq)]
 pub enum LayerDataTypes {
 	Folder(Folder),
-	Circle(Circle),
 	Ellipse(Ellipse),
 	Rect(Rect),
 	Line(Line),
@@ -49,7 +45,6 @@ impl LayerDataTypes {
 		call_render! {
 			self.render(svg) {
 				Folder,
-				Circle,
 				Ellipse,
 				Rect,
 				Line,
@@ -65,6 +60,7 @@ pub struct Layer {
 	pub visible: bool,
 	pub name: Option<String>,
 	pub data: LayerDataTypes,
+	pub matrix: glam::Affine2,
 	pub cache: String,
 	pub cache_dirty: bool,
 }
@@ -75,6 +71,7 @@ impl Layer {
 			visible: true,
 			name: None,
 			data,
+			matrix: glam::Affine2::default(),
 			cache: String::new(),
 			cache_dirty: true,
 		}

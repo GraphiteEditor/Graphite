@@ -45,7 +45,6 @@ impl From<&LayerDataTypes> for LayerType {
 		match data {
 			Folder(_) => LayerType::Folder,
 			Shape(_) => LayerType::Shape,
-			Circle(_) => LayerType::Circle,
 			Rect(_) => LayerType::Rect,
 			Line(_) => LayerType::Line,
 			PolyLine(_) => LayerType::PolyLine,

@@ -171,23 +171,13 @@ impl Document {
 	/// reaction from the frontend, responses may be returned.
 	pub fn handle_operation(&mut self, operation: Operation) -> Result<Option<Vec<DocumentResponse>>, DocumentError> {
 		let responses = match &operation {
-			Operation::AddCircle { path, insert_index, cx, cy, r, style } => {
-				let id = self.add_layer(&path, Layer::new(LayerDataTypes::Circle(layers::Circle::new((*cx, *cy), *r, *style))), *insert_index)?;
-				let path = [path.clone(), vec![id]].concat();
-
-				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::SelectLayer { path }])
-			}
 			Operation::AddEllipse {
 				path,
 				insert_index,
-				cx,
-				cy,
-				rx,
-				ry,
-				rot,
+				cols,
 				style,
 			} => {
-				let id = self.add_layer(&path, Layer::new(LayerDataTypes::Ellipse(layers::Ellipse::new((*cx, *cy), (*rx, *ry), *rot, *style))), *insert_index)?;
+				let id = self.add_layer(&path, Layer::new(LayerDataTypes::Ellipse(layers::Ellipse::new(glam::DAffine2::from_cols_array(cols), *style))), *insert_index)?;
 				let path = [path.clone(), vec![id]].concat();
 
 				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::SelectLayer { path }])
