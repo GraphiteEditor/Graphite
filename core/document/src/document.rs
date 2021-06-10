@@ -171,13 +171,12 @@ impl Document {
 	/// reaction from the frontend, responses may be returned.
 	pub fn handle_operation(&mut self, operation: Operation) -> Result<Option<Vec<DocumentResponse>>, DocumentError> {
 		let responses = match &operation {
-			Operation::AddEllipse {
-				path,
-				insert_index,
-				cols,
-				style,
-			} => {
-				let id = self.add_layer(&path, Layer::new(LayerDataTypes::Ellipse(layers::Ellipse::new(glam::DAffine2::from_cols_array(cols), *style))), *insert_index)?;
+			Operation::AddEllipse { path, insert_index, cols, style } => {
+				let id = self.add_layer(
+					&path,
+					Layer::new(LayerDataTypes::Ellipse(layers::Ellipse::new(glam::DAffine2::from_cols_array(cols), *style))),
+					*insert_index,
+				)?;
 				let path = [path.clone(), vec![id]].concat();
 
 				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::SelectLayer { path }])

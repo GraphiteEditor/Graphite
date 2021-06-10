@@ -8,7 +8,7 @@ pub enum Operation {
 	AddEllipse {
 		path: Vec<LayerId>,
 		insert_index: isize,
-		cols:[f64;6],
+		cols: [f64; 6],
 		style: style::PathStyle,
 	},
 	AddRect {
