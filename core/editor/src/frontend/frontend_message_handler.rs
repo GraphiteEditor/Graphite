@@ -28,7 +28,6 @@ impl FrontendMessageHandler {
 
 impl MessageHandler<FrontendMessage, ()> for FrontendMessageHandler {
 	fn process_action(&mut self, message: FrontendMessage, _data: (), _responses: &mut VecDeque<Message>) {
-		log::trace!("Sending {} Response", message.to_discriminant().global_name());
 		(self.callback)(message)
 	}
 	advertise_actions!(

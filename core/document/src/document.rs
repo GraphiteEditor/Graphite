@@ -172,9 +172,10 @@ impl Document {
 	pub fn handle_operation(&mut self, operation: Operation) -> Result<Option<Vec<DocumentResponse>>, DocumentError> {
 		let responses = match &operation {
 			Operation::AddCircle { path, insert_index, cx, cy, r, style } => {
-				self.add_layer(&path, Layer::new(LayerDataTypes::Circle(layers::Circle::new((*cx, *cy), *r, *style))), *insert_index)?;
+				let id = self.add_layer(&path, Layer::new(LayerDataTypes::Circle(layers::Circle::new((*cx, *cy), *r, *style))), *insert_index)?;
+				let path = [path.clone(), vec![id]].concat();
 
-				Some(vec![DocumentResponse::DocumentChanged])
+				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::SelectLayer { path }])
 			}
 			Operation::AddEllipse {
 				path,
@@ -186,9 +187,10 @@ impl Document {
 				rot,
 				style,
 			} => {
-				self.add_layer(&path, Layer::new(LayerDataTypes::Ellipse(layers::Ellipse::new((*cx, *cy), (*rx, *ry), *rot, *style))), *insert_index)?;
+				let id = self.add_layer(&path, Layer::new(LayerDataTypes::Ellipse(layers::Ellipse::new((*cx, *cy), (*rx, *ry), *rot, *style))), *insert_index)?;
+				let path = [path.clone(), vec![id]].concat();
 
-				Some(vec![DocumentResponse::DocumentChanged])
+				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::SelectLayer { path }])
 			}
 			Operation::AddRect {
 				path,
@@ -199,9 +201,10 @@ impl Document {
 				y1,
 				style,
 			} => {
-				self.add_layer(&path, Layer::new(LayerDataTypes::Rect(Rect::new((*x0, *y0), (*x1, *y1), *style))), *insert_index)?;
+				let id = self.add_layer(&path, Layer::new(LayerDataTypes::Rect(Rect::new((*x0, *y0), (*x1, *y1), *style))), *insert_index)?;
+				let path = [path.clone(), vec![id]].concat();
 
-				Some(vec![DocumentResponse::DocumentChanged])
+				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::SelectLayer { path }])
 			}
 			Operation::AddLine {
 				path,
@@ -212,9 +215,10 @@ impl Document {
 				y1,
 				style,
 			} => {
-				self.add_layer(&path, Layer::new(LayerDataTypes::Line(Line::new((*x0, *y0), (*x1, *y1), *style))), *insert_index)?;
+				let id = self.add_layer(&path, Layer::new(LayerDataTypes::Line(Line::new((*x0, *y0), (*x1, *y1), *style))), *insert_index)?;
+				let path = [path.clone(), vec![id]].concat();
 
-				Some(vec![DocumentResponse::DocumentChanged])
+				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::SelectLayer { path }])
 			}
 			Operation::AddPen { path, insert_index, points, style } => {
 				let points: Vec<kurbo::Point> = points.iter().map(|&it| it.into()).collect();
@@ -233,9 +237,10 @@ impl Document {
 				style,
 			} => {
 				let s = Shape::new((*x0, *y0), (*x1, *y1), *sides, *style);
-				self.add_layer(&path, Layer::new(LayerDataTypes::Shape(s)), *insert_index)?;
+				let id = self.add_layer(&path, Layer::new(LayerDataTypes::Shape(s)), *insert_index)?;
+				let path = [path.clone(), vec![id]].concat();
 
-				Some(vec![DocumentResponse::DocumentChanged])
+				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::SelectLayer { path }])
 			}
 			Operation::DeleteLayer { path } => {
 				self.delete(&path)?;
@@ -281,8 +286,9 @@ impl Document {
 						responses.append(&mut op_responses);
 					}
 				}
+				responses.extend(vec![DocumentResponse::DocumentChanged, DocumentResponse::FolderChanged { path }]);
 
-				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::FolderChanged { path }])
+				Some(responses)
 			}
 			Operation::ToggleVisibility { path } => {
 				let _ = self.layer_mut(&path).map(|layer| {
