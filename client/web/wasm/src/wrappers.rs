@@ -120,6 +120,7 @@ pub fn translate_key(name: &str) -> Key {
 		"capslock" => KeyShift,
 		"control" => KeyControl,
 		"delete" => KeyDelete,
+		"backspace" => KeyBackspace,
 		"alt" => KeyAlt,
 		"escape" => KeyEscape,
 		_ => UnknownKey,

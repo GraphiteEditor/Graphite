@@ -23,7 +23,11 @@ impl Dispatcher {
 		use Message::*;
 		if !(matches!(
 			message,
-			Message::InputPreprocessor(_) | Message::InputMapper(_) | Message::Document(DocumentMessage::RenderDocument) | Message::Frontend(FrontendMessage::UpdateCanvas { .. })
+			Message::InputPreprocessor(_)
+				| Message::InputMapper(_)
+				| Message::Document(DocumentMessage::RenderDocument)
+				| Message::Frontend(FrontendMessage::UpdateCanvas { .. })
+				| Message::Document(DocumentMessage::DispatchOperation { .. })
 		) || MessageDiscriminant::from(&message).local_name().ends_with("MouseMove"))
 		{
 			log::trace!("Message: {}", message.to_discriminant().local_name());

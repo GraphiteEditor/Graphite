@@ -148,6 +148,8 @@ impl Default for Mapping {
 			// Document Actions
 			entry! {action=DocumentMessage::Undo, key_down=KeyZ, modifiers=[KeyControl]},
 			entry! {action=DocumentMessage::DeleteSelectedLayers, key_down=KeyDelete},
+			entry! {action=DocumentMessage::DeleteSelectedLayers, key_down=KeyX},
+			entry! {action=DocumentMessage::DeleteSelectedLayers, key_down=KeyBackspace},
 			entry! {action=DocumentMessage::ExportDocument, key_down=KeyS, modifiers=[KeyControl, KeyShift]},
 			entry! {action=DocumentMessage::ExportDocument, key_down=KeyE, modifiers=[KeyControl]},
 			// Tool Actions
