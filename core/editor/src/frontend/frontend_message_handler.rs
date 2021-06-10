@@ -10,6 +10,7 @@ pub enum FrontendMessage {
 	CollapseFolder { path: Vec<LayerId> },
 	ExpandFolder { path: Vec<LayerId>, children: Vec<LayerPanelEntry> },
 	SetActiveTool { tool_name: String },
+	SetActiveDocument { document_index: usize },
 	UpdateCanvas { document: String },
 	ExportDocument { document: String },
 	EnableTextInput,

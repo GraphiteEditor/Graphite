@@ -16,6 +16,7 @@ export enum ResponseType {
 	ExpandFolder = "ExpandFolder",
 	CollapseFolder = "CollapseFolder",
 	SetActiveTool = "SetActiveTool",
+	SetActiveDocument = "SetActiveDocument",
 }
 
 export function attachResponseHandlerToPage() {
@@ -68,6 +69,15 @@ export interface SetActiveTool {
 function newSetActiveTool(input: any): SetActiveTool {
 	return {
 		tool_name: input.tool_name,
+	};
+}
+
+export interface SetActiveDocument {
+	document_index: int;
+}
+function newSetActiveDocument(input: any): SetActiveDocument {
+	return {
+		document_index: input.document_index,
 	};
 }
 

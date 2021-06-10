@@ -6,7 +6,7 @@
 				:tabCloseButtons="true"
 				:tabMinWidths="true"
 				:tabLabels="['X-35B Over Death Valley*', 'Document 1', 'Document 2', 'Document 3', 'Document 4', 'Document 5']"
-				:tabActiveIndex="0"
+				:tabActiveIndex="activeDocument"
 			/>
 		</LayoutCol>
 		<LayoutCol class="workspace-grid-resize-gutter"></LayoutCol>
@@ -52,6 +52,7 @@
 
 <script lang="ts">
 import { defineComponent } from "vue";
+import { ResponseType, registerResponseHandler, Response, UpdateCanvas, SetActiveDocument, ExportDocument } from "../../response-handler";
 import LayoutRow from "../layout/LayoutRow.vue";
 import LayoutCol from "../layout/LayoutCol.vue";
 import Panel from "./Panel.vue";
@@ -61,6 +62,25 @@ export default defineComponent({
 		LayoutRow,
 		LayoutCol,
 		Panel,
+	},
+	methods: {
+		// async selectDocument(document: string) {
+		// 	const { select_tool } = await wasm;
+		// 	select_tool(toolName);
+		// },
+	},
+
+	mounted() {
+		registerResponseHandler(ResponseType.SetActiveDocument, (responseData: Response) => {
+			const toolData = responseData as SetActiveDocument;
+			if (toolData) this.activeDocument = toolData.document_index;
+		});
+	},
+
+	data() {
+		return {
+			activeDocument: 0,
+		};
 	},
 });
 </script>

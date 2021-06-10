@@ -15,6 +15,7 @@ pub enum DocumentMessage {
 	ToggleLayerVisibility(Vec<LayerId>),
 	ToggleLayerExpansion(Vec<LayerId>),
 	SelectDocument(usize),
+	NewDocument,
 	ExportDocument,
 	RenderDocument,
 	Undo,
@@ -70,6 +71,11 @@ impl MessageHandler<DocumentMessage, ()> for DocumentMessageHandler {
 				assert!(id < self.documents.len(), "Tried to select a document that was not initialized");
 				self.active_document = id;
 			}
+			NextDocument => {
+				self.active_document += 1;
+				self.active_document = self.active_document.min(self.documents.len());
+				responses.push_back(Message::Frontend(FrontendMessage::SetActiveDocument {document_index: self.active_document}));
+			},
 			ExportDocument => responses.push_back(
 				FrontendMessage::ExportDocument {
 					//TODO: Add canvas size instead of using 1080p per default
