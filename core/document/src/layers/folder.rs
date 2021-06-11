@@ -9,13 +9,25 @@ pub struct Folder {
 	next_assignment_id: LayerId,
 	pub layer_ids: Vec<LayerId>,
 	layers: Vec<Layer>,
+	transform: glam::DAffine2,
 }
 
 impl LayerData for Folder {
 	fn render(&mut self, svg: &mut String) {
+		let _ = writeln!(
+			svg,
+			r#"<g transform="matrix({})">"#,
+			self.transform
+				.to_cols_array()
+				.iter()
+				.enumerate()
+				.map(|(i, f)| f.to_string() + if i != 5 { "," } else { "" })
+				.collect::<String>()
+		);
 		for layer in &mut self.layers {
 			let _ = writeln!(svg, "{}", layer.render());
 		}
+		let _ = writeln!(svg, "</g>");
 	}
 }
 
@@ -87,6 +99,7 @@ impl Default for Folder {
 			layer_ids: vec![],
 			layers: vec![],
 			next_assignment_id: 0,
+			transform: glam::DAffine2::default(),
 		}
 	}
 }
