@@ -70,6 +70,7 @@ import { rgbToDecimalRgb } from "@/lib/utils";
 import { defineComponent } from "vue";
 import ColorPicker from "../floating-menus/ColorPicker.vue";
 import FloatingMenu, { MenuDirection, MenuType } from "../floating-menus/FloatingMenu.vue";
+import { ResponseType, registerResponseHandler, Response, UpdateWorkingColors } from "../../../response-handler";
 
 const wasm = import("../../../../wasm/pkg");
 
@@ -127,6 +128,14 @@ export default defineComponent({
 	mounted() {
 		this.$watch("primaryColor", this.updatePrimaryColor, { immediate: true });
 		this.$watch("secondaryColor", this.updateSecondaryColor, { immediate: true });
+
+		registerResponseHandler(ResponseType.UpdateWorkingColors, (responseData: Response) => {
+			const colorData = responseData as UpdateWorkingColors;
+			if (!colorData) return;
+			const { primary, secondary } = colorData;
+			this.primaryColor = { r: primary.red, g: primary.green, b: primary.blue, a: primary.alpha };
+			this.secondaryColor = { r: secondary.red, g: secondary.green, b: secondary.blue, a: secondary.alpha };
+		});
 	},
 });
 </script>
