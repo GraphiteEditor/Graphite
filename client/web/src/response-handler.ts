@@ -71,16 +71,14 @@ export interface Color {
 	blue: number;
 	alpha: number;
 }
+function newColor(input: any): Color {
+	return { red: input.red * 255, green: input.green * 255, blue: input.blue * 255, alpha: input.alpha * 255 };
+}
 
 export interface UpdateWorkingColors {
 	primary: Color;
 	secondary: Color;
 }
-
-function newColor(input: any): Color {
-	return { red: input.red * 255, green: input.green * 255, blue: input.blue * 255, alpha: input.alpha * 255 };
-}
-
 function newUpdateWorkingColors(input: any): UpdateWorkingColors {
 	return {
 		primary: newColor(input.primary),

@@ -131,14 +131,10 @@ export default defineComponent({
 
 		registerResponseHandler(ResponseType.UpdateWorkingColors, (responseData: Response) => {
 			const colorData = responseData as UpdateWorkingColors;
-			if (colorData) {
-				const { primary } = colorData;
-				const { secondary } = colorData;
-				const primaryButton = this.getRef<HTMLButtonElement>("primaryButton");
-				const secondaryButton = this.getRef<HTMLButtonElement>("secondaryButton");
-				primaryButton.style.setProperty("--swatch-color", `rgba(${primary.red}, ${primary.green}, ${primary.blue}, ${primary.alpha})`);
-				secondaryButton.style.setProperty("--swatch-color", `rgba(${secondary.red}, ${secondary.green}, ${secondary.blue}, ${secondary.alpha})`);
-			}
+			if (!colorData) return;
+			const { primary, secondary } = colorData;
+			this.primaryColor = { r: primary.red, g: primary.green, b: primary.blue, a: primary.alpha };
+			this.secondaryColor = { r: secondary.red, g: secondary.green, b: secondary.blue, a: secondary.alpha };
 		});
 	},
 });
