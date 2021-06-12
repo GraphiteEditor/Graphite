@@ -67,11 +67,25 @@ impl MessageHandler<ToolMessage, (&SvgDocument, &InputPreprocessor)> for ToolMes
 			SwapColors => {
 				let doc_data = &mut self.tool_state.document_tool_data;
 				std::mem::swap(&mut doc_data.primary_color, &mut doc_data.secondary_color);
+				responses.push_back(
+					FrontendMessage::UpdateWorkingColors {
+						primary: doc_data.primary_color,
+						secondary: doc_data.secondary_color,
+					}
+					.into(),
+				)
 			}
 			ResetColors => {
 				let doc_data = &mut self.tool_state.document_tool_data;
 				doc_data.primary_color = Color::BLACK;
 				doc_data.secondary_color = Color::WHITE;
+				responses.push_back(
+					FrontendMessage::UpdateWorkingColors {
+						primary: doc_data.primary_color,
+						secondary: doc_data.secondary_color,
+					}
+					.into(),
+				)
 			}
 			message => {
 				let tool_type = match message {

@@ -70,6 +70,7 @@ import { rgbToDecimalRgb } from "@/lib/utils";
 import { defineComponent } from "vue";
 import ColorPicker from "../floating-menus/ColorPicker.vue";
 import FloatingMenu, { MenuDirection, MenuType } from "../floating-menus/FloatingMenu.vue";
+import { ResponseType, registerResponseHandler, Response, UpdateWorkingColors } from "../../../response-handler";
 
 const wasm = import("../../../../wasm/pkg");
 
@@ -127,6 +128,21 @@ export default defineComponent({
 	mounted() {
 		this.$watch("primaryColor", this.updatePrimaryColor, { immediate: true });
 		this.$watch("secondaryColor", this.updateSecondaryColor, { immediate: true });
+
+		registerResponseHandler(ResponseType.UpdateWorkingColors, (responseData: Response) => {
+			const colorData = responseData as UpdateWorkingColors;
+			if (colorData) {
+				const { primary } = colorData;
+				const { secondary } = colorData;
+				// G, B, R
+				// console.log(`PRIMARY: ${primary.red}, ${primary.green}, ${primary.blue}`);
+				// console.log(`SEC: ${secondary.blue}`);
+				const primaryButton = this.getRef<HTMLButtonElement>("primaryButton");
+				const secondaryButton = this.getRef<HTMLButtonElement>("secondaryButton");
+				primaryButton.style.setProperty("--swatch-color", `rgba(${primary.red}, ${primary.green}, ${primary.blue}, ${primary.alpha})`);
+				secondaryButton.style.setProperty("--swatch-color", `rgba(${secondary.red}, ${secondary.green}, ${secondary.blue}, ${secondary.alpha})`);
+			}
+		});
 	},
 });
 </script>
