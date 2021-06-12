@@ -49,6 +49,10 @@
 					<h3>Boolean</h3>
 					<p>More boolean-related buttons will be here</p>
 				</PopoverButton>
+
+				<Separator :type="SeparatorType.Section" />
+
+				<CheckboxInput v-model:checked="testCheckboxChecked" />
 			</div>
 			<div class="spacer"></div>
 			<div class="right side">
@@ -176,6 +180,7 @@ import PopoverButton from "../widgets/buttons/PopoverButton.vue";
 import RadioInput from "../widgets/inputs/RadioInput.vue";
 import NumberInput from "../widgets/inputs/NumberInput.vue";
 import DropdownInput from "../widgets/inputs/DropdownInput.vue";
+import CheckboxInput from "../widgets/inputs/CheckboxInput.vue";
 import { SectionsOfMenuListEntries } from "../widgets/floating-menus/MenuList.vue";
 
 const modeMenuEntries: SectionsOfMenuListEntries = [
@@ -282,6 +287,7 @@ export default defineComponent({
 			SeparatorType,
 			modeMenuEntries,
 			viewModeIndex: 0,
+			testCheckboxChecked: false,
 		};
 	},
 	components: {
@@ -295,6 +301,7 @@ export default defineComponent({
 		RadioInput,
 		NumberInput,
 		DropdownInput,
+		CheckboxInput,
 	},
 });
 </script>
