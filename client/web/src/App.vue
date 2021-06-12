@@ -76,18 +76,7 @@ img {
 import { defineComponent } from "vue";
 import MainWindow from "./components/window/MainWindow.vue";
 
-const wasm = import("../wasm/pkg");
-
 export default defineComponent({
 	components: { MainWindow },
-	created() {
-		this.greet();
-	},
-	methods: {
-		async greet() {
-			const { greet } = await wasm;
-			greet("Graphite");
-		},
-	},
 });
 </script>
