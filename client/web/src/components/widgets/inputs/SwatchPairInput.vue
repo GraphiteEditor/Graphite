@@ -134,9 +134,6 @@ export default defineComponent({
 			if (colorData) {
 				const { primary } = colorData;
 				const { secondary } = colorData;
-				// G, B, R
-				// console.log(`PRIMARY: ${primary.red}, ${primary.green}, ${primary.blue}`);
-				// console.log(`SEC: ${secondary.blue}`);
 				const primaryButton = this.getRef<HTMLButtonElement>("primaryButton");
 				const secondaryButton = this.getRef<HTMLButtonElement>("secondaryButton");
 				primaryButton.style.setProperty("--swatch-color", `rgba(${primary.red}, ${primary.green}, ${primary.blue}, ${primary.alpha})`);

@@ -145,13 +145,6 @@ impl Default for Mapping {
 			entry! {action=PenMessage::Confirm, key_down=Rmb},
 			entry! {action=PenMessage::Confirm, key_down=KeyEscape},
 			entry! {action=PenMessage::Confirm, key_down=KeyEnter},
-			// Document Actions
-			entry! {action=DocumentMessage::Undo, key_down=KeyZ, modifiers=[KeyControl]},
-			entry! {action=DocumentMessage::DeleteSelectedLayers, key_down=KeyDelete},
-			entry! {action=DocumentMessage::DeleteSelectedLayers, key_down=KeyX},
-			entry! {action=DocumentMessage::DeleteSelectedLayers, key_down=KeyBackspace},
-			entry! {action=DocumentMessage::ExportDocument, key_down=KeyS, modifiers=[KeyControl, KeyShift]},
-			entry! {action=DocumentMessage::ExportDocument, key_down=KeyE, modifiers=[KeyControl]},
 			// Tool Actions
 			entry! {action=ToolMessage::SelectTool(ToolType::Rectangle), key_down=KeyM},
 			entry! {action=ToolMessage::SelectTool(ToolType::Ellipse), key_down=KeyE},
@@ -160,6 +153,13 @@ impl Default for Mapping {
 			entry! {action=ToolMessage::SelectTool(ToolType::Pen), key_down=KeyP},
 			entry! {action=ToolMessage::SelectTool(ToolType::Shape), key_down=KeyY},
 			entry! {action=ToolMessage::SwapColors, key_down=KeyX, modifiers=[KeyShift]},
+			// Document Actions
+			entry! {action=DocumentMessage::Undo, key_down=KeyZ, modifiers=[KeyControl]},
+			entry! {action=DocumentMessage::DeleteSelectedLayers, key_down=KeyDelete},
+			entry! {action=DocumentMessage::DeleteSelectedLayers, key_down=KeyX},
+			entry! {action=DocumentMessage::DeleteSelectedLayers, key_down=KeyBackspace},
+			entry! {action=DocumentMessage::ExportDocument, key_down=KeyS, modifiers=[KeyControl, KeyShift]},
+			entry! {action=DocumentMessage::ExportDocument, key_down=KeyE, modifiers=[KeyControl]},
 			// Global Actions
 			entry! {action=GlobalMessage::LogInfo, key_down=Key1},
 			entry! {action=GlobalMessage::LogDebug, key_down=Key2},
