@@ -16,6 +16,7 @@ export enum ResponseType {
 	ExpandFolder = "ExpandFolder",
 	CollapseFolder = "CollapseFolder",
 	SetActiveTool = "SetActiveTool",
+	UpdateWorkingColors = "UpdateWorkingColors",
 }
 
 export function attachResponseHandlerToPage() {
@@ -55,12 +56,35 @@ function parseResponse(responseType: string, data: any): Response {
 			return newUpdateCanvas(data.UpdateCanvas);
 		case "ExportDocument":
 			return newExportDocument(data.ExportDocument);
+		case "UpdateWorkingColors":
+			return newUpdateWorkingColors(data.UpdateWorkingColors);
 		default:
 			throw new Error(`Unrecognized origin/responseType pair: ${origin}, ${responseType}`);
 	}
 }
 
-export type Response = SetActiveTool | UpdateCanvas | DocumentChanged | CollapseFolder | ExpandFolder;
+export type Response = SetActiveTool | UpdateCanvas | DocumentChanged | CollapseFolder | ExpandFolder | UpdateWorkingColors;
+
+export interface Color {
+	red: number;
+	green: number;
+	blue: number;
+	alpha: number;
+}
+function newColor(input: any): Color {
+	return { red: input.red * 255, green: input.green * 255, blue: input.blue * 255, alpha: input.alpha * 255 };
+}
+
+export interface UpdateWorkingColors {
+	primary: Color;
+	secondary: Color;
+}
+function newUpdateWorkingColors(input: any): UpdateWorkingColors {
+	return {
+		primary: newColor(input.primary),
+		secondary: newColor(input.secondary),
+	};
+}
 
 export interface SetActiveTool {
 	tool_name: string;
