@@ -41,7 +41,10 @@ impl Document {
 			return;
 		}
 		if path.as_slice() == self.work_mount_path {
+			// TODO: Handle if mounted in nested folders
+			let transform = self.document_folder(path).unwrap().transform.clone();
 			self.document_folder_mut(path).unwrap().render(svg);
+			self.work.transform = transform;
 			self.work.render(svg);
 			path.pop();
 		}

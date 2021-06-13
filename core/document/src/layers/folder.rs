@@ -9,7 +9,7 @@ pub struct Folder {
 	next_assignment_id: LayerId,
 	pub layer_ids: Vec<LayerId>,
 	layers: Vec<Layer>,
-	transform: glam::DAffine2,
+	pub transform: glam::DAffine2,
 }
 
 impl LayerData for Folder {
