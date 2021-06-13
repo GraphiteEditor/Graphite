@@ -5,7 +5,7 @@
 				:panelType="'Document'"
 				:tabCloseButtons="true"
 				:tabMinWidths="true"
-				:tabLabels="['X-35B Over Death Valley*', 'Document 1', 'Document 2', 'Document 3', 'Document 4', 'Document 5']"
+				:tabLabels="['Untitled Document*', 'Document 2', 'Document 3', 'Document 4', 'Document 5', 'Document 6']"
 				:tabActiveIndex="0"
 			/>
 		</LayoutCol>
