@@ -129,6 +129,7 @@
 		flex: 1 1 100%;
 		display: flex;
 		flex-direction: column;
+		min-height: 0;
 	}
 }
 </style>
