@@ -10,12 +10,9 @@ pub struct Line {
 }
 
 impl Line {
-	pub fn new(x0:f64, y0:f64, x1:f64, y1:f64, style: style::PathStyle) -> Line {
+	pub fn new(x0: f64, y0: f64, x1: f64, y1: f64, style: style::PathStyle) -> Line {
 		Line {
-			shape: kurbo::Line::new(
-				(x0,y0),
-				(x1,y1),
-			),
+			shape: kurbo::Line::new((x0, y0), (x1, y1)),
 			style,
 		}
 	}
