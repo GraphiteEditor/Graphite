@@ -44,6 +44,8 @@
 
 <style lang="scss">
 .layer-tree-panel {
+	min-height: 0;
+
 	.options-bar {
 		height: 32px;
 		flex: 0 0 auto;
@@ -59,39 +61,44 @@
 		}
 	}
 
-	.layer-row {
-		display: flex;
-		height: 36px;
-		align-items: center;
-		margin: 0 8px;
+	.layer-tree {
+		overflow: auto;
 
-		.layer {
+		.layer-row {
 			display: flex;
+			height: 36px;
 			align-items: center;
-			background: var(--color-5-dullgray);
-			border-radius: 4px;
-			width: 100%;
-			height: 100%;
-			margin-left: 4px;
-			padding-left: 16px;
-		}
-		.selected {
-			background: var(--color-accent);
-			color: var(--color-f-white);
-		}
-
-		& + .layer-row {
-			margin-top: 2px;
-		}
-
-		.layer-thumbnail {
-			width: 64px;
-			height: 100%;
-			background: white;
-		}
-
-		.layer-type-icon {
 			margin: 0 8px;
+			flex: 0 0 auto;
+
+			.layer {
+				display: flex;
+				align-items: center;
+				background: var(--color-5-dullgray);
+				border-radius: 4px;
+				width: 100%;
+				height: 100%;
+				margin-left: 4px;
+				padding-left: 16px;
+			}
+			.selected {
+				background: var(--color-accent);
+				color: var(--color-f-white);
+			}
+
+			& + .layer-row {
+				margin-top: 2px;
+			}
+
+			.layer-thumbnail {
+				width: 64px;
+				height: 100%;
+				background: white;
+			}
+
+			.layer-type-icon {
+				margin: 0 8px;
+			}
 		}
 	}
 }
