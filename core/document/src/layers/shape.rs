@@ -25,14 +25,21 @@ impl Shape {
 		let relative_points = (0..sides).map(|i| apothem_offset_angle * ((i * 2 + ((sides + 1) % 2)) as f64)).map(|radians| unit_rotation(radians));
 
 		let (mut min_x, mut min_y, mut max_x, mut max_y) = (f64::MAX, f64::MAX, f64::MIN, f64::MIN);
-relative_points.clone().for_each(|p| {
-					min_x = min_x.min(p.x);
-					min_y = min_y.min(p.y);
-					max_x = max_x.max(p.x);
-					max_y = max_y.max(p.y);
-				});
+		relative_points.clone().for_each(|p| {
+			min_x = min_x.min(p.x);
+			min_y = min_y.min(p.y);
+			max_x = max_x.max(p.x);
+			max_y = max_y.max(p.y);
+		});
 
-		relative_points.map(|p|if equal_sides{p}else{Vec2::new((p.x - min_x) / (max_x - min_x) * 2. - 1., (p.y - min_y) / (max_y - min_y) * 2. - 1.)})
+		relative_points
+			.map(|p| {
+				if equal_sides {
+					p
+				} else {
+					Vec2::new((p.x - min_x) / (max_x - min_x) * 2. - 1., (p.y - min_y) / (max_y - min_y) * 2. - 1.)
+				}
+			})
 			.map(|unit| Vec2::new(-unit.x * extent.x + translation.x + extent.x, -unit.y * extent.y + translation.y + extent.y))
 			.map(|pos| (pos).to_point())
 			.enumerate()
