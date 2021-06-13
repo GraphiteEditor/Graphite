@@ -1,5 +1,14 @@
 <template>
 	<MainWindow />
+	<div class="unsupported-modal-backdrop" v-if="showUnsupportedModal">
+		<div class="unsupported-modal">
+			<h2>Graphite is not supported by your browser</h2>
+			<p>
+				Unfortunately your browser does not support the BigInt64Array API. To be able to use Graphite please use a supported browser such as Mozilla Firefox, Google Chrome or Microsoft Edge.
+			</p>
+			<LayoutRow> <button class="unsupported-modal-button" @click="closeModal()">I understand. See the interface anyways</button> </LayoutRow>
+		</div>
+	</div>
 </template>
 
 <style lang="scss">
@@ -70,13 +79,59 @@ img {
 		margin-top: 8px;
 	}
 }
+
+.unsupported-modal-backdrop {
+	background: rgba(255, 255, 255, 0.6);
+	position: absolute;
+	top: 0;
+	left: 0;
+	width: 100vw;
+	height: 100vh;
+	align-items: center;
+	justify-content: center;
+	display: flex;
+}
+.unsupported-modal {
+	background: var(--color-3-darkgray);
+	border-radius: 5px;
+	box-shadow: 2px 2px 5px 0px var(--floating-menu-shadow);
+	padding: 0rem 1rem 1rem 1rem;
+	border: 1px solid var(--color-4-dimgray);
+	max-width: 500px;
+}
+.unsupported-modal-button {
+	flex: 1;
+	background: var(--color-1-nearblack);
+	border: 0px none;
+	padding: 0.5rem;
+	border-radius: 2px;
+
+	&:hover {
+		background-color: var(--color-6-lowergray);
+	}
+
+	&:active {
+		background-color: var(--color-accent-hover);
+	}
+}
 </style>
 
 <script lang="ts">
 import { defineComponent } from "vue";
 import MainWindow from "./components/window/MainWindow.vue";
+import LayoutRow from "./components/layout/LayoutRow.vue";
 
 export default defineComponent({
-	components: { MainWindow },
+	data() {
+		return {
+			showUnsupportedModal: !("BigInt64Array" in window),
+		};
+	},
+	methods: {
+		closeModal() {
+			this.showUnsupportedModal = false;
+		},
+	},
+	components: { MainWindow, LayoutRow },
 });
 </script>
