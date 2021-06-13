@@ -190,8 +190,8 @@ impl Document {
 
 				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::SelectLayer { path }])
 			}
-			Operation::AddLine { path, insert_index, cols, style } => {
-				let id = self.add_layer(&path, Layer::new(LayerDataTypes::Line(Line::new(*cols, *style))), *insert_index)?;
+			Operation::AddLine { path, insert_index, x0,y0,x1,y1, style } => {
+				let id = self.add_layer(&path, Layer::new(LayerDataTypes::Line(Line::new(*x0,*y0,*x1,*y1, *style))), *insert_index)?;
 				let path = [path.clone(), vec![id]].concat();
 
 				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::SelectLayer { path }])
