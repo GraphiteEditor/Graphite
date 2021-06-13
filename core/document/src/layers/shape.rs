@@ -1,6 +1,7 @@
 use kurbo::Point;
 
 use crate::shape_points;
+use crate::LayerId;
 
 use super::style;
 use super::LayerData;
@@ -38,11 +39,7 @@ impl LayerData for Shape {
 		);
 	}
 
-	fn contains(&self, _point: Point) -> bool {
-		false
-	}
+	fn intersects_quad(&self, quad: [Point; 4], path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>) {}
 
-	fn intersects_quad(&self, _quad: [Point; 4]) -> bool {
-		false
-	}
+	fn intersects_point(&self, point: Point, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>) {}
 }

@@ -1,3 +1,5 @@
+use kurbo::Point;
+
 use crate::{
 	layers::{self, Folder, Layer, LayerData, LayerDataTypes, Line, PolyLine, Rect, Shape},
 	DocumentError, DocumentResponse, LayerId, Operation,
@@ -57,6 +59,33 @@ impl Document {
 		let mut svg = String::new();
 		self.render(&mut vec![], &mut svg);
 		svg
+	}
+
+	/// Checks whether each layer under `path` intersects with the provided `quad` and adds all intersection layers as paths to `intersections`.
+	pub fn intersects_quad(&self, quad: [Point; 4], path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>) {
+		log::debug!("Intersects Quad {:?}", quad);
+		self.document_folder(path).unwrap().intersects_quad(quad, path, intersections);
+		return;
+	}
+
+	/// Checks whether each layer under the root path intersects with the provided `quad` and returns the paths to all intersecting layers.
+	pub fn intersects_quad_root(&self, quad: [Point; 4]) -> Vec<Vec<LayerId>> {
+		let mut intersections = Vec::new();
+		self.intersects_quad(quad, &mut vec![], &mut intersections);
+		intersections
+	}
+
+	/// Checks whether each layer under `path` intersects with the provided `point` and adds all intersection layers as paths to `intersections`.
+	pub fn intersects_point(&self, point: Point, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>) {
+		self.document_folder(path).unwrap().intersects_point(point, path, intersections);
+		return;
+	}
+
+	/// Checks whether each layer intersects with the given point and returns the paths to intersecting layers.
+	pub fn intersects_point_root(&self, point: Point) -> Vec<Vec<LayerId>> {
+		let mut intersections = Vec::new();
+		self.intersects_point(point, &mut vec![], &mut intersections);
+		intersections
 	}
 
 	fn is_mounted(&self, mount_path: &[LayerId], path: &[LayerId]) -> bool {

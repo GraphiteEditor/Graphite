@@ -1,7 +1,8 @@
-use kurbo::{BezPath, Line, PathSeg, Point, Vec2};
+use kurbo::{BezPath, Line, PathSeg, Point, Shape, Vec2};
 
 pub fn intersect_quad_bez_path(quad: [Point; 4], shape: &BezPath) -> bool {
 	let lines = vec![Line::new(quad[0], quad[1]), Line::new(quad[1], quad[2]), Line::new(quad[2], quad[3]), Line::new(quad[3], quad[0])];
+	// check if outlines intersect
 	for path_segment in shape.segments() {
 		for line in &lines {
 			if !path_segment.intersect_line(*line).is_empty() {
@@ -9,6 +10,11 @@ pub fn intersect_quad_bez_path(quad: [Point; 4], shape: &BezPath) -> bool {
 			}
 		}
 	}
+	// check if selection is entirely within the shape
+	if shape.contains(quad[0]) {
+		return true;
+	}
+	// check if shape is entirely within the selection
 	if let Some(shape_point) = get_arbitrary_point_on_path(shape) {
 		let mut pos = 0;
 		let mut neg = 0;
@@ -22,14 +28,14 @@ pub fn intersect_quad_bez_path(quad: [Point; 4], shape: &BezPath) -> bool {
 			if cross > 0.0 {
 				pos += 1;
 			} else if cross < 0.0 {
-				neg += 0;
+				neg += 1;
 			}
 			if pos > 0 && neg > 0 {
 				return false;
 			}
 		}
 	}
-	false
+	true
 }
 
 pub fn get_arbitrary_point_on_path(path: &BezPath) -> Option<Point> {

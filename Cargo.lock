@@ -62,6 +62,7 @@ dependencies = [
  "bitflags",
  "graphite-document-core",
  "graphite-proc-macros",
+ "kurbo",
  "log",
  "serde",
  "thiserror",

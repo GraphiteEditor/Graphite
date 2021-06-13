@@ -22,10 +22,14 @@ pub use shape::Shape;
 pub mod folder;
 pub use folder::Folder;
 
+use crate::LayerId;
+
+pub const KURBO_TOLERANCE: f64 = 0.0001;
+
 pub trait LayerData {
 	fn render(&mut self, svg: &mut String);
-	fn contains(&self, point: Point) -> bool;
-	fn intersects_quad(&self, quad: [Point; 4]) -> bool;
+	fn intersects_quad(&self, quad: [Point; 4], path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>);
+	fn intersects_point(&self, point: Point, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>);
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -47,10 +51,54 @@ macro_rules! call_render {
 	};
 }
 
+macro_rules! call_intersects_quad {
+    ($self:ident.intersects_quad($quad:ident, $path:ident, $intersections:ident) { $($variant:ident),* }) => {
+		match $self {
+			$(Self::$variant(x) => x.intersects_quad($quad, $path, $intersections)),*
+		}
+	};
+}
+
+macro_rules! call_intersects_point {
+    ($self:ident.intersects_point($point:ident, $path:ident, $intersections:ident) { $($variant:ident),* }) => {
+		match $self {
+			$(Self::$variant(x) => x.intersects_point($point, $path, $intersections)),*
+		}
+	};
+}
+
 impl LayerDataTypes {
 	pub fn render(&mut self, svg: &mut String) {
 		call_render! {
 			self.render(svg) {
+				Folder,
+				Circle,
+				Ellipse,
+				Rect,
+				Line,
+				PolyLine,
+				Shape
+			}
+		}
+	}
+
+	pub fn intersects_quad(&self, quad: [Point; 4], path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>) {
+		call_intersects_quad! {
+			self.intersects_quad(quad, path, intersections) {
+				Folder,
+				Circle,
+				Ellipse,
+				Rect,
+				Line,
+				PolyLine,
+				Shape
+			}
+		}
+	}
+
+	pub fn intersects_point(&self, point: Point, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>) {
+		call_intersects_point! {
+			self.intersects_point(point, path, intersections) {
 				Folder,
 				Circle,
 				Ellipse,
@@ -93,5 +141,21 @@ impl Layer {
 			self.cache_dirty = false;
 		}
 		self.cache.as_str()
+	}
+
+	pub fn intersects_quad(&self, quad: [Point; 4], path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>) {
+		// TODO: apply transform to quad
+		if !self.visible {
+			return;
+		}
+		self.data.intersects_quad(quad, path, intersections)
+	}
+
+	pub fn intersects_point(&self, point: Point, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>) {
+		// TODO: apply transform to point
+		if !self.visible {
+			return;
+		}
+		self.data.intersects_point(point, path, intersections)
 	}
 }

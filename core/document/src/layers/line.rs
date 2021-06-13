@@ -1,5 +1,7 @@
 use kurbo::Point;
 
+use crate::LayerId;
+
 use super::style;
 use super::LayerData;
 
@@ -28,11 +30,7 @@ impl LayerData for Line {
 		let _ = write!(svg, r#"<line x1="{}" y1="{}" x2="{}" y2="{}"{} />"#, x1, y1, x2, y2, self.style.render(),);
 	}
 
-	fn contains(&self, _point: Point) -> bool {
-		false
-	}
+	fn intersects_quad(&self, quad: [Point; 4], path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>) {}
 
-	fn intersects_quad(&self, _quad: [Point; 4]) -> bool {
-		false
-	}
+	fn intersects_point(&self, point: Point, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>) {}
 }

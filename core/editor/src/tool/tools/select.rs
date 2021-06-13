@@ -3,6 +3,7 @@ use document_core::layers::style;
 use document_core::layers::style::Fill;
 use document_core::layers::style::Stroke;
 use document_core::Operation;
+use kurbo::Point;
 
 use crate::input::{mouse::ViewportPosition, InputPreprocessor};
 use crate::tool::{DocumentToolData, Fsm, ToolActionHandlerData};
@@ -82,9 +83,18 @@ impl Fsm for SelectToolFsmState {
 					responses.push_back(Operation::ClearWorkingFolder.into());
 					// TODO - introduce comparison threshold when operating with canvas coordinates (https://github.com/GraphiteEditor/Graphite/issues/100)
 					if data.drag_start == data.drag_current {
-						// do point selection
+						let point = Point::new(data.drag_current.x as f64, data.drag_current.y as f64);
+						if let Some(intersection) = document.intersects_point_root(point).last() {
+							responses.push_back(DocumentMessage::SelectLayers(vec![intersection.clone()]).into());
+						}
 					} else {
-						// do rect selection
+						let quad = [
+							Point::new(data.drag_start.x as f64, data.drag_start.y as f64),
+							Point::new(data.drag_current.x as f64, data.drag_start.y as f64),
+							Point::new(data.drag_current.x as f64, data.drag_current.y as f64),
+							Point::new(data.drag_start.x as f64, data.drag_current.y as f64),
+						];
+						responses.push_back(DocumentMessage::SelectLayers(document.intersects_quad_root(quad)).into());
 					}
 
 					Ready
