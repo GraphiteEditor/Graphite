@@ -15,6 +15,7 @@
 <style lang="scss">
 .main-window {
 	height: 100%;
+	overflow: auto;
 }
 
 .title-bar-row {
@@ -24,11 +25,9 @@
 
 .workspace-row {
 	flex: 1 1 100%;
-	height: 100%;
 }
 
 .status-bar-row {
-	height: 24px;
 	flex: 0 0 auto;
 }
 </style>

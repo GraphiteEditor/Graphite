@@ -1,5 +1,5 @@
 <template>
-	<div class="popover-color-picker">
+	<div class="color-picker">
 		<div class="saturation-picker" ref="saturationPicker" data-picker-action="MoveSaturation" @pointerdown="onPointerDown">
 			<div ref="saturationCursor" class="selection-circle"></div>
 		</div>
@@ -13,7 +13,7 @@
 </template>
 
 <style lang="scss">
-.popover-color-picker {
+.color-picker {
 	--saturation-picker-hue: #ff0000;
 	--opacity-picker-color: #ff0000;
 	display: flex;
@@ -118,7 +118,7 @@
 
 <script lang="ts">
 import { defineComponent } from "vue";
-import { clamp, hsvToRgb, rgbToHsv, isRGB } from "../../lib/utils";
+import { clamp, hsvToRgb, rgbToHsv, isRGB } from "../../../lib/utils";
 
 const enum ColorPickerState {
 	Idle = "Idle",

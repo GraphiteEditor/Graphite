@@ -1,7 +1,9 @@
 module.exports = {
 	root: true,
 	env: {
+		browser: true,
 		node: true,
+		es2020: true,
 	},
 	extends: ["plugin:vue/vue3-essential", "@vue/airbnb", "@vue/typescript/recommended", "plugin:prettier-vue/recommended", "prettier"],
 	parserOptions: {
@@ -28,6 +30,7 @@ module.exports = {
 		"eol-last": ["error", "always"],
 		"no-console": process.env.NODE_ENV === "production" ? "warn" : "off",
 		"no-debugger": process.env.NODE_ENV === "production" ? "warn" : "off",
+		"no-param-reassign": ["error", { props: false }],
 		"max-len": ["error", { code: 200, tabWidth: 4 }],
 		"@typescript-eslint/camelcase": "off",
 		"@typescript-eslint/no-use-before-define": "off",

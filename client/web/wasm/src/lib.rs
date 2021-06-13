@@ -35,8 +35,3 @@ extern "C" {
 	#[wasm_bindgen(catch)]
 	fn handleResponse(responseType: String, responseData: JsValue) -> Result<(), JsValue>;
 }
-
-#[wasm_bindgen]
-pub fn greet(name: &str) -> String {
-	format!("Hello, {}!", name)
-}
