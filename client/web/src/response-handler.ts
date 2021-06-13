@@ -17,6 +17,7 @@ export enum ResponseType {
 	CollapseFolder = "CollapseFolder",
 	SetActiveTool = "SetActiveTool",
 	SetActiveDocument = "SetActiveDocument",
+	NewDocument = "NewDocument",
 	UpdateWorkingColors = "UpdateWorkingColors",
 }
 
@@ -53,6 +54,10 @@ function parseResponse(responseType: string, data: any): Response {
 			return newExpandFolder(data.ExpandFolder);
 		case "SetActiveTool":
 			return newSetActiveTool(data.SetActiveTool);
+		case "SetActiveDocument":
+			return newSetActiveDocument(data.SetActiveDocument);
+		case "NewDocument":
+			return newNewDocument(data.NewDocument);
 		case "UpdateCanvas":
 			return newUpdateCanvas(data.UpdateCanvas);
 		case "ExportDocument":
@@ -102,6 +107,15 @@ export interface SetActiveDocument {
 function newSetActiveDocument(input: any): SetActiveDocument {
 	return {
 		document_index: input.document_index,
+	};
+}
+
+export interface NewDocument {
+	document_name: string;
+}
+function newNewDocument(input: any): NewDocument {
+	return {
+		document_name: input.document_name,
 	};
 }
 

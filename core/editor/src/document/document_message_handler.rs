@@ -17,6 +17,8 @@ pub enum DocumentMessage {
 	ToggleLayerExpansion(Vec<LayerId>),
 	SelectDocument(usize),
 	NewDocument,
+	NextDocument,
+	PrevDocument,
 	ExportDocument,
 	RenderDocument,
 	Undo,
@@ -87,11 +89,24 @@ impl MessageHandler<DocumentMessage, ()> for DocumentMessageHandler {
 				assert!(id < self.documents.len(), "Tried to select a document that was not initialized");
 				self.active_document = id;
 			}
+			NewDocument => {
+				self.active_document = self.documents.len();
+				let new_document = Document::with_name(format!("Untitled Document {}", self.active_document));
+				self.documents.push(new_document);
+				responses.push_back(FrontendMessage::NewDocument {document_name: self.active_document().name.clone()}.into());
+				responses.push_back(FrontendMessage::SetActiveDocument {document_index: self.active_document}.into());
+				responses.push_back(FrontendMessage::UpdateCanvas {document: self.active_document_mut().document.render_root()}.into());
+			}
 			NextDocument => {
-				self.active_document += 1;
-				self.active_document = self.active_document.min(self.documents.len());
-				responses.push_back(Message::Frontend(FrontendMessage::SetActiveDocument {document_index: self.active_document}));
-			},
+				self.active_document = (self.active_document + 1) % self.documents.len();
+				responses.push_back(FrontendMessage::SetActiveDocument {document_index: self.active_document}.into());
+				responses.push_back(FrontendMessage::UpdateCanvas {document: self.active_document_mut().document.render_root()}.into());
+			}
+			PrevDocument => {
+				self.active_document = (self.active_document + self.documents.len() - 1) % self.documents.len();
+				responses.push_back(FrontendMessage::SetActiveDocument {document_index: self.active_document}.into());
+				responses.push_back(FrontendMessage::UpdateCanvas {document: self.active_document_mut().document.render_root()}.into());
+			}
 			ExportDocument => responses.push_back(
 				FrontendMessage::ExportDocument {
 					//TODO: Add canvas size instead of using 1080p per default
@@ -166,9 +181,9 @@ impl MessageHandler<DocumentMessage, ()> for DocumentMessageHandler {
 	}
 	fn actions(&self) -> ActionList {
 		if self.active_document().layer_data.values().any(|data| data.selected) {
-			actions!(DocumentMessageDiscriminant; Undo, DeleteSelectedLayers, RenderDocument, ExportDocument)
+			actions!(DocumentMessageDiscriminant; Undo, DeleteSelectedLayers, RenderDocument, ExportDocument, NewDocument, NextDocument, PrevDocument)
 		} else {
-			actions!(DocumentMessageDiscriminant; Undo, RenderDocument, ExportDocument)
+			actions!(DocumentMessageDiscriminant; Undo, RenderDocument, ExportDocument, NewDocument, NextDocument, PrevDocument)
 		}
 	}
 }

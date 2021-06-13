@@ -5,8 +5,8 @@
 				:panelType="'Document'"
 				:tabCloseButtons="true"
 				:tabMinWidths="true"
-				:tabLabels="['Untitled Document*', 'Document 2', 'Document 3', 'Document 4', 'Document 5', 'Document 6']"
-				:tabActiveIndex="0"
+				:tabLabels="documents"
+				:tabActiveIndex="activeDocument"
 			/>
 		</LayoutCol>
 		<LayoutCol class="workspace-grid-resize-gutter"></LayoutCol>
@@ -52,7 +52,7 @@
 
 <script lang="ts">
 import { defineComponent } from "vue";
-import { ResponseType, registerResponseHandler, Response, UpdateCanvas, SetActiveDocument, ExportDocument } from "../../response-handler";
+import { ResponseType, registerResponseHandler, Response, SetActiveDocument, NewDocument } from "../../response-handler";
 import LayoutRow from "../layout/LayoutRow.vue";
 import LayoutCol from "../layout/LayoutCol.vue";
 import Panel from "./Panel.vue";
@@ -71,15 +71,24 @@ export default defineComponent({
 	},
 
 	mounted() {
+
+		registerResponseHandler(ResponseType.NewDocument, (responseData: Response) => {
+			const documentData = responseData as NewDocument;
+			console.log(responseData);
+			if (documentData) this.documents.push(documentData.document_name);
+		});
+
 		registerResponseHandler(ResponseType.SetActiveDocument, (responseData: Response) => {
-			const toolData = responseData as SetActiveDocument;
-			if (toolData) this.activeDocument = toolData.document_index;
+			const documentData = responseData as SetActiveDocument;
+			console.log(responseData);
+			if (documentData) this.activeDocument = documentData.document_index;
 		});
 	},
 
 	data() {
 		return {
 			activeDocument: 0,
+			documents: ["Untitled Document"],
 		};
 	},
 });
