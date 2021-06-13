@@ -4,7 +4,7 @@
 		<MenuBarInput v-if="platform !== ApplicationPlatform.Mac" />
 	</div>
 	<div class="header-third">
-		<WindowTitle :title="'X-35B Over Death Valley.gdd* - Graphite'" />
+		<WindowTitle :title="'Untitled Document.gdd* - Graphite'" />
 	</div>
 	<div class="header-third">
 		<WindowButtonsWindows :maximized="maximized" v-if="platform === ApplicationPlatform.Windows || platform === ApplicationPlatform.Linux" />
