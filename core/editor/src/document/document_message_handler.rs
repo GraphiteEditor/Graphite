@@ -1,5 +1,9 @@
-use crate::message_prelude::*;
+use crate::{
+	input::{mouse::ViewportPosition, InputPreprocessor},
+	message_prelude::*,
+};
 use document_core::{DocumentResponse, LayerId, Operation as DocumentOperation};
+use glam::{DAffine2, DVec2};
 
 use crate::document::Document;
 use std::collections::VecDeque;
@@ -19,6 +23,9 @@ pub enum DocumentMessage {
 	ExportDocument,
 	RenderDocument,
 	Undo,
+	MouseMove,
+	TranslateDown,
+	TranslateUp,
 }
 
 impl From<DocumentOperation> for DocumentMessage {
@@ -36,6 +43,8 @@ impl From<DocumentOperation> for Message {
 pub struct DocumentMessageHandler {
 	documents: Vec<Document>,
 	active_document: usize,
+	mmb_down: bool,
+	mouse_pos: ViewportPosition,
 }
 
 impl DocumentMessageHandler {
@@ -72,12 +81,14 @@ impl Default for DocumentMessageHandler {
 		Self {
 			documents: vec![Document::default()],
 			active_document: 0,
+			mmb_down: false,
+			mouse_pos: ViewportPosition::default(),
 		}
 	}
 }
 
-impl MessageHandler<DocumentMessage, ()> for DocumentMessageHandler {
-	fn process_action(&mut self, message: DocumentMessage, _data: (), responses: &mut VecDeque<Message>) {
+impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHandler {
+	fn process_action(&mut self, message: DocumentMessage, ipp: &InputPreprocessor, responses: &mut VecDeque<Message>) {
 		use DocumentMessage::*;
 		match message {
 			DeleteLayer(path) => responses.push_back(DocumentOperation::DeleteLayer { path }.into()),
@@ -155,14 +166,35 @@ impl MessageHandler<DocumentMessage, ()> for DocumentMessageHandler {
 				}
 				.into(),
 			),
+			TranslateDown => {
+				self.mmb_down = true;
+				self.mouse_pos = ipp.mouse.position;
+			}
+			TranslateUp => {
+				self.mmb_down = false;
+			}
+			MouseMove => {
+				if self.mmb_down {
+					let delta = DVec2::new(ipp.mouse.position.x as f64 - self.mouse_pos.x as f64, ipp.mouse.position.y as f64 - self.mouse_pos.y as f64);
+					let transform = self.active_document().document.root.transform * DAffine2::from_translation(delta);
+					self.active_document_mut().document.root.transform = transform;
+					self.mouse_pos = ipp.mouse.position;
+					responses.push_back(
+						FrontendMessage::UpdateCanvas {
+							document: self.active_document_mut().document.render_root(),
+						}
+						.into(),
+					)
+				}
+			}
 			message => todo!("document_action_handler does not implement: {}", message.to_discriminant().global_name()),
 		}
 	}
 	fn actions(&self) -> ActionList {
 		if self.active_document().layer_data.values().any(|data| data.selected) {
-			actions!(DocumentMessageDiscriminant; Undo, DeleteSelectedLayers, RenderDocument, ExportDocument)
+			actions!(DocumentMessageDiscriminant; Undo, DeleteSelectedLayers, RenderDocument, ExportDocument, MouseMove, TranslateUp, TranslateDown)
 		} else {
-			actions!(DocumentMessageDiscriminant; Undo, RenderDocument, ExportDocument)
+			actions!(DocumentMessageDiscriminant; Undo, RenderDocument, ExportDocument, MouseMove, TranslateUp)
 		}
 	}
 }
