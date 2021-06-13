@@ -194,7 +194,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 		if self.active_document().layer_data.values().any(|data| data.selected) {
 			actions!(DocumentMessageDiscriminant; Undo, DeleteSelectedLayers, RenderDocument, ExportDocument, MouseMove, TranslateUp, TranslateDown)
 		} else {
-			actions!(DocumentMessageDiscriminant; Undo, RenderDocument, ExportDocument, MouseMove, TranslateUp)
+			actions!(DocumentMessageDiscriminant; Undo, RenderDocument, ExportDocument, MouseMove, TranslateUp, TranslateDown)
 		}
 	}
 }
