@@ -2,7 +2,7 @@ use crate::input::{mouse::ViewportPosition, InputPreprocessor};
 use crate::tool::{DocumentToolData, Fsm, ToolActionHandlerData};
 use crate::{message_prelude::*, SvgDocument};
 use document_core::{layers::style, Operation};
-use glam::DVec2;
+use glam::{DAffine2, DVec2};
 
 #[derive(Default)]
 pub struct Rectangle {
@@ -58,7 +58,8 @@ struct RectangleToolData {
 impl Fsm for RectangleToolFsmState {
 	type ToolData = RectangleToolData;
 
-	fn transition(self, event: ToolMessage, _document: &SvgDocument, tool_data: &DocumentToolData, data: &mut Self::ToolData, input: &InputPreprocessor, responses: &mut VecDeque<Message>) -> Self {
+	fn transition(self, event: ToolMessage, document: &SvgDocument, tool_data: &DocumentToolData, data: &mut Self::ToolData, input: &InputPreprocessor, responses: &mut VecDeque<Message>) -> Self {
+		let transform = document.root.transform;
 		use RectangleMessage::*;
 		use RectangleToolFsmState::*;
 		if let ToolMessage::Rectangle(event) = event {
@@ -73,7 +74,7 @@ impl Fsm for RectangleToolFsmState {
 					data.drag_current = input.mouse.position;
 
 					responses.push_back(Operation::ClearWorkingFolder.into());
-					responses.push_back(make_operation(data, tool_data));
+					responses.push_back(make_operation(data, tool_data, transform));
 
 					Dragging
 				}
@@ -83,7 +84,7 @@ impl Fsm for RectangleToolFsmState {
 					responses.push_back(Operation::ClearWorkingFolder.into());
 					// TODO - introduce comparison threshold when operating with canvas coordinates (https://github.com/GraphiteEditor/Graphite/issues/100)
 					if data.drag_start != data.drag_current {
-						responses.push_back(make_operation(data, tool_data));
+						responses.push_back(make_operation(data, tool_data, transform));
 						responses.push_back(Operation::CommitTransaction.into());
 					}
 
@@ -97,13 +98,13 @@ impl Fsm for RectangleToolFsmState {
 				}
 				(Ready, LockAspectRatio) => update_state_no_op(&mut data.constrain_to_square, true, Ready),
 				(Ready, UnlockAspectRatio) => update_state_no_op(&mut data.constrain_to_square, false, Ready),
-				(Dragging, LockAspectRatio) => update_state(|data| &mut data.constrain_to_square, true, tool_data, data, responses, Dragging),
-				(Dragging, UnlockAspectRatio) => update_state(|data| &mut data.constrain_to_square, false, tool_data, data, responses, Dragging),
+				(Dragging, LockAspectRatio) => update_state(|data| &mut data.constrain_to_square, true, tool_data, data, responses, Dragging, transform),
+				(Dragging, UnlockAspectRatio) => update_state(|data| &mut data.constrain_to_square, false, tool_data, data, responses, Dragging, transform),
 
 				(Ready, Center) => update_state_no_op(&mut data.center_around_cursor, true, Ready),
 				(Ready, UnCenter) => update_state_no_op(&mut data.center_around_cursor, false, Ready),
-				(Dragging, Center) => update_state(|data| &mut data.center_around_cursor, true, tool_data, data, responses, Dragging),
-				(Dragging, UnCenter) => update_state(|data| &mut data.center_around_cursor, false, tool_data, data, responses, Dragging),
+				(Dragging, Center) => update_state(|data| &mut data.center_around_cursor, true, tool_data, data, responses, Dragging, transform),
+				(Dragging, UnCenter) => update_state(|data| &mut data.center_around_cursor, false, tool_data, data, responses, Dragging, transform),
 				_ => self,
 			}
 		} else {
@@ -124,16 +125,17 @@ fn update_state(
 	data: &mut RectangleToolData,
 	responses: &mut VecDeque<Message>,
 	new_state: RectangleToolFsmState,
+	transform: DAffine2,
 ) -> RectangleToolFsmState {
 	*(state(data)) = value;
 
 	responses.push_back(Operation::ClearWorkingFolder.into());
-	responses.push_back(make_operation(data, tool_data));
+	responses.push_back(make_operation(data, tool_data, transform));
 
 	new_state
 }
 
-fn make_operation(data: &RectangleToolData, tool_data: &DocumentToolData) -> Message {
+fn make_operation(data: &RectangleToolData, tool_data: &DocumentToolData, transform: DAffine2) -> Message {
 	let x0 = data.drag_start.x as f64;
 	let y0 = data.drag_start.y as f64;
 	let x1 = data.drag_current.x as f64;
@@ -162,7 +164,7 @@ fn make_operation(data: &RectangleToolData, tool_data: &DocumentToolData) -> Mes
 	Operation::AddRect {
 		path: vec![],
 		insert_index: -1,
-		cols: glam::DAffine2::from_scale_angle_translation(DVec2::new(x1 - x0, y1 - y0), 0., DVec2::new(x0, y0)).to_cols_array(),
+		cols: (transform.inverse() * glam::DAffine2::from_scale_angle_translation(DVec2::new(x1 - x0, y1 - y0), 0., DVec2::new(x0, y0))).to_cols_array(),
 		style: style::PathStyle::new(None, Some(style::Fill::new(tool_data.primary_color))),
 	}
 	.into()

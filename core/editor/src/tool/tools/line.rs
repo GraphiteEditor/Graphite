@@ -2,7 +2,7 @@ use crate::input::{mouse::ViewportPosition, InputPreprocessor};
 use crate::tool::{DocumentToolData, Fsm, ToolActionHandlerData};
 use crate::{message_prelude::*, SvgDocument};
 use document_core::{layers::style, Operation};
-use glam::DVec2;
+use glam::{DAffine2, DVec2};
 
 use std::f64::consts::PI;
 
@@ -64,7 +64,8 @@ struct LineToolData {
 impl Fsm for LineToolFsmState {
 	type ToolData = LineToolData;
 
-	fn transition(self, event: ToolMessage, _document: &SvgDocument, tool_data: &DocumentToolData, data: &mut Self::ToolData, input: &InputPreprocessor, responses: &mut VecDeque<Message>) -> Self {
+	fn transition(self, event: ToolMessage, document: &SvgDocument, tool_data: &DocumentToolData, data: &mut Self::ToolData, input: &InputPreprocessor, responses: &mut VecDeque<Message>) -> Self {
+		let transform = document.root.transform;
 		use LineMessage::*;
 		use LineToolFsmState::*;
 		if let ToolMessage::Line(event) = event {
@@ -81,7 +82,7 @@ impl Fsm for LineToolFsmState {
 					data.drag_current = input.mouse.position;
 
 					responses.push_back(Operation::ClearWorkingFolder.into());
-					responses.push_back(make_operation(data, tool_data));
+					responses.push_back(make_operation(data, tool_data, transform));
 
 					Dragging
 				}
@@ -91,7 +92,7 @@ impl Fsm for LineToolFsmState {
 					responses.push_back(Operation::ClearWorkingFolder.into());
 					// TODO - introduce comparison threshold when operating with canvas coordinates (https://github.com/GraphiteEditor/Graphite/issues/100)
 					if data.drag_start != data.drag_current {
-						responses.push_back(make_operation(data, tool_data));
+						responses.push_back(make_operation(data, tool_data, transform));
 						responses.push_back(Operation::CommitTransaction.into());
 					}
 
@@ -105,18 +106,18 @@ impl Fsm for LineToolFsmState {
 				}
 				(Ready, LockAngle) => update_state_no_op(&mut data.lock_angle, true, Ready),
 				(Ready, UnlockAngle) => update_state_no_op(&mut data.lock_angle, false, Ready),
-				(Dragging, LockAngle) => update_state(|data| &mut data.lock_angle, true, tool_data, data, responses, Dragging),
-				(Dragging, UnlockAngle) => update_state(|data| &mut data.lock_angle, false, tool_data, data, responses, Dragging),
+				(Dragging, LockAngle) => update_state(|data| &mut data.lock_angle, true, tool_data, data, responses, Dragging, transform),
+				(Dragging, UnlockAngle) => update_state(|data| &mut data.lock_angle, false, tool_data, data, responses, Dragging, transform),
 
 				(Ready, SnapToAngle) => update_state_no_op(&mut data.snap_angle, true, Ready),
 				(Ready, UnSnapToAngle) => update_state_no_op(&mut data.snap_angle, false, Ready),
-				(Dragging, SnapToAngle) => update_state(|data| &mut data.snap_angle, true, tool_data, data, responses, Dragging),
-				(Dragging, UnSnapToAngle) => update_state(|data| &mut data.snap_angle, false, tool_data, data, responses, Dragging),
+				(Dragging, SnapToAngle) => update_state(|data| &mut data.snap_angle, true, tool_data, data, responses, Dragging, transform),
+				(Dragging, UnSnapToAngle) => update_state(|data| &mut data.snap_angle, false, tool_data, data, responses, Dragging, transform),
 
 				(Ready, Center) => update_state_no_op(&mut data.center_around_cursor, true, Ready),
 				(Ready, UnCenter) => update_state_no_op(&mut data.center_around_cursor, false, Ready),
-				(Dragging, Center) => update_state(|data| &mut data.center_around_cursor, true, tool_data, data, responses, Dragging),
-				(Dragging, UnCenter) => update_state(|data| &mut data.center_around_cursor, false, tool_data, data, responses, Dragging),
+				(Dragging, Center) => update_state(|data| &mut data.center_around_cursor, true, tool_data, data, responses, Dragging, transform),
+				(Dragging, UnCenter) => update_state(|data| &mut data.center_around_cursor, false, tool_data, data, responses, Dragging, transform),
 				_ => self,
 			}
 		} else {
@@ -137,16 +138,17 @@ fn update_state(
 	data: &mut LineToolData,
 	responses: &mut VecDeque<Message>,
 	new_state: LineToolFsmState,
+	transform: DAffine2,
 ) -> LineToolFsmState {
 	*(state(data)) = value;
 
 	responses.push_back(Operation::ClearWorkingFolder.into());
-	responses.push_back(make_operation(data, tool_data));
+	responses.push_back(make_operation(data, tool_data, transform));
 
 	new_state
 }
 
-fn make_operation(data: &mut LineToolData, tool_data: &DocumentToolData) -> Message {
+fn make_operation(data: &mut LineToolData, tool_data: &DocumentToolData, transform: DAffine2) -> Message {
 	let x0 = data.drag_start.x as f64;
 	let y0 = data.drag_start.y as f64;
 	let x1 = data.drag_current.x as f64;
@@ -175,7 +177,7 @@ fn make_operation(data: &mut LineToolData, tool_data: &DocumentToolData) -> Mess
 	Operation::AddLine {
 		path: vec![],
 		insert_index: -1,
-		cols: glam::DAffine2::from_scale_angle_translation(DVec2::new(x1 - x0, y1 - y0), 0., DVec2::new(x0, y0)).to_cols_array(),
+		cols: (transform.inverse() * glam::DAffine2::from_scale_angle_translation(DVec2::new(x1 - x0, y1 - y0), 0., DVec2::new(x0, y0))).to_cols_array(),
 		style: style::PathStyle::new(Some(style::Stroke::new(tool_data.primary_color, 5.)), None),
 	}
 	.into()
