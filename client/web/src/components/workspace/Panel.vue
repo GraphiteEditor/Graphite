@@ -2,7 +2,7 @@
 	<div class="panel">
 		<div class="tab-bar" :class="{ 'min-widths': tabMinWidths }">
 			<div class="tab-group">
-				<div class="tab" :class="{ active: tabIndex === tabActiveIndex }" v-for="(tabLabel, tabIndex) in tabLabels" :key="tabLabel">
+				<div class="tab" :class="{ active: tabIndex === tabActiveIndex }" v-for="(tabLabel, tabIndex) in tabLabels" :key="tabLabel" @click="handleTabClick(tabIndex)">
 					<span>{{ tabLabel }}</span>
 					<IconButton :icon="'CloseX'" :size="16" v-if="tabCloseButtons" />
 				</div>
@@ -144,6 +144,8 @@ import IconButton from "../widgets/buttons/IconButton.vue";
 import PopoverButton, { PopoverButtonIcon } from "../widgets/buttons/PopoverButton.vue";
 import { MenuDirection } from "../widgets/floating-menus/FloatingMenu.vue";
 
+const wasm = import("../../../wasm/pkg");
+
 export default defineComponent({
 	components: {
 		Document,
@@ -152,6 +154,13 @@ export default defineComponent({
 		Minimap,
 		IconButton,
 		PopoverButton,
+	},
+	methods: {
+		async handleTabClick(tabIndex: number) {
+			console.log("Clicked Tab", tabIndex);
+			const { select_document } = await wasm;
+			select_document(tabIndex);
+		}
 	},
 	props: {
 		tabMinWidths: { type: Boolean, default: false },
