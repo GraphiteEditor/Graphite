@@ -181,30 +181,14 @@ impl Document {
 
 				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::SelectLayer { path }])
 			}
-			Operation::AddRect {
-				path,
-				insert_index,
-				x0,
-				y0,
-				x1,
-				y1,
-				style,
-			} => {
-				let id = self.add_layer(&path, Layer::new(LayerDataTypes::Rect(Rect::new(*x0, *y0, *x1, *y1, *style))), *insert_index)?;
+			Operation::AddRect { path, insert_index, cols, style } => {
+				let id = self.add_layer(&path, Layer::new(LayerDataTypes::Rect(Rect::new(*cols, *style))), *insert_index)?;
 				let path = [path.clone(), vec![id]].concat();
 
 				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::SelectLayer { path }])
 			}
-			Operation::AddLine {
-				path,
-				insert_index,
-				x0,
-				y0,
-				x1,
-				y1,
-				style,
-			} => {
-				let id = self.add_layer(&path, Layer::new(LayerDataTypes::Line(Line::new((*x0, *y0), (*x1, *y1), *style))), *insert_index)?;
+			Operation::AddLine { path, insert_index, cols, style } => {
+				let id = self.add_layer(&path, Layer::new(LayerDataTypes::Line(Line::new(*cols, *style))), *insert_index)?;
 				let path = [path.clone(), vec![id]].concat();
 
 				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::SelectLayer { path }])
@@ -218,14 +202,12 @@ impl Document {
 			Operation::AddShape {
 				path,
 				insert_index,
-				x0,
-				y0,
-				x1,
-				y1,
+				cols,
+				equal_sides,
 				sides,
 				style,
 			} => {
-				let s = Shape::new((*x0, *y0).into(), (*x1, *y1).into(), *sides, *style);
+				let s = Shape::new(*cols, *equal_sides, *sides, *style);
 				let id = self.add_layer(&path, Layer::new(LayerDataTypes::Shape(s)), *insert_index)?;
 				let path = [path.clone(), vec![id]].concat();
 

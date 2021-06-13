@@ -2,6 +2,7 @@ use crate::input::{mouse::ViewportPosition, InputPreprocessor};
 use crate::tool::{DocumentToolData, Fsm, ToolActionHandlerData};
 use crate::{message_prelude::*, SvgDocument};
 use document_core::{layers::style, Operation};
+use glam::DVec2;
 
 use std::f64::consts::PI;
 
@@ -174,10 +175,7 @@ fn make_operation(data: &mut LineToolData, tool_data: &DocumentToolData) -> Mess
 	Operation::AddLine {
 		path: vec![],
 		insert_index: -1,
-		x0,
-		y0,
-		x1,
-		y1,
+		cols: glam::DAffine2::from_scale_angle_translation(DVec2::new(x1 - x0, y1 - y0), 0., DVec2::new(x0, y0)).to_cols_array(),
 		style: style::PathStyle::new(Some(style::Stroke::new(tool_data.primary_color, 5.)), None),
 	}
 	.into()
