@@ -73,7 +73,7 @@ function newSetActiveTool(input: any): SetActiveTool {
 }
 
 export interface SetActiveDocument {
-	document_index: int;
+	document_index: number;
 }
 function newSetActiveDocument(input: any): SetActiveDocument {
 	return {
