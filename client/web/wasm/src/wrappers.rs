@@ -123,6 +123,7 @@ pub fn translate_key(name: &str) -> Key {
 		"backspace" => KeyBackspace,
 		"alt" => KeyAlt,
 		"escape" => KeyEscape,
+		"tab" => KeyTab,
 		_ => UnknownKey,
 	}
 }
