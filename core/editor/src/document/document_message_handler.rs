@@ -88,6 +88,8 @@ impl MessageHandler<DocumentMessage, ()> for DocumentMessageHandler {
 			SelectDocument(id) => {
 				assert!(id < self.documents.len(), "Tried to select a document that was not initialized");
 				self.active_document = id;
+				responses.push_back(FrontendMessage::SetActiveDocument {document_index: self.active_document}.into());
+				responses.push_back(FrontendMessage::UpdateCanvas {document: self.active_document_mut().document.render_root()}.into());
 			}
 			NewDocument => {
 				self.active_document = self.documents.len();
