@@ -286,17 +286,24 @@ pub struct InputMapper {
 impl InputMapper {
 	pub fn hints(&self, actions: ActionList) -> String {
 		let mut output = String::new();
+		let actions: Vec<MessageDiscriminant> = actions
+			.into_iter()
+			.flatten()
+			.filter(|a| !matches!(*a, MessageDiscriminant::Tool(ToolMessageDiscriminant::SelectTool) | MessageDiscriminant::Global(_)))
+			.collect();
 		self.mapping
 			.key_down
 			.iter()
 			.enumerate()
 			.filter_map(|(i, m)| {
-				m.0.iter()
-					.any(|m| actions.iter().any(|al| al.contains(&m.action.to_discriminant())))
-					.then(|| unsafe { std::mem::transmute_copy::<usize, Key>(&i) })
+				let ma =
+					m.0.iter()
+						.find_map(|m| actions.iter().find_map(|a| (a == &m.action.to_discriminant()).then(|| m.action.to_discriminant())));
+
+				ma.map(|a| unsafe { (std::mem::transmute_copy::<usize, Key>(&i), a) })
 			})
-			.for_each(|k| {
-				let _ = write!(output, "{} ", k.to_discriminant().local_name());
+			.for_each(|(k, a)| {
+				let _ = write!(output, "{}: {}, ", k.to_discriminant().local_name(), a.local_name().split('.').last().unwrap());
 			});
 		output.replace("Key", "")
 	}
