@@ -59,6 +59,7 @@ pub enum Key {
 	KeyBackspace,
 	KeyAlt,
 	KeyEscape,
+	KeyTab,
 
 	// This has to be the last element in the enum.
 	NumKeys,

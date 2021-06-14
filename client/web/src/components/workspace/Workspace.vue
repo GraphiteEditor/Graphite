@@ -1,13 +1,7 @@
 <template>
 	<LayoutRow class="workspace-grid-subdivision">
 		<LayoutCol class="workspace-grid-subdivision" style="flex-grow: 1597">
-			<Panel
-				:panelType="'Document'"
-				:tabCloseButtons="true"
-				:tabMinWidths="true"
-				:tabLabels="['Untitled Document*', 'Document 2', 'Document 3', 'Document 4', 'Document 5', 'Document 6']"
-				:tabActiveIndex="0"
-			/>
+			<Panel :panelType="'Document'" :tabCloseButtons="true" :tabMinWidths="true" :tabLabels="documents" :tabActiveIndex="activeDocument" />
 		</LayoutCol>
 		<LayoutCol class="workspace-grid-resize-gutter"></LayoutCol>
 		<LayoutCol class="workspace-grid-subdivision" style="flex-grow: 319">
@@ -52,6 +46,7 @@
 
 <script lang="ts">
 import { defineComponent } from "vue";
+import { ResponseType, registerResponseHandler, Response, SetActiveDocument, NewDocument } from "../../response-handler";
 import LayoutRow from "../layout/LayoutRow.vue";
 import LayoutCol from "../layout/LayoutCol.vue";
 import Panel from "./Panel.vue";
@@ -61,6 +56,25 @@ export default defineComponent({
 		LayoutRow,
 		LayoutCol,
 		Panel,
+	},
+
+	mounted() {
+		registerResponseHandler(ResponseType.NewDocument, (responseData: Response) => {
+			const documentData = responseData as NewDocument;
+			if (documentData) this.documents.push(documentData.document_name);
+		});
+
+		registerResponseHandler(ResponseType.SetActiveDocument, (responseData: Response) => {
+			const documentData = responseData as SetActiveDocument;
+			if (documentData) this.activeDocument = documentData.document_index;
+		});
+	},
+
+	data() {
+		return {
+			activeDocument: 0,
+			documents: ["Untitled Document"],
+		};
 	},
 });
 </script>
