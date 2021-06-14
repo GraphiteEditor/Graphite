@@ -88,26 +88,51 @@ impl MessageHandler<DocumentMessage, ()> for DocumentMessageHandler {
 			SelectDocument(id) => {
 				assert!(id < self.documents.len(), "Tried to select a document that was not initialized");
 				self.active_document = id;
-				responses.push_back(FrontendMessage::SetActiveDocument {document_index: self.active_document}.into());
-				responses.push_back(FrontendMessage::UpdateCanvas {document: self.active_document_mut().document.render_root()}.into());
+				responses.push_back(FrontendMessage::SetActiveDocument { document_index: self.active_document }.into());
+				responses.push_back(
+					FrontendMessage::UpdateCanvas {
+						document: self.active_document_mut().document.render_root(),
+					}
+					.into(),
+				);
 			}
 			NewDocument => {
 				self.active_document = self.documents.len();
 				let new_document = Document::with_name(format!("Untitled Document {}", self.active_document + 1));
 				self.documents.push(new_document);
-				responses.push_back(FrontendMessage::NewDocument {document_name: self.active_document().name.clone()}.into());
-				responses.push_back(FrontendMessage::SetActiveDocument {document_index: self.active_document}.into());
-				responses.push_back(FrontendMessage::UpdateCanvas {document: self.active_document_mut().document.render_root()}.into());
+				responses.push_back(
+					FrontendMessage::NewDocument {
+						document_name: self.active_document().name.clone(),
+					}
+					.into(),
+				);
+				responses.push_back(FrontendMessage::SetActiveDocument { document_index: self.active_document }.into());
+				responses.push_back(
+					FrontendMessage::UpdateCanvas {
+						document: self.active_document_mut().document.render_root(),
+					}
+					.into(),
+				);
 			}
 			NextDocument => {
 				self.active_document = (self.active_document + 1) % self.documents.len();
-				responses.push_back(FrontendMessage::SetActiveDocument {document_index: self.active_document}.into());
-				responses.push_back(FrontendMessage::UpdateCanvas {document: self.active_document_mut().document.render_root()}.into());
+				responses.push_back(FrontendMessage::SetActiveDocument { document_index: self.active_document }.into());
+				responses.push_back(
+					FrontendMessage::UpdateCanvas {
+						document: self.active_document_mut().document.render_root(),
+					}
+					.into(),
+				);
 			}
 			PrevDocument => {
 				self.active_document = (self.active_document + self.documents.len() - 1) % self.documents.len();
-				responses.push_back(FrontendMessage::SetActiveDocument {document_index: self.active_document}.into());
-				responses.push_back(FrontendMessage::UpdateCanvas {document: self.active_document_mut().document.render_root()}.into());
+				responses.push_back(FrontendMessage::SetActiveDocument { document_index: self.active_document }.into());
+				responses.push_back(
+					FrontendMessage::UpdateCanvas {
+						document: self.active_document_mut().document.render_root(),
+					}
+					.into(),
+				);
 			}
 			ExportDocument => responses.push_back(
 				FrontendMessage::ExportDocument {

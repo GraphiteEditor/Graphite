@@ -159,7 +159,7 @@ export default defineComponent({
 		async handleTabClick(tabIndex: number) {
 			const { select_document } = await wasm;
 			select_document(tabIndex);
-		}
+		},
 	},
 	props: {
 		tabMinWidths: { type: Boolean, default: false },
