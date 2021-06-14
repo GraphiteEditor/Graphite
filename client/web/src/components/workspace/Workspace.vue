@@ -63,24 +63,15 @@ export default defineComponent({
 		LayoutCol,
 		Panel,
 	},
-	methods: {
-		// async selectDocument(document: string) {
-		// 	const { select_tool } = await wasm;
-		// 	select_tool(toolName);
-		// },
-	},
 
 	mounted() {
-
 		registerResponseHandler(ResponseType.NewDocument, (responseData: Response) => {
 			const documentData = responseData as NewDocument;
-			console.log(responseData);
 			if (documentData) this.documents.push(documentData.document_name);
 		});
 
 		registerResponseHandler(ResponseType.SetActiveDocument, (responseData: Response) => {
 			const documentData = responseData as SetActiveDocument;
-			console.log(responseData);
 			if (documentData) this.activeDocument = documentData.document_index;
 		});
 	},

@@ -93,7 +93,7 @@ impl MessageHandler<DocumentMessage, ()> for DocumentMessageHandler {
 			}
 			NewDocument => {
 				self.active_document = self.documents.len();
-				let new_document = Document::with_name(format!("Untitled Document {}", self.active_document));
+				let new_document = Document::with_name(format!("Untitled Document {}", self.active_document + 1));
 				self.documents.push(new_document);
 				responses.push_back(FrontendMessage::NewDocument {document_name: self.active_document().name.clone()}.into());
 				responses.push_back(FrontendMessage::SetActiveDocument {document_index: self.active_document}.into());
