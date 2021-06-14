@@ -21,6 +21,8 @@ pub use shape::Shape;
 pub mod folder;
 pub use folder::Folder;
 
+use std::fmt::Write;
+
 pub trait LayerData {
 	fn render(&mut self, svg: &mut String);
 }
@@ -67,6 +69,7 @@ pub struct Layer {
 	pub data: LayerDataTypes,
 	pub cache: String,
 	pub cache_dirty: bool,
+	pub blend_mode: String,
 }
 
 impl Layer {
@@ -77,6 +80,7 @@ impl Layer {
 			data,
 			cache: String::new(),
 			cache_dirty: true,
+			blend_mode: "normal".to_string(),
 		}
 	}
 
@@ -86,7 +90,9 @@ impl Layer {
 		}
 		if self.cache_dirty {
 			self.cache.clear();
+			let _ = write!(self.cache, r#"<g style = "mix-blend-mode: {}">"#, self.blend_mode);
 			self.data.render(&mut self.cache);
+			let _ = write!(self.cache, "</g>");
 			self.cache_dirty = false;
 		}
 		self.cache.as_str()

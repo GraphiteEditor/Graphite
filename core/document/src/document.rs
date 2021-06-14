@@ -298,6 +298,14 @@ impl Document {
 				let path = path.as_slice()[..path.len() - 1].to_vec();
 				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::FolderChanged { path }])
 			}
+			Operation::SetLayerBlendMode { path, blend_mode } => {
+				let _ = self.layer_mut(&path).map(|layer| {
+					layer.blend_mode = blend_mode.clone();
+					
+				});
+				
+				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::FolderChanged { path: path.clone() }])
+			}
 		};
 		if !matches!(
 			operation,

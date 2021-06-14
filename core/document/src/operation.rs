@@ -72,4 +72,8 @@ pub enum Operation {
 	ToggleVisibility {
 		path: Vec<LayerId>,
 	},
+	SetLayerBlendMode {
+		path: Vec<LayerId>,
+		blend_mode: String,
+	}
 }

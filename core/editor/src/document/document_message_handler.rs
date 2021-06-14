@@ -22,6 +22,7 @@ pub enum DocumentMessage {
 	ExportDocument,
 	RenderDocument,
 	Undo,
+	SetBlendMode(String),
 }
 
 impl From<DocumentOperation> for DocumentMessage {
@@ -145,6 +146,16 @@ impl MessageHandler<DocumentMessage, ()> for DocumentMessageHandler {
 				}
 				.into(),
 			),
+			SetBlendMode(blend_mode) => {
+				if let Some(active_document) = self.documents.get(self.active_document) {
+					for (path, layer) in active_document.layer_data.iter() {
+						if layer.selected {
+							responses.push_back(DocumentOperation::SetLayerBlendMode { path: path.clone(), blend_mode: blend_mode.clone() }.into());
+						}
+					}
+				}
+				
+			}
 			ToggleLayerVisibility(path) => {
 				responses.push_back(DocumentOperation::ToggleVisibility { path }.into());
 			}

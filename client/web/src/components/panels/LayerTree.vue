@@ -121,8 +121,8 @@ import { SectionsOfMenuListEntries } from "../widgets/floating-menus/MenuList.vu
 const wasm = import("../../../wasm/pkg");
 
 const blendModeMenuEntries: SectionsOfMenuListEntries = [
-	[{ label: "Normal" }],
-	[{ label: "Multiply" }, { label: "Darken" }, { label: "Color Burn" }, { label: "Linear Burn" }, { label: "Darker Color" }],
+	[{ label: "Normal", action: async () => (await wasm).set_layer_blend_mode("normal")}],
+	[{ label: "Multiply", action: async () => (await wasm).set_layer_blend_mode("multiply") }, { label: "Darken" }, { label: "Color Burn" }, { label: "Linear Burn" }, { label: "Darker Color" }],
 	[{ label: "Screen" }, { label: "Lighten" }, { label: "Color Dodge" }, { label: "Linear Dodge (Add)" }, { label: "Lighter Color" }],
 	[{ label: "Overlay" }, { label: "Soft Light" }, { label: "Hard Light" }, { label: "Vivid Light" }, { label: "Linear Light" }, { label: "Pin Light" }, { label: "Hard Mix" }],
 	[{ label: "Difference" }, { label: "Exclusion" }, { label: "Subtract" }, { label: "Divide" }],
@@ -135,6 +135,12 @@ export default defineComponent({
 		async toggleLayerVisibility(path: BigUint64Array) {
 			const { toggle_layer_visibility } = await wasm;
 			toggle_layer_visibility(path);
+		},
+		async setLayerBlendMode(blend_mode: string) {
+			console.log("Blend mode set to: ", blend_mode);
+			const { set_layer_blend_mode } = await wasm;
+			set_layer_blend_mode(blend_mode);
+			
 		},
 		async handleControlClick(clickedLayer: LayerPanelEntry) {
 			const index = this.layers.indexOf(clickedLayer);
