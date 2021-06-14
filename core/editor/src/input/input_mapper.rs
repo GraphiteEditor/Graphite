@@ -298,7 +298,7 @@ impl InputMapper {
 			.for_each(|k| {
 				let _ = write!(output, "{} ", k.to_discriminant().local_name());
 			});
-		output
+		output.replace("Key", "")
 	}
 }
 
