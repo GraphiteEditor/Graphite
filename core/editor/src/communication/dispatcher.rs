@@ -34,6 +34,7 @@ impl Dispatcher {
 		{
 			log::trace!("Message: {}", message.to_discriminant().local_name());
 		}
+		log::debug!("Hints:{}", self.input_mapper.hints(self.collect_actions()));
 		match message {
 			NoOp => (),
 			Document(message) => self.document_message_handler.process_action(message, &self.input_preprocessor, &mut self.messages),

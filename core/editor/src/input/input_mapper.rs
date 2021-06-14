@@ -1,11 +1,12 @@
-use crate::consts::{MINUS_KEY_ZOOM_RATE, PLUS_KEY_ZOOM_RATE};
-use crate::message_prelude::*;
-use crate::tool::ToolType;
-
 use super::{
 	keyboard::{Key, KeyStates, NUMBER_OF_KEYS},
 	InputPreprocessor,
 };
+use crate::consts::{MINUS_KEY_ZOOM_RATE, PLUS_KEY_ZOOM_RATE};
+use crate::message_prelude::*;
+use crate::tool::ToolType;
+
+use std::fmt::Write;
 
 const NUDGE_AMOUNT: f64 = 1.;
 const SHIFT_NUDGE_AMOUNT: f64 = 10.;
@@ -16,6 +17,7 @@ pub enum InputMapperMessage {
 	PointerMove,
 	MouseScroll,
 	KeyUp(Key),
+	#[child]
 	KeyDown(Key),
 }
 
@@ -279,6 +281,25 @@ impl Mapping {
 #[derive(Debug, Default)]
 pub struct InputMapper {
 	mapping: Mapping,
+}
+
+impl InputMapper {
+	pub fn hints(&self, actions: ActionList) -> String {
+		let mut output = String::new();
+		self.mapping
+			.key_down
+			.iter()
+			.enumerate()
+			.filter_map(|(i, m)| {
+				m.0.iter()
+					.any(|m| actions.iter().any(|al| al.contains(&m.action.to_discriminant())))
+					.then(|| unsafe { std::mem::transmute_copy::<usize, Key>(&i) })
+			})
+			.for_each(|k| {
+				let _ = write!(output, "{} ", k.to_discriminant().local_name());
+			});
+		output
+	}
 }
 
 impl MessageHandler<InputMapperMessage, (&InputPreprocessor, ActionList)> for InputMapper {
