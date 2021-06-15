@@ -20,7 +20,6 @@ impl Shape {
 		let translation = Vec2::new(cols[4], cols[5]);
 		let mut path = kurbo::BezPath::new();
 		let apothem_offset_angle = std::f64::consts::PI / (sides as f64);
-		if !equal_sides {}
 
 		let relative_points = (0..sides).map(|i| apothem_offset_angle * ((i * 2 + ((sides + 1) % 2)) as f64)).map(|radians| unit_rotation(radians));
 
