@@ -20,6 +20,7 @@ pub struct Dispatcher {
 impl Dispatcher {
 	pub fn handle_message<T: Into<Message>>(&mut self, message: T) -> Result<(), EditorError> {
 		let message = message.into();
+		//log::debug!("M: {:?}", message);
 		use Message::*;
 		if !(matches!(
 			message,
