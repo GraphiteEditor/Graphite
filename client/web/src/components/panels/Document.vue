@@ -2,7 +2,7 @@
 	<LayoutCol :class="'document'">
 		<LayoutRow :class="'options-bar'">
 			<div class="left side">
-				<DropdownInput :menuEntries="modeMenuEntries" :default="modeMenuEntries[0][0]" :drawIcon="true" />
+				<DropdownInput :menuEntries="modeMenuEntries" :default="modeMenuEntries[0][0]" :callbackOnChange="notImplemented" :drawIcon="true" />
 
 				<Separator :type="SeparatorType.Section" />
 
@@ -180,8 +180,8 @@ import { SectionsOfMenuListEntries } from "../widgets/floating-menus/MenuList.vu
 
 const modeMenuEntries: SectionsOfMenuListEntries = [
 	[
-		{ label: "Design Mode", icon: "ViewportDesignMode" },
-		{ label: "Select Mode", icon: "ViewportSelectMode" },
+		{ id: "design-mode", label: "Design Mode", icon: "ViewportDesignMode" },
+		{ id: "select-mode", label: "Select Mode", icon: "ViewportSelectMode" },
 	],
 ];
 
@@ -218,6 +218,9 @@ export default defineComponent({
 				return _;
 			}
 			todo(toolIndex);
+		},
+		notImplemented() {
+			window.alert("Not implemented");
 		},
 		download(filename: string, svgData: string) {
 			const svgBlob = new Blob([svgData], { type: "image/svg+xml;charset=utf-8" });

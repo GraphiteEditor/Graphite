@@ -86,6 +86,7 @@ export default defineComponent({
 		menuEntries: { type: Array as PropType<SectionsOfMenuListEntries>, required: true },
 		default: { type: Object as PropType<MenuListEntry>, required: true },
 		drawIcon: { type: Boolean, default: false },
+		callbackOnChange: { type: Function, required: true },
 	},
 	data() {
 		return {
@@ -100,6 +101,8 @@ export default defineComponent({
 		},
 		setActiveEntry(newActiveEntry: MenuListEntry) {
 			this.activeEntry = newActiveEntry;
+
+			this.callbackOnChange(newActiveEntry.id);
 		},
 		widthChanged(newWidth: number) {
 			this.minWidth = newWidth;

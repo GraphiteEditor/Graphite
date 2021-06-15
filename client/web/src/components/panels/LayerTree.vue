@@ -1,7 +1,7 @@
 <template>
 	<LayoutCol :class="'layer-tree-panel'">
 		<LayoutRow :class="'options-bar'">
-			<DropdownInput :menuEntries="blendModeMenuEntries" :default="blendModeMenuEntries[0][0]" />
+			<DropdownInput :menuEntries="blendModeMenuEntries" :callbackOnChange="setLayerBlendMode" :default="blendModeMenuEntries[0][0]" />
 
 			<Separator :type="SeparatorType.Related" />
 
@@ -120,15 +120,6 @@ import { SectionsOfMenuListEntries } from "../widgets/floating-menus/MenuList.vu
 
 const wasm = import("../../../wasm/pkg");
 
-const blendModeMenuEntries: SectionsOfMenuListEntries = [
-	[{ label: "Normal", action: async () => (await wasm).set_layer_blend_mode("normal")}],
-	[{ label: "Multiply", action: async () => (await wasm).set_layer_blend_mode("multiply") }, { label: "Darken" }, { label: "Color Burn" }, { label: "Linear Burn" }, { label: "Darker Color" }],
-	[{ label: "Screen" }, { label: "Lighten" }, { label: "Color Dodge" }, { label: "Linear Dodge (Add)" }, { label: "Lighter Color" }],
-	[{ label: "Overlay" }, { label: "Soft Light" }, { label: "Hard Light" }, { label: "Vivid Light" }, { label: "Linear Light" }, { label: "Pin Light" }, { label: "Hard Mix" }],
-	[{ label: "Difference" }, { label: "Exclusion" }, { label: "Subtract" }, { label: "Divide" }],
-	[{ label: "Hue" }, { label: "Saturation" }, { label: "Color" }, { label: "Luminosity" }],
-];
-
 export default defineComponent({
 	props: {},
 	methods: {
@@ -137,10 +128,9 @@ export default defineComponent({
 			toggle_layer_visibility(path);
 		},
 		async setLayerBlendMode(blend_mode: string) {
-			console.log("Blend mode set to: ", blend_mode);
+			console.log("Blend mode set to", blend_mode);
 			const { set_layer_blend_mode } = await wasm;
 			set_layer_blend_mode(blend_mode);
-			
 		},
 		async handleControlClick(clickedLayer: LayerPanelEntry) {
 			const index = this.layers.indexOf(clickedLayer);
@@ -221,6 +211,44 @@ export default defineComponent({
 		});
 	},
 	data() {
+		const blendModeMenuEntries: SectionsOfMenuListEntries = [
+			[{ id: "normal", label: "Normal" }],
+			[
+				{ id: "multiply", label: "Multiply" },
+				{ id: "darken", label: "Darken" },
+				{ id: "color_burn", label: "Color Burn" },
+				{ id: "linear_burn", label: "Linear Burn" },
+				{ id: "darker_color", label: "Darker Color" },
+			],
+			[
+				{ id: "screen", label: "Screen" },
+				{ id: "lighten", label: "Lighten" },
+				{ id: "color_dodge", label: "Color Dodge" },
+				{ id: "linear_dodge_(add)", label: "Linear Dodge (Add)" },
+				{ id: "lighter_color", label: "Lighter Color" },
+			],
+			[
+				{ id: "overlay", label: "Overlay" },
+				{ id: "soft_light", label: "Soft Light" },
+				{ id: "hard_light", label: "Hard Light" },
+				{ id: "vivid_light", label: "Vivid Light" },
+				{ id: "linear_light", label: "Linear Light" },
+				{ id: "pin_light", label: "Pin Light" },
+				{ id: "hard_mix", label: "Hard Mix" },
+			],
+			[
+				{ id: "difference", label: "Difference" },
+				{ id: "exclusion", label: "Exclusion" },
+				{ id: "subtract", label: "Subtract" },
+				{ id: "divide", label: "Divide" },
+			],
+			[
+				{ id: "hue", label: "Hue" },
+				{ id: "saturation", label: "Saturation" },
+				{ id: "color", label: "Color" },
+				{ id: "luminosity", label: "Luminosity" },
+			],
+		];
 		return {
 			blendModeMenuEntries,
 			MenuDirection,

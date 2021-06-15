@@ -64,78 +64,88 @@ const wasm = import("../../../../wasm/pkg");
 
 const menuEntries: MenuListEntries = [
 	{
+		id: "graphite",
 		icon: "GraphiteLogo",
 		ref: undefined,
-		children: [[{ label: "Visit project GitHub…", action: () => window.open("https://github.com/GraphiteEditor/Graphite", "_blank") }]],
+		children: [[{ id: "graphite/github", label: "Visit project GitHub…", action: () => window.open("https://github.com/GraphiteEditor/Graphite", "_blank") }]],
 	},
 	{
+		id: "file",
 		label: "File",
 		ref: undefined,
 		children: [
 			[
-				{ label: "New", icon: "File", shortcut: ["Ctrl", "N"], action: async () => (await wasm).new_document() },
-				{ label: "Open…", shortcut: ["Ctrl", "O"] },
+				{ id: "file/new", label: "New", icon: "File", shortcut: ["Ctrl", "N"], action: async () => (await wasm).new_document() },
+				{ id: "file/open", label: "Open…", shortcut: ["Ctrl", "O"] },
 				{
+					id: "file/open_recent",
 					label: "Open Recent",
 					shortcut: ["Ctrl", "⇧", "O"],
 					children: [
-						[{ label: "Reopen Last Closed", shortcut: ["Ctrl", "⇧", "T"] }, { label: "Clear Recently Opened" }],
 						[
-							{ label: "Some Recent File.gdd" },
-							{ label: "Another Recent File.gdd" },
-							{ label: "An Older File.gdd" },
-							{ label: "Some Other Older File.gdd" },
-							{ label: "Yet Another Older File.gdd" },
+							{ id: "file/open_recent/reopen", label: "Reopen Last Closed", shortcut: ["Ctrl", "⇧", "T"] },
+							{ id: "file/open_recent/clear_recent", label: "Clear Recently Opened" },
+						],
+						[
+							{ id: "file/open_recent/1", label: "Some Recent File.gdd" },
+							{ id: "file/open_recent/2", label: "Another Recent File.gdd" },
+							{ id: "file/open_recent/3", label: "An Older File.gdd" },
+							{ id: "file/open_recent/4", label: "Some Other Older File.gdd" },
+							{ id: "file/open_recent/5", label: "Yet Another Older File.gdd" },
 						],
 					],
 				},
 			],
 			[
-				{ label: "Close", shortcut: ["Ctrl", "W"] },
-				{ label: "Close All", shortcut: ["Ctrl", "Alt", "W"] },
+				{ id: "file/close", label: "Close", shortcut: ["Ctrl", "W"] },
+				{ id: "file/close_all", label: "Close All", shortcut: ["Ctrl", "Alt", "W"] },
 			],
 			[
-				{ label: "Save", shortcut: ["Ctrl", "S"] },
-				{ label: "Save As…", shortcut: ["Ctrl", "⇧", "S"] },
-				{ label: "Save All", shortcut: ["Ctrl", "Alt", "S"] },
-				{ label: "Auto-Save", shortcut: undefined },
+				{ id: "file/save", label: "Save", shortcut: ["Ctrl", "S"] },
+				{ id: "file/save_as", label: "Save As…", shortcut: ["Ctrl", "⇧", "S"] },
+				{ id: "file/save_all", label: "Save All", shortcut: ["Ctrl", "Alt", "S"] },
+				{ id: "file/auto_save", label: "Auto-Save", shortcut: undefined },
 			],
 			[
-				{ label: "Import…", shortcut: ["Ctrl", "I"] },
-				{ label: "Export…", shortcut: ["Ctrl", "E"], action: async () => (await wasm).export_document() },
+				{ id: "file/import", label: "Import…", shortcut: ["Ctrl", "I"] },
+				{ id: "file/export", label: "Export…", shortcut: ["Ctrl", "E"], action: async () => (await wasm).export_document() },
 			],
-			[{ label: "Quit", shortcut: ["Ctrl", "Q"] }],
+			[{ id: "file/quit", label: "Quit", shortcut: ["Ctrl", "Q"] }],
 		],
 	},
 	{
+		id: "edit",
 		label: "Edit",
 		ref: undefined,
 		children: [
 			[
-				{ label: "Undo", shortcut: ["Ctrl", "Z"], action: async () => (await wasm).undo() },
-				{ label: "Redo", shortcut: ["Ctrl", "⇧", "Z"] },
+				{ id: "edit/undo", label: "Undo", shortcut: ["Ctrl", "Z"], action: async () => (await wasm).undo() },
+				{ id: "edit/redo", label: "Redo", shortcut: ["Ctrl", "⇧", "Z"] },
 			],
 			[
-				{ label: "Cut", shortcut: ["Ctrl", "X"] },
-				{ label: "Copy", icon: "Copy", shortcut: ["Ctrl", "C"] },
-				{ label: "Paste", icon: "Paste", shortcut: ["Ctrl", "V"] },
+				{ id: "edit/cut", label: "Cut", shortcut: ["Ctrl", "X"] },
+				{ id: "edit/copy", label: "Copy", icon: "Copy", shortcut: ["Ctrl", "C"] },
+				{ id: "edit/paste", label: "Paste", icon: "Paste", shortcut: ["Ctrl", "V"] },
 			],
 		],
 	},
 	{
+		id: "document",
 		label: "Document",
 		ref: undefined,
-		children: [[{ label: "Menu not yet populated" }]],
+		children: [[{ id: "document/todo", label: "Menu not yet populated" }]],
 	},
 	{
+		id: "view",
 		label: "View",
 		ref: undefined,
-		children: [[{ label: "Menu not yet populated" }]],
+		children: [[{ id: "document/todo", label: "Menu not yet populated" }]],
 	},
 	{
+		id: "help",
 		label: "Help",
 		ref: undefined,
-		children: [[{ label: "Menu not yet populated" }]],
+		children: [[{ id: "document/todo", label: "Menu not yet populated" }]],
 	},
 ];
 
