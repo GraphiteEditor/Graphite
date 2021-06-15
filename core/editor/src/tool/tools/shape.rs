@@ -144,6 +144,7 @@ fn make_operation(data: &ShapeToolData, tool_data: &DocumentToolData, transform:
 	let x1 = data.drag_current.x as f64;
 	let y1 = data.drag_current.y as f64;
 
+	// TODO: Use regular polygon's aspect ration for constraining rather than a square.
 	let (x0, y0, x1, y1, equal_sides) = if data.constrain_to_square {
 		let (x_dir, y_dir) = ((x1 - x0).signum(), (y1 - y0).signum());
 		let max_dist = f64::max((x1 - x0).abs(), (y1 - y0).abs());
