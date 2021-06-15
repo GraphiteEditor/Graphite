@@ -17,6 +17,7 @@ pub enum DocumentMessage {
 	ToggleLayerVisibility(Vec<LayerId>),
 	ToggleLayerExpansion(Vec<LayerId>),
 	SelectDocument(usize),
+	CloseDocument(usize),
 	NewDocument,
 	NextDocument,
 	PrevDocument,
@@ -83,10 +84,12 @@ impl Default for DocumentMessageHandler {
 impl MessageHandler<DocumentMessage, ()> for DocumentMessageHandler {
 	fn process_action(&mut self, message: DocumentMessage, _data: (), responses: &mut VecDeque<Message>) {
 		use DocumentMessage::*;
+		log::debug!("PROCESS_ACTION: {:?}", message);
 		match message {
 			DeleteLayer(path) => responses.push_back(DocumentOperation::DeleteLayer { path }.into()),
 			AddFolder(path) => responses.push_back(DocumentOperation::AddFolder { path }.into()),
 			SelectDocument(id) => {
+				log::debug!("ID: {:?}", id);
 				assert!(id < self.documents.len(), "Tried to select a document that was not initialized");
 				self.active_document = id;
 				responses.push_back(FrontendMessage::SetActiveDocument { document_index: self.active_document }.into());
@@ -96,6 +99,21 @@ impl MessageHandler<DocumentMessage, ()> for DocumentMessageHandler {
 					}
 					.into(),
 				);
+			}
+			CloseDocument(id) => {
+				log::debug!("CID: {:?}", id);
+				assert!(id < self.documents.len(), "Tried to select a document that was not initialized");
+				self.active_document = id - 1;
+				responses.push_back(FrontendMessage::SetActiveDocument { document_index: self.active_document }.into());
+				responses.push_back(FrontendMessage::CloseDocument { document_index: id }.into());
+				responses.push_back(
+					FrontendMessage::UpdateCanvas {
+						document: self.active_document_mut().document.render_root(),
+					}
+					.into(),
+				);
+
+				log::debug!("CID END: {:?}", id);
 			}
 			NewDocument => {
 				self.active_document = self.documents.len();
@@ -179,6 +197,7 @@ impl MessageHandler<DocumentMessage, ()> for DocumentMessageHandler {
 				}
 			}
 			DispatchOperation(op) => {
+				log::debug!("DISP OP: {:?}", op);
 				if let Ok(Some(mut document_responses)) = self.active_document_mut().document.handle_operation(op) {
 					let canvas_dirty = self.filter_document_responses(&mut document_responses);
 					responses.extend(

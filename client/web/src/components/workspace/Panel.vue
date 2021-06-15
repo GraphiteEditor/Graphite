@@ -4,7 +4,7 @@
 			<div class="tab-group">
 				<div class="tab" :class="{ active: tabIndex === tabActiveIndex }" v-for="(tabLabel, tabIndex) in tabLabels" :key="tabLabel" @click="handleTabClick(tabIndex)">
 					<span>{{ tabLabel }}</span>
-					<IconButton :icon="'CloseX'" :size="16" v-if="tabCloseButtons" />
+					<IconButton :icon="'CloseX'" :size="16" v-if="tabCloseButtons" @click.stop="closeTab(tabIndex)" />
 				</div>
 			</div>
 			<PopoverButton :icon="PopoverButtonIcon.VerticalEllipsis">
@@ -157,8 +157,13 @@ export default defineComponent({
 	},
 	methods: {
 		async handleTabClick(tabIndex: number) {
+			console.log("HAHAHAHAHAHAHA");
 			const { select_document } = await wasm;
 			select_document(tabIndex);
+		},
+		async closeTab(tabIndex: number) {
+			const { close_document } = await wasm;
+			close_document(tabIndex);
 		},
 	},
 	props: {

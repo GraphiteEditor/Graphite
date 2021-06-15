@@ -46,7 +46,7 @@
 
 <script lang="ts">
 import { defineComponent } from "vue";
-import { ResponseType, registerResponseHandler, Response, SetActiveDocument, NewDocument } from "../../response-handler";
+import { ResponseType, registerResponseHandler, Response, SetActiveDocument, NewDocument, CloseDocument } from "../../response-handler";
 import LayoutRow from "../layout/LayoutRow.vue";
 import LayoutCol from "../layout/LayoutCol.vue";
 import Panel from "./Panel.vue";
@@ -62,6 +62,11 @@ export default defineComponent({
 		registerResponseHandler(ResponseType.NewDocument, (responseData: Response) => {
 			const documentData = responseData as NewDocument;
 			if (documentData) this.documents.push(documentData.document_name);
+		});
+
+		registerResponseHandler(ResponseType.CloseDocument, (responseData: Response) => {
+			const documentData = responseData as CloseDocument;
+			if (documentData) this.documents.pop();
 		});
 
 		registerResponseHandler(ResponseType.SetActiveDocument, (responseData: Response) => {

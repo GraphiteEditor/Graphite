@@ -18,6 +18,7 @@ export enum ResponseType {
 	SetActiveTool = "SetActiveTool",
 	SetActiveDocument = "SetActiveDocument",
 	NewDocument = "NewDocument",
+	CloseDocument = "CloseDocument",
 	UpdateWorkingColors = "UpdateWorkingColors",
 }
 
@@ -58,6 +59,8 @@ function parseResponse(responseType: string, data: any): Response {
 			return newSetActiveDocument(data.SetActiveDocument);
 		case "NewDocument":
 			return newNewDocument(data.NewDocument);
+		case "CloseDocument":
+			return newCloseDocument(data.CloseDocument);
 		case "UpdateCanvas":
 			return newUpdateCanvas(data.UpdateCanvas);
 		case "ExportDocument":
@@ -70,6 +73,13 @@ function parseResponse(responseType: string, data: any): Response {
 }
 
 export type Response = SetActiveTool | UpdateCanvas | DocumentChanged | CollapseFolder | ExpandFolder | UpdateWorkingColors;
+
+export interface CloseDocument {
+	document_index: number;
+}
+function newCloseDocument(input: any): CloseDocument {
+	return { document_index: input.document_index };
+}
 
 export interface Color {
 	red: number;
