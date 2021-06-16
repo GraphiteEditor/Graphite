@@ -131,7 +131,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			}
 			Undo => {
 				// this is a temporary fix and will be addressed by #123
-				if let Some(id) = self.active_document().document.root.list_layers().last() {
+				if let Some(id) = self.active_document().document.root.as_folder().unwrap().list_layers().last() {
 					responses.push_back(DocumentOperation::DeleteLayer { path: vec![*id] }.into())
 				}
 			}
@@ -178,6 +178,8 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					let delta = DVec2::new(ipp.mouse.position.x as f64 - self.mouse_pos.x as f64, ipp.mouse.position.y as f64 - self.mouse_pos.y as f64);
 					let transform = self.active_document().document.root.transform * DAffine2::from_translation(delta);
 					self.active_document_mut().document.root.transform = transform;
+					self.active_document_mut().document.root.cache_dirty = true;
+					self.active_document_mut().document.work.cache_dirty = true;
 					self.mouse_pos = ipp.mouse.position;
 					responses.push_back(
 						FrontendMessage::UpdateCanvas {

@@ -127,6 +127,7 @@ fn make_operation(data: &PenToolData, tool_data: &DocumentToolData, show_preview
 	Operation::AddPen {
 		path: vec![],
 		insert_index: -1,
+		cols: [1., 0., 0., 1., 0., 0.],
 		points,
 		style: style::PathStyle::new(Some(style::Stroke::new(tool_data.primary_color, 5.)), Some(style::Fill::none())),
 	}

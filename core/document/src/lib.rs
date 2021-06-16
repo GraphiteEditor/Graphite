@@ -14,4 +14,5 @@ pub enum DocumentError {
 	LayerNotFound,
 	InvalidPath,
 	IndexOutOfBounds,
+	NotAFolder,
 }

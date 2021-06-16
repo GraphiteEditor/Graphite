@@ -1,3 +1,4 @@
+use kurbo::BezPath;
 use kurbo::Vec2;
 
 use super::style;
@@ -7,21 +8,29 @@ use std::fmt::Write;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Shape {
-	shape: kurbo::BezPath,
-	style: style::PathStyle,
+	equal_sides: bool,
+	sides: u8,
 }
 
 impl Shape {
-	pub fn new(cols: [f64; 6], equal_sides: bool, sides: u8, style: style::PathStyle) -> Shape {
+	pub fn new(equal_sides: bool, sides: u8) -> Shape {
+		Shape { equal_sides, sides }
+	}
+}
+
+impl LayerData for Shape {
+	fn to_kurbo_path(&mut self, transform: glam::DAffine2, _style: style::PathStyle) -> BezPath {
 		fn unit_rotation(theta: f64) -> Vec2 {
 			Vec2::new(-theta.sin(), theta.cos())
 		}
-		let extent = Vec2::new((cols[0] + cols[1]) / 2., (cols[2] + cols[3]) / 2.);
-		let translation = Vec2::new(cols[4], cols[5]);
+		let extent = Vec2::new((transform.x_axis.x + transform.x_axis.y) / 2., (transform.y_axis.x + transform.y_axis.y) / 2.);
+		let translation = transform.translation;
 		let mut path = kurbo::BezPath::new();
-		let apothem_offset_angle = std::f64::consts::PI / (sides as f64);
+		let apothem_offset_angle = std::f64::consts::PI / (self.sides as f64);
 
-		let relative_points = (0..sides).map(|i| apothem_offset_angle * ((i * 2 + ((sides + 1) % 2)) as f64)).map(|radians| unit_rotation(radians));
+		let relative_points = (0..self.sides)
+			.map(|i| apothem_offset_angle * ((i * 2 + ((self.sides + 1) % 2)) as f64))
+			.map(|radians| unit_rotation(radians));
 
 		let (mut min_x, mut min_y, mut max_x, mut max_y) = (f64::MAX, f64::MAX, f64::MIN, f64::MIN);
 		relative_points.clone().for_each(|p| {
@@ -33,7 +42,7 @@ impl Shape {
 
 		relative_points
 			.map(|p| {
-				if equal_sides {
+				if self.equal_sides {
 					p
 				} else {
 					Vec2::new((p.x - min_x) / (max_x - min_x) * 2. - 1., (p.y - min_y) / (max_y - min_y) * 2. - 1.)
@@ -51,12 +60,9 @@ impl Shape {
 			});
 
 		path.close_path();
-		Shape { shape: path, style }
+		path
 	}
-}
-
-impl LayerData for Shape {
-	fn render(&mut self, svg: &mut String) {
-		let _ = write!(svg, r#"<path d="{}" {} />"#, self.shape.to_svg(), self.style.render());
+	fn render(&mut self, svg: &mut String, transform: glam::DAffine2, style: style::PathStyle) {
+		let _ = write!(svg, r#"<path d="{}" {} />"#, self.to_kurbo_path(transform, style).to_svg(), style.render());
 	}
 }
