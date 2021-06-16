@@ -60,6 +60,9 @@ pub enum Operation {
 	DeleteLayer {
 		path: Vec<LayerId>,
 	},
+	DuplicateLayer {
+		path: Vec<LayerId>,
+	},
 	AddFolder {
 		path: Vec<LayerId>,
 	},
