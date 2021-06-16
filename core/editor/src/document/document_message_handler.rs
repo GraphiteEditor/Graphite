@@ -162,9 +162,7 @@ impl MessageHandler<DocumentMessage, ()> for DocumentMessageHandler {
 				}
 			}
 			DuplicateSelectedLayers => {
-				// TODO: Replace with drain_filter https://github.com/rust-lang/rust/issues/59618
-				let paths: Vec<Vec<LayerId>> = self.active_document().layer_data.iter().filter_map(|(path, data)| data.selected.then(|| path.clone())).collect();
-				for path in paths {
+				for path in self.active_document().layer_data.iter().filter_map(|(path, data)| data.selected.then(|| path.clone())) {
 					responses.push_back(DocumentOperation::DuplicateLayer { path }.into())
 				}
 			}
