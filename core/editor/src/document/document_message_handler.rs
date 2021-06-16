@@ -111,21 +111,25 @@ impl MessageHandler<DocumentMessage, ()> for DocumentMessageHandler {
 					} else {
 						self.active_document = id - 1;
 					}
+					self.documents.remove(id);
+					let lp = self.active_document_mut().layer_panel(&[]).expect("Could not get panel for active doc");
+					responses.push_back(FrontendMessage::ExpandFolder { path: Vec::new(), children: lp }.into());
+					responses.push_back(FrontendMessage::SetActiveDocument { document_index: self.active_document }.into());
+					responses.push_back(FrontendMessage::CloseDocument { document_index: id }.into());
+					responses.push_back(
+						FrontendMessage::UpdateCanvas {
+							document: self.active_document_mut().document.render_root(),
+						}
+						.into(),
+					);
 				} else {
 					// create a new black tab automatically
 					self.active_document = 0;
+					self.documents.remove(id);
+
+					responses.push_back(FrontendMessage::CloseDocument { document_index: id }.into());
+					responses.push_back(DocumentMessage::NewDocument.into());
 				}
-				self.documents.remove(id);
-				let lp = self.active_document_mut().layer_panel(&[]).expect("Could not get panel for active doc");
-				responses.push_back(FrontendMessage::ExpandFolder { path: Vec::new(), children: lp }.into());
-				responses.push_back(FrontendMessage::SetActiveDocument { document_index: self.active_document }.into());
-				responses.push_back(FrontendMessage::CloseDocument { document_index: id }.into());
-				responses.push_back(
-					FrontendMessage::UpdateCanvas {
-						document: self.active_document_mut().document.render_root(),
-					}
-					.into(),
-				);
 			}
 			NewDocument => {
 				/*
@@ -157,7 +161,8 @@ impl MessageHandler<DocumentMessage, ()> for DocumentMessageHandler {
 						}
 				*/
 				self.active_document = self.documents.len();
-				let new_document = Document::with_name(format!("Untitled Document {}", self.active_document + 1));
+				let doc_number_string = if self.active_document == 0 { String::new() } else { (self.active_document + 1).to_string() };
+				let new_document = Document::with_name(format!("Untitled Document {}", doc_number_string));
 				self.documents.push(new_document);
 				responses.push_back(
 					FrontendMessage::NewDocument {
