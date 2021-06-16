@@ -46,6 +46,7 @@ macro_rules! call_render {
 
 impl LayerDataTypes {
 	pub fn render(&mut self, svg: &mut String) {
+		log::debug!("SVG: {:?}", svg);
 		call_render! {
 			self.render(svg) {
 				Folder,

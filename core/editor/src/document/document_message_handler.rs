@@ -104,6 +104,9 @@ impl MessageHandler<DocumentMessage, ()> for DocumentMessageHandler {
 				log::debug!("CID: {:?}", id);
 				assert!(id < self.documents.len(), "Tried to select a document that was not initialized");
 				self.active_document = id - 1;
+				self.documents.pop();
+				let lp = self.active_document_mut().layer_panel(&[]).expect("Could not get panel for active doc");
+				responses.push_back(FrontendMessage::ExpandFolder { path: Vec::new(), children: lp }.into());
 				responses.push_back(FrontendMessage::SetActiveDocument { document_index: self.active_document }.into());
 				responses.push_back(FrontendMessage::CloseDocument { document_index: id }.into());
 				responses.push_back(
