@@ -12,9 +12,9 @@ pub struct Ellipse {
 }
 
 impl Ellipse {
-	pub fn new(transform: glam::DAffine2, style: style::PathStyle) -> Ellipse {
+	pub fn new(style: style::PathStyle) -> Ellipse {
 		Ellipse {
-			shape: kurbo::Ellipse::from_affine(kurbo::Affine::new(transform.to_cols_array())),
+			shape: kurbo::Ellipse::new((0., 0.), (1., 1.), 0.),
 			style,
 		}
 	}

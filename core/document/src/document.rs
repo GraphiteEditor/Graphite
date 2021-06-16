@@ -177,7 +177,7 @@ impl Document {
 			Operation::AddEllipse { path, insert_index, cols, style } => {
 				let id = self.add_layer(
 					&path,
-					Layer::new(LayerDataTypes::Ellipse(layers::Ellipse::new(glam::DAffine2::from_cols_array(cols), *style))),
+					Layer::new(LayerDataTypes::Ellipse(layers::Ellipse::new(*style)), glam::DAffine2::from_cols_array(cols)),
 					*insert_index,
 				)?;
 				let path = [path.clone(), vec![id]].concat();
@@ -185,21 +185,13 @@ impl Document {
 				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::SelectLayer { path }])
 			}
 			Operation::AddRect { path, insert_index, cols, style } => {
-				let id = self.add_layer(&path, Layer::new(LayerDataTypes::Rect(Rect::new(*cols, *style))), *insert_index)?;
+				let id = self.add_layer(&path, Layer::new(LayerDataTypes::Rect(Rect::new(*style)), glam::DAffine2::from_cols_array(cols)), *insert_index)?;
 				let path = [path.clone(), vec![id]].concat();
 
 				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::SelectLayer { path }])
 			}
-			Operation::AddLine {
-				path,
-				insert_index,
-				x0,
-				y0,
-				x1,
-				y1,
-				style,
-			} => {
-				let id = self.add_layer(&path, Layer::new(LayerDataTypes::Line(Line::new(*x0, *y0, *x1, *y1, *style))), *insert_index)?;
+			Operation::AddLine { path, insert_index, cols, style } => {
+				let id = self.add_layer(&path, Layer::new(LayerDataTypes::Line(Line::new(*style)), glam::DAffine2::from_cols_array(cols)), *insert_index)?;
 				let path = [path.clone(), vec![id]].concat();
 
 				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::SelectLayer { path }])
@@ -207,7 +199,7 @@ impl Document {
 			Operation::AddPen { path, insert_index, points, style } => {
 				let points: Vec<kurbo::Point> = points.iter().map(|&it| it.into()).collect();
 				let polyline = PolyLine::new(points, *style);
-				self.add_layer(&path, Layer::new(LayerDataTypes::PolyLine(polyline)), *insert_index)?;
+				self.add_layer(&path, Layer::new(LayerDataTypes::PolyLine(polyline), glam::DAffine2::default()), *insert_index)?;
 				Some(vec![DocumentResponse::DocumentChanged])
 			}
 			Operation::AddShape {
@@ -218,8 +210,8 @@ impl Document {
 				sides,
 				style,
 			} => {
-				let s = Shape::new(*cols, *equal_sides, *sides, *style);
-				let id = self.add_layer(&path, Layer::new(LayerDataTypes::Shape(s)), *insert_index)?;
+				let s = Shape::new(*equal_sides, *sides, *style);
+				let id = self.add_layer(&path, Layer::new(LayerDataTypes::Shape(s), glam::DAffine2::from_cols_array(cols)), *insert_index)?;
 				let path = [path.clone(), vec![id]].concat();
 
 				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::SelectLayer { path }])
@@ -231,7 +223,7 @@ impl Document {
 				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::FolderChanged { path: path.to_vec() }])
 			}
 			Operation::AddFolder { path } => {
-				self.set_layer(&path, Layer::new(LayerDataTypes::Folder(Folder::default())))?;
+				self.set_layer(&path, Layer::new(LayerDataTypes::Folder(Folder::default()), glam::DAffine2::default()))?;
 
 				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::FolderChanged { path: path.clone() }])
 			}

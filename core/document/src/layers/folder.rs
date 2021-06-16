@@ -14,16 +14,9 @@ pub struct Folder {
 
 impl LayerData for Folder {
 	fn render(&mut self, svg: &mut String) {
-		let _ = writeln!(svg, r#"<g transform="matrix("#);
-		self.transform.to_cols_array().iter().enumerate().for_each(|(i, f)| {
-			let _ = svg.write_str(&(f.to_string() + if i != 5 { "," } else { "" }));
-		});
-		let _ = svg.write_str(r#")">"#);
-
 		for layer in &mut self.layers {
 			let _ = writeln!(svg, "{}", layer.render());
 		}
-		let _ = writeln!(svg, "</g>");
 	}
 }
 

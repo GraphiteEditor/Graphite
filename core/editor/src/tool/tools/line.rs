@@ -178,10 +178,7 @@ fn make_operation(data: &mut LineToolData, tool_data: &DocumentToolData, transfo
 	Operation::AddLine {
 		path: vec![],
 		insert_index: -1,
-		x0: evaluated_transform.transform_point2(DVec2::ZERO).x,
-		y0: evaluated_transform.transform_point2(DVec2::ZERO).y,
-		x1: evaluated_transform.transform_point2(DVec2::ONE).x,
-		y1: evaluated_transform.transform_point2(DVec2::ONE).y,
+		cols: evaluated_transform.to_cols_array(),
 		style: style::PathStyle::new(Some(style::Stroke::new(tool_data.primary_color, 5.)), None),
 	}
 	.into()

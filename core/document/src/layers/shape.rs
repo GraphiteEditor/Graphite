@@ -12,12 +12,10 @@ pub struct Shape {
 }
 
 impl Shape {
-	pub fn new(cols: [f64; 6], equal_sides: bool, sides: u8, style: style::PathStyle) -> Shape {
+	pub fn new(equal_sides: bool, sides: u8, style: style::PathStyle) -> Shape {
 		fn unit_rotation(theta: f64) -> Vec2 {
 			Vec2::new(-theta.sin(), theta.cos())
 		}
-		let extent = Vec2::new((cols[0] + cols[1]) / 2., (cols[2] + cols[3]) / 2.);
-		let translation = Vec2::new(cols[4], cols[5]);
 		let mut path = kurbo::BezPath::new();
 		let apothem_offset_angle = std::f64::consts::PI / (sides as f64);
 		if !equal_sides {}
@@ -40,7 +38,6 @@ impl Shape {
 					Vec2::new((p.x - min_x) / (max_x - min_x) * 2. - 1., (p.y - min_y) / (max_y - min_y) * 2. - 1.)
 				}
 			})
-			.map(|unit| Vec2::new(-unit.x * extent.x + translation.x + extent.x, -unit.y * extent.y + translation.y + extent.y))
 			.map(|pos| (pos).to_point())
 			.enumerate()
 			.for_each(|(i, p)| {

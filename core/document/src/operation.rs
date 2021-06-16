@@ -19,11 +19,8 @@ pub enum Operation {
 	},
 	AddLine {
 		path: Vec<LayerId>,
+		cols: [f64; 6],
 		insert_index: isize,
-		x0: f64,
-		y0: f64,
-		x1: f64,
-		y1: f64,
 		style: style::PathStyle,
 	},
 	AddPen {

@@ -10,12 +10,12 @@ pub struct Rect {
 }
 
 impl Rect {
-	pub fn new(cols: [f64; 6], style: style::PathStyle) -> Rect {
+	pub fn new(style: style::PathStyle) -> Rect {
 		let mut path = kurbo::BezPath::new();
-		path.move_to((cols[4] + cols[0] * 0. + cols[1] * 0., cols[5] + cols[2] * 0. + cols[3] * 0.));
-		path.line_to((cols[4] + cols[0] * 1. + cols[1] * 0., cols[5] + cols[2] * 1. + cols[3] * 0.));
-		path.line_to((cols[4] + cols[0] * 1. + cols[1] * 1., cols[5] + cols[2] * 1. + cols[3] * 1.));
-		path.line_to((cols[4] + cols[0] * 0. + cols[1] * 1., cols[5] + cols[2] * 0. + cols[3] * 1.));
+		path.move_to((0., 0.));
+		path.move_to((0., 1.));
+		path.move_to((1., 1.));
+		path.move_to((1., 0.));
 		path.close_path();
 		Rect { shape: path, style }
 	}
