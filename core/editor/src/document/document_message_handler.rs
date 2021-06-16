@@ -100,8 +100,22 @@ impl MessageHandler<DocumentMessage, ()> for DocumentMessageHandler {
 			}
 			CloseDocument(id) => {
 				assert!(id < self.documents.len(), "Tried to select a document that was not initialized");
-				self.active_document = id - 1;
-				self.documents.pop();
+				// id is the tabIdx
+				// so find the doc
+				let doc_to_close = &mut self.documents[id];
+				if self.documents.len() > 1 {
+					// just select another doc; if id == 0, then select next, otherwise select prev
+					//let m = FrontendMessage::CloseDocument { document_index: id }.into();
+					if id == 0 {
+						self.active_document = 1;
+					} else {
+						self.active_document = id - 1;
+					}
+				} else {
+					// create a new black tab automatically
+					self.active_document = 0;
+				}
+				self.documents.remove(id);
 				let lp = self.active_document_mut().layer_panel(&[]).expect("Could not get panel for active doc");
 				responses.push_back(FrontendMessage::ExpandFolder { path: Vec::new(), children: lp }.into());
 				responses.push_back(FrontendMessage::SetActiveDocument { document_index: self.active_document }.into());
@@ -114,6 +128,34 @@ impl MessageHandler<DocumentMessage, ()> for DocumentMessageHandler {
 				);
 			}
 			NewDocument => {
+				/*
+						let mut acc = Vec::new();
+						let digits = vec!['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
+						for d in &self.documents {
+							let name = &d.name;
+							log::debug!("DOC NAME: ${:?}", name);
+							if name.ends_with(digits.as_slice()) {
+								let (_, number) = name.split_at(17);
+								log::debug!("N: {:?}", number);
+								acc.push(number.trim().parse::<i32>().unwrap());
+							} else {
+								acc.push(1);
+							}
+						}
+						acc.sort();
+						let mut new_num = 1;
+						let mut flag = false;
+						for i in 0..self.documents.len() {
+							if acc[i] != i as i32 + 1 {
+								new_num = i as i32 + 1;
+								flag = true;
+								break;
+							}
+						}
+						if !flag {
+							new_num = self.documents.len() as i32 + 1;
+						}
+				*/
 				self.active_document = self.documents.len();
 				let new_document = Document::with_name(format!("Untitled Document {}", self.active_document + 1));
 				self.documents.push(new_document);

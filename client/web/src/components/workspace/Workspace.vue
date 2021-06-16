@@ -66,7 +66,9 @@ export default defineComponent({
 
 		registerResponseHandler(ResponseType.CloseDocument, (responseData: Response) => {
 			const documentData = responseData as CloseDocument;
-			if (documentData) this.documents.pop();
+			if (documentData) {
+				this.documents.splice(documentData.document_index, 1);
+			}
 		});
 
 		registerResponseHandler(ResponseType.SetActiveDocument, (responseData: Response) => {
