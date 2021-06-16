@@ -2,20 +2,21 @@ use crate::{
 	layers::{self, Folder, Layer, LayerData, LayerDataTypes, Line, PolyLine, Rect, Shape},
 	DocumentError, DocumentResponse, LayerId, Operation,
 };
+use std::fmt::Write;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Document {
-	pub root: layers::Folder,
-	pub work: Folder,
-	pub work_mount_path: Vec<LayerId>,
-	pub work_operations: Vec<Operation>,
-	pub work_mounted: bool,
+	root: layers::Layer,
+	work: Folder,
+	work_mount_path: Vec<LayerId>,
+	work_operations: Vec<Operation>,
+	work_mounted: bool,
 }
 
 impl Default for Document {
 	fn default() -> Self {
 		Self {
-			root: Folder::default(),
+			root: Layer::new(LayerDataTypes::Folder(Folder::default()), glam::DAffine2::default()),
 			work: Folder::default(),
 			work_mount_path: Vec::new(),
 			work_operations: Vec::new(),
@@ -42,16 +43,37 @@ impl Document {
 		}
 		if path.as_slice() == self.work_mount_path {
 			// TODO: Handle if mounted in nested folders
-			let transform = self.document_folder(path).unwrap().transform.clone();
+			let transform = self.document_layer(path).unwrap().transform;
 			self.document_folder_mut(path).unwrap().render(svg);
-			self.work.transform = transform;
-			self.work.render(svg);
+			let _ = write!(svg, "{}", Layer::new(LayerDataTypes::Folder(self.work.clone()), transform).render());
 			path.pop();
 		}
 		let ids = self.folder(path).unwrap().layer_ids.clone();
 		for element in ids {
 			path.push(element);
 			self.render(path, svg);
+		}
+	}
+
+	pub fn root(&self) -> &Layer {
+		&self.root
+	}
+
+	pub fn work_mounted(&self) -> bool {
+		self.work_mounted
+	}
+
+	pub fn root_folder(&self) -> &Folder {
+		match &self.root {
+			Layer { data: LayerDataTypes::Folder(f), .. } => &f,
+			_ => panic!("A non folder root is not supported"),
+		}
+	}
+
+	pub fn root_folder_mut(&mut self) -> &mut Folder {
+		match &mut self.root {
+			Layer { data: LayerDataTypes::Folder(f), .. } => f,
+			_ => panic!("A non folder root is not supported"),
 		}
 	}
 
@@ -71,7 +93,7 @@ impl Document {
 	/// This function respects mounted folders and will thus not contain the layers already
 	/// present in the document if a temporary folder is mounted on top.
 	pub fn folder(&self, mut path: &[LayerId]) -> Result<&Folder, DocumentError> {
-		let mut root = &self.root;
+		let mut root = self.root_folder();
 		if self.is_mounted(self.work_mount_path.as_slice(), path) {
 			path = &path[self.work_mount_path.len()..];
 			root = &self.work;
@@ -92,7 +114,7 @@ impl Document {
 			path = &path[self.work_mount_path.len()..];
 			&mut self.work
 		} else {
-			&mut self.root
+			self.root_folder_mut()
 		};
 		for id in path {
 			root = root.folder_mut(*id).ok_or(DocumentError::LayerNotFound)?;
@@ -105,7 +127,7 @@ impl Document {
 	/// This function does **not** respect mounted folders and will always return the current
 	/// state of the document, disregarding any temporary modifications.
 	pub fn document_folder(&self, path: &[LayerId]) -> Result<&Folder, DocumentError> {
-		let mut root = &self.root;
+		let mut root = self.root_folder();
 		for id in path {
 			root = root.folder(*id).ok_or(DocumentError::LayerNotFound)?;
 		}
@@ -118,7 +140,7 @@ impl Document {
 	/// state of the document, disregarding any temporary modifications.
 	/// If you manually edit the folder you have to set the cache_dirty flag yourself.
 	pub fn document_folder_mut(&mut self, path: &[LayerId]) -> Result<&mut Folder, DocumentError> {
-		let mut root = &mut self.root;
+		let mut root = self.root_folder_mut();
 		for id in path {
 			root = root.folder_mut(*id).ok_or(DocumentError::LayerNotFound)?;
 		}
@@ -127,6 +149,9 @@ impl Document {
 
 	/// Returns a reference to the layer struct at the specified `path`.
 	pub fn layer(&self, path: &[LayerId]) -> Result<&Layer, DocumentError> {
+		if path.is_empty() {
+			return Ok(&self.root);
+		}
 		let (path, id) = split_path(path)?;
 		self.folder(path)?.layer(id).ok_or(DocumentError::LayerNotFound)
 	}
@@ -134,13 +159,35 @@ impl Document {
 	/// Returns a mutable reference to the layer struct at the specified `path`.
 	/// If you manually edit the layer you have to set the cache_dirty flag yourself.
 	pub fn layer_mut(&mut self, path: &[LayerId]) -> Result<&mut Layer, DocumentError> {
+		if path.is_empty() {
+			return Ok(&mut self.root);
+		}
 		let (path, id) = split_path(path)?;
 		self.folder_mut(path)?.layer_mut(id).ok_or(DocumentError::LayerNotFound)
 	}
 
+	/// Returns a reference to the layer struct at the specified `path`.
+	pub fn document_layer(&self, path: &[LayerId]) -> Result<&Layer, DocumentError> {
+		if path.is_empty() {
+			return Ok(&self.root);
+		}
+		let (path, id) = split_path(path)?;
+		self.document_folder(path)?.layer(id).ok_or(DocumentError::LayerNotFound)
+	}
+
+	/// Returns a mutable reference to the layer struct at the specified `path`.
+	/// If you manually edit the layer you have to set the cache_dirty flag yourself.
+	pub fn document_layer_mut(&mut self, path: &[LayerId]) -> Result<&mut Layer, DocumentError> {
+		if path.is_empty() {
+			return Ok(&mut self.root);
+		}
+		let (path, id) = split_path(path)?;
+		self.document_folder_mut(path)?.layer_mut(id).ok_or(DocumentError::LayerNotFound)
+	}
+
 	/// Replaces the layer at the specified `path` with `layer`.
 	pub fn set_layer(&mut self, path: &[LayerId], layer: Layer) -> Result<(), DocumentError> {
-		let mut folder = &mut self.root;
+		let mut folder = self.root_folder_mut();
 		if let Ok((path, id)) = split_path(path) {
 			self.layer_mut(path)?.cache_dirty = true;
 			folder = self.folder_mut(path)?;
@@ -226,6 +273,12 @@ impl Document {
 				self.set_layer(&path, Layer::new(LayerDataTypes::Folder(Folder::default()), glam::DAffine2::default()))?;
 
 				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::FolderChanged { path: path.clone() }])
+			}
+			Operation::UpdateTransform { path, cols } => {
+				self.layer_mut(path)?.transform = glam::DAffine2::from_cols_array(cols);
+				self.layer_mut(path)?.cache_dirty = true;
+
+				Some(vec![DocumentResponse::DocumentChanged])
 			}
 			Operation::MountWorkingFolder { path } => {
 				self.work_mount_path = path.clone();

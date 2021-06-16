@@ -65,7 +65,7 @@ impl Fsm for LineToolFsmState {
 	type ToolData = LineToolData;
 
 	fn transition(self, event: ToolMessage, document: &SvgDocument, tool_data: &DocumentToolData, data: &mut Self::ToolData, input: &InputPreprocessor, responses: &mut VecDeque<Message>) -> Self {
-		let transform = document.root.transform;
+		let transform = document.root().transform;
 		use LineMessage::*;
 		use LineToolFsmState::*;
 		if let ToolMessage::Line(event) = event {

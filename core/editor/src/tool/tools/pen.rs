@@ -55,7 +55,7 @@ impl Fsm for PenToolFsmState {
 	type ToolData = PenToolData;
 
 	fn transition(self, event: ToolMessage, document: &SvgDocument, tool_data: &DocumentToolData, data: &mut Self::ToolData, input: &InputPreprocessor, responses: &mut VecDeque<Message>) -> Self {
-		let transform = document.root.transform;
+		let transform = document.root().transform;
 		let pos = transform.inverse() * DAffine2::from_translation(DVec2::new(input.mouse.position.x as f64, input.mouse.position.y as f64));
 
 		use PenMessage::*;

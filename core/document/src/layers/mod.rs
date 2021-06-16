@@ -62,7 +62,7 @@ pub struct Layer {
 	pub visible: bool,
 	pub name: Option<String>,
 	pub data: LayerDataTypes,
-	pub matrix: glam::DAffine2,
+	pub transform: glam::DAffine2,
 	pub cache: String,
 	pub cache_dirty: bool,
 }
@@ -73,7 +73,7 @@ impl Layer {
 			visible: true,
 			name: None,
 			data,
-			matrix: transform,
+			transform,
 			cache: String::new(),
 			cache_dirty: true,
 		}
@@ -86,7 +86,7 @@ impl Layer {
 		if self.cache_dirty {
 			self.cache.clear();
 			let _ = write!(self.cache, r#"<g transform="matrix("#);
-			self.matrix.to_cols_array().iter().enumerate().for_each(|(i, f)| {
+			self.transform.to_cols_array().iter().enumerate().for_each(|(i, f)| {
 				let _ = write!(self.cache, "{}{}", f, if i != 5 { "," } else { "" });
 			});
 			let _ = writeln!(self.cache, r#")">"#);

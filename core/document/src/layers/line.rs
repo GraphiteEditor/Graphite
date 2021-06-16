@@ -17,7 +17,7 @@ impl Line {
 		}
 	}
 	pub fn new(style: style::PathStyle) -> Line {
-		Line::from_points((0., 0.), (0., 1.), style)
+		Line::from_points((0., 0.), (1., 1.), style)
 	}
 }
 

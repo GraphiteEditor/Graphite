@@ -59,7 +59,7 @@ impl Fsm for RectangleToolFsmState {
 	type ToolData = RectangleToolData;
 
 	fn transition(self, event: ToolMessage, document: &SvgDocument, tool_data: &DocumentToolData, data: &mut Self::ToolData, input: &InputPreprocessor, responses: &mut VecDeque<Message>) -> Self {
-		let transform = document.root.transform;
+		let transform = document.root().transform;
 		use RectangleMessage::*;
 		use RectangleToolFsmState::*;
 		if let ToolMessage::Rectangle(event) = event {

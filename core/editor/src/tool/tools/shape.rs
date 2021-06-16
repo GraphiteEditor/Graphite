@@ -61,7 +61,7 @@ impl Fsm for ShapeToolFsmState {
 	type ToolData = ShapeToolData;
 
 	fn transition(self, event: ToolMessage, document: &SvgDocument, tool_data: &DocumentToolData, data: &mut Self::ToolData, input: &InputPreprocessor, responses: &mut VecDeque<Message>) -> Self {
-		let transform = document.root.transform;
+		let transform = document.root().transform;
 		use ShapeMessage::*;
 		use ShapeToolFsmState::*;
 		if let ToolMessage::Shape(event) = event {

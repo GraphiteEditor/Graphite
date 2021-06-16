@@ -131,7 +131,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			}
 			Undo => {
 				// this is a temporary fix and will be addressed by #123
-				if let Some(id) = self.active_document().document.root.list_layers().last() {
+				if let Some(id) = self.active_document().document.root_folder().list_layers().last() {
 					responses.push_back(DocumentOperation::DeleteLayer { path: vec![*id] }.into())
 				}
 			}
@@ -144,7 +144,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 							.map(|response| match response {
 								DocumentResponse::FolderChanged { path } => self.handle_folder_changed(path),
 								DocumentResponse::SelectLayer { path } => {
-									if !self.active_document().document.work_mounted {
+									if !self.active_document().document.work_mounted() {
 										self.clear_selection();
 										self.select_layer(&path)
 									} else {
@@ -176,8 +176,14 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			MouseMove => {
 				if self.mmb_down {
 					let delta = DVec2::new(ipp.mouse.position.x as f64 - self.mouse_pos.x as f64, ipp.mouse.position.y as f64 - self.mouse_pos.y as f64);
-					let transform = self.active_document().document.root.transform * DAffine2::from_translation(delta);
-					self.active_document_mut().document.root.transform = transform;
+					let transform = self.active_document().document.root().transform * DAffine2::from_translation(delta);
+					responses.push_back(
+						DocumentOperation::UpdateTransform {
+							path: vec![],
+							cols: transform.to_cols_array(),
+						}
+						.into(),
+					);
 					self.mouse_pos = ipp.mouse.position;
 					responses.push_back(
 						FrontendMessage::UpdateCanvas {
