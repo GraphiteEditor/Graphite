@@ -157,7 +157,6 @@ export default defineComponent({
 	},
 	methods: {
 		async handleTabClick(tabIndex: number) {
-			console.log("HAHAHAHAHAHAHA");
 			const { select_document } = await wasm;
 			select_document(tabIndex);
 		},
