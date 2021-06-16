@@ -202,10 +202,12 @@ export default defineComponent({
 			on_mouse_move(e.offsetX, e.offsetY);
 		},
 		async keyDown(e: KeyboardEvent) {
+			e.preventDefault();
 			const { on_key_down } = await wasm;
 			on_key_down(e.key);
 		},
 		async keyUp(e: KeyboardEvent) {
+			e.preventDefault();
 			const { on_key_up } = await wasm;
 			on_key_up(e.key);
 		},
