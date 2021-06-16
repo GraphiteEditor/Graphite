@@ -107,7 +107,7 @@ impl MessageHandler<DocumentMessage, ()> for DocumentMessageHandler {
 					// just select another doc; if id == 0, then select next, otherwise select prev
 					//let m = FrontendMessage::CloseDocument { document_index: id }.into();
 					if id == 0 {
-						self.active_document = 1;
+						self.active_document = 0;
 					} else {
 						self.active_document = id - 1;
 					}
