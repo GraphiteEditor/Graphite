@@ -170,6 +170,14 @@ impl MessageHandler<DocumentMessage, ()> for DocumentMessageHandler {
 					}
 					.into(),
 				);
+
+				responses.push_back(
+					FrontendMessage::ExpandFolder {
+						path: Vec::new(),
+						children: Vec::new(),
+					}
+					.into(),
+				);
 				responses.push_back(FrontendMessage::SetActiveDocument { document_index: self.active_document }.into());
 				responses.push_back(
 					FrontendMessage::UpdateCanvas {
