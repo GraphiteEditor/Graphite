@@ -58,7 +58,7 @@ A good starting point for learning about the code structure and architecture is 
 
 ### Web client
 
-This is the primary means of running and developing the project. You may need to download and install a recent version of [Rust](https://www.rust-lang.org/) and [Node.js](https://nodejs.org/).
+This is the primary means of running and developing the project. You may need to download and install a recent version of [Node.js](https://nodejs.org/) and [Rust](https://www.rust-lang.org/) (on Windows, this requires the MSVC toolchain properly configured with the Visual Studio Build Tools installed on your machine including the "Desktop development with C++" workload).
 
 ```
 npm run serve

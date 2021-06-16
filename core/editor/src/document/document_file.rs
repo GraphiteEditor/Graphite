@@ -14,7 +14,17 @@ impl Default for Document {
 	fn default() -> Self {
 		Self {
 			document: InteralDocument::default(),
-			name: String::from("Unnamed Document"),
+			name: String::from("Untitled Document"),
+			layer_data: vec![(vec![], LayerData { selected: false, expanded: true })].into_iter().collect(),
+		}
+	}
+}
+
+impl Document {
+	pub fn with_name(name: String) -> Self {
+		Self {
+			document: InteralDocument::default(),
+			name,
 			layer_data: vec![(vec![], LayerData { selected: false, expanded: true })].into_iter().collect(),
 		}
 	}

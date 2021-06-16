@@ -73,7 +73,7 @@ const menuEntries: MenuListEntries = [
 		ref: undefined,
 		children: [
 			[
-				{ label: "New", icon: "File", shortcut: ["Ctrl", "N"] },
+				{ label: "New", icon: "File", shortcut: ["Ctrl", "N"], action: async () => (await wasm).new_document() },
 				{ label: "Open…", shortcut: ["Ctrl", "O"] },
 				{
 					label: "Open Recent",

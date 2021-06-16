@@ -16,6 +16,8 @@ export enum ResponseType {
 	ExpandFolder = "ExpandFolder",
 	CollapseFolder = "CollapseFolder",
 	SetActiveTool = "SetActiveTool",
+	SetActiveDocument = "SetActiveDocument",
+	NewDocument = "NewDocument",
 	UpdateWorkingColors = "UpdateWorkingColors",
 }
 
@@ -52,6 +54,10 @@ function parseResponse(responseType: string, data: any): Response {
 			return newExpandFolder(data.ExpandFolder);
 		case "SetActiveTool":
 			return newSetActiveTool(data.SetActiveTool);
+		case "SetActiveDocument":
+			return newSetActiveDocument(data.SetActiveDocument);
+		case "NewDocument":
+			return newNewDocument(data.NewDocument);
 		case "UpdateCanvas":
 			return newUpdateCanvas(data.UpdateCanvas);
 		case "ExportDocument":
@@ -72,7 +78,7 @@ export interface Color {
 	alpha: number;
 }
 function newColor(input: any): Color {
-	return { red: input.red * 255, green: input.green * 255, blue: input.blue * 255, alpha: input.alpha * 255 };
+	return { red: input.red * 255, green: input.green * 255, blue: input.blue * 255, alpha: input.alpha };
 }
 
 export interface UpdateWorkingColors {
@@ -92,6 +98,24 @@ export interface SetActiveTool {
 function newSetActiveTool(input: any): SetActiveTool {
 	return {
 		tool_name: input.tool_name,
+	};
+}
+
+export interface SetActiveDocument {
+	document_index: number;
+}
+function newSetActiveDocument(input: any): SetActiveDocument {
+	return {
+		document_index: input.document_index,
+	};
+}
+
+export interface NewDocument {
+	document_name: string;
+}
+function newNewDocument(input: any): NewDocument {
+	return {
+		document_name: input.document_name,
 	};
 }
 
