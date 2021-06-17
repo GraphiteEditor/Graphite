@@ -100,34 +100,41 @@ impl MessageHandler<DocumentMessage, ()> for DocumentMessageHandler {
 			}
 			CloseDocument(id) => {
 				assert!(id < self.documents.len(), "Tried to select a document that was not initialized");
-				// id is the tabIdx
-				// so find the doc
-				let doc_to_close = &mut self.documents[id];
-				if self.documents.len() > 1 {
-					// just select another doc; if id == 0, then select next, otherwise select prev
-					//let m = FrontendMessage::CloseDocument { document_index: id }.into();
-					if id == 0 {
-						self.active_document = 0;
-					} else {
-						self.active_document = id - 1;
-					}
-					self.documents.remove(id);
-					let lp = self.active_document_mut().layer_panel(&[]).expect("Could not get panel for active doc");
-					responses.push_back(FrontendMessage::ExpandFolder { path: Vec::new(), children: lp }.into());
-					responses.push_back(FrontendMessage::SetActiveDocument { document_index: self.active_document }.into());
-					responses.push_back(FrontendMessage::CloseDocument { document_index: id }.into());
-					responses.push_back(
-						FrontendMessage::UpdateCanvas {
-							document: self.active_document_mut().document.render_root(),
-						}
-						.into(),
-					);
-				} else {
-					// create a new black tab automatically
-					self.active_document = 0;
-					self.documents.remove(id);
+				// Remove doc from the backend store. Use 'id' as FE tabs and BE documents will be in sync.
+				self.documents.remove(id);
+				responses.push_back(FrontendMessage::CloseDocument { document_index: id }.into());
 
-					responses.push_back(FrontendMessage::CloseDocument { document_index: id }.into());
+				if self.documents.len() > 0 {
+					// If we have atleat one doc remaining, just select the correct doc.
+					if id == self.active_document {
+						// Currently selected doc is being closed
+						if id == 0 {
+							// Move to the next doc
+							self.active_document = 0;
+						} else {
+							// Move to the prev doc
+							self.active_document = id - 1;
+						}
+						let lp = self.active_document_mut().layer_panel(&[]).expect("Could not get panel for active doc");
+						responses.push_back(FrontendMessage::ExpandFolder { path: Vec::new(), children: lp }.into());
+						responses.push_back(FrontendMessage::SetActiveDocument { document_index: self.active_document }.into());
+						responses.push_back(
+							FrontendMessage::UpdateCanvas {
+								document: self.active_document_mut().document.render_root(),
+							}
+							.into(),
+						);
+					} else {
+						// Currently not selected doc is being closed
+						if self.active_document >= id {
+							// Active doc will move one space to the left
+							self.active_document -= 1;
+							responses.push_back(FrontendMessage::SetActiveDocument { document_index: self.active_document }.into());
+						}
+					}
+				} else {
+					// Close last tab and create a new blank tab automatically
+					self.active_document = 0;
 					responses.push_back(DocumentMessage::NewDocument.into());
 				}
 			}
