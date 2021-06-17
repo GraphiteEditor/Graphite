@@ -1,8 +1,9 @@
 use std::{fmt, ops::Add};
 
 use kurbo::{PathEl, Point, Vec2};
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Deserialize, Serialize)]
 pub struct ShapePoints {
 	center: kurbo::Point,
 	extent: kurbo::Vec2,

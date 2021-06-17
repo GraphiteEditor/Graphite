@@ -1,5 +1,7 @@
 use crate::message_prelude::*;
+use document_core::layers::Layer;
 use document_core::{DocumentResponse, LayerId, Operation as DocumentOperation};
+use log::{debug, warn};
 
 use crate::document::Document;
 use std::collections::VecDeque;
@@ -12,6 +14,8 @@ pub enum DocumentMessage {
 	DeleteLayer(Vec<LayerId>),
 	DeleteSelectedLayers,
 	DuplicateSelectedLayers,
+	CopySelectedLayers,
+	PasteLayers,
 	AddFolder(Vec<LayerId>),
 	RenameLayer(Vec<LayerId>, String),
 	ToggleLayerVisibility(Vec<LayerId>),
@@ -40,6 +44,7 @@ impl From<DocumentOperation> for Message {
 pub struct DocumentMessageHandler {
 	documents: Vec<Document>,
 	active_document: usize,
+	copy_buffer: Vec<Layer>,
 }
 
 impl DocumentMessageHandler {
@@ -76,6 +81,7 @@ impl Default for DocumentMessageHandler {
 		Self {
 			documents: vec![Document::default()],
 			active_document: 0,
+			copy_buffer: vec![],
 		}
 	}
 }
@@ -166,6 +172,27 @@ impl MessageHandler<DocumentMessage, ()> for DocumentMessageHandler {
 					responses.push_back(DocumentOperation::DuplicateLayer { path }.into())
 				}
 			}
+			CopySelectedLayers => {
+				let paths: Vec<Vec<LayerId>> = self.active_document().layer_data.iter().filter_map(|(path, data)| data.selected.then(|| path.clone())).collect();
+				//FIXME: The `paths` and thus the `copy_buffer` are not in the correct order.
+				self.copy_buffer.clear();
+				for path in paths {
+					match self.active_document().document.layer(&path).map(|t| t.clone()) {
+						Ok(layer) => {
+							self.copy_buffer.push(layer);
+						}
+						Err(e) => warn!("Could not access selected layer {:?}: {:?}", path, e),
+					}
+				}
+				debug!("CopySelectedLayers copied {} layers: {:?}", self.copy_buffer.len(), self.copy_buffer);
+			}
+			PasteLayers => {
+				for layer in self.copy_buffer.iter() {
+					//TODO: Should be the path to the current folder instead of root
+					responses.push_back(DocumentOperation::PasteLayer { layer: layer.clone(), path: vec![] }.into())
+				}
+			}
+
 			SelectLayers(paths) => {
 				self.clear_selection();
 				for path in paths {
@@ -214,9 +241,9 @@ impl MessageHandler<DocumentMessage, ()> for DocumentMessageHandler {
 	}
 	fn actions(&self) -> ActionList {
 		if self.active_document().layer_data.values().any(|data| data.selected) {
-			actions!(DocumentMessageDiscriminant; Undo, DeleteSelectedLayers, DuplicateSelectedLayers, RenderDocument, ExportDocument, NewDocument, NextDocument, PrevDocument)
+			actions!(DocumentMessageDiscriminant; Undo, DeleteSelectedLayers, DuplicateSelectedLayers, CopySelectedLayers, PasteLayers, RenderDocument, ExportDocument, NewDocument, NextDocument, PrevDocument)
 		} else {
-			actions!(DocumentMessageDiscriminant; Undo, RenderDocument, ExportDocument, NewDocument, NextDocument, PrevDocument)
+			actions!(DocumentMessageDiscriminant; Undo, RenderDocument, ExportDocument, NewDocument, NextDocument, PrevDocument, PasteLayers)
 		}
 	}
 }

@@ -21,11 +21,13 @@ pub use shape::Shape;
 pub mod folder;
 pub use folder::Folder;
 
+use serde::{Deserialize, Serialize};
+
 pub trait LayerData {
 	fn render(&mut self, svg: &mut String);
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub enum LayerDataTypes {
 	Folder(Folder),
 	Circle(Circle),
@@ -60,7 +62,7 @@ impl LayerDataTypes {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub struct Layer {
 	pub visible: bool,
 	pub name: Option<String>,

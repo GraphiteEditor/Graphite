@@ -3,9 +3,10 @@ use crate::shape_points;
 use super::style;
 use super::LayerData;
 
+use serde::{Deserialize, Serialize};
 use std::fmt::Write;
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Deserialize, Serialize)]
 pub struct Shape {
 	bounding_rect: kurbo::Rect,
 	shape: shape_points::ShapePoints,

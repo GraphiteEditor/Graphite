@@ -1,9 +1,10 @@
 use super::style;
 use super::LayerData;
 
+use serde::{Deserialize, Serialize};
 use std::fmt::Write;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub struct PolyLine {
 	points: Vec<kurbo::Point>,
 	style: style::PathStyle,

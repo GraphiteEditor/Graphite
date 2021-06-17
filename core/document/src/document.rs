@@ -248,6 +248,13 @@ impl Document {
 				let (path, _) = split_path(path.as_slice()).unwrap_or_else(|_| (&[], 0));
 				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::FolderChanged { path: path.to_vec() }])
 			}
+			Operation::PasteLayer { path, layer } => {
+				let folder = self.folder_mut(path)?;
+				//FIXME: This clone of layer should be avoided somehow
+				folder.add_layer(layer.clone(), -1).ok_or(DocumentError::IndexOutOfBounds)?;
+
+				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::FolderChanged { path: path.clone() }])
+			}
 			Operation::DuplicateLayer { path } => {
 				let layer = self.layer(&path)?.clone();
 				let (folder_path, _) = split_path(path.as_slice()).unwrap_or_else(|_| (&[], 0));

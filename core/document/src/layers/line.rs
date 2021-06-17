@@ -1,9 +1,10 @@
 use super::style;
 use super::LayerData;
 
+use serde::{Deserialize, Serialize};
 use std::fmt::Write;
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Deserialize, Serialize)]
 pub struct Line {
 	shape: kurbo::Line,
 	style: style::PathStyle,
