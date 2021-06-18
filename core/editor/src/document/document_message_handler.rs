@@ -18,6 +18,7 @@ pub enum DocumentMessage {
 	ToggleLayerExpansion(Vec<LayerId>),
 	SelectDocument(usize),
 	CloseDocument(usize),
+	CloseActiveDocument,
 	NewDocument,
 	NextDocument,
 	PrevDocument,
@@ -98,6 +99,27 @@ impl MessageHandler<DocumentMessage, ()> for DocumentMessageHandler {
 					.into(),
 				);
 			}
+			CloseActiveDocument => {
+				log::debug!("CLOSE ACTIVE");
+				self.documents.remove(self.active_document);
+				responses.push_back(FrontendMessage::CloseDocument { document_index: self.active_document }.into());
+				if self.documents.len() > 0 {
+					if self.active_document == self.documents.len() {
+						self.active_document -= 1;
+					}
+					let lp = self.active_document_mut().layer_panel(&[]).expect("Could not get panel for active doc");
+					responses.push_back(FrontendMessage::ExpandFolder { path: Vec::new(), children: lp }.into());
+					responses.push_back(FrontendMessage::SetActiveDocument { document_index: self.active_document }.into());
+					responses.push_back(
+						FrontendMessage::UpdateCanvas {
+							document: self.active_document_mut().document.render_root(),
+						}
+						.into(),
+					);
+				} else {
+					responses.push_back(DocumentMessage::NewDocument.into());
+				}
+			}
 			CloseDocument(id) => {
 				assert!(id < self.documents.len(), "Tried to select a document that was not initialized");
 				// Remove doc from the backend store. Use 'id' as FE tabs and BE documents will be in sync.
@@ -105,7 +127,7 @@ impl MessageHandler<DocumentMessage, ()> for DocumentMessageHandler {
 				responses.push_back(FrontendMessage::CloseDocument { document_index: id }.into());
 
 				if self.documents.len() > 0 {
-					// If we have atleat one doc remaining, just select the correct doc.
+					// If we have atleast one doc remaining, just select the correct doc.
 					if id == self.active_document {
 						// Currently selected doc is being closed
 						if id == 0 {
@@ -292,9 +314,9 @@ impl MessageHandler<DocumentMessage, ()> for DocumentMessageHandler {
 	}
 	fn actions(&self) -> ActionList {
 		if self.active_document().layer_data.values().any(|data| data.selected) {
-			actions!(DocumentMessageDiscriminant; Undo, DeleteSelectedLayers, DuplicateSelectedLayers, RenderDocument, ExportDocument, NewDocument, NextDocument, PrevDocument)
+			actions!(DocumentMessageDiscriminant; Undo, DeleteSelectedLayers, DuplicateSelectedLayers, RenderDocument, ExportDocument, NewDocument, CloseActiveDocument, NextDocument, PrevDocument)
 		} else {
-			actions!(DocumentMessageDiscriminant; Undo, RenderDocument, ExportDocument, NewDocument, NextDocument, PrevDocument)
+			actions!(DocumentMessageDiscriminant; Undo, RenderDocument, ExportDocument, NewDocument, CloseActiveDocument, NextDocument, PrevDocument)
 		}
 	}
 }
