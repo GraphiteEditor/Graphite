@@ -19,6 +19,7 @@ pub enum FrontendMessage {
 	EnableTextInput,
 	DisableTextInput,
 	UpdateWorkingColors { primary: Color, secondary: Color },
+	ShowConfirmationBox,
 }
 
 pub struct FrontendMessageHandler {

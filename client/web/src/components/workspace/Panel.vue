@@ -143,6 +143,7 @@ import Minimap from "../panels/Minimap.vue";
 import IconButton from "../widgets/buttons/IconButton.vue";
 import PopoverButton, { PopoverButtonIcon } from "../widgets/buttons/PopoverButton.vue";
 import { MenuDirection } from "../widgets/floating-menus/FloatingMenu.vue";
+import { ResponseType, registerResponseHandler, Response } from "../../response-handler";
 
 const wasm = import("../../../wasm/pkg");
 
@@ -163,8 +164,15 @@ export default defineComponent({
 		},
 		async closeTab(tabIndex: number) {
 			const { close_document } = await wasm;
-			close_document(tabIndex);
+			const result = window.confirm("Are you sure you want to close the active document?");
+			if (result) close_document(tabIndex);
 		},
+	},
+	mounted() {
+		registerResponseHandler(ResponseType.ShowConfirmationBox, (_responseData: Response) => {
+			// ESLint throws a warning here.
+			this.closeTab(this.tabActiveIndex);
+		});
 	},
 	props: {
 		tabMinWidths: { type: Boolean, default: false },

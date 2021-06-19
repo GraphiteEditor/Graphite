@@ -100,6 +100,8 @@ impl MessageHandler<DocumentMessage, ()> for DocumentMessageHandler {
 				);
 			}
 			CloseActiveDocument => {
+				responses.push_back(FrontendMessage::ShowConfirmationBox.into());
+				/*
 				log::debug!("CLOSE ACTIVE");
 				self.documents.remove(self.active_document);
 				responses.push_back(FrontendMessage::CloseDocument { document_index: self.active_document }.into());
@@ -118,7 +120,7 @@ impl MessageHandler<DocumentMessage, ()> for DocumentMessageHandler {
 					);
 				} else {
 					responses.push_back(DocumentMessage::NewDocument.into());
-				}
+				}*/
 			}
 			CloseDocument(id) => {
 				assert!(id < self.documents.len(), "Tried to select a document that was not initialized");
