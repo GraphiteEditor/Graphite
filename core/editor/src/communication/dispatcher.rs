@@ -91,6 +91,10 @@ mod test {
 	use document_core::color::Color;
 	use log::info;
 
+	fn init_logger() {
+		let _ = env_logger::builder().is_test(true).try_init();
+	}
+
 	/// A set of utility functions to make the writing of editor test more declarative
 	trait EditorTestUtils {
 		fn draw_rect(&mut self, x1: u32, y1: u32, x2: u32, y2: u32);
@@ -194,7 +198,7 @@ mod test {
 	/// - paste
 	/// - assert that ellipse was copied
 	fn copy_paste_single_layer() {
-		env_logger::init();
+		init_logger();
 		let mut editor = create_editor_with_three_layers();
 
 		let document_before_copy = editor.dispatcher.document_message_handler.active_document().document.clone();
@@ -224,7 +228,7 @@ mod test {
 	/// - paste
 	/// - assert that shape was copied
 	fn copy_paste_single_layer_from_middle() {
-		env_logger::init();
+		init_logger();
 		let mut editor = create_editor_with_three_layers();
 
 		let document_before_copy = editor.dispatcher.document_message_handler.active_document().document.clone();
@@ -260,7 +264,7 @@ mod test {
 	/// - paste
 	/// - paste
 	fn copy_paste_deleted_layer() {
-		env_logger::init();
+		init_logger();
 		let mut editor = create_editor_with_three_layers();
 
 		const ELLIPSE_INDEX: usize = 2;
