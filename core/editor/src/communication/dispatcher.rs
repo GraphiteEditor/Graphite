@@ -263,7 +263,7 @@ mod test {
 	/// - create another rect
 	/// - paste
 	/// - paste
-	fn copy_paste_deleted_layer() {
+	fn copy_paste_deleted_layers() {
 		init_logger();
 		let mut editor = create_editor_with_three_layers();
 
@@ -288,15 +288,15 @@ mod test {
 		let layers_after_copy = document_after_copy.root.layers();
 
 		assert_eq!(layers_before_copy.len(), 3);
-		assert_eq!(layers_after_copy.len(), 5);
+		assert_eq!(layers_after_copy.len(), 6);
 
 		let rect_before_copy = &layers_before_copy[RECT_INDEX];
 		let ellipse_before_copy = &layers_before_copy[ELLIPSE_INDEX];
 
 		assert_eq!(layers_after_copy[0], layers_before_copy[SHAPE_INDEX]);
-		assert_eq!(&layers_after_copy[1], rect_before_copy);
-		assert_eq!(&layers_after_copy[2], ellipse_before_copy);
-		assert_eq!(&layers_after_copy[3], rect_before_copy);
-		assert_eq!(&layers_after_copy[4], ellipse_before_copy);
+		assert_eq!(&layers_after_copy[2], rect_before_copy);
+		assert_eq!(&layers_after_copy[3], ellipse_before_copy);
+		assert_eq!(&layers_after_copy[4], rect_before_copy);
+		assert_eq!(&layers_after_copy[5], ellipse_before_copy);
 	}
 }
