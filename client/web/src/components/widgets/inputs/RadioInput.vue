@@ -51,12 +51,11 @@ import { defineComponent } from "vue";
 export default defineComponent({
 	components: {},
 	props: {
-		initialIndex: { type: Number, required: true },
-		setIndex: { type: Function, required: false },
+		index: { type: Number, required: true },
 	},
 	data() {
 		return {
-			activeIndex: this.initialIndex,
+			activeIndex: this.index,
 		};
 	},
 	mounted() {
@@ -65,6 +64,7 @@ export default defineComponent({
 		(this.$refs.radioInput as Element).querySelectorAll(".icon-button").forEach((iconButton, index) => {
 			iconButton.addEventListener("click", () => {
 				this.activeIndex = index;
+				this.$emit("update:index", index);
 				this.$emit("changed", index);
 			});
 		});

@@ -52,7 +52,7 @@
 			</div>
 			<div class="spacer"></div>
 			<div class="right side">
-				<RadioInput :initialIndex="0" @changed="viewModeChanged">
+				<RadioInput v-model:index="viewModeIndex">
 					<IconButton :icon="'ViewModeNormal'" :size="24" title="View Mode: Normal" />
 					<IconButton :icon="'ViewModeOutline'" :size="24" title="View Mode: Outline" />
 					<IconButton :icon="'ViewModePixels'" :size="24" title="View Mode: Pixels" />
@@ -216,6 +216,7 @@ export default defineComponent({
 			select_tool(toolName);
 		},
 		async viewModeChanged(toolIndex: number) {
+			console.log(toolIndex);
 			function todo(_: number) {
 				return _;
 			}
@@ -249,6 +250,8 @@ export default defineComponent({
 
 		window.addEventListener("keyup", (e: KeyboardEvent) => this.keyUp(e));
 		window.addEventListener("keydown", (e: KeyboardEvent) => this.keyDown(e));
+
+		this.$watch("viewModeIndex", this.viewModeChanged);
 	},
 	data() {
 		return {
@@ -258,6 +261,7 @@ export default defineComponent({
 			SeparatorDirection,
 			SeparatorType,
 			modeMenuEntries,
+			viewModeIndex: 0,
 		};
 	},
 	components: {
