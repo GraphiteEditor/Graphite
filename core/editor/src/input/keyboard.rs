@@ -3,7 +3,7 @@ pub const NUMBER_OF_KEYS: usize = Key::NumKeys as usize;
 // TODO: Increase size of type
 pub type StorageType = u128;
 
-//base 2 logarithm of the storage type used which represents how many bits you need to fully address every bit in that storage type
+// base 2 logarithm of the storage type used to represents how many bits you need to fully address every bit in that storage type
 const STORAGE_SIZE: u32 = (std::mem::size_of::<StorageType>() * 8).trailing_zeros();
 const STORAGE_SIZE_BITS: usize = 1 << STORAGE_SIZE;
 const KEY_MASK_STORAGE_LENGTH: usize = (NUMBER_OF_KEYS + STORAGE_SIZE_BITS - 1) >> STORAGE_SIZE;
