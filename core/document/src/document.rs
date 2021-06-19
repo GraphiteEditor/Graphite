@@ -5,7 +5,7 @@ use crate::{
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Document {
-	pub root: layers::Folder,
+	pub root: Folder,
 	pub work: Folder,
 	pub work_mount_path: Vec<LayerId>,
 	pub work_operations: Vec<Operation>,
@@ -126,6 +126,27 @@ impl Document {
 	pub fn layer(&self, path: &[LayerId]) -> Result<&Layer, DocumentError> {
 		let (path, id) = split_path(path)?;
 		self.folder(path)?.layer(id).ok_or(DocumentError::LayerNotFound)
+	}
+
+	pub fn indices_for_path(&self, mut path: &[LayerId]) -> Result<Vec<usize>, DocumentError> {
+		let mut root = if self.is_mounted(self.work_mount_path.as_slice(), path) {
+			path = &path[self.work_mount_path.len()..];
+			&self.work
+		} else {
+			&self.root
+		};
+		let mut indices = vec![];
+		let (path, layer_id) = split_path(path)?;
+
+		for id in path {
+			let pos = root.layer_ids.iter().position(|x| *x == *id).ok_or(DocumentError::LayerNotFound)?;
+			indices.push(pos);
+			root = root.folder(*id).ok_or(DocumentError::LayerNotFound)?;
+		}
+
+		indices.push(root.layer_ids.iter().position(|x| *x == layer_id).ok_or(DocumentError::LayerNotFound)?);
+
+		Ok(indices)
 	}
 
 	/// Returns a mutable reference to the layer struct at the specified `path`.

@@ -74,6 +74,30 @@ impl DocumentMessageHandler {
 		// TODO: Add deduplication
 		(!path.is_empty()).then(|| self.handle_folder_changed(path[..path.len() - 1].to_vec())).flatten()
 	}
+
+	fn selected_layers_sorted(&self) -> Vec<Vec<LayerId>> {
+		let mut x: Vec<(Vec<LayerId>, Vec<usize>)> = self
+			.active_document()
+			.layer_data
+			.iter()
+			.filter_map(|(path, data)| data.selected.then(|| path.clone()))
+			.map(|e| {
+				let i = self.active_document().document.indices_for_path(&e);
+				debug!("selected_layers_sorted a layer {:?} became {:?}", e, i);
+				(e, i)
+			})
+			.filter_map(|(e, indices)| match indices {
+				Err(e) => {
+					warn!("selected_layers_sorted {:?}", e);
+					None
+				}
+				Ok(v) => Some((e, v)),
+			})
+			.collect();
+
+		x.sort_by_key(|(e, b)| b.clone());
+		return x.into_iter().map(|(e, i)| e).collect();
+	}
 }
 
 impl Default for DocumentMessageHandler {
@@ -173,8 +197,7 @@ impl MessageHandler<DocumentMessage, ()> for DocumentMessageHandler {
 				}
 			}
 			CopySelectedLayers => {
-				let paths: Vec<Vec<LayerId>> = self.active_document().layer_data.iter().filter_map(|(path, data)| data.selected.then(|| path.clone())).collect();
-				//FIXME: The `paths` and thus the `copy_buffer` are not in the correct order.
+				let paths: Vec<Vec<LayerId>> = self.selected_layers_sorted();
 				self.copy_buffer.clear();
 				for path in paths {
 					match self.active_document().document.layer(&path).map(|t| t.clone()) {

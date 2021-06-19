@@ -18,3 +18,6 @@ graphite-proc-macros = {path = "../proc-macro"}
 [dependencies.document-core]
 path = "../document"
 package = "graphite-document-core"
+
+[dev-dependencies]
+env_logger = "0.8.4"
