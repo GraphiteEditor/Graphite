@@ -63,9 +63,7 @@ export default defineComponent({
 
 		(this.$refs.radioInput as Element).querySelectorAll(".icon-button").forEach((iconButton, index) => {
 			iconButton.addEventListener("click", () => {
-				this.activeIndex = index;
-				this.$emit("update:index", index);
-				this.$emit("changed", index);
+				this.setActive(index);
 			});
 		});
 	},
@@ -78,6 +76,8 @@ export default defineComponent({
 		// This method may be called by the user of this component by setting a `ref="radioInput"` attribute and calling `(this.$refs.viewModePicker as typeof RadioInput).setActive(...)`
 		setActive(index: number) {
 			this.activeIndex = index;
+			this.$emit("update:index", index);
+			this.$emit("changed", index);
 		},
 		updateActiveIconButton() {
 			const iconButtons = (this.$refs.radioInput as Element).querySelectorAll(".icon-button");

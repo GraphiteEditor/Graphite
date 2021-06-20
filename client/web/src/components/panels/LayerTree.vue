@@ -5,7 +5,7 @@
 
 			<Separator :type="SeparatorType.Related" />
 
-			<NumberInput :value="100" :unit="`%`" />
+			<NumberInput v-model:value="opacity" :min="0" :max="100" :step="1" :unit="`%`" />
 
 			<Separator :type="SeparatorType.Related" />
 
@@ -222,6 +222,7 @@ export default defineComponent({
 			layers: [] as Array<LayerPanelEntry>,
 			selectionRangeStartLayer: undefined as LayerPanelEntry | undefined,
 			selectionRangeEndLayer: undefined as LayerPanelEntry | undefined,
+			opacity: 100,
 		};
 	},
 	components: {
