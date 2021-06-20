@@ -187,6 +187,21 @@ const modeMenuEntries: SectionsOfMenuListEntries = [
 
 const wasm = import("../../../wasm/pkg");
 
+function redirectKeyboardEventToBackend(e: KeyboardEvent): boolean {
+	// Don't redirect user input from text entry into HTML elements
+	const target = e.target as HTMLElement;
+	if (target.nodeName === "INPUT" || target.nodeName === "TEXTAREA" || target.isContentEditable) return false;
+
+	// Don't redirect a fullscreen request
+	if (e.key.toLowerCase() === "f11") return false;
+
+	// Don't redirect debugging tools
+	if (e.key.toLowerCase() === "f12") return false;
+	if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === "c") return false;
+
+	return true;
+}
+
 export default defineComponent({
 	methods: {
 		async canvasMouseDown(e: MouseEvent) {
@@ -202,14 +217,18 @@ export default defineComponent({
 			on_mouse_move(e.offsetX, e.offsetY);
 		},
 		async keyDown(e: KeyboardEvent) {
-			e.preventDefault();
-			const { on_key_down } = await wasm;
-			on_key_down(e.key);
+			if (redirectKeyboardEventToBackend(e)) {
+				e.preventDefault();
+				const { on_key_down } = await wasm;
+				on_key_down(e.key);
+			}
 		},
 		async keyUp(e: KeyboardEvent) {
-			e.preventDefault();
-			const { on_key_up } = await wasm;
-			on_key_up(e.key);
+			if (redirectKeyboardEventToBackend(e)) {
+				e.preventDefault();
+				const { on_key_up } = await wasm;
+				on_key_up(e.key);
+			}
 		},
 		async selectTool(toolName: string) {
 			const { select_tool } = await wasm;
