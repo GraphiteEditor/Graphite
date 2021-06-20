@@ -163,37 +163,34 @@ impl MessageHandler<DocumentMessage, ()> for DocumentMessageHandler {
 				}
 			}
 			NewDocument => {
-				/*
-						let mut acc = Vec::new();
-						let digits = vec!['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
-						for d in &self.documents {
-							let name = &d.name;
-							log::debug!("DOC NAME: ${:?}", name);
-							if name.ends_with(digits.as_slice()) {
-								let (_, number) = name.split_at(17);
-								log::debug!("N: {:?}", number);
-								acc.push(number.trim().parse::<i32>().unwrap());
-							} else {
-								acc.push(1);
-							}
+				let digits = ('0'..='9').collect::<Vec<char>>();
+				let mut doc_title_numbers = self
+					.documents
+					.iter()
+					.map(|d| {
+						if d.name.ends_with(digits.as_slice()) {
+							let (_, number) = d.name.split_at(17);
+							number.trim().parse::<usize>().unwrap()
+						} else {
+							1
 						}
-						acc.sort();
-						let mut new_num = 1;
-						let mut flag = false;
-						for i in 0..self.documents.len() {
-							if acc[i] != i as i32 + 1 {
-								new_num = i as i32 + 1;
-								flag = true;
-								break;
-							}
-						}
-						if !flag {
-							new_num = self.documents.len() as i32 + 1;
-						}
-				*/
+					})
+					.collect::<Vec<usize>>();
+				doc_title_numbers.sort();
+				let mut doc_num = 1;
+				while doc_num <= self.documents.len() {
+					if doc_num != doc_title_numbers[doc_num - 1] {
+						break;
+					}
+					doc_num += 1;
+				}
+				let doc_num_string = match doc_num {
+					1 => "".to_string(),
+					_ => doc_num.to_string(),
+				};
+
 				self.active_document = self.documents.len();
-				let doc_number_string = if self.active_document == 0 { String::new() } else { (self.active_document + 1).to_string() };
-				let new_document = Document::with_name(format!("Untitled Document {}", doc_number_string));
+				let new_document = Document::with_name(format!("Untitled Document {}", doc_num_string));
 				self.documents.push(new_document);
 				responses.push_back(
 					FrontendMessage::NewDocument {
