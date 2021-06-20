@@ -351,7 +351,7 @@ export default defineComponent({
 		},
 	},
 	computed: {
-		floatingMenuContentStyle(): unknown {
+		floatingMenuContentStyle(): CSSStyleDeclaration {
 			return {
 				minWidth: this.minWidth > 0 ? `${this.minWidth}px` : "",
 			};
