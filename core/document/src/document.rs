@@ -299,7 +299,9 @@ impl Document {
 				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::FolderChanged { path }])
 			}
 			Operation::SetLayerBlendMode { path, blend_mode } => {
+				log::debug!("op: path {:?}  blend_mode: {}", path, blend_mode);
 				let _ = self.layer_mut(&path).map(|layer| {
+					log::debug!("set layer blend mode: {:?}  {}", path, blend_mode);
 					layer.blend_mode = blend_mode.clone();
 					
 				});

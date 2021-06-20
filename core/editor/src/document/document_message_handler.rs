@@ -148,9 +148,17 @@ impl MessageHandler<DocumentMessage, ()> for DocumentMessageHandler {
 			),
 			SetBlendMode(blend_mode) => {
 				if let Some(active_document) = self.documents.get(self.active_document) {
+					let active_document = active_document.clone();
 					for (path, layer) in active_document.layer_data.iter() {
 						if layer.selected {
+							log::debug!("path: {:?}  blend_mode: {}", path, blend_mode);
 							responses.push_back(DocumentOperation::SetLayerBlendMode { path: path.clone(), blend_mode: blend_mode.clone() }.into());
+							responses.push_back(
+								FrontendMessage::UpdateCanvas {
+									document: self.active_document_mut().document.render_root(),
+								}
+								.into(),
+							);
 						}
 					}
 				}
@@ -219,9 +227,9 @@ impl MessageHandler<DocumentMessage, ()> for DocumentMessageHandler {
 	}
 	fn actions(&self) -> ActionList {
 		if self.active_document().layer_data.values().any(|data| data.selected) {
-			actions!(DocumentMessageDiscriminant; Undo, DeleteSelectedLayers, RenderDocument, ExportDocument, NewDocument, NextDocument, PrevDocument)
+			actions!(DocumentMessageDiscriminant; Undo, DeleteSelectedLayers, RenderDocument, ExportDocument, NewDocument, NextDocument, PrevDocument, SetBlendMode)
 		} else {
-			actions!(DocumentMessageDiscriminant; Undo, RenderDocument, ExportDocument, NewDocument, NextDocument, PrevDocument)
+			actions!(DocumentMessageDiscriminant; Undo, RenderDocument, ExportDocument, NewDocument, NextDocument, PrevDocument, SetBlendMode)
 		}
 	}
 }
