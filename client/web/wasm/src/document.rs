@@ -23,13 +23,11 @@ pub fn select_tool(tool: String) -> Result<(), JsValue> {
 
 #[wasm_bindgen]
 pub fn select_document(document: usize) -> Result<(), JsValue> {
-	log::debug!("SELECT_TOOL");
 	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(DocumentMessage::SelectDocument(document)).map_err(convert_error))
 }
 
 #[wasm_bindgen]
 pub fn close_document(document: usize) -> Result<(), JsValue> {
-	log::debug!("CLOSE_DOC");
 	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(DocumentMessage::CloseDocument(document)).map_err(convert_error))
 }
 

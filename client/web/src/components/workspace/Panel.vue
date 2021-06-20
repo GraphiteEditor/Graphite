@@ -158,7 +158,6 @@ export default defineComponent({
 	},
 	methods: {
 		async handleTabClick(tabIndex: number) {
-			console.log(`TAB IDX: ${tabIndex}`);
 			const { select_document } = await wasm;
 			select_document(tabIndex);
 		},
@@ -170,7 +169,6 @@ export default defineComponent({
 	},
 	mounted() {
 		registerResponseHandler(ResponseType.ShowConfirmationBox, (_responseData: Response) => {
-			// ESLint throws a warning here.
 			this.closeTab(this.tabActiveIndex);
 		});
 	},

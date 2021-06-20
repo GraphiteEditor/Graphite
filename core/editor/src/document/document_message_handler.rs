@@ -101,26 +101,6 @@ impl MessageHandler<DocumentMessage, ()> for DocumentMessageHandler {
 			}
 			CloseActiveDocument => {
 				responses.push_back(FrontendMessage::ShowConfirmationBox.into());
-				/*
-				log::debug!("CLOSE ACTIVE");
-				self.documents.remove(self.active_document);
-				responses.push_back(FrontendMessage::CloseDocument { document_index: self.active_document }.into());
-				if self.documents.len() > 0 {
-					if self.active_document == self.documents.len() {
-						self.active_document -= 1;
-					}
-					let lp = self.active_document_mut().layer_panel(&[]).expect("Could not get panel for active doc");
-					responses.push_back(FrontendMessage::ExpandFolder { path: Vec::new(), children: lp }.into());
-					responses.push_back(FrontendMessage::SetActiveDocument { document_index: self.active_document }.into());
-					responses.push_back(
-						FrontendMessage::UpdateCanvas {
-							document: self.active_document_mut().document.render_root(),
-						}
-						.into(),
-					);
-				} else {
-					responses.push_back(DocumentMessage::NewDocument.into());
-				}*/
 			}
 			CloseDocument(id) => {
 				assert!(id < self.documents.len(), "Tried to select a document that was not initialized");
@@ -129,7 +109,7 @@ impl MessageHandler<DocumentMessage, ()> for DocumentMessageHandler {
 				responses.push_back(FrontendMessage::CloseDocument { document_index: id }.into());
 
 				if self.documents.len() > 0 {
-					// If we have atleast one doc remaining, just select the correct doc.
+					// If we have at least one doc remaining, just select the correct doc.
 					if id == self.active_document {
 						// Currently selected doc is being closed
 						if id == 0 {
