@@ -21,7 +21,7 @@ struct MappingEntry {
 	action: Message,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 struct KeyMappingEntries(Vec<MappingEntry>);
 
 impl KeyMappingEntries {
@@ -38,12 +38,19 @@ impl KeyMappingEntries {
 		self.0.push(entry)
 	}
 
+	const fn new() -> Self {
+		Self(Vec::new())
+	}
+
 	fn key_array() -> [Self; NUMBER_OF_KEYS] {
-		let mut array: [KeyMappingEntries; NUMBER_OF_KEYS] = unsafe { std::mem::zeroed() };
-		for key in array.iter_mut() {
-			*key = KeyMappingEntries::default();
-		}
-		array
+		const DEFAULT: KeyMappingEntries = KeyMappingEntries::new();
+		[DEFAULT; NUMBER_OF_KEYS]
+	}
+}
+
+impl Default for KeyMappingEntries {
+	fn default() -> Self {
+		Self::new()
 	}
 }
 
@@ -170,6 +177,7 @@ impl Default for Mapping {
 			entry! {action=GlobalMessage::LogInfo, key_down=Key1},
 			entry! {action=GlobalMessage::LogDebug, key_down=Key2},
 			entry! {action=GlobalMessage::LogTrace, key_down=Key3},
+			entry! {action=DocumentMessage::DuplicateSelectedLayers, key_down=KeyD, modifiers=[KeyControl]},
 		];
 		Self { up, down, pointer_move }
 	}

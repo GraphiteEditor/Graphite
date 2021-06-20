@@ -15,6 +15,7 @@ pub enum DocumentMessage {
 	SelectLayers(Vec<Vec<LayerId>>),
 	DeleteLayer(Vec<LayerId>),
 	DeleteSelectedLayers,
+	DuplicateSelectedLayers,
 	AddFolder(Vec<LayerId>),
 	RenameLayer(Vec<LayerId>, String),
 	ToggleLayerVisibility(Vec<LayerId>),
@@ -171,6 +172,11 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					responses.push_back(DocumentOperation::DeleteLayer { path }.into())
 				}
 			}
+			DuplicateSelectedLayers => {
+				for path in self.active_document().layer_data.iter().filter_map(|(path, data)| data.selected.then(|| path.clone())) {
+					responses.push_back(DocumentOperation::DuplicateLayer { path }.into())
+				}
+			}
 			SelectLayers(paths) => {
 				self.clear_selection();
 				for path in paths {
@@ -242,7 +248,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 	}
 	fn actions(&self) -> ActionList {
 		if self.active_document().layer_data.values().any(|data| data.selected) {
-			actions!(DocumentMessageDiscriminant; Undo, DeleteSelectedLayers, RenderDocument, ExportDocument, NewDocument, NextDocument, PrevDocument, MouseMove, TranslateUp, TranslateDown)
+			actions!(DocumentMessageDiscriminant; Undo, DeleteSelectedLayers, DuplicateSelectedLayers, RenderDocument, ExportDocument, NewDocument, NextDocument, PrevDocument, MouseMove, TranslateUp, TranslateDown)
 		} else {
 			actions!(DocumentMessageDiscriminant; Undo, RenderDocument, ExportDocument, NewDocument, NextDocument, PrevDocument, MouseMove, TranslateUp, TranslateDown)
 		}

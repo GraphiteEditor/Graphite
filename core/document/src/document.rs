@@ -224,6 +224,13 @@ impl Document {
 				let (path, _) = split_path(path.as_slice()).unwrap_or_else(|_| (&[], 0));
 				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::FolderChanged { path: path.to_vec() }])
 			}
+			Operation::DuplicateLayer { path } => {
+				let layer = self.layer(&path)?.clone();
+				let (folder_path, _) = split_path(path.as_slice()).unwrap_or_else(|_| (&[], 0));
+				let folder = self.folder_mut(folder_path)?;
+				folder.add_layer(layer, -1).ok_or(DocumentError::IndexOutOfBounds)?;
+				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::FolderChanged { path: folder_path.to_vec() }])
+			}
 			Operation::AddFolder { path } => {
 				self.set_layer(&path, Layer::new(LayerDataTypes::Folder(Folder::default()), [1., 0., 0., 1., 0., 0.], PathStyle::default()))?;
 
