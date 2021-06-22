@@ -164,7 +164,7 @@ export default defineComponent({
 		async closeTab(tabIndex: number) {
 			const { close_document } = await wasm;
 			// eslint-disable-next-line no-alert
-			const result = window.confirm("Are you sure you want to close the active document?");
+			const result = window.confirm("Closing this document will permanently discard all work. Continue?");
 			if (result) close_document(tabIndex);
 		},
 	},
