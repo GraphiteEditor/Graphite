@@ -108,38 +108,32 @@ impl MessageHandler<DocumentMessage, ()> for DocumentMessageHandler {
 				self.documents.remove(id);
 				responses.push_back(FrontendMessage::CloseDocument { document_index: id }.into());
 
-				if self.documents.len() > 0 {
-					// If we have at least one doc remaining, just select the correct doc.
-					if id == self.active_document {
-						// Currently selected doc is being closed
-						if id == 0 {
-							// Move to the next doc
-							self.active_document = 0;
-						} else {
-							// Move to the prev doc
-							self.active_document = id - 1;
-						}
-						let lp = self.active_document_mut().layer_panel(&[]).expect("Could not get panel for active doc");
-						responses.push_back(FrontendMessage::ExpandFolder { path: Vec::new(), children: lp }.into());
-						responses.push_back(FrontendMessage::SetActiveDocument { document_index: self.active_document }.into());
-						responses.push_back(
-							FrontendMessage::UpdateCanvas {
-								document: self.active_document_mut().document.render_root(),
-							}
-							.into(),
-						);
-					} else {
-						// Currently not selected doc is being closed
-						if self.active_document >= id {
-							// Active doc will move one space to the left
-							self.active_document -= 1;
-							responses.push_back(FrontendMessage::SetActiveDocument { document_index: self.active_document }.into());
-						}
-					}
-				} else {
-					// Close last tab and create a new blank tab automatically
+				// Last tab was closed, so create a new blank tab
+				if self.documents.is_empty() {
 					self.active_document = 0;
 					responses.push_back(DocumentMessage::NewDocument.into());
+				}
+				// The currently selected doc is being closed
+				else if id == self.active_document {
+					// The currently selected tab was the rightmost tab
+					if id == self.documents.len() {
+						self.active_document -= 1;
+					}
+
+					let lp = self.active_document_mut().layer_panel(&[]).expect("Could not get panel for active doc");
+					responses.push_back(FrontendMessage::ExpandFolder { path: Vec::new(), children: lp }.into());
+					responses.push_back(FrontendMessage::SetActiveDocument { document_index: self.active_document }.into());
+					responses.push_back(
+						FrontendMessage::UpdateCanvas {
+							document: self.active_document_mut().document.render_root(),
+						}
+						.into(),
+					);
+				}
+				// Active doc will move one space to the left
+				else if id < self.active_document {
+					self.active_document -= 1;
+					responses.push_back(FrontendMessage::SetActiveDocument { document_index: self.active_document }.into());
 				}
 			}
 			NewDocument => {
@@ -157,20 +151,20 @@ impl MessageHandler<DocumentMessage, ()> for DocumentMessageHandler {
 					})
 					.collect::<Vec<usize>>();
 				doc_title_numbers.sort();
-				let mut doc_num = 1;
-				while doc_num <= self.documents.len() {
-					if doc_num != doc_title_numbers[doc_num - 1] {
+				let mut new_doc_title_num = 1;
+				while new_doc_title_num <= self.documents.len() {
+					if new_doc_title_num != doc_title_numbers[new_doc_title_num - 1] {
 						break;
 					}
-					doc_num += 1;
+					new_doc_title_num += 1;
 				}
-				let doc_num_string = match doc_num {
-					1 => "".to_string(),
-					_ => doc_num.to_string(),
+				let name = match new_doc_title_num {
+					1 => "Untitled Document".to_string(),
+					_ => format!("Untitled Document {}", new_doc_title_num),
 				};
 
 				self.active_document = self.documents.len();
-				let new_document = Document::with_name(format!("Untitled Document {}", doc_num_string));
+				let new_document = Document::with_name(name);
 				self.documents.push(new_document);
 				responses.push_back(
 					FrontendMessage::NewDocument {
