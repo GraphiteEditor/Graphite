@@ -4,7 +4,7 @@
 			<div class="tab-group">
 				<div class="tab" :class="{ active: tabIndex === tabActiveIndex }" v-for="(tabLabel, tabIndex) in tabLabels" :key="tabLabel" @click="handleTabClick(tabIndex)">
 					<span>{{ tabLabel }}</span>
-					<IconButton :icon="'CloseX'" :size="16" v-if="tabCloseButtons" />
+					<IconButton :icon="'CloseX'" :size="16" v-if="tabCloseButtons" @click.stop="closeTab(tabIndex)" />
 				</div>
 			</div>
 			<PopoverButton :icon="PopoverButtonIcon.VerticalEllipsis">
@@ -143,6 +143,7 @@ import Minimap from "../panels/Minimap.vue";
 import IconButton from "../widgets/buttons/IconButton.vue";
 import PopoverButton, { PopoverButtonIcon } from "../widgets/buttons/PopoverButton.vue";
 import { MenuDirection } from "../widgets/floating-menus/FloatingMenu.vue";
+import { ResponseType, registerResponseHandler, Response } from "../../response-handler";
 
 const wasm = import("../../../wasm/pkg");
 
@@ -160,6 +161,17 @@ export default defineComponent({
 			const { select_document } = await wasm;
 			select_document(tabIndex);
 		},
+		async closeTab(tabIndex: number) {
+			const { close_document } = await wasm;
+			// eslint-disable-next-line no-alert
+			const result = window.confirm("Closing this document will permanently discard all work. Continue?");
+			if (result) close_document(tabIndex);
+		},
+	},
+	mounted() {
+		registerResponseHandler(ResponseType.PromptCloseConfirmationModal, (_responseData: Response) => {
+			this.closeTab(this.tabActiveIndex);
+		});
 	},
 	props: {
 		tabMinWidths: { type: Boolean, default: false },

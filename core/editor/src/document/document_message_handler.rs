@@ -17,6 +17,8 @@ pub enum DocumentMessage {
 	ToggleLayerVisibility(Vec<LayerId>),
 	ToggleLayerExpansion(Vec<LayerId>),
 	SelectDocument(usize),
+	CloseDocument(usize),
+	CloseActiveDocument,
 	NewDocument,
 	NextDocument,
 	PrevDocument,
@@ -97,13 +99,84 @@ impl MessageHandler<DocumentMessage, ()> for DocumentMessageHandler {
 					.into(),
 				);
 			}
+			CloseActiveDocument => {
+				responses.push_back(FrontendMessage::PromptCloseConfirmationModal.into());
+			}
+			CloseDocument(id) => {
+				assert!(id < self.documents.len(), "Tried to select a document that was not initialized");
+				// Remove doc from the backend store. Use 'id' as FE tabs and BE documents will be in sync.
+				self.documents.remove(id);
+				responses.push_back(FrontendMessage::CloseDocument { document_index: id }.into());
+
+				// Last tab was closed, so create a new blank tab
+				if self.documents.is_empty() {
+					self.active_document = 0;
+					responses.push_back(DocumentMessage::NewDocument.into());
+				}
+				// The currently selected doc is being closed
+				else if id == self.active_document {
+					// The currently selected tab was the rightmost tab
+					if id == self.documents.len() {
+						self.active_document -= 1;
+					}
+
+					let lp = self.active_document_mut().layer_panel(&[]).expect("Could not get panel for active doc");
+					responses.push_back(FrontendMessage::ExpandFolder { path: Vec::new(), children: lp }.into());
+					responses.push_back(FrontendMessage::SetActiveDocument { document_index: self.active_document }.into());
+					responses.push_back(
+						FrontendMessage::UpdateCanvas {
+							document: self.active_document_mut().document.render_root(),
+						}
+						.into(),
+					);
+				}
+				// Active doc will move one space to the left
+				else if id < self.active_document {
+					self.active_document -= 1;
+					responses.push_back(FrontendMessage::SetActiveDocument { document_index: self.active_document }.into());
+				}
+			}
 			NewDocument => {
+				let digits = ('0'..='9').collect::<Vec<char>>();
+				let mut doc_title_numbers = self
+					.documents
+					.iter()
+					.map(|d| {
+						if d.name.ends_with(digits.as_slice()) {
+							let (_, number) = d.name.split_at(17);
+							number.trim().parse::<usize>().unwrap()
+						} else {
+							1
+						}
+					})
+					.collect::<Vec<usize>>();
+				doc_title_numbers.sort();
+				let mut new_doc_title_num = 1;
+				while new_doc_title_num <= self.documents.len() {
+					if new_doc_title_num != doc_title_numbers[new_doc_title_num - 1] {
+						break;
+					}
+					new_doc_title_num += 1;
+				}
+				let name = match new_doc_title_num {
+					1 => "Untitled Document".to_string(),
+					_ => format!("Untitled Document {}", new_doc_title_num),
+				};
+
 				self.active_document = self.documents.len();
-				let new_document = Document::with_name(format!("Untitled Document {}", self.active_document + 1));
+				let new_document = Document::with_name(name);
 				self.documents.push(new_document);
 				responses.push_back(
 					FrontendMessage::NewDocument {
 						document_name: self.active_document().name.clone(),
+					}
+					.into(),
+				);
+
+				responses.push_back(
+					FrontendMessage::ExpandFolder {
+						path: Vec::new(),
+						children: Vec::new(),
 					}
 					.into(),
 				);
@@ -214,9 +287,9 @@ impl MessageHandler<DocumentMessage, ()> for DocumentMessageHandler {
 	}
 	fn actions(&self) -> ActionList {
 		if self.active_document().layer_data.values().any(|data| data.selected) {
-			actions!(DocumentMessageDiscriminant; Undo, DeleteSelectedLayers, DuplicateSelectedLayers, RenderDocument, ExportDocument, NewDocument, NextDocument, PrevDocument)
+			actions!(DocumentMessageDiscriminant; Undo, DeleteSelectedLayers, DuplicateSelectedLayers, RenderDocument, ExportDocument, NewDocument, CloseActiveDocument, NextDocument, PrevDocument)
 		} else {
-			actions!(DocumentMessageDiscriminant; Undo, RenderDocument, ExportDocument, NewDocument, NextDocument, PrevDocument)
+			actions!(DocumentMessageDiscriminant; Undo, RenderDocument, ExportDocument, NewDocument, CloseActiveDocument, NextDocument, PrevDocument)
 		}
 	}
 }
