@@ -27,6 +27,11 @@ pub fn select_document(document: usize) -> Result<(), JsValue> {
 }
 
 #[wasm_bindgen]
+pub fn close_document(document: usize) -> Result<(), JsValue> {
+	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(DocumentMessage::CloseDocument(document)).map_err(convert_error))
+}
+
+#[wasm_bindgen]
 pub fn new_document() -> Result<(), JsValue> {
 	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(DocumentMessage::NewDocument).map_err(convert_error))
 }
