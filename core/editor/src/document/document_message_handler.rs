@@ -100,7 +100,7 @@ impl MessageHandler<DocumentMessage, ()> for DocumentMessageHandler {
 				);
 			}
 			CloseActiveDocument => {
-				responses.push_back(FrontendMessage::ShowConfirmationBox.into());
+				responses.push_back(FrontendMessage::PromptCloseConfirmationModal.into());
 			}
 			CloseDocument(id) => {
 				assert!(id < self.documents.len(), "Tried to select a document that was not initialized");

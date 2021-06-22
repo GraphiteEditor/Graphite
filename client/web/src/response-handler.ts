@@ -20,7 +20,7 @@ export enum ResponseType {
 	NewDocument = "NewDocument",
 	CloseDocument = "CloseDocument",
 	UpdateWorkingColors = "UpdateWorkingColors",
-	ShowConfirmationBox = "ShowConfirmationBox",
+	PromptCloseConfirmationModal = "PromptCloseConfirmationModal",
 }
 
 export function attachResponseHandlerToPage() {
@@ -68,7 +68,7 @@ function parseResponse(responseType: string, data: any): Response {
 			return newExportDocument(data.ExportDocument);
 		case "UpdateWorkingColors":
 			return newUpdateWorkingColors(data.UpdateWorkingColors);
-		case "ShowConfirmationBox":
+		case "PromptCloseConfirmationModal":
 			return {};
 		default:
 			throw new Error(`Unrecognized origin/responseType pair: ${origin}, ${responseType}`);

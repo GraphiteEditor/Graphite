@@ -169,7 +169,7 @@ export default defineComponent({
 		},
 	},
 	mounted() {
-		registerResponseHandler(ResponseType.ShowConfirmationBox, (_responseData: Response) => {
+		registerResponseHandler(ResponseType.PromptCloseConfirmationModal, (_responseData: Response) => {
 			this.closeTab(this.tabActiveIndex);
 		});
 	},

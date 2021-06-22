@@ -19,7 +19,7 @@ pub enum FrontendMessage {
 	EnableTextInput,
 	DisableTextInput,
 	UpdateWorkingColors { primary: Color, secondary: Color },
-	ShowConfirmationBox,
+	PromptCloseConfirmationModal,
 }
 
 pub struct FrontendMessageHandler {
