@@ -148,21 +148,16 @@ impl MessageHandler<DocumentMessage, ()> for DocumentMessageHandler {
 			),
 			SetBlendMode(blend_mode) => {
 				if let Some(active_document) = self.documents.get(self.active_document) {
-					let active_document = active_document.clone();
-					for (path, layer) in active_document.layer_data.iter() {
-						if layer.selected {
-							log::debug!("path: {:?}  blend_mode: {}", path, blend_mode);
-							responses.push_back(DocumentOperation::SetLayerBlendMode { path: path.clone(), blend_mode: blend_mode.clone() }.into());
-							responses.push_back(
-								FrontendMessage::UpdateCanvas {
-									document: self.active_document_mut().document.render_root(),
-								}
-								.into(),
-							);
-						}
+					for path in active_document.layer_data.iter().filter_map(|(path, data)| data.selected.then(|| path)) {
+						responses.push_back(
+							DocumentOperation::SetLayerBlendMode {
+								path: path.clone(),
+								blend_mode: blend_mode.clone(),
+							}
+							.into(),
+						);
 					}
 				}
-				
 			}
 			ToggleLayerVisibility(path) => {
 				responses.push_back(DocumentOperation::ToggleVisibility { path }.into());
