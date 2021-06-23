@@ -92,12 +92,7 @@ impl MessageHandler<DocumentMessage, ()> for DocumentMessageHandler {
 				assert!(id < self.documents.len(), "Tried to select a document that was not initialized");
 				self.active_document = id;
 				responses.push_back(FrontendMessage::SetActiveDocument { document_index: self.active_document }.into());
-				responses.push_back(
-					FrontendMessage::UpdateCanvas {
-						document: self.active_document_mut().document.render_root(),
-					}
-					.into(),
-				);
+				responses.push_back(RenderDocument.into());
 			}
 			CloseActiveDocument => {
 				responses.push_back(FrontendMessage::PromptCloseConfirmationModal.into());
@@ -180,33 +175,15 @@ impl MessageHandler<DocumentMessage, ()> for DocumentMessageHandler {
 					}
 					.into(),
 				);
-				responses.push_back(FrontendMessage::SetActiveDocument { document_index: self.active_document }.into());
-				responses.push_back(
-					FrontendMessage::UpdateCanvas {
-						document: self.active_document_mut().document.render_root(),
-					}
-					.into(),
-				);
+				responses.push_back(SelectDocument(self.active_document).into());
 			}
 			NextDocument => {
-				self.active_document = (self.active_document + 1) % self.documents.len();
-				responses.push_back(FrontendMessage::SetActiveDocument { document_index: self.active_document }.into());
-				responses.push_back(
-					FrontendMessage::UpdateCanvas {
-						document: self.active_document_mut().document.render_root(),
-					}
-					.into(),
-				);
+				let id = (self.active_document + 1) % self.documents.len();
+				responses.push_back(SelectDocument(id).into());
 			}
 			PrevDocument => {
-				self.active_document = (self.active_document + self.documents.len() - 1) % self.documents.len();
-				responses.push_back(FrontendMessage::SetActiveDocument { document_index: self.active_document }.into());
-				responses.push_back(
-					FrontendMessage::UpdateCanvas {
-						document: self.active_document_mut().document.render_root(),
-					}
-					.into(),
-				);
+				let id = (self.active_document + self.documents.len() - 1) % self.documents.len();
+				responses.push_back(SelectDocument(id).into());
 			}
 			ExportDocument => responses.push_back(
 				FrontendMessage::ExportDocument {
