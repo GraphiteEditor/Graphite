@@ -182,6 +182,7 @@ const modeMenuEntries: SectionsOfMenuListEntries = [
 	[
 		{ label: "Design Mode", icon: "ViewportDesignMode" },
 		{ label: "Select Mode", icon: "ViewportSelectMode" },
+		{ label: "Guide Mode", icon: "ViewportGuideMode" },
 	],
 ];
 

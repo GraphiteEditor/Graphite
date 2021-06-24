@@ -79,6 +79,7 @@ import Copy from "../../../../assets/16px-solid/copy.svg";
 import Paste from "../../../../assets/16px-solid/paste.svg";
 import ViewportDesignMode from "../../../../assets/16px-solid/viewport-design-mode.svg";
 import ViewportSelectMode from "../../../../assets/16px-solid/viewport-select-mode.svg";
+import ViewportGuideMode from "../../../../assets/16px-solid/viewport-guide-mode.svg";
 
 import SwapButton from "../../../../assets/12px-solid/swap.svg";
 import ResetColorsButton from "../../../../assets/12px-solid/reset-colors.svg";
@@ -152,6 +153,7 @@ const icons = {
 	Paste: { component: Paste, size: 16 },
 	ViewportDesignMode: { component: ViewportDesignMode, size: 16 },
 	ViewportSelectMode: { component: ViewportSelectMode, size: 16 },
+	ViewportGuideMode: { component: ViewportGuideMode, size: 16 },
 	SwapButton: { component: SwapButton, size: 12 },
 	ResetColorsButton: { component: ResetColorsButton, size: 12 },
 	DropdownArrow: { component: DropdownArrow, size: 12 },
