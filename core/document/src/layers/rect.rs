@@ -21,10 +21,10 @@ impl LayerData for Rect {
 			Point::new(a.x, a.y)
 		}
 		let mut path = kurbo::BezPath::new();
-		path.move_to(new_point(transform.transform_point2(glam::const_dvec2!([0., 0.]))));
-		path.line_to(new_point(transform.transform_point2(glam::const_dvec2!([1., 0.]))));
-		path.line_to(new_point(transform.transform_point2(glam::const_dvec2!([1., 1.]))));
-		path.line_to(new_point(transform.transform_point2(glam::const_dvec2!([0., 1.]))));
+		path.move_to(new_point(transform.translation));
+		[(1., 0.), (1., 1.), (0., 1.)]
+			.iter()
+			.for_each(|(x, y)| path.line_to(new_point(transform.transform_point2(DVec2::new(*x, *y)))));
 		path.close_path();
 		path
 	}

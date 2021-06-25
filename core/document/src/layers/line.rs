@@ -21,13 +21,13 @@ impl LayerData for Line {
 			Point::new(a.x, a.y)
 		}
 		let mut path = kurbo::BezPath::new();
-		path.move_to(new_point(transform.transform_point2(glam::const_dvec2!([0., 0.]))));
-		path.line_to(new_point(transform.transform_point2(glam::const_dvec2!([1., 1.]))));
+		path.move_to(new_point(transform.translation));
+		path.line_to(new_point(transform.transform_point2(DVec2::ONE)));
 		path
 	}
 	fn render(&mut self, svg: &mut String, transform: glam::DAffine2, style: style::PathStyle) {
-		let [x1, y1] = transform.transform_point2(glam::const_dvec2!([0., 0.])).to_array();
-		let [x2, y2] = transform.transform_point2(glam::const_dvec2!([1., 1.])).to_array();
+		let [x1, y1] = transform.translation.to_array();
+		let [x2, y2] = transform.transform_point2(DVec2::ONE).to_array();
 
 		let _ = write!(svg, r#"<line x1="{}" y1="{}" x2="{}" y2="{}"{} />"#, x1, y1, x2, y2, style.render(),);
 	}
