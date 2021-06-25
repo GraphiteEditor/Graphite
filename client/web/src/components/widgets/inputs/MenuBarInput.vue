@@ -1,5 +1,10 @@
 <template>
 	<div class="menu-bar-input">
+		<div class="entry-container">
+			<div @click="handleLogoClick(entry)" class="entry">
+				<Icon :icon="'GraphiteLogo'" />
+			</div>
+		</div>
 		<div class="entry-container" v-for="entry in menuEntries" :key="entry">
 			<div @click="handleEntryClick(entry)" class="entry" :class="{ open: entry.ref && entry.ref.isOpen() }" data-hover-menu-spawner>
 				<Icon :icon="entry.icon" v-if="entry.icon" />
@@ -63,11 +68,6 @@ import { MenuDirection } from "../floating-menus/FloatingMenu.vue";
 const wasm = import("../../../../wasm/pkg");
 
 const menuEntries: MenuListEntries = [
-	{
-		icon: "GraphiteLogo",
-		ref: undefined,
-		children: [[{ label: "Visit project GitHub…", action: () => window.open("https://github.com/GraphiteEditor/Graphite", "_blank") }]],
-	},
 	{
 		label: "File",
 		ref: undefined,
@@ -147,6 +147,9 @@ export default defineComponent({
 		handleEntryClick(menuEntry: MenuListEntry) {
 			if (menuEntry.ref) menuEntry.ref.setOpen();
 			else throw new Error("The menu bar floating menu has no associated ref");
+		},
+		handleLogoClick() {
+			window.open("https://www.graphite.design", "_blank");
 		},
 		actionNotImplemented() {
 			alert("This action is not yet implemented");
