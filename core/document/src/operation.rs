@@ -50,7 +50,8 @@ pub enum Operation {
 	MountWorkingFolder {
 		path: Vec<LayerId>,
 	},
-	TransformDocument{
+	TransformLayer{
+		path: Vec<LayerId>,
 		transform: [f64;6]
 	},
 	DiscardWorkingFolder,

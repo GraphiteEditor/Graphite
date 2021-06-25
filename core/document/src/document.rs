@@ -245,11 +245,11 @@ impl Document {
 				self.work_mounted = true;
 				None
 			}
-			&Operation::TransformDocument { transform} => {
+			Operation::TransformLayer { path, transform} => {
 				let transform = self.root.transform * DAffine2::from_cols_array(&transform);
-				self.root.transform = transform;
-				self.root.cache_dirty = true;
-				self.work.cache_dirty = true;
+				let layer = self.document_folder_mut(path).unwrap();
+				layer.transform = transform;
+				layer.cache_dirty = true;
 				Some(vec![DocumentResponse::DocumentChanged])
 			}
 			Operation::DiscardWorkingFolder => {
