@@ -17,8 +17,8 @@ pub struct Document {
 impl Default for Document {
 	fn default() -> Self {
 		Self {
-			root: Layer::new(LayerDataTypes::Folder(Folder::default()), [1., 0., 0., 1., 0., 0.], PathStyle::default()),
-			work: Layer::new(LayerDataTypes::Folder(Folder::default()), [1., 0., 0., 1., 0., 0.], PathStyle::default()),
+			root: Layer::new(LayerDataTypes::Folder(Folder::default()), DAffine2::IDENTITY.to_cols_array(), PathStyle::default()),
+			work: Layer::new(LayerDataTypes::Folder(Folder::default()), DAffine2::IDENTITY.to_cols_array(), PathStyle::default()),
 			work_mount_path: Vec::new(),
 			work_operations: Vec::new(),
 			work_mounted: false,
@@ -234,14 +234,14 @@ impl Document {
 				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::FolderChanged { path: folder_path.to_vec() }])
 			}
 			Operation::AddFolder { path } => {
-				self.set_layer(&path, Layer::new(LayerDataTypes::Folder(Folder::default()), [1., 0., 0., 1., 0., 0.], PathStyle::default()))?;
+				self.set_layer(&path, Layer::new(LayerDataTypes::Folder(Folder::default()), DAffine2::IDENTITY.to_cols_array(), PathStyle::default()))?;
 
 				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::FolderChanged { path: path.clone() }])
 			}
 			Operation::MountWorkingFolder { path } => {
 				self.work_mount_path = path.clone();
 				self.work_operations.clear();
-				self.work = Layer::new(LayerDataTypes::Folder(Folder::default()), [1., 0., 0., 1., 0., 0.], PathStyle::default());
+				self.work = Layer::new(LayerDataTypes::Folder(Folder::default()), DAffine2::IDENTITY.to_cols_array(), PathStyle::default());
 				self.work_mounted = true;
 				None
 			}
@@ -255,13 +255,13 @@ impl Document {
 			Operation::DiscardWorkingFolder => {
 				self.work_operations.clear();
 				self.work_mount_path = vec![];
-				self.work = Layer::new(LayerDataTypes::Folder(Folder::default()), [1., 0., 0., 1., 0., 0.], PathStyle::default());
+				self.work = Layer::new(LayerDataTypes::Folder(Folder::default()), DAffine2::IDENTITY.to_cols_array(), PathStyle::default());
 				self.work_mounted = false;
 				Some(vec![DocumentResponse::DocumentChanged])
 			}
 			Operation::ClearWorkingFolder => {
 				self.work_operations.clear();
-				self.work = Layer::new(LayerDataTypes::Folder(Folder::default()), [1., 0., 0., 1., 0., 0.], PathStyle::default());
+				self.work = Layer::new(LayerDataTypes::Folder(Folder::default()), DAffine2::IDENTITY.to_cols_array(), PathStyle::default());
 				Some(vec![DocumentResponse::DocumentChanged])
 			}
 			Operation::CommitTransaction => {
@@ -271,7 +271,7 @@ impl Document {
 				std::mem::swap(&mut ops, &mut self.work_operations);
 				self.work_mounted = false;
 				self.work_mount_path = vec![];
-				self.work = Layer::new(LayerDataTypes::Folder(Folder::default()), [1., 0., 0., 1., 0., 0.], PathStyle::default());
+				self.work = Layer::new(LayerDataTypes::Folder(Folder::default()), DAffine2::IDENTITY.to_cols_array(), PathStyle::default());
 				let mut responses = vec![];
 				for operation in ops.into_iter() {
 					if let Some(mut op_responses) = self.handle_operation(operation)? {

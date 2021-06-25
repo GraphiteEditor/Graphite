@@ -51,6 +51,6 @@ fn polyline_should_render() {
 	};
 
 	let mut svg = String::new();
-	polyline.render(&mut svg, glam::DAffine2::default(), PathStyle::default());
+	polyline.render(&mut svg, glam::DAffine2::IDENTITY, PathStyle::default());
 	assert_eq!(r##"<polyline points="3.000 4.124 1.000 5.540" />"##, svg);
 }
