@@ -245,7 +245,7 @@ impl Document {
 				self.work_mounted = true;
 				None
 			}
-			Operation::TransformLayer { path, transform} => {
+			Operation::TransformLayer { path, transform } => {
 				let transform = self.root.transform * DAffine2::from_cols_array(&transform);
 				let layer = self.document_folder_mut(path).unwrap();
 				layer.transform = transform;

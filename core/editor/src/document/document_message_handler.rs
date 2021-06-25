@@ -281,10 +281,12 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			MouseMove => {
 				if self.mmb_down {
 					let delta = DVec2::new(ipp.mouse.position.x as f64 - self.mouse_pos.x as f64, ipp.mouse.position.y as f64 - self.mouse_pos.y as f64);
-					let operation = DocumentOperation::TransformLayer { path: vec![], transform: DAffine2::from_translation(delta).to_cols_array() };
+					let operation = DocumentOperation::TransformLayer {
+						path: vec![],
+						transform: DAffine2::from_translation(delta).to_cols_array(),
+					};
 					responses.push_back(operation.into());
 					self.mouse_pos = ipp.mouse.position;
-					
 				}
 			}
 			message => todo!("document_action_handler does not implement: {}", message.to_discriminant().global_name()),
