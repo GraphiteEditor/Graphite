@@ -28,6 +28,7 @@ pub enum DocumentMessage {
 	PrevDocument,
 	ExportDocument,
 	RenderDocument,
+	TransformDocument(DAffine2),
 	Undo,
 	MouseMove,
 	TranslateDown,
@@ -280,18 +281,21 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			MouseMove => {
 				if self.mmb_down {
 					let delta = DVec2::new(ipp.mouse.position.x as f64 - self.mouse_pos.x as f64, ipp.mouse.position.y as f64 - self.mouse_pos.y as f64);
-					let transform = self.active_document().document.root.transform * DAffine2::from_translation(delta);
-					self.active_document_mut().document.root.transform = transform;
-					self.active_document_mut().document.root.cache_dirty = true;
-					self.active_document_mut().document.work.cache_dirty = true;
-					self.mouse_pos = ipp.mouse.position;
-					responses.push_back(
-						FrontendMessage::UpdateCanvas {
-							document: self.active_document_mut().document.render_root(),
-						}
-						.into(),
-					)
+					responses.push_back(TransformDocument(DAffine2::from_translation(delta)).into());
 				}
+			}
+			TransformDocument(transform) => {
+				let transform = self.active_document().document.root.transform * transform;
+				self.active_document_mut().document.root.transform = transform;
+				self.active_document_mut().document.root.cache_dirty = true;
+				self.active_document_mut().document.work.cache_dirty = true;
+				self.mouse_pos = ipp.mouse.position;
+				responses.push_back(
+					FrontendMessage::UpdateCanvas {
+						document: self.active_document_mut().document.render_root(),
+					}
+					.into(),
+				)
 			}
 			message => todo!("document_action_handler does not implement: {}", message.to_discriminant().global_name()),
 		}
