@@ -1,3 +1,5 @@
+use glam::DAffine2;
+
 use crate::{
 	layers::{self, style::PathStyle, Folder, Layer, LayerDataTypes, Line, PolyLine, Rect, Shape},
 	DocumentError, DocumentResponse, LayerId, Operation,
@@ -242,6 +244,13 @@ impl Document {
 				self.work = Layer::new(LayerDataTypes::Folder(Folder::default()), [1., 0., 0., 1., 0., 0.], PathStyle::default());
 				self.work_mounted = true;
 				None
+			}
+			&Operation::TransformDocument { transform} => {
+				let transform = self.root.transform * DAffine2::from_cols_array(&transform);
+				self.root.transform = transform;
+				self.root.cache_dirty = true;
+				self.work.cache_dirty = true;
+				Some(vec![DocumentResponse::DocumentChanged])
 			}
 			Operation::DiscardWorkingFolder => {
 				self.work_operations.clear();
