@@ -164,7 +164,7 @@ fn make_operation(data: &RectangleToolData, tool_data: &DocumentToolData, transf
 	Operation::AddRect {
 		path: vec![],
 		insert_index: -1,
-		cols: (transform.inverse() * glam::DAffine2::from_scale_angle_translation(DVec2::new(x1 - x0, y1 - y0), 0., DVec2::new(x0, y0))).to_cols_array(),
+		transform: (transform.inverse() * glam::DAffine2::from_scale_angle_translation(DVec2::new(x1 - x0, y1 - y0), 0., DVec2::new(x0, y0))).to_cols_array(),
 		style: style::PathStyle::new(None, Some(style::Fill::new(tool_data.primary_color))),
 	}
 	.into()

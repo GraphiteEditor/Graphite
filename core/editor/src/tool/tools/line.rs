@@ -177,7 +177,7 @@ fn make_operation(data: &mut LineToolData, tool_data: &DocumentToolData, transfo
 	Operation::AddLine {
 		path: vec![],
 		insert_index: -1,
-		cols: (transform.inverse() * glam::DAffine2::from_scale_angle_translation(DVec2::new(x1 - x0, y1 - y0), 0., DVec2::new(x0, y0))).to_cols_array(),
+		transform: (transform.inverse() * glam::DAffine2::from_scale_angle_translation(DVec2::new(x1 - x0, y1 - y0), 0., DVec2::new(x0, y0))).to_cols_array(),
 		style: style::PathStyle::new(Some(style::Stroke::new(tool_data.primary_color, 5.)), None),
 	}
 	.into()

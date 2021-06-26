@@ -176,19 +176,19 @@ impl Document {
 	/// reaction from the frontend, responses may be returned.
 	pub fn handle_operation(&mut self, operation: Operation) -> Result<Option<Vec<DocumentResponse>>, DocumentError> {
 		let responses = match &operation {
-			Operation::AddEllipse { path, insert_index, cols, style } => {
+			Operation::AddEllipse { path, insert_index, transform: cols, style } => {
 				let id = self.add_layer(&path, Layer::new(LayerDataTypes::Ellipse(layers::Ellipse::new()), *cols, *style), *insert_index)?;
 				let path = [path.clone(), vec![id]].concat();
 
 				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::SelectLayer { path }])
 			}
-			Operation::AddRect { path, insert_index, cols, style } => {
+			Operation::AddRect { path, insert_index, transform: cols, style } => {
 				let id = self.add_layer(&path, Layer::new(LayerDataTypes::Rect(Rect::new()), *cols, *style), *insert_index)?;
 				let path = [path.clone(), vec![id]].concat();
 
 				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::SelectLayer { path }])
 			}
-			Operation::AddLine { path, insert_index, cols, style } => {
+			Operation::AddLine { path, insert_index, transform: cols, style } => {
 				let id = self.add_layer(&path, Layer::new(LayerDataTypes::Line(Line::new()), *cols, *style), *insert_index)?;
 				let path = [path.clone(), vec![id]].concat();
 
@@ -198,7 +198,7 @@ impl Document {
 				path,
 				insert_index,
 				points,
-				cols,
+				transform: cols,
 				style,
 			} => {
 				let points: Vec<glam::DVec2> = points.iter().map(|&it| it.into()).collect();
@@ -209,7 +209,7 @@ impl Document {
 			Operation::AddShape {
 				path,
 				insert_index,
-				cols,
+				transform: cols,
 				equal_sides,
 				sides,
 				style,

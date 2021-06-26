@@ -153,7 +153,7 @@ fn make_operation(data: &EllipseToolData, tool_data: &DocumentToolData, transfor
 		Operation::AddEllipse {
 			path: vec![],
 			insert_index: -1,
-			cols: (transform.inverse() * glam::DAffine2::from_scale_angle_translation(DVec2::new(r, r), 0., DVec2::new(cx, cy))).to_cols_array(),
+			transform: (transform.inverse() * glam::DAffine2::from_scale_angle_translation(DVec2::new(r, r), 0., DVec2::new(cx, cy))).to_cols_array(),
 			style: style::PathStyle::new(None, Some(style::Fill::new(tool_data.primary_color))),
 		}
 	} else {
@@ -162,7 +162,7 @@ fn make_operation(data: &EllipseToolData, tool_data: &DocumentToolData, transfor
 		Operation::AddEllipse {
 			path: vec![],
 			insert_index: -1,
-			cols: (transform.inverse() * glam::DAffine2::from_scale_angle_translation(DVec2::new(rx, ry), 0., DVec2::new(cx, cy))).to_cols_array(),
+			transform: (transform.inverse() * glam::DAffine2::from_scale_angle_translation(DVec2::new(rx, ry), 0., DVec2::new(cx, cy))).to_cols_array(),
 			style: style::PathStyle::new(None, Some(style::Fill::new(tool_data.primary_color))),
 		}
 	}
