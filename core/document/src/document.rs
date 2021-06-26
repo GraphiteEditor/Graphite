@@ -176,20 +176,20 @@ impl Document {
 	/// reaction from the frontend, responses may be returned.
 	pub fn handle_operation(&mut self, operation: Operation) -> Result<Option<Vec<DocumentResponse>>, DocumentError> {
 		let responses = match &operation {
-			Operation::AddEllipse { path, insert_index, transform: cols, style } => {
-				let id = self.add_layer(&path, Layer::new(LayerDataTypes::Ellipse(layers::Ellipse::new()), *cols, *style), *insert_index)?;
+			Operation::AddEllipse { path, insert_index, transform, style } => {
+				let id = self.add_layer(&path, Layer::new(LayerDataTypes::Ellipse(layers::Ellipse::new()), *transform, *style), *insert_index)?;
 				let path = [path.clone(), vec![id]].concat();
 
 				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::SelectLayer { path }])
 			}
-			Operation::AddRect { path, insert_index, transform: cols, style } => {
-				let id = self.add_layer(&path, Layer::new(LayerDataTypes::Rect(Rect::new()), *cols, *style), *insert_index)?;
+			Operation::AddRect { path, insert_index, transform, style } => {
+				let id = self.add_layer(&path, Layer::new(LayerDataTypes::Rect(Rect::new()), *transform, *style), *insert_index)?;
 				let path = [path.clone(), vec![id]].concat();
 
 				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::SelectLayer { path }])
 			}
-			Operation::AddLine { path, insert_index, transform: cols, style } => {
-				let id = self.add_layer(&path, Layer::new(LayerDataTypes::Line(Line::new()), *cols, *style), *insert_index)?;
+			Operation::AddLine { path, insert_index, transform, style } => {
+				let id = self.add_layer(&path, Layer::new(LayerDataTypes::Line(Line::new()), *transform, *style), *insert_index)?;
 				let path = [path.clone(), vec![id]].concat();
 
 				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::SelectLayer { path }])
@@ -198,24 +198,24 @@ impl Document {
 				path,
 				insert_index,
 				points,
-				transform: cols,
+				transform,
 				style,
 			} => {
 				let points: Vec<glam::DVec2> = points.iter().map(|&it| it.into()).collect();
 				let polyline = PolyLine::new(points);
-				self.add_layer(&path, Layer::new(LayerDataTypes::PolyLine(polyline), *cols, *style), *insert_index)?;
+				self.add_layer(&path, Layer::new(LayerDataTypes::PolyLine(polyline), *transform, *style), *insert_index)?;
 				Some(vec![DocumentResponse::DocumentChanged])
 			}
 			Operation::AddShape {
 				path,
 				insert_index,
-				transform: cols,
+				transform,
 				equal_sides,
 				sides,
 				style,
 			} => {
 				let s = Shape::new(*equal_sides, *sides);
-				let id = self.add_layer(&path, Layer::new(LayerDataTypes::Shape(s), *cols, *style), *insert_index)?;
+				let id = self.add_layer(&path, Layer::new(LayerDataTypes::Shape(s), *transform, *style), *insert_index)?;
 				let path = [path.clone(), vec![id]].concat();
 
 				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::SelectLayer { path }])
