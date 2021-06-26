@@ -1,5 +1,10 @@
-use crate::message_prelude::*;
+use crate::{
+	input::{mouse::ViewportPosition, InputPreprocessor},
+	message_prelude::*,
+};
 use document_core::{DocumentResponse, LayerId, Operation as DocumentOperation};
+use glam::{DAffine2, DVec2};
+use log::info;
 
 use crate::document::Document;
 use std::collections::VecDeque;
@@ -25,6 +30,9 @@ pub enum DocumentMessage {
 	ExportDocument,
 	RenderDocument,
 	Undo,
+	MouseMove,
+	TranslateDown,
+	TranslateUp,
 }
 
 impl From<DocumentOperation> for DocumentMessage {
@@ -42,6 +50,8 @@ impl From<DocumentOperation> for Message {
 pub struct DocumentMessageHandler {
 	documents: Vec<Document>,
 	active_document: usize,
+	mmb_down: bool,
+	mouse_pos: ViewportPosition,
 }
 
 impl DocumentMessageHandler {
@@ -78,12 +88,14 @@ impl Default for DocumentMessageHandler {
 		Self {
 			documents: vec![Document::default()],
 			active_document: 0,
+			mmb_down: false,
+			mouse_pos: ViewportPosition::default(),
 		}
 	}
 }
 
-impl MessageHandler<DocumentMessage, ()> for DocumentMessageHandler {
-	fn process_action(&mut self, message: DocumentMessage, _data: (), responses: &mut VecDeque<Message>) {
+impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHandler {
+	fn process_action(&mut self, message: DocumentMessage, ipp: &InputPreprocessor, responses: &mut VecDeque<Message>) {
 		use DocumentMessage::*;
 		match message {
 			DeleteLayer(path) => responses.push_back(DocumentOperation::DeleteLayer { path }.into()),
@@ -224,7 +236,7 @@ impl MessageHandler<DocumentMessage, ()> for DocumentMessageHandler {
 			}
 			Undo => {
 				// this is a temporary fix and will be addressed by #123
-				if let Some(id) = self.active_document().document.root.list_layers().last() {
+				if let Some(id) = self.active_document().document.root.as_folder().unwrap().list_layers().last() {
 					responses.push_back(DocumentOperation::DeleteLayer { path: vec![*id] }.into())
 				}
 			}
@@ -259,14 +271,32 @@ impl MessageHandler<DocumentMessage, ()> for DocumentMessageHandler {
 				}
 				.into(),
 			),
+			TranslateDown => {
+				self.mmb_down = true;
+				self.mouse_pos = ipp.mouse.position;
+			}
+			TranslateUp => {
+				self.mmb_down = false;
+			}
+			MouseMove => {
+				if self.mmb_down {
+					let delta = DVec2::new(ipp.mouse.position.x as f64 - self.mouse_pos.x as f64, ipp.mouse.position.y as f64 - self.mouse_pos.y as f64);
+					let operation = DocumentOperation::TransformLayer {
+						path: vec![],
+						transform: DAffine2::from_translation(delta).to_cols_array(),
+					};
+					responses.push_back(operation.into());
+					self.mouse_pos = ipp.mouse.position;
+				}
+			}
 			message => todo!("document_action_handler does not implement: {}", message.to_discriminant().global_name()),
 		}
 	}
 	fn actions(&self) -> ActionList {
 		if self.active_document().layer_data.values().any(|data| data.selected) {
-			actions!(DocumentMessageDiscriminant; Undo, DeleteSelectedLayers, DuplicateSelectedLayers, RenderDocument, ExportDocument, NewDocument, CloseActiveDocument, NextDocument, PrevDocument)
+			actions!(DocumentMessageDiscriminant; Undo, DeleteSelectedLayers, DuplicateSelectedLayers, RenderDocument, ExportDocument, NewDocument, CloseActiveDocument, NextDocument, PrevDocument, MouseMove, TranslateUp, TranslateDown)
 		} else {
-			actions!(DocumentMessageDiscriminant; Undo, RenderDocument, ExportDocument, NewDocument, CloseActiveDocument, NextDocument, PrevDocument)
+			actions!(DocumentMessageDiscriminant; Undo, RenderDocument, ExportDocument, NewDocument, CloseActiveDocument, NextDocument, PrevDocument, MouseMove, TranslateUp, TranslateDown)
 		}
 	}
 }
