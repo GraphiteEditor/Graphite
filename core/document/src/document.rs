@@ -44,7 +44,7 @@ impl Document {
 		}
 		if path.as_slice() == self.work_mount_path {
 			// TODO: Handle if mounted in nested folders
-			let transform = self.document_folder(path).unwrap().transform.clone();
+			let transform = self.document_folder(path).unwrap().transform;
 			self.document_folder_mut(path).unwrap().render_as_folder(svg);
 			self.work.transform = transform;
 			self.work.render_as_folder(svg);
