@@ -10,5 +10,6 @@ license = "Apache-2.0"
 
 [dependencies]
 log = "0.4"
-kurbo = "0.8.0"
+kurbo = {git="https://github.com/linebender/kurbo.git"}
 serde = { version = "1.0", features = ["derive"] }
+glam = "0.16"

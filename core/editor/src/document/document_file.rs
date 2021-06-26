@@ -60,9 +60,10 @@ impl Document {
 		let folder = self.document.document_folder(path)?;
 		let self_layer_data = &mut self.layer_data;
 		let entries = folder
+			.as_folder()?
 			.layers()
 			.iter()
-			.zip(folder.layer_ids.iter())
+			.zip(folder.as_folder()?.layer_ids.iter())
 			.rev()
 			.map(|(layer, id)| {
 				let path = [path, &[*id]].concat();
