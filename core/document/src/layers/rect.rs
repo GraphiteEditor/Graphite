@@ -22,6 +22,8 @@ impl LayerData for Rect {
 		}
 		let mut path = kurbo::BezPath::new();
 		path.move_to(new_point(transform.translation));
+
+		// TODO: Use into_iter when new impls get added in rust 2021
 		[(1., 0.), (1., 1.), (0., 1.)].iter().for_each(|v| path.line_to(new_point(transform.transform_point2((*v).into()))));
 		path.close_path();
 		path
