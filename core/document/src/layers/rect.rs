@@ -22,9 +22,7 @@ impl LayerData for Rect {
 		}
 		let mut path = kurbo::BezPath::new();
 		path.move_to(new_point(transform.translation));
-		[(1., 0.), (1., 1.), (0., 1.)]
-			.iter()
-			.for_each(|(x, y)| path.line_to(new_point(transform.transform_point2(DVec2::new(*x, *y)))));
+		[(1., 0.), (1., 1.), (0., 1.)].iter().for_each(|v| path.line_to(new_point(transform.transform_point2((*v).into()))));
 		path.close_path();
 		path
 	}
