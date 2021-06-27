@@ -1,8 +1,8 @@
 <template>
 	<div class="number-input">
-		<button class="arrow left"></button>
-		<button class="arrow right"></button>
-		<input type="text" spellcheck="false" :value="`${value}${unit}`" />
+		<button class="arrow left" @click="onIncrement(-1)"></button>
+		<button class="arrow right" @click="onIncrement(1)"></button>
+		<input type="text" spellcheck="false" :value="displayValue" />
 	</div>
 </template>
 
@@ -99,7 +99,37 @@ export default defineComponent({
 	components: {},
 	props: {
 		value: { type: Number, required: true },
-		unit: { type: String, default: "" },
+		unit: { type: String, default: "", required: false },
+		step: { type: Number, default: 1, required: false },
+		min: { type: Number, required: false },
+		max: { type: Number, required: false },
+	},
+	computed: {
+		displayValue(): string {
+			if (!this.unit) return this.value.toString();
+			return `${this.value}${this.unit}`;
+		},
+	},
+	methods: {
+		onIncrement(direction: number) {
+			const step = this.step * direction;
+			const newValue = this.value + step;
+			this.updateValue(newValue);
+		},
+
+		updateValue(newValue: number) {
+			let value = newValue;
+
+			if (Number.isFinite(this.min) && typeof this.min === "number") {
+				value = Math.max(value, this.min);
+			}
+
+			if (Number.isFinite(this.max) && typeof this.max === "number") {
+				value = Math.min(value, this.max);
+			}
+
+			this.$emit("update:value", value);
+		},
 	},
 });
 </script>
