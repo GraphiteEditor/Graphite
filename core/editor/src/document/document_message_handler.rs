@@ -4,7 +4,6 @@ use crate::{
 };
 use document_core::{DocumentResponse, LayerId, Operation as DocumentOperation};
 use glam::{DAffine2, DVec2};
-use log::info;
 
 use crate::document::Document;
 use std::collections::VecDeque;
@@ -33,6 +32,8 @@ pub enum DocumentMessage {
 	MouseMove,
 	TranslateDown,
 	TranslateUp,
+	RotateDown,
+	RotateUp,
 }
 
 impl From<DocumentOperation> for DocumentMessage {
@@ -50,7 +51,8 @@ impl From<DocumentOperation> for Message {
 pub struct DocumentMessageHandler {
 	documents: Vec<Document>,
 	active_document: usize,
-	mmb_down: bool,
+	translating: bool,
+	rotating: bool,
 	mouse_pos: ViewportPosition,
 }
 
@@ -88,7 +90,8 @@ impl Default for DocumentMessageHandler {
 		Self {
 			documents: vec![Document::default()],
 			active_document: 0,
-			mmb_down: false,
+			translating: false,
+			rotating: false,
 			mouse_pos: ViewportPosition::default(),
 		}
 	}
@@ -272,18 +275,37 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				.into(),
 			),
 			TranslateDown => {
-				self.mmb_down = true;
+				self.translating = true;
 				self.mouse_pos = ipp.mouse.position;
 			}
 			TranslateUp => {
-				self.mmb_down = false;
+				self.translating = false;
+			}
+			RotateDown => {
+				log::info!("rotate down");
+				self.rotating = true;
+				self.mouse_pos = ipp.mouse.position;
+			}
+			RotateUp => {
+				self.rotating = false;
 			}
 			MouseMove => {
-				if self.mmb_down {
+				if self.translating {
 					let delta = DVec2::new(ipp.mouse.position.x as f64 - self.mouse_pos.x as f64, ipp.mouse.position.y as f64 - self.mouse_pos.y as f64);
 					let operation = DocumentOperation::TransformLayer {
 						path: vec![],
 						transform: DAffine2::from_translation(delta).to_cols_array(),
+					};
+					responses.push_back(operation.into());
+					self.mouse_pos = ipp.mouse.position;
+				}
+				if self.rotating {
+					let start_vec = glam::DVec2::new(self.mouse_pos.x as f64 - ipp.viewport_size.x as f64 / 2., self.mouse_pos.y as f64 - ipp.viewport_size.y as f64 / 2.);
+					let end_vec = glam::DVec2::new(ipp.mouse.position.x as f64 - ipp.viewport_size.x as f64 / 2., ipp.mouse.position.y as f64 - ipp.viewport_size.y as f64 / 2.);
+					log::info!("Start v: {:?} end v: {:?} angle {:?}", start_vec, end_vec, start_vec.angle_between(end_vec));
+					let operation = DocumentOperation::TransformLayer {
+						path: vec![],
+						transform: DAffine2::from_angle(start_vec.angle_between(end_vec)).to_cols_array(),
 					};
 					responses.push_back(operation.into());
 					self.mouse_pos = ipp.mouse.position;
@@ -294,9 +316,9 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 	}
 	fn actions(&self) -> ActionList {
 		if self.active_document().layer_data.values().any(|data| data.selected) {
-			actions!(DocumentMessageDiscriminant; Undo, DeleteSelectedLayers, DuplicateSelectedLayers, RenderDocument, ExportDocument, NewDocument, CloseActiveDocument, NextDocument, PrevDocument, MouseMove, TranslateUp, TranslateDown)
+			actions!(DocumentMessageDiscriminant; Undo, DeleteSelectedLayers, DuplicateSelectedLayers, RenderDocument, ExportDocument, NewDocument, CloseActiveDocument, NextDocument, PrevDocument, MouseMove, TranslateUp, TranslateDown, RotateUp, RotateDown)
 		} else {
-			actions!(DocumentMessageDiscriminant; Undo, RenderDocument, ExportDocument, NewDocument, CloseActiveDocument, NextDocument, PrevDocument, MouseMove, TranslateUp, TranslateDown)
+			actions!(DocumentMessageDiscriminant; Undo, RenderDocument, ExportDocument, NewDocument, CloseActiveDocument, NextDocument, PrevDocument, MouseMove, TranslateUp, TranslateDown, RotateUp, RotateDown)
 		}
 	}
 }

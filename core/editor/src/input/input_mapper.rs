@@ -171,6 +171,8 @@ impl Default for Mapping {
 			entry! {action=DocumentMessage::MouseMove, message=InputMapperMessage::PointerMove},
 			entry! {action=DocumentMessage::TranslateDown, key_down=Mmb},
 			entry! {action=DocumentMessage::TranslateUp, key_up=Mmb},
+			entry! {action=DocumentMessage::RotateDown, key_down=Rmb},
+			entry! {action=DocumentMessage::RotateUp, key_up=Rmb},
 			entry! {action=DocumentMessage::NewDocument, key_down=KeyN, modifiers=[KeyShift]},
 			entry! {action=DocumentMessage::NextDocument, key_down=KeyTab, modifiers=[KeyShift]},
 			entry! {action=DocumentMessage::CloseActiveDocument, key_down=KeyW, modifiers=[KeyShift]},

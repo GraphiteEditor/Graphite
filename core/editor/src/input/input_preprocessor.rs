@@ -13,12 +13,14 @@ pub enum InputPreprocessorMessage {
 	MouseMove(ViewportPosition),
 	KeyUp(Key),
 	KeyDown(Key),
+	ViewportResize(ViewportPosition),
 }
 
 #[derive(Debug, Default)]
 pub struct InputPreprocessor {
 	pub keyboard: KeyStates,
 	pub mouse: MouseState,
+	pub viewport_size: ViewportPosition,
 }
 
 enum KeyPosition {
@@ -28,23 +30,29 @@ enum KeyPosition {
 
 impl MessageHandler<InputPreprocessorMessage, ()> for InputPreprocessor {
 	fn process_action(&mut self, message: InputPreprocessorMessage, _data: (), responses: &mut VecDeque<Message>) {
-		let response = match message {
+		match message {
 			InputPreprocessorMessage::MouseMove(pos) => {
 				self.mouse.position = pos;
-				InputMapperMessage::PointerMove.into()
+				responses.push_back(InputMapperMessage::PointerMove.into());
 			}
-			InputPreprocessorMessage::MouseDown(state) => self.translate_mouse_event(state, KeyPosition::Pressed),
-			InputPreprocessorMessage::MouseUp(state) => self.translate_mouse_event(state, KeyPosition::Released),
+			InputPreprocessorMessage::MouseDown(state) => {
+				responses.push_back(self.translate_mouse_event(state, KeyPosition::Pressed));
+			}
+			InputPreprocessorMessage::MouseUp(state) => {
+				responses.push_back(self.translate_mouse_event(state, KeyPosition::Released));
+			}
 			InputPreprocessorMessage::KeyDown(key) => {
 				self.keyboard.set(key as usize);
-				InputMapperMessage::KeyDown(key).into()
+				responses.push_back(InputMapperMessage::KeyDown(key).into())
 			}
 			InputPreprocessorMessage::KeyUp(key) => {
 				self.keyboard.unset(key as usize);
-				InputMapperMessage::KeyUp(key).into()
+				responses.push_back(InputMapperMessage::KeyUp(key).into());
+			}
+			InputPreprocessorMessage::ViewportResize(size) => {
+				self.viewport_size = size;
 			}
 		};
-		responses.push_back(response)
 	}
 	// clean user input and if possible reconstruct it
 	// store the changes in the keyboard if it is a key event

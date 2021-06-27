@@ -36,6 +36,14 @@ pub fn new_document() -> Result<(), JsValue> {
 	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(DocumentMessage::NewDocument).map_err(convert_error))
 }
 
+// TODO: Call event when the panels are resized
+/// Viewport resized
+#[wasm_bindgen]
+pub fn on_viewport_resize(new_width: u32, new_height: u32) -> Result<(), JsValue> {
+	let ev = InputPreprocessorMessage::ViewportResize(ViewportPosition { x: new_width, y: new_height });
+	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(ev)).map_err(convert_error)
+}
+
 // TODO: When a mouse button is down that started in the viewport, this should trigger even when the mouse is outside the viewport (or even the browser window if the browser supports it)
 /// Mouse movement within the screenspace bounds of the viewport
 #[wasm_bindgen]

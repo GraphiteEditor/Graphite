@@ -111,7 +111,7 @@
 				<WorkingColors />
 			</LayoutCol>
 			<LayoutCol :class="'viewport'">
-				<div class="canvas" @mousedown="canvasMouseDown" @mouseup="canvasMouseUp" @mousemove="canvasMouseMove">
+				<div class="canvas" @mousedown="canvasMouseDown" @mouseup="canvasMouseUp" @mousemove="canvasMouseMove" ref="canvas">
 					<svg v-html="viewportSvg"></svg>
 				</div>
 			</LayoutCol>
@@ -205,6 +205,11 @@ function redirectKeyboardEventToBackend(e: KeyboardEvent): boolean {
 
 export default defineComponent({
 	methods: {
+		async viewportResize() {
+			const { on_viewport_resize } = await wasm;
+			const canvas = this.$refs.canvas as HTMLDivElement;
+			on_viewport_resize(canvas.clientWidth, canvas.clientHeight);
+		},
 		async canvasMouseDown(e: MouseEvent) {
 			const { on_mouse_down } = await wasm;
 			on_mouse_down(e.offsetX, e.offsetY, e.buttons);
@@ -270,6 +275,8 @@ export default defineComponent({
 
 		window.addEventListener("keyup", (e: KeyboardEvent) => this.keyUp(e));
 		window.addEventListener("keydown", (e: KeyboardEvent) => this.keyDown(e));
+		window.addEventListener("resize", () => this.viewportResize());
+		window.addEventListener("load", () => this.viewportResize());
 
 		this.$watch("viewModeIndex", this.viewModeChanged);
 	},
