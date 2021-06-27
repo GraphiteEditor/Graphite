@@ -2,13 +2,13 @@ use glam::DAffine2;
 use glam::DVec2;
 use kurbo::Point;
 
-use crate::LayerId;
 use crate::intersection::intersect_quad_bez_path;
 use crate::intersection::point_line_segment_dist;
+use crate::LayerId;
 
-use super::POINT_SELECTION_TOLERANCE;
 use super::style;
 use super::LayerData;
+use super::POINT_SELECTION_TOLERANCE;
 
 use std::fmt::Write;
 

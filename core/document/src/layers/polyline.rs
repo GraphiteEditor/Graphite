@@ -1,10 +1,13 @@
 use glam::{DAffine2, DVec2};
 
-use crate::{LayerId, intersection::{intersect_quad_bez_path, point_line_segment_dist}};
+use crate::{
+	intersection::{intersect_quad_bez_path, point_line_segment_dist},
+	LayerId,
+};
 
 use std::fmt::Write;
 
-use super::{LayerData, POINT_SELECTION_TOLERANCE, style};
+use super::{style, LayerData, POINT_SELECTION_TOLERANCE};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct PolyLine {
