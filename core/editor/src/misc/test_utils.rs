@@ -19,9 +19,8 @@ pub trait EditorTestUtils {
 	fn drag_tool(&mut self, typ: ToolType, x1: u32, y1: u32, x2: u32, y2: u32);
 	fn move_mouse(&mut self, x: u32, y: u32);
 	fn mousedown(&mut self, state: MouseState);
-	fn mouseup(&mut self, state: MouseState);
+	fn mouseup(&mut self, x: u32, y: u32);
 	fn left_mousedown(&mut self, x: u32, y: u32);
-	fn left_mouseup(&mut self, x: u32, y: u32);
 	fn input(&mut self, message: InputPreprocessorMessage);
 	fn select_tool(&mut self, typ: ToolType);
 	fn select_primary_color(&mut self, color: Color);
@@ -45,7 +44,7 @@ impl EditorTestUtils for Editor {
 		self.move_mouse(x1, y1);
 		self.left_mousedown(x1, y1);
 		self.move_mouse(x2, y2);
-		self.left_mouseup(x2, y2);
+		self.mouseup(x2, y2);
 	}
 
 	fn move_mouse(&mut self, x: u32, y: u32) {
@@ -56,21 +55,18 @@ impl EditorTestUtils for Editor {
 		self.input(InputPreprocessorMessage::MouseDown(state));
 	}
 
-	fn mouseup(&mut self, state: MouseState) {
-		self.input(InputPreprocessorMessage::MouseUp(state));
+	fn mouseup(&mut self, x: u32, y: u32) {
+		self.handle_message(InputPreprocessorMessage::MouseUp(MouseState {
+			position: ViewportPosition { x, y },
+			mouse_keys: MouseKeys::empty(),
+		}))
+		.unwrap()
 	}
 
 	fn left_mousedown(&mut self, x: u32, y: u32) {
 		self.mousedown(MouseState {
 			position: ViewportPosition { x, y },
 			mouse_keys: MouseKeys::LEFT,
-		})
-	}
-
-	fn left_mouseup(&mut self, x: u32, y: u32) {
-		self.mouseup(MouseState {
-			position: ViewportPosition { x, y },
-			mouse_keys: MouseKeys::empty(),
 		})
 	}
 
