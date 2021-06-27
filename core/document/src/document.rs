@@ -67,7 +67,6 @@ impl Document {
 
 	/// Checks whether each layer under `path` intersects with the provided `quad` and adds all intersection layers as paths to `intersections`.
 	pub fn intersects_quad(&self, quad: [Point; 4], path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>) {
-		log::debug!("Intersects Quad {:?}", quad);
 		self.document_folder(path).unwrap().intersects_quad(quad, path, intersections);
 		return;
 	}

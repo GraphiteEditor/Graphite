@@ -180,7 +180,6 @@ impl Layer {
 
 	pub fn intersects_point(&self, point: Point, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>) {
 		let transformed_point = transform_kurbo_point(&point, &self.transform.inverse());
-		log::debug!("Point: {:?}, Transformed: {:?}", point, transformed_point);
 		if !self.visible {
 			return;
 		}

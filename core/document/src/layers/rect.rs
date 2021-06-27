@@ -45,7 +45,6 @@ impl LayerData for Rect {
 	}
 
 	fn intersects_point(&self, point: Point, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>, style: style::PathStyle) {
-		log::debug!("Intersects point");
 		if self.to_kurbo_path(DAffine2::IDENTITY, style).contains(point) {
 			intersections.push(path.clone());
 		}
