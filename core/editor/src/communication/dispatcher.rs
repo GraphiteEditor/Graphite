@@ -85,13 +85,11 @@ mod test {
 		Editor,
 	};
 	use document_core::{color::Color, Operation};
-	use log::{debug, info};
+	use log::info;
 
 	fn init_logger() {
 		let _ = env_logger::builder().is_test(true).try_init();
 	}
-
-	/// A set of utility functions to make the writing of editor test more declarative
 
 	/// Create an editor instance with three layers
 	/// 1. A red rectangle
@@ -193,6 +191,8 @@ mod test {
 		let document_before_added_shapes = editor.dispatcher.document_message_handler.active_document().document.clone();
 		let folder_id = document_before_added_shapes.root.as_folder().unwrap().layer_ids[FOLDER_INDEX];
 
+		// TODO: This adding of a Line and Pen should be rewritten using the corresponding functions in EditorTestUtils.
+		// This has not been done yet as the line and pen tool are not yet able to add layers to the currently selected folder
 		editor
 			.handle_message(Message::Document(DocumentMessage::DispatchOperation(Operation::AddLine {
 				path: vec![folder_id],
@@ -251,8 +251,6 @@ mod test {
 
 		assert_eq!(second_folder_layers_after_copy[0], line_before_copy);
 		assert_eq!(second_folder_layers_after_copy[1], pen_before_copy);
-
-		debug!("end doc{:#?}", editor.dispatcher.document_message_handler.active_document().document.clone())
 	}
 
 	#[test]

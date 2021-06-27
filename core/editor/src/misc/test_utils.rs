@@ -8,6 +8,8 @@ use crate::{
 	Editor,
 };
 use document_core::color::Color;
+
+/// A set of utility functions to make the writing of editor test more declarative
 pub trait EditorTestUtils {
 	fn draw_rect(&mut self, x1: u32, y1: u32, x2: u32, y2: u32);
 	fn draw_shape(&mut self, x1: u32, y1: u32, x2: u32, y2: u32);
