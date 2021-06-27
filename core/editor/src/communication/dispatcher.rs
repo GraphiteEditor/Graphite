@@ -80,98 +80,18 @@ impl Dispatcher {
 #[cfg(test)]
 mod test {
 	use crate::{
-		input::{
-			mouse::{MouseKeys, MouseState, ViewportPosition},
-			InputPreprocessorMessage,
-		},
-		message_prelude::{DocumentMessage, Message, ToolMessage},
-		tool::ToolType,
+		message_prelude::{DocumentMessage, Message},
+		misc::test_utils::EditorTestUtils,
 		Editor,
 	};
-	use document_core::color::Color;
-	use log::info;
+	use document_core::{color::Color, Operation};
+	use log::{debug, info};
 
 	fn init_logger() {
 		let _ = env_logger::builder().is_test(true).try_init();
 	}
 
 	/// A set of utility functions to make the writing of editor test more declarative
-	trait EditorTestUtils {
-		fn draw_rect(&mut self, x1: u32, y1: u32, x2: u32, y2: u32);
-		fn draw_shape(&mut self, x1: u32, y1: u32, x2: u32, y2: u32);
-		fn draw_ellipse(&mut self, x1: u32, y1: u32, x2: u32, y2: u32);
-
-		/// Select given tool and drag it from (x1, y1) to (x2, y2)
-		fn drag_tool(&mut self, typ: ToolType, x1: u32, y1: u32, x2: u32, y2: u32);
-		fn move_mouse(&mut self, x: u32, y: u32);
-		fn mousedown(&mut self, state: MouseState);
-		fn mouseup(&mut self, state: MouseState);
-		fn left_mousedown(&mut self, x: u32, y: u32);
-		fn left_mouseup(&mut self, x: u32, y: u32);
-		fn input(&mut self, message: InputPreprocessorMessage);
-		fn select_tool(&mut self, typ: ToolType);
-		fn select_primary_color(&mut self, color: Color);
-	}
-
-	impl EditorTestUtils for Editor {
-		fn draw_rect(&mut self, x1: u32, y1: u32, x2: u32, y2: u32) {
-			self.drag_tool(ToolType::Rectangle, x1, y1, x2, y2);
-		}
-
-		fn draw_shape(&mut self, x1: u32, y1: u32, x2: u32, y2: u32) {
-			self.drag_tool(ToolType::Shape, x1, y1, x2, y2);
-		}
-
-		fn draw_ellipse(&mut self, x1: u32, y1: u32, x2: u32, y2: u32) {
-			self.drag_tool(ToolType::Ellipse, x1, y1, x2, y2);
-		}
-
-		fn drag_tool(&mut self, typ: ToolType, x1: u32, y1: u32, x2: u32, y2: u32) {
-			self.select_tool(typ);
-			self.move_mouse(x1, y1);
-			self.left_mousedown(x1, y1);
-			self.move_mouse(x2, y2);
-			self.left_mouseup(x2, y2);
-		}
-
-		fn move_mouse(&mut self, x: u32, y: u32) {
-			self.input(InputPreprocessorMessage::MouseMove(ViewportPosition { x, y }));
-		}
-
-		fn mousedown(&mut self, state: MouseState) {
-			self.input(InputPreprocessorMessage::MouseDown(state));
-		}
-
-		fn mouseup(&mut self, state: MouseState) {
-			self.input(InputPreprocessorMessage::MouseUp(state));
-		}
-
-		fn left_mousedown(&mut self, x: u32, y: u32) {
-			self.mousedown(MouseState {
-				position: ViewportPosition { x, y },
-				mouse_keys: MouseKeys::LEFT,
-			})
-		}
-
-		fn left_mouseup(&mut self, x: u32, y: u32) {
-			self.mouseup(MouseState {
-				position: ViewportPosition { x, y },
-				mouse_keys: MouseKeys::empty(),
-			})
-		}
-
-		fn input(&mut self, message: InputPreprocessorMessage) {
-			self.handle_message(Message::InputPreprocessor(message)).unwrap();
-		}
-
-		fn select_tool(&mut self, typ: ToolType) {
-			self.handle_message(Message::Tool(ToolMessage::SelectTool(typ))).unwrap();
-		}
-
-		fn select_primary_color(&mut self, color: Color) {
-			self.handle_message(Message::Tool(ToolMessage::SelectPrimaryColor(color))).unwrap();
-		}
-	}
 
 	/// Create an editor instance with three layers
 	/// 1. A red rectangle
@@ -253,6 +173,86 @@ mod test {
 
 		// The shape was copied
 		assert_eq!(layers_before_copy[1], layers_after_copy[3]);
+	}
+
+	#[test]
+	fn copy_paste_folder() {
+		init_logger();
+		let mut editor = create_editor_with_three_layers();
+
+		const FOLDER_INDEX: usize = 3;
+		const ELLIPSE_INDEX: usize = 2;
+		const SHAPE_INDEX: usize = 1;
+		const RECT_INDEX: usize = 0;
+
+		const LINE_INDEX: usize = 0;
+		const PEN_INDEX: usize = 1;
+
+		editor.handle_message(Message::Document(DocumentMessage::AddFolder(vec![]))).unwrap();
+
+		let document_before_added_shapes = editor.dispatcher.document_message_handler.active_document().document.clone();
+		let folder_id = document_before_added_shapes.root.as_folder().unwrap().layer_ids[FOLDER_INDEX];
+
+		editor
+			.handle_message(Message::Document(DocumentMessage::DispatchOperation(Operation::AddLine {
+				path: vec![folder_id],
+				insert_index: 0,
+				transform: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+				style: Default::default(),
+			})))
+			.unwrap();
+
+		editor
+			.handle_message(Message::Document(DocumentMessage::DispatchOperation(Operation::AddPen {
+				path: vec![folder_id],
+				insert_index: 0,
+				transform: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+				style: Default::default(),
+				points: vec![(10.0, 20.0), (30.0, 40.0)],
+			})))
+			.unwrap();
+
+		editor.handle_message(Message::Document(DocumentMessage::SelectLayers(vec![vec![folder_id]]))).unwrap();
+
+		let document_before_copy = editor.dispatcher.document_message_handler.active_document().document.clone();
+
+		editor.handle_message(Message::Document(DocumentMessage::CopySelectedLayers)).unwrap();
+		editor.handle_message(Message::Document(DocumentMessage::DeleteSelectedLayers)).unwrap();
+		editor.handle_message(Message::Document(DocumentMessage::PasteLayers)).unwrap();
+		editor.handle_message(Message::Document(DocumentMessage::PasteLayers)).unwrap();
+
+		let document_after_copy = editor.dispatcher.document_message_handler.active_document().document.clone();
+
+		let layers_before_copy = document_before_copy.root.as_folder().unwrap().layers();
+		let layers_after_copy = document_after_copy.root.as_folder().unwrap().layers();
+
+		assert_eq!(layers_before_copy.len(), 4);
+		assert_eq!(layers_after_copy.len(), 5);
+
+		let rect_before_copy = &layers_before_copy[RECT_INDEX];
+		let ellipse_before_copy = &layers_before_copy[ELLIPSE_INDEX];
+		let shape_before_copy = &layers_before_copy[SHAPE_INDEX];
+		let folder_before_copy = &layers_before_copy[FOLDER_INDEX];
+		let line_before_copy = folder_before_copy.as_folder().unwrap().layers()[LINE_INDEX].clone();
+		let pen_before_copy = folder_before_copy.as_folder().unwrap().layers()[PEN_INDEX].clone();
+
+		assert_eq!(&layers_after_copy[0], rect_before_copy);
+		assert_eq!(&layers_after_copy[1], shape_before_copy);
+		assert_eq!(&layers_after_copy[2], ellipse_before_copy);
+		assert_eq!(&layers_after_copy[3], folder_before_copy);
+		assert_eq!(&layers_after_copy[4], folder_before_copy);
+
+		// Check the layers inside the two folders
+		let first_folder_layers_after_copy = layers_after_copy[3].as_folder().unwrap().layers();
+		let second_folder_layers_after_copy = layers_after_copy[4].as_folder().unwrap().layers();
+
+		assert_eq!(first_folder_layers_after_copy[0], line_before_copy);
+		assert_eq!(first_folder_layers_after_copy[1], pen_before_copy);
+
+		assert_eq!(second_folder_layers_after_copy[0], line_before_copy);
+		assert_eq!(second_folder_layers_after_copy[1], pen_before_copy);
+
+		debug!("end doc{:#?}", editor.dispatcher.document_message_handler.active_document().document.clone())
 	}
 
 	#[test]
