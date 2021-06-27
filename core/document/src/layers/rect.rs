@@ -4,7 +4,6 @@ use kurbo::Point;
 use kurbo::Shape;
 
 use crate::intersection::intersect_quad_bez_path;
-use crate::intersection::transform_kurbo_point;
 use crate::LayerId;
 
 use super::style;
@@ -38,14 +37,14 @@ impl LayerData for Rect {
 		let _ = write!(svg, r#"<path d="{}" {} />"#, self.to_kurbo_path(transform, style).to_svg(), style.render());
 	}
 
-	fn intersects_quad(&self, quad: [Point; 4], path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>, style: style::PathStyle) {
+	fn intersects_quad(&self, quad: [DVec2; 4], path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>, style: style::PathStyle) {
 		if intersect_quad_bez_path(quad, &self.to_kurbo_path(DAffine2::IDENTITY, style)) {
 			intersections.push(path.clone());
 		}
 	}
 
-	fn intersects_point(&self, point: Point, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>, style: style::PathStyle) {
-		if self.to_kurbo_path(DAffine2::IDENTITY, style).contains(point) {
+	fn intersects_point(&self, point: DVec2, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>, style: style::PathStyle) {
+		if self.to_kurbo_path(DAffine2::IDENTITY, style).contains(kurbo::Point::new(point.x, point.y)) {
 			intersections.push(path.clone());
 		}
 	}

@@ -1,8 +1,17 @@
-use glam::{DAffine2, DMat3, DVec2};
+use glam::{DMat3, DVec2};
 use kurbo::{BezPath, Line, PathSeg, Point, Shape, Vec2};
 
-pub fn intersect_quad_bez_path(quad: [Point; 4], shape: &BezPath) -> bool {
-	let lines = vec![Line::new(quad[0], quad[1]), Line::new(quad[1], quad[2]), Line::new(quad[2], quad[3]), Line::new(quad[3], quad[0])];
+fn to_point(vec: DVec2) -> Point {
+	Point::new(vec.x, vec.y)
+}
+
+pub fn intersect_quad_bez_path(quad: [DVec2; 4], shape: &BezPath) -> bool {
+	let lines = vec![
+		Line::new(to_point(quad[0]), to_point(quad[1])),
+		Line::new(to_point(quad[1]), to_point(quad[2])),
+		Line::new(to_point(quad[2]), to_point(quad[3])),
+		Line::new(to_point(quad[3]), to_point(quad[0])),
+	];
 	// check if outlines intersect
 	for path_segment in shape.segments() {
 		for line in &lines {
@@ -12,7 +21,7 @@ pub fn intersect_quad_bez_path(quad: [Point; 4], shape: &BezPath) -> bool {
 		}
 	}
 	// check if selection is entirely within the shape
-	if shape.contains(quad[0]) {
+	if shape.contains(to_point(quad[0])) {
 		return true;
 	}
 	// check if shape is entirely within the selection
@@ -47,17 +56,11 @@ pub fn get_arbitrary_point_on_path(path: &BezPath) -> Option<Point> {
 	})
 }
 
-pub fn point_line_segment_dist(x: Point, a: Point, b: Point) -> f64 {
+pub fn point_line_segment_dist(x: DVec2, a: DVec2, b: DVec2) -> f64 {
 	if (a - b).dot(x - b) * (b - a).dot(x - a) >= 0.0 {
 		let mat = DMat3::from_cols_array(&[a.x, a.y, 1.0, b.x, b.y, 1.0, x.x, x.y, 1.0]);
-		(mat.determinant() / (b - a).hypot()).abs()
+		(mat.determinant() / (b - a).length()).abs()
 	} else {
-		f64::sqrt(f64::min((a - x).hypot2(), (b - x).hypot2()))
+		f64::sqrt(f64::min((a - x).length_squared(), (b - x).length_squared()))
 	}
-}
-
-pub fn transform_kurbo_point(point: &Point, transform: &DAffine2) -> Point {
-	let original = DVec2::new(point.x, point.y);
-	let transformed = transform.transform_point2(original);
-	Point::new(transformed.x, transformed.y)
 }

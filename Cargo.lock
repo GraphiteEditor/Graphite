@@ -70,7 +70,6 @@ dependencies = [
  "glam",
  "graphite-document-core",
  "graphite-proc-macros",
- "kurbo",
  "log",
  "serde",
  "thiserror",

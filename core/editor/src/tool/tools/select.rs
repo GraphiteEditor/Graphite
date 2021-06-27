@@ -4,7 +4,6 @@ use document_core::layers::style::Fill;
 use document_core::layers::style::Stroke;
 use document_core::Operation;
 use glam::{DAffine2, DVec2};
-use kurbo::Point;
 
 use crate::input::{mouse::ViewportPosition, InputPreprocessor};
 use crate::tool::{DocumentToolData, Fsm, ToolActionHandlerData};
@@ -85,7 +84,7 @@ impl Fsm for SelectToolFsmState {
 					responses.push_back(Operation::ClearWorkingFolder.into());
 					// TODO - introduce comparison threshold when operating with canvas coordinates (https://github.com/GraphiteEditor/Graphite/issues/100)
 					if data.drag_start == data.drag_current {
-						let point = Point::new(data.drag_current.x as f64, data.drag_current.y as f64);
+						let point = DVec2::new(data.drag_current.x as f64, data.drag_current.y as f64);
 						if let Some(intersection) = document.intersects_point_root(point).last() {
 							responses.push_back(DocumentMessage::SelectLayers(vec![intersection.clone()]).into());
 						} else {
@@ -93,10 +92,10 @@ impl Fsm for SelectToolFsmState {
 						}
 					} else {
 						let quad = [
-							Point::new(data.drag_start.x as f64, data.drag_start.y as f64),
-							Point::new(data.drag_current.x as f64, data.drag_start.y as f64),
-							Point::new(data.drag_current.x as f64, data.drag_current.y as f64),
-							Point::new(data.drag_start.x as f64, data.drag_current.y as f64),
+							DVec2::new(data.drag_start.x as f64, data.drag_start.y as f64),
+							DVec2::new(data.drag_current.x as f64, data.drag_start.y as f64),
+							DVec2::new(data.drag_current.x as f64, data.drag_current.y as f64),
+							DVec2::new(data.drag_start.x as f64, data.drag_current.y as f64),
 						];
 						responses.push_back(DocumentMessage::SelectLayers(document.intersects_quad_root(quad)).into());
 					}

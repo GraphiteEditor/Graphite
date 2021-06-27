@@ -1,4 +1,4 @@
-use kurbo::Point;
+use glam::DVec2;
 
 use crate::LayerId;
 
@@ -45,9 +45,9 @@ impl LayerData for PolyLine {
 		let _ = write!(svg, r#""{} />"#, style.render());
 	}
 
-	fn intersects_quad(&self, quad: [Point; 4], path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>, style: style::PathStyle) {}
+	fn intersects_quad(&self, quad: [DVec2; 4], path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>, style: style::PathStyle) {}
 
-	fn intersects_point(&self, point: Point, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>, style: style::PathStyle) {}
+	fn intersects_point(&self, point: DVec2, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>, style: style::PathStyle) {}
 }
 
 #[cfg(test)]

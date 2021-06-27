@@ -1,5 +1,4 @@
-use glam::DAffine2;
-use kurbo::Point;
+use glam::{DAffine2, DVec2};
 
 use crate::{
 	layers::{self, style::PathStyle, Folder, Layer, LayerDataTypes, Line, PolyLine, Rect, Shape},
@@ -66,26 +65,26 @@ impl Document {
 	}
 
 	/// Checks whether each layer under `path` intersects with the provided `quad` and adds all intersection layers as paths to `intersections`.
-	pub fn intersects_quad(&self, quad: [Point; 4], path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>) {
+	pub fn intersects_quad(&self, quad: [DVec2; 4], path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>) {
 		self.document_folder(path).unwrap().intersects_quad(quad, path, intersections);
 		return;
 	}
 
 	/// Checks whether each layer under the root path intersects with the provided `quad` and returns the paths to all intersecting layers.
-	pub fn intersects_quad_root(&self, quad: [Point; 4]) -> Vec<Vec<LayerId>> {
+	pub fn intersects_quad_root(&self, quad: [DVec2; 4]) -> Vec<Vec<LayerId>> {
 		let mut intersections = Vec::new();
 		self.intersects_quad(quad, &mut vec![], &mut intersections);
 		intersections
 	}
 
 	/// Checks whether each layer under `path` intersects with the provided `point` and adds all intersection layers as paths to `intersections`.
-	pub fn intersects_point(&self, point: Point, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>) {
+	pub fn intersects_point(&self, point: DVec2, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>) {
 		self.document_folder(path).unwrap().intersects_point(point, path, intersections);
 		return;
 	}
 
 	/// Checks whether each layer intersects with the given point and returns the paths to intersecting layers.
-	pub fn intersects_point_root(&self, point: Point) -> Vec<Vec<LayerId>> {
+	pub fn intersects_point_root(&self, point: DVec2) -> Vec<Vec<LayerId>> {
 		let mut intersections = Vec::new();
 		self.intersects_point(point, &mut vec![], &mut intersections);
 		intersections

@@ -9,9 +9,6 @@ repository = "https://github.com/GraphiteEditor/Graphite"
 license = "Apache-2.0"
 
 [dependencies]
-# TODO: Swich to kurbo release when derive `PartialEq` is available for BezPath
-#kurbo = "0.8.0"
-kurbo = {git="https://github.com/GraphiteEditor/kurbo.git", branch="bezpath-partial-eq"}
 log = "0.4"
 bitflags = "1.2.1"
 thiserror = "1.0.24"

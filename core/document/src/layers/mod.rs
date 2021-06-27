@@ -4,8 +4,8 @@ pub mod ellipse;
 pub use ellipse::Ellipse;
 
 pub mod line;
+use glam::DVec2;
 use kurbo::BezPath;
-use kurbo::Point;
 pub use line::Line;
 
 pub mod rect;
@@ -20,7 +20,6 @@ pub use shape::Shape;
 pub mod folder;
 pub use folder::Folder;
 
-use crate::intersection::transform_kurbo_point;
 use crate::DocumentError;
 use crate::LayerId;
 
@@ -30,8 +29,8 @@ pub const POINT_SELECTION_TOLERANCE: f64 = 10.0; // TODO: should depend on zoom 
 pub trait LayerData {
 	fn render(&mut self, svg: &mut String, transform: glam::DAffine2, style: style::PathStyle);
 	fn to_kurbo_path(&self, transform: glam::DAffine2, style: style::PathStyle) -> BezPath;
-	fn intersects_quad(&self, quad: [Point; 4], path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>, style: style::PathStyle);
-	fn intersects_point(&self, point: Point, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>, style: style::PathStyle);
+	fn intersects_quad(&self, quad: [DVec2; 4], path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>, style: style::PathStyle);
+	fn intersects_point(&self, point: DVec2, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>, style: style::PathStyle);
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -101,7 +100,7 @@ impl LayerDataTypes {
 		}
 	}
 
-	pub fn intersects_quad(&self, quad: [Point; 4], path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>, style: style::PathStyle) {
+	pub fn intersects_quad(&self, quad: [DVec2; 4], path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>, style: style::PathStyle) {
 		call_intersects_quad! {
 			self.intersects_quad(quad, path, intersections, style) {
 				Folder,
@@ -114,7 +113,7 @@ impl LayerDataTypes {
 		}
 	}
 
-	pub fn intersects_point(&self, point: Point, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>, style: style::PathStyle) {
+	pub fn intersects_point(&self, point: DVec2, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>, style: style::PathStyle) {
 		call_intersects_point! {
 			self.intersects_point(point, path, intersections, style) {
 				Folder,
@@ -164,13 +163,13 @@ impl Layer {
 		self.cache.as_str()
 	}
 
-	pub fn intersects_quad(&self, quad: [Point; 4], path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>) {
+	pub fn intersects_quad(&self, quad: [DVec2; 4], path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>) {
 		let inv_transform = self.transform.inverse();
 		let transformed_quad = [
-			transform_kurbo_point(&quad[0], &inv_transform),
-			transform_kurbo_point(&quad[1], &inv_transform),
-			transform_kurbo_point(&quad[2], &inv_transform),
-			transform_kurbo_point(&quad[3], &inv_transform),
+			inv_transform.transform_point2(quad[0]),
+			inv_transform.transform_point2(quad[1]),
+			inv_transform.transform_point2(quad[2]),
+			inv_transform.transform_point2(quad[3]),
 		];
 		if !self.visible {
 			return;
@@ -178,8 +177,8 @@ impl Layer {
 		self.data.intersects_quad(transformed_quad, path, intersections, self.style)
 	}
 
-	pub fn intersects_point(&self, point: Point, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>) {
-		let transformed_point = transform_kurbo_point(&point, &self.transform.inverse());
+	pub fn intersects_point(&self, point: DVec2, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>) {
+		let transformed_point = self.transform.inverse().transform_point2(point);
 		if !self.visible {
 			return;
 		}

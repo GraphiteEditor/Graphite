@@ -1,4 +1,4 @@
-use kurbo::Point;
+use glam::DVec2;
 
 use crate::{DocumentError, LayerId};
 
@@ -31,7 +31,7 @@ impl LayerData for Folder {
 		let _ = writeln!(svg, "</g>");
 	}
 
-	fn intersects_quad(&self, quad: [Point; 4], path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>, _style: style::PathStyle) {
+	fn intersects_quad(&self, quad: [DVec2; 4], path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>, _style: style::PathStyle) {
 		for (layer, layer_id) in self.layers().iter().zip(&self.layer_ids) {
 			path.push(*layer_id);
 			layer.intersects_quad(quad, path, intersections);
@@ -39,7 +39,7 @@ impl LayerData for Folder {
 		}
 	}
 
-	fn intersects_point(&self, point: Point, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>, _style: style::PathStyle) {
+	fn intersects_point(&self, point: DVec2, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>, _style: style::PathStyle) {
 		log::debug!("Folder");
 		for (layer, layer_id) in self.layers().iter().zip(&self.layer_ids) {
 			log::debug!("Layer: {}", layer_id);
