@@ -52,7 +52,7 @@
 			</div>
 			<div class="spacer"></div>
 			<div class="right side">
-				<RadioInput :initialIndex="0" @changed="viewModeChanged">
+				<RadioInput v-model:index="viewModeIndex">
 					<IconButton :icon="'ViewModeNormal'" :size="24" title="View Mode: Normal" />
 					<IconButton :icon="'ViewModeOutline'" :size="24" title="View Mode: Outline" />
 					<IconButton :icon="'ViewModePixels'" :size="24" title="View Mode: Pixels" />
@@ -182,10 +182,26 @@ const modeMenuEntries: SectionsOfMenuListEntries = [
 	[
 		{ label: "Design Mode", icon: "ViewportDesignMode" },
 		{ label: "Select Mode", icon: "ViewportSelectMode" },
+		{ label: "Guide Mode", icon: "ViewportGuideMode" },
 	],
 ];
 
 const wasm = import("../../../wasm/pkg");
+
+function redirectKeyboardEventToBackend(e: KeyboardEvent): boolean {
+	// Don't redirect user input from text entry into HTML elements
+	const target = e.target as HTMLElement;
+	if (target.nodeName === "INPUT" || target.nodeName === "TEXTAREA" || target.isContentEditable) return false;
+
+	// Don't redirect a fullscreen request
+	if (e.key.toLowerCase() === "f11") return false;
+
+	// Don't redirect debugging tools
+	if (e.key.toLowerCase() === "f12") return false;
+	if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === "c") return false;
+
+	return true;
+}
 
 export default defineComponent({
 	methods: {
@@ -202,20 +218,25 @@ export default defineComponent({
 			on_mouse_move(e.offsetX, e.offsetY);
 		},
 		async keyDown(e: KeyboardEvent) {
-			e.preventDefault();
-			const { on_key_down } = await wasm;
-			on_key_down(e.key);
+			if (redirectKeyboardEventToBackend(e)) {
+				e.preventDefault();
+				const { on_key_down } = await wasm;
+				on_key_down(e.key);
+			}
 		},
 		async keyUp(e: KeyboardEvent) {
-			e.preventDefault();
-			const { on_key_up } = await wasm;
-			on_key_up(e.key);
+			if (redirectKeyboardEventToBackend(e)) {
+				e.preventDefault();
+				const { on_key_up } = await wasm;
+				on_key_up(e.key);
+			}
 		},
 		async selectTool(toolName: string) {
 			const { select_tool } = await wasm;
 			select_tool(toolName);
 		},
 		async viewModeChanged(toolIndex: number) {
+			console.log(toolIndex);
 			function todo(_: number) {
 				return _;
 			}
@@ -249,6 +270,8 @@ export default defineComponent({
 
 		window.addEventListener("keyup", (e: KeyboardEvent) => this.keyUp(e));
 		window.addEventListener("keydown", (e: KeyboardEvent) => this.keyDown(e));
+
+		this.$watch("viewModeIndex", this.viewModeChanged);
 	},
 	data() {
 		return {
@@ -258,6 +281,7 @@ export default defineComponent({
 			SeparatorDirection,
 			SeparatorType,
 			modeMenuEntries,
+			viewModeIndex: 0,
 		};
 	},
 	components: {

@@ -17,6 +17,10 @@
 		background: var(--color-accent);
 	}
 
+	.icon-button {
+		background: unset;
+	}
+
 	svg {
 		width: 24px;
 		height: 24px;
