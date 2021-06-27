@@ -292,9 +292,12 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			MouseMove => {
 				if self.translating {
 					let delta = DVec2::new(ipp.mouse.position.x as f64 - self.mouse_pos.x as f64, ipp.mouse.position.y as f64 - self.mouse_pos.y as f64);
+					let transformed_delta = self.active_document().document.root.transform.inverse().transform_vector2(delta);
+					log::info!("D {:?} T {:?} TD {:?}", delta, self.active_document().document.root.transform, transformed_delta);
+					
 					let operation = DocumentOperation::TransformLayer {
 						path: vec![],
-						transform: DAffine2::from_translation(delta).to_cols_array(),
+						transform: DAffine2::from_translation(transformed_delta).to_cols_array(),
 					};
 					responses.push_back(operation.into());
 					self.mouse_pos = ipp.mouse.position;
