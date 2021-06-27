@@ -4,6 +4,7 @@ use crate::message_prelude::*;
 
 #[doc(inline)]
 pub use document_core::DocumentResponse;
+use glam::DVec2;
 
 #[impl_message(Message, InputPreprocessor)]
 #[derive(PartialEq, Clone, Debug)]
@@ -50,6 +51,14 @@ impl MessageHandler<InputPreprocessorMessage, ()> for InputPreprocessor {
 				responses.push_back(InputMapperMessage::KeyUp(key).into());
 			}
 			InputPreprocessorMessage::ViewportResize(size) => {
+				responses.push_back(
+					document_core::Operation::TransformLayer{
+						path:vec![],
+						transform: glam::DAffine2::from_translation(
+							DVec2::new((size.x as f64 - self.viewport_size.x as f64) / 2., (size.y as f64-self.viewport_size.y as f64) / 2.)
+						).to_cols_array()
+					}.into()
+				);
 				self.viewport_size = size;
 			}
 		};
