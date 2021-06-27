@@ -67,6 +67,7 @@ name = "graphite-editor-core"
 version = "0.1.0"
 dependencies = [
  "bitflags",
+ "glam",
  "graphite-document-core",
  "graphite-proc-macros",
  "kurbo",
@@ -119,8 +120,7 @@ dependencies = [
 [[package]]
 name = "kurbo"
 version = "0.8.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e30b1df631d23875f230ed3ddd1a88c231f269a04b2044eb6ca87e763b5f4c42"
+source = "git+https://github.com/GraphiteEditor/kurbo.git?branch=bezpath-partial-eq#3f86bda9ba77d3b1279612bc5779e425f2d8714d"
 dependencies = [
  "arrayvec",
 ]

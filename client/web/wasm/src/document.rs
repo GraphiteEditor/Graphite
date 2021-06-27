@@ -21,6 +21,21 @@ pub fn select_tool(tool: String) -> Result<(), JsValue> {
 	})
 }
 
+#[wasm_bindgen]
+pub fn select_document(document: usize) -> Result<(), JsValue> {
+	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(DocumentMessage::SelectDocument(document)).map_err(convert_error))
+}
+
+#[wasm_bindgen]
+pub fn close_document(document: usize) -> Result<(), JsValue> {
+	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(DocumentMessage::CloseDocument(document)).map_err(convert_error))
+}
+
+#[wasm_bindgen]
+pub fn new_document() -> Result<(), JsValue> {
+	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(DocumentMessage::NewDocument).map_err(convert_error))
+}
+
 // TODO: When a mouse button is down that started in the viewport, this should trigger even when the mouse is outside the viewport (or even the browser window if the browser supports it)
 /// Mouse movement within the screenspace bounds of the viewport
 #[wasm_bindgen]

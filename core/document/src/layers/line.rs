@@ -1,44 +1,48 @@
+use glam::DVec2;
 use kurbo::Point;
 
-use crate::LayerId;
 use crate::intersection::point_line_segment_dist;
+use crate::LayerId;
 
 use super::POINT_SELECTION_TOLERANCE;
+
 use super::style;
 use super::LayerData;
 
 use std::fmt::Write;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct Line {
-	shape: kurbo::Line,
-	style: style::PathStyle,
-}
+pub struct Line {}
 
 impl Line {
-	pub fn new(p0: impl Into<Point>, p1: impl Into<Point>, style: style::PathStyle) -> Line {
-		Line {
-			shape: kurbo::Line::new(p0, p1),
-			style,
-		}
+	pub fn new() -> Line {
+		Line {}
 	}
 }
 
 impl LayerData for Line {
-	fn render(&mut self, svg: &mut String) {
-		let kurbo::Point { x: x1, y: y1 } = self.shape.p0;
-		let kurbo::Point { x: x2, y: y2 } = self.shape.p1;
-
-		let _ = write!(svg, r#"<line x1="{}" y1="{}" x2="{}" y2="{}"{} />"#, x1, y1, x2, y2, self.style.render(),);
-	}
-
-	fn intersects_quad(&self, quad: [Point; 4], path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>) {
-
-	}
-
-	fn intersects_point(&self, point: Point, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>) {
-		if point_line_segment_dist(point, self.shape.p0, self.shape.p1) < POINT_SELECTION_TOLERANCE {
-			intersections.push(path.clone());
+	fn to_kurbo_path(&self, transform: glam::DAffine2, _style: style::PathStyle) -> kurbo::BezPath {
+		fn new_point(a: DVec2) -> Point {
+			Point::new(a.x, a.y)
 		}
+		let mut path = kurbo::BezPath::new();
+		path.move_to(new_point(transform.translation));
+		path.line_to(new_point(transform.transform_point2(DVec2::ONE)));
+		path
+	}
+
+	fn render(&mut self, svg: &mut String, transform: glam::DAffine2, style: style::PathStyle) {
+		let [x1, y1] = transform.translation.to_array();
+		let [x2, y2] = transform.transform_point2(DVec2::ONE).to_array();
+
+		let _ = write!(svg, r#"<line x1="{}" y1="{}" x2="{}" y2="{}"{} />"#, x1, y1, x2, y2, style.render(),);
+	}
+
+	fn intersects_quad(&self, quad: [Point; 4], path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>, style: style::PathStyle) {}
+
+	fn intersects_point(&self, point: Point, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>, style: style::PathStyle) {
+		// if point_line_segment_dist(point, self.shape.p0, self.shape.p1) < POINT_SELECTION_TOLERANCE {
+		// 	intersections.push(path.clone());
+		// }
 	}
 }

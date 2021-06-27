@@ -6,7 +6,7 @@
 				v-for="(entry, entryIndex) in section"
 				:key="entryIndex"
 				class="row"
-				:class="{ open: isMenuEntryOpen(entry), active: entry === activeEntry }"
+				:class="{ open: isMenuEntryOpen(entry), active: entry === currentEntry }"
 				@click="handleEntryClick(entry)"
 				@mouseenter="handleEntryMouseEnter(entry)"
 				@mouseleave="handleEntryMouseLeave(entry)"
@@ -22,9 +22,8 @@
 					v-if="entry.children"
 					:direction="MenuDirection.TopRight"
 					:menuEntries="entry.children"
-					:activeEntry="activeEntry"
+					v-model:active-entry="currentEntry"
 					:minWidth="minWidth"
-					:defaultAction="defaultAction"
 					:drawIcon="drawIcon"
 					:ref="(ref) => setEntryRefs(entry, ref)"
 				/>
@@ -146,8 +145,6 @@ const MenuList = defineComponent({
 		menuEntries: { type: Array as PropType<SectionsOfMenuListEntries>, required: true },
 		activeEntry: { type: Object as PropType<MenuListEntry>, required: false },
 		minWidth: { type: Number, default: 0 },
-		defaultAction: { type: Function, required: false },
-		widthChanged: { type: Function, required: false },
 		drawIcon: { type: Boolean, default: false },
 	},
 	methods: {
@@ -157,8 +154,11 @@ const MenuList = defineComponent({
 		handleEntryClick(menuEntry: MenuListEntry) {
 			(this.$refs.floatingMenu as typeof FloatingMenu).setClosed();
 
-			if (menuEntry.action) menuEntry.action();
-			else if (this.defaultAction) this.defaultAction(menuEntry);
+			if (menuEntry.action) {
+				menuEntry.action();
+			} else {
+				this.$emit("update:activeEntry", menuEntry);
+			}
 		},
 		handleEntryMouseEnter(menuEntry: MenuListEntry) {
 			if (!menuEntry.children || !menuEntry.children.length) return;
@@ -193,9 +193,6 @@ const MenuList = defineComponent({
 			return Boolean(floatingMenu && floatingMenu.isOpen());
 		},
 		measureAndReportWidth() {
-			const { widthChanged } = this;
-			if (!widthChanged) return;
-
 			// API is experimental but supported in all browsers - https://developer.mozilla.org/en-US/docs/Web/API/FontFaceSet
 			// eslint-disable-next-line @typescript-eslint/no-explicit-any
 			(document as any).fonts.ready.then(() => {
@@ -212,7 +209,7 @@ const MenuList = defineComponent({
 						// Restore open/closed state if it was forced open for measurement
 						if (!initiallyOpen) floatingMenu.setClosed();
 
-						widthChanged(width);
+						this.$emit("width-changed", width);
 					});
 				});
 			});
@@ -246,6 +243,7 @@ const MenuList = defineComponent({
 	},
 	data() {
 		return {
+			currentEntry: this.activeEntry,
 			SeparatorDirection,
 			SeparatorType,
 			MenuDirection,

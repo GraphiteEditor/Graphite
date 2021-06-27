@@ -1,4 +1,4 @@
-use glam::DMat3;
+use glam::{DAffine2, DMat3, DVec2};
 use kurbo::{BezPath, Line, PathSeg, Point, Shape, Vec2};
 
 pub fn intersect_quad_bez_path(quad: [Point; 4], shape: &BezPath) -> bool {
@@ -54,4 +54,10 @@ pub fn point_line_segment_dist(x: Point, a: Point, b: Point) -> f64 {
 	} else {
 		f64::sqrt(f64::min((a - x).hypot2(), (b - x).hypot2()))
 	}
+}
+
+pub fn transform_kurbo_point(point: &Point, transform: &DAffine2) -> Point {
+	let original = DVec2::new(point.x, point.y);
+	let transformed = transform.transform_point2(original);
+	Point::new(transformed.x, transformed.y)
 }

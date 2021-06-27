@@ -2,9 +2,9 @@
 	<div class="panel">
 		<div class="tab-bar" :class="{ 'min-widths': tabMinWidths }">
 			<div class="tab-group">
-				<div class="tab" :class="{ active: tabIndex === tabActiveIndex }" v-for="(tabLabel, tabIndex) in tabLabels" :key="tabLabel">
+				<div class="tab" :class="{ active: tabIndex === tabActiveIndex }" v-for="(tabLabel, tabIndex) in tabLabels" :key="tabLabel" @click="handleTabClick(tabIndex)">
 					<span>{{ tabLabel }}</span>
-					<IconButton :icon="'CloseX'" :size="16" v-if="tabCloseButtons" />
+					<IconButton :icon="'CloseX'" :size="16" v-if="tabCloseButtons" @click.stop="closeTab(tabIndex)" />
 				</div>
 			</div>
 			<PopoverButton :icon="PopoverButtonIcon.VerticalEllipsis">
@@ -129,6 +129,7 @@
 		flex: 1 1 100%;
 		display: flex;
 		flex-direction: column;
+		min-height: 0;
 	}
 }
 </style>
@@ -142,6 +143,9 @@ import Minimap from "../panels/Minimap.vue";
 import IconButton from "../widgets/buttons/IconButton.vue";
 import PopoverButton, { PopoverButtonIcon } from "../widgets/buttons/PopoverButton.vue";
 import { MenuDirection } from "../widgets/floating-menus/FloatingMenu.vue";
+import { ResponseType, registerResponseHandler, Response } from "../../response-handler";
+
+const wasm = import("../../../wasm/pkg");
 
 export default defineComponent({
 	components: {
@@ -151,6 +155,27 @@ export default defineComponent({
 		Minimap,
 		IconButton,
 		PopoverButton,
+	},
+	methods: {
+		async handleTabClick(tabIndex: number) {
+			if (this.panelType !== "Document") return;
+
+			const { select_document } = await wasm;
+			select_document(tabIndex);
+		},
+		async closeTab(tabIndex: number) {
+			if (this.panelType !== "Document") return;
+
+			const { close_document } = await wasm;
+			// eslint-disable-next-line no-alert
+			const result = window.confirm("Closing this document will permanently discard all work. Continue?");
+			if (result) close_document(tabIndex);
+		},
+	},
+	mounted() {
+		registerResponseHandler(ResponseType.PromptCloseConfirmationModal, (_responseData: Response) => {
+			this.closeTab(this.tabActiveIndex);
+		});
 	},
 	props: {
 		tabMinWidths: { type: Boolean, default: false },

@@ -3,6 +3,7 @@ use document_core::layers::style;
 use document_core::layers::style::Fill;
 use document_core::layers::style::Stroke;
 use document_core::Operation;
+use glam::{DAffine2, DVec2};
 use kurbo::Point;
 
 use crate::input::{mouse::ViewportPosition, InputPreprocessor};
@@ -59,6 +60,7 @@ impl Fsm for SelectToolFsmState {
 	type ToolData = SelectToolData;
 
 	fn transition(self, event: ToolMessage, document: &SvgDocument, tool_data: &DocumentToolData, data: &mut Self::ToolData, input: &InputPreprocessor, responses: &mut VecDeque<Message>) -> Self {
+		let transform = document.root.transform;
 		use SelectMessage::*;
 		use SelectToolFsmState::*;
 		if let ToolMessage::Select(event) = event {
@@ -73,7 +75,7 @@ impl Fsm for SelectToolFsmState {
 					data.drag_current = input.mouse.position;
 
 					responses.push_back(Operation::ClearWorkingFolder.into());
-					responses.push_back(make_operation(data, tool_data));
+					responses.push_back(make_operation(data, tool_data, transform));
 
 					Dragging
 				}
@@ -115,14 +117,16 @@ impl Fsm for SelectToolFsmState {
 	}
 }
 
-fn make_operation(data: &SelectToolData, _tool_data: &DocumentToolData) -> Message {
+fn make_operation(data: &SelectToolData, _tool_data: &DocumentToolData, transform: DAffine2) -> Message {
+	let x0 = data.drag_start.x as f64;
+	let y0 = data.drag_start.y as f64;
+	let x1 = data.drag_current.x as f64;
+	let y1 = data.drag_current.y as f64;
+
 	Operation::AddRect {
 		path: vec![],
 		insert_index: -1,
-		x0: data.drag_start.x as f64,
-		y0: data.drag_start.y as f64,
-		x1: data.drag_current.x as f64,
-		y1: data.drag_current.y as f64,
+		transform: (transform.inverse() * glam::DAffine2::from_scale_angle_translation(DVec2::new(x1 - x0, y1 - y0), 0., DVec2::new(x0, y0))).to_cols_array(),
 		style: style::PathStyle::new(Some(Stroke::new(Color::from_rgb8(0x31, 0x94, 0xD6), 2.0)), Some(Fill::none())),
 	}
 	.into()

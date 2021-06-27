@@ -10,6 +10,10 @@ We need Rust and web developers! Feel free to peruse the [documentation](docs/in
 
 If the Graphite project strikes your fancy, join our Discord community to chat with its developers and contributors. You're invited to stop by just to lurk, ask questions, offer suggestions, or get involved in the project. We are seeking collaborators to help design and develop the software and this is where we communicate. Paste `https://di-sco-rd.gg/uM-jBz-5N68W` into your browser and delete the dashes. (Please don't share the link on any website without the dashes.)
 
+## Contributing
+
+[Instructions here.](https://github.com/GraphiteEditor/Graphite/issues/202)
+
 ## Design mockup
 
 This is a **work-in-progress mockup** of the Document, Properties, and Layer Tree panels in a state of editing a raster-based workflow (raster editing will be part of version 0.3 and later). The mockup is a nonfunctional pixel-perfect design prototype and is not yet fully implemented in code.
@@ -54,7 +58,7 @@ A good starting point for learning about the code structure and architecture is 
 
 ### Web client
 
-This is the primary means of running and developing the project. You may need to download and install a recent version of [Rust](https://www.rust-lang.org/) and [Node.js](https://nodejs.org/).
+This is the primary means of running and developing the project. You may need to download and install a recent version of [Node.js](https://nodejs.org/) and [Rust](https://www.rust-lang.org/) (on Windows, this requires the MSVC toolchain properly configured with the Visual Studio Build Tools installed on your machine including the "Desktop development with C++" workload).
 
 ```
 npm run serve

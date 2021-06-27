@@ -14,7 +14,17 @@ impl Default for Document {
 	fn default() -> Self {
 		Self {
 			document: InteralDocument::default(),
-			name: String::from("Unnamed Document"),
+			name: String::from("Untitled Document"),
+			layer_data: vec![(vec![], LayerData { selected: false, expanded: true })].into_iter().collect(),
+		}
+	}
+}
+
+impl Document {
+	pub fn with_name(name: String) -> Self {
+		Self {
+			document: InteralDocument::default(),
+			name,
 			layer_data: vec![(vec![], LayerData { selected: false, expanded: true })].into_iter().collect(),
 		}
 	}
@@ -50,9 +60,10 @@ impl Document {
 		let folder = self.document.document_folder(path)?;
 		let self_layer_data = &mut self.layer_data;
 		let entries = folder
+			.as_folder()?
 			.layers()
 			.iter()
-			.zip(folder.layer_ids.iter())
+			.zip(folder.as_folder()?.layer_ids.iter())
 			.rev()
 			.map(|(layer, id)| {
 				let path = [path, &[*id]].concat();

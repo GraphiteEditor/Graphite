@@ -2,7 +2,7 @@ use kurbo::Point;
 
 use crate::{DocumentError, LayerId};
 
-use super::{Layer, LayerData, LayerDataTypes};
+use super::{style, Layer, LayerData, LayerDataTypes};
 
 use std::fmt::Write;
 
@@ -14,24 +14,37 @@ pub struct Folder {
 }
 
 impl LayerData for Folder {
-	fn render(&mut self, svg: &mut String) {
+	fn to_kurbo_path(&self, _: glam::DAffine2, _: style::PathStyle) -> kurbo::BezPath {
+		unimplemented!()
+	}
+
+	fn render(&mut self, svg: &mut String, transform: glam::DAffine2, _style: style::PathStyle) {
+		let _ = writeln!(svg, r#"<g transform="matrix("#);
+		transform.to_cols_array().iter().enumerate().for_each(|(i, f)| {
+			let _ = svg.write_str(&(f.to_string() + if i != 5 { "," } else { "" }));
+		});
+		let _ = svg.write_str(r#")">"#);
+
 		for layer in &mut self.layers {
 			let _ = writeln!(svg, "{}", layer.render());
 		}
+		let _ = writeln!(svg, "</g>");
 	}
 
-	fn intersects_quad(&self, quad: [Point; 4], path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>) {
+	fn intersects_quad(&self, quad: [Point; 4], path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>, _style: style::PathStyle) {
 		for (layer, layer_id) in self.layers().iter().zip(&self.layer_ids) {
 			path.push(*layer_id);
-			layer.data.intersects_quad(quad, path, intersections);
+			layer.intersects_quad(quad, path, intersections);
 			path.pop();
 		}
 	}
 
-	fn intersects_point(&self, point: Point, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>) {
+	fn intersects_point(&self, point: Point, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>, _style: style::PathStyle) {
+		log::debug!("Folder");
 		for (layer, layer_id) in self.layers().iter().zip(&self.layer_ids) {
+			log::debug!("Layer: {}", layer_id);
 			path.push(*layer_id);
-			layer.data.intersects_point(point, path, intersections);
+			layer.intersects_point(point, path, intersections);
 			path.pop();
 		}
 	}

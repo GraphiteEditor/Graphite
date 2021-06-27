@@ -16,6 +16,11 @@ export enum ResponseType {
 	ExpandFolder = "ExpandFolder",
 	CollapseFolder = "CollapseFolder",
 	SetActiveTool = "SetActiveTool",
+	SetActiveDocument = "SetActiveDocument",
+	NewDocument = "NewDocument",
+	CloseDocument = "CloseDocument",
+	UpdateWorkingColors = "UpdateWorkingColors",
+	PromptCloseConfirmationModal = "PromptCloseConfirmationModal",
 }
 
 export function attachResponseHandlerToPage() {
@@ -51,16 +56,54 @@ function parseResponse(responseType: string, data: any): Response {
 			return newExpandFolder(data.ExpandFolder);
 		case "SetActiveTool":
 			return newSetActiveTool(data.SetActiveTool);
+		case "SetActiveDocument":
+			return newSetActiveDocument(data.SetActiveDocument);
+		case "NewDocument":
+			return newNewDocument(data.NewDocument);
+		case "CloseDocument":
+			return newCloseDocument(data.CloseDocument);
 		case "UpdateCanvas":
 			return newUpdateCanvas(data.UpdateCanvas);
 		case "ExportDocument":
 			return newExportDocument(data.ExportDocument);
+		case "UpdateWorkingColors":
+			return newUpdateWorkingColors(data.UpdateWorkingColors);
+		case "PromptCloseConfirmationModal":
+			return {};
 		default:
 			throw new Error(`Unrecognized origin/responseType pair: ${origin}, ${responseType}`);
 	}
 }
 
-export type Response = SetActiveTool | UpdateCanvas | DocumentChanged | CollapseFolder | ExpandFolder;
+export type Response = SetActiveTool | UpdateCanvas | DocumentChanged | CollapseFolder | ExpandFolder | UpdateWorkingColors;
+
+export interface CloseDocument {
+	document_index: number;
+}
+function newCloseDocument(input: any): CloseDocument {
+	return { document_index: input.document_index };
+}
+
+export interface Color {
+	red: number;
+	green: number;
+	blue: number;
+	alpha: number;
+}
+function newColor(input: any): Color {
+	return { red: input.red * 255, green: input.green * 255, blue: input.blue * 255, alpha: input.alpha };
+}
+
+export interface UpdateWorkingColors {
+	primary: Color;
+	secondary: Color;
+}
+function newUpdateWorkingColors(input: any): UpdateWorkingColors {
+	return {
+		primary: newColor(input.primary),
+		secondary: newColor(input.secondary),
+	};
+}
 
 export interface SetActiveTool {
 	tool_name: string;
@@ -68,6 +111,24 @@ export interface SetActiveTool {
 function newSetActiveTool(input: any): SetActiveTool {
 	return {
 		tool_name: input.tool_name,
+	};
+}
+
+export interface SetActiveDocument {
+	document_index: number;
+}
+function newSetActiveDocument(input: any): SetActiveDocument {
+	return {
+		document_index: input.document_index,
+	};
+}
+
+export interface NewDocument {
+	document_name: string;
+}
+function newNewDocument(input: any): NewDocument {
+	return {
+		document_name: input.document_name,
 	};
 }
 

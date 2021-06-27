@@ -1,5 +1,20 @@
 <template>
 	<MainWindow />
+	<div class="unsupported-modal-backdrop" v-if="showUnsupportedModal">
+		<div class="unsupported-modal">
+			<h2>Your browser currently doesn't support Graphite</h2>
+			<p>
+				Unfortunately, some features won't work properly in your browser. Please use a modern browser other than Safari, such as Firefox, Chrome, or Edge. Rest assured, Safari compatibility is
+				planned.
+			</p>
+			<p>
+				Your browser is missing support for the
+				<a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/BigInt64Array#browser_compatibility" target="_blank"><code>BigInt64Array</code></a> JavaScript
+				API which is required for using the editor. You can still explore the user interface.
+			</p>
+			<LayoutRow> <button class="unsupported-modal-button" @click="closeModal()">I understand, let's just see the interface</button> </LayoutRow>
+		</div>
+	</div>
 </template>
 
 <style lang="scss">
@@ -70,24 +85,65 @@ img {
 		margin-top: 8px;
 	}
 }
+
+.unsupported-modal-backdrop {
+	background: rgba(255, 255, 255, 0.6);
+	position: absolute;
+	top: 0;
+	left: 0;
+	bottom: 0;
+	right: 0;
+	align-items: center;
+	justify-content: center;
+	display: flex;
+}
+.unsupported-modal {
+	background: var(--color-3-darkgray);
+	border-radius: 4px;
+	box-shadow: 2px 2px 5px 0 var(--floating-menu-shadow);
+	padding: 0 16px 16px 16px;
+	border: 1px solid var(--color-4-dimgray);
+	max-width: 500px;
+
+	& a {
+		color: var(--color-accent-hover);
+	}
+}
+.unsupported-modal-button {
+	flex: 1;
+	background: var(--color-1-nearblack);
+	border: 0 none;
+	padding: 12px;
+	border-radius: 2px;
+
+	&:hover {
+		background-color: var(--color-6-lowergray);
+		color: var(--color-f-white);
+	}
+
+	&:active {
+		background-color: var(--color-accent-hover);
+		color: var(--color-f-white);
+	}
+}
 </style>
 
 <script lang="ts">
 import { defineComponent } from "vue";
 import MainWindow from "./components/window/MainWindow.vue";
-
-const wasm = import("../wasm/pkg");
+import LayoutRow from "./components/layout/LayoutRow.vue";
 
 export default defineComponent({
-	components: { MainWindow },
-	created() {
-		this.greet();
+	data() {
+		return {
+			showUnsupportedModal: !("BigInt64Array" in window),
+		};
 	},
 	methods: {
-		async greet() {
-			const { greet } = await wasm;
-			greet("Graphite");
+		closeModal() {
+			this.showUnsupportedModal = false;
 		},
 	},
+	components: { MainWindow, LayoutRow },
 });
 </script>

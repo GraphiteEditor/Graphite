@@ -52,7 +52,7 @@
 			</div>
 			<div class="spacer"></div>
 			<div class="right side">
-				<RadioInput :initialIndex="0" @changed="viewModeChanged">
+				<RadioInput v-model:index="viewModeIndex">
 					<IconButton :icon="'ViewModeNormal'" :size="24" title="View Mode: Normal" />
 					<IconButton :icon="'ViewModeOutline'" :size="24" title="View Mode: Outline" />
 					<IconButton :icon="'ViewModePixels'" :size="24" title="View Mode: Pixels" />
@@ -78,29 +78,29 @@
 				<div class="tools">
 					<ShelfItem :icon="'SelectTool'" title="Select Tool (V)" :active="activeTool === 'Select'" @click="selectTool('Select')" />
 					<ShelfItem :icon="'CropTool'" title="Crop Tool" :active="activeTool === 'Crop'" @click="'tool not implemented' || selectTool('Crop')" />
-					<ShelfItem :icon="'NavigateTool'" title="Navigate Tool" :active="activeTool === 'Navigate'" @click="'tool not implemented' || selectTool('Navigate')" />
-					<ShelfItem :icon="'EyedropperTool'" title="Eyedropper Tool" :active="activeTool === 'Eyedropper'" @click="'tool not implemented' || selectTool('Eyedropper')" />
+					<ShelfItem :icon="'NavigateTool'" title="Navigate Tool (Z)" :active="activeTool === 'Navigate'" @click="'tool not implemented' || selectTool('Navigate')" />
+					<ShelfItem :icon="'EyedropperTool'" title="Eyedropper Tool (I)" :active="activeTool === 'Eyedropper'" @click="'tool not implemented' || selectTool('Eyedropper')" />
 
 					<Separator :type="SeparatorType.Section" :direction="SeparatorDirection.Vertical" />
 
-					<ShelfItem :icon="'TextTool'" title="Text Tool" :active="activeTool === 'Text'" @click="'tool not implemented' || selectTool('Text')" />
-					<ShelfItem :icon="'FillTool'" title="Fill Tool" :active="activeTool === 'Fill'" @click="'tool not implemented' || selectTool('Fill')" />
-					<ShelfItem :icon="'GradientTool'" title="Gradient Tool" :active="activeTool === 'Gradient'" @click="'tool not implemented' || selectTool('Gradient')" />
+					<ShelfItem :icon="'TextTool'" title="Text Tool (T)" :active="activeTool === 'Text'" @click="'tool not implemented' || selectTool('Text')" />
+					<ShelfItem :icon="'FillTool'" title="Fill Tool (F)" :active="activeTool === 'Fill'" @click="'tool not implemented' || selectTool('Fill')" />
+					<ShelfItem :icon="'GradientTool'" title="Gradient Tool (H)" :active="activeTool === 'Gradient'" @click="'tool not implemented' || selectTool('Gradient')" />
 
 					<Separator :type="SeparatorType.Section" :direction="SeparatorDirection.Vertical" />
 
-					<ShelfItem :icon="'BrushTool'" title="Brush Tool" :active="activeTool === 'Brush'" @click="'tool not implemented' || selectTool('Brush')" />
-					<ShelfItem :icon="'HealTool'" title="Heal Tool" :active="activeTool === 'Heal'" @click="'tool not implemented' || selectTool('Heal')" />
-					<ShelfItem :icon="'CloneTool'" title="Clone Tool" :active="activeTool === 'Clone'" @click="'tool not implemented' || selectTool('Clone')" />
+					<ShelfItem :icon="'BrushTool'" title="Brush Tool (B)" :active="activeTool === 'Brush'" @click="'tool not implemented' || selectTool('Brush')" />
+					<ShelfItem :icon="'HealTool'" title="Heal Tool (J)" :active="activeTool === 'Heal'" @click="'tool not implemented' || selectTool('Heal')" />
+					<ShelfItem :icon="'CloneTool'" title="Clone Tool (C)" :active="activeTool === 'Clone'" @click="'tool not implemented' || selectTool('Clone')" />
 					<ShelfItem :icon="'PatchTool'" title="Patch Tool" :active="activeTool === 'Patch'" @click="'tool not implemented' || selectTool('Patch')" />
-					<ShelfItem :icon="'BlurSharpenTool'" title="Detail Tool" :active="activeTool === 'BlurSharpen'" @click="'tool not implemented' || selectTool('BlurSharpen')" />
-					<ShelfItem :icon="'RelightTool'" title="Relight Tool" :active="activeTool === 'Relight'" @click="'tool not implemented' || selectTool('Relight')" />
+					<ShelfItem :icon="'BlurSharpenTool'" title="Detail Tool (D)" :active="activeTool === 'BlurSharpen'" @click="'tool not implemented' || selectTool('BlurSharpen')" />
+					<ShelfItem :icon="'RelightTool'" title="Relight Tool (O)" :active="activeTool === 'Relight'" @click="'tool not implemented' || selectTool('Relight')" />
 
 					<Separator :type="SeparatorType.Section" :direction="SeparatorDirection.Vertical" />
 
-					<ShelfItem :icon="'PathTool'" title="Path Tool" :active="activeTool === 'Path'" @click="'tool not implemented' || selectTool('Path')" />
+					<ShelfItem :icon="'PathTool'" title="Path Tool (A)" :active="activeTool === 'Path'" @click="'tool not implemented' || selectTool('Path')" />
 					<ShelfItem :icon="'PenTool'" title="Pen Tool (P)" :active="activeTool === 'Pen'" @click="selectTool('Pen')" />
-					<ShelfItem :icon="'FreehandTool'" title="Freehand Tool" :active="activeTool === 'Freehand'" @click="'tool not implemented' || selectTool('Freehand')" />
+					<ShelfItem :icon="'FreehandTool'" title="Freehand Tool (N)" :active="activeTool === 'Freehand'" @click="'tool not implemented' || selectTool('Freehand')" />
 					<ShelfItem :icon="'SplineTool'" title="Spline Tool" :active="activeTool === 'Spline'" @click="'tool not implemented' || selectTool('Spline')" />
 					<ShelfItem :icon="'LineTool'" title="Line Tool (L)" :active="activeTool === 'Line'" @click="selectTool('Line')" />
 					<ShelfItem :icon="'RectangleTool'" title="Rectangle Tool (M)" :active="activeTool === 'Rectangle'" @click="selectTool('Rectangle')" />
@@ -182,10 +182,26 @@ const modeMenuEntries: SectionsOfMenuListEntries = [
 	[
 		{ label: "Design Mode", icon: "ViewportDesignMode" },
 		{ label: "Select Mode", icon: "ViewportSelectMode" },
+		{ label: "Guide Mode", icon: "ViewportGuideMode" },
 	],
 ];
 
 const wasm = import("../../../wasm/pkg");
+
+function redirectKeyboardEventToBackend(e: KeyboardEvent): boolean {
+	// Don't redirect user input from text entry into HTML elements
+	const target = e.target as HTMLElement;
+	if (target.nodeName === "INPUT" || target.nodeName === "TEXTAREA" || target.isContentEditable) return false;
+
+	// Don't redirect a fullscreen request
+	if (e.key.toLowerCase() === "f11") return false;
+
+	// Don't redirect debugging tools
+	if (e.key.toLowerCase() === "f12") return false;
+	if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === "c") return false;
+
+	return true;
+}
 
 export default defineComponent({
 	methods: {
@@ -202,18 +218,25 @@ export default defineComponent({
 			on_mouse_move(e.offsetX, e.offsetY);
 		},
 		async keyDown(e: KeyboardEvent) {
-			const { on_key_down } = await wasm;
-			on_key_down(e.key);
+			if (redirectKeyboardEventToBackend(e)) {
+				e.preventDefault();
+				const { on_key_down } = await wasm;
+				on_key_down(e.key);
+			}
 		},
 		async keyUp(e: KeyboardEvent) {
-			const { on_key_up } = await wasm;
-			on_key_up(e.key);
+			if (redirectKeyboardEventToBackend(e)) {
+				e.preventDefault();
+				const { on_key_up } = await wasm;
+				on_key_up(e.key);
+			}
 		},
 		async selectTool(toolName: string) {
 			const { select_tool } = await wasm;
 			select_tool(toolName);
 		},
 		async viewModeChanged(toolIndex: number) {
+			console.log(toolIndex);
 			function todo(_: number) {
 				return _;
 			}
@@ -247,6 +270,8 @@ export default defineComponent({
 
 		window.addEventListener("keyup", (e: KeyboardEvent) => this.keyUp(e));
 		window.addEventListener("keydown", (e: KeyboardEvent) => this.keyDown(e));
+
+		this.$watch("viewModeIndex", this.viewModeChanged);
 	},
 	data() {
 		return {
@@ -256,6 +281,7 @@ export default defineComponent({
 			SeparatorDirection,
 			SeparatorType,
 			modeMenuEntries,
+			viewModeIndex: 0,
 		};
 	},
 	components: {

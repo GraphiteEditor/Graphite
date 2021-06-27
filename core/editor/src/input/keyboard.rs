@@ -2,7 +2,9 @@ pub const NUMBER_OF_KEYS: usize = Key::NumKeys as usize;
 // Edit this to specify the storage type used
 // TODO: Increase size of type
 pub type StorageType = u128;
-const STORAGE_SIZE: u32 = std::mem::size_of::<usize>() as u32 * 8 + 2 - std::mem::size_of::<StorageType>().leading_zeros();
+
+// base 2 logarithm of the storage type used to represents how many bits you need to fully address every bit in that storage type
+const STORAGE_SIZE: u32 = (std::mem::size_of::<StorageType>() * 8).trailing_zeros();
 const STORAGE_SIZE_BITS: usize = 1 << STORAGE_SIZE;
 const KEY_MASK_STORAGE_LENGTH: usize = (NUMBER_OF_KEYS + STORAGE_SIZE_BITS - 1) >> STORAGE_SIZE;
 pub type KeyStates = BitVector<KEY_MASK_STORAGE_LENGTH>;
@@ -59,6 +61,7 @@ pub enum Key {
 	KeyBackspace,
 	KeyAlt,
 	KeyEscape,
+	KeyTab,
 
 	// This has to be the last element in the enum.
 	NumKeys,
