@@ -206,8 +206,8 @@ mod test {
 		editor.handle_message(Message::Document(DocumentMessage::PasteLayers)).unwrap();
 		let document_after_copy = editor.dispatcher.document_message_handler.active_document().document.clone();
 
-		let layers_before_copy = document_before_copy.root.layers();
-		let layers_after_copy = document_after_copy.root.layers();
+		let layers_before_copy = document_before_copy.root.as_folder().unwrap().layers();
+		let layers_after_copy = document_after_copy.root.as_folder().unwrap().layers();
 
 		assert_eq!(layers_before_copy.len(), 3);
 		assert_eq!(layers_after_copy.len(), 4);
@@ -232,7 +232,7 @@ mod test {
 		let mut editor = create_editor_with_three_layers();
 
 		let document_before_copy = editor.dispatcher.document_message_handler.active_document().document.clone();
-		let shape_id = document_before_copy.root.layer_ids[1];
+		let shape_id = document_before_copy.root.as_folder().unwrap().layer_ids[1];
 
 		editor.handle_message(Message::Document(DocumentMessage::SelectLayers(vec![vec![shape_id]]))).unwrap();
 		editor.handle_message(Message::Document(DocumentMessage::CopySelectedLayers)).unwrap();
@@ -240,8 +240,8 @@ mod test {
 
 		let document_after_copy = editor.dispatcher.document_message_handler.active_document().document.clone();
 
-		let layers_before_copy = document_before_copy.root.layers();
-		let layers_after_copy = document_after_copy.root.layers();
+		let layers_before_copy = document_before_copy.root.as_folder().unwrap().layers();
+		let layers_after_copy = document_after_copy.root.as_folder().unwrap().layers();
 
 		assert_eq!(layers_before_copy.len(), 3);
 		assert_eq!(layers_after_copy.len(), 4);
@@ -272,8 +272,8 @@ mod test {
 		const RECT_INDEX: usize = 0;
 
 		let document_before_copy = editor.dispatcher.document_message_handler.active_document().document.clone();
-		let rect_id = document_before_copy.root.layer_ids[RECT_INDEX];
-		let ellipse_id = document_before_copy.root.layer_ids[ELLIPSE_INDEX];
+		let rect_id = document_before_copy.root.as_folder().unwrap().layer_ids[RECT_INDEX];
+		let ellipse_id = document_before_copy.root.as_folder().unwrap().layer_ids[ELLIPSE_INDEX];
 
 		editor.handle_message(Message::Document(DocumentMessage::SelectLayers(vec![vec![rect_id], vec![ellipse_id]]))).unwrap();
 		editor.handle_message(Message::Document(DocumentMessage::CopySelectedLayers)).unwrap();
@@ -284,8 +284,8 @@ mod test {
 
 		let document_after_copy = editor.dispatcher.document_message_handler.active_document().document.clone();
 
-		let layers_before_copy = document_before_copy.root.layers();
-		let layers_after_copy = document_after_copy.root.layers();
+		let layers_before_copy = document_before_copy.root.as_folder().unwrap().layers();
+		let layers_after_copy = document_after_copy.root.as_folder().unwrap().layers();
 
 		assert_eq!(layers_before_copy.len(), 3);
 		assert_eq!(layers_after_copy.len(), 6);

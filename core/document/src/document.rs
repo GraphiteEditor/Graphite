@@ -139,7 +139,8 @@ impl Document {
 			&self.work
 		} else {
 			&self.root
-		}.as_folder()?;
+		}
+		.as_folder()?;
 		let mut indices = vec![];
 		let (path, layer_id) = split_path(path)?;
 

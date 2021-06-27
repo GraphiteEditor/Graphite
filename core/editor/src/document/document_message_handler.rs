@@ -1,13 +1,9 @@
-use crate::{
-	input::{mouse::ViewportPosition, InputPreprocessor},
-	message_prelude::*,
-};
-use document_core::{DocumentResponse, LayerId, Operation as DocumentOperation};
-use glam::{DAffine2, DVec2};
-use log::info;
-use log::{debug, warn};
+use crate::input::{mouse::ViewportPosition, InputPreprocessor};
 use crate::message_prelude::*;
 use document_core::layers::Layer;
+use document_core::{DocumentResponse, LayerId, Operation as DocumentOperation};
+use glam::{DAffine2, DVec2};
+use log::{debug, warn};
 
 use crate::document::Document;
 use std::collections::VecDeque;
@@ -89,27 +85,27 @@ impl DocumentMessageHandler {
 	}
 
 	fn selected_layers_sorted(&self) -> Vec<Vec<LayerId>> {
-		let mut x: Vec<(Vec<LayerId>, Vec<usize>)> = self
+		let mut layers_with_indices: Vec<(Vec<LayerId>, Vec<usize>)> = self
 			.active_document()
 			.layer_data
 			.iter()
 			.filter_map(|(path, data)| data.selected.then(|| path.clone()))
-			.map(|e| {
-				let i = self.active_document().document.indices_for_path(&e);
-				debug!("selected_layers_sorted a layer {:?} became {:?}", e, i);
-				(e, i)
-			})
-			.filter_map(|(e, indices)| match indices {
-				Err(e) => {
-					warn!("selected_layers_sorted {:?}", e);
-					None
+			.filter_map(|layer_id| {
+				let indices = self.active_document().document.indices_for_path(&layer_id);
+				debug!("selected_layers_sorted: layer {:?} became {:?}", layer_id, indices);
+
+				match indices {
+					Err(e) => {
+						warn!("selected_layers_sorted: Could not get indices for the layer {:?}: {:?}", layer_id, e);
+						None
+					}
+					Ok(v) => Some((layer_id, v)),
 				}
-				Ok(v) => Some((e, v)),
 			})
 			.collect();
 
-		x.sort_by_key(|(e, b)| b.clone());
-		return x.into_iter().map(|(e, i)| e).collect();
+		layers_with_indices.sort_by_key(|(_, b)| b.clone());
+		return layers_with_indices.into_iter().map(|(e, _)| e).collect();
 	}
 }
 

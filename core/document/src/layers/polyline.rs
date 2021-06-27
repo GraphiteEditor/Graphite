@@ -1,7 +1,7 @@
-use std::fmt::Write;
 use serde::{Deserialize, Serialize};
+use std::fmt::Write;
 
-use super::{LayerData, style};
+use super::{style, LayerData};
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub struct PolyLine {
