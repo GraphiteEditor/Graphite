@@ -24,7 +24,6 @@
 	],
 	"files.eol": "\n",
 	"html.format.wrapLineLength": 200,
-	"editor.defaultFormatter": "dbaeumer.vscode-eslint",
 	"eslint.format.enable": true,
 	"eslint.workingDirectories": ["./client/web"],
 	"eslint.validate": [
