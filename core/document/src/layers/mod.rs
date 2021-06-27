@@ -20,9 +20,9 @@ pub use shape::Shape;
 pub mod folder;
 pub use folder::Folder;
 
+use crate::intersection::transform_kurbo_point;
 use crate::DocumentError;
 use crate::LayerId;
-use crate::intersection::transform_kurbo_point;
 
 pub const KURBO_TOLERANCE: f64 = 0.0001; // TODO: should depend on zoom level
 pub const POINT_SELECTION_TOLERANCE: f64 = 10.0; // TODO: should depend on zoom level

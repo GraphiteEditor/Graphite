@@ -4,8 +4,8 @@ use kurbo::Point;
 use kurbo::Shape;
 
 use crate::intersection::intersect_quad_bez_path;
-use crate::LayerId;
 use crate::intersection::transform_kurbo_point;
+use crate::LayerId;
 
 use super::style;
 use super::LayerData;

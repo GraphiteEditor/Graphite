@@ -2,8 +2,8 @@ use glam::DAffine2;
 use kurbo::Point;
 
 use crate::intersection::intersect_quad_bez_path;
-use crate::LayerId;
 use crate::intersection::transform_kurbo_point;
+use crate::LayerId;
 use kurbo::BezPath;
 use kurbo::Vec2;
 
