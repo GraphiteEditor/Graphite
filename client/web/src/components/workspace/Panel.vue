@@ -158,10 +158,14 @@ export default defineComponent({
 	},
 	methods: {
 		async handleTabClick(tabIndex: number) {
+			if (this.panelType !== "Document") return;
+
 			const { select_document } = await wasm;
 			select_document(tabIndex);
 		},
 		async closeTab(tabIndex: number) {
+			if (this.panelType !== "Document") return;
+
 			const { close_document } = await wasm;
 			// eslint-disable-next-line no-alert
 			const result = window.confirm("Closing this document will permanently discard all work. Continue?");
