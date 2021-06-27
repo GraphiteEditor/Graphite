@@ -1,7 +1,9 @@
 use kurbo::Point;
 
 use crate::LayerId;
+use crate::intersection::point_line_segment_dist;
 
+use super::POINT_SELECTION_TOLERANCE;
 use super::style;
 use super::LayerData;
 
@@ -30,7 +32,13 @@ impl LayerData for Line {
 		let _ = write!(svg, r#"<line x1="{}" y1="{}" x2="{}" y2="{}"{} />"#, x1, y1, x2, y2, self.style.render(),);
 	}
 
-	fn intersects_quad(&self, quad: [Point; 4], path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>) {}
+	fn intersects_quad(&self, quad: [Point; 4], path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>) {
 
-	fn intersects_point(&self, point: Point, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>) {}
+	}
+
+	fn intersects_point(&self, point: Point, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>) {
+		if point_line_segment_dist(point, self.shape.p0, self.shape.p1) < POINT_SELECTION_TOLERANCE {
+			intersections.push(path.clone());
+		}
+	}
 }

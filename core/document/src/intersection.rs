@@ -1,3 +1,4 @@
+use glam::DMat3;
 use kurbo::{BezPath, Line, PathSeg, Point, Shape, Vec2};
 
 pub fn intersect_quad_bez_path(quad: [Point; 4], shape: &BezPath) -> bool {
@@ -44,4 +45,13 @@ pub fn get_arbitrary_point_on_path(path: &BezPath) -> Option<Point> {
 		PathSeg::Quad(quad) => quad.p0,
 		PathSeg::Cubic(cubic) => cubic.p0,
 	})
+}
+
+pub fn point_line_segment_dist(x: Point, a: Point, b: Point) -> f64 {
+	if (a - b).dot(x - b) * (b - a).dot(x - a) >= 0.0 {
+		let mat = DMat3::from_cols_array(&[a.x, a.y, 1.0, b.x, b.y, 1.0, x.x, x.y, 1.0]);
+		(mat.determinant() / (b - a).hypot()).abs()
+	} else {
+		f64::sqrt(f64::min((a - x).hypot2(), (b - x).hypot2()))
+	}
 }

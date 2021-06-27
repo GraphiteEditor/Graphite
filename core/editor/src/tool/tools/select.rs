@@ -86,6 +86,8 @@ impl Fsm for SelectToolFsmState {
 						let point = Point::new(data.drag_current.x as f64, data.drag_current.y as f64);
 						if let Some(intersection) = document.intersects_point_root(point).last() {
 							responses.push_back(DocumentMessage::SelectLayers(vec![intersection.clone()]).into());
+						} else {
+							responses.push_back(DocumentMessage::SelectLayers(vec![]).into());
 						}
 					} else {
 						let quad = [

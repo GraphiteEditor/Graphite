@@ -24,7 +24,8 @@ pub use folder::Folder;
 
 use crate::LayerId;
 
-pub const KURBO_TOLERANCE: f64 = 0.0001;
+pub const KURBO_TOLERANCE: f64 = 0.0001; // TODO: should depend on zoom level
+pub const POINT_SELECTION_TOLERANCE: f64 = 10.0; // TODO: should depend on zoom level
 
 pub trait LayerData {
 	fn render(&mut self, svg: &mut String);
