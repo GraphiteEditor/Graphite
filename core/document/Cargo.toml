@@ -10,5 +10,8 @@ license = "Apache-2.0"
 
 [dependencies]
 log = "0.4"
-kurbo = "0.8.0"
+# TODO: Swich to kurbo release when derive `PartialEq` is available for BezPath
+#kurbo = "0.8.0"
+kurbo = {git="https://github.com/GraphiteEditor/kurbo.git", branch="bezpath-partial-eq"}
 serde = { version = "1.0", features = ["derive"] }
+glam = "0.16"

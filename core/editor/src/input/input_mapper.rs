@@ -168,8 +168,12 @@ impl Default for Mapping {
 			entry! {action=DocumentMessage::DeleteSelectedLayers, key_down=KeyBackspace},
 			entry! {action=DocumentMessage::ExportDocument, key_down=KeyS, modifiers=[KeyControl, KeyShift]},
 			entry! {action=DocumentMessage::ExportDocument, key_down=KeyE, modifiers=[KeyControl]},
+			entry! {action=DocumentMessage::MouseMove, message=InputMapperMessage::PointerMove},
+			entry! {action=DocumentMessage::TranslateDown, key_down=Mmb},
+			entry! {action=DocumentMessage::TranslateUp, key_up=Mmb},
 			entry! {action=DocumentMessage::NewDocument, key_down=KeyN, modifiers=[KeyShift]},
 			entry! {action=DocumentMessage::NextDocument, key_down=KeyTab, modifiers=[KeyShift]},
+			entry! {action=DocumentMessage::CloseActiveDocument, key_down=KeyW, modifiers=[KeyShift]},
 			// Global Actions
 			entry! {action=GlobalMessage::LogInfo, key_down=Key1},
 			entry! {action=GlobalMessage::LogDebug, key_down=Key2},
