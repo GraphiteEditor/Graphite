@@ -282,7 +282,6 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				self.translating = false;
 			}
 			RotateDown => {
-				log::info!("rotate down");
 				self.rotating = true;
 				self.mouse_pos = ipp.mouse.position;
 			}
@@ -293,8 +292,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				if self.translating {
 					let delta = DVec2::new(ipp.mouse.position.x as f64 - self.mouse_pos.x as f64, ipp.mouse.position.y as f64 - self.mouse_pos.y as f64);
 					let transformed_delta = self.active_document().document.root.transform.inverse().transform_vector2(delta);
-					log::info!("D {:?} T {:?} TD {:?}", delta, self.active_document().document.root.transform, transformed_delta);
-					
+
 					let operation = DocumentOperation::TransformLayer {
 						path: vec![],
 						transform: DAffine2::from_translation(transformed_delta).to_cols_array(),
@@ -308,7 +306,6 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 						ipp.mouse.position.x as f64 - ipp.viewport_size.x as f64 / 2.,
 						ipp.mouse.position.y as f64 - ipp.viewport_size.y as f64 / 2.,
 					);
-					log::info!("Start v: {:?} end v: {:?} angle {:?}", start_vec, end_vec, start_vec.angle_between(end_vec));
 					let operation = DocumentOperation::TransformLayer {
 						path: vec![],
 						transform: DAffine2::from_angle(start_vec.angle_between(end_vec)).to_cols_array(),
