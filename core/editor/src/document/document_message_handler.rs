@@ -301,7 +301,10 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				}
 				if self.rotating {
 					let start_vec = glam::DVec2::new(self.mouse_pos.x as f64 - ipp.viewport_size.x as f64 / 2., self.mouse_pos.y as f64 - ipp.viewport_size.y as f64 / 2.);
-					let end_vec = glam::DVec2::new(ipp.mouse.position.x as f64 - ipp.viewport_size.x as f64 / 2., ipp.mouse.position.y as f64 - ipp.viewport_size.y as f64 / 2.);
+					let end_vec = glam::DVec2::new(
+						ipp.mouse.position.x as f64 - ipp.viewport_size.x as f64 / 2.,
+						ipp.mouse.position.y as f64 - ipp.viewport_size.y as f64 / 2.,
+					);
 					log::info!("Start v: {:?} end v: {:?} angle {:?}", start_vec, end_vec, start_vec.angle_between(end_vec));
 					let operation = DocumentOperation::TransformLayer {
 						path: vec![],
