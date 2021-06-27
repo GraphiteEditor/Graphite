@@ -38,7 +38,7 @@ impl LayerData for Rect {
 	}
 
 	fn intersects_quad(&self, quad: [DVec2; 4], path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>, style: style::PathStyle) {
-		if intersect_quad_bez_path(quad, &self.to_kurbo_path(DAffine2::IDENTITY, style)) {
+		if intersect_quad_bez_path(quad, &self.to_kurbo_path(DAffine2::IDENTITY, style), true) {
 			intersections.push(path.clone());
 		}
 	}

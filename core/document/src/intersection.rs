@@ -5,7 +5,7 @@ fn to_point(vec: DVec2) -> Point {
 	Point::new(vec.x, vec.y)
 }
 
-pub fn intersect_quad_bez_path(quad: [DVec2; 4], shape: &BezPath) -> bool {
+pub fn intersect_quad_bez_path(quad: [DVec2; 4], shape: &BezPath, closed: bool) -> bool {
 	let lines = vec![
 		Line::new(to_point(quad[0]), to_point(quad[1])),
 		Line::new(to_point(quad[1]), to_point(quad[2])),
@@ -21,7 +21,7 @@ pub fn intersect_quad_bez_path(quad: [DVec2; 4], shape: &BezPath) -> bool {
 		}
 	}
 	// check if selection is entirely within the shape
-	if shape.contains(to_point(quad[0])) {
+	if closed && shape.contains(to_point(quad[0])) {
 		return true;
 	}
 	// check if shape is entirely within the selection

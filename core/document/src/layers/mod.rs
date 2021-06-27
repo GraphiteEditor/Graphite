@@ -24,7 +24,7 @@ use crate::DocumentError;
 use crate::LayerId;
 
 pub const KURBO_TOLERANCE: f64 = 0.0001; // TODO: should depend on zoom level
-pub const POINT_SELECTION_TOLERANCE: f64 = 10.0; // TODO: should depend on zoom level
+pub const POINT_SELECTION_TOLERANCE: f64 = 0.1; // TODO: should depend on zoom level
 
 pub trait LayerData {
 	fn render(&mut self, svg: &mut String, transform: glam::DAffine2, style: style::PathStyle);

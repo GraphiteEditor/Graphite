@@ -1,10 +1,10 @@
-use glam::DVec2;
+use glam::{DAffine2, DVec2};
 
-use crate::LayerId;
+use crate::{LayerId, intersection::{intersect_quad_bez_path, point_line_segment_dist}};
 
 use std::fmt::Write;
 
-use super::{style, LayerData};
+use super::{LayerData, POINT_SELECTION_TOLERANCE, style};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct PolyLine {
@@ -45,9 +45,20 @@ impl LayerData for PolyLine {
 		let _ = write!(svg, r#""{} />"#, style.render());
 	}
 
-	fn intersects_quad(&self, quad: [DVec2; 4], path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>, style: style::PathStyle) {}
+	fn intersects_quad(&self, quad: [DVec2; 4], path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>, style: style::PathStyle) {
+		if intersect_quad_bez_path(quad, &self.to_kurbo_path(DAffine2::IDENTITY, style), false) {
+			intersections.push(path.clone());
+		}
+	}
 
-	fn intersects_point(&self, point: DVec2, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>, style: style::PathStyle) {}
+	fn intersects_point(&self, point: DVec2, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>, _style: style::PathStyle) {
+		for pair in self.points.windows(2) {
+			if point_line_segment_dist(point, pair[0], pair[1]) < POINT_SELECTION_TOLERANCE {
+				intersections.push(path.clone());
+				return;
+			}
+		}
+	}
 }
 
 #[cfg(test)]
