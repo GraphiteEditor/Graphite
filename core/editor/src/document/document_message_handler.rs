@@ -3,7 +3,7 @@ use crate::message_prelude::*;
 use document_core::layers::Layer;
 use document_core::{DocumentResponse, LayerId, Operation as DocumentOperation};
 use glam::{DAffine2, DVec2};
-use log::{debug, warn};
+use log::warn;
 
 use crate::document::Document;
 use std::collections::VecDeque;
@@ -84,28 +84,30 @@ impl DocumentMessageHandler {
 		(!path.is_empty()).then(|| self.handle_folder_changed(path[..path.len() - 1].to_vec())).flatten()
 	}
 
+	/// Returns the paths to the selected layers in order
 	fn selected_layers_sorted(&self) -> Vec<Vec<LayerId>> {
+		// Compute the indices for each layer to be able to sort them
 		let mut layers_with_indices: Vec<(Vec<LayerId>, Vec<usize>)> = self
 			.active_document()
 			.layer_data
 			.iter()
 			.filter_map(|(path, data)| data.selected.then(|| path.clone()))
-			.filter_map(|layer_id| {
-				let indices = self.active_document().document.indices_for_path(&layer_id);
-				debug!("selected_layers_sorted: layer {:?} became {:?}", layer_id, indices);
-
-				match indices {
-					Err(e) => {
-						warn!("selected_layers_sorted: Could not get indices for the layer {:?}: {:?}", layer_id, e);
+			.filter_map(|path| {
+				// Currently it is possible that layer_data contains layers that are don't actually exist
+				// and thus indices_for_path can return an error. We currently skip these layers and log a warning.
+				// Once this problem is solved this code can be simplified
+				match self.active_document().document.indices_for_path(&path) {
+					Err(err) => {
+						warn!("selected_layers_sorted: Could not get indices for the layer {:?}: {:?}", path, err);
 						None
 					}
-					Ok(v) => Some((layer_id, v)),
+					Ok(indices) => Some((path, indices)),
 				}
 			})
 			.collect();
 
-		layers_with_indices.sort_by_key(|(_, b)| b.clone());
-		return layers_with_indices.into_iter().map(|(e, _)| e).collect();
+		layers_with_indices.sort_by_key(|(_, indices)| indices.clone());
+		return layers_with_indices.into_iter().map(|(path, _)| path).collect();
 	}
 }
 
@@ -266,7 +268,6 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 						Err(e) => warn!("Could not access selected layer {:?}: {:?}", path, e),
 					}
 				}
-				debug!("CopySelectedLayers copied {} layers: {:?}", self.copy_buffer.len(), self.copy_buffer);
 			}
 			PasteLayers => {
 				for layer in self.copy_buffer.iter() {

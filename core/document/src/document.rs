@@ -133,6 +133,8 @@ impl Document {
 		self.folder(path)?.layer(id).ok_or(DocumentError::LayerNotFound)
 	}
 
+	/// Given a a path to a layer resturns a vector of the incices in the layer tree
+	/// These indices can be used to order a list of layers
 	pub fn indices_for_path(&self, mut path: &[LayerId]) -> Result<Vec<usize>, DocumentError> {
 		let mut root = if self.is_mounted(self.work_mount_path.as_slice(), path) {
 			path = &path[self.work_mount_path.len()..];
