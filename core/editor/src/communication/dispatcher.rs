@@ -246,6 +246,9 @@ mod test {
 		let first_folder_layers_after_copy = layers_after_copy[3].as_folder().unwrap().layers();
 		let second_folder_layers_after_copy = layers_after_copy[4].as_folder().unwrap().layers();
 
+		assert_eq!(first_folder_layers_after_copy.len(), 2);
+		assert_eq!(second_folder_layers_after_copy.len(), 2);
+
 		assert_eq!(first_folder_layers_after_copy[0], line_before_copy);
 		assert_eq!(first_folder_layers_after_copy[1], pen_before_copy);
 
