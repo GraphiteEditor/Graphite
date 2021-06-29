@@ -4,9 +4,11 @@ use crate::{
 };
 use document_core::{DocumentResponse, LayerId, Operation as DocumentOperation};
 use glam::{DAffine2, DVec2};
+use log::info;
+use serde::__private::doc;
 
 use crate::document::Document;
-use std::collections::VecDeque;
+use std::{collections::VecDeque, f64::consts::PI};
 
 #[impl_message(Message, Document)]
 #[derive(PartialEq, Clone, Debug)]
@@ -301,14 +303,19 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					self.mouse_pos = ipp.mouse.position;
 				}
 				if self.rotating {
-					let start_vec = glam::DVec2::new(self.mouse_pos.x as f64 - ipp.viewport_size.x as f64 / 2., self.mouse_pos.y as f64 - ipp.viewport_size.y as f64 / 2.);
-					let end_vec = glam::DVec2::new(
-						ipp.mouse.position.x as f64 - ipp.viewport_size.x as f64 / 2.,
-						ipp.mouse.position.y as f64 - ipp.viewport_size.y as f64 / 2.,
-					);
-					let operation = DocumentOperation::TransformLayer {
+					let document = self.active_document().document.root.transform;
+					let viewport = DVec2::new(ipp.viewport_size.x as f64 / 2., ipp.viewport_size.y as f64 / 2.);
+					let extracted = DAffine2::from_translation(viewport).inverse() * document;
+					let rotation = {
+						let start_vec = DVec2::new(self.mouse_pos.x as f64, self.mouse_pos.y as f64) - viewport;
+						let end_vec = DVec2::new(ipp.mouse.position.x as f64, ipp.mouse.position.y as f64) - viewport;
+						start_vec.angle_between(end_vec)
+					};
+					let result = DAffine2::from_translation(viewport) * DAffine2::from_angle(rotation) * extracted;
+
+					let operation = DocumentOperation::SetLayerTransform {
 						path: vec![],
-						transform: DAffine2::from_angle(start_vec.angle_between(end_vec)).to_cols_array(),
+						transform: result.to_cols_array(),
 					};
 					responses.push_back(operation.into());
 					self.mouse_pos = ipp.mouse.position;
