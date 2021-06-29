@@ -4,11 +4,9 @@ use crate::{
 };
 use document_core::{DocumentResponse, LayerId, Operation as DocumentOperation};
 use glam::{DAffine2, DVec2};
-use log::info;
-use serde::__private::doc;
 
 use crate::document::Document;
-use std::{collections::VecDeque, f64::consts::PI};
+use std::collections::VecDeque;
 
 #[impl_message(Message, Document)]
 #[derive(PartialEq, Clone, Debug)]
@@ -36,6 +34,8 @@ pub enum DocumentMessage {
 	TranslateUp,
 	RotateDown,
 	RotateUp,
+	ZoomIn,
+	ZoomOut,
 }
 
 impl From<DocumentOperation> for DocumentMessage {
@@ -84,6 +84,18 @@ impl DocumentMessageHandler {
 		self.active_document_mut().layer_data(&path).selected = true;
 		// TODO: Add deduplication
 		(!path.is_empty()).then(|| self.handle_folder_changed(path[..path.len() - 1].to_vec())).flatten()
+	}
+	fn transform_document_around_centre(&mut self, half_viewport: DVec2, operation: DAffine2) -> DocumentOperation {
+		let half_viewport_affine = DAffine2::from_translation(half_viewport);
+		let document = self.active_document().document.root.transform;
+		let extracted = half_viewport_affine.inverse() * document;
+
+		let result = half_viewport_affine * operation * extracted;
+
+		DocumentOperation::SetLayerTransform {
+			path: vec![],
+			transform: result.to_cols_array(),
+		}
 	}
 }
 
@@ -304,32 +316,35 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					self.mouse_pos = ipp.mouse.position;
 				}
 				if self.rotating {
-					let document = self.active_document().document.root.transform;
-					let viewport = DVec2::new(ipp.viewport_size.x as f64 / 2., ipp.viewport_size.y as f64 / 2.);
-					let extracted = DAffine2::from_translation(viewport).inverse() * document;
+					let half_viewport = DVec2::new(ipp.viewport_size.x as f64 / 2., ipp.viewport_size.y as f64 / 2.);
 					let rotation = {
-						let start_vec = DVec2::new(self.mouse_pos.x as f64, self.mouse_pos.y as f64) - viewport;
-						let end_vec = DVec2::new(ipp.mouse.position.x as f64, ipp.mouse.position.y as f64) - viewport;
+						let start_vec = DVec2::new(self.mouse_pos.x as f64, self.mouse_pos.y as f64) - half_viewport;
+						let end_vec = DVec2::new(ipp.mouse.position.x as f64, ipp.mouse.position.y as f64) - half_viewport;
 						start_vec.angle_between(end_vec)
 					};
-					let result = DAffine2::from_translation(viewport) * DAffine2::from_angle(rotation) * extracted;
-
-					let operation = DocumentOperation::SetLayerTransform {
-						path: vec![],
-						transform: result.to_cols_array(),
-					};
+					let operation = self.transform_document_around_centre(half_viewport, DAffine2::from_angle(rotation));
 					responses.push_back(operation.into());
 					self.mouse_pos = ipp.mouse.position;
 				}
+			}
+			ZoomIn => {
+				let half_viewport = DVec2::new(ipp.viewport_size.x as f64 / 2., ipp.viewport_size.y as f64 / 2.);
+				let operation = self.transform_document_around_centre(half_viewport, DAffine2::from_scale(DVec2::new(1.25, 1.25)));
+				responses.push_back(operation.into());
+			}
+			ZoomOut => {
+				let half_viewport = DVec2::new(ipp.viewport_size.x as f64 / 2., ipp.viewport_size.y as f64 / 2.);
+				let operation = self.transform_document_around_centre(half_viewport, DAffine2::from_scale(DVec2::new(0.75, 0.75)));
+				responses.push_back(operation.into());
 			}
 			message => todo!("document_action_handler does not implement: {}", message.to_discriminant().global_name()),
 		}
 	}
 	fn actions(&self) -> ActionList {
 		if self.active_document().layer_data.values().any(|data| data.selected) {
-			actions!(DocumentMessageDiscriminant; Undo, DeleteSelectedLayers, DuplicateSelectedLayers, RenderDocument, ExportDocument, NewDocument, CloseActiveDocument, NextDocument, PrevDocument, MouseMove, TranslateUp, TranslateDown, RotateUp, RotateDown)
+			actions!(DocumentMessageDiscriminant; Undo, DeleteSelectedLayers, DuplicateSelectedLayers, RenderDocument, ExportDocument, NewDocument, CloseActiveDocument, NextDocument, PrevDocument, MouseMove, TranslateUp, TranslateDown, RotateUp, RotateDown, ZoomIn, ZoomOut)
 		} else {
-			actions!(DocumentMessageDiscriminant; Undo, RenderDocument, ExportDocument, NewDocument, CloseActiveDocument, NextDocument, PrevDocument, MouseMove, TranslateUp, TranslateDown, RotateUp, RotateDown)
+			actions!(DocumentMessageDiscriminant; Undo, RenderDocument, ExportDocument, NewDocument, CloseActiveDocument, NextDocument, PrevDocument, MouseMove, TranslateUp, TranslateDown, RotateUp, RotateDown, ZoomIn, ZoomOut)
 		}
 	}
 }
