@@ -34,8 +34,7 @@ pub enum DocumentMessage {
 	TranslateUp,
 	RotateDown,
 	RotateUp,
-	ZoomIn,
-	ZoomOut,
+	ChangeZoom(f64),
 }
 
 impl From<DocumentOperation> for DocumentMessage {
@@ -327,14 +326,9 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					self.mouse_pos = ipp.mouse.position;
 				}
 			}
-			ZoomIn => {
+			ChangeZoom(amount) => {
 				let half_viewport = DVec2::new(ipp.viewport_size.x as f64 / 2., ipp.viewport_size.y as f64 / 2.);
-				let operation = self.transform_document_around_centre(half_viewport, DAffine2::from_scale(DVec2::new(1.25, 1.25)));
-				responses.push_back(operation.into());
-			}
-			ZoomOut => {
-				let half_viewport = DVec2::new(ipp.viewport_size.x as f64 / 2., ipp.viewport_size.y as f64 / 2.);
-				let operation = self.transform_document_around_centre(half_viewport, DAffine2::from_scale(DVec2::new(0.75, 0.75)));
+				let operation = self.transform_document_around_centre(half_viewport, DAffine2::from_scale(DVec2::new(amount, amount)));
 				responses.push_back(operation.into());
 			}
 			message => todo!("document_action_handler does not implement: {}", message.to_discriminant().global_name()),
@@ -342,9 +336,9 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 	}
 	fn actions(&self) -> ActionList {
 		if self.active_document().layer_data.values().any(|data| data.selected) {
-			actions!(DocumentMessageDiscriminant; Undo, DeleteSelectedLayers, DuplicateSelectedLayers, RenderDocument, ExportDocument, NewDocument, CloseActiveDocument, NextDocument, PrevDocument, MouseMove, TranslateUp, TranslateDown, RotateUp, RotateDown, ZoomIn, ZoomOut)
+			actions!(DocumentMessageDiscriminant; Undo, DeleteSelectedLayers, DuplicateSelectedLayers, RenderDocument, ExportDocument, NewDocument, CloseActiveDocument, NextDocument, PrevDocument, MouseMove, TranslateUp, TranslateDown, RotateUp, RotateDown, ChangeZoom)
 		} else {
-			actions!(DocumentMessageDiscriminant; Undo, RenderDocument, ExportDocument, NewDocument, CloseActiveDocument, NextDocument, PrevDocument, MouseMove, TranslateUp, TranslateDown, RotateUp, RotateDown, ZoomIn, ZoomOut)
+			actions!(DocumentMessageDiscriminant; Undo, RenderDocument, ExportDocument, NewDocument, CloseActiveDocument, NextDocument, PrevDocument, MouseMove, TranslateUp, TranslateDown, RotateUp, RotateDown, ChangeZoom)
 		}
 	}
 }

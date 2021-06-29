@@ -70,7 +70,7 @@
 
 				<Separator :type="SeparatorType.Related" />
 
-				<NumberInput :value="25" :unit="`%`" />
+				<NumberInput :callback="changeZoom" :initial_value="100" :min="10" :step="25" :unit="`%`" />
 			</div>
 		</LayoutRow>
 		<LayoutRow :class="'shelf-and-viewport'">
@@ -221,6 +221,10 @@ export default defineComponent({
 		async canvasMouseMove(e: MouseEvent) {
 			const { on_mouse_move } = await wasm;
 			on_mouse_move(e.offsetX, e.offsetY);
+		},
+		async changeZoom(newZoom: number, oldZoom: number) {
+			const { on_change_zoom } = await wasm;
+			on_change_zoom(newZoom / 100 / (oldZoom / 100));
 		},
 		async keyDown(e: KeyboardEvent) {
 			if (redirectKeyboardEventToBackend(e)) {
