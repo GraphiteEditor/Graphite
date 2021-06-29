@@ -282,6 +282,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			}
 			TranslateUp => {
 				self.translating = false;
+				self.rotating = false;
 			}
 			RotateDown => {
 				self.rotating = true;
