@@ -1,5 +1,5 @@
 <template>
-	<FloatingMenu :class="'menu-list'" :direction="direction" :type="MenuType.Dropdown" ref="floatingMenu" :windowEdgeMargin="0" data-hover-menu-keep-open>
+	<FloatingMenu :class="'menu-list'" :direction="direction" :type="MenuType.Dropdown" ref="floatingMenu" :windowEdgeMargin="0" :scrollable="scrollable" data-hover-menu-keep-open>
 		<template v-for="(section, sectionIndex) in menuEntries" :key="sectionIndex">
 			<Separator :type="SeparatorType.List" :direction="SeparatorDirection.Vertical" v-if="sectionIndex > 0" />
 			<div
@@ -25,6 +25,7 @@
 					v-model:active-entry="currentEntry"
 					:minWidth="minWidth"
 					:drawIcon="drawIcon"
+					:scrollable="scrollable"
 					:ref="(ref) => setEntryRefs(entry, ref)"
 				/>
 			</div>
@@ -144,8 +145,10 @@ const MenuList = defineComponent({
 		direction: { type: String as PropType<MenuDirection>, default: MenuDirection.Bottom },
 		menuEntries: { type: Array as PropType<SectionsOfMenuListEntries>, required: true },
 		activeEntry: { type: Object as PropType<MenuListEntry>, required: false },
+		defaultAction: { type: Function as PropType<Function | undefined>, required: false },
 		minWidth: { type: Number, default: 0 },
 		drawIcon: { type: Boolean, default: false },
+		scrollable: { type: Boolean, default: false },
 	},
 	methods: {
 		setEntryRefs(menuEntry: MenuListEntry, ref: typeof FloatingMenu) {
@@ -154,32 +157,27 @@ const MenuList = defineComponent({
 		handleEntryClick(menuEntry: MenuListEntry) {
 			(this.$refs.floatingMenu as typeof FloatingMenu).setClosed();
 
-			if (menuEntry.action) {
-				menuEntry.action();
-			} else {
-				this.$emit("update:activeEntry", menuEntry);
-			}
+			if (menuEntry.action) menuEntry.action();
+			else if (this.defaultAction) this.defaultAction();
+			else this.$emit("update:activeEntry", menuEntry);
 		},
 		handleEntryMouseEnter(menuEntry: MenuListEntry) {
 			if (!menuEntry.children || !menuEntry.children.length) return;
 
-			if (menuEntry.ref) {
-				menuEntry.ref.setOpen();
-			} else throw new Error("The menu bar floating menu has no associated ref");
+			if (menuEntry.ref) menuEntry.ref.setOpen();
+			else throw new Error("The menu bar floating menu has no associated ref");
 		},
 		handleEntryMouseLeave(menuEntry: MenuListEntry) {
 			if (!menuEntry.children || !menuEntry.children.length) return;
 
-			if (menuEntry.ref) {
-				menuEntry.ref.setClosed();
-			} else throw new Error("The menu bar floating menu has no associated ref");
+			if (menuEntry.ref) menuEntry.ref.setClosed();
+			else throw new Error("The menu bar floating menu has no associated ref");
 		},
 		isMenuEntryOpen(menuEntry: MenuListEntry): boolean {
 			if (!menuEntry.children || !menuEntry.children.length) return false;
 
-			if (menuEntry.ref) {
-				return menuEntry.ref.isOpen();
-			}
+			if (menuEntry.ref) return menuEntry.ref.isOpen();
+
 			return false;
 		},
 		setOpen() {
