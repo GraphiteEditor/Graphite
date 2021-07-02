@@ -5,7 +5,15 @@
 			<span>{{ activeEntry.label }}</span>
 			<Icon :class="'dropdown-arrow'" :icon="'DropdownArrow'" />
 		</div>
-		<MenuList :menuEntries="menuEntries" v-model:active-entry="activeEntry" :direction="MenuDirection.Bottom" @width-changed="onWidthChanged" :drawIcon="drawIcon" ref="menuList" />
+		<MenuList
+			:menuEntries="menuEntries"
+			v-model:active-entry="activeEntry"
+			:direction="MenuDirection.Bottom"
+			@width-changed="onWidthChanged"
+			:drawIcon="drawIcon"
+			:scrollable="true"
+			ref="menuList"
+		/>
 	</div>
 </template>
 
@@ -62,7 +70,6 @@
 
 	.menu-list .floating-menu-container .floating-menu-content {
 		max-height: 400px;
-		overflow-y: auto;
 	}
 }
 </style>
