@@ -4,7 +4,7 @@ use super::{style, Layer, LayerData, LayerDataTypes};
 
 use std::fmt::Write;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Folder {
 	next_assignment_id: LayerId,
 	pub layer_ids: Vec<LayerId>,

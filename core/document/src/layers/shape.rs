@@ -6,7 +6,7 @@ use super::LayerData;
 
 use std::fmt::Write;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Shape {
 	equal_sides: bool,
 	sides: u8,
