@@ -54,7 +54,7 @@ pub struct DocumentMessageHandler {
 	active_document: usize,
 	translating: bool,
 	rotating: bool,
-	zooming:bool,
+	zooming: bool,
 	mouse_pos: ViewportPosition,
 }
 
@@ -329,7 +329,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				}
 				if self.zooming {
 					let difference = self.mouse_pos.y as f64 - ipp.mouse.position.y as f64;
-					let amount = 1. + difference /100.;
+					let amount = 1. + difference / 100.;
 					let half_viewport = DVec2::new(ipp.viewport_size.x as f64 / 2., ipp.viewport_size.y as f64 / 2.);
 					let operation = self.transform_document_around_centre(half_viewport, DAffine2::from_scale(DVec2::new(amount, amount)));
 					responses.push_back(operation.into());
