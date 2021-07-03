@@ -115,7 +115,7 @@
 				<WorkingColors />
 			</LayoutCol>
 			<LayoutCol :class="'viewport'">
-				<div class="canvas" @mousedown="canvasMouseDown" @mouseup="canvasMouseUp" @mousemove="canvasMouseMove" v-on:wheel="canvasMouseScroll" ref="canvas">
+				<div class="canvas" @mousedown="canvasMouseDown" @mouseup="canvasMouseUp" @mousemove="canvasMouseMove" @wheel="canvasMouseScroll" ref="canvas">
 					<svg v-html="viewportSvg"></svg>
 				</div>
 			</LayoutCol>
