@@ -293,7 +293,7 @@ export default defineComponent({
 			const updateData = responseData as MultiplyZoom;
 			if (updateData) {
 				const zoomWidget = this.$refs.zoom as typeof NumberInput;
-				zoomWidget.setValue(zoomWidget.value * updateData.multiplyer);
+				zoomWidget.setValue(zoomWidget.value * updateData.multiplier);
 			}
 		});
 		registerResponseHandler(ResponseType.UpdateRotation, (responseData: Response) => {

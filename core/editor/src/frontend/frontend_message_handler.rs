@@ -20,7 +20,7 @@ pub enum FrontendMessage {
 	DisableTextInput,
 	UpdateWorkingColors { primary: Color, secondary: Color },
 	PromptCloseConfirmationModal,
-	MultiplyZoom { multiplyer: f64 },
+	MultiplyZoom { multiplier: f64 },
 	UpdateRotation { change: f64 },
 }
 

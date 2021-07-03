@@ -182,11 +182,11 @@ function newExpandFolder(input: any): ExpandFolder {
 }
 
 export interface MultiplyZoom {
-	multiplyer: number;
+	multiplier: number;
 }
 function newMultiplyZoom(input: any): MultiplyZoom {
 	return {
-		multiplyer: input.multiplyer,
+		multiplier: input.multiplier,
 	};
 }
 
