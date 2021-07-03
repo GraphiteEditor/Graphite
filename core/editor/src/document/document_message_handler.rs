@@ -99,12 +99,12 @@ impl DocumentMessageHandler {
 			transform: result.to_cols_array(),
 		}
 	}
-	fn multiply_zoom(&self, multiplyer: f64, ipp: &InputPreprocessor, responses: &mut VecDeque<Message>) {
+	fn multiply_zoom(&self, multiplier: f64, ipp: &InputPreprocessor, responses: &mut VecDeque<Message>) {
 		let half_viewport = DVec2::new(ipp.viewport_size.x as f64 / 2., ipp.viewport_size.y as f64 / 2.);
-		let operation = self.transform_document_around_centre(half_viewport, DAffine2::from_scale(DVec2::new(multiplyer, multiplyer)));
+		let operation = self.transform_document_around_centre(half_viewport, DAffine2::from_scale(DVec2::new(multiplier, multiplier)));
 		responses.push_back(operation.into());
 
-		responses.push_back(FrontendMessage::MultiplyZoom { multiplyer }.into());
+		responses.push_back(FrontendMessage::MultiplyZoom { multiplier }.into());
 	}
 }
 
