@@ -12,6 +12,7 @@ pub enum InputPreprocessorMessage {
 	MouseDown(MouseState),
 	MouseUp(MouseState),
 	MouseMove(ViewportPosition),
+	MouseScroll(i32),
 	KeyUp(Key),
 	KeyDown(Key),
 	ViewportResize(ViewportPosition),
@@ -35,6 +36,10 @@ impl MessageHandler<InputPreprocessorMessage, ()> for InputPreprocessor {
 			InputPreprocessorMessage::MouseMove(pos) => {
 				self.mouse.position = pos;
 				responses.push_back(InputMapperMessage::PointerMove.into());
+			}
+			InputPreprocessorMessage::MouseScroll(delta) => {
+				self.mouse.scroll_delta = delta;
+				responses.push_back(InputMapperMessage::MouseScroll.into());
 			}
 			InputPreprocessorMessage::MouseDown(state) => {
 				responses.push_back(self.translate_mouse_event(state, KeyPosition::Pressed));

@@ -53,6 +53,14 @@ pub fn on_mouse_move(x: u32, y: u32) -> Result<(), JsValue> {
 	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(ev)).map_err(convert_error)
 }
 
+/// Mouse scrolling within the screenspace bounds of the viewport
+#[wasm_bindgen]
+pub fn on_mouse_scroll(delta: i32) -> Result<(), JsValue> {
+	// TODO: Convert these screenspace viewport coordinates to canvas coordinates based on the current zoom and pan
+	let ev = InputPreprocessorMessage::MouseScroll(delta);
+	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(ev)).map_err(convert_error)
+}
+
 /// A mouse button depressed within screenspace the bounds of the viewport
 #[wasm_bindgen]
 pub fn on_mouse_down(x: u32, y: u32, mouse_keys: u8) -> Result<(), JsValue> {

@@ -19,6 +19,7 @@ impl ViewportPosition {
 pub struct MouseState {
 	pub position: ViewportPosition,
 	pub mouse_keys: MouseKeys,
+	pub scroll_delta: i32,
 }
 
 impl MouseState {
@@ -30,11 +31,16 @@ impl MouseState {
 		MouseState {
 			position: ViewportPosition { x, y },
 			mouse_keys: MouseKeys::default(),
+			scroll_delta: 0,
 		}
 	}
 	pub fn from_u8_pos(keys: u8, position: ViewportPosition) -> Self {
 		let mouse_keys = MouseKeys::from_bits(keys).expect("invalid modifier keys");
-		Self { position, mouse_keys }
+		Self {
+			position,
+			mouse_keys,
+			scroll_delta: 0,
+		}
 	}
 }
 bitflags! {

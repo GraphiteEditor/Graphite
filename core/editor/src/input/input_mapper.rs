@@ -10,6 +10,7 @@ use super::{
 #[derive(PartialEq, Clone, Debug)]
 pub enum InputMapperMessage {
 	PointerMove,
+	MouseScroll,
 	KeyUp(Key),
 	KeyDown(Key),
 }
@@ -59,6 +60,7 @@ struct Mapping {
 	up: [KeyMappingEntries; NUMBER_OF_KEYS],
 	down: [KeyMappingEntries; NUMBER_OF_KEYS],
 	pointer_move: KeyMappingEntries,
+	mouse_scroll: KeyMappingEntries,
 }
 
 macro_rules! modifiers {
@@ -88,21 +90,23 @@ macro_rules! mapping {
 		let mut up =  KeyMappingEntries::key_array();
 		let mut down = KeyMappingEntries::key_array();
 		let mut pointer_move: KeyMappingEntries = Default::default();
+		let mut mouse_scroll: KeyMappingEntries = Default::default();
 		$(
 			let arr = match $entry.trigger {
 				InputMapperMessage::KeyDown(key) => &mut down[key as usize],
 				InputMapperMessage::KeyUp(key) => &mut up[key as usize],
 				InputMapperMessage::PointerMove => &mut pointer_move,
+				InputMapperMessage::MouseScroll => &mut mouse_scroll,
 			};
 			arr.push($entry);
 		)*
-		(up, down, pointer_move)
+		(up, down, pointer_move, mouse_scroll)
 	}};
 }
 
 impl Default for Mapping {
 	fn default() -> Self {
-		let (up, down, pointer_move) = mapping![
+		let (up, down, pointer_move, mouse_scroll) = mapping![
 			// Rectangle
 			entry! {action=RectangleMessage::Center, key_down=KeyAlt},
 			entry! {action=RectangleMessage::UnCenter, key_up=KeyAlt},
@@ -176,6 +180,7 @@ impl Default for Mapping {
 			entry! {action=DocumentMessage::ChangeZoom(1.25), key_down=KeyPlus, modifiers=[KeyControl]},
 			entry! {action=DocumentMessage::ChangeZoom(1.25), key_down=KeyEquals, modifiers=[KeyControl]},
 			entry! {action=DocumentMessage::ChangeZoom(0.8), key_down=KeyMinus, modifiers=[KeyControl]},
+			entry! {action=DocumentMessage::WheelZoom, message=InputMapperMessage::MouseScroll, modifiers=[KeyControl]},
 			entry! {action=DocumentMessage::NewDocument, key_down=KeyN, modifiers=[KeyShift]},
 			entry! {action=DocumentMessage::NextDocument, key_down=KeyTab, modifiers=[KeyShift]},
 			entry! {action=DocumentMessage::CloseActiveDocument, key_down=KeyW, modifiers=[KeyShift]},
@@ -185,7 +190,7 @@ impl Default for Mapping {
 			entry! {action=GlobalMessage::LogTrace, key_down=Key3},
 			entry! {action=DocumentMessage::DuplicateSelectedLayers, key_down=KeyD, modifiers=[KeyControl]},
 		];
-		Self { up, down, pointer_move }
+		Self { up, down, pointer_move, mouse_scroll }
 	}
 }
 
@@ -196,6 +201,7 @@ impl Mapping {
 			KeyDown(key) => &self.down[key as usize],
 			KeyUp(key) => &self.up[key as usize],
 			PointerMove => &self.pointer_move,
+			MouseScroll => &self.mouse_scroll,
 		};
 		list.match_mapping(keys, actions)
 	}

@@ -115,7 +115,7 @@
 				<WorkingColors />
 			</LayoutCol>
 			<LayoutCol :class="'viewport'">
-				<div class="canvas" @mousedown="canvasMouseDown" @mouseup="canvasMouseUp" @mousemove="canvasMouseMove" ref="canvas">
+				<div class="canvas" @mousedown="canvasMouseDown" @mouseup="canvasMouseUp" @mousemove="canvasMouseMove" v-on:wheel="canvasMouseScroll" ref="canvas">
 					<svg v-html="viewportSvg"></svg>
 				</div>
 			</LayoutCol>
@@ -225,6 +225,11 @@ export default defineComponent({
 		async canvasMouseMove(e: MouseEvent) {
 			const { on_mouse_move } = await wasm;
 			on_mouse_move(e.offsetX, e.offsetY);
+		},
+		async canvasMouseScroll(e: WheelEvent) {
+			e.preventDefault();
+			const { on_mouse_scroll } = await wasm;
+			on_mouse_scroll(e.deltaY);
 		},
 		async changeZoom(newZoom: number, oldZoom: number) {
 			const { on_change_zoom } = await wasm;

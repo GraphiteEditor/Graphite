@@ -35,6 +35,7 @@ pub enum DocumentMessage {
 	ZoomDown,
 	TransformUp,
 	ChangeZoom(f64),
+	WheelZoom,
 	ChangeRotation(f64),
 }
 
@@ -86,7 +87,7 @@ impl DocumentMessageHandler {
 		// TODO: Add deduplication
 		(!path.is_empty()).then(|| self.handle_folder_changed(path[..path.len() - 1].to_vec())).flatten()
 	}
-	fn transform_document_around_centre(&mut self, half_viewport: DVec2, operation: DAffine2) -> DocumentOperation {
+	fn transform_document_around_centre(&self, half_viewport: DVec2, operation: DAffine2) -> DocumentOperation {
 		let half_viewport_affine = DAffine2::from_translation(half_viewport);
 		let document = self.active_document().document.root.transform;
 		let extracted = half_viewport_affine.inverse() * document;
@@ -97,6 +98,13 @@ impl DocumentMessageHandler {
 			path: vec![],
 			transform: result.to_cols_array(),
 		}
+	}
+	fn change_zoom(&self, amount: f64, ipp: &InputPreprocessor, responses: &mut VecDeque<Message>) {
+		let half_viewport = DVec2::new(ipp.viewport_size.x as f64 / 2., ipp.viewport_size.y as f64 / 2.);
+		let operation = self.transform_document_around_centre(half_viewport, DAffine2::from_scale(DVec2::new(amount, amount)));
+		responses.push_back(operation.into());
+
+		responses.push_back(FrontendMessage::UpdateZoom { change: amount }.into());
 	}
 }
 
@@ -333,19 +341,20 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				if self.zooming {
 					let difference = self.mouse_pos.y as f64 - ipp.mouse.position.y as f64;
 					let amount = 1. + difference / 100.;
-					let half_viewport = DVec2::new(ipp.viewport_size.x as f64 / 2., ipp.viewport_size.y as f64 / 2.);
-					let operation = self.transform_document_around_centre(half_viewport, DAffine2::from_scale(DVec2::new(amount, amount)));
-					responses.push_back(operation.into());
-					responses.push_back(FrontendMessage::UpdateZoom { change: amount }.into());
+					self.change_zoom(amount, ipp, responses);
 				}
 				self.mouse_pos = ipp.mouse.position;
 			}
 			ChangeZoom(amount) => {
-				let half_viewport = DVec2::new(ipp.viewport_size.x as f64 / 2., ipp.viewport_size.y as f64 / 2.);
-				let operation = self.transform_document_around_centre(half_viewport, DAffine2::from_scale(DVec2::new(amount, amount)));
-				responses.push_back(operation.into());
-
-				responses.push_back(FrontendMessage::UpdateZoom { change: amount }.into());
+				self.change_zoom(amount, ipp, responses);
+			}
+			WheelZoom => {
+				let amount = if ipp.mouse.scroll_delta > 0 {
+					1. + ipp.mouse.scroll_delta as f64 / -500.
+				} else {
+					1. / (1. + ipp.mouse.scroll_delta as f64 / 500.)
+				};
+				self.change_zoom(amount, ipp, responses);
 			}
 			ChangeRotation(rotation) => {
 				let half_viewport = DVec2::new(ipp.viewport_size.x as f64 / 2., ipp.viewport_size.y as f64 / 2.);
@@ -359,9 +368,9 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 	}
 	fn actions(&self) -> ActionList {
 		if self.active_document().layer_data.values().any(|data| data.selected) {
-			actions!(DocumentMessageDiscriminant; Undo, DeleteSelectedLayers, DuplicateSelectedLayers, RenderDocument, ExportDocument, NewDocument, CloseActiveDocument, NextDocument, PrevDocument, MouseMove, TransformUp, TranslateDown, RotateDown, ZoomDown, ChangeZoom, ChangeRotation)
+			actions!(DocumentMessageDiscriminant; Undo, DeleteSelectedLayers, DuplicateSelectedLayers, RenderDocument, ExportDocument, NewDocument, CloseActiveDocument, NextDocument, PrevDocument, MouseMove, TransformUp, TranslateDown, RotateDown, ZoomDown, ChangeZoom, ChangeRotation, WheelZoom)
 		} else {
-			actions!(DocumentMessageDiscriminant; Undo, RenderDocument, ExportDocument, NewDocument, CloseActiveDocument, NextDocument, PrevDocument, MouseMove, TransformUp, TranslateDown, RotateDown, ZoomDown, ChangeZoom, ChangeRotation)
+			actions!(DocumentMessageDiscriminant; Undo, RenderDocument, ExportDocument, NewDocument, CloseActiveDocument, NextDocument, PrevDocument, MouseMove, TransformUp, TranslateDown, RotateDown, ZoomDown, ChangeZoom, ChangeRotation, WheelZoom)
 		}
 	}
 }
