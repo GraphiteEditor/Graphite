@@ -8,7 +8,7 @@
 
 <style lang="scss">
 .number-input {
-	width: 64px;
+	width: 80px;
 	height: 24px;
 	position: relative;
 	border-radius: 2px;
@@ -121,7 +121,7 @@ export default defineComponent({
 			this.updateValue(new_value, true);
 		},
 
-		reset(newValue: number, resetOnClamp: boolean) {
+		clampValue(newValue: number, resetOnClamp: boolean) {
 			if (!Number.isFinite(newValue)) return this.value;
 			let result = newValue;
 			if (Number.isFinite(this.min) && typeof this.min === "number") {
@@ -136,7 +136,7 @@ export default defineComponent({
 		},
 		updateValue(newValue: number, resetOnClamp: boolean) {
 			const old_value = this.value;
-			this.value = this.reset(newValue, resetOnClamp);
+			this.value = this.clampValue(newValue, resetOnClamp);
 
 			if (this.callback) this.callback(this.value, old_value);
 

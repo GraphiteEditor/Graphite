@@ -64,13 +64,13 @@
 
 				<Separator :type="SeparatorType.Section" />
 
-				<IconButton :icon="'ZoomIn'" :size="24" title="Zoom In" />
-				<IconButton :icon="'ZoomOut'" :size="24" title="Zoom Out" />
-				<IconButton :icon="'ZoomReset'" :size="24" title="Zoom to 100%" />
+				<IconButton :icon="'ZoomIn'" :size="24" title="Zoom In" @click="this.$refs.zoom.onIncrement(1)" />
+				<IconButton :icon="'ZoomOut'" :size="24" title="Zoom Out" @click="this.$refs.zoom.onIncrement(-1)" />
+				<IconButton :icon="'ZoomReset'" :size="24" title="Zoom to 100%" @click="this.$refs.zoom.updateValue(100)" />
 
 				<Separator :type="SeparatorType.Related" />
 
-				<NumberInput :callback="changeZoom" :initial_value="100" :min="10" :step="25" :unit="`%`" />
+				<NumberInput :callback="changeZoom" :initial_value="100" :min="10" :step="25" :unit="`%`" ref="zoom" />
 			</div>
 		</LayoutRow>
 		<LayoutRow :class="'shelf-and-viewport'">
