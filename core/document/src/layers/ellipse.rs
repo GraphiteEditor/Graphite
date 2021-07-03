@@ -5,7 +5,7 @@ use super::LayerData;
 
 use std::fmt::Write;
 
-#[derive(Debug, Clone, Copy, PartialEq, Default)]
+#[derive(Debug, Clone, Copy, Default)]
 pub struct Ellipse {}
 
 impl Ellipse {
