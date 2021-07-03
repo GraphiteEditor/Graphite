@@ -99,12 +99,12 @@ impl DocumentMessageHandler {
 			transform: result.to_cols_array(),
 		}
 	}
-	fn change_zoom(&self, amount: f64, ipp: &InputPreprocessor, responses: &mut VecDeque<Message>) {
+	fn multiply_zoom(&self, multiplyer: f64, ipp: &InputPreprocessor, responses: &mut VecDeque<Message>) {
 		let half_viewport = DVec2::new(ipp.viewport_size.x as f64 / 2., ipp.viewport_size.y as f64 / 2.);
-		let operation = self.transform_document_around_centre(half_viewport, DAffine2::from_scale(DVec2::new(amount, amount)));
+		let operation = self.transform_document_around_centre(half_viewport, DAffine2::from_scale(DVec2::new(multiplyer, multiplyer)));
 		responses.push_back(operation.into());
 
-		responses.push_back(FrontendMessage::UpdateZoom { change: amount }.into());
+		responses.push_back(FrontendMessage::MultiplyZoom { multiplyer }.into());
 	}
 }
 
@@ -341,12 +341,12 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				if self.zooming {
 					let difference = self.mouse_pos.y as f64 - ipp.mouse.position.y as f64;
 					let amount = 1. + difference / 100.;
-					self.change_zoom(amount, ipp, responses);
+					self.multiply_zoom(amount, ipp, responses);
 				}
 				self.mouse_pos = ipp.mouse.position;
 			}
 			ChangeZoom(amount) => {
-				self.change_zoom(amount, ipp, responses);
+				self.multiply_zoom(amount, ipp, responses);
 			}
 			WheelZoom => {
 				let amount = if ipp.mouse.scroll_delta > 0 {
@@ -354,7 +354,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				} else {
 					1. / (1. + ipp.mouse.scroll_delta as f64 / 500.)
 				};
-				self.change_zoom(amount, ipp, responses);
+				self.multiply_zoom(amount, ipp, responses);
 			}
 			ChangeRotation(rotation) => {
 				let half_viewport = DVec2::new(ipp.viewport_size.x as f64 / 2., ipp.viewport_size.y as f64 / 2.);

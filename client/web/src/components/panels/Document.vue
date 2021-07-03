@@ -168,7 +168,7 @@
 
 <script lang="ts">
 import { defineComponent } from "vue";
-import { ResponseType, registerResponseHandler, Response, UpdateCanvas, SetActiveTool, ExportDocument, UpdateZoom, UpdateRotation } from "../../response-handler";
+import { ResponseType, registerResponseHandler, Response, UpdateCanvas, SetActiveTool, ExportDocument, MultiplyZoom, UpdateRotation } from "../../response-handler";
 import LayoutRow from "../layout/LayoutRow.vue";
 import LayoutCol from "../layout/LayoutCol.vue";
 import WorkingColors from "../widgets/WorkingColors.vue";
@@ -289,11 +289,11 @@ export default defineComponent({
 			const toolData = responseData as SetActiveTool;
 			if (toolData) this.activeTool = toolData.tool_name;
 		});
-		registerResponseHandler(ResponseType.UpdateZoom, (responseData: Response) => {
-			const updateData = responseData as UpdateZoom;
+		registerResponseHandler(ResponseType.MultiplyZoom, (responseData: Response) => {
+			const updateData = responseData as MultiplyZoom;
 			if (updateData) {
 				const zoomWidget = this.$refs.zoom as typeof NumberInput;
-				zoomWidget.setValue(zoomWidget.value * updateData.change);
+				zoomWidget.setValue(zoomWidget.value * updateData.multiplyer);
 			}
 		});
 		registerResponseHandler(ResponseType.UpdateRotation, (responseData: Response) => {

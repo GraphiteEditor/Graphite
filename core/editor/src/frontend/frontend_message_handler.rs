@@ -20,7 +20,7 @@ pub enum FrontendMessage {
 	DisableTextInput,
 	UpdateWorkingColors { primary: Color, secondary: Color },
 	PromptCloseConfirmationModal,
-	UpdateZoom { change: f64 },
+	MultiplyZoom { multiplyer: f64 },
 	UpdateRotation { change: f64 },
 }
 
@@ -48,7 +48,7 @@ impl MessageHandler<FrontendMessage, ()> for FrontendMessageHandler {
 		UpdateCanvas,
 		EnableTextInput,
 		DisableTextInput,
-		UpdateZoom,
+		MultiplyZoom,
 		UpdateRotation,
 	);
 }
