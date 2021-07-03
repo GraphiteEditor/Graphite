@@ -31,9 +31,9 @@ pub enum DocumentMessage {
 	Undo,
 	MouseMove,
 	TranslateDown,
-	TranslateUp,
 	RotateDown,
-	RotateUp,
+	ZoomDown,
+	TransformUp,
 	ChangeZoom(f64),
 }
 
@@ -54,6 +54,7 @@ pub struct DocumentMessageHandler {
 	active_document: usize,
 	translating: bool,
 	rotating: bool,
+	zooming:bool,
 	mouse_pos: ViewportPosition,
 }
 
@@ -105,6 +106,7 @@ impl Default for DocumentMessageHandler {
 			active_document: 0,
 			translating: false,
 			rotating: false,
+			zooming: false,
 			mouse_pos: ViewportPosition::default(),
 		}
 	}
@@ -291,16 +293,18 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				self.translating = true;
 				self.mouse_pos = ipp.mouse.position;
 			}
-			TranslateUp => {
-				self.translating = false;
-				self.rotating = false;
-			}
 			RotateDown => {
 				self.rotating = true;
 				self.mouse_pos = ipp.mouse.position;
 			}
-			RotateUp => {
+			ZoomDown => {
+				self.zooming = true;
+				self.mouse_pos = ipp.mouse.position;
+			}
+			TransformUp => {
+				self.translating = false;
 				self.rotating = false;
+				self.zooming = false;
 			}
 			MouseMove => {
 				if self.translating {
@@ -312,7 +316,6 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 						transform: DAffine2::from_translation(transformed_delta).to_cols_array(),
 					};
 					responses.push_back(operation.into());
-					self.mouse_pos = ipp.mouse.position;
 				}
 				if self.rotating {
 					let half_viewport = DVec2::new(ipp.viewport_size.x as f64 / 2., ipp.viewport_size.y as f64 / 2.);
@@ -323,8 +326,15 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					};
 					let operation = self.transform_document_around_centre(half_viewport, DAffine2::from_angle(rotation));
 					responses.push_back(operation.into());
-					self.mouse_pos = ipp.mouse.position;
 				}
+				if self.zooming {
+					let difference = self.mouse_pos.y as f64 - ipp.mouse.position.y as f64;
+					let amount = 1. + difference /100.;
+					let half_viewport = DVec2::new(ipp.viewport_size.x as f64 / 2., ipp.viewport_size.y as f64 / 2.);
+					let operation = self.transform_document_around_centre(half_viewport, DAffine2::from_scale(DVec2::new(amount, amount)));
+					responses.push_back(operation.into());
+				}
+				self.mouse_pos = ipp.mouse.position;
 			}
 			ChangeZoom(amount) => {
 				let half_viewport = DVec2::new(ipp.viewport_size.x as f64 / 2., ipp.viewport_size.y as f64 / 2.);
@@ -336,9 +346,9 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 	}
 	fn actions(&self) -> ActionList {
 		if self.active_document().layer_data.values().any(|data| data.selected) {
-			actions!(DocumentMessageDiscriminant; Undo, DeleteSelectedLayers, DuplicateSelectedLayers, RenderDocument, ExportDocument, NewDocument, CloseActiveDocument, NextDocument, PrevDocument, MouseMove, TranslateUp, TranslateDown, RotateUp, RotateDown, ChangeZoom)
+			actions!(DocumentMessageDiscriminant; Undo, DeleteSelectedLayers, DuplicateSelectedLayers, RenderDocument, ExportDocument, NewDocument, CloseActiveDocument, NextDocument, PrevDocument, MouseMove, TransformUp, TranslateDown, RotateDown, ZoomDown, ChangeZoom)
 		} else {
-			actions!(DocumentMessageDiscriminant; Undo, RenderDocument, ExportDocument, NewDocument, CloseActiveDocument, NextDocument, PrevDocument, MouseMove, TranslateUp, TranslateDown, RotateUp, RotateDown, ChangeZoom)
+			actions!(DocumentMessageDiscriminant; Undo, RenderDocument, ExportDocument, NewDocument, CloseActiveDocument, NextDocument, PrevDocument, MouseMove, TransformUp, TranslateDown, RotateDown, ZoomDown, ChangeZoom)
 		}
 	}
 }
