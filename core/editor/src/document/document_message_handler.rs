@@ -35,6 +35,7 @@ pub enum DocumentMessage {
 	ZoomDown,
 	TransformUp,
 	ChangeZoom(f64),
+	ChangeRotation(f64),
 }
 
 impl From<DocumentOperation> for DocumentMessage {
@@ -326,6 +327,8 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					};
 					let operation = self.transform_document_around_centre(half_viewport, DAffine2::from_angle(rotation));
 					responses.push_back(operation.into());
+
+					responses.push_back(FrontendMessage::UpdateRotation { change: rotation }.into());
 				}
 				if self.zooming {
 					let difference = self.mouse_pos.y as f64 - ipp.mouse.position.y as f64;
@@ -333,6 +336,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					let half_viewport = DVec2::new(ipp.viewport_size.x as f64 / 2., ipp.viewport_size.y as f64 / 2.);
 					let operation = self.transform_document_around_centre(half_viewport, DAffine2::from_scale(DVec2::new(amount, amount)));
 					responses.push_back(operation.into());
+					responses.push_back(FrontendMessage::UpdateZoom { change: amount }.into());
 				}
 				self.mouse_pos = ipp.mouse.position;
 			}
@@ -340,15 +344,24 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				let half_viewport = DVec2::new(ipp.viewport_size.x as f64 / 2., ipp.viewport_size.y as f64 / 2.);
 				let operation = self.transform_document_around_centre(half_viewport, DAffine2::from_scale(DVec2::new(amount, amount)));
 				responses.push_back(operation.into());
+
+				responses.push_back(FrontendMessage::UpdateZoom { change: amount }.into());
+			}
+			ChangeRotation(rotation) => {
+				let half_viewport = DVec2::new(ipp.viewport_size.x as f64 / 2., ipp.viewport_size.y as f64 / 2.);
+				let operation = self.transform_document_around_centre(half_viewport, DAffine2::from_angle(rotation));
+				responses.push_back(operation.into());
+
+				responses.push_back(FrontendMessage::UpdateRotation { change: rotation }.into());
 			}
 			message => todo!("document_action_handler does not implement: {}", message.to_discriminant().global_name()),
 		}
 	}
 	fn actions(&self) -> ActionList {
 		if self.active_document().layer_data.values().any(|data| data.selected) {
-			actions!(DocumentMessageDiscriminant; Undo, DeleteSelectedLayers, DuplicateSelectedLayers, RenderDocument, ExportDocument, NewDocument, CloseActiveDocument, NextDocument, PrevDocument, MouseMove, TransformUp, TranslateDown, RotateDown, ZoomDown, ChangeZoom)
+			actions!(DocumentMessageDiscriminant; Undo, DeleteSelectedLayers, DuplicateSelectedLayers, RenderDocument, ExportDocument, NewDocument, CloseActiveDocument, NextDocument, PrevDocument, MouseMove, TransformUp, TranslateDown, RotateDown, ZoomDown, ChangeZoom, ChangeRotation)
 		} else {
-			actions!(DocumentMessageDiscriminant; Undo, RenderDocument, ExportDocument, NewDocument, CloseActiveDocument, NextDocument, PrevDocument, MouseMove, TransformUp, TranslateDown, RotateDown, ZoomDown, ChangeZoom)
+			actions!(DocumentMessageDiscriminant; Undo, RenderDocument, ExportDocument, NewDocument, CloseActiveDocument, NextDocument, PrevDocument, MouseMove, TransformUp, TranslateDown, RotateDown, ZoomDown, ChangeZoom, ChangeRotation)
 		}
 	}
 }

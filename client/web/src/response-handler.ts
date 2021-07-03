@@ -21,6 +21,8 @@ export enum ResponseType {
 	CloseDocument = "CloseDocument",
 	UpdateWorkingColors = "UpdateWorkingColors",
 	PromptCloseConfirmationModal = "PromptCloseConfirmationModal",
+	UpdateZoom = "UpdateZoom",
+	UpdateRotation = "UpdateRotation",
 }
 
 export function attachResponseHandlerToPage() {
@@ -64,6 +66,10 @@ function parseResponse(responseType: string, data: any): Response {
 			return newCloseDocument(data.CloseDocument);
 		case "UpdateCanvas":
 			return newUpdateCanvas(data.UpdateCanvas);
+		case "UpdateZoom":
+			return newUpdateZoom(data.UpdateZoom);
+		case "UpdateRotation":
+			return newUpdateRotation(data.UpdateRotation);
 		case "ExportDocument":
 			return newExportDocument(data.ExportDocument);
 		case "UpdateWorkingColors":
@@ -75,7 +81,7 @@ function parseResponse(responseType: string, data: any): Response {
 	}
 }
 
-export type Response = SetActiveTool | UpdateCanvas | DocumentChanged | CollapseFolder | ExpandFolder | UpdateWorkingColors;
+export type Response = SetActiveTool | UpdateCanvas | DocumentChanged | CollapseFolder | ExpandFolder | UpdateWorkingColors | UpdateZoom | UpdateRotation;
 
 export interface CloseDocument {
 	document_index: number;
@@ -172,6 +178,24 @@ function newExpandFolder(input: any): ExpandFolder {
 	return {
 		path: new BigUint64Array(input.path.map((n: number) => BigInt(n))),
 		children: input.children.map((child: any) => newLayerPanelEntry(child)),
+	};
+}
+
+export interface UpdateZoom {
+	change: number;
+}
+function newUpdateZoom(input: any): UpdateZoom {
+	return {
+		change: input.change,
+	};
+}
+
+export interface UpdateRotation {
+	change: number;
+}
+function newUpdateRotation(input: any): UpdateRotation {
+	return {
+		change: input.change,
 	};
 }
 

@@ -134,6 +134,13 @@ pub fn on_change_zoom(delta_zoom: f64) -> Result<(), JsValue> {
 	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(ev)).map_err(convert_error)
 }
 
+/// Changes document rotation by delta radians
+#[wasm_bindgen]
+pub fn on_change_rotation(delta_radians: f64) -> Result<(), JsValue> {
+	let ev = DocumentMessage::ChangeRotation(delta_radians);
+	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(ev)).map_err(convert_error)
+}
+
 /// Update the list of selected layers. The layer paths have to be stored in one array and are separated by LayerId::MAX
 #[wasm_bindgen]
 pub fn select_layers(paths: Vec<LayerId>) -> Result<(), JsValue> {

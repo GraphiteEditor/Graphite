@@ -64,13 +64,17 @@
 
 				<Separator :type="SeparatorType.Section" />
 
+				<NumberInput :callback="changeRotation" :initial_value="0" :step="15" :unit="`°`" :update_on_callback="false" ref="rotation" />
+
+				<Separator :type="SeparatorType.Section" />
+
 				<IconButton :icon="'ZoomIn'" :size="24" title="Zoom In" @click="this.$refs.zoom.onIncrement(1)" />
 				<IconButton :icon="'ZoomOut'" :size="24" title="Zoom Out" @click="this.$refs.zoom.onIncrement(-1)" />
 				<IconButton :icon="'ZoomReset'" :size="24" title="Zoom to 100%" @click="this.$refs.zoom.updateValue(100)" />
 
 				<Separator :type="SeparatorType.Related" />
 
-				<NumberInput :callback="changeZoom" :initial_value="100" :min="10" :step="25" :unit="`%`" ref="zoom" />
+				<NumberInput :callback="changeZoom" :initial_value="100" :min="0.001" :increase_mult="1.25" :decrease_mult="0.8" :unit="`%`" :update_on_callback="false" ref="zoom" />
 			</div>
 		</LayoutRow>
 		<LayoutRow :class="'shelf-and-viewport'">
@@ -164,7 +168,7 @@
 
 <script lang="ts">
 import { defineComponent } from "vue";
-import { ResponseType, registerResponseHandler, Response, UpdateCanvas, SetActiveTool, ExportDocument } from "../../response-handler";
+import { ResponseType, registerResponseHandler, Response, UpdateCanvas, SetActiveTool, ExportDocument, UpdateZoom, UpdateRotation } from "../../response-handler";
 import LayoutRow from "../layout/LayoutRow.vue";
 import LayoutCol from "../layout/LayoutCol.vue";
 import WorkingColors from "../widgets/WorkingColors.vue";
@@ -226,6 +230,10 @@ export default defineComponent({
 			const { on_change_zoom } = await wasm;
 			on_change_zoom(newZoom / 100 / (oldZoom / 100));
 		},
+		async changeRotation(newRotation: number, oldRotation: number) {
+			const { on_change_rotation } = await wasm;
+			on_change_rotation((newRotation - oldRotation) * (Math.PI / 180));
+		},
 		async keyDown(e: KeyboardEvent) {
 			if (redirectKeyboardEventToBackend(e)) {
 				e.preventDefault();
@@ -275,6 +283,21 @@ export default defineComponent({
 		registerResponseHandler(ResponseType.SetActiveTool, (responseData: Response) => {
 			const toolData = responseData as SetActiveTool;
 			if (toolData) this.activeTool = toolData.tool_name;
+		});
+		registerResponseHandler(ResponseType.UpdateZoom, (responseData: Response) => {
+			const updateData = responseData as UpdateZoom;
+			if (updateData) {
+				const zoomWidget = this.$refs.zoom as typeof NumberInput;
+				zoomWidget.setValue(zoomWidget.value * updateData.change);
+			}
+		});
+		registerResponseHandler(ResponseType.UpdateRotation, (responseData: Response) => {
+			const updateData = responseData as UpdateRotation;
+			if (updateData) {
+				const rotationWidget = this.$refs.rotation as typeof NumberInput;
+				const newRotation = rotationWidget.value + updateData.change * (180 / Math.PI);
+				rotationWidget.setValue((360 + (newRotation % 360)) % 360);
+			}
 		});
 
 		window.addEventListener("keyup", (e: KeyboardEvent) => this.keyUp(e));

@@ -175,7 +175,7 @@ impl Default for Mapping {
 			entry! {action=DocumentMessage::TransformUp, key_up=Mmb},
 			entry! {action=DocumentMessage::ChangeZoom(1.25), key_down=KeyPlus},
 			entry! {action=DocumentMessage::ChangeZoom(1.25), key_down=KeyEquals},
-			entry! {action=DocumentMessage::ChangeZoom(0.75), key_down=KeyMinus},
+			entry! {action=DocumentMessage::ChangeZoom(0.8), key_down=KeyMinus},
 			entry! {action=DocumentMessage::NewDocument, key_down=KeyN, modifiers=[KeyShift]},
 			entry! {action=DocumentMessage::NextDocument, key_down=KeyTab, modifiers=[KeyShift]},
 			entry! {action=DocumentMessage::CloseActiveDocument, key_down=KeyW, modifiers=[KeyShift]},
