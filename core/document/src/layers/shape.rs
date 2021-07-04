@@ -1,3 +1,8 @@
+use glam::DAffine2;
+use glam::DVec2;
+
+use crate::intersection::intersect_quad_bez_path;
+use crate::LayerId;
 use kurbo::BezPath;
 use kurbo::Vec2;
 
@@ -20,7 +25,7 @@ impl Shape {
 }
 
 impl LayerData for Shape {
-	fn to_kurbo_path(&mut self, transform: glam::DAffine2, _style: style::PathStyle) -> BezPath {
+	fn to_kurbo_path(&self, transform: glam::DAffine2, _style: style::PathStyle) -> BezPath {
 		fn unit_rotation(theta: f64) -> Vec2 {
 			Vec2::new(-theta.sin(), theta.cos())
 		}
@@ -65,5 +70,11 @@ impl LayerData for Shape {
 	}
 	fn render(&mut self, svg: &mut String, transform: glam::DAffine2, style: style::PathStyle) {
 		let _ = write!(svg, r#"<path d="{}" {} />"#, self.to_kurbo_path(transform, style).to_svg(), style.render());
+	}
+
+	fn intersects_quad(&self, quad: [DVec2; 4], path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>, style: style::PathStyle) {
+		if intersect_quad_bez_path(quad, &self.to_kurbo_path(DAffine2::IDENTITY, style), true) {
+			intersections.push(path.clone());
+		}
 	}
 }

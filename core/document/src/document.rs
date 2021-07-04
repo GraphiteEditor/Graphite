@@ -1,4 +1,4 @@
-use glam::DAffine2;
+use glam::{DAffine2, DVec2};
 
 use crate::{
 	layers::{self, style::PathStyle, Folder, Layer, LayerDataTypes, Line, PolyLine, Rect, Shape},
@@ -62,6 +62,19 @@ impl Document {
 		let mut svg = String::new();
 		self.render(&mut vec![], &mut svg);
 		svg
+	}
+
+	/// Checks whether each layer under `path` intersects with the provided `quad` and adds all intersection layers as paths to `intersections`.
+	pub fn intersects_quad(&self, quad: [DVec2; 4], path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>) {
+		self.document_folder(path).unwrap().intersects_quad(quad, path, intersections);
+		return;
+	}
+
+	/// Checks whether each layer under the root path intersects with the provided `quad` and returns the paths to all intersecting layers.
+	pub fn intersects_quad_root(&self, quad: [DVec2; 4]) -> Vec<Vec<LayerId>> {
+		let mut intersections = Vec::new();
+		self.intersects_quad(quad, &mut vec![], &mut intersections);
+		intersections
 	}
 
 	fn is_mounted(&self, mount_path: &[LayerId], path: &[LayerId]) -> bool {
