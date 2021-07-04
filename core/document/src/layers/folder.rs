@@ -2,9 +2,10 @@ use crate::{DocumentError, LayerId};
 
 use super::{style, Layer, LayerData, LayerDataTypes};
 
+use serde::{Deserialize, Serialize};
 use std::fmt::Write;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub struct Folder {
 	next_assignment_id: LayerId,
 	pub layer_ids: Vec<LayerId>,

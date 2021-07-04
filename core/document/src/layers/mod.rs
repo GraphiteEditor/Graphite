@@ -4,6 +4,7 @@ pub mod ellipse;
 pub use ellipse::Ellipse;
 
 pub mod line;
+use glam::{DMat2, DVec2};
 use kurbo::BezPath;
 pub use line::Line;
 
@@ -17,16 +18,16 @@ pub mod shape;
 pub use shape::Shape;
 
 pub mod folder;
-pub use folder::Folder;
-
 use crate::DocumentError;
+pub use folder::Folder;
+use serde::{Deserialize, Serialize};
 
 pub trait LayerData {
 	fn render(&mut self, svg: &mut String, transform: glam::DAffine2, style: style::PathStyle);
 	fn to_kurbo_path(&mut self, transform: glam::DAffine2, style: style::PathStyle) -> BezPath;
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub enum LayerDataTypes {
 	Folder(Folder),
 	Ellipse(Ellipse),
@@ -77,11 +78,19 @@ impl LayerDataTypes {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize)]
+#[serde(remote = "glam::DAffine2")]
+struct DAffine2Ref {
+	pub matrix2: DMat2,
+	pub translation: DVec2,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub struct Layer {
 	pub visible: bool,
 	pub name: Option<String>,
 	pub data: LayerDataTypes,
+	#[serde(with = "DAffine2Ref")]
 	pub transform: glam::DAffine2,
 	pub style: style::PathStyle,
 	pub cache: String,

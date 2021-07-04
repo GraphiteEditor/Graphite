@@ -1,8 +1,9 @@
+use serde::{Deserialize, Serialize};
 use std::fmt::Write;
 
 use super::{style, LayerData};
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub struct PolyLine {
 	points: Vec<glam::DVec2>,
 }
