@@ -5,7 +5,7 @@ use crate::{
 	DocumentError, DocumentResponse, LayerId, Operation,
 };
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct Document {
 	pub root: Layer,
 	pub work: Layer,
@@ -229,8 +229,9 @@ impl Document {
 			} => {
 				let points: Vec<glam::DVec2> = points.iter().map(|&it| it.into()).collect();
 				let polyline = PolyLine::new(points);
-				self.add_layer(&path, Layer::new(LayerDataTypes::PolyLine(polyline), *transform, *style), *insert_index)?;
-				Some(vec![DocumentResponse::DocumentChanged])
+				let id = self.add_layer(&path, Layer::new(LayerDataTypes::PolyLine(polyline), *transform, *style), *insert_index)?;
+				let path = [path.clone(), vec![id]].concat();
+				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::SelectLayer { path }])
 			}
 			Operation::AddShape {
 				path,

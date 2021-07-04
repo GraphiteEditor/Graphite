@@ -33,7 +33,7 @@ pub trait LayerData {
 	fn intersects_point(&self, point: DVec2, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>, style: style::PathStyle);
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub enum LayerDataTypes {
 	Folder(Folder),
 	Ellipse(Ellipse),
@@ -127,7 +127,7 @@ impl LayerDataTypes {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct Layer {
 	pub visible: bool,
 	pub name: Option<String>,

@@ -9,7 +9,7 @@ use std::fmt::Write;
 
 use super::{style, LayerData, POINT_SELECTION_TOLERANCE};
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct PolyLine {
 	points: Vec<glam::DVec2>,
 }

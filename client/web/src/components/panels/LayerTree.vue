@@ -14,7 +14,7 @@
 				<p>More blend and compositing options will be here</p>
 			</PopoverButton>
 		</LayoutRow>
-		<LayoutRow :class="'layer-tree'">
+		<LayoutRow :class="'layer-tree scrollable-y'">
 			<LayoutCol :class="'list'">
 				<div class="layer-row" v-for="layer in layers" :key="layer.path">
 					<div class="layer-visibility">
@@ -62,8 +62,6 @@
 	}
 
 	.layer-tree {
-		overflow: auto;
-
 		.layer-row {
 			display: flex;
 			height: 36px;

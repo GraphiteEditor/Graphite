@@ -41,7 +41,7 @@
 	// TODO: Replace with CSS color() function to calculate alpha when browsers support it
 	// See https://developer.mozilla.org/en-US/docs/Web/CSS/color_value/color() and https://caniuse.com/css-color-function
 	// E6 = 90% alpha
-	--floating-menu-opacity-color-2-mildblack: #222222e6;
+	--floating-menu-opacity-color-2-mildblack: #222222f2;
 	--floating-menu-shadow: rgba(0, 0, 0, 50%);
 }
 
@@ -67,6 +67,72 @@ button {
 svg,
 img {
 	display: block;
+}
+
+.scrollable,
+.scrollable-x,
+.scrollable-y {
+	// Standard
+	scrollbar-width: thin;
+	scrollbar-width: 6px;
+	scrollbar-gutter: 6px;
+	scrollbar-color: var(--color-5-dullgray) transparent;
+
+	&:not(:hover) {
+		scrollbar-width: none;
+	}
+
+	// WebKit
+	&::-webkit-scrollbar {
+		width: calc(2px + 6px + 2px);
+	}
+
+	&:not(:hover)::-webkit-scrollbar {
+		width: 0;
+	}
+
+	&::-webkit-scrollbar-track {
+		box-shadow: inset 0 0 0 1px var(--color-5-dullgray);
+		border: 2px solid transparent;
+		border-radius: 10px;
+
+		&:hover {
+			box-shadow: inset 0 0 0 1px var(--color-6-lowergray);
+		}
+	}
+
+	&::-webkit-scrollbar-thumb {
+		background-clip: padding-box;
+		background-color: var(--color-5-dullgray);
+		border: 2px solid transparent;
+		border-radius: 10px;
+		margin: 2px;
+
+		&:hover {
+			background-color: var(--color-6-lowergray);
+		}
+	}
+}
+
+.scrollable {
+	// Standard
+	overflow: auto;
+	// WebKit
+	overflow: overlay;
+}
+
+.scrollable-x {
+	// Standard
+	overflow-x: auto;
+	// WebKit
+	overflow-x: overlay;
+}
+
+.scrollable-y {
+	// Standard
+	overflow-y: auto;
+	// WebKit
+	overflow-y: overlay;
 }
 
 // For placeholder messages (remove eventually)
@@ -117,12 +183,12 @@ img {
 	border-radius: 2px;
 
 	&:hover {
-		background-color: var(--color-6-lowergray);
+		background: var(--color-6-lowergray);
 		color: var(--color-f-white);
 	}
 
 	&:active {
-		background-color: var(--color-accent-hover);
+		background: var(--color-accent-hover);
 		color: var(--color-f-white);
 	}
 }
