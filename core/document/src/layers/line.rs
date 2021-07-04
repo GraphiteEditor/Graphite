@@ -6,7 +6,7 @@ use super::LayerData;
 
 use std::fmt::Write;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Line {}
 
 impl Line {
