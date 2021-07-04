@@ -8,9 +8,10 @@ use crate::LayerId;
 use super::style;
 use super::LayerData;
 
+use serde::{Deserialize, Serialize};
 use std::fmt::Write;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub struct Rect {}
 
 impl Rect {

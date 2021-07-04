@@ -1,4 +1,7 @@
-use crate::{layers::style, LayerId};
+use crate::{
+	layers::{style, Layer},
+	LayerId,
+};
 
 use serde::{Deserialize, Serialize};
 
@@ -42,6 +45,10 @@ pub enum Operation {
 		path: Vec<LayerId>,
 	},
 	DuplicateLayer {
+		path: Vec<LayerId>,
+	},
+	PasteLayer {
+		layer: Layer,
 		path: Vec<LayerId>,
 	},
 	AddFolder {

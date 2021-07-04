@@ -4,7 +4,7 @@ pub mod ellipse;
 pub use ellipse::Ellipse;
 
 pub mod line;
-use glam::DVec2;
+use glam::{DMat2, DVec2};
 use kurbo::BezPath;
 pub use line::Line;
 
@@ -18,10 +18,10 @@ pub mod shape;
 pub use shape::Shape;
 
 pub mod folder;
-pub use folder::Folder;
-
 use crate::DocumentError;
 use crate::LayerId;
+pub use folder::Folder;
+use serde::{Deserialize, Serialize};
 
 pub const SELECTION_TOLERANCE: f64 = 5.0;
 
@@ -31,7 +31,7 @@ pub trait LayerData {
 	fn intersects_quad(&self, quad: [DVec2; 4], path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>, style: style::PathStyle);
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub enum LayerDataTypes {
 	Folder(Folder),
 	Ellipse(Ellipse),
@@ -104,11 +104,19 @@ impl LayerDataTypes {
 	}
 }
 
-#[derive(Debug, Clone)]
+#[derive(Serialize, Deserialize)]
+#[serde(remote = "glam::DAffine2")]
+struct DAffine2Ref {
+	pub matrix2: DMat2,
+	pub translation: DVec2,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub struct Layer {
 	pub visible: bool,
 	pub name: Option<String>,
 	pub data: LayerDataTypes,
+	#[serde(with = "DAffine2Ref")]
 	pub transform: glam::DAffine2,
 	pub style: style::PathStyle,
 	pub cache: String,

@@ -8,9 +8,10 @@ use crate::LayerId;
 use super::style;
 use super::LayerData;
 
+use serde::{Deserialize, Serialize};
 use std::fmt::Write;
 
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Default, Deserialize, Serialize)]
 pub struct Ellipse {}
 
 impl Ellipse {
