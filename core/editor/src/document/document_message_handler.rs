@@ -232,6 +232,8 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				for path in paths {
 					responses.extend(self.select_layer(&path));
 				}
+				// TODO: Correctly update layer panel in clear_selection instead of here
+				responses.extend(self.handle_folder_changed(Vec::new()));
 			}
 			Undo => {
 				// this is a temporary fix and will be addressed by #123
