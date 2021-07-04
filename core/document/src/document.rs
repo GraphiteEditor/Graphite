@@ -5,7 +5,7 @@ use crate::{
 	DocumentError, DocumentResponse, LayerId, Operation,
 };
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Document {
 	pub root: Layer,
 	pub work: Layer,
