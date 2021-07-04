@@ -1,5 +1,5 @@
-use glam::{DAffine2, DVec2};
 use crate::{intersection::intersect_quad_bez_path, LayerId};
+use glam::{DAffine2, DVec2};
 use serde::{Deserialize, Serialize};
 use std::fmt::Write;
 
