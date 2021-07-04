@@ -4,9 +4,10 @@ use kurbo::Vec2;
 use super::style;
 use super::LayerData;
 
+use serde::{Deserialize, Serialize};
 use std::fmt::Write;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub struct Shape {
 	equal_sides: bool,
 	sides: u8,

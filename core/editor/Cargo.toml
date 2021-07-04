@@ -19,3 +19,6 @@ glam = "0.16"
 [dependencies.document-core]
 path = "../document"
 package = "graphite-document-core"
+
+[dev-dependencies]
+env_logger = "0.8.4"
