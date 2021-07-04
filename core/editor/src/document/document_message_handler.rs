@@ -1,10 +1,9 @@
-use crate::{
-	input::{mouse::ViewportPosition, InputPreprocessor},
-	message_prelude::*,
-};
+use crate::input::{mouse::ViewportPosition, InputPreprocessor};
+use crate::message_prelude::*;
+use document_core::layers::Layer;
 use document_core::{DocumentResponse, LayerId, Operation as DocumentOperation};
 use glam::{DAffine2, DVec2};
-use log::info;
+use log::warn;
 
 use crate::document::Document;
 use std::collections::VecDeque;
@@ -17,6 +16,8 @@ pub enum DocumentMessage {
 	DeleteLayer(Vec<LayerId>),
 	DeleteSelectedLayers,
 	DuplicateSelectedLayers,
+	CopySelectedLayers,
+	PasteLayers,
 	AddFolder(Vec<LayerId>),
 	RenameLayer(Vec<LayerId>, String),
 	ToggleLayerVisibility(Vec<LayerId>),
@@ -52,6 +53,7 @@ pub struct DocumentMessageHandler {
 	active_document: usize,
 	mmb_down: bool,
 	mouse_pos: ViewportPosition,
+	copy_buffer: Vec<Layer>,
 }
 
 impl DocumentMessageHandler {
@@ -81,6 +83,32 @@ impl DocumentMessageHandler {
 		// TODO: Add deduplication
 		(!path.is_empty()).then(|| self.handle_folder_changed(path[..path.len() - 1].to_vec())).flatten()
 	}
+
+	/// Returns the paths to the selected layers in order
+	fn selected_layers_sorted(&self) -> Vec<Vec<LayerId>> {
+		// Compute the indices for each layer to be able to sort them
+		let mut layers_with_indices: Vec<(Vec<LayerId>, Vec<usize>)> = self
+			.active_document()
+			.layer_data
+			.iter()
+			.filter_map(|(path, data)| data.selected.then(|| path.clone()))
+			.filter_map(|path| {
+				// Currently it is possible that layer_data contains layers that are don't actually exist
+				// and thus indices_for_path can return an error. We currently skip these layers and log a warning.
+				// Once this problem is solved this code can be simplified
+				match self.active_document().document.indices_for_path(&path) {
+					Err(err) => {
+						warn!("selected_layers_sorted: Could not get indices for the layer {:?}: {:?}", path, err);
+						None
+					}
+					Ok(indices) => Some((path, indices)),
+				}
+			})
+			.collect();
+
+		layers_with_indices.sort_by_key(|(_, indices)| indices.clone());
+		return layers_with_indices.into_iter().map(|(path, _)| path).collect();
+	}
 }
 
 impl Default for DocumentMessageHandler {
@@ -90,6 +118,7 @@ impl Default for DocumentMessageHandler {
 			active_document: 0,
 			mmb_down: false,
 			mouse_pos: ViewportPosition::default(),
+			copy_buffer: vec![],
 		}
 	}
 }
@@ -228,6 +257,25 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					responses.push_back(DocumentOperation::DuplicateLayer { path }.into())
 				}
 			}
+			CopySelectedLayers => {
+				let paths: Vec<Vec<LayerId>> = self.selected_layers_sorted();
+				self.copy_buffer.clear();
+				for path in paths {
+					match self.active_document().document.layer(&path).map(|t| t.clone()) {
+						Ok(layer) => {
+							self.copy_buffer.push(layer);
+						}
+						Err(e) => warn!("Could not access selected layer {:?}: {:?}", path, e),
+					}
+				}
+			}
+			PasteLayers => {
+				for layer in self.copy_buffer.iter() {
+					//TODO: Should be the path to the current folder instead of root
+					responses.push_back(DocumentOperation::PasteLayer { layer: layer.clone(), path: vec![] }.into())
+				}
+			}
+
 			SelectLayers(paths) => {
 				self.clear_selection();
 				for path in paths {
@@ -294,9 +342,9 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 	}
 	fn actions(&self) -> ActionList {
 		if self.active_document().layer_data.values().any(|data| data.selected) {
-			actions!(DocumentMessageDiscriminant; Undo, DeleteSelectedLayers, DuplicateSelectedLayers, RenderDocument, ExportDocument, NewDocument, CloseActiveDocument, NextDocument, PrevDocument, MouseMove, TranslateUp, TranslateDown)
+			actions!(DocumentMessageDiscriminant; Undo, DeleteSelectedLayers, DuplicateSelectedLayers, RenderDocument, ExportDocument, NewDocument, CloseActiveDocument, NextDocument, PrevDocument, MouseMove, TranslateUp, TranslateDown, CopySelectedLayers, PasteLayers, )
 		} else {
-			actions!(DocumentMessageDiscriminant; Undo, RenderDocument, ExportDocument, NewDocument, CloseActiveDocument, NextDocument, PrevDocument, MouseMove, TranslateUp, TranslateDown)
+			actions!(DocumentMessageDiscriminant; Undo, RenderDocument, ExportDocument, NewDocument, CloseActiveDocument, NextDocument, PrevDocument, MouseMove, TranslateUp, TranslateDown, PasteLayers)
 		}
 	}
 }

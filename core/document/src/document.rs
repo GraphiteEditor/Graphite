@@ -133,6 +133,30 @@ impl Document {
 		self.folder(path)?.layer(id).ok_or(DocumentError::LayerNotFound)
 	}
 
+	/// Given a path to a layer, returns a vector of the indices in the layer tree
+	/// These indices can be used to order a list of layers
+	pub fn indices_for_path(&self, mut path: &[LayerId]) -> Result<Vec<usize>, DocumentError> {
+		let mut root = if self.is_mounted(self.work_mount_path.as_slice(), path) {
+			path = &path[self.work_mount_path.len()..];
+			&self.work
+		} else {
+			&self.root
+		}
+		.as_folder()?;
+		let mut indices = vec![];
+		let (path, layer_id) = split_path(path)?;
+
+		for id in path {
+			let pos = root.layer_ids.iter().position(|x| *x == *id).ok_or(DocumentError::LayerNotFound)?;
+			indices.push(pos);
+			root = root.folder(*id).ok_or(DocumentError::LayerNotFound)?;
+		}
+
+		indices.push(root.layer_ids.iter().position(|x| *x == layer_id).ok_or(DocumentError::LayerNotFound)?);
+
+		Ok(indices)
+	}
+
 	/// Returns a mutable reference to the layer struct at the specified `path`.
 	/// If you manually edit the layer you have to set the cache_dirty flag yourself.
 	pub fn layer_mut(&mut self, path: &[LayerId]) -> Result<&mut Layer, DocumentError> {
@@ -226,6 +250,13 @@ impl Document {
 
 				let (path, _) = split_path(path.as_slice()).unwrap_or_else(|_| (&[], 0));
 				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::FolderChanged { path: path.to_vec() }])
+			}
+			Operation::PasteLayer { path, layer } => {
+				let folder = self.folder_mut(path)?;
+				//FIXME: This clone of layer should be avoided somehow
+				folder.add_layer(layer.clone(), -1).ok_or(DocumentError::IndexOutOfBounds)?;
+
+				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::FolderChanged { path: path.clone() }])
 			}
 			Operation::DuplicateLayer { path } => {
 				let layer = self.layer(&path)?.clone();
