@@ -2,7 +2,7 @@ use std::fmt::Write;
 
 use super::{style, LayerData};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct PolyLine {
 	points: Vec<glam::DVec2>,
 }
