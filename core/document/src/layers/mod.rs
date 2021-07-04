@@ -26,7 +26,7 @@ pub trait LayerData {
 	fn to_kurbo_path(&mut self, transform: glam::DAffine2, style: style::PathStyle) -> BezPath;
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub enum LayerDataTypes {
 	Folder(Folder),
 	Ellipse(Ellipse),
@@ -77,7 +77,7 @@ impl LayerDataTypes {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct Layer {
 	pub visible: bool,
 	pub name: Option<String>,

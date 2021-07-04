@@ -10,15 +10,7 @@
 				<Icon :icon="entry.icon" v-if="entry.icon" />
 				<span v-if="entry.label">{{ entry.label }}</span>
 			</div>
-			<MenuList
-				:ourEntry="entry"
-				:menuEntries="entry.children"
-				:direction="MenuDirection.Bottom"
-				:minWidth="240"
-				:drawIcon="true"
-				:defaultAction="actionNotImplemented"
-				:ref="(ref) => setEntryRefs(entry, ref)"
-			/>
+			<MenuList :menuEntries="entry.children" :direction="MenuDirection.Bottom" :minWidth="240" :drawIcon="true" :defaultAction="actionNotImplemented" :ref="(ref) => setEntryRefs(entry, ref)" />
 		</div>
 	</div>
 </template>
