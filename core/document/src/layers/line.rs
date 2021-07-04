@@ -3,12 +3,10 @@ use glam::DVec2;
 use kurbo::Point;
 
 use crate::intersection::intersect_quad_bez_path;
-use crate::intersection::point_line_segment_dist;
 use crate::LayerId;
 
 use super::style;
 use super::LayerData;
-use super::POINT_SELECTION_TOLERANCE;
 
 use std::fmt::Write;
 
@@ -41,12 +39,6 @@ impl LayerData for Line {
 
 	fn intersects_quad(&self, quad: [DVec2; 4], path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>, style: style::PathStyle) {
 		if intersect_quad_bez_path(quad, &self.to_kurbo_path(DAffine2::IDENTITY, style), false) {
-			intersections.push(path.clone());
-		}
-	}
-
-	fn intersects_point(&self, point: DVec2, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>, _style: style::PathStyle) {
-		if point_line_segment_dist(point, DVec2::ZERO, DVec2::ONE) < POINT_SELECTION_TOLERANCE {
 			intersections.push(path.clone());
 		}
 	}

@@ -38,16 +38,6 @@ impl LayerData for Folder {
 			path.pop();
 		}
 	}
-
-	fn intersects_point(&self, point: DVec2, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>, _style: style::PathStyle) {
-		log::debug!("Folder");
-		for (layer, layer_id) in self.layers().iter().zip(&self.layer_ids) {
-			log::debug!("Layer: {}", layer_id);
-			path.push(*layer_id);
-			layer.intersects_point(point, path, intersections);
-			path.pop();
-		}
-	}
 }
 
 impl Folder {

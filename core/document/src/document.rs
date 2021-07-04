@@ -77,19 +77,6 @@ impl Document {
 		intersections
 	}
 
-	/// Checks whether each layer under `path` intersects with the provided `point` and adds all intersection layers as paths to `intersections`.
-	pub fn intersects_point(&self, point: DVec2, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>) {
-		self.document_folder(path).unwrap().intersects_point(point, path, intersections);
-		return;
-	}
-
-	/// Checks whether each layer intersects with the given point and returns the paths to intersecting layers.
-	pub fn intersects_point_root(&self, point: DVec2) -> Vec<Vec<LayerId>> {
-		let mut intersections = Vec::new();
-		self.intersects_point(point, &mut vec![], &mut intersections);
-		intersections
-	}
-
 	fn is_mounted(&self, mount_path: &[LayerId], path: &[LayerId]) -> bool {
 		path.starts_with(mount_path) && self.work_mounted
 	}

@@ -23,14 +23,12 @@ pub use folder::Folder;
 use crate::DocumentError;
 use crate::LayerId;
 
-pub const KURBO_TOLERANCE: f64 = 0.0001; // TODO: should depend on zoom level
-pub const POINT_SELECTION_TOLERANCE: f64 = 0.1; // TODO: should depend on zoom level
+pub const SELECTION_TOLERANCE: f64 = 5.0;
 
 pub trait LayerData {
 	fn render(&mut self, svg: &mut String, transform: glam::DAffine2, style: style::PathStyle);
 	fn to_kurbo_path(&self, transform: glam::DAffine2, style: style::PathStyle) -> BezPath;
 	fn intersects_quad(&self, quad: [DVec2; 4], path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>, style: style::PathStyle);
-	fn intersects_point(&self, point: DVec2, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>, style: style::PathStyle);
 }
 
 #[derive(Debug, Clone)]
@@ -66,14 +64,6 @@ macro_rules! call_intersects_quad {
 	};
 }
 
-macro_rules! call_intersects_point {
-    ($self:ident.intersects_point($point:ident, $path:ident, $intersections:ident, $style:ident) { $($variant:ident),* }) => {
-		match $self {
-			$(Self::$variant(x) => x.intersects_point($point, $path, $intersections, $style)),*
-		}
-	};
-}
-
 impl LayerDataTypes {
 	pub fn render(&mut self, svg: &mut String, transform: glam::DAffine2, style: style::PathStyle) {
 		call_render! {
@@ -103,19 +93,6 @@ impl LayerDataTypes {
 	pub fn intersects_quad(&self, quad: [DVec2; 4], path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>, style: style::PathStyle) {
 		call_intersects_quad! {
 			self.intersects_quad(quad, path, intersections, style) {
-				Folder,
-				Ellipse,
-				Rect,
-				Line,
-				PolyLine,
-				Shape
-			}
-		}
-	}
-
-	pub fn intersects_point(&self, point: DVec2, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>, style: style::PathStyle) {
-		call_intersects_point! {
-			self.intersects_point(point, path, intersections, style) {
 				Folder,
 				Ellipse,
 				Rect,
@@ -175,14 +152,6 @@ impl Layer {
 			return;
 		}
 		self.data.intersects_quad(transformed_quad, path, intersections, self.style)
-	}
-
-	pub fn intersects_point(&self, point: DVec2, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>) {
-		let transformed_point = self.transform.inverse().transform_point2(point);
-		if !self.visible {
-			return;
-		}
-		self.data.intersects_point(transformed_point, path, intersections, self.style)
 	}
 
 	pub fn render_on(&mut self, svg: &mut String) {

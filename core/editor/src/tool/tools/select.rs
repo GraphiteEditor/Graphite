@@ -1,7 +1,7 @@
 use document_core::color::Color;
-use document_core::layers::style;
 use document_core::layers::style::Fill;
 use document_core::layers::style::Stroke;
+use document_core::layers::{style, SELECTION_TOLERANCE};
 use document_core::Operation;
 use glam::{DAffine2, DVec2};
 
@@ -82,27 +82,39 @@ impl Fsm for SelectToolFsmState {
 					data.drag_current = input.mouse.position;
 
 					responses.push_back(Operation::ClearWorkingFolder.into());
-					// TODO - introduce comparison threshold when operating with canvas coordinates (https://github.com/GraphiteEditor/Graphite/issues/100)
+
+					let (point_1, point_2) = if data.drag_start == data.drag_current {
+						let (x, y) = (data.drag_current.x as f64, data.drag_current.y as f64);
+						(
+							DVec2::new(x - SELECTION_TOLERANCE, y - SELECTION_TOLERANCE),
+							DVec2::new(x + SELECTION_TOLERANCE, y + SELECTION_TOLERANCE),
+						)
+					} else {
+						(
+							DVec2::new(data.drag_start.x as f64, data.drag_start.y as f64),
+							DVec2::new(data.drag_current.x as f64, data.drag_current.y as f64),
+						)
+					};
+
+					let quad = [
+						DVec2::new(point_1.x, point_1.y),
+						DVec2::new(point_2.x, point_1.y),
+						DVec2::new(point_2.x, point_2.y),
+						DVec2::new(point_1.x, point_2.y),
+					];
+
 					if data.drag_start == data.drag_current {
-						let point = DVec2::new(data.drag_current.x as f64, data.drag_current.y as f64);
-						if let Some(intersection) = document.intersects_point_root(point).last() {
+						if let Some(intersection) = document.intersects_quad_root(quad).last() {
 							responses.push_back(DocumentMessage::SelectLayers(vec![intersection.clone()]).into());
 						} else {
 							responses.push_back(DocumentMessage::SelectLayers(vec![]).into());
 						}
 					} else {
-						let quad = [
-							DVec2::new(data.drag_start.x as f64, data.drag_start.y as f64),
-							DVec2::new(data.drag_current.x as f64, data.drag_start.y as f64),
-							DVec2::new(data.drag_current.x as f64, data.drag_current.y as f64),
-							DVec2::new(data.drag_start.x as f64, data.drag_current.y as f64),
-						];
 						responses.push_back(DocumentMessage::SelectLayers(document.intersects_quad_root(quad)).into());
 					}
 
 					Ready
 				}
-				// TODO - simplify with or_patterns when rust 1.53.0 is stable (https://github.com/rust-lang/rust/issues/54883)
 				(Dragging, Abort) => {
 					responses.push_back(Operation::DiscardWorkingFolder.into());
 

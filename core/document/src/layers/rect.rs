@@ -1,7 +1,6 @@
 use glam::DAffine2;
 use glam::DVec2;
 use kurbo::Point;
-use kurbo::Shape;
 
 use crate::intersection::intersect_quad_bez_path;
 use crate::LayerId;
@@ -39,12 +38,6 @@ impl LayerData for Rect {
 
 	fn intersects_quad(&self, quad: [DVec2; 4], path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>, style: style::PathStyle) {
 		if intersect_quad_bez_path(quad, &self.to_kurbo_path(DAffine2::IDENTITY, style), true) {
-			intersections.push(path.clone());
-		}
-	}
-
-	fn intersects_point(&self, point: DVec2, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>, style: style::PathStyle) {
-		if self.to_kurbo_path(DAffine2::IDENTITY, style).contains(kurbo::Point::new(point.x, point.y)) {
 			intersections.push(path.clone());
 		}
 	}

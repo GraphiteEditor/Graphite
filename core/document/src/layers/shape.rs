@@ -76,10 +76,4 @@ impl LayerData for Shape {
 			intersections.push(path.clone());
 		}
 	}
-
-	fn intersects_point(&self, point: DVec2, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>, style: style::PathStyle) {
-		if kurbo::Shape::contains(&self.to_kurbo_path(DAffine2::IDENTITY, style), kurbo::Point::new(point.x, point.y)) {
-			intersections.push(path.clone());
-		}
-	}
 }
