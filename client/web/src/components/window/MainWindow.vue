@@ -29,6 +29,8 @@
 
 .status-bar-row {
 	flex: 0 0 auto;
+	// Prevents the creation of a scrollbar due to the child's negative margin
+	overflow: hidden;
 }
 </style>
 
