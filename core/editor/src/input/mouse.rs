@@ -16,10 +16,22 @@ impl ViewportPosition {
 }
 
 #[derive(Debug, Copy, Clone, Default, Eq, PartialEq)]
+pub struct ScrollDelta {
+	pub x: i32,
+	pub y: i32,
+	pub z: i32,
+}
+impl ScrollDelta {
+	pub fn new(x: i32, y: i32, z: i32) -> ScrollDelta {
+		ScrollDelta { x, y, z }
+	}
+}
+
+#[derive(Debug, Copy, Clone, Default, Eq, PartialEq)]
 pub struct MouseState {
 	pub position: ViewportPosition,
 	pub mouse_keys: MouseKeys,
-	pub scroll_delta: i32,
+	pub scroll_delta: ScrollDelta,
 }
 
 impl MouseState {
@@ -31,7 +43,7 @@ impl MouseState {
 		MouseState {
 			position: ViewportPosition { x, y },
 			mouse_keys: MouseKeys::default(),
-			scroll_delta: 0,
+			scroll_delta: ScrollDelta::default(),
 		}
 	}
 	pub fn from_u8_pos(keys: u8, position: ViewportPosition) -> Self {
@@ -39,7 +51,7 @@ impl MouseState {
 		Self {
 			position,
 			mouse_keys,
-			scroll_delta: 0,
+			scroll_delta: ScrollDelta::default(),
 		}
 	}
 }

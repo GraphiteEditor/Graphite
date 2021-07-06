@@ -349,11 +349,8 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				self.multiply_zoom(amount, ipp, responses);
 			}
 			WheelZoom => {
-				let amount = if ipp.mouse.scroll_delta > 0 {
-					1. + ipp.mouse.scroll_delta as f64 / -500.
-				} else {
-					1. / (1. + ipp.mouse.scroll_delta as f64 / 500.)
-				};
+				let scroll = (ipp.mouse.scroll_delta.y + ipp.mouse.scroll_delta.x) as f64;
+				let amount = if ipp.mouse.scroll_delta.y > 0 { 1. + scroll / -500. } else { 1. / (1. + scroll / 500.) };
 				self.multiply_zoom(amount, ipp, responses);
 			}
 			ChangeRotation(rotation) => {

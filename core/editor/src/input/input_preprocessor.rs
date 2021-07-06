@@ -1,5 +1,5 @@
 use super::keyboard::{Key, KeyStates};
-use super::mouse::{MouseKeys, MouseState, ViewportPosition};
+use super::mouse::{MouseKeys, MouseState, ScrollDelta, ViewportPosition};
 use crate::message_prelude::*;
 
 #[doc(inline)]
@@ -12,7 +12,7 @@ pub enum InputPreprocessorMessage {
 	MouseDown(MouseState),
 	MouseUp(MouseState),
 	MouseMove(ViewportPosition),
-	MouseScroll(i32),
+	MouseScroll(ScrollDelta),
 	KeyUp(Key),
 	KeyDown(Key),
 	ViewportResize(ViewportPosition),

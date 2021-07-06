@@ -229,7 +229,7 @@ export default defineComponent({
 		async canvasMouseScroll(e: WheelEvent) {
 			e.preventDefault();
 			const { on_mouse_scroll } = await wasm;
-			on_mouse_scroll(e.deltaY);
+			on_mouse_scroll(e.deltaX, e.deltaY, e.deltaZ);
 		},
 		async changeZoom(newZoom: number, oldZoom: number) {
 			const { on_change_zoom } = await wasm;
