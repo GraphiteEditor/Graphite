@@ -1,0 +1,15 @@
+[package]
+name = "graph-proc-macros"
+version = "0.1.0"
+authors = ["Graphite Authors <contact@graphite.design>"]
+edition = "2018"
+publish = false
+
+[lib]
+path = "src/lib.rs"
+proc-macro = true
+
+[dependencies]
+proc-macro2 = "1.0.26"
+syn = { version = "1.0.68", features = ["full"] }
+quote = "1.0.9"
