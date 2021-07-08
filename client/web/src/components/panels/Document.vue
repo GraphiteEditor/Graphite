@@ -52,15 +52,39 @@
 			</div>
 			<div class="spacer"></div>
 			<div class="right side">
+				<OptionalInput v-model:checked="snappingEnabled" :icon="'Snapping'" />
+				<PopoverButton>
+					<h3>Snapping</h3>
+					<p>More snapping options will be here</p>
+				</PopoverButton>
+
+				<Separator :type="SeparatorType.Unrelated" />
+
+				<OptionalInput v-model:checked="gridEnabled" :icon="'Grid'" />
+				<PopoverButton>
+					<h3>Grid</h3>
+					<p>More grid options will be here</p>
+				</PopoverButton>
+
+				<Separator :type="SeparatorType.Unrelated" />
+
+				<OptionalInput v-model:checked="overlaysEnabled" :icon="'Overlays'" />
+				<PopoverButton>
+					<h3>Overlays</h3>
+					<p>More overlays options will be here</p>
+				</PopoverButton>
+
+				<Separator :type="SeparatorType.Unrelated" />
+
 				<RadioInput v-model:index="viewModeIndex">
 					<IconButton :icon="'ViewModeNormal'" :size="24" title="View Mode: Normal" />
 					<IconButton :icon="'ViewModeOutline'" :size="24" title="View Mode: Outline" />
 					<IconButton :icon="'ViewModePixels'" :size="24" title="View Mode: Pixels" />
-					<PopoverButton>
-						<h3>Display Mode</h3>
-						<p>More display mode options will be here</p>
-					</PopoverButton>
 				</RadioInput>
+				<PopoverButton>
+					<h3>Display Mode</h3>
+					<p>More display mode options will be here</p>
+				</PopoverButton>
 
 				<Separator :type="SeparatorType.Section" />
 
@@ -176,6 +200,7 @@ import PopoverButton from "../widgets/buttons/PopoverButton.vue";
 import RadioInput from "../widgets/inputs/RadioInput.vue";
 import NumberInput from "../widgets/inputs/NumberInput.vue";
 import DropdownInput from "../widgets/inputs/DropdownInput.vue";
+import OptionalInput from "../widgets/inputs/OptionalInput.vue";
 import { SectionsOfMenuListEntries } from "../widgets/floating-menus/MenuList.vue";
 
 const modeMenuEntries: SectionsOfMenuListEntries = [
@@ -282,6 +307,9 @@ export default defineComponent({
 			SeparatorType,
 			modeMenuEntries,
 			viewModeIndex: 0,
+			snappingEnabled: true,
+			gridEnabled: true,
+			overlaysEnabled: true,
 		};
 	},
 	components: {
@@ -295,6 +323,7 @@ export default defineComponent({
 		RadioInput,
 		NumberInput,
 		DropdownInput,
+		OptionalInput,
 	},
 });
 </script>
