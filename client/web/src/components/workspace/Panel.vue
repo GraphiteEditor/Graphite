@@ -2,7 +2,14 @@
 	<div class="panel">
 		<div class="tab-bar" :class="{ 'min-widths': tabMinWidths }">
 			<div class="tab-group">
-				<div class="tab" :class="{ active: tabIndex === tabActiveIndex }" v-for="(tabLabel, tabIndex) in tabLabels" :key="tabLabel" @click="handleTabClick(tabIndex)">
+				<div
+					class="tab"
+					:class="{ active: tabIndex === tabActiveIndex }"
+					v-for="(tabLabel, tabIndex) in tabLabels"
+					:key="tabLabel"
+					@click.middle="closeTab(tabIndex)"
+					@click="handleTabClick(tabIndex)"
+				>
 					<span>{{ tabLabel }}</span>
 					<IconButton :icon="'CloseX'" :size="16" v-if="tabCloseButtons" @click.stop="closeTab(tabIndex)" />
 				</div>
@@ -91,23 +98,23 @@
 					margin-left: 8px;
 				}
 
-				&:not(.active) + .tab:not(.active) {
+				& + .tab {
 					margin-left: 1px;
-
-					&::before {
-						content: "";
-						position: absolute;
-						left: -1px;
-						width: 1px;
-						height: 16px;
-						background: var(--color-4-dimgray);
-					}
 				}
 
-				&:last-of-type:not(.active) {
+				&:not(.active) + .tab:not(.active)::before {
+					content: "";
+					position: absolute;
+					left: -1px;
+					width: 1px;
+					height: 16px;
+					background: var(--color-4-dimgray);
+				}
+
+				&:last-of-type {
 					margin-right: 1px;
 
-					&::after {
+					&:not(.active)::after {
 						content: "";
 						position: absolute;
 						right: -1px;
