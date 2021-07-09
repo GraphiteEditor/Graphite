@@ -26,25 +26,27 @@
 			padding: 2px;
 			border-radius: 2px;
 
-			&:hover {
-				background: var(--color-f-white);
-			}
-
 			.icon {
 				fill: var(--color-2-mildblack);
 			}
 		}
+
+		&:hover .checkbox-box {
+			background: var(--color-f-white);
+		}
 	}
 
-	input:checked + label .checkbox-box {
-		background: var(--color-accent);
+	input:checked + label {
+		.checkbox-box {
+			background: var(--color-accent);
 
-		&:hover {
-			background: var(--color-accent-hover);
+			.icon {
+				fill: var(--color-f-white);
+			}
 		}
 
-		.icon {
-			fill: var(--color-f-white);
+		&:hover .checkbox-box {
+			background: var(--color-accent-hover);
 		}
 	}
 }
