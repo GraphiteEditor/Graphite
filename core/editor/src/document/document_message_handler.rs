@@ -286,10 +286,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				responses.extend(self.handle_folder_changed(Vec::new()));
 			}
 			SelectAllLayers => {
-				let all_layer_paths = self.active_document().layer_data.keys()
-					.filter(|path| !path.is_empty())
-					.cloned()
-					.collect::<Vec<_>>();
+				let all_layer_paths = self.active_document().layer_data.keys().filter(|path| !path.is_empty()).cloned().collect::<Vec<_>>();
 				for path in all_layer_paths {
 					responses.extend(self.select_layer(&path));
 				}

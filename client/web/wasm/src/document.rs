@@ -122,7 +122,9 @@ pub fn select_all_layers() -> Result<(), JsValue> {
 /// Select all layers
 #[wasm_bindgen]
 pub fn deselect_all_layers() -> Result<(), JsValue> {
-	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(DocumentMessage::DeselectAllLayers)).map_err(convert_error)
+	EDITOR_STATE
+		.with(|editor| editor.borrow_mut().handle_message(DocumentMessage::DeselectAllLayers))
+		.map_err(convert_error)
 }
 
 /// Export the document
