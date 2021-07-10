@@ -106,7 +106,6 @@ const menuEntries: MenuListEntries = [
 			[
 				{ label: "Undo", shortcut: ["Ctrl", "Z"], action: async () => (await wasm).undo() },
 				{ label: "Redo", shortcut: ["Ctrl", "⇧", "Z"] },
-				{ label: "Select all layers", shortcut: ["Ctrl", "A"], action: async () => (await wasm).select_all_layers() },
 			],
 			[
 				{ label: "Cut", shortcut: ["Ctrl", "X"] },
@@ -119,6 +118,11 @@ const menuEntries: MenuListEntries = [
 		label: "Document",
 		ref: undefined,
 		children: [[{ label: "Menu not yet populated" }]],
+	},
+	{
+		label: "Layer",
+		ref: undefined,
+		children: [[{ label: "Select All", shortcut: ["Ctrl", "A"], action: async () => (await wasm).select_all_layers() }]],
 	},
 	{
 		label: "View",
