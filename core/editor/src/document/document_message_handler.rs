@@ -13,6 +13,7 @@ use std::collections::VecDeque;
 pub enum DocumentMessage {
 	DispatchOperation(DocumentOperation),
 	SelectLayers(Vec<Vec<LayerId>>),
+	SelectAllLayers,
 	DeleteLayer(Vec<LayerId>),
 	DeleteSelectedLayers,
 	DuplicateSelectedLayers,
@@ -275,7 +276,6 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					responses.push_back(DocumentOperation::PasteLayer { layer: layer.clone(), path: vec![] }.into())
 				}
 			}
-
 			SelectLayers(paths) => {
 				self.clear_selection();
 				for path in paths {
@@ -283,6 +283,12 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				}
 				// TODO: Correctly update layer panel in clear_selection instead of here
 				responses.extend(self.handle_folder_changed(Vec::new()));
+			}
+			SelectAllLayers => {
+				let all_layer_paths = self.active_document().layer_data.keys().cloned().collect::<Vec<_>>();
+				for path in all_layer_paths {
+					responses.extend(self.select_layer(&path));
+				}
 			}
 			Undo => {
 				// this is a temporary fix and will be addressed by #123
@@ -344,9 +350,9 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 	}
 	fn actions(&self) -> ActionList {
 		if self.active_document().layer_data.values().any(|data| data.selected) {
-			actions!(DocumentMessageDiscriminant; Undo, DeleteSelectedLayers, DuplicateSelectedLayers, RenderDocument, ExportDocument, NewDocument, CloseActiveDocument, NextDocument, PrevDocument, MouseMove, TranslateUp, TranslateDown, CopySelectedLayers, PasteLayers, )
+			actions!(DocumentMessageDiscriminant; Undo, SelectAllLayers, DeleteSelectedLayers, DuplicateSelectedLayers, RenderDocument, ExportDocument, NewDocument, CloseActiveDocument, NextDocument, PrevDocument, MouseMove, TranslateUp, TranslateDown, CopySelectedLayers, PasteLayers, )
 		} else {
-			actions!(DocumentMessageDiscriminant; Undo, RenderDocument, ExportDocument, NewDocument, CloseActiveDocument, NextDocument, PrevDocument, MouseMove, TranslateUp, TranslateDown, PasteLayers)
+			actions!(DocumentMessageDiscriminant; Undo, SelectAllLayers, RenderDocument, ExportDocument, NewDocument, CloseActiveDocument, NextDocument, PrevDocument, MouseMove, TranslateUp, TranslateDown, PasteLayers)
 		}
 	}
 }
