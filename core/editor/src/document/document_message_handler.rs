@@ -14,6 +14,7 @@ pub enum DocumentMessage {
 	DispatchOperation(DocumentOperation),
 	SelectLayers(Vec<Vec<LayerId>>),
 	SelectAllLayers,
+	DeselectAllLayers,
 	DeleteLayer(Vec<LayerId>),
 	DeleteSelectedLayers,
 	DuplicateSelectedLayers,
@@ -293,6 +294,11 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					responses.extend(self.select_layer(&path));
 				}
 			}
+			DeselectAllLayers => {
+				self.clear_selection();
+				let children = self.active_document_mut().layer_panel(&[]).expect("The provided Path was not valid");
+				responses.push_back(FrontendMessage::ExpandFolder { path: vec![], children }.into());
+			}
 			Undo => {
 				// this is a temporary fix and will be addressed by #123
 				if let Some(id) = self.active_document().document.root.as_folder().unwrap().list_layers().last() {
@@ -353,9 +359,9 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 	}
 	fn actions(&self) -> ActionList {
 		if self.active_document().layer_data.values().any(|data| data.selected) {
-			actions!(DocumentMessageDiscriminant; Undo, SelectAllLayers, DeleteSelectedLayers, DuplicateSelectedLayers, RenderDocument, ExportDocument, NewDocument, CloseActiveDocument, NextDocument, PrevDocument, MouseMove, TranslateUp, TranslateDown, CopySelectedLayers, PasteLayers, )
+			actions!(DocumentMessageDiscriminant; Undo, SelectAllLayers, DeselectAllLayers, DeleteSelectedLayers, DuplicateSelectedLayers, RenderDocument, ExportDocument, NewDocument, CloseActiveDocument, NextDocument, PrevDocument, MouseMove, TranslateUp, TranslateDown, CopySelectedLayers, PasteLayers, )
 		} else {
-			actions!(DocumentMessageDiscriminant; Undo, SelectAllLayers, RenderDocument, ExportDocument, NewDocument, CloseActiveDocument, NextDocument, PrevDocument, MouseMove, TranslateUp, TranslateDown, PasteLayers)
+			actions!(DocumentMessageDiscriminant; Undo, SelectAllLayers, DeselectAllLayers, RenderDocument, ExportDocument, NewDocument, CloseActiveDocument, NextDocument, PrevDocument, MouseMove, TranslateUp, TranslateDown, PasteLayers)
 		}
 	}
 }

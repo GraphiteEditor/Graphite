@@ -122,7 +122,12 @@ const menuEntries: MenuListEntries = [
 	{
 		label: "Layer",
 		ref: undefined,
-		children: [[{ label: "Select All", shortcut: ["Ctrl", "A"], action: async () => (await wasm).select_all_layers() }]],
+		children: [
+			[
+				{ label: "Select All", shortcut: ["Ctrl", "A"], action: async () => (await wasm).select_all_layers() },
+				{ label: "Deselect All", shortcut: ["Ctrl", "Alt", "A"], action: async () => (await wasm).deselect_all_layers() },
+			],
+		],
 	},
 	{
 		label: "View",
