@@ -140,16 +140,22 @@ impl Document {
 		Ok(root)
 	}
 
+	/// Returns a reference to the layer or folder at the path. Does not return an error for root
+	pub fn document_layer(&mut self, path: &[LayerId]) -> Result<&Layer, DocumentError> {
+		if path.is_empty() {
+			return Ok(&self.root);
+		}
+		let (path, id) = split_path(path)?;
+		self.document_folder(path)?.as_folder()?.layer(id).ok_or(DocumentError::LayerNotFound)
+	}
+
 	/// Returns a mutable reference to the layer or folder at the path. Does not return an error for root
 	pub fn document_layer_mut(&mut self, path: &[LayerId]) -> Result<&mut Layer, DocumentError> {
-		let mut root = &mut self.root;
-		for id in path {
-			if root.as_folder().is_err() {
-				return Ok(root);
-			}
-			root = root.as_folder_mut()?.layer_mut(*id).ok_or(DocumentError::LayerNotFound)?;
+		if path.is_empty() {
+			return Ok(&mut self.root);
 		}
-		Ok(root)
+		let (path, id) = split_path(path)?;
+		self.document_folder_mut(path)?.as_folder_mut()?.layer_mut(id).ok_or(DocumentError::LayerNotFound)
 	}
 
 	/// Returns a reference to the layer struct at the specified `path`.
