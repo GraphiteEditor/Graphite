@@ -113,7 +113,7 @@ impl DocumentMessageHandler {
 		responses.push_back(
 			DocumentOperation::SetLayerTransform {
 				path: path,
-				transform: layerdata.get_transform().to_cols_array(),
+				transform: layerdata.calculate_transform().to_cols_array(),
 			}
 			.into(),
 		);
@@ -125,7 +125,7 @@ impl DocumentMessageHandler {
 		responses.push_back(
 			DocumentOperation::SetLayerTransform {
 				path: vec![],
-				transform: layerdata.get_offset_transform(scaled_half_viewport).to_cols_array(),
+				transform: layerdata.calculate_offset_transform(scaled_half_viewport).to_cols_array(),
 			}
 			.into(),
 		);
