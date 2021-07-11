@@ -101,8 +101,8 @@ export default defineComponent({
 		initial_value: { type: Number, default: 0, required: false },
 		unit: { type: String, default: "", required: false },
 		step: { type: Number, default: 1, required: false },
-		increase_mult: { type: Number, default: null, required: false },
-		decrease_mult: { type: Number, default: null, required: false },
+		increaseMultiplier: { type: Number, default: null, required: false },
+		decreaseMultiplier: { type: Number, default: null, required: false },
 		min: { type: Number, required: false },
 		max: { type: Number, required: false },
 		callback: { type: Function, required: false },
@@ -116,14 +116,14 @@ export default defineComponent({
 	},
 	methods: {
 		onIncrement(direction: number) {
-			if (direction === 1 && this.increase_mult) this.updateValue(this.value * this.increase_mult, true);
-			else if (direction === -1 && this.decrease_mult) this.updateValue(this.value * this.decrease_mult, true);
+			if (direction === 1 && this.increaseMultiplier) this.updateValue(this.value * this.increaseMultiplier, true);
+			else if (direction === -1 && this.decreaseMultiplier) this.updateValue(this.value * this.decreaseMultiplier, true);
 			else this.updateValue(this.value + this.step * direction, true);
 		},
 
 		updateText(newText: string) {
-			const new_value = parseInt(newText, 10);
-			this.updateValue(new_value, true);
+			const newValue = parseInt(newText, 10);
+			this.updateValue(newValue, true);
 		},
 
 		clampValue(newValue: number, resetOnClamp: boolean) {
@@ -135,20 +135,20 @@ export default defineComponent({
 			}
 			if (Number.isFinite(this.max) && typeof this.max === "number") {
 				if (resetOnClamp && newValue > this.max) return this.value;
-				result = Math.max(result, this.max);
+				result = Math.min(result, this.max);
 			}
 			return result;
 		},
-		setValue(new_value: number) {
-			this.value = new_value;
-			this.text = Math.round(this.value) + this.unit;
+		setValue(newValue: number) {
+			this.value = newValue;
+			this.text = `${Math.round(this.value)}${this.unit}`;
 		},
-		updateValue(newValue: number, resetOnClamp: boolean) {
-			const new_value = this.clampValue(newValue, resetOnClamp);
+		updateValue(inValue: number, resetOnClamp: boolean) {
+			const newValue = this.clampValue(inValue, resetOnClamp);
 
-			if (this.callback) this.callback(new_value);
+			if (this.callback) this.callback(newValue);
 
-			if (this.update_on_callback) this.setValue(new_value);
+			if (this.update_on_callback) this.setValue(newValue);
 		},
 	},
 });

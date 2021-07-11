@@ -98,7 +98,7 @@
 
 				<Separator :type="SeparatorType.Related" />
 
-				<NumberInput :callback="setZoom" :initial_value="100" :min="0.001" :increase_mult="1.25" :decrease_mult="0.8" :unit="`%`" :update_on_callback="false" ref="zoom" />
+				<NumberInput :callback="setZoom" :initial_value="100" :min="0.001" :increaseMultiplier="1.25" :decreaseMultiplier="0.8" :unit="`%`" :update_on_callback="false" ref="zoom" />
 			</div>
 		</LayoutRow>
 		<LayoutRow :class="'shelf-and-viewport'">
@@ -333,7 +333,7 @@ export default defineComponent({
 		window.addEventListener("keyup", (e: KeyboardEvent) => this.keyUp(e));
 		window.addEventListener("keydown", (e: KeyboardEvent) => this.keyDown(e));
 		window.addEventListener("resize", () => this.viewportResize());
-		window.addEventListener("load", () => this.viewportResize());
+		window.addEventListener("DOMContentLoaded", () => this.viewportResize());
 
 		this.$watch("viewModeIndex", this.viewModeChanged);
 	},
