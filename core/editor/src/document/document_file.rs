@@ -104,17 +104,14 @@ impl LayerData {
 			self.rotation
 		}
 	}
-	pub fn get_transform(&self) -> DAffine2 {
-		let scale_transform = DAffine2::from_scale(DVec2::new(self.scale, self.scale));
-		let angle_transform = DAffine2::from_angle(self.snapped_angle(15.));
-		let translation_transform = DAffine2::from_translation(self.translation.into());
-		angle_transform * scale_transform * translation_transform
-	}
 	pub fn get_offset_transform(&self, offset: DVec2) -> DAffine2 {
 		let offset_transform = DAffine2::from_translation(offset);
 		let scale_transform = DAffine2::from_scale(DVec2::new(self.scale, self.scale));
 		let angle_transform = DAffine2::from_angle(self.snapped_angle(15.));
 		let translation_transform = DAffine2::from_translation(self.translation.into());
-		(scale_transform * offset_transform) * angle_transform * scale_transform * translation_transform
+		scale_transform * offset_transform * angle_transform * scale_transform * translation_transform
+	}
+	pub fn get_transform(&self) -> DAffine2 {
+		self.get_offset_transform(DVec2::ZERO)
 	}
 }
