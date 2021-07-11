@@ -114,7 +114,6 @@ impl Default for Mapping {
 			entry! {action=SelectMessage::DragStop, key_up=Lmb},
 			entry! {action=SelectMessage::Abort, key_down=Rmb},
 			entry! {action=SelectMessage::Abort, key_down=KeyEscape},
-
 			// Rectangle
 			entry! {action=RectangleMessage::Center, key_down=KeyAlt},
 			entry! {action=RectangleMessage::UnCenter, key_up=KeyAlt},

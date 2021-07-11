@@ -25,8 +25,8 @@ impl Shape {
 
 impl LayerData for Shape {
 	fn to_kurbo_path(&self, transform: glam::DAffine2, _style: style::PathStyle) -> BezPath {
-		fn unit_rotation(theta: f64) -> Vec2 {
-			Vec2::new(-theta.sin(), theta.cos())
+		fn unit_rotation(theta: f64) -> DVec2 {
+			DVec2::new(-theta.sin(), theta.cos())
 		}
 		let mut path = kurbo::BezPath::new();
 		let apothem_offset_angle = std::f64::consts::PI / (self.sides as f64);

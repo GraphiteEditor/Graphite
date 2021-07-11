@@ -2,7 +2,8 @@ use crate::input::{mouse::ViewportPosition, InputPreprocessor};
 use crate::message_prelude::*;
 use document_core::layers::Layer;
 use document_core::{DocumentResponse, LayerId, Operation as DocumentOperation};
-use glam::{DAffine2, DVec2};
+use glam::DVec2;
+use log::warn;
 
 use crate::document::Document;
 use std::collections::VecDeque;
@@ -117,7 +118,7 @@ impl DocumentMessageHandler {
 			}
 			.into(),
 		);
-  }
+	}
 
 	/// Returns the paths to the selected layers in order
 	fn selected_layers_sorted(&self) -> Vec<Vec<LayerId>> {
@@ -384,6 +385,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			}
 			TransformUp => {
 				let layerdata = self.get_layerdata_mut(vec![]);
+				layerdata.rotation = layerdata.get_snapped_rotation();
 				layerdata.snap_rotate = false;
 				self.translating = false;
 				self.rotating = false;

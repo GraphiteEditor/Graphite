@@ -1,6 +1,6 @@
 use crate::{
 	input::{
-		mouse::{MouseKeys, MouseState, ViewportPosition},
+		mouse::{MouseKeys, MouseState, ScrollDelta, ViewportPosition},
 		InputPreprocessorMessage,
 	},
 	message_prelude::{Message, ToolMessage},
@@ -47,6 +47,7 @@ impl EditorTestUtils for Editor {
 		self.mouseup(MouseState {
 			position: ViewportPosition { x: x2, y: y2 },
 			mouse_keys: MouseKeys::empty(),
+			scroll_delta: ScrollDelta::default(),
 		});
 	}
 
@@ -66,6 +67,7 @@ impl EditorTestUtils for Editor {
 		self.mousedown(MouseState {
 			position: ViewportPosition { x, y },
 			mouse_keys: MouseKeys::LEFT,
+			scroll_delta: ScrollDelta::default(),
 		})
 	}
 
