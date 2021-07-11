@@ -127,6 +127,19 @@ impl Document {
 		Ok(root)
 	}
 
+	/// Returns a mutable reference to the layer or folder at the path. Does not return an error for root
+	pub fn document_layer_mut(&mut self, path: &[LayerId]) -> Result<&mut Layer, DocumentError> {
+		let mut root = &mut self.root;
+		for id in path {
+			if root.as_folder().is_err(){
+				return Ok(root);
+			}
+			
+			root = root.as_folder_mut()?.layer_mut(*id).ok_or(DocumentError::LayerNotFound)?;
+		}
+		Ok(root)
+	}
+
 	/// Returns a reference to the layer struct at the specified `path`.
 	pub fn layer(&self, path: &[LayerId]) -> Result<&Layer, DocumentError> {
 		let (path, id) = split_path(path)?;
@@ -248,14 +261,14 @@ impl Document {
 			}
 			Operation::TransformLayer { path, transform } => {
 				let transform = self.root.transform * DAffine2::from_cols_array(&transform);
-				let layer = self.document_folder_mut(path).unwrap();
+				let layer = self.document_layer_mut(path).unwrap();
 				layer.transform = transform;
 				layer.cache_dirty = true;
 				Some(vec![DocumentResponse::DocumentChanged])
 			}
 			Operation::SetLayerTransform { path, transform } => {
 				let transform = DAffine2::from_cols_array(&transform);
-				let layer = self.document_folder_mut(path).unwrap();
+				let layer = self.document_layer_mut(path).unwrap();
 				layer.transform = transform;
 				layer.cache_dirty = true;
 				Some(vec![DocumentResponse::DocumentChanged])

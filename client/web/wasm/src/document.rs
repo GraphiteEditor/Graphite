@@ -136,17 +136,17 @@ pub fn export_document() -> Result<(), JsValue> {
 	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(DocumentMessage::ExportDocument)).map_err(convert_error)
 }
 
-/// Changes document zoom by delta
+/// Sets the zoom to the value
 #[wasm_bindgen]
-pub fn on_change_zoom(delta_zoom: f64) -> Result<(), JsValue> {
-	let ev = DocumentMessage::ChangeZoom(delta_zoom);
+pub fn on_set_zoom(new_zoom: f64) -> Result<(), JsValue> {
+	let ev = DocumentMessage::SetZoom(new_zoom);
 	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(ev)).map_err(convert_error)
 }
 
-/// Changes document rotation by delta radians
+/// Sets the rotation to the new value (in radians)
 #[wasm_bindgen]
-pub fn on_change_rotation(delta_radians: f64) -> Result<(), JsValue> {
-	let ev = DocumentMessage::ChangeRotation(delta_radians);
+pub fn on_set_rotation(new_radians: f64) -> Result<(), JsValue> {
+	let ev = DocumentMessage::SetRotation(new_radians);
 	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(ev)).map_err(convert_error)
 }
 

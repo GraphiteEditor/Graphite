@@ -1,5 +1,6 @@
 use crate::{frontend::layer_panel::*, EditorError};
 use document_core::{document::Document as InteralDocument, layers::Layer, LayerId};
+use glam::{DAffine2, DVec2};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -15,7 +16,7 @@ impl Default for Document {
 		Self {
 			document: InteralDocument::default(),
 			name: String::from("Untitled Document"),
-			layer_data: vec![(vec![], LayerData { selected: false, expanded: true })].into_iter().collect(),
+			layer_data: vec![(vec![], LayerData::new(true))].into_iter().collect(),
 		}
 	}
 }
@@ -25,14 +26,14 @@ impl Document {
 		Self {
 			document: InteralDocument::default(),
 			name,
-			layer_data: vec![(vec![], LayerData { selected: false, expanded: true })].into_iter().collect(),
+			layer_data: vec![(vec![], LayerData::new(true))].into_iter().collect(),
 		}
 	}
 }
 
 fn layer_data<'a>(layer_data: &'a mut HashMap<Vec<LayerId>, LayerData>, path: &[LayerId]) -> &'a mut LayerData {
 	if !layer_data.contains_key(path) {
-		layer_data.insert(path.to_vec(), LayerData::default());
+		layer_data.insert(path.to_vec(), LayerData::new(false));
 	}
 	layer_data.get_mut(path).unwrap()
 }
@@ -74,8 +75,36 @@ impl Document {
 	}
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash, Copy, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Copy)]
 pub struct LayerData {
 	pub selected: bool,
 	pub expanded: bool,
+	pub translation: DVec2,
+	pub rotation: f64,
+	pub scale: f64,
+}
+
+impl LayerData {
+	pub fn new(expanded: bool) -> LayerData {
+		LayerData {
+			selected: false,
+			expanded,
+			translation: DVec2::ZERO,
+			rotation: 0.,
+			scale: 1.,
+		}
+	}
+	pub fn get_transform(&self) -> DAffine2 {
+		let scale_transform = DAffine2::from_scale(DVec2::new(self.scale, self.scale));
+		let angle_transform = DAffine2::from_angle(self.rotation);
+		let translation_transform = DAffine2::from_translation(self.translation.into());
+		angle_transform*scale_transform * translation_transform
+	}
+	pub fn get_offset_transform(&self, offset: DVec2) -> DAffine2 {
+		let offset_transform = DAffine2::from_translation(offset);
+		let scale_transform = DAffine2::from_scale(DVec2::new(self.scale, self.scale));
+		let angle_transform = DAffine2::from_angle(self.rotation);
+		let translation_transform = DAffine2::from_translation(self.translation.into());
+		(scale_transform * offset_transform)*angle_transform*scale_transform * translation_transform
+	}
 }

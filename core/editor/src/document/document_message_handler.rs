@@ -3,7 +3,7 @@ use crate::{
 	message_prelude::*,
 };
 use document_core::{DocumentResponse, LayerId, Operation as DocumentOperation};
-use glam::{DAffine2, DVec2};
+use glam::DVec2;
 
 use crate::document::Document;
 use std::collections::VecDeque;
@@ -35,9 +35,10 @@ pub enum DocumentMessage {
 	RotateDown,
 	ZoomDown,
 	TransformUp,
-	ChangeZoom(f64),
+	SetZoom(f64),
+	MultiplyZoom(f64),
 	WheelZoom,
-	ChangeRotation(f64),
+	SetRotation(f64),
 }
 
 impl From<DocumentOperation> for DocumentMessage {
@@ -88,24 +89,27 @@ impl DocumentMessageHandler {
 		// TODO: Add deduplication
 		(!path.is_empty()).then(|| self.handle_folder_changed(path[..path.len() - 1].to_vec())).flatten()
 	}
-	fn transform_document_around_centre(&self, half_viewport: DVec2, operation: DAffine2) -> DocumentOperation {
-		let half_viewport_affine = DAffine2::from_translation(half_viewport);
-		let document = self.active_document().document.root.transform;
-		let extracted = half_viewport_affine.inverse() * document;
-
-		let result = half_viewport_affine * operation * extracted;
-
-		DocumentOperation::SetLayerTransform {
-			path: vec![],
-			transform: result.to_cols_array(),
-		}
+	fn get_layerdata_mut(&mut self, path: Vec<u64>) -> &mut super::LayerData {
+		self.active_document_mut().layer_data.get_mut(&path).expect("Layerdata does not exist")
 	}
-	fn multiply_zoom(&self, multiplier: f64, ipp: &InputPreprocessor, responses: &mut VecDeque<Message>) {
+	fn _create_transform_from_layerdata(&self, path: Vec<u64>, responses: &mut VecDeque<Message>) {
+		let layerdata = self.active_document().layer_data.get(&path).expect("Layerdata does not exist");
+		responses.push_back(
+			DocumentOperation::SetLayerTransform {
+				path: path,
+				transform: layerdata.get_transform().to_cols_array(),
+			}
+			.into(),
+		);
+	}
+	fn create_document_transform_from_layerdata(&self, ipp: &InputPreprocessor, responses: &mut VecDeque<Message>) {
 		let half_viewport = DVec2::new(ipp.viewport_size.x as f64 / 2., ipp.viewport_size.y as f64 / 2.);
-		let operation = self.transform_document_around_centre(half_viewport, DAffine2::from_scale(DVec2::new(multiplier, multiplier)));
-		responses.push_back(operation.into());
-
-		responses.push_back(FrontendMessage::MultiplyZoom { multiplier }.into());
+		let layerdata = self.active_document().layer_data.get(&vec![]).expect("Layerdata does not exist");
+		let scaled_half_viewport = half_viewport / layerdata.scale;
+		responses.push_back(DocumentOperation::SetLayerTransform {
+			path: vec![],
+			transform: layerdata.get_offset_transform(scaled_half_viewport).to_cols_array(),
+		}.into());
 	}
 }
 
@@ -321,11 +325,9 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					let delta = DVec2::new(ipp.mouse.position.x as f64 - self.mouse_pos.x as f64, ipp.mouse.position.y as f64 - self.mouse_pos.y as f64);
 					let transformed_delta = self.active_document().document.root.transform.inverse().transform_vector2(delta);
 
-					let operation = DocumentOperation::TransformLayer {
-						path: vec![],
-						transform: DAffine2::from_translation(transformed_delta).to_cols_array(),
-					};
-					responses.push_back(operation.into());
+					let layerdata = self.get_layerdata_mut(vec![]);
+					layerdata.translation = layerdata.translation + transformed_delta;
+					self.create_document_transform_from_layerdata(ipp, responses);
 				}
 				if self.rotating {
 					let half_viewport = DVec2::new(ipp.viewport_size.x as f64 / 2., ipp.viewport_size.y as f64 / 2.);
@@ -334,52 +336,63 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 						let end_vec = DVec2::new(ipp.mouse.position.x as f64, ipp.mouse.position.y as f64) - half_viewport;
 						start_vec.angle_between(end_vec)
 					};
-					let operation = self.transform_document_around_centre(half_viewport, DAffine2::from_angle(rotation));
-					responses.push_back(operation.into());
 
-					responses.push_back(FrontendMessage::UpdateRotation { change: rotation }.into());
+					let layerdata = self.get_layerdata_mut(vec![]);
+					layerdata.rotation += rotation;
+					responses.push_back(FrontendMessage::SetRotation { new_radians: layerdata.rotation }.into());
+					self.create_document_transform_from_layerdata(ipp, responses);
 				}
 				if self.zooming {
 					let difference = self.mouse_pos.y as f64 - ipp.mouse.position.y as f64;
 					let amount = 1. + difference / 100.;
-					self.multiply_zoom(amount, ipp, responses);
+					let layerdata = self.get_layerdata_mut(vec![]);
+					layerdata.scale *= amount;
+					responses.push_back(FrontendMessage::SetZoom { new_zoom: layerdata.scale }.into());
+					self.create_document_transform_from_layerdata(ipp, responses);
 				}
 				self.mouse_pos = ipp.mouse.position;
 			}
-			ChangeZoom(amount) => {
-				self.multiply_zoom(amount, ipp, responses);
+			SetZoom(new) => {
+				let layerdata = self.get_layerdata_mut(vec![]);
+				layerdata.scale = new;
+				responses.push_back(FrontendMessage::SetZoom { new_zoom: layerdata.scale }.into());
+				self.create_document_transform_from_layerdata(ipp, responses);
+			}
+			MultiplyZoom(mult) => {
+				let layerdata = self.get_layerdata_mut(vec![]);
+				layerdata.scale *= mult;
+				responses.push_back(FrontendMessage::SetZoom { new_zoom: layerdata.scale }.into());
+				self.create_document_transform_from_layerdata(ipp, responses);
 			}
 			WheelZoom => {
 				let scroll = (ipp.mouse.scroll_delta.y + ipp.mouse.scroll_delta.x) as f64;
 				let amount = if ipp.mouse.scroll_delta.y > 0 { 1. + scroll / -500. } else { 1. / (1. + scroll / 500.) };
-				self.multiply_zoom(amount, ipp, responses);
+				let layerdata = self.get_layerdata_mut(vec![]);
+				layerdata.scale *= amount;
+				responses.push_back(FrontendMessage::SetZoom { new_zoom: layerdata.scale }.into());
+				self.create_document_transform_from_layerdata(ipp, responses);
 			}
 			WheelTranslate => {
-				log::info!("wheel translate");
 				let delta = DVec2::new(-ipp.mouse.scroll_delta.x as f64, -ipp.mouse.scroll_delta.y as f64);
 				let transformed_delta = self.active_document().document.root.transform.inverse().transform_vector2(delta);
-
-				let operation = DocumentOperation::TransformLayer {
-					path: vec![],
-					transform: DAffine2::from_translation(transformed_delta).to_cols_array(),
-				};
-				responses.push_back(operation.into());
+				let layerdata = self.get_layerdata_mut(vec![]);
+				layerdata.translation += transformed_delta;
+				self.create_document_transform_from_layerdata(ipp, responses);
 			}
-			ChangeRotation(rotation) => {
-				let half_viewport = DVec2::new(ipp.viewport_size.x as f64 / 2., ipp.viewport_size.y as f64 / 2.);
-				let operation = self.transform_document_around_centre(half_viewport, DAffine2::from_angle(rotation));
-				responses.push_back(operation.into());
-
-				responses.push_back(FrontendMessage::UpdateRotation { change: rotation }.into());
+			SetRotation(new) => {
+				let layerdata = self.get_layerdata_mut(vec![]);
+				layerdata.rotation = new;
+				self.create_document_transform_from_layerdata(ipp, responses);
+				responses.push_back(FrontendMessage::SetRotation { new_radians: new }.into());
 			}
 			message => todo!("document_action_handler does not implement: {}", message.to_discriminant().global_name()),
 		}
 	}
 	fn actions(&self) -> ActionList {
 		if self.active_document().layer_data.values().any(|data| data.selected) {
-			actions!(DocumentMessageDiscriminant; Undo, DeleteSelectedLayers, DuplicateSelectedLayers, RenderDocument, ExportDocument, NewDocument, CloseActiveDocument, NextDocument, PrevDocument, MouseMove, TransformUp, TranslateDown, RotateDown, ZoomDown, ChangeZoom, ChangeRotation, WheelZoom, WheelTranslate)
+			actions!(DocumentMessageDiscriminant; Undo, DeleteSelectedLayers, DuplicateSelectedLayers, RenderDocument, ExportDocument, NewDocument, CloseActiveDocument, NextDocument, PrevDocument, MouseMove, TransformUp, TranslateDown, RotateDown, ZoomDown, SetZoom, SetRotation, WheelZoom, WheelTranslate)
 		} else {
-			actions!(DocumentMessageDiscriminant; Undo, RenderDocument, ExportDocument, NewDocument, CloseActiveDocument, NextDocument, PrevDocument, MouseMove, TransformUp, TranslateDown, RotateDown, ZoomDown, ChangeZoom, ChangeRotation, WheelZoom, WheelTranslate)
+			actions!(DocumentMessageDiscriminant; Undo, RenderDocument, ExportDocument, NewDocument, CloseActiveDocument, NextDocument, PrevDocument, MouseMove, TransformUp, TranslateDown, RotateDown, ZoomDown, SetZoom, SetRotation, WheelZoom, WheelTranslate)
 		}
 	}
 }

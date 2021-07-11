@@ -64,7 +64,7 @@
 
 				<Separator :type="SeparatorType.Section" />
 
-				<NumberInput :callback="changeRotation" :initial_value="0" :step="15" :unit="`°`" :update_on_callback="false" ref="rotation" />
+				<NumberInput :callback="setRotation" :initial_value="0" :step="15" :unit="`°`" :update_on_callback="false" ref="rotation" />
 
 				<Separator :type="SeparatorType.Section" />
 
@@ -74,7 +74,7 @@
 
 				<Separator :type="SeparatorType.Related" />
 
-				<NumberInput :callback="changeZoom" :initial_value="100" :min="0.001" :increase_mult="1.25" :decrease_mult="0.8" :unit="`%`" :update_on_callback="false" ref="zoom" />
+				<NumberInput :callback="setZoom" :initial_value="100" :min="0.001" :increase_mult="1.25" :decrease_mult="0.8" :unit="`%`" :update_on_callback="false" ref="zoom" />
 			</div>
 		</LayoutRow>
 		<LayoutRow :class="'shelf-and-viewport'">
@@ -168,7 +168,7 @@
 
 <script lang="ts">
 import { defineComponent } from "vue";
-import { ResponseType, registerResponseHandler, Response, UpdateCanvas, SetActiveTool, ExportDocument, MultiplyZoom, UpdateRotation } from "../../response-handler";
+import { ResponseType, registerResponseHandler, Response, UpdateCanvas, SetActiveTool, ExportDocument, SetZoom, SetRotation } from "../../response-handler";
 import LayoutRow from "../layout/LayoutRow.vue";
 import LayoutCol from "../layout/LayoutCol.vue";
 import WorkingColors from "../widgets/WorkingColors.vue";
@@ -231,13 +231,13 @@ export default defineComponent({
 			const { on_mouse_scroll } = await wasm;
 			on_mouse_scroll(e.deltaX, e.deltaY, e.deltaZ);
 		},
-		async changeZoom(newZoom: number, oldZoom: number) {
-			const { on_change_zoom } = await wasm;
-			on_change_zoom(newZoom / 100 / (oldZoom / 100));
+		async setZoom(newZoom: number) {
+			const { on_set_zoom } = await wasm;
+			on_set_zoom(newZoom / 100);
 		},
-		async changeRotation(newRotation: number, oldRotation: number) {
-			const { on_change_rotation } = await wasm;
-			on_change_rotation((newRotation - oldRotation) * (Math.PI / 180));
+		async setRotation(newRotation: number) {
+			const { on_set_rotation } = await wasm;
+			on_set_rotation(newRotation * (Math.PI / 180));
 		},
 		async keyDown(e: KeyboardEvent) {
 			if (redirectKeyboardEventToBackend(e)) {
@@ -289,18 +289,18 @@ export default defineComponent({
 			const toolData = responseData as SetActiveTool;
 			if (toolData) this.activeTool = toolData.tool_name;
 		});
-		registerResponseHandler(ResponseType.MultiplyZoom, (responseData: Response) => {
-			const updateData = responseData as MultiplyZoom;
+		registerResponseHandler(ResponseType.SetZoom, (responseData: Response) => {
+			const updateData = responseData as SetZoom;
 			if (updateData) {
 				const zoomWidget = this.$refs.zoom as typeof NumberInput;
-				zoomWidget.setValue(zoomWidget.value * updateData.multiplier);
+				zoomWidget.setValue(updateData.new_zoom * 100);
 			}
 		});
-		registerResponseHandler(ResponseType.UpdateRotation, (responseData: Response) => {
-			const updateData = responseData as UpdateRotation;
+		registerResponseHandler(ResponseType.SetRotation, (responseData: Response) => {
+			const updateData = responseData as SetRotation;
 			if (updateData) {
 				const rotationWidget = this.$refs.rotation as typeof NumberInput;
-				const newRotation = rotationWidget.value + updateData.change * (180 / Math.PI);
+				const newRotation = updateData.new_radians * (180 / Math.PI);
 				rotationWidget.setValue((360 + (newRotation % 360)) % 360);
 			}
 		});

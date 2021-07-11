@@ -144,10 +144,9 @@ export default defineComponent({
 			this.text = Math.round(this.value) + this.unit;
 		},
 		updateValue(newValue: number, resetOnClamp: boolean) {
-			const old_value = this.value;
 			const new_value = this.clampValue(newValue, resetOnClamp);
 
-			if (this.callback) this.callback(new_value, old_value);
+			if (this.callback) this.callback(new_value);
 
 			if (this.update_on_callback) this.setValue(new_value);
 		},

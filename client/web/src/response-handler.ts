@@ -21,8 +21,8 @@ export enum ResponseType {
 	CloseDocument = "CloseDocument",
 	UpdateWorkingColors = "UpdateWorkingColors",
 	PromptCloseConfirmationModal = "PromptCloseConfirmationModal",
-	MultiplyZoom = "MultiplyZoom",
-	UpdateRotation = "UpdateRotation",
+	SetZoom = "SetZoom",
+	SetRotation = "SetRotation",
 }
 
 export function attachResponseHandlerToPage() {
@@ -66,10 +66,10 @@ function parseResponse(responseType: string, data: any): Response {
 			return newCloseDocument(data.CloseDocument);
 		case "UpdateCanvas":
 			return newUpdateCanvas(data.UpdateCanvas);
-		case "MultiplyZoom":
-			return newMultiplyZoom(data.MultiplyZoom);
-		case "UpdateRotation":
-			return newUpdateRotation(data.UpdateRotation);
+		case "SetZoom":
+			return newSetZoom(data.SetZoom);
+		case "SetRotation":
+			return newSetRotation(data.SetRotation);
 		case "ExportDocument":
 			return newExportDocument(data.ExportDocument);
 		case "UpdateWorkingColors":
@@ -77,11 +77,11 @@ function parseResponse(responseType: string, data: any): Response {
 		case "PromptCloseConfirmationModal":
 			return {};
 		default:
-			throw new Error(`Unrecognized origin/responseType pair: ${origin}, ${responseType}`);
+			throw new Error(`Unrecognized origin/responseType pair: ${origin}, '${responseType}'`);
 	}
 }
 
-export type Response = SetActiveTool | UpdateCanvas | DocumentChanged | CollapseFolder | ExpandFolder | UpdateWorkingColors | MultiplyZoom | UpdateRotation;
+export type Response = SetActiveTool | UpdateCanvas | DocumentChanged | CollapseFolder | ExpandFolder | UpdateWorkingColors | SetZoom | SetRotation;
 
 export interface CloseDocument {
 	document_index: number;
@@ -181,21 +181,21 @@ function newExpandFolder(input: any): ExpandFolder {
 	};
 }
 
-export interface MultiplyZoom {
-	multiplier: number;
+export interface SetZoom {
+	new_zoom: number;
 }
-function newMultiplyZoom(input: any): MultiplyZoom {
+function newSetZoom(input: any): SetZoom {
 	return {
-		multiplier: input.multiplier,
+		new_zoom: input.new_zoom,
 	};
 }
 
-export interface UpdateRotation {
-	change: number;
+export interface SetRotation {
+	new_radians: number;
 }
-function newUpdateRotation(input: any): UpdateRotation {
+function newSetRotation(input: any): SetRotation {
 	return {
-		change: input.change,
+		new_radians: input.new_radians,
 	};
 }
 
