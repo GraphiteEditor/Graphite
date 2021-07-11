@@ -97,7 +97,7 @@ impl LayerData {
 		}
 	}
 	pub fn snapped_angle(&self) -> f64 {
-		let increment_radians: f64 = std::f64::consts::PI / (180. / ROTATE_SNAP_INTERVAL);
+		let increment_radians: f64 = ROTATE_SNAP_INTERVAL.to_radians();
 		if self.snap_rotate {
 			(self.rotation / increment_radians).round() * increment_radians
 		} else {
