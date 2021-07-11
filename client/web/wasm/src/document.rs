@@ -113,6 +113,20 @@ pub fn undo() -> Result<(), JsValue> {
 	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(DocumentMessage::Undo)).map_err(convert_error)
 }
 
+/// Select all layers
+#[wasm_bindgen]
+pub fn select_all_layers() -> Result<(), JsValue> {
+	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(DocumentMessage::SelectAllLayers)).map_err(convert_error)
+}
+
+/// Select all layers
+#[wasm_bindgen]
+pub fn deselect_all_layers() -> Result<(), JsValue> {
+	EDITOR_STATE
+		.with(|editor| editor.borrow_mut().handle_message(DocumentMessage::DeselectAllLayers))
+		.map_err(convert_error)
+}
+
 /// Export the document
 #[wasm_bindgen]
 pub fn export_document() -> Result<(), JsValue> {
