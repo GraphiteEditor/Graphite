@@ -1,4 +1,4 @@
-use crate::{frontend::layer_panel::*, EditorError};
+use crate::{consts::ROTATE_SNAP_INTERVAL, frontend::layer_panel::*, EditorError};
 use document_core::{document::Document as InteralDocument, layers::Layer, LayerId};
 use glam::{DAffine2, DVec2};
 use serde::{Deserialize, Serialize};
@@ -96,8 +96,8 @@ impl LayerData {
 			scale: 1.,
 		}
 	}
-	pub fn snapped_angle(&self, increment: f64) -> f64 {
-		let increment_radians: f64 = std::f64::consts::PI / (180. / increment);
+	pub fn snapped_angle(&self) -> f64 {
+		let increment_radians: f64 = std::f64::consts::PI / (180. / ROTATE_SNAP_INTERVAL);
 		if self.snap_rotate {
 			(self.rotation / increment_radians).round() * increment_radians
 		} else {
@@ -107,7 +107,7 @@ impl LayerData {
 	pub fn calculate_offset_transform(&self, offset: DVec2) -> DAffine2 {
 		let offset_transform = DAffine2::from_translation(offset);
 		let scale_transform = DAffine2::from_scale(DVec2::new(self.scale, self.scale));
-		let angle_transform = DAffine2::from_angle(self.snapped_angle(15.));
+		let angle_transform = DAffine2::from_angle(self.snapped_angle());
 		let translation_transform = DAffine2::from_translation(self.translation.into());
 		scale_transform * offset_transform * angle_transform * scale_transform * translation_transform
 	}

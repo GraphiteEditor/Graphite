@@ -1,0 +1,7 @@
+pub const PLUS_KEY_MULTIPLIER: f64 = 1.25;
+pub const MINUS_KEY_MULTIPLIER: f64 = 0.8;
+
+pub const WHEEL_ZOOM_DIVISOR: f64 = 500.;
+pub const MOUSE_ZOOM_DIVISOR: f64 = 400.;
+
+pub const ROTATE_SNAP_INTERVAL: f64 = 15.;

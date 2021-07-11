@@ -1,3 +1,4 @@
+use crate::consts::{MINUS_KEY_MULTIPLIER, PLUS_KEY_MULTIPLIER};
 use crate::message_prelude::*;
 use crate::tool::ToolType;
 
@@ -187,9 +188,9 @@ impl Default for Mapping {
 			entry! {action=DocumentMessage::ZoomDown, key_down=Mmb, modifiers=[KeyShift]},
 			entry! {action=DocumentMessage::TranslateDown, key_down=Mmb},
 			entry! {action=DocumentMessage::TransformUp, key_up=Mmb},
-			entry! {action=DocumentMessage::MultiplyZoom(1.25), key_down=KeyPlus, modifiers=[KeyControl]},
-			entry! {action=DocumentMessage::MultiplyZoom(1.25), key_down=KeyEquals, modifiers=[KeyControl]},
-			entry! {action=DocumentMessage::MultiplyZoom(0.8), key_down=KeyMinus, modifiers=[KeyControl]},
+			entry! {action=DocumentMessage::MultiplyZoom(PLUS_KEY_MULTIPLIER), key_down=KeyPlus, modifiers=[KeyControl]},
+			entry! {action=DocumentMessage::MultiplyZoom(PLUS_KEY_MULTIPLIER), key_down=KeyEquals, modifiers=[KeyControl]},
+			entry! {action=DocumentMessage::MultiplyZoom(MINUS_KEY_MULTIPLIER), key_down=KeyMinus, modifiers=[KeyControl]},
 			entry! {action=DocumentMessage::SetZoom(1.), key_down=Key1, modifiers=[KeyControl]},
 			entry! {action=DocumentMessage::SetZoom(2.), key_down=Key2, modifiers=[KeyControl]},
 			entry! {action=DocumentMessage::WheelZoom, message=InputMapperMessage::MouseScroll, modifiers=[KeyControl]},

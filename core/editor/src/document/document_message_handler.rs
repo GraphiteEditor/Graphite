@@ -1,5 +1,8 @@
-use crate::input::{mouse::ViewportPosition, InputPreprocessor};
 use crate::message_prelude::*;
+use crate::{
+	consts::{MOUSE_ZOOM_DIVISOR, WHEEL_ZOOM_DIVISOR},
+	input::{mouse::ViewportPosition, InputPreprocessor},
+};
 use document_core::layers::Layer;
 use document_core::{DocumentResponse, LayerId, Operation as DocumentOperation};
 use log::warn;
@@ -396,7 +399,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			}
 			TransformUp => {
 				let layerdata = self.get_layerdata_mut(&vec![]);
-				layerdata.rotation = layerdata.snapped_angle(15.);
+				layerdata.rotation = layerdata.snapped_angle();
 				layerdata.snap_rotate = false;
 				self.translating = false;
 				self.rotating = false;
@@ -423,7 +426,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					layerdata.rotation += rotation;
 					responses.push_back(
 						FrontendMessage::SetRotation {
-							new_radians: layerdata.snapped_angle(15.),
+							new_radians: layerdata.snapped_angle(),
 						}
 						.into(),
 					);
@@ -431,7 +434,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				}
 				if self.zooming {
 					let difference = self.mouse_pos.y as f64 - ipp.mouse.position.y as f64;
-					let amount = 1. + difference / 400.;
+					let amount = 1. + difference / MOUSE_ZOOM_DIVISOR;
 					let layerdata = self.get_layerdata_mut(&vec![]);
 					layerdata.scale *= amount;
 					responses.push_back(FrontendMessage::SetZoom { new_zoom: layerdata.scale }.into());
@@ -453,7 +456,11 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			}
 			WheelZoom => {
 				let scroll = ipp.mouse.scroll_delta.distance();
-				let amount = if ipp.mouse.scroll_delta.y > 0 { 1. + scroll / -500. } else { 1. / (1. + scroll / 500.) };
+				let amount = if ipp.mouse.scroll_delta.y > 0 {
+					1. + scroll / -WHEEL_ZOOM_DIVISOR
+				} else {
+					1. / (1. + scroll / WHEEL_ZOOM_DIVISOR)
+				};
 				let layerdata = self.get_layerdata_mut(&vec![]);
 				layerdata.scale *= amount;
 				responses.push_back(FrontendMessage::SetZoom { new_zoom: layerdata.scale }.into());
