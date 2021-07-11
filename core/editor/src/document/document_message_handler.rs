@@ -393,9 +393,9 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 	}
 	fn actions(&self) -> ActionList {
 		if self.active_document().layer_data.values().any(|data| data.selected) {
-			actions!(DocumentMessageDiscriminant; Undo, DeleteSelectedLayers, DuplicateSelectedLayers, RenderDocument, ExportDocument, NewDocument, CloseActiveDocument, NextDocument, PrevDocument, MouseMove, TransformUp, TranslateDown, RotateDown, ZoomDown, SetZoom, SetRotation, WheelZoom, WheelTranslate)
+			actions!(DocumentMessageDiscriminant; Undo, DeleteSelectedLayers, DuplicateSelectedLayers, RenderDocument, ExportDocument, NewDocument, CloseActiveDocument, NextDocument, PrevDocument, MouseMove, TransformUp, TranslateDown, RotateDown, ZoomDown, SetZoom, MultiplyZoom, SetRotation, WheelZoom, WheelTranslate)
 		} else {
-			actions!(DocumentMessageDiscriminant; Undo, RenderDocument, ExportDocument, NewDocument, CloseActiveDocument, NextDocument, PrevDocument, MouseMove, TransformUp, TranslateDown, RotateDown, ZoomDown, SetZoom, SetRotation, WheelZoom, WheelTranslate)
+			actions!(DocumentMessageDiscriminant; Undo, RenderDocument, ExportDocument, NewDocument, CloseActiveDocument, NextDocument, PrevDocument, MouseMove, TransformUp, TranslateDown, RotateDown, ZoomDown, SetZoom, MultiplyZoom, SetRotation, WheelZoom, WheelTranslate)
 		}
 	}
 }
