@@ -119,8 +119,8 @@ impl DocumentMessageHandler {
 			.into(),
 		);
 	}
-	fn create_document_transform_from_layerdata(&self, ipp: &InputPreprocessor, responses: &mut VecDeque<Message>) {
-		let half_viewport = DVec2::new(ipp.viewport_size.x as f64 / 2., ipp.viewport_size.y as f64 / 2.);
+	fn create_document_transform_from_layerdata(&self, viewport_size: &ViewportPosition, responses: &mut VecDeque<Message>) {
+		let half_viewport = DVec2::new(viewport_size.x as f64, viewport_size.y as f64) / 2.;
 		let layerdata = self.get_layerdata(&vec![]);
 		let scaled_half_viewport = half_viewport / layerdata.scale;
 		responses.push_back(
@@ -410,7 +410,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 
 					let layerdata = self.get_layerdata_mut(&vec![]);
 					layerdata.translation = layerdata.translation + transformed_delta;
-					self.create_document_transform_from_layerdata(ipp, responses);
+					self.create_document_transform_from_layerdata(&ipp.viewport_size, responses);
 				}
 				if self.rotating {
 					let half_viewport = DVec2::new(ipp.viewport_size.x as f64 / 2., ipp.viewport_size.y as f64 / 2.);
@@ -428,7 +428,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 						}
 						.into(),
 					);
-					self.create_document_transform_from_layerdata(ipp, responses);
+					self.create_document_transform_from_layerdata(&ipp.viewport_size, responses);
 				}
 				if self.zooming {
 					let difference = self.mouse_pos.y as f64 - ipp.mouse.position.y as f64;
@@ -436,7 +436,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					let layerdata = self.get_layerdata_mut(&vec![]);
 					layerdata.scale *= amount;
 					responses.push_back(FrontendMessage::SetZoom { new_zoom: layerdata.scale }.into());
-					self.create_document_transform_from_layerdata(ipp, responses);
+					self.create_document_transform_from_layerdata(&ipp.viewport_size, responses);
 				}
 				self.mouse_pos = ipp.mouse.position;
 			}
@@ -444,13 +444,13 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				let layerdata = self.get_layerdata_mut(&vec![]);
 				layerdata.scale = new;
 				responses.push_back(FrontendMessage::SetZoom { new_zoom: layerdata.scale }.into());
-				self.create_document_transform_from_layerdata(ipp, responses);
+				self.create_document_transform_from_layerdata(&ipp.viewport_size, responses);
 			}
 			MultiplyZoom(mult) => {
 				let layerdata = self.get_layerdata_mut(&vec![]);
 				layerdata.scale *= mult;
 				responses.push_back(FrontendMessage::SetZoom { new_zoom: layerdata.scale }.into());
-				self.create_document_transform_from_layerdata(ipp, responses);
+				self.create_document_transform_from_layerdata(&ipp.viewport_size, responses);
 			}
 			WheelZoom => {
 				let scroll = (ipp.mouse.scroll_delta.y + ipp.mouse.scroll_delta.x) as f64;
@@ -458,19 +458,19 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				let layerdata = self.get_layerdata_mut(&vec![]);
 				layerdata.scale *= amount;
 				responses.push_back(FrontendMessage::SetZoom { new_zoom: layerdata.scale }.into());
-				self.create_document_transform_from_layerdata(ipp, responses);
+				self.create_document_transform_from_layerdata(&ipp.viewport_size, responses);
 			}
 			WheelTranslate => {
 				let delta = DVec2::new(-ipp.mouse.scroll_delta.x as f64, -ipp.mouse.scroll_delta.y as f64);
 				let transformed_delta = self.active_document().document.root.transform.inverse().transform_vector2(delta);
 				let layerdata = self.get_layerdata_mut(&vec![]);
 				layerdata.translation += transformed_delta;
-				self.create_document_transform_from_layerdata(ipp, responses);
+				self.create_document_transform_from_layerdata(&ipp.viewport_size, responses);
 			}
 			SetRotation(new) => {
 				let layerdata = self.get_layerdata_mut(&vec![]);
 				layerdata.rotation = new;
-				self.create_document_transform_from_layerdata(ipp, responses);
+				self.create_document_transform_from_layerdata(&ipp.viewport_size, responses);
 				responses.push_back(FrontendMessage::SetRotation { new_radians: new }.into());
 			}
 			message => todo!("document_action_handler does not implement: {}", message.to_discriminant().global_name()),
