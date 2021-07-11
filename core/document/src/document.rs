@@ -131,10 +131,10 @@ impl Document {
 	pub fn document_layer_mut(&mut self, path: &[LayerId]) -> Result<&mut Layer, DocumentError> {
 		let mut root = &mut self.root;
 		for id in path {
-			if root.as_folder().is_err(){
+			if root.as_folder().is_err() {
 				return Ok(root);
 			}
-			
+
 			root = root.as_folder_mut()?.layer_mut(*id).ok_or(DocumentError::LayerNotFound)?;
 		}
 		Ok(root)

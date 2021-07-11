@@ -106,10 +106,13 @@ impl DocumentMessageHandler {
 		let half_viewport = DVec2::new(ipp.viewport_size.x as f64 / 2., ipp.viewport_size.y as f64 / 2.);
 		let layerdata = self.active_document().layer_data.get(&vec![]).expect("Layerdata does not exist");
 		let scaled_half_viewport = half_viewport / layerdata.scale;
-		responses.push_back(DocumentOperation::SetLayerTransform {
-			path: vec![],
-			transform: layerdata.get_offset_transform(scaled_half_viewport).to_cols_array(),
-		}.into());
+		responses.push_back(
+			DocumentOperation::SetLayerTransform {
+				path: vec![],
+				transform: layerdata.get_offset_transform(scaled_half_viewport).to_cols_array(),
+			}
+			.into(),
+		);
 	}
 }
 
