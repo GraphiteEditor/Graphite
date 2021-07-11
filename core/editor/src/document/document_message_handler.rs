@@ -8,6 +8,8 @@ use log::warn;
 use crate::document::Document;
 use std::collections::VecDeque;
 
+use super::LayerData;
+
 #[impl_message(Message, Document)]
 #[derive(PartialEq, Clone, Debug)]
 pub enum DocumentMessage {
@@ -94,11 +96,21 @@ impl DocumentMessageHandler {
 		// TODO: Add deduplication
 		(!path.is_empty()).then(|| self.handle_folder_changed(path[..path.len() - 1].to_vec())).flatten()
 	}
-	fn get_layerdata_mut(&mut self, path: Vec<u64>) -> &mut super::LayerData {
-		self.active_document_mut().layer_data.get_mut(&path).expect("Layerdata does not exist")
+	fn get_layerdata(&self, path: &[LayerId]) -> &LayerData {
+		self.active_document().layer_data.get(path).expect("Layerdata does not exist")
 	}
-	fn _create_transform_from_layerdata(&self, path: Vec<u64>, responses: &mut VecDeque<Message>) {
-		let layerdata = self.active_document().layer_data.get(&path).expect("Layerdata does not exist");
+	fn get_layerdata_mut(&mut self, path: &[LayerId]) -> &mut LayerData {
+		if self.active_document_mut().layer_data.contains_key(path) {
+			self.active_document_mut().layer_data.get_mut(path).unwrap()
+		} else {
+			self.active_document_mut().layer_data.insert(path.to_vec(), LayerData::new(true));
+			self.active_document_mut().layer_data.get_mut(path).unwrap()
+		}
+		//self.active_document_mut().layer_data.insert(path.to_vec(), LayerData::new(true));
+	}
+	#[allow(dead_code)]
+	fn create_transform_from_layerdata(&self, path: Vec<u64>, responses: &mut VecDeque<Message>) {
+		let layerdata = self.get_layerdata(&path);
 		responses.push_back(
 			DocumentOperation::SetLayerTransform {
 				path: path,
@@ -109,7 +121,7 @@ impl DocumentMessageHandler {
 	}
 	fn create_document_transform_from_layerdata(&self, ipp: &InputPreprocessor, responses: &mut VecDeque<Message>) {
 		let half_viewport = DVec2::new(ipp.viewport_size.x as f64 / 2., ipp.viewport_size.y as f64 / 2.);
-		let layerdata = self.active_document().layer_data.get(&vec![]).expect("Layerdata does not exist");
+		let layerdata = self.get_layerdata(&vec![]);
 		let scaled_half_viewport = half_viewport / layerdata.scale;
 		responses.push_back(
 			DocumentOperation::SetLayerTransform {
@@ -375,7 +387,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			}
 			RotateDown { snap } => {
 				self.rotating = true;
-				let layerdata = self.get_layerdata_mut(vec![]);
+				let layerdata = self.get_layerdata_mut(&vec![]);
 				layerdata.snap_rotate = snap;
 				self.mouse_pos = ipp.mouse.position;
 			}
@@ -384,7 +396,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				self.mouse_pos = ipp.mouse.position;
 			}
 			TransformUp => {
-				let layerdata = self.get_layerdata_mut(vec![]);
+				let layerdata = self.get_layerdata_mut(&vec![]);
 				layerdata.rotation = layerdata.snapped_angle(15.);
 				layerdata.snap_rotate = false;
 				self.translating = false;
@@ -396,7 +408,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					let delta = DVec2::new(ipp.mouse.position.x as f64 - self.mouse_pos.x as f64, ipp.mouse.position.y as f64 - self.mouse_pos.y as f64);
 					let transformed_delta = self.active_document().document.root.transform.inverse().transform_vector2(delta);
 
-					let layerdata = self.get_layerdata_mut(vec![]);
+					let layerdata = self.get_layerdata_mut(&vec![]);
 					layerdata.translation = layerdata.translation + transformed_delta;
 					self.create_document_transform_from_layerdata(ipp, responses);
 				}
@@ -408,7 +420,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 						start_vec.angle_between(end_vec)
 					};
 
-					let layerdata = self.get_layerdata_mut(vec![]);
+					let layerdata = self.get_layerdata_mut(&vec![]);
 					layerdata.rotation += rotation;
 					responses.push_back(
 						FrontendMessage::SetRotation {
@@ -421,7 +433,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				if self.zooming {
 					let difference = self.mouse_pos.y as f64 - ipp.mouse.position.y as f64;
 					let amount = 1. + difference / 400.;
-					let layerdata = self.get_layerdata_mut(vec![]);
+					let layerdata = self.get_layerdata_mut(&vec![]);
 					layerdata.scale *= amount;
 					responses.push_back(FrontendMessage::SetZoom { new_zoom: layerdata.scale }.into());
 					self.create_document_transform_from_layerdata(ipp, responses);
@@ -429,13 +441,13 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				self.mouse_pos = ipp.mouse.position;
 			}
 			SetZoom(new) => {
-				let layerdata = self.get_layerdata_mut(vec![]);
+				let layerdata = self.get_layerdata_mut(&vec![]);
 				layerdata.scale = new;
 				responses.push_back(FrontendMessage::SetZoom { new_zoom: layerdata.scale }.into());
 				self.create_document_transform_from_layerdata(ipp, responses);
 			}
 			MultiplyZoom(mult) => {
-				let layerdata = self.get_layerdata_mut(vec![]);
+				let layerdata = self.get_layerdata_mut(&vec![]);
 				layerdata.scale *= mult;
 				responses.push_back(FrontendMessage::SetZoom { new_zoom: layerdata.scale }.into());
 				self.create_document_transform_from_layerdata(ipp, responses);
@@ -443,7 +455,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			WheelZoom => {
 				let scroll = (ipp.mouse.scroll_delta.y + ipp.mouse.scroll_delta.x) as f64;
 				let amount = if ipp.mouse.scroll_delta.y > 0 { 1. + scroll / -500. } else { 1. / (1. + scroll / 500.) };
-				let layerdata = self.get_layerdata_mut(vec![]);
+				let layerdata = self.get_layerdata_mut(&vec![]);
 				layerdata.scale *= amount;
 				responses.push_back(FrontendMessage::SetZoom { new_zoom: layerdata.scale }.into());
 				self.create_document_transform_from_layerdata(ipp, responses);
@@ -451,12 +463,12 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			WheelTranslate => {
 				let delta = DVec2::new(-ipp.mouse.scroll_delta.x as f64, -ipp.mouse.scroll_delta.y as f64);
 				let transformed_delta = self.active_document().document.root.transform.inverse().transform_vector2(delta);
-				let layerdata = self.get_layerdata_mut(vec![]);
+				let layerdata = self.get_layerdata_mut(&vec![]);
 				layerdata.translation += transformed_delta;
 				self.create_document_transform_from_layerdata(ipp, responses);
 			}
 			SetRotation(new) => {
-				let layerdata = self.get_layerdata_mut(vec![]);
+				let layerdata = self.get_layerdata_mut(&vec![]);
 				layerdata.rotation = new;
 				self.create_document_transform_from_layerdata(ipp, responses);
 				responses.push_back(FrontendMessage::SetRotation { new_radians: new }.into());
