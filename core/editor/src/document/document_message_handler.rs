@@ -356,7 +356,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				}
 				if self.zooming {
 					let difference = self.mouse_pos.y as f64 - ipp.mouse.position.y as f64;
-					let amount = 1. + difference / 200.;
+					let amount = 1. + difference / 400.;
 					let layerdata = self.get_layerdata_mut(vec![]);
 					layerdata.scale *= amount;
 					responses.push_back(FrontendMessage::SetZoom { new_zoom: layerdata.scale }.into());
