@@ -1,4 +1,5 @@
 use bitflags::bitflags;
+use glam::DVec2;
 
 // origin is top left
 #[derive(Debug, Copy, Clone, Default, Eq, PartialEq)]
@@ -13,6 +14,9 @@ impl ViewportPosition {
 		let y_diff = other.y as i64 - self.y as i64;
 		f64::sqrt((x_diff * x_diff + y_diff * y_diff) as f64)
 	}
+	pub fn to_dvec2(&self) -> DVec2 {
+		DVec2::new(self.x as f64, self.y as f64)
+	}
 }
 
 #[derive(Debug, Copy, Clone, Default, Eq, PartialEq)]
@@ -24,6 +28,12 @@ pub struct ScrollDelta {
 impl ScrollDelta {
 	pub fn new(x: i32, y: i32, z: i32) -> ScrollDelta {
 		ScrollDelta { x, y, z }
+	}
+	pub fn to_dvec2(&self) -> DVec2 {
+		DVec2::new(self.x as f64, self.y as f64)
+	}
+	pub fn distance(&self) -> f64 {
+		self.x as f64 + self.y as f64 + self.z as f64
 	}
 }
 

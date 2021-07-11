@@ -2,7 +2,6 @@ use crate::input::{mouse::ViewportPosition, InputPreprocessor};
 use crate::message_prelude::*;
 use document_core::layers::Layer;
 use document_core::{DocumentResponse, LayerId, Operation as DocumentOperation};
-use glam::DVec2;
 use log::warn;
 
 use crate::document::Document;
@@ -120,7 +119,7 @@ impl DocumentMessageHandler {
 		);
 	}
 	fn create_document_transform_from_layerdata(&self, viewport_size: &ViewportPosition, responses: &mut VecDeque<Message>) {
-		let half_viewport = DVec2::new(viewport_size.x as f64, viewport_size.y as f64) / 2.;
+		let half_viewport = viewport_size.to_dvec2() / 2.;
 		let layerdata = self.get_layerdata(&vec![]);
 		let scaled_half_viewport = half_viewport / layerdata.scale;
 		responses.push_back(
@@ -405,7 +404,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			}
 			MouseMove => {
 				if self.translating {
-					let delta = DVec2::new(ipp.mouse.position.x as f64 - self.mouse_pos.x as f64, ipp.mouse.position.y as f64 - self.mouse_pos.y as f64);
+					let delta = ipp.mouse.position.to_dvec2() - self.mouse_pos.to_dvec2();
 					let transformed_delta = self.active_document().document.root.transform.inverse().transform_vector2(delta);
 
 					let layerdata = self.get_layerdata_mut(&vec![]);
@@ -413,10 +412,10 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					self.create_document_transform_from_layerdata(&ipp.viewport_size, responses);
 				}
 				if self.rotating {
-					let half_viewport = DVec2::new(ipp.viewport_size.x as f64 / 2., ipp.viewport_size.y as f64 / 2.);
+					let half_viewport = ipp.viewport_size.to_dvec2() / 2.;
 					let rotation = {
-						let start_vec = DVec2::new(self.mouse_pos.x as f64, self.mouse_pos.y as f64) - half_viewport;
-						let end_vec = DVec2::new(ipp.mouse.position.x as f64, ipp.mouse.position.y as f64) - half_viewport;
+						let start_vec = self.mouse_pos.to_dvec2() - half_viewport;
+						let end_vec = ipp.mouse.position.to_dvec2() - half_viewport;
 						start_vec.angle_between(end_vec)
 					};
 
@@ -453,7 +452,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				self.create_document_transform_from_layerdata(&ipp.viewport_size, responses);
 			}
 			WheelZoom => {
-				let scroll = (ipp.mouse.scroll_delta.y + ipp.mouse.scroll_delta.x) as f64;
+				let scroll = ipp.mouse.scroll_delta.distance();
 				let amount = if ipp.mouse.scroll_delta.y > 0 { 1. + scroll / -500. } else { 1. / (1. + scroll / 500.) };
 				let layerdata = self.get_layerdata_mut(&vec![]);
 				layerdata.scale *= amount;
@@ -461,7 +460,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				self.create_document_transform_from_layerdata(&ipp.viewport_size, responses);
 			}
 			WheelTranslate => {
-				let delta = DVec2::new(-ipp.mouse.scroll_delta.x as f64, -ipp.mouse.scroll_delta.y as f64);
+				let delta = ipp.mouse.scroll_delta.to_dvec2();
 				let transformed_delta = self.active_document().document.root.transform.inverse().transform_vector2(delta);
 				let layerdata = self.get_layerdata_mut(&vec![]);
 				layerdata.translation += transformed_delta;
