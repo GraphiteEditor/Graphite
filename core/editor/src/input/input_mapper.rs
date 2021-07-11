@@ -170,6 +170,8 @@ impl Default for Mapping {
 			entry! {action=ToolMessage::SwapColors, key_down=KeyX, modifiers=[KeyShift]},
 			// Document Actions
 			entry! {action=DocumentMessage::Undo, key_down=KeyZ, modifiers=[KeyControl]},
+			entry! {action=DocumentMessage::DeselectAllLayers, key_down=KeyA, modifiers=[KeyControl, KeyAlt]},
+			entry! {action=DocumentMessage::SelectAllLayers, key_down=KeyA, modifiers=[KeyControl]},
 			entry! {action=DocumentMessage::DeleteSelectedLayers, key_down=KeyDelete},
 			entry! {action=DocumentMessage::DeleteSelectedLayers, key_down=KeyX},
 			entry! {action=DocumentMessage::DeleteSelectedLayers, key_down=KeyBackspace},

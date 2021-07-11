@@ -1,7 +1,8 @@
 {
 	"[rust]": {
 		"editor.formatOnSave": true,
-		"editor.formatOnPaste": true
+		"editor.formatOnPaste": true,
+		"editor.defaultFormatter": "matklad.rust-analyzer",
 	},
 	"[typescript, javascript, json, vue]": {
 		"editor.codeActionsOnSave": {
