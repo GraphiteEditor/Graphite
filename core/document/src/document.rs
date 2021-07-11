@@ -1,11 +1,11 @@
-use glam::DAffine2;
+use glam::{DAffine2, DVec2};
 
 use crate::{
 	layers::{self, style::PathStyle, Folder, Layer, LayerDataTypes, Line, PolyLine, Rect, Shape},
 	DocumentError, DocumentResponse, LayerId, Operation,
 };
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Document {
 	pub root: Layer,
 	pub work: Layer,
@@ -62,6 +62,19 @@ impl Document {
 		let mut svg = String::new();
 		self.render(&mut vec![], &mut svg);
 		svg
+	}
+
+	/// Checks whether each layer under `path` intersects with the provided `quad` and adds all intersection layers as paths to `intersections`.
+	pub fn intersects_quad(&self, quad: [DVec2; 4], path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>) {
+		self.document_folder(path).unwrap().intersects_quad(quad, path, intersections);
+		return;
+	}
+
+	/// Checks whether each layer under the root path intersects with the provided `quad` and returns the paths to all intersecting layers.
+	pub fn intersects_quad_root(&self, quad: [DVec2; 4]) -> Vec<Vec<LayerId>> {
+		let mut intersections = Vec::new();
+		self.intersects_quad(quad, &mut vec![], &mut intersections);
+		intersections
 	}
 
 	fn is_mounted(&self, mount_path: &[LayerId], path: &[LayerId]) -> bool {
@@ -127,23 +140,52 @@ impl Document {
 		Ok(root)
 	}
 
+	/// Returns a reference to the layer or folder at the path. Does not return an error for root
+	pub fn document_layer(&mut self, path: &[LayerId]) -> Result<&Layer, DocumentError> {
+		if path.is_empty() {
+			return Ok(&self.root);
+		}
+		let (path, id) = split_path(path)?;
+		self.document_folder(path)?.as_folder()?.layer(id).ok_or(DocumentError::LayerNotFound)
+	}
+
 	/// Returns a mutable reference to the layer or folder at the path. Does not return an error for root
 	pub fn document_layer_mut(&mut self, path: &[LayerId]) -> Result<&mut Layer, DocumentError> {
-		let mut root = &mut self.root;
-		for id in path {
-			if root.as_folder().is_err() {
-				return Ok(root);
-			}
-
-			root = root.as_folder_mut()?.layer_mut(*id).ok_or(DocumentError::LayerNotFound)?;
+		if path.is_empty() {
+			return Ok(&mut self.root);
 		}
-		Ok(root)
+		let (path, id) = split_path(path)?;
+		self.document_folder_mut(path)?.as_folder_mut()?.layer_mut(id).ok_or(DocumentError::LayerNotFound)
 	}
 
 	/// Returns a reference to the layer struct at the specified `path`.
 	pub fn layer(&self, path: &[LayerId]) -> Result<&Layer, DocumentError> {
 		let (path, id) = split_path(path)?;
 		self.folder(path)?.layer(id).ok_or(DocumentError::LayerNotFound)
+	}
+
+	/// Given a path to a layer, returns a vector of the indices in the layer tree
+	/// These indices can be used to order a list of layers
+	pub fn indices_for_path(&self, mut path: &[LayerId]) -> Result<Vec<usize>, DocumentError> {
+		let mut root = if self.is_mounted(self.work_mount_path.as_slice(), path) {
+			path = &path[self.work_mount_path.len()..];
+			&self.work
+		} else {
+			&self.root
+		}
+		.as_folder()?;
+		let mut indices = vec![];
+		let (path, layer_id) = split_path(path)?;
+
+		for id in path {
+			let pos = root.layer_ids.iter().position(|x| *x == *id).ok_or(DocumentError::LayerNotFound)?;
+			indices.push(pos);
+			root = root.folder(*id).ok_or(DocumentError::LayerNotFound)?;
+		}
+
+		indices.push(root.layer_ids.iter().position(|x| *x == layer_id).ok_or(DocumentError::LayerNotFound)?);
+
+		Ok(indices)
 	}
 
 	/// Returns a mutable reference to the layer struct at the specified `path`.
@@ -240,6 +282,13 @@ impl Document {
 				let (path, _) = split_path(path.as_slice()).unwrap_or_else(|_| (&[], 0));
 				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::FolderChanged { path: path.to_vec() }])
 			}
+			Operation::PasteLayer { path, layer } => {
+				let folder = self.folder_mut(path)?;
+				//FIXME: This clone of layer should be avoided somehow
+				folder.add_layer(layer.clone(), -1).ok_or(DocumentError::IndexOutOfBounds)?;
+
+				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::FolderChanged { path: path.clone() }])
+			}
 			Operation::DuplicateLayer { path } => {
 				let layer = self.layer(&path)?.clone();
 				let (folder_path, _) = split_path(path.as_slice()).unwrap_or_else(|_| (&[], 0));
@@ -260,10 +309,11 @@ impl Document {
 				None
 			}
 			Operation::TransformLayer { path, transform } => {
-				let transform = self.root.transform * DAffine2::from_cols_array(&transform);
 				let layer = self.document_layer_mut(path).unwrap();
+				let transform = DAffine2::from_cols_array(&transform) * layer.transform;
 				layer.transform = transform;
 				layer.cache_dirty = true;
+				self.root.cache_dirty = true;
 				Some(vec![DocumentResponse::DocumentChanged])
 			}
 			Operation::SetLayerTransform { path, transform } => {

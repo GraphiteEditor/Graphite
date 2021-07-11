@@ -107,6 +107,14 @@ macro_rules! mapping {
 impl Default for Mapping {
 	fn default() -> Self {
 		let (up, down, pointer_move, mouse_scroll) = mapping![
+			entry! {action=DocumentMessage::PasteLayers, key_down=KeyV, modifiers=[KeyControl]},
+			// Select
+			entry! {action=SelectMessage::MouseMove, message=InputMapperMessage::PointerMove},
+			entry! {action=SelectMessage::DragStart, key_down=Lmb},
+			entry! {action=SelectMessage::DragStop, key_up=Lmb},
+			entry! {action=SelectMessage::Abort, key_down=Rmb},
+			entry! {action=SelectMessage::Abort, key_down=KeyEscape},
+
 			// Rectangle
 			entry! {action=RectangleMessage::Center, key_down=KeyAlt},
 			entry! {action=RectangleMessage::UnCenter, key_up=KeyAlt},
@@ -167,6 +175,8 @@ impl Default for Mapping {
 			entry! {action=ToolMessage::SwapColors, key_down=KeyX, modifiers=[KeyShift]},
 			// Document Actions
 			entry! {action=DocumentMessage::Undo, key_down=KeyZ, modifiers=[KeyControl]},
+			entry! {action=DocumentMessage::DeselectAllLayers, key_down=KeyA, modifiers=[KeyControl, KeyAlt]},
+			entry! {action=DocumentMessage::SelectAllLayers, key_down=KeyA, modifiers=[KeyControl]},
 			entry! {action=DocumentMessage::DeleteSelectedLayers, key_down=KeyDelete},
 			entry! {action=DocumentMessage::DeleteSelectedLayers, key_down=KeyX},
 			entry! {action=DocumentMessage::DeleteSelectedLayers, key_down=KeyBackspace},
@@ -188,11 +198,12 @@ impl Default for Mapping {
 			entry! {action=DocumentMessage::NewDocument, key_down=KeyN, modifiers=[KeyShift]},
 			entry! {action=DocumentMessage::NextDocument, key_down=KeyTab, modifiers=[KeyShift]},
 			entry! {action=DocumentMessage::CloseActiveDocument, key_down=KeyW, modifiers=[KeyShift]},
+			entry! {action=DocumentMessage::DuplicateSelectedLayers, key_down=KeyD, modifiers=[KeyControl]},
+			entry! {action=DocumentMessage::CopySelectedLayers, key_down=KeyC, modifiers=[KeyControl]},
 			// Global Actions
 			entry! {action=GlobalMessage::LogInfo, key_down=Key1},
 			entry! {action=GlobalMessage::LogDebug, key_down=Key2},
 			entry! {action=GlobalMessage::LogTrace, key_down=Key3},
-			entry! {action=DocumentMessage::DuplicateSelectedLayers, key_down=KeyD, modifiers=[KeyControl]},
 		];
 		Self { up, down, pointer_move, mouse_scroll }
 	}

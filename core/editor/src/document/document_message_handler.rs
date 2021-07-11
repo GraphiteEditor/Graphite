@@ -1,9 +1,8 @@
-use crate::{
-	input::{mouse::ViewportPosition, InputPreprocessor},
-	message_prelude::*,
-};
+use crate::input::{mouse::ViewportPosition, InputPreprocessor};
+use crate::message_prelude::*;
+use document_core::layers::Layer;
 use document_core::{DocumentResponse, LayerId, Operation as DocumentOperation};
-use glam::DVec2;
+use glam::{DAffine2, DVec2};
 
 use crate::document::Document;
 use std::collections::VecDeque;
@@ -13,9 +12,13 @@ use std::collections::VecDeque;
 pub enum DocumentMessage {
 	DispatchOperation(DocumentOperation),
 	SelectLayers(Vec<Vec<LayerId>>),
+	SelectAllLayers,
+	DeselectAllLayers,
 	DeleteLayer(Vec<LayerId>),
 	DeleteSelectedLayers,
 	DuplicateSelectedLayers,
+	CopySelectedLayers,
+	PasteLayers,
 	AddFolder(Vec<LayerId>),
 	RenameLayer(Vec<LayerId>, String),
 	ToggleLayerVisibility(Vec<LayerId>),
@@ -60,6 +63,7 @@ pub struct DocumentMessageHandler {
 	rotating: bool,
 	zooming: bool,
 	mouse_pos: ViewportPosition,
+	copy_buffer: Vec<Layer>,
 }
 
 impl DocumentMessageHandler {
@@ -113,6 +117,32 @@ impl DocumentMessageHandler {
 			}
 			.into(),
 		);
+  }
+
+	/// Returns the paths to the selected layers in order
+	fn selected_layers_sorted(&self) -> Vec<Vec<LayerId>> {
+		// Compute the indices for each layer to be able to sort them
+		let mut layers_with_indices: Vec<(Vec<LayerId>, Vec<usize>)> = self
+			.active_document()
+			.layer_data
+			.iter()
+			.filter_map(|(path, data)| data.selected.then(|| path.clone()))
+			.filter_map(|path| {
+				// Currently it is possible that layer_data contains layers that are don't actually exist
+				// and thus indices_for_path can return an error. We currently skip these layers and log a warning.
+				// Once this problem is solved this code can be simplified
+				match self.active_document().document.indices_for_path(&path) {
+					Err(err) => {
+						warn!("selected_layers_sorted: Could not get indices for the layer {:?}: {:?}", path, err);
+						None
+					}
+					Ok(indices) => Some((path, indices)),
+				}
+			})
+			.collect();
+
+		layers_with_indices.sort_by_key(|(_, indices)| indices.clone());
+		return layers_with_indices.into_iter().map(|(path, _)| path).collect();
 	}
 }
 
@@ -125,6 +155,7 @@ impl Default for DocumentMessageHandler {
 			rotating: false,
 			zooming: false,
 			mouse_pos: ViewportPosition::default(),
+			copy_buffer: vec![],
 		}
 	}
 }
@@ -263,11 +294,42 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					responses.push_back(DocumentOperation::DuplicateLayer { path }.into())
 				}
 			}
+			CopySelectedLayers => {
+				let paths: Vec<Vec<LayerId>> = self.selected_layers_sorted();
+				self.copy_buffer.clear();
+				for path in paths {
+					match self.active_document().document.layer(&path).map(|t| t.clone()) {
+						Ok(layer) => {
+							self.copy_buffer.push(layer);
+						}
+						Err(e) => warn!("Could not access selected layer {:?}: {:?}", path, e),
+					}
+				}
+			}
+			PasteLayers => {
+				for layer in self.copy_buffer.iter() {
+					//TODO: Should be the path to the current folder instead of root
+					responses.push_back(DocumentOperation::PasteLayer { layer: layer.clone(), path: vec![] }.into())
+				}
+			}
 			SelectLayers(paths) => {
 				self.clear_selection();
 				for path in paths {
 					responses.extend(self.select_layer(&path));
 				}
+				// TODO: Correctly update layer panel in clear_selection instead of here
+				responses.extend(self.handle_folder_changed(Vec::new()));
+			}
+			SelectAllLayers => {
+				let all_layer_paths = self.active_document().layer_data.keys().filter(|path| !path.is_empty()).cloned().collect::<Vec<_>>();
+				for path in all_layer_paths {
+					responses.extend(self.select_layer(&path));
+				}
+			}
+			DeselectAllLayers => {
+				self.clear_selection();
+				let children = self.active_document_mut().layer_panel(&[]).expect("The provided Path was not valid");
+				responses.push_back(FrontendMessage::ExpandFolder { path: vec![], children }.into());
 			}
 			Undo => {
 				// this is a temporary fix and will be addressed by #123
@@ -402,9 +464,9 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 	}
 	fn actions(&self) -> ActionList {
 		if self.active_document().layer_data.values().any(|data| data.selected) {
-			actions!(DocumentMessageDiscriminant; Undo, DeleteSelectedLayers, DuplicateSelectedLayers, RenderDocument, ExportDocument, NewDocument, CloseActiveDocument, NextDocument, PrevDocument, MouseMove, TransformUp, TranslateDown, RotateDown, ZoomDown, SetZoom, MultiplyZoom, SetRotation, WheelZoom, WheelTranslate)
+			actions!(DocumentMessageDiscriminant; Undo, SelectAllLayers, DeselectAllLayers, DeleteSelectedLayers, DuplicateSelectedLayers, RenderDocument, ExportDocument, NewDocument, CloseActiveDocument, NextDocument, PrevDocument, MouseMove, TransformUp, TranslateDown, CopySelectedLayers, PasteLayers, RotateDown, ZoomDown, SetZoom, MultiplyZoom, SetRotation, WheelZoom, WheelTranslate)
 		} else {
-			actions!(DocumentMessageDiscriminant; Undo, RenderDocument, ExportDocument, NewDocument, CloseActiveDocument, NextDocument, PrevDocument, MouseMove, TransformUp, TranslateDown, RotateDown, ZoomDown, SetZoom, MultiplyZoom, SetRotation, WheelZoom, WheelTranslate)
+			actions!(DocumentMessageDiscriminant; Undo, SelectAllLayers, DeselectAllLayers, RenderDocument, ExportDocument, NewDocument, CloseActiveDocument, NextDocument, PrevDocument, MouseMove, TransformUp, TranslateDown, PasteLayers, RotateDown, ZoomDown, SetZoom, MultiplyZoom, SetRotation, WheelZoom, WheelTranslate)
 		}
 	}
 }

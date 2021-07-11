@@ -2,8 +2,8 @@
 	<div class="working-colors">
 		<SwatchPairInput />
 		<div class="swap-and-reset">
-			<IconButton @click="swapColors" :icon="'SwapButton'" title="Swap (Shift+X)" :size="16" />
-			<IconButton @click="resetColors" :icon="'ResetColorsButton'" title="Reset (Ctrl+Shift+X)" :size="16" />
+			<IconButton @click="swapColors" :icon="'Swap'" title="Swap (Shift+X)" :size="16" />
+			<IconButton @click="resetColors" :icon="'ResetColors'" title="Reset (Ctrl+Shift+X)" :size="16" />
 		</div>
 	</div>
 </template>

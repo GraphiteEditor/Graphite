@@ -4,6 +4,7 @@ pub mod ellipse;
 pub use ellipse::Ellipse;
 
 pub mod line;
+use glam::{DMat2, DVec2};
 use kurbo::BezPath;
 pub use line::Line;
 
@@ -17,16 +18,20 @@ pub mod shape;
 pub use shape::Shape;
 
 pub mod folder;
-pub use folder::Folder;
-
 use crate::DocumentError;
+use crate::LayerId;
+pub use folder::Folder;
+use serde::{Deserialize, Serialize};
+
+pub const SELECTION_TOLERANCE: f64 = 5.0;
 
 pub trait LayerData {
 	fn render(&mut self, svg: &mut String, transform: glam::DAffine2, style: style::PathStyle);
-	fn to_kurbo_path(&mut self, transform: glam::DAffine2, style: style::PathStyle) -> BezPath;
+	fn to_kurbo_path(&self, transform: glam::DAffine2, style: style::PathStyle) -> BezPath;
+	fn intersects_quad(&self, quad: [DVec2; 4], path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>, style: style::PathStyle);
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub enum LayerDataTypes {
 	Folder(Folder),
 	Ellipse(Ellipse),
@@ -50,6 +55,15 @@ macro_rules! call_kurbo_path {
 		}
 	};
 }
+
+macro_rules! call_intersects_quad {
+    ($self:ident.intersects_quad($quad:ident, $path:ident, $intersections:ident, $style:ident) { $($variant:ident),* }) => {
+		match $self {
+			$(Self::$variant(x) => x.intersects_quad($quad, $path, $intersections, $style)),*
+		}
+	};
+}
+
 impl LayerDataTypes {
 	pub fn render(&mut self, svg: &mut String, transform: glam::DAffine2, style: style::PathStyle) {
 		call_render! {
@@ -63,7 +77,7 @@ impl LayerDataTypes {
 			}
 		}
 	}
-	pub fn to_kurbo_path(&mut self, transform: glam::DAffine2, style: style::PathStyle) -> BezPath {
+	pub fn to_kurbo_path(&self, transform: glam::DAffine2, style: style::PathStyle) -> BezPath {
 		call_kurbo_path! {
 			self.to_kurbo_path(transform, style) {
 				Folder,
@@ -75,13 +89,34 @@ impl LayerDataTypes {
 			}
 		}
 	}
+
+	pub fn intersects_quad(&self, quad: [DVec2; 4], path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>, style: style::PathStyle) {
+		call_intersects_quad! {
+			self.intersects_quad(quad, path, intersections, style) {
+				Folder,
+				Ellipse,
+				Rect,
+				Line,
+				PolyLine,
+				Shape
+			}
+		}
+	}
 }
 
-#[derive(Debug, Clone)]
+#[derive(Serialize, Deserialize)]
+#[serde(remote = "glam::DAffine2")]
+struct DAffine2Ref {
+	pub matrix2: DMat2,
+	pub translation: DVec2,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub struct Layer {
 	pub visible: bool,
 	pub name: Option<String>,
 	pub data: LayerDataTypes,
+	#[serde(with = "DAffine2Ref")]
 	pub transform: glam::DAffine2,
 	pub style: style::PathStyle,
 	pub cache: String,
@@ -113,6 +148,20 @@ impl Layer {
 		self.cache.as_str()
 	}
 
+	pub fn intersects_quad(&self, quad: [DVec2; 4], path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>) {
+		let inv_transform = self.transform.inverse();
+		let transformed_quad = [
+			inv_transform.transform_point2(quad[0]),
+			inv_transform.transform_point2(quad[1]),
+			inv_transform.transform_point2(quad[2]),
+			inv_transform.transform_point2(quad[3]),
+		];
+		if !self.visible {
+			return;
+		}
+		self.data.intersects_quad(transformed_quad, path, intersections, self.style)
+	}
+
 	pub fn render_on(&mut self, svg: &mut String) {
 		*svg += self.render();
 	}
@@ -120,12 +169,14 @@ impl Layer {
 	pub fn to_kurbo_path(&mut self) -> BezPath {
 		self.data.to_kurbo_path(self.transform, self.style)
 	}
+
 	pub fn as_folder_mut(&mut self) -> Result<&mut Folder, DocumentError> {
 		match &mut self.data {
 			LayerDataTypes::Folder(f) => Ok(f),
 			_ => Err(DocumentError::NotAFolder),
 		}
 	}
+
 	pub fn as_folder(&self) -> Result<&Folder, DocumentError> {
 		match &self.data {
 			LayerDataTypes::Folder(f) => Ok(&f),

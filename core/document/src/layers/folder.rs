@@ -1,10 +1,13 @@
+use glam::DVec2;
+
 use crate::{DocumentError, LayerId};
 
 use super::{style, Layer, LayerData, LayerDataTypes};
 
+use serde::{Deserialize, Serialize};
 use std::fmt::Write;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub struct Folder {
 	next_assignment_id: LayerId,
 	pub layer_ids: Vec<LayerId>,
@@ -12,6 +15,10 @@ pub struct Folder {
 }
 
 impl LayerData for Folder {
+	fn to_kurbo_path(&self, _: glam::DAffine2, _: style::PathStyle) -> kurbo::BezPath {
+		unimplemented!()
+	}
+
 	fn render(&mut self, svg: &mut String, transform: glam::DAffine2, _style: style::PathStyle) {
 		let _ = writeln!(svg, r#"<g transform="matrix("#);
 		transform.to_cols_array().iter().enumerate().for_each(|(i, f)| {
@@ -25,8 +32,12 @@ impl LayerData for Folder {
 		let _ = writeln!(svg, "</g>");
 	}
 
-	fn to_kurbo_path(&mut self, _: glam::DAffine2, _: style::PathStyle) -> kurbo::BezPath {
-		unimplemented!()
+	fn intersects_quad(&self, quad: [DVec2; 4], path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>, _style: style::PathStyle) {
+		for (layer, layer_id) in self.layers().iter().zip(&self.layer_ids) {
+			path.push(*layer_id);
+			layer.intersects_quad(quad, path, intersections);
+			path.pop();
+		}
 	}
 }
 

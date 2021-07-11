@@ -1,8 +1,11 @@
+use crate::{intersection::intersect_quad_bez_path, LayerId};
+use glam::{DAffine2, DVec2};
+use serde::{Deserialize, Serialize};
 use std::fmt::Write;
 
 use super::{style, LayerData};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub struct PolyLine {
 	points: Vec<glam::DVec2>,
 }
@@ -16,7 +19,7 @@ impl PolyLine {
 }
 
 impl LayerData for PolyLine {
-	fn to_kurbo_path(&mut self, transform: glam::DAffine2, _style: style::PathStyle) -> kurbo::BezPath {
+	fn to_kurbo_path(&self, transform: glam::DAffine2, _style: style::PathStyle) -> kurbo::BezPath {
 		let mut path = kurbo::BezPath::new();
 		self.points
 			.iter()
@@ -26,6 +29,7 @@ impl LayerData for PolyLine {
 			.for_each(|(i, p)| if i == 0 { path.move_to(p) } else { path.line_to(p) });
 		path
 	}
+
 	fn render(&mut self, svg: &mut String, transform: glam::DAffine2, style: style::PathStyle) {
 		if self.points.is_empty() {
 			return;
@@ -38,6 +42,12 @@ impl LayerData for PolyLine {
 			let _ = write!(svg, " {:.3} {:.3}", point.x, point.y);
 		}
 		let _ = write!(svg, r#""{} />"#, style.render());
+	}
+
+	fn intersects_quad(&self, quad: [DVec2; 4], path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>, style: style::PathStyle) {
+		if intersect_quad_bez_path(quad, &self.to_kurbo_path(DAffine2::IDENTITY, style), false) {
+			intersections.push(path.clone());
+		}
 	}
 }
 
