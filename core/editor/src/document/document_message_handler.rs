@@ -98,10 +98,10 @@ impl DocumentMessageHandler {
 		// TODO: Add deduplication
 		(!path.is_empty()).then(|| self.handle_folder_changed(path[..path.len() - 1].to_vec())).flatten()
 	}
-	fn get_layerdata(&self, path: &[LayerId]) -> &LayerData {
+	fn layerdata(&self, path: &[LayerId]) -> &LayerData {
 		self.active_document().layer_data.get(path).expect("Layerdata does not exist")
 	}
-	fn get_layerdata_mut(&mut self, path: &[LayerId]) -> &mut LayerData {
+	fn layerdata_mut(&mut self, path: &[LayerId]) -> &mut LayerData {
 		if self.active_document_mut().layer_data.contains_key(path) {
 			self.active_document_mut().layer_data.get_mut(path).unwrap()
 		} else {
@@ -112,7 +112,7 @@ impl DocumentMessageHandler {
 	}
 	#[allow(dead_code)]
 	fn create_transform_from_layerdata(&self, path: Vec<u64>, responses: &mut VecDeque<Message>) {
-		let layerdata = self.get_layerdata(&path);
+		let layerdata = self.layerdata(&path);
 		responses.push_back(
 			DocumentOperation::SetLayerTransform {
 				path: path,
@@ -123,7 +123,7 @@ impl DocumentMessageHandler {
 	}
 	fn create_document_transform_from_layerdata(&self, viewport_size: &ViewportPosition, responses: &mut VecDeque<Message>) {
 		let half_viewport = viewport_size.to_dvec2() / 2.;
-		let layerdata = self.get_layerdata(&vec![]);
+		let layerdata = self.layerdata(&vec![]);
 		let scaled_half_viewport = half_viewport / layerdata.scale;
 		responses.push_back(
 			DocumentOperation::SetLayerTransform {
@@ -389,7 +389,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			}
 			RotateDown { snap } => {
 				self.rotating = true;
-				let layerdata = self.get_layerdata_mut(&vec![]);
+				let layerdata = self.layerdata_mut(&vec![]);
 				layerdata.snap_rotate = snap;
 				self.mouse_pos = ipp.mouse.position;
 			}
@@ -398,7 +398,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				self.mouse_pos = ipp.mouse.position;
 			}
 			TransformUp => {
-				let layerdata = self.get_layerdata_mut(&vec![]);
+				let layerdata = self.layerdata_mut(&vec![]);
 				layerdata.rotation = layerdata.snapped_angle();
 				layerdata.snap_rotate = false;
 				self.translating = false;
@@ -410,7 +410,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					let delta = ipp.mouse.position.to_dvec2() - self.mouse_pos.to_dvec2();
 					let transformed_delta = self.active_document().document.root.transform.inverse().transform_vector2(delta);
 
-					let layerdata = self.get_layerdata_mut(&vec![]);
+					let layerdata = self.layerdata_mut(&vec![]);
 					layerdata.translation = layerdata.translation + transformed_delta;
 					self.create_document_transform_from_layerdata(&ipp.viewport_size, responses);
 				}
@@ -422,7 +422,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 						start_vec.angle_between(end_vec)
 					};
 
-					let layerdata = self.get_layerdata_mut(&vec![]);
+					let layerdata = self.layerdata_mut(&vec![]);
 					layerdata.rotation += rotation;
 					responses.push_back(
 						FrontendMessage::SetRotation {
@@ -435,7 +435,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				if self.zooming {
 					let difference = self.mouse_pos.y as f64 - ipp.mouse.position.y as f64;
 					let amount = 1. + difference / MOUSE_ZOOM_DIVISOR;
-					let layerdata = self.get_layerdata_mut(&vec![]);
+					let layerdata = self.layerdata_mut(&vec![]);
 					layerdata.scale *= amount;
 					responses.push_back(FrontendMessage::SetZoom { new_zoom: layerdata.scale }.into());
 					self.create_document_transform_from_layerdata(&ipp.viewport_size, responses);
@@ -443,13 +443,13 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				self.mouse_pos = ipp.mouse.position;
 			}
 			SetZoom(new) => {
-				let layerdata = self.get_layerdata_mut(&vec![]);
+				let layerdata = self.layerdata_mut(&vec![]);
 				layerdata.scale = new;
 				responses.push_back(FrontendMessage::SetZoom { new_zoom: layerdata.scale }.into());
 				self.create_document_transform_from_layerdata(&ipp.viewport_size, responses);
 			}
 			MultiplyZoom(mult) => {
-				let layerdata = self.get_layerdata_mut(&vec![]);
+				let layerdata = self.layerdata_mut(&vec![]);
 				layerdata.scale *= mult;
 				responses.push_back(FrontendMessage::SetZoom { new_zoom: layerdata.scale }.into());
 				self.create_document_transform_from_layerdata(&ipp.viewport_size, responses);
@@ -461,7 +461,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				} else {
 					1. / (1. + scroll / WHEEL_ZOOM_DIVISOR)
 				};
-				let layerdata = self.get_layerdata_mut(&vec![]);
+				let layerdata = self.layerdata_mut(&vec![]);
 				layerdata.scale *= amount;
 				responses.push_back(FrontendMessage::SetZoom { new_zoom: layerdata.scale }.into());
 				self.create_document_transform_from_layerdata(&ipp.viewport_size, responses);
@@ -469,12 +469,12 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			WheelTranslate => {
 				let delta = ipp.mouse.scroll_delta.to_dvec2();
 				let transformed_delta = self.active_document().document.root.transform.inverse().transform_vector2(delta);
-				let layerdata = self.get_layerdata_mut(&vec![]);
+				let layerdata = self.layerdata_mut(&vec![]);
 				layerdata.translation += transformed_delta;
 				self.create_document_transform_from_layerdata(&ipp.viewport_size, responses);
 			}
 			SetRotation(new) => {
-				let layerdata = self.get_layerdata_mut(&vec![]);
+				let layerdata = self.layerdata_mut(&vec![]);
 				layerdata.rotation = new;
 				self.create_document_transform_from_layerdata(&ipp.viewport_size, responses);
 				responses.push_back(FrontendMessage::SetRotation { new_radians: new }.into());
