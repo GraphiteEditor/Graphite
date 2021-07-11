@@ -102,13 +102,7 @@ impl DocumentMessageHandler {
 		self.active_document().layer_data.get(path).expect("Layerdata does not exist")
 	}
 	fn layerdata_mut(&mut self, path: &[LayerId]) -> &mut LayerData {
-		if self.active_document_mut().layer_data.contains_key(path) {
-			self.active_document_mut().layer_data.get_mut(path).unwrap()
-		} else {
-			self.active_document_mut().layer_data.insert(path.to_vec(), LayerData::new(true));
-			self.active_document_mut().layer_data.get_mut(path).unwrap()
-		}
-		//self.active_document_mut().layer_data.insert(path.to_vec(), LayerData::new(true));
+		self.active_document_mut().layer_data.entry(path.to_vec()).or_insert(LayerData::new(true))
 	}
 	#[allow(dead_code)]
 	fn create_transform_from_layerdata(&self, path: Vec<u64>, responses: &mut VecDeque<Message>) {
