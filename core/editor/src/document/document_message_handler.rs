@@ -31,6 +31,7 @@ pub enum DocumentMessage {
 	Undo,
 	MouseMove,
 	TranslateDown,
+	WheelTranslate,
 	RotateDown,
 	ZoomDown,
 	TransformUp,
@@ -353,6 +354,17 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				let amount = if ipp.mouse.scroll_delta.y > 0 { 1. + scroll / -500. } else { 1. / (1. + scroll / 500.) };
 				self.multiply_zoom(amount, ipp, responses);
 			}
+			WheelTranslate => {
+				log::info!("wheel translate");
+				let delta = DVec2::new(-ipp.mouse.scroll_delta.x as f64, -ipp.mouse.scroll_delta.y as f64);
+				let transformed_delta = self.active_document().document.root.transform.inverse().transform_vector2(delta);
+
+				let operation = DocumentOperation::TransformLayer {
+					path: vec![],
+					transform: DAffine2::from_translation(transformed_delta).to_cols_array(),
+				};
+				responses.push_back(operation.into());
+			}
 			ChangeRotation(rotation) => {
 				let half_viewport = DVec2::new(ipp.viewport_size.x as f64 / 2., ipp.viewport_size.y as f64 / 2.);
 				let operation = self.transform_document_around_centre(half_viewport, DAffine2::from_angle(rotation));
@@ -365,9 +377,9 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 	}
 	fn actions(&self) -> ActionList {
 		if self.active_document().layer_data.values().any(|data| data.selected) {
-			actions!(DocumentMessageDiscriminant; Undo, DeleteSelectedLayers, DuplicateSelectedLayers, RenderDocument, ExportDocument, NewDocument, CloseActiveDocument, NextDocument, PrevDocument, MouseMove, TransformUp, TranslateDown, RotateDown, ZoomDown, ChangeZoom, ChangeRotation, WheelZoom)
+			actions!(DocumentMessageDiscriminant; Undo, DeleteSelectedLayers, DuplicateSelectedLayers, RenderDocument, ExportDocument, NewDocument, CloseActiveDocument, NextDocument, PrevDocument, MouseMove, TransformUp, TranslateDown, RotateDown, ZoomDown, ChangeZoom, ChangeRotation, WheelZoom, WheelTranslate)
 		} else {
-			actions!(DocumentMessageDiscriminant; Undo, RenderDocument, ExportDocument, NewDocument, CloseActiveDocument, NextDocument, PrevDocument, MouseMove, TransformUp, TranslateDown, RotateDown, ZoomDown, ChangeZoom, ChangeRotation, WheelZoom)
+			actions!(DocumentMessageDiscriminant; Undo, RenderDocument, ExportDocument, NewDocument, CloseActiveDocument, NextDocument, PrevDocument, MouseMove, TransformUp, TranslateDown, RotateDown, ZoomDown, ChangeZoom, ChangeRotation, WheelZoom, WheelTranslate)
 		}
 	}
 }

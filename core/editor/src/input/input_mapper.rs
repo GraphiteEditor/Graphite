@@ -181,6 +181,7 @@ impl Default for Mapping {
 			entry! {action=DocumentMessage::ChangeZoom(1.25), key_down=KeyEquals, modifiers=[KeyControl]},
 			entry! {action=DocumentMessage::ChangeZoom(0.8), key_down=KeyMinus, modifiers=[KeyControl]},
 			entry! {action=DocumentMessage::WheelZoom, message=InputMapperMessage::MouseScroll, modifiers=[KeyControl]},
+			entry! {action=DocumentMessage::WheelTranslate, message=InputMapperMessage::MouseScroll},
 			entry! {action=DocumentMessage::NewDocument, key_down=KeyN, modifiers=[KeyShift]},
 			entry! {action=DocumentMessage::NextDocument, key_down=KeyTab, modifiers=[KeyShift]},
 			entry! {action=DocumentMessage::CloseActiveDocument, key_down=KeyW, modifiers=[KeyShift]},
