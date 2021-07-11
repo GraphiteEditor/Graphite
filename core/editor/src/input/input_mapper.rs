@@ -6,6 +6,11 @@ use super::{
 	InputPreprocessor,
 };
 
+const NUDGE_AMOUNT: f64 = 1.;
+const NUDGE_AMOUNT_DIAG: f64 = NUDGE_AMOUNT / 2f64.sqrt();
+const SHIFT_NUDGE_AMOUNT: f64 = 10.;
+const SHIFT_NUDGE_AMOUNT_DIAG: f64 = SHIFT_NUDGE_AMOUNT / 2f64.sqrt();
+
 #[impl_message(Message, InputMapper)]
 #[derive(PartialEq, Clone, Debug)]
 pub enum InputMapperMessage {
@@ -185,14 +190,30 @@ impl Default for Mapping {
 			entry! {action=DocumentMessage::CloseActiveDocument, key_down=KeyW, modifiers=[KeyShift]},
 			entry! {action=DocumentMessage::DuplicateSelectedLayers, key_down=KeyD, modifiers=[KeyControl]},
 			entry! {action=DocumentMessage::CopySelectedLayers, key_down=KeyC, modifiers=[KeyControl]},
-			entry! {action=DocumentMessage::NudgeSelectedLayers(0., -10.), key_down=KeyArrowUp, modifiers=[KeyShift]},
-			entry! {action=DocumentMessage::NudgeSelectedLayers(0., 10.), key_down=KeyArrowDown, modifiers=[KeyShift]},
-			entry! {action=DocumentMessage::NudgeSelectedLayers(-10., 0.), key_down=KeyArrowLeft, modifiers=[KeyShift]},
-			entry! {action=DocumentMessage::NudgeSelectedLayers(10., 0.), key_down=KeyArrowRight, modifiers=[KeyShift]},
-			entry! {action=DocumentMessage::NudgeSelectedLayers(0., -1.), key_down=KeyArrowUp},
-			entry! {action=DocumentMessage::NudgeSelectedLayers(0., 1.), key_down=KeyArrowDown},
-			entry! {action=DocumentMessage::NudgeSelectedLayers(-1., 0.), key_down=KeyArrowLeft},
-			entry! {action=DocumentMessage::NudgeSelectedLayers(1., 0.), key_down=KeyArrowRight},
+			entry! {action=DocumentMessage::NudgeSelectedLayers(-SHIFT_NUDGE_AMOUNT_DIAG, -SHIFT_NUDGE_AMOUNT_DIAG), key_down=KeyArrowUp, modifiers=[KeyShift, KeyArrowLeft]},
+			entry! {action=DocumentMessage::NudgeSelectedLayers(SHIFT_NUDGE_AMOUNT_DIAG, -SHIFT_NUDGE_AMOUNT_DIAG), key_down=KeyArrowUp, modifiers=[KeyShift, KeyArrowRight]},
+			entry! {action=DocumentMessage::NudgeSelectedLayers(0., -SHIFT_NUDGE_AMOUNT), key_down=KeyArrowUp, modifiers=[KeyShift]},
+			entry! {action=DocumentMessage::NudgeSelectedLayers(-SHIFT_NUDGE_AMOUNT_DIAG, SHIFT_NUDGE_AMOUNT_DIAG), key_down=KeyArrowDown, modifiers=[KeyShift, KeyArrowLeft]},
+			entry! {action=DocumentMessage::NudgeSelectedLayers(SHIFT_NUDGE_AMOUNT_DIAG, SHIFT_NUDGE_AMOUNT_DIAG), key_down=KeyArrowDown, modifiers=[KeyShift, KeyArrowRight]},
+			entry! {action=DocumentMessage::NudgeSelectedLayers(0., SHIFT_NUDGE_AMOUNT), key_down=KeyArrowDown, modifiers=[KeyShift]},
+			entry! {action=DocumentMessage::NudgeSelectedLayers(-SHIFT_NUDGE_AMOUNT_DIAG, -SHIFT_NUDGE_AMOUNT_DIAG), key_down=KeyArrowLeft, modifiers=[KeyShift, KeyArrowUp]},
+			entry! {action=DocumentMessage::NudgeSelectedLayers(-SHIFT_NUDGE_AMOUNT_DIAG, SHIFT_NUDGE_AMOUNT_DIAG), key_down=KeyArrowLeft, modifiers=[KeyShift, KeyArrowDown]},
+			entry! {action=DocumentMessage::NudgeSelectedLayers(-SHIFT_NUDGE_AMOUNT, 0.), key_down=KeyArrowLeft, modifiers=[KeyShift]},
+			entry! {action=DocumentMessage::NudgeSelectedLayers(SHIFT_NUDGE_AMOUNT_DIAG, -SHIFT_NUDGE_AMOUNT_DIAG), key_down=KeyArrowRight, modifiers=[KeyShift, KeyArrowUp]},
+			entry! {action=DocumentMessage::NudgeSelectedLayers(SHIFT_NUDGE_AMOUNT_DIAG, SHIFT_NUDGE_AMOUNT_DIAG), key_down=KeyArrowRight, modifiers=[KeyShift, KeyArrowDown]},
+			entry! {action=DocumentMessage::NudgeSelectedLayers(SHIFT_NUDGE_AMOUNT, 0.), key_down=KeyArrowRight, modifiers=[KeyShift]},
+			entry! {action=DocumentMessage::NudgeSelectedLayers(-NUDGE_AMOUNT_DIAG, -NUDGE_AMOUNT_DIAG), key_down=KeyArrowUp, modifiers=[KeyArrowLeft]},
+			entry! {action=DocumentMessage::NudgeSelectedLayers(NUDGE_AMOUNT_DIAG, -NUDGE_AMOUNT_DIAG), key_down=KeyArrowUp, modifiers=[KeyArrowRight]},
+			entry! {action=DocumentMessage::NudgeSelectedLayers(0., -NUDGE_AMOUNT), key_down=KeyArrowUp},
+			entry! {action=DocumentMessage::NudgeSelectedLayers(-NUDGE_AMOUNT_DIAG, NUDGE_AMOUNT_DIAG), key_down=KeyArrowDown, modifiers=[KeyArrowLeft]},
+			entry! {action=DocumentMessage::NudgeSelectedLayers(NUDGE_AMOUNT_DIAG, NUDGE_AMOUNT_DIAG), key_down=KeyArrowDown, modifiers=[KeyArrowRight]},
+			entry! {action=DocumentMessage::NudgeSelectedLayers(0., NUDGE_AMOUNT), key_down=KeyArrowDown},
+			entry! {action=DocumentMessage::NudgeSelectedLayers(-NUDGE_AMOUNT_DIAG, -NUDGE_AMOUNT_DIAG), key_down=KeyArrowLeft, modifiers=[KeyArrowUp]},
+			entry! {action=DocumentMessage::NudgeSelectedLayers(-NUDGE_AMOUNT_DIAG, NUDGE_AMOUNT_DIAG), key_down=KeyArrowLeft, modifiers=[KeyArrowDown]},
+			entry! {action=DocumentMessage::NudgeSelectedLayers(-NUDGE_AMOUNT, 0.), key_down=KeyArrowLeft},
+			entry! {action=DocumentMessage::NudgeSelectedLayers(NUDGE_AMOUNT_DIAG, -NUDGE_AMOUNT_DIAG), key_down=KeyArrowRight, modifiers=[KeyArrowUp]},
+			entry! {action=DocumentMessage::NudgeSelectedLayers(NUDGE_AMOUNT_DIAG, NUDGE_AMOUNT_DIAG), key_down=KeyArrowRight, modifiers=[KeyArrowDown]},
+			entry! {action=DocumentMessage::NudgeSelectedLayers(NUDGE_AMOUNT, 0.), key_down=KeyArrowRight},
 			// Global Actions
 			entry! {action=GlobalMessage::LogInfo, key_down=Key1},
 			entry! {action=GlobalMessage::LogDebug, key_down=Key2},
