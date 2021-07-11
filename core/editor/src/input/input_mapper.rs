@@ -7,9 +7,9 @@ use super::{
 };
 
 const NUDGE_AMOUNT: f64 = 1.;
-const NUDGE_AMOUNT_DIAG: f64 = NUDGE_AMOUNT / 2f64.sqrt();
+const NUDGE_AMOUNT_DIAG: f64 = NUDGE_AMOUNT * std::f64::consts::FRAC_1_SQRT_2;
 const SHIFT_NUDGE_AMOUNT: f64 = 10.;
-const SHIFT_NUDGE_AMOUNT_DIAG: f64 = SHIFT_NUDGE_AMOUNT / 2f64.sqrt();
+const SHIFT_NUDGE_AMOUNT_DIAG: f64 = SHIFT_NUDGE_AMOUNT * std::f64::consts::FRAC_1_SQRT_2;
 
 #[impl_message(Message, InputMapper)]
 #[derive(PartialEq, Clone, Debug)]
