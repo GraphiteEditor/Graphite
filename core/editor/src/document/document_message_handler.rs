@@ -32,7 +32,7 @@ pub enum DocumentMessage {
 	MouseMove,
 	TranslateDown,
 	WheelTranslate,
-	RotateDown,
+	RotateDown { snap: bool },
 	ZoomDown,
 	TransformUp,
 	SetZoom(f64),
@@ -310,8 +310,10 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				self.translating = true;
 				self.mouse_pos = ipp.mouse.position;
 			}
-			RotateDown => {
+			RotateDown { snap } => {
 				self.rotating = true;
+				let layerdata = self.get_layerdata_mut(vec![]);
+				layerdata.snap_rotate = snap;
 				self.mouse_pos = ipp.mouse.position;
 			}
 			ZoomDown => {
@@ -319,6 +321,8 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				self.mouse_pos = ipp.mouse.position;
 			}
 			TransformUp => {
+				let layerdata = self.get_layerdata_mut(vec![]);
+				layerdata.snap_rotate = false;
 				self.translating = false;
 				self.rotating = false;
 				self.zooming = false;
@@ -342,7 +346,12 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 
 					let layerdata = self.get_layerdata_mut(vec![]);
 					layerdata.rotation += rotation;
-					responses.push_back(FrontendMessage::SetRotation { new_radians: layerdata.rotation }.into());
+					responses.push_back(
+						FrontendMessage::SetRotation {
+							new_radians: layerdata.get_snapped_rotation(),
+						}
+						.into(),
+					);
 					self.create_document_transform_from_layerdata(ipp, responses);
 				}
 				if self.zooming {
