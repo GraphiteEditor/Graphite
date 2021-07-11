@@ -96,24 +96,24 @@ impl LayerData {
 			scale: 1.,
 		}
 	}
-	pub fn get_snapped_rotation(&self) -> f64 {
-		const PI_FRAC_12: f64 = std::f64::consts::PI / 12.;
+	pub fn snapped_angle(&self, increment: f64) -> f64 {
+		let increment_radians: f64 = std::f64::consts::PI / (180. / increment);
 		if self.snap_rotate {
-			(self.rotation / PI_FRAC_12).round() * PI_FRAC_12
+			(self.rotation / increment_radians).round() * increment_radians
 		} else {
 			self.rotation
 		}
 	}
 	pub fn get_transform(&self) -> DAffine2 {
 		let scale_transform = DAffine2::from_scale(DVec2::new(self.scale, self.scale));
-		let angle_transform = DAffine2::from_angle(self.get_snapped_rotation());
+		let angle_transform = DAffine2::from_angle(self.snapped_angle(15.));
 		let translation_transform = DAffine2::from_translation(self.translation.into());
 		angle_transform * scale_transform * translation_transform
 	}
 	pub fn get_offset_transform(&self, offset: DVec2) -> DAffine2 {
 		let offset_transform = DAffine2::from_translation(offset);
 		let scale_transform = DAffine2::from_scale(DVec2::new(self.scale, self.scale));
-		let angle_transform = DAffine2::from_angle(self.get_snapped_rotation());
+		let angle_transform = DAffine2::from_angle(self.snapped_angle(15.));
 		let translation_transform = DAffine2::from_translation(self.translation.into());
 		(scale_transform * offset_transform) * angle_transform * scale_transform * translation_transform
 	}

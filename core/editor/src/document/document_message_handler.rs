@@ -385,7 +385,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			}
 			TransformUp => {
 				let layerdata = self.get_layerdata_mut(vec![]);
-				layerdata.rotation = layerdata.get_snapped_rotation();
+				layerdata.rotation = layerdata.snapped_angle(15.);
 				layerdata.snap_rotate = false;
 				self.translating = false;
 				self.rotating = false;
@@ -412,7 +412,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					layerdata.rotation += rotation;
 					responses.push_back(
 						FrontendMessage::SetRotation {
-							new_radians: layerdata.get_snapped_rotation(),
+							new_radians: layerdata.snapped_angle(15.),
 						}
 						.into(),
 					);
