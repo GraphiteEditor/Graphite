@@ -32,9 +32,6 @@ impl ScrollDelta {
 	pub fn to_dvec2(&self) -> DVec2 {
 		DVec2::new(self.x as f64, self.y as f64)
 	}
-	pub fn distance(&self) -> f64 {
-		self.x as f64 + self.y as f64 + self.z as f64
-	}
 }
 
 #[derive(Debug, Copy, Clone, Default, Eq, PartialEq)]

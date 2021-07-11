@@ -449,7 +449,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				self.create_document_transform_from_layerdata(&ipp.viewport_size, responses);
 			}
 			WheelZoom => {
-				let scroll = ipp.mouse.scroll_delta.distance();
+				let scroll = ipp.mouse.scroll_delta.to_dvec2().length();
 				let amount = if ipp.mouse.scroll_delta.y > 0 {
 					1. + scroll / -WHEEL_ZOOM_DIVISOR
 				} else {
