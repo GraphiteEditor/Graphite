@@ -6,11 +6,14 @@ use super::{
 	InputPreprocessor,
 };
 
+use std::fmt::Write;
+
 #[impl_message(Message, InputMapper)]
 #[derive(PartialEq, Clone, Debug)]
 pub enum InputMapperMessage {
 	PointerMove,
 	KeyUp(Key),
+	#[child]
 	KeyDown(Key),
 }
 
@@ -209,6 +212,32 @@ impl Mapping {
 #[derive(Debug, Default)]
 pub struct InputMapper {
 	mapping: Mapping,
+}
+
+impl InputMapper {
+	pub fn hints(&self, actions: ActionList) -> String {
+		let mut output = String::new();
+		let actions: Vec<MessageDiscriminant> = actions
+			.into_iter()
+			.flatten()
+			.filter(|a| !matches!(*a, MessageDiscriminant::Tool(ToolMessageDiscriminant::SelectTool) | MessageDiscriminant::Global(_)))
+			.collect();
+		self.mapping
+			.down
+			.iter()
+			.enumerate()
+			.filter_map(|(i, m)| {
+				let ma =
+					m.0.iter()
+						.find_map(|m| actions.iter().find_map(|a| (a == &m.action.to_discriminant()).then(|| m.action.to_discriminant())));
+
+				ma.map(|a| unsafe { (std::mem::transmute_copy::<usize, Key>(&i), a) })
+			})
+			.for_each(|(k, a)| {
+				let _ = write!(output, "{}: {}, ", k.to_discriminant().local_name(), a.local_name().split('.').last().unwrap());
+			});
+		output.replace("Key", "")
+	}
 }
 
 impl MessageHandler<InputMapperMessage, (&InputPreprocessor, ActionList)> for InputMapper {

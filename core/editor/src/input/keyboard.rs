@@ -1,3 +1,5 @@
+use crate::message_prelude::*;
+
 pub const NUMBER_OF_KEYS: usize = Key::NumKeys as usize;
 // Edit this to specify the storage type used
 // TODO: Increase size of type
@@ -9,6 +11,7 @@ const STORAGE_SIZE_BITS: usize = 1 << STORAGE_SIZE;
 const KEY_MASK_STORAGE_LENGTH: usize = (NUMBER_OF_KEYS + STORAGE_SIZE_BITS - 1) >> STORAGE_SIZE;
 pub type KeyStates = BitVector<KEY_MASK_STORAGE_LENGTH>;
 
+#[impl_message(Message, InputMapperMessage, KeyDown)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Key {
 	UnknownKey,
