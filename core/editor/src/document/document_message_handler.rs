@@ -449,7 +449,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				self.create_document_transform_from_layerdata(&ipp.viewport_size, responses);
 			}
 			WheelZoom => {
-				let scroll = ipp.mouse.scroll_delta.to_dvec2().length();
+				let scroll = ipp.mouse.scroll_delta.y as f64;
 				let amount = if ipp.mouse.scroll_delta.y > 0 {
 					1. + scroll / -WHEEL_ZOOM_DIVISOR
 				} else {
@@ -461,7 +461,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				self.create_document_transform_from_layerdata(&ipp.viewport_size, responses);
 			}
 			WheelTranslate => {
-				let delta = ipp.mouse.scroll_delta.to_dvec2();
+				let delta = -ipp.mouse.scroll_delta.to_dvec2();
 				let transformed_delta = self.active_document().document.root.transform.inverse().transform_vector2(delta);
 				let layerdata = self.layerdata_mut(&vec![]);
 				layerdata.translation += transformed_delta;
