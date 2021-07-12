@@ -228,7 +228,7 @@ function redirectKeyboardEventToBackend(e: KeyboardEvent): boolean {
 	return true;
 }
 
-function make_modifiers_bitfield(control: boolean, shift: boolean, alt: boolean): number {
+function makeModifiersBitfield(control: boolean, shift: boolean, alt: boolean): number {
 	// eslint-disable-next-line no-bitwise
 	return Number(control) | (Number(shift) << 1) | (Number(alt) << 2);
 }
@@ -237,24 +237,24 @@ export default defineComponent({
 	methods: {
 		async canvasMouseDown(e: MouseEvent) {
 			const { on_mouse_down } = await wasm;
-			const modifiers = make_modifiers_bitfield(e.ctrlKey, e.shiftKey, e.altKey);
+			const modifiers = makeModifiersBitfield(e.ctrlKey, e.shiftKey, e.altKey);
 			on_mouse_down(e.offsetX, e.offsetY, e.buttons, modifiers);
 		},
 		async canvasMouseUp(e: MouseEvent) {
 			const { on_mouse_up } = await wasm;
-			const modifiers = make_modifiers_bitfield(e.ctrlKey, e.shiftKey, e.altKey);
+			const modifiers = makeModifiersBitfield(e.ctrlKey, e.shiftKey, e.altKey);
 			on_mouse_up(e.offsetX, e.offsetY, e.buttons, modifiers);
 		},
 		async canvasMouseMove(e: MouseEvent) {
 			const { on_mouse_move } = await wasm;
-			const modifiers = make_modifiers_bitfield(e.ctrlKey, e.shiftKey, e.altKey);
+			const modifiers = makeModifiersBitfield(e.ctrlKey, e.shiftKey, e.altKey);
 			on_mouse_move(e.offsetX, e.offsetY, modifiers);
 		},
 		async keyDown(e: KeyboardEvent) {
 			if (redirectKeyboardEventToBackend(e)) {
 				e.preventDefault();
 				const { on_key_down } = await wasm;
-				const modifiers = make_modifiers_bitfield(e.ctrlKey, e.shiftKey, e.altKey);
+				const modifiers = makeModifiersBitfield(e.ctrlKey, e.shiftKey, e.altKey);
 				on_key_down(e.key, modifiers);
 			}
 		},
@@ -262,7 +262,7 @@ export default defineComponent({
 			if (redirectKeyboardEventToBackend(e)) {
 				e.preventDefault();
 				const { on_key_up } = await wasm;
-				const modifiers = make_modifiers_bitfield(e.ctrlKey, e.shiftKey, e.altKey);
+				const modifiers = makeModifiersBitfield(e.ctrlKey, e.shiftKey, e.altKey);
 				on_key_up(e.key, modifiers);
 			}
 		},
