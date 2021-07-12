@@ -1,7 +1,7 @@
 use crate::{
 	input::{
 		mouse::{MouseKeys, MouseState, ScrollDelta, ViewportPosition},
-		InputPreprocessorMessage,
+		InputPreprocessorMessage, ModifierKeys,
 	},
 	message_prelude::{Message, ToolMessage},
 	tool::ToolType,
@@ -52,15 +52,15 @@ impl EditorTestUtils for Editor {
 	}
 
 	fn move_mouse(&mut self, x: u32, y: u32) {
-		self.input(InputPreprocessorMessage::MouseMove(ViewportPosition { x, y }));
+		self.input(InputPreprocessorMessage::MouseMove(ViewportPosition { x, y }, ModifierKeys::default()));
 	}
 
 	fn mousedown(&mut self, state: MouseState) {
-		self.input(InputPreprocessorMessage::MouseDown(state));
+		self.input(InputPreprocessorMessage::MouseDown(state, ModifierKeys::default()));
 	}
 
 	fn mouseup(&mut self, state: MouseState) {
-		self.handle_message(InputPreprocessorMessage::MouseUp(state)).unwrap()
+		self.handle_message(InputPreprocessorMessage::MouseUp(state, ModifierKeys::default())).unwrap()
 	}
 
 	fn lmb_mousedown(&mut self, x: u32, y: u32) {

@@ -39,6 +39,7 @@ pub enum DocumentMessage {
 	Undo,
 	MouseMove,
 	TranslateDown,
+  TranslateUp,
 	WheelTranslate,
 	RotateDown { snap: bool },
 	ZoomDown,
@@ -47,6 +48,7 @@ pub enum DocumentMessage {
 	MultiplyZoom(f64),
 	WheelZoom,
 	SetRotation(f64),
+	NudgeSelectedLayers(f64, f64),
 }
 
 impl From<DocumentOperation> for DocumentMessage {
@@ -473,12 +475,22 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				self.create_document_transform_from_layerdata(&ipp.viewport_size, responses);
 				responses.push_back(FrontendMessage::SetRotation { new_radians: new }.into());
 			}
+			NudgeSelectedLayers(x, y) => {
+				let paths: Vec<Vec<LayerId>> = self.selected_layers_sorted();
+				for path in paths {
+					let operation = DocumentOperation::TransformLayer {
+						path,
+						transform: DAffine2::from_translation(DVec2::new(x, y)).to_cols_array(),
+					};
+					responses.push_back(operation.into());
+				}
+			}
 			message => todo!("document_action_handler does not implement: {}", message.to_discriminant().global_name()),
 		}
 	}
 	fn actions(&self) -> ActionList {
 		if self.active_document().layer_data.values().any(|data| data.selected) {
-			actions!(DocumentMessageDiscriminant; Undo, SelectAllLayers, DeselectAllLayers, DeleteSelectedLayers, DuplicateSelectedLayers, RenderDocument, ExportDocument, NewDocument, CloseActiveDocument, NextDocument, PrevDocument, MouseMove, TransformUp, TranslateDown, CopySelectedLayers, PasteLayers, RotateDown, ZoomDown, SetZoom, MultiplyZoom, SetRotation, WheelZoom, WheelTranslate)
+			actions!(DocumentMessageDiscriminant; Undo, SelectAllLayers, DeselectAllLayers, DeleteSelectedLayers, DuplicateSelectedLayers, RenderDocument, ExportDocument, NewDocument, CloseActiveDocument, NextDocument, PrevDocument, MouseMove, TransformUp, TranslateDown, CopySelectedLayers, PasteLayers, NudgeSelectedLayers, RotateDown, ZoomDown, SetZoom, MultiplyZoom, SetRotation, WheelZoom, WheelTranslate)
 		} else {
 			actions!(DocumentMessageDiscriminant; Undo, SelectAllLayers, DeselectAllLayers, RenderDocument, ExportDocument, NewDocument, CloseActiveDocument, NextDocument, PrevDocument, MouseMove, TransformUp, TranslateDown, PasteLayers, RotateDown, ZoomDown, SetZoom, MultiplyZoom, SetRotation, WheelZoom, WheelTranslate)
 		}

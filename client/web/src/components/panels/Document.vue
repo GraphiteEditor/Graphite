@@ -232,6 +232,11 @@ function redirectKeyboardEventToBackend(e: KeyboardEvent): boolean {
 	return true;
 }
 
+function makeModifiersBitfield(control: boolean, shift: boolean, alt: boolean): number {
+	// eslint-disable-next-line no-bitwise
+	return Number(control) | (Number(shift) << 1) | (Number(alt) << 2);
+}
+
 export default defineComponent({
 	methods: {
 		async viewportResize() {
@@ -241,15 +246,18 @@ export default defineComponent({
 		},
 		async canvasMouseDown(e: MouseEvent) {
 			const { on_mouse_down } = await wasm;
-			on_mouse_down(e.offsetX, e.offsetY, e.buttons);
+			const modifiers = makeModifiersBitfield(e.ctrlKey, e.shiftKey, e.altKey);
+			on_mouse_down(e.offsetX, e.offsetY, e.buttons, modifiers);
 		},
 		async canvasMouseUp(e: MouseEvent) {
 			const { on_mouse_up } = await wasm;
-			on_mouse_up(e.offsetX, e.offsetY, e.buttons);
+			const modifiers = makeModifiersBitfield(e.ctrlKey, e.shiftKey, e.altKey);
+			on_mouse_up(e.offsetX, e.offsetY, e.buttons, modifiers);
 		},
 		async canvasMouseMove(e: MouseEvent) {
 			const { on_mouse_move } = await wasm;
-			on_mouse_move(e.offsetX, e.offsetY);
+			const modifiers = makeModifiersBitfield(e.ctrlKey, e.shiftKey, e.altKey);
+			on_mouse_move(e.offsetX, e.offsetY, modifiers);
 		},
 		async canvasMouseScroll(e: WheelEvent) {
 			e.preventDefault();
@@ -268,14 +276,16 @@ export default defineComponent({
 			if (redirectKeyboardEventToBackend(e)) {
 				e.preventDefault();
 				const { on_key_down } = await wasm;
-				on_key_down(e.key);
+				const modifiers = makeModifiersBitfield(e.ctrlKey, e.shiftKey, e.altKey);
+				on_key_down(e.key, modifiers);
 			}
 		},
 		async keyUp(e: KeyboardEvent) {
 			if (redirectKeyboardEventToBackend(e)) {
 				e.preventDefault();
 				const { on_key_up } = await wasm;
-				on_key_up(e.key);
+				const modifiers = makeModifiersBitfield(e.ctrlKey, e.shiftKey, e.altKey);
+				on_key_up(e.key, modifiers);
 			}
 		},
 		async selectTool(toolName: string) {

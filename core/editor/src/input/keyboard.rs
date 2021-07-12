@@ -65,6 +65,10 @@ pub enum Key {
 	KeyAlt,
 	KeyEscape,
 	KeyTab,
+	KeyArrowUp,
+	KeyArrowDown,
+	KeyArrowLeft,
+	KeyArrowRight,
 
 	// This has to be the last element in the enum.
 	NumKeys,
@@ -100,6 +104,10 @@ impl<const LENGTH: usize> BitVector<LENGTH> {
 	pub fn toggle(&mut self, bitvector_index: usize) {
 		let (offset, bit) = Self::convert_index(bitvector_index);
 		self.0[offset] ^= bit;
+	}
+	pub fn get(&mut self, bitvector_index: usize) -> bool {
+		let (offset, bit) = Self::convert_index(bitvector_index);
+		(self.0[offset] & bit) != 0
 	}
 	pub fn is_empty(&self) -> bool {
 		let mut result = 0;

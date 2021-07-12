@@ -5,5 +5,5 @@ pub mod mouse;
 
 pub use {
 	input_mapper::{InputMapper, InputMapperMessage, InputMapperMessageDiscriminant},
-	input_preprocessor::{InputPreprocessor, InputPreprocessorMessage, InputPreprocessorMessageDiscriminant},
+	input_preprocessor::{InputPreprocessor, InputPreprocessorMessage, InputPreprocessorMessageDiscriminant, ModifierKeys},
 };
