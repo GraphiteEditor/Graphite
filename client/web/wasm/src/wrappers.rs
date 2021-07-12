@@ -124,6 +124,10 @@ pub fn translate_key(name: &str) -> Key {
 		"alt" => KeyAlt,
 		"escape" => KeyEscape,
 		"tab" => KeyTab,
+		"arrowup" => KeyArrowUp,
+		"arrowdown" => KeyArrowDown,
+		"arrowleft" => KeyArrowLeft,
+		"arrowright" => KeyArrowRight,
 		_ => UnknownKey,
 	}
 }
