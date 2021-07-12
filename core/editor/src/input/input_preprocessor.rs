@@ -45,34 +45,29 @@ enum KeyPosition {
 
 impl MessageHandler<InputPreprocessorMessage, ()> for InputPreprocessor {
 	fn process_action(&mut self, message: InputPreprocessorMessage, _data: (), responses: &mut VecDeque<Message>) {
-		let response = match message {
+		match message {
 			InputPreprocessorMessage::MouseMove(pos, modifier_keys) => {
 				self.handle_modifier_keys(modifier_keys, responses);
 				self.mouse.position = pos;
 				responses.push_back(InputMapperMessage::PointerMove.into());
 			}
-			InputPreprocessorMessage::MouseScroll(delta) => {
+			InputPreprocessorMessage::MouseScroll(delta, modifier_keys) => {
+				self.handle_modifier_keys(modifier_keys, responses);
 				self.mouse.scroll_delta = delta;
 				responses.push_back(InputMapperMessage::MouseScroll.into());
 			}
-			InputPreprocessorMessage::MouseDown(state) => {
-				responses.push_back(self.translate_mouse_event(state, KeyPosition::Pressed));
-			}
-			InputPreprocessorMessage::MouseUp(state) => {
-				responses.push_back(self.translate_mouse_event(state, KeyPosition::Released));
-			}
 			InputPreprocessorMessage::MouseDown(state, modifier_keys) => {
 				self.handle_modifier_keys(modifier_keys, responses);
-				self.translate_mouse_event(state, KeyPosition::Pressed)
+				responses.push_back(self.translate_mouse_event(state, KeyPosition::Pressed));
 			}
 			InputPreprocessorMessage::MouseUp(state, modifier_keys) => {
 				self.handle_modifier_keys(modifier_keys, responses);
-				self.translate_mouse_event(state, KeyPosition::Released)
+				responses.push_back(self.translate_mouse_event(state, KeyPosition::Released));
 			}
 			InputPreprocessorMessage::KeyDown(key, modifier_keys) => {
 				self.handle_modifier_keys(modifier_keys, responses);
 				self.keyboard.set(key as usize);
-				responses.push_back(InputMapperMessage::KeyDown(key).into())
+				responses.push_back(InputMapperMessage::KeyDown(key).into());
 			}
 			InputPreprocessorMessage::KeyUp(key, modifier_keys) => {
 				self.handle_modifier_keys(modifier_keys, responses);

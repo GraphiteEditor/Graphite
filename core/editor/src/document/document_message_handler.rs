@@ -5,6 +5,7 @@ use crate::{
 };
 use document_core::layers::Layer;
 use document_core::{DocumentResponse, LayerId, Operation as DocumentOperation};
+use glam::{DAffine2, DVec2};
 use log::warn;
 
 use crate::document::Document;
@@ -39,7 +40,7 @@ pub enum DocumentMessage {
 	Undo,
 	MouseMove,
 	TranslateDown,
-  TranslateUp,
+	TranslateUp,
 	WheelTranslate,
 	RotateDown { snap: bool },
 	ZoomDown,

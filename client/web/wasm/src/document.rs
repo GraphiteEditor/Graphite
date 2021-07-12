@@ -1,8 +1,8 @@
 use crate::shims::Error;
 use crate::wrappers::{translate_key, translate_tool, Color};
 use crate::EDITOR_STATE;
-use editor_core::input::mouse::ScrollDelta;
 use editor_core::input::input_preprocessor::ModifierKeys;
+use editor_core::input::mouse::ScrollDelta;
 use editor_core::message_prelude::*;
 use editor_core::{
 	input::mouse::{MouseState, ViewportPosition},
@@ -58,9 +58,10 @@ pub fn on_mouse_move(x: u32, y: u32, modifiers: u8) -> Result<(), JsValue> {
 
 /// Mouse scrolling within the screenspace bounds of the viewport
 #[wasm_bindgen]
-pub fn on_mouse_scroll(delta_x: i32, delta_y: i32, delta_z: i32) -> Result<(), JsValue> {
+pub fn on_mouse_scroll(delta_x: i32, delta_y: i32, delta_z: i32, modifiers: u8) -> Result<(), JsValue> {
 	// TODO: Convert these screenspace viewport coordinates to canvas coordinates based on the current zoom and pan
-	let ev = InputPreprocessorMessage::MouseScroll(ScrollDelta::new(delta_x, delta_y, delta_z));
+	let mods = ModifierKeys::from_bits(modifiers).expect("invalid modifier keys");
+	let ev = InputPreprocessorMessage::MouseScroll(ScrollDelta::new(delta_x, delta_y, delta_z), mods);
 	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(ev)).map_err(convert_error)
 }
 

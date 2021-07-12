@@ -262,7 +262,8 @@ export default defineComponent({
 		async canvasMouseScroll(e: WheelEvent) {
 			e.preventDefault();
 			const { on_mouse_scroll } = await wasm;
-			on_mouse_scroll(e.deltaX, e.deltaY, e.deltaZ);
+			const modifiers = makeModifiersBitfield(e.ctrlKey, e.shiftKey, e.altKey);
+			on_mouse_scroll(e.deltaX, e.deltaY, e.deltaZ, modifiers);
 		},
 		async setZoom(newZoom: number) {
 			const { on_set_zoom } = await wasm;
