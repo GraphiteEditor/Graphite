@@ -103,6 +103,7 @@ impl Fsm for SelectToolFsmState {
 						DVec2::new(point_1.x, point_2.y),
 					];
 
+					responses.push_back(Operation::DiscardWorkingFolder.into());
 					if data.drag_start == data.drag_current {
 						if let Some(intersection) = document.intersects_quad_root(quad).last() {
 							responses.push_back(DocumentMessage::SelectLayers(vec![intersection.clone()]).into());
