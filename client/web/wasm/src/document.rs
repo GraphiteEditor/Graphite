@@ -1,6 +1,7 @@
 use crate::shims::Error;
 use crate::wrappers::{translate_key, translate_tool, Color};
 use crate::EDITOR_STATE;
+use editor_core::input::input_preprocessor::ModifierKeys;
 use editor_core::message_prelude::*;
 use editor_core::{
 	input::mouse::{MouseState, ViewportPosition},
@@ -39,43 +40,48 @@ pub fn new_document() -> Result<(), JsValue> {
 // TODO: When a mouse button is down that started in the viewport, this should trigger even when the mouse is outside the viewport (or even the browser window if the browser supports it)
 /// Mouse movement within the screenspace bounds of the viewport
 #[wasm_bindgen]
-pub fn on_mouse_move(x: u32, y: u32) -> Result<(), JsValue> {
+pub fn on_mouse_move(x: u32, y: u32, modifiers: u8) -> Result<(), JsValue> {
+	let mods = ModifierKeys::from_bits(modifiers).expect("invalid modifier keys");
 	// TODO: Convert these screenspace viewport coordinates to canvas coordinates based on the current zoom and pan
-	let ev = InputPreprocessorMessage::MouseMove(ViewportPosition { x, y });
+	let ev = InputPreprocessorMessage::MouseMove(ViewportPosition { x, y }, mods);
 	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(ev)).map_err(convert_error)
 }
 
 /// A mouse button depressed within screenspace the bounds of the viewport
 #[wasm_bindgen]
-pub fn on_mouse_down(x: u32, y: u32, mouse_keys: u8) -> Result<(), JsValue> {
+pub fn on_mouse_down(x: u32, y: u32, mouse_keys: u8, modifiers: u8) -> Result<(), JsValue> {
 	let pos = ViewportPosition { x, y };
-	let ev = InputPreprocessorMessage::MouseDown(MouseState::from_u8_pos(mouse_keys, pos));
+	let mods = ModifierKeys::from_bits(modifiers).expect("invalid modifier keys");
+	let ev = InputPreprocessorMessage::MouseDown(MouseState::from_u8_pos(mouse_keys, pos), mods);
 	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(ev)).map_err(convert_error)
 }
 
 /// A mouse button released
 #[wasm_bindgen]
-pub fn on_mouse_up(x: u32, y: u32, mouse_keys: u8) -> Result<(), JsValue> {
+pub fn on_mouse_up(x: u32, y: u32, mouse_keys: u8, modifiers: u8) -> Result<(), JsValue> {
 	let pos = ViewportPosition { x, y };
-	let ev = InputPreprocessorMessage::MouseUp(MouseState::from_u8_pos(mouse_keys, pos));
+	let mods = ModifierKeys::from_bits(modifiers).expect("invalid modifier keys");
+	let ev = InputPreprocessorMessage::MouseUp(MouseState::from_u8_pos(mouse_keys, pos), mods);
 	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(ev)).map_err(convert_error)
 }
 
 /// A keyboard button depressed within screenspace the bounds of the viewport
 #[wasm_bindgen]
-pub fn on_key_down(name: String) -> Result<(), JsValue> {
+pub fn on_key_down(name: String, modifiers: u8) -> Result<(), JsValue> {
 	let key = translate_key(&name);
-	log::trace!("key down {:?}, name: {}", key, name);
-	let ev = InputPreprocessorMessage::KeyDown(key);
+	let mods = ModifierKeys::from_bits(modifiers).expect("invalid modifier keys");
+	log::trace!("key down {:?}, name: {}, modifiers: {:?}", key, name, mods);
+	let ev = InputPreprocessorMessage::KeyDown(key, mods);
 	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(ev)).map_err(convert_error)
 }
 
 /// A keyboard button released
 #[wasm_bindgen]
-pub fn on_key_up(name: String) -> Result<(), JsValue> {
+pub fn on_key_up(name: String, modifiers: u8) -> Result<(), JsValue> {
 	let key = translate_key(&name);
-	log::trace!("key up {:?}, name: {}", key, name);
-	let ev = InputPreprocessorMessage::KeyUp(key);
+	let mods = ModifierKeys::from_bits(modifiers).expect("invalid modifier keys");
+	log::trace!("key up {:?}, name: {}, modifiers: {:?}", key, name, mods);
+	let ev = InputPreprocessorMessage::KeyUp(key, mods);
 	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(ev)).map_err(convert_error)
 }
 
