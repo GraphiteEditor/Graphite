@@ -62,6 +62,10 @@ pub enum Key {
 	KeyAlt,
 	KeyEscape,
 	KeyTab,
+	KeyArrowUp,
+	KeyArrowDown,
+	KeyArrowLeft,
+	KeyArrowRight,
 
 	// This has to be the last element in the enum.
 	NumKeys,
