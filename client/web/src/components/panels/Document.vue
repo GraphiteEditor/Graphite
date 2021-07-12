@@ -139,7 +139,7 @@
 				<WorkingColors />
 			</LayoutCol>
 			<LayoutCol :class="'viewport'">
-				<div class="canvas" @mousedown="canvasMouseDown" @mouseup="canvasMouseUp" @mousemove="canvasMouseMove" @wheel="canvasMouseScroll" ref="canvas">
+				<div class="canvas" @mousedown="canvasMouseDown" @mouseup="canvasMouseUp" @mousemove="canvasMouseMove" ref="canvas">
 					<svg v-html="viewportSvg"></svg>
 				</div>
 			</LayoutCol>
@@ -341,6 +341,8 @@ export default defineComponent({
 		});
 
 		window.addEventListener("keyup", (e: KeyboardEvent) => this.keyUp(e));
+		const canvas = this.$refs.canvas as HTMLDivElement;
+		canvas.addEventListener("wheel", this.canvasMouseScroll, { passive: false });
 		window.addEventListener("keydown", (e: KeyboardEvent) => this.keyDown(e));
 		window.addEventListener("resize", () => this.viewportResize());
 		window.addEventListener("DOMContentLoaded", () => this.viewportResize());
