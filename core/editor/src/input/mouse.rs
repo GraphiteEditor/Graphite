@@ -32,6 +32,10 @@ impl ScrollDelta {
 	pub fn to_dvec2(&self) -> DVec2 {
 		DVec2::new(self.x as f64, self.y as f64)
 	}
+	pub fn scroll_delta(&self) -> f64 {
+		let (dx, dy) = (self.x, self.y);
+		dy.signum() as f64 * ((dy * dy + i32::min(dy.abs(), dx.abs()).pow(2)) as f64).sqrt()
+	}
 }
 
 #[derive(Debug, Copy, Clone, Default, Eq, PartialEq)]
