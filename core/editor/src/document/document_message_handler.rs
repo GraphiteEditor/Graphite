@@ -40,7 +40,7 @@ pub enum DocumentMessage {
 	Undo,
 	MouseMove,
 	TranslateCanvasBegin,
-	WheelCanvasTranslate{use_y_as_x: bool},
+	WheelCanvasTranslate { use_y_as_x: bool },
 	RotateCanvasBegin { snap: bool },
 	ZoomCanvasBegin,
 	TranslateCanvasEnd,
@@ -456,15 +456,15 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			WheelCanvasZoom => {
 				let scroll = ipp.mouse.scroll_delta.scroll_delta();
 				let mouse = ipp.mouse.position.to_dvec2(); // ipp.viewport_size.to_dvec2();
-                let viewport_size = ipp.viewport_size.to_dvec2();
-                let mut zoom_factor = 1. + scroll.abs() / WHEEL_ZOOM_DIVISOR;
+				let viewport_size = ipp.viewport_size.to_dvec2();
+				let mut zoom_factor = 1. + scroll.abs() / WHEEL_ZOOM_DIVISOR;
 				if ipp.mouse.scroll_delta.y < 0 {
 					zoom_factor = 1. / zoom_factor
 				};
-                let new_viewport_size = viewport_size * (1./zoom_factor);
-                let delta_size = ( viewport_size - new_viewport_size);
-                let mouse_percent = mouse / viewport_size;
-                let delta = delta_size * -2. * (mouse_percent - (0.5, 0.5).into());
+				let new_viewport_size = viewport_size * (1. / zoom_factor);
+				let delta_size = (viewport_size - new_viewport_size);
+				let mouse_percent = mouse / viewport_size;
+				let delta = delta_size * -2. * (mouse_percent - (0.5, 0.5).into());
 
 				let transformed_delta = self.active_document().document.root.transform.inverse().transform_vector2(delta);
 				let layerdata = self.layerdata_mut(&vec![]);
@@ -474,11 +474,11 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				responses.push_back(FrontendMessage::SetCanvasZoom { new_zoom: layerdata.scale }.into());
 				self.create_document_transform_from_layerdata(&ipp.viewport_size, responses);
 			}
-			WheelCanvasTranslate{use_y_as_x} => {
+			WheelCanvasTranslate { use_y_as_x } => {
 				let delta = match use_y_as_x {
-                    false => -ipp.mouse.scroll_delta.to_dvec2(),
-				    true => (-ipp.mouse.scroll_delta.y as f64, 0.).into()
-                };
+					false => -ipp.mouse.scroll_delta.to_dvec2(),
+					true => (-ipp.mouse.scroll_delta.y as f64, 0.).into(),
+				};
 				let transformed_delta = self.active_document().document.root.transform.inverse().transform_vector2(delta);
 				let layerdata = self.layerdata_mut(&vec![]);
 				layerdata.translation += transformed_delta;

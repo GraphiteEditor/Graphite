@@ -34,7 +34,7 @@ impl ScrollDelta {
 	}
 	pub fn scroll_delta(&self) -> f64 {
 		let (dx, dy) = (self.x, self.y);
-		dy.signum() as f64 * ((dy*dy + i32::min(dy.abs(), dx.abs()).pow(2)) as f64).sqrt()
+		dy.signum() as f64 * ((dy * dy + i32::min(dy.abs(), dx.abs()).pow(2)) as f64).sqrt()
 	}
 }
 
