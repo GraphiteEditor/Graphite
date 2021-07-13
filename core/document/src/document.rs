@@ -363,7 +363,7 @@ impl Document {
 			}
 			Operation::FillLayer { path, color } => {
 				if let Ok(layer) = self.layer_mut(path) {
-					layer.style.set_fill(Some(layers::style::Fill::new(*color)));
+					layer.style.set_fill(layers::style::Fill::new(*color));
 					layer.cache_dirty = true;
 				}
 				self.root.cache_dirty = true;
