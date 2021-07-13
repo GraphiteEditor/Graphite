@@ -1,5 +1,8 @@
-use crate::input::{mouse::ViewportPosition, InputPreprocessor};
 use crate::message_prelude::*;
+use crate::{
+	consts::{MOUSE_ZOOM_DIVISOR, WHEEL_ZOOM_DIVISOR},
+	input::{mouse::ViewportPosition, InputPreprocessor},
+};
 use document_core::layers::Layer;
 use document_core::{DocumentResponse, LayerId, Operation as DocumentOperation};
 use glam::{DAffine2, DVec2};
@@ -7,6 +10,8 @@ use log::warn;
 
 use crate::document::Document;
 use std::collections::VecDeque;
+
+use super::LayerData;
 
 #[impl_message(Message, Document)]
 #[derive(PartialEq, Clone, Debug)]
@@ -36,6 +41,14 @@ pub enum DocumentMessage {
 	MouseMove,
 	TranslateDown,
 	TranslateUp,
+	WheelTranslate,
+	RotateDown { snap: bool },
+	ZoomDown,
+	TransformUp,
+	SetZoom(f64),
+	MultiplyZoom(f64),
+	WheelZoom,
+	SetRotation(f64),
 	NudgeSelectedLayers(f64, f64),
 }
 
@@ -54,7 +67,9 @@ impl From<DocumentOperation> for Message {
 pub struct DocumentMessageHandler {
 	documents: Vec<Document>,
 	active_document: usize,
-	mmb_down: bool,
+	translating: bool,
+	rotating: bool,
+	zooming: bool,
 	mouse_pos: ViewportPosition,
 	copy_buffer: Vec<Layer>,
 }
@@ -85,6 +100,35 @@ impl DocumentMessageHandler {
 		self.active_document_mut().layer_data(&path).selected = true;
 		// TODO: Add deduplication
 		(!path.is_empty()).then(|| self.handle_folder_changed(path[..path.len() - 1].to_vec())).flatten()
+	}
+	fn layerdata(&self, path: &[LayerId]) -> &LayerData {
+		self.active_document().layer_data.get(path).expect("Layerdata does not exist")
+	}
+	fn layerdata_mut(&mut self, path: &[LayerId]) -> &mut LayerData {
+		self.active_document_mut().layer_data.entry(path.to_vec()).or_insert(LayerData::new(true))
+	}
+	#[allow(dead_code)]
+	fn create_transform_from_layerdata(&self, path: Vec<u64>, responses: &mut VecDeque<Message>) {
+		let layerdata = self.layerdata(&path);
+		responses.push_back(
+			DocumentOperation::SetLayerTransform {
+				path: path,
+				transform: layerdata.calculate_transform().to_cols_array(),
+			}
+			.into(),
+		);
+	}
+	fn create_document_transform_from_layerdata(&self, viewport_size: &ViewportPosition, responses: &mut VecDeque<Message>) {
+		let half_viewport = viewport_size.to_dvec2() / 2.;
+		let layerdata = self.layerdata(&vec![]);
+		let scaled_half_viewport = half_viewport / layerdata.scale;
+		responses.push_back(
+			DocumentOperation::SetLayerTransform {
+				path: vec![],
+				transform: layerdata.calculate_offset_transform(scaled_half_viewport).to_cols_array(),
+			}
+			.into(),
+		);
 	}
 
 	/// Returns the paths to the selected layers in order
@@ -119,7 +163,9 @@ impl Default for DocumentMessageHandler {
 		Self {
 			documents: vec![Document::default()],
 			active_document: 0,
-			mmb_down: false,
+			translating: false,
+			rotating: false,
+			zooming: false,
 			mouse_pos: ViewportPosition::default(),
 			copy_buffer: vec![],
 		}
@@ -335,22 +381,100 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				.into(),
 			),
 			TranslateDown => {
-				self.mmb_down = true;
+				self.translating = true;
 				self.mouse_pos = ipp.mouse.position;
 			}
-			TranslateUp => {
-				self.mmb_down = false;
+			RotateDown { snap } => {
+				self.rotating = true;
+				let layerdata = self.layerdata_mut(&vec![]);
+				layerdata.snap_rotate = snap;
+				self.mouse_pos = ipp.mouse.position;
+			}
+			ZoomDown => {
+				self.zooming = true;
+				self.mouse_pos = ipp.mouse.position;
+			}
+			TransformUp => {
+				let layerdata = self.layerdata_mut(&vec![]);
+				layerdata.rotation = layerdata.snapped_angle();
+				layerdata.snap_rotate = false;
+				self.translating = false;
+				self.rotating = false;
+				self.zooming = false;
 			}
 			MouseMove => {
-				if self.mmb_down {
-					let delta = DVec2::new(ipp.mouse.position.x as f64 - self.mouse_pos.x as f64, ipp.mouse.position.y as f64 - self.mouse_pos.y as f64);
-					let operation = DocumentOperation::TransformLayer {
-						path: vec![],
-						transform: DAffine2::from_translation(delta).to_cols_array(),
-					};
-					responses.push_back(operation.into());
-					self.mouse_pos = ipp.mouse.position;
+				if self.translating {
+					let delta = ipp.mouse.position.to_dvec2() - self.mouse_pos.to_dvec2();
+					let transformed_delta = self.active_document().document.root.transform.inverse().transform_vector2(delta);
+
+					let layerdata = self.layerdata_mut(&vec![]);
+					layerdata.translation = layerdata.translation + transformed_delta;
+					self.create_document_transform_from_layerdata(&ipp.viewport_size, responses);
 				}
+				if self.rotating {
+					let half_viewport = ipp.viewport_size.to_dvec2() / 2.;
+					let rotation = {
+						let start_vec = self.mouse_pos.to_dvec2() - half_viewport;
+						let end_vec = ipp.mouse.position.to_dvec2() - half_viewport;
+						start_vec.angle_between(end_vec)
+					};
+
+					let layerdata = self.layerdata_mut(&vec![]);
+					layerdata.rotation += rotation;
+					responses.push_back(
+						FrontendMessage::SetRotation {
+							new_radians: layerdata.snapped_angle(),
+						}
+						.into(),
+					);
+					self.create_document_transform_from_layerdata(&ipp.viewport_size, responses);
+				}
+				if self.zooming {
+					let difference = self.mouse_pos.y as f64 - ipp.mouse.position.y as f64;
+					let amount = 1. + difference / MOUSE_ZOOM_DIVISOR;
+					let layerdata = self.layerdata_mut(&vec![]);
+					layerdata.scale *= amount;
+					responses.push_back(FrontendMessage::SetZoom { new_zoom: layerdata.scale }.into());
+					self.create_document_transform_from_layerdata(&ipp.viewport_size, responses);
+				}
+				self.mouse_pos = ipp.mouse.position;
+			}
+			SetZoom(new) => {
+				let layerdata = self.layerdata_mut(&vec![]);
+				layerdata.scale = new;
+				responses.push_back(FrontendMessage::SetZoom { new_zoom: layerdata.scale }.into());
+				self.create_document_transform_from_layerdata(&ipp.viewport_size, responses);
+			}
+			MultiplyZoom(mult) => {
+				let layerdata = self.layerdata_mut(&vec![]);
+				layerdata.scale *= mult;
+				responses.push_back(FrontendMessage::SetZoom { new_zoom: layerdata.scale }.into());
+				self.create_document_transform_from_layerdata(&ipp.viewport_size, responses);
+			}
+			WheelZoom => {
+				let scroll = ipp.mouse.scroll_delta.y as f64;
+				let amount = if ipp.mouse.scroll_delta.y > 0 {
+					1. + scroll / -WHEEL_ZOOM_DIVISOR
+				} else {
+					1. / (1. + scroll / WHEEL_ZOOM_DIVISOR)
+				};
+				let layerdata = self.layerdata_mut(&vec![]);
+				layerdata.scale *= amount;
+				responses.push_back(FrontendMessage::SetZoom { new_zoom: layerdata.scale }.into());
+				self.create_document_transform_from_layerdata(&ipp.viewport_size, responses);
+			}
+			WheelTranslate => {
+				let delta = -ipp.mouse.scroll_delta.to_dvec2();
+				let transformed_delta = self.active_document().document.root.transform.inverse().transform_vector2(delta);
+				let layerdata = self.layerdata_mut(&vec![]);
+				layerdata.translation += transformed_delta;
+				self.create_document_transform_from_layerdata(&ipp.viewport_size, responses);
+			}
+			SetRotation(new) => {
+				let layerdata = self.layerdata_mut(&vec![]);
+				layerdata.rotation = new;
+				self.create_document_transform_from_layerdata(&ipp.viewport_size, responses);
+				responses.push_back(FrontendMessage::SetRotation { new_radians: new }.into());
 			}
 			NudgeSelectedLayers(x, y) => {
 				let paths: Vec<Vec<LayerId>> = self.selected_layers_sorted();
@@ -367,9 +491,9 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 	}
 	fn actions(&self) -> ActionList {
 		if self.active_document().layer_data.values().any(|data| data.selected) {
-			actions!(DocumentMessageDiscriminant; Undo, SelectAllLayers, DeselectAllLayers, DeleteSelectedLayers, DuplicateSelectedLayers, RenderDocument, ExportDocument, NewDocument, CloseActiveDocument, NextDocument, PrevDocument, MouseMove, TranslateUp, TranslateDown, CopySelectedLayers, PasteLayers, NudgeSelectedLayers)
+			actions!(DocumentMessageDiscriminant; Undo, SelectAllLayers, DeselectAllLayers, DeleteSelectedLayers, DuplicateSelectedLayers, RenderDocument, ExportDocument, NewDocument, CloseActiveDocument, NextDocument, PrevDocument, MouseMove, TransformUp, TranslateDown, CopySelectedLayers, PasteLayers, NudgeSelectedLayers, RotateDown, ZoomDown, SetZoom, MultiplyZoom, SetRotation, WheelZoom, WheelTranslate)
 		} else {
-			actions!(DocumentMessageDiscriminant; Undo, SelectAllLayers, DeselectAllLayers, RenderDocument, ExportDocument, NewDocument, CloseActiveDocument, NextDocument, PrevDocument, MouseMove, TranslateUp, TranslateDown, PasteLayers)
+			actions!(DocumentMessageDiscriminant; Undo, SelectAllLayers, DeselectAllLayers, RenderDocument, ExportDocument, NewDocument, CloseActiveDocument, NextDocument, PrevDocument, MouseMove, TransformUp, TranslateDown, PasteLayers, RotateDown, ZoomDown, SetZoom, MultiplyZoom, SetRotation, WheelZoom, WheelTranslate)
 		}
 	}
 }

@@ -3,7 +3,7 @@ use document_core::{layers::LayerDataTypes, LayerId};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct LayerPanelEntry {
 	pub name: String,
 	pub visible: bool,
