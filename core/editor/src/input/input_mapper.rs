@@ -1,4 +1,4 @@
-use crate::consts::{MINUS_KEY_ZOOM_MULTIPLIER, PLUS_KEY_ZOOM_MULTIPLIER};
+use crate::consts::{MINUS_KEY_ZOOM_RATE, PLUS_KEY_ZOOM_RATE};
 use crate::message_prelude::*;
 use crate::tool::ToolType;
 
@@ -191,9 +191,9 @@ impl Default for Mapping {
 			entry! {action=DocumentMessage::ZoomCanvasBegin, key_down=Mmb, modifiers=[KeyShift]},
 			entry! {action=DocumentMessage::TranslateCanvasBegin, key_down=Mmb},
 			entry! {action=DocumentMessage::TranslateCanvasEnd, key_up=Mmb},
-			entry! {action=DocumentMessage::MultiplyCanvasZoom(PLUS_KEY_ZOOM_MULTIPLIER), key_down=KeyPlus, modifiers=[KeyControl]},
-			entry! {action=DocumentMessage::MultiplyCanvasZoom(PLUS_KEY_ZOOM_MULTIPLIER), key_down=KeyEquals, modifiers=[KeyControl]},
-			entry! {action=DocumentMessage::MultiplyCanvasZoom(MINUS_KEY_ZOOM_MULTIPLIER), key_down=KeyMinus, modifiers=[KeyControl]},
+			entry! {action=DocumentMessage::MultiplyCanvasZoom(PLUS_KEY_ZOOM_RATE), key_down=KeyPlus, modifiers=[KeyControl]},
+			entry! {action=DocumentMessage::MultiplyCanvasZoom(PLUS_KEY_ZOOM_RATE), key_down=KeyEquals, modifiers=[KeyControl]},
+			entry! {action=DocumentMessage::MultiplyCanvasZoom(MINUS_KEY_ZOOM_RATE), key_down=KeyMinus, modifiers=[KeyControl]},
 			entry! {action=DocumentMessage::SetCanvasZoom(1.), key_down=Key1, modifiers=[KeyControl]},
 			entry! {action=DocumentMessage::SetCanvasZoom(2.), key_down=Key2, modifiers=[KeyControl]},
 			entry! {action=DocumentMessage::WheelCanvasZoom, message=InputMapperMessage::MouseScroll, modifiers=[KeyControl]},
