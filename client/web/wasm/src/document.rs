@@ -41,7 +41,7 @@ pub fn new_document() -> Result<(), JsValue> {
 // TODO: Call event when the panels are resized
 /// Viewport resized
 #[wasm_bindgen]
-pub fn on_viewport_resize(new_width: u32, new_height: u32) -> Result<(), JsValue> {
+pub fn viewport_resize(new_width: u32, new_height: u32) -> Result<(), JsValue> {
 	let ev = InputPreprocessorMessage::ViewportResize(ViewportPosition { x: new_width, y: new_height });
 	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(ev)).map_err(convert_error)
 }
@@ -159,14 +159,14 @@ pub fn export_document() -> Result<(), JsValue> {
 
 /// Sets the zoom to the value
 #[wasm_bindgen]
-pub fn on_set_zoom(new_zoom: f64) -> Result<(), JsValue> {
-	let ev = DocumentMessage::SetZoom(new_zoom);
+pub fn set_zoom(new_zoom: f64) -> Result<(), JsValue> {
+	let ev = DocumentMessage::SetCanvasZoom(new_zoom);
 	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(ev)).map_err(convert_error)
 }
 
 /// Sets the rotation to the new value (in radians)
 #[wasm_bindgen]
-pub fn on_set_rotation(new_radians: f64) -> Result<(), JsValue> {
+pub fn set_rotation(new_radians: f64) -> Result<(), JsValue> {
 	let ev = DocumentMessage::SetRotation(new_radians);
 	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(ev)).map_err(convert_error)
 }

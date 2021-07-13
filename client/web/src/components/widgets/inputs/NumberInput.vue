@@ -98,20 +98,21 @@ import { defineComponent } from "vue";
 export default defineComponent({
 	components: {},
 	props: {
-		initial_value: { type: Number, default: 0, required: false },
-		unit: { type: String, default: "", required: false },
-		step: { type: Number, default: 1, required: false },
-		increaseMultiplier: { type: Number, default: null, required: false },
-		decreaseMultiplier: { type: Number, default: null, required: false },
+		initialValue: { type: Number, default: 0 },
+		unit: { type: String, default: "" },
+		step: { type: Number, default: 1 },
+		displayDecimalPlaces: { type: Number, default: 3 },
+		increaseMultiplier: { type: Number, default: null },
+		decreaseMultiplier: { type: Number, default: null },
 		min: { type: Number, required: false },
 		max: { type: Number, required: false },
 		callback: { type: Function, required: false },
-		update_on_callback: { type: Boolean, default: true, required: false },
+		updateOnCallback: { type: Boolean, default: true },
 	},
 	data() {
 		return {
-			value: this.initial_value,
-			text: this.initial_value.toString() + this.unit,
+			value: this.initialValue,
+			text: this.initialValue.toString() + this.unit,
 		};
 	},
 	methods: {
@@ -141,14 +142,16 @@ export default defineComponent({
 		},
 		setValue(newValue: number) {
 			this.value = newValue;
-			this.text = `${Math.round(this.value)}${this.unit}`;
+
+			const roundingPower = 10 ** this.displayDecimalPlaces;
+			this.text = `${Math.round(this.value * roundingPower) / roundingPower}${this.unit}`;
 		},
 		updateValue(inValue: number, resetOnClamp: boolean) {
 			const newValue = this.clampValue(inValue, resetOnClamp);
 
 			if (this.callback) this.callback(newValue);
 
-			if (this.update_on_callback) this.setValue(newValue);
+			if (this.updateOnCallback) this.setValue(newValue);
 		},
 	},
 });

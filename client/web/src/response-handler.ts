@@ -21,7 +21,7 @@ export enum ResponseType {
 	CloseDocument = "CloseDocument",
 	UpdateWorkingColors = "UpdateWorkingColors",
 	PromptCloseConfirmationModal = "PromptCloseConfirmationModal",
-	SetZoom = "SetZoom",
+	SetCanvasZoom = "SetCanvasZoom",
 	SetRotation = "SetRotation",
 }
 
@@ -66,8 +66,8 @@ function parseResponse(responseType: string, data: any): Response {
 			return newCloseDocument(data.CloseDocument);
 		case "UpdateCanvas":
 			return newUpdateCanvas(data.UpdateCanvas);
-		case "SetZoom":
-			return newSetZoom(data.SetZoom);
+		case "SetCanvasZoom":
+			return newSetZoom(data.SetCanvasZoom);
 		case "SetRotation":
 			return newSetRotation(data.SetRotation);
 		case "ExportDocument":
@@ -81,7 +81,7 @@ function parseResponse(responseType: string, data: any): Response {
 	}
 }
 
-export type Response = SetActiveTool | UpdateCanvas | DocumentChanged | CollapseFolder | ExpandFolder | UpdateWorkingColors | SetZoom | SetRotation;
+export type Response = SetActiveTool | UpdateCanvas | DocumentChanged | CollapseFolder | ExpandFolder | UpdateWorkingColors | SetCanvasZoom | SetRotation;
 
 export interface CloseDocument {
 	document_index: number;
@@ -181,10 +181,10 @@ function newExpandFolder(input: any): ExpandFolder {
 	};
 }
 
-export interface SetZoom {
+export interface SetCanvasZoom {
 	new_zoom: number;
 }
-function newSetZoom(input: any): SetZoom {
+function newSetZoom(input: any): SetCanvasZoom {
 	return {
 		new_zoom: input.new_zoom,
 	};
