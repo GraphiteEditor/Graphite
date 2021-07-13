@@ -4,7 +4,6 @@ use glam::DVec2;
 use crate::intersection::intersect_quad_bez_path;
 use crate::LayerId;
 use kurbo::BezPath;
-use kurbo::Vec2;
 
 use super::style;
 use super::LayerData;
@@ -26,11 +25,9 @@ impl Shape {
 
 impl LayerData for Shape {
 	fn to_kurbo_path(&self, transform: glam::DAffine2, _style: style::PathStyle) -> BezPath {
-		fn unit_rotation(theta: f64) -> Vec2 {
-			Vec2::new(-theta.sin(), theta.cos())
+		fn unit_rotation(theta: f64) -> DVec2 {
+			DVec2::new(-theta.sin(), theta.cos())
 		}
-		let extent = Vec2::new((transform.x_axis.x + transform.x_axis.y) / 2., (transform.y_axis.x + transform.y_axis.y) / 2.);
-		let translation = transform.translation;
 		let mut path = kurbo::BezPath::new();
 		let apothem_offset_angle = std::f64::consts::PI / (self.sides as f64);
 
@@ -51,11 +48,12 @@ impl LayerData for Shape {
 				if self.equal_sides {
 					p
 				} else {
-					Vec2::new((p.x - min_x) / (max_x - min_x) * 2. - 1., (p.y - min_y) / (max_y - min_y) * 2. - 1.)
+					DVec2::new((p.x - min_x) / (max_x - min_x) * 2. - 1., (p.y - min_y) / (max_y - min_y) * 2. - 1.)
 				}
 			})
-			.map(|unit| Vec2::new(-unit.x * extent.x + translation.x + extent.x, -unit.y * extent.y + translation.y + extent.y))
-			.map(|pos| (pos).to_point())
+			.map(|p| DVec2::new(p.x / 2. + 0.5, p.y / 2. + 0.5))
+			.map(|unit| transform.transform_point2(unit.into()))
+			.map(|pos| kurbo::Point::new(pos.x, pos.y))
 			.enumerate()
 			.for_each(|(i, p)| {
 				if i == 0 {

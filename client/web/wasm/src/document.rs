@@ -2,6 +2,7 @@ use crate::shims::Error;
 use crate::wrappers::{translate_key, translate_tool, Color};
 use crate::EDITOR_STATE;
 use editor_core::input::input_preprocessor::ModifierKeys;
+use editor_core::input::mouse::ScrollDelta;
 use editor_core::message_prelude::*;
 use editor_core::{
 	input::mouse::{MouseState, ViewportPosition},
@@ -37,6 +38,14 @@ pub fn new_document() -> Result<(), JsValue> {
 	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(DocumentMessage::NewDocument).map_err(convert_error))
 }
 
+// TODO: Call event when the panels are resized
+/// Viewport resized
+#[wasm_bindgen]
+pub fn on_viewport_resize(new_width: u32, new_height: u32) -> Result<(), JsValue> {
+	let ev = InputPreprocessorMessage::ViewportResize(ViewportPosition { x: new_width, y: new_height });
+	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(ev)).map_err(convert_error)
+}
+
 // TODO: When a mouse button is down that started in the viewport, this should trigger even when the mouse is outside the viewport (or even the browser window if the browser supports it)
 /// Mouse movement within the screenspace bounds of the viewport
 #[wasm_bindgen]
@@ -44,6 +53,15 @@ pub fn on_mouse_move(x: u32, y: u32, modifiers: u8) -> Result<(), JsValue> {
 	let mods = ModifierKeys::from_bits(modifiers).expect("invalid modifier keys");
 	// TODO: Convert these screenspace viewport coordinates to canvas coordinates based on the current zoom and pan
 	let ev = InputPreprocessorMessage::MouseMove(ViewportPosition { x, y }, mods);
+	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(ev)).map_err(convert_error)
+}
+
+/// Mouse scrolling within the screenspace bounds of the viewport
+#[wasm_bindgen]
+pub fn on_mouse_scroll(delta_x: i32, delta_y: i32, delta_z: i32, modifiers: u8) -> Result<(), JsValue> {
+	// TODO: Convert these screenspace viewport coordinates to canvas coordinates based on the current zoom and pan
+	let mods = ModifierKeys::from_bits(modifiers).expect("invalid modifier keys");
+	let ev = InputPreprocessorMessage::MouseScroll(ScrollDelta::new(delta_x, delta_y, delta_z), mods);
 	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(ev)).map_err(convert_error)
 }
 
@@ -137,6 +155,20 @@ pub fn deselect_all_layers() -> Result<(), JsValue> {
 #[wasm_bindgen]
 pub fn export_document() -> Result<(), JsValue> {
 	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(DocumentMessage::ExportDocument)).map_err(convert_error)
+}
+
+/// Sets the zoom to the value
+#[wasm_bindgen]
+pub fn on_set_zoom(new_zoom: f64) -> Result<(), JsValue> {
+	let ev = DocumentMessage::SetZoom(new_zoom);
+	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(ev)).map_err(convert_error)
+}
+
+/// Sets the rotation to the new value (in radians)
+#[wasm_bindgen]
+pub fn on_set_rotation(new_radians: f64) -> Result<(), JsValue> {
+	let ev = DocumentMessage::SetRotation(new_radians);
+	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(ev)).map_err(convert_error)
 }
 
 /// Update the list of selected layers. The layer paths have to be stored in one array and are separated by LayerId::MAX
