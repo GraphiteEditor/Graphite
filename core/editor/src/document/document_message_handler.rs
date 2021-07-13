@@ -1,6 +1,6 @@
 use crate::message_prelude::*;
 use crate::{
-	consts::{MOUSE_ZOOM_DIVISOR, WHEEL_ZOOM_DIVISOR},
+	consts::{MOUSE_ZOOM_DIVISOR, VIEWPORT_ZOOM_SCALE_MAX, VIEWPORT_ZOOM_SCALE_MIN, WHEEL_ZOOM_DIVISOR},
 	input::{mouse::ViewportPosition, InputPreprocessor},
 };
 use document_core::layers::Layer;
@@ -39,15 +39,14 @@ pub enum DocumentMessage {
 	RenderDocument,
 	Undo,
 	MouseMove,
-	TranslateDown,
-	TranslateUp,
-	WheelTranslate,
-	RotateDown { snap: bool },
-	ZoomDown,
-	TransformUp,
-	SetZoom(f64),
-	MultiplyZoom(f64),
-	WheelZoom,
+	TranslateCanvasBegin,
+	WheelCanvasTranslate,
+	RotateCanvasBegin { snap: bool },
+	ZoomCanvasBegin,
+	TranslateCanvasEnd,
+	SetCanvasZoom(f64),
+	MultiplyCanvasZoom(f64),
+	WheelCanvasZoom,
 	SetRotation(f64),
 	NudgeSelectedLayers(f64, f64),
 }
@@ -380,21 +379,22 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				}
 				.into(),
 			),
-			TranslateDown => {
+			TranslateCanvasBegin => {
 				self.translating = true;
 				self.mouse_pos = ipp.mouse.position;
 			}
-			RotateDown { snap } => {
+			RotateCanvasBegin { snap } => {
 				self.rotating = true;
 				let layerdata = self.layerdata_mut(&vec![]);
+				// TODO: Set up the input system to allow the addition of the Shift key to begin snapping while rotating without snapping
 				layerdata.snap_rotate = snap;
 				self.mouse_pos = ipp.mouse.position;
 			}
-			ZoomDown => {
+			ZoomCanvasBegin => {
 				self.zooming = true;
 				self.mouse_pos = ipp.mouse.position;
 			}
-			TransformUp => {
+			TranslateCanvasEnd => {
 				let layerdata = self.layerdata_mut(&vec![]);
 				layerdata.rotation = layerdata.snapped_angle();
 				layerdata.snap_rotate = false;
@@ -433,25 +433,27 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					let difference = self.mouse_pos.y as f64 - ipp.mouse.position.y as f64;
 					let amount = 1. + difference / MOUSE_ZOOM_DIVISOR;
 					let layerdata = self.layerdata_mut(&vec![]);
-					layerdata.scale *= amount;
-					responses.push_back(FrontendMessage::SetZoom { new_zoom: layerdata.scale }.into());
+					let new = (layerdata.scale * amount).clamp(VIEWPORT_ZOOM_SCALE_MIN, VIEWPORT_ZOOM_SCALE_MAX);
+					layerdata.scale = new;
+					responses.push_back(FrontendMessage::SetCanvasZoom { new_zoom: layerdata.scale }.into());
 					self.create_document_transform_from_layerdata(&ipp.viewport_size, responses);
 				}
 				self.mouse_pos = ipp.mouse.position;
 			}
-			SetZoom(new) => {
+			SetCanvasZoom(new) => {
 				let layerdata = self.layerdata_mut(&vec![]);
+				layerdata.scale = new.clamp(VIEWPORT_ZOOM_SCALE_MIN, VIEWPORT_ZOOM_SCALE_MAX);
+				responses.push_back(FrontendMessage::SetCanvasZoom { new_zoom: layerdata.scale }.into());
+				self.create_document_transform_from_layerdata(&ipp.viewport_size, responses);
+			}
+			MultiplyCanvasZoom(multiplier) => {
+				let layerdata = self.layerdata_mut(&vec![]);
+				let new = (layerdata.scale * multiplier).clamp(VIEWPORT_ZOOM_SCALE_MIN, VIEWPORT_ZOOM_SCALE_MAX);
 				layerdata.scale = new;
-				responses.push_back(FrontendMessage::SetZoom { new_zoom: layerdata.scale }.into());
+				responses.push_back(FrontendMessage::SetCanvasZoom { new_zoom: layerdata.scale }.into());
 				self.create_document_transform_from_layerdata(&ipp.viewport_size, responses);
 			}
-			MultiplyZoom(mult) => {
-				let layerdata = self.layerdata_mut(&vec![]);
-				layerdata.scale *= mult;
-				responses.push_back(FrontendMessage::SetZoom { new_zoom: layerdata.scale }.into());
-				self.create_document_transform_from_layerdata(&ipp.viewport_size, responses);
-			}
-			WheelZoom => {
+			WheelCanvasZoom => {
 				let scroll = ipp.mouse.scroll_delta.y as f64;
 				let amount = if ipp.mouse.scroll_delta.y > 0 {
 					1. + scroll / -WHEEL_ZOOM_DIVISOR
@@ -459,11 +461,12 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					1. / (1. + scroll / WHEEL_ZOOM_DIVISOR)
 				};
 				let layerdata = self.layerdata_mut(&vec![]);
-				layerdata.scale *= amount;
-				responses.push_back(FrontendMessage::SetZoom { new_zoom: layerdata.scale }.into());
+				let new = (layerdata.scale * amount).clamp(VIEWPORT_ZOOM_SCALE_MIN, VIEWPORT_ZOOM_SCALE_MAX);
+				layerdata.scale = new;
+				responses.push_back(FrontendMessage::SetCanvasZoom { new_zoom: layerdata.scale }.into());
 				self.create_document_transform_from_layerdata(&ipp.viewport_size, responses);
 			}
-			WheelTranslate => {
+			WheelCanvasTranslate => {
 				let delta = -ipp.mouse.scroll_delta.to_dvec2();
 				let transformed_delta = self.active_document().document.root.transform.inverse().transform_vector2(delta);
 				let layerdata = self.layerdata_mut(&vec![]);
@@ -491,9 +494,9 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 	}
 	fn actions(&self) -> ActionList {
 		if self.active_document().layer_data.values().any(|data| data.selected) {
-			actions!(DocumentMessageDiscriminant; Undo, SelectAllLayers, DeselectAllLayers, DeleteSelectedLayers, DuplicateSelectedLayers, RenderDocument, ExportDocument, NewDocument, CloseActiveDocument, NextDocument, PrevDocument, MouseMove, TransformUp, TranslateDown, CopySelectedLayers, PasteLayers, NudgeSelectedLayers, RotateDown, ZoomDown, SetZoom, MultiplyZoom, SetRotation, WheelZoom, WheelTranslate)
+			actions!(DocumentMessageDiscriminant; Undo, SelectAllLayers, DeselectAllLayers, DeleteSelectedLayers, DuplicateSelectedLayers, RenderDocument, ExportDocument, NewDocument, CloseActiveDocument, NextDocument, PrevDocument, MouseMove, TranslateCanvasEnd, TranslateCanvasBegin, CopySelectedLayers, PasteLayers, NudgeSelectedLayers, RotateCanvasBegin, ZoomCanvasBegin, SetCanvasZoom, MultiplyCanvasZoom, SetRotation, WheelCanvasZoom, WheelCanvasTranslate)
 		} else {
-			actions!(DocumentMessageDiscriminant; Undo, SelectAllLayers, DeselectAllLayers, RenderDocument, ExportDocument, NewDocument, CloseActiveDocument, NextDocument, PrevDocument, MouseMove, TransformUp, TranslateDown, PasteLayers, RotateDown, ZoomDown, SetZoom, MultiplyZoom, SetRotation, WheelZoom, WheelTranslate)
+			actions!(DocumentMessageDiscriminant; Undo, SelectAllLayers, DeselectAllLayers, RenderDocument, ExportDocument, NewDocument, CloseActiveDocument, NextDocument, PrevDocument, MouseMove, TranslateCanvasEnd, TranslateCanvasBegin, PasteLayers, RotateCanvasBegin, ZoomCanvasBegin, SetCanvasZoom, MultiplyCanvasZoom, SetRotation, WheelCanvasZoom, WheelCanvasTranslate)
 		}
 	}
 }

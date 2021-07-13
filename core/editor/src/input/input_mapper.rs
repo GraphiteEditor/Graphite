@@ -1,4 +1,4 @@
-use crate::consts::{MINUS_KEY_MULTIPLIER, PLUS_KEY_MULTIPLIER};
+use crate::consts::{MINUS_KEY_ZOOM_MULTIPLIER, PLUS_KEY_ZOOM_MULTIPLIER};
 use crate::message_prelude::*;
 use crate::tool::ToolType;
 
@@ -186,18 +186,18 @@ impl Default for Mapping {
 			entry! {action=DocumentMessage::ExportDocument, key_down=KeyS, modifiers=[KeyControl, KeyShift]},
 			entry! {action=DocumentMessage::ExportDocument, key_down=KeyE, modifiers=[KeyControl]},
 			entry! {action=DocumentMessage::MouseMove, message=InputMapperMessage::PointerMove},
-			entry! {action=DocumentMessage::RotateDown{snap:true}, key_down=Mmb, modifiers=[KeyControl, KeyShift]},
-			entry! {action=DocumentMessage::RotateDown{snap:false}, key_down=Mmb, modifiers=[KeyControl]},
-			entry! {action=DocumentMessage::ZoomDown, key_down=Mmb, modifiers=[KeyShift]},
-			entry! {action=DocumentMessage::TranslateDown, key_down=Mmb},
-			entry! {action=DocumentMessage::TransformUp, key_up=Mmb},
-			entry! {action=DocumentMessage::MultiplyZoom(PLUS_KEY_MULTIPLIER), key_down=KeyPlus, modifiers=[KeyControl]},
-			entry! {action=DocumentMessage::MultiplyZoom(PLUS_KEY_MULTIPLIER), key_down=KeyEquals, modifiers=[KeyControl]},
-			entry! {action=DocumentMessage::MultiplyZoom(MINUS_KEY_MULTIPLIER), key_down=KeyMinus, modifiers=[KeyControl]},
-			entry! {action=DocumentMessage::SetZoom(1.), key_down=Key1, modifiers=[KeyControl]},
-			entry! {action=DocumentMessage::SetZoom(2.), key_down=Key2, modifiers=[KeyControl]},
-			entry! {action=DocumentMessage::WheelZoom, message=InputMapperMessage::MouseScroll, modifiers=[KeyControl]},
-			entry! {action=DocumentMessage::WheelTranslate, message=InputMapperMessage::MouseScroll},
+			entry! {action=DocumentMessage::RotateCanvasBegin{snap:true}, key_down=Mmb, modifiers=[KeyControl, KeyShift]},
+			entry! {action=DocumentMessage::RotateCanvasBegin{snap:false}, key_down=Mmb, modifiers=[KeyControl]},
+			entry! {action=DocumentMessage::ZoomCanvasBegin, key_down=Mmb, modifiers=[KeyShift]},
+			entry! {action=DocumentMessage::TranslateCanvasBegin, key_down=Mmb},
+			entry! {action=DocumentMessage::TranslateCanvasEnd, key_up=Mmb},
+			entry! {action=DocumentMessage::MultiplyCanvasZoom(PLUS_KEY_ZOOM_MULTIPLIER), key_down=KeyPlus, modifiers=[KeyControl]},
+			entry! {action=DocumentMessage::MultiplyCanvasZoom(PLUS_KEY_ZOOM_MULTIPLIER), key_down=KeyEquals, modifiers=[KeyControl]},
+			entry! {action=DocumentMessage::MultiplyCanvasZoom(MINUS_KEY_ZOOM_MULTIPLIER), key_down=KeyMinus, modifiers=[KeyControl]},
+			entry! {action=DocumentMessage::SetCanvasZoom(1.), key_down=Key1, modifiers=[KeyControl]},
+			entry! {action=DocumentMessage::SetCanvasZoom(2.), key_down=Key2, modifiers=[KeyControl]},
+			entry! {action=DocumentMessage::WheelCanvasZoom, message=InputMapperMessage::MouseScroll, modifiers=[KeyControl]},
+			entry! {action=DocumentMessage::WheelCanvasTranslate, message=InputMapperMessage::MouseScroll},
 			entry! {action=DocumentMessage::NewDocument, key_down=KeyN, modifiers=[KeyShift]},
 			entry! {action=DocumentMessage::NextDocument, key_down=KeyTab, modifiers=[KeyShift]},
 			entry! {action=DocumentMessage::CloseActiveDocument, key_down=KeyW, modifiers=[KeyShift]},

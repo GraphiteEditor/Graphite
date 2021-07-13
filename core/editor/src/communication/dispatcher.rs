@@ -27,7 +27,7 @@ impl Dispatcher {
 				| Message::InputMapper(_)
 				| Message::Document(DocumentMessage::RenderDocument)
 				| Message::Frontend(FrontendMessage::UpdateCanvas { .. })
-				| Message::Frontend(FrontendMessage::SetZoom { .. })
+				| Message::Frontend(FrontendMessage::SetCanvasZoom { .. })
 				| Message::Frontend(FrontendMessage::SetRotation { .. })
 				| Message::Document(DocumentMessage::DispatchOperation { .. })
 		) || MessageDiscriminant::from(&message).local_name().ends_with("MouseMove"))
