@@ -1,12 +1,13 @@
 use std::usize;
 
 use super::keyboard::{Key, KeyStates};
-use super::mouse::{MouseKeys, MouseState, ViewportPosition};
+use super::mouse::{MouseKeys, MouseState, ScrollDelta, ViewportPosition};
 use crate::message_prelude::*;
 use bitflags::bitflags;
 
 #[doc(inline)]
 pub use document_core::DocumentResponse;
+use glam::DVec2;
 
 #[impl_message(Message, InputPreprocessor)]
 #[derive(PartialEq, Clone, Debug)]
@@ -14,8 +15,10 @@ pub enum InputPreprocessorMessage {
 	MouseDown(MouseState, ModifierKeys),
 	MouseUp(MouseState, ModifierKeys),
 	MouseMove(ViewportPosition, ModifierKeys),
+	MouseScroll(ScrollDelta, ModifierKeys),
 	KeyUp(Key, ModifierKeys),
 	KeyDown(Key, ModifierKeys),
+	ViewportResize(ViewportPosition),
 }
 
 bitflags! {
@@ -32,6 +35,7 @@ bitflags! {
 pub struct InputPreprocessor {
 	pub keyboard: KeyStates,
 	pub mouse: MouseState,
+	pub viewport_size: ViewportPosition,
 }
 
 enum KeyPosition {
@@ -41,32 +45,46 @@ enum KeyPosition {
 
 impl MessageHandler<InputPreprocessorMessage, ()> for InputPreprocessor {
 	fn process_action(&mut self, message: InputPreprocessorMessage, _data: (), responses: &mut VecDeque<Message>) {
-		let response = match message {
+		match message {
 			InputPreprocessorMessage::MouseMove(pos, modifier_keys) => {
 				self.handle_modifier_keys(modifier_keys, responses);
 				self.mouse.position = pos;
-				InputMapperMessage::PointerMove.into()
+				responses.push_back(InputMapperMessage::PointerMove.into());
+			}
+			InputPreprocessorMessage::MouseScroll(delta, modifier_keys) => {
+				self.handle_modifier_keys(modifier_keys, responses);
+				self.mouse.scroll_delta = delta;
+				responses.push_back(InputMapperMessage::MouseScroll.into());
 			}
 			InputPreprocessorMessage::MouseDown(state, modifier_keys) => {
 				self.handle_modifier_keys(modifier_keys, responses);
-				self.translate_mouse_event(state, KeyPosition::Pressed)
+				responses.push_back(self.translate_mouse_event(state, KeyPosition::Pressed));
 			}
 			InputPreprocessorMessage::MouseUp(state, modifier_keys) => {
 				self.handle_modifier_keys(modifier_keys, responses);
-				self.translate_mouse_event(state, KeyPosition::Released)
+				responses.push_back(self.translate_mouse_event(state, KeyPosition::Released));
 			}
 			InputPreprocessorMessage::KeyDown(key, modifier_keys) => {
 				self.handle_modifier_keys(modifier_keys, responses);
 				self.keyboard.set(key as usize);
-				InputMapperMessage::KeyDown(key).into()
+				responses.push_back(InputMapperMessage::KeyDown(key).into());
 			}
 			InputPreprocessorMessage::KeyUp(key, modifier_keys) => {
 				self.handle_modifier_keys(modifier_keys, responses);
 				self.keyboard.unset(key as usize);
-				InputMapperMessage::KeyUp(key).into()
+				responses.push_back(InputMapperMessage::KeyUp(key).into());
+			}
+			InputPreprocessorMessage::ViewportResize(size) => {
+				responses.push_back(
+					document_core::Operation::TransformLayer {
+						path: vec![],
+						transform: glam::DAffine2::from_translation(DVec2::new((size.x as f64 - self.viewport_size.x as f64) / 2., (size.y as f64 - self.viewport_size.y as f64) / 2.)).to_cols_array(),
+					}
+					.into(),
+				);
+				self.viewport_size = size;
 			}
 		};
-		responses.push_back(response)
 	}
 	// clean user input and if possible reconstruct it
 	// store the changes in the keyboard if it is a key event

@@ -12,6 +12,8 @@ mod global;
 pub mod input;
 pub mod tool;
 
+pub mod consts;
+
 #[doc(inline)]
 pub use misc::EditorError;
 

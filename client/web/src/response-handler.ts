@@ -21,6 +21,8 @@ export enum ResponseType {
 	CloseDocument = "CloseDocument",
 	UpdateWorkingColors = "UpdateWorkingColors",
 	PromptCloseConfirmationModal = "PromptCloseConfirmationModal",
+	SetZoom = "SetZoom",
+	SetRotation = "SetRotation",
 }
 
 export function attachResponseHandlerToPage() {
@@ -64,6 +66,10 @@ function parseResponse(responseType: string, data: any): Response {
 			return newCloseDocument(data.CloseDocument);
 		case "UpdateCanvas":
 			return newUpdateCanvas(data.UpdateCanvas);
+		case "SetZoom":
+			return newSetZoom(data.SetZoom);
+		case "SetRotation":
+			return newSetRotation(data.SetRotation);
 		case "ExportDocument":
 			return newExportDocument(data.ExportDocument);
 		case "UpdateWorkingColors":
@@ -71,11 +77,11 @@ function parseResponse(responseType: string, data: any): Response {
 		case "PromptCloseConfirmationModal":
 			return {};
 		default:
-			throw new Error(`Unrecognized origin/responseType pair: ${origin}, ${responseType}`);
+			throw new Error(`Unrecognized origin/responseType pair: ${origin}, '${responseType}'`);
 	}
 }
 
-export type Response = SetActiveTool | UpdateCanvas | DocumentChanged | CollapseFolder | ExpandFolder | UpdateWorkingColors;
+export type Response = SetActiveTool | UpdateCanvas | DocumentChanged | CollapseFolder | ExpandFolder | UpdateWorkingColors | SetZoom | SetRotation;
 
 export interface CloseDocument {
 	document_index: number;
@@ -172,6 +178,24 @@ function newExpandFolder(input: any): ExpandFolder {
 	return {
 		path: new BigUint64Array(input.path.map((n: number) => BigInt(n))),
 		children: input.children.map((child: any) => newLayerPanelEntry(child)),
+	};
+}
+
+export interface SetZoom {
+	new_zoom: number;
+}
+function newSetZoom(input: any): SetZoom {
+	return {
+		new_zoom: input.new_zoom,
+	};
+}
+
+export interface SetRotation {
+	new_radians: number;
+}
+function newSetRotation(input: any): SetRotation {
+	return {
+		new_radians: input.new_radians,
 	};
 }
 

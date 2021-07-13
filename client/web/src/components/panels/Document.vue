@@ -88,13 +88,17 @@
 
 				<Separator :type="SeparatorType.Section" />
 
-				<IconButton :icon="'ZoomIn'" :size="24" title="Zoom In" />
-				<IconButton :icon="'ZoomOut'" :size="24" title="Zoom Out" />
-				<IconButton :icon="'ZoomReset'" :size="24" title="Zoom to 100%" />
+				<NumberInput :callback="setRotation" :initial_value="0" :step="15" :unit="`°`" :update_on_callback="false" ref="rotation" />
+
+				<Separator :type="SeparatorType.Section" />
+
+				<IconButton :icon="'ZoomIn'" :size="24" title="Zoom In" @click="this.$refs.zoom.onIncrement(1)" />
+				<IconButton :icon="'ZoomOut'" :size="24" title="Zoom Out" @click="this.$refs.zoom.onIncrement(-1)" />
+				<IconButton :icon="'ZoomReset'" :size="24" title="Zoom to 100%" @click="this.$refs.zoom.updateValue(100)" />
 
 				<Separator :type="SeparatorType.Related" />
 
-				<NumberInput :value="25" :unit="`%`" />
+				<NumberInput :callback="setZoom" :initial_value="100" :min="0.001" :increaseMultiplier="1.25" :decreaseMultiplier="0.8" :unit="`%`" :update_on_callback="false" ref="zoom" />
 			</div>
 		</LayoutRow>
 		<LayoutRow :class="'shelf-and-viewport'">
@@ -135,7 +139,7 @@
 				<WorkingColors />
 			</LayoutCol>
 			<LayoutCol :class="'viewport'">
-				<div class="canvas" @mousedown="canvasMouseDown" @mouseup="canvasMouseUp" @mousemove="canvasMouseMove">
+				<div class="canvas" @mousedown="canvasMouseDown" @mouseup="canvasMouseUp" @mousemove="canvasMouseMove" ref="canvas">
 					<svg v-html="viewportSvg"></svg>
 				</div>
 			</LayoutCol>
@@ -188,7 +192,7 @@
 
 <script lang="ts">
 import { defineComponent } from "vue";
-import { ResponseType, registerResponseHandler, Response, UpdateCanvas, SetActiveTool, ExportDocument } from "../../response-handler";
+import { ResponseType, registerResponseHandler, Response, UpdateCanvas, SetActiveTool, ExportDocument, SetZoom, SetRotation } from "../../response-handler";
 import LayoutRow from "../layout/LayoutRow.vue";
 import LayoutCol from "../layout/LayoutCol.vue";
 import WorkingColors from "../widgets/WorkingColors.vue";
@@ -235,6 +239,11 @@ function makeModifiersBitfield(control: boolean, shift: boolean, alt: boolean): 
 
 export default defineComponent({
 	methods: {
+		async viewportResize() {
+			const { on_viewport_resize } = await wasm;
+			const canvas = this.$refs.canvas as HTMLDivElement;
+			on_viewport_resize(canvas.clientWidth, canvas.clientHeight);
+		},
 		async canvasMouseDown(e: MouseEvent) {
 			const { on_mouse_down } = await wasm;
 			const modifiers = makeModifiersBitfield(e.ctrlKey, e.shiftKey, e.altKey);
@@ -249,6 +258,20 @@ export default defineComponent({
 			const { on_mouse_move } = await wasm;
 			const modifiers = makeModifiersBitfield(e.ctrlKey, e.shiftKey, e.altKey);
 			on_mouse_move(e.offsetX, e.offsetY, modifiers);
+		},
+		async canvasMouseScroll(e: WheelEvent) {
+			e.preventDefault();
+			const { on_mouse_scroll } = await wasm;
+			const modifiers = makeModifiersBitfield(e.ctrlKey, e.shiftKey, e.altKey);
+			on_mouse_scroll(e.deltaX, e.deltaY, e.deltaZ, modifiers);
+		},
+		async setZoom(newZoom: number) {
+			const { on_set_zoom } = await wasm;
+			on_set_zoom(newZoom / 100);
+		},
+		async setRotation(newRotation: number) {
+			const { on_set_rotation } = await wasm;
+			on_set_rotation(newRotation * (Math.PI / 180));
 		},
 		async keyDown(e: KeyboardEvent) {
 			if (redirectKeyboardEventToBackend(e)) {
@@ -302,9 +325,28 @@ export default defineComponent({
 			const toolData = responseData as SetActiveTool;
 			if (toolData) this.activeTool = toolData.tool_name;
 		});
+		registerResponseHandler(ResponseType.SetZoom, (responseData: Response) => {
+			const updateData = responseData as SetZoom;
+			if (updateData) {
+				const zoomWidget = this.$refs.zoom as typeof NumberInput;
+				zoomWidget.setValue(updateData.new_zoom * 100);
+			}
+		});
+		registerResponseHandler(ResponseType.SetRotation, (responseData: Response) => {
+			const updateData = responseData as SetRotation;
+			if (updateData) {
+				const rotationWidget = this.$refs.rotation as typeof NumberInput;
+				const newRotation = updateData.new_radians * (180 / Math.PI);
+				rotationWidget.setValue((360 + (newRotation % 360)) % 360);
+			}
+		});
 
 		window.addEventListener("keyup", (e: KeyboardEvent) => this.keyUp(e));
+		const canvas = this.$refs.canvas as HTMLDivElement;
+		canvas.addEventListener("wheel", this.canvasMouseScroll, { passive: false });
 		window.addEventListener("keydown", (e: KeyboardEvent) => this.keyDown(e));
+		window.addEventListener("resize", () => this.viewportResize());
+		window.addEventListener("DOMContentLoaded", () => this.viewportResize());
 
 		this.$watch("viewModeIndex", this.viewModeChanged);
 	},
