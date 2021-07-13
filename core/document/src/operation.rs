@@ -1,4 +1,5 @@
 use crate::{
+	color::Color,
 	layers::{style, Layer},
 	LayerId,
 };
@@ -66,5 +67,9 @@ pub enum Operation {
 	CommitTransaction,
 	ToggleVisibility {
 		path: Vec<LayerId>,
+	},
+	FillLayer {
+		path: Vec<LayerId>,
+		color: Color,
 	},
 }

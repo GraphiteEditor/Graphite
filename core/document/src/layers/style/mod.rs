@@ -56,6 +56,9 @@ impl PathStyle {
 	pub fn new(stroke: Option<Stroke>, fill: Option<Fill>) -> Self {
 		Self { stroke, fill }
 	}
+	pub fn set_fill(&mut self, fill: Option<Fill>) {
+		self.fill = fill;
+	}
 	pub fn render(&self) -> String {
 		format!(
 			"{}{}",

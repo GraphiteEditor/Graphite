@@ -354,6 +354,14 @@ impl Document {
 				let path = path.as_slice()[..path.len() - 1].to_vec();
 				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::FolderChanged { path }])
 			}
+			Operation::FillLayer { path, color } => {
+				if let Ok(layer) = self.layer_mut(path) {
+					layer.style.set_fill(Some(layers::style::Fill::new(*color)));
+					layer.cache_dirty = true;
+				}
+				self.root.cache_dirty = true;
+				Some(vec![DocumentResponse::DocumentChanged])
+			}
 		};
 		if !matches!(
 			operation,

@@ -108,7 +108,7 @@
 					<Separator :type="SeparatorType.Section" :direction="SeparatorDirection.Vertical" />
 
 					<ShelfItem :icon="'TextTool'" title="Text Tool (T)" :active="activeTool === 'Text'" @click="'tool not implemented' || selectTool('Text')" />
-					<ShelfItem :icon="'FillTool'" title="Fill Tool (F)" :active="activeTool === 'Fill'" @click="'tool not implemented' || selectTool('Fill')" />
+					<ShelfItem :icon="'FillTool'" title="Fill Tool (F)" :active="activeTool === 'Fill'" @click="selectTool('Fill')" />
 					<ShelfItem :icon="'GradientTool'" title="Gradient Tool (H)" :active="activeTool === 'Gradient'" @click="'tool not implemented' || selectTool('Gradient')" />
 
 					<Separator :type="SeparatorType.Section" :direction="SeparatorDirection.Vertical" />

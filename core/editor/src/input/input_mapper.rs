@@ -162,6 +162,8 @@ impl Default for Mapping {
 			entry! {action=PenMessage::Confirm, key_down=Rmb},
 			entry! {action=PenMessage::Confirm, key_down=KeyEscape},
 			entry! {action=PenMessage::Confirm, key_down=KeyEnter},
+			// Fill
+			entry! {action=FillMessage::MouseDown, key_down=Lmb},
 			// Tool Actions
 			entry! {action=ToolMessage::SelectTool(ToolType::Rectangle), key_down=KeyM},
 			entry! {action=ToolMessage::SelectTool(ToolType::Ellipse), key_down=KeyE},
