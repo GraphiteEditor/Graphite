@@ -458,7 +458,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				let mouse = ipp.mouse.position.to_dvec2(); // ipp.viewport_size.to_dvec2();
 				let viewport_size = ipp.viewport_size.to_dvec2();
 				let mut zoom_factor = 1. + scroll.abs() / WHEEL_ZOOM_DIVISOR;
-				if ipp.mouse.scroll_delta.y < 0 {
+				if ipp.mouse.scroll_delta.y > 0 {
 					zoom_factor = 1. / zoom_factor
 				};
 				let new_viewport_size = viewport_size * (1. / zoom_factor);
