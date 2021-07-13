@@ -165,6 +165,7 @@ impl Default for Mapping {
 			// Fill
 			entry! {action=FillMessage::MouseDown, key_down=Lmb},
 			// Tool Actions
+			entry! {action=ToolMessage::SelectTool(ToolType::Fill), key_down=KeyF},
 			entry! {action=ToolMessage::SelectTool(ToolType::Rectangle), key_down=KeyM},
 			entry! {action=ToolMessage::SelectTool(ToolType::Ellipse), key_down=KeyE},
 			entry! {action=ToolMessage::SelectTool(ToolType::Select), key_down=KeyV},
