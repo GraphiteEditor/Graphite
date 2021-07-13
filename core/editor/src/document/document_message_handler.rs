@@ -42,6 +42,8 @@ pub enum DocumentMessage {
 	TranslateCanvasBegin,
 	WheelCanvasTranslate { use_y_as_x: bool },
 	RotateCanvasBegin { snap: bool },
+	EnableSnapping,
+	DisableSnapping,
 	ZoomCanvasBegin,
 	TranslateCanvasEnd,
 	SetCanvasZoom(f64),
@@ -69,6 +71,7 @@ pub struct DocumentMessageHandler {
 	translating: bool,
 	rotating: bool,
 	zooming: bool,
+	snapping: bool,
 	mouse_pos: ViewportPosition,
 	copy_buffer: Vec<Layer>,
 }
@@ -165,6 +168,7 @@ impl Default for DocumentMessageHandler {
 			translating: false,
 			rotating: false,
 			zooming: false,
+			snapping: false,
 			mouse_pos: ViewportPosition::default(),
 			copy_buffer: vec![],
 		}
@@ -383,13 +387,16 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				self.translating = true;
 				self.mouse_pos = ipp.mouse.position;
 			}
+
 			RotateCanvasBegin { snap } => {
 				self.rotating = true;
+				self.snapping = snap;
 				let layerdata = self.layerdata_mut(&vec![]);
-				// TODO: Set up the input system to allow the addition of the Shift key to begin snapping while rotating without snapping
 				layerdata.snap_rotate = snap;
 				self.mouse_pos = ipp.mouse.position;
 			}
+			EnableSnapping => self.snapping = true,
+			DisableSnapping => self.snapping = false,
 			ZoomCanvasBegin => {
 				self.zooming = true;
 				self.mouse_pos = ipp.mouse.position;
@@ -419,8 +426,10 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 						start_vec.angle_between(end_vec)
 					};
 
+					let snapping = self.snapping;
 					let layerdata = self.layerdata_mut(&vec![]);
 					layerdata.rotation += rotation;
+					layerdata.snap_rotate = snapping;
 					responses.push_back(
 						FrontendMessage::SetRotation {
 							new_radians: layerdata.snapped_angle(),
@@ -504,10 +513,16 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 		}
 	}
 	fn actions(&self) -> ActionList {
+		let mut common = actions!(DocumentMessageDiscriminant; Undo, SelectAllLayers, DeselectAllLayers, RenderDocument, ExportDocument, NewDocument, CloseActiveDocument, NextDocument, PrevDocument, MouseMove, TranslateCanvasEnd, TranslateCanvasBegin, PasteLayers, RotateCanvasBegin, ZoomCanvasBegin, SetCanvasZoom, MultiplyCanvasZoom, SetRotation, WheelCanvasZoom, WheelCanvasTranslate);
+
 		if self.active_document().layer_data.values().any(|data| data.selected) {
-			actions!(DocumentMessageDiscriminant; Undo, SelectAllLayers, DeselectAllLayers, DeleteSelectedLayers, DuplicateSelectedLayers, RenderDocument, ExportDocument, NewDocument, CloseActiveDocument, NextDocument, PrevDocument, MouseMove, TranslateCanvasEnd, TranslateCanvasBegin, CopySelectedLayers, PasteLayers, NudgeSelectedLayers, RotateCanvasBegin, ZoomCanvasBegin, SetCanvasZoom, MultiplyCanvasZoom, SetRotation, WheelCanvasZoom, WheelCanvasTranslate)
-		} else {
-			actions!(DocumentMessageDiscriminant; Undo, SelectAllLayers, DeselectAllLayers, RenderDocument, ExportDocument, NewDocument, CloseActiveDocument, NextDocument, PrevDocument, MouseMove, TranslateCanvasEnd, TranslateCanvasBegin, PasteLayers, RotateCanvasBegin, ZoomCanvasBegin, SetCanvasZoom, MultiplyCanvasZoom, SetRotation, WheelCanvasZoom, WheelCanvasTranslate)
+			let select = actions!(DocumentMessageDiscriminant;  DeleteSelectedLayers, DuplicateSelectedLayers,  CopySelectedLayers,  NudgeSelectedLayers );
+			common.extend(select);
 		}
+		if self.rotating {
+			let snapping = actions!(DocumentMessageDiscriminant;  EnableSnapping, DisableSnapping);
+			common.extend(snapping);
+		}
+		common
 	}
 }
