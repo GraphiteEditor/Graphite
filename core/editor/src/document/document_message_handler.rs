@@ -40,8 +40,7 @@ pub enum DocumentMessage {
 	Undo,
 	MouseMove,
 	TranslateCanvasBegin,
-	WheelCanvasTranslate,
-	WheelCanvasTranslateHorizontal,
+	WheelCanvasTranslate{use_y_as_x: bool},
 	RotateCanvasBegin { snap: bool },
 	ZoomCanvasBegin,
 	TranslateCanvasEnd,
@@ -456,10 +455,10 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			}
 			WheelCanvasZoom => {
 				let scroll = ipp.mouse.scroll_delta.scroll_delta();
-				let amount = if ipp.mouse.scroll_delta.y > 0 {
-					1. + scroll / -WHEEL_ZOOM_DIVISOR
-				} else {
-					1. / (1. + scroll / WHEEL_ZOOM_DIVISOR)
+				let mous_position = ipp.mouse.position;
+                let mut amount = 1. + scroll / WHEEL_ZOOM_DIVISOR.abs();
+				if ipp.mouse.scroll_delta.y < 0 {
+					amount = 1. / amount
 				};
 				let layerdata = self.layerdata_mut(&vec![]);
 				let new = (layerdata.scale * amount).clamp(VIEWPORT_ZOOM_SCALE_MIN, VIEWPORT_ZOOM_SCALE_MAX);
@@ -467,15 +466,11 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				responses.push_back(FrontendMessage::SetCanvasZoom { new_zoom: layerdata.scale }.into());
 				self.create_document_transform_from_layerdata(&ipp.viewport_size, responses);
 			}
-			WheelCanvasTranslate => {
-				let delta = -ipp.mouse.scroll_delta.to_dvec2();
-				let transformed_delta = self.active_document().document.root.transform.inverse().transform_vector2(delta);
-				let layerdata = self.layerdata_mut(&vec![]);
-				layerdata.translation += transformed_delta;
-				self.create_document_transform_from_layerdata(&ipp.viewport_size, responses);
-			}
-			WheelCanvasTranslateHorizontal => {
-				let delta = (-ipp.mouse.scroll_delta.y as f64, 0.).into();
+			WheelCanvasTranslate{use_y_as_x} => {
+				let delta = match use_y_as_x {
+                    false => -ipp.mouse.scroll_delta.to_dvec2(),
+				    true => (-ipp.mouse.scroll_delta.y as f64, 0.).into()
+                };
 				let transformed_delta = self.active_document().document.root.transform.inverse().transform_vector2(delta);
 				let layerdata = self.layerdata_mut(&vec![]);
 				layerdata.translation += transformed_delta;
@@ -502,9 +497,9 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 	}
 	fn actions(&self) -> ActionList {
 		if self.active_document().layer_data.values().any(|data| data.selected) {
-			actions!(DocumentMessageDiscriminant; Undo, SelectAllLayers, DeselectAllLayers, DeleteSelectedLayers, DuplicateSelectedLayers, RenderDocument, ExportDocument, NewDocument, CloseActiveDocument, NextDocument, PrevDocument, MouseMove, TranslateCanvasEnd, TranslateCanvasBegin, CopySelectedLayers, PasteLayers, NudgeSelectedLayers, RotateCanvasBegin, ZoomCanvasBegin, SetCanvasZoom, MultiplyCanvasZoom, SetRotation, WheelCanvasZoom, WheelCanvasTranslate, WheelCanvasTranslateHorizontal)
+			actions!(DocumentMessageDiscriminant; Undo, SelectAllLayers, DeselectAllLayers, DeleteSelectedLayers, DuplicateSelectedLayers, RenderDocument, ExportDocument, NewDocument, CloseActiveDocument, NextDocument, PrevDocument, MouseMove, TranslateCanvasEnd, TranslateCanvasBegin, CopySelectedLayers, PasteLayers, NudgeSelectedLayers, RotateCanvasBegin, ZoomCanvasBegin, SetCanvasZoom, MultiplyCanvasZoom, SetRotation, WheelCanvasZoom, WheelCanvasTranslate)
 		} else {
-			actions!(DocumentMessageDiscriminant; Undo, SelectAllLayers, DeselectAllLayers, RenderDocument, ExportDocument, NewDocument, CloseActiveDocument, NextDocument, PrevDocument, MouseMove, TranslateCanvasEnd, TranslateCanvasBegin, PasteLayers, RotateCanvasBegin, ZoomCanvasBegin, SetCanvasZoom, MultiplyCanvasZoom, SetRotation, WheelCanvasZoom, WheelCanvasTranslate, WheelCanvasTranslateHorizontal)
+			actions!(DocumentMessageDiscriminant; Undo, SelectAllLayers, DeselectAllLayers, RenderDocument, ExportDocument, NewDocument, CloseActiveDocument, NextDocument, PrevDocument, MouseMove, TranslateCanvasEnd, TranslateCanvasBegin, PasteLayers, RotateCanvasBegin, ZoomCanvasBegin, SetCanvasZoom, MultiplyCanvasZoom, SetRotation, WheelCanvasZoom, WheelCanvasTranslate)
 		}
 	}
 }
