@@ -20,7 +20,7 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Fill {
 			glam::DVec2::new(mouse_pos.x as f64 - 1., mouse_pos.y as f64 + 1.),
 			glam::DVec2::new(mouse_pos.x as f64 + 1., mouse_pos.y as f64 + 1.),
 		];
-		if let Some(path) = data.0.intersects_quad_root(quad).get(0) {
+		if let Some(path) = data.0.intersects_quad_root(quad).last() {
 			responses.push_back(
 				Operation::FillLayer {
 					path: path.to_vec(),
