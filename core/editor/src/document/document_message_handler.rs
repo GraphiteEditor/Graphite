@@ -111,7 +111,7 @@ impl DocumentMessageHandler {
 		let layerdata = self.layerdata(&path);
 		responses.push_back(
 			DocumentOperation::SetLayerTransform {
-				path: path,
+				path,
 				transform: layerdata.calculate_transform().to_cols_array(),
 			}
 			.into(),
@@ -455,14 +455,22 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			}
 			WheelCanvasZoom => {
 				let scroll = ipp.mouse.scroll_delta.scroll_delta();
-				let mous_position = ipp.mouse.position;
-                let mut amount = 1. + scroll / WHEEL_ZOOM_DIVISOR.abs();
+				let mouse = ipp.mouse.position.to_dvec2(); // ipp.viewport_size.to_dvec2();
+                let viewport_size = ipp.viewport_size.to_dvec2();
+                let mut zoom_factor = 1. + scroll.abs() / WHEEL_ZOOM_DIVISOR;
 				if ipp.mouse.scroll_delta.y < 0 {
-					amount = 1. / amount
+					zoom_factor = 1. / zoom_factor
 				};
+                let new_viewport_size = viewport_size * (1./zoom_factor);
+                let delta_size = ( viewport_size - new_viewport_size);
+                let mouse_percent = mouse / viewport_size;
+                let delta = delta_size * -2. * (mouse_percent - (0.5, 0.5).into());
+
+				let transformed_delta = self.active_document().document.root.transform.inverse().transform_vector2(delta);
 				let layerdata = self.layerdata_mut(&vec![]);
-				let new = (layerdata.scale * amount).clamp(VIEWPORT_ZOOM_SCALE_MIN, VIEWPORT_ZOOM_SCALE_MAX);
+				let new = (layerdata.scale * zoom_factor).clamp(VIEWPORT_ZOOM_SCALE_MIN, VIEWPORT_ZOOM_SCALE_MAX);
 				layerdata.scale = new;
+				layerdata.translation += transformed_delta;
 				responses.push_back(FrontendMessage::SetCanvasZoom { new_zoom: layerdata.scale }.into());
 				self.create_document_transform_from_layerdata(&ipp.viewport_size, responses);
 			}
