@@ -316,6 +316,13 @@ impl Document {
 				self.root.cache_dirty = true;
 				Some(vec![DocumentResponse::DocumentChanged])
 			}
+			Operation::SetLayerTransform { path, transform } => {
+				let transform = DAffine2::from_cols_array(&transform);
+				let layer = self.document_layer_mut(path).unwrap();
+				layer.transform = transform;
+				layer.cache_dirty = true;
+				Some(vec![DocumentResponse::DocumentChanged])
+			}
 			Operation::DiscardWorkingFolder => {
 				self.work_operations.clear();
 				self.work_mount_path = vec![];

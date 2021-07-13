@@ -1,3 +1,4 @@
+use crate::consts::{MINUS_KEY_ZOOM_RATE, PLUS_KEY_ZOOM_RATE};
 use crate::message_prelude::*;
 use crate::tool::ToolType;
 
@@ -13,6 +14,7 @@ const SHIFT_NUDGE_AMOUNT: f64 = 10.;
 #[derive(PartialEq, Clone, Debug)]
 pub enum InputMapperMessage {
 	PointerMove,
+	MouseScroll,
 	KeyUp(Key),
 	KeyDown(Key),
 }
@@ -62,6 +64,7 @@ struct Mapping {
 	up: [KeyMappingEntries; NUMBER_OF_KEYS],
 	down: [KeyMappingEntries; NUMBER_OF_KEYS],
 	pointer_move: KeyMappingEntries,
+	mouse_scroll: KeyMappingEntries,
 }
 
 macro_rules! modifiers {
@@ -91,22 +94,26 @@ macro_rules! mapping {
 		let mut up =  KeyMappingEntries::key_array();
 		let mut down = KeyMappingEntries::key_array();
 		let mut pointer_move: KeyMappingEntries = Default::default();
+		let mut mouse_scroll: KeyMappingEntries = Default::default();
 		$(
 			let arr = match $entry.trigger {
 				InputMapperMessage::KeyDown(key) => &mut down[key as usize],
 				InputMapperMessage::KeyUp(key) => &mut up[key as usize],
 				InputMapperMessage::PointerMove => &mut pointer_move,
+				InputMapperMessage::MouseScroll => &mut mouse_scroll,
 			};
 			arr.push($entry);
 		)*
-		(up, down, pointer_move)
+		(up, down, pointer_move, mouse_scroll)
 	}};
 }
 
 impl Default for Mapping {
 	fn default() -> Self {
-		let (up, down, pointer_move) = mapping![
+		let (up, down, pointer_move, mouse_scroll) = mapping![
 			entry! {action=DocumentMessage::PasteLayers, key_down=KeyV, modifiers=[KeyControl]},
+			entry! {action=DocumentMessage::EnableSnapping, key_down=KeyShift},
+			entry! {action=DocumentMessage::DisableSnapping, key_up=KeyShift},
 			// Select
 			entry! {action=SelectMessage::MouseMove, message=InputMapperMessage::PointerMove},
 			entry! {action=SelectMessage::DragStart, key_down=Lmb},
@@ -184,8 +191,19 @@ impl Default for Mapping {
 			entry! {action=DocumentMessage::ExportDocument, key_down=KeyS, modifiers=[KeyControl, KeyShift]},
 			entry! {action=DocumentMessage::ExportDocument, key_down=KeyE, modifiers=[KeyControl]},
 			entry! {action=DocumentMessage::MouseMove, message=InputMapperMessage::PointerMove},
-			entry! {action=DocumentMessage::TranslateDown, key_down=Mmb},
-			entry! {action=DocumentMessage::TranslateUp, key_up=Mmb},
+			entry! {action=DocumentMessage::RotateCanvasBegin{snap:false}, key_down=Mmb, modifiers=[KeyControl]},
+			entry! {action=DocumentMessage::RotateCanvasBegin{snap:true}, key_down=Mmb, modifiers=[KeyControl, KeyShift]},
+			entry! {action=DocumentMessage::ZoomCanvasBegin, key_down=Mmb, modifiers=[KeyShift]},
+			entry! {action=DocumentMessage::TranslateCanvasBegin, key_down=Mmb},
+			entry! {action=DocumentMessage::TranslateCanvasEnd, key_up=Mmb},
+			entry! {action=DocumentMessage::MultiplyCanvasZoom(PLUS_KEY_ZOOM_RATE), key_down=KeyPlus, modifiers=[KeyControl]},
+			entry! {action=DocumentMessage::MultiplyCanvasZoom(PLUS_KEY_ZOOM_RATE), key_down=KeyEquals, modifiers=[KeyControl]},
+			entry! {action=DocumentMessage::MultiplyCanvasZoom(MINUS_KEY_ZOOM_RATE), key_down=KeyMinus, modifiers=[KeyControl]},
+			entry! {action=DocumentMessage::SetCanvasZoom(1.), key_down=Key1, modifiers=[KeyControl]},
+			entry! {action=DocumentMessage::SetCanvasZoom(2.), key_down=Key2, modifiers=[KeyControl]},
+			entry! {action=DocumentMessage::WheelCanvasZoom, message=InputMapperMessage::MouseScroll, modifiers=[KeyControl]},
+			entry! {action=DocumentMessage::WheelCanvasTranslate{use_y_as_x: true}, message=InputMapperMessage::MouseScroll, modifiers=[KeyShift]},
+			entry! {action=DocumentMessage::WheelCanvasTranslate{use_y_as_x: false}, message=InputMapperMessage::MouseScroll},
 			entry! {action=DocumentMessage::NewDocument, key_down=KeyN, modifiers=[KeyShift]},
 			entry! {action=DocumentMessage::NextDocument, key_down=KeyTab, modifiers=[KeyShift]},
 			entry! {action=DocumentMessage::CloseActiveDocument, key_down=KeyW, modifiers=[KeyShift]},
@@ -220,7 +238,7 @@ impl Default for Mapping {
 			entry! {action=GlobalMessage::LogDebug, key_down=Key2},
 			entry! {action=GlobalMessage::LogTrace, key_down=Key3},
 		];
-		Self { up, down, pointer_move }
+		Self { up, down, pointer_move, mouse_scroll }
 	}
 }
 
@@ -231,6 +249,7 @@ impl Mapping {
 			KeyDown(key) => &self.down[key as usize],
 			KeyUp(key) => &self.up[key as usize],
 			PointerMove => &self.pointer_move,
+			MouseScroll => &self.mouse_scroll,
 		};
 		list.match_mapping(keys, actions)
 	}
