@@ -150,7 +150,7 @@ import Minimap from "../panels/Minimap.vue";
 import IconButton from "../widgets/buttons/IconButton.vue";
 import PopoverButton, { PopoverButtonIcon } from "../widgets/buttons/PopoverButton.vue";
 import { MenuDirection } from "../widgets/floating-menus/FloatingMenu.vue";
-import { ResponseType, registerResponseHandler, Response } from "../../response-handler";
+import { ResponseType, registerResponseHandler, Response } from "../../utilities/response-handler";
 
 const wasm = import("../../../wasm/pkg");
 
