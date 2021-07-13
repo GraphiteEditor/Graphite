@@ -112,6 +112,8 @@ impl Default for Mapping {
 	fn default() -> Self {
 		let (up, down, pointer_move, mouse_scroll) = mapping![
 			entry! {action=DocumentMessage::PasteLayers, key_down=KeyV, modifiers=[KeyControl]},
+			entry! {action=DocumentMessage::EnableSnapping, key_down=KeyShift},
+			entry! {action=DocumentMessage::DisableSnapping, key_up=KeyShift},
 			// Select
 			entry! {action=SelectMessage::MouseMove, message=InputMapperMessage::PointerMove},
 			entry! {action=SelectMessage::DragStart, key_down=Lmb},
@@ -186,8 +188,8 @@ impl Default for Mapping {
 			entry! {action=DocumentMessage::ExportDocument, key_down=KeyS, modifiers=[KeyControl, KeyShift]},
 			entry! {action=DocumentMessage::ExportDocument, key_down=KeyE, modifiers=[KeyControl]},
 			entry! {action=DocumentMessage::MouseMove, message=InputMapperMessage::PointerMove},
-			entry! {action=DocumentMessage::RotateCanvasBegin{snap:true}, key_down=Mmb, modifiers=[KeyControl, KeyShift]},
 			entry! {action=DocumentMessage::RotateCanvasBegin{snap:false}, key_down=Mmb, modifiers=[KeyControl]},
+			entry! {action=DocumentMessage::RotateCanvasBegin{snap:true}, key_down=Mmb, modifiers=[KeyControl, KeyShift]},
 			entry! {action=DocumentMessage::ZoomCanvasBegin, key_down=Mmb, modifiers=[KeyShift]},
 			entry! {action=DocumentMessage::TranslateCanvasBegin, key_down=Mmb},
 			entry! {action=DocumentMessage::TranslateCanvasEnd, key_up=Mmb},
