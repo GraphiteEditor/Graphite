@@ -197,6 +197,7 @@ impl Default for Mapping {
 			entry! {action=DocumentMessage::SetCanvasZoom(1.), key_down=Key1, modifiers=[KeyControl]},
 			entry! {action=DocumentMessage::SetCanvasZoom(2.), key_down=Key2, modifiers=[KeyControl]},
 			entry! {action=DocumentMessage::WheelCanvasZoom, message=InputMapperMessage::MouseScroll, modifiers=[KeyControl]},
+			entry! {action=DocumentMessage::WheelCanvasTranslateHorizontal, message=InputMapperMessage::MouseScroll, modifiers=[KeyShift]},
 			entry! {action=DocumentMessage::WheelCanvasTranslate, message=InputMapperMessage::MouseScroll},
 			entry! {action=DocumentMessage::NewDocument, key_down=KeyN, modifiers=[KeyShift]},
 			entry! {action=DocumentMessage::NextDocument, key_down=KeyTab, modifiers=[KeyShift]},

@@ -41,6 +41,7 @@ pub enum DocumentMessage {
 	MouseMove,
 	TranslateCanvasBegin,
 	WheelCanvasTranslate,
+	WheelCanvasTranslateHorizontal,
 	RotateCanvasBegin { snap: bool },
 	ZoomCanvasBegin,
 	TranslateCanvasEnd,
@@ -473,6 +474,13 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				layerdata.translation += transformed_delta;
 				self.create_document_transform_from_layerdata(&ipp.viewport_size, responses);
 			}
+			WheelCanvasTranslateHorizontal => {
+				let delta = (-ipp.mouse.scroll_delta.y as f64, 0.).into();
+				let transformed_delta = self.active_document().document.root.transform.inverse().transform_vector2(delta);
+				let layerdata = self.layerdata_mut(&vec![]);
+				layerdata.translation += transformed_delta;
+				self.create_document_transform_from_layerdata(&ipp.viewport_size, responses);
+			}
 			SetRotation(new) => {
 				let layerdata = self.layerdata_mut(&vec![]);
 				layerdata.rotation = new;
@@ -494,9 +502,9 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 	}
 	fn actions(&self) -> ActionList {
 		if self.active_document().layer_data.values().any(|data| data.selected) {
-			actions!(DocumentMessageDiscriminant; Undo, SelectAllLayers, DeselectAllLayers, DeleteSelectedLayers, DuplicateSelectedLayers, RenderDocument, ExportDocument, NewDocument, CloseActiveDocument, NextDocument, PrevDocument, MouseMove, TranslateCanvasEnd, TranslateCanvasBegin, CopySelectedLayers, PasteLayers, NudgeSelectedLayers, RotateCanvasBegin, ZoomCanvasBegin, SetCanvasZoom, MultiplyCanvasZoom, SetRotation, WheelCanvasZoom, WheelCanvasTranslate)
+			actions!(DocumentMessageDiscriminant; Undo, SelectAllLayers, DeselectAllLayers, DeleteSelectedLayers, DuplicateSelectedLayers, RenderDocument, ExportDocument, NewDocument, CloseActiveDocument, NextDocument, PrevDocument, MouseMove, TranslateCanvasEnd, TranslateCanvasBegin, CopySelectedLayers, PasteLayers, NudgeSelectedLayers, RotateCanvasBegin, ZoomCanvasBegin, SetCanvasZoom, MultiplyCanvasZoom, SetRotation, WheelCanvasZoom, WheelCanvasTranslate, WheelCanvasTranslateHorizontal)
 		} else {
-			actions!(DocumentMessageDiscriminant; Undo, SelectAllLayers, DeselectAllLayers, RenderDocument, ExportDocument, NewDocument, CloseActiveDocument, NextDocument, PrevDocument, MouseMove, TranslateCanvasEnd, TranslateCanvasBegin, PasteLayers, RotateCanvasBegin, ZoomCanvasBegin, SetCanvasZoom, MultiplyCanvasZoom, SetRotation, WheelCanvasZoom, WheelCanvasTranslate)
+			actions!(DocumentMessageDiscriminant; Undo, SelectAllLayers, DeselectAllLayers, RenderDocument, ExportDocument, NewDocument, CloseActiveDocument, NextDocument, PrevDocument, MouseMove, TranslateCanvasEnd, TranslateCanvasBegin, PasteLayers, RotateCanvasBegin, ZoomCanvasBegin, SetCanvasZoom, MultiplyCanvasZoom, SetRotation, WheelCanvasZoom, WheelCanvasTranslate, WheelCanvasTranslateHorizontal)
 		}
 	}
 }
