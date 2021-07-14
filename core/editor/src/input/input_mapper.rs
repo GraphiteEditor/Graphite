@@ -110,7 +110,7 @@ macro_rules! mapping {
 
 impl Default for Mapping {
 	fn default() -> Self {
-		let (up, down, pointer_move, mouse_scroll) = mapping![
+		let mappings = mapping![
 			entry! {action=DocumentMessage::PasteLayers, key_down=KeyV, modifiers=[KeyControl]},
 			entry! {action=DocumentMessage::EnableSnapping, key_down=KeyShift},
 			entry! {action=DocumentMessage::DisableSnapping, key_up=KeyShift},
@@ -235,6 +235,16 @@ impl Default for Mapping {
 			entry! {action=GlobalMessage::LogDebug, key_down=Key2},
 			entry! {action=GlobalMessage::LogTrace, key_down=Key3},
 		];
+
+		let (mut up, mut down, mut pointer_move, mut mouse_scroll) = mappings;
+		let sort = |list: &mut KeyMappingEntries|list.0.sort_by(|u, v| v.modifiers.ones().cmp(&u.modifiers.ones()));
+		for list in [&mut up, &mut down] {
+			for sublist in list {
+				sort(sublist);
+			}
+		}
+		sort(&mut pointer_move);
+		sort(&mut mouse_scroll);
 		Self { up, down, pointer_move, mouse_scroll }
 	}
 }
