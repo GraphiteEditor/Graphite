@@ -66,13 +66,13 @@
 </style>
 
 <script lang="ts">
-import { rgbToDecimalRgb } from "@/lib/utils";
+import { rgbToDecimalRgb } from "@/utilities/color";
 import { defineComponent } from "vue";
 import ColorPicker from "../floating-menus/ColorPicker.vue";
 import FloatingMenu, { MenuDirection, MenuType } from "../floating-menus/FloatingMenu.vue";
-import { ResponseType, registerResponseHandler, Response, UpdateWorkingColors } from "../../../response-handler";
+import { ResponseType, registerResponseHandler, Response, UpdateWorkingColors } from "../../../utilities/response-handler";
 
-const wasm = import("../../../../wasm/pkg");
+const wasm = import("@/../wasm/pkg");
 
 export default defineComponent({
 	components: {

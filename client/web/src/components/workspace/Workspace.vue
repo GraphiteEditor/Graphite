@@ -46,7 +46,7 @@
 
 <script lang="ts">
 import { defineComponent } from "vue";
-import { ResponseType, registerResponseHandler, Response, SetActiveDocument, NewDocument, CloseDocument } from "../../response-handler";
+import { ResponseType, registerResponseHandler, Response, SetActiveDocument, NewDocument, CloseDocument } from "../../utilities/response-handler";
 import LayoutRow from "../layout/LayoutRow.vue";
 import LayoutCol from "../layout/LayoutCol.vue";
 import Panel from "./Panel.vue";

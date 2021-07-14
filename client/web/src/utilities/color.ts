@@ -63,10 +63,6 @@ export function rgbToDecimalRgb(rgb: RGB) {
 	return { r, g, b, a: rgb.a };
 }
 
-export function clamp(value: number, min = 0, max = 1) {
-	return Math.max(min, Math.min(value, max));
-}
-
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function isRGB(data: any): data is RGB {
 	if (typeof data !== "object" || data === null) return false;

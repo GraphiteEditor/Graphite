@@ -30,7 +30,7 @@ fn send_response(response_type: String, response_data: FrontendMessage) {
 	let _ = handleResponse(response_type, response_data).map_err(|error| log::error!("javascript threw an error: {:?}", error));
 }
 
-#[wasm_bindgen(module = "/../src/response-handler.ts")]
+#[wasm_bindgen(module = "/../src/utilities/response-handler-binding.ts")]
 extern "C" {
 	#[wasm_bindgen(catch)]
 	fn handleResponse(responseType: String, responseData: JsValue) -> Result<(), JsValue>;

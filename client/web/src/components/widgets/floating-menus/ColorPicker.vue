@@ -118,7 +118,8 @@
 
 <script lang="ts">
 import { defineComponent } from "vue";
-import { clamp, hsvToRgb, rgbToHsv, isRGB } from "../../../lib/utils";
+import { hsvToRgb, rgbToHsv, isRGB } from "@/utilities/color";
+import { clamp } from "@/utilities/math";
 
 const enum ColorPickerState {
 	Idle = "Idle",
