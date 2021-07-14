@@ -86,11 +86,14 @@ import Link from "../../../../assets/12px-solid/link.svg";
 import Grid from "../../../../assets/12px-solid/grid.svg";
 import Overlays from "../../../../assets/12px-solid/overlays.svg";
 import Snapping from "../../../../assets/12px-solid/snapping.svg";
+import Info from "../../../../assets/12px-solid/info.svg";
 import Swap from "../../../../assets/12px-solid/swap.svg";
 import ResetColors from "../../../../assets/12px-solid/reset-colors.svg";
 import DropdownArrow from "../../../../assets/12px-solid/dropdown-arrow.svg";
 import VerticalEllipsis from "../../../../assets/12px-solid/vertical-ellipsis.svg";
 import CloseX from "../../../../assets/12px-solid/close-x.svg";
+import FullscreenEnter from "../../../../assets/12px-solid/fullscreen-enter.svg";
+import FullscreenExit from "../../../../assets/12px-solid/fullscreen-exit.svg";
 import WindowButtonWinMinimize from "../../../../assets/12px-solid/window-button-win-minimize.svg";
 import WindowButtonWinMaximize from "../../../../assets/12px-solid/window-button-win-maximize.svg";
 import WindowButtonWinRestoreDown from "../../../../assets/12px-solid/window-button-win-restore-down.svg";
@@ -164,11 +167,14 @@ const icons = {
 	Grid: { component: Grid, size: 12 },
 	Overlays: { component: Overlays, size: 12 },
 	Snapping: { component: Snapping, size: 12 },
+	Info: { component: Info, size: 12 },
 	Swap: { component: Swap, size: 12 },
 	ResetColors: { component: ResetColors, size: 12 },
 	DropdownArrow: { component: DropdownArrow, size: 12 },
 	VerticalEllipsis: { component: VerticalEllipsis, size: 12 },
 	CloseX: { component: CloseX, size: 12 },
+	FullscreenEnter: { component: FullscreenEnter, size: 12 },
+	FullscreenExit: { component: FullscreenExit, size: 12 },
 	WindowButtonWinMinimize: { component: WindowButtonWinMinimize, size: 12 },
 	WindowButtonWinMaximize: { component: WindowButtonWinMaximize, size: 12 },
 	WindowButtonWinRestoreDown: { component: WindowButtonWinRestoreDown, size: 12 },
