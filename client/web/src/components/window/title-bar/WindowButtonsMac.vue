@@ -20,15 +20,15 @@
 		border-radius: 50%;
 
 		&.close {
-			background: #ff5f57;
+			background: #ff5a52;
 		}
 
 		&.minimize {
-			background: #ffbd2f;
+			background: #e6c029;
 		}
 
 		&.zoom {
-			background: #29c93f;
+			background: #54c22b;
 		}
 	}
 }

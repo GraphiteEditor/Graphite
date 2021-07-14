@@ -65,13 +65,13 @@ const menuEntries: MenuListEntries = [
 		ref: undefined,
 		children: [
 			[
-				{ label: "New", icon: "File", shortcut: ["Ctrl", "N"], action: async () => (await wasm).new_document() },
+				{ label: "New", icon: "File", shortcut: ["Ctrl", "N"], shortcutRequiresLock: true, action: async () => (await wasm).new_document() },
 				{ label: "Open…", shortcut: ["Ctrl", "O"] },
 				{
 					label: "Open Recent",
 					shortcut: ["Ctrl", "⇧", "O"],
 					children: [
-						[{ label: "Reopen Last Closed", shortcut: ["Ctrl", "⇧", "T"] }, { label: "Clear Recently Opened" }],
+						[{ label: "Reopen Last Closed", shortcut: ["Ctrl", "⇧", "T"], shortcutRequiresLock: true }, { label: "Clear Recently Opened" }],
 						[
 							{ label: "Some Recent File.gdd" },
 							{ label: "Another Recent File.gdd" },
@@ -83,7 +83,7 @@ const menuEntries: MenuListEntries = [
 				},
 			],
 			[
-				{ label: "Close", shortcut: ["Ctrl", "W"], action: async () => (await wasm).close_active_document_with_confirmation() },
+				{ label: "Close", shortcut: ["Ctrl", "W"], shortcutRequiresLock: true, action: async () => (await wasm).close_active_document_with_confirmation() },
 				{ label: "Close All", shortcut: ["Ctrl", "Alt", "W"], action: async () => (await wasm).close_all_documents_with_confirmation() },
 			],
 			[
