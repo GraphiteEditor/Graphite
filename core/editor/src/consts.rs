@@ -10,3 +10,5 @@ pub const WHEEL_ZOOM_RATE: f64 = 1. / 600.;
 pub const MOUSE_ZOOM_RATE: f64 = 1. / 400.;
 
 pub const ROTATE_SNAP_INTERVAL: f64 = 15.;
+
+pub const SELECTION_TOLERANCE: f64 = 5.0;
