@@ -1,13 +1,13 @@
 use document_core::color::Color;
+use document_core::layers::style;
 use document_core::layers::style::Fill;
 use document_core::layers::style::Stroke;
-use document_core::layers::{style, SELECTION_TOLERANCE};
 use document_core::Operation;
 use glam::{DAffine2, DVec2};
 
 use crate::input::{mouse::ViewportPosition, InputPreprocessor};
 use crate::tool::{DocumentToolData, Fsm, ToolActionHandlerData};
-use crate::{message_prelude::*, SvgDocument};
+use crate::{consts::SELECTION_TOLERANCE, message_prelude::*, SvgDocument};
 
 #[derive(Default)]
 pub struct Select {

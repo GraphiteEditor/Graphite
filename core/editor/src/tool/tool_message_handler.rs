@@ -17,6 +17,8 @@ pub enum ToolMessage {
 	SwapColors,
 	ResetColors,
 	#[child]
+	Fill(FillMessage),
+	#[child]
 	Rectangle(RectangleMessage),
 	#[child]
 	Ellipse(EllipseMessage),
@@ -89,6 +91,7 @@ impl MessageHandler<ToolMessage, (&SvgDocument, &InputPreprocessor)> for ToolMes
 			}
 			message => {
 				let tool_type = match message {
+					Fill(_) => ToolType::Fill,
 					Rectangle(_) => ToolType::Rectangle,
 					Ellipse(_) => ToolType::Ellipse,
 					Shape(_) => ToolType::Shape,

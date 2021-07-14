@@ -23,8 +23,6 @@ use crate::LayerId;
 pub use folder::Folder;
 use serde::{Deserialize, Serialize};
 
-pub const SELECTION_TOLERANCE: f64 = 5.0;
-
 pub trait LayerData {
 	fn render(&mut self, svg: &mut String, transform: glam::DAffine2, style: style::PathStyle);
 	fn to_kurbo_path(&self, transform: glam::DAffine2, style: style::PathStyle) -> BezPath;
