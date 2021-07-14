@@ -1,4 +1,4 @@
-use crate::{frontend::FrontendMessageHandler, message_prelude::*, Callback, EditorError};
+use crate::{message_prelude::*, EditorError};
 
 pub use crate::document::DocumentMessageHandler;
 pub use crate::input::{InputMapper, InputPreprocessor};
@@ -8,13 +8,13 @@ use crate::global::GlobalMessageHandler;
 use std::collections::VecDeque;
 
 pub struct Dispatcher {
-	frontend_message_handler: FrontendMessageHandler,
 	input_preprocessor: InputPreprocessor,
 	input_mapper: InputMapper,
 	global_message_handler: GlobalMessageHandler,
 	tool_message_handler: ToolMessageHandler,
 	document_message_handler: DocumentMessageHandler,
 	messages: VecDeque<Message>,
+	pub responses: Vec<FrontendMessage>,
 }
 
 impl Dispatcher {
@@ -41,7 +41,7 @@ impl Dispatcher {
 			Tool(message) => self
 				.tool_message_handler
 				.process_action(message, (&self.document_message_handler.active_document().document, &self.input_preprocessor), &mut self.messages),
-			Frontend(message) => self.frontend_message_handler.process_action(message, (), &mut self.messages),
+			Frontend(message) => self.responses.push(message),
 			InputPreprocessor(message) => self.input_preprocessor.process_action(message, (), &mut self.messages),
 			InputMapper(message) => {
 				let actions = self.collect_actions();
@@ -57,7 +57,6 @@ impl Dispatcher {
 	pub fn collect_actions(&self) -> ActionList {
 		//TODO: reduce the number of heap allocations
 		let mut list = Vec::new();
-		list.extend(self.frontend_message_handler.actions());
 		list.extend(self.input_preprocessor.actions());
 		list.extend(self.input_mapper.actions());
 		list.extend(self.global_message_handler.actions());
@@ -66,15 +65,15 @@ impl Dispatcher {
 		list
 	}
 
-	pub fn new(callback: Callback) -> Dispatcher {
+	pub fn new() -> Dispatcher {
 		Dispatcher {
-			frontend_message_handler: FrontendMessageHandler::new(callback),
 			input_preprocessor: InputPreprocessor::default(),
 			global_message_handler: GlobalMessageHandler::new(),
 			input_mapper: InputMapper::default(),
 			document_message_handler: DocumentMessageHandler::default(),
 			tool_message_handler: ToolMessageHandler::default(),
 			messages: VecDeque::new(),
+			responses: vec![],
 		}
 	}
 }

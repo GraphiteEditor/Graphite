@@ -1,8 +1,9 @@
 use crate::message_prelude::*;
+use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 
 #[impl_message(Message, Global)]
-#[derive(PartialEq, Clone, Debug)]
+#[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub enum GlobalMessage {
 	LogInfo,
 	LogDebug,

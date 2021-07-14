@@ -12,9 +12,10 @@ use crate::document::Document;
 use std::collections::VecDeque;
 
 use super::LayerData;
+use serde::{Deserialize, Serialize};
 
 #[impl_message(Message, Document)]
-#[derive(PartialEq, Clone, Debug)]
+#[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub enum DocumentMessage {
 	DispatchOperation(DocumentOperation),
 	SelectLayers(Vec<Vec<LayerId>>),

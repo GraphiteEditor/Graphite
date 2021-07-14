@@ -26,9 +26,6 @@ pub use document_core::LayerId;
 #[doc(inline)]
 pub use document_core::document::Document as SvgDocument;
 
-#[doc(inline)]
-pub use frontend::Callback;
-
 use communication::dispatcher::Dispatcher;
 // TODO: serialize with serde to save the current editor state
 pub struct Editor {
@@ -38,14 +35,16 @@ pub struct Editor {
 use message_prelude::*;
 
 impl Editor {
-	pub fn new(callback: Callback) -> Self {
-		Self {
-			dispatcher: Dispatcher::new(callback),
-		}
+	pub fn new() -> Self {
+		Self { dispatcher: Dispatcher::new() }
 	}
 
-	pub fn handle_message<T: Into<Message>>(&mut self, message: T) -> Result<(), EditorError> {
-		self.dispatcher.handle_message(message)
+	pub fn handle_message<T: Into<Message>>(&mut self, message: T) -> Result<Vec<FrontendMessage>, EditorError> {
+		self.dispatcher.handle_message(message).map(|_| {
+			let mut responses = Vec::new();
+			std::mem::swap(&mut responses, &mut self.dispatcher.responses);
+			responses
+		})
 	}
 }
 

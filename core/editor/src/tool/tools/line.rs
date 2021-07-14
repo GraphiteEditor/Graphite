@@ -3,6 +3,7 @@ use crate::tool::{DocumentToolData, Fsm, ToolActionHandlerData};
 use crate::{message_prelude::*, SvgDocument};
 use document_core::{layers::style, Operation};
 use glam::{DAffine2, DVec2};
+use serde::{Deserialize, Serialize};
 
 use std::f64::consts::PI;
 
@@ -13,7 +14,7 @@ pub struct Line {
 }
 
 #[impl_message(Message, ToolMessage, Line)]
-#[derive(PartialEq, Clone, Debug)]
+#[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub enum LineMessage {
 	DragStart,
 	DragStop,

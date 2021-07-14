@@ -1,8 +1,9 @@
 use bitflags::bitflags;
 use glam::DVec2;
+use serde::{Deserialize, Serialize};
 
 // origin is top left
-#[derive(Debug, Copy, Clone, Default, Eq, PartialEq)]
+#[derive(Debug, Copy, Clone, Default, Eq, PartialEq, Serialize, Deserialize)]
 pub struct ViewportPosition {
 	pub x: u32,
 	pub y: u32,
@@ -19,7 +20,7 @@ impl ViewportPosition {
 	}
 }
 
-#[derive(Debug, Copy, Clone, Default, Eq, PartialEq)]
+#[derive(Debug, Copy, Clone, Default, Eq, PartialEq, Serialize, Deserialize)]
 pub struct ScrollDelta {
 	pub x: i32,
 	pub y: i32,
@@ -38,7 +39,7 @@ impl ScrollDelta {
 	}
 }
 
-#[derive(Debug, Copy, Clone, Default, Eq, PartialEq)]
+#[derive(Debug, Copy, Clone, Default, Eq, PartialEq, Serialize, Deserialize)]
 pub struct MouseState {
 	pub position: ViewportPosition,
 	pub mouse_keys: MouseKeys,
@@ -67,7 +68,7 @@ impl MouseState {
 	}
 }
 bitflags! {
-	#[derive(Default)]
+	#[derive(Default, Serialize, Deserialize)]
 	#[repr(transparent)]
 	pub struct MouseKeys: u8 {
 		const LEFT   = 0b0000_0001;

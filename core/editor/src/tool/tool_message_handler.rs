@@ -6,10 +6,11 @@ use crate::{
 	tool::{ToolFsmState, ToolType},
 	SvgDocument,
 };
+use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 
 #[impl_message(Message, Tool)]
-#[derive(PartialEq, Clone, Debug)]
+#[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub enum ToolMessage {
 	SelectTool(ToolType),
 	SelectPrimaryColor(Color),

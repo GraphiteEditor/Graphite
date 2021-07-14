@@ -3,6 +3,7 @@ use crate::tool::{DocumentToolData, Fsm, ToolActionHandlerData};
 use crate::{message_prelude::*, SvgDocument};
 use document_core::{layers::style, Operation};
 use glam::{DAffine2, DVec2};
+use serde::{Deserialize, Serialize};
 
 #[derive(Default)]
 pub struct Shape {
@@ -11,7 +12,7 @@ pub struct Shape {
 }
 
 #[impl_message(Message, ToolMessage, Shape)]
-#[derive(PartialEq, Clone, Debug)]
+#[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub enum ShapeMessage {
 	Undo,
 	DragStart,

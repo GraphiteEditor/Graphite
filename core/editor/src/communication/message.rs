@@ -1,5 +1,6 @@
 use crate::message_prelude::*;
 use graphite_proc_macros::*;
+use serde::{Deserialize, Serialize};
 
 pub trait AsMessage: TransitiveChild
 where
@@ -12,7 +13,7 @@ where
 }
 
 #[impl_message]
-#[derive(PartialEq, Clone, Debug)]
+#[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub enum Message {
 	NoOp,
 	#[child]

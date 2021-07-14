@@ -6,12 +6,13 @@ use super::{
 	keyboard::{Key, KeyStates, NUMBER_OF_KEYS},
 	InputPreprocessor,
 };
+use serde::{Deserialize, Serialize};
 
 const NUDGE_AMOUNT: f64 = 1.;
 const SHIFT_NUDGE_AMOUNT: f64 = 10.;
 
 #[impl_message(Message, InputMapper)]
-#[derive(PartialEq, Clone, Debug)]
+#[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub enum InputMapperMessage {
 	PointerMove,
 	MouseScroll,
