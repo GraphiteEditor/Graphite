@@ -116,6 +116,13 @@ impl<const LENGTH: usize> BitVector<LENGTH> {
 		}
 		result == 0
 	}
+	pub fn ones(&self) -> u32 {
+		let mut result = 0;
+		for storage in self.0.iter() {
+			result += storage.count_ones();
+		}
+		result
+	}
 }
 
 impl<const LENGTH: usize> Default for BitVector<LENGTH> {
