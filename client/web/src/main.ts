@@ -1,9 +1,11 @@
 import { createApp } from "vue";
+import { handleKeyUp, handleKeyDown } from "@/utilities/input";
 import App from "./App.vue";
-import { attachResponseHandlerToPage } from "./response-handler";
 
+// Bind global browser events
 document.addEventListener("contextmenu", (e) => e.preventDefault());
+window.addEventListener("keyup", (e: KeyboardEvent) => handleKeyUp(e));
+window.addEventListener("keydown", (e: KeyboardEvent) => handleKeyDown(e));
 
-attachResponseHandlerToPage();
-
+// Initialize the Vue application
 createApp(App).mount("#app");

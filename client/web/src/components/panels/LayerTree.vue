@@ -104,7 +104,7 @@
 
 <script lang="ts">
 import { defineComponent } from "vue";
-import { ResponseType, registerResponseHandler, Response, ExpandFolder, LayerPanelEntry } from "../../response-handler";
+import { ResponseType, registerResponseHandler, Response, ExpandFolder, LayerPanelEntry } from "../../utilities/response-handler";
 import LayoutRow from "../layout/LayoutRow.vue";
 import LayoutCol from "../layout/LayoutCol.vue";
 import Separator, { SeparatorType } from "../widgets/Separator.vue";

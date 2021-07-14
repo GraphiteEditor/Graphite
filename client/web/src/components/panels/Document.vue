@@ -192,7 +192,8 @@
 
 <script lang="ts">
 import { defineComponent } from "vue";
-import { ResponseType, registerResponseHandler, Response, UpdateCanvas, SetActiveTool, ExportDocument, SetCanvasZoom, SetRotation } from "../../response-handler";
+import { makeModifiersBitfield } from "@/utilities/input";
+import { ResponseType, registerResponseHandler, Response, UpdateCanvas, SetActiveTool, ExportDocument, SetCanvasZoom, SetRotation } from "../../utilities/response-handler";
 import LayoutRow from "../layout/LayoutRow.vue";
 import LayoutCol from "../layout/LayoutCol.vue";
 import WorkingColors from "../widgets/WorkingColors.vue";
@@ -216,26 +217,6 @@ const modeMenuEntries: SectionsOfMenuListEntries = [
 ];
 
 const wasm = import("../../../wasm/pkg");
-
-function redirectKeyboardEventToBackend(e: KeyboardEvent): boolean {
-	// Don't redirect user input from text entry into HTML elements
-	const target = e.target as HTMLElement;
-	if (target.nodeName === "INPUT" || target.nodeName === "TEXTAREA" || target.isContentEditable) return false;
-
-	// Don't redirect a fullscreen request
-	if (e.key.toLowerCase() === "f11") return false;
-
-	// Don't redirect debugging tools
-	if (e.key.toLowerCase() === "f12") return false;
-	if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === "c") return false;
-
-	return true;
-}
-
-function makeModifiersBitfield(control: boolean, shift: boolean, alt: boolean): number {
-	// eslint-disable-next-line no-bitwise
-	return Number(control) | (Number(shift) << 1) | (Number(alt) << 2);
-}
 
 export default defineComponent({
 	methods: {
@@ -273,28 +254,11 @@ export default defineComponent({
 			const { set_rotation } = await wasm;
 			set_rotation(newRotation * (Math.PI / 180));
 		},
-		async keyDown(e: KeyboardEvent) {
-			if (redirectKeyboardEventToBackend(e)) {
-				e.preventDefault();
-				const { on_key_down } = await wasm;
-				const modifiers = makeModifiersBitfield(e.ctrlKey, e.shiftKey, e.altKey);
-				on_key_down(e.key, modifiers);
-			}
-		},
-		async keyUp(e: KeyboardEvent) {
-			if (redirectKeyboardEventToBackend(e)) {
-				e.preventDefault();
-				const { on_key_up } = await wasm;
-				const modifiers = makeModifiersBitfield(e.ctrlKey, e.shiftKey, e.altKey);
-				on_key_up(e.key, modifiers);
-			}
-		},
 		async selectTool(toolName: string) {
 			const { select_tool } = await wasm;
 			select_tool(toolName);
 		},
 		async viewModeChanged(toolIndex: number) {
-			console.log(toolIndex);
 			function todo(_: number) {
 				return _;
 			}
@@ -341,10 +305,10 @@ export default defineComponent({
 			}
 		});
 
-		window.addEventListener("keyup", (e: KeyboardEvent) => this.keyUp(e));
+		// TODO: Move event listeners to `main.ts`
 		const canvas = this.$refs.canvas as HTMLDivElement;
 		canvas.addEventListener("wheel", this.canvasMouseScroll, { passive: false });
-		window.addEventListener("keydown", (e: KeyboardEvent) => this.keyDown(e));
+
 		window.addEventListener("resize", () => this.viewportResize());
 		window.addEventListener("DOMContentLoaded", () => this.viewportResize());
 

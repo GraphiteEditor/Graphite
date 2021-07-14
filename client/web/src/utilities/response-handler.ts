@@ -1,14 +1,15 @@
+import { reactive } from "vue";
+
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 type ResponseCallback = (responseData: Response) => void;
 type ResponseMap = {
 	[response: string]: ResponseCallback | undefined;
 };
-declare global {
-	interface Window {
-		responseMap: ResponseMap;
-	}
-}
+
+const state = reactive({
+	responseMap: {} as ResponseMap,
+});
 
 export enum ResponseType {
 	UpdateCanvas = "UpdateCanvas",
@@ -25,17 +26,13 @@ export enum ResponseType {
 	SetRotation = "SetRotation",
 }
 
-export function attachResponseHandlerToPage() {
-	window.responseMap = {};
-}
-
 export function registerResponseHandler(responseType: ResponseType, callback: ResponseCallback) {
-	window.responseMap[responseType] = callback;
+	state.responseMap[responseType] = callback;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function handleResponse(responseType: string, responseData: any) {
-	const callback = window.responseMap[responseType];
+	const callback = state.responseMap[responseType];
 	const data = parseResponse(responseType, responseData);
 
 	if (callback && data) {
@@ -97,6 +94,7 @@ export interface Color {
 	alpha: number;
 }
 function newColor(input: any): Color {
+	// TODO: Possibly change this in the Rust side to avoid any pitfalls
 	return { red: input.red * 255, green: input.green * 255, blue: input.blue * 255, alpha: input.alpha };
 }
 
