@@ -18,12 +18,12 @@ export enum ResponseType {
 	CollapseFolder = "CollapseFolder",
 	SetActiveTool = "SetActiveTool",
 	SetActiveDocument = "SetActiveDocument",
-	NewDocument = "NewDocument",
-	CloseDocument = "CloseDocument",
+	UpdateOpenDocumentsList = "UpdateOpenDocumentsList",
 	UpdateWorkingColors = "UpdateWorkingColors",
-	PromptCloseConfirmationModal = "PromptCloseConfirmationModal",
 	SetCanvasZoom = "SetCanvasZoom",
 	SetRotation = "SetRotation",
+	PromptConfirmationToCloseDocument = "PromptConfirmationToCloseDocument",
+	PromptConfirmationToCloseAllDocuments = "PromptConfirmationToCloseAllDocuments",
 }
 
 export function registerResponseHandler(responseType: ResponseType, callback: ResponseCallback) {
@@ -57,10 +57,8 @@ function parseResponse(responseType: string, data: any): Response {
 			return newSetActiveTool(data.SetActiveTool);
 		case "SetActiveDocument":
 			return newSetActiveDocument(data.SetActiveDocument);
-		case "NewDocument":
-			return newNewDocument(data.NewDocument);
-		case "CloseDocument":
-			return newCloseDocument(data.CloseDocument);
+		case "UpdateOpenDocumentsList":
+			return newUpdateOpenDocumentsList(data.UpdateOpenDocumentsList);
 		case "UpdateCanvas":
 			return newUpdateCanvas(data.UpdateCanvas);
 		case "SetCanvasZoom":
@@ -71,8 +69,10 @@ function parseResponse(responseType: string, data: any): Response {
 			return newExportDocument(data.ExportDocument);
 		case "UpdateWorkingColors":
 			return newUpdateWorkingColors(data.UpdateWorkingColors);
-		case "PromptCloseConfirmationModal":
-			return {};
+		case "PromptConfirmationToCloseDocument":
+			return newPromptConfirmationToCloseDocument(data.PromptConfirmationToCloseDocument);
+		case "PromptConfirmationToCloseAllDocuments":
+			return newPromptConfirmationToCloseAllDocuments(data.PromptConfirmationToCloseAllDocuments);
 		default:
 			throw new Error(`Unrecognized origin/responseType pair: ${origin}, '${responseType}'`);
 	}
@@ -80,11 +80,11 @@ function parseResponse(responseType: string, data: any): Response {
 
 export type Response = SetActiveTool | UpdateCanvas | DocumentChanged | CollapseFolder | ExpandFolder | UpdateWorkingColors | SetCanvasZoom | SetRotation;
 
-export interface CloseDocument {
-	document_index: number;
+export interface UpdateOpenDocumentsList {
+	open_documents: Array<string>;
 }
-function newCloseDocument(input: any): CloseDocument {
-	return { document_index: input.document_index };
+function newUpdateOpenDocumentsList(input: any): UpdateOpenDocumentsList {
+	return { open_documents: input.open_documents };
 }
 
 export interface Color {
@@ -127,13 +127,17 @@ function newSetActiveDocument(input: any): SetActiveDocument {
 	};
 }
 
-export interface NewDocument {
-	document_name: string;
+export interface PromptConfirmationToCloseDocument {
+	document_index: number;
 }
-function newNewDocument(input: any): NewDocument {
+function newPromptConfirmationToCloseDocument(input: any): PromptConfirmationToCloseDocument {
 	return {
-		document_name: input.document_name,
+		document_index: input.document_index,
 	};
+}
+
+function newPromptConfirmationToCloseAllDocuments(_input: any): {} {
+	return {};
 }
 
 export interface UpdateCanvas {
