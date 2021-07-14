@@ -56,10 +56,10 @@ impl PathStyle {
 	pub fn new(stroke: Option<Stroke>, fill: Option<Fill>) -> Self {
 		Self { stroke, fill }
 	}
-	pub fn get_fill(&self) -> Option<Fill> {
+	pub fn fill(&self) -> Option<Fill> {
 		self.fill
 	}
-	pub fn get_stroke(&self) -> Option<Stroke> {
+	pub fn stroke(&self) -> Option<Stroke> {
 		self.stroke
 	}
 	pub fn set_fill(&mut self, fill: Fill) {
