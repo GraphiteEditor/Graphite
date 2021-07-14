@@ -87,15 +87,16 @@ impl Socket {
 	fn handle_token(&mut self, name: String) -> Result<(), ServerError> {
 		match self.groups.lock() {
 			Ok(mut guard) => {
+                self.id = name.clone();
 				if !guard.contains_key(&name) {
 					let group = Group::new(name.clone())?;
 					self.group = group.sender.clone();
-					self.id = group.id();
 					guard.insert(name, group);
 				}
 
 				// panics if any thread panicked while using the mutex
 				let group = &mut self.group;
+                log::debug!("groups: {:#?}", *guard);
 				guard.get_mut(&self.id).unwrap().add_client(self.ws.clone()).map(|s| *group = s)
 			}
 			Err(e) => Err(ServerError::Group(format!("cold not add client {:?}  to group {}: {}", self.ws, name, e))),
@@ -120,7 +121,8 @@ fn handshake(req: &Request) -> (Response, Result<String, ServerError>) {
 		let token = protocols.iter().find(|pro| pro.starts_with("Token-"));
 		match token {
 			Some(token) => {
-				let (_, token) = token.split_at(6);
+				//let (_, token) = token.split_at(6);
+                res.headers_mut().push(("Sec-WebSocket-Protocol".to_string(), token.as_bytes().to_vec()));
 				(res, Ok(token.to_string()))
 			}
 			None => (

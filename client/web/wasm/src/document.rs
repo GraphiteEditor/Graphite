@@ -15,7 +15,10 @@ fn convert_error(err: editor_core::EditorError) -> JsValue {
 }
 
 fn dispatch<T: Into<Message>>(message: T) -> Result<(), JsValue> {
-	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(message).map(|responses| crate::handle_responses(responses)).map_err(convert_error))
+	crate::WEB_SOCKET.with(|ws| {
+		ws.borrow_mut().send_message(message.into());
+	});
+	Ok(())
 }
 
 /// Modify the currently selected tool in the document state store

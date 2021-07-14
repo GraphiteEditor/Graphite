@@ -14,7 +14,11 @@ use wasm_bindgen::JsCast;
 use web_sys::{ErrorEvent, MessageEvent, WebSocket};
 
 // the thread_local macro provides a way to initialize static variables with non-constant functions
-thread_local! { pub static EDITOR_STATE: RefCell<Editor> = {start(); RefCell::new(Editor::new())}}
+thread_local! {
+	pub static EDITOR_STATE: RefCell<Editor> =  RefCell::new(Editor::new());
+	pub static WEB_SOCKET: RefCell<WebSocketAdapter> = RefCell::new(WebSocketAdapter::new("wss://ws.graphite.kobert.dev"));
+
+}
 static LOGGER: WasmLog = WasmLog;
 
 #[wasm_bindgen(start)]
@@ -48,10 +52,7 @@ extern "C" {
 
 pub struct WebSocketAdapter {
 	ws: WebSocket,
-}
-
-fn start() {
-	let ws = WebSocketAdapter::new("ws://localhost:5001");
+    queue: VecDeque<Message>,
 }
 
 impl WebSocketAdapter {
@@ -91,7 +92,7 @@ impl WebSocketAdapter {
 		ws.set_onopen(Some(onopen_callback.as_ref().unchecked_ref()));
 		onopen_callback.forget();
 
-		WebSocketAdapter { ws }
+		WebSocketAdapter { ws, queue: VecDeque::default() }
 	}
 
 	/// Close the WebSocket connention
@@ -110,6 +111,15 @@ impl WebSocketAdapter {
 			_ => unreachable!(),
 		}
 		.unwrap()
+	}
+
+	pub fn send_message(&mut self, message: Message) {
+        self.queue.push_back(message);
+		if self.ws.ready_state() == 1 {
+            for message in self.queue.drain(..) {
+                self.ws.send_with_str(&serde_json::to_string(&message).unwrap());
+            }
+		}
 	}
 
 	/// Sends a `&mut [u8]` if the ws is in the ready state
@@ -131,7 +141,13 @@ impl WebSocketAdapter {
 		let data = e.data();
 		if data.is_string() {
 			let response = data.as_string().expect("Can't convert received data to a string");
-			log::debug!("message event, received data: {:?}", response);
+			//log::debug!("message event, received data: {:?}", response);
+			let parsed: Result<FrontendMessage, _> = serde_json::from_str(&response);
+			if let Ok(message) = parsed {
+                handle_response(message)
+			} else {
+				log::info!("Got message: {:?}", response);
+			}
 		} /*else {
 			 let blob: web_sys::Blob = data.into();
 			 let reader = FileReaderSync::new().unwrap();

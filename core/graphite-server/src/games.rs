@@ -4,7 +4,7 @@ use std::thread::JoinHandle;
 
 use crate::error::ServerError;
 use crate::group::{Message, SendGroup};
-use graphite_editor_core::message_prelude::*;
+use graphite_editor_core::message_prelude::{Message as GMessage, FrontendMessage};
 use graphite_editor_core::Editor;
 use log::{error, info};
 
@@ -60,15 +60,22 @@ impl Graphite {
 			let mut responses = Vec::new();
 			for message in messages.into_iter() {
 				if let Message::Data((ip, data)) = message {
-					let message: graphite_editor_core::message_prelude::Message = serde_json::from_str(&String::from_utf8(data).unwrap()).unwrap();
-					responses.extend(editor.handle_message(message));
+					let message = String::from_utf8(data).unwrap();
+					let parsed: Result<GMessage, _> = serde_json::from_str(&message);
+					if let Ok(message) = parsed {
+						responses.extend(editor.handle_message(message).unwrap());
+					} else {
+						info!("Got message: {:?}", message);
+					}
 				}
+			}
+			for response in responses.into_iter() {
+				self.users.iter().for_each(|u| {u.sender.send(serde_json::to_string(&response).unwrap());})
 			}
 			//game.handle_events(messages);
 			//game.tick();
 			//let b = game.get_broadcast()
 			//self.users.iter().foreach(|u| u.sender.send(b));
-			let messages = self.get_messages();
 			//thread::sleep(std::time::Duration::from_secs(5));
 		}
 		info!("thread killed itself");

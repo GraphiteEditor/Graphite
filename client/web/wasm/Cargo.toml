@@ -21,6 +21,7 @@ editor-core = { path = "../../../core/editor", package = "graphite-editor-core" 
 log = "0.4"
 serde = { version = "1.0", features = ["derive"] }
 wasm-bindgen = { version = "0.2.74", features = ["serde-serialize"] }
+serde_json = "*"
 js-sys = "0.3"
 
 [dependencies.web-sys]
