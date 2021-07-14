@@ -61,8 +61,8 @@ impl Default for KeyMappingEntries {
 
 #[derive(Debug, Clone)]
 struct Mapping {
-	up: [KeyMappingEntries; NUMBER_OF_KEYS],
-	down: [KeyMappingEntries; NUMBER_OF_KEYS],
+	key_up: [KeyMappingEntries; NUMBER_OF_KEYS],
+	key_down: [KeyMappingEntries; NUMBER_OF_KEYS],
 	pointer_move: KeyMappingEntries,
 	mouse_scroll: KeyMappingEntries,
 }
@@ -91,20 +91,20 @@ macro_rules! entry {
 macro_rules! mapping {
 	//[$(<action=$action:expr; message=$key:expr; $(modifiers=[$($m:ident),* $(,)?];)?>)*] => {{
 	[$($entry:expr),* $(,)?] => {{
-		let mut up =  KeyMappingEntries::key_array();
-		let mut down = KeyMappingEntries::key_array();
+		let mut key_up =  KeyMappingEntries::key_array();
+		let mut key_down = KeyMappingEntries::key_array();
 		let mut pointer_move: KeyMappingEntries = Default::default();
 		let mut mouse_scroll: KeyMappingEntries = Default::default();
 		$(
 			let arr = match $entry.trigger {
-				InputMapperMessage::KeyDown(key) => &mut down[key as usize],
-				InputMapperMessage::KeyUp(key) => &mut up[key as usize],
+				InputMapperMessage::KeyDown(key) => &mut key_down[key as usize],
+				InputMapperMessage::KeyUp(key) => &mut key_up[key as usize],
 				InputMapperMessage::PointerMove => &mut pointer_move,
 				InputMapperMessage::MouseScroll => &mut mouse_scroll,
 			};
 			arr.push($entry);
 		)*
-		(up, down, pointer_move, mouse_scroll)
+		(key_up, key_down, pointer_move, mouse_scroll)
 	}};
 }
 
@@ -248,7 +248,12 @@ impl Default for Mapping {
 		}
 		sort(&mut pointer_move);
 		sort(&mut mouse_scroll);
-		Self { up: key_up, down: key_down, pointer_move, mouse_scroll }
+		Self {
+			key_up,
+			key_down,
+			pointer_move,
+			mouse_scroll,
+		}
 	}
 }
 
@@ -256,8 +261,8 @@ impl Mapping {
 	fn match_message(&self, message: InputMapperMessage, keys: &KeyStates, actions: ActionList) -> Option<Message> {
 		use InputMapperMessage::*;
 		let list = match message {
-			KeyDown(key) => &self.down[key as usize],
-			KeyUp(key) => &self.up[key as usize],
+			KeyDown(key) => &self.key_down[key as usize],
+			KeyUp(key) => &self.key_up[key as usize],
 			PointerMove => &self.pointer_move,
 			MouseScroll => &self.mouse_scroll,
 		};
