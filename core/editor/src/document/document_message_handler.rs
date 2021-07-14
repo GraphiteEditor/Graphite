@@ -501,10 +501,16 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			}
 			NudgeSelectedLayers(x, y) => {
 				let paths: Vec<Vec<LayerId>> = self.selected_layers_sorted();
+
+				let delta = {
+					let neg_angle = -self.layerdata_mut(&vec![]).rotation;
+					let (cos, sin) = (neg_angle.cos(), neg_angle.sin());
+					DVec2::new(x * cos - y * sin, x * sin + y * cos)
+				};
 				for path in paths {
 					let operation = DocumentOperation::TransformLayer {
 						path,
-						transform: DAffine2::from_translation(DVec2::new(x, y)).to_cols_array(),
+						transform: DAffine2::from_translation(delta).to_cols_array(),
 					};
 					responses.push_back(operation.into());
 				}
