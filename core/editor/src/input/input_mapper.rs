@@ -237,7 +237,7 @@ impl Default for Mapping {
 		];
 
 		let (mut up, mut down, mut pointer_move, mut mouse_scroll) = mappings;
-		let sort = |list: &mut KeyMappingEntries|list.0.sort_by(|u, v| v.modifiers.ones().cmp(&u.modifiers.ones()));
+		let sort = |list: &mut KeyMappingEntries| list.0.sort_by(|u, v| v.modifiers.ones().cmp(&u.modifiers.ones()));
 		for list in [&mut up, &mut down] {
 			for sublist in list {
 				sort(sublist);
