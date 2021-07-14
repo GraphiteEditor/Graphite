@@ -12,7 +12,7 @@ pub enum FillMessage {
 }
 
 impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Fill {
-	fn process_action(&mut self, action: ToolMessage, data: ToolActionHandlerData<'a>, responses: &mut VecDeque<Message>) {
+	fn process_action(&mut self, _action: ToolMessage, data: ToolActionHandlerData<'a>, responses: &mut VecDeque<Message>) {
 		let mouse_pos = data.2.mouse.position;
 		let quad = [
 			glam::DVec2::new(mouse_pos.x as f64 - 1., mouse_pos.y as f64 - 1.),

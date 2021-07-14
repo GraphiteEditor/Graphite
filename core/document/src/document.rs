@@ -362,11 +362,10 @@ impl Document {
 				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::FolderChanged { path }])
 			}
 			Operation::FillLayer { path, color } => {
-				if let Ok(layer) = self.layer_mut(path) {
-					layer.style.set_fill(layers::style::Fill::new(*color));
-					layer.cache_dirty = true;
-				}
 				self.root.cache_dirty = true;
+				let layer = self.layer_mut(path).unwrap();
+				layer.style.set_fill(layers::style::Fill::new(*color));
+				layer.cache_dirty = true;
 				Some(vec![DocumentResponse::DocumentChanged])
 			}
 		};
