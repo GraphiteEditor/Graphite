@@ -83,8 +83,8 @@ const menuEntries: MenuListEntries = [
 				},
 			],
 			[
-				{ label: "Close", shortcut: ["Ctrl", "W"] },
-				{ label: "Close All", shortcut: ["Ctrl", "Alt", "W"] },
+				{ label: "Close", shortcut: ["Ctrl", "W"], action: async () => (await wasm).close_active_document_with_confirmation() },
+				{ label: "Close All", shortcut: ["Ctrl", "Alt", "W"], action: async () => (await wasm).close_all_documents_with_confirmation() },
 			],
 			[
 				{ label: "Save", shortcut: ["Ctrl", "S"] },
@@ -154,6 +154,7 @@ export default defineComponent({
 			window.open("https://www.graphite.design", "_blank");
 		},
 		actionNotImplemented() {
+			// eslint-disable-next-line no-alert
 			alert("This action is not yet implemented");
 		},
 	},

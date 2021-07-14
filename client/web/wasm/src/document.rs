@@ -29,13 +29,28 @@ pub fn select_document(document: usize) -> Result<(), JsValue> {
 }
 
 #[wasm_bindgen]
+pub fn new_document() -> Result<(), JsValue> {
+	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(DocumentMessage::NewDocument).map_err(convert_error))
+}
+
+#[wasm_bindgen]
 pub fn close_document(document: usize) -> Result<(), JsValue> {
 	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(DocumentMessage::CloseDocument(document)).map_err(convert_error))
 }
 
 #[wasm_bindgen]
-pub fn new_document() -> Result<(), JsValue> {
-	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(DocumentMessage::NewDocument).map_err(convert_error))
+pub fn close_all_documents() -> Result<(), JsValue> {
+	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(DocumentMessage::CloseAllDocuments).map_err(convert_error))
+}
+
+#[wasm_bindgen]
+pub fn close_active_document_with_confirmation() -> Result<(), JsValue> {
+	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(DocumentMessage::CloseActiveDocumentWithConfirmation).map_err(convert_error))
+}
+
+#[wasm_bindgen]
+pub fn close_all_documents_with_confirmation() -> Result<(), JsValue> {
+	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(DocumentMessage::CloseAllDocumentsWithConfirmation).map_err(convert_error))
 }
 
 // TODO: Call event when the panels are resized
@@ -196,7 +211,7 @@ pub fn toggle_layer_expansion(path: Vec<LayerId>) -> Result<(), JsValue> {
 		.map_err(convert_error)
 }
 
-///  Renames a layer from the layer list
+/// Renames a layer from the layer list
 #[wasm_bindgen]
 pub fn rename_layer(path: Vec<LayerId>, new_name: String) -> Result<(), JsValue> {
 	EDITOR_STATE
@@ -204,7 +219,7 @@ pub fn rename_layer(path: Vec<LayerId>, new_name: String) -> Result<(), JsValue>
 		.map_err(convert_error)
 }
 
-///  Deletes a layer from the layer list
+/// Deletes a layer from the layer list
 #[wasm_bindgen]
 pub fn delete_layer(path: Vec<LayerId>) -> Result<(), JsValue> {
 	EDITOR_STATE
@@ -212,7 +227,7 @@ pub fn delete_layer(path: Vec<LayerId>) -> Result<(), JsValue> {
 		.map_err(convert_error)
 }
 
-///  Requests the backend to add a layer to the layer list
+/// Requests the backend to add a layer to the layer list
 #[wasm_bindgen]
 pub fn add_folder(path: Vec<LayerId>) -> Result<(), JsValue> {
 	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(DocumentMessage::AddFolder(path))).map_err(convert_error)

@@ -46,7 +46,7 @@
 
 <script lang="ts">
 import { defineComponent } from "vue";
-import { ResponseType, registerResponseHandler, Response, SetActiveDocument, NewDocument, CloseDocument } from "../../utilities/response-handler";
+import { ResponseType, registerResponseHandler, Response, SetActiveDocument, UpdateOpenDocumentsList } from "../../utilities/response-handler";
 import LayoutRow from "../layout/LayoutRow.vue";
 import LayoutCol from "../layout/LayoutCol.vue";
 import Panel from "./Panel.vue";
@@ -59,15 +59,10 @@ export default defineComponent({
 	},
 
 	mounted() {
-		registerResponseHandler(ResponseType.NewDocument, (responseData: Response) => {
-			const documentData = responseData as NewDocument;
-			if (documentData) this.documents.push(documentData.document_name);
-		});
-
-		registerResponseHandler(ResponseType.CloseDocument, (responseData: Response) => {
-			const documentData = responseData as CloseDocument;
-			if (documentData) {
-				this.documents.splice(documentData.document_index, 1);
+		registerResponseHandler(ResponseType.UpdateOpenDocumentsList, (responseData: Response) => {
+			const documentListData = responseData as UpdateOpenDocumentsList;
+			if (documentListData) {
+				this.documents = documentListData.open_documents;
 			}
 		});
 
@@ -80,7 +75,7 @@ export default defineComponent({
 	data() {
 		return {
 			activeDocument: 0,
-			documents: ["Untitled Document"],
+			documents: ["Untitled Document"], // TODO: start as an empty list
 		};
 	},
 });
