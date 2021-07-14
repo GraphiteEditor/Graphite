@@ -1,12 +1,12 @@
 use crate::{consts::ROTATE_SNAP_INTERVAL, frontend::layer_panel::*, EditorError};
-use document_core::{document::Document as InteralDocument, layers::Layer, LayerId};
+use document_core::{document::Document as InternalDocument, layers::Layer, LayerId};
 use glam::{DAffine2, DVec2};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 #[derive(Clone, Debug)]
 pub struct Document {
-	pub document: InteralDocument,
+	pub document: InternalDocument,
 	pub name: String,
 	pub layer_data: HashMap<Vec<LayerId>, LayerData>,
 }
@@ -14,7 +14,7 @@ pub struct Document {
 impl Default for Document {
 	fn default() -> Self {
 		Self {
-			document: InteralDocument::default(),
+			document: InternalDocument::default(),
 			name: String::from("Untitled Document"),
 			layer_data: vec![(vec![], LayerData::new(true))].into_iter().collect(),
 		}
@@ -24,7 +24,7 @@ impl Default for Document {
 impl Document {
 	pub fn with_name(name: String) -> Self {
 		Self {
-			document: InteralDocument::default(),
+			document: InternalDocument::default(),
 			name,
 			layer_data: vec![(vec![], LayerData::new(true))].into_iter().collect(),
 		}

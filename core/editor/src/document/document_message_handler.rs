@@ -31,7 +31,9 @@ pub enum DocumentMessage {
 	ToggleLayerExpansion(Vec<LayerId>),
 	SelectDocument(usize),
 	CloseDocument(usize),
-	CloseActiveDocument,
+	CloseActiveDocumentWithConfirmation,
+	CloseAllDocumentsWithConfirmation,
+	CloseAllDocuments,
 	NewDocument,
 	NextDocument,
 	PrevDocument,
@@ -187,14 +189,27 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				responses.push_back(FrontendMessage::SetActiveDocument { document_index: self.active_document }.into());
 				responses.push_back(RenderDocument.into());
 			}
-			CloseActiveDocument => {
-				responses.push_back(FrontendMessage::PromptCloseConfirmationModal.into());
+			CloseActiveDocumentWithConfirmation => {
+				responses.push_back(FrontendMessage::PromptConfirmationToCloseDocument { document_index: self.active_document }.into());
+			}
+			CloseAllDocumentsWithConfirmation => {
+				responses.push_back(FrontendMessage::PromptConfirmationToCloseAllDocuments.into());
+			}
+			CloseAllDocuments => {
+				// Empty the list of internal document data
+				self.documents.clear();
+
+				// Create a new blank document
+				responses.push_back(DocumentMessage::NewDocument.into());
 			}
 			CloseDocument(id) => {
 				assert!(id < self.documents.len(), "Tried to select a document that was not initialized");
-				// Remove doc from the backend store. Use 'id' as FE tabs and BE documents will be in sync.
+				// Remove doc from the backend store; use `id` as client tabs and backend documents will be in sync
 				self.documents.remove(id);
-				responses.push_back(FrontendMessage::CloseDocument { document_index: id }.into());
+
+				// Send the new list of document tab names
+				let open_documents = self.documents.iter().map(|doc| doc.name.clone()).collect();
+				responses.push_back(FrontendMessage::UpdateOpenDocumentsList { open_documents }.into());
 
 				// Last tab was closed, so create a new blank tab
 				if self.documents.is_empty() {
@@ -254,12 +269,10 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				self.active_document = self.documents.len();
 				let new_document = Document::with_name(name);
 				self.documents.push(new_document);
-				responses.push_back(
-					FrontendMessage::NewDocument {
-						document_name: self.active_document().name.clone(),
-					}
-					.into(),
-				);
+
+				// Send the new list of document tab names
+				let open_documents = self.documents.iter().map(|doc| doc.name.clone()).collect();
+				responses.push_back(FrontendMessage::UpdateOpenDocumentsList { open_documents }.into());
 
 				responses.push_back(
 					FrontendMessage::ExpandFolder {
@@ -280,7 +293,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			}
 			ExportDocument => responses.push_back(
 				FrontendMessage::ExportDocument {
-					//TODO: Add canvas size instead of using 1080p per default
+					//TODO: Add canvas size instead of using 1920x1080 by default
 					document: format!(
 						r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1080">{}{}</svg>"#,
 						"\n",
@@ -513,14 +526,45 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 		}
 	}
 	fn actions(&self) -> ActionList {
-		let mut common = actions!(DocumentMessageDiscriminant; Undo, SelectAllLayers, DeselectAllLayers, RenderDocument, ExportDocument, NewDocument, CloseActiveDocument, NextDocument, PrevDocument, MouseMove, TranslateCanvasEnd, TranslateCanvasBegin, PasteLayers, RotateCanvasBegin, ZoomCanvasBegin, SetCanvasZoom, MultiplyCanvasZoom, SetRotation, WheelCanvasZoom, WheelCanvasTranslate);
+		let mut common = actions!(DocumentMessageDiscriminant;
+			Undo,
+			SelectAllLayers,
+			DeselectAllLayers,
+			RenderDocument,
+			ExportDocument,
+			NewDocument,
+			CloseActiveDocumentWithConfirmation,
+			CloseAllDocumentsWithConfirmation,
+			CloseAllDocuments,
+			NextDocument,
+			PrevDocument,
+			MouseMove,
+			TranslateCanvasEnd,
+			TranslateCanvasBegin,
+			PasteLayers,
+			RotateCanvasBegin,
+			ZoomCanvasBegin,
+			SetCanvasZoom,
+			MultiplyCanvasZoom,
+			SetRotation,
+			WheelCanvasZoom,
+			WheelCanvasTranslate,
+		);
 
 		if self.active_document().layer_data.values().any(|data| data.selected) {
-			let select = actions!(DocumentMessageDiscriminant;  DeleteSelectedLayers, DuplicateSelectedLayers,  CopySelectedLayers,  NudgeSelectedLayers );
+			let select = actions!(DocumentMessageDiscriminant;
+				DeleteSelectedLayers,
+				DuplicateSelectedLayers,
+				CopySelectedLayers,
+				NudgeSelectedLayers,
+			);
 			common.extend(select);
 		}
 		if self.rotating {
-			let snapping = actions!(DocumentMessageDiscriminant;  EnableSnapping, DisableSnapping);
+			let snapping = actions!(DocumentMessageDiscriminant;
+				EnableSnapping,
+				DisableSnapping,
+			);
 			common.extend(snapping);
 		}
 		common
