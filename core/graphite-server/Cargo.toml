@@ -1,0 +1,21 @@
+[package]
+name = "graphite-server"
+version = "0.1.0"
+authors = ["truedoctor"]
+edition = "2018"
+description = "A server for broadcasting web socket traffic."
+
+[dependencies]
+clap = {version = "2.33", features = ["yaml"]}
+log = "0.4"
+serde = "*"
+fern = "0.5.8"
+colored = "1.8"
+serde_json = "*"
+
+[dependencies.graphite-editor-core]
+path = "../editor"
+
+[dependencies.ws]
+version = "0.9"
+features = ["ssl"]

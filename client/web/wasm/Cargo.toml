@@ -20,7 +20,20 @@ console_error_panic_hook = { version = "0.1.6", optional = true }
 editor-core = { path = "../../../core/editor", package = "graphite-editor-core" }
 log = "0.4"
 serde = { version = "1.0", features = ["derive"] }
-wasm-bindgen = { version = "0.2.73", features = ["serde-serialize"] }
+wasm-bindgen = { version = "0.2.74", features = ["serde-serialize"] }
+js-sys = "0.3"
+
+[dependencies.web-sys]
+version = "0.3.22"
+features = [
+  "BinaryType",
+  "Blob",
+  "ErrorEvent",
+  "FileReader",
+  "MessageEvent",
+  "ProgressEvent",
+  "WebSocket",
+]
 
 [dev-dependencies]
 wasm-bindgen-test = "0.3.22"

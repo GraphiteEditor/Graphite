@@ -1,0 +1,81 @@
+<!doctype html>
+<html>
+    <head>
+        <title>WS Test</title>
+        <style>
+.b {
+    border-bottom: 1px solid black;
+}
+        </style>
+    </head>
+    <body style='background: black; color: white'>
+        <div id='cons'>connected</div><br>
+        <button onclick='test_connection()'>Launch</button><br>
+        <span>Server address: </span><input id='addr'></input>
+        <span>Protocols: </span><input id='prots'></input>
+        
+        <div align='right'><span>Message</span><input id='msg'></input> <button onclick='send_text()'>Send</button></div>
+        <div id='chat' style='background: rgb(20, 20, 20); padding-left: 20px; margin: 40px' />
+    </body>
+    <script>
+function get_addr() {
+    return document.getElementById('addr').value;
+}
+
+function get_prots() {
+    let prots = document.getElementById('prots').value;
+    return ['tuesday'].concat(prots.split(','))
+}
+
+function test_connection() {
+    let a = 'ws://' + get_addr();
+    add_text('create a new connection at "' + a + '"');
+    ws = new WebSocket(a, get_prots());
+    ws.addEventListener('open', function (event) {
+        add_text('connection established');
+        toggle_connected(true);
+        // send token
+        ws.send('42');
+    });
+    ws.addEventListener('error', function (event) {
+        add_text('ws error occured: "' + event + '"');
+        toggle_connected(false);
+    });
+    ws.addEventListener('close', function (event) {
+        add_text('ws is closed now');
+        toggle_connected(false);
+    });
+    ws.addEventListener('message', function (event) {
+        add_text('got ws message: "' + event.data + '"');
+    });
+}
+
+function send_text() {
+    let msg = document.getElementById('msg').value;
+    ws.send(msg);
+    add_text('sent message: "' + msg + '"');
+}
+
+function add_text(text, color='white') {
+    let c = document.getElementById('chat');
+    let n = document.createElement('span');
+    n.setAttribute('class', 'b');
+    n.style = 'color: ' + color;
+    n.textContent = (new Date()).toTimeString().substring(0, 8) + '|> '+ text;
+    c.appendChild(n);
+    c.appendChild(document.createElement('br'));
+}
+function toggle_connected(con) {
+    let c = document.getElementById('cons');
+    if (con) {
+        c.style = 'background: green'
+        c.textContent = 'connected';
+    } else {
+        c.style = 'background: red'
+        c.textContent = 'not connected';
+    }
+}
+toggle_connected(false);
+add_text("JS loaded");
+    </script>
+</html>

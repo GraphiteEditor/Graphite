@@ -60,7 +60,7 @@ impl EditorTestUtils for Editor {
 	}
 
 	fn mouseup(&mut self, state: MouseState) {
-		self.handle_message(InputPreprocessorMessage::MouseUp(state, ModifierKeys::default())).unwrap()
+		self.handle_message(InputPreprocessorMessage::MouseUp(state, ModifierKeys::default())).unwrap();
 	}
 
 	fn lmb_mousedown(&mut self, x: u32, y: u32) {

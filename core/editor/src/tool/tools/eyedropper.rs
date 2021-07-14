@@ -1,11 +1,12 @@
 use crate::message_prelude::*;
 use crate::tool::ToolActionHandlerData;
+use serde::{Deserialize, Serialize};
 
 #[derive(Default)]
 pub struct Eyedropper;
 
 #[impl_message(Message, ToolMessage, Eyedropper)]
-#[derive(PartialEq, Clone, Debug)]
+#[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub enum EyedropperMessage {
 	MouseMove,
 }

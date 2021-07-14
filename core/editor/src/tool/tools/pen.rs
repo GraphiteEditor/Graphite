@@ -3,6 +3,7 @@ use crate::tool::{DocumentToolData, Fsm, ToolActionHandlerData};
 use crate::{message_prelude::*, SvgDocument};
 use document_core::{layers::style, Operation};
 use glam::DAffine2;
+use serde::{Deserialize, Serialize};
 
 #[derive(Default)]
 pub struct Pen {
@@ -11,7 +12,7 @@ pub struct Pen {
 }
 
 #[impl_message(Message, ToolMessage, Pen)]
-#[derive(PartialEq, Clone, Debug)]
+#[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub enum PenMessage {
 	Undo,
 	DragStart,

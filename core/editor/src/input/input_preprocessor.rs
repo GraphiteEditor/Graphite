@@ -4,13 +4,14 @@ use super::keyboard::{Key, KeyStates};
 use super::mouse::{MouseKeys, MouseState, ScrollDelta, ViewportPosition};
 use crate::message_prelude::*;
 use bitflags::bitflags;
+use serde::{Deserialize, Serialize};
 
 #[doc(inline)]
 pub use document_core::DocumentResponse;
 use glam::DVec2;
 
 #[impl_message(Message, InputPreprocessor)]
-#[derive(PartialEq, Clone, Debug)]
+#[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub enum InputPreprocessorMessage {
 	MouseDown(MouseState, ModifierKeys),
 	MouseUp(MouseState, ModifierKeys),
@@ -22,7 +23,7 @@ pub enum InputPreprocessorMessage {
 }
 
 bitflags! {
-	#[derive(Default)]
+	#[derive(Default, Deserialize, Serialize)]
 	#[repr(transparent)]
 	pub struct ModifierKeys: u8 {
 		const CONTROL = 0b0000_0001;

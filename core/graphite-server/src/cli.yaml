@@ -1,0 +1,20 @@
+name: Ratatosk-Server
+version: "1.0"
+about: Creates a backend server for the Rask 
+args:
+    - address:
+        short: a
+        long: address
+        value_name: ADDRESS
+        help: Specify the IP to bind to
+        takes_value: true
+    - port:
+        short: p
+        long: port
+        value_name: PORT
+        help: Specify the Port to listen to
+        takes_value: true
+    - verbose:
+        short: v
+        multiple: true
+        help: Sets the level of verbosity

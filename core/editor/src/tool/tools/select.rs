@@ -4,6 +4,7 @@ use document_core::layers::style::Stroke;
 use document_core::layers::{style, SELECTION_TOLERANCE};
 use document_core::Operation;
 use glam::{DAffine2, DVec2};
+use serde::{Deserialize, Serialize};
 
 use crate::input::{mouse::ViewportPosition, InputPreprocessor};
 use crate::tool::{DocumentToolData, Fsm, ToolActionHandlerData};
@@ -16,7 +17,7 @@ pub struct Select {
 }
 
 #[impl_message(Message, ToolMessage, Select)]
-#[derive(PartialEq, Clone, Debug)]
+#[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub enum SelectMessage {
 	DragStart,
 	DragStop,
