@@ -227,6 +227,16 @@ impl Document {
 		Ok(())
 	}
 
+	fn mark_as_dirty(&mut self, path: &[LayerId]) -> Result<(), DocumentError> {
+		let mut root = &mut self.root;
+		root.cache_dirty = true;
+		for id in path {
+			root = root.as_folder_mut()?.layer_mut(*id).ok_or(DocumentError::LayerNotFound)?;
+			root.cache_dirty = true;
+		}
+		Ok(())
+	}
+
 	/// Mutate the document by applying the `operation` to it. If the operation necessitates a
 	/// reaction from the frontend, responses may be returned.
 	pub fn handle_operation(&mut self, operation: Operation) -> Result<Option<Vec<DocumentResponse>>, DocumentError> {
@@ -360,6 +370,12 @@ impl Document {
 				});
 				let path = path.as_slice()[..path.len() - 1].to_vec();
 				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::FolderChanged { path }])
+			}
+			Operation::FillLayer { path, color } => {
+				let layer = self.layer_mut(path).unwrap();
+				layer.style.set_fill(layers::style::Fill::new(*color));
+				self.mark_as_dirty(path)?;
+				Some(vec![DocumentResponse::DocumentChanged])
 			}
 		};
 		if !matches!(

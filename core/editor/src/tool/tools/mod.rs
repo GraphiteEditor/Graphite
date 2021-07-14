@@ -1,5 +1,6 @@
 // already implemented
 pub mod ellipse;
+pub mod fill;
 pub mod line;
 pub mod pen;
 pub mod rectangle;

@@ -83,6 +83,7 @@ impl Default for ToolFsmState {
 					Line => line::Line,
 					Shape => shape::Shape,
 					Ellipse => ellipse::Ellipse,
+					Fill => fill::Fill,
 				},
 			},
 			document_tool_data: DocumentToolData {
