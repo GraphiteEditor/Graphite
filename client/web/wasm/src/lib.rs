@@ -16,7 +16,7 @@ use web_sys::{ErrorEvent, MessageEvent, WebSocket};
 // the thread_local macro provides a way to initialize static variables with non-constant functions
 thread_local! {
 	pub static EDITOR_STATE: RefCell<Editor> =  RefCell::new(Editor::new());
-	pub static WEB_SOCKET: RefCell<WebSocketAdapter> = RefCell::new(WebSocketAdapter::new("wss://ws.graphite.kobert.dev"));
+	pub static WEB_SOCKET: RefCell<WebSocketAdapter> = RefCell::new(WebSocketAdapter::new("wss://graphite.kobert.dev"));
 
 }
 static LOGGER: WasmLog = WasmLog;
