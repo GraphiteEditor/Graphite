@@ -239,16 +239,16 @@ impl Default for Mapping {
 			entry! {action=GlobalMessage::LogTrace, key_down=Key3},
 		];
 
-		let (mut up, mut down, mut pointer_move, mut mouse_scroll) = mappings;
+		let (mut key_up, mut key_down, mut pointer_move, mut mouse_scroll) = mappings;
 		let sort = |list: &mut KeyMappingEntries| list.0.sort_by(|u, v| v.modifiers.ones().cmp(&u.modifiers.ones()));
-		for list in [&mut up, &mut down] {
+		for list in [&mut key_up, &mut key_down] {
 			for sublist in list {
 				sort(sublist);
 			}
 		}
 		sort(&mut pointer_move);
 		sort(&mut mouse_scroll);
-		Self { up, down, pointer_move, mouse_scroll }
+		Self { up: key_up, down: key_down, pointer_move, mouse_scroll }
 	}
 }
 
