@@ -227,6 +227,14 @@ impl Document {
 		Ok(())
 	}
 
+	pub fn reorder_layer(&mut self, source_path: &[LayerId], target_path: &[LayerId]) -> Result<(), DocumentError> {
+		// TODO: Detect when moving between folders and handle properly
+
+		self.root.as_folder_mut()?.reorder_layer(*source_path.last().unwrap(), *target_path.last().unwrap())?;
+
+		Ok(())
+	}
+	
 	pub fn layer_axis_aligned_bounding_box(&self, path: &[LayerId]) -> Result<[DVec2; 2], DocumentError> {
 		let layer = self.layer(path)?;
 		Ok(layer.bounding_box(self.root.transform * layer.transform, layer.style))
@@ -386,6 +394,15 @@ impl Document {
 				layer.style.set_fill(layers::style::Fill::new(*color));
 				self.mark_as_dirty(path)?;
 				Some(vec![DocumentResponse::DocumentChanged])
+			}
+			Operation::ReorderLayers { source_path, target_path } => {
+				self.reorder_layer(source_path, target_path)?;
+
+				Some(vec![
+					DocumentResponse::DocumentChanged,
+					DocumentResponse::FolderChanged { path: source_path.to_vec() },
+					DocumentResponse::SelectLayer { path: source_path.to_vec() },
+				])
 			}
 		};
 		if !matches!(
