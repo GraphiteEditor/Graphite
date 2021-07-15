@@ -52,12 +52,12 @@
 
 <script lang="ts">
 import { defineComponent } from "vue";
-import Icon from "../labels/Icon.vue";
-import { ApplicationPlatform } from "../../window/MainWindow.vue";
-import MenuList, { MenuListEntry, MenuListEntries } from "../floating-menus/MenuList.vue";
-import { MenuDirection } from "../floating-menus/FloatingMenu.vue";
+import Icon from "@/components/widgets/labels/Icon.vue";
+import { ApplicationPlatform } from "@/components/window/MainWindow.vue";
+import MenuList, { MenuListEntry, MenuListEntries } from "@/components/widgets/floating-menus/MenuList.vue";
+import { MenuDirection } from "@/components/widgets/floating-menus/FloatingMenu.vue";
 
-const wasm = import("../../../../wasm/pkg");
+const wasm = import("@/../wasm/pkg");
 
 const menuEntries: MenuListEntries = [
 	{

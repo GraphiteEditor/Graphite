@@ -143,16 +143,16 @@
 
 <script lang="ts">
 import { defineComponent } from "vue";
-import Document from "../panels/Document.vue";
-import Properties from "../panels/Properties.vue";
-import LayerTree from "../panels/LayerTree.vue";
-import Minimap from "../panels/Minimap.vue";
-import IconButton from "../widgets/buttons/IconButton.vue";
-import PopoverButton, { PopoverButtonIcon } from "../widgets/buttons/PopoverButton.vue";
-import { MenuDirection } from "../widgets/floating-menus/FloatingMenu.vue";
-import { ResponseType, registerResponseHandler, Response, DisplayConfirmationToCloseDocument } from "../../utilities/response-handler";
+import Document from "@/components/panels/Document.vue";
+import Properties from "@/components/panels/Properties.vue";
+import LayerTree from "@/components/panels/LayerTree.vue";
+import Minimap from "@/components/panels/Minimap.vue";
+import IconButton from "@/components/widgets/buttons/IconButton.vue";
+import PopoverButton, { PopoverButtonIcon } from "@/components/widgets/buttons/PopoverButton.vue";
+import { MenuDirection } from "@/components/widgets/floating-menus/FloatingMenu.vue";
+import { ResponseType, registerResponseHandler, Response, DisplayConfirmationToCloseDocument } from "@/utilities/response-handler";
 
-const wasm = import("../../../wasm/pkg");
+const wasm = import("@/../wasm/pkg");
 
 export default defineComponent({
 	components: {

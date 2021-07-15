@@ -36,11 +36,11 @@
 
 <script lang="ts">
 import { defineComponent } from "vue";
-import LayoutRow from "../layout/LayoutRow.vue";
-import LayoutCol from "../layout/LayoutCol.vue";
-import Workspace from "../workspace/Workspace.vue";
-import TitleBar from "./title-bar/TitleBar.vue";
-import StatusBar from "./status-bar/StatusBar.vue";
+import TitleBar from "@/components/window/title-bar/TitleBar.vue";
+import StatusBar from "@/components/window/status-bar/StatusBar.vue";
+import LayoutRow from "@/components/layout/LayoutRow.vue";
+import LayoutCol from "@/components/layout/LayoutCol.vue";
+import Workspace from "@/components/workspace/Workspace.vue";
 
 export enum ApplicationPlatform {
 	"Windows" = "Windows",

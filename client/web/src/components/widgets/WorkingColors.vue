@@ -18,10 +18,10 @@
 
 <script lang="ts">
 import { defineComponent } from "vue";
-import SwatchPairInput from "./inputs/SwatchPairInput.vue";
-import IconButton from "./buttons/IconButton.vue";
+import SwatchPairInput from "@/components/widgets/inputs/SwatchPairInput.vue";
+import IconButton from "@/components/widgets/buttons/IconButton.vue";
 
-const wasm = import("../../../wasm/pkg");
+const wasm = import("@/../wasm/pkg");
 
 export default defineComponent({
 	methods: {

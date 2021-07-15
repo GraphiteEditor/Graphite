@@ -193,20 +193,20 @@
 <script lang="ts">
 import { defineComponent } from "vue";
 import { makeModifiersBitfield } from "@/utilities/input";
-import { ResponseType, registerResponseHandler, Response, UpdateCanvas, SetActiveTool, ExportDocument, SetCanvasZoom, SetCanvasRotation } from "../../utilities/response-handler";
-import LayoutRow from "../layout/LayoutRow.vue";
-import LayoutCol from "../layout/LayoutCol.vue";
-import WorkingColors from "../widgets/WorkingColors.vue";
-import { MenuDirection } from "../widgets/floating-menus/FloatingMenu.vue";
-import ShelfItem from "../widgets/ShelfItem.vue";
-import Separator, { SeparatorDirection, SeparatorType } from "../widgets/Separator.vue";
-import IconButton from "../widgets/buttons/IconButton.vue";
-import PopoverButton from "../widgets/buttons/PopoverButton.vue";
-import RadioInput from "../widgets/inputs/RadioInput.vue";
-import NumberInput from "../widgets/inputs/NumberInput.vue";
-import DropdownInput from "../widgets/inputs/DropdownInput.vue";
-import OptionalInput from "../widgets/inputs/OptionalInput.vue";
-import { SectionsOfMenuListEntries } from "../widgets/floating-menus/MenuList.vue";
+import { ResponseType, registerResponseHandler, Response, UpdateCanvas, SetActiveTool, ExportDocument, SetCanvasZoom, SetCanvasRotation } from "@/utilities/response-handler";
+import LayoutRow from "@/components/layout/LayoutRow.vue";
+import LayoutCol from "@/components/layout/LayoutCol.vue";
+import WorkingColors from "@/components/widgets/WorkingColors.vue";
+import { MenuDirection } from "@/components/widgets/floating-menus/FloatingMenu.vue";
+import ShelfItem from "@/components/widgets/ShelfItem.vue";
+import Separator, { SeparatorDirection, SeparatorType } from "@/components/widgets/Separator.vue";
+import IconButton from "@/components/widgets/buttons/IconButton.vue";
+import PopoverButton from "@/components/widgets/buttons/PopoverButton.vue";
+import RadioInput from "@/components/widgets/inputs/RadioInput.vue";
+import NumberInput from "@/components/widgets/inputs/NumberInput.vue";
+import DropdownInput from "@/components/widgets/inputs/DropdownInput.vue";
+import OptionalInput from "@/components/widgets/inputs/OptionalInput.vue";
+import { SectionsOfMenuListEntries } from "@/components/widgets/floating-menus/MenuList.vue";
 
 const modeMenuEntries: SectionsOfMenuListEntries = [
 	[
@@ -216,7 +216,7 @@ const modeMenuEntries: SectionsOfMenuListEntries = [
 	],
 ];
 
-const wasm = import("../../../wasm/pkg");
+const wasm = import("@/../wasm/pkg");
 
 export default defineComponent({
 	methods: {

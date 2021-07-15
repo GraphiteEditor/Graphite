@@ -68,9 +68,9 @@
 <script lang="ts">
 import { rgbToDecimalRgb } from "@/utilities/color";
 import { defineComponent } from "vue";
-import ColorPicker from "../floating-menus/ColorPicker.vue";
-import FloatingMenu, { MenuDirection, MenuType } from "../floating-menus/FloatingMenu.vue";
-import { ResponseType, registerResponseHandler, Response, UpdateWorkingColors } from "../../../utilities/response-handler";
+import ColorPicker from "@/components/widgets/floating-menus/ColorPicker.vue";
+import FloatingMenu, { MenuDirection, MenuType } from "@/components/widgets/floating-menus/FloatingMenu.vue";
+import { ResponseType, registerResponseHandler, Response, UpdateWorkingColors } from "@/utilities/response-handler";
 
 const wasm = import("@/../wasm/pkg");
 

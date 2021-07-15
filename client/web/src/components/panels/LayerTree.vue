@@ -104,19 +104,19 @@
 
 <script lang="ts">
 import { defineComponent } from "vue";
-import { ResponseType, registerResponseHandler, Response, ExpandFolder, LayerPanelEntry } from "../../utilities/response-handler";
-import LayoutRow from "../layout/LayoutRow.vue";
-import LayoutCol from "../layout/LayoutCol.vue";
-import Separator, { SeparatorType } from "../widgets/Separator.vue";
-import NumberInput from "../widgets/inputs/NumberInput.vue";
-import PopoverButton from "../widgets/buttons/PopoverButton.vue";
-import { MenuDirection } from "../widgets/floating-menus/FloatingMenu.vue";
-import IconButton from "../widgets/buttons/IconButton.vue";
-import Icon from "../widgets/labels/Icon.vue";
-import DropdownInput from "../widgets/inputs/DropdownInput.vue";
-import { SectionsOfMenuListEntries } from "../widgets/floating-menus/MenuList.vue";
+import { ResponseType, registerResponseHandler, Response, ExpandFolder, LayerPanelEntry } from "@/utilities/response-handler";
+import LayoutRow from "@/components/layout/LayoutRow.vue";
+import LayoutCol from "@/components/layout/LayoutCol.vue";
+import Separator, { SeparatorType } from "@/components/widgets/Separator.vue";
+import NumberInput from "@/components/widgets/inputs/NumberInput.vue";
+import PopoverButton from "@/components/widgets/buttons/PopoverButton.vue";
+import { MenuDirection } from "@/components/widgets/floating-menus/FloatingMenu.vue";
+import IconButton from "@/components/widgets/buttons/IconButton.vue";
+import Icon from "@/components/widgets/labels/Icon.vue";
+import DropdownInput from "@/components/widgets/inputs/DropdownInput.vue";
+import { SectionsOfMenuListEntries } from "@/components/widgets/floating-menus/MenuList.vue";
 
-const wasm = import("../../../wasm/pkg");
+const wasm = import("@/../wasm/pkg");
 
 const blendModeMenuEntries: SectionsOfMenuListEntries = [
 	[{ label: "Normal" }],

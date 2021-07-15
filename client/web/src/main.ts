@@ -1,7 +1,7 @@
 import { createApp } from "vue";
 import { fullscreenModeChanged } from "@/utilities/fullscreen";
 import { handleKeyUp, handleKeyDown } from "@/utilities/input";
-import App from "./App.vue";
+import App from "@/App.vue";
 
 // Bind global browser events
 document.addEventListener("contextmenu", (e) => e.preventDefault());
