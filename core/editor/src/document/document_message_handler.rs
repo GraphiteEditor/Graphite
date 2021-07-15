@@ -54,6 +54,7 @@ pub enum DocumentMessage {
 	WheelCanvasZoom,
 	SetCanvasRotation(f64),
 	NudgeSelectedLayers(f64, f64),
+	MoveSelectedLayer(i32),
 }
 
 impl From<DocumentOperation> for DocumentMessage {
@@ -160,6 +161,32 @@ impl DocumentMessageHandler {
 
 		layers_with_indices.sort_by_key(|(_, indices)| indices.clone());
 		layers_with_indices.into_iter().map(|(path, _)| path).collect()
+	}
+
+	/// Returns the paths to all layers in order
+	fn all_layers_sorted(&self) -> Vec<Vec<LayerId>> {
+		// Compute the indices for each layer to be able to sort them
+		let mut layers_with_indices: Vec<(Vec<LayerId>, Vec<usize>)> = self
+			.active_document()
+			.layer_data
+			.iter()
+			.filter_map(|(path, _)| (path.len() > 0).then(|| path.clone())) // Ignore root layer data
+			.filter_map(|path| {
+				// Currently it is possible that layer_data contains layers that are don't actually exist
+				// and thus indices_for_path can return an error. We currently skip these layers and log a warning.
+				// Once this problem is solved this code can be simplified
+				match self.active_document().document.indices_for_path(&path) {
+					Err(err) => {
+						warn!("all_layers_sorted: Could not get indices for the layer {:?}: {:?}", path, err);
+						None
+					}
+					Ok(indices) => Some((path, indices)),
+				}
+			})
+			.collect();
+
+		layers_with_indices.sort_by_key(|(_, indices)| indices.clone());
+		return layers_with_indices.into_iter().map(|(path, _)| path).collect();
 	}
 }
 
@@ -554,6 +581,33 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					responses.push_back(operation.into());
 				}
 			}
+			MoveSelectedLayer(delta) => {
+				let paths: Vec<Vec<LayerId>> = self.selected_layers_sorted();
+				// TODO: Support moving more than one layer
+				if paths.len() == 1 {
+					let all_layer_indices = self.all_layers_sorted();
+
+					let max_index = all_layer_indices.len() as i32 - 1;
+
+					let mut selected_layer_index = -1;
+					let mut next_layer_index = -1;
+					for (i, path) in all_layer_indices.iter().enumerate() {
+						if *path == paths[0] {
+							selected_layer_index = i as i32;
+							next_layer_index = (selected_layer_index + delta).clamp(0, max_index);
+							break;
+						}
+					}
+
+					if next_layer_index != -1 && next_layer_index != selected_layer_index {
+						let operation = DocumentOperation::ReorderLayers {
+							source_path: paths[0].clone(),
+							target_path: all_layer_indices[next_layer_index as usize].to_vec(),
+						};
+						responses.push_back(operation.into());
+					}
+				}
+			}
 			message => todo!("document_action_handler does not implement: {}", message.to_discriminant().global_name()),
 		}
 	}
@@ -589,6 +643,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				DuplicateSelectedLayers,
 				CopySelectedLayers,
 				NudgeSelectedLayers,
+				MoveSelectedLayer,
 			);
 			common.extend(select);
 		}
