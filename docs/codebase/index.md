@@ -25,7 +25,7 @@ The main modules of the project architecture are outlined below. Some parts desc
 - Native frontend: `/client/native/`  
   The future official desktop client. Blocked on Rust's GUI ecosystem improving or dedicating the time to build a custom system that can nicely support editor extensions. The whole GUI should use WGPU for rendering and compile to WASM to make those calls to the WebGPU API.
 - CLI: `/client/cli/`  
-  A headless, command line GDD document editor (using the Document Core Library) and GRD render graph renderer (using the Renderer Core Library). Not the initial focus of development, but perhaps useful in testing for certain features throughout the development process. A future version of the CLI will probably redesign the command structure.
+  A future headless, stateless, command line GDD document editor (using the Document Core Library) and GRD render graph renderer (using the Renderer Core Library).
 - **Graphite Editor Core Library**: `/core/editor/`  
   Used by a frontend editor client to maintain GUI state and dispatch user events. The official Graphite editor is the primary user, but others software like game engines could embed their own customized editor implementations. Depends on the Document Core Library.
 - Graphite Document Core Library: `/core/document/`  

@@ -1,7 +1,6 @@
 [workspace]
 members = [
 	"core/*",
-	"client/cli",
 	"client/web/wasm",
 ]
 
