@@ -30,27 +30,27 @@
 <script lang="ts">
 import { defineComponent } from "vue";
 
-import SelectTool from "@/../assets/24px-two-tone/document-tool-layout-select.svg"; // TODO: Rename
-import CropTool from "@/../assets/24px-two-tone/document-tool-layout-crop.svg"; // TODO: Rename
-import NavigateTool from "@/../assets/24px-two-tone/document-tool-layout-navigate.svg"; // TODO: Rename
-import EyedropperTool from "@/../assets/24px-two-tone/document-tool-layout-eyedropper.svg"; // TODO: Rename
-import TextTool from "@/../assets/24px-two-tone/document-tool-parametric-text.svg"; // TODO: Rename
-import FillTool from "@/../assets/24px-two-tone/document-tool-parametric-fill.svg"; // TODO: Rename
-import GradientTool from "@/../assets/24px-two-tone/document-tool-parametric-gradient.svg"; // TODO: Rename
-import BrushTool from "@/../assets/24px-two-tone/document-tool-raster-brush.svg"; // TODO: Rename
-import HealTool from "@/../assets/24px-two-tone/document-tool-raster-heal.svg"; // TODO: Rename
-import CloneTool from "@/../assets/24px-two-tone/document-tool-raster-clone.svg"; // TODO: Rename
-import PatchTool from "@/../assets/24px-two-tone/document-tool-raster-patch.svg"; // TODO: Rename
-import BlurSharpenTool from "@/../assets/24px-two-tone/document-tool-raster-detail.svg"; // TODO: Rename
-import RelightTool from "@/../assets/24px-two-tone/document-tool-raster-relight.svg"; // TODO: Rename
-import PathTool from "@/../assets/24px-two-tone/document-tool-vector-path.svg"; // TODO: Rename
-import PenTool from "@/../assets/24px-two-tone/document-tool-vector-pen.svg"; // TODO: Rename
-import FreehandTool from "@/../assets/24px-two-tone/document-tool-vector-freehand.svg"; // TODO: Rename
-import SplineTool from "@/../assets/24px-two-tone/document-tool-vector-spline.svg"; // TODO: Rename
-import LineTool from "@/../assets/24px-two-tone/document-tool-vector-line.svg"; // TODO: Rename
-import RectangleTool from "@/../assets/24px-two-tone/document-tool-vector-rectangle.svg"; // TODO: Rename
-import EllipseTool from "@/../assets/24px-two-tone/document-tool-vector-ellipse.svg"; // TODO: Rename
-import ShapeTool from "@/../assets/24px-two-tone/document-tool-vector-shape.svg"; // TODO: Rename
+import LayoutSelectTool from "@/../assets/24px-two-tone/layout-select-tool.svg";
+import LayoutCropTool from "@/../assets/24px-two-tone/layout-crop-tool.svg";
+import LayoutNavigateTool from "@/../assets/24px-two-tone/layout-navigate-tool.svg";
+import LayoutEyedropperTool from "@/../assets/24px-two-tone/layout-eyedropper-tool.svg";
+import ParametricTextTool from "@/../assets/24px-two-tone/parametric-text-tool.svg";
+import ParametricFillTool from "@/../assets/24px-two-tone/parametric-fill-tool.svg";
+import ParametricGradientTool from "@/../assets/24px-two-tone/parametric-gradient-tool.svg";
+import RasterBrushTool from "@/../assets/24px-two-tone/raster-brush-tool.svg";
+import RasterHealTool from "@/../assets/24px-two-tone/raster-heal-tool.svg";
+import RasterCloneTool from "@/../assets/24px-two-tone/raster-clone-tool.svg";
+import RasterPatchTool from "@/../assets/24px-two-tone/raster-patch-tool.svg";
+import RasterBlurSharpenTool from "@/../assets/24px-two-tone/raster-detail-tool.svg";
+import RasterRelightTool from "@/../assets/24px-two-tone/raster-relight-tool.svg";
+import VectorPathTool from "@/../assets/24px-two-tone/vector-path-tool.svg";
+import VectorPenTool from "@/../assets/24px-two-tone/vector-pen-tool.svg";
+import VectorFreehandTool from "@/../assets/24px-two-tone/vector-freehand-tool.svg";
+import VectorSplineTool from "@/../assets/24px-two-tone/vector-spline-tool.svg";
+import VectorLineTool from "@/../assets/24px-two-tone/vector-line-tool.svg";
+import VectorRectangleTool from "@/../assets/24px-two-tone/vector-rectangle-tool.svg";
+import VectorEllipseTool from "@/../assets/24px-two-tone/vector-ellipse-tool.svg";
+import VectorShapeTool from "@/../assets/24px-two-tone/vector-shape-tool.svg";
 
 import AlignHorizontalLeft from "@/../assets/16px-solid/align-horizontal-left.svg";
 import AlignHorizontalCenter from "@/../assets/16px-solid/align-horizontal-center.svg";
@@ -113,27 +113,27 @@ import MouseHintMMBDrag from "@/../assets/16px-two-tone/mouse-hint-mmb-drag.svg"
 import NodeTypePath from "@/../assets/24px-full-color/node-type-path.svg";
 
 const icons = {
-	SelectTool: { component: SelectTool, size: 24 },
-	CropTool: { component: CropTool, size: 24 },
-	NavigateTool: { component: NavigateTool, size: 24 },
-	EyedropperTool: { component: EyedropperTool, size: 24 },
-	TextTool: { component: TextTool, size: 24 },
-	FillTool: { component: FillTool, size: 24 },
-	GradientTool: { component: GradientTool, size: 24 },
-	BrushTool: { component: BrushTool, size: 24 },
-	HealTool: { component: HealTool, size: 24 },
-	CloneTool: { component: CloneTool, size: 24 },
-	PatchTool: { component: PatchTool, size: 24 },
-	BlurSharpenTool: { component: BlurSharpenTool, size: 24 },
-	RelightTool: { component: RelightTool, size: 24 },
-	PathTool: { component: PathTool, size: 24 },
-	PenTool: { component: PenTool, size: 24 },
-	FreehandTool: { component: FreehandTool, size: 24 },
-	SplineTool: { component: SplineTool, size: 24 },
-	LineTool: { component: LineTool, size: 24 },
-	RectangleTool: { component: RectangleTool, size: 24 },
-	EllipseTool: { component: EllipseTool, size: 24 },
-	ShapeTool: { component: ShapeTool, size: 24 },
+	LayoutSelectTool: { component: LayoutSelectTool, size: 24 },
+	LayoutCropTool: { component: LayoutCropTool, size: 24 },
+	LayoutNavigateTool: { component: LayoutNavigateTool, size: 24 },
+	LayoutEyedropperTool: { component: LayoutEyedropperTool, size: 24 },
+	ParametricTextTool: { component: ParametricTextTool, size: 24 },
+	ParametricFillTool: { component: ParametricFillTool, size: 24 },
+	ParametricGradientTool: { component: ParametricGradientTool, size: 24 },
+	RasterBrushTool: { component: RasterBrushTool, size: 24 },
+	RasterHealTool: { component: RasterHealTool, size: 24 },
+	RasterCloneTool: { component: RasterCloneTool, size: 24 },
+	RasterPatchTool: { component: RasterPatchTool, size: 24 },
+	RasterBlurSharpenTool: { component: RasterBlurSharpenTool, size: 24 },
+	RasterRelightTool: { component: RasterRelightTool, size: 24 },
+	VectorPathTool: { component: VectorPathTool, size: 24 },
+	VectorPenTool: { component: VectorPenTool, size: 24 },
+	VectorFreehandTool: { component: VectorFreehandTool, size: 24 },
+	VectorSplineTool: { component: VectorSplineTool, size: 24 },
+	VectorLineTool: { component: VectorLineTool, size: 24 },
+	VectorRectangleTool: { component: VectorRectangleTool, size: 24 },
+	VectorEllipseTool: { component: VectorEllipseTool, size: 24 },
+	VectorShapeTool: { component: VectorShapeTool, size: 24 },
 	AlignHorizontalLeft: { component: AlignHorizontalLeft, size: 16 },
 	AlignHorizontalCenter: { component: AlignHorizontalCenter, size: 16 },
 	AlignHorizontalRight: { component: AlignHorizontalRight, size: 16 },
