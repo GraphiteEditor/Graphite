@@ -30,87 +30,87 @@
 <script lang="ts">
 import { defineComponent } from "vue";
 
-import SelectTool from "../../../../assets/24px-two-tone/document-tool-layout-select.svg"; // TODO: Rename
-import CropTool from "../../../../assets/24px-two-tone/document-tool-layout-crop.svg"; // TODO: Rename
-import NavigateTool from "../../../../assets/24px-two-tone/document-tool-layout-navigate.svg"; // TODO: Rename
-import EyedropperTool from "../../../../assets/24px-two-tone/document-tool-layout-eyedropper.svg"; // TODO: Rename
-import TextTool from "../../../../assets/24px-two-tone/document-tool-parametric-text.svg"; // TODO: Rename
-import FillTool from "../../../../assets/24px-two-tone/document-tool-parametric-fill.svg"; // TODO: Rename
-import GradientTool from "../../../../assets/24px-two-tone/document-tool-parametric-gradient.svg"; // TODO: Rename
-import BrushTool from "../../../../assets/24px-two-tone/document-tool-raster-brush.svg"; // TODO: Rename
-import HealTool from "../../../../assets/24px-two-tone/document-tool-raster-heal.svg"; // TODO: Rename
-import CloneTool from "../../../../assets/24px-two-tone/document-tool-raster-clone.svg"; // TODO: Rename
-import PatchTool from "../../../../assets/24px-two-tone/document-tool-raster-patch.svg"; // TODO: Rename
-import BlurSharpenTool from "../../../../assets/24px-two-tone/document-tool-raster-detail.svg"; // TODO: Rename
-import RelightTool from "../../../../assets/24px-two-tone/document-tool-raster-relight.svg"; // TODO: Rename
-import PathTool from "../../../../assets/24px-two-tone/document-tool-vector-path.svg"; // TODO: Rename
-import PenTool from "../../../../assets/24px-two-tone/document-tool-vector-pen.svg"; // TODO: Rename
-import FreehandTool from "../../../../assets/24px-two-tone/document-tool-vector-freehand.svg"; // TODO: Rename
-import SplineTool from "../../../../assets/24px-two-tone/document-tool-vector-spline.svg"; // TODO: Rename
-import LineTool from "../../../../assets/24px-two-tone/document-tool-vector-line.svg"; // TODO: Rename
-import RectangleTool from "../../../../assets/24px-two-tone/document-tool-vector-rectangle.svg"; // TODO: Rename
-import EllipseTool from "../../../../assets/24px-two-tone/document-tool-vector-ellipse.svg"; // TODO: Rename
-import ShapeTool from "../../../../assets/24px-two-tone/document-tool-vector-shape.svg"; // TODO: Rename
+import SelectTool from "@/../assets/24px-two-tone/document-tool-layout-select.svg"; // TODO: Rename
+import CropTool from "@/../assets/24px-two-tone/document-tool-layout-crop.svg"; // TODO: Rename
+import NavigateTool from "@/../assets/24px-two-tone/document-tool-layout-navigate.svg"; // TODO: Rename
+import EyedropperTool from "@/../assets/24px-two-tone/document-tool-layout-eyedropper.svg"; // TODO: Rename
+import TextTool from "@/../assets/24px-two-tone/document-tool-parametric-text.svg"; // TODO: Rename
+import FillTool from "@/../assets/24px-two-tone/document-tool-parametric-fill.svg"; // TODO: Rename
+import GradientTool from "@/../assets/24px-two-tone/document-tool-parametric-gradient.svg"; // TODO: Rename
+import BrushTool from "@/../assets/24px-two-tone/document-tool-raster-brush.svg"; // TODO: Rename
+import HealTool from "@/../assets/24px-two-tone/document-tool-raster-heal.svg"; // TODO: Rename
+import CloneTool from "@/../assets/24px-two-tone/document-tool-raster-clone.svg"; // TODO: Rename
+import PatchTool from "@/../assets/24px-two-tone/document-tool-raster-patch.svg"; // TODO: Rename
+import BlurSharpenTool from "@/../assets/24px-two-tone/document-tool-raster-detail.svg"; // TODO: Rename
+import RelightTool from "@/../assets/24px-two-tone/document-tool-raster-relight.svg"; // TODO: Rename
+import PathTool from "@/../assets/24px-two-tone/document-tool-vector-path.svg"; // TODO: Rename
+import PenTool from "@/../assets/24px-two-tone/document-tool-vector-pen.svg"; // TODO: Rename
+import FreehandTool from "@/../assets/24px-two-tone/document-tool-vector-freehand.svg"; // TODO: Rename
+import SplineTool from "@/../assets/24px-two-tone/document-tool-vector-spline.svg"; // TODO: Rename
+import LineTool from "@/../assets/24px-two-tone/document-tool-vector-line.svg"; // TODO: Rename
+import RectangleTool from "@/../assets/24px-two-tone/document-tool-vector-rectangle.svg"; // TODO: Rename
+import EllipseTool from "@/../assets/24px-two-tone/document-tool-vector-ellipse.svg"; // TODO: Rename
+import ShapeTool from "@/../assets/24px-two-tone/document-tool-vector-shape.svg"; // TODO: Rename
 
-import AlignHorizontalLeft from "../../../../assets/16px-solid/align-horizontal-left.svg";
-import AlignHorizontalCenter from "../../../../assets/16px-solid/align-horizontal-center.svg";
-import AlignHorizontalRight from "../../../../assets/16px-solid/align-horizontal-right.svg";
-import AlignVerticalTop from "../../../../assets/16px-solid/align-vertical-top.svg";
-import AlignVerticalCenter from "../../../../assets/16px-solid/align-vertical-center.svg";
-import AlignVerticalBottom from "../../../../assets/16px-solid/align-vertical-bottom.svg";
-import FlipHorizontal from "../../../../assets/16px-solid/flip-horizontal.svg";
-import FlipVertical from "../../../../assets/16px-solid/flip-vertical.svg";
-import BooleanUnion from "../../../../assets/16px-solid/boolean-union.svg";
-import BooleanSubtractFront from "../../../../assets/16px-solid/boolean-subtract-front.svg";
-import BooleanSubtractBack from "../../../../assets/16px-solid/boolean-subtract-back.svg";
-import BooleanIntersect from "../../../../assets/16px-solid/boolean-intersect.svg";
-import BooleanDifference from "../../../../assets/16px-solid/boolean-difference.svg";
-import ZoomReset from "../../../../assets/16px-solid/zoom-reset.svg";
-import ZoomIn from "../../../../assets/16px-solid/zoom-in.svg";
-import ZoomOut from "../../../../assets/16px-solid/zoom-out.svg";
-import ViewModeNormal from "../../../../assets/16px-solid/view-mode-normal.svg";
-import ViewModeOutline from "../../../../assets/16px-solid/view-mode-outline.svg";
-import ViewModePixels from "../../../../assets/16px-solid/view-mode-pixels.svg";
-import EyeVisible from "../../../../assets/16px-solid/eye-visible.svg";
-import EyeHidden from "../../../../assets/16px-solid/eye-hidden.svg";
-import GraphiteLogo from "../../../../assets/16px-solid/graphite-logo.svg";
-import File from "../../../../assets/16px-solid/file.svg";
-import Copy from "../../../../assets/16px-solid/copy.svg";
-import Paste from "../../../../assets/16px-solid/paste.svg";
-import ViewportDesignMode from "../../../../assets/16px-solid/viewport-design-mode.svg";
-import ViewportSelectMode from "../../../../assets/16px-solid/viewport-select-mode.svg";
-import ViewportGuideMode from "../../../../assets/16px-solid/viewport-guide-mode.svg";
+import AlignHorizontalLeft from "@/../assets/16px-solid/align-horizontal-left.svg";
+import AlignHorizontalCenter from "@/../assets/16px-solid/align-horizontal-center.svg";
+import AlignHorizontalRight from "@/../assets/16px-solid/align-horizontal-right.svg";
+import AlignVerticalTop from "@/../assets/16px-solid/align-vertical-top.svg";
+import AlignVerticalCenter from "@/../assets/16px-solid/align-vertical-center.svg";
+import AlignVerticalBottom from "@/../assets/16px-solid/align-vertical-bottom.svg";
+import FlipHorizontal from "@/../assets/16px-solid/flip-horizontal.svg";
+import FlipVertical from "@/../assets/16px-solid/flip-vertical.svg";
+import BooleanUnion from "@/../assets/16px-solid/boolean-union.svg";
+import BooleanSubtractFront from "@/../assets/16px-solid/boolean-subtract-front.svg";
+import BooleanSubtractBack from "@/../assets/16px-solid/boolean-subtract-back.svg";
+import BooleanIntersect from "@/../assets/16px-solid/boolean-intersect.svg";
+import BooleanDifference from "@/../assets/16px-solid/boolean-difference.svg";
+import ZoomReset from "@/../assets/16px-solid/zoom-reset.svg";
+import ZoomIn from "@/../assets/16px-solid/zoom-in.svg";
+import ZoomOut from "@/../assets/16px-solid/zoom-out.svg";
+import ViewModeNormal from "@/../assets/16px-solid/view-mode-normal.svg";
+import ViewModeOutline from "@/../assets/16px-solid/view-mode-outline.svg";
+import ViewModePixels from "@/../assets/16px-solid/view-mode-pixels.svg";
+import EyeVisible from "@/../assets/16px-solid/eye-visible.svg";
+import EyeHidden from "@/../assets/16px-solid/eye-hidden.svg";
+import GraphiteLogo from "@/../assets/16px-solid/graphite-logo.svg";
+import File from "@/../assets/16px-solid/file.svg";
+import Copy from "@/../assets/16px-solid/copy.svg";
+import Paste from "@/../assets/16px-solid/paste.svg";
+import ViewportDesignMode from "@/../assets/16px-solid/viewport-design-mode.svg";
+import ViewportSelectMode from "@/../assets/16px-solid/viewport-select-mode.svg";
+import ViewportGuideMode from "@/../assets/16px-solid/viewport-guide-mode.svg";
 
-import Checkmark from "../../../../assets/12px-solid/checkmark.svg";
-import Link from "../../../../assets/12px-solid/link.svg";
-import Grid from "../../../../assets/12px-solid/grid.svg";
-import Overlays from "../../../../assets/12px-solid/overlays.svg";
-import Snapping from "../../../../assets/12px-solid/snapping.svg";
-import Info from "../../../../assets/12px-solid/info.svg";
-import Swap from "../../../../assets/12px-solid/swap.svg";
-import ResetColors from "../../../../assets/12px-solid/reset-colors.svg";
-import DropdownArrow from "../../../../assets/12px-solid/dropdown-arrow.svg";
-import VerticalEllipsis from "../../../../assets/12px-solid/vertical-ellipsis.svg";
-import CloseX from "../../../../assets/12px-solid/close-x.svg";
-import FullscreenEnter from "../../../../assets/12px-solid/fullscreen-enter.svg";
-import FullscreenExit from "../../../../assets/12px-solid/fullscreen-exit.svg";
-import WindowButtonWinMinimize from "../../../../assets/12px-solid/window-button-win-minimize.svg";
-import WindowButtonWinMaximize from "../../../../assets/12px-solid/window-button-win-maximize.svg";
-import WindowButtonWinRestoreDown from "../../../../assets/12px-solid/window-button-win-restore-down.svg";
-import WindowButtonWinClose from "../../../../assets/12px-solid/window-button-win-close.svg";
+import Checkmark from "@/../assets/12px-solid/checkmark.svg";
+import Link from "@/../assets/12px-solid/link.svg";
+import Grid from "@/../assets/12px-solid/grid.svg";
+import Overlays from "@/../assets/12px-solid/overlays.svg";
+import Snapping from "@/../assets/12px-solid/snapping.svg";
+import Info from "@/../assets/12px-solid/info.svg";
+import Swap from "@/../assets/12px-solid/swap.svg";
+import ResetColors from "@/../assets/12px-solid/reset-colors.svg";
+import DropdownArrow from "@/../assets/12px-solid/dropdown-arrow.svg";
+import VerticalEllipsis from "@/../assets/12px-solid/vertical-ellipsis.svg";
+import CloseX from "@/../assets/12px-solid/close-x.svg";
+import FullscreenEnter from "@/../assets/12px-solid/fullscreen-enter.svg";
+import FullscreenExit from "@/../assets/12px-solid/fullscreen-exit.svg";
+import WindowButtonWinMinimize from "@/../assets/12px-solid/window-button-win-minimize.svg";
+import WindowButtonWinMaximize from "@/../assets/12px-solid/window-button-win-maximize.svg";
+import WindowButtonWinRestoreDown from "@/../assets/12px-solid/window-button-win-restore-down.svg";
+import WindowButtonWinClose from "@/../assets/12px-solid/window-button-win-close.svg";
 
-import MouseHintNone from "../../../../assets/16px-two-tone/mouse-hint-none.svg";
-import MouseHintLMB from "../../../../assets/16px-two-tone/mouse-hint-lmb.svg";
-import MouseHintRMB from "../../../../assets/16px-two-tone/mouse-hint-rmb.svg";
-import MouseHintMMB from "../../../../assets/16px-two-tone/mouse-hint-mmb.svg";
-import MouseHintScrollUp from "../../../../assets/16px-two-tone/mouse-hint-scroll-up.svg";
-import MouseHintScrollDown from "../../../../assets/16px-two-tone/mouse-hint-scroll-down.svg";
-import MouseHintDrag from "../../../../assets/16px-two-tone/mouse-hint-drag.svg";
-import MouseHintLMBDrag from "../../../../assets/16px-two-tone/mouse-hint-lmb-drag.svg";
-import MouseHintRMBDrag from "../../../../assets/16px-two-tone/mouse-hint-rmb-drag.svg";
-import MouseHintMMBDrag from "../../../../assets/16px-two-tone/mouse-hint-mmb-drag.svg";
+import MouseHintNone from "@/../assets/16px-two-tone/mouse-hint-none.svg";
+import MouseHintLMB from "@/../assets/16px-two-tone/mouse-hint-lmb.svg";
+import MouseHintRMB from "@/../assets/16px-two-tone/mouse-hint-rmb.svg";
+import MouseHintMMB from "@/../assets/16px-two-tone/mouse-hint-mmb.svg";
+import MouseHintScrollUp from "@/../assets/16px-two-tone/mouse-hint-scroll-up.svg";
+import MouseHintScrollDown from "@/../assets/16px-two-tone/mouse-hint-scroll-down.svg";
+import MouseHintDrag from "@/../assets/16px-two-tone/mouse-hint-drag.svg";
+import MouseHintLMBDrag from "@/../assets/16px-two-tone/mouse-hint-lmb-drag.svg";
+import MouseHintRMBDrag from "@/../assets/16px-two-tone/mouse-hint-rmb-drag.svg";
+import MouseHintMMBDrag from "@/../assets/16px-two-tone/mouse-hint-mmb-drag.svg";
 
-import NodeTypePath from "../../../../assets/24px-full-color/node-type-path.svg";
+import NodeTypePath from "@/../assets/24px-full-color/node-type-path.svg";
 
 const icons = {
 	SelectTool: { component: SelectTool, size: 24 },

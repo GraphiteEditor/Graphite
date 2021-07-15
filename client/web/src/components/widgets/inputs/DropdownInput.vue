@@ -76,9 +76,9 @@
 
 <script lang="ts">
 import { defineComponent, PropType } from "vue";
-import Icon from "../labels/Icon.vue";
-import MenuList, { MenuListEntry, SectionsOfMenuListEntries } from "../floating-menus/MenuList.vue";
-import { MenuDirection } from "../floating-menus/FloatingMenu.vue";
+import Icon from "@/components/widgets/labels/Icon.vue";
+import MenuList, { MenuListEntry, SectionsOfMenuListEntries } from "@/components/widgets/floating-menus/MenuList.vue";
+import { MenuDirection } from "@/components/widgets/floating-menus/FloatingMenu.vue";
 
 export default defineComponent({
 	props: {
