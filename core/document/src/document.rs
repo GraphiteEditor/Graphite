@@ -42,7 +42,6 @@ impl Document {
 	pub fn render(&mut self, path: &mut Vec<LayerId>, svg: &mut String) {
 		if !self.work_mount_path.as_slice().starts_with(path) {
 			self.layer_mut(path).unwrap().render();
-			path.pop();
 			return;
 		}
 		if path.as_slice() == self.work_mount_path {
@@ -51,12 +50,12 @@ impl Document {
 			self.document_folder_mut(path).unwrap().render_as_folder(svg);
 			self.work.transform = transform;
 			self.work.render_as_folder(svg);
-			path.pop();
 		}
 		let ids = self.folder(path).unwrap().layer_ids.clone();
 		for element in ids {
 			path.push(element);
 			self.render(path, svg);
+			path.pop();
 		}
 	}
 
