@@ -68,7 +68,7 @@ impl Fsm for EllipseToolFsmState {
 				(Ready, DragStart) => {
 					data.drag_start = input.mouse.position;
 					data.drag_current = input.mouse.position;
-					responses.push_back(Operation::MountWorkingFolder { path: vec![] }.into());
+					responses.push_back(Operation::MountWorkingFolder { path: vec![0] }.into());
 					Dragging
 				}
 				(Dragging, MouseMove) => {
@@ -160,7 +160,7 @@ fn make_operation(data: &EllipseToolData, tool_data: &DocumentToolData, transfor
 		let (cx, cy, r_scale) = if data.center_around_cursor { (x0, y0, 1.0) } else { ((x0 + x1) * 0.5, (y0 + y1) * 0.5, 0.5) };
 		let (rx, ry) = ((x1 - x0).abs() * r_scale, (y1 - y0).abs() * r_scale);
 		Operation::AddEllipse {
-			path: vec![],
+			path: vec![0],
 			insert_index: -1,
 			transform: (transform.inverse() * glam::DAffine2::from_scale_angle_translation(DVec2::new(rx, ry), 0., DVec2::new(cx, cy))).to_cols_array(),
 			style: style::PathStyle::new(None, Some(style::Fill::new(tool_data.primary_color))),

@@ -67,7 +67,7 @@ impl Fsm for RectangleToolFsmState {
 				(Ready, DragStart) => {
 					data.drag_start = input.mouse.position;
 					data.drag_current = input.mouse.position;
-					responses.push_back(Operation::MountWorkingFolder { path: vec![] }.into());
+					responses.push_back(Operation::MountWorkingFolder { path: vec![0] }.into());
 					Dragging
 				}
 				(Dragging, MouseMove) => {
@@ -162,7 +162,7 @@ fn make_operation(data: &RectangleToolData, tool_data: &DocumentToolData, transf
 	};
 
 	Operation::AddRect {
-		path: vec![],
+		path: vec![0],
 		insert_index: -1,
 		transform: (transform.inverse() * glam::DAffine2::from_scale_angle_translation(DVec2::new(x1 - x0, y1 - y0), 0., DVec2::new(x0, y0))).to_cols_array(),
 		style: style::PathStyle::new(None, Some(style::Fill::new(tool_data.primary_color))),

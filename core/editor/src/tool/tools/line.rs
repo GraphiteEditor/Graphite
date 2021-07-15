@@ -74,7 +74,7 @@ impl Fsm for LineToolFsmState {
 					data.drag_start = input.mouse.position;
 					data.drag_current = input.mouse.position;
 
-					responses.push_back(Operation::MountWorkingFolder { path: vec![] }.into());
+					responses.push_back(Operation::MountWorkingFolder { path: vec![0] }.into());
 
 					Dragging
 				}
@@ -175,7 +175,7 @@ fn make_operation(data: &mut LineToolData, tool_data: &DocumentToolData, transfo
 	let (x0, y0) = if data.center_around_cursor { (x0 - (x1 - x0), y0 - (y1 - y0)) } else { (x0, y0) };
 
 	Operation::AddLine {
-		path: vec![],
+		path: vec![0],
 		insert_index: -1,
 		transform: (transform.inverse() * glam::DAffine2::from_scale_angle_translation(DVec2::new(x1 - x0, y1 - y0), 0., DVec2::new(x0, y0))).to_cols_array(),
 		style: style::PathStyle::new(Some(style::Stroke::new(tool_data.primary_color, 5.)), None),

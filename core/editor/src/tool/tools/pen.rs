@@ -63,7 +63,7 @@ impl Fsm for PenToolFsmState {
 		if let ToolMessage::Pen(event) = event {
 			match (self, event) {
 				(Ready, DragStart) => {
-					responses.push_back(Operation::MountWorkingFolder { path: vec![] }.into());
+					responses.push_back(Operation::MountWorkingFolder { path: vec![0] }.into());
 
 					data.points.push(pos);
 					data.next_point = pos;
@@ -125,7 +125,7 @@ fn make_operation(data: &PenToolData, tool_data: &DocumentToolData, show_preview
 		points.push((data.next_point.translation.x, data.next_point.translation.y))
 	}
 	Operation::AddPen {
-		path: vec![],
+		path: vec![0],
 		insert_index: -1,
 		transform: DAffine2::IDENTITY.to_cols_array(),
 		points,

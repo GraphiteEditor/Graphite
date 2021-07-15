@@ -67,7 +67,7 @@ impl Fsm for SelectToolFsmState {
 				(Ready, DragStart) => {
 					data.drag_start = input.mouse.position;
 					data.drag_current = input.mouse.position;
-					responses.push_back(Operation::MountWorkingFolder { path: vec![] }.into());
+					responses.push_back(Operation::MountWorkingFolder { path: vec![0] }.into());
 					Dragging
 				}
 				(Dragging, MouseMove) => {
