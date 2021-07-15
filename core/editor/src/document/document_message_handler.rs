@@ -35,6 +35,7 @@ pub enum DocumentMessage {
 	CloseAllDocumentsWithConfirmation,
 	CloseAllDocuments,
 	NewDocument,
+	GetOpenDocumentsList,
 	NextDocument,
 	PrevDocument,
 	ExportDocument,
@@ -302,6 +303,11 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					.into(),
 				);
 				responses.push_back(SelectDocument(self.active_document_index).into());
+			}
+			GetOpenDocumentsList => {
+				// Send the list of document tab names
+				let open_documents = self.documents.iter().map(|doc| doc.name.clone()).collect();
+				responses.push_back(FrontendMessage::UpdateOpenDocumentsList { open_documents }.into());
 			}
 			NextDocument => {
 				let id = (self.active_document_index + 1) % self.documents.len();

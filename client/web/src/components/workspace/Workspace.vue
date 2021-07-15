@@ -51,6 +51,8 @@ import LayoutRow from "../layout/LayoutRow.vue";
 import LayoutCol from "../layout/LayoutCol.vue";
 import Panel from "./Panel.vue";
 
+const wasm = import("@/../wasm/pkg");
+
 export default defineComponent({
 	components: {
 		LayoutRow,
@@ -69,12 +71,14 @@ export default defineComponent({
 			const documentData = responseData as SetActiveDocument;
 			if (documentData) this.activeDocument = documentData.document_index;
 		});
+
+		(async () => (await wasm).get_open_documents_list())();
 	},
 
 	data() {
 		return {
 			activeDocument: 0,
-			documents: ["Untitled Document"], // TODO: start as an empty list
+			documents: [] as Array<string>,
 		};
 	},
 });
