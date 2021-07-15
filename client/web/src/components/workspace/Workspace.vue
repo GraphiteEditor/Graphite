@@ -65,7 +65,6 @@ export default defineComponent({
 				this.documents = documentListData.open_documents;
 			}
 		});
-
 		registerResponseHandler(ResponseType.SetActiveDocument, (responseData: Response) => {
 			const documentData = responseData as SetActiveDocument;
 			if (documentData) this.activeDocument = documentData.document_index;
