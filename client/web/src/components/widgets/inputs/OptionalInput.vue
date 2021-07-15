@@ -11,13 +11,11 @@
 		align-items: center;
 		white-space: nowrap;
 		justify-content: center;
-		margin-right: 1px;
-		width: 23px;
+		width: 24px;
 		height: 24px;
 		border: 1px solid var(--color-7-middlegray);
 		border-radius: 2px 0 0 2px;
 		box-sizing: border-box;
-		border-right: none;
 
 		&:hover {
 			background: var(--color-6-lowergray);
@@ -26,19 +24,11 @@
 
 	input:checked + label {
 		border: 1px solid var(--color-accent);
-		border-right: none;
 
 		&:hover {
 			border: 1px solid var(--color-accent-hover);
-			border-right: none;
 			background: none;
 		}
-		// 	border: none;
-		// 	background: var(--color-e-nearwhite);
-
-		// 	&:hover {
-		// 		background: var(--color-f-white);
-		// 	}
 	}
 }
 </style>
