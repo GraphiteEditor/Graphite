@@ -13,6 +13,7 @@ module.exports = {
 				(Plugin) =>
 					new Plugin({
 						crateDirectory: path.resolve(__dirname, "wasm"),
+						watchDirectories: [path.resolve(__dirname, "../../core")],
 					})
 			)
 			.end();

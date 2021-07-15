@@ -64,7 +64,7 @@ This is the primary means of running and developing the project. You may need to
 npm run serve
 ```
 
-The server automatically watches for changes to Vue files and rebuilds them. However core Rust and TypeScript file changes require a manual restart of the development server. (Please submit a PR to help it watch the `.ts` files!)
+The server automatically watches for changes to Vue files and rebuilds them. However TypeScript file changes require a manual restart of the development server. (Please submit a PR to help it watch the `.ts` files!)
 
 You can also use `npm run lint` and `npm run lint-no-fix` to solve web formatting and `cargo fmt` for Rust formatting. Also `npm run build` writes static files to `/client/web/dist` instead of serving them from memory.
 
