@@ -59,7 +59,7 @@ export default defineComponent({
 	},
 	data() {
 		return {
-			platform: ApplicationPlatform.Windows,
+			platform: ApplicationPlatform.Web,
 			maximized: true,
 		};
 	},
