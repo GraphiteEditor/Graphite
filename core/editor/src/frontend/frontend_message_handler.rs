@@ -13,15 +13,15 @@ pub enum FrontendMessage {
 	SetActiveTool { tool_name: String },
 	SetActiveDocument { document_index: usize },
 	UpdateOpenDocumentsList { open_documents: Vec<String> },
-	PromptConfirmationToCloseDocument { document_index: usize },
-	PromptConfirmationToCloseAllDocuments,
+	DisplayConfirmationToCloseDocument { document_index: usize },
+	DisplayConfirmationToCloseAllDocuments,
 	UpdateCanvas { document: String },
 	ExportDocument { document: String },
 	EnableTextInput,
 	DisableTextInput,
 	UpdateWorkingColors { primary: Color, secondary: Color },
 	SetCanvasZoom { new_zoom: f64 },
-	SetRotation { new_radians: f64 },
+	SetCanvasRotation { new_radians: f64 },
 }
 
 pub struct FrontendMessageHandler {
@@ -48,6 +48,6 @@ impl MessageHandler<FrontendMessage, ()> for FrontendMessageHandler {
 		EnableTextInput,
 		DisableTextInput,
 		SetCanvasZoom,
-		SetRotation,
+		SetCanvasRotation,
 	);
 }

@@ -193,7 +193,7 @@
 <script lang="ts">
 import { defineComponent } from "vue";
 import { makeModifiersBitfield } from "@/utilities/input";
-import { ResponseType, registerResponseHandler, Response, UpdateCanvas, SetActiveTool, ExportDocument, SetCanvasZoom, SetRotation } from "../../utilities/response-handler";
+import { ResponseType, registerResponseHandler, Response, UpdateCanvas, SetActiveTool, ExportDocument, SetCanvasZoom, SetCanvasRotation } from "../../utilities/response-handler";
 import LayoutRow from "../layout/LayoutRow.vue";
 import LayoutCol from "../layout/LayoutCol.vue";
 import WorkingColors from "../widgets/WorkingColors.vue";
@@ -296,8 +296,8 @@ export default defineComponent({
 				zoomWidget.setValue(updateData.new_zoom * 100);
 			}
 		});
-		registerResponseHandler(ResponseType.SetRotation, (responseData: Response) => {
-			const updateData = responseData as SetRotation;
+		registerResponseHandler(ResponseType.SetCanvasRotation, (responseData: Response) => {
+			const updateData = responseData as SetCanvasRotation;
 			if (updateData) {
 				const rotationWidget = this.$refs.rotation as typeof NumberInput;
 				const newRotation = updateData.new_radians * (180 / Math.PI);
