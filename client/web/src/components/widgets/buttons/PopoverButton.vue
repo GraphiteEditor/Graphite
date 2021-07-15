@@ -37,7 +37,7 @@
 	}
 
 	// TODO: Refactor this and other complicated cases dealing with joined widget margins and border-radius by adding a single standard set of classes: joined-first, joined-inner, and joined-last
-	div[class*="-input"]:not(.optional-input) + & {
+	div[class*="-input"] + & {
 		margin-left: 1px;
 
 		.icon-button {

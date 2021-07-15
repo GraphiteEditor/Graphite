@@ -40,7 +40,7 @@
 
 	// TODO: Replace with CSS color() function to calculate alpha when browsers support it
 	// See https://developer.mozilla.org/en-US/docs/Web/CSS/color_value/color() and https://caniuse.com/css-color-function
-	// E6 = 90% alpha
+	// F2 = 95% alpha
 	--floating-menu-opacity-color-2-mildblack: #222222f2;
 	--floating-menu-shadow: rgba(0, 0, 0, 50%);
 }
