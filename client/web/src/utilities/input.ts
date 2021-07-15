@@ -1,3 +1,5 @@
+import { toggleFullscreen } from "@/utilities/fullscreen";
+
 const wasm = import("@/../wasm/pkg");
 
 export function shouldRedirectKeyboardEventToBackend(e: KeyboardEvent): boolean {
@@ -6,7 +8,11 @@ export function shouldRedirectKeyboardEventToBackend(e: KeyboardEvent): boolean 
 	if (target.nodeName === "INPUT" || target.nodeName === "TEXTAREA" || target.isContentEditable) return false;
 
 	// Don't redirect a fullscreen request
-	if (e.key.toLowerCase() === "f11") return false;
+	if (e.key.toLowerCase() === "f11" && e.type === "keydown" && !e.repeat) {
+		e.preventDefault();
+		toggleFullscreen();
+		return false;
+	}
 
 	// Don't redirect a reload request
 	if (e.key.toLowerCase() === "f5") return false;

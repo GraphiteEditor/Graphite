@@ -8,6 +8,7 @@
 	</div>
 	<div class="header-third">
 		<WindowButtonsWindows :maximized="maximized" v-if="platform === ApplicationPlatform.Windows || platform === ApplicationPlatform.Linux" />
+		<WindowButtonsWeb :maximized="maximized" v-if="platform === ApplicationPlatform.Web" />
 	</div>
 </template>
 
@@ -36,15 +37,10 @@ import MenuBarInput from "../../widgets/inputs/MenuBarInput.vue";
 import WindowTitle from "./WindowTitle.vue";
 import WindowButtonsWindows from "./WindowButtonsWindows.vue";
 import WindowButtonsMac from "./WindowButtonsMac.vue";
+import WindowButtonsWeb from "./WindowButtonsWeb.vue";
 import { ApplicationPlatform } from "../MainWindow.vue";
 
 export default defineComponent({
-	components: {
-		MenuBarInput,
-		WindowTitle,
-		WindowButtonsWindows,
-		WindowButtonsMac,
-	},
 	props: {
 		platform: { type: String, required: true },
 		maximized: { type: Boolean, required: true },
@@ -53,6 +49,13 @@ export default defineComponent({
 		return {
 			ApplicationPlatform,
 		};
+	},
+	components: {
+		MenuBarInput,
+		WindowTitle,
+		WindowButtonsWindows,
+		WindowButtonsMac,
+		WindowButtonsWeb,
 	},
 });
 </script>
