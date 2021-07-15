@@ -21,9 +21,9 @@ export enum ResponseType {
 	UpdateOpenDocumentsList = "UpdateOpenDocumentsList",
 	UpdateWorkingColors = "UpdateWorkingColors",
 	SetCanvasZoom = "SetCanvasZoom",
-	SetRotation = "SetRotation",
-	PromptConfirmationToCloseDocument = "PromptConfirmationToCloseDocument",
-	PromptConfirmationToCloseAllDocuments = "PromptConfirmationToCloseAllDocuments",
+	SetCanvasRotation = "SetCanvasRotation",
+	DisplayConfirmationToCloseDocument = "DisplayConfirmationToCloseDocument",
+	DisplayConfirmationToCloseAllDocuments = "DisplayConfirmationToCloseAllDocuments",
 }
 
 export function registerResponseHandler(responseType: ResponseType, callback: ResponseCallback) {
@@ -62,23 +62,23 @@ function parseResponse(responseType: string, data: any): Response {
 		case "UpdateCanvas":
 			return newUpdateCanvas(data.UpdateCanvas);
 		case "SetCanvasZoom":
-			return newSetZoom(data.SetCanvasZoom);
-		case "SetRotation":
-			return newSetRotation(data.SetRotation);
+			return newSetCanvasZoom(data.SetCanvasZoom);
+		case "SetCanvasRotation":
+			return newSetCanvasRotation(data.SetCanvasRotation);
 		case "ExportDocument":
 			return newExportDocument(data.ExportDocument);
 		case "UpdateWorkingColors":
 			return newUpdateWorkingColors(data.UpdateWorkingColors);
-		case "PromptConfirmationToCloseDocument":
-			return newPromptConfirmationToCloseDocument(data.PromptConfirmationToCloseDocument);
-		case "PromptConfirmationToCloseAllDocuments":
-			return newPromptConfirmationToCloseAllDocuments(data.PromptConfirmationToCloseAllDocuments);
+		case "DisplayConfirmationToCloseDocument":
+			return newDisplayConfirmationToCloseDocument(data.DisplayConfirmationToCloseDocument);
+		case "DisplayConfirmationToCloseAllDocuments":
+			return newDisplayConfirmationToCloseAllDocuments(data.DisplayConfirmationToCloseAllDocuments);
 		default:
 			throw new Error(`Unrecognized origin/responseType pair: ${origin}, '${responseType}'`);
 	}
 }
 
-export type Response = SetActiveTool | UpdateCanvas | DocumentChanged | CollapseFolder | ExpandFolder | UpdateWorkingColors | SetCanvasZoom | SetRotation;
+export type Response = SetActiveTool | UpdateCanvas | DocumentChanged | CollapseFolder | ExpandFolder | UpdateWorkingColors | SetCanvasZoom | SetCanvasRotation;
 
 export interface UpdateOpenDocumentsList {
 	open_documents: Array<string>;
@@ -127,16 +127,16 @@ function newSetActiveDocument(input: any): SetActiveDocument {
 	};
 }
 
-export interface PromptConfirmationToCloseDocument {
+export interface DisplayConfirmationToCloseDocument {
 	document_index: number;
 }
-function newPromptConfirmationToCloseDocument(input: any): PromptConfirmationToCloseDocument {
+function newDisplayConfirmationToCloseDocument(input: any): DisplayConfirmationToCloseDocument {
 	return {
 		document_index: input.document_index,
 	};
 }
 
-function newPromptConfirmationToCloseAllDocuments(_input: any): {} {
+function newDisplayConfirmationToCloseAllDocuments(_input: any): {} {
 	return {};
 }
 
@@ -186,16 +186,16 @@ function newExpandFolder(input: any): ExpandFolder {
 export interface SetCanvasZoom {
 	new_zoom: number;
 }
-function newSetZoom(input: any): SetCanvasZoom {
+function newSetCanvasZoom(input: any): SetCanvasZoom {
 	return {
 		new_zoom: input.new_zoom,
 	};
 }
 
-export interface SetRotation {
+export interface SetCanvasRotation {
 	new_radians: number;
 }
-function newSetRotation(input: any): SetRotation {
+function newSetCanvasRotation(input: any): SetCanvasRotation {
 	return {
 		new_radians: input.new_radians,
 	};

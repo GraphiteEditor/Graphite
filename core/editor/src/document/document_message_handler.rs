@@ -51,7 +51,7 @@ pub enum DocumentMessage {
 	SetCanvasZoom(f64),
 	MultiplyCanvasZoom(f64),
 	WheelCanvasZoom,
-	SetRotation(f64),
+	SetCanvasRotation(f64),
 	NudgeSelectedLayers(f64, f64),
 }
 
@@ -69,7 +69,7 @@ impl From<DocumentOperation> for Message {
 #[derive(Debug, Clone)]
 pub struct DocumentMessageHandler {
 	documents: Vec<Document>,
-	active_document: usize,
+	active_document_index: usize,
 	translating: bool,
 	rotating: bool,
 	zooming: bool,
@@ -80,10 +80,10 @@ pub struct DocumentMessageHandler {
 
 impl DocumentMessageHandler {
 	pub fn active_document(&self) -> &Document {
-		&self.documents[self.active_document]
+		&self.documents[self.active_document_index]
 	}
 	pub fn active_document_mut(&mut self) -> &mut Document {
-		&mut self.documents[self.active_document]
+		&mut self.documents[self.active_document_index]
 	}
 	fn filter_document_responses(&self, document_responses: &mut Vec<DocumentResponse>) -> bool {
 		let len = document_responses.len();
@@ -166,7 +166,7 @@ impl Default for DocumentMessageHandler {
 	fn default() -> Self {
 		Self {
 			documents: vec![Document::default()],
-			active_document: 0,
+			active_document_index: 0,
 			translating: false,
 			rotating: false,
 			zooming: false,
@@ -185,15 +185,25 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			AddFolder(path) => responses.push_back(DocumentOperation::AddFolder { path }.into()),
 			SelectDocument(id) => {
 				assert!(id < self.documents.len(), "Tried to select a document that was not initialized");
-				self.active_document = id;
-				responses.push_back(FrontendMessage::SetActiveDocument { document_index: self.active_document }.into());
+				self.active_document_index = id;
+				responses.push_back(
+					FrontendMessage::SetActiveDocument {
+						document_index: self.active_document_index,
+					}
+					.into(),
+				);
 				responses.push_back(RenderDocument.into());
 			}
 			CloseActiveDocumentWithConfirmation => {
-				responses.push_back(FrontendMessage::PromptConfirmationToCloseDocument { document_index: self.active_document }.into());
+				responses.push_back(
+					FrontendMessage::DisplayConfirmationToCloseDocument {
+						document_index: self.active_document_index,
+					}
+					.into(),
+				);
 			}
 			CloseAllDocumentsWithConfirmation => {
-				responses.push_back(FrontendMessage::PromptConfirmationToCloseAllDocuments.into());
+				responses.push_back(FrontendMessage::DisplayConfirmationToCloseAllDocuments.into());
 			}
 			CloseAllDocuments => {
 				// Empty the list of internal document data
@@ -213,19 +223,24 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 
 				// Last tab was closed, so create a new blank tab
 				if self.documents.is_empty() {
-					self.active_document = 0;
+					self.active_document_index = 0;
 					responses.push_back(DocumentMessage::NewDocument.into());
 				}
 				// The currently selected doc is being closed
-				else if id == self.active_document {
+				else if id == self.active_document_index {
 					// The currently selected tab was the rightmost tab
 					if id == self.documents.len() {
-						self.active_document -= 1;
+						self.active_document_index -= 1;
 					}
 
 					let lp = self.active_document_mut().layer_panel(&[]).expect("Could not get panel for active doc");
 					responses.push_back(FrontendMessage::ExpandFolder { path: Vec::new(), children: lp }.into());
-					responses.push_back(FrontendMessage::SetActiveDocument { document_index: self.active_document }.into());
+					responses.push_back(
+						FrontendMessage::SetActiveDocument {
+							document_index: self.active_document_index,
+						}
+						.into(),
+					);
 					responses.push_back(
 						FrontendMessage::UpdateCanvas {
 							document: self.active_document_mut().document.render_root(),
@@ -234,9 +249,14 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					);
 				}
 				// Active doc will move one space to the left
-				else if id < self.active_document {
-					self.active_document -= 1;
-					responses.push_back(FrontendMessage::SetActiveDocument { document_index: self.active_document }.into());
+				else if id < self.active_document_index {
+					self.active_document_index -= 1;
+					responses.push_back(
+						FrontendMessage::SetActiveDocument {
+							document_index: self.active_document_index,
+						}
+						.into(),
+					);
 				}
 			}
 			NewDocument => {
@@ -266,7 +286,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					_ => format!("Untitled Document {}", new_doc_title_num),
 				};
 
-				self.active_document = self.documents.len();
+				self.active_document_index = self.documents.len();
 				let new_document = Document::with_name(name);
 				self.documents.push(new_document);
 
@@ -281,14 +301,14 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					}
 					.into(),
 				);
-				responses.push_back(SelectDocument(self.active_document).into());
+				responses.push_back(SelectDocument(self.active_document_index).into());
 			}
 			NextDocument => {
-				let id = (self.active_document + 1) % self.documents.len();
+				let id = (self.active_document_index + 1) % self.documents.len();
 				responses.push_back(SelectDocument(id).into());
 			}
 			PrevDocument => {
-				let id = (self.active_document + self.documents.len() - 1) % self.documents.len();
+				let id = (self.active_document_index + self.documents.len() - 1) % self.documents.len();
 				responses.push_back(SelectDocument(id).into());
 			}
 			ExportDocument => responses.push_back(
@@ -444,7 +464,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					layerdata.rotation += rotation;
 					layerdata.snap_rotate = snapping;
 					responses.push_back(
-						FrontendMessage::SetRotation {
+						FrontendMessage::SetCanvasRotation {
 							new_radians: layerdata.snapped_angle(),
 						}
 						.into(),
@@ -506,11 +526,11 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				layerdata.translation += transformed_delta;
 				self.create_document_transform_from_layerdata(&ipp.viewport_size, responses);
 			}
-			SetRotation(new) => {
+			SetCanvasRotation(new) => {
 				let layerdata = self.layerdata_mut(&vec![]);
 				layerdata.rotation = new;
 				self.create_document_transform_from_layerdata(&ipp.viewport_size, responses);
-				responses.push_back(FrontendMessage::SetRotation { new_radians: new }.into());
+				responses.push_back(FrontendMessage::SetCanvasRotation { new_radians: new }.into());
 			}
 			NudgeSelectedLayers(x, y) => {
 				let paths: Vec<Vec<LayerId>> = self.selected_layers_sorted();
@@ -552,7 +572,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			ZoomCanvasBegin,
 			SetCanvasZoom,
 			MultiplyCanvasZoom,
-			SetRotation,
+			SetCanvasRotation,
 			WheelCanvasZoom,
 			WheelCanvasTranslate,
 		);

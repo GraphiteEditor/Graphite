@@ -182,7 +182,7 @@ pub fn set_zoom(new_zoom: f64) -> Result<(), JsValue> {
 /// Sets the rotation to the new value (in radians)
 #[wasm_bindgen]
 pub fn set_rotation(new_radians: f64) -> Result<(), JsValue> {
-	let ev = DocumentMessage::SetRotation(new_radians);
+	let ev = DocumentMessage::SetCanvasRotation(new_radians);
 	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(ev)).map_err(convert_error)
 }
 

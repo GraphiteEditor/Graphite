@@ -150,7 +150,7 @@ import Minimap from "../panels/Minimap.vue";
 import IconButton from "../widgets/buttons/IconButton.vue";
 import PopoverButton, { PopoverButtonIcon } from "../widgets/buttons/PopoverButton.vue";
 import { MenuDirection } from "../widgets/floating-menus/FloatingMenu.vue";
-import { ResponseType, registerResponseHandler, Response, PromptConfirmationToCloseDocument } from "../../utilities/response-handler";
+import { ResponseType, registerResponseHandler, Response, DisplayConfirmationToCloseDocument } from "../../utilities/response-handler";
 
 const wasm = import("../../../wasm/pkg");
 
@@ -187,13 +187,11 @@ export default defineComponent({
 	},
 	mounted() {
 		// TODO: Move these somewhere more appropriate to act upon all panels
-
-		registerResponseHandler(ResponseType.PromptConfirmationToCloseDocument, (responseData: Response) => {
-			const promptData = responseData as PromptConfirmationToCloseDocument;
-			this.closeDocumentWithConfirmation(promptData.document_index);
+		registerResponseHandler(ResponseType.DisplayConfirmationToCloseDocument, (responseData: Response) => {
+			const data = responseData as DisplayConfirmationToCloseDocument;
+			this.closeDocumentWithConfirmation(data.document_index);
 		});
-
-		registerResponseHandler(ResponseType.PromptConfirmationToCloseAllDocuments, (_responseData: Response) => {
+		registerResponseHandler(ResponseType.DisplayConfirmationToCloseAllDocuments, (_responseData: Response) => {
 			this.closeAllDocumentsWithConfirmation();
 		});
 	},
