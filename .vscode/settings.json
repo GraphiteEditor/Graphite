@@ -12,6 +12,7 @@
 		"editor.defaultFormatter": "dbaeumer.vscode-eslint",
 	},
 	"rust-analyzer.experimental.procAttrMacros": true,
+	"rust-analyzer.cargo.target": "wasm32-unknown-unknown",
 	"files.eol": "\n",
 	"html.format.wrapLineLength": 200,
 	"eslint.format.enable": true,
