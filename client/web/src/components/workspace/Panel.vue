@@ -7,11 +7,11 @@
 					:class="{ active: tabIndex === tabActiveIndex }"
 					v-for="(tabLabel, tabIndex) in tabLabels"
 					:key="tabLabel"
-					@click.middle="closeTab(tabIndex)"
+					@click.middle="handleTabClose(tabIndex)"
 					@click="handleTabClick(tabIndex)"
 				>
 					<span>{{ tabLabel }}</span>
-					<IconButton :icon="'CloseX'" :size="16" v-if="tabCloseButtons" @click.stop="closeTab(tabIndex)" />
+					<IconButton :icon="'CloseX'" :size="16" v-if="tabCloseButtons" @click.stop="handleTabClose(tabIndex)" />
 				</div>
 			</div>
 			<PopoverButton :icon="PopoverButtonIcon.VerticalEllipsis">
@@ -150,7 +150,7 @@ import Minimap from "../panels/Minimap.vue";
 import IconButton from "../widgets/buttons/IconButton.vue";
 import PopoverButton, { PopoverButtonIcon } from "../widgets/buttons/PopoverButton.vue";
 import { MenuDirection } from "../widgets/floating-menus/FloatingMenu.vue";
-import { ResponseType, registerResponseHandler, Response } from "../../utilities/response-handler";
+import { ResponseType, registerResponseHandler, Response, PromptConfirmationToCloseDocument } from "../../utilities/response-handler";
 
 const wasm = import("../../../wasm/pkg");
 
@@ -164,24 +164,37 @@ export default defineComponent({
 		PopoverButton,
 	},
 	methods: {
-		async handleTabClick(tabIndex: number) {
-			if (this.panelType !== "Document") return;
-
+		handleTabClick(tabIndex: number) {
+			if (this.panelType === "Document") this.selectDocument(tabIndex);
+		},
+		handleTabClose(tabIndex: number) {
+			if (this.panelType === "Document") this.closeDocumentWithConfirmation(tabIndex);
+		},
+		async selectDocument(tabIndex: number) {
 			const { select_document } = await wasm;
 			select_document(tabIndex);
 		},
-		async closeTab(tabIndex: number) {
-			if (this.panelType !== "Document") return;
-
-			const { close_document } = await wasm;
+		async closeDocumentWithConfirmation(tabIndex: number) {
 			// eslint-disable-next-line no-alert
-			const result = window.confirm("Closing this document will permanently discard all work. Continue?");
-			if (result) close_document(tabIndex);
+			const userConfirmation = window.confirm("Closing this document will permanently discard all work. Continue?");
+			if (userConfirmation) (await wasm).close_document(tabIndex);
+		},
+		async closeAllDocumentsWithConfirmation() {
+			// eslint-disable-next-line no-alert
+			const userConfirmation = window.confirm("Closing all documents will permanently discard all work in each of them. Continue?");
+			if (userConfirmation) (await wasm).close_all_documents();
 		},
 	},
 	mounted() {
-		registerResponseHandler(ResponseType.PromptCloseConfirmationModal, (_responseData: Response) => {
-			this.closeTab(this.tabActiveIndex);
+		// TODO: Move these somewhere more appropriate to act upon all panels
+
+		registerResponseHandler(ResponseType.PromptConfirmationToCloseDocument, (responseData: Response) => {
+			const promptData = responseData as PromptConfirmationToCloseDocument;
+			this.closeDocumentWithConfirmation(promptData.document_index);
+		});
+
+		registerResponseHandler(ResponseType.PromptConfirmationToCloseAllDocuments, (_responseData: Response) => {
+			this.closeAllDocumentsWithConfirmation();
 		});
 	},
 	props: {

@@ -15,7 +15,8 @@
 				<Icon :icon="entry.icon" v-if="entry.icon && drawIcon" />
 				<div class="no-icon" v-else-if="drawIcon" />
 				<span class="entry-label">{{ entry.label }}</span>
-				<UserInputLabel v-if="entry.shortcut && entry.shortcut.length" :inputKeys="[entry.shortcut]" />
+				<Icon :icon="'Info'" v-if="entry.shortcutRequiresLock && !fullscreen.keyboardLocked" :title="keyboardLockInfoMessage" />
+				<UserInputLabel v-else-if="entry.shortcut && entry.shortcut.length" :inputKeys="[entry.shortcut]" />
 				<div class="submenu-arrow" v-if="entry.children && entry.children.length"></div>
 				<div class="no-submenu-arrow" v-else></div>
 				<MenuList
@@ -121,6 +122,7 @@
 
 <script lang="ts">
 import { defineComponent, PropType } from "vue";
+import { keyboardLockApiSupported } from "@/utilities/fullscreen";
 import FloatingMenu, { MenuDirection, MenuType } from "./FloatingMenu.vue";
 import Separator, { SeparatorDirection, SeparatorType } from "../Separator.vue";
 import Icon from "../labels/Icon.vue";
@@ -134,13 +136,18 @@ interface MenuListEntryData {
 	icon?: string;
 	// TODO: Add `checkbox` (which overrides any `icon`)
 	shortcut?: Array<string>;
+	shortcutRequiresLock?: boolean;
 	action?: Function;
 	children?: SectionsOfMenuListEntries;
 }
 
 export type MenuListEntry = MenuListEntryData & { ref?: typeof FloatingMenu | typeof MenuList };
 
+const KEYBOARD_LOCK_USE_FULLSCREEN = "This hotkey is reserved by the browser, but becomes available in fullscreen mode";
+const KEYBOARD_LOCK_SWITCH_BROWSER = "This hotkey is reserved by the browser, but becomes available in Chrome, Edge, and Opera which support the Keyboard.lock() API";
+
 const MenuList = defineComponent({
+	inject: ["fullscreen"],
 	props: {
 		direction: { type: String as PropType<MenuDirection>, default: MenuDirection.Bottom },
 		menuEntries: { type: Array as PropType<SectionsOfMenuListEntries>, required: true },
@@ -242,6 +249,7 @@ const MenuList = defineComponent({
 	data() {
 		return {
 			currentEntry: this.activeEntry,
+			keyboardLockInfoMessage: keyboardLockApiSupported() ? KEYBOARD_LOCK_USE_FULLSCREEN : KEYBOARD_LOCK_SWITCH_BROWSER,
 			SeparatorDirection,
 			SeparatorType,
 			MenuDirection,

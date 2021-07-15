@@ -61,8 +61,8 @@ impl Default for KeyMappingEntries {
 
 #[derive(Debug, Clone)]
 struct Mapping {
-	up: [KeyMappingEntries; NUMBER_OF_KEYS],
-	down: [KeyMappingEntries; NUMBER_OF_KEYS],
+	key_up: [KeyMappingEntries; NUMBER_OF_KEYS],
+	key_down: [KeyMappingEntries; NUMBER_OF_KEYS],
 	pointer_move: KeyMappingEntries,
 	mouse_scroll: KeyMappingEntries,
 }
@@ -91,26 +91,26 @@ macro_rules! entry {
 macro_rules! mapping {
 	//[$(<action=$action:expr; message=$key:expr; $(modifiers=[$($m:ident),* $(,)?];)?>)*] => {{
 	[$($entry:expr),* $(,)?] => {{
-		let mut up =  KeyMappingEntries::key_array();
-		let mut down = KeyMappingEntries::key_array();
+		let mut key_up =  KeyMappingEntries::key_array();
+		let mut key_down = KeyMappingEntries::key_array();
 		let mut pointer_move: KeyMappingEntries = Default::default();
 		let mut mouse_scroll: KeyMappingEntries = Default::default();
 		$(
 			let arr = match $entry.trigger {
-				InputMapperMessage::KeyDown(key) => &mut down[key as usize],
-				InputMapperMessage::KeyUp(key) => &mut up[key as usize],
+				InputMapperMessage::KeyDown(key) => &mut key_down[key as usize],
+				InputMapperMessage::KeyUp(key) => &mut key_up[key as usize],
 				InputMapperMessage::PointerMove => &mut pointer_move,
 				InputMapperMessage::MouseScroll => &mut mouse_scroll,
 			};
 			arr.push($entry);
 		)*
-		(up, down, pointer_move, mouse_scroll)
+		(key_up, key_down, pointer_move, mouse_scroll)
 	}};
 }
 
 impl Default for Mapping {
 	fn default() -> Self {
-		let (up, down, pointer_move, mouse_scroll) = mapping![
+		let mappings = mapping![
 			entry! {action=DocumentMessage::PasteLayers, key_down=KeyV, modifiers=[KeyControl]},
 			entry! {action=DocumentMessage::EnableSnapping, key_down=KeyShift},
 			entry! {action=DocumentMessage::DisableSnapping, key_up=KeyShift},
@@ -204,9 +204,11 @@ impl Default for Mapping {
 			entry! {action=DocumentMessage::WheelCanvasZoom, message=InputMapperMessage::MouseScroll, modifiers=[KeyControl]},
 			entry! {action=DocumentMessage::WheelCanvasTranslate{use_y_as_x: true}, message=InputMapperMessage::MouseScroll, modifiers=[KeyShift]},
 			entry! {action=DocumentMessage::WheelCanvasTranslate{use_y_as_x: false}, message=InputMapperMessage::MouseScroll},
-			entry! {action=DocumentMessage::NewDocument, key_down=KeyN, modifiers=[KeyShift]},
-			entry! {action=DocumentMessage::NextDocument, key_down=KeyTab, modifiers=[KeyShift]},
-			entry! {action=DocumentMessage::CloseActiveDocument, key_down=KeyW, modifiers=[KeyShift]},
+			entry! {action=DocumentMessage::NewDocument, key_down=KeyN, modifiers=[KeyControl]},
+			entry! {action=DocumentMessage::NextDocument, key_down=KeyTab, modifiers=[KeyControl]},
+			entry! {action=DocumentMessage::PrevDocument, key_down=KeyTab, modifiers=[KeyControl, KeyShift]},
+			entry! {action=DocumentMessage::CloseAllDocumentsWithConfirmation, key_down=KeyW, modifiers=[KeyControl, KeyAlt]}, // TODO: Fix this, it's matching the one below
+			entry! {action=DocumentMessage::CloseActiveDocumentWithConfirmation, key_down=KeyW, modifiers=[KeyControl]},
 			entry! {action=DocumentMessage::DuplicateSelectedLayers, key_down=KeyD, modifiers=[KeyControl]},
 			entry! {action=DocumentMessage::CopySelectedLayers, key_down=KeyC, modifiers=[KeyControl]},
 			entry! {action=DocumentMessage::NudgeSelectedLayers(-SHIFT_NUDGE_AMOUNT, -SHIFT_NUDGE_AMOUNT), key_down=KeyArrowUp, modifiers=[KeyShift, KeyArrowLeft]},
@@ -238,7 +240,22 @@ impl Default for Mapping {
 			entry! {action=GlobalMessage::LogDebug, key_down=Key2},
 			entry! {action=GlobalMessage::LogTrace, key_down=Key3},
 		];
-		Self { up, down, pointer_move, mouse_scroll }
+
+		let (mut key_up, mut key_down, mut pointer_move, mut mouse_scroll) = mappings;
+		let sort = |list: &mut KeyMappingEntries| list.0.sort_by(|u, v| v.modifiers.ones().cmp(&u.modifiers.ones()));
+		for list in [&mut key_up, &mut key_down] {
+			for sublist in list {
+				sort(sublist);
+			}
+		}
+		sort(&mut pointer_move);
+		sort(&mut mouse_scroll);
+		Self {
+			key_up,
+			key_down,
+			pointer_move,
+			mouse_scroll,
+		}
 	}
 }
 
@@ -246,8 +263,8 @@ impl Mapping {
 	fn match_message(&self, message: InputMapperMessage, keys: &KeyStates, actions: ActionList) -> Option<Message> {
 		use InputMapperMessage::*;
 		let list = match message {
-			KeyDown(key) => &self.down[key as usize],
-			KeyUp(key) => &self.up[key as usize],
+			KeyDown(key) => &self.key_down[key as usize],
+			KeyUp(key) => &self.key_up[key as usize],
 			PointerMove => &self.pointer_move,
 			MouseScroll => &self.mouse_scroll,
 		};
