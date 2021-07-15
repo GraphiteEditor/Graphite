@@ -123,10 +123,10 @@
 <script lang="ts">
 import { defineComponent, PropType } from "vue";
 import { keyboardLockApiSupported } from "@/utilities/fullscreen";
-import FloatingMenu, { MenuDirection, MenuType } from "./FloatingMenu.vue";
-import Separator, { SeparatorDirection, SeparatorType } from "../Separator.vue";
-import Icon from "../labels/Icon.vue";
-import UserInputLabel from "../labels/UserInputLabel.vue";
+import FloatingMenu, { MenuDirection, MenuType } from "@/components/widgets/floating-menus/FloatingMenu.vue";
+import Separator, { SeparatorDirection, SeparatorType } from "@/components/widgets/Separator.vue";
+import Icon from "@/components/widgets/labels/Icon.vue";
+import UserInputLabel from "@/components/widgets/labels/UserInputLabel.vue";
 
 export type MenuListEntries = Array<MenuListEntry>;
 export type SectionsOfMenuListEntries = Array<MenuListEntries>;

@@ -53,7 +53,7 @@
 
 <script lang="ts">
 import { defineComponent } from "vue";
-import Icon from "../labels/Icon.vue";
+import Icon from "@/components/widgets/labels/Icon.vue";
 
 export default defineComponent({
 	props: {

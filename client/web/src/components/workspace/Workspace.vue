@@ -46,10 +46,10 @@
 
 <script lang="ts">
 import { defineComponent } from "vue";
-import { ResponseType, registerResponseHandler, Response, SetActiveDocument, UpdateOpenDocumentsList } from "../../utilities/response-handler";
-import LayoutRow from "../layout/LayoutRow.vue";
-import LayoutCol from "../layout/LayoutCol.vue";
-import Panel from "./Panel.vue";
+import Panel from "@/components/workspace/Panel.vue";
+import { ResponseType, registerResponseHandler, Response, SetActiveDocument, UpdateOpenDocumentsList } from "@/utilities/response-handler";
+import LayoutRow from "@/components/layout/LayoutRow.vue";
+import LayoutCol from "@/components/layout/LayoutCol.vue";
 
 const wasm = import("@/../wasm/pkg");
 
