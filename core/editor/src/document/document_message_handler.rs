@@ -5,7 +5,7 @@ use crate::{
 };
 use document_core::layers::Layer;
 use document_core::{DocumentResponse, LayerId, Operation as DocumentOperation};
-use glam::{DAffine2, DVec2};
+use glam::DAffine2;
 use log::warn;
 
 use crate::document::Document;
@@ -536,9 +536,9 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				let paths: Vec<Vec<LayerId>> = self.selected_layers_sorted();
 
 				let delta = {
-					let neg_angle = -self.layerdata_mut(&vec![]).rotation;
-					let (cos, sin) = (neg_angle.cos(), neg_angle.sin());
-					DVec2::new(x * cos - y * sin, x * sin + y * cos)
+					let root_layer_rotation = self.layerdata_mut(&vec![]).rotation;
+					let rotate_to_viewport_space = DAffine2::from_angle(root_layer_rotation).inverse();
+					rotate_to_viewport_space.transform_point2((x, y).into())
 				};
 				for path in paths {
 					let operation = DocumentOperation::TransformLayer {
