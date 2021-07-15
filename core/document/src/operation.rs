@@ -76,4 +76,8 @@ pub enum Operation {
 		path: Vec<LayerId>,
 		color: Color,
 	},
+	ReorderLayers {
+		source_path: Vec<LayerId>,
+		target_path: Vec<LayerId>,
+	},
 }
