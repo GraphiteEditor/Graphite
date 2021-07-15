@@ -45,10 +45,8 @@ impl Document {
 			return;
 		}
 		if path.as_slice() == self.work_mount_path {
-			// TODO: Handle if mounted in nested folders
-			let transform = self.document_folder(path).unwrap().transform;
 			self.document_folder_mut(path).unwrap().render_as_folder(svg);
-			self.work.transform = transform;
+			self.work.transform = self.multiply_up_transform(path).unwrap();
 			self.work.render_as_folder(svg);
 		}
 		let ids = self.folder(path).unwrap().layer_ids.clone();
@@ -63,6 +61,7 @@ impl Document {
 	pub fn render_root(&mut self) -> String {
 		let mut svg = String::new();
 		self.render(&mut vec![], &mut svg);
+		log::info!("svg {:?}", svg);
 		svg
 	}
 
@@ -140,6 +139,18 @@ impl Document {
 			root = root.as_folder_mut()?.layer_mut(*id).ok_or(DocumentError::LayerNotFound)?;
 		}
 		Ok(root)
+	}
+
+	/// Returns the actual transform of a layer / folder in global space by multiplying up the path.
+	/// This function does **not** respect mounted folders
+	pub fn multiply_up_transform(&mut self, path: &[LayerId]) -> Result<DAffine2, DocumentError> {
+		let mut root = &mut self.root;
+		let mut transform = root.transform;
+		for id in path {
+			root = root.as_folder_mut()?.layer_mut(*id).ok_or(DocumentError::LayerNotFound)?;
+			transform = transform * root.transform;
+		}
+		Ok(transform)
 	}
 
 	/// Returns a reference to the layer or folder at the path. Does not return an error for root
