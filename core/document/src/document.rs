@@ -16,8 +16,11 @@ pub struct Document {
 
 impl Default for Document {
 	fn default() -> Self {
+		let mut root = Folder::default();
+		let folder = Layer::new(LayerDataTypes::Folder(Folder::default()), DAffine2::IDENTITY.to_cols_array(), PathStyle::default());
+		root.add_layer(folder, -1);
 		Self {
-			root: Layer::new(LayerDataTypes::Folder(Folder::default()), DAffine2::IDENTITY.to_cols_array(), PathStyle::default()),
+			root: Layer::new(LayerDataTypes::Folder(root), DAffine2::IDENTITY.to_cols_array(), PathStyle::default()),
 			work: Layer::new(LayerDataTypes::Folder(Folder::default()), DAffine2::IDENTITY.to_cols_array(), PathStyle::default()),
 			work_mount_path: Vec::new(),
 			work_operations: Vec::new(),
