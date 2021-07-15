@@ -65,6 +65,24 @@ impl Folder {
 		Ok(())
 	}
 
+	pub fn reorder_layer(&mut self, source_id: LayerId, target_id: LayerId) -> Result<(), DocumentError> {
+		let source_pos = self.layer_ids.iter().position(|x| *x == source_id).ok_or(DocumentError::LayerNotFound)?;
+		let target_pos = self.layer_ids.iter().position(|x| *x == target_id).ok_or(DocumentError::LayerNotFound)?;
+
+		let layer_to_move = self.layers.remove(source_pos);
+		self.layers.insert(target_pos, layer_to_move);
+		let layer_id_to_move = self.layer_ids.remove(source_pos);
+		self.layer_ids.insert(target_pos, layer_id_to_move);
+
+		let min_index = source_pos.min(target_pos);
+		let max_index = source_pos.max(target_pos);
+		for layer_index in min_index..max_index {
+			self.layers[layer_index].cache_dirty = true;
+		}
+
+		Ok(())
+	}
+
 	/// Returns a list of layers in the folder
 	pub fn list_layers(&self) -> &[LayerId] {
 		self.layer_ids.as_slice()

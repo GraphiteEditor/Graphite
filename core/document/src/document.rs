@@ -229,13 +229,21 @@ impl Document {
 
 	pub fn layer_axis_aligned_bounding_box(&self, path: &[LayerId]) -> Result<Option<[DVec2; 2]>, DocumentError> {
 		// TODO: Replace with functions of the transform api
-		if let &[] = path {
+		if path.is_empty() {
 			// Special case for root. Root's local is the documents global, so we avoid transforming its transform by itself.
 			self.layer_local_bounding_box(path)
 		} else {
 			let layer = self.document_layer(path)?;
 			Ok(layer.bounding_box(self.root.transform * layer.transform, layer.style))
 		}
+	}
+
+	pub fn reorder_layer(&mut self, source_path: &[LayerId], target_path: &[LayerId]) -> Result<(), DocumentError> {
+		// TODO: Detect when moving between folders and handle properly
+
+		self.root.as_folder_mut()?.reorder_layer(*source_path.last().unwrap(), *target_path.last().unwrap())?;
+
+		Ok(())
 	}
 
 	pub fn layer_local_bounding_box(&self, path: &[LayerId]) -> Result<Option<[DVec2; 2]>, DocumentError> {
@@ -393,6 +401,15 @@ impl Document {
 				layer.style.set_fill(layers::style::Fill::new(*color));
 				self.mark_as_dirty(path)?;
 				Some(vec![DocumentResponse::DocumentChanged])
+			}
+			Operation::ReorderLayers { source_path, target_path } => {
+				self.reorder_layer(source_path, target_path)?;
+
+				Some(vec![
+					DocumentResponse::DocumentChanged,
+					DocumentResponse::FolderChanged { path: source_path.to_vec() },
+					DocumentResponse::SelectLayer { path: source_path.to_vec() },
+				])
 			}
 		};
 		if !matches!(
