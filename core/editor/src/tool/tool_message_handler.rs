@@ -3,8 +3,8 @@ use document_core::color::Color;
 
 use crate::input::InputPreprocessor;
 use crate::{
+	document::Document,
 	tool::{ToolFsmState, ToolType},
-	SvgDocument,
 };
 use std::collections::VecDeque;
 
@@ -44,8 +44,8 @@ pub enum ToolMessage {
 pub struct ToolMessageHandler {
 	tool_state: ToolFsmState,
 }
-impl MessageHandler<ToolMessage, (&SvgDocument, &InputPreprocessor)> for ToolMessageHandler {
-	fn process_action(&mut self, message: ToolMessage, data: (&SvgDocument, &InputPreprocessor), responses: &mut VecDeque<Message>) {
+impl MessageHandler<ToolMessage, (&Document, &InputPreprocessor)> for ToolMessageHandler {
+	fn process_action(&mut self, message: ToolMessage, data: (&Document, &InputPreprocessor), responses: &mut VecDeque<Message>) {
 		let (document, input) = data;
 		use ToolMessage::*;
 		match message {
