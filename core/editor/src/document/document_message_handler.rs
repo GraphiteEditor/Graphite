@@ -54,7 +54,7 @@ pub enum DocumentMessage {
 	WheelCanvasZoom,
 	SetCanvasRotation(f64),
 	NudgeSelectedLayers(f64, f64),
-	MoveSelectedLayer(i32),
+	ReorderSelectedLayer(i32),
 }
 
 impl From<DocumentOperation> for DocumentMessage {
@@ -581,7 +581,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					responses.push_back(operation.into());
 				}
 			}
-			MoveSelectedLayer(delta) => {
+			ReorderSelectedLayer(delta) => {
 				let paths: Vec<Vec<LayerId>> = self.selected_layers_sorted();
 				// TODO: Support moving more than one layer
 				if paths.len() == 1 {
@@ -643,7 +643,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				DuplicateSelectedLayers,
 				CopySelectedLayers,
 				NudgeSelectedLayers,
-				MoveSelectedLayer,
+				ReorderSelectedLayer,
 			);
 			common.extend(select);
 		}
