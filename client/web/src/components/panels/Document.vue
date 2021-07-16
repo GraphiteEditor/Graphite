@@ -104,39 +104,45 @@
 		<LayoutRow :class="'shelf-and-viewport'">
 			<LayoutCol :class="'shelf'">
 				<div class="tools">
-					<ShelfItem :icon="'LayoutSelectTool'" title="Select Tool (V)" :active="activeTool === 'Select'" @click="selectTool('Select')" />
-					<ShelfItem :icon="'LayoutCropTool'" title="Crop Tool" :active="activeTool === 'Crop'" @click="'tool not implemented' || selectTool('Crop')" />
-					<ShelfItem :icon="'LayoutNavigateTool'" title="Navigate Tool (Z)" :active="activeTool === 'Navigate'" @click="'tool not implemented' || selectTool('Navigate')" />
-					<ShelfItem :icon="'LayoutEyedropperTool'" title="Eyedropper Tool (I)" :active="activeTool === 'Eyedropper'" @click="'tool not implemented' || selectTool('Eyedropper')" />
+					<ShelfItemInput :icon="'LayoutSelectTool'" title="Select Tool (V)" :active="activeTool === 'Select'" @click="selectTool('Select')" />
+					<ShelfItemInput :icon="'LayoutCropTool'" title="Crop Tool" :active="activeTool === 'Crop'" @click="'tool not implemented' || selectTool('Crop')" />
+					<ShelfItemInput :icon="'LayoutNavigateTool'" title="Navigate Tool (Z)" :active="activeTool === 'Navigate'" @click="'tool not implemented' || selectTool('Navigate')" />
+					<ShelfItemInput :icon="'LayoutEyedropperTool'" title="Eyedropper Tool (I)" :active="activeTool === 'Eyedropper'" @click="'tool not implemented' || selectTool('Eyedropper')" />
 
 					<Separator :type="SeparatorType.Section" :direction="SeparatorDirection.Vertical" />
 
-					<ShelfItem :icon="'ParametricTextTool'" title="Text Tool (T)" :active="activeTool === 'Text'" @click="'tool not implemented' || selectTool('Text')" />
-					<ShelfItem :icon="'ParametricFillTool'" title="Fill Tool (F)" :active="activeTool === 'Fill'" @click="selectTool('Fill')" />
-					<ShelfItem :icon="'ParametricGradientTool'" title="Gradient Tool (H)" :active="activeTool === 'Gradient'" @click="'tool not implemented' || selectTool('Gradient')" />
+					<ShelfItemInput :icon="'ParametricTextTool'" title="Text Tool (T)" :active="activeTool === 'Text'" @click="'tool not implemented' || selectTool('Text')" />
+					<ShelfItemInput :icon="'ParametricFillTool'" title="Fill Tool (F)" :active="activeTool === 'Fill'" @click="selectTool('Fill')" />
+					<ShelfItemInput :icon="'ParametricGradientTool'" title="Gradient Tool (H)" :active="activeTool === 'Gradient'" @click="'tool not implemented' || selectTool('Gradient')" />
 
 					<Separator :type="SeparatorType.Section" :direction="SeparatorDirection.Vertical" />
 
-					<ShelfItem :icon="'RasterBrushTool'" title="Brush Tool (B)" :active="activeTool === 'Brush'" @click="'tool not implemented' || selectTool('Brush')" />
-					<ShelfItem :icon="'RasterHealTool'" title="Heal Tool (J)" :active="activeTool === 'Heal'" @click="'tool not implemented' || selectTool('Heal')" />
-					<ShelfItem :icon="'RasterCloneTool'" title="Clone Tool (C)" :active="activeTool === 'Clone'" @click="'tool not implemented' || selectTool('Clone')" />
-					<ShelfItem :icon="'RasterPatchTool'" title="Patch Tool" :active="activeTool === 'Patch'" @click="'tool not implemented' || selectTool('Patch')" />
-					<ShelfItem :icon="'RasterBlurSharpenTool'" title="Detail Tool (D)" :active="activeTool === 'BlurSharpen'" @click="'tool not implemented' || selectTool('BlurSharpen')" />
-					<ShelfItem :icon="'RasterRelightTool'" title="Relight Tool (O)" :active="activeTool === 'Relight'" @click="'tool not implemented' || selectTool('Relight')" />
+					<ShelfItemInput :icon="'RasterBrushTool'" title="Brush Tool (B)" :active="activeTool === 'Brush'" @click="'tool not implemented' || selectTool('Brush')" />
+					<ShelfItemInput :icon="'RasterHealTool'" title="Heal Tool (J)" :active="activeTool === 'Heal'" @click="'tool not implemented' || selectTool('Heal')" />
+					<ShelfItemInput :icon="'RasterCloneTool'" title="Clone Tool (C)" :active="activeTool === 'Clone'" @click="'tool not implemented' || selectTool('Clone')" />
+					<ShelfItemInput :icon="'RasterPatchTool'" title="Patch Tool" :active="activeTool === 'Patch'" @click="'tool not implemented' || selectTool('Patch')" />
+					<ShelfItemInput :icon="'RasterBlurSharpenTool'" title="Detail Tool (D)" :active="activeTool === 'BlurSharpen'" @click="'tool not implemented' || selectTool('BlurSharpen')" />
+					<ShelfItemInput :icon="'RasterRelightTool'" title="Relight Tool (O)" :active="activeTool === 'Relight'" @click="'tool not implemented' || selectTool('Relight')" />
 
 					<Separator :type="SeparatorType.Section" :direction="SeparatorDirection.Vertical" />
 
-					<ShelfItem :icon="'VectorPathTool'" title="Path Tool (A)" :active="activeTool === 'Path'" @click="'tool not implemented' || selectTool('Path')" />
-					<ShelfItem :icon="'VectorPenTool'" title="Pen Tool (P)" :active="activeTool === 'Pen'" @click="selectTool('Pen')" />
-					<ShelfItem :icon="'VectorFreehandTool'" title="Freehand Tool (N)" :active="activeTool === 'Freehand'" @click="'tool not implemented' || selectTool('Freehand')" />
-					<ShelfItem :icon="'VectorSplineTool'" title="Spline Tool" :active="activeTool === 'Spline'" @click="'tool not implemented' || selectTool('Spline')" />
-					<ShelfItem :icon="'VectorLineTool'" title="Line Tool (L)" :active="activeTool === 'Line'" @click="selectTool('Line')" />
-					<ShelfItem :icon="'VectorRectangleTool'" title="Rectangle Tool (M)" :active="activeTool === 'Rectangle'" @click="selectTool('Rectangle')" />
-					<ShelfItem :icon="'VectorEllipseTool'" title="Ellipse Tool (E)" :active="activeTool === 'Ellipse'" @click="selectTool('Ellipse')" />
-					<ShelfItem :icon="'VectorShapeTool'" title="Shape Tool (Y)" :active="activeTool === 'Shape'" @click="selectTool('Shape')" />
+					<ShelfItemInput :icon="'VectorPathTool'" title="Path Tool (A)" :active="activeTool === 'Path'" @click="'tool not implemented' || selectTool('Path')" />
+					<ShelfItemInput :icon="'VectorPenTool'" title="Pen Tool (P)" :active="activeTool === 'Pen'" @click="selectTool('Pen')" />
+					<ShelfItemInput :icon="'VectorFreehandTool'" title="Freehand Tool (N)" :active="activeTool === 'Freehand'" @click="'tool not implemented' || selectTool('Freehand')" />
+					<ShelfItemInput :icon="'VectorSplineTool'" title="Spline Tool" :active="activeTool === 'Spline'" @click="'tool not implemented' || selectTool('Spline')" />
+					<ShelfItemInput :icon="'VectorLineTool'" title="Line Tool (L)" :active="activeTool === 'Line'" @click="selectTool('Line')" />
+					<ShelfItemInput :icon="'VectorRectangleTool'" title="Rectangle Tool (M)" :active="activeTool === 'Rectangle'" @click="selectTool('Rectangle')" />
+					<ShelfItemInput :icon="'VectorEllipseTool'" title="Ellipse Tool (E)" :active="activeTool === 'Ellipse'" @click="selectTool('Ellipse')" />
+					<ShelfItemInput :icon="'VectorShapeTool'" title="Shape Tool (Y)" :active="activeTool === 'Shape'" @click="selectTool('Shape')" />
 				</div>
 				<div class="spacer"></div>
-				<SwatchPair />
+				<div class="working-colors">
+					<SwatchPairInput />
+					<div class="swap-and-reset">
+						<IconButton @click="swapColors" :icon="'Swap'" title="Swap (Shift+X)" :size="16" />
+						<IconButton @click="resetColors" :icon="'ResetColors'" title="Reset (Ctrl+Shift+X)" :size="16" />
+					</div>
+				</div>
 			</LayoutCol>
 			<LayoutCol :class="'viewport'">
 				<div class="canvas" @mousedown="canvasMouseDown" @mouseup="canvasMouseUp" @mousemove="canvasMouseMove" ref="canvas">
@@ -169,6 +175,10 @@
 			flex: 0 0 auto;
 			display: flex;
 			flex-direction: column;
+
+			.working-colors .swap-and-reset {
+				font-size: 0;
+			}
 		}
 
 		.viewport {
@@ -196,9 +206,9 @@ import { makeModifiersBitfield } from "@/utilities/input";
 import { ResponseType, registerResponseHandler, Response, UpdateCanvas, SetActiveTool, ExportDocument, SetCanvasZoom, SetCanvasRotation } from "@/utilities/response-handler";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
 import LayoutCol from "@/components/layout/LayoutCol.vue";
-import SwatchPair from "@/components/widgets/inputs/SwatchPair.vue";
+import SwatchPairInput from "@/components/widgets/inputs/SwatchPairInput.vue";
 import { MenuDirection } from "@/components/widgets/floating-menus/FloatingMenu.vue";
-import ShelfItem from "@/components/widgets/inputs/ShelfItem.vue";
+import ShelfItemInput from "@/components/widgets/inputs/ShelfItemInput.vue";
 import Separator, { SeparatorDirection, SeparatorType } from "@/components/widgets/separators/Separator.vue";
 import IconButton from "@/components/widgets/buttons/IconButton.vue";
 import PopoverButton from "@/components/widgets/buttons/PopoverButton.vue";
@@ -331,8 +341,8 @@ export default defineComponent({
 	components: {
 		LayoutRow,
 		LayoutCol,
-		SwatchPair,
-		ShelfItem,
+		SwatchPairInput,
+		ShelfItemInput,
 		Separator,
 		IconButton,
 		PopoverButton,

@@ -3,7 +3,7 @@
 		<input type="checkbox" :id="`checkbox-${id}`" :checked="checked" @input="(e) => $emit('update:checked', e.target.checked)" />
 		<label :for="`checkbox-${id}`">
 			<div class="checkbox-box">
-				<Icon :icon="icon" />
+				<IconLabel :icon="icon" />
 			</div>
 		</label>
 	</div>
@@ -26,7 +26,7 @@
 			padding: 2px;
 			border-radius: 2px;
 
-			.icon {
+			.icon-label {
 				fill: var(--color-2-mildblack);
 			}
 		}
@@ -40,7 +40,7 @@
 		.checkbox-box {
 			background: var(--color-accent);
 
-			.icon {
+			.icon-label {
 				fill: var(--color-f-white);
 			}
 		}
@@ -54,7 +54,7 @@
 
 <script lang="ts">
 import { defineComponent } from "vue";
-import Icon from "@/components/widgets/labels/Icon.vue";
+import IconLabel from "@/components/widgets/labels/IconLabel.vue";
 
 export default defineComponent({
 	data() {
@@ -71,6 +71,6 @@ export default defineComponent({
 		checked: { type: Boolean, required: true },
 		icon: { type: String, default: "Checkmark" },
 	},
-	components: { Icon },
+	components: { IconLabel },
 });
 </script>

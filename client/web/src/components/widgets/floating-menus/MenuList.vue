@@ -12,10 +12,10 @@
 				@mouseleave="handleEntryMouseLeave(entry)"
 				:data-hover-menu-spawner-extend="entry.children && []"
 			>
-				<Icon :icon="entry.icon" v-if="entry.icon && drawIcon" />
+				<IconLabel :icon="entry.icon" v-if="entry.icon && drawIcon" />
 				<div class="no-icon" v-else-if="drawIcon" />
 				<span class="entry-label">{{ entry.label }}</span>
-				<Icon :icon="'Info'" v-if="entry.shortcutRequiresLock && !fullscreen.keyboardLocked" :title="keyboardLockInfoMessage" />
+				<IconLabel :icon="'Info'" v-if="entry.shortcutRequiresLock && !fullscreen.keyboardLocked" :title="keyboardLockInfoMessage" />
 				<UserInputLabel v-else-if="entry.shortcut && entry.shortcut.length" :inputKeys="[entry.shortcut]" />
 				<div class="submenu-arrow" v-if="entry.children && entry.children.length"></div>
 				<div class="no-submenu-arrow" v-else></div>
@@ -53,7 +53,7 @@
 				flex: 0 0 auto;
 			}
 
-			.icon svg {
+			.icon-label svg {
 				fill: var(--color-e-nearwhite);
 			}
 
@@ -66,7 +66,7 @@
 				margin-left: 8px;
 			}
 
-			.icon,
+			.icon-label,
 			.no-icon {
 				margin: 0 4px;
 
@@ -125,7 +125,7 @@ import { defineComponent, PropType } from "vue";
 import { keyboardLockApiSupported } from "@/utilities/fullscreen";
 import FloatingMenu, { MenuDirection, MenuType } from "@/components/widgets/floating-menus/FloatingMenu.vue";
 import Separator, { SeparatorDirection, SeparatorType } from "@/components/widgets/separators/Separator.vue";
-import Icon from "@/components/widgets/labels/Icon.vue";
+import IconLabel from "@/components/widgets/labels/IconLabel.vue";
 import UserInputLabel from "@/components/widgets/labels/UserInputLabel.vue";
 
 export type MenuListEntries = Array<MenuListEntry>;
@@ -259,7 +259,7 @@ const MenuList = defineComponent({
 	components: {
 		FloatingMenu,
 		Separator,
-		Icon,
+		IconLabel,
 		UserInputLabel,
 	},
 });
