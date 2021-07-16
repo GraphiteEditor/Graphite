@@ -227,9 +227,14 @@ impl Document {
 		Ok(())
 	}
 
-	pub fn layer_bounding_box(&self, path: &[LayerId]) -> Result<[DVec2; 2], DocumentError> {
+	pub fn layer_axis_aligned_bounding_box(&self, path: &[LayerId]) -> Result<[DVec2; 2], DocumentError> {
 		let layer = self.layer(path)?;
 		Ok(layer.bounding_box(self.root.transform * layer.transform, layer.style))
+	}
+
+	pub fn layer_local_bounding_box(&self, path: &[LayerId]) -> Result<[DVec2; 2], DocumentError> {
+		let layer = self.layer(path)?;
+		Ok(layer.bounding_box(layer.transform, layer.style))
 	}
 
 	fn mark_as_dirty(&mut self, path: &[LayerId]) -> Result<(), DocumentError> {
