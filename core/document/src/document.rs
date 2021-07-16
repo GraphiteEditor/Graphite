@@ -154,7 +154,7 @@ impl Document {
 	}
 
 	/// Returns a reference to the layer or folder at the path. Does not return an error for root
-	pub fn document_layer(&mut self, path: &[LayerId]) -> Result<&Layer, DocumentError> {
+	pub fn document_layer(&self, path: &[LayerId]) -> Result<&Layer, DocumentError> {
 		if path.is_empty() {
 			return Ok(&self.root);
 		}
@@ -238,6 +238,23 @@ impl Document {
 		let _ = self.layer_mut(path).map(|x| x.cache_dirty = true);
 		self.document_folder_mut(path)?.as_folder_mut()?.remove_layer(id)?;
 		Ok(())
+	}
+
+	pub fn layer_axis_aligned_bounding_box(&self, path: &[LayerId]) -> Result<Option<[DVec2; 2]>, DocumentError> {
+		// TODO: Replace with functions of the transform api
+		if let &[] = path {
+			// Special case for root. Root's local is the documents global, so we avoid transforming its transform by itself.
+			self.layer_local_bounding_box(path)
+		} else {
+			let layer = self.document_layer(path)?;
+			Ok(layer.bounding_box(self.root.transform * layer.transform, layer.style))
+		}
+	}
+
+	pub fn layer_local_bounding_box(&self, path: &[LayerId]) -> Result<Option<[DVec2; 2]>, DocumentError> {
+		// TODO: Replace with functions of the transform api
+		let layer = self.document_layer(path)?;
+		Ok(layer.bounding_box(layer.transform, layer.style))
 	}
 
 	fn mark_as_dirty(&mut self, path: &[LayerId]) -> Result<(), DocumentError> {

@@ -1,6 +1,6 @@
 use crate::input::InputPreprocessor;
 use crate::tool::{DocumentToolData, Fsm, ToolActionHandlerData};
-use crate::{message_prelude::*, SvgDocument};
+use crate::{document::Document, message_prelude::*};
 use document_core::{layers::style, Operation};
 use glam::DAffine2;
 
@@ -54,8 +54,8 @@ struct PenToolData {
 impl Fsm for PenToolFsmState {
 	type ToolData = PenToolData;
 
-	fn transition(self, event: ToolMessage, document: &SvgDocument, tool_data: &DocumentToolData, data: &mut Self::ToolData, input: &InputPreprocessor, responses: &mut VecDeque<Message>) -> Self {
-		let transform = document.root.transform;
+	fn transition(self, event: ToolMessage, document: &Document, tool_data: &DocumentToolData, data: &mut Self::ToolData, input: &InputPreprocessor, responses: &mut VecDeque<Message>) -> Self {
+		let transform = document.document.root.transform;
 		let pos = transform.inverse() * DAffine2::from_translation(input.mouse.position.to_dvec2());
 
 		use PenMessage::*;

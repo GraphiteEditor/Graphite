@@ -29,7 +29,7 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Fill {
 			DVec2::new(point_1.x, point_2.y),
 		];
 
-		if let Some(path) = data.0.intersects_quad_root(quad).last() {
+		if let Some(path) = data.0.document.intersects_quad_root(quad).last() {
 			responses.push_back(
 				Operation::FillLayer {
 					path: path.to_vec(),

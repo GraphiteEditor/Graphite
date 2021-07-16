@@ -1,6 +1,6 @@
 use crate::input::{mouse::ViewportPosition, InputPreprocessor};
 use crate::tool::{DocumentToolData, Fsm, ToolActionHandlerData};
-use crate::{message_prelude::*, SvgDocument};
+use crate::{document::Document, message_prelude::*};
 use document_core::{layers::style, Operation};
 use glam::{DAffine2, DVec2};
 
@@ -59,8 +59,8 @@ struct EllipseToolData {
 impl Fsm for EllipseToolFsmState {
 	type ToolData = EllipseToolData;
 
-	fn transition(self, event: ToolMessage, document: &SvgDocument, tool_data: &DocumentToolData, data: &mut Self::ToolData, input: &InputPreprocessor, responses: &mut VecDeque<Message>) -> Self {
-		let transform = document.root.transform;
+	fn transition(self, event: ToolMessage, document: &Document, tool_data: &DocumentToolData, data: &mut Self::ToolData, input: &InputPreprocessor, responses: &mut VecDeque<Message>) -> Self {
+		let transform = document.document.root.transform;
 		use EllipseMessage::*;
 		use EllipseToolFsmState::*;
 		if let ToolMessage::Ellipse(event) = event {

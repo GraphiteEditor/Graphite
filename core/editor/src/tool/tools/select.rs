@@ -7,7 +7,7 @@ use glam::{DAffine2, DVec2};
 
 use crate::input::{mouse::ViewportPosition, InputPreprocessor};
 use crate::tool::{DocumentToolData, Fsm, ToolActionHandlerData};
-use crate::{consts::SELECTION_TOLERANCE, message_prelude::*, SvgDocument};
+use crate::{consts::SELECTION_TOLERANCE, document::Document, message_prelude::*};
 
 #[derive(Default)]
 pub struct Select {
@@ -58,8 +58,8 @@ struct SelectToolData {
 impl Fsm for SelectToolFsmState {
 	type ToolData = SelectToolData;
 
-	fn transition(self, event: ToolMessage, document: &SvgDocument, tool_data: &DocumentToolData, data: &mut Self::ToolData, input: &InputPreprocessor, responses: &mut VecDeque<Message>) -> Self {
-		let transform = document.root.transform;
+	fn transition(self, event: ToolMessage, document: &Document, tool_data: &DocumentToolData, data: &mut Self::ToolData, input: &InputPreprocessor, responses: &mut VecDeque<Message>) -> Self {
+		let transform = document.document.root.transform;
 		use SelectMessage::*;
 		use SelectToolFsmState::*;
 		if let ToolMessage::Select(event) = event {
@@ -105,13 +105,13 @@ impl Fsm for SelectToolFsmState {
 
 					responses.push_back(Operation::DiscardWorkingFolder.into());
 					if data.drag_start == data.drag_current {
-						if let Some(intersection) = document.intersects_quad_root(quad).last() {
+						if let Some(intersection) = document.document.intersects_quad_root(quad).last() {
 							responses.push_back(DocumentMessage::SelectLayers(vec![intersection.clone()]).into());
 						} else {
 							responses.push_back(DocumentMessage::SelectLayers(vec![]).into());
 						}
 					} else {
-						responses.push_back(DocumentMessage::SelectLayers(document.intersects_quad_root(quad)).into());
+						responses.push_back(DocumentMessage::SelectLayers(document.document.intersects_quad_root(quad)).into());
 					}
 
 					Ready
