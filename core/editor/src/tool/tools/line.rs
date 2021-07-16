@@ -1,6 +1,6 @@
 use crate::input::{mouse::ViewportPosition, InputPreprocessor};
 use crate::tool::{DocumentToolData, Fsm, ToolActionHandlerData};
-use crate::{message_prelude::*, SvgDocument};
+use crate::{document::Document, message_prelude::*};
 use document_core::{layers::style, Operation};
 use glam::{DAffine2, DVec2};
 
@@ -64,8 +64,8 @@ struct LineToolData {
 impl Fsm for LineToolFsmState {
 	type ToolData = LineToolData;
 
-	fn transition(self, event: ToolMessage, document: &SvgDocument, tool_data: &DocumentToolData, data: &mut Self::ToolData, input: &InputPreprocessor, responses: &mut VecDeque<Message>) -> Self {
-		let transform = document.root.transform;
+	fn transition(self, event: ToolMessage, document: &Document, tool_data: &DocumentToolData, data: &mut Self::ToolData, input: &InputPreprocessor, responses: &mut VecDeque<Message>) -> Self {
+		let transform = document.document.root.transform;
 		use LineMessage::*;
 		use LineToolFsmState::*;
 		if let ToolMessage::Line(event) = event {
