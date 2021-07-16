@@ -572,14 +572,14 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				if paths.len() == 1 {
 					let all_layer_paths = self.get_all_layers_sorted();
 
-					let max_index = all_layer_paths.len() as i32 - 1;
+					let max_index = all_layer_paths.len() as i64 - 1;
 
 					let mut selected_layer_index = -1;
 					let mut next_layer_index = -1;
 					for (i, path) in all_layer_paths.iter().enumerate() {
 						if *path == paths[0] {
 							selected_layer_index = i as i32;
-							next_layer_index = (selected_layer_index + delta).clamp(0, max_index);
+							next_layer_index = (selected_layer_index as i64 + delta as i64).clamp(0, max_index) as i32;
 							break;
 						}
 					}
