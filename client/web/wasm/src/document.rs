@@ -173,9 +173,9 @@ pub fn deselect_all_layers() -> Result<(), JsValue> {
 
 /// Reorder selected layer
 #[wasm_bindgen]
-pub fn move_selected_layer(delta: i32) -> Result<(), JsValue> {
+pub fn reorder_selected_layer(delta: i32) -> Result<(), JsValue> {
 	EDITOR_STATE
-		.with(|editor| editor.borrow_mut().handle_message(DocumentMessage::MoveSelectedLayer(delta)))
+		.with(|editor| editor.borrow_mut().handle_message(DocumentMessage::ReorderSelectedLayer(delta)))
 		.map_err(convert_error)
 }
 
