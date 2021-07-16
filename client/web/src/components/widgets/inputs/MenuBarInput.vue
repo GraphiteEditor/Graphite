@@ -126,10 +126,10 @@ const menuEntries: MenuListEntries = [
 			[
 				{ label: "Select All", shortcut: ["Ctrl", "A"], action: async () => (await wasm).select_all_layers() },
 				{ label: "Deselect All", shortcut: ["Ctrl", "Alt", "A"], action: async () => (await wasm).deselect_all_layers() },
-				{ label: "Raise To Front", shortcut: ["Ctrl", "]"], action: async () => (await wasm).reorder_selected_layer(999999) },
+				{ label: "Raise To Front", shortcut: ["Ctrl", "]"], action: async () => (await wasm).reorder_selected_layer(2147483647) },
 				{ label: "Raise", shortcut: ["Ctrl", "["], action: async () => (await wasm).reorder_selected_layer(1) },
 				{ label: "Lower", shortcut: ["Ctrl", "Shift", "]"], action: async () => (await wasm).reorder_selected_layer(-1) },
-				{ label: "Lower to Back", shortcut: ["Ctrl", "Shift", "["], action: async () => (await wasm).reorder_selected_layer(-999999) },
+				{ label: "Lower to Back", shortcut: ["Ctrl", "Shift", "["], action: async () => (await wasm).reorder_selected_layer(-2147483648) },
 			],
 		],
 	},

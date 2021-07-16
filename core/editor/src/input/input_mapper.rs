@@ -237,8 +237,8 @@ impl Default for Mapping {
 			entry! {action=DocumentMessage::NudgeSelectedLayers(NUDGE_AMOUNT, 0.), key_down=KeyArrowRight},
 			entry! {action=DocumentMessage::ReorderSelectedLayer(-1), key_down=KeyLeftBracket, modifiers=[KeyControl]},
 			entry! {action=DocumentMessage::ReorderSelectedLayer(1), key_down=KeyRightBracket, modifiers=[KeyControl]},
-			entry! {action=DocumentMessage::ReorderSelectedLayer(-999999), key_down=KeyLeftCurlyBracket, modifiers=[KeyControl]},
-			entry! {action=DocumentMessage::ReorderSelectedLayer(999999), key_down=KeyRightCurlyBracket, modifiers=[KeyControl]},
+			entry! {action=DocumentMessage::ReorderSelectedLayer(i32::MIN), key_down=KeyLeftCurlyBracket, modifiers=[KeyControl]},
+			entry! {action=DocumentMessage::ReorderSelectedLayer(i32::MAX), key_down=KeyRightCurlyBracket, modifiers=[KeyControl]},
 			// Global Actions
 			entry! {action=GlobalMessage::LogInfo, key_down=Key1},
 			entry! {action=GlobalMessage::LogDebug, key_down=Key2},
