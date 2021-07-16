@@ -1,7 +1,7 @@
 <template>
 	<div class="window-buttons-web" @click="handleClick" :title="fullscreen.windowFullscreen ? 'Exit Fullscreen (F11)' : 'Enter Fullscreen (F11)'">
 		<TextLabel v-if="requestFullscreenHotkeys">Click to access all hotkeys</TextLabel>
-		<Icon :icon="fullscreen.windowFullscreen ? 'FullscreenExit' : 'FullscreenEnter'" />
+		<IconLabel :icon="fullscreen.windowFullscreen ? 'FullscreenExit' : 'FullscreenEnter'" />
 	</div>
 </template>
 
@@ -29,7 +29,7 @@
 <script lang="ts">
 import { defineComponent } from "vue";
 import fullscreen, { keyboardLockApiSupported, enterFullscreen, exitFullscreen } from "@/utilities/fullscreen";
-import Icon from "@/components/widgets/labels/Icon.vue";
+import IconLabel from "@/components/widgets/labels/IconLabel.vue";
 import TextLabel from "@/components/widgets/labels/TextLabel.vue";
 
 const canUseKeyboardLock = keyboardLockApiSupported();
@@ -48,7 +48,7 @@ export default defineComponent({
 		},
 	},
 	components: {
-		Icon,
+		IconLabel,
 		TextLabel,
 	},
 });

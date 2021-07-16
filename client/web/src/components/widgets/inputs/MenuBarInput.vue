@@ -2,12 +2,12 @@
 	<div class="menu-bar-input">
 		<div class="entry-container">
 			<div @click="handleLogoClick(entry)" class="entry">
-				<Icon :icon="'GraphiteLogo'" />
+				<IconLabel :icon="'GraphiteLogo'" />
 			</div>
 		</div>
 		<div class="entry-container" v-for="entry in menuEntries" :key="entry">
 			<div @click="handleEntryClick(entry)" class="entry" :class="{ open: entry.ref && entry.ref.isOpen() }" data-hover-menu-spawner>
-				<Icon :icon="entry.icon" v-if="entry.icon" />
+				<IconLabel :icon="entry.icon" v-if="entry.icon" />
 				<span v-if="entry.label">{{ entry.label }}</span>
 			</div>
 			<MenuList :menuEntries="entry.children" :direction="MenuDirection.Bottom" :minWidth="240" :drawIcon="true" :defaultAction="actionNotImplemented" :ref="(ref) => setEntryRefs(entry, ref)" />
@@ -52,7 +52,7 @@
 
 <script lang="ts">
 import { defineComponent } from "vue";
-import Icon from "@/components/widgets/labels/Icon.vue";
+import IconLabel from "@/components/widgets/labels/IconLabel.vue";
 import { ApplicationPlatform } from "@/components/window/MainWindow.vue";
 import MenuList, { MenuListEntry, MenuListEntries } from "@/components/widgets/floating-menus/MenuList.vue";
 import { MenuDirection } from "@/components/widgets/floating-menus/FloatingMenu.vue";
@@ -166,7 +166,7 @@ export default defineComponent({
 		};
 	},
 	components: {
-		Icon,
+		IconLabel,
 		MenuList,
 	},
 });

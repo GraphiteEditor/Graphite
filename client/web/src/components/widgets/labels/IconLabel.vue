@@ -1,11 +1,11 @@
 <template>
-	<div class="icon" :class="`size-${String(icons[icon].size)}`">
+	<div class="icon-label" :class="`size-${String(icons[icon].size)}`">
 		<component :is="icon" />
 	</div>
 </template>
 
 <style lang="scss">
-.icon {
+.icon-label {
 	display: block;
 	flex: 0 0 auto;
 	fill: var(--color-e-nearwhite);
