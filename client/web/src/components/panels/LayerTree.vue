@@ -107,7 +107,7 @@ import { defineComponent } from "vue";
 import { ResponseType, registerResponseHandler, Response, ExpandFolder, LayerPanelEntry } from "@/utilities/response-handler";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
 import LayoutCol from "@/components/layout/LayoutCol.vue";
-import Separator, { SeparatorType } from "@/components/widgets/Separator.vue";
+import Separator, { SeparatorType } from "@/components/widgets/separators/Separator.vue";
 import NumberInput from "@/components/widgets/inputs/NumberInput.vue";
 import PopoverButton from "@/components/widgets/buttons/PopoverButton.vue";
 import { MenuDirection } from "@/components/widgets/floating-menus/FloatingMenu.vue";

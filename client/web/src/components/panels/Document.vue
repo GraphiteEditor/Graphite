@@ -136,7 +136,7 @@
 					<ShelfItem :icon="'VectorShapeTool'" title="Shape Tool (Y)" :active="activeTool === 'Shape'" @click="selectTool('Shape')" />
 				</div>
 				<div class="spacer"></div>
-				<WorkingColors />
+				<SwatchPair />
 			</LayoutCol>
 			<LayoutCol :class="'viewport'">
 				<div class="canvas" @mousedown="canvasMouseDown" @mouseup="canvasMouseUp" @mousemove="canvasMouseMove" ref="canvas">
@@ -196,10 +196,10 @@ import { makeModifiersBitfield } from "@/utilities/input";
 import { ResponseType, registerResponseHandler, Response, UpdateCanvas, SetActiveTool, ExportDocument, SetCanvasZoom, SetCanvasRotation } from "@/utilities/response-handler";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
 import LayoutCol from "@/components/layout/LayoutCol.vue";
-import WorkingColors from "@/components/widgets/WorkingColors.vue";
+import SwatchPair from "@/components/widgets/inputs/SwatchPair.vue";
 import { MenuDirection } from "@/components/widgets/floating-menus/FloatingMenu.vue";
-import ShelfItem from "@/components/widgets/ShelfItem.vue";
-import Separator, { SeparatorDirection, SeparatorType } from "@/components/widgets/Separator.vue";
+import ShelfItem from "@/components/widgets/inputs/ShelfItem.vue";
+import Separator, { SeparatorDirection, SeparatorType } from "@/components/widgets/separators/Separator.vue";
 import IconButton from "@/components/widgets/buttons/IconButton.vue";
 import PopoverButton from "@/components/widgets/buttons/PopoverButton.vue";
 import RadioInput from "@/components/widgets/inputs/RadioInput.vue";
@@ -331,7 +331,7 @@ export default defineComponent({
 	components: {
 		LayoutRow,
 		LayoutCol,
-		WorkingColors,
+		SwatchPair,
 		ShelfItem,
 		Separator,
 		IconButton,

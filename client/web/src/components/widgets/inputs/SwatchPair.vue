@@ -1,5 +1,5 @@
 <template>
-	<div class="working-colors">
+	<div class="swatch-pair">
 		<SwatchPairInput />
 		<div class="swap-and-reset">
 			<IconButton @click="swapColors" :icon="'Swap'" title="Swap (Shift+X)" :size="16" />
@@ -9,7 +9,7 @@
 </template>
 
 <style lang="scss">
-.working-colors {
+.swatch-pair {
 	.swap-and-reset {
 		font-size: 0;
 	}
