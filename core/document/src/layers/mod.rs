@@ -175,8 +175,12 @@ impl Layer {
 		self.data.to_kurbo_path(self.transform, self.style)
 	}
 
-	pub fn bounding_box(&self, transform: glam::DAffine2, style: style::PathStyle) -> [DVec2; 2] {
-		self.data.bounding_box(transform, style)
+	pub fn bounding_box(&self, transform: glam::DAffine2, style: style::PathStyle) -> Option<[DVec2; 2]> {
+		if let Ok(folder) = self.as_folder() {
+			folder.bounding_box(transform)
+		} else {
+			Some(self.data.bounding_box(transform, style))
+		}
 	}
 
 	pub fn as_folder_mut(&mut self) -> Result<&mut Folder, DocumentError> {
