@@ -234,7 +234,7 @@ impl Document {
 
 		Ok(())
 	}
-	
+
 	pub fn layer_axis_aligned_bounding_box(&self, path: &[LayerId]) -> Result<[DVec2; 2], DocumentError> {
 		let layer = self.layer(path)?;
 		Ok(layer.bounding_box(self.root.transform * layer.transform, layer.style))
