@@ -226,6 +226,14 @@ impl Document {
 		Ok(())
 	}
 
+	pub fn reorder_layer(&mut self, source_path: &[LayerId], target_path: &[LayerId]) -> Result<(), DocumentError> {
+		// TODO: Detect when moving between folders and handle properly
+
+		self.root.as_folder_mut()?.reorder_layer(*source_path.last().unwrap(), *target_path.last().unwrap())?;
+
+		Ok(())
+	}
+
 	pub fn layer_axis_aligned_bounding_box(&self, path: &[LayerId]) -> Result<Option<[DVec2; 2]>, DocumentError> {
 		// TODO: Replace with functions of the transform api
 		if path.is_empty() {
@@ -235,14 +243,6 @@ impl Document {
 			let layer = self.document_layer(path)?;
 			Ok(layer.bounding_box(self.root.transform * layer.transform, layer.style))
 		}
-	}
-
-	pub fn reorder_layer(&mut self, source_path: &[LayerId], target_path: &[LayerId]) -> Result<(), DocumentError> {
-		// TODO: Detect when moving between folders and handle properly
-
-		self.root.as_folder_mut()?.reorder_layer(*source_path.last().unwrap(), *target_path.last().unwrap())?;
-
-		Ok(())
 	}
 
 	pub fn layer_local_bounding_box(&self, path: &[LayerId]) -> Result<Option<[DVec2; 2]>, DocumentError> {
