@@ -124,7 +124,7 @@
 import { defineComponent, PropType } from "vue";
 import { keyboardLockApiSupported } from "@/utilities/fullscreen";
 import FloatingMenu, { MenuDirection, MenuType } from "@/components/widgets/floating-menus/FloatingMenu.vue";
-import Separator, { SeparatorDirection, SeparatorType } from "@/components/widgets/Separator.vue";
+import Separator, { SeparatorDirection, SeparatorType } from "@/components/widgets/separators/Separator.vue";
 import Icon from "@/components/widgets/labels/Icon.vue";
 import UserInputLabel from "@/components/widgets/labels/UserInputLabel.vue";
 
