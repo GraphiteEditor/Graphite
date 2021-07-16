@@ -137,21 +137,22 @@ impl DocumentMessageHandler {
 		);
 	}
 
-	/// Returns the paths to the selected layers in order
-	fn selected_layers_sorted(&self) -> Vec<Vec<LayerId>> {
+	/// Returns the paths to all layers in order, optionally including only selected layers
+	fn get_sorted_layers(&self, only_selected: bool) -> Vec<Vec<LayerId>> {
 		// Compute the indices for each layer to be able to sort them
 		let mut layers_with_indices: Vec<(Vec<LayerId>, Vec<usize>)> = self
 			.active_document()
 			.layer_data
 			.iter()
-			.filter_map(|(path, data)| data.selected.then(|| path.clone()))
+			// 'path.len() > 0' filters out root layer since it has no indices
+			.filter_map(|(path, data)| (path.len() > 0 && !only_selected || data.selected).then(|| path.clone()))
 			.filter_map(|path| {
 				// Currently it is possible that layer_data contains layers that are don't actually exist
 				// and thus indices_for_path can return an error. We currently skip these layers and log a warning.
 				// Once this problem is solved this code can be simplified
 				match self.active_document().document.indices_for_path(&path) {
 					Err(err) => {
-						warn!("selected_layers_sorted: Could not get indices for the layer {:?}: {:?}", path, err);
+						warn!("get_sorted_layers: Could not get indices for the layer {:?}: {:?}", path, err);
 						None
 					}
 					Ok(indices) => Some((path, indices)),
@@ -164,29 +165,13 @@ impl DocumentMessageHandler {
 	}
 
 	/// Returns the paths to all layers in order
-	fn all_layers_sorted(&self) -> Vec<Vec<LayerId>> {
-		// Compute the indices for each layer to be able to sort them
-		let mut layers_with_indices: Vec<(Vec<LayerId>, Vec<usize>)> = self
-			.active_document()
-			.layer_data
-			.iter()
-			.filter_map(|(path, _)| (path.len() > 0).then(|| path.clone())) // Ignore root layer data
-			.filter_map(|path| {
-				// Currently it is possible that layer_data contains layers that are don't actually exist
-				// and thus indices_for_path can return an error. We currently skip these layers and log a warning.
-				// Once this problem is solved this code can be simplified
-				match self.active_document().document.indices_for_path(&path) {
-					Err(err) => {
-						warn!("all_layers_sorted: Could not get indices for the layer {:?}: {:?}", path, err);
-						None
-					}
-					Ok(indices) => Some((path, indices)),
-				}
-			})
-			.collect();
+	fn get_all_layers_sorted(&self) -> Vec<Vec<LayerId>> {
+		self.get_sorted_layers(false)
+	}
 
-		layers_with_indices.sort_by_key(|(_, indices)| indices.clone());
-		return layers_with_indices.into_iter().map(|(path, _)| path).collect();
+	/// Returns the paths to all selected layers in order
+	fn get_selected_layers_sorted(&self) -> Vec<Vec<LayerId>> {
+		self.get_sorted_layers(true)
 	}
 }
 
@@ -376,7 +361,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				}
 			}
 			CopySelectedLayers => {
-				let paths: Vec<Vec<LayerId>> = self.selected_layers_sorted();
+				let paths: Vec<Vec<LayerId>> = self.get_selected_layers_sorted();
 				self.copy_buffer.clear();
 				for path in paths {
 					match self.active_document().document.layer(&path).map(|t| t.clone()) {
@@ -566,7 +551,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				responses.push_back(FrontendMessage::SetCanvasRotation { new_radians: new }.into());
 			}
 			NudgeSelectedLayers(x, y) => {
-				let paths: Vec<Vec<LayerId>> = self.selected_layers_sorted();
+				let paths: Vec<Vec<LayerId>> = self.get_selected_layers_sorted();
 
 				let delta = {
 					let root_layer_rotation = self.layerdata_mut(&[]).rotation;
@@ -582,16 +567,16 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				}
 			}
 			ReorderSelectedLayer(delta) => {
-				let paths: Vec<Vec<LayerId>> = self.selected_layers_sorted();
+				let paths: Vec<Vec<LayerId>> = self.get_selected_layers_sorted();
 				// TODO: Support moving more than one layer
 				if paths.len() == 1 {
-					let all_layer_indices = self.all_layers_sorted();
+					let all_layer_paths = self.get_all_layers_sorted();
 
-					let max_index = all_layer_indices.len() as i32 - 1;
+					let max_index = all_layer_paths.len() as i32 - 1;
 
 					let mut selected_layer_index = -1;
 					let mut next_layer_index = -1;
-					for (i, path) in all_layer_indices.iter().enumerate() {
+					for (i, path) in all_layer_paths.iter().enumerate() {
 						if *path == paths[0] {
 							selected_layer_index = i as i32;
 							next_layer_index = (selected_layer_index + delta).clamp(0, max_index);
@@ -602,7 +587,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					if next_layer_index != -1 && next_layer_index != selected_layer_index {
 						let operation = DocumentOperation::ReorderLayers {
 							source_path: paths[0].clone(),
-							target_path: all_layer_indices[next_layer_index as usize].to_vec(),
+							target_path: all_layer_paths[next_layer_index as usize].to_vec(),
 						};
 						responses.push_back(operation.into());
 					}
