@@ -100,6 +100,13 @@ impl LayerDataTypes {
 			}
 		}
 	}
+
+	pub fn bounding_box(&self, transform: glam::DAffine2, style: style::PathStyle) -> [DVec2; 2] {
+		use kurbo::Shape;
+		let bez_path = self.to_kurbo_path(transform, style);
+		let bbox = bez_path.bounding_box();
+		[DVec2::new(bbox.x0, bbox.y0), DVec2::new(bbox.x1, bbox.y1)]
+	}
 }
 
 #[derive(Serialize, Deserialize)]
@@ -166,6 +173,10 @@ impl Layer {
 
 	pub fn to_kurbo_path(&mut self) -> BezPath {
 		self.data.to_kurbo_path(self.transform, self.style)
+	}
+
+	pub fn bounding_box(&self, transform: glam::DAffine2, style: style::PathStyle) -> [DVec2; 2] {
+		self.data.bounding_box(transform, style)
 	}
 
 	pub fn as_folder_mut(&mut self) -> Result<&mut Folder, DocumentError> {
