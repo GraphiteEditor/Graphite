@@ -228,6 +228,7 @@ impl Document {
 	}
 
 	pub fn layer_axis_aligned_bounding_box(&self, path: &[LayerId]) -> Result<Option<[DVec2; 2]>, DocumentError> {
+		// TODO: Replace with functions of the transform api
 		if let &[] = path {
 			// Special case for root. Root's local is the documents global, so we avoid transforming its transform by itself.
 			self.layer_local_bounding_box(path)
@@ -238,6 +239,7 @@ impl Document {
 	}
 
 	pub fn layer_local_bounding_box(&self, path: &[LayerId]) -> Result<Option<[DVec2; 2]>, DocumentError> {
+		// TODO: Replace with functions of the transform api
 		let layer = self.document_layer(path)?;
 		Ok(layer.bounding_box(layer.transform, layer.style))
 	}
