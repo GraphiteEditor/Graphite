@@ -101,6 +101,35 @@ impl Folder {
 			_ => None,
 		}
 	}
+
+	pub fn bounding_box(&self, transform: glam::DAffine2) -> Option<[DVec2; 2]> {
+		let mut layers_non_empty_bounding_boxes = self.layers.iter().filter_map(|layer| layer.bounding_box(transform * layer.transform, layer.style)).peekable();
+
+		if layers_non_empty_bounding_boxes.peek().is_none() {
+			return None;
+		}
+
+		let mut x_min = f64::MAX;
+		let mut y_min = f64::MAX;
+		let mut x_max = f64::MIN;
+		let mut y_max = f64::MIN;
+
+		for [bounding_box_min, bounding_box_max] in layers_non_empty_bounding_boxes {
+			if bounding_box_min.x < x_min {
+				x_min = bounding_box_min.x
+			}
+			if bounding_box_min.y < y_min {
+				y_min = bounding_box_min.y
+			}
+			if bounding_box_max.x > x_max {
+				x_max = bounding_box_max.x
+			}
+			if bounding_box_max.y > y_max {
+				y_max = bounding_box_max.y
+			}
+		}
+		return Some([DVec2::new(x_min, y_min), DVec2::new(x_max, y_max)]);
+	}
 }
 
 impl Default for Folder {
