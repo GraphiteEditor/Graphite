@@ -2,9 +2,9 @@ pub mod tool_message_handler;
 pub mod tool_settings;
 pub mod tools;
 
+use crate::document::Document;
 use crate::input::InputPreprocessor;
 use crate::message_prelude::*;
-use crate::SvgDocument;
 use crate::{
 	communication::{message::Message, MessageHandler},
 	Color,
@@ -25,12 +25,12 @@ pub mod tool_messages {
 	pub use super::tools::rectangle::{RectangleMessage, RectangleMessageDiscriminant};
 }
 
-pub type ToolActionHandlerData<'a> = (&'a SvgDocument, &'a DocumentToolData, &'a InputPreprocessor);
+pub type ToolActionHandlerData<'a> = (&'a Document, &'a DocumentToolData, &'a InputPreprocessor);
 
 pub trait Fsm {
 	type ToolData;
 
-	fn transition(self, message: ToolMessage, document: &SvgDocument, tool_data: &DocumentToolData, data: &mut Self::ToolData, input: &InputPreprocessor, messages: &mut VecDeque<Message>) -> Self;
+	fn transition(self, message: ToolMessage, document: &Document, tool_data: &DocumentToolData, data: &mut Self::ToolData, input: &InputPreprocessor, messages: &mut VecDeque<Message>) -> Self;
 }
 
 #[derive(Debug, Clone)]
