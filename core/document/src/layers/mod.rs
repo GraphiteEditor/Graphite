@@ -6,6 +6,7 @@ pub use ellipse::Ellipse;
 pub mod line;
 use glam::{DMat2, DVec2};
 use kurbo::BezPath;
+use kurbo::Shape as KurboShape;
 pub use line::Line;
 
 pub mod rect;
@@ -102,7 +103,6 @@ impl LayerDataTypes {
 	}
 
 	pub fn bounding_box(&self, transform: glam::DAffine2, style: style::PathStyle) -> [DVec2; 2] {
-		use kurbo::Shape;
 		let bez_path = self.to_kurbo_path(transform, style);
 		let bbox = bez_path.bounding_box();
 		[DVec2::new(bbox.x0, bbox.y0), DVec2::new(bbox.x1, bbox.y1)]
