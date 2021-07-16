@@ -30,7 +30,7 @@
 					>
 						<div class="layer-thumbnail"></div>
 						<div class="layer-type-icon">
-							<Icon :icon="'NodeTypePath'" title="Path" />
+							<IconLabel :icon="'NodeTypePath'" title="Path" />
 						</div>
 						<div class="layer-name">
 							<span>{{ layer.name }}</span>
@@ -112,7 +112,7 @@ import NumberInput from "@/components/widgets/inputs/NumberInput.vue";
 import PopoverButton from "@/components/widgets/buttons/PopoverButton.vue";
 import { MenuDirection } from "@/components/widgets/floating-menus/FloatingMenu.vue";
 import IconButton from "@/components/widgets/buttons/IconButton.vue";
-import Icon from "@/components/widgets/labels/Icon.vue";
+import IconLabel from "@/components/widgets/labels/IconLabel.vue";
 import DropdownInput from "@/components/widgets/inputs/DropdownInput.vue";
 import { SectionsOfMenuListEntries } from "@/components/widgets/floating-menus/MenuList.vue";
 
@@ -230,7 +230,7 @@ export default defineComponent({
 		PopoverButton,
 		NumberInput,
 		IconButton,
-		Icon,
+		IconLabel,
 		DropdownInput,
 	},
 });
