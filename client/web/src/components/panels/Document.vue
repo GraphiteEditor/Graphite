@@ -139,15 +139,31 @@
 				<div class="working-colors">
 					<SwatchPairInput />
 					<div class="swap-and-reset">
-						<IconButton @click="swapColors" :icon="'Swap'" title="Swap (Shift+X)" :size="16" />
-						<IconButton @click="resetColors" :icon="'ResetColors'" title="Reset (Ctrl+Shift+X)" :size="16" />
+						<IconButton @click="swapWorkingColors" :icon="'Swap'" title="Swap (Shift+X)" :size="16" />
+						<IconButton @click="resetWorkingColors" :icon="'ResetColors'" title="Reset (Ctrl+Shift+X)" :size="16" />
 					</div>
 				</div>
 			</LayoutCol>
 			<LayoutCol :class="'viewport'">
-				<div class="canvas" @mousedown="canvasMouseDown" @mouseup="canvasMouseUp" @mousemove="canvasMouseMove" ref="canvas">
-					<svg v-html="viewportSvg"></svg>
-				</div>
+				<LayoutRow :class="'bar-area'">
+					<CanvasRuler :origin="0" :majorMarkSpacing="75" :direction="RulerDirection.Horizontal" :class="'top-ruler'" />
+				</LayoutRow>
+				<LayoutRow :class="'canvas-area'">
+					<LayoutCol :class="'bar-area'">
+						<CanvasRuler :origin="0" :majorMarkSpacing="75" :direction="RulerDirection.Vertical" />
+					</LayoutCol>
+					<LayoutCol :class="'canvas-area'">
+						<div class="canvas" @mousedown="canvasMouseDown" @mouseup="canvasMouseUp" @mousemove="canvasMouseMove" ref="canvas">
+							<svg v-html="viewportSvg"></svg>
+						</div>
+					</LayoutCol>
+					<LayoutCol :class="'bar-area'">
+						<PersistentScrollbar :direction="ScrollbarDirection.Vertical" :class="'right-scrollbar'" />
+					</LayoutCol>
+				</LayoutRow>
+				<LayoutRow :class="'bar-area'">
+					<PersistentScrollbar :direction="ScrollbarDirection.Horizontal" :class="'bottom-scrollbar'" />
+				</LayoutRow>
 			</LayoutCol>
 		</LayoutRow>
 	</LayoutCol>
@@ -184,6 +200,27 @@
 		.viewport {
 			flex: 1 1 100%;
 
+			.canvas-area {
+				flex: 1 1 100%;
+			}
+
+			.bar-area {
+				flex: 0 0 auto;
+			}
+
+			.top-ruler {
+				padding-left: 16px;
+				margin-right: 16px;
+			}
+
+			.right-scrollbar {
+				margin-top: -16px;
+			}
+
+			.bottom-scrollbar {
+				margin-right: 16px;
+			}
+
 			.canvas {
 				background: var(--color-1-nearblack);
 				width: 100%;
@@ -210,6 +247,8 @@ import SwatchPairInput from "@/components/widgets/inputs/SwatchPairInput.vue";
 import { MenuDirection } from "@/components/widgets/floating-menus/FloatingMenu.vue";
 import ShelfItemInput from "@/components/widgets/inputs/ShelfItemInput.vue";
 import Separator, { SeparatorDirection, SeparatorType } from "@/components/widgets/separators/Separator.vue";
+import PersistentScrollbar, { ScrollbarDirection } from "@/components/widgets/scrollbars/PersistentScrollbar.vue";
+import CanvasRuler, { RulerDirection } from "@/components/widgets/rulers/CanvasRuler.vue";
 import IconButton from "@/components/widgets/buttons/IconButton.vue";
 import PopoverButton from "@/components/widgets/buttons/PopoverButton.vue";
 import RadioInput from "@/components/widgets/inputs/RadioInput.vue";
@@ -274,6 +313,14 @@ export default defineComponent({
 			}
 			todo(toolIndex);
 		},
+		async swapWorkingColors() {
+			const { swap_colors } = await wasm;
+			swap_colors();
+		},
+		async resetWorkingColors() {
+			const { reset_colors } = await wasm;
+			reset_colors();
+		},
 		download(filename: string, svgData: string) {
 			const svgBlob = new Blob([svgData], { type: "image/svg+xml;charset=utf-8" });
 			const svgUrl = URL.createObjectURL(svgBlob);
@@ -328,14 +375,16 @@ export default defineComponent({
 		return {
 			viewportSvg: "",
 			activeTool: "Select",
-			MenuDirection,
-			SeparatorDirection,
-			SeparatorType,
 			modeMenuEntries,
 			viewModeIndex: 0,
 			snappingEnabled: true,
 			gridEnabled: true,
 			overlaysEnabled: true,
+			MenuDirection,
+			SeparatorDirection,
+			ScrollbarDirection,
+			RulerDirection,
+			SeparatorType,
 		};
 	},
 	components: {
@@ -344,6 +393,8 @@ export default defineComponent({
 		SwatchPairInput,
 		ShelfItemInput,
 		Separator,
+		PersistentScrollbar,
+		CanvasRuler,
 		IconButton,
 		PopoverButton,
 		RadioInput,
