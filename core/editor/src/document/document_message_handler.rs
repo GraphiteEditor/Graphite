@@ -111,7 +111,7 @@ impl DocumentMessageHandler {
 		self.active_document().layer_data.get(path).expect("Layerdata does not exist")
 	}
 	fn layerdata_mut(&mut self, path: &[LayerId]) -> &mut LayerData {
-		self.active_document_mut().layer_data.entry(path.to_vec()).or_insert(LayerData::new(true))
+		self.active_document_mut().layer_data.entry(path.to_vec()).or_insert_with(|| LayerData::new(true))
 	}
 	#[allow(dead_code)]
 	fn create_transform_from_layerdata(&self, path: Vec<u64>, responses: &mut VecDeque<Message>) {
@@ -126,7 +126,7 @@ impl DocumentMessageHandler {
 	}
 	fn create_document_transform_from_layerdata(&self, viewport_size: &ViewportPosition, responses: &mut VecDeque<Message>) {
 		let half_viewport = viewport_size.to_dvec2() / 2.;
-		let layerdata = self.layerdata(&vec![]);
+		let layerdata = self.layerdata(&[]);
 		let scaled_half_viewport = half_viewport / layerdata.scale;
 		responses.push_back(
 			DocumentOperation::SetLayerTransform {
@@ -145,7 +145,7 @@ impl DocumentMessageHandler {
 			.layer_data
 			.iter()
 			// 'path.len() > 0' filters out root layer since it has no indices
-			.filter_map(|(path, data)| (path.len() > 0 && !only_selected || data.selected).then(|| path.clone()))
+			.filter_map(|(path, data)| (!path.is_empty() && !only_selected || data.selected).then(|| path.clone()))
 			.filter_map(|path| {
 				// Currently it is possible that layer_data contains layers that are don't actually exist
 				// and thus indices_for_path can return an error. We currently skip these layers and log a warning.
@@ -161,7 +161,7 @@ impl DocumentMessageHandler {
 			.collect();
 
 		layers_with_indices.sort_by_key(|(_, indices)| indices.clone());
-		return layers_with_indices.into_iter().map(|(path, _)| path).collect();
+		layers_with_indices.into_iter().map(|(path, _)| path).collect()
 	}
 
 	/// Returns the paths to all layers in order
@@ -286,7 +286,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 						}
 					})
 					.collect::<Vec<usize>>();
-				doc_title_numbers.sort();
+				doc_title_numbers.sort_unstable();
 				let mut new_doc_title_num = 1;
 				while new_doc_title_num <= self.documents.len() {
 					if new_doc_title_num != doc_title_numbers[new_doc_title_num - 1] {
@@ -442,7 +442,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			RotateCanvasBegin { snap } => {
 				self.rotating = true;
 				self.snapping = snap;
-				let layerdata = self.layerdata_mut(&vec![]);
+				let layerdata = self.layerdata_mut(&[]);
 				layerdata.snap_rotate = snap;
 				self.mouse_pos = ipp.mouse.position;
 			}
@@ -453,7 +453,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				self.mouse_pos = ipp.mouse.position;
 			}
 			TranslateCanvasEnd => {
-				let layerdata = self.layerdata_mut(&vec![]);
+				let layerdata = self.layerdata_mut(&[]);
 				layerdata.rotation = layerdata.snapped_angle();
 				layerdata.snap_rotate = false;
 				self.translating = false;
@@ -465,7 +465,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					let delta = ipp.mouse.position.to_dvec2() - self.mouse_pos.to_dvec2();
 					let transformed_delta = self.active_document().document.root.transform.inverse().transform_vector2(delta);
 
-					let layerdata = self.layerdata_mut(&vec![]);
+					let layerdata = self.layerdata_mut(&[]);
 					layerdata.translation = layerdata.translation + transformed_delta;
 					self.create_document_transform_from_layerdata(&ipp.viewport_size, responses);
 				}
@@ -478,7 +478,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					};
 
 					let snapping = self.snapping;
-					let layerdata = self.layerdata_mut(&vec![]);
+					let layerdata = self.layerdata_mut(&[]);
 					layerdata.rotation += rotation;
 					layerdata.snap_rotate = snapping;
 					responses.push_back(
@@ -492,7 +492,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				if self.zooming {
 					let difference = self.mouse_pos.y as f64 - ipp.mouse.position.y as f64;
 					let amount = 1. + difference * MOUSE_ZOOM_RATE;
-					let layerdata = self.layerdata_mut(&vec![]);
+					let layerdata = self.layerdata_mut(&[]);
 					let new = (layerdata.scale * amount).clamp(VIEWPORT_ZOOM_SCALE_MIN, VIEWPORT_ZOOM_SCALE_MAX);
 					layerdata.scale = new;
 					responses.push_back(FrontendMessage::SetCanvasZoom { new_zoom: layerdata.scale }.into());
@@ -501,13 +501,13 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				self.mouse_pos = ipp.mouse.position;
 			}
 			SetCanvasZoom(new) => {
-				let layerdata = self.layerdata_mut(&vec![]);
+				let layerdata = self.layerdata_mut(&[]);
 				layerdata.scale = new.clamp(VIEWPORT_ZOOM_SCALE_MIN, VIEWPORT_ZOOM_SCALE_MAX);
 				responses.push_back(FrontendMessage::SetCanvasZoom { new_zoom: layerdata.scale }.into());
 				self.create_document_transform_from_layerdata(&ipp.viewport_size, responses);
 			}
 			MultiplyCanvasZoom(multiplier) => {
-				let layerdata = self.layerdata_mut(&vec![]);
+				let layerdata = self.layerdata_mut(&[]);
 				let new = (layerdata.scale * multiplier).clamp(VIEWPORT_ZOOM_SCALE_MIN, VIEWPORT_ZOOM_SCALE_MAX);
 				layerdata.scale = new;
 				responses.push_back(FrontendMessage::SetCanvasZoom { new_zoom: layerdata.scale }.into());
@@ -527,7 +527,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				let delta = delta_size * -2. * (mouse_percent - (0.5, 0.5).into());
 
 				let transformed_delta = self.active_document().document.root.transform.inverse().transform_vector2(delta);
-				let layerdata = self.layerdata_mut(&vec![]);
+				let layerdata = self.layerdata_mut(&[]);
 				let new = (layerdata.scale * zoom_factor).clamp(VIEWPORT_ZOOM_SCALE_MIN, VIEWPORT_ZOOM_SCALE_MAX);
 				layerdata.scale = new;
 				layerdata.translation += transformed_delta;
@@ -540,12 +540,12 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					true => (-ipp.mouse.scroll_delta.y as f64, 0.).into(),
 				} * VIEWPORT_SCROLL_RATE;
 				let transformed_delta = self.active_document().document.root.transform.inverse().transform_vector2(delta);
-				let layerdata = self.layerdata_mut(&vec![]);
+				let layerdata = self.layerdata_mut(&[]);
 				layerdata.translation += transformed_delta;
 				self.create_document_transform_from_layerdata(&ipp.viewport_size, responses);
 			}
 			SetCanvasRotation(new) => {
-				let layerdata = self.layerdata_mut(&vec![]);
+				let layerdata = self.layerdata_mut(&[]);
 				layerdata.rotation = new;
 				self.create_document_transform_from_layerdata(&ipp.viewport_size, responses);
 				responses.push_back(FrontendMessage::SetCanvasRotation { new_radians: new }.into());
@@ -554,7 +554,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				let paths: Vec<Vec<LayerId>> = self.get_selected_layers_sorted();
 
 				let delta = {
-					let root_layer_rotation = self.layerdata_mut(&vec![]).rotation;
+					let root_layer_rotation = self.layerdata_mut(&[]).rotation;
 					let rotate_to_viewport_space = DAffine2::from_angle(root_layer_rotation).inverse();
 					rotate_to_viewport_space.transform_point2((x, y).into())
 				};
@@ -567,7 +567,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				}
 			}
 			ReorderSelectedLayer(delta) => {
-				let paths: Vec<Vec<LayerId>> = self.get_selected_layers_sorted();
+				let mut paths: Vec<Vec<LayerId>> = self.get_selected_layers_sorted();
 				// TODO: Support moving more than one layer
 				if paths.len() == 1 {
 					let all_layer_paths = self.get_all_layers_sorted();
@@ -586,7 +586,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 
 					if next_layer_index != -1 && next_layer_index != selected_layer_index {
 						let operation = DocumentOperation::ReorderLayers {
-							source_path: paths[0].clone(),
+							source_path: paths.drain(1..1).next().unwrap(),
 							target_path: all_layer_paths[next_layer_index as usize].to_vec(),
 						};
 						responses.push_back(operation.into());
