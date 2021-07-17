@@ -61,7 +61,7 @@ export default defineComponent({
 			const divisions = this.majorMarkSpacing / this.mediumDivisions / this.minorDivisions;
 			const majorMarksFrequency = this.mediumDivisions * this.minorDivisions;
 
-			let d = "";
+			let dPathAttribute = "";
 			let i = 0;
 			for (let location = offsetStart; location < this.rulerLength; location += divisions) {
 				let length = RULER_THICKNESS / 4;
@@ -71,10 +71,10 @@ export default defineComponent({
 
 				const destination = Math.round(location) + 0.5;
 				const startPoint = isVertical ? `${RULER_THICKNESS - length},${destination}` : `${destination},${RULER_THICKNESS - length}`;
-				d += `M${startPoint}${lineDirection}${RULER_THICKNESS} `;
+				dPathAttribute += `M${startPoint}${lineDirection}${RULER_THICKNESS} `;
 			}
 
-			return d;
+			return dPathAttribute;
 		},
 	},
 	methods: {
@@ -89,7 +89,9 @@ export default defineComponent({
 
 			if (roundedUp !== this.rulerLength) {
 				this.rulerLength = roundedUp;
-				this.svgBounds = isVertical ? { width: "16px", height: `${roundedUp}px` } : { width: `${roundedUp}px`, height: "16px" };
+				const thickness = `${RULER_THICKNESS}px`;
+				const length = `${roundedUp}px`;
+				this.svgBounds = isVertical ? { width: thickness, height: length } : { width: length, height: thickness };
 			}
 		},
 	},
