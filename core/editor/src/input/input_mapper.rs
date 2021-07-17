@@ -207,7 +207,7 @@ impl Default for Mapping {
 			entry! {action=DocumentMessage::NewDocument, key_down=KeyN, modifiers=[KeyControl]},
 			entry! {action=DocumentMessage::NextDocument, key_down=KeyTab, modifiers=[KeyControl]},
 			entry! {action=DocumentMessage::PrevDocument, key_down=KeyTab, modifiers=[KeyControl, KeyShift]},
-			entry! {action=DocumentMessage::CloseAllDocumentsWithConfirmation, key_down=KeyW, modifiers=[KeyControl, KeyAlt]}, // TODO: Fix this, it's matching the one below
+			entry! {action=DocumentMessage::CloseAllDocumentsWithConfirmation, key_down=KeyW, modifiers=[KeyControl, KeyAlt]},
 			entry! {action=DocumentMessage::CloseActiveDocumentWithConfirmation, key_down=KeyW, modifiers=[KeyControl]},
 			entry! {action=DocumentMessage::DuplicateSelectedLayers, key_down=KeyD, modifiers=[KeyControl]},
 			entry! {action=DocumentMessage::CopySelectedLayers, key_down=KeyC, modifiers=[KeyControl]},
