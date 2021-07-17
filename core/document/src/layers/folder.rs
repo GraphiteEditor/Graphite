@@ -65,19 +65,79 @@ impl Folder {
 		Ok(())
 	}
 
-	pub fn reorder_layer(&mut self, source_id: LayerId, target_id: LayerId) -> Result<(), DocumentError> {
-		let source_pos = self.layer_ids.iter().position(|x| *x == source_id).ok_or(DocumentError::LayerNotFound)?;
+	pub fn reorder_layers(&mut self, source_ids: Vec<LayerId>, target_id: LayerId) -> Result<(), DocumentError> {
+		let source_pos = self.layer_ids.iter().position(|x| *x == source_ids[0]).ok_or(DocumentError::LayerNotFound)?;
+		let source_pos_end = source_pos + source_ids.len() - 1;
 		let target_pos = self.layer_ids.iter().position(|x| *x == target_id).ok_or(DocumentError::LayerNotFound)?;
 
-		let layer_to_move = self.layers.remove(source_pos);
-		self.layers.insert(target_pos, layer_to_move);
-		let layer_id_to_move = self.layer_ids.remove(source_pos);
-		self.layer_ids.insert(target_pos, layer_id_to_move);
+		let mut last_pos = source_pos;
+		for layer_id in &source_ids[1..source_ids.len()] {
+			let layer_pos = self.layer_ids.iter().position(|x| *x == *layer_id).ok_or(DocumentError::LayerNotFound)?;
+			if (layer_pos as i32 - last_pos as i32).abs() > 1 {
+				// Selection is not contiguous
+				return Err(DocumentError::InvalidPath);
+			}
+			last_pos = layer_pos;
+		}
 
-		let min_index = source_pos.min(target_pos);
-		let max_index = source_pos.max(target_pos);
-		for layer_index in min_index..max_index {
-			self.layers[layer_index].cache_dirty = true;
+		if source_pos < target_pos {
+			// Dragging up
+
+			// Prevent shifting past end
+			if source_pos_end + 1 >= self.layers.len() {
+				return Err(DocumentError::InvalidPath);
+			}
+
+			fn rearrange<T>(arr: &mut Vec<T>, source_pos: usize, source_pos_end: usize, target_pos: usize)
+			where
+				T: Clone,
+			{
+				*arr = [
+					&arr[0..source_pos],                   // Elements before selection
+					&arr[source_pos_end + 1..=target_pos], // Elements between selection end and target
+					&arr[source_pos..=source_pos_end],     // Selection itself
+					&arr[target_pos + 1..],                // Elements before target
+				]
+				.concat();
+			}
+
+			rearrange(&mut self.layers, source_pos, source_pos_end, target_pos);
+			rearrange(&mut self.layer_ids, source_pos, source_pos_end, target_pos);
+
+			let min_index = source_pos_end.min(target_pos);
+			let max_index = source_pos_end.max(target_pos);
+			for layer_index in min_index..max_index {
+				self.layers[layer_index].cache_dirty = true;
+			}
+		} else {
+			// Dragging down
+
+			// Prevent shifting past end
+			if source_pos == 0 {
+				return Err(DocumentError::InvalidPath);
+			}
+
+			fn rearrange<T>(arr: &mut Vec<T>, source_pos: usize, source_pos_end: usize, target_pos: usize)
+			where
+				T: Clone,
+			{
+				*arr = [
+					&arr[0..target_pos],               // Elements before target
+					&arr[source_pos..=source_pos_end], // Selection itself
+					&arr[target_pos..source_pos],      // Elements between selection and target
+					&arr[source_pos_end + 1..],        // Elements before selection
+				]
+				.concat();
+			}
+
+			rearrange(&mut self.layers, source_pos, source_pos_end, target_pos);
+			rearrange(&mut self.layer_ids, source_pos, source_pos_end, target_pos);
+
+			let min_index = source_pos.min(target_pos);
+			let max_index = source_pos.max(target_pos);
+			for layer_index in min_index..max_index {
+				self.layers[layer_index].cache_dirty = true;
+			}
 		}
 
 		Ok(())
