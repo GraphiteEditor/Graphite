@@ -1,7 +1,7 @@
 <template>
 	<div class="canvas-ruler" :class="direction.toLowerCase()" ref="rulerRef">
 		<svg :style="svgBounds">
-			<line v-for="(mark, index) in marks" :key="index" v-bind="markStyle(mark)" />
+			<path :d="svgPath" />
 		</svg>
 	</div>
 </template>
@@ -24,7 +24,7 @@
 	svg {
 		position: absolute;
 
-		line {
+		path {
 			stroke-width: 1px;
 			stroke: var(--color-7-middlegray);
 		}
@@ -34,6 +34,8 @@
 
 <script lang="ts">
 import { defineComponent, PropType } from "vue";
+
+const RULER_THICKNESS = 16;
 
 export enum RulerDirection {
 	"Horizontal" = "Horizontal",
@@ -49,38 +51,33 @@ export default defineComponent({
 		minorDivisions: { type: Number, default: 2 },
 	},
 	computed: {
-		marks(): Array<{ location: number; length: number }> {
-			const markLocations = [];
-			const divisions = this.majorMarkSpacing / this.mediumDivisions / this.minorDivisions;
+		svgPath(): string {
+			const isVertical = this.direction === RulerDirection.Vertical;
+			const lineDirection = isVertical ? "H" : "V";
 
 			let offsetStart = this.origin % this.majorMarkSpacing;
 			if (offsetStart < this.majorMarkSpacing) offsetStart -= this.majorMarkSpacing;
 
+			const divisions = this.majorMarkSpacing / this.mediumDivisions / this.minorDivisions;
 			const majorMarksFrequency = this.mediumDivisions * this.minorDivisions;
+
+			let d = "";
 			let i = 0;
-			for (let position = offsetStart; position < this.rulerLength; position += divisions) {
-				let length = 4;
-				if (i % majorMarksFrequency === 0) length = 16;
-				else if (i % this.minorDivisions === 0) length = 8;
+			for (let location = offsetStart; location < this.rulerLength; location += divisions) {
+				let length = RULER_THICKNESS / 4;
+				if (i % majorMarksFrequency === 0) length = RULER_THICKNESS;
+				else if (i % this.minorDivisions === 0) length = RULER_THICKNESS / 2;
 				i += 1;
 
-				markLocations.push({ location: Math.round(position), length });
+				const destination = Math.round(location) + 0.5;
+				const startPoint = isVertical ? `${RULER_THICKNESS - length},${destination}` : `${destination},${RULER_THICKNESS - length}`;
+				d += `M${startPoint}${lineDirection}${RULER_THICKNESS} `;
 			}
 
-			return markLocations;
+			return d;
 		},
 	},
 	methods: {
-		markStyle(mark: { location: number; length: number }) {
-			const isVertical = this.direction === RulerDirection.Vertical;
-
-			const drawnLength = 16 - mark.length;
-			const drawnLocation = mark.location + 0.5;
-
-			return isVertical
-				? { x1: "16px", x2: `${drawnLength}px`, y1: `${drawnLocation}px`, y2: `${drawnLocation}px` }
-				: { x1: `${drawnLocation}px`, x2: `${drawnLocation}px`, y1: "16px", y2: `${drawnLength}px` };
-		},
 		handleResize() {
 			if (!this.$refs.rulerRef) return;
 
@@ -106,8 +103,8 @@ export default defineComponent({
 	data() {
 		return {
 			rulerLength: 0,
-			RulerDirection,
 			svgBounds: { width: "0px", height: "0px" },
+			RulerDirection,
 		};
 	},
 });
