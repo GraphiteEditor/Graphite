@@ -54,7 +54,7 @@ pub enum DocumentMessage {
 	WheelCanvasZoom,
 	SetCanvasRotation(f64),
 	NudgeSelectedLayers(f64, f64),
-	ReorderSelectedLayer(i32),
+	ReorderSelectedLayers(i32),
 }
 
 impl From<DocumentOperation> for DocumentMessage {
@@ -551,7 +551,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				responses.push_back(FrontendMessage::SetCanvasRotation { new_radians: new }.into());
 			}
 			NudgeSelectedLayers(x, y) => {
-				let paths: Vec<Vec<LayerId>> = self.selected_layers_sorted();
+				let paths = self.selected_layers_sorted();
 
 				let delta = {
 					let root_layer_rotation = self.layerdata_mut(&[]).rotation;
@@ -566,31 +566,32 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					responses.push_back(operation.into());
 				}
 			}
-			ReorderSelectedLayer(delta) => {
-				let mut paths: Vec<Vec<LayerId>> = self.selected_layers_sorted();
-				// TODO: Support moving more than one layer
-				if paths.len() == 1 {
-					let all_layer_paths = self.all_layers_sorted();
+			ReorderSelectedLayers(delta) => {
+				let selected_layer_paths: Vec<Vec<LayerId>> = self.selected_layers_sorted();
+				let all_layer_paths = self.all_layers_sorted();
 
-					let max_index = all_layer_paths.len() as i64 - 1;
+				let max_index = all_layer_paths.len() as i64 - 1;
+				let num_layers_selected = selected_layer_paths.len() as i64;
 
-					let mut selected_layer_index = -1;
-					let mut next_layer_index = -1;
-					for (i, path) in all_layer_paths.iter().enumerate() {
-						if *path == paths[0] {
-							selected_layer_index = i as i32;
-							next_layer_index = (selected_layer_index as i64 + delta as i64).clamp(0, max_index) as i32;
-							break;
-						}
+				let mut selected_layer_index = -1;
+				let mut next_layer_index = -1;
+				for (i, path) in all_layer_paths.iter().enumerate() {
+					if *path == selected_layer_paths[0] {
+						selected_layer_index = i as i32;
+						// Skip past selection length when moving up
+						let offset = if delta > 0 { num_layers_selected - 1 } else { 0 };
+						next_layer_index = (selected_layer_index as i64 + delta as i64 + offset).clamp(0, max_index) as i32;
+						break;
 					}
+				}
 
-					if next_layer_index != -1 && next_layer_index != selected_layer_index {
-						let operation = DocumentOperation::ReorderLayers {
-							source_path: paths.drain(0..1).next().unwrap(),
-							target_path: all_layer_paths[next_layer_index as usize].to_vec(),
-						};
-						responses.push_back(operation.into());
-					}
+				if next_layer_index != -1 && next_layer_index != selected_layer_index {
+					let operation = DocumentOperation::ReorderLayers {
+						source_paths: selected_layer_paths.clone(),
+						target_path: all_layer_paths[next_layer_index as usize].to_vec(),
+					};
+					responses.push_back(operation.into());
+					responses.push_back(DocumentMessage::SelectLayers(selected_layer_paths).into());
 				}
 			}
 			message => todo!("document_action_handler does not implement: {}", message.to_discriminant().global_name()),
@@ -628,7 +629,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				DuplicateSelectedLayers,
 				CopySelectedLayers,
 				NudgeSelectedLayers,
-				ReorderSelectedLayer,
+				ReorderSelectedLayers,
 			);
 			common.extend(select);
 		}
