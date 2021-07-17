@@ -264,13 +264,13 @@ impl Document {
 				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::SelectLayer { path }])
 			}
 			Operation::AddRect { path, insert_index, transform, style } => {
-				let id = self.add_layer(&path, Layer::new(LayerDataTypes::Rect(Rect::new()), *transform, *style), *insert_index)?;
+				let id = self.add_layer(&path, Layer::new(LayerDataTypes::Rect(Rect), *transform, *style), *insert_index)?;
 				let path = [path.clone(), vec![id]].concat();
 
 				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::SelectLayer { path }])
 			}
 			Operation::AddLine { path, insert_index, transform, style } => {
-				let id = self.add_layer(&path, Layer::new(LayerDataTypes::Line(Line::new()), *transform, *style), *insert_index)?;
+				let id = self.add_layer(&path, Layer::new(LayerDataTypes::Line(Line), *transform, *style), *insert_index)?;
 				let path = [path.clone(), vec![id]].concat();
 
 				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::SelectLayer { path }])

@@ -14,12 +14,6 @@ use std::fmt::Write;
 #[derive(Debug, Default, Clone, PartialEq, Deserialize, Serialize)]
 pub struct Rect;
 
-impl Rect {
-	pub fn new() -> Rect {
-		Rect
-	}
-}
-
 impl LayerData for Rect {
 	fn to_kurbo_path(&self, transform: glam::DAffine2, _style: style::PathStyle) -> kurbo::BezPath {
 		fn new_point(a: DVec2) -> Point {
