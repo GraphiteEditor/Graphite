@@ -135,7 +135,7 @@ impl Layer {
 			name: None,
 			data,
 			transform: glam::DAffine2::from_cols_array(&transform),
-			style: style,
+			style,
 			cache: String::new(),
 			cache_dirty: true,
 		}
@@ -171,7 +171,7 @@ impl Layer {
 		*svg += self.render();
 	}
 
-	pub fn to_kurbo_path(&mut self) -> BezPath {
+	pub fn to_kurbo_path(&self) -> BezPath {
 		self.data.to_kurbo_path(self.transform, self.style)
 	}
 
@@ -198,9 +198,8 @@ impl Layer {
 	}
 
 	pub fn render_as_folder(&mut self, svg: &mut String) {
-		match &mut self.data {
-			LayerDataTypes::Folder(f) => f.render(svg, self.transform, self.style),
-			_ => {}
+		if let LayerDataTypes::Folder(f) = &mut self.data {
+			f.render(svg, self.transform, self.style)
 		}
 	}
 }

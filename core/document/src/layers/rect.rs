@@ -11,14 +11,8 @@ use super::LayerData;
 use serde::{Deserialize, Serialize};
 use std::fmt::Write;
 
-#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
-pub struct Rect {}
-
-impl Rect {
-	pub fn new() -> Rect {
-		Rect {}
-	}
-}
+#[derive(Debug, Default, Clone, PartialEq, Deserialize, Serialize)]
+pub struct Rect;
 
 impl LayerData for Rect {
 	fn to_kurbo_path(&self, transform: glam::DAffine2, _style: style::PathStyle) -> kurbo::BezPath {
