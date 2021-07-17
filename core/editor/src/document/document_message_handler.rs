@@ -145,7 +145,7 @@ impl DocumentMessageHandler {
 			.layer_data
 			.iter()
 			// 'path.len() > 0' filters out root layer since it has no indices
-			.filter_map(|(path, data)| (path.len() > 0 && !only_selected || data.selected).then(|| path.clone()))
+			.filter_map(|(path, data)| (!path.is_empty() && !only_selected || data.selected).then(|| path.clone()))
 			.filter_map(|path| {
 				// Currently it is possible that layer_data contains layers that are don't actually exist
 				// and thus indices_for_path can return an error. We currently skip these layers and log a warning.
@@ -567,7 +567,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				}
 			}
 			ReorderSelectedLayer(delta) => {
-				let paths: Vec<Vec<LayerId>> = self.get_selected_layers_sorted();
+				let mut paths: Vec<Vec<LayerId>> = self.get_selected_layers_sorted();
 				// TODO: Support moving more than one layer
 				if paths.len() == 1 {
 					let all_layer_paths = self.get_all_layers_sorted();
@@ -586,7 +586,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 
 					if next_layer_index != -1 && next_layer_index != selected_layer_index {
 						let operation = DocumentOperation::ReorderLayers {
-							source_path: paths[0].clone(),
+							source_path: paths.drain(1..1).next().unwrap(),
 							target_path: all_layer_paths[next_layer_index as usize].to_vec(),
 						};
 						responses.push_back(operation.into());
