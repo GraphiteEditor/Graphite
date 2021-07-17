@@ -14,7 +14,7 @@ impl ViewportPosition {
 		let y_diff = other.y as i64 - self.y as i64;
 		f64::sqrt((x_diff * x_diff + y_diff * y_diff) as f64)
 	}
-	pub fn to_dvec2(&self) -> DVec2 {
+	pub fn as_dvec2(&self) -> DVec2 {
 		DVec2::new(self.x as f64, self.y as f64)
 	}
 }
@@ -29,7 +29,7 @@ impl ScrollDelta {
 	pub fn new(x: i32, y: i32, z: i32) -> ScrollDelta {
 		ScrollDelta { x, y, z }
 	}
-	pub fn to_dvec2(&self) -> DVec2 {
+	pub fn as_dvec2(&self) -> DVec2 {
 		DVec2::new(self.x as f64, self.y as f64)
 	}
 	pub fn scroll_delta(&self) -> f64 {

@@ -31,9 +31,7 @@ impl LayerData for Shape {
 		let mut path = kurbo::BezPath::new();
 		let apothem_offset_angle = std::f64::consts::PI / (self.sides as f64);
 
-		let relative_points = (0..self.sides)
-			.map(|i| apothem_offset_angle * ((i * 2 + ((self.sides + 1) % 2)) as f64))
-			.map(|radians| unit_rotation(radians));
+		let relative_points = (0..self.sides).map(|i| apothem_offset_angle * ((i * 2 + ((self.sides + 1) % 2)) as f64)).map(unit_rotation);
 
 		let (mut min_x, mut min_y, mut max_x, mut max_y) = (f64::MAX, f64::MAX, f64::MIN, f64::MIN);
 		relative_points.clone().for_each(|p| {
@@ -52,7 +50,7 @@ impl LayerData for Shape {
 				}
 			})
 			.map(|p| DVec2::new(p.x / 2. + 0.5, p.y / 2. + 0.5))
-			.map(|unit| transform.transform_point2(unit.into()))
+			.map(|unit| transform.transform_point2(unit))
 			.map(|pos| kurbo::Point::new(pos.x, pos.y))
 			.enumerate()
 			.for_each(|(i, p)| {

@@ -105,9 +105,7 @@ impl Folder {
 	pub fn bounding_box(&self, transform: glam::DAffine2) -> Option<[DVec2; 2]> {
 		let mut layers_non_empty_bounding_boxes = self.layers.iter().filter_map(|layer| layer.bounding_box(transform * layer.transform, layer.style)).peekable();
 
-		if layers_non_empty_bounding_boxes.peek().is_none() {
-			return None;
-		}
+		layers_non_empty_bounding_boxes.peek()?;
 
 		let mut x_min = f64::MAX;
 		let mut y_min = f64::MAX;
@@ -128,7 +126,7 @@ impl Folder {
 				y_max = bounding_box_max.y
 			}
 		}
-		return Some([DVec2::new(x_min, y_min), DVec2::new(x_max, y_max)]);
+		Some([DVec2::new(x_min, y_min), DVec2::new(x_max, y_max)])
 	}
 }
 
