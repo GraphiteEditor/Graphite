@@ -1,8 +1,8 @@
 <template>
 	<div class="canvas-ruler" :class="direction.toLowerCase()" ref="rulerRef">
-		<div class="marks">
-			<div class="mark" v-for="(mark, index) in marks" :key="index" :style="markStyle(mark)"></div>
-		</div>
+		<svg :style="svgBounds">
+			<line v-for="(mark, index) in marks" :key="index" v-bind="markStyle(mark)" />
+		</svg>
 	</div>
 </template>
 
@@ -10,42 +10,23 @@
 .canvas-ruler {
 	flex: 1 1 100%;
 	background: var(--color-5-dullgray);
+	overflow: hidden;
+	position: relative;
 
 	&.vertical {
 		width: 16px;
-
-		.marks {
-			flex-direction: column;
-
-			.mark {
-				height: 1px;
-			}
-		}
 	}
 
 	&.horizontal {
 		height: 16px;
-
-		.marks {
-			flex-direction: row;
-
-			.mark {
-				width: 1px;
-			}
-		}
 	}
 
-	.marks {
-		width: 100%;
-		height: 100%;
-		position: relative;
-		overflow: hidden;
-		display: flex;
-		align-items: flex-end;
+	svg {
+		position: absolute;
 
-		.mark {
-			position: absolute;
-			background: var(--color-7-middlegray);
+		line {
+			stroke-width: 1px;
+			stroke: var(--color-7-middlegray);
 		}
 	}
 }
@@ -92,7 +73,13 @@ export default defineComponent({
 	methods: {
 		markStyle(mark: { location: number; length: number }) {
 			const isVertical = this.direction === RulerDirection.Vertical;
-			return isVertical ? { top: `${mark.location}px`, width: `${mark.length}px` } : { left: `${mark.location}px`, height: `${mark.length}px` };
+
+			const drawnLength = 16 - mark.length;
+			const drawnLocation = mark.location + 0.5;
+
+			return isVertical
+				? { x1: "16px", x2: `${drawnLength}px`, y1: `${drawnLocation}px`, y2: `${drawnLocation}px` }
+				: { x1: `${drawnLocation}px`, x2: `${drawnLocation}px`, y1: "16px", y2: `${drawnLength}px` };
 		},
 		handleResize() {
 			if (!this.$refs.rulerRef) return;
@@ -103,7 +90,10 @@ export default defineComponent({
 			const newLength = isVertical ? rulerElement.clientHeight : rulerElement.clientWidth;
 			const roundedUp = (Math.floor(newLength / this.majorMarkSpacing) + 1) * this.majorMarkSpacing;
 
-			if (roundedUp !== this.rulerLength) this.rulerLength = roundedUp;
+			if (roundedUp !== this.rulerLength) {
+				this.rulerLength = roundedUp;
+				this.svgBounds = isVertical ? { width: "16px", height: `${roundedUp}px` } : { width: `${roundedUp}px`, height: "16px" };
+			}
 		},
 	},
 	mounted() {
@@ -117,6 +107,7 @@ export default defineComponent({
 		return {
 			rulerLength: 0,
 			RulerDirection,
+			svgBounds: { width: "0px", height: "0px" },
 		};
 	},
 });
