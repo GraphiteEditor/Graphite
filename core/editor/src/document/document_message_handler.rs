@@ -586,7 +586,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 
 					if next_layer_index != -1 && next_layer_index != selected_layer_index {
 						let operation = DocumentOperation::ReorderLayers {
-							source_path: paths.drain(1..1).next().unwrap(),
+							source_path: paths.drain(0..1).next().unwrap(),
 							target_path: all_layer_paths[next_layer_index as usize].to_vec(),
 						};
 						responses.push_back(operation.into());
