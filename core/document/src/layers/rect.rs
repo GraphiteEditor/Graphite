@@ -11,12 +11,12 @@ use super::LayerData;
 use serde::{Deserialize, Serialize};
 use std::fmt::Write;
 
-#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
-pub struct Rect {}
+#[derive(Debug, Default, Clone, PartialEq, Deserialize, Serialize)]
+pub struct Rect;
 
 impl Rect {
 	pub fn new() -> Rect {
-		Rect {}
+		Rect
 	}
 }
 

@@ -11,12 +11,12 @@ use super::LayerData;
 use serde::{Deserialize, Serialize};
 use std::fmt::Write;
 
-#[derive(Debug, Clone, Copy, PartialEq, Deserialize, Serialize)]
-pub struct Line {}
+#[derive(Debug, Default, Clone, Copy, PartialEq, Deserialize, Serialize)]
+pub struct Line;
 
 impl Line {
 	pub fn new() -> Line {
-		Line {}
+		Line
 	}
 }
 

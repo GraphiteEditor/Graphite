@@ -67,7 +67,6 @@ impl Document {
 	/// Checks whether each layer under `path` intersects with the provided `quad` and adds all intersection layers as paths to `intersections`.
 	pub fn intersects_quad(&self, quad: [DVec2; 4], path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>) {
 		self.document_folder(path).unwrap().intersects_quad(quad, path, intersections);
-		return;
 	}
 
 	/// Checks whether each layer under the root path intersects with the provided `quad` and returns the paths to all intersecting layers.
@@ -229,7 +228,7 @@ impl Document {
 
 	pub fn layer_axis_aligned_bounding_box(&self, path: &[LayerId]) -> Result<Option<[DVec2; 2]>, DocumentError> {
 		// TODO: Replace with functions of the transform api
-		if let &[] = path {
+		if path.is_empty() {
 			// Special case for root. Root's local is the documents global, so we avoid transforming its transform by itself.
 			self.layer_local_bounding_box(path)
 		} else {
