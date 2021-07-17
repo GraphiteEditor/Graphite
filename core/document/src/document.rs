@@ -226,10 +226,11 @@ impl Document {
 		Ok(())
 	}
 
-	pub fn reorder_layer(&mut self, source_path: &[LayerId], target_path: &[LayerId]) -> Result<(), DocumentError> {
+	pub fn reorder_layers(&mut self, source_paths: &[Vec<LayerId>], target_path: &[LayerId]) -> Result<(), DocumentError> {
 		// TODO: Detect when moving between folders and handle properly
 
-		self.root.as_folder_mut()?.reorder_layer(*source_path.last().unwrap(), *target_path.last().unwrap())?;
+		let source_layer_ids = source_paths.iter().map(|x| *x.last().unwrap()).collect();
+		self.root.as_folder_mut()?.reorder_layers(source_layer_ids, *target_path.last().unwrap())?;
 
 		Ok(())
 	}
@@ -401,14 +402,10 @@ impl Document {
 				self.mark_as_dirty(path)?;
 				Some(vec![DocumentResponse::DocumentChanged])
 			}
-			Operation::ReorderLayers { source_path, target_path } => {
-				self.reorder_layer(source_path, target_path)?;
+			Operation::ReorderLayers { source_paths, target_path } => {
+				self.reorder_layers(source_paths, target_path)?;
 
-				Some(vec![
-					DocumentResponse::DocumentChanged,
-					DocumentResponse::FolderChanged { path: source_path.to_vec() },
-					DocumentResponse::SelectLayer { path: source_path.to_vec() },
-				])
+				Some(vec![DocumentResponse::DocumentChanged])
 			}
 		};
 		if !matches!(
