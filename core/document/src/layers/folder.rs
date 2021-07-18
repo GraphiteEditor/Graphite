@@ -311,4 +311,44 @@ mod test {
 		assert_eq!(folder.layer_ids.len(), 4);
 		assert_eq!(folder.layers.len(), 4);
 	}
+
+	#[test]
+	fn reorder_non_contiguous_selection() {
+		let mut folder = Folder::default();
+
+		let identity_transform = DAffine2::IDENTITY.to_cols_array();
+		folder.add_layer(Layer::new(LayerDataTypes::Shape(Shape::new(true, 3)), identity_transform, PathStyle::default()), 0);
+		folder.add_layer(Layer::new(LayerDataTypes::Rect(Rect::default()), identity_transform, PathStyle::default()), 1);
+		folder.add_layer(Layer::new(LayerDataTypes::Ellipse(Ellipse::default()), identity_transform, PathStyle::default()), 2);
+		folder.add_layer(Layer::new(LayerDataTypes::Line(Line::default()), identity_transform, PathStyle::default()), 3);
+
+		assert_eq!(folder.layer_ids[0], 0);
+		assert_eq!(folder.layer_ids[1], 1);
+		assert_eq!(folder.layer_ids[2], 2);
+		assert_eq!(folder.layer_ids[3], 3);
+
+		assert!(matches!(folder.layer(0).unwrap().data, LayerDataTypes::Shape(_)));
+		assert!(matches!(folder.layer(1).unwrap().data, LayerDataTypes::Rect(_)));
+		assert!(matches!(folder.layer(2).unwrap().data, LayerDataTypes::Ellipse(_)));
+		assert!(matches!(folder.layer(3).unwrap().data, LayerDataTypes::Line(_)));
+
+		assert_eq!(folder.layer_ids.len(), 4);
+		assert_eq!(folder.layers.len(), 4);
+
+		folder.reorder_layers(vec![0, 2], 3).expect_err("Non-contiguous selections can't be reordered");
+
+		// Expect identical state
+		assert_eq!(folder.layer_ids[0], 0);
+		assert_eq!(folder.layer_ids[1], 1);
+		assert_eq!(folder.layer_ids[2], 2);
+		assert_eq!(folder.layer_ids[3], 3);
+
+		assert!(matches!(folder.layer(0).unwrap().data, LayerDataTypes::Shape(_)));
+		assert!(matches!(folder.layer(1).unwrap().data, LayerDataTypes::Rect(_)));
+		assert!(matches!(folder.layer(2).unwrap().data, LayerDataTypes::Ellipse(_)));
+		assert!(matches!(folder.layer(3).unwrap().data, LayerDataTypes::Line(_)));
+
+		assert_eq!(folder.layer_ids.len(), 4);
+		assert_eq!(folder.layers.len(), 4);
+	}
 }
