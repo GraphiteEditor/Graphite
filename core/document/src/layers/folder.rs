@@ -217,3 +217,98 @@ impl Default for Folder {
 		}
 	}
 }
+
+#[cfg(test)]
+mod test {
+	use glam::{DAffine2, DVec2};
+
+	use crate::layers::{style::PathStyle, Ellipse, Layer, LayerDataTypes, Line, PolyLine, Rect, Shape};
+
+	use super::Folder;
+
+	#[test]
+	fn reorder_layers() {
+		let mut folder = Folder::default();
+
+		let identity_transform = DAffine2::IDENTITY.to_cols_array();
+		folder.add_layer(Layer::new(LayerDataTypes::Shape(Shape::new(true, 3)), identity_transform, PathStyle::default()), 0);
+		folder.add_layer(Layer::new(LayerDataTypes::Rect(Rect::default()), identity_transform, PathStyle::default()), 1);
+		folder.add_layer(Layer::new(LayerDataTypes::Ellipse(Ellipse::default()), identity_transform, PathStyle::default()), 2);
+		folder.add_layer(Layer::new(LayerDataTypes::Line(Line::default()), identity_transform, PathStyle::default()), 3);
+		folder.add_layer(
+			Layer::new(LayerDataTypes::PolyLine(PolyLine::new(vec![DVec2::ZERO, DVec2::ONE])), identity_transform, PathStyle::default()),
+			4,
+		);
+
+		assert_eq!(folder.layer_ids[0], 0); // Moved layers
+		assert_eq!(folder.layer_ids[1], 1); // ''
+		assert_eq!(folder.layer_ids[2], 2);
+		assert_eq!(folder.layer_ids[3], 3);
+		assert_eq!(folder.layer_ids[4], 4);
+
+		assert!(matches!(folder.layer(0).unwrap().data, LayerDataTypes::Shape(_))); // Moved layers
+		assert!(matches!(folder.layer(1).unwrap().data, LayerDataTypes::Rect(_))); // ''
+		assert!(matches!(folder.layer(2).unwrap().data, LayerDataTypes::Ellipse(_)));
+		assert!(matches!(folder.layer(3).unwrap().data, LayerDataTypes::Line(_)));
+		assert!(matches!(folder.layer(4).unwrap().data, LayerDataTypes::PolyLine(_)));
+
+		assert_eq!(folder.layer_ids.len(), 5);
+		assert_eq!(folder.layers.len(), 5);
+
+		folder.reorder_layers(vec![0, 1], 2).unwrap();
+
+		assert_eq!(folder.layer_ids[0], 2);
+		assert_eq!(folder.layer_ids[1], 0); // To-be-moved layers
+		assert_eq!(folder.layer_ids[2], 1); // ''
+		assert_eq!(folder.layer_ids[3], 3);
+		assert_eq!(folder.layer_ids[4], 4);
+
+		assert!(matches!(folder.layer(2).unwrap().data, LayerDataTypes::Ellipse(_)));
+		assert!(matches!(folder.layer(0).unwrap().data, LayerDataTypes::Shape(_))); // To-be-moved layers
+		assert!(matches!(folder.layer(1).unwrap().data, LayerDataTypes::Rect(_))); // ''
+		assert!(matches!(folder.layer(3).unwrap().data, LayerDataTypes::Line(_)));
+		assert!(matches!(folder.layer(4).unwrap().data, LayerDataTypes::PolyLine(_)));
+
+		assert_eq!(folder.layer_ids.len(), 5);
+		assert_eq!(folder.layers.len(), 5);
+	}
+
+	#[test]
+	fn reorder_layer_to_top() {
+		let mut folder = Folder::default();
+
+		let identity_transform = DAffine2::IDENTITY.to_cols_array();
+		folder.add_layer(Layer::new(LayerDataTypes::Shape(Shape::new(true, 3)), identity_transform, PathStyle::default()), 0);
+		folder.add_layer(Layer::new(LayerDataTypes::Rect(Rect::default()), identity_transform, PathStyle::default()), 1);
+		folder.add_layer(Layer::new(LayerDataTypes::Ellipse(Ellipse::default()), identity_transform, PathStyle::default()), 2);
+		folder.add_layer(Layer::new(LayerDataTypes::Line(Line::default()), identity_transform, PathStyle::default()), 3);
+
+		assert_eq!(folder.layer_ids[0], 0);
+		assert_eq!(folder.layer_ids[1], 1); // To-be-moved layer
+		assert_eq!(folder.layer_ids[2], 2);
+		assert_eq!(folder.layer_ids[3], 3);
+
+		assert!(matches!(folder.layer(0).unwrap().data, LayerDataTypes::Shape(_)));
+		assert!(matches!(folder.layer(1).unwrap().data, LayerDataTypes::Rect(_))); // To-be-moved layer
+		assert!(matches!(folder.layer(2).unwrap().data, LayerDataTypes::Ellipse(_)));
+		assert!(matches!(folder.layer(3).unwrap().data, LayerDataTypes::Line(_)));
+
+		assert_eq!(folder.layer_ids.len(), 4);
+		assert_eq!(folder.layers.len(), 4);
+
+		folder.reorder_layers(vec![1], 3).unwrap();
+
+		assert_eq!(folder.layer_ids[0], 0);
+		assert_eq!(folder.layer_ids[1], 2);
+		assert_eq!(folder.layer_ids[2], 3);
+		assert_eq!(folder.layer_ids[3], 1); // Moved layer
+
+		assert!(matches!(folder.layer(0).unwrap().data, LayerDataTypes::Shape(_)));
+		assert!(matches!(folder.layer(2).unwrap().data, LayerDataTypes::Ellipse(_)));
+		assert!(matches!(folder.layer(3).unwrap().data, LayerDataTypes::Line(_)));
+		assert!(matches!(folder.layer(1).unwrap().data, LayerDataTypes::Rect(_))); // Moved layer
+
+		assert_eq!(folder.layer_ids.len(), 4);
+		assert_eq!(folder.layers.len(), 4);
+	}
+}
