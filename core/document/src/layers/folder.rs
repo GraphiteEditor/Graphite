@@ -75,7 +75,7 @@ impl Folder {
 			let layer_pos = self.layer_ids.iter().position(|x| *x == *layer_id).ok_or(DocumentError::LayerNotFound)?;
 			if (layer_pos as i32 - last_pos as i32).abs() > 1 {
 				// Selection is not contiguous
-				return Err(DocumentError::InvalidPath);
+				return Err(DocumentError::NonReorderableSelection);
 			}
 			last_pos = layer_pos;
 		}
@@ -85,7 +85,7 @@ impl Folder {
 
 			// Prevent shifting past end
 			if source_pos_end + 1 >= self.layers.len() {
-				return Err(DocumentError::InvalidPath);
+				return Err(DocumentError::NonReorderableSelection);
 			}
 
 			fn rearrange<T>(arr: &mut Vec<T>, source_pos: usize, source_pos_end: usize, target_pos: usize)
@@ -114,7 +114,7 @@ impl Folder {
 
 			// Prevent shifting past end
 			if source_pos == 0 {
-				return Err(DocumentError::InvalidPath);
+				return Err(DocumentError::NonReorderableSelection);
 			}
 
 			fn rearrange<T>(arr: &mut Vec<T>, source_pos: usize, source_pos_end: usize, target_pos: usize)
