@@ -71,7 +71,7 @@ impl Folder {
 		let target_pos = self.position_of_layer(target_id)?;
 
 		let mut last_pos = source_pos;
-		for layer_id in &source_ids[1..source_ids.len()] {
+		for layer_id in &source_ids[1..] {
 			let layer_pos = self.position_of_layer(*layer_id)?;
 			if (layer_pos as i32 - last_pos as i32).abs() > 1 {
 				// Selection is not contiguous
