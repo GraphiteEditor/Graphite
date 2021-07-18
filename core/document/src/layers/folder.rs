@@ -59,20 +59,20 @@ impl Folder {
 	}
 
 	pub fn remove_layer(&mut self, id: LayerId) -> Result<(), DocumentError> {
-		let pos = self.position_of_layer(id).ok_or(DocumentError::LayerNotFound)?;
+		let pos = self.position_of_layer(id)?;
 		self.layers.remove(pos);
 		self.layer_ids.remove(pos);
 		Ok(())
 	}
 
 	pub fn reorder_layers(&mut self, source_ids: Vec<LayerId>, target_id: LayerId) -> Result<(), DocumentError> {
-		let source_pos = self.position_of_layer(source_ids[0]).ok_or(DocumentError::LayerNotFound)?;
+		let source_pos = self.position_of_layer(source_ids[0])?;
 		let source_pos_end = source_pos + source_ids.len() - 1;
-		let target_pos = self.position_of_layer(target_id).ok_or(DocumentError::LayerNotFound)?;
+		let target_pos = self.position_of_layer(target_id)?;
 
 		let mut last_pos = source_pos;
 		for layer_id in &source_ids[1..source_ids.len()] {
-			let layer_pos = self.position_of_layer(*layer_id).ok_or(DocumentError::LayerNotFound)?;
+			let layer_pos = self.position_of_layer(*layer_id)?;
 			if (layer_pos as i32 - last_pos as i32).abs() > 1 {
 				// Selection is not contiguous
 				return Err(DocumentError::NonReorderableSelection);
@@ -141,17 +141,17 @@ impl Folder {
 	}
 
 	pub fn layer(&self, id: LayerId) -> Option<&Layer> {
-		let pos = self.position_of_layer(id)?;
+		let pos = self.position_of_layer(id).ok()?;
 		Some(&self.layers[pos])
 	}
 
 	pub fn layer_mut(&mut self, id: LayerId) -> Option<&mut Layer> {
-		let pos = self.position_of_layer(id)?;
+		let pos = self.position_of_layer(id).ok()?;
 		Some(&mut self.layers[pos])
 	}
 
-	pub fn position_of_layer(&self, layer_id: LayerId) -> Option<usize> {
-		self.layer_ids.iter().position(|x| *x == layer_id)
+	pub fn position_of_layer(&self, layer_id: LayerId) -> Result<usize, DocumentError> {
+		self.layer_ids.iter().position(|x| *x == layer_id).ok_or(DocumentError::LayerNotFound)
 	}
 
 	pub fn folder(&self, id: LayerId) -> Option<&Folder> {
