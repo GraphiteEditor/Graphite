@@ -59,20 +59,20 @@ impl Folder {
 	}
 
 	pub fn remove_layer(&mut self, id: LayerId) -> Result<(), DocumentError> {
-		let pos = self.layer_ids.iter().position(|x| *x == id).ok_or(DocumentError::LayerNotFound)?;
+		let pos = self.position_of_layer(id).ok_or(DocumentError::LayerNotFound)?;
 		self.layers.remove(pos);
 		self.layer_ids.remove(pos);
 		Ok(())
 	}
 
 	pub fn reorder_layers(&mut self, source_ids: Vec<LayerId>, target_id: LayerId) -> Result<(), DocumentError> {
-		let source_pos = self.layer_ids.iter().position(|x| *x == source_ids[0]).ok_or(DocumentError::LayerNotFound)?;
+		let source_pos = self.position_of_layer(source_ids[0]).ok_or(DocumentError::LayerNotFound)?;
 		let source_pos_end = source_pos + source_ids.len() - 1;
-		let target_pos = self.layer_ids.iter().position(|x| *x == target_id).ok_or(DocumentError::LayerNotFound)?;
+		let target_pos = self.position_of_layer(target_id).ok_or(DocumentError::LayerNotFound)?;
 
 		let mut last_pos = source_pos;
 		for layer_id in &source_ids[1..source_ids.len()] {
-			let layer_pos = self.layer_ids.iter().position(|x| *x == *layer_id).ok_or(DocumentError::LayerNotFound)?;
+			let layer_pos = self.position_of_layer(*layer_id).ok_or(DocumentError::LayerNotFound)?;
 			if (layer_pos as i32 - last_pos as i32).abs() > 1 {
 				// Selection is not contiguous
 				return Err(DocumentError::NonReorderableSelection);
@@ -81,14 +81,14 @@ impl Folder {
 		}
 
 		if source_pos < target_pos {
-			// Dragging up
+			// Moving layers up the hierarchy
 
 			// Prevent shifting past end
 			if source_pos_end + 1 >= self.layers.len() {
 				return Err(DocumentError::NonReorderableSelection);
 			}
 
-			fn rearrange<T>(arr: &mut Vec<T>, source_pos: usize, source_pos_end: usize, target_pos: usize)
+			fn reorder_up<T>(arr: &mut Vec<T>, source_pos: usize, source_pos_end: usize, target_pos: usize)
 			where
 				T: Clone,
 			{
@@ -101,23 +101,17 @@ impl Folder {
 				.concat();
 			}
 
-			rearrange(&mut self.layers, source_pos, source_pos_end, target_pos);
-			rearrange(&mut self.layer_ids, source_pos, source_pos_end, target_pos);
-
-			let min_index = source_pos_end.min(target_pos);
-			let max_index = source_pos_end.max(target_pos);
-			for layer_index in min_index..max_index {
-				self.layers[layer_index].cache_dirty = true;
-			}
+			reorder_up(&mut self.layers, source_pos, source_pos_end, target_pos);
+			reorder_up(&mut self.layer_ids, source_pos, source_pos_end, target_pos);
 		} else {
-			// Dragging down
+			// Moving layers down the hierarchy
 
 			// Prevent shifting past end
 			if source_pos == 0 {
 				return Err(DocumentError::NonReorderableSelection);
 			}
 
-			fn rearrange<T>(arr: &mut Vec<T>, source_pos: usize, source_pos_end: usize, target_pos: usize)
+			fn reorder_down<T>(arr: &mut Vec<T>, source_pos: usize, source_pos_end: usize, target_pos: usize)
 			where
 				T: Clone,
 			{
@@ -130,14 +124,8 @@ impl Folder {
 				.concat();
 			}
 
-			rearrange(&mut self.layers, source_pos, source_pos_end, target_pos);
-			rearrange(&mut self.layer_ids, source_pos, source_pos_end, target_pos);
-
-			let min_index = source_pos.min(target_pos);
-			let max_index = source_pos.max(target_pos);
-			for layer_index in min_index..max_index {
-				self.layers[layer_index].cache_dirty = true;
-			}
+			reorder_down(&mut self.layers, source_pos, source_pos_end, target_pos);
+			reorder_down(&mut self.layer_ids, source_pos, source_pos_end, target_pos);
 		}
 
 		Ok(())
@@ -153,13 +141,17 @@ impl Folder {
 	}
 
 	pub fn layer(&self, id: LayerId) -> Option<&Layer> {
-		let pos = self.layer_ids.iter().position(|x| *x == id)?;
+		let pos = self.position_of_layer(id)?;
 		Some(&self.layers[pos])
 	}
 
 	pub fn layer_mut(&mut self, id: LayerId) -> Option<&mut Layer> {
-		let pos = self.layer_ids.iter().position(|x| *x == id)?;
+		let pos = self.position_of_layer(id)?;
 		Some(&mut self.layers[pos])
+	}
+
+	pub fn position_of_layer(&self, layer_id: LayerId) -> Option<usize> {
+		self.layer_ids.iter().position(|x| *x == layer_id)
 	}
 
 	pub fn folder(&self, id: LayerId) -> Option<&Folder> {
@@ -240,14 +232,14 @@ mod test {
 			4,
 		);
 
-		assert_eq!(folder.layer_ids[0], 0); // Moved layers
-		assert_eq!(folder.layer_ids[1], 1); // ''
+		assert_eq!(folder.layer_ids[0], 0);
+		assert_eq!(folder.layer_ids[1], 1);
 		assert_eq!(folder.layer_ids[2], 2);
 		assert_eq!(folder.layer_ids[3], 3);
 		assert_eq!(folder.layer_ids[4], 4);
 
-		assert!(matches!(folder.layer(0).unwrap().data, LayerDataTypes::Shape(_))); // Moved layers
-		assert!(matches!(folder.layer(1).unwrap().data, LayerDataTypes::Rect(_))); // ''
+		assert!(matches!(folder.layer(0).unwrap().data, LayerDataTypes::Shape(_)));
+		assert!(matches!(folder.layer(1).unwrap().data, LayerDataTypes::Rect(_)));
 		assert!(matches!(folder.layer(2).unwrap().data, LayerDataTypes::Ellipse(_)));
 		assert!(matches!(folder.layer(3).unwrap().data, LayerDataTypes::Line(_)));
 		assert!(matches!(folder.layer(4).unwrap().data, LayerDataTypes::PolyLine(_)));
@@ -258,14 +250,18 @@ mod test {
 		folder.reorder_layers(vec![0, 1], 2).unwrap();
 
 		assert_eq!(folder.layer_ids[0], 2);
-		assert_eq!(folder.layer_ids[1], 0); // To-be-moved layers
-		assert_eq!(folder.layer_ids[2], 1); // ''
+		// Moved layers
+		assert_eq!(folder.layer_ids[1], 0);
+		assert_eq!(folder.layer_ids[2], 1);
+
 		assert_eq!(folder.layer_ids[3], 3);
 		assert_eq!(folder.layer_ids[4], 4);
 
 		assert!(matches!(folder.layer(2).unwrap().data, LayerDataTypes::Ellipse(_)));
-		assert!(matches!(folder.layer(0).unwrap().data, LayerDataTypes::Shape(_))); // To-be-moved layers
-		assert!(matches!(folder.layer(1).unwrap().data, LayerDataTypes::Rect(_))); // ''
+		// Moved layers
+		assert!(matches!(folder.layer(0).unwrap().data, LayerDataTypes::Shape(_)));
+		assert!(matches!(folder.layer(1).unwrap().data, LayerDataTypes::Rect(_)));
+
 		assert!(matches!(folder.layer(3).unwrap().data, LayerDataTypes::Line(_)));
 		assert!(matches!(folder.layer(4).unwrap().data, LayerDataTypes::PolyLine(_)));
 
@@ -284,12 +280,12 @@ mod test {
 		folder.add_layer(Layer::new(LayerDataTypes::Line(Line::default()), identity_transform, PathStyle::default()), 3);
 
 		assert_eq!(folder.layer_ids[0], 0);
-		assert_eq!(folder.layer_ids[1], 1); // To-be-moved layer
+		assert_eq!(folder.layer_ids[1], 1);
 		assert_eq!(folder.layer_ids[2], 2);
 		assert_eq!(folder.layer_ids[3], 3);
 
 		assert!(matches!(folder.layer(0).unwrap().data, LayerDataTypes::Shape(_)));
-		assert!(matches!(folder.layer(1).unwrap().data, LayerDataTypes::Rect(_))); // To-be-moved layer
+		assert!(matches!(folder.layer(1).unwrap().data, LayerDataTypes::Rect(_)));
 		assert!(matches!(folder.layer(2).unwrap().data, LayerDataTypes::Ellipse(_)));
 		assert!(matches!(folder.layer(3).unwrap().data, LayerDataTypes::Line(_)));
 
@@ -301,12 +297,14 @@ mod test {
 		assert_eq!(folder.layer_ids[0], 0);
 		assert_eq!(folder.layer_ids[1], 2);
 		assert_eq!(folder.layer_ids[2], 3);
-		assert_eq!(folder.layer_ids[3], 1); // Moved layer
+		// Moved layer
+		assert_eq!(folder.layer_ids[3], 1);
 
 		assert!(matches!(folder.layer(0).unwrap().data, LayerDataTypes::Shape(_)));
 		assert!(matches!(folder.layer(2).unwrap().data, LayerDataTypes::Ellipse(_)));
 		assert!(matches!(folder.layer(3).unwrap().data, LayerDataTypes::Line(_)));
-		assert!(matches!(folder.layer(1).unwrap().data, LayerDataTypes::Rect(_))); // Moved layer
+		// Moved layer
+		assert!(matches!(folder.layer(1).unwrap().data, LayerDataTypes::Rect(_)));
 
 		assert_eq!(folder.layer_ids.len(), 4);
 		assert_eq!(folder.layers.len(), 4);

@@ -229,8 +229,16 @@ impl Document {
 	pub fn reorder_layers(&mut self, source_paths: &[Vec<LayerId>], target_path: &[LayerId]) -> Result<(), DocumentError> {
 		// TODO: Detect when moving between folders and handle properly
 
-		let source_layer_ids = source_paths.iter().map(|x| *x.last().unwrap()).collect();
-		self.root.as_folder_mut()?.reorder_layers(source_layer_ids, *target_path.last().unwrap())?;
+		let mut source_layer_ids = Vec::with_capacity(source_paths.len());
+		for path in source_paths {
+			let result = path.last();
+			match result {
+				Some(result) => source_layer_ids.push(*result),
+				None => return Err(DocumentError::LayerNotFound),
+			}
+		}
+
+		self.root.as_folder_mut()?.reorder_layers(source_layer_ids, *target_path.last().ok_or(DocumentError::LayerNotFound)?)?;
 
 		Ok(())
 	}
