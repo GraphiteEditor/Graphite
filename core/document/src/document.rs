@@ -309,9 +309,14 @@ impl Document {
 			Operation::PasteLayer { path, layer, insert_index } => {
 				let folder = self.folder_mut(path)?;
 				//FIXME: This clone of layer should be avoided somehow
-				folder.add_layer(layer.clone(), *insert_index).ok_or(DocumentError::IndexOutOfBounds)?;
+				let id = folder.add_layer(layer.clone(), *insert_index).ok_or(DocumentError::IndexOutOfBounds)?;
+				let path = [path.clone(), vec![id]].concat();
 
-				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::FolderChanged { path: path.clone() }])
+				Some(vec![
+					DocumentResponse::DocumentChanged,
+					DocumentResponse::SelectLayer { path: path.clone() },
+					DocumentResponse::FolderChanged { path },
+				])
 			}
 			Operation::DuplicateLayer { path } => {
 				let layer = self.layer(&path)?.clone();
