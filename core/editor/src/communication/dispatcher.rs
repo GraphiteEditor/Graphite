@@ -123,7 +123,7 @@ mod test {
 
 		let document_before_copy = editor.dispatcher.document_message_handler.active_document().document.clone();
 		editor.handle_message(Message::Document(DocumentMessage::CopySelectedLayers)).unwrap();
-		editor.handle_message(Message::Document(DocumentMessage::PasteLayers)).unwrap();
+		editor.handle_message(Message::Document(DocumentMessage::PasteLayers { path: vec![], insert_index: -1 })).unwrap();
 		let document_after_copy = editor.dispatcher.document_message_handler.active_document().document.clone();
 
 		let layers_before_copy = document_before_copy.root.as_folder().unwrap().layers();
@@ -156,7 +156,7 @@ mod test {
 
 		editor.handle_message(Message::Document(DocumentMessage::SelectLayers(vec![vec![shape_id]]))).unwrap();
 		editor.handle_message(Message::Document(DocumentMessage::CopySelectedLayers)).unwrap();
-		editor.handle_message(Message::Document(DocumentMessage::PasteLayers)).unwrap();
+		editor.handle_message(Message::Document(DocumentMessage::PasteLayers { path: vec![], insert_index: -1 })).unwrap();
 
 		let document_after_copy = editor.dispatcher.document_message_handler.active_document().document.clone();
 
@@ -220,8 +220,8 @@ mod test {
 
 		editor.handle_message(Message::Document(DocumentMessage::CopySelectedLayers)).unwrap();
 		editor.handle_message(Message::Document(DocumentMessage::DeleteSelectedLayers)).unwrap();
-		editor.handle_message(Message::Document(DocumentMessage::PasteLayers)).unwrap();
-		editor.handle_message(Message::Document(DocumentMessage::PasteLayers)).unwrap();
+		editor.handle_message(Message::Document(DocumentMessage::PasteLayers { path: vec![], insert_index: -1 })).unwrap();
+		editor.handle_message(Message::Document(DocumentMessage::PasteLayers { path: vec![], insert_index: -1 })).unwrap();
 
 		let document_after_copy = editor.dispatcher.document_message_handler.active_document().document.clone();
 
@@ -282,8 +282,8 @@ mod test {
 		editor.handle_message(Message::Document(DocumentMessage::CopySelectedLayers)).unwrap();
 		editor.handle_message(Message::Document(DocumentMessage::DeleteSelectedLayers)).unwrap();
 		editor.draw_rect(0, 800, 12, 200);
-		editor.handle_message(Message::Document(DocumentMessage::PasteLayers)).unwrap();
-		editor.handle_message(Message::Document(DocumentMessage::PasteLayers)).unwrap();
+		editor.handle_message(Message::Document(DocumentMessage::PasteLayers { path: vec![], insert_index: -1 })).unwrap();
+		editor.handle_message(Message::Document(DocumentMessage::PasteLayers { path: vec![], insert_index: -1 })).unwrap();
 
 		let document_after_copy = editor.dispatcher.document_message_handler.active_document().document.clone();
 

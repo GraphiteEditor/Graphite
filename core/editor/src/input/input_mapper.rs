@@ -111,7 +111,7 @@ macro_rules! mapping {
 impl Default for Mapping {
 	fn default() -> Self {
 		let mappings = mapping![
-			entry! {action=DocumentMessage::PasteLayers, key_down=KeyV, modifiers=[KeyControl]},
+			entry! {action=DocumentMessage::PasteLayers{path: vec![], insert_index: -1}, key_down=KeyV, modifiers=[KeyControl]},
 			entry! {action=DocumentMessage::EnableSnapping, key_down=KeyShift},
 			entry! {action=DocumentMessage::DisableSnapping, key_up=KeyShift},
 			// Select
