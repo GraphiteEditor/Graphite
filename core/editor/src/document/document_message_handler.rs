@@ -24,7 +24,7 @@ pub enum DocumentMessage {
 	DeleteSelectedLayers,
 	DuplicateSelectedLayers,
 	CopySelectedLayers,
-	PasteLayers,
+	PasteLayers { path: Vec<LayerId>, insert_index: isize },
 	AddFolder(Vec<LayerId>),
 	RenameLayer(Vec<LayerId>, String),
 	ToggleLayerVisibility(Vec<LayerId>),
@@ -54,7 +54,8 @@ pub enum DocumentMessage {
 	WheelCanvasZoom,
 	SetCanvasRotation(f64),
 	NudgeSelectedLayers(f64, f64),
-	ReorderSelectedLayers(i32),
+	MoveSelectedLayersTo { path: Vec<LayerId>, insert_index: isize },
+	ReorderSelectedLayers(i32), // relatve_positon,
 }
 
 impl From<DocumentOperation> for DocumentMessage {
@@ -372,10 +373,17 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					}
 				}
 			}
-			PasteLayers => {
+			PasteLayers { path, insert_index } => {
 				for layer in self.copy_buffer.iter() {
 					//TODO: Should be the path to the current folder instead of root
-					responses.push_back(DocumentOperation::PasteLayer { layer: layer.clone(), path: vec![] }.into())
+					responses.push_back(
+						DocumentOperation::PasteLayer {
+							layer: layer.clone(),
+							path: path.clone(),
+							insert_index,
+						}
+						.into(),
+					)
 				}
 			}
 			SelectLayers(paths) => {
@@ -566,32 +574,24 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					responses.push_back(operation.into());
 				}
 			}
-			ReorderSelectedLayers(delta) => {
-				let selected_layer_paths: Vec<Vec<LayerId>> = self.selected_layers_sorted();
+			MoveSelectedLayersTo { path, insert_index } => {
+				responses.push_back(DocumentMessage::CopySelectedLayers.into());
+				responses.push_back(DocumentMessage::DeleteSelectedLayers.into());
+				responses.push_back(DocumentMessage::PasteLayers { path, insert_index }.into());
+			}
+			ReorderSelectedLayers(relative_positon) => {
 				let all_layer_paths = self.all_layers_sorted();
-
-				let max_index = all_layer_paths.len() as i64 - 1;
-				let num_layers_selected = selected_layer_paths.len() as i64;
-
-				let mut selected_layer_index = -1;
-				let mut next_layer_index = -1;
-				for (i, path) in all_layer_paths.iter().enumerate() {
-					if *path == selected_layer_paths[0] {
-						selected_layer_index = i as i32;
-						// Skip past selection length when moving up
-						let offset = if delta > 0 { num_layers_selected - 1 } else { 0 };
-						next_layer_index = (selected_layer_index as i64 + delta as i64 + offset).clamp(0, max_index) as i32;
-						break;
+				if let Some(insert_path) = all_layer_paths
+					.iter()
+					.position(|path| self.layerdata(&path).selected)
+					.map(|pos| all_layer_paths.get((pos as i64 + relative_positon as i64).clamp(0, all_layer_paths.len() as i64 - 1) as usize))
+					.flatten()
+				{
+					let (id, path) = insert_path.split_last().expect("Can't move the root folder");
+					if let Some(folder) = self.active_document().document.document_layer(path).ok().map(|layer| layer.as_folder().ok()).flatten() {
+						let insert_index = folder.position_of_layer(*id).unwrap() as isize;
+						responses.push_back(DocumentMessage::MoveSelectedLayersTo { path: path.to_vec(), insert_index }.into())
 					}
-				}
-
-				if next_layer_index != -1 && next_layer_index != selected_layer_index {
-					let operation = DocumentOperation::ReorderLayers {
-						source_paths: selected_layer_paths.clone(),
-						target_path: all_layer_paths[next_layer_index as usize].to_vec(),
-					};
-					responses.push_back(operation.into());
-					responses.push_back(DocumentMessage::SelectLayers(selected_layer_paths).into());
 				}
 			}
 			message => todo!("document_action_handler does not implement: {}", message.to_discriminant().global_name()),

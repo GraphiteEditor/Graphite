@@ -51,6 +51,7 @@ pub enum Operation {
 	PasteLayer {
 		layer: Layer,
 		path: Vec<LayerId>,
+		insert_index: isize,
 	},
 	AddFolder {
 		path: Vec<LayerId>,
@@ -75,9 +76,5 @@ pub enum Operation {
 	FillLayer {
 		path: Vec<LayerId>,
 		color: Color,
-	},
-	ReorderLayers {
-		source_paths: Vec<Vec<LayerId>>,
-		target_path: Vec<LayerId>,
 	},
 }

@@ -27,9 +27,8 @@ impl Default for Document {
 }
 
 fn split_path(path: &[LayerId]) -> Result<(&[LayerId], LayerId), DocumentError> {
-	let id = path.last().ok_or(DocumentError::InvalidPath)?;
-	let folder_path = &path[0..path.len() - 1];
-	Ok((folder_path, *id))
+	let (id, path) = path.split_last().ok_or(DocumentError::InvalidPath)?;
+	Ok((path, *id))
 }
 
 impl Document {
@@ -222,21 +221,7 @@ impl Document {
 	pub fn delete(&mut self, path: &[LayerId]) -> Result<(), DocumentError> {
 		let (path, id) = split_path(path)?;
 		let _ = self.layer_mut(path).map(|x| x.cache_dirty = true);
-		self.document_folder_mut(path)?.as_folder_mut()?.remove_layer(id)?;
-		Ok(())
-	}
-
-	pub fn reorder_layers(&mut self, source_paths: &[Vec<LayerId>], target_path: &[LayerId]) -> Result<(), DocumentError> {
-		// TODO: Detect when moving between folders and handle properly
-
-		let source_layer_ids = source_paths
-			.iter()
-			.map(|x| x.last().cloned().ok_or(DocumentError::LayerNotFound))
-			.collect::<Result<Vec<LayerId>, DocumentError>>()?;
-
-		self.root.as_folder_mut()?.reorder_layers(source_layer_ids, *target_path.last().ok_or(DocumentError::LayerNotFound)?)?;
-
-		Ok(())
+		self.document_folder_mut(path)?.as_folder_mut()?.remove_layer(id)
 	}
 
 	pub fn layer_axis_aligned_bounding_box(&self, path: &[LayerId]) -> Result<Option<[DVec2; 2]>, DocumentError> {
@@ -321,10 +306,10 @@ impl Document {
 				let (path, _) = split_path(path.as_slice()).unwrap_or_else(|_| (&[], 0));
 				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::FolderChanged { path: path.to_vec() }])
 			}
-			Operation::PasteLayer { path, layer } => {
+			Operation::PasteLayer { path, layer, insert_index } => {
 				let folder = self.folder_mut(path)?;
 				//FIXME: This clone of layer should be avoided somehow
-				folder.add_layer(layer.clone(), -1).ok_or(DocumentError::IndexOutOfBounds)?;
+				folder.add_layer(layer.clone(), *insert_index).ok_or(DocumentError::IndexOutOfBounds)?;
 
 				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::FolderChanged { path: path.clone() }])
 			}
@@ -404,11 +389,6 @@ impl Document {
 				let layer = self.layer_mut(path).unwrap();
 				layer.style.set_fill(layers::style::Fill::new(*color));
 				self.mark_as_dirty(path)?;
-				Some(vec![DocumentResponse::DocumentChanged])
-			}
-			Operation::ReorderLayers { source_paths, target_path } => {
-				self.reorder_layers(source_paths, target_path)?;
-
 				Some(vec![DocumentResponse::DocumentChanged])
 			}
 		};
