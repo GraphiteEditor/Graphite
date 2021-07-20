@@ -1,5 +1,6 @@
 use crate::message_prelude::*;
 use document_core::color::Color;
+use document_core::Operation;
 
 use crate::input::InputPreprocessor;
 use crate::{
@@ -62,8 +63,13 @@ impl MessageHandler<ToolMessage, (&Document, &InputPreprocessor)> for ToolMessag
 				};
 				reset(tool);
 				reset(self.tool_state.tool_data.active_tool_type);
-				self.tool_state.tool_data.active_tool_type = tool;
 
+				if let ToolType::Select = tool {
+					responses.push_back(ToolMessage::Select(SelectMessage::Init).into());
+				}
+
+				self.tool_state.tool_data.active_tool_type = tool;
+				responses.push_back(Operation::DiscardWorkingFolder.into());
 				responses.push_back(FrontendMessage::SetActiveTool { tool_name: tool.to_string() }.into())
 			}
 			SwapColors => {

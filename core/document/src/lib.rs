@@ -1,3 +1,4 @@
+pub mod bounding_box;
 pub mod color;
 pub mod document;
 pub mod intersection;

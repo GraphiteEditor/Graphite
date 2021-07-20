@@ -1,3 +1,4 @@
+use document_core::bounding_box::merge_bounding_boxes;
 use document_core::color::Color;
 use document_core::layers::style;
 use document_core::layers::style::Fill;
@@ -18,6 +19,7 @@ pub struct Select {
 #[impl_message(Message, ToolMessage, Select)]
 #[derive(PartialEq, Clone, Debug)]
 pub enum SelectMessage {
+	Init,
 	DragStart,
 	DragStop,
 	MouseMove,
@@ -64,10 +66,15 @@ impl Fsm for SelectToolFsmState {
 		use SelectToolFsmState::*;
 		if let ToolMessage::Select(event) = event {
 			match (self, event) {
+				(_, Init) => {
+					responses.push_back(Operation::MountWorkingFolder { path: vec![] }.into());
+					make_selection_bounding_box(document, responses);
+					self
+				}
 				(Ready, DragStart) => {
 					data.drag_start = input.mouse.position;
 					data.drag_current = input.mouse.position;
-					responses.push_back(Operation::MountWorkingFolder { path: vec![] }.into());
+
 					Dragging
 				}
 				(Dragging, MouseMove) => {
@@ -75,6 +82,8 @@ impl Fsm for SelectToolFsmState {
 
 					responses.push_back(Operation::ClearWorkingFolder.into());
 					responses.push_back(make_operation(data, tool_data, transform));
+
+					make_selection_bounding_box(document, responses);
 
 					Dragging
 				}
@@ -104,20 +113,26 @@ impl Fsm for SelectToolFsmState {
 					];
 
 					responses.push_back(Operation::DiscardWorkingFolder.into());
-					if data.drag_start == data.drag_current {
+					let selected = if data.drag_start == data.drag_current {
 						if let Some(intersection) = document.document.intersects_quad_root(quad).last() {
-							responses.push_back(DocumentMessage::SelectLayers(vec![intersection.clone()]).into());
+							vec![intersection.clone()]
 						} else {
-							responses.push_back(DocumentMessage::SelectLayers(vec![]).into());
+							vec![]
 						}
 					} else {
-						responses.push_back(DocumentMessage::SelectLayers(document.document.intersects_quad_root(quad)).into());
-					}
+						document.document.intersects_quad_root(quad)
+					};
+					responses.push_back(DocumentMessage::SelectLayers(selected.clone()).into());
+
+					responses.push_back(Operation::MountWorkingFolder { path: vec![] }.into());
+					make_paths_bounding_box(selected, document, responses);
 
 					Ready
 				}
 				(Dragging, Abort) => {
-					responses.push_back(Operation::DiscardWorkingFolder.into());
+					responses.push_back(Operation::ClearWorkingFolder.into());
+
+					make_selection_bounding_box(document, responses);
 
 					Ready
 				}
@@ -142,4 +157,36 @@ fn make_operation(data: &SelectToolData, _tool_data: &DocumentToolData, transfor
 		style: style::PathStyle::new(Some(Stroke::new(Color::from_rgb8(0x31, 0x94, 0xD6), 2.0)), Some(Fill::none())),
 	}
 	.into()
+}
+
+fn make_selection_bounding_box(document: &Document, responses: &mut VecDeque<Message>) {
+	let selected_layers_paths = document.layer_data.iter().filter_map(|(path, layer_data)| layer_data.selected.then(|| path)).cloned().collect();
+	make_paths_bounding_box(selected_layers_paths, document, responses);
+}
+
+fn make_paths_bounding_box(paths: Vec<Vec<LayerId>>, document: &Document, responses: &mut VecDeque<Message>) {
+	let non_empty_bounding_boxes = paths.iter().filter_map(|path| {
+		if let Ok(some_bounding_box) = document.document.layer_axis_aligned_bounding_box(path) {
+			some_bounding_box
+		} else {
+			None
+		}
+	});
+
+	if let Some([min, max]) = non_empty_bounding_boxes.reduce(merge_bounding_boxes) {
+		let x0 = min.x - 1.0;
+		let y0 = min.y - 1.0;
+		let x1 = max.x + 1.0;
+		let y1 = max.y + 1.0;
+		let root_transform = document.document.root.transform;
+		responses.push_back(
+			Operation::AddRect {
+				path: vec![],
+				insert_index: -1,
+				transform: (root_transform.inverse() * glam::DAffine2::from_scale_angle_translation(DVec2::new(x1 - x0, y1 - y0), 0., DVec2::new(x0, y0))).to_cols_array(),
+				style: style::PathStyle::new(Some(Stroke::new(Color::from_rgb8(0x00, 0xa6, 0xfb), 1.0)), Some(Fill::none())),
+			}
+			.into(),
+		)
+	}
 }
