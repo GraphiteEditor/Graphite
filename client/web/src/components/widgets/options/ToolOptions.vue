@@ -56,6 +56,7 @@ interface NumberOption {
 	kind: "number";
 	initial: number;
 	step: number;
+	min?: number;
 	callback?: Function;
 }
 
@@ -116,7 +117,7 @@ export default defineComponent({
 					],
 				],
 				["Shape", [{ kind: "number", initial: 6, step: 1, min: 3, callback: this.setToolSettings }]],
-			]),
+			]) as ToolOptionsMap,
 			SeparatorType,
 		};
 	},
