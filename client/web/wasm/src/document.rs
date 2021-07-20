@@ -27,11 +27,13 @@ pub fn select_tool(tool: String) -> Result<(), JsValue> {
 /// Update the settings for a given tool
 #[wasm_bindgen]
 pub fn set_tool_settings(tool: String, settings: &JsValue) -> Result<(), JsValue> {
-	let settings: ToolSettings = settings.into_serde().expect("Invalid JSON for ToolSettings");
-	EDITOR_STATE.with(|editor| match translate_tool(&tool) {
-		Some(tool) => editor.borrow_mut().handle_message(ToolMessage::SetToolSettings(tool, settings)).map_err(convert_error),
-		None => Err(Error::new(&format!("Couldn't select {} because it was not recognized as a valid tool", tool)).into()),
-	})
+	match settings.into_serde::<ToolSettings>() {
+		Ok(settings) => EDITOR_STATE.with(|editor| match translate_tool(&tool) {
+			Some(tool) => editor.borrow_mut().handle_message(ToolMessage::SetToolSettings(tool, settings)).map_err(convert_error),
+			None => Err(Error::new(&format!("Couldn't select {} because it was not recognized as a valid tool", tool)).into()),
+		}),
+		Err(err) => Err(Error::new(&format!("Invalud JSON for ToolSettings: {}", err)).into()),
+	}
 }
 
 #[wasm_bindgen]
