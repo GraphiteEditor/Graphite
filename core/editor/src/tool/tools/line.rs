@@ -143,6 +143,7 @@ fn update_state(
 	*(state(data)) = value;
 
 	responses.push_back(Operation::ClearWorkingFolder.into());
+	responses.push_back(DocumentMessage::DeselectAllLayers.into());
 	responses.push_back(make_operation(data, tool_data, transform));
 
 	new_state

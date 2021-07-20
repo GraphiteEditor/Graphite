@@ -429,9 +429,8 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 							.into_iter()
 							.map(|response| match response {
 								DocumentResponse::FolderChanged { path } => self.handle_folder_changed(path),
-								DocumentResponse::SelectLayer { path } => {
+								DocumentResponse::CreatedLayer { path } => {
 									if !self.active_document().document.work_mounted {
-										self.clear_selection();
 										self.select_layer(&path)
 									} else {
 										None

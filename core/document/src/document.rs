@@ -259,19 +259,19 @@ impl Document {
 				let id = self.add_layer(&path, Layer::new(LayerDataTypes::Ellipse(layers::Ellipse::new()), *transform, *style), *insert_index)?;
 				let path = [path.clone(), vec![id]].concat();
 
-				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::SelectLayer { path }])
+				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::CreatedLayer { path }])
 			}
 			Operation::AddRect { path, insert_index, transform, style } => {
 				let id = self.add_layer(&path, Layer::new(LayerDataTypes::Rect(Rect), *transform, *style), *insert_index)?;
 				let path = [path.clone(), vec![id]].concat();
 
-				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::SelectLayer { path }])
+				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::CreatedLayer { path }])
 			}
 			Operation::AddLine { path, insert_index, transform, style } => {
 				let id = self.add_layer(&path, Layer::new(LayerDataTypes::Line(Line), *transform, *style), *insert_index)?;
 				let path = [path.clone(), vec![id]].concat();
 
-				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::SelectLayer { path }])
+				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::CreatedLayer { path }])
 			}
 			Operation::AddPen {
 				path,
@@ -284,7 +284,7 @@ impl Document {
 				let polyline = PolyLine::new(points);
 				let id = self.add_layer(&path, Layer::new(LayerDataTypes::PolyLine(polyline), *transform, *style), *insert_index)?;
 				let path = [path.clone(), vec![id]].concat();
-				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::SelectLayer { path }])
+				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::CreatedLayer { path }])
 			}
 			Operation::AddShape {
 				path,
@@ -298,7 +298,7 @@ impl Document {
 				let id = self.add_layer(&path, Layer::new(LayerDataTypes::Shape(s), *transform, *style), *insert_index)?;
 				let path = [path.clone(), vec![id]].concat();
 
-				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::SelectLayer { path }])
+				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::CreatedLayer { path }])
 			}
 			Operation::DeleteLayer { path } => {
 				self.delete(&path)?;
@@ -314,7 +314,7 @@ impl Document {
 
 				Some(vec![
 					DocumentResponse::DocumentChanged,
-					DocumentResponse::SelectLayer { path: path.clone() },
+					DocumentResponse::CreatedLayer { path: path.clone() },
 					DocumentResponse::FolderChanged { path },
 				])
 			}
