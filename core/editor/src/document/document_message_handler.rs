@@ -139,7 +139,7 @@ impl DocumentMessageHandler {
 	}
 
 	/// Returns the paths to all layers in order, optionally including only selected layers
-	fn layers_sorted(&self, only_selected: bool) -> Vec<Vec<LayerId>> {
+	fn layers_sorted(&self, selected: Option<bool>) -> Vec<Vec<LayerId>> {
 		// Compute the indices for each layer to be able to sort them
 		// TODO: Replace with drain_filter https://github.com/rust-lang/rust/issues/59618
 		let mut layers_with_indices: Vec<(Vec<LayerId>, Vec<usize>)> = self
@@ -147,7 +147,7 @@ impl DocumentMessageHandler {
 			.layer_data
 			.iter()
 			// 'path.len() > 0' filters out root layer since it has no indices
-			.filter_map(|(path, data)| (!path.is_empty() && !only_selected || data.selected).then(|| path.clone()))
+			.filter_map(|(path, data)| (!path.is_empty() && selected.is_none() || (data.selected == selected.unwrap_or(data.selected))).then(|| path.clone()))
 			.filter_map(|path| {
 				// Currently it is possible that layer_data contains layers that are don't actually exist
 				// and thus indices_for_path can return an error. We currently skip these layers and log a warning.
@@ -168,12 +168,17 @@ impl DocumentMessageHandler {
 
 	/// Returns the paths to all layers in order
 	fn all_layers_sorted(&self) -> Vec<Vec<LayerId>> {
-		self.layers_sorted(false)
+		self.layers_sorted(None)
 	}
 
 	/// Returns the paths to all selected layers in order
 	fn selected_layers_sorted(&self) -> Vec<Vec<LayerId>> {
-		self.layers_sorted(true)
+		self.layers_sorted(Some(true))
+	}
+
+	/// Returns the paths to all selected layers in order
+	fn non_selected_layers_sorted(&self) -> Vec<Vec<LayerId>> {
+		self.layers_sorted(Some(false))
 	}
 }
 
@@ -577,18 +582,21 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				}
 			}
 			MoveSelectedLayersTo { path, insert_index } => {
+				log::debug!("moving layers to {:?} at pos {}", path, insert_index);
 				responses.push_back(DocumentMessage::CopySelectedLayers.into());
 				responses.push_back(DocumentMessage::DeleteSelectedLayers.into());
 				responses.push_back(DocumentMessage::PasteLayers { path, insert_index }.into());
 			}
 			ReorderSelectedLayers(relative_positon) => {
 				let all_layer_paths = self.all_layers_sorted();
+				let non_selected_layers = self.non_selected_layers_sorted();
 				if let Some(insert_path) = all_layer_paths
 					.iter()
 					.position(|path| self.layerdata(&path).selected)
-					.map(|pos| all_layer_paths.get((pos as i64 + relative_positon as i64).clamp(0, all_layer_paths.len() as i64 - 1) as usize))
+					.map(|pos| non_selected_layers.get((pos as i64 + relative_positon as i64).clamp(0, all_layer_paths.len() as i64 - 1) as usize))
 					.flatten()
 				{
+					log::debug!("inserting at {:?}", insert_path);
 					let (id, path) = insert_path.split_last().expect("Can't move the root folder");
 					if let Some(folder) = self.active_document().document.document_layer(path).ok().map(|layer| layer.as_folder().ok()).flatten() {
 						let insert_index = folder.position_of_layer(*id).unwrap() as isize;
