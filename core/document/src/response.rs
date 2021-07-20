@@ -8,6 +8,7 @@ pub enum DocumentResponse {
 	DocumentChanged,
 	FolderChanged { path: Vec<LayerId> },
 	CreatedLayer { path: Vec<LayerId> },
+	DeletedLayer { path: Vec<LayerId> },
 }
 
 impl fmt::Display for DocumentResponse {
@@ -16,6 +17,7 @@ impl fmt::Display for DocumentResponse {
 			DocumentResponse::DocumentChanged { .. } => "DocumentChanged",
 			DocumentResponse::FolderChanged { .. } => "FolderChanged",
 			DocumentResponse::CreatedLayer { .. } => "SelectLayer",
+			DocumentResponse::DeletedLayer { .. } => "DeleteLayer",
 		};
 
 		formatter.write_str(name)
