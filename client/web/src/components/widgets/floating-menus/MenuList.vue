@@ -6,7 +6,7 @@
 				v-for="(entry, entryIndex) in section"
 				:key="entryIndex"
 				class="row"
-				:class="{ open: isMenuEntryOpen(entry), active: entry === currentEntry }"
+				:class="{ open: isMenuEntryOpen(entry), active: entry === activeEntry }"
 				@click="handleEntryClick(entry)"
 				@mouseenter="handleEntryMouseEnter(entry)"
 				@mouseleave="handleEntryMouseLeave(entry)"
@@ -23,10 +23,7 @@
 					v-if="entry.children"
 					:direction="MenuDirection.TopRight"
 					:menuEntries="entry.children"
-					v-model:active-entry="currentEntry"
-					:minWidth="minWidth"
-					:drawIcon="drawIcon"
-					:scrollable="scrollable"
+					v-bind="{ defaultAction, minWidth, drawIcon, scrollable }"
 					:ref="(ref) => setEntryRefs(entry, ref)"
 				/>
 			</div>
@@ -248,7 +245,6 @@ const MenuList = defineComponent({
 	},
 	data() {
 		return {
-			currentEntry: this.activeEntry,
 			keyboardLockInfoMessage: keyboardLockApiSupported() ? KEYBOARD_LOCK_USE_FULLSCREEN : KEYBOARD_LOCK_SWITCH_BROWSER,
 			SeparatorDirection,
 			SeparatorType,
