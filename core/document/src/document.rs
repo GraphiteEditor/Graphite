@@ -251,6 +251,17 @@ impl Document {
 		Ok(())
 	}
 
+	fn working_paths(&mut self) -> Vec<Vec<LayerId>> {
+		log::debug!("deleting: {:?}", self.work.as_folder().unwrap().layer_ids);
+		self.work
+			.as_folder()
+			.unwrap()
+			.layer_ids
+			.iter()
+			.map(|id| self.work_mount_path.iter().chain([*id].iter()).cloned().collect())
+			.collect()
+	}
+
 	/// Mutate the document by applying the `operation` to it. If the operation necessitates a
 	/// reaction from the frontend, responses may be returned.
 	pub fn handle_operation(&mut self, operation: Operation) -> Result<Option<Vec<DocumentResponse>>, DocumentError> {
@@ -303,19 +314,23 @@ impl Document {
 			Operation::DeleteLayer { path } => {
 				self.delete(&path)?;
 
-				let (path, _) = split_path(path.as_slice()).unwrap_or_else(|_| (&[], 0));
-				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::FolderChanged { path: path.to_vec() }])
+				let (folder, _) = split_path(path.as_slice()).unwrap_or_else(|_| (&[], 0));
+				Some(vec![
+					DocumentResponse::DocumentChanged,
+					DocumentResponse::DeletedLayer { path: path.clone() },
+					DocumentResponse::FolderChanged { path: folder.to_vec() },
+				])
 			}
 			Operation::PasteLayer { path, layer, insert_index } => {
 				let folder = self.folder_mut(path)?;
 				//FIXME: This clone of layer should be avoided somehow
 				let id = folder.add_layer(layer.clone(), *insert_index).ok_or(DocumentError::IndexOutOfBounds)?;
-				let path = [path.clone(), vec![id]].concat();
+				let full_path = [path.clone(), vec![id]].concat();
 
 				Some(vec![
 					DocumentResponse::DocumentChanged,
-					DocumentResponse::CreatedLayer { path: path.clone() },
-					DocumentResponse::FolderChanged { path },
+					DocumentResponse::CreatedLayer { path: full_path },
+					DocumentResponse::FolderChanged { path: path.clone() },
 				])
 			}
 			Operation::DuplicateLayer { path } => {
@@ -331,11 +346,13 @@ impl Document {
 				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::FolderChanged { path: path.clone() }])
 			}
 			Operation::MountWorkingFolder { path } => {
+				let mut responses: Vec<_> = self.working_paths().into_iter().map(|path| DocumentResponse::DeletedLayer { path }).collect();
 				self.work_mount_path = path.clone();
 				self.work_operations.clear();
 				self.work = Layer::new(LayerDataTypes::Folder(Folder::default()), DAffine2::IDENTITY.to_cols_array(), PathStyle::default());
 				self.work_mounted = true;
-				None
+				responses.push(DocumentResponse::DocumentChanged);
+				Some(responses)
 			}
 			Operation::TransformLayer { path, transform } => {
 				let layer = self.document_layer_mut(path).unwrap();
@@ -353,18 +370,23 @@ impl Document {
 				Some(vec![DocumentResponse::DocumentChanged])
 			}
 			Operation::DiscardWorkingFolder => {
+				let mut responses: Vec<_> = self.working_paths().into_iter().map(|path| DocumentResponse::DeletedLayer { path }).collect();
 				self.work_operations.clear();
 				self.work_mount_path = vec![];
 				self.work = Layer::new(LayerDataTypes::Folder(Folder::default()), DAffine2::IDENTITY.to_cols_array(), PathStyle::default());
 				self.work_mounted = false;
-				Some(vec![DocumentResponse::DocumentChanged])
+				responses.push(DocumentResponse::DocumentChanged);
+				Some(responses)
 			}
 			Operation::ClearWorkingFolder => {
+				let mut responses: Vec<_> = self.working_paths().into_iter().map(|path| DocumentResponse::DeletedLayer { path }).collect();
 				self.work_operations.clear();
 				self.work = Layer::new(LayerDataTypes::Folder(Folder::default()), DAffine2::IDENTITY.to_cols_array(), PathStyle::default());
-				Some(vec![DocumentResponse::DocumentChanged])
+				responses.push(DocumentResponse::DocumentChanged);
+				Some(responses)
 			}
 			Operation::CommitTransaction => {
+				let mut responses: Vec<_> = self.working_paths().into_iter().map(|path| DocumentResponse::DeletedLayer { path }).collect();
 				let mut ops = Vec::new();
 				let mut path: Vec<LayerId> = vec![];
 				std::mem::swap(&mut path, &mut self.work_mount_path);
@@ -372,7 +394,6 @@ impl Document {
 				self.work_mounted = false;
 				self.work_mount_path = vec![];
 				self.work = Layer::new(LayerDataTypes::Folder(Folder::default()), DAffine2::IDENTITY.to_cols_array(), PathStyle::default());
-				let mut responses = vec![];
 				for operation in ops.into_iter() {
 					if let Some(mut op_responses) = self.handle_operation(operation)? {
 						responses.append(&mut op_responses);

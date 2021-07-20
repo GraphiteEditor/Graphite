@@ -362,7 +362,6 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			DeleteSelectedLayers => {
 				let paths = self.selected_layers_sorted();
 				for path in paths {
-					self.active_document_mut().layer_data.remove(&path);
 					responses.push_back(DocumentOperation::DeleteLayer { path }.into())
 				}
 			}
@@ -385,7 +384,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			}
 			PasteLayers { path, insert_index } => {
 				for layer in self.copy_buffer.iter() {
-					//TODO: Should be the path to the current folder instead of root
+					log::trace!("pasting into folder {:?} as index: {}", path, insert_index);
 					responses.push_back(
 						DocumentOperation::PasteLayer {
 							layer: layer.clone(),
@@ -429,6 +428,10 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 							.into_iter()
 							.map(|response| match response {
 								DocumentResponse::FolderChanged { path } => self.handle_folder_changed(path),
+								DocumentResponse::DeletedLayer { path } => {
+									self.active_document_mut().layer_data.remove(&path);
+									None
+								}
 								DocumentResponse::CreatedLayer { path } => {
 									if !self.active_document().document.work_mounted {
 										self.select_layer(&path)
