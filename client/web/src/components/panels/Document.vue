@@ -52,7 +52,7 @@
 			</div>
 			<div class="spacer"></div>
 			<div class="right side">
-				<OptionalInput v-model:checked="snappingEnabled" :icon="'Snapping'" />
+				<OptionalInput v-model:checked="snappingEnabled" :icon="'Snapping'" title="Snapping" />
 				<PopoverButton>
 					<h3>Snapping</h3>
 					<p>More snapping options will be here</p>
@@ -60,7 +60,7 @@
 
 				<Separator :type="SeparatorType.Unrelated" />
 
-				<OptionalInput v-model:checked="gridEnabled" :icon="'Grid'" />
+				<OptionalInput v-model:checked="gridEnabled" :icon="'Grid'" title="Grid" />
 				<PopoverButton>
 					<h3>Grid</h3>
 					<p>More grid options will be here</p>
@@ -68,7 +68,7 @@
 
 				<Separator :type="SeparatorType.Unrelated" />
 
-				<OptionalInput v-model:checked="overlaysEnabled" :icon="'Overlays'" />
+				<OptionalInput v-model:checked="overlaysEnabled" :icon="'Overlays'" title="Overlays" />
 				<PopoverButton>
 					<h3>Overlays</h3>
 					<p>More overlays options will be here</p>
@@ -82,8 +82,8 @@
 					<IconButton :icon="'ViewModePixels'" :size="24" title="View Mode: Pixels" />
 				</RadioInput>
 				<PopoverButton>
-					<h3>Display Mode</h3>
-					<p>More display mode options will be here</p>
+					<h3>View Mode</h3>
+					<p>More view mode options will be here</p>
 				</PopoverButton>
 
 				<Separator :type="SeparatorType.Section" />
