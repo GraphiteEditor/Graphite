@@ -71,6 +71,13 @@ impl Fsm for ShapeToolFsmState {
 					data.drag_current = input.mouse.position;
 
 					data.sides = 6;
+					if let Some(tool_settings) = tool_data.tool_settings.get(&crate::tool::ToolType::Shape) {
+						if let crate::tool::ToolSettings::Shape { shape } = tool_settings {
+							if let crate::tool::Shape::Polygon { vertices } = shape {
+								data.sides = *vertices as u8;
+							}
+						}
+					};
 
 					responses.push_back(Operation::MountWorkingFolder { path: vec![] }.into());
 					Dragging

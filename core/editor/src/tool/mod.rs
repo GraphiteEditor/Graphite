@@ -37,7 +37,7 @@ pub trait Fsm {
 pub struct DocumentToolData {
 	pub primary_color: Color,
 	pub secondary_color: Color,
-	tool_settings: HashMap<ToolType, ToolSettings>,
+	pub tool_settings: HashMap<ToolType, ToolSettings>,
 }
 
 type SubToolMessageHandler = dyn for<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>>;

@@ -7,7 +7,7 @@
 				<h3>{{ option.title }}</h3>
 				<p>{{ option.placeholder_text }}</p>
 			</PopoverButton>
-			<NumberInput v-if="option.kind === 'number'" :initialValue="option.initial" :step="option.step" :updateOnCallback="false" />
+			<NumberInput v-if="option.kind === 'number'" :callback="option.callback" :initialValue="option.initial" :step="option.step" :updateOnCallback="false" />
 		</template>
 	</div>
 </template>
@@ -27,6 +27,8 @@ import Separator, { SeparatorType } from "@/components/widgets/separators/Separa
 import IconButton from "@/components/widgets/buttons/IconButton.vue";
 import PopoverButton from "@/components/widgets/buttons/PopoverButton.vue";
 import NumberInput from "@/components/widgets/inputs/NumberInput.vue";
+
+const wasm = import("@/../wasm/pkg");
 
 type ToolOptionsList = Array<ToolOptions>;
 type ToolOptionsMap = Map<string, ToolOptionsList>;
@@ -54,60 +56,64 @@ interface NumberOption {
 	kind: "number";
 	initial: number;
 	step: number;
+	callback?: Function;
 }
-
-const optionsMap: ToolOptionsMap = new Map([
-	[
-		"Select",
-		[
-			{ kind: "icon", icon: "AlignHorizontalLeft", title: "Horizontal Align Left" },
-			{ kind: "icon", icon: "AlignHorizontalCenter", title: "Horizontal Align Center" },
-			{ kind: "icon", icon: "AlignHorizontalRight", title: "Horizontal Align Right" },
-
-			{ kind: "separator", type: SeparatorType.Unrelated },
-
-			{ kind: "icon", icon: "AlignVerticalTop", title: "Vertical Align Top" },
-			{ kind: "icon", icon: "AlignVerticalCenter", title: "Vertical Align Center" },
-			{ kind: "icon", icon: "AlignVerticalBottom", title: "Vertical Align Bottom" },
-
-			{ kind: "separator", type: SeparatorType.Related },
-
-			{ kind: "popover", title: "Align", placeholder_text: "More alignment-related buttons will be here" },
-
-			{ kind: "separator", type: SeparatorType.Section },
-
-			{ kind: "icon", icon: "FlipHorizontal", title: "Flip Horizontal" },
-			{ kind: "icon", icon: "FlipVertical", title: "Flip Vertical" },
-
-			{ kind: "separator", type: SeparatorType.Related },
-
-			{ kind: "popover", title: "Flip", placeholder_text: "More flip-related buttons will be here" },
-
-			{ kind: "separator", type: SeparatorType.Section },
-
-			{ kind: "icon", icon: "BooleanUnion", title: "Boolean Union" },
-			{ kind: "icon", icon: "BooleanSubtractFront", title: "Boolean Subtract Front" },
-			{ kind: "icon", icon: "BooleanSubtractBack", title: "Boolean Subtract Back" },
-			{ kind: "icon", icon: "BooleanIntersect", title: "Boolean Intersect" },
-			{ kind: "icon", icon: "BooleanDifference", title: "Boolean Difference" },
-
-			{ kind: "separator", type: SeparatorType.Related },
-
-			{ kind: "popover", title: "Boolean", placeholder_text: "More boolean-related buttons will be here" },
-		],
-	],
-	["Shape", [{ kind: "number", initial: 6, step: 1 }]],
-]);
 
 export default defineComponent({
 	props: {
 		activeTool: { type: String },
 	},
 	computed: {},
-	methods: {},
+	methods: {
+		async setToolSettings() {
+			const { set_tool_settings, ToolSettings } = await wasm;
+			set_tool_settings(this.$props.activeTool || "Select", new ToolSettings());
+		},
+	},
 	data() {
 		return {
-			optionsMap,
+			optionsMap: new Map([
+				[
+					"Select",
+					[
+						{ kind: "icon", icon: "AlignHorizontalLeft", title: "Horizontal Align Left" },
+						{ kind: "icon", icon: "AlignHorizontalCenter", title: "Horizontal Align Center" },
+						{ kind: "icon", icon: "AlignHorizontalRight", title: "Horizontal Align Right" },
+
+						{ kind: "separator", type: SeparatorType.Unrelated },
+
+						{ kind: "icon", icon: "AlignVerticalTop", title: "Vertical Align Top" },
+						{ kind: "icon", icon: "AlignVerticalCenter", title: "Vertical Align Center" },
+						{ kind: "icon", icon: "AlignVerticalBottom", title: "Vertical Align Bottom" },
+
+						{ kind: "separator", type: SeparatorType.Related },
+
+						{ kind: "popover", title: "Align", placeholder_text: "More alignment-related buttons will be here" },
+
+						{ kind: "separator", type: SeparatorType.Section },
+
+						{ kind: "icon", icon: "FlipHorizontal", title: "Flip Horizontal" },
+						{ kind: "icon", icon: "FlipVertical", title: "Flip Vertical" },
+
+						{ kind: "separator", type: SeparatorType.Related },
+
+						{ kind: "popover", title: "Flip", placeholder_text: "More flip-related buttons will be here" },
+
+						{ kind: "separator", type: SeparatorType.Section },
+
+						{ kind: "icon", icon: "BooleanUnion", title: "Boolean Union" },
+						{ kind: "icon", icon: "BooleanSubtractFront", title: "Boolean Subtract Front" },
+						{ kind: "icon", icon: "BooleanSubtractBack", title: "Boolean Subtract Back" },
+						{ kind: "icon", icon: "BooleanIntersect", title: "Boolean Intersect" },
+						{ kind: "icon", icon: "BooleanDifference", title: "Boolean Difference" },
+
+						{ kind: "separator", type: SeparatorType.Related },
+
+						{ kind: "popover", title: "Boolean", placeholder_text: "More boolean-related buttons will be here" },
+					],
+				],
+				["Shape", [{ kind: "number", initial: 6, step: 1, callback: this.setToolSettings }]],
+			]),
 			SeparatorType,
 		};
 	},

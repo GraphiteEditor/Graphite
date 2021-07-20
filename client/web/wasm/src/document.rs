@@ -1,5 +1,5 @@
 use crate::shims::Error;
-use crate::wrappers::{translate_key, translate_tool, Color};
+use crate::wrappers::{translate_key, translate_tool, Color, ToolSettings};
 use crate::EDITOR_STATE;
 use editor_core::input::input_preprocessor::ModifierKeys;
 use editor_core::input::mouse::ScrollDelta;
@@ -19,6 +19,15 @@ fn convert_error(err: editor_core::EditorError) -> JsValue {
 pub fn select_tool(tool: String) -> Result<(), JsValue> {
 	EDITOR_STATE.with(|editor| match translate_tool(&tool) {
 		Some(tool) => editor.borrow_mut().handle_message(ToolMessage::SelectTool(tool)).map_err(convert_error),
+		None => Err(Error::new(&format!("Couldn't select {} because it was not recognized as a valid tool", tool)).into()),
+	})
+}
+
+/// Update the settings for a given tool
+#[wasm_bindgen]
+pub fn set_tool_settings(tool: String, settings: ToolSettings) -> Result<(), JsValue> {
+	EDITOR_STATE.with(|editor| match translate_tool(&tool) {
+		Some(tool) => editor.borrow_mut().handle_message(ToolMessage::SetToolSettings(tool, settings.inner())).map_err(convert_error),
 		None => Err(Error::new(&format!("Couldn't select {} because it was not recognized as a valid tool", tool)).into()),
 	})
 }
