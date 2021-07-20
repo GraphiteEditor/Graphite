@@ -1,11 +1,13 @@
-#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
 pub enum ToolSettings {
 	Select { append_mode: SelectAppendMode },
 	Ellipse,
-	Shape { shape: Shape },
+	Shape { shape_type: ShapeType },
 }
 
-#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
 pub enum SelectAppendMode {
 	New,
 	Add,
@@ -13,8 +15,8 @@ pub enum SelectAppendMode {
 	Intersect,
 }
 
-#[derive(Debug, Clone, Copy, Eq, PartialEq)]
-pub enum Shape {
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
+pub enum ShapeType {
 	Star { vertices: u32 },
 	Polygon { vertices: u32 },
 }

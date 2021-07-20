@@ -1,7 +1,5 @@
 use crate::shims::Error;
 use editor_core::input::keyboard::Key;
-use editor_core::tool::tool_settings::Shape;
-use editor_core::tool::tool_settings::ToolSettings as InnerToolSettings;
 use editor_core::tool::{SelectAppendMode, ToolType};
 use editor_core::Color as InnerColor;
 use wasm_bindgen::prelude::*;
@@ -22,26 +20,6 @@ impl Color {
 
 impl Color {
 	pub fn inner(&self) -> InnerColor {
-		self.0
-	}
-}
-
-#[wasm_bindgen]
-pub struct ToolSettings(InnerToolSettings);
-
-#[wasm_bindgen]
-impl ToolSettings {
-	#[wasm_bindgen(constructor)]
-	pub fn new() -> Result<ToolSettings, JsValue> {
-		// TODO
-		Ok(Self(InnerToolSettings::Shape {
-			shape: Shape::Polygon { vertices: 6 },
-		}))
-	}
-}
-
-impl ToolSettings {
-	pub fn inner(&self) -> InnerToolSettings {
 		self.0
 	}
 }

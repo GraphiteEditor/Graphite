@@ -7,7 +7,7 @@
 				<h3>{{ option.title }}</h3>
 				<p>{{ option.placeholder_text }}</p>
 			</PopoverButton>
-			<NumberInput v-if="option.kind === 'number'" :callback="option.callback" :initialValue="option.initial" :step="option.step" :updateOnCallback="false" />
+			<NumberInput v-if="option.kind === 'number'" :callback="option.callback" :initialValue="option.initial" :step="option.step" :updateOnCallback="true" />
 		</template>
 	</div>
 </template>
@@ -65,9 +65,12 @@ export default defineComponent({
 	},
 	computed: {},
 	methods: {
-		async setToolSettings() {
-			const { set_tool_settings, ToolSettings } = await wasm;
-			set_tool_settings(this.$props.activeTool || "Select", new ToolSettings());
+		async setToolSettings(new_value: number) {
+			// TODO: Each value-input widget (i.e. not a button) should map to a field in a settings struct,
+			// and updating a widget should send the whole updated struct to the backend.
+			// Later, it could send a single-field update to the backend.
+			const { set_tool_settings } = await wasm;
+			set_tool_settings(this.$props.activeTool || "Select", { Shape: { shape_type: { Polygon: { vertices: new_value } } } });
 		},
 	},
 	data() {

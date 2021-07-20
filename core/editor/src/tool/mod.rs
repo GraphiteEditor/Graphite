@@ -179,7 +179,7 @@ impl ToolType {
 			ToolType::Select => ToolSettings::Select { append_mode: SelectAppendMode::New },
 			ToolType::Ellipse => ToolSettings::Ellipse,
 			ToolType::Shape => ToolSettings::Shape {
-				shape: Shape::Polygon { vertices: 3 },
+				shape_type: ShapeType::Polygon { vertices: 6 },
 			},
 			_ => todo!(),
 		}

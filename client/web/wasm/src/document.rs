@@ -1,9 +1,10 @@
 use crate::shims::Error;
-use crate::wrappers::{translate_key, translate_tool, Color, ToolSettings};
+use crate::wrappers::{translate_key, translate_tool, Color};
 use crate::EDITOR_STATE;
 use editor_core::input::input_preprocessor::ModifierKeys;
 use editor_core::input::mouse::ScrollDelta;
 use editor_core::message_prelude::*;
+use editor_core::tool::tool_settings::ToolSettings;
 use editor_core::{
 	input::mouse::{MouseState, ViewportPosition},
 	LayerId,
@@ -25,9 +26,10 @@ pub fn select_tool(tool: String) -> Result<(), JsValue> {
 
 /// Update the settings for a given tool
 #[wasm_bindgen]
-pub fn set_tool_settings(tool: String, settings: ToolSettings) -> Result<(), JsValue> {
+pub fn set_tool_settings(tool: String, settings: &JsValue) -> Result<(), JsValue> {
+	let settings: ToolSettings = settings.into_serde().expect("Invalid JSON for ToolSettings");
 	EDITOR_STATE.with(|editor| match translate_tool(&tool) {
-		Some(tool) => editor.borrow_mut().handle_message(ToolMessage::SetToolSettings(tool, settings.inner())).map_err(convert_error),
+		Some(tool) => editor.borrow_mut().handle_message(ToolMessage::SetToolSettings(tool, settings)).map_err(convert_error),
 		None => Err(Error::new(&format!("Couldn't select {} because it was not recognized as a valid tool", tool)).into()),
 	})
 }
