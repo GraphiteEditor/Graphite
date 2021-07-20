@@ -7,7 +7,7 @@
 				<h3>{{ option.title }}</h3>
 				<p>{{ option.placeholder_text }}</p>
 			</PopoverButton>
-			<NumberInput v-if="option.kind === 'number'" :callback="option.callback" :initialValue="option.initial" :step="option.step" :updateOnCallback="true" />
+			<NumberInput v-if="option.kind === 'number'" :callback="option.callback" :initialValue="option.initial" :step="option.step" :min="option.min" :updateOnCallback="true" />
 		</template>
 	</div>
 </template>
@@ -115,7 +115,7 @@ export default defineComponent({
 						{ kind: "popover", title: "Boolean", placeholder_text: "More boolean-related buttons will be here" },
 					],
 				],
-				["Shape", [{ kind: "number", initial: 6, step: 1, callback: this.setToolSettings }]],
+				["Shape", [{ kind: "number", initial: 6, step: 1, min: 3, callback: this.setToolSettings }]],
 			]),
 			SeparatorType,
 		};
