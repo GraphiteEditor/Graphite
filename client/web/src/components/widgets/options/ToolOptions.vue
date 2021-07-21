@@ -76,49 +76,51 @@ export default defineComponent({
 		},
 	},
 	data() {
-		return {
-			optionsMap: new Map([
+		const optionsMap: ToolOptionsMap = new Map([
+			[
+				"Select",
 				[
-					"Select",
-					[
-						{ kind: "icon_button", icon: "AlignHorizontalLeft", title: "Horizontal Align Left" },
-						{ kind: "icon_button", icon: "AlignHorizontalCenter", title: "Horizontal Align Center" },
-						{ kind: "icon_button", icon: "AlignHorizontalRight", title: "Horizontal Align Right" },
+					{ kind: "icon_button", icon: "AlignHorizontalLeft", title: "Horizontal Align Left" },
+					{ kind: "icon_button", icon: "AlignHorizontalCenter", title: "Horizontal Align Center" },
+					{ kind: "icon_button", icon: "AlignHorizontalRight", title: "Horizontal Align Right" },
 
-						{ kind: "separator", type: SeparatorType.Unrelated },
+					{ kind: "separator", type: SeparatorType.Unrelated },
 
-						{ kind: "icon_button", icon: "AlignVerticalTop", title: "Vertical Align Top" },
-						{ kind: "icon_button", icon: "AlignVerticalCenter", title: "Vertical Align Center" },
-						{ kind: "icon_button", icon: "AlignVerticalBottom", title: "Vertical Align Bottom" },
+					{ kind: "icon_button", icon: "AlignVerticalTop", title: "Vertical Align Top" },
+					{ kind: "icon_button", icon: "AlignVerticalCenter", title: "Vertical Align Center" },
+					{ kind: "icon_button", icon: "AlignVerticalBottom", title: "Vertical Align Bottom" },
 
-						{ kind: "separator", type: SeparatorType.Related },
+					{ kind: "separator", type: SeparatorType.Related },
 
-						{ kind: "popover_button", title: "Align", placeholderText: "More alignment-related buttons will be here" },
+					{ kind: "popover_button", title: "Align", placeholderText: "More alignment-related buttons will be here" },
 
-						{ kind: "separator", type: SeparatorType.Section },
+					{ kind: "separator", type: SeparatorType.Section },
 
-						{ kind: "icon_button", icon: "FlipHorizontal", title: "Flip Horizontal" },
-						{ kind: "icon_button", icon: "FlipVertical", title: "Flip Vertical" },
+					{ kind: "icon_button", icon: "FlipHorizontal", title: "Flip Horizontal" },
+					{ kind: "icon_button", icon: "FlipVertical", title: "Flip Vertical" },
 
-						{ kind: "separator", type: SeparatorType.Related },
+					{ kind: "separator", type: SeparatorType.Related },
 
-						{ kind: "popover_button", title: "Flip", placeholderText: "More flip-related buttons will be here" },
+					{ kind: "popover_button", title: "Flip", placeholderText: "More flip-related buttons will be here" },
 
-						{ kind: "separator", type: SeparatorType.Section },
+					{ kind: "separator", type: SeparatorType.Section },
 
-						{ kind: "icon_button", icon: "BooleanUnion", title: "Boolean Union" },
-						{ kind: "icon_button", icon: "BooleanSubtractFront", title: "Boolean Subtract Front" },
-						{ kind: "icon_button", icon: "BooleanSubtractBack", title: "Boolean Subtract Back" },
-						{ kind: "icon_button", icon: "BooleanIntersect", title: "Boolean Intersect" },
-						{ kind: "icon_button", icon: "BooleanDifference", title: "Boolean Difference" },
+					{ kind: "icon_button", icon: "BooleanUnion", title: "Boolean Union" },
+					{ kind: "icon_button", icon: "BooleanSubtractFront", title: "Boolean Subtract Front" },
+					{ kind: "icon_button", icon: "BooleanSubtractBack", title: "Boolean Subtract Back" },
+					{ kind: "icon_button", icon: "BooleanIntersect", title: "Boolean Intersect" },
+					{ kind: "icon_button", icon: "BooleanDifference", title: "Boolean Difference" },
 
-						{ kind: "separator", type: SeparatorType.Related },
+					{ kind: "separator", type: SeparatorType.Related },
 
-						{ kind: "popover_button", title: "Boolean", placeholderText: "More boolean-related buttons will be here" },
-					],
+					{ kind: "popover_button", title: "Boolean", placeholderText: "More boolean-related buttons will be here" },
 				],
-				["Shape", [{ kind: "number_input", initial: 6, step: 1, min: 3, callback: this.setToolOptions }]],
-			]) as ToolOptionsMap,
+			],
+			["Shape", [{ kind: "number_input", initial: 6, step: 1, min: 3, callback: this.setToolOptions }]],
+		]);
+
+		return {
+			optionsMap,
 			SeparatorType,
 		};
 	},
