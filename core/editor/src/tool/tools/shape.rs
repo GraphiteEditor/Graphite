@@ -70,13 +70,11 @@ impl Fsm for ShapeToolFsmState {
 					data.drag_start = input.mouse.position;
 					data.drag_current = input.mouse.position;
 
-					data.sides = if let Some(&ToolOptions::Shape {
-						shape_type: ShapeType::Polygon { vertices },
-					}) = tool_data.tool_options.get(&ToolType::Shape)
-					{
-						vertices as u8
-					} else {
-						6
+					data.sides = match tool_data.tool_options.get(&ToolType::Shape) {
+						Some(&ToolOptions::Shape {
+							shape_type: ShapeType::Polygon { vertices },
+						}) => vertices as u8,
+						_ => 6,
 					};
 
 					responses.push_back(Operation::MountWorkingFolder { path: vec![] }.into());

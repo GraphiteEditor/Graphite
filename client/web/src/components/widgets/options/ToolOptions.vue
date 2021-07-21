@@ -1,13 +1,13 @@
 <template>
 	<div class="tool-options">
 		<template v-for="(option, index) in optionsMap.get(activeTool) || []" :key="index">
-			<IconButton v-if="option.kind === 'icon'" :icon="option.icon" :size="24" :title="option.title" />
+			<IconButton v-if="option.kind === 'icon_button'" :icon="option.icon" :size="24" :title="option.title" />
 			<Separator v-if="option.kind === 'separator'" :type="option.type" />
-			<PopoverButton v-if="option.kind === 'popover'">
+			<PopoverButton v-if="option.kind === 'popover_button'">
 				<h3>{{ option.title }}</h3>
-				<p>{{ option.placeholder_text }}</p>
+				<p>{{ option.placeholderText }}</p>
 			</PopoverButton>
-			<NumberInput v-if="option.kind === 'number'" :callback="option.callback" :initialValue="option.initial" :step="option.step" :min="option.min" :updateOnCallback="true" />
+			<NumberInput v-if="option.kind === 'number_input'" :callback="option.callback" :initialValue="option.initial" :step="option.step" :min="option.min" :updateOnCallback="true" />
 		</template>
 	</div>
 </template>
@@ -32,11 +32,10 @@ const wasm = import("@/../wasm/pkg");
 
 type ToolOptionsList = Array<ToolOptions>;
 type ToolOptionsMap = Map<string, ToolOptionsList>;
+type ToolOptions = IconButtonOption | SeparatorOption | PopoverButtonOption | NumberInputOption;
 
-type ToolOptions = IconOption | SeparatorOption | PopoverOption | NumberOption;
-
-interface IconOption {
-	kind: "icon";
+interface IconButtonOption {
+	kind: "icon_button";
 	icon: string;
 	title: string;
 }
@@ -46,14 +45,14 @@ interface SeparatorOption {
 	type: SeparatorType;
 }
 
-interface PopoverOption {
-	kind: "popover";
+interface PopoverButtonOption {
+	kind: "popover_button";
 	title: string;
-	placeholder_text: string;
+	placeholderText: string;
 }
 
-interface NumberOption {
-	kind: "number";
+interface NumberInputOption {
+	kind: "number_input";
 	initial: number;
 	step: number;
 	min?: number;
@@ -66,12 +65,14 @@ export default defineComponent({
 	},
 	computed: {},
 	methods: {
-		async setToolOptions(new_value: number) {
+		async setToolOptions(newValue: number) {
 			// TODO: Each value-input widget (i.e. not a button) should map to a field in an options struct,
 			// and updating a widget should send the whole updated struct to the backend.
 			// Later, it could send a single-field update to the backend.
+
 			const { set_tool_options } = await wasm;
-			set_tool_options(this.$props.activeTool || "Select", { Shape: { shape_type: { Polygon: { vertices: new_value } } } });
+			// This is a placeholder call, using the Shape tool as an example
+			set_tool_options(this.$props.activeTool || "", { Shape: { shape_type: { Polygon: { vertices: newValue } } } });
 		},
 	},
 	data() {
@@ -80,43 +81,43 @@ export default defineComponent({
 				[
 					"Select",
 					[
-						{ kind: "icon", icon: "AlignHorizontalLeft", title: "Horizontal Align Left" },
-						{ kind: "icon", icon: "AlignHorizontalCenter", title: "Horizontal Align Center" },
-						{ kind: "icon", icon: "AlignHorizontalRight", title: "Horizontal Align Right" },
+						{ kind: "icon_button", icon: "AlignHorizontalLeft", title: "Horizontal Align Left" },
+						{ kind: "icon_button", icon: "AlignHorizontalCenter", title: "Horizontal Align Center" },
+						{ kind: "icon_button", icon: "AlignHorizontalRight", title: "Horizontal Align Right" },
 
 						{ kind: "separator", type: SeparatorType.Unrelated },
 
-						{ kind: "icon", icon: "AlignVerticalTop", title: "Vertical Align Top" },
-						{ kind: "icon", icon: "AlignVerticalCenter", title: "Vertical Align Center" },
-						{ kind: "icon", icon: "AlignVerticalBottom", title: "Vertical Align Bottom" },
+						{ kind: "icon_button", icon: "AlignVerticalTop", title: "Vertical Align Top" },
+						{ kind: "icon_button", icon: "AlignVerticalCenter", title: "Vertical Align Center" },
+						{ kind: "icon_button", icon: "AlignVerticalBottom", title: "Vertical Align Bottom" },
 
 						{ kind: "separator", type: SeparatorType.Related },
 
-						{ kind: "popover", title: "Align", placeholder_text: "More alignment-related buttons will be here" },
+						{ kind: "popover_button", title: "Align", placeholderText: "More alignment-related buttons will be here" },
 
 						{ kind: "separator", type: SeparatorType.Section },
 
-						{ kind: "icon", icon: "FlipHorizontal", title: "Flip Horizontal" },
-						{ kind: "icon", icon: "FlipVertical", title: "Flip Vertical" },
+						{ kind: "icon_button", icon: "FlipHorizontal", title: "Flip Horizontal" },
+						{ kind: "icon_button", icon: "FlipVertical", title: "Flip Vertical" },
 
 						{ kind: "separator", type: SeparatorType.Related },
 
-						{ kind: "popover", title: "Flip", placeholder_text: "More flip-related buttons will be here" },
+						{ kind: "popover_button", title: "Flip", placeholderText: "More flip-related buttons will be here" },
 
 						{ kind: "separator", type: SeparatorType.Section },
 
-						{ kind: "icon", icon: "BooleanUnion", title: "Boolean Union" },
-						{ kind: "icon", icon: "BooleanSubtractFront", title: "Boolean Subtract Front" },
-						{ kind: "icon", icon: "BooleanSubtractBack", title: "Boolean Subtract Back" },
-						{ kind: "icon", icon: "BooleanIntersect", title: "Boolean Intersect" },
-						{ kind: "icon", icon: "BooleanDifference", title: "Boolean Difference" },
+						{ kind: "icon_button", icon: "BooleanUnion", title: "Boolean Union" },
+						{ kind: "icon_button", icon: "BooleanSubtractFront", title: "Boolean Subtract Front" },
+						{ kind: "icon_button", icon: "BooleanSubtractBack", title: "Boolean Subtract Back" },
+						{ kind: "icon_button", icon: "BooleanIntersect", title: "Boolean Intersect" },
+						{ kind: "icon_button", icon: "BooleanDifference", title: "Boolean Difference" },
 
 						{ kind: "separator", type: SeparatorType.Related },
 
-						{ kind: "popover", title: "Boolean", placeholder_text: "More boolean-related buttons will be here" },
+						{ kind: "popover_button", title: "Boolean", placeholderText: "More boolean-related buttons will be here" },
 					],
 				],
-				["Shape", [{ kind: "number", initial: 6, step: 1, min: 3, callback: this.setToolOptions }]],
+				["Shape", [{ kind: "number_input", initial: 6, step: 1, min: 3, callback: this.setToolOptions }]],
 			]) as ToolOptionsMap,
 			SeparatorType,
 		};
