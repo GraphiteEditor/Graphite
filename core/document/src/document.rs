@@ -226,6 +226,19 @@ impl Document {
 		Ok(())
 	}
 
+	pub fn reorder_layers(&mut self, source_paths: &[Vec<LayerId>], target_path: &[LayerId]) -> Result<(), DocumentError> {
+		// TODO: Detect when moving between folders and handle properly
+
+		let source_layer_ids = source_paths
+			.iter()
+			.map(|x| x.last().cloned().ok_or(DocumentError::LayerNotFound))
+			.collect::<Result<Vec<LayerId>, DocumentError>>()?;
+
+		self.root.as_folder_mut()?.reorder_layers(source_layer_ids, *target_path.last().ok_or(DocumentError::LayerNotFound)?)?;
+
+		Ok(())
+	}
+
 	pub fn layer_axis_aligned_bounding_box(&self, path: &[LayerId]) -> Result<Option<[DVec2; 2]>, DocumentError> {
 		// TODO: Replace with functions of the transform api
 		if path.is_empty() {
@@ -391,6 +404,11 @@ impl Document {
 				let layer = self.layer_mut(path).unwrap();
 				layer.style.set_fill(layers::style::Fill::new(*color));
 				self.mark_as_dirty(path)?;
+				Some(vec![DocumentResponse::DocumentChanged])
+			}
+			Operation::ReorderLayers { source_paths, target_path } => {
+				self.reorder_layers(source_paths, target_path)?;
+
 				Some(vec![DocumentResponse::DocumentChanged])
 			}
 		};

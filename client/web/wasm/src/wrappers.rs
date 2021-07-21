@@ -131,6 +131,10 @@ pub fn translate_key(name: &str) -> Key {
 		"arrowdown" => KeyArrowDown,
 		"arrowleft" => KeyArrowLeft,
 		"arrowright" => KeyArrowRight,
+		"[" => KeyLeftBracket,
+		"]" => KeyRightBracket,
+		"{" => KeyLeftCurlyBracket,
+		"}" => KeyRightCurlyBracket,
 		_ => UnknownKey,
 	}
 }

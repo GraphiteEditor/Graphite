@@ -16,4 +16,5 @@ pub enum DocumentError {
 	InvalidPath,
 	IndexOutOfBounds,
 	NotAFolder,
+	NonReorderableSelection,
 }
