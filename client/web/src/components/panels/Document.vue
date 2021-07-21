@@ -6,7 +6,7 @@
 
 				<Separator :type="SeparatorType.Section" />
 
-				<ToolSettings :activeTool="activeTool" />
+				<ToolOptions :activeTool="activeTool" />
 			</div>
 			<div class="spacer"></div>
 			<div class="right side">
@@ -213,7 +213,7 @@ import RadioInput from "@/components/widgets/inputs/RadioInput.vue";
 import NumberInput from "@/components/widgets/inputs/NumberInput.vue";
 import DropdownInput from "@/components/widgets/inputs/DropdownInput.vue";
 import OptionalInput from "@/components/widgets/inputs/OptionalInput.vue";
-import ToolSettings from "@/components/widgets/options/ToolSettings.vue";
+import ToolOptions from "@/components/widgets/options/ToolOptions.vue";
 import { SectionsOfMenuListEntries } from "@/components/widgets/floating-menus/MenuList.vue";
 
 const modeMenuEntries: SectionsOfMenuListEntries = [
@@ -360,7 +360,7 @@ export default defineComponent({
 		NumberInput,
 		DropdownInput,
 		OptionalInput,
-		ToolSettings,
+		ToolOptions,
 	},
 });
 </script>
