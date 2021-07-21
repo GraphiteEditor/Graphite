@@ -140,6 +140,10 @@ impl Folder {
 		self.layers.as_slice()
 	}
 
+	pub fn layers_mut(&mut self) -> &mut [Layer] {
+		self.layers.as_mut_slice()
+	}
+
 	pub fn layer(&self, id: LayerId) -> Option<&Layer> {
 		let pos = self.position_of_layer(id).ok()?;
 		Some(&self.layers[pos])

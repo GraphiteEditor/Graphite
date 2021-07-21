@@ -6,53 +6,11 @@
 
 				<Separator :type="SeparatorType.Section" />
 
-				<IconButton :icon="'AlignHorizontalLeft'" :size="24" title="Horizontal Align Left" />
-				<IconButton :icon="'AlignHorizontalCenter'" :size="24" title="Horizontal Align Center" />
-				<IconButton :icon="'AlignHorizontalRight'" :size="24" gapAfter title="Horizontal Align Right" />
-
-				<Separator :type="SeparatorType.Unrelated" />
-
-				<IconButton :icon="'AlignVerticalTop'" :size="24" title="Vertical Align Top" />
-				<IconButton :icon="'AlignVerticalCenter'" :size="24" title="Vertical Align Center" />
-				<IconButton :icon="'AlignVerticalBottom'" :size="24" title="Vertical Align Bottom" />
-
-				<Separator :type="SeparatorType.Related" />
-
-				<PopoverButton>
-					<h3>Align</h3>
-					<p>More alignment-related buttons will be here</p>
-				</PopoverButton>
-
-				<Separator :type="SeparatorType.Section" />
-
-				<IconButton :icon="'FlipHorizontal'" :size="24" title="Flip Horizontal" />
-				<IconButton :icon="'FlipVertical'" :size="24" title="Flip Vertical" />
-
-				<Separator :type="SeparatorType.Related" />
-
-				<PopoverButton>
-					<h3>Flip</h3>
-					<p>More flip-related buttons will be here</p>
-				</PopoverButton>
-
-				<Separator :type="SeparatorType.Section" />
-
-				<IconButton :icon="'BooleanUnion'" :size="24" title="Boolean Union" />
-				<IconButton :icon="'BooleanSubtractFront'" :size="24" title="Boolean Subtract Front" />
-				<IconButton :icon="'BooleanSubtractBack'" :size="24" title="Boolean Subtract Back" />
-				<IconButton :icon="'BooleanIntersect'" :size="24" title="Boolean Intersect" />
-				<IconButton :icon="'BooleanDifference'" :size="24" title="Boolean Difference" />
-
-				<Separator :type="SeparatorType.Related" />
-
-				<PopoverButton>
-					<h3>Boolean</h3>
-					<p>More boolean-related buttons will be here</p>
-				</PopoverButton>
+				<ToolOptions :activeTool="activeTool" />
 			</div>
 			<div class="spacer"></div>
 			<div class="right side">
-				<OptionalInput v-model:checked="snappingEnabled" :icon="'Snapping'" />
+				<OptionalInput v-model:checked="snappingEnabled" :icon="'Snapping'" title="Snapping" />
 				<PopoverButton>
 					<h3>Snapping</h3>
 					<p>More snapping options will be here</p>
@@ -60,7 +18,7 @@
 
 				<Separator :type="SeparatorType.Unrelated" />
 
-				<OptionalInput v-model:checked="gridEnabled" :icon="'Grid'" />
+				<OptionalInput v-model:checked="gridEnabled" :icon="'Grid'" title="Grid" />
 				<PopoverButton>
 					<h3>Grid</h3>
 					<p>More grid options will be here</p>
@@ -68,7 +26,7 @@
 
 				<Separator :type="SeparatorType.Unrelated" />
 
-				<OptionalInput v-model:checked="overlaysEnabled" :icon="'Overlays'" />
+				<OptionalInput v-model:checked="overlaysEnabled" :icon="'Overlays'" title="Overlays" />
 				<PopoverButton>
 					<h3>Overlays</h3>
 					<p>More overlays options will be here</p>
@@ -82,8 +40,8 @@
 					<IconButton :icon="'ViewModePixels'" :size="24" title="View Mode: Pixels" />
 				</RadioInput>
 				<PopoverButton>
-					<h3>Display Mode</h3>
-					<p>More display mode options will be here</p>
+					<h3>View Mode</h3>
+					<p>More view mode options will be here</p>
 				</PopoverButton>
 
 				<Separator :type="SeparatorType.Section" />
@@ -255,6 +213,7 @@ import RadioInput from "@/components/widgets/inputs/RadioInput.vue";
 import NumberInput from "@/components/widgets/inputs/NumberInput.vue";
 import DropdownInput from "@/components/widgets/inputs/DropdownInput.vue";
 import OptionalInput from "@/components/widgets/inputs/OptionalInput.vue";
+import ToolOptions from "@/components/widgets/options/ToolOptions.vue";
 import { SectionsOfMenuListEntries } from "@/components/widgets/floating-menus/MenuList.vue";
 
 const modeMenuEntries: SectionsOfMenuListEntries = [
@@ -401,6 +360,7 @@ export default defineComponent({
 		NumberInput,
 		DropdownInput,
 		OptionalInput,
+		ToolOptions,
 	},
 });
 </script>
