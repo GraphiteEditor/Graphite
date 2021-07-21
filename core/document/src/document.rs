@@ -212,8 +212,8 @@ impl Document {
 	/// Adds a new layer to the folder specified by `path`.
 	/// Passing a negative `insert_index` indexes relative to the end.
 	/// -1 is equivalent to adding the layer to the top.
-	pub fn add_layer(&mut self, path: &[LayerId], layer: Layer, insert_index: isize) -> Result<LayerId, DocumentError> {
-		let _ = self.layer_mut(path).map(|x| x.cache_dirty = true);
+	pub fn add_layer(&mut self, path: &[LayerId], mut layer: Layer, insert_index: isize) -> Result<LayerId, DocumentError> {
+		layer.render();
 		let folder = self.folder_mut(path)?;
 		folder.add_layer(layer, insert_index).ok_or(DocumentError::IndexOutOfBounds)
 	}
@@ -223,6 +223,19 @@ impl Document {
 		let (path, id) = split_path(path)?;
 		let _ = self.layer_mut(path).map(|x| x.cache_dirty = true);
 		self.document_folder_mut(path)?.as_folder_mut()?.remove_layer(id)?;
+		Ok(())
+	}
+
+	pub fn reorder_layers(&mut self, source_paths: &[Vec<LayerId>], target_path: &[LayerId]) -> Result<(), DocumentError> {
+		// TODO: Detect when moving between folders and handle properly
+
+		let source_layer_ids = source_paths
+			.iter()
+			.map(|x| x.last().cloned().ok_or(DocumentError::LayerNotFound))
+			.collect::<Result<Vec<LayerId>, DocumentError>>()?;
+
+		self.root.as_folder_mut()?.reorder_layers(source_layer_ids, *target_path.last().ok_or(DocumentError::LayerNotFound)?)?;
+
 		Ok(())
 	}
 
@@ -391,6 +404,11 @@ impl Document {
 				let layer = self.layer_mut(path).unwrap();
 				layer.style.set_fill(layers::style::Fill::new(*color));
 				self.mark_as_dirty(path)?;
+				Some(vec![DocumentResponse::DocumentChanged])
+			}
+			Operation::ReorderLayers { source_paths, target_path } => {
+				self.reorder_layers(source_paths, target_path)?;
+
 				Some(vec![DocumentResponse::DocumentChanged])
 			}
 		};

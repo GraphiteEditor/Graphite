@@ -4,6 +4,7 @@ use crate::EDITOR_STATE;
 use editor_core::input::input_preprocessor::ModifierKeys;
 use editor_core::input::mouse::ScrollDelta;
 use editor_core::message_prelude::*;
+use editor_core::tool::tool_options::ToolOptions;
 use editor_core::{
 	input::mouse::{MouseState, ViewportPosition},
 	LayerId,
@@ -21,6 +22,18 @@ pub fn select_tool(tool: String) -> Result<(), JsValue> {
 		Some(tool) => editor.borrow_mut().handle_message(ToolMessage::SelectTool(tool)).map_err(convert_error),
 		None => Err(Error::new(&format!("Couldn't select {} because it was not recognized as a valid tool", tool)).into()),
 	})
+}
+
+/// Update the options for a given tool
+#[wasm_bindgen]
+pub fn set_tool_options(tool: String, options: &JsValue) -> Result<(), JsValue> {
+	match options.into_serde::<ToolOptions>() {
+		Ok(options) => EDITOR_STATE.with(|editor| match translate_tool(&tool) {
+			Some(tool) => editor.borrow_mut().handle_message(ToolMessage::SetToolOptions(tool, options)).map_err(convert_error),
+			None => Err(Error::new(&format!("Couldn't select {} because it was not recognized as a valid tool", tool)).into()),
+		}),
+		Err(err) => Err(Error::new(&format!("Invalud JSON for ToolOptions: {}", err)).into()),
+	}
 }
 
 #[wasm_bindgen]
@@ -163,11 +176,19 @@ pub fn select_all_layers() -> Result<(), JsValue> {
 	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(DocumentMessage::SelectAllLayers)).map_err(convert_error)
 }
 
-/// Select all layers
+/// Deselect all layers
 #[wasm_bindgen]
 pub fn deselect_all_layers() -> Result<(), JsValue> {
 	EDITOR_STATE
 		.with(|editor| editor.borrow_mut().handle_message(DocumentMessage::DeselectAllLayers))
+		.map_err(convert_error)
+}
+
+/// Reorder selected layer
+#[wasm_bindgen]
+pub fn reorder_selected_layers(delta: i32) -> Result<(), JsValue> {
+	EDITOR_STATE
+		.with(|editor| editor.borrow_mut().handle_message(DocumentMessage::ReorderSelectedLayers(delta)))
 		.map_err(convert_error)
 }
 

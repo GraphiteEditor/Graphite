@@ -54,6 +54,7 @@ pub enum DocumentMessage {
 	WheelCanvasZoom,
 	SetCanvasRotation(f64),
 	NudgeSelectedLayers(f64, f64),
+	ReorderSelectedLayers(i32),
 }
 
 impl From<DocumentOperation> for DocumentMessage {
@@ -136,21 +137,23 @@ impl DocumentMessageHandler {
 		);
 	}
 
-	/// Returns the paths to the selected layers in order
-	fn selected_layers_sorted(&self) -> Vec<Vec<LayerId>> {
+	/// Returns the paths to all layers in order, optionally including only selected layers
+	fn layers_sorted(&self, only_selected: bool) -> Vec<Vec<LayerId>> {
 		// Compute the indices for each layer to be able to sort them
+		// TODO: Replace with drain_filter https://github.com/rust-lang/rust/issues/59618
 		let mut layers_with_indices: Vec<(Vec<LayerId>, Vec<usize>)> = self
 			.active_document()
 			.layer_data
 			.iter()
-			.filter_map(|(path, data)| data.selected.then(|| path.clone()))
+			// 'path.len() > 0' filters out root layer since it has no indices
+			.filter_map(|(path, data)| (!path.is_empty() && !only_selected || data.selected).then(|| path.clone()))
 			.filter_map(|path| {
 				// Currently it is possible that layer_data contains layers that are don't actually exist
 				// and thus indices_for_path can return an error. We currently skip these layers and log a warning.
 				// Once this problem is solved this code can be simplified
 				match self.active_document().document.indices_for_path(&path) {
 					Err(err) => {
-						warn!("selected_layers_sorted: Could not get indices for the layer {:?}: {:?}", path, err);
+						warn!("layers_sorted: Could not get indices for the layer {:?}: {:?}", path, err);
 						None
 					}
 					Ok(indices) => Some((path, indices)),
@@ -160,6 +163,16 @@ impl DocumentMessageHandler {
 
 		layers_with_indices.sort_by_key(|(_, indices)| indices.clone());
 		layers_with_indices.into_iter().map(|(path, _)| path).collect()
+	}
+
+	/// Returns the paths to all layers in order
+	fn all_layers_sorted(&self) -> Vec<Vec<LayerId>> {
+		self.layers_sorted(false)
+	}
+
+	/// Returns the paths to all selected layers in order
+	fn selected_layers_sorted(&self) -> Vec<Vec<LayerId>> {
+		self.layers_sorted(true)
 	}
 }
 
@@ -336,20 +349,19 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				responses.extend(self.handle_folder_changed(path));
 			}
 			DeleteSelectedLayers => {
-				// TODO: Replace with drain_filter https://github.com/rust-lang/rust/issues/59618
-				let paths: Vec<Vec<LayerId>> = self.active_document().layer_data.iter().filter_map(|(path, data)| data.selected.then(|| path.clone())).collect();
+				let paths = self.selected_layers_sorted();
 				for path in paths {
 					self.active_document_mut().layer_data.remove(&path);
 					responses.push_back(DocumentOperation::DeleteLayer { path }.into())
 				}
 			}
 			DuplicateSelectedLayers => {
-				for path in self.active_document().layer_data.iter().filter_map(|(path, data)| data.selected.then(|| path.clone())) {
+				for path in self.selected_layers_sorted() {
 					responses.push_back(DocumentOperation::DuplicateLayer { path }.into())
 				}
 			}
 			CopySelectedLayers => {
-				let paths: Vec<Vec<LayerId>> = self.selected_layers_sorted();
+				let paths = self.selected_layers_sorted();
 				self.copy_buffer.clear();
 				for path in paths {
 					match self.active_document().document.layer(&path).map(|t| t.clone()) {
@@ -539,7 +551,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				responses.push_back(FrontendMessage::SetCanvasRotation { new_radians: new }.into());
 			}
 			NudgeSelectedLayers(x, y) => {
-				let paths: Vec<Vec<LayerId>> = self.selected_layers_sorted();
+				let paths = self.selected_layers_sorted();
 
 				let delta = {
 					let root_layer_rotation = self.layerdata_mut(&[]).rotation;
@@ -552,6 +564,34 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 						transform: DAffine2::from_translation(delta).to_cols_array(),
 					};
 					responses.push_back(operation.into());
+				}
+			}
+			ReorderSelectedLayers(delta) => {
+				let selected_layer_paths: Vec<Vec<LayerId>> = self.selected_layers_sorted();
+				let all_layer_paths = self.all_layers_sorted();
+
+				let max_index = all_layer_paths.len() as i64 - 1;
+				let num_layers_selected = selected_layer_paths.len() as i64;
+
+				let mut selected_layer_index = -1;
+				let mut next_layer_index = -1;
+				for (i, path) in all_layer_paths.iter().enumerate() {
+					if *path == selected_layer_paths[0] {
+						selected_layer_index = i as i32;
+						// Skip past selection length when moving up
+						let offset = if delta > 0 { num_layers_selected - 1 } else { 0 };
+						next_layer_index = (selected_layer_index as i64 + delta as i64 + offset).clamp(0, max_index) as i32;
+						break;
+					}
+				}
+
+				if next_layer_index != -1 && next_layer_index != selected_layer_index {
+					let operation = DocumentOperation::ReorderLayers {
+						source_paths: selected_layer_paths.clone(),
+						target_path: all_layer_paths[next_layer_index as usize].to_vec(),
+					};
+					responses.push_back(operation.into());
+					responses.push_back(DocumentMessage::SelectLayers(selected_layer_paths).into());
 				}
 			}
 			message => todo!("document_action_handler does not implement: {}", message.to_discriminant().global_name()),
@@ -589,6 +629,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				DuplicateSelectedLayers,
 				CopySelectedLayers,
 				NudgeSelectedLayers,
+				ReorderSelectedLayers,
 			);
 			common.extend(select);
 		}
