@@ -10,6 +10,7 @@ pub struct LayerPanelEntry {
 	pub layer_type: LayerType,
 	pub layer_data: LayerData,
 	pub path: Vec<LayerId>,
+	pub thumbnail: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
