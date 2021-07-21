@@ -1,3 +1,9 @@
+//! **Graphite Editor Core Library**: `/core/editor/`  
+//! Used by a frontend editor client to maintain GUI state and dispatch user events.
+//! The official Graphite editor is the primary user,
+//! but others software like game engines could embed their own customized editor implementations.
+//! Depends on the Document Core Library.
+
 // since our policy is tabs, we want to stop clippy from warning about that
 #![allow(clippy::tabs_in_doc_comments)]
 
