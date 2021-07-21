@@ -41,12 +41,27 @@ fn layer_data<'a>(layer_data: &'a mut HashMap<Vec<LayerId>, LayerData>, path: &[
 pub fn layer_panel_entry(layer_data: &mut LayerData, layer: &Layer, path: Vec<LayerId>) -> LayerPanelEntry {
 	let layer_type: LayerType = (&layer.data).into();
 	let name = layer.name.clone().unwrap_or_else(|| format!("Unnamed {}", layer_type));
+	let arr = layer.current_bounding_box().unwrap_or([DVec2::ZERO, DVec2::ZERO]);
+	let arr = arr.iter().map(|x| (*x).into()).collect::<Vec<(f64, f64)>>();
+	let thumbnail = if let [(x_min, y_min), (x_max, y_max)] = arr.as_slice() {
+		format!(
+			r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="{} {} {} {}">{}</svg>"#,
+			x_min,
+			y_min,
+			x_max - x_min,
+			y_max - y_min,
+			layer.cache.clone()
+		)
+	} else {
+		String::new()
+	};
 	LayerPanelEntry {
 		name,
 		visible: layer.visible,
 		layer_type,
 		layer_data: *layer_data,
 		path,
+		thumbnail,
 	}
 }
 
