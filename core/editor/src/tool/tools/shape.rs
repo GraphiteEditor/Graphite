@@ -1,5 +1,5 @@
 use crate::input::{mouse::ViewportPosition, InputPreprocessor};
-use crate::tool::{DocumentToolData, Fsm, ToolActionHandlerData};
+use crate::tool::{DocumentToolData, Fsm, ShapeType, ToolActionHandlerData, ToolOptions, ToolType};
 use crate::{document::Document, message_prelude::*};
 use document_core::{layers::style, Operation};
 use glam::{DAffine2, DVec2};
@@ -70,7 +70,12 @@ impl Fsm for ShapeToolFsmState {
 					data.drag_start = input.mouse.position;
 					data.drag_current = input.mouse.position;
 
-					data.sides = 6;
+					data.sides = match tool_data.tool_options.get(&ToolType::Shape) {
+						Some(&ToolOptions::Shape {
+							shape_type: ShapeType::Polygon { vertices },
+						}) => vertices as u8,
+						_ => 6,
+					};
 
 					responses.push_back(Operation::MountWorkingFolder { path: vec![] }.into());
 					Dragging
