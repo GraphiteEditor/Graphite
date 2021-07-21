@@ -56,24 +56,24 @@ impl Editor {
 }
 
 pub mod message_prelude {
-	pub use super::communication::message::{AsMessage, Message, MessageDiscriminant};
-	pub use super::communication::{ActionList, MessageHandler};
-	pub use super::document::{DocumentMessage, DocumentMessageDiscriminant};
-	pub use super::frontend::{FrontendMessage, FrontendMessageDiscriminant};
-	pub use super::global::{GlobalMessage, GlobalMessageDiscriminant};
-	pub use super::input::{InputMapperMessage, InputMapperMessageDiscriminant, InputPreprocessorMessage, InputPreprocessorMessageDiscriminant};
-	pub use super::misc::derivable_custom_traits::{ToDiscriminant, TransitiveChild};
-	pub use super::tool::tool_messages::*;
-	pub use super::tool::tools::crop::{CropMessage, CropMessageDiscriminant};
-	pub use super::tool::tools::eyedropper::{EyedropperMessage, EyedropperMessageDiscriminant};
-	pub use super::tool::tools::fill::{FillMessage, FillMessageDiscriminant};
-	pub use super::tool::tools::line::{LineMessage, LineMessageDiscriminant};
-	pub use super::tool::tools::navigate::{NavigateMessage, NavigateMessageDiscriminant};
-	pub use super::tool::tools::path::{PathMessage, PathMessageDiscriminant};
-	pub use super::tool::tools::pen::{PenMessage, PenMessageDiscriminant};
-	pub use super::tool::tools::rectangle::{RectangleMessage, RectangleMessageDiscriminant};
-	pub use super::tool::tools::select::{SelectMessage, SelectMessageDiscriminant};
-	pub use super::tool::tools::shape::{ShapeMessage, ShapeMessageDiscriminant};
+	pub use crate::communication::message::{AsMessage, Message, MessageDiscriminant};
+	pub use crate::communication::{ActionList, MessageHandler};
+	pub use crate::document::{DocumentMessage, DocumentMessageDiscriminant};
+	pub use crate::frontend::{FrontendMessage, FrontendMessageDiscriminant};
+	pub use crate::global::{GlobalMessage, GlobalMessageDiscriminant};
+	pub use crate::input::{InputMapperMessage, InputMapperMessageDiscriminant, InputPreprocessorMessage, InputPreprocessorMessageDiscriminant};
+	pub use crate::misc::derivable_custom_traits::{ToDiscriminant, TransitiveChild};
+	pub use crate::tool::tool_messages::*;
+	pub use crate::tool::tools::crop::{CropMessage, CropMessageDiscriminant};
+	pub use crate::tool::tools::eyedropper::{EyedropperMessage, EyedropperMessageDiscriminant};
+	pub use crate::tool::tools::fill::{FillMessage, FillMessageDiscriminant};
+	pub use crate::tool::tools::line::{LineMessage, LineMessageDiscriminant};
+	pub use crate::tool::tools::navigate::{NavigateMessage, NavigateMessageDiscriminant};
+	pub use crate::tool::tools::path::{PathMessage, PathMessageDiscriminant};
+	pub use crate::tool::tools::pen::{PenMessage, PenMessageDiscriminant};
+	pub use crate::tool::tools::rectangle::{RectangleMessage, RectangleMessageDiscriminant};
+	pub use crate::tool::tools::select::{SelectMessage, SelectMessageDiscriminant};
+	pub use crate::tool::tools::shape::{ShapeMessage, ShapeMessageDiscriminant};
 	pub use crate::LayerId;
 	pub use graphite_proc_macros::*;
 	pub use std::collections::VecDeque;
