@@ -150,7 +150,7 @@ impl DocumentMessageHandler {
 			.layer_data
 			.iter()
 			// 'path.len() > 0' filters out root layer since it has no indices
-			.filter_map(|(path, data)| (!path.is_empty() && selected.is_none() || (data.selected == selected.unwrap_or(data.selected))).then(|| path.clone()))
+			.filter_map(|(path, data)| (!path.is_empty() && (data.selected == selected.unwrap_or(data.selected))).then(|| path.clone()))
 			.filter_map(|path| {
 				// Currently it is possible that layer_data contains layers that are don't actually exist
 				// and thus indices_for_path can return an error. We currently skip these layers and log a warning.
