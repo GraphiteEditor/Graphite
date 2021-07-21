@@ -1,7 +1,8 @@
-use crate::input::{mouse::ViewportPosition, InputPreprocessor};
+use crate::input::InputPreprocessor;
 use crate::tool::{DocumentToolData, Fsm, ToolActionHandlerData};
-use crate::{message_prelude::*, SvgDocument};
+use crate::{document::Document, message_prelude::*};
 use document_core::{layers::style, Operation};
+use glam::DAffine2;
 
 #[derive(Default)]
 pub struct Pen {
@@ -46,14 +47,17 @@ impl Default for PenToolFsmState {
 }
 #[derive(Clone, Debug, Default)]
 struct PenToolData {
-	points: Vec<ViewportPosition>,
-	next_point: ViewportPosition,
+	points: Vec<DAffine2>,
+	next_point: DAffine2,
 }
 
 impl Fsm for PenToolFsmState {
 	type ToolData = PenToolData;
 
-	fn transition(self, event: ToolMessage, _document: &SvgDocument, tool_data: &DocumentToolData, data: &mut Self::ToolData, input: &InputPreprocessor, responses: &mut VecDeque<Message>) -> Self {
+	fn transition(self, event: ToolMessage, document: &Document, tool_data: &DocumentToolData, data: &mut Self::ToolData, input: &InputPreprocessor, responses: &mut VecDeque<Message>) -> Self {
+		let transform = document.document.root.transform;
+		let pos = transform.inverse() * DAffine2::from_translation(input.mouse.position.as_dvec2());
+
 		use PenMessage::*;
 		use PenToolFsmState::*;
 		if let ToolMessage::Pen(event) = event {
@@ -61,16 +65,16 @@ impl Fsm for PenToolFsmState {
 				(Ready, DragStart) => {
 					responses.push_back(Operation::MountWorkingFolder { path: vec![] }.into());
 
-					data.points.push(input.mouse.position);
-					data.next_point = input.mouse.position;
+					data.points.push(pos);
+					data.next_point = pos;
 
 					Dragging
 				}
 				(Dragging, DragStop) => {
 					// TODO - introduce comparison threshold when operating with canvas coordinates (https://github.com/GraphiteEditor/Graphite/issues/100)
-					if data.points.last() != Some(&input.mouse.position) {
-						data.points.push(input.mouse.position);
-						data.next_point = input.mouse.position;
+					if data.points.last() != Some(&pos) {
+						data.points.push(pos);
+						data.next_point = pos;
 					}
 
 					responses.push_back(Operation::ClearWorkingFolder.into());
@@ -79,7 +83,7 @@ impl Fsm for PenToolFsmState {
 					Dragging
 				}
 				(Dragging, MouseMove) => {
-					data.next_point = input.mouse.position;
+					data.next_point = pos;
 
 					responses.push_back(Operation::ClearWorkingFolder.into());
 					responses.push_back(make_operation(data, tool_data, true));
@@ -116,13 +120,14 @@ impl Fsm for PenToolFsmState {
 }
 
 fn make_operation(data: &PenToolData, tool_data: &DocumentToolData, show_preview: bool) -> Message {
-	let mut points: Vec<(f64, f64)> = data.points.iter().map(|p| (p.x as f64, p.y as f64)).collect();
+	let mut points: Vec<(f64, f64)> = data.points.iter().map(|p| (p.translation.x, p.translation.y)).collect();
 	if show_preview {
-		points.push((data.next_point.x as f64, data.next_point.y as f64))
+		points.push((data.next_point.translation.x, data.next_point.translation.y))
 	}
 	Operation::AddPen {
 		path: vec![],
 		insert_index: -1,
+		transform: DAffine2::IDENTITY.to_cols_array(),
 		points,
 		style: style::PathStyle::new(Some(style::Stroke::new(tool_data.primary_color, 5.)), Some(style::Fill::none())),
 	}

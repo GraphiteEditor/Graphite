@@ -5,7 +5,7 @@
 
 			<Separator :type="SeparatorType.Related" />
 
-			<NumberInput :value="100" :unit="`%`" />
+			<NumberInput v-model:value="opacity" :min="0" :max="100" :step="1" :unit="`%`" />
 
 			<Separator :type="SeparatorType.Related" />
 
@@ -14,7 +14,7 @@
 				<p>More blend and compositing options will be here</p>
 			</PopoverButton>
 		</LayoutRow>
-		<LayoutRow :class="'layer-tree'">
+		<LayoutRow :class="'layer-tree scrollable-y'">
 			<LayoutCol :class="'list'">
 				<div class="layer-row" v-for="layer in layers" :key="layer.path">
 					<div class="layer-visibility">
@@ -28,9 +28,9 @@
 						@click.alt.exact="handleControlClick(layer)"
 						@click.exact="handleClick(layer)"
 					>
-						<div class="layer-thumbnail"></div>
+						<div class="layer-thumbnail" v-html="layer.thumbnail"></div>
 						<div class="layer-type-icon">
-							<Icon :icon="'NodeTypePath'" title="Path" />
+							<IconLabel :icon="'NodeTypePath'" title="Path" />
 						</div>
 						<div class="layer-name">
 							<span>{{ layer.name }}</span>
@@ -62,8 +62,6 @@
 	}
 
 	.layer-tree {
-		overflow: auto;
-
 		.layer-row {
 			display: flex;
 			height: 36px;
@@ -94,6 +92,12 @@
 				width: 64px;
 				height: 100%;
 				background: white;
+
+				svg {
+					width: calc(100% - 4px);
+					height: calc(100% - 4px);
+					margin: 2px;
+				}
 			}
 
 			.layer-type-icon {
@@ -106,19 +110,19 @@
 
 <script lang="ts">
 import { defineComponent } from "vue";
-import { ResponseType, registerResponseHandler, Response, ExpandFolder, LayerPanelEntry } from "../../response-handler";
-import LayoutRow from "../layout/LayoutRow.vue";
-import LayoutCol from "../layout/LayoutCol.vue";
-import Separator, { SeparatorType } from "../widgets/Separator.vue";
-import NumberInput from "../widgets/inputs/NumberInput.vue";
-import PopoverButton from "../widgets/buttons/PopoverButton.vue";
-import { MenuDirection } from "../widgets/floating-menus/FloatingMenu.vue";
-import IconButton from "../widgets/buttons/IconButton.vue";
-import Icon from "../widgets/labels/Icon.vue";
-import DropdownInput from "../widgets/inputs/DropdownInput.vue";
-import { SectionsOfMenuListEntries } from "../widgets/floating-menus/MenuList.vue";
+import { ResponseType, registerResponseHandler, Response, ExpandFolder, LayerPanelEntry } from "@/utilities/response-handler";
+import LayoutRow from "@/components/layout/LayoutRow.vue";
+import LayoutCol from "@/components/layout/LayoutCol.vue";
+import Separator, { SeparatorType } from "@/components/widgets/separators/Separator.vue";
+import NumberInput from "@/components/widgets/inputs/NumberInput.vue";
+import PopoverButton from "@/components/widgets/buttons/PopoverButton.vue";
+import { MenuDirection } from "@/components/widgets/floating-menus/FloatingMenu.vue";
+import IconButton from "@/components/widgets/buttons/IconButton.vue";
+import IconLabel from "@/components/widgets/labels/IconLabel.vue";
+import DropdownInput from "@/components/widgets/inputs/DropdownInput.vue";
+import { SectionsOfMenuListEntries } from "@/components/widgets/floating-menus/MenuList.vue";
 
-const wasm = import("../../../wasm/pkg");
+const wasm = import("@/../wasm/pkg");
 
 export default defineComponent({
 	props: {},
@@ -153,7 +157,6 @@ export default defineComponent({
 			this.fillSelectionRange(this.selectionRangeStartLayer, this.selectionRangeEndLayer, true);
 			this.updateSelection();
 		},
-
 		async handleClick(clickedLayer: LayerPanelEntry) {
 			this.selectionRangeStartLayer = clickedLayer;
 			this.selectionRangeEndLayer = clickedLayer;
@@ -212,42 +215,12 @@ export default defineComponent({
 	},
 	data() {
 		const blendModeMenuEntries: SectionsOfMenuListEntries = [
-			[{ id: "normal", label: "Normal" }],
-			[
-				{ id: "multiply", label: "Multiply" },
-				{ id: "darken", label: "Darken" },
-				{ id: "color_burn", label: "Color Burn" },
-				{ id: "linear_burn", label: "Linear Burn" },
-				{ id: "darker_color", label: "Darker Color" },
-			],
-			[
-				{ id: "screen", label: "Screen" },
-				{ id: "lighten", label: "Lighten" },
-				{ id: "color_dodge", label: "Color Dodge" },
-				{ id: "linear_dodge_(add)", label: "Linear Dodge (Add)" },
-				{ id: "lighter_color", label: "Lighter Color" },
-			],
-			[
-				{ id: "overlay", label: "Overlay" },
-				{ id: "soft_light", label: "Soft Light" },
-				{ id: "hard_light", label: "Hard Light" },
-				{ id: "vivid_light", label: "Vivid Light" },
-				{ id: "linear_light", label: "Linear Light" },
-				{ id: "pin_light", label: "Pin Light" },
-				{ id: "hard_mix", label: "Hard Mix" },
-			],
-			[
-				{ id: "difference", label: "Difference" },
-				{ id: "exclusion", label: "Exclusion" },
-				{ id: "subtract", label: "Subtract" },
-				{ id: "divide", label: "Divide" },
-			],
-			[
-				{ id: "hue", label: "Hue" },
-				{ id: "saturation", label: "Saturation" },
-				{ id: "color", label: "Color" },
-				{ id: "luminosity", label: "Luminosity" },
-			],
+			[{ label: "Normal" }],
+			[{ label: "Multiply" }, { label: "Darken" }, { label: "Color Burn" }, { label: "Linear Burn" }, { label: "Darker Color" }],
+			[{ label: "Screen" }, { label: "Lighten" }, { label: "Color Dodge" }, { label: "Linear Dodge (Add)" }, { label: "Lighter Color" }],
+			[{ label: "Overlay" }, { label: "Soft Light" }, { label: "Hard Light" }, { label: "Vivid Light" }, { label: "Linear Light" }, { label: "Pin Light" }, { label: "Hard Mix" }],
+			[{ label: "Difference" }, { label: "Exclusion" }, { label: "Subtract" }, { label: "Divide" }],
+			[{ label: "Hue" }, { label: "Saturation" }, { label: "Color" }, { label: "Luminosity" }],
 		];
 		return {
 			blendModeMenuEntries,
@@ -256,6 +229,7 @@ export default defineComponent({
 			layers: [] as Array<LayerPanelEntry>,
 			selectionRangeStartLayer: undefined as LayerPanelEntry | undefined,
 			selectionRangeEndLayer: undefined as LayerPanelEntry | undefined,
+			opacity: 100,
 		};
 	},
 	components: {
@@ -265,7 +239,7 @@ export default defineComponent({
 		PopoverButton,
 		NumberInput,
 		IconButton,
-		Icon,
+		IconLabel,
 		DropdownInput,
 	},
 });

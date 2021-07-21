@@ -1,14 +1,15 @@
+import { reactive } from "vue";
+
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 type ResponseCallback = (responseData: Response) => void;
 type ResponseMap = {
 	[response: string]: ResponseCallback | undefined;
 };
-declare global {
-	interface Window {
-		responseMap: ResponseMap;
-	}
-}
+
+const state = reactive({
+	responseMap: {} as ResponseMap,
+});
 
 export enum ResponseType {
 	UpdateCanvas = "UpdateCanvas",
@@ -17,21 +18,21 @@ export enum ResponseType {
 	CollapseFolder = "CollapseFolder",
 	SetActiveTool = "SetActiveTool",
 	SetActiveDocument = "SetActiveDocument",
-	NewDocument = "NewDocument",
+	UpdateOpenDocumentsList = "UpdateOpenDocumentsList",
 	UpdateWorkingColors = "UpdateWorkingColors",
-}
-
-export function attachResponseHandlerToPage() {
-	window.responseMap = {};
+	SetCanvasZoom = "SetCanvasZoom",
+	SetCanvasRotation = "SetCanvasRotation",
+	DisplayConfirmationToCloseDocument = "DisplayConfirmationToCloseDocument",
+	DisplayConfirmationToCloseAllDocuments = "DisplayConfirmationToCloseAllDocuments",
 }
 
 export function registerResponseHandler(responseType: ResponseType, callback: ResponseCallback) {
-	window.responseMap[responseType] = callback;
+	state.responseMap[responseType] = callback;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function handleResponse(responseType: string, responseData: any) {
-	const callback = window.responseMap[responseType];
+	const callback = state.responseMap[responseType];
 	const data = parseResponse(responseType, responseData);
 
 	if (callback && data) {
@@ -56,20 +57,35 @@ function parseResponse(responseType: string, data: any): Response {
 			return newSetActiveTool(data.SetActiveTool);
 		case "SetActiveDocument":
 			return newSetActiveDocument(data.SetActiveDocument);
-		case "NewDocument":
-			return newNewDocument(data.NewDocument);
+		case "UpdateOpenDocumentsList":
+			return newUpdateOpenDocumentsList(data.UpdateOpenDocumentsList);
 		case "UpdateCanvas":
 			return newUpdateCanvas(data.UpdateCanvas);
+		case "SetCanvasZoom":
+			return newSetCanvasZoom(data.SetCanvasZoom);
+		case "SetCanvasRotation":
+			return newSetCanvasRotation(data.SetCanvasRotation);
 		case "ExportDocument":
 			return newExportDocument(data.ExportDocument);
 		case "UpdateWorkingColors":
 			return newUpdateWorkingColors(data.UpdateWorkingColors);
+		case "DisplayConfirmationToCloseDocument":
+			return newDisplayConfirmationToCloseDocument(data.DisplayConfirmationToCloseDocument);
+		case "DisplayConfirmationToCloseAllDocuments":
+			return newDisplayConfirmationToCloseAllDocuments(data.DisplayConfirmationToCloseAllDocuments);
 		default:
-			throw new Error(`Unrecognized origin/responseType pair: ${origin}, ${responseType}`);
+			throw new Error(`Unrecognized origin/responseType pair: ${origin}, '${responseType}'`);
 	}
 }
 
-export type Response = SetActiveTool | UpdateCanvas | DocumentChanged | CollapseFolder | ExpandFolder | UpdateWorkingColors;
+export type Response = SetActiveTool | UpdateCanvas | DocumentChanged | CollapseFolder | ExpandFolder | UpdateWorkingColors | SetCanvasZoom | SetCanvasRotation;
+
+export interface UpdateOpenDocumentsList {
+	open_documents: Array<string>;
+}
+function newUpdateOpenDocumentsList(input: any): UpdateOpenDocumentsList {
+	return { open_documents: input.open_documents };
+}
 
 export interface Color {
 	red: number;
@@ -78,7 +94,8 @@ export interface Color {
 	alpha: number;
 }
 function newColor(input: any): Color {
-	return { red: input.red * 255, green: input.green * 255, blue: input.blue * 255, alpha: input.alpha * 255 };
+	// TODO: Possibly change this in the Rust side to avoid any pitfalls
+	return { red: input.red * 255, green: input.green * 255, blue: input.blue * 255, alpha: input.alpha };
 }
 
 export interface UpdateWorkingColors {
@@ -110,13 +127,17 @@ function newSetActiveDocument(input: any): SetActiveDocument {
 	};
 }
 
-export interface NewDocument {
-	document_name: string;
+export interface DisplayConfirmationToCloseDocument {
+	document_index: number;
 }
-function newNewDocument(input: any): NewDocument {
+function newDisplayConfirmationToCloseDocument(input: any): DisplayConfirmationToCloseDocument {
 	return {
-		document_name: input.document_name,
+		document_index: input.document_index,
 	};
+}
+
+function newDisplayConfirmationToCloseAllDocuments(_input: any): {} {
+	return {};
 }
 
 export interface UpdateCanvas {
@@ -162,12 +183,31 @@ function newExpandFolder(input: any): ExpandFolder {
 	};
 }
 
+export interface SetCanvasZoom {
+	new_zoom: number;
+}
+function newSetCanvasZoom(input: any): SetCanvasZoom {
+	return {
+		new_zoom: input.new_zoom,
+	};
+}
+
+export interface SetCanvasRotation {
+	new_radians: number;
+}
+function newSetCanvasRotation(input: any): SetCanvasRotation {
+	return {
+		new_radians: input.new_radians,
+	};
+}
+
 export interface LayerPanelEntry {
 	name: string;
 	visible: boolean;
 	layer_type: LayerType;
 	path: BigUint64Array;
 	layer_data: LayerData;
+	thumbnail: string;
 }
 function newLayerPanelEntry(input: any): LayerPanelEntry {
 	return {
@@ -176,6 +216,7 @@ function newLayerPanelEntry(input: any): LayerPanelEntry {
 		layer_type: newLayerType(input.layer_type),
 		layer_data: newLayerData(input.layer_data),
 		path: new BigUint64Array(input.path.map((n: number) => BigInt(n))),
+		thumbnail: input.thumbnail,
 	};
 }
 

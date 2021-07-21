@@ -17,9 +17,9 @@
 	"license": "Apache-2.0",
 	"homepage": "https://www.graphite.design",
 	"dependencies": {
-		"vue": "^3.0.11",
+		"vue": "~3.0.11",
 		"vue-class-component": "^8.0.0-0",
-		"vue-loader": "^16.2.0"
+		"vue-loader": "~16.2.0"
 	},
 	"devDependencies": {
 		"@typescript-eslint/eslint-plugin": "^2.33.0",
@@ -27,23 +27,23 @@
 		"@vue/cli-plugin-eslint": "^4.5.13",
 		"@vue/cli-plugin-typescript": "^4.5.13",
 		"@vue/cli-service": "^4.5.13",
-		"@vue/compiler-sfc": "^3.0.11",
+		"@vue/compiler-sfc": "~3.0.11",
 		"@vue/eslint-config-airbnb": "^5.0.2",
 		"@vue/eslint-config-typescript": "^5.0.2",
 		"@wasm-tool/wasm-pack-plugin": "github:wasm-tool/wasm-pack-plugin",
 		"eslint": "^6.8.0",
 		"eslint-config-prettier": "^8.3.0",
-		"eslint-plugin-import": "^2.23.1",
-		"eslint-plugin-prettier-vue": "^3.0.0",
-		"eslint-plugin-vue": "^7.9.0",
+		"eslint-plugin-import": "^2.23.4",
+		"eslint-plugin-prettier-vue": "^3.1.0",
+		"eslint-plugin-vue": "^7.12.1",
 		"lint-staged": "^9.5.0",
-		"prettier": "^2.3.0",
-		"sass": "^1.32.13",
+		"prettier": "^2.3.2",
+		"sass": "^1.35.1",
 		"sass-loader": "^8.0.2",
-		"typescript": "^4.2.0",
+		"typescript": "^4.3.5",
 		"vue-svg-loader": "^0.17.0-beta.2",
-		"vue-template-compiler": "^2.6.12",
-		"wasm-pack": "^0.9.1"
+		"vue-template-compiler": "~2.6.12",
+		"wasm-pack": "~0.9.1"
 	},
 	"gitHooks": {
 		"pre-commit": "lint-staged"

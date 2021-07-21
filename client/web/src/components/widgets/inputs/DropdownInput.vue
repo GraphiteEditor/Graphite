@@ -1,17 +1,17 @@
 <template>
 	<div class="dropdown-input">
 		<div class="dropdown-box" :style="{ minWidth: `${minWidth}px` }" @click="clickDropdownBox" data-hover-menu-spawner>
-			<Icon :class="'dropdown-icon'" :icon="activeEntry.icon" v-if="activeEntry.icon" />
+			<IconLabel :class="'dropdown-icon'" :icon="activeEntry.icon" v-if="activeEntry.icon" />
 			<span>{{ activeEntry.label }}</span>
-			<Icon :class="'dropdown-arrow'" :icon="'DropdownArrow'" />
+			<IconLabel :class="'dropdown-arrow'" :icon="'DropdownArrow'" />
 		</div>
 		<MenuList
 			:menuEntries="menuEntries"
-			:activeEntry="activeEntry"
-			:defaultAction="setActiveEntry"
+			v-model:active-entry="activeEntry"
 			:direction="MenuDirection.Bottom"
-			:widthChanged="widthChanged"
+			@width-changed="onWidthChanged"
 			:drawIcon="drawIcon"
+			:scrollable="true"
 			ref="menuList"
 		/>
 	</div>
@@ -70,16 +70,15 @@
 
 	.menu-list .floating-menu-container .floating-menu-content {
 		max-height: 400px;
-		overflow-y: auto;
 	}
 }
 </style>
 
 <script lang="ts">
 import { defineComponent, PropType } from "vue";
-import Icon from "../labels/Icon.vue";
-import MenuList, { MenuListEntry, SectionsOfMenuListEntries } from "../floating-menus/MenuList.vue";
-import { MenuDirection } from "../floating-menus/FloatingMenu.vue";
+import IconLabel from "@/components/widgets/labels/IconLabel.vue";
+import MenuList, { MenuListEntry, SectionsOfMenuListEntries } from "@/components/widgets/floating-menus/MenuList.vue";
+import { MenuDirection } from "@/components/widgets/floating-menus/FloatingMenu.vue";
 
 export default defineComponent({
 	props: {
@@ -104,12 +103,12 @@ export default defineComponent({
 
 			this.callbackOnChange(newActiveEntry.id);
 		},
-		widthChanged(newWidth: number) {
+		onWidthChanged(newWidth: number) {
 			this.minWidth = newWidth;
 		},
 	},
 	components: {
-		Icon,
+		IconLabel,
 		MenuList,
 	},
 });

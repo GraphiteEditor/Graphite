@@ -35,13 +35,22 @@
 			fill: var(--color-f-white);
 		}
 	}
+
+	// TODO: Refactor this and other complicated cases dealing with joined widget margins and border-radius by adding a single standard set of classes: joined-first, joined-inner, and joined-last
+	div[class*="-input"] + & {
+		margin-left: 1px;
+
+		.icon-button {
+			border-radius: 0 2px 2px 0;
+		}
+	}
 }
 </style>
 
 <script lang="ts">
 import { defineComponent } from "vue";
-import IconButton from "./IconButton.vue";
-import FloatingMenu, { MenuDirection, MenuType } from "../floating-menus/FloatingMenu.vue";
+import IconButton from "@/components/widgets/buttons/IconButton.vue";
+import FloatingMenu, { MenuDirection, MenuType } from "@/components/widgets/floating-menus/FloatingMenu.vue";
 
 export enum PopoverButtonIcon {
 	"DropdownArrow" = "DropdownArrow",

@@ -2,7 +2,7 @@
 	<div class="floating-menu" :class="[direction.toLowerCase(), type.toLowerCase()]" v-if="open" ref="floatingMenu">
 		<div class="tail" v-if="type === MenuType.Popover"></div>
 		<div class="floating-menu-container" ref="floatingMenuContainer">
-			<div class="floating-menu-content" ref="floatingMenuContent" :style="{ minWidth: minWidth > 0 ? `${minWidth}px` : undefined }">
+			<div class="floating-menu-content" :class="{ 'scrollable-y': scrollable }" ref="floatingMenuContent" :style="floatingMenuContentStyle">
 				<slot></slot>
 			</div>
 		</div>
@@ -193,6 +193,7 @@ export default defineComponent({
 		type: { type: String, required: true },
 		windowEdgeMargin: { type: Number, default: 8 },
 		minWidth: { type: Number, default: 0 },
+		scrollable: { type: Boolean, default: false },
 	},
 	data() {
 		return {
@@ -348,6 +349,13 @@ export default defineComponent({
 				window.removeEventListener("mousemove", this.mouseMoveHandler);
 				window.removeEventListener("mousedown", this.mouseDownHandler);
 			}
+		},
+	},
+	computed: {
+		floatingMenuContentStyle(): Partial<CSSStyleDeclaration> {
+			return {
+				minWidth: this.minWidth > 0 ? `${this.minWidth}px` : "",
+			};
 		},
 	},
 });

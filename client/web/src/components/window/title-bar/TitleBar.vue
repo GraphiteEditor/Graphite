@@ -8,6 +8,7 @@
 	</div>
 	<div class="header-third">
 		<WindowButtonsWindows :maximized="maximized" v-if="platform === ApplicationPlatform.Windows || platform === ApplicationPlatform.Linux" />
+		<WindowButtonsWeb :maximized="maximized" v-if="platform === ApplicationPlatform.Web" />
 	</div>
 </template>
 
@@ -32,19 +33,14 @@
 
 <script lang="ts">
 import { defineComponent } from "vue";
-import MenuBarInput from "../../widgets/inputs/MenuBarInput.vue";
-import WindowTitle from "./WindowTitle.vue";
-import WindowButtonsWindows from "./WindowButtonsWindows.vue";
-import WindowButtonsMac from "./WindowButtonsMac.vue";
-import { ApplicationPlatform } from "../MainWindow.vue";
+import WindowTitle from "@/components/window/title-bar/WindowTitle.vue";
+import WindowButtonsWindows from "@/components/window/title-bar/WindowButtonsWindows.vue";
+import WindowButtonsMac from "@/components/window/title-bar/WindowButtonsMac.vue";
+import WindowButtonsWeb from "@/components/window/title-bar/WindowButtonsWeb.vue";
+import MenuBarInput from "@/components/widgets/inputs/MenuBarInput.vue";
+import { ApplicationPlatform } from "@/components/window/MainWindow.vue";
 
 export default defineComponent({
-	components: {
-		MenuBarInput,
-		WindowTitle,
-		WindowButtonsWindows,
-		WindowButtonsMac,
-	},
 	props: {
 		platform: { type: String, required: true },
 		maximized: { type: Boolean, required: true },
@@ -53,6 +49,13 @@ export default defineComponent({
 		return {
 			ApplicationPlatform,
 		};
+	},
+	components: {
+		MenuBarInput,
+		WindowTitle,
+		WindowButtonsWindows,
+		WindowButtonsMac,
+		WindowButtonsWeb,
 	},
 });
 </script>

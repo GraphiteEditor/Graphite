@@ -3,8 +3,8 @@ use document_core::color::Color;
 
 use crate::input::InputPreprocessor;
 use crate::{
-	tool::{ToolFsmState, ToolType},
-	SvgDocument,
+	document::Document,
+	tool::{tool_options::ToolOptions, ToolFsmState, ToolType},
 };
 use std::collections::VecDeque;
 
@@ -16,6 +16,9 @@ pub enum ToolMessage {
 	SelectSecondaryColor(Color),
 	SwapColors,
 	ResetColors,
+	SetToolOptions(ToolType, ToolOptions),
+	#[child]
+	Fill(FillMessage),
 	#[child]
 	Rectangle(RectangleMessage),
 	#[child]
@@ -42,8 +45,8 @@ pub enum ToolMessage {
 pub struct ToolMessageHandler {
 	tool_state: ToolFsmState,
 }
-impl MessageHandler<ToolMessage, (&SvgDocument, &InputPreprocessor)> for ToolMessageHandler {
-	fn process_action(&mut self, message: ToolMessage, data: (&SvgDocument, &InputPreprocessor), responses: &mut VecDeque<Message>) {
+impl MessageHandler<ToolMessage, (&Document, &InputPreprocessor)> for ToolMessageHandler {
+	fn process_action(&mut self, message: ToolMessage, data: (&Document, &InputPreprocessor), responses: &mut VecDeque<Message>) {
 		let (document, input) = data;
 		use ToolMessage::*;
 		match message {
@@ -87,8 +90,12 @@ impl MessageHandler<ToolMessage, (&SvgDocument, &InputPreprocessor)> for ToolMes
 					.into(),
 				)
 			}
+			SetToolOptions(tool_type, tool_options) => {
+				self.tool_state.document_tool_data.tool_options.insert(tool_type, tool_options);
+			}
 			message => {
 				let tool_type = match message {
+					Fill(_) => ToolType::Fill,
 					Rectangle(_) => ToolType::Rectangle,
 					Ellipse(_) => ToolType::Ellipse,
 					Shape(_) => ToolType::Shape,
@@ -108,7 +115,7 @@ impl MessageHandler<ToolMessage, (&SvgDocument, &InputPreprocessor)> for ToolMes
 		}
 	}
 	fn actions(&self) -> ActionList {
-		let mut list = actions!(ToolMessageDiscriminant; ResetColors, SwapColors, SelectTool);
+		let mut list = actions!(ToolMessageDiscriminant; ResetColors, SwapColors, SelectTool, SetToolOptions);
 		list.extend(self.tool_state.tool_data.active_tool().actions());
 		list
 	}

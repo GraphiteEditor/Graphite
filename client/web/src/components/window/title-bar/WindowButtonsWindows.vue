@@ -1,15 +1,15 @@
 <template>
 	<div class="windows window-button minimize" title="Minimize">
-		<Icon :icon="'WindowButtonWinMinimize'" />
+		<IconLabel :icon="'WindowButtonWinMinimize'" />
 	</div>
 	<div class="windows window-button maximize" title="Maximize" v-if="!maximized">
-		<Icon :icon="'WindowButtonWinMaximize'" />
+		<IconLabel :icon="'WindowButtonWinMaximize'" />
 	</div>
 	<div class="windows window-button restore-down" title="Restore Down" v-if="maximized">
-		<Icon :icon="'WindowButtonWinRestoreDown'" />
+		<IconLabel :icon="'WindowButtonWinRestoreDown'" />
 	</div>
 	<div class="windows window-button close" title="Close">
-		<Icon :icon="'WindowButtonWinClose'" />
+		<IconLabel :icon="'WindowButtonWinClose'" />
 	</div>
 </template>
 
@@ -39,10 +39,10 @@
 
 <script lang="ts">
 import { defineComponent } from "vue";
-import Icon from "../../widgets/labels/Icon.vue";
+import IconLabel from "@/components/widgets/labels/IconLabel.vue";
 
 export default defineComponent({
-	components: { Icon },
+	components: { IconLabel },
 	props: {
 		maximized: { type: Boolean, default: false },
 	},

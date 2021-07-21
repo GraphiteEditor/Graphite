@@ -29,16 +29,18 @@
 
 .status-bar-row {
 	flex: 0 0 auto;
+	// Prevents the creation of a scrollbar due to the child's negative margin
+	overflow: hidden;
 }
 </style>
 
 <script lang="ts">
 import { defineComponent } from "vue";
-import LayoutRow from "../layout/LayoutRow.vue";
-import LayoutCol from "../layout/LayoutCol.vue";
-import Workspace from "../workspace/Workspace.vue";
-import TitleBar from "./title-bar/TitleBar.vue";
-import StatusBar from "./status-bar/StatusBar.vue";
+import TitleBar from "@/components/window/title-bar/TitleBar.vue";
+import StatusBar from "@/components/window/status-bar/StatusBar.vue";
+import LayoutRow from "@/components/layout/LayoutRow.vue";
+import LayoutCol from "@/components/layout/LayoutCol.vue";
+import Workspace from "@/components/workspace/Workspace.vue";
 
 export enum ApplicationPlatform {
 	"Windows" = "Windows",
@@ -57,7 +59,7 @@ export default defineComponent({
 	},
 	data() {
 		return {
-			platform: ApplicationPlatform.Windows,
+			platform: ApplicationPlatform.Web,
 			maximized: true,
 		};
 	},

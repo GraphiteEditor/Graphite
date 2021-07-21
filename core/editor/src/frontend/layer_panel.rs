@@ -3,13 +3,14 @@ use document_core::{layers::LayerDataTypes, LayerId};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct LayerPanelEntry {
 	pub name: String,
 	pub visible: bool,
 	pub layer_type: LayerType,
 	pub layer_data: LayerData,
 	pub path: Vec<LayerId>,
+	pub thumbnail: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
@@ -45,7 +46,6 @@ impl From<&LayerDataTypes> for LayerType {
 		match data {
 			Folder(_) => LayerType::Folder,
 			Shape(_) => LayerType::Shape,
-			Circle(_) => LayerType::Circle,
 			Rect(_) => LayerType::Rect,
 			Line(_) => LayerType::Line,
 			PolyLine(_) => LayerType::PolyLine,

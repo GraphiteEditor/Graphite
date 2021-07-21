@@ -1,10 +1,10 @@
 pub mod tool_message_handler;
-pub mod tool_settings;
+pub mod tool_options;
 pub mod tools;
 
+use crate::document::Document;
 use crate::input::InputPreprocessor;
 use crate::message_prelude::*;
-use crate::SvgDocument;
 use crate::{
 	communication::{message::Message, MessageHandler},
 	Color,
@@ -15,8 +15,8 @@ use std::{
 	fmt::{self, Debug},
 };
 pub use tool_message_handler::ToolMessageHandler;
-use tool_settings::ToolSettings;
-pub use tool_settings::*;
+use tool_options::ToolOptions;
+pub use tool_options::*;
 use tools::*;
 
 pub mod tool_messages {
@@ -25,19 +25,19 @@ pub mod tool_messages {
 	pub use super::tools::rectangle::{RectangleMessage, RectangleMessageDiscriminant};
 }
 
-pub type ToolActionHandlerData<'a> = (&'a SvgDocument, &'a DocumentToolData, &'a InputPreprocessor);
+pub type ToolActionHandlerData<'a> = (&'a Document, &'a DocumentToolData, &'a InputPreprocessor);
 
 pub trait Fsm {
 	type ToolData;
 
-	fn transition(self, message: ToolMessage, document: &SvgDocument, tool_data: &DocumentToolData, data: &mut Self::ToolData, input: &InputPreprocessor, messages: &mut VecDeque<Message>) -> Self;
+	fn transition(self, message: ToolMessage, document: &Document, tool_data: &DocumentToolData, data: &mut Self::ToolData, input: &InputPreprocessor, messages: &mut VecDeque<Message>) -> Self;
 }
 
 #[derive(Debug, Clone)]
 pub struct DocumentToolData {
 	pub primary_color: Color,
 	pub secondary_color: Color,
-	tool_settings: HashMap<ToolType, ToolSettings>,
+	pub tool_options: HashMap<ToolType, ToolOptions>,
 }
 
 type SubToolMessageHandler = dyn for<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>>;
@@ -48,7 +48,7 @@ pub struct ToolData {
 
 impl fmt::Debug for ToolData {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		f.debug_struct("ToolData").field("active_tool_type", &self.active_tool_type).field("tool_settings", &"[…]").finish()
+		f.debug_struct("ToolData").field("active_tool_type", &self.active_tool_type).field("tool_options", &"[…]").finish()
 	}
 }
 
@@ -83,12 +83,13 @@ impl Default for ToolFsmState {
 					Line => line::Line,
 					Shape => shape::Shape,
 					Ellipse => ellipse::Ellipse,
+					Fill => fill::Fill,
 				},
 			},
 			document_tool_data: DocumentToolData {
 				primary_color: Color::BLACK,
 				secondary_color: Color::WHITE,
-				tool_settings: default_tool_settings(),
+				tool_options: default_tool_options(),
 			},
 		}
 	}
@@ -104,8 +105,8 @@ impl ToolFsmState {
 	}
 }
 
-fn default_tool_settings() -> HashMap<ToolType, ToolSettings> {
-	let tool_init = |tool: ToolType| (tool, tool.default_settings());
+fn default_tool_options() -> HashMap<ToolType, ToolOptions> {
+	let tool_init = |tool: ToolType| (tool, tool.default_options());
 	std::array::IntoIter::new([
 		tool_init(ToolType::Select),
 		tool_init(ToolType::Ellipse),
@@ -173,12 +174,12 @@ impl fmt::Display for ToolType {
 }
 
 impl ToolType {
-	fn default_settings(&self) -> ToolSettings {
+	fn default_options(&self) -> ToolOptions {
 		match self {
-			ToolType::Select => ToolSettings::Select { append_mode: SelectAppendMode::New },
-			ToolType::Ellipse => ToolSettings::Ellipse,
-			ToolType::Shape => ToolSettings::Shape {
-				shape: Shape::Polygon { vertices: 3 },
+			ToolType::Select => ToolOptions::Select { append_mode: SelectAppendMode::New },
+			ToolType::Ellipse => ToolOptions::Ellipse,
+			ToolType::Shape => ToolOptions::Shape {
+				shape_type: ShapeType::Polygon { vertices: 6 },
 			},
 			_ => todo!(),
 		}

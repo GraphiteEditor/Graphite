@@ -12,6 +12,8 @@ mod global;
 pub mod input;
 pub mod tool;
 
+pub mod consts;
+
 #[doc(inline)]
 pub use misc::EditorError;
 
@@ -58,6 +60,7 @@ pub mod message_prelude {
 	pub use super::tool::tool_messages::*;
 	pub use super::tool::tools::crop::{CropMessage, CropMessageDiscriminant};
 	pub use super::tool::tools::eyedropper::{EyedropperMessage, EyedropperMessageDiscriminant};
+	pub use super::tool::tools::fill::{FillMessage, FillMessageDiscriminant};
 	pub use super::tool::tools::line::{LineMessage, LineMessageDiscriminant};
 	pub use super::tool::tools::navigate::{NavigateMessage, NavigateMessageDiscriminant};
 	pub use super::tool::tools::path::{PathMessage, PathMessageDiscriminant};

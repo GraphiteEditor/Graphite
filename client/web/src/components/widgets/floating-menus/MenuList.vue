@@ -1,5 +1,5 @@
 <template>
-	<FloatingMenu :class="'menu-list'" :direction="direction" :type="MenuType.Dropdown" ref="floatingMenu" :windowEdgeMargin="0" data-hover-menu-keep-open>
+	<FloatingMenu :class="'menu-list'" :direction="direction" :type="MenuType.Dropdown" ref="floatingMenu" :windowEdgeMargin="0" :scrollable="scrollable" data-hover-menu-keep-open>
 		<template v-for="(section, sectionIndex) in menuEntries" :key="sectionIndex">
 			<Separator :type="SeparatorType.List" :direction="SeparatorDirection.Vertical" v-if="sectionIndex > 0" />
 			<div
@@ -12,20 +12,18 @@
 				@mouseleave="handleEntryMouseLeave(entry)"
 				:data-hover-menu-spawner-extend="entry.children && []"
 			>
-				<Icon :icon="entry.icon" v-if="entry.icon && drawIcon" />
+				<IconLabel :icon="entry.icon" v-if="entry.icon && drawIcon" />
 				<div class="no-icon" v-else-if="drawIcon" />
 				<span class="entry-label">{{ entry.label }}</span>
-				<UserInputLabel v-if="entry.shortcut && entry.shortcut.length" :inputKeys="[entry.shortcut]" />
+				<IconLabel :icon="'Info'" v-if="entry.shortcutRequiresLock && !fullscreen.keyboardLocked" :title="keyboardLockInfoMessage" />
+				<UserInputLabel v-else-if="entry.shortcut && entry.shortcut.length" :inputKeys="[entry.shortcut]" />
 				<div class="submenu-arrow" v-if="entry.children && entry.children.length"></div>
 				<div class="no-submenu-arrow" v-else></div>
 				<MenuList
 					v-if="entry.children"
 					:direction="MenuDirection.TopRight"
 					:menuEntries="entry.children"
-					:activeEntry="activeEntry"
-					:minWidth="minWidth"
-					:defaultAction="defaultAction"
-					:drawIcon="drawIcon"
+					v-bind="{ defaultAction, minWidth, drawIcon, scrollable }"
 					:ref="(ref) => setEntryRefs(entry, ref)"
 				/>
 			</div>
@@ -52,7 +50,7 @@
 				flex: 0 0 auto;
 			}
 
-			.icon svg {
+			.icon-label svg {
 				fill: var(--color-e-nearwhite);
 			}
 
@@ -65,7 +63,7 @@
 				margin-left: 8px;
 			}
 
-			.icon,
+			.icon-label,
 			.no-icon {
 				margin: 0 4px;
 
@@ -121,35 +119,40 @@
 
 <script lang="ts">
 import { defineComponent, PropType } from "vue";
-import FloatingMenu, { MenuDirection, MenuType } from "./FloatingMenu.vue";
-import Separator, { SeparatorDirection, SeparatorType } from "../Separator.vue";
-import Icon from "../labels/Icon.vue";
-import UserInputLabel from "../labels/UserInputLabel.vue";
+import { keyboardLockApiSupported } from "@/utilities/fullscreen";
+import FloatingMenu, { MenuDirection, MenuType } from "@/components/widgets/floating-menus/FloatingMenu.vue";
+import Separator, { SeparatorDirection, SeparatorType } from "@/components/widgets/separators/Separator.vue";
+import IconLabel from "@/components/widgets/labels/IconLabel.vue";
+import UserInputLabel from "@/components/widgets/labels/UserInputLabel.vue";
 
 export type MenuListEntries = Array<MenuListEntry>;
 export type SectionsOfMenuListEntries = Array<MenuListEntries>;
 
 interface MenuListEntryData {
-	id: string;
 	label?: string;
 	icon?: string;
 	// TODO: Add `checkbox` (which overrides any `icon`)
 	shortcut?: Array<string>;
+	shortcutRequiresLock?: boolean;
 	action?: Function;
 	children?: SectionsOfMenuListEntries;
 }
 
 export type MenuListEntry = MenuListEntryData & { ref?: typeof FloatingMenu | typeof MenuList };
 
+const KEYBOARD_LOCK_USE_FULLSCREEN = "This hotkey is reserved by the browser, but becomes available in fullscreen mode";
+const KEYBOARD_LOCK_SWITCH_BROWSER = "This hotkey is reserved by the browser, but becomes available in Chrome, Edge, and Opera which support the Keyboard.lock() API";
+
 const MenuList = defineComponent({
+	inject: ["fullscreen"],
 	props: {
 		direction: { type: String as PropType<MenuDirection>, default: MenuDirection.Bottom },
 		menuEntries: { type: Array as PropType<SectionsOfMenuListEntries>, required: true },
 		activeEntry: { type: Object as PropType<MenuListEntry>, required: false },
+		defaultAction: { type: Function as PropType<Function | undefined>, required: false },
 		minWidth: { type: Number, default: 0 },
-		defaultAction: { type: Function, required: false },
-		widthChanged: { type: Function, required: false },
 		drawIcon: { type: Boolean, default: false },
+		scrollable: { type: Boolean, default: false },
 	},
 	methods: {
 		setEntryRefs(menuEntry: MenuListEntry, ref: typeof FloatingMenu) {
@@ -159,28 +162,26 @@ const MenuList = defineComponent({
 			(this.$refs.floatingMenu as typeof FloatingMenu).setClosed();
 
 			if (menuEntry.action) menuEntry.action();
-			else if (this.defaultAction) this.defaultAction(menuEntry);
+			else if (this.defaultAction) this.defaultAction();
+			else this.$emit("update:activeEntry", menuEntry);
 		},
 		handleEntryMouseEnter(menuEntry: MenuListEntry) {
 			if (!menuEntry.children || !menuEntry.children.length) return;
 
-			if (menuEntry.ref) {
-				menuEntry.ref.setOpen();
-			} else throw new Error("The menu bar floating menu has no associated ref");
+			if (menuEntry.ref) menuEntry.ref.setOpen();
+			else throw new Error("The menu bar floating menu has no associated ref");
 		},
 		handleEntryMouseLeave(menuEntry: MenuListEntry) {
 			if (!menuEntry.children || !menuEntry.children.length) return;
 
-			if (menuEntry.ref) {
-				menuEntry.ref.setClosed();
-			} else throw new Error("The menu bar floating menu has no associated ref");
+			if (menuEntry.ref) menuEntry.ref.setClosed();
+			else throw new Error("The menu bar floating menu has no associated ref");
 		},
 		isMenuEntryOpen(menuEntry: MenuListEntry): boolean {
 			if (!menuEntry.children || !menuEntry.children.length) return false;
 
-			if (menuEntry.ref) {
-				return menuEntry.ref.isOpen();
-			}
+			if (menuEntry.ref) return menuEntry.ref.isOpen();
+
 			return false;
 		},
 		setOpen() {
@@ -194,9 +195,6 @@ const MenuList = defineComponent({
 			return Boolean(floatingMenu && floatingMenu.isOpen());
 		},
 		measureAndReportWidth() {
-			const { widthChanged } = this;
-			if (!widthChanged) return;
-
 			// API is experimental but supported in all browsers - https://developer.mozilla.org/en-US/docs/Web/API/FontFaceSet
 			// eslint-disable-next-line @typescript-eslint/no-explicit-any
 			(document as any).fonts.ready.then(() => {
@@ -213,7 +211,7 @@ const MenuList = defineComponent({
 						// Restore open/closed state if it was forced open for measurement
 						if (!initiallyOpen) floatingMenu.setClosed();
 
-						widthChanged(width);
+						this.$emit("width-changed", width);
 					});
 				});
 			});
@@ -247,6 +245,7 @@ const MenuList = defineComponent({
 	},
 	data() {
 		return {
+			keyboardLockInfoMessage: keyboardLockApiSupported() ? KEYBOARD_LOCK_USE_FULLSCREEN : KEYBOARD_LOCK_SWITCH_BROWSER,
 			SeparatorDirection,
 			SeparatorType,
 			MenuDirection,
@@ -256,7 +255,7 @@ const MenuList = defineComponent({
 	components: {
 		FloatingMenu,
 		Separator,
-		Icon,
+		IconLabel,
 		UserInputLabel,
 	},
 });

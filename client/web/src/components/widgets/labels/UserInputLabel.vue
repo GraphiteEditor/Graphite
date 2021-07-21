@@ -7,7 +7,7 @@
 			</span>
 		</template>
 		<span class="input-mouse" v-if="inputMouse">
-			<Icon :icon="mouseInputInteractionToIcon(inputMouse)" />
+			<IconLabel :icon="mouseInputInteractionToIcon(inputMouse)" />
 		</span>
 		<span class="hint-text" v-if="hasSlotContent">
 			<slot></slot>
@@ -90,7 +90,7 @@
 
 <script lang="ts">
 import { defineComponent } from "vue";
-import Icon from "./Icon.vue";
+import IconLabel from "@/components/widgets/labels/IconLabel.vue";
 
 export enum MouseInputInteraction {
 	"None" = "None",
@@ -106,7 +106,7 @@ export enum MouseInputInteraction {
 }
 
 export default defineComponent({
-	components: { Icon },
+	components: { IconLabel },
 	props: {
 		inputKeys: { type: Array, default: () => [] },
 		inputMouse: { type: String },

@@ -2,9 +2,16 @@
 	<div class="panel">
 		<div class="tab-bar" :class="{ 'min-widths': tabMinWidths }">
 			<div class="tab-group">
-				<div class="tab" :class="{ active: tabIndex === tabActiveIndex }" v-for="(tabLabel, tabIndex) in tabLabels" :key="tabLabel" @click="handleTabClick(tabIndex)">
+				<div
+					class="tab"
+					:class="{ active: tabIndex === tabActiveIndex }"
+					v-for="(tabLabel, tabIndex) in tabLabels"
+					:key="tabLabel"
+					@click.middle="handleTabClose(tabIndex)"
+					@click="handleTabClick(tabIndex)"
+				>
 					<span>{{ tabLabel }}</span>
-					<IconButton :icon="'CloseX'" :size="16" v-if="tabCloseButtons" />
+					<IconButton :icon="'CloseX'" :size="16" v-if="tabCloseButtons" @click.stop="handleTabClose(tabIndex)" />
 				</div>
 			</div>
 			<PopoverButton :icon="PopoverButtonIcon.VerticalEllipsis">
@@ -91,23 +98,23 @@
 					margin-left: 8px;
 				}
 
-				&:not(.active) + .tab:not(.active) {
+				& + .tab {
 					margin-left: 1px;
-
-					&::before {
-						content: "";
-						position: absolute;
-						left: -1px;
-						width: 1px;
-						height: 16px;
-						background: var(--color-4-dimgray);
-					}
 				}
 
-				&:last-of-type:not(.active) {
+				&:not(.active) + .tab:not(.active)::before {
+					content: "";
+					position: absolute;
+					left: -1px;
+					width: 1px;
+					height: 16px;
+					background: var(--color-4-dimgray);
+				}
+
+				&:last-of-type {
 					margin-right: 1px;
 
-					&::after {
+					&:not(.active)::after {
 						content: "";
 						position: absolute;
 						right: -1px;
@@ -136,15 +143,16 @@
 
 <script lang="ts">
 import { defineComponent } from "vue";
-import Document from "../panels/Document.vue";
-import Properties from "../panels/Properties.vue";
-import LayerTree from "../panels/LayerTree.vue";
-import Minimap from "../panels/Minimap.vue";
-import IconButton from "../widgets/buttons/IconButton.vue";
-import PopoverButton, { PopoverButtonIcon } from "../widgets/buttons/PopoverButton.vue";
-import { MenuDirection } from "../widgets/floating-menus/FloatingMenu.vue";
+import Document from "@/components/panels/Document.vue";
+import Properties from "@/components/panels/Properties.vue";
+import LayerTree from "@/components/panels/LayerTree.vue";
+import Minimap from "@/components/panels/Minimap.vue";
+import IconButton from "@/components/widgets/buttons/IconButton.vue";
+import PopoverButton, { PopoverButtonIcon } from "@/components/widgets/buttons/PopoverButton.vue";
+import { MenuDirection } from "@/components/widgets/floating-menus/FloatingMenu.vue";
+import { ResponseType, registerResponseHandler, Response, DisplayConfirmationToCloseDocument } from "@/utilities/response-handler";
 
-const wasm = import("../../../wasm/pkg");
+const wasm = import("@/../wasm/pkg");
 
 export default defineComponent({
 	components: {
@@ -156,10 +164,36 @@ export default defineComponent({
 		PopoverButton,
 	},
 	methods: {
-		async handleTabClick(tabIndex: number) {
+		handleTabClick(tabIndex: number) {
+			if (this.panelType === "Document") this.selectDocument(tabIndex);
+		},
+		handleTabClose(tabIndex: number) {
+			if (this.panelType === "Document") this.closeDocumentWithConfirmation(tabIndex);
+		},
+		async selectDocument(tabIndex: number) {
 			const { select_document } = await wasm;
 			select_document(tabIndex);
 		},
+		async closeDocumentWithConfirmation(tabIndex: number) {
+			// eslint-disable-next-line no-alert
+			const userConfirmation = window.confirm("Closing this document will permanently discard all work. Continue?");
+			if (userConfirmation) (await wasm).close_document(tabIndex);
+		},
+		async closeAllDocumentsWithConfirmation() {
+			// eslint-disable-next-line no-alert
+			const userConfirmation = window.confirm("Closing all documents will permanently discard all work in each of them. Continue?");
+			if (userConfirmation) (await wasm).close_all_documents();
+		},
+	},
+	mounted() {
+		// TODO: Move these somewhere more appropriate to act upon all panels
+		registerResponseHandler(ResponseType.DisplayConfirmationToCloseDocument, (responseData: Response) => {
+			const data = responseData as DisplayConfirmationToCloseDocument;
+			this.closeDocumentWithConfirmation(data.document_index);
+		});
+		registerResponseHandler(ResponseType.DisplayConfirmationToCloseAllDocuments, (_responseData: Response) => {
+			this.closeAllDocumentsWithConfirmation();
+		});
 	},
 	props: {
 		tabMinWidths: { type: Boolean, default: false },

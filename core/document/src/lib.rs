@@ -1,9 +1,9 @@
 pub mod color;
 pub mod document;
+pub mod intersection;
 pub mod layers;
 pub mod operation;
 pub mod response;
-mod shape_points;
 
 pub use operation::Operation;
 pub use response::DocumentResponse;
@@ -15,4 +15,6 @@ pub enum DocumentError {
 	LayerNotFound,
 	InvalidPath,
 	IndexOutOfBounds,
+	NotAFolder,
+	NonReorderableSelection,
 }

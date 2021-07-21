@@ -55,8 +55,8 @@
 
 <script lang="ts">
 import { defineComponent } from "vue";
-import UserInputLabel from "../../widgets/labels/UserInputLabel.vue";
-import Separator, { SeparatorType } from "../../widgets/Separator.vue";
+import UserInputLabel from "@/components/widgets/labels/UserInputLabel.vue";
+import Separator, { SeparatorType } from "@/components/widgets/separators/Separator.vue";
 
 export default defineComponent({
 	components: {

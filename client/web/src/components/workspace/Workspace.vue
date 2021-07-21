@@ -46,10 +46,12 @@
 
 <script lang="ts">
 import { defineComponent } from "vue";
-import { ResponseType, registerResponseHandler, Response, SetActiveDocument, NewDocument } from "../../response-handler";
-import LayoutRow from "../layout/LayoutRow.vue";
-import LayoutCol from "../layout/LayoutCol.vue";
-import Panel from "./Panel.vue";
+import Panel from "@/components/workspace/Panel.vue";
+import { ResponseType, registerResponseHandler, Response, SetActiveDocument, UpdateOpenDocumentsList } from "@/utilities/response-handler";
+import LayoutRow from "@/components/layout/LayoutRow.vue";
+import LayoutCol from "@/components/layout/LayoutCol.vue";
+
+const wasm = import("@/../wasm/pkg");
 
 export default defineComponent({
 	components: {
@@ -59,21 +61,24 @@ export default defineComponent({
 	},
 
 	mounted() {
-		registerResponseHandler(ResponseType.NewDocument, (responseData: Response) => {
-			const documentData = responseData as NewDocument;
-			if (documentData) this.documents.push(documentData.document_name);
+		registerResponseHandler(ResponseType.UpdateOpenDocumentsList, (responseData: Response) => {
+			const documentListData = responseData as UpdateOpenDocumentsList;
+			if (documentListData) {
+				this.documents = documentListData.open_documents;
+			}
 		});
-
 		registerResponseHandler(ResponseType.SetActiveDocument, (responseData: Response) => {
 			const documentData = responseData as SetActiveDocument;
 			if (documentData) this.activeDocument = documentData.document_index;
 		});
+
+		(async () => (await wasm).get_open_documents_list())();
 	},
 
 	data() {
 		return {
 			activeDocument: 0,
-			documents: ["Untitled Document"],
+			documents: [] as Array<string>,
 		};
 	},
 });

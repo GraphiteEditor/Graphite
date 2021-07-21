@@ -31,6 +31,7 @@ module.exports = {
 		"no-console": process.env.NODE_ENV === "production" ? "warn" : "off",
 		"no-debugger": process.env.NODE_ENV === "production" ? "warn" : "off",
 		"no-param-reassign": ["error", { props: false }],
+		"import/prefer-default-export": "off",
 		"max-len": ["error", { code: 200, tabWidth: 4 }],
 		"@typescript-eslint/camelcase": "off",
 		"@typescript-eslint/no-use-before-define": "off",

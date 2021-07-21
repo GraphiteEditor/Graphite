@@ -1,19 +1,16 @@
 <template>
 	<div class="menu-bar-input">
+		<div class="entry-container">
+			<div @click="handleLogoClick(entry)" class="entry">
+				<IconLabel :icon="'GraphiteLogo'" />
+			</div>
+		</div>
 		<div class="entry-container" v-for="entry in menuEntries" :key="entry">
 			<div @click="handleEntryClick(entry)" class="entry" :class="{ open: entry.ref && entry.ref.isOpen() }" data-hover-menu-spawner>
-				<Icon :icon="entry.icon" v-if="entry.icon" />
+				<IconLabel :icon="entry.icon" v-if="entry.icon" />
 				<span v-if="entry.label">{{ entry.label }}</span>
 			</div>
-			<MenuList
-				:ourEntry="entry"
-				:menuEntries="entry.children"
-				:direction="MenuDirection.Bottom"
-				:minWidth="240"
-				:drawIcon="true"
-				:defaultAction="actionNotImplemented"
-				:ref="(ref) => setEntryRefs(entry, ref)"
-			/>
+			<MenuList :menuEntries="entry.children" :direction="MenuDirection.Bottom" :minWidth="240" :drawIcon="true" :defaultAction="actionNotImplemented" :ref="(ref) => setEntryRefs(entry, ref)" />
 		</div>
 	</div>
 </template>
@@ -55,97 +52,103 @@
 
 <script lang="ts">
 import { defineComponent } from "vue";
-import Icon from "../labels/Icon.vue";
-import { ApplicationPlatform } from "../../window/MainWindow.vue";
-import MenuList, { MenuListEntry, MenuListEntries } from "../floating-menus/MenuList.vue";
-import { MenuDirection } from "../floating-menus/FloatingMenu.vue";
+import IconLabel from "@/components/widgets/labels/IconLabel.vue";
+import { ApplicationPlatform } from "@/components/window/MainWindow.vue";
+import MenuList, { MenuListEntry, MenuListEntries } from "@/components/widgets/floating-menus/MenuList.vue";
+import { MenuDirection } from "@/components/widgets/floating-menus/FloatingMenu.vue";
 
-const wasm = import("../../../../wasm/pkg");
+const wasm = import("@/../wasm/pkg");
 
 const menuEntries: MenuListEntries = [
 	{
-		id: "graphite",
-		icon: "GraphiteLogo",
-		ref: undefined,
-		children: [[{ id: "graphite/github", label: "Visit project GitHub…", action: () => window.open("https://github.com/GraphiteEditor/Graphite", "_blank") }]],
-	},
-	{
-		id: "file",
 		label: "File",
 		ref: undefined,
 		children: [
 			[
-				{ id: "file/new", label: "New", icon: "File", shortcut: ["Ctrl", "N"], action: async () => (await wasm).new_document() },
-				{ id: "file/open", label: "Open…", shortcut: ["Ctrl", "O"] },
+				{ label: "New", icon: "File", shortcut: ["Ctrl", "N"], shortcutRequiresLock: true, action: async () => (await wasm).new_document() },
+				{ label: "Open…", shortcut: ["Ctrl", "O"] },
 				{
-					id: "file/open_recent",
 					label: "Open Recent",
 					shortcut: ["Ctrl", "⇧", "O"],
 					children: [
+						[{ label: "Reopen Last Closed", shortcut: ["Ctrl", "⇧", "T"], shortcutRequiresLock: true }, { label: "Clear Recently Opened" }],
 						[
-							{ id: "file/open_recent/reopen", label: "Reopen Last Closed", shortcut: ["Ctrl", "⇧", "T"] },
-							{ id: "file/open_recent/clear_recent", label: "Clear Recently Opened" },
-						],
-						[
-							{ id: "file/open_recent/1", label: "Some Recent File.gdd" },
-							{ id: "file/open_recent/2", label: "Another Recent File.gdd" },
-							{ id: "file/open_recent/3", label: "An Older File.gdd" },
-							{ id: "file/open_recent/4", label: "Some Other Older File.gdd" },
-							{ id: "file/open_recent/5", label: "Yet Another Older File.gdd" },
+							{ label: "Some Recent File.gdd" },
+							{ label: "Another Recent File.gdd" },
+							{ label: "An Older File.gdd" },
+							{ label: "Some Other Older File.gdd" },
+							{ label: "Yet Another Older File.gdd" },
 						],
 					],
 				},
 			],
 			[
-				{ id: "file/close", label: "Close", shortcut: ["Ctrl", "W"] },
-				{ id: "file/close_all", label: "Close All", shortcut: ["Ctrl", "Alt", "W"] },
+				{ label: "Close", shortcut: ["Ctrl", "W"], shortcutRequiresLock: true, action: async () => (await wasm).close_active_document_with_confirmation() },
+				{ label: "Close All", shortcut: ["Ctrl", "Alt", "W"], action: async () => (await wasm).close_all_documents_with_confirmation() },
 			],
 			[
-				{ id: "file/save", label: "Save", shortcut: ["Ctrl", "S"] },
-				{ id: "file/save_as", label: "Save As…", shortcut: ["Ctrl", "⇧", "S"] },
-				{ id: "file/save_all", label: "Save All", shortcut: ["Ctrl", "Alt", "S"] },
-				{ id: "file/auto_save", label: "Auto-Save", shortcut: undefined },
+				{ label: "Save", shortcut: ["Ctrl", "S"] },
+				{ label: "Save As…", shortcut: ["Ctrl", "⇧", "S"] },
+				{ label: "Save All", shortcut: ["Ctrl", "Alt", "S"] },
+				{ label: "Auto-Save", shortcut: undefined },
 			],
 			[
-				{ id: "file/import", label: "Import…", shortcut: ["Ctrl", "I"] },
-				{ id: "file/export", label: "Export…", shortcut: ["Ctrl", "E"], action: async () => (await wasm).export_document() },
+				{ label: "Import…", shortcut: ["Ctrl", "I"] },
+				{ label: "Export…", shortcut: ["Ctrl", "E"], action: async () => (await wasm).export_document() },
 			],
-			[{ id: "file/quit", label: "Quit", shortcut: ["Ctrl", "Q"] }],
+			[{ label: "Quit", shortcut: ["Ctrl", "Q"] }],
 		],
 	},
 	{
-		id: "edit",
 		label: "Edit",
 		ref: undefined,
 		children: [
 			[
-				{ id: "edit/undo", label: "Undo", shortcut: ["Ctrl", "Z"], action: async () => (await wasm).undo() },
-				{ id: "edit/redo", label: "Redo", shortcut: ["Ctrl", "⇧", "Z"] },
+				{ label: "Undo", shortcut: ["Ctrl", "Z"], action: async () => (await wasm).undo() },
+				{ label: "Redo", shortcut: ["Ctrl", "⇧", "Z"] },
 			],
 			[
-				{ id: "edit/cut", label: "Cut", shortcut: ["Ctrl", "X"] },
-				{ id: "edit/copy", label: "Copy", icon: "Copy", shortcut: ["Ctrl", "C"] },
-				{ id: "edit/paste", label: "Paste", icon: "Paste", shortcut: ["Ctrl", "V"] },
+				{ label: "Cut", shortcut: ["Ctrl", "X"] },
+				{ label: "Copy", icon: "Copy", shortcut: ["Ctrl", "C"] },
+				{ label: "Paste", icon: "Paste", shortcut: ["Ctrl", "V"] },
 			],
 		],
 	},
 	{
-		id: "document",
 		label: "Document",
 		ref: undefined,
-		children: [[{ id: "document/todo", label: "Menu not yet populated" }]],
+		children: [[{ label: "Menu not yet populated" }]],
 	},
 	{
-		id: "view",
+		label: "Layer",
+		ref: undefined,
+		children: [
+			[
+				{ label: "Select All", shortcut: ["Ctrl", "A"], action: async () => (await wasm).select_all_layers() },
+				{ label: "Deselect All", shortcut: ["Ctrl", "Alt", "A"], action: async () => (await wasm).deselect_all_layers() },
+				{
+					label: "Order",
+					children: [
+						[
+							{ label: "Raise To Front", shortcut: ["Ctrl", "Shift", "]"], action: async () => (await wasm).reorder_selected_layers(2147483647) },
+							{ label: "Raise", shortcut: ["Ctrl", "]"], action: async () => (await wasm).reorder_selected_layers(1) },
+							{ label: "Lower", shortcut: ["Ctrl", "["], action: async () => (await wasm).reorder_selected_layers(-1) },
+							{ label: "Lower to Back", shortcut: ["Ctrl", "Shift", "["], action: async () => (await wasm).reorder_selected_layers(-2147483648) },
+						],
+					],
+				},
+			],
+		],
+	},
+	{
 		label: "View",
 		ref: undefined,
-		children: [[{ id: "document/todo", label: "Menu not yet populated" }]],
+		children: [[{ label: "Menu not yet populated" }]],
 	},
 	{
-		id: "help",
 		label: "Help",
 		ref: undefined,
-		children: [[{ id: "document/todo", label: "Menu not yet populated" }]],
+		children: [[{ label: "Menu not yet populated" }]],
 	},
 ];
 
@@ -158,7 +161,11 @@ export default defineComponent({
 			if (menuEntry.ref) menuEntry.ref.setOpen();
 			else throw new Error("The menu bar floating menu has no associated ref");
 		},
+		handleLogoClick() {
+			window.open("https://www.graphite.design", "_blank");
+		},
 		actionNotImplemented() {
+			// eslint-disable-next-line no-alert
 			alert("This action is not yet implemented");
 		},
 	},
@@ -170,7 +177,7 @@ export default defineComponent({
 		};
 	},
 	components: {
-		Icon,
+		IconLabel,
 		MenuList,
 	},
 });

@@ -2,7 +2,9 @@ pub const NUMBER_OF_KEYS: usize = Key::NumKeys as usize;
 // Edit this to specify the storage type used
 // TODO: Increase size of type
 pub type StorageType = u128;
-const STORAGE_SIZE: u32 = std::mem::size_of::<usize>() as u32 * 8 + 2 - std::mem::size_of::<StorageType>().leading_zeros();
+
+// base 2 logarithm of the storage type used to represents how many bits you need to fully address every bit in that storage type
+const STORAGE_SIZE: u32 = (std::mem::size_of::<StorageType>() * 8).trailing_zeros();
 const STORAGE_SIZE_BITS: usize = 1 << STORAGE_SIZE;
 const KEY_MASK_STORAGE_LENGTH: usize = (NUMBER_OF_KEYS + STORAGE_SIZE_BITS - 1) >> STORAGE_SIZE;
 pub type KeyStates = BitVector<KEY_MASK_STORAGE_LENGTH>;
@@ -53,6 +55,9 @@ pub enum Key {
 	Key8,
 	Key9,
 	KeyEnter,
+	KeyEquals,
+	KeyMinus,
+	KeyPlus,
 	KeyShift,
 	KeyControl,
 	KeyDelete,
@@ -60,6 +65,14 @@ pub enum Key {
 	KeyAlt,
 	KeyEscape,
 	KeyTab,
+	KeyArrowUp,
+	KeyArrowDown,
+	KeyArrowLeft,
+	KeyArrowRight,
+	KeyLeftBracket,
+	KeyRightBracket,
+	KeyLeftCurlyBracket,
+	KeyRightCurlyBracket,
 
 	// This has to be the last element in the enum.
 	NumKeys,
@@ -96,12 +109,23 @@ impl<const LENGTH: usize> BitVector<LENGTH> {
 		let (offset, bit) = Self::convert_index(bitvector_index);
 		self.0[offset] ^= bit;
 	}
+	pub fn get(&mut self, bitvector_index: usize) -> bool {
+		let (offset, bit) = Self::convert_index(bitvector_index);
+		(self.0[offset] & bit) != 0
+	}
 	pub fn is_empty(&self) -> bool {
 		let mut result = 0;
 		for storage in self.0.iter() {
 			result |= storage;
 		}
 		result == 0
+	}
+	pub fn ones(&self) -> u32 {
+		let mut result = 0;
+		for storage in self.0.iter() {
+			result += storage.count_ones();
+		}
+		result
 	}
 }
 

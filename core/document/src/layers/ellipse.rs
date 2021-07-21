@@ -1,37 +1,37 @@
+use glam::DAffine2;
+use glam::DVec2;
+use kurbo::Shape;
+
+use crate::intersection::intersect_quad_bez_path;
+use crate::LayerId;
+
 use super::style;
 use super::LayerData;
 
+use serde::{Deserialize, Serialize};
 use std::fmt::Write;
 
-#[derive(Debug, Clone, Copy, PartialEq, Default)]
-pub struct Ellipse {
-	shape: kurbo::Ellipse,
-	style: style::PathStyle,
-}
+#[derive(Debug, Clone, Copy, PartialEq, Default, Deserialize, Serialize)]
+pub struct Ellipse {}
 
 impl Ellipse {
-	pub fn new(center: impl Into<kurbo::Point>, radii: impl Into<kurbo::Vec2>, rotation: f64, style: style::PathStyle) -> Ellipse {
-		Ellipse {
-			shape: kurbo::Ellipse::new(center, radii, rotation),
-			style,
-		}
+	pub fn new() -> Ellipse {
+		Ellipse {}
 	}
 }
 
 impl LayerData for Ellipse {
-	fn render(&mut self, svg: &mut String) {
-		let kurbo::Vec2 { x: rx, y: ry } = self.shape.radii();
-		let kurbo::Point { x: cx, y: cy } = self.shape.center();
+	fn to_kurbo_path(&self, transform: glam::DAffine2, _style: style::PathStyle) -> kurbo::BezPath {
+		kurbo::Ellipse::from_affine(kurbo::Affine::new(transform.to_cols_array())).to_path(0.01)
+	}
 
-		let _ = write!(
-			svg,
-			r#"<ellipse cx="0" cy="0" rx="{}" ry="{}" transform="translate({} {}) rotate({})"{} />"#,
-			rx,
-			ry,
-			cx,
-			cy,
-			self.shape.rotation().to_degrees(),
-			self.style.render(),
-		);
+	fn render(&mut self, svg: &mut String, transform: glam::DAffine2, style: style::PathStyle) {
+		let _ = write!(svg, r#"<path d="{}" {} />"#, self.to_kurbo_path(transform, style).to_svg(), style.render());
+	}
+
+	fn intersects_quad(&self, quad: [DVec2; 4], path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>, style: style::PathStyle) {
+		if intersect_quad_bez_path(quad, &self.to_kurbo_path(DAffine2::IDENTITY, style), true) {
+			intersections.push(path.clone());
+		}
 	}
 }

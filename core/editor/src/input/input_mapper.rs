@@ -1,3 +1,4 @@
+use crate::consts::{MINUS_KEY_ZOOM_RATE, PLUS_KEY_ZOOM_RATE};
 use crate::message_prelude::*;
 use crate::tool::ToolType;
 
@@ -6,10 +7,14 @@ use super::{
 	InputPreprocessor,
 };
 
+const NUDGE_AMOUNT: f64 = 1.;
+const SHIFT_NUDGE_AMOUNT: f64 = 10.;
+
 #[impl_message(Message, InputMapper)]
 #[derive(PartialEq, Clone, Debug)]
 pub enum InputMapperMessage {
 	PointerMove,
+	MouseScroll,
 	KeyUp(Key),
 	KeyDown(Key),
 }
@@ -21,7 +26,7 @@ struct MappingEntry {
 	action: Message,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 struct KeyMappingEntries(Vec<MappingEntry>);
 
 impl KeyMappingEntries {
@@ -38,20 +43,28 @@ impl KeyMappingEntries {
 		self.0.push(entry)
 	}
 
+	const fn new() -> Self {
+		Self(Vec::new())
+	}
+
 	fn key_array() -> [Self; NUMBER_OF_KEYS] {
-		let mut array: [KeyMappingEntries; NUMBER_OF_KEYS] = unsafe { std::mem::zeroed() };
-		for key in array.iter_mut() {
-			*key = KeyMappingEntries::default();
-		}
-		array
+		const DEFAULT: KeyMappingEntries = KeyMappingEntries::new();
+		[DEFAULT; NUMBER_OF_KEYS]
+	}
+}
+
+impl Default for KeyMappingEntries {
+	fn default() -> Self {
+		Self::new()
 	}
 }
 
 #[derive(Debug, Clone)]
 struct Mapping {
-	up: [KeyMappingEntries; NUMBER_OF_KEYS],
-	down: [KeyMappingEntries; NUMBER_OF_KEYS],
+	key_up: [KeyMappingEntries; NUMBER_OF_KEYS],
+	key_down: [KeyMappingEntries; NUMBER_OF_KEYS],
 	pointer_move: KeyMappingEntries,
+	mouse_scroll: KeyMappingEntries,
 }
 
 macro_rules! modifiers {
@@ -78,24 +91,35 @@ macro_rules! entry {
 macro_rules! mapping {
 	//[$(<action=$action:expr; message=$key:expr; $(modifiers=[$($m:ident),* $(,)?];)?>)*] => {{
 	[$($entry:expr),* $(,)?] => {{
-		let mut up =  KeyMappingEntries::key_array();
-		let mut down = KeyMappingEntries::key_array();
+		let mut key_up =  KeyMappingEntries::key_array();
+		let mut key_down = KeyMappingEntries::key_array();
 		let mut pointer_move: KeyMappingEntries = Default::default();
+		let mut mouse_scroll: KeyMappingEntries = Default::default();
 		$(
 			let arr = match $entry.trigger {
-				InputMapperMessage::KeyDown(key) => &mut down[key as usize],
-				InputMapperMessage::KeyUp(key) => &mut up[key as usize],
+				InputMapperMessage::KeyDown(key) => &mut key_down[key as usize],
+				InputMapperMessage::KeyUp(key) => &mut key_up[key as usize],
 				InputMapperMessage::PointerMove => &mut pointer_move,
+				InputMapperMessage::MouseScroll => &mut mouse_scroll,
 			};
 			arr.push($entry);
 		)*
-		(up, down, pointer_move)
+		(key_up, key_down, pointer_move, mouse_scroll)
 	}};
 }
 
 impl Default for Mapping {
 	fn default() -> Self {
-		let (up, down, pointer_move) = mapping![
+		let mappings = mapping![
+			entry! {action=DocumentMessage::PasteLayers, key_down=KeyV, modifiers=[KeyControl]},
+			entry! {action=DocumentMessage::EnableSnapping, key_down=KeyShift},
+			entry! {action=DocumentMessage::DisableSnapping, key_up=KeyShift},
+			// Select
+			entry! {action=SelectMessage::MouseMove, message=InputMapperMessage::PointerMove},
+			entry! {action=SelectMessage::DragStart, key_down=Lmb},
+			entry! {action=SelectMessage::DragStop, key_up=Lmb},
+			entry! {action=SelectMessage::Abort, key_down=Rmb},
+			entry! {action=SelectMessage::Abort, key_down=KeyEscape},
 			// Rectangle
 			entry! {action=RectangleMessage::Center, key_down=KeyAlt},
 			entry! {action=RectangleMessage::UnCenter, key_up=KeyAlt},
@@ -145,7 +169,10 @@ impl Default for Mapping {
 			entry! {action=PenMessage::Confirm, key_down=Rmb},
 			entry! {action=PenMessage::Confirm, key_down=KeyEscape},
 			entry! {action=PenMessage::Confirm, key_down=KeyEnter},
+			// Fill
+			entry! {action=FillMessage::MouseDown, key_down=Lmb},
 			// Tool Actions
+			entry! {action=ToolMessage::SelectTool(ToolType::Fill), key_down=KeyF},
 			entry! {action=ToolMessage::SelectTool(ToolType::Rectangle), key_down=KeyM},
 			entry! {action=ToolMessage::SelectTool(ToolType::Ellipse), key_down=KeyE},
 			entry! {action=ToolMessage::SelectTool(ToolType::Select), key_down=KeyV},
@@ -156,19 +183,83 @@ impl Default for Mapping {
 			entry! {action=ToolMessage::SwapColors, key_down=KeyX, modifiers=[KeyShift]},
 			// Document Actions
 			entry! {action=DocumentMessage::Undo, key_down=KeyZ, modifiers=[KeyControl]},
+			entry! {action=DocumentMessage::DeselectAllLayers, key_down=KeyA, modifiers=[KeyControl, KeyAlt]},
+			entry! {action=DocumentMessage::SelectAllLayers, key_down=KeyA, modifiers=[KeyControl]},
 			entry! {action=DocumentMessage::DeleteSelectedLayers, key_down=KeyDelete},
 			entry! {action=DocumentMessage::DeleteSelectedLayers, key_down=KeyX},
 			entry! {action=DocumentMessage::DeleteSelectedLayers, key_down=KeyBackspace},
 			entry! {action=DocumentMessage::ExportDocument, key_down=KeyS, modifiers=[KeyControl, KeyShift]},
 			entry! {action=DocumentMessage::ExportDocument, key_down=KeyE, modifiers=[KeyControl]},
-			entry! {action=DocumentMessage::NewDocument, key_down=KeyN, modifiers=[KeyShift]},
-			entry! {action=DocumentMessage::NextDocument, key_down=KeyTab, modifiers=[KeyShift]},
+			entry! {action=DocumentMessage::MouseMove, message=InputMapperMessage::PointerMove},
+			entry! {action=DocumentMessage::RotateCanvasBegin{snap:false}, key_down=Mmb, modifiers=[KeyControl]},
+			entry! {action=DocumentMessage::RotateCanvasBegin{snap:true}, key_down=Mmb, modifiers=[KeyControl, KeyShift]},
+			entry! {action=DocumentMessage::ZoomCanvasBegin, key_down=Mmb, modifiers=[KeyShift]},
+			entry! {action=DocumentMessage::TranslateCanvasBegin, key_down=Mmb},
+			entry! {action=DocumentMessage::TranslateCanvasEnd, key_up=Mmb},
+			entry! {action=DocumentMessage::MultiplyCanvasZoom(PLUS_KEY_ZOOM_RATE), key_down=KeyPlus, modifiers=[KeyControl]},
+			entry! {action=DocumentMessage::MultiplyCanvasZoom(PLUS_KEY_ZOOM_RATE), key_down=KeyEquals, modifiers=[KeyControl]},
+			entry! {action=DocumentMessage::MultiplyCanvasZoom(MINUS_KEY_ZOOM_RATE), key_down=KeyMinus, modifiers=[KeyControl]},
+			entry! {action=DocumentMessage::SetCanvasZoom(1.), key_down=Key1, modifiers=[KeyControl]},
+			entry! {action=DocumentMessage::SetCanvasZoom(2.), key_down=Key2, modifiers=[KeyControl]},
+			entry! {action=DocumentMessage::WheelCanvasZoom, message=InputMapperMessage::MouseScroll, modifiers=[KeyControl]},
+			entry! {action=DocumentMessage::WheelCanvasTranslate{use_y_as_x: true}, message=InputMapperMessage::MouseScroll, modifiers=[KeyShift]},
+			entry! {action=DocumentMessage::WheelCanvasTranslate{use_y_as_x: false}, message=InputMapperMessage::MouseScroll},
+			entry! {action=DocumentMessage::NewDocument, key_down=KeyN, modifiers=[KeyControl]},
+			entry! {action=DocumentMessage::NextDocument, key_down=KeyTab, modifiers=[KeyControl]},
+			entry! {action=DocumentMessage::PrevDocument, key_down=KeyTab, modifiers=[KeyControl, KeyShift]},
+			entry! {action=DocumentMessage::CloseAllDocumentsWithConfirmation, key_down=KeyW, modifiers=[KeyControl, KeyAlt]},
+			entry! {action=DocumentMessage::CloseActiveDocumentWithConfirmation, key_down=KeyW, modifiers=[KeyControl]},
+			entry! {action=DocumentMessage::DuplicateSelectedLayers, key_down=KeyD, modifiers=[KeyControl]},
+			entry! {action=DocumentMessage::CopySelectedLayers, key_down=KeyC, modifiers=[KeyControl]},
+			entry! {action=DocumentMessage::NudgeSelectedLayers(-SHIFT_NUDGE_AMOUNT, -SHIFT_NUDGE_AMOUNT), key_down=KeyArrowUp, modifiers=[KeyShift, KeyArrowLeft]},
+			entry! {action=DocumentMessage::NudgeSelectedLayers(SHIFT_NUDGE_AMOUNT, -SHIFT_NUDGE_AMOUNT), key_down=KeyArrowUp, modifiers=[KeyShift, KeyArrowRight]},
+			entry! {action=DocumentMessage::NudgeSelectedLayers(0., -SHIFT_NUDGE_AMOUNT), key_down=KeyArrowUp, modifiers=[KeyShift]},
+			entry! {action=DocumentMessage::NudgeSelectedLayers(-SHIFT_NUDGE_AMOUNT, SHIFT_NUDGE_AMOUNT), key_down=KeyArrowDown, modifiers=[KeyShift, KeyArrowLeft]},
+			entry! {action=DocumentMessage::NudgeSelectedLayers(SHIFT_NUDGE_AMOUNT, SHIFT_NUDGE_AMOUNT), key_down=KeyArrowDown, modifiers=[KeyShift, KeyArrowRight]},
+			entry! {action=DocumentMessage::NudgeSelectedLayers(0., SHIFT_NUDGE_AMOUNT), key_down=KeyArrowDown, modifiers=[KeyShift]},
+			entry! {action=DocumentMessage::NudgeSelectedLayers(-SHIFT_NUDGE_AMOUNT, -SHIFT_NUDGE_AMOUNT), key_down=KeyArrowLeft, modifiers=[KeyShift, KeyArrowUp]},
+			entry! {action=DocumentMessage::NudgeSelectedLayers(-SHIFT_NUDGE_AMOUNT, SHIFT_NUDGE_AMOUNT), key_down=KeyArrowLeft, modifiers=[KeyShift, KeyArrowDown]},
+			entry! {action=DocumentMessage::NudgeSelectedLayers(-SHIFT_NUDGE_AMOUNT, 0.), key_down=KeyArrowLeft, modifiers=[KeyShift]},
+			entry! {action=DocumentMessage::NudgeSelectedLayers(SHIFT_NUDGE_AMOUNT, -SHIFT_NUDGE_AMOUNT), key_down=KeyArrowRight, modifiers=[KeyShift, KeyArrowUp]},
+			entry! {action=DocumentMessage::NudgeSelectedLayers(SHIFT_NUDGE_AMOUNT, SHIFT_NUDGE_AMOUNT), key_down=KeyArrowRight, modifiers=[KeyShift, KeyArrowDown]},
+			entry! {action=DocumentMessage::NudgeSelectedLayers(SHIFT_NUDGE_AMOUNT, 0.), key_down=KeyArrowRight, modifiers=[KeyShift]},
+			entry! {action=DocumentMessage::NudgeSelectedLayers(-NUDGE_AMOUNT, -NUDGE_AMOUNT), key_down=KeyArrowUp, modifiers=[KeyArrowLeft]},
+			entry! {action=DocumentMessage::NudgeSelectedLayers(NUDGE_AMOUNT, -NUDGE_AMOUNT), key_down=KeyArrowUp, modifiers=[KeyArrowRight]},
+			entry! {action=DocumentMessage::NudgeSelectedLayers(0., -NUDGE_AMOUNT), key_down=KeyArrowUp},
+			entry! {action=DocumentMessage::NudgeSelectedLayers(-NUDGE_AMOUNT, NUDGE_AMOUNT), key_down=KeyArrowDown, modifiers=[KeyArrowLeft]},
+			entry! {action=DocumentMessage::NudgeSelectedLayers(NUDGE_AMOUNT, NUDGE_AMOUNT), key_down=KeyArrowDown, modifiers=[KeyArrowRight]},
+			entry! {action=DocumentMessage::NudgeSelectedLayers(0., NUDGE_AMOUNT), key_down=KeyArrowDown},
+			entry! {action=DocumentMessage::NudgeSelectedLayers(-NUDGE_AMOUNT, -NUDGE_AMOUNT), key_down=KeyArrowLeft, modifiers=[KeyArrowUp]},
+			entry! {action=DocumentMessage::NudgeSelectedLayers(-NUDGE_AMOUNT, NUDGE_AMOUNT), key_down=KeyArrowLeft, modifiers=[KeyArrowDown]},
+			entry! {action=DocumentMessage::NudgeSelectedLayers(-NUDGE_AMOUNT, 0.), key_down=KeyArrowLeft},
+			entry! {action=DocumentMessage::NudgeSelectedLayers(NUDGE_AMOUNT, -NUDGE_AMOUNT), key_down=KeyArrowRight, modifiers=[KeyArrowUp]},
+			entry! {action=DocumentMessage::NudgeSelectedLayers(NUDGE_AMOUNT, NUDGE_AMOUNT), key_down=KeyArrowRight, modifiers=[KeyArrowDown]},
+			entry! {action=DocumentMessage::NudgeSelectedLayers(NUDGE_AMOUNT, 0.), key_down=KeyArrowRight},
+			entry! {action=DocumentMessage::ReorderSelectedLayers(i32::MAX), key_down=KeyRightCurlyBracket, modifiers=[KeyControl]}, // TODO: Use KeyRightBracket with ctrl+shift modifiers once input system is fixed
+			entry! {action=DocumentMessage::ReorderSelectedLayers(1), key_down=KeyRightBracket, modifiers=[KeyControl]},
+			entry! {action=DocumentMessage::ReorderSelectedLayers(-1), key_down=KeyLeftBracket, modifiers=[KeyControl]},
+			entry! {action=DocumentMessage::ReorderSelectedLayers(i32::MIN), key_down=KeyLeftCurlyBracket, modifiers=[KeyControl]}, // TODO: Use KeyLeftBracket with ctrl+shift modifiers once input system is fixed
 			// Global Actions
 			entry! {action=GlobalMessage::LogInfo, key_down=Key1},
 			entry! {action=GlobalMessage::LogDebug, key_down=Key2},
 			entry! {action=GlobalMessage::LogTrace, key_down=Key3},
 		];
-		Self { up, down, pointer_move }
+
+		let (mut key_up, mut key_down, mut pointer_move, mut mouse_scroll) = mappings;
+		let sort = |list: &mut KeyMappingEntries| list.0.sort_by(|u, v| v.modifiers.ones().cmp(&u.modifiers.ones()));
+		for list in [&mut key_up, &mut key_down] {
+			for sublist in list {
+				sort(sublist);
+			}
+		}
+		sort(&mut pointer_move);
+		sort(&mut mouse_scroll);
+		Self {
+			key_up,
+			key_down,
+			pointer_move,
+			mouse_scroll,
+		}
 	}
 }
 
@@ -176,9 +267,10 @@ impl Mapping {
 	fn match_message(&self, message: InputMapperMessage, keys: &KeyStates, actions: ActionList) -> Option<Message> {
 		use InputMapperMessage::*;
 		let list = match message {
-			KeyDown(key) => &self.down[key as usize],
-			KeyUp(key) => &self.up[key as usize],
+			KeyDown(key) => &self.key_down[key as usize],
+			KeyUp(key) => &self.key_up[key as usize],
 			PointerMove => &self.pointer_move,
+			MouseScroll => &self.mouse_scroll,
 		};
 		list.match_mapping(keys, actions)
 	}

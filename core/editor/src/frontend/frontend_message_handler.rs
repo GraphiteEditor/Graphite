@@ -12,12 +12,16 @@ pub enum FrontendMessage {
 	ExpandFolder { path: Vec<LayerId>, children: Vec<LayerPanelEntry> },
 	SetActiveTool { tool_name: String },
 	SetActiveDocument { document_index: usize },
-	NewDocument { document_name: String },
+	UpdateOpenDocumentsList { open_documents: Vec<String> },
+	DisplayConfirmationToCloseDocument { document_index: usize },
+	DisplayConfirmationToCloseAllDocuments,
 	UpdateCanvas { document: String },
 	ExportDocument { document: String },
 	EnableTextInput,
 	DisableTextInput,
 	UpdateWorkingColors { primary: Color, secondary: Color },
+	SetCanvasZoom { new_zoom: f64 },
+	SetCanvasRotation { new_radians: f64 },
 }
 
 pub struct FrontendMessageHandler {
@@ -40,9 +44,10 @@ impl MessageHandler<FrontendMessage, ()> for FrontendMessageHandler {
 		CollapseFolder,
 		ExpandFolder,
 		SetActiveTool,
-		NewDocument,
 		UpdateCanvas,
 		EnableTextInput,
 		DisableTextInput,
+		SetCanvasZoom,
+		SetCanvasRotation,
 	);
 }

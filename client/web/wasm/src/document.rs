@@ -1,7 +1,10 @@
 use crate::shims::Error;
 use crate::wrappers::{translate_key, translate_tool, Color};
 use crate::EDITOR_STATE;
+use editor_core::input::input_preprocessor::ModifierKeys;
+use editor_core::input::mouse::ScrollDelta;
 use editor_core::message_prelude::*;
+use editor_core::tool::tool_options::ToolOptions;
 use editor_core::{
 	input::mouse::{MouseState, ViewportPosition},
 	LayerId,
@@ -21,9 +24,26 @@ pub fn select_tool(tool: String) -> Result<(), JsValue> {
 	})
 }
 
+/// Update the options for a given tool
+#[wasm_bindgen]
+pub fn set_tool_options(tool: String, options: &JsValue) -> Result<(), JsValue> {
+	match options.into_serde::<ToolOptions>() {
+		Ok(options) => EDITOR_STATE.with(|editor| match translate_tool(&tool) {
+			Some(tool) => editor.borrow_mut().handle_message(ToolMessage::SetToolOptions(tool, options)).map_err(convert_error),
+			None => Err(Error::new(&format!("Couldn't select {} because it was not recognized as a valid tool", tool)).into()),
+		}),
+		Err(err) => Err(Error::new(&format!("Invalid JSON for ToolOptions: {}", err)).into()),
+	}
+}
+
 #[wasm_bindgen]
 pub fn select_document(document: usize) -> Result<(), JsValue> {
 	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(DocumentMessage::SelectDocument(document)).map_err(convert_error))
+}
+
+#[wasm_bindgen]
+pub fn get_open_documents_list() -> Result<(), JsValue> {
+	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(DocumentMessage::GetOpenDocumentsList).map_err(convert_error))
 }
 
 #[wasm_bindgen]
@@ -36,46 +56,87 @@ pub fn set_layer_blend_mode(blend_mode: String) -> Result<(), JsValue> {
 	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(DocumentMessage::SetBlendMode(blend_mode)).map_err(convert_error))
 }
 
+pub fn close_document(document: usize) -> Result<(), JsValue> {
+	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(DocumentMessage::CloseDocument(document)).map_err(convert_error))
+}
+
+#[wasm_bindgen]
+pub fn close_all_documents() -> Result<(), JsValue> {
+	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(DocumentMessage::CloseAllDocuments).map_err(convert_error))
+}
+
+#[wasm_bindgen]
+pub fn close_active_document_with_confirmation() -> Result<(), JsValue> {
+	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(DocumentMessage::CloseActiveDocumentWithConfirmation).map_err(convert_error))
+}
+
+#[wasm_bindgen]
+pub fn close_all_documents_with_confirmation() -> Result<(), JsValue> {
+	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(DocumentMessage::CloseAllDocumentsWithConfirmation).map_err(convert_error))
+}
+
+// TODO: Call event when the panels are resized
+/// Viewport resized
+#[wasm_bindgen]
+pub fn viewport_resize(new_width: u32, new_height: u32) -> Result<(), JsValue> {
+	let ev = InputPreprocessorMessage::ViewportResize(ViewportPosition { x: new_width, y: new_height });
+	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(ev)).map_err(convert_error)
+}
+
 // TODO: When a mouse button is down that started in the viewport, this should trigger even when the mouse is outside the viewport (or even the browser window if the browser supports it)
 /// Mouse movement within the screenspace bounds of the viewport
 #[wasm_bindgen]
-pub fn on_mouse_move(x: u32, y: u32) -> Result<(), JsValue> {
+pub fn on_mouse_move(x: u32, y: u32, modifiers: u8) -> Result<(), JsValue> {
+	let mods = ModifierKeys::from_bits(modifiers).expect("invalid modifier keys");
 	// TODO: Convert these screenspace viewport coordinates to canvas coordinates based on the current zoom and pan
-	let ev = InputPreprocessorMessage::MouseMove(ViewportPosition { x, y });
+	let ev = InputPreprocessorMessage::MouseMove(ViewportPosition { x, y }, mods);
+	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(ev)).map_err(convert_error)
+}
+
+/// Mouse scrolling within the screenspace bounds of the viewport
+#[wasm_bindgen]
+pub fn on_mouse_scroll(delta_x: i32, delta_y: i32, delta_z: i32, modifiers: u8) -> Result<(), JsValue> {
+	// TODO: Convert these screenspace viewport coordinates to canvas coordinates based on the current zoom and pan
+	let mods = ModifierKeys::from_bits(modifiers).expect("invalid modifier keys");
+	let ev = InputPreprocessorMessage::MouseScroll(ScrollDelta::new(delta_x, delta_y, delta_z), mods);
 	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(ev)).map_err(convert_error)
 }
 
 /// A mouse button depressed within screenspace the bounds of the viewport
 #[wasm_bindgen]
-pub fn on_mouse_down(x: u32, y: u32, mouse_keys: u8) -> Result<(), JsValue> {
+pub fn on_mouse_down(x: u32, y: u32, mouse_keys: u8, modifiers: u8) -> Result<(), JsValue> {
 	let pos = ViewportPosition { x, y };
-	let ev = InputPreprocessorMessage::MouseDown(MouseState::from_u8_pos(mouse_keys, pos));
+	let mods = ModifierKeys::from_bits(modifiers).expect("invalid modifier keys");
+	let ev = InputPreprocessorMessage::MouseDown(MouseState::from_u8_pos(mouse_keys, pos), mods);
 	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(ev)).map_err(convert_error)
 }
 
 /// A mouse button released
 #[wasm_bindgen]
-pub fn on_mouse_up(x: u32, y: u32, mouse_keys: u8) -> Result<(), JsValue> {
+pub fn on_mouse_up(x: u32, y: u32, mouse_keys: u8, modifiers: u8) -> Result<(), JsValue> {
 	let pos = ViewportPosition { x, y };
-	let ev = InputPreprocessorMessage::MouseUp(MouseState::from_u8_pos(mouse_keys, pos));
+	let mods = ModifierKeys::from_bits(modifiers).expect("invalid modifier keys");
+	let ev = InputPreprocessorMessage::MouseUp(MouseState::from_u8_pos(mouse_keys, pos), mods);
 	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(ev)).map_err(convert_error)
 }
 
 /// A keyboard button depressed within screenspace the bounds of the viewport
 #[wasm_bindgen]
-pub fn on_key_down(name: String) -> Result<(), JsValue> {
+pub fn on_key_down(name: String, modifiers: u8) -> Result<(), JsValue> {
 	let key = translate_key(&name);
-	log::trace!("key down {:?}, name: {}", key, name);
-	let ev = InputPreprocessorMessage::KeyDown(key);
+	let mods = ModifierKeys::from_bits(modifiers).expect("invalid modifier keys");
+	log::trace!("key down {:?}, name: {}, modifiers: {:?}", key, name, mods);
+	let ev = InputPreprocessorMessage::KeyDown(key, mods);
 	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(ev)).map_err(convert_error)
 }
 
 /// A keyboard button released
 #[wasm_bindgen]
-pub fn on_key_up(name: String) -> Result<(), JsValue> {
+pub fn on_key_up(name: String, modifiers: u8) -> Result<(), JsValue> {
 	let key = translate_key(&name);
-	log::trace!("key up {:?}, name: {}", key, name);
-	let ev = InputPreprocessorMessage::KeyUp(key);
+	let mods = ModifierKeys::from_bits(modifiers).expect("invalid modifier keys");
+	log::trace!("key up {:?}, name: {}, modifiers: {:?}", key, name, mods);
+	let ev = InputPreprocessorMessage::KeyUp(key, mods);
 	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(ev)).map_err(convert_error)
 }
 
@@ -113,10 +174,46 @@ pub fn undo() -> Result<(), JsValue> {
 	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(DocumentMessage::Undo)).map_err(convert_error)
 }
 
+/// Select all layers
+#[wasm_bindgen]
+pub fn select_all_layers() -> Result<(), JsValue> {
+	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(DocumentMessage::SelectAllLayers)).map_err(convert_error)
+}
+
+/// Deselect all layers
+#[wasm_bindgen]
+pub fn deselect_all_layers() -> Result<(), JsValue> {
+	EDITOR_STATE
+		.with(|editor| editor.borrow_mut().handle_message(DocumentMessage::DeselectAllLayers))
+		.map_err(convert_error)
+}
+
+/// Reorder selected layer
+#[wasm_bindgen]
+pub fn reorder_selected_layers(delta: i32) -> Result<(), JsValue> {
+	EDITOR_STATE
+		.with(|editor| editor.borrow_mut().handle_message(DocumentMessage::ReorderSelectedLayers(delta)))
+		.map_err(convert_error)
+}
+
 /// Export the document
 #[wasm_bindgen]
 pub fn export_document() -> Result<(), JsValue> {
 	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(DocumentMessage::ExportDocument)).map_err(convert_error)
+}
+
+/// Sets the zoom to the value
+#[wasm_bindgen]
+pub fn set_zoom(new_zoom: f64) -> Result<(), JsValue> {
+	let ev = DocumentMessage::SetCanvasZoom(new_zoom);
+	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(ev)).map_err(convert_error)
+}
+
+/// Sets the rotation to the new value (in radians)
+#[wasm_bindgen]
+pub fn set_rotation(new_radians: f64) -> Result<(), JsValue> {
+	let ev = DocumentMessage::SetCanvasRotation(new_radians);
+	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(ev)).map_err(convert_error)
 }
 
 /// Update the list of selected layers. The layer paths have to be stored in one array and are separated by LayerId::MAX
@@ -144,7 +241,7 @@ pub fn toggle_layer_expansion(path: Vec<LayerId>) -> Result<(), JsValue> {
 		.map_err(convert_error)
 }
 
-///  Renames a layer from the layer list
+/// Renames a layer from the layer list
 #[wasm_bindgen]
 pub fn rename_layer(path: Vec<LayerId>, new_name: String) -> Result<(), JsValue> {
 	EDITOR_STATE
@@ -152,7 +249,7 @@ pub fn rename_layer(path: Vec<LayerId>, new_name: String) -> Result<(), JsValue>
 		.map_err(convert_error)
 }
 
-///  Deletes a layer from the layer list
+/// Deletes a layer from the layer list
 #[wasm_bindgen]
 pub fn delete_layer(path: Vec<LayerId>) -> Result<(), JsValue> {
 	EDITOR_STATE
@@ -160,7 +257,7 @@ pub fn delete_layer(path: Vec<LayerId>) -> Result<(), JsValue> {
 		.map_err(convert_error)
 }
 
-///  Requests the backend to add a layer to the layer list
+/// Requests the backend to add a layer to the layer list
 #[wasm_bindgen]
 pub fn add_folder(path: Vec<LayerId>) -> Result<(), JsValue> {
 	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(DocumentMessage::AddFolder(path))).map_err(convert_error)

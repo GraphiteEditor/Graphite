@@ -1,6 +1,6 @@
 <template>
 	<button class="icon-button" :class="`size-${String(size)}`">
-		<Icon :icon="icon" />
+		<IconLabel :icon="icon" />
 	</button>
 </template>
 
@@ -53,7 +53,7 @@
 
 <script lang="ts">
 import { defineComponent } from "vue";
-import Icon from "../labels/Icon.vue";
+import IconLabel from "@/components/widgets/labels/IconLabel.vue";
 
 export default defineComponent({
 	props: {
@@ -61,6 +61,6 @@ export default defineComponent({
 		size: { type: Number, required: true },
 		gapAfter: { type: Boolean, default: false },
 	},
-	components: { Icon },
+	components: { IconLabel },
 });
 </script>
