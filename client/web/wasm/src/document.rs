@@ -176,11 +176,19 @@ pub fn select_all_layers() -> Result<(), JsValue> {
 	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(DocumentMessage::SelectAllLayers)).map_err(convert_error)
 }
 
-/// Select all layers
+/// Deselect all layers
 #[wasm_bindgen]
 pub fn deselect_all_layers() -> Result<(), JsValue> {
 	EDITOR_STATE
 		.with(|editor| editor.borrow_mut().handle_message(DocumentMessage::DeselectAllLayers))
+		.map_err(convert_error)
+}
+
+/// Reorder selected layer
+#[wasm_bindgen]
+pub fn reorder_selected_layers(delta: i32) -> Result<(), JsValue> {
+	EDITOR_STATE
+		.with(|editor| editor.borrow_mut().handle_message(DocumentMessage::ReorderSelectedLayers(delta)))
 		.map_err(convert_error)
 }
 
