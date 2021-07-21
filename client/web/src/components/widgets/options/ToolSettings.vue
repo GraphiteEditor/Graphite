@@ -1,19 +1,19 @@
 <template>
-	<div class="tool-options">
-		<template v-for="(option, index) in optionsMap.get(activeTool) || []" :key="index">
-			<IconButton v-if="option.kind === 'icon'" :icon="option.icon" :size="24" :title="option.title" />
-			<Separator v-if="option.kind === 'separator'" :type="option.type" />
-			<PopoverButton v-if="option.kind === 'popover'">
-				<h3>{{ option.title }}</h3>
-				<p>{{ option.placeholder_text }}</p>
+	<div class="tool-settings">
+		<template v-for="(setting, index) in settingsMap.get(activeTool) || []" :key="index">
+			<IconButton v-if="setting.kind === 'icon'" :icon="setting.icon" :size="24" :title="setting.title" />
+			<Separator v-if="setting.kind === 'separator'" :type="setting.type" />
+			<PopoverButton v-if="setting.kind === 'popover'">
+				<h3>{{ setting.title }}</h3>
+				<p>{{ setting.placeholder_text }}</p>
 			</PopoverButton>
-			<NumberInput v-if="option.kind === 'number'" :callback="option.callback" :initialValue="option.initial" :step="option.step" :min="option.min" :updateOnCallback="true" />
+			<NumberInput v-if="setting.kind === 'number'" :callback="setting.callback" :initialValue="setting.initial" :step="setting.step" :min="setting.min" :updateOnCallback="true" />
 		</template>
 	</div>
 </template>
 
 <style lang="scss">
-.tool-options {
+.tool-settings {
 	height: 100%;
 	flex: 0 0 auto;
 	display: flex;
@@ -30,29 +30,29 @@ import NumberInput from "@/components/widgets/inputs/NumberInput.vue";
 
 const wasm = import("@/../wasm/pkg");
 
-type ToolOptionsList = Array<ToolOptions>;
-type ToolOptionsMap = Map<string, ToolOptionsList>;
+type ToolSettingsList = Array<ToolSettings>;
+type ToolSettingsMap = Map<string, ToolSettingsList>;
 
-type ToolOptions = IconOption | SeparatorOption | PopoverOption | NumberOption;
+type ToolSettings = IconSetting | SeparatorSetting | PopoverSetting | NumberSetting;
 
-interface IconOption {
+interface IconSetting {
 	kind: "icon";
 	icon: string;
 	title: string;
 }
 
-interface SeparatorOption {
+interface SeparatorSetting {
 	kind: "separator";
 	type: SeparatorType;
 }
 
-interface PopoverOption {
+interface PopoverSetting {
 	kind: "popover";
 	title: string;
 	placeholder_text: string;
 }
 
-interface NumberOption {
+interface NumberSetting {
 	kind: "number";
 	initial: number;
 	step: number;
@@ -76,7 +76,7 @@ export default defineComponent({
 	},
 	data() {
 		return {
-			optionsMap: new Map([
+			settingsMap: new Map([
 				[
 					"Select",
 					[
@@ -117,7 +117,7 @@ export default defineComponent({
 					],
 				],
 				["Shape", [{ kind: "number", initial: 6, step: 1, min: 3, callback: this.setToolSettings }]],
-			]) as ToolOptionsMap,
+			]) as ToolSettingsMap,
 			SeparatorType,
 		};
 	},
