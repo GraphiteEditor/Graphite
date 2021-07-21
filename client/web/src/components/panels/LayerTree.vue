@@ -28,7 +28,7 @@
 						@click.alt.exact="handleControlClick(layer)"
 						@click.exact="handleClick(layer)"
 					>
-						<div class="layer-thumbnail"></div>
+						<div class="layer-thumbnail" v-html="layer.thumbnail"></div>
 						<div class="layer-type-icon">
 							<IconLabel :icon="'NodeTypePath'" title="Path" />
 						</div>
@@ -92,6 +92,12 @@
 				width: 64px;
 				height: 100%;
 				background: white;
+
+				svg {
+					width: calc(100% - 4px);
+					height: calc(100% - 4px);
+					margin: 2px;
+				}
 			}
 
 			.layer-type-icon {

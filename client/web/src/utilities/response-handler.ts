@@ -207,6 +207,7 @@ export interface LayerPanelEntry {
 	layer_type: LayerType;
 	path: BigUint64Array;
 	layer_data: LayerData;
+	thumbnail: string;
 }
 function newLayerPanelEntry(input: any): LayerPanelEntry {
 	return {
@@ -215,6 +216,7 @@ function newLayerPanelEntry(input: any): LayerPanelEntry {
 		layer_type: newLayerType(input.layer_type),
 		layer_data: newLayerData(input.layer_data),
 		path: new BigUint64Array(input.path.map((n: number) => BigInt(n))),
+		thumbnail: input.thumbnail,
 	};
 }
 
