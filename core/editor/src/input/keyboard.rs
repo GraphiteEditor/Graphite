@@ -69,6 +69,10 @@ pub enum Key {
 	KeyArrowDown,
 	KeyArrowLeft,
 	KeyArrowRight,
+	KeyLeftBracket,
+	KeyRightBracket,
+	KeyLeftCurlyBracket,
+	KeyRightCurlyBracket,
 
 	// This has to be the last element in the enum.
 	NumKeys,
