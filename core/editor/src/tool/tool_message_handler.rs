@@ -4,7 +4,7 @@ use document_core::color::Color;
 use crate::input::InputPreprocessor;
 use crate::{
 	document::Document,
-	tool::{tool_settings::ToolSettings, ToolFsmState, ToolType},
+	tool::{tool_options::ToolOptions, ToolFsmState, ToolType},
 };
 use std::collections::VecDeque;
 
@@ -16,7 +16,7 @@ pub enum ToolMessage {
 	SelectSecondaryColor(Color),
 	SwapColors,
 	ResetColors,
-	SetToolSettings(ToolType, ToolSettings),
+	SetToolOptions(ToolType, ToolOptions),
 	#[child]
 	Fill(FillMessage),
 	#[child]
@@ -90,8 +90,8 @@ impl MessageHandler<ToolMessage, (&Document, &InputPreprocessor)> for ToolMessag
 					.into(),
 				)
 			}
-			SetToolSettings(tool_type, tool_settings) => {
-				self.tool_state.document_tool_data.tool_settings.insert(tool_type, tool_settings);
+			SetToolOptions(tool_type, tool_options) => {
+				self.tool_state.document_tool_data.tool_options.insert(tool_type, tool_options);
 			}
 			message => {
 				let tool_type = match message {
@@ -115,7 +115,7 @@ impl MessageHandler<ToolMessage, (&Document, &InputPreprocessor)> for ToolMessag
 		}
 	}
 	fn actions(&self) -> ActionList {
-		let mut list = actions!(ToolMessageDiscriminant; ResetColors, SwapColors, SelectTool, SetToolSettings);
+		let mut list = actions!(ToolMessageDiscriminant; ResetColors, SwapColors, SelectTool, SetToolOptions);
 		list.extend(self.tool_state.tool_data.active_tool().actions());
 		list
 	}

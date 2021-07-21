@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
-pub enum ToolSettings {
+pub enum ToolOptions {
 	Select { append_mode: SelectAppendMode },
 	Ellipse,
 	Shape { shape_type: ShapeType },
