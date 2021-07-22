@@ -1,7 +1,7 @@
 <template>
 	<div class="tool-options">
 		<template v-for="(option, index) in optionsMap.get(activeTool) || []" :key="index">
-			<IconButton v-if="option.kind === 'icon_button'" :icon="option.icon" :size="24" :title="option.title" />
+			<IconButton v-if="option.kind === 'icon_button'" :icon="option.icon" :size="24" :title="option.title" :onClick="() => sendToolMessage(option.message)" />
 			<Separator v-if="option.kind === 'separator'" :type="option.type" />
 			<PopoverButton v-if="option.kind === 'popover_button'">
 				<h3>{{ option.title }}</h3>
@@ -38,6 +38,7 @@ interface IconButtonOption {
 	kind: "icon_button";
 	icon: string;
 	title: string;
+	message?: string;
 }
 
 interface SeparatorOption {
@@ -74,6 +75,12 @@ export default defineComponent({
 			// This is a placeholder call, using the Shape tool as an example
 			set_tool_options(this.$props.activeTool || "", { Shape: { shape_type: { Polygon: { vertices: newValue } } } });
 		},
+		async sendToolMessage(message?: string) {
+			if (message) {
+				const { send_tool_message } = await wasm;
+				send_tool_message(this.$props.activeTool || "", message);
+			}
+		},
 	},
 	data() {
 		const optionsMap: ToolOptionsMap = new Map([
@@ -96,8 +103,8 @@ export default defineComponent({
 
 					{ kind: "separator", type: SeparatorType.Section },
 
-					{ kind: "icon_button", icon: "FlipHorizontal", title: "Flip Horizontal" },
-					{ kind: "icon_button", icon: "FlipVertical", title: "Flip Vertical" },
+					{ kind: "icon_button", icon: "FlipHorizontal", title: "Flip Horizontal", message: "FlipHorizontal" },
+					{ kind: "icon_button", icon: "FlipVertical", title: "Flip Vertical", message: "FlipVertical" },
 
 					{ kind: "separator", type: SeparatorType.Related },
 
