@@ -56,6 +56,7 @@ pub enum DocumentMessage {
 	NudgeSelectedLayers(f64, f64),
 	ReorderSelectedLayers(i32),
 	FlipLayer(Vec<LayerId>, bool, bool),
+	DragLayer(Vec<LayerId>, DVec2),
 }
 
 impl From<DocumentOperation> for DocumentMessage {
@@ -605,6 +606,17 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 						}
 						.into(),
 					);
+				}
+			}
+			DragLayer(path, offset) => {
+				let translation = offset + ipp.mouse.position.as_dvec2();
+				if let Ok(layer) = self.active_document_mut().document.layer_mut(&path) {
+					let transform = {
+						let mut transform = layer.transform;
+						transform.translation = translation;
+						transform.to_cols_array()
+					};
+					responses.push_back(DocumentOperation::SetLayerTransform { path, transform }.into());
 				}
 			}
 			message => todo!("document_action_handler does not implement: {}", message.to_discriminant().global_name()),
