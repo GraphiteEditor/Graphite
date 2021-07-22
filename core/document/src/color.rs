@@ -21,7 +21,7 @@ impl Color {
 	pub const BLUE: Color = Color::from_unsafe(0., 0., 1.);
 
 	/// Return Some(Color) if `red`, `green`, `blue` and `alpha` have a valid value. Negative number (including `-0.0`), `f32::NAN` and infinity are not valid value and return `None`.
-	/// Values greater than `1.0` for alpha are not valid
+	/// Values greater than `1.0` for alpha are not valid.
 	/// # Examples
 	/// ```
 	/// use graphite_document_core::color::Color;
@@ -40,12 +40,12 @@ impl Color {
 		Some(color)
 	}
 
-	// return Color without checking `red` `green` `blue` and without transparency (alpha = 1.0)
+	// Return Color without checking `red` `green` `blue` and without transparency (alpha = 1.0)
 	const fn from_unsafe(red: f32, green: f32, blue: f32) -> Color {
 		Color { red, green, blue, alpha: 1. }
 	}
 
-	/// return a Color without transparency (alpha = 0xFF)
+	/// Return a Color without transparency (alpha = 0xFF).
 	/// # Examples
 	/// ```
 	/// use graphite_document_core::color::Color;
@@ -57,7 +57,7 @@ impl Color {
 		Color::from_rgba8(red, green, blue, 255)
 	}
 
-	/// return a color initialized by it's 8bit component
+	/// Return a color initialized by it's 8bit component.
 	///
 	/// # Examples
 	/// ```
@@ -75,7 +75,7 @@ impl Color {
 		}
 	}
 
-	/// return the red component
+	/// Return the red component.
 	///
 	/// # Examples
 	/// ```
@@ -87,7 +87,7 @@ impl Color {
 		self.red
 	}
 
-	/// return the green component
+	/// Return the green component.
 	///
 	/// # Examples
 	/// ```
@@ -99,7 +99,7 @@ impl Color {
 		self.green
 	}
 
-	/// return the blue component
+	/// Return the blue component.
 	///
 	/// # Examples
 	/// ```
@@ -111,7 +111,7 @@ impl Color {
 		self.blue
 	}
 
-	/// return the alpha component
+	/// Return the alpha component.
 	///
 	/// # Examples
 	/// ```
@@ -123,7 +123,7 @@ impl Color {
 		self.alpha
 	}
 
-	/// return the all components as a tuple, first component is red, followed by green, followed by blue, followed by alpha
+	/// Return the all components as a tuple, first component is red, followed by green, followed by blue, followed by alpha.
 	///
 	/// # Examples
 	/// ```
@@ -135,7 +135,7 @@ impl Color {
 		(self.red, self.green, self.blue, self.alpha)
 	}
 
-	/// return a String of hexadecimal value with two digit per components ("RRGGBBAA")
+	/// Return a String of hexadecimal value with two digit per components ("RRGGBBAA").
 	/// ```
 	/// use graphite_document_core::color::Color;
 	/// let color = Color::from_rgba8(0x72, 0x67, 0x62, 0x61);
@@ -151,7 +151,7 @@ impl Color {
 		)
 	}
 
-	/// return a String of hexadecimal value with two digit per components ("RRGGBB")
+	/// Return a String of hexadecimal value with two digit per components ("RRGGBB").
 	/// ```
 	/// use graphite_document_core::color::Color;
 	/// let color = Color::from_rgba8(0x72, 0x67, 0x62, 0x61);
