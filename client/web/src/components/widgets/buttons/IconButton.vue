@@ -1,5 +1,5 @@
 <template>
-	<button class="icon-button" :class="`size-${String(size)}`">
+	<button class="icon-button" :class="`size-${String(size)}`" @click="onClick">
 		<IconLabel :icon="icon" />
 	</button>
 </template>
@@ -60,6 +60,7 @@ export default defineComponent({
 		icon: { type: String, required: true },
 		size: { type: Number, required: true },
 		gapAfter: { type: Boolean, default: false },
+		onClick: Function,
 	},
 	components: { IconLabel },
 });

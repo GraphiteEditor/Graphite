@@ -4,7 +4,7 @@ use crate::EDITOR_STATE;
 use editor_core::input::input_preprocessor::ModifierKeys;
 use editor_core::input::mouse::ScrollDelta;
 use editor_core::message_prelude::*;
-use editor_core::tool::tool_options::ToolOptions;
+use editor_core::tool::{tool_options::ToolOptions, tools, ToolType};
 use editor_core::{
 	input::mouse::{MouseState, ViewportPosition},
 	LayerId,
@@ -30,10 +30,29 @@ pub fn set_tool_options(tool: String, options: &JsValue) -> Result<(), JsValue> 
 	match options.into_serde::<ToolOptions>() {
 		Ok(options) => EDITOR_STATE.with(|editor| match translate_tool(&tool) {
 			Some(tool) => editor.borrow_mut().handle_message(ToolMessage::SetToolOptions(tool, options)).map_err(convert_error),
-			None => Err(Error::new(&format!("Couldn't select {} because it was not recognized as a valid tool", tool)).into()),
+			None => Err(Error::new(&format!("Couldn't set options for {} because it was not recognized as a valid tool", tool)).into()),
 		}),
-		Err(err) => Err(Error::new(&format!("Invalud JSON for ToolOptions: {}", err)).into()),
+		Err(err) => Err(Error::new(&format!("Invalid JSON for ToolOptions: {}", err)).into()),
 	}
+}
+
+/// Send a message to a given tool
+#[wasm_bindgen]
+pub fn send_tool_message(tool: String, message: &JsValue) -> Result<(), JsValue> {
+	let tool_message = match translate_tool(&tool) {
+		Some(tool) => match tool {
+			ToolType::Select => match message.into_serde::<tools::select::SelectMessage>() {
+				Ok(select_message) => Ok(ToolMessage::Select(select_message)),
+				Err(err) => Err(Error::new(&format!("Invalid message for {}: {}", tool, err)).into()),
+			},
+			_ => Err(Error::new(&format!("Tool message sending not implemented for {}", tool)).into()),
+		},
+		None => Err(Error::new(&format!("Couldn't send message for {} because it was not recognized as a valid tool", tool)).into()),
+	};
+	EDITOR_STATE.with(|editor| match tool_message {
+		Ok(tool_message) => editor.borrow_mut().handle_message(tool_message).map_err(convert_error),
+		Err(err) => Err(err),
+	})
 }
 
 #[wasm_bindgen]
