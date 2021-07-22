@@ -1,10 +1,9 @@
 use serde::{Deserialize, Serialize};
 
-/// Structure that represent a color\
-/// internally alpha is stored as f32 that go from 0.0 (transparent) to 1.0
-/// the other components (rgb) are stored as f32 that go from 0.0 up to f32::MAX,
-/// the value are proportinal to the number of photons hitting the camera sensor
-/// if we have two different cameras with two different photon measuring capabilities, the reference point is the highest photon measuring capabilities
+/// Structure that represent a color.
+/// Internally alpha is stored as `f32` that range from `0.0` (transparent) to 1.0 (opaque).
+/// The other components (RGB) are stored as `f32` that range from `0.0` up to `f32::MAX`,
+/// the values encode the brightness of each channel proportional to the light intensity in cd/m² (nits) in HDR, and 0.0 (black) to 1.0 (white) in SDR color.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize)]
 pub struct Color {
@@ -21,8 +20,8 @@ impl Color {
 	pub const GREEN: Color = Color::from_unsafe(0., 1., 0.);
 	pub const BLUE: Color = Color::from_unsafe(0., 0., 1.);
 
-	/// return Some(Color) if `red`, `green`, `blue` and `alpha` have a valid value. Negative number (including -0.0), Nan and infinity are not valid value and return None.
-	/// Value greater than 1.0 for alpha are not valid
+	/// Return Some(Color) if `red`, `green`, `blue` and `alpha` have a valid value. Negative number (including `-0.0`), `f32::NAN` and infinity are not valid value and return `None`.
+	/// Values greater than `1.0` for alpha are not valid
 	/// # Examples
 	/// ```
 	/// use graphite_document_core::color::Color;
