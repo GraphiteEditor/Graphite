@@ -1,5 +1,10 @@
 use serde::{Deserialize, Serialize};
 
+/// Structure that represent a color\
+/// internally alpha is stored as f32 that go from 0.0 (transparent) to 1.0
+/// the other components (rgb) are stored as f32 that go from 0.0 up to f32::MAX,
+/// the value are proportinal to the number of photons hitting the camera sensor
+/// if we have two different cameras with two different photon measuring capabilities, the reference point is the highest photon measuring capabilities
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize)]
 pub struct Color {
@@ -16,21 +21,51 @@ impl Color {
 	pub const GREEN: Color = Color::from_unsafe(0., 1., 0.);
 	pub const BLUE: Color = Color::from_unsafe(0., 0., 1.);
 
+	/// return Some(Color) if `red`, `green`, `blue` and `alpha` have a valid value. Negative number (including -0.0), Nan and infinity are not valid value and return None.
+	/// Value greater than 1.0 for alpha are not valid
+	/// # Examples
+	/// ```
+	/// use graphite_document_core::color::Color;
+	/// let color = Color::from_rgbaf32(0.3, 0.14, 0.15, 0.92).unwrap();
+	/// assert!(color.components() == (0.3, 0.14, 0.15, 0.92));
+	///
+	/// let color = Color::from_rgbaf32(1.0, 1.0, 1.0, f32::NAN);
+	/// assert!(color == None);
+	/// ```
 	pub fn from_rgbaf32(red: f32, green: f32, blue: f32, alpha: f32) -> Option<Color> {
 		let color = Color { red, green, blue, alpha };
-		if [red, green, blue, alpha].iter().any(|c| c.is_sign_negative() || !c.is_finite()) {
+
+		if alpha > 1. || [red, green, blue, alpha].iter().any(|c| c.is_sign_negative() || !c.is_finite()) {
 			return None;
 		}
 		Some(color)
 	}
 
+	// return Color without checking `red` `green` `blue` and without transparency (alpha = 1.0)
 	const fn from_unsafe(red: f32, green: f32, blue: f32) -> Color {
 		Color { red, green, blue, alpha: 1. }
 	}
 
+	/// return a Color without transparency (alpha = 0xFF)
+	/// # Examples
+	/// ```
+	/// use graphite_document_core::color::Color;
+	/// let color = Color::from_rgb8(0x72, 0x67, 0x62);
+	/// let color2 = Color::from_rgba8(0x72, 0x67, 0x62, 0xFF);
+	/// assert!(color == color2)
+	/// ```
 	pub fn from_rgb8(red: u8, green: u8, blue: u8) -> Color {
 		Color::from_rgba8(red, green, blue, 255)
 	}
+
+	/// return a color initialized by it's 8bit component
+	///
+	/// # Examples
+	/// ```
+	/// use graphite_document_core::color::Color;
+	/// let color = Color::from_rgba8(0x72, 0x67, 0x62, 0x61);
+	/// assert!("72676261" == color.rgba_hex())
+	/// ```
 	pub fn from_rgba8(red: u8, green: u8, blue: u8, alpha: u8) -> Color {
 		let map = |int_color| int_color as f32 / 255.0;
 		Color {
@@ -40,21 +75,73 @@ impl Color {
 			alpha: map(alpha),
 		}
 	}
+
+	/// return the red component
+	///
+	/// # Examples
+	/// ```
+	/// use graphite_document_core::color::Color;
+	/// let color = Color::from_rgbaf32(0.114, 0.103, 0.98, 0.97).unwrap();
+	/// assert!(color.r() == 0.114);
+	/// ```
 	pub fn r(&self) -> f32 {
 		self.red
 	}
+
+	/// return the green component
+	///
+	/// # Examples
+	/// ```
+	/// use graphite_document_core::color::Color;
+	/// let color = Color::from_rgbaf32(0.114, 0.103, 0.98, 0.97).unwrap();
+	/// assert!(color.g() == 0.103);
+	/// ```
 	pub fn g(&self) -> f32 {
 		self.green
 	}
+
+	/// return the blue component
+	///
+	/// # Examples
+	/// ```
+	/// use graphite_document_core::color::Color;
+	/// let color = Color::from_rgbaf32(0.114, 0.103, 0.98, 0.97).unwrap();
+	/// assert!(color.b() == 0.98);
+	/// ```
 	pub fn b(&self) -> f32 {
 		self.blue
 	}
+
+	/// return the alpha component
+	///
+	/// # Examples
+	/// ```
+	/// use graphite_document_core::color::Color;
+	/// let color = Color::from_rgbaf32(0.114, 0.103, 0.98, 0.97).unwrap();
+	/// assert!(color.a() == 0.97);
+	/// ```
 	pub fn a(&self) -> f32 {
 		self.alpha
 	}
+
+	/// return the all components as a tuple, first component is red, followed by green, followed by blue, followed by alpha
+	///
+	/// # Examples
+	/// ```
+	/// use graphite_document_core::color::Color;
+	/// let color = Color::from_rgbaf32(0.114, 0.103, 0.98, 0.97).unwrap();
+	/// assert!(color.components() == (0.114, 0.103, 0.98, 0.97));
+	/// ```
 	pub fn components(&self) -> (f32, f32, f32, f32) {
 		(self.red, self.green, self.blue, self.alpha)
 	}
+
+	/// return a String of hexadecimal value with two digit per components ("RRGGBBAA")
+	/// ```
+	/// use graphite_document_core::color::Color;
+	/// let color = Color::from_rgba8(0x72, 0x67, 0x62, 0x61);
+	/// assert!("72676261" == color.rgba_hex())
+	/// ```
 	pub fn rgba_hex(&self) -> String {
 		format!(
 			"{:02X?}{:02X?}{:02X?}{:02X?}",
@@ -64,6 +151,13 @@ impl Color {
 			(self.a() * 255.) as u8,
 		)
 	}
+
+	/// return a String of hexadecimal value with two digit per components ("RRGGBB")
+	/// ```
+	/// use graphite_document_core::color::Color;
+	/// let color = Color::from_rgba8(0x72, 0x67, 0x62, 0x61);
+	/// assert!("726762" == color.rgb_hex())
+	/// ```
 	pub fn rgb_hex(&self) -> String {
 		format!("{:02X?}{:02X?}{:02X?}", (self.r() * 255.) as u8, (self.g() * 255.) as u8, (self.b() * 255.) as u8,)
 	}
