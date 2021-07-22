@@ -20,7 +20,7 @@ impl Color {
 	pub const GREEN: Color = Color::from_unsafe(0., 1., 0.);
 	pub const BLUE: Color = Color::from_unsafe(0., 0., 1.);
 
-	/// Return Some(Color) if `red`, `green`, `blue` and `alpha` have a valid value. Negative number (including `-0.0`), `f32::NAN` and infinity are not valid value and return `None`.
+	/// Returns `Some(Color)` if `red`, `green`, `blue` and `alpha` have a valid value. Negatives numbers (including `-0.0`), NaN and infinity are not valid values and return `None`.
 	/// Values greater than `1.0` for alpha are not valid.
 	/// # Examples
 	/// ```
