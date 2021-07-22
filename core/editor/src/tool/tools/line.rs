@@ -93,6 +93,7 @@ impl Fsm for LineToolFsmState {
 					// TODO - introduce comparison threshold when operating with canvas coordinates (https://github.com/GraphiteEditor/Graphite/issues/100)
 					if data.drag_start != data.drag_current {
 						responses.push_back(make_operation(data, tool_data, transform));
+						responses.push_back(DocumentMessage::DeselectAllLayers.into());
 						responses.push_back(Operation::CommitTransaction.into());
 					}
 
@@ -143,7 +144,6 @@ fn update_state(
 	*(state(data)) = value;
 
 	responses.push_back(Operation::ClearWorkingFolder.into());
-	responses.push_back(DocumentMessage::DeselectAllLayers.into());
 	responses.push_back(make_operation(data, tool_data, transform));
 
 	new_state

@@ -378,7 +378,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			CopySelectedLayers => {
 				let paths = self.selected_layers_sorted();
 				self.copy_buffer.clear();
-				for path in paths {
+				for path in paths.iter().rev() {
 					match self.active_document().document.layer(&path).map(|t| t.clone()) {
 						Ok(layer) => {
 							self.copy_buffer.push(layer);
@@ -599,18 +599,41 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			}
 			ReorderSelectedLayers(relative_positon) => {
 				let all_layer_paths = self.all_layers_sorted();
-				let non_selected_layers = self.non_selected_layers_sorted();
-				if let Some(insert_path) = all_layer_paths
-					.iter()
-					.position(|path| self.layerdata(&path).selected)
-					.map(|pos| non_selected_layers.get((pos as i64 + relative_positon as i64).clamp(0, all_layer_paths.len() as i64 - 1) as usize))
-					.flatten()
-				{
-					log::debug!("inserting at {:?}", insert_path);
-					let (id, path) = insert_path.split_last().expect("Can't move the root folder");
-					if let Some(folder) = self.active_document().document.document_layer(path).ok().map(|layer| layer.as_folder().ok()).flatten() {
-						let insert_index = folder.position_of_layer(*id).unwrap() as isize;
-						responses.push_back(DocumentMessage::MoveSelectedLayersTo { path: path.to_vec(), insert_index }.into())
+				let selected_layers = self.selected_layers_sorted();
+				let pivot = match relative_positon.signum() {
+					-1 => selected_layers.first(),
+					1 => selected_layers.last(),
+					_ => unreachable!(),
+				}
+				.expect("called move layers with an empty selection");
+				if let Some(pos) = all_layer_paths.iter().position(|path| path == pivot) {
+					log::debug!("pos {:?}", pos);
+					let max = all_layer_paths.len() as i64 - selected_layers.len() as i64;
+					log::debug!("max {:?}", max);
+					log::debug!("relative_positon {:?}", relative_positon);
+					log::debug!("all_layer_paths: {:?}", all_layer_paths);
+					let insert_pos = (pos as i64 + relative_positon as i64).clamp(0, max) as usize;
+					log::debug!("inser_pos {:?}", insert_pos);
+					let insert = all_layer_paths.get(insert_pos);
+					if let Some(insert_path) = insert {
+						log::debug!("inserting at {:?}", insert_path);
+						let (id, path) = insert_path.split_last().expect("Can't move the root folder");
+						if let Some(folder) = self.active_document().document.document_layer(path).ok().map(|layer| layer.as_folder().ok()).flatten() {
+							// TODO: Ignore existing thingsin folder
+							//
+							let selected: Vec<_> = selected_layers
+								.iter()
+								.filter(|layer| layer.starts_with(path) && layer.len() == path.len() + 1)
+								.map(|x| x.last().unwrap())
+								.collect();
+							log::debug!("selected {:?}", selected);
+							let non_selected: Vec<_> = folder.layer_ids.iter().filter(|id| selected.iter().all(|x| x != id)).collect();
+							log::debug!("non selected {:?}", non_selected);
+							let offset = if relative_positon < 0 { 0 } else { 1 } as usize;
+							let fallback = offset * (non_selected.len() - 1);
+							let insert_index = non_selected.iter().position(|x| *x == id).unwrap_or(fallback) as isize + offset as isize;
+							responses.push_back(DocumentMessage::MoveSelectedLayersTo { path: path.to_vec(), insert_index }.into())
+						}
 					}
 				}
 			}
