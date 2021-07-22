@@ -5,7 +5,7 @@ use crate::{
 };
 use document_core::layers::Layer;
 use document_core::{DocumentResponse, LayerId, Operation as DocumentOperation};
-use glam::DAffine2;
+use glam::{DAffine2, DVec2};
 use log::warn;
 
 use crate::document::Document;
@@ -55,6 +55,7 @@ pub enum DocumentMessage {
 	SetCanvasRotation(f64),
 	NudgeSelectedLayers(f64, f64),
 	ReorderSelectedLayers(i32),
+	FlipLayer(Vec<LayerId>, bool, bool),
 }
 
 impl From<DocumentOperation> for DocumentMessage {
@@ -592,6 +593,18 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					};
 					responses.push_back(operation.into());
 					responses.push_back(DocumentMessage::SelectLayers(selected_layer_paths).into());
+				}
+			}
+			FlipLayer(path, flip_horizontal, flip_vertical) => {
+				if let Ok(layer) = self.active_document_mut().document.layer_mut(&path) {
+					let scale = DVec2::new(if flip_horizontal { -1. } else { 1. }, if flip_vertical { -1. } else { 1. });
+					responses.push_back(
+						DocumentOperation::SetLayerTransform {
+							path,
+							transform: (layer.transform * DAffine2::from_scale(scale)).to_cols_array(),
+						}
+						.into(),
+					);
 				}
 			}
 			message => todo!("document_action_handler does not implement: {}", message.to_discriminant().global_name()),
