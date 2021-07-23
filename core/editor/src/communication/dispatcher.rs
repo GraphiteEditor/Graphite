@@ -33,7 +33,7 @@ impl Dispatcher {
 		) || MessageDiscriminant::from(&message).local_name().ends_with("MouseMove"))
 		{
 			log::trace!("Message: {}", message.to_discriminant().local_name());
-			log::debug!("Hints:{}", self.input_mapper.hints(self.collect_actions()));
+			log::trace!("Hints:{}", self.input_mapper.hints(self.collect_actions()));
 		}
 		match message {
 			NoOp => (),
