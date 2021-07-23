@@ -27,9 +27,8 @@ impl Default for Document {
 }
 
 fn split_path(path: &[LayerId]) -> Result<(&[LayerId], LayerId), DocumentError> {
-	let id = path.last().ok_or(DocumentError::InvalidPath)?;
-	let folder_path = &path[0..path.len() - 1];
-	Ok((folder_path, *id))
+	let (id, path) = path.split_last().ok_or(DocumentError::InvalidPath)?;
+	Ok((path, *id))
 }
 
 impl Document {
@@ -221,24 +220,8 @@ impl Document {
 	/// Deletes the layer specified by `path`.
 	pub fn delete(&mut self, path: &[LayerId]) -> Result<(), DocumentError> {
 		let (path, id) = split_path(path)?;
-		if let Ok(layer) = self.layer_mut(path) {
-			layer.cache_dirty = true;
-		}
-		self.document_folder_mut(path)?.as_folder_mut()?.remove_layer(id)?;
-		Ok(())
-	}
-
-	pub fn reorder_layers(&mut self, source_paths: &[Vec<LayerId>], target_path: &[LayerId]) -> Result<(), DocumentError> {
-		// TODO: Detect when moving between folders and handle properly
-
-		let source_layer_ids = source_paths
-			.iter()
-			.map(|x| x.last().cloned().ok_or(DocumentError::LayerNotFound))
-			.collect::<Result<Vec<LayerId>, DocumentError>>()?;
-
-		self.root.as_folder_mut()?.reorder_layers(source_layer_ids, *target_path.last().ok_or(DocumentError::LayerNotFound)?)?;
-
-		Ok(())
+		let _ = self.layer_mut(path).map(|x| x.cache_dirty = true);
+		self.document_folder_mut(path)?.as_folder_mut()?.remove_layer(id)
 	}
 
 	pub fn layer_axis_aligned_bounding_box(&self, path: &[LayerId]) -> Result<Option<[DVec2; 2]>, DocumentError> {
@@ -268,6 +251,16 @@ impl Document {
 		Ok(())
 	}
 
+	fn working_paths(&mut self) -> Vec<Vec<LayerId>> {
+		self.work
+			.as_folder()
+			.unwrap()
+			.layer_ids
+			.iter()
+			.map(|id| self.work_mount_path.iter().chain([*id].iter()).cloned().collect())
+			.collect()
+	}
+
 	/// Mutate the document by applying the `operation` to it. If the operation necessitates a
 	/// reaction from the frontend, responses may be returned.
 	pub fn handle_operation(&mut self, operation: Operation) -> Result<Option<Vec<DocumentResponse>>, DocumentError> {
@@ -276,19 +269,19 @@ impl Document {
 				let id = self.add_layer(&path, Layer::new(LayerDataTypes::Ellipse(layers::Ellipse::new()), *transform, *style), *insert_index)?;
 				let path = [path.clone(), vec![id]].concat();
 
-				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::SelectLayer { path }])
+				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::CreatedLayer { path }])
 			}
 			Operation::AddRect { path, insert_index, transform, style } => {
 				let id = self.add_layer(&path, Layer::new(LayerDataTypes::Rect(Rect), *transform, *style), *insert_index)?;
 				let path = [path.clone(), vec![id]].concat();
 
-				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::SelectLayer { path }])
+				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::CreatedLayer { path }])
 			}
 			Operation::AddLine { path, insert_index, transform, style } => {
 				let id = self.add_layer(&path, Layer::new(LayerDataTypes::Line(Line), *transform, *style), *insert_index)?;
 				let path = [path.clone(), vec![id]].concat();
 
-				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::SelectLayer { path }])
+				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::CreatedLayer { path }])
 			}
 			Operation::AddPen {
 				path,
@@ -301,7 +294,7 @@ impl Document {
 				let polyline = PolyLine::new(points);
 				let id = self.add_layer(&path, Layer::new(LayerDataTypes::PolyLine(polyline), *transform, *style), *insert_index)?;
 				let path = [path.clone(), vec![id]].concat();
-				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::SelectLayer { path }])
+				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::CreatedLayer { path }])
 			}
 			Operation::AddShape {
 				path,
@@ -315,20 +308,29 @@ impl Document {
 				let id = self.add_layer(&path, Layer::new(LayerDataTypes::Shape(s), *transform, *style), *insert_index)?;
 				let path = [path.clone(), vec![id]].concat();
 
-				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::SelectLayer { path }])
+				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::CreatedLayer { path }])
 			}
 			Operation::DeleteLayer { path } => {
 				self.delete(&path)?;
 
-				let (path, _) = split_path(path.as_slice()).unwrap_or_else(|_| (&[], 0));
-				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::FolderChanged { path: path.to_vec() }])
+				let (folder, _) = split_path(path.as_slice()).unwrap_or_else(|_| (&[], 0));
+				Some(vec![
+					DocumentResponse::DocumentChanged,
+					DocumentResponse::DeletedLayer { path: path.clone() },
+					DocumentResponse::FolderChanged { path: folder.to_vec() },
+				])
 			}
-			Operation::PasteLayer { path, layer } => {
+			Operation::PasteLayer { path, layer, insert_index } => {
 				let folder = self.folder_mut(path)?;
 				//FIXME: This clone of layer should be avoided somehow
-				folder.add_layer(layer.clone(), -1).ok_or(DocumentError::IndexOutOfBounds)?;
+				let id = folder.add_layer(layer.clone(), *insert_index).ok_or(DocumentError::IndexOutOfBounds)?;
+				let full_path = [path.clone(), vec![id]].concat();
 
-				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::FolderChanged { path: path.clone() }])
+				Some(vec![
+					DocumentResponse::DocumentChanged,
+					DocumentResponse::CreatedLayer { path: full_path },
+					DocumentResponse::FolderChanged { path: path.clone() },
+				])
 			}
 			Operation::DuplicateLayer { path } => {
 				let layer = self.layer(&path)?.clone();
@@ -343,11 +345,13 @@ impl Document {
 				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::FolderChanged { path: path.clone() }])
 			}
 			Operation::MountWorkingFolder { path } => {
+				let mut responses: Vec<_> = self.working_paths().into_iter().map(|path| DocumentResponse::DeletedLayer { path }).collect();
 				self.work_mount_path = path.clone();
 				self.work_operations.clear();
 				self.work = Layer::new(LayerDataTypes::Folder(Folder::default()), DAffine2::IDENTITY.to_cols_array(), PathStyle::default());
 				self.work_mounted = true;
-				None
+				responses.push(DocumentResponse::DocumentChanged);
+				Some(responses)
 			}
 			Operation::TransformLayer { path, transform } => {
 				let layer = self.document_layer_mut(path).unwrap();
@@ -365,18 +369,23 @@ impl Document {
 				Some(vec![DocumentResponse::DocumentChanged])
 			}
 			Operation::DiscardWorkingFolder => {
+				let mut responses: Vec<_> = self.working_paths().into_iter().map(|path| DocumentResponse::DeletedLayer { path }).collect();
 				self.work_operations.clear();
 				self.work_mount_path = vec![];
 				self.work = Layer::new(LayerDataTypes::Folder(Folder::default()), DAffine2::IDENTITY.to_cols_array(), PathStyle::default());
 				self.work_mounted = false;
-				Some(vec![DocumentResponse::DocumentChanged])
+				responses.push(DocumentResponse::DocumentChanged);
+				Some(responses)
 			}
 			Operation::ClearWorkingFolder => {
+				let mut responses: Vec<_> = self.working_paths().into_iter().map(|path| DocumentResponse::DeletedLayer { path }).collect();
 				self.work_operations.clear();
 				self.work = Layer::new(LayerDataTypes::Folder(Folder::default()), DAffine2::IDENTITY.to_cols_array(), PathStyle::default());
-				Some(vec![DocumentResponse::DocumentChanged])
+				responses.push(DocumentResponse::DocumentChanged);
+				Some(responses)
 			}
 			Operation::CommitTransaction => {
+				let mut responses: Vec<_> = self.working_paths().into_iter().map(|path| DocumentResponse::DeletedLayer { path }).collect();
 				let mut ops = Vec::new();
 				let mut path: Vec<LayerId> = vec![];
 				std::mem::swap(&mut path, &mut self.work_mount_path);
@@ -384,7 +393,6 @@ impl Document {
 				self.work_mounted = false;
 				self.work_mount_path = vec![];
 				self.work = Layer::new(LayerDataTypes::Folder(Folder::default()), DAffine2::IDENTITY.to_cols_array(), PathStyle::default());
-				let mut responses = vec![];
 				for operation in ops.into_iter() {
 					if let Some(mut op_responses) = self.handle_operation(operation)? {
 						responses.append(&mut op_responses);
@@ -414,11 +422,6 @@ impl Document {
 				let layer = self.layer_mut(path).unwrap();
 				layer.style.set_fill(layers::style::Fill::new(*color));
 				self.mark_as_dirty(path)?;
-				Some(vec![DocumentResponse::DocumentChanged])
-			}
-			Operation::ReorderLayers { source_paths, target_path } => {
-				self.reorder_layers(source_paths, target_path)?;
-
 				Some(vec![DocumentResponse::DocumentChanged])
 			}
 		};
