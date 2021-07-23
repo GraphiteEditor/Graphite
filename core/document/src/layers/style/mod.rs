@@ -1,10 +1,10 @@
 use crate::color::Color;
 use serde::{Deserialize, Serialize};
-const OPACITY_PERCISION: usize = 3;
+const OPACITY_PRECISION: usize = 3;
 
 fn format_opacity(name: &str, opacity: f32) -> String {
-	if (opacity - 1.).abs() > 10f32.powi(-(OPACITY_PERCISION as i32)) {
-		format!(r#" {}-opacity="{:.percision$}""#, name, opacity, percision = OPACITY_PERCISION)
+	if (opacity - 1.).abs() > 10f32.powi(-(OPACITY_PRECISION as i32)) {
+		format!(r#" {}-opacity="{:.precision$}""#, name, opacity, precision = OPACITY_PRECISION)
 	} else {
 		String::new()
 	}

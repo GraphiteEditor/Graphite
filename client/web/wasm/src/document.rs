@@ -1,9 +1,11 @@
 use crate::shims::Error;
 use crate::wrappers::{translate_key, translate_tool, Color};
 use crate::EDITOR_STATE;
+use document_core::layers::BlendMode;
 use editor_core::input::input_preprocessor::ModifierKeys;
 use editor_core::input::mouse::ScrollDelta;
 use editor_core::message_prelude::*;
+use editor_core::misc::EditorError;
 use editor_core::tool::{tool_options::ToolOptions, tools, ToolType};
 use editor_core::{
 	input::mouse::{MouseState, ViewportPosition},
@@ -209,6 +211,32 @@ pub fn reorder_selected_layers(delta: i32) -> Result<(), JsValue> {
 	EDITOR_STATE
 		.with(|editor| editor.borrow_mut().handle_message(DocumentMessage::ReorderSelectedLayers(delta)))
 		.map_err(convert_error)
+}
+
+/// Set the blend mode of the selected layers
+#[wasm_bindgen]
+pub fn set_blend_mode_for_selected_layers(blend_mode_svg_style_name: String) -> Result<(), JsValue> {
+	let blend_mode = match blend_mode_svg_style_name.as_str() {
+		"normal" => BlendMode::Normal,
+		"multiply" => BlendMode::Multiply,
+		"darken" => BlendMode::Darken,
+		"color-burn" => BlendMode::ColorBurn,
+		"screen" => BlendMode::Screen,
+		"lighten" => BlendMode::Lighten,
+		"color-dodge" => BlendMode::ColorDodge,
+		"overlay" => BlendMode::Overlay,
+		"soft-light" => BlendMode::SoftLight,
+		"hard-light" => BlendMode::HardLight,
+		"difference" => BlendMode::Difference,
+		"exclusion" => BlendMode::Exclusion,
+		"hue" => BlendMode::Hue,
+		"saturation" => BlendMode::Saturation,
+		"color" => BlendMode::Color,
+		"luminosity" => BlendMode::Luminosity,
+		_ => return Err(convert_error(EditorError::Misc("UnknownBlendMode".to_string())).into()),
+	};
+
+	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(DocumentMessage::SetBlendModeForSelectedLayers(blend_mode)).map_err(convert_error))
 }
 
 /// Export the document

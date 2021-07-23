@@ -25,7 +25,7 @@ impl Color {
 }
 
 macro_rules! match_string_to_enum {
-    (match ($e:expr) {$($var:ident),* $(,)?}) => {
+	(match ($e:expr) {$($var:ident),* $(,)?}) => {
 		match $e {
 			$(
 			stringify!($var) => Some($var),
