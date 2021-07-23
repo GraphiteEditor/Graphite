@@ -609,7 +609,8 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				}
 			}
 			DragLayer(path, offset) => {
-				let translation = offset + ipp.mouse.position.as_dvec2();
+				let transformed_mouse_pos = self.active_document().document.root.transform.inverse().transform_vector2(ipp.mouse.position.as_dvec2());
+				let translation = offset + transformed_mouse_pos;
 				if let Ok(layer) = self.active_document_mut().document.layer_mut(&path) {
 					let transform = {
 						let mut transform = layer.transform;

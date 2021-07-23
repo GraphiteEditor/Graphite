@@ -89,6 +89,7 @@ impl Fsm for SelectToolFsmState {
 					];
 
 					if let Some(intersection) = document.document.intersects_quad_root(quad).last() {
+						let transformed_start = document.document.root.transform.inverse().transform_vector2(data.drag_start.as_dvec2());
 						if document.layer_data.get(intersection).map_or(false, |layer_data| layer_data.selected) {
 							data.layers_dragging = document
 								.layer_data
@@ -96,12 +97,12 @@ impl Fsm for SelectToolFsmState {
 								.filter_map(|(path, layer_data)| {
 									layer_data
 										.selected
-										.then(|| (path.clone(), document.document.layer(path).unwrap().transform.translation - data.drag_start.as_dvec2()))
+										.then(|| (path.clone(), document.document.layer(path).unwrap().transform.translation - transformed_start))
 								})
 								.collect();
 						} else {
 							responses.push_back(DocumentMessage::SelectLayers(vec![intersection.clone()]).into());
-							data.layers_dragging = vec![(intersection.clone(), document.document.layer(intersection).unwrap().transform.translation - data.drag_start.as_dvec2())]
+							data.layers_dragging = vec![(intersection.clone(), document.document.layer(intersection).unwrap().transform.translation - transformed_start)]
 						}
 					} else {
 						responses.push_back(Operation::MountWorkingFolder { path: vec![] }.into());
