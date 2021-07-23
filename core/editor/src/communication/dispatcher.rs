@@ -319,11 +319,11 @@ mod test {
 		let (all, non_selected, selected) = verify_order(&mut editor.dispatcher.document_message_handler);
 		assert_eq!(all, non_selected.into_iter().chain(selected.into_iter()).collect::<Vec<_>>());
 
-		editor.handle_message(Message::Document(DocumentMessage::ReorderSelectedLayers(1))).unwrap();
+		editor.handle_message(Message::Document(DocumentMessage::ReorderSelectedLayers(-1))).unwrap();
 		let (all, non_selected, selected) = verify_order(&mut editor.dispatcher.document_message_handler);
 		assert_eq!(all, selected.into_iter().chain(non_selected.into_iter()).collect::<Vec<_>>());
 
-		editor.handle_message(Message::Document(DocumentMessage::ReorderSelectedLayers(i32::MIN))).unwrap();
+		editor.handle_message(Message::Document(DocumentMessage::ReorderSelectedLayers(i32::MAX))).unwrap();
 		let (all, non_selected, selected) = verify_order(&mut editor.dispatcher.document_message_handler);
 		assert_eq!(all, non_selected.into_iter().chain(selected.into_iter()).collect::<Vec<_>>());
 	}

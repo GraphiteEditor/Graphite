@@ -252,7 +252,6 @@ impl Document {
 	}
 
 	fn working_paths(&mut self) -> Vec<Vec<LayerId>> {
-		log::debug!("deleting: {:?}", self.work.as_folder().unwrap().layer_ids);
 		self.work
 			.as_folder()
 			.unwrap()
