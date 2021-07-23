@@ -26,7 +26,7 @@ pub enum DocumentMessage {
 	DuplicateSelectedLayers,
 	CopySelectedLayers,
 	SetBlendModeForSelectedLayers(BlendMode),
-	PasteLayers,
+	PasteLayers { path: Vec<LayerId>, insert_index: isize },
 	AddFolder(Vec<LayerId>),
 	RenameLayer(Vec<LayerId>, String),
 	ToggleLayerVisibility(Vec<LayerId>),
@@ -56,8 +56,9 @@ pub enum DocumentMessage {
 	WheelCanvasZoom,
 	SetCanvasRotation(f64),
 	NudgeSelectedLayers(f64, f64),
-	ReorderSelectedLayers(i32),
 	FlipLayer(Vec<LayerId>, bool, bool),
+	MoveSelectedLayersTo { path: Vec<LayerId>, insert_index: isize },
+	ReorderSelectedLayers(i32), // relatve_positon,
 }
 
 impl From<DocumentOperation> for DocumentMessage {
@@ -141,7 +142,7 @@ impl DocumentMessageHandler {
 	}
 
 	/// Returns the paths to all layers in order, optionally including only selected layers
-	fn layers_sorted(&self, only_selected: bool) -> Vec<Vec<LayerId>> {
+	fn layers_sorted(&self, selected: Option<bool>) -> Vec<Vec<LayerId>> {
 		// Compute the indices for each layer to be able to sort them
 		// TODO: Replace with drain_filter https://github.com/rust-lang/rust/issues/59618
 		let mut layers_with_indices: Vec<(Vec<LayerId>, Vec<usize>)> = self
@@ -149,7 +150,7 @@ impl DocumentMessageHandler {
 			.layer_data
 			.iter()
 			// 'path.len() > 0' filters out root layer since it has no indices
-			.filter_map(|(path, data)| (!path.is_empty() && !only_selected || data.selected).then(|| path.clone()))
+			.filter_map(|(path, data)| (!path.is_empty() && (data.selected == selected.unwrap_or(data.selected))).then(|| path.clone()))
 			.filter_map(|path| {
 				// Currently it is possible that layer_data contains layers that are don't actually exist
 				// and thus indices_for_path can return an error. We currently skip these layers and log a warning.
@@ -169,13 +170,18 @@ impl DocumentMessageHandler {
 	}
 
 	/// Returns the paths to all layers in order
-	fn all_layers_sorted(&self) -> Vec<Vec<LayerId>> {
-		self.layers_sorted(false)
+	pub fn all_layers_sorted(&self) -> Vec<Vec<LayerId>> {
+		self.layers_sorted(None)
 	}
 
 	/// Returns the paths to all selected layers in order
-	fn selected_layers_sorted(&self) -> Vec<Vec<LayerId>> {
-		self.layers_sorted(true)
+	pub fn selected_layers_sorted(&self) -> Vec<Vec<LayerId>> {
+		self.layers_sorted(Some(true))
+	}
+
+	/// Returns the paths to all selected layers in order
+	pub fn non_selected_layers_sorted(&self) -> Vec<Vec<LayerId>> {
+		self.layers_sorted(Some(false))
 	}
 }
 
@@ -361,7 +367,6 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			DeleteSelectedLayers => {
 				let paths = self.selected_layers_sorted();
 				for path in paths {
-					self.active_document_mut().layer_data.remove(&path);
 					responses.push_back(DocumentOperation::DeleteLayer { path }.into())
 				}
 			}
@@ -382,10 +387,26 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					}
 				}
 			}
-			PasteLayers => {
-				for layer in self.copy_buffer.iter() {
-					//TODO: Should be the path to the current folder instead of root
-					responses.push_back(DocumentOperation::PasteLayer { layer: layer.clone(), path: vec![] }.into())
+			PasteLayers { path, insert_index } => {
+				let paste = |layer: &Layer, responses: &mut VecDeque<_>| {
+					log::trace!("pasting into folder {:?} as index: {}", path, insert_index);
+					responses.push_back(
+						DocumentOperation::PasteLayer {
+							layer: layer.clone(),
+							path: path.clone(),
+							insert_index,
+						}
+						.into(),
+					)
+				};
+				if insert_index == -1 {
+					for layer in self.copy_buffer.iter() {
+						paste(layer, responses)
+					}
+				} else {
+					for layer in self.copy_buffer.iter().rev() {
+						paste(layer, responses)
+					}
 				}
 			}
 			SelectLayers(paths) => {
@@ -421,9 +442,12 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 							.into_iter()
 							.map(|response| match response {
 								DocumentResponse::FolderChanged { path } => self.handle_folder_changed(path),
-								DocumentResponse::SelectLayer { path } => {
+								DocumentResponse::DeletedLayer { path } => {
+									self.active_document_mut().layer_data.remove(&path);
+									None
+								}
+								DocumentResponse::CreatedLayer { path } => {
 									if !self.active_document().document.work_mounted {
-										self.clear_selection();
 										self.select_layer(&path)
 									} else {
 										None
@@ -576,32 +600,39 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					responses.push_back(operation.into());
 				}
 			}
-			ReorderSelectedLayers(delta) => {
-				let selected_layer_paths: Vec<Vec<LayerId>> = self.selected_layers_sorted();
+			MoveSelectedLayersTo { path, insert_index } => {
+				responses.push_back(DocumentMessage::CopySelectedLayers.into());
+				responses.push_back(DocumentMessage::DeleteSelectedLayers.into());
+				responses.push_back(DocumentMessage::PasteLayers { path, insert_index }.into());
+			}
+			ReorderSelectedLayers(relative_positon) => {
 				let all_layer_paths = self.all_layers_sorted();
-
-				let max_index = all_layer_paths.len() as i64 - 1;
-				let num_layers_selected = selected_layer_paths.len() as i64;
-
-				let mut selected_layer_index = -1;
-				let mut next_layer_index = -1;
-				for (i, path) in all_layer_paths.iter().enumerate() {
-					if *path == selected_layer_paths[0] {
-						selected_layer_index = i as i32;
-						// Skip past selection length when moving up
-						let offset = if delta > 0 { num_layers_selected - 1 } else { 0 };
-						next_layer_index = (selected_layer_index as i64 + delta as i64 + offset).clamp(0, max_index) as i32;
-						break;
+				let selected_layers = self.selected_layers_sorted();
+				if let Some(pivot) = match relative_positon.signum() {
+					-1 => selected_layers.first(),
+					1 => selected_layers.last(),
+					_ => unreachable!(),
+				} {
+					if let Some(pos) = all_layer_paths.iter().position(|path| path == pivot) {
+						let max = all_layer_paths.len() as i64 - 1;
+						let insert_pos = (pos as i64 + relative_positon as i64).clamp(0, max) as usize;
+						let insert = all_layer_paths.get(insert_pos);
+						if let Some(insert_path) = insert {
+							let (id, path) = insert_path.split_last().expect("Can't move the root folder");
+							if let Some(folder) = self.active_document().document.document_layer(path).ok().map(|layer| layer.as_folder().ok()).flatten() {
+								let selected: Vec<_> = selected_layers
+									.iter()
+									.filter(|layer| layer.starts_with(path) && layer.len() == path.len() + 1)
+									.map(|x| x.last().unwrap())
+									.collect();
+								let non_selected: Vec<_> = folder.layer_ids.iter().filter(|id| selected.iter().all(|x| x != id)).collect();
+								let offset = if relative_positon < 0 || non_selected.is_empty() { 0 } else { 1 };
+								let fallback = offset * (non_selected.len());
+								let insert_index = non_selected.iter().position(|x| *x == id).map(|x| x + offset).unwrap_or(fallback) as isize;
+								responses.push_back(DocumentMessage::MoveSelectedLayersTo { path: path.to_vec(), insert_index }.into())
+							}
+						}
 					}
-				}
-
-				if next_layer_index != -1 && next_layer_index != selected_layer_index {
-					let operation = DocumentOperation::ReorderLayers {
-						source_paths: selected_layer_paths.clone(),
-						target_path: all_layer_paths[next_layer_index as usize].to_vec(),
-					};
-					responses.push_back(operation.into());
-					responses.push_back(DocumentMessage::SelectLayers(selected_layer_paths).into());
 				}
 			}
 			FlipLayer(path, flip_horizontal, flip_vertical) => {
