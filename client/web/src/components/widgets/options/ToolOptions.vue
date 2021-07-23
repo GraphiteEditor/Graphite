@@ -1,13 +1,13 @@
 <template>
 	<div class="tool-options">
 		<template v-for="(option, index) in optionsMap.get(activeTool) || []" :key="index">
-			<IconButton v-if="option.kind === 'icon_button'" :icon="option.icon" :size="24" :title="option.title" :onClick="() => sendToolMessage(option.message)" />
-			<Separator v-if="option.kind === 'separator'" :type="option.type" />
-			<PopoverButton v-if="option.kind === 'popover_button'">
+			<IconButton v-if="option.kind === 'IconButton'" :icon="option.icon" :size="24" :title="option.title" :onClick="() => sendToolMessage(option.message)" />
+			<Separator v-if="option.kind === 'Separator'" :type="option.type" />
+			<PopoverButton v-if="option.kind === 'PopoverButton'">
 				<h3>{{ option.title }}</h3>
 				<p>{{ option.placeholderText }}</p>
 			</PopoverButton>
-			<NumberInput v-if="option.kind === 'number_input'" :callback="option.callback" :initialValue="option.initial" :step="option.step" :min="option.min" :updateOnCallback="true" />
+			<NumberInput v-if="option.kind === 'NumberInput'" :callback="option.callback" :initialValue="option.initial" :step="option.step" :min="option.min" :updateOnCallback="true" />
 		</template>
 	</div>
 </template>
@@ -35,25 +35,25 @@ type ToolOptionsMap = Map<string, ToolOptionsList>;
 type ToolOptions = IconButtonOption | SeparatorOption | PopoverButtonOption | NumberInputOption;
 
 interface IconButtonOption {
-	kind: "icon_button";
+	kind: "IconButton";
 	icon: string;
 	title: string;
 	message?: string;
 }
 
 interface SeparatorOption {
-	kind: "separator";
+	kind: "Separator";
 	type: SeparatorType;
 }
 
 interface PopoverButtonOption {
-	kind: "popover_button";
+	kind: "PopoverButton";
 	title: string;
 	placeholderText: string;
 }
 
 interface NumberInputOption {
-	kind: "number_input";
+	kind: "NumberInput";
 	initial: number;
 	step: number;
 	min?: number;
@@ -87,43 +87,43 @@ export default defineComponent({
 			[
 				"Select",
 				[
-					{ kind: "icon_button", icon: "AlignHorizontalLeft", title: "Horizontal Align Left" },
-					{ kind: "icon_button", icon: "AlignHorizontalCenter", title: "Horizontal Align Center" },
-					{ kind: "icon_button", icon: "AlignHorizontalRight", title: "Horizontal Align Right" },
+					{ kind: "IconButton", icon: "AlignHorizontalLeft", title: "Horizontal Align Left" },
+					{ kind: "IconButton", icon: "AlignHorizontalCenter", title: "Horizontal Align Center" },
+					{ kind: "IconButton", icon: "AlignHorizontalRight", title: "Horizontal Align Right" },
 
-					{ kind: "separator", type: SeparatorType.Unrelated },
+					{ kind: "Separator", type: SeparatorType.Unrelated },
 
-					{ kind: "icon_button", icon: "AlignVerticalTop", title: "Vertical Align Top" },
-					{ kind: "icon_button", icon: "AlignVerticalCenter", title: "Vertical Align Center" },
-					{ kind: "icon_button", icon: "AlignVerticalBottom", title: "Vertical Align Bottom" },
+					{ kind: "IconButton", icon: "AlignVerticalTop", title: "Vertical Align Top" },
+					{ kind: "IconButton", icon: "AlignVerticalCenter", title: "Vertical Align Center" },
+					{ kind: "IconButton", icon: "AlignVerticalBottom", title: "Vertical Align Bottom" },
 
-					{ kind: "separator", type: SeparatorType.Related },
+					{ kind: "Separator", type: SeparatorType.Related },
 
-					{ kind: "popover_button", title: "Align", placeholderText: "More alignment-related buttons will be here" },
+					{ kind: "PopoverButton", title: "Align", placeholderText: "More alignment-related buttons will be here" },
 
-					{ kind: "separator", type: SeparatorType.Section },
+					{ kind: "Separator", type: SeparatorType.Section },
 
-					{ kind: "icon_button", icon: "FlipHorizontal", title: "Flip Horizontal", message: "FlipHorizontal" },
-					{ kind: "icon_button", icon: "FlipVertical", title: "Flip Vertical", message: "FlipVertical" },
+					{ kind: "IconButton", icon: "FlipHorizontal", title: "Flip Horizontal", message: "FlipHorizontal" },
+					{ kind: "IconButton", icon: "FlipVertical", title: "Flip Vertical", message: "FlipVertical" },
 
-					{ kind: "separator", type: SeparatorType.Related },
+					{ kind: "Separator", type: SeparatorType.Related },
 
-					{ kind: "popover_button", title: "Flip", placeholderText: "More flip-related buttons will be here" },
+					{ kind: "PopoverButton", title: "Flip", placeholderText: "More flip-related buttons will be here" },
 
-					{ kind: "separator", type: SeparatorType.Section },
+					{ kind: "Separator", type: SeparatorType.Section },
 
-					{ kind: "icon_button", icon: "BooleanUnion", title: "Boolean Union" },
-					{ kind: "icon_button", icon: "BooleanSubtractFront", title: "Boolean Subtract Front" },
-					{ kind: "icon_button", icon: "BooleanSubtractBack", title: "Boolean Subtract Back" },
-					{ kind: "icon_button", icon: "BooleanIntersect", title: "Boolean Intersect" },
-					{ kind: "icon_button", icon: "BooleanDifference", title: "Boolean Difference" },
+					{ kind: "IconButton", icon: "BooleanUnion", title: "Boolean Union" },
+					{ kind: "IconButton", icon: "BooleanSubtractFront", title: "Boolean Subtract Front" },
+					{ kind: "IconButton", icon: "BooleanSubtractBack", title: "Boolean Subtract Back" },
+					{ kind: "IconButton", icon: "BooleanIntersect", title: "Boolean Intersect" },
+					{ kind: "IconButton", icon: "BooleanDifference", title: "Boolean Difference" },
 
-					{ kind: "separator", type: SeparatorType.Related },
+					{ kind: "Separator", type: SeparatorType.Related },
 
-					{ kind: "popover_button", title: "Boolean", placeholderText: "More boolean-related buttons will be here" },
+					{ kind: "PopoverButton", title: "Boolean", placeholderText: "More boolean-related buttons will be here" },
 				],
 			],
-			["Shape", [{ kind: "number_input", initial: 6, step: 1, min: 3, callback: this.setToolOptions }]],
+			["Shape", [{ kind: "NumberInput", initial: 6, step: 1, min: 3, callback: this.setToolOptions }]],
 		]);
 
 		return {
