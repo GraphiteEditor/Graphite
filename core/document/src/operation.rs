@@ -1,6 +1,6 @@
 use crate::{
 	color::Color,
-	layers::{style, Layer},
+	layers::{style, BlendMode, Layer},
 	LayerId,
 };
 
@@ -71,6 +71,10 @@ pub enum Operation {
 	CommitTransaction,
 	ToggleVisibility {
 		path: Vec<LayerId>,
+	},
+	SetLayerBlendMode {
+		path: Vec<LayerId>,
+		blend_mode: BlendMode,
 	},
 	FillLayer {
 		path: Vec<LayerId>,

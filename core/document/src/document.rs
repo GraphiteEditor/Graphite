@@ -221,7 +221,9 @@ impl Document {
 	/// Deletes the layer specified by `path`.
 	pub fn delete(&mut self, path: &[LayerId]) -> Result<(), DocumentError> {
 		let (path, id) = split_path(path)?;
-		let _ = self.layer_mut(path).map(|x| x.cache_dirty = true);
+		if let Ok(layer) = self.layer_mut(path) {
+			layer.cache_dirty = true;
+		}
 		self.document_folder_mut(path)?.as_folder_mut()?.remove_layer(id)?;
 		Ok(())
 	}
@@ -393,12 +395,20 @@ impl Document {
 				Some(responses)
 			}
 			Operation::ToggleVisibility { path } => {
-				let _ = self.layer_mut(&path).map(|layer| {
+				if let Ok(layer) = self.layer_mut(&path) {
 					layer.visible = !layer.visible;
 					layer.cache_dirty = true;
-				});
+				}
 				let path = path.as_slice()[..path.len() - 1].to_vec();
 				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::FolderChanged { path }])
+			}
+			Operation::SetLayerBlendMode { path, blend_mode } => {
+				self.mark_as_dirty(path)?;
+				self.layer_mut(&path).unwrap().blend_mode = *blend_mode;
+
+				let path = path.as_slice()[..path.len() - 1].to_vec();
+
+				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::FolderChanged { path: path.clone() }])
 			}
 			Operation::FillLayer { path, color } => {
 				let layer = self.layer_mut(path).unwrap();

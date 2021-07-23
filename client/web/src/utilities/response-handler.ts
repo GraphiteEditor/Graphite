@@ -201,9 +201,53 @@ function newSetCanvasRotation(input: any): SetCanvasRotation {
 	};
 }
 
+export enum BlendMode {
+	Normal = "normal",
+	Multiply = "multiply",
+	Darken = "darken",
+	ColorBurn = "color-burn",
+	Screen = "screen",
+	Lighten = "lighten",
+	ColorDodge = "color-dodge",
+	Overlay = "overlay",
+	SoftLight = "soft-light",
+	HardLight = "hard-light",
+	Difference = "difference",
+	Exclusion = "exclusion",
+	Hue = "hue",
+	Saturation = "saturation",
+	Color = "color",
+	Luminosity = "luminosity",
+}
+function newBlendMode(input: string): BlendMode {
+	const blendMode = {
+		Normal: BlendMode.Normal,
+		Multiply: BlendMode.Multiply,
+		Darken: BlendMode.Darken,
+		ColorBurn: BlendMode.ColorBurn,
+		Screen: BlendMode.Screen,
+		Lighten: BlendMode.Lighten,
+		ColorDodge: BlendMode.ColorDodge,
+		Overlay: BlendMode.Overlay,
+		SoftLight: BlendMode.SoftLight,
+		HardLight: BlendMode.HardLight,
+		Difference: BlendMode.Difference,
+		Exclusion: BlendMode.Exclusion,
+		Hue: BlendMode.Hue,
+		Saturation: BlendMode.Saturation,
+		Color: BlendMode.Color,
+		Luminosity: BlendMode.Luminosity,
+	}[input];
+
+	if (!blendMode) throw new Error(`Invalid blend mode "${blendMode}"`);
+
+	return blendMode;
+}
+
 export interface LayerPanelEntry {
 	name: string;
 	visible: boolean;
+	blend_mode: BlendMode;
 	layer_type: LayerType;
 	path: BigUint64Array;
 	layer_data: LayerData;
@@ -213,6 +257,7 @@ function newLayerPanelEntry(input: any): LayerPanelEntry {
 	return {
 		name: input.name,
 		visible: input.visible,
+		blend_mode: newBlendMode(input.blend_mode),
 		layer_type: newLayerType(input.layer_type),
 		layer_data: newLayerData(input.layer_data),
 		path: new BigUint64Array(input.path.map((n: number) => BigInt(n))),

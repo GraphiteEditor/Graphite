@@ -1,15 +1,16 @@
 <template>
 	<div class="dropdown-input">
-		<div class="dropdown-box" :style="{ minWidth: `${minWidth}px` }" @click="clickDropdownBox" data-hover-menu-spawner>
+		<div class="dropdown-box" :class="{ disabled }" :style="{ minWidth: `${minWidth}px`, disabled: 'disabled' }" @click="clickDropdownBox" data-hover-menu-spawner>
 			<IconLabel :class="'dropdown-icon'" :icon="activeEntry.icon" v-if="activeEntry.icon" />
 			<span>{{ activeEntry.label }}</span>
 			<IconLabel :class="'dropdown-arrow'" :icon="'DropdownArrow'" />
 		</div>
 		<MenuList
-			:menuEntries="menuEntries"
 			v-model:active-entry="activeEntry"
-			:direction="MenuDirection.Bottom"
+			@update:activeEntry="activeEntryChanged"
 			@width-changed="onWidthChanged"
+			:menuEntries="menuEntries"
+			:direction="MenuDirection.Bottom"
 			:drawIcon="drawIcon"
 			:scrollable="true"
 			ref="menuList"
@@ -66,6 +67,18 @@
 		&.open {
 			border-radius: 2px 2px 0 0;
 		}
+
+		&.disabled {
+			background: var(--color-2-mildblack);
+
+			span {
+				color: var(--color-8-uppergray);
+			}
+
+			svg {
+				fill: var(--color-8-uppergray);
+			}
+		}
 	}
 
 	.menu-list .floating-menu-container .floating-menu-content {
@@ -83,22 +96,36 @@ import { MenuDirection } from "@/components/widgets/floating-menus/FloatingMenu.
 export default defineComponent({
 	props: {
 		menuEntries: { type: Array as PropType<SectionsOfMenuListEntries>, required: true },
-		default: { type: Object as PropType<MenuListEntry>, required: true },
+		selectedIndex: { type: Number, required: true },
 		drawIcon: { type: Boolean, default: false },
+		disabled: { type: Boolean, default: false },
 	},
 	data() {
 		return {
-			activeEntry: this.default,
+			activeEntry: this.menuEntries.flat()[this.selectedIndex],
 			MenuDirection,
 			minWidth: 0,
 		};
 	},
-	methods: {
-		clickDropdownBox() {
-			(this.$refs.menuList as typeof MenuList).setOpen();
+	watch: {
+		// Called only when `selectedIndex` is changed from outside this component (with v-model)
+		selectedIndex(newSelectedIndex: number) {
+			const entries = this.menuEntries.flat();
+
+			if (newSelectedIndex >= 0 && newSelectedIndex < entries.length) {
+				this.activeEntry = entries[newSelectedIndex];
+			} else {
+				this.activeEntry = { label: "-" };
+			}
 		},
-		setActiveEntry(newActiveEntry: MenuListEntry) {
-			this.activeEntry = newActiveEntry;
+	},
+	methods: {
+		// Called only when `activeEntry` is changed from the child MenuList component via user input
+		activeEntryChanged(newActiveEntry: MenuListEntry) {
+			this.$emit("update:selectedIndex", this.menuEntries.flat().indexOf(newActiveEntry));
+		},
+		clickDropdownBox() {
+			if (!this.disabled) (this.$refs.menuList as typeof MenuList).setOpen();
 		},
 		onWidthChanged(newWidth: number) {
 			this.minWidth = newWidth;
