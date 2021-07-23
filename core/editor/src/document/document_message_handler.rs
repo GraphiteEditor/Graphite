@@ -638,7 +638,11 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 								log::debug!("selected {:?}", selected);
 								let non_selected: Vec<_> = folder.layer_ids.iter().filter(|id| selected.iter().all(|x| x != id)).collect();
 								log::debug!("non selected {:?}", non_selected);
-								let offset = if relative_positon < 0 || non_selected.is_empty() { 0 } else { selected.len() };
+								let offset = if relative_positon < 0 || non_selected.is_empty() {
+									0
+								} else {
+									(relative_positon as usize).clamp(0, selected.len())
+								};
 								let fallback = offset * (non_selected.len().clamp(1, usize::MAX) - 1);
 								let insert_index = non_selected.iter().position(|x| *x == id).unwrap_or(fallback) as isize + offset as isize;
 								responses.push_back(DocumentMessage::MoveSelectedLayersTo { path: path.to_vec(), insert_index }.into())
