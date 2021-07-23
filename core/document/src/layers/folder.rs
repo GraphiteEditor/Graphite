@@ -19,17 +19,10 @@ impl LayerData for Folder {
 		unimplemented!()
 	}
 
-	fn render(&mut self, svg: &mut String, transform: glam::DAffine2, _style: style::PathStyle) {
-		let _ = writeln!(svg, r#"<g transform="matrix("#);
-		transform.to_cols_array().iter().enumerate().for_each(|(i, f)| {
-			let _ = svg.write_str(&(f.to_string() + if i != 5 { "," } else { "" }));
-		});
-		let _ = svg.write_str(r#")">"#);
-
+	fn render(&mut self, svg: &mut String, transforms: &mut Vec<glam::DAffine2>, _style: style::PathStyle) {
 		for layer in &mut self.layers {
-			let _ = writeln!(svg, "{}", layer.render());
+			let _ = writeln!(svg, "{}", layer.render(transforms));
 		}
-		let _ = writeln!(svg, "</g>");
 	}
 
 	fn intersects_quad(&self, quad: [DVec2; 4], path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>, _style: style::PathStyle) {

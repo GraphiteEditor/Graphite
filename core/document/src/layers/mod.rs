@@ -4,6 +4,7 @@ pub mod ellipse;
 pub use ellipse::Ellipse;
 
 pub mod line;
+use glam::DAffine2;
 use glam::{DMat2, DVec2};
 use kurbo::BezPath;
 use kurbo::Shape as KurboShape;
@@ -27,7 +28,7 @@ use serde::{Deserialize, Serialize};
 use std::fmt::Write;
 
 pub trait LayerData {
-	fn render(&mut self, svg: &mut String, transform: glam::DAffine2, style: style::PathStyle);
+	fn render(&mut self, svg: &mut String, transforms: &mut Vec<glam::DAffine2>, style: style::PathStyle);
 	fn to_kurbo_path(&self, transform: glam::DAffine2, style: style::PathStyle) -> BezPath;
 	fn intersects_quad(&self, quad: [DVec2; 4], path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>, style: style::PathStyle);
 }
@@ -67,9 +68,9 @@ macro_rules! call_intersects_quad {
 }
 
 impl LayerDataTypes {
-	pub fn render(&mut self, svg: &mut String, transform: glam::DAffine2, style: style::PathStyle) {
+	pub fn render(&mut self, svg: &mut String, transforms: &mut Vec<glam::DAffine2>, style: style::PathStyle) {
 		call_render! {
-			self.render(svg, transform, style) {
+			self.render(svg, transforms, style) {
 				Folder,
 				Ellipse,
 				Rect,
@@ -176,10 +177,11 @@ pub struct Layer {
 	pub cache_dirty: bool,
 	pub blend_mode: BlendMode,
 	pub opacity: f64,
+	pub premultiply_transform: bool,
 }
 
 impl Layer {
-	pub fn new(data: LayerDataTypes, transform: [f64; 6], style: style::PathStyle) -> Self {
+	pub fn new(data: LayerDataTypes, transform: [f64; 6], style: style::PathStyle, premultiply_transform: bool) -> Self {
 		Self {
 			visible: true,
 			name: None,
@@ -191,16 +193,17 @@ impl Layer {
 			cache_dirty: true,
 			blend_mode: BlendMode::Normal,
 			opacity: 1.,
+			premultiply_transform,
 		}
 	}
 
-	pub fn render(&mut self) -> &str {
+	pub fn render(&mut self, transforms: &mut Vec<DAffine2>) -> &str {
 		if !self.visible {
 			return "";
 		}
 		if self.cache_dirty {
 			self.thumbnail_cache.clear();
-			self.data.render(&mut self.thumbnail_cache, self.transform, self.style);
+			//self.data.render(&mut self.thumbnail_cache, self.transform, self.style);
 
 			self.cache.clear();
 			let _ = write!(
@@ -210,10 +213,22 @@ impl Layer {
 				self.opacity,
 				self.thumbnail_cache.as_str()
 			);
+			if !self.premultiply_transform {
+				/*let _ = writeln!(&mut self.thumbnail_cache, r#"<g transform="matrix("#);
+				self.transform.to_cols_array().iter().enumerate().for_each(|(i, f)| {
+					let _ = self.thumbnail_cache.write_str(&(f.to_string() + if i != 5 { "," } else { "" }));
+					self.data.render(&mut self.thumbnail_cache, &mut Vec::new(), self.style);
+				});*/
+			} else {
+				transforms.push(self.transform);
+				self.data.render(&mut self.thumbnail_cache, transforms, self.style);
+			}
+			let _ = self.thumbnail_cache.write_str(r#")">"#);
 
+			self.thumbnail_cache.clear();
 			self.cache_dirty = false;
 		}
-		self.cache.as_str()
+		self.thumbnail_cache.as_str()
 	}
 
 	pub fn intersects_quad(&self, quad: [DVec2; 4], path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>) {
@@ -230,8 +245,8 @@ impl Layer {
 		self.data.intersects_quad(transformed_quad, path, intersections, self.style)
 	}
 
-	pub fn render_on(&mut self, svg: &mut String) {
-		*svg += self.render();
+	pub fn render_on(&mut self, svg: &mut String, transforms: &mut Vec<DAffine2>) {
+		*svg += self.render(transforms);
 	}
 
 	pub fn to_kurbo_path(&self) -> BezPath {
@@ -261,12 +276,6 @@ impl Layer {
 		match &self.data {
 			LayerDataTypes::Folder(f) => Ok(&f),
 			_ => Err(DocumentError::NotAFolder),
-		}
-	}
-
-	pub fn render_as_folder(&mut self, svg: &mut String) {
-		if let LayerDataTypes::Folder(f) = &mut self.data {
-			f.render(svg, self.transform, self.style)
 		}
 	}
 }
