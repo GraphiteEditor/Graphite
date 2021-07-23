@@ -4,6 +4,7 @@ use document_core::layers::style::Fill;
 use document_core::layers::style::Stroke;
 use document_core::Operation;
 use glam::{DAffine2, DVec2};
+use serde::{Deserialize, Serialize};
 
 use crate::input::{mouse::ViewportPosition, InputPreprocessor};
 use crate::tool::{DocumentToolData, Fsm, ToolActionHandlerData};
@@ -16,12 +17,15 @@ pub struct Select {
 }
 
 #[impl_message(Message, ToolMessage, Select)]
-#[derive(PartialEq, Clone, Debug)]
+#[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub enum SelectMessage {
 	DragStart,
 	DragStop,
 	MouseMove,
 	Abort,
+
+	FlipHorizontal,
+	FlipVertical,
 }
 
 impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Select {
@@ -120,6 +124,22 @@ impl Fsm for SelectToolFsmState {
 					responses.push_back(Operation::DiscardWorkingFolder.into());
 
 					Ready
+				}
+				(_, FlipHorizontal) => {
+					let selected_layers = document.layer_data.iter().filter_map(|(path, data)| data.selected.then(|| path.clone()));
+					for path in selected_layers {
+						responses.push_back(DocumentMessage::FlipLayer(path, true, false).into());
+					}
+
+					self
+				}
+				(_, FlipVertical) => {
+					let selected_layers = document.layer_data.iter().filter_map(|(path, data)| data.selected.then(|| path.clone()));
+					for path in selected_layers {
+						responses.push_back(DocumentMessage::FlipLayer(path, false, true).into());
+					}
+
+					self
 				}
 				_ => self,
 			}
