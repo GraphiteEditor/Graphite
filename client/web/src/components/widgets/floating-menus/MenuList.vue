@@ -129,6 +129,7 @@ export type MenuListEntries = Array<MenuListEntry>;
 export type SectionsOfMenuListEntries = Array<MenuListEntries>;
 
 interface MenuListEntryData {
+	value?: string;
 	label?: string;
 	icon?: string;
 	// TODO: Add `checkbox` (which overrides any `icon`)

@@ -38,11 +38,17 @@ fn layer_data<'a>(layer_data: &'a mut HashMap<Vec<LayerId>, LayerData>, path: &[
 	layer_data.get_mut(path).unwrap()
 }
 
-pub fn layer_panel_entry(layer_data: &mut LayerData, layer: &Layer, path: Vec<LayerId>) -> LayerPanelEntry {
+pub fn layer_panel_entry(layer_data: &mut LayerData, layer: &mut Layer, path: Vec<LayerId>) -> LayerPanelEntry {
+	let blend_mode = layer.blend_mode.clone();
 	let layer_type: LayerType = (&layer.data).into();
 	let name = layer.name.clone().unwrap_or_else(|| format!("Unnamed {}", layer_type));
 	let arr = layer.current_bounding_box().unwrap_or([DVec2::ZERO, DVec2::ZERO]);
 	let arr = arr.iter().map(|x| (*x).into()).collect::<Vec<(f64, f64)>>();
+
+	if layer.cache_dirty {
+		layer.render();
+	}
+
 	let thumbnail = if let [(x_min, y_min), (x_max, y_max)] = arr.as_slice() {
 		format!(
 			r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="{} {} {} {}">{}</svg>"#,
@@ -50,14 +56,16 @@ pub fn layer_panel_entry(layer_data: &mut LayerData, layer: &Layer, path: Vec<La
 			y_min,
 			x_max - x_min,
 			y_max - y_min,
-			layer.cache.clone()
+			layer.thumbnail_cache.clone()
 		)
 	} else {
 		String::new()
 	};
+
 	LayerPanelEntry {
 		name,
 		visible: layer.visible,
+		blend_mode,
 		layer_type,
 		layer_data: *layer_data,
 		path,
@@ -73,16 +81,17 @@ impl Document {
 	/// Returns a list of `LayerPanelEntry`s intended for display purposes. These don't contain
 	/// any actual data, but rather metadata such as visibility and names of the layers.
 	pub fn layer_panel(&mut self, path: &[LayerId]) -> Result<Vec<LayerPanelEntry>, EditorError> {
-		let folder = self.document.document_folder(path)?;
+		let folder = self.document.document_folder_mut(path)?;
+		let ids = folder.as_folder()?.layer_ids.clone();
 		let self_layer_data = &mut self.layer_data;
 		let entries = folder
-			.as_folder()?
-			.layers()
-			.iter()
-			.zip(folder.as_folder()?.layer_ids.iter())
+			.as_folder_mut()?
+			.layers_mut()
+			.iter_mut()
+			.zip(ids)
 			.rev()
 			.map(|(layer, id)| {
-				let path = [path, &[*id]].concat();
+				let path = [path, &[id]].concat();
 				layer_panel_entry(layer_data(self_layer_data, &path), layer, path)
 			})
 			.collect();

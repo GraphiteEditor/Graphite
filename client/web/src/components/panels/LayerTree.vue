@@ -1,7 +1,7 @@
 <template>
 	<LayoutCol :class="'layer-tree-panel'">
 		<LayoutRow :class="'options-bar'">
-			<DropdownInput :menuEntries="blendModeMenuEntries" :default="blendModeMenuEntries[0][0]" />
+			<DropdownInput :menuEntries="blendModeEntries" v-model:selectedIndex="blendModeSelectedIndex" @update:selectedIndex="blendModeChanged" :disabled="blendModeDropdownDisabled" />
 
 			<Separator :type="SeparatorType.Related" />
 
@@ -15,18 +15,18 @@
 			</PopoverButton>
 		</LayoutRow>
 		<LayoutRow :class="'layer-tree scrollable-y'">
-			<LayoutCol :class="'list'">
+			<LayoutCol :class="'list'" @click="deselectAllLayers">
 				<div class="layer-row" v-for="layer in layers" :key="layer.path">
 					<div class="layer-visibility">
-						<IconButton :icon="layer.visible ? 'EyeVisible' : 'EyeHidden'" @click="toggleLayerVisibility(layer.path)" :size="24" :title="layer.visible ? 'Visible' : 'Hidden'" />
+						<IconButton :icon="layer.visible ? 'EyeVisible' : 'EyeHidden'" @click.stop="toggleLayerVisibility(layer.path)" :size="24" :title="layer.visible ? 'Visible' : 'Hidden'" />
 					</div>
 					<div
 						class="layer"
 						:class="{ selected: layer.layer_data.selected }"
-						@click.shift.exact="handleShiftClick(layer)"
-						@click.ctrl.exact="handleControlClick(layer)"
-						@click.alt.exact="handleControlClick(layer)"
-						@click.exact="handleClick(layer)"
+						@click.shift.exact.stop="handleShiftClick(layer)"
+						@click.ctrl.exact.stop="handleControlClick(layer)"
+						@click.alt.exact.stop="handleControlClick(layer)"
+						@click.exact.stop="handleClick(layer)"
 					>
 						<div class="layer-thumbnail" v-html="layer.thumbnail"></div>
 						<div class="layer-type-icon">
@@ -53,11 +53,12 @@
 		align-items: center;
 
 		.dropdown-input {
-			flex: 0 0 auto;
+			max-width: 120px;
 		}
 
+		.dropdown-input,
 		.number-input {
-			flex: 1 1 100%;
+			flex: 1 1 auto;
 		}
 	}
 
@@ -110,7 +111,7 @@
 
 <script lang="ts">
 import { defineComponent } from "vue";
-import { ResponseType, registerResponseHandler, Response, ExpandFolder, LayerPanelEntry } from "@/utilities/response-handler";
+import { ResponseType, registerResponseHandler, Response, BlendMode, ExpandFolder, LayerPanelEntry } from "@/utilities/response-handler";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
 import LayoutCol from "@/components/layout/LayoutCol.vue";
 import Separator, { SeparatorType } from "@/components/widgets/separators/Separator.vue";
@@ -124,13 +125,43 @@ import { SectionsOfMenuListEntries } from "@/components/widgets/floating-menus/M
 
 const wasm = import("@/../wasm/pkg");
 
-const blendModeMenuEntries: SectionsOfMenuListEntries = [
-	[{ label: "Normal" }],
-	[{ label: "Multiply" }, { label: "Darken" }, { label: "Color Burn" }, { label: "Linear Burn" }, { label: "Darker Color" }],
-	[{ label: "Screen" }, { label: "Lighten" }, { label: "Color Dodge" }, { label: "Linear Dodge (Add)" }, { label: "Lighter Color" }],
-	[{ label: "Overlay" }, { label: "Soft Light" }, { label: "Hard Light" }, { label: "Vivid Light" }, { label: "Linear Light" }, { label: "Pin Light" }, { label: "Hard Mix" }],
-	[{ label: "Difference" }, { label: "Exclusion" }, { label: "Subtract" }, { label: "Divide" }],
-	[{ label: "Hue" }, { label: "Saturation" }, { label: "Color" }, { label: "Luminosity" }],
+const blendModeEntries: SectionsOfMenuListEntries = [
+	[{ label: "Normal", value: BlendMode.Normal }],
+	[
+		{ label: "Multiply", value: BlendMode.Multiply },
+		{ label: "Darken", value: BlendMode.Darken },
+		{ label: "Color Burn", value: BlendMode.ColorBurn },
+		// { label: "Linear Burn", value: "" }, // Not supported by SVG
+		// { label: "Darker Color", value: "" }, // Not supported by SVG
+	],
+	[
+		{ label: "Screen", value: BlendMode.Screen },
+		{ label: "Lighten", value: BlendMode.Lighten },
+		{ label: "Color Dodge", value: BlendMode.ColorDodge },
+		// { label: "Linear Dodge (Add)", value: "" }, // Not supported by SVG
+		// { label: "Lighter Color", value: "" }, // Not supported by SVG
+	],
+	[
+		{ label: "Overlay", value: BlendMode.Overlay },
+		{ label: "Soft Light", value: BlendMode.SoftLight },
+		{ label: "Hard Light", value: BlendMode.HardLight },
+		// { label: "Vivid Light", value: "" }, // Not supported by SVG
+		// { label: "Linear Light", value: "" }, // Not supported by SVG
+		// { label: "Pin Light", value: "" }, // Not supported by SVG
+		// { label: "Hard Mix", value: "" }, // Not supported by SVG
+	],
+	[
+		{ label: "Difference", value: BlendMode.Difference },
+		{ label: "Exclusion", value: BlendMode.Exclusion },
+		// { label: "Subtract", value: "" }, // Not supported by SVG
+		// { label: "Divide", value: "" }, // Not supported by SVG
+	],
+	[
+		{ label: "Hue", value: BlendMode.Hue },
+		{ label: "Saturation", value: BlendMode.Saturation },
+		{ label: "Color", value: BlendMode.Color },
+		{ label: "Luminosity", value: BlendMode.Luminosity },
+	],
 ];
 
 export default defineComponent({
@@ -140,9 +171,14 @@ export default defineComponent({
 			const { toggle_layer_visibility } = await wasm;
 			toggle_layer_visibility(path);
 		},
+		async setLayerBlendMode(blendMode: BlendMode) {
+			const { set_blend_mode_for_selected_layers } = await wasm;
+			set_blend_mode_for_selected_layers(blendMode);
+		},
 		async handleControlClick(clickedLayer: LayerPanelEntry) {
 			const index = this.layers.indexOf(clickedLayer);
 			clickedLayer.layer_data.selected = !clickedLayer.layer_data.selected;
+
 			this.selectionRangeEndLayer = undefined;
 			this.selectionRangeStartLayer =
 				this.layers.slice(index).filter((layer) => layer.layer_data.selected)[0] ||
@@ -150,29 +186,41 @@ export default defineComponent({
 					.slice(0, index)
 					.reverse()
 					.filter((layer) => layer.layer_data.selected)[0];
-			this.updateSelection();
+
+			this.sendSelectedLayers();
 		},
 		async handleShiftClick(clickedLayer: LayerPanelEntry) {
 			// The two paths of the range are stored in selectionRangeStartLayer and selectionRangeEndLayer
-			// So for a new Shift+Click, select all layers between selectionRangeStartLayer and selectionRangeEndLayer(stored in prev Sft+C)
+			// So for a new Shift+Click, select all layers between selectionRangeStartLayer and selectionRangeEndLayer (stored in prev Shift+Click)
 			this.clearSelection();
+
 			this.selectionRangeEndLayer = clickedLayer;
 			if (!this.selectionRangeStartLayer) this.selectionRangeStartLayer = clickedLayer;
 			this.fillSelectionRange(this.selectionRangeStartLayer, this.selectionRangeEndLayer, true);
-			this.updateSelection();
-		},
 
+			this.sendSelectedLayers();
+		},
 		async handleClick(clickedLayer: LayerPanelEntry) {
 			this.selectionRangeStartLayer = clickedLayer;
 			this.selectionRangeEndLayer = clickedLayer;
+
 			this.clearSelection();
 			clickedLayer.layer_data.selected = true;
-			this.updateSelection();
+
+			this.sendSelectedLayers();
+		},
+		async deselectAllLayers() {
+			this.selectionRangeStartLayer = undefined;
+			this.selectionRangeEndLayer = undefined;
+
+			const { deselect_all_layers } = await wasm;
+			deselect_all_layers();
 		},
 		async fillSelectionRange(start: LayerPanelEntry, end: LayerPanelEntry, selected = true) {
 			const startIndex = this.layers.findIndex((layer) => layer.path.join() === start.path.join());
 			const endIndex = this.layers.findIndex((layer) => layer.path.join() === end.path.join());
 			const [min, max] = [startIndex, endIndex].sort();
+
 			if (min !== -1) {
 				for (let i = min; i <= max; i += 1) {
 					this.layers[i].layer_data.selected = selected;
@@ -184,11 +232,12 @@ export default defineComponent({
 				layer.layer_data.selected = false;
 			});
 		},
-		async updateSelection() {
+		async sendSelectedLayers() {
 			const paths = this.layers.filter((layer) => layer.layer_data.selected).map((layer) => layer.path);
-			if (paths.length === 0) return;
+
 			const length = paths.reduce((acc, cur) => acc + cur.length, 0) + paths.length - 1;
 			const output = new BigUint64Array(length);
+
 			let i = 0;
 			paths.forEach((path, index) => {
 				output.set(path, i);
@@ -202,6 +251,30 @@ export default defineComponent({
 			const { select_layers } = await wasm;
 			select_layers(output);
 		},
+		setBlendModeForSelectedLayers() {
+			const selected = this.layers.filter((layer) => layer.layer_data.selected);
+
+			if (selected.length < 1) {
+				this.blendModeSelectedIndex = 0;
+				this.blendModeDropdownDisabled = true;
+				return;
+			}
+			this.blendModeDropdownDisabled = false;
+
+			const firstEncounteredBlendMode = selected[0].blend_mode;
+			const allBlendModesAlike = !selected.find((layer) => layer.blend_mode !== firstEncounteredBlendMode);
+
+			if (allBlendModesAlike) {
+				this.blendModeSelectedIndex = this.blendModeEntries.flat().findIndex((entry) => entry.value === firstEncounteredBlendMode);
+			} else {
+				// Display a dash when they are not all the same value
+				this.blendModeSelectedIndex = -1;
+			}
+		},
+		blendModeChanged() {
+			const blendMode = this.blendModeEntries.flat()[this.blendModeSelectedIndex].value as BlendMode;
+			if (blendMode) this.setLayerBlendMode(blendMode);
+		},
 	},
 	mounted() {
 		registerResponseHandler(ResponseType.ExpandFolder, (responseData: Response) => {
@@ -212,6 +285,8 @@ export default defineComponent({
 				if (responsePath.length > 0) console.error("Non root paths are currently not implemented");
 
 				this.layers = responseLayers;
+
+				this.setBlendModeForSelectedLayers();
 			}
 		});
 		registerResponseHandler(ResponseType.CollapseFolder, (responseData) => {
@@ -220,13 +295,15 @@ export default defineComponent({
 	},
 	data() {
 		return {
-			blendModeMenuEntries,
+			blendModeEntries,
+			blendModeSelectedIndex: 0,
+			blendModeDropdownDisabled: true,
+			layers: [] as Array<LayerPanelEntry>,
+			selectionRangeStartLayer: undefined as undefined | LayerPanelEntry,
+			selectionRangeEndLayer: undefined as undefined | LayerPanelEntry,
+			opacity: 100,
 			MenuDirection,
 			SeparatorType,
-			layers: [] as Array<LayerPanelEntry>,
-			selectionRangeStartLayer: undefined as LayerPanelEntry | undefined,
-			selectionRangeEndLayer: undefined as LayerPanelEntry | undefined,
-			opacity: 100,
 		};
 	},
 	components: {

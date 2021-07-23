@@ -3,6 +3,7 @@ use crate::{
 	consts::{MOUSE_ZOOM_RATE, VIEWPORT_SCROLL_RATE, VIEWPORT_ZOOM_SCALE_MAX, VIEWPORT_ZOOM_SCALE_MIN, WHEEL_ZOOM_RATE},
 	input::{mouse::ViewportPosition, InputPreprocessor},
 };
+use document_core::layers::BlendMode;
 use document_core::layers::Layer;
 use document_core::{DocumentResponse, LayerId, Operation as DocumentOperation};
 use glam::{DAffine2, DVec2};
@@ -24,6 +25,7 @@ pub enum DocumentMessage {
 	DeleteSelectedLayers,
 	DuplicateSelectedLayers,
 	CopySelectedLayers,
+	SetBlendModeForSelectedLayers(BlendMode),
 	PasteLayers,
 	AddFolder(Vec<LayerId>),
 	RenameLayer(Vec<LayerId>, String),
@@ -342,6 +344,13 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				}
 				.into(),
 			),
+			SetBlendModeForSelectedLayers(blend_mode) => {
+				let active_document = self.active_document();
+
+				for path in active_document.layer_data.iter().filter_map(|(path, data)| data.selected.then(|| path)) {
+					responses.push_back(DocumentOperation::SetLayerBlendMode { path: path.clone(), blend_mode }.into());
+				}
+			}
 			ToggleLayerVisibility(path) => {
 				responses.push_back(DocumentOperation::ToggleVisibility { path }.into());
 			}
