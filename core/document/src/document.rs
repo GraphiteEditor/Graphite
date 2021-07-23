@@ -35,31 +35,33 @@ impl Document {
 	/// Renders the layer graph with the root `path` as an SVG string.
 	/// This operation merges currently mounted folder and document_folder
 	/// contents together.
-	pub fn render(&mut self, path: &mut Vec<LayerId>, svg: &mut String) {
+	pub fn render(&mut self, path: &mut Vec<LayerId>, svg: &mut String, transforms: &mut Vec<DAffine2>) {
 		if !self.work_mount_path.as_slice().starts_with(path) {
-			self.layer_mut(path).unwrap().render();
+			self.layer_mut(path).unwrap().render(transforms);
 			path.pop();
 			return;
 		}
+		let transform = self.document_folder(path).unwrap().transform;
 		if path.as_slice() == self.work_mount_path {
 			// TODO: Handle if mounted in nested folders
-			let transform = self.document_folder(path).unwrap().transform;
-			self.document_folder_mut(path).unwrap().render_as_folder(svg);
+			self.document_layer_mut(path).unwrap().render_on(svg, transforms);
 			self.work.transform = transform;
-			self.work.render_as_folder(svg);
+			self.work.render_on(svg, transforms);
 			path.pop();
 		}
 		let ids = self.folder(path).unwrap().layer_ids.clone();
+		transforms.push(transform);
 		for element in ids {
 			path.push(element);
-			self.render(path, svg);
+			self.render(path, svg, transforms);
 		}
+		transforms.pop();
 	}
 
 	/// Wrapper around render, that returns the whole document as a Response.
 	pub fn render_root(&mut self) -> String {
 		let mut svg = String::new();
-		self.render(&mut vec![], &mut svg);
+		self.render(&mut vec![], &mut svg, &mut vec![]);
 		svg
 	}
 
@@ -212,7 +214,7 @@ impl Document {
 	/// Passing a negative `insert_index` indexes relative to the end.
 	/// -1 is equivalent to adding the layer to the top.
 	pub fn add_layer(&mut self, path: &[LayerId], mut layer: Layer, insert_index: isize) -> Result<LayerId, DocumentError> {
-		layer.render();
+		layer.render(&self.transforms(path)?);
 		let folder = self.folder_mut(path)?;
 		folder.add_layer(layer, insert_index).ok_or(DocumentError::IndexOutOfBounds)
 	}
@@ -241,7 +243,7 @@ impl Document {
 		Ok(layer.bounding_box(layer.transform, layer.style))
 	}
 
-	fn mark_as_dirty(&mut self, path: &[LayerId]) -> Result<(), DocumentError> {
+	pub fn mark_as_dirty(&mut self, path: &[LayerId]) -> Result<(), DocumentError> {
 		let mut root = &mut self.root;
 		root.cache_dirty = true;
 		for id in path {
@@ -259,6 +261,66 @@ impl Document {
 			.iter()
 			.map(|id| self.work_mount_path.iter().chain([*id].iter()).cloned().collect())
 			.collect()
+	}
+
+	fn transforms(&self, path: &[LayerId]) -> Result<Vec<DAffine2>, DocumentError> {
+		let mut root = &self.root;
+		let mut transforms = vec![self.root.transform];
+		for id in path {
+			if let Ok(folder) = root.as_folder() {
+				root = folder.layer(*id).ok_or(DocumentError::LayerNotFound)?;
+			}
+			transforms.push(root.transform);
+		}
+		Ok(transforms)
+	}
+
+	fn multiply_transoforms(&self, path: &[LayerId]) -> Result<DAffine2, DocumentError> {
+		let mut root = &self.root;
+		let mut trans = self.root.transform;
+		for id in path {
+			if let Ok(folder) = root.as_folder() {
+				root = folder.layer(*id).ok_or(DocumentError::LayerNotFound)?;
+			}
+			trans = trans * root.transform;
+		}
+		Ok(trans)
+	}
+
+	pub fn generate_transform(&self, from: &[LayerId], to: Option<&[LayerId]>) -> Result<DAffine2, DocumentError> {
+		let from_rev = self.multiply_transoforms(from)?.inverse();
+		Ok(match to {
+			None => from_rev,
+			Some(path) => self.multiply_transoforms(path)? * from_rev,
+		})
+	}
+
+	pub fn transform_in_scope(&mut self, layer: &[LayerId], scope: Option<&[LayerId]>, transform: DAffine2) -> Result<(), DocumentError> {
+		let to = self.generate_transform(layer, scope)?;
+		let trans = transform * to;
+		self.layer_mut(layer)?.transform = to.inverse() * trans;
+		Ok(())
+	}
+
+	pub fn transform_in_viewport(&mut self, layer: &[LayerId], transform: DAffine2) -> Result<(), DocumentError> {
+		self.transform_in_scope(layer, None, transform)
+	}
+
+	pub fn transform_layer(&self, path: &[LayerId], to: Option<&[LayerId]>) -> Result<Layer, DocumentError> {
+		let transform = self.generate_transform(path, to)?;
+		let layer = self.layer(path).unwrap();
+		Ok(Layer {
+			visible: layer.visible,
+			name: layer.name.clone(),
+			data: layer.data.clone(),
+			transform,
+			style: layer.style,
+			thumbnail_cache: String::with_capacity(layer.thumbnail_cache.capacity()),
+			cache: String::with_capacity(layer.cache.capacity()),
+			cache_dirty: true,
+			blend_mode: layers::BlendMode::Normal,
+			premultiply_transform: true,
+		})
 	}
 
 	/// Mutate the document by applying the `operation` to it. If the operation necessitates a
