@@ -82,6 +82,7 @@ impl Dispatcher {
 #[cfg(test)]
 mod test {
 	use crate::{
+		communication::DocumentMessageHandler,
 		message_prelude::{DocumentMessage, Message},
 		misc::test_utils::EditorTestUtils,
 		Editor,
@@ -301,5 +302,29 @@ mod test {
 		assert_eq!(&layers_after_copy[3], ellipse_before_copy);
 		assert_eq!(&layers_after_copy[4], rect_before_copy);
 		assert_eq!(&layers_after_copy[5], ellipse_before_copy);
+	}
+	#[test]
+	/// - create rect, shape and ellipse
+	/// - select ellipse and rect
+	/// - move them down and back up again
+	fn move_seletion() {
+		init_logger();
+		let mut editor = create_editor_with_three_layers();
+
+		let verify_order = |handler: &mut DocumentMessageHandler| (handler.all_layers_sorted(), handler.non_selected_layers_sorted(), handler.selected_layers_sorted());
+
+		editor.handle_message(Message::Document(DocumentMessage::SelectLayers(vec![vec![0], vec![2]]))).unwrap();
+
+		editor.handle_message(Message::Document(DocumentMessage::ReorderSelectedLayers(1))).unwrap();
+		let (all, non_selected, selected) = verify_order(&mut editor.dispatcher.document_message_handler);
+		assert_eq!(all, non_selected.into_iter().chain(selected.into_iter()).collect::<Vec<_>>());
+
+		editor.handle_message(Message::Document(DocumentMessage::ReorderSelectedLayers(1))).unwrap();
+		let (all, non_selected, selected) = verify_order(&mut editor.dispatcher.document_message_handler);
+		assert_eq!(all, selected.into_iter().chain(non_selected.into_iter()).collect::<Vec<_>>());
+
+		editor.handle_message(Message::Document(DocumentMessage::ReorderSelectedLayers(i32::MIN))).unwrap();
+		let (all, non_selected, selected) = verify_order(&mut editor.dispatcher.document_message_handler);
+		assert_eq!(all, non_selected.into_iter().chain(selected.into_iter()).collect::<Vec<_>>());
 	}
 }

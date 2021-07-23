@@ -170,17 +170,17 @@ impl DocumentMessageHandler {
 	}
 
 	/// Returns the paths to all layers in order
-	fn all_layers_sorted(&self) -> Vec<Vec<LayerId>> {
+	pub fn all_layers_sorted(&self) -> Vec<Vec<LayerId>> {
 		self.layers_sorted(None)
 	}
 
 	/// Returns the paths to all selected layers in order
-	fn selected_layers_sorted(&self) -> Vec<Vec<LayerId>> {
+	pub fn selected_layers_sorted(&self) -> Vec<Vec<LayerId>> {
 		self.layers_sorted(Some(true))
 	}
 
 	/// Returns the paths to all selected layers in order
-	fn non_selected_layers_sorted(&self) -> Vec<Vec<LayerId>> {
+	pub fn non_selected_layers_sorted(&self) -> Vec<Vec<LayerId>> {
 		self.layers_sorted(Some(false))
 	}
 }
