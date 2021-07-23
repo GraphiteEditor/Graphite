@@ -32,12 +32,10 @@ impl Color {
 	/// assert!(color == None);
 	/// ```
 	pub fn from_rgbaf32(red: f32, green: f32, blue: f32, alpha: f32) -> Option<Color> {
-		let color = Color { red, green, blue, alpha };
-
 		if alpha > 1. || [red, green, blue, alpha].iter().any(|c| c.is_sign_negative() || !c.is_finite()) {
 			return None;
 		}
-		Some(color)
+		Some(Color { red, green, blue, alpha })
 	}
 
 	// Return Color without checking `red` `green` `blue` and without transparency (alpha = 1.0)
