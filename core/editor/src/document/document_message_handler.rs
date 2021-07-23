@@ -25,6 +25,7 @@ pub enum DocumentMessage {
 	DeleteSelectedLayers,
 	DuplicateSelectedLayers,
 	CopySelectedLayers,
+	SetBlendModeForSelectedLayers(BlendMode),
 	PasteLayers,
 	AddFolder(Vec<LayerId>),
 	RenameLayer(Vec<LayerId>, String),
@@ -42,7 +43,6 @@ pub enum DocumentMessage {
 	ExportDocument,
 	RenderDocument,
 	Undo,
-	SetBlendMode(BlendMode),
 	MouseMove,
 	TranslateCanvasBegin,
 	WheelCanvasTranslate { use_y_as_x: bool },
@@ -344,7 +344,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				}
 				.into(),
 			),
-			SetBlendMode(blend_mode) => {
+			SetBlendModeForSelectedLayers(blend_mode) => {
 				let active_document = self.active_document();
 
 				for path in active_document.layer_data.iter().filter_map(|(path, data)| data.selected.then(|| path)) {

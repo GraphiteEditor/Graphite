@@ -403,10 +403,8 @@ impl Document {
 				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::FolderChanged { path }])
 			}
 			Operation::SetLayerBlendMode { path, blend_mode } => {
-				if let Ok(layer) = self.layer_mut(&path) {
-					layer.blend_mode = *blend_mode;
-					let _ = self.mark_as_dirty(path);
-				}
+				self.mark_as_dirty(path)?;
+				self.layer_mut(&path).unwrap().blend_mode = *blend_mode;
 
 				let path = path.as_slice()[..path.len() - 1].to_vec();
 

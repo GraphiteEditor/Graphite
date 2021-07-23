@@ -172,8 +172,8 @@ export default defineComponent({
 			toggle_layer_visibility(path);
 		},
 		async setLayerBlendMode(blendMode: BlendMode) {
-			const { set_layer_blend_mode } = await wasm;
-			set_layer_blend_mode(blendMode);
+			const { set_blend_mode_for_selected_layers } = await wasm;
+			set_blend_mode_for_selected_layers(blendMode);
 		},
 		async handleControlClick(clickedLayer: LayerPanelEntry) {
 			const index = this.layers.indexOf(clickedLayer);

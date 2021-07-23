@@ -63,7 +63,7 @@ pub enum BlendMode {
 	Luminosity,
 }
 impl BlendMode {
-	fn to_svg_style_name(&self) -> String {
+	fn to_svg_style_name(&self) -> &str {
 		match self {
 			BlendMode::Normal => "normal",
 			BlendMode::Multiply => "multiply",
@@ -82,7 +82,6 @@ impl BlendMode {
 			BlendMode::Color => "color",
 			BlendMode::Luminosity => "luminosity",
 		}
-		.to_string()
 	}
 }
 

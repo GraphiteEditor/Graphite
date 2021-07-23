@@ -215,7 +215,7 @@ pub fn reorder_selected_layers(delta: i32) -> Result<(), JsValue> {
 
 /// Set the blend mode of the selected layers
 #[wasm_bindgen]
-pub fn set_layer_blend_mode(blend_mode_svg_style_name: String) -> Result<(), JsValue> {
+pub fn set_blend_mode_for_selected_layers(blend_mode_svg_style_name: String) -> Result<(), JsValue> {
 	let blend_mode = match blend_mode_svg_style_name.as_str() {
 		"normal" => BlendMode::Normal,
 		"multiply" => BlendMode::Multiply,
@@ -236,7 +236,7 @@ pub fn set_layer_blend_mode(blend_mode_svg_style_name: String) -> Result<(), JsV
 		_ => return Err(convert_error(EditorError::Misc("UnknownBlendMode".to_string())).into()),
 	};
 
-	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(DocumentMessage::SetBlendMode(blend_mode)).map_err(convert_error))
+	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(DocumentMessage::SetBlendModeForSelectedLayers(blend_mode)).map_err(convert_error))
 }
 
 /// Export the document
