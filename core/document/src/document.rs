@@ -197,7 +197,7 @@ impl Document {
 	pub fn set_layer(&mut self, path: &[LayerId], layer: Layer) -> Result<(), DocumentError> {
 		let mut folder = self.root.as_folder_mut()?;
 		if let Ok((path, id)) = split_path(path) {
-			self.layer_mut(path)?.cache_dirty = true;
+			self.mark_as_dirty(path)?;
 			folder = self.folder_mut(path)?;
 			if let Some(folder_layer) = folder.layer_mut(id) {
 				*folder_layer = layer;
@@ -220,7 +220,7 @@ impl Document {
 	/// Deletes the layer specified by `path`.
 	pub fn delete(&mut self, path: &[LayerId]) -> Result<(), DocumentError> {
 		let (path, id) = split_path(path)?;
-		let _ = self.layer_mut(path).map(|x| x.cache_dirty = true);
+		self.mark_as_dirty(path)?;
 		self.document_folder_mut(path)?.as_folder_mut()?.remove_layer(id)
 	}
 
@@ -357,15 +357,14 @@ impl Document {
 				let layer = self.document_layer_mut(path).unwrap();
 				let transform = DAffine2::from_cols_array(&transform) * layer.transform;
 				layer.transform = transform;
-				layer.cache_dirty = true;
-				self.root.cache_dirty = true;
+				self.mark_as_dirty(path)?;
 				Some(vec![DocumentResponse::DocumentChanged])
 			}
 			Operation::SetLayerTransform { path, transform } => {
 				let transform = DAffine2::from_cols_array(&transform);
 				let layer = self.document_layer_mut(path).unwrap();
 				layer.transform = transform;
-				layer.cache_dirty = true;
+				self.mark_as_dirty(path)?;
 				Some(vec![DocumentResponse::DocumentChanged])
 			}
 			Operation::DiscardWorkingFolder => {
@@ -403,9 +402,9 @@ impl Document {
 				Some(responses)
 			}
 			Operation::ToggleVisibility { path } => {
+				self.mark_as_dirty(path)?;
 				if let Ok(layer) = self.layer_mut(&path) {
 					layer.visible = !layer.visible;
-					layer.cache_dirty = true;
 				}
 				let path = path.as_slice()[..path.len() - 1].to_vec();
 				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::FolderChanged { path }])
