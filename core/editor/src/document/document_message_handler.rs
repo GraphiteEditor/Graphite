@@ -378,7 +378,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			CopySelectedLayers => {
 				let paths = self.selected_layers_sorted();
 				self.copy_buffer.clear();
-				for path in paths.iter().rev() {
+				for path in paths {
 					match self.active_document().document.layer(&path).map(|t| t.clone()) {
 						Ok(layer) => {
 							self.copy_buffer.push(layer);
@@ -386,6 +386,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 						Err(e) => warn!("Could not access selected layer {:?}: {:?}", path, e),
 					}
 				}
+				log::debug!("copy_buffer: {:?}", self.copy_buffer);
 			}
 			PasteLayers { path, insert_index } => {
 				for layer in self.copy_buffer.iter() {
