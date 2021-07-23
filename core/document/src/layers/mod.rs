@@ -32,6 +32,7 @@ pub trait LayerData {
 	fn intersects_quad(&self, quad: [DVec2; 4], path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>, style: style::PathStyle);
 }
 
+// TODO: Rename this `LayerDataType` to not be plural in a separate commit (together with `enum ToolOptions`)
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub enum LayerDataTypes {
 	Folder(Folder),
@@ -40,6 +41,49 @@ pub enum LayerDataTypes {
 	Line(Line),
 	PolyLine(PolyLine),
 	Shape(Shape),
+}
+
+#[derive(PartialEq, Copy, Clone, Debug, Serialize, Deserialize)]
+pub enum BlendMode {
+	Normal,
+	Multiply,
+	Darken,
+	ColorBurn,
+	Screen,
+	Lighten,
+	ColorDodge,
+	Overlay,
+	SoftLight,
+	HardLight,
+	Difference,
+	Exclusion,
+	Hue,
+	Saturation,
+	Color,
+	Luminosity,
+}
+impl BlendMode {
+	fn to_svg_style_name(&self) -> String {
+		match self {
+			BlendMode::Normal => "normal",
+			BlendMode::Multiply => "multiply",
+			BlendMode::Darken => "darken",
+			BlendMode::ColorBurn => "color-burn",
+			BlendMode::Screen => "screen",
+			BlendMode::Lighten => "lighten",
+			BlendMode::ColorDodge => "color-dodge",
+			BlendMode::Overlay => "overlay",
+			BlendMode::SoftLight => "soft-light",
+			BlendMode::HardLight => "hard-light",
+			BlendMode::Difference => "difference",
+			BlendMode::Exclusion => "exclusion",
+			BlendMode::Hue => "hue",
+			BlendMode::Saturation => "saturation",
+			BlendMode::Color => "color",
+			BlendMode::Luminosity => "luminosity",
+		}
+		.to_string()
+	}
 }
 
 macro_rules! call_render {
@@ -58,7 +102,7 @@ macro_rules! call_kurbo_path {
 }
 
 macro_rules! call_intersects_quad {
-    ($self:ident.intersects_quad($quad:ident, $path:ident, $intersections:ident, $style:ident) { $($variant:ident),* }) => {
+	($self:ident.intersects_quad($quad:ident, $path:ident, $intersections:ident, $style:ident) { $($variant:ident),* }) => {
 		match $self {
 			$(Self::$variant(x) => x.intersects_quad($quad, $path, $intersections, $style)),*
 		}
@@ -78,6 +122,7 @@ impl LayerDataTypes {
 			}
 		}
 	}
+
 	pub fn to_kurbo_path(&self, transform: glam::DAffine2, style: style::PathStyle) -> BezPath {
 		call_kurbo_path! {
 			self.to_kurbo_path(transform, style) {
@@ -127,8 +172,9 @@ pub struct Layer {
 	pub transform: glam::DAffine2,
 	pub style: style::PathStyle,
 	pub cache: String,
+	pub thumbnail_cache: String,
 	pub cache_dirty: bool,
-	pub blend_mode: String,
+	pub blend_mode: BlendMode,
 }
 
 impl Layer {
@@ -140,8 +186,9 @@ impl Layer {
 			transform: glam::DAffine2::from_cols_array(&transform),
 			style,
 			cache: String::new(),
+			thumbnail_cache: String::new(),
 			cache_dirty: true,
-			blend_mode: "normal".to_string(),
+			blend_mode: BlendMode::Normal,
 		}
 	}
 
@@ -150,10 +197,17 @@ impl Layer {
 			return "";
 		}
 		if self.cache_dirty {
+			self.thumbnail_cache.clear();
+			self.data.render(&mut self.thumbnail_cache, self.transform, self.style);
+
 			self.cache.clear();
-			let _ = write!(self.cache, r#"<g style = "mix-blend-mode: {}">"#, self.blend_mode);
-			self.data.render(&mut self.cache, self.transform, self.style);
-			let _ = write!(self.cache, "</g>");
+			let _ = write!(
+				self.cache,
+				r#"<g style="mix-blend-mode: {}">{}</g>"#,
+				self.blend_mode.to_svg_style_name(),
+				self.thumbnail_cache.as_str()
+			);
+
 			self.cache_dirty = false;
 		}
 		self.cache.as_str()

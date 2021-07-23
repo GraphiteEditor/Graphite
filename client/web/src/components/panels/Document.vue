@@ -2,7 +2,7 @@
 	<LayoutCol :class="'document'">
 		<LayoutRow :class="'options-bar'">
 			<div class="left side">
-				<DropdownInput :menuEntries="modeMenuEntries" :default="modeMenuEntries[0][0]" :callbackOnChange="notImplemented" :drawIcon="true" />
+				<DropdownInput :menuEntries="documentModeEntries" v-model:selectedIndex="documentModeSelectionIndex" :drawIcon="true" />
 
 				<Separator :type="SeparatorType.Section" />
 
@@ -104,11 +104,11 @@
 			</LayoutCol>
 			<LayoutCol :class="'viewport'">
 				<LayoutRow :class="'bar-area'">
-					<CanvasRuler :origin="0" :majorMarkSpacing="75" :direction="RulerDirection.Horizontal" :class="'top-ruler'" />
+					<CanvasRuler :origin="0" :majorMarkSpacing="100" :direction="RulerDirection.Horizontal" :class="'top-ruler'" />
 				</LayoutRow>
 				<LayoutRow :class="'canvas-area'">
 					<LayoutCol :class="'bar-area'">
-						<CanvasRuler :origin="0" :majorMarkSpacing="75" :direction="RulerDirection.Vertical" />
+						<CanvasRuler :origin="0" :majorMarkSpacing="100" :direction="RulerDirection.Vertical" />
 					</LayoutCol>
 					<LayoutCol :class="'canvas-area'">
 						<div class="canvas" @mousedown="canvasMouseDown" @mouseup="canvasMouseUp" @mousemove="canvasMouseMove" ref="canvas">
@@ -216,7 +216,7 @@ import OptionalInput from "@/components/widgets/inputs/OptionalInput.vue";
 import ToolOptions from "@/components/widgets/options/ToolOptions.vue";
 import { SectionsOfMenuListEntries } from "@/components/widgets/floating-menus/MenuList.vue";
 
-const modeMenuEntries: SectionsOfMenuListEntries = [
+const documentModeEntries: SectionsOfMenuListEntries = [
 	[
 		{ label: "Design Mode", icon: "ViewportDesignMode" },
 		{ label: "Select Mode", icon: "ViewportSelectMode" },
@@ -271,9 +271,6 @@ export default defineComponent({
 				return _;
 			}
 			todo(toolIndex);
-		},
-		notImplemented() {
-			window.alert("Not implemented");
 		},
 		async swapWorkingColors() {
 			const { swap_colors } = await wasm;
@@ -337,7 +334,8 @@ export default defineComponent({
 		return {
 			viewportSvg: "",
 			activeTool: "Select",
-			modeMenuEntries,
+			documentModeEntries,
+			documentModeSelectionIndex: 0,
 			viewModeIndex: 0,
 			snappingEnabled: true,
 			gridEnabled: true,

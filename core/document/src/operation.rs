@@ -1,6 +1,6 @@
 use crate::{
 	color::Color,
-	layers::{style, Layer},
+	layers::{style, BlendMode, Layer},
 	LayerId,
 };
 
@@ -74,7 +74,7 @@ pub enum Operation {
 	},
 	SetLayerBlendMode {
 		path: Vec<LayerId>,
-		blend_mode: String,
+		blend_mode: BlendMode,
 	},
 	FillLayer {
 		path: Vec<LayerId>,

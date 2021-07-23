@@ -20,6 +20,12 @@ pub fn init() {
 	log::set_max_level(log::LevelFilter::Debug);
 }
 
+#[wasm_bindgen(module = "/../src/utilities/response-handler-binding.ts")]
+extern "C" {
+	#[wasm_bindgen(catch)]
+	fn handleResponse(responseType: String, responseData: JsValue) -> Result<(), JsValue>;
+}
+
 fn handle_response(response: FrontendMessage) {
 	let response_type = response.to_discriminant().local_name();
 	send_response(response_type, response);
@@ -28,10 +34,4 @@ fn handle_response(response: FrontendMessage) {
 fn send_response(response_type: String, response_data: FrontendMessage) {
 	let response_data = JsValue::from_serde(&response_data).expect("Failed to serialize response");
 	let _ = handleResponse(response_type, response_data).map_err(|error| log::error!("javascript threw an error: {:?}", error));
-}
-
-#[wasm_bindgen(module = "/../src/utilities/response-handler-binding.ts")]
-extern "C" {
-	#[wasm_bindgen(catch)]
-	fn handleResponse(responseType: String, responseData: JsValue) -> Result<(), JsValue>;
 }
