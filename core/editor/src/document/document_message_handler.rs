@@ -609,6 +609,8 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				}
 			}
 			DragLayer(path, offset) => {
+				// TODO: Replace root transformations with functions of the transform api
+				// and do the same with all instances of `root.transform.inverse()` in other messages
 				let transformed_mouse_pos = self.active_document().document.root.transform.inverse().transform_vector2(ipp.mouse.position.as_dvec2());
 				let translation = offset + transformed_mouse_pos;
 				if let Ok(layer) = self.active_document_mut().document.layer_mut(&path) {

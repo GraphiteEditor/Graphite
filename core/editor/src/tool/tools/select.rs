@@ -89,6 +89,7 @@ impl Fsm for SelectToolFsmState {
 					];
 
 					if let Some(intersection) = document.document.intersects_quad_root(quad).last() {
+						// TODO: Replace root transformations with functions of the transform api
 						let transformed_start = document.document.root.transform.inverse().transform_vector2(data.drag_start.as_dvec2());
 						if document.layer_data.get(intersection).map_or(false, |layer_data| layer_data.selected) {
 							data.layers_dragging = document
