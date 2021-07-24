@@ -1,5 +1,8 @@
 use crate::document::LayerData;
-use document_core::{layers::LayerDataTypes, LayerId};
+use document_core::{
+	layers::{BlendMode, LayerDataTypes},
+	LayerId,
+};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
@@ -7,6 +10,7 @@ use std::fmt;
 pub struct LayerPanelEntry {
 	pub name: String,
 	pub visible: bool,
+	pub blend_mode: BlendMode,
 	pub layer_type: LayerType,
 	pub layer_data: LayerData,
 	pub path: Vec<LayerId>,

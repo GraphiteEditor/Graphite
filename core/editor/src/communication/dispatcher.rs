@@ -33,6 +33,7 @@ impl Dispatcher {
 		) || MessageDiscriminant::from(&message).local_name().ends_with("MouseMove"))
 		{
 			log::trace!("Message: {}", message.to_discriminant().local_name());
+			log::trace!("Hints:{}", self.input_mapper.hints(self.collect_actions()));
 		}
 		match message {
 			NoOp => (),
@@ -82,6 +83,7 @@ impl Dispatcher {
 #[cfg(test)]
 mod test {
 	use crate::{
+		communication::DocumentMessageHandler,
 		message_prelude::{DocumentMessage, Message},
 		misc::test_utils::EditorTestUtils,
 		Editor,
@@ -123,7 +125,7 @@ mod test {
 
 		let document_before_copy = editor.dispatcher.document_message_handler.active_document().document.clone();
 		editor.handle_message(Message::Document(DocumentMessage::CopySelectedLayers)).unwrap();
-		editor.handle_message(Message::Document(DocumentMessage::PasteLayers)).unwrap();
+		editor.handle_message(Message::Document(DocumentMessage::PasteLayers { path: vec![], insert_index: -1 })).unwrap();
 		let document_after_copy = editor.dispatcher.document_message_handler.active_document().document.clone();
 
 		let layers_before_copy = document_before_copy.root.as_folder().unwrap().layers();
@@ -156,7 +158,7 @@ mod test {
 
 		editor.handle_message(Message::Document(DocumentMessage::SelectLayers(vec![vec![shape_id]]))).unwrap();
 		editor.handle_message(Message::Document(DocumentMessage::CopySelectedLayers)).unwrap();
-		editor.handle_message(Message::Document(DocumentMessage::PasteLayers)).unwrap();
+		editor.handle_message(Message::Document(DocumentMessage::PasteLayers { path: vec![], insert_index: -1 })).unwrap();
 
 		let document_after_copy = editor.dispatcher.document_message_handler.active_document().document.clone();
 
@@ -220,8 +222,8 @@ mod test {
 
 		editor.handle_message(Message::Document(DocumentMessage::CopySelectedLayers)).unwrap();
 		editor.handle_message(Message::Document(DocumentMessage::DeleteSelectedLayers)).unwrap();
-		editor.handle_message(Message::Document(DocumentMessage::PasteLayers)).unwrap();
-		editor.handle_message(Message::Document(DocumentMessage::PasteLayers)).unwrap();
+		editor.handle_message(Message::Document(DocumentMessage::PasteLayers { path: vec![], insert_index: -1 })).unwrap();
+		editor.handle_message(Message::Document(DocumentMessage::PasteLayers { path: vec![], insert_index: -1 })).unwrap();
 
 		let document_after_copy = editor.dispatcher.document_message_handler.active_document().document.clone();
 
@@ -282,8 +284,8 @@ mod test {
 		editor.handle_message(Message::Document(DocumentMessage::CopySelectedLayers)).unwrap();
 		editor.handle_message(Message::Document(DocumentMessage::DeleteSelectedLayers)).unwrap();
 		editor.draw_rect(0, 800, 12, 200);
-		editor.handle_message(Message::Document(DocumentMessage::PasteLayers)).unwrap();
-		editor.handle_message(Message::Document(DocumentMessage::PasteLayers)).unwrap();
+		editor.handle_message(Message::Document(DocumentMessage::PasteLayers { path: vec![], insert_index: -1 })).unwrap();
+		editor.handle_message(Message::Document(DocumentMessage::PasteLayers { path: vec![], insert_index: -1 })).unwrap();
 
 		let document_after_copy = editor.dispatcher.document_message_handler.active_document().document.clone();
 
@@ -301,5 +303,29 @@ mod test {
 		assert_eq!(&layers_after_copy[3], ellipse_before_copy);
 		assert_eq!(&layers_after_copy[4], rect_before_copy);
 		assert_eq!(&layers_after_copy[5], ellipse_before_copy);
+	}
+	#[test]
+	/// - create rect, shape and ellipse
+	/// - select ellipse and rect
+	/// - move them down and back up again
+	fn move_seletion() {
+		init_logger();
+		let mut editor = create_editor_with_three_layers();
+
+		let verify_order = |handler: &mut DocumentMessageHandler| (handler.all_layers_sorted(), handler.non_selected_layers_sorted(), handler.selected_layers_sorted());
+
+		editor.handle_message(Message::Document(DocumentMessage::SelectLayers(vec![vec![0], vec![2]]))).unwrap();
+
+		editor.handle_message(Message::Document(DocumentMessage::ReorderSelectedLayers(1))).unwrap();
+		let (all, non_selected, selected) = verify_order(&mut editor.dispatcher.document_message_handler);
+		assert_eq!(all, non_selected.into_iter().chain(selected.into_iter()).collect::<Vec<_>>());
+
+		editor.handle_message(Message::Document(DocumentMessage::ReorderSelectedLayers(-1))).unwrap();
+		let (all, non_selected, selected) = verify_order(&mut editor.dispatcher.document_message_handler);
+		assert_eq!(all, selected.into_iter().chain(non_selected.into_iter()).collect::<Vec<_>>());
+
+		editor.handle_message(Message::Document(DocumentMessage::ReorderSelectedLayers(i32::MAX))).unwrap();
+		let (all, non_selected, selected) = verify_order(&mut editor.dispatcher.document_message_handler);
+		assert_eq!(all, non_selected.into_iter().chain(selected.into_iter()).collect::<Vec<_>>());
 	}
 }
