@@ -658,14 +658,14 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			AlignSelectedLayers(axis, aggregate) => {
 				// TODO: Handle folder nested transforms with the transforms API
 				let selected_paths = self.selected_layers_sorted();
-				if selected_paths.len() == 0 {
+				if selected_paths.is_empty() {
 					return;
 				}
 
 				let selected_layers = selected_paths.iter().map(|path| {
 					let layer = self.active_document().document.layer(path).unwrap();
 					let point = {
-						let bounding_box = layer.bounding_box(layer.transform, layer.style).unwrap();
+						let bounding_box = layer.bounding_box(layer.transform, layer.style).unwrap_or_default();
 						match aggregate {
 							AlignAggregate::Min => bounding_box[0],
 							AlignAggregate::Max => bounding_box[1],
@@ -735,12 +735,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			SetLayerTranslation(path, x_option, y_option) => {
 				if let Ok(layer) = self.active_document_mut().document.layer_mut(&path) {
 					let mut transform = layer.transform;
-					if let Some(x) = x_option {
-						transform.translation.x = x;
-					}
-					if let Some(y) = y_option {
-						transform.translation.y = y;
-					}
+					transform.translation = DVec2::new(x_option.unwrap_or(transform.translation.x), y_option.unwrap_or(transform.translation.y));
 					responses.push_back(
 						DocumentOperation::SetLayerTransform {
 							path,

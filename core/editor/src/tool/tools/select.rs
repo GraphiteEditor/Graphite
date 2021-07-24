@@ -125,7 +125,7 @@ impl Fsm for SelectToolFsmState {
 						responses.push_back(make_operation(data, tool_data, transform));
 					} else {
 						for (path, offset) in &data.layers_dragging {
-							responses.push_back(DocumentMessage::DragLayer(path.clone(), offset.clone()).into());
+							responses.push_back(DocumentMessage::DragLayer(path.clone(), *offset).into());
 						}
 					}
 
