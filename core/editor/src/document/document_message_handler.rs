@@ -57,6 +57,7 @@ pub enum DocumentMessage {
 	SetCanvasRotation(f64),
 	NudgeSelectedLayers(f64, f64),
 	FlipLayer(Vec<LayerId>, bool, bool),
+	DragLayer(Vec<LayerId>, DVec2),
 	MoveSelectedLayersTo { path: Vec<LayerId>, insert_index: isize },
 	ReorderSelectedLayers(i32), // relatve_position,
 }
@@ -645,6 +646,20 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 						}
 						.into(),
 					);
+				}
+			}
+			DragLayer(path, offset) => {
+				// TODO: Replace root transformations with functions of the transform api
+				// and do the same with all instances of `root.transform.inverse()` in other messages
+				let transformed_mouse_pos = self.active_document().document.root.transform.inverse().transform_vector2(ipp.mouse.position.as_dvec2());
+				let translation = offset + transformed_mouse_pos;
+				if let Ok(layer) = self.active_document_mut().document.layer_mut(&path) {
+					let transform = {
+						let mut transform = layer.transform;
+						transform.translation = translation;
+						transform.to_cols_array()
+					};
+					responses.push_back(DocumentOperation::SetLayerTransform { path, transform }.into());
 				}
 			}
 			message => todo!("document_action_handler does not implement: {}", message.to_discriminant().global_name()),
