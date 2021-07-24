@@ -7,7 +7,8 @@ use std::fmt;
 pub enum DocumentResponse {
 	DocumentChanged,
 	FolderChanged { path: Vec<LayerId> },
-	SelectLayer { path: Vec<LayerId> },
+	CreatedLayer { path: Vec<LayerId> },
+	DeletedLayer { path: Vec<LayerId> },
 }
 
 impl fmt::Display for DocumentResponse {
@@ -15,7 +16,8 @@ impl fmt::Display for DocumentResponse {
 		let name = match self {
 			DocumentResponse::DocumentChanged { .. } => "DocumentChanged",
 			DocumentResponse::FolderChanged { .. } => "FolderChanged",
-			DocumentResponse::SelectLayer { .. } => "SelectLayer",
+			DocumentResponse::CreatedLayer { .. } => "CreatedLayer",
+			DocumentResponse::DeletedLayer { .. } => "DeleteLayer",
 		};
 
 		formatter.write_str(name)

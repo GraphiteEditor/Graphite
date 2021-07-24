@@ -5,6 +5,7 @@ use document_core::layers::style::Fill;
 use document_core::layers::style::Stroke;
 use document_core::Operation;
 use glam::{DAffine2, DVec2};
+use serde::{Deserialize, Serialize};
 
 use crate::input::{mouse::ViewportPosition, InputPreprocessor};
 use crate::tool::{DocumentToolData, Fsm, ToolActionHandlerData};
@@ -17,13 +18,16 @@ pub struct Select {
 }
 
 #[impl_message(Message, ToolMessage, Select)]
-#[derive(PartialEq, Clone, Debug)]
+#[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub enum SelectMessage {
 	Init,
 	DragStart,
 	DragStop,
 	MouseMove,
 	Abort,
+
+	FlipHorizontal,
+	FlipVertical,
 }
 
 impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Select {
@@ -55,6 +59,7 @@ impl Default for SelectToolFsmState {
 struct SelectToolData {
 	drag_start: ViewportPosition,
 	drag_current: ViewportPosition,
+	layers_dragging: Vec<(Vec<LayerId>, DVec2)>, // Paths and offsets
 }
 
 impl Fsm for SelectToolFsmState {
@@ -66,42 +71,15 @@ impl Fsm for SelectToolFsmState {
 		use SelectToolFsmState::*;
 		if let ToolMessage::Select(event) = event {
 			match (self, event) {
-				(_, Init) => {
-					responses.push_back(Operation::MountWorkingFolder { path: vec![] }.into());
-					make_selection_bounding_box(document, responses);
-					self
-				}
 				(Ready, DragStart) => {
 					data.drag_start = input.mouse.position;
 					data.drag_current = input.mouse.position;
 
-					Dragging
-				}
-				(Dragging, MouseMove) => {
-					data.drag_current = input.mouse.position;
-
-					responses.push_back(Operation::ClearWorkingFolder.into());
-					responses.push_back(make_operation(data, tool_data, transform));
-
-					make_selection_bounding_box(document, responses);
-
-					Dragging
-				}
-				(Dragging, DragStop) => {
-					data.drag_current = input.mouse.position;
-
-					responses.push_back(Operation::ClearWorkingFolder.into());
-
-					let (point_1, point_2) = if data.drag_start == data.drag_current {
-						let (x, y) = (data.drag_current.x as f64, data.drag_current.y as f64);
+					let (point_1, point_2) = {
+						let (x, y) = (data.drag_start.x as f64, data.drag_start.y as f64);
 						(
 							DVec2::new(x - SELECTION_TOLERANCE, y - SELECTION_TOLERANCE),
 							DVec2::new(x + SELECTION_TOLERANCE, y + SELECTION_TOLERANCE),
-						)
-					} else {
-						(
-							DVec2::new(data.drag_start.x as f64, data.drag_start.y as f64),
-							DVec2::new(data.drag_current.x as f64, data.drag_current.y as f64),
 						)
 					};
 
@@ -112,29 +90,95 @@ impl Fsm for SelectToolFsmState {
 						DVec2::new(point_1.x, point_2.y),
 					];
 
-					responses.push_back(Operation::DiscardWorkingFolder.into());
-					let selected = if data.drag_start == data.drag_current {
-						if let Some(intersection) = document.document.intersects_quad_root(quad).last() {
-							vec![intersection.clone()]
+					if let Some(intersection) = document.document.intersects_quad_root(quad).last() {
+						// TODO: Replace root transformations with functions of the transform api
+						let transformed_start = document.document.root.transform.inverse().transform_vector2(data.drag_start.as_dvec2());
+						if document.layer_data.get(intersection).map_or(false, |layer_data| layer_data.selected) {
+							data.layers_dragging = document
+								.layer_data
+								.iter()
+								.filter_map(|(path, layer_data)| {
+									layer_data
+										.selected
+										.then(|| (path.clone(), document.document.layer(path).unwrap().transform.translation - transformed_start))
+								})
+								.collect();
 						} else {
-							vec![]
+							responses.push_back(DocumentMessage::SelectLayers(vec![intersection.clone()]).into());
+							data.layers_dragging = vec![(intersection.clone(), document.document.layer(intersection).unwrap().transform.translation - transformed_start)]
 						}
 					} else {
-						document.document.intersects_quad_root(quad)
-					};
-					responses.push_back(DocumentMessage::SelectLayers(selected.clone()).into());
+						responses.push_back(Operation::MountWorkingFolder { path: vec![] }.into());
+						data.layers_dragging = Vec::new();
+					}
 
-					responses.push_back(Operation::MountWorkingFolder { path: vec![] }.into());
-					make_paths_bounding_box(selected, document, responses);
+					Dragging
+				}
+				(Dragging, MouseMove) => {
+					data.drag_current = input.mouse.position;
+
+					if data.layers_dragging.is_empty() {
+						responses.push_back(Operation::ClearWorkingFolder.into());
+						responses.push_back(make_operation(data, tool_data, transform));
+					} else {
+						for (path, offset) in &data.layers_dragging {
+							responses.push_back(DocumentMessage::DragLayer(path.clone(), offset.clone()).into());
+						}
+					}
+
+					Dragging
+				}
+				(Dragging, DragStop) => {
+					data.drag_current = input.mouse.position;
+
+					if data.layers_dragging.is_empty() {
+						responses.push_back(Operation::ClearWorkingFolder.into());
+						responses.push_back(Operation::DiscardWorkingFolder.into());
+
+						if data.drag_start == data.drag_current {
+							responses.push_back(DocumentMessage::SelectLayers(vec![]).into());
+						} else {
+							let (point_1, point_2) = (
+								DVec2::new(data.drag_start.x as f64, data.drag_start.y as f64),
+								DVec2::new(data.drag_current.x as f64, data.drag_current.y as f64),
+							);
+
+							let quad = [
+								DVec2::new(point_1.x, point_1.y),
+								DVec2::new(point_2.x, point_1.y),
+								DVec2::new(point_2.x, point_2.y),
+								DVec2::new(point_1.x, point_2.y),
+							];
+
+							responses.push_back(DocumentMessage::SelectLayers(document.document.intersects_quad_root(quad)).into());
+						}
+					} else {
+						data.layers_dragging = Vec::new();
+					}
 
 					Ready
 				}
 				(Dragging, Abort) => {
-					responses.push_back(Operation::ClearWorkingFolder.into());
-
-					make_selection_bounding_box(document, responses);
+					responses.push_back(Operation::DiscardWorkingFolder.into());
+					data.layers_dragging = Vec::new();
 
 					Ready
+				}
+				(_, FlipHorizontal) => {
+					let selected_layers = document.layer_data.iter().filter_map(|(path, data)| data.selected.then(|| path.clone()));
+					for path in selected_layers {
+						responses.push_back(DocumentMessage::FlipLayer(path, true, false).into());
+					}
+
+					self
+				}
+				(_, FlipVertical) => {
+					let selected_layers = document.layer_data.iter().filter_map(|(path, data)| data.selected.then(|| path.clone()));
+					for path in selected_layers {
+						responses.push_back(DocumentMessage::FlipLayer(path, false, true).into());
+					}
+
+					self
 				}
 				_ => self,
 			}

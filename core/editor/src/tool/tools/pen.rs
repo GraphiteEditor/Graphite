@@ -96,6 +96,7 @@ impl Fsm for PenToolFsmState {
 
 					if data.points.len() >= 2 {
 						responses.push_back(make_operation(data, tool_data, false));
+						responses.push_back(DocumentMessage::DeselectAllLayers.into());
 						responses.push_back(Operation::CommitTransaction.into());
 					} else {
 						responses.push_back(Operation::DiscardWorkingFolder.into());

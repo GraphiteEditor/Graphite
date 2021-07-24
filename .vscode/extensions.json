@@ -1,3 +1,8 @@
 {
-    "recommendations": ["matklad.rust-analyzer", "dbaeumer.vscode-eslint", "octref.vetur", "formulahendry.auto-close-tag"]
+	"recommendations": [
+		"matklad.rust-analyzer",
+		"dbaeumer.vscode-eslint",
+		"octref.vetur",
+		"formulahendry.auto-close-tag"
+	]
 }

@@ -1,11 +1,12 @@
-use crate::consts::{MINUS_KEY_ZOOM_RATE, PLUS_KEY_ZOOM_RATE};
-use crate::message_prelude::*;
-use crate::tool::ToolType;
-
 use super::{
 	keyboard::{Key, KeyStates, NUMBER_OF_KEYS},
 	InputPreprocessor,
 };
+use crate::consts::{MINUS_KEY_ZOOM_RATE, PLUS_KEY_ZOOM_RATE};
+use crate::message_prelude::*;
+use crate::tool::ToolType;
+
+use std::fmt::Write;
 
 const NUDGE_AMOUNT: f64 = 1.;
 const SHIFT_NUDGE_AMOUNT: f64 = 10.;
@@ -16,6 +17,7 @@ pub enum InputMapperMessage {
 	PointerMove,
 	MouseScroll,
 	KeyUp(Key),
+	#[child]
 	KeyDown(Key),
 }
 
@@ -111,7 +113,7 @@ macro_rules! mapping {
 impl Default for Mapping {
 	fn default() -> Self {
 		let mappings = mapping![
-			entry! {action=DocumentMessage::PasteLayers, key_down=KeyV, modifiers=[KeyControl]},
+			entry! {action=DocumentMessage::PasteLayers{path: vec![], insert_index: -1}, key_down=KeyV, modifiers=[KeyControl]},
 			entry! {action=DocumentMessage::EnableSnapping, key_down=KeyShift},
 			entry! {action=DocumentMessage::DisableSnapping, key_up=KeyShift},
 			// Select
@@ -279,6 +281,32 @@ impl Mapping {
 #[derive(Debug, Default)]
 pub struct InputMapper {
 	mapping: Mapping,
+}
+
+impl InputMapper {
+	pub fn hints(&self, actions: ActionList) -> String {
+		let mut output = String::new();
+		let actions: Vec<MessageDiscriminant> = actions
+			.into_iter()
+			.flatten()
+			.filter(|a| !matches!(*a, MessageDiscriminant::Tool(ToolMessageDiscriminant::SelectTool) | MessageDiscriminant::Global(_)))
+			.collect();
+		self.mapping
+			.key_down
+			.iter()
+			.enumerate()
+			.filter_map(|(i, m)| {
+				let ma =
+					m.0.iter()
+						.find_map(|m| actions.iter().find_map(|a| (a == &m.action.to_discriminant()).then(|| m.action.to_discriminant())));
+
+				ma.map(|a| unsafe { (std::mem::transmute_copy::<usize, Key>(&i), a) })
+			})
+			.for_each(|(k, a)| {
+				let _ = write!(output, "{}: {}, ", k.to_discriminant().local_name(), a.local_name().split('.').last().unwrap());
+			});
+		output.replace("Key", "")
+	}
 }
 
 impl MessageHandler<InputMapperMessage, (&InputPreprocessor, ActionList)> for InputMapper {
