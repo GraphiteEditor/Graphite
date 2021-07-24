@@ -10,11 +10,12 @@ pub struct Eyedropper;
 #[impl_message(Message, ToolMessage, Eyedropper)]
 #[derive(PartialEq, Clone, Debug)]
 pub enum EyedropperMessage {
-	MouseDown,
+	LeftMouseDown,
+	RightMouseDown,
 }
 
 impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Eyedropper {
-	fn process_action(&mut self, _action: ToolMessage, data: ToolActionHandlerData<'a>, responses: &mut VecDeque<Message>) {
+	fn process_action(&mut self, action: ToolMessage, data: ToolActionHandlerData<'a>, responses: &mut VecDeque<Message>) {
 		let mouse_pos = data.2.mouse.position;
 		let (x, y) = (mouse_pos.x as f64, mouse_pos.y as f64);
 		let (point_1, point_2) = (
@@ -33,17 +34,16 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Eyedropper {
 			if let Ok(layer) = data.0.document.layer(path) {
 				if let Some(fill) = layer.style.fill() {
 					if let Some(color) = fill.color() {
-						responses.push_back(
-							FrontendMessage::UpdateWorkingColors {
-								primary: color,
-								secondary: data.1.secondary_color,
-							}
-							.into(),
-						);
+						let (primary, secondary) = match action {
+							ToolMessage::Eyedropper(EyedropperMessage::LeftMouseDown) => (color, data.1.secondary_color),
+							ToolMessage::Eyedropper(EyedropperMessage::RightMouseDown) => (data.1.primary_color, color),
+							_ => (data.1.primary_color, data.1.secondary_color),
+						};
+						responses.push_back(FrontendMessage::UpdateWorkingColors { primary, secondary }.into());
 					}
 				}
 			}
 		}
 	}
-	advertise_actions!(EyedropperMessageDiscriminant; MouseDown);
+	advertise_actions!(EyedropperMessageDiscriminant; LeftMouseDown, RightMouseDown);
 }

@@ -123,7 +123,8 @@ impl Default for Mapping {
 			entry! {action=SelectMessage::Abort, key_down=Rmb},
 			entry! {action=SelectMessage::Abort, key_down=KeyEscape},
 			// Eyedropper
-			entry! {action=EyedropperMessage::MouseDown, key_down=Lmb},
+			entry! {action=EyedropperMessage::LeftMouseDown, key_down=Lmb},
+			entry! {action=EyedropperMessage::RightMouseDown, key_down=Rmb},
 			// Rectangle
 			entry! {action=RectangleMessage::Center, key_down=KeyAlt},
 			entry! {action=RectangleMessage::UnCenter, key_up=KeyAlt},
