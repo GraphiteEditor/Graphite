@@ -39,7 +39,7 @@ fn layer_data<'a>(layer_data: &'a mut HashMap<Vec<LayerId>, LayerData>, path: &[
 }
 
 pub fn layer_panel_entry(layer_data: &mut LayerData, layer: &mut Layer, path: Vec<LayerId>) -> LayerPanelEntry {
-	let blend_mode = layer.blend_mode.clone();
+	let blend_mode = layer.blend_mode;
 	let layer_type: LayerType = (&layer.data).into();
 	let name = layer.name.clone().unwrap_or_else(|| format!("Unnamed {}", layer_type));
 	let arr = layer.current_bounding_box().unwrap_or([DVec2::ZERO, DVec2::ZERO]);
