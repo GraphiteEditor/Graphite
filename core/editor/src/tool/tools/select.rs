@@ -57,6 +57,7 @@ impl Default for SelectToolFsmState {
 struct SelectToolData {
 	drag_start: ViewportPosition,
 	drag_current: ViewportPosition,
+	layers_dragging: Vec<(Vec<LayerId>, DVec2)>, // Paths and offsets
 }
 
 impl Fsm for SelectToolFsmState {
@@ -71,32 +72,12 @@ impl Fsm for SelectToolFsmState {
 				(Ready, DragStart) => {
 					data.drag_start = input.mouse.position;
 					data.drag_current = input.mouse.position;
-					responses.push_back(Operation::MountWorkingFolder { path: vec![] }.into());
-					Dragging
-				}
-				(Dragging, MouseMove) => {
-					data.drag_current = input.mouse.position;
 
-					responses.push_back(Operation::ClearWorkingFolder.into());
-					responses.push_back(make_operation(data, tool_data, transform));
-
-					Dragging
-				}
-				(Dragging, DragStop) => {
-					data.drag_current = input.mouse.position;
-
-					responses.push_back(Operation::ClearWorkingFolder.into());
-
-					let (point_1, point_2) = if data.drag_start == data.drag_current {
-						let (x, y) = (data.drag_current.x as f64, data.drag_current.y as f64);
+					let (point_1, point_2) = {
+						let (x, y) = (data.drag_start.x as f64, data.drag_start.y as f64);
 						(
 							DVec2::new(x - SELECTION_TOLERANCE, y - SELECTION_TOLERANCE),
 							DVec2::new(x + SELECTION_TOLERANCE, y + SELECTION_TOLERANCE),
-						)
-					} else {
-						(
-							DVec2::new(data.drag_start.x as f64, data.drag_start.y as f64),
-							DVec2::new(data.drag_current.x as f64, data.drag_current.y as f64),
 						)
 					};
 
@@ -107,21 +88,77 @@ impl Fsm for SelectToolFsmState {
 						DVec2::new(point_1.x, point_2.y),
 					];
 
-					responses.push_back(Operation::DiscardWorkingFolder.into());
-					if data.drag_start == data.drag_current {
-						if let Some(intersection) = document.document.intersects_quad_root(quad).last() {
-							responses.push_back(DocumentMessage::SelectLayers(vec![intersection.clone()]).into());
+					if let Some(intersection) = document.document.intersects_quad_root(quad).last() {
+						// TODO: Replace root transformations with functions of the transform api
+						let transformed_start = document.document.root.transform.inverse().transform_vector2(data.drag_start.as_dvec2());
+						if document.layer_data.get(intersection).map_or(false, |layer_data| layer_data.selected) {
+							data.layers_dragging = document
+								.layer_data
+								.iter()
+								.filter_map(|(path, layer_data)| {
+									layer_data
+										.selected
+										.then(|| (path.clone(), document.document.layer(path).unwrap().transform.translation - transformed_start))
+								})
+								.collect();
 						} else {
-							responses.push_back(DocumentMessage::SelectLayers(vec![]).into());
+							responses.push_back(DocumentMessage::SelectLayers(vec![intersection.clone()]).into());
+							data.layers_dragging = vec![(intersection.clone(), document.document.layer(intersection).unwrap().transform.translation - transformed_start)]
 						}
 					} else {
-						responses.push_back(DocumentMessage::SelectLayers(document.document.intersects_quad_root(quad)).into());
+						responses.push_back(Operation::MountWorkingFolder { path: vec![] }.into());
+						data.layers_dragging = Vec::new();
+					}
+
+					Dragging
+				}
+				(Dragging, MouseMove) => {
+					data.drag_current = input.mouse.position;
+
+					if data.layers_dragging.is_empty() {
+						responses.push_back(Operation::ClearWorkingFolder.into());
+						responses.push_back(make_operation(data, tool_data, transform));
+					} else {
+						for (path, offset) in &data.layers_dragging {
+							responses.push_back(DocumentMessage::DragLayer(path.clone(), offset.clone()).into());
+						}
+					}
+
+					Dragging
+				}
+				(Dragging, DragStop) => {
+					data.drag_current = input.mouse.position;
+
+					if data.layers_dragging.is_empty() {
+						responses.push_back(Operation::ClearWorkingFolder.into());
+						responses.push_back(Operation::DiscardWorkingFolder.into());
+
+						if data.drag_start == data.drag_current {
+							responses.push_back(DocumentMessage::SelectLayers(vec![]).into());
+						} else {
+							let (point_1, point_2) = (
+								DVec2::new(data.drag_start.x as f64, data.drag_start.y as f64),
+								DVec2::new(data.drag_current.x as f64, data.drag_current.y as f64),
+							);
+
+							let quad = [
+								DVec2::new(point_1.x, point_1.y),
+								DVec2::new(point_2.x, point_1.y),
+								DVec2::new(point_2.x, point_2.y),
+								DVec2::new(point_1.x, point_2.y),
+							];
+
+							responses.push_back(DocumentMessage::SelectLayers(document.document.intersects_quad_root(quad)).into());
+						}
+					} else {
+						data.layers_dragging = Vec::new();
 					}
 
 					Ready
 				}
 				(Dragging, Abort) => {
 					responses.push_back(Operation::DiscardWorkingFolder.into());
+					data.layers_dragging = Vec::new();
 
 					Ready
 				}
