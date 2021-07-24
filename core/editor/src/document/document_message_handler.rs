@@ -662,10 +662,10 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					return;
 				}
 
-				let selected_layers = selected_paths.iter().map(|path| {
+				let selected_layers = selected_paths.iter().filter_map(|path| {
 					let layer = self.active_document().document.layer(path).unwrap();
 					let point = {
-						let bounding_box = layer.bounding_box(layer.transform, layer.style).unwrap_or_default();
+						let bounding_box = layer.bounding_box(layer.transform, layer.style)?;
 						match aggregate {
 							AlignAggregate::Min => bounding_box[0],
 							AlignAggregate::Max => bounding_box[1],
@@ -677,7 +677,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 						AlignAxis::X => (point.x, layer.transform.translation.x),
 						AlignAxis::Y => (point.y, layer.transform.translation.y),
 					};
-					(path.clone(), bounding_box_coord, translation_coord)
+					Some((path.clone(), bounding_box_coord, translation_coord))
 				});
 
 				let bounding_box_coords = selected_layers.clone().map(|(_, bounding_box_coord, _)| bounding_box_coord);
@@ -686,9 +686,9 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					AlignAggregate::Max => bounding_box_coords.reduce(|a, b| a.max(b)).unwrap(),
 					AlignAggregate::Center => {
 						// TODO: Refactor with `reduce` and `merge_bounding_boxes` once the latter is added
-						let bounding_boxes = selected_paths.iter().map(|path| {
+						let bounding_boxes = selected_paths.iter().filter_map(|path| {
 							let layer = self.active_document().document.layer(path).unwrap();
-							layer.bounding_box(layer.transform, layer.style).unwrap()
+							layer.bounding_box(layer.transform, layer.style)
 						});
 						let min = bounding_boxes
 							.clone()
