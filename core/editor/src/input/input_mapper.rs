@@ -183,6 +183,7 @@ impl Default for Mapping {
 			entry! {action=ToolMessage::SelectTool(ToolType::Line), key_down=KeyL},
 			entry! {action=ToolMessage::SelectTool(ToolType::Pen), key_down=KeyP},
 			entry! {action=ToolMessage::SelectTool(ToolType::Shape), key_down=KeyY},
+			entry! {action=ToolMessage::SelectTool(ToolType::Eyedropper), key_down=KeyI},
 			entry! {action=ToolMessage::ResetColors, key_down=KeyX, modifiers=[KeyShift, KeyControl]},
 			entry! {action=ToolMessage::SwapColors, key_down=KeyX, modifiers=[KeyShift]},
 			// Document Actions
