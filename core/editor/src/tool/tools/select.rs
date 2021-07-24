@@ -24,13 +24,13 @@ pub enum SelectMessage {
 	MouseMove,
 	Abort,
 
-	Align(AlignDimension, AlignAggregate),
+	Align(AlignAxis, AlignAggregate),
 	FlipHorizontal,
 	FlipVertical,
 }
 
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
-pub enum AlignDimension {
+pub enum AlignAxis {
 	X,
 	Y,
 }
@@ -176,8 +176,8 @@ impl Fsm for SelectToolFsmState {
 
 					Ready
 				}
-				(_, Align(dimension, aggregate)) => {
-					responses.push_back(DocumentMessage::AlignSelectedLayers(dimension, aggregate).into());
+				(_, Align(axis, aggregate)) => {
+					responses.push_back(DocumentMessage::AlignSelectedLayers(axis, aggregate).into());
 
 					self
 				}
