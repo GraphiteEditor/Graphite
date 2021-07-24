@@ -8,6 +8,7 @@ use document_core::layers::Layer;
 use document_core::{DocumentResponse, LayerId, Operation as DocumentOperation};
 use glam::{DAffine2, DVec2};
 use log::warn;
+use serde::{Deserialize, Serialize};
 
 use crate::document::Document;
 use std::collections::VecDeque;
@@ -57,9 +58,25 @@ pub enum DocumentMessage {
 	SetCanvasRotation(f64),
 	NudgeSelectedLayers(f64, f64),
 	FlipLayer(Vec<LayerId>, bool, bool),
+	AlignSelectedLayers(AlignAxis, AlignAggregate),
 	DragLayer(Vec<LayerId>, DVec2),
 	MoveSelectedLayersTo { path: Vec<LayerId>, insert_index: isize },
 	ReorderSelectedLayers(i32), // relatve_position,
+	SetLayerTranslation(Vec<LayerId>, Option<f64>, Option<f64>),
+}
+
+#[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
+pub enum AlignAxis {
+	X,
+	Y,
+}
+
+#[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
+pub enum AlignAggregate {
+	Min,
+	Max,
+	Center,
+	Average,
 }
 
 impl From<DocumentOperation> for DocumentMessage {
@@ -638,6 +655,69 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					);
 				}
 			}
+			AlignSelectedLayers(axis, aggregate) => {
+				// TODO: Handle folder nested transforms with the transforms API
+				let selected_paths = self.selected_layers_sorted();
+				if selected_paths.is_empty() {
+					return;
+				}
+
+				let selected_layers = selected_paths.iter().filter_map(|path| {
+					let layer = self.active_document().document.layer(path).unwrap();
+					let point = {
+						let bounding_box = layer.bounding_box(layer.transform, layer.style)?;
+						match aggregate {
+							AlignAggregate::Min => bounding_box[0],
+							AlignAggregate::Max => bounding_box[1],
+							AlignAggregate::Center => bounding_box[0].lerp(bounding_box[1], 0.5),
+							AlignAggregate::Average => bounding_box[0].lerp(bounding_box[1], 0.5),
+						}
+					};
+					let (bounding_box_coord, translation_coord) = match axis {
+						AlignAxis::X => (point.x, layer.transform.translation.x),
+						AlignAxis::Y => (point.y, layer.transform.translation.y),
+					};
+					Some((path.clone(), bounding_box_coord, translation_coord))
+				});
+
+				let bounding_box_coords = selected_layers.clone().map(|(_, bounding_box_coord, _)| bounding_box_coord);
+				let aggregated_coord = match aggregate {
+					AlignAggregate::Min => bounding_box_coords.reduce(|a, b| a.min(b)).unwrap(),
+					AlignAggregate::Max => bounding_box_coords.reduce(|a, b| a.max(b)).unwrap(),
+					AlignAggregate::Center => {
+						// TODO: Refactor with `reduce` and `merge_bounding_boxes` once the latter is added
+						let bounding_boxes = selected_paths.iter().filter_map(|path| {
+							let layer = self.active_document().document.layer(path).unwrap();
+							layer.bounding_box(layer.transform, layer.style)
+						});
+						let min = bounding_boxes
+							.clone()
+							.map(|bbox| match axis {
+								AlignAxis::X => bbox[0].x,
+								AlignAxis::Y => bbox[0].y,
+							})
+							.reduce(|a, b| a.min(b))
+							.unwrap();
+						let max = bounding_boxes
+							.clone()
+							.map(|bbox| match axis {
+								AlignAxis::X => bbox[1].x,
+								AlignAxis::Y => bbox[1].y,
+							})
+							.reduce(|a, b| a.max(b))
+							.unwrap();
+						(min + max) / 2.
+					}
+					AlignAggregate::Average => bounding_box_coords.sum::<f64>() / selected_paths.len() as f64,
+				};
+				for (path, bounding_box_coord, translation_coord) in selected_layers {
+					let new_coord = aggregated_coord - (bounding_box_coord - translation_coord);
+					match axis {
+						AlignAxis::X => responses.push_back(DocumentMessage::SetLayerTranslation(path, Some(new_coord), None).into()),
+						AlignAxis::Y => responses.push_back(DocumentMessage::SetLayerTranslation(path, None, Some(new_coord)).into()),
+					}
+				}
+			}
 			DragLayer(path, offset) => {
 				// TODO: Replace root transformations with functions of the transform api
 				// and do the same with all instances of `root.transform.inverse()` in other messages
@@ -650,6 +730,19 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 						transform.to_cols_array()
 					};
 					responses.push_back(DocumentOperation::SetLayerTransform { path, transform }.into());
+				}
+			}
+			SetLayerTranslation(path, x_option, y_option) => {
+				if let Ok(layer) = self.active_document_mut().document.layer_mut(&path) {
+					let mut transform = layer.transform;
+					transform.translation = DVec2::new(x_option.unwrap_or(transform.translation.x), y_option.unwrap_or(transform.translation.y));
+					responses.push_back(
+						DocumentOperation::SetLayerTransform {
+							path,
+							transform: transform.to_cols_array(),
+						}
+						.into(),
+					);
 				}
 			}
 			message => todo!("document_action_handler does not implement: {}", message.to_discriminant().global_name()),
