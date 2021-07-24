@@ -52,12 +52,12 @@ import VectorRectangleTool from "@/../assets/24px-two-tone/vector-rectangle-tool
 import VectorEllipseTool from "@/../assets/24px-two-tone/vector-ellipse-tool.svg";
 import VectorShapeTool from "@/../assets/24px-two-tone/vector-shape-tool.svg";
 
-import AlignHorizontalLeft from "@/../assets/16px-solid/align-horizontal-left.svg";
+import AlignLeft from "@/../assets/16px-solid/align-horizontal-left.svg";
 import AlignHorizontalCenter from "@/../assets/16px-solid/align-horizontal-center.svg";
-import AlignHorizontalRight from "@/../assets/16px-solid/align-horizontal-right.svg";
-import AlignVerticalTop from "@/../assets/16px-solid/align-vertical-top.svg";
+import AlignRight from "@/../assets/16px-solid/align-horizontal-right.svg";
+import AlignTop from "@/../assets/16px-solid/align-vertical-top.svg";
 import AlignVerticalCenter from "@/../assets/16px-solid/align-vertical-center.svg";
-import AlignVerticalBottom from "@/../assets/16px-solid/align-vertical-bottom.svg";
+import AlignBottom from "@/../assets/16px-solid/align-vertical-bottom.svg";
 import FlipHorizontal from "@/../assets/16px-solid/flip-horizontal.svg";
 import FlipVertical from "@/../assets/16px-solid/flip-vertical.svg";
 import BooleanUnion from "@/../assets/16px-solid/boolean-union.svg";
@@ -134,12 +134,12 @@ const icons = {
 	VectorRectangleTool: { component: VectorRectangleTool, size: 24 },
 	VectorEllipseTool: { component: VectorEllipseTool, size: 24 },
 	VectorShapeTool: { component: VectorShapeTool, size: 24 },
-	AlignHorizontalLeft: { component: AlignHorizontalLeft, size: 16 },
+	AlignLeft: { component: AlignLeft, size: 16 },
 	AlignHorizontalCenter: { component: AlignHorizontalCenter, size: 16 },
-	AlignHorizontalRight: { component: AlignHorizontalRight, size: 16 },
-	AlignVerticalTop: { component: AlignVerticalTop, size: 16 },
+	AlignRight: { component: AlignRight, size: 16 },
+	AlignTop: { component: AlignTop, size: 16 },
 	AlignVerticalCenter: { component: AlignVerticalCenter, size: 16 },
-	AlignVerticalBottom: { component: AlignVerticalBottom, size: 16 },
+	AlignBottom: { component: AlignBottom, size: 16 },
 	FlipHorizontal: { component: FlipHorizontal, size: 16 },
 	FlipVertical: { component: FlipVertical, size: 16 },
 	BooleanUnion: { component: BooleanUnion, size: 16 },
