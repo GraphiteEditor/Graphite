@@ -38,7 +38,7 @@ interface IconButtonOption {
 	kind: "IconButton";
 	icon: string;
 	title: string;
-	message?: string;
+	message?: string | object;
 }
 
 interface SeparatorOption {
@@ -87,15 +87,15 @@ export default defineComponent({
 			[
 				"Select",
 				[
-					{ kind: "IconButton", icon: "AlignLeft", title: "Align Left", message: "AlignLeft" },
-					{ kind: "IconButton", icon: "AlignHorizontalCenter", title: "Align Horizontal Center", message: "AlignHorizontalCenter" },
-					{ kind: "IconButton", icon: "AlignRight", title: "Align Right", message: "AlignRight" },
+					{ kind: "IconButton", icon: "AlignLeft", title: "Align Left", message: { Align: ["X", "Min"] } },
+					{ kind: "IconButton", icon: "AlignHorizontalCenter", title: "Align Horizontal Center", message: { Align: ["X", "Average"] } },
+					{ kind: "IconButton", icon: "AlignRight", title: "Align Right", message: { Align: ["X", "Max"] } },
 
 					{ kind: "Separator", type: SeparatorType.Unrelated },
 
-					{ kind: "IconButton", icon: "AlignTop", title: "Align Top", message: "AlignTop" },
-					{ kind: "IconButton", icon: "AlignVerticalCenter", title: "Align Vertical Center", message: "AlignVerticalCenter" },
-					{ kind: "IconButton", icon: "AlignBottom", title: "Align Bottom", message: "AlignBottom" },
+					{ kind: "IconButton", icon: "AlignTop", title: "Align Top", message: { Align: ["Y", "Min"] } },
+					{ kind: "IconButton", icon: "AlignVerticalCenter", title: "Align Vertical Center", message: { Align: ["Y", "Average"] } },
+					{ kind: "IconButton", icon: "AlignBottom", title: "Align Bottom", message: { Align: ["Y", "Max"] } },
 
 					{ kind: "Separator", type: SeparatorType.Related },
 

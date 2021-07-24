@@ -24,12 +24,7 @@ pub enum SelectMessage {
 	MouseMove,
 	Abort,
 
-	AlignLeft,
-	AlignHorizontalCenter,
-	AlignRight,
-	AlignTop,
-	AlignVerticalCenter,
-	AlignBottom,
+	Align(AlignDimension, AlignAggregate),
 	FlipHorizontal,
 	FlipVertical,
 }
@@ -181,33 +176,8 @@ impl Fsm for SelectToolFsmState {
 
 					Ready
 				}
-				(_, AlignLeft) => {
-					responses.push_back(DocumentMessage::AlignSelectedLayers(AlignDimension::X, AlignAggregate::Min).into());
-
-					self
-				}
-				(_, AlignHorizontalCenter) => {
-					responses.push_back(DocumentMessage::AlignSelectedLayers(AlignDimension::X, AlignAggregate::Average).into());
-
-					self
-				}
-				(_, AlignRight) => {
-					responses.push_back(DocumentMessage::AlignSelectedLayers(AlignDimension::X, AlignAggregate::Max).into());
-
-					self
-				}
-				(_, AlignTop) => {
-					responses.push_back(DocumentMessage::AlignSelectedLayers(AlignDimension::Y, AlignAggregate::Min).into());
-
-					self
-				}
-				(_, AlignVerticalCenter) => {
-					responses.push_back(DocumentMessage::AlignSelectedLayers(AlignDimension::Y, AlignAggregate::Average).into());
-
-					self
-				}
-				(_, AlignBottom) => {
-					responses.push_back(DocumentMessage::AlignSelectedLayers(AlignDimension::Y, AlignAggregate::Max).into());
+				(_, Align(dimension, aggregate)) => {
+					responses.push_back(DocumentMessage::AlignSelectedLayers(dimension, aggregate).into());
 
 					self
 				}
