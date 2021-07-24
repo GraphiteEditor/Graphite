@@ -2,13 +2,13 @@ use crate::message_prelude::*;
 use crate::{
 	consts::{MOUSE_ZOOM_RATE, VIEWPORT_SCROLL_RATE, VIEWPORT_ZOOM_SCALE_MAX, VIEWPORT_ZOOM_SCALE_MIN, WHEEL_ZOOM_RATE},
 	input::{mouse::ViewportPosition, InputPreprocessor},
-	tool::tools::select::{AlignAggregate, AlignAxis},
 };
 use document_core::layers::BlendMode;
 use document_core::layers::Layer;
 use document_core::{DocumentResponse, LayerId, Operation as DocumentOperation};
 use glam::{DAffine2, DVec2};
 use log::warn;
+use serde::{Deserialize, Serialize};
 
 use crate::document::Document;
 use std::collections::VecDeque;
@@ -63,6 +63,20 @@ pub enum DocumentMessage {
 	MoveSelectedLayersTo { path: Vec<LayerId>, insert_index: isize },
 	ReorderSelectedLayers(i32), // relatve_position,
 	SetLayerTranslation(Vec<LayerId>, Option<f64>, Option<f64>),
+}
+
+#[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
+pub enum AlignAxis {
+	X,
+	Y,
+}
+
+#[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
+pub enum AlignAggregate {
+	Min,
+	Max,
+	Center,
+	Average,
 }
 
 impl From<DocumentOperation> for DocumentMessage {

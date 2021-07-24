@@ -8,7 +8,11 @@ use serde::{Deserialize, Serialize};
 
 use crate::input::{mouse::ViewportPosition, InputPreprocessor};
 use crate::tool::{DocumentToolData, Fsm, ToolActionHandlerData};
-use crate::{consts::SELECTION_TOLERANCE, document::Document, message_prelude::*};
+use crate::{
+	consts::SELECTION_TOLERANCE,
+	document::{AlignAggregate, AlignAxis, Document},
+	message_prelude::*,
+};
 
 #[derive(Default)]
 pub struct Select {
@@ -27,20 +31,6 @@ pub enum SelectMessage {
 	Align(AlignAxis, AlignAggregate),
 	FlipHorizontal,
 	FlipVertical,
-}
-
-#[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
-pub enum AlignAxis {
-	X,
-	Y,
-}
-
-#[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
-pub enum AlignAggregate {
-	Min,
-	Max,
-	Center,
-	Average,
 }
 
 impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Select {
