@@ -58,7 +58,7 @@ pub enum DocumentMessage {
 	NudgeSelectedLayers(f64, f64),
 	FlipLayer(Vec<LayerId>, bool, bool),
 	MoveSelectedLayersTo { path: Vec<LayerId>, insert_index: isize },
-	ReorderSelectedLayers(i32), // relatve_positon,
+	ReorderSelectedLayers(i32), // relatve_position,
 }
 
 impl From<DocumentOperation> for DocumentMessage {
@@ -605,17 +605,17 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				responses.push_back(DocumentMessage::DeleteSelectedLayers.into());
 				responses.push_back(DocumentMessage::PasteLayers { path, insert_index }.into());
 			}
-			ReorderSelectedLayers(relative_positon) => {
+			ReorderSelectedLayers(relative_position) => {
 				let all_layer_paths = self.all_layers_sorted();
 				let selected_layers = self.selected_layers_sorted();
-				if let Some(pivot) = match relative_positon.signum() {
+				if let Some(pivot) = match relative_position.signum() {
 					-1 => selected_layers.first(),
 					1 => selected_layers.last(),
 					_ => unreachable!(),
 				} {
 					if let Some(pos) = all_layer_paths.iter().position(|path| path == pivot) {
 						let max = all_layer_paths.len() as i64 - 1;
-						let insert_pos = (pos as i64 + relative_positon as i64).clamp(0, max) as usize;
+						let insert_pos = (pos as i64 + relative_position as i64).clamp(0, max) as usize;
 						let insert = all_layer_paths.get(insert_pos);
 						if let Some(insert_path) = insert {
 							let (id, path) = insert_path.split_last().expect("Can't move the root folder");
@@ -626,7 +626,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 									.map(|x| x.last().unwrap())
 									.collect();
 								let non_selected: Vec<_> = folder.layer_ids.iter().filter(|id| selected.iter().all(|x| x != id)).collect();
-								let offset = if relative_positon < 0 || non_selected.is_empty() { 0 } else { 1 };
+								let offset = if relative_position < 0 || non_selected.is_empty() { 0 } else { 1 };
 								let fallback = offset * (non_selected.len());
 								let insert_index = non_selected.iter().position(|x| *x == id).map(|x| x + offset).unwrap_or(fallback) as isize;
 								responses.push_back(DocumentMessage::MoveSelectedLayersTo { path: path.to_vec(), insert_index }.into())

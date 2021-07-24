@@ -1,4 +1,5 @@
-//! Graphite Renderer Core Library: `/core/renderer/`  
+//! Graphite Renderer Core Library: `/core/renderer/`
+//!
 //! A stateless library (with the help of in-memory and/or on-disk caches for performance) for rendering Graphite's render graph (GRD) files.
 //! The official Graphite CLI and Document Core Library are the primary users,
 //! but this library is intended to be useful to any application that wants to link the library for the purpose of rendering Graphite's render graphs.
