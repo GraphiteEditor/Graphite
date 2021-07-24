@@ -16,7 +16,7 @@ impl fmt::Display for DocumentResponse {
 		let name = match self {
 			DocumentResponse::DocumentChanged { .. } => "DocumentChanged",
 			DocumentResponse::FolderChanged { .. } => "FolderChanged",
-			DocumentResponse::CreatedLayer { .. } => "SelectLayer",
+			DocumentResponse::CreatedLayer { .. } => "CreatedLayer",
 			DocumentResponse::DeletedLayer { .. } => "DeleteLayer",
 		};
 

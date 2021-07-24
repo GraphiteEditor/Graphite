@@ -233,7 +233,7 @@ pub fn set_blend_mode_for_selected_layers(blend_mode_svg_style_name: String) -> 
 		"saturation" => BlendMode::Saturation,
 		"color" => BlendMode::Color,
 		"luminosity" => BlendMode::Luminosity,
-		_ => return Err(convert_error(EditorError::Misc("UnknownBlendMode".to_string())).into()),
+		_ => return Err(convert_error(EditorError::Misc("UnknownBlendMode".to_string()))),
 	};
 
 	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(DocumentMessage::SetBlendModeForSelectedLayers(blend_mode)).map_err(convert_error))

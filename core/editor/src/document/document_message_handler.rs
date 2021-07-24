@@ -118,17 +118,6 @@ impl DocumentMessageHandler {
 	fn layerdata_mut(&mut self, path: &[LayerId]) -> &mut LayerData {
 		self.active_document_mut().layer_data.entry(path.to_vec()).or_insert_with(|| LayerData::new(true))
 	}
-	#[allow(dead_code)]
-	fn create_transform_from_layerdata(&self, path: Vec<u64>, responses: &mut VecDeque<Message>) {
-		let layerdata = self.layerdata(&path);
-		responses.push_back(
-			DocumentOperation::SetLayerTransform {
-				path,
-				transform: layerdata.calculate_transform().to_cols_array(),
-			}
-			.into(),
-		);
-	}
 	fn create_document_transform_from_layerdata(&self, viewport_size: &ViewportPosition, responses: &mut VecDeque<Message>) {
 		let half_viewport = viewport_size.as_dvec2() / 2.;
 		let layerdata = self.layerdata(&[]);
@@ -142,10 +131,10 @@ impl DocumentMessageHandler {
 		);
 	}
 
-	/// Returns the paths to all layers in order, optionally including only selected layers
+	/// Returns the paths to all layers in order, optionally including only selected or non
+	/// selected layers.
 	fn layers_sorted(&self, selected: Option<bool>) -> Vec<Vec<LayerId>> {
 		// Compute the indices for each layer to be able to sort them
-		// TODO: Replace with drain_filter https://github.com/rust-lang/rust/issues/59618
 		let mut layers_with_indices: Vec<(Vec<LayerId>, Vec<usize>)> = self
 			.active_document()
 			.layer_data
@@ -153,7 +142,7 @@ impl DocumentMessageHandler {
 			// 'path.len() > 0' filters out root layer since it has no indices
 			.filter_map(|(path, data)| (!path.is_empty() && (data.selected == selected.unwrap_or(data.selected))).then(|| path.clone()))
 			.filter_map(|path| {
-				// Currently it is possible that layer_data contains layers that are don't actually exist
+				// Currently it is possible that layer_data contains layers that are don't actually exist (has been partially fixed in #281)
 				// and thus indices_for_path can return an error. We currently skip these layers and log a warning.
 				// Once this problem is solved this code can be simplified
 				match self.active_document().document.indices_for_path(&path) {
@@ -180,7 +169,8 @@ impl DocumentMessageHandler {
 		self.layers_sorted(Some(true))
 	}
 
-	/// Returns the paths to all selected layers in order
+	/// Returns the paths to all non_selected layers in order
+	#[allow(dead_code)] // used for test cases
 	pub fn non_selected_layers_sorted(&self) -> Vec<Vec<LayerId>> {
 		self.layers_sorted(Some(false))
 	}
