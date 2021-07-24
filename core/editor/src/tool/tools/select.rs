@@ -34,6 +34,19 @@ pub enum SelectMessage {
 	FlipVertical,
 }
 
+#[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
+pub enum AlignDimension {
+	X,
+	Y,
+}
+
+#[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
+pub enum AlignAggregate {
+	Min,
+	Max,
+	Average,
+}
+
 impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Select {
 	fn process_action(&mut self, action: ToolMessage, data: ToolActionHandlerData<'a>, responses: &mut VecDeque<Message>) {
 		self.fsm_state = self.fsm_state.transition(action, data.0, data.1, &mut self.data, data.2, responses);
@@ -169,32 +182,32 @@ impl Fsm for SelectToolFsmState {
 					Ready
 				}
 				(_, AlignLeft) => {
-					align_selected(document, responses, AlignDimension::X, AlignAggregate::Min);
+					responses.push_back(DocumentMessage::AlignSelectedLayers(AlignDimension::X, AlignAggregate::Min).into());
 
 					self
 				}
 				(_, AlignHorizontalCenter) => {
-					align_selected(document, responses, AlignDimension::X, AlignAggregate::Average);
+					responses.push_back(DocumentMessage::AlignSelectedLayers(AlignDimension::X, AlignAggregate::Average).into());
 
 					self
 				}
 				(_, AlignRight) => {
-					align_selected(document, responses, AlignDimension::X, AlignAggregate::Max);
+					responses.push_back(DocumentMessage::AlignSelectedLayers(AlignDimension::X, AlignAggregate::Max).into());
 
 					self
 				}
 				(_, AlignTop) => {
-					align_selected(document, responses, AlignDimension::Y, AlignAggregate::Min);
+					responses.push_back(DocumentMessage::AlignSelectedLayers(AlignDimension::Y, AlignAggregate::Min).into());
 
 					self
 				}
 				(_, AlignVerticalCenter) => {
-					align_selected(document, responses, AlignDimension::Y, AlignAggregate::Average);
+					responses.push_back(DocumentMessage::AlignSelectedLayers(AlignDimension::Y, AlignAggregate::Average).into());
 
 					self
 				}
 				(_, AlignBottom) => {
-					align_selected(document, responses, AlignDimension::Y, AlignAggregate::Max);
+					responses.push_back(DocumentMessage::AlignSelectedLayers(AlignDimension::Y, AlignAggregate::Max).into());
 
 					self
 				}
@@ -218,60 +231,6 @@ impl Fsm for SelectToolFsmState {
 			}
 		} else {
 			self
-		}
-	}
-}
-
-enum AlignDimension {
-	X,
-	Y,
-}
-
-enum AlignAggregate {
-	Min,
-	Max,
-	Average,
-}
-
-fn align_selected(document: &Document, responses: &mut VecDeque<Message>, dimension: AlignDimension, aggregate: AlignAggregate) {
-	let selected_paths: Vec<Vec<LayerId>> = document.layer_data.iter().filter_map(|(path, data)| data.selected.then(|| path.clone())).collect();
-	let n_selected = selected_paths.len();
-	if n_selected == 0 {
-		return;
-	}
-
-	let selected_layers = selected_paths.iter().map(|path| {
-		let layer = document.document.layer(path).unwrap();
-		let point = {
-			let bounding_box = layer.bounding_box(layer.transform, layer.style).unwrap();
-			match aggregate {
-				AlignAggregate::Min => bounding_box[0],
-				AlignAggregate::Max => bounding_box[1],
-				AlignAggregate::Average => bounding_box[0].lerp(bounding_box[1], 0.5),
-			}
-		};
-		let (bounding_box_coord, translation_coord) = match dimension {
-			AlignDimension::X => (point.x, layer.transform.translation.x),
-			AlignDimension::Y => (point.y, layer.transform.translation.y),
-		};
-		(path.clone(), bounding_box_coord, translation_coord)
-	});
-
-	let bounding_box_coords = selected_layers.clone().map(|(_, bounding_box_coord, _)| bounding_box_coord);
-	let aggregated_coord = match aggregate {
-		AlignAggregate::Min => bounding_box_coords.reduce(|a, b| a.min(b)).unwrap(),
-		AlignAggregate::Max => bounding_box_coords.reduce(|a, b| a.max(b)).unwrap(),
-		AlignAggregate::Average => bounding_box_coords.sum::<f64>() / n_selected as f64,
-	};
-	for (path, bounding_box_coord, translation_coord) in selected_layers {
-		let new_coord = match aggregate {
-			AlignAggregate::Min => aggregated_coord - (bounding_box_coord - translation_coord),
-			AlignAggregate::Max => aggregated_coord + (translation_coord - bounding_box_coord),
-			AlignAggregate::Average => aggregated_coord - (bounding_box_coord - translation_coord),
-		};
-		match dimension {
-			AlignDimension::X => responses.push_back(DocumentMessage::SetLayerCoordinates(path, Some(new_coord), None).into()),
-			AlignDimension::Y => responses.push_back(DocumentMessage::SetLayerCoordinates(path, None, Some(new_coord)).into()),
 		}
 	}
 }

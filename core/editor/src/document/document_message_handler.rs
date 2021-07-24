@@ -2,6 +2,7 @@ use crate::message_prelude::*;
 use crate::{
 	consts::{MOUSE_ZOOM_RATE, VIEWPORT_SCROLL_RATE, VIEWPORT_ZOOM_SCALE_MAX, VIEWPORT_ZOOM_SCALE_MIN, WHEEL_ZOOM_RATE},
 	input::{mouse::ViewportPosition, InputPreprocessor},
+	tool::tools::select::{AlignAggregate, AlignDimension},
 };
 use document_core::layers::BlendMode;
 use document_core::layers::Layer;
@@ -57,10 +58,11 @@ pub enum DocumentMessage {
 	SetCanvasRotation(f64),
 	NudgeSelectedLayers(f64, f64),
 	FlipLayer(Vec<LayerId>, bool, bool),
+	AlignSelectedLayers(AlignDimension, AlignAggregate),
 	DragLayer(Vec<LayerId>, DVec2),
 	MoveSelectedLayersTo { path: Vec<LayerId>, insert_index: isize },
 	ReorderSelectedLayers(i32), // relatve_position,
-	SetLayerCoordinates(Vec<LayerId>, Option<f64>, Option<f64>),
+	SetLayerTranslation(Vec<LayerId>, Option<f64>, Option<f64>),
 }
 
 impl From<DocumentOperation> for DocumentMessage {
@@ -649,6 +651,47 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					);
 				}
 			}
+			AlignSelectedLayers(dimension, aggregate) => {
+				let selected_paths = self.selected_layers_sorted();
+				if selected_paths.len() == 0 {
+					return;
+				}
+
+				let selected_layers = selected_paths.iter().map(|path| {
+					let layer = self.active_document().document.layer(path).unwrap();
+					let point = {
+						let bounding_box = layer.bounding_box(layer.transform, layer.style).unwrap();
+						match aggregate {
+							AlignAggregate::Min => bounding_box[0],
+							AlignAggregate::Max => bounding_box[1],
+							AlignAggregate::Average => bounding_box[0].lerp(bounding_box[1], 0.5),
+						}
+					};
+					let (bounding_box_coord, translation_coord) = match dimension {
+						AlignDimension::X => (point.x, layer.transform.translation.x),
+						AlignDimension::Y => (point.y, layer.transform.translation.y),
+					};
+					(path.clone(), bounding_box_coord, translation_coord)
+				});
+
+				let bounding_box_coords = selected_layers.clone().map(|(_, bounding_box_coord, _)| bounding_box_coord);
+				let aggregated_coord = match aggregate {
+					AlignAggregate::Min => bounding_box_coords.reduce(|a, b| a.min(b)).unwrap(),
+					AlignAggregate::Max => bounding_box_coords.reduce(|a, b| a.max(b)).unwrap(),
+					AlignAggregate::Average => bounding_box_coords.sum::<f64>() / selected_paths.len() as f64,
+				};
+				for (path, bounding_box_coord, translation_coord) in selected_layers {
+					let new_coord = match aggregate {
+						AlignAggregate::Min => aggregated_coord - (bounding_box_coord - translation_coord),
+						AlignAggregate::Max => aggregated_coord + (translation_coord - bounding_box_coord),
+						AlignAggregate::Average => aggregated_coord - (bounding_box_coord - translation_coord),
+					};
+					match dimension {
+						AlignDimension::X => responses.push_back(DocumentMessage::SetLayerTranslation(path, Some(new_coord), None).into()),
+						AlignDimension::Y => responses.push_back(DocumentMessage::SetLayerTranslation(path, None, Some(new_coord)).into()),
+					}
+				}
+			}
 			DragLayer(path, offset) => {
 				// TODO: Replace root transformations with functions of the transform api
 				// and do the same with all instances of `root.transform.inverse()` in other messages
@@ -663,7 +706,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					responses.push_back(DocumentOperation::SetLayerTransform { path, transform }.into());
 				}
 			}
-			SetLayerCoordinates(path, x_option, y_option) => {
+			SetLayerTranslation(path, x_option, y_option) => {
 				if let Ok(layer) = self.active_document_mut().document.layer_mut(&path) {
 					let mut transform = layer.transform;
 					if let Some(x) = x_option {
