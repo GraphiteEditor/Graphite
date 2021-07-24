@@ -39,6 +39,7 @@ pub enum AlignAxis {
 pub enum AlignAggregate {
 	Min,
 	Max,
+	Center,
 	Average,
 }
 

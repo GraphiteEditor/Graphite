@@ -654,6 +654,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 						match aggregate {
 							AlignAggregate::Min => bounding_box[0],
 							AlignAggregate::Max => bounding_box[1],
+							AlignAggregate::Center => bounding_box[0].lerp(bounding_box[1], 0.5),
 							AlignAggregate::Average => bounding_box[0].lerp(bounding_box[1], 0.5),
 						}
 					};
@@ -668,6 +669,29 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				let aggregated_coord = match aggregate {
 					AlignAggregate::Min => bounding_box_coords.reduce(|a, b| a.min(b)).unwrap(),
 					AlignAggregate::Max => bounding_box_coords.reduce(|a, b| a.max(b)).unwrap(),
+					AlignAggregate::Center => {
+						let bounding_boxes = selected_paths.iter().map(|path| {
+							let layer = self.active_document().document.layer(path).unwrap();
+							layer.bounding_box(layer.transform, layer.style).unwrap()
+						});
+						let min = bounding_boxes
+							.clone()
+							.map(|bbox| match axis {
+								AlignAxis::X => bbox[0].x,
+								AlignAxis::Y => bbox[0].y,
+							})
+							.reduce(|a, b| a.min(b))
+							.unwrap();
+						let max = bounding_boxes
+							.clone()
+							.map(|bbox| match axis {
+								AlignAxis::X => bbox[1].x,
+								AlignAxis::Y => bbox[1].y,
+							})
+							.reduce(|a, b| a.max(b))
+							.unwrap();
+						(min + max) / 2.
+					}
 					AlignAggregate::Average => bounding_box_coords.sum::<f64>() / selected_paths.len() as f64,
 				};
 				for (path, bounding_box_coord, translation_coord) in selected_layers {
