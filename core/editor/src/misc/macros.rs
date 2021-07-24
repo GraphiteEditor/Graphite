@@ -76,7 +76,7 @@ macro_rules! gen_tools_hash_map {
 /// };
 /// ```
 macro_rules! match_variant_name {
-    (match ($e:expr) { $($v:ident),* $(,)? }) => {
+	(match ($e:expr) { $($v:ident),* $(,)? }) => {
 		match $e {
 			$(
 				$v { .. } => stringify!($v)
