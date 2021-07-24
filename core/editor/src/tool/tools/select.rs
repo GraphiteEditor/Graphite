@@ -8,7 +8,11 @@ use serde::{Deserialize, Serialize};
 
 use crate::input::{mouse::ViewportPosition, InputPreprocessor};
 use crate::tool::{DocumentToolData, Fsm, ToolActionHandlerData};
-use crate::{consts::SELECTION_TOLERANCE, document::Document, message_prelude::*};
+use crate::{
+	consts::SELECTION_TOLERANCE,
+	document::{AlignAggregate, AlignAxis, Document},
+	message_prelude::*,
+};
 
 #[derive(Default)]
 pub struct Select {
@@ -24,6 +28,7 @@ pub enum SelectMessage {
 	MouseMove,
 	Abort,
 
+	Align(AlignAxis, AlignAggregate),
 	FlipHorizontal,
 	FlipVertical,
 }
@@ -120,7 +125,7 @@ impl Fsm for SelectToolFsmState {
 						responses.push_back(make_operation(data, tool_data, transform));
 					} else {
 						for (path, offset) in &data.layers_dragging {
-							responses.push_back(DocumentMessage::DragLayer(path.clone(), offset.clone()).into());
+							responses.push_back(DocumentMessage::DragLayer(path.clone(), *offset).into());
 						}
 					}
 
@@ -161,6 +166,11 @@ impl Fsm for SelectToolFsmState {
 					data.layers_dragging = Vec::new();
 
 					Ready
+				}
+				(_, Align(axis, aggregate)) => {
+					responses.push_back(DocumentMessage::AlignSelectedLayers(axis, aggregate).into());
+
+					self
 				}
 				(_, FlipHorizontal) => {
 					let selected_layers = document.layer_data.iter().filter_map(|(path, data)| data.selected.then(|| path.clone()));

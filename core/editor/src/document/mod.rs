@@ -5,4 +5,4 @@ mod document_message_handler;
 pub use document_file::{Document, LayerData};
 
 #[doc(inline)]
-pub use document_message_handler::{DocumentMessage, DocumentMessageDiscriminant, DocumentMessageHandler};
+pub use document_message_handler::{AlignAggregate, AlignAxis, DocumentMessage, DocumentMessageDiscriminant, DocumentMessageHandler};
