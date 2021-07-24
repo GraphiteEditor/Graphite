@@ -642,6 +642,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				}
 			}
 			AlignSelectedLayers(axis, aggregate) => {
+				// TODO: Handle folder nested transforms with the transforms API
 				let selected_paths = self.selected_layers_sorted();
 				if selected_paths.len() == 0 {
 					return;
