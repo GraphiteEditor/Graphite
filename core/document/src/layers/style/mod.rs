@@ -19,6 +19,9 @@ impl Fill {
 	pub fn new(color: Color) -> Self {
 		Self { color: Some(color) }
 	}
+	pub fn color(&self) -> Option<Color> {
+		self.color
+	}
 	pub fn none() -> Self {
 		Self { color: None }
 	}
@@ -40,6 +43,12 @@ pub struct Stroke {
 impl Stroke {
 	pub fn new(color: Color, width: f32) -> Self {
 		Self { color, width }
+	}
+	pub fn color(&self) -> Color {
+		self.color
+	}
+	pub fn width(&self) -> f32 {
+		self.width
 	}
 	pub fn render(&self) -> String {
 		format!(r##" stroke="#{}"{} stroke-width="{}""##, self.color.rgb_hex(), format_opacity("stroke", self.color.a()), self.width)

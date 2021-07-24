@@ -65,7 +65,7 @@
 					<ShelfItemInput :icon="'LayoutSelectTool'" title="Select Tool (V)" :active="activeTool === 'Select'" @click="selectTool('Select')" />
 					<ShelfItemInput :icon="'LayoutCropTool'" title="Crop Tool" :active="activeTool === 'Crop'" @click="'tool not implemented' || selectTool('Crop')" />
 					<ShelfItemInput :icon="'LayoutNavigateTool'" title="Navigate Tool (Z)" :active="activeTool === 'Navigate'" @click="'tool not implemented' || selectTool('Navigate')" />
-					<ShelfItemInput :icon="'LayoutEyedropperTool'" title="Eyedropper Tool (I)" :active="activeTool === 'Eyedropper'" @click="'tool not implemented' || selectTool('Eyedropper')" />
+					<ShelfItemInput :icon="'LayoutEyedropperTool'" title="Eyedropper Tool (I)" :active="activeTool === 'Eyedropper'" @click="selectTool('Eyedropper')" />
 
 					<Separator :type="SeparatorType.Section" :direction="SeparatorDirection.Vertical" />
 
