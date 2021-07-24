@@ -115,11 +115,6 @@ const menuEntries: MenuListEntries = [
 		],
 	},
 	{
-		label: "Document",
-		ref: undefined,
-		children: [[{ label: "Menu not yet populated" }]],
-	},
-	{
 		label: "Layer",
 		ref: undefined,
 		children: [
@@ -139,6 +134,11 @@ const menuEntries: MenuListEntries = [
 				},
 			],
 		],
+	},
+	{
+		label: "Document",
+		ref: undefined,
+		children: [[{ label: "Menu not yet populated" }]],
 	},
 	{
 		label: "View",
