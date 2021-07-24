@@ -60,6 +60,7 @@ pub enum DocumentMessage {
 	DragLayer(Vec<LayerId>, DVec2),
 	MoveSelectedLayersTo { path: Vec<LayerId>, insert_index: isize },
 	ReorderSelectedLayers(i32), // relatve_position,
+	SetLayerCoordinates(Vec<LayerId>, Option<f64>, Option<f64>),
 }
 
 impl From<DocumentOperation> for DocumentMessage {
@@ -660,6 +661,24 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 						transform.to_cols_array()
 					};
 					responses.push_back(DocumentOperation::SetLayerTransform { path, transform }.into());
+				}
+			}
+			SetLayerCoordinates(path, x_option, y_option) => {
+				if let Ok(layer) = self.active_document_mut().document.layer_mut(&path) {
+					let mut transform = layer.transform;
+					if let Some(x) = x_option {
+						transform.translation.x = x;
+					}
+					if let Some(y) = y_option {
+						transform.translation.y = y;
+					}
+					responses.push_back(
+						DocumentOperation::SetLayerTransform {
+							path,
+							transform: transform.to_cols_array(),
+						}
+						.into(),
+					);
 				}
 			}
 			message => todo!("document_action_handler does not implement: {}", message.to_discriminant().global_name()),

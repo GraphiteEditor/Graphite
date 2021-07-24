@@ -87,15 +87,15 @@ export default defineComponent({
 			[
 				"Select",
 				[
-					{ kind: "IconButton", icon: "AlignLeft", title: "Align Left" },
-					{ kind: "IconButton", icon: "AlignHorizontalCenter", title: "Align Horizontal Center" },
-					{ kind: "IconButton", icon: "AlignRight", title: "Align Right" },
+					{ kind: "IconButton", icon: "AlignLeft", title: "Align Left", message: "AlignLeft" },
+					{ kind: "IconButton", icon: "AlignHorizontalCenter", title: "Align Horizontal Center", message: "AlignHorizontalCenter" },
+					{ kind: "IconButton", icon: "AlignRight", title: "Align Right", message: "AlignRight" },
 
 					{ kind: "Separator", type: SeparatorType.Unrelated },
 
-					{ kind: "IconButton", icon: "AlignTop", title: "Align Top" },
-					{ kind: "IconButton", icon: "AlignVerticalCenter", title: "Align Vertical Center" },
-					{ kind: "IconButton", icon: "AlignBottom", title: "Align Bottom" },
+					{ kind: "IconButton", icon: "AlignTop", title: "Align Top", message: "AlignTop" },
+					{ kind: "IconButton", icon: "AlignVerticalCenter", title: "Align Vertical Center", message: "AlignVerticalCenter" },
+					{ kind: "IconButton", icon: "AlignBottom", title: "Align Bottom", message: "AlignBottom" },
 
 					{ kind: "Separator", type: SeparatorType.Related },
 
