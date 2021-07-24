@@ -671,6 +671,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					AlignAggregate::Min => bounding_box_coords.reduce(|a, b| a.min(b)).unwrap(),
 					AlignAggregate::Max => bounding_box_coords.reduce(|a, b| a.max(b)).unwrap(),
 					AlignAggregate::Center => {
+						// TODO: Refactor with `reduce` and `merge_bounding_boxes` once the latter is added
 						let bounding_boxes = selected_paths.iter().map(|path| {
 							let layer = self.active_document().document.layer(path).unwrap();
 							layer.bounding_box(layer.transform, layer.style).unwrap()
