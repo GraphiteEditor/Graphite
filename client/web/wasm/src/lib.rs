@@ -1,4 +1,5 @@
-//! **Rust WebAssembly wrapper**: `/client/web/wasm/`  
+//! **Rust WebAssembly wrapper**: `/client/web/wasm/`
+//!
 //! Wraps the Editor Core Library and provides an API for the web app to use unburdened by Rust's complex data types that are not supported by WASM
 
 pub mod document;

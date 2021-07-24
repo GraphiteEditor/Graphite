@@ -1,4 +1,5 @@
-//! **Graphite Editor Core Library**: `/core/editor/`  
+//! **Graphite Editor Core Library**: `/core/editor/`
+//!
 //! Used by a frontend editor client to maintain GUI state and dispatch user events.
 //! The official Graphite editor is the primary user,
 //! but others software like game engines could embed their own customized editor implementations.

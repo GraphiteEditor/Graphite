@@ -1,9 +1,9 @@
 use serde::{Deserialize, Serialize};
 
 /// Structure that represent a color.
-/// Internally alpha is stored as `f32` that range from `0.0` (transparent) to 1.0 (opaque).
+/// Internally alpha is stored as `f32` that ranges from `0.0` (transparent) to `1.0` (opaque).
 /// The other components (RGB) are stored as `f32` that range from `0.0` up to `f32::MAX`,
-/// the values encode the brightness of each channel proportional to the light intensity in cd/m² (nits) in HDR, and 0.0 (black) to 1.0 (white) in SDR color.
+/// the values encode the brightness of each channel proportional to the light intensity in cd/m² (nits) in HDR, and `0.0` (black) to `1.0` (white) in SDR color.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize)]
 pub struct Color {
@@ -20,8 +20,9 @@ impl Color {
 	pub const GREEN: Color = Color::from_unsafe(0., 1., 0.);
 	pub const BLUE: Color = Color::from_unsafe(0., 0., 1.);
 
-	/// Returns `Some(Color)` if `red`, `green`, `blue` and `alpha` have a valid value. Negatives numbers (including `-0.0`), NaN and infinity are not valid values and return `None`.
-	/// Values greater than `1.0` for alpha are not valid.
+	/// Returns `Some(Color)` if `red`, `green`, `blue` and `alpha` have a valid value. Negative numbers (including `-0.0`), NaN, and infinity are not valid values and return `None`.
+	/// Alpha values greater than `1.0` are not valid.
+	///
 	/// # Examples
 	/// ```
 	/// use graphite_document_core::color::Color;
@@ -38,12 +39,13 @@ impl Color {
 		Some(Color { red, green, blue, alpha })
 	}
 
-	// Return Color without checking `red` `green` `blue` and without transparency (alpha = 1.0)
+	/// Return an opaque `Color` from given `f32` RGB channels.
 	const fn from_unsafe(red: f32, green: f32, blue: f32) -> Color {
 		Color { red, green, blue, alpha: 1. }
 	}
 
-	/// Return a Color without transparency (alpha = 0xFF).
+	/// Return an opaque SDR `Color` given RGB channels from `0` to `255`.
+	///
 	/// # Examples
 	/// ```
 	/// use graphite_document_core::color::Color;
@@ -55,7 +57,7 @@ impl Color {
 		Color::from_rgba8(red, green, blue, 255)
 	}
 
-	/// Return a color initialized by it's 8bit component.
+	/// Return an SDR `Color` given RGBA channels from `0` to `255`.
 	///
 	/// # Examples
 	/// ```
@@ -64,16 +66,16 @@ impl Color {
 	/// assert!("72676261" == color.rgba_hex())
 	/// ```
 	pub fn from_rgba8(red: u8, green: u8, blue: u8, alpha: u8) -> Color {
-		let map = |int_color| int_color as f32 / 255.0;
+		let map_range = |int_color| int_color as f32 / 255.0;
 		Color {
-			red: map(red),
-			green: map(green),
-			blue: map(blue),
-			alpha: map(alpha),
+			red: map_range(red),
+			green: map_range(green),
+			blue: map_range(blue),
+			alpha: map_range(alpha),
 		}
 	}
 
-	/// Return the red component.
+	/// Return the `red` component.
 	///
 	/// # Examples
 	/// ```
@@ -85,7 +87,7 @@ impl Color {
 		self.red
 	}
 
-	/// Return the green component.
+	/// Return the `green` component.
 	///
 	/// # Examples
 	/// ```
@@ -97,7 +99,7 @@ impl Color {
 		self.green
 	}
 
-	/// Return the blue component.
+	/// Return the `blue` component.
 	///
 	/// # Examples
 	/// ```
@@ -109,7 +111,7 @@ impl Color {
 		self.blue
 	}
 
-	/// Return the alpha component.
+	/// Return the `alpha` component without checking its expected `0.0` to `1.0` range.
 	///
 	/// # Examples
 	/// ```
@@ -133,11 +135,13 @@ impl Color {
 		(self.red, self.green, self.blue, self.alpha)
 	}
 
-	/// Return a String of hexadecimal value with two digit per components ("RRGGBBAA").
+	/// Return an 8-character RGBA hex string (without a # prefix).
+	///
+	/// # Examples
 	/// ```
 	/// use graphite_document_core::color::Color;
-	/// let color = Color::from_rgba8(0x72, 0x67, 0x62, 0x61);
-	/// assert!("72676261" == color.rgba_hex())
+	/// let color = Color::from_rgba8(0x7C, 0x67, 0xFA, 0x61);
+	/// assert!("7C67FA61" == color.rgba_hex())
 	/// ```
 	pub fn rgba_hex(&self) -> String {
 		format!(
@@ -149,11 +153,11 @@ impl Color {
 		)
 	}
 
-	/// Return a String of hexadecimal value with two digit per components ("RRGGBB").
+	/// Return a 6-character RGB hex string (without a # prefix).
 	/// ```
 	/// use graphite_document_core::color::Color;
-	/// let color = Color::from_rgba8(0x72, 0x67, 0x62, 0x61);
-	/// assert!("726762" == color.rgb_hex())
+	/// let color = Color::from_rgba8(0x7C, 0x67, 0xFA, 0x61);
+	/// assert!("7C67FA" == color.rgb_hex())
 	/// ```
 	pub fn rgb_hex(&self) -> String {
 		format!("{:02X?}{:02X?}{:02X?}", (self.r() * 255.) as u8, (self.g() * 255.) as u8, (self.b() * 255.) as u8,)
