@@ -4,7 +4,7 @@ use document_core::color::Color;
 use crate::input::InputPreprocessor;
 use crate::{
 	document::Document,
-	tool::{tool_options::ToolOptions, ToolFsmState, ToolType},
+	tool::{tool_options::ToolOptions, DocumentToolData, ToolFsmState, ToolType},
 };
 use std::collections::VecDeque;
 
@@ -50,8 +50,14 @@ impl MessageHandler<ToolMessage, (&Document, &InputPreprocessor)> for ToolMessag
 		let (document, input) = data;
 		use ToolMessage::*;
 		match message {
-			SelectPrimaryColor(c) => self.tool_state.document_tool_data.primary_color = c,
-			SelectSecondaryColor(c) => self.tool_state.document_tool_data.secondary_color = c,
+			SelectPrimaryColor(c) => {
+				self.tool_state.document_tool_data.primary_color = c;
+				update_working_colors(&self.tool_state.document_tool_data, responses);
+			}
+			SelectSecondaryColor(c) => {
+				self.tool_state.document_tool_data.secondary_color = c;
+				update_working_colors(&self.tool_state.document_tool_data, responses);
+			}
 			SelectTool(tool) => {
 				let mut reset = |tool| match tool {
 					ToolType::Ellipse => responses.push_back(EllipseMessage::Abort.into()),
@@ -70,25 +76,13 @@ impl MessageHandler<ToolMessage, (&Document, &InputPreprocessor)> for ToolMessag
 			SwapColors => {
 				let doc_data = &mut self.tool_state.document_tool_data;
 				std::mem::swap(&mut doc_data.primary_color, &mut doc_data.secondary_color);
-				responses.push_back(
-					FrontendMessage::UpdateWorkingColors {
-						primary: doc_data.primary_color,
-						secondary: doc_data.secondary_color,
-					}
-					.into(),
-				)
+				update_working_colors(doc_data, responses);
 			}
 			ResetColors => {
 				let doc_data = &mut self.tool_state.document_tool_data;
 				doc_data.primary_color = Color::BLACK;
 				doc_data.secondary_color = Color::WHITE;
-				responses.push_back(
-					FrontendMessage::UpdateWorkingColors {
-						primary: doc_data.primary_color,
-						secondary: doc_data.secondary_color,
-					}
-					.into(),
-				)
+				update_working_colors(doc_data, responses);
 			}
 			SetToolOptions(tool_type, tool_options) => {
 				self.tool_state.document_tool_data.tool_options.insert(tool_type, tool_options);
@@ -119,4 +113,14 @@ impl MessageHandler<ToolMessage, (&Document, &InputPreprocessor)> for ToolMessag
 		list.extend(self.tool_state.tool_data.active_tool().actions());
 		list
 	}
+}
+
+fn update_working_colors(doc_data: &DocumentToolData, responses: &mut VecDeque<Message>) {
+	responses.push_back(
+		FrontendMessage::UpdateWorkingColors {
+			primary: doc_data.primary_color,
+			secondary: doc_data.secondary_color,
+		}
+		.into(),
+	);
 }
