@@ -120,8 +120,10 @@
 <script lang="ts">
 import { defineComponent, PropType } from "vue";
 import { keyboardLockApiSupported } from "@/utilities/fullscreen";
+import { SeparatorDirection, SeparatorType } from "@/components/widgets/widgets";
+
 import FloatingMenu, { MenuDirection, MenuType } from "@/components/widgets/floating-menus/FloatingMenu.vue";
-import Separator, { SeparatorDirection, SeparatorType } from "@/components/widgets/separators/Separator.vue";
+import Separator from "@/components/widgets/separators/Separator.vue";
 import IconLabel from "@/components/widgets/labels/IconLabel.vue";
 import UserInputLabel from "@/components/widgets/labels/UserInputLabel.vue";
 

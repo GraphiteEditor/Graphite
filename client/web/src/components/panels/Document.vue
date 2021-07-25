@@ -34,10 +34,10 @@
 
 				<Separator :type="SeparatorType.Unrelated" />
 
-				<RadioInput v-model:index="viewModeIndex">
-					<IconButton :icon="'ViewModeNormal'" :size="24" title="View Mode: Normal" />
-					<IconButton :icon="'ViewModeOutline'" :size="24" title="View Mode: Outline" />
-					<IconButton :icon="'ViewModePixels'" :size="24" title="View Mode: Pixels" />
+				<RadioInput @update:index="viewModeChanged" v-model:index="viewModeIndex">
+					<IconButton :action="() => _" :icon="'ViewModeNormal'" :size="24" title="View Mode: Normal" />
+					<IconButton :action="() => _" :icon="'ViewModeOutline'" :size="24" title="View Mode: Outline" />
+					<IconButton :action="() => _" :icon="'ViewModePixels'" :size="24" title="View Mode: Pixels" />
 				</RadioInput>
 				<PopoverButton>
 					<h3>View Mode</h3>
@@ -46,17 +46,27 @@
 
 				<Separator :type="SeparatorType.Section" />
 
-				<NumberInput :callback="setRotation" :initialValue="0" :step="15" :unit="`°`" :updateOnCallback="false" ref="rotation" />
+				<NumberInput @update:value="setRotation" v-model:value="documentRotation" :step="15" :unit="`°`" ref="rotation" />
 
 				<Separator :type="SeparatorType.Section" />
 
-				<IconButton :icon="'ZoomIn'" :size="24" title="Zoom In" @click="this.$refs.zoom.onIncrement(1)" />
-				<IconButton :icon="'ZoomOut'" :size="24" title="Zoom Out" @click="this.$refs.zoom.onIncrement(-1)" />
-				<IconButton :icon="'ZoomReset'" :size="24" title="Zoom to 100%" @click="this.$refs.zoom.updateValue(100)" />
+				<IconButton :action="() => this.$refs.zoom.onIncrement(IncrementDirection.Increase)" :icon="'ZoomIn'" :size="24" title="Zoom In" />
+				<IconButton :action="() => this.$refs.zoom.onIncrement(IncrementDirection.Decrease)" :icon="'ZoomOut'" :size="24" title="Zoom Out" />
+				<IconButton :action="() => this.$refs.zoom.updateValue(100)" :icon="'ZoomReset'" :size="24" title="Zoom to 100%" />
 
 				<Separator :type="SeparatorType.Related" />
 
-				<NumberInput :callback="setZoom" :initialValue="100" :min="0.001" :increaseMultiplier="1.25" :decreaseMultiplier="0.8" :unit="`%`" :updateOnCallback="false" ref="zoom" />
+				<NumberInput
+					v-model:value="documentZoom"
+					@update:value="setZoom"
+					:min="0.000001"
+					:max="1000000"
+					:step="1.25"
+					:stepIsMultiplier="true"
+					:unit="`%`"
+					:displayDecimalPlaces="4"
+					ref="zoom"
+				/>
 			</div>
 		</LayoutRow>
 		<LayoutRow :class="'shelf-and-viewport'">
@@ -97,8 +107,8 @@
 				<div class="working-colors">
 					<SwatchPairInput />
 					<div class="swap-and-reset">
-						<IconButton @click="swapWorkingColors" :icon="'Swap'" title="Swap (Shift+X)" :size="16" />
-						<IconButton @click="resetWorkingColors" :icon="'ResetColors'" title="Reset (Ctrl+Shift+X)" :size="16" />
+						<IconButton :action="() => _" @click="swapWorkingColors" :icon="'Swap'" title="Swap (Shift+X)" :size="16" />
+						<IconButton :action="() => _" @click="resetWorkingColors" :icon="'ResetColors'" title="Reset (Ctrl+Shift+X)" :size="16" />
 					</div>
 				</div>
 			</LayoutCol>
@@ -202,20 +212,23 @@
 
 <script lang="ts">
 import { defineComponent } from "vue";
+
 import { makeModifiersBitfield } from "@/utilities/input";
 import { ResponseType, registerResponseHandler, Response, UpdateCanvas, SetActiveTool, ExportDocument, SetCanvasZoom, SetCanvasRotation } from "@/utilities/response-handler";
+import { SeparatorDirection, SeparatorType } from "@/components/widgets/widgets";
+
 import LayoutRow from "@/components/layout/LayoutRow.vue";
 import LayoutCol from "@/components/layout/LayoutCol.vue";
 import SwatchPairInput from "@/components/widgets/inputs/SwatchPairInput.vue";
 import { MenuDirection } from "@/components/widgets/floating-menus/FloatingMenu.vue";
 import ShelfItemInput from "@/components/widgets/inputs/ShelfItemInput.vue";
-import Separator, { SeparatorDirection, SeparatorType } from "@/components/widgets/separators/Separator.vue";
+import Separator from "@/components/widgets/separators/Separator.vue";
 import PersistentScrollbar, { ScrollbarDirection } from "@/components/widgets/scrollbars/PersistentScrollbar.vue";
 import CanvasRuler, { RulerDirection } from "@/components/widgets/rulers/CanvasRuler.vue";
 import IconButton from "@/components/widgets/buttons/IconButton.vue";
 import PopoverButton from "@/components/widgets/buttons/PopoverButton.vue";
 import RadioInput from "@/components/widgets/inputs/RadioInput.vue";
-import NumberInput from "@/components/widgets/inputs/NumberInput.vue";
+import NumberInput, { IncrementDirection } from "@/components/widgets/inputs/NumberInput.vue";
 import DropdownInput from "@/components/widgets/inputs/DropdownInput.vue";
 import OptionalInput from "@/components/widgets/inputs/OptionalInput.vue";
 import ToolOptions from "@/components/widgets/options/ToolOptions.vue";
@@ -322,16 +335,14 @@ export default defineComponent({
 		registerResponseHandler(ResponseType.SetCanvasZoom, (responseData: Response) => {
 			const updateData = responseData as SetCanvasZoom;
 			if (updateData) {
-				const zoomWidget = this.$refs.zoom as typeof NumberInput;
-				zoomWidget.setValue(updateData.new_zoom * 100);
+				this.documentZoom = updateData.new_zoom * 100;
 			}
 		});
 		registerResponseHandler(ResponseType.SetCanvasRotation, (responseData: Response) => {
 			const updateData = responseData as SetCanvasRotation;
 			if (updateData) {
-				const rotationWidget = this.$refs.rotation as typeof NumberInput;
 				const newRotation = updateData.new_radians * (180 / Math.PI);
-				rotationWidget.setValue((360 + (newRotation % 360)) % 360);
+				this.documentRotation = (360 + (newRotation % 360)) % 360;
 			}
 		});
 
@@ -341,8 +352,6 @@ export default defineComponent({
 
 		window.addEventListener("resize", () => this.viewportResize());
 		window.addEventListener("DOMContentLoaded", () => this.viewportResize());
-
-		this.$watch("viewModeIndex", this.viewModeChanged);
 	},
 	data() {
 		return {
@@ -356,6 +365,9 @@ export default defineComponent({
 			snappingEnabled: true,
 			gridEnabled: true,
 			overlaysEnabled: true,
+			documentRotation: 0,
+			documentZoom: 100,
+			IncrementDirection,
 			MenuDirection,
 			SeparatorDirection,
 			ScrollbarDirection,

@@ -1,8 +1,8 @@
 <template>
-	<div class="number-input">
-		<button class="arrow left" @click="onIncrement(-1)"></button>
-		<button class="arrow right" @click="onIncrement(1)"></button>
-		<input type="text" spellcheck="false" v-model="text" @change="updateText($event.target.value)" /> />
+	<div class="number-input" :class="{ disabled }">
+		<input type="text" spellcheck="false" v-model="text" @change="onTextChanged()" @keydown.esc="onCancelTextChange" ref="input" :disabled="disabled" />
+		<button v-if="!Number.isNaN(value)" class="arrow left" @click="onIncrement(IncrementDirection.Decrease)"></button>
+		<button v-if="!Number.isNaN(value)" class="arrow right" @click="onIncrement(IncrementDirection.Increase)"></button>
 	</div>
 </template>
 
@@ -17,12 +17,12 @@
 
 	input {
 		width: calc(100% - 8px);
-		margin: 0 4px;
+		line-height: 18px;
+		margin: 3px 4px;
 		outline: none;
 		border: none;
 		background: none;
 		padding: 0;
-		line-height: 24px;
 		color: var(--color-e-nearwhite);
 		font-size: inherit;
 		text-align: center;
@@ -30,6 +30,17 @@
 
 		&::selection {
 			background: var(--color-accent);
+		}
+
+		&:focus {
+			text-align: left;
+			width: calc(100% - 16px);
+			margin-left: 8px;
+			margin-right: 8px;
+
+			& ~ .arrow {
+				display: none;
+			}
 		}
 	}
 
@@ -89,70 +100,136 @@
 			}
 		}
 	}
+
+	&.disabled {
+		background: var(--color-2-mildblack);
+
+		input {
+			color: var(--color-8-uppergray);
+		}
+
+		.arrow {
+			display: none;
+		}
+	}
 }
 </style>
 
 <script lang="ts">
 import { defineComponent } from "vue";
 
+export enum IncrementDirection {
+	Decrease = "Decrease",
+	Increase = "Increase",
+}
+
 export default defineComponent({
 	components: {},
 	props: {
-		initialValue: { type: Number, default: 0 },
-		unit: { type: String, default: "" },
-		step: { type: Number, default: 1 },
-		displayDecimalPlaces: { type: Number, default: 3 },
-		increaseMultiplier: { type: Number, default: null },
-		decreaseMultiplier: { type: Number, default: null },
+		value: { type: Number, required: true },
 		min: { type: Number, required: false },
 		max: { type: Number, required: false },
-		callback: { type: Function, required: false },
-		updateOnCallback: { type: Boolean, default: true },
+		step: { type: Number, default: 1 },
+		stepIsMultiplier: { type: Boolean, default: false },
+		isInteger: { type: Boolean, default: false },
+		unit: { type: String, default: "" },
+		unitIsHiddenWhenEditing: { type: Boolean, default: true },
+		displayDecimalPlaces: { type: Number, default: 3 },
+		disabled: { type: Boolean, default: false },
 	},
 	data() {
 		return {
-			value: this.initialValue,
-			text: this.initialValue.toString() + this.unit,
+			text: `${this.value}${this.unit}`,
+			editing: false,
+			IncrementDirection,
 		};
 	},
 	methods: {
-		onIncrement(direction: number) {
-			if (direction === 1 && this.increaseMultiplier) this.updateValue(this.value * this.increaseMultiplier, true);
-			else if (direction === -1 && this.decreaseMultiplier) this.updateValue(this.value * this.decreaseMultiplier, true);
-			else this.updateValue(this.value + this.step * direction, true);
-		},
+		onTextFocused() {
+			if (Number.isNaN(this.value)) this.text = "";
+			else if (this.unitIsHiddenWhenEditing) this.text = `${this.value}`;
+			else this.text = `${this.value}${this.unit}`;
 
-		updateText(newText: string) {
-			const newValue = parseInt(newText, 10);
-			this.updateValue(newValue, true);
+			this.editing = true;
+			const inputElement = this.$refs.input as HTMLInputElement;
+			// Setting the value directly is required to make `inputElement.select()` work
+			inputElement.value = this.text;
+			inputElement.select();
 		},
+		// Called only when `value` is changed from the <input> element via user input and committed, either with the
+		// enter key (via the `change` event) or when the <input> element is defocused (with the `blur` event binding)
+		onTextChanged() {
+			// The `inputElement.blur()` call at the bottom of this function causes itself to be run again, so this check skips a second run
+			if (!this.editing) return;
 
-		clampValue(newValue: number, resetOnClamp: boolean) {
-			if (!Number.isFinite(newValue)) return this.value;
-			let result = newValue;
-			if (Number.isFinite(this.min) && typeof this.min === "number") {
-				if (resetOnClamp && newValue < this.min) return this.value;
-				result = Math.max(result, this.min);
-			}
-			if (Number.isFinite(this.max) && typeof this.max === "number") {
-				if (resetOnClamp && newValue > this.max) return this.value;
-				result = Math.min(result, this.max);
-			}
-			return result;
+			const newValue = parseFloat(this.text);
+			this.updateValue(newValue);
+
+			this.editing = false;
+			const inputElement = this.$refs.input as HTMLElement;
+			inputElement.blur();
 		},
-		setValue(newValue: number) {
-			this.value = newValue;
+		onCancelTextChange() {
+			this.updateValue(NaN);
+
+			this.editing = false;
+			const inputElement = this.$refs.input as HTMLElement;
+			inputElement.blur();
+		},
+		onIncrement(direction: IncrementDirection) {
+			if (Number.isNaN(this.value)) return;
+
+			if (this.stepIsMultiplier) {
+				const directionMultiplier = direction === IncrementDirection.Increase ? this.step : 1 / this.step;
+				this.updateValue(this.value * directionMultiplier);
+			} else {
+				const directionAddend = direction === IncrementDirection.Increase ? this.step : -this.step;
+				this.updateValue(this.value + directionAddend);
+			}
+		},
+		updateValue(newValue: number) {
+			let sanitized = newValue;
+
+			const invalid = Number.isNaN(newValue);
+			if (invalid) sanitized = this.value;
+
+			if (this.isInteger) sanitized = Math.round(sanitized);
+			if (typeof this.min === "number" && !Number.isNaN(this.min)) sanitized = Math.max(sanitized, this.min);
+			if (typeof this.max === "number" && !Number.isNaN(this.max)) sanitized = Math.min(sanitized, this.max);
+
+			if (!invalid) this.$emit("update:value", sanitized);
 
 			const roundingPower = 10 ** this.displayDecimalPlaces;
-			this.text = `${Math.round(this.value * roundingPower) / roundingPower}${this.unit}`;
+			const displayValue = Math.round(sanitized * roundingPower) / roundingPower;
+			this.text = `${displayValue}${this.unit}`;
 		},
-		updateValue(inValue: number, resetOnClamp: boolean) {
-			const newValue = this.clampValue(inValue, resetOnClamp);
+	},
+	watch: {
+		// Called only when `value` is changed from outside this component (with v-model)
+		value(newValue: number) {
+			if (Number.isNaN(newValue)) {
+				this.text = "-";
+				return;
+			}
 
-			if (this.callback) this.callback(newValue);
+			let sanitized = newValue;
+			if (typeof this.min === "number") sanitized = Math.max(sanitized, this.min);
+			if (typeof this.max === "number") sanitized = Math.min(sanitized, this.max);
 
-			if (this.updateOnCallback) this.setValue(newValue);
+			const roundingPower = 10 ** this.displayDecimalPlaces;
+			const displayValue = Math.round(sanitized * roundingPower) / roundingPower;
+			this.text = `${displayValue}${this.unit}`;
 		},
+	},
+	mounted() {
+		const inputElement = this.$refs.input as HTMLInputElement;
+		inputElement.addEventListener("focus", this.onTextFocused);
+		inputElement.addEventListener("blur", this.onTextChanged);
+	},
+	beforeUnmount() {
+		const inputElement = this.$refs.input as HTMLInputElement;
+		inputElement.removeEventListener("focus", this.onTextFocused);
+		inputElement.removeEventListener("blur", this.onTextChanged);
 	},
 });
 </script>

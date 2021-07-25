@@ -1,5 +1,5 @@
 <template>
-	<button class="icon-button" :class="`size-${String(size)}`" @click="onClick">
+	<button class="icon-button" :class="`size-${String(size)}`" @click="action">
 		<IconLabel :icon="icon" />
 	</button>
 </template>
@@ -57,10 +57,10 @@ import IconLabel from "@/components/widgets/labels/IconLabel.vue";
 
 export default defineComponent({
 	props: {
+		action: { type: Function, required: true },
 		icon: { type: String, required: true },
 		size: { type: Number, required: true },
 		gapAfter: { type: Boolean, default: false },
-		onClick: Function,
 	},
 	components: { IconLabel },
 });

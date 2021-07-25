@@ -1,6 +1,6 @@
 <template>
 	<div class="shelf-item-input" :class="{ active: active }">
-		<IconButton :icon="icon" :size="32" />
+		<IconButton :action="() => _" :icon="icon" :size="32" />
 	</div>
 </template>
 
