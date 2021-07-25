@@ -3,13 +3,13 @@
 		<div class="secondary swatch">
 			<button @click="clickSecondarySwatch" ref="secondaryButton" data-hover-menu-spawner></button>
 			<FloatingMenu :type="MenuType.Popover" :direction="MenuDirection.Right" horizontal ref="secondarySwatchFloatingMenu">
-				<ColorPicker v-model:color="secondaryColor" />
+				<ColorPicker @update:color="secondaryColorChanged" :color="secondaryColor" />
 			</FloatingMenu>
 		</div>
 		<div class="primary swatch">
 			<button @click="clickPrimarySwatch" ref="primaryButton" data-hover-menu-spawner></button>
 			<FloatingMenu :type="MenuType.Popover" :direction="MenuDirection.Right" horizontal ref="primarySwatchFloatingMenu">
-				<ColorPicker v-model:color="primaryColor" />
+				<ColorPicker @update:color="primaryColorChanged" :color="primaryColor" />
 			</FloatingMenu>
 		</div>
 	</div>
@@ -66,7 +66,7 @@
 </style>
 
 <script lang="ts">
-import { rgbToDecimalRgb } from "@/utilities/color";
+import { rgbToDecimalRgb, RGB } from "@/utilities/color";
 import { defineComponent } from "vue";
 import ColorPicker from "@/components/widgets/floating-menus/ColorPicker.vue";
 import FloatingMenu, { MenuDirection, MenuType } from "@/components/widgets/floating-menus/FloatingMenu.vue";
@@ -93,6 +93,16 @@ export default defineComponent({
 
 		getRef<T>(name: string) {
 			return this.$refs[name] as T;
+		},
+
+		primaryColorChanged(color: RGB) {
+			this.primaryColor = color;
+			this.updatePrimaryColor();
+		},
+
+		secondaryColorChanged(color: RGB) {
+			this.secondaryColor = color;
+			this.updateSecondaryColor();
 		},
 
 		async updatePrimaryColor() {
@@ -126,16 +136,24 @@ export default defineComponent({
 		};
 	},
 	mounted() {
-		this.$watch("primaryColor", this.updatePrimaryColor, { immediate: true });
-		this.$watch("secondaryColor", this.updateSecondaryColor, { immediate: true });
-
 		registerResponseHandler(ResponseType.UpdateWorkingColors, (responseData: Response) => {
 			const colorData = responseData as UpdateWorkingColors;
 			if (!colorData) return;
 			const { primary, secondary } = colorData;
+
 			this.primaryColor = { r: primary.red, g: primary.green, b: primary.blue, a: primary.alpha };
+			let color = this.primaryColor;
+			let button = this.getRef<HTMLButtonElement>("primaryButton");
+			button.style.setProperty("--swatch-color", `rgba(${color.r}, ${color.g}, ${color.b}, ${color.a})`);
+
 			this.secondaryColor = { r: secondary.red, g: secondary.green, b: secondary.blue, a: secondary.alpha };
+			color = this.secondaryColor;
+			button = this.getRef<HTMLButtonElement>("secondaryButton");
+			button.style.setProperty("--swatch-color", `rgba(${color.r}, ${color.g}, ${color.b}, ${color.a})`);
 		});
+
+		this.updatePrimaryColor();
+		this.updateSecondaryColor();
 	},
 });
 </script>
