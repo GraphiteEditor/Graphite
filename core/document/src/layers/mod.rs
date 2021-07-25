@@ -43,48 +43,6 @@ pub enum LayerDataTypes {
 	Shape(Shape),
 }
 
-#[derive(PartialEq, Copy, Clone, Debug, Serialize, Deserialize)]
-pub enum BlendMode {
-	Normal,
-	Multiply,
-	Darken,
-	ColorBurn,
-	Screen,
-	Lighten,
-	ColorDodge,
-	Overlay,
-	SoftLight,
-	HardLight,
-	Difference,
-	Exclusion,
-	Hue,
-	Saturation,
-	Color,
-	Luminosity,
-}
-impl BlendMode {
-	fn to_svg_style_name(&self) -> &str {
-		match self {
-			BlendMode::Normal => "normal",
-			BlendMode::Multiply => "multiply",
-			BlendMode::Darken => "darken",
-			BlendMode::ColorBurn => "color-burn",
-			BlendMode::Screen => "screen",
-			BlendMode::Lighten => "lighten",
-			BlendMode::ColorDodge => "color-dodge",
-			BlendMode::Overlay => "overlay",
-			BlendMode::SoftLight => "soft-light",
-			BlendMode::HardLight => "hard-light",
-			BlendMode::Difference => "difference",
-			BlendMode::Exclusion => "exclusion",
-			BlendMode::Hue => "hue",
-			BlendMode::Saturation => "saturation",
-			BlendMode::Color => "color",
-			BlendMode::Luminosity => "luminosity",
-		}
-	}
-}
-
 macro_rules! call_render {
 	($self:ident.render($svg:ident, $transform:ident, $style:ident) { $($variant:ident),* }) => {
 		match $self {
@@ -152,6 +110,49 @@ impl LayerDataTypes {
 		let bez_path = self.to_kurbo_path(transform, style);
 		let bbox = bez_path.bounding_box();
 		[DVec2::new(bbox.x0, bbox.y0), DVec2::new(bbox.x1, bbox.y1)]
+	}
+}
+
+#[derive(PartialEq, Copy, Clone, Debug, Serialize, Deserialize)]
+pub enum BlendMode {
+	Normal,
+	Multiply,
+	Darken,
+	ColorBurn,
+	Screen,
+	Lighten,
+	ColorDodge,
+	Overlay,
+	SoftLight,
+	HardLight,
+	Difference,
+	Exclusion,
+	Hue,
+	Saturation,
+	Color,
+	Luminosity,
+}
+
+impl BlendMode {
+	fn to_svg_style_name(&self) -> &str {
+		match self {
+			BlendMode::Normal => "normal",
+			BlendMode::Multiply => "multiply",
+			BlendMode::Darken => "darken",
+			BlendMode::ColorBurn => "color-burn",
+			BlendMode::Screen => "screen",
+			BlendMode::Lighten => "lighten",
+			BlendMode::ColorDodge => "color-dodge",
+			BlendMode::Overlay => "overlay",
+			BlendMode::SoftLight => "soft-light",
+			BlendMode::HardLight => "hard-light",
+			BlendMode::Difference => "difference",
+			BlendMode::Exclusion => "exclusion",
+			BlendMode::Hue => "hue",
+			BlendMode::Saturation => "saturation",
+			BlendMode::Color => "color",
+			BlendMode::Luminosity => "luminosity",
+		}
 	}
 }
 
