@@ -405,6 +405,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				for path in paths {
 					responses.extend(self.select_layer(&path));
 				}
+				responses.push_back(ToolMessage::SelectionUpdated.into());
 				// TODO: Correctly update layer panel in clear_selection instead of here
 				responses.extend(self.handle_folder_changed(Vec::new()));
 			}
@@ -413,10 +414,12 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				for path in all_layer_paths {
 					responses.extend(self.select_layer(&path));
 				}
+				responses.push_back(ToolMessage::SelectionUpdated.into());
 			}
 			DeselectAllLayers => {
 				self.clear_selection();
 				let children = self.active_document_mut().layer_panel(&[]).expect("The provided Path was not valid");
+				responses.push_back(ToolMessage::SelectionUpdated.into());
 				responses.push_back(FrontendMessage::ExpandFolder { path: vec![], children }.into());
 			}
 			Undo => {
@@ -497,6 +500,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				if self.rotating {
 					let half_viewport = ipp.viewport_size.as_dvec2() / 2.;
 					let rotation = {
+						responses.push_back(ToolMessage::CanvasRotated.into());
 						let start_vec = self.mouse_pos.as_dvec2() - half_viewport;
 						let end_vec = ipp.mouse.position.as_dvec2() - half_viewport;
 						start_vec.angle_between(end_vec)
@@ -573,6 +577,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				let layerdata = self.layerdata_mut(&[]);
 				layerdata.rotation = new;
 				self.create_document_transform_from_layerdata(&ipp.viewport_size, responses);
+				responses.push_back(ToolMessage::CanvasRotated.into());
 				responses.push_back(FrontendMessage::SetCanvasRotation { new_radians: new }.into());
 			}
 			NudgeSelectedLayers(x, y) => {

@@ -69,9 +69,21 @@ impl Fsm for SelectToolFsmState {
 		let transform = document.document.root.transform;
 		use SelectMessage::*;
 		use SelectToolFsmState::*;
-		if let ToolMessage::Select(event) = event {
-			match (self, event) {
+		match event {
+			ToolMessage::CanvasRotated | ToolMessage::SelectionUpdated => {
+				responses.push_back(Operation::ClearWorkingFolder.into());
+				make_selection_bounding_box(document, responses);
+				self
+			}
+			ToolMessage::Select(event) => match (self, event) {
+				(_, Init) => {
+					responses.push_back(Operation::MountWorkingFolder { path: vec![] }.into());
+					make_selection_bounding_box(document, responses);
+					self
+				}
 				(Ready, DragStart) => {
+					responses.push_back(Operation::DiscardWorkingFolder.into());
+
 					data.drag_start = input.mouse.position;
 					data.drag_current = input.mouse.position;
 
@@ -100,17 +112,19 @@ impl Fsm for SelectToolFsmState {
 								.filter_map(|(path, layer_data)| {
 									layer_data
 										.selected
-										.then(|| (path.clone(), document.document.layer(path).unwrap().transform.translation - transformed_start))
+										.then(|| (path.clone(), document.document.document_layer(path).unwrap().transform.translation - transformed_start))
 								})
 								.collect();
 						} else {
 							responses.push_back(DocumentMessage::SelectLayers(vec![intersection.clone()]).into());
-							data.layers_dragging = vec![(intersection.clone(), document.document.layer(intersection).unwrap().transform.translation - transformed_start)]
+							data.layers_dragging = vec![(intersection.clone(), document.document.document_layer(intersection).unwrap().transform.translation - transformed_start)]
 						}
 					} else {
-						responses.push_back(Operation::MountWorkingFolder { path: vec![] }.into());
 						data.layers_dragging = Vec::new();
 					}
+
+					responses.push_back(Operation::MountWorkingFolder { path: vec![] }.into());
+					make_selection_bounding_box(document, responses);
 
 					Dragging
 				}
@@ -121,9 +135,13 @@ impl Fsm for SelectToolFsmState {
 						responses.push_back(Operation::ClearWorkingFolder.into());
 						responses.push_back(make_operation(data, tool_data, transform));
 					} else {
+						responses.push_back(Operation::DiscardWorkingFolder.into());
 						for (path, offset) in &data.layers_dragging {
 							responses.push_back(DocumentMessage::DragLayer(path.clone(), offset.clone()).into());
 						}
+
+						responses.push_back(Operation::MountWorkingFolder { path: vec![] }.into());
+						make_selection_bounding_box(document, responses);
 					}
 
 					Dragging
@@ -131,12 +149,11 @@ impl Fsm for SelectToolFsmState {
 				(Dragging, DragStop) => {
 					data.drag_current = input.mouse.position;
 
-					if data.layers_dragging.is_empty() {
-						responses.push_back(Operation::ClearWorkingFolder.into());
-						responses.push_back(Operation::DiscardWorkingFolder.into());
+					responses.push_back(Operation::DiscardWorkingFolder.into());
 
-						if data.drag_start == data.drag_current {
-							responses.push_back(DocumentMessage::SelectLayers(vec![]).into());
+					if data.layers_dragging.is_empty() {
+						let selection = if data.drag_start == data.drag_current {
+							vec![]
 						} else {
 							let (point_1, point_2) = (
 								DVec2::new(data.drag_start.x as f64, data.drag_start.y as f64),
@@ -150,17 +167,27 @@ impl Fsm for SelectToolFsmState {
 								DVec2::new(point_1.x, point_2.y),
 							];
 
-							responses.push_back(DocumentMessage::SelectLayers(document.document.intersects_quad_root(quad)).into());
-						}
+							document.document.intersects_quad_root(quad)
+						};
+
+						responses.push_back(DocumentMessage::SelectLayers(selection.clone()).into());
+
+						responses.push_back(Operation::MountWorkingFolder { path: vec![] }.into());
+						make_paths_bounding_box(selection, document, responses);
 					} else {
 						data.layers_dragging = Vec::new();
+
+						responses.push_back(Operation::MountWorkingFolder { path: vec![] }.into());
+						make_selection_bounding_box(document, responses);
 					}
 
 					Ready
 				}
 				(Dragging, Abort) => {
-					responses.push_back(Operation::DiscardWorkingFolder.into());
+					responses.push_back(Operation::ClearWorkingFolder.into());
 					data.layers_dragging = Vec::new();
+
+					make_selection_bounding_box(document, responses);
 
 					Ready
 				}
@@ -181,9 +208,8 @@ impl Fsm for SelectToolFsmState {
 					self
 				}
 				_ => self,
-			}
-		} else {
-			self
+			},
+			_ => self,
 		}
 	}
 }

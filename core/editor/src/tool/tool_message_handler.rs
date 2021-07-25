@@ -17,6 +17,8 @@ pub enum ToolMessage {
 	SelectSecondaryColor(Color),
 	SwapColors,
 	ResetColors,
+	CanvasRotated,
+	SelectionUpdated,
 	SetToolOptions(ToolType, ToolOptions),
 	#[child]
 	Fill(FillMessage),
@@ -99,6 +101,11 @@ impl MessageHandler<ToolMessage, (&Document, &InputPreprocessor)> for ToolMessag
 			SetToolOptions(tool_type, tool_options) => {
 				self.tool_state.document_tool_data.tool_options.insert(tool_type, tool_options);
 			}
+			CanvasRotated | SelectionUpdated => self
+				.tool_state
+				.tool_data
+				.active_tool_mut()
+				.process_action(message, (&document, &self.tool_state.document_tool_data, input), responses),
 			message => {
 				let tool_type = match message {
 					Fill(_) => ToolType::Fill,
