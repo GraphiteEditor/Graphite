@@ -65,7 +65,7 @@
 					<ShelfItemInput :icon="'LayoutSelectTool'" title="Select Tool (V)" :active="activeTool === 'Select'" @click="selectTool('Select')" />
 					<ShelfItemInput :icon="'LayoutCropTool'" title="Crop Tool" :active="activeTool === 'Crop'" @click="'tool not implemented' || selectTool('Crop')" />
 					<ShelfItemInput :icon="'LayoutNavigateTool'" title="Navigate Tool (Z)" :active="activeTool === 'Navigate'" @click="'tool not implemented' || selectTool('Navigate')" />
-					<ShelfItemInput :icon="'LayoutEyedropperTool'" title="Eyedropper Tool (I)" :active="activeTool === 'Eyedropper'" @click="'tool not implemented' || selectTool('Eyedropper')" />
+					<ShelfItemInput :icon="'LayoutEyedropperTool'" title="Eyedropper Tool (I)" :active="activeTool === 'Eyedropper'" @click="selectTool('Eyedropper')" />
 
 					<Separator :type="SeparatorType.Section" :direction="SeparatorDirection.Vertical" />
 
@@ -112,7 +112,7 @@
 					</LayoutCol>
 					<LayoutCol :class="'canvas-area'">
 						<div class="canvas" @mousedown="canvasMouseDown" @mouseup="canvasMouseUp" @mousemove="canvasMouseMove" ref="canvas">
-							<svg v-html="viewportSvg"></svg>
+							<svg v-html="viewportSvg" :style="{ width: canvasSvgWidth, height: canvasSvgHeight }"></svg>
 						</div>
 					</LayoutCol>
 					<LayoutCol :class="'bar-area'">
@@ -183,9 +183,14 @@
 				background: var(--color-1-nearblack);
 				width: 100%;
 				height: 100%;
+				// Allows the SVG to be placed at explicit integer values of width and height to prevent non-pixel-perfect SVG scaling
+				position: relative;
+				overflow: hidden;
 
 				svg {
 					background: #ffffff;
+					position: absolute;
+					// Fallback values if JS hasn't set these to integers yet
 					width: 100%;
 					height: 100%;
 				}
@@ -229,9 +234,18 @@ const wasm = import("@/../wasm/pkg");
 export default defineComponent({
 	methods: {
 		async viewportResize() {
+			const canvas = this.$refs.canvas as HTMLElement;
+			// Get the width and height rounded up to the nearest even number because resizing is centered and dividing an odd number by 2 for centering causes antialiasing
+			let width = Math.ceil(parseFloat(getComputedStyle(canvas).width));
+			if (width % 2 === 1) width += 1;
+			let height = Math.ceil(parseFloat(getComputedStyle(canvas).height));
+			if (height % 2 === 1) height += 1;
+
+			this.canvasSvgWidth = `${width}px`;
+			this.canvasSvgHeight = `${height}px`;
+
 			const { viewport_resize } = await wasm;
-			const canvas = this.$refs.canvas as HTMLDivElement;
-			viewport_resize(canvas.clientWidth, canvas.clientHeight);
+			viewport_resize(width, height);
 		},
 		async canvasMouseDown(e: MouseEvent) {
 			const { on_mouse_down } = await wasm;
@@ -333,6 +347,8 @@ export default defineComponent({
 	data() {
 		return {
 			viewportSvg: "",
+			canvasSvgWidth: "100%",
+			canvasSvgHeight: "100%",
 			activeTool: "Select",
 			documentModeEntries,
 			documentModeSelectionIndex: 0,

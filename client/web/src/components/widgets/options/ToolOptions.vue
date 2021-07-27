@@ -38,7 +38,7 @@ interface IconButtonOption {
 	kind: "IconButton";
 	icon: string;
 	title: string;
-	message?: string;
+	message?: string | object;
 }
 
 interface SeparatorOption {
@@ -87,15 +87,15 @@ export default defineComponent({
 			[
 				"Select",
 				[
-					{ kind: "IconButton", icon: "AlignLeft", title: "Align Left" },
-					{ kind: "IconButton", icon: "AlignHorizontalCenter", title: "Align Horizontal Center" },
-					{ kind: "IconButton", icon: "AlignRight", title: "Align Right" },
+					{ kind: "IconButton", icon: "AlignLeft", title: "Align Left", message: { Align: ["X", "Min"] } },
+					{ kind: "IconButton", icon: "AlignHorizontalCenter", title: "Align Horizontal Center", message: { Align: ["X", "Center"] } },
+					{ kind: "IconButton", icon: "AlignRight", title: "Align Right", message: { Align: ["X", "Max"] } },
 
 					{ kind: "Separator", type: SeparatorType.Unrelated },
 
-					{ kind: "IconButton", icon: "AlignTop", title: "Align Top" },
-					{ kind: "IconButton", icon: "AlignVerticalCenter", title: "Align Vertical Center" },
-					{ kind: "IconButton", icon: "AlignBottom", title: "Align Bottom" },
+					{ kind: "IconButton", icon: "AlignTop", title: "Align Top", message: { Align: ["Y", "Min"] } },
+					{ kind: "IconButton", icon: "AlignVerticalCenter", title: "Align Vertical Center", message: { Align: ["Y", "Center"] } },
+					{ kind: "IconButton", icon: "AlignBottom", title: "Align Bottom", message: { Align: ["Y", "Max"] } },
 
 					{ kind: "Separator", type: SeparatorType.Related },
 

@@ -416,7 +416,7 @@ impl Document {
 
 				let path = path.as_slice()[..path.len() - 1].to_vec();
 
-				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::FolderChanged { path: path.clone() }])
+				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::FolderChanged { path }])
 			}
 			Operation::FillLayer { path, color } => {
 				let layer = self.layer_mut(path).unwrap();
