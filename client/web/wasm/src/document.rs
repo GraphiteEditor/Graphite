@@ -213,7 +213,7 @@ pub fn reorder_selected_layers(delta: i32) -> Result<(), JsValue> {
 		.map_err(convert_error)
 }
 
-/// Set the blend mode of the selected layers
+/// Set the blend mode for the selected layers
 #[wasm_bindgen]
 pub fn set_blend_mode_for_selected_layers(blend_mode_svg_style_name: String) -> Result<(), JsValue> {
 	let blend_mode = match blend_mode_svg_style_name.as_str() {
@@ -237,6 +237,17 @@ pub fn set_blend_mode_for_selected_layers(blend_mode_svg_style_name: String) -> 
 	};
 
 	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(DocumentMessage::SetBlendModeForSelectedLayers(blend_mode)).map_err(convert_error))
+}
+
+/// Set the opacity for the selected layers
+#[wasm_bindgen]
+pub fn set_opacity_for_selected_layers(opacity_percent: f64) -> Result<(), JsValue> {
+	EDITOR_STATE.with(|editor| {
+		editor
+			.borrow_mut()
+			.handle_message(DocumentMessage::SetOpacityForSelectedLayers(opacity_percent / 100.))
+			.map_err(convert_error)
+	})
 }
 
 /// Export the document
