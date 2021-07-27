@@ -107,8 +107,8 @@
 				<div class="working-colors">
 					<SwatchPairInput />
 					<div class="swap-and-reset">
-						<IconButton :action="() => _" @click="swapWorkingColors" :icon="'Swap'" title="Swap (Shift+X)" :size="16" />
-						<IconButton :action="() => _" @click="resetWorkingColors" :icon="'ResetColors'" title="Reset (Ctrl+Shift+X)" :size="16" />
+						<IconButton :action="swapWorkingColors" :icon="'Swap'" title="Swap (Shift+X)" :size="16" />
+						<IconButton :action="resetWorkingColors" :icon="'ResetColors'" title="Reset (Ctrl+Shift+X)" :size="16" />
 					</div>
 				</div>
 			</LayoutCol>
