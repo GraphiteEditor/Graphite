@@ -77,6 +77,10 @@ pub enum Operation {
 		path: Vec<LayerId>,
 		blend_mode: BlendMode,
 	},
+	SetLayerOpacity {
+		path: Vec<LayerId>,
+		opacity: f64,
+	},
 	FillLayer {
 		path: Vec<LayerId>,
 		color: Color,

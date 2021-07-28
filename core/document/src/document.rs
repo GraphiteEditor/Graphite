@@ -412,15 +412,22 @@ impl Document {
 			}
 			Operation::SetLayerBlendMode { path, blend_mode } => {
 				self.mark_as_dirty(path)?;
-				self.layer_mut(&path).unwrap().blend_mode = *blend_mode;
+				self.layer_mut(path)?.blend_mode = *blend_mode;
+
+				let path = path.as_slice()[..path.len() - 1].to_vec();
+
+				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::FolderChanged { path }])
+			}
+			Operation::SetLayerOpacity { path, opacity } => {
+				self.mark_as_dirty(path)?;
+				self.layer_mut(path)?.opacity = *opacity;
 
 				let path = path.as_slice()[..path.len() - 1].to_vec();
 
 				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::FolderChanged { path }])
 			}
 			Operation::FillLayer { path, color } => {
-				let layer = self.layer_mut(path).unwrap();
-				layer.style.set_fill(layers::style::Fill::new(*color));
+				self.layer_mut(path)?.style.set_fill(layers::style::Fill::new(*color));
 				self.mark_as_dirty(path)?;
 				Some(vec![DocumentResponse::DocumentChanged])
 			}
