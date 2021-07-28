@@ -5,7 +5,7 @@
 
 			<Separator :type="SeparatorType.Related" />
 
-			<NumberInput v-model:value="opacity" :min="0" :max="100" :step="1" :unit="`%`" />
+			<NumberInput v-model:value="opacity" :min="0" :max="100" :unit="`%`" :displayDecimalPlaces="2" />
 
 			<Separator :type="SeparatorType.Related" />
 
@@ -18,7 +18,12 @@
 			<LayoutCol :class="'list'" @click="deselectAllLayers">
 				<div class="layer-row" v-for="layer in layers" :key="layer.path">
 					<div class="layer-visibility">
-						<IconButton :icon="layer.visible ? 'EyeVisible' : 'EyeHidden'" @click.stop="toggleLayerVisibility(layer.path)" :size="24" :title="layer.visible ? 'Visible' : 'Hidden'" />
+						<IconButton
+							:action="(e) => (toggleLayerVisibility(layer.path), e.stopPropagation())"
+							:icon="layer.visible ? 'EyeVisible' : 'EyeHidden'"
+							:size="24"
+							:title="layer.visible ? 'Visible' : 'Hidden'"
+						/>
 					</div>
 					<div
 						class="layer"
@@ -111,10 +116,13 @@
 
 <script lang="ts">
 import { defineComponent } from "vue";
+
 import { ResponseType, registerResponseHandler, Response, BlendMode, ExpandFolder, LayerPanelEntry } from "@/utilities/response-handler";
+import { SeparatorType } from "@/components/widgets/widgets";
+
 import LayoutRow from "@/components/layout/LayoutRow.vue";
 import LayoutCol from "@/components/layout/LayoutCol.vue";
-import Separator, { SeparatorType } from "@/components/widgets/separators/Separator.vue";
+import Separator from "@/components/widgets/separators/Separator.vue";
 import NumberInput from "@/components/widgets/inputs/NumberInput.vue";
 import PopoverButton from "@/components/widgets/buttons/PopoverButton.vue";
 import { MenuDirection } from "@/components/widgets/floating-menus/FloatingMenu.vue";

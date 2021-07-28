@@ -112,7 +112,7 @@ export default defineComponent({
 		selectedIndex(newSelectedIndex: number) {
 			const entries = this.menuEntries.flat();
 
-			if (newSelectedIndex >= 0 && newSelectedIndex < entries.length) {
+			if (!Number.isNaN(newSelectedIndex) && newSelectedIndex >= 0 && newSelectedIndex < entries.length) {
 				this.activeEntry = entries[newSelectedIndex];
 			} else {
 				this.activeEntry = { label: "-" };

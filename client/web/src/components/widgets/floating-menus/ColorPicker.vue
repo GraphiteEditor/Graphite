@@ -131,9 +131,7 @@ const enum ColorPickerState {
 export default defineComponent({
 	components: {},
 	props: {
-		color: {
-			type: Object,
-		},
+		color: { type: Object, required: true },
 	},
 	data() {
 		return {
@@ -168,16 +166,13 @@ export default defineComponent({
 			document.addEventListener("pointermove", this.onPointerMove);
 			document.addEventListener("pointerup", this.onPointerUp);
 		},
-
 		removeEvents() {
 			document.removeEventListener("pointermove", this.onPointerMove);
 			document.removeEventListener("pointerup", this.onPointerUp);
 		},
-
 		getRef<T>(name: string) {
 			return this.$refs[name] as T;
 		},
-
 		onPointerDown(e: PointerEvent) {
 			if (!(e.currentTarget instanceof Element)) return;
 			const picker = e.currentTarget.getAttribute("data-picker-action");
@@ -200,7 +195,6 @@ export default defineComponent({
 				this.onPointerMove(e);
 			}
 		},
-
 		onPointerMove(e: PointerEvent) {
 			const { colorPicker } = this.$data._;
 
@@ -217,14 +211,12 @@ export default defineComponent({
 				this.$emit("update:color", hsvToRgb(colorPicker.color));
 			}
 		},
-
 		onPointerUp() {
 			if (this.state !== ColorPickerState.Idle) {
 				this.state = ColorPickerState.Idle;
 				this.removeEvents();
 			}
 		},
-
 		updateRects() {
 			const { colorPicker } = this.$data._;
 
@@ -249,7 +241,6 @@ export default defineComponent({
 			colorPicker.opacity.rect.left = opacity.left;
 			colorPicker.opacity.rect.top = opacity.top;
 		},
-
 		setSaturationPosition(x: number, y: number) {
 			const { colorPicker } = this.$data._;
 			const saturationCursor = this.getRef<HTMLDivElement>("saturationCursor");
@@ -258,7 +249,6 @@ export default defineComponent({
 			colorPicker.color.s = saturationPosition[0] / colorPicker.saturation.rect.width;
 			colorPicker.color.v = (1 - saturationPosition[1] / colorPicker.saturation.rect.height) * 255;
 		},
-
 		setHuePosition(y: number) {
 			const { colorPicker } = this.$data._;
 			const hueCursor = this.getRef<HTMLDivElement>("hueCursor");
@@ -266,7 +256,6 @@ export default defineComponent({
 			hueCursor.style.transform = `translateY(${huePosition}px)`;
 			colorPicker.color.h = clamp(1 - huePosition / colorPicker.hue.rect.height);
 		},
-
 		setOpacityPosition(y: number) {
 			const { colorPicker } = this.$data._;
 			const opacityCursor = this.getRef<HTMLDivElement>("opacityCursor");
@@ -274,7 +263,6 @@ export default defineComponent({
 			opacityCursor.style.transform = `translateY(${opacityPosition}px)`;
 			colorPicker.color.a = clamp(1 - opacityPosition / colorPicker.opacity.rect.height);
 		},
-
 		updateHue() {
 			const { colorPicker } = this.$data._;
 			let color = hsvToRgb({ h: colorPicker.color.h, s: 1, v: 255, a: 1 });
@@ -282,7 +270,6 @@ export default defineComponent({
 			color = hsvToRgb(colorPicker.color);
 			this.$el.style.setProperty("--opacity-picker-color", `rgb(${color.r}, ${color.g}, ${color.b})`);
 		},
-
 		updateColor() {
 			if (this.state !== ColorPickerState.Idle) return;
 			const { color } = this;
