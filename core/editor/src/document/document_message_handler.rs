@@ -136,6 +136,9 @@ impl DocumentMessageHandler {
 		// TODO: Add deduplication
 		(!path.is_empty()).then(|| self.handle_folder_changed(path[..path.len() - 1].to_vec())).flatten()
 	}
+	fn selected_layers(&self) -> impl Iterator<Item = &Vec<LayerId>> {
+		self.active_document().layer_data.iter().filter_map(|(path, data)| data.selected.then(|| path))
+	}
 	fn layerdata(&self, path: &[LayerId]) -> &LayerData {
 		self.active_document().layer_data.get(path).expect("Layerdata does not exist")
 	}
@@ -155,8 +158,7 @@ impl DocumentMessageHandler {
 		);
 	}
 
-	/// Returns the paths to all layers in order, optionally including only selected or non
-	/// selected layers.
+	/// Returns the paths to all layers in order, optionally including only selected or non-selected layers.
 	fn layers_sorted(&self, selected: Option<bool>) -> Vec<Vec<LayerId>> {
 		// Compute the indices for each layer to be able to sort them
 		let mut layers_with_indices: Vec<(Vec<LayerId>, Vec<usize>)> = self
@@ -366,17 +368,14 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				.into(),
 			),
 			SetBlendModeForSelectedLayers(blend_mode) => {
-				let active_document = self.active_document();
-
-				for path in active_document.layer_data.iter().filter_map(|(path, data)| data.selected.then(|| path.clone())) {
+				for path in self.selected_layers().cloned() {
 					responses.push_back(DocumentOperation::SetLayerBlendMode { path, blend_mode }.into());
 				}
 			}
 			SetOpacityForSelectedLayers(opacity) => {
 				let opacity = opacity.clamp(0., 1.);
-				let active_document = self.active_document();
 
-				for path in active_document.layer_data.iter().filter_map(|(path, data)| data.selected.then(|| path.clone())) {
+				for path in self.selected_layers().cloned() {
 					responses.push_back(DocumentOperation::SetLayerOpacity { path, opacity }.into());
 				}
 			}
@@ -388,8 +387,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				responses.extend(self.handle_folder_changed(path));
 			}
 			DeleteSelectedLayers => {
-				let paths = self.selected_layers_sorted();
-				for path in paths {
+				for path in self.selected_layers().cloned() {
 					responses.push_back(DocumentOperation::DeleteLayer { path }.into())
 				}
 			}
@@ -608,14 +606,12 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				responses.push_back(FrontendMessage::SetCanvasRotation { new_radians: new }.into());
 			}
 			NudgeSelectedLayers(x, y) => {
-				let paths = self.selected_layers_sorted();
-
 				let delta = {
 					let root_layer_rotation = self.layerdata_mut(&[]).rotation;
 					let rotate_to_viewport_space = DAffine2::from_angle(root_layer_rotation).inverse();
 					rotate_to_viewport_space.transform_point2((x, y).into())
 				};
-				for path in paths {
+				for path in self.selected_layers().cloned() {
 					let operation = DocumentOperation::TransformLayer {
 						path,
 						transform: DAffine2::from_translation(delta).to_cols_array(),
@@ -711,13 +707,13 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			}
 			AlignSelectedLayers(axis, aggregate) => {
 				// TODO: Handle folder nested transforms with the transforms API
-				let selected_paths = self.selected_layers_sorted();
-				if selected_paths.is_empty() {
+				let selected_layers = self.selected_layers().cloned().peekable();
+				if selected_layers.peek().is_none() {
 					return;
 				}
 
-				let selected_layers = selected_paths.iter().filter_map(|path| {
-					let layer = self.active_document().document.layer(path).unwrap();
+				let selected_layers = selected_layers.filter_map(|path| {
+					let layer = self.active_document().document.layer(&path).unwrap();
 					let point = {
 						let bounding_box = layer.bounding_box(layer.transform, layer.style)?;
 						match aggregate {
@@ -734,13 +730,13 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					Some((path.clone(), bounding_box_coord, translation_coord))
 				});
 
-				let bounding_box_coords = selected_layers.clone().map(|(_, bounding_box_coord, _)| bounding_box_coord);
+				let bounding_box_coords = selected_layers.map(|(_, bounding_box_coord, _)| bounding_box_coord);
 				let aggregated_coord = match aggregate {
 					AlignAggregate::Min => bounding_box_coords.reduce(|a, b| a.min(b)).unwrap(),
 					AlignAggregate::Max => bounding_box_coords.reduce(|a, b| a.max(b)).unwrap(),
 					AlignAggregate::Center => {
 						// TODO: Refactor with `reduce` and `merge_bounding_boxes` once the latter is added
-						let bounding_boxes = selected_paths.iter().filter_map(|path| {
+						let bounding_boxes = selected_layers.iter().filter_map(|path| {
 							let layer = self.active_document().document.layer(path).unwrap();
 							layer.bounding_box(layer.transform, layer.style)
 						});
@@ -762,7 +758,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 							.unwrap();
 						(min + max) / 2.
 					}
-					AlignAggregate::Average => bounding_box_coords.sum::<f64>() / selected_paths.len() as f64,
+					AlignAggregate::Average => bounding_box_coords.sum::<f64>() / selected_layers.len() as f64,
 				};
 				for (path, bounding_box_coord, translation_coord) in selected_layers {
 					let new_coord = aggregated_coord - (bounding_box_coord - translation_coord);
