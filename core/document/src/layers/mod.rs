@@ -175,6 +175,7 @@ pub struct Layer {
 	pub thumbnail_cache: String,
 	pub cache_dirty: bool,
 	pub blend_mode: BlendMode,
+	pub opacity: f64,
 }
 
 impl Layer {
@@ -189,6 +190,7 @@ impl Layer {
 			thumbnail_cache: String::new(),
 			cache_dirty: true,
 			blend_mode: BlendMode::Normal,
+			opacity: 1.,
 		}
 	}
 
@@ -203,8 +205,9 @@ impl Layer {
 			self.cache.clear();
 			let _ = write!(
 				self.cache,
-				r#"<g style="mix-blend-mode: {}">{}</g>"#,
+				r#"<g style="mix-blend-mode: {}; opacity: {}">{}</g>"#,
 				self.blend_mode.to_svg_style_name(),
+				self.opacity,
 				self.thumbnail_cache.as_str()
 			);
 

@@ -27,6 +27,7 @@ pub enum DocumentMessage {
 	DuplicateSelectedLayers,
 	CopySelectedLayers,
 	SetBlendModeForSelectedLayers(BlendMode),
+	SetOpacityForSelectedLayers(f64),
 	PasteLayers { path: Vec<LayerId>, insert_index: isize },
 	AddFolder(Vec<LayerId>),
 	RenameLayer(Vec<LayerId>, String),
@@ -61,7 +62,7 @@ pub enum DocumentMessage {
 	AlignSelectedLayers(AlignAxis, AlignAggregate),
 	DragLayer(Vec<LayerId>, DVec2),
 	MoveSelectedLayersTo { path: Vec<LayerId>, insert_index: isize },
-	ReorderSelectedLayers(i32), // relatve_position,
+	ReorderSelectedLayers(i32), // relative_position,
 	SetLayerTranslation(Vec<LayerId>, Option<f64>, Option<f64>),
 }
 
@@ -361,8 +362,16 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			SetBlendModeForSelectedLayers(blend_mode) => {
 				let active_document = self.active_document();
 
-				for path in active_document.layer_data.iter().filter_map(|(path, data)| data.selected.then(|| path)) {
-					responses.push_back(DocumentOperation::SetLayerBlendMode { path: path.clone(), blend_mode }.into());
+				for path in active_document.layer_data.iter().filter_map(|(path, data)| data.selected.then(|| path.clone())) {
+					responses.push_back(DocumentOperation::SetLayerBlendMode { path, blend_mode }.into());
+				}
+			}
+			SetOpacityForSelectedLayers(opacity) => {
+				let opacity = opacity.clamp(0., 1.);
+				let active_document = self.active_document();
+
+				for path in active_document.layer_data.iter().filter_map(|(path, data)| data.selected.then(|| path.clone())) {
+					responses.push_back(DocumentOperation::SetLayerOpacity { path, opacity }.into());
 				}
 			}
 			ToggleLayerVisibility(path) => {
