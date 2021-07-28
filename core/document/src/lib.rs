@@ -24,4 +24,5 @@ pub enum DocumentError {
 	IndexOutOfBounds,
 	NotAFolder,
 	NonReorderableSelection,
+	NotAShape,
 }

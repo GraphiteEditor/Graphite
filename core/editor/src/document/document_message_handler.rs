@@ -665,7 +665,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					let layer = self.active_document().document.layer(path).ok()?;
 					// TODO: Refactor with `reduce` and `merge_bounding_boxes` once the latter is added
 					let (min, max) = {
-						let bounding_box = layer.bounding_box(layer.transform, layer.style)?;
+						let bounding_box = layer.current_bounding_box()?;
 						match axis {
 							FlipAxis::X => (bounding_box[0].x, bounding_box[1].x),
 							FlipAxis::Y => (bounding_box[0].y, bounding_box[1].y),
@@ -714,7 +714,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				let selected_layers = self.selected_layers().cloned().filter_map(|path| {
 					let layer = self.active_document().document.layer(&path).ok()?;
 					let point = {
-						let bounding_box = layer.bounding_box(layer.transform, layer.style)?;
+						let bounding_box = layer.current_bounding_box()?;
 						match aggregate {
 							AlignAggregate::Min => bounding_box[0],
 							AlignAggregate::Max => bounding_box[1],
@@ -737,7 +737,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					AlignAggregate::Center => {
 						// TODO: Refactor with `reduce` and `merge_bounding_boxes` once the latter is added
 						self.selected_layers()
-							.filter_map(|path| self.active_document().document.layer(path).ok().map(|layer| layer.bounding_box(layer.transform, layer.style)).flatten())
+							.filter_map(|path| self.active_document().document.layer(path).ok().map(|layer| layer.current_bounding_box()).flatten())
 							.map(|bbox| match axis {
 								AlignAxis::X => (bbox[0].x, bbox[1].x),
 								AlignAxis::Y => (bbox[0].y, bbox[1].y),
