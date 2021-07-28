@@ -707,13 +707,12 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			}
 			AlignSelectedLayers(axis, aggregate) => {
 				// TODO: Handle folder nested transforms with the transforms API
-				let selected_layers = self.selected_layers().cloned().peekable();
-				if selected_layers.peek().is_none() {
+				if self.selected_layers().next().is_none() {
 					return;
 				}
 
-				let selected_layers = selected_layers.filter_map(|path| {
-					let layer = self.active_document().document.layer(&path).unwrap();
+				let selected_layers = self.selected_layers().cloned().filter_map(|path| {
+					let layer = self.active_document().document.layer(&path).ok()?;
 					let point = {
 						let bounding_box = layer.bounding_box(layer.transform, layer.style)?;
 						match aggregate {
@@ -727,44 +726,33 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 						AlignAxis::X => (point.x, layer.transform.translation.x),
 						AlignAxis::Y => (point.y, layer.transform.translation.y),
 					};
-					Some((path.clone(), bounding_box_coord, translation_coord))
+					Some((path, bounding_box_coord, translation_coord))
 				});
+				let selected_layers: Vec<_> = selected_layers.collect();
 
-				let bounding_box_coords = selected_layers.map(|(_, bounding_box_coord, _)| bounding_box_coord);
-				let aggregated_coord = match aggregate {
-					AlignAggregate::Min => bounding_box_coords.reduce(|a, b| a.min(b)).unwrap(),
-					AlignAggregate::Max => bounding_box_coords.reduce(|a, b| a.max(b)).unwrap(),
+				let bounding_box_coords = selected_layers.iter().map(|(_, bounding_box_coord, _)| bounding_box_coord).cloned();
+				if let Some(aggregated_coord) = match aggregate {
+					AlignAggregate::Min => bounding_box_coords.reduce(|a, b| a.min(b)),
+					AlignAggregate::Max => bounding_box_coords.reduce(|a, b| a.max(b)),
 					AlignAggregate::Center => {
 						// TODO: Refactor with `reduce` and `merge_bounding_boxes` once the latter is added
-						let bounding_boxes = selected_layers.iter().filter_map(|path| {
-							let layer = self.active_document().document.layer(path).unwrap();
-							layer.bounding_box(layer.transform, layer.style)
-						});
-						let min = bounding_boxes
-							.clone()
+						self.selected_layers()
+							.filter_map(|path| self.active_document().document.layer(path).ok().map(|layer| layer.bounding_box(layer.transform, layer.style)).flatten())
 							.map(|bbox| match axis {
-								AlignAxis::X => bbox[0].x,
-								AlignAxis::Y => bbox[0].y,
+								AlignAxis::X => (bbox[0].x, bbox[1].x),
+								AlignAxis::Y => (bbox[0].y, bbox[1].y),
 							})
-							.reduce(|a, b| a.min(b))
-							.unwrap();
-						let max = bounding_boxes
-							.clone()
-							.map(|bbox| match axis {
-								AlignAxis::X => bbox[1].x,
-								AlignAxis::Y => bbox[1].y,
-							})
-							.reduce(|a, b| a.max(b))
-							.unwrap();
-						(min + max) / 2.
+							.reduce(|(a, b), (c, d)| (a.min(c), b.max(d)))
+							.map(|(min, max)| (min + max) / 2.)
 					}
-					AlignAggregate::Average => bounding_box_coords.sum::<f64>() / selected_layers.len() as f64,
-				};
-				for (path, bounding_box_coord, translation_coord) in selected_layers {
-					let new_coord = aggregated_coord - (bounding_box_coord - translation_coord);
-					match axis {
-						AlignAxis::X => responses.push_back(DocumentMessage::SetLayerTranslation(path, Some(new_coord), None).into()),
-						AlignAxis::Y => responses.push_back(DocumentMessage::SetLayerTranslation(path, None, Some(new_coord)).into()),
+					AlignAggregate::Average => Some(bounding_box_coords.sum::<f64>() / selected_layers.len() as f64),
+				} {
+					for (path, bounding_box_coord, translation_coord) in selected_layers {
+						let new_coord = aggregated_coord - (bounding_box_coord - translation_coord);
+						match axis {
+							AlignAxis::X => responses.push_back(DocumentMessage::SetLayerTranslation(path, Some(new_coord), None).into()),
+							AlignAxis::Y => responses.push_back(DocumentMessage::SetLayerTranslation(path, None, Some(new_coord)).into()),
+						}
 					}
 				}
 			}
