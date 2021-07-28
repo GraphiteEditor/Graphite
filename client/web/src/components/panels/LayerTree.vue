@@ -1,11 +1,11 @@
 <template>
 	<LayoutCol :class="'layer-tree-panel'">
 		<LayoutRow :class="'options-bar'">
-			<DropdownInput :menuEntries="blendModeEntries" v-model:selectedIndex="blendModeSelectedIndex" @update:selectedIndex="blendModeChanged" :disabled="blendModeDropdownDisabled" />
+			<DropdownInput v-model:selectedIndex="blendModeSelectedIndex" @update:selectedIndex="setLayerBlendMode" :menuEntries="blendModeEntries" :disabled="blendModeDropdownDisabled" />
 
 			<Separator :type="SeparatorType.Related" />
 
-			<NumberInput v-model:value="opacity" :min="0" :max="100" :unit="`%`" :displayDecimalPlaces="2" />
+			<NumberInput v-model:value="opacity" @update:value="setLayerOpacity" :min="0" :max="100" :unit="`%`" :displayDecimalPlaces="2" :disabled="opacityNumberInputDisabled" />
 
 			<Separator :type="SeparatorType.Related" />
 
@@ -179,9 +179,16 @@ export default defineComponent({
 			const { toggle_layer_visibility } = await wasm;
 			toggle_layer_visibility(path);
 		},
-		async setLayerBlendMode(blendMode: BlendMode) {
-			const { set_blend_mode_for_selected_layers } = await wasm;
-			set_blend_mode_for_selected_layers(blendMode);
+		async setLayerBlendMode() {
+			const blendMode = this.blendModeEntries.flat()[this.blendModeSelectedIndex].value as BlendMode;
+			if (blendMode) {
+				const { set_blend_mode_for_selected_layers } = await wasm;
+				set_blend_mode_for_selected_layers(blendMode);
+			}
+		},
+		async setLayerOpacity() {
+			const { set_opacity_for_selected_layers } = await wasm;
+			set_opacity_for_selected_layers(this.opacity);
 		},
 		async handleControlClick(clickedLayer: LayerPanelEntry) {
 			const index = this.layers.indexOf(clickedLayer);
@@ -199,7 +206,7 @@ export default defineComponent({
 		},
 		async handleShiftClick(clickedLayer: LayerPanelEntry) {
 			// The two paths of the range are stored in selectionRangeStartLayer and selectionRangeEndLayer
-			// So for a new Shift+Click, select all layers between selectionRangeStartLayer and selectionRangeEndLayer (stored in prev Shift+Click)
+			// So for a new Shift+Click, select all layers between selectionRangeStartLayer and selectionRangeEndLayer (stored in previous Shift+Click)
 			this.clearSelection();
 
 			this.selectionRangeEndLayer = clickedLayer;
@@ -276,12 +283,28 @@ export default defineComponent({
 				this.blendModeSelectedIndex = this.blendModeEntries.flat().findIndex((entry) => entry.value === firstEncounteredBlendMode);
 			} else {
 				// Display a dash when they are not all the same value
-				this.blendModeSelectedIndex = -1;
+				this.blendModeSelectedIndex = NaN;
 			}
 		},
-		blendModeChanged() {
-			const blendMode = this.blendModeEntries.flat()[this.blendModeSelectedIndex].value as BlendMode;
-			if (blendMode) this.setLayerBlendMode(blendMode);
+		setOpacityForSelectedLayers() {
+			const selected = this.layers.filter((layer) => layer.layer_data.selected);
+
+			if (selected.length < 1) {
+				this.opacity = 100;
+				this.opacityNumberInputDisabled = true;
+				return;
+			}
+			this.opacityNumberInputDisabled = false;
+
+			const firstEncounteredOpacity = selected[0].opacity;
+			const allOpacitiesAlike = !selected.find((layer) => layer.opacity !== firstEncounteredOpacity);
+
+			if (allOpacitiesAlike) {
+				this.opacity = firstEncounteredOpacity;
+			} else {
+				// Display a dash when they are not all the same value
+				this.opacity = NaN;
+			}
 		},
 	},
 	mounted() {
@@ -295,6 +318,7 @@ export default defineComponent({
 				this.layers = responseLayers;
 
 				this.setBlendModeForSelectedLayers();
+				this.setOpacityForSelectedLayers();
 			}
 		});
 		registerResponseHandler(ResponseType.CollapseFolder, (responseData) => {
@@ -306,6 +330,7 @@ export default defineComponent({
 			blendModeEntries,
 			blendModeSelectedIndex: 0,
 			blendModeDropdownDisabled: true,
+			opacityNumberInputDisabled: true,
 			layers: [] as Array<LayerPanelEntry>,
 			selectionRangeStartLayer: undefined as undefined | LayerPanelEntry,
 			selectionRangeEndLayer: undefined as undefined | LayerPanelEntry,

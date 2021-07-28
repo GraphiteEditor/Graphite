@@ -244,10 +244,15 @@ function newBlendMode(input: string): BlendMode {
 	return blendMode;
 }
 
+function newOpacity(input: number): number {
+	return input * 100;
+}
+
 export interface LayerPanelEntry {
 	name: string;
 	visible: boolean;
 	blend_mode: BlendMode;
+	opacity: number;
 	layer_type: LayerType;
 	path: BigUint64Array;
 	layer_data: LayerData;
@@ -258,6 +263,7 @@ function newLayerPanelEntry(input: any): LayerPanelEntry {
 		name: input.name,
 		visible: input.visible,
 		blend_mode: newBlendMode(input.blend_mode),
+		opacity: newOpacity(input.opacity),
 		layer_type: newLayerType(input.layer_type),
 		layer_data: newLayerData(input.layer_data),
 		path: new BigUint64Array(input.path.map((n: number) => BigInt(n))),
