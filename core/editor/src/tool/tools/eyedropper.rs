@@ -1,6 +1,7 @@
 use crate::consts::SELECTION_TOLERANCE;
 use crate::message_prelude::*;
 use crate::tool::{ToolActionHandlerData, ToolMessage};
+use document_core::layers::LayerDataType;
 use glam::DVec2;
 
 #[derive(Default)]
@@ -31,12 +32,14 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Eyedropper {
 
 		if let Some(path) = data.0.document.intersects_quad_root(quad).last() {
 			if let Ok(layer) = data.0.document.layer(path) {
-				if let Some(color) = layer.style.fill().and_then(|fill| fill.color()) {
-					match action {
-						ToolMessage::Eyedropper(EyedropperMessage::LeftMouseDown) => responses.push_back(ToolMessage::SelectPrimaryColor(color).into()),
-						ToolMessage::Eyedropper(EyedropperMessage::RightMouseDown) => responses.push_back(ToolMessage::SelectSecondaryColor(color).into()),
-						_ => {}
-					}
+				if let LayerDataType::Shape(s) = &layer.data {
+					s.style.fill().map(|fill| {
+						fill.color().map(|color| match action {
+							ToolMessage::Eyedropper(EyedropperMessage::LeftMouseDown) => responses.push_back(ToolMessage::SelectPrimaryColor(color).into()),
+							ToolMessage::Eyedropper(EyedropperMessage::RightMouseDown) => responses.push_back(ToolMessage::SelectSecondaryColor(color).into()),
+							_ => {}
+						})
+					});
 				}
 			}
 		}

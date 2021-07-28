@@ -1,7 +1,7 @@
 use glam::{DAffine2, DVec2};
 
 use crate::{
-	layers::{self, style::PathStyle, Folder, Layer, LayerDataTypes, Line, PolyLine, Rect, Shape},
+	layers::{self, Folder, Layer, LayerData, LayerDataType, Shape},
 	DocumentError, DocumentResponse, LayerId, Operation,
 };
 
@@ -17,8 +17,8 @@ pub struct Document {
 impl Default for Document {
 	fn default() -> Self {
 		Self {
-			root: Layer::new(LayerDataTypes::Folder(Folder::default()), DAffine2::IDENTITY.to_cols_array(), PathStyle::default()),
-			work: Layer::new(LayerDataTypes::Folder(Folder::default()), DAffine2::IDENTITY.to_cols_array(), PathStyle::default()),
+			root: Layer::new(LayerDataType::Folder(Folder::default()), DAffine2::IDENTITY.to_cols_array()),
+			work: Layer::new(LayerDataType::Folder(Folder::default()), DAffine2::IDENTITY.to_cols_array()),
 			work_mount_path: Vec::new(),
 			work_operations: Vec::new(),
 			work_mounted: false,
@@ -214,7 +214,7 @@ impl Document {
 	/// Passing a negative `insert_index` indexes relative to the end.
 	/// -1 is equivalent to adding the layer to the top.
 	pub fn add_layer(&mut self, path: &[LayerId], mut layer: Layer, insert_index: isize) -> Result<LayerId, DocumentError> {
-		layer.render(&self.transforms(path)?);
+		layer.render(&mut self.transforms(path)?);
 		let folder = self.folder_mut(path)?;
 		folder.add_layer(layer, insert_index).ok_or(DocumentError::IndexOutOfBounds)
 	}
@@ -233,23 +233,42 @@ impl Document {
 			self.layer_local_bounding_box(path)
 		} else {
 			let layer = self.document_layer(path)?;
-			Ok(layer.bounding_box(self.root.transform * layer.transform, layer.style))
+			Ok(layer.data.bounding_box(self.root.transform * layer.transform))
 		}
 	}
 
 	pub fn layer_local_bounding_box(&self, path: &[LayerId]) -> Result<Option<[DVec2; 2]>, DocumentError> {
 		// TODO: Replace with functions of the transform api
 		let layer = self.document_layer(path)?;
-		Ok(layer.bounding_box(layer.transform, layer.style))
+		Ok(layer.data.bounding_box(layer.transform))
 	}
-
-	pub fn mark_as_dirty(&mut self, path: &[LayerId]) -> Result<(), DocumentError> {
+	pub fn mark_upstream_as_dirty(&mut self, path: &[LayerId]) -> Result<(), DocumentError> {
 		let mut root = &mut self.root;
 		root.cache_dirty = true;
 		for id in path {
 			root = root.as_folder_mut()?.layer_mut(*id).ok_or(DocumentError::LayerNotFound)?;
 			root.cache_dirty = true;
 		}
+		Ok(())
+	}
+
+	pub fn mark_downstream_as_dirty(&mut self, path: &[LayerId]) -> Result<(), DocumentError> {
+		let mut layer = self.document_layer_mut(path)?;
+		layer.cache_dirty = true;
+		let mut path = path.to_vec();
+		let len = path.len();
+		path.push(0);
+		let ids = layer.as_folder()?.layer_ids.clone();
+		for id in ids {
+			path[len] = id;
+			self.mark_downstream_as_dirty(&path)?
+		}
+		Ok(())
+	}
+
+	pub fn mark_as_dirty(&mut self, path: &[LayerId]) -> Result<(), DocumentError> {
+		self.mark_downstream_as_dirty(path)?;
+		self.mark_upstream_as_dirty(path)?;
 		Ok(())
 	}
 
@@ -314,12 +333,11 @@ impl Document {
 			name: layer.name.clone(),
 			data: layer.data.clone(),
 			transform,
-			style: layer.style,
 			thumbnail_cache: String::with_capacity(layer.thumbnail_cache.capacity()),
 			cache: String::with_capacity(layer.cache.capacity()),
 			cache_dirty: true,
 			blend_mode: layers::BlendMode::Normal,
-			premultiply_transform: true,
+			opacity: layer.opacity,
 		})
 	}
 
@@ -328,19 +346,19 @@ impl Document {
 	pub fn handle_operation(&mut self, operation: Operation) -> Result<Option<Vec<DocumentResponse>>, DocumentError> {
 		let responses = match &operation {
 			Operation::AddEllipse { path, insert_index, transform, style } => {
-				let id = self.add_layer(&path, Layer::new(LayerDataTypes::Ellipse(layers::Ellipse::new()), *transform, *style), *insert_index)?;
+				let id = self.add_layer(&path, Layer::new(LayerDataType::Shape(Shape::ellipse(*style)), *transform), *insert_index)?;
 				let path = [path.clone(), vec![id]].concat();
 
 				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::CreatedLayer { path }])
 			}
 			Operation::AddRect { path, insert_index, transform, style } => {
-				let id = self.add_layer(&path, Layer::new(LayerDataTypes::Rect(Rect), *transform, *style), *insert_index)?;
+				let id = self.add_layer(&path, Layer::new(LayerDataType::Shape(Shape::rectangle(*style)), *transform), *insert_index)?;
 				let path = [path.clone(), vec![id]].concat();
 
 				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::CreatedLayer { path }])
 			}
 			Operation::AddLine { path, insert_index, transform, style } => {
-				let id = self.add_layer(&path, Layer::new(LayerDataTypes::Line(Line), *transform, *style), *insert_index)?;
+				let id = self.add_layer(&path, Layer::new(LayerDataType::Shape(Shape::line(*style)), *transform), *insert_index)?;
 				let path = [path.clone(), vec![id]].concat();
 
 				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::CreatedLayer { path }])
@@ -353,8 +371,7 @@ impl Document {
 				style,
 			} => {
 				let points: Vec<glam::DVec2> = points.iter().map(|&it| it.into()).collect();
-				let polyline = PolyLine::new(points);
-				let id = self.add_layer(&path, Layer::new(LayerDataTypes::PolyLine(polyline), *transform, *style), *insert_index)?;
+				let id = self.add_layer(&path, Layer::new(LayerDataType::Shape(Shape::poly_line(points, *style)), *transform), *insert_index)?;
 				let path = [path.clone(), vec![id]].concat();
 				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::CreatedLayer { path }])
 			}
@@ -366,8 +383,7 @@ impl Document {
 				sides,
 				style,
 			} => {
-				let s = Shape::new(*equal_sides, *sides);
-				let id = self.add_layer(&path, Layer::new(LayerDataTypes::Shape(s), *transform, *style), *insert_index)?;
+				let id = self.add_layer(&path, Layer::new(LayerDataType::Shape(Shape::shape(*sides, *style)), *transform), *insert_index)?;
 				let path = [path.clone(), vec![id]].concat();
 
 				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::CreatedLayer { path }])
@@ -402,7 +418,7 @@ impl Document {
 				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::FolderChanged { path: folder_path.to_vec() }])
 			}
 			Operation::AddFolder { path } => {
-				self.set_layer(&path, Layer::new(LayerDataTypes::Folder(Folder::default()), DAffine2::IDENTITY.to_cols_array(), PathStyle::default()))?;
+				self.set_layer(&path, Layer::new(LayerDataType::Folder(Folder::default()), DAffine2::IDENTITY.to_cols_array()))?;
 
 				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::FolderChanged { path: path.clone() }])
 			}
@@ -410,7 +426,7 @@ impl Document {
 				let mut responses: Vec<_> = self.working_paths().into_iter().map(|path| DocumentResponse::DeletedLayer { path }).collect();
 				self.work_mount_path = path.clone();
 				self.work_operations.clear();
-				self.work = Layer::new(LayerDataTypes::Folder(Folder::default()), DAffine2::IDENTITY.to_cols_array(), PathStyle::default());
+				self.work = Layer::new(LayerDataType::Folder(Folder::default()), DAffine2::IDENTITY.to_cols_array());
 				self.work_mounted = true;
 				responses.push(DocumentResponse::DocumentChanged);
 				Some(responses)
@@ -433,7 +449,7 @@ impl Document {
 				let mut responses: Vec<_> = self.working_paths().into_iter().map(|path| DocumentResponse::DeletedLayer { path }).collect();
 				self.work_operations.clear();
 				self.work_mount_path = vec![];
-				self.work = Layer::new(LayerDataTypes::Folder(Folder::default()), DAffine2::IDENTITY.to_cols_array(), PathStyle::default());
+				self.work = Layer::new(LayerDataType::Folder(Folder::default()), DAffine2::IDENTITY.to_cols_array());
 				self.work_mounted = false;
 				responses.push(DocumentResponse::DocumentChanged);
 				Some(responses)
@@ -441,7 +457,7 @@ impl Document {
 			Operation::ClearWorkingFolder => {
 				let mut responses: Vec<_> = self.working_paths().into_iter().map(|path| DocumentResponse::DeletedLayer { path }).collect();
 				self.work_operations.clear();
-				self.work = Layer::new(LayerDataTypes::Folder(Folder::default()), DAffine2::IDENTITY.to_cols_array(), PathStyle::default());
+				self.work = Layer::new(LayerDataType::Folder(Folder::default()), DAffine2::IDENTITY.to_cols_array());
 				responses.push(DocumentResponse::DocumentChanged);
 				Some(responses)
 			}
@@ -453,7 +469,7 @@ impl Document {
 				std::mem::swap(&mut ops, &mut self.work_operations);
 				self.work_mounted = false;
 				self.work_mount_path = vec![];
-				self.work = Layer::new(LayerDataTypes::Folder(Folder::default()), DAffine2::IDENTITY.to_cols_array(), PathStyle::default());
+				self.work = Layer::new(LayerDataType::Folder(Folder::default()), DAffine2::IDENTITY.to_cols_array());
 				for operation in ops.into_iter() {
 					if let Some(mut op_responses) = self.handle_operation(operation)? {
 						responses.append(&mut op_responses);
@@ -488,7 +504,11 @@ impl Document {
 				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::FolderChanged { path }])
 			}
 			Operation::FillLayer { path, color } => {
-				self.layer_mut(path)?.style.set_fill(layers::style::Fill::new(*color));
+				let layer = self.layer_mut(path)?;
+				match &mut layer.data {
+					LayerDataType::Shape(s) => s.style.set_fill(layers::style::Fill::new(*color)),
+					_ => Err(DocumentError::NotAShape)?,
+				}
 				self.mark_as_dirty(path)?;
 				Some(vec![DocumentResponse::DocumentChanged])
 			}
