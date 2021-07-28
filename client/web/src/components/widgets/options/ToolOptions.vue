@@ -1,13 +1,25 @@
 <template>
 	<div class="tool-options">
-		<template v-for="(option, index) in optionsMap.get(activeTool) || []" :key="index">
-			<IconButton v-if="option.kind === 'IconButton'" :icon="option.icon" :size="24" :title="option.title" :onClick="() => sendToolMessage(option.message)" />
-			<Separator v-if="option.kind === 'Separator'" :type="option.type" />
-			<PopoverButton v-if="option.kind === 'PopoverButton'">
+		<template v-for="(option, index) in toolOptions[activeTool] || []" :key="index">
+			<!-- TODO: Use `<component :is="" v-bind="attributesObject"></component>` to avoid all the separate components with `v-if` -->
+			<IconButton
+				v-if="option.kind === 'IconButton'"
+				:action="() => (option.message && sendToolMessage(option.message), option.callback && option.callback())"
+				:title="option.tooltip"
+				v-bind="option.props"
+			/>
+			<PopoverButton v-if="option.kind === 'PopoverButton'" :title="option.tooltip" :action="() => option.callback && option.callback()" v-bind="option.props">
 				<h3>{{ option.title }}</h3>
-				<p>{{ option.placeholderText }}</p>
+				<p>{{ option.text }}</p>
 			</PopoverButton>
-			<NumberInput v-if="option.kind === 'NumberInput'" :callback="option.callback" :initialValue="option.initial" :step="option.step" :min="option.min" :updateOnCallback="true" />
+			<NumberInput
+				v-if="option.kind === 'NumberInput'"
+				v-model:value="option.props.value"
+				@update:value="() => option.callback && option.callback()"
+				:title="option.tooltip"
+				v-bind="option.props"
+			/>
+			<Separator v-if="option.kind === 'Separator'" :type="option.type" />
 		</template>
 	</div>
 </template>
@@ -23,42 +35,14 @@
 
 <script lang="ts">
 import { defineComponent } from "vue";
-import Separator, { SeparatorType } from "@/components/widgets/separators/Separator.vue";
+
+import { WidgetRow, SeparatorType } from "@/components/widgets/widgets";
+import Separator from "@/components/widgets/separators/Separator.vue";
 import IconButton from "@/components/widgets/buttons/IconButton.vue";
 import PopoverButton from "@/components/widgets/buttons/PopoverButton.vue";
 import NumberInput from "@/components/widgets/inputs/NumberInput.vue";
 
 const wasm = import("@/../wasm/pkg");
-
-type ToolOptionsList = Array<ToolOptions>;
-type ToolOptionsMap = Map<string, ToolOptionsList>;
-type ToolOptions = IconButtonOption | SeparatorOption | PopoverButtonOption | NumberInputOption;
-
-interface IconButtonOption {
-	kind: "IconButton";
-	icon: string;
-	title: string;
-	message?: string | object;
-}
-
-interface SeparatorOption {
-	kind: "Separator";
-	type: SeparatorType;
-}
-
-interface PopoverButtonOption {
-	kind: "PopoverButton";
-	title: string;
-	placeholderText: string;
-}
-
-interface NumberInputOption {
-	kind: "NumberInput";
-	initial: number;
-	step: number;
-	min?: number;
-	callback?: Function;
-}
 
 export default defineComponent({
 	props: {
@@ -75,59 +59,75 @@ export default defineComponent({
 			// This is a placeholder call, using the Shape tool as an example
 			set_tool_options(this.$props.activeTool || "", { Shape: { shape_type: { Polygon: { vertices: newValue } } } });
 		},
-		async sendToolMessage(message?: string) {
-			if (message) {
-				const { send_tool_message } = await wasm;
-				send_tool_message(this.$props.activeTool || "", message);
-			}
+		async sendToolMessage(message: string) {
+			const { send_tool_message } = await wasm;
+			send_tool_message(this.$props.activeTool || "", message);
 		},
 	},
 	data() {
-		const optionsMap: ToolOptionsMap = new Map([
-			[
-				"Select",
-				[
-					{ kind: "IconButton", icon: "AlignLeft", title: "Align Left", message: { Align: ["X", "Min"] } },
-					{ kind: "IconButton", icon: "AlignHorizontalCenter", title: "Align Horizontal Center", message: { Align: ["X", "Center"] } },
-					{ kind: "IconButton", icon: "AlignRight", title: "Align Right", message: { Align: ["X", "Max"] } },
+		const toolOptions: Record<string, WidgetRow> = {
+			Select: [
+				{ kind: "IconButton", message: { Align: ["X", "Min"] }, tooltip: "Align Left", props: { icon: "AlignLeft", size: 24 } },
+				{ kind: "IconButton", message: { Align: ["X", "Center"] }, tooltip: "Align Horizontal Center", props: { icon: "AlignHorizontalCenter", size: 24 } },
+				{ kind: "IconButton", message: { Align: ["X", "Max"] }, tooltip: "Align Right", props: { icon: "AlignRight", size: 24 } },
 
-					{ kind: "Separator", type: SeparatorType.Unrelated },
+				{ kind: "Separator", props: { type: SeparatorType.Unrelated } },
 
-					{ kind: "IconButton", icon: "AlignTop", title: "Align Top", message: { Align: ["Y", "Min"] } },
-					{ kind: "IconButton", icon: "AlignVerticalCenter", title: "Align Vertical Center", message: { Align: ["Y", "Center"] } },
-					{ kind: "IconButton", icon: "AlignBottom", title: "Align Bottom", message: { Align: ["Y", "Max"] } },
+				{ kind: "IconButton", message: { Align: ["Y", "Min"] }, tooltip: "Align Top", props: { icon: "AlignTop", size: 24 } },
+				{ kind: "IconButton", message: { Align: ["Y", "Center"] }, tooltip: "Align Vertical Center", props: { icon: "AlignVerticalCenter", size: 24 } },
+				{ kind: "IconButton", message: { Align: ["Y", "Max"] }, tooltip: "Align Bottom", props: { icon: "AlignBottom", size: 24 } },
 
-					{ kind: "Separator", type: SeparatorType.Related },
+				{ kind: "Separator", props: { type: SeparatorType.Related } },
 
-					{ kind: "PopoverButton", title: "Align", placeholderText: "More alignment-related buttons will be here" },
+				{
+					kind: "PopoverButton",
+					popover: {
+						title: "Align",
+						text: "More alignment-related buttons will be here",
+					},
+					props: {},
+				},
 
-					{ kind: "Separator", type: SeparatorType.Section },
+				{ kind: "Separator", props: { type: SeparatorType.Section } },
 
-					{ kind: "IconButton", icon: "FlipHorizontal", title: "Flip Horizontal", message: "FlipHorizontal" },
-					{ kind: "IconButton", icon: "FlipVertical", title: "Flip Vertical", message: "FlipVertical" },
+				{ kind: "IconButton", message: "FlipHorizontal", tooltip: "Flip Horizontal", props: { icon: "FlipHorizontal", size: 24 } },
+				{ kind: "IconButton", message: "FlipVertical", tooltip: "Flip Vertical", props: { icon: "FlipVertical", size: 24 } },
 
-					{ kind: "Separator", type: SeparatorType.Related },
+				{ kind: "Separator", props: { type: SeparatorType.Related } },
 
-					{ kind: "PopoverButton", title: "Flip", placeholderText: "More flip-related buttons will be here" },
+				{
+					kind: "PopoverButton",
+					popover: {
+						title: "Flip",
+						text: "More flip-related buttons will be here",
+					},
+					props: {},
+				},
 
-					{ kind: "Separator", type: SeparatorType.Section },
+				{ kind: "Separator", props: { type: SeparatorType.Section } },
 
-					{ kind: "IconButton", icon: "BooleanUnion", title: "Boolean Union" },
-					{ kind: "IconButton", icon: "BooleanSubtractFront", title: "Boolean Subtract Front" },
-					{ kind: "IconButton", icon: "BooleanSubtractBack", title: "Boolean Subtract Back" },
-					{ kind: "IconButton", icon: "BooleanIntersect", title: "Boolean Intersect" },
-					{ kind: "IconButton", icon: "BooleanDifference", title: "Boolean Difference" },
+				{ kind: "IconButton", tooltip: "Boolean Union", props: { icon: "BooleanUnion", size: 24 } },
+				{ kind: "IconButton", tooltip: "Boolean Subtract Front", props: { icon: "BooleanSubtractFront", size: 24 } },
+				{ kind: "IconButton", tooltip: "Boolean Subtract Back", props: { icon: "BooleanSubtractBack", size: 24 } },
+				{ kind: "IconButton", tooltip: "Boolean Intersect", props: { icon: "BooleanIntersect", size: 24 } },
+				{ kind: "IconButton", tooltip: "Boolean Difference", props: { icon: "BooleanDifference", size: 24 } },
 
-					{ kind: "Separator", type: SeparatorType.Related },
+				{ kind: "Separator", props: { type: SeparatorType.Related } },
 
-					{ kind: "PopoverButton", title: "Boolean", placeholderText: "More boolean-related buttons will be here" },
-				],
+				{
+					kind: "PopoverButton",
+					popover: {
+						title: "Boolean",
+						text: "More boolean-related buttons will be here",
+					},
+					props: {},
+				},
 			],
-			["Shape", [{ kind: "NumberInput", initial: 6, step: 1, min: 3, callback: this.setToolOptions }]],
-		]);
+			Shape: [{ kind: "NumberInput", callback: this.setToolOptions, props: { value: 6, min: 3, isInteger: true } }],
+		};
 
 		return {
-			optionsMap,
+			toolOptions,
 			SeparatorType,
 		};
 	},

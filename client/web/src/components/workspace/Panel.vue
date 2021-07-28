@@ -11,7 +11,7 @@
 					@click="handleTabClick(tabIndex)"
 				>
 					<span>{{ tabLabel }}</span>
-					<IconButton :icon="'CloseX'" :size="16" v-if="tabCloseButtons" @click.stop="handleTabClose(tabIndex)" />
+					<IconButton :action="() => handleTabClose(tabIndex)" :icon="'CloseX'" :size="16" v-if="tabCloseButtons" />
 				</div>
 			</div>
 			<PopoverButton :icon="PopoverButtonIcon.VerticalEllipsis">

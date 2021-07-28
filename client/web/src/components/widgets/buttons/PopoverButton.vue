@@ -1,6 +1,6 @@
 <template>
 	<div class="popover-button">
-		<IconButton :icon="icon" :size="16" @click="clickButton" data-hover-menu-spawner />
+		<IconButton :action="handleClick" :icon="icon" :size="16" data-hover-menu-spawner />
 		<FloatingMenu :type="MenuType.Popover" :direction="MenuDirection.Bottom" ref="floatingMenu">
 			<slot></slot>
 		</FloatingMenu>
@@ -63,11 +63,14 @@ export default defineComponent({
 		IconButton,
 	},
 	props: {
+		action: { type: Function, required: false },
 		icon: { type: String, default: PopoverButtonIcon.DropdownArrow },
 	},
 	methods: {
-		clickButton() {
+		handleClick() {
 			(this.$refs.floatingMenu as typeof FloatingMenu).setOpen();
+
+			if (this.action) this.action();
 		},
 	},
 	data() {

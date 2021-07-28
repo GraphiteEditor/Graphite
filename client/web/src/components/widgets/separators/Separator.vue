@@ -70,18 +70,7 @@
 
 <script lang="ts">
 import { defineComponent } from "vue";
-
-export enum SeparatorDirection {
-	"Horizontal" = "Horizontal",
-	"Vertical" = "Vertical",
-}
-
-export enum SeparatorType {
-	"Related" = "Related",
-	"Unrelated" = "Unrelated",
-	"Section" = "Section",
-	"List" = "List",
-}
+import { SeparatorDirection, SeparatorType } from "@/components/widgets/widgets";
 
 export default defineComponent({
 	components: {},
