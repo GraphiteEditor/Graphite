@@ -47,7 +47,7 @@ pub fn layer_panel_entry(layer_data: &mut LayerData, layer: &mut Layer, path: Ve
 	let arr = arr.iter().map(|x| (*x).into()).collect::<Vec<(f64, f64)>>();
 
 	if layer.cache_dirty {
-		layer.render();
+		layer.render(&mut vec![layer.transform]);
 	}
 
 	let thumbnail = if let [(x_min, y_min), (x_max, y_max)] = arr.as_slice() {
