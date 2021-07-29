@@ -282,7 +282,7 @@ impl Document {
 			.collect()
 	}
 
-	fn transforms(&self, path: &[LayerId]) -> Result<Vec<DAffine2>, DocumentError> {
+	pub fn transforms(&self, path: &[LayerId]) -> Result<Vec<DAffine2>, DocumentError> {
 		let mut root = &self.root;
 		let mut transforms = vec![self.root.transform];
 		for id in path {
@@ -294,7 +294,7 @@ impl Document {
 		Ok(transforms)
 	}
 
-	fn multiply_transoforms(&self, path: &[LayerId]) -> Result<DAffine2, DocumentError> {
+	pub fn multiply_transoforms(&self, path: &[LayerId]) -> Result<DAffine2, DocumentError> {
 		let mut root = &self.root;
 		let mut trans = self.root.transform;
 		for id in path {
@@ -507,7 +507,7 @@ impl Document {
 				let layer = self.layer_mut(path)?;
 				match &mut layer.data {
 					LayerDataType::Shape(s) => s.style.set_fill(layers::style::Fill::new(*color)),
-					_ => Err(DocumentError::NotAShape)?,
+					_ => return Err(DocumentError::NotAShape),
 				}
 				self.mark_as_dirty(path)?;
 				Some(vec![DocumentResponse::DocumentChanged])

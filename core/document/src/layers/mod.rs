@@ -113,34 +113,30 @@ impl Layer {
 		if !self.visible {
 			return "";
 		}
-		if self.cache_dirty {
+		if self.cache_dirty || true {
+			transforms.push(self.transform);
 			self.thumbnail_cache.clear();
-			//self.data.render(&mut self.thumbnail_cache, self.transform, self.style);
+			self.data.render(&mut self.thumbnail_cache, transforms);
 
 			self.cache.clear();
+			let _ = writeln!(self.cache, r#"<g transform="matrix("#);
+			self.transform.to_cols_array().iter().enumerate().for_each(|(i, f)| {
+				let _ = self.cache.write_str(&(f.to_string() + if i != 5 { "," } else { "" }));
+			});
 			let _ = write!(
 				self.cache,
-				r#"<g style="mix-blend-mode: {}; opacity: {}">{}</g>"#,
+				r#")" style="mix-blend-mode: {}; opacity: {}">{}</g>"#,
 				self.blend_mode.to_svg_style_name(),
 				self.opacity,
 				self.thumbnail_cache.as_str()
 			);
-			if !true {
-				/*let _ = writeln!(&mut self.thumbnail_cache, r#"<g transform="matrix("#);
-				self.transform.to_cols_array().iter().enumerate().for_each(|(i, f)| {
-					let _ = self.thumbnail_cache.write_str(&(f.to_string() + if i != 5 { "," } else { "" }));
-					self.data.render(&mut self.thumbnail_cache, &mut Vec::new(), self.style);
-				});*/
-			} else {
-				transforms.push(self.transform);
-				self.data.render(&mut self.thumbnail_cache, transforms);
-			}
-			let _ = self.thumbnail_cache.write_str(r#")">"#);
-
-			self.thumbnail_cache.clear();
+			transforms.pop();
 			self.cache_dirty = false;
 		}
-		self.thumbnail_cache.as_str()
+		if self.thumbnail_cache.is_empty() {
+			log::debug!("thumbnail_cache: {} \n cache: {}", self.thumbnail_cache, self.cache);
+		}
+		self.cache.as_str()
 	}
 
 	pub fn intersects_quad(&self, quad: [DVec2; 4], path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>) {
