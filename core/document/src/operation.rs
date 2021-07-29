@@ -53,7 +53,7 @@ pub enum Operation {
 		path: Vec<LayerId>,
 		insert_index: isize,
 	},
-	AddFolder {
+	CreateFolder {
 		path: Vec<LayerId>,
 	},
 	MountWorkingFolder {

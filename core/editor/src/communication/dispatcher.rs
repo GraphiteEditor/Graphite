@@ -190,7 +190,7 @@ mod test {
 		const LINE_INDEX: usize = 0;
 		const PEN_INDEX: usize = 1;
 
-		editor.handle_message(Message::Document(DocumentMessage::AddFolder(vec![]))).unwrap();
+		editor.handle_message(Message::Document(DocumentMessage::CreateFolder(vec![]))).unwrap();
 
 		let document_before_added_shapes = editor.dispatcher.document_message_handler.active_document().document.clone();
 		let folder_id = document_before_added_shapes.root.as_folder().unwrap().layer_ids[FOLDER_INDEX];

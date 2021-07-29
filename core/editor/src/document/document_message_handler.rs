@@ -29,7 +29,7 @@ pub enum DocumentMessage {
 	SetBlendModeForSelectedLayers(BlendMode),
 	SetOpacityForSelectedLayers(f64),
 	PasteLayers { path: Vec<LayerId>, insert_index: isize },
-	AddFolder(Vec<LayerId>),
+	CreateFolder(Vec<LayerId>),
 	RenameLayer(Vec<LayerId>, String),
 	ToggleLayerVisibility(Vec<LayerId>),
 	ToggleLayerExpansion(Vec<LayerId>),
@@ -214,7 +214,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 		use DocumentMessage::*;
 		match message {
 			DeleteLayer(path) => responses.push_back(DocumentOperation::DeleteLayer { path }.into()),
-			AddFolder(path) => responses.push_back(DocumentOperation::AddFolder { path }.into()),
+			CreateFolder(path) => responses.push_back(DocumentOperation::CreateFolder { path }.into()),
 			SelectDocument(id) => {
 				assert!(id < self.documents.len(), "Tried to select a document that was not initialized");
 				self.active_document_index = id;
@@ -762,6 +762,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			Undo,
 			SelectAllLayers,
 			DeselectAllLayers,
+			CreateFolder,
 			RenderDocument,
 			ExportDocument,
 			NewDocument,
@@ -781,6 +782,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			SetCanvasRotation,
 			WheelCanvasZoom,
 			WheelCanvasTranslate,
+			DispatchOperation,
 		);
 
 		if self.active_document().layer_data.values().any(|data| data.selected) {

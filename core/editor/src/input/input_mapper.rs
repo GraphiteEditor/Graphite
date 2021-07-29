@@ -1,3 +1,6 @@
+use document_core::{layers::style, Operation};
+use glam::DAffine2;
+
 use super::{
 	keyboard::{Key, KeyStates, NUMBER_OF_KEYS},
 	InputPreprocessor,
@@ -112,8 +115,11 @@ macro_rules! mapping {
 
 impl Default for Mapping {
 	fn default() -> Self {
+		// WARNING!
+		// If a new mapping isn't being handled (and perhaps another lower-precedence one is instead), make sure to advertise
+		// it as an available action in the respective message handler file (such as the bottom of `document_message_handler.rs`)
 		let mappings = mapping![
-			entry! {action=DocumentMessage::PasteLayers{path: vec![], insert_index: -1}, key_down=KeyV, modifiers=[KeyControl]},
+			// Higher priority than entries in sections below
 			entry! {action=DocumentMessage::EnableSnapping, key_down=KeyShift},
 			entry! {action=DocumentMessage::DisableSnapping, key_up=KeyShift},
 			// Select
@@ -188,9 +194,17 @@ impl Default for Mapping {
 			entry! {action=ToolMessage::ResetColors, key_down=KeyX, modifiers=[KeyShift, KeyControl]},
 			entry! {action=ToolMessage::SwapColors, key_down=KeyX, modifiers=[KeyShift]},
 			// Document Actions
+			entry! {action=DocumentMessage::PasteLayers{path: vec![], insert_index: -1}, key_down=KeyV, modifiers=[KeyControl]},
 			entry! {action=DocumentMessage::Undo, key_down=KeyZ, modifiers=[KeyControl]},
 			entry! {action=DocumentMessage::DeselectAllLayers, key_down=KeyA, modifiers=[KeyControl, KeyAlt]},
 			entry! {action=DocumentMessage::SelectAllLayers, key_down=KeyA, modifiers=[KeyControl]},
+			entry! {action=DocumentMessage::CreateFolder(vec![]), key_down=KeyN, modifiers=[KeyControl, KeyShift]},
+			entry! {action=DocumentMessage::DispatchOperation (Operation::AddRect {
+				path: vec![0],
+				insert_index: -1,
+				transform: DAffine2::default().to_cols_array(),
+				style: style::PathStyle::default(),
+			}), key_down=KeyG},
 			entry! {action=DocumentMessage::DeleteSelectedLayers, key_down=KeyDelete},
 			entry! {action=DocumentMessage::DeleteSelectedLayers, key_down=KeyX},
 			entry! {action=DocumentMessage::DeleteSelectedLayers, key_down=KeyBackspace},

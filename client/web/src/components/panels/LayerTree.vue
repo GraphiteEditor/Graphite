@@ -28,6 +28,7 @@
 					<div
 						class="layer"
 						:class="{ selected: layer.layer_data.selected }"
+						:style="{ marginLeft: `${(layer.path.length - 1) * 8 + 4}px` }"
 						@click.shift.exact.stop="handleShiftClick(layer)"
 						@click.ctrl.exact.stop="handleControlClick(layer)"
 						@click.alt.exact.stop="handleControlClick(layer)"
@@ -311,6 +312,7 @@ export default defineComponent({
 		registerResponseHandler(ResponseType.ExpandFolder, (responseData: Response) => {
 			const expandData = responseData as ExpandFolder;
 			if (expandData) {
+				console.log("ExpandFolder:", expandData);
 				const responsePath = expandData.path;
 				const responseLayers = expandData.children as Array<LayerPanelEntry>;
 				if (responsePath.length > 0) console.error("Non root paths are currently not implemented");
@@ -322,7 +324,7 @@ export default defineComponent({
 			}
 		});
 		registerResponseHandler(ResponseType.CollapseFolder, (responseData) => {
-			console.log("CollapseFolder: ", responseData);
+			console.log("CollapseFolder:", responseData);
 		});
 	},
 	data() {

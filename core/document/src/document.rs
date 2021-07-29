@@ -275,7 +275,13 @@ impl Document {
 				let id = self.add_layer(&path, Layer::new(LayerDataTypes::Rect(Rect), *transform, *style), *insert_index)?;
 				let path = [path.clone(), vec![id]].concat();
 
-				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::CreatedLayer { path }])
+				log::debug!("We are calling AddRect with id {} and path {:?}", id, path);
+
+				Some(vec![
+					DocumentResponse::DocumentChanged,
+					DocumentResponse::CreatedLayer { path },
+					DocumentResponse::FolderChanged { path: vec![0] },
+				])
 			}
 			Operation::AddLine { path, insert_index, transform, style } => {
 				let id = self.add_layer(&path, Layer::new(LayerDataTypes::Line(Line), *transform, *style), *insert_index)?;
@@ -339,7 +345,7 @@ impl Document {
 				folder.add_layer(layer, -1).ok_or(DocumentError::IndexOutOfBounds)?;
 				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::FolderChanged { path: folder_path.to_vec() }])
 			}
-			Operation::AddFolder { path } => {
+			Operation::CreateFolder { path } => {
 				self.set_layer(&path, Layer::new(LayerDataTypes::Folder(Folder::default()), DAffine2::IDENTITY.to_cols_array(), PathStyle::default()))?;
 
 				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::FolderChanged { path: path.clone() }])
