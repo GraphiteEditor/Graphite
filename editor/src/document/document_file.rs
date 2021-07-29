@@ -68,9 +68,9 @@ pub enum DocumentMessage {
 	DeleteLayer(Vec<LayerId>),
 	DeleteSelectedLayers,
 	DuplicateSelectedLayers,
+	CreateFolder(Vec<LayerId>),
 	SetBlendModeForSelectedLayers(BlendMode),
 	SetOpacityForSelectedLayers(f64),
-	AddFolder(Vec<LayerId>),
 	RenameLayer(Vec<LayerId>, String),
 	ToggleLayerVisibility(Vec<LayerId>),
 	FlipSelectedLayers(FlipAxis),
@@ -255,7 +255,6 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 		match message {
 			Movement(message) => self.movement_handler.process_action(message, (layer_data(&mut self.layer_data, &[]), &self.document, ipp), responses),
 			DeleteLayer(path) => responses.push_back(DocumentOperation::DeleteLayer { path }.into()),
-			AddFolder(path) => responses.push_back(DocumentOperation::AddFolder { path }.into()),
 			StartTransaction => self.backup(),
 			RollbackTransaction => {
 				self.rollback().unwrap_or_else(|e| log::warn!("{}", e));
@@ -283,6 +282,11 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					}
 					.into(),
 				)
+			}
+			CreateFolder(mut path) => {
+				let id = generate_hash(responses.iter(), ipp, self.document.hash());
+				path.push(id);
+				responses.push_back(DocumentOperation::CreateFolder { path }.into())
 			}
 			SetBlendModeForSelectedLayers(blend_mode) => {
 				let active_document = self;

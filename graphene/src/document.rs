@@ -339,7 +339,7 @@ impl Document {
 				self.layer_mut(path)?.name = Some(name.clone());
 				Some(vec![DocumentResponse::LayerChanged { path: path.clone() }])
 			}
-			Operation::AddFolder { path } => {
+			Operation::CreateFolder { path } => {
 				self.set_layer(path, Layer::new(LayerDataType::Folder(Folder::default()), DAffine2::IDENTITY.to_cols_array()), -1)?;
 
 				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::FolderChanged { path: path.clone() }])

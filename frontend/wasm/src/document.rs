@@ -323,5 +323,7 @@ pub fn delete_layer(path: Vec<LayerId>) -> Result<(), JsValue> {
 /// Requests the backend to add a layer to the layer list
 #[wasm_bindgen]
 pub fn add_folder(path: Vec<LayerId>) -> Result<(), JsValue> {
-	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(DocumentMessage::AddFolder(path))).map_err(convert_error)
+	EDITOR_STATE
+		.with(|editor| editor.borrow_mut().handle_message(DocumentMessage::CreateFolder(path)))
+		.map_err(convert_error)
 }
