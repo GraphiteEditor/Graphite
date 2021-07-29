@@ -28,9 +28,15 @@ pub struct Shape {
 impl LayerData for Shape {
 	fn render(&mut self, svg: &mut String, transforms: &mut Vec<DAffine2>) {
 		let mut path = self.path.clone();
-		path.apply_affine(self.inverse_tranform(transforms));
+		path.apply_affine(self.render_transform(transforms));
 
+		let _ = writeln!(svg, r#"<g transform="matrix("#);
+		self.transform(transforms).to_cols_array().iter().enumerate().for_each(|(i, f)| {
+			let _ = svg.write_str(&(f.to_string() + if i != 5 { "," } else { "" }));
+		});
+		let _ = svg.write_str(r#")">"#);
 		let _ = write!(svg, r#"<path d="{}" {} />"#, path.to_svg(), self.style.render());
+		let _ = svg.write_str("</g>");
 	}
 
 	fn bounding_box(&self, transform: glam::DAffine2) -> Option<[DVec2; 2]> {
@@ -50,12 +56,16 @@ impl LayerData for Shape {
 }
 
 impl Shape {
-	fn inverse_tranform(&self, transforms: &Vec<DAffine2>) -> Affine {
+	pub fn transform(&self, transforms: &[DAffine2]) -> DAffine2 {
 		let start = match self.render_index {
 			-1 => 0,
 			x => (transforms.len() as i32 - x - 1).max(0) as usize,
 		};
-		let transform = transforms[start..].iter().cloned().reduce(|a, b| a * b).map(|t| t.inverse()).unwrap_or_default();
+		transforms[start..].iter().cloned().reduce(|a, b| a * b).unwrap_or_default()
+	}
+
+	pub fn render_transform(&self, transforms: &[DAffine2]) -> Affine {
+		let transform = self.transform(transforms).inverse();
 		glam_to_kurbo(transform)
 	}
 

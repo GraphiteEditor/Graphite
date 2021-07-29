@@ -123,6 +123,7 @@ impl DocumentMessageHandler {
 	}
 	fn handle_folder_changed(&mut self, path: Vec<LayerId>) -> Option<Message> {
 		let document = self.active_document_mut();
+		let _ = document.document.render_root();
 		document.layer_data(&path).expanded.then(|| {
 			let children = document.layer_panel(path.as_slice()).expect("The provided Path was not valid");
 			FrontendMessage::ExpandFolder { path, children }.into()
