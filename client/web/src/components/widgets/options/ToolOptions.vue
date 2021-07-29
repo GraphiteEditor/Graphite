@@ -19,7 +19,7 @@
 				:title="option.tooltip"
 				v-bind="option.props"
 			/>
-			<Separator v-if="option.kind === 'Separator'" :type="option.type" />
+			<Separator v-if="option.kind === 'Separator'" v-bind="option.props" />
 		</template>
 	</div>
 </template>

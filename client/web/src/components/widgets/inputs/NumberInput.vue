@@ -1,6 +1,17 @@
 <template>
 	<div class="number-input" :class="{ disabled }">
-		<input type="text" spellcheck="false" v-model="text" @change="onTextChanged()" @keydown.esc="onCancelTextChange" ref="input" :disabled="disabled" />
+		<input
+			:class="{ 'has-label': label }"
+			:id="`number-input-${id}`"
+			type="text"
+			spellcheck="false"
+			v-model="text"
+			@change="onTextChanged()"
+			@keydown.esc="onCancelTextChange"
+			ref="input"
+			:disabled="disabled"
+		/>
+		<label v-if="label" :for="`number-input-${id}`">{{ label }}</label>
 		<button v-if="!Number.isNaN(value)" class="arrow left" @click="onIncrement(IncrementDirection.Decrease)"></button>
 		<button v-if="!Number.isNaN(value)" class="arrow right" @click="onIncrement(IncrementDirection.Increase)"></button>
 	</div>
@@ -14,19 +25,38 @@
 	border-radius: 2px;
 	background: var(--color-1-nearblack);
 	overflow: hidden;
+	display: flex;
+	flex-direction: row-reverse;
+
+	label {
+		flex: 0 0 auto;
+		cursor: text;
+		line-height: 18px;
+		margin-left: 8px;
+		padding: 3px 0;
+	}
 
 	input {
-		width: calc(100% - 8px);
+		flex: 1 1 100%;
+		width: 100%;
+		height: 18px;
 		line-height: 18px;
-		margin: 3px 4px;
+		margin: 0 8px;
+		padding: 3px 0;
 		outline: none;
 		border: none;
 		background: none;
-		padding: 0;
 		color: var(--color-e-nearwhite);
 		font-size: inherit;
-		text-align: center;
 		font-family: inherit;
+		text-align: center;
+
+		&:not(:focus).has-label {
+			text-align: right;
+			padding-left: 4px;
+			margin-left: 0;
+			margin-right: 8px;
+		}
 
 		&::selection {
 			background: var(--color-accent);
@@ -34,10 +64,8 @@
 
 		&:focus {
 			text-align: left;
-			width: calc(100% - 16px);
-			margin-left: 8px;
-			margin-right: 8px;
 
+			& + label,
 			& ~ .arrow {
 				display: none;
 			}
@@ -51,10 +79,10 @@
 	.arrow {
 		position: absolute;
 		top: 0;
+		padding: 9px 0;
 		outline: none;
 		border: none;
-		background: none;
-		padding: 9px 0;
+		background: rgba(var(--color-1-nearblack-rgb), 0.75);
 
 		&:hover {
 			background: var(--color-6-lowergray);
@@ -104,6 +132,7 @@
 	&.disabled {
 		background: var(--color-2-mildblack);
 
+		label,
 		input {
 			color: var(--color-8-uppergray);
 		}
@@ -135,6 +164,7 @@ export default defineComponent({
 		unit: { type: String, default: "" },
 		unitIsHiddenWhenEditing: { type: Boolean, default: true },
 		displayDecimalPlaces: { type: Number, default: 3 },
+		label: { type: String, required: false },
 		disabled: { type: Boolean, default: false },
 	},
 	data() {
@@ -142,6 +172,7 @@ export default defineComponent({
 			text: `${this.value}${this.unit}`,
 			editing: false,
 			IncrementDirection,
+			id: `${Math.random()}`.substring(2),
 		};
 	},
 	methods: {

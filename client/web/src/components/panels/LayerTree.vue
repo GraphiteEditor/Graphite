@@ -5,7 +5,7 @@
 
 			<Separator :type="SeparatorType.Related" />
 
-			<NumberInput v-model:value="opacity" @update:value="setLayerOpacity" :min="0" :max="100" :unit="`%`" :displayDecimalPlaces="2" :disabled="opacityNumberInputDisabled" />
+			<NumberInput v-model:value="opacity" @update:value="setLayerOpacity" :min="0" :max="100" :unit="`%`" :displayDecimalPlaces="2" :label="'Opacity'" :disabled="opacityNumberInputDisabled" />
 
 			<Separator :type="SeparatorType.Related" />
 
