@@ -1,7 +1,7 @@
 <template>
 	<div class="checkbox-input">
-		<input type="checkbox" :id="`checkbox-${id}`" :checked="checked" @input="(e) => $emit('update:checked', e.target.checked)" />
-		<label :for="`checkbox-${id}`">
+		<input type="checkbox" :id="`checkbox-input-${id}`" :checked="checked" @input="(e) => $emit('update:checked', e.target.checked)" />
+		<label :for="`checkbox-input-${id}`">
 			<div class="checkbox-box">
 				<IconLabel :icon="icon" />
 			</div>
