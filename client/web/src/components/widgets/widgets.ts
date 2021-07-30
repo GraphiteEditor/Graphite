@@ -51,6 +51,8 @@ export interface NumberInputProps {
 	unit?: string;
 	unitIsHiddenWhenEditing?: boolean;
 	displayDecimalPlaces?: number;
+	label?: string;
+	disabled?: boolean;
 }
 
 // Separator

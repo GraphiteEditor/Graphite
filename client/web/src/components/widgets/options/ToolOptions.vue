@@ -123,7 +123,7 @@ export default defineComponent({
 					props: {},
 				},
 			],
-			Shape: [{ kind: "NumberInput", callback: this.setToolOptions, props: { value: 6, min: 3, isInteger: true } }],
+			Shape: [{ kind: "NumberInput", callback: this.setToolOptions, props: { value: 6, min: 3, isInteger: true, label: "Sides" } }],
 		};
 
 		return {
