@@ -10,7 +10,7 @@ use crate::input::{mouse::ViewportPosition, InputPreprocessor};
 use crate::tool::{DocumentToolData, Fsm, ToolActionHandlerData};
 use crate::{
 	consts::SELECTION_TOLERANCE,
-	document::{AlignAggregate, AlignAxis, Document},
+	document::{AlignAggregate, AlignAxis, Document, FlipAxis},
 	message_prelude::*,
 };
 
@@ -173,18 +173,12 @@ impl Fsm for SelectToolFsmState {
 					self
 				}
 				(_, FlipHorizontal) => {
-					let selected_layers = document.layer_data.iter().filter_map(|(path, data)| data.selected.then(|| path.clone()));
-					for path in selected_layers {
-						responses.push_back(DocumentMessage::FlipLayer(path, true, false).into());
-					}
+					responses.push_back(DocumentMessage::FlipSelectedLayers(FlipAxis::X).into());
 
 					self
 				}
 				(_, FlipVertical) => {
-					let selected_layers = document.layer_data.iter().filter_map(|(path, data)| data.selected.then(|| path.clone()));
-					for path in selected_layers {
-						responses.push_back(DocumentMessage::FlipLayer(path, false, true).into());
-					}
+					responses.push_back(DocumentMessage::FlipSelectedLayers(FlipAxis::Y).into());
 
 					self
 				}
