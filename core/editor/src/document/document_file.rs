@@ -65,6 +65,7 @@ pub fn layer_panel_entry(layer_data: &LayerData, transform: DAffine2, layer: &La
 	} else {
 		String::new()
 	};
+	let path = path.iter().map(|id| ((id >> 32) as u32, (id << 32 >> 32) as u32)).collect::<Vec<_>>();
 
 	LayerPanelEntry {
 		name,

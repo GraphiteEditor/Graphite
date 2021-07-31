@@ -105,9 +105,11 @@ impl Document {
 	}
 
 	/// Replaces the layer at the specified `path` with `layer`.
-	pub fn set_layer(&mut self, path: &[LayerId], layer: Layer) -> Result<(), DocumentError> {
+	pub fn set_layer(&mut self, path: &[LayerId], layer: Layer, insert_index: isize) -> Result<(), DocumentError> {
 		let mut folder = self.root.as_folder_mut()?;
+		let mut layer_id = None;
 		if let Ok((path, id)) = split_path(path) {
+			layer_id = Some(id);
 			self.mark_as_dirty(path)?;
 			folder = self.folder_mut(path)?;
 			if let Some(folder_layer) = folder.layer_mut(id) {
@@ -115,7 +117,7 @@ impl Document {
 				return Ok(());
 			}
 		}
-		folder.add_layer(layer, -1).ok_or(DocumentError::IndexOutOfBounds)?;
+		folder.add_layer(layer, layer_id, insert_index).ok_or(DocumentError::IndexOutOfBounds)?;
 		Ok(())
 	}
 
@@ -125,7 +127,7 @@ impl Document {
 	pub fn add_layer(&mut self, path: &[LayerId], mut layer: Layer, insert_index: isize) -> Result<LayerId, DocumentError> {
 		layer.render(&mut self.transforms(path)?);
 		let folder = self.folder_mut(path)?;
-		folder.add_layer(layer, insert_index).ok_or(DocumentError::IndexOutOfBounds)
+		folder.add_layer(layer, None, insert_index).ok_or(DocumentError::IndexOutOfBounds)
 	}
 
 	/// Deletes the layer specified by `path`.
@@ -252,10 +254,8 @@ impl Document {
 				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::CreatedLayer { path }])
 			}
 			Operation::AddRect { path, insert_index, transform, style } => {
-				let id = self.add_layer(path, Layer::new(LayerDataType::Shape(Shape::rectangle(*style)), *transform), *insert_index)?;
-				let path = [path.clone(), vec![id]].concat();
-
-				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::CreatedLayer { path }])
+				self.set_layer(path, Layer::new(LayerDataType::Shape(Shape::rectangle(*style)), *transform), *insert_index)?;
+				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::CreatedLayer { path: path.clone() }])
 			}
 			Operation::AddLine { path, insert_index, transform, style } => {
 				let id = self.add_layer(path, Layer::new(LayerDataType::Shape(Shape::line(*style)), *transform), *insert_index)?;
@@ -300,7 +300,7 @@ impl Document {
 			Operation::PasteLayer { path, layer, insert_index } => {
 				let folder = self.folder_mut(path)?;
 				//FIXME: This clone of layer should be avoided somehow
-				let id = folder.add_layer(layer.clone(), *insert_index).ok_or(DocumentError::IndexOutOfBounds)?;
+				let id = folder.add_layer(layer.clone(), None, *insert_index).ok_or(DocumentError::IndexOutOfBounds)?;
 				let full_path = [path.clone(), vec![id]].concat();
 
 				Some(vec![
@@ -313,11 +313,11 @@ impl Document {
 				let layer = self.layer(path)?.clone();
 				let (folder_path, _) = split_path(path.as_slice()).unwrap_or_else(|_| (&[], 0));
 				let folder = self.folder_mut(folder_path)?;
-				folder.add_layer(layer, -1).ok_or(DocumentError::IndexOutOfBounds)?;
+				folder.add_layer(layer, None, -1).ok_or(DocumentError::IndexOutOfBounds)?;
 				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::FolderChanged { path: folder_path.to_vec() }])
 			}
 			Operation::AddFolder { path } => {
-				self.set_layer(path, Layer::new(LayerDataType::Folder(Folder::default()), DAffine2::IDENTITY.to_cols_array()))?;
+				self.set_layer(path, Layer::new(LayerDataType::Folder(Folder::default()), DAffine2::IDENTITY.to_cols_array()), -1)?;
 
 				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::FolderChanged { path: path.clone() }])
 			}

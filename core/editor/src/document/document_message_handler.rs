@@ -488,15 +488,12 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				Err(e) => log::error!("DocumentError: {:?}", e),
 				Ok(_) => (),
 			},
-			RenderDocument => {
-				log::debug!("rendering");
-				responses.push_back(
-					FrontendMessage::UpdateCanvas {
-						document: self.active_document_mut().document.render_root(),
-					}
-					.into(),
-				)
-			}
+			RenderDocument => responses.push_back(
+				FrontendMessage::UpdateCanvas {
+					document: self.active_document_mut().document.render_root(),
+				}
+				.into(),
+			),
 			TranslateCanvasBegin => {
 				self.translating = true;
 				self.mouse_pos = ipp.mouse.position;

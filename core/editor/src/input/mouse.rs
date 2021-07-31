@@ -2,7 +2,7 @@ use bitflags::bitflags;
 use glam::DVec2;
 
 // origin is top left
-#[derive(Debug, Copy, Clone, Default, Eq, PartialEq)]
+#[derive(Debug, Copy, Clone, Default, Eq, PartialEq, Hash)]
 pub struct ViewportPosition {
 	pub x: u32,
 	pub y: u32,

@@ -14,7 +14,7 @@ pub struct LayerPanelEntry {
 	pub opacity: f64,
 	pub layer_type: LayerType,
 	pub layer_data: LayerData,
-	pub path: Vec<LayerId>,
+	pub path: Vec<(u32, u32)>,
 	pub thumbnail: String,
 }
 
