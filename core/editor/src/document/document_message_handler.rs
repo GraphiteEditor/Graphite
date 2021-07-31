@@ -666,7 +666,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				}
 
 				let selected_layers = selected_paths.iter().filter_map(|path| {
-					let layer = self.active_document().document.layer(path).unwrap();
+					let layer = self.active_document().document.layer(path).ok()?;
 					// TODO: Refactor with `reduce` and `merge_bounding_boxes` once the latter is added
 					let (min, max) = {
 						let bounding_box = layer.bounding_box(layer.transform, layer.style)?;
