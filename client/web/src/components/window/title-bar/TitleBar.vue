@@ -4,7 +4,7 @@
 		<MenuBarInput v-if="platform !== ApplicationPlatform.Mac" />
 	</div>
 	<div class="header-third">
-		<WindowTitle :title="'Untitled Document.gdd* - Graphite'" />
+		<WindowTitle :title="`${document.title}${document.unsaved ? '*' : ''} - Graphite`" />
 	</div>
 	<div class="header-third">
 		<WindowButtonsWindows :maximized="maximized" v-if="platform === ApplicationPlatform.Windows || platform === ApplicationPlatform.Linux" />
@@ -41,6 +41,7 @@ import MenuBarInput from "@/components/widgets/inputs/MenuBarInput.vue";
 import { ApplicationPlatform } from "@/components/window/MainWindow.vue";
 
 export default defineComponent({
+	inject: ["document"],
 	props: {
 		platform: { type: String, required: true },
 		maximized: { type: Boolean, required: true },
