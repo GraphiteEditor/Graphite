@@ -24,6 +24,7 @@
 }
 
 .workspace-row {
+	position: relative;
 	flex: 1 1 100%;
 }
 

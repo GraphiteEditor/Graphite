@@ -10,7 +10,7 @@
 				<IconLabel :icon="entry.icon" v-if="entry.icon" />
 				<span v-if="entry.label">{{ entry.label }}</span>
 			</div>
-			<MenuList :menuEntries="entry.children" :direction="MenuDirection.Bottom" :minWidth="240" :drawIcon="true" :defaultAction="actionNotImplemented" :ref="(ref) => setEntryRefs(entry, ref)" />
+			<MenuList :menuEntries="entry.children" :direction="MenuDirection.Bottom" :minWidth="240" :drawIcon="true" :defaultAction="comingSoon" :ref="(ref) => setEntryRefs(entry, ref)" />
 		</div>
 	</div>
 </template>
@@ -52,6 +52,9 @@
 
 <script lang="ts">
 import { defineComponent } from "vue";
+
+import comingSoon from "@/utilities/coming-soon";
+
 import IconLabel from "@/components/widgets/labels/IconLabel.vue";
 import { ApplicationPlatform } from "@/components/window/MainWindow.vue";
 import MenuList, { MenuListEntry, MenuListEntries } from "@/components/widgets/floating-menus/MenuList.vue";
@@ -138,17 +141,17 @@ const menuEntries: MenuListEntries = [
 	{
 		label: "Document",
 		ref: undefined,
-		children: [[{ label: "Menu not yet populated" }]],
+		children: [[{ label: "Menu entries coming soon" }]],
 	},
 	{
 		label: "View",
 		ref: undefined,
-		children: [[{ label: "Menu not yet populated" }]],
+		children: [[{ label: "Menu entries coming soon" }]],
 	},
 	{
 		label: "Help",
 		ref: undefined,
-		children: [[{ label: "Menu not yet populated" }]],
+		children: [[{ label: "Menu entries coming soon" }]],
 	},
 ];
 
@@ -164,16 +167,13 @@ export default defineComponent({
 		handleLogoClick() {
 			window.open("https://www.graphite.design", "_blank");
 		},
-		actionNotImplemented() {
-			// eslint-disable-next-line no-alert
-			alert("This action is not yet implemented");
-		},
 	},
 	data() {
 		return {
 			ApplicationPlatform,
 			menuEntries,
 			MenuDirection,
+			comingSoon,
 		};
 	},
 	components: {

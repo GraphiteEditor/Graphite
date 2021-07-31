@@ -18,6 +18,7 @@
 			</LayoutRow>
 		</LayoutCol>
 	</LayoutRow>
+	<DialogModal v-if="dialog.visible" />
 </template>
 
 <style lang="scss">
@@ -46,35 +47,43 @@
 
 <script lang="ts">
 import { defineComponent } from "vue";
+
+import { setDocumentTitle } from "@/utilities/document";
+
 import Panel from "@/components/workspace/Panel.vue";
 import { ResponseType, registerResponseHandler, Response, SetActiveDocument, UpdateOpenDocumentsList } from "@/utilities/response-handler";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
 import LayoutCol from "@/components/layout/LayoutCol.vue";
+import DialogModal from "@/components/widgets/floating-menus/DialogModal.vue";
 
 const wasm = import("@/../wasm/pkg");
 
 export default defineComponent({
+	inject: ["dialog"],
 	components: {
 		LayoutRow,
 		LayoutCol,
 		Panel,
+		DialogModal,
 	},
-
 	mounted() {
 		registerResponseHandler(ResponseType.UpdateOpenDocumentsList, (responseData: Response) => {
 			const documentListData = responseData as UpdateOpenDocumentsList;
 			if (documentListData) {
 				this.documents = documentListData.open_documents;
+				setDocumentTitle(this.documents[this.activeDocument]);
 			}
 		});
 		registerResponseHandler(ResponseType.SetActiveDocument, (responseData: Response) => {
 			const documentData = responseData as SetActiveDocument;
-			if (documentData) this.activeDocument = documentData.document_index;
+			if (documentData) {
+				this.activeDocument = documentData.document_index;
+				setDocumentTitle(this.documents[this.activeDocument]);
+			}
 		});
 
 		(async () => (await wasm).get_open_documents_list())();
 	},
-
 	data() {
 		return {
 			activeDocument: 0,
