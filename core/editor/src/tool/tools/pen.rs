@@ -63,7 +63,7 @@ impl Fsm for PenToolFsmState {
 		if let ToolMessage::Pen(event) = event {
 			match (self, event) {
 				(Ready, DragStart) => {
-					responses.push_back(Operation::MountWorkingFolder { path: vec![] }.into());
+					responses.push_back(Operation::StartTransaction { path: vec![] }.into());
 
 					data.points.push(pos);
 					data.next_point = pos;
@@ -77,7 +77,7 @@ impl Fsm for PenToolFsmState {
 						data.next_point = pos;
 					}
 
-					responses.push_back(Operation::ClearWorkingFolder.into());
+					responses.push_back(Operation::RollbackTransaction.into());
 					responses.push_back(make_operation(data, tool_data, true));
 
 					Dragging
@@ -85,21 +85,21 @@ impl Fsm for PenToolFsmState {
 				(Dragging, MouseMove) => {
 					data.next_point = pos;
 
-					responses.push_back(Operation::ClearWorkingFolder.into());
+					responses.push_back(Operation::RollbackTransaction.into());
 					responses.push_back(make_operation(data, tool_data, true));
 
 					Dragging
 				}
 				// TODO - simplify with or_patterns when rust 1.53.0 is stable  (https://github.com/rust-lang/rust/issues/54883)
 				(Dragging, Confirm) => {
-					responses.push_back(Operation::ClearWorkingFolder.into());
+					responses.push_back(Operation::RollbackTransaction.into());
 
 					if data.points.len() >= 2 {
 						responses.push_back(make_operation(data, tool_data, false));
 						responses.push_back(DocumentMessage::DeselectAllLayers.into());
 						responses.push_back(Operation::CommitTransaction.into());
 					} else {
-						responses.push_back(Operation::DiscardWorkingFolder.into());
+						responses.push_back(Operation::AbortTransaction.into());
 					}
 
 					data.points.clear();
@@ -107,7 +107,7 @@ impl Fsm for PenToolFsmState {
 					Ready
 				}
 				(Dragging, Abort) => {
-					responses.push_back(Operation::DiscardWorkingFolder.into());
+					responses.push_back(Operation::AbortTransaction.into());
 					data.points.clear();
 
 					Ready

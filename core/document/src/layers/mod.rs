@@ -113,7 +113,7 @@ impl Layer {
 		if !self.visible {
 			return "";
 		}
-		if self.cache_dirty || true {
+		if self.cache_dirty {
 			transforms.push(self.transform);
 			self.thumbnail_cache.clear();
 			self.data.render(&mut self.thumbnail_cache, transforms);
@@ -134,7 +134,7 @@ impl Layer {
 			self.cache_dirty = false;
 		}
 		if self.thumbnail_cache.is_empty() {
-			log::debug!("thumbnail_cache: {} \n cache: {}", self.thumbnail_cache, self.cache);
+			//log::debug!("thumbnail_cache: {} \n cache: {}", self.thumbnail_cache, self.cache);
 		}
 		self.cache.as_str()
 	}
