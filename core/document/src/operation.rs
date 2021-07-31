@@ -56,9 +56,6 @@ pub enum Operation {
 	AddFolder {
 		path: Vec<LayerId>,
 	},
-	StartTransaction {
-		path: Vec<LayerId>,
-	},
 	TransformLayer {
 		path: Vec<LayerId>,
 		transform: [f64; 6],
@@ -67,9 +64,6 @@ pub enum Operation {
 		path: Vec<LayerId>,
 		transform: [f64; 6],
 	},
-	AbortTransaction,
-	RollbackTransaction,
-	CommitTransaction,
 	ToggleVisibility {
 		path: Vec<LayerId>,
 	},

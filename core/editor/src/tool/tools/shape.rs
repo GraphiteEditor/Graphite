@@ -77,30 +77,30 @@ impl Fsm for ShapeToolFsmState {
 						_ => 6,
 					};
 
-					responses.push_back(Operation::StartTransaction { path: vec![] }.into());
+					responses.push_back(DocumentMessage::StartTransaction.into());
 					Dragging
 				}
 				(Dragging, MouseMove) => {
 					data.drag_current = input.mouse.position;
-					responses.push_back(Operation::RollbackTransaction.into());
+					responses.push_back(DocumentMessage::RollbackTransaction.into());
 					responses.push_back(make_operation(data, tool_data, transform));
 
 					Dragging
 				}
 				(Dragging, DragStop) => {
 					data.drag_current = input.mouse.position;
-					responses.push_back(Operation::RollbackTransaction.into());
+					responses.push_back(DocumentMessage::RollbackTransaction.into());
 					// TODO - introduce comparison threshold when operating with canvas coordinates (https://github.com/GraphiteEditor/Graphite/issues/100)
 					if data.drag_start != data.drag_current {
 						responses.push_back(make_operation(data, tool_data, transform));
 						responses.push_back(DocumentMessage::DeselectAllLayers.into());
-						responses.push_back(Operation::CommitTransaction.into());
+						responses.push_back(DocumentMessage::CommitTransaction.into());
 					}
 
 					Ready
 				}
 				(Dragging, Abort) => {
-					responses.push_back(Operation::AbortTransaction.into());
+					responses.push_back(DocumentMessage::AbortTransaction.into());
 
 					Ready
 				}
@@ -138,7 +138,7 @@ fn update_state(
 ) -> ShapeToolFsmState {
 	*(state(data)) = value;
 
-	responses.push_back(Operation::RollbackTransaction.into());
+	responses.push_back(DocumentMessage::RollbackTransaction.into());
 	responses.push_back(make_operation(data, tool_data, transform));
 
 	new_state

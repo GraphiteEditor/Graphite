@@ -11,6 +11,7 @@ use std::collections::HashMap;
 #[derive(Clone, Debug)]
 pub struct Document {
 	pub document: InternalDocument,
+	pub document_backup: Option<InternalDocument>,
 	pub name: String,
 	pub layer_data: HashMap<Vec<LayerId>, LayerData>,
 }
@@ -19,6 +20,7 @@ impl Default for Document {
 	fn default() -> Self {
 		Self {
 			document: InternalDocument::default(),
+			document_backup: None,
 			name: String::from("Untitled Document"),
 			layer_data: vec![(vec![], LayerData::new(true))].into_iter().collect(),
 		}
@@ -29,6 +31,7 @@ impl Document {
 	pub fn with_name(name: String) -> Self {
 		Self {
 			document: InternalDocument::default(),
+			document_backup: None,
 			name,
 			layer_data: vec![(vec![], LayerData::new(true))].into_iter().collect(),
 		}
@@ -80,20 +83,37 @@ impl Document {
 		layer_data(&mut self.layer_data, path)
 	}
 
+	pub fn backup(&mut self) {
+		self.document_backup = Some(self.document.clone())
+	}
+
+	pub fn rollback(&mut self) -> Result<(), EditorError> {
+		match &self.document_backup {
+			Some(backup) => Ok(self.document = backup.clone()),
+			None => Err(EditorError::NoTransactionInProgress),
+		}
+	}
+
+	pub fn reset(&mut self) -> Result<(), EditorError> {
+		match self.document_backup.take() {
+			Some(backup) => Ok(self.document = backup),
+			None => Err(EditorError::NoTransactionInProgress),
+		}
+	}
+
 	/// Returns a list of `LayerPanelEntry`s intended for display purposes. These don't contain
-	/// any actual data, but rather metadata such as visibility and names of the layers.
+	/// any actual data, but ratfolderch as visibility and names of the layers.
 	pub fn layer_panel(&mut self, path: &[LayerId]) -> Result<Vec<LayerPanelEntry>, EditorError> {
-		let folder = self.document.document_folder(path)?;
-		let paths: Vec<Vec<LayerId>> = folder.as_folder()?.layer_ids.iter().map(|id| [path, &[*id]].concat()).collect();
-		let data: Vec<LayerData> = paths.iter().map(|path| *layer_data(&mut self.layer_data, &path)).collect();
-		let folder = self.document.document_folder(path)?;
+		let folder = self.document.folder(path)?;
+		let paths: Vec<Vec<LayerId>> = folder.layer_ids.iter().map(|id| [path, &[*id]].concat()).collect();
+		let data: Vec<LayerData> = paths.iter().map(|path| *layer_data(&mut self.layer_data, path)).collect();
+		let folder = self.document.folder(path)?;
 		let entries = folder
-			.as_folder()?
 			.layers()
 			.iter()
 			.zip(paths.iter().zip(data))
 			.rev()
-			.map(|(layer, (path, data))| layer_panel_entry(&data, self.document.multiply_transoforms(&path).unwrap(), layer, path.to_vec()))
+			.map(|(layer, (path, data))| layer_panel_entry(&data, self.document.multiply_transoforms(path).unwrap(), layer, path.to_vec()))
 			.collect();
 		Ok(entries)
 	}
