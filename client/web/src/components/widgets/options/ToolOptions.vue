@@ -8,17 +8,11 @@
 				:title="option.tooltip"
 				v-bind="option.props"
 			/>
-			<PopoverButton v-if="option.kind === 'PopoverButton'" :title="option.tooltip" :action="() => option.callback && option.callback()" v-bind="option.props">
-				<h3>{{ option.title }}</h3>
-				<p>{{ option.text }}</p>
+			<PopoverButton v-if="option.kind === 'PopoverButton'" :title="option.tooltip" :action="option.callback" v-bind="option.props">
+				<h3>{{ option.popover.title }}</h3>
+				<p>{{ option.popover.text }}</p>
 			</PopoverButton>
-			<NumberInput
-				v-if="option.kind === 'NumberInput'"
-				v-model:value="option.props.value"
-				@update:value="() => option.callback && option.callback()"
-				:title="option.tooltip"
-				v-bind="option.props"
-			/>
+			<NumberInput v-if="option.kind === 'NumberInput'" v-model:value="option.props.value" @update:value="option.callback" :title="option.tooltip" v-bind="option.props" />
 			<Separator v-if="option.kind === 'Separator'" v-bind="option.props" />
 		</template>
 	</div>
