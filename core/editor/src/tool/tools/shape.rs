@@ -151,13 +151,13 @@ fn make_operation(data: &ShapeToolData, tool_data: &DocumentToolData, transform:
 	let y1 = data.drag_current.y as f64;
 
 	// TODO: Use regular polygon's aspect ration for constraining rather than a square.
-	let (x0, y0, x1, y1, equal_sides) = if data.constrain_to_square {
+	let (x0, y0, x1, y1) = if data.constrain_to_square {
 		let (x_dir, y_dir) = ((x1 - x0).signum(), (y1 - y0).signum());
 		let max_dist = f64::max((x1 - x0).abs(), (y1 - y0).abs());
 		if data.center_around_cursor {
-			(x0 - max_dist * x_dir, y0 - max_dist * y_dir, x0 + max_dist * x_dir, y0 + max_dist * y_dir, true)
+			(x0 - max_dist * x_dir, y0 - max_dist * y_dir, x0 + max_dist * x_dir, y0 + max_dist * y_dir)
 		} else {
-			(x0, y0, x0 + max_dist * x_dir, y0 + max_dist * y_dir, true)
+			(x0, y0, x0 + max_dist * x_dir, y0 + max_dist * y_dir)
 		}
 	} else {
 		let (x0, y0) = if data.center_around_cursor {
@@ -168,14 +168,13 @@ fn make_operation(data: &ShapeToolData, tool_data: &DocumentToolData, transform:
 		} else {
 			(x0, y0)
 		};
-		(x0, y0, x1, y1, false)
+		(x0, y0, x1, y1)
 	};
 
 	Operation::AddShape {
 		path: vec![],
 		insert_index: -1,
 		transform: (transform.inverse() * glam::DAffine2::from_scale_angle_translation(DVec2::new(x1 - x0, y1 - y0), 0., DVec2::new(x0, y0))).to_cols_array(),
-		equal_sides,
 		sides: data.sides,
 		style: style::PathStyle::new(None, Some(style::Fill::new(tool_data.primary_color))),
 	}
