@@ -1,5 +1,5 @@
 <template>
-	<div class="floating-menu" :class="[direction.toLowerCase(), type.toLowerCase()]" v-if="open" ref="floatingMenu">
+	<div class="floating-menu" :class="[direction.toLowerCase(), type.toLowerCase()]" v-if="type === MenuType.Popover || type === MenuType.Dropdown ? open : true" ref="floatingMenu">
 		<div class="tail" v-if="type === MenuType.Popover"></div>
 		<div class="floating-menu-container" ref="floatingMenuContainer">
 			<div class="floating-menu-content" :class="{ 'scrollable-y': scrollable }" ref="floatingMenuContent" :style="floatingMenuContentStyle">
@@ -112,6 +112,15 @@
 		--floating-menu-content-border-radius: 4px;
 	}
 
+	&.center {
+		justify-content: center;
+		align-items: center;
+
+		.floating-menu-content {
+			transform: translate(-50%, -50%);
+		}
+	}
+
 	&.top,
 	&.bottom {
 		flex-direction: column;
@@ -179,11 +188,13 @@ export enum MenuDirection {
 	TopRight = "TopRight",
 	BottomLeft = "BottomLeft",
 	BottomRight = "BottomRight",
+	Center = "Center",
 }
 
 export enum MenuType {
 	Popover = "Popover",
 	Dropdown = "Dropdown",
+	Dialog = "Dialog",
 }
 
 export default defineComponent({

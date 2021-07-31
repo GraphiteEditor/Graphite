@@ -4,7 +4,7 @@
 			<!-- TODO: Use `<component :is="" v-bind="attributesObject"></component>` to avoid all the separate components with `v-if` -->
 			<IconButton
 				v-if="option.kind === 'IconButton'"
-				:action="() => (option.message && sendToolMessage(option.message), option.callback && option.callback())"
+				:action="() => (option.message && sendToolMessage(option.message), option.callback && option.callback(), !option.message && !option.callback && comingSoon())"
 				:title="option.tooltip"
 				v-bind="option.props"
 			/>
@@ -29,6 +29,8 @@
 
 <script lang="ts">
 import { defineComponent } from "vue";
+
+import comingSoon from "@/utilities/coming-soon";
 
 import { WidgetRow, SeparatorType } from "@/components/widgets/widgets";
 import Separator from "@/components/widgets/separators/Separator.vue";
@@ -100,11 +102,11 @@ export default defineComponent({
 
 				{ kind: "Separator", props: { type: SeparatorType.Section } },
 
-				{ kind: "IconButton", tooltip: "Boolean Union", props: { icon: "BooleanUnion", size: 24 } },
-				{ kind: "IconButton", tooltip: "Boolean Subtract Front", props: { icon: "BooleanSubtractFront", size: 24 } },
-				{ kind: "IconButton", tooltip: "Boolean Subtract Back", props: { icon: "BooleanSubtractBack", size: 24 } },
-				{ kind: "IconButton", tooltip: "Boolean Intersect", props: { icon: "BooleanIntersect", size: 24 } },
-				{ kind: "IconButton", tooltip: "Boolean Difference", props: { icon: "BooleanDifference", size: 24 } },
+				{ kind: "IconButton", tooltip: "Boolean Union", callback: () => comingSoon(197), props: { icon: "BooleanUnion", size: 24 } },
+				{ kind: "IconButton", tooltip: "Boolean Subtract Front", callback: () => comingSoon(197), props: { icon: "BooleanSubtractFront", size: 24 } },
+				{ kind: "IconButton", tooltip: "Boolean Subtract Back", callback: () => comingSoon(197), props: { icon: "BooleanSubtractBack", size: 24 } },
+				{ kind: "IconButton", tooltip: "Boolean Intersect", callback: () => comingSoon(197), props: { icon: "BooleanIntersect", size: 24 } },
+				{ kind: "IconButton", tooltip: "Boolean Difference", callback: () => comingSoon(197), props: { icon: "BooleanDifference", size: 24 } },
 
 				{ kind: "Separator", props: { type: SeparatorType.Related } },
 
@@ -123,6 +125,7 @@ export default defineComponent({
 		return {
 			toolOptions,
 			SeparatorType,
+			comingSoon,
 		};
 	},
 	components: {
