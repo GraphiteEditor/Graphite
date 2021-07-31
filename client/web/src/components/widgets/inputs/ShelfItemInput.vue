@@ -1,6 +1,6 @@
 <template>
 	<div class="shelf-item-input" :class="{ active: active }">
-		<IconButton :action="() => _" :icon="icon" :size="32" />
+		<IconButton :action="action" :icon="icon" :size="32" />
 	</div>
 </template>
 
@@ -37,6 +37,7 @@ export default defineComponent({
 	components: { IconButton },
 	props: {
 		icon: { type: String, required: true },
+		action: { type: Function, required: true },
 		active: { type: Boolean, default: false },
 	},
 });
