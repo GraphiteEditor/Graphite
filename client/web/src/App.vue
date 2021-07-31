@@ -55,6 +55,8 @@
 	--color-accent-rgb: 49, 148, 214;
 	--color-accent-hover: #49a5e2;
 	--color-accent-hover-rgb: 73, 165, 226;
+	--color-accent-disabled: #416277;
+	--color-accent-disabled-rgb: 65, 98, 119;
 
 	// TODO: Replace with CSS color() function to calculate alpha when browsers support it
 	// See https://developer.mozilla.org/en-US/docs/Web/CSS/color_value/color() and https://caniuse.com/css-color-function
