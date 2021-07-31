@@ -6,7 +6,7 @@
 					class="tab"
 					:class="{ active: tabIndex === tabActiveIndex }"
 					v-for="(tabLabel, tabIndex) in tabLabels"
-					:key="tabLabel"
+					:key="tabIndex"
 					@click.middle="handleTabClose(tabIndex)"
 					@click="handleTabClick(tabIndex)"
 				>
@@ -142,7 +142,10 @@
 </style>
 
 <script lang="ts">
-import { defineComponent } from "vue";
+import { defineComponent, PropType } from "vue";
+
+import { createDialog, dismissDialog } from "@/utilities/dialog";
+
 import Document from "@/components/panels/Document.vue";
 import Properties from "@/components/panels/Properties.vue";
 import LayerTree from "@/components/panels/LayerTree.vue";
@@ -155,6 +158,7 @@ import { ResponseType, registerResponseHandler, Response, DisplayConfirmationToC
 const wasm = import("@/../wasm/pkg");
 
 export default defineComponent({
+	inject: ["dialog"],
 	components: {
 		Document,
 		Properties,
@@ -175,14 +179,54 @@ export default defineComponent({
 			select_document(tabIndex);
 		},
 		async closeDocumentWithConfirmation(tabIndex: number) {
-			// eslint-disable-next-line no-alert
-			const userConfirmation = window.confirm("Closing this document will permanently discard all work. Continue?");
-			if (userConfirmation) (await wasm).close_document(tabIndex);
+			this.selectDocument(tabIndex);
+			const tabLabel = this.tabLabels[tabIndex];
+
+			// TODO: Rename to "Save changes before closing?" when we can actually save documents somewhere, not just export SVGs
+			createDialog("File", "Close without exporting SVG?", tabLabel, [
+				{
+					kind: "TextButton",
+					callback: async () => {
+						(await wasm).export_document();
+						dismissDialog();
+					},
+					props: { label: "Export", emphasized: true, minWidth: 96 },
+				},
+				{
+					kind: "TextButton",
+					callback: async () => {
+						(await wasm).close_document(tabIndex);
+						dismissDialog();
+					},
+					props: { label: "Discard", minWidth: 96 },
+				},
+				{
+					kind: "TextButton",
+					callback: async () => {
+						dismissDialog();
+					},
+					props: { label: "Cancel", minWidth: 96 },
+				},
+			]);
 		},
 		async closeAllDocumentsWithConfirmation() {
-			// eslint-disable-next-line no-alert
-			const userConfirmation = window.confirm("Closing all documents will permanently discard all work in each of them. Continue?");
-			if (userConfirmation) (await wasm).close_all_documents();
+			createDialog("Copy", "Close all documents?", "Unsaved work will be lost!", [
+				{
+					kind: "TextButton",
+					callback: async () => {
+						(await wasm).close_all_documents();
+						dismissDialog();
+					},
+					props: { label: "Discard All", minWidth: 96 },
+				},
+				{
+					kind: "TextButton",
+					callback: async () => {
+						dismissDialog();
+					},
+					props: { label: "Cancel", minWidth: 96 },
+				},
+			]);
 		},
 	},
 	mounted() {
@@ -198,7 +242,7 @@ export default defineComponent({
 	props: {
 		tabMinWidths: { type: Boolean, default: false },
 		tabCloseButtons: { type: Boolean, default: false },
-		tabLabels: { type: Array, required: true },
+		tabLabels: { type: Array as PropType<string[]>, required: true },
 		tabActiveIndex: { type: Number, required: true },
 		panelType: { type: String, required: true },
 	},
