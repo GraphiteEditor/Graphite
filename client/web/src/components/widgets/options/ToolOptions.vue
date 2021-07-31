@@ -2,12 +2,7 @@
 	<div class="tool-options">
 		<template v-for="(option, index) in toolOptions[activeTool] || []" :key="index">
 			<!-- TODO: Use `<component :is="" v-bind="attributesObject"></component>` to avoid all the separate components with `v-if` -->
-			<IconButton
-				v-if="option.kind === 'IconButton'"
-				:action="() => (option.message && sendToolMessage(option.message), option.callback && option.callback(), !option.message && !option.callback && comingSoon())"
-				:title="option.tooltip"
-				v-bind="option.props"
-			/>
+			<IconButton v-if="option.kind === 'IconButton'" :action="() => handleIconButtonAction(option)" :title="option.tooltip" v-bind="option.props" />
 			<PopoverButton v-if="option.kind === 'PopoverButton'" :title="option.tooltip" :action="option.callback" v-bind="option.props">
 				<h3>{{ option.popover.title }}</h3>
 				<p>{{ option.popover.text }}</p>
@@ -32,7 +27,7 @@ import { defineComponent } from "vue";
 
 import comingSoon from "@/utilities/coming-soon";
 
-import { WidgetRow, SeparatorType } from "@/components/widgets/widgets";
+import { WidgetRow, SeparatorType, IconButtonWidget } from "@/components/widgets/widgets";
 import Separator from "@/components/widgets/separators/Separator.vue";
 import IconButton from "@/components/widgets/buttons/IconButton.vue";
 import PopoverButton from "@/components/widgets/buttons/PopoverButton.vue";
@@ -55,9 +50,22 @@ export default defineComponent({
 			// This is a placeholder call, using the Shape tool as an example
 			set_tool_options(this.$props.activeTool || "", { Shape: { shape_type: { Polygon: { vertices: newValue } } } });
 		},
-		async sendToolMessage(message: string) {
+		async sendToolMessage(message: string | object) {
 			const { send_tool_message } = await wasm;
 			send_tool_message(this.$props.activeTool || "", message);
+		},
+		handleIconButtonAction(option: IconButtonWidget) {
+			if (option.message) {
+				this.sendToolMessage(option.message);
+				return;
+			}
+
+			if (option.callback) {
+				option.callback();
+				return;
+			}
+
+			comingSoon();
 		},
 	},
 	data() {

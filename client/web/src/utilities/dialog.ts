@@ -22,6 +22,14 @@ export function dismissDialog() {
 	state.visible = false;
 }
 
+export function submitDialog() {
+	const firstEmphasizedButton = state.buttons.find((button) => button.props.emphasized && button.callback);
+	if (firstEmphasizedButton) {
+		// If statement satisfies TypeScript
+		if (firstEmphasizedButton.callback) firstEmphasizedButton.callback();
+	}
+}
+
 export function dialogIsVisible(): boolean {
 	return state.visible;
 }

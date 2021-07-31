@@ -1,5 +1,5 @@
 import { toggleFullscreen } from "@/utilities/fullscreen";
-import { dialogIsVisible, dismissDialog } from "@/utilities/dialog";
+import { dialogIsVisible, dismissDialog, submitDialog } from "@/utilities/dialog";
 
 const wasm = import("@/../wasm/pkg");
 
@@ -40,7 +40,13 @@ export async function handleKeyDown(e: KeyboardEvent) {
 		return;
 	}
 
-	if (e.key === "Escape" && dialogIsVisible()) dismissDialog();
+	if (dialogIsVisible()) {
+		if (e.key === "Escape") dismissDialog();
+		if (e.key === "Enter") submitDialog();
+
+		// Prevent the Enter key from acting like a click on the last clicked button, which might reopen the dialog
+		e.preventDefault();
+	}
 }
 
 export async function handleKeyUp(e: KeyboardEvent) {
@@ -53,7 +59,10 @@ export async function handleKeyUp(e: KeyboardEvent) {
 }
 
 export async function handleMouseDown(e: MouseEvent) {
-	if (dialogIsVisible() && e.target && !(e.target as HTMLElement).closest(".dialog-modal .floating-menu-content")) {
+	const target = e.target && (e.target as HTMLElement);
+	const clickedInsideDialog = target && target.closest(".dialog-modal .floating-menu-content");
+
+	if (dialogIsVisible() && !clickedInsideDialog) {
 		dismissDialog();
 
 		e.preventDefault();

@@ -35,7 +35,7 @@
 				<Separator :type="SeparatorType.Unrelated" />
 
 				<RadioInput @update:index="viewModeChanged" v-model:index="viewModeIndex">
-					<IconButton :icon="'ViewModeNormal'" :size="24" title="View Mode: Normal" />
+					<IconButton :action="() => {}" :icon="'ViewModeNormal'" :size="24" title="View Mode: Normal" />
 					<IconButton :action="() => comingSoon(319)" :icon="'ViewModeOutline'" :size="24" title="View Mode: Outline" />
 					<IconButton :action="() => comingSoon(320)" :icon="'ViewModePixels'" :size="24" title="View Mode: Pixels" />
 				</RadioInput>

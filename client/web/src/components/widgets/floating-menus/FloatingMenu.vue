@@ -1,5 +1,5 @@
 <template>
-	<div class="floating-menu" :class="[direction.toLowerCase(), type.toLowerCase()]" v-if="type === MenuType.Popover || type === MenuType.Dropdown ? open : true" ref="floatingMenu">
+	<div class="floating-menu" :class="[direction.toLowerCase(), type.toLowerCase()]" v-if="open || type === MenuType.Dialog" ref="floatingMenu">
 		<div class="tail" v-if="type === MenuType.Popover"></div>
 		<div class="floating-menu-container" ref="floatingMenuContainer">
 			<div class="floating-menu-content" :class="{ 'scrollable-y': scrollable }" ref="floatingMenuContent" :style="floatingMenuContentStyle">
