@@ -38,6 +38,10 @@ pub enum DocumentMessage {
 	CloseActiveDocumentWithConfirmation,
 	CloseAllDocumentsWithConfirmation,
 	CloseAllDocuments,
+	StartTransaction,
+	RollbackTransaction,
+	AbortTransaction,
+	CommitTransaction,
 	NewDocument,
 	GetOpenDocumentsList,
 	NextDocument,
@@ -357,6 +361,10 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				let id = (self.active_document_index + self.documents.len() - 1) % self.documents.len();
 				responses.push_back(SelectDocument(id).into());
 			}
+			StartTransaction => self.active_document_mut().backup(),
+			RollbackTransaction => self.active_document_mut().rollback().unwrap_or_else(|e| log::warn!("{}", e)),
+			AbortTransaction => self.active_document_mut().reset().unwrap_or_else(|e| log::warn!("{}", e)),
+			CommitTransaction => self.active_document_mut().document_backup = None,
 			ExportDocument => responses.push_back(
 				FrontendMessage::ExportDocument {
 					//TODO: Add canvas size instead of using 1920x1080 by default
@@ -456,7 +464,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					responses.push_back(DocumentOperation::DeleteLayer { path: vec![*id] }.into())
 				}
 			}
-			DispatchOperation(op) => match self.active_document_mut().document.handle_operation(op) {
+			DispatchOperation(op) => match self.active_document_mut().document.handle_operation(&op) {
 				Ok(Some(mut document_responses)) => {
 					let canvas_dirty = self.filter_document_responses(&mut document_responses);
 					responses.extend(
@@ -468,7 +476,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 									self.active_document_mut().layer_data.remove(&path);
 									None
 								}
-								DocumentResponse::CreatedLayer { path } => (!self.active_document().document.work_mounted).then(|| self.select_layer(&path)).flatten(),
+								DocumentResponse::CreatedLayer { path } => self.select_layer(&path),
 								DocumentResponse::DocumentChanged => unreachable!(),
 							})
 							.flatten(),
@@ -638,7 +646,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 						let insert = all_layer_paths.get(insert_pos);
 						if let Some(insert_path) = insert {
 							let (id, path) = insert_path.split_last().expect("Can't move the root folder");
-							if let Some(folder) = self.active_document().document.document_layer(path).ok().map(|layer| layer.as_folder().ok()).flatten() {
+							if let Some(folder) = self.active_document().document.layer(path).ok().map(|layer| layer.as_folder().ok()).flatten() {
 								let selected: Vec<_> = selected_layers
 									.iter()
 									.filter(|layer| layer.starts_with(path) && layer.len() == path.len() + 1)
