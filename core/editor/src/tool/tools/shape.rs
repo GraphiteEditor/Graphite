@@ -82,18 +82,18 @@ impl Fsm for ShapeToolFsmState {
 				}
 				(Dragging, MouseMove) => {
 					data.drag_current = input.mouse.position;
-					responses.push_back(DocumentMessage::RollbackTransaction.into());
+					responses.push_back(DocumentMessage::Undo.into());
 					responses.push_back(make_operation(data, tool_data, transform));
 
 					Dragging
 				}
 				(Dragging, DragStop) => {
 					data.drag_current = input.mouse.position;
-					responses.push_back(DocumentMessage::RollbackTransaction.into());
+					responses.push_back(DocumentMessage::Undo.into());
 					// TODO - introduce comparison threshold when operating with canvas coordinates (https://github.com/GraphiteEditor/Graphite/issues/100)
 					if data.drag_start != data.drag_current {
 						responses.push_back(make_operation(data, tool_data, transform));
-						responses.push_back(DocumentMessage::DeselectAllLayers.into());
+						responses.push_back(make_operation(data, tool_data, transform));
 						responses.push_back(DocumentMessage::CommitTransaction.into());
 					}
 
@@ -138,7 +138,7 @@ fn update_state(
 ) -> ShapeToolFsmState {
 	*(state(data)) = value;
 
-	responses.push_back(DocumentMessage::RollbackTransaction.into());
+	responses.push_back(DocumentMessage::Undo.into());
 	responses.push_back(make_operation(data, tool_data, transform));
 
 	new_state

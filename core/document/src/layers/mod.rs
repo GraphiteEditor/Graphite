@@ -46,17 +46,17 @@ pub enum LayerDataType {
 }
 
 impl LayerDataType {
-	pub fn inner(&self) -> Box<&dyn LayerData> {
+	pub fn inner(&self) -> &dyn LayerData {
 		match self {
-			LayerDataType::Shape(s) => Box::new(s),
-			LayerDataType::Folder(f) => Box::new(f),
+			LayerDataType::Shape(s) => s,
+			LayerDataType::Folder(f) => f,
 		}
 	}
 
-	pub fn inner_mut(&mut self) -> Box<&mut dyn LayerData> {
+	pub fn inner_mut(&mut self) -> &mut dyn LayerData {
 		match self {
-			LayerDataType::Shape(s) => Box::new(s),
-			LayerDataType::Folder(f) => Box::new(f),
+			LayerDataType::Shape(s) => s,
+			LayerDataType::Folder(f) => f,
 		}
 	}
 }
@@ -80,7 +80,7 @@ struct DAffine2Ref {
 	pub translation: DVec2,
 }
 
-#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Debug, PartialEq, Deserialize, Serialize)]
 pub struct Layer {
 	pub visible: bool,
 	pub name: Option<String>,
@@ -170,8 +170,24 @@ impl Layer {
 
 	pub fn as_folder(&self) -> Result<&Folder, DocumentError> {
 		match &self.data {
-			LayerDataType::Folder(f) => Ok(&f),
+			LayerDataType::Folder(f) => Ok(f),
 			_ => Err(DocumentError::NotAFolder),
+		}
+	}
+}
+
+impl Clone for Layer {
+	fn clone(&self) -> Self {
+		Self {
+			visible: self.visible,
+			name: self.name.clone(),
+			data: self.data.clone(),
+			transform: self.transform,
+			cache: String::new(),
+			thumbnail_cache: String::new(),
+			cache_dirty: true,
+			blend_mode: self.blend_mode,
+			opacity: self.opacity,
 		}
 	}
 }

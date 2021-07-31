@@ -266,7 +266,8 @@ function newLayerPanelEntry(input: any): LayerPanelEntry {
 		opacity: newOpacity(input.opacity),
 		layer_type: newLayerType(input.layer_type),
 		layer_data: newLayerData(input.layer_data),
-		path: new BigUint64Array(input.path.map((n: number) => BigInt(n))),
+		// eslint-disable-next-line
+		path: new BigUint64Array(input.path.map((n: Array<bigint>) => BigInt((BigInt(n[0]) << BigInt(32)) | BigInt(n[1])))),
 		thumbnail: input.thumbnail,
 	};
 }
