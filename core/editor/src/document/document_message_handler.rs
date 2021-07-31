@@ -58,7 +58,6 @@ pub enum DocumentMessage {
 	WheelCanvasZoom,
 	SetCanvasRotation(f64),
 	NudgeSelectedLayers(f64, f64),
-	FlipLayer(Vec<LayerId>, bool, bool),
 	FlipSelectedLayers(FlipAxis),
 	AlignSelectedLayers(AlignAxis, AlignAggregate),
 	DragLayer(Vec<LayerId>, DVec2),
@@ -659,18 +658,6 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					}
 				}
 			}
-			FlipLayer(path, flip_horizontal, flip_vertical) => {
-				if let Ok(layer) = self.active_document_mut().document.layer_mut(&path) {
-					let scale = DVec2::new(if flip_horizontal { -1. } else { 1. }, if flip_vertical { -1. } else { 1. });
-					responses.push_back(
-						DocumentOperation::SetLayerTransform {
-							path,
-							transform: (layer.transform * DAffine2::from_scale(scale)).to_cols_array(),
-						}
-						.into(),
-					);
-				}
-			}
 			FlipSelectedLayers(axis) => {
 				// TODO: Handle folder nested transforms with the transforms API
 				let selected_paths = self.selected_layers_sorted();
@@ -705,7 +692,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 						FlipAxis::X => DVec2::new(-1., 1.),
 						FlipAxis::Y => DVec2::new(1., -1.),
 					};
-					transform *= DAffine2::from_scale(scale);
+					transform = transform * DAffine2::from_scale(scale);
 
 					let coord = match axis {
 						FlipAxis::X => &mut transform.translation.x,
