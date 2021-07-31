@@ -1,4 +1,4 @@
-export type Widgets = IconButtonWidget | SeparatorWidget | PopoverButtonWidget | NumberInputWidget;
+export type Widgets = TextButtonWidget | IconButtonWidget | SeparatorWidget | PopoverButtonWidget | NumberInputWidget;
 export type WidgetRow = Array<Widgets>;
 export type WidgetLayout = Array<WidgetRow>;
 

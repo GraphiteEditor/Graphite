@@ -87,6 +87,7 @@ import Grid from "@/../assets/12px-solid/grid.svg";
 import Overlays from "@/../assets/12px-solid/overlays.svg";
 import Snapping from "@/../assets/12px-solid/snapping.svg";
 import Info from "@/../assets/12px-solid/info.svg";
+import Warning from "@/../assets/12px-solid/warning.svg";
 import Swap from "@/../assets/12px-solid/swap.svg";
 import ResetColors from "@/../assets/12px-solid/reset-colors.svg";
 import DropdownArrow from "@/../assets/12px-solid/dropdown-arrow.svg";
@@ -168,6 +169,7 @@ const icons = {
 	Overlays: { component: Overlays, size: 12 },
 	Snapping: { component: Snapping, size: 12 },
 	Info: { component: Info, size: 12 },
+	Warning: { component: Warning, size: 12 },
 	Swap: { component: Swap, size: 12 },
 	ResetColors: { component: ResetColors, size: 12 },
 	DropdownArrow: { component: DropdownArrow, size: 12 },
