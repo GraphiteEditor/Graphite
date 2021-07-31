@@ -15,6 +15,8 @@ pub enum EditorError {
 	UnknownTool,
 	#[error("The operation caused a document error {0:?}")]
 	Document(String),
+	#[error("A Rollback was initated but no transaction was in progress")]
+	NoTransactionInProgress,
 }
 
 macro_rules! derive_from {
