@@ -58,13 +58,16 @@ impl LayerData for Folder {
 }
 
 impl Folder {
-	pub fn add_layer(&mut self, layer: Layer, insert_index: isize) -> Option<LayerId> {
+	pub fn add_layer(&mut self, layer: Layer, id: Option<LayerId>, insert_index: isize) -> Option<LayerId> {
 		let mut insert_index = insert_index as i128;
 		if insert_index < 0 {
 			insert_index = self.layers.len() as i128 + insert_index as i128 + 1;
 		}
 
 		if insert_index <= self.layers.len() as i128 && insert_index >= 0 {
+			if let Some(id) = id {
+				self.next_assignment_id = id;
+			}
 			self.layers.insert(insert_index as usize, layer);
 			self.layer_ids.insert(insert_index as usize, self.next_assignment_id);
 			self.next_assignment_id += 1;

@@ -117,34 +117,24 @@ impl Shape {
 		}
 	}
 	pub fn rectangle(style: PathStyle) -> Self {
-		let mut path = kurbo::BezPath::new();
-
-		// TODO: Use into_iter when new impls get added in rust 2021
-		[(1., 0.), (1., 1.), (0., 1.)].iter().for_each(|v| path.line_to(*v));
-		path.close_path();
 		Self {
-			path,
+			path: kurbo::Rect::new(0., 0., 1., 1.).to_path(0.01),
 			style,
 			render_index: 1,
 			solid: true,
 		}
 	}
 	pub fn ellipse(style: PathStyle) -> Self {
-		let path = kurbo::Ellipse::default().to_path(0.01);
 		Self {
-			path,
+			path: kurbo::Ellipse::default().to_path(0.01),
 			style,
 			render_index: 1,
 			solid: true,
 		}
 	}
 	pub fn line(style: PathStyle) -> Self {
-		let mut path = kurbo::BezPath::new();
-
-		// TODO: Use into_iter when new impls get added in rust 2021
-		[(0., 0.), (1., 1.)].iter().for_each(|v| path.line_to(*v));
 		Self {
-			path,
+			path: kurbo::Line::new((0., 0.), (1., 1.)).to_path(0.01),
 			style,
 			render_index: 1,
 			solid: true,
