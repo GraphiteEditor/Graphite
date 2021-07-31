@@ -258,10 +258,11 @@ impl Document {
 		let mut path = path.to_vec();
 		let len = path.len();
 		path.push(0);
-		let ids = layer.as_folder()?.layer_ids.clone();
-		for id in ids {
-			path[len] = id;
-			self.mark_downstream_as_dirty(&path)?
+		if let Some(ids) = layer.as_folder().ok().map(|f| f.layer_ids.clone()) {
+			for id in ids {
+				path[len] = id;
+				self.mark_downstream_as_dirty(&path)?
+			}
 		}
 		Ok(())
 	}
@@ -422,7 +423,7 @@ impl Document {
 
 				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::FolderChanged { path: path.clone() }])
 			}
-			Operation::MountWorkingFolder { path } => {
+			Operation::StartTransaction { path } => {
 				let mut responses: Vec<_> = self.working_paths().into_iter().map(|path| DocumentResponse::DeletedLayer { path }).collect();
 				self.work_mount_path = path.clone();
 				self.work_operations.clear();
@@ -445,7 +446,7 @@ impl Document {
 				self.mark_as_dirty(path)?;
 				Some(vec![DocumentResponse::DocumentChanged])
 			}
-			Operation::DiscardWorkingFolder => {
+			Operation::AbortTransaction => {
 				let mut responses: Vec<_> = self.working_paths().into_iter().map(|path| DocumentResponse::DeletedLayer { path }).collect();
 				self.work_operations.clear();
 				self.work_mount_path = vec![];
@@ -454,7 +455,7 @@ impl Document {
 				responses.push(DocumentResponse::DocumentChanged);
 				Some(responses)
 			}
-			Operation::ClearWorkingFolder => {
+			Operation::RollbackTransaction => {
 				let mut responses: Vec<_> = self.working_paths().into_iter().map(|path| DocumentResponse::DeletedLayer { path }).collect();
 				self.work_operations.clear();
 				self.work = Layer::new(LayerDataType::Folder(Folder::default()), DAffine2::IDENTITY.to_cols_array());
@@ -481,7 +482,7 @@ impl Document {
 			}
 			Operation::ToggleVisibility { path } => {
 				self.mark_as_dirty(path)?;
-				if let Ok(layer) = self.layer_mut(&path) {
+				if let Ok(layer) = self.layer_mut(path) {
 					layer.visible = !layer.visible;
 				}
 				let path = path.as_slice()[..path.len() - 1].to_vec();
@@ -515,7 +516,7 @@ impl Document {
 		};
 		if !matches!(
 			operation,
-			Operation::CommitTransaction | Operation::MountWorkingFolder { .. } | Operation::DiscardWorkingFolder | Operation::ClearWorkingFolder
+			Operation::CommitTransaction | Operation::StartTransaction { .. } | Operation::AbortTransaction | Operation::RollbackTransaction
 		) {
 			self.work_operations.push(operation);
 		}

@@ -289,19 +289,16 @@ pub struct InputMapper {
 impl InputMapper {
 	pub fn hints(&self, actions: ActionList) -> String {
 		let mut output = String::new();
-		let actions: Vec<MessageDiscriminant> = actions
+		let mut actions = actions
 			.into_iter()
 			.flatten()
-			.filter(|a| !matches!(*a, MessageDiscriminant::Tool(ToolMessageDiscriminant::SelectTool) | MessageDiscriminant::Global(_)))
-			.collect();
+			.filter(|a| !matches!(*a, MessageDiscriminant::Tool(ToolMessageDiscriminant::SelectTool) | MessageDiscriminant::Global(_)));
 		self.mapping
 			.key_down
 			.iter()
 			.enumerate()
 			.filter_map(|(i, m)| {
-				let ma =
-					m.0.iter()
-						.find_map(|m| actions.iter().find_map(|a| (a == &m.action.to_discriminant()).then(|| m.action.to_discriminant())));
+				let ma = m.0.iter().find_map(|m| actions.find_map(|a| (a == m.action.to_discriminant()).then(|| m.action.to_discriminant())));
 
 				ma.map(|a| unsafe { (std::mem::transmute_copy::<usize, Key>(&i), a) })
 			})
