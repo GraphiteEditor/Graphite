@@ -38,7 +38,6 @@ pub enum Operation {
 		path: Vec<LayerId>,
 		insert_index: isize,
 		transform: [f64; 6],
-		equal_sides: bool,
 		sides: u8,
 		style: style::PathStyle,
 	},

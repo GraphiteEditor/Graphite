@@ -279,7 +279,6 @@ impl Document {
 				path,
 				insert_index,
 				transform,
-				equal_sides,
 				sides,
 				style,
 			} => {
