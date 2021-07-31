@@ -1,5 +1,5 @@
 <template>
-	<span class="text-label">
+	<span class="text-label" :class="{ bold, italic }">
 		<slot></slot>
 	</span>
 </template>
@@ -7,7 +7,15 @@
 <style lang="scss">
 .text-label {
 	white-space: nowrap;
-	font-weight: bold;
+	line-height: 18px;
+
+	&.bold {
+		font-weight: bold;
+	}
+
+	&.italic {
+		font-style: italic;
+	}
 }
 </style>
 
@@ -16,6 +24,9 @@ import { defineComponent } from "vue";
 
 export default defineComponent({
 	components: {},
-	props: {},
+	props: {
+		bold: { type: Boolean, default: false },
+		italic: { type: Boolean, default: false },
+	},
 });
 </script>

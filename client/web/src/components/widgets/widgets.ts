@@ -2,6 +2,24 @@ export type Widgets = IconButtonWidget | SeparatorWidget | PopoverButtonWidget |
 export type WidgetRow = Array<Widgets>;
 export type WidgetLayout = Array<WidgetRow>;
 
+// Text Button
+export interface TextButtonWidget {
+	kind: "TextButton";
+	tooltip?: string;
+	message?: string | object;
+	callback?: Function;
+	props: TextButtonProps;
+}
+
+export interface TextButtonProps {
+	// `action` is used via `IconButtonWidget.callback`
+	label: string;
+	emphasized?: boolean;
+	disabled?: boolean;
+	minWidth?: number;
+	gapAfter?: boolean;
+}
+
 // Icon Button
 export interface IconButtonWidget {
 	kind: "IconButton";
