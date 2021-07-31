@@ -111,7 +111,7 @@ impl Fsm for SelectToolFsmState {
 							data.layers_dragging = vec![(intersection.clone(), document.document.layer(intersection).unwrap().transform.translation - transformed_start)]
 						}
 					} else {
-						responses.push_back(Operation::MountWorkingFolder { path: vec![] }.into());
+						responses.push_back(Operation::StartTransaction { path: vec![] }.into());
 						data.layers_dragging = Vec::new();
 					}
 
@@ -121,7 +121,7 @@ impl Fsm for SelectToolFsmState {
 					data.drag_current = input.mouse.position;
 
 					if data.layers_dragging.is_empty() {
-						responses.push_back(Operation::ClearWorkingFolder.into());
+						responses.push_back(Operation::RollbackTransaction.into());
 						responses.push_back(make_operation(data, tool_data, transform));
 					} else {
 						for (path, offset) in &data.layers_dragging {
@@ -135,8 +135,8 @@ impl Fsm for SelectToolFsmState {
 					data.drag_current = input.mouse.position;
 
 					if data.layers_dragging.is_empty() {
-						responses.push_back(Operation::ClearWorkingFolder.into());
-						responses.push_back(Operation::DiscardWorkingFolder.into());
+						responses.push_back(Operation::RollbackTransaction.into());
+						responses.push_back(Operation::AbortTransaction.into());
 
 						if data.drag_start == data.drag_current {
 							responses.push_back(DocumentMessage::SelectLayers(vec![]).into());
@@ -162,7 +162,7 @@ impl Fsm for SelectToolFsmState {
 					Ready
 				}
 				(Dragging, Abort) => {
-					responses.push_back(Operation::DiscardWorkingFolder.into());
+					responses.push_back(Operation::AbortTransaction.into());
 					data.layers_dragging = Vec::new();
 
 					Ready

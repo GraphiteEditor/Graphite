@@ -67,13 +67,13 @@ impl Fsm for RectangleToolFsmState {
 				(Ready, DragStart) => {
 					data.drag_start = input.mouse.position;
 					data.drag_current = input.mouse.position;
-					responses.push_back(Operation::MountWorkingFolder { path: vec![] }.into());
+					responses.push_back(Operation::StartTransaction { path: vec![] }.into());
 					Dragging
 				}
 				(Dragging, MouseMove) => {
 					data.drag_current = input.mouse.position;
 
-					responses.push_back(Operation::ClearWorkingFolder.into());
+					responses.push_back(Operation::RollbackTransaction.into());
 					responses.push_back(make_operation(data, tool_data, transform));
 
 					Dragging
@@ -81,7 +81,7 @@ impl Fsm for RectangleToolFsmState {
 				(Dragging, DragStop) => {
 					data.drag_current = input.mouse.position;
 
-					responses.push_back(Operation::ClearWorkingFolder.into());
+					responses.push_back(Operation::RollbackTransaction.into());
 					// TODO - introduce comparison threshold when operating with canvas coordinates (https://github.com/GraphiteEditor/Graphite/issues/100)
 					if data.drag_start != data.drag_current {
 						responses.push_back(make_operation(data, tool_data, transform));
@@ -93,7 +93,7 @@ impl Fsm for RectangleToolFsmState {
 				}
 				// TODO - simplify with or_patterns when rust 1.53.0 is stable (https://github.com/rust-lang/rust/issues/54883)
 				(Dragging, Abort) => {
-					responses.push_back(Operation::DiscardWorkingFolder.into());
+					responses.push_back(Operation::AbortTransaction.into());
 
 					Ready
 				}
@@ -130,7 +130,7 @@ fn update_state(
 ) -> RectangleToolFsmState {
 	*(state(data)) = value;
 
-	responses.push_back(Operation::ClearWorkingFolder.into());
+	responses.push_back(Operation::RollbackTransaction.into());
 	responses.push_back(make_operation(data, tool_data, transform));
 
 	new_state
