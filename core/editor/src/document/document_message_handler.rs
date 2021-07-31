@@ -59,11 +59,18 @@ pub enum DocumentMessage {
 	SetCanvasRotation(f64),
 	NudgeSelectedLayers(f64, f64),
 	FlipLayer(Vec<LayerId>, bool, bool),
+	FlipSelectedLayers(FlipAxis),
 	AlignSelectedLayers(AlignAxis, AlignAggregate),
 	DragLayer(Vec<LayerId>, DVec2),
 	MoveSelectedLayersTo { path: Vec<LayerId>, insert_index: isize },
 	ReorderSelectedLayers(i32), // relative_position,
 	SetLayerTranslation(Vec<LayerId>, Option<f64>, Option<f64>),
+}
+
+#[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
+pub enum FlipAxis {
+	X,
+	Y,
 }
 
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
@@ -659,6 +666,57 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 						DocumentOperation::SetLayerTransform {
 							path,
 							transform: (layer.transform * DAffine2::from_scale(scale)).to_cols_array(),
+						}
+						.into(),
+					);
+				}
+			}
+			FlipSelectedLayers(axis) => {
+				// TODO: Handle folder nested transforms with the transforms API
+				let selected_paths = self.selected_layers_sorted();
+				if selected_paths.is_empty() {
+					return;
+				}
+
+				let selected_layers = selected_paths.iter().filter_map(|path| {
+					let layer = self.active_document().document.layer(path).unwrap();
+					// TODO: Refactor with `reduce` and `merge_bounding_boxes` once the latter is added
+					let (min, max) = {
+						let bounding_box = layer.bounding_box(layer.transform, layer.style)?;
+						match axis {
+							FlipAxis::X => (bounding_box[0].x, bounding_box[1].x),
+							FlipAxis::Y => (bounding_box[0].y, bounding_box[1].y),
+						}
+					};
+					Some((path.clone(), (min, max)))
+				});
+
+				let (min, max) = selected_layers
+					.clone()
+					.map(|(_, extrema)| extrema)
+					.reduce(|(min_a, max_a), (min_b, max_b)| (min_a.min(min_b), max_a.max(max_b)))
+					.unwrap();
+				let middle = (min + max) / 2.;
+
+				for (path, _) in selected_layers {
+					let layer = self.active_document().document.layer(&path).unwrap();
+					let mut transform = layer.transform;
+					let scale = match axis {
+						FlipAxis::X => DVec2::new(-1., 1.),
+						FlipAxis::Y => DVec2::new(1., -1.),
+					};
+					transform *= DAffine2::from_scale(scale);
+
+					let coord = match axis {
+						FlipAxis::X => &mut transform.translation.x,
+						FlipAxis::Y => &mut transform.translation.y,
+					};
+					*coord = *coord - 2. * (*coord - middle);
+
+					responses.push_back(
+						DocumentOperation::SetLayerTransform {
+							path,
+							transform: transform.to_cols_array(),
 						}
 						.into(),
 					);
