@@ -205,14 +205,20 @@ impl DocumentMessageHandler {
 
 	pub fn rollback(&mut self) -> Result<(), EditorError> {
 		match &self.document_backup {
-			Some(backup) => Ok(self.document = backup.clone()),
+			Some(backup) => {
+				self.document = backup.clone();
+				Ok(())
+			}
 			None => Err(EditorError::NoTransactionInProgress),
 		}
 	}
 
 	pub fn reset(&mut self) -> Result<(), EditorError> {
 		match self.document_backup.take() {
-			Some(backup) => Ok(self.document = backup),
+			Some(backup) => {
+				self.document = backup;
+				Ok(())
+			}
 			None => Err(EditorError::NoTransactionInProgress),
 		}
 	}

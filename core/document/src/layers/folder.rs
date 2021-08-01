@@ -121,7 +121,7 @@ impl Folder {
 		match self.layer(id) {
 			Some(Layer {
 				data: LayerDataType::Folder(folder), ..
-			}) => Some(&folder),
+			}) => Some(folder),
 			_ => None,
 		}
 	}

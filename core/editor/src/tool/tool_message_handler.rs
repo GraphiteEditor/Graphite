@@ -103,7 +103,7 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, &InputPreprocessor)> 
 					_ => unreachable!(),
 				};
 				if let Some(tool) = self.tool_state.tool_data.tools.get_mut(&tool_type) {
-					tool.process_action(message, (&document, &self.tool_state.document_tool_data, input), responses);
+					tool.process_action(message, (document, &self.tool_state.document_tool_data, input), responses);
 				}
 			}
 		}
