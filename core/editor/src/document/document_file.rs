@@ -82,7 +82,6 @@ pub enum DocumentMessage {
 	ExportDocument,
 	RenderDocument,
 	Undo,
-	MouseMove,
 	NudgeSelectedLayers(f64, f64),
 	FlipLayer(Vec<LayerId>, bool, bool),
 	AlignSelectedLayers(AlignAxis, AlignAggregate),
@@ -243,6 +242,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 	fn process_action(&mut self, message: DocumentMessage, ipp: &InputPreprocessor, responses: &mut VecDeque<Message>) {
 		use DocumentMessage::*;
 		match message {
+			Movement(message) => self.movement_handler.process_action(message, (layer_data(&mut self.layer_data, &[]), &self.document, ipp), responses),
 			DeleteLayer(path) => responses.push_back(DocumentOperation::DeleteLayer { path }.into()),
 			AddFolder(path) => responses.push_back(DocumentOperation::AddFolder { path }.into()),
 			StartTransaction => self.active_document_mut().backup(),
@@ -552,7 +552,6 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			DeselectAllLayers,
 			RenderDocument,
 			ExportDocument,
-			MouseMove,
 		);
 
 		if self.active_document().layer_data.values().any(|data| data.selected) {
@@ -564,6 +563,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			);
 			common.extend(select);
 		}
+		common.extend(self.movement_handler.actions());
 		common
 	}
 }
