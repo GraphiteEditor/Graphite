@@ -1,3 +1,8 @@
+use std::{
+	collections::hash_map::DefaultHasher,
+	hash::{Hash, Hasher},
+};
+
 use glam::{DAffine2, DVec2};
 
 use crate::{
@@ -5,15 +10,17 @@ use crate::{
 	DocumentError, DocumentResponse, LayerId, Operation,
 };
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct Document {
 	pub root: Layer,
+	pub hasher: DefaultHasher,
 }
 
 impl Default for Document {
 	fn default() -> Self {
 		Self {
 			root: Layer::new(LayerDataType::Folder(Folder::default()), DAffine2::IDENTITY.to_cols_array()),
+			hasher: DefaultHasher::new(),
 		}
 	}
 }
@@ -26,9 +33,14 @@ fn split_path(path: &[LayerId]) -> Result<(&[LayerId], LayerId), DocumentError> 
 impl Document {
 	/// Wrapper around render, that returns the whole document as a Response.
 	pub fn render_root(&mut self) -> String {
+		// TODO: remove
 		self.mark_as_dirty(&[]);
 		self.root.render(&mut vec![]);
 		self.root.cache.clone()
+	}
+
+	pub fn hash(&self) -> u64 {
+		self.hasher.finish()
 	}
 
 	/// Checks whether each layer under `path` intersects with the provided `quad` and adds all intersection layers as paths to `intersections`.
@@ -246,6 +258,8 @@ impl Document {
 	/// Mutate the document by applying the `operation` to it. If the operation necessitates a
 	/// reaction from the frontend, responses may be returned.
 	pub fn handle_operation(&mut self, operation: &Operation) -> Result<Option<Vec<DocumentResponse>>, DocumentError> {
+		operation.hash(&mut self.hasher);
+
 		let responses = match &operation {
 			Operation::AddEllipse { path, insert_index, transform, style } => {
 				let id = self.add_layer(path, Layer::new(LayerDataType::Shape(Shape::ellipse(*style)), *transform), *insert_index)?;

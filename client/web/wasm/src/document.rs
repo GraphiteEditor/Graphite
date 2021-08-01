@@ -59,37 +59,37 @@ pub fn send_tool_message(tool: String, message: &JsValue) -> Result<(), JsValue>
 
 #[wasm_bindgen]
 pub fn select_document(document: usize) -> Result<(), JsValue> {
-	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(DocumentMessage::SelectDocument(document)).map_err(convert_error))
+	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(DocumentsMessage::SelectDocument(document)).map_err(convert_error))
 }
 
 #[wasm_bindgen]
 pub fn get_open_documents_list() -> Result<(), JsValue> {
-	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(DocumentMessage::GetOpenDocumentsList).map_err(convert_error))
+	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(DocumentsMessage::GetOpenDocumentsList).map_err(convert_error))
 }
 
 #[wasm_bindgen]
 pub fn new_document() -> Result<(), JsValue> {
-	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(DocumentMessage::NewDocument).map_err(convert_error))
+	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(DocumentsMessage::NewDocument).map_err(convert_error))
 }
 
 #[wasm_bindgen]
 pub fn close_document(document: usize) -> Result<(), JsValue> {
-	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(DocumentMessage::CloseDocument(document)).map_err(convert_error))
+	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(DocumentsMessage::CloseDocument(document)).map_err(convert_error))
 }
 
 #[wasm_bindgen]
 pub fn close_all_documents() -> Result<(), JsValue> {
-	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(DocumentMessage::CloseAllDocuments).map_err(convert_error))
+	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(DocumentsMessage::CloseAllDocuments).map_err(convert_error))
 }
 
 #[wasm_bindgen]
 pub fn close_active_document_with_confirmation() -> Result<(), JsValue> {
-	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(DocumentMessage::CloseActiveDocumentWithConfirmation).map_err(convert_error))
+	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(DocumentsMessage::CloseActiveDocumentWithConfirmation).map_err(convert_error))
 }
 
 #[wasm_bindgen]
 pub fn close_all_documents_with_confirmation() -> Result<(), JsValue> {
-	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(DocumentMessage::CloseAllDocumentsWithConfirmation).map_err(convert_error))
+	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(DocumentsMessage::CloseAllDocumentsWithConfirmation).map_err(convert_error))
 }
 
 // TODO: Call event when the panels are resized
@@ -259,14 +259,14 @@ pub fn export_document() -> Result<(), JsValue> {
 /// Sets the zoom to the value
 #[wasm_bindgen]
 pub fn set_zoom(new_zoom: f64) -> Result<(), JsValue> {
-	let ev = DocumentMessage::SetCanvasZoom(new_zoom);
+	let ev = MovementMessage::SetCanvasZoom(new_zoom);
 	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(ev)).map_err(convert_error)
 }
 
 /// Sets the rotation to the new value (in radians)
 #[wasm_bindgen]
 pub fn set_rotation(new_radians: f64) -> Result<(), JsValue> {
-	let ev = DocumentMessage::SetCanvasRotation(new_radians);
+	let ev = MovementMessage::SetCanvasRotation(new_radians);
 	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(ev)).map_err(convert_error)
 }
 

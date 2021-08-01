@@ -8,7 +8,7 @@ use glam::DVec2;
 pub struct Eyedropper;
 
 #[impl_message(Message, ToolMessage, Eyedropper)]
-#[derive(PartialEq, Clone, Debug)]
+#[derive(PartialEq, Clone, Debug, Hash)]
 pub enum EyedropperMessage {
 	LeftMouseDown,
 	RightMouseDown,
