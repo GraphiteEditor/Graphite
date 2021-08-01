@@ -324,6 +324,9 @@ export default defineComponent({
 		registerResponseHandler(ResponseType.CollapseFolder, (responseData) => {
 			console.log("CollapseFolder: ", responseData);
 		});
+		registerResponseHandler(ResponseType.UpdateLayer, (responseData) => {
+			console.log("UpdateLayer: ", responseData);
+		});
 	},
 	data() {
 		return {

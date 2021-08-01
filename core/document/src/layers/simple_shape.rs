@@ -70,15 +70,14 @@ impl Shape {
 		glam_to_kurbo(transform)
 	}
 
-	pub fn shape(_sides: u8, style: PathStyle) -> Self {
-		/*
+	pub fn shape(sides: u8, style: PathStyle) -> Self {
 		fn unit_rotation(theta: f64) -> DVec2 {
 			DVec2::new(-theta.sin(), theta.cos())
 		}
 		let mut path = kurbo::BezPath::new();
 		let apothem_offset_angle = std::f64::consts::PI / (sides as f64);
 
-		let relative_points = (0..sides).map(|i| apothem_offset_angle * ((i * 2 + ((self.sides + 1) % 2)) as f64)).map(unit_rotation);
+		let relative_points = (0..sides).map(|i| apothem_offset_angle * ((i * 2 + ((sides + 1) % 2)) as f64)).map(unit_rotation);
 
 		let (mut min_x, mut min_y, mut max_x, mut max_y) = (f64::MAX, f64::MAX, f64::MIN, f64::MIN);
 		relative_points.clone().for_each(|p| {
@@ -89,15 +88,8 @@ impl Shape {
 		});
 
 		relative_points
-			.map(|p| {
-				if self.equal_sides {
-					p
-				} else {
-					DVec2::new((p.x - min_x) / (max_x - min_x) * 2. - 1., (p.y - min_y) / (max_y - min_y) * 2. - 1.)
-				}
-			})
+			.map(|p| DVec2::new((p.x - min_x) / (max_x - min_x) * 2. - 1., (p.y - min_y) / (max_y - min_y) * 2. - 1.))
 			.map(|p| DVec2::new(p.x / 2. + 0.5, p.y / 2. + 0.5))
-			.map(|unit| transform.transform_point2(unit))
 			.map(|pos| kurbo::Point::new(pos.x, pos.y))
 			.enumerate()
 			.for_each(|(i, p)| {
@@ -108,9 +100,9 @@ impl Shape {
 				}
 			});
 
-		path.close_path();*/
+		path.close_path();
 		Self {
-			path: kurbo::BezPath::new(),
+			path,
 			style,
 			render_index: 1,
 			solid: true,
@@ -126,7 +118,7 @@ impl Shape {
 	}
 	pub fn ellipse(style: PathStyle) -> Self {
 		Self {
-			path: kurbo::Ellipse::default().to_path(0.01),
+			path: kurbo::Ellipse::from_rect(kurbo::Rect::new(0., 0., 1., 1.)).to_path(0.01),
 			style,
 			render_index: 1,
 			solid: true,

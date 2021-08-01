@@ -125,7 +125,7 @@ impl DocumentMessageHandler {
 		})
 	}
 	fn clear_selection(&mut self) {
-		self.active_document_mut().layer_data.values_mut().for_each(|layer_data| layer_data.selected = false);
+		self.layer_data.values_mut().for_each(|layer_data| layer_data.selected = false);
 	}
 	fn select_layer(&mut self, path: &[LayerId]) -> Option<Message> {
 		self.layer_data(path).selected = true;
@@ -133,21 +133,21 @@ impl DocumentMessageHandler {
 		(!path.is_empty()).then(|| self.handle_folder_changed(path[..path.len() - 1].to_vec())).flatten()
 	}
 	pub fn layerdata(&self, path: &[LayerId]) -> &LayerData {
-		self.active_document().layer_data.get(path).expect("Layerdata does not exist")
+		self.layer_data.get(path).expect("Layerdata does not exist")
 	}
 	pub fn layerdata_mut(&mut self, path: &[LayerId]) -> &mut LayerData {
-		self.active_document_mut().layer_data.entry(path.to_vec()).or_insert_with(|| LayerData::new(true))
+		self.layer_data.entry(path.to_vec()).or_insert_with(|| LayerData::new(true))
 	}
 
 	fn selected_layers(&self) -> impl Iterator<Item = &Vec<LayerId>> {
-		self.active_document().layer_data.iter().filter_map(|(path, data)| data.selected.then(|| path))
+		self.layer_data.iter().filter_map(|(path, data)| data.selected.then(|| path))
 	}
 
 	/// Returns the paths to all layers in order, optionally including only selected or non-selected layers.
 	fn layers_sorted(&self, selected: Option<bool>) -> Vec<Vec<LayerId>> {
 		// Compute the indices for each layer to be able to sort them
 		let mut layers_with_indices: Vec<(Vec<LayerId>, Vec<usize>)> = self
-			.active_document()
+
 			.layer_data
 			.iter()
 			// 'path.len() > 0' filters out root layer since it has no indices
@@ -156,7 +156,7 @@ impl DocumentMessageHandler {
 				// Currently it is possible that layer_data contains layers that are don't actually exist (has been partially fixed in #281)
 				// and thus indices_for_path can return an error. We currently skip these layers and log a warning.
 				// Once this problem is solved this code can be simplified
-				match self.active_document().document.indices_for_path(&path) {
+				match self.document.indices_for_path(&path) {
 					Err(err) => {
 						warn!("layers_sorted: Could not get indices for the layer {:?}: {:?}", path, err);
 						None
@@ -255,23 +255,25 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			Movement(message) => self.movement_handler.process_action(message, (layer_data(&mut self.layer_data, &[]), &self.document, ipp), responses),
 			DeleteLayer(path) => responses.push_back(DocumentOperation::DeleteLayer { path }.into()),
 			AddFolder(path) => responses.push_back(DocumentOperation::AddFolder { path }.into()),
-			StartTransaction => self.active_document_mut().backup(),
-			RollbackTransaction => self.active_document_mut().rollback().unwrap_or_else(|e| log::warn!("{}", e)),
-			AbortTransaction => self.active_document_mut().reset().unwrap_or_else(|e| log::warn!("{}", e)),
-			CommitTransaction => self.active_document_mut().document_backup = None,
+			StartTransaction => self.backup(),
+			RollbackTransaction => {
+				self.rollback().unwrap_or_else(|e| log::warn!("{}", e));
+				responses.extend([DocumentMessage::RenderDocument.into(), self.handle_folder_changed(vec![]).unwrap()]);
+			}
+			AbortTransaction => {
+				self.reset().unwrap_or_else(|e| log::warn!("{}", e));
+				responses.extend([DocumentMessage::RenderDocument.into(), self.handle_folder_changed(vec![]).unwrap()]);
+			}
+			CommitTransaction => self.document_backup = None,
 			ExportDocument => responses.push_back(
 				FrontendMessage::ExportDocument {
 					//TODO: Add canvas size instead of using 1920x1080 by default
-					document: format!(
-						r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1080">{}{}</svg>"#,
-						"\n",
-						self.active_document_mut().document.render_root(),
-					),
+					document: format!(r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1080">{}{}</svg>"#, "\n", self.document.render_root(),),
 				}
 				.into(),
 			),
 			SetBlendModeForSelectedLayers(blend_mode) => {
-				let active_document = self.active_document();
+				let active_document = self;
 
 				for path in active_document.layer_data.iter().filter_map(|(path, data)| data.selected.then(|| path.clone())) {
 					responses.push_back(DocumentOperation::SetLayerBlendMode { path, blend_mode }.into());
@@ -288,7 +290,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				responses.push_back(DocumentOperation::ToggleVisibility { path }.into());
 			}
 			ToggleLayerExpansion(path) => {
-				self.active_document_mut().layer_data(&path).expanded ^= true;
+				self.layer_data(&path).expanded ^= true;
 				responses.extend(self.handle_folder_changed(path));
 			}
 			DeleteSelectedLayers => {
@@ -310,23 +312,23 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				responses.extend(self.handle_folder_changed(Vec::new()));
 			}
 			SelectAllLayers => {
-				let all_layer_paths = self.active_document().layer_data.keys().filter(|path| !path.is_empty()).cloned().collect::<Vec<_>>();
+				let all_layer_paths = self.layer_data.keys().filter(|path| !path.is_empty()).cloned().collect::<Vec<_>>();
 				for path in all_layer_paths {
 					responses.extend(self.select_layer(&path));
 				}
 			}
 			DeselectAllLayers => {
 				self.clear_selection();
-				let children = self.active_document_mut().layer_panel(&[]).expect("The provided Path was not valid");
+				let children = self.layer_panel(&[]).expect("The provided Path was not valid");
 				responses.push_back(FrontendMessage::ExpandFolder { path: vec![], children }.into());
 			}
 			Undo => {
 				// this is a temporary fix and will be addressed by #123
-				if let Some(id) = self.active_document().document.root.as_folder().unwrap().list_layers().last() {
+				if let Some(id) = self.document.root.as_folder().unwrap().list_layers().last() {
 					responses.push_back(DocumentOperation::DeleteLayer { path: vec![*id] }.into())
 				}
 			}
-			DispatchOperation(op) => match self.active_document_mut().document.handle_operation(&op) {
+			DispatchOperation(op) => match self.document.handle_operation(&op) {
 				Ok(Some(mut document_responses)) => {
 					let canvas_dirty = self.filter_document_responses(&mut document_responses);
 					responses.extend(
@@ -335,7 +337,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 							.map(|response| match response {
 								DocumentResponse::FolderChanged { path } => self.handle_folder_changed(path),
 								DocumentResponse::DeletedLayer { path } => {
-									self.active_document_mut().layer_data.remove(&path);
+									self.layer_data.remove(&path);
 									None
 								}
 								DocumentResponse::LayerChanged { path } => Some(
@@ -359,7 +361,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			},
 			RenderDocument => responses.push_back(
 				FrontendMessage::UpdateCanvas {
-					document: self.active_document_mut().document.render_root(),
+					document: self.document.render_root(),
 				}
 				.into(),
 			),
@@ -396,7 +398,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 						let insert = all_layer_paths.get(insert_pos);
 						if let Some(insert_path) = insert {
 							let (id, path) = insert_path.split_last().expect("Can't move the root folder");
-							if let Some(folder) = self.active_document().document.layer(path).ok().map(|layer| layer.as_folder().ok()).flatten() {
+							if let Some(folder) = self.document.layer(path).ok().map(|layer| layer.as_folder().ok()).flatten() {
 								let selected: Vec<_> = selected_layers
 									.iter()
 									.filter(|layer| layer.starts_with(path) && layer.len() == path.len() + 1)
@@ -413,7 +415,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				}
 			}
 			FlipLayer(path, flip_horizontal, flip_vertical) => {
-				if let Ok(layer) = self.active_document_mut().document.layer_mut(&path) {
+				if let Ok(layer) = self.document.layer_mut(&path) {
 					let scale = DVec2::new(if flip_horizontal { -1. } else { 1. }, if flip_vertical { -1. } else { 1. });
 					responses.push_back(
 						DocumentOperation::SetLayerTransform {
@@ -431,7 +433,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				}
 
 				let selected_layers = self.selected_layers().cloned().filter_map(|path| {
-					let layer = self.active_document().document.layer(&path).ok()?;
+					let layer = self.document.layer(&path).ok()?;
 					// TODO: Refactor with `reduce` and `merge_bounding_boxes` once the latter is added
 					let (min, max) = {
 						let bounding_box = layer.current_bounding_box()?;
@@ -450,7 +452,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					.map(|(min, max)| (min + max) / 2.)
 				{
 					for path in paths {
-						let layer = self.active_document().document.layer(&path).unwrap();
+						let layer = self.document.layer(&path).unwrap();
 						let mut transform = layer.transform;
 						let scale = match axis {
 							FlipAxis::X => DVec2::new(-1., 1.),
@@ -481,7 +483,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				}
 
 				let selected_layers = self.selected_layers().cloned().filter_map(|path| {
-					let layer = self.active_document().document.layer(&path).ok()?;
+					let layer = self.document.layer(&path).ok()?;
 					let point = {
 						let bounding_box = layer.current_bounding_box()?;
 						match aggregate {
@@ -506,7 +508,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					AlignAggregate::Center => {
 						// TODO: Refactor with `reduce` and `merge_bounding_boxes` once the latter is added
 						self.selected_layers()
-							.filter_map(|path| self.active_document().document.layer(path).ok().map(|layer| layer.current_bounding_box()).flatten())
+							.filter_map(|path| self.document.layer(path).ok().map(|layer| layer.current_bounding_box()).flatten())
 							.map(|bbox| match axis {
 								AlignAxis::X => (bbox[0].x, bbox[1].x),
 								AlignAxis::Y => (bbox[0].y, bbox[1].y),
@@ -528,9 +530,9 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			DragLayer(path, offset) => {
 				// TODO: Replace root transformations with functions of the transform api
 				// and do the same with all instances of `root.transform.inverse()` in other messages
-				let transformed_mouse_pos = self.active_document().document.root.transform.inverse().transform_vector2(ipp.mouse.position.as_dvec2());
+				let transformed_mouse_pos = self.document.root.transform.inverse().transform_vector2(ipp.mouse.position.as_dvec2());
 				let translation = offset + transformed_mouse_pos;
-				if let Ok(layer) = self.active_document_mut().document.layer_mut(&path) {
+				if let Ok(layer) = self.document.layer_mut(&path) {
 					let transform = {
 						let mut transform = layer.transform;
 						transform.translation = translation;
@@ -540,7 +542,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				}
 			}
 			SetLayerTranslation(path, x_option, y_option) => {
-				if let Ok(layer) = self.active_document_mut().document.layer_mut(&path) {
+				if let Ok(layer) = self.document.layer_mut(&path) {
 					let mut transform = layer.transform;
 					transform.translation = DVec2::new(x_option.unwrap_or(transform.translation.x), y_option.unwrap_or(transform.translation.y));
 					responses.push_back(
@@ -564,7 +566,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			ExportDocument,
 		);
 
-		if self.active_document().layer_data.values().any(|data| data.selected) {
+		if self.layer_data.values().any(|data| data.selected) {
 			let select = actions!(DocumentMessageDiscriminant;
 				DeleteSelectedLayers,
 				DuplicateSelectedLayers,
