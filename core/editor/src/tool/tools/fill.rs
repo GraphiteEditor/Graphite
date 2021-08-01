@@ -8,7 +8,7 @@ use glam::DVec2;
 pub struct Fill;
 
 #[impl_message(Message, ToolMessage, Fill)]
-#[derive(PartialEq, Clone, Debug)]
+#[derive(PartialEq, Clone, Debug, Hash)]
 pub enum FillMessage {
 	MouseDown,
 }

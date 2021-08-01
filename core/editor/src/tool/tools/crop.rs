@@ -5,7 +5,7 @@ use crate::tool::ToolActionHandlerData;
 pub struct Crop;
 
 #[impl_message(Message, ToolMessage, Crop)]
-#[derive(PartialEq, Clone, Debug)]
+#[derive(PartialEq, Clone, Debug, Hash)]
 pub enum CropMessage {
 	MouseMove,
 }

@@ -5,7 +5,7 @@ use crate::tool::ToolActionHandlerData;
 pub struct Navigate;
 
 #[impl_message(Message, ToolMessage, Navigate)]
-#[derive(PartialEq, Clone, Debug)]
+#[derive(PartialEq, Clone, Debug, Hash)]
 pub enum NavigateMessage {
 	MouseMove,
 }

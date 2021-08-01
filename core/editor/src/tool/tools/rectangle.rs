@@ -1,9 +1,6 @@
-use std::collections::hash_map::DefaultHasher;
-use std::hash::{Hash, Hasher};
-
 use crate::input::{mouse::ViewportPosition, InputPreprocessor};
 use crate::tool::{DocumentToolData, Fsm, ToolActionHandlerData};
-use crate::{document::Document, message_prelude::*};
+use crate::{document::DocumentMessageHandler, message_prelude::*};
 use document_core::{layers::style, Operation};
 use glam::{DAffine2, DVec2};
 
@@ -14,7 +11,7 @@ pub struct Rectangle {
 }
 
 #[impl_message(Message, ToolMessage, Rectangle)]
-#[derive(PartialEq, Clone, Debug)]
+#[derive(PartialEq, Clone, Debug, Hash)]
 pub enum RectangleMessage {
 	DragStart,
 	DragStop,
@@ -62,7 +59,15 @@ struct RectangleToolData {
 impl Fsm for RectangleToolFsmState {
 	type ToolData = RectangleToolData;
 
-	fn transition(self, event: ToolMessage, document: &Document, tool_data: &DocumentToolData, data: &mut Self::ToolData, input: &InputPreprocessor, responses: &mut VecDeque<Message>) -> Self {
+	fn transition(
+		self,
+		event: ToolMessage,
+		document: &DocumentMessageHandler,
+		tool_data: &DocumentToolData,
+		data: &mut Self::ToolData,
+		input: &InputPreprocessor,
+		responses: &mut VecDeque<Message>,
+	) -> Self {
 		let transform = document.document.root.transform;
 		use RectangleMessage::*;
 		use RectangleToolFsmState::*;
@@ -72,10 +77,8 @@ impl Fsm for RectangleToolFsmState {
 					data.drag_start = input.mouse.position;
 					data.drag_current = input.mouse.position;
 					responses.push_back(DocumentMessage::StartTransaction.into());
-					let mut s = DefaultHasher::new();
-					document.document.root.cache.hash(&mut s);
-					data.hash(&mut s);
-					data.shape_id = Some(s.finish());
+
+					data.shape_id = Some(generate_hash(&*responses, input, document.document.hash()));
 					responses.push_back(DocumentMessage::DeselectAllLayers.into());
 					responses.push_back(make_operation(data, tool_data, transform));
 					Dragging

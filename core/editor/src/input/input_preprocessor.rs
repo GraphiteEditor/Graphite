@@ -31,7 +31,7 @@ bitflags! {
 	}
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Hash)]
 pub struct InputPreprocessor {
 	pub keyboard: KeyStates,
 	pub mouse: MouseState,

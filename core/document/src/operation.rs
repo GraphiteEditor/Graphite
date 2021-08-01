@@ -1,3 +1,5 @@
+use std::hash::{Hash, Hasher};
+
 use crate::{
 	color::Color,
 	layers::{style, BlendMode, Layer},
@@ -7,7 +9,7 @@ use crate::{
 use serde::{Deserialize, Serialize};
 
 #[repr(C)]
-#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub enum Operation {
 	AddEllipse {
 		path: Vec<LayerId>,
@@ -78,4 +80,24 @@ pub enum Operation {
 		path: Vec<LayerId>,
 		color: Color,
 	},
+}
+
+impl Hash for Operation {
+	fn hash<H>(&self, state: &mut H)
+	where
+		H: Hasher,
+	{
+		unsafe { std::mem::transmute::<&Operation, &[u8; std::mem::size_of::<Operation>()]>(self) }.hash(state);
+	}
+}
+
+impl PartialEq for Operation {
+	fn eq(&self, other: &Operation) -> bool {
+		// TODO: Replace with let [s, o] = [self, other].map(|x| unsafe { std::mem::transmute::<&Operation, &[u8; std::mem::size_of::<Operation>()]>(x) });
+		let vals: Vec<_> = [self, other]
+			.iter()
+			.map(|x| unsafe { std::mem::transmute::<&Operation, &[u8; std::mem::size_of::<Operation>()]>(x) })
+			.collect();
+		vals[0] == vals[1]
+	}
 }
