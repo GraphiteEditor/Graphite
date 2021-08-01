@@ -1,5 +1,5 @@
 <template>
-	<div class="checkbox-input">
+	<div class="checkbox-input" :class="{ 'outline-style': outlineStyle }">
 		<input type="checkbox" :id="`checkbox-input-${id}`" :checked="checked" @input="(e) => $emit('update:checked', e.target.checked)" />
 		<label :for="`checkbox-input-${id}`">
 			<div class="checkbox-box">
@@ -49,6 +49,33 @@
 			background: var(--color-accent-hover);
 		}
 	}
+
+	&.outline-style label {
+		.checkbox-box {
+			border: 1px solid var(--color-e-nearwhite);
+			padding: 1px;
+			background: none;
+
+			svg {
+				display: none;
+			}
+		}
+
+		&:hover .checkbox-box {
+			border: 1px solid var(--color-f-white);
+		}
+	}
+
+	&.outline-style input:checked + label {
+		.checkbox-box {
+			background: none;
+
+			svg {
+				display: block;
+				fill: var(--color-e-nearwhite);
+			}
+		}
+	}
 }
 </style>
 
@@ -70,6 +97,7 @@ export default defineComponent({
 	props: {
 		checked: { type: Boolean, required: true },
 		icon: { type: String, default: "Checkmark" },
+		outlineStyle: { type: Boolean, default: false },
 	},
 	components: { IconLabel },
 });

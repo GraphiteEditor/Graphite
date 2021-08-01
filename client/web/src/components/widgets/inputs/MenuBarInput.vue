@@ -93,7 +93,7 @@ const menuEntries: MenuListEntries = [
 				{ label: "Save", shortcut: ["Ctrl", "S"] },
 				{ label: "Save As…", shortcut: ["Ctrl", "⇧", "S"] },
 				{ label: "Save All", shortcut: ["Ctrl", "Alt", "S"] },
-				{ label: "Auto-Save", shortcut: undefined },
+				{ label: "Auto-Save", checkbox: true, checked: true },
 			],
 			[
 				{ label: "Import…", shortcut: ["Ctrl", "I"] },

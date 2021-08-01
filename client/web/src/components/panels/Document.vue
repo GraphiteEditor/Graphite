@@ -308,8 +308,8 @@ export default defineComponent({
 			const { reset_colors } = await wasm;
 			reset_colors();
 		},
-		download(filename: string, svgData: string) {
-			const svgBlob = new Blob([svgData], { type: "image/svg+xml;charset=utf-8" });
+		download(filename: string, fileData: string) {
+			const svgBlob = new Blob([fileData], { type: "image/svg+xml;charset=utf-8" });
 			const svgUrl = URL.createObjectURL(svgBlob);
 			const element = document.createElement("a");
 
