@@ -140,7 +140,7 @@ fn update_state(
 	*(state(data)) = value;
 
 	responses.push_back(DocumentMessage::RollbackTransaction.into());
-	responses.push_back(make_operation(&data, tool_data, transform));
+	responses.push_back(make_operation(data, tool_data, transform));
 
 	new_state
 }
