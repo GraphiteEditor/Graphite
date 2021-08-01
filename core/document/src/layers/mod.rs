@@ -153,10 +153,6 @@ impl Layer {
 		self.data.intersects_quad(transformed_quad, path, intersections)
 	}
 
-	pub fn render_on(&mut self, svg: &mut String, transforms: &mut Vec<DAffine2>) {
-		*svg += self.render(transforms);
-	}
-
 	pub fn current_bounding_box(&self) -> Option<[DVec2; 2]> {
 		self.data.bounding_box(self.transform)
 	}
