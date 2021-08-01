@@ -1,6 +1,6 @@
 pub use super::layer_panel::*;
 use crate::{frontend::layer_panel::*, EditorError};
-use document_core::{document::Document as InternalDocument, layers::LayerData as DocumentLayerData, LayerId};
+use document_core::{document::Document as InternalDocument, LayerId};
 use glam::{DAffine2, DVec2};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -61,7 +61,7 @@ impl Default for DocumentMessageHandler {
 pub enum DocumentMessage {
 	#[child]
 	Movement(MovementMessage),
-	DispatchOperation(DocumentOperation),
+	DispatchOperation(Box<DocumentOperation>),
 	SelectLayers(Vec<Vec<LayerId>>),
 	SelectAllLayers,
 	DeselectAllLayers,
@@ -96,12 +96,12 @@ pub enum DocumentMessage {
 
 impl From<DocumentOperation> for DocumentMessage {
 	fn from(operation: DocumentOperation) -> DocumentMessage {
-		Self::DispatchOperation(operation)
+		Self::DispatchOperation(Box::new(operation))
 	}
 }
 impl From<DocumentOperation> for Message {
 	fn from(operation: DocumentOperation) -> Message {
-		DocumentMessage::DispatchOperation(operation).into()
+		DocumentMessage::DispatchOperation(Box::new(operation)).into()
 	}
 }
 
@@ -128,7 +128,7 @@ impl DocumentMessageHandler {
 		self.active_document_mut().layer_data.values_mut().for_each(|layer_data| layer_data.selected = false);
 	}
 	fn select_layer(&mut self, path: &[LayerId]) -> Option<Message> {
-		self.layer_data(&path).selected = true;
+		self.layer_data(path).selected = true;
 		// TODO: Add deduplication
 		(!path.is_empty()).then(|| self.handle_folder_changed(path[..path.len() - 1].to_vec())).flatten()
 	}
@@ -186,9 +186,13 @@ impl DocumentMessageHandler {
 		self.layers_sorted(Some(false))
 	}
 	pub fn with_name(name: String) -> Self {
-		let mut doc = Self::default();
-		doc.name = name;
-		doc
+		Self {
+			document: InternalDocument::default(),
+			document_backup: None,
+			name,
+			layer_data: vec![(vec![], LayerData::new(true))].into_iter().collect(),
+			movement_handler: MovementMessageHandler::default(),
+		}
 	}
 
 	pub fn layer_data(&mut self, path: &[LayerId]) -> &mut LayerData {
@@ -542,7 +546,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					);
 				}
 			}
-			message => todo!("document_action_handler does not implement: {}", message.to_discriminant().global_name()),
+			RenameLayer(path, name) => responses.push_back(DocumentOperation::RenameLayer { path, name }.into()),
 		}
 	}
 	fn actions(&self) -> ActionList {

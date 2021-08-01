@@ -1,7 +1,6 @@
 use crate::document::LayerData;
 use document_core::{
 	layers::{BlendMode, LayerDataType},
-	LayerId,
 };
 use serde::{Deserialize, Serialize};
 use std::fmt;
