@@ -247,6 +247,7 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 			);
 			common.extend(select);
 		}
+		common.extend(self.active_document().actions());
 		common
 	}
 }
