@@ -1,6 +1,6 @@
 use crate::input::{mouse::ViewportPosition, InputPreprocessor};
 use crate::tool::{DocumentToolData, Fsm, ShapeType, ToolActionHandlerData, ToolOptions, ToolType};
-use crate::{document::Document, message_prelude::*};
+use crate::{document::DocumentMessageHandler, message_prelude::*};
 use document_core::{layers::style, Operation};
 use glam::{DAffine2, DVec2};
 
@@ -11,7 +11,7 @@ pub struct Shape {
 }
 
 #[impl_message(Message, ToolMessage, Shape)]
-#[derive(PartialEq, Clone, Debug)]
+#[derive(PartialEq, Clone, Debug, Hash)]
 pub enum ShapeMessage {
 	Undo,
 	DragStart,
@@ -60,7 +60,15 @@ struct ShapeToolData {
 impl Fsm for ShapeToolFsmState {
 	type ToolData = ShapeToolData;
 
-	fn transition(self, event: ToolMessage, document: &Document, tool_data: &DocumentToolData, data: &mut Self::ToolData, input: &InputPreprocessor, responses: &mut VecDeque<Message>) -> Self {
+	fn transition(
+		self,
+		event: ToolMessage,
+		document: &DocumentMessageHandler,
+		tool_data: &DocumentToolData,
+		data: &mut Self::ToolData,
+		input: &InputPreprocessor,
+		responses: &mut VecDeque<Message>,
+	) -> Self {
 		let transform = document.document.root.transform;
 		use ShapeMessage::*;
 		use ShapeToolFsmState::*;

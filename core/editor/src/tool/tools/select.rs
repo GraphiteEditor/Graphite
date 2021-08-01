@@ -10,7 +10,7 @@ use crate::input::{mouse::ViewportPosition, InputPreprocessor};
 use crate::tool::{DocumentToolData, Fsm, ToolActionHandlerData};
 use crate::{
 	consts::SELECTION_TOLERANCE,
-	document::{AlignAggregate, AlignAxis, Document, FlipAxis},
+	document::{AlignAggregate, AlignAxis, DocumentMessageHandler, FlipAxis},
 	message_prelude::*,
 };
 
@@ -21,7 +21,7 @@ pub struct Select {
 }
 
 #[impl_message(Message, ToolMessage, Select)]
-#[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
+#[derive(PartialEq, Clone, Debug, Serialize, Deserialize, Hash)]
 pub enum SelectMessage {
 	DragStart,
 	DragStop,
@@ -68,7 +68,15 @@ struct SelectToolData {
 impl Fsm for SelectToolFsmState {
 	type ToolData = SelectToolData;
 
-	fn transition(self, event: ToolMessage, document: &Document, tool_data: &DocumentToolData, data: &mut Self::ToolData, input: &InputPreprocessor, responses: &mut VecDeque<Message>) -> Self {
+	fn transition(
+		self,
+		event: ToolMessage,
+		document: &DocumentMessageHandler,
+		tool_data: &DocumentToolData,
+		data: &mut Self::ToolData,
+		input: &InputPreprocessor,
+		responses: &mut VecDeque<Message>,
+	) -> Self {
 		let transform = document.document.root.transform;
 		use SelectMessage::*;
 		use SelectToolFsmState::*;

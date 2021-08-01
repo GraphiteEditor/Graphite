@@ -1,6 +1,6 @@
 use crate::input::InputPreprocessor;
 use crate::tool::{DocumentToolData, Fsm, ToolActionHandlerData};
-use crate::{document::Document, message_prelude::*};
+use crate::{document::DocumentMessageHandler, message_prelude::*};
 use document_core::{layers::style, Operation};
 use glam::DAffine2;
 
@@ -11,7 +11,7 @@ pub struct Pen {
 }
 
 #[impl_message(Message, ToolMessage, Pen)]
-#[derive(PartialEq, Clone, Debug)]
+#[derive(PartialEq, Clone, Debug, Hash)]
 pub enum PenMessage {
 	Undo,
 	DragStart,
@@ -54,7 +54,15 @@ struct PenToolData {
 impl Fsm for PenToolFsmState {
 	type ToolData = PenToolData;
 
-	fn transition(self, event: ToolMessage, document: &Document, tool_data: &DocumentToolData, data: &mut Self::ToolData, input: &InputPreprocessor, responses: &mut VecDeque<Message>) -> Self {
+	fn transition(
+		self,
+		event: ToolMessage,
+		document: &DocumentMessageHandler,
+		tool_data: &DocumentToolData,
+		data: &mut Self::ToolData,
+		input: &InputPreprocessor,
+		responses: &mut VecDeque<Message>,
+	) -> Self {
 		let transform = document.document.root.transform;
 		let pos = transform.inverse() * DAffine2::from_translation(input.mouse.position.as_dvec2());
 

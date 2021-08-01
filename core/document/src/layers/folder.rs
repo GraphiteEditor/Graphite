@@ -68,10 +68,16 @@ impl Folder {
 			if let Some(id) = id {
 				self.next_assignment_id = id;
 			}
+			if self.layer_ids.contains(&self.next_assignment_id) {
+				return None;
+			}
+			let id = self.next_assignment_id;
 			self.layers.insert(insert_index as usize, layer);
-			self.layer_ids.insert(insert_index as usize, self.next_assignment_id);
-			self.next_assignment_id += 1;
-			Some(self.next_assignment_id - 1)
+			self.layer_ids.insert(insert_index as usize, id);
+			while self.layer_ids.contains(&self.next_assignment_id) {
+				self.next_assignment_id += 1;
+			}
+			Some(id)
 		} else {
 			None
 		}

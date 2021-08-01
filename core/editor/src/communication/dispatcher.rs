@@ -1,6 +1,6 @@
 use crate::{frontend::FrontendMessageHandler, message_prelude::*, Callback, EditorError};
 
-pub use crate::document::DocumentMessageHandler;
+pub use crate::document::DocumentsMessageHandler;
 pub use crate::input::{InputMapper, InputPreprocessor};
 pub use crate::tool::ToolMessageHandler;
 
@@ -13,7 +13,7 @@ pub struct Dispatcher {
 	input_mapper: InputMapper,
 	global_message_handler: GlobalMessageHandler,
 	tool_message_handler: ToolMessageHandler,
-	document_message_handler: DocumentMessageHandler,
+	document_message_handler: DocumentsMessageHandler,
 	messages: VecDeque<Message>,
 }
 
@@ -25,11 +25,11 @@ impl Dispatcher {
 			message,
 			Message::InputPreprocessor(_)
 				| Message::InputMapper(_)
-				| Message::Document(DocumentMessage::RenderDocument)
+				| Message::Documents(DocumentsMessage::Document(DocumentMessage::RenderDocument))
 				| Message::Frontend(FrontendMessage::UpdateCanvas { .. })
 				| Message::Frontend(FrontendMessage::SetCanvasZoom { .. })
 				| Message::Frontend(FrontendMessage::SetCanvasRotation { .. })
-				| Message::Document(DocumentMessage::DispatchOperation { .. })
+				| Message::Documents(DocumentsMessage::Document(DocumentMessage::DispatchOperation { .. }))
 		) || MessageDiscriminant::from(&message).local_name().ends_with("MouseMove"))
 			|| true
 		{
@@ -38,7 +38,7 @@ impl Dispatcher {
 		}
 		match message {
 			NoOp => (),
-			Document(message) => self.document_message_handler.process_action(message, &self.input_preprocessor, &mut self.messages),
+			Documents(message) => self.document_message_handler.process_action(message, &self.input_preprocessor, &mut self.messages),
 			Global(message) => self.global_message_handler.process_action(message, (), &mut self.messages),
 			Tool(message) => self
 				.tool_message_handler
@@ -74,7 +74,7 @@ impl Dispatcher {
 			input_preprocessor: InputPreprocessor::default(),
 			global_message_handler: GlobalMessageHandler::new(),
 			input_mapper: InputMapper::default(),
-			document_message_handler: DocumentMessageHandler::default(),
+			document_message_handler: DocumentsMessageHandler::default(),
 			tool_message_handler: ToolMessageHandler::default(),
 			messages: VecDeque::new(),
 		}
@@ -84,7 +84,7 @@ impl Dispatcher {
 #[cfg(test)]
 mod test {
 	use crate::{
-		communication::DocumentMessageHandler,
+		communication::DocumentsMessageHandler,
 		message_prelude::{DocumentMessage, Message},
 		misc::test_utils::EditorTestUtils,
 		Editor,
