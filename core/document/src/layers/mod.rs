@@ -6,7 +6,7 @@ pub mod style;
 //pub mod line;
 use glam::DAffine2;
 use glam::{DMat2, DVec2};
-use kurbo::BezPath;
+
 use kurbo::Shape as KurboShape;
 //pub use line::Line;
 

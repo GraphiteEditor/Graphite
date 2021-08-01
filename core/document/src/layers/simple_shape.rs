@@ -70,7 +70,7 @@ impl Shape {
 		glam_to_kurbo(transform)
 	}
 
-	pub fn shape(sides: u8, style: PathStyle) -> Self {
+	pub fn shape(_sides: u8, style: PathStyle) -> Self {
 		/*
 		fn unit_rotation(theta: f64) -> DVec2 {
 			DVec2::new(-theta.sin(), theta.cos())
@@ -155,18 +155,4 @@ impl Shape {
 			solid: false,
 		}
 	}
-}
-
-#[cfg(test)]
-#[test]
-fn polyline_should_render() {
-	use super::style::PathStyle;
-	use glam::DVec2;
-	let mut polyline = PolyLine {
-		points: vec![DVec2::new(3.0, 4.12354), DVec2::new(1.0, 5.54)],
-	};
-
-	let mut svg = String::new();
-	polyline.render(&mut svg, glam::DAffine2::IDENTITY, PathStyle::default());
-	assert_eq!(r##"<polyline points="3.000 4.124 1.000 5.540" />"##, svg);
 }
