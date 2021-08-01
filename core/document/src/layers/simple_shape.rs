@@ -29,10 +29,11 @@ pub struct Shape {
 impl LayerData for Shape {
 	fn render(&mut self, svg: &mut String, transforms: &mut Vec<DAffine2>) {
 		let mut path = self.path.clone();
-		path.apply_affine(self.render_transform(transforms));
+		let transform = self.transform(transforms);
+		path.apply_affine(glam_to_kurbo(transform));
 
 		let _ = writeln!(svg, r#"<g transform="matrix("#);
-		self.transform(transforms).to_cols_array().iter().enumerate().for_each(|(i, f)| {
+		transform.inverse().to_cols_array().iter().enumerate().for_each(|(i, f)| {
 			let _ = svg.write_str(&(f.to_string() + if i != 5 { "," } else { "" }));
 		});
 		let _ = svg.write_str(r#")">"#);
@@ -63,11 +64,6 @@ impl Shape {
 			x => (transforms.len() as i32 - x - 1).max(0) as usize,
 		};
 		transforms[start..].iter().cloned().reduce(|a, b| a * b).unwrap_or_default()
-	}
-
-	pub fn render_transform(&self, transforms: &[DAffine2]) -> Affine {
-		let transform = self.transform(transforms).inverse();
-		glam_to_kurbo(transform)
 	}
 
 	pub fn shape(sides: u8, style: PathStyle) -> Self {
@@ -128,7 +124,7 @@ impl Shape {
 		Self {
 			path: kurbo::Line::new((0., 0.), (1., 1.)).to_path(0.01),
 			style,
-			render_index: 1,
+			render_index: 0,
 			solid: true,
 		}
 	}
@@ -143,7 +139,7 @@ impl Shape {
 		Self {
 			path,
 			style,
-			render_index: 1,
+			render_index: 0,
 			solid: false,
 		}
 	}
