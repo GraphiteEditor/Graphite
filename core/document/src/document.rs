@@ -262,10 +262,8 @@ impl Document {
 
 		let responses = match &operation {
 			Operation::AddEllipse { path, insert_index, transform, style } => {
-				let id = self.add_layer(path, Layer::new(LayerDataType::Shape(Shape::ellipse(*style)), *transform), *insert_index)?;
-				let path = [path.clone(), vec![id]].concat();
-
-				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::CreatedLayer { path }])
+				self.set_layer(path, Layer::new(LayerDataType::Shape(Shape::ellipse(*style)), *transform), *insert_index)?;
+				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::CreatedLayer { path: path.clone() }])
 			}
 			Operation::AddRect { path, insert_index, transform, style } => {
 				self.set_layer(path, Layer::new(LayerDataType::Shape(Shape::rectangle(*style)), *transform), *insert_index)?;
@@ -348,7 +346,7 @@ impl Document {
 			}
 			Operation::SetLayerTransform { path, transform } => {
 				let transform = DAffine2::from_cols_array(transform);
-				let layer = self.layer_mut(path).unwrap();
+				let layer = self.layer_mut(path)?;
 				layer.transform = transform;
 				self.mark_as_dirty(path)?;
 				Some(vec![DocumentResponse::DocumentChanged])

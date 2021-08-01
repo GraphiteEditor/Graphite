@@ -30,7 +30,7 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Rectangle {
 	fn actions(&self) -> ActionList {
 		use RectangleToolFsmState::*;
 		match self.fsm_state {
-			Ready => actions!(RectangleMessageDiscriminant;  DragStart, Center, UnCenter, LockAspectRatio, UnlockAspectRatio),
+			Ready => actions!(RectangleMessageDiscriminant; DragStart, Center, UnCenter, LockAspectRatio, UnlockAspectRatio),
 			Dragging => actions!(RectangleMessageDiscriminant; DragStop, Center, UnCenter, LockAspectRatio, UnlockAspectRatio, MouseMove, Abort),
 		}
 	}
@@ -77,16 +77,21 @@ impl Fsm for RectangleToolFsmState {
 					data.drag_start = input.mouse.position;
 					data.drag_current = input.mouse.position;
 					responses.push_back(DocumentMessage::StartTransaction.into());
-
 					data.shape_id = Some(generate_hash(&*responses, input, document.document.hash()));
 					responses.push_back(DocumentMessage::DeselectAllLayers.into());
-					responses.push_back(make_operation(data, tool_data, transform));
+					responses.push_back(create_layer(data, tool_data));
 					Dragging
 				}
 				(Dragging, MouseMove) => {
 					data.drag_current = input.mouse.position;
-
-					responses.push_back(make_transform(data, transform));
+					responses.push_back(super::make_transform(
+						data.shape_id.unwrap(),
+						data.constrain_to_square,
+						data.center_around_cursor,
+						data.drag_start,
+						data.drag_current,
+						transform,
+					));
 
 					Dragging
 				}
@@ -94,10 +99,9 @@ impl Fsm for RectangleToolFsmState {
 					data.drag_current = input.mouse.position;
 
 					// TODO - introduce comparison threshold when operating with canvas coordinates (https://github.com/GraphiteEditor/Graphite/issues/100)
-					if data.drag_start != data.drag_current {
-						//responses.push_back(DocumentMessage::DeselectAllLayers.into());
-						//responses.push_back(DocumentMessage::SelectLayers(vec![vec![data.shape_id.unwrap()]]).into());
-						responses.push_back(DocumentMessage::CommitTransaction.into());
+					match data.drag_start == data.drag_current {
+						true => responses.push_back(DocumentMessage::AbortTransaction.into()),
+						false => responses.push_back(DocumentMessage::CommitTransaction.into()),
 					}
 
 					data.shape_id = None;
@@ -112,13 +116,13 @@ impl Fsm for RectangleToolFsmState {
 				}
 				(Ready, LockAspectRatio) => update_state_no_op(&mut data.constrain_to_square, true, Ready),
 				(Ready, UnlockAspectRatio) => update_state_no_op(&mut data.constrain_to_square, false, Ready),
-				(Dragging, LockAspectRatio) => update_state(|data| &mut data.constrain_to_square, true, tool_data, data, responses, Dragging, transform),
-				(Dragging, UnlockAspectRatio) => update_state(|data| &mut data.constrain_to_square, false, tool_data, data, responses, Dragging, transform),
+				(Dragging, LockAspectRatio) => update_state(|data| &mut data.constrain_to_square, true, data, responses, Dragging, transform),
+				(Dragging, UnlockAspectRatio) => update_state(|data| &mut data.constrain_to_square, false, data, responses, Dragging, transform),
 
 				(Ready, Center) => update_state_no_op(&mut data.center_around_cursor, true, Ready),
 				(Ready, UnCenter) => update_state_no_op(&mut data.center_around_cursor, false, Ready),
-				(Dragging, Center) => update_state(|data| &mut data.center_around_cursor, true, tool_data, data, responses, Dragging, transform),
-				(Dragging, UnCenter) => update_state(|data| &mut data.center_around_cursor, false, tool_data, data, responses, Dragging, transform),
+				(Dragging, Center) => update_state(|data| &mut data.center_around_cursor, true, data, responses, Dragging, transform),
+				(Dragging, UnCenter) => update_state(|data| &mut data.center_around_cursor, false, data, responses, Dragging, transform),
 				_ => self,
 			}
 		} else {
@@ -135,7 +139,6 @@ fn update_state_no_op(state: &mut bool, value: bool, new_state: RectangleToolFsm
 fn update_state(
 	state: fn(&mut RectangleToolData) -> &mut bool,
 	value: bool,
-	tool_data: &DocumentToolData,
 	data: &mut RectangleToolData,
 	responses: &mut VecDeque<Message>,
 	new_state: RectangleToolFsmState,
@@ -143,74 +146,23 @@ fn update_state(
 ) -> RectangleToolFsmState {
 	*(state(data)) = value;
 
-	responses.push_back(make_operation(data, tool_data, transform));
+	responses.push_back(super::make_transform(
+		data.shape_id.unwrap(),
+		data.constrain_to_square,
+		data.center_around_cursor,
+		data.drag_start,
+		data.drag_current,
+		transform,
+	));
 
 	new_state
 }
 
-fn make_transform(data: &RectangleToolData, transform: DAffine2) -> Message {
-	let x0 = data.drag_start.x as f64;
-	let y0 = data.drag_start.y as f64;
-	let x1 = data.drag_current.x as f64;
-	let y1 = data.drag_current.y as f64;
-
-	let (x0, y0, x1, y1) = if data.constrain_to_square {
-		let (x_dir, y_dir) = ((x1 - x0).signum(), (y1 - y0).signum());
-		let max_dist = f64::max((x1 - x0).abs(), (y1 - y0).abs());
-		if data.center_around_cursor {
-			(x0 - max_dist * x_dir, y0 - max_dist * y_dir, x0 + max_dist * x_dir, y0 + max_dist * y_dir)
-		} else {
-			(x0, y0, x0 + max_dist * x_dir, y0 + max_dist * y_dir)
-		}
-	} else {
-		let (x0, y0) = if data.center_around_cursor {
-			let delta_x = x1 - x0;
-			let delta_y = y1 - y0;
-
-			(x0 - delta_x, y0 - delta_y)
-		} else {
-			(x0, y0)
-		};
-		(x0, y0, x1, y1)
-	};
-
-	Operation::SetLayerTransform {
-		path: vec![data.shape_id.unwrap()],
-		transform: (transform.inverse() * glam::DAffine2::from_scale_angle_translation(DVec2::new(x1 - x0, y1 - y0), 0., DVec2::new(x0, y0))).to_cols_array(),
-	}
-	.into()
-}
-
-fn make_operation(data: &RectangleToolData, tool_data: &DocumentToolData, transform: DAffine2) -> Message {
-	let x0 = data.drag_start.x as f64;
-	let y0 = data.drag_start.y as f64;
-	let x1 = data.drag_current.x as f64;
-	let y1 = data.drag_current.y as f64;
-
-	let (x0, y0, x1, y1) = if data.constrain_to_square {
-		let (x_dir, y_dir) = ((x1 - x0).signum(), (y1 - y0).signum());
-		let max_dist = f64::max((x1 - x0).abs(), (y1 - y0).abs());
-		if data.center_around_cursor {
-			(x0 - max_dist * x_dir, y0 - max_dist * y_dir, x0 + max_dist * x_dir, y0 + max_dist * y_dir)
-		} else {
-			(x0, y0, x0 + max_dist * x_dir, y0 + max_dist * y_dir)
-		}
-	} else {
-		let (x0, y0) = if data.center_around_cursor {
-			let delta_x = x1 - x0;
-			let delta_y = y1 - y0;
-
-			(x0 - delta_x, y0 - delta_y)
-		} else {
-			(x0, y0)
-		};
-		(x0, y0, x1, y1)
-	};
-
-	Operation::AddRect {
+fn create_layer(data: &RectangleToolData, tool_data: &DocumentToolData) -> Message {
+	Operation::AddEllipse {
 		path: vec![data.shape_id.unwrap()],
 		insert_index: -1,
-		transform: (transform.inverse() * glam::DAffine2::from_scale_angle_translation(DVec2::new(x1 - x0, y1 - y0), 0., DVec2::new(x0, y0))).to_cols_array(),
+		transform: DAffine2::ZERO.to_cols_array(),
 		style: style::PathStyle::new(None, Some(style::Fill::new(tool_data.primary_color))),
 	}
 	.into()
