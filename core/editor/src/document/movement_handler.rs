@@ -1,7 +1,7 @@
 pub use super::layer_panel::*;
 
 use super::LayerData;
-use crate::document::DocumentMessageHandler;
+
 use crate::message_prelude::*;
 use crate::{
 	consts::{MOUSE_ZOOM_RATE, VIEWPORT_SCROLL_RATE, VIEWPORT_ZOOM_SCALE_MAX, VIEWPORT_ZOOM_SCALE_MIN, WHEEL_ZOOM_RATE},
@@ -165,7 +165,6 @@ impl MessageHandler<MovementMessage, (&mut LayerData, &Document, &InputPreproces
 				self.create_document_transform_from_layerdata(layerdata, &ipp.viewport_size, responses);
 				responses.push_back(FrontendMessage::SetCanvasRotation { new_radians: new }.into());
 			}
-			message => todo!("document_action_handler does not implement: {}", message.to_discriminant().global_name()),
 		}
 	}
 	fn actions(&self) -> ActionList {

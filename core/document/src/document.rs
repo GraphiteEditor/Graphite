@@ -330,6 +330,10 @@ impl Document {
 				folder.add_layer(layer, None, -1).ok_or(DocumentError::IndexOutOfBounds)?;
 				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::FolderChanged { path: folder_path.to_vec() }])
 			}
+			Operation::RenameLayer { path, name } => {
+				self.layer_mut(path)?.name = Some(name.clone());
+				Some(vec![DocumentResponse::LayerChanged { path: path.clone() }])
+			}
 			Operation::AddFolder { path } => {
 				self.set_layer(path, Layer::new(LayerDataType::Folder(Folder::default()), DAffine2::IDENTITY.to_cols_array()), -1)?;
 

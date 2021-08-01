@@ -49,6 +49,10 @@ pub enum Operation {
 	DuplicateLayer {
 		path: Vec<LayerId>,
 	},
+	RenameLayer {
+		path: Vec<LayerId>,
+		name: String,
+	},
 	PasteLayer {
 		layer: Layer,
 		path: Vec<LayerId>,
