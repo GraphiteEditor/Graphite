@@ -24,6 +24,7 @@ export enum ResponseType {
 	SetCanvasRotation = "SetCanvasRotation",
 	DisplayConfirmationToCloseDocument = "DisplayConfirmationToCloseDocument",
 	DisplayConfirmationToCloseAllDocuments = "DisplayConfirmationToCloseAllDocuments",
+	SerializeDocument = "SerializeDocument",
 }
 
 export function registerResponseHandler(responseType: ResponseType, callback: ResponseCallback) {
@@ -73,6 +74,8 @@ function parseResponse(responseType: string, data: any): Response {
 			return newDisplayConfirmationToCloseDocument(data.DisplayConfirmationToCloseDocument);
 		case "DisplayConfirmationToCloseAllDocuments":
 			return newDisplayConfirmationToCloseAllDocuments(data.DisplayConfirmationToCloseAllDocuments);
+		case "SerializeDocument":
+			return newSerializeDocument(data.SerializeDocument);
 		default:
 			throw new Error(`Unrecognized origin/responseType pair: ${origin}, '${responseType}'`);
 	}
@@ -155,6 +158,17 @@ export interface ExportDocument {
 function newExportDocument(input: any): UpdateCanvas {
 	return {
 		document: input.document,
+	};
+}
+
+export interface SerializeDocument {
+	document: string;
+	action: string;
+}
+function newSerializeDocument(input: any): SerializeDocument {
+	return {
+		document: input.document,
+		action: input.action,
 	};
 }
 

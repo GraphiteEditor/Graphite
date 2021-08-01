@@ -64,6 +64,7 @@ pub enum DocumentMessage {
 	MoveSelectedLayersTo { path: Vec<LayerId>, insert_index: isize },
 	ReorderSelectedLayers(i32), // relative_position,
 	SetLayerTranslation(Vec<LayerId>, Option<f64>, Option<f64>),
+	SerializeDocument(String),
 }
 
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
@@ -380,6 +381,13 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					responses.push_back(DocumentOperation::SetLayerOpacity { path, opacity }.into());
 				}
 			}
+			SerializeDocument(action) => responses.push_back(
+				FrontendMessage::SerializeDocument {
+					document: self.active_document_mut().document.serialize_document(),
+					action,
+				}
+				.into(),
+			),
 			ToggleLayerVisibility(path) => {
 				responses.push_back(DocumentOperation::ToggleVisibility { path }.into());
 			}
@@ -826,6 +834,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			SetCanvasRotation,
 			WheelCanvasZoom,
 			WheelCanvasTranslate,
+			SerializeDocument
 		);
 
 		if self.active_document().layer_data.values().any(|data| data.selected) {

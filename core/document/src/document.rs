@@ -63,6 +63,12 @@ impl Document {
 		svg
 	}
 
+	// Returns string that represents the full document (not just svg)
+	pub fn serialize_document(&mut self) -> String {
+		// Manually constructing JSON. Should switch to serde_json
+		format!("{{\"version\": 0, \"svg\": \"{}\"}}", self.render_root())
+	}
+
 	/// Checks whether each layer under `path` intersects with the provided `quad` and adds all intersection layers as paths to `intersections`.
 	pub fn intersects_quad(&self, quad: [DVec2; 4], path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>) {
 		self.document_folder(path).unwrap().intersects_quad(quad, path, intersections);
