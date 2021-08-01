@@ -12,13 +12,18 @@
 				@mouseleave="handleEntryMouseLeave(entry)"
 				:data-hover-menu-spawner-extend="entry.children && []"
 			>
-				<IconLabel :icon="entry.icon" v-if="entry.icon && drawIcon" />
-				<div class="no-icon" v-else-if="drawIcon" />
+				<CheckboxInput v-if="entry.checkbox" v-model:checked="entry.checked" :outlineStyle="true" :class="'entry-checkbox'" />
+				<IconLabel v-else-if="entry.icon && drawIcon" :icon="entry.icon" :class="'entry-icon'" />
+				<div v-else-if="drawIcon" class="no-icon" />
+
 				<span class="entry-label">{{ entry.label }}</span>
-				<IconLabel :icon="'Info'" v-if="entry.shortcutRequiresLock && !fullscreen.keyboardLocked" :title="keyboardLockInfoMessage" />
+
+				<IconLabel v-if="entry.shortcutRequiresLock && !fullscreen.keyboardLocked" :icon="'Info'" :title="keyboardLockInfoMessage" />
 				<UserInputLabel v-else-if="entry.shortcut && entry.shortcut.length" :inputKeys="[entry.shortcut]" />
+
 				<div class="submenu-arrow" v-if="entry.children && entry.children.length"></div>
 				<div class="no-submenu-arrow" v-else></div>
+
 				<MenuList
 					v-if="entry.children"
 					:direction="MenuDirection.TopRight"
@@ -50,7 +55,7 @@
 				flex: 0 0 auto;
 			}
 
-			.icon-label svg {
+			.entry-icon svg {
 				fill: var(--color-e-nearwhite);
 			}
 
@@ -63,7 +68,8 @@
 				margin-left: 8px;
 			}
 
-			.icon-label,
+			.entry-checkbox,
+			.entry-icon,
 			.no-icon {
 				margin: 0 4px;
 
@@ -112,6 +118,14 @@
 					color: var(--color-f-white);
 				}
 			}
+
+			&:hover .entry-checkbox label .checkbox-box {
+				border: 1px solid var(--color-f-white);
+
+				svg {
+					fill: var(--color-f-white);
+				}
+			}
 		}
 	}
 }
@@ -125,6 +139,7 @@ import { SeparatorDirection, SeparatorType } from "@/components/widgets/widgets"
 import FloatingMenu, { MenuDirection, MenuType } from "@/components/widgets/floating-menus/FloatingMenu.vue";
 import Separator from "@/components/widgets/separators/Separator.vue";
 import IconLabel from "@/components/widgets/labels/IconLabel.vue";
+import CheckboxInput from "@/components/widgets/inputs/CheckboxInput.vue";
 import UserInputLabel from "@/components/widgets/labels/UserInputLabel.vue";
 
 export type MenuListEntries = Array<MenuListEntry>;
@@ -134,14 +149,14 @@ interface MenuListEntryData {
 	value?: string;
 	label?: string;
 	icon?: string;
-	// TODO: Add `checkbox` (which overrides any `icon`)
+	checkbox?: boolean;
 	shortcut?: Array<string>;
 	shortcutRequiresLock?: boolean;
 	action?: Function;
 	children?: SectionsOfMenuListEntries;
 }
 
-export type MenuListEntry = MenuListEntryData & { ref?: typeof FloatingMenu | typeof MenuList };
+export type MenuListEntry = MenuListEntryData & { ref?: typeof FloatingMenu | typeof MenuList; checked?: boolean };
 
 const KEYBOARD_LOCK_USE_FULLSCREEN = "This hotkey is reserved by the browser, but becomes available in fullscreen mode";
 const KEYBOARD_LOCK_SWITCH_BROWSER = "This hotkey is reserved by the browser, but becomes available in Chrome, Edge, and Opera which support the Keyboard.lock() API";
@@ -163,6 +178,8 @@ const MenuList = defineComponent({
 		},
 		handleEntryClick(menuEntry: MenuListEntry) {
 			(this.$refs.floatingMenu as typeof FloatingMenu).setClosed();
+
+			if (menuEntry.checkbox) menuEntry.checked = !menuEntry.checked;
 
 			if (menuEntry.action) menuEntry.action();
 			else if (this.defaultAction) this.defaultAction();
@@ -259,6 +276,7 @@ const MenuList = defineComponent({
 		FloatingMenu,
 		Separator,
 		IconLabel,
+		CheckboxInput,
 		UserInputLabel,
 	},
 });
