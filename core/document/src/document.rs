@@ -229,9 +229,9 @@ impl Document {
 	}
 
 	pub fn transform_in_scope(&mut self, layer: &[LayerId], scope: Option<&[LayerId]>, transform: DAffine2) -> Result<(), DocumentError> {
-		let to = self.generate_transform(layer, scope)?;
-		let trans = transform * to;
-		self.layer_mut(layer)?.transform = to.inverse() * trans;
+		let to = self.generate_transform(&layer[..layer.len() - 1], scope)?;
+		let layer = self.layer_mut(layer)?;
+		layer.transform = to * transform * layer.transform;
 		Ok(())
 	}
 
