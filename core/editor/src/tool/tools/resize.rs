@@ -1,7 +1,7 @@
 use crate::input::{mouse::ViewportPosition, InputPreprocessor};
 use crate::message_prelude::*;
 use document_core::Operation;
-use glam::{DAffine2, DVec2, Vec2Swizzles};
+use glam::{DAffine2, Vec2Swizzles};
 
 #[derive(Clone, Debug, Default)]
 pub struct Resize {
