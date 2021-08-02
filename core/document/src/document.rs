@@ -280,10 +280,8 @@ impl Document {
 				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::CreatedLayer { path: path.clone() }])
 			}
 			Operation::AddLine { path, insert_index, transform, style } => {
-				let id = self.add_layer(path, Layer::new(LayerDataType::Shape(Shape::line(*style)), *transform), *insert_index)?;
-				let path = [path.clone(), vec![id]].concat();
-
-				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::CreatedLayer { path }])
+				self.set_layer(path, Layer::new(LayerDataType::Shape(Shape::line(*style)), *transform), *insert_index)?;
+				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::CreatedLayer { path: path.clone() }])
 			}
 			Operation::AddPen {
 				path,

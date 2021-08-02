@@ -83,7 +83,7 @@ impl Shape {
 		}
 		let mut path = kurbo::BezPath::new();
 		let apothem_offset_angle = 2. * PI / (sides as f64);
-		let offset = ((sides + 1) % 2) as f64 * PI / 2.;
+		let offset = ((sides + 1) % 2) as f64 * PI / 2.; // rotate odd sided shaps by 90 degrees
 
 		let relative_points = (0..sides).map(|i| apothem_offset_angle * i as f64 + offset).map(unit_rotation);
 		let min = relative_points.clone().reduce(|a, b| a.min(b)).unwrap_or_default();

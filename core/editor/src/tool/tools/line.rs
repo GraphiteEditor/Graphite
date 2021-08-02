@@ -1,3 +1,4 @@
+use crate::consts::LINE_ROTATE_SNAP_ANGLE;
 use crate::input::{mouse::ViewportPosition, InputPreprocessor};
 use crate::tool::{DocumentToolData, Fsm, ToolActionHandlerData};
 use crate::{document::DocumentMessageHandler, message_prelude::*};
@@ -59,6 +60,7 @@ struct LineToolData {
 	snap_angle: bool,
 	lock_angle: bool,
 	center_around_cursor: bool,
+	path: Option<Vec<LayerId>>,
 }
 
 impl Fsm for LineToolFsmState {
@@ -73,41 +75,45 @@ impl Fsm for LineToolFsmState {
 		input: &InputPreprocessor,
 		responses: &mut VecDeque<Message>,
 	) -> Self {
-		let transform = document.document.root.transform;
 		use LineMessage::*;
 		use LineToolFsmState::*;
 		if let ToolMessage::Line(event) = event {
 			match (self, event) {
 				(Ready, DragStart) => {
 					data.drag_start = input.mouse.position;
-					data.drag_current = input.mouse.position;
-
 					responses.push_back(DocumentMessage::StartTransaction.into());
+					data.path = Some(vec![generate_hash(&*responses, input, document.document.hash())]);
+					responses.push_back(DocumentMessage::DeselectAllLayers.into());
+
+					responses.push_back(
+						Operation::AddLine {
+							path: data.path.clone().unwrap(),
+							insert_index: -1,
+							transform: DAffine2::ZERO.to_cols_array(),
+							style: style::PathStyle::new(Some(style::Stroke::new(tool_data.primary_color, 5.)), None),
+						}
+						.into(),
+					);
 
 					Dragging
 				}
 				(Dragging, MouseMove) => {
 					data.drag_current = input.mouse.position;
 
-					responses.push_back(DocumentMessage::RollbackTransaction.into());
-					responses.push_back(make_operation(data, tool_data, transform));
+					responses.push_back(generate_transform(data));
 
 					Dragging
 				}
 				(Dragging, DragStop) => {
 					data.drag_current = input.mouse.position;
 
-					responses.push_back(DocumentMessage::RollbackTransaction.into());
 					// TODO - introduce comparison threshold when operating with canvas coordinates (https://github.com/GraphiteEditor/Graphite/issues/100)
 					if data.drag_start != data.drag_current {
-						responses.push_back(make_operation(data, tool_data, transform));
-						responses.push_back(DocumentMessage::DeselectAllLayers.into());
 						responses.push_back(DocumentMessage::CommitTransaction.into());
 					}
 
 					Ready
 				}
-				// TODO - simplify with or_patterns when rust 1.53.0 is stable (https://github.com/rust-lang/rust/issues/54883)
 				(Dragging, Abort) => {
 					responses.push_back(DocumentMessage::AbortTransaction.into());
 
@@ -115,18 +121,18 @@ impl Fsm for LineToolFsmState {
 				}
 				(Ready, LockAngle) => update_state_no_op(&mut data.lock_angle, true, Ready),
 				(Ready, UnlockAngle) => update_state_no_op(&mut data.lock_angle, false, Ready),
-				(Dragging, LockAngle) => update_state(|data| &mut data.lock_angle, true, tool_data, data, responses, Dragging, transform),
-				(Dragging, UnlockAngle) => update_state(|data| &mut data.lock_angle, false, tool_data, data, responses, Dragging, transform),
+				(Dragging, LockAngle) => update_state(|data| &mut data.lock_angle, true, data, responses, Dragging),
+				(Dragging, UnlockAngle) => update_state(|data| &mut data.lock_angle, false, data, responses, Dragging),
 
 				(Ready, SnapToAngle) => update_state_no_op(&mut data.snap_angle, true, Ready),
 				(Ready, UnSnapToAngle) => update_state_no_op(&mut data.snap_angle, false, Ready),
-				(Dragging, SnapToAngle) => update_state(|data| &mut data.snap_angle, true, tool_data, data, responses, Dragging, transform),
-				(Dragging, UnSnapToAngle) => update_state(|data| &mut data.snap_angle, false, tool_data, data, responses, Dragging, transform),
+				(Dragging, SnapToAngle) => update_state(|data| &mut data.snap_angle, true, data, responses, Dragging),
+				(Dragging, UnSnapToAngle) => update_state(|data| &mut data.snap_angle, false, data, responses, Dragging),
 
 				(Ready, Center) => update_state_no_op(&mut data.center_around_cursor, true, Ready),
 				(Ready, UnCenter) => update_state_no_op(&mut data.center_around_cursor, false, Ready),
-				(Dragging, Center) => update_state(|data| &mut data.center_around_cursor, true, tool_data, data, responses, Dragging, transform),
-				(Dragging, UnCenter) => update_state(|data| &mut data.center_around_cursor, false, tool_data, data, responses, Dragging, transform),
+				(Dragging, Center) => update_state(|data| &mut data.center_around_cursor, true, data, responses, Dragging),
+				(Dragging, UnCenter) => update_state(|data| &mut data.center_around_cursor, false, data, responses, Dragging),
 				_ => self,
 			}
 		} else {
@@ -140,54 +146,42 @@ fn update_state_no_op(state: &mut bool, value: bool, new_state: LineToolFsmState
 	new_state
 }
 
-fn update_state(
-	state: fn(&mut LineToolData) -> &mut bool,
-	value: bool,
-	tool_data: &DocumentToolData,
-	data: &mut LineToolData,
-	responses: &mut VecDeque<Message>,
-	new_state: LineToolFsmState,
-	transform: DAffine2,
-) -> LineToolFsmState {
+fn update_state(state: fn(&mut LineToolData) -> &mut bool, value: bool, data: &mut LineToolData, responses: &mut VecDeque<Message>, new_state: LineToolFsmState) -> LineToolFsmState {
 	*(state(data)) = value;
 
-	responses.push_back(DocumentMessage::RollbackTransaction.into());
-	responses.push_back(make_operation(data, tool_data, transform));
+	responses.push_back(generate_transform(data));
 
 	new_state
 }
 
-fn make_operation(data: &mut LineToolData, tool_data: &DocumentToolData, transform: DAffine2) -> Message {
-	let x0 = data.drag_start.x as f64;
-	let y0 = data.drag_start.y as f64;
-	let x1 = data.drag_current.x as f64;
-	let y1 = data.drag_current.y as f64;
+fn generate_transform(data: &mut LineToolData) -> Message {
+	let mut start = data.drag_start.as_f64();
+	let stop = data.drag_current.as_f64();
 
-	let (dx, dy) = (x1 - x0, y1 - y0);
-	let mut angle = f64::atan2(dx, dy);
+	let mut dir = stop - start;
+
+	let mut angle = f64::atan2(dir.x, dir.y);
 
 	if data.lock_angle {
 		angle = data.angle
 	};
 
 	if data.snap_angle {
-		let snap_resolution = 12.0;
+		let snap_resolution = LINE_ROTATE_SNAP_ANGLE;
 		angle = (angle * snap_resolution / PI).round() / snap_resolution * PI;
 	}
 
 	data.angle = angle;
 
-	let (dir_x, dir_y) = (f64::sin(angle), f64::cos(angle));
-	let projected_length = dx * dir_x + dy * dir_y;
-	let (x1, y1) = (x0 + dir_x * projected_length, y0 + dir_y * projected_length);
+	dir = DVec2::new(f64::sin(angle), f64::cos(angle)) * dir.length();
 
-	let (x0, y0) = if data.center_around_cursor { (x0 - (x1 - x0), y0 - (y1 - y0)) } else { (x0, y0) };
+	if data.center_around_cursor {
+		start -= dir / 2.;
+	}
 
-	Operation::AddLine {
-		path: vec![],
-		insert_index: -1,
-		transform: (transform.inverse() * glam::DAffine2::from_scale_angle_translation(DVec2::new(x1 - x0, y1 - y0), 0., DVec2::new(x0, y0))).to_cols_array(),
-		style: style::PathStyle::new(Some(style::Stroke::new(tool_data.primary_color, 5.)), None),
+	Operation::SetLayerTransformInViewport {
+		path: data.path.clone().unwrap(),
+		transform: glam::DAffine2::from_scale_angle_translation(dir, 0., start).to_cols_array(),
 	}
 	.into()
 }
