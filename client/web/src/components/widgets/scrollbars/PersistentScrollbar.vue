@@ -1,12 +1,10 @@
 <template>
 	<div class="persistent-scrollbar" :class="direction.toLowerCase()">
-		<button class="arrow decrease"></button>
-		<div class="scroll-track">
-			<div class="scroll-click-area decrease" :style="[trackStart, preThumb, sides]"></div>
-			<div class="scroll-thumb" :style="[thumbStart, thumbEnd, sides]"></div>
-			<div class="scroll-click-area increase" :style="[postThumb, trackEnd, sides]"></div>
+		<button class="arrow decrease" @mousedown="changePosition(-50)"></button>
+		<div class="scroll-track" ref="scrollTrack" @mousedown="grabArea">
+			<div class="scroll-thumb" @mousedown="grabHandle" :class="{ dragging: Dragging }" ref="handle" :style="[thumbStart, thumbEnd, sides]"></div>
 		</div>
-		<button class="arrow increase"></button>
+		<button class="arrow increase" @click="changePosition(50)"></button>
 	</div>
 </template>
 
@@ -39,6 +37,9 @@
 			&:hover {
 				background: var(--color-6-lowergray);
 			}
+			&.dragging {
+				background: var(--color-accent-hover);
+			}
 		}
 
 		.scroll-click-area {
@@ -57,6 +58,9 @@
 			&:hover {
 				border-color: transparent transparent var(--color-6-lowergray) transparent;
 			}
+			&:active {
+				border-color: transparent transparent var(--color-c-brightgray) transparent;
+			}
 		}
 
 		.arrow.increase {
@@ -66,6 +70,9 @@
 
 			&:hover {
 				border-color: var(--color-6-lowergray) transparent transparent transparent;
+			}
+			&:active {
+				border-color: var(--color-c-brightgray) transparent transparent transparent;
 			}
 		}
 	}
@@ -81,6 +88,9 @@
 			&:hover {
 				border-color: transparent var(--color-6-lowergray) transparent transparent;
 			}
+			&:active {
+				border-color: transparent var(--color-c-brightgray) transparent transparent;
+			}
 		}
 
 		.arrow.increase {
@@ -90,6 +100,9 @@
 
 			&:hover {
 				border-color: transparent transparent transparent var(--color-6-lowergray);
+			}
+			&:active {
+				border-color: transparent transparent transparent var(--color-c-brightgray);
 			}
 		}
 	}
@@ -109,31 +122,15 @@ export default defineComponent({
 		direction: { type: String as PropType<ScrollbarDirection>, default: ScrollbarDirection.Vertical },
 	},
 	computed: {
-		trackStart(): { left: string } | { top: string } {
-			return this.direction === ScrollbarDirection.Vertical ? { top: "0%" } : { left: "0%" };
-		},
-		preThumb(): { right: string } | { bottom: string } {
-			const start = 25;
-
-			return this.direction === ScrollbarDirection.Vertical ? { bottom: `${100 - start}%` } : { right: `${100 - start}%` };
-		},
 		thumbStart(): { left: string } | { top: string } {
-			const start = 25;
+			const start = this.HandlePosition - this.HandleLength / 2;
 
-			return this.direction === ScrollbarDirection.Vertical ? { top: `${start}%` } : { left: `${start}%` };
+			return this.direction === ScrollbarDirection.Vertical ? { top: `${start * 100}%` } : { left: `${start * 100}%` };
 		},
 		thumbEnd(): { right: string } | { bottom: string } {
-			const end = 25;
+			const end = 1 - this.HandlePosition - this.HandleLength / 2;
 
-			return this.direction === ScrollbarDirection.Vertical ? { bottom: `${end}%` } : { right: `${end}%` };
-		},
-		postThumb(): { left: string } | { top: string } {
-			const end = 25;
-
-			return this.direction === ScrollbarDirection.Vertical ? { top: `${100 - end}%` } : { left: `${100 - end}%` };
-		},
-		trackEnd(): { right: string } | { bottom: string } {
-			return this.direction === ScrollbarDirection.Vertical ? { bottom: "0%" } : { right: "0%" };
+			return this.direction === ScrollbarDirection.Vertical ? { bottom: `${end * 100}%` } : { right: `${end * 100}%` };
 		},
 		sides(): { left: string; right: string } | { top: string; bottom: string } {
 			return this.direction === ScrollbarDirection.Vertical ? { left: "0%", right: "0%" } : { top: "0%", bottom: "0%" };
@@ -142,7 +139,64 @@ export default defineComponent({
 	data() {
 		return {
 			ScrollbarDirection,
+			HandlePosition: 0.5,
+			HandleLength: 0.2,
+			Dragging: false,
+			DragOffset: 0,
 		};
+	},
+	mounted() {
+		window.addEventListener("mouseup", () => {
+			this.Dragging = false;
+		});
+		window.addEventListener("mousemove", this.mouseMove);
+	},
+	methods: {
+		trackLength(): number {
+			const track = this.$refs.scrollTrack as HTMLElement;
+			return this.direction === ScrollbarDirection.Vertical ? track.clientHeight - this.HandleLength : track.clientWidth;
+		},
+		trackOffset(): number {
+			const track = this.$refs.scrollTrack as HTMLElement;
+			return this.direction === ScrollbarDirection.Vertical ? track.getBoundingClientRect().top : track.getBoundingClientRect().left;
+		},
+		updateHandlePosition(e: MouseEvent) {
+			const position = this.direction === ScrollbarDirection.Vertical ? e.clientY : e.clientX;
+			this.HandlePosition = (position + this.DragOffset - this.trackOffset()) / this.trackLength();
+			this.HandlePosition = Math.min(Math.max(this.HandlePosition, this.HandleLength / 2), 1 - this.HandleLength / 2);
+		},
+		grabHandle(e: MouseEvent) {
+			if (!this.Dragging) {
+				this.Dragging = true;
+				const position = this.direction === ScrollbarDirection.Vertical ? e.clientY : e.clientX;
+				this.DragOffset = this.HandlePosition * this.trackLength() + this.trackOffset() - position;
+				this.updateHandlePosition(e);
+			}
+		},
+		grabArea(e: MouseEvent) {
+			if (!this.Dragging) {
+				this.Dragging = true;
+				this.DragOffset = 0;
+				this.updateHandlePosition(e);
+			}
+		},
+		mouseUp() {
+			this.Dragging = false;
+			this.DragOffset = 0;
+		},
+		mouseMove(e: MouseEvent) {
+			if (this.Dragging) {
+				this.updateHandlePosition(e);
+			}
+		},
+		changePosition(difference: number) {
+			this.HandlePosition += difference / this.trackLength();
+			this.HandlePosition = Math.min(Math.max(this.HandlePosition, this.HandleLength / 2), 1 - this.HandleLength / 2);
+		},
+		updateBox(size: number, position: number) {
+			this.HandleLength = this.trackLength() / size;
+			this.HandlePosition = position / size;
+		},
 	},
 });
 </script>
