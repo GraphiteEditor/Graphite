@@ -1,6 +1,6 @@
 use crate::{
 	input::{
-		mouse::{MouseKeys, MouseState, ScrollDelta, ViewportPosition},
+		mouse::{MouseKeys, MouseState, ScrollDelta},
 		InputPreprocessorMessage, ModifierKeys,
 	},
 	message_prelude::{Message, ToolMessage},

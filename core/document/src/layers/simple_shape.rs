@@ -1,7 +1,7 @@
 use glam::DAffine2;
 use glam::DMat2;
 use glam::DVec2;
-use glam::Vec2Swizzles;
+
 use kurbo::Affine;
 use kurbo::Shape as KurboShape;
 

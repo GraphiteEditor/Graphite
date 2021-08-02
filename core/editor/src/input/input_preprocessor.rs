@@ -137,7 +137,7 @@ mod test {
 	#[test]
 	fn process_action_mouse_move_handle_modifier_keys() {
 		let mut input_preprocessor = InputPreprocessor::default();
-		let message = InputPreprocessorMessage::MouseMove(ViewportPosition { x: 4, y: 809 }, ModifierKeys::ALT);
+		let message = InputPreprocessorMessage::MouseMove((4, 809).into(), ModifierKeys::ALT);
 		let mut responses = VecDeque::new();
 
 		input_preprocessor.process_action(message, (), &mut responses);
