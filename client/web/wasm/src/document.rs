@@ -8,7 +8,7 @@ use editor_core::message_prelude::*;
 use editor_core::misc::EditorError;
 use editor_core::tool::{tool_options::ToolOptions, tools, ToolType};
 use editor_core::{
-	input::mouse::{MouseState, ViewportPosition},
+	input::mouse::{MouseState},
 	LayerId,
 };
 use wasm_bindgen::prelude::*;

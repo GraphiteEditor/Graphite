@@ -1,7 +1,6 @@
 use crate::input::InputPreprocessor;
 use crate::tool::{DocumentToolData, Fsm, ShapeType, ToolActionHandlerData, ToolOptions, ToolType};
 use crate::{document::DocumentMessageHandler, message_prelude::*};
-use document_core::layers::LayerData;
 use document_core::{layers::style, Operation};
 use glam::DAffine2;
 
