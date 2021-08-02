@@ -28,8 +28,8 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Ellipse {
 	fn actions(&self) -> ActionList {
 		use EllipseToolFsmState::*;
 		match self.fsm_state {
-			Ready => actions!(EllipseMessageDiscriminant; DragStart),
-			Dragging => actions!(EllipseMessageDiscriminant; DragStop,  Abort),
+			Ready => actions!(EllipseMessageDiscriminant; DragStart, Resize),
+			Dragging => actions!(EllipseMessageDiscriminant; DragStop,  Abort, Resize),
 		}
 	}
 }
@@ -86,11 +86,9 @@ impl Fsm for EllipseToolFsmState {
 
 					Dragging
 				}
-				(Dragging, Resize(message)) => {
-					shape_data.bounding_box = document.document.layer_local_bounding_box(&shape_data.path.clone().unwrap()).unwrap();
+				(state, Resize(message)) => {
 					shape_data.process_action(message, input, responses);
-
-					Dragging
+					state
 				}
 				(Dragging, DragStop) => {
 					// TODO - introduce comparison threshold when operating with canvas coordinates (https://github.com/GraphiteEditor/Graphite/issues/100)

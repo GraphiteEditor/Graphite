@@ -1,6 +1,7 @@
 use crate::input::InputPreprocessor;
 use crate::tool::{DocumentToolData, Fsm, ShapeType, ToolActionHandlerData, ToolOptions, ToolType};
 use crate::{document::DocumentMessageHandler, message_prelude::*};
+use document_core::layers::LayerData;
 use document_core::{layers::style, Operation};
 use glam::DAffine2;
 
@@ -28,8 +29,8 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Shape {
 	fn actions(&self) -> ActionList {
 		use ShapeToolFsmState::*;
 		match self.fsm_state {
-			Ready => actions!(ShapeMessageDiscriminant; DragStart),
-			Dragging => actions!(ShapeMessageDiscriminant; DragStop,  Abort),
+			Ready => actions!(ShapeMessageDiscriminant; DragStart, Resize),
+			Dragging => actions!(ShapeMessageDiscriminant; DragStop,  Abort, Resize),
 		}
 	}
 }
@@ -93,11 +94,10 @@ impl Fsm for ShapeToolFsmState {
 
 					Dragging
 				}
-				(Dragging, Resize(message)) => {
-					shape_data.bounding_box = document.document.layer_local_bounding_box(&shape_data.path.clone().unwrap()).unwrap();
+				(state, Resize(message)) => {
 					shape_data.process_action(message, input, responses);
 
-					Dragging
+					state
 				}
 				(Dragging, DragStop) => {
 					// TODO - introduce comparison threshold when operating with canvas coordinates (https://github.com/GraphiteEditor/Graphite/issues/100)
