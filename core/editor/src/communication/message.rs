@@ -30,22 +30,23 @@ pub enum Message {
 	InputMapper(InputMapperMessage),
 }
 
+impl Message {
+	fn as_slice(&self) -> &[u8] {
+		unsafe { core::slice::from_raw_parts(self as *const Message as *const u8, std::mem::size_of::<Message>()) }
+	}
+}
+
 impl Hash for Message {
 	fn hash<H>(&self, state: &mut H)
 	where
 		H: Hasher,
 	{
-		unsafe { std::mem::transmute::<&Message, &[u8; std::mem::size_of::<Message>()]>(self) }.hash(state);
+		self.as_slice().hash(state);
 	}
 }
 
 impl PartialEq for Message {
 	fn eq(&self, other: &Message) -> bool {
-		// TODO: Replace with let [s, o] = [self, other].map(|x| unsafe { std::mem::transmute::<&Message, &[u8; std::mem::size_of::<Message>()]>(x) });
-		let vals: Vec<_> = [self, other]
-			.iter()
-			.map(|x| unsafe { std::mem::transmute::<&Message, &[u8; std::mem::size_of::<Message>()]>(x) })
-			.collect();
-		vals[0] == vals[1]
+		self.as_slice() == other.as_slice()
 	}
 }

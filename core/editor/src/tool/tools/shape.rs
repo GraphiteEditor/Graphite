@@ -1,8 +1,10 @@
-use crate::input::{mouse::ViewportPosition, InputPreprocessor};
+use crate::input::InputPreprocessor;
 use crate::tool::{DocumentToolData, Fsm, ShapeType, ToolActionHandlerData, ToolOptions, ToolType};
 use crate::{document::DocumentMessageHandler, message_prelude::*};
 use document_core::{layers::style, Operation};
-use glam::{DAffine2, DVec2};
+use glam::DAffine2;
+
+use super::resize::*;
 
 #[derive(Default)]
 pub struct Shape {
@@ -13,15 +15,10 @@ pub struct Shape {
 #[impl_message(Message, ToolMessage, Shape)]
 #[derive(PartialEq, Clone, Debug, Hash)]
 pub enum ShapeMessage {
-	Undo,
 	DragStart,
 	DragStop,
-	MouseMove,
+	Resize(ResizeMessage),
 	Abort,
-	Center,
-	UnCenter,
-	LockAspectRatio,
-	UnlockAspectRatio,
 }
 
 impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Shape {
@@ -31,8 +28,8 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Shape {
 	fn actions(&self) -> ActionList {
 		use ShapeToolFsmState::*;
 		match self.fsm_state {
-			Ready => actions!(ShapeMessageDiscriminant; Undo, DragStart, Center, UnCenter, LockAspectRatio, UnlockAspectRatio),
-			Dragging => actions!(ShapeMessageDiscriminant; DragStop, Center, UnCenter, LockAspectRatio, UnlockAspectRatio, MouseMove, Abort),
+			Ready => actions!(ShapeMessageDiscriminant; DragStart),
+			Dragging => actions!(ShapeMessageDiscriminant; DragStop,  Abort),
 		}
 	}
 }
@@ -50,11 +47,8 @@ impl Default for ShapeToolFsmState {
 }
 #[derive(Clone, Debug, Default)]
 struct ShapeToolData {
-	drag_start: ViewportPosition,
-	drag_current: ViewportPosition,
-	constrain_to_square: bool,
-	center_around_cursor: bool,
 	sides: u8,
+	data: Resize,
 }
 
 impl Fsm for ShapeToolFsmState {
@@ -69,15 +63,16 @@ impl Fsm for ShapeToolFsmState {
 		input: &InputPreprocessor,
 		responses: &mut VecDeque<Message>,
 	) -> Self {
-		let transform = document.document.root.transform;
+		let mut shape_data = &mut data.data;
 		use ShapeMessage::*;
 		use ShapeToolFsmState::*;
 		if let ToolMessage::Shape(event) = event {
 			match (self, event) {
 				(Ready, DragStart) => {
-					data.drag_start = input.mouse.position;
-					data.drag_current = input.mouse.position;
-
+					shape_data.drag_start = input.mouse.position;
+					responses.push_back(DocumentMessage::StartTransaction.into());
+					shape_data.path = Some(vec![generate_hash(&*responses, input, document.document.hash())]);
+					responses.push_back(DocumentMessage::DeselectAllLayers.into());
 					data.sides = match tool_data.tool_options.get(&ToolType::Shape) {
 						Some(&ToolOptions::Shape {
 							shape_type: ShapeType::Polygon { vertices },
@@ -85,106 +80,45 @@ impl Fsm for ShapeToolFsmState {
 						_ => 6,
 					};
 
-					responses.push_back(DocumentMessage::StartTransaction.into());
+					responses.push_back(
+						Operation::AddShape {
+							path: shape_data.path.clone().unwrap(),
+							insert_index: -1,
+							transform: DAffine2::ZERO.to_cols_array(),
+							sides: data.sides,
+							style: style::PathStyle::new(None, Some(style::Fill::new(tool_data.primary_color))),
+						}
+						.into(),
+					);
+
 					Dragging
 				}
-				(Dragging, MouseMove) => {
-					data.drag_current = input.mouse.position;
-					responses.push_back(DocumentMessage::Undo.into());
-					responses.push_back(make_operation(data, tool_data, transform));
+				(Dragging, Resize(message)) => {
+					shape_data.bounding_box = document.document.layer_local_bounding_box(&shape_data.path.clone().unwrap()).unwrap();
+					shape_data.process_action(message, input, responses);
 
 					Dragging
 				}
 				(Dragging, DragStop) => {
-					data.drag_current = input.mouse.position;
-					responses.push_back(DocumentMessage::Undo.into());
 					// TODO - introduce comparison threshold when operating with canvas coordinates (https://github.com/GraphiteEditor/Graphite/issues/100)
-					if data.drag_start != data.drag_current {
-						responses.push_back(make_operation(data, tool_data, transform));
-						responses.push_back(make_operation(data, tool_data, transform));
-						responses.push_back(DocumentMessage::CommitTransaction.into());
+					match shape_data.drag_start == input.mouse.position {
+						true => responses.push_back(DocumentMessage::AbortTransaction.into()),
+						false => responses.push_back(DocumentMessage::CommitTransaction.into()),
 					}
 
+					shape_data.path = None;
 					Ready
 				}
 				(Dragging, Abort) => {
 					responses.push_back(DocumentMessage::AbortTransaction.into());
+					shape_data.path = None;
 
 					Ready
 				}
-
-				(Ready, LockAspectRatio) => update_state_no_op(&mut data.constrain_to_square, true, Ready),
-				(Ready, UnlockAspectRatio) => update_state_no_op(&mut data.constrain_to_square, false, Ready),
-				(Dragging, LockAspectRatio) => update_state(|data| &mut data.constrain_to_square, true, tool_data, data, responses, Dragging, transform),
-				(Dragging, UnlockAspectRatio) => update_state(|data| &mut data.constrain_to_square, false, tool_data, data, responses, Dragging, transform),
-
-				(Ready, Center) => update_state_no_op(&mut data.center_around_cursor, true, Ready),
-				(Ready, UnCenter) => update_state_no_op(&mut data.center_around_cursor, false, Ready),
-				(Dragging, Center) => update_state(|data| &mut data.center_around_cursor, true, tool_data, data, responses, Dragging, transform),
-				(Dragging, UnCenter) => update_state(|data| &mut data.center_around_cursor, false, tool_data, data, responses, Dragging, transform),
 				_ => self,
 			}
 		} else {
 			self
 		}
 	}
-}
-
-fn update_state_no_op(state: &mut bool, value: bool, new_state: ShapeToolFsmState) -> ShapeToolFsmState {
-	*state = value;
-	new_state
-}
-
-fn update_state(
-	state: fn(&mut ShapeToolData) -> &mut bool,
-	value: bool,
-	tool_data: &DocumentToolData,
-	data: &mut ShapeToolData,
-	responses: &mut VecDeque<Message>,
-	new_state: ShapeToolFsmState,
-	transform: DAffine2,
-) -> ShapeToolFsmState {
-	*(state(data)) = value;
-
-	responses.push_back(DocumentMessage::Undo.into());
-	responses.push_back(make_operation(data, tool_data, transform));
-
-	new_state
-}
-
-fn make_operation(data: &ShapeToolData, tool_data: &DocumentToolData, transform: DAffine2) -> Message {
-	let x0 = data.drag_start.x as f64;
-	let y0 = data.drag_start.y as f64;
-	let x1 = data.drag_current.x as f64;
-	let y1 = data.drag_current.y as f64;
-
-	// TODO: Use regular polygon's aspect ration for constraining rather than a square.
-	let (x0, y0, x1, y1) = if data.constrain_to_square {
-		let (x_dir, y_dir) = ((x1 - x0).signum(), (y1 - y0).signum());
-		let max_dist = f64::max((x1 - x0).abs(), (y1 - y0).abs());
-		if data.center_around_cursor {
-			(x0 - max_dist * x_dir, y0 - max_dist * y_dir, x0 + max_dist * x_dir, y0 + max_dist * y_dir)
-		} else {
-			(x0, y0, x0 + max_dist * x_dir, y0 + max_dist * y_dir)
-		}
-	} else {
-		let (x0, y0) = if data.center_around_cursor {
-			let delta_x = x1 - x0;
-			let delta_y = y1 - y0;
-
-			(x0 - delta_x, y0 - delta_y)
-		} else {
-			(x0, y0)
-		};
-		(x0, y0, x1, y1)
-	};
-
-	Operation::AddShape {
-		path: vec![],
-		insert_index: -1,
-		transform: (transform.inverse() * glam::DAffine2::from_scale_angle_translation(DVec2::new(x1 - x0, y1 - y0), 0., DVec2::new(x0, y0))).to_cols_array(),
-		sides: data.sides,
-		style: style::PathStyle::new(None, Some(style::Fill::new(tool_data.primary_color))),
-	}
-	.into()
 }

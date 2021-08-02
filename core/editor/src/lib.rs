@@ -76,6 +76,7 @@ pub mod message_prelude {
 	pub use crate::tool::tools::path::{PathMessage, PathMessageDiscriminant};
 	pub use crate::tool::tools::pen::{PenMessage, PenMessageDiscriminant};
 	pub use crate::tool::tools::rectangle::{RectangleMessage, RectangleMessageDiscriminant};
+	pub use crate::tool::tools::resize::{ResizeMessage, ResizeMessageDiscriminant};
 	pub use crate::tool::tools::select::{SelectMessage, SelectMessageDiscriminant};
 	pub use crate::tool::tools::shape::{ShapeMessage, ShapeMessageDiscriminant};
 	pub use crate::LayerId;
