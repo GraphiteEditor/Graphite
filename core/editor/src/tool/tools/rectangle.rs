@@ -86,11 +86,10 @@ impl Fsm for RectangleToolFsmState {
 
 					Dragging
 				}
-				(Dragging, Resize(message)) => {
-					shape_data.bounding_box = document.document.layer_local_bounding_box(&shape_data.path.clone().unwrap()).unwrap();
+				(state, Resize(message)) => {
 					shape_data.process_action(message, input, responses);
 
-					Dragging
+					state
 				}
 				(Dragging, DragStop) => {
 					// TODO - introduce comparison threshold when operating with canvas coordinates (https://github.com/GraphiteEditor/Graphite/issues/100)

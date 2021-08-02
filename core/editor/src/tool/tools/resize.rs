@@ -10,7 +10,6 @@ pub struct Resize {
 	pub constrain_to_square: bool,
 	pub center_around_cursor: bool,
 	pub path: Option<Vec<LayerId>>,
-	pub bounding_box: Option<[DVec2; 2]>,
 }
 
 #[impl_message]
@@ -35,7 +34,6 @@ impl<'a> MessageHandler<ResizeMessage, &InputPreprocessor> for Resize {
 			UnCenter => self.center_around_cursor = false,
 		}
 		if let Some(message) = self.calculate_transform() {
-			log::debug!("sending message: {:?}", message);
 			responses.push_back(message);
 		}
 	}
@@ -50,7 +48,7 @@ impl Resize {
 
 		let mut size = stop - start;
 		if self.constrain_to_square {
-			size = size.max(size.yx())
+			size = size.abs().max(size.abs().yx()) * size.signum();
 		}
 		if self.center_around_cursor {
 			start -= size / 2.;

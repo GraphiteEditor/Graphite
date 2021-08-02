@@ -71,24 +71,24 @@ impl Shape {
 	pub fn transform(&self, transforms: &[DAffine2]) -> DAffine2 {
 		let start = match self.render_index {
 			-1 => 0,
-			x => (transforms.len() as i32 - x - 1).max(0) as usize,
+			x => (transforms.len() as i32 - x).max(0) as usize,
 		};
-		transforms.iter().skip(start).cloned().reduce(|a, b| a * b).unwrap_or_default()
+		transforms.iter().skip(start).cloned().reduce(|a, b| a * b).unwrap_or(DAffine2::IDENTITY)
 	}
 
 	pub fn shape(sides: u8, style: PathStyle) -> Self {
 		use std::f64::consts::PI;
 		fn unit_rotation(theta: f64) -> DVec2 {
-			DVec2::new(-theta.sin(), theta.cos())
+			DVec2::new(theta.sin(), theta.cos())
 		}
 		let mut path = kurbo::BezPath::new();
 		let apothem_offset_angle = 2. * PI / (sides as f64);
 		let offset = ((sides + 1) % 2) as f64 * PI / 2.;
 
 		let relative_points = (0..sides).map(|i| apothem_offset_angle * i as f64 + offset).map(unit_rotation);
-		let (min, max) = relative_points.clone().map(|x| (x, x)).reduce(|(a, c), (b, d)| (a.min(b), c.max(d))).unwrap_or_default();
+		let min = relative_points.clone().reduce(|a, b| a.min(b)).unwrap_or_default();
 
-		let transform = DAffine2::from_scale_angle_translation(1. / (max - min), 0., -min / (max - min));
+		let transform = DAffine2::from_scale_angle_translation(DVec2::ONE / 2., 0., -min / 2.);
 		let point = |vec: DVec2| kurbo::Point::new(vec.x, vec.y);
 		let mut relative_points = relative_points.map(|p| point(transform.transform_point2(p)));
 		path.move_to(relative_points.next().expect("Tried to create an ngon with 0 sides"));
@@ -98,7 +98,7 @@ impl Shape {
 		Self {
 			path,
 			style,
-			render_index: 1,
+			render_index: 0,
 			solid: true,
 		}
 	}
@@ -106,7 +106,7 @@ impl Shape {
 		Self {
 			path: kurbo::Rect::new(0., 0., 1., 1.).to_path(0.01),
 			style,
-			render_index: 1,
+			render_index: 0,
 			solid: true,
 		}
 	}
@@ -114,7 +114,7 @@ impl Shape {
 		Self {
 			path: kurbo::Ellipse::from_rect(kurbo::Rect::new(0., 0., 1., 1.)).to_path(0.01),
 			style,
-			render_index: 1,
+			render_index: 0,
 			solid: true,
 		}
 	}
@@ -122,7 +122,7 @@ impl Shape {
 		Self {
 			path: kurbo::Line::new((0., 0.), (1., 1.)).to_path(0.01),
 			style,
-			render_index: 0,
+			render_index: 1,
 			solid: true,
 		}
 	}

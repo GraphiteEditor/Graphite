@@ -1,26 +1,11 @@
 pub mod style;
 
-//pub mod ellipse;
-//pub use ellipse::Ellipse;
-
 //pub mod line;
 use glam::DAffine2;
 use glam::{DMat2, DVec2};
 
-use kurbo::Shape as KurboShape;
-//pub use line::Line;
-
 pub mod blend_mode;
 pub use blend_mode::BlendMode;
-
-//pub mod rect;
-//pub use rect::Rect;
-
-//pub mod polyline;
-//pub use polyline::PolyLine;
-
-//pub mod shape;
-//pub use shape::Shape;
 
 pub mod simple_shape;
 pub use simple_shape::Shape;
@@ -132,9 +117,6 @@ impl Layer {
 			);
 			transforms.pop();
 			self.cache_dirty = false;
-		}
-		if self.thumbnail_cache.is_empty() {
-			//log::debug!("thumbnail_cache: {} \n cache: {}", self.thumbnail_cache, self.cache);
 		}
 		self.cache.as_str()
 	}
