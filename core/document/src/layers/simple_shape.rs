@@ -98,7 +98,7 @@ impl Shape {
 		Self {
 			path,
 			style,
-			render_index: 0,
+			render_index: 1,
 			solid: true,
 		}
 	}
@@ -106,7 +106,7 @@ impl Shape {
 		Self {
 			path: kurbo::Rect::new(0., 0., 1., 1.).to_path(0.01),
 			style,
-			render_index: 0,
+			render_index: 1,
 			solid: true,
 		}
 	}
@@ -114,7 +114,7 @@ impl Shape {
 		Self {
 			path: kurbo::Ellipse::from_rect(kurbo::Rect::new(0., 0., 1., 1.)).to_path(0.01),
 			style,
-			render_index: 0,
+			render_index: 1,
 			solid: true,
 		}
 	}

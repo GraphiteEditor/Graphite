@@ -136,8 +136,7 @@ impl Document {
 	/// Adds a new layer to the folder specified by `path`.
 	/// Passing a negative `insert_index` indexes relative to the end.
 	/// -1 is equivalent to adding the layer to the top.
-	pub fn add_layer(&mut self, path: &[LayerId], mut layer: Layer, insert_index: isize) -> Result<LayerId, DocumentError> {
-		layer.render(&mut self.transforms(path)?);
+	pub fn add_layer(&mut self, path: &[LayerId], layer: Layer, insert_index: isize) -> Result<LayerId, DocumentError> {
 		let folder = self.folder_mut(path)?;
 		folder.add_layer(layer, None, insert_index).ok_or(DocumentError::IndexOutOfBounds)
 	}
@@ -291,9 +290,8 @@ impl Document {
 				style,
 			} => {
 				let points: Vec<glam::DVec2> = points.iter().map(|&it| it.into()).collect();
-				let id = self.add_layer(path, Layer::new(LayerDataType::Shape(Shape::poly_line(points, *style)), *transform), *insert_index)?;
-				let path = [path.clone(), vec![id]].concat();
-				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::CreatedLayer { path }])
+				self.set_layer(path, Layer::new(LayerDataType::Shape(Shape::poly_line(points, *style)), *transform), *insert_index)?;
+				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::CreatedLayer { path: path.clone() }])
 			}
 			Operation::DeleteLayer { path } => {
 				self.delete(path)?;
@@ -345,14 +343,14 @@ impl Document {
 				self.layer_mut(path).unwrap().transform = DAffine2::IDENTITY;
 				self.transform_in_viewport(path, transform)?;
 				self.mark_as_dirty(path)?;
-				Some(vec![DocumentResponse::DocumentChanged])
+				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::LayerChanged { path: path.clone() }])
 			}
 			Operation::SetLayerTransform { path, transform } => {
 				let transform = DAffine2::from_cols_array(transform);
 				let layer = self.layer_mut(path)?;
 				layer.transform = transform;
 				self.mark_as_dirty(path)?;
-				Some(vec![DocumentResponse::DocumentChanged])
+				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::LayerChanged { path: path.clone() }])
 			}
 			Operation::ToggleVisibility { path } => {
 				self.mark_as_dirty(path)?;
@@ -376,7 +374,7 @@ impl Document {
 
 				let path = path.as_slice()[..path.len() - 1].to_vec();
 
-				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::FolderChanged { path }])
+				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::LayerChanged { path: path.clone() }])
 			}
 			Operation::FillLayer { path, color } => {
 				let layer = self.layer_mut(path)?;

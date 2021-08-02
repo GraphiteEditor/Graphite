@@ -117,7 +117,7 @@
 <script lang="ts">
 import { defineComponent } from "vue";
 
-import { ResponseType, registerResponseHandler, Response, BlendMode, ExpandFolder, LayerPanelEntry } from "@/utilities/response-handler";
+import { ResponseType, registerResponseHandler, Response, BlendMode, ExpandFolder, UpdateLayer, LayerPanelEntry } from "@/utilities/response-handler";
 import { SeparatorType } from "@/components/widgets/widgets";
 
 import LayoutRow from "@/components/layout/LayoutRow.vue";
@@ -325,7 +325,23 @@ export default defineComponent({
 			console.log("CollapseFolder: ", responseData);
 		});
 		registerResponseHandler(ResponseType.UpdateLayer, (responseData) => {
-			console.log("UpdateLayer: ", responseData);
+			const updateData = responseData as UpdateLayer;
+			if (updateData) {
+				const responsePath = updateData.path;
+				const responseLayer = updateData.data;
+
+				const index = this.layers.findIndex((layer: LayerPanelEntry) => {
+					if (layer.path.length !== responsePath.length) return false;
+					for (let i = 0; i < responsePath.length; i += 1) {
+						if (responsePath[i] !== layer.path[i]) return false;
+					}
+					return true;
+				});
+				if (index >= 0) this.layers[index] = responseLayer;
+
+				this.setBlendModeForSelectedLayers();
+				this.setOpacityForSelectedLayers();
+			}
 		});
 	},
 	data() {

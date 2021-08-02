@@ -224,6 +224,7 @@ impl DocumentMessageHandler {
 	}
 
 	pub fn layer_panel_entry(&mut self, path: Vec<LayerId>) -> Result<LayerPanelEntry, EditorError> {
+		self.document.render_root();
 		let data: LayerData = *layer_data(&mut self.layer_data, &path);
 		let layer = self.document.layer(&path)?;
 		let entry = layer_panel_entry(&data, self.document.multiply_transoforms(&path).unwrap(), layer, path);
