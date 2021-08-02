@@ -96,7 +96,7 @@ pub fn close_all_documents_with_confirmation() -> Result<(), JsValue> {
 /// Viewport resized
 #[wasm_bindgen]
 pub fn viewport_resize(new_width: u32, new_height: u32) -> Result<(), JsValue> {
-	let ev = InputPreprocessorMessage::ViewportResize(ViewportPosition { x: new_width, y: new_height });
+	let ev = InputPreprocessorMessage::ViewportResize((new_width, new_height).into());
 	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(ev)).map_err(convert_error)
 }
 
@@ -106,7 +106,7 @@ pub fn viewport_resize(new_width: u32, new_height: u32) -> Result<(), JsValue> {
 pub fn on_mouse_move(x: u32, y: u32, modifiers: u8) -> Result<(), JsValue> {
 	let mods = ModifierKeys::from_bits(modifiers).expect("invalid modifier keys");
 	// TODO: Convert these screenspace viewport coordinates to canvas coordinates based on the current zoom and pan
-	let ev = InputPreprocessorMessage::MouseMove(ViewportPosition { x, y }, mods);
+	let ev = InputPreprocessorMessage::MouseMove((x, y).into(), mods);
 	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(ev)).map_err(convert_error)
 }
 
@@ -122,18 +122,16 @@ pub fn on_mouse_scroll(delta_x: i32, delta_y: i32, delta_z: i32, modifiers: u8) 
 /// A mouse button depressed within screenspace the bounds of the viewport
 #[wasm_bindgen]
 pub fn on_mouse_down(x: u32, y: u32, mouse_keys: u8, modifiers: u8) -> Result<(), JsValue> {
-	let pos = ViewportPosition { x, y };
 	let mods = ModifierKeys::from_bits(modifiers).expect("invalid modifier keys");
-	let ev = InputPreprocessorMessage::MouseDown(MouseState::from_u8_pos(mouse_keys, pos), mods);
+	let ev = InputPreprocessorMessage::MouseDown(MouseState::from_u8_pos(mouse_keys, (x, y).into()), mods);
 	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(ev)).map_err(convert_error)
 }
 
 /// A mouse button released
 #[wasm_bindgen]
 pub fn on_mouse_up(x: u32, y: u32, mouse_keys: u8, modifiers: u8) -> Result<(), JsValue> {
-	let pos = ViewportPosition { x, y };
 	let mods = ModifierKeys::from_bits(modifiers).expect("invalid modifier keys");
-	let ev = InputPreprocessorMessage::MouseUp(MouseState::from_u8_pos(mouse_keys, pos), mods);
+	let ev = InputPreprocessorMessage::MouseUp(MouseState::from_u8_pos(mouse_keys, (x, y).into()), mods);
 	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(ev)).map_err(convert_error)
 }
 

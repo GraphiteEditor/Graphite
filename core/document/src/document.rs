@@ -269,6 +269,16 @@ impl Document {
 				self.set_layer(path, Layer::new(LayerDataType::Shape(Shape::rectangle(*style)), *transform), *insert_index)?;
 				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::CreatedLayer { path: path.clone() }])
 			}
+			Operation::AddShape {
+				path,
+				insert_index,
+				transform,
+				style,
+				sides,
+			} => {
+				self.set_layer(path, Layer::new(LayerDataType::Shape(Shape::shape(*sides, *style)), *transform), *insert_index)?;
+				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::CreatedLayer { path: path.clone() }])
+			}
 			Operation::AddLine { path, insert_index, transform, style } => {
 				let id = self.add_layer(path, Layer::new(LayerDataType::Shape(Shape::line(*style)), *transform), *insert_index)?;
 				let path = [path.clone(), vec![id]].concat();
@@ -285,18 +295,6 @@ impl Document {
 				let points: Vec<glam::DVec2> = points.iter().map(|&it| it.into()).collect();
 				let id = self.add_layer(path, Layer::new(LayerDataType::Shape(Shape::poly_line(points, *style)), *transform), *insert_index)?;
 				let path = [path.clone(), vec![id]].concat();
-				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::CreatedLayer { path }])
-			}
-			Operation::AddShape {
-				path,
-				insert_index,
-				transform,
-				sides,
-				style,
-			} => {
-				let id = self.add_layer(path, Layer::new(LayerDataType::Shape(Shape::shape(*sides, *style)), *transform), *insert_index)?;
-				let path = [path.clone(), vec![id]].concat();
-
 				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::CreatedLayer { path }])
 			}
 			Operation::DeleteLayer { path } => {
@@ -341,6 +339,13 @@ impl Document {
 				let layer = self.layer_mut(path).unwrap();
 				let transform = DAffine2::from_cols_array(transform) * layer.transform;
 				layer.transform = transform;
+				self.mark_as_dirty(path)?;
+				Some(vec![DocumentResponse::DocumentChanged])
+			}
+			Operation::SetLayerTransformInViewport { path, transform } => {
+				let transform = DAffine2::from_cols_array(transform);
+				self.layer_mut(path).unwrap().transform = DAffine2::IDENTITY;
+				self.transform_in_viewport(path, transform)?;
 				self.mark_as_dirty(path)?;
 				Some(vec![DocumentResponse::DocumentChanged])
 			}

@@ -40,7 +40,7 @@ pub struct MovementMessageHandler {
 
 impl MovementMessageHandler {
 	fn create_document_transform_from_layerdata(&self, layerdata: &LayerData, viewport_size: &ViewportPosition, responses: &mut VecDeque<Message>) {
-		let half_viewport = viewport_size.as_dvec2() / 2.;
+		let half_viewport = viewport_size.as_f64() / 2.;
 		let scaled_half_viewport = half_viewport / layerdata.scale;
 		responses.push_back(
 			DocumentOperation::SetLayerTransform {
@@ -83,17 +83,17 @@ impl MessageHandler<MovementMessage, (&mut LayerData, &Document, &InputPreproces
 			}
 			MouseMove => {
 				if self.translating {
-					let delta = ipp.mouse.position.as_dvec2() - self.mouse_pos.as_dvec2();
+					let delta = ipp.mouse.position.as_f64() - self.mouse_pos.as_f64();
 					let transformed_delta = document.root.transform.inverse().transform_vector2(delta);
 
 					layerdata.translation += transformed_delta;
 					self.create_document_transform_from_layerdata(layerdata, &ipp.viewport_size, responses);
 				}
 				if self.rotating {
-					let half_viewport = ipp.viewport_size.as_dvec2() / 2.;
+					let half_viewport = ipp.viewport_size.as_f64() / 2.;
 					let rotation = {
-						let start_vec = self.mouse_pos.as_dvec2() - half_viewport;
-						let end_vec = ipp.mouse.position.as_dvec2() - half_viewport;
+						let start_vec = self.mouse_pos.as_f64() - half_viewport;
+						let end_vec = ipp.mouse.position.as_f64() - half_viewport;
 						start_vec.angle_between(end_vec)
 					};
 
@@ -133,8 +133,8 @@ impl MessageHandler<MovementMessage, (&mut LayerData, &Document, &InputPreproces
 			}
 			WheelCanvasZoom => {
 				let scroll = ipp.mouse.scroll_delta.scroll_delta();
-				let mouse = ipp.mouse.position.as_dvec2();
-				let viewport_size = ipp.viewport_size.as_dvec2();
+				let mouse = ipp.mouse.position.as_f64();
+				let viewport_size = ipp.viewport_size.as_f64();
 				let mut zoom_factor = 1. + scroll.abs() * WHEEL_ZOOM_RATE;
 				if ipp.mouse.scroll_delta.y > 0 {
 					zoom_factor = 1. / zoom_factor

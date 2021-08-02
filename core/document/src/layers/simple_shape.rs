@@ -1,5 +1,7 @@
 use glam::DAffine2;
+use glam::DMat2;
 use glam::DVec2;
+use glam::Vec2Swizzles;
 use kurbo::Affine;
 use kurbo::Shape as KurboShape;
 
@@ -30,10 +32,15 @@ impl LayerData for Shape {
 	fn render(&mut self, svg: &mut String, transforms: &mut Vec<DAffine2>) {
 		let mut path = self.path.clone();
 		let transform = self.transform(transforms);
+		let inverse = transform.inverse();
+		if !inverse.is_finite() {
+			let _ = write!(svg, "<!-- Svg shape has an invalid transform -->");
+			return;
+		}
 		path.apply_affine(glam_to_kurbo(transform));
 
 		let _ = writeln!(svg, r#"<g transform="matrix("#);
-		transform.inverse().to_cols_array().iter().enumerate().for_each(|(i, f)| {
+		inverse.to_cols_array().iter().enumerate().for_each(|(i, f)| {
 			let _ = svg.write_str(&(f.to_string() + if i != 5 { "," } else { "" }));
 		});
 		let _ = svg.write_str(r#")">"#);
@@ -43,6 +50,9 @@ impl LayerData for Shape {
 
 	fn bounding_box(&self, transform: glam::DAffine2) -> Option<[DVec2; 2]> {
 		let mut path = self.path.clone();
+		if transform.matrix2 == DMat2::ZERO {
+			return None;
+		}
 		path.apply_affine(glam_to_kurbo(transform));
 
 		use kurbo::Shape;
@@ -63,38 +73,26 @@ impl Shape {
 			-1 => 0,
 			x => (transforms.len() as i32 - x - 1).max(0) as usize,
 		};
-		transforms[start..].iter().cloned().reduce(|a, b| a * b).unwrap_or_default()
+		transforms.iter().skip(start).cloned().reduce(|a, b| a * b).unwrap_or_default()
 	}
 
 	pub fn shape(sides: u8, style: PathStyle) -> Self {
+		use std::f64::consts::PI;
 		fn unit_rotation(theta: f64) -> DVec2 {
 			DVec2::new(-theta.sin(), theta.cos())
 		}
 		let mut path = kurbo::BezPath::new();
-		let apothem_offset_angle = std::f64::consts::PI / (sides as f64);
+		let apothem_offset_angle = 2. * PI / (sides as f64);
+		let offset = ((sides + 1) % 2) as f64 * PI / 2.;
 
-		let relative_points = (0..sides).map(|i| apothem_offset_angle * ((i * 2 + ((sides + 1) % 2)) as f64)).map(unit_rotation);
+		let relative_points = (0..sides).map(|i| apothem_offset_angle * i as f64 + offset).map(unit_rotation);
+		let (min, max) = relative_points.clone().map(|x| (x, x)).reduce(|(a, c), (b, d)| (a.min(b), c.max(d))).unwrap_or_default();
 
-		let (mut min_x, mut min_y, mut max_x, mut max_y) = (f64::MAX, f64::MAX, f64::MIN, f64::MIN);
-		relative_points.clone().for_each(|p| {
-			min_x = min_x.min(p.x);
-			min_y = min_y.min(p.y);
-			max_x = max_x.max(p.x);
-			max_y = max_y.max(p.y);
-		});
-
-		relative_points
-			.map(|p| DVec2::new((p.x - min_x) / (max_x - min_x) * 2. - 1., (p.y - min_y) / (max_y - min_y) * 2. - 1.))
-			.map(|p| DVec2::new(p.x / 2. + 0.5, p.y / 2. + 0.5))
-			.map(|pos| kurbo::Point::new(pos.x, pos.y))
-			.enumerate()
-			.for_each(|(i, p)| {
-				if i == 0 {
-					path.move_to(p);
-				} else {
-					path.line_to(p);
-				}
-			});
+		let transform = DAffine2::from_scale_angle_translation(1. / (max - min), 0., -min / (max - min));
+		let point = |vec: DVec2| kurbo::Point::new(vec.x, vec.y);
+		let mut relative_points = relative_points.map(|p| point(transform.transform_point2(p)));
+		path.move_to(relative_points.next().expect("Tried to create an ngon with 0 sides"));
+		relative_points.for_each(|p| path.line_to(p));
 
 		path.close_path();
 		Self {
