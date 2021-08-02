@@ -177,10 +177,12 @@ function newCollapseFolder(input: any): CollapseFolder {
 
 export interface UpdateLayer {
 	path: BigUint64Array;
+	data: LayerPanelEntry;
 }
 function newUpdateLayer(input: any): UpdateLayer {
 	return {
-		path: newPath(input.path),
+		path: newPath(input.data.path),
+		data: newLayerPanelEntry(input.data),
 	};
 }
 
