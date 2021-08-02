@@ -11,4 +11,6 @@ pub const MOUSE_ZOOM_RATE: f64 = 1. / 400.;
 
 pub const ROTATE_SNAP_INTERVAL: f64 = 15.;
 
+pub const LINE_ROTATE_SNAP_ANGLE: f64 = 12.;
+
 pub const SELECTION_TOLERANCE: f64 = 5.0;
