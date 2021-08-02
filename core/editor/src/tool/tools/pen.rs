@@ -49,6 +49,7 @@ impl Default for PenToolFsmState {
 struct PenToolData {
 	points: Vec<DAffine2>,
 	next_point: DAffine2,
+	path: Option<Vec<LayerId>>,
 }
 
 impl Fsm for PenToolFsmState {
@@ -72,6 +73,7 @@ impl Fsm for PenToolFsmState {
 			match (self, event) {
 				(Ready, DragStart) => {
 					responses.push_back(DocumentMessage::StartTransaction.into());
+					data.path = Some(vec![generate_hash(&*responses, input, document.document.hash())]);
 
 					data.points.push(pos);
 					data.next_point = pos;
@@ -85,31 +87,28 @@ impl Fsm for PenToolFsmState {
 						data.next_point = pos;
 					}
 
-					responses.push_back(DocumentMessage::RollbackTransaction.into());
-					responses.push_back(make_operation(data, tool_data, true));
+					responses.extend(make_operation(data, tool_data, true));
 
 					Dragging
 				}
 				(Dragging, MouseMove) => {
 					data.next_point = pos;
 
-					responses.push_back(DocumentMessage::RollbackTransaction.into());
-					responses.push_back(make_operation(data, tool_data, true));
+					responses.extend(make_operation(data, tool_data, true));
 
 					Dragging
 				}
 				// TODO - simplify with or_patterns when rust 1.53.0 is stable  (https://github.com/rust-lang/rust/issues/54883)
 				(Dragging, Confirm) => {
-					responses.push_back(DocumentMessage::RollbackTransaction.into());
-
 					if data.points.len() >= 2 {
-						responses.push_back(make_operation(data, tool_data, false));
 						responses.push_back(DocumentMessage::DeselectAllLayers.into());
+						responses.extend(make_operation(data, tool_data, false));
 						responses.push_back(DocumentMessage::CommitTransaction.into());
 					} else {
 						responses.push_back(DocumentMessage::AbortTransaction.into());
 					}
 
+					data.path = None;
 					data.points.clear();
 
 					Ready
@@ -117,6 +116,7 @@ impl Fsm for PenToolFsmState {
 				(Dragging, Abort) => {
 					responses.push_back(DocumentMessage::AbortTransaction.into());
 					data.points.clear();
+					data.path = None;
 
 					Ready
 				}
@@ -128,17 +128,20 @@ impl Fsm for PenToolFsmState {
 	}
 }
 
-fn make_operation(data: &PenToolData, tool_data: &DocumentToolData, show_preview: bool) -> Message {
+fn make_operation(data: &PenToolData, tool_data: &DocumentToolData, show_preview: bool) -> [Message; 2] {
 	let mut points: Vec<(f64, f64)> = data.points.iter().map(|p| (p.translation.x, p.translation.y)).collect();
 	if show_preview {
 		points.push((data.next_point.translation.x, data.next_point.translation.y))
 	}
-	Operation::AddPen {
-		path: vec![],
-		insert_index: -1,
-		transform: DAffine2::IDENTITY.to_cols_array(),
-		points,
-		style: style::PathStyle::new(Some(style::Stroke::new(tool_data.primary_color, 5.)), Some(style::Fill::none())),
-	}
-	.into()
+	[
+		Operation::DeleteLayer { path: data.path.clone().unwrap() }.into(),
+		Operation::AddPen {
+			path: data.path.clone().unwrap(),
+			insert_index: -1,
+			transform: DAffine2::IDENTITY.to_cols_array(),
+			points,
+			style: style::PathStyle::new(Some(style::Stroke::new(tool_data.primary_color, 5.)), Some(style::Fill::none())),
+		}
+		.into(),
+	]
 }

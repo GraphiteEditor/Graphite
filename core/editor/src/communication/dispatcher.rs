@@ -31,7 +31,6 @@ impl Dispatcher {
 				| Message::Frontend(FrontendMessage::SetCanvasRotation { .. })
 				| Message::Documents(DocumentsMessage::Document(DocumentMessage::DispatchOperation { .. }))
 		) || MessageDiscriminant::from(&message).local_name().ends_with("MouseMove"))
-			|| true
 		{
 			log::trace!("Message: {:?}", message);
 			//log::trace!("Hints:{:?}", self.input_mapper.hints(self.collect_actions()));

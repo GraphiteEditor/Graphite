@@ -63,14 +63,16 @@ pub fn layer_panel_entry(layer_data: &LayerData, transform: DAffine2, layer: &La
 	let arr = layer.data.bounding_box(transform).unwrap_or([DVec2::ZERO, DVec2::ZERO]);
 	let arr = arr.iter().map(|x| (*x).into()).collect::<Vec<(f64, f64)>>();
 
+	let transform = transform.to_cols_array().iter().map(ToString::to_string).collect::<Vec<_>>().join(",");
 	let thumbnail = if let [(x_min, y_min), (x_max, y_max)] = arr.as_slice() {
 		format!(
-			r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="{} {} {} {}">{}</svg>"#,
+			r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="{} {} {} {}"><g transform="matrix({})">{}</g></svg>"#,
 			x_min,
 			y_min,
 			x_max - x_min,
 			y_max - y_min,
-			layer.thumbnail_cache.clone()
+			transform,
+			layer.thumbnail_cache.clone(),
 		)
 	} else {
 		String::new()

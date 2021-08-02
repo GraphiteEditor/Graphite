@@ -108,15 +108,18 @@ impl Fsm for LineToolFsmState {
 					data.drag_current = input.mouse.position;
 
 					// TODO - introduce comparison threshold when operating with canvas coordinates (https://github.com/GraphiteEditor/Graphite/issues/100)
-					if data.drag_start != data.drag_current {
-						responses.push_back(DocumentMessage::CommitTransaction.into());
+					match data.drag_start == input.mouse.position {
+						true => responses.push_back(DocumentMessage::AbortTransaction.into()),
+						false => responses.push_back(DocumentMessage::CommitTransaction.into()),
 					}
+
+					data.path = None;
 
 					Ready
 				}
 				(Dragging, Abort) => {
 					responses.push_back(DocumentMessage::AbortTransaction.into());
-
+					data.path = None;
 					Ready
 				}
 				(Ready, LockAngle) => update_state_no_op(&mut data.lock_angle, true, Ready),
