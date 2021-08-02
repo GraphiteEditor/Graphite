@@ -111,7 +111,8 @@ impl Fsm for SelectToolFsmState {
 								.filter_map(|(path, layer_data)| {
 									layer_data
 										.selected
-										.then(|| (path.clone(), document.document.layer(path).unwrap().transform.translation - transformed_start))
+										.then(|| document.document.layer(path).ok().map(|layer| (path.clone(), layer.transform.translation - transformed_start)))
+										.flatten()
 								})
 								.collect();
 						} else {
