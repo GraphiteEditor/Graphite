@@ -2,7 +2,7 @@
 	<div class="persistent-scrollbar" :class="direction.toLowerCase()">
 		<button class="arrow decrease" @mousedown="changePosition(-50)"></button>
 		<div class="scroll-track" ref="scrollTrack" @mousedown="grabArea">
-			<div class="scroll-thumb" @mousedown="grabHandle" :class="{ dragging: Dragging }" ref="handle" :style="[thumbStart, thumbEnd, sides]"></div>
+			<div class="scroll-thumb" @mousedown="grabHandle" :class="{ dragging: dragging }" ref="handle" :style="[thumbStart, thumbEnd, sides]"></div>
 		</div>
 		<button class="arrow increase" @click="changePosition(50)"></button>
 	</div>
@@ -123,12 +123,12 @@ export default defineComponent({
 	},
 	computed: {
 		thumbStart(): { left: string } | { top: string } {
-			const start = this.HandlePosition - this.HandleLength / 2;
+			const start = this.handlePosition - this.handleLength / 2;
 
 			return this.direction === ScrollbarDirection.Vertical ? { top: `${start * 100}%` } : { left: `${start * 100}%` };
 		},
 		thumbEnd(): { right: string } | { bottom: string } {
-			const end = 1 - this.HandlePosition - this.HandleLength / 2;
+			const end = 1 - this.handlePosition - this.handleLength / 2;
 
 			return this.direction === ScrollbarDirection.Vertical ? { bottom: `${end * 100}%` } : { right: `${end * 100}%` };
 		},
@@ -139,67 +139,67 @@ export default defineComponent({
 	data() {
 		return {
 			ScrollbarDirection,
-			HandlePosition: 0.5,
-			HandleLength: 0.2,
-			Dragging: false,
-			DragOffset: 0,
+			handlePosition: 0.5,
+			handleLength: 0.2,
+			dragging: false,
+			dragOffset: 0,
 		};
 	},
 	mounted() {
 		window.addEventListener("mouseup", () => {
-			this.Dragging = false;
+			this.dragging = false;
 		});
 		window.addEventListener("mousemove", this.mouseMove);
 	},
 	watch: {
-		HandlePosition(newPos: number) {
-			const clamped_position = Math.min(Math.max(newPos, this.HandleLength / 2), 1 - this.HandleLength / 2);
-			this.HandlePosition = clamped_position;
+		handlePosition(newPos: number) {
+			const clamped_position = Math.min(Math.max(newPos, this.handleLength / 2), 1 - this.handleLength / 2);
+			this.handlePosition = clamped_position;
 		},
 	},
 	methods: {
 		trackLength(): number {
 			const track = this.$refs.scrollTrack as HTMLElement;
-			return this.direction === ScrollbarDirection.Vertical ? track.clientHeight - this.HandleLength : track.clientWidth;
+			return this.direction === ScrollbarDirection.Vertical ? track.clientHeight - this.handleLength : track.clientWidth;
 		},
 		trackOffset(): number {
 			const track = this.$refs.scrollTrack as HTMLElement;
 			return this.direction === ScrollbarDirection.Vertical ? track.getBoundingClientRect().top : track.getBoundingClientRect().left;
 		},
-		updateHandlePosition(e: MouseEvent) {
+		updatehandlePosition(e: MouseEvent) {
 			const position = this.direction === ScrollbarDirection.Vertical ? e.clientY : e.clientX;
-			this.HandlePosition = (position + this.DragOffset - this.trackOffset()) / this.trackLength();
+			this.handlePosition = (position + this.dragOffset - this.trackOffset()) / this.trackLength();
 		},
 		grabHandle(e: MouseEvent) {
-			if (!this.Dragging) {
-				this.Dragging = true;
+			if (!this.dragging) {
+				this.dragging = true;
 				const position = this.direction === ScrollbarDirection.Vertical ? e.clientY : e.clientX;
-				this.DragOffset = this.HandlePosition * this.trackLength() + this.trackOffset() - position;
-				this.updateHandlePosition(e);
+				this.dragOffset = this.handlePosition * this.trackLength() + this.trackOffset() - position;
+				this.updatehandlePosition(e);
 			}
 		},
 		grabArea(e: MouseEvent) {
-			if (!this.Dragging) {
-				this.Dragging = true;
-				this.DragOffset = 0;
-				this.updateHandlePosition(e);
+			if (!this.dragging) {
+				this.dragging = true;
+				this.dragOffset = 0;
+				this.updatehandlePosition(e);
 			}
 		},
 		mouseUp() {
-			this.Dragging = false;
-			this.DragOffset = 0;
+			this.dragging = false;
+			this.dragOffset = 0;
 		},
 		mouseMove(e: MouseEvent) {
-			if (this.Dragging) {
-				this.updateHandlePosition(e);
+			if (this.dragging) {
+				this.updatehandlePosition(e);
 			}
 		},
 		changePosition(difference: number) {
-			this.HandlePosition += difference / this.trackLength();
+			this.handlePosition += difference / this.trackLength();
 		},
 		updateBox(size: number, position: number) {
-			this.HandleLength = this.trackLength() / size;
-			this.HandlePosition = position / size;
+			this.handleLength = this.trackLength() / size;
+			this.handlePosition = position / size;
 		},
 	},
 });
