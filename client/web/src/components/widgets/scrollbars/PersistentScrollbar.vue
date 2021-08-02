@@ -151,6 +151,12 @@ export default defineComponent({
 		});
 		window.addEventListener("mousemove", this.mouseMove);
 	},
+	watch: {
+		HandlePosition(newPos: number) {
+			const clamped_position = Math.min(Math.max(newPos, this.HandleLength / 2), 1 - this.HandleLength / 2);
+			this.HandlePosition = clamped_position;
+		},
+	},
 	methods: {
 		trackLength(): number {
 			const track = this.$refs.scrollTrack as HTMLElement;
@@ -163,7 +169,6 @@ export default defineComponent({
 		updateHandlePosition(e: MouseEvent) {
 			const position = this.direction === ScrollbarDirection.Vertical ? e.clientY : e.clientX;
 			this.HandlePosition = (position + this.DragOffset - this.trackOffset()) / this.trackLength();
-			this.HandlePosition = Math.min(Math.max(this.HandlePosition, this.HandleLength / 2), 1 - this.HandleLength / 2);
 		},
 		grabHandle(e: MouseEvent) {
 			if (!this.Dragging) {
@@ -191,7 +196,6 @@ export default defineComponent({
 		},
 		changePosition(difference: number) {
 			this.HandlePosition += difference / this.trackLength();
-			this.HandlePosition = Math.min(Math.max(this.HandlePosition, this.HandleLength / 2), 1 - this.HandleLength / 2);
 		},
 		updateBox(size: number, position: number) {
 			this.HandleLength = this.trackLength() / size;
