@@ -65,6 +65,10 @@ pub enum Operation {
 		path: Vec<LayerId>,
 		transform: [f64; 6],
 	},
+	SetLayerTransformInViewport {
+		path: Vec<LayerId>,
+		transform: [f64; 6],
+	},
 	SetLayerTransform {
 		path: Vec<LayerId>,
 		transform: [f64; 6],

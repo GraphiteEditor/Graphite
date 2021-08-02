@@ -45,14 +45,14 @@ impl EditorTestUtils for Editor {
 		self.lmb_mousedown(x1, y1);
 		self.move_mouse(x2, y2);
 		self.mouseup(MouseState {
-			position: ViewportPosition { x: x2, y: y2 },
+			position: (x2, y2).into(),
 			mouse_keys: MouseKeys::empty(),
 			scroll_delta: ScrollDelta::default(),
 		});
 	}
 
 	fn move_mouse(&mut self, x: u32, y: u32) {
-		self.input(InputPreprocessorMessage::MouseMove(ViewportPosition { x, y }, ModifierKeys::default()));
+		self.input(InputPreprocessorMessage::MouseMove((x, y).into(), ModifierKeys::default()));
 	}
 
 	fn mousedown(&mut self, state: MouseState) {
@@ -65,7 +65,7 @@ impl EditorTestUtils for Editor {
 
 	fn lmb_mousedown(&mut self, x: u32, y: u32) {
 		self.mousedown(MouseState {
-			position: ViewportPosition { x, y },
+			position: (x, y).into(),
 			mouse_keys: MouseKeys::LEFT,
 			scroll_delta: ScrollDelta::default(),
 		})
