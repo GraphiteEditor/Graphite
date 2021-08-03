@@ -78,6 +78,16 @@ pub enum Operation {
 		path: Vec<LayerId>,
 		transform: [f64; 6],
 	},
+	TransformLayerInScope {
+		path: Vec<LayerId>,
+		transform: [f64; 6],
+		scope: [f64; 6],
+	},
+	SetLayerTransformInScope {
+		path: Vec<LayerId>,
+		transform: [f64; 6],
+		scope: [f64; 6],
+	},
 	SetLayerTransform {
 		path: Vec<LayerId>,
 		transform: [f64; 6],

@@ -1,7 +1,7 @@
 pub use super::layer_panel::*;
 use crate::{frontend::layer_panel::*, EditorError};
 use document_core::{document::Document as InternalDocument, LayerId};
-use glam::{DAffine2, DVec2};
+use glam::{DAffine2, DVec2, Vec2Swizzles};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -409,61 +409,31 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				}
 			}
 			FlipLayer(path, flip_horizontal, flip_vertical) => {
-				if let Ok(layer) = self.document.layer_mut(&path) {
-					let scale = DVec2::new(if flip_horizontal { -1. } else { 1. }, if flip_vertical { -1. } else { 1. });
-					responses.push_back(
-						DocumentOperation::TransformLayerInViewport {
-							path,
-							transform: DAffine2::from_scale(scale).to_cols_array(),
-						}
-						.into(),
-					);
-				}
+				let scale = DVec2::new(if flip_horizontal { -1. } else { 1. }, if flip_vertical { -1. } else { 1. });
+				responses.push_back(
+					DocumentOperation::TransformLayerInViewport {
+						path,
+						transform: DAffine2::from_scale(scale).to_cols_array(),
+					}
+					.into(),
+				);
 			}
 			FlipSelectedLayers(axis) => {
-				// TODO: Handle folder nested transforms with the transforms API
-				if self.selected_layers().next().is_none() {
-					return;
-				}
+				let (paths, boxes): (Vec<_>, Vec<_>) = self.selected_layers().filter_map(|path| self.document.viewport_bounding_box(path).ok()?.map(|b| (path, b))).unzip();
 
-				let selected_layers = self.selected_layers().cloned().filter_map(|path| {
-					let layer = self.document.layer(&path).ok()?;
-					// TODO: Refactor with `reduce` and `merge_bounding_boxes` once the latter is added
-					let (min, max) = {
-						let bounding_box = layer.current_bounding_box()?;
-						match axis {
-							FlipAxis::X => (bounding_box[0].x, bounding_box[1].x),
-							FlipAxis::Y => (bounding_box[0].y, bounding_box[1].y),
-						}
-					};
-					Some((path, (min, max)))
-				});
-				let (paths, layers): (Vec<_>, Vec<_>) = selected_layers.unzip();
-				if let Some(middle) = layers
-					.iter()
-					.copied()
-					.reduce(|(min_a, max_a), (min_b, max_b)| (min_a.min(min_b), max_a.max(max_b)))
-					.map(|(min, max)| (min + max) / 2.)
-				{
+				let scale = match axis {
+					FlipAxis::X => DVec2::new(-1., 1.),
+					FlipAxis::Y => DVec2::new(1., -1.),
+				};
+				let lerp = |bbox: &[DVec2; 2]| bbox[0].lerp(bbox[1], 0.5);
+				if let Some(center) = boxes.iter().map(|b| (lerp(b), lerp(b))).reduce(|a, b| (a.0.min(b.0), a.1.max(b.1))).map(|(min, max)| (min + max) / 2.) {
+					let bbox_trans = DAffine2::from_translation(center);
 					for path in paths {
-						let layer = self.document.layer(&path).unwrap();
-						let mut transform = layer.transform;
-						let scale = match axis {
-							FlipAxis::X => DVec2::new(-1., 1.),
-							FlipAxis::Y => DVec2::new(1., -1.),
-						};
-						transform = transform * DAffine2::from_scale(scale);
-
-						let coord = match axis {
-							FlipAxis::X => &mut transform.translation.x,
-							FlipAxis::Y => &mut transform.translation.y,
-						};
-						*coord = *coord - 2. * (*coord - middle);
-
 						responses.push_back(
-							DocumentOperation::SetLayerTransform {
-								path,
-								transform: transform.to_cols_array(),
+							DocumentOperation::TransformLayerInScope {
+								path: path.clone(),
+								transform: DAffine2::from_scale(scale).to_cols_array(),
+								scope: bbox_trans.to_cols_array(),
 							}
 							.into(),
 						);
