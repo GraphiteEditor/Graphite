@@ -1,6 +1,6 @@
 use glam::DVec2;
 
-use crate::{DocumentError, LayerId};
+use crate::{DocumentError, LayerId, Quad};
 
 use super::{Layer, LayerData, LayerDataType};
 
@@ -21,7 +21,7 @@ impl LayerData for Folder {
 		}
 	}
 
-	fn intersects_quad(&self, quad: [DVec2; 4], path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>) {
+	fn intersects_quad(&self, quad: Quad, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>) {
 		for (layer, layer_id) in self.layers().iter().zip(&self.layer_ids) {
 			path.push(*layer_id);
 			layer.intersects_quad(quad, path, intersections);

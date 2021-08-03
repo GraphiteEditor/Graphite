@@ -11,8 +11,8 @@ pub mod simple_shape;
 pub use simple_shape::Shape;
 
 pub mod folder;
-use crate::DocumentError;
 use crate::LayerId;
+use crate::{DocumentError, Quad};
 pub use folder::Folder;
 use serde::{Deserialize, Serialize};
 
@@ -20,7 +20,7 @@ use std::fmt::Write;
 
 pub trait LayerData {
 	fn render(&mut self, svg: &mut String, transforms: &mut Vec<glam::DAffine2>);
-	fn intersects_quad(&self, quad: [DVec2; 4], path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>);
+	fn intersects_quad(&self, quad: Quad, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>);
 	fn bounding_box(&self, transform: glam::DAffine2) -> Option<[DVec2; 2]>;
 }
 
@@ -50,7 +50,7 @@ impl LayerData for LayerDataType {
 	fn render(&mut self, svg: &mut String, transforms: &mut Vec<glam::DAffine2>) {
 		self.inner_mut().render(svg, transforms)
 	}
-	fn intersects_quad(&self, quad: [DVec2; 4], path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>) {
+	fn intersects_quad(&self, quad: Quad, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>) {
 		self.inner().intersects_quad(quad, path, intersections)
 	}
 	fn bounding_box(&self, transform: glam::DAffine2) -> Option<[DVec2; 2]> {
@@ -121,17 +121,12 @@ impl Layer {
 		self.cache.as_str()
 	}
 
-	pub fn intersects_quad(&self, quad: [DVec2; 4], path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>) {
-		let inv_transform = self.transform.inverse();
-		let transformed_quad = [
-			inv_transform.transform_point2(quad[0]),
-			inv_transform.transform_point2(quad[1]),
-			inv_transform.transform_point2(quad[2]),
-			inv_transform.transform_point2(quad[3]),
-		];
+	pub fn intersects_quad(&self, quad: Quad, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>) {
 		if !self.visible {
 			return;
 		}
+		let transformed_quad = self.transform.inverse() * quad;
+		log::debug!("{:?} quad: {:?}\n transformed: {:?}", path, quad, transformed_quad);
 		self.data.intersects_quad(transformed_quad, path, intersections)
 	}
 

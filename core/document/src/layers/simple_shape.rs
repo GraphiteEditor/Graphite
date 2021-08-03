@@ -7,6 +7,7 @@ use kurbo::Shape as KurboShape;
 
 use crate::intersection::intersect_quad_bez_path;
 use crate::LayerId;
+use crate::Quad;
 use kurbo::BezPath;
 
 use super::style;
@@ -60,7 +61,7 @@ impl LayerData for Shape {
 		Some([(x0, y0).into(), (x1, y1).into()])
 	}
 
-	fn intersects_quad(&self, quad: [DVec2; 4], path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>) {
+	fn intersects_quad(&self, quad: Quad, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>) {
 		if intersect_quad_bez_path(quad, &self.path, self.solid) {
 			intersections.push(path.clone());
 		}
