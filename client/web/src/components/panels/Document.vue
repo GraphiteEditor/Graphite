@@ -309,7 +309,11 @@ export default defineComponent({
 			reset_colors();
 		},
 		download(filename: string, fileData: string) {
-			const svgBlob = new Blob([fileData], { type: "image/svg+xml;charset=utf-8" });
+			let type = "text/plain;charset=utf-8";
+			if (filename.endsWith(".svg")) {
+				type = "image/svg+xml;charset=utf-8";
+			}
+			const svgBlob = new Blob([fileData], { type });
 			const svgUrl = URL.createObjectURL(svgBlob);
 			const element = document.createElement("a");
 
