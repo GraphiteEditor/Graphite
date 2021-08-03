@@ -116,6 +116,7 @@ impl Fsm for SelectToolFsmState {
 					}
 					if !selected.iter().any(|path| intersection.contains(path)) {
 						log::debug!("drawing stuff");
+						responses.push_back(DocumentMessage::DeselectAllLayers.into());
 						data.box_id = Some(vec![generate_hash(&*responses, input, document.document.hash())]);
 						responses.push_back(
 							Operation::AddBoundingBox {
@@ -127,12 +128,13 @@ impl Fsm for SelectToolFsmState {
 						);
 						DrawingBox
 					} else {
-						log::debug!("dragging stuff around: {:?}", data.layers_dragging);
 						data.layers_dragging = selected;
+						log::debug!("dragging stuff around: {:?}", data.layers_dragging);
 						Dragging
 					}
 				}
 				(Dragging, MouseMove) => {
+					log::debug!("dragging delta: {:?}", input.mouse.position.as_f64() - data.drag_current.as_f64());
 					for path in data.layers_dragging.iter() {
 						responses.push_back(
 							Operation::TransformLayerInViewport {

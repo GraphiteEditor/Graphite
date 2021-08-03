@@ -228,13 +228,26 @@ impl Document {
 
 	pub fn transform_in_scope(&mut self, layer: &[LayerId], scope: Option<&[LayerId]>, transform: DAffine2) -> Result<(), DocumentError> {
 		let to = self.generate_transform(&layer[..layer.len() - 1], scope)?;
+		log::info!("transform: {:?} to: {:?}, ", transform, to);
 		let layer = self.layer_mut(layer)?;
-		layer.transform = to * transform * layer.transform;
+		layer.transform = to * transform * to.inverse() * layer.transform;
+		Ok(())
+	}
+
+	pub fn set_transform_in_scope(&mut self, layer: &[LayerId], scope: Option<&[LayerId]>, transform: DAffine2) -> Result<(), DocumentError> {
+		let to = self.generate_transform(&layer[..layer.len() - 1], scope)?;
+		log::info!("transform: {:?} to: {:?}, ", transform, to);
+		let layer = self.layer_mut(layer)?;
+		layer.transform = to * transform;
 		Ok(())
 	}
 
 	pub fn transform_in_viewport(&mut self, layer: &[LayerId], transform: DAffine2) -> Result<(), DocumentError> {
 		self.transform_in_scope(layer, None, transform)
+	}
+
+	pub fn set_transform_in_viewport(&mut self, layer: &[LayerId], transform: DAffine2) -> Result<(), DocumentError> {
+		self.set_transform_in_scope(layer, None, transform)
 	}
 
 	pub fn transform_layer(&self, path: &[LayerId], to: Option<&[LayerId]>) -> Result<Layer, DocumentError> {
@@ -351,8 +364,7 @@ impl Document {
 			}
 			Operation::SetLayerTransformInViewport { path, transform } => {
 				let transform = DAffine2::from_cols_array(transform);
-				self.layer_mut(path).unwrap().transform = DAffine2::IDENTITY;
-				self.transform_in_viewport(path, transform)?;
+				self.set_transform_in_viewport(path, transform)?;
 				self.mark_as_dirty(path)?;
 				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::LayerChanged { path: path.clone() }])
 			}
@@ -385,7 +397,7 @@ impl Document {
 
 				let path = path.as_slice()[..path.len() - 1].to_vec();
 
-				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::LayerChanged { path: path.clone() }])
+				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::LayerChanged { path }])
 			}
 			Operation::FillLayer { path, color } => {
 				let layer = self.layer_mut(path)?;
