@@ -34,7 +34,6 @@ impl Document {
 	/// Wrapper around render, that returns the whole document as a Response.
 	pub fn render_root(&mut self) -> String {
 		// TODO: remove
-		self.mark_as_dirty(&[]);
 		self.root.render(&mut vec![]);
 		self.root.cache.clone()
 	}
@@ -268,6 +267,12 @@ impl Document {
 				self.set_layer(path, Layer::new(LayerDataType::Shape(Shape::rectangle(*style)), *transform), *insert_index)?;
 				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::CreatedLayer { path: path.clone() }])
 			}
+			Operation::AddBoundingBox { path, transform, style } => {
+				let mut rect = Shape::rectangle(*style);
+				rect.render_index = -1;
+				self.set_layer(path, Layer::new(LayerDataType::Shape(rect), *transform), -1)?;
+				Some(vec![DocumentResponse::DocumentChanged])
+			}
 			Operation::AddShape {
 				path,
 				insert_index,
@@ -337,6 +342,12 @@ impl Document {
 				layer.transform = transform;
 				self.mark_as_dirty(path)?;
 				Some(vec![DocumentResponse::DocumentChanged])
+			}
+			Operation::TransformLayerInViewport { path, transform } => {
+				let transform = DAffine2::from_cols_array(transform);
+				self.transform_in_viewport(path, transform)?;
+				self.mark_as_dirty(path)?;
+				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::LayerChanged { path: path.clone() }])
 			}
 			Operation::SetLayerTransformInViewport { path, transform } => {
 				let transform = DAffine2::from_cols_array(transform);

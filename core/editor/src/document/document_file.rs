@@ -85,13 +85,11 @@ pub enum DocumentMessage {
 	NudgeSelectedLayers(f64, f64),
 	FlipLayer(Vec<LayerId>, bool, bool),
 	AlignSelectedLayers(AlignAxis, AlignAggregate),
-	DragLayer(Vec<LayerId>, DVec2),
 	MoveSelectedLayersTo {
 		path: Vec<LayerId>,
 		insert_index: isize,
 	},
 	ReorderSelectedLayers(i32), // relative_position,
-	SetLayerTranslation(Vec<LayerId>, Option<f64>, Option<f64>),
 }
 
 impl From<DocumentOperation> for DocumentMessage {
@@ -139,7 +137,7 @@ impl DocumentMessageHandler {
 		self.layer_data.entry(path.to_vec()).or_insert_with(|| LayerData::new(true))
 	}
 
-	fn selected_layers(&self) -> impl Iterator<Item = &Vec<LayerId>> {
+	pub fn selected_layers(&self) -> impl Iterator<Item = &Vec<LayerId>> {
 		self.layer_data.iter().filter_map(|(path, data)| data.selected.then(|| path))
 	}
 
@@ -372,6 +370,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					let rotate_to_viewport_space = DAffine2::from_angle(root_layer_rotation).inverse();
 					rotate_to_viewport_space.transform_point2((x, y).into())
 				};
+				let foo = ();
 				for path in self.selected_layers().cloned() {
 					let operation = DocumentOperation::TransformLayer {
 						path,
@@ -521,38 +520,11 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				} {
 					for (path, bounding_box_coord, translation_coord) in selected_layers {
 						let new_coord = aggregated_coord - (bounding_box_coord - translation_coord);
-						match axis {
+						/*match axis {
 							AlignAxis::X => responses.push_back(DocumentMessage::SetLayerTranslation(path, Some(new_coord), None).into()),
 							AlignAxis::Y => responses.push_back(DocumentMessage::SetLayerTranslation(path, None, Some(new_coord)).into()),
-						}
+						}*/
 					}
-				}
-			}
-			DragLayer(path, offset) => {
-				// TODO: Replace root transformations with functions of the transform api
-				// and do the same with all instances of `root.transform.inverse()` in other messages
-				let transformed_mouse_pos = self.document.root.transform.inverse().transform_vector2(ipp.mouse.position.as_f64());
-				let translation = offset + transformed_mouse_pos;
-				if let Ok(layer) = self.document.layer_mut(&path) {
-					let transform = {
-						let mut transform = layer.transform;
-						transform.translation = translation;
-						transform.to_cols_array()
-					};
-					responses.push_back(DocumentOperation::SetLayerTransform { path, transform }.into());
-				}
-			}
-			SetLayerTranslation(path, x_option, y_option) => {
-				if let Ok(layer) = self.document.layer_mut(&path) {
-					let mut transform = layer.transform;
-					transform.translation = DVec2::new(x_option.unwrap_or(transform.translation.x), y_option.unwrap_or(transform.translation.y));
-					responses.push_back(
-						DocumentOperation::SetLayerTransform {
-							path,
-							transform: transform.to_cols_array(),
-						}
-						.into(),
-					);
 				}
 			}
 			RenameLayer(path, name) => responses.push_back(DocumentOperation::RenameLayer { path, name }.into()),

@@ -21,7 +21,7 @@ pub fn intersect_quad_bez_path(quad: [DVec2; 4], shape: &BezPath, closed: bool) 
 		}
 	}
 	// check if selection is entirely within the shape
-	if closed && shape.contains(to_point(quad[0])) {
+	if closed && quad.iter().any(|q| shape.contains(to_point(*q))) {
 		return true;
 	}
 	// check if shape is entirely within the selection
