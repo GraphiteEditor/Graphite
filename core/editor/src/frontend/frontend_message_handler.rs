@@ -22,7 +22,7 @@ pub enum FrontendMessage {
 	UpdateWorkingColors { primary: Color, secondary: Color },
 	SetCanvasZoom { new_zoom: f64 },
 	SetCanvasRotation { new_radians: f64 },
-	SerializeDocument { document: String, action: String },
+	SaveFile { document: String },
 }
 
 pub struct FrontendMessageHandler {

@@ -214,7 +214,7 @@
 import { defineComponent } from "vue";
 
 import { makeModifiersBitfield } from "@/utilities/input";
-import { ResponseType, registerResponseHandler, Response, UpdateCanvas, SetActiveTool, ExportDocument, SetCanvasZoom, SetCanvasRotation, SerializeDocument } from "@/utilities/response-handler";
+import { ResponseType, registerResponseHandler, Response, UpdateCanvas, SetActiveTool, ExportDocument, SetCanvasZoom, SetCanvasRotation, SaveFile } from "@/utilities/response-handler";
 import { SeparatorDirection, SeparatorType } from "@/components/widgets/widgets";
 import comingSoon from "@/utilities/coming-soon";
 
@@ -329,11 +329,9 @@ export default defineComponent({
 			const updateData = responseData as ExportDocument;
 			if (updateData) this.download("canvas.svg", updateData.document);
 		});
-		registerResponseHandler(ResponseType.SerializeDocument, (responseData: Response) => {
-			const data = responseData as SerializeDocument;
-			if (data && data.action === "save") {
-				this.download("canvas.gsvg", data.document);
-			}
+		registerResponseHandler(ResponseType.SaveFile, (responseData: Response) => {
+			const data = responseData as SaveFile;
+			if (data) this.download("canvas.gsvg", data.document);
 		});
 		registerResponseHandler(ResponseType.SetActiveTool, (responseData: Response) => {
 			const toolData = responseData as SetActiveTool;

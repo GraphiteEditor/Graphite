@@ -256,12 +256,10 @@ pub fn export_document() -> Result<(), JsValue> {
 	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(DocumentMessage::ExportDocument)).map_err(convert_error)
 }
 
-/// Serialize document
+/// Save File
 #[wasm_bindgen]
-pub fn serialize_document(action: String) -> Result<(), JsValue> {
-	EDITOR_STATE
-		.with(|editor| editor.borrow_mut().handle_message(DocumentMessage::SerializeDocument(action)))
-		.map_err(convert_error)
+pub fn save_file() -> Result<(), JsValue> {
+	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(DocumentMessage::SaveFile())).map_err(convert_error)
 }
 
 /// Sets the zoom to the value

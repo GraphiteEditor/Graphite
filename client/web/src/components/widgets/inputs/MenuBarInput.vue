@@ -90,7 +90,7 @@ const menuEntries: MenuListEntries = [
 				{ label: "Close All", shortcut: ["Ctrl", "Alt", "W"], action: async () => (await wasm).close_all_documents_with_confirmation() },
 			],
 			[
-				{ label: "Save", shortcut: ["Ctrl", "S"], action: async () => (await wasm).serialize_document("save") },
+				{ label: "Save", shortcut: ["Ctrl", "S"], action: async () => (await wasm).save_file() },
 				{ label: "Save As…", shortcut: ["Ctrl", "⇧", "S"] },
 				{ label: "Save All", shortcut: ["Ctrl", "Alt", "S"] },
 				{ label: "Auto-Save", checkbox: true, checked: true },
