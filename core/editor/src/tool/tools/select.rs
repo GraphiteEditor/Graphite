@@ -3,6 +3,7 @@ use document_core::layers::style;
 use document_core::layers::style::Fill;
 use document_core::layers::style::Stroke;
 use document_core::Operation;
+use document_core::Quad;
 use glam::Vec2Swizzles;
 use glam::{DAffine2, DVec2};
 use serde::{Deserialize, Serialize};
@@ -70,10 +71,9 @@ struct SelectToolData {
 }
 
 impl SelectToolData {
-	fn selection_quad(&self) -> [DVec2; 4] {
+	fn selection_quad(&self) -> Quad {
 		let bbox = self.selection_box();
-		let size = bbox[1] - bbox[0];
-		[bbox[0], bbox[0] + size * DVec2::X, bbox[0] + size * DVec2::Y, bbox[1]]
+		Quad::from_box(bbox)
 	}
 
 	fn selection_box(&self) -> [DVec2; 2] {

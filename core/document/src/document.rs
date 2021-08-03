@@ -7,7 +7,7 @@ use glam::{DAffine2, DVec2};
 
 use crate::{
 	layers::{self, Folder, Layer, LayerData, LayerDataType, Shape},
-	DocumentError, DocumentResponse, LayerId, Operation,
+	DocumentError, DocumentResponse, LayerId, Operation, Quad,
 };
 
 #[derive(Debug, Clone)]
@@ -43,12 +43,12 @@ impl Document {
 	}
 
 	/// Checks whether each layer under `path` intersects with the provided `quad` and adds all intersection layers as paths to `intersections`.
-	pub fn intersects_quad(&self, quad: [DVec2; 4], path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>) {
-		self.folder(path).unwrap().intersects_quad(quad, path, intersections);
+	pub fn intersects_quad(&self, quad: Quad, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>) {
+		self.layer(path).unwrap().intersects_quad(quad, path, intersections);
 	}
 
 	/// Checks whether each layer under the root path intersects with the provided `quad` and returns the paths to all intersecting layers.
-	pub fn intersects_quad_root(&self, quad: [DVec2; 4]) -> Vec<Vec<LayerId>> {
+	pub fn intersects_quad_root(&self, quad: Quad) -> Vec<Vec<LayerId>> {
 		let mut intersections = Vec::new();
 		self.intersects_quad(quad, &mut vec![], &mut intersections);
 		intersections
