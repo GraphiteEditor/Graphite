@@ -93,7 +93,7 @@ impl Fsm for SelectToolFsmState {
 		self,
 		event: ToolMessage,
 		document: &DocumentMessageHandler,
-		tool_data: &DocumentToolData,
+		_tool_data: &DocumentToolData,
 		data: &mut Self::ToolData,
 		input: &InputPreprocessor,
 		responses: &mut VecDeque<Message>,
@@ -108,14 +108,19 @@ impl Fsm for SelectToolFsmState {
 					let mut selected: Vec<_> = document.selected_layers().cloned().collect();
 					let quad = data.selection_quad();
 					let intersection = document.document.intersects_quad_root(quad);
+					// If no layer is currently selected and the user clicks on a shape, select that.
 					if selected.is_empty() {
 						if let Some(layer) = intersection.last() {
 							selected.push(layer.clone());
 							responses.push_back(DocumentMessage::SelectLayers(selected.clone()).into());
 						}
 					}
-					if !selected.iter().any(|path| intersection.contains(path)) {
-						log::debug!("drawing stuff");
+					// If the user clicks on a layer that is in their current selection, go into the dragging mode.
+					// Otherwise enter the box select mode
+					if selected.iter().any(|path| intersection.contains(path)) {
+						data.layers_dragging = selected;
+						Dragging
+					} else {
 						responses.push_back(DocumentMessage::DeselectAllLayers.into());
 						data.box_id = Some(vec![generate_hash(&*responses, input, document.document.hash())]);
 						responses.push_back(
@@ -127,14 +132,9 @@ impl Fsm for SelectToolFsmState {
 							.into(),
 						);
 						DrawingBox
-					} else {
-						data.layers_dragging = selected;
-						log::debug!("dragging stuff around: {:?}", data.layers_dragging);
-						Dragging
 					}
 				}
 				(Dragging, MouseMove) => {
-					log::debug!("dragging delta: {:?}", input.mouse.position.as_f64() - data.drag_current.as_f64());
 					for path in data.layers_dragging.iter() {
 						responses.push_back(
 							Operation::TransformLayerInViewport {
@@ -152,7 +152,6 @@ impl Fsm for SelectToolFsmState {
 					let start = data.drag_start.as_f64();
 					let size = data.drag_current.as_f64() - start;
 
-					log::debug!("changing transform {:?} {:?} {:?}", data.box_id, start, size);
 					responses.push_back(
 						Operation::SetLayerTransformInViewport {
 							path: data.box_id.clone().unwrap(),
@@ -173,97 +172,6 @@ impl Fsm for SelectToolFsmState {
 					responses.push_back(Operation::DeleteLayer { path: data.box_id.take().unwrap() }.into());
 					Ready
 				}
-				/*
-					let (point_1, point_2) = {
-						let (x, y) = (data.drag_start.x as f64, data.drag_start.y as f64);
-						(
-							DVec2::new(x - SELECTION_TOLERANCE, y - SELECTION_TOLERANCE),
-							DVec2::new(x + SELECTION_TOLERANCE, y + SELECTION_TOLERANCE),
-						)
-					};
-
-					let quad = [
-						DVec2::new(point_1.x, point_1.y),
-						DVec2::new(point_2.x, point_1.y),
-						DVec2::new(point_2.x, point_2.y),
-						DVec2::new(point_1.x, point_2.y),
-					];
-
-					if let Some(intersection) = document.document.intersects_quad_root(quad).last() {
-						// TODO: Replace root transformations with functions of the transform api
-						let transformed_start = document.document.root.transform.inverse().transform_vector2(data.drag_start.as_f64());
-						if document.layer_data.get(intersection).map_or(false, |layer_data| layer_data.selected) {
-							data.layers_dragging = document
-								.layer_data
-								.iter()
-								.filter_map(|(path, layer_data)| {
-									layer_data
-										.selected
-										.then(|| document.document.layer(path).ok().map(|layer| (path.clone(), layer.transform.translation - transformed_start)))
-										.flatten()
-								})
-								.collect();
-						} else {
-							responses.push_back(DocumentMessage::SelectLayers(vec![intersection.clone()]).into());
-							data.layers_dragging = vec![(intersection.clone(), document.document.layer(intersection).unwrap().transform.translation - transformed_start)]
-						}
-					} else {
-						responses.push_back(DocumentMessage::StartTransaction.into());
-						data.layers_dragging = Vec::new();
-					}
-
-					Dragging
-				}
-				(Dragging, MouseMove) => {
-					data.drag_current = input.mouse.position;
-
-					if data.layers_dragging.is_empty() {
-						responses.push_back(DocumentMessage::RollbackTransaction.into());
-						responses.push_back(make_operation(data, tool_data, transform));
-					} else {
-						for (path, offset) in &data.layers_dragging {
-							responses.push_back(DocumentMessage::DragLayer(path.clone(), *offset).into());
-						}
-					}
-
-					Dragging
-				}
-				(Dragging, DragStop) => {
-					data.drag_current = input.mouse.position;
-
-					if data.layers_dragging.is_empty() {
-						responses.push_back(DocumentMessage::RollbackTransaction.into());
-						responses.push_back(DocumentMessage::AbortTransaction.into());
-
-						if data.drag_start == data.drag_current {
-							responses.push_back(DocumentMessage::SelectLayers(vec![]).into());
-						} else {
-							let (point_1, point_2) = (
-								DVec2::new(data.drag_start.x as f64, data.drag_start.y as f64),
-								DVec2::new(data.drag_current.x as f64, data.drag_current.y as f64),
-							);
-
-							let quad = [
-								DVec2::new(point_1.x, point_1.y),
-								DVec2::new(point_2.x, point_1.y),
-								DVec2::new(point_2.x, point_2.y),
-								DVec2::new(point_1.x, point_2.y),
-							];
-
-							responses.push_back(DocumentMessage::SelectLayers(document.document.intersects_quad_root(quad)).into());
-						}
-					} else {
-						data.layers_dragging = Vec::new();
-					}
-
-					Ready
-				}
-				(Dragging, Abort) => {
-					responses.push_back(DocumentMessage::AbortTransaction.into());
-					data.layers_dragging = Vec::new();
-
-					Ready
-				}
 				(_, Align(axis, aggregate)) => {
 					responses.push_back(DocumentMessage::AlignSelectedLayers(axis, aggregate).into());
 
@@ -278,26 +186,11 @@ impl Fsm for SelectToolFsmState {
 					responses.push_back(DocumentMessage::FlipSelectedLayers(FlipAxis::Y).into());
 
 					self
-				}*/
+				}
 				_ => self,
 			}
 		} else {
 			self
 		}
 	}
-}
-
-fn make_operation(data: &SelectToolData, _tool_data: &DocumentToolData, transform: DAffine2) -> Message {
-	let x0 = data.drag_start.x as f64;
-	let y0 = data.drag_start.y as f64;
-	let x1 = data.drag_current.x as f64;
-	let y1 = data.drag_current.y as f64;
-
-	Operation::AddRect {
-		path: vec![],
-		insert_index: -1,
-		transform: (transform.inverse() * glam::DAffine2::from_scale_angle_translation(DVec2::new(x1 - x0, y1 - y0), 0., DVec2::new(x0, y0))).to_cols_array(),
-		style: style::PathStyle::new(Some(Stroke::new(Color::from_rgb8(0x31, 0x94, 0xD6), 2.0)), Some(Fill::none())),
-	}
-	.into()
 }

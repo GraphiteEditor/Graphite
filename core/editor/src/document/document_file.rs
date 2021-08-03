@@ -365,16 +365,10 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				.into(),
 			),
 			NudgeSelectedLayers(x, y) => {
-				let delta = {
-					let root_layer_rotation = self.layerdata_mut(&[]).rotation;
-					let rotate_to_viewport_space = DAffine2::from_angle(root_layer_rotation).inverse();
-					rotate_to_viewport_space.transform_point2((x, y).into())
-				};
-				let foo = ();
 				for path in self.selected_layers().cloned() {
-					let operation = DocumentOperation::TransformLayer {
+					let operation = DocumentOperation::TransformLayerInViewport {
 						path,
-						transform: DAffine2::from_translation(delta).to_cols_array(),
+						transform: DAffine2::from_translation((x, y).into()).to_cols_array(),
 					};
 					responses.push_back(operation.into());
 				}
@@ -418,9 +412,9 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				if let Ok(layer) = self.document.layer_mut(&path) {
 					let scale = DVec2::new(if flip_horizontal { -1. } else { 1. }, if flip_vertical { -1. } else { 1. });
 					responses.push_back(
-						DocumentOperation::SetLayerTransform {
+						DocumentOperation::TransformLayerInViewport {
 							path,
-							transform: (layer.transform * DAffine2::from_scale(scale)).to_cols_array(),
+							transform: DAffine2::from_scale(scale).to_cols_array(),
 						}
 						.into(),
 					);
@@ -477,53 +471,33 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				}
 			}
 			AlignSelectedLayers(axis, aggregate) => {
-				// TODO: Handle folder nested transforms with the transforms API
-				if self.selected_layers().next().is_none() {
-					return;
-				}
+				let (paths, boxes): (Vec<_>, Vec<_>) = self.selected_layers().filter_map(|path| self.document.viewport_bounding_box(path).ok()?.map(|b| (path, b))).unzip();
 
-				let selected_layers = self.selected_layers().cloned().filter_map(|path| {
-					let layer = self.document.layer(&path).ok()?;
-					let point = {
-						let bounding_box = layer.current_bounding_box()?;
-						match aggregate {
-							AlignAggregate::Min => bounding_box[0],
-							AlignAggregate::Max => bounding_box[1],
-							AlignAggregate::Center => bounding_box[0].lerp(bounding_box[1], 0.5),
-							AlignAggregate::Average => bounding_box[0].lerp(bounding_box[1], 0.5),
-						}
-					};
-					let (bounding_box_coord, translation_coord) = match axis {
-						AlignAxis::X => (point.x, layer.transform.translation.x),
-						AlignAxis::Y => (point.y, layer.transform.translation.y),
-					};
-					Some((path, bounding_box_coord, translation_coord))
-				});
-				let selected_layers: Vec<_> = selected_layers.collect();
-
-				let bounding_box_coords = selected_layers.iter().map(|(_, bounding_box_coord, _)| bounding_box_coord).cloned();
+				let axis = match axis {
+					AlignAxis::X => DVec2::X,
+					AlignAxis::Y => DVec2::Y,
+				};
+				let lerp = |bbox: &[DVec2; 2]| bbox[0].lerp(bbox[1], 0.5);
 				if let Some(aggregated_coord) = match aggregate {
-					AlignAggregate::Min => bounding_box_coords.reduce(|a, b| a.min(b)),
-					AlignAggregate::Max => bounding_box_coords.reduce(|a, b| a.max(b)),
-					AlignAggregate::Center => {
-						// TODO: Refactor with `reduce` and `merge_bounding_boxes` once the latter is added
-						self.selected_layers()
-							.filter_map(|path| self.document.layer(path).ok().map(|layer| layer.current_bounding_box()).flatten())
-							.map(|bbox| match axis {
-								AlignAxis::X => (bbox[0].x, bbox[1].x),
-								AlignAxis::Y => (bbox[0].y, bbox[1].y),
-							})
-							.reduce(|(a, b), (c, d)| (a.min(c), b.max(d)))
-							.map(|(min, max)| (min + max) / 2.)
-					}
-					AlignAggregate::Average => Some(bounding_box_coords.sum::<f64>() / selected_layers.len() as f64),
+					AlignAggregate::Min => boxes.iter().map(|b| b[0]).reduce(|a, b| a.min(b)),
+					AlignAggregate::Max => boxes.iter().map(|b| b[1]).reduce(|a, b| a.max(b)),
+					AlignAggregate::Center => boxes.iter().map(|b| (lerp(b), lerp(b))).reduce(|a, b| (a.0.min(b.0), a.1.max(b.1))).map(|(min, max)| (min + max) / 2.),
+					AlignAggregate::Average => boxes.iter().map(|b| lerp(b)).reduce(|a, b| a + b).map(|b| b / boxes.len() as f64),
 				} {
-					for (path, bounding_box_coord, translation_coord) in selected_layers {
-						let new_coord = aggregated_coord - (bounding_box_coord - translation_coord);
-						/*match axis {
-							AlignAxis::X => responses.push_back(DocumentMessage::SetLayerTranslation(path, Some(new_coord), None).into()),
-							AlignAxis::Y => responses.push_back(DocumentMessage::SetLayerTranslation(path, None, Some(new_coord)).into()),
-						}*/
+					for (path, bbox) in paths.into_iter().zip(boxes) {
+						let center = match aggregate {
+							AlignAggregate::Min => bbox[0],
+							AlignAggregate::Max => bbox[1],
+							_ => lerp(&bbox),
+						};
+						let translation = (aggregated_coord - center) * axis;
+						responses.push_back(
+							DocumentOperation::TransformLayerInViewport {
+								path: path.clone(),
+								transform: DAffine2::from_translation(translation).to_cols_array(),
+							}
+							.into(),
+						);
 					}
 				}
 			}
