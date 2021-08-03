@@ -18,7 +18,6 @@ pub enum EyedropperMessage {
 impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Eyedropper {
 	fn process_action(&mut self, action: ToolMessage, data: ToolActionHandlerData<'a>, responses: &mut VecDeque<Message>) {
 		let mouse_pos = data.2.mouse.position;
-		let (x, y) = (mouse_pos.x as f64, mouse_pos.y as f64);
 		let tolerance = DVec2::splat(SELECTION_TOLERANCE);
 		let quad = Quad::from_box([mouse_pos.as_f64() - tolerance, mouse_pos.as_f64() + tolerance]);
 

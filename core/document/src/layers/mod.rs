@@ -126,7 +126,6 @@ impl Layer {
 			return;
 		}
 		let transformed_quad = self.transform.inverse() * quad;
-		log::debug!("{:?} quad: {:?}\n transformed: {:?}", path, quad, transformed_quad);
 		self.data.intersects_quad(transformed_quad, path, intersections)
 	}
 

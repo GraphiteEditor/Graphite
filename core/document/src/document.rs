@@ -147,22 +147,12 @@ impl Document {
 		self.folder_mut(path)?.remove_layer(id)
 	}
 
-	pub fn layer_axis_aligned_bounding_box(&self, path: &[LayerId]) -> Result<Option<[DVec2; 2]>, DocumentError> {
-		// TODO: Replace with functions of the transform api
-		if path.is_empty() {
-			// Special case for root. Root's local is the documents global, so we avoid transforming its transform by itself.
-			self.layer_local_bounding_box(path)
-		} else {
-			let layer = self.layer(path)?;
-			Ok(layer.data.bounding_box(self.root.transform * layer.transform))
-		}
+	pub fn viewport_bounding_box(&self, path: &[LayerId]) -> Result<Option<[DVec2; 2]>, DocumentError> {
+		let layer = self.layer(path)?;
+		let transform = self.multiply_transoforms(path)?;
+		Ok(layer.data.bounding_box(transform))
 	}
 
-	pub fn layer_local_bounding_box(&self, path: &[LayerId]) -> Result<Option<[DVec2; 2]>, DocumentError> {
-		// TODO: Replace with functions of the transform api
-		let layer = self.layer(path)?;
-		Ok(layer.data.bounding_box(layer.transform))
-	}
 	pub fn mark_upstream_as_dirty(&mut self, path: &[LayerId]) -> Result<(), DocumentError> {
 		let mut root = &mut self.root;
 		root.cache_dirty = true;
@@ -228,7 +218,6 @@ impl Document {
 
 	pub fn transform_in_scope(&mut self, layer: &[LayerId], scope: Option<&[LayerId]>, transform: DAffine2) -> Result<(), DocumentError> {
 		let to = self.generate_transform(&layer[..layer.len() - 1], scope)?;
-		log::info!("transform: {:?} to: {:?}, ", transform, to);
 		let layer = self.layer_mut(layer)?;
 		layer.transform = to * transform * to.inverse() * layer.transform;
 		Ok(())
@@ -236,7 +225,6 @@ impl Document {
 
 	pub fn set_transform_in_scope(&mut self, layer: &[LayerId], scope: Option<&[LayerId]>, transform: DAffine2) -> Result<(), DocumentError> {
 		let to = self.generate_transform(&layer[..layer.len() - 1], scope)?;
-		log::info!("transform: {:?} to: {:?}, ", transform, to);
 		let layer = self.layer_mut(layer)?;
 		layer.transform = to * transform;
 		Ok(())
