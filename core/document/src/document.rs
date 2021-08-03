@@ -368,24 +368,19 @@ impl Document {
 				if let Ok(layer) = self.layer_mut(path) {
 					layer.visible = !layer.visible;
 				}
-				let path = path.as_slice()[..path.len() - 1].to_vec();
-				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::FolderChanged { path }])
+				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::LayerChanged { path: path.clone() }])
 			}
 			Operation::SetLayerBlendMode { path, blend_mode } => {
 				self.mark_as_dirty(path)?;
 				self.layer_mut(path)?.blend_mode = *blend_mode;
 
-				let path = path.as_slice()[..path.len() - 1].to_vec();
-
-				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::FolderChanged { path }])
+				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::LayerChanged { path: path.clone() }])
 			}
 			Operation::SetLayerOpacity { path, opacity } => {
 				self.mark_as_dirty(path)?;
 				self.layer_mut(path)?.opacity = *opacity;
 
-				let path = path.as_slice()[..path.len() - 1].to_vec();
-
-				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::LayerChanged { path }])
+				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::LayerChanged { path: path.clone() }])
 			}
 			Operation::FillLayer { path, color } => {
 				let layer = self.layer_mut(path)?;
@@ -394,7 +389,7 @@ impl Document {
 					_ => return Err(DocumentError::NotAShape),
 				}
 				self.mark_as_dirty(path)?;
-				Some(vec![DocumentResponse::DocumentChanged])
+				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::LayerChanged { path: path.clone() }])
 			}
 		};
 		Ok(responses)
