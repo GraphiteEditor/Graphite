@@ -208,22 +208,19 @@ impl Document {
 		Ok(trans)
 	}
 
-	pub fn generate_transform(&self, from: &[LayerId], to: Option<&[LayerId]>) -> Result<DAffine2, DocumentError> {
+	pub fn generate_transform(&self, from: &[LayerId], to: Option<DAffine2>) -> Result<DAffine2, DocumentError> {
 		let from_rev = self.multiply_transoforms(from)?.inverse();
-		Ok(match to {
-			None => from_rev,
-			Some(path) => self.multiply_transoforms(path)? * from_rev,
-		})
+		Ok(to.unwrap_or(DAffine2::IDENTITY) * from_rev)
 	}
 
-	pub fn transform_in_scope(&mut self, layer: &[LayerId], scope: Option<&[LayerId]>, transform: DAffine2) -> Result<(), DocumentError> {
+	pub fn transform_in_scope(&mut self, layer: &[LayerId], scope: Option<DAffine2>, transform: DAffine2) -> Result<(), DocumentError> {
 		let to = self.generate_transform(&layer[..layer.len() - 1], scope)?;
 		let layer = self.layer_mut(layer)?;
 		layer.transform = to * transform * to.inverse() * layer.transform;
 		Ok(())
 	}
 
-	pub fn set_transform_in_scope(&mut self, layer: &[LayerId], scope: Option<&[LayerId]>, transform: DAffine2) -> Result<(), DocumentError> {
+	pub fn set_transform_in_scope(&mut self, layer: &[LayerId], scope: Option<DAffine2>, transform: DAffine2) -> Result<(), DocumentError> {
 		let to = self.generate_transform(&layer[..layer.len() - 1], scope)?;
 		let layer = self.layer_mut(layer)?;
 		layer.transform = to * transform;
@@ -238,7 +235,7 @@ impl Document {
 		self.set_transform_in_scope(layer, None, transform)
 	}
 
-	pub fn transform_layer(&self, path: &[LayerId], to: Option<&[LayerId]>) -> Result<Layer, DocumentError> {
+	pub fn transform_layer(&self, path: &[LayerId], to: Option<DAffine2>) -> Result<Layer, DocumentError> {
 		let transform = self.generate_transform(path, to)?;
 		let layer = self.layer(path).unwrap();
 		Ok(Layer {
@@ -353,6 +350,20 @@ impl Document {
 			Operation::SetLayerTransformInViewport { path, transform } => {
 				let transform = DAffine2::from_cols_array(transform);
 				self.set_transform_in_viewport(path, transform)?;
+				self.mark_as_dirty(path)?;
+				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::LayerChanged { path: path.clone() }])
+			}
+			Operation::TransformLayerInScope { path, transform, scope } => {
+				let transform = DAffine2::from_cols_array(transform);
+				let scope = DAffine2::from_cols_array(scope);
+				self.transform_in_scope(path, Some(scope), transform)?;
+				self.mark_as_dirty(path)?;
+				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::LayerChanged { path: path.clone() }])
+			}
+			Operation::SetLayerTransformInScope { path, transform, scope } => {
+				let transform = DAffine2::from_cols_array(transform);
+				let scope = DAffine2::from_cols_array(scope);
+				self.set_transform_in_scope(path, Some(scope), transform)?;
 				self.mark_as_dirty(path)?;
 				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::LayerChanged { path: path.clone() }])
 			}
