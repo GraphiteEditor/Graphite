@@ -23,6 +23,11 @@ pub enum Operation {
 		transform: [f64; 6],
 		style: style::PathStyle,
 	},
+	AddBoundingBox {
+		path: Vec<LayerId>,
+		transform: [f64; 6],
+		style: style::PathStyle,
+	},
 	AddLine {
 		path: Vec<LayerId>,
 		insert_index: isize,
@@ -62,6 +67,10 @@ pub enum Operation {
 		path: Vec<LayerId>,
 	},
 	TransformLayer {
+		path: Vec<LayerId>,
+		transform: [f64; 6],
+	},
+	TransformLayerInViewport {
 		path: Vec<LayerId>,
 		transform: [f64; 6],
 	},
