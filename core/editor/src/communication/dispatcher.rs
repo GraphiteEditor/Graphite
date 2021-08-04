@@ -194,7 +194,7 @@ mod test {
 		// This has not been done yet as the line and pen tool are not yet able to add layers to the currently selected folder
 		editor
 			.handle_message(Operation::AddLine {
-				path: vec![folder_id],
+				path: vec![folder_id, LINE_INDEX as u64],
 				insert_index: 0,
 				transform: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
 				style: Default::default(),
@@ -203,7 +203,7 @@ mod test {
 
 		editor
 			.handle_message(Operation::AddPen {
-				path: vec![folder_id],
+				path: vec![folder_id, PEN_INDEX as u64],
 				insert_index: 0,
 				transform: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
 				style: Default::default(),

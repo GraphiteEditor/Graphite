@@ -13,7 +13,7 @@ where
 }
 
 #[impl_message]
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Message {
 	NoOp,
 	#[child]
@@ -42,11 +42,5 @@ impl Hash for Message {
 		H: Hasher,
 	{
 		self.as_slice().hash(state);
-	}
-}
-
-impl PartialEq for Message {
-	fn eq(&self, other: &Message) -> bool {
-		self.as_slice() == other.as_slice()
 	}
 }
