@@ -199,6 +199,7 @@ impl Default for Mapping {
 			entry! {action=MovementMessage::RotateCanvasBegin{snap:false}, key_down=Mmb, modifiers=[KeyControl]},
 			entry! {action=MovementMessage::RotateCanvasBegin{snap:true}, key_down=Mmb, modifiers=[KeyControl, KeyShift]},
 			entry! {action=MovementMessage::ZoomCanvasBegin, key_down=Mmb, modifiers=[KeyShift]},
+			entry! {action=MovementMessage::ZoomCanvasToFitAll, key_down=Key0, modifiers=[KeyControl]},
 			entry! {action=MovementMessage::TranslateCanvasBegin, key_down=Mmb},
 			entry! {action=MovementMessage::TranslateCanvasEnd, key_up=Mmb},
 			entry! {action=MovementMessage::MultiplyCanvasZoom(PLUS_KEY_ZOOM_RATE), key_down=KeyPlus, modifiers=[KeyControl]},

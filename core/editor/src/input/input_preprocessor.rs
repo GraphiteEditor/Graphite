@@ -78,7 +78,7 @@ impl MessageHandler<InputPreprocessorMessage, ()> for InputPreprocessor {
 				responses.push_back(
 					document_core::Operation::TransformLayer {
 						path: vec![],
-						transform: glam::DAffine2::from_translation(DVec2::new((size.x as f64 - self.viewport_size.x as f64) / 2., (size.y as f64 - self.viewport_size.y as f64) / 2.)).to_cols_array(),
+						transform: glam::DAffine2::from_translation((size.as_f64() - self.viewport_size.as_f64()) / 2.).to_cols_array(),
 					}
 					.into(),
 				);
