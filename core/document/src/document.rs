@@ -282,7 +282,7 @@ impl Document {
 	/// Mutate the document by applying the `operation` to it. If the operation necessitates a
 	/// reaction from the frontend, responses may be returned.
 	pub fn handle_operation(&mut self, operation: &Operation) -> Result<Option<Vec<DocumentResponse>>, DocumentError> {
-		operation.hash(&mut self.hasher);
+		operation.pseudo_hash().hash(&mut self.hasher);
 
 		let responses = match &operation {
 			Operation::AddEllipse { path, insert_index, transform, style } => {

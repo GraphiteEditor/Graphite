@@ -1,6 +1,9 @@
 use crate::message_prelude::*;
 use graphite_proc_macros::*;
-use std::hash::{Hash, Hasher};
+use std::{
+	collections::hash_map::DefaultHasher,
+	hash::{Hash, Hasher},
+};
 
 pub trait AsMessage: TransitiveChild
 where
@@ -31,16 +34,12 @@ pub enum Message {
 }
 
 impl Message {
-	fn as_slice(&self) -> &[u8] {
-		unsafe { core::slice::from_raw_parts(self as *const Message as *const u8, std::mem::size_of::<Message>()) }
+	unsafe fn as_slice(&self) -> &[u8] {
+		core::slice::from_raw_parts(self as *const Message as *const u8, std::mem::size_of::<Message>())
 	}
-}
-
-impl Hash for Message {
-	fn hash<H>(&self, state: &mut H)
-	where
-		H: Hasher,
-	{
-		self.as_slice().hash(state);
+	pub fn pseudo_hash(&self) -> u64 {
+		let mut s = DefaultHasher::new();
+		unsafe { self.as_slice() }.hash(&mut s);
+		s.finish()
 	}
 }

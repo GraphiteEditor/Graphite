@@ -30,7 +30,7 @@ pub fn generate_hash<'a>(messages: impl IntoIterator<Item = &'a Message>, ipp: &
 	document_hash.hash(&mut s);
 	ipp.hash(&mut s);
 	for message in messages {
-		message.hash(&mut s);
+		message.pseudo_hash().hash(&mut s);
 	}
 	s.finish()
 }
