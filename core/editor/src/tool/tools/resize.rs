@@ -15,11 +15,12 @@ impl Resize {
 		let stop = ipp.mouse.position.as_f64();
 
 		let mut size = stop - start;
-		if ipp.keyboard.get(center as usize) {
+		if ipp.keyboard.get(lock_ratio as usize) {
 			size = size.abs().max(size.abs().yx()) * size.signum();
 		}
-		if ipp.keyboard.get(lock_ratio as usize) {
-			start -= size / 2.;
+		if ipp.keyboard.get(center as usize) {
+			start -= size;
+			size *= 2.;
 		}
 
 		self.path.clone().map(|path| {

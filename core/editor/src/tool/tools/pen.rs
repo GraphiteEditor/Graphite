@@ -16,7 +16,7 @@ pub enum PenMessage {
 	Undo,
 	DragStart,
 	DragStop,
-	MouseMove,
+	PointerMove,
 	Confirm,
 	Abort,
 }
@@ -35,7 +35,7 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Pen {
 		use PenToolFsmState::*;
 		match self.fsm_state {
 			Ready => actions!(PenMessageDiscriminant; Undo, DragStart, DragStop, Confirm, Abort),
-			Dragging => actions!(PenMessageDiscriminant; DragStop, MouseMove, Confirm, Abort),
+			Dragging => actions!(PenMessageDiscriminant; DragStop, PointerMove, Confirm, Abort),
 		}
 	}
 }
@@ -92,7 +92,7 @@ impl Fsm for PenToolFsmState {
 
 					Dragging
 				}
-				(Dragging, MouseMove) => {
+				(Dragging, PointerMove) => {
 					data.next_point = pos;
 
 					responses.extend(make_operation(data, tool_data, true));

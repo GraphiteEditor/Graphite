@@ -1,4 +1,5 @@
 use crate::consts::LINE_ROTATE_SNAP_ANGLE;
+use crate::input::keyboard::Key;
 use crate::input::{mouse::ViewportPosition, InputPreprocessor};
 use crate::tool::{DocumentToolData, Fsm, ToolActionHandlerData};
 use crate::{document::DocumentMessageHandler, message_prelude::*};
@@ -18,14 +19,8 @@ pub struct Line {
 pub enum LineMessage {
 	DragStart,
 	DragStop,
-	MouseMove,
+	Redraw { center: Key, lock_angle: Key, snap_angle: Key },
 	Abort,
-	Center,
-	UnCenter,
-	LockAngle,
-	UnlockAngle,
-	SnapToAngle,
-	UnSnapToAngle,
 }
 
 impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Line {
@@ -35,8 +30,8 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Line {
 	fn actions(&self) -> ActionList {
 		use LineToolFsmState::*;
 		match self.fsm_state {
-			Ready => actions!(LineMessageDiscriminant;  DragStart, Center, UnCenter, LockAngle, UnlockAngle, SnapToAngle, UnSnapToAngle),
-			Dragging => actions!(LineMessageDiscriminant; DragStop, MouseMove, Abort, Center, UnCenter, LockAngle, UnlockAngle,  SnapToAngle, UnSnapToAngle),
+			Ready => actions!(LineMessageDiscriminant;  DragStart ),
+			Dragging => actions!(LineMessageDiscriminant; DragStop, Redraw, Abort),
 		}
 	}
 }
@@ -57,9 +52,6 @@ struct LineToolData {
 	drag_start: ViewportPosition,
 	drag_current: ViewportPosition,
 	angle: f64,
-	snap_angle: bool,
-	lock_angle: bool,
-	center_around_cursor: bool,
 	path: Option<Vec<LayerId>>,
 }
 
@@ -97,10 +89,11 @@ impl Fsm for LineToolFsmState {
 
 					Dragging
 				}
-				(Dragging, MouseMove) => {
+				(Dragging, Redraw { center, snap_angle, lock_angle }) => {
 					data.drag_current = input.mouse.position;
 
-					responses.push_back(generate_transform(data));
+					let values: Vec<_> = [lock_angle, snap_angle, center].into_iter().map(|k| input.keyboard.get(*k as usize)).collect();
+					responses.push_back(generate_transform(data, values[0], values[1], values[2]));
 
 					Dragging
 				}
@@ -122,20 +115,6 @@ impl Fsm for LineToolFsmState {
 					data.path = None;
 					Ready
 				}
-				(Ready, LockAngle) => update_state_no_op(&mut data.lock_angle, true, Ready),
-				(Ready, UnlockAngle) => update_state_no_op(&mut data.lock_angle, false, Ready),
-				(Dragging, LockAngle) => update_state(|data| &mut data.lock_angle, true, data, responses, Dragging),
-				(Dragging, UnlockAngle) => update_state(|data| &mut data.lock_angle, false, data, responses, Dragging),
-
-				(Ready, SnapToAngle) => update_state_no_op(&mut data.snap_angle, true, Ready),
-				(Ready, UnSnapToAngle) => update_state_no_op(&mut data.snap_angle, false, Ready),
-				(Dragging, SnapToAngle) => update_state(|data| &mut data.snap_angle, true, data, responses, Dragging),
-				(Dragging, UnSnapToAngle) => update_state(|data| &mut data.snap_angle, false, data, responses, Dragging),
-
-				(Ready, Center) => update_state_no_op(&mut data.center_around_cursor, true, Ready),
-				(Ready, UnCenter) => update_state_no_op(&mut data.center_around_cursor, false, Ready),
-				(Dragging, Center) => update_state(|data| &mut data.center_around_cursor, true, data, responses, Dragging),
-				(Dragging, UnCenter) => update_state(|data| &mut data.center_around_cursor, false, data, responses, Dragging),
 				_ => self,
 			}
 		} else {
@@ -144,20 +123,7 @@ impl Fsm for LineToolFsmState {
 	}
 }
 
-fn update_state_no_op(state: &mut bool, value: bool, new_state: LineToolFsmState) -> LineToolFsmState {
-	*state = value;
-	new_state
-}
-
-fn update_state(state: fn(&mut LineToolData) -> &mut bool, value: bool, data: &mut LineToolData, responses: &mut VecDeque<Message>, new_state: LineToolFsmState) -> LineToolFsmState {
-	*(state(data)) = value;
-
-	responses.push_back(generate_transform(data));
-
-	new_state
-}
-
-fn generate_transform(data: &mut LineToolData) -> Message {
+fn generate_transform(data: &mut LineToolData, lock: bool, snap: bool, center: bool) -> Message {
 	let mut start = data.drag_start.as_f64();
 	let stop = data.drag_current.as_f64();
 
@@ -165,11 +131,11 @@ fn generate_transform(data: &mut LineToolData) -> Message {
 
 	let mut angle = f64::atan2(dir.x, dir.y);
 
-	if data.lock_angle {
+	if lock {
 		angle = data.angle
 	};
 
-	if data.snap_angle {
+	if snap {
 		let snap_resolution = LINE_ROTATE_SNAP_ANGLE;
 		angle = (angle * snap_resolution / PI).round() / snap_resolution * PI;
 	}
@@ -178,7 +144,7 @@ fn generate_transform(data: &mut LineToolData) -> Message {
 
 	dir = DVec2::new(f64::sin(angle), f64::cos(angle)) * dir.length();
 
-	if data.center_around_cursor {
+	if center {
 		start -= dir / 2.;
 	}
 
