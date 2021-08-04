@@ -90,7 +90,6 @@ impl Fsm for EllipseToolFsmState {
 				(state, Resize { center, lock_ratio }) => {
 					if let Some(message) = shape_data.calculate_transform(center, lock_ratio, input) {
 						responses.push_back(message);
-						log::debug!("dragging");
 					}
 
 					state
