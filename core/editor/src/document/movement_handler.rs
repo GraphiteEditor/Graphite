@@ -9,7 +9,7 @@ use crate::{
 };
 use document_core::document::Document;
 use document_core::Operation as DocumentOperation;
-use glam::{DAffine2, Vec2Swizzles};
+use glam::{DAffine2, DVec2, Vec2Swizzles};
 
 use std::collections::VecDeque;
 
@@ -169,15 +169,20 @@ impl MessageHandler<MovementMessage, (&mut LayerData, &Document, &InputPreproces
 			}
 			ZoomCanvasToFitAll => {
 				if let Some([pos1, pos2]) = document.visible_layers_bounding_box() {
-					let center = pos1;
-					let size = (pos2 - pos1) / ipp.viewport_size.as_f64();
+					let pos1 = document.root.transform.inverse().transform_point2(pos1);
+					let pos2 = document.root.transform.inverse().transform_point2(pos2);
+					let v1 = document.root.transform.inverse().transform_point2(DVec2::ZERO);
+					let v2 = document.root.transform.inverse().transform_point2(ipp.viewport_size.as_f64());
+					log::debug!("box: {} {},  viewport: {} {}", pos1, pos2, v1, v2);
+					let center = v1.lerp(v2, 0.5) - pos1.lerp(pos2, 0.5);
+					let size = (pos2 - pos1) * 1.2 / (v2 - v1);
 					log::debug!("viewport: {}, pos: {} size: {}", ipp.viewport_size, pos1, size);
 					let size = 1. / size;
 					let size = size.min_element();
 					log::debug!("center: {}, size: {}", center, size);
-					let new_scale = size;
-					layerdata.translation += center * new_scale;
-					layerdata.scale = new_scale;
+					let new_scale = (1. + size) / 2.;
+					layerdata.translation += center;
+					layerdata.scale *= new_scale;
 					self.create_document_transform_from_layerdata(layerdata, &ipp.viewport_size, responses);
 				}
 			}
