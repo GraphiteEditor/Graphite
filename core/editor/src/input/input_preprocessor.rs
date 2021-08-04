@@ -75,13 +75,13 @@ impl MessageHandler<InputPreprocessorMessage, ()> for InputPreprocessor {
 				responses.push_back(InputMapperMessage::KeyUp(key).into());
 			}
 			InputPreprocessorMessage::ViewportResize(size) => {
-				/*responses.push_back(
+				responses.push_back(
 					document_core::Operation::TransformLayer {
 						path: vec![],
 						transform: glam::DAffine2::from_translation((size.as_f64() - self.viewport_size.as_f64()) / 2.).to_cols_array(),
 					}
 					.into(),
-				);*/
+				);
 				self.viewport_size = size;
 			}
 		};

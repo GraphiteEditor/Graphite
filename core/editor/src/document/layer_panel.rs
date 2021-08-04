@@ -41,7 +41,7 @@ impl LayerData {
 		let scale_transform = DAffine2::from_scale(DVec2::new(self.scale, self.scale));
 		let angle_transform = DAffine2::from_angle(self.snapped_angle());
 		let translation_transform = DAffine2::from_translation(self.translation);
-		scale_transform * offset_transform * angle_transform * scale_transform * translation_transform
+		scale_transform * offset_transform * angle_transform * translation_transform
 	}
 }
 
