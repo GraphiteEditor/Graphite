@@ -87,7 +87,16 @@ macro_rules! entry {
 		entry!{action=$action, message=InputMapperMessage::KeyUp(Key::$key) $(, modifiers=[$($m),* ])?}
 	}};
 	{action=$action:expr, message=$message:expr $(, modifiers=[$($m:ident),* $(,)?])?} => {{
-		MappingEntry {trigger: $message, modifiers: modifiers!($($($m),*)?), action: $action.into()}
+        &[MappingEntry {trigger: $message, modifiers: modifiers!($($($m),*)?), action: $action.into()}]
+	}};
+	{action=$action:expr, triggers=[$($m:ident),* $(,)?]} => {{
+       &[
+           MappingEntry {trigger:InputMapperMessage::PointerMove, action: $action.into(), modifiers: modifiers!()},
+           $(
+           MappingEntry {trigger:InputMapperMessage::KeyDown(Key::$m), action: $action.into(), modifiers: modifiers!()},
+           MappingEntry {trigger:InputMapperMessage::KeyUp(Key::$m), action: $action.into(), modifiers: modifiers!()},
+           )*
+       ]
 	}};
 }
 macro_rules! mapping {
@@ -98,15 +107,17 @@ macro_rules! mapping {
 		let mut pointer_move: KeyMappingEntries = Default::default();
 		let mut mouse_scroll: KeyMappingEntries = Default::default();
 		$(
-			let arr = match $entry.trigger {
-				InputMapperMessage::KeyDown(key) => &mut key_down[key as usize],
-				InputMapperMessage::KeyUp(key) => &mut key_up[key as usize],
-				InputMapperMessage::PointerMove => &mut pointer_move,
-				InputMapperMessage::MouseScroll => &mut mouse_scroll,
-			};
-			arr.push($entry);
-		)*
-		(key_up, key_down, pointer_move, mouse_scroll)
+            for entry in $entry {
+                let arr = match entry.trigger {
+                    InputMapperMessage::KeyDown(key) => &mut key_down[key as usize],
+                    InputMapperMessage::KeyUp(key) => &mut key_up[key as usize],
+                    InputMapperMessage::PointerMove => &mut pointer_move,
+                    InputMapperMessage::MouseScroll => &mut mouse_scroll,
+                };
+                arr.push(entry.clone());
+            }
+        )*
+        (key_up, key_down, pointer_move, mouse_scroll)
 	}};
 }
 
@@ -131,43 +142,25 @@ impl Default for Mapping {
 			entry! {action=RectangleMessage::DragStop, key_up=Lmb},
 			entry! {action=RectangleMessage::Abort, key_down=Rmb},
 			entry! {action=RectangleMessage::Abort, key_down=KeyEscape},
-			entry! {action=RectangleMessage::Resize{center: KeyAlt, lock_ratio: KeyShift}, message=InputMapperMessage::PointerMove},
-			entry! {action=RectangleMessage::Resize{center: KeyAlt, lock_ratio: KeyShift}, key_down=KeyAlt},
-			entry! {action=RectangleMessage::Resize{center: KeyAlt, lock_ratio: KeyShift}, key_up=KeyAlt},
-			entry! {action=RectangleMessage::Resize{center: KeyAlt, lock_ratio: KeyShift}, key_down=KeyShift},
-			entry! {action=RectangleMessage::Resize{center: KeyAlt, lock_ratio: KeyShift}, key_up=KeyShift},
+			entry! {action=RectangleMessage::Resize{center: KeyAlt, lock_ratio: KeyShift}, triggers=[KeyAlt, KeyShift]},
 			// Ellipse
 			entry! {action=EllipseMessage::DragStart, key_down=Lmb},
 			entry! {action=EllipseMessage::DragStop, key_up=Lmb},
 			entry! {action=EllipseMessage::Abort, key_down=Rmb},
 			entry! {action=EllipseMessage::Abort, key_down=KeyEscape},
-			entry! {action=EllipseMessage::Resize{center: KeyAlt, lock_ratio: KeyShift}, message=InputMapperMessage::PointerMove},
-			entry! {action=EllipseMessage::Resize{center: KeyAlt, lock_ratio: KeyShift}, key_down=KeyAlt},
-			entry! {action=EllipseMessage::Resize{center: KeyAlt, lock_ratio: KeyShift}, key_up=KeyAlt},
-			entry! {action=EllipseMessage::Resize{center: KeyAlt, lock_ratio: KeyShift}, key_down=KeyShift},
-			entry! {action=EllipseMessage::Resize{center: KeyAlt, lock_ratio: KeyShift}, key_up=KeyShift},
+			entry! {action=EllipseMessage::Resize{center: KeyAlt, lock_ratio: KeyShift}, triggers=[KeyAlt, KeyShift]},
 			// Shape
 			entry! {action=ShapeMessage::DragStart, key_down=Lmb},
 			entry! {action=ShapeMessage::DragStop, key_up=Lmb},
 			entry! {action=ShapeMessage::Abort, key_down=Rmb},
 			entry! {action=ShapeMessage::Abort, key_down=KeyEscape},
-			entry! {action=ShapeMessage::Resize{center: KeyAlt, lock_ratio: KeyShift}, message=InputMapperMessage::PointerMove},
-			entry! {action=ShapeMessage::Resize{center: KeyAlt, lock_ratio: KeyShift}, key_down=KeyAlt},
-			entry! {action=ShapeMessage::Resize{center: KeyAlt, lock_ratio: KeyShift}, key_up=KeyAlt},
-			entry! {action=ShapeMessage::Resize{center: KeyAlt, lock_ratio: KeyShift}, key_down=KeyShift},
-			entry! {action=ShapeMessage::Resize{center: KeyAlt, lock_ratio: KeyShift}, key_up=KeyShift},
+			entry! {action=ShapeMessage::Resize{center: KeyAlt, lock_ratio: KeyShift}, triggers=[KeyAlt, KeyShift]},
 			// Line
-			entry! {action=LineMessage::Redraw{center: KeyAlt, lock_angle: KeyControl, snap_angle: KeyShift}, message=InputMapperMessage::PointerMove},
-			entry! {action=LineMessage::Redraw{center: KeyAlt, lock_angle: KeyControl, snap_angle: KeyShift}, key_down=KeyAlt},
-			entry! {action=LineMessage::Redraw{center: KeyAlt, lock_angle: KeyControl, snap_angle: KeyShift}, key_up=KeyAlt},
-			entry! {action=LineMessage::Redraw{center: KeyAlt, lock_angle: KeyControl, snap_angle: KeyShift}, key_down=KeyShift},
-			entry! {action=LineMessage::Redraw{center: KeyAlt, lock_angle: KeyControl, snap_angle: KeyShift}, key_up=KeyShift},
-			entry! {action=LineMessage::Redraw{center: KeyAlt, lock_angle: KeyControl, snap_angle: KeyShift}, key_down=KeyControl},
-			entry! {action=LineMessage::Redraw{center: KeyAlt, lock_angle: KeyControl, snap_angle: KeyShift}, key_up=KeyControl},
 			entry! {action=LineMessage::DragStart, key_down=Lmb},
 			entry! {action=LineMessage::DragStop, key_up=Lmb},
 			entry! {action=LineMessage::Abort, key_down=Rmb},
 			entry! {action=LineMessage::Abort, key_down=KeyEscape},
+			entry! {action=LineMessage::Redraw{center: KeyAlt, lock_angle: KeyControl, snap_angle: KeyShift}, triggers=[KeyAlt, KeyShift, KeyControl]},
 			// Pen
 			entry! {action=PenMessage::PointerMove, message=InputMapperMessage::PointerMove},
 			entry! {action=PenMessage::DragStart, key_down=Lmb},
