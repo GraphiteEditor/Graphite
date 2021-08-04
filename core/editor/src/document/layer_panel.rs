@@ -43,9 +43,6 @@ impl LayerData {
 		let translation_transform = DAffine2::from_translation(self.translation);
 		scale_transform * offset_transform * angle_transform * scale_transform * translation_transform
 	}
-	pub fn calculate_transform(&self) -> DAffine2 {
-		self.calculate_offset_transform(DVec2::ZERO)
-	}
 }
 
 pub fn layer_data<'a>(layer_data: &'a mut HashMap<Vec<LayerId>, LayerData>, path: &[LayerId]) -> &'a mut LayerData {

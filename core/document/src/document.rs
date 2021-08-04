@@ -236,20 +236,20 @@ impl Document {
 		Ok(trans)
 	}
 
-	pub fn generate_transform(&self, from: &[LayerId], to: Option<DAffine2>) -> Result<DAffine2, DocumentError> {
+	pub fn inverse_transform(&self, from: &[LayerId], to: Option<DAffine2>) -> Result<DAffine2, DocumentError> {
 		let from_rev = self.multiply_transoforms(from)?.inverse();
 		Ok(to.unwrap_or(DAffine2::IDENTITY) * from_rev)
 	}
 
 	pub fn transform_in_scope(&mut self, layer: &[LayerId], scope: Option<DAffine2>, transform: DAffine2) -> Result<(), DocumentError> {
-		let to = self.generate_transform(&layer[..layer.len() - 1], scope)?;
+		let to = self.inverse_transform(&layer[..layer.len() - 1], scope)?;
 		let layer = self.layer_mut(layer)?;
-		layer.transform = to * transform * to.inverse() * layer.transform;
+		layer.transform = to.inverse() * transform * to * layer.transform;
 		Ok(())
 	}
 
 	pub fn set_transform_in_scope(&mut self, layer: &[LayerId], scope: Option<DAffine2>, transform: DAffine2) -> Result<(), DocumentError> {
-		let to = self.generate_transform(&layer[..layer.len() - 1], scope)?;
+		let to = self.inverse_transform(&layer[..layer.len() - 1], scope)?;
 		let layer = self.layer_mut(layer)?;
 		layer.transform = to * transform;
 		Ok(())
@@ -264,7 +264,7 @@ impl Document {
 	}
 
 	pub fn transform_layer(&self, path: &[LayerId], to: Option<DAffine2>) -> Result<Layer, DocumentError> {
-		let transform = self.generate_transform(path, to)?;
+		let transform = self.inverse_transform(path, to)?;
 		let layer = self.layer(path).unwrap();
 		Ok(Layer {
 			visible: layer.visible,
