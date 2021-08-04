@@ -172,7 +172,6 @@ impl Document {
 	pub fn visible_layers_bounding_box(&self) -> Option<[DVec2; 2]> {
 		let mut paths = vec![];
 		self.visible_layers(&mut vec![], &mut paths).ok()?;
-		log::debug!("layers: {:?}, box: {:?}", paths, self.combined_viewport_bounding_box(paths.iter().map(|x| x.as_slice())));
 		self.combined_viewport_bounding_box(paths.iter().map(|x| x.as_slice()))
 	}
 
@@ -237,8 +236,9 @@ impl Document {
 	}
 
 	pub fn inverse_transform(&self, from: &[LayerId], to: Option<DAffine2>) -> Result<DAffine2, DocumentError> {
-		let from_rev = self.multiply_transoforms(from)?.inverse();
-		Ok(to.unwrap_or(DAffine2::IDENTITY) * from_rev)
+		let from_rev = self.multiply_transoforms(from)?;
+		let scope = to.unwrap_or(DAffine2::IDENTITY);
+		Ok(scope * from_rev)
 	}
 
 	pub fn transform_in_scope(&mut self, layer: &[LayerId], scope: Option<DAffine2>, transform: DAffine2) -> Result<(), DocumentError> {
@@ -251,7 +251,7 @@ impl Document {
 	pub fn set_transform_in_scope(&mut self, layer: &[LayerId], scope: Option<DAffine2>, transform: DAffine2) -> Result<(), DocumentError> {
 		let to = self.inverse_transform(&layer[..layer.len() - 1], scope)?;
 		let layer = self.layer_mut(layer)?;
-		layer.transform = to * transform;
+		layer.transform = to.inverse() * transform;
 		Ok(())
 	}
 
