@@ -7,11 +7,11 @@
 					:class="{ active: tabIndex === tabActiveIndex }"
 					v-for="(tabLabel, tabIndex) in tabLabels"
 					:key="tabIndex"
-					@click.middle="handleTabClose(tabIndex)"
-					@click="handleTabClick(tabIndex)"
+					@click.middle="closeDocumentWithConfirmation(tabIndex)"
+					@click="selectDocument(tabIndex)"
 				>
 					<span>{{ tabLabel }}</span>
-					<IconButton :action="() => handleTabClose(tabIndex)" :icon="'CloseX'" :size="16" v-if="tabCloseButtons" />
+					<IconButton :action="() => closeDocumentWithConfirmation(tabIndex)" :icon="'CloseX'" :size="16" v-if="tabCloseButtons" />
 				</div>
 			</div>
 			<PopoverButton :icon="PopoverButtonIcon.VerticalEllipsis">
@@ -144,7 +144,7 @@
 <script lang="ts">
 import { defineComponent, PropType } from "vue";
 
-import { createDialog, dismissDialog } from "@/utilities/dialog";
+import { selectDocument, closeDocumentWithConfirmation } from "@/utilities/documents";
 
 import Document from "@/components/panels/Document.vue";
 import Properties from "@/components/panels/Properties.vue";
@@ -153,12 +153,8 @@ import Minimap from "@/components/panels/Minimap.vue";
 import IconButton from "@/components/widgets/buttons/IconButton.vue";
 import PopoverButton, { PopoverButtonIcon } from "@/components/widgets/buttons/PopoverButton.vue";
 import { MenuDirection } from "@/components/widgets/floating-menus/FloatingMenu.vue";
-import { ResponseType, registerResponseHandler, Response, DisplayConfirmationToCloseDocument } from "@/utilities/response-handler";
-
-const wasm = import("@/../wasm/pkg");
 
 export default defineComponent({
-	inject: ["dialog"],
 	components: {
 		Document,
 		Properties,
@@ -166,78 +162,6 @@ export default defineComponent({
 		Minimap,
 		IconButton,
 		PopoverButton,
-	},
-	methods: {
-		handleTabClick(tabIndex: number) {
-			if (this.panelType === "Document") this.selectDocument(tabIndex);
-		},
-		handleTabClose(tabIndex: number) {
-			if (this.panelType === "Document") this.closeDocumentWithConfirmation(tabIndex);
-		},
-		async selectDocument(tabIndex: number) {
-			const { select_document } = await wasm;
-			select_document(tabIndex);
-		},
-		async closeDocumentWithConfirmation(tabIndex: number) {
-			this.selectDocument(tabIndex);
-			const tabLabel = this.tabLabels[tabIndex];
-
-			// TODO: Rename to "Save changes before closing?" when we can actually save documents somewhere, not just export SVGs
-			createDialog("File", "Close without exporting SVG?", tabLabel, [
-				{
-					kind: "TextButton",
-					callback: async () => {
-						(await wasm).export_document();
-						dismissDialog();
-					},
-					props: { label: "Export", emphasized: true, minWidth: 96 },
-				},
-				{
-					kind: "TextButton",
-					callback: async () => {
-						(await wasm).close_document(tabIndex);
-						dismissDialog();
-					},
-					props: { label: "Discard", minWidth: 96 },
-				},
-				{
-					kind: "TextButton",
-					callback: async () => {
-						dismissDialog();
-					},
-					props: { label: "Cancel", minWidth: 96 },
-				},
-			]);
-		},
-		async closeAllDocumentsWithConfirmation() {
-			createDialog("Copy", "Close all documents?", "Unsaved work will be lost!", [
-				{
-					kind: "TextButton",
-					callback: async () => {
-						(await wasm).close_all_documents();
-						dismissDialog();
-					},
-					props: { label: "Discard All", minWidth: 96 },
-				},
-				{
-					kind: "TextButton",
-					callback: async () => {
-						dismissDialog();
-					},
-					props: { label: "Cancel", minWidth: 96 },
-				},
-			]);
-		},
-	},
-	mounted() {
-		// TODO: Move these somewhere more appropriate to act upon all panels
-		registerResponseHandler(ResponseType.DisplayConfirmationToCloseDocument, (responseData: Response) => {
-			const data = responseData as DisplayConfirmationToCloseDocument;
-			this.closeDocumentWithConfirmation(data.document_index);
-		});
-		registerResponseHandler(ResponseType.DisplayConfirmationToCloseAllDocuments, (_responseData: Response) => {
-			this.closeAllDocumentsWithConfirmation();
-		});
 	},
 	props: {
 		tabMinWidths: { type: Boolean, default: false },
@@ -248,6 +172,8 @@ export default defineComponent({
 	},
 	data() {
 		return {
+			selectDocument,
+			closeDocumentWithConfirmation,
 			PopoverButtonIcon,
 			MenuDirection,
 		};
