@@ -418,7 +418,6 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					FlipAxis::Y => DVec2::new(1., -1.),
 				};
 				if let Some([min, max]) = self.document.combined_viewport_bounding_box(self.selected_layers().map(|x| x.as_slice())) {
-					let size = max - min;
 					let center = (max + min) / 2.;
 					let bbox_trans = DAffine2::from_translation(-center);
 					for path in self.selected_layers() {

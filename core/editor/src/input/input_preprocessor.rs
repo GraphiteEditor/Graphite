@@ -7,7 +7,6 @@ use bitflags::bitflags;
 
 #[doc(inline)]
 pub use document_core::DocumentResponse;
-use glam::DVec2;
 
 #[impl_message(Message, InputPreprocessor)]
 #[derive(PartialEq, Clone, Debug)]

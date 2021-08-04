@@ -1,3 +1,4 @@
+use crate::input::keyboard::Key;
 use crate::input::InputPreprocessor;
 use crate::tool::{DocumentToolData, Fsm, ShapeType, ToolActionHandlerData, ToolOptions, ToolType};
 use crate::{document::DocumentMessageHandler, message_prelude::*};
@@ -17,7 +18,7 @@ pub struct Shape {
 pub enum ShapeMessage {
 	DragStart,
 	DragStop,
-	Resize(ResizeMessage),
+	Resize { center: Key, lock_ratio: Key },
 	Abort,
 }
 
@@ -28,7 +29,7 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Shape {
 	fn actions(&self) -> ActionList {
 		use ShapeToolFsmState::*;
 		match self.fsm_state {
-			Ready => actions!(ShapeMessageDiscriminant; DragStart, Resize),
+			Ready => actions!(ShapeMessageDiscriminant; DragStart),
 			Dragging => actions!(ShapeMessageDiscriminant; DragStop,  Abort, Resize),
 		}
 	}
@@ -93,8 +94,10 @@ impl Fsm for ShapeToolFsmState {
 
 					Dragging
 				}
-				(state, Resize(message)) => {
-					shape_data.process_action(message, input, responses);
+				(state, Resize { center, lock_ratio }) => {
+					if let Some(message) = shape_data.calculate_transform(center, lock_ratio, input) {
+						responses.push_back(message);
+					}
 
 					state
 				}

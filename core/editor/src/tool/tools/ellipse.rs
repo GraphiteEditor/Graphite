@@ -1,3 +1,4 @@
+use crate::input::keyboard::Key;
 use crate::input::InputPreprocessor;
 use crate::tool::{DocumentToolData, Fsm, ToolActionHandlerData};
 use crate::{document::DocumentMessageHandler, message_prelude::*};
@@ -17,7 +18,7 @@ pub struct Ellipse {
 pub enum EllipseMessage {
 	DragStart,
 	DragStop,
-	Resize(ResizeMessage),
+	Resize { center: Key, lock_ratio: Key },
 	Abort,
 }
 
@@ -28,7 +29,7 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Ellipse {
 	fn actions(&self) -> ActionList {
 		use EllipseToolFsmState::*;
 		match self.fsm_state {
-			Ready => actions!(EllipseMessageDiscriminant; DragStart, Resize),
+			Ready => actions!(EllipseMessageDiscriminant; DragStart),
 			Dragging => actions!(EllipseMessageDiscriminant; DragStop,  Abort, Resize),
 		}
 	}
@@ -86,8 +87,12 @@ impl Fsm for EllipseToolFsmState {
 
 					Dragging
 				}
-				(state, Resize(message)) => {
-					shape_data.process_action(message, input, responses);
+				(state, Resize { center, lock_ratio }) => {
+					if let Some(message) = shape_data.calculate_transform(center, lock_ratio, input) {
+						responses.push_back(message);
+						log::debug!("dragging");
+					}
+
 					state
 				}
 				(Dragging, DragStop) => {
