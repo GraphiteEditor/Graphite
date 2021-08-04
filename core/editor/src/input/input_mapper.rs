@@ -112,6 +112,7 @@ macro_rules! mapping {
 
 impl Default for Mapping {
 	fn default() -> Self {
+		use Key::*;
 		let mappings = mapping![
 			entry! {action=DocumentsMessage::PasteLayers{path: vec![], insert_index: -1}, key_down=KeyV, modifiers=[KeyControl]},
 			entry! {action=MovementMessage::EnableSnapping, key_down=KeyShift},
@@ -130,31 +131,19 @@ impl Default for Mapping {
 			entry! {action=RectangleMessage::DragStop, key_up=Lmb},
 			entry! {action=RectangleMessage::Abort, key_down=Rmb},
 			entry! {action=RectangleMessage::Abort, key_down=KeyEscape},
-			entry! {action=RectangleMessage::Resize(ResizeMessage::Center), key_down=KeyAlt},
-			entry! {action=RectangleMessage::Resize(ResizeMessage::UnCenter), key_up=KeyAlt},
-			entry! {action=RectangleMessage::Resize(ResizeMessage::PointerMove), message=InputMapperMessage::PointerMove},
-			entry! {action=RectangleMessage::Resize(ResizeMessage::LockAspectRatio), key_down=KeyShift},
-			entry! {action=RectangleMessage::Resize(ResizeMessage::UnlockAspectRatio), key_up=KeyShift},
+			entry! {action=RectangleMessage::Resize{center: KeyAlt, lock_ratio: KeyShift}, message=InputMapperMessage::PointerMove},
 			// Ellipse
 			entry! {action=EllipseMessage::DragStart, key_down=Lmb},
 			entry! {action=EllipseMessage::DragStop, key_up=Lmb},
 			entry! {action=EllipseMessage::Abort, key_down=Rmb},
 			entry! {action=EllipseMessage::Abort, key_down=KeyEscape},
-			entry! {action=EllipseMessage::Resize(ResizeMessage::Center), key_down=KeyAlt},
-			entry! {action=EllipseMessage::Resize(ResizeMessage::UnCenter), key_up=KeyAlt},
-			entry! {action=EllipseMessage::Resize(ResizeMessage::PointerMove), message=InputMapperMessage::PointerMove},
-			entry! {action=EllipseMessage::Resize(ResizeMessage::LockAspectRatio), key_down=KeyShift},
-			entry! {action=EllipseMessage::Resize(ResizeMessage::UnlockAspectRatio), key_up=KeyShift},
+			entry! {action=EllipseMessage::Resize{center: KeyAlt, lock_ratio: KeyShift}, message=InputMapperMessage::PointerMove},
 			// Shape
 			entry! {action=ShapeMessage::DragStart, key_down=Lmb},
 			entry! {action=ShapeMessage::DragStop, key_up=Lmb},
 			entry! {action=ShapeMessage::Abort, key_down=Rmb},
 			entry! {action=ShapeMessage::Abort, key_down=KeyEscape},
-			entry! {action=ShapeMessage::Resize(ResizeMessage::Center), key_down=KeyAlt},
-			entry! {action=ShapeMessage::Resize(ResizeMessage::UnCenter), key_up=KeyAlt},
-			entry! {action=ShapeMessage::Resize(ResizeMessage::PointerMove), message=InputMapperMessage::PointerMove},
-			entry! {action=ShapeMessage::Resize(ResizeMessage::LockAspectRatio), key_down=KeyShift},
-			entry! {action=ShapeMessage::Resize(ResizeMessage::UnlockAspectRatio), key_up=KeyShift},
+			entry! {action=ShapeMessage::Resize{center: KeyAlt, lock_ratio: KeyShift}, message=InputMapperMessage::PointerMove},
 			// Line
 			entry! {action=LineMessage::Center, key_down=KeyAlt},
 			entry! {action=LineMessage::UnCenter, key_up=KeyAlt},

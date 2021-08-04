@@ -1,3 +1,4 @@
+use crate::input::keyboard::Key;
 use crate::input::InputPreprocessor;
 use crate::tool::{DocumentToolData, Fsm, ToolActionHandlerData};
 use crate::{document::DocumentMessageHandler, message_prelude::*};
@@ -17,7 +18,7 @@ pub struct Rectangle {
 pub enum RectangleMessage {
 	DragStart,
 	DragStop,
-	Resize(ResizeMessage),
+	Resize { center: Key, lock_ratio: Key },
 	Abort,
 }
 
@@ -28,7 +29,7 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Rectangle {
 	fn actions(&self) -> ActionList {
 		use RectangleToolFsmState::*;
 		match self.fsm_state {
-			Ready => actions!(RectangleMessageDiscriminant; DragStart, Resize),
+			Ready => actions!(RectangleMessageDiscriminant; DragStart),
 			Dragging => actions!(RectangleMessageDiscriminant; DragStop,  Abort, Resize),
 		}
 	}
@@ -86,8 +87,10 @@ impl Fsm for RectangleToolFsmState {
 
 					Dragging
 				}
-				(state, Resize(message)) => {
-					shape_data.process_action(message, input, responses);
+				(state, Resize { center, lock_ratio }) => {
+					if let Some(message) = shape_data.calculate_transform(center, lock_ratio, input) {
+						responses.push_back(message);
+					}
 
 					state
 				}
