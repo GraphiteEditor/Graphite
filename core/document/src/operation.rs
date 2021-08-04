@@ -1,4 +1,7 @@
-use std::hash::{Hash, Hasher};
+use std::{
+	collections::hash_map::DefaultHasher,
+	hash::{Hash, Hasher},
+};
 
 use crate::{
 	color::Color,
@@ -9,7 +12,7 @@ use crate::{
 use serde::{Deserialize, Serialize};
 
 #[repr(C)]
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 pub enum Operation {
 	AddEllipse {
 		path: Vec<LayerId>,
@@ -109,22 +112,13 @@ pub enum Operation {
 	},
 }
 
-impl Hash for Operation {
-	fn hash<H>(&self, state: &mut H)
-	where
-		H: Hasher,
-	{
-		unsafe { std::mem::transmute::<&Operation, &[u8; std::mem::size_of::<Operation>()]>(self) }.hash(state);
+impl Operation {
+	unsafe fn as_slice(&self) -> &[u8] {
+		core::slice::from_raw_parts(self as *const Operation as *const u8, std::mem::size_of::<Operation>())
 	}
-}
-
-impl PartialEq for Operation {
-	fn eq(&self, other: &Operation) -> bool {
-		// TODO: Replace with let [s, o] = [self, other].map(|x| unsafe { std::mem::transmute::<&Operation, &[u8; std::mem::size_of::<Operation>()]>(x) });
-		let vals: Vec<_> = [self, other]
-			.iter()
-			.map(|x| unsafe { std::mem::transmute::<&Operation, &[u8; std::mem::size_of::<Operation>()]>(x) })
-			.collect();
-		vals[0] == vals[1]
+	pub fn pseudo_hash(&self) -> u64 {
+		let mut s = DefaultHasher::new();
+		unsafe { self.as_slice() }.hash(&mut s);
+		s.finish()
 	}
 }
