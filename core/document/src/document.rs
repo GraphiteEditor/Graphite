@@ -147,10 +147,38 @@ impl Document {
 		self.folder_mut(path)?.remove_layer(id)
 	}
 
+	pub fn visible_layers(&self, path: &mut Vec<LayerId>, paths: &mut Vec<Vec<LayerId>>) -> Result<(), DocumentError> {
+		if !self.layer(path)?.visible {
+			return Ok(());
+		}
+		if let Ok(folder) = self.folder(path) {
+			for layer in folder.layer_ids.iter() {
+				path.push(*layer);
+				self.visible_layers(path, paths)?;
+				path.pop();
+			}
+		} else {
+			paths.push(path.clone());
+		}
+		Ok(())
+	}
+
 	pub fn viewport_bounding_box(&self, path: &[LayerId]) -> Result<Option<[DVec2; 2]>, DocumentError> {
 		let layer = self.layer(path)?;
 		let transform = self.multiply_transoforms(path)?;
 		Ok(layer.data.bounding_box(transform))
+	}
+
+	pub fn visible_layers_bounding_box(&self) -> Option<[DVec2; 2]> {
+		let mut paths = vec![];
+		self.visible_layers(&mut vec![], &mut paths).ok()?;
+		log::debug!("layers: {:?}, box: {:?}", paths, self.combined_viewport_bounding_box(paths.iter().map(|x| x.as_slice())));
+		self.combined_viewport_bounding_box(paths.iter().map(|x| x.as_slice()))
+	}
+
+	pub fn combined_viewport_bounding_box<'a>(&self, paths: impl Iterator<Item = &'a [LayerId]>) -> Option<[DVec2; 2]> {
+		let boxes = paths.filter_map(|path| self.viewport_bounding_box(path).ok()?);
+		boxes.reduce(|a, b| [a[0].min(b[0]), a[1].max(b[1])])
 	}
 
 	pub fn mark_upstream_as_dirty(&mut self, path: &[LayerId]) -> Result<(), DocumentError> {

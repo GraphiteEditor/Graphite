@@ -83,7 +83,6 @@ pub enum DocumentMessage {
 	RenderDocument,
 	Undo,
 	NudgeSelectedLayers(f64, f64),
-	FlipLayer(Vec<LayerId>, bool, bool),
 	AlignSelectedLayers(AlignAxis, AlignAggregate),
 	MoveSelectedLayersTo {
 		path: Vec<LayerId>,
@@ -266,8 +265,13 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			CommitTransaction => self.document_backup = None,
 			ExportDocument => responses.push_back(
 				FrontendMessage::ExportDocument {
-					//TODO: Add canvas size instead of using 1920x1080 by default
-					document: format!(r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1080">{}{}</svg>"#, "\n", self.document.render_root(),),
+					document: format!(
+						r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {} {}">{}{}</svg>"#,
+						"\n",
+						ipp.viewport_size.x,
+						ipp.viewport_size.y,
+						self.document.render_root()
+					),
 				}
 				.into(),
 			),
@@ -408,27 +412,15 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					}
 				}
 			}
-			FlipLayer(path, flip_horizontal, flip_vertical) => {
-				let scale = DVec2::new(if flip_horizontal { -1. } else { 1. }, if flip_vertical { -1. } else { 1. });
-				responses.push_back(
-					DocumentOperation::TransformLayerInViewport {
-						path,
-						transform: DAffine2::from_scale(scale).to_cols_array(),
-					}
-					.into(),
-				);
-			}
 			FlipSelectedLayers(axis) => {
-				let (paths, boxes): (Vec<_>, Vec<_>) = self.selected_layers().filter_map(|path| self.document.viewport_bounding_box(path).ok()?.map(|b| (path, b))).unzip();
-
 				let scale = match axis {
 					FlipAxis::X => DVec2::new(-1., 1.),
 					FlipAxis::Y => DVec2::new(1., -1.),
 				};
-				let lerp = |bbox: &[DVec2; 2]| bbox[0].lerp(bbox[1], 0.5);
-				if let Some(center) = boxes.iter().map(|b| (lerp(b), lerp(b))).reduce(|a, b| (a.0.min(b.0), a.1.max(b.1))).map(|(min, max)| (min + max) / 2.) {
+				let combined_box = self.document.combined_viewport_bounding_box(self.selected_layers().map(|x| x.as_slice()));
+				if let Some(center) = combined_box.map(|[min, max]| (min + max) / 2.) {
 					let bbox_trans = DAffine2::from_translation(center);
-					for path in paths {
+					for path in self.selected_layers() {
 						responses.push_back(
 							DocumentOperation::TransformLayerInScope {
 								path: path.clone(),
@@ -448,19 +440,20 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					AlignAxis::Y => DVec2::Y,
 				};
 				let lerp = |bbox: &[DVec2; 2]| bbox[0].lerp(bbox[1], 0.5);
-				if let Some(aggregated_coord) = match aggregate {
-					AlignAggregate::Min => boxes.iter().map(|b| b[0]).reduce(|a, b| a.min(b)),
-					AlignAggregate::Max => boxes.iter().map(|b| b[1]).reduce(|a, b| a.max(b)),
-					AlignAggregate::Center => boxes.iter().map(|b| (lerp(b), lerp(b))).reduce(|a, b| (a.0.min(b.0), a.1.max(b.1))).map(|(min, max)| (min + max) / 2.),
-					AlignAggregate::Average => boxes.iter().map(|b| lerp(b)).reduce(|a, b| a + b).map(|b| b / boxes.len() as f64),
-				} {
+				if let Some(combined_box) = self.document.combined_viewport_bounding_box(self.selected_layers().map(|x| x.as_slice())) {
+					let aggregated = match aggregate {
+						AlignAggregate::Min => combined_box[0],
+						AlignAggregate::Max => combined_box[1],
+						AlignAggregate::Center => lerp(&combined_box),
+						AlignAggregate::Average => boxes.iter().map(|b| lerp(b)).reduce(|a, b| a + b).map(|b| b / boxes.len() as f64).unwrap(),
+					};
 					for (path, bbox) in paths.into_iter().zip(boxes) {
 						let center = match aggregate {
 							AlignAggregate::Min => bbox[0],
 							AlignAggregate::Max => bbox[1],
 							_ => lerp(&bbox),
 						};
-						let translation = (aggregated_coord - center) * axis;
+						let translation = (aggregated - center) * axis;
 						responses.push_back(
 							DocumentOperation::TransformLayerInViewport {
 								path: path.clone(),

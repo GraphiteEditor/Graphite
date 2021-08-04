@@ -9,6 +9,7 @@ use crate::{
 };
 use document_core::document::Document;
 use document_core::Operation as DocumentOperation;
+use glam::{DAffine2, Vec2Swizzles};
 
 use std::collections::VecDeque;
 
@@ -27,6 +28,7 @@ pub enum MovementMessage {
 	MultiplyCanvasZoom(f64),
 	WheelCanvasZoom,
 	SetCanvasRotation(f64),
+	ZoomCanvasToFitAll,
 }
 
 #[derive(Debug, Clone, Hash, Default, PartialEq)]
@@ -165,6 +167,20 @@ impl MessageHandler<MovementMessage, (&mut LayerData, &Document, &InputPreproces
 				self.create_document_transform_from_layerdata(layerdata, &ipp.viewport_size, responses);
 				responses.push_back(FrontendMessage::SetCanvasRotation { new_radians: new }.into());
 			}
+			ZoomCanvasToFitAll => {
+				if let Some([pos1, pos2]) = document.visible_layers_bounding_box() {
+					let center = pos1;
+					let size = (pos2 - pos1) / ipp.viewport_size.as_f64();
+					log::debug!("viewport: {}, pos: {} size: {}", ipp.viewport_size, pos1, size);
+					let size = 1. / size;
+					let size = size.min_element();
+					log::debug!("center: {}, size: {}", center, size);
+					let new_scale = size;
+					layerdata.translation += center * new_scale;
+					layerdata.scale = new_scale;
+					self.create_document_transform_from_layerdata(layerdata, &ipp.viewport_size, responses);
+				}
+			}
 		}
 	}
 	fn actions(&self) -> ActionList {
@@ -179,6 +195,7 @@ impl MessageHandler<MovementMessage, (&mut LayerData, &Document, &InputPreproces
 			SetCanvasRotation,
 			WheelCanvasZoom,
 			WheelCanvasTranslate,
+			ZoomCanvasToFitAll,
 		);
 
 		if self.rotating {
