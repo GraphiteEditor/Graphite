@@ -201,13 +201,8 @@ impl DocumentMessageHandler {
 	}
 
 	pub fn rollback(&mut self) -> Result<(), EditorError> {
-		match &self.document_backup {
-			Some(backup) => {
-				self.document = backup.clone();
-				Ok(())
-			}
-			None => Err(EditorError::NoTransactionInProgress),
-		}
+		self.backup();
+		self.reset()
 	}
 
 	pub fn reset(&mut self) -> Result<(), EditorError> {
@@ -224,7 +219,7 @@ impl DocumentMessageHandler {
 		self.document.render_root();
 		let data: LayerData = *layer_data(&mut self.layer_data, &path);
 		let layer = self.document.layer(&path)?;
-		let entry = layer_panel_entry(&data, self.document.multiply_transoforms(&path).unwrap(), layer, path);
+		let entry = layer_panel_entry(&data, self.document.multiply_transforms(&path).unwrap(), layer, path);
 		Ok(entry)
 	}
 
@@ -240,7 +235,7 @@ impl DocumentMessageHandler {
 			.iter()
 			.zip(paths.iter().zip(data))
 			.rev()
-			.map(|(layer, (path, data))| layer_panel_entry(&data, self.document.multiply_transoforms(path).unwrap(), layer, path.to_vec()))
+			.map(|(layer, (path, data))| layer_panel_entry(&data, self.document.multiply_transforms(path).unwrap(), layer, path.to_vec()))
 			.collect();
 		Ok(entries)
 	}

@@ -33,7 +33,6 @@ fn split_path(path: &[LayerId]) -> Result<(&[LayerId], LayerId), DocumentError> 
 impl Document {
 	/// Wrapper around render, that returns the whole document as a Response.
 	pub fn render_root(&mut self) -> String {
-		// TODO: remove
 		self.root.render(&mut vec![]);
 		self.root.cache.clone()
 	}
@@ -56,8 +55,6 @@ impl Document {
 
 	/// Returns a reference to the requested folder. Fails if the path does not exist,
 	/// or if the requested layer is not of type folder.
-	/// This function does **not** respect mounted folders and will always return the current
-	/// state of the document, disregarding any temporary modifications.
 	pub fn folder(&self, path: &[LayerId]) -> Result<&Folder, DocumentError> {
 		let mut root = &self.root;
 		for id in path {
@@ -68,8 +65,6 @@ impl Document {
 
 	/// Returns a mutable reference to the requested folder. Fails if the path does not exist,
 	/// or if the requested layer is not of type folder.
-	/// This function does **not** respect mounted folders and will always return the current
-	/// state of the document, disregarding any temporary modifications.
 	/// If you manually edit the folder you have to set the cache_dirty flag yourself.
 	pub fn folder_mut(&mut self, path: &[LayerId]) -> Result<&mut Folder, DocumentError> {
 		let mut root = &mut self.root;
@@ -165,7 +160,7 @@ impl Document {
 
 	pub fn viewport_bounding_box(&self, path: &[LayerId]) -> Result<Option<[DVec2; 2]>, DocumentError> {
 		let layer = self.layer(path)?;
-		let transform = self.multiply_transoforms(path)?;
+		let transform = self.multiply_transforms(path)?;
 		Ok(layer.data.bounding_box(transform))
 	}
 
@@ -193,9 +188,11 @@ impl Document {
 	pub fn mark_downstream_as_dirty(&mut self, path: &[LayerId]) -> Result<(), DocumentError> {
 		let mut layer = self.layer_mut(path)?;
 		layer.cache_dirty = true;
+
 		let mut path = path.to_vec();
 		let len = path.len();
 		path.push(0);
+
 		if let Some(ids) = layer.as_folder().ok().map(|f| f.layer_ids.clone()) {
 			for id in ids {
 				path[len] = id;
@@ -223,7 +220,7 @@ impl Document {
 		Ok(transforms)
 	}
 
-	pub fn multiply_transoforms(&self, path: &[LayerId]) -> Result<DAffine2, DocumentError> {
+	pub fn multiply_transforms(&self, path: &[LayerId]) -> Result<DAffine2, DocumentError> {
 		let mut root = &self.root;
 		let mut trans = self.root.transform;
 		for id in path {
@@ -235,48 +232,32 @@ impl Document {
 		Ok(trans)
 	}
 
-	pub fn inverse_transform(&self, from: &[LayerId], to: Option<DAffine2>) -> Result<DAffine2, DocumentError> {
-		let from_rev = self.multiply_transoforms(from)?;
+	pub fn generate_transform_across_scope(&self, from: &[LayerId], to: Option<DAffine2>) -> Result<DAffine2, DocumentError> {
+		let from_rev = self.multiply_transforms(from)?;
 		let scope = to.unwrap_or(DAffine2::IDENTITY);
 		Ok(scope * from_rev)
 	}
 
-	pub fn transform_in_scope(&mut self, layer: &[LayerId], scope: Option<DAffine2>, transform: DAffine2) -> Result<(), DocumentError> {
-		let to = self.inverse_transform(&layer[..layer.len() - 1], scope)?;
+	pub fn transform_relative_to_scope(&mut self, layer: &[LayerId], scope: Option<DAffine2>, transform: DAffine2) -> Result<(), DocumentError> {
+		let to = self.generate_transform_across_scope(&layer[..layer.len() - 1], scope)?;
 		let layer = self.layer_mut(layer)?;
 		layer.transform = to.inverse() * transform * to * layer.transform;
 		Ok(())
 	}
 
-	pub fn set_transform_in_scope(&mut self, layer: &[LayerId], scope: Option<DAffine2>, transform: DAffine2) -> Result<(), DocumentError> {
-		let to = self.inverse_transform(&layer[..layer.len() - 1], scope)?;
+	pub fn set_transform_relative_to_scope(&mut self, layer: &[LayerId], scope: Option<DAffine2>, transform: DAffine2) -> Result<(), DocumentError> {
+		let to = self.generate_transform_across_scope(&layer[..layer.len() - 1], scope)?;
 		let layer = self.layer_mut(layer)?;
 		layer.transform = to.inverse() * transform;
 		Ok(())
 	}
 
-	pub fn transform_in_viewport(&mut self, layer: &[LayerId], transform: DAffine2) -> Result<(), DocumentError> {
-		self.transform_in_scope(layer, None, transform)
+	pub fn apply_transform_relative_to_viewport(&mut self, layer: &[LayerId], transform: DAffine2) -> Result<(), DocumentError> {
+		self.transform_relative_to_scope(layer, None, transform)
 	}
 
-	pub fn set_transform_in_viewport(&mut self, layer: &[LayerId], transform: DAffine2) -> Result<(), DocumentError> {
-		self.set_transform_in_scope(layer, None, transform)
-	}
-
-	pub fn transform_layer(&self, path: &[LayerId], to: Option<DAffine2>) -> Result<Layer, DocumentError> {
-		let transform = self.inverse_transform(path, to)?;
-		let layer = self.layer(path).unwrap();
-		Ok(Layer {
-			visible: layer.visible,
-			name: layer.name.clone(),
-			data: layer.data.clone(),
-			transform,
-			thumbnail_cache: String::with_capacity(layer.thumbnail_cache.capacity()),
-			cache: String::with_capacity(layer.cache.capacity()),
-			cache_dirty: true,
-			blend_mode: layers::BlendMode::Normal,
-			opacity: layer.opacity,
-		})
+	pub fn set_transform_relative_to_viewport(&mut self, layer: &[LayerId], transform: DAffine2) -> Result<(), DocumentError> {
+		self.set_transform_relative_to_scope(layer, None, transform)
 	}
 
 	/// Mutate the document by applying the `operation` to it. If the operation necessitates a
@@ -336,7 +317,6 @@ impl Document {
 			}
 			Operation::PasteLayer { path, layer, insert_index } => {
 				let folder = self.folder_mut(path)?;
-				//FIXME: This clone of layer should be avoided somehow
 				let id = folder.add_layer(layer.clone(), None, *insert_index).ok_or(DocumentError::IndexOutOfBounds)?;
 				let full_path = [path.clone(), vec![id]].concat();
 
@@ -371,27 +351,27 @@ impl Document {
 			}
 			Operation::TransformLayerInViewport { path, transform } => {
 				let transform = DAffine2::from_cols_array(transform);
-				self.transform_in_viewport(path, transform)?;
+				self.apply_transform_relative_to_viewport(path, transform)?;
 				self.mark_as_dirty(path)?;
 				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::LayerChanged { path: path.clone() }])
 			}
 			Operation::SetLayerTransformInViewport { path, transform } => {
 				let transform = DAffine2::from_cols_array(transform);
-				self.set_transform_in_viewport(path, transform)?;
+				self.set_transform_relative_to_viewport(path, transform)?;
 				self.mark_as_dirty(path)?;
 				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::LayerChanged { path: path.clone() }])
 			}
 			Operation::TransformLayerInScope { path, transform, scope } => {
 				let transform = DAffine2::from_cols_array(transform);
 				let scope = DAffine2::from_cols_array(scope);
-				self.transform_in_scope(path, Some(scope), transform)?;
+				self.transform_relative_to_scope(path, Some(scope), transform)?;
 				self.mark_as_dirty(path)?;
 				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::LayerChanged { path: path.clone() }])
 			}
 			Operation::SetLayerTransformInScope { path, transform, scope } => {
 				let transform = DAffine2::from_cols_array(transform);
 				let scope = DAffine2::from_cols_array(scope);
-				self.set_transform_in_scope(path, Some(scope), transform)?;
+				self.set_transform_relative_to_scope(path, Some(scope), transform)?;
 				self.mark_as_dirty(path)?;
 				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::LayerChanged { path: path.clone() }])
 			}

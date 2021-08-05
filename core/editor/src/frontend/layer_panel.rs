@@ -11,6 +11,7 @@ pub struct LayerPanelEntry {
 	pub opacity: f64,
 	pub layer_type: LayerType,
 	pub layer_data: LayerData,
+	// TODO: instead of turning the u64 into (u32, u32)s here, do that in the wasm wrapper
 	pub path: Vec<(u32, u32)>,
 	pub thumbnail: String,
 }

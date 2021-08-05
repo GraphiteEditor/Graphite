@@ -90,14 +90,14 @@ macro_rules! entry {
         &[MappingEntry {trigger: $message, modifiers: modifiers!($($($m),*)?), action: $action.into()}]
 	}};
 	{action=$action:expr, triggers=[$($m:ident),* $(,)?]} => {{
-       &[
-           MappingEntry {trigger:InputMapperMessage::PointerMove, action: $action.into(), modifiers: modifiers!()},
-           $(
-           MappingEntry {trigger:InputMapperMessage::KeyDown(Key::$m), action: $action.into(), modifiers: modifiers!()},
-           MappingEntry {trigger:InputMapperMessage::KeyUp(Key::$m), action: $action.into(), modifiers: modifiers!()},
-           )*
-       ]
-	}};
+        &[
+            MappingEntry {trigger:InputMapperMessage::PointerMove, action: $action.into(), modifiers: modifiers!()},
+            $(
+            MappingEntry {trigger:InputMapperMessage::KeyDown(Key::$m), action: $action.into(), modifiers: modifiers!()},
+            MappingEntry {trigger:InputMapperMessage::KeyUp(Key::$m), action: $action.into(), modifiers: modifiers!()},
+            )*
+        ]
+    }};
 }
 macro_rules! mapping {
 	//[$(<action=$action:expr; message=$key:expr; $(modifiers=[$($m:ident),* $(,)?];)?>)*] => {{

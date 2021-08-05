@@ -75,6 +75,8 @@ pub fn layer_panel_entry(layer_data: &LayerData, transform: DAffine2, layer: &La
 	} else {
 		String::new()
 	};
+
+	// LayerIds are sent as (u32, u32) because jsond does not support u64s
 	let path = path.iter().map(|id| ((id >> 32) as u32, (id << 32 >> 32) as u32)).collect::<Vec<_>>();
 
 	LayerPanelEntry {

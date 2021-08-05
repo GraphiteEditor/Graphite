@@ -35,14 +35,14 @@ impl LayerData for Shape {
 		let transform = self.transform(transforms);
 		let inverse = transform.inverse();
 		if !inverse.is_finite() {
-			let _ = write!(svg, "<!-- Svg shape has an invalid transform -->");
+			let _ = write!(svg, "<!-- SVG shape has an invalid transform -->");
 			return;
 		}
 		path.apply_affine(glam_to_kurbo(transform));
 
 		let _ = writeln!(svg, r#"<g transform="matrix("#);
-		inverse.to_cols_array().iter().enumerate().for_each(|(i, f)| {
-			let _ = svg.write_str(&(f.to_string() + if i != 5 { "," } else { "" }));
+		inverse.to_cols_array().iter().enumerate().for_each(|(i, entry)| {
+			let _ = svg.write_str(&(entry.to_string() + if i != 5 { "," } else { "" }));
 		});
 		let _ = svg.write_str(r#")">"#);
 		let _ = write!(svg, r#"<path d="{}" {} />"#, path.to_svg(), self.style.render());
@@ -78,13 +78,14 @@ impl Shape {
 	}
 
 	pub fn shape(sides: u8, style: PathStyle) -> Self {
-		use std::f64::consts::{FRAC_PI_2, PI};
+		use std::f64::consts::{FRAC_PI_2, TAU};
 		fn unit_rotation(theta: f64) -> DVec2 {
 			DVec2::new(theta.sin(), theta.cos())
 		}
 		let mut path = kurbo::BezPath::new();
-		let apothem_offset_angle = 2. * PI / (sides as f64);
-		let offset = ((sides + 1) % 2) as f64 * FRAC_PI_2; // rotate odd sided shapes by 90 degrees
+		let apothem_offset_angle = TAU / (sides as f64);
+		// Rotate odd sided shapes by 90 degrees
+		let offset = ((sides + 1) % 2) as f64 * FRAC_PI_2;
 
 		let relative_points = (0..sides).map(|i| apothem_offset_angle * i as f64 + offset).map(unit_rotation);
 		let min = relative_points.clone().reduce(|a, b| a.min(b)).unwrap_or_default();
