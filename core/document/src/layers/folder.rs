@@ -30,9 +30,10 @@ impl LayerData for Folder {
 	}
 
 	fn bounding_box(&self, transform: glam::DAffine2) -> Option<[DVec2; 2]> {
-		let mut layers_non_empty_bounding_boxes = self.layers.iter().filter_map(|layer| layer.data.bounding_box(transform * layer.transform)).peekable();
-		layers_non_empty_bounding_boxes.peek()?;
-		layers_non_empty_bounding_boxes.reduce(|a, b| [a[0].min(b[0]), a[1].max(b[1])])
+		self.layers
+			.iter()
+			.filter_map(|layer| layer.data.bounding_box(transform * layer.transform))
+			.reduce(|a, b| [a[0].min(b[0]), a[1].max(b[1])])
 	}
 }
 

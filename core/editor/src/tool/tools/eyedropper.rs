@@ -24,7 +24,7 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Eyedropper {
 		if let Some(path) = data.0.document.intersects_quad_root(quad).last() {
 			if let Ok(layer) = data.0.document.layer(path) {
 				if let LayerDataType::Shape(s) = &layer.data {
-					s.style.fill().map(|fill| {
+					s.style.fill().and_then(|fill| {
 						fill.color().map(|color| match action {
 							ToolMessage::Eyedropper(EyedropperMessage::LeftMouseDown) => responses.push_back(ToolMessage::SelectPrimaryColor(color).into()),
 							ToolMessage::Eyedropper(EyedropperMessage::RightMouseDown) => responses.push_back(ToolMessage::SelectSecondaryColor(color).into()),

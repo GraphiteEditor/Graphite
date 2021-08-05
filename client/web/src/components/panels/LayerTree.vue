@@ -330,7 +330,10 @@ export default defineComponent({
 				const responsePath = updateData.path;
 				const responseLayer = updateData.data;
 
-				const index = this.layers.findIndex((layer: LayerPanelEntry) => responsePath.length === layer.path.length && responsePath.every((this_i, i) => this_i === layer.path[i]));
+				const index = this.layers.findIndex((layer: LayerPanelEntry) => {
+					const pathLengthsEqual = responsePath.length === layer.path.length;
+					return pathLengthsEqual && responsePath.every((index, i) => index === layer.path[i]);
+				});
 				if (index >= 0) this.layers[index] = responseLayer;
 
 				this.setBlendModeForSelectedLayers();

@@ -11,6 +11,7 @@ impl Quad {
 		let size = bbox[1] - bbox[0];
 		Self([bbox[0], bbox[0] + size * DVec2::X, bbox[0] + size * DVec2::Y, bbox[1]])
 	}
+
 	pub fn lines(&self) -> [Line; 4] {
 		[
 			Line::new(to_point(self.0[0]), to_point(self.0[1])),
@@ -39,12 +40,8 @@ fn to_point(vec: DVec2) -> Point {
 
 pub fn intersect_quad_bez_path(quad: Quad, shape: &BezPath, closed: bool) -> bool {
 	// check if outlines intersect
-	for path_segment in shape.segments() {
-		for line in quad.lines() {
-			if !path_segment.intersect_line(line).is_empty() {
-				return true;
-			}
-		}
+	if shape.segments().any(|path_segment| quad.lines().iter().any(|line| !path_segment.intersect_line(*line).is_empty())) {
+		return true;
 	}
 	// check if selection is entirely within the shape
 	if closed && quad.0.iter().any(|q| shape.contains(to_point(*q))) {
