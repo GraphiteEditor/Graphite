@@ -1,7 +1,7 @@
 pub use super::layer_panel::*;
 use crate::{frontend::layer_panel::*, EditorError};
 use document_core::{document::Document as InternalDocument, LayerId};
-use glam::{DAffine2, DVec2, Vec2Swizzles};
+use glam::{DAffine2, DVec2};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 

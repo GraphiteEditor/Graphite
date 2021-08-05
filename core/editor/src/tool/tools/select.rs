@@ -4,7 +4,7 @@ use document_core::layers::style::Fill;
 use document_core::layers::style::Stroke;
 use document_core::Operation;
 use document_core::Quad;
-use glam::Vec2Swizzles;
+
 use glam::{DAffine2, DVec2};
 use serde::{Deserialize, Serialize};
 

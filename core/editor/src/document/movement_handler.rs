@@ -9,7 +9,7 @@ use crate::{
 };
 use document_core::document::Document;
 use document_core::Operation as DocumentOperation;
-use glam::{DAffine2, DVec2, Vec2Swizzles};
+use glam::DVec2;
 
 use std::collections::VecDeque;
 

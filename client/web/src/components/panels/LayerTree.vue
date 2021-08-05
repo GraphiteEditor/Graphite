@@ -332,7 +332,7 @@ export default defineComponent({
 
 				const index = this.layers.findIndex((layer: LayerPanelEntry) => {
 					const pathLengthsEqual = responsePath.length === layer.path.length;
-					return pathLengthsEqual && responsePath.every((index, i) => index === layer.path[i]);
+					return pathLengthsEqual && responsePath.every((layer_id, i) => layer_id === layer.path[i]);
 				});
 				if (index >= 0) this.layers[index] = responseLayer;
 

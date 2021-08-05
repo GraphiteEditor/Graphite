@@ -92,7 +92,7 @@ impl Fsm for LineToolFsmState {
 				(Dragging, Redraw { center, snap_angle, lock_angle }) => {
 					data.drag_current = input.mouse.position;
 
-					let values: Vec<_> = [lock_angle, snap_angle, center].into_iter().map(|k| input.keyboard.get(*k as usize)).collect();
+					let values: Vec<_> = [lock_angle, snap_angle, center].iter().map(|k| input.keyboard.get(*k as usize)).collect();
 					responses.push_back(generate_transform(data, values[0], values[1], values[2]));
 
 					Dragging
