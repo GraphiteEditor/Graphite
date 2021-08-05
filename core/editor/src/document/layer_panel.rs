@@ -28,6 +28,7 @@ impl LayerData {
 			scale: 1.,
 		}
 	}
+
 	pub fn snapped_angle(&self) -> f64 {
 		let increment_radians: f64 = ROTATE_SNAP_INTERVAL.to_radians();
 		if self.snap_rotate {
@@ -36,7 +37,9 @@ impl LayerData {
 			self.rotation
 		}
 	}
+
 	pub fn calculate_offset_transform(&self, offset: DVec2) -> DAffine2 {
+		// TODO: replace with DAffine2::from_scale_angle_translation and fix the errors
 		let offset_transform = DAffine2::from_translation(offset);
 		let scale_transform = DAffine2::from_scale(DVec2::new(self.scale, self.scale));
 		let angle_transform = DAffine2::from_angle(self.snapped_angle());
@@ -53,8 +56,6 @@ pub fn layer_data<'a>(layer_data: &'a mut HashMap<Vec<LayerId>, LayerData>, path
 }
 
 pub fn layer_panel_entry(layer_data: &LayerData, transform: DAffine2, layer: &Layer, path: Vec<LayerId>) -> LayerPanelEntry {
-	let blend_mode = layer.blend_mode;
-	let opacity = layer.opacity;
 	let layer_type: LayerType = (&layer.data).into();
 	let name = layer.name.clone().unwrap_or_else(|| format!("Unnamed {}", layer_type));
 	let arr = layer.data.bounding_box(transform).unwrap_or([DVec2::ZERO, DVec2::ZERO]);
@@ -79,9 +80,9 @@ pub fn layer_panel_entry(layer_data: &LayerData, transform: DAffine2, layer: &La
 	LayerPanelEntry {
 		name,
 		visible: layer.visible,
-		blend_mode,
-		opacity,
-		layer_type,
+		blend_mode: layer.blend_mode,
+		opacity: layer.opacity,
+		layer_type: (&layer.data).into(),
 		layer_data: *layer_data,
 		path,
 		thumbnail,
