@@ -109,6 +109,7 @@ impl MessageHandler<MovementMessage, (&mut LayerData, &Document, &InputPreproces
 						}
 						.into(),
 					);
+					responses.push_back(DocumentMessage::FolderChanged(vec![]).into());
 					self.create_document_transform_from_layerdata(layerdata, &ipp.viewport_size, responses);
 				}
 				if self.zooming {
@@ -166,6 +167,7 @@ impl MessageHandler<MovementMessage, (&mut LayerData, &Document, &InputPreproces
 				layerdata.rotation = new;
 				self.create_document_transform_from_layerdata(layerdata, &ipp.viewport_size, responses);
 				responses.push_back(FrontendMessage::SetCanvasRotation { new_radians: new }.into());
+				responses.push_back(DocumentMessage::FolderChanged(vec![]).into());
 			}
 			ZoomCanvasToFitAll => {
 				if let Some([pos1, pos2]) = document.visible_layers_bounding_box() {
@@ -173,11 +175,12 @@ impl MessageHandler<MovementMessage, (&mut LayerData, &Document, &InputPreproces
 					let pos2 = document.root.transform.inverse().transform_point2(pos2);
 					let v1 = document.root.transform.inverse().transform_point2(DVec2::ZERO);
 					let v2 = document.root.transform.inverse().transform_point2(ipp.viewport_size.as_f64());
+
 					let center = v1.lerp(v2, 0.5) - pos1.lerp(pos2, 0.5);
 					let size = (pos2 - pos1) * 1.2 / (v2 - v1);
 					let size = 1. / size;
-					let size = size.min_element();
-					let new_scale = size;
+					let new_scale = size.min_element();
+
 					layerdata.translation += center;
 					layerdata.scale *= new_scale;
 					self.create_document_transform_from_layerdata(layerdata, &ipp.viewport_size, responses);

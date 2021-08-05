@@ -75,6 +75,7 @@ pub enum DocumentMessage {
 	ToggleLayerVisibility(Vec<LayerId>),
 	FlipSelectedLayers(FlipAxis),
 	ToggleLayerExpansion(Vec<LayerId>),
+	FolderChanged(Vec<LayerId>),
 	StartTransaction,
 	RollbackTransaction,
 	AbortTransaction,
@@ -326,6 +327,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					responses.push_back(DocumentOperation::DeleteLayer { path: vec![*id] }.into())
 				}
 			}
+			FolderChanged(path) => responses.extend(self.handle_folder_changed(path)),
 			DispatchOperation(op) => match self.document.handle_operation(&op) {
 				Ok(Some(mut document_responses)) => {
 					let canvas_dirty = self.filter_document_responses(&mut document_responses);
