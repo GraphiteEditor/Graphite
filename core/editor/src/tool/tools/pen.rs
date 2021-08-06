@@ -82,7 +82,7 @@ impl Fsm for PenToolFsmState {
 					Dragging
 				}
 				(Dragging, DragStop) => {
-					// TODO - introduce comparison threshold when operating with canvas coordinates (https://github.com/GraphiteEditor/Graphite/issues/100)
+					// TODO: introduce comparison threshold when operating with canvas coordinates (https://github.com/GraphiteEditor/Graphite/issues/100)
 					if data.points.last() != Some(&pos) {
 						data.points.push(pos);
 						data.next_point = pos;
@@ -99,7 +99,6 @@ impl Fsm for PenToolFsmState {
 
 					Dragging
 				}
-				// TODO - simplify with or_patterns when rust 1.53.0 is stable  (https://github.com/rust-lang/rust/issues/54883)
 				(Dragging, Confirm) => {
 					if data.points.len() >= 2 {
 						responses.push_back(DocumentMessage::DeselectAllLayers.into());

@@ -102,7 +102,7 @@ macro_rules! entry {
 macro_rules! mapping {
 	//[$(<action=$action:expr; message=$key:expr; $(modifiers=[$($m:ident),* $(,)?];)?>)*] => {{
 	[$($entry:expr),* $(,)?] => {{
-		let mut key_up =  KeyMappingEntries::key_array();
+		let mut key_up = KeyMappingEntries::key_array();
 		let mut key_down = KeyMappingEntries::key_array();
 		let mut pointer_move: KeyMappingEntries = Default::default();
 		let mut mouse_scroll: KeyMappingEntries = Default::default();

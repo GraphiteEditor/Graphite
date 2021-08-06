@@ -30,7 +30,7 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Shape {
 		use ShapeToolFsmState::*;
 		match self.fsm_state {
 			Ready => actions!(ShapeMessageDiscriminant; DragStart),
-			Dragging => actions!(ShapeMessageDiscriminant; DragStop,  Abort, Resize),
+			Dragging => actions!(ShapeMessageDiscriminant; DragStop, Abort, Resize),
 		}
 	}
 }
@@ -102,7 +102,7 @@ impl Fsm for ShapeToolFsmState {
 					state
 				}
 				(Dragging, DragStop) => {
-					// TODO - introduce comparison threshold when operating with canvas coordinates (https://github.com/GraphiteEditor/Graphite/issues/100)
+					// TODO: introduce comparison threshold when operating with canvas coordinates (https://github.com/GraphiteEditor/Graphite/issues/100)
 					match shape_data.drag_start == input.mouse.position {
 						true => responses.push_back(DocumentMessage::AbortTransaction.into()),
 						false => responses.push_back(DocumentMessage::CommitTransaction.into()),

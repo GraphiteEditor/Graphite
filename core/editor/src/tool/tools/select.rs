@@ -42,7 +42,7 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Select {
 	fn actions(&self) -> ActionList {
 		use SelectToolFsmState::*;
 		match self.fsm_state {
-			Ready => actions!(SelectMessageDiscriminant;  DragStart),
+			Ready => actions!(SelectMessageDiscriminant; DragStart),
 			Dragging => actions!(SelectMessageDiscriminant; DragStop, MouseMove),
 			DrawingBox => actions!(SelectMessageDiscriminant; DragStop, MouseMove, Abort),
 		}
@@ -127,7 +127,7 @@ impl Fsm for SelectToolFsmState {
 							Operation::AddBoundingBox {
 								path: data.box_id.clone().unwrap(),
 								transform: DAffine2::ZERO.to_cols_array(),
-								style: style::PathStyle::new(Some(Stroke::new(Color::from_rgb8(0x31, 0x94, 0xD6), 2.0)), Some(Fill::none())),
+								style: style::PathStyle::new(Some(Stroke::new(Color::from_rgb8(0x00, 0xA8, 0xFF), 1.0)), Some(Fill::none())),
 							}
 							.into(),
 						);

@@ -6,8 +6,6 @@ use crate::{document::DocumentMessageHandler, message_prelude::*};
 use document_core::{layers::style, Operation};
 use glam::{DAffine2, DVec2};
 
-use std::f64::consts::PI;
-
 #[derive(Default)]
 pub struct Line {
 	fsm_state: LineToolFsmState,
@@ -30,7 +28,7 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Line {
 	fn actions(&self) -> ActionList {
 		use LineToolFsmState::*;
 		match self.fsm_state {
-			Ready => actions!(LineMessageDiscriminant;  DragStart ),
+			Ready => actions!(LineMessageDiscriminant;  DragStart),
 			Dragging => actions!(LineMessageDiscriminant; DragStop, Redraw, Abort),
 		}
 	}
@@ -100,7 +98,7 @@ impl Fsm for LineToolFsmState {
 				(Dragging, DragStop) => {
 					data.drag_current = input.mouse.position;
 
-					// TODO - introduce comparison threshold when operating with canvas coordinates (https://github.com/GraphiteEditor/Graphite/issues/100)
+					// TODO; introduce comparison threshold when operating with canvas coordinates (https://github.com/GraphiteEditor/Graphite/issues/100)
 					match data.drag_start == input.mouse.position {
 						true => responses.push_back(DocumentMessage::AbortTransaction.into()),
 						false => responses.push_back(DocumentMessage::CommitTransaction.into()),
