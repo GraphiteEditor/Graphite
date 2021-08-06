@@ -109,7 +109,6 @@ impl MessageHandler<MovementMessage, (&mut LayerData, &Document, &InputPreproces
 						}
 						.into(),
 					);
-					responses.push_back(DocumentMessage::FolderChanged(vec![]).into());
 					self.create_document_transform_from_layerdata(layerdata, &ipp.viewport_size, responses);
 				}
 				if self.zooming {
@@ -167,7 +166,6 @@ impl MessageHandler<MovementMessage, (&mut LayerData, &Document, &InputPreproces
 				layerdata.rotation = new;
 				self.create_document_transform_from_layerdata(layerdata, &ipp.viewport_size, responses);
 				responses.push_back(FrontendMessage::SetCanvasRotation { new_radians: new }.into());
-				responses.push_back(DocumentMessage::FolderChanged(vec![]).into());
 			}
 			ZoomCanvasToFitAll => {
 				if let Some([pos1, pos2]) = document.visible_layers_bounding_box() {
