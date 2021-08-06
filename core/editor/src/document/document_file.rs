@@ -274,7 +274,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 						document: format!(
 							r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="{} {} {} {}">{}{}</svg>"#,
 							bbox[0].x,
-							bbox[1].y,
+							bbox[0].y,
 							size.x,
 							size.y,
 							"\n",
