@@ -266,18 +266,24 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				responses.extend([DocumentMessage::RenderDocument.into(), self.handle_folder_changed(vec![]).unwrap()]);
 			}
 			CommitTransaction => self.document_backup = None,
-			ExportDocument => responses.push_back(
-				FrontendMessage::ExportDocument {
-					document: format!(
-						r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {} {}">{}{}</svg>"#,
-						"\n",
-						ipp.viewport_size.x,
-						ipp.viewport_size.y,
-						self.document.render_root()
-					),
-				}
-				.into(),
-			),
+			ExportDocument => {
+				let bbox = self.document.visible_layers_bounding_box().unwrap_or([DVec2::ZERO, ipp.viewport_size.as_f64()]);
+				let size = (bbox[1] - bbox[0]) * 1.2;
+				responses.push_back(
+					FrontendMessage::ExportDocument {
+						document: format!(
+							r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="{} {} {} {}">{}{}</svg>"#,
+							bbox[0].x,
+							bbox[0].y,
+							size.x,
+							size.y,
+							"\n",
+							self.document.render_root()
+						),
+					}
+					.into(),
+				)
+			}
 			SetBlendModeForSelectedLayers(blend_mode) => {
 				let active_document = self;
 
