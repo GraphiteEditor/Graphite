@@ -127,7 +127,7 @@ fn generate_transform(data: &mut LineToolData, lock: bool, snap: bool, center: b
 
 	let dir = stop - start;
 
-	let mut angle = dir.angle_between(DVec2::X);
+	let mut angle = -dir.angle_between(DVec2::X);
 
 	if lock {
 		angle = data.angle
@@ -153,7 +153,7 @@ fn generate_transform(data: &mut LineToolData, lock: bool, snap: bool, center: b
 
 	Operation::SetLayerTransformInViewport {
 		path: data.path.clone().unwrap(),
-		transform: glam::DAffine2::from_scale_angle_translation(DVec2::splat(scale), -angle, start).to_cols_array(),
+		transform: glam::DAffine2::from_scale_angle_translation(DVec2::splat(scale), angle, start).to_cols_array(),
 	}
 	.into()
 }
