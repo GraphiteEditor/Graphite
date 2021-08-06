@@ -269,15 +269,14 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			ExportDocument => {
 				let bbox = self.document.visible_layers_bounding_box().unwrap_or([DVec2::ZERO, ipp.viewport_size.as_f64()]);
 				let size = bbox[1] - bbox[0];
-				let offset = bbox[0] + size * 0.1;
 				responses.push_back(
 					FrontendMessage::ExportDocument {
 						document: format!(
 							r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="{} {} {} {}">{}{}</svg>"#,
-							offset,
-							offset,
-							size.x * 1.1,
-							size.y * 1.1,
+							bbox[0].x,
+							bbox[1].y,
+							size.x,
+							size.y,
 							"\n",
 							self.document.render_root()
 						),

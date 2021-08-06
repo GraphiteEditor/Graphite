@@ -175,7 +175,7 @@ impl MessageHandler<MovementMessage, (&mut LayerData, &Document, &InputPreproces
 					let v2 = document.root.transform.inverse().transform_point2(ipp.viewport_size.as_f64());
 
 					let center = v1.lerp(v2, 0.5) - pos1.lerp(pos2, 0.5);
-					let size = (pos2 - pos1) * 1.2 / (v2 - v1);
+					let size = (pos2 - pos1) / (v2 - v1);
 					let size = 1. / size;
 					let new_scale = size.min_element();
 
