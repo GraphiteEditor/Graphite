@@ -57,9 +57,12 @@ impl Editor {
 }
 
 pub mod message_prelude {
+	pub use crate::communication::generate_hash;
 	pub use crate::communication::message::{AsMessage, Message, MessageDiscriminant};
 	pub use crate::communication::{ActionList, MessageHandler};
 	pub use crate::document::{DocumentMessage, DocumentMessageDiscriminant};
+	pub use crate::document::{DocumentsMessage, DocumentsMessageDiscriminant};
+	pub use crate::document::{MovementMessage, MovementMessageDiscriminant};
 	pub use crate::frontend::{FrontendMessage, FrontendMessageDiscriminant};
 	pub use crate::global::{GlobalMessage, GlobalMessageDiscriminant};
 	pub use crate::input::{InputMapperMessage, InputMapperMessageDiscriminant, InputPreprocessorMessage, InputPreprocessorMessageDiscriminant};

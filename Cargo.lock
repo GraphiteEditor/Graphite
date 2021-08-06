@@ -77,9 +77,9 @@ dependencies = [
 
 [[package]]
 name = "glam"
-version = "0.16.0"
+version = "0.17.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4126c0479ccf7e8664c36a2d719f5f2c140fbb4f9090008098d2c291fa5b3f16"
+checksum = "e01732b97afd8508eee3333a541b9f7610f454bb818669e66e90f5f57c93a776"
 dependencies = [
  "serde",
 ]
@@ -168,8 +168,7 @@ dependencies = [
 [[package]]
 name = "kurbo"
 version = "0.8.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e30b1df631d23875f230ed3ddd1a88c231f269a04b2044eb6ca87e763b5f4c42"
+source = "git+https://github.com/linebender/kurbo#0ef68211223b956942c4a5834d66a2625cb8d575"
 dependencies = [
  "arrayvec",
  "serde",
