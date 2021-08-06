@@ -317,7 +317,33 @@ export default defineComponent({
 				const responseLayers = expandData.children as Array<LayerPanelEntry>;
 				if (responsePath.length > 0) console.error("Non root paths are currently not implemented");
 
-				this.layers = responseLayers;
+				if (responsePath.length === 0) {
+					responseLayers.forEach((nlayer) => {
+						let last_insertion = -1;
+						const index = this.layers.findIndex((layer: LayerPanelEntry) => {
+							const pathLengthsEqual = nlayer.path.length === layer.path.length;
+							return pathLengthsEqual && nlayer.path.every((layer_id, i) => layer_id === layer.path[i]);
+						});
+						if (index >= 0) {last_insertion = index; this.layers[index] = nlayer;}
+						else this.layers.splice(++last_insertion, 0, nlayer);
+					})
+				} else {
+					const index = this.layers.findIndex((layer: LayerPanelEntry) => {
+						const pathLengthsEqual = responsePath.length === layer.path.length;
+						return pathLengthsEqual && responsePath.every((layer_id, i) => layer_id === layer.path[i]);
+					});
+					if (index >= 0) this.layers.splice(index, 0,  ...responseLayers);
+
+				}
+				let newLayers: Array<LayerPanelEntry>= [];
+				this.layers.forEach((layer) => {
+					const index = responseLayers.findIndex((nlayer: LayerPanelEntry) => {
+						const pathLengthsEqual = responsePath.length + 1 === layer.path.length;
+						return pathLengthsEqual && nlayer.path.every((layer_id, i) => layer_id === layer.path[i]);
+					});
+					if (index >= 0 || layer.path.length != responsePath.length + 1) {newLayers.push(layer);}
+				})
+				this.layers = newLayers;
 
 				this.setBlendModeForSelectedLayers();
 				this.setOpacityForSelectedLayers();

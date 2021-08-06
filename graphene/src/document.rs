@@ -341,6 +341,7 @@ impl Document {
 			}
 			Operation::CreateFolder { path } => {
 				self.set_layer(path, Layer::new(LayerDataType::Folder(Folder::default()), DAffine2::IDENTITY.to_cols_array()), -1)?;
+				self.mark_as_dirty(path)?;
 
 				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::FolderChanged { path: path.clone() }])
 			}

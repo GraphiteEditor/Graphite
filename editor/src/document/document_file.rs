@@ -287,6 +287,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			CreateFolder(mut path) => {
 				let id = generate_hash(responses.iter(), ipp, self.document.hash());
 				path.push(id);
+				self.layerdata_mut(&path).expanded = true;
 				responses.push_back(DocumentOperation::CreateFolder { path }.into())
 			}
 			GroupSelectedLayers => {
@@ -294,6 +295,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				responses.push_back(DocumentsMessage::CopySelectedLayers.into());
 				responses.push_back(DocumentMessage::DeleteSelectedLayers.into());
 				responses.push_back(DocumentOperation::CreateFolder { path: vec![id] }.into());
+				self.layerdata_mut(&[id]).expanded = true;
 				responses.push_back(DocumentsMessage::PasteLayers { path: vec![id], insert_index: -1 }.into());
 			}
 			SetBlendModeForSelectedLayers(blend_mode) => {
