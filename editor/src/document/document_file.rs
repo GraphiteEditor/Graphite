@@ -78,6 +78,7 @@ pub enum DocumentMessage {
 	FolderChanged(Vec<LayerId>),
 	StartTransaction,
 	RollbackTransaction,
+	GroupSelectedLayers,
 	AbortTransaction,
 	CommitTransaction,
 	ExportDocument,
@@ -288,6 +289,13 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				path.push(id);
 				responses.push_back(DocumentOperation::CreateFolder { path }.into())
 			}
+			GroupSelectedLayers => {
+				let id = generate_hash(responses.iter(), ipp, self.document.hash());
+				responses.push_back(DocumentsMessage::CopySelectedLayers.into());
+				responses.push_back(DocumentMessage::DeleteSelectedLayers.into());
+				responses.push_back(DocumentOperation::CreateFolder { path: vec![id] }.into());
+				responses.push_back(DocumentsMessage::PasteLayers { path: vec![id], insert_index: -1 }.into());
+			}
 			SetBlendModeForSelectedLayers(blend_mode) => {
 				let active_document = self;
 
@@ -496,6 +504,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				DuplicateSelectedLayers,
 				NudgeSelectedLayers,
 				ReorderSelectedLayers,
+				GroupSelectedLayers,
 			);
 			common.extend(select);
 		}
