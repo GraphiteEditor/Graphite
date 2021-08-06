@@ -1,6 +1,6 @@
 use crate::input::InputPreprocessor;
 use crate::tool::{DocumentToolData, Fsm, ToolActionHandlerData};
-use crate::{document::Document, message_prelude::*};
+use crate::{document::DocumentMessageHandler, message_prelude::*};
 use document_core::{layers::style, Operation};
 use glam::DAffine2;
 
@@ -11,12 +11,12 @@ pub struct Pen {
 }
 
 #[impl_message(Message, ToolMessage, Pen)]
-#[derive(PartialEq, Clone, Debug)]
+#[derive(PartialEq, Clone, Debug, Hash)]
 pub enum PenMessage {
 	Undo,
 	DragStart,
 	DragStop,
-	MouseMove,
+	PointerMove,
 	Confirm,
 	Abort,
 }
@@ -35,7 +35,7 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Pen {
 		use PenToolFsmState::*;
 		match self.fsm_state {
 			Ready => actions!(PenMessageDiscriminant; Undo, DragStart, DragStop, Confirm, Abort),
-			Dragging => actions!(PenMessageDiscriminant; DragStop, MouseMove, Confirm, Abort),
+			Dragging => actions!(PenMessageDiscriminant; DragStop, PointerMove, Confirm, Abort),
 		}
 	}
 }
@@ -49,21 +49,32 @@ impl Default for PenToolFsmState {
 struct PenToolData {
 	points: Vec<DAffine2>,
 	next_point: DAffine2,
+	path: Option<Vec<LayerId>>,
 }
 
 impl Fsm for PenToolFsmState {
 	type ToolData = PenToolData;
 
-	fn transition(self, event: ToolMessage, document: &Document, tool_data: &DocumentToolData, data: &mut Self::ToolData, input: &InputPreprocessor, responses: &mut VecDeque<Message>) -> Self {
+	fn transition(
+		self,
+		event: ToolMessage,
+		document: &DocumentMessageHandler,
+		tool_data: &DocumentToolData,
+		data: &mut Self::ToolData,
+		input: &InputPreprocessor,
+		responses: &mut VecDeque<Message>,
+	) -> Self {
 		let transform = document.document.root.transform;
-		let pos = transform.inverse() * DAffine2::from_translation(input.mouse.position.as_dvec2());
+		let pos = transform.inverse() * DAffine2::from_translation(input.mouse.position.as_f64());
 
 		use PenMessage::*;
 		use PenToolFsmState::*;
 		if let ToolMessage::Pen(event) = event {
 			match (self, event) {
 				(Ready, DragStart) => {
-					responses.push_back(Operation::MountWorkingFolder { path: vec![] }.into());
+					responses.push_back(DocumentMessage::StartTransaction.into());
+					responses.push_back(DocumentMessage::DeselectAllLayers.into());
+					data.path = Some(vec![generate_hash(&*responses, input, document.document.hash())]);
 
 					data.points.push(pos);
 					data.next_point = pos;
@@ -71,44 +82,41 @@ impl Fsm for PenToolFsmState {
 					Dragging
 				}
 				(Dragging, DragStop) => {
-					// TODO - introduce comparison threshold when operating with canvas coordinates (https://github.com/GraphiteEditor/Graphite/issues/100)
+					// TODO: introduce comparison threshold when operating with canvas coordinates (https://github.com/GraphiteEditor/Graphite/issues/100)
 					if data.points.last() != Some(&pos) {
 						data.points.push(pos);
 						data.next_point = pos;
 					}
 
-					responses.push_back(Operation::ClearWorkingFolder.into());
-					responses.push_back(make_operation(data, tool_data, true));
+					responses.extend(make_operation(data, tool_data, true));
 
 					Dragging
 				}
-				(Dragging, MouseMove) => {
+				(Dragging, PointerMove) => {
 					data.next_point = pos;
 
-					responses.push_back(Operation::ClearWorkingFolder.into());
-					responses.push_back(make_operation(data, tool_data, true));
+					responses.extend(make_operation(data, tool_data, true));
 
 					Dragging
 				}
-				// TODO - simplify with or_patterns when rust 1.53.0 is stable  (https://github.com/rust-lang/rust/issues/54883)
 				(Dragging, Confirm) => {
-					responses.push_back(Operation::ClearWorkingFolder.into());
-
 					if data.points.len() >= 2 {
-						responses.push_back(make_operation(data, tool_data, false));
 						responses.push_back(DocumentMessage::DeselectAllLayers.into());
-						responses.push_back(Operation::CommitTransaction.into());
+						responses.extend(make_operation(data, tool_data, false));
+						responses.push_back(DocumentMessage::CommitTransaction.into());
 					} else {
-						responses.push_back(Operation::DiscardWorkingFolder.into());
+						responses.push_back(DocumentMessage::AbortTransaction.into());
 					}
 
+					data.path = None;
 					data.points.clear();
 
 					Ready
 				}
 				(Dragging, Abort) => {
-					responses.push_back(Operation::DiscardWorkingFolder.into());
+					responses.push_back(DocumentMessage::AbortTransaction.into());
 					data.points.clear();
+					data.path = None;
 
 					Ready
 				}
@@ -120,17 +128,20 @@ impl Fsm for PenToolFsmState {
 	}
 }
 
-fn make_operation(data: &PenToolData, tool_data: &DocumentToolData, show_preview: bool) -> Message {
+fn make_operation(data: &PenToolData, tool_data: &DocumentToolData, show_preview: bool) -> [Message; 2] {
 	let mut points: Vec<(f64, f64)> = data.points.iter().map(|p| (p.translation.x, p.translation.y)).collect();
 	if show_preview {
 		points.push((data.next_point.translation.x, data.next_point.translation.y))
 	}
-	Operation::AddPen {
-		path: vec![],
-		insert_index: -1,
-		transform: DAffine2::IDENTITY.to_cols_array(),
-		points,
-		style: style::PathStyle::new(Some(style::Stroke::new(tool_data.primary_color, 5.)), Some(style::Fill::none())),
-	}
-	.into()
+	[
+		Operation::DeleteLayer { path: data.path.clone().unwrap() }.into(),
+		Operation::AddPen {
+			path: data.path.clone().unwrap(),
+			insert_index: -1,
+			transform: DAffine2::IDENTITY.to_cols_array(),
+			points,
+			style: style::PathStyle::new(Some(style::Stroke::new(tool_data.primary_color, 5.)), Some(style::Fill::none())),
+		}
+		.into(),
+	]
 }

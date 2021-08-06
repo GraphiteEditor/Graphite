@@ -5,7 +5,7 @@ use crate::tool::ToolActionHandlerData;
 pub struct Path;
 
 #[impl_message(Message, ToolMessage, Path)]
-#[derive(PartialEq, Clone, Debug)]
+#[derive(PartialEq, Clone, Debug, Hash)]
 pub enum PathMessage {
 	MouseMove,
 }

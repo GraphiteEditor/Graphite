@@ -20,6 +20,7 @@ export enum ResponseType {
 	SetActiveDocument = "SetActiveDocument",
 	UpdateOpenDocumentsList = "UpdateOpenDocumentsList",
 	UpdateWorkingColors = "UpdateWorkingColors",
+	UpdateLayer = "UpdateLayer",
 	SetCanvasZoom = "SetCanvasZoom",
 	SetCanvasRotation = "SetCanvasRotation",
 	DisplayConfirmationToCloseDocument = "DisplayConfirmationToCloseDocument",
@@ -61,6 +62,8 @@ function parseResponse(responseType: string, data: any): Response {
 			return newUpdateOpenDocumentsList(data.UpdateOpenDocumentsList);
 		case "UpdateCanvas":
 			return newUpdateCanvas(data.UpdateCanvas);
+		case "UpdateLayer":
+			return newUpdateLayer(data.UpdateLayer);
 		case "SetCanvasZoom":
 			return newSetCanvasZoom(data.SetCanvasZoom);
 		case "SetCanvasRotation":
@@ -168,7 +171,18 @@ export interface CollapseFolder {
 }
 function newCollapseFolder(input: any): CollapseFolder {
 	return {
-		path: new BigUint64Array(input.path.map((n: number) => BigInt(n))),
+		path: newPath(input.path),
+	};
+}
+
+export interface UpdateLayer {
+	path: BigUint64Array;
+	data: LayerPanelEntry;
+}
+function newUpdateLayer(input: any): UpdateLayer {
+	return {
+		path: newPath(input.data.path),
+		data: newLayerPanelEntry(input.data),
 	};
 }
 
@@ -178,7 +192,7 @@ export interface ExpandFolder {
 }
 function newExpandFolder(input: any): ExpandFolder {
 	return {
-		path: new BigUint64Array(input.path.map((n: number) => BigInt(n))),
+		path: newPath(input.path),
 		children: input.children.map((child: any) => newLayerPanelEntry(child)),
 	};
 }
@@ -199,6 +213,12 @@ function newSetCanvasRotation(input: any): SetCanvasRotation {
 	return {
 		new_radians: input.new_radians,
 	};
+}
+
+function newPath(input: any): BigUint64Array {
+	// eslint-disable-next-line
+	const u32CombinedPairs = input.map((n: Array<bigint>) => BigInt((BigInt(n[0]) << BigInt(32)) | BigInt(n[1])));
+	return new BigUint64Array(u32CombinedPairs);
 }
 
 export enum BlendMode {
@@ -266,7 +286,7 @@ function newLayerPanelEntry(input: any): LayerPanelEntry {
 		opacity: newOpacity(input.opacity),
 		layer_type: newLayerType(input.layer_type),
 		layer_data: newLayerData(input.layer_data),
-		path: new BigUint64Array(input.path.map((n: number) => BigInt(n))),
+		path: newPath(input.path),
 		thumbnail: input.thumbnail,
 	};
 }

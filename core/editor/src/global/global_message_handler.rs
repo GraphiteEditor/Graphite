@@ -2,7 +2,7 @@ use crate::message_prelude::*;
 use std::collections::VecDeque;
 
 #[impl_message(Message, Global)]
-#[derive(PartialEq, Clone, Debug)]
+#[derive(PartialEq, Clone, Debug, Hash)]
 pub enum GlobalMessage {
 	LogInfo,
 	LogDebug,
