@@ -12,6 +12,7 @@ pub mod layers;
 pub mod operation;
 pub mod response;
 
+pub use intersection::Quad;
 pub use operation::Operation;
 pub use response::DocumentResponse;
 
@@ -24,4 +25,5 @@ pub enum DocumentError {
 	IndexOutOfBounds,
 	NotAFolder,
 	NonReorderableSelection,
+	NotAShape,
 }

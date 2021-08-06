@@ -1,13 +1,13 @@
 use glam::DVec2;
 
-use crate::{DocumentError, LayerId};
+use crate::{DocumentError, LayerId, Quad};
 
-use super::{style, Layer, LayerData, LayerDataTypes};
+use super::{Layer, LayerData, LayerDataType};
 
 use serde::{Deserialize, Serialize};
 use std::fmt::Write;
 
-#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize, Default)]
 pub struct Folder {
 	next_assignment_id: LayerId,
 	pub layer_ids: Vec<LayerId>,
@@ -15,44 +15,53 @@ pub struct Folder {
 }
 
 impl LayerData for Folder {
-	fn to_kurbo_path(&self, _: glam::DAffine2, _: style::PathStyle) -> kurbo::BezPath {
-		unimplemented!()
-	}
-
-	fn render(&mut self, svg: &mut String, transform: glam::DAffine2, _style: style::PathStyle) {
-		let _ = writeln!(svg, r#"<g transform="matrix("#);
-		transform.to_cols_array().iter().enumerate().for_each(|(i, f)| {
-			let _ = svg.write_str(&(f.to_string() + if i != 5 { "," } else { "" }));
-		});
-		let _ = svg.write_str(r#")">"#);
-
+	fn render(&mut self, svg: &mut String, transforms: &mut Vec<glam::DAffine2>) {
 		for layer in &mut self.layers {
-			let _ = writeln!(svg, "{}", layer.render());
+			let _ = writeln!(svg, "{}", layer.render(transforms));
 		}
-		let _ = writeln!(svg, "</g>");
 	}
 
-	fn intersects_quad(&self, quad: [DVec2; 4], path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>, _style: style::PathStyle) {
+	fn intersects_quad(&self, quad: Quad, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>) {
 		for (layer, layer_id) in self.layers().iter().zip(&self.layer_ids) {
 			path.push(*layer_id);
 			layer.intersects_quad(quad, path, intersections);
 			path.pop();
 		}
 	}
+
+	fn bounding_box(&self, transform: glam::DAffine2) -> Option<[DVec2; 2]> {
+		self.layers
+			.iter()
+			.filter_map(|layer| layer.data.bounding_box(transform * layer.transform))
+			.reduce(|a, b| [a[0].min(b[0]), a[1].max(b[1])])
+	}
 }
 
 impl Folder {
-	pub fn add_layer(&mut self, layer: Layer, insert_index: isize) -> Option<LayerId> {
+	/// When a insertion id is provided, try to insert the layer with the given id.
+	/// If that id is already used, return None.
+	/// When no insertion id is provided, search for the next free id and insert it with that.
+	pub fn add_layer(&mut self, layer: Layer, id: Option<LayerId>, insert_index: isize) -> Option<LayerId> {
 		let mut insert_index = insert_index as i128;
 		if insert_index < 0 {
 			insert_index = self.layers.len() as i128 + insert_index as i128 + 1;
 		}
 
 		if insert_index <= self.layers.len() as i128 && insert_index >= 0 {
+			if let Some(id) = id {
+				self.next_assignment_id = id;
+			}
+			if self.layer_ids.contains(&self.next_assignment_id) {
+				return None;
+			}
+			let id = self.next_assignment_id;
 			self.layers.insert(insert_index as usize, layer);
-			self.layer_ids.insert(insert_index as usize, self.next_assignment_id);
-			self.next_assignment_id += 1;
-			Some(self.next_assignment_id - 1)
+			self.layer_ids.insert(insert_index as usize, id);
+			// Linear probing for collision avoidance
+			while self.layer_ids.contains(&self.next_assignment_id) {
+				self.next_assignment_id += 1;
+			}
+			Some(id)
 		} else {
 			None
 		}
@@ -95,8 +104,8 @@ impl Folder {
 	pub fn folder(&self, id: LayerId) -> Option<&Folder> {
 		match self.layer(id) {
 			Some(Layer {
-				data: LayerDataTypes::Folder(folder), ..
-			}) => Some(&folder),
+				data: LayerDataType::Folder(folder), ..
+			}) => Some(folder),
 			_ => None,
 		}
 	}
@@ -104,46 +113,9 @@ impl Folder {
 	pub fn folder_mut(&mut self, id: LayerId) -> Option<&mut Folder> {
 		match self.layer_mut(id) {
 			Some(Layer {
-				data: LayerDataTypes::Folder(folder), ..
+				data: LayerDataType::Folder(folder), ..
 			}) => Some(folder),
 			_ => None,
-		}
-	}
-
-	pub fn bounding_box(&self, transform: glam::DAffine2) -> Option<[DVec2; 2]> {
-		let mut layers_non_empty_bounding_boxes = self.layers.iter().filter_map(|layer| layer.bounding_box(transform * layer.transform, layer.style)).peekable();
-
-		layers_non_empty_bounding_boxes.peek()?;
-
-		let mut x_min = f64::MAX;
-		let mut y_min = f64::MAX;
-		let mut x_max = f64::MIN;
-		let mut y_max = f64::MIN;
-
-		for [bounding_box_min, bounding_box_max] in layers_non_empty_bounding_boxes {
-			if bounding_box_min.x < x_min {
-				x_min = bounding_box_min.x
-			}
-			if bounding_box_min.y < y_min {
-				y_min = bounding_box_min.y
-			}
-			if bounding_box_max.x > x_max {
-				x_max = bounding_box_max.x
-			}
-			if bounding_box_max.y > y_max {
-				y_max = bounding_box_max.y
-			}
-		}
-		Some([DVec2::new(x_min, y_min), DVec2::new(x_max, y_max)])
-	}
-}
-
-impl Default for Folder {
-	fn default() -> Self {
-		Self {
-			layer_ids: vec![],
-			layers: vec![],
-			next_assignment_id: 0,
 		}
 	}
 }

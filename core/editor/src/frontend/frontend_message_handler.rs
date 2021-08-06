@@ -16,6 +16,7 @@ pub enum FrontendMessage {
 	DisplayConfirmationToCloseDocument { document_index: usize },
 	DisplayConfirmationToCloseAllDocuments,
 	UpdateCanvas { document: String },
+	UpdateLayer { path: Vec<LayerId>, data: LayerPanelEntry },
 	ExportDocument { document: String },
 	EnableTextInput,
 	DisableTextInput,

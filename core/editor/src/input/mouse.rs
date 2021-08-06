@@ -2,24 +2,9 @@ use bitflags::bitflags;
 use glam::DVec2;
 
 // origin is top left
-#[derive(Debug, Copy, Clone, Default, Eq, PartialEq)]
-pub struct ViewportPosition {
-	pub x: u32,
-	pub y: u32,
-}
+pub type ViewportPosition = glam::UVec2;
 
-impl ViewportPosition {
-	pub fn distance(&self, other: &Self) -> f64 {
-		let x_diff = other.x as i64 - self.x as i64;
-		let y_diff = other.y as i64 - self.y as i64;
-		f64::sqrt((x_diff * x_diff + y_diff * y_diff) as f64)
-	}
-	pub fn as_dvec2(&self) -> DVec2 {
-		DVec2::new(self.x as f64, self.y as f64)
-	}
-}
-
-#[derive(Debug, Copy, Clone, Default, Eq, PartialEq)]
+#[derive(Debug, Copy, Clone, Default, Eq, PartialEq, Hash)]
 pub struct ScrollDelta {
 	pub x: i32,
 	pub y: i32,
@@ -38,7 +23,7 @@ impl ScrollDelta {
 	}
 }
 
-#[derive(Debug, Copy, Clone, Default, Eq, PartialEq)]
+#[derive(Debug, Copy, Clone, Default, Eq, PartialEq, Hash)]
 pub struct MouseState {
 	pub position: ViewportPosition,
 	pub mouse_keys: MouseKeys,
@@ -52,7 +37,7 @@ impl MouseState {
 
 	pub fn from_pos(x: u32, y: u32) -> MouseState {
 		MouseState {
-			position: ViewportPosition { x, y },
+			position: (x, y).into(),
 			mouse_keys: MouseKeys::default(),
 			scroll_delta: ScrollDelta::default(),
 		}
