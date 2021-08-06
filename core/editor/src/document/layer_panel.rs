@@ -61,6 +61,8 @@ pub fn layer_panel_entry(layer_data: &LayerData, transform: DAffine2, layer: &La
 	let arr = layer.data.bounding_box(transform).unwrap_or([DVec2::ZERO, DVec2::ZERO]);
 	let arr = arr.iter().map(|x| (*x).into()).collect::<Vec<(f64, f64)>>();
 
+	let mut thumbnail = String::new();
+	layer.data.clone().render(&mut thumbnail, &mut vec![transform]);
 	let transform = transform.to_cols_array().iter().map(ToString::to_string).collect::<Vec<_>>().join(",");
 	let thumbnail = if let [(x_min, y_min), (x_max, y_max)] = arr.as_slice() {
 		format!(
@@ -70,7 +72,7 @@ pub fn layer_panel_entry(layer_data: &LayerData, transform: DAffine2, layer: &La
 			x_max - x_min,
 			y_max - y_min,
 			transform,
-			layer.thumbnail_cache.clone(),
+			thumbnail,
 		)
 	} else {
 		String::new()

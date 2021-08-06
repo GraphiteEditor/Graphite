@@ -236,7 +236,14 @@ impl DocumentMessageHandler {
 			.iter()
 			.zip(paths.iter().zip(data))
 			.rev()
-			.map(|(layer, (path, data))| layer_panel_entry(&data, self.document.multiply_transforms(path).unwrap(), layer, path.to_vec()))
+			.map(|(layer, (path, data))| {
+				layer_panel_entry(
+					&data,
+					self.document.generate_transform_across_scope(path, Some(self.document.root.transform.inverse())).unwrap(),
+					layer,
+					path.to_vec(),
+				)
+			})
 			.collect();
 		Ok(entries)
 	}
