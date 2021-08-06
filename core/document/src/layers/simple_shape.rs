@@ -122,7 +122,7 @@ impl Shape {
 	}
 	pub fn line(style: PathStyle) -> Self {
 		Self {
-			path: kurbo::Line::new((0., 0.), (1., 1.)).to_path(0.01),
+			path: kurbo::Line::new((0., 0.), (1., 0.)).to_path(0.01),
 			style,
 			render_index: 1,
 			solid: true,

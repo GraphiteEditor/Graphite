@@ -14,7 +14,7 @@ bitflags = "1.2.1"
 thiserror = "1.0.24"
 serde = { version = "1.0", features = ["derive"] }
 graphite-proc-macros = { path = "../proc-macro" }
-glam = { version="0.16", features = ["serde"] }
+glam = { version="0.17", features = ["serde"] }
 
 [dependencies.document-core]
 path = "../document"

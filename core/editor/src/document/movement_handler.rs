@@ -145,7 +145,7 @@ impl MessageHandler<MovementMessage, (&mut LayerData, &Document, &InputPreproces
 				let new_viewport_size = viewport_size * (1. / zoom_factor);
 				let delta_size = viewport_size - new_viewport_size;
 				let mouse_percent = mouse / viewport_size;
-				let delta = delta_size * -2. * (mouse_percent - (0.5, 0.5).into());
+				let delta = (delta_size * -2.) * (mouse_percent - DVec2::splat(0.5));
 
 				let transformed_delta = document.root.transform.inverse().transform_vector2(delta);
 				let new = (layerdata.scale * zoom_factor).clamp(VIEWPORT_ZOOM_SCALE_MIN, VIEWPORT_ZOOM_SCALE_MAX);

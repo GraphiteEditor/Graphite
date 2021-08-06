@@ -127,22 +127,27 @@ fn generate_transform(data: &mut LineToolData, lock: bool, snap: bool, center: b
 	let mut start = data.drag_start.as_f64();
 	let stop = data.drag_current.as_f64();
 
-	let mut dir = stop - start;
+	let dir = stop - start;
 
-	let mut angle = f64::atan2(dir.x, dir.y);
+	let mut angle = dir.angle_between(DVec2::X);
 
 	if lock {
 		angle = data.angle
 	};
 
 	if snap {
-		let snap_resolution = LINE_ROTATE_SNAP_ANGLE;
-		angle = (angle * snap_resolution / PI).round() / snap_resolution * PI;
+		let snap_resolution = (180. / LINE_ROTATE_SNAP_ANGLE).to_radians();
+		angle = (angle / snap_resolution).round() * snap_resolution;
 	}
 
 	data.angle = angle;
 
-	dir = DVec2::new(f64::sin(angle), f64::cos(angle)) * dir.length();
+	let mut scale = dir.length();
+
+	if lock {
+		let angle_vec = DVec2::new(angle.cos(), angle.sin());
+		scale = dir.dot(angle_vec);
+	}
 
 	if center {
 		start -= dir / 2.;
@@ -150,7 +155,7 @@ fn generate_transform(data: &mut LineToolData, lock: bool, snap: bool, center: b
 
 	Operation::SetLayerTransformInViewport {
 		path: data.path.clone().unwrap(),
-		transform: glam::DAffine2::from_scale_angle_translation(dir, 0., start).to_cols_array(),
+		transform: glam::DAffine2::from_scale_angle_translation(DVec2::splat(scale), -angle, start).to_cols_array(),
 	}
 	.into()
 }
