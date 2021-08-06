@@ -1,3 +1,5 @@
+use std::f64::consts::PI;
+
 use crate::consts::LINE_ROTATE_SNAP_ANGLE;
 use crate::input::keyboard::Key;
 use crate::input::{mouse::ViewportPosition, InputPreprocessor};
@@ -134,7 +136,7 @@ fn generate_transform(data: &mut LineToolData, lock: bool, snap: bool, center: b
 	};
 
 	if snap {
-		let snap_resolution = (180. / LINE_ROTATE_SNAP_ANGLE).to_radians();
+		let snap_resolution = LINE_ROTATE_SNAP_ANGLE.to_radians();
 		angle = (angle / snap_resolution).round() * snap_resolution;
 	}
 
