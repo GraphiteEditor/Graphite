@@ -319,6 +319,7 @@ impl Document {
 				let folder = self.folder_mut(path)?;
 				let id = folder.add_layer(layer.clone(), None, *insert_index).ok_or(DocumentError::IndexOutOfBounds)?;
 				let full_path = [path.clone(), vec![id]].concat();
+				self.mark_as_dirty(&full_path)?;
 
 				Some(vec![
 					DocumentResponse::DocumentChanged,
@@ -331,6 +332,7 @@ impl Document {
 				let (folder_path, _) = split_path(path.as_slice()).unwrap_or_else(|_| (&[], 0));
 				let folder = self.folder_mut(folder_path)?;
 				folder.add_layer(layer, None, -1).ok_or(DocumentError::IndexOutOfBounds)?;
+				self.mark_as_dirty(&path[..path.len() - 1])?;
 				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::FolderChanged { path: folder_path.to_vec() }])
 			}
 			Operation::RenameLayer { path, name } => {
