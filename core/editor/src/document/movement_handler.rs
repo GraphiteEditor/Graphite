@@ -181,6 +181,7 @@ impl MessageHandler<MovementMessage, (&mut LayerData, &Document, &InputPreproces
 
 					layerdata.translation += center;
 					layerdata.scale *= new_scale;
+					responses.push_back(FrontendMessage::SetCanvasZoom { new_zoom: layerdata.scale }.into());
 					self.create_document_transform_from_layerdata(layerdata, &ipp.viewport_size, responses);
 				}
 			}
