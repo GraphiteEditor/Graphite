@@ -7,7 +7,6 @@ use bitflags::bitflags;
 
 #[doc(inline)]
 pub use document_core::DocumentResponse;
-use glam::DVec2;
 
 #[impl_message(Message, InputPreprocessor)]
 #[derive(PartialEq, Clone, Debug)]
@@ -31,7 +30,7 @@ bitflags! {
 	}
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Hash)]
 pub struct InputPreprocessor {
 	pub keyboard: KeyStates,
 	pub mouse: MouseState,
@@ -78,7 +77,7 @@ impl MessageHandler<InputPreprocessorMessage, ()> for InputPreprocessor {
 				responses.push_back(
 					document_core::Operation::TransformLayer {
 						path: vec![],
-						transform: glam::DAffine2::from_translation(DVec2::new((size.x as f64 - self.viewport_size.x as f64) / 2., (size.y as f64 - self.viewport_size.y as f64) / 2.)).to_cols_array(),
+						transform: glam::DAffine2::from_translation((size.as_f64() - self.viewport_size.as_f64()) / 2.).to_cols_array(),
 					}
 					.into(),
 				);
@@ -137,7 +136,7 @@ mod test {
 	#[test]
 	fn process_action_mouse_move_handle_modifier_keys() {
 		let mut input_preprocessor = InputPreprocessor::default();
-		let message = InputPreprocessorMessage::MouseMove(ViewportPosition { x: 4, y: 809 }, ModifierKeys::ALT);
+		let message = InputPreprocessorMessage::MouseMove((4, 809).into(), ModifierKeys::ALT);
 		let mut responses = VecDeque::new();
 
 		input_preprocessor.process_action(message, (), &mut responses);

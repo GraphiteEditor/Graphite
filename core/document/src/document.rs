@@ -1,27 +1,26 @@
+use std::{
+	collections::hash_map::DefaultHasher,
+	hash::{Hash, Hasher},
+};
+
 use glam::{DAffine2, DVec2};
 
 use crate::{
-	layers::{self, style::PathStyle, Folder, Layer, LayerDataTypes, Line, PolyLine, Rect, Shape},
-	DocumentError, DocumentResponse, LayerId, Operation,
+	layers::{self, Folder, Layer, LayerData, LayerDataType, Shape},
+	DocumentError, DocumentResponse, LayerId, Operation, Quad,
 };
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct Document {
 	pub root: Layer,
-	pub work: Layer,
-	pub work_mount_path: Vec<LayerId>,
-	pub work_operations: Vec<Operation>,
-	pub work_mounted: bool,
+	pub hasher: DefaultHasher,
 }
 
 impl Default for Document {
 	fn default() -> Self {
 		Self {
-			root: Layer::new(LayerDataTypes::Folder(Folder::default()), DAffine2::IDENTITY.to_cols_array(), PathStyle::default()),
-			work: Layer::new(LayerDataTypes::Folder(Folder::default()), DAffine2::IDENTITY.to_cols_array(), PathStyle::default()),
-			work_mount_path: Vec::new(),
-			work_operations: Vec::new(),
-			work_mounted: false,
+			root: Layer::new(LayerDataType::Folder(Folder::default()), DAffine2::IDENTITY.to_cols_array()),
+			hasher: DefaultHasher::new(),
 		}
 	}
 }
@@ -32,146 +31,71 @@ fn split_path(path: &[LayerId]) -> Result<(&[LayerId], LayerId), DocumentError> 
 }
 
 impl Document {
-	/// Renders the layer graph with the root `path` as an SVG string.
-	/// This operation merges currently mounted folder and document_folder
-	/// contents together.
-	pub fn render(&mut self, path: &mut Vec<LayerId>, svg: &mut String) {
-		if !self.work_mount_path.as_slice().starts_with(path) {
-			self.layer_mut(path).unwrap().render();
-			path.pop();
-			return;
-		}
-		if path.as_slice() == self.work_mount_path {
-			// TODO: Handle if mounted in nested folders
-			let transform = self.document_folder(path).unwrap().transform;
-			self.document_folder_mut(path).unwrap().render_as_folder(svg);
-			self.work.transform = transform;
-			self.work.render_as_folder(svg);
-			path.pop();
-		}
-		let ids = self.folder(path).unwrap().layer_ids.clone();
-		for element in ids {
-			path.push(element);
-			self.render(path, svg);
-		}
-	}
-
 	/// Wrapper around render, that returns the whole document as a Response.
 	pub fn render_root(&mut self) -> String {
-		let mut svg = String::new();
-		self.render(&mut vec![], &mut svg);
-		svg
+		self.root.render(&mut vec![]);
+		self.root.cache.clone()
+	}
+
+	pub fn hash(&self) -> u64 {
+		self.hasher.finish()
 	}
 
 	/// Checks whether each layer under `path` intersects with the provided `quad` and adds all intersection layers as paths to `intersections`.
-	pub fn intersects_quad(&self, quad: [DVec2; 4], path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>) {
-		self.document_folder(path).unwrap().intersects_quad(quad, path, intersections);
+	pub fn intersects_quad(&self, quad: Quad, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>) {
+		self.layer(path).unwrap().intersects_quad(quad, path, intersections);
 	}
 
 	/// Checks whether each layer under the root path intersects with the provided `quad` and returns the paths to all intersecting layers.
-	pub fn intersects_quad_root(&self, quad: [DVec2; 4]) -> Vec<Vec<LayerId>> {
+	pub fn intersects_quad_root(&self, quad: Quad) -> Vec<Vec<LayerId>> {
 		let mut intersections = Vec::new();
 		self.intersects_quad(quad, &mut vec![], &mut intersections);
 		intersections
 	}
 
-	fn is_mounted(&self, mount_path: &[LayerId], path: &[LayerId]) -> bool {
-		path.starts_with(mount_path) && self.work_mounted
-	}
-
 	/// Returns a reference to the requested folder. Fails if the path does not exist,
 	/// or if the requested layer is not of type folder.
-	/// This function respects mounted folders and will thus not contain the layers already
-	/// present in the document if a temporary folder is mounted on top.
-	pub fn folder(&self, mut path: &[LayerId]) -> Result<&Folder, DocumentError> {
-		let mut root = self.root.as_folder()?;
-		if self.is_mounted(self.work_mount_path.as_slice(), path) {
-			path = &path[self.work_mount_path.len()..];
-			root = self.work.as_folder()?;
-		}
-		for id in path {
-			root = root.folder(*id).ok_or(DocumentError::LayerNotFound)?;
-		}
-		Ok(root)
-	}
-
-	/// Returns a mutable reference to the requested folder. Fails if the path does not exist,
-	/// or if the requested layer is not of type folder.
-	/// This function respects mounted folders and will thus not contain the layers already
-	/// present in the document if a temporary folder is mounted on top.
-	/// If you manually edit the folder you have to set the cache_dirty flag yourself.
-	pub fn folder_mut(&mut self, mut path: &[LayerId]) -> Result<&mut Folder, DocumentError> {
-		let mut root = if self.is_mounted(self.work_mount_path.as_slice(), path) {
-			path = &path[self.work_mount_path.len()..];
-			self.work.as_folder_mut()?
-		} else {
-			self.root.as_folder_mut()?
-		};
-		for id in path {
-			root = root.folder_mut(*id).ok_or(DocumentError::LayerNotFound)?;
-		}
-		Ok(root)
-	}
-
-	/// Returns a reference to the requested folder. Fails if the path does not exist,
-	/// or if the requested layer is not of type folder.
-	/// This function does **not** respect mounted folders and will always return the current
-	/// state of the document, disregarding any temporary modifications.
-	pub fn document_folder(&self, path: &[LayerId]) -> Result<&Layer, DocumentError> {
+	pub fn folder(&self, path: &[LayerId]) -> Result<&Folder, DocumentError> {
 		let mut root = &self.root;
 		for id in path {
 			root = root.as_folder()?.layer(*id).ok_or(DocumentError::LayerNotFound)?;
 		}
-		Ok(root)
+		root.as_folder()
 	}
 
 	/// Returns a mutable reference to the requested folder. Fails if the path does not exist,
 	/// or if the requested layer is not of type folder.
-	/// This function does **not** respect mounted folders and will always return the current
-	/// state of the document, disregarding any temporary modifications.
 	/// If you manually edit the folder you have to set the cache_dirty flag yourself.
-	pub fn document_folder_mut(&mut self, path: &[LayerId]) -> Result<&mut Layer, DocumentError> {
+	pub fn folder_mut(&mut self, path: &[LayerId]) -> Result<&mut Folder, DocumentError> {
 		let mut root = &mut self.root;
 		for id in path {
 			root = root.as_folder_mut()?.layer_mut(*id).ok_or(DocumentError::LayerNotFound)?;
 		}
-		Ok(root)
+		root.as_folder_mut()
 	}
 
-	/// Returns a reference to the layer or folder at the path. Does not return an error for root
-	pub fn document_layer(&self, path: &[LayerId]) -> Result<&Layer, DocumentError> {
+	/// Returns a reference to the layer or folder at the path.
+	pub fn layer(&self, path: &[LayerId]) -> Result<&Layer, DocumentError> {
 		if path.is_empty() {
 			return Ok(&self.root);
 		}
 		let (path, id) = split_path(path)?;
-		self.document_folder(path)?.as_folder()?.layer(id).ok_or(DocumentError::LayerNotFound)
+		self.folder(path)?.layer(id).ok_or(DocumentError::LayerNotFound)
 	}
 
-	/// Returns a mutable reference to the layer or folder at the path. Does not return an error for root
-	pub fn document_layer_mut(&mut self, path: &[LayerId]) -> Result<&mut Layer, DocumentError> {
+	/// Returns a mutable reference to the layer or folder at the path.
+	pub fn layer_mut(&mut self, path: &[LayerId]) -> Result<&mut Layer, DocumentError> {
 		if path.is_empty() {
 			return Ok(&mut self.root);
 		}
 		let (path, id) = split_path(path)?;
-		self.document_folder_mut(path)?.as_folder_mut()?.layer_mut(id).ok_or(DocumentError::LayerNotFound)
-	}
-
-	/// Returns a reference to the layer struct at the specified `path`.
-	pub fn layer(&self, path: &[LayerId]) -> Result<&Layer, DocumentError> {
-		let (path, id) = split_path(path)?;
-		self.folder(path)?.layer(id).ok_or(DocumentError::LayerNotFound)
+		self.folder_mut(path)?.layer_mut(id).ok_or(DocumentError::LayerNotFound)
 	}
 
 	/// Given a path to a layer, returns a vector of the indices in the layer tree
 	/// These indices can be used to order a list of layers
-	pub fn indices_for_path(&self, mut path: &[LayerId]) -> Result<Vec<usize>, DocumentError> {
-		let mut root = if self.is_mounted(self.work_mount_path.as_slice(), path) {
-			path = &path[self.work_mount_path.len()..];
-			&self.work
-		} else {
-			&self.root
-		}
-		.as_folder()?;
+	pub fn indices_for_path(&self, path: &[LayerId]) -> Result<Vec<usize>, DocumentError> {
+		let mut root = self.root.as_folder()?;
 		let mut indices = vec![];
 		let (path, layer_id) = split_path(path)?;
 
@@ -186,62 +110,72 @@ impl Document {
 		Ok(indices)
 	}
 
-	/// Returns a mutable reference to the layer struct at the specified `path`.
-	/// If you manually edit the layer you have to set the cache_dirty flag yourself.
-	pub fn layer_mut(&mut self, path: &[LayerId]) -> Result<&mut Layer, DocumentError> {
-		let (path, id) = split_path(path)?;
-		self.folder_mut(path)?.layer_mut(id).ok_or(DocumentError::LayerNotFound)
-	}
-
 	/// Replaces the layer at the specified `path` with `layer`.
-	pub fn set_layer(&mut self, path: &[LayerId], layer: Layer) -> Result<(), DocumentError> {
+	pub fn set_layer(&mut self, path: &[LayerId], layer: Layer, insert_index: isize) -> Result<(), DocumentError> {
 		let mut folder = self.root.as_folder_mut()?;
+		let mut layer_id = None;
 		if let Ok((path, id)) = split_path(path) {
-			self.layer_mut(path)?.cache_dirty = true;
+			layer_id = Some(id);
+			self.mark_as_dirty(path)?;
 			folder = self.folder_mut(path)?;
 			if let Some(folder_layer) = folder.layer_mut(id) {
 				*folder_layer = layer;
 				return Ok(());
 			}
 		}
-		folder.add_layer(layer, -1).ok_or(DocumentError::IndexOutOfBounds)?;
+		folder.add_layer(layer, layer_id, insert_index).ok_or(DocumentError::IndexOutOfBounds)?;
 		Ok(())
 	}
 
 	/// Adds a new layer to the folder specified by `path`.
 	/// Passing a negative `insert_index` indexes relative to the end.
 	/// -1 is equivalent to adding the layer to the top.
-	pub fn add_layer(&mut self, path: &[LayerId], mut layer: Layer, insert_index: isize) -> Result<LayerId, DocumentError> {
-		layer.render();
+	pub fn add_layer(&mut self, path: &[LayerId], layer: Layer, insert_index: isize) -> Result<LayerId, DocumentError> {
 		let folder = self.folder_mut(path)?;
-		folder.add_layer(layer, insert_index).ok_or(DocumentError::IndexOutOfBounds)
+		folder.add_layer(layer, None, insert_index).ok_or(DocumentError::IndexOutOfBounds)
 	}
 
 	/// Deletes the layer specified by `path`.
 	pub fn delete(&mut self, path: &[LayerId]) -> Result<(), DocumentError> {
 		let (path, id) = split_path(path)?;
-		let _ = self.layer_mut(path).map(|x| x.cache_dirty = true);
-		self.document_folder_mut(path)?.as_folder_mut()?.remove_layer(id)
+		self.mark_as_dirty(path)?;
+		self.folder_mut(path)?.remove_layer(id)
 	}
 
-	pub fn layer_axis_aligned_bounding_box(&self, path: &[LayerId]) -> Result<Option<[DVec2; 2]>, DocumentError> {
-		// TODO: Replace with functions of the transform api
-		if path.is_empty() {
-			// Special case for root. Root's local is the documents global, so we avoid transforming its transform by itself.
-			self.layer_local_bounding_box(path)
-		} else {
-			let layer = self.document_layer(path)?;
-			Ok(layer.bounding_box(self.root.transform * layer.transform, layer.style))
+	pub fn visible_layers(&self, path: &mut Vec<LayerId>, paths: &mut Vec<Vec<LayerId>>) -> Result<(), DocumentError> {
+		if !self.layer(path)?.visible {
+			return Ok(());
 		}
+		if let Ok(folder) = self.folder(path) {
+			for layer in folder.layer_ids.iter() {
+				path.push(*layer);
+				self.visible_layers(path, paths)?;
+				path.pop();
+			}
+		} else {
+			paths.push(path.clone());
+		}
+		Ok(())
 	}
 
-	pub fn layer_local_bounding_box(&self, path: &[LayerId]) -> Result<Option<[DVec2; 2]>, DocumentError> {
-		// TODO: Replace with functions of the transform api
-		let layer = self.document_layer(path)?;
-		Ok(layer.bounding_box(layer.transform, layer.style))
+	pub fn viewport_bounding_box(&self, path: &[LayerId]) -> Result<Option<[DVec2; 2]>, DocumentError> {
+		let layer = self.layer(path)?;
+		let transform = self.multiply_transforms(path)?;
+		Ok(layer.data.bounding_box(transform))
 	}
 
-	fn mark_as_dirty(&mut self, path: &[LayerId]) -> Result<(), DocumentError> {
+	pub fn visible_layers_bounding_box(&self) -> Option<[DVec2; 2]> {
+		let mut paths = vec![];
+		self.visible_layers(&mut vec![], &mut paths).ok()?;
+		self.combined_viewport_bounding_box(paths.iter().map(|x| x.as_slice()))
+	}
+
+	pub fn combined_viewport_bounding_box<'a>(&self, paths: impl Iterator<Item = &'a [LayerId]>) -> Option<[DVec2; 2]> {
+		let boxes = paths.filter_map(|path| self.viewport_bounding_box(path).ok()?);
+		boxes.reduce(|a, b| [a[0].min(b[0]), a[1].max(b[1])])
+	}
+
+	pub fn mark_upstream_as_dirty(&mut self, path: &[LayerId]) -> Result<(), DocumentError> {
 		let mut root = &mut self.root;
 		root.cache_dirty = true;
 		for id in path {
@@ -251,37 +185,114 @@ impl Document {
 		Ok(())
 	}
 
-	fn working_paths(&mut self) -> Vec<Vec<LayerId>> {
-		self.work
-			.as_folder()
-			.unwrap()
-			.layer_ids
-			.iter()
-			.map(|id| self.work_mount_path.iter().chain([*id].iter()).cloned().collect())
-			.collect()
+	pub fn mark_downstream_as_dirty(&mut self, path: &[LayerId]) -> Result<(), DocumentError> {
+		let mut layer = self.layer_mut(path)?;
+		layer.cache_dirty = true;
+
+		let mut path = path.to_vec();
+		let len = path.len();
+		path.push(0);
+
+		if let Some(ids) = layer.as_folder().ok().map(|f| f.layer_ids.clone()) {
+			for id in ids {
+				path[len] = id;
+				self.mark_downstream_as_dirty(&path)?
+			}
+		}
+		Ok(())
+	}
+
+	pub fn mark_as_dirty(&mut self, path: &[LayerId]) -> Result<(), DocumentError> {
+		self.mark_downstream_as_dirty(path)?;
+		self.mark_upstream_as_dirty(path)?;
+		Ok(())
+	}
+
+	pub fn transforms(&self, path: &[LayerId]) -> Result<Vec<DAffine2>, DocumentError> {
+		let mut root = &self.root;
+		let mut transforms = vec![self.root.transform];
+		for id in path {
+			if let Ok(folder) = root.as_folder() {
+				root = folder.layer(*id).ok_or(DocumentError::LayerNotFound)?;
+			}
+			transforms.push(root.transform);
+		}
+		Ok(transforms)
+	}
+
+	pub fn multiply_transforms(&self, path: &[LayerId]) -> Result<DAffine2, DocumentError> {
+		let mut root = &self.root;
+		let mut trans = self.root.transform;
+		for id in path {
+			if let Ok(folder) = root.as_folder() {
+				root = folder.layer(*id).ok_or(DocumentError::LayerNotFound)?;
+			}
+			trans = trans * root.transform;
+		}
+		Ok(trans)
+	}
+
+	pub fn generate_transform_across_scope(&self, from: &[LayerId], to: Option<DAffine2>) -> Result<DAffine2, DocumentError> {
+		let from_rev = self.multiply_transforms(from)?;
+		let scope = to.unwrap_or(DAffine2::IDENTITY);
+		Ok(scope * from_rev)
+	}
+
+	pub fn transform_relative_to_scope(&mut self, layer: &[LayerId], scope: Option<DAffine2>, transform: DAffine2) -> Result<(), DocumentError> {
+		let to = self.generate_transform_across_scope(&layer[..layer.len() - 1], scope)?;
+		let layer = self.layer_mut(layer)?;
+		layer.transform = to.inverse() * transform * to * layer.transform;
+		Ok(())
+	}
+
+	pub fn set_transform_relative_to_scope(&mut self, layer: &[LayerId], scope: Option<DAffine2>, transform: DAffine2) -> Result<(), DocumentError> {
+		let to = self.generate_transform_across_scope(&layer[..layer.len() - 1], scope)?;
+		let layer = self.layer_mut(layer)?;
+		layer.transform = to.inverse() * transform;
+		Ok(())
+	}
+
+	pub fn apply_transform_relative_to_viewport(&mut self, layer: &[LayerId], transform: DAffine2) -> Result<(), DocumentError> {
+		self.transform_relative_to_scope(layer, None, transform)
+	}
+
+	pub fn set_transform_relative_to_viewport(&mut self, layer: &[LayerId], transform: DAffine2) -> Result<(), DocumentError> {
+		self.set_transform_relative_to_scope(layer, None, transform)
 	}
 
 	/// Mutate the document by applying the `operation` to it. If the operation necessitates a
 	/// reaction from the frontend, responses may be returned.
-	pub fn handle_operation(&mut self, operation: Operation) -> Result<Option<Vec<DocumentResponse>>, DocumentError> {
+	pub fn handle_operation(&mut self, operation: &Operation) -> Result<Option<Vec<DocumentResponse>>, DocumentError> {
+		operation.pseudo_hash().hash(&mut self.hasher);
+
 		let responses = match &operation {
 			Operation::AddEllipse { path, insert_index, transform, style } => {
-				let id = self.add_layer(&path, Layer::new(LayerDataTypes::Ellipse(layers::Ellipse::new()), *transform, *style), *insert_index)?;
-				let path = [path.clone(), vec![id]].concat();
-
-				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::CreatedLayer { path }])
+				self.set_layer(path, Layer::new(LayerDataType::Shape(Shape::ellipse(*style)), *transform), *insert_index)?;
+				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::CreatedLayer { path: path.clone() }])
 			}
 			Operation::AddRect { path, insert_index, transform, style } => {
-				let id = self.add_layer(&path, Layer::new(LayerDataTypes::Rect(Rect), *transform, *style), *insert_index)?;
-				let path = [path.clone(), vec![id]].concat();
-
-				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::CreatedLayer { path }])
+				self.set_layer(path, Layer::new(LayerDataType::Shape(Shape::rectangle(*style)), *transform), *insert_index)?;
+				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::CreatedLayer { path: path.clone() }])
+			}
+			Operation::AddBoundingBox { path, transform, style } => {
+				let mut rect = Shape::rectangle(*style);
+				rect.render_index = -1;
+				self.set_layer(path, Layer::new(LayerDataType::Shape(rect), *transform), -1)?;
+				Some(vec![DocumentResponse::DocumentChanged])
+			}
+			Operation::AddShape {
+				path,
+				insert_index,
+				transform,
+				style,
+				sides,
+			} => {
+				self.set_layer(path, Layer::new(LayerDataType::Shape(Shape::shape(*sides, *style)), *transform), *insert_index)?;
+				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::CreatedLayer { path: path.clone() }])
 			}
 			Operation::AddLine { path, insert_index, transform, style } => {
-				let id = self.add_layer(&path, Layer::new(LayerDataTypes::Line(Line), *transform, *style), *insert_index)?;
-				let path = [path.clone(), vec![id]].concat();
-
-				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::CreatedLayer { path }])
+				self.set_layer(path, Layer::new(LayerDataType::Shape(Shape::line(*style)), *transform), *insert_index)?;
+				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::CreatedLayer { path: path.clone() }])
 			}
 			Operation::AddPen {
 				path,
@@ -291,27 +302,11 @@ impl Document {
 				style,
 			} => {
 				let points: Vec<glam::DVec2> = points.iter().map(|&it| it.into()).collect();
-				let polyline = PolyLine::new(points);
-				let id = self.add_layer(&path, Layer::new(LayerDataTypes::PolyLine(polyline), *transform, *style), *insert_index)?;
-				let path = [path.clone(), vec![id]].concat();
-				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::CreatedLayer { path }])
-			}
-			Operation::AddShape {
-				path,
-				insert_index,
-				transform,
-				equal_sides,
-				sides,
-				style,
-			} => {
-				let s = Shape::new(*equal_sides, *sides);
-				let id = self.add_layer(&path, Layer::new(LayerDataTypes::Shape(s), *transform, *style), *insert_index)?;
-				let path = [path.clone(), vec![id]].concat();
-
-				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::CreatedLayer { path }])
+				self.set_layer(path, Layer::new(LayerDataType::Shape(Shape::poly_line(points, *style)), *transform), *insert_index)?;
+				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::CreatedLayer { path: path.clone() }])
 			}
 			Operation::DeleteLayer { path } => {
-				self.delete(&path)?;
+				self.delete(path)?;
 
 				let (folder, _) = split_path(path.as_slice()).unwrap_or_else(|_| (&[], 0));
 				Some(vec![
@@ -322,9 +317,9 @@ impl Document {
 			}
 			Operation::PasteLayer { path, layer, insert_index } => {
 				let folder = self.folder_mut(path)?;
-				//FIXME: This clone of layer should be avoided somehow
-				let id = folder.add_layer(layer.clone(), *insert_index).ok_or(DocumentError::IndexOutOfBounds)?;
+				let id = folder.add_layer(layer.clone(), None, *insert_index).ok_or(DocumentError::IndexOutOfBounds)?;
 				let full_path = [path.clone(), vec![id]].concat();
+				self.mark_as_dirty(&full_path)?;
 
 				Some(vec![
 					DocumentResponse::DocumentChanged,
@@ -333,111 +328,91 @@ impl Document {
 				])
 			}
 			Operation::DuplicateLayer { path } => {
-				let layer = self.layer(&path)?.clone();
+				let layer = self.layer(path)?.clone();
 				let (folder_path, _) = split_path(path.as_slice()).unwrap_or_else(|_| (&[], 0));
 				let folder = self.folder_mut(folder_path)?;
-				folder.add_layer(layer, -1).ok_or(DocumentError::IndexOutOfBounds)?;
+				folder.add_layer(layer, None, -1).ok_or(DocumentError::IndexOutOfBounds)?;
+				self.mark_as_dirty(&path[..path.len() - 1])?;
 				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::FolderChanged { path: folder_path.to_vec() }])
 			}
+			Operation::RenameLayer { path, name } => {
+				self.layer_mut(path)?.name = Some(name.clone());
+				Some(vec![DocumentResponse::LayerChanged { path: path.clone() }])
+			}
 			Operation::AddFolder { path } => {
-				self.set_layer(&path, Layer::new(LayerDataTypes::Folder(Folder::default()), DAffine2::IDENTITY.to_cols_array(), PathStyle::default()))?;
+				self.set_layer(path, Layer::new(LayerDataType::Folder(Folder::default()), DAffine2::IDENTITY.to_cols_array()), -1)?;
 
 				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::FolderChanged { path: path.clone() }])
 			}
-			Operation::MountWorkingFolder { path } => {
-				let mut responses: Vec<_> = self.working_paths().into_iter().map(|path| DocumentResponse::DeletedLayer { path }).collect();
-				self.work_mount_path = path.clone();
-				self.work_operations.clear();
-				self.work = Layer::new(LayerDataTypes::Folder(Folder::default()), DAffine2::IDENTITY.to_cols_array(), PathStyle::default());
-				self.work_mounted = true;
-				responses.push(DocumentResponse::DocumentChanged);
-				Some(responses)
-			}
 			Operation::TransformLayer { path, transform } => {
-				let layer = self.document_layer_mut(path).unwrap();
-				let transform = DAffine2::from_cols_array(&transform) * layer.transform;
+				let layer = self.layer_mut(path).unwrap();
+				let transform = DAffine2::from_cols_array(transform) * layer.transform;
 				layer.transform = transform;
-				layer.cache_dirty = true;
-				self.root.cache_dirty = true;
+				self.mark_as_dirty(path)?;
 				Some(vec![DocumentResponse::DocumentChanged])
+			}
+			Operation::TransformLayerInViewport { path, transform } => {
+				let transform = DAffine2::from_cols_array(transform);
+				self.apply_transform_relative_to_viewport(path, transform)?;
+				self.mark_as_dirty(path)?;
+				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::LayerChanged { path: path.clone() }])
+			}
+			Operation::SetLayerTransformInViewport { path, transform } => {
+				let transform = DAffine2::from_cols_array(transform);
+				self.set_transform_relative_to_viewport(path, transform)?;
+				self.mark_as_dirty(path)?;
+				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::LayerChanged { path: path.clone() }])
+			}
+			Operation::TransformLayerInScope { path, transform, scope } => {
+				let transform = DAffine2::from_cols_array(transform);
+				let scope = DAffine2::from_cols_array(scope);
+				self.transform_relative_to_scope(path, Some(scope), transform)?;
+				self.mark_as_dirty(path)?;
+				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::LayerChanged { path: path.clone() }])
+			}
+			Operation::SetLayerTransformInScope { path, transform, scope } => {
+				let transform = DAffine2::from_cols_array(transform);
+				let scope = DAffine2::from_cols_array(scope);
+				self.set_transform_relative_to_scope(path, Some(scope), transform)?;
+				self.mark_as_dirty(path)?;
+				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::LayerChanged { path: path.clone() }])
 			}
 			Operation::SetLayerTransform { path, transform } => {
-				let transform = DAffine2::from_cols_array(&transform);
-				let layer = self.document_layer_mut(path).unwrap();
+				let transform = DAffine2::from_cols_array(transform);
+				let layer = self.layer_mut(path)?;
 				layer.transform = transform;
-				layer.cache_dirty = true;
-				Some(vec![DocumentResponse::DocumentChanged])
-			}
-			Operation::DiscardWorkingFolder => {
-				let mut responses: Vec<_> = self.working_paths().into_iter().map(|path| DocumentResponse::DeletedLayer { path }).collect();
-				self.work_operations.clear();
-				self.work_mount_path = vec![];
-				self.work = Layer::new(LayerDataTypes::Folder(Folder::default()), DAffine2::IDENTITY.to_cols_array(), PathStyle::default());
-				self.work_mounted = false;
-				responses.push(DocumentResponse::DocumentChanged);
-				Some(responses)
-			}
-			Operation::ClearWorkingFolder => {
-				let mut responses: Vec<_> = self.working_paths().into_iter().map(|path| DocumentResponse::DeletedLayer { path }).collect();
-				self.work_operations.clear();
-				self.work = Layer::new(LayerDataTypes::Folder(Folder::default()), DAffine2::IDENTITY.to_cols_array(), PathStyle::default());
-				responses.push(DocumentResponse::DocumentChanged);
-				Some(responses)
-			}
-			Operation::CommitTransaction => {
-				let mut responses: Vec<_> = self.working_paths().into_iter().map(|path| DocumentResponse::DeletedLayer { path }).collect();
-				let mut ops = Vec::new();
-				let mut path: Vec<LayerId> = vec![];
-				std::mem::swap(&mut path, &mut self.work_mount_path);
-				std::mem::swap(&mut ops, &mut self.work_operations);
-				self.work_mounted = false;
-				self.work_mount_path = vec![];
-				self.work = Layer::new(LayerDataTypes::Folder(Folder::default()), DAffine2::IDENTITY.to_cols_array(), PathStyle::default());
-				for operation in ops.into_iter() {
-					if let Some(mut op_responses) = self.handle_operation(operation)? {
-						responses.append(&mut op_responses);
-					}
-				}
-				responses.extend(vec![DocumentResponse::DocumentChanged, DocumentResponse::FolderChanged { path }]);
-
-				Some(responses)
+				self.mark_as_dirty(path)?;
+				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::LayerChanged { path: path.clone() }])
 			}
 			Operation::ToggleVisibility { path } => {
-				if let Ok(layer) = self.layer_mut(&path) {
+				self.mark_as_dirty(path)?;
+				if let Ok(layer) = self.layer_mut(path) {
 					layer.visible = !layer.visible;
-					layer.cache_dirty = true;
 				}
-				let path = path.as_slice()[..path.len() - 1].to_vec();
-				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::FolderChanged { path }])
+				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::LayerChanged { path: path.clone() }])
 			}
 			Operation::SetLayerBlendMode { path, blend_mode } => {
 				self.mark_as_dirty(path)?;
 				self.layer_mut(path)?.blend_mode = *blend_mode;
 
-				let path = path.as_slice()[..path.len() - 1].to_vec();
-
-				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::FolderChanged { path }])
+				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::LayerChanged { path: path.clone() }])
 			}
 			Operation::SetLayerOpacity { path, opacity } => {
 				self.mark_as_dirty(path)?;
 				self.layer_mut(path)?.opacity = *opacity;
 
-				let path = path.as_slice()[..path.len() - 1].to_vec();
-
-				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::FolderChanged { path }])
+				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::LayerChanged { path: path.clone() }])
 			}
 			Operation::FillLayer { path, color } => {
-				self.layer_mut(path)?.style.set_fill(layers::style::Fill::new(*color));
+				let layer = self.layer_mut(path)?;
+				match &mut layer.data {
+					LayerDataType::Shape(s) => s.style.set_fill(layers::style::Fill::new(*color)),
+					_ => return Err(DocumentError::NotAShape),
+				}
 				self.mark_as_dirty(path)?;
-				Some(vec![DocumentResponse::DocumentChanged])
+				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::LayerChanged { path: path.clone() }])
 			}
 		};
-		if !matches!(
-			operation,
-			Operation::CommitTransaction | Operation::MountWorkingFolder { .. } | Operation::DiscardWorkingFolder | Operation::ClearWorkingFolder
-		) {
-			self.work_operations.push(operation);
-		}
 		Ok(responses)
 	}
 }

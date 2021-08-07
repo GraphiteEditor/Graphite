@@ -34,11 +34,7 @@
 
 				<Separator :type="SeparatorType.Unrelated" />
 
-				<RadioInput @update:index="viewModeChanged" v-model:index="viewModeIndex">
-					<IconButton :action="() => {}" :icon="'ViewModeNormal'" :size="24" title="View Mode: Normal" />
-					<IconButton :action="() => comingSoon(319)" :icon="'ViewModeOutline'" :size="24" title="View Mode: Outline" />
-					<IconButton :action="() => comingSoon(320)" :icon="'ViewModePixels'" :size="24" title="View Mode: Pixels" />
-				</RadioInput>
+				<RadioInput :entries="viewModeEntries" v-model:selectedIndex="viewModeIndex" />
 				<PopoverButton>
 					<h3>View Mode</h3>
 					<p>More view mode options will be here</p>
@@ -228,7 +224,7 @@ import PersistentScrollbar, { ScrollbarDirection } from "@/components/widgets/sc
 import CanvasRuler, { RulerDirection } from "@/components/widgets/rulers/CanvasRuler.vue";
 import IconButton from "@/components/widgets/buttons/IconButton.vue";
 import PopoverButton from "@/components/widgets/buttons/PopoverButton.vue";
-import RadioInput from "@/components/widgets/inputs/RadioInput.vue";
+import RadioInput, { RadioEntries } from "@/components/widgets/inputs/RadioInput.vue";
 import NumberInput, { IncrementDirection } from "@/components/widgets/inputs/NumberInput.vue";
 import DropdownInput from "@/components/widgets/inputs/DropdownInput.vue";
 import OptionalInput from "@/components/widgets/inputs/OptionalInput.vue";
@@ -238,9 +234,14 @@ import { SectionsOfMenuListEntries } from "@/components/widgets/floating-menus/M
 const documentModeEntries: SectionsOfMenuListEntries = [
 	[
 		{ label: "Design Mode", icon: "ViewportDesignMode" },
-		{ label: "Select Mode", icon: "ViewportSelectMode" },
-		{ label: "Guide Mode", icon: "ViewportGuideMode" },
+		{ label: "Select Mode", icon: "ViewportSelectMode", action: () => comingSoon(330) },
+		{ label: "Guide Mode", icon: "ViewportGuideMode", action: () => comingSoon(331) },
 	],
+];
+const viewModeEntries: RadioEntries = [
+	{ value: "normal", icon: "ViewModeNormal", tooltip: "View Mode: Normal" },
+	{ value: "outline", icon: "ViewModeOutline", tooltip: "View Mode: Outline", action: () => comingSoon(319) },
+	{ value: "pixels", icon: "ViewModePixels", tooltip: "View Mode: Pixels", action: () => comingSoon(320) },
 ];
 
 const wasm = import("@/../wasm/pkg");
@@ -293,12 +294,6 @@ export default defineComponent({
 		async selectTool(toolName: string) {
 			const { select_tool } = await wasm;
 			select_tool(toolName);
-		},
-		async viewModeChanged(toolIndex: number) {
-			function todo(_: number) {
-				return _;
-			}
-			todo(toolIndex);
 		},
 		async swapWorkingColors() {
 			const { swap_colors } = await wasm;
@@ -361,6 +356,7 @@ export default defineComponent({
 			canvasSvgHeight: "100%",
 			activeTool: "Select",
 			documentModeEntries,
+			viewModeEntries,
 			documentModeSelectionIndex: 0,
 			viewModeIndex: 0,
 			snappingEnabled: true,

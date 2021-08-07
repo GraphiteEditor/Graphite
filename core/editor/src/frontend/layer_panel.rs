@@ -1,8 +1,5 @@
 use crate::document::LayerData;
-use document_core::{
-	layers::{BlendMode, LayerDataTypes},
-	LayerId,
-};
+use document_core::layers::{BlendMode, LayerDataType};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
@@ -14,7 +11,8 @@ pub struct LayerPanelEntry {
 	pub opacity: f64,
 	pub layer_type: LayerType,
 	pub layer_data: LayerData,
-	pub path: Vec<LayerId>,
+	// TODO: instead of turning the u64 into (u32, u32)s here, do that in the wasm wrapper
+	pub path: Vec<(u32, u32)>,
 	pub thumbnail: String,
 }
 
@@ -22,11 +20,6 @@ pub struct LayerPanelEntry {
 pub enum LayerType {
 	Folder,
 	Shape,
-	Circle,
-	Rect,
-	Line,
-	PolyLine,
-	Ellipse,
 }
 
 impl fmt::Display for LayerType {
@@ -34,27 +27,18 @@ impl fmt::Display for LayerType {
 		let name = match self {
 			LayerType::Folder => "Folder",
 			LayerType::Shape => "Shape",
-			LayerType::Rect => "Rectangle",
-			LayerType::Line => "Line",
-			LayerType::Circle => "Circle",
-			LayerType::PolyLine => "Polyline",
-			LayerType::Ellipse => "Ellipse",
 		};
 
 		formatter.write_str(name)
 	}
 }
 
-impl From<&LayerDataTypes> for LayerType {
-	fn from(data: &LayerDataTypes) -> Self {
-		use LayerDataTypes::*;
+impl From<&LayerDataType> for LayerType {
+	fn from(data: &LayerDataType) -> Self {
+		use LayerDataType::*;
 		match data {
 			Folder(_) => LayerType::Folder,
 			Shape(_) => LayerType::Shape,
-			Rect(_) => LayerType::Rect,
-			Line(_) => LayerType::Line,
-			PolyLine(_) => LayerType::PolyLine,
-			Ellipse(_) => LayerType::Ellipse,
 		}
 	}
 }

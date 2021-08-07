@@ -9,6 +9,7 @@ pub enum DocumentResponse {
 	FolderChanged { path: Vec<LayerId> },
 	CreatedLayer { path: Vec<LayerId> },
 	DeletedLayer { path: Vec<LayerId> },
+	LayerChanged { path: Vec<LayerId> },
 }
 
 impl fmt::Display for DocumentResponse {
@@ -17,6 +18,7 @@ impl fmt::Display for DocumentResponse {
 			DocumentResponse::DocumentChanged { .. } => "DocumentChanged",
 			DocumentResponse::FolderChanged { .. } => "FolderChanged",
 			DocumentResponse::CreatedLayer { .. } => "CreatedLayer",
+			DocumentResponse::LayerChanged { .. } => "LayerChanged",
 			DocumentResponse::DeletedLayer { .. } => "DeleteLayer",
 		};
 
