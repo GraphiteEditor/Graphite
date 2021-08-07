@@ -122,11 +122,11 @@
 						</div>
 					</LayoutCol>
 					<LayoutCol :class="'bar-area'">
-						<PersistentScrollbar :direction="ScrollbarDirection.Vertical" :class="'right-scrollbar'" />
+						<PersistentScrollbar :direction="ScrollbarDirection.Vertical" v-model:handlePosition="scrollbarYPos" v-model:handleLength="scrollbarYSize" :class="'right-scrollbar'" />
 					</LayoutCol>
 				</LayoutRow>
 				<LayoutRow :class="'bar-area'">
-					<PersistentScrollbar :direction="ScrollbarDirection.Horizontal" :class="'bottom-scrollbar'" />
+					<PersistentScrollbar :direction="ScrollbarDirection.Horizontal" v-model:handlePosition="scrollbarXPos" v-model:handleLength="scrollbarXSize" :class="'bottom-scrollbar'" />
 				</LayoutRow>
 			</LayoutCol>
 		</LayoutRow>
@@ -210,7 +210,7 @@
 import { defineComponent } from "vue";
 
 import { makeModifiersBitfield } from "@/utilities/input";
-import { ResponseType, registerResponseHandler, Response, UpdateCanvas, SetActiveTool, ExportDocument, SetCanvasZoom, SetCanvasRotation } from "@/utilities/response-handler";
+import { ResponseType, registerResponseHandler, Response, UpdateCanvas, UpdateScrollbars, SetActiveTool, ExportDocument, SetCanvasZoom, SetCanvasRotation } from "@/utilities/response-handler";
 import { SeparatorDirection, SeparatorType } from "@/components/widgets/widgets";
 import comingSoon from "@/utilities/coming-soon";
 
@@ -320,6 +320,25 @@ export default defineComponent({
 			const updateData = responseData as UpdateCanvas;
 			if (updateData) this.viewportSvg = updateData.document;
 		});
+		registerResponseHandler(ResponseType.UpdateScrollbars, (responseData: Response) => {
+			const updateData = responseData as UpdateScrollbars;
+			if (updateData) {
+				const span = { x: Math.abs(updateData.bounds.bottomX - updateData.bounds.topX), y: Math.abs(updateData.bounds.bottomY - updateData.bounds.topY) };
+				const min = { x: Math.min(updateData.bounds.bottomX, updateData.bounds.topX), y: Math.min(updateData.bounds.bottomY, updateData.bounds.topY) };
+				if (span.x < updateData.viewport_size.x) {
+					this.scrollbarXSize = 1;
+				} else {
+					this.scrollbarXPos = -min.x / (span.x - updateData.viewport_size.x);
+					this.scrollbarXSize = updateData.viewport_size.x / span.x;
+				}
+				if (span.y < updateData.viewport_size.y) {
+					this.scrollbarYSize = 1;
+				} else {
+					this.scrollbarYPos = -min.y / (span.y - updateData.viewport_size.y);
+					this.scrollbarYSize = updateData.viewport_size.y / span.y;
+				}
+			}
+		});
 		registerResponseHandler(ResponseType.ExportDocument, (responseData: Response) => {
 			const updateData = responseData as ExportDocument;
 			if (updateData) this.download("canvas.svg", updateData.document);
@@ -364,6 +383,10 @@ export default defineComponent({
 			overlaysEnabled: true,
 			documentRotation: 0,
 			documentZoom: 100,
+			scrollbarXPos: 0,
+			scrollbarXSize: 1,
+			scrollbarYPos: 0,
+			scrollbarYSize: 1,
 			IncrementDirection,
 			MenuDirection,
 			SeparatorDirection,

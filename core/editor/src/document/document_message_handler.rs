@@ -119,12 +119,22 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 						}
 						.into(),
 					);
-					responses.push_back(
+					responses.extend([
 						FrontendMessage::UpdateCanvas {
 							document: self.active_document_mut().document.render_root(),
 						}
 						.into(),
-					);
+						FrontendMessage::UpdateScrollbars {
+							bounds: {
+								let bounds = self.active_document_mut().document.visible_layers_bounding_box();
+								let bounds = bounds.unwrap_or([glam::DVec2::ZERO, glam::DVec2::ZERO]);
+								[bounds[0].x, bounds[0].y, bounds[1].x, bounds[1].y]
+							},
+							position: self.active_document_mut().document.root.transform.translation.into(),
+							viewport_size: ipp.viewport_size.as_f64().into(),
+						}
+						.into(),
+					]);
 				}
 				// Active doc will move one space to the left
 				else if id < self.active_document_index {

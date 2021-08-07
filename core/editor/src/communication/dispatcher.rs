@@ -27,6 +27,7 @@ impl Dispatcher {
 				| Message::InputMapper(_)
 				| Message::Documents(DocumentsMessage::Document(DocumentMessage::RenderDocument))
 				| Message::Frontend(FrontendMessage::UpdateCanvas { .. })
+				| Message::Frontend(FrontendMessage::UpdateScrollbars { .. })
 				| Message::Frontend(FrontendMessage::SetCanvasZoom { .. })
 				| Message::Frontend(FrontendMessage::SetCanvasRotation { .. })
 				| Message::Documents(DocumentsMessage::Document(DocumentMessage::DispatchOperation { .. }))

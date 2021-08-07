@@ -372,12 +372,23 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				Err(e) => log::error!("DocumentError: {:?}", e),
 				Ok(_) => (),
 			},
-			RenderDocument => responses.push_back(
+			RenderDocument => responses.extend([
 				FrontendMessage::UpdateCanvas {
 					document: self.document.render_root(),
 				}
 				.into(),
-			),
+				FrontendMessage::UpdateScrollbars {
+					bounds: {
+						let bounds = self.active_document_mut().document.visible_layers_bounding_box();
+						let bounds = bounds.unwrap_or([glam::DVec2::ZERO, glam::DVec2::ZERO]);
+						[bounds[0].x, bounds[0].y, bounds[1].x, bounds[1].y]
+					},
+					position: self.document.root.transform.translation.into(),
+					viewport_size: ipp.viewport_size.as_f64().into(),
+				}
+				.into(),
+			]),
+
 			NudgeSelectedLayers(x, y) => {
 				for path in self.selected_layers().cloned() {
 					let operation = DocumentOperation::TransformLayerInViewport {
