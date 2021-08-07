@@ -57,7 +57,7 @@ Contributions welcome! If you think of something Graphite would be great for, su
 - Removing translucent watermarks that were applied in the same location to a batch of photos by finding their shared similarities and differences and using that as a subtraction diff
 
 ## Game development
-- Design a GUI for the game and use the Graphite Renderer Core Library to render the in-game GUI textures at runtime at the desired resolution without scaling problems, or even render it live as data updates its state
+- Design a GUI for the game and use Charcoal to render the in-game GUI textures at runtime at the desired resolution without scaling problems, or even render it live as data updates its state
 - Authoring procedural noise-based textures and PBR materials
 
 ## Data visualization

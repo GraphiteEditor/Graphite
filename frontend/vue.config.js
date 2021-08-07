@@ -1,0 +1,30 @@
+/* eslint-disable @typescript-eslint/no-var-requires */
+const WasmPackPlugin = require("@wasm-tool/wasm-pack-plugin");
+const path = require("path");
+
+module.exports = {
+	lintOnSave: "warning",
+	chainWebpack: (config) => {
+		// Rust wasm bindgen https://github.com/rustwasm/wasm-bindgen
+		config
+			.plugin("wasm-pack")
+			.use(WasmPackPlugin)
+			.init(
+				(Plugin) =>
+					new Plugin({
+						crateDirectory: path.resolve(__dirname, "wasm"),
+						watchDirectories: [
+							path.resolve(__dirname, "../editor"),
+							path.resolve(__dirname, "../graphene"),
+							path.resolve(__dirname, "../charcoal"),
+							path.resolve(__dirname, "../proc-macros"),
+						],
+					})
+			)
+			.end();
+
+		const svgRule = config.module.rule("svg");
+		svgRule.uses.clear();
+		svgRule.use("vue-loader").loader("vue-loader").end().use("vue-svg-loader").loader("vue-svg-loader");
+	},
+};

@@ -1,12 +1,12 @@
 {
-	"name": "graphite-web-client-root-shortcut",
+	"name": "graphite-frontend-root-shortcut",
 	"version": "1.0.0",
-	"description": "A convenience package for calling the real package.json in /client/web.",
+	"description": "A convenience package for calling the real package.json in /frontend.",
 	"private": true,
 	"scripts": {
-		"serve": "cd client && cd web && npm run serve",
-		"build": "cd client && cd web && npm run build",
-		"lint": "cd client && cd web && npm run lint",
-		"lint-no-fix": "cd client && cd web && npm run lint-no-fix"
+		"serve": "cd frontend && npm run serve",
+		"build": "cd frontend && npm run build",
+		"lint": "cd frontend && npm run lint",
+		"lint-no-fix": "cd frontend && npm run lint-no-fix"
 	}
 }
