@@ -81,6 +81,7 @@ pub enum DocumentMessage {
 	AbortTransaction,
 	CommitTransaction,
 	ExportDocument,
+	SaveDocument,
 	RenderDocument,
 	Undo,
 	NudgeSelectedLayers(f64, f64),
@@ -284,6 +285,12 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					.into(),
 				)
 			}
+			SaveDocument => responses.push_back(
+				FrontendMessage::SaveDocument {
+					document: self.document.serialize_document(),
+				}
+				.into(),
+			),
 			SetBlendModeForSelectedLayers(blend_mode) => {
 				let active_document = self;
 
