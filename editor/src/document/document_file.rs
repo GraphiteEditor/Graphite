@@ -381,7 +381,12 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					bounds: {
 						let bounds = self.active_document_mut().document.visible_layers_bounding_box();
 						let bounds = bounds.unwrap_or([glam::DVec2::ZERO, glam::DVec2::ZERO]);
-						[bounds[0].x, bounds[0].y, bounds[1].x, bounds[1].y]
+						[
+							bounds[0].x.min(0.),
+							bounds[0].y.min(0.),
+							bounds[1].x.max(ipp.viewport_size.x as f64),
+							bounds[1].y.max(ipp.viewport_size.y as f64),
+						]
 					},
 					position: self.document.root.transform.translation.into(),
 					viewport_size: ipp.viewport_size.as_f64().into(),
