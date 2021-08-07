@@ -50,7 +50,7 @@ Development is broken into monthly sprints culminating in a presentation at the 
 
 ## Running the code
 
-The project is split between clients and core libraries (which are used by the clients). Currently the only client is the web frontend (`/client/web`). The web client's Vue code lives in `/client/web/src` and a Rust translation layer for the editor core library lives in `/client/web/wasm`. A good starting point for learning about the code structure and architecture is reading the [documentation](docs/index.md).
+The project architecture is split between clients and core libraries (which are used by the clients). Currently the only client is the web frontend (`/frontend`). The web client's Vue code lives in `/frontend/src` and a Rust translation layer for the editor client backend lives in `/frontend/wasm`. A good starting point for learning about the code structure and architecture is reading the [documentation](docs/index.md).
 
 To run the project while developing:
 

@@ -17,7 +17,7 @@
 	"html.format.wrapLineLength": 200,
 	"eslint.format.enable": true,
 	"eslint.workingDirectories": [
-		"./client/web"
+		"./frontend"
 	],
 	"eslint.validate": [
 		"javascript",
