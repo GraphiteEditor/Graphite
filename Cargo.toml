@@ -1,8 +1,11 @@
 [workspace]
 members = [
-	"core/*",
-	"client/web/wasm",
+	"editor",
+	"graphene",
+	"charcoal",
+	"proc-macros",
+	"frontend/wasm",
 ]
 
-[profile.release.package.graphite-wasm-wrapper]
+[profile.release.package.graphite-wasm]
 opt-level = "s"
