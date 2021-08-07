@@ -2,7 +2,7 @@
 	<div class="persistent-scrollbar" :class="direction.toLowerCase()">
 		<button class="arrow decrease" @mousedown="changePosition(-50)"></button>
 		<div class="scroll-track" ref="scrollTrack" @mousedown="grabArea">
-			<div class="scroll-thumb" @mousedown="grabHandle" :class="{ dragging: dragging }" ref="handle" :style="[thumbStart, thumbEnd, sides]"></div>
+			<div class="scroll-thumb" @mousedown="grabHandle" :class="{ dragging }" ref="handle" :style="[thumbStart, thumbEnd, sides]"></div>
 		</div>
 		<button class="arrow increase" @click="changePosition(50)"></button>
 	</div>
