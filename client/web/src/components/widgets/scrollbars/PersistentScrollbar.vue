@@ -166,7 +166,7 @@ export default defineComponent({
 			const track = this.$refs.scrollTrack as HTMLElement;
 			return this.direction === ScrollbarDirection.Vertical ? track.getBoundingClientRect().top : track.getBoundingClientRect().left;
 		},
-		updatehandlePosition(e: MouseEvent) {
+		updateHandlePosition(e: MouseEvent) {
 			const position = this.direction === ScrollbarDirection.Vertical ? e.clientY : e.clientX;
 			this.handlePosition = (position + this.dragOffset - this.trackOffset()) / this.trackLength();
 		},
@@ -175,14 +175,14 @@ export default defineComponent({
 				this.dragging = true;
 				const position = this.direction === ScrollbarDirection.Vertical ? e.clientY : e.clientX;
 				this.dragOffset = this.handlePosition * this.trackLength() + this.trackOffset() - position;
-				this.updatehandlePosition(e);
+				this.updateHandlePosition(e);
 			}
 		},
 		grabArea(e: MouseEvent) {
 			if (!this.dragging) {
 				this.dragging = true;
 				this.dragOffset = 0;
-				this.updatehandlePosition(e);
+				this.updateHandlePosition(e);
 			}
 		},
 		mouseUp() {
@@ -191,7 +191,7 @@ export default defineComponent({
 		},
 		mouseMove(e: MouseEvent) {
 			if (this.dragging) {
-				this.updatehandlePosition(e);
+				this.updateHandlePosition(e);
 			}
 		},
 		changePosition(difference: number) {
