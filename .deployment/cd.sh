@@ -5,7 +5,7 @@ curl https://sh.rustup.rs -sSf | sh -s -- -y
 export PATH=$PATH:/opt/buildhome/.cargo/bin
 
 echo 🚧 Install Node dependencies
-cd client/web
+cd frontend
 npm install
 
 echo 👷 Build Graphite web client
