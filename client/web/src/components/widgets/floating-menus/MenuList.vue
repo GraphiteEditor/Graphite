@@ -183,7 +183,8 @@ const MenuList = defineComponent({
 
 			if (menuEntry.action) menuEntry.action();
 			else if (this.defaultAction) this.defaultAction();
-			else this.$emit("update:activeEntry", menuEntry);
+
+			this.$emit("update:activeEntry", menuEntry);
 		},
 		handleEntryMouseEnter(menuEntry: MenuListEntry) {
 			if (!menuEntry.children || !menuEntry.children.length) return;
