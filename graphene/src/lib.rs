@@ -19,4 +19,5 @@ pub enum DocumentError {
 	NotAFolder,
 	NonReorderableSelection,
 	NotAShape,
+	InvalidFile,
 }

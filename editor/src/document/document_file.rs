@@ -193,6 +193,17 @@ impl DocumentMessageHandler {
 			movement_handler: MovementMessageHandler::default(),
 		}
 	}
+	pub fn with_name_content(name: String, serialized_content: String) -> Result<Self, EditorError> {
+		let mut doc = Self::with_name(name);
+		let int_doc = InternalDocument::with_content(serialized_content);
+		match int_doc {
+			Ok(handle) => {
+				doc.document = handle;
+				Ok(doc)
+			}
+			Err(_) => Err(EditorError::Document(String::from("Failed to parse file content"))),
+		}
+	}
 
 	pub fn layer_data(&mut self, path: &[LayerId]) -> &mut LayerData {
 		layer_data(&mut self.layer_data, path)

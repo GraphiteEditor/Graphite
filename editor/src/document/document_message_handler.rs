@@ -23,7 +23,7 @@ pub enum DocumentsMessage {
 	CloseActiveDocumentWithConfirmation,
 	CloseAllDocumentsWithConfirmation,
 	CloseAllDocuments,
-	NewDocument,
+	NewDocument(Option<String>),
 	GetOpenDocumentsList,
 	NextDocument,
 	PrevDocument,
@@ -88,7 +88,7 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 				self.documents.clear();
 
 				// Create a new blank document
-				responses.push_back(NewDocument.into());
+				responses.push_back(NewDocument(None).into());
 			}
 			CloseDocument(id) => {
 				assert!(id < self.documents.len(), "Tried to select a document that was not initialized");
@@ -102,7 +102,7 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 				// Last tab was closed, so create a new blank tab
 				if self.documents.is_empty() {
 					self.active_document_index = 0;
-					responses.push_back(NewDocument.into());
+					responses.push_back(NewDocument(None).into());
 				}
 				// The currently selected doc is being closed
 				else if id == self.active_document_index {
@@ -137,7 +137,7 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 					);
 				}
 			}
-			NewDocument => {
+			NewDocument(serialized_contents) => {
 				let digits = ('0'..='9').collect::<Vec<char>>();
 				let mut doc_title_numbers = self
 					.documents
@@ -164,8 +164,18 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 					_ => format!("Untitled Document {}", new_doc_title_num),
 				};
 
+				let new_document = match serialized_contents {
+					None => DocumentMessageHandler::with_name(name),
+					Some(content) => {
+						let res = DocumentMessageHandler::with_name_content(name, content);
+						if res.is_err() {
+							// how can we show an error message in the UI?
+							return;
+						}
+						res.unwrap()
+					}
+				};
 				self.active_document_index = self.documents.len();
-				let new_document = DocumentMessageHandler::with_name(name);
 				self.documents.push(new_document);
 
 				// Send the new list of document tab names
