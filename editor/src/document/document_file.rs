@@ -118,9 +118,11 @@ impl DocumentMessageHandler {
 	}
 	fn handle_folder_changed(&mut self, path: Vec<LayerId>) -> Option<Message> {
 		let _ = self.document.render_root();
+		// LayerIds are sent as (u32, u32) because jsond does not support u64s
+		let new_path = path.iter().map(|id| ((id >> 32) as u32, (id << 32 >> 32) as u32)).collect::<Vec<_>>();
 		self.layer_data(&path).expanded.then(|| {
 			let children = self.layer_panel(path.as_slice()).expect("The provided Path was not valid");
-			FrontendMessage::ExpandFolder { path, children }.into()
+			FrontendMessage::ExpandFolder { path: new_path, children }.into()
 		})
 	}
 	fn clear_selection(&mut self) {
@@ -367,13 +369,17 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 									self.layer_data.remove(&path);
 									None
 								}
-								DocumentResponse::LayerChanged { path } => Some(
+								DocumentResponse::LayerChanged { path } => {
+
+	// LayerIds are sent as (u32, u32) because jsond does not support u64s
+	let new_path = path.iter().map(|id| ((id >> 32) as u32, (id << 32 >> 32) as u32)).collect::<Vec<_>>();
+									Some(
 									FrontendMessage::UpdateLayer {
-										path: path.clone(),
+										path: new_path.clone(),
 										data: self.layer_panel_entry(path).unwrap(),
 									}
 									.into(),
-								),
+								)},
 								DocumentResponse::CreatedLayer { path } => self.select_layer(&path),
 								DocumentResponse::DocumentChanged => unreachable!(),
 							})

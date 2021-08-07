@@ -8,8 +8,8 @@ pub type Callback = Box<dyn Fn(FrontendMessage)>;
 #[impl_message(Message, Frontend)]
 #[derive(PartialEq, Clone, Deserialize, Serialize, Debug)]
 pub enum FrontendMessage {
-	CollapseFolder { path: Vec<LayerId> },
-	ExpandFolder { path: Vec<LayerId>, children: Vec<LayerPanelEntry> },
+	CollapseFolder { path: Vec<(u32, u32)> },
+	ExpandFolder { path: Vec<(u32, u32)>, children: Vec<LayerPanelEntry> },
 	SetActiveTool { tool_name: String },
 	SetActiveDocument { document_index: usize },
 	UpdateOpenDocumentsList { open_documents: Vec<String> },
@@ -17,7 +17,7 @@ pub enum FrontendMessage {
 	DisplayConfirmationToCloseDocument { document_index: usize },
 	DisplayConfirmationToCloseAllDocuments,
 	UpdateCanvas { document: String },
-	UpdateLayer { path: Vec<LayerId>, data: LayerPanelEntry },
+	UpdateLayer { path: Vec<(u32, u32)>, data: LayerPanelEntry },
 	ExportDocument { document: String },
 	EnableTextInput,
 	DisableTextInput,

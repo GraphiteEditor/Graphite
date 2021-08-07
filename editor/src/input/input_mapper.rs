@@ -1,4 +1,4 @@
-use document_core::{layers::style, Operation};
+use graphene::{layers::style, Operation};
 use glam::DAffine2;
 
 use super::{
