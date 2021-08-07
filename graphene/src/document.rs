@@ -41,6 +41,15 @@ impl Document {
 		self.hasher.finish()
 	}
 
+	pub fn serialize_document(&self) -> String {
+		let doc = serde_json::json!({
+			"version": 0,
+			"root": self.root,
+			"nodes": {}
+		});
+		doc.to_string()
+	}
+
 	/// Checks whether each layer under `path` intersects with the provided `quad` and adds all intersection layers as paths to `intersections`.
 	pub fn intersects_quad(&self, quad: Quad, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>) {
 		self.layer(path).unwrap().intersects_quad(quad, path, intersections);
