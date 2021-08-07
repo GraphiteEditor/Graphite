@@ -31,6 +31,19 @@ fn split_path(path: &[LayerId]) -> Result<(&[LayerId], LayerId), DocumentError> 
 }
 
 impl Document {
+	pub fn with_content(serialized_content: String) -> Result<Self, DocumentError> {
+		let json_value: Result<serde_json::Value, serde_json::Error> = serde_json::from_str(&serialized_content);
+		let json_value = json_value.unwrap_or(serde_json::Value::default());
+		let json_value = json_value.get("root");
+		match json_value {
+			Some(root) => Ok(Self {
+				root: serde_json::from_value(root.clone()).map_err(|_| DocumentError::InvalidFile)?,
+				hasher: DefaultHasher::new(),
+			}),
+			_ => Err(DocumentError::InvalidFile),
+		}
+	}
+
 	/// Wrapper around render, that returns the whole document as a Response.
 	pub fn render_root(&mut self) -> String {
 		self.root.render(&mut vec![]);
