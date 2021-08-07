@@ -9,5 +9,5 @@ module.exports = {
 	},
 	// **optional** default: `[{ root: './' }]`
 	// support monorepos
-	projects: ['./client/web']
+	projects: ['./frontend']
 }

@@ -85,7 +85,25 @@ dependencies = [
 ]
 
 [[package]]
-name = "graphite-document-core"
+name = "graphite-charcoal"
+version = "0.1.0"
+
+[[package]]
+name = "graphite-editor"
+version = "0.1.0"
+dependencies = [
+ "bitflags",
+ "env_logger",
+ "glam",
+ "graphite-graphene",
+ "graphite-proc-macros",
+ "log",
+ "serde",
+ "thiserror",
+]
+
+[[package]]
+name = "graphite-graphene"
 version = "0.1.0"
 dependencies = [
  "glam",
@@ -95,40 +113,22 @@ dependencies = [
 ]
 
 [[package]]
-name = "graphite-editor-core"
-version = "0.1.0"
-dependencies = [
- "bitflags",
- "env_logger",
- "glam",
- "graphite-document-core",
- "graphite-proc-macros",
- "log",
- "serde",
- "thiserror",
-]
-
-[[package]]
 name = "graphite-proc-macros"
 version = "0.1.0"
 dependencies = [
- "graphite-editor-core",
+ "graphite-editor",
  "proc-macro2",
  "quote",
  "syn",
 ]
 
 [[package]]
-name = "graphite-renderer-core"
-version = "0.1.0"
-
-[[package]]
-name = "graphite-wasm-wrapper"
+name = "graphite-wasm"
 version = "0.1.0"
 dependencies = [
  "console_error_panic_hook",
- "graphite-document-core",
- "graphite-editor-core",
+ "graphite-editor",
+ "graphite-graphene",
  "log",
  "serde",
  "wasm-bindgen",
