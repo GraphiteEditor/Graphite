@@ -125,13 +125,12 @@ export default defineComponent({
 	},
 	computed: {
 		thumbStart(): { left: string } | { top: string } {
-			console.log(this.handlePosition);
-			const start = this.handlePosition * (1 - this.handleLength);
+			const start = this.handleLength === 1 ? 0 : this.handlePosition * (1 - this.handleLength);
 
 			return this.direction === ScrollbarDirection.Vertical ? { top: `${start * 100}%` } : { left: `${start * 100}%` };
 		},
 		thumbEnd(): { right: string } | { bottom: string } {
-			const end = 1 - (this.handlePosition * (1 - this.handleLength) + this.handleLength);
+			const end = this.handleLength === 1 ? 0 : 1 - (this.handlePosition * (1 - this.handleLength) + this.handleLength);
 
 			return this.direction === ScrollbarDirection.Vertical ? { bottom: `${end * 100}%` } : { right: `${end * 100}%` };
 		},
