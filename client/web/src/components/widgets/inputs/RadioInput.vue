@@ -1,89 +1,99 @@
 <template>
 	<div class="radio-input" ref="radioInput">
-		<slot></slot>
+		<button :class="{ active: index === selectedIndex }" v-for="(entry, index) in entries" :key="index" @click="handleEntryClick(entry)" :title="entry.tooltip">
+			<IconLabel v-if="entry.icon" :icon="entry.icon" />
+			<TextLabel v-if="entry.label">{{ entry.label }}</TextLabel>
+		</button>
 	</div>
 </template>
 
 <style lang="scss">
 .radio-input {
-	.popover-button button {
-		border-radius: 0;
-	}
-
-	& > * {
-		border-radius: 0;
-		margin: 0;
-
-		&:first-child,
-		&:first-child button {
-			border-radius: 2px 0 0 2px;
-		}
-
-		&:last-child,
-		&:last-child button {
-			border-radius: 0 2px 2px 0;
-		}
-
-		& + * {
-			margin-left: 1px;
-		}
-	}
-
-	& > button {
+	button {
 		background: var(--color-5-dullgray);
 		fill: var(--color-e-nearwhite);
+		height: 24px;
+		padding: 0 4px;
+		outline: none;
+		border: none;
+		display: inline-flex;
+		align-items: center;
 
 		&:hover {
 			background: var(--color-6-lowergray);
+			color: var(--color-f-white);
+
+			svg {
+				fill: var(--color-f-white);
+			}
 		}
 
 		&.active {
 			background: var(--color-accent);
-			fill: var(--color-f-white);
+			color: var(--color-f-white);
+
+			svg {
+				fill: var(--color-f-white);
+			}
 		}
+
+		& + button {
+			margin-left: 1px;
+		}
+
+		&:first-of-type {
+			border-radius: 2px 0 0 2px;
+		}
+
+		&:last-of-type {
+			border-radius: 0 2px 2px 0;
+		}
+	}
+
+	.icon-label,
+	.text-label {
+		display: inline-block;
+		vertical-align: top;
+	}
+
+	.text-label {
+		margin: 0 4px;
 	}
 }
 </style>
 
 <script lang="ts">
-import { defineComponent } from "vue";
+import { defineComponent, PropType } from "vue";
+
+import IconLabel from "@/components/widgets/labels/IconLabel.vue";
+import TextLabel from "@/components/widgets/labels/TextLabel.vue";
+
+export interface RadioEntryData {
+	value?: string;
+	label?: string;
+	icon?: string;
+	tooltip?: string;
+	action?: Function;
+}
+
+export type RadioEntries = Array<RadioEntryData>;
 
 export default defineComponent({
-	components: {},
 	props: {
-		index: { type: Number, required: true },
-	},
-	data() {
-		return {
-			activeIndex: this.index,
-		};
-	},
-	mounted() {
-		this.updateActiveIconButton();
-
-		(this.$refs.radioInput as Element).querySelectorAll(".icon-button").forEach((iconButton, index) => {
-			iconButton.addEventListener("click", () => {
-				this.setActive(index);
-			});
-		});
-	},
-	watch: {
-		activeIndex() {
-			this.updateActiveIconButton();
-		},
+		entries: { type: Array as PropType<RadioEntries>, required: true },
+		selectedIndex: { type: Number, required: true },
 	},
 	methods: {
-		// This method may be called by the user of this component by setting a `ref="radioInput"` attribute and calling `(this.$refs.viewModePicker as typeof RadioInput).setActive(...)`
-		setActive(index: number) {
-			this.activeIndex = index;
-			this.$emit("update:index", index);
-			this.$emit("changed", index);
+		handleEntryClick(menuEntry: RadioEntryData) {
+			const index = this.entries.indexOf(menuEntry);
+			this.$emit("update:selectedIndex", index);
+
+			if (menuEntry.action) menuEntry.action();
 		},
-		updateActiveIconButton() {
-			const iconButtons = (this.$refs.radioInput as Element).querySelectorAll(".icon-button");
-			iconButtons.forEach((iconButton) => iconButton.classList.remove("active"));
-			iconButtons[this.activeIndex].classList.add("active");
-		},
+	},
+	components: {
+		IconLabel,
+		TextLabel,
 	},
 });
 </script>
