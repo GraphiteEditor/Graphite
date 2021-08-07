@@ -14,6 +14,7 @@ const state = reactive({
 export enum ResponseType {
 	UpdateCanvas = "UpdateCanvas",
 	ExportDocument = "ExportDocument",
+	SaveDocument = "SaveDocument",
 	ExpandFolder = "ExpandFolder",
 	CollapseFolder = "CollapseFolder",
 	SetActiveTool = "SetActiveTool",
@@ -70,6 +71,8 @@ function parseResponse(responseType: string, data: any): Response {
 			return newSetCanvasRotation(data.SetCanvasRotation);
 		case "ExportDocument":
 			return newExportDocument(data.ExportDocument);
+		case "SaveDocument":
+			return newSaveDocument(data.SaveDocument);
 		case "UpdateWorkingColors":
 			return newUpdateWorkingColors(data.UpdateWorkingColors);
 		case "DisplayConfirmationToCloseDocument":
@@ -156,6 +159,15 @@ export interface ExportDocument {
 	document: string;
 }
 function newExportDocument(input: any): UpdateCanvas {
+	return {
+		document: input.document,
+	};
+}
+
+export interface SaveDocument {
+	document: string;
+}
+function newSaveDocument(input: any): SaveDocument {
 	return {
 		document: input.document,
 	};

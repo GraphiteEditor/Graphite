@@ -210,7 +210,7 @@
 import { defineComponent } from "vue";
 
 import { makeModifiersBitfield } from "@/utilities/input";
-import { ResponseType, registerResponseHandler, Response, UpdateCanvas, SetActiveTool, ExportDocument, SetCanvasZoom, SetCanvasRotation } from "@/utilities/response-handler";
+import { ResponseType, registerResponseHandler, Response, UpdateCanvas, SetActiveTool, ExportDocument, SetCanvasZoom, SetCanvasRotation, SaveDocument } from "@/utilities/response-handler";
 import { SeparatorDirection, SeparatorType } from "@/components/widgets/widgets";
 import comingSoon from "@/utilities/coming-soon";
 
@@ -304,7 +304,11 @@ export default defineComponent({
 			reset_colors();
 		},
 		download(filename: string, fileData: string) {
-			const svgBlob = new Blob([fileData], { type: "image/svg+xml;charset=utf-8" });
+			let type = "text/plain;charset=utf-8";
+			if (filename.endsWith(".svg")) {
+				type = "image/svg+xml;charset=utf-8";
+			}
+			const svgBlob = new Blob([fileData], { type });
 			const svgUrl = URL.createObjectURL(svgBlob);
 			const element = document.createElement("a");
 
@@ -323,6 +327,10 @@ export default defineComponent({
 		registerResponseHandler(ResponseType.ExportDocument, (responseData: Response) => {
 			const updateData = responseData as ExportDocument;
 			if (updateData) this.download("canvas.svg", updateData.document);
+		});
+		registerResponseHandler(ResponseType.SaveDocument, (responseData: Response) => {
+			const saveData = responseData as SaveDocument;
+			if (saveData) this.download("canvas.gsvg", saveData.document);
 		});
 		registerResponseHandler(ResponseType.SetActiveTool, (responseData: Response) => {
 			const toolData = responseData as SetActiveTool;

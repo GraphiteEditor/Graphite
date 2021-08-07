@@ -18,6 +18,7 @@ pub enum FrontendMessage {
 	UpdateCanvas { document: String },
 	UpdateLayer { path: Vec<LayerId>, data: LayerPanelEntry },
 	ExportDocument { document: String },
+	SaveDocument { document: String },
 	EnableTextInput,
 	DisableTextInput,
 	UpdateWorkingColors { primary: Color, secondary: Color },

@@ -70,6 +70,11 @@ pub fn new_document() -> Result<(), JsValue> {
 }
 
 #[wasm_bindgen]
+pub fn save_document() -> Result<(), JsValue> {
+	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(DocumentMessage::SaveDocument)).map_err(convert_error)
+}
+
+#[wasm_bindgen]
 pub fn close_document(document: usize) -> Result<(), JsValue> {
 	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(DocumentsMessage::CloseDocument(document)).map_err(convert_error))
 }
