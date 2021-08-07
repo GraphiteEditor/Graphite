@@ -69,7 +69,7 @@ const menuEntries: MenuListEntries = [
 		children: [
 			[
 				{ label: "New", icon: "File", shortcut: ["Ctrl", "N"], shortcutRequiresLock: true, action: async () => (await wasm).new_document() },
-				{ label: "Open…", shortcut: ["Ctrl", "O"] },
+				{ label: "Open…", shortcut: ["Ctrl", "O"], action: handleOpenClick },
 				{
 					label: "Open Recent",
 					shortcut: ["Ctrl", "⇧", "O"],
@@ -154,6 +154,40 @@ const menuEntries: MenuListEntries = [
 		children: [[{ label: "Menu entries coming soon" }]],
 	},
 ];
+
+async function handleOpenClick() {
+	// This is an unfortunately complex setup.
+	// A) We fake-click on a "file input" element to trigger user selection.
+	// B) File Input triggers a "change" event when a selection is made, then we use a "reader" object to read the file
+	// C) reader object triggers "loadend" event to tell us that its done reading
+	// B needs C so we create the reader object so we do C first
+	// A needs B so we trigger the click at the very end
+
+	// C: create reader object
+	const reader = new FileReader();
+	reader.addEventListener("loadend", async () => {
+		const content = reader.result as string;
+		(await wasm).open_document(content);
+	});
+
+	// B: Handle File Input change event
+	const element = document.createElement("input");
+	element.type = "file";
+	element.style.display = "none";
+
+	element.addEventListener(
+		"change",
+		() => {
+			if (element.files && element.files.length > 0) {
+				reader.readAsText(element.files[0]);
+			}
+		},
+		{ capture: false, once: true }
+	);
+
+	// A: Trigger user selection
+	element.click();
+}
 
 export default defineComponent({
 	methods: {
