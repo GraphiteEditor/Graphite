@@ -11,8 +11,7 @@ pub struct LayerPanelEntry {
 	pub opacity: f64,
 	pub layer_type: LayerType,
 	pub layer_data: LayerData,
-	// TODO: Instead of turning the u64 into (u32, u32)s here, do that in the WASM translation layer
-	pub path: Vec<(u32, u32)>,
+	pub path: crate::document::layer_panel::Path,
 	pub thumbnail: String,
 }
 

@@ -112,7 +112,13 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 					}
 
 					let lp = self.active_document_mut().layer_panel(&[]).expect("Could not get panel for active doc");
-					responses.push_back(FrontendMessage::ExpandFolder { path: Vec::new(), children: lp }.into());
+					responses.push_back(
+						FrontendMessage::ExpandFolder {
+							path: Vec::new().into(),
+							children: lp,
+						}
+						.into(),
+					);
 					responses.push_back(
 						FrontendMessage::SetActiveDocument {
 							document_index: self.active_document_index,
@@ -174,7 +180,7 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 
 				responses.push_back(
 					FrontendMessage::ExpandFolder {
-						path: Vec::new(),
+						path: Vec::new().into(),
 						children: Vec::new(),
 					}
 					.into(),

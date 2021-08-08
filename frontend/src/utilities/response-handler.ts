@@ -203,6 +203,7 @@ export interface ExpandFolder {
 	children: Array<LayerPanelEntry>;
 }
 function newExpandFolder(input: any): ExpandFolder {
+	console.log(input);
 	return {
 		path: newPath(input.path),
 		children: input.children.map((child: any) => newLayerPanelEntry(child)),

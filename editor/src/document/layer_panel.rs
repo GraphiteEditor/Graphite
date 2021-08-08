@@ -4,8 +4,36 @@ use graphene::{
 	layers::{Layer, LayerData as DocumentLayerData},
 	LayerId,
 };
-use serde::{Deserialize, Serialize};
+use serde::{ser::SerializeSeq, Deserialize, Serialize};
 use std::collections::HashMap;
+
+#[derive(Debug, Clone, Deserialize, PartialEq)]
+pub struct Path(Vec<LayerId>);
+
+impl From<Vec<LayerId>> for Path {
+	fn from(iter: Vec<LayerId>) -> Self {
+		Self(iter)
+	}
+}
+impl Serialize for Path {
+	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+	where
+		S: serde::Serializer,
+	{
+		let mut seq = serializer.serialize_seq(Some(self.0.len()))?;
+		for e in self.0.iter() {
+			#[cfg(target_arch = "wasm32")]
+			{
+				// LayerIds are sent as (u32, u32) because json does not support u64s
+				let id = ((e >> 32) as u32, (e << 32 >> 32) as u32);
+				seq.serialize_element(&id)?;
+			}
+			#[cfg(not(target_arch = "wasm32"))]
+			seq.serialize_element(e)?;
+		}
+		seq.end()
+	}
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Copy)]
 pub struct LayerData {
@@ -78,9 +106,6 @@ pub fn layer_panel_entry(layer_data: &LayerData, transform: DAffine2, layer: &La
 		String::new()
 	};
 
-	// LayerIds are sent as (u32, u32) because jsond does not support u64s
-	let path = path.iter().map(|id| ((id >> 32) as u32, (id << 32 >> 32) as u32)).collect::<Vec<_>>();
-
 	LayerPanelEntry {
 		name,
 		visible: layer.visible,
@@ -88,7 +113,7 @@ pub fn layer_panel_entry(layer_data: &LayerData, transform: DAffine2, layer: &La
 		opacity: layer.opacity,
 		layer_type: (&layer.data).into(),
 		layer_data: *layer_data,
-		path,
+		path: path.into(),
 		thumbnail,
 	}
 }

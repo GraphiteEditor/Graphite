@@ -1,3 +1,4 @@
+use crate::document::layer_panel::Path;
 use crate::frontend::layer_panel::LayerPanelEntry;
 use crate::message_prelude::*;
 use crate::Color;
@@ -8,8 +9,8 @@ pub type Callback = Box<dyn Fn(FrontendMessage)>;
 #[impl_message(Message, Frontend)]
 #[derive(PartialEq, Clone, Deserialize, Serialize, Debug)]
 pub enum FrontendMessage {
-	CollapseFolder { path: Vec<(u32, u32)> },
-	ExpandFolder { path: Vec<(u32, u32)>, children: Vec<LayerPanelEntry> },
+	CollapseFolder { path: Path },
+	ExpandFolder { path: Path, children: Vec<LayerPanelEntry> },
 	SetActiveTool { tool_name: String },
 	SetActiveDocument { document_index: usize },
 	UpdateOpenDocumentsList { open_documents: Vec<String> },
@@ -17,7 +18,7 @@ pub enum FrontendMessage {
 	DisplayConfirmationToCloseDocument { document_index: usize },
 	DisplayConfirmationToCloseAllDocuments,
 	UpdateCanvas { document: String },
-	UpdateLayer { path: Vec<(u32, u32)>, data: LayerPanelEntry },
+	UpdateLayer { path: Path, data: LayerPanelEntry },
 	ExportDocument { document: String },
 	EnableTextInput,
 	DisableTextInput,

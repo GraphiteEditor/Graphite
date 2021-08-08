@@ -315,7 +315,6 @@ export default defineComponent({
 				console.log("ExpandFolder:", expandData);
 				const responsePath = expandData.path;
 				const responseLayers = expandData.children as Array<LayerPanelEntry>;
-				if (responsePath.length > 0) console.error("Non root paths are currently not implemented");
 
 				if (responsePath.length === 0) {
 					responseLayers.forEach((nlayer) => {
