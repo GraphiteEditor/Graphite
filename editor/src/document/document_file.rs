@@ -195,7 +195,7 @@ impl DocumentMessageHandler {
 	}
 	pub fn with_name_content(name: String, serialized_content: String) -> Result<Self, EditorError> {
 		let mut doc = Self::with_name(name);
-		let int_doc = InternalDocument::with_content(serialized_content);
+		let int_doc = InternalDocument::with_content(&serialized_content);
 		match int_doc {
 			Ok(handle) => {
 				doc.document = handle;
