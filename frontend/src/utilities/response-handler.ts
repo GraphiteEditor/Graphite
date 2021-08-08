@@ -16,13 +16,14 @@ export enum ResponseType {
 	ExportDocument = "ExportDocument",
 	ExpandFolder = "ExpandFolder",
 	CollapseFolder = "CollapseFolder",
+	UpdateLayer = "UpdateLayer",
 	SetActiveTool = "SetActiveTool",
 	SetActiveDocument = "SetActiveDocument",
 	UpdateOpenDocumentsList = "UpdateOpenDocumentsList",
 	UpdateWorkingColors = "UpdateWorkingColors",
-	UpdateLayer = "UpdateLayer",
 	SetCanvasZoom = "SetCanvasZoom",
 	SetCanvasRotation = "SetCanvasRotation",
+	DisplayError = "DisplayError",
 	DisplayConfirmationToCloseDocument = "DisplayConfirmationToCloseDocument",
 	DisplayConfirmationToCloseAllDocuments = "DisplayConfirmationToCloseAllDocuments",
 }
@@ -72,6 +73,8 @@ function parseResponse(responseType: string, data: any): Response {
 			return newExportDocument(data.ExportDocument);
 		case "UpdateWorkingColors":
 			return newUpdateWorkingColors(data.UpdateWorkingColors);
+		case "DisplayError":
+			return newDisplayError(data.DisplayError);
 		case "DisplayConfirmationToCloseDocument":
 			return newDisplayConfirmationToCloseDocument(data.DisplayConfirmationToCloseDocument);
 		case "DisplayConfirmationToCloseAllDocuments":
@@ -127,6 +130,15 @@ export interface SetActiveDocument {
 function newSetActiveDocument(input: any): SetActiveDocument {
 	return {
 		document_index: input.document_index,
+	};
+}
+
+export interface DisplayError {
+	description: string;
+}
+function newDisplayError(input: any): DisplayError {
+	return {
+		description: input.description,
 	};
 }
 

@@ -87,17 +87,17 @@ macro_rules! entry {
 		entry!{action=$action, message=InputMapperMessage::KeyUp(Key::$key) $(, modifiers=[$($m),* ])?}
 	}};
 	{action=$action:expr, message=$message:expr $(, modifiers=[$($m:ident),* $(,)?])?} => {{
-        &[MappingEntry {trigger: $message, modifiers: modifiers!($($($m),*)?), action: $action.into()}]
+		&[MappingEntry {trigger: $message, modifiers: modifiers!($($($m),*)?), action: $action.into()}]
 	}};
 	{action=$action:expr, triggers=[$($m:ident),* $(,)?]} => {{
-        &[
-            MappingEntry {trigger:InputMapperMessage::PointerMove, action: $action.into(), modifiers: modifiers!()},
-            $(
-            MappingEntry {trigger:InputMapperMessage::KeyDown(Key::$m), action: $action.into(), modifiers: modifiers!()},
-            MappingEntry {trigger:InputMapperMessage::KeyUp(Key::$m), action: $action.into(), modifiers: modifiers!()},
-            )*
-        ]
-    }};
+		&[
+			MappingEntry {trigger:InputMapperMessage::PointerMove, action: $action.into(), modifiers: modifiers!()},
+			$(
+			MappingEntry {trigger:InputMapperMessage::KeyDown(Key::$m), action: $action.into(), modifiers: modifiers!()},
+			MappingEntry {trigger:InputMapperMessage::KeyUp(Key::$m), action: $action.into(), modifiers: modifiers!()},
+			)*
+		]
+	}};
 }
 macro_rules! mapping {
 	//[$(<action=$action:expr; message=$key:expr; $(modifiers=[$($m:ident),* $(,)?];)?>)*] => {{
@@ -107,17 +107,17 @@ macro_rules! mapping {
 		let mut pointer_move: KeyMappingEntries = Default::default();
 		let mut mouse_scroll: KeyMappingEntries = Default::default();
 		$(
-            for entry in $entry {
-                let arr = match entry.trigger {
-                    InputMapperMessage::KeyDown(key) => &mut key_down[key as usize],
-                    InputMapperMessage::KeyUp(key) => &mut key_up[key as usize],
-                    InputMapperMessage::PointerMove => &mut pointer_move,
-                    InputMapperMessage::MouseScroll => &mut mouse_scroll,
-                };
-                arr.push(entry.clone());
-            }
-        )*
-        (key_up, key_down, pointer_move, mouse_scroll)
+			for entry in $entry {
+				let arr = match entry.trigger {
+					InputMapperMessage::KeyDown(key) => &mut key_down[key as usize],
+					InputMapperMessage::KeyUp(key) => &mut key_up[key as usize],
+					InputMapperMessage::PointerMove => &mut pointer_move,
+					InputMapperMessage::MouseScroll => &mut mouse_scroll,
+				};
+				arr.push(entry.clone());
+			}
+		)*
+		(key_up, key_down, pointer_move, mouse_scroll)
 	}};
 }
 
