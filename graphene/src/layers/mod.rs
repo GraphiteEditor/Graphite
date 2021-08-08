@@ -64,6 +64,10 @@ struct DAffine2Ref {
 	pub translation: DVec2,
 }
 
+fn return_true() -> bool {
+	true
+}
+
 #[derive(Debug, PartialEq, Deserialize, Serialize)]
 pub struct Layer {
 	pub visible: bool,
@@ -71,8 +75,11 @@ pub struct Layer {
 	pub data: LayerDataType,
 	#[serde(with = "DAffine2Ref")]
 	pub transform: glam::DAffine2,
+	#[serde(skip)]
 	pub cache: String,
+	#[serde(skip)]
 	pub thumbnail_cache: String,
+	#[serde(skip, default = "return_true")]
 	pub cache_dirty: bool,
 	pub blend_mode: BlendMode,
 	pub opacity: f64,
