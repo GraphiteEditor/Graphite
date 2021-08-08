@@ -23,7 +23,8 @@ pub enum DocumentsMessage {
 	CloseActiveDocumentWithConfirmation,
 	CloseAllDocumentsWithConfirmation,
 	CloseAllDocuments,
-	NewDocument(Option<String>, Option<String>),
+	NewDocument(),
+	OpenDocument(String, String),
 	GetOpenDocumentsList,
 	NextDocument,
 	PrevDocument,
@@ -71,6 +72,24 @@ impl DocumentsMessageHandler {
 		};
 		name
 	}
+
+	fn load_document(&mut self, new_document: DocumentMessageHandler, responses: &mut VecDeque<Message>) {
+		self.active_document_index = self.documents.len();
+		self.documents.push(new_document);
+
+		// Send the new list of document tab names
+		let open_documents = self.documents.iter().map(|doc| doc.name.clone()).collect();
+		responses.push_back(FrontendMessage::UpdateOpenDocumentsList { open_documents }.into());
+
+		responses.push_back(
+			FrontendMessage::ExpandFolder {
+				path: Vec::new(),
+				children: Vec::new(),
+			}
+			.into(),
+		);
+		responses.push_back(DocumentsMessage::SelectDocument(self.active_document_index).into());
+	}
 }
 
 impl Default for DocumentsMessageHandler {
@@ -116,7 +135,7 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 				self.documents.clear();
 
 				// Create a new blank document
-				responses.push_back(NewDocument(None, None).into());
+				responses.push_back(NewDocument().into());
 			}
 			CloseDocument(id) => {
 				assert!(id < self.documents.len(), "Tried to select a document that was not initialized");
@@ -130,7 +149,7 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 				// Last tab was closed, so create a new blank tab
 				if self.documents.is_empty() {
 					self.active_document_index = 0;
-					responses.push_back(NewDocument(None, None).into());
+					responses.push_back(NewDocument().into());
 				}
 				// The currently selected doc is being closed
 				else if id == self.active_document_index {
@@ -165,35 +184,19 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 					);
 				}
 			}
-			NewDocument(name, serialized_contents) => {
-				let name = name.unwrap_or(self.get_new_doc_title());
-
-				let new_document = match serialized_contents {
-					None => DocumentMessageHandler::with_name(name),
-					Some(content) => {
-						let res = DocumentMessageHandler::with_name_content(name, content);
-						if res.is_err() {
-							// how can we show an error message in the UI?
-							return;
-						}
-						res.unwrap()
-					}
-				};
-				self.active_document_index = self.documents.len();
-				self.documents.push(new_document);
-
-				// Send the new list of document tab names
-				let open_documents = self.documents.iter().map(|doc| doc.name.clone()).collect();
-				responses.push_back(FrontendMessage::UpdateOpenDocumentsList { open_documents }.into());
-
-				responses.push_back(
-					FrontendMessage::ExpandFolder {
-						path: Vec::new(),
-						children: Vec::new(),
-					}
-					.into(),
-				);
-				responses.push_back(SelectDocument(self.active_document_index).into());
+			NewDocument() => {
+				let name = self.get_new_doc_title();
+				let new_document = DocumentMessageHandler::with_name(name);
+				self.load_document(new_document, responses);
+			}
+			OpenDocument(name, serialized_contents) => {
+				let res = DocumentMessageHandler::with_name_content(name, serialized_contents);
+				if res.is_err() {
+					// how can we show an error message in the UI?
+					return;
+				}
+				let doc = res.unwrap();
+				self.load_document(doc, responses);
 			}
 			GetOpenDocumentsList => {
 				// Send the list of document tab names
