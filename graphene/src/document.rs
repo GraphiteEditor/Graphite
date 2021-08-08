@@ -4,15 +4,17 @@ use std::{
 };
 
 use glam::{DAffine2, DVec2};
+use serde::{Deserialize, Serialize};
 
 use crate::{
 	layers::{self, Folder, Layer, LayerData, LayerDataType, Shape},
 	DocumentError, DocumentResponse, LayerId, Operation, Quad,
 };
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Document {
 	pub root: Layer,
+	#[serde(skip)]
 	pub hasher: DefaultHasher,
 }
 
@@ -31,17 +33,8 @@ fn split_path(path: &[LayerId]) -> Result<(&[LayerId], LayerId), DocumentError> 
 }
 
 impl Document {
-	pub fn with_content(serialized_content: String) -> Result<Self, DocumentError> {
-		let json_value: Result<serde_json::Value, serde_json::Error> = serde_json::from_str(&serialized_content);
-		let json_value = json_value.unwrap_or(serde_json::Value::default());
-		let json_value = json_value.get("root");
-		match json_value {
-			Some(root) => Ok(Self {
-				root: serde_json::from_value(root.clone()).map_err(|_| DocumentError::InvalidFile)?,
-				hasher: DefaultHasher::new(),
-			}),
-			_ => Err(DocumentError::InvalidFile),
-		}
+	pub fn with_content(serialized_content: &String) -> Result<Self, DocumentError> {
+		serde_json::from_str(serialized_content).map_err(|_| DocumentError::InvalidFile)
 	}
 
 	/// Wrapper around render, that returns the whole document as a Response.
@@ -55,12 +48,9 @@ impl Document {
 	}
 
 	pub fn serialize_document(&self) -> String {
-		let doc = serde_json::json!({
-			"version": 0,
-			"root": self.root,
-			"nodes": {}
-		});
-		doc.to_string()
+		let val = serde_json::to_string(self);
+		// We fully expect the serialization to succeed
+		val.unwrap()
 	}
 
 	/// Checks whether each layer under `path` intersects with the provided `quad` and adds all intersection layers as paths to `intersections`.
