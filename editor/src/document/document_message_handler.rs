@@ -23,7 +23,7 @@ pub enum DocumentsMessage {
 	CloseActiveDocumentWithConfirmation,
 	CloseAllDocumentsWithConfirmation,
 	CloseAllDocuments,
-	NewDocument(Option<String>),
+	NewDocument(Option<String>, Option<String>),
 	GetOpenDocumentsList,
 	NextDocument,
 	PrevDocument,
@@ -42,6 +42,34 @@ impl DocumentsMessageHandler {
 	}
 	pub fn active_document_mut(&mut self) -> &mut DocumentMessageHandler {
 		&mut self.documents[self.active_document_index]
+	}
+	fn get_new_doc_title(&self) -> String {
+		let digits = ('0'..='9').collect::<Vec<char>>();
+		let mut doc_title_numbers = self
+			.documents
+			.iter()
+			.map(|d| {
+				if d.name.ends_with(digits.as_slice()) {
+					let (_, number) = d.name.split_at(17);
+					number.trim().parse::<usize>().unwrap()
+				} else {
+					1
+				}
+			})
+			.collect::<Vec<usize>>();
+		doc_title_numbers.sort_unstable();
+		let mut new_doc_title_num = 1;
+		while new_doc_title_num <= self.documents.len() {
+			if new_doc_title_num != doc_title_numbers[new_doc_title_num - 1] {
+				break;
+			}
+			new_doc_title_num += 1;
+		}
+		let name = match new_doc_title_num {
+			1 => "Untitled Document".to_string(),
+			_ => format!("Untitled Document {}", new_doc_title_num),
+		};
+		name
 	}
 }
 
@@ -88,7 +116,7 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 				self.documents.clear();
 
 				// Create a new blank document
-				responses.push_back(NewDocument(None).into());
+				responses.push_back(NewDocument(None, None).into());
 			}
 			CloseDocument(id) => {
 				assert!(id < self.documents.len(), "Tried to select a document that was not initialized");
@@ -102,7 +130,7 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 				// Last tab was closed, so create a new blank tab
 				if self.documents.is_empty() {
 					self.active_document_index = 0;
-					responses.push_back(NewDocument(None).into());
+					responses.push_back(NewDocument(None, None).into());
 				}
 				// The currently selected doc is being closed
 				else if id == self.active_document_index {
@@ -137,32 +165,8 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 					);
 				}
 			}
-			NewDocument(serialized_contents) => {
-				let digits = ('0'..='9').collect::<Vec<char>>();
-				let mut doc_title_numbers = self
-					.documents
-					.iter()
-					.map(|d| {
-						if d.name.ends_with(digits.as_slice()) {
-							let (_, number) = d.name.split_at(17);
-							number.trim().parse::<usize>().unwrap()
-						} else {
-							1
-						}
-					})
-					.collect::<Vec<usize>>();
-				doc_title_numbers.sort_unstable();
-				let mut new_doc_title_num = 1;
-				while new_doc_title_num <= self.documents.len() {
-					if new_doc_title_num != doc_title_numbers[new_doc_title_num - 1] {
-						break;
-					}
-					new_doc_title_num += 1;
-				}
-				let name = match new_doc_title_num {
-					1 => "Untitled Document".to_string(),
-					_ => format!("Untitled Document {}", new_doc_title_num),
-				};
+			NewDocument(name, serialized_contents) => {
+				let name = name.unwrap_or(self.get_new_doc_title());
 
 				let new_document = match serialized_contents {
 					None => DocumentMessageHandler::with_name(name),
