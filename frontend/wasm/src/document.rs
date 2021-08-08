@@ -66,12 +66,12 @@ pub fn get_open_documents_list() -> Result<(), JsValue> {
 
 #[wasm_bindgen]
 pub fn new_document() -> Result<(), JsValue> {
-	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(DocumentsMessage::NewDocument(None)).map_err(convert_error))
+	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(DocumentsMessage::NewDocument(None, None)).map_err(convert_error))
 }
 
 #[wasm_bindgen]
-pub fn open_document(content: String) -> Result<(), JsValue> {
-	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(DocumentsMessage::NewDocument(Some(content))).map_err(convert_error))
+pub fn open_document(name: String, content: String) -> Result<(), JsValue> {
+	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(DocumentsMessage::NewDocument(Some(name), Some(content))).map_err(convert_error))
 }
 
 #[wasm_bindgen]
