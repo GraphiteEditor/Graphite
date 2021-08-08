@@ -13,6 +13,7 @@ pub enum FrontendMessage {
 	SetActiveTool { tool_name: String },
 	SetActiveDocument { document_index: usize },
 	UpdateOpenDocumentsList { open_documents: Vec<String> },
+	DisplayError { description: String },
 	DisplayConfirmationToCloseDocument { document_index: usize },
 	DisplayConfirmationToCloseAllDocuments,
 	UpdateCanvas { document: String },
@@ -42,6 +43,7 @@ impl MessageHandler<FrontendMessage, ()> for FrontendMessageHandler {
 	advertise_actions!(
 		FrontendMessageDiscriminant;
 
+		DisplayError,
 		CollapseFolder,
 		ExpandFolder,
 		SetActiveTool,

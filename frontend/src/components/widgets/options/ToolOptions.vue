@@ -25,7 +25,7 @@
 <script lang="ts">
 import { defineComponent } from "vue";
 
-import comingSoon from "@/utilities/coming-soon";
+import { comingSoon } from "@/utilities/errors";
 
 import { WidgetRow, SeparatorType, IconButtonWidget } from "@/components/widgets/widgets";
 import Separator from "@/components/widgets/separators/Separator.vue";
