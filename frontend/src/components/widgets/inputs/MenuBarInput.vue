@@ -53,7 +53,7 @@
 <script lang="ts">
 import { defineComponent } from "vue";
 
-import comingSoon from "@/utilities/coming-soon";
+import { comingSoon } from "@/utilities/errors";
 
 import IconLabel from "@/components/widgets/labels/IconLabel.vue";
 import { ApplicationPlatform } from "@/components/window/MainWindow.vue";
