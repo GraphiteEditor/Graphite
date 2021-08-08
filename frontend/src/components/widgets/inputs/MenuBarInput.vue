@@ -164,10 +164,11 @@ async function handleOpenClick() {
 	// A needs B so we trigger the click at the very end
 
 	// C: create reader object
+	let filename = ""; // Will be loaded in FileInput handler
 	const reader = new FileReader();
 	reader.addEventListener("loadend", async () => {
 		const content = reader.result as string;
-		(await wasm).open_document(content);
+		(await wasm).open_document(filename, content);
 	});
 
 	// B: Handle File Input change event
@@ -179,7 +180,9 @@ async function handleOpenClick() {
 		"change",
 		() => {
 			if (element.files && element.files.length > 0) {
-				reader.readAsText(element.files[0]);
+				const file = element.files[0];
+				filename = file.name;
+				reader.readAsText(file);
 			}
 		},
 		{ capture: false, once: true }
