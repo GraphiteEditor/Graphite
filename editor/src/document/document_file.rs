@@ -1,5 +1,5 @@
 pub use super::layer_panel::*;
-use crate::{frontend::layer_panel::*, EditorError};
+use crate::EditorError;
 use glam::{DAffine2, DVec2};
 use graphene::{document::Document as InternalDocument, LayerId};
 use serde::{Deserialize, Serialize};

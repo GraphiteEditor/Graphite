@@ -1,5 +1,4 @@
-use crate::document::layer_panel::Path;
-use crate::frontend::layer_panel::LayerPanelEntry;
+use crate::document::layer_panel::{Path,LayerPanelEntry};
 use crate::message_prelude::*;
 use crate::Color;
 use serde::{Deserialize, Serialize};
