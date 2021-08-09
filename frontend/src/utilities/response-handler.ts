@@ -203,7 +203,6 @@ export interface ExpandFolder {
 	children: Array<LayerPanelEntry>;
 }
 function newExpandFolder(input: any): ExpandFolder {
-	console.log(input);
 	return {
 		path: newPath(input.path),
 		children: input.children.map((child: any) => newLayerPanelEntry(child)),
@@ -230,7 +229,6 @@ function newSetCanvasRotation(input: any): SetCanvasRotation {
 
 function newPath(input: any): BigUint64Array {
 	// eslint-disable-next-line
-	console.log(input);
 	const u32CombinedPairs = input.map((n: Array<number>) => BigInt((BigInt(n[0]) << BigInt(32)) | BigInt(n[1])));
 	return new BigUint64Array(u32CombinedPairs);
 }

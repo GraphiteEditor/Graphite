@@ -315,8 +315,23 @@ export default defineComponent({
 				console.log("ExpandFolder:", expandData);
 				const responsePath = expandData.path;
 				const responseLayers = expandData.children as Array<LayerPanelEntry>;
+				if (responseLayers.length === 0) return;
 
-				if (responsePath.length === 0) {
+				function merge_into_existing(elements: Array<LayerPanelEntry>, layers: Array<LayerPanelEntry>) {
+					let last_insertion = layers.findIndex((layer: LayerPanelEntry) => {
+						const pathLengthsEqual = elements[0].path.length - 1 === layer.path.length;
+						return pathLengthsEqual && elements[0].path.slice(0,-1).every((layer_id, i) => layer_id === layer.path[i]);
+					});
+					elements.forEach((nlayer) => {
+						const index = layers.findIndex((layer: LayerPanelEntry) => {
+							const pathLengthsEqual = nlayer.path.length === layer.path.length;
+							return pathLengthsEqual && nlayer.path.every((layer_id, i) => layer_id === layer.path[i]);
+						});
+						if (index >= 0) {last_insertion = index; layers[index] = nlayer;}
+						else layers.splice(++last_insertion, 0, nlayer);
+					})
+				}
+				/*if (responsePath.length === 0) {
 					responseLayers.forEach((nlayer) => {
 						let last_insertion = -1;
 						const index = this.layers.findIndex((layer: LayerPanelEntry) => {
@@ -333,7 +348,8 @@ export default defineComponent({
 					});
 					if (index >= 0) this.layers.splice(index, 0,  ...responseLayers);
 
-				}
+				}*/
+				merge_into_existing(responseLayers, this.layers);
 				let newLayers: Array<LayerPanelEntry>= [];
 				this.layers.forEach((layer) => {
 					const index = responseLayers.findIndex((nlayer: LayerPanelEntry) => {
