@@ -312,7 +312,6 @@ export default defineComponent({
 		registerResponseHandler(ResponseType.ExpandFolder, (responseData: Response) => {
 			const expandData = responseData as ExpandFolder;
 			if (expandData) {
-				console.log("ExpandFolder:", expandData);
 				const responsePath = expandData.path;
 				const responseLayers = expandData.children as Array<LayerPanelEntry>;
 				if (responseLayers.length === 0) return;
@@ -336,24 +335,6 @@ export default defineComponent({
 						}
 					});
 				};
-				/* if (responsePath.length === 0) {
-					responseLayers.forEach((nlayer) => {
-						let lastInsertion = -1;
-						const index = this.layers.findIndex((layer: LayerPanelEntry) => {
-							const pathLengthsEqual = nlayer.path.length === layer.path.length;
-							return pathLengthsEqual && nlayer.path.every((layerId, i) => layerId === layer.path[i]);
-						});
-						if (index >= 0) {lastInsertion = index; this.layers[index] = nlayer;}
-						else this.layers.splice(++lastInsertion, 0, nlayer);
-					})
-				} else {
-					const index = this.layers.findIndex((layer: LayerPanelEntry) => {
-						const pathLengthsEqual = responsePath.length === layer.path.length;
-						return pathLengthsEqual && responsePath.every((layerId, i) => layerId === layer.path[i]);
-					});
-					if (index >= 0) this.layers.splice(index, 0, ...responseLayers);
-
-				} */
 				merge_into_existing(responseLayers, this.layers);
 				const newLayers: Array<LayerPanelEntry> = [];
 				this.layers.forEach((layer) => {

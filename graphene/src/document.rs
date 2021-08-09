@@ -25,11 +25,6 @@ impl Default for Document {
 	}
 }
 
-fn split_path(path: &[LayerId]) -> Result<(&[LayerId], LayerId), DocumentError> {
-	let (id, path) = path.split_last().ok_or(DocumentError::InvalidPath)?;
-	Ok((path, *id))
-}
-
 impl Document {
 	/// Wrapper around render, that returns the whole document as a Response.
 	pub fn render_root(&mut self) -> String {
@@ -356,53 +351,53 @@ impl Document {
 				let transform = DAffine2::from_cols_array(transform);
 				self.apply_transform_relative_to_viewport(path, transform)?;
 				self.mark_as_dirty(path)?;
-				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::LayerChanged { path: path.clone() }])
+				Some([vec![DocumentResponse::DocumentChanged], update_thumbnails_upstream(path)].concat())
 			}
 			Operation::SetLayerTransformInViewport { path, transform } => {
 				let transform = DAffine2::from_cols_array(transform);
 				self.set_transform_relative_to_viewport(path, transform)?;
 				self.mark_as_dirty(path)?;
-				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::LayerChanged { path: path.clone() }])
+				Some([vec![DocumentResponse::DocumentChanged], update_thumbnails_upstream(path)].concat())
 			}
 			Operation::TransformLayerInScope { path, transform, scope } => {
 				let transform = DAffine2::from_cols_array(transform);
 				let scope = DAffine2::from_cols_array(scope);
 				self.transform_relative_to_scope(path, Some(scope), transform)?;
 				self.mark_as_dirty(path)?;
-				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::LayerChanged { path: path.clone() }])
+				Some([vec![DocumentResponse::DocumentChanged], update_thumbnails_upstream(path)].concat())
 			}
 			Operation::SetLayerTransformInScope { path, transform, scope } => {
 				let transform = DAffine2::from_cols_array(transform);
 				let scope = DAffine2::from_cols_array(scope);
 				self.set_transform_relative_to_scope(path, Some(scope), transform)?;
 				self.mark_as_dirty(path)?;
-				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::LayerChanged { path: path.clone() }])
+				Some([vec![DocumentResponse::DocumentChanged], update_thumbnails_upstream(path)].concat())
 			}
 			Operation::SetLayerTransform { path, transform } => {
 				let transform = DAffine2::from_cols_array(transform);
 				let layer = self.layer_mut(path)?;
 				layer.transform = transform;
 				self.mark_as_dirty(path)?;
-				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::LayerChanged { path: path.clone() }])
+				Some([vec![DocumentResponse::DocumentChanged], update_thumbnails_upstream(path)].concat())
 			}
 			Operation::ToggleVisibility { path } => {
 				self.mark_as_dirty(path)?;
 				if let Ok(layer) = self.layer_mut(path) {
 					layer.visible = !layer.visible;
 				}
-				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::LayerChanged { path: path.clone() }])
+				Some([vec![DocumentResponse::DocumentChanged], update_thumbnails_upstream(path)].concat())
 			}
 			Operation::SetLayerBlendMode { path, blend_mode } => {
 				self.mark_as_dirty(path)?;
 				self.layer_mut(path)?.blend_mode = *blend_mode;
 
-				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::LayerChanged { path: path.clone() }])
+				Some([vec![DocumentResponse::DocumentChanged], update_thumbnails_upstream(path)].concat())
 			}
 			Operation::SetLayerOpacity { path, opacity } => {
 				self.mark_as_dirty(path)?;
 				self.layer_mut(path)?.opacity = *opacity;
 
-				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::LayerChanged { path: path.clone() }])
+				Some([vec![DocumentResponse::DocumentChanged], update_thumbnails_upstream(path)].concat())
 			}
 			Operation::FillLayer { path, color } => {
 				let layer = self.layer_mut(path)?;
@@ -411,9 +406,25 @@ impl Document {
 					_ => return Err(DocumentError::NotAShape),
 				}
 				self.mark_as_dirty(path)?;
-				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::LayerChanged { path: path.clone() }])
+				Some([vec![DocumentResponse::DocumentChanged], update_thumbnails_upstream(path)].concat())
 			}
 		};
 		Ok(responses)
 	}
+}
+
+fn split_path(path: &[LayerId]) -> Result<(&[LayerId], LayerId), DocumentError> {
+	let (id, path) = path.split_last().ok_or(DocumentError::InvalidPath)?;
+	Ok((path, *id))
+}
+
+fn update_thumbnails_upstream(path: &[LayerId]) -> Vec<DocumentResponse> {
+	let length = path.len();
+	let mut responses = Vec::with_capacity(length);
+	for i in 0..length {
+		responses.push(DocumentResponse::LayerChanged {
+			path: path[(length - i)..length].to_vec(),
+		});
+	}
+	responses
 }
