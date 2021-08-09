@@ -112,6 +112,13 @@
 <script lang="ts">
 import { defineComponent, PropType } from "vue";
 
+// Linear Interpolation
+const lerp = (x: number, y: number, a: number) => x * (1 - a) + y * a;
+
+// Convert the position of the handle (0-1) to the position on the track (0-1).
+// This includes the 1/2 handle length gap  of the possible handle positionson each side so the end of the handle doesn't go off the track.
+const handle_to_track = (handle_len: number, handle_pos: number) => lerp(handle_len / 2, 1 - handle_len / 2, handle_pos);
+
 export enum ScrollbarDirection {
 	"Horizontal" = "Horizontal",
 	"Vertical" = "Vertical",
@@ -125,12 +132,12 @@ export default defineComponent({
 	},
 	computed: {
 		thumbStart(): { left: string } | { top: string } {
-			const start = this.handleLength === 1 ? 0 : this.handlePosition * (1 - this.handleLength);
+			const start = handle_to_track(this.handleLength, this.handlePosition) - this.handleLength / 2;
 
 			return this.direction === ScrollbarDirection.Vertical ? { top: `${start * 100}%` } : { left: `${start * 100}%` };
 		},
 		thumbEnd(): { right: string } | { bottom: string } {
-			const end = this.handleLength === 1 ? 0 : 1 - (this.handlePosition * (1 - this.handleLength) + this.handleLength);
+			const end = 1 - handle_to_track(this.handleLength, this.handlePosition) - this.handleLength / 2;
 
 			return this.direction === ScrollbarDirection.Vertical ? { bottom: `${end * 100}%` } : { right: `${end * 100}%` };
 		},
@@ -172,7 +179,7 @@ export default defineComponent({
 			if (!this.dragging) {
 				this.dragging = true;
 				const position = this.direction === ScrollbarDirection.Vertical ? e.clientY : e.clientX;
-				this.dragOffset = (this.handlePosition * (1 - this.handleLength) + this.handleLength / 2) * this.trackLength() + this.trackOffset() - position;
+				this.dragOffset = handle_to_track(this.handleLength, this.handlePosition) * this.trackLength() + this.trackOffset() - position;
 				this.updateHandlePosition(e);
 			}
 		},
