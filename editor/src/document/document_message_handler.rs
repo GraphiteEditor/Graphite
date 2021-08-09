@@ -191,12 +191,12 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 			}
 			OpenDocument(name, serialized_contents) => {
 				let res = DocumentMessageHandler::with_name_content(name, serialized_contents);
-				if res.is_err() {
-					// how can we show an error message in the UI?
-					return;
+				match res {
+					Ok(doc) => {
+						self.load_document(doc, responses);
+					}
+					Err(e) => responses.push_back(FrontendMessage::DisplayError { description: e.to_string() }.into()),
 				}
-				let doc = res.unwrap();
-				self.load_document(doc, responses);
 			}
 			GetOpenDocumentsList => {
 				// Send the list of document tab names

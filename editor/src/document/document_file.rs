@@ -1,7 +1,7 @@
 pub use super::layer_panel::*;
 use crate::{frontend::layer_panel::*, EditorError};
 use glam::{DAffine2, DVec2};
-use graphene::{document::Document as InternalDocument, LayerId};
+use graphene::{document::Document as InternalDocument, DocumentError, LayerId};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -201,7 +201,8 @@ impl DocumentMessageHandler {
 				doc.document = handle;
 				Ok(doc)
 			}
-			Err(_) => Err(EditorError::Document(String::from("Failed to parse file content"))),
+			Err(DocumentError::InvalidFile(msg)) => Err(EditorError::Document(msg)),
+			_ => Err(EditorError::Document(String::from("Failed to open file"))),
 		}
 	}
 
