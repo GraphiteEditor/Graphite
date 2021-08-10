@@ -11,3 +11,4 @@ use_try_shorthand = true
 # where_single_line = true
 # match_block_trailing_comma = true # https://github.com/rust-lang/rustfmt/issues/3380
 # control_brace_style = "ClosingNextLine" # https://github.com/rust-lang/rustfmt/issues/3377
+# blank_lines_lower_bound = 1 # https://github.com/rust-lang/rustfmt/issues/3382
