@@ -178,6 +178,12 @@ const MenuList = defineComponent({
 			if (ref) menuEntry.ref = ref;
 		},
 		handleEntryClick(menuEntry: MenuListEntry) {
+			// If a Menu Entry has children it cannot also have an action. That behavior would be confusing to users.
+			if (menuEntry.children && menuEntry.ref) {
+				menuEntry.ref.setOpen();
+				return;
+			}
+
 			(this.$refs.floatingMenu as typeof FloatingMenu).setClosed();
 
 			if (menuEntry.checkbox) menuEntry.checked = !menuEntry.checked;
