@@ -317,47 +317,54 @@ export default defineComponent({
 				const responseLayers = expandData.children as Array<LayerPanelEntry>;
 				if (responseLayers.length === 0) return;
 
-				function merge_into_existing(elements: Array<LayerPanelEntry>, layers: Array<LayerPanelEntry>) {
-					let last_insertion = layers.findIndex((layer: LayerPanelEntry) => {
+				const merge_into_existing = (elements: Array<LayerPanelEntry>, layers: Array<LayerPanelEntry>) => {
+					let lastInsertion = layers.findIndex((layer: LayerPanelEntry) => {
 						const pathLengthsEqual = elements[0].path.length - 1 === layer.path.length;
-						return pathLengthsEqual && elements[0].path.slice(0,-1).every((layer_id, i) => layer_id === layer.path[i]);
+						return pathLengthsEqual && elements[0].path.slice(0, -1).every((layerId, i) => layerId === layer.path[i]);
 					});
 					elements.forEach((nlayer) => {
 						const index = layers.findIndex((layer: LayerPanelEntry) => {
 							const pathLengthsEqual = nlayer.path.length === layer.path.length;
-							return pathLengthsEqual && nlayer.path.every((layer_id, i) => layer_id === layer.path[i]);
+							return pathLengthsEqual && nlayer.path.every((layerId, i) => layerId === layer.path[i]);
 						});
-						if (index >= 0) {last_insertion = index; layers[index] = nlayer;}
-						else layers.splice(++last_insertion, 0, nlayer);
-					})
-				}
-				/*if (responsePath.length === 0) {
+						if (index >= 0) {
+							lastInsertion = index;
+							layers[index] = nlayer;
+						} else {
+							lastInsertion += 1;
+							layers.splice(lastInsertion, 0, nlayer);
+						}
+					});
+				};
+				/* if (responsePath.length === 0) {
 					responseLayers.forEach((nlayer) => {
-						let last_insertion = -1;
+						let lastInsertion = -1;
 						const index = this.layers.findIndex((layer: LayerPanelEntry) => {
 							const pathLengthsEqual = nlayer.path.length === layer.path.length;
-							return pathLengthsEqual && nlayer.path.every((layer_id, i) => layer_id === layer.path[i]);
+							return pathLengthsEqual && nlayer.path.every((layerId, i) => layerId === layer.path[i]);
 						});
-						if (index >= 0) {last_insertion = index; this.layers[index] = nlayer;}
-						else this.layers.splice(++last_insertion, 0, nlayer);
+						if (index >= 0) {lastInsertion = index; this.layers[index] = nlayer;}
+						else this.layers.splice(++lastInsertion, 0, nlayer);
 					})
 				} else {
 					const index = this.layers.findIndex((layer: LayerPanelEntry) => {
 						const pathLengthsEqual = responsePath.length === layer.path.length;
-						return pathLengthsEqual && responsePath.every((layer_id, i) => layer_id === layer.path[i]);
+						return pathLengthsEqual && responsePath.every((layerId, i) => layerId === layer.path[i]);
 					});
-					if (index >= 0) this.layers.splice(index, 0,  ...responseLayers);
+					if (index >= 0) this.layers.splice(index, 0, ...responseLayers);
 
-				}*/
+				} */
 				merge_into_existing(responseLayers, this.layers);
-				let newLayers: Array<LayerPanelEntry>= [];
+				const newLayers: Array<LayerPanelEntry> = [];
 				this.layers.forEach((layer) => {
 					const index = responseLayers.findIndex((nlayer: LayerPanelEntry) => {
 						const pathLengthsEqual = responsePath.length + 1 === layer.path.length;
-						return pathLengthsEqual && nlayer.path.every((layer_id, i) => layer_id === layer.path[i]);
+						return pathLengthsEqual && nlayer.path.every((layerId, i) => layerId === layer.path[i]);
 					});
-					if (index >= 0 || layer.path.length != responsePath.length + 1) {newLayers.push(layer);}
-				})
+					if (index >= 0 || layer.path.length !== responsePath.length + 1) {
+						newLayers.push(layer);
+					}
+				});
 				this.layers = newLayers;
 
 				this.setBlendModeForSelectedLayers();
@@ -375,7 +382,7 @@ export default defineComponent({
 
 				const index = this.layers.findIndex((layer: LayerPanelEntry) => {
 					const pathLengthsEqual = responsePath.length === layer.path.length;
-					return pathLengthsEqual && responsePath.every((layer_id, i) => layer_id === layer.path[i]);
+					return pathLengthsEqual && responsePath.every((layerId, i) => layerId === layer.path[i]);
 				});
 				if (index >= 0) this.layers[index] = responseLayer;
 
