@@ -63,8 +63,8 @@ export interface NumberInputProps {
 	value: number;
 	min?: number;
 	max?: number;
-	step?: number;
-	stepIsMultiplier?: boolean;
+	incrementBehavior?: boolean;
+	incrementFactor?: number;
 	isInteger?: boolean;
 	unit?: string;
 	unitIsHiddenWhenEditing?: boolean;
