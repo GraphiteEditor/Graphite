@@ -2,3 +2,4 @@ node_modules/
 dist/
 pkg/
 wasm/pkg/*
+package-lock.json
