@@ -271,37 +271,6 @@ export default defineComponent({
 			const floatingMenuContent = this.$refs.floatingMenuContent as HTMLElement;
 			floatingMenuContent.style.minWidth = minWidth;
 		},
-		mouseMoveHandler(e: MouseEvent) {
-			const MOUSE_STRAY_DISTANCE = 100;
-			const target = e.target as HTMLElement;
-			const mouseOverFloatingMenuKeepOpen = target && (target.closest("[data-hover-menu-keep-open]") as HTMLElement);
-			const mouseOverFloatingMenuSpawner = target && (target.closest("[data-hover-menu-spawner]") as HTMLElement);
-			// TODO: Simplify the following expression when optional chaining is supported by the build system
-			const mouseOverOwnFloatingMenuSpawner =
-				mouseOverFloatingMenuSpawner && mouseOverFloatingMenuSpawner.parentElement && mouseOverFloatingMenuSpawner.parentElement.contains(this.$refs.floatingMenu as HTMLElement);
-
-			// Swap this open floating menu with the one created by the floating menu spawner being hovered over
-			if (mouseOverFloatingMenuSpawner && !mouseOverOwnFloatingMenuSpawner) {
-				this.setClosed();
-				mouseOverFloatingMenuSpawner.click();
-			}
-
-			// Close the floating menu if the mouse has strayed far enough from its bounds
-			if (this.isMouseEventOutsideFloatingMenu(e, MOUSE_STRAY_DISTANCE) && !mouseOverOwnFloatingMenuSpawner && !mouseOverFloatingMenuKeepOpen) {
-				// TODO: Extend this rectangle bounds check to all `data-hover-menu-keep-open` element bounds up the DOM tree since currently
-				// submenus disappear with zero stray distance if the cursor is further than the stray distance from only the top-level menu
-				this.setClosed();
-			}
-
-			// eslint-disable-next-line no-bitwise
-			const eventIncludesLmb = Boolean(e.buttons & 1);
-
-			// Clean up any messes from lost mouseup events
-			if (!this.open && !eventIncludesLmb) {
-				this.mouseStillDown = false;
-				window.removeEventListener("mouseup", this.mouseUpHandler);
-			}
-		},
 		mouseDownHandler(e: MouseEvent) {
 			// Close the floating menu if the mouse clicked outside the floating menu (but within stray distance)
 			if (this.isMouseEventOutsideFloatingMenu(e)) {
@@ -348,9 +317,6 @@ export default defineComponent({
 	watch: {
 		open(newState: boolean, oldState: boolean) {
 			if (newState && !oldState) {
-				// Close floating menu if mouse strays far enough away
-				window.addEventListener("mousemove", this.mouseMoveHandler);
-
 				// Close floating menu if mouse is outside (but within stray distance)
 				window.addEventListener("mousedown", this.mouseDownHandler);
 
@@ -358,7 +324,6 @@ export default defineComponent({
 				window.addEventListener("mouseup", this.mouseUpHandler);
 			}
 			if (!newState && oldState) {
-				window.removeEventListener("mousemove", this.mouseMoveHandler);
 				window.removeEventListener("mousedown", this.mouseDownHandler);
 			}
 		},
