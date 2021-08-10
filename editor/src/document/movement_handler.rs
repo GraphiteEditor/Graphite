@@ -129,20 +129,14 @@ impl MessageHandler<MovementMessage, (&mut LayerData, &Document, &InputPreproces
 				self.create_document_transform_from_layerdata(layerdata, &ipp.viewport_size, responses);
 			}
 			IncreaseCanvasZoom => {
-				let next_level_higher = VIEWPORT_ZOOM_LEVELS.iter().find(|scale| **scale > layerdata.scale);
-				if let Some(new_zoom) = next_level_higher {
-					layerdata.scale = *new_zoom;
-					responses.push_back(FrontendMessage::SetCanvasZoom { new_zoom: layerdata.scale }.into());
-					self.create_document_transform_from_layerdata(layerdata, &ipp.viewport_size, responses);
-				}
+				layerdata.scale = *VIEWPORT_ZOOM_LEVELS.iter().find(|scale| **scale > layerdata.scale).unwrap_or(&layerdata.scale);
+				responses.push_back(FrontendMessage::SetCanvasZoom { new_zoom: layerdata.scale }.into());
+				self.create_document_transform_from_layerdata(layerdata, &ipp.viewport_size, responses);
 			}
 			DecreaseCanvasZoom => {
-				let next_level_lower = VIEWPORT_ZOOM_LEVELS.iter().rev().find(|scale| **scale < layerdata.scale);
-				if let Some(new_zoom) = next_level_lower {
-					layerdata.scale = *new_zoom;
-					responses.push_back(FrontendMessage::SetCanvasZoom { new_zoom: layerdata.scale }.into());
-					self.create_document_transform_from_layerdata(layerdata, &ipp.viewport_size, responses);
-				}
+				layerdata.scale = *VIEWPORT_ZOOM_LEVELS.iter().rev().find(|scale| **scale < layerdata.scale).unwrap_or(&layerdata.scale);
+				responses.push_back(FrontendMessage::SetCanvasZoom { new_zoom: layerdata.scale }.into());
+				self.create_document_transform_from_layerdata(layerdata, &ipp.viewport_size, responses);
 			}
 			WheelCanvasZoom => {
 				let scroll = ipp.mouse.scroll_delta.scroll_delta();
