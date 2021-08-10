@@ -332,15 +332,16 @@ export default defineComponent({
 			window.removeEventListener("click", this.clickHandlerCapture, true);
 		},
 		isMouseEventOutsideFloatingMenu(e: MouseEvent, extraDistanceAllowed = 0): boolean {
-			const floatingMenuContent = this.$refs.floatingMenuContent as HTMLElement;
-			if (!floatingMenuContent) return true;
-			const floatingMenuBounds = floatingMenuContent.getBoundingClientRect();
-
+			// Considers all child menus as well as the top-level one.
+			const allContainedFloatingMenus = [...this.$el.querySelectorAll(".floating-menu-content")];
+			return !allContainedFloatingMenus.find((element) => !this.isMouseEventOutsideMenuElement(e, element, extraDistanceAllowed));
+		},
+		isMouseEventOutsideMenuElement(e: MouseEvent, element: HTMLElement, extraDistanceAllowed = 0): boolean {
+			const floatingMenuBounds = element.getBoundingClientRect();
 			if (floatingMenuBounds.left - e.clientX >= extraDistanceAllowed) return true;
 			if (e.clientX - floatingMenuBounds.right >= extraDistanceAllowed) return true;
 			if (floatingMenuBounds.top - e.clientY >= extraDistanceAllowed) return true;
 			if (e.clientY - floatingMenuBounds.bottom >= extraDistanceAllowed) return true;
-
 			return false;
 		},
 	},
