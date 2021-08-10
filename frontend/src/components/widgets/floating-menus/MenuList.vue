@@ -26,6 +26,7 @@
 
 				<MenuList
 					v-if="entry.children"
+					@click.stop
 					:direction="MenuDirection.TopRight"
 					:menuEntries="entry.children"
 					v-bind="{ defaultAction, minWidth, drawIcon, scrollable }"
