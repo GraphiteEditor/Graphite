@@ -1,5 +1,3 @@
-use std::f64::consts::PI;
-
 use crate::consts::LINE_ROTATE_SNAP_ANGLE;
 use crate::input::keyboard::Key;
 use crate::input::{mouse::ViewportPosition, InputPreprocessor};
