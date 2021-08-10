@@ -145,7 +145,14 @@
 </style>
 
 <script lang="ts">
-import { defineComponent } from "vue";
+import { defineComponent, PropType } from "vue";
+
+export enum IncrementBehavior {
+	Add = "Add",
+	Multiply = "Multiply",
+	Callback = "Callback",
+	None = "None",
+}
 
 export enum IncrementDirection {
 	Decrease = "Decrease",
@@ -158,8 +165,10 @@ export default defineComponent({
 		value: { type: Number, required: true },
 		min: { type: Number, required: false },
 		max: { type: Number, required: false },
-		step: { type: Number, default: 1 },
-		stepIsMultiplier: { type: Boolean, default: false },
+		incrementBehavior: { type: String as PropType<IncrementBehavior>, default: IncrementBehavior.Add },
+		incrementFactor: { type: Number, default: 1 },
+		incrementCallbackIncrease: { type: Function, required: false },
+		incrementCallbackDecrease: { type: Function, required: false },
 		isInteger: { type: Boolean, default: false },
 		unit: { type: String, default: "" },
 		unitIsHiddenWhenEditing: { type: Boolean, default: true },
@@ -210,12 +219,24 @@ export default defineComponent({
 		onIncrement(direction: IncrementDirection) {
 			if (Number.isNaN(this.value)) return;
 
-			if (this.stepIsMultiplier) {
-				const directionMultiplier = direction === IncrementDirection.Increase ? this.step : 1 / this.step;
-				this.updateValue(this.value * directionMultiplier);
-			} else {
-				const directionAddend = direction === IncrementDirection.Increase ? this.step : -this.step;
-				this.updateValue(this.value + directionAddend);
+			switch (this.incrementBehavior) {
+				case IncrementBehavior.Add: {
+					const directionAddend = direction === IncrementDirection.Increase ? this.incrementFactor : -this.incrementFactor;
+					this.updateValue(this.value + directionAddend);
+					break;
+				}
+				case IncrementBehavior.Multiply: {
+					const directionMultiplier = direction === IncrementDirection.Increase ? this.incrementFactor : 1 / this.incrementFactor;
+					this.updateValue(this.value * directionMultiplier);
+					break;
+				}
+				case IncrementBehavior.Callback: {
+					if (direction === IncrementDirection.Increase && this.incrementCallbackIncrease) this.incrementCallbackIncrease();
+					if (direction === IncrementDirection.Decrease && this.incrementCallbackDecrease) this.incrementCallbackDecrease();
+					break;
+				}
+				default:
+					break;
 			}
 		},
 		updateValue(newValue: number) {
