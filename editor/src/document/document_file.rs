@@ -221,7 +221,7 @@ impl DocumentMessageHandler {
 		self.document.render_root();
 		let data: LayerData = *layer_data(&mut self.layer_data, &path);
 		let layer = self.document.layer(&path)?;
-		let entry = layer_panel_entry(&data, self.document.multiply_transforms(&path).unwrap(), layer, path);
+		let entry = layer_panel_entry(&data, self.document.multiply_transforms(&path)?, layer, path);
 		Ok(entry)
 	}
 
@@ -367,13 +367,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 									self.layer_data.remove(&path);
 									None
 								}
-								DocumentResponse::LayerChanged { path } => Some(
-									FrontendMessage::UpdateLayer {
-										path: path.clone().into(),
-										data: self.layer_panel_entry(path).unwrap(),
-									}
-									.into(),
-								),
+								DocumentResponse::LayerChanged { path } => self.layer_panel_entry(path.clone()).ok().map(|data| FrontendMessage::UpdateLayer { path: path.into(), data }.into()),
 								DocumentResponse::CreatedLayer { path } => self.select_layer(&path),
 								DocumentResponse::DocumentChanged => unreachable!(),
 							})

@@ -16,6 +16,7 @@ pub enum DocumentsMessage {
 		path: Vec<LayerId>,
 		insert_index: isize,
 	},
+	PasteIntoSelectedFolder,
 	SelectDocument(usize),
 	CloseDocument(usize),
 	#[child]
@@ -212,6 +213,10 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 					}
 				}
 			}
+			PasteIntoSelectedFolder => {
+				let path = self.active_document().selected_layers().next().cloned().unwrap_or_default();
+				responses.push_back(PasteLayers { path, insert_index: -1 }.into());
+			}
 			PasteLayers { path, insert_index } => {
 				let paste = |layer: &Layer, responses: &mut VecDeque<_>| {
 					log::trace!("pasting into folder {:?} as index: {}", path, insert_index);
@@ -245,6 +250,7 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 			NextDocument,
 			PrevDocument,
 			PasteLayers,
+			PasteIntoSelectedFolder,
 		);
 
 		if self.active_document().layer_data.values().any(|data| data.selected) {

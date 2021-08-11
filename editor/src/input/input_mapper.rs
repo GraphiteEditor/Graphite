@@ -185,7 +185,7 @@ impl Default for Mapping {
 			entry! {action=ToolMessage::ResetColors, key_down=KeyX, modifiers=[KeyShift, KeyControl]},
 			entry! {action=ToolMessage::SwapColors, key_down=KeyX, modifiers=[KeyShift]},
 			// Document Actions
-			entry! {action=DocumentsMessage::PasteLayers{path: vec![], insert_index: -1}, key_down=KeyV, modifiers=[KeyControl]},
+			entry! {action=DocumentsMessage::PasteIntoSelectedFolder, key_down=KeyV, modifiers=[KeyControl]},
 			entry! {action=DocumentMessage::Undo, key_down=KeyZ, modifiers=[KeyControl]},
 			entry! {action=DocumentMessage::DeselectAllLayers, key_down=KeyA, modifiers=[KeyControl, KeyAlt]},
 			entry! {action=DocumentMessage::SelectAllLayers, key_down=KeyA, modifiers=[KeyControl]},
