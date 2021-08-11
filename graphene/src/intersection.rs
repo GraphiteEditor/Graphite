@@ -58,13 +58,8 @@ pub fn intersect_quad_bez_path(quad: Quad, shape: &BezPath, closed: bool) -> boo
 		return true;
 	}
 
-	if let Some(shape_point) = get_arbitrary_point_on_path(shape) {
-		// check if shape is entirely within the selection
-		return quad.path().contains(shape_point);
-	} else {
-		// empty shape
-		return false;
-	}
+	// check if shape is entirely within selection
+	get_arbitrary_point_on_path(shape).map(|shape_point| quad.path().contains(shape_point)).unwrap_or_default()
 }
 
 pub fn get_arbitrary_point_on_path(path: &BezPath) -> Option<Point> {
