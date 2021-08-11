@@ -253,8 +253,22 @@ pub fn export_document() -> Result<(), JsValue> {
 
 /// Sets the zoom to the value
 #[wasm_bindgen]
-pub fn set_zoom(new_zoom: f64) -> Result<(), JsValue> {
+pub fn set_canvas_zoom(new_zoom: f64) -> Result<(), JsValue> {
 	let ev = MovementMessage::SetCanvasZoom(new_zoom);
+	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(ev)).map_err(convert_error)
+}
+
+/// Zoom in to the next step
+#[wasm_bindgen]
+pub fn increase_canvas_zoom() -> Result<(), JsValue> {
+	let ev = MovementMessage::IncreaseCanvasZoom;
+	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(ev)).map_err(convert_error)
+}
+
+/// Zoom out to the next step
+#[wasm_bindgen]
+pub fn decrease_canvas_zoom() -> Result<(), JsValue> {
+	let ev = MovementMessage::DecreaseCanvasZoom;
 	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(ev)).map_err(convert_error)
 }
 
