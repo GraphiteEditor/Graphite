@@ -373,7 +373,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				);
 				let viewport = ipp.viewport_size.as_f64();
 				let [bounds1, bounds2] = self.document.visible_layers_bounding_box().unwrap_or_default();
-				let bounds1 = bounds1.min(glam::DVec2::ZERO) - viewport * 0.5;
+				let bounds1 = bounds1.min(DVec2::ZERO) - viewport * 0.5;
 				let bounds2 = bounds2.max(viewport) + viewport * 0.5;
 				let bounds_length = (bounds2 - bounds1).abs();
 				let scrollbar_multiplier = bounds_length - viewport;
