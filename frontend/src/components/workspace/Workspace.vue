@@ -24,6 +24,7 @@
 <style lang="scss">
 .workspace-grid-subdivision {
 	min-height: 28px;
+	min-width: 0;
 	flex: 1 1 0;
 
 	&.folded {
@@ -33,13 +34,15 @@
 }
 
 .workspace-grid-resize-gutter {
-	flex: 0 0 4px;
+	flex: 0 0 auto;
 
 	&.layout-row {
+		height: 4px;
 		cursor: ns-resize;
 	}
 
 	&.layout-col {
+		width: 4px;
 		cursor: ew-resize;
 	}
 }
