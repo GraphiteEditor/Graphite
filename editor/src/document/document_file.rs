@@ -372,7 +372,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					.into(),
 				);
 				let root = self.layerdata(&[]);
-				log::info!("RS {} result {}", root.scale, f64::powf(2., root.scale / 3.) * 0.5);
+				log::info!("RS {} result {}", root.scale, f64::powf(2., -root.scale / 3.) * 0.5);
 				let viewport = ipp.viewport_size.as_f64();
 				let [bounds1, bounds2] = self.document.visible_layers_bounding_box().unwrap_or_default();
 				let bounds1 = bounds1.min(DVec2::ZERO) - viewport * (f64::powf(2., root.scale / 3.) * 0.5);
