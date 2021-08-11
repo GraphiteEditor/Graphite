@@ -15,7 +15,6 @@
 <style lang="scss">
 .main-window {
 	height: 100%;
-	overflow: auto;
 }
 
 .title-bar-row {

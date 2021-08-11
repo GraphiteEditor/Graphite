@@ -224,18 +224,18 @@ export default defineComponent({
 			const floatingMenuBounds = floatingMenuContent.getBoundingClientRect();
 
 			if (this.direction === MenuDirection.Left || this.direction === MenuDirection.Right) {
-				const topOffset = floatingMenuBounds.top - workspaceBounds.top - this.windowEdgeMargin;
+				const topOffset = floatingMenuBounds.top - workspaceBounds.top - this.windowEdgeMargin - window.scrollY;
 				if (topOffset < 0) floatingMenuContainer.style.transform = `translate(0, ${-topOffset}px)`;
 
-				const bottomOffset = workspaceBounds.bottom - floatingMenuBounds.bottom - this.windowEdgeMargin;
+				const bottomOffset = workspaceBounds.bottom - floatingMenuBounds.bottom - this.windowEdgeMargin + window.scrollY;
 				if (bottomOffset < 0) floatingMenuContainer.style.transform = `translate(0, ${bottomOffset}px)`;
 			}
 
 			if (this.direction === MenuDirection.Top || this.direction === MenuDirection.Bottom) {
-				const leftOffset = floatingMenuBounds.left - workspaceBounds.left - this.windowEdgeMargin;
+				const leftOffset = floatingMenuBounds.left - workspaceBounds.left - this.windowEdgeMargin - window.scrollX;
 				if (leftOffset < 0) floatingMenuContainer.style.transform = `translate(${-leftOffset}px, 0)`;
 
-				const rightOffset = workspaceBounds.right - floatingMenuBounds.right - this.windowEdgeMargin;
+				const rightOffset = workspaceBounds.right - floatingMenuBounds.right - this.windowEdgeMargin + window.scrollX;
 				if (rightOffset < 0) floatingMenuContainer.style.transform = `translate(${rightOffset}px, 0)`;
 			}
 		}
