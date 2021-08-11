@@ -14,8 +14,10 @@
 
 <style lang="scss">
 .main-window {
-	height: 100%;
-	overflow: auto;
+	min-height: 100%;
+	// Creates a new stacking context for the app UI so that floating menus (which use `position: fixed` to leave their spawner element's stacking context) have an app-centric stacking context
+	// Without this, floating menus would default to the web page's stacking context, which causes the floating menus to stay fixed when the page is scrolled and get offset from the app UI
+	transform: translate(0, 0);
 }
 
 .title-bar-row {
