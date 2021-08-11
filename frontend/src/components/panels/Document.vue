@@ -314,11 +314,11 @@ export default defineComponent({
 			if (filename.endsWith(".svg")) {
 				type = "image/svg+xml;charset=utf-8";
 			}
-			const svgBlob = new Blob([fileData], { type });
-			const svgUrl = URL.createObjectURL(svgBlob);
+			const blob = new Blob([fileData], { type });
+			const url = URL.createObjectURL(blob);
 			const element = document.createElement("a");
 
-			element.href = svgUrl;
+			element.href = url;
 			element.setAttribute("download", filename);
 			element.style.display = "none";
 
@@ -336,7 +336,7 @@ export default defineComponent({
 		});
 		registerResponseHandler(ResponseType.SaveDocument, (responseData: Response) => {
 			const saveData = responseData as SaveDocument;
-			if (saveData) this.download("canvas.gsvg", saveData.document);
+			if (saveData) this.download("canvas.graphite", saveData.document);
 		});
 		registerResponseHandler(ResponseType.SetActiveTool, (responseData: Response) => {
 			const toolData = responseData as SetActiveTool;
