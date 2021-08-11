@@ -156,39 +156,22 @@ const menuEntries: MenuListEntries = [
 ];
 
 async function handleOpenClick() {
-	// This is an unfortunately complex setup.
-	// A) We fake-click on a "file input" element to trigger user selection.
-	// B) File Input triggers a "change" event when a selection is made, then we use a "reader" object to read the file
-	// C) reader object triggers "loadend" event to tell us that its done reading
-	// B needs C so we create the reader object so we do C first
-	// A needs B so we trigger the click at the very end
-
-	// C: create reader object
-	let filename = ""; // Will be loaded in FileInput handler
-	const reader = new FileReader();
-	reader.addEventListener("loadend", async () => {
-		const content = reader.result as string;
-		(await wasm).open_document(filename, content);
-	});
-
-	// B: Handle File Input change event
 	const element = document.createElement("input");
 	element.type = "file";
 	element.style.display = "none";
 
 	element.addEventListener(
 		"change",
-		() => {
-			if (element.files && element.files.length > 0) {
-				const file = element.files[0];
-				filename = file.name;
-				reader.readAsText(file);
-			}
+		async () => {
+			if (!element.files || !element.files.length) return;
+			const file = element.files[0];
+			const filename = file.name;
+			const content = await file.text();
+			(await wasm).open_document(filename, content);
 		},
 		{ capture: false, once: true }
 	);
 
-	// A: Trigger user selection
 	element.click();
 }
 

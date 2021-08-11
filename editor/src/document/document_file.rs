@@ -193,13 +193,13 @@ impl DocumentMessageHandler {
 			movement_handler: MovementMessageHandler::default(),
 		}
 	}
-	pub fn with_name_content(name: String, serialized_content: String) -> Result<Self, EditorError> {
-		let mut doc = Self::with_name(name);
-		let int_doc = InternalDocument::with_content(&serialized_content);
-		match int_doc {
+	pub fn with_name_and_content(name: String, serialized_content: String) -> Result<Self, EditorError> {
+		let mut document = Self::with_name(name);
+		let internal_document = InternalDocument::with_content(&serialized_content);
+		match internal_document {
 			Ok(handle) => {
-				doc.document = handle;
-				Ok(doc)
+				document.document = handle;
+				Ok(document)
 			}
 			Err(DocumentError::InvalidFile(msg)) => Err(EditorError::Document(msg)),
 			_ => Err(EditorError::Document(String::from("Failed to open file"))),

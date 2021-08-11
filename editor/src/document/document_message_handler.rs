@@ -7,6 +7,7 @@ use log::warn;
 use std::collections::VecDeque;
 
 use super::DocumentMessageHandler;
+use crate::consts::DEFAULT_DOCUMENT_NAME;
 
 #[impl_message(Message, Documents)]
 #[derive(PartialEq, Clone, Debug)]
@@ -23,7 +24,7 @@ pub enum DocumentsMessage {
 	CloseActiveDocumentWithConfirmation,
 	CloseAllDocumentsWithConfirmation,
 	CloseAllDocuments,
-	NewDocument(),
+	NewDocument,
 	OpenDocument(String, String),
 	GetOpenDocumentsList,
 	NextDocument,
@@ -44,14 +45,14 @@ impl DocumentsMessageHandler {
 	pub fn active_document_mut(&mut self) -> &mut DocumentMessageHandler {
 		&mut self.documents[self.active_document_index]
 	}
-	fn get_new_doc_title(&self) -> String {
+	fn generate_new_document_name(&self) -> String {
 		let digits = ('0'..='9').collect::<Vec<char>>();
 		let mut doc_title_numbers = self
 			.documents
 			.iter()
 			.map(|d| {
-				if d.name.ends_with(digits.as_slice()) {
-					let (_, number) = d.name.split_at(17);
+				if d.name.starts_with(DEFAULT_DOCUMENT_NAME) && d.name.ends_with(digits.as_slice()) {
+					let (_, number) = d.name.split_at(DEFAULT_DOCUMENT_NAME.len());
 					number.trim().parse::<usize>().unwrap()
 				} else {
 					1
@@ -67,8 +68,8 @@ impl DocumentsMessageHandler {
 			new_doc_title_num += 1;
 		}
 		let name = match new_doc_title_num {
-			1 => "Untitled Document".to_string(),
-			_ => format!("Untitled Document {}", new_doc_title_num),
+			1 => DEFAULT_DOCUMENT_NAME.to_string(),
+			_ => format!("{} {}", DEFAULT_DOCUMENT_NAME, new_doc_title_num),
 		};
 		name
 	}
@@ -135,7 +136,7 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 				self.documents.clear();
 
 				// Create a new blank document
-				responses.push_back(NewDocument().into());
+				responses.push_back(NewDocument.into());
 			}
 			CloseDocument(id) => {
 				assert!(id < self.documents.len(), "Tried to select a document that was not initialized");
@@ -149,7 +150,7 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 				// Last tab was closed, so create a new blank tab
 				if self.documents.is_empty() {
 					self.active_document_index = 0;
-					responses.push_back(NewDocument().into());
+					responses.push_back(NewDocument.into());
 				}
 				// The currently selected doc is being closed
 				else if id == self.active_document_index {
@@ -184,16 +185,16 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 					);
 				}
 			}
-			NewDocument() => {
-				let name = self.get_new_doc_title();
+			NewDocument => {
+				let name = self.generate_new_document_name();
 				let new_document = DocumentMessageHandler::with_name(name);
 				self.load_document(new_document, responses);
 			}
 			OpenDocument(name, serialized_contents) => {
-				let res = DocumentMessageHandler::with_name_content(name, serialized_contents);
-				match res {
-					Ok(doc) => {
-						self.load_document(doc, responses);
+				let document = DocumentMessageHandler::with_name_and_content(name, serialized_contents);
+				match document {
+					Ok(document) => {
+						self.load_document(document, responses);
 					}
 					Err(e) => responses.push_back(FrontendMessage::DisplayError { description: e.to_string() }.into()),
 				}
