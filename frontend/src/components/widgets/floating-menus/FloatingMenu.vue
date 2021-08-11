@@ -297,6 +297,7 @@ export default defineComponent({
 		},
 		isMouseEventOutsideFloatingMenu(e: MouseEvent, extraDistanceAllowed = 0): boolean {
 			// Considers all child menus as well as the top-level one.
+			if (!this.$el || !this.$el.querySelectorAll) return true;
 			const allContainedFloatingMenus = [...this.$el.querySelectorAll(".floating-menu-content")];
 			return !allContainedFloatingMenus.find((element) => !this.isMouseEventOutsideMenuElement(e, element, extraDistanceAllowed));
 		},
