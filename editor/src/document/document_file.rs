@@ -104,12 +104,6 @@ impl From<DocumentOperation> for Message {
 }
 
 impl DocumentMessageHandler {
-	pub fn active_document(&self) -> &DocumentMessageHandler {
-		self
-	}
-	pub fn active_document_mut(&mut self) -> &mut DocumentMessageHandler {
-		self
-	}
 	fn filter_document_responses(&self, document_responses: &mut Vec<DocumentResponse>) -> bool {
 		let len = document_responses.len();
 		document_responses.retain(|response| !matches!(response, DocumentResponse::DocumentChanged));
@@ -285,9 +279,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				)
 			}
 			SetBlendModeForSelectedLayers(blend_mode) => {
-				let active_document = self;
-
-				for path in active_document.layer_data.iter().filter_map(|(path, data)| data.selected.then(|| path.clone())) {
+				for path in self.layer_data.iter().filter_map(|(path, data)| data.selected.then(|| path.clone())) {
 					responses.push_back(DocumentOperation::SetLayerBlendMode { path, blend_mode }.into());
 				}
 			}
@@ -372,28 +364,30 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				Err(e) => log::error!("DocumentError: {:?}", e),
 				Ok(_) => (),
 			},
-			RenderDocument => responses.extend([
-				FrontendMessage::UpdateCanvas {
-					document: self.document.render_root(),
-				}
-				.into(),
-				FrontendMessage::UpdateScrollbars {
-					bounds: {
-						let bounds = self.active_document_mut().document.visible_layers_bounding_box();
-						let bounds = bounds.unwrap_or([glam::DVec2::ZERO, glam::DVec2::ZERO]);
-						let viewport = ipp.viewport_size.as_f64();
-						[
-							bounds[0].x.min(0.) - viewport.x * 0.5,
-							bounds[0].y.min(0.) - viewport.y * 0.5,
-							bounds[1].x.max(viewport.x) + viewport.x * 0.5,
-							bounds[1].y.max(viewport.y) + viewport.y * 0.5,
-						]
-					},
-					position: self.document.root.transform.translation.into(),
-					viewport_size: ipp.viewport_size.as_f64().into(),
-				}
-				.into(),
-			]),
+			RenderDocument => {
+				responses.push_back(
+					FrontendMessage::UpdateCanvas {
+						document: self.document.render_root(),
+					}
+					.into(),
+				);
+				let viewport = ipp.viewport_size.as_f64();
+				let [bounds1, bounds2] = self.document.visible_layers_bounding_box().unwrap_or_default();
+				let bounds1 = bounds1.min(glam::DVec2::ZERO) - viewport * 0.5;
+				let bounds2 = bounds2.max(viewport) + viewport * 0.5;
+				let bounds_length = (bounds2 - bounds1).abs();
+				let scrollbar_multiplier = bounds_length - viewport;
+				let scrollbar_position = bounds1.abs() / scrollbar_multiplier;
+				let scrollbar_size = viewport / bounds_length;
+				responses.push_back(
+					FrontendMessage::UpdateScrollbars {
+						position: scrollbar_position.into(),
+						size: scrollbar_size.into(),
+						multiplier: scrollbar_multiplier.into(),
+					}
+					.into(),
+				);
+			}
 
 			NudgeSelectedLayers(x, y) => {
 				for path in self.selected_layers().cloned() {

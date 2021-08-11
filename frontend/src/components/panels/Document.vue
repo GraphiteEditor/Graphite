@@ -124,9 +124,9 @@
 					<LayoutCol :class="'bar-area'">
 						<PersistentScrollbar
 							:direction="ScrollbarDirection.Vertical"
-							:handlePosition="scrollbarYPos"
+							:handlePosition="scrollbarPos.y"
 							@update:handlePosition="translateCanvasY"
-							v-model:handleLength="scrollbarYSize"
+							v-model:handleLength="scrollbarSize.y"
 							:class="'right-scrollbar'"
 						/>
 					</LayoutCol>
@@ -134,9 +134,9 @@
 				<LayoutRow :class="'bar-area'">
 					<PersistentScrollbar
 						:direction="ScrollbarDirection.Horizontal"
-						:handlePosition="scrollbarXPos"
+						:handlePosition="scrollbarPos.x"
 						@update:handlePosition="translateCanvasX"
-						v-model:handleLength="scrollbarXSize"
+						v-model:handleLength="scrollbarSize.x"
 						:class="'bottom-scrollbar'"
 					/>
 				</LayoutRow>
@@ -305,11 +305,11 @@ export default defineComponent({
 		},
 		async translateCanvasX(newValue: number) {
 			const { translate_canvas } = await wasm;
-			translate_canvas(-(newValue - this.scrollbarXPos) * (Math.abs(this.bounds.topX) + Math.abs(this.bounds.bottomX)), 0);
+			translate_canvas(-(newValue - this.scrollbarPos.x) * this.scrollbarMultiplier.x, 0);
 		},
 		async translateCanvasY(newValue: number) {
 			const { translate_canvas } = await wasm;
-			translate_canvas(0, -(newValue - this.scrollbarYPos) * (Math.abs(this.bounds.topY) + Math.abs(this.bounds.bottomY)));
+			translate_canvas(0, -(newValue - this.scrollbarPos.y) * this.scrollbarMultiplier.y);
 		},
 		async selectTool(toolName: string) {
 			const { select_tool } = await wasm;
@@ -343,21 +343,9 @@ export default defineComponent({
 		registerResponseHandler(ResponseType.UpdateScrollbars, (responseData: Response) => {
 			const updateData = responseData as UpdateScrollbars;
 			if (updateData) {
-				this.bounds = updateData.bounds;
-				const span = { x: Math.abs(updateData.bounds.bottomX - updateData.bounds.topX), y: Math.abs(updateData.bounds.bottomY - updateData.bounds.topY) };
-				const min = { x: Math.min(updateData.bounds.bottomX, updateData.bounds.topX), y: Math.min(updateData.bounds.bottomY, updateData.bounds.topY) };
-				if (span.x < updateData.viewport_size.x) {
-					this.scrollbarXSize = 1;
-				} else {
-					this.scrollbarXPos = -min.x / (span.x - updateData.viewport_size.x);
-					this.scrollbarXSize = updateData.viewport_size.x / span.x;
-				}
-				if (span.y < updateData.viewport_size.y) {
-					this.scrollbarYSize = 1;
-				} else {
-					this.scrollbarYPos = -min.y / (span.y - updateData.viewport_size.y);
-					this.scrollbarYSize = updateData.viewport_size.y / span.y;
-				}
+				this.scrollbarPos = updateData.position;
+				this.scrollbarSize = updateData.size;
+				this.scrollbarMultiplier = updateData.multiplier;
 			}
 		});
 		registerResponseHandler(ResponseType.ExportDocument, (responseData: Response) => {
@@ -404,11 +392,9 @@ export default defineComponent({
 			overlaysEnabled: true,
 			documentRotation: 0,
 			documentZoom: 100,
-			scrollbarXPos: 0.5,
-			scrollbarXSize: 0.5,
-			scrollbarYPos: 0.5,
-			scrollbarYSize: 0.5,
-			bounds: { topX: 0, topY: 0, bottomX: 1, bottomY: 1 },
+			scrollbarPos: { x: 0.5, y: 0.5 },
+			scrollbarSize: { x: 0.5, y: 0.5 },
+			scrollbarMultiplier: { x: 0, y: 0 },
 			IncrementDirection,
 			MenuDirection,
 			SeparatorDirection,

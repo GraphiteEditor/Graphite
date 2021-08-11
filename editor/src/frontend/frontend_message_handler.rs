@@ -17,7 +17,7 @@ pub enum FrontendMessage {
 	DisplayConfirmationToCloseDocument { document_index: usize },
 	DisplayConfirmationToCloseAllDocuments,
 	UpdateCanvas { document: String },
-	UpdateScrollbars { bounds: [f64; 4], position: (f64, f64), viewport_size: (f64, f64) },
+	UpdateScrollbars { position: (f64, f64), size: (f64, f64), multiplier: (f64, f64) },
 	UpdateLayer { path: Vec<LayerId>, data: LayerPanelEntry },
 	ExportDocument { document: String },
 	EnableTextInput,

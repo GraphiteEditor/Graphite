@@ -168,15 +168,15 @@ function newUpdateCanvas(input: any): UpdateCanvas {
 }
 
 export interface UpdateScrollbars {
-	bounds: { topX: number; topY: number; bottomX: number; bottomY: number };
 	position: { x: number; y: number };
-	viewport_size: { x: number; y: number };
+	size: { x: number; y: number };
+	multiplier: { x: number; y: number };
 }
 function newUpdateScrollbars(input: any): UpdateScrollbars {
 	return {
-		bounds: { topX: input.bounds[0], topY: input.bounds[1], bottomX: input.bounds[2], bottomY: input.bounds[3] },
 		position: { x: input.position[0], y: input.position[1] },
-		viewport_size: { x: input.viewport_size[0], y: input.viewport_size[1] },
+		size: { x: input.size[0], y: input.size[1] },
+		multiplier: { x: input.multiplier[0], y: input.multiplier[1] },
 	};
 }
 
