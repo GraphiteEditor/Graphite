@@ -42,7 +42,7 @@
 
 				<Separator :type="SeparatorType.Section" />
 
-				<NumberInput @update:value="setRotation" v-model:value="documentRotation" :step="15" :unit="`°`" ref="rotation" />
+				<NumberInput @update:value="setRotation" v-model:value="documentRotation" :incrementFactor="15" :unit="`°`" ref="rotation" />
 
 				<Separator :type="SeparatorType.Section" />
 
@@ -54,11 +54,12 @@
 
 				<NumberInput
 					v-model:value="documentZoom"
-					@update:value="setZoom"
+					@update:value="setCanvasZoom"
 					:min="0.000001"
 					:max="1000000"
-					:step="1.25"
-					:stepIsMultiplier="true"
+					:incrementBehavior="IncrementBehavior.Callback"
+					:incrementCallbackIncrease="increaseCanvasZoom"
+					:incrementCallbackDecrease="decreaseCanvasZoom"
 					:unit="`%`"
 					:displayDecimalPlaces="4"
 					ref="zoom"
@@ -237,7 +238,7 @@ import CanvasRuler, { RulerDirection } from "@/components/widgets/rulers/CanvasR
 import IconButton from "@/components/widgets/buttons/IconButton.vue";
 import PopoverButton from "@/components/widgets/buttons/PopoverButton.vue";
 import RadioInput, { RadioEntries } from "@/components/widgets/inputs/RadioInput.vue";
-import NumberInput, { IncrementDirection } from "@/components/widgets/inputs/NumberInput.vue";
+import NumberInput, { IncrementDirection, IncrementBehavior } from "@/components/widgets/inputs/NumberInput.vue";
 import DropdownInput from "@/components/widgets/inputs/DropdownInput.vue";
 import OptionalInput from "@/components/widgets/inputs/OptionalInput.vue";
 import ToolOptions from "@/components/widgets/options/ToolOptions.vue";
@@ -295,9 +296,14 @@ export default defineComponent({
 			const modifiers = makeModifiersBitfield(e.ctrlKey, e.shiftKey, e.altKey);
 			on_mouse_scroll(e.deltaX, e.deltaY, e.deltaZ, modifiers);
 		},
-		async setZoom(newZoom: number) {
-			const { set_zoom } = await wasm;
-			set_zoom(newZoom / 100);
+		async setCanvasZoom(newZoom: number) {
+			(await wasm).set_canvas_zoom(newZoom / 100);
+		},
+		async increaseCanvasZoom() {
+			(await wasm).increase_canvas_zoom();
+		},
+		async decreaseCanvasZoom() {
+			(await wasm).decrease_canvas_zoom();
 		},
 		async setRotation(newRotation: number) {
 			const { set_rotation } = await wasm;
@@ -395,6 +401,7 @@ export default defineComponent({
 			scrollbarPos: { x: 0.5, y: 0.5 },
 			scrollbarSize: { x: 0.5, y: 0.5 },
 			scrollbarMultiplier: { x: 0, y: 0 },
+			IncrementBehavior,
 			IncrementDirection,
 			MenuDirection,
 			SeparatorDirection,
