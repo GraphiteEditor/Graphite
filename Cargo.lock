@@ -13,9 +13,9 @@ dependencies = [
 
 [[package]]
 name = "arrayvec"
-version = "0.5.2"
+version = "0.7.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "23b62fc65de8e4e7f52534fb52b0f3ed04746ae267519eef2a83941e8085068b"
+checksum = "8da52d66c7071e2e3fa2a1e5c6d088fec47b593032b254f5e980de8ea54454d6"
 
 [[package]]
 name = "atty"
@@ -167,8 +167,8 @@ dependencies = [
 
 [[package]]
 name = "kurbo"
-version = "0.8.1"
-source = "git+https://github.com/linebender/kurbo#0ef68211223b956942c4a5834d66a2625cb8d575"
+version = "0.8.3"
+source = "git+https://github.com/linebender/kurbo.git#9ed4b73dac4f085065d7a6968121581cb8296089"
 dependencies = [
  "arrayvec",
  "serde",
