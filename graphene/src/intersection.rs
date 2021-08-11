@@ -9,7 +9,7 @@ pub struct Quad([DVec2; 4]);
 impl Quad {
 	pub fn from_box(bbox: [DVec2; 2]) -> Self {
 		let size = bbox[1] - bbox[0];
-		Self([bbox[0], bbox[0] + size * DVec2::X, bbox[0] + size * DVec2::Y, bbox[1]])
+		Self([bbox[0], bbox[0] + size * DVec2::X, bbox[1], bbox[0] + size * DVec2::Y])
 	}
 
 	pub fn lines(&self) -> [Line; 4] {
