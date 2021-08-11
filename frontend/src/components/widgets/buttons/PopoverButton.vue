@@ -1,7 +1,7 @@
 <template>
 	<div class="popover-button">
 		<IconButton :action="handleClick" :icon="icon" :size="16" data-hover-menu-spawner />
-		<FloatingMenu :type="MenuType.Popover" :direction="MenuDirection.Bottom" ref="floatingMenu">
+		<FloatingMenu :type="MenuType.Popover" :direction="MenuDirection.Bottom" v-model:isOpen="popoverOpen">
 			<slot></slot>
 		</FloatingMenu>
 	</div>
@@ -68,13 +68,13 @@ export default defineComponent({
 	},
 	methods: {
 		handleClick() {
-			(this.$refs.floatingMenu as typeof FloatingMenu).setOpen();
-
+			this.popoverOpen = true;
 			if (this.action) this.action();
 		},
 	},
 	data() {
 		return {
+			popoverOpen: false,
 			MenuDirection,
 			MenuType,
 		};

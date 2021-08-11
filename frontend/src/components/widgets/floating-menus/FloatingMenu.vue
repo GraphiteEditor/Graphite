@@ -1,5 +1,5 @@
 <template>
-	<div class="floating-menu" :class="[direction.toLowerCase(), type.toLowerCase()]" v-if="open || type === MenuType.Dialog" ref="floatingMenu">
+	<div class="floating-menu" :class="[direction.toLowerCase(), type.toLowerCase()]" v-if="isOpenInternal || type === MenuType.Dialog">
 		<div class="tail" v-if="type === MenuType.Popover"></div>
 		<div class="floating-menu-container" ref="floatingMenuContainer">
 			<div class="floating-menu-content" :class="{ 'scrollable-y': scrollable }" ref="floatingMenuContent" :style="floatingMenuContentStyle">
@@ -200,6 +200,7 @@ export enum MenuType {
 export default defineComponent({
 	components: {},
 	props: {
+		isOpen: { type: Boolean, default: false },
 		direction: { type: String, default: MenuDirection.Bottom },
 		type: { type: String, required: true },
 		windowEdgeMargin: { type: Number, default: 8 },
@@ -208,7 +209,7 @@ export default defineComponent({
 	},
 	data() {
 		return {
-			open: false,
+			performingWidthMeasurement: false,
 			mouseStillDown: false,
 			MenuDirection,
 			MenuType,
@@ -240,36 +241,30 @@ export default defineComponent({
 			}
 		}
 	},
+	unmounted() {
+		window.removeEventListener("mousedown", this.mouseDownHandler);
+		window.removeEventListener("mouseup", this.mouseUpHandler);
+	},
 	methods: {
 		setOpen() {
-			this.open = true;
+			this.$emit("update:isOpen", true);
 		},
 		setClosed() {
-			this.open = false;
+			this.$emit("update:isOpen", false);
 		},
-		isOpen(): boolean {
-			return this.open;
-		},
-		getWidth(callback: (width: number) => void) {
-			this.$nextTick(() => {
-				const floatingMenuContent = this.$refs.floatingMenuContent as HTMLElement;
-				const width = floatingMenuContent.clientWidth;
-
-				callback(width);
-			});
-		},
-		disableMinWidth(callback: (minWidth: string) => void) {
-			this.$nextTick(() => {
-				const floatingMenuContent = this.$refs.floatingMenuContent as HTMLElement;
-				const initialMinWidth = floatingMenuContent.style.minWidth;
-				floatingMenuContent.style.minWidth = "0";
-
-				callback(initialMinWidth);
-			});
-		},
-		enableMinWidth(minWidth: string) {
+		// Measures the width this menu should have, absent minWidth constraints.
+		async measureNaturalWidth(): Promise<number | undefined> {
 			const floatingMenuContent = this.$refs.floatingMenuContent as HTMLElement;
-			floatingMenuContent.style.minWidth = minWidth;
+			if (!floatingMenuContent) return undefined;
+
+			// Force the menu open so that the DOM is rendered.
+			try {
+				this.performingWidthMeasurement = true;
+				await this.$nextTick();
+				return floatingMenuContent.clientWidth;
+			} finally {
+				this.performingWidthMeasurement = false;
+			}
 		},
 		mouseDownHandler(e: MouseEvent) {
 			// Close the floating menu if the mouse clicked outside the floating menu (but within stray distance)
@@ -315,7 +310,7 @@ export default defineComponent({
 		},
 	},
 	watch: {
-		open(newState: boolean, oldState: boolean) {
+		isOpen(newState: boolean, oldState: boolean) {
 			if (newState && !oldState) {
 				// Close floating menu if mouse is outside (but within stray distance)
 				window.addEventListener("mousedown", this.mouseDownHandler);
@@ -323,16 +318,23 @@ export default defineComponent({
 				// Cancel the subsequent click event to prevent the floating menu from reopening if the floating menu's button is the click event target
 				window.addEventListener("mouseup", this.mouseUpHandler);
 			}
-			if (!newState && oldState) {
-				window.removeEventListener("mousedown", this.mouseDownHandler);
-			}
 		},
 	},
 	computed: {
 		floatingMenuContentStyle(): Partial<CSSStyleDeclaration> {
 			return {
-				minWidth: this.minWidth > 0 ? `${this.minWidth}px` : "",
+				minWidth: this.minWidth > 0 && !this.performingWidthMeasurement ? `${this.minWidth}px` : "",
 			};
+		},
+		isOpenInternal: {
+			get(): boolean {
+				return this.isOpen || this.performingWidthMeasurement;
+			},
+			set(newIsOpen: boolean) {
+				if (newIsOpen !== this.isOpen) {
+					this.$emit("update:isOpen", newIsOpen);
+				}
+			},
 		},
 	},
 });

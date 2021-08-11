@@ -6,11 +6,20 @@
 			</div>
 		</div>
 		<div class="entry-container" v-for="entry in menuEntries" :key="entry">
-			<div @click="handleEntryClick(entry)" class="entry" :class="{ open: entry.ref && entry.ref.isOpen() }" data-hover-menu-spawner>
+			<div @click="openEntry = entry" @mouseenter="if (openEntry !== undefined) openEntry = entry;" class="entry" :class="{ open: openEntry === entry }" data-hover-menu-spawner>
 				<IconLabel :icon="entry.icon" v-if="entry.icon" />
 				<span v-if="entry.label">{{ entry.label }}</span>
 			</div>
-			<MenuList :menuEntries="entry.children" :direction="MenuDirection.Bottom" :minWidth="240" :drawIcon="true" :defaultAction="comingSoon" :ref="(ref) => setEntryRefs(entry, ref)" />
+			<MenuList
+				:isOpen="openEntry === entry"
+				@update:isOpen="openEntry = $event ? entry : undefined"
+				:menuEntries="entry.children"
+				:direction="MenuDirection.Bottom"
+				:minWidth="240"
+				:drawIcon="true"
+				:defaultAction="comingSoon"
+				:ref="(ref) => setEntryRefs(entry, ref)"
+			/>
 		</div>
 	</div>
 </template>
@@ -170,6 +179,7 @@ export default defineComponent({
 	},
 	data() {
 		return {
+			openEntry: undefined,
 			ApplicationPlatform,
 			menuEntries,
 			MenuDirection,

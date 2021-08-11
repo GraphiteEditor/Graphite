@@ -1,15 +1,24 @@
 <template>
-	<FloatingMenu :class="'menu-list'" :direction="direction" :type="MenuType.Dropdown" ref="floatingMenu" :windowEdgeMargin="0" :scrollable="scrollable" data-hover-menu-keep-open>
+	<FloatingMenu
+		:isOpen="isOpen"
+		@update:isOpen="this.$emit('update:isOpen', $event)"
+		:class="'menu-list'"
+		:direction="direction"
+		:type="MenuType.Dropdown"
+		ref="floatingMenu"
+		:windowEdgeMargin="0"
+		:scrollable="scrollable"
+		data-hover-menu-keep-open
+	>
 		<template v-for="(section, sectionIndex) in menuEntries" :key="sectionIndex">
 			<Separator :type="SeparatorType.List" :direction="SeparatorDirection.Vertical" v-if="sectionIndex > 0" />
 			<div
 				v-for="(entry, entryIndex) in section"
 				:key="entryIndex"
 				class="row"
-				:class="{ open: isMenuEntryOpen(entry), active: entry === activeEntry }"
+				:class="{ open: entry === selectedEntry && entry.children, active: entry === activeEntry }"
 				@click="handleEntryClick(entry)"
-				@mouseenter="handleEntryMouseEnter(entry)"
-				@mouseleave="handleEntryMouseLeave(entry)"
+				@mouseenter="selectedEntry = entry"
 				:data-hover-menu-spawner-extend="entry.children && []"
 			>
 				<CheckboxInput v-if="entry.checkbox" v-model:checked="entry.checked" :outlineStyle="true" :class="'entry-checkbox'" />
@@ -29,6 +38,8 @@
 					@click.stop
 					:direction="MenuDirection.TopRight"
 					:menuEntries="entry.children"
+					:isOpen="entry === selectedEntry"
+					@update:isOpen="if (!$event) this.$emit('update:isOpen', false);"
 					v-bind="{ defaultAction, minWidth, drawIcon, scrollable }"
 					:ref="(ref) => setEntryRefs(entry, ref)"
 				/>
@@ -168,6 +179,7 @@ const MenuList = defineComponent({
 		direction: { type: String as PropType<MenuDirection>, default: MenuDirection.Bottom },
 		menuEntries: { type: Array as PropType<SectionsOfMenuListEntries>, required: true },
 		activeEntry: { type: Object as PropType<MenuListEntry>, required: false },
+		isOpen: { type: Boolean, default: false },
 		defaultAction: { type: Function as PropType<Function | undefined>, required: false },
 		minWidth: { type: Number, default: 0 },
 		drawIcon: { type: Boolean, default: false },
@@ -180,7 +192,6 @@ const MenuList = defineComponent({
 		handleEntryClick(menuEntry: MenuListEntry) {
 			// If a Menu Entry has children it cannot also have an action. That behavior would be confusing to users.
 			if (menuEntry.children && menuEntry.ref) {
-				menuEntry.ref.setOpen();
 				return;
 			}
 
@@ -199,49 +210,24 @@ const MenuList = defineComponent({
 			if (menuEntry.ref) menuEntry.ref.setOpen();
 			else throw new Error("The menu bar floating menu has no associated ref");
 		},
-		handleEntryMouseLeave(menuEntry: MenuListEntry) {
-			if (!menuEntry.children || !menuEntry.children.length) return;
-
-			if (menuEntry.ref) menuEntry.ref.setClosed();
-			else throw new Error("The menu bar floating menu has no associated ref");
-		},
-		isMenuEntryOpen(menuEntry: MenuListEntry): boolean {
-			if (!menuEntry.children || !menuEntry.children.length) return false;
-
-			if (menuEntry.ref) return menuEntry.ref.isOpen();
-
-			return false;
-		},
 		setOpen() {
 			(this.$refs.floatingMenu as typeof FloatingMenu).setOpen();
 		},
 		setClosed() {
 			(this.$refs.floatingMenu as typeof FloatingMenu).setClosed();
 		},
-		isOpen(): boolean {
-			const floatingMenu = this.$refs.floatingMenu as typeof FloatingMenu;
-			return Boolean(floatingMenu && floatingMenu.isOpen());
+		setSelectedEntry(newSelectedEntry: MenuListEntry) {
+			this.selectedEntry = newSelectedEntry;
+		},
+		clearSelectedEntry() {
+			this.selectedEntry = undefined;
 		},
 		measureAndReportWidth() {
 			// API is experimental but supported in all browsers - https://developer.mozilla.org/en-US/docs/Web/API/FontFaceSet
 			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			(document as any).fonts.ready.then(() => {
+			(document as any).fonts.ready.then(async () => {
 				const floatingMenu = this.$refs.floatingMenu as typeof FloatingMenu;
-
-				// Save open/closed state before forcing open, if necessary, for measurement
-				const initiallyOpen = floatingMenu.isOpen();
-				if (!initiallyOpen) floatingMenu.setOpen();
-
-				floatingMenu.disableMinWidth((initialMinWidth: string) => {
-					floatingMenu.getWidth((width: number) => {
-						floatingMenu.enableMinWidth(initialMinWidth);
-
-						// Restore open/closed state if it was forced open for measurement
-						if (!initiallyOpen) floatingMenu.setClosed();
-
-						this.$emit("width-changed", width);
-					});
-				});
+				this.$emit("width-changed", await floatingMenu.measureNaturalWidth());
 			});
 		},
 	},
@@ -270,9 +256,16 @@ const MenuList = defineComponent({
 			},
 			deep: true,
 		},
+		isOpen(isOpen: boolean, previousIsOpen: boolean) {
+			if (isOpen !== previousIsOpen) {
+				// Reset selectedEntry every time the menu is open or closed
+				this.selectedEntry = undefined;
+			}
+		},
 	},
 	data() {
 		return {
+			selectedEntry: undefined as MenuListEntry | undefined,
 			keyboardLockInfoMessage: keyboardLockApiSupported() ? KEYBOARD_LOCK_USE_FULLSCREEN : KEYBOARD_LOCK_SWITCH_BROWSER,
 			SeparatorDirection,
 			SeparatorType,

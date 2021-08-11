@@ -1,11 +1,12 @@
 <template>
 	<div class="dropdown-input">
-		<div class="dropdown-box" :class="{ disabled }" :style="{ minWidth: `${minWidth}px`, disabled: 'disabled' }" @click="clickDropdownBox" data-hover-menu-spawner>
+		<div class="dropdown-box" :class="{ disabled }" :style="{ minWidth: `${minWidth}px`, disabled: 'disabled' }" @mousedown="mouseDownOnInputBox($event)" data-hover-menu-spawner>
 			<IconLabel :class="'dropdown-icon'" :icon="activeEntry.icon" v-if="activeEntry.icon" />
 			<span>{{ activeEntry.label }}</span>
 			<IconLabel :class="'dropdown-arrow'" :icon="'DropdownArrow'" />
 		</div>
 		<MenuList
+			v-model:isOpen="menuOpen"
 			v-model:active-entry="activeEntry"
 			@update:activeEntry="activeEntryChanged"
 			@width-changed="onWidthChanged"
@@ -13,7 +14,6 @@
 			:direction="MenuDirection.Bottom"
 			:drawIcon="drawIcon"
 			:scrollable="true"
-			ref="menuList"
 		/>
 	</div>
 </template>
@@ -103,6 +103,7 @@ export default defineComponent({
 	data() {
 		return {
 			activeEntry: this.menuEntries.flat()[this.selectedIndex],
+			menuOpen: false,
 			MenuDirection,
 			minWidth: 0,
 		};
@@ -124,8 +125,9 @@ export default defineComponent({
 		activeEntryChanged(newActiveEntry: MenuListEntry) {
 			this.$emit("update:selectedIndex", this.menuEntries.flat().indexOf(newActiveEntry));
 		},
-		clickDropdownBox() {
-			if (!this.disabled) (this.$refs.menuList as typeof MenuList).setOpen();
+		mouseDownOnInputBox(e: MouseEvent) {
+			this.menuOpen = !this.disabled && !this.menuOpen;
+			e.stopPropagation();
 		},
 		onWidthChanged(newWidth: number) {
 			this.minWidth = newWidth;

@@ -1,14 +1,14 @@
 <template>
 	<div class="swatch-pair">
 		<div class="secondary swatch">
-			<button @click="clickSecondarySwatch" ref="secondaryButton" data-hover-menu-spawner></button>
-			<FloatingMenu :type="MenuType.Popover" :direction="MenuDirection.Right" horizontal ref="secondarySwatchFloatingMenu">
+			<button @click="secondarySwatchOpen = true" ref="secondaryButton" data-hover-menu-spawner></button>
+			<FloatingMenu :type="MenuType.Popover" :direction="MenuDirection.Right" horizontal v-model:isOpen="secondarySwatchOpen">
 				<ColorPicker @update:color="secondaryColorChanged" :color="secondaryColor" />
 			</FloatingMenu>
 		</div>
 		<div class="primary swatch">
-			<button @click="clickPrimarySwatch" ref="primaryButton" data-hover-menu-spawner></button>
-			<FloatingMenu :type="MenuType.Popover" :direction="MenuDirection.Right" horizontal ref="primarySwatchFloatingMenu">
+			<button @click="primarySwatchOpen = true" ref="primaryButton" data-hover-menu-spawner></button>
+			<FloatingMenu :type="MenuType.Popover" :direction="MenuDirection.Right" horizontal v-model:isOpen="primarySwatchOpen">
 				<ColorPicker @update:color="primaryColorChanged" :color="primaryColor" />
 			</FloatingMenu>
 		</div>
@@ -83,16 +83,6 @@ export default defineComponent({
 	},
 	props: {},
 	methods: {
-		clickPrimarySwatch() {
-			this.getRef<typeof FloatingMenu>("primarySwatchFloatingMenu").setOpen();
-			this.getRef<typeof FloatingMenu>("secondarySwatchFloatingMenu").setClosed();
-		},
-
-		clickSecondarySwatch() {
-			this.getRef<typeof FloatingMenu>("secondarySwatchFloatingMenu").setOpen();
-			this.getRef<typeof FloatingMenu>("primarySwatchFloatingMenu").setClosed();
-		},
-
 		getRef<T>(name: string) {
 			return this.$refs[name] as T;
 		},
@@ -131,6 +121,8 @@ export default defineComponent({
 	},
 	data() {
 		return {
+			primarySwatchOpen: false,
+			secondarySwatchOpen: false,
 			MenuDirection,
 			MenuType,
 			primaryColor: { r: 0, g: 0, b: 0, a: 1 },
