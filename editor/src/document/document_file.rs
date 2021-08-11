@@ -375,7 +375,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				let [bounds1, bounds2] = self.document.visible_layers_bounding_box().unwrap_or_default();
 				let bounds1 = bounds1.min(DVec2::ZERO) - viewport * 0.5;
 				let bounds2 = bounds2.max(viewport) + viewport * 0.5;
-				let bounds_length = (bounds2 - bounds1).abs();
+				let bounds_length = bounds2 - bounds1;
 				let scrollbar_multiplier = bounds_length - viewport;
 				let scrollbar_position = bounds1.abs() / scrollbar_multiplier;
 				let scrollbar_size = viewport / bounds_length;
