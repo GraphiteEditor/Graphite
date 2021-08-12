@@ -8,7 +8,6 @@
 		ref="floatingMenu"
 		:windowEdgeMargin="0"
 		:scrollable="scrollable"
-		data-hover-menu-keep-open
 	>
 		<template v-for="(section, sectionIndex) in menuEntries" :key="sectionIndex">
 			<Separator :type="SeparatorType.List" :direction="SeparatorDirection.Vertical" v-if="sectionIndex > 0" />
@@ -19,7 +18,6 @@
 				:class="{ open: entry === selectedEntry && entry.children, active: entry === activeEntry }"
 				@click="handleEntryClick(entry)"
 				@mouseenter="selectedEntry = entry"
-				:data-hover-menu-spawner-extend="entry.children && []"
 			>
 				<CheckboxInput v-if="entry.checkbox" v-model:checked="entry.checked" :outlineStyle="true" :class="'entry-checkbox'" />
 				<IconLabel v-else-if="entry.icon && drawIcon" :icon="entry.icon" :class="'entry-icon'" />

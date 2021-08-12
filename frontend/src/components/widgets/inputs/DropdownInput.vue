@@ -1,6 +1,6 @@
 <template>
 	<div class="dropdown-input">
-		<div class="dropdown-box" :class="{ disabled }" :style="{ minWidth: `${minWidth}px`, disabled: 'disabled' }" @mousedown="mouseDownOnInputBox($event)" data-hover-menu-spawner>
+		<div class="dropdown-box" :class="{ disabled }" :style="{ minWidth: `${minWidth}px`, disabled: 'disabled' }" @mousedown="mouseDownOnInputBox($event)">
 			<IconLabel :class="'dropdown-icon'" :icon="activeEntry.icon" v-if="activeEntry.icon" />
 			<span>{{ activeEntry.label }}</span>
 			<IconLabel :class="'dropdown-arrow'" :icon="'DropdownArrow'" />

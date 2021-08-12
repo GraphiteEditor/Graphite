@@ -1,69 +1,71 @@
 <template>
 	<LayoutCol :class="'document'">
 		<LayoutRow :class="'options-bar'">
-			<div class="left side">
-				<DropdownInput :menuEntries="documentModeEntries" v-model:selectedIndex="documentModeSelectionIndex" :drawIcon="true" />
+			<FloatingMenuToggleGroup>
+				<div class="left side">
+					<DropdownInput :menuEntries="documentModeEntries" v-model:selectedIndex="documentModeSelectionIndex" :drawIcon="true" />
 
-				<Separator :type="SeparatorType.Section" />
+					<Separator :type="SeparatorType.Section" />
 
-				<ToolOptions :activeTool="activeTool" />
-			</div>
-			<div class="spacer"></div>
-			<div class="right side">
-				<OptionalInput v-model:checked="snappingEnabled" @update:checked="comingSoon(200)" :icon="'Snapping'" title="Snapping" />
-				<PopoverButton>
-					<h3>Snapping</h3>
-					<p>More snapping options will be here</p>
-				</PopoverButton>
+					<ToolOptions :activeTool="activeTool" />
+				</div>
+				<div class="spacer"></div>
+				<div class="right side">
+					<OptionalInput v-model:checked="snappingEnabled" @update:checked="comingSoon(200)" :icon="'Snapping'" title="Snapping" />
+					<PopoverButton>
+						<h3>Snapping</h3>
+						<p>More snapping options will be here</p>
+					</PopoverButton>
 
-				<Separator :type="SeparatorType.Unrelated" />
+					<Separator :type="SeparatorType.Unrelated" />
 
-				<OptionalInput v-model:checked="gridEnabled" @update:checked="comingSoon(318)" :icon="'Grid'" title="Grid" />
-				<PopoverButton>
-					<h3>Grid</h3>
-					<p>More grid options will be here</p>
-				</PopoverButton>
+					<OptionalInput v-model:checked="gridEnabled" @update:checked="comingSoon(318)" :icon="'Grid'" title="Grid" />
+					<PopoverButton>
+						<h3>Grid</h3>
+						<p>More grid options will be here</p>
+					</PopoverButton>
 
-				<Separator :type="SeparatorType.Unrelated" />
+					<Separator :type="SeparatorType.Unrelated" />
 
-				<OptionalInput v-model:checked="overlaysEnabled" @update:checked="comingSoon(99)" :icon="'Overlays'" title="Overlays" />
-				<PopoverButton>
-					<h3>Overlays</h3>
-					<p>More overlays options will be here</p>
-				</PopoverButton>
+					<OptionalInput v-model:checked="overlaysEnabled" @update:checked="comingSoon(99)" :icon="'Overlays'" title="Overlays" />
+					<PopoverButton>
+						<h3>Overlays</h3>
+						<p>More overlays options will be here</p>
+					</PopoverButton>
 
-				<Separator :type="SeparatorType.Unrelated" />
+					<Separator :type="SeparatorType.Unrelated" />
 
-				<RadioInput :entries="viewModeEntries" v-model:selectedIndex="viewModeIndex" />
-				<PopoverButton>
-					<h3>View Mode</h3>
-					<p>More view mode options will be here</p>
-				</PopoverButton>
+					<RadioInput :entries="viewModeEntries" v-model:selectedIndex="viewModeIndex" />
+					<PopoverButton>
+						<h3>View Mode</h3>
+						<p>More view mode options will be here</p>
+					</PopoverButton>
 
-				<Separator :type="SeparatorType.Section" />
+					<Separator :type="SeparatorType.Section" />
 
-				<NumberInput @update:value="setRotation" v-model:value="documentRotation" :step="15" :unit="`°`" ref="rotation" />
+					<NumberInput @update:value="setRotation" v-model:value="documentRotation" :step="15" :unit="`°`" ref="rotation" />
 
-				<Separator :type="SeparatorType.Section" />
+					<Separator :type="SeparatorType.Section" />
 
-				<IconButton :action="() => this.$refs.zoom.onIncrement(IncrementDirection.Increase)" :icon="'ZoomIn'" :size="24" title="Zoom In" />
-				<IconButton :action="() => this.$refs.zoom.onIncrement(IncrementDirection.Decrease)" :icon="'ZoomOut'" :size="24" title="Zoom Out" />
-				<IconButton :action="() => this.$refs.zoom.updateValue(100)" :icon="'ZoomReset'" :size="24" title="Zoom to 100%" />
+					<IconButton :action="() => this.$refs.zoom.onIncrement(IncrementDirection.Increase)" :icon="'ZoomIn'" :size="24" title="Zoom In" />
+					<IconButton :action="() => this.$refs.zoom.onIncrement(IncrementDirection.Decrease)" :icon="'ZoomOut'" :size="24" title="Zoom Out" />
+					<IconButton :action="() => this.$refs.zoom.updateValue(100)" :icon="'ZoomReset'" :size="24" title="Zoom to 100%" />
 
-				<Separator :type="SeparatorType.Related" />
+					<Separator :type="SeparatorType.Related" />
 
-				<NumberInput
-					v-model:value="documentZoom"
-					@update:value="setZoom"
-					:min="0.000001"
-					:max="1000000"
-					:step="1.25"
-					:stepIsMultiplier="true"
-					:unit="`%`"
-					:displayDecimalPlaces="4"
-					ref="zoom"
-				/>
-			</div>
+					<NumberInput
+						v-model:value="documentZoom"
+						@update:value="setZoom"
+						:min="0.000001"
+						:max="1000000"
+						:step="1.25"
+						:stepIsMultiplier="true"
+						:unit="`%`"
+						:displayDecimalPlaces="4"
+						ref="zoom"
+					/>
+				</div>
+			</FloatingMenuToggleGroup>
 		</LayoutRow>
 		<LayoutRow :class="'shelf-and-viewport'">
 			<LayoutCol :class="'shelf'">
@@ -230,6 +232,7 @@ import DropdownInput from "@/components/widgets/inputs/DropdownInput.vue";
 import OptionalInput from "@/components/widgets/inputs/OptionalInput.vue";
 import ToolOptions from "@/components/widgets/options/ToolOptions.vue";
 import { SectionsOfMenuListEntries } from "@/components/widgets/floating-menus/MenuList.vue";
+import FloatingMenuToggleGroup from "@/components/widgets/behavior/FloatingMenuToggleGroup.vue";
 
 const documentModeEntries: SectionsOfMenuListEntries = [
 	[
@@ -388,6 +391,7 @@ export default defineComponent({
 		DropdownInput,
 		OptionalInput,
 		ToolOptions,
+		FloatingMenuToggleGroup,
 	},
 });
 </script>

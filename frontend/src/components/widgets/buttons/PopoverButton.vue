@@ -1,9 +1,13 @@
 <template>
 	<div class="popover-button">
-		<IconButton :action="handleClick" :icon="icon" :size="16" data-hover-menu-spawner />
-		<FloatingMenu :type="MenuType.Popover" :direction="MenuDirection.Bottom" v-model:isOpen="popoverOpen">
-			<slot></slot>
-		</FloatingMenu>
+		<FloatingMenuToggleButton :type="MenuType.Popover" :direction="MenuDirection.Bottom">
+			<template #button>
+				<IconButton :icon="icon" :size="16" :action="() => {}" />
+			</template>
+			<template #menu>
+				<slot></slot>
+			</template>
+		</FloatingMenuToggleButton>
 	</div>
 </template>
 
@@ -50,7 +54,8 @@
 <script lang="ts">
 import { defineComponent } from "vue";
 import IconButton from "@/components/widgets/buttons/IconButton.vue";
-import FloatingMenu, { MenuDirection, MenuType } from "@/components/widgets/floating-menus/FloatingMenu.vue";
+import { MenuDirection, MenuType } from "@/components/widgets/floating-menus/FloatingMenu.vue";
+import FloatingMenuToggleButton from "@/components/widgets/buttons/FloatingMenuToggleButton.vue";
 
 export enum PopoverButtonIcon {
 	"DropdownArrow" = "DropdownArrow",
@@ -59,22 +64,15 @@ export enum PopoverButtonIcon {
 
 export default defineComponent({
 	components: {
-		FloatingMenu,
+		FloatingMenuToggleButton,
 		IconButton,
 	},
 	props: {
 		action: { type: Function, required: false },
 		icon: { type: String, default: PopoverButtonIcon.DropdownArrow },
 	},
-	methods: {
-		handleClick() {
-			this.popoverOpen = true;
-			if (this.action) this.action();
-		},
-	},
 	data() {
 		return {
-			popoverOpen: false,
 			MenuDirection,
 			MenuType,
 		};

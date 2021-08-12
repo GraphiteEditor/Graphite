@@ -1,17 +1,27 @@
 <template>
 	<div class="swatch-pair">
-		<div class="secondary swatch">
-			<button @click="secondarySwatchOpen = true" ref="secondaryButton" data-hover-menu-spawner></button>
-			<FloatingMenu :type="MenuType.Popover" :direction="MenuDirection.Right" horizontal v-model:isOpen="secondarySwatchOpen">
-				<ColorPicker @update:color="secondaryColorChanged" :color="secondaryColor" />
-			</FloatingMenu>
-		</div>
-		<div class="primary swatch">
-			<button @click="primarySwatchOpen = true" ref="primaryButton" data-hover-menu-spawner></button>
-			<FloatingMenu :type="MenuType.Popover" :direction="MenuDirection.Right" horizontal v-model:isOpen="primarySwatchOpen">
-				<ColorPicker @update:color="primaryColorChanged" :color="primaryColor" />
-			</FloatingMenu>
-		</div>
+		<FloatingMenuToggleGroup>
+			<div class="secondary swatch">
+				<FloatingMenuToggleButton :type="MenuType.Popover" :direction="MenuDirection.Right">
+					<template #button>
+						<button ref="secondaryButton"></button>
+					</template>
+					<template #menu>
+						<ColorPicker @update:color="secondaryColorChanged" :color="secondaryColor" />
+					</template>
+				</FloatingMenuToggleButton>
+			</div>
+			<div class="primary swatch">
+				<FloatingMenuToggleButton :type="MenuType.Popover" :direction="MenuDirection.Right">
+					<template #button>
+						<button ref="primaryButton"></button>
+					</template>
+					<template #menu>
+						<ColorPicker @update:color="primaryColorChanged" :color="primaryColor" />
+					</template>
+				</FloatingMenuToggleButton>
+			</div>
+		</FloatingMenuToggleGroup>
 	</div>
 </template>
 
@@ -72,13 +82,16 @@ import { rgbToDecimalRgb, RGB } from "@/utilities/color";
 import { ResponseType, registerResponseHandler, Response, UpdateWorkingColors } from "@/utilities/response-handler";
 
 import ColorPicker from "@/components/widgets/floating-menus/ColorPicker.vue";
-import FloatingMenu, { MenuDirection, MenuType } from "@/components/widgets/floating-menus/FloatingMenu.vue";
+import { MenuDirection, MenuType } from "@/components/widgets/floating-menus/FloatingMenu.vue";
+import FloatingMenuToggleGroup from "@/components/widgets/behavior/FloatingMenuToggleGroup.vue";
+import FloatingMenuToggleButton from "@/components/widgets/buttons/FloatingMenuToggleButton.vue";
 
 const wasm = import("@/../wasm/pkg");
 
 export default defineComponent({
 	components: {
-		FloatingMenu,
+		FloatingMenuToggleButton,
+		FloatingMenuToggleGroup,
 		ColorPicker,
 	},
 	props: {},

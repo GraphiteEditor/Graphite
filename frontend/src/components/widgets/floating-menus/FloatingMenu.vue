@@ -177,7 +177,7 @@
 </style>
 
 <script lang="ts">
-import { defineComponent } from "vue";
+import { defineComponent, inject } from "vue";
 
 export enum MenuDirection {
 	Top = "Top",
@@ -213,6 +213,13 @@ export default defineComponent({
 			mouseStillDown: false,
 			MenuDirection,
 			MenuType,
+		};
+	},
+	setup() {
+		return {
+			openedMenuInGroup: inject("openedMenuInGroup", undefined),
+			notifyGroupedFloatingMenuOpened: inject("notifyGroupedFloatingMenuOpened", undefined) as ((menu: {}) => void) | undefined,
+			notifyGroupedFloatingMenuClosed: inject("notifyGroupedFloatingMenuClosed", undefined) as ((menu: {}) => void) | undefined,
 		};
 	},
 	updated() {
@@ -313,11 +320,24 @@ export default defineComponent({
 	watch: {
 		isOpen(newState: boolean, oldState: boolean) {
 			if (newState && !oldState) {
+				if (this.notifyGroupedFloatingMenuOpened !== undefined) {
+					this.notifyGroupedFloatingMenuOpened(this);
+				}
+
 				// Close floating menu if mouse is outside (but within stray distance)
 				window.addEventListener("mousedown", this.mouseDownHandler);
 
 				// Cancel the subsequent click event to prevent the floating menu from reopening if the floating menu's button is the click event target
 				window.addEventListener("mouseup", this.mouseUpHandler);
+			} else if (!newState && oldState) {
+				if (this.notifyGroupedFloatingMenuClosed !== undefined) {
+					this.notifyGroupedFloatingMenuClosed(this);
+				}
+			}
+		},
+		openedMenuInGroup(currentOpenedMenu: {} | undefined) {
+			if (currentOpenedMenu !== this) {
+				this.setClosed();
 			}
 		},
 	},

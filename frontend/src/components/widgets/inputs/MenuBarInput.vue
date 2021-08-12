@@ -6,7 +6,7 @@
 			</div>
 		</div>
 		<div class="entry-container" v-for="entry in menuEntries" :key="entry">
-			<div @click="openEntry = entry" @mouseenter="if (openEntry !== undefined) openEntry = entry;" class="entry" :class="{ open: openEntry === entry }" data-hover-menu-spawner>
+			<div @click="openEntry = entry" @mouseenter="if (openEntry !== undefined) openEntry = entry;" class="entry" :class="{ open: openEntry === entry }">
 				<IconLabel :icon="entry.icon" v-if="entry.icon" />
 				<span v-if="entry.label">{{ entry.label }}</span>
 			</div>
