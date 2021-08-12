@@ -1,11 +1,19 @@
 <template>
-	<span class="toggle-button" @mousedown.stop="toggleFloatingMenu()" @mouseenter="maybeOpenOnHover()">
-		<slot name="button" :menuIsOpen="isOpen"></slot>
-	</span>
-	<FloatingMenu v-bind="$props" v-model:isOpen="isOpen">
-		<slot name="menu">Empty Menu</slot>
-	</FloatingMenu>
+	<div class="toggle-button" @mousedown.stop="toggleFloatingMenu()" @mouseenter="maybeOpenOnHover()">
+		<slot name="button" :isOpen="isOpen"></slot>
+	</div>
+	<slot name="popup" :isOpen="isOpen" :isOpenChanged="(newIsOpen) => (this.isOpen = newIsOpen)">
+		<FloatingMenu v-bind="$props" v-model:isOpen="isOpen">
+			<slot name="menu">Empty Menu</slot>
+		</FloatingMenu>
+	</slot>
 </template>
+
+<style lang="scss">
+.toggle-button {
+	display: contents;
+}
+</style>
 
 <script lang="ts">
 import { defineComponent, inject } from "vue";
@@ -19,7 +27,7 @@ export default defineComponent({
 	props: {
 		direction: { type: String, default: MenuDirection.Bottom },
 		disabled: { type: Boolean, default: false },
-		type: { type: String, required: true },
+		type: { type: String, required: false },
 		windowEdgeMargin: { type: Number, default: 8 },
 		minWidth: { type: Number, default: 0 },
 		scrollable: { type: Boolean, default: false },

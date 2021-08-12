@@ -177,7 +177,7 @@
 </style>
 
 <script lang="ts">
-import { defineComponent, inject } from "vue";
+import { defineComponent, inject, provide, computed } from "vue";
 
 export enum MenuDirection {
 	Top = "Top",
@@ -215,11 +215,25 @@ export default defineComponent({
 			MenuType,
 		};
 	},
-	setup() {
-		return {
+	setup(props) {
+		const injectedProps = {
 			openedMenuInGroup: inject("openedMenuInGroup", undefined),
 			notifyGroupedFloatingMenuOpened: inject("notifyGroupedFloatingMenuOpened", undefined) as ((menu: {}) => void) | undefined,
 			notifyGroupedFloatingMenuClosed: inject("notifyGroupedFloatingMenuClosed", undefined) as ((menu: {}) => void) | undefined,
+			isTopLevelMenu: inject("isTopLevelMenu", true),
+		};
+
+		// Re-provide these props such that child menus don't get counted as part of the group.
+		provide("openedMenuInGroup", undefined);
+		provide("notifyGroupedFloatingMenuOpened", undefined);
+		provide("notifyGroupedFloatingMenuClosed", undefined);
+
+		// Ensure child menus know that they are child menus. These will not have to watch for outside clicks.
+		provide("isTopLevelMenu", false);
+
+		return {
+			...injectedProps,
+			shouldWatchForOutsideClicks: computed(() => props.isOpen && injectedProps.isTopLevelMenu),
 		};
 	},
 	updated() {
@@ -249,8 +263,8 @@ export default defineComponent({
 		}
 	},
 	unmounted() {
-		window.removeEventListener("mousedown", this.mouseDownHandler);
-		window.removeEventListener("mouseup", this.mouseUpHandler);
+		window.removeEventListener("mousedown", this.mouseDownHandler, true);
+		window.removeEventListener("mouseup", this.mouseUpHandler, true);
 	},
 	methods: {
 		setOpen() {
@@ -323,16 +337,22 @@ export default defineComponent({
 				if (this.notifyGroupedFloatingMenuOpened !== undefined) {
 					this.notifyGroupedFloatingMenuOpened(this);
 				}
-
-				// Close floating menu if mouse is outside (but within stray distance)
-				window.addEventListener("mousedown", this.mouseDownHandler);
-
-				// Cancel the subsequent click event to prevent the floating menu from reopening if the floating menu's button is the click event target
-				window.addEventListener("mouseup", this.mouseUpHandler);
 			} else if (!newState && oldState) {
 				if (this.notifyGroupedFloatingMenuClosed !== undefined) {
 					this.notifyGroupedFloatingMenuClosed(this);
 				}
+			}
+		},
+		shouldWatchForOutsideClicks(shouldWatchForOutsideClicks: boolean) {
+			if (shouldWatchForOutsideClicks) {
+				// Close floating menu if mouse is outside (but within stray distance)
+				window.addEventListener("mousedown", this.mouseDownHandler, true);
+
+				// Cancel the subsequent click event to prevent the floating menu from reopening if the floating menu's button is the click event target
+				window.addEventListener("mouseup", this.mouseUpHandler, true);
+			} else {
+				window.removeEventListener("mousedown", this.mouseDownHandler, true);
+				window.removeEventListener("mouseup", this.mouseUpHandler, true);
 			}
 		},
 		openedMenuInGroup(currentOpenedMenu: {} | undefined) {

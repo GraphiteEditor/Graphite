@@ -1,26 +1,33 @@
 <template>
 	<div class="menu-bar-input">
-		<div class="entry-container">
-			<div @click="handleLogoClick(entry)" class="entry">
-				<IconLabel :icon="'GraphiteLogo'" />
+		<FloatingMenuToggleGroup>
+			<div class="entry-container">
+				<div @click="handleLogoClick(entry)" class="entry">
+					<IconLabel :icon="'GraphiteLogo'" />
+				</div>
 			</div>
-		</div>
-		<div class="entry-container" v-for="entry in menuEntries" :key="entry">
-			<div @click="openEntry = entry" @mouseenter="if (openEntry !== undefined) openEntry = entry;" class="entry" :class="{ open: openEntry === entry }">
-				<IconLabel :icon="entry.icon" v-if="entry.icon" />
-				<span v-if="entry.label">{{ entry.label }}</span>
+			<div class="entry-container" v-for="entry in menuEntries" :key="entry">
+				<FloatingMenuToggleButton>
+					<template v-slot:button="buttonProps">
+						<div class="entry" :class="{ open: buttonProps.isOpen }">
+							<IconLabel :icon="entry.icon" v-if="entry.icon" />
+							<span v-if="entry.label">{{ entry.label }}</span>
+						</div>
+					</template>
+					<template v-slot:popup="popupProps">
+						<MenuList
+							:isOpen="popupProps.isOpen"
+							@update:isOpen="popupProps.isOpenChanged"
+							:menuEntries="entry.children"
+							:direction="MenuDirection.Bottom"
+							:minWidth="240"
+							:drawIcon="true"
+							:defaultAction="comingSoon"
+						/>
+					</template>
+				</FloatingMenuToggleButton>
 			</div>
-			<MenuList
-				:isOpen="openEntry === entry"
-				@update:isOpen="openEntry = $event ? entry : undefined"
-				:menuEntries="entry.children"
-				:direction="MenuDirection.Bottom"
-				:minWidth="240"
-				:drawIcon="true"
-				:defaultAction="comingSoon"
-				:ref="(ref) => setEntryRefs(entry, ref)"
-			/>
-		</div>
+		</FloatingMenuToggleGroup>
 	</div>
 </template>
 
@@ -66,8 +73,10 @@ import { comingSoon } from "@/utilities/errors";
 
 import IconLabel from "@/components/widgets/labels/IconLabel.vue";
 import { ApplicationPlatform } from "@/components/window/MainWindow.vue";
-import MenuList, { MenuListEntry, MenuListEntries } from "@/components/widgets/floating-menus/MenuList.vue";
+import MenuList, { MenuListEntries } from "@/components/widgets/floating-menus/MenuList.vue";
 import { MenuDirection } from "@/components/widgets/floating-menus/FloatingMenu.vue";
+import FloatingMenuToggleGroup from "@/components/widgets/behavior/FloatingMenuToggleGroup.vue";
+import FloatingMenuToggleButton from "@/components/widgets/buttons/FloatingMenuToggleButton.vue";
 
 const wasm = import("@/../wasm/pkg");
 
@@ -166,20 +175,12 @@ const menuEntries: MenuListEntries = [
 
 export default defineComponent({
 	methods: {
-		setEntryRefs(menuEntry: MenuListEntry, ref: typeof MenuList) {
-			if (ref) menuEntry.ref = ref;
-		},
-		handleEntryClick(menuEntry: MenuListEntry) {
-			if (menuEntry.ref) menuEntry.ref.setOpen();
-			else throw new Error("The menu bar floating menu has no associated ref");
-		},
 		handleLogoClick() {
 			window.open("https://www.graphite.design", "_blank");
 		},
 	},
 	data() {
 		return {
-			openEntry: undefined,
 			ApplicationPlatform,
 			menuEntries,
 			MenuDirection,
@@ -187,6 +188,8 @@ export default defineComponent({
 		};
 	},
 	components: {
+		FloatingMenuToggleButton,
+		FloatingMenuToggleGroup,
 		IconLabel,
 		MenuList,
 	},
