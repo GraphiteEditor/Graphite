@@ -58,5 +58,6 @@ bitflags! {
 		const LEFT   = 0b0000_0001;
 		const RIGHT  = 0b0000_0010;
 		const MIDDLE = 0b0000_0100;
+		const NONE   = 0b0000_0000;
 	}
 }
