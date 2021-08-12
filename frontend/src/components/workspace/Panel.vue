@@ -16,7 +16,7 @@
 			</div>
 			<PopoverButton :icon="PopoverButtonIcon.VerticalEllipsis">
 				<h3>Panel Options</h3>
-				<p>More panel-related options will be here</p>
+				<p>The contents of this popover menu are coming soon</p>
 			</PopoverButton>
 		</div>
 		<div class="panel-body">

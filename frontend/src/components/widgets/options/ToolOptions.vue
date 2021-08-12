@@ -87,7 +87,7 @@ export default defineComponent({
 					kind: "PopoverButton",
 					popover: {
 						title: "Align",
-						text: "More alignment-related buttons will be here",
+						text: "The contents of this popover menu are coming soon",
 					},
 					props: {},
 				},
@@ -103,7 +103,7 @@ export default defineComponent({
 					kind: "PopoverButton",
 					popover: {
 						title: "Flip",
-						text: "More flip-related buttons will be here",
+						text: "The contents of this popover menu are coming soon",
 					},
 					props: {},
 				},
@@ -122,7 +122,7 @@ export default defineComponent({
 					kind: "PopoverButton",
 					popover: {
 						title: "Boolean",
-						text: "More boolean-related buttons will be here",
+						text: "The contents of this popover menu are coming soon",
 					},
 					props: {},
 				},
