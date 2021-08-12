@@ -1,4 +1,4 @@
-use crate::{consts::ROTATE_SNAP_INTERVAL, frontend::layer_panel::*};
+use crate::{consts::VIEWPORT_ROTATE_SNAP_INTERVAL, frontend::layer_panel::*};
 use glam::{DAffine2, DVec2};
 use graphene::{
 	layers::{Layer, LayerData as DocumentLayerData},
@@ -30,7 +30,7 @@ impl LayerData {
 	}
 
 	pub fn snapped_angle(&self) -> f64 {
-		let increment_radians: f64 = ROTATE_SNAP_INTERVAL.to_radians();
+		let increment_radians: f64 = VIEWPORT_ROTATE_SNAP_INTERVAL.to_radians();
 		if self.snap_rotate {
 			(self.rotation / increment_radians).round() * increment_radians
 		} else {

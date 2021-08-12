@@ -19,6 +19,8 @@
 
 <style lang="scss">
 :root {
+	// Replace usage of `-rgb` variants with CSS color() function to calculate alpha when browsers support it
+	// See https://developer.mozilla.org/en-US/docs/Web/CSS/color_value/color() and https://caniuse.com/css-color-function
 	--color-0-black: #000;
 	--color-0-black-rgb: 0, 0, 0;
 	--color-1-nearblack: #111;
@@ -57,12 +59,6 @@
 	--color-accent-hover-rgb: 73, 165, 226;
 	--color-accent-disabled: #416277;
 	--color-accent-disabled-rgb: 65, 98, 119;
-
-	// TODO: Replace with CSS color() function to calculate alpha when browsers support it
-	// See https://developer.mozilla.org/en-US/docs/Web/CSS/color_value/color() and https://caniuse.com/css-color-function
-	// F2 = 95% alpha
-	--floating-menu-opacity-color-2-mildblack: #222222f2;
-	--floating-menu-shadow: rgba(0, 0, 0, 50%);
 }
 
 html,
@@ -186,7 +182,7 @@ img {
 .unsupported-modal {
 	background: var(--color-3-darkgray);
 	border-radius: 4px;
-	box-shadow: 2px 2px 5px 0 var(--floating-menu-shadow);
+	box-shadow: 2px 2px 5px 0 rgba(var(--color-0-black-rgb), 50%);
 	padding: 0 16px 16px 16px;
 	border: 1px solid var(--color-4-dimgray);
 	max-width: 500px;

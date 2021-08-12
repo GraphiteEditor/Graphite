@@ -14,15 +14,15 @@
 					<OptionalInput v-model:checked="snappingEnabled" @update:checked="comingSoon(200)" :icon="'Snapping'" title="Snapping" />
 					<PopoverButton>
 						<h3>Snapping</h3>
-						<p>More snapping options will be here</p>
+						<p>The contents of this popover menu are coming soon</p>
 					</PopoverButton>
 
-					<Separator :type="SeparatorType.Unrelated" />
+				<Separator :type="SeparatorType.Unrelated" />
 
 					<OptionalInput v-model:checked="gridEnabled" @update:checked="comingSoon(318)" :icon="'Grid'" title="Grid" />
 					<PopoverButton>
 						<h3>Grid</h3>
-						<p>More grid options will be here</p>
+						<p>The contents of this popover menu are coming soon</p>
 					</PopoverButton>
 
 					<Separator :type="SeparatorType.Unrelated" />
@@ -30,7 +30,7 @@
 					<OptionalInput v-model:checked="overlaysEnabled" @update:checked="comingSoon(99)" :icon="'Overlays'" title="Overlays" />
 					<PopoverButton>
 						<h3>Overlays</h3>
-						<p>More overlays options will be here</p>
+						<p>The contents of this popover menu are coming soon</p>
 					</PopoverButton>
 
 					<Separator :type="SeparatorType.Unrelated" />
@@ -38,12 +38,12 @@
 					<RadioInput :entries="viewModeEntries" v-model:selectedIndex="viewModeIndex" />
 					<PopoverButton>
 						<h3>View Mode</h3>
-						<p>More view mode options will be here</p>
+						<p>The contents of this popover menu are coming soon</p>
 					</PopoverButton>
 
 					<Separator :type="SeparatorType.Section" />
 
-					<NumberInput @update:value="setRotation" v-model:value="documentRotation" :step="15" :unit="`°`" ref="rotation" />
+					<NumberInput @update:value="setRotation" v-model:value="documentRotation" :incrementFactor="15" :unit="`°`" ref="rotation" />
 
 					<Separator :type="SeparatorType.Section" />
 
@@ -52,14 +52,14 @@
 					<IconButton :action="() => this.$refs.zoom.updateValue(100)" :icon="'ZoomReset'" :size="24" title="Zoom to 100%" />
 
 					<Separator :type="SeparatorType.Related" />
-
 					<NumberInput
 						v-model:value="documentZoom"
-						@update:value="setZoom"
+						@update:value="setCanvasZoom"
 						:min="0.000001"
 						:max="1000000"
-						:step="1.25"
-						:stepIsMultiplier="true"
+						:incrementBehavior="IncrementBehavior.Callback"
+						:incrementCallbackIncrease="increaseCanvasZoom"
+						:incrementCallbackDecrease="decreaseCanvasZoom"
 						:unit="`%`"
 						:displayDecimalPlaces="4"
 						ref="zoom"
@@ -227,7 +227,7 @@ import CanvasRuler, { RulerDirection } from "@/components/widgets/rulers/CanvasR
 import IconButton from "@/components/widgets/buttons/IconButton.vue";
 import PopoverButton from "@/components/widgets/buttons/PopoverButton.vue";
 import RadioInput, { RadioEntries } from "@/components/widgets/inputs/RadioInput.vue";
-import NumberInput, { IncrementDirection } from "@/components/widgets/inputs/NumberInput.vue";
+import NumberInput, { IncrementDirection, IncrementBehavior } from "@/components/widgets/inputs/NumberInput.vue";
 import DropdownInput from "@/components/widgets/inputs/DropdownInput.vue";
 import OptionalInput from "@/components/widgets/inputs/OptionalInput.vue";
 import ToolOptions from "@/components/widgets/options/ToolOptions.vue";
@@ -286,9 +286,14 @@ export default defineComponent({
 			const modifiers = makeModifiersBitfield(e.ctrlKey, e.shiftKey, e.altKey);
 			on_mouse_scroll(e.deltaX, e.deltaY, e.deltaZ, modifiers);
 		},
-		async setZoom(newZoom: number) {
-			const { set_zoom } = await wasm;
-			set_zoom(newZoom / 100);
+		async setCanvasZoom(newZoom: number) {
+			(await wasm).set_canvas_zoom(newZoom / 100);
+		},
+		async increaseCanvasZoom() {
+			(await wasm).increase_canvas_zoom();
+		},
+		async decreaseCanvasZoom() {
+			(await wasm).decrease_canvas_zoom();
 		},
 		async setRotation(newRotation: number) {
 			const { set_rotation } = await wasm;
@@ -367,6 +372,7 @@ export default defineComponent({
 			overlaysEnabled: true,
 			documentRotation: 0,
 			documentZoom: 100,
+			IncrementBehavior,
 			IncrementDirection,
 			MenuDirection,
 			SeparatorDirection,

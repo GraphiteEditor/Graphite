@@ -38,8 +38,8 @@
 		display: flex;
 
 		.floating-menu-content {
-			background: var(--floating-menu-opacity-color-2-mildblack);
-			box-shadow: var(--floating-menu-shadow) 0 2px 4px;
+			background: rgba(var(--color-2-mildblack-rgb), 0.95);
+			box-shadow: rgba(var(--color-0-black-rgb), 50%) 0 2px 4px;
 			border-radius: var(--floating-menu-content-border-radius);
 			color: var(--color-e-nearwhite);
 			font-size: inherit;
@@ -128,28 +128,28 @@
 
 	&.top .tail {
 		border-width: 8px 6px 0 6px;
-		border-color: var(--floating-menu-opacity-color-2-mildblack) transparent transparent transparent;
+		border-color: rgba(var(--color-2-mildblack-rgb), 0.95) transparent transparent transparent;
 		margin-left: -6px;
 		margin-bottom: 2px;
 	}
 
 	&.bottom .tail {
 		border-width: 0 6px 8px 6px;
-		border-color: transparent transparent var(--floating-menu-opacity-color-2-mildblack) transparent;
+		border-color: transparent transparent rgba(var(--color-2-mildblack-rgb), 0.95) transparent;
 		margin-left: -6px;
 		margin-top: 2px;
 	}
 
 	&.left .tail {
 		border-width: 6px 0 6px 8px;
-		border-color: transparent transparent transparent var(--floating-menu-opacity-color-2-mildblack);
+		border-color: transparent transparent transparent rgba(var(--color-2-mildblack-rgb), 0.95);
 		margin-top: -6px;
 		margin-right: 2px;
 	}
 
 	&.right .tail {
 		border-width: 6px 8px 6px 0;
-		border-color: transparent var(--floating-menu-opacity-color-2-mildblack) transparent transparent;
+		border-color: transparent rgba(var(--color-2-mildblack-rgb), 0.95) transparent transparent;
 		margin-top: -6px;
 		margin-left: 2px;
 	}
