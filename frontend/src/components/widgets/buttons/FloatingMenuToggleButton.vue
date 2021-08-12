@@ -56,9 +56,8 @@ export default defineComponent({
 			}
 		},
 	},
-	setup(props) {
+	setup() {
 		return {
-			...props,
 			openOnHover: inject("openMenuOnHover", false),
 		};
 	},
