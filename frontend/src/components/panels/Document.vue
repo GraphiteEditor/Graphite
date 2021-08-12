@@ -13,7 +13,7 @@
 				<OptionalInput v-model:checked="snappingEnabled" @update:checked="comingSoon(200)" :icon="'Snapping'" title="Snapping" />
 				<PopoverButton>
 					<h3>Snapping</h3>
-					<p>More snapping options will be here</p>
+					<p>The contents of this popover menu are coming soon</p>
 				</PopoverButton>
 
 				<Separator :type="SeparatorType.Unrelated" />
@@ -21,7 +21,7 @@
 				<OptionalInput v-model:checked="gridEnabled" @update:checked="comingSoon(318)" :icon="'Grid'" title="Grid" />
 				<PopoverButton>
 					<h3>Grid</h3>
-					<p>More grid options will be here</p>
+					<p>The contents of this popover menu are coming soon</p>
 				</PopoverButton>
 
 				<Separator :type="SeparatorType.Unrelated" />
@@ -29,7 +29,7 @@
 				<OptionalInput v-model:checked="overlaysEnabled" @update:checked="comingSoon(99)" :icon="'Overlays'" title="Overlays" />
 				<PopoverButton>
 					<h3>Overlays</h3>
-					<p>More overlays options will be here</p>
+					<p>The contents of this popover menu are coming soon</p>
 				</PopoverButton>
 
 				<Separator :type="SeparatorType.Unrelated" />
@@ -37,7 +37,7 @@
 				<RadioInput :entries="viewModeEntries" v-model:selectedIndex="viewModeIndex" />
 				<PopoverButton>
 					<h3>View Mode</h3>
-					<p>More view mode options will be here</p>
+					<p>The contents of this popover menu are coming soon</p>
 				</PopoverButton>
 
 				<Separator :type="SeparatorType.Section" />
