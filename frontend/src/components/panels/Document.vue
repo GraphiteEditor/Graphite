@@ -17,7 +17,7 @@
 						<p>The contents of this popover menu are coming soon</p>
 					</PopoverButton>
 
-				<Separator :type="SeparatorType.Unrelated" />
+					<Separator :type="SeparatorType.Unrelated" />
 
 					<OptionalInput v-model:checked="gridEnabled" @update:checked="comingSoon(318)" :icon="'Grid'" title="Grid" />
 					<PopoverButton>
@@ -52,6 +52,7 @@
 					<IconButton :action="() => this.$refs.zoom.updateValue(100)" :icon="'ZoomReset'" :size="24" title="Zoom to 100%" />
 
 					<Separator :type="SeparatorType.Related" />
+
 					<NumberInput
 						v-model:value="documentZoom"
 						@update:value="setCanvasZoom"
