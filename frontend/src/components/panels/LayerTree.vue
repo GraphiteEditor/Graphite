@@ -11,7 +11,7 @@
 
 			<PopoverButton>
 				<h3>Compositing Options</h3>
-				<p>More blend and compositing options will be here</p>
+				<p>The contents of this popover menu are coming soon</p>
 			</PopoverButton>
 		</LayoutRow>
 		<LayoutRow :class="'layer-tree scrollable-y'">
