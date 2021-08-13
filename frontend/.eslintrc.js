@@ -36,7 +36,7 @@ module.exports = {
 		"@typescript-eslint/camelcase": "off",
 		"@typescript-eslint/no-use-before-define": "off",
 		"@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_" }],
-		camelcase: ["error", { allow: ["^(?:[a-z]+_)*[a-z]+$"] }],
+		camelcase: ["error", { properties: "always" }],
 		"prettier-vue/prettier": [
 			"error",
 			{
