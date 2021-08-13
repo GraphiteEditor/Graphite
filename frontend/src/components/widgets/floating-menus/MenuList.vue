@@ -133,6 +133,7 @@
 
 <script lang="ts">
 import { defineComponent, PropType } from "vue";
+
 import { keyboardLockApiSupported } from "@/utilities/fullscreen";
 import { SeparatorDirection, SeparatorType } from "@/components/widgets/widgets";
 

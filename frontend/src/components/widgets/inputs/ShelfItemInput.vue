@@ -31,6 +31,7 @@
 
 <script lang="ts">
 import { defineComponent } from "vue";
+
 import IconButton from "@/components/widgets/buttons/IconButton.vue";
 
 export default defineComponent({

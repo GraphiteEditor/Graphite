@@ -118,6 +118,7 @@
 
 <script lang="ts">
 import { defineComponent } from "vue";
+
 import { hsvToRgb, rgbToHsv, isRGB } from "@/utilities/color";
 import { clamp } from "@/utilities/math";
 
@@ -220,21 +221,21 @@ export default defineComponent({
 		updateRects() {
 			const { colorPicker } = this.$data._;
 
-			const saturationPicker = this.getRef<HTMLDivElement>("saturationPicker");
+			const saturationPicker = this.getRef<HTMLElement>("saturationPicker");
 			const saturation = saturationPicker.getBoundingClientRect();
 			colorPicker.saturation.rect.width = saturation.width;
 			colorPicker.saturation.rect.height = saturation.height;
 			colorPicker.saturation.rect.left = saturation.left;
 			colorPicker.saturation.rect.top = saturation.top;
 
-			const huePicker = this.getRef<HTMLDivElement>("huePicker");
+			const huePicker = this.getRef<HTMLElement>("huePicker");
 			const hue = huePicker.getBoundingClientRect();
 			colorPicker.hue.rect.width = hue.width;
 			colorPicker.hue.rect.height = hue.height;
 			colorPicker.hue.rect.left = hue.left;
 			colorPicker.hue.rect.top = hue.top;
 
-			const opacityPicker = this.getRef<HTMLDivElement>("opacityPicker");
+			const opacityPicker = this.getRef<HTMLElement>("opacityPicker");
 			const opacity = opacityPicker.getBoundingClientRect();
 			colorPicker.opacity.rect.width = opacity.width;
 			colorPicker.opacity.rect.height = opacity.height;
@@ -243,7 +244,7 @@ export default defineComponent({
 		},
 		setSaturationPosition(x: number, y: number) {
 			const { colorPicker } = this.$data._;
-			const saturationCursor = this.getRef<HTMLDivElement>("saturationCursor");
+			const saturationCursor = this.getRef<HTMLElement>("saturationCursor");
 			const saturationPosition = [clamp(x, 0, colorPicker.saturation.rect.width), clamp(y, 0, colorPicker.saturation.rect.height)];
 			saturationCursor.style.transform = `translate(${saturationPosition[0]}px, ${saturationPosition[1]}px)`;
 			colorPicker.color.s = saturationPosition[0] / colorPicker.saturation.rect.width;
@@ -251,14 +252,14 @@ export default defineComponent({
 		},
 		setHuePosition(y: number) {
 			const { colorPicker } = this.$data._;
-			const hueCursor = this.getRef<HTMLDivElement>("hueCursor");
+			const hueCursor = this.getRef<HTMLElement>("hueCursor");
 			const huePosition = clamp(y, 0, colorPicker.hue.rect.height);
 			hueCursor.style.transform = `translateY(${huePosition}px)`;
 			colorPicker.color.h = clamp(1 - huePosition / colorPicker.hue.rect.height);
 		},
 		setOpacityPosition(y: number) {
 			const { colorPicker } = this.$data._;
-			const opacityCursor = this.getRef<HTMLDivElement>("opacityCursor");
+			const opacityCursor = this.getRef<HTMLElement>("opacityCursor");
 			const opacityPosition = clamp(y, 0, colorPicker.opacity.rect.height);
 			opacityCursor.style.transform = `translateY(${opacityPosition}px)`;
 			colorPicker.color.a = clamp(1 - opacityPosition / colorPicker.opacity.rect.height);
