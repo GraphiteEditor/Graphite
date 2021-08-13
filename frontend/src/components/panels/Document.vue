@@ -260,29 +260,24 @@ export default defineComponent({
 			this.canvasSvgWidth = `${width}px`;
 			this.canvasSvgHeight = `${height}px`;
 
-			const { viewport_resize } = await wasm;
-			viewport_resize(width, height);
+			(await wasm).viewport_resize(width, height);
 		},
 		async canvasMouseDown(e: MouseEvent) {
-			const { on_mouse_down } = await wasm;
 			const modifiers = makeModifiersBitfield(e.ctrlKey, e.shiftKey, e.altKey);
-			on_mouse_down(e.offsetX, e.offsetY, e.buttons, modifiers);
+			(await wasm).on_mouse_down(e.offsetX, e.offsetY, e.buttons, modifiers);
 		},
 		async canvasMouseUp(e: MouseEvent) {
-			const { on_mouse_up } = await wasm;
 			const modifiers = makeModifiersBitfield(e.ctrlKey, e.shiftKey, e.altKey);
-			on_mouse_up(e.offsetX, e.offsetY, e.buttons, modifiers);
+			(await wasm).on_mouse_up(e.offsetX, e.offsetY, e.buttons, modifiers);
 		},
 		async canvasMouseMove(e: MouseEvent) {
-			const { on_mouse_move } = await wasm;
 			const modifiers = makeModifiersBitfield(e.ctrlKey, e.shiftKey, e.altKey);
-			on_mouse_move(e.offsetX, e.offsetY, modifiers);
+			(await wasm).on_mouse_move(e.offsetX, e.offsetY, modifiers);
 		},
 		async canvasMouseScroll(e: WheelEvent) {
 			e.preventDefault();
-			const { on_mouse_scroll } = await wasm;
 			const modifiers = makeModifiersBitfield(e.ctrlKey, e.shiftKey, e.altKey);
-			on_mouse_scroll(e.deltaX, e.deltaY, e.deltaZ, modifiers);
+			(await wasm).on_mouse_scroll(e.deltaX, e.deltaY, e.deltaZ, modifiers);
 		},
 		async setCanvasZoom(newZoom: number) {
 			(await wasm).set_canvas_zoom(newZoom / 100);
@@ -294,20 +289,16 @@ export default defineComponent({
 			(await wasm).decrease_canvas_zoom();
 		},
 		async setRotation(newRotation: number) {
-			const { set_rotation } = await wasm;
-			set_rotation(newRotation * (Math.PI / 180));
+			(await wasm).set_rotation(newRotation * (Math.PI / 180));
 		},
 		async selectTool(toolName: string) {
-			const { select_tool } = await wasm;
-			select_tool(toolName);
+			(await wasm).select_tool(toolName);
 		},
 		async swapWorkingColors() {
-			const { swap_colors } = await wasm;
-			swap_colors();
+			(await wasm).swap_colors();
 		},
 		async resetWorkingColors() {
-			const { reset_colors } = await wasm;
-			reset_colors();
+			(await wasm).reset_colors();
 		},
 		download(filename: string, fileData: string) {
 			const svgBlob = new Blob([fileData], { type: "image/svg+xml;charset=utf-8" });

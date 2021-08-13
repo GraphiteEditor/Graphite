@@ -46,13 +46,12 @@ export default defineComponent({
 			// and updating a widget should send the whole updated struct to the backend.
 			// Later, it could send a single-field update to the backend.
 
-			const { set_tool_options } = await wasm;
 			// This is a placeholder call, using the Shape tool as an example
-			set_tool_options(this.$props.activeTool || "", { Shape: { shape_type: { Polygon: { vertices: newValue } } } });
+			// eslint-disable-next-line camelcase
+			(await wasm).set_tool_options(this.$props.activeTool || "", { Shape: { shape_type: { Polygon: { vertices: newValue } } } });
 		},
 		async sendToolMessage(message: string | object) {
-			const { send_tool_message } = await wasm;
-			send_tool_message(this.$props.activeTool || "", message);
+			(await wasm).send_tool_message(this.$props.activeTool || "", message);
 		},
 		handleIconButtonAction(option: IconButtonWidget) {
 			if (option.message) {
