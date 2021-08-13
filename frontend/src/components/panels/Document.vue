@@ -232,6 +232,8 @@ import OptionalInput from "@/components/widgets/inputs/OptionalInput.vue";
 import ToolOptions from "@/components/widgets/options/ToolOptions.vue";
 import { SectionsOfMenuListEntries } from "@/components/widgets/floating-menus/MenuList.vue";
 
+const wasm = import("@/../wasm/pkg");
+
 const documentModeEntries: SectionsOfMenuListEntries = [
 	[
 		{ label: "Design Mode", icon: "ViewportDesignMode" },
@@ -244,8 +246,6 @@ const viewModeEntries: RadioEntries = [
 	{ value: "outline", icon: "ViewModeOutline", tooltip: "View Mode: Outline", action: () => comingSoon(319) },
 	{ value: "pixels", icon: "ViewModePixels", tooltip: "View Mode: Pixels", action: () => comingSoon(320) },
 ];
-
-const wasm = import("@/../wasm/pkg");
 
 export default defineComponent({
 	methods: {
@@ -349,7 +349,7 @@ export default defineComponent({
 		});
 
 		// TODO: Move event listeners to `main.ts`
-		const canvas = this.$refs.canvas as HTMLDivElement;
+		const canvas = this.$refs.canvas as HTMLElement;
 		canvas.addEventListener("wheel", this.canvasMouseScroll, { passive: false });
 
 		window.addEventListener("resize", () => this.viewportResize());

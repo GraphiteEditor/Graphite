@@ -26,8 +26,8 @@
 import { defineComponent } from "vue";
 
 import { comingSoon } from "@/utilities/errors";
-
 import { WidgetRow, SeparatorType, IconButtonWidget } from "@/components/widgets/widgets";
+
 import Separator from "@/components/widgets/separators/Separator.vue";
 import IconButton from "@/components/widgets/buttons/IconButton.vue";
 import PopoverButton from "@/components/widgets/buttons/PopoverButton.vue";

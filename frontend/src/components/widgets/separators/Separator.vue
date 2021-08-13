@@ -70,6 +70,7 @@
 
 <script lang="ts">
 import { defineComponent } from "vue";
+
 import { SeparatorDirection, SeparatorType } from "@/components/widgets/widgets";
 
 export default defineComponent({
