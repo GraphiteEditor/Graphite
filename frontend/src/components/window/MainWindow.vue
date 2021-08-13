@@ -37,6 +37,7 @@
 
 <script lang="ts">
 import { defineComponent } from "vue";
+
 import TitleBar from "@/components/window/title-bar/TitleBar.vue";
 import StatusBar from "@/components/window/status-bar/StatusBar.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";

@@ -212,9 +212,11 @@ img {
 
 <script lang="ts">
 import { defineComponent } from "vue";
+
 import dialog from "@/utilities/dialog";
 import documents from "@/utilities/documents";
 import fullscreen from "@/utilities/fullscreen";
+
 import MainWindow from "@/components/window/MainWindow.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
 

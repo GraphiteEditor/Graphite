@@ -35,6 +35,7 @@
 
 <script lang="ts">
 import { defineComponent } from "vue";
+
 import CheckboxInput from "@/components/widgets/inputs/CheckboxInput.vue";
 
 export default defineComponent({
