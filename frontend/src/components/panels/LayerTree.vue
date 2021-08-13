@@ -243,8 +243,7 @@ export default defineComponent({
 			return `${(layer.path.length - 1) * 16}px`;
 		},
 		async toggleLayerVisibility(path: BigUint64Array) {
-			const { toggle_layer_visibility } = await wasm;
-			toggle_layer_visibility(path);
+			(await wasm).toggle_layer_visibility(path);
 		},
 		async handleNodeConnectorClick(path: BigUint64Array) {
 			(await wasm).toggle_layer_expansion(path);
@@ -252,13 +251,11 @@ export default defineComponent({
 		async setLayerBlendMode() {
 			const blendMode = this.blendModeEntries.flat()[this.blendModeSelectedIndex].value as BlendMode;
 			if (blendMode) {
-				const { set_blend_mode_for_selected_layers } = await wasm;
-				set_blend_mode_for_selected_layers(blendMode);
+				(await wasm).set_blend_mode_for_selected_layers(blendMode);
 			}
 		},
 		async setLayerOpacity() {
-			const { set_opacity_for_selected_layers } = await wasm;
-			set_opacity_for_selected_layers(this.opacity);
+			(await wasm).set_opacity_for_selected_layers(this.opacity);
 		},
 		async handleControlClick(clickedLayer: LayerPanelEntry) {
 			const index = this.layers.indexOf(clickedLayer);
@@ -298,8 +295,7 @@ export default defineComponent({
 			this.selectionRangeStartLayer = undefined;
 			this.selectionRangeEndLayer = undefined;
 
-			const { deselect_all_layers } = await wasm;
-			deselect_all_layers();
+			(await wasm).deselect_all_layers();
 		},
 		async fillSelectionRange(start: LayerPanelEntry, end: LayerPanelEntry, selected = true) {
 			const startIndex = this.layers.findIndex((layer) => layer.path.join() === start.path.join());
@@ -333,8 +329,7 @@ export default defineComponent({
 				}
 				i += 1;
 			});
-			const { select_layers } = await wasm;
-			select_layers(output);
+			(await wasm).select_layers(output);
 		},
 		setBlendModeForSelectedLayers() {
 			const selected = this.layers.filter((layer) => layer.layer_data.selected);

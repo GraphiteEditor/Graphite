@@ -1,6 +1,7 @@
-import { reactive } from "vue";
-
 /* eslint-disable @typescript-eslint/no-explicit-any */
+/* eslint-disable camelcase */
+
+import { reactive } from "vue";
 
 type ResponseCallback = (responseData: Response) => void;
 type ResponseMap = {

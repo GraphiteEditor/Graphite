@@ -34,9 +34,8 @@ export function shouldRedirectKeyboardEventToBackend(e: KeyboardEvent): boolean 
 export async function handleKeyDown(e: KeyboardEvent) {
 	if (shouldRedirectKeyboardEventToBackend(e)) {
 		e.preventDefault();
-		const { on_key_down } = await wasm;
 		const modifiers = makeModifiersBitfield(e.ctrlKey, e.shiftKey, e.altKey);
-		on_key_down(e.key, modifiers);
+		(await wasm).on_key_down(e.key, modifiers);
 		return;
 	}
 
@@ -52,9 +51,8 @@ export async function handleKeyDown(e: KeyboardEvent) {
 export async function handleKeyUp(e: KeyboardEvent) {
 	if (shouldRedirectKeyboardEventToBackend(e)) {
 		e.preventDefault();
-		const { on_key_up } = await wasm;
 		const modifiers = makeModifiersBitfield(e.ctrlKey, e.shiftKey, e.altKey);
-		on_key_up(e.key, modifiers);
+		(await wasm).on_key_up(e.key, modifiers);
 	}
 }
 
