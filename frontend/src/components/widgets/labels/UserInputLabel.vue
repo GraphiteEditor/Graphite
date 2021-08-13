@@ -90,6 +90,7 @@
 
 <script lang="ts">
 import { defineComponent } from "vue";
+
 import IconLabel from "@/components/widgets/labels/IconLabel.vue";
 
 export enum MouseInputInteraction {
