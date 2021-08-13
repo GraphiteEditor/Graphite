@@ -13,8 +13,7 @@ const state = reactive({
 });
 
 export async function selectDocument(tabIndex: number) {
-	const { select_document } = await wasm;
-	select_document(tabIndex);
+	(await wasm).select_document(tabIndex);
 }
 
 export async function closeDocumentWithConfirmation(tabIndex: number) {
