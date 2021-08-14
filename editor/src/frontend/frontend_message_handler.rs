@@ -19,7 +19,9 @@ pub enum FrontendMessage {
 	UpdateCanvas { document: String },
 	UpdateScrollbars { position: (f64, f64), size: (f64, f64), multiplier: (f64, f64) },
 	UpdateLayer { path: Vec<LayerId>, data: LayerPanelEntry },
-	ExportDocument { document: String },
+	ExportDocument { document: String, name: String },
+	SaveDocument { document: String, name: String },
+	OpenDocumentBrowse,
 	EnableTextInput,
 	DisableTextInput,
 	UpdateWorkingColors { primary: Color, secondary: Color },
@@ -54,5 +56,6 @@ impl MessageHandler<FrontendMessage, ()> for FrontendMessageHandler {
 		DisableTextInput,
 		SetCanvasZoom,
 		SetCanvasRotation,
+		OpenDocumentBrowse,
 	);
 }

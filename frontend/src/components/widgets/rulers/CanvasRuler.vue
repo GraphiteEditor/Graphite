@@ -2,6 +2,7 @@
 	<div class="canvas-ruler" :class="direction.toLowerCase()" ref="rulerRef">
 		<svg :style="svgBounds">
 			<path :d="svgPath" />
+			<text v-for="(svgText, index) in svgTexts" :key="index" :transform="svgText.transform">{{ svgText.text }}</text>
 		</svg>
 	</div>
 </template>
@@ -13,12 +14,16 @@
 	overflow: hidden;
 	position: relative;
 
-	&.vertical {
-		width: 16px;
-	}
-
 	&.horizontal {
 		height: 16px;
+	}
+
+	&.vertical {
+		width: 16px;
+
+		svg text {
+			text-anchor: end;
+		}
 	}
 
 	svg {
@@ -28,6 +33,11 @@
 			stroke-width: 1px;
 			stroke: var(--color-7-middlegray);
 		}
+
+		text {
+			font-size: 12px;
+			fill: var(--color-8-uppergray);
+		}
 	}
 }
 </style>
@@ -36,6 +46,9 @@
 import { defineComponent, PropType } from "vue";
 
 const RULER_THICKNESS = 16;
+const MAJOR_MARK_THICKNESS = 16;
+const MEDIUM_MARK_THICKNESS = 6;
+const MINOR_MARK_THICKNESS = 3;
 
 export enum RulerDirection {
 	"Horizontal" = "Horizontal",
@@ -55,18 +68,20 @@ export default defineComponent({
 			const isVertical = this.direction === RulerDirection.Vertical;
 			const lineDirection = isVertical ? "H" : "V";
 
-			let offsetStart = this.origin % this.majorMarkSpacing;
-			if (offsetStart < this.majorMarkSpacing) offsetStart -= this.majorMarkSpacing;
+			const offsetStart = this.origin % this.majorMarkSpacing;
+			const phasingShift = offsetStart < this.majorMarkSpacing ? this.majorMarkSpacing : 0;
+			const shiftedOffsetStart = offsetStart - phasingShift;
 
 			const divisions = this.majorMarkSpacing / this.mediumDivisions / this.minorDivisions;
 			const majorMarksFrequency = this.mediumDivisions * this.minorDivisions;
 
 			let dPathAttribute = "";
 			let i = 0;
-			for (let location = offsetStart; location < this.rulerLength; location += divisions) {
-				let length = RULER_THICKNESS / 4;
-				if (i % majorMarksFrequency === 0) length = RULER_THICKNESS;
-				else if (i % this.minorDivisions === 0) length = RULER_THICKNESS / 2;
+			for (let location = shiftedOffsetStart; location < this.rulerLength; location += divisions) {
+				let length;
+				if (i % majorMarksFrequency === 0) length = MAJOR_MARK_THICKNESS;
+				else if (i % this.minorDivisions === 0) length = MEDIUM_MARK_THICKNESS;
+				else length = MINOR_MARK_THICKNESS;
 				i += 1;
 
 				const destination = Math.round(location) + 0.5;
@@ -75,6 +90,27 @@ export default defineComponent({
 			}
 
 			return dPathAttribute;
+		},
+		svgTexts(): {} {
+			const isVertical = this.direction === RulerDirection.Vertical;
+
+			const offsetStart = this.origin % this.majorMarkSpacing;
+			const phasingShift = offsetStart < this.majorMarkSpacing ? this.majorMarkSpacing : 0;
+			const shiftedOffsetStart = offsetStart - phasingShift;
+
+			const svgTextCoordinates = [];
+			for (let location = shiftedOffsetStart; location < this.rulerLength; location += this.majorMarkSpacing) {
+				const destination = Math.round(location);
+				const x = isVertical ? 9 : destination + 2;
+				const y = isVertical ? destination + 1 : 9;
+
+				let transform = `translate(${x} ${y})`;
+				if (isVertical) transform += " rotate(270)";
+
+				svgTextCoordinates.push({ transform, text: location });
+			}
+
+			return svgTextCoordinates;
 		},
 	},
 	methods: {

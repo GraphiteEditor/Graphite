@@ -33,6 +33,7 @@
 
 <script lang="ts">
 import { defineComponent } from "vue";
+
 import WindowTitle from "@/components/window/title-bar/WindowTitle.vue";
 import WindowButtonsWindows from "@/components/window/title-bar/WindowButtonsWindows.vue";
 import WindowButtonsMac from "@/components/window/title-bar/WindowButtonsMac.vue";

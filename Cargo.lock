@@ -110,6 +110,7 @@ dependencies = [
  "kurbo",
  "log",
  "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -168,7 +169,7 @@ dependencies = [
 [[package]]
 name = "kurbo"
 version = "0.8.1"
-source = "git+https://github.com/linebender/kurbo#0ef68211223b956942c4a5834d66a2625cb8d575"
+source = "git+https://github.com/GraphiteEditor/kurbo.git#feb9ef74f841fcc5890bfe6ae763fbb986c80490"
 dependencies = [
  "arrayvec",
  "serde",

@@ -26,8 +26,8 @@
 import { defineComponent } from "vue";
 
 import { comingSoon } from "@/utilities/errors";
-
 import { WidgetRow, SeparatorType, IconButtonWidget } from "@/components/widgets/widgets";
+
 import Separator from "@/components/widgets/separators/Separator.vue";
 import IconButton from "@/components/widgets/buttons/IconButton.vue";
 import PopoverButton from "@/components/widgets/buttons/PopoverButton.vue";
@@ -46,13 +46,12 @@ export default defineComponent({
 			// and updating a widget should send the whole updated struct to the backend.
 			// Later, it could send a single-field update to the backend.
 
-			const { set_tool_options } = await wasm;
 			// This is a placeholder call, using the Shape tool as an example
-			set_tool_options(this.$props.activeTool || "", { Shape: { shape_type: { Polygon: { vertices: newValue } } } });
+			// eslint-disable-next-line camelcase
+			(await wasm).set_tool_options(this.$props.activeTool || "", { Shape: { shape_type: { Polygon: { vertices: newValue } } } });
 		},
 		async sendToolMessage(message: string | object) {
-			const { send_tool_message } = await wasm;
-			send_tool_message(this.$props.activeTool || "", message);
+			(await wasm).send_tool_message(this.$props.activeTool || "", message);
 		},
 		handleIconButtonAction(option: IconButtonWidget) {
 			if (option.message) {
@@ -87,7 +86,7 @@ export default defineComponent({
 					kind: "PopoverButton",
 					popover: {
 						title: "Align",
-						text: "More alignment-related buttons will be here",
+						text: "The contents of this popover menu are coming soon",
 					},
 					props: {},
 				},
@@ -103,7 +102,7 @@ export default defineComponent({
 					kind: "PopoverButton",
 					popover: {
 						title: "Flip",
-						text: "More flip-related buttons will be here",
+						text: "The contents of this popover menu are coming soon",
 					},
 					props: {},
 				},
@@ -122,7 +121,7 @@ export default defineComponent({
 					kind: "PopoverButton",
 					popover: {
 						title: "Boolean",
-						text: "More boolean-related buttons will be here",
+						text: "The contents of this popover menu are coming soon",
 					},
 					props: {},
 				},

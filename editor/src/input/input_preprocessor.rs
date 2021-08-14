@@ -57,11 +57,15 @@ impl MessageHandler<InputPreprocessorMessage, ()> for InputPreprocessor {
 			}
 			InputPreprocessorMessage::MouseDown(state, modifier_keys) => {
 				self.handle_modifier_keys(modifier_keys, responses);
-				responses.push_back(self.translate_mouse_event(state, KeyPosition::Pressed));
+				if let Some(message) = self.translate_mouse_event(state, KeyPosition::Pressed) {
+					responses.push_back(message);
+				}
 			}
 			InputPreprocessorMessage::MouseUp(state, modifier_keys) => {
 				self.handle_modifier_keys(modifier_keys, responses);
-				responses.push_back(self.translate_mouse_event(state, KeyPosition::Released));
+				if let Some(message) = self.translate_mouse_event(state, KeyPosition::Released) {
+					responses.push_back(message);
+				}
 			}
 			InputPreprocessorMessage::KeyDown(key, modifier_keys) => {
 				self.handle_modifier_keys(modifier_keys, responses);
@@ -92,7 +96,7 @@ impl MessageHandler<InputPreprocessorMessage, ()> for InputPreprocessor {
 }
 
 impl InputPreprocessor {
-	fn translate_mouse_event(&mut self, new_state: MouseState, position: KeyPosition) -> Message {
+	fn translate_mouse_event(&mut self, new_state: MouseState, position: KeyPosition) -> Option<Message> {
 		// Calculate the difference between the two key states (binary xor)
 		let diff = self.mouse.mouse_keys ^ new_state.mouse_keys;
 		self.mouse = new_state;
@@ -100,15 +104,16 @@ impl InputPreprocessor {
 			MouseKeys::LEFT => Key::Lmb,
 			MouseKeys::RIGHT => Key::Rmb,
 			MouseKeys::MIDDLE => Key::Mmb,
+			MouseKeys::NONE => return None, // self.mouse.mouse_keys was invalid, e.g. when a drag began outside the client
 			_ => {
-				log::warn!("The number of buttons modified at the same time was not equal to 1. Modification: {:#010b}", diff);
+				log::warn!("The number of buttons modified at the same time was greater than 1. Modification: {:#010b}", diff);
 				Key::UnknownKey
 			}
 		};
-		match position {
+		Some(match position {
 			KeyPosition::Pressed => InputMapperMessage::KeyDown(key).into(),
 			KeyPosition::Released => InputMapperMessage::KeyUp(key).into(),
-		}
+		})
 	}
 
 	fn handle_modifier_keys(&mut self, modifier_keys: ModifierKeys, responses: &mut VecDeque<Message>) {

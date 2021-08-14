@@ -50,6 +50,7 @@
 
 <script lang="ts">
 import { defineComponent } from "vue";
+
 import TextLabel from "@/components/widgets/labels/TextLabel.vue";
 
 export default defineComponent({

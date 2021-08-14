@@ -11,7 +11,7 @@
 
 			<PopoverButton>
 				<h3>Compositing Options</h3>
-				<p>More blend and compositing options will be here</p>
+				<p>The contents of this popover menu are coming soon</p>
 			</PopoverButton>
 		</LayoutRow>
 		<LayoutRow :class="'layer-tree scrollable-y'">
@@ -176,19 +176,16 @@ export default defineComponent({
 	props: {},
 	methods: {
 		async toggleLayerVisibility(path: BigUint64Array) {
-			const { toggle_layer_visibility } = await wasm;
-			toggle_layer_visibility(path);
+			(await wasm).toggle_layer_visibility(path);
 		},
 		async setLayerBlendMode() {
 			const blendMode = this.blendModeEntries.flat()[this.blendModeSelectedIndex].value as BlendMode;
 			if (blendMode) {
-				const { set_blend_mode_for_selected_layers } = await wasm;
-				set_blend_mode_for_selected_layers(blendMode);
+				(await wasm).set_blend_mode_for_selected_layers(blendMode);
 			}
 		},
 		async setLayerOpacity() {
-			const { set_opacity_for_selected_layers } = await wasm;
-			set_opacity_for_selected_layers(this.opacity);
+			(await wasm).set_opacity_for_selected_layers(this.opacity);
 		},
 		async handleControlClick(clickedLayer: LayerPanelEntry) {
 			const index = this.layers.indexOf(clickedLayer);
@@ -228,8 +225,7 @@ export default defineComponent({
 			this.selectionRangeStartLayer = undefined;
 			this.selectionRangeEndLayer = undefined;
 
-			const { deselect_all_layers } = await wasm;
-			deselect_all_layers();
+			(await wasm).deselect_all_layers();
 		},
 		async fillSelectionRange(start: LayerPanelEntry, end: LayerPanelEntry, selected = true) {
 			const startIndex = this.layers.findIndex((layer) => layer.path.join() === start.path.join());
@@ -263,8 +259,7 @@ export default defineComponent({
 				}
 				i += 1;
 			});
-			const { select_layers } = await wasm;
-			select_layers(output);
+			(await wasm).select_layers(output);
 		},
 		setBlendModeForSelectedLayers() {
 			const selected = this.layers.filter((layer) => layer.layer_data.selected);
@@ -332,7 +327,7 @@ export default defineComponent({
 
 				const index = this.layers.findIndex((layer: LayerPanelEntry) => {
 					const pathLengthsEqual = responsePath.length === layer.path.length;
-					return pathLengthsEqual && responsePath.every((layer_id, i) => layer_id === layer.path[i]);
+					return pathLengthsEqual && responsePath.every((layerId, i) => layerId === layer.path[i]);
 				});
 				if (index >= 0) this.layers[index] = responseLayer;
 

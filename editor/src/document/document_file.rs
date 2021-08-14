@@ -1,7 +1,11 @@
 pub use super::layer_panel::*;
-use crate::{frontend::layer_panel::*, EditorError};
+use crate::{
+	consts::{FILE_EXPORT_SUFFIX, FILE_SAVE_SUFFIX},
+	frontend::layer_panel::*,
+	EditorError,
+};
 use glam::{DAffine2, DVec2};
-use graphene::{document::Document as InternalDocument, LayerId};
+use graphene::{document::Document as InternalDocument, DocumentError, LayerId};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -81,6 +85,7 @@ pub enum DocumentMessage {
 	AbortTransaction,
 	CommitTransaction,
 	ExportDocument,
+	SaveDocument,
 	RenderDocument,
 	Undo,
 	NudgeSelectedLayers(f64, f64),
@@ -109,7 +114,7 @@ impl DocumentMessageHandler {
 		document_responses.retain(|response| !matches!(response, DocumentResponse::DocumentChanged));
 		document_responses.len() != len
 	}
-	fn handle_folder_changed(&mut self, path: Vec<LayerId>) -> Option<Message> {
+	pub fn handle_folder_changed(&mut self, path: Vec<LayerId>) -> Option<Message> {
 		let _ = self.document.render_root();
 		self.layer_data(&path).expanded.then(|| {
 			let children = self.layer_panel(path.as_slice()).expect("The provided Path was not valid");
@@ -184,6 +189,18 @@ impl DocumentMessageHandler {
 			name,
 			layer_data: vec![(vec![], LayerData::new(true))].into_iter().collect(),
 			movement_handler: MovementMessageHandler::default(),
+		}
+	}
+	pub fn with_name_and_content(name: String, serialized_content: String) -> Result<Self, EditorError> {
+		let mut document = Self::with_name(name);
+		let internal_document = InternalDocument::with_content(&serialized_content);
+		match internal_document {
+			Ok(handle) => {
+				document.document = handle;
+				Ok(document)
+			}
+			Err(DocumentError::InvalidFile(msg)) => Err(EditorError::Document(msg)),
+			_ => Err(EditorError::Document(String::from("Failed to open file"))),
 		}
 	}
 
@@ -263,6 +280,10 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			ExportDocument => {
 				let bbox = self.document.visible_layers_bounding_box().unwrap_or([DVec2::ZERO, ipp.viewport_size.as_f64()]);
 				let size = bbox[1] - bbox[0];
+				let name = match self.name.ends_with(FILE_SAVE_SUFFIX) {
+					true => self.name.clone().replace(FILE_SAVE_SUFFIX, FILE_EXPORT_SUFFIX),
+					false => self.name.clone() + FILE_EXPORT_SUFFIX,
+				};
 				responses.push_back(
 					FrontendMessage::ExportDocument {
 						document: format!(
@@ -274,6 +295,20 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 							"\n",
 							self.document.render_root()
 						),
+						name,
+					}
+					.into(),
+				)
+			}
+			SaveDocument => {
+				let name = match self.name.ends_with(FILE_SAVE_SUFFIX) {
+					true => self.name.clone(),
+					false => self.name.clone() + FILE_SAVE_SUFFIX,
+				};
+				responses.push_back(
+					FrontendMessage::SaveDocument {
+						document: self.document.serialize_document(),
+						name,
 					}
 					.into(),
 				)
@@ -497,6 +532,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			DeselectAllLayers,
 			RenderDocument,
 			ExportDocument,
+			SaveDocument,
 		);
 
 		if self.layer_data.values().any(|data| data.selected) {
