@@ -25,7 +25,8 @@ pub enum DocumentsMessage {
 	CloseAllDocumentsWithConfirmation,
 	CloseAllDocuments,
 	NewDocument,
-	OpenDocument(String, String),
+	OpenDocument,
+	OpenDocumentFile(String, String),
 	GetOpenDocumentsList,
 	NextDocument,
 	PrevDocument,
@@ -112,7 +113,7 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 					.into(),
 				);
 				responses.push_back(RenderDocument.into());
-                responses.extend(self.active_document_mut().handle_folder_changed(vec![]));
+				responses.extend(self.active_document_mut().handle_folder_changed(vec![]));
 			}
 			CloseActiveDocumentWithConfirmation => {
 				responses.push_back(
@@ -184,7 +185,10 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 				let new_document = DocumentMessageHandler::with_name(name);
 				self.load_document(new_document, responses);
 			}
-			OpenDocument(name, serialized_contents) => {
+			OpenDocument => {
+				responses.push_back(FrontendMessage::OpenDocumentBrowse.into());
+			}
+			OpenDocumentFile(name, serialized_contents) => {
 				let document = DocumentMessageHandler::with_name_and_content(name, serialized_contents);
 				match document {
 					Ok(document) => {

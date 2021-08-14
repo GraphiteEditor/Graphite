@@ -519,6 +519,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			DeselectAllLayers,
 			RenderDocument,
 			ExportDocument,
+			SaveDocument,
 		);
 
 		if self.layer_data.values().any(|data| data.selected) {

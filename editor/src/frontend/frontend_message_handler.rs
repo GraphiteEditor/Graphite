@@ -20,6 +20,7 @@ pub enum FrontendMessage {
 	UpdateLayer { path: Vec<LayerId>, data: LayerPanelEntry },
 	ExportDocument { document: String, name: String },
 	SaveDocument { document: String, name: String },
+	OpenDocumentBrowse,
 	EnableTextInput,
 	DisableTextInput,
 	UpdateWorkingColors { primary: Color, secondary: Color },
@@ -53,5 +54,6 @@ impl MessageHandler<FrontendMessage, ()> for FrontendMessageHandler {
 		DisableTextInput,
 		SetCanvasZoom,
 		SetCanvasRotation,
+		OpenDocumentBrowse,
 	);
 }

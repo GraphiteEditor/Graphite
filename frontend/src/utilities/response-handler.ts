@@ -16,6 +16,7 @@ export enum ResponseType {
 	UpdateCanvas = "UpdateCanvas",
 	ExportDocument = "ExportDocument",
 	SaveDocument = "SaveDocument",
+	OpenDocumentBrowse = "OpenDocumentBrowse",
 	ExpandFolder = "ExpandFolder",
 	CollapseFolder = "CollapseFolder",
 	UpdateLayer = "UpdateLayer",
@@ -75,6 +76,8 @@ function parseResponse(responseType: string, data: any): Response {
 			return newExportDocument(data.ExportDocument);
 		case "SaveDocument":
 			return newSaveDocument(data.SaveDocument);
+		case "OpenDocumentBrowse":
+			return newOpenDocumentBrowse(data.OpenDocumentBrowse);
 		case "UpdateWorkingColors":
 			return newUpdateWorkingColors(data.UpdateWorkingColors);
 		case "DisplayError":
@@ -188,6 +191,11 @@ function newSaveDocument(input: any): SaveDocument {
 		document: input.document,
 		name: input.name,
 	};
+}
+
+export type OpenDocumentBrowse = {};
+function newOpenDocumentBrowse(_: any): OpenDocumentBrowse {
+	return {};
 }
 
 export type DocumentChanged = {};

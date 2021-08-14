@@ -211,7 +211,7 @@
 import { defineComponent } from "vue";
 
 import { makeModifiersBitfield } from "@/utilities/input";
-import { ResponseType, registerResponseHandler, Response, UpdateCanvas, SetActiveTool, ExportDocument, SetCanvasZoom, SetCanvasRotation, SaveDocument } from "@/utilities/response-handler";
+import { ResponseType, registerResponseHandler, Response, UpdateCanvas, SetActiveTool, SetCanvasZoom, SetCanvasRotation } from "@/utilities/response-handler";
 import { SeparatorDirection, SeparatorType } from "@/components/widgets/widgets";
 import { comingSoon } from "@/utilities/errors";
 
@@ -300,47 +300,25 @@ export default defineComponent({
 		async resetWorkingColors() {
 			(await wasm).reset_colors();
 		},
-		download(filename: string, fileData: string) {
-			let type = "text/plain;charset=utf-8";
-			if (filename.endsWith(".svg")) {
-				type = "image/svg+xml;charset=utf-8";
-			}
-			const blob = new Blob([fileData], { type });
-			const url = URL.createObjectURL(blob);
-			const element = document.createElement("a");
-
-			element.href = url;
-			element.setAttribute("download", filename);
-			element.style.display = "none";
-
-			element.click();
-		},
 	},
 	mounted() {
 		registerResponseHandler(ResponseType.UpdateCanvas, (responseData: Response) => {
 			const updateData = responseData as UpdateCanvas;
 			if (updateData) this.viewportSvg = updateData.document;
 		});
-		registerResponseHandler(ResponseType.ExportDocument, (responseData: Response) => {
-			const updateData = responseData as ExportDocument;
-			if (!updateData) return;
-			this.download(updateData.name, updateData.document);
-		});
-		registerResponseHandler(ResponseType.SaveDocument, (responseData: Response) => {
-			const saveData = responseData as SaveDocument;
-			if (!saveData) return;
-			this.download(saveData.name, saveData.document);
-		});
+
 		registerResponseHandler(ResponseType.SetActiveTool, (responseData: Response) => {
 			const toolData = responseData as SetActiveTool;
 			if (toolData) this.activeTool = toolData.tool_name;
 		});
+
 		registerResponseHandler(ResponseType.SetCanvasZoom, (responseData: Response) => {
 			const updateData = responseData as SetCanvasZoom;
 			if (updateData) {
 				this.documentZoom = updateData.new_zoom * 100;
 			}
 		});
+
 		registerResponseHandler(ResponseType.SetCanvasRotation, (responseData: Response) => {
 			const updateData = responseData as SetCanvasRotation;
 			if (updateData) {

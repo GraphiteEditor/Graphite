@@ -70,8 +70,13 @@ pub fn new_document() -> Result<(), JsValue> {
 }
 
 #[wasm_bindgen]
-pub fn open_document(name: String, content: String) -> Result<(), JsValue> {
-	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(DocumentsMessage::OpenDocument(name, content)).map_err(convert_error))
+pub fn open_document() -> Result<(), JsValue> {
+	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(DocumentsMessage::OpenDocument).map_err(convert_error))
+}
+
+#[wasm_bindgen]
+pub fn open_document_file(name: String, content: String) -> Result<(), JsValue> {
+	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(DocumentsMessage::OpenDocumentFile(name, content)).map_err(convert_error))
 }
 
 #[wasm_bindgen]

@@ -69,7 +69,7 @@ const menuEntries: MenuListEntries = [
 		children: [
 			[
 				{ label: "New", icon: "File", shortcut: ["Ctrl", "N"], shortcutRequiresLock: true, action: async () => (await wasm).new_document() },
-				{ label: "Open…", shortcut: ["Ctrl", "O"], action: handleOpenClick },
+				{ label: "Open…", shortcut: ["Ctrl", "O"], action: async () => (await wasm).open_document() },
 				{
 					label: "Open Recent",
 					shortcut: ["Ctrl", "⇧", "O"],
@@ -91,7 +91,7 @@ const menuEntries: MenuListEntries = [
 			],
 			[
 				{ label: "Save", shortcut: ["Ctrl", "S"], action: async () => (await wasm).save_document() },
-				{ label: "Save As…", shortcut: ["Ctrl", "⇧", "S"] },
+				{ label: "Save As…", shortcut: ["Ctrl", "⇧", "S"], action: async () => (await wasm).save_document() },
 				{ label: "Save All", shortcut: ["Ctrl", "Alt", "S"] },
 				{ label: "Auto-Save", checkbox: true, checked: true },
 			],
@@ -128,10 +128,10 @@ const menuEntries: MenuListEntries = [
 					label: "Order",
 					children: [
 						[
-							{ label: "Raise To Front", shortcut: ["Ctrl", "Shift", "]"], action: async () => (await wasm).reorder_selected_layers(2147483647) },
+							{ label: "Raise To Front", shortcut: ["Ctrl", "Shift", "]"], action: async () => (await wasm).reorder_selected_layers((await wasm).i32_max()) },
 							{ label: "Raise", shortcut: ["Ctrl", "]"], action: async () => (await wasm).reorder_selected_layers(1) },
 							{ label: "Lower", shortcut: ["Ctrl", "["], action: async () => (await wasm).reorder_selected_layers(-1) },
-							{ label: "Lower to Back", shortcut: ["Ctrl", "Shift", "["], action: async () => (await wasm).reorder_selected_layers(-2147483648) },
+							{ label: "Lower to Back", shortcut: ["Ctrl", "Shift", "["], action: async () => (await wasm).reorder_selected_layers((await wasm).i32_min()) },
 						],
 					],
 				},
@@ -154,26 +154,6 @@ const menuEntries: MenuListEntries = [
 		children: [[{ label: "Menu entries coming soon" }]],
 	},
 ];
-
-async function handleOpenClick() {
-	const element = document.createElement("input");
-	element.type = "file";
-	element.style.display = "none";
-
-	element.addEventListener(
-		"change",
-		async () => {
-			if (!element.files || !element.files.length) return;
-			const file = element.files[0];
-			const filename = file.name;
-			const content = await file.text();
-			(await wasm).open_document(filename, content);
-		},
-		{ capture: false, once: true }
-	);
-
-	element.click();
-}
 
 export default defineComponent({
 	methods: {
