@@ -4,15 +4,17 @@ use std::{
 };
 
 use glam::{DAffine2, DVec2};
+use serde::{Deserialize, Serialize};
 
 use crate::{
 	layers::{self, Folder, Layer, LayerData, LayerDataType, Shape},
 	DocumentError, DocumentResponse, LayerId, Operation, Quad,
 };
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Document {
 	pub root: Layer,
+	#[serde(skip)]
 	pub hasher: DefaultHasher,
 }
 
@@ -26,6 +28,10 @@ impl Default for Document {
 }
 
 impl Document {
+	pub fn with_content(serialized_content: &String) -> Result<Self, DocumentError> {
+		serde_json::from_str(serialized_content).map_err(|e| DocumentError::InvalidFile(e.to_string()))
+	}
+
 	/// Wrapper around render, that returns the whole document as a Response.
 	pub fn render_root(&mut self) -> String {
 		self.root.render(&mut vec![]);
@@ -34,6 +40,12 @@ impl Document {
 
 	pub fn hash(&self) -> u64 {
 		self.hasher.finish()
+	}
+
+	pub fn serialize_document(&self) -> String {
+		let val = serde_json::to_string(self);
+		// We fully expect the serialization to succeed
+		val.unwrap()
 	}
 
 	/// Checks whether each layer under `path` intersects with the provided `quad` and adds all intersection layers as paths to `intersections`.

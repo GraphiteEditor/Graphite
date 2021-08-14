@@ -7,6 +7,7 @@ use log::warn;
 use std::collections::VecDeque;
 
 use super::DocumentMessageHandler;
+use crate::consts::DEFAULT_DOCUMENT_NAME;
 
 #[impl_message(Message, Documents)]
 #[derive(PartialEq, Clone, Debug)]
@@ -25,6 +26,8 @@ pub enum DocumentsMessage {
 	CloseAllDocumentsWithConfirmation,
 	CloseAllDocuments,
 	NewDocument,
+	OpenDocument,
+	OpenDocumentFile(String, String),
 	GetOpenDocumentsList,
 	NextDocument,
 	PrevDocument,
@@ -43,6 +46,45 @@ impl DocumentsMessageHandler {
 	}
 	pub fn active_document_mut(&mut self) -> &mut DocumentMessageHandler {
 		&mut self.documents[self.active_document_index]
+	}
+	fn generate_new_document_name(&self) -> String {
+		let mut doc_title_numbers = self
+			.documents
+			.iter()
+			.filter_map(|d| {
+				d.name
+					.rsplit_once(DEFAULT_DOCUMENT_NAME)
+					.map(|(prefix, number)| (prefix.is_empty()).then(|| number.trim().parse::<isize>().ok()).flatten().unwrap_or(1))
+			})
+			.collect::<Vec<isize>>();
+		doc_title_numbers.sort_unstable();
+		doc_title_numbers.iter_mut().enumerate().for_each(|(i, number)| *number = *number - i as isize - 2);
+		// Uses binary search to find the index of the element where number is bigger than i
+		let new_doc_title_num = doc_title_numbers.binary_search(&0).map_or_else(|e| e, |v| v) + 1;
+
+		let name = match new_doc_title_num {
+			1 => DEFAULT_DOCUMENT_NAME.to_string(),
+			_ => format!("{} {}", DEFAULT_DOCUMENT_NAME, new_doc_title_num),
+		};
+		name
+	}
+
+	fn load_document(&mut self, new_document: DocumentMessageHandler, responses: &mut VecDeque<Message>) {
+		self.active_document_index = self.documents.len();
+		self.documents.push(new_document);
+
+		// Send the new list of document tab names
+		let open_documents = self.documents.iter().map(|doc| doc.name.clone()).collect();
+		responses.push_back(FrontendMessage::UpdateOpenDocumentsList { open_documents }.into());
+
+		responses.push_back(
+			FrontendMessage::ExpandFolder {
+				path: Vec::new().into(),
+				children: Vec::new(),
+			}
+			.into(),
+		);
+		responses.push_back(DocumentsMessage::SelectDocument(self.active_document_index).into());
 	}
 }
 
@@ -72,6 +114,7 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 					.into(),
 				);
 				responses.push_back(RenderDocument.into());
+				responses.extend(self.active_document_mut().handle_folder_changed(vec![]));
 			}
 			CloseActiveDocumentWithConfirmation => {
 				responses.push_back(
@@ -145,48 +188,21 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 				}
 			}
 			NewDocument => {
-				let digits = ('0'..='9').collect::<Vec<char>>();
-				let mut doc_title_numbers = self
-					.documents
-					.iter()
-					.map(|d| {
-						if d.name.ends_with(digits.as_slice()) {
-							let (_, number) = d.name.split_at(17);
-							number.trim().parse::<usize>().unwrap()
-						} else {
-							1
-						}
-					})
-					.collect::<Vec<usize>>();
-				doc_title_numbers.sort_unstable();
-				let mut new_doc_title_num = 1;
-				while new_doc_title_num <= self.documents.len() {
-					if new_doc_title_num != doc_title_numbers[new_doc_title_num - 1] {
-						break;
-					}
-					new_doc_title_num += 1;
-				}
-				let name = match new_doc_title_num {
-					1 => "Untitled Document".to_string(),
-					_ => format!("Untitled Document {}", new_doc_title_num),
-				};
-
-				self.active_document_index = self.documents.len();
+				let name = self.generate_new_document_name();
 				let new_document = DocumentMessageHandler::with_name(name);
-				self.documents.push(new_document);
-
-				// Send the new list of document tab names
-				let open_documents = self.documents.iter().map(|doc| doc.name.clone()).collect();
-				responses.push_back(FrontendMessage::UpdateOpenDocumentsList { open_documents }.into());
-
-				responses.push_back(
-					FrontendMessage::ExpandFolder {
-						path: Vec::new().into(),
-						children: Vec::new(),
+				self.load_document(new_document, responses);
+			}
+			OpenDocument => {
+				responses.push_back(FrontendMessage::OpenDocumentBrowse.into());
+			}
+			OpenDocumentFile(name, serialized_contents) => {
+				let document = DocumentMessageHandler::with_name_and_content(name, serialized_contents);
+				match document {
+					Ok(document) => {
+						self.load_document(document, responses);
 					}
-					.into(),
-				);
-				responses.push_back(SelectDocument(self.active_document_index).into());
+					Err(e) => responses.push_back(FrontendMessage::DisplayError { description: e.to_string() }.into()),
+				}
 			}
 			GetOpenDocumentsList => {
 				// Send the list of document tab names
