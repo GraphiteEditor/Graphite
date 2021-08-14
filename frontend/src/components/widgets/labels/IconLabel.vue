@@ -112,6 +112,7 @@ import MouseHintRMBDrag from "@/../assets/16px-two-tone/mouse-hint-rmb-drag.svg"
 import MouseHintMMBDrag from "@/../assets/16px-two-tone/mouse-hint-mmb-drag.svg";
 
 import NodeTypePath from "@/../assets/24px-full-color/node-type-path.svg";
+import NodeTypeFolder from "@/../assets/24px-full-color/node-type-folder.svg";
 
 const icons = {
 	LayoutSelectTool: { component: LayoutSelectTool, size: 24 },
@@ -192,6 +193,7 @@ const icons = {
 	MouseHintRMBDrag: { component: MouseHintRMBDrag, size: 16 },
 	MouseHintMMBDrag: { component: MouseHintMMBDrag, size: 16 },
 	NodeTypePath: { component: NodeTypePath, size: 24 },
+	NodeTypeFolder: { component: NodeTypeFolder, size: 24 },
 };
 
 const components = Object.fromEntries(Object.entries(icons).map(([name, data]) => [name, data.component]));
