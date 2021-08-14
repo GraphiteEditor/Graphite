@@ -30,7 +30,7 @@ bitflags! {
 	}
 }
 
-#[derive(Debug, Default, Hash)]
+#[derive(Debug, Default)]
 pub struct InputPreprocessor {
 	pub keyboard: KeyStates,
 	pub mouse: MouseState,
@@ -81,7 +81,7 @@ impl MessageHandler<InputPreprocessorMessage, ()> for InputPreprocessor {
 				responses.push_back(
 					graphene::Operation::TransformLayer {
 						path: vec![],
-						transform: glam::DAffine2::from_translation((size.as_f64() - self.viewport_size.as_f64()) / 2.).to_cols_array(),
+						transform: glam::DAffine2::from_translation((size - self.viewport_size) / 2.).to_cols_array(),
 					}
 					.into(),
 				);
@@ -141,7 +141,7 @@ mod test {
 	#[test]
 	fn process_action_mouse_move_handle_modifier_keys() {
 		let mut input_preprocessor = InputPreprocessor::default();
-		let message = InputPreprocessorMessage::MouseMove((4, 809).into(), ModifierKeys::ALT);
+		let message = InputPreprocessorMessage::MouseMove((4., 809.).into(), ModifierKeys::ALT);
 		let mut responses = VecDeque::new();
 
 		input_preprocessor.process_action(message, (), &mut responses);
