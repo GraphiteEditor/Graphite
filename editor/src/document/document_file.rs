@@ -120,7 +120,7 @@ impl DocumentMessageHandler {
 		document_responses.retain(|response| !matches!(response, DocumentResponse::DocumentChanged));
 		document_responses.len() != len
 	}
-	fn handle_folder_changed(&mut self, path: Vec<LayerId>) -> Option<Message> {
+	pub fn handle_folder_changed(&mut self, path: Vec<LayerId>) -> Option<Message> {
 		let _ = self.document.render_root();
 		self.layer_data(&path).expanded.then(|| {
 			let children = self.layer_panel(path.as_slice()).expect("The provided Path was not valid");

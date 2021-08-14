@@ -112,6 +112,7 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 					.into(),
 				);
 				responses.push_back(RenderDocument.into());
+                responses.extend(self.active_document_mut().handle_folder_changed(vec![]));
 			}
 			CloseActiveDocumentWithConfirmation => {
 				responses.push_back(
