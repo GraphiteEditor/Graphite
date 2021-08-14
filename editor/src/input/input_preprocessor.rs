@@ -1,7 +1,7 @@
 use std::usize;
 
 use super::keyboard::{Key, KeyStates};
-use super::mouse::{MouseKeys, MouseState, ScrollDelta, ViewportPosition};
+use super::mouse::{EditorMouseState, MouseKeys, MouseState, ViewportBounds};
 use crate::message_prelude::*;
 use bitflags::bitflags;
 
@@ -11,13 +11,13 @@ pub use graphene::DocumentResponse;
 #[impl_message(Message, InputPreprocessor)]
 #[derive(PartialEq, Clone, Debug)]
 pub enum InputPreprocessorMessage {
-	MouseDown(MouseState, ModifierKeys),
-	MouseUp(MouseState, ModifierKeys),
-	MouseMove(ViewportPosition, ModifierKeys),
-	MouseScroll(ScrollDelta, ModifierKeys),
+	MouseDown(EditorMouseState, ModifierKeys),
+	MouseUp(EditorMouseState, ModifierKeys),
+	MouseMove(EditorMouseState, ModifierKeys),
+	MouseScroll(EditorMouseState, ModifierKeys),
 	KeyUp(Key, ModifierKeys),
 	KeyDown(Key, ModifierKeys),
-	ViewportResize(ViewportPosition),
+	BoundsOfViewports(Vec<ViewportBounds>),
 }
 
 bitflags! {
@@ -34,7 +34,7 @@ bitflags! {
 pub struct InputPreprocessor {
 	pub keyboard: KeyStates,
 	pub mouse: MouseState,
-	pub viewport_size: ViewportPosition,
+	pub viewport_bounds: ViewportBounds,
 }
 
 enum KeyPosition {
@@ -45,27 +45,42 @@ enum KeyPosition {
 impl MessageHandler<InputPreprocessorMessage, ()> for InputPreprocessor {
 	fn process_action(&mut self, message: InputPreprocessorMessage, _data: (), responses: &mut VecDeque<Message>) {
 		match message {
-			InputPreprocessorMessage::MouseMove(pos, modifier_keys) => {
+			InputPreprocessorMessage::MouseMove(editor_mouse_state, modifier_keys) => {
 				self.handle_modifier_keys(modifier_keys, responses);
-				self.mouse.position = pos;
+
+				let mouse_state = editor_mouse_state.to_mouse_state(&self.viewport_bounds);
+				self.mouse.position = mouse_state.position;
+
 				responses.push_back(InputMapperMessage::PointerMove.into());
 			}
-			InputPreprocessorMessage::MouseScroll(delta, modifier_keys) => {
+			InputPreprocessorMessage::MouseDown(editor_mouse_state, modifier_keys) => {
 				self.handle_modifier_keys(modifier_keys, responses);
-				self.mouse.scroll_delta = delta;
+
+				let mouse_state = editor_mouse_state.to_mouse_state(&self.viewport_bounds);
+				self.mouse.position = mouse_state.position;
+
+				if let Some(message) = self.translate_mouse_event(mouse_state, KeyPosition::Pressed) {
+					responses.push_back(message);
+				}
+			}
+			InputPreprocessorMessage::MouseUp(editor_mouse_state, modifier_keys) => {
+				self.handle_modifier_keys(modifier_keys, responses);
+
+				let mouse_state = editor_mouse_state.to_mouse_state(&self.viewport_bounds);
+				self.mouse.position = mouse_state.position;
+
+				if let Some(message) = self.translate_mouse_event(mouse_state, KeyPosition::Released) {
+					responses.push_back(message);
+				}
+			}
+			InputPreprocessorMessage::MouseScroll(editor_mouse_state, modifier_keys) => {
+				self.handle_modifier_keys(modifier_keys, responses);
+
+				let mouse_state = editor_mouse_state.to_mouse_state(&self.viewport_bounds);
+				self.mouse.position = mouse_state.position;
+				self.mouse.scroll_delta = mouse_state.scroll_delta;
+
 				responses.push_back(InputMapperMessage::MouseScroll.into());
-			}
-			InputPreprocessorMessage::MouseDown(state, modifier_keys) => {
-				self.handle_modifier_keys(modifier_keys, responses);
-				if let Some(message) = self.translate_mouse_event(state, KeyPosition::Pressed) {
-					responses.push_back(message);
-				}
-			}
-			InputPreprocessorMessage::MouseUp(state, modifier_keys) => {
-				self.handle_modifier_keys(modifier_keys, responses);
-				if let Some(message) = self.translate_mouse_event(state, KeyPosition::Released) {
-					responses.push_back(message);
-				}
 			}
 			InputPreprocessorMessage::KeyDown(key, modifier_keys) => {
 				self.handle_modifier_keys(modifier_keys, responses);
@@ -77,15 +92,26 @@ impl MessageHandler<InputPreprocessorMessage, ()> for InputPreprocessor {
 				self.keyboard.unset(key as usize);
 				responses.push_back(InputMapperMessage::KeyUp(key).into());
 			}
-			InputPreprocessorMessage::ViewportResize(size) => {
-				responses.push_back(
-					graphene::Operation::TransformLayer {
-						path: vec![],
-						transform: glam::DAffine2::from_translation((size - self.viewport_size) / 2.).to_cols_array(),
-					}
-					.into(),
-				);
-				self.viewport_size = size;
+			InputPreprocessorMessage::BoundsOfViewports(bounds_of_viewports) => {
+				assert_eq!(bounds_of_viewports.len(), 1, "Only one viewport is currently supported");
+
+				for bounds in bounds_of_viewports {
+					let new_size = bounds.size();
+					let existing_size = self.viewport_bounds.size();
+
+					let translation = (new_size - existing_size) / 2.;
+
+					// TODO: Extend this to multiple viewports instead of setting it to the value of this last loop iteration
+					self.viewport_bounds = bounds;
+
+					responses.push_back(
+						graphene::Operation::TransformLayer {
+							path: vec![],
+							transform: glam::DAffine2::from_translation(translation).to_cols_array(),
+						}
+						.into(),
+					);
+				}
 			}
 		};
 	}
@@ -136,12 +162,16 @@ impl InputPreprocessor {
 
 #[cfg(test)]
 mod test {
+	use crate::input::mouse::ViewportPosition;
+
 	use super::*;
 
 	#[test]
 	fn process_action_mouse_move_handle_modifier_keys() {
 		let mut input_preprocessor = InputPreprocessor::default();
-		let message = InputPreprocessorMessage::MouseMove((4., 809.).into(), ModifierKeys::ALT);
+		let mut editor_mouse_state = EditorMouseState::new();
+		editor_mouse_state.editor_position = ViewportPosition::new(4., 809.);
+		let message = InputPreprocessorMessage::MouseMove(editor_mouse_state, ModifierKeys::ALT);
 		let mut responses = VecDeque::new();
 
 		input_preprocessor.process_action(message, (), &mut responses);
@@ -153,7 +183,7 @@ mod test {
 	#[test]
 	fn process_action_mouse_down_handle_modifier_keys() {
 		let mut input_preprocessor = InputPreprocessor::default();
-		let message = InputPreprocessorMessage::MouseDown(MouseState::new(), ModifierKeys::CONTROL);
+		let message = InputPreprocessorMessage::MouseDown(EditorMouseState::new(), ModifierKeys::CONTROL);
 		let mut responses = VecDeque::new();
 
 		input_preprocessor.process_action(message, (), &mut responses);
@@ -165,7 +195,7 @@ mod test {
 	#[test]
 	fn process_action_mouse_up_handle_modifier_keys() {
 		let mut input_preprocessor = InputPreprocessor::default();
-		let message = InputPreprocessorMessage::MouseUp(MouseState::new(), ModifierKeys::SHIFT);
+		let message = InputPreprocessorMessage::MouseUp(EditorMouseState::new(), ModifierKeys::SHIFT);
 		let mut responses = VecDeque::new();
 
 		input_preprocessor.process_action(message, (), &mut responses);
