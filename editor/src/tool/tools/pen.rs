@@ -65,7 +65,7 @@ impl Fsm for PenToolFsmState {
 		responses: &mut VecDeque<Message>,
 	) -> Self {
 		let transform = document.document.root.transform;
-		let pos = transform.inverse() * DAffine2::from_translation(input.mouse.position.as_f64());
+		let pos = transform.inverse() * DAffine2::from_translation(input.mouse.position);
 
 		use PenMessage::*;
 		use PenToolFsmState::*;
@@ -74,7 +74,7 @@ impl Fsm for PenToolFsmState {
 				(Ready, DragStart) => {
 					responses.push_back(DocumentMessage::StartTransaction.into());
 					responses.push_back(DocumentMessage::DeselectAllLayers.into());
-					data.path = Some(vec![generate_hash(&*responses, input, document.document.hash())]);
+					data.path = Some(vec![generate_uuid()]);
 
 					data.points.push(pos);
 					data.next_point = pos;
