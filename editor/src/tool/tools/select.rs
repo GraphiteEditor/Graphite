@@ -124,7 +124,6 @@ impl Fsm for SelectToolFsmState {
 			match (self, event) {
 				(_, UpdateSelectionBoundingBox) => {
 					let response = match (document.selected_layers_bounding_box(), data.bounding_box_id.clone()) {
-						(None, Some(path)) => Operation::DeleteLayer { path }.into(),
 						(Some([pos1, pos2]), path) => {
 							let path = path.unwrap_or_else(|| add_boundnig_box(responses));
 							data.bounding_box_id = Some(path.clone());
