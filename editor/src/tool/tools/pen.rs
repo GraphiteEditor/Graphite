@@ -65,7 +65,7 @@ impl Fsm for PenToolFsmState {
 		responses: &mut VecDeque<Message>,
 	) -> Self {
 		let transform = document.document.root.transform;
-		let pos = transform.inverse() * DAffine2::from_translation(input.mouse.position.as_f64());
+		let pos = transform.inverse() * DAffine2::from_translation(input.mouse.position);
 
 		use PenMessage::*;
 		use PenToolFsmState::*;

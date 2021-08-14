@@ -1,9 +1,11 @@
+use std::collections::hash_map::DefaultHasher;
 use std::usize;
 
 use super::keyboard::{Key, KeyStates};
 use super::mouse::{MouseKeys, MouseState, ScrollDelta, ViewportPosition};
 use crate::message_prelude::*;
 use bitflags::bitflags;
+use std::hash::{Hash, Hasher};
 
 #[doc(inline)]
 pub use graphene::DocumentResponse;
@@ -30,11 +32,32 @@ bitflags! {
 	}
 }
 
-#[derive(Debug, Default, Hash)]
+#[derive(Debug, Default)]
 pub struct InputPreprocessor {
 	pub keyboard: KeyStates,
 	pub mouse: MouseState,
 	pub viewport_size: ViewportPosition,
+}
+
+impl InputPreprocessor {
+	/// Returns the byte representation of the message.
+	///
+	/// # Safety
+	/// This function reads from uninitialized memory!!!
+	/// Only use if you know what you are doing
+	unsafe fn as_slice(&self) -> &[u8] {
+		core::slice::from_raw_parts(self as *const InputPreprocessor as *const u8, std::mem::size_of::<Message>())
+	}
+	/// Returns a pseudo hash that should uniquely identify the message.
+	/// This is needed because `Hash` is not implemented for f64s
+	///
+	/// # Safety
+	/// This function reads from uninitialized memory but the generated value should be fine.
+	pub fn pseudo_hash(&self) -> u64 {
+		let mut s = DefaultHasher::new();
+		unsafe { self.as_slice() }.hash(&mut s);
+		s.finish()
+	}
 }
 
 enum KeyPosition {
@@ -81,7 +104,7 @@ impl MessageHandler<InputPreprocessorMessage, ()> for InputPreprocessor {
 				responses.push_back(
 					graphene::Operation::TransformLayer {
 						path: vec![],
-						transform: glam::DAffine2::from_translation((size.as_f64() - self.viewport_size.as_f64()) / 2.).to_cols_array(),
+						transform: glam::DAffine2::from_translation((size - self.viewport_size) / 2.).to_cols_array(),
 					}
 					.into(),
 				);
@@ -141,7 +164,7 @@ mod test {
 	#[test]
 	fn process_action_mouse_move_handle_modifier_keys() {
 		let mut input_preprocessor = InputPreprocessor::default();
-		let message = InputPreprocessorMessage::MouseMove((4, 809).into(), ModifierKeys::ALT);
+		let message = InputPreprocessorMessage::MouseMove((4., 809.).into(), ModifierKeys::ALT);
 		let mut responses = VecDeque::new();
 
 		input_preprocessor.process_action(message, (), &mut responses);

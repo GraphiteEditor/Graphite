@@ -122,8 +122,8 @@ impl Fsm for LineToolFsmState {
 }
 
 fn generate_transform(data: &mut LineToolData, lock: bool, snap: bool, center: bool) -> Message {
-	let mut start = data.drag_start.as_f64();
-	let stop = data.drag_current.as_f64();
+	let mut start = data.drag_start;
+	let stop = data.drag_current;
 
 	let dir = stop - start;
 

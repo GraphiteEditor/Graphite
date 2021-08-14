@@ -79,9 +79,9 @@ impl SelectToolData {
 	fn selection_box(&self) -> [DVec2; 2] {
 		if self.drag_current == self.drag_start {
 			let tolerance = DVec2::splat(SELECTION_TOLERANCE);
-			[self.drag_start.as_f64() - tolerance, self.drag_start.as_f64() + tolerance]
+			[self.drag_start - tolerance, self.drag_start + tolerance]
 		} else {
-			[self.drag_start.as_f64(), self.drag_current.as_f64()]
+			[self.drag_start, self.drag_current]
 		}
 	}
 }
@@ -139,7 +139,7 @@ impl Fsm for SelectToolFsmState {
 						responses.push_back(
 							Operation::TransformLayerInViewport {
 								path: path.clone(),
-								transform: DAffine2::from_translation(input.mouse.position.as_f64() - data.drag_current.as_f64()).to_cols_array(),
+								transform: DAffine2::from_translation(input.mouse.position - data.drag_current).to_cols_array(),
 							}
 							.into(),
 						);
@@ -149,8 +149,8 @@ impl Fsm for SelectToolFsmState {
 				}
 				(DrawingBox, MouseMove) => {
 					data.drag_current = input.mouse.position;
-					let start = data.drag_start.as_f64();
-					let size = data.drag_current.as_f64() - start;
+					let start = data.drag_start;
+					let size = data.drag_current - start;
 
 					responses.push_back(
 						Operation::SetLayerTransformInViewport {

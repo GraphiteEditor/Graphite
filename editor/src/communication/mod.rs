@@ -28,7 +28,7 @@ where
 pub fn generate_hash<'a>(messages: impl IntoIterator<Item = &'a Message>, ipp: &InputPreprocessor, document_hash: u64) -> u64 {
 	let mut s = DefaultHasher::new();
 	document_hash.hash(&mut s);
-	ipp.hash(&mut s);
+	ipp.pseudo_hash();
 	for message in messages {
 		message.pseudo_hash().hash(&mut s);
 	}
