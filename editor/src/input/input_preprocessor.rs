@@ -93,6 +93,8 @@ impl MessageHandler<InputPreprocessorMessage, ()> for InputPreprocessor {
 				responses.push_back(InputMapperMessage::KeyUp(key).into());
 			}
 			InputPreprocessorMessage::BoundsOfViewports(bounds_of_viewports) => {
+				assert_eq!(bounds_of_viewports.len(), 1, "Only one viewport is currently supported");
+
 				for bounds in bounds_of_viewports {
 					let new_size = bounds.size();
 					let existing_size = self.viewport_bounds.size();

@@ -20,7 +20,7 @@ impl ViewportBounds {
 	}
 
 	pub fn size(&self) -> DVec2 {
-		DVec2::new(self.bottom_right.x - self.top_left.x, self.bottom_right.y - self.top_left.y)
+		self.bottom_right - self.top_left
 	}
 }
 
