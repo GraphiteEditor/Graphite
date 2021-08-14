@@ -11,7 +11,7 @@ pub use response::DocumentResponse;
 
 pub type LayerId = u64;
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum DocumentError {
 	LayerNotFound,
 	InvalidPath,
@@ -19,4 +19,5 @@ pub enum DocumentError {
 	NotAFolder,
 	NonReorderableSelection,
 	NotAShape,
+	InvalidFile(String),
 }

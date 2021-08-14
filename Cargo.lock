@@ -112,6 +112,7 @@ dependencies = [
  "kurbo",
  "log",
  "serde",
+ "serde_json",
 ]
 
 [[package]]
