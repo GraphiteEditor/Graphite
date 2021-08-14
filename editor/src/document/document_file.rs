@@ -141,6 +141,11 @@ impl DocumentMessageHandler {
 		self.layer_data.iter().filter_map(|(path, data)| data.selected.then(|| path))
 	}
 
+	pub fn selected_layers_bounding_box(&self) -> Option<[DVec2; 2]> {
+		let paths = self.selected_layers().map(|vec| &vec[..]);
+		self.document.combined_viewport_bounding_box(paths)
+	}
+
 	/// Returns the paths to all layers in order, optionally including only selected or non-selected layers.
 	fn layers_sorted(&self, selected: Option<bool>) -> Vec<Vec<LayerId>> {
 		// Compute the indices for each layer to be able to sort them
@@ -309,6 +314,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				for path in self.selected_layers().cloned() {
 					responses.push_back(DocumentOperation::DeleteLayer { path }.into())
 				}
+				responses.push_back(ToolMessage::SelectionUpdated.into());
 			}
 			DuplicateSelectedLayers => {
 				for path in self.selected_layers_sorted() {
@@ -322,17 +328,20 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				}
 				// TODO: Correctly update layer panel in clear_selection instead of here
 				responses.extend(self.handle_folder_changed(Vec::new()));
+				responses.push_back(ToolMessage::SelectionUpdated.into());
 			}
 			SelectAllLayers => {
 				let all_layer_paths = self.layer_data.keys().filter(|path| !path.is_empty()).cloned().collect::<Vec<_>>();
 				for path in all_layer_paths {
 					responses.extend(self.select_layer(&path));
 				}
+				responses.push_back(ToolMessage::SelectionUpdated.into());
 			}
 			DeselectAllLayers => {
 				self.clear_selection();
 				let children = self.layer_panel(&[]).expect("The provided Path was not valid");
 				responses.push_back(FrontendMessage::ExpandFolder { path: vec![], children }.into());
+				responses.push_back(ToolMessage::SelectionUpdated.into());
 			}
 			Undo => {
 				// this is a temporary fix and will be addressed by #123

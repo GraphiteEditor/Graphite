@@ -25,10 +25,13 @@ pub struct Select {
 #[impl_message(Message, ToolMessage, Select)]
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize, Hash)]
 pub enum SelectMessage {
+	Selected,
 	DragStart,
 	DragStop,
 	MouseMove,
 	Abort,
+
+	UpdateBoundingBox,
 
 	Align(AlignAxis, AlignAggregate),
 	FlipHorizontal,
@@ -100,8 +103,33 @@ impl Fsm for SelectToolFsmState {
 	) -> Self {
 		use SelectMessage::*;
 		use SelectToolFsmState::*;
-		if let ToolMessage::Select(event) = event {
-			match (self, event) {
+		match event {
+			ToolMessage::CanvasRotated | ToolMessage::SelectionUpdated => {
+				responses.push_back(SelectMessage::UpdateBoundingBox.into());
+				self
+			}
+			ToolMessage::Select(event) => match (self, event) {
+				(_, UpdateBoundingBox) => {
+					if data.box_id.is_some() {
+						place_bounding_box_around_selection(&data.box_id, document, responses);
+					}
+					self
+				}
+				(Ready, Selected) => {
+					if data.box_id.is_none() {
+						data.box_id = Some(vec![generate_hash(&*responses, input, document.document.hash())]);
+						responses.push_back(
+							Operation::AddBoundingBox {
+								path: data.box_id.clone().unwrap(),
+								transform: DAffine2::ZERO.to_cols_array(),
+								style: style::PathStyle::new(Some(Stroke::new(Color::from_rgb8(0x00, 0xA8, 0xFF), 1.0)), Some(Fill::none())),
+							}
+							.into(),
+						);
+						place_bounding_box_around_selection(&data.box_id, document, responses);
+					}
+					self
+				}
 				(Ready, DragStart) => {
 					data.drag_start = input.mouse.position;
 					data.drag_current = input.mouse.position;
@@ -122,15 +150,6 @@ impl Fsm for SelectToolFsmState {
 						Dragging
 					} else {
 						responses.push_back(DocumentMessage::DeselectAllLayers.into());
-						data.box_id = Some(vec![generate_hash(&*responses, input, document.document.hash())]);
-						responses.push_back(
-							Operation::AddBoundingBox {
-								path: data.box_id.clone().unwrap(),
-								transform: DAffine2::ZERO.to_cols_array(),
-								style: style::PathStyle::new(Some(Stroke::new(Color::from_rgb8(0x00, 0xA8, 0xFF), 1.0)), Some(Fill::none())),
-							}
-							.into(),
-						);
 						DrawingBox
 					}
 				}
@@ -145,12 +164,14 @@ impl Fsm for SelectToolFsmState {
 						);
 					}
 					data.drag_current = input.mouse.position;
+					responses.push_back(SelectMessage::UpdateBoundingBox.into());
 					Dragging
 				}
 				(DrawingBox, MouseMove) => {
 					data.drag_current = input.mouse.position;
-					let start = data.drag_start.as_f64();
-					let size = data.drag_current.as_f64() - start;
+					let half_pixel_offset = DVec2::new(0.5, 0.5);
+					let start = data.drag_start.as_f64() + half_pixel_offset;
+					let size = data.drag_current.as_f64() - start + half_pixel_offset;
 
 					responses.push_back(
 						Operation::SetLayerTransformInViewport {
@@ -162,14 +183,20 @@ impl Fsm for SelectToolFsmState {
 					DrawingBox
 				}
 				(Dragging, DragStop) => Ready,
-				(DrawingBox, Abort) => {
-					responses.push_back(Operation::DeleteLayer { path: data.box_id.take().unwrap() }.into());
-					Ready
-				}
 				(DrawingBox, DragStop) => {
 					let quad = data.selection_quad();
 					responses.push_back(DocumentMessage::SelectLayers(document.document.intersects_quad_root(quad)).into());
-					responses.push_back(Operation::DeleteLayer { path: data.box_id.take().unwrap() }.into());
+					// // responses.push_back(Operation::DeleteLayer { path: data.box_id.take().unwrap() }.into());
+					Ready
+				}
+				(Ready, Abort) => {
+					if data.box_id.is_some() {
+						responses.push_back(Operation::DeleteLayer { path: data.box_id.take().unwrap() }.into());
+					}
+					Ready
+				}
+				(_, Abort) => {
+					place_bounding_box_around_selection(&data.box_id, document, responses);
 					Ready
 				}
 				(_, Align(axis, aggregate)) => {
@@ -188,9 +215,26 @@ impl Fsm for SelectToolFsmState {
 					self
 				}
 				_ => self,
-			}
-		} else {
-			self
+			},
+			_ => self,
 		}
 	}
+}
+
+fn place_bounding_box_around_selection(box_id: &Option<Vec<u64>>, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
+	let maybe_bounding_box = document.selected_layers_bounding_box();
+	let transform = if let Some(bounding_box) = maybe_bounding_box {
+		let start = bounding_box[0];
+		let size = bounding_box[1] - start;
+		DAffine2::from_scale_angle_translation(size, 0., start)
+	} else {
+		DAffine2::ZERO
+	};
+	responses.push_back(
+		Operation::SetLayerTransformInViewport {
+			path: box_id.clone().unwrap(),
+			transform: transform.to_cols_array(),
+		}
+		.into(),
+	);
 }

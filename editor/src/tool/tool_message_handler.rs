@@ -16,6 +16,8 @@ pub enum ToolMessage {
 	SelectSecondaryColor(Color),
 	SwapColors,
 	ResetColors,
+	CanvasRotated,
+	SelectionUpdated,
 	SetToolOptions(ToolType, ToolOptions),
 	#[child]
 	Fill(FillMessage),
@@ -65,11 +67,16 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, &InputPreprocessor)> 
 					ToolType::Shape => responses.push_back(ShapeMessage::Abort.into()),
 					ToolType::Line => responses.push_back(LineMessage::Abort.into()),
 					ToolType::Pen => responses.push_back(PenMessage::Abort.into()),
+					ToolType::Select => responses.push_back(SelectMessage::Abort.into()),
 					_ => (),
 				};
 				reset(tool);
 				reset(self.tool_state.tool_data.active_tool_type);
 				self.tool_state.tool_data.active_tool_type = tool;
+
+				if tool == ToolType::Select {
+					responses.push_back(SelectMessage::Selected.into());
+				}
 
 				responses.push_back(FrontendMessage::SetActiveTool { tool_name: tool.to_string() }.into())
 			}
@@ -87,6 +94,11 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, &InputPreprocessor)> 
 			SetToolOptions(tool_type, tool_options) => {
 				self.tool_state.document_tool_data.tool_options.insert(tool_type, tool_options);
 			}
+			CanvasRotated | SelectionUpdated => self
+				.tool_state
+				.tool_data
+				.active_tool_mut()
+				.process_action(message, (&document, &self.tool_state.document_tool_data, input), responses),
 			message => {
 				let tool_type = match message {
 					Fill(_) => ToolType::Fill,

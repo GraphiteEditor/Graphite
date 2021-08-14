@@ -102,6 +102,8 @@ impl MessageHandler<MovementMessage, (&mut LayerData, &Document, &InputPreproces
 
 					let snapping = self.snapping;
 
+					responses.push_back(ToolMessage::CanvasRotated.into());
+
 					layerdata.rotation += rotation;
 					layerdata.snap_rotate = snapping;
 					responses.push_back(
@@ -170,6 +172,7 @@ impl MessageHandler<MovementMessage, (&mut LayerData, &Document, &InputPreproces
 			SetCanvasRotation(new) => {
 				layerdata.rotation = new;
 				self.create_document_transform_from_layerdata(layerdata, &ipp.viewport_size, responses);
+				responses.push_back(ToolMessage::CanvasRotated.into());
 				responses.push_back(FrontendMessage::SetCanvasRotation { new_radians: new }.into());
 			}
 			ZoomCanvasToFitAll => {
