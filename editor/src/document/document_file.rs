@@ -293,6 +293,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 							"\n",
 							self.document.render_root()
 						),
+						name: self.name.clone(),
 					}
 					.into(),
 				)
@@ -300,6 +301,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			SaveDocument => responses.push_back(
 				FrontendMessage::SaveDocument {
 					document: self.document.serialize_document(),
+					name: self.name.clone(),
 				}
 				.into(),
 			),

@@ -232,6 +232,7 @@ import OptionalInput from "@/components/widgets/inputs/OptionalInput.vue";
 import ToolOptions from "@/components/widgets/options/ToolOptions.vue";
 import { SectionsOfMenuListEntries } from "@/components/widgets/floating-menus/MenuList.vue";
 
+const FILE_SUFFIX = ".graphite";
 const documentModeEntries: SectionsOfMenuListEntries = [
 	[
 		{ label: "Design Mode", icon: "ViewportDesignMode" },
@@ -332,11 +333,22 @@ export default defineComponent({
 		});
 		registerResponseHandler(ResponseType.ExportDocument, (responseData: Response) => {
 			const updateData = responseData as ExportDocument;
-			if (updateData) this.download("canvas.svg", updateData.document);
+			if (!updateData) return;
+
+			let { name } = updateData;
+			const target_suffix = ".svg";
+			if (name.endsWith(FILE_SUFFIX)) name = name.replace(FILE_SUFFIX, target_suffix);
+			if (!name.endsWith(target_suffix)) name = `${name}${target_suffix}`;
+
+			this.download(name, updateData.document);
 		});
 		registerResponseHandler(ResponseType.SaveDocument, (responseData: Response) => {
 			const saveData = responseData as SaveDocument;
-			if (saveData) this.download("canvas.graphite", saveData.document);
+			if (!saveData) return;
+
+			let { name } = saveData;
+			if (!name.endsWith(FILE_SUFFIX)) name = `${name}${FILE_SUFFIX}`;
+			this.download(name, saveData.document);
 		});
 		registerResponseHandler(ResponseType.SetActiveTool, (responseData: Response) => {
 			const toolData = responseData as SetActiveTool;
