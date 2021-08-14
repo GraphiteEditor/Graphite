@@ -38,7 +38,7 @@ function shouldRedirectKeyboardEventToBackend(e: KeyboardEvent): boolean {
 export async function onKeyDown(e: KeyboardEvent) {
 	if (shouldRedirectKeyboardEventToBackend(e)) {
 		e.preventDefault();
-		const modifiers = makeModifiersBitfield(e.ctrlKey, e.shiftKey, e.altKey);
+		const modifiers = makeModifiersBitfield(e);
 		(await wasm).on_key_down(e.key, modifiers);
 		return;
 	}
@@ -55,7 +55,7 @@ export async function onKeyDown(e: KeyboardEvent) {
 export async function onKeyUp(e: KeyboardEvent) {
 	if (shouldRedirectKeyboardEventToBackend(e)) {
 		e.preventDefault();
-		const modifiers = makeModifiersBitfield(e.ctrlKey, e.shiftKey, e.altKey);
+		const modifiers = makeModifiersBitfield(e);
 		(await wasm).on_key_up(e.key, modifiers);
 	}
 }
@@ -65,7 +65,7 @@ export async function onKeyUp(e: KeyboardEvent) {
 export async function onMouseMove(e: MouseEvent) {
 	if (!e.buttons) viewportMouseInteractionOngoing = false;
 
-	const modifiers = makeModifiersBitfield(e.ctrlKey, e.shiftKey, e.altKey);
+	const modifiers = makeModifiersBitfield(e);
 	(await wasm).on_mouse_move(e.clientX, e.clientY, e.buttons, modifiers);
 }
 
@@ -86,7 +86,7 @@ export async function onMouseDown(e: MouseEvent) {
 	if (inCanvas) viewportMouseInteractionOngoing = true;
 
 	if (viewportMouseInteractionOngoing) {
-		const modifiers = makeModifiersBitfield(e.ctrlKey, e.shiftKey, e.altKey);
+		const modifiers = makeModifiersBitfield(e);
 		(await wasm).on_mouse_down(e.clientX, e.clientY, e.buttons, modifiers);
 	}
 }
@@ -94,7 +94,7 @@ export async function onMouseDown(e: MouseEvent) {
 export async function onMouseUp(e: MouseEvent) {
 	if (!e.buttons) viewportMouseInteractionOngoing = false;
 
-	const modifiers = makeModifiersBitfield(e.ctrlKey, e.shiftKey, e.altKey);
+	const modifiers = makeModifiersBitfield(e);
 	(await wasm).on_mouse_up(e.clientX, e.clientY, e.buttons, modifiers);
 }
 
@@ -104,7 +104,7 @@ export async function onMouseScroll(e: WheelEvent) {
 
 	if (inCanvas) {
 		e.preventDefault();
-		const modifiers = makeModifiersBitfield(e.ctrlKey, e.shiftKey, e.altKey);
+		const modifiers = makeModifiersBitfield(e);
 		(await wasm).on_mouse_scroll(e.clientX, e.clientY, e.buttons, e.deltaX, e.deltaY, e.deltaZ, modifiers);
 	}
 }
@@ -119,12 +119,10 @@ export async function onWindowResize() {
 	const flattened = boundsOfViewports.flat();
 	const data = Float64Array.from(flattened);
 
-	if (!boundsOfViewports.length) return;
-
-	(await wasm).bounds_of_viewports(data);
+	if (boundsOfViewports.length > 0) (await wasm).bounds_of_viewports(data);
 }
 
-export function makeModifiersBitfield(control: boolean, shift: boolean, alt: boolean): number {
+export function makeModifiersBitfield(e: KeyboardEvent): number {
 	// eslint-disable-next-line no-bitwise
-	return Number(control) | (Number(shift) << 1) | (Number(alt) << 2);
+	return Number(e.ctrlKey) | (Number(e.shiftKey) << 1) | (Number(e.altKey) << 2);
 }
