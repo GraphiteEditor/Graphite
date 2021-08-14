@@ -46,27 +46,20 @@ impl DocumentsMessageHandler {
 		&mut self.documents[self.active_document_index]
 	}
 	fn generate_new_document_name(&self) -> String {
-		let digits = ('0'..='9').collect::<Vec<char>>();
 		let mut doc_title_numbers = self
 			.documents
 			.iter()
-			.map(|d| {
-				if d.name.starts_with(DEFAULT_DOCUMENT_NAME) && d.name.ends_with(digits.as_slice()) {
-					let (_, number) = d.name.split_at(DEFAULT_DOCUMENT_NAME.len());
-					number.trim().parse::<usize>().unwrap()
-				} else {
-					1
-				}
+			.filter_map(|d| {
+				d.name
+					.rsplit_once(DEFAULT_DOCUMENT_NAME)
+					.map(|(prefix, number)| (prefix.is_empty()).then(|| number.trim().parse::<isize>().ok()).flatten().unwrap_or(1))
 			})
-			.collect::<Vec<usize>>();
+			.collect::<Vec<isize>>();
 		doc_title_numbers.sort_unstable();
-		let mut new_doc_title_num = 1;
-		while new_doc_title_num <= self.documents.len() {
-			if new_doc_title_num != doc_title_numbers[new_doc_title_num - 1] {
-				break;
-			}
-			new_doc_title_num += 1;
-		}
+		doc_title_numbers.iter_mut().enumerate().for_each(|(i, number)| *number = *number - i as isize - 2);
+		// Uses binary search to find the index of the element where number is bigger than i
+		let new_doc_title_num = doc_title_numbers.binary_search(&0).map_or_else(|e| e, |v| v) + 1;
+
 		let name = match new_doc_title_num {
 			1 => DEFAULT_DOCUMENT_NAME.to_string(),
 			_ => format!("{} {}", DEFAULT_DOCUMENT_NAME, new_doc_title_num),
