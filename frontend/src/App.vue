@@ -59,6 +59,9 @@
 	--color-accent-hover-rgb: 73, 165, 226;
 	--color-accent-disabled: #416277;
 	--color-accent-disabled-rgb: 65, 98, 119;
+
+	--color-data-raster: #e4bb72;
+	--color-data-raster-rgb: 228, 187, 114;
 }
 
 html,

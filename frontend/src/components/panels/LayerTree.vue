@@ -25,10 +25,17 @@
 							:title="layer.visible ? 'Visible' : 'Hidden'"
 						/>
 					</div>
+					<button
+						v-if="layer.layer_type === LayerType.Folder"
+						class="node-connector"
+						:class="{ expanded: layer.layer_data.expanded }"
+						@click.stop="handleNodeConnectorClick(layer.path)"
+					></button>
+					<div v-else class="node-connector-missing"></div>
 					<div
 						class="layer"
 						:class="{ selected: layer.layer_data.selected }"
-						:style="{ marginLeft: `${(layer.path.length - 1) * 8 + 4}px` }"
+						:style="{ marginLeft: layerIndent(layer) }"
 						@click.shift.exact.stop="handleShiftClick(layer)"
 						@click.ctrl.exact.stop="handleControlClick(layer)"
 						@click.alt.exact.stop="handleControlClick(layer)"
@@ -43,6 +50,7 @@
 							<span>{{ layer.name }}</span>
 						</div>
 					</div>
+					<!-- <div class="glue" :style="{ marginLeft: layerIndent(layer) }"></div> -->
 				</div>
 			</LayoutCol>
 		</LayoutRow>
@@ -74,42 +82,96 @@
 			display: flex;
 			height: 36px;
 			align-items: center;
-			margin: 0 8px;
 			flex: 0 0 auto;
-
-			.layer {
-				display: flex;
-				align-items: center;
-				background: var(--color-5-dullgray);
-				border-radius: 4px;
-				width: 100%;
-				height: 100%;
-				margin-left: 4px;
-				padding-left: 16px;
-			}
-			.selected {
-				background: var(--color-accent);
-				color: var(--color-f-white);
-			}
+			position: relative;
 
 			& + .layer-row {
 				margin-top: 2px;
 			}
 
-			.layer-thumbnail {
-				width: 64px;
-				height: 100%;
-				background: white;
+			.layer-visibility {
+				flex: 0 0 auto;
+				margin-left: 4px;
+			}
 
-				svg {
-					width: calc(100% - 4px);
-					height: calc(100% - 4px);
-					margin: 2px;
+			.node-connector {
+				flex: 0 0 auto;
+				width: 12px;
+				height: 12px;
+				margin: 0 2px;
+				border-radius: 50%;
+				background: var(--color-data-raster);
+				outline: none;
+				border: none;
+				position: relative;
+
+				&::after {
+					content: "";
+					position: absolute;
+					width: 0;
+					height: 0;
+					top: 2px;
+					left: 3px;
+					border-style: solid;
+					border-width: 0 3px 6px 3px;
+					border-color: transparent transparent var(--color-2-mildblack) transparent;
+				}
+
+				&.expanded::after {
+					top: 3px;
+					left: 4px;
+					border-width: 3px 0 3px 6px;
+					border-color: transparent transparent transparent var(--color-2-mildblack);
 				}
 			}
 
-			.layer-type-icon {
-				margin: 0 8px;
+			.node-connector-missing {
+				width: 16px;
+				flex: 0 0 auto;
+			}
+
+			.layer {
+				display: flex;
+				align-items: center;
+				border-radius: 2px;
+				background: var(--color-5-dullgray);
+				margin-right: 16px;
+				width: 100%;
+				height: 100%;
+				z-index: 1;
+
+				&.selected {
+					background: var(--color-7-middlegray);
+					color: var(--color-f-white);
+				}
+
+				.layer-thumbnail {
+					width: 64px;
+					height: 100%;
+					background: white;
+					border-radius: 2px;
+
+					svg {
+						width: calc(100% - 4px);
+						height: calc(100% - 4px);
+						margin: 2px;
+					}
+				}
+
+				.layer-type-icon {
+					margin-left: 8px;
+					margin-right: 4px;
+				}
+			}
+
+			.glue {
+				position: absolute;
+				background: var(--color-data-raster);
+				height: 6px;
+				bottom: -4px;
+				left: 44px;
+				right: 16px;
+				z-index: 0;
 			}
 		}
 	}
@@ -177,9 +239,15 @@ const blendModeEntries: SectionsOfMenuListEntries = [
 export default defineComponent({
 	props: {},
 	methods: {
+		layerIndent(layer: LayerPanelEntry): string {
+			return `${(layer.path.length - 1) * 16}px`;
+		},
 		async toggleLayerVisibility(path: BigUint64Array) {
 			const { toggle_layer_visibility } = await wasm;
 			toggle_layer_visibility(path);
+		},
+		async handleNodeConnectorClick(path: BigUint64Array) {
+			(await wasm).toggle_layer_expansion(path);
 		},
 		async setLayerBlendMode() {
 			const blendMode = this.blendModeEntries.flat()[this.blendModeSelectedIndex].value as BlendMode;
