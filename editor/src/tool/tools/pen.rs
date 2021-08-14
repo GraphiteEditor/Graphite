@@ -74,7 +74,7 @@ impl Fsm for PenToolFsmState {
 				(Ready, DragStart) => {
 					responses.push_back(DocumentMessage::StartTransaction.into());
 					responses.push_back(DocumentMessage::DeselectAllLayers.into());
-					data.path = Some(vec![generate_hash(&*responses, input, document.document.hash())]);
+					data.path = Some(vec![generate_uuid()]);
 
 					data.points.push(pos);
 					data.next_point = pos;

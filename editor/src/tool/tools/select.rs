@@ -122,7 +122,7 @@ impl Fsm for SelectToolFsmState {
 						Dragging
 					} else {
 						responses.push_back(DocumentMessage::DeselectAllLayers.into());
-						data.box_id = Some(vec![generate_hash(&*responses, input, document.document.hash())]);
+						data.box_id = Some(vec![generate_uuid()]);
 						responses.push_back(
 							Operation::AddBoundingBox {
 								path: data.box_id.clone().unwrap(),
