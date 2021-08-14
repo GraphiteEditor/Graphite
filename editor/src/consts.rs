@@ -18,3 +18,7 @@ pub const LINE_ROTATE_SNAP_ANGLE: f64 = 15.;
 
 // SELECT TOOL
 pub const SELECTION_TOLERANCE: f64 = 1.0;
+
+pub const DEFAULT_DOCUMENT_NAME: &str = "Untitled Document";
+pub const FILE_SAVE_SUFFIX: &str = ".graphite";
+pub const FILE_EXPORT_SUFFIX: &str = ".svg";

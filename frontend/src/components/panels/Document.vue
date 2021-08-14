@@ -211,7 +211,7 @@
 import { defineComponent } from "vue";
 
 import { makeModifiersBitfield } from "@/utilities/input";
-import { ResponseType, registerResponseHandler, Response, UpdateCanvas, SetActiveTool, ExportDocument, SetCanvasZoom, SetCanvasRotation } from "@/utilities/response-handler";
+import { ResponseType, registerResponseHandler, Response, UpdateCanvas, SetActiveTool, SetCanvasZoom, SetCanvasRotation } from "@/utilities/response-handler";
 import { SeparatorDirection, SeparatorType } from "@/components/widgets/widgets";
 import { comingSoon } from "@/utilities/errors";
 
@@ -300,37 +300,25 @@ export default defineComponent({
 		async resetWorkingColors() {
 			(await wasm).reset_colors();
 		},
-		download(filename: string, fileData: string) {
-			const svgBlob = new Blob([fileData], { type: "image/svg+xml;charset=utf-8" });
-			const svgUrl = URL.createObjectURL(svgBlob);
-			const element = document.createElement("a");
-
-			element.href = svgUrl;
-			element.setAttribute("download", filename);
-			element.style.display = "none";
-
-			element.click();
-		},
 	},
 	mounted() {
 		registerResponseHandler(ResponseType.UpdateCanvas, (responseData: Response) => {
 			const updateData = responseData as UpdateCanvas;
 			if (updateData) this.viewportSvg = updateData.document;
 		});
-		registerResponseHandler(ResponseType.ExportDocument, (responseData: Response) => {
-			const updateData = responseData as ExportDocument;
-			if (updateData) this.download("canvas.svg", updateData.document);
-		});
+
 		registerResponseHandler(ResponseType.SetActiveTool, (responseData: Response) => {
 			const toolData = responseData as SetActiveTool;
 			if (toolData) this.activeTool = toolData.tool_name;
 		});
+
 		registerResponseHandler(ResponseType.SetCanvasZoom, (responseData: Response) => {
 			const updateData = responseData as SetCanvasZoom;
 			if (updateData) {
 				this.documentZoom = updateData.new_zoom * 100;
 			}
 		});
+
 		registerResponseHandler(ResponseType.SetCanvasRotation, (responseData: Response) => {
 			const updateData = responseData as SetCanvasRotation;
 			if (updateData) {
