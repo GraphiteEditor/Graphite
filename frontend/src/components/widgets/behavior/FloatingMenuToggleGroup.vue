@@ -22,10 +22,10 @@ export default defineComponent({
 		// Injected by FloatingMenuToggleButton and FloatingMenu, where grouping behavior is implemented.
 		return {
 			openedMenuInGroup: toRef(this, "openMenu"),
-			notifyGroupedFloatingMenuOpened(newOpenMenu: typeof FloatingMenu) {
+			notifyGroupedFloatingMenuOpened: (newOpenMenu: typeof FloatingMenu) => {
 				this.openMenu = newOpenMenu;
 			},
-			notifyGroupedFloatingMenuClosed(closedMenu: typeof FloatingMenu) {
+			notifyGroupedFloatingMenuClosed: (closedMenu: typeof FloatingMenu) => {
 				if (this.openMenu === closedMenu) {
 					this.openMenu = undefined;
 				}
