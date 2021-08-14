@@ -135,7 +135,13 @@ impl Fsm for SelectToolFsmState {
 					data.drag_current = input.mouse.position;
 					let mut selected: Vec<_> = document.selected_layers().cloned().collect();
 					let quad = data.selection_quad();
-					let intersection = document.document.intersects_quad_root(quad);
+					let mut intersection = document.document.intersects_quad_root(quad);
+
+					// Ignore the bounding box overlay if it's in the intersection.
+					if let Some(box_id) = &data.box_id {
+						intersection.retain(|path| path != box_id);
+					}
+
 					// If no layer is currently selected and the user clicks on a shape, select that.
 					if selected.is_empty() {
 						if let Some(layer) = intersection.last() {
@@ -185,8 +191,14 @@ impl Fsm for SelectToolFsmState {
 				(Dragging, DragStop) => Ready,
 				(DrawingBox, DragStop) => {
 					let quad = data.selection_quad();
-					responses.push_back(DocumentMessage::SelectLayers(document.document.intersects_quad_root(quad)).into());
-					// // responses.push_back(Operation::DeleteLayer { path: data.box_id.take().unwrap() }.into());
+					let mut intersection = document.document.intersects_quad_root(quad);
+
+					// Ignore the bounding box overlay if it's in the intersection.
+					if let Some(box_id) = &data.box_id {
+						intersection.retain(|path| path != box_id);
+					}
+
+					responses.push_back(DocumentMessage::SelectLayers(intersection).into());
 					Ready
 				}
 				(Ready, Abort) => {
