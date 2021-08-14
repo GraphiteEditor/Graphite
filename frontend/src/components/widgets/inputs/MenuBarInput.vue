@@ -69,7 +69,7 @@ const menuEntries: MenuListEntries = [
 		children: [
 			[
 				{ label: "New", icon: "File", shortcut: ["Ctrl", "N"], shortcutRequiresLock: true, action: async () => (await wasm).new_document() },
-				{ label: "Open…", shortcut: ["Ctrl", "O"] },
+				{ label: "Open…", shortcut: ["Ctrl", "O"], action: async () => (await wasm).open_document() },
 				{
 					label: "Open Recent",
 					shortcut: ["Ctrl", "⇧", "O"],
@@ -90,8 +90,8 @@ const menuEntries: MenuListEntries = [
 				{ label: "Close All", shortcut: ["Ctrl", "Alt", "W"], action: async () => (await wasm).close_all_documents_with_confirmation() },
 			],
 			[
-				{ label: "Save", shortcut: ["Ctrl", "S"] },
-				{ label: "Save As…", shortcut: ["Ctrl", "⇧", "S"] },
+				{ label: "Save", shortcut: ["Ctrl", "S"], action: async () => (await wasm).save_document() },
+				{ label: "Save As…", shortcut: ["Ctrl", "⇧", "S"], action: async () => (await wasm).save_document() },
 				{ label: "Save All", shortcut: ["Ctrl", "Alt", "S"] },
 				{ label: "Auto-Save", checkbox: true, checked: true },
 			],
@@ -128,10 +128,10 @@ const menuEntries: MenuListEntries = [
 					label: "Order",
 					children: [
 						[
-							{ label: "Raise To Front", shortcut: ["Ctrl", "Shift", "]"], action: async () => (await wasm).reorder_selected_layers(2147483647) },
+							{ label: "Raise To Front", shortcut: ["Ctrl", "Shift", "]"], action: async () => (await wasm).reorder_selected_layers((await wasm).i32_max()) },
 							{ label: "Raise", shortcut: ["Ctrl", "]"], action: async () => (await wasm).reorder_selected_layers(1) },
 							{ label: "Lower", shortcut: ["Ctrl", "["], action: async () => (await wasm).reorder_selected_layers(-1) },
-							{ label: "Lower to Back", shortcut: ["Ctrl", "Shift", "["], action: async () => (await wasm).reorder_selected_layers(-2147483648) },
+							{ label: "Lower to Back", shortcut: ["Ctrl", "Shift", "["], action: async () => (await wasm).reorder_selected_layers((await wasm).i32_min()) },
 						],
 					],
 				},
