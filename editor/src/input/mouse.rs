@@ -1,8 +1,8 @@
 use bitflags::bitflags;
 use glam::DVec2;
 
-// origin is top left
-pub type ViewportPosition = glam::UVec2;
+// Origin is top left
+pub type ViewportPosition = DVec2;
 
 #[derive(Debug, Copy, Clone, Default, Eq, PartialEq, Hash)]
 pub struct ScrollDelta {
@@ -23,7 +23,7 @@ impl ScrollDelta {
 	}
 }
 
-#[derive(Debug, Copy, Clone, Default, Eq, PartialEq, Hash)]
+#[derive(Debug, Copy, Clone, Default, PartialEq)]
 pub struct MouseState {
 	pub position: ViewportPosition,
 	pub mouse_keys: MouseKeys,
@@ -31,17 +31,18 @@ pub struct MouseState {
 }
 
 impl MouseState {
-	pub fn new() -> MouseState {
+	pub fn new() -> Self {
 		Self::default()
 	}
 
-	pub fn from_pos(x: u32, y: u32) -> MouseState {
-		MouseState {
+	pub fn from_pos(x: f64, y: f64) -> Self {
+		Self {
 			position: (x, y).into(),
 			mouse_keys: MouseKeys::default(),
 			scroll_delta: ScrollDelta::default(),
 		}
 	}
+
 	pub fn from_u8_pos(keys: u8, position: ViewportPosition) -> Self {
 		let mouse_keys = MouseKeys::from_bits(keys).expect("invalid modifier keys");
 		Self {
