@@ -58,7 +58,7 @@ impl Fsm for ShapeToolFsmState {
 	fn transition(
 		self,
 		event: ToolMessage,
-		document: &DocumentMessageHandler,
+		_document: &DocumentMessageHandler,
 		tool_data: &DocumentToolData,
 		data: &mut Self::ToolData,
 		input: &InputPreprocessor,
@@ -72,7 +72,7 @@ impl Fsm for ShapeToolFsmState {
 				(Ready, DragStart) => {
 					shape_data.drag_start = input.mouse.position;
 					responses.push_back(DocumentMessage::StartTransaction.into());
-					shape_data.path = Some(vec![generate_hash(&*responses, input, document.document.hash())]);
+					shape_data.path = Some(vec![generate_uuid()]);
 					responses.push_back(DocumentMessage::DeselectAllLayers.into());
 					data.sides = match tool_data.tool_options.get(&ToolType::Shape) {
 						Some(&ToolOptions::Shape {

@@ -59,7 +59,7 @@ impl Fsm for LineToolFsmState {
 	fn transition(
 		self,
 		event: ToolMessage,
-		document: &DocumentMessageHandler,
+		_document: &DocumentMessageHandler,
 		tool_data: &DocumentToolData,
 		data: &mut Self::ToolData,
 		input: &InputPreprocessor,
@@ -72,7 +72,7 @@ impl Fsm for LineToolFsmState {
 				(Ready, DragStart) => {
 					data.drag_start = input.mouse.position;
 					responses.push_back(DocumentMessage::StartTransaction.into());
-					data.path = Some(vec![generate_hash(&*responses, input, document.document.hash())]);
+					data.path = Some(vec![generate_uuid()]);
 					responses.push_back(DocumentMessage::DeselectAllLayers.into());
 
 					responses.push_back(
@@ -122,8 +122,8 @@ impl Fsm for LineToolFsmState {
 }
 
 fn generate_transform(data: &mut LineToolData, lock: bool, snap: bool, center: bool) -> Message {
-	let mut start = data.drag_start.as_f64();
-	let stop = data.drag_current.as_f64();
+	let mut start = data.drag_start;
+	let stop = data.drag_current;
 
 	let dir = stop - start;
 
