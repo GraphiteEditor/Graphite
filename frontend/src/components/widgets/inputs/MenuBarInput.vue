@@ -76,7 +76,7 @@ import { ApplicationPlatform } from "@/components/window/MainWindow.vue";
 import MenuList, { MenuListEntries } from "@/components/widgets/floating-menus/MenuList.vue";
 import { MenuDirection } from "@/components/widgets/floating-menus/FloatingMenu.vue";
 import FloatingMenuToggleGroup from "@/components/widgets/behavior/FloatingMenuToggleGroup.vue";
-import FloatingMenuToggleButton from "@/components/widgets/buttons/FloatingMenuToggleButton.vue";
+import FloatingMenuToggleButton from "@/components/widgets/floating-menus/FloatingMenuToggleButton.vue";
 
 const wasm = import("@/../wasm/pkg");
 

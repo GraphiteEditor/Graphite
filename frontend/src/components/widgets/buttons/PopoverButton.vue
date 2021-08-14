@@ -55,7 +55,7 @@
 import { defineComponent } from "vue";
 import IconButton from "@/components/widgets/buttons/IconButton.vue";
 import { MenuDirection, MenuType } from "@/components/widgets/floating-menus/FloatingMenu.vue";
-import FloatingMenuToggleButton from "@/components/widgets/buttons/FloatingMenuToggleButton.vue";
+import FloatingMenuToggleButton from "@/components/widgets/floating-menus/FloatingMenuToggleButton.vue";
 
 export enum PopoverButtonIcon {
 	"DropdownArrow" = "DropdownArrow",

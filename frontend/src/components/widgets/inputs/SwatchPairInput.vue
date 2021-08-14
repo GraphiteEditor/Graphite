@@ -84,7 +84,7 @@ import { ResponseType, registerResponseHandler, Response, UpdateWorkingColors } 
 import ColorPicker from "@/components/widgets/floating-menus/ColorPicker.vue";
 import { MenuDirection, MenuType } from "@/components/widgets/floating-menus/FloatingMenu.vue";
 import FloatingMenuToggleGroup from "@/components/widgets/behavior/FloatingMenuToggleGroup.vue";
-import FloatingMenuToggleButton from "@/components/widgets/buttons/FloatingMenuToggleButton.vue";
+import FloatingMenuToggleButton from "@/components/widgets/floating-menus/FloatingMenuToggleButton.vue";
 
 const wasm = import("@/../wasm/pkg");
 

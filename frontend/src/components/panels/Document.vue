@@ -9,7 +9,9 @@
 
 					<ToolOptions :activeTool="activeTool" />
 				</div>
-				<div class="spacer"></div>
+			</FloatingMenuToggleGroup>
+			<div class="spacer"></div>
+			<FloatingMenuToggleGroup>
 				<div class="right side">
 					<OptionalInput v-model:checked="snappingEnabled" @update:checked="comingSoon(200)" :icon="'Snapping'" title="Snapping" />
 					<PopoverButton>
