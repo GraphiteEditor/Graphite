@@ -283,7 +283,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			}
 			CommitTransaction => self.document_backup = None,
 			ExportDocument => {
-				let bbox = self.document.visible_layers_bounding_box().unwrap_or([DVec2::ZERO, ipp.viewport_size]);
+				let bbox = self.document.visible_layers_bounding_box().unwrap_or([DVec2::ZERO, ipp.viewport_bounds.size()]);
 				let size = bbox[1] - bbox[0];
 				let name = match self.name.ends_with(FILE_SAVE_SUFFIX) {
 					true => self.name.clone().replace(FILE_SAVE_SUFFIX, FILE_EXPORT_SUFFIX),
