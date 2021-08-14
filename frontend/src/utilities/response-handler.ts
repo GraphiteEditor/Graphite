@@ -170,19 +170,23 @@ function newUpdateCanvas(input: any): UpdateCanvas {
 
 export interface ExportDocument {
 	document: string;
+	name: string;
 }
-function newExportDocument(input: any): UpdateCanvas {
+function newExportDocument(input: any): ExportDocument {
 	return {
 		document: input.document,
+		name: input.name,
 	};
 }
 
 export interface SaveDocument {
 	document: string;
+	name: string;
 }
 function newSaveDocument(input: any): SaveDocument {
 	return {
 		document: input.document,
+		name: input.name,
 	};
 }
 

@@ -323,11 +323,13 @@ export default defineComponent({
 		});
 		registerResponseHandler(ResponseType.ExportDocument, (responseData: Response) => {
 			const updateData = responseData as ExportDocument;
-			if (updateData) this.download("canvas.svg", updateData.document);
+			if (!updateData) return;
+			this.download(updateData.name, updateData.document);
 		});
 		registerResponseHandler(ResponseType.SaveDocument, (responseData: Response) => {
 			const saveData = responseData as SaveDocument;
-			if (saveData) this.download("canvas.graphite", saveData.document);
+			if (!saveData) return;
+			this.download(saveData.name, saveData.document);
 		});
 		registerResponseHandler(ResponseType.SetActiveTool, (responseData: Response) => {
 			const toolData = responseData as SetActiveTool;
