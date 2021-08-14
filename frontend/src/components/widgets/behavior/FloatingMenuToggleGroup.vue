@@ -30,6 +30,7 @@ export default defineComponent({
 					this.openMenu = undefined;
 				}
 			},
+			// Creates a new computed variable, similar to one created in the computed section of a component.
 			openMenuOnHover: computed(() => this.openMenu !== undefined),
 		};
 	},

@@ -2,7 +2,15 @@
 	<div class="toggle-button" @mousedown.stop="toggleFloatingMenu()" @mouseenter="maybeOpenOnHover()">
 		<slot name="button" :isOpen="isOpen"></slot>
 	</div>
-	<slot name="popup" :isOpen="isOpen" :isOpenChanged="(newIsOpen) => (this.isOpen = newIsOpen)">
+	<slot
+		name="popup"
+		:isOpen="isOpen"
+		:isOpenChanged="
+			(newIsOpen) => {
+				this.isOpen = newIsOpen;
+			}
+		"
+	>
 		<FloatingMenu v-bind="$props" v-model:isOpen="isOpen">
 			<slot name="menu">Empty Menu</slot>
 		</FloatingMenu>
