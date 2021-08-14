@@ -16,6 +16,7 @@ pub enum ToolMessage {
 	SelectSecondaryColor(Color),
 	SwapColors,
 	ResetColors,
+	NoOp,
 	SetToolOptions(ToolType, ToolOptions),
 	#[child]
 	Fill(FillMessage),
@@ -59,16 +60,27 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, &InputPreprocessor)> 
 				update_working_colors(&self.tool_state.document_tool_data, responses);
 			}
 			SelectTool(tool) => {
-				let mut reset = |tool| match tool {
-					ToolType::Ellipse => responses.push_back(EllipseMessage::Abort.into()),
-					ToolType::Rectangle => responses.push_back(RectangleMessage::Abort.into()),
-					ToolType::Shape => responses.push_back(ShapeMessage::Abort.into()),
-					ToolType::Line => responses.push_back(LineMessage::Abort.into()),
-					ToolType::Pen => responses.push_back(PenMessage::Abort.into()),
-					_ => (),
+				let old_tool = self.tool_state.tool_data.active_tool_type;
+				let reset = |tool| match tool {
+					ToolType::Ellipse => EllipseMessage::Abort.into(),
+					ToolType::Rectangle => RectangleMessage::Abort.into(),
+					ToolType::Shape => ShapeMessage::Abort.into(),
+					ToolType::Line => LineMessage::Abort.into(),
+					ToolType::Pen => PenMessage::Abort.into(),
+					ToolType::Select => SelectMessage::Abort.into(),
+					_ => ToolMessage::NoOp,
 				};
-				reset(tool);
-				reset(self.tool_state.tool_data.active_tool_type);
+				let (new, old) = (reset(tool), reset(old_tool));
+				let mut send_to_tool = |tool_type, message: ToolMessage| {
+					if let Some(tool) = self.tool_state.tool_data.tools.get_mut(&tool_type) {
+						tool.process_action(message, (document, &self.tool_state.document_tool_data, input), responses);
+					}
+				};
+				send_to_tool(tool, new);
+				send_to_tool(old_tool, old);
+				if tool == ToolType::Select {
+					responses.push_back(SelectMessage::UpdateSelectionBoundingBox.into());
+				}
 				self.tool_state.tool_data.active_tool_type = tool;
 
 				responses.push_back(FrontendMessage::SetActiveTool { tool_name: tool.to_string() }.into())
@@ -88,22 +100,11 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, &InputPreprocessor)> 
 				self.tool_state.document_tool_data.tool_options.insert(tool_type, tool_options);
 			}
 			message => {
-				let tool_type = match message {
-					Fill(_) => ToolType::Fill,
-					Rectangle(_) => ToolType::Rectangle,
-					Ellipse(_) => ToolType::Ellipse,
-					Shape(_) => ToolType::Shape,
-					Line(_) => ToolType::Line,
-					Pen(_) => ToolType::Pen,
-					Select(_) => ToolType::Select,
-					Crop(_) => ToolType::Crop,
-					Eyedropper(_) => ToolType::Eyedropper,
-					Navigate(_) => ToolType::Navigate,
-					Path(_) => ToolType::Path,
-					_ => unreachable!(),
-				};
+				let tool_type = message_to_tool_type(&message);
 				if let Some(tool) = self.tool_state.tool_data.tools.get_mut(&tool_type) {
-					tool.process_action(message, (document, &self.tool_state.document_tool_data, input), responses);
+					if tool_type == self.tool_state.tool_data.active_tool_type {
+						tool.process_action(message, (document, &self.tool_state.document_tool_data, input), responses);
+					}
 				}
 			}
 		}
@@ -112,6 +113,24 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, &InputPreprocessor)> 
 		let mut list = actions!(ToolMessageDiscriminant; ResetColors, SwapColors, SelectTool, SetToolOptions);
 		list.extend(self.tool_state.tool_data.active_tool().actions());
 		list
+	}
+}
+
+fn message_to_tool_type(message: &ToolMessage) -> ToolType {
+	use ToolMessage::*;
+	match message {
+		Fill(_) => ToolType::Fill,
+		Rectangle(_) => ToolType::Rectangle,
+		Ellipse(_) => ToolType::Ellipse,
+		Shape(_) => ToolType::Shape,
+		Line(_) => ToolType::Line,
+		Pen(_) => ToolType::Pen,
+		Select(_) => ToolType::Select,
+		Crop(_) => ToolType::Crop,
+		Eyedropper(_) => ToolType::Eyedropper,
+		Navigate(_) => ToolType::Navigate,
+		Path(_) => ToolType::Path,
+		_ => unreachable!(),
 	}
 }
 

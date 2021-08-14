@@ -68,6 +68,7 @@ pub enum DocumentMessage {
 	DispatchOperation(Box<DocumentOperation>),
 	SelectLayers(Vec<Vec<LayerId>>),
 	SelectAllLayers,
+	SelectionChanged,
 	DeselectAllLayers,
 	DeleteLayer(Vec<LayerId>),
 	DeleteSelectedLayers,
@@ -128,6 +129,10 @@ impl DocumentMessageHandler {
 		self.layer_data(path).selected = true;
 		// TODO: Add deduplication
 		(!path.is_empty()).then(|| self.handle_folder_changed(path[..path.len() - 1].to_vec())).flatten()
+	}
+	pub fn selected_layers_bounding_box(&self) -> Option<[DVec2; 2]> {
+		let paths = self.selected_layers().map(|vec| &vec[..]);
+		self.document.combined_viewport_bounding_box(paths)
 	}
 	pub fn layerdata(&self, path: &[LayerId]) -> &LayerData {
 		self.layer_data.get(path).expect("Layerdata does not exist")
@@ -247,6 +252,7 @@ impl DocumentMessageHandler {
 			.iter()
 			.zip(paths.iter().zip(data))
 			.rev()
+			.filter(|(layer, _)| !layer.overlay)
 			.map(|(layer, (path, data))| {
 				layer_panel_entry(
 					&data,
@@ -332,10 +338,12 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				self.layer_data(&path).expanded ^= true;
 				responses.extend(self.handle_folder_changed(path));
 			}
+			SelectionChanged => responses.push_back(SelectMessage::UpdateSelectionBoundingBox.into()),
 			DeleteSelectedLayers => {
 				for path in self.selected_layers().cloned() {
 					responses.push_back(DocumentOperation::DeleteLayer { path }.into())
 				}
+				responses.push_back(SelectMessage::UpdateSelectionBoundingBox.into());
 			}
 			DuplicateSelectedLayers => {
 				for path in self.selected_layers_sorted() {
@@ -349,17 +357,14 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				}
 				// TODO: Correctly update layer panel in clear_selection instead of here
 				responses.extend(self.handle_folder_changed(Vec::new()));
+				responses.push_back(SelectMessage::UpdateSelectionBoundingBox.into());
 			}
 			SelectAllLayers => {
 				let all_layer_paths = self.layer_data.keys().filter(|path| !path.is_empty()).cloned().collect::<Vec<_>>();
-				for path in all_layer_paths {
-					responses.extend(self.select_layer(&path));
-				}
+				responses.push_back(SelectLayers(all_layer_paths).into());
 			}
 			DeselectAllLayers => {
-				self.clear_selection();
-				let children = self.layer_panel(&[]).expect("The provided Path was not valid");
-				responses.push_back(FrontendMessage::ExpandFolder { path: vec![], children }.into());
+				responses.push_back(SelectLayers(vec![]).into());
 			}
 			Undo => {
 				// this is a temporary fix and will be addressed by #123
@@ -378,7 +383,8 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 								DocumentResponse::FolderChanged { path } => self.handle_folder_changed(path),
 								DocumentResponse::DeletedLayer { path } => {
 									self.layer_data.remove(&path);
-									None
+
+									Some(SelectMessage::UpdateSelectionBoundingBox.into())
 								}
 								DocumentResponse::LayerChanged { path } => Some(
 									FrontendMessage::UpdateLayer {
@@ -387,7 +393,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 									}
 									.into(),
 								),
-								DocumentResponse::CreatedLayer { path } => self.select_layer(&path),
+								DocumentResponse::CreatedLayer { path } => (!self.document.layer(&path).unwrap().overlay).then(|| SelectLayers(vec![path]).into()),
 								DocumentResponse::DocumentChanged => unreachable!(),
 							})
 							.flatten(),
@@ -434,6 +440,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					};
 					responses.push_back(operation.into());
 				}
+				responses.push_back(SelectMessage::UpdateSelectionBoundingBox.into());
 			}
 			MoveSelectedLayersTo { path, insert_index } => {
 				responses.push_back(DocumentsMessage::CopySelectedLayers.into());

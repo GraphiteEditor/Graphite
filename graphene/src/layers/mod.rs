@@ -83,6 +83,7 @@ pub struct Layer {
 	pub cache_dirty: bool,
 	pub blend_mode: BlendMode,
 	pub opacity: f64,
+	pub overlay: bool,
 }
 
 impl Layer {
@@ -97,6 +98,21 @@ impl Layer {
 			cache_dirty: true,
 			blend_mode: BlendMode::Normal,
 			opacity: 1.,
+			overlay: false,
+		}
+	}
+	pub fn new_overlay(data: LayerDataType, transform: [f64; 6]) -> Self {
+		Self {
+			visible: true,
+			name: None,
+			data,
+			transform: glam::DAffine2::from_cols_array(&transform),
+			cache: String::new(),
+			thumbnail_cache: String::new(),
+			cache_dirty: true,
+			blend_mode: BlendMode::Normal,
+			opacity: 1.,
+			overlay: true,
 		}
 	}
 
@@ -166,6 +182,7 @@ impl Clone for Layer {
 			cache_dirty: true,
 			blend_mode: self.blend_mode,
 			opacity: self.opacity,
+			overlay: self.overlay,
 		}
 	}
 }

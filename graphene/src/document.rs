@@ -289,8 +289,10 @@ impl Document {
 			Operation::AddBoundingBox { path, transform, style } => {
 				let mut rect = Shape::rectangle(*style);
 				rect.render_index = -1;
-				self.set_layer(path, Layer::new(LayerDataType::Shape(rect), *transform), -1)?;
-				Some(vec![DocumentResponse::DocumentChanged])
+				let mut layer = Layer::new(LayerDataType::Shape(rect), *transform);
+				layer.overlay = true;
+				self.set_layer(path, layer, -1)?;
+				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::CreatedLayer { path: path.clone() }])
 			}
 			Operation::AddShape {
 				path,
