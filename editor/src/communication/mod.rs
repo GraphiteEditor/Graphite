@@ -2,7 +2,10 @@ pub mod dispatcher;
 pub mod message;
 use crate::message_prelude::*;
 pub use dispatcher::*;
-use rand_chacha::{rand_core::{SeedableRng, RngCore}, ChaCha20Rng};
+use rand_chacha::{
+	rand_core::{RngCore, SeedableRng},
+	ChaCha20Rng,
+};
 use spin::Mutex;
 
 pub use crate::input::InputPreprocessor;
@@ -27,7 +30,7 @@ where
 }
 
 pub fn generate_uuid() -> u64 {
-    let mut lock = RNG.lock();
+	let mut lock = RNG.lock();
 	if lock.is_none() {
 		*lock = Some(ChaCha20Rng::seed_from_u64(0));
 	}
