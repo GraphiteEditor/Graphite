@@ -101,20 +101,6 @@ impl Layer {
 			overlay: false,
 		}
 	}
-	pub fn new_overlay(data: LayerDataType, transform: [f64; 6]) -> Self {
-		Self {
-			visible: true,
-			name: None,
-			data,
-			transform: glam::DAffine2::from_cols_array(&transform),
-			cache: String::new(),
-			thumbnail_cache: String::new(),
-			cache_dirty: true,
-			blend_mode: BlendMode::Normal,
-			opacity: 1.,
-			overlay: true,
-		}
-	}
 
 	pub fn render(&mut self, transforms: &mut Vec<DAffine2>) -> &str {
 		if !self.visible {
