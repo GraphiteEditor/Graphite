@@ -118,7 +118,7 @@
 						<CanvasRuler :origin="0" :majorMarkSpacing="100" :direction="RulerDirection.Vertical" />
 					</LayoutCol>
 					<LayoutCol :class="'canvas-area'">
-						<div class="canvas" @mousedown="canvasMouseDown" @mouseup="canvasMouseUp" @mousemove="canvasMouseMove" ref="canvas">
+						<div class="canvas" ref="canvas">
 							<svg v-html="viewportSvg" :style="{ width: canvasSvgWidth, height: canvasSvgHeight }"></svg>
 						</div>
 					</LayoutCol>
@@ -210,7 +210,6 @@
 <script lang="ts">
 import { defineComponent } from "vue";
 
-import { makeModifiersBitfield } from "@/utilities/input";
 import { ResponseType, registerResponseHandler, Response, UpdateCanvas, SetActiveTool, SetCanvasZoom, SetCanvasRotation } from "@/utilities/response-handler";
 import { SeparatorDirection, SeparatorType } from "@/components/widgets/widgets";
 import { comingSoon } from "@/utilities/errors";
@@ -259,25 +258,6 @@ export default defineComponent({
 
 			this.canvasSvgWidth = `${width}px`;
 			this.canvasSvgHeight = `${height}px`;
-
-			(await wasm).viewport_resize(width, height);
-		},
-		async canvasMouseDown(e: MouseEvent) {
-			const modifiers = makeModifiersBitfield(e.ctrlKey, e.shiftKey, e.altKey);
-			(await wasm).on_mouse_down(e.offsetX, e.offsetY, e.buttons, modifiers);
-		},
-		async canvasMouseUp(e: MouseEvent) {
-			const modifiers = makeModifiersBitfield(e.ctrlKey, e.shiftKey, e.altKey);
-			(await wasm).on_mouse_up(e.offsetX, e.offsetY, e.buttons, modifiers);
-		},
-		async canvasMouseMove(e: MouseEvent) {
-			const modifiers = makeModifiersBitfield(e.ctrlKey, e.shiftKey, e.altKey);
-			(await wasm).on_mouse_move(e.offsetX, e.offsetY, modifiers);
-		},
-		async canvasMouseScroll(e: WheelEvent) {
-			e.preventDefault();
-			const modifiers = makeModifiersBitfield(e.ctrlKey, e.shiftKey, e.altKey);
-			(await wasm).on_mouse_scroll(e.deltaX, e.deltaY, e.deltaZ, modifiers);
 		},
 		async setCanvasZoom(newZoom: number) {
 			(await wasm).set_canvas_zoom(newZoom / 100);
@@ -327,12 +307,8 @@ export default defineComponent({
 			}
 		});
 
-		// TODO: Move event listeners to `main.ts`
-		const canvas = this.$refs.canvas as HTMLElement;
-		canvas.addEventListener("wheel", this.canvasMouseScroll, { passive: false });
-
-		window.addEventListener("resize", () => this.viewportResize());
-		window.addEventListener("DOMContentLoaded", () => this.viewportResize());
+		window.addEventListener("resize", this.viewportResize);
+		window.addEventListener("DOMContentLoaded", this.viewportResize);
 	},
 	data() {
 		return {

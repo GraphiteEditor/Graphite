@@ -5,7 +5,7 @@ use super::LayerData;
 use crate::message_prelude::*;
 use crate::{
 	consts::{VIEWPORT_SCROLL_RATE, VIEWPORT_ZOOM_LEVELS, VIEWPORT_ZOOM_MOUSE_RATE, VIEWPORT_ZOOM_SCALE_MAX, VIEWPORT_ZOOM_SCALE_MIN, VIEWPORT_ZOOM_WHEEL_RATE},
-	input::{mouse::ViewportPosition, InputPreprocessor},
+	input::{mouse::ViewportBounds, mouse::ViewportPosition, InputPreprocessor},
 };
 use glam::DVec2;
 use graphene::document::Document;
@@ -42,8 +42,8 @@ pub struct MovementMessageHandler {
 }
 
 impl MovementMessageHandler {
-	fn create_document_transform_from_layerdata(&self, layerdata: &LayerData, viewport_size: &ViewportPosition, responses: &mut VecDeque<Message>) {
-		let half_viewport = *viewport_size / 2.;
+	fn create_document_transform_from_layerdata(&self, layerdata: &LayerData, viewport_bounds: &ViewportBounds, responses: &mut VecDeque<Message>) {
+		let half_viewport = viewport_bounds.size() / 2.;
 		let scaled_half_viewport = half_viewport / layerdata.scale;
 		responses.push_back(
 			DocumentOperation::SetLayerTransform {
@@ -89,10 +89,10 @@ impl MessageHandler<MovementMessage, (&mut LayerData, &Document, &InputPreproces
 					let transformed_delta = document.root.transform.inverse().transform_vector2(delta);
 
 					layerdata.translation += transformed_delta;
-					self.create_document_transform_from_layerdata(layerdata, &ipp.viewport_size, responses);
+					self.create_document_transform_from_layerdata(layerdata, &ipp.viewport_bounds, responses);
 				}
 				if self.rotating {
-					let half_viewport = ipp.viewport_size / 2.;
+					let half_viewport = ipp.viewport_bounds.size() / 2.;
 					let rotation = {
 						let start_vec = self.mouse_pos - half_viewport;
 						let end_vec = ipp.mouse.position - half_viewport;
@@ -109,7 +109,7 @@ impl MessageHandler<MovementMessage, (&mut LayerData, &Document, &InputPreproces
 						}
 						.into(),
 					);
-					self.create_document_transform_from_layerdata(layerdata, &ipp.viewport_size, responses);
+					self.create_document_transform_from_layerdata(layerdata, &ipp.viewport_bounds, responses);
 				}
 				if self.zooming {
 					let difference = self.mouse_pos.y as f64 - ipp.mouse.position.y as f64;
@@ -118,36 +118,36 @@ impl MessageHandler<MovementMessage, (&mut LayerData, &Document, &InputPreproces
 					let new = (layerdata.scale * amount).clamp(VIEWPORT_ZOOM_SCALE_MIN, VIEWPORT_ZOOM_SCALE_MAX);
 					layerdata.scale = new;
 					responses.push_back(FrontendMessage::SetCanvasZoom { new_zoom: layerdata.scale }.into());
-					self.create_document_transform_from_layerdata(layerdata, &ipp.viewport_size, responses);
+					self.create_document_transform_from_layerdata(layerdata, &ipp.viewport_bounds, responses);
 				}
 				self.mouse_pos = ipp.mouse.position;
 			}
 			SetCanvasZoom(new) => {
 				layerdata.scale = new.clamp(VIEWPORT_ZOOM_SCALE_MIN, VIEWPORT_ZOOM_SCALE_MAX);
 				responses.push_back(FrontendMessage::SetCanvasZoom { new_zoom: layerdata.scale }.into());
-				self.create_document_transform_from_layerdata(layerdata, &ipp.viewport_size, responses);
+				self.create_document_transform_from_layerdata(layerdata, &ipp.viewport_bounds, responses);
 			}
 			IncreaseCanvasZoom => {
 				layerdata.scale = *VIEWPORT_ZOOM_LEVELS.iter().find(|scale| **scale > layerdata.scale).unwrap_or(&layerdata.scale);
 				responses.push_back(FrontendMessage::SetCanvasZoom { new_zoom: layerdata.scale }.into());
-				self.create_document_transform_from_layerdata(layerdata, &ipp.viewport_size, responses);
+				self.create_document_transform_from_layerdata(layerdata, &ipp.viewport_bounds, responses);
 			}
 			DecreaseCanvasZoom => {
 				layerdata.scale = *VIEWPORT_ZOOM_LEVELS.iter().rev().find(|scale| **scale < layerdata.scale).unwrap_or(&layerdata.scale);
 				responses.push_back(FrontendMessage::SetCanvasZoom { new_zoom: layerdata.scale }.into());
-				self.create_document_transform_from_layerdata(layerdata, &ipp.viewport_size, responses);
+				self.create_document_transform_from_layerdata(layerdata, &ipp.viewport_bounds, responses);
 			}
 			WheelCanvasZoom => {
 				let scroll = ipp.mouse.scroll_delta.scroll_delta();
 				let mouse = ipp.mouse.position;
-				let viewport_size = ipp.viewport_size;
+				let viewport_bounds = ipp.viewport_bounds.size();
 				let mut zoom_factor = 1. + scroll.abs() * VIEWPORT_ZOOM_WHEEL_RATE;
 				if ipp.mouse.scroll_delta.y > 0 {
 					zoom_factor = 1. / zoom_factor
 				};
-				let new_viewport_size = viewport_size * (1. / zoom_factor);
-				let delta_size = viewport_size - new_viewport_size;
-				let mouse_percent = mouse / viewport_size;
+				let new_viewport_bounds = viewport_bounds * (1. / zoom_factor);
+				let delta_size = viewport_bounds - new_viewport_bounds;
+				let mouse_percent = mouse / viewport_bounds;
 				let delta = (delta_size * -2.) * (mouse_percent - DVec2::splat(0.5));
 
 				let transformed_delta = document.root.transform.inverse().transform_vector2(delta);
@@ -155,7 +155,7 @@ impl MessageHandler<MovementMessage, (&mut LayerData, &Document, &InputPreproces
 				layerdata.scale = new;
 				layerdata.translation += transformed_delta;
 				responses.push_back(FrontendMessage::SetCanvasZoom { new_zoom: layerdata.scale }.into());
-				self.create_document_transform_from_layerdata(layerdata, &ipp.viewport_size, responses);
+				self.create_document_transform_from_layerdata(layerdata, &ipp.viewport_bounds, responses);
 			}
 			WheelCanvasTranslate { use_y_as_x } => {
 				let delta = match use_y_as_x {
@@ -164,11 +164,11 @@ impl MessageHandler<MovementMessage, (&mut LayerData, &Document, &InputPreproces
 				} * VIEWPORT_SCROLL_RATE;
 				let transformed_delta = document.root.transform.inverse().transform_vector2(delta);
 				layerdata.translation += transformed_delta;
-				self.create_document_transform_from_layerdata(layerdata, &ipp.viewport_size, responses);
+				self.create_document_transform_from_layerdata(layerdata, &ipp.viewport_bounds, responses);
 			}
 			SetCanvasRotation(new) => {
 				layerdata.rotation = new;
-				self.create_document_transform_from_layerdata(layerdata, &ipp.viewport_size, responses);
+				self.create_document_transform_from_layerdata(layerdata, &ipp.viewport_bounds, responses);
 				responses.push_back(FrontendMessage::SetCanvasRotation { new_radians: new }.into());
 			}
 			ZoomCanvasToFitAll => {
@@ -176,7 +176,7 @@ impl MessageHandler<MovementMessage, (&mut LayerData, &Document, &InputPreproces
 					let pos1 = document.root.transform.inverse().transform_point2(pos1);
 					let pos2 = document.root.transform.inverse().transform_point2(pos2);
 					let v1 = document.root.transform.inverse().transform_point2(DVec2::ZERO);
-					let v2 = document.root.transform.inverse().transform_point2(ipp.viewport_size);
+					let v2 = document.root.transform.inverse().transform_point2(ipp.viewport_bounds.size());
 
 					let center = v1.lerp(v2, 0.5) - pos1.lerp(pos2, 0.5);
 					let size = (pos2 - pos1) / (v2 - v1);
@@ -186,7 +186,7 @@ impl MessageHandler<MovementMessage, (&mut LayerData, &Document, &InputPreproces
 					layerdata.translation += center;
 					layerdata.scale *= new_scale;
 					responses.push_back(FrontendMessage::SetCanvasZoom { new_zoom: layerdata.scale }.into());
-					self.create_document_transform_from_layerdata(layerdata, &ipp.viewport_size, responses);
+					self.create_document_transform_from_layerdata(layerdata, &ipp.viewport_bounds, responses);
 				}
 			}
 		}
