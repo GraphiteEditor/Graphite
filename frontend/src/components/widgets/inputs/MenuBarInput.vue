@@ -14,10 +14,10 @@
 							<span v-if="entry.label">{{ entry.label }}</span>
 						</div>
 					</template>
-					<template v-slot:popup="popupProps">
+					<template v-slot:popover="popoverProps">
 						<MenuList
-							:isOpen="popupProps.isOpen"
-							@update:isOpen="popupProps.isOpenChanged"
+							:isOpen="popoverProps.isOpen"
+							@update:isOpen="popoverProps.isOpenChanged"
 							:menuEntries="entry.children"
 							:direction="MenuDirection.Bottom"
 							:minWidth="240"

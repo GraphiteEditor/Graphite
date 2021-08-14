@@ -3,7 +3,7 @@
 		<slot name="button" :isOpen="isOpen"></slot>
 	</div>
 	<slot
-		name="popup"
+		name="popover"
 		:isOpen="isOpen"
 		:isOpenChanged="
 			(newIsOpen) => {
@@ -28,18 +28,18 @@ import { defineComponent, inject } from "vue";
 import FloatingMenu, { MenuDirection } from "@/components/widgets/floating-menus/FloatingMenu.vue";
 
 /**
- * A button that opens a popup menu when pressed.
- * Compatible with FloatingMenuToggleGroup such that when one popup in a group is opened,
+ * A button that opens a floating menu when pressed.
+ * Compatible with FloatingMenuToggleGroup such that when one popover in a group is opened,
  * others can be opened by hovering over the toggle instead of clicking it.
  *
  * Props:
  *   All props passed to this component are forwarded to FloatingMenu when the `menu` slot is used. The `type` prop should be considered mandatory in this case.
- *   When the `popup` slot is used instead, no props are necessary.
+ *   When the `popover` slot is used instead, no props are necessary.
  *
  * Slots:
  *   button: Display the toggle button itself. Bind to slotProps.isOpen to modify the button style when the menu is opened.
  *   menu: Contents of the floating menu, contained within a FloatingMenu component. Use this one 90% of the time.
- *   popup: Only use this when the popup should not be a FloatingMenu (instead something like MenuList). Bind to slotProps.isOpen and slotProps.isOpenChanged.
+ *   popover: Only use this when the popover should not be a FloatingMenu (instead something like MenuList). Bind to slotProps.isOpen and slotProps.isOpenChanged.
  */
 export default defineComponent({
 	inheritAttrs: false,
