@@ -194,7 +194,7 @@ impl MessageHandler<MovementMessage, (&mut LayerData, &Document, &InputPreproces
 				let transformed_delta = document.root.transform.inverse().transform_vector2(delta);
 
 				layerdata.translation += transformed_delta;
-				self.create_document_transform_from_layerdata(layerdata, &ipp.viewport_size, responses);
+				self.create_document_transform_from_layerdata(layerdata, &ipp.viewport_bounds, responses);
 			}
 		}
 	}
