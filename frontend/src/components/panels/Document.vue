@@ -123,11 +123,23 @@
 						</div>
 					</LayoutCol>
 					<LayoutCol :class="'bar-area'">
-						<PersistentScrollbar :direction="ScrollbarDirection.Vertical" :class="'right-scrollbar'" />
+						<PersistentScrollbar
+							:direction="ScrollbarDirection.Vertical"
+							:handlePosition="scrollbarPos.y"
+							@update:handlePosition="translateCanvasY"
+							v-model:handleLength="scrollbarSize.y"
+							:class="'right-scrollbar'"
+						/>
 					</LayoutCol>
 				</LayoutRow>
 				<LayoutRow :class="'bar-area'">
-					<PersistentScrollbar :direction="ScrollbarDirection.Horizontal" :class="'bottom-scrollbar'" />
+					<PersistentScrollbar
+						:direction="ScrollbarDirection.Horizontal"
+						:handlePosition="scrollbarPos.x"
+						@update:handlePosition="translateCanvasX"
+						v-model:handleLength="scrollbarSize.x"
+						:class="'bottom-scrollbar'"
+					/>
 				</LayoutRow>
 			</LayoutCol>
 		</LayoutRow>
@@ -210,7 +222,7 @@
 <script lang="ts">
 import { defineComponent } from "vue";
 
-import { ResponseType, registerResponseHandler, Response, UpdateCanvas, SetActiveTool, SetCanvasZoom, SetCanvasRotation } from "@/utilities/response-handler";
+import { ResponseType, registerResponseHandler, Response, UpdateCanvas, UpdateScrollbars, SetActiveTool, SetCanvasZoom, SetCanvasRotation } from "@/utilities/response-handler";
 import { SeparatorDirection, SeparatorType } from "@/components/widgets/widgets";
 import { comingSoon } from "@/utilities/errors";
 
@@ -271,6 +283,16 @@ export default defineComponent({
 		async setRotation(newRotation: number) {
 			(await wasm).set_rotation(newRotation * (Math.PI / 180));
 		},
+		async translateCanvasX(newValue: number) {
+			const delta = newValue - this.scrollbarPos.x;
+			this.scrollbarPos.x = newValue;
+			(await wasm).translate_canvas(-delta * this.scrollbarMultiplier.x, 0);
+		},
+		async translateCanvasY(newValue: number) {
+			const delta = newValue - this.scrollbarPos.y;
+			this.scrollbarPos.y = newValue;
+			(await wasm).translate_canvas(0, -delta * this.scrollbarMultiplier.y);
+		},
 		async selectTool(toolName: string) {
 			(await wasm).select_tool(toolName);
 		},
@@ -285,6 +307,15 @@ export default defineComponent({
 		registerResponseHandler(ResponseType.UpdateCanvas, (responseData: Response) => {
 			const updateData = responseData as UpdateCanvas;
 			if (updateData) this.viewportSvg = updateData.document;
+		});
+
+		registerResponseHandler(ResponseType.UpdateScrollbars, (responseData: Response) => {
+			const updateData = responseData as UpdateScrollbars;
+			if (updateData) {
+				this.scrollbarPos = updateData.position;
+				this.scrollbarSize = updateData.size;
+				this.scrollbarMultiplier = updateData.multiplier;
+			}
 		});
 
 		registerResponseHandler(ResponseType.SetActiveTool, (responseData: Response) => {
@@ -325,6 +356,9 @@ export default defineComponent({
 			overlaysEnabled: true,
 			documentRotation: 0,
 			documentZoom: 100,
+			scrollbarPos: { x: 0.5, y: 0.5 },
+			scrollbarSize: { x: 0.5, y: 0.5 },
+			scrollbarMultiplier: { x: 0, y: 0 },
 			IncrementBehavior,
 			IncrementDirection,
 			MenuDirection,

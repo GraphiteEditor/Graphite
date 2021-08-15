@@ -30,6 +30,7 @@ pub enum MovementMessage {
 	DecreaseCanvasZoom,
 	WheelCanvasZoom,
 	ZoomCanvasToFitAll,
+	TranslateCanvas(glam::DVec2),
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -188,6 +189,12 @@ impl MessageHandler<MovementMessage, (&mut LayerData, &Document, &InputPreproces
 					responses.push_back(FrontendMessage::SetCanvasZoom { new_zoom: layerdata.scale }.into());
 					self.create_document_transform_from_layerdata(layerdata, &ipp.viewport_bounds, responses);
 				}
+			}
+			TranslateCanvas(delta) => {
+				let transformed_delta = document.root.transform.inverse().transform_vector2(delta);
+
+				layerdata.translation += transformed_delta;
+				self.create_document_transform_from_layerdata(layerdata, &ipp.viewport_bounds, responses);
 			}
 		}
 	}
