@@ -117,7 +117,7 @@ const lerp = (x: number, y: number, a: number) => x * (1 - a) + y * a;
 
 // Convert the position of the handle (0-1) to the position on the track (0-1).
 // This includes the 1/2 handle length gap  of the possible handle positionson each side so the end of the handle doesn't go off the track.
-const handle_to_track = (handle_len: number, handle_pos: number) => lerp(handle_len / 2, 1 - handle_len / 2, handle_pos);
+const handleToTrack = (handleLen: number, handlePos: number) => lerp(handleLen / 2, 1 - handleLen / 2, handlePos);
 
 export enum ScrollbarDirection {
 	"Horizontal" = "Horizontal",
@@ -132,12 +132,12 @@ export default defineComponent({
 	},
 	computed: {
 		thumbStart(): { left: string } | { top: string } {
-			const start = handle_to_track(this.handleLength, this.handlePosition) - this.handleLength / 2;
+			const start = handleToTrack(this.handleLength, this.handlePosition) - this.handleLength / 2;
 
 			return this.direction === ScrollbarDirection.Vertical ? { top: `${start * 100}%` } : { left: `${start * 100}%` };
 		},
 		thumbEnd(): { right: string } | { bottom: string } {
-			const end = 1 - handle_to_track(this.handleLength, this.handlePosition) - this.handleLength / 2;
+			const end = 1 - handleToTrack(this.handleLength, this.handlePosition) - this.handleLength / 2;
 
 			return this.direction === ScrollbarDirection.Vertical ? { bottom: `${end * 100}%` } : { right: `${end * 100}%` };
 		},
@@ -168,8 +168,8 @@ export default defineComponent({
 			return this.direction === ScrollbarDirection.Vertical ? track.getBoundingClientRect().top : track.getBoundingClientRect().left;
 		},
 		clampHandlePosition(newPos: number) {
-			const clamped_position = Math.min(Math.max(newPos, 0), 1);
-			this.$emit("update:handlePosition", clamped_position);
+			const clampedPosition = Math.min(Math.max(newPos, 0), 1);
+			this.$emit("update:handlePosition", clampedPosition);
 		},
 		updateHandlePosition(e: MouseEvent) {
 			const position = this.direction === ScrollbarDirection.Vertical ? e.clientY : e.clientX;
@@ -179,7 +179,7 @@ export default defineComponent({
 			if (!this.dragging) {
 				this.dragging = true;
 				const position = this.direction === ScrollbarDirection.Vertical ? e.clientY : e.clientX;
-				this.dragOffset = handle_to_track(this.handleLength, this.handlePosition) * this.trackLength() + this.trackOffset() - position;
+				this.dragOffset = handleToTrack(this.handleLength, this.handlePosition) * this.trackLength() + this.trackOffset() - position;
 				this.updateHandlePosition(e);
 			}
 		},

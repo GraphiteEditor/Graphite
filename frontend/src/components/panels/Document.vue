@@ -304,12 +304,10 @@ export default defineComponent({
 			(await wasm).set_rotation(newRotation * (Math.PI / 180));
 		},
 		async translateCanvasX(newValue: number) {
-			const { translate_canvas } = await wasm;
-			translate_canvas(-(newValue - this.scrollbarPos.x) * this.scrollbarMultiplier.x, 0);
+			(await wasm).translate_canvas(-(newValue - this.scrollbarPos.x) * this.scrollbarMultiplier.x, 0);
 		},
 		async translateCanvasY(newValue: number) {
-			const { translate_canvas } = await wasm;
-			translate_canvas(0, -(newValue - this.scrollbarPos.y) * this.scrollbarMultiplier.y);
+			(await wasm).translate_canvas(0, -(newValue - this.scrollbarPos.y) * this.scrollbarMultiplier.y);
 		},
 		async selectTool(toolName: string) {
 			(await wasm).select_tool(toolName);
@@ -335,7 +333,7 @@ export default defineComponent({
 				this.scrollbarMultiplier = updateData.multiplier;
 			}
 		});
-    
+
 		registerResponseHandler(ResponseType.SetActiveTool, (responseData: Response) => {
 			const toolData = responseData as SetActiveTool;
 			if (toolData) this.activeTool = toolData.tool_name;
