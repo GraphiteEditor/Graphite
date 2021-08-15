@@ -305,6 +305,13 @@ pub fn set_rotation(new_radians: f64) -> Result<(), JsValue> {
 	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(ev)).map_err(convert_error)
 }
 
+/// Translates document (in viewport coords)
+#[wasm_bindgen]
+pub fn translate_canvas(delta_x: f64, delta_y: f64) -> Result<(), JsValue> {
+	let ev = MovementMessage::TranslateCanvas((delta_x, delta_y).into());
+	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(ev)).map_err(convert_error)
+}
+
 /// Update the list of selected layers. The layer paths have to be stored in one array and are separated by LayerId::MAX
 #[wasm_bindgen]
 pub fn select_layers(paths: Vec<LayerId>) -> Result<(), JsValue> {
