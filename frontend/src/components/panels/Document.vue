@@ -284,10 +284,14 @@ export default defineComponent({
 			(await wasm).set_rotation(newRotation * (Math.PI / 180));
 		},
 		async translateCanvasX(newValue: number) {
-			(await wasm).translate_canvas(-(newValue - this.scrollbarPos.x) * this.scrollbarMultiplier.x, 0);
+			const delta = newValue - this.scrollbarPos.x;
+			this.scrollbarPos.x = newValue;
+			(await wasm).translate_canvas(-delta * this.scrollbarMultiplier.x, 0);
 		},
 		async translateCanvasY(newValue: number) {
-			(await wasm).translate_canvas(0, -(newValue - this.scrollbarPos.y) * this.scrollbarMultiplier.y);
+			const delta = newValue - this.scrollbarPos.y;
+			this.scrollbarPos.y = newValue;
+			(await wasm).translate_canvas(0, -delta * this.scrollbarMultiplier.y);
 		},
 		async selectTool(toolName: string) {
 			(await wasm).select_tool(toolName);

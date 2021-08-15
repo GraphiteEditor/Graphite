@@ -119,6 +119,8 @@ const lerp = (x: number, y: number, a: number) => x * (1 - a) + y * a;
 // This includes the 1/2 handle length gap  of the possible handle positionson each side so the end of the handle doesn't go off the track.
 const handleToTrack = (handleLen: number, handlePos: number) => lerp(handleLen / 2, 1 - handleLen / 2, handlePos);
 
+const mousePosition = (direction: ScrollbarDirection, e: MouseEvent) => (direction === ScrollbarDirection.Vertical ? e.clientY : e.clientX);
+
 export enum ScrollbarDirection {
 	"Horizontal" = "Horizontal",
 	"Vertical" = "Vertical",
@@ -149,7 +151,7 @@ export default defineComponent({
 		return {
 			ScrollbarDirection,
 			dragging: false,
-			dragOffset: 0,
+			mousePos: 0,
 		};
 	},
 	mounted() {
@@ -172,27 +174,25 @@ export default defineComponent({
 			this.$emit("update:handlePosition", clampedPosition);
 		},
 		updateHandlePosition(e: MouseEvent) {
-			const position = this.direction === ScrollbarDirection.Vertical ? e.clientY : e.clientX;
-			this.clampHandlePosition(((position + this.dragOffset - this.trackOffset()) / this.trackLength() - this.handleLength / 2) / (1 - this.handleLength));
+			const position = mousePosition(this.direction, e);
+			this.clampHandlePosition(this.handlePosition + (position - this.mousePos) / (this.trackLength() * (1 - this.handleLength)));
+			this.mousePos = position;
 		},
 		grabHandle(e: MouseEvent) {
 			if (!this.dragging) {
 				this.dragging = true;
-				const position = this.direction === ScrollbarDirection.Vertical ? e.clientY : e.clientX;
-				this.dragOffset = handleToTrack(this.handleLength, this.handlePosition) * this.trackLength() + this.trackOffset() - position;
-				this.updateHandlePosition(e);
+				this.mousePos = mousePosition(this.direction, e);
 			}
 		},
 		grabArea(e: MouseEvent) {
 			if (!this.dragging) {
 				this.dragging = true;
-				this.dragOffset = 0;
-				this.updateHandlePosition(e);
+				this.mousePos = mousePosition(this.direction, e);
+				this.clampHandlePosition(((this.mousePos - this.trackOffset()) / this.trackLength() - this.handleLength / 2) / (1 - this.handleLength));
 			}
 		},
 		mouseUp() {
 			this.dragging = false;
-			this.dragOffset = 0;
 		},
 		mouseMove(e: MouseEvent) {
 			if (this.dragging) {
