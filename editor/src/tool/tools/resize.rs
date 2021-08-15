@@ -11,8 +11,8 @@ pub struct Resize {
 }
 impl Resize {
 	pub fn calculate_transform(&self, center: Key, lock_ratio: Key, ipp: &InputPreprocessor) -> Option<Message> {
-		let mut start = self.drag_start.as_f64();
-		let stop = ipp.mouse.position.as_f64();
+		let mut start = self.drag_start;
+		let stop = ipp.mouse.position;
 
 		let mut size = stop - start;
 		if ipp.keyboard.get(lock_ratio as usize) {

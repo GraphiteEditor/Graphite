@@ -101,11 +101,11 @@ mod test {
 		}));
 
 		editor.select_primary_color(Color::RED);
-		editor.draw_rect(100, 200, 300, 400);
+		editor.draw_rect(100., 200., 300., 400.);
 		editor.select_primary_color(Color::BLUE);
-		editor.draw_shape(10, 1200, 1300, 400);
+		editor.draw_shape(10., 1200., 1300., 400.);
 		editor.select_primary_color(Color::GREEN);
-		editor.draw_ellipse(104, 1200, 1300, 400);
+		editor.draw_ellipse(104., 1200., 1300., 400.);
 
 		editor
 	}
@@ -279,7 +279,7 @@ mod test {
 		editor.handle_message(DocumentMessage::SelectLayers(vec![vec![rect_id], vec![ellipse_id]])).unwrap();
 		editor.handle_message(DocumentsMessage::CopySelectedLayers).unwrap();
 		editor.handle_message(DocumentMessage::DeleteSelectedLayers).unwrap();
-		editor.draw_rect(0, 800, 12, 200);
+		editor.draw_rect(0., 800., 12., 200.);
 		editor.handle_message(DocumentsMessage::PasteLayers { path: vec![], insert_index: -1 }).unwrap();
 		editor.handle_message(DocumentsMessage::PasteLayers { path: vec![], insert_index: -1 }).unwrap();
 
@@ -304,7 +304,7 @@ mod test {
 	/// - create rect, shape and ellipse
 	/// - select ellipse and rect
 	/// - move them down and back up again
-	fn move_seletion() {
+	fn move_selection() {
 		init_logger();
 		let mut editor = create_editor_with_three_layers();
 

@@ -236,7 +236,7 @@ impl DocumentMessageHandler {
 	}
 
 	/// Returns a list of `LayerPanelEntry`s intended for display purposes. These don't contain
-	/// any actual data, but ratfolderch as visibility and names of the layers.
+	/// any actual data, but rather attributes such as visibility and names of the layers.
 	pub fn layer_panel(&mut self, path: &[LayerId]) -> Result<Vec<LayerPanelEntry>, EditorError> {
 		let folder = self.document.folder(path)?;
 		let paths: Vec<Vec<LayerId>> = folder.layer_ids.iter().map(|id| [path, &[*id]].concat()).collect();
@@ -278,7 +278,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			}
 			CommitTransaction => self.document_backup = None,
 			ExportDocument => {
-				let bbox = self.document.visible_layers_bounding_box().unwrap_or([DVec2::ZERO, ipp.viewport_size.as_f64()]);
+				let bbox = self.document.visible_layers_bounding_box().unwrap_or([DVec2::ZERO, ipp.viewport_bounds.size()]);
 				let size = bbox[1] - bbox[0];
 				let name = match self.name.ends_with(FILE_SAVE_SUFFIX) {
 					true => self.name.clone().replace(FILE_SAVE_SUFFIX, FILE_EXPORT_SUFFIX),

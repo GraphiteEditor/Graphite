@@ -19,7 +19,7 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Eyedropper {
 	fn process_action(&mut self, action: ToolMessage, data: ToolActionHandlerData<'a>, responses: &mut VecDeque<Message>) {
 		let mouse_pos = data.2.mouse.position;
 		let tolerance = DVec2::splat(SELECTION_TOLERANCE);
-		let quad = Quad::from_box([mouse_pos.as_f64() - tolerance, mouse_pos.as_f64() + tolerance]);
+		let quad = Quad::from_box([mouse_pos - tolerance, mouse_pos + tolerance]);
 
 		if let Some(path) = data.0.document.intersects_quad_root(quad).last() {
 			if let Ok(layer) = data.0.document.layer(path) {

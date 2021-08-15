@@ -1,15 +1,19 @@
-use std::collections::hash_map::DefaultHasher;
-use std::hash::{Hash, Hasher};
-
 pub mod dispatcher;
 pub mod message;
 use crate::message_prelude::*;
 pub use dispatcher::*;
+use rand_chacha::{
+	rand_core::{RngCore, SeedableRng},
+	ChaCha20Rng,
+};
+use spin::Mutex;
 
 pub use crate::input::InputPreprocessor;
 use std::collections::VecDeque;
 
 pub type ActionList = Vec<Vec<MessageDiscriminant>>;
+
+static RNG: Mutex<Option<ChaCha20Rng>> = Mutex::new(None);
 
 // TODO: Add Send + Sync requirement
 // Use something like rw locks for synchronization
@@ -25,12 +29,10 @@ where
 	fn actions(&self) -> ActionList;
 }
 
-pub fn generate_hash<'a>(messages: impl IntoIterator<Item = &'a Message>, ipp: &InputPreprocessor, document_hash: u64) -> u64 {
-	let mut s = DefaultHasher::new();
-	document_hash.hash(&mut s);
-	ipp.hash(&mut s);
-	for message in messages {
-		message.pseudo_hash().hash(&mut s);
+pub fn generate_uuid() -> u64 {
+	let mut lock = RNG.lock();
+	if lock.is_none() {
+		*lock = Some(ChaCha20Rng::seed_from_u64(0));
 	}
-	s.finish()
+	lock.as_mut().map(ChaCha20Rng::next_u64).unwrap()
 }
