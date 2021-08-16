@@ -409,7 +409,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				let scale = 0.7 + 0.3 * self.layerdata(&[]).scale;
 				let viewport_size = ipp.viewport_bounds.size();
 				let viewport_mid = ipp.viewport_bounds.center();
-				let [bounds1, bounds2] = self.document.visible_layers_bounding_box().unwrap_or([viewport_mid, viewport_mid]);
+				let [bounds1, bounds2] = self.document.visible_layers_bounding_box().unwrap_or([viewport_mid; 2]);
 				let bounds1 = bounds1.min(viewport_mid) - viewport_size * scale;
 				let bounds2 = bounds2.max(viewport_mid) + viewport_size * scale;
 				let bounds_length = bounds2 - bounds1;
