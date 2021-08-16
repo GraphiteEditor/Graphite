@@ -20,7 +20,9 @@ pub const LINE_ROTATE_SNAP_ANGLE: f64 = 15.;
 pub const SELECTION_TOLERANCE: f64 = 1.0;
 
 // SCROLLBARS
-pub const SCROLLBAR_SPACING: f64 = 0.2;
+pub const SCROLLBAR_SPACING: f64 = 0.1;
+pub const ASYMPTOTIC_EFFECT: f64 = 0.5;
+pub const SCALE_EFFECT: f64 = 0.5;
 
 pub const DEFAULT_DOCUMENT_NAME: &str = "Untitled Document";
 pub const FILE_SAVE_SUFFIX: &str = ".graphite";
