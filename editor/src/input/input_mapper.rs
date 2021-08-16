@@ -1,3 +1,5 @@
+use glam::DVec2;
+
 use super::{
 	keyboard::{Key, KeyStates, NUMBER_OF_KEYS},
 	InputPreprocessor,
@@ -192,6 +194,7 @@ impl Default for Mapping {
 			entry! {action=DocumentMessage::ExportDocument, key_down=KeyE, modifiers=[KeyControl]},
 			entry! {action=DocumentMessage::SaveDocument, key_down=KeyS, modifiers=[KeyControl]},
 			entry! {action=DocumentMessage::SaveDocument, key_down=KeyS, modifiers=[KeyControl, KeyShift]},
+			// Document movement
 			entry! {action=MovementMessage::MouseMove, message=InputMapperMessage::PointerMove},
 			entry! {action=MovementMessage::RotateCanvasBegin{snap:false}, key_down=Mmb, modifiers=[KeyControl]},
 			entry! {action=MovementMessage::RotateCanvasBegin{snap:true}, key_down=Mmb, modifiers=[KeyControl, KeyShift]},
@@ -207,6 +210,11 @@ impl Default for Mapping {
 			entry! {action=MovementMessage::WheelCanvasZoom, message=InputMapperMessage::MouseScroll, modifiers=[KeyControl]},
 			entry! {action=MovementMessage::WheelCanvasTranslate{use_y_as_x: true}, message=InputMapperMessage::MouseScroll, modifiers=[KeyShift]},
 			entry! {action=MovementMessage::WheelCanvasTranslate{use_y_as_x: false}, message=InputMapperMessage::MouseScroll},
+			entry! {action=MovementMessage::TranslateCanvasByViewportFraction(DVec2::new(1., 0.)), key_down=KeyPageUp, modifiers=[KeyShift]},
+			entry! {action=MovementMessage::TranslateCanvasByViewportFraction(DVec2::new(-1., 0.)), key_down=KeyPageDown, modifiers=[KeyShift]},
+			entry! {action=MovementMessage::TranslateCanvasByViewportFraction(DVec2::new(0., 1.)), key_down=KeyPageUp},
+			entry! {action=MovementMessage::TranslateCanvasByViewportFraction(DVec2::new(0., -1.)), key_down=KeyPageDown},
+			// Document actions
 			entry! {action=DocumentsMessage::NewDocument, key_down=KeyN, modifiers=[KeyControl]},
 			entry! {action=DocumentsMessage::NextDocument, key_down=KeyTab, modifiers=[KeyControl]},
 			entry! {action=DocumentsMessage::PrevDocument, key_down=KeyTab, modifiers=[KeyControl, KeyShift]},
@@ -214,6 +222,7 @@ impl Default for Mapping {
 			entry! {action=DocumentsMessage::CloseActiveDocumentWithConfirmation, key_down=KeyW, modifiers=[KeyControl]},
 			entry! {action=DocumentMessage::DuplicateSelectedLayers, key_down=KeyD, modifiers=[KeyControl]},
 			entry! {action=DocumentsMessage::CopySelectedLayers, key_down=KeyC, modifiers=[KeyControl]},
+			// Nudging
 			entry! {action=DocumentMessage::NudgeSelectedLayers(-SHIFT_NUDGE_AMOUNT, -SHIFT_NUDGE_AMOUNT), key_down=KeyArrowUp, modifiers=[KeyShift, KeyArrowLeft]},
 			entry! {action=DocumentMessage::NudgeSelectedLayers(SHIFT_NUDGE_AMOUNT, -SHIFT_NUDGE_AMOUNT), key_down=KeyArrowUp, modifiers=[KeyShift, KeyArrowRight]},
 			entry! {action=DocumentMessage::NudgeSelectedLayers(0., -SHIFT_NUDGE_AMOUNT), key_down=KeyArrowUp, modifiers=[KeyShift]},
