@@ -186,9 +186,9 @@ export default defineComponent({
 		},
 		grabArea(e: MouseEvent) {
 			if (!this.dragging) {
-				this.dragging = true;
-				this.mousePos = mousePosition(this.direction, e);
-				this.clampHandlePosition(((this.mousePos - this.trackOffset()) / this.trackLength() - this.handleLength / 2) / (1 - this.handleLength));
+				const mousePos = mousePosition(this.direction, e);
+				const oldMouse = handleToTrack(this.handleLength, this.handlePosition) * this.trackLength() + this.trackOffset();
+				this.$emit("pressTrack", mousePos - oldMouse);
 			}
 		},
 		mouseUp() {

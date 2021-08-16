@@ -128,6 +128,7 @@
 							:handlePosition="scrollbarPos.y"
 							@update:handlePosition="translateCanvasY"
 							v-model:handleLength="scrollbarSize.y"
+							@pressTrack="pageY"
 							:class="'right-scrollbar'"
 						/>
 					</LayoutCol>
@@ -138,6 +139,7 @@
 						:handlePosition="scrollbarPos.x"
 						@update:handlePosition="translateCanvasX"
 						v-model:handleLength="scrollbarSize.x"
+						@pressTrack="pageX"
 						:class="'bottom-scrollbar'"
 					/>
 				</LayoutRow>
@@ -292,6 +294,14 @@ export default defineComponent({
 			const delta = newValue - this.scrollbarPos.y;
 			this.scrollbarPos.y = newValue;
 			(await wasm).translate_canvas(0, -delta * this.scrollbarMultiplier.y);
+		},
+		async pageX(delta: number) {
+			const move = delta < 0 ? 1 : -1;
+			(await wasm).translate_canvas_by_fraction(move, 0);
+		},
+		async pageY(delta: number) {
+			const move = delta < 0 ? 1 : -1;
+			(await wasm).translate_canvas_by_fraction(0, move);
 		},
 		async selectTool(toolName: string) {
 			(await wasm).select_tool(toolName);
