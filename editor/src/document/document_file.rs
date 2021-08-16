@@ -406,15 +406,16 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					}
 					.into(),
 				);
-				let root = self.layerdata(&[]);
-				let viewport = ipp.viewport_bounds.size();
-				let [bounds1, bounds2] = self.document.visible_layers_bounding_box().unwrap_or_default();
-				let bounds1 = bounds1.min(DVec2::ZERO) - viewport * (f64::powf(2., root.scale / 3.) * 0.5);
-				let bounds2 = bounds2.max(viewport) + viewport * (f64::powf(2., root.scale / 3.) * 0.5);
+				let scale = 0.5 + 0.5 * self.layerdata(&[]).scale;
+				let viewport_size = ipp.viewport_bounds.size();
+				let viewport_mid = ipp.viewport_bounds.mid();
+				let [bounds1, bounds2] = self.document.visible_layers_bounding_box().unwrap_or([viewport_mid, viewport_mid]);
+				let bounds1 = bounds1.min(viewport_mid) - viewport_size * scale;
+				let bounds2 = bounds2.max(viewport_mid) + viewport_size * scale;
 				let bounds_length = bounds2 - bounds1;
-				let scrollbar_multiplier = bounds_length - viewport;
-				let scrollbar_position = bounds1.abs() / scrollbar_multiplier;
-				let scrollbar_size = viewport / bounds_length;
+				let scrollbar_multiplier = bounds_length - viewport_size;
+				let scrollbar_position = DVec2::splat(0.5) - (bounds1.lerp(bounds2, 0.5) - viewport_mid) / scrollbar_multiplier;
+				let scrollbar_size = viewport_size / bounds_length;
 				responses.push_back(
 					FrontendMessage::UpdateScrollbars {
 						position: scrollbar_position.into(),

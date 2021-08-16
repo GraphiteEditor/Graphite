@@ -22,6 +22,10 @@ impl ViewportBounds {
 	pub fn size(&self) -> DVec2 {
 		self.bottom_right - self.top_left
 	}
+
+	pub fn mid(&self) -> DVec2 {
+		self.bottom_right.lerp(self.top_left, 0.5)
+	}
 }
 
 #[derive(Debug, Copy, Clone, Default, Eq, PartialEq, Hash)]
