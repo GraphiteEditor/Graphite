@@ -406,7 +406,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					}
 					.into(),
 				);
-				let scale = 0.5 + 0.5 * self.layerdata(&[]).scale;
+				let scale = 0.7 + 0.3 * self.layerdata(&[]).scale;
 				let viewport_size = ipp.viewport_bounds.size();
 				let viewport_mid = ipp.viewport_bounds.mid();
 				let [bounds1, bounds2] = self.document.visible_layers_bounding_box().unwrap_or([viewport_mid, viewport_mid]);
