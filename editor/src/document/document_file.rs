@@ -1,6 +1,6 @@
 pub use super::layer_panel::*;
 use crate::{
-	consts::{FILE_EXPORT_SUFFIX, FILE_SAVE_SUFFIX},
+	consts::{ASYMPTOTIC_EFFECT, FILE_EXPORT_SUFFIX, FILE_SAVE_SUFFIX, SCALE_EFFECT, SCROLLBAR_SPACING},
 	EditorError,
 };
 use glam::{DAffine2, DVec2};
@@ -313,13 +313,13 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				)
 			}
 			CreateFolder(mut path) => {
-				let id = generate_hash(responses.iter(), ipp, self.document.hash());
+				let id = generate_uuid();
 				path.push(id);
 				self.layerdata_mut(&path).expanded = true;
 				responses.push_back(DocumentOperation::CreateFolder { path }.into())
 			}
 			GroupSelectedLayers => {
-				let id = generate_hash(responses.iter(), ipp, self.document.hash());
+				let id = generate_uuid();
 				responses.push_back(DocumentsMessage::CopySelectedLayers.into());
 				responses.push_back(DocumentMessage::DeleteSelectedLayers.into());
 				responses.push_back(DocumentOperation::CreateFolder { path: vec![id] }.into());
@@ -413,15 +413,16 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					}
 					.into(),
 				);
-				let root = self.layerdata(&[]);
-				let viewport = ipp.viewport_bounds.size();
-				let [bounds1, bounds2] = self.document.visible_layers_bounding_box().unwrap_or_default();
-				let bounds1 = bounds1.min(DVec2::ZERO) - viewport * (f64::powf(2., root.scale / 3.) * 0.5);
-				let bounds2 = bounds2.max(viewport) + viewport * (f64::powf(2., root.scale / 3.) * 0.5);
-				let bounds_length = bounds2 - bounds1;
-				let scrollbar_multiplier = bounds_length - viewport;
-				let scrollbar_position = bounds1.abs() / scrollbar_multiplier;
-				let scrollbar_size = viewport / bounds_length;
+				let scale = 0.5 + ASYMPTOTIC_EFFECT + self.layerdata(&[]).scale * SCALE_EFFECT;
+				let viewport_size = ipp.viewport_bounds.size();
+				let viewport_mid = ipp.viewport_bounds.center();
+				let [bounds1, bounds2] = self.document.visible_layers_bounding_box().unwrap_or([viewport_mid; 2]);
+				let bounds1 = bounds1.min(viewport_mid) - viewport_size * scale;
+				let bounds2 = bounds2.max(viewport_mid) + viewport_size * scale;
+				let bounds_length = (bounds2 - bounds1) * (1. + SCROLLBAR_SPACING);
+				let scrollbar_position = DVec2::splat(0.5) - (bounds1.lerp(bounds2, 0.5) - viewport_mid) / (bounds_length - viewport_size);
+				let scrollbar_multiplier = bounds_length - viewport_size;
+				let scrollbar_size = viewport_size / bounds_length;
 				responses.push_back(
 					FrontendMessage::UpdateScrollbars {
 						position: scrollbar_position.into(),

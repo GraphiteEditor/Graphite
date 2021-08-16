@@ -30,7 +30,8 @@ pub enum MovementMessage {
 	DecreaseCanvasZoom,
 	WheelCanvasZoom,
 	ZoomCanvasToFitAll,
-	TranslateCanvas(glam::DVec2),
+	TranslateCanvas(DVec2),
+	TranslateCanvasByViewportFraction(DVec2),
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -196,6 +197,12 @@ impl MessageHandler<MovementMessage, (&mut LayerData, &Document, &InputPreproces
 				layerdata.translation += transformed_delta;
 				self.create_document_transform_from_layerdata(layerdata, &ipp.viewport_bounds, responses);
 			}
+			TranslateCanvasByViewportFraction(delta) => {
+				let transformed_delta = document.root.transform.inverse().transform_vector2(delta * ipp.viewport_bounds.size());
+
+				layerdata.translation += transformed_delta;
+				self.create_document_transform_from_layerdata(layerdata, &ipp.viewport_bounds, responses);
+			}
 		}
 	}
 	fn actions(&self) -> ActionList {
@@ -212,6 +219,8 @@ impl MessageHandler<MovementMessage, (&mut LayerData, &Document, &InputPreproces
 			DecreaseCanvasZoom,
 			WheelCanvasTranslate,
 			ZoomCanvasToFitAll,
+			TranslateCanvas,
+			TranslateCanvasByViewportFraction,
 		);
 
 		if self.rotating {
