@@ -2,11 +2,11 @@ use crate::shims::Error;
 use crate::wrappers::{translate_key, translate_tool, Color};
 use crate::EDITOR_STATE;
 use editor::input::input_preprocessor::ModifierKeys;
-use editor::input::mouse::ScrollDelta;
+use editor::input::mouse::{EditorMouseState, ScrollDelta, ViewportBounds};
 use editor::message_prelude::*;
 use editor::misc::EditorError;
 use editor::tool::{tool_options::ToolOptions, tools, ToolType};
-use editor::{input::mouse::MouseState, LayerId};
+use editor::LayerId;
 use graphene::layers::BlendMode;
 use wasm_bindgen::prelude::*;
 
@@ -70,6 +70,21 @@ pub fn new_document() -> Result<(), JsValue> {
 }
 
 #[wasm_bindgen]
+pub fn open_document() -> Result<(), JsValue> {
+	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(DocumentsMessage::OpenDocument).map_err(convert_error))
+}
+
+#[wasm_bindgen]
+pub fn open_document_file(name: String, content: String) -> Result<(), JsValue> {
+	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(DocumentsMessage::OpenDocumentFile(name, content)).map_err(convert_error))
+}
+
+#[wasm_bindgen]
+pub fn save_document() -> Result<(), JsValue> {
+	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(DocumentMessage::SaveDocument)).map_err(convert_error)
+}
+
+#[wasm_bindgen]
 pub fn close_document(document: usize) -> Result<(), JsValue> {
 	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(DocumentsMessage::CloseDocument(document)).map_err(convert_error))
 }
@@ -89,46 +104,57 @@ pub fn close_all_documents_with_confirmation() -> Result<(), JsValue> {
 	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(DocumentsMessage::CloseAllDocumentsWithConfirmation).map_err(convert_error))
 }
 
-// TODO: Call event when the panels are resized
-/// Viewport resized
+/// Send new bounds when document panel viewports get resized or moved within the editor
+/// [left, top, right, bottom]...
 #[wasm_bindgen]
-pub fn viewport_resize(new_width: u32, new_height: u32) -> Result<(), JsValue> {
-	let ev = InputPreprocessorMessage::ViewportResize((new_width, new_height).into());
+pub fn bounds_of_viewports(bounds_of_viewports: &[f64]) -> Result<(), JsValue> {
+	let chunked: Vec<_> = bounds_of_viewports.chunks(4).map(ViewportBounds::from_slice).collect();
+	let ev = InputPreprocessorMessage::BoundsOfViewports((chunked).into());
 	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(ev)).map_err(convert_error)
 }
 
-// TODO: When a mouse button is down that started in the viewport, this should trigger even when the mouse is outside the viewport (or even the browser window if the browser supports it)
 /// Mouse movement within the screenspace bounds of the viewport
 #[wasm_bindgen]
-pub fn on_mouse_move(x: u32, y: u32, modifiers: u8) -> Result<(), JsValue> {
-	let mods = ModifierKeys::from_bits(modifiers).expect("invalid modifier keys");
-	// TODO: Convert these screenspace viewport coordinates to canvas coordinates based on the current zoom and pan
-	let ev = InputPreprocessorMessage::MouseMove((x, y).into(), mods);
+pub fn on_mouse_move(x: f64, y: f64, mouse_keys: u8, modifiers: u8) -> Result<(), JsValue> {
+	let editor_mouse_state = EditorMouseState::from_keys_and_editor_position(mouse_keys, (x, y).into());
+
+	let modifier_keys = ModifierKeys::from_bits(modifiers).expect("invalid modifier keys");
+
+	let ev = InputPreprocessorMessage::MouseMove(editor_mouse_state, modifier_keys);
 	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(ev)).map_err(convert_error)
 }
 
 /// Mouse scrolling within the screenspace bounds of the viewport
 #[wasm_bindgen]
-pub fn on_mouse_scroll(delta_x: i32, delta_y: i32, delta_z: i32, modifiers: u8) -> Result<(), JsValue> {
-	// TODO: Convert these screenspace viewport coordinates to canvas coordinates based on the current zoom and pan
-	let mods = ModifierKeys::from_bits(modifiers).expect("invalid modifier keys");
-	let ev = InputPreprocessorMessage::MouseScroll(ScrollDelta::new(delta_x, delta_y, delta_z), mods);
+pub fn on_mouse_scroll(x: f64, y: f64, mouse_keys: u8, wheel_delta_x: i32, wheel_delta_y: i32, wheel_delta_z: i32, modifiers: u8) -> Result<(), JsValue> {
+	let mut editor_mouse_state = EditorMouseState::from_keys_and_editor_position(mouse_keys, (x, y).into());
+	editor_mouse_state.scroll_delta = ScrollDelta::new(wheel_delta_x, wheel_delta_y, wheel_delta_z);
+
+	let modifier_keys = ModifierKeys::from_bits(modifiers).expect("invalid modifier keys");
+
+	let ev = InputPreprocessorMessage::MouseScroll(editor_mouse_state, modifier_keys);
 	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(ev)).map_err(convert_error)
 }
 
 /// A mouse button depressed within screenspace the bounds of the viewport
 #[wasm_bindgen]
-pub fn on_mouse_down(x: u32, y: u32, mouse_keys: u8, modifiers: u8) -> Result<(), JsValue> {
-	let mods = ModifierKeys::from_bits(modifiers).expect("invalid modifier keys");
-	let ev = InputPreprocessorMessage::MouseDown(MouseState::from_u8_pos(mouse_keys, (x, y).into()), mods);
+pub fn on_mouse_down(x: f64, y: f64, mouse_keys: u8, modifiers: u8) -> Result<(), JsValue> {
+	let editor_mouse_state = EditorMouseState::from_keys_and_editor_position(mouse_keys, (x, y).into());
+
+	let modifier_keys = ModifierKeys::from_bits(modifiers).expect("invalid modifier keys");
+
+	let ev = InputPreprocessorMessage::MouseDown(editor_mouse_state, modifier_keys);
 	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(ev)).map_err(convert_error)
 }
 
 /// A mouse button released
 #[wasm_bindgen]
-pub fn on_mouse_up(x: u32, y: u32, mouse_keys: u8, modifiers: u8) -> Result<(), JsValue> {
-	let mods = ModifierKeys::from_bits(modifiers).expect("invalid modifier keys");
-	let ev = InputPreprocessorMessage::MouseUp(MouseState::from_u8_pos(mouse_keys, (x, y).into()), mods);
+pub fn on_mouse_up(x: f64, y: f64, mouse_keys: u8, modifiers: u8) -> Result<(), JsValue> {
+	let editor_mouse_state = EditorMouseState::from_keys_and_editor_position(mouse_keys, (x, y).into());
+
+	let modifier_keys = ModifierKeys::from_bits(modifiers).expect("invalid modifier keys");
+
+	let ev = InputPreprocessorMessage::MouseUp(editor_mouse_state, modifier_keys);
 	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(ev)).map_err(convert_error)
 }
 
@@ -276,6 +302,20 @@ pub fn decrease_canvas_zoom() -> Result<(), JsValue> {
 #[wasm_bindgen]
 pub fn set_rotation(new_radians: f64) -> Result<(), JsValue> {
 	let ev = MovementMessage::SetCanvasRotation(new_radians);
+	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(ev)).map_err(convert_error)
+}
+
+/// Translates document (in viewport coords)
+#[wasm_bindgen]
+pub fn translate_canvas(delta_x: f64, delta_y: f64) -> Result<(), JsValue> {
+	let ev = MovementMessage::TranslateCanvas((delta_x, delta_y).into());
+	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(ev)).map_err(convert_error)
+}
+
+/// Translates document (in viewport coords)
+#[wasm_bindgen]
+pub fn translate_canvas_by_fraction(delta_x: f64, delta_y: f64) -> Result<(), JsValue> {
+	let ev = MovementMessage::TranslateCanvasByViewportFraction((delta_x, delta_y).into());
 	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(ev)).map_err(convert_error)
 }
 

@@ -1,12 +1,10 @@
 <template>
 	<div class="persistent-scrollbar" :class="direction.toLowerCase()">
-		<button class="arrow decrease"></button>
-		<div class="scroll-track">
-			<div class="scroll-click-area decrease" :style="[trackStart, preThumb, sides]"></div>
-			<div class="scroll-thumb" :style="[thumbStart, thumbEnd, sides]"></div>
-			<div class="scroll-click-area increase" :style="[postThumb, trackEnd, sides]"></div>
+		<button class="arrow decrease" @mousedown="changePosition(-50)"></button>
+		<div class="scroll-track" ref="scrollTrack" @mousedown="grabArea">
+			<div class="scroll-thumb" @mousedown="grabHandle" :class="{ dragging }" ref="handle" :style="[thumbStart, thumbEnd, sides]"></div>
 		</div>
-		<button class="arrow increase"></button>
+		<button class="arrow increase" @click="changePosition(50)"></button>
 	</div>
 </template>
 
@@ -39,6 +37,9 @@
 			&:hover {
 				background: var(--color-6-lowergray);
 			}
+			&.dragging {
+				background: var(--color-accent-hover);
+			}
 		}
 
 		.scroll-click-area {
@@ -57,6 +58,9 @@
 			&:hover {
 				border-color: transparent transparent var(--color-6-lowergray) transparent;
 			}
+			&:active {
+				border-color: transparent transparent var(--color-c-brightgray) transparent;
+			}
 		}
 
 		.arrow.increase {
@@ -66,6 +70,9 @@
 
 			&:hover {
 				border-color: var(--color-6-lowergray) transparent transparent transparent;
+			}
+			&:active {
+				border-color: var(--color-c-brightgray) transparent transparent transparent;
 			}
 		}
 	}
@@ -81,6 +88,9 @@
 			&:hover {
 				border-color: transparent var(--color-6-lowergray) transparent transparent;
 			}
+			&:active {
+				border-color: transparent var(--color-c-brightgray) transparent transparent;
+			}
 		}
 
 		.arrow.increase {
@@ -91,6 +101,9 @@
 			&:hover {
 				border-color: transparent transparent transparent var(--color-6-lowergray);
 			}
+			&:active {
+				border-color: transparent transparent transparent var(--color-c-brightgray);
+			}
 		}
 	}
 }
@@ -98,6 +111,15 @@
 
 <script lang="ts">
 import { defineComponent, PropType } from "vue";
+
+// Linear Interpolation
+const lerp = (x: number, y: number, a: number) => x * (1 - a) + y * a;
+
+// Convert the position of the handle (0-1) to the position on the track (0-1).
+// This includes the 1/2 handle length gap  of the possible handle positionson each side so the end of the handle doesn't go off the track.
+const handleToTrack = (handleLen: number, handlePos: number) => lerp(handleLen / 2, 1 - handleLen / 2, handlePos);
+
+const mousePosition = (direction: ScrollbarDirection, e: MouseEvent) => (direction === ScrollbarDirection.Vertical ? e.clientY : e.clientX);
 
 export enum ScrollbarDirection {
 	"Horizontal" = "Horizontal",
@@ -107,33 +129,19 @@ export enum ScrollbarDirection {
 export default defineComponent({
 	props: {
 		direction: { type: String as PropType<ScrollbarDirection>, default: ScrollbarDirection.Vertical },
+		handlePosition: { type: Number, default: 0.5 },
+		handleLength: { type: Number, default: 0.5 },
 	},
 	computed: {
-		trackStart(): { left: string } | { top: string } {
-			return this.direction === ScrollbarDirection.Vertical ? { top: "0%" } : { left: "0%" };
-		},
-		preThumb(): { right: string } | { bottom: string } {
-			const start = 25;
-
-			return this.direction === ScrollbarDirection.Vertical ? { bottom: `${100 - start}%` } : { right: `${100 - start}%` };
-		},
 		thumbStart(): { left: string } | { top: string } {
-			const start = 25;
+			const start = handleToTrack(this.handleLength, this.handlePosition) - this.handleLength / 2;
 
-			return this.direction === ScrollbarDirection.Vertical ? { top: `${start}%` } : { left: `${start}%` };
+			return this.direction === ScrollbarDirection.Vertical ? { top: `${start * 100}%` } : { left: `${start * 100}%` };
 		},
 		thumbEnd(): { right: string } | { bottom: string } {
-			const end = 25;
+			const end = 1 - handleToTrack(this.handleLength, this.handlePosition) - this.handleLength / 2;
 
-			return this.direction === ScrollbarDirection.Vertical ? { bottom: `${end}%` } : { right: `${end}%` };
-		},
-		postThumb(): { left: string } | { top: string } {
-			const end = 25;
-
-			return this.direction === ScrollbarDirection.Vertical ? { top: `${100 - end}%` } : { left: `${100 - end}%` };
-		},
-		trackEnd(): { right: string } | { bottom: string } {
-			return this.direction === ScrollbarDirection.Vertical ? { bottom: "0%" } : { right: "0%" };
+			return this.direction === ScrollbarDirection.Vertical ? { bottom: `${end * 100}%` } : { right: `${end * 100}%` };
 		},
 		sides(): { left: string; right: string } | { top: string; bottom: string } {
 			return this.direction === ScrollbarDirection.Vertical ? { left: "0%", right: "0%" } : { top: "0%", bottom: "0%" };
@@ -142,7 +150,58 @@ export default defineComponent({
 	data() {
 		return {
 			ScrollbarDirection,
+			dragging: false,
+			mousePos: 0,
 		};
+	},
+	mounted() {
+		window.addEventListener("mouseup", () => {
+			this.dragging = false;
+		});
+		window.addEventListener("mousemove", this.mouseMove);
+	},
+	methods: {
+		trackLength(): number {
+			const track = this.$refs.scrollTrack as HTMLElement;
+			return this.direction === ScrollbarDirection.Vertical ? track.clientHeight - this.handleLength : track.clientWidth;
+		},
+		trackOffset(): number {
+			const track = this.$refs.scrollTrack as HTMLElement;
+			return this.direction === ScrollbarDirection.Vertical ? track.getBoundingClientRect().top : track.getBoundingClientRect().left;
+		},
+		clampHandlePosition(newPos: number) {
+			const clampedPosition = Math.min(Math.max(newPos, 0), 1);
+			this.$emit("update:handlePosition", clampedPosition);
+		},
+		updateHandlePosition(e: MouseEvent) {
+			const position = mousePosition(this.direction, e);
+			this.clampHandlePosition(this.handlePosition + (position - this.mousePos) / (this.trackLength() * (1 - this.handleLength)));
+			this.mousePos = position;
+		},
+		grabHandle(e: MouseEvent) {
+			if (!this.dragging) {
+				this.dragging = true;
+				this.mousePos = mousePosition(this.direction, e);
+			}
+		},
+		grabArea(e: MouseEvent) {
+			if (!this.dragging) {
+				const mousePos = mousePosition(this.direction, e);
+				const oldMouse = handleToTrack(this.handleLength, this.handlePosition) * this.trackLength() + this.trackOffset();
+				this.$emit("pressTrack", mousePos - oldMouse);
+			}
+		},
+		mouseUp() {
+			this.dragging = false;
+		},
+		mouseMove(e: MouseEvent) {
+			if (this.dragging) {
+				this.updateHandlePosition(e);
+			}
+		},
+		changePosition(difference: number) {
+			this.clampHandlePosition(this.handlePosition + difference / this.trackLength());
+		},
 	},
 });
 </script>

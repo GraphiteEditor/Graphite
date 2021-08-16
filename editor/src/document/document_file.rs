@@ -1,7 +1,11 @@
 pub use super::layer_panel::*;
-use crate::{frontend::layer_panel::*, EditorError};
+use crate::{
+	consts::{ASYMPTOTIC_EFFECT, FILE_EXPORT_SUFFIX, FILE_SAVE_SUFFIX, SCALE_EFFECT, SCROLLBAR_SPACING},
+	frontend::layer_panel::*,
+	EditorError,
+};
 use glam::{DAffine2, DVec2};
-use graphene::{document::Document as InternalDocument, LayerId};
+use graphene::{document::Document as InternalDocument, DocumentError, LayerId};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -81,6 +85,7 @@ pub enum DocumentMessage {
 	AbortTransaction,
 	CommitTransaction,
 	ExportDocument,
+	SaveDocument,
 	RenderDocument,
 	Undo,
 	NudgeSelectedLayers(f64, f64),
@@ -104,18 +109,12 @@ impl From<DocumentOperation> for Message {
 }
 
 impl DocumentMessageHandler {
-	pub fn active_document(&self) -> &DocumentMessageHandler {
-		self
-	}
-	pub fn active_document_mut(&mut self) -> &mut DocumentMessageHandler {
-		self
-	}
 	fn filter_document_responses(&self, document_responses: &mut Vec<DocumentResponse>) -> bool {
 		let len = document_responses.len();
 		document_responses.retain(|response| !matches!(response, DocumentResponse::DocumentChanged));
 		document_responses.len() != len
 	}
-	fn handle_folder_changed(&mut self, path: Vec<LayerId>) -> Option<Message> {
+	pub fn handle_folder_changed(&mut self, path: Vec<LayerId>) -> Option<Message> {
 		let _ = self.document.render_root();
 		self.layer_data(&path).expanded.then(|| {
 			let children = self.layer_panel(path.as_slice()).expect("The provided Path was not valid");
@@ -192,6 +191,18 @@ impl DocumentMessageHandler {
 			movement_handler: MovementMessageHandler::default(),
 		}
 	}
+	pub fn with_name_and_content(name: String, serialized_content: String) -> Result<Self, EditorError> {
+		let mut document = Self::with_name(name);
+		let internal_document = InternalDocument::with_content(&serialized_content);
+		match internal_document {
+			Ok(handle) => {
+				document.document = handle;
+				Ok(document)
+			}
+			Err(DocumentError::InvalidFile(msg)) => Err(EditorError::Document(msg)),
+			_ => Err(EditorError::Document(String::from("Failed to open file"))),
+		}
+	}
 
 	pub fn layer_data(&mut self, path: &[LayerId]) -> &mut LayerData {
 		layer_data(&mut self.layer_data, path)
@@ -225,7 +236,7 @@ impl DocumentMessageHandler {
 	}
 
 	/// Returns a list of `LayerPanelEntry`s intended for display purposes. These don't contain
-	/// any actual data, but ratfolderch as visibility and names of the layers.
+	/// any actual data, but rather attributes such as visibility and names of the layers.
 	pub fn layer_panel(&mut self, path: &[LayerId]) -> Result<Vec<LayerPanelEntry>, EditorError> {
 		let folder = self.document.folder(path)?;
 		let paths: Vec<Vec<LayerId>> = folder.layer_ids.iter().map(|id| [path, &[*id]].concat()).collect();
@@ -267,8 +278,12 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			}
 			CommitTransaction => self.document_backup = None,
 			ExportDocument => {
-				let bbox = self.document.visible_layers_bounding_box().unwrap_or([DVec2::ZERO, ipp.viewport_size.as_f64()]);
+				let bbox = self.document.visible_layers_bounding_box().unwrap_or([DVec2::ZERO, ipp.viewport_bounds.size()]);
 				let size = bbox[1] - bbox[0];
+				let name = match self.name.ends_with(FILE_SAVE_SUFFIX) {
+					true => self.name.clone().replace(FILE_SAVE_SUFFIX, FILE_EXPORT_SUFFIX),
+					false => self.name.clone() + FILE_EXPORT_SUFFIX,
+				};
 				responses.push_back(
 					FrontendMessage::ExportDocument {
 						document: format!(
@@ -280,14 +295,26 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 							"\n",
 							self.document.render_root()
 						),
+						name,
+					}
+					.into(),
+				)
+			}
+			SaveDocument => {
+				let name = match self.name.ends_with(FILE_SAVE_SUFFIX) {
+					true => self.name.clone(),
+					false => self.name.clone() + FILE_SAVE_SUFFIX,
+				};
+				responses.push_back(
+					FrontendMessage::SaveDocument {
+						document: self.document.serialize_document(),
+						name,
 					}
 					.into(),
 				)
 			}
 			SetBlendModeForSelectedLayers(blend_mode) => {
-				let active_document = self;
-
-				for path in active_document.layer_data.iter().filter_map(|(path, data)| data.selected.then(|| path.clone())) {
+				for path in self.layer_data.iter().filter_map(|(path, data)| data.selected.then(|| path.clone())) {
 					responses.push_back(DocumentOperation::SetLayerBlendMode { path, blend_mode }.into());
 				}
 			}
@@ -372,12 +399,33 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				Err(e) => log::error!("DocumentError: {:?}", e),
 				Ok(_) => (),
 			},
-			RenderDocument => responses.push_back(
-				FrontendMessage::UpdateCanvas {
-					document: self.document.render_root(),
-				}
-				.into(),
-			),
+			RenderDocument => {
+				responses.push_back(
+					FrontendMessage::UpdateCanvas {
+						document: self.document.render_root(),
+					}
+					.into(),
+				);
+				let scale = 0.5 + ASYMPTOTIC_EFFECT + self.layerdata(&[]).scale * SCALE_EFFECT;
+				let viewport_size = ipp.viewport_bounds.size();
+				let viewport_mid = ipp.viewport_bounds.center();
+				let [bounds1, bounds2] = self.document.visible_layers_bounding_box().unwrap_or([viewport_mid; 2]);
+				let bounds1 = bounds1.min(viewport_mid) - viewport_size * scale;
+				let bounds2 = bounds2.max(viewport_mid) + viewport_size * scale;
+				let bounds_length = (bounds2 - bounds1) * (1. + SCROLLBAR_SPACING);
+				let scrollbar_position = DVec2::splat(0.5) - (bounds1.lerp(bounds2, 0.5) - viewport_mid) / (bounds_length - viewport_size);
+				let scrollbar_multiplier = bounds_length - viewport_size;
+				let scrollbar_size = viewport_size / bounds_length;
+				responses.push_back(
+					FrontendMessage::UpdateScrollbars {
+						position: scrollbar_position.into(),
+						size: scrollbar_size.into(),
+						multiplier: scrollbar_multiplier.into(),
+					}
+					.into(),
+				);
+			}
+
 			NudgeSelectedLayers(x, y) => {
 				for path in self.selected_layers().cloned() {
 					let operation = DocumentOperation::TransformLayerInViewport {
@@ -484,6 +532,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			DeselectAllLayers,
 			RenderDocument,
 			ExportDocument,
+			SaveDocument,
 		);
 
 		if self.layer_data.values().any(|data| data.selected) {

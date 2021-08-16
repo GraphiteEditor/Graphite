@@ -1,7 +1,17 @@
 import { reactive, readonly } from "vue";
 
 import { createDialog, dismissDialog } from "@/utilities/dialog";
-import { ResponseType, registerResponseHandler, Response, SetActiveDocument, UpdateOpenDocumentsList, DisplayConfirmationToCloseDocument } from "@/utilities/response-handler";
+import {
+	ResponseType,
+	registerResponseHandler,
+	Response,
+	SetActiveDocument,
+	UpdateOpenDocumentsList,
+	DisplayConfirmationToCloseDocument,
+	ExportDocument,
+	SaveDocument,
+} from "@/utilities/response-handler";
+import { download, upload } from "./files";
 
 const wasm = import("@/../wasm/pkg");
 
@@ -13,8 +23,7 @@ const state = reactive({
 });
 
 export async function selectDocument(tabIndex: number) {
-	const { select_document } = await wasm;
-	select_document(tabIndex);
+	(await wasm).select_document(tabIndex);
 }
 
 export async function closeDocumentWithConfirmation(tabIndex: number) {
@@ -22,15 +31,14 @@ export async function closeDocumentWithConfirmation(tabIndex: number) {
 
 	const tabLabel = state.documents[tabIndex];
 
-	// TODO: Rename to "Save changes before closing?" when we can actually save documents somewhere, not just export SVGs
-	createDialog("File", "Close without exporting SVG?", tabLabel, [
+	createDialog("File", "Save changes before closing?", tabLabel, [
 		{
 			kind: "TextButton",
 			callback: async () => {
-				(await wasm).export_document();
+				(await wasm).save_document();
 				dismissDialog();
 			},
-			props: { label: "Export", emphasized: true, minWidth: 96 },
+			props: { label: "Save", emphasized: true, minWidth: 96 },
 		},
 		{
 			kind: "TextButton",
@@ -79,6 +87,7 @@ registerResponseHandler(ResponseType.UpdateOpenDocumentsList, (responseData: Res
 		state.title = state.documents[state.activeDocumentIndex];
 	}
 });
+
 registerResponseHandler(ResponseType.SetActiveDocument, (responseData: Response) => {
 	const documentData = responseData as SetActiveDocument;
 	if (documentData) {
@@ -86,12 +95,30 @@ registerResponseHandler(ResponseType.SetActiveDocument, (responseData: Response)
 		state.title = state.documents[state.activeDocumentIndex];
 	}
 });
+
 registerResponseHandler(ResponseType.DisplayConfirmationToCloseDocument, (responseData: Response) => {
 	const data = responseData as DisplayConfirmationToCloseDocument;
 	closeDocumentWithConfirmation(data.document_index);
 });
-registerResponseHandler(ResponseType.DisplayConfirmationToCloseAllDocuments, (_responseData: Response) => {
+
+registerResponseHandler(ResponseType.DisplayConfirmationToCloseAllDocuments, (_: Response) => {
 	closeAllDocumentsWithConfirmation();
+});
+
+registerResponseHandler(ResponseType.OpenDocumentBrowse, async (_: Response) => {
+	const extension = (await wasm).file_save_suffix();
+	const data = await upload(extension);
+	(await wasm).open_document_file(data.filename, data.content);
+});
+
+registerResponseHandler(ResponseType.ExportDocument, (responseData: Response) => {
+	const updateData = responseData as ExportDocument;
+	if (updateData) download(updateData.name, updateData.document);
+});
+
+registerResponseHandler(ResponseType.SaveDocument, (responseData: Response) => {
+	const saveData = responseData as SaveDocument;
+	if (saveData) download(saveData.name, saveData.document);
 });
 
 (async () => (await wasm).get_open_documents_list())();

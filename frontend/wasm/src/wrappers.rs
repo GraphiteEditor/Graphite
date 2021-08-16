@@ -1,8 +1,24 @@
 use crate::shims::Error;
+use editor::consts::FILE_SAVE_SUFFIX;
 use editor::input::keyboard::Key;
 use editor::tool::{SelectAppendMode, ToolType};
 use editor::Color as InnerColor;
 use wasm_bindgen::prelude::*;
+
+#[wasm_bindgen]
+pub fn file_save_suffix() -> String {
+	FILE_SAVE_SUFFIX.into()
+}
+
+#[wasm_bindgen]
+pub fn i32_max() -> i32 {
+	i32::MAX
+}
+
+#[wasm_bindgen]
+pub fn i32_min() -> i32 {
+	i32::MIN
+}
 
 #[wasm_bindgen]
 pub struct Color(InnerColor);
@@ -135,6 +151,8 @@ pub fn translate_key(name: &str) -> Key {
 		"]" => KeyRightBracket,
 		"{" => KeyLeftCurlyBracket,
 		"}" => KeyRightCurlyBracket,
+		"pageup" => KeyPageUp,
+		"pagedown" => KeyPageDown,
 		_ => UnknownKey,
 	}
 }

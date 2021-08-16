@@ -143,6 +143,7 @@
 
 <script lang="ts">
 import { defineComponent, PropType } from "vue";
+
 import { keyboardLockApiSupported } from "@/utilities/fullscreen";
 import { SeparatorDirection, SeparatorType } from "@/components/widgets/widgets";
 
@@ -220,12 +221,26 @@ const MenuList = defineComponent({
 		clearSelectedEntry() {
 			this.selectedEntry = undefined;
 		},
-		measureAndReportWidth() {
-			// API is experimental but supported in all browsers - https://developer.mozilla.org/en-US/docs/Web/API/FontFaceSet
+		async measureAndReportWidth() {
+			// API is experimental but supported in all browsers - https://developer.mozilla.org/en-US/docs/Web/API/FontFaceSet/ready
 			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			(document as any).fonts.ready.then(async () => {
-				const floatingMenu = this.$refs.floatingMenu as typeof FloatingMenu;
-				this.$emit("width-changed", await floatingMenu.measureNaturalWidth());
+			await (document as any).fonts.ready;
+
+			const floatingMenu = this.$refs.floatingMenu as typeof FloatingMenu;
+
+			// Save open/closed state before forcing open, if necessary, for measurement
+			const initiallyOpen = floatingMenu.isOpen();
+			if (!initiallyOpen) floatingMenu.setOpen();
+
+			floatingMenu.disableMinWidth((initialMinWidth: string) => {
+				floatingMenu.getWidth((width: number) => {
+					floatingMenu.enableMinWidth(initialMinWidth);
+
+					// Restore open/closed state if it was forced open for measurement
+					if (!initiallyOpen) floatingMenu.setClosed();
+
+					this.$emit("width-changed", width);
+				});
 			});
 		},
 	},

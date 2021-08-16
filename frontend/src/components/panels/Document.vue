@@ -122,16 +122,30 @@
 						<CanvasRuler :origin="0" :majorMarkSpacing="100" :direction="RulerDirection.Vertical" />
 					</LayoutCol>
 					<LayoutCol :class="'canvas-area'">
-						<div class="canvas" @mousedown="canvasMouseDown" @mouseup="canvasMouseUp" @mousemove="canvasMouseMove" ref="canvas">
+						<div class="canvas" ref="canvas">
 							<svg v-html="viewportSvg" :style="{ width: canvasSvgWidth, height: canvasSvgHeight }"></svg>
 						</div>
 					</LayoutCol>
 					<LayoutCol :class="'bar-area'">
-						<PersistentScrollbar :direction="ScrollbarDirection.Vertical" :class="'right-scrollbar'" />
+						<PersistentScrollbar
+							:direction="ScrollbarDirection.Vertical"
+							:handlePosition="scrollbarPos.y"
+							@update:handlePosition="translateCanvasY"
+							v-model:handleLength="scrollbarSize.y"
+							@pressTrack="pageY"
+							:class="'right-scrollbar'"
+						/>
 					</LayoutCol>
 				</LayoutRow>
 				<LayoutRow :class="'bar-area'">
-					<PersistentScrollbar :direction="ScrollbarDirection.Horizontal" :class="'bottom-scrollbar'" />
+					<PersistentScrollbar
+						:direction="ScrollbarDirection.Horizontal"
+						:handlePosition="scrollbarPos.x"
+						@update:handlePosition="translateCanvasX"
+						v-model:handleLength="scrollbarSize.x"
+						@pressTrack="pageX"
+						:class="'bottom-scrollbar'"
+					/>
 				</LayoutRow>
 			</LayoutCol>
 		</LayoutRow>
@@ -214,8 +228,7 @@
 <script lang="ts">
 import { defineComponent } from "vue";
 
-import { makeModifiersBitfield } from "@/utilities/input";
-import { ResponseType, registerResponseHandler, Response, UpdateCanvas, SetActiveTool, ExportDocument, SetCanvasZoom, SetCanvasRotation } from "@/utilities/response-handler";
+import { ResponseType, registerResponseHandler, Response, UpdateCanvas, UpdateScrollbars, SetActiveTool, SetCanvasZoom, SetCanvasRotation } from "@/utilities/response-handler";
 import { SeparatorDirection, SeparatorType } from "@/components/widgets/widgets";
 import { comingSoon } from "@/utilities/errors";
 
@@ -237,6 +250,8 @@ import ToolOptions from "@/components/widgets/options/ToolOptions.vue";
 import { SectionsOfMenuListEntries } from "@/components/widgets/floating-menus/MenuList.vue";
 import FloatingMenuToggleGroup from "@/components/widgets/behavior/FloatingMenuToggleGroup.vue";
 
+const wasm = import("@/../wasm/pkg");
+
 const documentModeEntries: SectionsOfMenuListEntries = [
 	[
 		{ label: "Design Mode", icon: "ViewportDesignMode" },
@@ -250,8 +265,6 @@ const viewModeEntries: RadioEntries = [
 	{ value: "pixels", icon: "ViewModePixels", tooltip: "View Mode: Pixels", action: () => comingSoon(320) },
 ];
 
-const wasm = import("@/../wasm/pkg");
-
 export default defineComponent({
 	methods: {
 		async viewportResize() {
@@ -264,30 +277,6 @@ export default defineComponent({
 
 			this.canvasSvgWidth = `${width}px`;
 			this.canvasSvgHeight = `${height}px`;
-
-			const { viewport_resize } = await wasm;
-			viewport_resize(width, height);
-		},
-		async canvasMouseDown(e: MouseEvent) {
-			const { on_mouse_down } = await wasm;
-			const modifiers = makeModifiersBitfield(e.ctrlKey, e.shiftKey, e.altKey);
-			on_mouse_down(e.offsetX, e.offsetY, e.buttons, modifiers);
-		},
-		async canvasMouseUp(e: MouseEvent) {
-			const { on_mouse_up } = await wasm;
-			const modifiers = makeModifiersBitfield(e.ctrlKey, e.shiftKey, e.altKey);
-			on_mouse_up(e.offsetX, e.offsetY, e.buttons, modifiers);
-		},
-		async canvasMouseMove(e: MouseEvent) {
-			const { on_mouse_move } = await wasm;
-			const modifiers = makeModifiersBitfield(e.ctrlKey, e.shiftKey, e.altKey);
-			on_mouse_move(e.offsetX, e.offsetY, modifiers);
-		},
-		async canvasMouseScroll(e: WheelEvent) {
-			e.preventDefault();
-			const { on_mouse_scroll } = await wasm;
-			const modifiers = makeModifiersBitfield(e.ctrlKey, e.shiftKey, e.altKey);
-			on_mouse_scroll(e.deltaX, e.deltaY, e.deltaZ, modifiers);
 		},
 		async setCanvasZoom(newZoom: number) {
 			(await wasm).set_canvas_zoom(newZoom / 100);
@@ -299,31 +288,34 @@ export default defineComponent({
 			(await wasm).decrease_canvas_zoom();
 		},
 		async setRotation(newRotation: number) {
-			const { set_rotation } = await wasm;
-			set_rotation(newRotation * (Math.PI / 180));
+			(await wasm).set_rotation(newRotation * (Math.PI / 180));
+		},
+		async translateCanvasX(newValue: number) {
+			const delta = newValue - this.scrollbarPos.x;
+			this.scrollbarPos.x = newValue;
+			(await wasm).translate_canvas(-delta * this.scrollbarMultiplier.x, 0);
+		},
+		async translateCanvasY(newValue: number) {
+			const delta = newValue - this.scrollbarPos.y;
+			this.scrollbarPos.y = newValue;
+			(await wasm).translate_canvas(0, -delta * this.scrollbarMultiplier.y);
+		},
+		async pageX(delta: number) {
+			const move = delta < 0 ? 1 : -1;
+			(await wasm).translate_canvas_by_fraction(move, 0);
+		},
+		async pageY(delta: number) {
+			const move = delta < 0 ? 1 : -1;
+			(await wasm).translate_canvas_by_fraction(0, move);
 		},
 		async selectTool(toolName: string) {
-			const { select_tool } = await wasm;
-			select_tool(toolName);
+			(await wasm).select_tool(toolName);
 		},
 		async swapWorkingColors() {
-			const { swap_colors } = await wasm;
-			swap_colors();
+			(await wasm).swap_colors();
 		},
 		async resetWorkingColors() {
-			const { reset_colors } = await wasm;
-			reset_colors();
-		},
-		download(filename: string, fileData: string) {
-			const svgBlob = new Blob([fileData], { type: "image/svg+xml;charset=utf-8" });
-			const svgUrl = URL.createObjectURL(svgBlob);
-			const element = document.createElement("a");
-
-			element.href = svgUrl;
-			element.setAttribute("download", filename);
-			element.style.display = "none";
-
-			element.click();
+			(await wasm).reset_colors();
 		},
 	},
 	mounted() {
@@ -331,20 +323,28 @@ export default defineComponent({
 			const updateData = responseData as UpdateCanvas;
 			if (updateData) this.viewportSvg = updateData.document;
 		});
-		registerResponseHandler(ResponseType.ExportDocument, (responseData: Response) => {
-			const updateData = responseData as ExportDocument;
-			if (updateData) this.download("canvas.svg", updateData.document);
+
+		registerResponseHandler(ResponseType.UpdateScrollbars, (responseData: Response) => {
+			const updateData = responseData as UpdateScrollbars;
+			if (updateData) {
+				this.scrollbarPos = updateData.position;
+				this.scrollbarSize = updateData.size;
+				this.scrollbarMultiplier = updateData.multiplier;
+			}
 		});
+
 		registerResponseHandler(ResponseType.SetActiveTool, (responseData: Response) => {
 			const toolData = responseData as SetActiveTool;
 			if (toolData) this.activeTool = toolData.tool_name;
 		});
+
 		registerResponseHandler(ResponseType.SetCanvasZoom, (responseData: Response) => {
 			const updateData = responseData as SetCanvasZoom;
 			if (updateData) {
 				this.documentZoom = updateData.new_zoom * 100;
 			}
 		});
+
 		registerResponseHandler(ResponseType.SetCanvasRotation, (responseData: Response) => {
 			const updateData = responseData as SetCanvasRotation;
 			if (updateData) {
@@ -353,12 +353,8 @@ export default defineComponent({
 			}
 		});
 
-		// TODO: Move event listeners to `main.ts`
-		const canvas = this.$refs.canvas as HTMLDivElement;
-		canvas.addEventListener("wheel", this.canvasMouseScroll, { passive: false });
-
-		window.addEventListener("resize", () => this.viewportResize());
-		window.addEventListener("DOMContentLoaded", () => this.viewportResize());
+		window.addEventListener("resize", this.viewportResize);
+		window.addEventListener("DOMContentLoaded", this.viewportResize);
 	},
 	data() {
 		return {
@@ -375,6 +371,9 @@ export default defineComponent({
 			overlaysEnabled: true,
 			documentRotation: 0,
 			documentZoom: 100,
+			scrollbarPos: { x: 0.5, y: 0.5 },
+			scrollbarSize: { x: 0.5, y: 0.5 },
+			scrollbarMultiplier: { x: 0, y: 0 },
 			IncrementBehavior,
 			IncrementDirection,
 			MenuDirection,

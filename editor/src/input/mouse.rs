@@ -1,8 +1,32 @@
 use bitflags::bitflags;
 use glam::DVec2;
 
-// origin is top left
-pub type ViewportPosition = glam::UVec2;
+// Origin is top left
+pub type ViewportPosition = DVec2;
+pub type EditorPosition = DVec2;
+
+#[derive(PartialEq, Clone, Debug, Default)]
+pub struct ViewportBounds {
+	pub top_left: DVec2,
+	pub bottom_right: DVec2,
+}
+
+impl ViewportBounds {
+	pub fn from_slice(slice: &[f64]) -> Self {
+		Self {
+			top_left: DVec2::from_slice(&slice[0..2]),
+			bottom_right: DVec2::from_slice(&slice[2..4]),
+		}
+	}
+
+	pub fn size(&self) -> DVec2 {
+		self.bottom_right - self.top_left
+	}
+
+	pub fn center(&self) -> DVec2 {
+		self.bottom_right.lerp(self.top_left, 0.5)
+	}
+}
 
 #[derive(Debug, Copy, Clone, Default, Eq, PartialEq, Hash)]
 pub struct ScrollDelta {
@@ -23,7 +47,7 @@ impl ScrollDelta {
 	}
 }
 
-#[derive(Debug, Copy, Clone, Default, Eq, PartialEq, Hash)]
+#[derive(Debug, Copy, Clone, Default, PartialEq)]
 pub struct MouseState {
 	pub position: ViewportPosition,
 	pub mouse_keys: MouseKeys,
@@ -31,18 +55,19 @@ pub struct MouseState {
 }
 
 impl MouseState {
-	pub fn new() -> MouseState {
+	pub fn new() -> Self {
 		Self::default()
 	}
 
-	pub fn from_pos(x: u32, y: u32) -> MouseState {
-		MouseState {
+	pub fn from_position(x: f64, y: f64) -> Self {
+		Self {
 			position: (x, y).into(),
 			mouse_keys: MouseKeys::default(),
 			scroll_delta: ScrollDelta::default(),
 		}
 	}
-	pub fn from_u8_pos(keys: u8, position: ViewportPosition) -> Self {
+
+	pub fn from_keys_and_editor_position(keys: u8, position: ViewportPosition) -> Self {
 		let mouse_keys = MouseKeys::from_bits(keys).expect("invalid modifier keys");
 		Self {
 			position,
@@ -51,6 +76,45 @@ impl MouseState {
 		}
 	}
 }
+
+#[derive(Debug, Copy, Clone, Default, PartialEq)]
+pub struct EditorMouseState {
+	pub editor_position: EditorPosition,
+	pub mouse_keys: MouseKeys,
+	pub scroll_delta: ScrollDelta,
+}
+
+impl EditorMouseState {
+	pub fn new() -> Self {
+		Self::default()
+	}
+
+	pub fn from_editor_position(x: f64, y: f64) -> Self {
+		Self {
+			editor_position: (x, y).into(),
+			mouse_keys: MouseKeys::default(),
+			scroll_delta: ScrollDelta::default(),
+		}
+	}
+
+	pub fn from_keys_and_editor_position(keys: u8, editor_position: EditorPosition) -> Self {
+		let mouse_keys = MouseKeys::from_bits(keys).expect("invalid modifier keys");
+		Self {
+			editor_position,
+			mouse_keys,
+			scroll_delta: ScrollDelta::default(),
+		}
+	}
+
+	pub fn to_mouse_state(&self, active_viewport_bounds: &ViewportBounds) -> MouseState {
+		MouseState {
+			position: self.editor_position - active_viewport_bounds.top_left,
+			mouse_keys: self.mouse_keys,
+			scroll_delta: self.scroll_delta,
+		}
+	}
+}
+
 bitflags! {
 	#[derive(Default)]
 	#[repr(transparent)]
