@@ -8,7 +8,7 @@
 					v-for="(tabLabel, tabIndex) in tabLabels"
 					:key="tabIndex"
 					@click.middle="closeDocumentWithConfirmation(tabIndex)"
-					@click="selectDocument(tabIndex)"
+					@click="panelType === 'Document' && selectDocument(tabIndex)"
 				>
 					<span>{{ tabLabel }}</span>
 					<IconButton :action="() => closeDocumentWithConfirmation(tabIndex)" :icon="'CloseX'" :size="16" v-if="tabCloseButtons" />
