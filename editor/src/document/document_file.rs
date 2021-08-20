@@ -387,7 +387,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				let all_layer_paths = self
 					.layer_data
 					.keys()
-					.filter(|path| !path.is_empty() && !self.document.layer(path).unwrap().overlay)
+					.filter(|path| !path.is_empty() && !self.document.layer(path).map(|layer| layer.overlay).unwrap_or(false))
 					.cloned()
 					.collect::<Vec<_>>();
 				responses.push_back(SetSelectedLayers(all_layer_paths).into());
