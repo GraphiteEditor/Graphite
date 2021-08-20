@@ -1,4 +1,5 @@
 use crate::message_prelude::*;
+use serde::{Deserialize, Serialize};
 
 pub const NUMBER_OF_KEYS: usize = Key::NumKeys as usize;
 // Edit this to specify the storage type used
@@ -12,7 +13,7 @@ const KEY_MASK_STORAGE_LENGTH: usize = (NUMBER_OF_KEYS + STORAGE_SIZE_BITS - 1) 
 pub type KeyStates = BitVector<KEY_MASK_STORAGE_LENGTH>;
 
 #[impl_message(Message, InputMapperMessage, KeyDown)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Key {
 	UnknownKey,
 	// MouseKeys

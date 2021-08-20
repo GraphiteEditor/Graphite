@@ -109,7 +109,7 @@ pub fn close_all_documents_with_confirmation() -> Result<(), JsValue> {
 #[wasm_bindgen]
 pub fn bounds_of_viewports(bounds_of_viewports: &[f64]) -> Result<(), JsValue> {
 	let chunked: Vec<_> = bounds_of_viewports.chunks(4).map(ViewportBounds::from_slice).collect();
-	let ev = InputPreprocessorMessage::BoundsOfViewports((chunked).into());
+	let ev = InputPreprocessorMessage::BoundsOfViewports(chunked);
 	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(ev)).map_err(convert_error)
 }
 
@@ -324,7 +324,7 @@ pub fn translate_canvas_by_fraction(delta_x: f64, delta_y: f64) -> Result<(), Js
 pub fn select_layers(paths: Vec<LayerId>) -> Result<(), JsValue> {
 	let paths = paths.split(|id| *id == LayerId::MAX).map(|path| path.to_vec()).collect();
 	EDITOR_STATE
-		.with(|editor| editor.borrow_mut().handle_message(DocumentMessage::SelectLayers(paths)))
+		.with(|editor| editor.borrow_mut().handle_message(DocumentMessage::SetSelectedLayers(paths)))
 		.map_err(convert_error)
 }
 
