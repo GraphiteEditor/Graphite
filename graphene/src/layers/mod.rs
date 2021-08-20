@@ -130,7 +130,7 @@ impl Layer {
 	}
 
 	pub fn intersects_quad(&self, quad: Quad, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>) {
-		if !self.visible {
+		if !self.visible || self.overlay {
 			return;
 		}
 		let transformed_quad = self.transform.inverse() * quad;

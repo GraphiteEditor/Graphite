@@ -126,9 +126,16 @@ impl DocumentMessageHandler {
 		self.layer_data.values_mut().for_each(|layer_data| layer_data.selected = false);
 	}
 	fn select_layer(&mut self, path: &[LayerId]) -> Option<Message> {
+		if self.document.layer(path).ok()?.overlay {
+			return None;
+		}
 		self.layer_data(path).selected = true;
+		let data = self.layer_panel_entry(path.to_vec()).ok()?;
 		// TODO: Add deduplication
-		(!path.is_empty()).then(|| self.handle_folder_changed(path[..path.len() - 1].to_vec())).flatten()
+		(!path.is_empty()).then(||FrontendMessage::UpdateLayer {
+			path: path.to_vec(),
+			data,
+		}.into())
 	}
 	pub fn selected_layers_bounding_box(&self) -> Option<[DVec2; 2]> {
 		let paths = self.selected_layers().map(|vec| &vec[..]);
@@ -360,7 +367,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				responses.push_back(SelectMessage::UpdateSelectionBoundingBox.into());
 			}
 			SelectAllLayers => {
-				let all_layer_paths = self.layer_data.keys().filter(|path| !path.is_empty()).cloned().collect::<Vec<_>>();
+				let all_layer_paths = self.layer_data.keys().filter(|path| !path.is_empty() && !self.document.layer(path).unwrap().overlay ).cloned().collect::<Vec<_>>();
 				responses.push_back(SelectLayers(all_layer_paths).into());
 			}
 			DeselectAllLayers => {
@@ -495,6 +502,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 							.into(),
 						);
 					}
+					responses.push_back(SelectMessage::UpdateSelectionBoundingBox.into());
 				}
 			}
 			AlignSelectedLayers(axis, aggregate) => {
@@ -527,6 +535,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 							.into(),
 						);
 					}
+					responses.push_back(SelectMessage::UpdateSelectionBoundingBox.into());
 				}
 			}
 			RenameLayer(path, name) => responses.push_back(DocumentOperation::RenameLayer { path, name }.into()),

@@ -109,7 +109,7 @@ pub fn close_all_documents_with_confirmation() -> Result<(), JsValue> {
 #[wasm_bindgen]
 pub fn bounds_of_viewports(bounds_of_viewports: &[f64]) -> Result<(), JsValue> {
 	let chunked: Vec<_> = bounds_of_viewports.chunks(4).map(ViewportBounds::from_slice).collect();
-	let ev = InputPreprocessorMessage::BoundsOfViewports((chunked).into());
+	let ev = InputPreprocessorMessage::BoundsOfViewports(chunked);
 	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(ev)).map_err(convert_error)
 }
 
