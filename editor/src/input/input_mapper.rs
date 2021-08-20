@@ -131,7 +131,7 @@ impl Default for Mapping {
 			entry! {action=MovementMessage::DisableSnapping, key_up=KeyShift},
 			// Select
 			entry! {action=SelectMessage::MouseMove, message=InputMapperMessage::PointerMove},
-			entry! {action=SelectMessage::DragStart, key_down=Lmb},
+			entry! {action=SelectMessage::DragStart{add_to_selection: KeyShift}, key_down=Lmb},
 			entry! {action=SelectMessage::DragStop, key_up=Lmb},
 			entry! {action=SelectMessage::Abort, key_down=Rmb},
 			entry! {action=SelectMessage::Abort, key_down=KeyEscape},
