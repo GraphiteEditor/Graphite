@@ -28,7 +28,7 @@ impl Default for Document {
 }
 
 impl Document {
-	pub fn with_content(serialized_content: &String) -> Result<Self, DocumentError> {
+	pub fn with_content(serialized_content: &str) -> Result<Self, DocumentError> {
 		serde_json::from_str(serialized_content).map_err(|e| DocumentError::InvalidFile(e.to_string()))
 	}
 
@@ -285,8 +285,10 @@ impl Document {
 			Operation::AddBoundingBox { path, transform, style } => {
 				let mut rect = Shape::rectangle(*style);
 				rect.render_index = -1;
-				self.set_layer(path, Layer::new(LayerDataType::Shape(rect), *transform), -1)?;
-				Some(vec![DocumentChanged])
+				let mut layer = Layer::new(LayerDataType::Shape(rect), *transform);
+				layer.overlay = true;
+				self.set_layer(path, layer, -1)?;
+				Some(vec![DocumentChanged, CreatedLayer { path: path.clone() }])
 			}
 			Operation::AddShape {
 				path,
