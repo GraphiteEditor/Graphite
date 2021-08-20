@@ -29,7 +29,7 @@ impl Dispatcher {
 				| Message::Frontend(FrontendMessage::UpdateCanvas { .. })
 				| Message::Frontend(FrontendMessage::SetCanvasZoom { .. })
 				| Message::Frontend(FrontendMessage::SetCanvasRotation { .. })
-				| Message::Documents(DocumentsMessage::Document(DocumentMessage::DispatchOperation { .. }))
+				//| Message::Documents(DocumentsMessage::Document(DocumentMessage::DispatchOperation { .. }))
 		) || MessageDiscriminant::from(&message).local_name().ends_with("MouseMove"))
 		{
 			log::trace!("Message: {:?}", message);

@@ -123,7 +123,8 @@ impl Fsm for SelectToolFsmState {
 		if let ToolMessage::Select(event) = event {
 			match (self, event) {
 				(_, UpdateSelectionBoundingBox) => {
-					let response = match (document.selected_layers_bounding_box(), data.bounding_box_id.clone()) {
+					let response = match (document.selected_layers_bounding_box(), data.bounding_box_id.take()) {
+						(None, Some(path)) => Operation::DeleteLayer { path }.into(),
 						(Some([pos1, pos2]), path) => {
 							let path = path.unwrap_or_else(|| add_boundnig_box(responses));
 							data.bounding_box_id = Some(path.clone());
@@ -151,7 +152,6 @@ impl Fsm for SelectToolFsmState {
 					// If the user clicks on a layer that is in their current selection, go into the dragging mode.
 					// Otherwise enter the box select mode
 					if selected.iter().any(|path| intersection.contains(path)) {
-						responses.push_back(SelectMessage::UpdateSelectionBoundingBox.into());
 						data.layers_dragging = selected;
 						Dragging
 					} else {
@@ -198,6 +198,7 @@ impl Fsm for SelectToolFsmState {
 						}
 						.into(),
 					);
+                    data.drag_box_id = None;
 					Ready
 				}
 				(_, Abort) => {

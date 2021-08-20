@@ -33,7 +33,7 @@ fn split_path(path: &[LayerId]) -> Result<(&[LayerId], LayerId), DocumentError> 
 }
 
 impl Document {
-	pub fn with_content(serialized_content: &String) -> Result<Self, DocumentError> {
+	pub fn with_content(serialized_content: &str) -> Result<Self, DocumentError> {
 		serde_json::from_str(serialized_content).map_err(|e| DocumentError::InvalidFile(e.to_string()))
 	}
 
