@@ -129,6 +129,9 @@ impl Fsm for SelectToolFsmState {
 						(Some([pos1, pos2]), path) => {
 							let path = path.unwrap_or_else(|| add_boundnig_box(responses));
 							data.bounding_box_id = Some(path.clone());
+							let half_pixel_offset = DVec2::splat(0.5);
+							let pos1 = pos1 + half_pixel_offset;
+							let pos2 = pos2 - half_pixel_offset;
 							let transform = transform_from_box(pos1, pos2);
 							Operation::SetLayerTransformInViewport { path, transform }.into()
 						}
@@ -179,7 +182,7 @@ impl Fsm for SelectToolFsmState {
 				}
 				(DrawingBox, MouseMove) => {
 					data.drag_current = input.mouse.position;
-					let half_pixel_offset = DVec2::new(0.5, 0.5);
+					let half_pixel_offset = DVec2::splat(0.5);
 					let start = data.drag_start + half_pixel_offset;
 					let size = data.drag_current - start + half_pixel_offset;
 
