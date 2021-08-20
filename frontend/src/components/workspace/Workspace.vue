@@ -6,16 +6,16 @@
 		<LayoutCol class="workspace-grid-resize-gutter"></LayoutCol>
 		<LayoutCol class="workspace-grid-subdivision" style="flex-grow: 319">
 			<LayoutRow class="workspace-grid-subdivision" style="flex-grow: 402">
-				<Panel :panelType="'Properties'" :tabLabels="['Properties', 'Spreadsheet', 'Palettes']" :tabActiveIndex="0" />
+				<Panel :panelType="'Properties'" :tabLabels="['Properties']" :tabActiveIndex="0" />
 			</LayoutRow>
 			<LayoutRow class="workspace-grid-resize-gutter"></LayoutRow>
 			<LayoutRow class="workspace-grid-subdivision" style="flex-grow: 590">
 				<Panel :panelType="'LayerTree'" :tabLabels="['Layer Tree']" :tabActiveIndex="0" />
 			</LayoutRow>
-			<LayoutRow class="workspace-grid-resize-gutter"></LayoutRow>
+			<!-- <LayoutRow class="workspace-grid-resize-gutter"></LayoutRow>
 			<LayoutRow class="workspace-grid-subdivision folded">
 				<Panel :panelType="'Minimap'" :tabLabels="['Minimap', 'Asset Manager']" :tabActiveIndex="0" />
-			</LayoutRow>
+			</LayoutRow> -->
 		</LayoutCol>
 	</LayoutRow>
 	<DialogModal v-if="dialog.visible" />
