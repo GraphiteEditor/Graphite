@@ -354,7 +354,10 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			}
 			ToggleLayerExpansion(path) => {
 				self.layer_data(&path).expanded ^= true;
-				responses.extend(self.handle_folder_changed(path));
+				match self.layer_data(&path).expanded {
+					true => responses.extend(self.handle_folder_changed(path)),
+					false => responses.push_back(FrontendMessage::CollapseFolder { path: path.into() }.into()),
+				}
 			}
 			SelectionChanged => responses.push_back(SelectMessage::UpdateSelectionBoundingBox.into()),
 			DeleteSelectedLayers => {
@@ -473,7 +476,10 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					1 => selected_layers.last(),
 					_ => unreachable!(),
 				} {
-                    let all_layer_paths:Vec<_> = all_layer_paths.iter().filter(|layer|layer.starts_with(&pivot[0..pivot.len()-1]) && pivot.len() == layer.len()).collect();
+					let all_layer_paths: Vec<_> = all_layer_paths
+						.iter()
+						.filter(|layer| layer.starts_with(&pivot[0..pivot.len() - 1]) && pivot.len() == layer.len())
+						.collect();
 					if let Some(pos) = all_layer_paths.iter().position(|path| *path == pivot) {
 						let max = all_layer_paths.len() as i64 - 1;
 						let insert_pos = (pos as i64 + relative_position as i64).clamp(0, max) as usize;
