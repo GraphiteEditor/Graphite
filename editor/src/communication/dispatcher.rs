@@ -30,7 +30,6 @@ impl Dispatcher {
 				| Message::Frontend(FrontendMessage::UpdateScrollbars { .. })
 				| Message::Frontend(FrontendMessage::SetCanvasZoom { .. })
 				| Message::Frontend(FrontendMessage::SetCanvasRotation { .. })
-				//| Message::Documents(DocumentsMessage::Document(DocumentMessage::DispatchOperation { .. }))
 		) || MessageDiscriminant::from(&message).local_name().ends_with("MouseMove"))
 		{
 			log::trace!("Message: {:?}", message);
@@ -152,7 +151,7 @@ mod test {
 		let document_before_copy = editor.dispatcher.documents_message_handler.active_document().document.clone();
 		let shape_id = document_before_copy.root.as_folder().unwrap().layer_ids[1];
 
-		editor.handle_message(DocumentMessage::SelectLayers(vec![vec![shape_id]])).unwrap();
+		editor.handle_message(DocumentMessage::SetSelectedLayers(vec![vec![shape_id]])).unwrap();
 		editor.handle_message(DocumentsMessage::CopySelectedLayers).unwrap();
 		editor.handle_message(DocumentsMessage::PasteLayers { path: vec![], insert_index: -1 }).unwrap();
 
@@ -212,7 +211,7 @@ mod test {
 			})
 			.unwrap();
 
-		editor.handle_message(DocumentMessage::SelectLayers(vec![vec![folder_id]])).unwrap();
+		editor.handle_message(DocumentMessage::SetSelectedLayers(vec![vec![folder_id]])).unwrap();
 
 		let document_before_copy = editor.dispatcher.documents_message_handler.active_document().document.clone();
 
@@ -276,7 +275,7 @@ mod test {
 		let rect_id = document_before_copy.root.as_folder().unwrap().layer_ids[RECT_INDEX];
 		let ellipse_id = document_before_copy.root.as_folder().unwrap().layer_ids[ELLIPSE_INDEX];
 
-		editor.handle_message(DocumentMessage::SelectLayers(vec![vec![rect_id], vec![ellipse_id]])).unwrap();
+		editor.handle_message(DocumentMessage::SetSelectedLayers(vec![vec![rect_id], vec![ellipse_id]])).unwrap();
 		editor.handle_message(DocumentsMessage::CopySelectedLayers).unwrap();
 		editor.handle_message(DocumentMessage::DeleteSelectedLayers).unwrap();
 		editor.draw_rect(0., 800., 12., 200.);
@@ -310,7 +309,7 @@ mod test {
 
 		let verify_order = |handler: &mut DocumentMessageHandler| (handler.all_layers_sorted(), handler.non_selected_layers_sorted(), handler.selected_layers_sorted());
 
-		editor.handle_message(DocumentMessage::SelectLayers(vec![vec![0], vec![2]])).unwrap();
+		editor.handle_message(DocumentMessage::SetSelectedLayers(vec![vec![0], vec![2]])).unwrap();
 
 		editor.handle_message(DocumentMessage::ReorderSelectedLayers(1)).unwrap();
 		let (all, non_selected, selected) = verify_order(&mut editor.dispatcher.documents_message_handler.active_document_mut());

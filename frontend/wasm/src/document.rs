@@ -324,7 +324,7 @@ pub fn translate_canvas_by_fraction(delta_x: f64, delta_y: f64) -> Result<(), Js
 pub fn select_layers(paths: Vec<LayerId>) -> Result<(), JsValue> {
 	let paths = paths.split(|id| *id == LayerId::MAX).map(|path| path.to_vec()).collect();
 	EDITOR_STATE
-		.with(|editor| editor.borrow_mut().handle_message(DocumentMessage::SelectLayers(paths)))
+		.with(|editor| editor.borrow_mut().handle_message(DocumentMessage::SetSelectedLayers(paths)))
 		.map_err(convert_error)
 }
 

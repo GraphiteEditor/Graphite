@@ -66,7 +66,8 @@ pub enum DocumentMessage {
 	#[child]
 	Movement(MovementMessage),
 	DispatchOperation(Box<DocumentOperation>),
-	SelectLayers(Vec<Vec<LayerId>>),
+	SetSelectedLayers(Vec<Vec<LayerId>>),
+	AddSelectedLayers(Vec<Vec<LayerId>>),
 	SelectAllLayers,
 	SelectionChanged,
 	DeselectAllLayers,
@@ -132,10 +133,7 @@ impl DocumentMessageHandler {
 		self.layer_data(path).selected = true;
 		let data = self.layer_panel_entry(path.to_vec()).ok()?;
 		// TODO: Add deduplication
-		(!path.is_empty()).then(||FrontendMessage::UpdateLayer {
-			path: path.to_vec(),
-			data,
-		}.into())
+		(!path.is_empty()).then(|| FrontendMessage::UpdateLayer { path: path.to_vec(), data }.into())
 	}
 	pub fn selected_layers_bounding_box(&self) -> Option<[DVec2; 2]> {
 		let paths = self.selected_layers().map(|vec| &vec[..]);
@@ -357,8 +355,11 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					responses.push_back(DocumentOperation::DuplicateLayer { path }.into())
 				}
 			}
-			SelectLayers(paths) => {
+			SetSelectedLayers(paths) => {
 				self.clear_selection();
+				responses.push_front(AddSelectedLayers(paths).into());
+			}
+			AddSelectedLayers(paths) => {
 				for path in paths {
 					responses.extend(self.select_layer(&path));
 				}
@@ -367,11 +368,16 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				responses.push_back(SelectMessage::UpdateSelectionBoundingBox.into());
 			}
 			SelectAllLayers => {
-				let all_layer_paths = self.layer_data.keys().filter(|path| !path.is_empty() && !self.document.layer(path).unwrap().overlay ).cloned().collect::<Vec<_>>();
-				responses.push_back(SelectLayers(all_layer_paths).into());
+				let all_layer_paths = self
+					.layer_data
+					.keys()
+					.filter(|path| !path.is_empty() && !self.document.layer(path).unwrap().overlay)
+					.cloned()
+					.collect::<Vec<_>>();
+				responses.push_back(SetSelectedLayers(all_layer_paths).into());
 			}
 			DeselectAllLayers => {
-				responses.push_back(SelectLayers(vec![]).into());
+				responses.push_back(SetSelectedLayers(vec![]).into());
 			}
 			Undo => {
 				// this is a temporary fix and will be addressed by #123
@@ -400,7 +406,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 									}
 									.into(),
 								),
-								DocumentResponse::CreatedLayer { path } => (!self.document.layer(&path).unwrap().overlay).then(|| SelectLayers(vec![path]).into()),
+								DocumentResponse::CreatedLayer { path } => (!self.document.layer(&path).unwrap().overlay).then(|| SetSelectedLayers(vec![path]).into()),
 								DocumentResponse::DocumentChanged => unreachable!(),
 							})
 							.flatten(),
