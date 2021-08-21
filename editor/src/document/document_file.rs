@@ -42,7 +42,8 @@ pub enum AlignAggregate {
 #[derive(Clone, Debug)]
 pub struct DocumentMessageHandler {
 	pub document: InternalDocument,
-	pub document_backup: Option<InternalDocument>,
+	pub document_history: Vec<InternalDocument>,
+	pub document_redo_history: Vec<InternalDocument>,
 	pub name: String,
 	pub layer_data: HashMap<Vec<LayerId>, LayerData>,
 	movement_handler: MovementMessageHandler,
@@ -52,7 +53,8 @@ impl Default for DocumentMessageHandler {
 	fn default() -> Self {
 		Self {
 			document: InternalDocument::default(),
-			document_backup: None,
+			document_history: Vec::new(),
+			document_redo_history: Vec::new(),
 			name: String::from("Untitled Document"),
 			layer_data: vec![(vec![], LayerData::new(true))].into_iter().collect(),
 			movement_handler: MovementMessageHandler::default(),
@@ -90,6 +92,7 @@ pub enum DocumentMessage {
 	SaveDocument,
 	RenderDocument,
 	Undo,
+	Redo,
 	NudgeSelectedLayers(f64, f64),
 	AlignSelectedLayers(AlignAxis, AlignAggregate),
 	MoveSelectedLayersTo {
@@ -195,7 +198,8 @@ impl DocumentMessageHandler {
 	pub fn with_name(name: String) -> Self {
 		Self {
 			document: InternalDocument::default(),
-			document_backup: None,
+			document_history: Vec::new(),
+			document_redo_history: Vec::new(),
 			name,
 			layer_data: vec![(vec![], LayerData::new(true))].into_iter().collect(),
 			movement_handler: MovementMessageHandler::default(),
@@ -219,18 +223,31 @@ impl DocumentMessageHandler {
 	}
 
 	pub fn backup(&mut self) {
-		self.document_backup = Some(self.document.clone())
+		self.document_redo_history.clear();
+		self.document_history.push(self.document.clone())
 	}
 
 	pub fn rollback(&mut self) -> Result<(), EditorError> {
 		self.backup();
-		self.reset()
+		self.undo()
 	}
 
-	pub fn reset(&mut self) -> Result<(), EditorError> {
-		match self.document_backup.take() {
+	pub fn undo(&mut self) -> Result<(), EditorError> {
+		match self.document_history.pop() {
 			Some(backup) => {
-				self.document = backup;
+				let document = std::mem::replace(&mut self.document, backup);
+				self.document_redo_history.push(document);
+				Ok(())
+			}
+			None => Err(EditorError::NoTransactionInProgress),
+		}
+	}
+
+	pub fn redo(&mut self) -> Result<(), EditorError> {
+		match self.document_redo_history.pop() {
+			Some(backup) => {
+				let document = std::mem::replace(&mut self.document, backup);
+				self.document_history.push(document);
 				Ok(())
 			}
 			None => Err(EditorError::NoTransactionInProgress),
@@ -284,10 +301,10 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				responses.extend([DocumentMessage::RenderDocument.into(), self.handle_folder_changed(vec![]).unwrap()]);
 			}
 			AbortTransaction => {
-				self.reset().unwrap_or_else(|e| log::warn!("{}", e));
+				self.undo().unwrap_or_else(|e| log::warn!("{}", e));
 				responses.extend([DocumentMessage::RenderDocument.into(), self.handle_folder_changed(vec![]).unwrap()]);
 			}
-			CommitTransaction => self.document_backup = None,
+			CommitTransaction => (),
 			ExportDocument => {
 				let bbox = self.document.visible_layers_bounding_box().unwrap_or([DVec2::ZERO, ipp.viewport_bounds.size()]);
 				let size = bbox[1] - bbox[0];
@@ -380,10 +397,16 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				responses.push_back(SetSelectedLayers(vec![]).into());
 			}
 			Undo => {
-				// this is a temporary fix and will be addressed by #123
-				if let Some(id) = self.document.root.as_folder().unwrap().list_layers().last() {
-					responses.push_back(DocumentOperation::DeleteLayer { path: vec![*id] }.into())
-				}
+				self.undo().unwrap_or_else(|e| log::warn!("{}", e));
+				responses.push_back(SelectMessage::UpdateSelectionBoundingBox.into());
+				responses.push_back(RenderDocument.into());
+				responses.extend(self.handle_folder_changed(vec![]));
+			}
+			Redo => {
+				self.redo().unwrap_or_else(|e| log::warn!("{}", e));
+				responses.push_back(SelectMessage::UpdateSelectionBoundingBox.into());
+				responses.push_back(RenderDocument.into());
+				responses.extend(self.handle_folder_changed(vec![]));
 			}
 			FolderChanged(path) => responses.extend(self.handle_folder_changed(path)),
 			DispatchOperation(op) => match self.document.handle_operation(&op) {
@@ -550,6 +573,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 	fn actions(&self) -> ActionList {
 		let mut common = actions!(DocumentMessageDiscriminant;
 			Undo,
+			Redo,
 			SelectAllLayers,
 			DeselectAllLayers,
 			RenderDocument,
