@@ -108,7 +108,7 @@ const menuEntries: MenuListEntries = [
 		children: [
 			[
 				{ label: "Undo", shortcut: ["Ctrl", "Z"], action: async () => (await wasm).undo() },
-				{ label: "Redo", shortcut: ["Ctrl", "⇧", "Z"] },
+				{ label: "Redo", shortcut: ["Ctrl", "⇧", "Z"], action: async () => (await wasm).redo() },
 			],
 			[
 				{ label: "Cut", shortcut: ["Ctrl", "X"] },

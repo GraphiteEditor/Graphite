@@ -342,11 +342,13 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				)
 			}
 			SetBlendModeForSelectedLayers(blend_mode) => {
+				self.backup();
 				for path in self.layer_data.iter().filter_map(|(path, data)| data.selected.then(|| path.clone())) {
 					responses.push_back(DocumentOperation::SetLayerBlendMode { path, blend_mode }.into());
 				}
 			}
 			SetOpacityForSelectedLayers(opacity) => {
+				self.backup();
 				let opacity = opacity.clamp(0., 1.);
 
 				for path in self.selected_layers().cloned() {
@@ -362,12 +364,14 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			}
 			SelectionChanged => responses.push_back(SelectMessage::UpdateSelectionBoundingBox.into()),
 			DeleteSelectedLayers => {
+				self.backup();
 				for path in self.selected_layers().cloned() {
 					responses.push_back(DocumentOperation::DeleteLayer { path }.into())
 				}
 				responses.push_back(SelectMessage::UpdateSelectionBoundingBox.into());
 			}
 			DuplicateSelectedLayers => {
+				self.backup();
 				for path in self.selected_layers_sorted() {
 					responses.push_back(DocumentOperation::DuplicateLayer { path }.into())
 				}
@@ -484,6 +488,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				responses.push_back(DocumentsMessage::PasteLayers { path, insert_index }.into());
 			}
 			ReorderSelectedLayers(relative_position) => {
+				self.backup();
 				let all_layer_paths = self.all_layers_sorted();
 				let selected_layers = self.selected_layers_sorted();
 				if let Some(pivot) = match relative_position.signum() {
@@ -514,6 +519,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				}
 			}
 			FlipSelectedLayers(axis) => {
+				self.backup();
 				let scale = match axis {
 					FlipAxis::X => DVec2::new(-1., 1.),
 					FlipAxis::Y => DVec2::new(1., -1.),
@@ -535,6 +541,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				}
 			}
 			AlignSelectedLayers(axis, aggregate) => {
+				self.backup();
 				let (paths, boxes): (Vec<_>, Vec<_>) = self.selected_layers().filter_map(|path| self.document.viewport_bounding_box(path).ok()?.map(|b| (path, b))).unzip();
 
 				let axis = match axis {
