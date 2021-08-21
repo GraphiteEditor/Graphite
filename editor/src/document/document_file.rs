@@ -333,9 +333,12 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				let id = generate_uuid();
 				responses.push_back(DocumentsMessage::CopySelectedLayers.into());
 				responses.push_back(DocumentMessage::DeleteSelectedLayers.into());
+				// TODO: add special case handling to create a sub folder if all selected layers
+				// come from the same folder
 				responses.push_back(DocumentOperation::CreateFolder { path: vec![id] }.into());
 				self.layerdata_mut(&[id]).expanded = true;
 				responses.push_back(DocumentsMessage::PasteLayers { path: vec![id], insert_index: -1 }.into());
+				responses.push_back(DocumentMessage::SetSelectedLayers(vec![vec![id]]).into());
 			}
 			SetBlendModeForSelectedLayers(blend_mode) => {
 				for path in self.layer_data.iter().filter_map(|(path, data)| data.selected.then(|| path.clone())) {
@@ -355,9 +358,10 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			ToggleLayerExpansion(path) => {
 				self.layer_data(&path).expanded ^= true;
 				match self.layer_data(&path).expanded {
-					true => responses.extend(self.handle_folder_changed(path)),
-					false => responses.push_back(FrontendMessage::CollapseFolder { path: path.into() }.into()),
+					true => responses.extend(self.handle_folder_changed(path.clone())),
+					false => responses.push_back(FrontendMessage::CollapseFolder { path: path.clone().into() }.into()),
 				}
+				responses.extend(self.layer_panel_entry(path.clone()).ok().map(|data| FrontendMessage::UpdateLayer { path: path.into(), data }.into()));
 			}
 			SelectionChanged => responses.push_back(SelectMessage::UpdateSelectionBoundingBox.into()),
 			DeleteSelectedLayers => {

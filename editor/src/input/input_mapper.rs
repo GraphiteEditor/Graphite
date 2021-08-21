@@ -192,12 +192,6 @@ impl Default for Mapping {
 			entry! {action=DocumentMessage::DeselectAllLayers, key_down=KeyA, modifiers=[KeyControl, KeyAlt]},
 			entry! {action=DocumentMessage::SelectAllLayers, key_down=KeyA, modifiers=[KeyControl]},
 			entry! {action=DocumentMessage::CreateFolder(vec![]), key_down=KeyN, modifiers=[KeyControl, KeyShift]},
-			entry! {action=DocumentMessage::DispatchOperation (Box::new(Operation::AddRect {
-				path: vec![0],
-				insert_index: -1,
-				transform: DAffine2::default().to_cols_array(),
-				style: style::PathStyle::default(),
-			})), key_down=KeyG},
 			entry! {action=DocumentMessage::DeleteSelectedLayers, key_down=KeyDelete},
 			entry! {action=DocumentMessage::DeleteSelectedLayers, key_down=KeyX},
 			entry! {action=DocumentMessage::DeleteSelectedLayers, key_down=KeyBackspace},
