@@ -78,7 +78,7 @@ impl EditorTestUtils for Editor {
 	}
 
 	fn select_tool(&mut self, typ: ToolType) {
-		self.handle_message(Message::Tool(ToolMessage::SelectTool(typ))).unwrap();
+		self.handle_message(Message::Tool(ToolMessage::ActivateTool(typ))).unwrap();
 	}
 
 	fn select_primary_color(&mut self, color: Color) {

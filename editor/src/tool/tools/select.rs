@@ -30,7 +30,7 @@ pub enum SelectMessage {
 	DragStop,
 	MouseMove,
 	Abort,
-	UpdateSelectionBoundingBox,
+	SelectedLayersChanged,
 
 	Align(AlignAxis, AlignAggregate),
 	FlipHorizontal,
@@ -70,7 +70,7 @@ struct SelectToolData {
 	drag_current: ViewportPosition,
 	layers_dragging: Vec<Vec<LayerId>>, // Paths and offsets
 	drag_box_id: Option<Vec<LayerId>>,
-	bounding_box_id: Option<Vec<LayerId>>,
+	bounding_box_path: Option<Vec<LayerId>>,
 }
 
 impl SelectToolData {
@@ -89,7 +89,7 @@ impl SelectToolData {
 	}
 }
 
-fn add_boundnig_box(responses: &mut VecDeque<Message>) -> Vec<LayerId> {
+fn add_bounding_box(responses: &mut VecDeque<Message>) -> Vec<LayerId> {
 	let path = vec![generate_uuid()];
 	responses.push_back(
 		Operation::AddBoundingBox {
@@ -123,12 +123,12 @@ impl Fsm for SelectToolFsmState {
 		use SelectToolFsmState::*;
 		if let ToolMessage::Select(event) = event {
 			match (self, event) {
-				(_, UpdateSelectionBoundingBox) => {
-					let response = match (document.selected_layers_bounding_box(), data.bounding_box_id.take()) {
+				(_, SelectedLayersChanged) => {
+					let response = match (document.selected_layers_bounding_box(), data.bounding_box_path.take()) {
 						(None, Some(path)) => Operation::DeleteLayer { path }.into(),
 						(Some([pos1, pos2]), path) => {
-							let path = path.unwrap_or_else(|| add_boundnig_box(responses));
-							data.bounding_box_id = Some(path.clone());
+							let path = path.unwrap_or_else(|| add_bounding_box(responses));
+							data.bounding_box_path = Some(path.clone());
 							let transform = transform_from_box(pos1, pos2);
 							Operation::SetLayerTransformInViewport { path, transform }.into()
 						}
@@ -159,7 +159,7 @@ impl Fsm for SelectToolFsmState {
 						if !input.keyboard.get(add_to_selection as usize) {
 							responses.push_back(DocumentMessage::DeselectAllLayers.into());
 						}
-						data.drag_box_id = Some(add_boundnig_box(responses));
+						data.drag_box_id = Some(add_bounding_box(responses));
 						DrawingBox
 					}
 				}
@@ -173,7 +173,7 @@ impl Fsm for SelectToolFsmState {
 							.into(),
 						);
 					}
-					responses.push_back(SelectMessage::UpdateSelectionBoundingBox.into());
+					responses.push_back(SelectMessage::SelectedLayersChanged.into());
 					data.drag_current = input.mouse.position;
 					Dragging
 				}
@@ -208,7 +208,7 @@ impl Fsm for SelectToolFsmState {
 				(_, Abort) => {
 					let mut delete = |path: &mut Option<Vec<LayerId>>| path.take().map(|path| responses.push_back(Operation::DeleteLayer { path }.into()));
 					delete(&mut data.drag_box_id);
-					delete(&mut data.bounding_box_id);
+					delete(&mut data.bounding_box_path);
 					Ready
 				}
 				(_, Align(axis, aggregate)) => {

@@ -11,7 +11,7 @@ use std::collections::VecDeque;
 #[impl_message(Message, Tool)]
 #[derive(PartialEq, Clone, Debug)]
 pub enum ToolMessage {
-	SelectTool(ToolType),
+	ActivateTool(ToolType),
 	SelectPrimaryColor(Color),
 	SelectSecondaryColor(Color),
 	SwapColors,
@@ -59,18 +59,9 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, &InputPreprocessor)> 
 				self.tool_state.document_tool_data.secondary_color = c;
 				update_working_colors(&self.tool_state.document_tool_data, responses);
 			}
-			SelectTool(tool) => {
+			ActivateTool(tool) => {
 				let old_tool = self.tool_state.tool_data.active_tool_type;
-				let reset = |tool| match tool {
-					ToolType::Ellipse => EllipseMessage::Abort.into(),
-					ToolType::Rectangle => RectangleMessage::Abort.into(),
-					ToolType::Shape => ShapeMessage::Abort.into(),
-					ToolType::Line => LineMessage::Abort.into(),
-					ToolType::Pen => PenMessage::Abort.into(),
-					ToolType::Select => SelectMessage::Abort.into(),
-					_ => ToolMessage::NoOp,
-				};
-				let (new, old) = (reset(tool), reset(old_tool));
+				let (new, old) = (reset_tool(tool), reset_tool(old_tool));
 				let mut send_to_tool = |tool_type, message: ToolMessage| {
 					if let Some(tool) = self.tool_state.tool_data.tools.get_mut(&tool_type) {
 						tool.process_action(message, (document, &self.tool_state.document_tool_data, input), responses);
@@ -78,8 +69,9 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, &InputPreprocessor)> 
 				};
 				send_to_tool(tool, new);
 				send_to_tool(old_tool, old);
+				// TODO: Refactor to avoid tool specific cases
 				if tool == ToolType::Select {
-					responses.push_back(SelectMessage::UpdateSelectionBoundingBox.into());
+					responses.push_back(SelectMessage::SelectedLayersChanged.into());
 				}
 				self.tool_state.tool_data.active_tool_type = tool;
 
@@ -110,9 +102,22 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, &InputPreprocessor)> 
 		}
 	}
 	fn actions(&self) -> ActionList {
-		let mut list = actions!(ToolMessageDiscriminant; ResetColors, SwapColors, SelectTool, SetToolOptions);
+		let mut list = actions!(ToolMessageDiscriminant; ResetColors, SwapColors, ActivateTool, SetToolOptions);
 		list.extend(self.tool_state.tool_data.active_tool().actions());
 		list
+	}
+}
+
+fn reset_tool(tool: ToolType) -> ToolMessage {
+	match tool {
+		ToolType::Select => SelectMessage::Abort.into(),
+		ToolType::Path => PathMessage::Abort.into(),
+		ToolType::Pen => PenMessage::Abort.into(),
+		ToolType::Line => LineMessage::Abort.into(),
+		ToolType::Rectangle => RectangleMessage::Abort.into(),
+		ToolType::Ellipse => EllipseMessage::Abort.into(),
+		ToolType::Shape => ShapeMessage::Abort.into(),
+		_ => ToolMessage::NoOp,
 	}
 }
 

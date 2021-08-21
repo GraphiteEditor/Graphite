@@ -18,7 +18,7 @@ fn convert_error(err: editor::EditorError) -> JsValue {
 #[wasm_bindgen]
 pub fn select_tool(tool: String) -> Result<(), JsValue> {
 	EDITOR_STATE.with(|editor| match translate_tool(&tool) {
-		Some(tool) => editor.borrow_mut().handle_message(ToolMessage::SelectTool(tool)).map_err(convert_error),
+		Some(tool) => editor.borrow_mut().handle_message(ToolMessage::ActivateTool(tool)).map_err(convert_error),
 		None => Err(Error::new(&format!("Couldn't select {} because it was not recognized as a valid tool", tool)).into()),
 	})
 }
