@@ -150,8 +150,8 @@ impl DocumentMessageHandler {
 
 		let p2v = |point: kurbo::Point| -> DVec2 { DVec2::from((point.x, point.y)) };
 
-		let points = shapes.map(|shape| {
-			shape.path.segments().map(|segment| -> Vec<DVec2> {
+		let points = shapes.flat_map(|shape| {
+			shape.path.segments().flat_map(|segment| -> Vec<DVec2> {
 				match segment {
 					PathSeg::Line(line) => vec![p2v(line.p0), p2v(line.p1)],
 					PathSeg::Quad(quad) => vec![p2v(quad.p0), p2v(quad.p1), p2v(quad.p2)],
@@ -160,7 +160,7 @@ impl DocumentMessageHandler {
 			})
 		});
 
-		points.flatten().flatten().collect::<Vec<DVec2>>()
+		points.collect::<Vec<DVec2>>()
 	}
 	pub fn layerdata(&self, path: &[LayerId]) -> &LayerData {
 		self.layer_data.get(path).expect("Layerdata does not exist")

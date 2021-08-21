@@ -72,18 +72,19 @@ impl Fsm for PathToolFsmState {
 		if let ToolMessage::Path(event) = event {
 			match (self, event) {
 				(_, SelectedLayersChanged) => {
-					let response = match data.vector_handle_markers.take() {
-						// Some(path) => Operation::DeleteLayer { path }.into(),
-						path => {
-							let path = path.unwrap_or_else(|| add_marker(responses));
-							data.vector_handle_markers = Some(path.clone());
+					let path = data.vector_handle_markers.clone().unwrap_or_else(|| add_marker(responses));
+					let marker_list = document.selected_layers_vector_handles();
+					if marker_list.len() >= 1 {
+						let first_marker = marker_list[0] * 1000.;
 
-							let transform = DAffine2::IDENTITY.to_cols_array();
-							Operation::SetLayerTransformInViewport { path, transform }.into()
-						}
-						_ => Message::NoOp,
-					};
-					responses.push_back(response);
+						data.vector_handle_markers = Some(path.clone());
+
+						let transform = DAffine2::from_translation(first_marker).to_cols_array();
+
+						let response = Operation::SetLayerTransformInViewport { path, transform }.into();
+						responses.push_back(response);
+					}
+
 					self
 				}
 				_ => self,
