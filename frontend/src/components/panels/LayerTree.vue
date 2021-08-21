@@ -378,6 +378,7 @@ export default defineComponent({
 			if (expandData) {
 				const responsePath = expandData.path;
 				const responseLayers = expandData.children as Array<LayerPanelEntry>;
+				// TODO: @Keavon Refactor this function
 				if (responseLayers.length === 0) return;
 
 				const mergeIntoExisting = (elements: Array<LayerPanelEntry>, layers: Array<LayerPanelEntry>) => {
