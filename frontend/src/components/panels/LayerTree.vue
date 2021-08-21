@@ -380,7 +380,7 @@ export default defineComponent({
 				const responseLayers = expandData.children as Array<LayerPanelEntry>;
 				if (responseLayers.length === 0) return;
 
-				const merge_into_existing = (elements: Array<LayerPanelEntry>, layers: Array<LayerPanelEntry>) => {
+				const mergeIntoExisting = (elements: Array<LayerPanelEntry>, layers: Array<LayerPanelEntry>) => {
 					let lastInsertion = layers.findIndex((layer: LayerPanelEntry) => {
 						const pathLengthsEqual = elements[0].path.length - 1 === layer.path.length;
 						return pathLengthsEqual && elements[0].path.slice(0, -1).every((layerId, i) => layerId === layer.path[i]);
@@ -399,7 +399,7 @@ export default defineComponent({
 						}
 					});
 				};
-				merge_into_existing(responseLayers, this.layers);
+				mergeIntoExisting(responseLayers, this.layers);
 				const newLayers: Array<LayerPanelEntry> = [];
 				this.layers.forEach((layer) => {
 					const index = responseLayers.findIndex((nlayer: LayerPanelEntry) => {
