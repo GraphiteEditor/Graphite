@@ -412,13 +412,13 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				responses.push_back(DeselectAllLayers.into());
 				responses.push_back(DocumentHistoryBackward.into());
 				responses.push_back(RenderDocument.into());
-				responses.extend(self.handle_folder_changed(vec![]));
+				responses.push_back(FolderChanged(vec![]).into());
 			}
 			Redo => {
 				responses.push_back(DeselectAllLayers.into());
 				responses.push_back(DocumentHistoryForward.into());
 				responses.push_back(RenderDocument.into());
-				responses.extend(self.handle_folder_changed(vec![]));
+				responses.push_back(FolderChanged(vec![]).into());
 			}
 			FolderChanged(path) => responses.extend(self.handle_folder_changed(path)),
 			DispatchOperation(op) => match self.document.handle_operation(&op) {
