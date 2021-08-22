@@ -19,6 +19,8 @@ use std::collections::VecDeque;
 
 use super::movement_handler::{MovementMessage, MovementMessageHandler};
 
+type DocumentSave = (InternalDocument, HashMap<Vec<LayerId>, LayerData>);
+
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize, Hash)]
 pub enum FlipAxis {
 	X,
@@ -42,8 +44,8 @@ pub enum AlignAggregate {
 #[derive(Clone, Debug)]
 pub struct DocumentMessageHandler {
 	pub document: InternalDocument,
-	pub document_history: Vec<InternalDocument>,
-	pub document_redo_history: Vec<InternalDocument>,
+	pub document_history: Vec<DocumentSave>,
+	pub document_redo_history: Vec<DocumentSave>,
 	pub name: String,
 	pub layer_data: HashMap<Vec<LayerId>, LayerData>,
 	movement_handler: MovementMessageHandler,
@@ -93,6 +95,8 @@ pub enum DocumentMessage {
 	RenderDocument,
 	Undo,
 	Redo,
+	DocumentHistoryBackward,
+	DocumentHistoryForward,
 	NudgeSelectedLayers(f64, f64),
 	AlignSelectedLayers(AlignAxis, AlignAggregate),
 	MoveSelectedLayersTo {
@@ -224,7 +228,7 @@ impl DocumentMessageHandler {
 
 	pub fn backup(&mut self) {
 		self.document_redo_history.clear();
-		self.document_history.push(self.document.clone())
+		self.document_history.push((self.document.clone(), self.layer_data.clone()))
 	}
 
 	pub fn rollback(&mut self) -> Result<(), EditorError> {
@@ -234,9 +238,10 @@ impl DocumentMessageHandler {
 
 	pub fn undo(&mut self) -> Result<(), EditorError> {
 		match self.document_history.pop() {
-			Some(backup) => {
-				let document = std::mem::replace(&mut self.document, backup);
-				self.document_redo_history.push(document);
+			Some((document, layer_data)) => {
+				let document = std::mem::replace(&mut self.document, document);
+				let layer_data = std::mem::replace(&mut self.layer_data, layer_data);
+				self.document_redo_history.push((document, layer_data));
 				Ok(())
 			}
 			None => Err(EditorError::NoTransactionInProgress),
@@ -245,9 +250,10 @@ impl DocumentMessageHandler {
 
 	pub fn redo(&mut self) -> Result<(), EditorError> {
 		match self.document_redo_history.pop() {
-			Some(backup) => {
-				let document = std::mem::replace(&mut self.document, backup);
-				self.document_history.push(document);
+			Some((document, layer_data)) => {
+				let document = std::mem::replace(&mut self.document, document);
+				let layer_data = std::mem::replace(&mut self.layer_data, layer_data);
+				self.document_history.push((document, layer_data));
 				Ok(())
 			}
 			None => Err(EditorError::NoTransactionInProgress),
@@ -386,7 +392,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				}
 				// TODO: Correctly update layer panel in clear_selection instead of here
 				responses.extend(self.handle_folder_changed(Vec::new()));
-				responses.push_back(SelectMessage::UpdateSelectionBoundingBox.into());
+				responses.push_front(SelectMessage::UpdateSelectionBoundingBox.into());
 			}
 			SelectAllLayers => {
 				let all_layer_paths = self
@@ -395,20 +401,22 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					.filter(|path| !path.is_empty() && !self.document.layer(path).unwrap().overlay)
 					.cloned()
 					.collect::<Vec<_>>();
-				responses.push_back(SetSelectedLayers(all_layer_paths).into());
+				responses.push_front(SetSelectedLayers(all_layer_paths).into());
 			}
 			DeselectAllLayers => {
-				responses.push_back(SetSelectedLayers(vec![]).into());
+				responses.push_front(SetSelectedLayers(vec![]).into());
 			}
+			DocumentHistoryBackward => self.undo().unwrap_or_else(|e| log::warn!("{}", e)),
+			DocumentHistoryForward => self.redo().unwrap_or_else(|e| log::warn!("{}", e)),
 			Undo => {
-				self.undo().unwrap_or_else(|e| log::warn!("{}", e));
-				responses.push_back(SelectMessage::UpdateSelectionBoundingBox.into());
+				responses.push_back(DeselectAllLayers.into());
+				responses.push_back(DocumentHistoryBackward.into());
 				responses.push_back(RenderDocument.into());
 				responses.extend(self.handle_folder_changed(vec![]));
 			}
 			Redo => {
-				self.redo().unwrap_or_else(|e| log::warn!("{}", e));
-				responses.push_back(SelectMessage::UpdateSelectionBoundingBox.into());
+				responses.push_back(DeselectAllLayers.into());
+				responses.push_back(DocumentHistoryForward.into());
 				responses.push_back(RenderDocument.into());
 				responses.extend(self.handle_folder_changed(vec![]));
 			}
