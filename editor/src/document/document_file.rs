@@ -425,14 +425,16 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			DocumentHistoryBackward => self.undo().unwrap_or_else(|e| log::warn!("{}", e)),
 			DocumentHistoryForward => self.redo().unwrap_or_else(|e| log::warn!("{}", e)),
 			Undo => {
-				responses.push_back(DeselectAllLayers.into());
+				responses.push_back(SelectMessage::Abort.into());
 				responses.push_back(DocumentHistoryBackward.into());
+				responses.push_back(SelectMessage::UpdateSelectionBoundingBox.into());
 				responses.push_back(RenderDocument.into());
 				responses.push_back(FolderChanged(vec![]).into());
 			}
 			Redo => {
-				responses.push_back(DeselectAllLayers.into());
+				responses.push_back(SelectMessage::Abort.into());
 				responses.push_back(DocumentHistoryForward.into());
+				responses.push_back(SelectMessage::UpdateSelectionBoundingBox.into());
 				responses.push_back(RenderDocument.into());
 				responses.push_back(FolderChanged(vec![]).into());
 			}
@@ -497,6 +499,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			}
 
 			NudgeSelectedLayers(x, y) => {
+				self.backup();
 				for path in self.selected_layers().cloned() {
 					let operation = DocumentOperation::TransformLayerInViewport {
 						path,
