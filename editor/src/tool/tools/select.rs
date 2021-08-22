@@ -211,7 +211,6 @@ impl Fsm for SelectToolFsmState {
 						}
 						.into(),
 					);
-                    log::debug!("{:?}", responses);
 					Ready
 				}
 				(_, Abort) => {
