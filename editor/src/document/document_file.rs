@@ -97,6 +97,7 @@ pub enum DocumentMessage {
 	Redo,
 	DocumentHistoryBackward,
 	DocumentHistoryForward,
+	ClearOverlays,
 	NudgeSelectedLayers(f64, f64),
 	AlignSelectedLayers(AlignAxis, AlignAggregate),
 	MoveSelectedLayersTo {
@@ -228,7 +229,12 @@ impl DocumentMessageHandler {
 
 	pub fn backup(&mut self) {
 		self.document_redo_history.clear();
-		self.document_history.push((self.document.clone(), self.layer_data.clone()))
+		let new_layer_data = self
+			.layer_data
+			.iter()
+			.filter_map(|(key, value)| (!self.document.layer(key).unwrap().overlay).then(|| (key.clone(), *value)))
+			.collect();
+		self.document_history.push((self.document.clone_without_overlays(), new_layer_data))
 	}
 
 	pub fn rollback(&mut self) -> Result<(), EditorError> {
@@ -253,7 +259,11 @@ impl DocumentMessageHandler {
 			Some((document, layer_data)) => {
 				let document = std::mem::replace(&mut self.document, document);
 				let layer_data = std::mem::replace(&mut self.layer_data, layer_data);
-				self.document_history.push((document, layer_data));
+				let new_layer_data = layer_data
+					.iter()
+					.filter_map(|(key, value)| (!self.document.layer(key).unwrap().overlay).then(|| (key.clone(), *value)))
+					.collect();
+				self.document_history.push((document.clone_without_overlays(), new_layer_data));
 				Ok(())
 			}
 			None => Err(EditorError::NoTransactionInProgress),
@@ -371,10 +381,16 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			SelectionChanged => responses.push_back(SelectMessage::UpdateSelectionBoundingBox.into()),
 			DeleteSelectedLayers => {
 				self.backup();
+				responses.push_front(SelectMessage::UpdateSelectionBoundingBox.into());
 				for path in self.selected_layers().cloned() {
-					responses.push_back(DocumentOperation::DeleteLayer { path }.into())
+					responses.push_front(DocumentOperation::DeleteLayer { path }.into())
 				}
-				responses.push_back(SelectMessage::UpdateSelectionBoundingBox.into());
+			}
+			ClearOverlays => {
+				responses.push_front(SelectMessage::UpdateSelectionBoundingBox.into());
+				for path in self.layer_data.keys().filter(|path| self.document.layer(path).unwrap().overlay).cloned() {
+					responses.push_front(DocumentOperation::DeleteLayer { path }.into())
+				}
 			}
 			DuplicateSelectedLayers => {
 				self.backup();
