@@ -124,7 +124,7 @@ impl Fsm for SelectToolFsmState {
 		if let ToolMessage::Select(event) = event {
 			match (self, event) {
 				(_, UpdateSelectionBoundingBox) => {
-                    let mut buffer = Vec::new();
+					let mut buffer = Vec::new();
 					let response = match (document.selected_layers_bounding_box(), data.bounding_box_id.take()) {
 						(None, Some(path)) => Operation::DeleteLayer { path }.into(),
 						(Some([pos1, pos2]), path) => {
@@ -136,13 +136,13 @@ impl Fsm for SelectToolFsmState {
 						(_, _) => Message::NoOp,
 					};
 					responses.push_front(response);
-                    buffer.into_iter().rev().for_each(|message| responses.push_front(message));
+					buffer.into_iter().rev().for_each(|message| responses.push_front(message));
 					self
 				}
 				(Ready, DragStart { add_to_selection }) => {
 					data.drag_start = input.mouse.position;
 					data.drag_current = input.mouse.position;
-                    let mut buffer = Vec::new();
+					let mut buffer = Vec::new();
 					let mut selected: Vec<_> = document.selected_layers().cloned().collect();
 					let quad = data.selection_quad();
 					let intersection = document.document.intersects_quad_root(quad);
@@ -156,7 +156,7 @@ impl Fsm for SelectToolFsmState {
 					// If the user clicks on a layer that is in their current selection, go into the dragging mode.
 					// Otherwise enter the box select mode
 					let state = if selected.iter().any(|path| intersection.contains(path)) {
-                        buffer.push(DocumentMessage::StartTransaction.into());
+						buffer.push(DocumentMessage::StartTransaction.into());
 						data.layers_dragging = selected;
 						Dragging
 					} else {
@@ -166,8 +166,8 @@ impl Fsm for SelectToolFsmState {
 						data.drag_box_id = Some(add_boundnig_box(&mut buffer));
 						DrawingBox
 					};
-                    buffer.into_iter().rev().for_each(|message| responses.push_front(message));
-                    state
+					buffer.into_iter().rev().for_each(|message| responses.push_front(message));
+					state
 				}
 				(Dragging, MouseMove) => {
 					responses.push_front(SelectMessage::UpdateSelectionBoundingBox.into());
@@ -198,10 +198,10 @@ impl Fsm for SelectToolFsmState {
 					);
 					DrawingBox
 				}
-				(Dragging, DragStop) =>{
-                    responses.push_front(DocumentMessage::CommitTransaction.into());
-                    Ready
-            },
+				(Dragging, DragStop) => {
+					responses.push_front(DocumentMessage::CommitTransaction.into());
+					Ready
+				}
 				(DrawingBox, DragStop) => {
 					let quad = data.selection_quad();
 					responses.push_front(DocumentMessage::AddSelectedLayers(document.document.intersects_quad_root(quad)).into());
@@ -220,17 +220,17 @@ impl Fsm for SelectToolFsmState {
 					Ready
 				}
 				(_, Align(axis, aggregate)) => {
-					responses.push_front(DocumentMessage::AlignSelectedLayers(axis, aggregate).into());
+					responses.push_back(DocumentMessage::AlignSelectedLayers(axis, aggregate).into());
 
 					self
 				}
 				(_, FlipHorizontal) => {
-					responses.push_front(DocumentMessage::FlipSelectedLayers(FlipAxis::X).into());
+					responses.push_back(DocumentMessage::FlipSelectedLayers(FlipAxis::X).into());
 
 					self
 				}
 				(_, FlipVertical) => {
-					responses.push_front(DocumentMessage::FlipSelectedLayers(FlipAxis::Y).into());
+					responses.push_back(DocumentMessage::FlipSelectedLayers(FlipAxis::Y).into());
 
 					self
 				}
