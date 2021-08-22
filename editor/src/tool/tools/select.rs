@@ -200,7 +200,7 @@ impl Fsm for SelectToolFsmState {
 				}
 				(Dragging, DragStop) => {
 					let response = match input.mouse.position.distance(data.drag_start) < 10. * f64::EPSILON {
-						true => DocumentMessage::AbortTransaction,
+						true => DocumentMessage::Undo,
 						false => DocumentMessage::CommitTransaction,
 					};
 					responses.push_front(response.into());
