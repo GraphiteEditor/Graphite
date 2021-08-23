@@ -161,13 +161,13 @@ impl Fsm for PathToolFsmState {
 					self
 				}
 				(_, Abort) => {
-					for layer in &mut data.anchor_marker_pool.drain(..) {
+					while let Some(layer) = data.anchor_marker_pool.pop() {
 						responses.push_back(Operation::DeleteLayer { path: layer }.into());
 					}
-					for layer in &mut data.handle_marker_pool.drain(..) {
+					while let Some(layer) = data.handle_marker_pool.pop() {
 						responses.push_back(Operation::DeleteLayer { path: layer }.into());
 					}
-					for layer in &mut data.anchor_handle_line_pool.drain(..) {
+					while let Some(layer) = data.anchor_handle_line_pool.pop() {
 						responses.push_back(Operation::DeleteLayer { path: layer }.into());
 					}
 
