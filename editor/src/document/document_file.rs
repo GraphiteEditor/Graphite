@@ -456,14 +456,13 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 									self.layer_data.remove(&path);
 									Some(ToolMessage::SelectedLayersChanged.into())
 								}
-								DocumentResponse::LayerChanged { path } =>
-									(!self.document.layer(&path).unwrap().overlay).then(||
+								DocumentResponse::LayerChanged { path } => (!self.document.layer(&path).unwrap().overlay).then(|| {
 									FrontendMessage::UpdateLayer {
 										path: path.clone(),
 										data: self.layer_panel_entry(path).unwrap(),
 									}
-									.into(),
-								),
+									.into()
+								}),
 								DocumentResponse::CreatedLayer { path } => (!self.document.layer(&path).unwrap().overlay).then(|| SetSelectedLayers(vec![path]).into()),
 								DocumentResponse::DocumentChanged => unreachable!(),
 							})

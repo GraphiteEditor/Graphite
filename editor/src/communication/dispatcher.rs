@@ -19,38 +19,38 @@ pub struct Dispatcher {
 
 impl Dispatcher {
 	pub fn handle_message<T: Into<Message>>(&mut self, message: T) -> Result<(), EditorError> {
-		let message = message.into();
-		use Message::*;
-		if !(matches!(
-			message,
-			Message::InputPreprocessor(_)
-				| Message::InputMapper(_)
-				| Message::Documents(DocumentsMessage::Document(DocumentMessage::RenderDocument))
-				| Message::Frontend(FrontendMessage::UpdateCanvas { .. })
-				| Message::Frontend(FrontendMessage::UpdateScrollbars { .. })
-				| Message::Frontend(FrontendMessage::SetCanvasZoom { .. })
-				| Message::Frontend(FrontendMessage::SetCanvasRotation { .. })
-		) || MessageDiscriminant::from(&message).local_name().ends_with("MouseMove"))
-		{
-			log::trace!("Message: {:?}", message);
-			//log::trace!("Hints:{:?}", self.input_mapper.hints(self.collect_actions()));
-		}
-		match message {
-			NoOp => (),
-			Documents(message) => self.documents_message_handler.process_action(message, &self.input_preprocessor, &mut self.messages),
-			Global(message) => self.global_message_handler.process_action(message, (), &mut self.messages),
-			Tool(message) => self
-				.tool_message_handler
-				.process_action(message, (self.documents_message_handler.active_document(), &self.input_preprocessor), &mut self.messages),
-			Frontend(message) => self.responses.push(message),
-			InputPreprocessor(message) => self.input_preprocessor.process_action(message, (), &mut self.messages),
-			InputMapper(message) => {
-				let actions = self.collect_actions();
-				self.input_mapper.process_action(message, (&self.input_preprocessor, actions), &mut self.messages)
+		self.messages.push_back(message.into());
+
+		while let Some(message) = self.messages.pop_front() {
+			use Message::*;
+			if !(matches!(
+				message,
+				Message::InputPreprocessor(_)
+					| Message::InputMapper(_)
+					| Message::Documents(DocumentsMessage::Document(DocumentMessage::RenderDocument))
+					| Message::Frontend(FrontendMessage::UpdateCanvas { .. })
+					| Message::Frontend(FrontendMessage::UpdateScrollbars { .. })
+					| Message::Frontend(FrontendMessage::SetCanvasZoom { .. })
+					| Message::Frontend(FrontendMessage::SetCanvasRotation { .. })
+			) || MessageDiscriminant::from(&message).local_name().ends_with("MouseMove"))
+			{
+				log::trace!("Message: {:?}", message);
+				//log::trace!("Hints:{:?}", self.input_mapper.hints(self.collect_actions()));
 			}
-		}
-		if let Some(message) = self.messages.pop_front() {
-			self.handle_message(message)?;
+			match message {
+				NoOp => (),
+				Documents(message) => self.documents_message_handler.process_action(message, &self.input_preprocessor, &mut self.messages),
+				Global(message) => self.global_message_handler.process_action(message, (), &mut self.messages),
+				Tool(message) => self
+					.tool_message_handler
+					.process_action(message, (self.documents_message_handler.active_document(), &self.input_preprocessor), &mut self.messages),
+				Frontend(message) => self.responses.push(message),
+				InputPreprocessor(message) => self.input_preprocessor.process_action(message, (), &mut self.messages),
+				InputMapper(message) => {
+					let actions = self.collect_actions();
+					self.input_mapper.process_action(message, (&self.input_preprocessor, actions), &mut self.messages)
+				}
+			}
 		}
 		Ok(())
 	}
