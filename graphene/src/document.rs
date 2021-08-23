@@ -215,6 +215,9 @@ impl Document {
 	}
 
 	pub fn mark_as_dirty(&mut self, path: &[LayerId]) -> Result<(), DocumentError> {
+		if self.layer(path)?.cache_dirty {
+			return Ok(());
+		}
 		self.mark_downstream_as_dirty(path)?;
 		self.mark_upstream_as_dirty(path)?;
 		Ok(())
