@@ -20,18 +20,25 @@ pub struct Dispatcher {
 impl Dispatcher {
 	pub fn handle_message<T: Into<Message>>(&mut self, message: T) -> Result<(), EditorError> {
 		self.messages.push_back(message.into());
+		let mut document_dirty = false;
 
 		while let Some(message) = self.messages.pop_front() {
+			if matches!(
+				message,
+					 Documents(DocumentsMessage::Document(DocumentMessage::RenderDocument))) {
+				document_dirty = true;
+				continue;
+			}
 			use Message::*;
 			if !(matches!(
 				message,
-				Message::InputPreprocessor(_)
-					| Message::InputMapper(_)
-					| Message::Documents(DocumentsMessage::Document(DocumentMessage::RenderDocument))
-					| Message::Frontend(FrontendMessage::UpdateCanvas { .. })
-					| Message::Frontend(FrontendMessage::UpdateScrollbars { .. })
-					| Message::Frontend(FrontendMessage::SetCanvasZoom { .. })
-					| Message::Frontend(FrontendMessage::SetCanvasRotation { .. })
+				InputPreprocessor(_)
+					| InputMapper(_)
+					| Documents(DocumentsMessage::Document(DocumentMessage::RenderDocument))
+					| Frontend(FrontendMessage::UpdateCanvas { .. })
+					| Frontend(FrontendMessage::UpdateScrollbars { .. })
+					| Frontend(FrontendMessage::SetCanvasZoom { .. })
+					| Frontend(FrontendMessage::SetCanvasRotation { .. })
 			) || MessageDiscriminant::from(&message).local_name().ends_with("MouseMove"))
 			{
 				log::trace!("Message: {:?}", message);
@@ -51,6 +58,9 @@ impl Dispatcher {
 					self.input_mapper.process_action(message, (&self.input_preprocessor, actions), &mut self.messages)
 				}
 			}
+		}
+		if document_dirty {
+				self.documents_message_handler.process_action(DocumentMessage::RenderDocument.into(), &self.input_preprocessor, &mut self.messages);
 		}
 		Ok(())
 	}
