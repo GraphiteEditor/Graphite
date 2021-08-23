@@ -76,7 +76,7 @@ impl Default for DocumentMessageHandler {
 }
 
 #[impl_message(Message, DocumentsMessage, Document)]
-#[derive(PartialEq, Clone, Debug)]
+#[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub enum DocumentMessage {
 	#[child]
 	Movement(MovementMessage),

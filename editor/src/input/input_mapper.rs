@@ -7,13 +7,14 @@ use super::{
 use crate::message_prelude::*;
 use crate::tool::ToolType;
 
+use serde::{Deserialize, Serialize};
 use std::fmt::Write;
 
 const NUDGE_AMOUNT: f64 = 1.;
 const SHIFT_NUDGE_AMOUNT: f64 = 10.;
 
 #[impl_message(Message, InputMapper)]
-#[derive(PartialEq, Clone, Debug, Hash)]
+#[derive(PartialEq, Clone, Debug, Hash, Serialize, Deserialize)]
 pub enum InputMapperMessage {
 	PointerMove,
 	MouseScroll,

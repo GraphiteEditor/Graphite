@@ -11,10 +11,11 @@ use glam::DVec2;
 use graphene::document::Document;
 use graphene::Operation as DocumentOperation;
 
+use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 
 #[impl_message(Message, DocumentMessage, Movement)]
-#[derive(PartialEq, Clone, Debug)]
+#[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub enum MovementMessage {
 	MouseMove,
 	TranslateCanvasBegin,

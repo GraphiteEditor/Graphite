@@ -3,12 +3,13 @@ use crate::message_prelude::*;
 use crate::tool::ToolActionHandlerData;
 use glam::DVec2;
 use graphene::{Operation, Quad};
+use serde::{Deserialize, Serialize};
 
 #[derive(Default)]
 pub struct Fill;
 
 #[impl_message(Message, ToolMessage, Fill)]
-#[derive(PartialEq, Clone, Debug, Hash)]
+#[derive(PartialEq, Clone, Debug, Hash, Serialize, Deserialize)]
 pub enum FillMessage {
 	MouseDown,
 }

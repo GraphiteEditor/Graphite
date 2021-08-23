@@ -23,7 +23,7 @@ pub struct Path {
 }
 
 #[impl_message(Message, ToolMessage, Path)]
-#[derive(PartialEq, Clone, Debug, Serialize, Deserialize, Hash)]
+#[derive(PartialEq, Clone, Debug, Hash, Serialize, Deserialize)]
 pub enum PathMessage {
 	RedrawOverlay,
 	Abort,

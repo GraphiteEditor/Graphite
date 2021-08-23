@@ -25,7 +25,7 @@ pub struct Select {
 }
 
 #[impl_message(Message, ToolMessage, Select)]
-#[derive(PartialEq, Clone, Debug, Serialize, Deserialize, Hash)]
+#[derive(PartialEq, Clone, Debug, Hash, Serialize, Deserialize)]
 pub enum SelectMessage {
 	DragStart { add_to_selection: Key },
 	DragStop,

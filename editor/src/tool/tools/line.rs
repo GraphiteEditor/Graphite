@@ -5,6 +5,7 @@ use crate::tool::{DocumentToolData, Fsm, ToolActionHandlerData};
 use crate::{document::DocumentMessageHandler, message_prelude::*};
 use glam::{DAffine2, DVec2};
 use graphene::{layers::style, Operation};
+use serde::{Deserialize, Serialize};
 
 #[derive(Default)]
 pub struct Line {
@@ -13,7 +14,7 @@ pub struct Line {
 }
 
 #[impl_message(Message, ToolMessage, Line)]
-#[derive(PartialEq, Clone, Debug, Hash)]
+#[derive(PartialEq, Clone, Debug, Hash, Serialize, Deserialize)]
 pub enum LineMessage {
 	DragStart,
 	DragStop,

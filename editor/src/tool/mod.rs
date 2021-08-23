@@ -9,6 +9,7 @@ use crate::{
 	communication::{message::Message, MessageHandler},
 	Color,
 };
+use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 use std::{
 	collections::HashMap,
@@ -124,7 +125,7 @@ fn default_tool_options() -> HashMap<ToolType, ToolOptions> {
 }
 
 #[repr(usize)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum ToolType {
 	Select,
 	Crop,
