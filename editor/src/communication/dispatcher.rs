@@ -17,33 +17,22 @@ pub struct Dispatcher {
 	pub responses: Vec<FrontendMessage>,
 }
 
+const GROUP_MESSAGES: &[MessageDiscriminant] = &[
+	MessageDiscriminant::Documents(DocumentsMessageDiscriminant::Document(DocumentMessageDiscriminant::RenderDocument)),
+	MessageDiscriminant::Documents(DocumentsMessageDiscriminant::Document(DocumentMessageDiscriminant::FolderChanged)),
+	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::UpdateLayer),
+];
+
 impl Dispatcher {
 	pub fn handle_message<T: Into<Message>>(&mut self, message: T) -> Result<(), EditorError> {
 		self.messages.push_back(message.into());
-		let mut document_dirty = false;
 
+		use Message::*;
 		while let Some(message) = self.messages.pop_front() {
-			if matches!(
-				message,
-					 Documents(DocumentsMessage::Document(DocumentMessage::RenderDocument))) {
-				document_dirty = true;
+			if GROUP_MESSAGES.contains(&message.to_discriminant()) && self.messages.contains(&message) {
 				continue;
 			}
-			use Message::*;
-			if !(matches!(
-				message,
-				InputPreprocessor(_)
-					| InputMapper(_)
-					| Documents(DocumentsMessage::Document(DocumentMessage::RenderDocument))
-					| Frontend(FrontendMessage::UpdateCanvas { .. })
-					| Frontend(FrontendMessage::UpdateScrollbars { .. })
-					| Frontend(FrontendMessage::SetCanvasZoom { .. })
-					| Frontend(FrontendMessage::SetCanvasRotation { .. })
-			) || MessageDiscriminant::from(&message).local_name().ends_with("MouseMove"))
-			{
-				log::trace!("Message: {:?}", message);
-				//log::trace!("Hints:{:?}", self.input_mapper.hints(self.collect_actions()));
-			}
+			log_message(&message);
 			match message {
 				NoOp => (),
 				Documents(message) => self.documents_message_handler.process_action(message, &self.input_preprocessor, &mut self.messages),
@@ -58,9 +47,6 @@ impl Dispatcher {
 					self.input_mapper.process_action(message, (&self.input_preprocessor, actions), &mut self.messages)
 				}
 			}
-		}
-		if document_dirty {
-				self.documents_message_handler.process_action(DocumentMessage::RenderDocument.into(), &self.input_preprocessor, &mut self.messages);
 		}
 		Ok(())
 	}
@@ -86,6 +72,24 @@ impl Dispatcher {
 			messages: VecDeque::new(),
 			responses: vec![],
 		}
+	}
+}
+
+fn log_message(message: &Message) {
+	use Message::*;
+	if log::max_level() == log::LevelFilter::Trace
+		&& !(matches!(
+			message,
+			InputPreprocessor(_)
+				| InputMapper(_) | Documents(DocumentsMessage::Document(DocumentMessage::RenderDocument))
+				| Frontend(FrontendMessage::UpdateCanvas { .. })
+				| Frontend(FrontendMessage::UpdateScrollbars { .. })
+				| Frontend(FrontendMessage::SetCanvasZoom { .. })
+				| Frontend(FrontendMessage::SetCanvasRotation { .. })
+		) || MessageDiscriminant::from(message).local_name().ends_with("MouseMove"))
+	{
+		log::trace!("Message: {:?}", message);
+		//log::trace!("Hints:{:?}", self.input_mapper.hints(self.collect_actions()));
 	}
 }
 
