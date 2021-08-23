@@ -8,6 +8,7 @@ use graphene::Quad;
 use glam::{DAffine2, DVec2};
 use serde::{Deserialize, Serialize};
 
+use crate::consts::COLOR_ACCENT;
 use crate::input::keyboard::Key;
 use crate::input::{mouse::ViewportPosition, InputPreprocessor};
 use crate::tool::{DocumentToolData, Fsm, ToolActionHandlerData};
@@ -30,7 +31,7 @@ pub enum SelectMessage {
 	DragStop,
 	MouseMove,
 	Abort,
-	SelectedLayersChanged,
+	UpdateSelectionBoundingBox,
 
 	Align(AlignAxis, AlignAggregate),
 	FlipHorizontal,
@@ -92,10 +93,10 @@ impl SelectToolData {
 fn add_bounding_box(responses: &mut VecDeque<Message>) -> Vec<LayerId> {
 	let path = vec![generate_uuid()];
 	responses.push_back(
-		Operation::AddBoundingBox {
+		Operation::AddOverlayRect {
 			path: path.clone(),
 			transform: DAffine2::ZERO.to_cols_array(),
-			style: style::PathStyle::new(Some(Stroke::new(Color::from_rgb8(0x00, 0xA8, 0xFF), 1.0)), Some(Fill::none())),
+			style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 1.0)), Some(Fill::none())),
 		}
 		.into(),
 	);
@@ -123,7 +124,7 @@ impl Fsm for SelectToolFsmState {
 		use SelectToolFsmState::*;
 		if let ToolMessage::Select(event) = event {
 			match (self, event) {
-				(_, SelectedLayersChanged) => {
+				(_, SelectMessage::UpdateSelectionBoundingBox) => {
 					let response = match (document.selected_layers_bounding_box(), data.bounding_box_path.take()) {
 						(None, Some(path)) => Operation::DeleteLayer { path }.into(),
 						(Some([pos1, pos2]), path) => {
@@ -173,7 +174,7 @@ impl Fsm for SelectToolFsmState {
 							.into(),
 						);
 					}
-					responses.push_back(SelectMessage::SelectedLayersChanged.into());
+					responses.push_back(ToolMessage::SelectedLayersChanged.into());
 					data.drag_current = input.mouse.position;
 					Dragging
 				}

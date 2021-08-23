@@ -21,7 +21,7 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Fill {
 
 		if let Some(path) = data.0.document.intersects_quad_root(quad).last() {
 			responses.push_back(
-				Operation::FillLayer {
+				Operation::SetLayerFill {
 					path: path.to_vec(),
 					color: data.1.primary_color,
 				}

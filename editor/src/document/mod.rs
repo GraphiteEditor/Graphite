@@ -7,7 +7,7 @@ mod movement_handler;
 pub use document_file::LayerData;
 
 #[doc(inline)]
-pub use document_file::{AlignAggregate, AlignAxis, DocumentMessage, DocumentMessageDiscriminant, DocumentMessageHandler, FlipAxis};
+pub use document_file::{AlignAggregate, AlignAxis, DocumentMessage, DocumentMessageDiscriminant, DocumentMessageHandler, FlipAxis, VectorManipulatorSegment, VectorManipulatorShape};
 #[doc(inline)]
 pub use document_message_handler::{DocumentsMessage, DocumentsMessageDiscriminant, DocumentsMessageHandler};
 #[doc(inline)]

@@ -14,6 +14,7 @@ pub enum ToolMessage {
 	ActivateTool(ToolType),
 	SelectPrimaryColor(Color),
 	SelectSecondaryColor(Color),
+	SelectedLayersChanged,
 	SwapColors,
 	ResetColors,
 	NoOp,
@@ -69,13 +70,20 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, &InputPreprocessor)> 
 				};
 				send_to_tool(tool, new);
 				send_to_tool(old_tool, old);
-				// TODO: Refactor to avoid tool specific cases
-				if tool == ToolType::Select {
-					responses.push_back(SelectMessage::SelectedLayersChanged.into());
+				// TODO: Refactor to avoid tool-specific cases
+				if tool == ToolType::Select || tool == ToolType::Path {
+					responses.push_back(ToolMessage::SelectedLayersChanged.into());
 				}
 				self.tool_state.tool_data.active_tool_type = tool;
 
 				responses.push_back(FrontendMessage::SetActiveTool { tool_name: tool.to_string() }.into())
+			}
+			SelectedLayersChanged => {
+				match self.tool_state.tool_data.active_tool_type {
+					ToolType::Select => responses.push_back(SelectMessage::UpdateSelectionBoundingBox.into()),
+					ToolType::Path => responses.push_back(PathMessage::RedrawOverlay.into()),
+					_ => (),
+				};
 			}
 			SwapColors => {
 				let doc_data = &mut self.tool_state.document_tool_data;

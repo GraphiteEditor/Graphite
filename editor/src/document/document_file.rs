@@ -40,6 +40,19 @@ pub enum AlignAggregate {
 	Average,
 }
 
+#[derive(PartialEq, Clone, Debug)]
+pub enum VectorManipulatorSegment {
+	Line(DVec2, DVec2),
+	Quad(DVec2, DVec2, DVec2),
+	Cubic(DVec2, DVec2, DVec2, DVec2),
+}
+
+#[derive(PartialEq, Clone, Debug)]
+pub struct VectorManipulatorShape {
+	pub path: kurbo::BezPath,
+	pub segments: Vec<VectorManipulatorSegment>,
+}
+
 #[derive(Clone, Debug)]
 pub struct DocumentMessageHandler {
 	pub document: InternalDocument,
@@ -106,6 +119,7 @@ impl From<DocumentOperation> for DocumentMessage {
 		Self::DispatchOperation(Box::new(operation))
 	}
 }
+
 impl From<DocumentOperation> for Message {
 	fn from(operation: DocumentOperation) -> Message {
 		DocumentMessage::DispatchOperation(Box::new(operation)).into()
@@ -118,6 +132,7 @@ impl DocumentMessageHandler {
 		document_responses.retain(|response| !matches!(response, DocumentResponse::DocumentChanged));
 		document_responses.len() != len
 	}
+
 	pub fn handle_folder_changed(&mut self, path: Vec<LayerId>) -> Option<Message> {
 		let _ = self.document.render_root();
 		self.layer_data(&path).expanded.then(|| {
@@ -125,9 +140,11 @@ impl DocumentMessageHandler {
 			FrontendMessage::ExpandFolder { path, children }.into()
 		})
 	}
+
 	fn clear_selection(&mut self) {
 		self.layer_data.values_mut().for_each(|layer_data| layer_data.selected = false);
 	}
+
 	fn select_layer(&mut self, path: &[LayerId]) -> Option<Message> {
 		if self.document.layer(path).ok()?.overlay {
 			return None;
@@ -137,34 +154,47 @@ impl DocumentMessageHandler {
 		// TODO: Add deduplication
 		(!path.is_empty()).then(|| FrontendMessage::UpdateLayer { path: path.to_vec(), data }.into())
 	}
+
 	pub fn selected_layers_bounding_box(&self) -> Option<[DVec2; 2]> {
 		let paths = self.selected_layers().map(|vec| &vec[..]);
 		self.document.combined_viewport_bounding_box(paths)
 	}
-	pub fn selected_layers_vector_handles(&self) -> Vec<DVec2> {
-		let paths = self.selected_layers().map(|vec| &vec[..]);
-		let shapes = paths.filter_map(|layer| match &self.document.layer(layer).unwrap().data {
-			LayerDataType::Shape(shape) => Some(shape),
-			LayerDataType::Folder(_) => None,
+
+	pub fn selected_layers_vector_points(&self) -> Vec<VectorManipulatorShape> {
+		let shapes = self.selected_layers().filter_map(|path_to_shape| {
+			let path_to_shape = &path_to_shape[..];
+			let viewport_transform = self.document.generate_transform_relative_to_viewport(path_to_shape).ok()?;
+
+			let shape = match &self.document.layer(path_to_shape).ok()?.data {
+				LayerDataType::Shape(shape) => Some(shape),
+				LayerDataType::Folder(_) => None,
+			}?;
+			let path = shape.path.clone();
+
+			let segments = shape
+				.path
+				.segments()
+				.map(|segment| -> VectorManipulatorSegment {
+					let place = |point: kurbo::Point| -> DVec2 { viewport_transform.transform_point2(DVec2::from((point.x, point.y))) };
+
+					match segment {
+						PathSeg::Line(line) => VectorManipulatorSegment::Line(place(line.p0), place(line.p1)),
+						PathSeg::Quad(quad) => VectorManipulatorSegment::Quad(place(quad.p0), place(quad.p1), place(quad.p2)),
+						PathSeg::Cubic(cubic) => VectorManipulatorSegment::Cubic(place(cubic.p0), place(cubic.p1), place(cubic.p2), place(cubic.p3)),
+					}
+				})
+				.collect::<Vec<VectorManipulatorSegment>>();
+
+			Some(VectorManipulatorShape { path, segments })
 		});
 
-		let p2v = |point: kurbo::Point| -> DVec2 { DVec2::from((point.x, point.y)) };
-
-		let points = shapes.flat_map(|shape| {
-			shape.path.segments().flat_map(|segment| -> Vec<DVec2> {
-				match segment {
-					PathSeg::Line(line) => vec![p2v(line.p0), p2v(line.p1)],
-					PathSeg::Quad(quad) => vec![p2v(quad.p0), p2v(quad.p1), p2v(quad.p2)],
-					PathSeg::Cubic(cubic) => vec![p2v(cubic.p0), p2v(cubic.p1), p2v(cubic.p2), p2v(cubic.p3)],
-				}
-			})
-		});
-
-		points.collect::<Vec<DVec2>>()
+		shapes.collect::<Vec<VectorManipulatorShape>>()
 	}
+
 	pub fn layerdata(&self, path: &[LayerId]) -> &LayerData {
 		self.layer_data.get(path).expect("Layerdata does not exist")
 	}
+
 	pub fn layerdata_mut(&mut self, path: &[LayerId]) -> &mut LayerData {
 		self.layer_data.entry(path.to_vec()).or_insert_with(|| LayerData::new(true))
 	}
@@ -215,6 +245,7 @@ impl DocumentMessageHandler {
 	pub fn non_selected_layers_sorted(&self) -> Vec<Vec<LayerId>> {
 		self.layers_sorted(Some(false))
 	}
+
 	pub fn with_name(name: String) -> Self {
 		Self {
 			document: InternalDocument::default(),
@@ -224,6 +255,7 @@ impl DocumentMessageHandler {
 			movement_handler: MovementMessageHandler::default(),
 		}
 	}
+
 	pub fn with_name_and_content(name: String, serialized_content: String) -> Result<Self, EditorError> {
 		let mut document = Self::with_name(name);
 		let internal_document = InternalDocument::with_content(&serialized_content);
@@ -360,7 +392,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				}
 			}
 			ToggleLayerVisibility(path) => {
-				responses.push_back(DocumentOperation::ToggleVisibility { path }.into());
+				responses.push_back(DocumentOperation::ToggleLayerVisibility { path }.into());
 			}
 			ToggleLayerExpansion(path) => {
 				self.layer_data(&path).expanded ^= true;
@@ -368,15 +400,13 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			}
 			SelectionChanged => {
 				// TODO: Hoist this duplicated code into wider system
-				responses.push_back(SelectMessage::SelectedLayersChanged.into());
-				responses.push_back(PathMessage::SelectedLayersChanged.into());
+				responses.push_back(ToolMessage::SelectedLayersChanged.into());
 			}
 			DeleteSelectedLayers => {
 				for path in self.selected_layers().cloned() {
 					responses.push_back(DocumentOperation::DeleteLayer { path }.into())
 				}
-				responses.push_back(SelectMessage::SelectedLayersChanged.into());
-				responses.push_back(PathMessage::SelectedLayersChanged.into());
+				responses.push_back(ToolMessage::SelectedLayersChanged.into());
 			}
 			DuplicateSelectedLayers => {
 				for path in self.selected_layers_sorted() {
@@ -393,8 +423,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				}
 				// TODO: Correctly update layer panel in clear_selection instead of here
 				responses.extend(self.handle_folder_changed(Vec::new()));
-				responses.push_back(SelectMessage::SelectedLayersChanged.into());
-				responses.push_back(PathMessage::SelectedLayersChanged.into());
+				responses.push_back(ToolMessage::SelectedLayersChanged.into());
 			}
 			SelectAllLayers => {
 				let all_layer_paths = self
@@ -425,8 +454,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 								DocumentResponse::FolderChanged { path } => self.handle_folder_changed(path),
 								DocumentResponse::DeletedLayer { path } => {
 									self.layer_data.remove(&path);
-									// TODO: Handle PathMessage:SelectedLayersChanged
-									Some(SelectMessage::SelectedLayersChanged.into())
+									Some(ToolMessage::SelectedLayersChanged.into())
 								}
 								DocumentResponse::LayerChanged { path } => Some(
 									FrontendMessage::UpdateLayer {
@@ -482,8 +510,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					};
 					responses.push_back(operation.into());
 				}
-				responses.push_back(SelectMessage::SelectedLayersChanged.into());
-				responses.push_back(PathMessage::SelectedLayersChanged.into());
+				responses.push_back(ToolMessage::SelectedLayersChanged.into());
 			}
 			MoveSelectedLayersTo { path, insert_index } => {
 				responses.push_back(DocumentsMessage::CopySelectedLayers.into());
@@ -538,8 +565,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 							.into(),
 						);
 					}
-					responses.push_back(SelectMessage::SelectedLayersChanged.into());
-					responses.push_back(PathMessage::SelectedLayersChanged.into());
+					responses.push_back(ToolMessage::SelectedLayersChanged.into());
 				}
 			}
 			AlignSelectedLayers(axis, aggregate) => {
@@ -572,13 +598,13 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 							.into(),
 						);
 					}
-					responses.push_back(SelectMessage::SelectedLayersChanged.into());
-					responses.push_back(PathMessage::SelectedLayersChanged.into());
+					responses.push_back(ToolMessage::SelectedLayersChanged.into());
 				}
 			}
 			RenameLayer(path, name) => responses.push_back(DocumentOperation::RenameLayer { path, name }.into()),
 		}
 	}
+
 	fn actions(&self) -> ActionList {
 		let mut common = actions!(DocumentMessageDiscriminant;
 			Undo,

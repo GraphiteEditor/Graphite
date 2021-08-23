@@ -172,14 +172,16 @@ impl Default for Mapping {
 			// Fill
 			entry! {action=FillMessage::MouseDown, key_down=Lmb},
 			// Tool Actions
+			entry! {action=ToolMessage::ActivateTool(ToolType::Select), key_down=KeyV},
+			entry! {action=ToolMessage::ActivateTool(ToolType::Eyedropper), key_down=KeyI},
 			entry! {action=ToolMessage::ActivateTool(ToolType::Fill), key_down=KeyF},
+			entry! {action=ToolMessage::ActivateTool(ToolType::Path), key_down=KeyA},
+			entry! {action=ToolMessage::ActivateTool(ToolType::Pen), key_down=KeyP},
+			entry! {action=ToolMessage::ActivateTool(ToolType::Line), key_down=KeyL},
 			entry! {action=ToolMessage::ActivateTool(ToolType::Rectangle), key_down=KeyM},
 			entry! {action=ToolMessage::ActivateTool(ToolType::Ellipse), key_down=KeyE},
-			entry! {action=ToolMessage::ActivateTool(ToolType::Select), key_down=KeyV},
-			entry! {action=ToolMessage::ActivateTool(ToolType::Line), key_down=KeyL},
-			entry! {action=ToolMessage::ActivateTool(ToolType::Pen), key_down=KeyP},
 			entry! {action=ToolMessage::ActivateTool(ToolType::Shape), key_down=KeyY},
-			entry! {action=ToolMessage::ActivateTool(ToolType::Eyedropper), key_down=KeyI},
+			// Colors
 			entry! {action=ToolMessage::ResetColors, key_down=KeyX, modifiers=[KeyShift, KeyControl]},
 			entry! {action=ToolMessage::SwapColors, key_down=KeyX, modifiers=[KeyShift]},
 			// Editor Actions

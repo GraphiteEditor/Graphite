@@ -105,8 +105,7 @@ impl MessageHandler<MovementMessage, (&mut LayerData, &Document, &InputPreproces
 
 					layerdata.rotation += rotation;
 					layerdata.snap_rotate = snapping;
-					responses.push_back(SelectMessage::SelectedLayersChanged.into());
-					responses.push_back(PathMessage::SelectedLayersChanged.into());
+					responses.push_back(ToolMessage::SelectedLayersChanged.into());
 					responses.push_back(
 						FrontendMessage::SetCanvasRotation {
 							new_radians: layerdata.snapped_angle(),
@@ -174,8 +173,7 @@ impl MessageHandler<MovementMessage, (&mut LayerData, &Document, &InputPreproces
 				layerdata.rotation = new;
 				self.create_document_transform_from_layerdata(layerdata, &ipp.viewport_bounds, responses);
 				responses.push_back(FrontendMessage::SetCanvasRotation { new_radians: new }.into());
-				responses.push_back(SelectMessage::SelectedLayersChanged.into());
-				responses.push_back(PathMessage::SelectedLayersChanged.into());
+				responses.push_back(ToolMessage::SelectedLayersChanged.into());
 			}
 			ZoomCanvasToFitAll => {
 				if let Some([pos1, pos2]) = document.visible_layers_bounding_box() {
