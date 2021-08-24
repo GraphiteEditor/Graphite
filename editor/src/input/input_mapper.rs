@@ -135,6 +135,12 @@ impl Default for Mapping {
 			entry! {action=SelectMessage::DragStop, key_up=Lmb},
 			entry! {action=SelectMessage::Abort, key_down=Rmb},
 			entry! {action=SelectMessage::Abort, key_down=KeyEscape},
+			// Transform layers
+			entry! {action=TransformLayerMessage::MouseMove, message=InputMapperMessage::PointerMove},
+			entry! {action=TransformLayerMessage::ApplyOperation, key_down=KeyEnter},
+			entry! {action=TransformLayerMessage::ApplyOperation, key_down=Lmb},
+			entry! {action=TransformLayerMessage::CancelOperation, key_down=KeyEscape},
+			entry! {action=TransformLayerMessage::CancelOperation, key_down=Rmb},
 			// Eyedropper
 			entry! {action=EyedropperMessage::LeftMouseDown, key_down=Lmb},
 			entry! {action=EyedropperMessage::RightMouseDown, key_down=Rmb},
@@ -194,7 +200,7 @@ impl Default for Mapping {
 			entry! {action=DocumentMessage::ExportDocument, key_down=KeyE, modifiers=[KeyControl]},
 			entry! {action=DocumentMessage::SaveDocument, key_down=KeyS, modifiers=[KeyControl]},
 			entry! {action=DocumentMessage::SaveDocument, key_down=KeyS, modifiers=[KeyControl, KeyShift]},
-			// Transform Layers
+			// Initiate Transform Layers
 			entry! {action=TransformLayerMessage::BeginTranslate, key_down=KeyG},
 			entry! {action=TransformLayerMessage::BeginRotate, key_down=KeyR},
 			entry! {action=TransformLayerMessage::BeginScale, key_down=KeyS},
