@@ -5,8 +5,8 @@ pub enum ToolOptions {
 	Select { append_mode: SelectAppendMode },
 	Ellipse,
 	Shape { shape_type: ShapeType },
-	Line { stroke_width: u32 },
-	Pen { stroke_width: u32 },
+	Line { stroke_weight: u32 },
+	Pen { stroke_weight: u32 },
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize, Hash)]

@@ -50,7 +50,7 @@ struct LineToolData {
 	drag_start: ViewportPosition,
 	drag_current: ViewportPosition,
 	angle: f64,
-	stroke_width: u32,
+	stroke_weight: u32,
 	path: Option<Vec<LayerId>>,
 }
 
@@ -76,8 +76,8 @@ impl Fsm for LineToolFsmState {
 					data.path = Some(vec![generate_uuid()]);
 					responses.push_back(DocumentMessage::DeselectAllLayers.into());
 
-					data.stroke_width = match tool_data.tool_options.get(&ToolType::Line) {
-						Some(&ToolOptions::Line { stroke_width }) => stroke_width,
+					data.stroke_weight = match tool_data.tool_options.get(&ToolType::Line) {
+						Some(&ToolOptions::Line { stroke_weight }) => stroke_weight,
 						_ => 5,
 					};
 
@@ -86,7 +86,7 @@ impl Fsm for LineToolFsmState {
 							path: data.path.clone().unwrap(),
 							insert_index: -1,
 							transform: DAffine2::ZERO.to_cols_array(),
-							style: style::PathStyle::new(Some(style::Stroke::new(tool_data.primary_color, data.stroke_width as f32)), None),
+							style: style::PathStyle::new(Some(style::Stroke::new(tool_data.primary_color, data.stroke_weight as f32)), None),
 						}
 						.into(),
 					);
