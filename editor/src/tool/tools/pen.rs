@@ -1,5 +1,5 @@
 use crate::input::InputPreprocessor;
-use crate::tool::{DocumentToolData, Fsm, ToolActionHandlerData};
+use crate::tool::{DocumentToolData, Fsm, ToolActionHandlerData, ToolOptions, ToolType};
 use crate::{document::DocumentMessageHandler, message_prelude::*};
 use glam::DAffine2;
 use graphene::{layers::style, Operation};
@@ -50,6 +50,7 @@ impl Default for PenToolFsmState {
 struct PenToolData {
 	points: Vec<DAffine2>,
 	next_point: DAffine2,
+	weight: u32,
 	path: Option<Vec<LayerId>>,
 }
 
@@ -79,6 +80,11 @@ impl Fsm for PenToolFsmState {
 
 					data.points.push(pos);
 					data.next_point = pos;
+
+					data.weight = match tool_data.tool_options.get(&ToolType::Pen) {
+						Some(&ToolOptions::Pen { weight }) => weight,
+						_ => 5,
+					};
 
 					Dragging
 				}
@@ -141,7 +147,7 @@ fn make_operation(data: &PenToolData, tool_data: &DocumentToolData, show_preview
 			insert_index: -1,
 			transform: DAffine2::IDENTITY.to_cols_array(),
 			points,
-			style: style::PathStyle::new(Some(style::Stroke::new(tool_data.primary_color, 5.)), Some(style::Fill::none())),
+			style: style::PathStyle::new(Some(style::Stroke::new(tool_data.primary_color, data.weight as f32)), Some(style::Fill::none())),
 		}
 		.into(),
 	]

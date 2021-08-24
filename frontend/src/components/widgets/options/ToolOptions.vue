@@ -41,7 +41,7 @@ export default defineComponent({
 	},
 	computed: {},
 	methods: {
-		async setToolOptions(newValue: number) {
+		async setShapeOptions(newValue: number) {
 			// TODO: Each value-input widget (i.e. not a button) should map to a field in an options struct,
 			// and updating a widget should send the whole updated struct to the backend.
 			// Later, it could send a single-field update to the backend.
@@ -49,6 +49,14 @@ export default defineComponent({
 			// This is a placeholder call, using the Shape tool as an example
 			// eslint-disable-next-line camelcase
 			(await wasm).set_tool_options(this.$props.activeTool || "", { Shape: { shape_type: { Polygon: { vertices: newValue } } } });
+		},
+		async setLineOptions(newValue: number) {
+			// eslint-disable-next-line camelcase
+			(await wasm).set_tool_options(this.$props.activeTool || "", { Line: { weight: newValue } });
+		},
+		async setPenOptions(newValue: number) {
+			// eslint-disable-next-line camelcase
+			(await wasm).set_tool_options(this.$props.activeTool || "", { Pen: { weight: newValue } });
 		},
 		async sendToolMessage(message: string | object) {
 			(await wasm).send_tool_message(this.$props.activeTool || "", message);
@@ -126,7 +134,9 @@ export default defineComponent({
 					props: {},
 				},
 			],
-			Shape: [{ kind: "NumberInput", callback: this.setToolOptions, props: { value: 6, min: 3, isInteger: true, label: "Sides" } }],
+			Shape: [{ kind: "NumberInput", callback: this.setShapeOptions, props: { value: 6, min: 3, isInteger: true, label: "Sides" } }],
+			Line: [{ kind: "NumberInput", callback: this.setLineOptions, props: { value: 5, min: 1, isInteger: true, unit: " px", label: "Weight" } }],
+			Pen: [{ kind: "NumberInput", callback: this.setPenOptions, props: { value: 5, min: 1, isInteger: true, unit: " px", label: "Weight" } }],
 		};
 
 		return {
