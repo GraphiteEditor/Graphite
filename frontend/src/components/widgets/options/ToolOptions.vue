@@ -52,11 +52,11 @@ export default defineComponent({
 		},
 		async setLineOptions(newValue: number) {
 			// eslint-disable-next-line camelcase
-			(await wasm).set_tool_options(this.$props.activeTool || "", { Line: { stroke_weight: newValue } });
+			(await wasm).set_tool_options(this.$props.activeTool || "", { Line: { weight: newValue } });
 		},
 		async setPenOptions(newValue: number) {
 			// eslint-disable-next-line camelcase
-			(await wasm).set_tool_options(this.$props.activeTool || "", { Pen: { stroke_weight: newValue } });
+			(await wasm).set_tool_options(this.$props.activeTool || "", { Pen: { weight: newValue } });
 		},
 		async sendToolMessage(message: string | object) {
 			(await wasm).send_tool_message(this.$props.activeTool || "", message);
@@ -135,8 +135,8 @@ export default defineComponent({
 				},
 			],
 			Shape: [{ kind: "NumberInput", callback: this.setShapeOptions, props: { value: 6, min: 3, isInteger: true, label: "Sides" } }],
-			Line: [{ kind: "NumberInput", callback: this.setLineOptions, props: { value: 5, min: 1, isInteger: true, unit: " px", label: "Stroke Weight" } }],
-			Pen: [{ kind: "NumberInput", callback: this.setPenOptions, props: { value: 5, min: 1, isInteger: true, unit: " px", label: "Stroke Weight" } }],
+			Line: [{ kind: "NumberInput", callback: this.setLineOptions, props: { value: 5, min: 1, isInteger: true, unit: " px", label: "Weight" } }],
+			Pen: [{ kind: "NumberInput", callback: this.setPenOptions, props: { value: 5, min: 1, isInteger: true, unit: " px", label: "Weight" } }],
 		};
 
 		return {
