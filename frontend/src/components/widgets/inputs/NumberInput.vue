@@ -19,7 +19,7 @@
 
 <style lang="scss">
 .number-input {
-	width: 80px;
+	min-width: 80px;
 	height: 24px;
 	position: relative;
 	border-radius: 2px;
@@ -38,7 +38,7 @@
 
 	input {
 		flex: 1 1 100%;
-		width: 100%;
+		width: 30px;
 		height: 18px;
 		line-height: 18px;
 		margin: 0 8px;
