@@ -194,6 +194,10 @@ impl Default for Mapping {
 			entry! {action=DocumentMessage::ExportDocument, key_down=KeyE, modifiers=[KeyControl]},
 			entry! {action=DocumentMessage::SaveDocument, key_down=KeyS, modifiers=[KeyControl]},
 			entry! {action=DocumentMessage::SaveDocument, key_down=KeyS, modifiers=[KeyControl, KeyShift]},
+			// Transform Layers
+			entry! {action=TransformLayerMessage::BeginTranslate, key_down=KeyG},
+			entry! {action=TransformLayerMessage::BeginRotate, key_down=KeyR},
+			entry! {action=TransformLayerMessage::BeginScale, key_down=KeyS},
 			// Document movement
 			entry! {action=MovementMessage::MouseMove, message=InputMapperMessage::PointerMove},
 			entry! {action=MovementMessage::RotateCanvasBegin{snap:false}, key_down=Mmb, modifiers=[KeyControl]},
@@ -247,6 +251,7 @@ impl Default for Mapping {
 			entry! {action=DocumentMessage::NudgeSelectedLayers(NUDGE_AMOUNT, -NUDGE_AMOUNT), key_down=KeyArrowRight, modifiers=[KeyArrowUp]},
 			entry! {action=DocumentMessage::NudgeSelectedLayers(NUDGE_AMOUNT, NUDGE_AMOUNT), key_down=KeyArrowRight, modifiers=[KeyArrowDown]},
 			entry! {action=DocumentMessage::NudgeSelectedLayers(NUDGE_AMOUNT, 0.), key_down=KeyArrowRight},
+			// Reorder Layers
 			entry! {action=DocumentMessage::ReorderSelectedLayers(i32::MAX), key_down=KeyRightCurlyBracket, modifiers=[KeyControl]}, // TODO: Use KeyRightBracket with ctrl+shift modifiers once input system is fixed
 			entry! {action=DocumentMessage::ReorderSelectedLayers(1), key_down=KeyRightBracket, modifiers=[KeyControl]},
 			entry! {action=DocumentMessage::ReorderSelectedLayers(-1), key_down=KeyLeftBracket, modifiers=[KeyControl]},
@@ -258,6 +263,17 @@ impl Default for Mapping {
 		];
 
 		let (mut key_up, mut key_down, mut pointer_move, mut mouse_scroll) = mappings;
+		const NUMBER_KEYS: [Key; 10] = [Key::Key0, Key::Key1, Key::Key2, Key::Key3, Key::Key4, Key::Key5, Key::Key6, Key::Key7, Key::Key8, Key::Key9];
+		for (i, key) in NUMBER_KEYS.iter().enumerate() {
+			key_down[*key as usize].0.insert(
+				0,
+				MappingEntry {
+					trigger: InputMapperMessage::KeyDown(*key),
+					modifiers: modifiers! {},
+					action: TransformLayerMessage::TypeNum(i as u8).into(),
+				},
+			);
+		}
 		let sort = |list: &mut KeyMappingEntries| list.0.sort_by(|u, v| v.modifiers.ones().cmp(&u.modifiers.ones()));
 		for list in [&mut key_up, &mut key_down] {
 			for sublist in list {
