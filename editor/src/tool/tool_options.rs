@@ -6,6 +6,7 @@ pub enum ToolOptions {
 	Ellipse,
 	Shape { shape_type: ShapeType },
 	Line { stroke_width: u32 },
+	Pen { stroke_width: u32 },
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize, Hash)]
