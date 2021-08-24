@@ -131,7 +131,7 @@ export default defineComponent({
 				},
 			],
 			Shape: [{ kind: "NumberInput", callback: this.setShapeOptions, props: { value: 6, min: 3, isInteger: true, label: "Sides" } }],
-			Line: [{ kind: "NumberInput", callback: this.setLineOptions, props: { value: 5, min: 1, isInteger: true, label: "Stroke Width" } }],
+			Line: [{ kind: "NumberInput", callback: this.setLineOptions, props: { value: 5, min: 1, isInteger: true, unit: "px", label: "Stroke Width" } }],
 		};
 
 		return {
