@@ -1,4 +1,3 @@
-use graphene::color::Color;
 use graphene::layers::style;
 use graphene::layers::style::Fill;
 use graphene::layers::style::Stroke;

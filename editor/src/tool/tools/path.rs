@@ -3,8 +3,7 @@ use crate::consts::VECTOR_MANIPULATOR_ANCHOR_MARKER_SIZE;
 use crate::document::DocumentMessageHandler;
 use crate::document::VectorManipulatorSegment;
 use crate::document::VectorManipulatorShape;
-use crate::input::keyboard::Key;
-use crate::input::{mouse::ViewportPosition, InputPreprocessor};
+use crate::input::InputPreprocessor;
 use crate::message_prelude::*;
 use crate::tool::ToolActionHandlerData;
 use crate::tool::{DocumentToolData, Fsm};
@@ -70,7 +69,7 @@ impl Fsm for PathToolFsmState {
 		document: &DocumentMessageHandler,
 		_tool_data: &DocumentToolData,
 		data: &mut Self::ToolData,
-		input: &InputPreprocessor,
+		_input: &InputPreprocessor,
 		responses: &mut VecDeque<Message>,
 	) -> Self {
 		if let ToolMessage::Path(event) = event {
@@ -177,7 +176,6 @@ impl Fsm for PathToolFsmState {
 
 					Ready
 				}
-				_ => self,
 			}
 		} else {
 			self

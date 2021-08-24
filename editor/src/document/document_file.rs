@@ -58,7 +58,6 @@ pub struct DocumentMessageHandler {
 	pub document: InternalDocument,
 	pub document_backup: Option<InternalDocument>,
 	pub name: String,
-	// TODO: Convert Vec<LayerId> into typedef "LayerPath"
 	pub layer_data: HashMap<Vec<LayerId>, LayerData>,
 	movement_handler: MovementMessageHandler,
 }
