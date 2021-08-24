@@ -38,7 +38,8 @@
 
 	input {
 		flex: 1 1 100%;
-		width: 30px;
+		width: 0;
+		min-width: 30px;
 		height: 18px;
 		line-height: 18px;
 		margin: 0 8px;
