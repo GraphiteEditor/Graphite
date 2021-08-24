@@ -84,9 +84,12 @@ impl Fsm for PathToolFsmState {
 
 					// Grow the overlay pools by the shortfall, if any
 					let (total_anchors, total_handles, total_anchor_handle_lines) = calculate_total_overlays_per_type(&shapes_to_draw);
+					grow_overlay_pool_entries(&mut data.anchor_handle_line_pool, total_anchor_handle_lines, add_anchor_handle_line, responses);
 					grow_overlay_pool_entries(&mut data.anchor_marker_pool, total_anchors, add_anchor_marker, responses);
 					grow_overlay_pool_entries(&mut data.handle_marker_pool, total_handles, add_handle_marker, responses);
-					grow_overlay_pool_entries(&mut data.anchor_handle_line_pool, total_anchor_handle_lines, add_anchor_handle_line, responses);
+
+					// Helps push values that end in approximately half, plus or minus some floating point imprecision, towards the same side of the round() function
+					const BIAS: f64 = 0.0001;
 
 					// Draw the overlays for each shape
 					for shape_to_draw in &shapes_to_draw {
@@ -99,12 +102,29 @@ impl Fsm for PathToolFsmState {
 								VectorManipulatorSegment::Cubic(a1, h1, h2, a2) => (vec![*a1, *a2], vec![*h1, *h2], vec![(*h1, *a1), (*h2, *a2)]),
 							};
 
+							for line in lines {
+								let marker = data.anchor_handle_line_pool[line_i].clone();
+
+								let line_vector = line.0 - line.1;
+
+								let scale = DVec2::splat(line_vector.length());
+								let angle = -line_vector.angle_between(DVec2::X);
+								let translation = (line.1 + BIAS).round() + DVec2::splat(0.5);
+								let transform = DAffine2::from_scale_angle_translation(scale, angle, translation).to_cols_array();
+
+								responses.push_back(Operation::SetLayerTransformInViewport { path: marker.clone(), transform }.into());
+								responses.push_back(Operation::SetLayerVisibility { path: marker, visible: true }.into());
+
+								line_i += 1;
+							}
+
 							for anchor in anchors {
 								let marker = data.anchor_marker_pool[anchor_i].clone();
 
 								let scale = DVec2::splat(VECTOR_MANIPULATOR_ANCHOR_MARKER_SIZE);
-								let position = (anchor - scale / 2.).round();
-								let transform = DAffine2::from_scale_angle_translation(scale, 0., position).to_cols_array();
+								let angle = 0.;
+								let translation = (anchor - (scale / 2.) + BIAS).round();
+								let transform = DAffine2::from_scale_angle_translation(scale, angle, translation).to_cols_array();
 
 								responses.push_back(Operation::SetLayerTransformInViewport { path: marker.clone(), transform }.into());
 								responses.push_back(Operation::SetLayerVisibility { path: marker, visible: true }.into());
@@ -116,30 +136,14 @@ impl Fsm for PathToolFsmState {
 								let marker = data.handle_marker_pool[handle_i].clone();
 
 								let scale = DVec2::splat(VECTOR_MANIPULATOR_ANCHOR_MARKER_SIZE);
-								let position = (handle - scale / 2.).round();
-								let transform = DAffine2::from_scale_angle_translation(scale, 0., position).to_cols_array();
-
-								responses.push_back(Operation::SetLayerTransformInViewport { path: marker.clone(), transform }.into());
-								responses.push_back(Operation::SetLayerVisibility { path: marker, visible: true }.into());
-
-								handle_i += 1;
-							}
-
-							for line in lines {
-								let marker = data.anchor_handle_line_pool[line_i].clone();
-
-								let line_vector = line.1 - line.0;
-
-								let scale = DVec2::splat(line_vector.length());
-								let angle = -line_vector.angle_between(DVec2::X);
-								let translation = line.0;
-
+								let angle = 0.;
+								let translation = (handle - (scale / 2.) + BIAS).round();
 								let transform = DAffine2::from_scale_angle_translation(scale, angle, translation).to_cols_array();
 
 								responses.push_back(Operation::SetLayerTransformInViewport { path: marker.clone(), transform }.into());
 								responses.push_back(Operation::SetLayerVisibility { path: marker, visible: true }.into());
 
-								line_i += 1;
+								handle_i += 1;
 							}
 						}
 					}
@@ -222,7 +226,7 @@ fn add_anchor_marker(responses: &mut VecDeque<Message>) -> Vec<LayerId> {
 		Operation::AddOverlayRect {
 			path: path.clone(),
 			transform: DAffine2::IDENTITY.to_cols_array(),
-			style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 2.0)), Some(Fill::none())),
+			style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 2.0)), Some(Fill::new(Color::WHITE))),
 		}
 		.into(),
 	);
@@ -236,7 +240,7 @@ fn add_handle_marker(responses: &mut VecDeque<Message>) -> Vec<LayerId> {
 		Operation::AddOverlayEllipse {
 			path: path.clone(),
 			transform: DAffine2::IDENTITY.to_cols_array(),
-			style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 2.0)), Some(Fill::none())),
+			style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 2.0)), Some(Fill::new(Color::WHITE))),
 		}
 		.into(),
 	);
