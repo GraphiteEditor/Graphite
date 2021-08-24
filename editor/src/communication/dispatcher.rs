@@ -21,6 +21,8 @@ const GROUP_MESSAGES: &[MessageDiscriminant] = &[
 	MessageDiscriminant::Documents(DocumentsMessageDiscriminant::Document(DocumentMessageDiscriminant::RenderDocument)),
 	MessageDiscriminant::Documents(DocumentsMessageDiscriminant::Document(DocumentMessageDiscriminant::FolderChanged)),
 	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::UpdateLayer),
+	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::ExpandFolder),
+	MessageDiscriminant::Tool(ToolMessageDiscriminant::SelectedLayersChanged),
 ];
 
 impl Dispatcher {

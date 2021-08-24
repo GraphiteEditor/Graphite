@@ -396,7 +396,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			}
 			ToggleLayerExpansion(path) => {
 				self.layer_data(&path).expanded ^= true;
-				responses.extend(self.handle_folder_changed(path));
+				responses.push_back(FolderChanged(path).into());
 			}
 			SelectionChanged => {
 				// TODO: Hoist this duplicated code into wider system
@@ -422,7 +422,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					responses.extend(self.select_layer(&path));
 				}
 				// TODO: Correctly update layer panel in clear_selection instead of here
-				responses.extend(self.handle_folder_changed(Vec::new()));
+				responses.push_back(FolderChanged(Vec::new()).into());
 				responses.push_back(ToolMessage::SelectedLayersChanged.into());
 			}
 			SelectAllLayers => {
@@ -451,7 +451,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 						document_responses
 							.into_iter()
 							.map(|response| match response {
-								DocumentResponse::FolderChanged { path } => self.handle_folder_changed(path),
+								DocumentResponse::FolderChanged { path } => Some(FolderChanged(path).into()),
 								DocumentResponse::DeletedLayer { path } => {
 									self.layer_data.remove(&path);
 									Some(ToolMessage::SelectedLayersChanged.into())
