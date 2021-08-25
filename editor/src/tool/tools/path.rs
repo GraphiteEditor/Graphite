@@ -96,14 +96,21 @@ impl Fsm for PathToolFsmState {
 
 					// Draw the overlays for each shape
 					for shape_to_draw in &shapes_to_draw {
+						let shape_layer_path = &data.shape_outline_pool[shape_i];
 						responses.push_back(
 							Operation::SetShapePathInViewport {
-								path: data.shape_outline_pool[shape_i].clone(),
+								path: shape_layer_path.clone(),
 								bez_path: shape_to_draw.path.clone(),
 							}
 							.into(),
 						);
-						responses.push_back(Operation::SetLayerVisibility { path: marker, visible: true }.into());
+						responses.push_back(
+							Operation::SetLayerVisibility {
+								path: shape_layer_path.clone(),
+								visible: true,
+							}
+							.into(),
+						);
 						shape_i += 1;
 
 						for segment in &shape_to_draw.segments {

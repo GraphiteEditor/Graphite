@@ -433,12 +433,11 @@ impl Document {
 			Operation::SetShapePathInViewport { path, bez_path } => {
 				self.mark_as_dirty(path)?;
 				if let Ok(layer) = self.layer_mut(path) {
-					let layer_data = &layer.data;
-					match layer_data {
-						LayerDataType::Folder(_) => (),
-						LayerDataType::Shape(mut shape) => {
+					match &mut layer.data {
+						LayerDataType::Shape(shape) => {
 							shape.path = bez_path.clone();
 						}
+						LayerDataType::Folder(_) => (),
 					}
 				}
 				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::LayerChanged { path: path.clone() }])

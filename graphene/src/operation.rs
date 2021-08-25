@@ -9,7 +9,6 @@ use crate::{
 	LayerId,
 };
 
-use kurbo::BezPath;
 use serde::{Deserialize, Serialize};
 
 #[repr(C)]
