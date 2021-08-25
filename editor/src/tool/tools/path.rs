@@ -85,10 +85,10 @@ impl Fsm for PathToolFsmState {
 				// Grow the overlay pools by the shortfall, if any
 				let (total_anchors, total_handles, total_anchor_handle_lines) = calculate_total_overlays_per_type(&shapes_to_draw);
 				let total_shapes = shapes_to_draw.len();
+				grow_overlay_pool_entries(&mut data.shape_outline_pool, total_shapes, add_shape_outline, responses);
 				grow_overlay_pool_entries(&mut data.anchor_handle_line_pool, total_anchor_handle_lines, add_anchor_handle_line, responses);
 				grow_overlay_pool_entries(&mut data.anchor_marker_pool, total_anchors, add_anchor_marker, responses);
 				grow_overlay_pool_entries(&mut data.handle_marker_pool, total_handles, add_handle_marker, responses);
-				grow_overlay_pool_entries(&mut data.shape_outline_pool, total_shapes, add_shape_outline, responses);
 
 				// Helps push values that end in approximately half, plus or minus some floating point imprecision, towards the same side of the round() function
 				const BIAS: f64 = 0.0001;
