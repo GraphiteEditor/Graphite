@@ -129,18 +129,20 @@ impl Default for Mapping {
 			entry! {action=DocumentsMessage::PasteLayers{path: vec![], insert_index: -1}, key_down=KeyV, modifiers=[KeyControl]},
 			entry! {action=MovementMessage::EnableSnapping, key_down=KeyShift},
 			entry! {action=MovementMessage::DisableSnapping, key_up=KeyShift},
-			// Select
-			entry! {action=SelectMessage::MouseMove, message=InputMapperMessage::PointerMove},
-			entry! {action=SelectMessage::DragStart{add_to_selection: KeyShift}, key_down=Lmb},
-			entry! {action=SelectMessage::DragStop, key_up=Lmb},
-			entry! {action=SelectMessage::Abort, key_down=Rmb},
-			entry! {action=SelectMessage::Abort, key_down=KeyEscape},
 			// Transform layers
 			entry! {action=TransformLayerMessage::MouseMove, message=InputMapperMessage::PointerMove},
 			entry! {action=TransformLayerMessage::ApplyOperation, key_down=KeyEnter},
 			entry! {action=TransformLayerMessage::ApplyOperation, key_down=Lmb},
 			entry! {action=TransformLayerMessage::CancelOperation, key_down=KeyEscape},
 			entry! {action=TransformLayerMessage::CancelOperation, key_down=Rmb},
+			entry! {action=TransformLayerMessage::ConstrainX, key_down=KeyX},
+			entry! {action=TransformLayerMessage::ConstrainY, key_down=KeyY},
+			// Select
+			entry! {action=SelectMessage::MouseMove, message=InputMapperMessage::PointerMove},
+			entry! {action=SelectMessage::DragStart{add_to_selection: KeyShift}, key_down=Lmb},
+			entry! {action=SelectMessage::DragStop, key_up=Lmb},
+			entry! {action=SelectMessage::Abort, key_down=Rmb},
+			entry! {action=SelectMessage::Abort, key_down=KeyEscape},
 			// Eyedropper
 			entry! {action=EyedropperMessage::LeftMouseDown, key_down=Lmb},
 			entry! {action=EyedropperMessage::RightMouseDown, key_down=Rmb},

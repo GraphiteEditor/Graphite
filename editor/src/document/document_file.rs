@@ -282,7 +282,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 		use DocumentMessage::*;
 		match message {
 			Movement(message) => self.movement_handler.process_action(message, (layer_data(&mut self.layer_data, &[]), &self.document, ipp), responses),
-			TransformLayers(message) => self.transform_layer_handler.process_action(message, (&mut self.layer_data, &self.document, ipp), responses),
+			TransformLayers(message) => self.transform_layer_handler.process_action(message, (&mut self.layer_data, ipp), responses),
 			DeleteLayer(path) => responses.push_back(DocumentOperation::DeleteLayer { path }.into()),
 			AddFolder(path) => responses.push_back(DocumentOperation::AddFolder { path }.into()),
 			StartTransaction => self.backup(),

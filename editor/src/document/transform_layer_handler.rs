@@ -5,103 +5,144 @@ use super::LayerData;
 use crate::input::{mouse::ViewportPosition, InputPreprocessor};
 use crate::message_prelude::*;
 use glam::{DAffine2, DVec2};
-use graphene::document::Document;
 use graphene::Operation as DocumentOperation;
-
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
 
-#[derive(Debug, Clone, PartialEq, Copy)]
-enum Axis {
-	Both(DVec2),
-	X(f64),
-	Y(f64),
+struct Selected<'a> {
+	pub selected: Vec<Vec<LayerId>>,
+	responses: &'a mut VecDeque<Message>,
 }
-
-impl Default for Axis {
-	fn default() -> Self {
-		Self::Both(DVec2::ZERO)
-	}
-}
-
-impl Axis {
-	pub fn to_dvec(&self) -> DVec2 {
-		match self {
-			Axis::Both(vec) => *vec,
-			Axis::X(x) => DVec2::new(*x, 0.),
-			Axis::Y(y) => DVec2::new(0., *y),
+impl<'a> Selected<'a> {
+	pub fn new(layerdata: &'a mut HashMap<Vec<LayerId>, LayerData>, responses: &'a mut VecDeque<Message>) -> Self {
+		Self {
+			selected: layerdata.iter().filter_map(|(path, data)| data.selected.then(|| path.to_owned())).collect(),
+			responses,
 		}
 	}
 }
 
 #[derive(Debug, Clone, PartialEq, Copy)]
-enum OperationType {
-	None,
-	Translating,
-	Rotating,
-	Scaling,
+enum Axis {
+	Both,
+	X,
+	Y,
+}
+
+impl Default for Axis {
+	fn default() -> Self {
+		Self::Both
+	}
+}
+
+impl Axis {
+	pub fn invert(&mut self, target: Axis) {
+		if *self == target {
+			*self = Axis::Both;
+		} else {
+			*self = target;
+		}
+	}
+}
+
+#[derive(Default, Debug, Clone, PartialEq, Copy)]
+struct Translation {
+	pub amount: DVec2,
+	pub constraint: Axis,
+}
+
+impl Translation {
+	pub fn to_dvec(&self) -> DVec2 {
+		match self.constraint {
+			Axis::Both => self.amount,
+			Axis::X => DVec2::new(self.amount.x, 0.),
+			Axis::Y => DVec2::new(0., self.amount.y),
+		}
+	}
+	pub fn increment_amount(self, delta: DVec2) -> Self {
+		Self {
+			amount: self.amount + delta,
+			constraint: self.constraint,
+		}
+	}
+}
+
+#[derive(Debug, Clone, PartialEq, Copy)]
+struct Scale {
+	pub amount: f64,
+	pub constraint: Axis,
+}
+
+impl Default for Scale {
+	fn default() -> Self {
+		Self {
+			amount: 1.,
+			constraint: Axis::default(),
+		}
+	}
+}
+
+impl Scale {
+	pub fn to_dvec(&self) -> DVec2 {
+		match self.constraint {
+			Axis::Both => DVec2::splat(self.amount),
+			Axis::X => DVec2::new(self.amount, 0.),
+			Axis::Y => DVec2::new(0., self.amount),
+		}
+	}
+	pub fn _increment_amount(&mut self, delta: f64) -> &mut Self {
+		self.amount += delta;
+		self
+	}
 }
 
 #[derive(Debug, Clone, PartialEq, Copy)]
 enum Operation {
 	None,
-	Translating { change: Axis },
-	Rotating { change: f64 },
-	Scaling { change: Axis },
+	Translating(Translation),
+	Rotating(f64),
+	Scaling(Scale),
 }
 
 impl Default for Operation {
 	fn default() -> Self {
-		Self::None
+		Operation::None
 	}
 }
 
 impl Operation {
-	fn get_type(&self) -> OperationType {
-		match self {
-			Operation::None => OperationType::None,
-			Operation::Translating { change: _ } => OperationType::Translating,
-			Operation::Rotating { change: _ } => OperationType::Rotating,
-			Operation::Scaling { change: _ } => OperationType::Scaling,
+	pub fn apply_operation(&self, selected: &mut Selected, invert: bool) {
+		if self != &Operation::None {
+			let mut daffine = match self {
+				Operation::Translating(translation) => DAffine2::from_translation(translation.to_dvec()),
+				Operation::Rotating(radians) => DAffine2::from_angle(*radians * if invert { -1. } else { 1. }),
+				Operation::Scaling(scale) => DAffine2::from_scale(scale.to_dvec()),
+				Operation::None => unreachable!(),
+			};
+			if invert {
+				daffine = daffine.inverse();
+			}
+			for path in &selected.selected {
+				selected.responses.push_back(
+					DocumentOperation::TransformLayerInViewport {
+						path: path.to_vec(),
+						transform: daffine.to_cols_array(),
+					}
+					.into(),
+				);
+			}
 		}
 	}
 
-	fn to_daffine(&self) -> DAffine2 {
+	pub fn constrain_axis(&mut self, axis: Axis, selected: &mut Selected) {
+		self.apply_operation(selected, true);
 		match self {
-			Operation::Translating { change } => DAffine2::from_translation(change.to_dvec()),
-			Operation::Rotating { change } => DAffine2::from_angle(*change),
-			Operation::Scaling { change } => DAffine2::from_translation(change.to_dvec()),
-			Operation::None => DAffine2::IDENTITY,
+			Operation::None => {}
+			Operation::Translating(t) => t.constraint.invert(axis),
+			Operation::Rotating(_) => {}
+			Operation::Scaling(s) => s.constraint.invert(axis),
 		}
-	}
-
-	pub fn change<'a>(&mut self, new: Self, selected: &Vec<&'a Vec<LayerId>>, responses: &mut VecDeque<Message>) {
-		let transform = self.to_daffine().inverse() * new.to_daffine();
-		for path in selected {
-			responses.push_back(
-				DocumentOperation::TransformLayer {
-					path: (**path).clone(),
-					transform: transform.to_cols_array(),
-				}
-				.into(),
-			);
-		}
-		*self = new.clone();
-	}
-	pub fn switch<'a>(&mut self, new: OperationType, selected: &Vec<&'a Vec<LayerId>>, responses: &mut VecDeque<Message>) {
-		if !(self.get_type() == new) {
-			log::info!("Switching to {:?} layer transform from {:?}", new, &self.get_type());
-			self.change(
-				match new {
-					OperationType::None => Self::None,
-					OperationType::Translating => Self::Translating { change: Axis::default() },
-					OperationType::Rotating => Self::Rotating { change: 0. },
-					OperationType::Scaling => Self::Scaling { change: Axis::default() },
-				},
-				selected,
-				responses,
-			);
-		}
+		self.apply_operation(selected, false);
 	}
 }
 
@@ -117,6 +158,9 @@ pub enum TransformLayerMessage {
 
 	TypeNum(u8),
 	TypeDelete,
+
+	ConstrainX,
+	ConstrainY,
 
 	MouseMove,
 }
@@ -134,20 +178,50 @@ pub struct TransformLayerMessageHandler {
 	change: DVec2,
 }
 
-impl MessageHandler<TransformLayerMessage, (&mut HashMap<Vec<LayerId>, LayerData>, &Document, &InputPreprocessor)> for TransformLayerMessageHandler {
-	fn process_action(&mut self, message: TransformLayerMessage, data: (&mut HashMap<Vec<LayerId>, LayerData>, &Document, &InputPreprocessor), responses: &mut VecDeque<Message>) {
-		let (layerdata, _, _) = data;
-		let selected: Vec<_> = layerdata.iter().filter_map(|(path, data)| data.selected.then(|| path)).collect();
+impl MessageHandler<TransformLayerMessage, (&mut HashMap<Vec<LayerId>, LayerData>, &InputPreprocessor)> for TransformLayerMessageHandler {
+	fn process_action(&mut self, message: TransformLayerMessage, data: (&mut HashMap<Vec<LayerId>, LayerData>, &InputPreprocessor), responses: &mut VecDeque<Message>) {
+		let (layerdata, ipp) = data;
+		let mut selected = Selected::new(layerdata, responses);
 		use TransformLayerMessage::*;
 		match message {
-			BeginTranslate => self.operation.switch(OperationType::Translating, &selected, responses),
-			BeginRotate => self.operation.switch(OperationType::Rotating, &selected, responses),
-			BeginScale => self.operation.switch(OperationType::Scaling, &selected, responses),
-			CancelOperation => self.operation.switch(OperationType::None, &selected, responses),
+			BeginTranslate => {
+				self.mouse_pos = ipp.mouse.position;
+				self.operation.apply_operation(&mut selected, true);
+				self.operation = Operation::Translating(Default::default());
+			}
+			BeginRotate => {
+				self.mouse_pos = ipp.mouse.position;
+				self.operation.apply_operation(&mut selected, true);
+				self.operation = Operation::Rotating(Default::default());
+			}
+			BeginScale => {
+				self.mouse_pos = ipp.mouse.position;
+				self.operation.apply_operation(&mut selected, true);
+				self.operation = Operation::Scaling(Default::default());
+			}
+			CancelOperation => {
+				self.operation.apply_operation(&mut selected, true);
+				self.operation = Operation::None;
+			}
 			ApplyOperation => self.operation = Operation::None,
-			MouseMove => log::info!("Mouse Moved"),
+			MouseMove => {
+				let delta_pos = ipp.mouse.position - self.mouse_pos;
+				match self.operation {
+					Operation::None => unreachable!(),
+					Operation::Translating(translation) => {
+						self.operation.apply_operation(&mut selected, true);
+						self.operation = Operation::Translating(translation.increment_amount(delta_pos));
+						self.operation.apply_operation(&mut selected, false);
+					}
+					Operation::Rotating(_) => todo!(),
+					Operation::Scaling(_) => todo!(),
+				}
+				self.mouse_pos = ipp.mouse.position;
+			}
 			TypeNum(k) => log::info!("Num Typed {}", k),
 			TypeDelete => log::info!("Delete "),
+			ConstrainX => self.operation.constrain_axis(Axis::X, &mut selected),
+			ConstrainY => self.operation.constrain_axis(Axis::Y, &mut selected),
 		}
 	}
 	fn actions(&self) -> ActionList {
@@ -164,6 +238,8 @@ impl MessageHandler<TransformLayerMessage, (&mut HashMap<Vec<LayerId>, LayerData
 				ApplyOperation,
 				TypeNum,
 				TypeDelete,
+				ConstrainX,
+				ConstrainY,
 			);
 			common.extend(active);
 		}
