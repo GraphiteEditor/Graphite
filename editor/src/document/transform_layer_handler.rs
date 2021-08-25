@@ -5,6 +5,7 @@ use super::LayerData;
 use crate::input::{mouse::ViewportPosition, InputPreprocessor};
 use crate::message_prelude::*;
 use glam::{DAffine2, DVec2};
+use graphene::document::Document;
 use graphene::Operation as DocumentOperation;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
@@ -12,13 +13,23 @@ use std::collections::{HashMap, VecDeque};
 struct Selected<'a> {
 	pub selected: Vec<Vec<LayerId>>,
 	responses: &'a mut VecDeque<Message>,
+	document: &'a mut Document,
 }
 impl<'a> Selected<'a> {
-	pub fn new(layerdata: &'a mut HashMap<Vec<LayerId>, LayerData>, responses: &'a mut VecDeque<Message>) -> Self {
+	pub fn new(layerdata: &'a mut HashMap<Vec<LayerId>, LayerData>, responses: &'a mut VecDeque<Message>, document: &'a mut Document) -> Self {
 		Self {
 			selected: layerdata.iter().filter_map(|(path, data)| data.selected.then(|| path.to_owned())).collect(),
 			responses,
+			document,
 		}
+	}
+	pub fn calculate_mid(&self) -> DVec2 {
+		log::info!("paths {:?}", self.selected);
+		self.selected
+			.iter()
+			.map(|path| (self.document.multiply_transforms(path).unwrap()).translation)
+			.fold(DVec2::ZERO, |acc, x| acc + x)
+			/ self.selected.len() as f64
 	}
 }
 
@@ -113,12 +124,14 @@ impl Default for Operation {
 impl Operation {
 	pub fn apply_operation(&self, selected: &mut Selected, invert: bool) {
 		if self != &Operation::None {
+			let mid = selected.calculate_mid();
 			let mut daffine = match self {
 				Operation::Translating(translation) => DAffine2::from_translation(translation.to_dvec()),
-				Operation::Rotating(radians) => DAffine2::from_angle(*radians * if invert { -1. } else { 1. }),
+				Operation::Rotating(radians) => DAffine2::from_angle(*radians),
 				Operation::Scaling(scale) => DAffine2::from_scale(scale.to_dvec()),
 				Operation::None => unreachable!(),
 			};
+			daffine = DAffine2::from_translation(mid) * daffine * DAffine2::from_translation(-mid);
 			if invert {
 				daffine = daffine.inverse();
 			}
@@ -178,10 +191,10 @@ pub struct TransformLayerMessageHandler {
 	change: DVec2,
 }
 
-impl MessageHandler<TransformLayerMessage, (&mut HashMap<Vec<LayerId>, LayerData>, &InputPreprocessor)> for TransformLayerMessageHandler {
-	fn process_action(&mut self, message: TransformLayerMessage, data: (&mut HashMap<Vec<LayerId>, LayerData>, &InputPreprocessor), responses: &mut VecDeque<Message>) {
-		let (layerdata, ipp) = data;
-		let mut selected = Selected::new(layerdata, responses);
+impl MessageHandler<TransformLayerMessage, (&mut HashMap<Vec<LayerId>, LayerData>, &mut Document, &InputPreprocessor)> for TransformLayerMessageHandler {
+	fn process_action(&mut self, message: TransformLayerMessage, data: (&mut HashMap<Vec<LayerId>, LayerData>, &mut Document, &InputPreprocessor), responses: &mut VecDeque<Message>) {
+		let (layerdata, document, ipp) = data;
+		let mut selected = Selected::new(layerdata, responses, document);
 		use TransformLayerMessage::*;
 		match message {
 			BeginTranslate => {
@@ -213,7 +226,17 @@ impl MessageHandler<TransformLayerMessage, (&mut HashMap<Vec<LayerId>, LayerData
 						self.operation = Operation::Translating(translation.increment_amount(delta_pos));
 						self.operation.apply_operation(&mut selected, false);
 					}
-					Operation::Rotating(_) => todo!(),
+					Operation::Rotating(r) => {
+						self.operation.apply_operation(&mut selected, true);
+						let half_viewport = selected.calculate_mid();
+						let rotation = {
+							let start_vec = self.mouse_pos - half_viewport;
+							let end_vec = ipp.mouse.position - half_viewport;
+							start_vec.angle_between(end_vec)
+						};
+						self.operation = Operation::Rotating(r + rotation);
+						self.operation.apply_operation(&mut selected, false);
+					}
 					Operation::Scaling(_) => todo!(),
 				}
 				self.mouse_pos = ipp.mouse.position;
