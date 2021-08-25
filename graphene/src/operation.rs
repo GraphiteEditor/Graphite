@@ -99,6 +99,7 @@ pub enum Operation {
 	SetShapePathInViewport {
 		path: Vec<LayerId>,
 		bez_path: kurbo::BezPath,
+		transform: [f64; 6],
 	},
 	TransformLayerInScope {
 		path: Vec<LayerId>,

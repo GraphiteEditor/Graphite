@@ -51,6 +51,7 @@ pub enum VectorManipulatorSegment {
 pub struct VectorManipulatorShape {
 	pub path: kurbo::BezPath,
 	pub segments: Vec<VectorManipulatorSegment>,
+	pub transform: [f64; 6],
 }
 
 #[derive(Clone, Debug)]
@@ -184,7 +185,11 @@ impl DocumentMessageHandler {
 				})
 				.collect::<Vec<VectorManipulatorSegment>>();
 
-			Some(VectorManipulatorShape { path, segments })
+			Some(VectorManipulatorShape {
+				path,
+				segments,
+				transform: viewport_transform.to_cols_array(),
+			})
 		});
 
 		shapes.collect::<Vec<VectorManipulatorShape>>()

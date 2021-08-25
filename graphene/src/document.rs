@@ -430,8 +430,11 @@ impl Document {
 				self.mark_as_dirty(path)?;
 				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::LayerChanged { path: path.clone() }])
 			}
-			Operation::SetShapePathInViewport { path, bez_path } => {
+			Operation::SetShapePathInViewport { path, bez_path, transform } => {
+				let transform = DAffine2::from_cols_array(transform);
+				self.set_transform_relative_to_viewport(path, transform)?;
 				self.mark_as_dirty(path)?;
+
 				if let Ok(layer) = self.layer_mut(path) {
 					match &mut layer.data {
 						LayerDataType::Shape(shape) => {
