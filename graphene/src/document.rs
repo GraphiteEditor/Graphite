@@ -339,14 +339,25 @@ impl Document {
 
 				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::CreatedLayer { path: path.clone() }])
 			}
-			Operation::AddShape {
+			Operation::AddNgon {
 				path,
 				insert_index,
 				transform,
 				style,
 				sides,
 			} => {
-				self.set_layer(path, Layer::new(LayerDataType::Shape(Shape::shape(*sides, *style)), *transform), *insert_index)?;
+				self.set_layer(path, Layer::new(LayerDataType::Shape(Shape::ngon(*sides, *style)), *transform), *insert_index)?;
+
+				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::CreatedLayer { path: path.clone() }])
+			}
+			Operation::AddOverlayShape { path, style, bez_path } => {
+				let mut shape = Shape::shape(bez_path.clone(), *style, false);
+				shape.render_index = -1;
+
+				let mut layer = Layer::new(LayerDataType::Shape(shape), DAffine2::IDENTITY.to_cols_array());
+				layer.overlay = true;
+
+				self.set_layer(path, layer, -1)?;
 
 				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::CreatedLayer { path: path.clone() }])
 			}
@@ -419,17 +430,17 @@ impl Document {
 				self.mark_as_dirty(path)?;
 				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::LayerChanged { path: path.clone() }])
 			}
-			Operation::SetLayerTransformInViewportAndStyleAndSetVisible { path, transform, style } => {
-				let layer = self.layer_mut(path)?;
-				match &mut layer.data {
-					LayerDataType::Shape(s) => s.style = *style,
-					_ => return Err(DocumentError::NotAShape),
-				}
-				layer.visible = true;
-
-				let transform = DAffine2::from_cols_array(transform);
-				self.set_transform_relative_to_viewport(path, transform)?;
+			Operation::SetShapePathInViewport { path, bez_path } => {
 				self.mark_as_dirty(path)?;
+				if let Ok(layer) = self.layer_mut(path) {
+					let layer_data = &layer.data;
+					match layer_data {
+						LayerDataType::Folder(_) => (),
+						LayerDataType::Shape(mut shape) => {
+							shape.path = bez_path.clone();
+						}
+					}
+				}
 				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::LayerChanged { path: path.clone() }])
 			}
 			Operation::TransformLayerInScope { path, transform, scope } => {

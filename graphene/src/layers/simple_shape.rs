@@ -77,7 +77,16 @@ impl Shape {
 		transforms.iter().skip(start).cloned().reduce(|a, b| a * b).unwrap_or(DAffine2::IDENTITY)
 	}
 
-	pub fn shape(sides: u8, style: PathStyle) -> Self {
+	pub fn shape(bez_path: BezPath, style: PathStyle, solid: bool) -> Self {
+		Self {
+			path: bez_path,
+			style,
+			render_index: 1,
+			solid: solid,
+		}
+	}
+
+	pub fn ngon(sides: u8, style: PathStyle) -> Self {
 		use std::f64::consts::{FRAC_PI_2, TAU};
 		fn unit_rotation(theta: f64) -> DVec2 {
 			DVec2::new(theta.sin(), theta.cos())

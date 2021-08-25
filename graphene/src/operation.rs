@@ -9,6 +9,7 @@ use crate::{
 	LayerId,
 };
 
+use kurbo::BezPath;
 use serde::{Deserialize, Serialize};
 
 #[repr(C)]
@@ -54,11 +55,16 @@ pub enum Operation {
 		points: Vec<(f64, f64)>,
 		style: style::PathStyle,
 	},
-	AddShape {
+	AddNgon {
 		path: Vec<LayerId>,
 		insert_index: isize,
 		transform: [f64; 6],
 		sides: u8,
+		style: style::PathStyle,
+	},
+	AddOverlayShape {
+		path: Vec<LayerId>,
+		bez_path: kurbo::BezPath,
 		style: style::PathStyle,
 	},
 	DeleteLayer {
@@ -91,10 +97,9 @@ pub enum Operation {
 		path: Vec<LayerId>,
 		transform: [f64; 6],
 	},
-	SetLayerTransformInViewportAndStyleAndSetVisible {
+	SetShapePathInViewport {
 		path: Vec<LayerId>,
-		transform: [f64; 6],
-		style: style::PathStyle,
+		bez_path: kurbo::BezPath,
 	},
 	TransformLayerInScope {
 		path: Vec<LayerId>,

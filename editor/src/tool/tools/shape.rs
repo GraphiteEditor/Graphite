@@ -83,7 +83,7 @@ impl Fsm for ShapeToolFsmState {
 					};
 
 					responses.push_back(
-						Operation::AddShape {
+						Operation::AddNgon {
 							path: shape_data.path.clone().unwrap(),
 							insert_index: -1,
 							transform: DAffine2::ZERO.to_cols_array(),
