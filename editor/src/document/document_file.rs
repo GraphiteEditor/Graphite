@@ -127,12 +127,6 @@ impl From<DocumentOperation> for Message {
 }
 
 impl DocumentMessageHandler {
-	fn filter_document_responses(&self, document_responses: &mut Vec<DocumentResponse>) -> bool {
-		let len = document_responses.len();
-		document_responses.retain(|response| !matches!(response, DocumentResponse::DocumentChanged));
-		document_responses.len() != len
-	}
-
 	pub fn handle_folder_changed(&mut self, path: Vec<LayerId>) -> Option<Message> {
 		let _ = self.document.render_root();
 		self.layer_data(&path).expanded.then(|| {
@@ -297,7 +291,6 @@ impl DocumentMessageHandler {
 	}
 
 	pub fn layer_panel_entry(&mut self, path: Vec<LayerId>) -> Result<LayerPanelEntry, EditorError> {
-		self.document.render_root();
 		let data: LayerData = *layer_data(&mut self.layer_data, &path);
 		let layer = self.document.layer(&path)?;
 		let entry = layer_panel_entry(&data, self.document.multiply_transforms(&path).unwrap(), layer, path);
@@ -449,8 +442,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			}
 			FolderChanged(path) => responses.extend(self.handle_folder_changed(path)),
 			DispatchOperation(op) => match self.document.handle_operation(&op) {
-				Ok(Some(mut document_responses)) => {
-					let canvas_dirty = self.filter_document_responses(&mut document_responses);
+				Ok(Some(document_responses)) => {
 					responses.extend(
 						document_responses
 							.into_iter()
@@ -468,13 +460,10 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 									.into()
 								}),
 								DocumentResponse::CreatedLayer { path } => (!self.document.layer(&path).unwrap().overlay).then(|| SetSelectedLayers(vec![path]).into()),
-								DocumentResponse::DocumentChanged => unreachable!(),
+								DocumentResponse::DocumentChanged => Some(RenderDocument.into()),
 							})
 							.flatten(),
 					);
-					if canvas_dirty {
-						responses.push_back(RenderDocument.into())
-					}
 				}
 				Err(e) => log::error!("DocumentError: {:?}", e),
 				Ok(_) => (),

@@ -83,9 +83,6 @@ fn log_message(message: &Message) {
 		&& !(matches!(
 			message,
 			InputPreprocessor(_)
-				| InputMapper(_) | Documents(DocumentsMessage::Document(DocumentMessage::RenderDocument))
-				| Frontend(FrontendMessage::UpdateCanvas { .. })
-				| Frontend(FrontendMessage::UpdateScrollbars { .. })
 				| Frontend(FrontendMessage::SetCanvasZoom { .. })
 				| Frontend(FrontendMessage::SetCanvasRotation { .. })
 		) || MessageDiscriminant::from(message).local_name().ends_with("MouseMove"))
