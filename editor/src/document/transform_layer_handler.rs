@@ -27,7 +27,12 @@ impl<'a> Selected<'a> {
 		log::info!("paths {:?}", self.selected);
 		self.selected
 			.iter()
-			.map(|path| (self.document.multiply_transforms(path).unwrap()).translation)
+			.map(|path| {
+				let multiplied_transform = self.document.multiply_transforms(path).unwrap();
+				let bounds = self.document.layer(path).unwrap().current_bounding_box_with_transform(multiplied_transform).unwrap();
+				let mid = (bounds[0] + bounds[1]) / 2.;
+				mid
+			})
 			.fold(DVec2::ZERO, |acc, x| acc + x)
 			/ self.selected.len() as f64
 	}
