@@ -271,7 +271,7 @@ impl Default for Mapping {
 		];
 
 		let (mut key_up, mut key_down, mut pointer_move, mut mouse_scroll) = mappings;
-		const NUMBER_KEYS: [Key; 10] = [Key::Key0, Key::Key1, Key::Key2, Key::Key3, Key::Key4, Key::Key5, Key::Key6, Key::Key7, Key::Key8, Key::Key9];
+		const NUMBER_KEYS: [Key; 10] = [Key0, Key1, Key2, Key3, Key4, Key5, Key6, Key7, Key8, Key9];
 		for (i, key) in NUMBER_KEYS.iter().enumerate() {
 			key_down[*key as usize].0.insert(
 				0,
