@@ -150,6 +150,9 @@ impl Operation {
 					.into(),
 				);
 			}
+			if selected.selected.len() > 0 {
+				selected.responses.push_back(SelectMessage::UpdateSelectionBoundingBox.into());
+			}
 		}
 	}
 
