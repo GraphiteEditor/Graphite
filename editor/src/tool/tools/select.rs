@@ -89,9 +89,9 @@ impl SelectToolData {
 	}
 }
 
-fn add_boundnig_box(responses: &mut VecDeque<Message>) -> Vec<LayerId> {
+fn add_boundnig_box(responses: &mut Vec<Message>) -> Vec<LayerId> {
 	let path = vec![generate_uuid()];
-	responses.push_back(
+	responses.push(
 		Operation::AddBoundingBox {
 			path: path.clone(),
 			transform: DAffine2::ZERO.to_cols_array(),
@@ -124,22 +124,25 @@ impl Fsm for SelectToolFsmState {
 		if let ToolMessage::Select(event) = event {
 			match (self, event) {
 				(_, UpdateSelectionBoundingBox) => {
+					let mut buffer = Vec::new();
 					let response = match (document.selected_layers_bounding_box(), data.bounding_box_id.take()) {
 						(None, Some(path)) => Operation::DeleteLayer { path }.into(),
 						(Some([pos1, pos2]), path) => {
-							let path = path.unwrap_or_else(|| add_boundnig_box(responses));
+							let path = path.unwrap_or_else(|| add_boundnig_box(&mut buffer));
 							data.bounding_box_id = Some(path.clone());
 							let transform = transform_from_box(pos1, pos2);
 							Operation::SetLayerTransformInViewport { path, transform }.into()
 						}
 						(_, _) => Message::NoOp,
 					};
-					responses.push_back(response);
+					responses.push_front(response);
+					buffer.into_iter().rev().for_each(|message| responses.push_front(message));
 					self
 				}
 				(Ready, DragStart { add_to_selection }) => {
 					data.drag_start = input.mouse.position;
 					data.drag_current = input.mouse.position;
+					let mut buffer = Vec::new();
 					let mut selected: Vec<_> = document.selected_layers().cloned().collect();
 					let quad = data.selection_quad();
 					let intersection = document.document.intersects_quad_root(quad);
@@ -147,25 +150,29 @@ impl Fsm for SelectToolFsmState {
 					if selected.is_empty() {
 						if let Some(layer) = intersection.last() {
 							selected.push(layer.clone());
-							responses.push_back(DocumentMessage::SetSelectedLayers(selected.clone()).into());
+							buffer.push(DocumentMessage::SetSelectedLayers(selected.clone()).into());
 						}
 					}
 					// If the user clicks on a layer that is in their current selection, go into the dragging mode.
 					// Otherwise enter the box select mode
-					if selected.iter().any(|path| intersection.contains(path)) {
+					let state = if selected.iter().any(|path| intersection.contains(path)) {
+						buffer.push(DocumentMessage::StartTransaction.into());
 						data.layers_dragging = selected;
 						Dragging
 					} else {
 						if !input.keyboard.get(add_to_selection as usize) {
-							responses.push_back(DocumentMessage::DeselectAllLayers.into());
+							buffer.push(DocumentMessage::DeselectAllLayers.into());
 						}
-						data.drag_box_id = Some(add_boundnig_box(responses));
+						data.drag_box_id = Some(add_boundnig_box(&mut buffer));
 						DrawingBox
-					}
+					};
+					buffer.into_iter().rev().for_each(|message| responses.push_front(message));
+					state
 				}
 				(Dragging, MouseMove) => {
+					responses.push_front(SelectMessage::UpdateSelectionBoundingBox.into());
 					for path in data.layers_dragging.iter() {
-						responses.push_back(
+						responses.push_front(
 							Operation::TransformLayerInViewport {
 								path: path.clone(),
 								transform: DAffine2::from_translation(input.mouse.position - data.drag_current).to_cols_array(),
@@ -173,7 +180,6 @@ impl Fsm for SelectToolFsmState {
 							.into(),
 						);
 					}
-					responses.push_back(SelectMessage::UpdateSelectionBoundingBox.into());
 					data.drag_current = input.mouse.position;
 					Dragging
 				}
@@ -183,7 +189,7 @@ impl Fsm for SelectToolFsmState {
 					let start = data.drag_start + half_pixel_offset;
 					let size = data.drag_current - start + half_pixel_offset;
 
-					responses.push_back(
+					responses.push_front(
 						Operation::SetLayerTransformInViewport {
 							path: data.drag_box_id.clone().unwrap(),
 							transform: DAffine2::from_scale_angle_translation(size, 0., start).to_cols_array(),
@@ -192,21 +198,27 @@ impl Fsm for SelectToolFsmState {
 					);
 					DrawingBox
 				}
-				(Dragging, DragStop) => Ready,
+				(Dragging, DragStop) => {
+					let response = match input.mouse.position.distance(data.drag_start) < 10. * f64::EPSILON {
+						true => DocumentMessage::Undo,
+						false => DocumentMessage::CommitTransaction,
+					};
+					responses.push_front(response.into());
+					Ready
+				}
 				(DrawingBox, DragStop) => {
 					let quad = data.selection_quad();
-					responses.push_back(DocumentMessage::AddSelectedLayers(document.document.intersects_quad_root(quad)).into());
-					responses.push_back(
+					responses.push_front(DocumentMessage::AddSelectedLayers(document.document.intersects_quad_root(quad)).into());
+					responses.push_front(
 						Operation::DeleteLayer {
 							path: data.drag_box_id.take().unwrap(),
 						}
 						.into(),
 					);
-					data.drag_box_id = None;
 					Ready
 				}
 				(_, Abort) => {
-					let mut delete = |path: &mut Option<Vec<LayerId>>| path.take().map(|path| responses.push_back(Operation::DeleteLayer { path }.into()));
+					let mut delete = |path: &mut Option<Vec<LayerId>>| path.take().map(|path| responses.push_front(Operation::DeleteLayer { path }.into()));
 					delete(&mut data.drag_box_id);
 					delete(&mut data.bounding_box_id);
 					Ready
