@@ -2,6 +2,7 @@ pub use super::layer_panel::*;
 
 use super::LayerData;
 
+use crate::consts::{ROTATE_SNAP_ANGLE, SCALE_SNAP_INTERVAL, SLOWING_DIVISOR};
 use crate::input::{mouse::ViewportPosition, InputPreprocessor};
 use crate::message_prelude::*;
 use glam::{DAffine2, DVec2};
@@ -114,8 +115,9 @@ impl Default for Scale {
 }
 
 impl Scale {
-	pub fn to_dvec(&self) -> DVec2 {
+	pub fn to_dvec(&self, snap: bool) -> DVec2 {
 		let value = if let Some(x) = self.typed { x } else { self.amount };
+		let value = if snap { (value / SCALE_SNAP_INTERVAL).round() * SCALE_SNAP_INTERVAL } else { value };
 		match self.constraint {
 			Axis::Both => DVec2::splat(value),
 			Axis::X => DVec2::new(value, 1.),
@@ -138,9 +140,12 @@ struct Rotation {
 }
 
 impl Rotation {
-	pub fn to_f64(&self) -> f64 {
+	pub fn to_f64(&self, snap: bool) -> f64 {
 		if let Some(x) = self.typed {
 			x.to_radians()
+		} else if snap {
+			let snap_resolution = ROTATE_SNAP_ANGLE.to_radians();
+			(self.amount / snap_resolution).round() * snap_resolution
 		} else {
 			self.amount
 		}
@@ -168,13 +173,13 @@ impl Default for Operation {
 }
 
 impl Operation {
-	pub fn apply_operation(&self, selected: &mut Selected, invert: bool) {
+	pub fn apply_operation(&self, selected: &mut Selected, invert: bool, snapping: bool) {
 		if self != &Operation::None {
 			let mid = selected.calculate_mid();
 			let mut daffine = match self {
 				Operation::Translating(translation) => DAffine2::from_translation(translation.to_dvec()),
-				Operation::Rotating(rotation) => DAffine2::from_angle(rotation.to_f64()),
-				Operation::Scaling(scale) => DAffine2::from_scale(scale.to_dvec()),
+				Operation::Rotating(rotation) => DAffine2::from_angle(rotation.to_f64(snapping)),
+				Operation::Scaling(scale) => DAffine2::from_scale(scale.to_dvec(snapping)),
 				Operation::None => unreachable!(),
 			};
 			daffine = DAffine2::from_translation(mid) * daffine * DAffine2::from_translation(-mid);
@@ -196,26 +201,26 @@ impl Operation {
 		}
 	}
 
-	pub fn constrain_axis(&mut self, axis: Axis, selected: &mut Selected) {
-		self.apply_operation(selected, true);
+	pub fn constrain_axis(&mut self, axis: Axis, selected: &mut Selected, snapping: bool) {
+		self.apply_operation(selected, true, snapping);
 		match self {
 			Operation::None => {}
 			Operation::Translating(t) => t.constraint.invert(axis),
 			Operation::Rotating(_) => {}
 			Operation::Scaling(s) => s.constraint.invert(axis),
 		}
-		self.apply_operation(selected, false);
+		self.apply_operation(selected, false, snapping);
 	}
 
-	pub fn handle_typed(&mut self, typed: Option<f64>, selected: &mut Selected) {
-		self.apply_operation(selected, true);
+	pub fn handle_typed(&mut self, typed: Option<f64>, selected: &mut Selected, snapping: bool) {
+		self.apply_operation(selected, true, snapping);
 		match self {
 			Operation::None => {}
 			Operation::Translating(t) => t.typed = typed,
 			Operation::Rotating(r) => r.typed = typed,
 			Operation::Scaling(s) => s.typed = typed,
 		}
-		self.apply_operation(selected, false);
+		self.apply_operation(selected, false, snapping);
 	}
 }
 
@@ -316,23 +321,23 @@ impl MessageHandler<TransformLayerMessage, (&mut HashMap<Vec<LayerId>, LayerData
 			BeginTranslate => {
 				self.mouse_pos = ipp.mouse.position;
 				self.start_mouse = ipp.mouse.position;
-				self.operation.apply_operation(&mut selected, true);
+				self.operation.apply_operation(&mut selected, true, self.snap);
 				self.operation = Operation::Translating(Default::default());
 			}
 			BeginRotate => {
 				self.mouse_pos = ipp.mouse.position;
 				self.start_mouse = ipp.mouse.position;
-				self.operation.apply_operation(&mut selected, true);
+				self.operation.apply_operation(&mut selected, true, self.snap);
 				self.operation = Operation::Rotating(Default::default());
 			}
 			BeginScale => {
 				self.mouse_pos = ipp.mouse.position;
 				self.start_mouse = ipp.mouse.position;
-				self.operation.apply_operation(&mut selected, true);
+				self.operation.apply_operation(&mut selected, true, self.snap);
 				self.operation = Operation::Scaling(Default::default());
 			}
 			CancelOperation => {
-				self.operation.apply_operation(&mut selected, true);
+				self.operation.apply_operation(&mut selected, true, self.snap);
 				self.operation = Operation::None;
 				self.typing.reset();
 			}
@@ -346,25 +351,25 @@ impl MessageHandler<TransformLayerMessage, (&mut HashMap<Vec<LayerId>, LayerData
 					match self.operation {
 						Operation::None => unreachable!(),
 						Operation::Translating(translation) => {
-							self.operation.apply_operation(&mut selected, true);
-							let change = if self.slow { delta_pos / 10. } else { delta_pos };
+							self.operation.apply_operation(&mut selected, true, self.snap);
+							let change = if self.slow { delta_pos / SLOWING_DIVISOR } else { delta_pos };
 							self.operation = Operation::Translating(translation.increment_amount(change));
-							self.operation.apply_operation(&mut selected, false);
+							self.operation.apply_operation(&mut selected, false, self.snap);
 						}
 						Operation::Rotating(r) => {
-							self.operation.apply_operation(&mut selected, true);
+							self.operation.apply_operation(&mut selected, true, self.snap);
 							let selected_mid = selected.calculate_mid();
 							let rotation = {
 								let start_vec = self.mouse_pos - selected_mid;
 								let end_vec = ipp.mouse.position - selected_mid;
 								start_vec.angle_between(end_vec)
 							};
-							let change = if self.slow { rotation / 10. } else { rotation };
+							let change = if self.slow { rotation / SLOWING_DIVISOR } else { rotation };
 							self.operation = Operation::Rotating(r.increment_amount(change));
-							self.operation.apply_operation(&mut selected, false);
+							self.operation.apply_operation(&mut selected, false, self.snap);
 						}
 						Operation::Scaling(s) => {
-							self.operation.apply_operation(&mut selected, true);
+							self.operation.apply_operation(&mut selected, true, self.snap);
 							let selected_mid = selected.calculate_mid();
 							let change = {
 								let previous_frame_dist = (self.mouse_pos - selected_mid).length();
@@ -372,21 +377,25 @@ impl MessageHandler<TransformLayerMessage, (&mut HashMap<Vec<LayerId>, LayerData
 								let start_transform_dist = (self.start_mouse - selected_mid).length();
 								(current_frame_dist - previous_frame_dist) / start_transform_dist
 							};
-							let change = if self.slow { change / 10. } else { change };
+							let change = if self.slow { change / SLOWING_DIVISOR } else { change };
 							self.operation = Operation::Scaling(s.increment_amount(change));
-							self.operation.apply_operation(&mut selected, false);
+							self.operation.apply_operation(&mut selected, false, self.snap);
 						}
 					}
 				}
 				self.mouse_pos = ipp.mouse.position;
 			}
-			TypeNum(k) => self.operation.handle_typed(self.typing.type_num(k), &mut selected),
-			TypeDelete => self.operation.handle_typed(self.typing.type_delete(), &mut selected),
-			TypeDecimalPoint => self.operation.handle_typed(self.typing.type_decimal(), &mut selected),
-			ConstrainX => self.operation.constrain_axis(Axis::X, &mut selected),
-			ConstrainY => self.operation.constrain_axis(Axis::Y, &mut selected),
+			TypeNum(k) => self.operation.handle_typed(self.typing.type_num(k), &mut selected, self.snap),
+			TypeDelete => self.operation.handle_typed(self.typing.type_delete(), &mut selected, self.snap),
+			TypeDecimalPoint => self.operation.handle_typed(self.typing.type_decimal(), &mut selected, self.snap),
+			ConstrainX => self.operation.constrain_axis(Axis::X, &mut selected, self.snap),
+			ConstrainY => self.operation.constrain_axis(Axis::Y, &mut selected, self.snap),
 			SetSlow(new) => self.slow = new,
-			SetSnap(new) => self.snap = new,
+			SetSnap(new) => {
+				self.operation.apply_operation(&mut selected, true, self.snap);
+				self.snap = new;
+				self.operation.apply_operation(&mut selected, false, self.snap);
+			}
 		}
 	}
 	fn actions(&self) -> ActionList {
