@@ -19,6 +19,8 @@ use std::collections::VecDeque;
 
 use super::movement_handler::{MovementMessage, MovementMessageHandler};
 
+type DocumentSave = (InternalDocument, HashMap<Vec<LayerId>, LayerData>);
+
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize, Hash)]
 pub enum FlipAxis {
 	X,
@@ -42,7 +44,8 @@ pub enum AlignAggregate {
 #[derive(Clone, Debug)]
 pub struct DocumentMessageHandler {
 	pub document: InternalDocument,
-	pub document_backup: Option<InternalDocument>,
+	pub document_history: Vec<DocumentSave>,
+	pub document_redo_history: Vec<DocumentSave>,
 	pub name: String,
 	pub layer_data: HashMap<Vec<LayerId>, LayerData>,
 	movement_handler: MovementMessageHandler,
@@ -52,7 +55,8 @@ impl Default for DocumentMessageHandler {
 	fn default() -> Self {
 		Self {
 			document: InternalDocument::default(),
-			document_backup: None,
+			document_history: Vec::new(),
+			document_redo_history: Vec::new(),
 			name: String::from("Untitled Document"),
 			layer_data: vec![(vec![], LayerData::new(true))].into_iter().collect(),
 			movement_handler: MovementMessageHandler::default(),
@@ -90,6 +94,10 @@ pub enum DocumentMessage {
 	SaveDocument,
 	RenderDocument,
 	Undo,
+	Redo,
+	DocumentHistoryBackward,
+	DocumentHistoryForward,
+	ClearOverlays,
 	NudgeSelectedLayers(f64, f64),
 	AlignSelectedLayers(AlignAxis, AlignAggregate),
 	MoveSelectedLayersTo {
@@ -195,7 +203,8 @@ impl DocumentMessageHandler {
 	pub fn with_name(name: String) -> Self {
 		Self {
 			document: InternalDocument::default(),
-			document_backup: None,
+			document_history: Vec::new(),
+			document_redo_history: Vec::new(),
 			name,
 			layer_data: vec![(vec![], LayerData::new(true))].into_iter().collect(),
 			movement_handler: MovementMessageHandler::default(),
@@ -219,18 +228,42 @@ impl DocumentMessageHandler {
 	}
 
 	pub fn backup(&mut self) {
-		self.document_backup = Some(self.document.clone())
+		self.document_redo_history.clear();
+		let new_layer_data = self
+			.layer_data
+			.iter()
+			.filter_map(|(key, value)| (!self.document.layer(key).unwrap().overlay).then(|| (key.clone(), *value)))
+			.collect();
+		self.document_history.push((self.document.clone_without_overlays(), new_layer_data))
 	}
 
 	pub fn rollback(&mut self) -> Result<(), EditorError> {
 		self.backup();
-		self.reset()
+		self.undo()
 	}
 
-	pub fn reset(&mut self) -> Result<(), EditorError> {
-		match self.document_backup.take() {
-			Some(backup) => {
-				self.document = backup;
+	pub fn undo(&mut self) -> Result<(), EditorError> {
+		match self.document_history.pop() {
+			Some((document, layer_data)) => {
+				let document = std::mem::replace(&mut self.document, document);
+				let layer_data = std::mem::replace(&mut self.layer_data, layer_data);
+				self.document_redo_history.push((document, layer_data));
+				Ok(())
+			}
+			None => Err(EditorError::NoTransactionInProgress),
+		}
+	}
+
+	pub fn redo(&mut self) -> Result<(), EditorError> {
+		match self.document_redo_history.pop() {
+			Some((document, layer_data)) => {
+				let document = std::mem::replace(&mut self.document, document);
+				let layer_data = std::mem::replace(&mut self.layer_data, layer_data);
+				let new_layer_data = layer_data
+					.iter()
+					.filter_map(|(key, value)| (!self.document.layer(key).unwrap().overlay).then(|| (key.clone(), *value)))
+					.collect();
+				self.document_history.push((document.clone_without_overlays(), new_layer_data));
 				Ok(())
 			}
 			None => Err(EditorError::NoTransactionInProgress),
@@ -284,10 +317,10 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				responses.extend([DocumentMessage::RenderDocument.into(), self.handle_folder_changed(vec![]).unwrap()]);
 			}
 			AbortTransaction => {
-				self.reset().unwrap_or_else(|e| log::warn!("{}", e));
+				self.undo().unwrap_or_else(|e| log::warn!("{}", e));
 				responses.extend([DocumentMessage::RenderDocument.into(), self.handle_folder_changed(vec![]).unwrap()]);
 			}
-			CommitTransaction => self.document_backup = None,
+			CommitTransaction => (),
 			ExportDocument => {
 				let bbox = self.document.visible_layers_bounding_box().unwrap_or([DVec2::ZERO, ipp.viewport_bounds.size()]);
 				let size = bbox[1] - bbox[0];
@@ -325,11 +358,13 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				)
 			}
 			SetBlendModeForSelectedLayers(blend_mode) => {
+				self.backup();
 				for path in self.layer_data.iter().filter_map(|(path, data)| data.selected.then(|| path.clone())) {
 					responses.push_back(DocumentOperation::SetLayerBlendMode { path, blend_mode }.into());
 				}
 			}
 			SetOpacityForSelectedLayers(opacity) => {
+				self.backup();
 				let opacity = opacity.clamp(0., 1.);
 
 				for path in self.selected_layers().cloned() {
@@ -345,12 +380,20 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			}
 			SelectionChanged => responses.push_back(SelectMessage::UpdateSelectionBoundingBox.into()),
 			DeleteSelectedLayers => {
+				self.backup();
+				responses.push_front(SelectMessage::UpdateSelectionBoundingBox.into());
 				for path in self.selected_layers().cloned() {
-					responses.push_back(DocumentOperation::DeleteLayer { path }.into())
+					responses.push_front(DocumentOperation::DeleteLayer { path }.into())
 				}
-				responses.push_back(SelectMessage::UpdateSelectionBoundingBox.into());
+			}
+			ClearOverlays => {
+				responses.push_front(SelectMessage::UpdateSelectionBoundingBox.into());
+				for path in self.layer_data.keys().filter(|path| self.document.layer(path).unwrap().overlay).cloned() {
+					responses.push_front(DocumentOperation::DeleteLayer { path }.into())
+				}
 			}
 			DuplicateSelectedLayers => {
+				self.backup();
 				for path in self.selected_layers_sorted() {
 					responses.push_back(DocumentOperation::DuplicateLayer { path }.into())
 				}
@@ -365,7 +408,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				}
 				// TODO: Correctly update layer panel in clear_selection instead of here
 				responses.extend(self.handle_folder_changed(Vec::new()));
-				responses.push_back(SelectMessage::UpdateSelectionBoundingBox.into());
+				responses.push_front(SelectMessage::UpdateSelectionBoundingBox.into());
 			}
 			SelectAllLayers => {
 				let all_layer_paths = self
@@ -374,16 +417,26 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					.filter(|path| !path.is_empty() && !self.document.layer(path).unwrap().overlay)
 					.cloned()
 					.collect::<Vec<_>>();
-				responses.push_back(SetSelectedLayers(all_layer_paths).into());
+				responses.push_front(SetSelectedLayers(all_layer_paths).into());
 			}
 			DeselectAllLayers => {
-				responses.push_back(SetSelectedLayers(vec![]).into());
+				responses.push_front(SetSelectedLayers(vec![]).into());
 			}
+			DocumentHistoryBackward => self.undo().unwrap_or_else(|e| log::warn!("{}", e)),
+			DocumentHistoryForward => self.redo().unwrap_or_else(|e| log::warn!("{}", e)),
 			Undo => {
-				// this is a temporary fix and will be addressed by #123
-				if let Some(id) = self.document.root.as_folder().unwrap().list_layers().last() {
-					responses.push_back(DocumentOperation::DeleteLayer { path: vec![*id] }.into())
-				}
+				responses.push_back(SelectMessage::Abort.into());
+				responses.push_back(DocumentHistoryBackward.into());
+				responses.push_back(SelectMessage::UpdateSelectionBoundingBox.into());
+				responses.push_back(RenderDocument.into());
+				responses.push_back(FolderChanged(vec![]).into());
+			}
+			Redo => {
+				responses.push_back(SelectMessage::Abort.into());
+				responses.push_back(DocumentHistoryForward.into());
+				responses.push_back(SelectMessage::UpdateSelectionBoundingBox.into());
+				responses.push_back(RenderDocument.into());
+				responses.push_back(FolderChanged(vec![]).into());
 			}
 			FolderChanged(path) => responses.extend(self.handle_folder_changed(path)),
 			DispatchOperation(op) => match self.document.handle_operation(&op) {
@@ -446,6 +499,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			}
 
 			NudgeSelectedLayers(x, y) => {
+				self.backup();
 				for path in self.selected_layers().cloned() {
 					let operation = DocumentOperation::TransformLayerInViewport {
 						path,
@@ -461,6 +515,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				responses.push_back(DocumentsMessage::PasteLayers { path, insert_index }.into());
 			}
 			ReorderSelectedLayers(relative_position) => {
+				self.backup();
 				let all_layer_paths = self.all_layers_sorted();
 				let selected_layers = self.selected_layers_sorted();
 				if let Some(pivot) = match relative_position.signum() {
@@ -491,6 +546,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				}
 			}
 			FlipSelectedLayers(axis) => {
+				self.backup();
 				let scale = match axis {
 					FlipAxis::X => DVec2::new(-1., 1.),
 					FlipAxis::Y => DVec2::new(1., -1.),
@@ -512,6 +568,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				}
 			}
 			AlignSelectedLayers(axis, aggregate) => {
+				self.backup();
 				let (paths, boxes): (Vec<_>, Vec<_>) = self.selected_layers().filter_map(|path| self.document.viewport_bounding_box(path).ok()?.map(|b| (path, b))).unzip();
 
 				let axis = match axis {
@@ -550,6 +607,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 	fn actions(&self) -> ActionList {
 		let mut common = actions!(DocumentMessageDiscriminant;
 			Undo,
+			Redo,
 			SelectAllLayers,
 			DeselectAllLayers,
 			RenderDocument,

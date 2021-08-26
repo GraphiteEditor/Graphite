@@ -212,6 +212,12 @@ pub fn undo() -> Result<(), JsValue> {
 	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(DocumentMessage::Undo)).map_err(convert_error)
 }
 
+/// Redo history one step
+#[wasm_bindgen]
+pub fn redo() -> Result<(), JsValue> {
+	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(DocumentMessage::Redo)).map_err(convert_error)
+}
+
 /// Select all layers
 #[wasm_bindgen]
 pub fn select_all_layers() -> Result<(), JsValue> {
