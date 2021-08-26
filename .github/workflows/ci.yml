@@ -46,15 +46,21 @@ jobs:
     strategy:
       matrix:
         checks:
-          - advisories
-          - bans licenses sources
+          - 'security advisories'
+          - 'banned licenses and crates'
 
     # Prevent sudden announcement of a new advisory from failing ci:
-    continue-on-error: ${{ matrix.checks == 'advisories' }}
+    continue-on-error: ${{ matrix.checks == 'security advisories' }}
 
     steps:
     - uses: actions/checkout@v2
 
     - uses: EmbarkStudios/cargo-deny-action@v1
+      if: matrix.checks == 'security advisories'
       with:
-        command: check ${{ matrix.checks }}
+        command: check advisories
+
+    - uses: EmbarkStudios/cargo-deny-action@v1
+      if: matrix.checks == 'banned licenses and crates'
+      with:
+        command: check bans licenses sources
