@@ -190,6 +190,7 @@ impl Fsm for PathToolFsmState {
 
 				self
 			} else {
+				// Destory the overlay layer pools
 				while let Some(layer) = data.anchor_marker_pool.pop() {
 					responses.push_back(Operation::DeleteLayer { path: layer }.into());
 				}
