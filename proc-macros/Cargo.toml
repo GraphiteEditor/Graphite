@@ -3,6 +3,7 @@ name = "graphite-proc-macros"
 version = "0.1.0"
 authors = ["Graphite Authors <contact@graphite.design>"]
 edition = "2018"
+license = "Apache-2.0"
 publish = false
 
 [lib]
