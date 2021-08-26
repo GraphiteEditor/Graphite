@@ -9,7 +9,6 @@ use graphene::document::Document;
 use graphene::Operation as DocumentOperation;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
-use std::fs::OpenOptions;
 
 struct Selected<'a> {
 	pub selected: Vec<Vec<LayerId>>,
@@ -291,14 +290,17 @@ pub enum TransformLayerMessage {
 	ConstrainY,
 
 	MouseMove,
+
+	SetSlow(bool),
+	SetSnap(bool),
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct TransformLayerMessageHandler {
 	operation: Operation,
 
-	shift_down: bool,
-	ctrl_down: bool,
+	slow: bool,
+	snap: bool,
 	typing: Typing,
 
 	mouse_pos: ViewportPosition,
@@ -345,7 +347,8 @@ impl MessageHandler<TransformLayerMessage, (&mut HashMap<Vec<LayerId>, LayerData
 						Operation::None => unreachable!(),
 						Operation::Translating(translation) => {
 							self.operation.apply_operation(&mut selected, true);
-							self.operation = Operation::Translating(translation.increment_amount(delta_pos));
+							let change = if self.slow { delta_pos / 10. } else { delta_pos };
+							self.operation = Operation::Translating(translation.increment_amount(change));
 							self.operation.apply_operation(&mut selected, false);
 						}
 						Operation::Rotating(r) => {
@@ -356,7 +359,8 @@ impl MessageHandler<TransformLayerMessage, (&mut HashMap<Vec<LayerId>, LayerData
 								let end_vec = ipp.mouse.position - selected_mid;
 								start_vec.angle_between(end_vec)
 							};
-							self.operation = Operation::Rotating(r.increment_amount(rotation));
+							let change = if self.slow { rotation / 10. } else { rotation };
+							self.operation = Operation::Rotating(r.increment_amount(change));
 							self.operation.apply_operation(&mut selected, false);
 						}
 						Operation::Scaling(s) => {
@@ -368,6 +372,7 @@ impl MessageHandler<TransformLayerMessage, (&mut HashMap<Vec<LayerId>, LayerData
 								let start_transform_dist = (self.start_mouse - selected_mid).length();
 								(current_frame_dist - previous_frame_dist) / start_transform_dist
 							};
+							let change = if self.slow { change / 10. } else { change };
 							self.operation = Operation::Scaling(s.increment_amount(change));
 							self.operation.apply_operation(&mut selected, false);
 						}
@@ -380,6 +385,8 @@ impl MessageHandler<TransformLayerMessage, (&mut HashMap<Vec<LayerId>, LayerData
 			TypeDecimalPoint => self.operation.handle_typed(self.typing.type_decimal(), &mut selected),
 			ConstrainX => self.operation.constrain_axis(Axis::X, &mut selected),
 			ConstrainY => self.operation.constrain_axis(Axis::Y, &mut selected),
+			SetSlow(new) => self.slow = new,
+			SetSnap(new) => self.snap = new,
 		}
 	}
 	fn actions(&self) -> ActionList {
@@ -399,6 +406,8 @@ impl MessageHandler<TransformLayerMessage, (&mut HashMap<Vec<LayerId>, LayerData
 				TypeDecimalPoint,
 				ConstrainX,
 				ConstrainY,
+				SetSlow,
+				SetSnap,
 			);
 			common.extend(active);
 		}

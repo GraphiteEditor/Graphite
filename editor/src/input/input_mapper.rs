@@ -141,6 +141,10 @@ impl Default for Mapping {
 			entry! {action=TransformLayerMessage::TypeDelete, key_down=KeyBackspace},
 			entry! {action=TransformLayerMessage::TypeDecimalPoint, key_down=KeyComma},
 			entry! {action=TransformLayerMessage::TypeDecimalPoint, key_down=KeyPeriod},
+			entry! {action=TransformLayerMessage::SetSlow(true), key_down=KeyShift},
+			entry! {action=TransformLayerMessage::SetSnap(true), key_down=KeyControl},
+			entry! {action=TransformLayerMessage::SetSlow(false), key_up=KeyShift},
+			entry! {action=TransformLayerMessage::SetSnap(false), key_up=KeyControl},
 			// Select
 			entry! {action=SelectMessage::MouseMove, message=InputMapperMessage::PointerMove},
 			entry! {action=SelectMessage::DragStart{add_to_selection: KeyShift}, key_down=Lmb},
