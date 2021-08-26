@@ -83,7 +83,14 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, &InputPreprocessor)> 
 				}
 				self.tool_state.tool_data.active_tool_type = tool;
 
-				responses.push_back(FrontendMessage::SetActiveTool { tool_name: tool.to_string() }.into())
+				responses.push_back(FrontendMessage::SetActiveTool { tool_name: tool.to_string() }.into());
+				responses.push_back(
+					FrontendMessage::SetToolOptions {
+						tool_name: tool.to_string(),
+						tool_options: self.tool_state.document_tool_data.tool_options.get(&tool).map(|tool_options| *tool_options),
+					}
+					.into(),
+				);
 			}
 			SwapColors => {
 				let doc_data = &mut self.tool_state.document_tool_data;
@@ -98,6 +105,13 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, &InputPreprocessor)> 
 			}
 			SetToolOptions(tool_type, tool_options) => {
 				self.tool_state.document_tool_data.tool_options.insert(tool_type, tool_options);
+				responses.push_back(
+					FrontendMessage::SetToolOptions {
+						tool_name: tool_type.to_string(),
+						tool_options: Some(tool_options),
+					}
+					.into(),
+				);
 			}
 			message => {
 				let tool_type = message_to_tool_type(&message);

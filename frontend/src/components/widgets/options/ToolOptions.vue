@@ -7,7 +7,12 @@
 				<h3>{{ option.popover.title }}</h3>
 				<p>{{ option.popover.text }}</p>
 			</PopoverButton>
-			<NumberInput v-if="option.kind === 'NumberInput'" v-model:value="option.props.value" @update:value="option.callback" :title="option.tooltip" v-bind="option.props" />
+			<NumberInput
+				v-if="option.kind === 'NumberInput'"
+				@update:value="(value) => updateToolOptions(option.path, value)"
+				:title="option.tooltip"
+				v-bind="{ ...option.props, value: getOption(option.path) }"
+			/>
 			<Separator v-if="option.kind === 'Separator'" v-bind="option.props" />
 		</template>
 	</div>
@@ -38,28 +43,38 @@ const wasm = import("@/../wasm/pkg");
 export default defineComponent({
 	props: {
 		activeTool: { type: String },
+		currentToolOptions: { type: Object },
 	},
-	computed: {},
+	computed: {
+		activeToolOptions(): Record<string, object> {
+			return (this.$props.currentToolOptions || {})[this.$props.activeTool || ""];
+		},
+	},
 	methods: {
-		async setShapeOptions(newValue: number) {
-			// TODO: Each value-input widget (i.e. not a button) should map to a field in an options struct,
-			// and updating a widget should send the whole updated struct to the backend.
-			// Later, it could send a single-field update to the backend.
-
-			// This is a placeholder call, using the Shape tool as an example
-			// eslint-disable-next-line camelcase
-			(await wasm).set_tool_options(this.$props.activeTool || "", { Shape: { shape_type: { Polygon: { vertices: newValue } } } });
-		},
-		async setLineOptions(newValue: number) {
-			// eslint-disable-next-line camelcase
-			(await wasm).set_tool_options(this.$props.activeTool || "", { Line: { weight: newValue } });
-		},
-		async setPenOptions(newValue: number) {
-			// eslint-disable-next-line camelcase
-			(await wasm).set_tool_options(this.$props.activeTool || "", { Pen: { weight: newValue } });
+		async updateToolOptions(path: string[], newValue: number) {
+			this.setOption(path, newValue);
+			(await wasm).set_tool_options(this.$props.activeTool || "", this.activeToolOptions);
 		},
 		async sendToolMessage(message: string | object) {
 			(await wasm).send_tool_message(this.$props.activeTool || "", message);
+		},
+		// Traverses the given path into the active tool's option struct, and sets the value at the path tail
+		setOption(path: string[], newValue: number) {
+			let value = this.activeToolOptions as Record<string, object | number>;
+			[this.$props.activeTool || "", ...path.slice(0, -1)].forEach((attr) => {
+				value = value[attr] as Record<string, object | number>;
+			});
+			const final = value as Record<string, number>;
+			final[path.slice(-1)[0]] = newValue;
+		},
+		// Traverses the given path into the active tool's option struct, and returns the value at the path tail
+		getOption(path: string[]): number {
+			let value = this.activeToolOptions as Record<string, object | number>;
+			[this.$props.activeTool || "", ...path.slice(0, -1)].forEach((attr) => {
+				value = value[attr] as Record<string, object | number>;
+			});
+			const final = value as Record<string, number>;
+			return final[path.slice(-1)[0]];
 		},
 		handleIconButtonAction(option: IconButtonWidget) {
 			if (option.message) {
@@ -134,9 +149,9 @@ export default defineComponent({
 					props: {},
 				},
 			],
-			Shape: [{ kind: "NumberInput", callback: this.setShapeOptions, props: { value: 6, min: 3, isInteger: true, label: "Sides" } }],
-			Line: [{ kind: "NumberInput", callback: this.setLineOptions, props: { value: 5, min: 1, isInteger: true, unit: " px", label: "Weight" } }],
-			Pen: [{ kind: "NumberInput", callback: this.setPenOptions, props: { value: 5, min: 1, isInteger: true, unit: " px", label: "Weight" } }],
+			Shape: [{ kind: "NumberInput", path: ["shape_type", "Polygon", "vertices"], props: { min: 3, isInteger: true, label: "Sides" } }],
+			Line: [{ kind: "NumberInput", path: ["weight"], props: { min: 1, isInteger: true, unit: " px", label: "Weight" } }],
+			Pen: [{ kind: "NumberInput", path: ["weight"], props: { min: 1, isInteger: true, unit: " px", label: "Weight" } }],
 		};
 
 		return {

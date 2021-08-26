@@ -22,6 +22,7 @@ export enum ResponseType {
 	CollapseFolder = "CollapseFolder",
 	UpdateLayer = "UpdateLayer",
 	SetActiveTool = "SetActiveTool",
+	SetToolOptions = "SetToolOptions",
 	SetActiveDocument = "SetActiveDocument",
 	UpdateOpenDocumentsList = "UpdateOpenDocumentsList",
 	UpdateWorkingColors = "UpdateWorkingColors",
@@ -61,6 +62,8 @@ function parseResponse(responseType: string, data: any): Response {
 			return newExpandFolder(data.ExpandFolder);
 		case "SetActiveTool":
 			return newSetActiveTool(data.SetActiveTool);
+		case "SetToolOptions":
+			return newSetToolOptions(data.SetToolOptions);
 		case "SetActiveDocument":
 			return newSetActiveDocument(data.SetActiveDocument);
 		case "UpdateOpenDocumentsList":
@@ -131,6 +134,17 @@ export interface SetActiveTool {
 function newSetActiveTool(input: any): SetActiveTool {
 	return {
 		tool_name: input.tool_name,
+	};
+}
+
+export interface SetToolOptions {
+	tool_name: string;
+	tool_options: object;
+}
+function newSetToolOptions(input: any): SetToolOptions {
+	return {
+		tool_name: input.tool_name,
+		tool_options: input.tool_options,
 	};
 }
 

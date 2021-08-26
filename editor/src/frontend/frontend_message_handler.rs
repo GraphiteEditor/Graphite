@@ -1,5 +1,6 @@
 use crate::frontend::layer_panel::LayerPanelEntry;
 use crate::message_prelude::*;
+use crate::tool::tool_options::ToolOptions;
 use crate::Color;
 use serde::{Deserialize, Serialize};
 
@@ -11,6 +12,7 @@ pub enum FrontendMessage {
 	CollapseFolder { path: Vec<LayerId> },
 	ExpandFolder { path: Vec<LayerId>, children: Vec<LayerPanelEntry> },
 	SetActiveTool { tool_name: String },
+	SetToolOptions { tool_name: String, tool_options: Option<ToolOptions> },
 	SetActiveDocument { document_index: usize },
 	UpdateOpenDocumentsList { open_documents: Vec<String> },
 	DisplayError { description: String },

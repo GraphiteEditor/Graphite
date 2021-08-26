@@ -6,7 +6,7 @@
 
 				<Separator :type="SeparatorType.Section" />
 
-				<ToolOptions :activeTool="activeTool" />
+				<ToolOptions :activeTool="activeTool" :currentToolOptions="toolOptions" />
 			</div>
 			<div class="spacer"></div>
 			<div class="right side">
@@ -224,7 +224,7 @@
 <script lang="ts">
 import { defineComponent } from "vue";
 
-import { ResponseType, registerResponseHandler, Response, UpdateCanvas, UpdateScrollbars, SetActiveTool, SetCanvasZoom, SetCanvasRotation } from "@/utilities/response-handler";
+import { ResponseType, registerResponseHandler, Response, UpdateCanvas, UpdateScrollbars, SetActiveTool, SetToolOptions, SetCanvasZoom, SetCanvasRotation } from "@/utilities/response-handler";
 import { SeparatorDirection, SeparatorType } from "@/components/widgets/widgets";
 import { comingSoon } from "@/utilities/errors";
 
@@ -333,6 +333,11 @@ export default defineComponent({
 			if (toolData) this.activeTool = toolData.tool_name;
 		});
 
+		registerResponseHandler(ResponseType.SetToolOptions, (responseData: Response) => {
+			const toolData = responseData as SetToolOptions;
+			if (toolData) this.toolOptions[toolData.tool_name] = toolData.tool_options;
+		});
+
 		registerResponseHandler(ResponseType.SetCanvasZoom, (responseData: Response) => {
 			const updateData = responseData as SetCanvasZoom;
 			if (updateData) {
@@ -357,6 +362,7 @@ export default defineComponent({
 			canvasSvgWidth: "100%",
 			canvasSvgHeight: "100%",
 			activeTool: "Select",
+			toolOptions: {} as Record<string, object>,
 			documentModeEntries,
 			viewModeEntries,
 			documentModeSelectionIndex: 0,
