@@ -79,6 +79,8 @@ pub enum Key {
 	KeyRightCurlyBracket,
 	KeyPageUp,
 	KeyPageDown,
+	KeyComma,
+	KeyPeriod,
 
 	// This has to be the last element in the enum.
 	NumKeys,

@@ -9,6 +9,7 @@ use graphene::document::Document;
 use graphene::Operation as DocumentOperation;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
+use std::fs::OpenOptions;
 
 struct Selected<'a> {
 	pub selected: Vec<Vec<LayerId>>,
@@ -28,7 +29,12 @@ impl<'a> Selected<'a> {
 			.iter()
 			.map(|path| {
 				let multiplied_transform = self.document.multiply_transforms(path).unwrap();
-				let bounds = self.document.layer(path).unwrap().current_bounding_box_with_transform(multiplied_transform).unwrap();
+				let bounds = self
+					.document
+					.layer(path)
+					.unwrap()
+					.current_bounding_box_with_transform(multiplied_transform)
+					.unwrap_or([multiplied_transform.translation; 2]);
 				let mid = (bounds[0] + bounds[1]) / 2.;
 				mid
 			})
@@ -64,10 +70,18 @@ impl Axis {
 struct Translation {
 	pub amount: DVec2,
 	pub constraint: Axis,
+	pub typed: Option<f64>,
 }
 
 impl Translation {
 	pub fn to_dvec(&self) -> DVec2 {
+		if let Some(x) = self.typed {
+			if self.constraint == Axis::Y {
+				return DVec2::new(0., x);
+			} else {
+				return DVec2::new(x, 0.);
+			}
+		}
 		match self.constraint {
 			Axis::Both => self.amount,
 			Axis::X => DVec2::new(self.amount.x, 0.),
@@ -78,6 +92,7 @@ impl Translation {
 		Self {
 			amount: self.amount + delta,
 			constraint: self.constraint,
+			typed: None,
 		}
 	}
 }
@@ -86,6 +101,7 @@ impl Translation {
 struct Scale {
 	pub amount: f64,
 	pub constraint: Axis,
+	pub typed: Option<f64>,
 }
 
 impl Default for Scale {
@@ -93,22 +109,47 @@ impl Default for Scale {
 		Self {
 			amount: 1.,
 			constraint: Axis::default(),
+			typed: None,
 		}
 	}
 }
 
 impl Scale {
 	pub fn to_dvec(&self) -> DVec2 {
+		let value = if let Some(x) = self.typed { x } else { self.amount };
 		match self.constraint {
-			Axis::Both => DVec2::splat(self.amount),
-			Axis::X => DVec2::new(self.amount, 1.),
-			Axis::Y => DVec2::new(1., self.amount),
+			Axis::Both => DVec2::splat(value),
+			Axis::X => DVec2::new(value, 1.),
+			Axis::Y => DVec2::new(1., value),
 		}
 	}
 	pub fn increment_amount(self, delta: f64) -> Self {
 		Self {
 			amount: self.amount + delta,
 			constraint: self.constraint,
+			typed: None,
+		}
+	}
+}
+
+#[derive(Default, Debug, Clone, PartialEq, Copy)]
+struct Rotation {
+	pub amount: f64,
+	pub typed: Option<f64>,
+}
+
+impl Rotation {
+	pub fn to_f64(&self) -> f64 {
+		if let Some(x) = self.typed {
+			x.to_radians()
+		} else {
+			self.amount
+		}
+	}
+	pub fn increment_amount(self, delta: f64) -> Self {
+		Self {
+			amount: self.amount + delta,
+			typed: None,
 		}
 	}
 }
@@ -117,7 +158,7 @@ impl Scale {
 enum Operation {
 	None,
 	Translating(Translation),
-	Rotating(f64),
+	Rotating(Rotation),
 	Scaling(Scale),
 }
 
@@ -133,7 +174,7 @@ impl Operation {
 			let mid = selected.calculate_mid();
 			let mut daffine = match self {
 				Operation::Translating(translation) => DAffine2::from_translation(translation.to_dvec()),
-				Operation::Rotating(radians) => DAffine2::from_angle(*radians),
+				Operation::Rotating(rotation) => DAffine2::from_angle(rotation.to_f64()),
 				Operation::Scaling(scale) => DAffine2::from_scale(scale.to_dvec()),
 				Operation::None => unreachable!(),
 			};
@@ -166,6 +207,70 @@ impl Operation {
 		}
 		self.apply_operation(selected, false);
 	}
+
+	pub fn handle_typed(&mut self, typed: Option<f64>, selected: &mut Selected) {
+		self.apply_operation(selected, true);
+		match self {
+			Operation::None => {}
+			Operation::Translating(t) => t.typed = typed,
+			Operation::Rotating(r) => r.typed = typed,
+			Operation::Scaling(s) => s.typed = typed,
+		}
+		self.apply_operation(selected, false);
+	}
+}
+
+#[derive(Debug, Clone, PartialEq, Default)]
+struct Typing {
+	is_typing: bool,
+	digits: Vec<u8>,
+}
+impl Typing {
+	pub fn type_num(&mut self, num: u8) -> Option<f64> {
+		self.is_typing = true;
+		self.digits.push(num);
+		self.evaluate()
+	}
+	pub fn type_delete(&mut self) -> Option<f64> {
+		if self.is_typing {
+			self.digits.pop();
+			if self.digits.len() == 0 {
+				self.is_typing = false;
+			}
+		}
+		self.evaluate()
+	}
+	pub fn type_decimal(&mut self) -> Option<f64> {
+		self.digits.push(200);
+		self.evaluate()
+	}
+	pub fn evaluate(&self) -> Option<f64> {
+		if self.digits.len() == 0 {
+			return None;
+		}
+		let mut result = 0_f64;
+		let mut decimal = 0_i32;
+		for v in &self.digits {
+			if v == &200 {
+				if decimal == 0 {
+					decimal = 1;
+				}
+			} else {
+				if decimal == 0 {
+					result *= 10.;
+					result += *v as f64;
+				} else {
+					result += *v as f64 * 0.1_f64.powi(decimal);
+					decimal += 1;
+				}
+			}
+		}
+		Some(result)
+	}
+	pub fn reset(&mut self) {
+		self.digits.clear();
+		self.is_typing = false;
+	}
 }
 
 #[impl_message(Message, DocumentMessage, TransformLayers)]
@@ -180,6 +285,7 @@ pub enum TransformLayerMessage {
 
 	TypeNum(u8),
 	TypeDelete,
+	TypeDecimalPoint,
 
 	ConstrainX,
 	ConstrainY,
@@ -193,7 +299,7 @@ pub struct TransformLayerMessageHandler {
 
 	shift_down: bool,
 	ctrl_down: bool,
-	typing: bool,
+	typing: Typing,
 
 	mouse_pos: ViewportPosition,
 	start_mouse: ViewportPosition,
@@ -226,45 +332,52 @@ impl MessageHandler<TransformLayerMessage, (&mut HashMap<Vec<LayerId>, LayerData
 			CancelOperation => {
 				self.operation.apply_operation(&mut selected, true);
 				self.operation = Operation::None;
+				self.typing.reset();
 			}
-			ApplyOperation => self.operation = Operation::None,
+			ApplyOperation => {
+				self.typing.reset();
+				self.operation = Operation::None;
+			}
 			MouseMove => {
-				let delta_pos = ipp.mouse.position - self.mouse_pos;
-				match self.operation {
-					Operation::None => unreachable!(),
-					Operation::Translating(translation) => {
-						self.operation.apply_operation(&mut selected, true);
-						self.operation = Operation::Translating(translation.increment_amount(delta_pos));
-						self.operation.apply_operation(&mut selected, false);
-					}
-					Operation::Rotating(r) => {
-						self.operation.apply_operation(&mut selected, true);
-						let selected_mid = selected.calculate_mid();
-						let rotation = {
-							let start_vec = self.mouse_pos - selected_mid;
-							let end_vec = ipp.mouse.position - selected_mid;
-							start_vec.angle_between(end_vec)
-						};
-						self.operation = Operation::Rotating(r + rotation);
-						self.operation.apply_operation(&mut selected, false);
-					}
-					Operation::Scaling(s) => {
-						self.operation.apply_operation(&mut selected, true);
-						let selected_mid = selected.calculate_mid();
-						let change = {
-							let previous_frame_dist = (self.mouse_pos - selected_mid).length();
-							let current_frame_dist = (ipp.mouse.position - selected_mid).length();
-							let start_transform_dist = (self.start_mouse - selected_mid).length();
-							(current_frame_dist - previous_frame_dist) / start_transform_dist
-						};
-						self.operation = Operation::Scaling(s.increment_amount(change));
-						self.operation.apply_operation(&mut selected, false);
+				if !self.typing.is_typing {
+					let delta_pos = ipp.mouse.position - self.mouse_pos;
+					match self.operation {
+						Operation::None => unreachable!(),
+						Operation::Translating(translation) => {
+							self.operation.apply_operation(&mut selected, true);
+							self.operation = Operation::Translating(translation.increment_amount(delta_pos));
+							self.operation.apply_operation(&mut selected, false);
+						}
+						Operation::Rotating(r) => {
+							self.operation.apply_operation(&mut selected, true);
+							let selected_mid = selected.calculate_mid();
+							let rotation = {
+								let start_vec = self.mouse_pos - selected_mid;
+								let end_vec = ipp.mouse.position - selected_mid;
+								start_vec.angle_between(end_vec)
+							};
+							self.operation = Operation::Rotating(r.increment_amount(rotation));
+							self.operation.apply_operation(&mut selected, false);
+						}
+						Operation::Scaling(s) => {
+							self.operation.apply_operation(&mut selected, true);
+							let selected_mid = selected.calculate_mid();
+							let change = {
+								let previous_frame_dist = (self.mouse_pos - selected_mid).length();
+								let current_frame_dist = (ipp.mouse.position - selected_mid).length();
+								let start_transform_dist = (self.start_mouse - selected_mid).length();
+								(current_frame_dist - previous_frame_dist) / start_transform_dist
+							};
+							self.operation = Operation::Scaling(s.increment_amount(change));
+							self.operation.apply_operation(&mut selected, false);
+						}
 					}
 				}
 				self.mouse_pos = ipp.mouse.position;
 			}
-			TypeNum(k) => log::info!("Num Typed {}", k),
-			TypeDelete => log::info!("Delete "),
+			TypeNum(k) => self.operation.handle_typed(self.typing.type_num(k), &mut selected),
+			TypeDelete => self.operation.handle_typed(self.typing.type_delete(), &mut selected),
+			TypeDecimalPoint => self.operation.handle_typed(self.typing.type_decimal(), &mut selected),
 			ConstrainX => self.operation.constrain_axis(Axis::X, &mut selected),
 			ConstrainY => self.operation.constrain_axis(Axis::Y, &mut selected),
 		}
@@ -283,6 +396,7 @@ impl MessageHandler<TransformLayerMessage, (&mut HashMap<Vec<LayerId>, LayerData
 				ApplyOperation,
 				TypeNum,
 				TypeDelete,
+				TypeDecimalPoint,
 				ConstrainX,
 				ConstrainY,
 			);

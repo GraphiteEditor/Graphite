@@ -153,6 +153,8 @@ pub fn translate_key(name: &str) -> Key {
 		"}" => KeyRightCurlyBracket,
 		"pageup" => KeyPageUp,
 		"pagedown" => KeyPageDown,
+		"," => KeyComma,
+		"." => KeyPeriod,
 		_ => UnknownKey,
 	}
 }

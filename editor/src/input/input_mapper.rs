@@ -137,6 +137,10 @@ impl Default for Mapping {
 			entry! {action=TransformLayerMessage::CancelOperation, key_down=Rmb},
 			entry! {action=TransformLayerMessage::ConstrainX, key_down=KeyX},
 			entry! {action=TransformLayerMessage::ConstrainY, key_down=KeyY},
+			entry! {action=TransformLayerMessage::TypeDelete, key_down=KeyDelete},
+			entry! {action=TransformLayerMessage::TypeDelete, key_down=KeyBackspace},
+			entry! {action=TransformLayerMessage::TypeDecimalPoint, key_down=KeyComma},
+			entry! {action=TransformLayerMessage::TypeDecimalPoint, key_down=KeyPeriod},
 			// Select
 			entry! {action=SelectMessage::MouseMove, message=InputMapperMessage::PointerMove},
 			entry! {action=SelectMessage::DragStart{add_to_selection: KeyShift}, key_down=Lmb},
