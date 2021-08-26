@@ -11,7 +11,7 @@
 				v-if="option.kind === 'NumberInput'"
 				@update:value="(value) => updateToolOptions(option.path, value)"
 				:title="option.tooltip"
-				v-bind="{ ...option.props, value: getOption(option.path) }"
+				v-bind="{ ...option.props, value: getToolOption(option.path) }"
 			/>
 			<Separator v-if="option.kind === 'Separator'" v-bind="option.props" />
 		</template>
@@ -52,14 +52,14 @@ export default defineComponent({
 	},
 	methods: {
 		async updateToolOptions(path: string[], newValue: number) {
-			this.setOption(path, newValue);
+			this.setToolOption(path, newValue);
 			(await wasm).set_tool_options(this.$props.activeTool || "", this.activeToolOptions);
 		},
 		async sendToolMessage(message: string | object) {
 			(await wasm).send_tool_message(this.$props.activeTool || "", message);
 		},
 		// Traverses the given path into the active tool's option struct, and sets the value at the path tail
-		setOption(path: string[], newValue: number) {
+		setToolOption(path: string[], newValue: number) {
 			let value = this.activeToolOptions as Record<string, object | number>;
 			[this.$props.activeTool || "", ...path.slice(0, -1)].forEach((attr) => {
 				value = value[attr] as Record<string, object | number>;
@@ -68,7 +68,7 @@ export default defineComponent({
 			final[path.slice(-1)[0]] = newValue;
 		},
 		// Traverses the given path into the active tool's option struct, and returns the value at the path tail
-		getOption(path: string[]): number {
+		getToolOption(path: string[]): number {
 			let value = this.activeToolOptions as Record<string, object | number>;
 			[this.$props.activeTool || "", ...path.slice(0, -1)].forEach((attr) => {
 				value = value[attr] as Record<string, object | number>;
