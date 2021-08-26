@@ -24,7 +24,6 @@ impl<'a> Selected<'a> {
 		}
 	}
 	pub fn calculate_mid(&self) -> DVec2 {
-		log::info!("paths {:?}", self.selected);
 		self.selected
 			.iter()
 			.map(|path| {
@@ -102,13 +101,15 @@ impl Scale {
 	pub fn to_dvec(&self) -> DVec2 {
 		match self.constraint {
 			Axis::Both => DVec2::splat(self.amount),
-			Axis::X => DVec2::new(self.amount, 0.),
-			Axis::Y => DVec2::new(0., self.amount),
+			Axis::X => DVec2::new(self.amount, 1.),
+			Axis::Y => DVec2::new(1., self.amount),
 		}
 	}
-	pub fn _increment_amount(&mut self, delta: f64) -> &mut Self {
-		self.amount += delta;
-		self
+	pub fn increment_amount(self, delta: f64) -> Self {
+		Self {
+			amount: self.amount + delta,
+			constraint: self.constraint,
+		}
 	}
 }
 
@@ -192,8 +193,7 @@ pub struct TransformLayerMessageHandler {
 	typing: bool,
 
 	mouse_pos: ViewportPosition,
-	previous_val: DVec2,
-	change: DVec2,
+	start_mouse: ViewportPosition,
 }
 
 impl MessageHandler<TransformLayerMessage, (&mut HashMap<Vec<LayerId>, LayerData>, &mut Document, &InputPreprocessor)> for TransformLayerMessageHandler {
@@ -204,16 +204,19 @@ impl MessageHandler<TransformLayerMessage, (&mut HashMap<Vec<LayerId>, LayerData
 		match message {
 			BeginTranslate => {
 				self.mouse_pos = ipp.mouse.position;
+				self.start_mouse = ipp.mouse.position;
 				self.operation.apply_operation(&mut selected, true);
 				self.operation = Operation::Translating(Default::default());
 			}
 			BeginRotate => {
 				self.mouse_pos = ipp.mouse.position;
+				self.start_mouse = ipp.mouse.position;
 				self.operation.apply_operation(&mut selected, true);
 				self.operation = Operation::Rotating(Default::default());
 			}
 			BeginScale => {
 				self.mouse_pos = ipp.mouse.position;
+				self.start_mouse = ipp.mouse.position;
 				self.operation.apply_operation(&mut selected, true);
 				self.operation = Operation::Scaling(Default::default());
 			}
@@ -233,16 +236,27 @@ impl MessageHandler<TransformLayerMessage, (&mut HashMap<Vec<LayerId>, LayerData
 					}
 					Operation::Rotating(r) => {
 						self.operation.apply_operation(&mut selected, true);
-						let half_viewport = selected.calculate_mid();
+						let selected_mid = selected.calculate_mid();
 						let rotation = {
-							let start_vec = self.mouse_pos - half_viewport;
-							let end_vec = ipp.mouse.position - half_viewport;
+							let start_vec = self.mouse_pos - selected_mid;
+							let end_vec = ipp.mouse.position - selected_mid;
 							start_vec.angle_between(end_vec)
 						};
 						self.operation = Operation::Rotating(r + rotation);
 						self.operation.apply_operation(&mut selected, false);
 					}
-					Operation::Scaling(_) => todo!(),
+					Operation::Scaling(s) => {
+						self.operation.apply_operation(&mut selected, true);
+						let selected_mid = selected.calculate_mid();
+						let change = {
+							let previous_frame_dist = (self.mouse_pos - selected_mid).length();
+							let current_frame_dist = (ipp.mouse.position - selected_mid).length();
+							let start_transform_dist = (self.start_mouse - selected_mid).length();
+							(current_frame_dist - previous_frame_dist) / start_transform_dist
+						};
+						self.operation = Operation::Scaling(s.increment_amount(change));
+						self.operation.apply_operation(&mut selected, false);
+					}
 				}
 				self.mouse_pos = ipp.mouse.position;
 			}
