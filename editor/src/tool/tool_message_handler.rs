@@ -63,41 +63,52 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, &InputPreprocessor)> 
 
 				update_working_colors(document_data, responses);
 			}
-			SelectTool(tool) => {
+			SelectTool(new_tool) => {
 				let tool_data = &mut self.tool_state.tool_data;
 				let document_data = &self.tool_state.document_tool_data;
 				let old_tool = tool_data.active_tool_type;
 
-				// Prepare to reset the old and new tools by obtaining their FSM Abort state, which will be sent to the tool
-				let reset = |tool| match tool {
-					ToolType::Ellipse => EllipseMessage::Abort.into(),
-					ToolType::Rectangle => RectangleMessage::Abort.into(),
-					ToolType::Shape => ShapeMessage::Abort.into(),
-					ToolType::Line => LineMessage::Abort.into(),
-					ToolType::Pen => PenMessage::Abort.into(),
-					ToolType::Select => SelectMessage::Abort.into(),
-					_ => ToolMessage::NoOp,
-				};
-				let new = reset(tool);
-				let old = reset(old_tool);
+				// Do nothing if switching to the same tool
+				if new_tool == old_tool {
+					return;
+				}
 
-				// Send the old and new tools a transition to the FSM Abort state
-				let mut send_to_tool = |tool_type, message: ToolMessage| {
+				// Get the Abort state of a tool's FSM
+				let reset_message = |tool| match tool {
+					ToolType::Ellipse => Some(EllipseMessage::Abort.into()),
+					ToolType::Rectangle => Some(RectangleMessage::Abort.into()),
+					ToolType::Shape => Some(ShapeMessage::Abort.into()),
+					ToolType::Line => Some(LineMessage::Abort.into()),
+					ToolType::Pen => Some(PenMessage::Abort.into()),
+					ToolType::Select => Some(SelectMessage::Abort.into()),
+					_ => None,
+				};
+
+				// Send the Abort state transition to the tool
+				let mut send_message_to_tool = |tool_type, message: ToolMessage| {
 					if let Some(tool) = tool_data.tools.get_mut(&tool_type) {
 						tool.process_action(message, (document, document_data, input), responses);
 					}
 				};
-				send_to_tool(tool, new);
-				send_to_tool(old_tool, old);
+
+				// Send the old and new tools a transition to their FSM Abort states
+				if let Some(tool_message) = reset_message(new_tool) {
+					send_message_to_tool(new_tool, tool_message);
+				}
+				if let Some(tool_message) = reset_message(old_tool) {
+					send_message_to_tool(old_tool, tool_message);
+				}
 
 				// Special cases for specific tools
-				if tool == ToolType::Select {
+				if new_tool == ToolType::Select {
 					responses.push_back(SelectMessage::UpdateSelectionBoundingBox.into());
 				}
-				self.tool_state.tool_data.active_tool_type = tool;
+
+				// Store the new active tool
+				tool_data.active_tool_type = new_tool;
 
 				// Notify the frontend about the new active tool to be displayed
-				responses.push_back(FrontendMessage::SetActiveTool { tool_name: tool.to_string() }.into());
+				responses.push_back(FrontendMessage::SetActiveTool { tool_name: new_tool.to_string() }.into());
 			}
 			SwapColors => {
 				let document_data = &mut self.tool_state.document_tool_data;
