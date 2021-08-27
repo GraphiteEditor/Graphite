@@ -3,6 +3,7 @@ pub use super::layer_panel::*;
 use super::LayerData;
 
 use crate::consts::{ROTATE_SNAP_ANGLE, SCALE_SNAP_INTERVAL, SLOWING_DIVISOR};
+use crate::input::keyboard::Key;
 use crate::input::{mouse::ViewportPosition, InputPreprocessor};
 use crate::message_prelude::*;
 use glam::{DAffine2, DVec2};
@@ -294,10 +295,7 @@ pub enum TransformLayerMessage {
 	ConstrainX,
 	ConstrainY,
 
-	MouseMove,
-
-	SetSlow(bool),
-	SetSnap(bool),
+	MouseMove { slow_key: Key, snap_key: Key },
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -345,7 +343,16 @@ impl MessageHandler<TransformLayerMessage, (&mut HashMap<Vec<LayerId>, LayerData
 				self.typing.reset();
 				self.operation = Operation::None;
 			}
-			MouseMove => {
+			MouseMove { slow_key, snap_key } => {
+				self.slow = ipp.keyboard.get(slow_key as usize);
+
+				let new_snap = ipp.keyboard.get(snap_key as usize);
+				if new_snap != self.snap {
+					self.operation.apply_operation(&mut selected, true, self.snap);
+					self.snap = new_snap;
+					self.operation.apply_operation(&mut selected, false, self.snap);
+				}
+
 				if !self.typing.is_typing {
 					let delta_pos = ipp.mouse.position - self.mouse_pos;
 					match self.operation {
@@ -390,12 +397,6 @@ impl MessageHandler<TransformLayerMessage, (&mut HashMap<Vec<LayerId>, LayerData
 			TypeDecimalPoint => self.operation.handle_typed(self.typing.type_decimal(), &mut selected, self.snap),
 			ConstrainX => self.operation.constrain_axis(Axis::X, &mut selected, self.snap),
 			ConstrainY => self.operation.constrain_axis(Axis::Y, &mut selected, self.snap),
-			SetSlow(new) => self.slow = new,
-			SetSnap(new) => {
-				self.operation.apply_operation(&mut selected, true, self.snap);
-				self.snap = new;
-				self.operation.apply_operation(&mut selected, false, self.snap);
-			}
 		}
 	}
 	fn actions(&self) -> ActionList {
@@ -415,8 +416,6 @@ impl MessageHandler<TransformLayerMessage, (&mut HashMap<Vec<LayerId>, LayerData
 				TypeDecimalPoint,
 				ConstrainX,
 				ConstrainY,
-				SetSlow,
-				SetSnap,
 			);
 			common.extend(active);
 		}
