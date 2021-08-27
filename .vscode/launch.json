@@ -12,18 +12,18 @@
 				"args": [
 					"build",
 					"--bin=graphite",
-					"--package=graphite"
+					"--package=graphite",
 				],
 				"filter": {
 					"name": "graphite",
-					"kind": "bin"
-				}
+					"kind": "bin",
+				},
 			},
 			"args": [],
 			"cwd": "${workspaceFolder}",
 			"env": {
-				"RUST_LOG": "error"
-			}
+				"RUST_LOG": "error",
+			},
 		},
 		{
 			"type": "lldb",
@@ -34,15 +34,15 @@
 					"test",
 					"--no-run",
 					"--bin=graphite",
-					"--package=graphite"
+					"--package=graphite",
 				],
 				"filter": {
 					"name": "graphite",
-					"kind": "bin"
-				}
+					"kind": "bin",
+				},
 			},
 			"args": [],
-			"cwd": "${workspaceFolder}"
-		}
-	]
+			"cwd": "${workspaceFolder}",
+		},
+	],
 }
