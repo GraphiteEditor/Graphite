@@ -3,7 +3,6 @@ import { createApp } from "vue";
 import { fullscreenModeChanged } from "@/utilities/fullscreen";
 import { onKeyUp, onKeyDown, onMouseMove, onMouseDown, onMouseUp, onMouseScroll, onWindowResize } from "@/utilities/input";
 import "@/utilities/errors";
-
 import App from "@/App.vue";
 
 // Bind global browser events
