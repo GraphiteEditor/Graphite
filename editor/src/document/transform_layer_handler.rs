@@ -16,6 +16,7 @@ struct Selected<'a> {
 	pub selected: Vec<Vec<LayerId>>,
 	responses: &'a mut VecDeque<Message>,
 	document: &'a mut Document,
+	delta: DAffine2,
 }
 impl<'a> Selected<'a> {
 	pub fn new(layerdata: &'a mut HashMap<Vec<LayerId>, LayerData>, responses: &'a mut VecDeque<Message>, document: &'a mut Document) -> Self {
@@ -23,6 +24,7 @@ impl<'a> Selected<'a> {
 			selected: layerdata.iter().filter_map(|(path, data)| data.selected.then(|| path.to_owned())).collect(),
 			responses,
 			document,
+			delta: DAffine2::IDENTITY,
 		}
 	}
 	pub fn calculate_mid(&self) -> DVec2 {
@@ -41,6 +43,26 @@ impl<'a> Selected<'a> {
 			})
 			.fold(DVec2::ZERO, |acc, x| acc + x)
 			/ self.selected.len() as f64
+	}
+	pub fn update_transforms(&mut self) {
+		if self.selected.len() > 0 && self.delta != DAffine2::IDENTITY {
+			let mid = self.calculate_mid();
+			let transformation = DAffine2::from_translation(mid) * self.delta * DAffine2::from_translation(-mid);
+			for path in &self.selected {
+				let to = self.document.generate_transform_across_scope(&path[..path.len() - 1], None).unwrap();
+				let layer = self.document.layer(path).unwrap();
+				let new = to.inverse() * transformation * to * layer.transform;
+				self.responses.push_back(
+					DocumentOperation::SetLayerTransform {
+						path: path.to_vec(),
+						transform: new.to_cols_array(),
+					}
+					.into(),
+				);
+			}
+
+			self.responses.push_back(SelectMessage::UpdateSelectionBoundingBox.into());
+		}
 	}
 }
 
@@ -176,29 +198,17 @@ impl Default for Operation {
 impl Operation {
 	pub fn apply_operation(&self, selected: &mut Selected, invert: bool, snapping: bool) {
 		if self != &Operation::None {
-			let mid = selected.calculate_mid();
 			let mut daffine = match self {
 				Operation::Translating(translation) => DAffine2::from_translation(translation.to_dvec()),
 				Operation::Rotating(rotation) => DAffine2::from_angle(rotation.to_f64(snapping)),
 				Operation::Scaling(scale) => DAffine2::from_scale(scale.to_dvec(snapping)),
 				Operation::None => unreachable!(),
 			};
-			daffine = DAffine2::from_translation(mid) * daffine * DAffine2::from_translation(-mid);
 			if invert {
 				daffine = daffine.inverse();
 			}
-			for path in &selected.selected {
-				selected.responses.push_back(
-					DocumentOperation::TransformLayerInViewport {
-						path: path.to_vec(),
-						transform: daffine.to_cols_array(),
-					}
-					.into(),
-				);
-			}
-			if selected.selected.len() > 0 {
-				selected.responses.push_back(SelectMessage::UpdateSelectionBoundingBox.into());
-			}
+
+			selected.delta = daffine * selected.delta;
 		}
 	}
 
@@ -398,6 +408,7 @@ impl MessageHandler<TransformLayerMessage, (&mut HashMap<Vec<LayerId>, LayerData
 			ConstrainX => self.operation.constrain_axis(Axis::X, &mut selected, self.snap),
 			ConstrainY => self.operation.constrain_axis(Axis::Y, &mut selected, self.snap),
 		}
+		selected.update_transforms();
 	}
 	fn actions(&self) -> ActionList {
 		let mut common = actions!(TransformLayerMessageDiscriminant;
