@@ -383,19 +383,19 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				self.backup();
 				responses.push_front(SelectMessage::UpdateSelectionBoundingBox.into());
 				for path in self.selected_layers().cloned() {
-					responses.push_front(DocumentOperation::DeleteLayer { path }.into())
+					responses.push_front(DocumentOperation::DeleteLayer { path }.into());
 				}
 			}
 			ClearOverlays => {
 				responses.push_front(SelectMessage::UpdateSelectionBoundingBox.into());
 				for path in self.layer_data.keys().filter(|path| self.document.layer(path).unwrap().overlay).cloned() {
-					responses.push_front(DocumentOperation::DeleteLayer { path }.into())
+					responses.push_front(DocumentOperation::DeleteLayer { path }.into());
 				}
 			}
 			DuplicateSelectedLayers => {
 				self.backup();
 				for path in self.selected_layers_sorted() {
-					responses.push_back(DocumentOperation::DuplicateLayer { path }.into())
+					responses.push_back(DocumentOperation::DuplicateLayer { path }.into());
 				}
 			}
 			SetSelectedLayers(paths) => {
@@ -465,7 +465,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 							.flatten(),
 					);
 					if canvas_dirty {
-						responses.push_back(RenderDocument.into())
+						responses.push_back(RenderDocument.into());
 					}
 				}
 				Err(e) => log::error!("DocumentError: {:?}", e),
@@ -539,7 +539,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 								let offset = if relative_position < 0 || non_selected.is_empty() { 0 } else { 1 };
 								let fallback = offset * (non_selected.len());
 								let insert_index = non_selected.iter().position(|x| *x == id).map(|x| x + offset).unwrap_or(fallback) as isize;
-								responses.push_back(DocumentMessage::MoveSelectedLayersTo { path: path.to_vec(), insert_index }.into())
+								responses.push_back(DocumentMessage::MoveSelectedLayersTo { path: path.to_vec(), insert_index }.into());
 							}
 						}
 					}
