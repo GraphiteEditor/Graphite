@@ -62,61 +62,96 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, &InputPreprocessor)> 
 		let (document, input) = data;
 		use ToolMessage::*;
 		match message {
-			SelectPrimaryColor(c) => {
-				self.tool_state.document_tool_data.primary_color = c;
+			SelectPrimaryColor(color) => {
+				let document_data = &mut self.tool_state.document_tool_data;
+				document_data.primary_color = color;
+
 				update_working_colors(&self.tool_state.document_tool_data, responses);
 			}
-			SelectSecondaryColor(c) => {
-				self.tool_state.document_tool_data.secondary_color = c;
-				update_working_colors(&self.tool_state.document_tool_data, responses);
+			SelectSecondaryColor(color) => {
+				let document_data = &mut self.tool_state.document_tool_data;
+				document_data.secondary_color = color;
+
+				update_working_colors(document_data, responses);
 			}
-			SelectTool(tool) => {
-				let old_tool = self.tool_state.tool_data.active_tool_type;
-				let reset = |tool| match tool {
-					ToolType::Ellipse => EllipseMessage::Abort.into(),
-					ToolType::Rectangle => RectangleMessage::Abort.into(),
-					ToolType::Shape => ShapeMessage::Abort.into(),
-					ToolType::Line => LineMessage::Abort.into(),
-					ToolType::Pen => PenMessage::Abort.into(),
-					ToolType::Select => SelectMessage::Abort.into(),
-					_ => ToolMessage::NoOp,
+			SelectTool(new_tool) => {
+				let tool_data = &mut self.tool_state.tool_data;
+				let document_data = &self.tool_state.document_tool_data;
+				let old_tool = tool_data.active_tool_type;
+
+				// Do nothing if switching to the same tool
+				if new_tool == old_tool {
+					return;
+				}
+
+				// Get the Abort state of a tool's FSM
+				let reset_message = |tool| match tool {
+					ToolType::Ellipse => Some(EllipseMessage::Abort.into()),
+					ToolType::Rectangle => Some(RectangleMessage::Abort.into()),
+					ToolType::Shape => Some(ShapeMessage::Abort.into()),
+					ToolType::Line => Some(LineMessage::Abort.into()),
+					ToolType::Pen => Some(PenMessage::Abort.into()),
+					ToolType::Select => Some(SelectMessage::Abort.into()),
+					_ => None,
 				};
-				let (new, old) = (reset(tool), reset(old_tool));
-				let mut send_to_tool = |tool_type, message: ToolMessage| {
-					if let Some(tool) = self.tool_state.tool_data.tools.get_mut(&tool_type) {
-						tool.process_action(message, (document, &self.tool_state.document_tool_data, input), responses);
+
+				// Send the Abort state transition to the tool
+				let mut send_message_to_tool = |tool_type, message: ToolMessage| {
+					if let Some(tool) = tool_data.tools.get_mut(&tool_type) {
+						tool.process_action(message, (document, document_data, input), responses);
 					}
 				};
-				send_to_tool(tool, new);
-				send_to_tool(old_tool, old);
-				if tool == ToolType::Select {
+
+				// Send the old and new tools a transition to their FSM Abort states
+				if let Some(tool_message) = reset_message(new_tool) {
+					send_message_to_tool(new_tool, tool_message);
+				}
+				if let Some(tool_message) = reset_message(old_tool) {
+					send_message_to_tool(old_tool, tool_message);
+				}
+
+				// Special cases for specific tools
+				if new_tool == ToolType::Select {
 					responses.push_back(SelectMessage::UpdateSelectionBoundingBox.into());
 				}
-				self.tool_state.tool_data.active_tool_type = tool;
 
-				responses.push_back(FrontendMessage::SetActiveTool { tool_name: tool.to_string() }.into());
-				self.update_frontend_tool_options(responses, tool);
+				// Store the new active tool
+				tool_data.active_tool_type = new_tool;
+
+				// Notify the frontend about the new active tool to be displayed
+				responses.push_back(FrontendMessage::SetActiveTool { tool_name: new_tool.to_string() }.into());
+				self.update_frontend_tool_options(responses, new_tool);
 			}
 			SwapColors => {
-				let doc_data = &mut self.tool_state.document_tool_data;
-				std::mem::swap(&mut doc_data.primary_color, &mut doc_data.secondary_color);
-				update_working_colors(doc_data, responses);
+				let document_data = &mut self.tool_state.document_tool_data;
+
+				std::mem::swap(&mut document_data.primary_color, &mut document_data.secondary_color);
+
+				update_working_colors(document_data, responses);
 			}
 			ResetColors => {
-				let doc_data = &mut self.tool_state.document_tool_data;
-				doc_data.primary_color = Color::BLACK;
-				doc_data.secondary_color = Color::WHITE;
-				update_working_colors(doc_data, responses);
+				let document_data = &mut self.tool_state.document_tool_data;
+
+				document_data.primary_color = Color::BLACK;
+				document_data.secondary_color = Color::WHITE;
+
+				update_working_colors(document_data, responses);
 			}
 			SetToolOptions(tool_type, tool_options) => {
-				self.tool_state.document_tool_data.tool_options.insert(tool_type, tool_options);
+				let document_data = &mut self.tool_state.document_tool_data;
+
+				document_data.tool_options.insert(tool_type, tool_options);
+
 				self.update_frontend_tool_options(responses, tool_type);
 			}
 			message => {
 				let tool_type = message_to_tool_type(&message);
-				if let Some(tool) = self.tool_state.tool_data.tools.get_mut(&tool_type) {
-					if tool_type == self.tool_state.tool_data.active_tool_type {
-						tool.process_action(message, (document, &self.tool_state.document_tool_data, input), responses);
+				let document_data = &self.tool_state.document_tool_data;
+				let tool_data = &mut self.tool_state.tool_data;
+
+				if let Some(tool) = tool_data.tools.get_mut(&tool_type) {
+					if tool_type == tool_data.active_tool_type {
+						tool.process_action(message, (document, document_data, input), responses);
 					}
 				}
 			}
@@ -125,13 +160,14 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, &InputPreprocessor)> 
 	fn actions(&self) -> ActionList {
 		let mut list = actions!(ToolMessageDiscriminant; ResetColors, SwapColors, SelectTool, SetToolOptions);
 		list.extend(self.tool_state.tool_data.active_tool().actions());
+
 		list
 	}
 }
 
 fn message_to_tool_type(message: &ToolMessage) -> ToolType {
 	use ToolMessage::*;
-	match message {
+	let tool_type = match message {
 		Fill(_) => ToolType::Fill,
 		Rectangle(_) => ToolType::Rectangle,
 		Ellipse(_) => ToolType::Ellipse,
@@ -144,14 +180,16 @@ fn message_to_tool_type(message: &ToolMessage) -> ToolType {
 		Navigate(_) => ToolType::Navigate,
 		Path(_) => ToolType::Path,
 		_ => unreachable!(),
-	}
+	};
+
+	tool_type
 }
 
-fn update_working_colors(doc_data: &DocumentToolData, responses: &mut VecDeque<Message>) {
+fn update_working_colors(document_data: &DocumentToolData, responses: &mut VecDeque<Message>) {
 	responses.push_back(
 		FrontendMessage::UpdateWorkingColors {
-			primary: doc_data.primary_color,
-			secondary: doc_data.secondary_color,
+			primary: document_data.primary_color,
+			secondary: document_data.secondary_color,
 		}
 		.into(),
 	);
