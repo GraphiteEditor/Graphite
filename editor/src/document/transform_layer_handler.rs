@@ -270,6 +270,7 @@ struct Typing {
 	is_typing: bool,
 	digits: Vec<u8>,
 	contains_decimal: bool,
+	negative: bool,
 }
 impl Typing {
 	pub fn type_num(&mut self, num: u8) -> Option<f64> {
@@ -284,6 +285,7 @@ impl Typing {
 			}
 			if self.digits.len() == 0 {
 				self.is_typing = false;
+				self.negative = false;
 			}
 		}
 		self.evaluate()
@@ -293,6 +295,10 @@ impl Typing {
 			self.digits.push(200);
 			self.contains_decimal = true;
 		}
+		self.evaluate()
+	}
+	pub fn type_negative(&mut self) -> Option<f64> {
+		self.negative = !self.negative;
 		self.evaluate()
 	}
 	pub fn evaluate(&self) -> Option<f64> {
@@ -316,6 +322,10 @@ impl Typing {
 				}
 			}
 		}
+		if self.negative {
+			result = -result;
+			self.negative = false;
+		}
 		Some(result)
 	}
 	pub fn reset(&mut self) {
@@ -337,6 +347,7 @@ pub enum TransformLayerMessage {
 	TypeNum(u8),
 	TypeDelete,
 	TypeDecimalPoint,
+	TypeNegative,
 
 	ConstrainX,
 	ConstrainY,
@@ -441,6 +452,7 @@ impl MessageHandler<TransformLayerMessage, (&mut HashMap<Vec<LayerId>, LayerData
 			TypeNum(k) => self.operation.handle_typed(self.typing.type_num(k), &mut selected, self.snap),
 			TypeDelete => self.operation.handle_typed(self.typing.type_delete(), &mut selected, self.snap),
 			TypeDecimalPoint => self.operation.handle_typed(self.typing.type_decimal(), &mut selected, self.snap),
+			TypeNegative => self.operation.handle_typed(self.typing.type_negative(), &mut selected, self.snap),
 			ConstrainX => self.operation.constrain_axis(Axis::X, &mut selected, self.snap),
 			ConstrainY => self.operation.constrain_axis(Axis::Y, &mut selected, self.snap),
 		}
@@ -460,6 +472,7 @@ impl MessageHandler<TransformLayerMessage, (&mut HashMap<Vec<LayerId>, LayerData
 				TypeNum,
 				TypeDelete,
 				TypeDecimalPoint,
+				TypeNegative,
 				ConstrainX,
 				ConstrainY,
 			);

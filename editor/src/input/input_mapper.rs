@@ -138,6 +138,7 @@ impl Default for Mapping {
 			entry! {action=TransformLayerMessage::ConstrainY, key_down=KeyY},
 			entry! {action=TransformLayerMessage::TypeDelete, key_down=KeyDelete},
 			entry! {action=TransformLayerMessage::TypeDelete, key_down=KeyBackspace},
+			entry! {action=TransformLayerMessage::TypeNegative, key_down=KeyMinus},
 			entry! {action=TransformLayerMessage::TypeDecimalPoint, key_down=KeyComma},
 			entry! {action=TransformLayerMessage::TypeDecimalPoint, key_down=KeyPeriod},
 			entry! {action=TransformLayerMessage::MouseMove{slow_key: KeyShift, snap_key: KeyControl}, triggers=[KeyShift, KeyControl]},
