@@ -77,7 +77,7 @@ impl Shape {
 		transforms.iter().skip(start).cloned().reduce(|a, b| a * b).unwrap_or(DAffine2::IDENTITY)
 	}
 
-	pub fn shape(bez_path: BezPath, style: PathStyle, solid: bool) -> Self {
+	pub fn from_bez_path(bez_path: BezPath, style: PathStyle, solid: bool) -> Self {
 		Self {
 			path: bez_path,
 			style,

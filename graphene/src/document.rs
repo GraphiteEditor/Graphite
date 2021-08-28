@@ -215,7 +215,6 @@ impl Document {
 	}
 
 	pub fn mark_as_dirty(&mut self, path: &[LayerId]) -> Result<(), DocumentError> {
-		//self.mark_downstream_as_dirty(path)?;
 		self.mark_upstream_as_dirty(path)?;
 		Ok(())
 	}
@@ -366,7 +365,7 @@ impl Document {
 				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::CreatedLayer { path: path.clone() }])
 			}
 			Operation::AddOverlayShape { path, style, bez_path } => {
-				let mut shape = Shape::shape(bez_path.clone(), *style, false);
+				let mut shape = Shape::from_bez_path(bez_path.clone(), *style, false);
 				shape.render_index = -1;
 
 				let mut layer = Layer::new(LayerDataType::Shape(shape), DAffine2::IDENTITY.to_cols_array());
@@ -450,13 +449,11 @@ impl Document {
 				self.set_transform_relative_to_viewport(path, transform)?;
 				self.mark_as_dirty(path)?;
 
-				if let Ok(layer) = self.layer_mut(path) {
-					match &mut layer.data {
-						LayerDataType::Shape(shape) => {
-							shape.path = bez_path.clone();
-						}
-						LayerDataType::Folder(_) => (),
+				match &mut self.layer_mut(path)?.data {
+					LayerDataType::Shape(shape) => {
+						shape.path = bez_path.clone();
 					}
+					LayerDataType::Folder(_) => (),
 				}
 				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::LayerChanged { path: path.clone() }])
 			}
@@ -483,16 +480,14 @@ impl Document {
 			}
 			Operation::ToggleLayerVisibility { path } => {
 				self.mark_as_dirty(path)?;
-				if let Ok(layer) = self.layer_mut(path) {
-					layer.visible = !layer.visible;
-				}
+				let layer = self.layer_mut(path)?;
+				layer.visible = !layer.visible;
 				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::LayerChanged { path: path.clone() }])
 			}
 			Operation::SetLayerVisibility { path, visible } => {
 				self.mark_as_dirty(path)?;
-				if let Ok(layer) = self.layer_mut(path) {
-					layer.visible = *visible;
-				}
+				let layer = self.layer_mut(path)?;
+				layer.visible = *visible;
 				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::LayerChanged { path: path.clone() }])
 			}
 			Operation::SetLayerBlendMode { path, blend_mode } => {

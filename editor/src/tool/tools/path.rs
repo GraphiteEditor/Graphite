@@ -101,7 +101,7 @@ impl Fsm for PathToolFsmState {
 							Operation::SetShapePathInViewport {
 								path: shape_layer_path.clone(),
 								bez_path: shape_to_draw.path.clone(),
-								transform: shape_to_draw.transform,
+								transform: shape_to_draw.transform.to_cols_array(),
 							}
 							.into(),
 						);

@@ -53,7 +53,7 @@ pub enum VectorManipulatorSegment {
 pub struct VectorManipulatorShape {
 	pub path: kurbo::BezPath,
 	pub segments: Vec<VectorManipulatorSegment>,
-	pub transform: [f64; 6],
+	pub transform: DAffine2,
 }
 
 #[derive(Clone, Debug)]
@@ -162,12 +162,12 @@ impl DocumentMessageHandler {
 		self.document.combined_viewport_bounding_box(paths)
 	}
 
+	// TODO: Consider moving this to some kind of overlay manager in the future
 	pub fn selected_layers_vector_points(&self) -> Vec<VectorManipulatorShape> {
 		let shapes = self.selected_layers().filter_map(|path_to_shape| {
-			let path_to_shape = &path_to_shape[..];
-			let viewport_transform = self.document.generate_transform_relative_to_viewport(path_to_shape).ok()?;
+			let viewport_transform = self.document.generate_transform_relative_to_viewport(path_to_shape.as_slice()).ok()?;
 
-			let shape = match &self.document.layer(path_to_shape).ok()?.data {
+			let shape = match &self.document.layer(path_to_shape.as_slice()).ok()?.data {
 				LayerDataType::Shape(shape) => Some(shape),
 				LayerDataType::Folder(_) => None,
 			}?;
@@ -190,7 +190,7 @@ impl DocumentMessageHandler {
 			Some(VectorManipulatorShape {
 				path,
 				segments,
-				transform: viewport_transform.to_cols_array(),
+				transform: viewport_transform,
 			})
 		});
 
