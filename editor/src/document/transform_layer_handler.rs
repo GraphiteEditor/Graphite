@@ -324,13 +324,13 @@ impl Typing {
 		}
 		if self.negative {
 			result = -result;
-			self.negative = false;
 		}
 		Some(result)
 	}
 	pub fn reset(&mut self) {
 		self.digits.clear();
 		self.is_typing = false;
+		self.negative = false;
 	}
 }
 
