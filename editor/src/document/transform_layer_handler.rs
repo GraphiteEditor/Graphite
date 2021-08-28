@@ -269,6 +269,7 @@ impl Operation {
 struct Typing {
 	is_typing: bool,
 	digits: Vec<u8>,
+	contains_decimal: bool,
 }
 impl Typing {
 	pub fn type_num(&mut self, num: u8) -> Option<f64> {
@@ -278,7 +279,9 @@ impl Typing {
 	}
 	pub fn type_delete(&mut self) -> Option<f64> {
 		if self.is_typing {
-			self.digits.pop();
+			if self.digits.pop() == Some(200) {
+				self.contains_decimal = false;
+			}
 			if self.digits.len() == 0 {
 				self.is_typing = false;
 			}
@@ -286,7 +289,10 @@ impl Typing {
 		self.evaluate()
 	}
 	pub fn type_decimal(&mut self) -> Option<f64> {
-		self.digits.push(200);
+		if !self.contains_decimal {
+			self.digits.push(200);
+			self.contains_decimal = true;
+		}
 		self.evaluate()
 	}
 	pub fn evaluate(&self) -> Option<f64> {
