@@ -215,6 +215,12 @@ pub fn undo() -> Result<(), JsValue> {
 	dispatch(DocumentMessage::Undo)
 }
 
+/// Redo history one step
+#[wasm_bindgen]
+pub fn redo() -> Result<(), JsValue> {
+	dispatch(DocumentMessage::Redo)
+}
+
 /// Select all layers
 #[wasm_bindgen]
 pub fn select_all_layers() -> Result<(), JsValue> {

@@ -188,6 +188,7 @@ impl Default for Mapping {
 			// Editor Actions
 			entry! {action=FrontendMessage::OpenDocumentBrowse, key_down=KeyO, modifiers=[KeyControl]},
 			// Document Actions
+			entry! {action=DocumentMessage::Redo, key_down=KeyZ, modifiers=[KeyControl, KeyShift]},
 			entry! {action=DocumentMessage::Undo, key_down=KeyZ, modifiers=[KeyControl]},
 			entry! {action=DocumentMessage::DeselectAllLayers, key_down=KeyA, modifiers=[KeyControl, KeyAlt]},
 			entry! {action=DocumentMessage::SelectAllLayers, key_down=KeyA, modifiers=[KeyControl]},

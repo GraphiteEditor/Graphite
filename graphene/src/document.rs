@@ -276,6 +276,24 @@ impl Document {
 		self.set_transform_relative_to_scope(layer, None, transform)
 	}
 
+	fn remove_overlays(&mut self, path: &mut Vec<LayerId>) {
+		if self.layer(path).unwrap().overlay {
+			self.delete(path).unwrap()
+		}
+		let ids = self.folder(path).map(|folder| folder.layer_ids.clone()).unwrap_or_default();
+		for id in ids {
+			path.push(id);
+			self.remove_overlays(path);
+			path.pop();
+		}
+	}
+
+	pub fn clone_without_overlays(&self) -> Self {
+		let mut document = self.clone();
+		document.remove_overlays(&mut vec![]);
+		document
+	}
+
 	/// Mutate the document by applying the `operation` to it. If the operation necessitates a
 	/// reaction from the frontend, responses may be returned.
 	pub fn handle_operation(&mut self, operation: &Operation) -> Result<Option<Vec<DocumentResponse>>, DocumentError> {
