@@ -12,18 +12,18 @@ use graphene::Operation as DocumentOperation;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
 
-type OrigionalTransforms = HashMap<Vec<LayerId>, DAffine2>;
+type OriginalTransforms = HashMap<Vec<LayerId>, DAffine2>;
 
 struct Selected<'a> {
 	pub selected: Vec<Vec<LayerId>>,
 	responses: &'a mut VecDeque<Message>,
 	document: &'a mut Document,
-	origional_transforms: &'a mut OrigionalTransforms,
+	original_transforms: &'a mut OriginalTransforms,
 	mid: &'a mut DVec2,
 }
 impl<'a> Selected<'a> {
 	pub fn new(
-		origional_transforms: &'a mut OrigionalTransforms,
+		original_transforms: &'a mut OriginalTransforms,
 		mid: &'a mut DVec2,
 		layerdata: &'a mut HashMap<Vec<LayerId>, LayerData>,
 		responses: &'a mut VecDeque<Message>,
@@ -31,15 +31,15 @@ impl<'a> Selected<'a> {
 	) -> Self {
 		let selected = layerdata.iter().filter_map(|(path, data)| data.selected.then(|| path.to_owned())).collect();
 		for path in &selected {
-			if !origional_transforms.contains_key::<Vec<LayerId>>(path) {
-				origional_transforms.insert(path.clone(), document.layer(path).unwrap().transform);
+			if !original_transforms.contains_key::<Vec<LayerId>>(path) {
+				original_transforms.insert(path.clone(), document.layer(path).unwrap().transform);
 			}
 		}
 		Self {
 			selected,
 			responses,
 			document,
-			origional_transforms,
+			original_transforms,
 			mid,
 		}
 	}
@@ -61,9 +61,9 @@ impl<'a> Selected<'a> {
 			/ self.selected.len() as f64
 	}
 	pub fn repopulate_transforms(&mut self) {
-		self.origional_transforms.clear();
+		self.original_transforms.clear();
 		for path in &self.selected {
-			self.origional_transforms.insert(path.clone(), self.document.layer(path).unwrap().transform);
+			self.original_transforms.insert(path.clone(), self.document.layer(path).unwrap().transform);
 		}
 		*self.mid = self.calculate_mid();
 	}
@@ -73,7 +73,7 @@ impl<'a> Selected<'a> {
 			let transformation = mid * delta * mid.inverse();
 			for path in &self.selected {
 				let to = self.document.generate_transform_across_scope(&path[..path.len() - 1], None).unwrap();
-				let new = to.inverse() * transformation * to * *self.origional_transforms.get(path).unwrap();
+				let new = to.inverse() * transformation * to * *self.original_transforms.get(path).unwrap();
 				self.responses.push_back(
 					DocumentOperation::SetLayerTransform {
 						path: path.to_vec(),
@@ -91,12 +91,12 @@ impl<'a> Selected<'a> {
 			self.responses.push_back(
 				DocumentOperation::SetLayerTransform {
 					path: path.to_vec(),
-					transform: (*self.origional_transforms.get(path).unwrap()).to_cols_array(),
+					transform: (*self.original_transforms.get(path).unwrap()).to_cols_array(),
 				}
 				.into(),
 			);
 		}
-		self.origional_transforms.clear();
+		self.original_transforms.clear();
 		self.selected.clear();
 	}
 }
@@ -233,14 +233,14 @@ impl Default for Operation {
 impl Operation {
 	pub fn apply_operation(&self, selected: &mut Selected, snapping: bool) {
 		if self != &Operation::None {
-			let daffine = match self {
+			let transformation = match self {
 				Operation::Translating(translation) => DAffine2::from_translation(translation.to_dvec()),
 				Operation::Rotating(rotation) => DAffine2::from_angle(rotation.to_f64(snapping)),
 				Operation::Scaling(scale) => DAffine2::from_scale(scale.to_dvec(snapping)),
 				Operation::None => unreachable!(),
 			};
 
-			selected.update_transforms(daffine);
+			selected.update_transforms(transformation);
 		}
 	}
 
@@ -366,14 +366,14 @@ pub struct TransformLayerMessageHandler {
 	mouse_pos: ViewportPosition,
 	start_mouse: ViewportPosition,
 
-	origional_transforms: OrigionalTransforms,
+	original_transforms: OriginalTransforms,
 	mid: DVec2,
 }
 
 impl MessageHandler<TransformLayerMessage, (&mut HashMap<Vec<LayerId>, LayerData>, &mut Document, &InputPreprocessor)> for TransformLayerMessageHandler {
 	fn process_action(&mut self, message: TransformLayerMessage, data: (&mut HashMap<Vec<LayerId>, LayerData>, &mut Document, &InputPreprocessor), responses: &mut VecDeque<Message>) {
 		let (layerdata, document, ipp) = data;
-		let mut selected = Selected::new(&mut self.origional_transforms, &mut self.mid, layerdata, responses, document);
+		let mut selected = Selected::new(&mut self.original_transforms, &mut self.mid, layerdata, responses, document);
 		use TransformLayerMessage::*;
 		match message {
 			BeginTranslate => {
@@ -381,29 +381,34 @@ impl MessageHandler<TransformLayerMessage, (&mut HashMap<Vec<LayerId>, LayerData
 				self.start_mouse = ipp.mouse.position;
 				selected.repopulate_transforms();
 				self.operation = Operation::Translating(Default::default());
+				responses.push_back(SelectMessage::UpdateSelectionBoundingBox.into());
 			}
 			BeginRotate => {
 				self.mouse_pos = ipp.mouse.position;
 				self.start_mouse = ipp.mouse.position;
 				selected.repopulate_transforms();
 				self.operation = Operation::Rotating(Default::default());
+				responses.push_back(SelectMessage::UpdateSelectionBoundingBox.into());
 			}
 			BeginScale => {
 				self.mouse_pos = ipp.mouse.position;
 				self.start_mouse = ipp.mouse.position;
 				selected.repopulate_transforms();
 				self.operation = Operation::Scaling(Default::default());
+				responses.push_back(SelectMessage::UpdateSelectionBoundingBox.into());
 			}
 			CancelOperation => {
 				selected.reset();
 				self.operation = Operation::None;
 				self.typing.reset();
+				responses.push_back(SelectMessage::UpdateSelectionBoundingBox.into());
 			}
 			ApplyOperation => {
 				selected.selected.clear();
-				self.origional_transforms.clear();
+				self.original_transforms.clear();
 				self.typing.reset();
 				self.operation = Operation::None;
+				responses.push_back(SelectMessage::UpdateSelectionBoundingBox.into());
 			}
 			MouseMove { slow_key, snap_key } => {
 				self.slow = ipp.keyboard.get(slow_key as usize);
@@ -449,7 +454,7 @@ impl MessageHandler<TransformLayerMessage, (&mut HashMap<Vec<LayerId>, LayerData
 				}
 				self.mouse_pos = ipp.mouse.position;
 			}
-			TypeNum(k) => self.operation.handle_typed(self.typing.type_num(k), &mut selected, self.snap),
+			TypeNum(number) => self.operation.handle_typed(self.typing.type_num(number), &mut selected, self.snap),
 			TypeDelete => self.operation.handle_typed(self.typing.type_delete(), &mut selected, self.snap),
 			TypeDecimalPoint => self.operation.handle_typed(self.typing.type_decimal(), &mut selected, self.snap),
 			TypeNegative => self.operation.handle_typed(self.typing.type_negative(), &mut selected, self.snap),
