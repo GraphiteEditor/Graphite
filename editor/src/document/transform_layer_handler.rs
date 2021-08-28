@@ -70,7 +70,6 @@ impl<'a> Selected<'a> {
 	pub fn update_transforms(&mut self, delta: DAffine2) {
 		if self.selected.len() > 0 && delta != DAffine2::IDENTITY {
 			let mid = DAffine2::from_translation(*self.mid);
-			log::info!("Delta {}   Mid {}", delta, self.mid);
 			let transformation = mid * delta * mid.inverse();
 			for path in &self.selected {
 				let to = self.document.generate_transform_across_scope(&path[..path.len() - 1], None).unwrap();
