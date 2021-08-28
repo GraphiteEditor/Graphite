@@ -12,22 +12,38 @@ use graphene::Operation as DocumentOperation;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
 
+type OrigionalTransforms = HashMap<Vec<LayerId>, DAffine2>;
+
 struct Selected<'a> {
 	pub selected: Vec<Vec<LayerId>>,
 	responses: &'a mut VecDeque<Message>,
 	document: &'a mut Document,
-	delta: DAffine2,
+	origional_transforms: &'a mut OrigionalTransforms,
+	mid: &'a mut DVec2,
 }
 impl<'a> Selected<'a> {
-	pub fn new(layerdata: &'a mut HashMap<Vec<LayerId>, LayerData>, responses: &'a mut VecDeque<Message>, document: &'a mut Document) -> Self {
+	pub fn new(
+		origional_transforms: &'a mut OrigionalTransforms,
+		mid: &'a mut DVec2,
+		layerdata: &'a mut HashMap<Vec<LayerId>, LayerData>,
+		responses: &'a mut VecDeque<Message>,
+		document: &'a mut Document,
+	) -> Self {
+		let selected = layerdata.iter().filter_map(|(path, data)| data.selected.then(|| path.to_owned())).collect();
+		for path in &selected {
+			if !origional_transforms.contains_key::<Vec<LayerId>>(path) {
+				origional_transforms.insert(path.clone(), document.layer(path).unwrap().transform);
+			}
+		}
 		Self {
-			selected: layerdata.iter().filter_map(|(path, data)| data.selected.then(|| path.to_owned())).collect(),
+			selected,
 			responses,
 			document,
-			delta: DAffine2::IDENTITY,
+			origional_transforms,
+			mid,
 		}
 	}
-	pub fn calculate_mid(&self) -> DVec2 {
+	pub fn calculate_mid(&mut self) -> DVec2 {
 		self.selected
 			.iter()
 			.map(|path| {
@@ -44,14 +60,21 @@ impl<'a> Selected<'a> {
 			.fold(DVec2::ZERO, |acc, x| acc + x)
 			/ self.selected.len() as f64
 	}
-	pub fn update_transforms(&mut self) {
-		if self.selected.len() > 0 && self.delta != DAffine2::IDENTITY {
-			let mid = self.calculate_mid();
-			let transformation = DAffine2::from_translation(mid) * self.delta * DAffine2::from_translation(-mid);
+	pub fn repopulate_transforms(&mut self) {
+		self.origional_transforms.clear();
+		for path in &self.selected {
+			self.origional_transforms.insert(path.clone(), self.document.layer(path).unwrap().transform);
+		}
+		*self.mid = self.calculate_mid();
+	}
+	pub fn update_transforms(&mut self, delta: DAffine2) {
+		if self.selected.len() > 0 && delta != DAffine2::IDENTITY {
+			let mid = DAffine2::from_translation(*self.mid);
+			log::info!("Delta {}   Mid {}", delta, self.mid);
+			let transformation = mid * delta * mid.inverse();
 			for path in &self.selected {
 				let to = self.document.generate_transform_across_scope(&path[..path.len() - 1], None).unwrap();
-				let layer = self.document.layer(path).unwrap();
-				let new = to.inverse() * transformation * to * layer.transform;
+				let new = to.inverse() * transformation * to * *self.origional_transforms.get(path).unwrap();
 				self.responses.push_back(
 					DocumentOperation::SetLayerTransform {
 						path: path.to_vec(),
@@ -63,6 +86,19 @@ impl<'a> Selected<'a> {
 
 			self.responses.push_back(SelectMessage::UpdateSelectionBoundingBox.into());
 		}
+	}
+	pub fn reset(&mut self) {
+		for path in &self.selected {
+			self.responses.push_back(
+				DocumentOperation::SetLayerTransform {
+					path: path.to_vec(),
+					transform: (*self.origional_transforms.get(path).unwrap()).to_cols_array(),
+				}
+				.into(),
+			);
+		}
+		self.origional_transforms.clear();
+		self.selected.clear();
 	}
 }
 
@@ -196,42 +232,37 @@ impl Default for Operation {
 }
 
 impl Operation {
-	pub fn apply_operation(&self, selected: &mut Selected, invert: bool, snapping: bool) {
+	pub fn apply_operation(&self, selected: &mut Selected, snapping: bool) {
 		if self != &Operation::None {
-			let mut daffine = match self {
+			let daffine = match self {
 				Operation::Translating(translation) => DAffine2::from_translation(translation.to_dvec()),
 				Operation::Rotating(rotation) => DAffine2::from_angle(rotation.to_f64(snapping)),
 				Operation::Scaling(scale) => DAffine2::from_scale(scale.to_dvec(snapping)),
 				Operation::None => unreachable!(),
 			};
-			if invert {
-				daffine = daffine.inverse();
-			}
 
-			selected.delta = daffine * selected.delta;
+			selected.update_transforms(daffine);
 		}
 	}
 
 	pub fn constrain_axis(&mut self, axis: Axis, selected: &mut Selected, snapping: bool) {
-		self.apply_operation(selected, true, snapping);
 		match self {
 			Operation::None => {}
 			Operation::Translating(t) => t.constraint.invert(axis),
 			Operation::Rotating(_) => {}
 			Operation::Scaling(s) => s.constraint.invert(axis),
 		}
-		self.apply_operation(selected, false, snapping);
+		self.apply_operation(selected, snapping);
 	}
 
 	pub fn handle_typed(&mut self, typed: Option<f64>, selected: &mut Selected, snapping: bool) {
-		self.apply_operation(selected, true, snapping);
 		match self {
 			Operation::None => {}
 			Operation::Translating(t) => t.typed = typed,
 			Operation::Rotating(r) => r.typed = typed,
 			Operation::Scaling(s) => s.typed = typed,
 		}
-		self.apply_operation(selected, false, snapping);
+		self.apply_operation(selected, snapping);
 	}
 }
 
@@ -318,38 +349,43 @@ pub struct TransformLayerMessageHandler {
 
 	mouse_pos: ViewportPosition,
 	start_mouse: ViewportPosition,
+
+	origional_transforms: OrigionalTransforms,
+	mid: DVec2,
 }
 
 impl MessageHandler<TransformLayerMessage, (&mut HashMap<Vec<LayerId>, LayerData>, &mut Document, &InputPreprocessor)> for TransformLayerMessageHandler {
 	fn process_action(&mut self, message: TransformLayerMessage, data: (&mut HashMap<Vec<LayerId>, LayerData>, &mut Document, &InputPreprocessor), responses: &mut VecDeque<Message>) {
 		let (layerdata, document, ipp) = data;
-		let mut selected = Selected::new(layerdata, responses, document);
+		let mut selected = Selected::new(&mut self.origional_transforms, &mut self.mid, layerdata, responses, document);
 		use TransformLayerMessage::*;
 		match message {
 			BeginTranslate => {
 				self.mouse_pos = ipp.mouse.position;
 				self.start_mouse = ipp.mouse.position;
-				self.operation.apply_operation(&mut selected, true, self.snap);
+				selected.repopulate_transforms();
 				self.operation = Operation::Translating(Default::default());
 			}
 			BeginRotate => {
 				self.mouse_pos = ipp.mouse.position;
 				self.start_mouse = ipp.mouse.position;
-				self.operation.apply_operation(&mut selected, true, self.snap);
+				selected.repopulate_transforms();
 				self.operation = Operation::Rotating(Default::default());
 			}
 			BeginScale => {
 				self.mouse_pos = ipp.mouse.position;
 				self.start_mouse = ipp.mouse.position;
-				self.operation.apply_operation(&mut selected, true, self.snap);
+				selected.repopulate_transforms();
 				self.operation = Operation::Scaling(Default::default());
 			}
 			CancelOperation => {
-				self.operation.apply_operation(&mut selected, true, self.snap);
+				selected.reset();
 				self.operation = Operation::None;
 				self.typing.reset();
 			}
 			ApplyOperation => {
+				selected.selected.clear();
+				self.origional_transforms.clear();
 				self.typing.reset();
 				self.operation = Operation::None;
 			}
@@ -358,9 +394,8 @@ impl MessageHandler<TransformLayerMessage, (&mut HashMap<Vec<LayerId>, LayerData
 
 				let new_snap = ipp.keyboard.get(snap_key as usize);
 				if new_snap != self.snap {
-					self.operation.apply_operation(&mut selected, true, self.snap);
 					self.snap = new_snap;
-					self.operation.apply_operation(&mut selected, false, self.snap);
+					self.operation.apply_operation(&mut selected, self.snap);
 				}
 
 				if !self.typing.is_typing {
@@ -368,13 +403,11 @@ impl MessageHandler<TransformLayerMessage, (&mut HashMap<Vec<LayerId>, LayerData
 					match self.operation {
 						Operation::None => unreachable!(),
 						Operation::Translating(translation) => {
-							self.operation.apply_operation(&mut selected, true, self.snap);
 							let change = if self.slow { delta_pos / SLOWING_DIVISOR } else { delta_pos };
 							self.operation = Operation::Translating(translation.increment_amount(change));
-							self.operation.apply_operation(&mut selected, false, self.snap);
+							self.operation.apply_operation(&mut selected, self.snap);
 						}
 						Operation::Rotating(r) => {
-							self.operation.apply_operation(&mut selected, true, self.snap);
 							let selected_mid = selected.calculate_mid();
 							let rotation = {
 								let start_vec = self.mouse_pos - selected_mid;
@@ -383,20 +416,18 @@ impl MessageHandler<TransformLayerMessage, (&mut HashMap<Vec<LayerId>, LayerData
 							};
 							let change = if self.slow { rotation / SLOWING_DIVISOR } else { rotation };
 							self.operation = Operation::Rotating(r.increment_amount(change));
-							self.operation.apply_operation(&mut selected, false, self.snap);
+							self.operation.apply_operation(&mut selected, self.snap);
 						}
 						Operation::Scaling(s) => {
-							self.operation.apply_operation(&mut selected, true, self.snap);
-							let selected_mid = selected.calculate_mid();
 							let change = {
-								let previous_frame_dist = (self.mouse_pos - selected_mid).length();
-								let current_frame_dist = (ipp.mouse.position - selected_mid).length();
-								let start_transform_dist = (self.start_mouse - selected_mid).length();
+								let previous_frame_dist = (self.mouse_pos - *selected.mid).length();
+								let current_frame_dist = (ipp.mouse.position - *selected.mid).length();
+								let start_transform_dist = (self.start_mouse - *selected.mid).length();
 								(current_frame_dist - previous_frame_dist) / start_transform_dist
 							};
 							let change = if self.slow { change / SLOWING_DIVISOR } else { change };
 							self.operation = Operation::Scaling(s.increment_amount(change));
-							self.operation.apply_operation(&mut selected, false, self.snap);
+							self.operation.apply_operation(&mut selected, self.snap);
 						}
 					}
 				}
@@ -408,7 +439,6 @@ impl MessageHandler<TransformLayerMessage, (&mut HashMap<Vec<LayerId>, LayerData
 			ConstrainX => self.operation.constrain_axis(Axis::X, &mut selected, self.snap),
 			ConstrainY => self.operation.constrain_axis(Axis::Y, &mut selected, self.snap),
 		}
-		selected.update_transforms();
 	}
 	fn actions(&self) -> ActionList {
 		let mut common = actions!(TransformLayerMessageDiscriminant;
