@@ -11,8 +11,7 @@ pub type Callback = Box<dyn Fn(FrontendMessage)>;
 pub enum FrontendMessage {
 	CollapseFolder { path: Vec<LayerId> },
 	ExpandFolder { path: Vec<LayerId>, children: Vec<LayerPanelEntry> },
-	SetActiveTool { tool_name: String },
-	SetToolOptions { tool_name: String, tool_options: Option<ToolOptions> },
+	SetActiveTool { tool_name: String, tool_options: Option<ToolOptions> },
 	SetActiveDocument { document_index: usize },
 	UpdateOpenDocumentsList { open_documents: Vec<String> },
 	DisplayError { description: String },

@@ -46,13 +46,6 @@ pub enum ToolMessage {
 pub struct ToolMessageHandler {
 	tool_state: ToolFsmState,
 }
-impl ToolMessageHandler {
-	fn update_frontend_tool_options(&self, responses: &mut VecDeque<Message>, tool_type: ToolType) {
-		let tool_name = tool_type.to_string();
-		let tool_options = self.tool_state.document_tool_data.tool_options.get(&tool_type).map(|tool_options| *tool_options);
-		responses.push_back(FrontendMessage::SetToolOptions { tool_name, tool_options }.into());
-	}
-}
 impl MessageHandler<ToolMessage, (&DocumentMessageHandler, &InputPreprocessor)> for ToolMessageHandler {
 	fn process_action(&mut self, message: ToolMessage, data: (&DocumentMessageHandler, &InputPreprocessor), responses: &mut VecDeque<Message>) {
 		let (document, input) = data;
@@ -115,8 +108,9 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, &InputPreprocessor)> 
 				tool_data.active_tool_type = new_tool;
 
 				// Notify the frontend about the new active tool to be displayed
-				responses.push_back(FrontendMessage::SetActiveTool { tool_name: new_tool.to_string() }.into());
-				self.update_frontend_tool_options(responses, new_tool);
+				let tool_name = new_tool.to_string();
+				let tool_options = self.tool_state.document_tool_data.tool_options.get(&new_tool).map(|tool_options| *tool_options);
+				responses.push_back(FrontendMessage::SetActiveTool { tool_name, tool_options }.into());
 			}
 			SwapColors => {
 				let document_data = &mut self.tool_state.document_tool_data;
@@ -137,8 +131,6 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, &InputPreprocessor)> 
 				let document_data = &mut self.tool_state.document_tool_data;
 
 				document_data.tool_options.insert(tool_type, tool_options);
-
-				self.update_frontend_tool_options(responses, tool_type);
 			}
 			message => {
 				let tool_type = message_to_tool_type(&message);

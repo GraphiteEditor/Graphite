@@ -224,7 +224,7 @@
 <script lang="ts">
 import { defineComponent } from "vue";
 
-import { ResponseType, registerResponseHandler, Response, UpdateCanvas, UpdateScrollbars, SetActiveTool, SetToolOptions, SetCanvasZoom, SetCanvasRotation } from "@/utilities/response-handler";
+import { ResponseType, registerResponseHandler, Response, UpdateCanvas, UpdateScrollbars, SetActiveTool, SetCanvasZoom, SetCanvasRotation } from "@/utilities/response-handler";
 import { SeparatorDirection, SeparatorType } from "@/components/widgets/widgets";
 import { comingSoon } from "@/utilities/errors";
 
@@ -330,12 +330,10 @@ export default defineComponent({
 
 		registerResponseHandler(ResponseType.SetActiveTool, (responseData: Response) => {
 			const toolData = responseData as SetActiveTool;
-			if (toolData) this.activeTool = toolData.tool_name;
-		});
-
-		registerResponseHandler(ResponseType.SetToolOptions, (responseData: Response) => {
-			const toolData = responseData as SetToolOptions;
-			if (toolData) this.toolOptions[toolData.tool_name] = toolData.tool_options;
+			if (toolData) {
+				this.activeTool = toolData.tool_name;
+				this.toolOptions[toolData.tool_name] = toolData.tool_options;
+			}
 		});
 
 		registerResponseHandler(ResponseType.SetCanvasZoom, (responseData: Response) => {
