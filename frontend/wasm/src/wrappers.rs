@@ -91,7 +91,7 @@ pub fn translate_append_mode(name: &str) -> Option<SelectAppendMode> {
 }
 
 pub fn translate_key(name: &str) -> Key {
-	log::trace!("pressed key: {}", name);
+	log::trace!("Key event received: {}", name);
 	use Key::*;
 	match name.to_lowercase().as_str() {
 		"a" => KeyA,

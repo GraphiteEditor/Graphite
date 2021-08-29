@@ -83,7 +83,7 @@ impl<'a> Selected<'a> {
 				);
 			}
 
-			self.responses.push_back(SelectMessage::UpdateSelectionBoundingBox.into());
+			self.responses.push_back(ToolMessage::SelectedLayersChanged.into());
 		}
 	}
 	pub fn revert_operation(&mut self) {
@@ -383,7 +383,7 @@ impl MessageHandler<TransformLayerMessage, (&mut HashMap<Vec<LayerId>, LayerData
 				self.mouse_pos = ipp.mouse.position;
 				self.start_mouse = ipp.mouse.position;
 				self.operation = Operation::Translating(Default::default());
-				responses.push_back(SelectMessage::UpdateSelectionBoundingBox.into());
+				responses.push_back(ToolMessage::SelectedLayersChanged.into());
 			}
 			BeginRotate => {
 				if !(self.operation == Operation::None) {
@@ -395,7 +395,7 @@ impl MessageHandler<TransformLayerMessage, (&mut HashMap<Vec<LayerId>, LayerData
 				self.mouse_pos = ipp.mouse.position;
 				self.start_mouse = ipp.mouse.position;
 				self.operation = Operation::Rotating(Default::default());
-				responses.push_back(SelectMessage::UpdateSelectionBoundingBox.into());
+				responses.push_back(ToolMessage::SelectedLayersChanged.into());
 			}
 			BeginScale => {
 				if !(self.operation == Operation::None) {
@@ -408,20 +408,20 @@ impl MessageHandler<TransformLayerMessage, (&mut HashMap<Vec<LayerId>, LayerData
 				self.start_mouse = ipp.mouse.position;
 				self.operation = Operation::Scaling(Default::default());
 				self.operation.apply_operation(&mut selected, self.snap);
-				responses.push_back(SelectMessage::UpdateSelectionBoundingBox.into());
+				responses.push_back(ToolMessage::SelectedLayersChanged.into());
 			}
 			CancelOperation => {
 				selected.revert_operation();
 				selected.original_transforms.clear();
 				self.operation = Operation::None;
 				self.typing.clear();
-				responses.push_back(SelectMessage::UpdateSelectionBoundingBox.into());
+				responses.push_back(ToolMessage::SelectedLayersChanged.into());
 			}
 			ApplyOperation => {
 				self.original_transforms.clear();
 				self.typing.clear();
 				self.operation = Operation::None;
-				responses.push_back(SelectMessage::UpdateSelectionBoundingBox.into());
+				responses.push_back(ToolMessage::SelectedLayersChanged.into());
 			}
 			MouseMove { slow_key, snap_key } => {
 				self.slow = ipp.keyboard.get(slow_key as usize);
