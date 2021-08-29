@@ -86,7 +86,7 @@ impl<'a> Selected<'a> {
 			self.responses.push_back(SelectMessage::UpdateSelectionBoundingBox.into());
 		}
 	}
-	pub fn reset(&mut self) {
+	pub fn revert_operation(&mut self) {
 		for path in &self.selected {
 			self.responses.push_back(
 				DocumentOperation::SetLayerTransform {
@@ -96,8 +96,6 @@ impl<'a> Selected<'a> {
 				.into(),
 			);
 		}
-		self.original_transforms.clear();
-		self.selected.clear();
 	}
 }
 
@@ -239,7 +237,6 @@ impl Operation {
 				Operation::Scaling(scale) => DAffine2::from_scale(scale.to_dvec(snapping)),
 				Operation::None => unreachable!(),
 			};
-
 			selected.update_transforms(transformation);
 		}
 	}
@@ -327,7 +324,7 @@ impl Typing {
 		}
 		Some(result)
 	}
-	pub fn reset(&mut self) {
+	pub fn clear(&mut self) {
 		self.digits.clear();
 		self.is_typing = false;
 		self.negative = false;
@@ -377,36 +374,52 @@ impl MessageHandler<TransformLayerMessage, (&mut HashMap<Vec<LayerId>, LayerData
 		use TransformLayerMessage::*;
 		match message {
 			BeginTranslate => {
+				if !(self.operation == Operation::None) {
+					selected.revert_operation();
+					self.typing.clear();
+				} else {
+					selected.repopulate_transforms();
+				}
 				self.mouse_pos = ipp.mouse.position;
 				self.start_mouse = ipp.mouse.position;
-				selected.repopulate_transforms();
 				self.operation = Operation::Translating(Default::default());
 				responses.push_back(SelectMessage::UpdateSelectionBoundingBox.into());
 			}
 			BeginRotate => {
+				if !(self.operation == Operation::None) {
+					selected.revert_operation();
+					self.typing.clear();
+				} else {
+					selected.repopulate_transforms();
+				}
 				self.mouse_pos = ipp.mouse.position;
 				self.start_mouse = ipp.mouse.position;
-				selected.repopulate_transforms();
 				self.operation = Operation::Rotating(Default::default());
 				responses.push_back(SelectMessage::UpdateSelectionBoundingBox.into());
 			}
 			BeginScale => {
+				if !(self.operation == Operation::None) {
+					selected.revert_operation();
+					self.typing.clear();
+				} else {
+					selected.repopulate_transforms();
+				}
 				self.mouse_pos = ipp.mouse.position;
 				self.start_mouse = ipp.mouse.position;
-				selected.repopulate_transforms();
 				self.operation = Operation::Scaling(Default::default());
+				self.operation.apply_operation(&mut selected, self.snap);
 				responses.push_back(SelectMessage::UpdateSelectionBoundingBox.into());
 			}
 			CancelOperation => {
-				selected.reset();
+				selected.revert_operation();
+				selected.original_transforms.clear();
 				self.operation = Operation::None;
-				self.typing.reset();
+				self.typing.clear();
 				responses.push_back(SelectMessage::UpdateSelectionBoundingBox.into());
 			}
 			ApplyOperation => {
-				selected.selected.clear();
 				self.original_transforms.clear();
-				self.typing.reset();
+				self.typing.clear();
 				self.operation = Operation::None;
 				responses.push_back(SelectMessage::UpdateSelectionBoundingBox.into());
 			}
