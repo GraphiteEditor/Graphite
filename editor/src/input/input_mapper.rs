@@ -126,10 +126,11 @@ macro_rules! mapping {
 impl Default for Mapping {
 	fn default() -> Self {
 		use Key::*;
+		// WARNING!
+		// If a new mapping isn't being handled (and perhaps another lower-precedence one is instead), make sure to advertise
+		// it as an available action in the respective message handler file (such as the bottom of `document_message_handler.rs`)
 		let mappings = mapping![
-			entry! {action=DocumentsMessage::PasteLayers{path: vec![], insert_index: -1}, key_down=KeyV, modifiers=[KeyControl]},
-			entry! {action=MovementMessage::EnableSnapping, key_down=KeyShift},
-			entry! {action=MovementMessage::DisableSnapping, key_up=KeyShift},
+			// Higher priority than entries in sections below
 			// Select
 			entry! {action=SelectMessage::MouseMove, message=InputMapperMessage::PointerMove},
 			entry! {action=SelectMessage::DragStart{add_to_selection: KeyShift}, key_down=Lmb},
@@ -188,10 +189,12 @@ impl Default for Mapping {
 			// Editor Actions
 			entry! {action=FrontendMessage::OpenDocumentBrowse, key_down=KeyO, modifiers=[KeyControl]},
 			// Document Actions
+			entry! {action=DocumentsMessage::Paste, key_down=KeyV, modifiers=[KeyControl]},
 			entry! {action=DocumentMessage::Redo, key_down=KeyZ, modifiers=[KeyControl, KeyShift]},
 			entry! {action=DocumentMessage::Undo, key_down=KeyZ, modifiers=[KeyControl]},
 			entry! {action=DocumentMessage::DeselectAllLayers, key_down=KeyA, modifiers=[KeyControl, KeyAlt]},
 			entry! {action=DocumentMessage::SelectAllLayers, key_down=KeyA, modifiers=[KeyControl]},
+			entry! {action=DocumentMessage::CreateFolder(vec![]), key_down=KeyN, modifiers=[KeyControl, KeyShift]},
 			entry! {action=DocumentMessage::DeleteSelectedLayers, key_down=KeyDelete},
 			entry! {action=DocumentMessage::DeleteSelectedLayers, key_down=KeyX},
 			entry! {action=DocumentMessage::DeleteSelectedLayers, key_down=KeyBackspace},
@@ -225,7 +228,8 @@ impl Default for Mapping {
 			entry! {action=DocumentsMessage::CloseAllDocumentsWithConfirmation, key_down=KeyW, modifiers=[KeyControl, KeyAlt]},
 			entry! {action=DocumentsMessage::CloseActiveDocumentWithConfirmation, key_down=KeyW, modifiers=[KeyControl]},
 			entry! {action=DocumentMessage::DuplicateSelectedLayers, key_down=KeyD, modifiers=[KeyControl]},
-			entry! {action=DocumentsMessage::CopySelectedLayers, key_down=KeyC, modifiers=[KeyControl]},
+			entry! {action=DocumentsMessage::Copy, key_down=KeyC, modifiers=[KeyControl]},
+			entry! {action=DocumentMessage::GroupSelectedLayers, key_down=KeyG},
 			// Nudging
 			entry! {action=DocumentMessage::NudgeSelectedLayers(-SHIFT_NUDGE_AMOUNT, -SHIFT_NUDGE_AMOUNT), key_down=KeyArrowUp, modifiers=[KeyShift, KeyArrowLeft]},
 			entry! {action=DocumentMessage::NudgeSelectedLayers(SHIFT_NUDGE_AMOUNT, -SHIFT_NUDGE_AMOUNT), key_down=KeyArrowUp, modifiers=[KeyShift, KeyArrowRight]},

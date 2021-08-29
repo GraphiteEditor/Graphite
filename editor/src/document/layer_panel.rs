@@ -1,11 +1,13 @@
-use crate::{consts::VIEWPORT_ROTATE_SNAP_INTERVAL, frontend::layer_panel::*};
+use crate::consts::VIEWPORT_ROTATE_SNAP_INTERVAL;
 use glam::{DAffine2, DVec2};
+use graphene::layers::{BlendMode, LayerDataType};
 use graphene::{
 	layers::{Layer, LayerData as DocumentLayerData},
 	LayerId,
 };
-use serde::{Deserialize, Serialize};
+use serde::{ser::SerializeSeq, Deserialize, Serialize};
 use std::collections::HashMap;
+use std::fmt;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Copy)]
 pub struct LayerData {
@@ -49,10 +51,7 @@ impl LayerData {
 }
 
 pub fn layer_data<'a>(layer_data: &'a mut HashMap<Vec<LayerId>, LayerData>, path: &[LayerId]) -> &'a mut LayerData {
-	if !layer_data.contains_key(path) {
-		layer_data.insert(path.to_vec(), LayerData::new(false));
-	}
-	layer_data.get_mut(path).unwrap()
+	layer_data.get_mut(path).expect(&format!("Layer data cannot be found because the path {:?} does not exist", path))
 }
 
 pub fn layer_panel_entry(layer_data: &LayerData, transform: DAffine2, layer: &Layer, path: Vec<LayerId>) -> LayerPanelEntry {
@@ -78,9 +77,6 @@ pub fn layer_panel_entry(layer_data: &LayerData, transform: DAffine2, layer: &La
 		String::new()
 	};
 
-	// LayerIds are sent as (u32, u32) because jsond does not support u64s
-	let path = path.iter().map(|id| ((id >> 32) as u32, (id << 32 >> 32) as u32)).collect::<Vec<_>>();
-
 	LayerPanelEntry {
 		name,
 		visible: layer.visible,
@@ -88,7 +84,74 @@ pub fn layer_panel_entry(layer_data: &LayerData, transform: DAffine2, layer: &La
 		opacity: layer.opacity,
 		layer_type: (&layer.data).into(),
 		layer_data: *layer_data,
-		path,
+		path: path.into(),
 		thumbnail,
+	}
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq)]
+pub struct Path(Vec<LayerId>);
+
+impl From<Vec<LayerId>> for Path {
+	fn from(iter: Vec<LayerId>) -> Self {
+		Self(iter)
+	}
+}
+impl Serialize for Path {
+	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+	where
+		S: serde::Serializer,
+	{
+		let mut seq = serializer.serialize_seq(Some(self.0.len()))?;
+		for e in self.0.iter() {
+			#[cfg(target_arch = "wasm32")]
+			{
+				// LayerIds are sent as (u32, u32) because json does not support u64s
+				let id = ((e >> 32) as u32, (e << 32 >> 32) as u32);
+				seq.serialize_element(&id)?;
+			}
+			#[cfg(not(target_arch = "wasm32"))]
+			seq.serialize_element(e)?;
+		}
+		seq.end()
+	}
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct LayerPanelEntry {
+	pub name: String,
+	pub visible: bool,
+	pub blend_mode: BlendMode,
+	pub opacity: f64,
+	pub layer_type: LayerType,
+	pub layer_data: LayerData,
+	pub path: crate::document::layer_panel::Path,
+	pub thumbnail: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
+pub enum LayerType {
+	Folder,
+	Shape,
+}
+
+impl fmt::Display for LayerType {
+	fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+		let name = match self {
+			LayerType::Folder => "Folder",
+			LayerType::Shape => "Shape",
+		};
+
+		formatter.write_str(name)
+	}
+}
+
+impl From<&LayerDataType> for LayerType {
+	fn from(data: &LayerDataType) -> Self {
+		use LayerDataType::*;
+		match data {
+			Folder(_) => LayerType::Folder,
+			Shape(_) => LayerType::Shape,
+		}
 	}
 }
