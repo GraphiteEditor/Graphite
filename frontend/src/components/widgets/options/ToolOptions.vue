@@ -1,13 +1,19 @@
 <template>
 	<div class="tool-options">
-		<template v-for="(option, index) in toolOptions[activeTool] || []" :key="index">
+		<template v-for="(option, index) in toolOptionsWidgets[activeTool] || []" :key="index">
 			<!-- TODO: Use `<component :is="" v-bind="attributesObject"></component>` to avoid all the separate components with `v-if` -->
 			<IconButton v-if="option.kind === 'IconButton'" :action="() => handleIconButtonAction(option)" :title="option.tooltip" v-bind="option.props" />
 			<PopoverButton v-if="option.kind === 'PopoverButton'" :title="option.tooltip" :action="option.callback" v-bind="option.props">
 				<h3>{{ option.popover.title }}</h3>
 				<p>{{ option.popover.text }}</p>
 			</PopoverButton>
-			<NumberInput v-if="option.kind === 'NumberInput'" v-model:value="option.props.value" @update:value="option.callback" :title="option.tooltip" v-bind="option.props" />
+			<NumberInput
+				v-if="option.kind === 'NumberInput'"
+				@update:value="(value) => updateToolOptions(option.optionPath, value)"
+				:title="option.tooltip"
+				:value="getToolOption(option.optionPath)"
+				v-bind="option.props"
+			/>
 			<Separator v-if="option.kind === 'Separator'" v-bind="option.props" />
 		</template>
 	</div>
@@ -23,7 +29,7 @@
 </style>
 
 <script lang="ts">
-import { defineComponent } from "vue";
+import { defineComponent, PropType } from "vue";
 
 import { comingSoon } from "@/utilities/errors";
 import { WidgetRow, SeparatorType, IconButtonWidget } from "@/components/widgets/widgets";
@@ -38,28 +44,36 @@ const wasm = import("@/../wasm/pkg");
 export default defineComponent({
 	props: {
 		activeTool: { type: String },
+		activeToolOptions: { type: Object as PropType<Record<string, object>> },
 	},
-	computed: {},
 	methods: {
-		async setShapeOptions(newValue: number) {
-			// TODO: Each value-input widget (i.e. not a button) should map to a field in an options struct,
-			// and updating a widget should send the whole updated struct to the backend.
-			// Later, it could send a single-field update to the backend.
-
-			// This is a placeholder call, using the Shape tool as an example
-			// eslint-disable-next-line camelcase
-			(await wasm).set_tool_options(this.$props.activeTool || "", { Shape: { shape_type: { Polygon: { vertices: newValue } } } });
-		},
-		async setLineOptions(newValue: number) {
-			// eslint-disable-next-line camelcase
-			(await wasm).set_tool_options(this.$props.activeTool || "", { Line: { weight: newValue } });
-		},
-		async setPenOptions(newValue: number) {
-			// eslint-disable-next-line camelcase
-			(await wasm).set_tool_options(this.$props.activeTool || "", { Pen: { weight: newValue } });
+		async updateToolOptions(path: string[], newValue: number) {
+			this.setToolOption(path, newValue);
+			(await wasm).set_tool_options(this.activeTool || "", this.activeToolOptions);
 		},
 		async sendToolMessage(message: string | object) {
-			(await wasm).send_tool_message(this.$props.activeTool || "", message);
+			(await wasm).send_tool_message(this.activeTool || "", message);
+		},
+		// Traverses the given path and returns the direct parent of the option
+		getRecordContainingOption(optionPath: string[]): Record<string, number> {
+			const allButLast = optionPath.slice(0, -1);
+			let currentRecord = this.activeToolOptions as Record<string, object | number>;
+			[this.activeTool || "", ...allButLast].forEach((attr) => {
+				currentRecord = currentRecord[attr] as Record<string, object | number>;
+			});
+			return currentRecord as Record<string, number>;
+		},
+		// Traverses the given path into the active tool's option struct, and sets the value at the path tail
+		setToolOption(optionPath: string[], newValue: number) {
+			const last = optionPath.slice(-1)[0];
+			const recordContainingOption = this.getRecordContainingOption(optionPath);
+			recordContainingOption[last] = newValue;
+		},
+		// Traverses the given path into the active tool's option struct, and returns the value at the path tail
+		getToolOption(optionPath: string[]): number {
+			const last = optionPath.slice(-1)[0];
+			const recordContainingOption = this.getRecordContainingOption(optionPath);
+			return recordContainingOption[last];
 		},
 		handleIconButtonAction(option: IconButtonWidget) {
 			if (option.message) {
@@ -76,7 +90,7 @@ export default defineComponent({
 		},
 	},
 	data() {
-		const toolOptions: Record<string, WidgetRow> = {
+		const toolOptionsWidgets: Record<string, WidgetRow> = {
 			Select: [
 				{ kind: "IconButton", message: { Align: ["X", "Min"] }, tooltip: "Align Left", props: { icon: "AlignLeft", size: 24 } },
 				{ kind: "IconButton", message: { Align: ["X", "Center"] }, tooltip: "Align Horizontal Center", props: { icon: "AlignHorizontalCenter", size: 24 } },
@@ -134,13 +148,13 @@ export default defineComponent({
 					props: {},
 				},
 			],
-			Shape: [{ kind: "NumberInput", callback: this.setShapeOptions, props: { value: 6, min: 3, isInteger: true, label: "Sides" } }],
-			Line: [{ kind: "NumberInput", callback: this.setLineOptions, props: { value: 5, min: 1, isInteger: true, unit: " px", label: "Weight" } }],
-			Pen: [{ kind: "NumberInput", callback: this.setPenOptions, props: { value: 5, min: 1, isInteger: true, unit: " px", label: "Weight" } }],
+			Shape: [{ kind: "NumberInput", optionPath: ["shape_type", "Polygon", "vertices"], props: { min: 3, isInteger: true, label: "Sides" } }],
+			Line: [{ kind: "NumberInput", optionPath: ["weight"], props: { min: 1, isInteger: true, unit: " px", label: "Weight" } }],
+			Pen: [{ kind: "NumberInput", optionPath: ["weight"], props: { min: 1, isInteger: true, unit: " px", label: "Weight" } }],
 		};
 
 		return {
-			toolOptions,
+			toolOptionsWidgets,
 			SeparatorType,
 			comingSoon,
 		};

@@ -7,13 +7,14 @@ use super::{
 use crate::message_prelude::*;
 use crate::tool::ToolType;
 
+use serde::{Deserialize, Serialize};
 use std::fmt::Write;
 
 const NUDGE_AMOUNT: f64 = 1.;
 const SHIFT_NUDGE_AMOUNT: f64 = 10.;
 
 #[impl_message(Message, InputMapper)]
-#[derive(PartialEq, Clone, Debug, Hash)]
+#[derive(PartialEq, Clone, Debug, Hash, Serialize, Deserialize)]
 pub enum InputMapperMessage {
 	PointerMove,
 	MouseScroll,
@@ -185,14 +186,16 @@ impl Default for Mapping {
 			// Fill
 			entry! {action=FillMessage::MouseDown, key_down=Lmb},
 			// Tool Actions
-			entry! {action=ToolMessage::SelectTool(ToolType::Fill), key_down=KeyF},
-			entry! {action=ToolMessage::SelectTool(ToolType::Rectangle), key_down=KeyM},
-			entry! {action=ToolMessage::SelectTool(ToolType::Ellipse), key_down=KeyE},
-			entry! {action=ToolMessage::SelectTool(ToolType::Select), key_down=KeyV},
-			entry! {action=ToolMessage::SelectTool(ToolType::Line), key_down=KeyL},
-			entry! {action=ToolMessage::SelectTool(ToolType::Pen), key_down=KeyP},
-			entry! {action=ToolMessage::SelectTool(ToolType::Shape), key_down=KeyY},
-			entry! {action=ToolMessage::SelectTool(ToolType::Eyedropper), key_down=KeyI},
+			entry! {action=ToolMessage::ActivateTool(ToolType::Select), key_down=KeyV},
+			entry! {action=ToolMessage::ActivateTool(ToolType::Eyedropper), key_down=KeyI},
+			entry! {action=ToolMessage::ActivateTool(ToolType::Fill), key_down=KeyF},
+			entry! {action=ToolMessage::ActivateTool(ToolType::Path), key_down=KeyA},
+			entry! {action=ToolMessage::ActivateTool(ToolType::Pen), key_down=KeyP},
+			entry! {action=ToolMessage::ActivateTool(ToolType::Line), key_down=KeyL},
+			entry! {action=ToolMessage::ActivateTool(ToolType::Rectangle), key_down=KeyM},
+			entry! {action=ToolMessage::ActivateTool(ToolType::Ellipse), key_down=KeyE},
+			entry! {action=ToolMessage::ActivateTool(ToolType::Shape), key_down=KeyY},
+			// Colors
 			entry! {action=ToolMessage::ResetColors, key_down=KeyX, modifiers=[KeyShift, KeyControl]},
 			entry! {action=ToolMessage::SwapColors, key_down=KeyX, modifiers=[KeyShift]},
 			// Editor Actions
@@ -329,7 +332,7 @@ impl InputMapper {
 		let mut actions = actions
 			.into_iter()
 			.flatten()
-			.filter(|a| !matches!(*a, MessageDiscriminant::Tool(ToolMessageDiscriminant::SelectTool) | MessageDiscriminant::Global(_)));
+			.filter(|a| !matches!(*a, MessageDiscriminant::Tool(ToolMessageDiscriminant::ActivateTool) | MessageDiscriminant::Global(_)));
 		self.mapping
 			.key_down
 			.iter()

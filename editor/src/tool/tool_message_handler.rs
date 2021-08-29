@@ -6,14 +6,16 @@ use crate::{
 	document::DocumentMessageHandler,
 	tool::{tool_options::ToolOptions, DocumentToolData, ToolFsmState, ToolType},
 };
+use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 
 #[impl_message(Message, Tool)]
-#[derive(PartialEq, Clone, Debug)]
+#[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub enum ToolMessage {
-	SelectTool(ToolType),
+	ActivateTool(ToolType),
 	SelectPrimaryColor(Color),
 	SelectSecondaryColor(Color),
+	SelectedLayersChanged,
 	SwapColors,
 	ResetColors,
 	NoOp,
@@ -63,7 +65,7 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, &InputPreprocessor)> 
 
 				update_working_colors(document_data, responses);
 			}
-			SelectTool(new_tool) => {
+			ActivateTool(new_tool) => {
 				let tool_data = &mut self.tool_state.tool_data;
 				let document_data = &self.tool_state.document_tool_data;
 				let old_tool = tool_data.active_tool_type;
@@ -75,12 +77,13 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, &InputPreprocessor)> 
 
 				// Get the Abort state of a tool's FSM
 				let reset_message = |tool| match tool {
-					ToolType::Ellipse => Some(EllipseMessage::Abort.into()),
-					ToolType::Rectangle => Some(RectangleMessage::Abort.into()),
-					ToolType::Shape => Some(ShapeMessage::Abort.into()),
-					ToolType::Line => Some(LineMessage::Abort.into()),
-					ToolType::Pen => Some(PenMessage::Abort.into()),
 					ToolType::Select => Some(SelectMessage::Abort.into()),
+					ToolType::Path => Some(PathMessage::Abort.into()),
+					ToolType::Pen => Some(PenMessage::Abort.into()),
+					ToolType::Line => Some(LineMessage::Abort.into()),
+					ToolType::Rectangle => Some(RectangleMessage::Abort.into()),
+					ToolType::Ellipse => Some(EllipseMessage::Abort.into()),
+					ToolType::Shape => Some(ShapeMessage::Abort.into()),
 					_ => None,
 				};
 
@@ -100,15 +103,25 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, &InputPreprocessor)> 
 				}
 
 				// Special cases for specific tools
-				if new_tool == ToolType::Select {
-					responses.push_back(SelectMessage::UpdateSelectionBoundingBox.into());
+				// TODO: Refactor to avoid doing this here
+				if new_tool == ToolType::Select || new_tool == ToolType::Path {
+					responses.push_back(ToolMessage::SelectedLayersChanged.into());
 				}
 
 				// Store the new active tool
 				tool_data.active_tool_type = new_tool;
 
 				// Notify the frontend about the new active tool to be displayed
-				responses.push_back(FrontendMessage::SetActiveTool { tool_name: new_tool.to_string() }.into());
+				let tool_name = new_tool.to_string();
+				let tool_options = self.tool_state.document_tool_data.tool_options.get(&new_tool).map(|tool_options| *tool_options);
+				responses.push_back(FrontendMessage::SetActiveTool { tool_name, tool_options }.into());
+			}
+			SelectedLayersChanged => {
+				match self.tool_state.tool_data.active_tool_type {
+					ToolType::Select => responses.push_back(SelectMessage::UpdateSelectionBoundingBox.into()),
+					ToolType::Path => responses.push_back(PathMessage::RedrawOverlay.into()),
+					_ => (),
+				};
 			}
 			SwapColors => {
 				let document_data = &mut self.tool_state.document_tool_data;
@@ -144,7 +157,7 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, &InputPreprocessor)> 
 		}
 	}
 	fn actions(&self) -> ActionList {
-		let mut list = actions!(ToolMessageDiscriminant; ResetColors, SwapColors, SelectTool, SetToolOptions);
+		let mut list = actions!(ToolMessageDiscriminant; ResetColors, SwapColors, ActivateTool, SetToolOptions);
 		list.extend(self.tool_state.tool_data.active_tool().actions());
 
 		list

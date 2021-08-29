@@ -10,7 +10,9 @@ use utils::WasmLog;
 use wasm_bindgen::prelude::*;
 
 // the thread_local macro provides a way to initialize static variables with non-constant functions
-thread_local! { pub static EDITOR_STATE: RefCell<Editor> = RefCell::new(Editor::new(Box::new(handle_response))) }
+thread_local! {
+	pub static EDITOR_STATE: RefCell<Editor> = RefCell::new(Editor::new());
+}
 static LOGGER: WasmLog = WasmLog;
 
 #[wasm_bindgen(start)]
@@ -18,6 +20,12 @@ pub fn init() {
 	utils::set_panic_hook();
 	log::set_logger(&LOGGER).expect("Failed to set logger");
 	log::set_max_level(log::LevelFilter::Debug);
+}
+
+pub fn handle_responses(responses: Vec<FrontendMessage>) {
+	for response in responses.into_iter() {
+		handle_response(response)
+	}
 }
 
 #[wasm_bindgen(module = "/../src/utilities/response-handler-binding.ts")]

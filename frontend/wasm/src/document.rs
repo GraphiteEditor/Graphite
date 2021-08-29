@@ -1,6 +1,5 @@
 use crate::shims::Error;
 use crate::wrappers::{translate_key, translate_tool, Color};
-use crate::EDITOR_STATE;
 use editor::input::input_preprocessor::ModifierKeys;
 use editor::input::mouse::{EditorMouseState, ScrollDelta, ViewportBounds};
 use editor::message_prelude::*;
@@ -14,23 +13,31 @@ fn convert_error(err: editor::EditorError) -> JsValue {
 	Error::new(&err.to_string()).into()
 }
 
+fn dispatch<T: Into<Message>>(message: T) -> Result<(), JsValue> {
+	let result = crate::EDITOR_STATE.with(|state| state.borrow_mut().handle_message(message.into()));
+	if let Ok(messages) = result {
+		crate::handle_responses(messages);
+	}
+	Ok(())
+}
+
 /// Modify the currently selected tool in the document state store
 #[wasm_bindgen]
 pub fn select_tool(tool: String) -> Result<(), JsValue> {
-	EDITOR_STATE.with(|editor| match translate_tool(&tool) {
-		Some(tool) => editor.borrow_mut().handle_message(ToolMessage::SelectTool(tool)).map_err(convert_error),
+	match translate_tool(&tool) {
+		Some(tool) => dispatch(ToolMessage::ActivateTool(tool)),
 		None => Err(Error::new(&format!("Couldn't select {} because it was not recognized as a valid tool", tool)).into()),
-	})
+	}
 }
 
 /// Update the options for a given tool
 #[wasm_bindgen]
 pub fn set_tool_options(tool: String, options: &JsValue) -> Result<(), JsValue> {
 	match options.into_serde::<ToolOptions>() {
-		Ok(options) => EDITOR_STATE.with(|editor| match translate_tool(&tool) {
-			Some(tool) => editor.borrow_mut().handle_message(ToolMessage::SetToolOptions(tool, options)).map_err(convert_error),
+		Ok(options) => match translate_tool(&tool) {
+			Some(tool) => dispatch(ToolMessage::SetToolOptions(tool, options)),
 			None => Err(Error::new(&format!("Couldn't set options for {} because it was not recognized as a valid tool", tool)).into()),
-		}),
+		},
 		Err(err) => Err(Error::new(&format!("Invalid JSON for ToolOptions: {}", err)).into()),
 	}
 }
@@ -48,60 +55,60 @@ pub fn send_tool_message(tool: String, message: &JsValue) -> Result<(), JsValue>
 		},
 		None => Err(Error::new(&format!("Couldn't send message for {} because it was not recognized as a valid tool", tool)).into()),
 	};
-	EDITOR_STATE.with(|editor| match tool_message {
-		Ok(tool_message) => editor.borrow_mut().handle_message(tool_message).map_err(convert_error),
+	match tool_message {
+		Ok(tool_message) => dispatch(tool_message),
 		Err(err) => Err(err),
-	})
+	}
 }
 
 #[wasm_bindgen]
 pub fn select_document(document: usize) -> Result<(), JsValue> {
-	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(DocumentsMessage::SelectDocument(document)).map_err(convert_error))
+	dispatch(DocumentsMessage::SelectDocument(document))
 }
 
 #[wasm_bindgen]
 pub fn get_open_documents_list() -> Result<(), JsValue> {
-	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(DocumentsMessage::GetOpenDocumentsList).map_err(convert_error))
+	dispatch(DocumentsMessage::GetOpenDocumentsList)
 }
 
 #[wasm_bindgen]
 pub fn new_document() -> Result<(), JsValue> {
-	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(DocumentsMessage::NewDocument).map_err(convert_error))
+	dispatch(DocumentsMessage::NewDocument)
 }
 
 #[wasm_bindgen]
 pub fn open_document() -> Result<(), JsValue> {
-	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(DocumentsMessage::OpenDocument).map_err(convert_error))
+	dispatch(DocumentsMessage::OpenDocument)
 }
 
 #[wasm_bindgen]
 pub fn open_document_file(name: String, content: String) -> Result<(), JsValue> {
-	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(DocumentsMessage::OpenDocumentFile(name, content)).map_err(convert_error))
+	dispatch(DocumentsMessage::OpenDocumentFile(name, content))
 }
 
 #[wasm_bindgen]
 pub fn save_document() -> Result<(), JsValue> {
-	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(DocumentMessage::SaveDocument)).map_err(convert_error)
+	dispatch(DocumentMessage::SaveDocument)
 }
 
 #[wasm_bindgen]
 pub fn close_document(document: usize) -> Result<(), JsValue> {
-	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(DocumentsMessage::CloseDocument(document)).map_err(convert_error))
+	dispatch(DocumentsMessage::CloseDocument(document))
 }
 
 #[wasm_bindgen]
 pub fn close_all_documents() -> Result<(), JsValue> {
-	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(DocumentsMessage::CloseAllDocuments).map_err(convert_error))
+	dispatch(DocumentsMessage::CloseAllDocuments)
 }
 
 #[wasm_bindgen]
 pub fn close_active_document_with_confirmation() -> Result<(), JsValue> {
-	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(DocumentsMessage::CloseActiveDocumentWithConfirmation).map_err(convert_error))
+	dispatch(DocumentsMessage::CloseActiveDocumentWithConfirmation)
 }
 
 #[wasm_bindgen]
 pub fn close_all_documents_with_confirmation() -> Result<(), JsValue> {
-	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(DocumentsMessage::CloseAllDocumentsWithConfirmation).map_err(convert_error))
+	dispatch(DocumentsMessage::CloseAllDocumentsWithConfirmation)
 }
 
 /// Send new bounds when document panel viewports get resized or moved within the editor
@@ -110,7 +117,7 @@ pub fn close_all_documents_with_confirmation() -> Result<(), JsValue> {
 pub fn bounds_of_viewports(bounds_of_viewports: &[f64]) -> Result<(), JsValue> {
 	let chunked: Vec<_> = bounds_of_viewports.chunks(4).map(ViewportBounds::from_slice).collect();
 	let ev = InputPreprocessorMessage::BoundsOfViewports(chunked);
-	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(ev)).map_err(convert_error)
+	dispatch(ev)
 }
 
 /// Mouse movement within the screenspace bounds of the viewport
@@ -121,7 +128,7 @@ pub fn on_mouse_move(x: f64, y: f64, mouse_keys: u8, modifiers: u8) -> Result<()
 	let modifier_keys = ModifierKeys::from_bits(modifiers).expect("invalid modifier keys");
 
 	let ev = InputPreprocessorMessage::MouseMove(editor_mouse_state, modifier_keys);
-	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(ev)).map_err(convert_error)
+	dispatch(ev)
 }
 
 /// Mouse scrolling within the screenspace bounds of the viewport
@@ -133,7 +140,7 @@ pub fn on_mouse_scroll(x: f64, y: f64, mouse_keys: u8, wheel_delta_x: i32, wheel
 	let modifier_keys = ModifierKeys::from_bits(modifiers).expect("invalid modifier keys");
 
 	let ev = InputPreprocessorMessage::MouseScroll(editor_mouse_state, modifier_keys);
-	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(ev)).map_err(convert_error)
+	dispatch(ev)
 }
 
 /// A mouse button depressed within screenspace the bounds of the viewport
@@ -144,7 +151,7 @@ pub fn on_mouse_down(x: f64, y: f64, mouse_keys: u8, modifiers: u8) -> Result<()
 	let modifier_keys = ModifierKeys::from_bits(modifiers).expect("invalid modifier keys");
 
 	let ev = InputPreprocessorMessage::MouseDown(editor_mouse_state, modifier_keys);
-	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(ev)).map_err(convert_error)
+	dispatch(ev)
 }
 
 /// A mouse button released
@@ -155,7 +162,7 @@ pub fn on_mouse_up(x: f64, y: f64, mouse_keys: u8, modifiers: u8) -> Result<(), 
 	let modifier_keys = ModifierKeys::from_bits(modifiers).expect("invalid modifier keys");
 
 	let ev = InputPreprocessorMessage::MouseUp(editor_mouse_state, modifier_keys);
-	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(ev)).map_err(convert_error)
+	dispatch(ev)
 }
 
 /// A keyboard button depressed within screenspace the bounds of the viewport
@@ -165,7 +172,7 @@ pub fn on_key_down(name: String, modifiers: u8) -> Result<(), JsValue> {
 	let mods = ModifierKeys::from_bits(modifiers).expect("invalid modifier keys");
 	log::trace!("key down {:?}, name: {}, modifiers: {:?}", key, name, mods);
 	let ev = InputPreprocessorMessage::KeyDown(key, mods);
-	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(ev)).map_err(convert_error)
+	dispatch(ev)
 }
 
 /// A keyboard button released
@@ -175,69 +182,61 @@ pub fn on_key_up(name: String, modifiers: u8) -> Result<(), JsValue> {
 	let mods = ModifierKeys::from_bits(modifiers).expect("invalid modifier keys");
 	log::trace!("key up {:?}, name: {}, modifiers: {:?}", key, name, mods);
 	let ev = InputPreprocessorMessage::KeyUp(key, mods);
-	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(ev)).map_err(convert_error)
+	dispatch(ev)
 }
 
 /// Update primary color
 #[wasm_bindgen]
 pub fn update_primary_color(primary_color: Color) -> Result<(), JsValue> {
-	EDITOR_STATE
-		.with(|editor| editor.borrow_mut().handle_message(ToolMessage::SelectPrimaryColor(primary_color.inner())))
-		.map_err(convert_error)
+	dispatch(ToolMessage::SelectPrimaryColor(primary_color.inner()))
 }
 
 /// Update secondary color
 #[wasm_bindgen]
 pub fn update_secondary_color(secondary_color: Color) -> Result<(), JsValue> {
-	EDITOR_STATE
-		.with(|editor| editor.borrow_mut().handle_message(ToolMessage::SelectSecondaryColor(secondary_color.inner())))
-		.map_err(convert_error)
+	dispatch(ToolMessage::SelectSecondaryColor(secondary_color.inner()))
 }
 
 /// Swap primary and secondary color
 #[wasm_bindgen]
 pub fn swap_colors() -> Result<(), JsValue> {
-	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(ToolMessage::SwapColors)).map_err(convert_error)
+	dispatch(ToolMessage::SwapColors)
 }
 
 /// Reset primary and secondary colors to their defaults
 #[wasm_bindgen]
 pub fn reset_colors() -> Result<(), JsValue> {
-	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(ToolMessage::ResetColors)).map_err(convert_error)
+	dispatch(ToolMessage::ResetColors)
 }
 
 /// Undo history one step
 #[wasm_bindgen]
 pub fn undo() -> Result<(), JsValue> {
-	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(DocumentMessage::Undo)).map_err(convert_error)
+	dispatch(DocumentMessage::Undo)
 }
 
 /// Redo history one step
 #[wasm_bindgen]
 pub fn redo() -> Result<(), JsValue> {
-	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(DocumentMessage::Redo)).map_err(convert_error)
+	dispatch(DocumentMessage::Redo)
 }
 
 /// Select all layers
 #[wasm_bindgen]
 pub fn select_all_layers() -> Result<(), JsValue> {
-	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(DocumentMessage::SelectAllLayers)).map_err(convert_error)
+	dispatch(DocumentMessage::SelectAllLayers)
 }
 
 /// Deselect all layers
 #[wasm_bindgen]
 pub fn deselect_all_layers() -> Result<(), JsValue> {
-	EDITOR_STATE
-		.with(|editor| editor.borrow_mut().handle_message(DocumentMessage::DeselectAllLayers))
-		.map_err(convert_error)
+	dispatch(DocumentMessage::DeselectAllLayers)
 }
 
 /// Reorder selected layer
 #[wasm_bindgen]
 pub fn reorder_selected_layers(delta: i32) -> Result<(), JsValue> {
-	EDITOR_STATE
-		.with(|editor| editor.borrow_mut().handle_message(DocumentMessage::ReorderSelectedLayers(delta)))
-		.map_err(convert_error)
+	dispatch(DocumentMessage::ReorderSelectedLayers(delta))
 }
 
 /// Set the blend mode for the selected layers
@@ -263,111 +262,96 @@ pub fn set_blend_mode_for_selected_layers(blend_mode_svg_style_name: String) -> 
 		_ => return Err(convert_error(EditorError::Misc("UnknownBlendMode".to_string()))),
 	};
 
-	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(DocumentMessage::SetBlendModeForSelectedLayers(blend_mode)).map_err(convert_error))
+	dispatch(DocumentMessage::SetBlendModeForSelectedLayers(blend_mode))
 }
 
 /// Set the opacity for the selected layers
 #[wasm_bindgen]
 pub fn set_opacity_for_selected_layers(opacity_percent: f64) -> Result<(), JsValue> {
-	EDITOR_STATE.with(|editor| {
-		editor
-			.borrow_mut()
-			.handle_message(DocumentMessage::SetOpacityForSelectedLayers(opacity_percent / 100.))
-			.map_err(convert_error)
-	})
+	dispatch(DocumentMessage::SetOpacityForSelectedLayers(opacity_percent / 100.))
 }
 
 /// Export the document
 #[wasm_bindgen]
 pub fn export_document() -> Result<(), JsValue> {
-	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(DocumentMessage::ExportDocument)).map_err(convert_error)
+	dispatch(DocumentMessage::ExportDocument)
 }
 
 /// Sets the zoom to the value
 #[wasm_bindgen]
 pub fn set_canvas_zoom(new_zoom: f64) -> Result<(), JsValue> {
 	let ev = MovementMessage::SetCanvasZoom(new_zoom);
-	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(ev)).map_err(convert_error)
+	dispatch(ev)
 }
 
 /// Zoom in to the next step
 #[wasm_bindgen]
 pub fn increase_canvas_zoom() -> Result<(), JsValue> {
 	let ev = MovementMessage::IncreaseCanvasZoom;
-	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(ev)).map_err(convert_error)
+	dispatch(ev)
 }
 
 /// Zoom out to the next step
 #[wasm_bindgen]
 pub fn decrease_canvas_zoom() -> Result<(), JsValue> {
 	let ev = MovementMessage::DecreaseCanvasZoom;
-	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(ev)).map_err(convert_error)
+	dispatch(ev)
 }
 
 /// Sets the rotation to the new value (in radians)
 #[wasm_bindgen]
 pub fn set_rotation(new_radians: f64) -> Result<(), JsValue> {
 	let ev = MovementMessage::SetCanvasRotation(new_radians);
-	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(ev)).map_err(convert_error)
+	dispatch(ev)
 }
 
 /// Translates document (in viewport coords)
 #[wasm_bindgen]
 pub fn translate_canvas(delta_x: f64, delta_y: f64) -> Result<(), JsValue> {
 	let ev = MovementMessage::TranslateCanvas((delta_x, delta_y).into());
-	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(ev)).map_err(convert_error)
+	dispatch(ev)
 }
 
 /// Translates document (in viewport coords)
 #[wasm_bindgen]
 pub fn translate_canvas_by_fraction(delta_x: f64, delta_y: f64) -> Result<(), JsValue> {
 	let ev = MovementMessage::TranslateCanvasByViewportFraction((delta_x, delta_y).into());
-	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(ev)).map_err(convert_error)
+	dispatch(ev)
 }
 
 /// Update the list of selected layers. The layer paths have to be stored in one array and are separated by LayerId::MAX
 #[wasm_bindgen]
 pub fn select_layers(paths: Vec<LayerId>) -> Result<(), JsValue> {
 	let paths = paths.split(|id| *id == LayerId::MAX).map(|path| path.to_vec()).collect();
-	EDITOR_STATE
-		.with(|editor| editor.borrow_mut().handle_message(DocumentMessage::SetSelectedLayers(paths)))
-		.map_err(convert_error)
+	dispatch(DocumentMessage::SetSelectedLayers(paths))
 }
 
 /// Toggle visibility of a layer from the layer list
 #[wasm_bindgen]
 pub fn toggle_layer_visibility(path: Vec<LayerId>) -> Result<(), JsValue> {
-	EDITOR_STATE
-		.with(|editor| editor.borrow_mut().handle_message(DocumentMessage::ToggleLayerVisibility(path)))
-		.map_err(convert_error)
+	dispatch(DocumentMessage::ToggleLayerVisibility(path))
 }
 
 /// Toggle expansions state of a layer from the layer list
 #[wasm_bindgen]
 pub fn toggle_layer_expansion(path: Vec<LayerId>) -> Result<(), JsValue> {
-	EDITOR_STATE
-		.with(|editor| editor.borrow_mut().handle_message(DocumentMessage::ToggleLayerExpansion(path)))
-		.map_err(convert_error)
+	dispatch(DocumentMessage::ToggleLayerExpansion(path))
 }
 
 /// Renames a layer from the layer list
 #[wasm_bindgen]
 pub fn rename_layer(path: Vec<LayerId>, new_name: String) -> Result<(), JsValue> {
-	EDITOR_STATE
-		.with(|editor| editor.borrow_mut().handle_message(DocumentMessage::RenameLayer(path, new_name)))
-		.map_err(convert_error)
+	dispatch(DocumentMessage::RenameLayer(path, new_name))
 }
 
 /// Deletes a layer from the layer list
 #[wasm_bindgen]
 pub fn delete_layer(path: Vec<LayerId>) -> Result<(), JsValue> {
-	EDITOR_STATE
-		.with(|editor| editor.borrow_mut().handle_message(DocumentMessage::DeleteLayer(path)))
-		.map_err(convert_error)
+	dispatch(DocumentMessage::DeleteLayer(path))
 }
 
 /// Requests the backend to add a layer to the layer list
 #[wasm_bindgen]
 pub fn add_folder(path: Vec<LayerId>) -> Result<(), JsValue> {
-	EDITOR_STATE.with(|editor| editor.borrow_mut().handle_message(DocumentMessage::AddFolder(path))).map_err(convert_error)
+	dispatch(DocumentMessage::AddFolder(path))
 }

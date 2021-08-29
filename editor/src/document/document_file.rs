@@ -5,7 +5,8 @@ use crate::{
 	EditorError,
 };
 use glam::{DAffine2, DVec2};
-use graphene::{document::Document as InternalDocument, DocumentError, LayerId};
+use graphene::{document::Document as InternalDocument, layers::LayerDataType, DocumentError, LayerId};
+use kurbo::PathSeg;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -42,6 +43,20 @@ pub enum AlignAggregate {
 	Average,
 }
 
+#[derive(PartialEq, Clone, Debug)]
+pub enum VectorManipulatorSegment {
+	Line(DVec2, DVec2),
+	Quad(DVec2, DVec2, DVec2),
+	Cubic(DVec2, DVec2, DVec2, DVec2),
+}
+
+#[derive(PartialEq, Clone, Debug)]
+pub struct VectorManipulatorShape {
+	pub path: kurbo::BezPath,
+	pub segments: Vec<VectorManipulatorSegment>,
+	pub transform: DAffine2,
+}
+
 #[derive(Clone, Debug)]
 pub struct DocumentMessageHandler {
 	pub document: InternalDocument,
@@ -68,7 +83,7 @@ impl Default for DocumentMessageHandler {
 }
 
 #[impl_message(Message, DocumentsMessage, Document)]
-#[derive(PartialEq, Clone, Debug)]
+#[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub enum DocumentMessage {
 	#[child]
 	Movement(MovementMessage),
@@ -117,6 +132,7 @@ impl From<DocumentOperation> for DocumentMessage {
 		Self::DispatchOperation(Box::new(operation))
 	}
 }
+
 impl From<DocumentOperation> for Message {
 	fn from(operation: DocumentOperation) -> Message {
 		DocumentMessage::DispatchOperation(Box::new(operation)).into()
@@ -124,11 +140,6 @@ impl From<DocumentOperation> for Message {
 }
 
 impl DocumentMessageHandler {
-	fn filter_document_responses(&self, document_responses: &mut Vec<DocumentResponse>) -> bool {
-		let len = document_responses.len();
-		document_responses.retain(|response| !matches!(response, DocumentResponse::DocumentChanged));
-		document_responses.len() != len
-	}
 	pub fn handle_folder_changed(&mut self, path: Vec<LayerId>) -> Option<Message> {
 		let _ = self.document.render_root();
 		self.layer_data(&path).expanded.then(|| {
@@ -136,9 +147,11 @@ impl DocumentMessageHandler {
 			FrontendMessage::ExpandFolder { path, children }.into()
 		})
 	}
+
 	fn clear_selection(&mut self) {
 		self.layer_data.values_mut().for_each(|layer_data| layer_data.selected = false);
 	}
+
 	fn select_layer(&mut self, path: &[LayerId]) -> Option<Message> {
 		if self.document.layer(path).ok()?.overlay {
 			return None;
@@ -148,13 +161,51 @@ impl DocumentMessageHandler {
 		// TODO: Add deduplication
 		(!path.is_empty()).then(|| FrontendMessage::UpdateLayer { path: path.to_vec(), data }.into())
 	}
+
 	pub fn selected_layers_bounding_box(&self) -> Option<[DVec2; 2]> {
 		let paths = self.selected_layers().map(|vec| &vec[..]);
 		self.document.combined_viewport_bounding_box(paths)
 	}
+
+	// TODO: Consider moving this to some kind of overlay manager in the future
+	pub fn selected_layers_vector_points(&self) -> Vec<VectorManipulatorShape> {
+		let shapes = self.selected_layers().filter_map(|path_to_shape| {
+			let viewport_transform = self.document.generate_transform_relative_to_viewport(path_to_shape.as_slice()).ok()?;
+
+			let shape = match &self.document.layer(path_to_shape.as_slice()).ok()?.data {
+				LayerDataType::Shape(shape) => Some(shape),
+				LayerDataType::Folder(_) => None,
+			}?;
+			let path = shape.path.clone();
+
+			let segments = path
+				.segments()
+				.map(|segment| -> VectorManipulatorSegment {
+					let place = |point: kurbo::Point| -> DVec2 { viewport_transform.transform_point2(DVec2::from((point.x, point.y))) };
+
+					match segment {
+						PathSeg::Line(line) => VectorManipulatorSegment::Line(place(line.p0), place(line.p1)),
+						PathSeg::Quad(quad) => VectorManipulatorSegment::Quad(place(quad.p0), place(quad.p1), place(quad.p2)),
+						PathSeg::Cubic(cubic) => VectorManipulatorSegment::Cubic(place(cubic.p0), place(cubic.p1), place(cubic.p2), place(cubic.p3)),
+					}
+				})
+				.collect::<Vec<VectorManipulatorSegment>>();
+
+			Some(VectorManipulatorShape {
+				path,
+				segments,
+				transform: viewport_transform,
+			})
+		});
+
+		// TODO: Consider refactoring this in a way that avoids needing to collect() so we can skip the heap allocations
+		shapes.collect::<Vec<VectorManipulatorShape>>()
+	}
+
 	pub fn layerdata(&self, path: &[LayerId]) -> &LayerData {
 		self.layer_data.get(path).expect("Layerdata does not exist")
 	}
+
 	pub fn layerdata_mut(&mut self, path: &[LayerId]) -> &mut LayerData {
 		self.layer_data.entry(path.to_vec()).or_insert_with(|| LayerData::new(true))
 	}
@@ -205,6 +256,7 @@ impl DocumentMessageHandler {
 	pub fn non_selected_layers_sorted(&self) -> Vec<Vec<LayerId>> {
 		self.layers_sorted(Some(false))
 	}
+
 	pub fn with_name(name: String) -> Self {
 		Self {
 			document: InternalDocument::default(),
@@ -216,6 +268,7 @@ impl DocumentMessageHandler {
 			transform_layer_handler: TransformLayerMessageHandler::default(),
 		}
 	}
+
 	pub fn with_name_and_content(name: String, serialized_content: String) -> Result<Self, EditorError> {
 		let mut document = Self::with_name(name);
 		let internal_document = InternalDocument::with_content(&serialized_content);
@@ -277,7 +330,6 @@ impl DocumentMessageHandler {
 	}
 
 	pub fn layer_panel_entry(&mut self, path: Vec<LayerId>) -> Result<LayerPanelEntry, EditorError> {
-		self.document.render_root();
 		let data: LayerData = *layer_data(&mut self.layer_data, &path);
 		let layer = self.document.layer(&path)?;
 		let entry = layer_panel_entry(&data, self.document.multiply_transforms(&path).unwrap(), layer, path);
@@ -379,22 +431,25 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				}
 			}
 			ToggleLayerVisibility(path) => {
-				responses.push_back(DocumentOperation::ToggleVisibility { path }.into());
+				responses.push_back(DocumentOperation::ToggleLayerVisibility { path }.into());
 			}
 			ToggleLayerExpansion(path) => {
 				self.layer_data(&path).expanded ^= true;
-				responses.extend(self.handle_folder_changed(path));
+				responses.push_back(FolderChanged(path).into());
 			}
-			SelectionChanged => responses.push_back(SelectMessage::UpdateSelectionBoundingBox.into()),
+			SelectionChanged => {
+				// TODO: Hoist this duplicated code into wider system
+				responses.push_back(ToolMessage::SelectedLayersChanged.into());
+			}
 			DeleteSelectedLayers => {
 				self.backup();
-				responses.push_front(SelectMessage::UpdateSelectionBoundingBox.into());
+				responses.push_front(ToolMessage::SelectedLayersChanged.into());
 				for path in self.selected_layers().cloned() {
 					responses.push_front(DocumentOperation::DeleteLayer { path }.into());
 				}
 			}
 			ClearOverlays => {
-				responses.push_front(SelectMessage::UpdateSelectionBoundingBox.into());
+				responses.push_back(ToolMessage::SelectedLayersChanged.into());
 				for path in self.layer_data.keys().filter(|path| self.document.layer(path).unwrap().overlay).cloned() {
 					responses.push_front(DocumentOperation::DeleteLayer { path }.into());
 				}
@@ -414,8 +469,8 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					responses.extend(self.select_layer(&path));
 				}
 				// TODO: Correctly update layer panel in clear_selection instead of here
-				responses.extend(self.handle_folder_changed(Vec::new()));
-				responses.push_front(SelectMessage::UpdateSelectionBoundingBox.into());
+				responses.push_back(FolderChanged(Vec::new()).into());
+				responses.push_back(ToolMessage::SelectedLayersChanged.into());
 			}
 			SelectAllLayers => {
 				let all_layer_paths = self
@@ -434,46 +489,41 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			Undo => {
 				responses.push_back(SelectMessage::Abort.into());
 				responses.push_back(DocumentHistoryBackward.into());
-				responses.push_back(SelectMessage::UpdateSelectionBoundingBox.into());
+				responses.push_back(ToolMessage::SelectedLayersChanged.into());
 				responses.push_back(RenderDocument.into());
 				responses.push_back(FolderChanged(vec![]).into());
 			}
 			Redo => {
 				responses.push_back(SelectMessage::Abort.into());
 				responses.push_back(DocumentHistoryForward.into());
-				responses.push_back(SelectMessage::UpdateSelectionBoundingBox.into());
+				responses.push_back(ToolMessage::SelectedLayersChanged.into());
 				responses.push_back(RenderDocument.into());
 				responses.push_back(FolderChanged(vec![]).into());
 			}
 			FolderChanged(path) => responses.extend(self.handle_folder_changed(path)),
 			DispatchOperation(op) => match self.document.handle_operation(&op) {
-				Ok(Some(mut document_responses)) => {
-					let canvas_dirty = self.filter_document_responses(&mut document_responses);
+				Ok(Some(document_responses)) => {
 					responses.extend(
 						document_responses
 							.into_iter()
 							.map(|response| match response {
-								DocumentResponse::FolderChanged { path } => self.handle_folder_changed(path),
+								DocumentResponse::FolderChanged { path } => Some(FolderChanged(path).into()),
 								DocumentResponse::DeletedLayer { path } => {
 									self.layer_data.remove(&path);
-
-									Some(SelectMessage::UpdateSelectionBoundingBox.into())
+									Some(ToolMessage::SelectedLayersChanged.into())
 								}
-								DocumentResponse::LayerChanged { path } => Some(
+								DocumentResponse::LayerChanged { path } => (!self.document.layer(&path).unwrap().overlay).then(|| {
 									FrontendMessage::UpdateLayer {
 										path: path.clone(),
 										data: self.layer_panel_entry(path).unwrap(),
 									}
-									.into(),
-								),
+									.into()
+								}),
 								DocumentResponse::CreatedLayer { path } => (!self.document.layer(&path).unwrap().overlay).then(|| SetSelectedLayers(vec![path]).into()),
-								DocumentResponse::DocumentChanged => unreachable!(),
+								DocumentResponse::DocumentChanged => Some(RenderDocument.into()),
 							})
 							.flatten(),
 					);
-					if canvas_dirty {
-						responses.push_back(RenderDocument.into());
-					}
 				}
 				Err(e) => log::error!("DocumentError: {:?}", e),
 				Ok(_) => (),
@@ -485,6 +535,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					}
 					.into(),
 				);
+
 				let scale = 0.5 + ASYMPTOTIC_EFFECT + self.layerdata(&[]).scale * SCALE_EFFECT;
 				let viewport_size = ipp.viewport_bounds.size();
 				let viewport_mid = ipp.viewport_bounds.center();
@@ -514,7 +565,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					};
 					responses.push_back(operation.into());
 				}
-				responses.push_back(SelectMessage::UpdateSelectionBoundingBox.into());
+				responses.push_back(ToolMessage::SelectedLayersChanged.into());
 			}
 			MoveSelectedLayersTo { path, insert_index } => {
 				responses.push_back(DocumentsMessage::CopySelectedLayers.into());
@@ -571,7 +622,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 							.into(),
 						);
 					}
-					responses.push_back(SelectMessage::UpdateSelectionBoundingBox.into());
+					responses.push_back(ToolMessage::SelectedLayersChanged.into());
 				}
 			}
 			AlignSelectedLayers(axis, aggregate) => {
@@ -605,12 +656,13 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 							.into(),
 						);
 					}
-					responses.push_back(SelectMessage::UpdateSelectionBoundingBox.into());
+					responses.push_back(ToolMessage::SelectedLayersChanged.into());
 				}
 			}
 			RenameLayer(path, name) => responses.push_back(DocumentOperation::RenameLayer { path, name }.into()),
 		}
 	}
+
 	fn actions(&self) -> ActionList {
 		let mut common = actions!(DocumentMessageDiscriminant;
 			Undo,

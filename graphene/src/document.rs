@@ -215,7 +215,6 @@ impl Document {
 	}
 
 	pub fn mark_as_dirty(&mut self, path: &[LayerId]) -> Result<(), DocumentError> {
-		self.mark_downstream_as_dirty(path)?;
 		self.mark_upstream_as_dirty(path)?;
 		Ok(())
 	}
@@ -264,6 +263,10 @@ impl Document {
 		Ok(())
 	}
 
+	pub fn generate_transform_relative_to_viewport(&self, from: &[LayerId]) -> Result<DAffine2, DocumentError> {
+		self.generate_transform_across_scope(from, None)
+	}
+
 	pub fn apply_transform_relative_to_viewport(&mut self, layer: &[LayerId], transform: DAffine2) -> Result<(), DocumentError> {
 		self.transform_relative_to_scope(layer, None, transform)
 	}
@@ -297,33 +300,79 @@ impl Document {
 
 		let responses = match &operation {
 			Operation::AddEllipse { path, insert_index, transform, style } => {
-				self.set_layer(path, Layer::new(LayerDataType::Shape(Shape::ellipse(*style)), *transform), *insert_index)?;
+				let layer = Layer::new(LayerDataType::Shape(Shape::ellipse(*style)), *transform);
+
+				self.set_layer(path, layer, *insert_index)?;
+
+				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::CreatedLayer { path: path.clone() }])
+			}
+			Operation::AddOverlayEllipse { path, transform, style } => {
+				let mut ellipse = Shape::ellipse(*style);
+				ellipse.render_index = -1;
+
+				let mut layer = Layer::new(LayerDataType::Shape(ellipse), *transform);
+				layer.overlay = true;
+
+				self.set_layer(path, layer, -1)?;
+
 				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::CreatedLayer { path: path.clone() }])
 			}
 			Operation::AddRect { path, insert_index, transform, style } => {
-				self.set_layer(path, Layer::new(LayerDataType::Shape(Shape::rectangle(*style)), *transform), *insert_index)?;
+				let layer = Layer::new(LayerDataType::Shape(Shape::rectangle(*style)), *transform);
+
+				self.set_layer(path, layer, *insert_index)?;
+
 				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::CreatedLayer { path: path.clone() }])
 			}
-			Operation::AddBoundingBox { path, transform, style } => {
+			Operation::AddOverlayRect { path, transform, style } => {
 				let mut rect = Shape::rectangle(*style);
 				rect.render_index = -1;
+
 				let mut layer = Layer::new(LayerDataType::Shape(rect), *transform);
 				layer.overlay = true;
+
 				self.set_layer(path, layer, -1)?;
+
 				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::CreatedLayer { path: path.clone() }])
 			}
-			Operation::AddShape {
+			Operation::AddLine { path, insert_index, transform, style } => {
+				let layer = Layer::new(LayerDataType::Shape(Shape::line(*style)), *transform);
+
+				self.set_layer(path, layer, *insert_index)?;
+
+				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::CreatedLayer { path: path.clone() }])
+			}
+			Operation::AddOverlayLine { path, transform, style } => {
+				let mut line = Shape::line(*style);
+				line.render_index = -1;
+
+				let mut layer = Layer::new(LayerDataType::Shape(line), *transform);
+				layer.overlay = true;
+
+				self.set_layer(path, layer, -1)?;
+
+				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::CreatedLayer { path: path.clone() }])
+			}
+			Operation::AddNgon {
 				path,
 				insert_index,
 				transform,
 				style,
 				sides,
 			} => {
-				self.set_layer(path, Layer::new(LayerDataType::Shape(Shape::shape(*sides, *style)), *transform), *insert_index)?;
+				self.set_layer(path, Layer::new(LayerDataType::Shape(Shape::ngon(*sides, *style)), *transform), *insert_index)?;
+
 				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::CreatedLayer { path: path.clone() }])
 			}
-			Operation::AddLine { path, insert_index, transform, style } => {
-				self.set_layer(path, Layer::new(LayerDataType::Shape(Shape::line(*style)), *transform), *insert_index)?;
+			Operation::AddOverlayShape { path, style, bez_path } => {
+				let mut shape = Shape::from_bez_path(bez_path.clone(), *style, false);
+				shape.render_index = -1;
+
+				let mut layer = Layer::new(LayerDataType::Shape(shape), DAffine2::IDENTITY.to_cols_array());
+				layer.overlay = true;
+
+				self.set_layer(path, layer, -1)?;
+
 				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::CreatedLayer { path: path.clone() }])
 			}
 			Operation::AddPen {
@@ -395,6 +444,19 @@ impl Document {
 				self.mark_as_dirty(path)?;
 				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::LayerChanged { path: path.clone() }])
 			}
+			Operation::SetShapePathInViewport { path, bez_path, transform } => {
+				let transform = DAffine2::from_cols_array(transform);
+				self.set_transform_relative_to_viewport(path, transform)?;
+				self.mark_as_dirty(path)?;
+
+				match &mut self.layer_mut(path)?.data {
+					LayerDataType::Shape(shape) => {
+						shape.path = bez_path.clone();
+					}
+					LayerDataType::Folder(_) => (),
+				}
+				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::LayerChanged { path: path.clone() }])
+			}
 			Operation::TransformLayerInScope { path, transform, scope } => {
 				let transform = DAffine2::from_cols_array(transform);
 				let scope = DAffine2::from_cols_array(scope);
@@ -416,11 +478,16 @@ impl Document {
 				self.mark_as_dirty(path)?;
 				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::LayerChanged { path: path.clone() }])
 			}
-			Operation::ToggleVisibility { path } => {
+			Operation::ToggleLayerVisibility { path } => {
 				self.mark_as_dirty(path)?;
-				if let Ok(layer) = self.layer_mut(path) {
-					layer.visible = !layer.visible;
-				}
+				let layer = self.layer_mut(path)?;
+				layer.visible = !layer.visible;
+				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::LayerChanged { path: path.clone() }])
+			}
+			Operation::SetLayerVisibility { path, visible } => {
+				self.mark_as_dirty(path)?;
+				let layer = self.layer_mut(path)?;
+				layer.visible = *visible;
 				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::LayerChanged { path: path.clone() }])
 			}
 			Operation::SetLayerBlendMode { path, blend_mode } => {
@@ -435,7 +502,16 @@ impl Document {
 
 				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::LayerChanged { path: path.clone() }])
 			}
-			Operation::FillLayer { path, color } => {
+			Operation::SetLayerStyle { path, style } => {
+				let layer = self.layer_mut(path)?;
+				match &mut layer.data {
+					LayerDataType::Shape(s) => s.style = *style,
+					_ => return Err(DocumentError::NotAShape),
+				}
+				self.mark_as_dirty(path)?;
+				Some(vec![DocumentResponse::DocumentChanged, DocumentResponse::LayerChanged { path: path.clone() }])
+			}
+			Operation::SetLayerFill { path, color } => {
 				let layer = self.layer_mut(path)?;
 				match &mut layer.data {
 					LayerDataType::Shape(s) => s.style.set_fill(layers::style::Fill::new(*color)),

@@ -4,6 +4,7 @@ use crate::tool::{DocumentToolData, Fsm, ShapeType, ToolActionHandlerData, ToolO
 use crate::{document::DocumentMessageHandler, message_prelude::*};
 use glam::DAffine2;
 use graphene::{layers::style, Operation};
+use serde::{Deserialize, Serialize};
 
 use super::resize::*;
 
@@ -14,7 +15,7 @@ pub struct Shape {
 }
 
 #[impl_message(Message, ToolMessage, Shape)]
-#[derive(PartialEq, Clone, Debug, Hash)]
+#[derive(PartialEq, Clone, Debug, Hash, Serialize, Deserialize)]
 pub enum ShapeMessage {
 	DragStart,
 	DragStop,
@@ -82,7 +83,7 @@ impl Fsm for ShapeToolFsmState {
 					};
 
 					responses.push_back(
-						Operation::AddShape {
+						Operation::AddNgon {
 							path: shape_data.path.clone().unwrap(),
 							insert_index: -1,
 							transform: DAffine2::ZERO.to_cols_array(),

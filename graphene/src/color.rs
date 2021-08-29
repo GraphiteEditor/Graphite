@@ -40,7 +40,7 @@ impl Color {
 	}
 
 	/// Return an opaque `Color` from given `f32` RGB channels.
-	const fn from_unsafe(red: f32, green: f32, blue: f32) -> Color {
+	pub const fn from_unsafe(red: f32, green: f32, blue: f32) -> Color {
 		Color { red, green, blue, alpha: 1. }
 	}
 
