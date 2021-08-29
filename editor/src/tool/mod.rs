@@ -118,6 +118,8 @@ fn default_tool_options() -> HashMap<ToolType, ToolOptions> {
 	let tool_init = |tool: ToolType| (tool, tool.default_options());
 	std::array::IntoIter::new([
 		tool_init(ToolType::Select),
+		tool_init(ToolType::Pen),
+		tool_init(ToolType::Line),
 		tool_init(ToolType::Ellipse),
 		tool_init(ToolType::Shape), // TODO: Add more tool defaults
 	])
@@ -186,6 +188,8 @@ impl ToolType {
 	fn default_options(&self) -> ToolOptions {
 		match self {
 			ToolType::Select => ToolOptions::Select { append_mode: SelectAppendMode::New },
+			ToolType::Pen => ToolOptions::Pen { weight: 5 },
+			ToolType::Line => ToolOptions::Line { weight: 5 },
 			ToolType::Ellipse => ToolOptions::Ellipse,
 			ToolType::Shape => ToolOptions::Shape {
 				shape_type: ShapeType::Polygon { vertices: 6 },
