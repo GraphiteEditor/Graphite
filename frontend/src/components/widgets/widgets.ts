@@ -55,7 +55,7 @@ export interface PopoverButtonProps {
 export interface NumberInputWidget {
 	kind: "NumberInput";
 	tooltip?: string;
-	path: string[];
+	optionPath: string[];
 	props: Omit<NumberInputProps, "value">;
 }
 

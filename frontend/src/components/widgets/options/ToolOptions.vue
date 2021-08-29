@@ -9,9 +9,10 @@
 			</PopoverButton>
 			<NumberInput
 				v-if="option.kind === 'NumberInput'"
-				@update:value="(value) => updateToolOptions(option.path, value)"
+				@update:value="(value) => updateToolOptions(option.optionPath, value)"
 				:title="option.tooltip"
-				v-bind="{ ...option.props, value: getToolOption(option.path) }"
+				:value="getToolOption(option.optionPath)"
+				v-bind="option.props"
 			/>
 			<Separator v-if="option.kind === 'Separator'" v-bind="option.props" />
 		</template>
@@ -47,34 +48,38 @@ export default defineComponent({
 	},
 	computed: {
 		activeToolOptions(): Record<string, object> {
-			return (this.$props.currentToolOptions || {})[this.$props.activeTool || ""];
+			const toolOptions = this.currentToolOptions || {};
+			return toolOptions[this.activeTool || ""];
 		},
 	},
 	methods: {
 		async updateToolOptions(path: string[], newValue: number) {
 			this.setToolOption(path, newValue);
-			(await wasm).set_tool_options(this.$props.activeTool || "", this.activeToolOptions);
+			(await wasm).set_tool_options(this.activeTool || "", this.activeToolOptions);
 		},
 		async sendToolMessage(message: string | object) {
-			(await wasm).send_tool_message(this.$props.activeTool || "", message);
+			(await wasm).send_tool_message(this.activeTool || "", message);
+		},
+		// Traverses the given path and returns the direct parent of the option
+		getRecordContainingOption(optionPath: string[]): Record<string, number> {
+			const allButLast = optionPath.slice(0, -1);
+			let value = this.activeToolOptions as Record<string, object | number>;
+			[this.activeTool || "", ...allButLast].forEach((attr) => {
+				value = value[attr] as Record<string, object | number>;
+			});
+			return value as Record<string, number>;
 		},
 		// Traverses the given path into the active tool's option struct, and sets the value at the path tail
-		setToolOption(path: string[], newValue: number) {
-			let value = this.activeToolOptions as Record<string, object | number>;
-			[this.$props.activeTool || "", ...path.slice(0, -1)].forEach((attr) => {
-				value = value[attr] as Record<string, object | number>;
-			});
-			const final = value as Record<string, number>;
-			final[path.slice(-1)[0]] = newValue;
+		setToolOption(optionPath: string[], newValue: number) {
+			const last = optionPath.slice(-1)[0];
+			const recordContainingOption = this.getRecordContainingOption(optionPath);
+			recordContainingOption[last] = newValue;
 		},
 		// Traverses the given path into the active tool's option struct, and returns the value at the path tail
-		getToolOption(path: string[]): number {
-			let value = this.activeToolOptions as Record<string, object | number>;
-			[this.$props.activeTool || "", ...path.slice(0, -1)].forEach((attr) => {
-				value = value[attr] as Record<string, object | number>;
-			});
-			const final = value as Record<string, number>;
-			return final[path.slice(-1)[0]];
+		getToolOption(optionPath: string[]): number {
+			const last = optionPath.slice(-1)[0];
+			const recordContainingOption = this.getRecordContainingOption(optionPath);
+			return recordContainingOption[last];
 		},
 		handleIconButtonAction(option: IconButtonWidget) {
 			if (option.message) {
@@ -149,9 +154,9 @@ export default defineComponent({
 					props: {},
 				},
 			],
-			Shape: [{ kind: "NumberInput", path: ["shape_type", "Polygon", "vertices"], props: { min: 3, isInteger: true, label: "Sides" } }],
-			Line: [{ kind: "NumberInput", path: ["weight"], props: { min: 1, isInteger: true, unit: " px", label: "Weight" } }],
-			Pen: [{ kind: "NumberInput", path: ["weight"], props: { min: 1, isInteger: true, unit: " px", label: "Weight" } }],
+			Shape: [{ kind: "NumberInput", optionPath: ["shape_type", "Polygon", "vertices"], props: { min: 3, isInteger: true, label: "Sides" } }],
+			Line: [{ kind: "NumberInput", optionPath: ["weight"], props: { min: 1, isInteger: true, unit: " px", label: "Weight" } }],
+			Pen: [{ kind: "NumberInput", optionPath: ["weight"], props: { min: 1, isInteger: true, unit: " px", label: "Weight" } }],
 		};
 
 		return {

@@ -48,13 +48,9 @@ pub struct ToolMessageHandler {
 }
 impl ToolMessageHandler {
 	fn update_frontend_tool_options(&self, responses: &mut VecDeque<Message>, tool_type: ToolType) {
-		responses.push_back(
-			FrontendMessage::SetToolOptions {
-				tool_name: tool_type.to_string(),
-				tool_options: self.tool_state.document_tool_data.tool_options.get(&tool_type).map(|tool_options| *tool_options),
-			}
-			.into(),
-		);
+		let tool_name = tool_type.to_string();
+		let tool_options = self.tool_state.document_tool_data.tool_options.get(&tool_type).map(|tool_options| *tool_options);
+		responses.push_back(FrontendMessage::SetToolOptions { tool_name, tool_options }.into());
 	}
 }
 impl MessageHandler<ToolMessage, (&DocumentMessageHandler, &InputPreprocessor)> for ToolMessageHandler {
