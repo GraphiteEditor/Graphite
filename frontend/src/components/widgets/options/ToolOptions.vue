@@ -29,7 +29,7 @@
 </style>
 
 <script lang="ts">
-import { defineComponent } from "vue";
+import { defineComponent, PropType } from "vue";
 
 import { comingSoon } from "@/utilities/errors";
 import { WidgetRow, SeparatorType, IconButtonWidget } from "@/components/widgets/widgets";
@@ -41,14 +41,16 @@ import NumberInput from "@/components/widgets/inputs/NumberInput.vue";
 
 const wasm = import("@/../wasm/pkg");
 
+type ToolOptionsRecord = Record<string, object>;
+
 export default defineComponent({
 	props: {
 		activeTool: { type: String },
-		currentToolOptions: { type: Object },
+		allToolOptions: { type: Object as PropType<Record<string, ToolOptionsRecord>> },
 	},
 	computed: {
 		activeToolOptions(): Record<string, object> {
-			const toolOptions = this.currentToolOptions || {};
+			const toolOptions = this.allToolOptions || {};
 			return toolOptions[this.activeTool || ""];
 		},
 	},

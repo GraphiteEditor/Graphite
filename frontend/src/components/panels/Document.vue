@@ -6,7 +6,7 @@
 
 				<Separator :type="SeparatorType.Section" />
 
-				<ToolOptions :activeTool="activeTool" :currentToolOptions="toolOptions" />
+				<ToolOptions :activeTool="activeTool" :allToolOptions="toolOptions" />
 			</div>
 			<div class="spacer"></div>
 			<div class="right side">
