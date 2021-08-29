@@ -11,10 +11,11 @@ use glam::DVec2;
 use graphene::document::Document;
 use graphene::Operation as DocumentOperation;
 
+use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 
 #[impl_message(Message, DocumentMessage, Movement)]
-#[derive(PartialEq, Clone, Debug)]
+#[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub enum MovementMessage {
 	MouseMove,
 	TranslateCanvasBegin,
@@ -91,6 +92,7 @@ impl MessageHandler<MovementMessage, (&mut LayerData, &Document, &InputPreproces
 					let transformed_delta = document.root.transform.inverse().transform_vector2(delta);
 
 					layerdata.translation += transformed_delta;
+					responses.push_back(ToolMessage::SelectedLayersChanged.into());
 					self.create_document_transform_from_layerdata(layerdata, &ipp.viewport_bounds, responses);
 				}
 				if self.rotating {
@@ -105,7 +107,7 @@ impl MessageHandler<MovementMessage, (&mut LayerData, &Document, &InputPreproces
 
 					layerdata.rotation += rotation;
 					layerdata.snap_rotate = snapping;
-					responses.push_back(SelectMessage::UpdateSelectionBoundingBox.into());
+					responses.push_back(ToolMessage::SelectedLayersChanged.into());
 					responses.push_back(
 						FrontendMessage::SetCanvasRotation {
 							new_radians: layerdata.snapped_angle(),
@@ -121,6 +123,7 @@ impl MessageHandler<MovementMessage, (&mut LayerData, &Document, &InputPreproces
 					let new = (layerdata.scale * amount).clamp(VIEWPORT_ZOOM_SCALE_MIN, VIEWPORT_ZOOM_SCALE_MAX);
 					layerdata.scale = new;
 					responses.push_back(FrontendMessage::SetCanvasZoom { new_zoom: layerdata.scale }.into());
+					responses.push_back(ToolMessage::SelectedLayersChanged.into());
 					self.create_document_transform_from_layerdata(layerdata, &ipp.viewport_bounds, responses);
 				}
 				self.mouse_pos = ipp.mouse.position;
@@ -128,16 +131,19 @@ impl MessageHandler<MovementMessage, (&mut LayerData, &Document, &InputPreproces
 			SetCanvasZoom(new) => {
 				layerdata.scale = new.clamp(VIEWPORT_ZOOM_SCALE_MIN, VIEWPORT_ZOOM_SCALE_MAX);
 				responses.push_back(FrontendMessage::SetCanvasZoom { new_zoom: layerdata.scale }.into());
+				responses.push_back(ToolMessage::SelectedLayersChanged.into());
 				self.create_document_transform_from_layerdata(layerdata, &ipp.viewport_bounds, responses);
 			}
 			IncreaseCanvasZoom => {
 				layerdata.scale = *VIEWPORT_ZOOM_LEVELS.iter().find(|scale| **scale > layerdata.scale).unwrap_or(&layerdata.scale);
 				responses.push_back(FrontendMessage::SetCanvasZoom { new_zoom: layerdata.scale }.into());
+				responses.push_back(ToolMessage::SelectedLayersChanged.into());
 				self.create_document_transform_from_layerdata(layerdata, &ipp.viewport_bounds, responses);
 			}
 			DecreaseCanvasZoom => {
 				layerdata.scale = *VIEWPORT_ZOOM_LEVELS.iter().rev().find(|scale| **scale < layerdata.scale).unwrap_or(&layerdata.scale);
 				responses.push_back(FrontendMessage::SetCanvasZoom { new_zoom: layerdata.scale }.into());
+				responses.push_back(ToolMessage::SelectedLayersChanged.into());
 				self.create_document_transform_from_layerdata(layerdata, &ipp.viewport_bounds, responses);
 			}
 			WheelCanvasZoom => {
@@ -158,6 +164,7 @@ impl MessageHandler<MovementMessage, (&mut LayerData, &Document, &InputPreproces
 				layerdata.scale = new;
 				layerdata.translation += transformed_delta;
 				responses.push_back(FrontendMessage::SetCanvasZoom { new_zoom: layerdata.scale }.into());
+				responses.push_back(ToolMessage::SelectedLayersChanged.into());
 				self.create_document_transform_from_layerdata(layerdata, &ipp.viewport_bounds, responses);
 			}
 			WheelCanvasTranslate { use_y_as_x } => {
@@ -167,13 +174,14 @@ impl MessageHandler<MovementMessage, (&mut LayerData, &Document, &InputPreproces
 				} * VIEWPORT_SCROLL_RATE;
 				let transformed_delta = document.root.transform.inverse().transform_vector2(delta);
 				layerdata.translation += transformed_delta;
+				responses.push_back(ToolMessage::SelectedLayersChanged.into());
 				self.create_document_transform_from_layerdata(layerdata, &ipp.viewport_bounds, responses);
 			}
 			SetCanvasRotation(new) => {
 				layerdata.rotation = new;
 				self.create_document_transform_from_layerdata(layerdata, &ipp.viewport_bounds, responses);
 				responses.push_back(FrontendMessage::SetCanvasRotation { new_radians: new }.into());
-				responses.push_back(SelectMessage::UpdateSelectionBoundingBox.into());
+				responses.push_back(ToolMessage::SelectedLayersChanged.into());
 			}
 			ZoomCanvasToFitAll => {
 				if let Some([pos1, pos2]) = document.visible_layers_bounding_box() {
@@ -190,6 +198,7 @@ impl MessageHandler<MovementMessage, (&mut LayerData, &Document, &InputPreproces
 					layerdata.translation += center;
 					layerdata.scale *= new_scale;
 					responses.push_back(FrontendMessage::SetCanvasZoom { new_zoom: layerdata.scale }.into());
+					responses.push_back(ToolMessage::SelectedLayersChanged.into());
 					self.create_document_transform_from_layerdata(layerdata, &ipp.viewport_bounds, responses);
 				}
 			}
@@ -197,12 +206,14 @@ impl MessageHandler<MovementMessage, (&mut LayerData, &Document, &InputPreproces
 				let transformed_delta = document.root.transform.inverse().transform_vector2(delta);
 
 				layerdata.translation += transformed_delta;
+				responses.push_back(ToolMessage::SelectedLayersChanged.into());
 				self.create_document_transform_from_layerdata(layerdata, &ipp.viewport_bounds, responses);
 			}
 			TranslateCanvasByViewportFraction(delta) => {
 				let transformed_delta = document.root.transform.inverse().transform_vector2(delta * ipp.viewport_bounds.size());
 
 				layerdata.translation += transformed_delta;
+				responses.push_back(ToolMessage::SelectedLayersChanged.into());
 				self.create_document_transform_from_layerdata(layerdata, &ipp.viewport_bounds, responses);
 			}
 		}

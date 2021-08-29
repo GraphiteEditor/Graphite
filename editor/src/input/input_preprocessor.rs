@@ -7,9 +7,10 @@ use bitflags::bitflags;
 
 #[doc(inline)]
 pub use graphene::DocumentResponse;
+use serde::{Deserialize, Serialize};
 
 #[impl_message(Message, InputPreprocessor)]
-#[derive(PartialEq, Clone, Debug)]
+#[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub enum InputPreprocessorMessage {
 	MouseDown(EditorMouseState, ModifierKeys),
 	MouseUp(EditorMouseState, ModifierKeys),
@@ -21,7 +22,7 @@ pub enum InputPreprocessorMessage {
 }
 
 bitflags! {
-	#[derive(Default)]
+	#[derive(Default, Serialize, Deserialize)]
 	#[repr(transparent)]
 	pub struct ModifierKeys: u8 {
 		const CONTROL = 0b0000_0001;

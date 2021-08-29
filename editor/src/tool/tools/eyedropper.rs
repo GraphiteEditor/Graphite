@@ -4,12 +4,13 @@ use crate::tool::{ToolActionHandlerData, ToolMessage};
 use glam::DVec2;
 use graphene::layers::LayerDataType;
 use graphene::Quad;
+use serde::{Deserialize, Serialize};
 
 #[derive(Default)]
 pub struct Eyedropper;
 
 #[impl_message(Message, ToolMessage, Eyedropper)]
-#[derive(PartialEq, Clone, Debug, Hash)]
+#[derive(PartialEq, Clone, Debug, Hash, Serialize, Deserialize)]
 pub enum EyedropperMessage {
 	LeftMouseDown,
 	RightMouseDown,
