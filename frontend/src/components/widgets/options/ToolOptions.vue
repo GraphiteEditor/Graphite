@@ -1,6 +1,6 @@
 <template>
 	<div class="tool-options">
-		<template v-for="(option, index) in toolOptions[activeTool] || []" :key="index">
+		<template v-for="(option, index) in toolOptionsWidgets[activeTool] || []" :key="index">
 			<!-- TODO: Use `<component :is="" v-bind="attributesObject"></component>` to avoid all the separate components with `v-if` -->
 			<IconButton v-if="option.kind === 'IconButton'" :action="() => handleIconButtonAction(option)" :title="option.tooltip" v-bind="option.props" />
 			<PopoverButton v-if="option.kind === 'PopoverButton'" :title="option.tooltip" :action="option.callback" v-bind="option.props">
@@ -41,18 +41,10 @@ import NumberInput from "@/components/widgets/inputs/NumberInput.vue";
 
 const wasm = import("@/../wasm/pkg");
 
-type ToolOptionsRecord = Record<string, object>;
-
 export default defineComponent({
 	props: {
 		activeTool: { type: String },
-		allToolOptions: { type: Object as PropType<Record<string, ToolOptionsRecord>> },
-	},
-	computed: {
-		activeToolOptions(): Record<string, object> {
-			const toolOptions = this.allToolOptions || {};
-			return toolOptions[this.activeTool || ""];
-		},
+		activeToolOptions: { type: Object as PropType<Record<string, object>> },
 	},
 	methods: {
 		async updateToolOptions(path: string[], newValue: number) {
@@ -98,7 +90,7 @@ export default defineComponent({
 		},
 	},
 	data() {
-		const toolOptions: Record<string, WidgetRow> = {
+		const toolOptionsWidgets: Record<string, WidgetRow> = {
 			Select: [
 				{ kind: "IconButton", message: { Align: ["X", "Min"] }, tooltip: "Align Left", props: { icon: "AlignLeft", size: 24 } },
 				{ kind: "IconButton", message: { Align: ["X", "Center"] }, tooltip: "Align Horizontal Center", props: { icon: "AlignHorizontalCenter", size: 24 } },
@@ -162,7 +154,7 @@ export default defineComponent({
 		};
 
 		return {
-			toolOptions,
+			toolOptionsWidgets,
 			SeparatorType,
 			comingSoon,
 		};

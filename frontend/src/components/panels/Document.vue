@@ -6,7 +6,7 @@
 
 				<Separator :type="SeparatorType.Section" />
 
-				<ToolOptions :activeTool="activeTool" :allToolOptions="toolOptions" />
+				<ToolOptions :activeTool="activeTool" :activeToolOptions="activeToolOptions" />
 			</div>
 			<div class="spacer"></div>
 			<div class="right side">
@@ -332,7 +332,7 @@ export default defineComponent({
 			const toolData = responseData as SetActiveTool;
 			if (toolData) {
 				this.activeTool = toolData.tool_name;
-				this.toolOptions[toolData.tool_name] = toolData.tool_options;
+				this.activeToolOptions = toolData.tool_options;
 			}
 		});
 
@@ -360,7 +360,7 @@ export default defineComponent({
 			canvasSvgWidth: "100%",
 			canvasSvgHeight: "100%",
 			activeTool: "Select",
-			toolOptions: {} as Record<string, object>,
+			activeToolOptions: {},
 			documentModeEntries,
 			viewModeEntries,
 			documentModeSelectionIndex: 0,
