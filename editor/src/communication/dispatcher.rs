@@ -82,9 +82,7 @@ fn log_message(message: &Message) {
 	if log::max_level() == log::LevelFilter::Trace
 		&& !(matches!(
 			message,
-			InputPreprocessor(_)
-				| Frontend(FrontendMessage::SetCanvasZoom { .. })
-				| Frontend(FrontendMessage::SetCanvasRotation { .. })
+			InputPreprocessor(_) | Frontend(FrontendMessage::SetCanvasZoom { .. }) | Frontend(FrontendMessage::SetCanvasRotation { .. })
 		) || MessageDiscriminant::from(message).local_name().ends_with("MouseMove"))
 	{
 		log::trace!("Message: {:?}", message);
