@@ -129,8 +129,14 @@ impl Fsm for SelectToolFsmState {
 						(None, Some(path)) => Operation::DeleteLayer { path }.into(),
 						(Some([pos1, pos2]), path) => {
 							let path = path.unwrap_or_else(|| add_bounding_box(&mut buffer));
+
 							data.bounding_box_path = Some(path.clone());
+
+							let half_pixel_offset = DVec2::splat(0.5);
+							let pos1 = pos1 + half_pixel_offset;
+							let pos2 = pos2 - half_pixel_offset;
 							let transform = transform_from_box(pos1, pos2);
+
 							Operation::SetLayerTransformInViewport { path, transform }.into()
 						}
 						(_, _) => Message::NoOp,
@@ -143,7 +149,7 @@ impl Fsm for SelectToolFsmState {
 					data.drag_start = input.mouse.position;
 					data.drag_current = input.mouse.position;
 					let mut buffer = Vec::new();
-					let mut selected: Vec<_> = document.selected_layers().cloned().collect();
+					let mut selected: Vec<_> = document.selected_layers().map(|path| path.to_vec()).collect();
 					let quad = data.selection_quad();
 					let intersection = document.document.intersects_quad_root(quad);
 					// If no layer is currently selected and the user clicks on a shape, select that.
@@ -185,7 +191,7 @@ impl Fsm for SelectToolFsmState {
 				}
 				(DrawingBox, MouseMove) => {
 					data.drag_current = input.mouse.position;
-					let half_pixel_offset = DVec2::new(0.5, 0.5);
+					let half_pixel_offset = DVec2::splat(0.5);
 					let start = data.drag_start + half_pixel_offset;
 					let size = data.drag_current - start + half_pixel_offset;
 

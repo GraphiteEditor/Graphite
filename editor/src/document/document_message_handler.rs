@@ -1,6 +1,6 @@
 use crate::input::InputPreprocessor;
 use crate::message_prelude::*;
-use graphene::layers::Layer;
+use graphene::layers::{Layer, LayerDataType};
 use graphene::{LayerId, Operation as DocumentOperation};
 use log::warn;
 
@@ -13,11 +13,12 @@ use crate::consts::DEFAULT_DOCUMENT_NAME;
 #[impl_message(Message, Documents)]
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub enum DocumentsMessage {
-	CopySelectedLayers,
-	PasteLayers {
+	Copy,
+	PasteIntoFolder {
 		path: Vec<LayerId>,
 		insert_index: isize,
 	},
+	Paste,
 	SelectDocument(usize),
 	CloseDocument(usize),
 	#[child]
@@ -79,7 +80,7 @@ impl DocumentsMessageHandler {
 
 		responses.push_back(
 			FrontendMessage::ExpandFolder {
-				path: Vec::new(),
+				path: Vec::new().into(),
 				children: Vec::new(),
 			}
 			.into(),
@@ -156,7 +157,13 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 					}
 
 					let lp = self.active_document_mut().layer_panel(&[]).expect("Could not get panel for active doc");
-					responses.push_back(FrontendMessage::ExpandFolder { path: Vec::new(), children: lp }.into());
+					responses.push_back(
+						FrontendMessage::ExpandFolder {
+							path: Vec::new().into(),
+							children: lp,
+						}
+						.into(),
+					);
 					responses.push_back(
 						FrontendMessage::SetActiveDocument {
 							document_index: self.active_document_index,
@@ -211,7 +218,7 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 				let id = (self.active_document_index + self.documents.len() - 1) % self.documents.len();
 				responses.push_back(SelectDocument(id).into());
 			}
-			CopySelectedLayers => {
+			Copy => {
 				let paths = self.active_document().selected_layers_sorted();
 				self.copy_buffer.clear();
 				for path in paths {
@@ -223,9 +230,24 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 					}
 				}
 			}
-			PasteLayers { path, insert_index } => {
+			Paste => {
+				let document = self.active_document();
+				let shallowest_common_folder = document
+					.document
+					.deepest_common_folder(document.selected_layers())
+					.expect("While pasting, the selected layers did not exist while attempting to find the appropriate folder path for insertion");
+
+				responses.push_back(
+					PasteIntoFolder {
+						path: shallowest_common_folder.to_vec(),
+						insert_index: -1,
+					}
+					.into(),
+				);
+			}
+			PasteIntoFolder { path, insert_index } => {
 				let paste = |layer: &Layer, responses: &mut VecDeque<_>| {
-					log::trace!("pasting into folder {:?} as index: {}", path, insert_index);
+					log::trace!("Pasting into folder {:?} as index: {}", path, insert_index);
 					responses.push_back(
 						DocumentOperation::PasteLayer {
 							layer: layer.clone(),
@@ -255,12 +277,13 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 			CloseAllDocuments,
 			NextDocument,
 			PrevDocument,
-			PasteLayers,
+			PasteIntoFolder,
+			Paste,
 		);
 
 		if self.active_document().layer_data.values().any(|data| data.selected) {
 			let select = actions!(DocumentsMessageDiscriminant;
-				CopySelectedLayers,
+				Copy,
 			);
 			common.extend(select);
 		}

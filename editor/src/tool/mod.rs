@@ -190,7 +190,7 @@ impl ToolType {
 			ToolType::Select => ToolOptions::Select { append_mode: SelectAppendMode::New },
 			ToolType::Pen => ToolOptions::Pen { weight: 5 },
 			ToolType::Line => ToolOptions::Line { weight: 5 },
-			ToolType::Ellipse => ToolOptions::Ellipse,
+			ToolType::Ellipse => ToolOptions::Ellipse {},
 			ToolType::Shape => ToolOptions::Shape {
 				shape_type: ShapeType::Polygon { vertices: 6 },
 			},

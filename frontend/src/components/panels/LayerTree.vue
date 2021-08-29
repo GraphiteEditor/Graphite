@@ -25,9 +25,17 @@
 							:title="layer.visible ? 'Visible' : 'Hidden'"
 						/>
 					</div>
+					<button
+						v-if="layer.layer_type === LayerType.Folder"
+						class="node-connector"
+						:class="{ expanded: layer.layer_data.expanded }"
+						@click.stop="handleNodeConnectorClick(layer.path)"
+					></button>
+					<div v-else class="node-connector-missing"></div>
 					<div
 						class="layer"
 						:class="{ selected: layer.layer_data.selected }"
+						:style="{ marginLeft: layerIndent(layer) }"
 						@click.shift.exact.stop="handleShiftClick(layer)"
 						@click.ctrl.exact.stop="handleControlClick(layer)"
 						@click.alt.exact.stop="handleControlClick(layer)"
@@ -35,12 +43,14 @@
 					>
 						<div class="layer-thumbnail" v-html="layer.thumbnail"></div>
 						<div class="layer-type-icon">
-							<IconLabel :icon="'NodeTypePath'" title="Path" />
+							<IconLabel v-if="layer.layer_type === LayerType.Folder" :icon="'NodeTypeFolder'" title="Folder" />
+							<IconLabel v-else :icon="'NodeTypePath'" title="Path" />
 						</div>
 						<div class="layer-name">
 							<span>{{ layer.name }}</span>
 						</div>
 					</div>
+					<!-- <div class="glue" :style="{ marginLeft: layerIndent(layer) }"></div> -->
 				</div>
 			</LayoutCol>
 		</LayoutRow>
@@ -72,42 +82,96 @@
 			display: flex;
 			height: 36px;
 			align-items: center;
-			margin: 0 8px;
 			flex: 0 0 auto;
-
-			.layer {
-				display: flex;
-				align-items: center;
-				background: var(--color-5-dullgray);
-				border-radius: 4px;
-				width: 100%;
-				height: 100%;
-				margin-left: 4px;
-				padding-left: 16px;
-			}
-			.selected {
-				background: var(--color-accent);
-				color: var(--color-f-white);
-			}
+			position: relative;
 
 			& + .layer-row {
 				margin-top: 2px;
 			}
 
-			.layer-thumbnail {
-				width: 64px;
-				height: 100%;
-				background: white;
+			.layer-visibility {
+				flex: 0 0 auto;
+				margin-left: 4px;
+			}
 
-				svg {
-					width: calc(100% - 4px);
-					height: calc(100% - 4px);
-					margin: 2px;
+			.node-connector {
+				flex: 0 0 auto;
+				width: 12px;
+				height: 12px;
+				margin: 0 2px;
+				border-radius: 50%;
+				background: var(--color-data-raster);
+				outline: none;
+				border: none;
+				position: relative;
+
+				&::after {
+					content: "";
+					position: absolute;
+					width: 0;
+					height: 0;
+					top: 2px;
+					left: 3px;
+					border-style: solid;
+					border-width: 0 3px 6px 3px;
+					border-color: transparent transparent var(--color-2-mildblack) transparent;
+				}
+
+				&.expanded::after {
+					top: 3px;
+					left: 4px;
+					border-width: 3px 0 3px 6px;
+					border-color: transparent transparent transparent var(--color-2-mildblack);
 				}
 			}
 
-			.layer-type-icon {
-				margin: 0 8px;
+			.node-connector-missing {
+				width: 16px;
+				flex: 0 0 auto;
+			}
+
+			.layer {
+				display: flex;
+				align-items: center;
+				border-radius: 2px;
+				background: var(--color-5-dullgray);
+				margin-right: 16px;
+				width: 100%;
+				height: 100%;
+				z-index: 1;
+
+				&.selected {
+					background: var(--color-7-middlegray);
+					color: var(--color-f-white);
+				}
+
+				.layer-thumbnail {
+					width: 64px;
+					height: 100%;
+					background: white;
+					border-radius: 2px;
+
+					svg {
+						width: calc(100% - 4px);
+						height: calc(100% - 4px);
+						margin: 2px;
+					}
+				}
+
+				.layer-type-icon {
+					margin-left: 8px;
+					margin-right: 4px;
+				}
+			}
+
+			.glue {
+				position: absolute;
+				background: var(--color-data-raster);
+				height: 6px;
+				bottom: -4px;
+				left: 44px;
+				right: 16px;
+				z-index: 0;
 			}
 		}
 	}
@@ -117,7 +181,7 @@
 <script lang="ts">
 import { defineComponent } from "vue";
 
-import { ResponseType, registerResponseHandler, Response, BlendMode, ExpandFolder, UpdateLayer, LayerPanelEntry } from "@/utilities/response-handler";
+import { ResponseType, registerResponseHandler, Response, BlendMode, ExpandFolder, CollapseFolder, UpdateLayer, LayerPanelEntry, LayerType } from "@/utilities/response-handler";
 import { SeparatorType } from "@/components/widgets/widgets";
 
 import LayoutRow from "@/components/layout/LayoutRow.vue";
@@ -175,8 +239,14 @@ const blendModeEntries: SectionsOfMenuListEntries = [
 export default defineComponent({
 	props: {},
 	methods: {
+		layerIndent(layer: LayerPanelEntry): string {
+			return `${(layer.path.length - 1) * 16}px`;
+		},
 		async toggleLayerVisibility(path: BigUint64Array) {
 			(await wasm).toggle_layer_visibility(path);
+		},
+		async handleNodeConnectorClick(path: BigUint64Array) {
+			(await wasm).toggle_layer_expansion(path);
 		},
 		async setLayerBlendMode() {
 			const blendMode = this.blendModeEntries.flat()[this.blendModeSelectedIndex].value as BlendMode;
@@ -308,16 +378,61 @@ export default defineComponent({
 			if (expandData) {
 				const responsePath = expandData.path;
 				const responseLayers = expandData.children as Array<LayerPanelEntry>;
-				if (responsePath.length > 0) console.error("Non root paths are currently not implemented");
+				// TODO: @Keavon Refactor this function
+				if (responseLayers.length === 0) return;
 
-				this.layers = responseLayers;
+				const mergeIntoExisting = (elements: Array<LayerPanelEntry>, layers: Array<LayerPanelEntry>) => {
+					let lastInsertion = layers.findIndex((layer: LayerPanelEntry) => {
+						const pathLengthsEqual = elements[0].path.length - 1 === layer.path.length;
+						return pathLengthsEqual && elements[0].path.slice(0, -1).every((layerId, i) => layerId === layer.path[i]);
+					});
+					elements.forEach((nlayer) => {
+						const index = layers.findIndex((layer: LayerPanelEntry) => {
+							const pathLengthsEqual = nlayer.path.length === layer.path.length;
+							return pathLengthsEqual && nlayer.path.every((layerId, i) => layerId === layer.path[i]);
+						});
+						if (index >= 0) {
+							lastInsertion = index;
+							layers[index] = nlayer;
+						} else {
+							lastInsertion += 1;
+							layers.splice(lastInsertion, 0, nlayer);
+						}
+					});
+				};
+				mergeIntoExisting(responseLayers, this.layers);
+				const newLayers: Array<LayerPanelEntry> = [];
+				this.layers.forEach((layer) => {
+					const index = responseLayers.findIndex((nlayer: LayerPanelEntry) => {
+						const pathLengthsEqual = responsePath.length + 1 === layer.path.length;
+						return pathLengthsEqual && nlayer.path.every((layerId, i) => layerId === layer.path[i]);
+					});
+					if (index >= 0 || layer.path.length !== responsePath.length + 1) {
+						newLayers.push(layer);
+					}
+				});
+				this.layers = newLayers;
 
 				this.setBlendModeForSelectedLayers();
 				this.setOpacityForSelectedLayers();
 			}
 		});
 		registerResponseHandler(ResponseType.CollapseFolder, (responseData) => {
-			console.log("CollapseFolder: ", responseData);
+			const collapseData = responseData as CollapseFolder;
+			if (collapseData) {
+				const responsePath = collapseData.path;
+
+				const newLayers: Array<LayerPanelEntry> = [];
+				this.layers.forEach((layer) => {
+					if (responsePath.length >= layer.path.length || !responsePath.every((layerId, i) => layerId === layer.path[i])) {
+						newLayers.push(layer);
+					}
+				});
+				this.layers = newLayers;
+
+				this.setBlendModeForSelectedLayers();
+				this.setOpacityForSelectedLayers();
+			}
 		});
 		registerResponseHandler(ResponseType.UpdateLayer, (responseData) => {
 			const updateData = responseData as UpdateLayer;
@@ -348,6 +463,7 @@ export default defineComponent({
 			opacity: 100,
 			MenuDirection,
 			SeparatorType,
+			LayerType,
 		};
 	},
 	components: {

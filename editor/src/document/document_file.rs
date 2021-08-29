@@ -1,7 +1,6 @@
 pub use super::layer_panel::*;
 use crate::{
 	consts::{ASYMPTOTIC_EFFECT, FILE_EXPORT_SUFFIX, FILE_SAVE_SUFFIX, SCALE_EFFECT, SCROLLBAR_SPACING},
-	frontend::layer_panel::*,
 	EditorError,
 };
 use glam::{DAffine2, DVec2};
@@ -93,9 +92,9 @@ pub enum DocumentMessage {
 	DeleteLayer(Vec<LayerId>),
 	DeleteSelectedLayers,
 	DuplicateSelectedLayers,
+	CreateFolder(Vec<LayerId>),
 	SetBlendModeForSelectedLayers(BlendMode),
 	SetOpacityForSelectedLayers(f64),
-	AddFolder(Vec<LayerId>),
 	RenameLayer(Vec<LayerId>, String),
 	ToggleLayerVisibility(Vec<LayerId>),
 	FlipSelectedLayers(FlipAxis),
@@ -103,6 +102,7 @@ pub enum DocumentMessage {
 	FolderChanged(Vec<LayerId>),
 	StartTransaction,
 	RollbackTransaction,
+	GroupSelectedLayers,
 	AbortTransaction,
 	CommitTransaction,
 	ExportDocument,
@@ -139,7 +139,7 @@ impl DocumentMessageHandler {
 		let _ = self.document.render_root();
 		self.layer_data(&path).expanded.then(|| {
 			let children = self.layer_panel(path.as_slice()).expect("The provided Path was not valid");
-			FrontendMessage::ExpandFolder { path, children }.into()
+			FrontendMessage::ExpandFolder { path: path.into(), children }.into()
 		})
 	}
 
@@ -154,7 +154,7 @@ impl DocumentMessageHandler {
 		self.layer_data(path).selected = true;
 		let data = self.layer_panel_entry(path.to_vec()).ok()?;
 		// TODO: Add deduplication
-		(!path.is_empty()).then(|| FrontendMessage::UpdateLayer { path: path.to_vec(), data }.into())
+		(!path.is_empty()).then(|| FrontendMessage::UpdateLayer { path: path.to_vec().into(), data }.into())
 	}
 
 	pub fn selected_layers_bounding_box(&self) -> Option<[DVec2; 2]> {
@@ -165,9 +165,9 @@ impl DocumentMessageHandler {
 	// TODO: Consider moving this to some kind of overlay manager in the future
 	pub fn selected_layers_vector_points(&self) -> Vec<VectorManipulatorShape> {
 		let shapes = self.selected_layers().filter_map(|path_to_shape| {
-			let viewport_transform = self.document.generate_transform_relative_to_viewport(path_to_shape.as_slice()).ok()?;
+			let viewport_transform = self.document.generate_transform_relative_to_viewport(path_to_shape).ok()?;
 
-			let shape = match &self.document.layer(path_to_shape.as_slice()).ok()?.data {
+			let shape = match &self.document.layer(path_to_shape).ok()?.data {
 				LayerDataType::Shape(shape) => Some(shape),
 				LayerDataType::Folder(_) => None,
 			}?;
@@ -205,8 +205,8 @@ impl DocumentMessageHandler {
 		self.layer_data.entry(path.to_vec()).or_insert_with(|| LayerData::new(true))
 	}
 
-	pub fn selected_layers(&self) -> impl Iterator<Item = &Vec<LayerId>> {
-		self.layer_data.iter().filter_map(|(path, data)| data.selected.then(|| path))
+	pub fn selected_layers(&self) -> impl Iterator<Item = &[LayerId]> {
+		self.layer_data.iter().filter_map(|(path, data)| data.selected.then(|| path.as_slice()))
 	}
 
 	/// Returns the paths to all layers in order, optionally including only selected or non-selected layers.
@@ -326,7 +326,7 @@ impl DocumentMessageHandler {
 	pub fn layer_panel_entry(&mut self, path: Vec<LayerId>) -> Result<LayerPanelEntry, EditorError> {
 		let data: LayerData = *layer_data(&mut self.layer_data, &path);
 		let layer = self.document.layer(&path)?;
-		let entry = layer_panel_entry(&data, self.document.multiply_transforms(&path).unwrap(), layer, path);
+		let entry = layer_panel_entry(&data, self.document.multiply_transforms(&path)?, layer, path);
 		Ok(entry)
 	}
 
@@ -362,7 +362,6 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 		match message {
 			Movement(message) => self.movement_handler.process_action(message, (layer_data(&mut self.layer_data, &[]), &self.document, ipp), responses),
 			DeleteLayer(path) => responses.push_back(DocumentOperation::DeleteLayer { path }.into()),
-			AddFolder(path) => responses.push_back(DocumentOperation::AddFolder { path }.into()),
 			StartTransaction => self.backup(),
 			RollbackTransaction => {
 				self.rollback().unwrap_or_else(|e| log::warn!("{}", e));
@@ -409,6 +408,32 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					.into(),
 				)
 			}
+			CreateFolder(mut path) => {
+				let id = generate_uuid();
+				path.push(id);
+				self.layerdata_mut(&path).expanded = true;
+				responses.push_back(DocumentOperation::CreateFolder { path }.into())
+			}
+			GroupSelectedLayers => {
+				let common_prefix = self.document.common_prefix(self.selected_layers());
+				let (_id, common_prefix) = common_prefix.split_last().unwrap_or((&0, &[]));
+
+				let mut new_folder_path = common_prefix.to_vec();
+				new_folder_path.push(generate_uuid());
+
+				responses.push_back(DocumentsMessage::Copy.into());
+				responses.push_back(DocumentMessage::DeleteSelectedLayers.into());
+				responses.push_back(DocumentOperation::CreateFolder { path: new_folder_path.clone() }.into());
+				responses.push_back(DocumentMessage::ToggleLayerExpansion(new_folder_path.clone()).into());
+				responses.push_back(
+					DocumentsMessage::PasteIntoFolder {
+						path: new_folder_path.clone(),
+						insert_index: -1,
+					}
+					.into(),
+				);
+				responses.push_back(DocumentMessage::SetSelectedLayers(vec![new_folder_path]).into());
+			}
 			SetBlendModeForSelectedLayers(blend_mode) => {
 				self.backup();
 				for path in self.layer_data.iter().filter_map(|(path, data)| data.selected.then(|| path.clone())) {
@@ -419,7 +444,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				self.backup();
 				let opacity = opacity.clamp(0., 1.);
 
-				for path in self.selected_layers().cloned() {
+				for path in self.selected_layers().map(|path| path.to_vec()) {
 					responses.push_back(DocumentOperation::SetLayerOpacity { path, opacity }.into());
 				}
 			}
@@ -428,7 +453,11 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			}
 			ToggleLayerExpansion(path) => {
 				self.layer_data(&path).expanded ^= true;
-				responses.push_back(FolderChanged(path).into());
+				match self.layer_data(&path).expanded {
+					true => responses.push_back(FolderChanged(path.clone()).into()),
+					false => responses.push_back(FrontendMessage::CollapseFolder { path: path.clone().into() }.into()),
+				}
+				responses.extend(self.layer_panel_entry(path.clone()).ok().map(|data| FrontendMessage::UpdateLayer { path: path.into(), data }.into()));
 			}
 			SelectionChanged => {
 				// TODO: Hoist this duplicated code into wider system
@@ -437,7 +466,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			DeleteSelectedLayers => {
 				self.backup();
 				responses.push_front(ToolMessage::SelectedLayersChanged.into());
-				for path in self.selected_layers().cloned() {
+				for path in self.selected_layers().map(|path| path.to_vec()) {
 					responses.push_front(DocumentOperation::DeleteLayer { path }.into());
 				}
 			}
@@ -469,14 +498,12 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				let all_layer_paths = self
 					.layer_data
 					.keys()
-					.filter(|path| !path.is_empty() && !self.document.layer(path).unwrap().overlay)
+					.filter(|path| !path.is_empty() && !self.document.layer(path).map(|layer| layer.overlay).unwrap_or(false))
 					.cloned()
 					.collect::<Vec<_>>();
 				responses.push_front(SetSelectedLayers(all_layer_paths).into());
 			}
-			DeselectAllLayers => {
-				responses.push_front(SetSelectedLayers(vec![]).into());
-			}
+			DeselectAllLayers => responses.push_front(SetSelectedLayers(vec![]).into()),
 			DocumentHistoryBackward => self.undo().unwrap_or_else(|e| log::warn!("{}", e)),
 			DocumentHistoryForward => self.redo().unwrap_or_else(|e| log::warn!("{}", e)),
 			Undo => {
@@ -505,18 +532,19 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 									self.layer_data.remove(&path);
 									Some(ToolMessage::SelectedLayersChanged.into())
 								}
-								DocumentResponse::LayerChanged { path } => (!self.document.layer(&path).unwrap().overlay).then(|| {
-									FrontendMessage::UpdateLayer {
-										path: path.clone(),
-										data: self.layer_panel_entry(path).unwrap(),
-									}
-									.into()
+								DocumentResponse::LayerChanged { path } => self.layer_panel_entry(path.clone()).ok().and_then(|entry| {
+									let overlay = self.document.layer(&path).unwrap().overlay;
+									(!overlay).then(|| FrontendMessage::UpdateLayer { path: path.into(), data: entry }.into())
 								}),
-								DocumentResponse::CreatedLayer { path } => (!self.document.layer(&path).unwrap().overlay).then(|| SetSelectedLayers(vec![path]).into()),
+								DocumentResponse::CreatedLayer { path } => {
+									self.layer_data.insert(path.clone(), LayerData::new(false));
+									(!self.document.layer(&path).unwrap().overlay).then(|| SetSelectedLayers(vec![path]).into())
+								}
 								DocumentResponse::DocumentChanged => Some(RenderDocument.into()),
 							})
 							.flatten(),
 					);
+					log::debug!("LayerPanel: {:?}", self.layer_data.keys());
 				}
 				Err(e) => log::error!("DocumentError: {:?}", e),
 				Ok(_) => (),
@@ -551,7 +579,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 
 			NudgeSelectedLayers(x, y) => {
 				self.backup();
-				for path in self.selected_layers().cloned() {
+				for path in self.selected_layers().map(|path| path.to_vec()) {
 					let operation = DocumentOperation::TransformLayerInViewport {
 						path,
 						transform: DAffine2::from_translation((x, y).into()).to_cols_array(),
@@ -561,9 +589,9 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				responses.push_back(ToolMessage::SelectedLayersChanged.into());
 			}
 			MoveSelectedLayersTo { path, insert_index } => {
-				responses.push_back(DocumentsMessage::CopySelectedLayers.into());
+				responses.push_back(DocumentsMessage::Copy.into());
 				responses.push_back(DocumentMessage::DeleteSelectedLayers.into());
-				responses.push_back(DocumentsMessage::PasteLayers { path, insert_index }.into());
+				responses.push_back(DocumentsMessage::PasteIntoFolder { path, insert_index }.into());
 			}
 			ReorderSelectedLayers(relative_position) => {
 				self.backup();
@@ -574,7 +602,11 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					1 => selected_layers.last(),
 					_ => unreachable!(),
 				} {
-					if let Some(pos) = all_layer_paths.iter().position(|path| path == pivot) {
+					let all_layer_paths: Vec<_> = all_layer_paths
+						.iter()
+						.filter(|layer| layer.starts_with(&pivot[0..pivot.len() - 1]) && pivot.len() == layer.len())
+						.collect();
+					if let Some(pos) = all_layer_paths.iter().position(|path| *path == pivot) {
 						let max = all_layer_paths.len() as i64 - 1;
 						let insert_pos = (pos as i64 + relative_position as i64).clamp(0, max) as usize;
 						let insert = all_layer_paths.get(insert_pos);
@@ -602,13 +634,13 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					FlipAxis::X => DVec2::new(-1., 1.),
 					FlipAxis::Y => DVec2::new(1., -1.),
 				};
-				if let Some([min, max]) = self.document.combined_viewport_bounding_box(self.selected_layers().map(|x| x.as_slice())) {
+				if let Some([min, max]) = self.document.combined_viewport_bounding_box(self.selected_layers().map(|x| x)) {
 					let center = (max + min) / 2.;
 					let bbox_trans = DAffine2::from_translation(-center);
 					for path in self.selected_layers() {
 						responses.push_back(
 							DocumentOperation::TransformLayerInScope {
-								path: path.clone(),
+								path: path.to_vec(),
 								transform: DAffine2::from_scale(scale).to_cols_array(),
 								scope: bbox_trans.to_cols_array(),
 							}
@@ -627,7 +659,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					AlignAxis::Y => DVec2::Y,
 				};
 				let lerp = |bbox: &[DVec2; 2]| bbox[0].lerp(bbox[1], 0.5);
-				if let Some(combined_box) = self.document.combined_viewport_bounding_box(self.selected_layers().map(|x| x.as_slice())) {
+				if let Some(combined_box) = self.document.combined_viewport_bounding_box(self.selected_layers().map(|x| x)) {
 					let aggregated = match aggregate {
 						AlignAggregate::Min => combined_box[0],
 						AlignAggregate::Max => combined_box[1],
@@ -643,7 +675,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 						let translation = (aggregated - center) * axis;
 						responses.push_back(
 							DocumentOperation::TransformLayerInViewport {
-								path: path.clone(),
+								path: path.to_vec(),
 								transform: DAffine2::from_translation(translation).to_cols_array(),
 							}
 							.into(),
@@ -673,6 +705,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				DuplicateSelectedLayers,
 				NudgeSelectedLayers,
 				ReorderSelectedLayers,
+				GroupSelectedLayers,
 			);
 			common.extend(select);
 		}

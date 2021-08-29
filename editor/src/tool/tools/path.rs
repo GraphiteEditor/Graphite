@@ -115,6 +115,7 @@ impl Fsm for PathToolFsmState {
 						shape_i += 1;
 
 						for segment in &shape_to_draw.segments {
+							// TODO: We draw each anchor point twice because segment has it on both ends, fix this
 							let (anchors, handles, anchor_handle_lines) = match segment {
 								VectorManipulatorSegment::Line(a1, a2) => (vec![*a1, *a2], vec![], vec![]),
 								VectorManipulatorSegment::Quad(a1, h1, a2) => (vec![*a1, *a2], vec![*h1], vec![(*h1, *a1)]),
