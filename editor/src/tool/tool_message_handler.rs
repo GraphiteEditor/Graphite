@@ -108,7 +108,9 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, &InputPreprocessor)> 
 				tool_data.active_tool_type = new_tool;
 
 				// Notify the frontend about the new active tool to be displayed
-				responses.push_back(FrontendMessage::SetActiveTool { tool_name: new_tool.to_string() }.into());
+				let tool_name = new_tool.to_string();
+				let tool_options = self.tool_state.document_tool_data.tool_options.get(&new_tool).map(|tool_options| *tool_options);
+				responses.push_back(FrontendMessage::SetActiveTool { tool_name, tool_options }.into());
 			}
 			SwapColors => {
 				let document_data = &mut self.tool_state.document_tool_data;

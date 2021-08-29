@@ -6,7 +6,7 @@
 
 				<Separator :type="SeparatorType.Section" />
 
-				<ToolOptions :activeTool="activeTool" />
+				<ToolOptions :activeTool="activeTool" :activeToolOptions="activeToolOptions" />
 			</div>
 			<div class="spacer"></div>
 			<div class="right side">
@@ -330,7 +330,10 @@ export default defineComponent({
 
 		registerResponseHandler(ResponseType.SetActiveTool, (responseData: Response) => {
 			const toolData = responseData as SetActiveTool;
-			if (toolData) this.activeTool = toolData.tool_name;
+			if (toolData) {
+				this.activeTool = toolData.tool_name;
+				this.activeToolOptions = toolData.tool_options;
+			}
 		});
 
 		registerResponseHandler(ResponseType.SetCanvasZoom, (responseData: Response) => {
@@ -357,6 +360,7 @@ export default defineComponent({
 			canvasSvgWidth: "100%",
 			canvasSvgHeight: "100%",
 			activeTool: "Select",
+			activeToolOptions: {},
 			documentModeEntries,
 			viewModeEntries,
 			documentModeSelectionIndex: 0,
