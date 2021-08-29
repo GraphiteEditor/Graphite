@@ -63,11 +63,11 @@ export default defineComponent({
 		// Traverses the given path and returns the direct parent of the option
 		getRecordContainingOption(optionPath: string[]): Record<string, number> {
 			const allButLast = optionPath.slice(0, -1);
-			let value = this.activeToolOptions as Record<string, object | number>;
+			let currentRecord = this.activeToolOptions as Record<string, object | number>;
 			[this.activeTool || "", ...allButLast].forEach((attr) => {
-				value = value[attr] as Record<string, object | number>;
+				currentRecord = currentRecord[attr] as Record<string, object | number>;
 			});
-			return value as Record<string, number>;
+			return currentRecord as Record<string, number>;
 		},
 		// Traverses the given path into the active tool's option struct, and sets the value at the path tail
 		setToolOption(optionPath: string[], newValue: number) {
