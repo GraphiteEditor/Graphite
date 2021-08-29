@@ -73,7 +73,7 @@ impl Document {
 	/// Returns a mutable reference to the requested folder. Fails if the path does not exist,
 	/// or if the requested layer is not of type folder.
 	/// If you manually edit the folder you have to set the cache_dirty flag yourself.
-	pub fn folder_mut(&mut self, path: &[LayerId]) -> Result<&mut Folder, DocumentError> {
+	fn folder_mut(&mut self, path: &[LayerId]) -> Result<&mut Folder, DocumentError> {
 		let mut root = &mut self.root;
 		for id in path {
 			root = root.as_folder_mut()?.layer_mut(*id).ok_or(DocumentError::LayerNotFound)?;
@@ -91,12 +91,30 @@ impl Document {
 	}
 
 	/// Returns a mutable reference to the layer or folder at the path.
-	pub fn layer_mut(&mut self, path: &[LayerId]) -> Result<&mut Layer, DocumentError> {
+	fn layer_mut(&mut self, path: &[LayerId]) -> Result<&mut Layer, DocumentError> {
 		if path.is_empty() {
 			return Ok(&mut self.root);
 		}
 		let (path, id) = split_path(path)?;
 		self.folder_mut(path)?.layer_mut(id).ok_or(DocumentError::LayerNotFound)
+	}
+
+	pub fn deepest_common_folder<'a>(&self, layers: impl Iterator<Item = &'a [LayerId]>) -> Result<&'a [LayerId], DocumentError> {
+		let common_prefix_of_path = self.common_prefix(layers);
+
+		Ok(match self.layer(common_prefix_of_path)?.data {
+			LayerDataType::Folder(_) => common_prefix_of_path,
+			LayerDataType::Shape(_) => &common_prefix_of_path[..common_prefix_of_path.len() - 1],
+		})
+	}
+
+	pub fn common_prefix<'a>(&self, layers: impl Iterator<Item = &'a [LayerId]>) -> &'a [LayerId] {
+		layers
+			.reduce(|a, b| {
+				let number_of_uncommon_ids_in_a = (0..a.len()).position(|i| b.starts_with(&a[..a.len() - i])).unwrap_or_default();
+				&a[..(a.len() - number_of_uncommon_ids_in_a)]
+			})
+			.unwrap_or_default()
 	}
 
 	/// Given a path to a layer, returns a vector of the indices in the layer tree
@@ -418,7 +436,7 @@ impl Document {
 				self.set_layer(path, Layer::new(LayerDataType::Folder(Folder::default()), DAffine2::IDENTITY.to_cols_array()), -1)?;
 				self.mark_as_dirty(path)?;
 
-				Some(vec![DocumentChanged, FolderChanged { path: path.clone() }])
+				Some(vec![DocumentChanged, CreatedLayer { path: path.clone() }])
 			}
 			Operation::TransformLayer { path, transform } => {
 				let layer = self.layer_mut(path).unwrap();

@@ -126,8 +126,8 @@ mod test {
 		let mut editor = create_editor_with_three_layers();
 
 		let document_before_copy = editor.dispatcher.documents_message_handler.active_document().document.clone();
-		editor.handle_message(DocumentsMessage::CopySelectedLayers).unwrap();
-		editor.handle_message(DocumentsMessage::PasteLayers { path: vec![], insert_index: -1 }).unwrap();
+		editor.handle_message(DocumentsMessage::Copy).unwrap();
+		editor.handle_message(DocumentsMessage::PasteIntoFolder { path: vec![], insert_index: -1 }).unwrap();
 		let document_after_copy = editor.dispatcher.documents_message_handler.active_document().document.clone();
 
 		let layers_before_copy = document_before_copy.root.as_folder().unwrap().layers();
@@ -159,8 +159,8 @@ mod test {
 		let shape_id = document_before_copy.root.as_folder().unwrap().layer_ids[1];
 
 		editor.handle_message(DocumentMessage::SetSelectedLayers(vec![vec![shape_id]])).unwrap();
-		editor.handle_message(DocumentsMessage::CopySelectedLayers).unwrap();
-		editor.handle_message(DocumentsMessage::PasteLayers { path: vec![], insert_index: -1 }).unwrap();
+		editor.handle_message(DocumentsMessage::Copy).unwrap();
+		editor.handle_message(DocumentsMessage::PasteIntoFolder { path: vec![], insert_index: -1 }).unwrap();
 
 		let document_after_copy = editor.dispatcher.documents_message_handler.active_document().document.clone();
 
@@ -222,10 +222,10 @@ mod test {
 
 		let document_before_copy = editor.dispatcher.documents_message_handler.active_document().document.clone();
 
-		editor.handle_message(DocumentsMessage::CopySelectedLayers).unwrap();
+		editor.handle_message(DocumentsMessage::Copy).unwrap();
 		editor.handle_message(DocumentMessage::DeleteSelectedLayers).unwrap();
-		editor.handle_message(DocumentsMessage::PasteLayers { path: vec![], insert_index: -1 }).unwrap();
-		editor.handle_message(DocumentsMessage::PasteLayers { path: vec![], insert_index: -1 }).unwrap();
+		editor.handle_message(DocumentsMessage::PasteIntoFolder { path: vec![], insert_index: -1 }).unwrap();
+		editor.handle_message(DocumentsMessage::PasteIntoFolder { path: vec![], insert_index: -1 }).unwrap();
 
 		let document_after_copy = editor.dispatcher.documents_message_handler.active_document().document.clone();
 
@@ -283,11 +283,11 @@ mod test {
 		let ellipse_id = document_before_copy.root.as_folder().unwrap().layer_ids[ELLIPSE_INDEX];
 
 		editor.handle_message(DocumentMessage::SetSelectedLayers(vec![vec![rect_id], vec![ellipse_id]])).unwrap();
-		editor.handle_message(DocumentsMessage::CopySelectedLayers).unwrap();
+		editor.handle_message(DocumentsMessage::Copy).unwrap();
 		editor.handle_message(DocumentMessage::DeleteSelectedLayers).unwrap();
 		editor.draw_rect(0., 800., 12., 200.);
-		editor.handle_message(DocumentsMessage::PasteLayers { path: vec![], insert_index: -1 }).unwrap();
-		editor.handle_message(DocumentsMessage::PasteLayers { path: vec![], insert_index: -1 }).unwrap();
+		editor.handle_message(DocumentsMessage::PasteIntoFolder { path: vec![], insert_index: -1 }).unwrap();
+		editor.handle_message(DocumentsMessage::PasteIntoFolder { path: vec![], insert_index: -1 }).unwrap();
 
 		let document_after_copy = editor.dispatcher.documents_message_handler.active_document().document.clone();
 

@@ -149,7 +149,7 @@ impl Fsm for SelectToolFsmState {
 					data.drag_start = input.mouse.position;
 					data.drag_current = input.mouse.position;
 					let mut buffer = Vec::new();
-					let mut selected: Vec<_> = document.selected_layers().cloned().collect();
+					let mut selected: Vec<_> = document.selected_layers().map(|path| path.to_vec()).collect();
 					let quad = data.selection_quad();
 					let intersection = document.document.intersects_quad_root(quad);
 					// If no layer is currently selected and the user clicks on a shape, select that.

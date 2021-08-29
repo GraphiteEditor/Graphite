@@ -170,7 +170,7 @@ pub fn on_mouse_up(x: f64, y: f64, mouse_keys: u8, modifiers: u8) -> Result<(), 
 pub fn on_key_down(name: String, modifiers: u8) -> Result<(), JsValue> {
 	let key = translate_key(&name);
 	let mods = ModifierKeys::from_bits(modifiers).expect("invalid modifier keys");
-	log::trace!("key down {:?}, name: {}, modifiers: {:?}", key, name, mods);
+	log::trace!("Key down {:?}, name: {}, modifiers: {:?}", key, name, mods);
 	let ev = InputPreprocessorMessage::KeyDown(key, mods);
 	dispatch(ev)
 }
@@ -180,7 +180,7 @@ pub fn on_key_down(name: String, modifiers: u8) -> Result<(), JsValue> {
 pub fn on_key_up(name: String, modifiers: u8) -> Result<(), JsValue> {
 	let key = translate_key(&name);
 	let mods = ModifierKeys::from_bits(modifiers).expect("invalid modifier keys");
-	log::trace!("key up {:?}, name: {}, modifiers: {:?}", key, name, mods);
+	log::trace!("Key up {:?}, name: {}, modifiers: {:?}", key, name, mods);
 	let ev = InputPreprocessorMessage::KeyUp(key, mods);
 	dispatch(ev)
 }

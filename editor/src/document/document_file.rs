@@ -165,9 +165,9 @@ impl DocumentMessageHandler {
 	// TODO: Consider moving this to some kind of overlay manager in the future
 	pub fn selected_layers_vector_points(&self) -> Vec<VectorManipulatorShape> {
 		let shapes = self.selected_layers().filter_map(|path_to_shape| {
-			let viewport_transform = self.document.generate_transform_relative_to_viewport(path_to_shape.as_slice()).ok()?;
+			let viewport_transform = self.document.generate_transform_relative_to_viewport(path_to_shape).ok()?;
 
-			let shape = match &self.document.layer(path_to_shape.as_slice()).ok()?.data {
+			let shape = match &self.document.layer(path_to_shape).ok()?.data {
 				LayerDataType::Shape(shape) => Some(shape),
 				LayerDataType::Folder(_) => None,
 			}?;
@@ -205,8 +205,8 @@ impl DocumentMessageHandler {
 		self.layer_data.entry(path.to_vec()).or_insert_with(|| LayerData::new(true))
 	}
 
-	pub fn selected_layers(&self) -> impl Iterator<Item = &Vec<LayerId>> {
-		self.layer_data.iter().filter_map(|(path, data)| data.selected.then(|| path))
+	pub fn selected_layers(&self) -> impl Iterator<Item = &[LayerId]> {
+		self.layer_data.iter().filter_map(|(path, data)| data.selected.then(|| path.as_slice()))
 	}
 
 	/// Returns the paths to all layers in order, optionally including only selected or non-selected layers.
@@ -415,15 +415,24 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				responses.push_back(DocumentOperation::CreateFolder { path }.into())
 			}
 			GroupSelectedLayers => {
-				let id = generate_uuid();
-				responses.push_back(DocumentsMessage::CopySelectedLayers.into());
+				let common_prefix = self.document.common_prefix(self.selected_layers());
+				let (_id, common_prefix) = common_prefix.split_last().unwrap_or((&0, &[]));
+
+				let mut new_folder_path = common_prefix.to_vec();
+				new_folder_path.push(generate_uuid());
+
+				responses.push_back(DocumentsMessage::Copy.into());
 				responses.push_back(DocumentMessage::DeleteSelectedLayers.into());
-				// TODO: add special case handling to create a sub folder if all selected layers
-				// come from the same folder
-				responses.push_back(DocumentOperation::CreateFolder { path: vec![id] }.into());
-				self.layerdata_mut(&[id]).expanded = true;
-				responses.push_back(DocumentsMessage::PasteLayers { path: vec![id], insert_index: -1 }.into());
-				responses.push_back(DocumentMessage::SetSelectedLayers(vec![vec![id]]).into());
+				responses.push_back(DocumentOperation::CreateFolder { path: new_folder_path.clone() }.into());
+				responses.push_back(DocumentMessage::ToggleLayerExpansion(new_folder_path.clone()).into());
+				responses.push_back(
+					DocumentsMessage::PasteIntoFolder {
+						path: new_folder_path.clone(),
+						insert_index: -1,
+					}
+					.into(),
+				);
+				responses.push_back(DocumentMessage::SetSelectedLayers(vec![new_folder_path]).into());
 			}
 			SetBlendModeForSelectedLayers(blend_mode) => {
 				self.backup();
@@ -435,7 +444,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				self.backup();
 				let opacity = opacity.clamp(0., 1.);
 
-				for path in self.selected_layers().cloned() {
+				for path in self.selected_layers().map(|path| path.to_vec()) {
 					responses.push_back(DocumentOperation::SetLayerOpacity { path, opacity }.into());
 				}
 			}
@@ -457,7 +466,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			DeleteSelectedLayers => {
 				self.backup();
 				responses.push_front(ToolMessage::SelectedLayersChanged.into());
-				for path in self.selected_layers().cloned() {
+				for path in self.selected_layers().map(|path| path.to_vec()) {
 					responses.push_front(DocumentOperation::DeleteLayer { path }.into());
 				}
 			}
@@ -535,6 +544,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 							})
 							.flatten(),
 					);
+					log::debug!("LayerPanel: {:?}", self.layer_data.keys());
 				}
 				Err(e) => log::error!("DocumentError: {:?}", e),
 				Ok(_) => (),
@@ -569,7 +579,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 
 			NudgeSelectedLayers(x, y) => {
 				self.backup();
-				for path in self.selected_layers().cloned() {
+				for path in self.selected_layers().map(|path| path.to_vec()) {
 					let operation = DocumentOperation::TransformLayerInViewport {
 						path,
 						transform: DAffine2::from_translation((x, y).into()).to_cols_array(),
@@ -579,9 +589,9 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				responses.push_back(ToolMessage::SelectedLayersChanged.into());
 			}
 			MoveSelectedLayersTo { path, insert_index } => {
-				responses.push_back(DocumentsMessage::CopySelectedLayers.into());
+				responses.push_back(DocumentsMessage::Copy.into());
 				responses.push_back(DocumentMessage::DeleteSelectedLayers.into());
-				responses.push_back(DocumentsMessage::PasteLayers { path, insert_index }.into());
+				responses.push_back(DocumentsMessage::PasteIntoFolder { path, insert_index }.into());
 			}
 			ReorderSelectedLayers(relative_position) => {
 				self.backup();
@@ -624,13 +634,13 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					FlipAxis::X => DVec2::new(-1., 1.),
 					FlipAxis::Y => DVec2::new(1., -1.),
 				};
-				if let Some([min, max]) = self.document.combined_viewport_bounding_box(self.selected_layers().map(|x| x.as_slice())) {
+				if let Some([min, max]) = self.document.combined_viewport_bounding_box(self.selected_layers().map(|x| x)) {
 					let center = (max + min) / 2.;
 					let bbox_trans = DAffine2::from_translation(-center);
 					for path in self.selected_layers() {
 						responses.push_back(
 							DocumentOperation::TransformLayerInScope {
-								path: path.clone(),
+								path: path.to_vec(),
 								transform: DAffine2::from_scale(scale).to_cols_array(),
 								scope: bbox_trans.to_cols_array(),
 							}
@@ -649,7 +659,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					AlignAxis::Y => DVec2::Y,
 				};
 				let lerp = |bbox: &[DVec2; 2]| bbox[0].lerp(bbox[1], 0.5);
-				if let Some(combined_box) = self.document.combined_viewport_bounding_box(self.selected_layers().map(|x| x.as_slice())) {
+				if let Some(combined_box) = self.document.combined_viewport_bounding_box(self.selected_layers().map(|x| x)) {
 					let aggregated = match aggregate {
 						AlignAggregate::Min => combined_box[0],
 						AlignAggregate::Max => combined_box[1],
@@ -665,7 +675,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 						let translation = (aggregated - center) * axis;
 						responses.push_back(
 							DocumentOperation::TransformLayerInViewport {
-								path: path.clone(),
+								path: path.to_vec(),
 								transform: DAffine2::from_translation(translation).to_cols_array(),
 							}
 							.into(),
