@@ -8,4 +8,10 @@ members = [
 ]
 
 [profile.release.package.graphite-wasm]
-opt-level = "s"
+opt-level = 3
+
+[profile.dev.package.graphite-wasm]
+opt-level = 3
+
+[profile.dev]
+opt-level = 3

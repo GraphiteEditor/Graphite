@@ -4,6 +4,7 @@ use crate::tool::{DocumentToolData, Fsm, ToolActionHandlerData};
 use crate::{document::DocumentMessageHandler, message_prelude::*};
 use glam::DAffine2;
 use graphene::{layers::style, Operation};
+use serde::{Deserialize, Serialize};
 
 use super::resize::*;
 
@@ -14,7 +15,7 @@ pub struct Ellipse {
 }
 
 #[impl_message(Message, ToolMessage, Ellipse)]
-#[derive(PartialEq, Clone, Debug, Hash)]
+#[derive(PartialEq, Clone, Debug, Hash, Serialize, Deserialize)]
 pub enum EllipseMessage {
 	DragStart,
 	DragStop,

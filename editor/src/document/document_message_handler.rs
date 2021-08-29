@@ -4,13 +4,14 @@ use graphene::layers::Layer;
 use graphene::{LayerId, Operation as DocumentOperation};
 use log::warn;
 
+use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 
 use super::DocumentMessageHandler;
 use crate::consts::DEFAULT_DOCUMENT_NAME;
 
 #[impl_message(Message, Documents)]
-#[derive(PartialEq, Clone, Debug)]
+#[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub enum DocumentsMessage {
 	CopySelectedLayers,
 	PasteLayers {

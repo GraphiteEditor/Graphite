@@ -1,5 +1,6 @@
 use crate::message_prelude::*;
 use graphite_proc_macros::*;
+use serde::{Deserialize, Serialize};
 use std::{
 	collections::hash_map::DefaultHasher,
 	hash::{Hash, Hasher},
@@ -16,7 +17,7 @@ where
 }
 
 #[impl_message]
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum Message {
 	NoOp,
 	#[child]

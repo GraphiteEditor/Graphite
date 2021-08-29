@@ -1,3 +1,5 @@
+use graphene::color::Color;
+
 // VIEWPORT
 pub const VIEWPORT_ZOOM_WHEEL_RATE: f64 = 1. / 600.;
 pub const VIEWPORT_ZOOM_MOUSE_RATE: f64 = 1. / 400.;
@@ -13,11 +15,14 @@ pub const VIEWPORT_SCROLL_RATE: f64 = 0.6;
 
 pub const VIEWPORT_ROTATE_SNAP_INTERVAL: f64 = 15.;
 
+// SELECT TOOL
+pub const SELECTION_TOLERANCE: f64 = 1.;
+
+// PATH TOOL
+pub const VECTOR_MANIPULATOR_ANCHOR_MARKER_SIZE: f64 = 5.;
+
 // LINE TOOL
 pub const LINE_ROTATE_SNAP_ANGLE: f64 = 15.;
-
-// SELECT TOOL
-pub const SELECTION_TOLERANCE: f64 = 1.0;
 
 // SCROLLBARS
 pub const SCROLLBAR_SPACING: f64 = 0.1;
@@ -27,3 +32,6 @@ pub const SCALE_EFFECT: f64 = 0.5;
 pub const DEFAULT_DOCUMENT_NAME: &str = "Untitled Document";
 pub const FILE_SAVE_SUFFIX: &str = ".graphite";
 pub const FILE_EXPORT_SUFFIX: &str = ".svg";
+
+// COLORS
+pub const COLOR_ACCENT: Color = Color::from_unsafe(0x00 as f32 / 255., 0xA8 as f32 / 255., 0xFF as f32 / 255.);

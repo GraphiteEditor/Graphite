@@ -1,4 +1,3 @@
-use graphene::color::Color;
 use graphene::layers::style;
 use graphene::layers::style::Fill;
 use graphene::layers::style::Stroke;
@@ -8,6 +7,7 @@ use graphene::Quad;
 use glam::{DAffine2, DVec2};
 use serde::{Deserialize, Serialize};
 
+use crate::consts::COLOR_ACCENT;
 use crate::input::keyboard::Key;
 use crate::input::{mouse::ViewportPosition, InputPreprocessor};
 use crate::tool::{DocumentToolData, Fsm, ToolActionHandlerData};
@@ -24,7 +24,7 @@ pub struct Select {
 }
 
 #[impl_message(Message, ToolMessage, Select)]
-#[derive(PartialEq, Clone, Debug, Serialize, Deserialize, Hash)]
+#[derive(PartialEq, Clone, Debug, Hash, Serialize, Deserialize)]
 pub enum SelectMessage {
 	DragStart { add_to_selection: Key },
 	DragStop,
@@ -70,7 +70,7 @@ struct SelectToolData {
 	drag_current: ViewportPosition,
 	layers_dragging: Vec<Vec<LayerId>>, // Paths and offsets
 	drag_box_id: Option<Vec<LayerId>>,
-	bounding_box_id: Option<Vec<LayerId>>,
+	bounding_box_path: Option<Vec<LayerId>>,
 }
 
 impl SelectToolData {
@@ -89,13 +89,13 @@ impl SelectToolData {
 	}
 }
 
-fn add_boundnig_box(responses: &mut Vec<Message>) -> Vec<LayerId> {
+fn add_bounding_box(responses: &mut Vec<Message>) -> Vec<LayerId> {
 	let path = vec![generate_uuid()];
 	responses.push(
-		Operation::AddBoundingBox {
+		Operation::AddOverlayRect {
 			path: path.clone(),
 			transform: DAffine2::ZERO.to_cols_array(),
-			style: style::PathStyle::new(Some(Stroke::new(Color::from_rgb8(0x00, 0xA8, 0xFF), 1.0)), Some(Fill::none())),
+			style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 1.0)), Some(Fill::none())),
 		}
 		.into(),
 	);
@@ -125,11 +125,11 @@ impl Fsm for SelectToolFsmState {
 			match (self, event) {
 				(_, UpdateSelectionBoundingBox) => {
 					let mut buffer = Vec::new();
-					let response = match (document.selected_layers_bounding_box(), data.bounding_box_id.take()) {
+					let response = match (document.selected_layers_bounding_box(), data.bounding_box_path.take()) {
 						(None, Some(path)) => Operation::DeleteLayer { path }.into(),
 						(Some([pos1, pos2]), path) => {
-							let path = path.unwrap_or_else(|| add_boundnig_box(&mut buffer));
-							data.bounding_box_id = Some(path.clone());
+							let path = path.unwrap_or_else(|| add_bounding_box(&mut buffer));
+							data.bounding_box_path = Some(path.clone());
 							let transform = transform_from_box(pos1, pos2);
 							Operation::SetLayerTransformInViewport { path, transform }.into()
 						}
@@ -163,7 +163,7 @@ impl Fsm for SelectToolFsmState {
 						if !input.keyboard.get(add_to_selection as usize) {
 							buffer.push(DocumentMessage::DeselectAllLayers.into());
 						}
-						data.drag_box_id = Some(add_boundnig_box(&mut buffer));
+						data.drag_box_id = Some(add_bounding_box(&mut buffer));
 						DrawingBox
 					};
 					buffer.into_iter().rev().for_each(|message| responses.push_front(message));
@@ -220,7 +220,7 @@ impl Fsm for SelectToolFsmState {
 				(_, Abort) => {
 					let mut delete = |path: &mut Option<Vec<LayerId>>| path.take().map(|path| responses.push_front(Operation::DeleteLayer { path }.into()));
 					delete(&mut data.drag_box_id);
-					delete(&mut data.bounding_box_id);
+					delete(&mut data.bounding_box_path);
 					Ready
 				}
 				(_, Align(axis, aggregate)) => {

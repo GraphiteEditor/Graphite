@@ -3,12 +3,13 @@ use crate::message_prelude::*;
 use crate::tool::ToolActionHandlerData;
 use glam::DVec2;
 use graphene::{Operation, Quad};
+use serde::{Deserialize, Serialize};
 
 #[derive(Default)]
 pub struct Fill;
 
 #[impl_message(Message, ToolMessage, Fill)]
-#[derive(PartialEq, Clone, Debug, Hash)]
+#[derive(PartialEq, Clone, Debug, Hash, Serialize, Deserialize)]
 pub enum FillMessage {
 	MouseDown,
 }
@@ -21,7 +22,7 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Fill {
 
 		if let Some(path) = data.0.document.intersects_quad_root(quad).last() {
 			responses.push_back(
-				Operation::FillLayer {
+				Operation::SetLayerFill {
 					path: path.to_vec(),
 					color: data.1.primary_color,
 				}
