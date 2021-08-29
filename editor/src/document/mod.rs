@@ -1,6 +1,6 @@
 mod document_file;
 mod document_message_handler;
-mod layer_panel;
+pub mod layer_panel;
 mod movement_handler;
 
 #[doc(inline)]

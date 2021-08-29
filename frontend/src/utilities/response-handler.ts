@@ -272,7 +272,7 @@ function newSetCanvasRotation(input: any): SetCanvasRotation {
 
 function newPath(input: any): BigUint64Array {
 	// eslint-disable-next-line
-	const u32CombinedPairs = input.map((n: Array<bigint>) => BigInt((BigInt(n[0]) << BigInt(32)) | BigInt(n[1])));
+	const u32CombinedPairs = input.map((n: Array<number>) => BigInt((BigInt(n[0]) << BigInt(32)) | BigInt(n[1])));
 	return new BigUint64Array(u32CombinedPairs);
 }
 
