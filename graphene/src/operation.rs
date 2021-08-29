@@ -20,13 +20,18 @@ pub enum Operation {
 		transform: [f64; 6],
 		style: style::PathStyle,
 	},
+	AddOverlayEllipse {
+		path: Vec<LayerId>,
+		transform: [f64; 6],
+		style: style::PathStyle,
+	},
 	AddRect {
 		path: Vec<LayerId>,
 		insert_index: isize,
 		transform: [f64; 6],
 		style: style::PathStyle,
 	},
-	AddBoundingBox {
+	AddOverlayRect {
 		path: Vec<LayerId>,
 		transform: [f64; 6],
 		style: style::PathStyle,
@@ -37,6 +42,11 @@ pub enum Operation {
 		transform: [f64; 6],
 		style: style::PathStyle,
 	},
+	AddOverlayLine {
+		path: Vec<LayerId>,
+		transform: [f64; 6],
+		style: style::PathStyle,
+	},
 	AddPen {
 		path: Vec<LayerId>,
 		transform: [f64; 6],
@@ -44,11 +54,16 @@ pub enum Operation {
 		points: Vec<(f64, f64)>,
 		style: style::PathStyle,
 	},
-	AddShape {
+	AddNgon {
 		path: Vec<LayerId>,
 		insert_index: isize,
 		transform: [f64; 6],
 		sides: u8,
+		style: style::PathStyle,
+	},
+	AddOverlayShape {
+		path: Vec<LayerId>,
+		bez_path: kurbo::BezPath,
 		style: style::PathStyle,
 	},
 	DeleteLayer {
@@ -81,6 +96,11 @@ pub enum Operation {
 		path: Vec<LayerId>,
 		transform: [f64; 6],
 	},
+	SetShapePathInViewport {
+		path: Vec<LayerId>,
+		bez_path: kurbo::BezPath,
+		transform: [f64; 6],
+	},
 	TransformLayerInScope {
 		path: Vec<LayerId>,
 		transform: [f64; 6],
@@ -95,8 +115,12 @@ pub enum Operation {
 		path: Vec<LayerId>,
 		transform: [f64; 6],
 	},
-	ToggleVisibility {
+	ToggleLayerVisibility {
 		path: Vec<LayerId>,
+	},
+	SetLayerVisibility {
+		path: Vec<LayerId>,
+		visible: bool,
 	},
 	SetLayerBlendMode {
 		path: Vec<LayerId>,
@@ -106,7 +130,11 @@ pub enum Operation {
 		path: Vec<LayerId>,
 		opacity: f64,
 	},
-	FillLayer {
+	SetLayerStyle {
+		path: Vec<LayerId>,
+		style: style::PathStyle,
+	},
+	SetLayerFill {
 		path: Vec<LayerId>,
 		color: Color,
 	},

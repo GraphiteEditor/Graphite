@@ -97,6 +97,7 @@ dependencies = [
  "glam",
  "graphite-graphene",
  "graphite-proc-macros",
+ "kurbo",
  "log",
  "rand_chacha",
  "serde",
