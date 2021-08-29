@@ -68,7 +68,7 @@ impl<'a> Selected<'a> {
 		*self.mid = self.calculate_mid();
 	}
 	pub fn update_transforms(&mut self, delta: DAffine2) {
-		if self.selected.len() > 0 && delta != DAffine2::IDENTITY {
+		if self.selected.len() > 0 {
 			let mid = DAffine2::from_translation(*self.mid);
 			let transformation = mid * delta * mid.inverse();
 			for path in &self.selected {
