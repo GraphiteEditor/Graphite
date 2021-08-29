@@ -202,7 +202,13 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 					Ok(document) => {
 						self.load_document(document, responses);
 					}
-					Err(e) => responses.push_back(FrontendMessage::DisplayError { description: e.to_string() }.into()),
+					Err(e) => responses.push_back(
+						FrontendMessage::DisplayError {
+							title: "Failed to open document".to_string(),
+							description: e.to_string(),
+						}
+						.into(),
+					),
 				}
 			}
 			GetOpenDocumentsList => {

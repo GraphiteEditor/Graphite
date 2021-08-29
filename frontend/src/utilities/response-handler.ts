@@ -28,6 +28,7 @@ export enum ResponseType {
 	SetCanvasZoom = "SetCanvasZoom",
 	SetCanvasRotation = "SetCanvasRotation",
 	DisplayError = "DisplayError",
+	DisplayPanic = "DisplayPanic",
 	DisplayConfirmationToCloseDocument = "DisplayConfirmationToCloseDocument",
 	DisplayConfirmationToCloseAllDocuments = "DisplayConfirmationToCloseAllDocuments",
 }
@@ -83,6 +84,8 @@ function parseResponse(responseType: string, data: any): Response {
 			return newUpdateWorkingColors(data.UpdateWorkingColors);
 		case "DisplayError":
 			return newDisplayError(data.DisplayError);
+		case "DisplayPanic":
+			return newDisplayPanic(data.DisplayPanic);
 		case "DisplayConfirmationToCloseDocument":
 			return newDisplayConfirmationToCloseDocument(data.DisplayConfirmationToCloseDocument);
 		case "DisplayConfirmationToCloseAllDocuments":
@@ -144,10 +147,23 @@ function newSetActiveDocument(input: any): SetActiveDocument {
 }
 
 export interface DisplayError {
+	title: string;
 	description: string;
 }
 function newDisplayError(input: any): DisplayError {
 	return {
+		title: input.title,
+		description: input.description,
+	};
+}
+
+export interface DisplayPanic {
+	title: string;
+	description: string;
+}
+function newDisplayPanic(input: any): DisplayPanic {
+	return {
+		title: input.title,
 		description: input.description,
 	};
 }
