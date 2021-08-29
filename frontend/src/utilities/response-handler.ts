@@ -127,10 +127,12 @@ function newUpdateWorkingColors(input: any): UpdateWorkingColors {
 
 export interface SetActiveTool {
 	tool_name: string;
+	tool_options: object;
 }
 function newSetActiveTool(input: any): SetActiveTool {
 	return {
 		tool_name: input.tool_name,
+		tool_options: input.tool_options,
 	};
 }
 
