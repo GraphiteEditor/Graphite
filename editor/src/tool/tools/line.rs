@@ -1,10 +1,11 @@
 use crate::consts::LINE_ROTATE_SNAP_ANGLE;
 use crate::input::keyboard::Key;
 use crate::input::{mouse::ViewportPosition, InputPreprocessor};
-use crate::tool::{DocumentToolData, Fsm, ToolActionHandlerData};
+use crate::tool::{DocumentToolData, Fsm, ToolActionHandlerData, ToolOptions, ToolType};
 use crate::{document::DocumentMessageHandler, message_prelude::*};
 use glam::{DAffine2, DVec2};
 use graphene::{layers::style, Operation};
+use serde::{Deserialize, Serialize};
 
 #[derive(Default)]
 pub struct Line {
@@ -13,7 +14,7 @@ pub struct Line {
 }
 
 #[impl_message(Message, ToolMessage, Line)]
-#[derive(PartialEq, Clone, Debug, Hash)]
+#[derive(PartialEq, Clone, Debug, Hash, Serialize, Deserialize)]
 pub enum LineMessage {
 	DragStart,
 	DragStop,
@@ -50,6 +51,7 @@ struct LineToolData {
 	drag_start: ViewportPosition,
 	drag_current: ViewportPosition,
 	angle: f64,
+	weight: u32,
 	path: Option<Vec<LayerId>>,
 }
 
@@ -75,12 +77,17 @@ impl Fsm for LineToolFsmState {
 					data.path = Some(vec![generate_uuid()]);
 					responses.push_back(DocumentMessage::DeselectAllLayers.into());
 
+					data.weight = match tool_data.tool_options.get(&ToolType::Line) {
+						Some(&ToolOptions::Line { weight }) => weight,
+						_ => 5,
+					};
+
 					responses.push_back(
 						Operation::AddLine {
 							path: data.path.clone().unwrap(),
 							insert_index: -1,
 							transform: DAffine2::ZERO.to_cols_array(),
-							style: style::PathStyle::new(Some(style::Stroke::new(tool_data.primary_color, 5.)), None),
+							style: style::PathStyle::new(Some(style::Stroke::new(tool_data.primary_color, data.weight as f32)), None),
 						}
 						.into(),
 					);

@@ -51,10 +51,7 @@ impl LayerData {
 }
 
 pub fn layer_data<'a>(layer_data: &'a mut HashMap<Vec<LayerId>, LayerData>, path: &[LayerId]) -> &'a mut LayerData {
-	if !layer_data.contains_key(path) {
-		layer_data.insert(path.to_vec(), LayerData::new(false));
-	}
-	layer_data.get_mut(path).unwrap()
+	layer_data.get_mut(path).expect(&format!("Layer data cannot be found because the path {:?} does not exist", path))
 }
 
 pub fn layer_panel_entry(layer_data: &LayerData, transform: DAffine2, layer: &Layer, path: Vec<LayerId>) -> LayerPanelEntry {

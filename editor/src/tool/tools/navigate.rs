@@ -1,11 +1,12 @@
 use crate::message_prelude::*;
 use crate::tool::ToolActionHandlerData;
+use serde::{Deserialize, Serialize};
 
 #[derive(Default)]
 pub struct Navigate;
 
 #[impl_message(Message, ToolMessage, Navigate)]
-#[derive(PartialEq, Clone, Debug, Hash)]
+#[derive(PartialEq, Clone, Debug, Hash, Serialize, Deserialize)]
 pub enum NavigateMessage {
 	MouseMove,
 }

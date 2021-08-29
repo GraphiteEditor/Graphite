@@ -23,6 +23,9 @@ log = "0.4"
 serde = { version = "1.0", features = ["derive"] }
 wasm-bindgen = { version = "0.2.73", features = ["serde-serialize"] }
 
+[profile.dev]
+opt-level = 3
+
 [dev-dependencies]
 wasm-bindgen-test = "0.3.22"
 
