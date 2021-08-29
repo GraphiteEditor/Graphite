@@ -173,8 +173,7 @@ impl DocumentMessageHandler {
 			}?;
 			let path = shape.path.clone();
 
-			let segments = shape
-				.path
+			let segments = path
 				.segments()
 				.map(|segment| -> VectorManipulatorSegment {
 					let place = |point: kurbo::Point| -> DVec2 { viewport_transform.transform_point2(DVec2::from((point.x, point.y))) };
@@ -194,6 +193,7 @@ impl DocumentMessageHandler {
 			})
 		});
 
+		// TODO: Consider refactoring this in a way that avoids needing to collect() so we can skip the heap allocations
 		shapes.collect::<Vec<VectorManipulatorShape>>()
 	}
 
