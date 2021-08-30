@@ -24,7 +24,7 @@ pub enum MovementMessage {
 	EnableSnapping,
 	DisableSnapping,
 	ZoomCanvasBegin,
-	TranslateCanvasEnd,
+	TransformCanvasEnd,
 	SetCanvasRotation(f64),
 	SetCanvasZoom(f64),
 	IncreaseCanvasZoom,
@@ -79,7 +79,7 @@ impl MessageHandler<MovementMessage, (&mut LayerData, &Document, &InputPreproces
 				self.zooming = true;
 				self.mouse_pos = ipp.mouse.position;
 			}
-			TranslateCanvasEnd => {
+			TransformCanvasEnd => {
 				layerdata.rotation = layerdata.snapped_angle();
 				layerdata.snap_rotate = false;
 				self.translating = false;
@@ -221,7 +221,6 @@ impl MessageHandler<MovementMessage, (&mut LayerData, &Document, &InputPreproces
 	fn actions(&self) -> ActionList {
 		let mut common = actions!(MovementMessageDiscriminant;
 			MouseMove,
-			TranslateCanvasEnd,
 			TranslateCanvasBegin,
 			RotateCanvasBegin,
 			ZoomCanvasBegin,
@@ -242,6 +241,12 @@ impl MessageHandler<MovementMessage, (&mut LayerData, &Document, &InputPreproces
 				DisableSnapping,
 			);
 			common.extend(snapping);
+		}
+		if self.translating || self.rotating || self.zooming {
+			let transforming = actions!(MovementMessageDiscriminant;
+				TransformCanvasEnd,
+			);
+			common.extend(transforming);
 		}
 		common
 	}
