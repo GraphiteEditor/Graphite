@@ -63,6 +63,7 @@ pub enum Key {
 	KeyMinus,
 	KeyPlus,
 	KeyShift,
+	KeySpace,
 	KeyControl,
 	KeyDelete,
 	KeyBackspace,
