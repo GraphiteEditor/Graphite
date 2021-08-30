@@ -1,6 +1,6 @@
 use crate::input::InputPreprocessor;
 use crate::message_prelude::*;
-use graphene::layers::{Layer, LayerDataType};
+use graphene::layers::Layer;
 use graphene::{LayerId, Operation as DocumentOperation};
 use log::warn;
 

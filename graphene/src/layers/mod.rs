@@ -137,8 +137,12 @@ impl Layer {
 		self.data.intersects_quad(transformed_quad, path, intersections)
 	}
 
+	pub fn current_bounding_box_with_transform(&self, transform: DAffine2) -> Option<[DVec2; 2]> {
+		self.data.bounding_box(transform)
+	}
+
 	pub fn current_bounding_box(&self) -> Option<[DVec2; 2]> {
-		self.data.bounding_box(self.transform)
+		self.current_bounding_box_with_transform(self.transform)
 	}
 
 	pub fn as_folder_mut(&mut self) -> Result<&mut Folder, DocumentError> {
