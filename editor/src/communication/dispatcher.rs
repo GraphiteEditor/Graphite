@@ -1,4 +1,4 @@
-use crate::{message_prelude::*};
+use crate::message_prelude::*;
 
 pub use crate::document::DocumentsMessageHandler;
 pub use crate::input::{InputMapper, InputPreprocessor};
@@ -198,22 +198,20 @@ mod test {
 
 		// TODO: This adding of a Line and Pen should be rewritten using the corresponding functions in EditorTestUtils.
 		// This has not been done yet as the line and pen tool are not yet able to add layers to the currently selected folder
-		editor
-			.handle_message(Operation::AddLine {
-				path: vec![folder_id, LINE_INDEX as u64],
-				insert_index: 0,
-				transform: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-				style: Default::default(),
-			});
+		editor.handle_message(Operation::AddLine {
+			path: vec![folder_id, LINE_INDEX as u64],
+			insert_index: 0,
+			transform: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+			style: Default::default(),
+		});
 
-		editor
-			.handle_message(Operation::AddPen {
-				path: vec![folder_id, PEN_INDEX as u64],
-				insert_index: 0,
-				transform: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-				style: Default::default(),
-				points: vec![(10.0, 20.0), (30.0, 40.0)],
-			});
+		editor.handle_message(Operation::AddPen {
+			path: vec![folder_id, PEN_INDEX as u64],
+			insert_index: 0,
+			transform: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+			style: Default::default(),
+			points: vec![(10.0, 20.0), (30.0, 40.0)],
+		});
 
 		editor.handle_message(DocumentMessage::SetSelectedLayers(vec![vec![folder_id]]));
 
