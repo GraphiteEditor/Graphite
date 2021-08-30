@@ -141,9 +141,8 @@ impl Default for Mapping {
 			entry! {action=TransformLayerMessage::CancelOperation, key_down=Rmb},
 			entry! {action=TransformLayerMessage::ConstrainX, key_down=KeyX},
 			entry! {action=TransformLayerMessage::ConstrainY, key_down=KeyY},
-			entry! {action=TransformLayerMessage::TypeDelete, key_down=KeyDelete},
-			entry! {action=TransformLayerMessage::TypeDelete, key_down=KeyBackspace},
-			entry! {action=TransformLayerMessage::TypeNegative, key_down=KeyMinus},
+			entry! {action=TransformLayerMessage::TypeBackspace, key_down=KeyBackspace},
+			entry! {action=TransformLayerMessage::TypeNegate, key_down=KeyMinus},
 			entry! {action=TransformLayerMessage::TypeDecimalPoint, key_down=KeyComma},
 			entry! {action=TransformLayerMessage::TypeDecimalPoint, key_down=KeyPeriod},
 			entry! {action=TransformLayerMessage::MouseMove{slow_key: KeyShift, snap_key: KeyControl}, triggers=[KeyShift, KeyControl]},
@@ -218,7 +217,7 @@ impl Default for Mapping {
 			entry! {action=DocumentMessage::SaveDocument, key_down=KeyS, modifiers=[KeyControl]},
 			entry! {action=DocumentMessage::SaveDocument, key_down=KeyS, modifiers=[KeyControl, KeyShift]},
 			// Initiate Transform Layers
-			entry! {action=TransformLayerMessage::BeginTranslate, key_down=KeyG},
+			entry! {action=TransformLayerMessage::BeginGrab, key_down=KeyG},
 			entry! {action=TransformLayerMessage::BeginRotate, key_down=KeyR},
 			entry! {action=TransformLayerMessage::BeginScale, key_down=KeyS},
 			// Document movement
@@ -251,7 +250,7 @@ impl Default for Mapping {
 			entry! {action=DocumentsMessage::CloseActiveDocumentWithConfirmation, key_down=KeyW, modifiers=[KeyControl]},
 			entry! {action=DocumentMessage::DuplicateSelectedLayers, key_down=KeyD, modifiers=[KeyControl]},
 			entry! {action=DocumentsMessage::Copy, key_down=KeyC, modifiers=[KeyControl]},
-			entry! {action=DocumentMessage::GroupSelectedLayers, key_down=KeyG},
+			entry! {action=DocumentMessage::GroupSelectedLayers, key_down=KeyG, modifiers=[KeyControl]},
 			// Nudging
 			entry! {action=DocumentMessage::NudgeSelectedLayers(-SHIFT_NUDGE_AMOUNT, -SHIFT_NUDGE_AMOUNT), key_down=KeyArrowUp, modifiers=[KeyShift, KeyArrowLeft]},
 			entry! {action=DocumentMessage::NudgeSelectedLayers(SHIFT_NUDGE_AMOUNT, -SHIFT_NUDGE_AMOUNT), key_down=KeyArrowUp, modifiers=[KeyShift, KeyArrowRight]},
@@ -296,7 +295,7 @@ impl Default for Mapping {
 				MappingEntry {
 					trigger: InputMapperMessage::KeyDown(*key),
 					modifiers: modifiers! {},
-					action: TransformLayerMessage::TypeNum(i as u8).into(),
+					action: TransformLayerMessage::TypeNumber(i as u8).into(),
 				},
 			);
 		}
