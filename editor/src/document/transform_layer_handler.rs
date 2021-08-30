@@ -60,13 +60,6 @@ impl<'a> Selected<'a> {
 			.fold(DVec2::ZERO, |acc, x| acc + x)
 			/ self.selected.len() as f64
 	}
-	pub fn repopulate_transforms(&mut self) {
-		self.original_transforms.clear();
-		for path in &self.selected {
-			self.original_transforms.insert(path.clone(), self.document.layer(path).unwrap().transform);
-		}
-		*self.mid = self.calculate_mid();
-	}
 	pub fn update_transforms(&mut self, delta: DAffine2) {
 		if self.selected.len() > 0 {
 			let mid = DAffine2::from_translation(*self.mid);
@@ -378,7 +371,7 @@ impl MessageHandler<TransformLayerMessage, (&mut HashMap<Vec<LayerId>, LayerData
 					selected.revert_operation();
 					self.typing.clear();
 				} else {
-					selected.repopulate_transforms();
+					*selected.mid = selected.calculate_mid();
 				}
 				self.mouse_pos = ipp.mouse.position;
 				self.start_mouse = ipp.mouse.position;
@@ -390,7 +383,7 @@ impl MessageHandler<TransformLayerMessage, (&mut HashMap<Vec<LayerId>, LayerData
 					selected.revert_operation();
 					self.typing.clear();
 				} else {
-					selected.repopulate_transforms();
+					*selected.mid = selected.calculate_mid();
 				}
 				self.mouse_pos = ipp.mouse.position;
 				self.start_mouse = ipp.mouse.position;
@@ -402,7 +395,7 @@ impl MessageHandler<TransformLayerMessage, (&mut HashMap<Vec<LayerId>, LayerData
 					selected.revert_operation();
 					self.typing.clear();
 				} else {
-					selected.repopulate_transforms();
+					*selected.mid = selected.calculate_mid();
 				}
 				self.mouse_pos = ipp.mouse.position;
 				self.start_mouse = ipp.mouse.position;
