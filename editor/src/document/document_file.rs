@@ -18,6 +18,7 @@ use log::warn;
 use std::collections::VecDeque;
 
 use super::movement_handler::{MovementMessage, MovementMessageHandler};
+use super::transform_layer_handler::{TransformLayerMessage, TransformLayerMessageHandler};
 
 type DocumentSave = (InternalDocument, HashMap<Vec<LayerId>, LayerData>);
 
@@ -63,6 +64,7 @@ pub struct DocumentMessageHandler {
 	pub name: String,
 	pub layer_data: HashMap<Vec<LayerId>, LayerData>,
 	movement_handler: MovementMessageHandler,
+	transform_layer_handler: TransformLayerMessageHandler,
 }
 
 impl Default for DocumentMessageHandler {
@@ -74,6 +76,7 @@ impl Default for DocumentMessageHandler {
 			name: String::from("Untitled Document"),
 			layer_data: vec![(vec![], LayerData::new(true))].into_iter().collect(),
 			movement_handler: MovementMessageHandler::default(),
+			transform_layer_handler: TransformLayerMessageHandler::default(),
 		}
 	}
 }
@@ -83,6 +86,8 @@ impl Default for DocumentMessageHandler {
 pub enum DocumentMessage {
 	#[child]
 	Movement(MovementMessage),
+	#[child]
+	TransformLayers(TransformLayerMessage),
 	DispatchOperation(Box<DocumentOperation>),
 	SetSelectedLayers(Vec<Vec<LayerId>>),
 	AddSelectedLayers(Vec<Vec<LayerId>>),
@@ -260,6 +265,7 @@ impl DocumentMessageHandler {
 			name,
 			layer_data: vec![(vec![], LayerData::new(true))].into_iter().collect(),
 			movement_handler: MovementMessageHandler::default(),
+			transform_layer_handler: TransformLayerMessageHandler::default(),
 		}
 	}
 
@@ -361,6 +367,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 		use DocumentMessage::*;
 		match message {
 			Movement(message) => self.movement_handler.process_action(message, (layer_data(&mut self.layer_data, &[]), &self.document, ipp), responses),
+			TransformLayers(message) => self.transform_layer_handler.process_action(message, (&mut self.layer_data, &mut self.document, ipp), responses),
 			DeleteLayer(path) => responses.push_back(DocumentOperation::DeleteLayer { path }.into()),
 			StartTransaction => self.backup(),
 			RollbackTransaction => {
@@ -710,6 +717,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			common.extend(select);
 		}
 		common.extend(self.movement_handler.actions());
+		common.extend(self.transform_layer_handler.actions());
 		common
 	}
 }
