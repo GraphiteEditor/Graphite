@@ -39,12 +39,11 @@ impl Editor {
 		Self { dispatcher: Dispatcher::new() }
 	}
 
-	pub fn handle_message<T: Into<Message>>(&mut self, message: T) -> Result<Vec<FrontendMessage>, EditorError> {
-		self.dispatcher.handle_message(message).map(|_| {
-			let mut responses = Vec::new();
-			std::mem::swap(&mut responses, &mut self.dispatcher.responses);
-			responses
-		})
+	pub fn handle_message<T: Into<Message>>(&mut self, message: T) -> Vec<FrontendMessage> {
+        self.dispatcher.handle_message(message);
+        let mut responses = Vec::new();
+        std::mem::swap(&mut responses, &mut self.dispatcher.responses);
+        responses
 	}
 }
 
