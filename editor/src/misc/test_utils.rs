@@ -62,7 +62,7 @@ impl EditorTestUtils for Editor {
 	}
 
 	fn mouseup(&mut self, state: EditorMouseState) {
-		self.handle_message(InputPreprocessorMessage::MouseUp(state, ModifierKeys::default())).unwrap();
+		self.handle_message(InputPreprocessorMessage::MouseUp(state, ModifierKeys::default()));
 	}
 
 	fn lmb_mousedown(&mut self, x: f64, y: f64) {
@@ -74,14 +74,14 @@ impl EditorTestUtils for Editor {
 	}
 
 	fn input(&mut self, message: InputPreprocessorMessage) {
-		self.handle_message(Message::InputPreprocessor(message)).unwrap();
+		self.handle_message(Message::InputPreprocessor(message));
 	}
 
 	fn select_tool(&mut self, typ: ToolType) {
-		self.handle_message(Message::Tool(ToolMessage::ActivateTool(typ))).unwrap();
+		self.handle_message(Message::Tool(ToolMessage::ActivateTool(typ)));
 	}
 
 	fn select_primary_color(&mut self, color: Color) {
-		self.handle_message(Message::Tool(ToolMessage::SelectPrimaryColor(color))).unwrap();
+		self.handle_message(Message::Tool(ToolMessage::SelectPrimaryColor(color)));
 	}
 }
