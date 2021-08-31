@@ -1,3 +1,4 @@
+use crate::dispatch;
 use crate::shims::Error;
 use crate::wrappers::{translate_key, translate_tool, Color};
 use editor::input::input_preprocessor::ModifierKeys;
@@ -9,20 +10,14 @@ use editor::LayerId;
 use graphene::layers::BlendMode;
 use wasm_bindgen::prelude::*;
 
-fn convert_error(err: editor::EditorError) -> JsValue {
-	Error::new(&err.to_string()).into()
-}
-
-fn dispatch<T: Into<Message>>(message: T) {
-	let messages = crate::EDITOR_STATE.with(|state| state.borrow_mut().handle_message(message.into()));
-	crate::handle_responses(messages);
-}
-
 /// Modify the currently selected tool in the document state store
 #[wasm_bindgen]
 pub fn select_tool(tool: String) -> Result<(), JsValue> {
 	match translate_tool(&tool) {
-		Some(tool) => Ok(dispatch(ToolMessage::ActivateTool(tool))),
+		Some(tool) => {
+			dispatch(ToolMessage::ActivateTool(tool));
+			Ok(())
+		}
 		None => Err(Error::new(&format!("Couldn't select {} because it was not recognized as a valid tool", tool)).into()),
 	}
 }
@@ -32,7 +27,10 @@ pub fn select_tool(tool: String) -> Result<(), JsValue> {
 pub fn set_tool_options(tool: String, options: &JsValue) -> Result<(), JsValue> {
 	match options.into_serde::<ToolOptions>() {
 		Ok(options) => match translate_tool(&tool) {
-			Some(tool) => Ok(dispatch(ToolMessage::SetToolOptions(tool, options))),
+			Some(tool) => {
+				dispatch(ToolMessage::SetToolOptions(tool, options));
+				Ok(())
+			}
 			None => Err(Error::new(&format!("Couldn't set options for {} because it was not recognized as a valid tool", tool)).into()),
 		},
 		Err(err) => Err(Error::new(&format!("Invalid JSON for ToolOptions: {}", err)).into()),
@@ -53,7 +51,10 @@ pub fn send_tool_message(tool: String, message: &JsValue) -> Result<(), JsValue>
 		None => Err(Error::new(&format!("Couldn't send message for {} because it was not recognized as a valid tool", tool)).into()),
 	};
 	match tool_message {
-		Ok(tool_message) => Ok(dispatch(tool_message)),
+		Ok(tool_message) => {
+			dispatch(tool_message);
+			Ok(())
+		}
 		Err(err) => Err(err),
 	}
 }
@@ -256,10 +257,11 @@ pub fn set_blend_mode_for_selected_layers(blend_mode_svg_style_name: String) -> 
 		"saturation" => BlendMode::Saturation,
 		"color" => BlendMode::Color,
 		"luminosity" => BlendMode::Luminosity,
-		_ => return Err(convert_error(EditorError::Misc("UnknownBlendMode".to_string()))),
+		_ => return Err(Error::new(&EditorError::Misc("UnknownBlendMode".to_string()).to_string()).into()),
 	};
 
-	Ok(dispatch(DocumentMessage::SetBlendModeForSelectedLayers(blend_mode)))
+	dispatch(DocumentMessage::SetBlendModeForSelectedLayers(blend_mode));
+	Ok(())
 }
 
 /// Set the opacity for the selected layers
