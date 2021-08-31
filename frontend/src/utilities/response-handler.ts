@@ -36,7 +36,6 @@ export function registerResponseHandler(responseType: ResponseType, callback: Re
 	state.responseMap[responseType] = callback;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function handleResponse(responseType: string, responseData: any) {
 	const callback = state.responseMap[responseType];
 	const data = parseResponse(responseType, responseData);
@@ -50,7 +49,6 @@ export function handleResponse(responseType: string, responseData: any) {
 	}
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function parseResponse(responseType: string, data: any): Response {
 	switch (responseType) {
 		case "DocumentChanged":

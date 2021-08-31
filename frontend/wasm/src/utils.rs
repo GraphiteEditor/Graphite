@@ -41,5 +41,6 @@ impl log::Log for WasmLog {
 		let msg = &format!("%c{}\t{}", name, record.args());
 		log(msg, color)
 	}
+
 	fn flush(&self) {}
 }
