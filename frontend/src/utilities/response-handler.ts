@@ -44,8 +44,10 @@ export function handleResponse(responseType: string, responseData: any) {
 	if (callback && data) {
 		callback(data);
 	} else if (data) {
+		// eslint-disable-next-line no-console
 		console.error(`Received a Response of type "${responseType}" but no handler was registered for it from the client.`);
 	} else {
+		// eslint-disable-next-line no-console
 		console.error(`Received a Response of type "${responseType}" but but was not able to parse the data.`);
 	}
 }

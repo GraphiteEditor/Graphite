@@ -34,7 +34,9 @@ export function panicProxy(module: any) {
 // Intercept console.error() for panic messages sent by code in the WASM toolchain
 let panicDetails = "";
 
+// eslint-disable-next-line no-console
 const error = console.error.bind(console);
+// eslint-disable-next-line no-console
 console.error = (...args) => {
 	const details = "".concat(...args).trim();
 	if (details.startsWith("panicked at")) panicDetails = details;
