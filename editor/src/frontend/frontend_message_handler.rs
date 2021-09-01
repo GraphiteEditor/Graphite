@@ -13,7 +13,7 @@ pub enum FrontendMessage {
 	SetActiveDocument { document_index: usize },
 	UpdateOpenDocumentsList { open_documents: Vec<String> },
 	DisplayError { title: String, description: String },
-	DisplayPanic { title: String, description: String },
+	DisplayPanic { panic_info: String, title: String, description: String },
 	DisplayConfirmationToCloseDocument { document_index: usize },
 	DisplayConfirmationToCloseAllDocuments,
 	UpdateCanvas { document: String },
