@@ -160,11 +160,13 @@ function newDisplayError(input: any): DisplayError {
 }
 
 export interface DisplayPanic {
+	panic_info: string;
 	title: string;
 	description: string;
 }
 function newDisplayPanic(input: any): DisplayPanic {
 	return {
+		panic_info: input.panic_info,
 		title: input.title,
 		description: input.description,
 	};

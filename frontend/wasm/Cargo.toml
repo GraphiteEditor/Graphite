@@ -12,11 +12,7 @@ publish = false
 [lib]
 crate-type = ["cdylib", "rlib"]
 
-[features]
-default = ["console_error_panic_hook"]
-
 [dependencies]
-console_error_panic_hook = { version = "0.1.6", optional = true }
 editor = { path = "../../editor", package = "graphite-editor" }
 graphene = { path = "../../graphene", package = "graphite-graphene" }
 log = "0.4"

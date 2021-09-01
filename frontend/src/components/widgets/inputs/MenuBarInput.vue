@@ -54,7 +54,7 @@
 import { defineComponent } from "vue";
 
 import { comingSoon } from "@/utilities/errors";
-import { panicProxy } from "@/utilities/panic";
+import { panicProxy } from "@/utilities/panic-proxy";
 
 import IconLabel from "@/components/widgets/labels/IconLabel.vue";
 import { ApplicationPlatform } from "@/components/window/MainWindow.vue";

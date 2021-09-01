@@ -69,7 +69,7 @@
 import { defineComponent } from "vue";
 
 import { rgbToDecimalRgb, RGB } from "@/utilities/color";
-import { panicProxy } from "@/utilities/panic";
+import { panicProxy } from "@/utilities/panic-proxy";
 import { ResponseType, registerResponseHandler, Response, UpdateWorkingColors } from "@/utilities/response-handler";
 
 import ColorPicker from "@/components/widgets/floating-menus/ColorPicker.vue";
