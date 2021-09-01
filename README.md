@@ -4,7 +4,7 @@
 
 Graphite is a digital content creation software package for 2D graphics, merging traditional tool-based interactive editing workflows with a powerful node-based approach to procedural, non-destructive editing and compositing. The application strives to be the most user-friendly and versatile tool for vector and raster illustration, graphic design, photo editing, procedural texturing, data-driven visualization, and technical art.
 
-While the project is still in early development, implementation progress has been moving forward at a swift pace. The first release, Graphite 0.1, is launching this month (August 2021) and focuses on vector art for SVG creation. Later this year, version 0.2 will introduce a nondestructive backend for vector graphics with a powerful node graph system. Later releases throughout 2022 will provide better vector rendering capabilities and then resolution-agnostic raster editing and compositing.
+While the project is still in early development, implementation progress has been moving forward at a swift pace. The first release, Graphite 0.1, is launching early this month (September 2021) and focuses on vector art for SVG creation. Later this year, version 0.2 will introduce a nondestructive backend for vector graphics with a powerful node graph system. Later releases throughout 2022 will provide better vector rendering capabilities and then resolution-agnostic raster editing and compositing.
 
 Play around with Graphite right now in your browser at [editor.graphite.design](https://editor.graphite.design). Windows, Mac, and Linux will additionally be supported with a native (not web-based) desktop client next year.
 
@@ -34,7 +34,7 @@ This UI mockup illustrates a future concept for the raster-based workflow in a p
 
 ## Roadmap
 
-The Graphite team is focusing initial feature development on a simple vector graphics editor for the 0.1 release coming August 2021.
+The Graphite team is focusing initial feature development on a simple vector graphics editor for the 0.1 release coming early September 2021.
 
 Following this MVP release, the layer system will be extended into a fleshed-out node graph system, called Graphene, to offer innovative nondestructive vector editing capabilities in a 0.2 release.
 
