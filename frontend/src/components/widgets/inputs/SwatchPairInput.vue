@@ -109,25 +109,21 @@ export default defineComponent({
 		},
 
 		async updatePrimaryColor() {
-			const { Color } = await wasm;
-
 			let color = this.primaryColor;
 			const button = this.getRef<HTMLButtonElement>("primaryButton");
 			button.style.setProperty("--swatch-color", `rgba(${color.r}, ${color.g}, ${color.b}, ${color.a})`);
 
 			color = rgbToDecimalRgb(this.primaryColor);
-			(await wasm).update_primary_color(new Color(color.r, color.g, color.b, color.a));
+			(await wasm).update_primary_color(color.r, color.g, color.b, color.a);
 		},
 
 		async updateSecondaryColor() {
-			const { Color } = await wasm;
-
 			let color = this.secondaryColor;
 			const button = this.getRef<HTMLButtonElement>("secondaryButton");
 			button.style.setProperty("--swatch-color", `rgba(${color.r}, ${color.g}, ${color.b}, ${color.a})`);
 
 			color = rgbToDecimalRgb(this.secondaryColor);
-			(await wasm).update_secondary_color(new Color(color.r, color.g, color.b, color.a));
+			(await wasm).update_secondary_color(color.r, color.g, color.b, color.a);
 		},
 	},
 	data() {

@@ -1,13 +1,13 @@
-pub mod document;
-mod shims;
-pub mod utils;
-pub mod wrappers;
+pub mod api;
+mod helpers;
+pub mod logging;
+pub mod type_translators;
 
 use editor::{message_prelude::*, Editor};
+use logging::WasmLog;
 use std::cell::RefCell;
 use std::panic;
 use std::sync::atomic::AtomicBool;
-use utils::WasmLog;
 use wasm_bindgen::prelude::*;
 
 // Set up the persistent editor backend state (the thread_local macro provides a way to initialize static variables with non-constant functions)
