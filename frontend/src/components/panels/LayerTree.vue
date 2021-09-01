@@ -182,7 +182,7 @@
 import { defineComponent } from "vue";
 
 import { ResponseType, registerResponseHandler, Response, BlendMode, ExpandFolder, CollapseFolder, UpdateLayer, LayerPanelEntry, LayerType } from "@/utilities/response-handler";
-import { panicProxy } from "@/utilities/panic";
+import { panicProxy } from "@/utilities/panic-proxy";
 import { SeparatorType } from "@/components/widgets/widgets";
 
 import LayoutRow from "@/components/layout/LayoutRow.vue";

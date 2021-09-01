@@ -12,7 +12,7 @@ import {
 	SaveDocument,
 } from "@/utilities/response-handler";
 import { download, upload } from "@/utilities/files";
-import { panicProxy } from "@/utilities/panic";
+import { panicProxy } from "@/utilities/panic-proxy";
 
 const wasm = import("@/../wasm/pkg").then(panicProxy);
 

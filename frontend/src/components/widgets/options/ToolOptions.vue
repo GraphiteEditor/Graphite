@@ -32,7 +32,7 @@
 import { defineComponent, PropType } from "vue";
 
 import { comingSoon } from "@/utilities/errors";
-import { panicProxy } from "@/utilities/panic";
+import { panicProxy } from "@/utilities/panic-proxy";
 import { WidgetRow, SeparatorType, IconButtonWidget } from "@/components/widgets/widgets";
 
 import Separator from "@/components/widgets/separators/Separator.vue";

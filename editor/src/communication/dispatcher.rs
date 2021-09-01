@@ -53,7 +53,7 @@ impl Dispatcher {
 	}
 
 	pub fn collect_actions(&self) -> ActionList {
-		//TODO: reduce the number of heap allocations
+		// TODO: Reduce the number of heap allocations
 		let mut list = Vec::new();
 		list.extend(self.input_preprocessor.actions());
 		list.extend(self.input_mapper.actions());
