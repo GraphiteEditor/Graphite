@@ -16,7 +16,7 @@
 		</LayoutRow>
 		<LayoutRow :class="'layer-tree scrollable-y'">
 			<LayoutCol :class="'list'" @click="deselectAllLayers">
-				<div class="layer-row" v-for="layer in layers" :key="layer.path">
+				<div class="layer-row" v-for="(layer, index) in layers" :key="layer.path">
 					<div class="layer-visibility">
 						<IconButton
 							:action="(e) => (toggleLayerVisibility(layer.path), e.stopPropagation())"
@@ -181,7 +181,7 @@
 <script lang="ts">
 import { defineComponent } from "vue";
 
-import { ResponseType, registerResponseHandler, Response, BlendMode, ExpandFolder, CollapseFolder, UpdateLayer, LayerPanelEntry, LayerType } from "@/utilities/response-handler";
+import { ResponseType, registerResponseHandler, Response, BlendMode, DisplayFolderTreeStructure, UpdateLayer, LayerPanelEntry, LayerType } from "@/utilities/response-handler";
 import { panicProxy } from "@/utilities/panic-proxy";
 import { SeparatorType } from "@/components/widgets/widgets";
 
@@ -238,7 +238,22 @@ const blendModeEntries: SectionsOfMenuListEntries = [
 ];
 
 export default defineComponent({
-	props: {},
+	data() {
+		return {
+			blendModeEntries,
+			blendModeSelectedIndex: 0,
+			blendModeDropdownDisabled: true,
+			opacityNumberInputDisabled: true,
+			layers: [] as Array<LayerPanelEntry>,
+			layerDepths: [] as Array<number>,
+			selectionRangeStartLayer: undefined as undefined | LayerPanelEntry,
+			selectionRangeEndLayer: undefined as undefined | LayerPanelEntry,
+			opacity: 100,
+			MenuDirection,
+			SeparatorType,
+			LayerType,
+		};
+	},
 	methods: {
 		layerIndent(layer: LayerPanelEntry): string {
 			return `${(layer.path.length - 1) * 16}px`;
@@ -325,7 +340,6 @@ export default defineComponent({
 				output.set(path, i);
 				i += path.length;
 				if (index < paths.length) {
-					// eslint-disable-next-line no-bitwise
 					output[i] = (1n << 64n) - 1n;
 				}
 				i += 1;
@@ -374,67 +388,12 @@ export default defineComponent({
 		},
 	},
 	mounted() {
-		registerResponseHandler(ResponseType.ExpandFolder, (responseData: Response) => {
-			const expandData = responseData as ExpandFolder;
-			if (expandData) {
-				const responsePath = expandData.path;
-				const responseLayers = expandData.children as Array<LayerPanelEntry>;
-				// TODO: @Keavon Refactor this function
-				if (responseLayers.length === 0) return;
-
-				const mergeIntoExisting = (elements: Array<LayerPanelEntry>, layers: Array<LayerPanelEntry>) => {
-					let lastInsertion = layers.findIndex((layer: LayerPanelEntry) => {
-						const pathLengthsEqual = elements[0].path.length - 1 === layer.path.length;
-						return pathLengthsEqual && elements[0].path.slice(0, -1).every((layerId, i) => layerId === layer.path[i]);
-					});
-					elements.forEach((nlayer) => {
-						const index = layers.findIndex((layer: LayerPanelEntry) => {
-							const pathLengthsEqual = nlayer.path.length === layer.path.length;
-							return pathLengthsEqual && nlayer.path.every((layerId, i) => layerId === layer.path[i]);
-						});
-						if (index >= 0) {
-							lastInsertion = index;
-							layers[index] = nlayer;
-						} else {
-							lastInsertion += 1;
-							layers.splice(lastInsertion, 0, nlayer);
-						}
-					});
-				};
-				mergeIntoExisting(responseLayers, this.layers);
-				const newLayers: Array<LayerPanelEntry> = [];
-				this.layers.forEach((layer) => {
-					const index = responseLayers.findIndex((nlayer: LayerPanelEntry) => {
-						const pathLengthsEqual = responsePath.length + 1 === layer.path.length;
-						return pathLengthsEqual && nlayer.path.every((layerId, i) => layerId === layer.path[i]);
-					});
-					if (index >= 0 || layer.path.length !== responsePath.length + 1) {
-						newLayers.push(layer);
-					}
-				});
-				this.layers = newLayers;
-
-				this.setBlendModeForSelectedLayers();
-				this.setOpacityForSelectedLayers();
-			}
+		registerResponseHandler(ResponseType.DisplayFolderTreeStructure, (responseData: Response) => {
+			const expandData = responseData as DisplayFolderTreeStructure;
+			if (!expandData) return;
+			console.log(responseData);
 		});
-		registerResponseHandler(ResponseType.CollapseFolder, (responseData) => {
-			const collapseData = responseData as CollapseFolder;
-			if (collapseData) {
-				const responsePath = collapseData.path;
 
-				const newLayers: Array<LayerPanelEntry> = [];
-				this.layers.forEach((layer) => {
-					if (responsePath.length >= layer.path.length || !responsePath.every((layerId, i) => layerId === layer.path[i])) {
-						newLayers.push(layer);
-					}
-				});
-				this.layers = newLayers;
-
-				this.setBlendModeForSelectedLayers();
-				this.setOpacityForSelectedLayers();
-			}
-		});
 		registerResponseHandler(ResponseType.UpdateLayer, (responseData) => {
 			const updateData = responseData as UpdateLayer;
 			if (updateData) {
@@ -451,21 +410,6 @@ export default defineComponent({
 				this.setOpacityForSelectedLayers();
 			}
 		});
-	},
-	data() {
-		return {
-			blendModeEntries,
-			blendModeSelectedIndex: 0,
-			blendModeDropdownDisabled: true,
-			opacityNumberInputDisabled: true,
-			layers: [] as Array<LayerPanelEntry>,
-			selectionRangeStartLayer: undefined as undefined | LayerPanelEntry,
-			selectionRangeEndLayer: undefined as undefined | LayerPanelEntry,
-			opacity: 100,
-			MenuDirection,
-			SeparatorType,
-			LayerType,
-		};
 	},
 	components: {
 		LayoutRow,
