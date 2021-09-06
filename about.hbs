@@ -1,0 +1,21 @@
+// Be careful to prevent auto-formatting from breaking this file's indentation
+// Replace this file with JSON output once this is resolved: https://github.com/EmbarkStudios/cargo-about/issues/73
+
+module.exports = [
+	{{#each licenses}}
+	{
+		licenseName: `{{name}}`,
+		licenseText: `{{text}}`,
+		packages: [
+			{{#each used_by}}
+			{
+				name: `{{crate.name}}`,
+				version: `{{crate.version}}`,
+				author: `{{crate.authors}}`,
+				repository: `{{crate.repository}}`,
+			},
+			{{/each}}
+		],
+	},
+	{{/each}}
+];
