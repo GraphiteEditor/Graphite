@@ -1,57 +1,9 @@
-use crate::shims::Error;
-use editor::consts::FILE_SAVE_SUFFIX;
+use crate::helpers::match_string_to_enum;
 use editor::input::keyboard::Key;
-use editor::tool::{SelectAppendMode, ToolType};
-use editor::Color as InnerColor;
-use wasm_bindgen::prelude::*;
+use editor::tool::ToolType;
+use graphene::layers::BlendMode;
 
-#[wasm_bindgen]
-pub fn file_save_suffix() -> String {
-	FILE_SAVE_SUFFIX.into()
-}
-
-#[wasm_bindgen]
-pub fn i32_max() -> i32 {
-	i32::MAX
-}
-
-#[wasm_bindgen]
-pub fn i32_min() -> i32 {
-	i32::MIN
-}
-
-#[wasm_bindgen]
-pub struct Color(InnerColor);
-
-#[wasm_bindgen]
-impl Color {
-	#[wasm_bindgen(constructor)]
-	pub fn new(red: f32, green: f32, blue: f32, alpha: f32) -> Result<Color, JsValue> {
-		match InnerColor::from_rgbaf32(red, green, blue, alpha) {
-			Some(v) => Ok(Self(v)),
-			None => Err(Error::new("invalid color").into()),
-		}
-	}
-}
-
-impl Color {
-	pub fn inner(&self) -> InnerColor {
-		self.0
-	}
-}
-
-macro_rules! match_string_to_enum {
-	(match ($e:expr) {$($var:ident),* $(,)?}) => {
-		match $e {
-			$(
-			stringify!($var) => Some($var),
-			)*
-			_ => None
-		}
-	};
-}
-
-pub fn translate_tool(name: &str) -> Option<ToolType> {
+pub fn translate_tool_type(name: &str) -> Option<ToolType> {
 	use ToolType::*;
 
 	match_string_to_enum!(match (name) {
@@ -79,15 +31,30 @@ pub fn translate_tool(name: &str) -> Option<ToolType> {
 	})
 }
 
-pub fn translate_append_mode(name: &str) -> Option<SelectAppendMode> {
-	use SelectAppendMode::*;
+pub fn translate_blend_mode(blend_mode_svg_style_name: &str) -> Option<BlendMode> {
+	use BlendMode::*;
 
-	match_string_to_enum!(match (name) {
-		New,
-		Add,
-		Subtract,
-		Intersect
-	})
+	let blend_mode = match blend_mode_svg_style_name {
+		"normal" => Normal,
+		"multiply" => Multiply,
+		"darken" => Darken,
+		"color-burn" => ColorBurn,
+		"screen" => Screen,
+		"lighten" => Lighten,
+		"color-dodge" => ColorDodge,
+		"overlay" => Overlay,
+		"soft-light" => SoftLight,
+		"hard-light" => HardLight,
+		"difference" => Difference,
+		"exclusion" => Exclusion,
+		"hue" => Hue,
+		"saturation" => Saturation,
+		"color" => Color,
+		"luminosity" => Luminosity,
+		_ => return None,
+	};
+
+	Some(blend_mode)
 }
 
 pub fn translate_key(name: &str) -> Key {
@@ -137,6 +104,7 @@ pub fn translate_key(name: &str) -> Key {
 		"shift" => KeyShift,
 		// When using linux + chrome + the neo keyboard layout, the shift key is recognized as caps
 		"capslock" => KeyShift,
+		" " => KeySpace,
 		"control" => KeyControl,
 		"delete" => KeyDelete,
 		"backspace" => KeyBackspace,
@@ -153,6 +121,8 @@ pub fn translate_key(name: &str) -> Key {
 		"}" => KeyRightCurlyBracket,
 		"pageup" => KeyPageUp,
 		"pagedown" => KeyPageDown,
+		"," => KeyComma,
+		"." => KeyPeriod,
 		_ => UnknownKey,
 	}
 }

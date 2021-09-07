@@ -131,6 +131,21 @@ impl Default for Mapping {
 		// it as an available action in the respective message handler file (such as the bottom of `document_message_handler.rs`)
 		let mappings = mapping![
 			// Higher priority than entries in sections below
+			entry! {action=DocumentsMessage::Paste, key_down=KeyV, modifiers=[KeyControl]},
+			entry! {action=MovementMessage::EnableSnapping, key_down=KeyShift},
+			entry! {action=MovementMessage::DisableSnapping, key_up=KeyShift},
+			// Transform layers
+			entry! {action=TransformLayerMessage::ApplyOperation, key_down=KeyEnter},
+			entry! {action=TransformLayerMessage::ApplyOperation, key_down=Lmb},
+			entry! {action=TransformLayerMessage::CancelOperation, key_down=KeyEscape},
+			entry! {action=TransformLayerMessage::CancelOperation, key_down=Rmb},
+			entry! {action=TransformLayerMessage::ConstrainX, key_down=KeyX},
+			entry! {action=TransformLayerMessage::ConstrainY, key_down=KeyY},
+			entry! {action=TransformLayerMessage::TypeBackspace, key_down=KeyBackspace},
+			entry! {action=TransformLayerMessage::TypeNegate, key_down=KeyMinus},
+			entry! {action=TransformLayerMessage::TypeDecimalPoint, key_down=KeyComma},
+			entry! {action=TransformLayerMessage::TypeDecimalPoint, key_down=KeyPeriod},
+			entry! {action=TransformLayerMessage::MouseMove{slow_key: KeyShift, snap_key: KeyControl}, triggers=[KeyShift, KeyControl]},
 			// Select
 			entry! {action=SelectMessage::MouseMove, message=InputMapperMessage::PointerMove},
 			entry! {action=SelectMessage::DragStart{add_to_selection: KeyShift}, key_down=Lmb},
@@ -201,6 +216,10 @@ impl Default for Mapping {
 			entry! {action=DocumentMessage::ExportDocument, key_down=KeyE, modifiers=[KeyControl]},
 			entry! {action=DocumentMessage::SaveDocument, key_down=KeyS, modifiers=[KeyControl]},
 			entry! {action=DocumentMessage::SaveDocument, key_down=KeyS, modifiers=[KeyControl, KeyShift]},
+			// Initiate Transform Layers
+			entry! {action=TransformLayerMessage::BeginGrab, key_down=KeyG},
+			entry! {action=TransformLayerMessage::BeginRotate, key_down=KeyR},
+			entry! {action=TransformLayerMessage::BeginScale, key_down=KeyS},
 			// Document movement
 			entry! {action=MovementMessage::MouseMove, message=InputMapperMessage::PointerMove},
 			entry! {action=MovementMessage::RotateCanvasBegin{snap:false}, key_down=Mmb, modifiers=[KeyControl]},
@@ -208,7 +227,9 @@ impl Default for Mapping {
 			entry! {action=MovementMessage::ZoomCanvasBegin, key_down=Mmb, modifiers=[KeyShift]},
 			entry! {action=MovementMessage::ZoomCanvasToFitAll, key_down=Key0, modifiers=[KeyControl]},
 			entry! {action=MovementMessage::TranslateCanvasBegin, key_down=Mmb},
-			entry! {action=MovementMessage::TranslateCanvasEnd, key_up=Mmb},
+			entry! {action=MovementMessage::TransformCanvasEnd, key_up=Mmb},
+			entry! {action=MovementMessage::TranslateCanvasBegin, key_down=Lmb, modifiers=[KeySpace]},
+			entry! {action=MovementMessage::TransformCanvasEnd, key_up=Lmb, modifiers=[KeySpace]},
 			entry! {action=MovementMessage::IncreaseCanvasZoom, key_down=KeyPlus, modifiers=[KeyControl]},
 			entry! {action=MovementMessage::IncreaseCanvasZoom, key_down=KeyEquals, modifiers=[KeyControl]},
 			entry! {action=MovementMessage::DecreaseCanvasZoom, key_down=KeyMinus, modifiers=[KeyControl]},
@@ -229,7 +250,7 @@ impl Default for Mapping {
 			entry! {action=DocumentsMessage::CloseActiveDocumentWithConfirmation, key_down=KeyW, modifiers=[KeyControl]},
 			entry! {action=DocumentMessage::DuplicateSelectedLayers, key_down=KeyD, modifiers=[KeyControl]},
 			entry! {action=DocumentsMessage::Copy, key_down=KeyC, modifiers=[KeyControl]},
-			entry! {action=DocumentMessage::GroupSelectedLayers, key_down=KeyG},
+			entry! {action=DocumentMessage::GroupSelectedLayers, key_down=KeyG, modifiers=[KeyControl]},
 			// Nudging
 			entry! {action=DocumentMessage::NudgeSelectedLayers(-SHIFT_NUDGE_AMOUNT, -SHIFT_NUDGE_AMOUNT), key_down=KeyArrowUp, modifiers=[KeyShift, KeyArrowLeft]},
 			entry! {action=DocumentMessage::NudgeSelectedLayers(SHIFT_NUDGE_AMOUNT, -SHIFT_NUDGE_AMOUNT), key_down=KeyArrowUp, modifiers=[KeyShift, KeyArrowRight]},
@@ -255,6 +276,7 @@ impl Default for Mapping {
 			entry! {action=DocumentMessage::NudgeSelectedLayers(NUDGE_AMOUNT, -NUDGE_AMOUNT), key_down=KeyArrowRight, modifiers=[KeyArrowUp]},
 			entry! {action=DocumentMessage::NudgeSelectedLayers(NUDGE_AMOUNT, NUDGE_AMOUNT), key_down=KeyArrowRight, modifiers=[KeyArrowDown]},
 			entry! {action=DocumentMessage::NudgeSelectedLayers(NUDGE_AMOUNT, 0.), key_down=KeyArrowRight},
+			// Reorder Layers
 			entry! {action=DocumentMessage::ReorderSelectedLayers(i32::MAX), key_down=KeyRightCurlyBracket, modifiers=[KeyControl]}, // TODO: Use KeyRightBracket with ctrl+shift modifiers once input system is fixed
 			entry! {action=DocumentMessage::ReorderSelectedLayers(1), key_down=KeyRightBracket, modifiers=[KeyControl]},
 			entry! {action=DocumentMessage::ReorderSelectedLayers(-1), key_down=KeyLeftBracket, modifiers=[KeyControl]},
@@ -266,6 +288,17 @@ impl Default for Mapping {
 		];
 
 		let (mut key_up, mut key_down, mut pointer_move, mut mouse_scroll) = mappings;
+		const NUMBER_KEYS: [Key; 10] = [Key0, Key1, Key2, Key3, Key4, Key5, Key6, Key7, Key8, Key9];
+		for (i, key) in NUMBER_KEYS.iter().enumerate() {
+			key_down[*key as usize].0.insert(
+				0,
+				MappingEntry {
+					trigger: InputMapperMessage::KeyDown(*key),
+					modifiers: modifiers! {},
+					action: TransformLayerMessage::TypeNumber(i as u8).into(),
+				},
+			);
+		}
 		let sort = |list: &mut KeyMappingEntries| list.0.sort_by(|u, v| v.modifiers.ones().cmp(&u.modifiers.ones()));
 		for list in [&mut key_up, &mut key_down] {
 			for sublist in list {

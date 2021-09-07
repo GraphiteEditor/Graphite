@@ -1,4 +1,4 @@
-// since our policy is tabs, we want to stop clippy from warning about that
+// Since our policy is tabs, we want to stop clippy from warning about that
 #![allow(clippy::tabs_in_doc_comments)]
 
 extern crate graphite_proc_macros;
@@ -6,45 +6,48 @@ extern crate graphite_proc_macros;
 mod communication;
 #[macro_use]
 pub mod misc;
+pub mod consts;
 mod document;
 mod frontend;
 mod global;
 pub mod input;
 pub mod tool;
 
-pub mod consts;
-
+#[doc(inline)]
+pub use graphene::color::Color;
+#[doc(inline)]
+pub use graphene::document::Document as SvgDocument;
+#[doc(inline)]
+pub use graphene::LayerId;
 #[doc(inline)]
 pub use misc::EditorError;
 
-#[doc(inline)]
-pub use graphene::color::Color;
-
-#[doc(inline)]
-pub use graphene::LayerId;
-
-#[doc(inline)]
-pub use graphene::document::Document as SvgDocument;
-
 use communication::dispatcher::Dispatcher;
+use message_prelude::*;
+
 // TODO: serialize with serde to save the current editor state
 pub struct Editor {
 	dispatcher: Dispatcher,
 }
-
-use message_prelude::*;
 
 impl Editor {
 	pub fn new() -> Self {
 		Self { dispatcher: Dispatcher::new() }
 	}
 
-	pub fn handle_message<T: Into<Message>>(&mut self, message: T) -> Result<Vec<FrontendMessage>, EditorError> {
-		self.dispatcher.handle_message(message).map(|_| {
-			let mut responses = Vec::new();
-			std::mem::swap(&mut responses, &mut self.dispatcher.responses);
-			responses
-		})
+	pub fn handle_message<T: Into<Message>>(&mut self, message: T) -> Vec<FrontendMessage> {
+		self.dispatcher.handle_message(message);
+
+		let mut responses = Vec::new();
+		std::mem::swap(&mut responses, &mut self.dispatcher.responses);
+
+		responses
+	}
+}
+
+impl Default for Editor {
+	fn default() -> Self {
+		Self::new()
 	}
 }
 
@@ -55,6 +58,7 @@ pub mod message_prelude {
 	pub use crate::document::{DocumentMessage, DocumentMessageDiscriminant};
 	pub use crate::document::{DocumentsMessage, DocumentsMessageDiscriminant};
 	pub use crate::document::{MovementMessage, MovementMessageDiscriminant};
+	pub use crate::document::{TransformLayerMessage, TransformLayerMessageDiscriminant};
 	pub use crate::frontend::{FrontendMessage, FrontendMessageDiscriminant};
 	pub use crate::global::{GlobalMessage, GlobalMessageDiscriminant};
 	pub use crate::input::{InputMapperMessage, InputMapperMessageDiscriminant, InputPreprocessorMessage, InputPreprocessorMessageDiscriminant};

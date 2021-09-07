@@ -32,6 +32,7 @@
 import { defineComponent, PropType } from "vue";
 
 import { comingSoon } from "@/utilities/errors";
+import { panicProxy } from "@/utilities/panic-proxy";
 import { WidgetRow, SeparatorType, IconButtonWidget } from "@/components/widgets/widgets";
 
 import Separator from "@/components/widgets/separators/Separator.vue";
@@ -39,7 +40,7 @@ import IconButton from "@/components/widgets/buttons/IconButton.vue";
 import PopoverButton from "@/components/widgets/buttons/PopoverButton.vue";
 import NumberInput from "@/components/widgets/inputs/NumberInput.vue";
 
-const wasm = import("@/../wasm/pkg");
+const wasm = import("@/../wasm/pkg").then(panicProxy);
 
 export default defineComponent({
 	props: {

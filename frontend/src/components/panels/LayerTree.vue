@@ -182,6 +182,7 @@
 import { defineComponent } from "vue";
 
 import { ResponseType, registerResponseHandler, Response, BlendMode, ExpandFolder, CollapseFolder, UpdateLayer, LayerPanelEntry, LayerType } from "@/utilities/response-handler";
+import { panicProxy } from "@/utilities/panic-proxy";
 import { SeparatorType } from "@/components/widgets/widgets";
 
 import LayoutRow from "@/components/layout/LayoutRow.vue";
@@ -195,7 +196,7 @@ import IconLabel from "@/components/widgets/labels/IconLabel.vue";
 import DropdownInput from "@/components/widgets/inputs/DropdownInput.vue";
 import { SectionsOfMenuListEntries } from "@/components/widgets/floating-menus/MenuList.vue";
 
-const wasm = import("@/../wasm/pkg");
+const wasm = import("@/../wasm/pkg").then(panicProxy);
 
 const blendModeEntries: SectionsOfMenuListEntries = [
 	[{ label: "Normal", value: BlendMode.Normal }],

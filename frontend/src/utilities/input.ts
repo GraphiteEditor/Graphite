@@ -1,7 +1,8 @@
 import { toggleFullscreen } from "@/utilities/fullscreen";
 import { dialogIsVisible, dismissDialog, submitDialog } from "@/utilities/dialog";
+import { panicProxy } from "@/utilities/panic-proxy";
 
-const wasm = import("@/../wasm/pkg");
+const wasm = import("@/../wasm/pkg").then(panicProxy);
 
 let viewportMouseInteractionOngoing = false;
 
@@ -45,10 +46,12 @@ export async function onKeyDown(e: KeyboardEvent) {
 
 	if (dialogIsVisible()) {
 		if (e.key === "Escape") dismissDialog();
-		if (e.key === "Enter") submitDialog();
+		if (e.key === "Enter") {
+			submitDialog();
 
-		// Prevent the Enter key from acting like a click on the last clicked button, which might reopen the dialog
-		e.preventDefault();
+			// Prevent the Enter key from acting like a click on the last clicked button, which might reopen the dialog
+			e.preventDefault();
+		}
 	}
 }
 

@@ -1,7 +1,7 @@
 <template>
 	<div class="menu-bar-input">
 		<div class="entry-container">
-			<div @click="handleLogoClick(entry)" class="entry">
+			<div @click="visitWebsite('https://www.graphite.design')" class="entry">
 				<IconLabel :icon="'GraphiteLogo'" />
 			</div>
 		</div>
@@ -54,13 +54,14 @@
 import { defineComponent } from "vue";
 
 import { comingSoon } from "@/utilities/errors";
+import { panicProxy } from "@/utilities/panic-proxy";
 
 import IconLabel from "@/components/widgets/labels/IconLabel.vue";
 import { ApplicationPlatform } from "@/components/window/MainWindow.vue";
 import MenuList, { MenuListEntry, MenuListEntries } from "@/components/widgets/floating-menus/MenuList.vue";
 import { MenuDirection } from "@/components/widgets/floating-menus/FloatingMenu.vue";
 
-const wasm = import("@/../wasm/pkg");
+const wasm = import("@/../wasm/pkg").then(panicProxy);
 
 const menuEntries: MenuListEntries = [
 	{
@@ -151,7 +152,16 @@ const menuEntries: MenuListEntries = [
 	{
 		label: "Help",
 		ref: undefined,
-		children: [[{ label: "Menu entries coming soon" }]],
+		children: [
+			[
+				{ label: "Report a Bug", action: () => window.open("https://github.com/GraphiteEditor/Graphite/issues/new", "_blank") },
+				{ label: "Visit on GitHub", action: () => window.open("https://github.com/GraphiteEditor/Graphite", "_blank") },
+			],
+			[
+				{ label: "Graphite License", action: () => window.open("https://raw.githubusercontent.com/GraphiteEditor/Graphite/master/LICENSE.txt", "_blank") },
+				{ label: "Third-Party Licenses", action: () => window.open("/third-party-licenses.txt", "_blank") },
+			],
+		],
 	},
 ];
 
@@ -164,8 +174,9 @@ export default defineComponent({
 			if (menuEntry.ref) menuEntry.ref.setOpen();
 			else throw new Error("The menu bar floating menu has no associated ref");
 		},
-		handleLogoClick() {
-			window.open("https://www.graphite.design", "_blank");
+		visitWebsite(url: string) {
+			// This method is required because `window` isn't accessible from the Vue component HTML
+			window.open(url, "_blank");
 		},
 	},
 	data() {

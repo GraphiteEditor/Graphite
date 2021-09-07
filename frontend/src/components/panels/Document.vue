@@ -227,6 +227,7 @@ import { defineComponent } from "vue";
 import { ResponseType, registerResponseHandler, Response, UpdateCanvas, UpdateScrollbars, SetActiveTool, SetCanvasZoom, SetCanvasRotation } from "@/utilities/response-handler";
 import { SeparatorDirection, SeparatorType } from "@/components/widgets/widgets";
 import { comingSoon } from "@/utilities/errors";
+import { panicProxy } from "@/utilities/panic-proxy";
 
 import LayoutRow from "@/components/layout/LayoutRow.vue";
 import LayoutCol from "@/components/layout/LayoutCol.vue";
@@ -245,7 +246,7 @@ import OptionalInput from "@/components/widgets/inputs/OptionalInput.vue";
 import ToolOptions from "@/components/widgets/options/ToolOptions.vue";
 import { SectionsOfMenuListEntries } from "@/components/widgets/floating-menus/MenuList.vue";
 
-const wasm = import("@/../wasm/pkg");
+const wasm = import("@/../wasm/pkg").then(panicProxy);
 
 const documentModeEntries: SectionsOfMenuListEntries = [
 	[

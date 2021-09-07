@@ -4,10 +4,10 @@
 	"description": "Graphite's web app frontend. Planned to be replaced by a native GUI written in Rust in the future.",
 	"private": true,
 	"scripts": {
-		"serve": "vue-cli-service serve || npm install && vue-cli-service serve",
-		"build": "vue-cli-service build || npm install && vue-cli-service build",
+		"serve": "vue-cli-service serve || (npm install && vue-cli-service serve)",
+		"build": "cd .. && cargo install cargo-about && cargo about generate about.hbs > frontend/rust-licenses.js && cd frontend && (vue-cli-service build || (npm install && vue-cli-service build))",
 		"lint": "vue-cli-service lint || (npm install && vue-cli-service lint)",
-		"lint-no-fix": "vue-cli-service lint --no-fix || (echo 'Please run `npm run lint`. If the linter execution fails, try running `npm install` first.' && false)"
+		"lint-no-fix": "vue-cli-service lint --no-fix || (echo 'There were lint errors. Please run `npm run lint` to fix auto-them. If the linter execution fails, try running `npm install` first.' && false)"
 	},
 	"repository": {
 		"type": "git",
@@ -17,7 +17,7 @@
 	"license": "Apache-2.0",
 	"homepage": "https://www.graphite.design",
 	"dependencies": {
-		"vue": "^3.2.6"
+		"vue": "^3.2.9"
 	},
 	"devDependencies": {
 		"@typescript-eslint/eslint-plugin": "^2.33.0",
@@ -25,22 +25,23 @@
 		"@vue/cli-plugin-eslint": "^4.5.13",
 		"@vue/cli-plugin-typescript": "^4.5.13",
 		"@vue/cli-service": "^4.5.13",
-		"@vue/compiler-sfc": "^3.2.6",
+		"@vue/compiler-sfc": "^3.2.9",
 		"@vue/eslint-config-airbnb": "^5.0.2",
 		"@vue/eslint-config-typescript": "^5.0.2",
 		"@wasm-tool/wasm-pack-plugin": "^1.5.0",
 		"eslint": "^6.8.0",
 		"eslint-config-prettier": "^8.3.0",
-		"eslint-plugin-prettier-vue": "^3.1.0",
 		"eslint-plugin-import": "^2.24.2",
+		"eslint-plugin-prettier-vue": "^3.1.0",
 		"eslint-plugin-vue": "^7.17.0",
+		"license-checker-webpack-plugin": "^0.2.1",
 		"prettier": "^2.3.2",
-		"sass": "^1.38.1",
+		"sass": "^1.39.0",
 		"sass-loader": "^8.0.2",
 		"typescript": "^4.4.2",
 		"vue-loader": "^16.5.0",
 		"vue-svg-loader": "^0.17.0-beta.2",
 		"vue-template-compiler": "^2.6.14",
-		"wasm-pack": "~0.9.1"
+		"wasm-pack": "^0.10.1"
 	}
 }
