@@ -117,6 +117,49 @@ impl Document {
 			.unwrap_or_default()
 	}
 
+	fn serialize_structure(folder: &Folder, structure: &mut Vec<u64>, data: &mut Vec<LayerId>) {
+		let mut space = 0;
+		for (id, layer) in folder.layer_ids.iter().zip(folder.layers()) {
+			data.push(*id);
+			match layer.data {
+				LayerDataType::Shape(_) => space += 1,
+				LayerDataType::Folder(ref folder) => {
+					structure.push(space);
+					Document::serialize_structure(folder, structure, data);
+				}
+			}
+		}
+		structure.push(space | 1 << 63);
+	}
+
+	/// Serializes the layer structure into a compressed 1d structure
+	/// 4,2,1,-2-0,10,12,13,14,15 <- input data
+	/// l = 4 = structure.len() <- length of the structure section
+	/// structure = 2,1,-2,-0   <- structure section
+	/// data = 10,12,13,14,15   <- data section
+	///
+	/// the numbers in the structure block encode the indentation,
+	/// 2 mean read two element from the data section, then place a [
+	/// -x means read x elements from the date section an then insert a ]
+	///
+	/// 2     V 1  V -2  A -0 A
+	/// 10,12,  13, 14,15
+	/// 10,12,[ 13,[14,15]    ]
+	///
+	/// resulting layer panel:
+	/// 10
+	/// 12
+	/// [12,13]
+	/// [12,13,14]
+	/// [12,13,15]
+	pub fn serialize_root(&self) -> Vec<LayerId> {
+		let (mut structure, mut data) = (vec![0], Vec::new());
+		Document::serialize_structure(self.root.as_folder().unwrap(), &mut structure, &mut data);
+		structure[0] = structure.len() as u64 - 1;
+		structure.extend(data);
+		structure
+	}
+
 	/// Given a path to a layer, returns a vector of the indices in the layer tree
 	/// These indices can be used to order a list of layers
 	pub fn indices_for_path(&self, path: &[LayerId]) -> Result<Vec<usize>, DocumentError> {
