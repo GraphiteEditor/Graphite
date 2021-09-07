@@ -1,7 +1,7 @@
 <template>
 	<div class="menu-bar-input">
 		<div class="entry-container">
-			<div @click="() => window.open('https://www.graphite.design', '_blank')" class="entry">
+			<div @click="visitWebsite('https://www.graphite.design')" class="entry">
 				<IconLabel :icon="'GraphiteLogo'" />
 			</div>
 		</div>
@@ -173,6 +173,10 @@ export default defineComponent({
 		handleEntryClick(menuEntry: MenuListEntry) {
 			if (menuEntry.ref) menuEntry.ref.setOpen();
 			else throw new Error("The menu bar floating menu has no associated ref");
+		},
+		visitWebsite(url: string) {
+			// This method is required because `window` isn't accessible from the Vue component HTML
+			window.open(url, "_blank");
 		},
 	},
 	data() {
