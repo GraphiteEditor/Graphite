@@ -79,9 +79,9 @@ module.exports = {
 
 function formatThirdPartyLicenses(jsLicenses) {
 	// Remove the HTML character encoding caused by Handlebars
-	const licenses = rustLicenses.map((rustLicense) => ({
+	let licenses = rustLicenses.map((rustLicense) => ({
 		licenseName: htmlDecode(rustLicense.licenseName),
-		licenseText: htmlDecode(rustLicense.licenseText),
+		licenseText: trimBlankLines(htmlDecode(rustLicense.licenseText)),
 		packages: rustLicense.packages.map((package) => ({
 			name: htmlDecode(package.name),
 			version: htmlDecode(package.version),
@@ -90,14 +90,32 @@ function formatThirdPartyLicenses(jsLicenses) {
 		})),
 	}));
 
+	// De-duplicate any licenses with the same text by merging their lists of packages
+	licenses.forEach((license, licenseIndex) => {
+		licenses.slice(0, licenseIndex).forEach((comparisonLicense) => {
+			if (license.licenseText === comparisonLicense.licenseText) {
+				license.packages.push(...comparisonLicense.packages);
+				comparisonLicense.packages = [];
+				// After emptying the packages, the redundant license with no packages will be removed in the next step's `filter()`
+			}
+		});
+	});
+
+	// Delete the internal Graphite crates, which are not third-party and belong elsewhere
+	licenses = licenses.filter((license) => {
+		license.packages = license.packages.filter((package) => !(package.repository && package.repository.includes("github.com/GraphiteEditor/Graphite")));
+		return license.packages.length > 0;
+	});
+
 	// Augment the imported Rust license list with the provided JS license list
 	jsLicenses.dependencies.forEach((jsLicense) => {
-		const { name, version, author, repository, licenseName, licenseText } = jsLicense;
+		const { name, version, author, repository, licenseName } = jsLicense;
+		const licenseText = trimBlankLines(jsLicense.licenseText);
 
 		// Remove the `git+` or `git://` prefix and `.git` suffix
 		const repo = repository ? repository.replace(/^.*(github.com\/.*?\/.*?)(?:.git)/, "https://$1") : repository;
 
-		const matchedLicense = licenses.find((license) => license.licenseName.trim() === licenseName.trim() && license.licenseText.trim() === licenseText.trim());
+		const matchedLicense = licenses.find((license) => trimBlankLines(license.licenseText) === licenseText);
 
 		const packages = { name, version, author, repository: repo };
 		if (matchedLicense) matchedLicense.packages.push(packages);
@@ -106,12 +124,13 @@ function formatThirdPartyLicenses(jsLicenses) {
 
 	// Sort the licenses, and the packages using each license, alphabetically
 	licenses.sort((a, b) => a.licenseName.localeCompare(b.licenseName));
+	licenses.sort((a, b) => a.licenseText.localeCompare(b.licenseText));
 	licenses.forEach((license) => {
 		license.packages.sort((a, b) => a.name.localeCompare(b.name));
 	});
 
 	// Generate the formatted text file
-	let formattedLicenseNotice = "THIRD-PARTY SOFTWARE LICENSE NOTICES\n\n";
+	let formattedLicenseNotice = "GRAPHITE THIRD-PARTY SOFTWARE LICENSE NOTICES\n\n";
 	if (debugMode) formattedLicenseNotice += "WARNING: Licenses for Rust packages are excluded in debug mode to improve performance — do not release without their inclusion!\n\n";
 
 	licenses.forEach((license) => {
@@ -120,12 +139,15 @@ function formatThirdPartyLicenses(jsLicenses) {
 			const { name, version, author, repository } = package;
 			packagesWithSameLicense += `${name} ${version}${author ? ` - ${author}` : ""}${repository ? ` - ${repository}` : ""}\n`;
 		});
+		packagesWithSameLicense = packagesWithSameLicense.trim();
+		const packagesLineLength = Math.max(...packagesWithSameLicense.split("\n").map((line) => line.length));
+
 		formattedLicenseNotice += `--------------------------------------------------------------------------------
 
-The following packages are licensed under the terms of the ${license.licenseName} license:
-
+The following packages are licensed under the terms of the ${license.licenseName} license as printed beneath:
+${"_".repeat(packagesLineLength)}
 ${packagesWithSameLicense}
-
+${"‾".repeat(packagesLineLength)}
 ${license.licenseText}
 
 `;
@@ -137,22 +159,22 @@ ${license.licenseText}
 	return formattedLicenseNotice;
 }
 
-const htmlEntities = {
-	nbsp: " ",
-	copy: "©",
-	reg: "®",
-	lt: "<",
-	gt: ">",
-	amp: "&",
-	apos: "'",
-	// eslint-disable-next-line quotes
-	quot: '"',
-};
+function htmlDecode(input) {
+	if (!input) return input;
 
-function htmlDecode(str) {
-	if (!str) return str;
+	const htmlEntities = {
+		nbsp: " ",
+		copy: "©",
+		reg: "®",
+		lt: "<",
+		gt: ">",
+		amp: "&",
+		apos: "'",
+		// eslint-disable-next-line quotes
+		quot: '"',
+	};
 
-	return str.replace(/&([^;]+);/g, (entity, entityCode) => {
+	return input.replace(/&([^;]+);/g, (entity, entityCode) => {
 		let match;
 
 		if (entityCode in htmlEntities) {
@@ -169,4 +191,17 @@ function htmlDecode(str) {
 		}
 		return entity;
 	});
+}
+
+function trimBlankLines(input) {
+	let result = input.replace(/\r/g, "");
+
+	while (result.charAt(0) === "\r" || result.charAt(0) === "\n") {
+		result = result.slice(1);
+	}
+	while (result.slice(-1) === "\r" || result.slice(-1) === "\n") {
+		result = result.slice(0, -1);
+	}
+
+	return result;
 }
