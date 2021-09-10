@@ -175,6 +175,7 @@ impl DocumentMessageHandler {
 			let shape = match &self.document.layer(path_to_shape).ok()?.data {
 				LayerDataType::Shape(shape) => Some(shape),
 				LayerDataType::Folder(_) => None,
+				LayerDataType::Text(_) => None, // TODO Add text to bezier path
 			}?;
 			let path = shape.path.clone();
 

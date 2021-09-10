@@ -14,6 +14,12 @@ use serde::{Deserialize, Serialize};
 #[repr(C)]
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 pub enum Operation {
+	AddText {
+		path: Vec<LayerId>,
+		insert_index: isize,
+		transform: [f64; 6],
+		style: style::PathStyle,
+	},
 	AddEllipse {
 		path: Vec<LayerId>,
 		insert_index: isize,

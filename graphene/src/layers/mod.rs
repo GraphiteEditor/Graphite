@@ -10,6 +10,10 @@ pub mod simple_shape;
 pub use simple_shape::Shape;
 
 pub mod folder;
+
+pub mod text_layer;
+pub use text_layer::Text;
+
 use crate::LayerId;
 use crate::{DocumentError, Quad};
 pub use folder::Folder;
@@ -27,6 +31,7 @@ pub trait LayerData {
 pub enum LayerDataType {
 	Folder(Folder),
 	Shape(Shape),
+	Text(Text),
 }
 
 impl LayerDataType {
@@ -34,6 +39,7 @@ impl LayerDataType {
 		match self {
 			LayerDataType::Shape(s) => s,
 			LayerDataType::Folder(f) => f,
+			LayerDataType::Text(t) => t,
 		}
 	}
 
@@ -41,6 +47,7 @@ impl LayerDataType {
 		match self {
 			LayerDataType::Shape(s) => s,
 			LayerDataType::Folder(f) => f,
+			LayerDataType::Text(t) => t,
 		}
 	}
 }

@@ -133,6 +133,7 @@ pub struct LayerPanelEntry {
 pub enum LayerType {
 	Folder,
 	Shape,
+	Text,
 }
 
 impl fmt::Display for LayerType {
@@ -140,6 +141,7 @@ impl fmt::Display for LayerType {
 		let name = match self {
 			LayerType::Folder => "Folder",
 			LayerType::Shape => "Shape",
+			LayerType::Text => "Text",
 		};
 
 		formatter.write_str(name)
@@ -152,6 +154,7 @@ impl From<&LayerDataType> for LayerType {
 		match data {
 			Folder(_) => LayerType::Folder,
 			Shape(_) => LayerType::Shape,
+			Text(_) => LayerType::Text,
 		}
 	}
 }

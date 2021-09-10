@@ -152,6 +152,8 @@ impl Default for Mapping {
 			entry! {action=SelectMessage::DragStop, key_up=Lmb},
 			entry! {action=SelectMessage::Abort, key_down=Rmb},
 			entry! {action=SelectMessage::Abort, key_down=KeyEscape},
+			// Text
+			entry! {action=TextMessage::PlaceText, key_down=Lmb},
 			// Eyedropper
 			entry! {action=EyedropperMessage::LeftMouseDown, key_down=Lmb},
 			entry! {action=EyedropperMessage::RightMouseDown, key_down=Rmb},
@@ -191,6 +193,7 @@ impl Default for Mapping {
 			// Tool Actions
 			entry! {action=ToolMessage::ActivateTool(ToolType::Select), key_down=KeyV},
 			entry! {action=ToolMessage::ActivateTool(ToolType::Eyedropper), key_down=KeyI},
+			entry! {action=ToolMessage::ActivateTool(ToolType::Text), key_down=KeyT},
 			entry! {action=ToolMessage::ActivateTool(ToolType::Fill), key_down=KeyF},
 			entry! {action=ToolMessage::ActivateTool(ToolType::Path), key_down=KeyA},
 			entry! {action=ToolMessage::ActivateTool(ToolType::Pen), key_down=KeyP},

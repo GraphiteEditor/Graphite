@@ -86,7 +86,7 @@ export async function onMouseDown(e: MouseEvent) {
 		e.stopPropagation();
 	}
 
-	if (inCanvas) viewportMouseInteractionOngoing = true;
+	if (inCanvas && target.nodeName !== "TEXTAREA") viewportMouseInteractionOngoing = true;
 
 	if (viewportMouseInteractionOngoing) {
 		const modifiers = makeModifiersBitfield(e);

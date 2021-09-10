@@ -9,6 +9,8 @@ use crate::{
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 
+use super::tools::text::TextMessage;
+
 #[impl_message(Message, Tool)]
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub enum ToolMessage {
@@ -20,6 +22,8 @@ pub enum ToolMessage {
 	ResetColors,
 	NoOp,
 	SetToolOptions(ToolType, ToolOptions),
+	#[child]
+	Text(TextMessage),
 	#[child]
 	Fill(FillMessage),
 	#[child]
@@ -167,6 +171,7 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, &InputPreprocessor)> 
 fn message_to_tool_type(message: &ToolMessage) -> ToolType {
 	use ToolMessage::*;
 	let tool_type = match message {
+		Text(_) => ToolType::Text,
 		Fill(_) => ToolType::Fill,
 		Rectangle(_) => ToolType::Rectangle,
 		Ellipse(_) => ToolType::Ellipse,

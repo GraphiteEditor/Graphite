@@ -76,7 +76,7 @@
 
 					<Separator :type="SeparatorType.Section" :direction="SeparatorDirection.Vertical" />
 
-					<ShelfItemInput icon="ParametricTextTool" title="Text Tool (T)" :active="activeTool === 'Text'" :action="() => comingSoon(153) && selectTool('Text')" />
+					<ShelfItemInput icon="ParametricTextTool" title="Text Tool (T)" :active="activeTool === 'Text'" :action="() => selectTool('Text')" />
 					<ShelfItemInput icon="ParametricFillTool" title="Fill Tool (F)" :active="activeTool === 'Fill'" :action="() => selectTool('Fill')" />
 					<ShelfItemInput icon="ParametricGradientTool" title="Gradient Tool (H)" :active="activeTool === 'Gradient'" :action="() => comingSoon() && selectTool('Gradient')" />
 
@@ -214,6 +214,19 @@
 					// Fallback values if JS hasn't set these to integers yet
 					width: 100%;
 					height: 100%;
+
+					// Style editable text boxes
+					textarea {
+						color: black;
+						border: none;
+						outline: none;
+
+						-webkit-box-shadow: none;
+						-moz-box-shadow: none;
+						box-shadow: none;
+
+						resize: none; /*remove the resize handle on the bottom right*/
+					}
 				}
 			}
 		}

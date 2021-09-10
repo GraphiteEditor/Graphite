@@ -92,6 +92,7 @@ impl Default for ToolFsmState {
 					Line => line::Line,
 					Shape => shape::Shape,
 					Ellipse => ellipse::Ellipse,
+					Text => text::Text,
 					Fill => fill::Fill,
 				},
 			},

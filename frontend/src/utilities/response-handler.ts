@@ -383,6 +383,7 @@ export enum LayerType {
 	Line = "Line",
 	PolyLine = "PolyLine",
 	Ellipse = "Ellipse",
+	Text = "Text",
 }
 function newLayerType(input: any): LayerType {
 	switch (input) {
@@ -400,6 +401,8 @@ function newLayerType(input: any): LayerType {
 			return LayerType.PolyLine;
 		case "Ellipse":
 			return LayerType.Ellipse;
+		case "Text":
+			return LayerType.Text;
 		default:
 			throw Error(`Received invalid input as an enum variant for LayerType: ${input}`);
 	}

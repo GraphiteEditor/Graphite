@@ -6,6 +6,7 @@ pub mod pen;
 pub mod rectangle;
 pub mod resize;
 pub mod shape;
+pub mod text;
 
 // not implemented yet
 pub mod crop;

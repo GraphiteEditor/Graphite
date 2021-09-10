@@ -44,7 +44,8 @@
 						<div class="layer-thumbnail" v-html="layer.thumbnail"></div>
 						<div class="layer-type-icon">
 							<IconLabel v-if="layer.layer_type === LayerType.Folder" :icon="'NodeTypeFolder'" title="Folder" />
-							<IconLabel v-else :icon="'NodeTypePath'" title="Path" />
+							<IconLabel v-if="layer.layer_type === LayerType.Shape" :icon="'NodeTypePath'" title="Path" />
+							<IconLabel v-if="layer.layer_type === LayerType.Text" :icon="'NodeTypeText'" title="Text" />
 						</div>
 						<div class="layer-name">
 							<span>{{ layer.name }}</span>

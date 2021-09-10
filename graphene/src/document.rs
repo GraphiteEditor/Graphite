@@ -7,7 +7,7 @@ use glam::{DAffine2, DVec2};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-	layers::{self, Folder, Layer, LayerData, LayerDataType, Shape},
+	layers::{self, Folder, Layer, LayerData, LayerDataType, Shape, Text},
 	DocumentError, DocumentResponse, LayerId, Operation, Quad,
 };
 
@@ -105,6 +105,7 @@ impl Document {
 		Ok(match self.layer(common_prefix_of_path)?.data {
 			LayerDataType::Folder(_) => common_prefix_of_path,
 			LayerDataType::Shape(_) => &common_prefix_of_path[..common_prefix_of_path.len() - 1],
+			LayerDataType::Text(_) => &common_prefix_of_path[..common_prefix_of_path.len() - 1],
 		})
 	}
 
@@ -127,6 +128,7 @@ impl Document {
 					structure.push(space);
 					Document::serialize_structure(folder, structure, data);
 				}
+				LayerDataType::Text(_) => space += 1,
 			}
 		}
 		structure.push(space | 1 << 63);
@@ -356,6 +358,13 @@ impl Document {
 		use DocumentResponse::*;
 
 		let responses = match &operation {
+			Operation::AddText { path, insert_index, transform, style } => {
+				let layer = Layer::new(LayerDataType::Text(Text::from_string("hello".to_string(), *style)), *transform);
+
+				self.set_layer(path, layer, *insert_index)?;
+
+				Some([vec![DocumentChanged, CreatedLayer { path: path.clone() }], update_thumbnails_upstream(path)].concat())
+			}
 			Operation::AddEllipse { path, insert_index, transform, style } => {
 				let layer = Layer::new(LayerDataType::Shape(Shape::ellipse(*style)), *transform);
 
@@ -510,6 +519,7 @@ impl Document {
 						shape.path = bez_path.clone();
 					}
 					LayerDataType::Folder(_) => (),
+					LayerDataType::Text(text) => todo!(),
 				}
 				Some(vec![DocumentChanged, LayerChanged { path: path.clone() }])
 			}
