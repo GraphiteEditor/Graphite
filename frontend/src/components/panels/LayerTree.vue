@@ -110,18 +110,18 @@
 					position: absolute;
 					width: 0;
 					height: 0;
-					top: 2px;
-					left: 3px;
+					top: 3px;
+					left: 4px;
 					border-style: solid;
-					border-width: 0 3px 6px 3px;
-					border-color: transparent transparent var(--color-2-mildblack) transparent;
+					border-width: 3px 0 3px 6px;
+					border-color: transparent transparent transparent var(--color-2-mildblack);
 				}
 
 				&.expanded::after {
-					top: 3px;
-					left: 4px;
-					border-width: 3px 0 3px 6px;
-					border-color: transparent transparent transparent var(--color-2-mildblack);
+					top: 4px;
+					left: 3px;
+					border-width: 6px 3px 0 3px;
+					border-color: var(--color-2-mildblack) transparent transparent transparent;
 				}
 			}
 
