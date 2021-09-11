@@ -142,9 +142,9 @@ impl DocumentMessageHandler {
 	pub fn build_message_display_folder_tree_structure(&mut self) -> Message {
 		// TODO: TESTING ONLY, DO NOT LEAK!!!!
 		let array_something = self.graphene_document.serialize_root().leak();
-		log::debug!("Foo: {:?}", array_something);
+		//log::debug!("Foo: {:?}", array_something);
 		let structure_ptr_to_vec_u64 = array_something.as_ptr() as usize;
-		log::debug!("Bar: {:?}", structure_ptr_to_vec_u64);
+		//log::debug!("Bar: {:?}", structure_ptr_to_vec_u64);
 
 		FrontendMessage::DisplayFolderTreeStructure { structure_ptr_to_vec_u64 }.into()
 	}
