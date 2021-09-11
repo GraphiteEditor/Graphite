@@ -452,10 +452,24 @@ impl Document {
 				Some([vec![DocumentChanged, CreatedLayer { path: path.clone() }], update_thumbnails_upstream(path)].concat())
 			}
 			Operation::DeleteLayer { path } => {
+				fn aggregate_deletions(folder: &Folder, path: &mut Vec<LayerId>, responses: &mut Vec<DocumentResponse>) {
+					for (id, layer) in folder.layer_ids.iter().zip(folder.layers()) {
+						path.push(*id);
+						responses.push(DocumentResponse::DeletedLayer { path: path.clone() });
+						if let LayerDataType::Folder(f) = &layer.data {
+							aggregate_deletions(f, path, responses);
+						}
+						path.pop();
+					}
+				}
+				let mut responses = Vec::new();
+				if let Ok(folder) = self.folder(path) {
+					aggregate_deletions(folder, &mut path.clone(), &mut responses)
+				};
 				self.delete(path)?;
 
 				let (folder, _) = split_path(path.as_slice()).unwrap_or_else(|_| (&[], 0));
-				let mut responses = vec![DocumentChanged, DeletedLayer { path: path.clone() }, FolderChanged { path: folder.to_vec() }];
+				responses.extend([DocumentChanged, DeletedLayer { path: path.clone() }, FolderChanged { path: folder.to_vec() }]);
 				responses.extend(update_thumbnails_upstream(folder));
 				Some(responses)
 			}
