@@ -117,55 +117,6 @@ impl Document {
 			.unwrap_or_default()
 	}
 
-	fn serialize_structure(folder: &Folder, structure: &mut Vec<u64>, data: &mut Vec<LayerId>) {
-		let mut space = 0;
-		for (id, layer) in folder.layer_ids.iter().zip(folder.layers()) {
-			data.push(*id);
-			space += 1;
-			match layer.data {
-				LayerDataType::Shape(_) => (),
-				LayerDataType::Folder(ref folder) => {
-					structure.push(space);
-					Document::serialize_structure(folder, structure, data);
-					space = 0;
-				}
-			}
-		}
-		structure.push(space | 1 << 63);
-	}
-
-	/// Serializes the layer structure into a compressed 1d structure
-	///
-	/// It is a string of numbers broken into three sections:
-	/// (4),(2,1,-2,-0),(16533113728871998040,3427872634365736244,18115028555707261608,15878401910454357952,449479075714955186) <- Example encoded data
-	/// L = 4 = structure.len()                                                                                                 <- First value in the encoding: L, the length of the structure section
-	/// structure = 2,1,-2,-0                                                                                                   <- Subsequent L values: structure section
-	/// data = 16533113728871998040,3427872634365736244,18115028555707261608,15878401910454357952,449479075714955186            <- Remaining values: data section (layer IDs)
-	///
-	/// The data section lists the layer IDs for all folders/layers in the tree as read from top to bottom.
-	/// The structure section lists signed numbers. The sign indicates a folder indentation change (+ is down a level, - is up a level).
-	/// the numbers in the structure block encode the indentation,
-	/// 2 mean read two element from the data section, then place a [
-	/// -x means read x elements from the data section and then insert a ]
-	///
-	/// 2     V 1  V -2  A -0 A
-	/// 16533113728871998040,3427872634365736244,  18115028555707261608, 15878401910454357952,449479075714955186
-	/// 16533113728871998040,3427872634365736244,[ 18115028555707261608,[15878401910454357952,449479075714955186]    ]
-	///
-	/// resulting layer panel:
-	/// 16533113728871998040
-	/// 3427872634365736244
-	/// [3427872634365736244,18115028555707261608]
-	/// [3427872634365736244,18115028555707261608,15878401910454357952]
-	/// [3427872634365736244,18115028555707261608,449479075714955186]
-	pub fn serialize_root(&self) -> Vec<u64> {
-		let (mut structure, mut data) = (vec![0], Vec::new());
-		Document::serialize_structure(self.root.as_folder().unwrap(), &mut structure, &mut data);
-		structure[0] = structure.len() as u64 - 1;
-		structure.extend(data);
-		structure
-	}
-
 	/// Given a path to a layer, returns a vector of the indices in the layer tree
 	/// These indices can be used to order a list of layers
 	pub fn indices_for_path(&self, path: &[LayerId]) -> Result<Vec<usize>, DocumentError> {
