@@ -203,7 +203,6 @@ impl DocumentMessageHandler {
 		self.layer_data.iter().filter_map(|(path, data)| data.selected.then(|| path.as_slice()))
 	}
 
-
 	fn serialize_structure(&self, folder: &Folder, structure: &mut Vec<u64>, data: &mut Vec<LayerId>, path: &mut Vec<LayerId>) {
 		let mut space = 0;
 		for (id, layer) in folder.layer_ids.iter().zip(folder.layers()) {
@@ -212,13 +211,13 @@ impl DocumentMessageHandler {
 			match layer.data {
 				LayerDataType::Shape(_) => (),
 				LayerDataType::Folder(ref folder) => {
-                    path.push(*id);
-                    if self.layerdata(path).expanded {
-                        structure.push(space);
-                        self.serialize_structure(folder, structure, data, path);
-                        space = 0;
-                    }
-                    path.pop();
+					path.push(*id);
+					if self.layerdata(path).expanded {
+						structure.push(space);
+						self.serialize_structure(folder, structure, data, path);
+						space = 0;
+					}
+					path.pop();
 				}
 			}
 		}
@@ -256,7 +255,6 @@ impl DocumentMessageHandler {
 		structure.extend(data);
 		structure
 	}
-
 
 	/// Returns the paths to all layers in order, optionally including only selected or non-selected layers.
 	fn layers_sorted(&self, selected: Option<bool>) -> Vec<Vec<LayerId>> {
@@ -510,8 +508,8 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			}
 			ToggleLayerExpansion(path) => {
 				self.layer_data(&path).expanded ^= true;
-                responses.push_back(DocumentStructureChanged.into());
-                responses.push_back(LayerChanged(path).into())
+				responses.push_back(DocumentStructureChanged.into());
+				responses.push_back(LayerChanged(path).into())
 			}
 			SelectionChanged => {
 				// TODO: Hoist this duplicated code into wider system
@@ -605,6 +603,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 							DocumentResponse::LayerChanged { path } => responses.push_back(LayerChanged(path).into()),
 							DocumentResponse::CreatedLayer { path } => {
 								self.layer_data.insert(path.clone(), LayerData::new(false));
+								responses.push_back(LayerChanged(path.clone()).into());
 								if !self.graphene_document.layer(&path).unwrap().overlay {
 									responses.push_back(SetSelectedLayers(vec![path]).into())
 								}

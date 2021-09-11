@@ -429,8 +429,22 @@ impl Document {
 				let id = folder.add_layer(layer.clone(), None, *insert_index).ok_or(DocumentError::IndexOutOfBounds)?;
 				let full_path = [path.clone(), vec![id]].concat();
 				self.mark_as_dirty(&full_path)?;
+				fn aggregate_insertions(folder: &Folder, path: &mut Vec<LayerId>, responses: &mut Vec<DocumentResponse>) {
+					for (id, layer) in folder.layer_ids.iter().zip(folder.layers()) {
+						path.push(*id);
+						responses.push(DocumentResponse::CreatedLayer { path: path.clone() });
+						if let LayerDataType::Folder(f) = &layer.data {
+							aggregate_insertions(f, path, responses);
+						}
+						path.pop();
+					}
+				}
+				let mut responses = Vec::new();
+				if let Ok(folder) = self.folder(&full_path) {
+					aggregate_insertions(folder, &mut full_path.clone(), &mut responses)
+				};
 
-				let mut responses = vec![DocumentChanged, CreatedLayer { path: full_path }, FolderChanged { path: path.clone() }];
+				responses.extend([DocumentChanged, CreatedLayer { path: full_path }, FolderChanged { path: path.clone() }]);
 				responses.extend(update_thumbnails_upstream(path));
 				Some(responses)
 			}
