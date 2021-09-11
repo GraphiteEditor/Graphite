@@ -141,17 +141,12 @@ impl From<DocumentOperation> for Message {
 }
 
 impl DocumentMessageHandler {
-	fn clear_selection(&mut self) {
-		self.layer_data.values_mut().for_each(|layer_data| layer_data.selected = false);
-	}
-
 	fn select_layer(&mut self, path: &[LayerId]) -> Option<Message> {
 		if self.graphene_document.layer(path).ok()?.overlay {
 			return None;
 		}
 		self.layer_data(path).selected = true;
 		let data = self.layer_panel_entry(path.to_vec()).ok()?;
-		// TODO: Add deduplication
 		(!path.is_empty()).then(|| FrontendMessage::UpdateLayer { path: path.to_vec().into(), data }.into())
 	}
 
@@ -489,7 +484,11 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				}
 			}
 			SetSelectedLayers(paths) => {
-				self.clear_selection();
+				self.layer_data.iter_mut().filter(|(_, layer_data)| layer_data.selected).for_each(|(path, layer_data)| {
+					layer_data.selected = false;
+					responses.push_back(LayerChanged(path.clone()).into())
+				});
+
 				responses.push_front(AddSelectedLayers(paths).into());
 			}
 			AddSelectedLayers(paths) => {
