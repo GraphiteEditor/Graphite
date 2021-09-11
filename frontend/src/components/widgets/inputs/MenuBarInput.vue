@@ -161,6 +161,7 @@ const menuEntries: MenuListEntries = [
 				{ label: "Graphite License", action: () => window.open("https://raw.githubusercontent.com/GraphiteEditor/Graphite/master/LICENSE.txt", "_blank") },
 				{ label: "Third-Party Licenses", action: () => window.open("/third-party-licenses.txt", "_blank") },
 			],
+			[{ label: "Debug: Panic (DANGER)", action: async () => (await wasm).intentional_panic() }],
 		],
 	},
 ];
