@@ -242,7 +242,6 @@ export interface DisplayFolderTreeStructure {
 }
 function newDisplayFolderTreeStructure(input: any): DisplayFolderTreeStructure {
 	const { ptr, len } = input.data_buffer;
-	console.log(ptr, len);
 	const wasmMemoryBuffer = (window as any).wasmMemory().buffer;
 
 	// Decode the folder structure encoding

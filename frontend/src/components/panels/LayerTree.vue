@@ -16,7 +16,7 @@
 		</LayoutRow>
 		<LayoutRow :class="'layer-tree scrollable-y'">
 			<LayoutCol :class="'list'" @click="deselectAllLayers">
-				<div class="layer-row" v-for="(layer, index) in layers" :key="layer.path">
+				<div class="layer-row" v-for="layer in layers" :key="layer.path">
 					<div class="layer-visibility">
 						<IconButton
 							:action="(e) => (toggleLayerVisibility(layer.path), e.stopPropagation())"
@@ -394,20 +394,19 @@ export default defineComponent({
 			const expandData = responseData as DisplayFolderTreeStructure;
 			if (!expandData) return;
 
-			let path = [] as Array<bigint>;
+			const path = [] as Array<bigint>;
 			this.layers = [] as Array<LayerPanelEntry>;
 			function recurse(folder: DisplayFolderTreeStructure, layers: Array<LayerPanelEntry>, cache: Map<string, LayerPanelEntry>) {
 				folder.children.forEach((item) => {
-					//TODO: fix toString
+					// TODO: fix toString
 					path.push(BigInt(item.layerId.toString()));
-					let mapping = cache.get(path.toString());
+					const mapping = cache.get(path.toString());
 					if (mapping) layers.push(mapping);
 					if (item.children.length > 1) recurse(item, layers, cache);
 					path.pop();
 				});
 			}
 			recurse(expandData, this.layers, this.layerCache);
-
 		});
 
 		registerResponseHandler(ResponseType.UpdateLayer, (responseData) => {
@@ -416,7 +415,9 @@ export default defineComponent({
 				const responsePath = updateData.path;
 				const responseLayer = updateData.data;
 
-				this.layerCache.set(responsePath.toString(), responseLayer);
+				const layer = this.layerCache.get(responsePath.toString());
+				if (layer) Object.assign(this.layerCache.get(responsePath.toString()), responseLayer);
+				else this.layerCache.set(responsePath.toString(), responseLayer);
 				this.setBlendModeForSelectedLayers();
 				this.setOpacityForSelectedLayers();
 			}

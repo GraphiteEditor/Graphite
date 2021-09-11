@@ -125,7 +125,7 @@ pub struct RawBuffer(Vec<u8>);
 
 impl From<Vec<u64>> for RawBuffer {
 	fn from(iter: Vec<u64>) -> Self {
-        // https://github.com/rust-lang/rust-clippy/issues/4484
+		// https://github.com/rust-lang/rust-clippy/issues/4484
 		let v_from_raw: Vec<u8> = unsafe {
 			// prepare for an auto-forget of the initial vec:
 			let v_orig: &mut Vec<_> = &mut *std::mem::ManuallyDrop::new(iter);

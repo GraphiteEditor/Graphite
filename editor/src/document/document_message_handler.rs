@@ -70,9 +70,7 @@ impl DocumentsMessageHandler {
 		name
 	}
 
-	fn load_document(&mut self, mut new_document: DocumentMessageHandler, responses: &mut VecDeque<Message>) {
-		let display_folder_tree_structure_message = new_document.build_message_display_folder_tree_structure();
-
+	fn load_document(&mut self, new_document: DocumentMessageHandler, responses: &mut VecDeque<Message>) {
 		self.active_document_index = self.documents.len();
 		self.documents.push(new_document);
 
@@ -80,8 +78,12 @@ impl DocumentsMessageHandler {
 		let open_documents = self.documents.iter().map(|doc| doc.name.clone()).collect();
 		responses.push_back(FrontendMessage::UpdateOpenDocumentsList { open_documents }.into());
 
-		responses.push_back(display_folder_tree_structure_message);
 		responses.push_back(DocumentsMessage::SelectDocument(self.active_document_index).into());
+		responses.push_back(DocumentMessage::RenderDocument.into());
+		responses.push_back(DocumentMessage::DocumentStructureChanged.into());
+		for layer in self.active_document().layer_data.keys() {
+			responses.push_back(DocumentMessage::LayerChanged(layer.clone()).into());
+		}
 	}
 }
 
@@ -111,7 +113,10 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 					.into(),
 				);
 				responses.push_back(RenderDocument.into());
-				responses.extend(self.active_document_mut().handle_folder_changed(vec![]));
+				responses.push_back(DocumentMessage::DocumentStructureChanged.into());
+				for layer in self.active_document().layer_data.keys() {
+					responses.push_back(DocumentMessage::LayerChanged(layer.clone()).into());
+				}
 			}
 			CloseActiveDocumentWithConfirmation => {
 				responses.push_back(
@@ -152,7 +157,7 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 						self.active_document_index -= 1;
 					}
 
-					responses.push_back(self.active_document_mut().build_message_display_folder_tree_structure());
+					responses.push_back(DocumentMessage::DocumentStructureChanged.into());
 					responses.push_back(
 						FrontendMessage::SetActiveDocument {
 							document_index: self.active_document_index,

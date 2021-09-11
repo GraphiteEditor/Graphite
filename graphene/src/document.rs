@@ -161,8 +161,6 @@ impl Document {
 	pub fn serialize_root(&self) -> Vec<u64> {
 		let (mut structure, mut data) = (vec![0], Vec::new());
 		Document::serialize_structure(self.root.as_folder().unwrap(), &mut structure, &mut data);
-		let s: Vec<_> = structure.iter().skip(1).map(|x| (x >> 63, x << 1 >> 1)).collect();
-		log::debug!("structure: {:?}, data: {:?}", s, data);
 		structure[0] = structure.len() as u64 - 1;
 		structure.extend(data);
 		structure

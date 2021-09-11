@@ -104,6 +104,8 @@ pub enum DocumentMessage {
 	FlipSelectedLayers(FlipAxis),
 	ToggleLayerExpansion(Vec<LayerId>),
 	FolderChanged(Vec<LayerId>),
+	LayerChanged(Vec<LayerId>),
+	DocumentStructureChanged,
 	StartTransaction,
 	RollbackTransaction,
 	GroupSelectedLayers,
@@ -139,19 +141,6 @@ impl From<DocumentOperation> for Message {
 }
 
 impl DocumentMessageHandler {
-	pub fn build_message_display_folder_tree_structure(&mut self) -> Message {
-		// TODO: TESTING ONLY, DO NOT LEAK!!!!
-		let data_buffer: RawBuffer = self.graphene_document.serialize_root().into();
-		//log::debug!("Foo: {:?}", array_something);
-
-		FrontendMessage::DisplayFolderTreeStructure { data_buffer }.into()
-	}
-
-	pub fn handle_folder_changed(&mut self, path: Vec<LayerId>) -> Option<Message> {
-		let _ = self.graphene_document.render_root();
-		self.layer_data(&path).expanded.then(|| self.build_message_display_folder_tree_structure())
-	}
-
 	fn clear_selection(&mut self) {
 		self.layer_data.values_mut().for_each(|layer_data| layer_data.selected = false);
 	}
@@ -382,11 +371,11 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			StartTransaction => self.backup(),
 			RollbackTransaction => {
 				self.rollback().unwrap_or_else(|e| log::warn!("{}", e));
-				responses.extend([DocumentMessage::RenderDocument.into(), self.handle_folder_changed(vec![]).unwrap()]);
+				responses.extend([RenderDocument.into(), DocumentStructureChanged.into()]);
 			}
 			AbortTransaction => {
 				self.undo().unwrap_or_else(|e| log::warn!("{}", e));
-				responses.extend([DocumentMessage::RenderDocument.into(), self.handle_folder_changed(vec![]).unwrap()]);
+				responses.extend([RenderDocument.into(), DocumentStructureChanged.into()]);
 			}
 			CommitTransaction => (),
 			ExportDocument => {
@@ -472,7 +461,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				self.layer_data(&path).expanded ^= true;
 				match self.layer_data(&path).expanded {
 					true => responses.push_back(FolderChanged(path.clone()).into()),
-					false => responses.push_back(self.build_message_display_folder_tree_structure()),
+					false => responses.push_back(DocumentStructureChanged.into()),
 				}
 				responses.extend(self.layer_panel_entry(path.clone()).ok().map(|data| FrontendMessage::UpdateLayer { path: path.into(), data }.into()));
 			}
@@ -537,30 +526,40 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				responses.push_back(RenderDocument.into());
 				responses.push_back(FolderChanged(vec![]).into());
 			}
-			FolderChanged(path) => responses.extend(self.handle_folder_changed(path)),
+			FolderChanged(path) => {
+				let _ = self.graphene_document.render_root();
+				responses.extend([LayerChanged(path).into(), DocumentStructureChanged.into()]);
+			}
+			DocumentStructureChanged => {
+				let data_buffer: RawBuffer = self.graphene_document.serialize_root().into();
+				responses.push_back(FrontendMessage::DisplayFolderTreeStructure { data_buffer }.into())
+			}
+			LayerChanged(path) => {
+				responses.extend(self.layer_panel_entry(path.clone()).ok().and_then(|entry| {
+					let overlay = self.graphene_document.layer(&path).unwrap().overlay;
+					(!overlay).then(|| FrontendMessage::UpdateLayer { path: path.into(), data: entry }.into())
+				}));
+			}
+
 			DispatchOperation(op) => match self.graphene_document.handle_operation(&op) {
 				Ok(Some(document_responses)) => {
-					responses.extend(
-						document_responses
-							.into_iter()
-							.map(|response| match response {
-								DocumentResponse::FolderChanged { path } => Some(FolderChanged(path).into()),
-								DocumentResponse::DeletedLayer { path } => {
-									self.layer_data.remove(&path);
-									Some(ToolMessage::SelectedLayersChanged.into())
+					for response in document_responses {
+						match response {
+							DocumentResponse::FolderChanged { path } => responses.push_back(FolderChanged(path).into()),
+							DocumentResponse::DeletedLayer { path } => {
+								self.layer_data.remove(&path);
+								responses.push_back(ToolMessage::SelectedLayersChanged.into())
+							}
+							DocumentResponse::LayerChanged { path } => responses.push_back(LayerChanged(path).into()),
+							DocumentResponse::CreatedLayer { path } => {
+								self.layer_data.insert(path.clone(), LayerData::new(false));
+								if !self.graphene_document.layer(&path).unwrap().overlay {
+									responses.push_back(SetSelectedLayers(vec![path]).into())
 								}
-								DocumentResponse::LayerChanged { path } => self.layer_panel_entry(path.clone()).ok().and_then(|entry| {
-									let overlay = self.graphene_document.layer(&path).unwrap().overlay;
-									(!overlay).then(|| FrontendMessage::UpdateLayer { path: path.into(), data: entry }.into())
-								}),
-								DocumentResponse::CreatedLayer { path } => {
-									self.layer_data.insert(path.clone(), LayerData::new(false));
-									(!self.graphene_document.layer(&path).unwrap().overlay).then(|| SetSelectedLayers(vec![path]).into())
-								}
-								DocumentResponse::DocumentChanged => Some(RenderDocument.into()),
-							})
-							.flatten(),
-					);
+							}
+							DocumentResponse::DocumentChanged => responses.push_back(RenderDocument.into()),
+						};
+					}
 					// log::debug!("LayerPanel: {:?}", self.layer_data.keys());
 				}
 				Err(e) => log::error!("DocumentError: {:?}", e),
