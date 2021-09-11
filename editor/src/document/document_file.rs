@@ -552,7 +552,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 							})
 							.flatten(),
 					);
-					log::debug!("LayerPanel: {:?}", self.layer_data.keys());
+					// log::debug!("LayerPanel: {:?}", self.layer_data.keys());
 				}
 				Err(e) => log::error!("DocumentError: {:?}", e),
 				Ok(_) => (),
