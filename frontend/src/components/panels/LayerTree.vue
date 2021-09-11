@@ -244,6 +244,8 @@ export default defineComponent({
 			blendModeSelectedIndex: 0,
 			blendModeDropdownDisabled: true,
 			opacityNumberInputDisabled: true,
+			// TODO: replace with BigUint64Array as index
+			layerCache: new Map() as Map<string, LayerPanelEntry>,
 			layers: [] as Array<LayerPanelEntry>,
 			layerDepths: [] as Array<number>,
 			selectionRangeStartLayer: undefined as undefined | LayerPanelEntry,
@@ -391,7 +393,21 @@ export default defineComponent({
 		registerResponseHandler(ResponseType.DisplayFolderTreeStructure, (responseData: Response) => {
 			const expandData = responseData as DisplayFolderTreeStructure;
 			if (!expandData) return;
-			console.log(responseData);
+
+			let path = [] as Array<bigint>;
+			this.layers = [] as Array<LayerPanelEntry>;
+			function recurse(folder: DisplayFolderTreeStructure, layers: Array<LayerPanelEntry>, cache: Map<string, LayerPanelEntry>) {
+				folder.children.forEach((item) => {
+					//TODO: fix toString
+					path.push(BigInt(item.layerId.toString()));
+					let mapping = cache.get(path.toString());
+					if (mapping) layers.push(mapping);
+					if (item.children.length > 1) recurse(item, layers, cache);
+					path.pop();
+				});
+			}
+			recurse(expandData, this.layers, this.layerCache);
+
 		});
 
 		registerResponseHandler(ResponseType.UpdateLayer, (responseData) => {
@@ -400,12 +416,7 @@ export default defineComponent({
 				const responsePath = updateData.path;
 				const responseLayer = updateData.data;
 
-				const index = this.layers.findIndex((layer: LayerPanelEntry) => {
-					const pathLengthsEqual = responsePath.length === layer.path.length;
-					return pathLengthsEqual && responsePath.every((layerId, i) => layerId === layer.path[i]);
-				});
-				if (index >= 0) this.layers[index] = responseLayer;
-
+				this.layerCache.set(responsePath.toString(), responseLayer);
 				this.setBlendModeForSelectedLayers();
 				this.setOpacityForSelectedLayers();
 			}
