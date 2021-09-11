@@ -241,18 +241,19 @@ export interface DisplayFolderTreeStructure {
 	children: DisplayFolderTreeStructure[];
 }
 function newDisplayFolderTreeStructure(input: any): DisplayFolderTreeStructure {
-	const { structure_ptr_to_vec_u64 } = input;
+	const { ptr, len } = input.data_buffer;
+	console.log(ptr, len);
 	const wasmMemoryBuffer = (window as any).wasmMemory().buffer;
 
 	// Decode the folder structure encoding
-	const encoding = new DataView(wasmMemoryBuffer, structure_ptr_to_vec_u64);
+	const encoding = new DataView(wasmMemoryBuffer, ptr, len);
 
 	// The structure section indicates how to read through the upcoming layer list and assign depths to each layer
 	const structureSectionLength = Number(encoding.getBigUint64(0, true));
-	const structureSectionMsbSigned = new DataView(wasmMemoryBuffer, structure_ptr_to_vec_u64 + 8, structureSectionLength * 8);
+	const structureSectionMsbSigned = new DataView(wasmMemoryBuffer, ptr + 8, structureSectionLength * 8);
 
 	// The layer IDs section lists each layer ID sequentially in the tree, as it will show up in the panel
-	const layerIdsSection = new DataView(wasmMemoryBuffer, structure_ptr_to_vec_u64 + 8 + structureSectionLength * 8);
+	const layerIdsSection = new DataView(wasmMemoryBuffer, ptr + 8 + structureSectionLength * 8);
 
 	let layersEncountered = 0;
 	let currentFolder: DisplayFolderTreeStructure = { layerId: BigInt(-1), children: [] };
@@ -285,7 +286,7 @@ function newDisplayFolderTreeStructure(input: any): DisplayFolderTreeStructure {
 		// Outward
 		else {
 			const popped = currentFolderStack.pop();
-			// if (!popped) throw Error("Too many negative indents in the folder structure");
+			if (!popped) throw Error("Too many negative indents in the folder structure");
 			if (popped) currentFolder = popped;
 		}
 	}

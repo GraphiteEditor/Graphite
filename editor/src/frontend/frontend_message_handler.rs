@@ -1,4 +1,4 @@
-use crate::document::layer_panel::{LayerPanelEntry, Path};
+use crate::document::layer_panel::{LayerPanelEntry, Path, RawBuffer};
 use crate::message_prelude::*;
 use crate::tool::tool_options::ToolOptions;
 use crate::Color;
@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 #[impl_message(Message, Frontend)]
 #[derive(PartialEq, Clone, Deserialize, Serialize, Debug)]
 pub enum FrontendMessage {
-	DisplayFolderTreeStructure { structure_ptr_to_vec_u64: usize },
+	DisplayFolderTreeStructure { data_buffer: RawBuffer },
 	SetActiveTool { tool_name: String, tool_options: Option<ToolOptions> },
 	SetActiveDocument { document_index: usize },
 	UpdateOpenDocumentsList { open_documents: Vec<String> },

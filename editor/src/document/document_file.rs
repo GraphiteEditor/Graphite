@@ -141,12 +141,10 @@ impl From<DocumentOperation> for Message {
 impl DocumentMessageHandler {
 	pub fn build_message_display_folder_tree_structure(&mut self) -> Message {
 		// TODO: TESTING ONLY, DO NOT LEAK!!!!
-		let array_something = self.graphene_document.serialize_root().leak();
+		let data_buffer: RawBuffer = self.graphene_document.serialize_root().into();
 		//log::debug!("Foo: {:?}", array_something);
-		let structure_ptr_to_vec_u64 = array_something.as_ptr() as usize;
-		//log::debug!("Bar: {:?}", structure_ptr_to_vec_u64);
 
-		FrontendMessage::DisplayFolderTreeStructure { structure_ptr_to_vec_u64 }.into()
+		FrontendMessage::DisplayFolderTreeStructure { data_buffer }.into()
 	}
 
 	pub fn handle_folder_changed(&mut self, path: Vec<LayerId>) -> Option<Message> {

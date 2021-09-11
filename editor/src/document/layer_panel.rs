@@ -5,7 +5,10 @@ use graphene::{
 	layers::{Layer, LayerData as DocumentLayerData},
 	LayerId,
 };
-use serde::{ser::SerializeSeq, Deserialize, Serialize};
+use serde::{
+	ser::{SerializeSeq, SerializeStruct},
+	Deserialize, Serialize,
+};
 use std::collections::HashMap;
 use std::fmt;
 
@@ -114,6 +117,32 @@ impl Serialize for Path {
 			seq.serialize_element(e)?;
 		}
 		seq.end()
+	}
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq)]
+pub struct RawBuffer(Vec<u8>);
+
+impl From<Vec<u64>> for RawBuffer {
+	fn from(iter: Vec<u64>) -> Self {
+		let v_from_raw: Vec<u8> = unsafe {
+			// prepare for an auto-forget of the initial vec:
+			let v_orig: &mut Vec<_> = &mut *std::mem::ManuallyDrop::new(iter);
+			Vec::from_raw_parts(v_orig.as_mut_ptr() as *mut u8, v_orig.len() * 8, v_orig.capacity() * 8)
+			// v_orig is never used again, so no aliasing issue
+		};
+		Self(v_from_raw)
+	}
+}
+impl Serialize for RawBuffer {
+	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+	where
+		S: serde::Serializer,
+	{
+		let mut buffer = serializer.serialize_struct("Buffer", 2)?;
+		buffer.serialize_field("ptr", &(self.0.as_ptr() as usize))?;
+		buffer.serialize_field("len", &(self.0.len()))?;
+		buffer.end()
 	}
 }
 
