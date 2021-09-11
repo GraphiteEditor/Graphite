@@ -36,6 +36,9 @@ pub enum DocumentsMessage {
 
 #[derive(Debug, Clone)]
 pub struct DocumentsMessageHandler {
+	// Okay, so I think we can switch this over to a hashmap, I think the question here
+	// is what should be the initial capacity. Should it be 1? Do we pay for the cost of
+	// reallocating...?
 	documents: Vec<DocumentMessageHandler>,
 	active_document_index: usize,
 	copy_buffer: Vec<Layer>,
@@ -139,6 +142,7 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 				assert!(id < self.documents.len(), "Tried to select a document that was not initialized");
 				// Remove doc from the backend store; use `id` as client tabs and backend documents will be in sync
 				self.documents.remove(id);
+				log::debug!("Attempting to close: {}", id);
 
 				// Send the new list of document tab names
 				let open_documents = self.documents.iter().map(|doc| doc.name.clone()).collect();
