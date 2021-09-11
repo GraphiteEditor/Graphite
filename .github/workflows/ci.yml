@@ -25,6 +25,9 @@ jobs:
     - name: 🚧 Install Node dependencies
       run: cd frontend && npm install
 
+    - name: 🚧 Install cargo-about
+      run: cargo install cargo-about
+
     - name: 🌐 Build Graphite web code
       run: cd frontend && npm run build
 
