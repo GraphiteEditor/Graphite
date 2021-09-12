@@ -20,7 +20,7 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Fill {
 		let tolerance = DVec2::splat(SELECTION_TOLERANCE);
 		let quad = Quad::from_box([mouse_pos - tolerance, mouse_pos + tolerance]);
 
-		if let Some(path) = data.0.document.intersects_quad_root(quad).last() {
+		if let Some(path) = data.0.graphene_document.intersects_quad_root(quad).last() {
 			responses.push_back(
 				Operation::SetLayerFill {
 					path: path.to_vec(),

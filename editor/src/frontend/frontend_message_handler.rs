@@ -1,4 +1,4 @@
-use crate::document::layer_panel::{LayerPanelEntry, Path};
+use crate::document::layer_panel::{LayerPanelEntry, Path, RawBuffer};
 use crate::message_prelude::*;
 use crate::tool::tool_options::ToolOptions;
 use crate::Color;
@@ -7,8 +7,7 @@ use serde::{Deserialize, Serialize};
 #[impl_message(Message, Frontend)]
 #[derive(PartialEq, Clone, Deserialize, Serialize, Debug)]
 pub enum FrontendMessage {
-	CollapseFolder { path: Path },
-	ExpandFolder { path: Path, children: Vec<LayerPanelEntry> },
+	DisplayFolderTreeStructure { data_buffer: RawBuffer },
 	SetActiveTool { tool_name: String, tool_options: Option<ToolOptions> },
 	SetActiveDocument { document_index: usize },
 	UpdateOpenDocumentsList { open_documents: Vec<String> },
@@ -16,9 +15,9 @@ pub enum FrontendMessage {
 	DisplayPanic { panic_info: String, title: String, description: String },
 	DisplayConfirmationToCloseDocument { document_index: usize },
 	DisplayConfirmationToCloseAllDocuments,
+	UpdateLayer { path: Path, data: LayerPanelEntry },
 	UpdateCanvas { document: String },
 	UpdateScrollbars { position: (f64, f64), size: (f64, f64), multiplier: (f64, f64) },
-	UpdateLayer { path: Path, data: LayerPanelEntry },
 	ExportDocument { document: String, name: String },
 	SaveDocument { document: String, name: String },
 	OpenDocumentBrowse,

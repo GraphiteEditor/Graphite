@@ -34,11 +34,9 @@
 			border-radius: 4px;
 			background: var(--color-5-dullgray);
 
-			&:hover {
-				background: var(--color-6-lowergray);
-			}
+			&:hover,
 			&.dragging {
-				background: var(--color-accent-hover);
+				background: var(--color-6-lowergray);
 			}
 		}
 
