@@ -126,6 +126,5 @@ export async function onWindowResize() {
 }
 
 export function makeModifiersBitfield(e: MouseEvent | KeyboardEvent): number {
-	// eslint-disable-next-line no-bitwise
 	return Number(e.ctrlKey) | (Number(e.shiftKey) << 1) | (Number(e.altKey) << 2);
 }

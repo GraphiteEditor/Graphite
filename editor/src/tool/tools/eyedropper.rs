@@ -22,8 +22,8 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Eyedropper {
 		let tolerance = DVec2::splat(SELECTION_TOLERANCE);
 		let quad = Quad::from_box([mouse_pos - tolerance, mouse_pos + tolerance]);
 
-		if let Some(path) = data.0.document.intersects_quad_root(quad).last() {
-			if let Ok(layer) = data.0.document.layer(path) {
+		if let Some(path) = data.0.graphene_document.intersects_quad_root(quad).last() {
+			if let Ok(layer) = data.0.graphene_document.layer(path) {
 				if let LayerDataType::Shape(s) = &layer.data {
 					s.style.fill().and_then(|fill| {
 						fill.color().map(|color| match action {

@@ -21,7 +21,7 @@ const GROUP_MESSAGES: &[MessageDiscriminant] = &[
 	MessageDiscriminant::Documents(DocumentsMessageDiscriminant::Document(DocumentMessageDiscriminant::RenderDocument)),
 	MessageDiscriminant::Documents(DocumentsMessageDiscriminant::Document(DocumentMessageDiscriminant::FolderChanged)),
 	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::UpdateLayer),
-	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::ExpandFolder),
+	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::DisplayFolderTreeStructure),
 	MessageDiscriminant::Tool(ToolMessageDiscriminant::SelectedLayersChanged),
 ];
 
@@ -124,10 +124,10 @@ mod test {
 		init_logger();
 		let mut editor = create_editor_with_three_layers();
 
-		let document_before_copy = editor.dispatcher.documents_message_handler.active_document().document.clone();
+		let document_before_copy = editor.dispatcher.documents_message_handler.active_document().graphene_document.clone();
 		editor.handle_message(DocumentsMessage::Copy);
 		editor.handle_message(DocumentsMessage::PasteIntoFolder { path: vec![], insert_index: -1 });
-		let document_after_copy = editor.dispatcher.documents_message_handler.active_document().document.clone();
+		let document_after_copy = editor.dispatcher.documents_message_handler.active_document().graphene_document.clone();
 
 		let layers_before_copy = document_before_copy.root.as_folder().unwrap().layers();
 		let layers_after_copy = document_after_copy.root.as_folder().unwrap().layers();
@@ -154,14 +154,14 @@ mod test {
 		init_logger();
 		let mut editor = create_editor_with_three_layers();
 
-		let document_before_copy = editor.dispatcher.documents_message_handler.active_document().document.clone();
+		let document_before_copy = editor.dispatcher.documents_message_handler.active_document().graphene_document.clone();
 		let shape_id = document_before_copy.root.as_folder().unwrap().layer_ids[1];
 
 		editor.handle_message(DocumentMessage::SetSelectedLayers(vec![vec![shape_id]]));
 		editor.handle_message(DocumentsMessage::Copy);
 		editor.handle_message(DocumentsMessage::PasteIntoFolder { path: vec![], insert_index: -1 });
 
-		let document_after_copy = editor.dispatcher.documents_message_handler.active_document().document.clone();
+		let document_after_copy = editor.dispatcher.documents_message_handler.active_document().graphene_document.clone();
 
 		let layers_before_copy = document_before_copy.root.as_folder().unwrap().layers();
 		let layers_after_copy = document_after_copy.root.as_folder().unwrap().layers();
@@ -193,7 +193,7 @@ mod test {
 
 		editor.handle_message(DocumentMessage::CreateFolder(vec![]));
 
-		let document_before_added_shapes = editor.dispatcher.documents_message_handler.active_document().document.clone();
+		let document_before_added_shapes = editor.dispatcher.documents_message_handler.active_document().graphene_document.clone();
 		let folder_id = document_before_added_shapes.root.as_folder().unwrap().layer_ids[FOLDER_INDEX];
 
 		// TODO: This adding of a Line and Pen should be rewritten using the corresponding functions in EditorTestUtils.
@@ -215,14 +215,14 @@ mod test {
 
 		editor.handle_message(DocumentMessage::SetSelectedLayers(vec![vec![folder_id]]));
 
-		let document_before_copy = editor.dispatcher.documents_message_handler.active_document().document.clone();
+		let document_before_copy = editor.dispatcher.documents_message_handler.active_document().graphene_document.clone();
 
 		editor.handle_message(DocumentsMessage::Copy);
 		editor.handle_message(DocumentMessage::DeleteSelectedLayers);
 		editor.handle_message(DocumentsMessage::PasteIntoFolder { path: vec![], insert_index: -1 });
 		editor.handle_message(DocumentsMessage::PasteIntoFolder { path: vec![], insert_index: -1 });
 
-		let document_after_copy = editor.dispatcher.documents_message_handler.active_document().document.clone();
+		let document_after_copy = editor.dispatcher.documents_message_handler.active_document().graphene_document.clone();
 
 		let layers_before_copy = document_before_copy.root.as_folder().unwrap().layers();
 		let layers_after_copy = document_after_copy.root.as_folder().unwrap().layers();
@@ -273,7 +273,7 @@ mod test {
 		const SHAPE_INDEX: usize = 1;
 		const RECT_INDEX: usize = 0;
 
-		let document_before_copy = editor.dispatcher.documents_message_handler.active_document().document.clone();
+		let document_before_copy = editor.dispatcher.documents_message_handler.active_document().graphene_document.clone();
 		let rect_id = document_before_copy.root.as_folder().unwrap().layer_ids[RECT_INDEX];
 		let ellipse_id = document_before_copy.root.as_folder().unwrap().layer_ids[ELLIPSE_INDEX];
 
@@ -284,7 +284,7 @@ mod test {
 		editor.handle_message(DocumentsMessage::PasteIntoFolder { path: vec![], insert_index: -1 });
 		editor.handle_message(DocumentsMessage::PasteIntoFolder { path: vec![], insert_index: -1 });
 
-		let document_after_copy = editor.dispatcher.documents_message_handler.active_document().document.clone();
+		let document_after_copy = editor.dispatcher.documents_message_handler.active_document().graphene_document.clone();
 
 		let layers_before_copy = document_before_copy.root.as_folder().unwrap().layers();
 		let layers_after_copy = document_after_copy.root.as_folder().unwrap().layers();
