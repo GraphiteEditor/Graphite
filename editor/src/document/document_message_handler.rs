@@ -2,9 +2,9 @@ use crate::input::InputPreprocessor;
 use crate::message_prelude::*;
 use graphene::layers::Layer;
 use graphene::{LayerId, Operation as DocumentOperation};
-use log::warn;
+use log::{log, warn};
 use serde::{Deserialize, Serialize};
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 
 use super::DocumentMessageHandler;
 use crate::consts::DEFAULT_DOCUMENT_NAME;
@@ -35,53 +35,40 @@ pub enum DocumentsMessage {
 
 #[derive(Debug, Clone)]
 pub struct DocumentsMessageHandler {
-	documents: Vec<DocumentMessageHandler>,
-	document_ids: Vec<usize>,
-	free_ids: Vec<usize>,
-	active_document_id: usize,
+	documents: HashMap<u64, DocumentMessageHandler>,
+	document_ids: Vec<u64>,
+	active_document_index: usize,
 	copy_buffer: Vec<Layer>,
+	counter: u64,
 }
 
 impl DocumentsMessageHandler {
 	pub fn active_document(&self) -> &DocumentMessageHandler {
-		let index = self.map_id_to_index(self.active_document_id);
-		&self.documents[index]
+		let id = self.document_ids[self.active_document_index];
+		self.documents.get(&id).unwrap()
 	}
 
 	pub fn active_document_mut(&mut self) -> &mut DocumentMessageHandler {
-		let index = self.map_id_to_index(self.active_document_id);
-		&mut self.documents[index]
-	}
-
-	fn map_id_to_index(&self, id: usize) -> usize {
-		for i in 0..self.document_ids.len() {
-			if self.document_ids[i] == id {
-				return i;
-			}
-		}
-		0
-	}
-
-	fn get_free_id(&mut self) -> usize {
-		if self.free_ids.len() > 0 {
-			// Treat the vector like a queue
-			let id = self.free_ids[0];
-			self.free_ids.remove(0);
-			return id;
-		}
-		self.document_ids.len()
+		let id = self.document_ids[self.active_document_index];
+		self.documents.get_mut(&id).unwrap()
 	}
 
 	fn generate_new_document_name(&self) -> String {
 		let mut doc_title_numbers = self
-			.documents
+			.document_ids
 			.iter()
-			.filter_map(|d| {
-				d.name
-					.rsplit_once(DEFAULT_DOCUMENT_NAME)
-					.map(|(prefix, number)| (prefix.is_empty()).then(|| number.trim().parse::<isize>().ok()).flatten().unwrap_or(1))
+			.filter_map(|id| {
+				let opt_doc = self.documents.get(&id);
+				match opt_doc {
+					Some(doc) => doc
+						.name
+						.rsplit_once(DEFAULT_DOCUMENT_NAME)
+						.map(|(prefix, number)| (prefix.is_empty()).then(|| number.trim().parse::<isize>().ok()).flatten().unwrap_or(1)),
+					None => None,
+				}
 			})
 			.collect::<Vec<isize>>();
+
 		doc_title_numbers.sort_unstable();
 		doc_title_numbers.iter_mut().enumerate().for_each(|(i, number)| *number = *number - i as isize - 2);
 		// Uses binary search to find the index of the element where number is bigger than i
@@ -95,16 +82,27 @@ impl DocumentsMessageHandler {
 	}
 
 	fn load_document(&mut self, new_document: DocumentMessageHandler, responses: &mut VecDeque<Message>) {
-		self.active_document_id = self.get_free_id();
-		self.document_ids.push(self.active_document_id);
-		self.documents.push(new_document);
+		self.counter = self.counter + 1;
+		self.active_document_index = self.document_ids.len();
+		self.document_ids.push(self.counter);
+		self.documents.insert(self.counter, new_document);
 
 		// Send the new list of document tab names
-		let open_documents = self.documents.iter().map(|doc| doc.name.clone()).collect();
+		let open_documents = self
+			.document_ids
+			.iter()
+			.filter_map(|id| {
+				let opt_doc = self.documents.get(id);
+				match opt_doc {
+					Some(doc) => Some(doc.name.clone()),
+					None => None,
+				}
+			})
+			.collect::<Vec<String>>();
+
 		responses.push_back(FrontendMessage::UpdateOpenDocumentsList { open_documents }.into());
 
-		let index = self.map_id_to_index(self.active_document_id);
-		responses.push_back(DocumentsMessage::SelectDocument(index).into());
+		responses.push_back(DocumentsMessage::SelectDocument(self.active_document_index).into());
 		responses.push_back(DocumentMessage::RenderDocument.into());
 		responses.push_back(DocumentMessage::DocumentStructureChanged.into());
 		for layer in self.active_document().layer_data.keys() {
@@ -115,12 +113,14 @@ impl DocumentsMessageHandler {
 
 impl Default for DocumentsMessageHandler {
 	fn default() -> Self {
+		let mut map: HashMap<u64, DocumentMessageHandler> = HashMap::with_capacity(1);
+		map.insert(0, DocumentMessageHandler::default());
 		Self {
-			documents: vec![DocumentMessageHandler::default()],
+			documents: map,
 			document_ids: vec![0],
-			free_ids: vec![],
-			active_document_id: 0,
 			copy_buffer: vec![],
+			active_document_index: 0,
+			counter: 0,
 		}
 	}
 }
@@ -133,8 +133,7 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 			Document(message) => self.active_document_mut().process_action(message, ipp, responses),
 			SelectDocument(index) => {
 				assert!(index < self.documents.len(), "Tried to select a document that was not initialized");
-				let id = self.document_ids[index];
-				self.active_document_id = id;
+				self.active_document_index = index;
 				responses.push_back(FrontendMessage::SetActiveDocument { document_index: index }.into());
 				responses.push_back(RenderDocument.into());
 				responses.push_back(DocumentMessage::DocumentStructureChanged.into());
@@ -145,7 +144,7 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 			CloseActiveDocumentWithConfirmation => {
 				responses.push_back(
 					FrontendMessage::DisplayConfirmationToCloseDocument {
-						document_index: self.map_id_to_index(self.active_document_id),
+						document_index: self.active_document_index,
 					}
 					.into(),
 				);
@@ -156,11 +155,6 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 			CloseAllDocuments => {
 				// Empty the list of internal document data
 				self.documents.clear();
-
-				// Recycle old ids
-				for id in &self.document_ids {
-					self.free_ids.push(*id);
-				}
 				self.document_ids.clear();
 
 				// Create a new blank document
@@ -168,39 +162,50 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 			}
 			CloseDocument(index) => {
 				assert!(index < self.documents.len(), "Tried to select a document that was not initialized");
-				// Remove doc from the backend store; use `id` as client tabs and backend documents will be in sync
+				// Get the ID based on the current collection of the documents.
 				let id = self.document_ids[index];
 				// Map the ID to an index and remove the document
-				self.documents.remove(index);
+				self.documents.remove(&id);
 				self.document_ids.remove(index);
 
-				// Push the removed id into a free id
-				self.free_ids.push(id);
+				self.active_document_index = if self.active_document_index >= self.document_ids.len() {
+					if self.active_document_index == 0 {
+						0
+					} else {
+						self.document_ids.len() - 1
+					}
+				} else {
+					index
+				};
+
+				// // Last tab was closed, so create a new blank tab
+				if self.document_ids.is_empty() {
+					self.counter = self.counter + 1;
+					self.document_ids.push(self.counter);
+					self.documents.insert(self.counter, DocumentMessageHandler::default());
+				}
 
 				// Send the new list of document tab names
-				let open_documents = self.documents.iter().map(|doc| doc.name.clone()).collect();
-				responses.push_back(FrontendMessage::UpdateOpenDocumentsList { open_documents }.into());
-
-				// Last tab was closed, so create a new blank tab
-				if self.documents.is_empty() {
-					self.active_document_id = self.get_free_id();
-					responses.push_back(NewDocument.into());
-				}
-				// if the ID we're closing is the same as the active ID
-				else {
-					// Clamp the index between the total number of documents
-					let doc_index = if index >= self.document_ids.len() { self.document_ids.len() - 1 } else { index };
-					self.active_document_id = self.document_ids[doc_index];
-
-					responses.push_back(DocumentMessage::DocumentStructureChanged.into());
-					responses.push_back(FrontendMessage::SetActiveDocument { document_index: doc_index }.into());
-					responses.push_back(
-						FrontendMessage::UpdateCanvas {
-							document: self.active_document_mut().graphene_document.render_root(),
+				let open_documents: Vec<String> = self
+					.document_ids
+					.iter()
+					.filter_map(|id| {
+						let opt_doc = self.documents.get(&id);
+						match opt_doc {
+							Some(doc) => Some(doc.name.clone()),
+							None => None,
 						}
-						.into(),
-					);
-				}
+					})
+					.collect();
+				// Update the list of new documents on the front end, active tab, and ensure that document renders
+				responses.push_back(FrontendMessage::UpdateOpenDocumentsList { open_documents }.into());
+				responses.push_back(
+					FrontendMessage::SetActiveDocument {
+						document_index: self.active_document_index,
+					}
+					.into(),
+				);
+				responses.push_back(RenderDocument.into());
 			}
 			NewDocument => {
 				let name = self.generate_new_document_name();
@@ -227,16 +232,23 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 			}
 			GetOpenDocumentsList => {
 				// Send the list of document tab names
-				let open_documents = self.documents.iter().map(|doc| doc.name.clone()).collect();
+				let open_documents = self
+					.documents
+					.iter()
+					.map(|entry| {
+						let doc = entry.1;
+						doc.name.clone()
+					})
+					.collect();
 				responses.push_back(FrontendMessage::UpdateOpenDocumentsList { open_documents }.into());
 			}
 			NextDocument => {
-				let next = (self.map_id_to_index(self.active_document_id) + 1) % self.document_ids.len();
+				let next = (self.active_document_index + 1) % self.document_ids.len();
 				responses.push_back(SelectDocument(next).into());
 			}
 			PrevDocument => {
 				let len = self.document_ids.len();
-				let prev = (self.map_id_to_index(self.active_document_id) + len - 1) % len;
+				let prev = (self.active_document_index + len - 1) % len;
 				responses.push_back(SelectDocument(prev).into());
 			}
 			Copy => {
