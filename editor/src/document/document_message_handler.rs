@@ -3,7 +3,6 @@ use crate::message_prelude::*;
 use graphene::layers::Layer;
 use graphene::{LayerId, Operation as DocumentOperation};
 use log::warn;
-
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 
@@ -36,21 +35,43 @@ pub enum DocumentsMessage {
 
 #[derive(Debug, Clone)]
 pub struct DocumentsMessageHandler {
-	// Okay, so I think we can switch this over to a hashmap, I think the question here
-	// is what should be the initial capacity. Should it be 1? Do we pay for the cost of
-	// reallocating...?
 	documents: Vec<DocumentMessageHandler>,
-	active_document_index: usize,
+	document_ids: Vec<usize>,
+	free_ids: Vec<usize>,
+	active_document_id: usize,
 	copy_buffer: Vec<Layer>,
 }
 
 impl DocumentsMessageHandler {
 	pub fn active_document(&self) -> &DocumentMessageHandler {
-		&self.documents[self.active_document_index]
+		let index = self.map_index_to_id(self.active_document_id);
+		&self.documents[index]
 	}
+
 	pub fn active_document_mut(&mut self) -> &mut DocumentMessageHandler {
-		&mut self.documents[self.active_document_index]
+		let index = self.map_index_to_id(self.active_document_id);
+		&mut self.documents[index]
 	}
+
+	fn map_index_to_id(&self, id: usize) -> usize {
+		for i in 0..self.document_ids.len() {
+			if self.document_ids[i] == id {
+				return i;
+			}
+		}
+		0
+	}
+
+	fn get_free_id(&mut self) -> usize {
+		if self.free_ids.len() > 0 {
+			// Treat the vector like a queue
+			let id = self.free_ids[0];
+			self.free_ids.remove(0);
+			return id;
+		}
+		self.document_ids.len()
+	}
+
 	fn generate_new_document_name(&self) -> String {
 		let mut doc_title_numbers = self
 			.documents
@@ -74,7 +95,8 @@ impl DocumentsMessageHandler {
 	}
 
 	fn load_document(&mut self, new_document: DocumentMessageHandler, responses: &mut VecDeque<Message>) {
-		self.active_document_index = self.documents.len();
+		self.active_document_id = self.get_free_id();
+		self.document_ids.push(self.active_document_id);
 		self.documents.push(new_document);
 
 		// Send the new list of document tab names
@@ -88,7 +110,8 @@ impl DocumentsMessageHandler {
 			}
 			.into(),
 		);
-		responses.push_back(DocumentsMessage::SelectDocument(self.active_document_index).into());
+		let index = self.map_index_to_id(self.active_document_id);
+		responses.push_back(DocumentsMessage::SelectDocument(index).into());
 	}
 }
 
@@ -96,7 +119,9 @@ impl Default for DocumentsMessageHandler {
 	fn default() -> Self {
 		Self {
 			documents: vec![DocumentMessageHandler::default()],
-			active_document_index: 0,
+			document_ids: vec![0],
+			free_ids: vec![],
+			active_document_id: 0,
 			copy_buffer: vec![],
 		}
 	}
@@ -108,22 +133,18 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 		use DocumentsMessage::*;
 		match message {
 			Document(message) => self.active_document_mut().process_action(message, ipp, responses),
-			SelectDocument(id) => {
-				assert!(id < self.documents.len(), "Tried to select a document that was not initialized");
-				self.active_document_index = id;
-				responses.push_back(
-					FrontendMessage::SetActiveDocument {
-						document_index: self.active_document_index,
-					}
-					.into(),
-				);
+			SelectDocument(index) => {
+				assert!(index < self.documents.len(), "Tried to select a document that was not initialized");
+				let id = self.document_ids[index];
+				self.active_document_id = id;
+				responses.push_back(FrontendMessage::SetActiveDocument { document_index: index }.into());
 				responses.push_back(RenderDocument.into());
 				responses.extend(self.active_document_mut().handle_folder_changed(vec![]));
 			}
 			CloseActiveDocumentWithConfirmation => {
 				responses.push_back(
 					FrontendMessage::DisplayConfirmationToCloseDocument {
-						document_index: self.active_document_index,
+						document_index: self.map_index_to_id(self.active_document_id),
 					}
 					.into(),
 				);
@@ -135,14 +156,25 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 				// Empty the list of internal document data
 				self.documents.clear();
 
+				// Recycle old ids
+				for id in &self.document_ids {
+					self.free_ids.push(*id);
+				}
+				self.document_ids.clear();
+
 				// Create a new blank document
 				responses.push_back(NewDocument.into());
 			}
-			CloseDocument(id) => {
-				assert!(id < self.documents.len(), "Tried to select a document that was not initialized");
+			CloseDocument(index) => {
+				assert!(index < self.documents.len(), "Tried to select a document that was not initialized");
 				// Remove doc from the backend store; use `id` as client tabs and backend documents will be in sync
-				self.documents.remove(id);
-				log::debug!("Attempting to close: {}", id);
+				let id = self.document_ids[index];
+				// Map the ID to an index and remove the document
+				self.documents.remove(index);
+				self.document_ids.remove(index);
+
+				// Push the removed id into a free id
+				self.free_ids.push(id);
 
 				// Send the new list of document tab names
 				let open_documents = self.documents.iter().map(|doc| doc.name.clone()).collect();
@@ -150,15 +182,14 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 
 				// Last tab was closed, so create a new blank tab
 				if self.documents.is_empty() {
-					self.active_document_index = 0;
+					self.active_document_id = self.get_free_id();
 					responses.push_back(NewDocument.into());
 				}
-				// The currently selected doc is being closed
-				else if id == self.active_document_index {
-					// The currently selected tab was the rightmost tab
-					if id == self.documents.len() {
-						self.active_document_index -= 1;
-					}
+				// if the ID we're closing is the same as the active ID
+				else {
+					// Clamp the index between the total number of documents
+					let doc_index = if index >= self.document_ids.len() { self.document_ids.len() - 1 } else { index };
+					self.active_document_id = self.document_ids[doc_index];
 
 					let lp = self.active_document_mut().layer_panel(&[]).expect("Could not get panel for active doc");
 					responses.push_back(
@@ -168,25 +199,12 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 						}
 						.into(),
 					);
-					responses.push_back(
-						FrontendMessage::SetActiveDocument {
-							document_index: self.active_document_index,
-						}
-						.into(),
-					);
+
+					responses.push_back(FrontendMessage::SetActiveDocument { document_index: doc_index }.into());
+
 					responses.push_back(
 						FrontendMessage::UpdateCanvas {
 							document: self.active_document_mut().document.render_root(),
-						}
-						.into(),
-					);
-				}
-				// Active doc will move one space to the left
-				else if id < self.active_document_index {
-					self.active_document_index -= 1;
-					responses.push_back(
-						FrontendMessage::SetActiveDocument {
-							document_index: self.active_document_index,
 						}
 						.into(),
 					);
@@ -221,12 +239,13 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 				responses.push_back(FrontendMessage::UpdateOpenDocumentsList { open_documents }.into());
 			}
 			NextDocument => {
-				let id = (self.active_document_index + 1) % self.documents.len();
-				responses.push_back(SelectDocument(id).into());
+				let next = (self.map_index_to_id(self.active_document_id) + 1) % self.document_ids.len();
+				responses.push_back(SelectDocument(next).into());
 			}
 			PrevDocument => {
-				let id = (self.active_document_index + self.documents.len() - 1) % self.documents.len();
-				responses.push_back(SelectDocument(id).into());
+				let len = self.document_ids.len();
+				let prev = (self.map_index_to_id(self.active_document_id) + len - 1) % len;
+				responses.push_back(SelectDocument(prev).into());
 			}
 			Copy => {
 				let paths = self.active_document().selected_layers_sorted();
