@@ -186,7 +186,6 @@ function htmlDecode(input) {
 		}
 		// eslint-disable-next-line no-cond-assign
 		if ((match = entityCode.match(/^#(\d+)$/))) {
-			// eslint-disable-next-line no-bitwise
 			return String.fromCharCode(~~match[1]);
 		}
 		return entity;

@@ -117,49 +117,6 @@ impl Document {
 			.unwrap_or_default()
 	}
 
-	fn serialize_structure(folder: &Folder, structure: &mut Vec<u64>, data: &mut Vec<LayerId>) {
-		let mut space = 0;
-		for (id, layer) in folder.layer_ids.iter().zip(folder.layers()) {
-			data.push(*id);
-			match layer.data {
-				LayerDataType::Shape(_) => space += 1,
-				LayerDataType::Folder(ref folder) => {
-					structure.push(space);
-					Document::serialize_structure(folder, structure, data);
-				}
-			}
-		}
-		structure.push(space | 1 << 63);
-	}
-
-	/// Serializes the layer structure into a compressed 1d structure
-	/// 4,2,1,-2-0,10,12,13,14,15 <- input data
-	/// l = 4 = structure.len() <- length of the structure section
-	/// structure = 2,1,-2,-0   <- structure section
-	/// data = 10,12,13,14,15   <- data section
-	///
-	/// the numbers in the structure block encode the indentation,
-	/// 2 mean read two element from the data section, then place a [
-	/// -x means read x elements from the date section an then insert a ]
-	///
-	/// 2     V 1  V -2  A -0 A
-	/// 10,12,  13, 14,15
-	/// 10,12,[ 13,[14,15]    ]
-	///
-	/// resulting layer panel:
-	/// 10
-	/// 12
-	/// [12,13]
-	/// [12,13,14]
-	/// [12,13,15]
-	pub fn serialize_root(&self) -> Vec<LayerId> {
-		let (mut structure, mut data) = (vec![0], Vec::new());
-		Document::serialize_structure(self.root.as_folder().unwrap(), &mut structure, &mut data);
-		structure[0] = structure.len() as u64 - 1;
-		structure.extend(data);
-		structure
-	}
-
 	/// Given a path to a layer, returns a vector of the indices in the layer tree
 	/// These indices can be used to order a list of layers
 	pub fn indices_for_path(&self, path: &[LayerId]) -> Result<Vec<usize>, DocumentError> {
@@ -446,10 +403,24 @@ impl Document {
 				Some([vec![DocumentChanged, CreatedLayer { path: path.clone() }], update_thumbnails_upstream(path)].concat())
 			}
 			Operation::DeleteLayer { path } => {
+				fn aggregate_deletions(folder: &Folder, path: &mut Vec<LayerId>, responses: &mut Vec<DocumentResponse>) {
+					for (id, layer) in folder.layer_ids.iter().zip(folder.layers()) {
+						path.push(*id);
+						responses.push(DocumentResponse::DeletedLayer { path: path.clone() });
+						if let LayerDataType::Folder(f) = &layer.data {
+							aggregate_deletions(f, path, responses);
+						}
+						path.pop();
+					}
+				}
+				let mut responses = Vec::new();
+				if let Ok(folder) = self.folder(path) {
+					aggregate_deletions(folder, &mut path.clone(), &mut responses)
+				};
 				self.delete(path)?;
 
 				let (folder, _) = split_path(path.as_slice()).unwrap_or_else(|_| (&[], 0));
-				let mut responses = vec![DocumentChanged, DeletedLayer { path: path.clone() }, FolderChanged { path: folder.to_vec() }];
+				responses.extend([DocumentChanged, DeletedLayer { path: path.clone() }, FolderChanged { path: folder.to_vec() }]);
 				responses.extend(update_thumbnails_upstream(folder));
 				Some(responses)
 			}
@@ -458,8 +429,22 @@ impl Document {
 				let id = folder.add_layer(layer.clone(), None, *insert_index).ok_or(DocumentError::IndexOutOfBounds)?;
 				let full_path = [path.clone(), vec![id]].concat();
 				self.mark_as_dirty(&full_path)?;
+				fn aggregate_insertions(folder: &Folder, path: &mut Vec<LayerId>, responses: &mut Vec<DocumentResponse>) {
+					for (id, layer) in folder.layer_ids.iter().zip(folder.layers()) {
+						path.push(*id);
+						responses.push(DocumentResponse::CreatedLayer { path: path.clone() });
+						if let LayerDataType::Folder(f) = &layer.data {
+							aggregate_insertions(f, path, responses);
+						}
+						path.pop();
+					}
+				}
+				let mut responses = Vec::new();
+				if let Ok(folder) = self.folder(&full_path) {
+					aggregate_insertions(folder, &mut full_path.clone(), &mut responses)
+				};
 
-				let mut responses = vec![DocumentChanged, CreatedLayer { path: full_path }, FolderChanged { path: path.clone() }];
+				responses.extend([DocumentChanged, CreatedLayer { path: full_path }, FolderChanged { path: path.clone() }]);
 				responses.extend(update_thumbnails_upstream(path));
 				Some(responses)
 			}

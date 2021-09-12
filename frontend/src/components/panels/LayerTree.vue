@@ -110,18 +110,18 @@
 					position: absolute;
 					width: 0;
 					height: 0;
-					top: 2px;
-					left: 3px;
+					top: 3px;
+					left: 4px;
 					border-style: solid;
-					border-width: 0 3px 6px 3px;
-					border-color: transparent transparent var(--color-2-mildblack) transparent;
+					border-width: 3px 0 3px 6px;
+					border-color: transparent transparent transparent var(--color-2-mildblack);
 				}
 
 				&.expanded::after {
-					top: 3px;
-					left: 4px;
-					border-width: 3px 0 3px 6px;
-					border-color: transparent transparent transparent var(--color-2-mildblack);
+					top: 4px;
+					left: 3px;
+					border-width: 6px 3px 0 3px;
+					border-color: var(--color-2-mildblack) transparent transparent transparent;
 				}
 			}
 
@@ -181,7 +181,7 @@
 <script lang="ts">
 import { defineComponent } from "vue";
 
-import { ResponseType, registerResponseHandler, Response, BlendMode, ExpandFolder, CollapseFolder, UpdateLayer, LayerPanelEntry, LayerType } from "@/utilities/response-handler";
+import { ResponseType, registerResponseHandler, Response, BlendMode, DisplayFolderTreeStructure, UpdateLayer, LayerPanelEntry, LayerType } from "@/utilities/response-handler";
 import { panicProxy } from "@/utilities/panic-proxy";
 import { SeparatorType } from "@/components/widgets/widgets";
 
@@ -238,7 +238,24 @@ const blendModeEntries: SectionsOfMenuListEntries = [
 ];
 
 export default defineComponent({
-	props: {},
+	data() {
+		return {
+			blendModeEntries,
+			blendModeSelectedIndex: 0,
+			blendModeDropdownDisabled: true,
+			opacityNumberInputDisabled: true,
+			// TODO: replace with BigUint64Array as index
+			layerCache: new Map() as Map<string, LayerPanelEntry>,
+			layers: [] as Array<LayerPanelEntry>,
+			layerDepths: [] as Array<number>,
+			selectionRangeStartLayer: undefined as undefined | LayerPanelEntry,
+			selectionRangeEndLayer: undefined as undefined | LayerPanelEntry,
+			opacity: 100,
+			MenuDirection,
+			SeparatorType,
+			LayerType,
+		};
+	},
 	methods: {
 		layerIndent(layer: LayerPanelEntry): string {
 			return `${(layer.path.length - 1) * 16}px`;
@@ -325,7 +342,6 @@ export default defineComponent({
 				output.set(path, i);
 				i += path.length;
 				if (index < paths.length) {
-					// eslint-disable-next-line no-bitwise
 					output[i] = (1n << 64n) - 1n;
 				}
 				i += 1;
@@ -374,98 +390,39 @@ export default defineComponent({
 		},
 	},
 	mounted() {
-		registerResponseHandler(ResponseType.ExpandFolder, (responseData: Response) => {
-			const expandData = responseData as ExpandFolder;
-			if (expandData) {
-				const responsePath = expandData.path;
-				const responseLayers = expandData.children as Array<LayerPanelEntry>;
-				// TODO: @Keavon Refactor this function
-				if (responseLayers.length === 0) return;
+		registerResponseHandler(ResponseType.DisplayFolderTreeStructure, (responseData: Response) => {
+			const expandData = responseData as DisplayFolderTreeStructure;
+			if (!expandData) return;
+			console.log(expandData);
 
-				const mergeIntoExisting = (elements: Array<LayerPanelEntry>, layers: Array<LayerPanelEntry>) => {
-					let lastInsertion = layers.findIndex((layer: LayerPanelEntry) => {
-						const pathLengthsEqual = elements[0].path.length - 1 === layer.path.length;
-						return pathLengthsEqual && elements[0].path.slice(0, -1).every((layerId, i) => layerId === layer.path[i]);
-					});
-					elements.forEach((nlayer) => {
-						const index = layers.findIndex((layer: LayerPanelEntry) => {
-							const pathLengthsEqual = nlayer.path.length === layer.path.length;
-							return pathLengthsEqual && nlayer.path.every((layerId, i) => layerId === layer.path[i]);
-						});
-						if (index >= 0) {
-							lastInsertion = index;
-							layers[index] = nlayer;
-						} else {
-							lastInsertion += 1;
-							layers.splice(lastInsertion, 0, nlayer);
-						}
-					});
-				};
-				mergeIntoExisting(responseLayers, this.layers);
-				const newLayers: Array<LayerPanelEntry> = [];
-				this.layers.forEach((layer) => {
-					const index = responseLayers.findIndex((nlayer: LayerPanelEntry) => {
-						const pathLengthsEqual = responsePath.length + 1 === layer.path.length;
-						return pathLengthsEqual && nlayer.path.every((layerId, i) => layerId === layer.path[i]);
-					});
-					if (index >= 0 || layer.path.length !== responsePath.length + 1) {
-						newLayers.push(layer);
-					}
+			const path = [] as Array<bigint>;
+			this.layers = [] as Array<LayerPanelEntry>;
+			function recurse(folder: DisplayFolderTreeStructure, layers: Array<LayerPanelEntry>, cache: Map<string, LayerPanelEntry>) {
+				folder.children.forEach((item) => {
+					// TODO: fix toString
+					path.push(BigInt(item.layerId.toString()));
+					const mapping = cache.get(path.toString());
+					if (mapping) layers.push(mapping);
+					if (item.children.length > 1) recurse(item, layers, cache);
+					path.pop();
 				});
-				this.layers = newLayers;
-
-				this.setBlendModeForSelectedLayers();
-				this.setOpacityForSelectedLayers();
 			}
+			recurse(expandData, this.layers, this.layerCache);
 		});
-		registerResponseHandler(ResponseType.CollapseFolder, (responseData) => {
-			const collapseData = responseData as CollapseFolder;
-			if (collapseData) {
-				const responsePath = collapseData.path;
 
-				const newLayers: Array<LayerPanelEntry> = [];
-				this.layers.forEach((layer) => {
-					if (responsePath.length >= layer.path.length || !responsePath.every((layerId, i) => layerId === layer.path[i])) {
-						newLayers.push(layer);
-					}
-				});
-				this.layers = newLayers;
-
-				this.setBlendModeForSelectedLayers();
-				this.setOpacityForSelectedLayers();
-			}
-		});
 		registerResponseHandler(ResponseType.UpdateLayer, (responseData) => {
 			const updateData = responseData as UpdateLayer;
 			if (updateData) {
 				const responsePath = updateData.path;
 				const responseLayer = updateData.data;
 
-				const index = this.layers.findIndex((layer: LayerPanelEntry) => {
-					const pathLengthsEqual = responsePath.length === layer.path.length;
-					return pathLengthsEqual && responsePath.every((layerId, i) => layerId === layer.path[i]);
-				});
-				if (index >= 0) this.layers[index] = responseLayer;
-
+				const layer = this.layerCache.get(responsePath.toString());
+				if (layer) Object.assign(this.layerCache.get(responsePath.toString()), responseLayer);
+				else this.layerCache.set(responsePath.toString(), responseLayer);
 				this.setBlendModeForSelectedLayers();
 				this.setOpacityForSelectedLayers();
 			}
 		});
-	},
-	data() {
-		return {
-			blendModeEntries,
-			blendModeSelectedIndex: 0,
-			blendModeDropdownDisabled: true,
-			opacityNumberInputDisabled: true,
-			layers: [] as Array<LayerPanelEntry>,
-			selectionRangeStartLayer: undefined as undefined | LayerPanelEntry,
-			selectionRangeEndLayer: undefined as undefined | LayerPanelEntry,
-			opacity: 100,
-			MenuDirection,
-			SeparatorType,
-			LayerType,
-		};
 	},
 	components: {
 		LayoutRow,
