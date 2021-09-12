@@ -78,14 +78,12 @@ impl DocumentsMessageHandler {
 		let open_documents = self.documents.iter().map(|doc| doc.name.clone()).collect();
 		responses.push_back(FrontendMessage::UpdateOpenDocumentsList { open_documents }.into());
 
-		responses.push_back(
-			FrontendMessage::ExpandFolder {
-				path: Vec::new().into(),
-				children: Vec::new(),
-			}
-			.into(),
-		);
 		responses.push_back(DocumentsMessage::SelectDocument(self.active_document_index).into());
+		responses.push_back(DocumentMessage::RenderDocument.into());
+		responses.push_back(DocumentMessage::DocumentStructureChanged.into());
+		for layer in self.active_document().layer_data.keys() {
+			responses.push_back(DocumentMessage::LayerChanged(layer.clone()).into());
+		}
 	}
 }
 
@@ -115,7 +113,10 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 					.into(),
 				);
 				responses.push_back(RenderDocument.into());
-				responses.extend(self.active_document_mut().handle_folder_changed(vec![]));
+				responses.push_back(DocumentMessage::DocumentStructureChanged.into());
+				for layer in self.active_document().layer_data.keys() {
+					responses.push_back(DocumentMessage::LayerChanged(layer.clone()).into());
+				}
 			}
 			CloseActiveDocumentWithConfirmation => {
 				responses.push_back(
@@ -156,14 +157,7 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 						self.active_document_index -= 1;
 					}
 
-					let lp = self.active_document_mut().layer_panel(&[]).expect("Could not get panel for active doc");
-					responses.push_back(
-						FrontendMessage::ExpandFolder {
-							path: Vec::new().into(),
-							children: lp,
-						}
-						.into(),
-					);
+					responses.push_back(DocumentMessage::DocumentStructureChanged.into());
 					responses.push_back(
 						FrontendMessage::SetActiveDocument {
 							document_index: self.active_document_index,
@@ -172,7 +166,7 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 					);
 					responses.push_back(
 						FrontendMessage::UpdateCanvas {
-							document: self.active_document_mut().document.render_root(),
+							document: self.active_document_mut().graphene_document.render_root(),
 						}
 						.into(),
 					);
@@ -228,7 +222,7 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 				let paths = self.active_document().selected_layers_sorted();
 				self.copy_buffer.clear();
 				for path in paths {
-					match self.active_document().document.layer(&path).map(|t| t.clone()) {
+					match self.active_document().graphene_document.layer(&path).map(|t| t.clone()) {
 						Ok(layer) => {
 							self.copy_buffer.push(layer);
 						}
@@ -239,7 +233,7 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 			Paste => {
 				let document = self.active_document();
 				let shallowest_common_folder = document
-					.document
+					.graphene_document
 					.deepest_common_folder(document.selected_layers())
 					.expect("While pasting, the selected layers did not exist while attempting to find the appropriate folder path for insertion");
 

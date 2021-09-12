@@ -151,7 +151,7 @@ impl Fsm for SelectToolFsmState {
 					let mut buffer = Vec::new();
 					let mut selected: Vec<_> = document.selected_layers().map(|path| path.to_vec()).collect();
 					let quad = data.selection_quad();
-					let intersection = document.document.intersects_quad_root(quad);
+					let intersection = document.graphene_document.intersects_quad_root(quad);
 					// If no layer is currently selected and the user clicks on a shape, select that.
 					if selected.is_empty() {
 						if let Some(layer) = intersection.last() {
@@ -214,7 +214,7 @@ impl Fsm for SelectToolFsmState {
 				}
 				(DrawingBox, DragStop) => {
 					let quad = data.selection_quad();
-					responses.push_front(DocumentMessage::AddSelectedLayers(document.document.intersects_quad_root(quad)).into());
+					responses.push_front(DocumentMessage::AddSelectedLayers(document.graphene_document.intersects_quad_root(quad)).into());
 					responses.push_front(
 						Operation::DeleteLayer {
 							path: data.drag_box_id.take().unwrap(),

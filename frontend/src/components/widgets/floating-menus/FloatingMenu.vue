@@ -293,7 +293,6 @@ export default defineComponent({
 				this.setClosed();
 			}
 
-			// eslint-disable-next-line no-bitwise
 			const eventIncludesLmb = Boolean(e.buttons & 1);
 
 			// Clean up any messes from lost mouseup events

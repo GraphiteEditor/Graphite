@@ -4,22 +4,32 @@ import { fullscreenModeChanged } from "@/utilities/fullscreen";
 import { onKeyUp, onKeyDown, onMouseMove, onMouseDown, onMouseUp, onMouseScroll, onWindowResize } from "@/utilities/input";
 import "@/utilities/errors";
 import App from "@/App.vue";
+import { panicProxy } from "@/utilities/panic-proxy";
 
-// Bind global browser events
-window.addEventListener("resize", onWindowResize);
-window.addEventListener("DOMContentLoaded", onWindowResize);
+const wasm = import("@/../wasm/pkg").then(panicProxy);
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+(window as any).wasmMemory = undefined;
 
-document.addEventListener("contextmenu", (e) => e.preventDefault());
-document.addEventListener("fullscreenchange", () => fullscreenModeChanged());
+(async () => {
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	(window as any).wasmMemory = (await wasm).wasm_memory;
 
-window.addEventListener("keyup", onKeyUp);
-window.addEventListener("keydown", onKeyDown);
+	// Initialize the Vue application
+	createApp(App).mount("#app");
 
-window.addEventListener("mousemove", onMouseMove);
-window.addEventListener("mousedown", onMouseDown);
-window.addEventListener("mouseup", onMouseUp);
+	// Bind global browser events
+	window.addEventListener("resize", onWindowResize);
+	onWindowResize();
 
-window.addEventListener("wheel", onMouseScroll, { passive: false });
+	document.addEventListener("contextmenu", (e) => e.preventDefault());
+	document.addEventListener("fullscreenchange", () => fullscreenModeChanged());
 
-// Initialize the Vue application
-createApp(App).mount("#app");
+	window.addEventListener("keyup", onKeyUp);
+	window.addEventListener("keydown", onKeyDown);
+
+	window.addEventListener("mousemove", onMouseMove);
+	window.addEventListener("mousedown", onMouseDown);
+	window.addEventListener("mouseup", onMouseUp);
+
+	window.addEventListener("wheel", onMouseScroll, { passive: false });
+})();
