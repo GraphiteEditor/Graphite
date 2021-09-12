@@ -44,16 +44,16 @@ pub struct DocumentsMessageHandler {
 
 impl DocumentsMessageHandler {
 	pub fn active_document(&self) -> &DocumentMessageHandler {
-		let index = self.map_index_to_id(self.active_document_id);
+		let index = self.map_id_to_index(self.active_document_id);
 		&self.documents[index]
 	}
 
 	pub fn active_document_mut(&mut self) -> &mut DocumentMessageHandler {
-		let index = self.map_index_to_id(self.active_document_id);
+		let index = self.map_id_to_index(self.active_document_id);
 		&mut self.documents[index]
 	}
 
-	fn map_index_to_id(&self, id: usize) -> usize {
+	fn map_id_to_index(&self, id: usize) -> usize {
 		for i in 0..self.document_ids.len() {
 			if self.document_ids[i] == id {
 				return i;
@@ -102,7 +102,7 @@ impl DocumentsMessageHandler {
 		// Send the new list of document tab names
 		let open_documents = self.documents.iter().map(|doc| doc.name.clone()).collect();
 		responses.push_back(FrontendMessage::UpdateOpenDocumentsList { open_documents }.into());
-		
+
 		let index = self.map_id_to_index(self.active_document_id);
 		responses.push_back(DocumentsMessage::SelectDocument(index).into());
 		responses.push_back(DocumentMessage::RenderDocument.into());
@@ -145,7 +145,7 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 			CloseActiveDocumentWithConfirmation => {
 				responses.push_back(
 					FrontendMessage::DisplayConfirmationToCloseDocument {
-						document_index: self.map_index_to_id(self.active_document_id),
+						document_index: self.map_id_to_index(self.active_document_id),
 					}
 					.into(),
 				);
@@ -193,12 +193,7 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 					self.active_document_id = self.document_ids[doc_index];
 
 					responses.push_back(DocumentMessage::DocumentStructureChanged.into());
-					responses.push_back(
-						FrontendMessage::SetActiveDocument {
-							document_index: doc_index,
-						}
-						.into(),
-					);
+					responses.push_back(FrontendMessage::SetActiveDocument { document_index: doc_index }.into());
 					responses.push_back(
 						FrontendMessage::UpdateCanvas {
 							document: self.active_document_mut().graphene_document.render_root(),
@@ -236,12 +231,12 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 				responses.push_back(FrontendMessage::UpdateOpenDocumentsList { open_documents }.into());
 			}
 			NextDocument => {
-				let next = (self.map_index_to_id(self.active_document_id) + 1) % self.document_ids.len();
+				let next = (self.map_id_to_index(self.active_document_id) + 1) % self.document_ids.len();
 				responses.push_back(SelectDocument(next).into());
 			}
 			PrevDocument => {
 				let len = self.document_ids.len();
-				let prev = (self.map_index_to_id(self.active_document_id) + len - 1) % len;
+				let prev = (self.map_id_to_index(self.active_document_id) + len - 1) % len;
 				responses.push_back(SelectDocument(prev).into());
 			}
 			Copy => {
