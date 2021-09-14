@@ -2,9 +2,9 @@
 
 // Import this function and chain it on all `wasm` imports like: const wasm = import("@/../wasm/pkg").then(panicProxy);
 // This works by proxying every function call wrapping a try-catch block to filter out redundant and confusing `RuntimeError: unreachable` exceptions sent to the console
-export function panicProxy(module: any) {
+export function panicProxy<T extends object>(module: T): T {
 	const proxyHandler = {
-		get(target: any, propKey: any, receiver: any) {
+		get(target: T, propKey: string | symbol, receiver: any): any {
 			const targetValue = Reflect.get(target, propKey, receiver);
 
 			// Keep the original value being accessed if it isn't a function or it is a class
@@ -28,5 +28,5 @@ export function panicProxy(module: any) {
 		},
 	};
 
-	return new Proxy(module, proxyHandler);
+	return new Proxy<T>(module, proxyHandler);
 }
