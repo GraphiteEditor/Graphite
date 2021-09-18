@@ -5,6 +5,7 @@ import { panicProxy } from "@/utilities/panic-proxy";
 const wasm = import("@/../wasm/pkg").then(panicProxy);
 
 let viewportMouseInteractionOngoing = false;
+let editingTextField = false;
 
 // Keyboard events
 
@@ -86,7 +87,11 @@ export async function onMouseDown(e: MouseEvent) {
 		e.stopPropagation();
 	}
 
-	if (inCanvas && target.nodeName !== "TEXTAREA") viewportMouseInteractionOngoing = true;
+	if (inCanvas) {
+		if (target.nodeName === "TEXTAREA") editingTextField = true;
+		else if (editingTextField) editingTextField = false;
+		else viewportMouseInteractionOngoing = true;
+	}
 
 	if (viewportMouseInteractionOngoing) {
 		const modifiers = makeModifiersBitfield(e);

@@ -41,7 +41,7 @@ impl LayerData for Text {
 		let _ = svg.write_str(r#")">"#);
 		let _ = write!(
 			svg,
-			r#"<foreignObject width=1000px height=1000px><textarea {}>{}</textarea></foreignObject>"#,
+			r#"<foreignObject width=1000px height=1000px><textarea {} onchange="console.log('Editing');">{}</textarea></foreignObject>"#,
 			self.style.render(),
 			self.text
 		);

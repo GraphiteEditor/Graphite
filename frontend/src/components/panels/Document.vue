@@ -220,6 +220,7 @@
 						color: black;
 						border: none;
 						outline: none;
+						background: none;
 
 						-webkit-box-shadow: none;
 						-moz-box-shadow: none;
@@ -286,6 +287,9 @@ export default defineComponent({
 
 			this.canvasSvgWidth = `${width}px`;
 			this.canvasSvgHeight = `${height}px`;
+		},
+		async inputField(id: number, type: string) {
+			console.log("editing: ", type, "in", id);
 		},
 		async setCanvasZoom(newZoom: number) {
 			(await wasm).set_canvas_zoom(newZoom / 100);
