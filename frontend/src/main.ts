@@ -21,7 +21,7 @@ const wasm = import("@/../wasm/pkg").then(panicProxy);
 	window.addEventListener("resize", onWindowResize);
 	onWindowResize();
 
-	// document.addEventListener("contextmenu", (e) => e.preventDefault());
+	document.addEventListener("contextmenu", (e) => e.preventDefault());
 	document.addEventListener("fullscreenchange", () => fullscreenModeChanged());
 
 	window.addEventListener("keyup", onKeyUp);
