@@ -3,6 +3,7 @@ use crate::tool::{DocumentToolData, Fsm, ToolActionHandlerData, ToolOptions, Too
 use crate::{document::DocumentMessageHandler, message_prelude::*};
 use glam::DAffine2;
 use graphene::{layers::style, Operation};
+use log::info;
 use serde::{Deserialize, Serialize};
 
 #[derive(Default)]
@@ -16,15 +17,20 @@ pub enum TextMessage {
 
 impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Text {
 	fn process_action(&mut self, action: ToolMessage, data: ToolActionHandlerData<'a>, responses: &mut VecDeque<Message>) {
-		responses.push_back(
+		let path = vec![generate_uuid()];
+		responses.extend([
 			Operation::AddText {
-				path: vec![generate_uuid()],
+				path: path.clone(),
 				insert_index: -1,
-				transform: DAffine2::IDENTITY.to_cols_array(),
 				style: style::PathStyle::new(None, Some(style::Fill::new(data.1.primary_color))),
 			}
 			.into(),
-		);
+			Operation::SetLayerTransformInViewport {
+				path,
+				transform: DAffine2::from_translation(data.2.mouse.position).to_cols_array(),
+			}
+			.into(),
+		]);
 	}
 	fn actions(&self) -> ActionList {
 		actions!(TextMessageDiscriminant; PlaceText)

@@ -314,8 +314,8 @@ impl Document {
 		use DocumentResponse::*;
 
 		let responses = match &operation {
-			Operation::AddText { path, insert_index, transform, style } => {
-				let layer = Layer::new(LayerDataType::Text(Text::from_string("hello".to_string(), *style)), *transform);
+			Operation::AddText { path, insert_index, style } => {
+				let layer = Layer::new(LayerDataType::Text(Text::from_string("hello".to_string(), *style)), DAffine2::IDENTITY.to_cols_array());
 
 				self.set_layer(path, layer, *insert_index)?;
 
