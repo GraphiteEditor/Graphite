@@ -182,7 +182,7 @@
 import { defineComponent } from "vue";
 
 import { ResponseType, registerResponseHandler, Response, BlendMode, DisplayFolderTreeStructure, UpdateLayer, LayerPanelEntry, LayerType } from "@/utilities/response-handler";
-import { panicProxy } from "@/utilities/panic-proxy";
+import wasm from "@/utilities/wasm-loader";
 import { SeparatorType } from "@/components/widgets/widgets";
 
 import LayoutRow from "@/components/layout/LayoutRow.vue";
@@ -195,8 +195,6 @@ import IconButton from "@/components/widgets/buttons/IconButton.vue";
 import IconLabel from "@/components/widgets/labels/IconLabel.vue";
 import DropdownInput from "@/components/widgets/inputs/DropdownInput.vue";
 import { SectionsOfMenuListEntries } from "@/components/widgets/floating-menus/MenuList.vue";
-
-const wasm = import("@/../wasm/pkg").then(panicProxy);
 
 const blendModeEntries: SectionsOfMenuListEntries = [
 	[{ label: "Normal", value: BlendMode.Normal }],
@@ -261,19 +259,19 @@ export default defineComponent({
 			return `${(layer.path.length - 1) * 16}px`;
 		},
 		async toggleLayerVisibility(path: BigUint64Array) {
-			(await wasm).toggle_layer_visibility(path);
+			wasm().toggle_layer_visibility(path);
 		},
 		async handleNodeConnectorClick(path: BigUint64Array) {
-			(await wasm).toggle_layer_expansion(path);
+			wasm().toggle_layer_expansion(path);
 		},
 		async setLayerBlendMode() {
 			const blendMode = this.blendModeEntries.flat()[this.blendModeSelectedIndex].value as BlendMode;
 			if (blendMode) {
-				(await wasm).set_blend_mode_for_selected_layers(blendMode);
+				wasm().set_blend_mode_for_selected_layers(blendMode);
 			}
 		},
 		async setLayerOpacity() {
-			(await wasm).set_opacity_for_selected_layers(this.opacity);
+			wasm().set_opacity_for_selected_layers(this.opacity);
 		},
 		async handleControlClick(clickedLayer: LayerPanelEntry) {
 			const index = this.layers.indexOf(clickedLayer);
@@ -313,7 +311,7 @@ export default defineComponent({
 			this.selectionRangeStartLayer = undefined;
 			this.selectionRangeEndLayer = undefined;
 
-			(await wasm).deselect_all_layers();
+			wasm().deselect_all_layers();
 		},
 		async fillSelectionRange(start: LayerPanelEntry, end: LayerPanelEntry, selected = true) {
 			const startIndex = this.layers.findIndex((layer) => layer.path.join() === start.path.join());
@@ -346,7 +344,7 @@ export default defineComponent({
 				}
 				i += 1;
 			});
-			(await wasm).select_layers(output);
+			wasm().select_layers(output);
 		},
 		setBlendModeForSelectedLayers() {
 			const selected = this.layers.filter((layer) => layer.layer_data.selected);

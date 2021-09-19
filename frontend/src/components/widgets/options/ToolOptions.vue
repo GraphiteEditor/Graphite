@@ -32,15 +32,13 @@
 import { defineComponent, PropType } from "vue";
 
 import { comingSoon } from "@/utilities/errors";
-import { panicProxy } from "@/utilities/panic-proxy";
+import wasm from "@/utilities/wasm-loader";
 import { WidgetRow, SeparatorType, IconButtonWidget } from "@/components/widgets/widgets";
 
 import Separator from "@/components/widgets/separators/Separator.vue";
 import IconButton from "@/components/widgets/buttons/IconButton.vue";
 import PopoverButton from "@/components/widgets/buttons/PopoverButton.vue";
 import NumberInput from "@/components/widgets/inputs/NumberInput.vue";
-
-const wasm = import("@/../wasm/pkg").then(panicProxy);
 
 export default defineComponent({
 	props: {
@@ -50,10 +48,10 @@ export default defineComponent({
 	methods: {
 		async updateToolOptions(path: string[], newValue: number) {
 			this.setToolOption(path, newValue);
-			(await wasm).set_tool_options(this.activeTool || "", this.activeToolOptions);
+			wasm().set_tool_options(this.activeTool || "", this.activeToolOptions);
 		},
 		async sendToolMessage(message: string | object) {
-			(await wasm).send_tool_message(this.activeTool || "", message);
+			wasm().send_tool_message(this.activeTool || "", message);
 		},
 		// Traverses the given path and returns the direct parent of the option
 		getRecordContainingOption(optionPath: string[]): Record<string, number> {

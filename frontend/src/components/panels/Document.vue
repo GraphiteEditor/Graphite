@@ -227,7 +227,7 @@ import { defineComponent } from "vue";
 import { ResponseType, registerResponseHandler, Response, UpdateCanvas, UpdateScrollbars, SetActiveTool, SetCanvasZoom, SetCanvasRotation } from "@/utilities/response-handler";
 import { SeparatorDirection, SeparatorType } from "@/components/widgets/widgets";
 import { comingSoon } from "@/utilities/errors";
-import { panicProxy } from "@/utilities/panic-proxy";
+import wasm from "@/utilities/wasm-loader";
 
 import LayoutRow from "@/components/layout/LayoutRow.vue";
 import LayoutCol from "@/components/layout/LayoutCol.vue";
@@ -245,8 +245,6 @@ import DropdownInput from "@/components/widgets/inputs/DropdownInput.vue";
 import OptionalInput from "@/components/widgets/inputs/OptionalInput.vue";
 import ToolOptions from "@/components/widgets/options/ToolOptions.vue";
 import { SectionsOfMenuListEntries } from "@/components/widgets/floating-menus/MenuList.vue";
-
-const wasm = import("@/../wasm/pkg").then(panicProxy);
 
 const documentModeEntries: SectionsOfMenuListEntries = [
 	[
@@ -275,43 +273,43 @@ export default defineComponent({
 			this.canvasSvgHeight = `${height}px`;
 		},
 		async setCanvasZoom(newZoom: number) {
-			(await wasm).set_canvas_zoom(newZoom / 100);
+			wasm().set_canvas_zoom(newZoom / 100);
 		},
 		async increaseCanvasZoom() {
-			(await wasm).increase_canvas_zoom();
+			wasm().increase_canvas_zoom();
 		},
 		async decreaseCanvasZoom() {
-			(await wasm).decrease_canvas_zoom();
+			wasm().decrease_canvas_zoom();
 		},
 		async setRotation(newRotation: number) {
-			(await wasm).set_rotation(newRotation * (Math.PI / 180));
+			wasm().set_rotation(newRotation * (Math.PI / 180));
 		},
 		async translateCanvasX(newValue: number) {
 			const delta = newValue - this.scrollbarPos.x;
 			this.scrollbarPos.x = newValue;
-			(await wasm).translate_canvas(-delta * this.scrollbarMultiplier.x, 0);
+			wasm().translate_canvas(-delta * this.scrollbarMultiplier.x, 0);
 		},
 		async translateCanvasY(newValue: number) {
 			const delta = newValue - this.scrollbarPos.y;
 			this.scrollbarPos.y = newValue;
-			(await wasm).translate_canvas(0, -delta * this.scrollbarMultiplier.y);
+			wasm().translate_canvas(0, -delta * this.scrollbarMultiplier.y);
 		},
 		async pageX(delta: number) {
 			const move = delta < 0 ? 1 : -1;
-			(await wasm).translate_canvas_by_fraction(move, 0);
+			wasm().translate_canvas_by_fraction(move, 0);
 		},
 		async pageY(delta: number) {
 			const move = delta < 0 ? 1 : -1;
-			(await wasm).translate_canvas_by_fraction(0, move);
+			wasm().translate_canvas_by_fraction(0, move);
 		},
 		async selectTool(toolName: string) {
-			(await wasm).select_tool(toolName);
+			wasm().select_tool(toolName);
 		},
 		async swapWorkingColors() {
-			(await wasm).swap_colors();
+			wasm().swap_colors();
 		},
 		async resetWorkingColors() {
-			(await wasm).reset_colors();
+			wasm().reset_colors();
 		},
 	},
 	mounted() {

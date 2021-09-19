@@ -4,18 +4,16 @@ import { fullscreenModeChanged } from "@/utilities/fullscreen";
 import { onKeyUp, onKeyDown, onMouseMove, onMouseDown, onMouseUp, onMouseScroll, onWindowResize } from "@/utilities/input";
 import "@/utilities/errors";
 import App from "@/App.vue";
-import { panicProxy } from "@/utilities/panic-proxy";
-
-const wasm = import("@/../wasm/pkg").then(panicProxy);
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-(window as any).wasmMemory = undefined;
+import wasm, { initWasm } from "./utilities/wasm-loader";
 
 (async () => {
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	(window as any).wasmMemory = (await wasm).wasm_memory;
+	await initWasm();
 
 	// Initialize the Vue application
 	createApp(App).mount("#app");
+
+	// Load the initial document list
+	wasm().get_open_documents_list();
 
 	// Bind global browser events
 	window.addEventListener("resize", onWindowResize);

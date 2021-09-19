@@ -1,8 +1,6 @@
 import { toggleFullscreen } from "@/utilities/fullscreen";
 import { dialogIsVisible, dismissDialog, submitDialog } from "@/utilities/dialog";
-import { panicProxy } from "@/utilities/panic-proxy";
-
-const wasm = import("@/../wasm/pkg").then(panicProxy);
+import wasm from "@/utilities/wasm-loader";
 
 let viewportMouseInteractionOngoing = false;
 
@@ -40,7 +38,7 @@ export async function onKeyDown(e: KeyboardEvent) {
 	if (shouldRedirectKeyboardEventToBackend(e)) {
 		e.preventDefault();
 		const modifiers = makeModifiersBitfield(e);
-		(await wasm).on_key_down(e.key, modifiers);
+		wasm().on_key_down(e.key, modifiers);
 		return;
 	}
 
@@ -59,7 +57,7 @@ export async function onKeyUp(e: KeyboardEvent) {
 	if (shouldRedirectKeyboardEventToBackend(e)) {
 		e.preventDefault();
 		const modifiers = makeModifiersBitfield(e);
-		(await wasm).on_key_up(e.key, modifiers);
+		wasm().on_key_up(e.key, modifiers);
 	}
 }
 
@@ -69,7 +67,7 @@ export async function onMouseMove(e: MouseEvent) {
 	if (!e.buttons) viewportMouseInteractionOngoing = false;
 
 	const modifiers = makeModifiersBitfield(e);
-	(await wasm).on_mouse_move(e.clientX, e.clientY, e.buttons, modifiers);
+	wasm().on_mouse_move(e.clientX, e.clientY, e.buttons, modifiers);
 }
 
 export async function onMouseDown(e: MouseEvent) {
@@ -90,7 +88,7 @@ export async function onMouseDown(e: MouseEvent) {
 
 	if (viewportMouseInteractionOngoing) {
 		const modifiers = makeModifiersBitfield(e);
-		(await wasm).on_mouse_down(e.clientX, e.clientY, e.buttons, modifiers);
+		wasm().on_mouse_down(e.clientX, e.clientY, e.buttons, modifiers);
 	}
 }
 
@@ -98,7 +96,7 @@ export async function onMouseUp(e: MouseEvent) {
 	if (!e.buttons) viewportMouseInteractionOngoing = false;
 
 	const modifiers = makeModifiersBitfield(e);
-	(await wasm).on_mouse_up(e.clientX, e.clientY, e.buttons, modifiers);
+	wasm().on_mouse_up(e.clientX, e.clientY, e.buttons, modifiers);
 }
 
 export async function onMouseScroll(e: WheelEvent) {
@@ -108,7 +106,7 @@ export async function onMouseScroll(e: WheelEvent) {
 	if (inCanvas) {
 		e.preventDefault();
 		const modifiers = makeModifiersBitfield(e);
-		(await wasm).on_mouse_scroll(e.clientX, e.clientY, e.buttons, e.deltaX, e.deltaY, e.deltaZ, modifiers);
+		wasm().on_mouse_scroll(e.clientX, e.clientY, e.buttons, e.deltaX, e.deltaY, e.deltaZ, modifiers);
 	}
 }
 
@@ -122,7 +120,7 @@ export async function onWindowResize() {
 	const flattened = boundsOfViewports.flat();
 	const data = Float64Array.from(flattened);
 
-	if (boundsOfViewports.length > 0) (await wasm).bounds_of_viewports(data);
+	if (boundsOfViewports.length > 0) wasm().bounds_of_viewports(data);
 }
 
 export function makeModifiersBitfield(e: MouseEvent | KeyboardEvent): number {

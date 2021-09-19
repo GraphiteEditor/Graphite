@@ -1,6 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any, func-names */
 
-// Import this function and chain it on all `wasm` imports like: const wasm = import("@/../wasm/pkg").then(panicProxy);
 // This works by proxying every function call wrapping a try-catch block to filter out redundant and confusing `RuntimeError: unreachable` exceptions sent to the console
 export function panicProxy<T extends object>(module: T): T {
 	const proxyHandler = {

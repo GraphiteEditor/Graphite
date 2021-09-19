@@ -2,6 +2,7 @@
 /* eslint-disable camelcase */
 
 import { reactive } from "vue";
+import wasm from "@/utilities/wasm-loader";
 
 type ResponseCallback = (responseData: Response) => void;
 type ResponseMap = {
@@ -242,7 +243,7 @@ export interface DisplayFolderTreeStructure {
 }
 function newDisplayFolderTreeStructure(input: any): DisplayFolderTreeStructure {
 	const { ptr, len } = input.data_buffer;
-	const wasmMemoryBuffer = (window as any).wasmMemory().buffer;
+	const wasmMemoryBuffer = wasm().wasm_memory().buffer;
 
 	// Decode the folder structure encoding
 	const encoding = new DataView(wasmMemoryBuffer, ptr, len);

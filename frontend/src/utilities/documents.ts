@@ -12,9 +12,7 @@ import {
 	SaveDocument,
 } from "@/utilities/response-handler";
 import { download, upload } from "@/utilities/files";
-import { panicProxy } from "@/utilities/panic-proxy";
-
-const wasm = import("@/../wasm/pkg").then(panicProxy);
+import wasm from "@/utilities/wasm-loader";
 
 const state = reactive({
 	title: "",
@@ -24,7 +22,7 @@ const state = reactive({
 });
 
 export async function selectDocument(tabIndex: number) {
-	(await wasm).select_document(tabIndex);
+	wasm().select_document(tabIndex);
 }
 
 export async function closeDocumentWithConfirmation(tabIndex: number) {
@@ -36,7 +34,7 @@ export async function closeDocumentWithConfirmation(tabIndex: number) {
 		{
 			kind: "TextButton",
 			callback: async () => {
-				(await wasm).save_document();
+				wasm().save_document();
 				dismissDialog();
 			},
 			props: { label: "Save", emphasized: true, minWidth: 96 },
@@ -44,7 +42,7 @@ export async function closeDocumentWithConfirmation(tabIndex: number) {
 		{
 			kind: "TextButton",
 			callback: async () => {
-				(await wasm).close_document(tabIndex);
+				wasm().close_document(tabIndex);
 				dismissDialog();
 			},
 			props: { label: "Discard", minWidth: 96 },
@@ -64,7 +62,7 @@ export async function closeAllDocumentsWithConfirmation() {
 		{
 			kind: "TextButton",
 			callback: async () => {
-				(await wasm).close_all_documents();
+				wasm().close_all_documents();
 				dismissDialog();
 			},
 			props: { label: "Discard All", minWidth: 96 },
@@ -107,9 +105,9 @@ registerResponseHandler(ResponseType.DisplayConfirmationToCloseAllDocuments, (_:
 });
 
 registerResponseHandler(ResponseType.OpenDocumentBrowse, async (_: Response) => {
-	const extension = (await wasm).file_save_suffix();
+	const extension = wasm().file_save_suffix();
 	const data = await upload(extension);
-	(await wasm).open_document_file(data.filename, data.content);
+	wasm().open_document_file(data.filename, data.content);
 });
 
 registerResponseHandler(ResponseType.ExportDocument, (responseData: Response) => {
@@ -121,5 +119,3 @@ registerResponseHandler(ResponseType.SaveDocument, (responseData: Response) => {
 	const saveData = responseData as SaveDocument;
 	if (saveData) download(saveData.name, saveData.document);
 });
-
-(async () => (await wasm).get_open_documents_list())();
