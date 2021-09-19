@@ -164,8 +164,7 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 				}
 
 				self.active_document_index = if self.active_document_index >= self.document_ids.len() {
-					let len = self.document_ids.len();
-					(self.active_document_index + len - 1) % len
+					self.document_ids.len() - 1
 				} else {
 					index
 				};
