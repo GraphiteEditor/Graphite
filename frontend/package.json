@@ -5,7 +5,7 @@
 	"private": true,
 	"scripts": {
 		"serve": "vue-cli-service serve || (npm install && vue-cli-service serve)",
-		"build": "cd .. && cargo install cargo-about && cargo about generate about.hbs > frontend/rust-licenses.js && cd frontend && (vue-cli-service build || (npm install && vue-cli-service build))",
+		"build": "vue-cli-service build || (npm install && vue-cli-service build)",
 		"lint": "vue-cli-service lint || (npm install && vue-cli-service lint)",
 		"lint-no-fix": "vue-cli-service lint --no-fix || (echo 'There were lint errors. Please run `npm run lint` to fix auto-them. If the linter execution fails, try running `npm install` first.' && false)"
 	},
