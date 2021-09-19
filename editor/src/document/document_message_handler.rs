@@ -156,19 +156,19 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 				self.documents.remove(&id);
 				self.document_ids.remove(index);
 
+				// Last tab was closed, so create a new blank tab
+				if self.document_ids.is_empty() {
+					self.document_id_counter = self.document_id_counter + 1;
+					self.document_ids.push(self.document_id_counter);
+					self.documents.insert(self.document_id_counter, DocumentMessageHandler::default());
+				}
+
 				self.active_document_index = if self.active_document_index >= self.document_ids.len() {
 					let len = self.document_ids.len();
 					(self.active_document_index + len - 1) % len
 				} else {
 					index
 				};
-
-				// // Last tab was closed, so create a new blank tab
-				if self.document_ids.is_empty() {
-					self.document_id_counter = self.document_id_counter + 1;
-					self.document_ids.push(self.document_id_counter);
-					self.documents.insert(self.document_id_counter, DocumentMessageHandler::default());
-				}
 
 				// Send the new list of document tab names
 				let open_documents: Vec<String> = self.document_ids.iter().filter_map(|id| self.documents.get(&id).map(|doc| doc.name.clone())).collect();
