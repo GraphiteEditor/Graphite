@@ -222,12 +222,27 @@ import fullscreen from "@/utilities/fullscreen";
 
 import MainWindow from "@/components/window/MainWindow.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
+import wasm, { EditorWasm } from "./utilities/wasm-loader";
+
+// Vue injects don't play well with typescript, and all injects will show up as 'any'
+// As a workaround, we can define these types.
+declare module "@vue/runtime-core" {
+	interface ComponentCustomProperties {
+		dialog: typeof dialog;
+		documents: typeof documents;
+		fullscreen: typeof fullscreen;
+		editor: EditorWasm;
+	}
+}
 
 export default defineComponent({
-	provide: {
-		dialog,
-		documents,
-		fullscreen,
+	provide() {
+		return {
+			dialog,
+			documents,
+			fullscreen,
+			editor: wasm(),
+		};
 	},
 	data() {
 		return {

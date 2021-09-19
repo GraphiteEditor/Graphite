@@ -182,7 +182,6 @@
 import { defineComponent } from "vue";
 
 import { ResponseType, registerResponseHandler, Response, BlendMode, DisplayFolderTreeStructure, UpdateLayer, LayerPanelEntry, LayerType } from "@/utilities/response-handler";
-import wasm from "@/utilities/wasm-loader";
 import { SeparatorType } from "@/components/widgets/widgets";
 
 import LayoutRow from "@/components/layout/LayoutRow.vue";
@@ -236,6 +235,7 @@ const blendModeEntries: SectionsOfMenuListEntries = [
 ];
 
 export default defineComponent({
+	inject: ["editor"],
 	data() {
 		return {
 			blendModeEntries,
@@ -259,19 +259,19 @@ export default defineComponent({
 			return `${(layer.path.length - 1) * 16}px`;
 		},
 		async toggleLayerVisibility(path: BigUint64Array) {
-			wasm().toggle_layer_visibility(path);
+			this.editor.toggle_layer_visibility(path);
 		},
 		async handleNodeConnectorClick(path: BigUint64Array) {
-			wasm().toggle_layer_expansion(path);
+			this.editor.toggle_layer_expansion(path);
 		},
 		async setLayerBlendMode() {
 			const blendMode = this.blendModeEntries.flat()[this.blendModeSelectedIndex].value as BlendMode;
 			if (blendMode) {
-				wasm().set_blend_mode_for_selected_layers(blendMode);
+				this.editor.set_blend_mode_for_selected_layers(blendMode);
 			}
 		},
 		async setLayerOpacity() {
-			wasm().set_opacity_for_selected_layers(this.opacity);
+			this.editor.set_opacity_for_selected_layers(this.opacity);
 		},
 		async handleControlClick(clickedLayer: LayerPanelEntry) {
 			const index = this.layers.indexOf(clickedLayer);
@@ -311,7 +311,7 @@ export default defineComponent({
 			this.selectionRangeStartLayer = undefined;
 			this.selectionRangeEndLayer = undefined;
 
-			wasm().deselect_all_layers();
+			this.editor.deselect_all_layers();
 		},
 		async fillSelectionRange(start: LayerPanelEntry, end: LayerPanelEntry, selected = true) {
 			const startIndex = this.layers.findIndex((layer) => layer.path.join() === start.path.join());
@@ -344,7 +344,7 @@ export default defineComponent({
 				}
 				i += 1;
 			});
-			wasm().select_layers(output);
+			this.editor.select_layers(output);
 		},
 		setBlendModeForSelectedLayers() {
 			const selected = this.layers.filter((layer) => layer.layer_data.selected);

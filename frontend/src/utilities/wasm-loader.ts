@@ -1,6 +1,6 @@
 import { panicProxy } from "@/utilities/panic-proxy";
 
-type EditorWasm = typeof import("@/../wasm/pkg");
+export type EditorWasm = typeof import("@/../wasm/pkg");
 let instance: EditorWasm | null = null;
 export default function wasm(): EditorWasm {
 	if (instance === null) throw new Error("The wasm module wasn't initialized. Call initWasm() first.");

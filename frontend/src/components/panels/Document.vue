@@ -227,7 +227,6 @@ import { defineComponent } from "vue";
 import { ResponseType, registerResponseHandler, Response, UpdateCanvas, UpdateScrollbars, SetActiveTool, SetCanvasZoom, SetCanvasRotation } from "@/utilities/response-handler";
 import { SeparatorDirection, SeparatorType } from "@/components/widgets/widgets";
 import { comingSoon } from "@/utilities/errors";
-import wasm from "@/utilities/wasm-loader";
 
 import LayoutRow from "@/components/layout/LayoutRow.vue";
 import LayoutCol from "@/components/layout/LayoutCol.vue";
@@ -260,6 +259,7 @@ const viewModeEntries: RadioEntries = [
 ];
 
 export default defineComponent({
+	inject: ["editor"],
 	methods: {
 		async viewportResize() {
 			const canvas = this.$refs.canvas as HTMLElement;
@@ -273,43 +273,43 @@ export default defineComponent({
 			this.canvasSvgHeight = `${height}px`;
 		},
 		async setCanvasZoom(newZoom: number) {
-			wasm().set_canvas_zoom(newZoom / 100);
+			this.editor.set_canvas_zoom(newZoom / 100);
 		},
 		async increaseCanvasZoom() {
-			wasm().increase_canvas_zoom();
+			this.editor.increase_canvas_zoom();
 		},
 		async decreaseCanvasZoom() {
-			wasm().decrease_canvas_zoom();
+			this.editor.decrease_canvas_zoom();
 		},
 		async setRotation(newRotation: number) {
-			wasm().set_rotation(newRotation * (Math.PI / 180));
+			this.editor.set_rotation(newRotation * (Math.PI / 180));
 		},
 		async translateCanvasX(newValue: number) {
 			const delta = newValue - this.scrollbarPos.x;
 			this.scrollbarPos.x = newValue;
-			wasm().translate_canvas(-delta * this.scrollbarMultiplier.x, 0);
+			this.editor.translate_canvas(-delta * this.scrollbarMultiplier.x, 0);
 		},
 		async translateCanvasY(newValue: number) {
 			const delta = newValue - this.scrollbarPos.y;
 			this.scrollbarPos.y = newValue;
-			wasm().translate_canvas(0, -delta * this.scrollbarMultiplier.y);
+			this.editor.translate_canvas(0, -delta * this.scrollbarMultiplier.y);
 		},
 		async pageX(delta: number) {
 			const move = delta < 0 ? 1 : -1;
-			wasm().translate_canvas_by_fraction(move, 0);
+			this.editor.translate_canvas_by_fraction(move, 0);
 		},
 		async pageY(delta: number) {
 			const move = delta < 0 ? 1 : -1;
-			wasm().translate_canvas_by_fraction(0, move);
+			this.editor.translate_canvas_by_fraction(0, move);
 		},
 		async selectTool(toolName: string) {
-			wasm().select_tool(toolName);
+			this.editor.select_tool(toolName);
 		},
 		async swapWorkingColors() {
-			wasm().swap_colors();
+			this.editor.swap_colors();
 		},
 		async resetWorkingColors() {
-			wasm().reset_colors();
+			this.editor.reset_colors();
 		},
 	},
 	mounted() {
