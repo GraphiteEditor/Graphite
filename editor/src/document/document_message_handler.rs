@@ -158,7 +158,7 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 
 				// Last tab was closed, so create a new blank tab
 				if self.document_ids.is_empty() {
-					self.document_id_counter = self.document_id_counter + 1;
+					self.document_id_counter += 1;
 					self.document_ids.push(self.document_id_counter);
 					self.documents.insert(self.document_id_counter, DocumentMessageHandler::default());
 				}
