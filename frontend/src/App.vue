@@ -218,11 +218,12 @@ import { defineComponent } from "vue";
 
 import dialog from "@/utilities/dialog";
 import documents from "@/utilities/documents";
-import fullscreen from "@/utilities/fullscreen";
+import fullscreen, { fullscreenModeChanged } from "@/utilities/fullscreen";
 
 import MainWindow from "@/components/window/MainWindow.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
 import wasm, { EditorWasm } from "./utilities/wasm-loader";
+import { mountInput, unmountInput } from "./utilities/input";
 
 // Vue injects don't play well with typescript, and all injects will show up as 'any'
 // As a workaround, we can define these types.
@@ -241,11 +242,12 @@ export default defineComponent({
 			dialog,
 			documents,
 			fullscreen,
-			editor: wasm(),
+			editor: this.$data.editor,
 		};
 	},
 	data() {
 		return {
+			editor: wasm(),
 			showUnsupportedModal: !("BigInt64Array" in window),
 		};
 	},
@@ -253,6 +255,16 @@ export default defineComponent({
 		closeModal() {
 			this.showUnsupportedModal = false;
 		},
+	},
+	mounted() {
+		const { editor } = this.$data;
+		mountInput(editor);
+		document.addEventListener("fullscreenchange", fullscreenModeChanged);
+	},
+	beforeUnmount() {
+		const { editor } = this.$data;
+		unmountInput(editor);
+		document.removeEventListener("fullscreenchange", fullscreenModeChanged);
 	},
 	components: { MainWindow, LayoutRow },
 });
