@@ -48,7 +48,7 @@ impl LayerData for Text {
 	}
 
 	fn bounding_box(&self, transform: glam::DAffine2) -> Option<[DVec2; 2]> {
-		None
+		Some([transform.transform_point2(DVec2::ZERO), transform.transform_point2(DVec2::new(200., 50.))])
 	}
 
 	fn intersects_quad(&self, quad: Quad, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>) {}
