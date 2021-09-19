@@ -288,9 +288,6 @@ export default defineComponent({
 			this.canvasSvgWidth = `${width}px`;
 			this.canvasSvgHeight = `${height}px`;
 		},
-		async inputField(id: number, type: string) {
-			console.log("editing: ", type, "in", id);
-		},
 		async setCanvasZoom(newZoom: number) {
 			(await wasm).set_canvas_zoom(newZoom / 100);
 		},

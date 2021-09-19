@@ -1,9 +1,7 @@
-use crate::input::InputPreprocessor;
-use crate::tool::{DocumentToolData, Fsm, ToolActionHandlerData, ToolOptions, ToolType};
-use crate::{document::DocumentMessageHandler, message_prelude::*};
+use crate::message_prelude::*;
+use crate::tool::ToolActionHandlerData;
 use glam::DAffine2;
 use graphene::{layers::style, Operation};
-use log::info;
 use serde::{Deserialize, Serialize};
 
 #[derive(Default)]
@@ -16,7 +14,7 @@ pub enum TextMessage {
 }
 
 impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Text {
-	fn process_action(&mut self, action: ToolMessage, data: ToolActionHandlerData<'a>, responses: &mut VecDeque<Message>) {
+	fn process_action(&mut self, _action: ToolMessage, data: ToolActionHandlerData<'a>, responses: &mut VecDeque<Message>) {
 		let path = vec![generate_uuid()];
 		responses.extend([
 			Operation::AddText {

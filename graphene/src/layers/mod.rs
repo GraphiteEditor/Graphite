@@ -22,7 +22,7 @@ use serde::{Deserialize, Serialize};
 use std::fmt::Write;
 
 pub trait LayerData {
-	fn render(&mut self, svg: &mut String, transforms: &mut Vec<glam::DAffine2>);
+	fn render(&mut self, svg: &mut String, transforms: &mut Vec<glam::DAffine2>, path: &mut Vec<LayerId>);
 	fn intersects_quad(&self, quad: Quad, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>);
 	fn bounding_box(&self, transform: glam::DAffine2) -> Option<[DVec2; 2]>;
 }
@@ -53,8 +53,8 @@ impl LayerDataType {
 }
 
 impl LayerData for LayerDataType {
-	fn render(&mut self, svg: &mut String, transforms: &mut Vec<glam::DAffine2>) {
-		self.inner_mut().render(svg, transforms)
+	fn render(&mut self, svg: &mut String, transforms: &mut Vec<glam::DAffine2>, path: &mut Vec<LayerId>) {
+		self.inner_mut().render(svg, transforms, path)
 	}
 	fn intersects_quad(&self, quad: Quad, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>) {
 		self.inner().intersects_quad(quad, path, intersections)
@@ -109,14 +109,14 @@ impl Layer {
 		}
 	}
 
-	pub fn render(&mut self, transforms: &mut Vec<DAffine2>) -> &str {
+	pub fn render(&mut self, transforms: &mut Vec<DAffine2>, path: &mut Vec<LayerId>) -> &str {
 		if !self.visible {
 			return "";
 		}
 		if self.cache_dirty {
 			transforms.push(self.transform);
 			self.thumbnail_cache.clear();
-			self.data.render(&mut self.thumbnail_cache, transforms);
+			self.data.render(&mut self.thumbnail_cache, transforms, path);
 
 			self.cache.clear();
 			let _ = writeln!(self.cache, r#"<g transform="matrix("#);

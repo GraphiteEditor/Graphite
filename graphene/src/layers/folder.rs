@@ -15,9 +15,11 @@ pub struct Folder {
 }
 
 impl LayerData for Folder {
-	fn render(&mut self, svg: &mut String, transforms: &mut Vec<glam::DAffine2>) {
-		for layer in &mut self.layers {
-			let _ = writeln!(svg, "{}", layer.render(transforms));
+	fn render(&mut self, svg: &mut String, transforms: &mut Vec<glam::DAffine2>, path: &mut Vec<LayerId>) {
+		for (layer, id) in &mut self.layers.iter_mut().zip(&self.layer_ids) {
+			path.push(*id);
+			let _ = writeln!(svg, "{}", layer.render(transforms, path));
+			path.pop();
 		}
 	}
 

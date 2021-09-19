@@ -57,14 +57,14 @@ pub fn layer_data<'a>(layer_data: &'a mut HashMap<Vec<LayerId>, LayerData>, path
 	layer_data.get_mut(path).expect(&format!("Layer data cannot be found because the path {:?} does not exist", path))
 }
 
-pub fn layer_panel_entry(layer_data: &LayerData, transform: DAffine2, layer: &Layer, path: Vec<LayerId>) -> LayerPanelEntry {
+pub fn layer_panel_entry(layer_data: &LayerData, transform: DAffine2, layer: &Layer, mut path: Vec<LayerId>) -> LayerPanelEntry {
 	let layer_type: LayerType = (&layer.data).into();
 	let name = layer.name.clone().unwrap_or_else(|| format!("Unnamed {}", layer_type));
 	let arr = layer.data.bounding_box(transform).unwrap_or([DVec2::ZERO, DVec2::ZERO]);
 	let arr = arr.iter().map(|x| (*x).into()).collect::<Vec<(f64, f64)>>();
 
 	let mut thumbnail = String::new();
-	layer.data.clone().render(&mut thumbnail, &mut vec![transform]);
+	layer.data.clone().render(&mut thumbnail, &mut vec![transform], &mut path);
 	let transform = transform.to_cols_array().iter().map(ToString::to_string).collect::<Vec<_>>().join(",");
 	let thumbnail = if let [(x_min, y_min), (x_max, y_max)] = arr.as_slice() {
 		format!(
@@ -100,6 +100,7 @@ impl From<Vec<LayerId>> for Path {
 		Self(iter)
 	}
 }
+
 impl Serialize for Path {
 	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
 	where

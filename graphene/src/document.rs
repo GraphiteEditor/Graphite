@@ -34,7 +34,7 @@ impl Document {
 
 	/// Wrapper around render, that returns the whole document as a Response.
 	pub fn render_root(&mut self) -> String {
-		self.root.render(&mut vec![]);
+		self.root.render(&mut vec![], &mut vec![]);
 		self.root.cache.clone()
 	}
 
