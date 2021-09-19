@@ -37,9 +37,9 @@ pub enum DocumentsMessage {
 pub struct DocumentsMessageHandler {
 	documents: HashMap<u64, DocumentMessageHandler>,
 	document_ids: Vec<u64>,
+	document_id_counter: u64,
 	active_document_index: usize,
 	copy_buffer: Vec<Layer>,
-	counter: u64,
 }
 
 impl DocumentsMessageHandler {
@@ -57,15 +57,12 @@ impl DocumentsMessageHandler {
 		let mut doc_title_numbers = self
 			.document_ids
 			.iter()
-			.filter_map(|id| {
-				let opt_doc = self.documents.get(&id);
-				match opt_doc {
-					Some(doc) => doc
-						.name
-						.rsplit_once(DEFAULT_DOCUMENT_NAME)
-						.map(|(prefix, number)| (prefix.is_empty()).then(|| number.trim().parse::<isize>().ok()).flatten().unwrap_or(1)),
-					None => None,
-				}
+			.filter_map(|id| self.documents.get(&id))
+			.map(|doc| {
+				doc.name
+					.rsplit_once(DEFAULT_DOCUMENT_NAME)
+					.map(|(prefix, number)| (prefix.is_empty()).then(|| number.trim().parse::<isize>().ok()).flatten().unwrap_or(1))
+					.unwrap()
 			})
 			.collect::<Vec<isize>>();
 
@@ -82,23 +79,13 @@ impl DocumentsMessageHandler {
 	}
 
 	fn load_document(&mut self, new_document: DocumentMessageHandler, responses: &mut VecDeque<Message>) {
-		self.counter = self.counter + 1;
+		self.document_id_counter += 1;
 		self.active_document_index = self.document_ids.len();
-		self.document_ids.push(self.counter);
-		self.documents.insert(self.counter, new_document);
+		self.document_ids.push(self.document_id_counter);
+		self.documents.insert(self.document_id_counter, new_document);
 
 		// Send the new list of document tab names
-		let open_documents = self
-			.document_ids
-			.iter()
-			.filter_map(|id| {
-				let opt_doc = self.documents.get(id);
-				match opt_doc {
-					Some(doc) => Some(doc.name.clone()),
-					None => None,
-				}
-			})
-			.collect::<Vec<String>>();
+		let open_documents = self.document_ids.iter().filter_map(|id| self.documents.get(&id).map(|doc| doc.name.clone())).collect::<Vec<String>>();
 
 		responses.push_back(FrontendMessage::UpdateOpenDocumentsList { open_documents }.into());
 
@@ -113,14 +100,14 @@ impl DocumentsMessageHandler {
 
 impl Default for DocumentsMessageHandler {
 	fn default() -> Self {
-		let mut map: HashMap<u64, DocumentMessageHandler> = HashMap::with_capacity(1);
-		map.insert(0, DocumentMessageHandler::default());
+		let mut documents_map: HashMap<u64, DocumentMessageHandler> = HashMap::with_capacity(1);
+		documents_map.insert(0, DocumentMessageHandler::default());
 		Self {
-			documents: map,
+			documents: documents_map,
 			document_ids: vec![0],
 			copy_buffer: vec![],
 			active_document_index: 0,
-			counter: 0,
+			document_id_counter: 0,
 		}
 	}
 }
@@ -132,6 +119,7 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 		match message {
 			Document(message) => self.active_document_mut().process_action(message, ipp, responses),
 			SelectDocument(index) => {
+				// NOTE: Potentially this will break if we ever exceed 56 bit values due to how the message parsing system works.
 				assert!(index < self.documents.len(), "Tried to select a document that was not initialized");
 				self.active_document_index = index;
 				responses.push_back(FrontendMessage::SetActiveDocument { document_index: index }.into());
@@ -177,23 +165,14 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 
 				// // Last tab was closed, so create a new blank tab
 				if self.document_ids.is_empty() {
-					self.counter = self.counter + 1;
-					self.document_ids.push(self.counter);
-					self.documents.insert(self.counter, DocumentMessageHandler::default());
+					self.document_id_counter = self.document_id_counter + 1;
+					self.document_ids.push(self.document_id_counter);
+					self.documents.insert(self.document_id_counter, DocumentMessageHandler::default());
 				}
 
 				// Send the new list of document tab names
-				let open_documents: Vec<String> = self
-					.document_ids
-					.iter()
-					.filter_map(|id| {
-						let opt_doc = self.documents.get(&id);
-						match opt_doc {
-							Some(doc) => Some(doc.name.clone()),
-							None => None,
-						}
-					})
-					.collect();
+				let open_documents: Vec<String> = self.document_ids.iter().filter_map(|id| self.documents.get(&id).map(|doc| doc.name.clone())).collect();
+
 				// Update the list of new documents on the front end, active tab, and ensure that document renders
 				responses.push_back(FrontendMessage::UpdateOpenDocumentsList { open_documents }.into());
 				responses.push_back(
