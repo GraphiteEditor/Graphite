@@ -8,5 +8,8 @@ echo 🚧 Install Node dependencies
 cd frontend
 npm install
 
+echo 📦 Install cargo-about
+cargo install cargo-about
+
 echo 👷 Build Graphite web client
 npm run build
