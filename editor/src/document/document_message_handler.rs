@@ -2,7 +2,7 @@ use crate::input::InputPreprocessor;
 use crate::message_prelude::*;
 use graphene::layers::Layer;
 use graphene::{LayerId, Operation as DocumentOperation};
-use log::{log, warn};
+use log::warn;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
 
@@ -170,7 +170,7 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 				};
 
 				// Send the new list of document tab names
-				let open_documents: Vec<String> = self.document_ids.iter().filter_map(|id| self.documents.get(&id).map(|doc| doc.name.clone())).collect();
+				let open_documents = self.document_ids.iter().filter_map(|id| self.documents.get(&id).map(|doc| doc.name.clone())).collect();
 
 				// Update the list of new documents on the front end, active tab, and ensure that document renders
 				responses.push_back(FrontendMessage::UpdateOpenDocumentsList { open_documents }.into());
@@ -181,6 +181,10 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 					.into(),
 				);
 				responses.push_back(RenderDocument.into());
+				responses.push_back(DocumentMessage::DocumentStructureChanged.into());
+				for layer in self.active_document().layer_data.keys() {
+					responses.push_back(DocumentMessage::LayerChanged(layer.clone()).into());
+				}
 			}
 			NewDocument => {
 				let name = self.generate_new_document_name();
@@ -207,14 +211,7 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 			}
 			GetOpenDocumentsList => {
 				// Send the list of document tab names
-				let open_documents = self
-					.documents
-					.iter()
-					.map(|entry| {
-						let doc = entry.1;
-						doc.name.clone()
-					})
-					.collect();
+				let open_documents = self.documents.values().map(|doc| doc.name.clone()).collect();
 				responses.push_back(FrontendMessage::UpdateOpenDocumentsList { open_documents }.into());
 			}
 			NextDocument => {
