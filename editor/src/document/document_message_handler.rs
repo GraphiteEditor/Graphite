@@ -149,7 +149,7 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 				responses.push_back(NewDocument.into());
 			}
 			CloseDocument(index) => {
-				assert!(index < self.documents.len(), "Tried to select a document that was not initialized");
+				assert!(index < self.documents.len(), "Tried to close a document that was not initialized");
 				// Get the ID based on the current collection of the documents.
 				let id = self.document_ids[index];
 				// Map the ID to an index and remove the document
