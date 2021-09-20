@@ -216,9 +216,9 @@ img {
 <script lang="ts">
 import { defineComponent } from "vue";
 
-import dialog from "@/utilities/dialog";
-import documents from "@/utilities/documents";
-import fullscreen, { fullscreenModeChanged } from "@/utilities/fullscreen";
+import dialog from "@/state/dialog";
+import documents from "@/state/documents";
+import fullscreen, { fullscreenModeChanged } from "@/state/fullscreen";
 
 import MainWindow from "@/components/window/MainWindow.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";

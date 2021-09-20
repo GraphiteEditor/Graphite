@@ -77,7 +77,7 @@
 <script lang="ts">
 import { defineComponent } from "vue";
 
-import { dismissDialog } from "@/utilities/dialog";
+import { dismissDialog } from "@/state/dialog";
 
 import LayoutRow from "@/components/layout/LayoutRow.vue";
 import LayoutCol from "@/components/layout/LayoutCol.vue";

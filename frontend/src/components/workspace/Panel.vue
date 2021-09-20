@@ -144,7 +144,7 @@
 <script lang="ts">
 import { defineComponent, PropType } from "vue";
 
-import { selectDocument, closeDocumentWithConfirmation } from "@/utilities/documents";
+import { selectDocument, closeDocumentWithConfirmation } from "@/state/documents";
 
 import Document from "@/components/panels/Document.vue";
 import Properties from "@/components/panels/Properties.vue";

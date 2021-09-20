@@ -1,6 +1,6 @@
 import { reactive, readonly } from "vue";
 
-import { createDialog, dismissDialog } from "@/utilities/dialog";
+import { createDialog, dismissDialog } from "@/state/dialog";
 import {
 	ResponseType,
 	registerResponseHandler,
@@ -10,7 +10,7 @@ import {
 	DisplayConfirmationToCloseDocument,
 	ExportDocument,
 	SaveDocument,
-} from "@/utilities/response-handler";
+} from "@/state/response-handler";
 import { download, upload } from "@/utilities/files";
 import wasm from "@/utilities/wasm-loader";
 

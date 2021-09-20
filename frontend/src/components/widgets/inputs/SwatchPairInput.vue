@@ -69,7 +69,7 @@
 import { defineComponent } from "vue";
 
 import { rgbToDecimalRgb, RGB } from "@/utilities/color";
-import { ResponseType, registerResponseHandler, Response, UpdateWorkingColors } from "@/utilities/response-handler";
+import { ResponseType, registerResponseHandler, Response, UpdateWorkingColors } from "@/state/response-handler";
 
 import ColorPicker from "@/components/widgets/floating-menus/ColorPicker.vue";
 import FloatingMenu, { MenuDirection, MenuType } from "@/components/widgets/floating-menus/FloatingMenu.vue";

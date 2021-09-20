@@ -1,6 +1,6 @@
-import { createDialog, dismissDialog } from "@/utilities/dialog";
+import { createDialog, dismissDialog } from "@/state/dialog";
 import { TextButtonWidget } from "@/components/widgets/widgets";
-import { ResponseType, registerResponseHandler, Response, DisplayError, DisplayPanic } from "@/utilities/response-handler";
+import { ResponseType, registerResponseHandler, Response, DisplayError, DisplayPanic } from "@/state/response-handler";
 
 // Coming soon dialog
 export function comingSoon(issueNumber?: number) {

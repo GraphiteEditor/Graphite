@@ -1,5 +1,5 @@
-import { toggleFullscreen } from "@/utilities/fullscreen";
-import { dialogIsVisible, dismissDialog, submitDialog } from "@/utilities/dialog";
+import { toggleFullscreen } from "@/state/fullscreen";
+import { dialogIsVisible, dismissDialog, submitDialog } from "@/state/dialog";
 import { EditorWasm } from "./wasm-loader";
 
 let viewportMouseInteractionOngoing = false;

@@ -134,7 +134,7 @@
 <script lang="ts">
 import { defineComponent, PropType } from "vue";
 
-import { keyboardLockApiSupported } from "@/utilities/fullscreen";
+import { keyboardLockApiSupported } from "@/state/fullscreen";
 import { SeparatorDirection, SeparatorType } from "@/components/widgets/widgets";
 
 import FloatingMenu, { MenuDirection, MenuType } from "@/components/widgets/floating-menus/FloatingMenu.vue";

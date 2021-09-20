@@ -27,7 +27,7 @@
 <script lang="ts">
 import { defineComponent } from "vue";
 
-import fullscreen, { keyboardLockApiSupported, enterFullscreen, exitFullscreen } from "@/utilities/fullscreen";
+import fullscreen, { keyboardLockApiSupported, enterFullscreen, exitFullscreen } from "@/state/fullscreen";
 
 import IconLabel from "@/components/widgets/labels/IconLabel.vue";
 import TextLabel from "@/components/widgets/labels/TextLabel.vue";
