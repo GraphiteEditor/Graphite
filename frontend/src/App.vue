@@ -263,6 +263,8 @@ export default defineComponent({
 		const { editor, fullscreen } = this.$data;
 		mountInput(editor, fullscreen.toggleFullscreen);
 		document.addEventListener("fullscreenchange", fullscreen.fullscreenModeChanged);
+		// Load the initial document list
+		editor.get_open_documents_list();
 	},
 	beforeUnmount() {
 		const { editor, fullscreen } = this.$data;
