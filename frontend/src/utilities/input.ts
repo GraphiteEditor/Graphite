@@ -1,4 +1,3 @@
-import { toggleFullscreen } from "@/state/fullscreen";
 import { dialogIsVisible, dismissDialog, submitDialog } from "@/state/dialog";
 import { EditorWasm } from "./wasm-loader";
 
@@ -6,7 +5,7 @@ let viewportMouseInteractionOngoing = false;
 
 // Keyboard events
 
-function shouldRedirectKeyboardEventToBackend(e: KeyboardEvent): boolean {
+function shouldRedirectKeyboardEventToBackend(e: KeyboardEvent, toggleFullscreen: () => void): boolean {
 	// Don't redirect user input from text entry into HTML elements
 	const target = e.target as HTMLElement;
 	if (target.nodeName === "INPUT" || target.nodeName === "TEXTAREA" || target.isContentEditable) return false;
@@ -34,8 +33,8 @@ function shouldRedirectKeyboardEventToBackend(e: KeyboardEvent): boolean {
 	return true;
 }
 
-function onKeyDown(editor: EditorWasm, e: KeyboardEvent) {
-	if (shouldRedirectKeyboardEventToBackend(e)) {
+function onKeyDown(editor: EditorWasm, toggleFullscreen: () => void, e: KeyboardEvent) {
+	if (shouldRedirectKeyboardEventToBackend(e, toggleFullscreen)) {
 		e.preventDefault();
 		const modifiers = makeModifiersBitfield(e);
 		editor.on_key_down(e.key, modifiers);
@@ -53,8 +52,8 @@ function onKeyDown(editor: EditorWasm, e: KeyboardEvent) {
 	}
 }
 
-function onKeyUp(editor: EditorWasm, e: KeyboardEvent) {
-	if (shouldRedirectKeyboardEventToBackend(e)) {
+function onKeyUp(editor: EditorWasm, toggleFullscreen: () => void, e: KeyboardEvent) {
+	if (shouldRedirectKeyboardEventToBackend(e, toggleFullscreen)) {
 		e.preventDefault();
 		const modifiers = makeModifiersBitfield(e);
 		editor.on_key_up(e.key, modifiers);
@@ -141,12 +140,12 @@ interface BoundListeners {
 // We need to keep a reference to any listener we add, otherwise we can't remove it.
 const activeListeners = new WeakMap<EditorWasm, BoundListeners>();
 
-export function mountInput(editor: EditorWasm) {
+export function mountInput(editor: EditorWasm, toggleFullscreen: () => void) {
 	const listeners: BoundListeners = {
 		resize: () => onWindowResize(editor),
 		contextmenu: (e) => e.preventDefault(),
-		keyup: (e) => onKeyUp(editor, e),
-		keydown: (e) => onKeyDown(editor, e),
+		keyup: (e) => onKeyUp(editor, toggleFullscreen, e),
+		keydown: (e) => onKeyDown(editor, toggleFullscreen, e),
 		mousemove: (e) => onMouseMove(editor, e),
 		mousedown: (e) => onMouseDown(editor, e),
 		mouseup: (e) => onMouseUp(editor, e),

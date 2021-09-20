@@ -18,7 +18,7 @@
 
 				<span class="entry-label">{{ entry.label }}</span>
 
-				<IconLabel v-if="entry.shortcutRequiresLock && !fullscreen.keyboardLocked" :icon="'Info'" :title="keyboardLockInfoMessage" />
+				<IconLabel v-if="entry.shortcutRequiresLock && !fullscreen.state.keyboardLocked" :icon="'Info'" :title="keyboardLockInfoMessage" />
 				<UserInputLabel v-else-if="entry.shortcut && entry.shortcut.length" :inputKeys="[entry.shortcut]" />
 
 				<div class="submenu-arrow" v-if="entry.children && entry.children.length"></div>
@@ -134,7 +134,6 @@
 <script lang="ts">
 import { defineComponent, PropType } from "vue";
 
-import { keyboardLockApiSupported } from "@/state/fullscreen";
 import { SeparatorDirection, SeparatorType } from "@/components/widgets/widgets";
 
 import FloatingMenu, { MenuDirection, MenuType } from "@/components/widgets/floating-menus/FloatingMenu.vue";
@@ -267,7 +266,7 @@ const MenuList = defineComponent({
 	},
 	data() {
 		return {
-			keyboardLockInfoMessage: keyboardLockApiSupported() ? KEYBOARD_LOCK_USE_FULLSCREEN : KEYBOARD_LOCK_SWITCH_BROWSER,
+			keyboardLockInfoMessage: this.fullscreen.keyboardLockApiSupported ? KEYBOARD_LOCK_USE_FULLSCREEN : KEYBOARD_LOCK_SWITCH_BROWSER,
 			SeparatorDirection,
 			SeparatorType,
 			MenuDirection,

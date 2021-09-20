@@ -218,7 +218,7 @@ import { defineComponent } from "vue";
 
 import dialog from "@/state/dialog";
 import documents from "@/state/documents";
-import fullscreen, { fullscreenModeChanged } from "@/state/fullscreen";
+import makeFullscreenState from "@/state/fullscreen";
 
 import MainWindow from "@/components/window/MainWindow.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
@@ -231,7 +231,7 @@ declare module "@vue/runtime-core" {
 	interface ComponentCustomProperties {
 		dialog: typeof dialog;
 		documents: typeof documents;
-		fullscreen: typeof fullscreen;
+		fullscreen: ReturnType<typeof makeFullscreenState>;
 		editor: EditorWasm;
 	}
 }
@@ -241,13 +241,16 @@ export default defineComponent({
 		return {
 			dialog,
 			documents,
-			fullscreen,
 			editor: this.$data.editor,
+			fullscreen: this.$data.fullscreen,
 		};
 	},
 	data() {
+		const editor = wasm();
+		const fullscreen = makeFullscreenState();
 		return {
-			editor: wasm(),
+			editor,
+			fullscreen,
 			showUnsupportedModal: !("BigInt64Array" in window),
 		};
 	},
@@ -257,14 +260,14 @@ export default defineComponent({
 		},
 	},
 	mounted() {
-		const { editor } = this.$data;
-		mountInput(editor);
-		document.addEventListener("fullscreenchange", fullscreenModeChanged);
+		const { editor, fullscreen } = this.$data;
+		mountInput(editor, fullscreen.toggleFullscreen);
+		document.addEventListener("fullscreenchange", fullscreen.fullscreenModeChanged);
 	},
 	beforeUnmount() {
-		const { editor } = this.$data;
+		const { editor, fullscreen } = this.$data;
 		unmountInput(editor);
-		document.removeEventListener("fullscreenchange", fullscreenModeChanged);
+		document.removeEventListener("fullscreenchange", fullscreen.fullscreenModeChanged);
 	},
 	components: { MainWindow, LayoutRow },
 });
