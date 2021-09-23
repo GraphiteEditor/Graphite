@@ -29,7 +29,7 @@ impl LayerData for Text {
 			svg,
 			r#"<foreignObject width=1000px height=1000px><textarea {} data-path='{}'>{}</textarea></foreignObject>"#,
 			self.style.render(),
-			path.iter().map(|x| x.to_string()).collect::<String>(),
+			path.iter().map(|x| x.to_string()).collect::<Vec<String>>().join(","),
 			self.text
 		);
 	}

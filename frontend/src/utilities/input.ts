@@ -5,7 +5,7 @@ import { panicProxy } from "@/utilities/panic-proxy";
 const wasm = import("@/../wasm/pkg").then(panicProxy);
 
 let viewportMouseInteractionOngoing = false;
-let editingTextField = false;
+let editingTextField: HTMLTextAreaElement | undefined;
 
 // Keyboard events
 
@@ -88,9 +88,16 @@ export async function onMouseDown(e: MouseEvent) {
 	}
 
 	if (inCanvas) {
-		if (target.nodeName === "TEXTAREA") editingTextField = true;
-		else if (editingTextField) editingTextField = false;
-		else viewportMouseInteractionOngoing = true;
+		if (target.nodeName === "TEXTAREA") {
+			editingTextField = target as HTMLTextAreaElement;
+		} else if (editingTextField) {
+			if (editingTextField.dataset.path) {
+				(await wasm).on_input_changed(editingTextField.dataset.path, editingTextField.value);
+			} else {
+				console.error("Edited text had not path attribute");
+			}
+			editingTextField = undefined;
+		} else viewportMouseInteractionOngoing = true;
 	}
 
 	if (viewportMouseInteractionOngoing) {

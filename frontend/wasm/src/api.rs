@@ -150,6 +150,13 @@ pub fn bounds_of_viewports(bounds_of_viewports: &[f64]) {
 	dispatch(message);
 }
 
+/// When text field is edited
+#[wasm_bindgen]
+pub fn on_input_changed(path: String, value: String) {
+	let message = TextMessage::InputChanged { path, value };
+	dispatch(message);
+}
+
 /// Mouse movement within the screenspace bounds of the viewport
 #[wasm_bindgen]
 pub fn on_mouse_move(x: f64, y: f64, mouse_keys: u8, modifiers: u8) {

@@ -11,24 +11,35 @@ pub struct Text;
 #[derive(PartialEq, Clone, Debug, Hash, Serialize, Deserialize)]
 pub enum TextMessage {
 	PlaceText,
+	InputChanged { path: String, value: String },
 }
 
 impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Text {
-	fn process_action(&mut self, _action: ToolMessage, data: ToolActionHandlerData<'a>, responses: &mut VecDeque<Message>) {
-		let path = vec![generate_uuid()];
-		responses.extend([
-			Operation::AddText {
-				path: path.clone(),
-				insert_index: -1,
-				style: style::PathStyle::new(None, Some(style::Fill::new(data.1.primary_color))),
+	fn process_action(&mut self, action: ToolMessage, data: ToolActionHandlerData<'a>, responses: &mut VecDeque<Message>) {
+		if let ToolMessage::Text(action) = action {
+			match action {
+				TextMessage::PlaceText => {
+					let path = vec![generate_uuid()];
+					responses.extend([
+						Operation::AddText {
+							path: path.clone(),
+							insert_index: -1,
+							style: style::PathStyle::new(None, Some(style::Fill::new(data.1.primary_color))),
+						}
+						.into(),
+						Operation::SetLayerTransformInViewport {
+							path,
+							transform: DAffine2::from_translation(data.2.mouse.position).to_cols_array(),
+						}
+						.into(),
+					]);
+				}
+				TextMessage::InputChanged { path, value } => {
+					let path = path.split(",").map(|x| x.parse::<u64>().unwrap()).collect::<Vec<u64>>();
+					log::info!("Path {:?} to value {}", path, value);
+				}
 			}
-			.into(),
-			Operation::SetLayerTransformInViewport {
-				path,
-				transform: DAffine2::from_translation(data.2.mouse.position).to_cols_array(),
-			}
-			.into(),
-		]);
+		}
 	}
 	fn actions(&self) -> ActionList {
 		actions!(TextMessageDiscriminant; PlaceText)
