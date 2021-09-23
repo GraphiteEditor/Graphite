@@ -570,6 +570,15 @@ impl Document {
 				self.mark_as_dirty(path)?;
 				Some([vec![DocumentChanged], update_thumbnails_upstream(path)].concat())
 			}
+			Operation::SetText { path, text } => {
+				let layer = self.layer_mut(path)?;
+				match &mut layer.data {
+					LayerDataType::Text(t) => t.text = text.to_string(),
+					_ => return Err(DocumentError::NotText),
+				}
+				self.mark_as_dirty(path)?;
+				Some([vec![DocumentChanged], update_thumbnails_upstream(path)].concat())
+			}
 		};
 		Ok(responses)
 	}

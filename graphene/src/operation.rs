@@ -143,6 +143,10 @@ pub enum Operation {
 		path: Vec<LayerId>,
 		color: Color,
 	},
+	SetText {
+		path: Vec<LayerId>,
+		text: String,
+	},
 }
 
 impl Operation {

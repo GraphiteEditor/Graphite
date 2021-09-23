@@ -35,8 +35,9 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Text {
 					]);
 				}
 				TextMessage::InputChanged { path, value } => {
-					let path = path.split(",").map(|x| x.parse::<u64>().unwrap()).collect::<Vec<u64>>();
+					let path = path.split(",").map(|x| x.parse::<LayerId>().unwrap()).collect::<Vec<LayerId>>();
 					log::info!("Path {:?} to value {}", path, value);
+					responses.push_back(Operation::SetText { path: path, text: value }.into());
 				}
 			}
 		}
