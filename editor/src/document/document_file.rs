@@ -445,7 +445,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 							size.x,
 							size.y,
 							"\n",
-							self.graphene_document.render_root()
+							self.graphene_document.render_root(false)
 						),
 						name,
 					}
@@ -579,7 +579,8 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				responses.push_back(FolderChanged(vec![]).into());
 			}
 			FolderChanged(path) => {
-				let _ = self.graphene_document.render_root();
+				// ToDo: text editable only enabled if in text tool
+				let _ = self.graphene_document.render_root(true);
 				responses.extend([LayerChanged(path).into(), DocumentStructureChanged.into()]);
 			}
 			DocumentStructureChanged => {
@@ -621,7 +622,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			RenderDocument => {
 				responses.push_back(
 					FrontendMessage::UpdateCanvas {
-						document: self.graphene_document.render_root(),
+						document: self.graphene_document.render_root(true), // ToDo: text editable only enabled if in text tool
 					}
 					.into(),
 				);

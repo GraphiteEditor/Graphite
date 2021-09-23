@@ -22,16 +22,20 @@ pub struct Text {
 }
 
 impl LayerData for Text {
-	fn render(&mut self, svg: &mut String, _transforms: &mut Vec<DAffine2>, path: &mut Vec<LayerId>) {
+	fn render(&mut self, svg: &mut String, _transforms: &mut Vec<DAffine2>, path: &mut Vec<LayerId>, text_editable: bool) {
 		log::info!("Path {:?}", path);
 		let _ = svg.write_str(r#")">"#);
-		let _ = write!(
-			svg,
-			r#"<foreignObject width=1000px height=1000px><textarea {} data-path='{}'>{}</textarea></foreignObject>"#,
-			self.style.render(),
-			path.iter().map(|x| x.to_string()).collect::<Vec<String>>().join(","),
-			self.text
-		);
+		if text_editable {
+			let _ = write!(
+				svg,
+				r#"<foreignObject width=1000px height=1000px><textarea {} data-path='{}'>{}</textarea></foreignObject>"#,
+				self.style.render(),
+				path.iter().map(|x| x.to_string()).collect::<Vec<String>>().join(","),
+				self.text
+			);
+		} else {
+			let _ = write!(svg, r#"<text {}>{}</text>"#, self.style.render(), self.text);
+		}
 	}
 
 	fn bounding_box(&self, transform: glam::DAffine2) -> Option<[DVec2; 2]> {

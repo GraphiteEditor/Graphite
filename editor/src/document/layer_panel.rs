@@ -64,7 +64,7 @@ pub fn layer_panel_entry(layer_data: &LayerData, transform: DAffine2, layer: &La
 	let arr = arr.iter().map(|x| (*x).into()).collect::<Vec<(f64, f64)>>();
 
 	let mut thumbnail = String::new();
-	layer.data.clone().render(&mut thumbnail, &mut vec![transform], &mut path);
+	layer.data.clone().render(&mut thumbnail, &mut vec![transform], &mut path, false);
 	let transform = transform.to_cols_array().iter().map(ToString::to_string).collect::<Vec<_>>().join(",");
 	let thumbnail = if let [(x_min, y_min), (x_max, y_max)] = arr.as_slice() {
 		format!(

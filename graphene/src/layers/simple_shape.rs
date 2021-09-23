@@ -30,7 +30,7 @@ pub struct Shape {
 }
 
 impl LayerData for Shape {
-	fn render(&mut self, svg: &mut String, transforms: &mut Vec<DAffine2>, _path: &mut Vec<LayerId>) {
+	fn render(&mut self, svg: &mut String, transforms: &mut Vec<DAffine2>, _path: &mut Vec<LayerId>, _text_editable: bool) {
 		let mut path = self.path.clone();
 		let transform = self.transform(transforms);
 		let inverse = transform.inverse();

@@ -33,8 +33,8 @@ impl Document {
 	}
 
 	/// Wrapper around render, that returns the whole document as a Response.
-	pub fn render_root(&mut self) -> String {
-		self.root.render(&mut vec![], &mut vec![]);
+	pub fn render_root(&mut self, text_editable: bool) -> String {
+		self.root.render(&mut vec![], &mut vec![], text_editable);
 		self.root.cache.clone()
 	}
 
