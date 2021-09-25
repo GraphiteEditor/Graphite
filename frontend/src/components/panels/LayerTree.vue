@@ -408,7 +408,7 @@ export default defineComponent({
 			recurse(expandData, this.layers, this.layerCache);
 		});
 
-		this.editor.registerResponseHandler(ResponseType.UpdateLayer, (responseData) => {
+		this.editor.registerResponseHandler(ResponseType.UpdateLayer, (responseData: Response) => {
 			const updateData = responseData as UpdateLayer;
 			if (updateData) {
 				const responsePath = updateData.path;

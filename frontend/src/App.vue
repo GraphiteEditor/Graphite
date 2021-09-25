@@ -222,7 +222,7 @@ import makeFullscreenState, { FullscreenState } from "@/state/fullscreen";
 
 import MainWindow from "@/components/window/MainWindow.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
-import wasm, { EditorWasm } from "./utilities/wasm-loader";
+import createEditor, { EditorWasm } from "./utilities/wasm-loader";
 import { mountInput, unmountInput } from "./utilities/input";
 import { initErrorHandling } from "@/utilities/errors";
 
@@ -247,7 +247,7 @@ export default defineComponent({
 		};
 	},
 	data() {
-		const editor = wasm();
+		const editor = createEditor();
 		const dialog = makeDialogState();
 		const fullscreen = makeFullscreenState();
 		const documents = makeDocumentsState(editor, dialog);
@@ -276,6 +276,7 @@ export default defineComponent({
 		const { editor, fullscreen } = this.$data;
 		unmountInput(editor);
 		document.removeEventListener("fullscreenchange", fullscreen.fullscreenModeChanged);
+		editor.free();
 	},
 	components: { MainWindow, LayoutRow },
 });
