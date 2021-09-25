@@ -1,22 +1,23 @@
-import { dialogIsVisible, dismissDialog, submitDialog } from "@/state/dialog";
+import { DialogState } from "@/state/dialog";
+import { FullscreenState } from "@/state/fullscreen";
 import { EditorWasm } from "./wasm-loader";
 
 let viewportMouseInteractionOngoing = false;
 
 // Keyboard events
 
-function shouldRedirectKeyboardEventToBackend(e: KeyboardEvent, toggleFullscreen: () => void): boolean {
+function shouldRedirectKeyboardEventToBackend(e: KeyboardEvent, fullscreenState: FullscreenState, dialogState: DialogState): boolean {
 	// Don't redirect user input from text entry into HTML elements
 	const target = e.target as HTMLElement;
 	if (target.nodeName === "INPUT" || target.nodeName === "TEXTAREA" || target.isContentEditable) return false;
 
 	// Don't redirect when a modal is covering the workspace
-	if (dialogIsVisible()) return false;
+	if (dialogState.dialogIsVisible()) return false;
 
 	// Don't redirect a fullscreen request
 	if (e.key.toLowerCase() === "f11" && e.type === "keydown" && !e.repeat) {
 		e.preventDefault();
-		toggleFullscreen();
+		fullscreenState.toggleFullscreen();
 		return false;
 	}
 
@@ -33,18 +34,18 @@ function shouldRedirectKeyboardEventToBackend(e: KeyboardEvent, toggleFullscreen
 	return true;
 }
 
-function onKeyDown(editor: EditorWasm, toggleFullscreen: () => void, e: KeyboardEvent) {
-	if (shouldRedirectKeyboardEventToBackend(e, toggleFullscreen)) {
+function onKeyDown(editor: EditorWasm, fullscreenState: FullscreenState, dialogState: DialogState, e: KeyboardEvent) {
+	if (shouldRedirectKeyboardEventToBackend(e, fullscreenState, dialogState)) {
 		e.preventDefault();
 		const modifiers = makeModifiersBitfield(e);
 		editor.on_key_down(e.key, modifiers);
 		return;
 	}
 
-	if (dialogIsVisible()) {
-		if (e.key === "Escape") dismissDialog();
+	if (dialogState.dialogIsVisible()) {
+		if (e.key === "Escape") dialogState.dismissDialog();
 		if (e.key === "Enter") {
-			submitDialog();
+			dialogState.submitDialog();
 
 			// Prevent the Enter key from acting like a click on the last clicked button, which might reopen the dialog
 			e.preventDefault();
@@ -52,8 +53,8 @@ function onKeyDown(editor: EditorWasm, toggleFullscreen: () => void, e: Keyboard
 	}
 }
 
-function onKeyUp(editor: EditorWasm, toggleFullscreen: () => void, e: KeyboardEvent) {
-	if (shouldRedirectKeyboardEventToBackend(e, toggleFullscreen)) {
+function onKeyUp(editor: EditorWasm, fullscreenState: FullscreenState, dialogState: DialogState, e: KeyboardEvent) {
+	if (shouldRedirectKeyboardEventToBackend(e, fullscreenState, dialogState)) {
 		e.preventDefault();
 		const modifiers = makeModifiersBitfield(e);
 		editor.on_key_up(e.key, modifiers);
@@ -69,7 +70,7 @@ function onMouseMove(editor: EditorWasm, e: MouseEvent) {
 	editor.on_mouse_move(e.clientX, e.clientY, e.buttons, modifiers);
 }
 
-function onMouseDown(editor: EditorWasm, e: MouseEvent) {
+function onMouseDown(editor: EditorWasm, dialogState: DialogState, e: MouseEvent) {
 	const target = e.target && (e.target as HTMLElement);
 	const inCanvas = target && target.closest(".canvas");
 	const inDialog = target && target.closest(".dialog-modal .floating-menu-content");
@@ -77,8 +78,8 @@ function onMouseDown(editor: EditorWasm, e: MouseEvent) {
 	// Block middle mouse button auto-scroll mode
 	if (e.button === 1) e.preventDefault();
 
-	if (dialogIsVisible() && !inDialog) {
-		dismissDialog();
+	if (dialogState.dialogIsVisible() && !inDialog) {
+		dialogState.dismissDialog();
 		e.preventDefault();
 		e.stopPropagation();
 	}
@@ -140,14 +141,14 @@ interface BoundListeners {
 // We need to keep a reference to any listener we add, otherwise we can't remove it.
 const activeListeners = new WeakMap<EditorWasm, BoundListeners>();
 
-export function mountInput(editor: EditorWasm, toggleFullscreen: () => void) {
+export function mountInput(editor: EditorWasm, fullscreenState: FullscreenState, dialogState: DialogState) {
 	const listeners: BoundListeners = {
 		resize: () => onWindowResize(editor),
 		contextmenu: (e) => e.preventDefault(),
-		keyup: (e) => onKeyUp(editor, toggleFullscreen, e),
-		keydown: (e) => onKeyDown(editor, toggleFullscreen, e),
+		keyup: (e) => onKeyUp(editor, fullscreenState, dialogState, e),
+		keydown: (e) => onKeyDown(editor, fullscreenState, dialogState, e),
 		mousemove: (e) => onMouseMove(editor, e),
-		mousedown: (e) => onMouseDown(editor, e),
+		mousedown: (e) => onMouseDown(editor, dialogState, e),
 		mouseup: (e) => onMouseUp(editor, e),
 		wheel: (e) => onMouseScroll(editor, e),
 	};

@@ -1,5 +1,6 @@
 import { reactive, readonly } from "vue";
 
+export type FullscreenState = ReturnType<typeof makeFullscreenState>;
 export default function makeFullscreenState() {
 	const state = reactive({
 		windowFullscreen: false,

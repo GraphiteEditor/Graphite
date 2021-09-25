@@ -218,7 +218,7 @@ import { defineComponent } from "vue";
 
 import makeDialogState, { DialogState } from "@/state/dialog";
 import documents from "@/state/documents";
-import makeFullscreenState from "@/state/fullscreen";
+import makeFullscreenState, { FullscreenState } from "@/state/fullscreen";
 
 import MainWindow from "@/components/window/MainWindow.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
@@ -231,7 +231,7 @@ declare module "@vue/runtime-core" {
 	interface ComponentCustomProperties {
 		dialog: DialogState;
 		documents: typeof documents;
-		fullscreen: ReturnType<typeof makeFullscreenState>;
+		fullscreen: FullscreenState;
 		editor: EditorWasm;
 	}
 }
@@ -262,8 +262,8 @@ export default defineComponent({
 		},
 	},
 	mounted() {
-		const { editor, fullscreen } = this.$data;
-		mountInput(editor, fullscreen.toggleFullscreen);
+		const { editor, fullscreen, dialog } = this.$data;
+		mountInput(editor, fullscreen, dialog);
 		document.addEventListener("fullscreenchange", fullscreen.fullscreenModeChanged);
 		// Load the initial document list
 		editor.get_open_documents_list();
