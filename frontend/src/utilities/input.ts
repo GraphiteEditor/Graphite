@@ -110,8 +110,8 @@ function onMouseScroll(editor: EditorWasm, e: WheelEvent) {
 	}
 }
 
-function onWindowResize(editor: EditorWasm) {
-	const viewports = Array.from(document.querySelectorAll(".canvas"));
+function onWindowResize(editor: EditorWasm, container: Element) {
+	const viewports = Array.from(container.querySelectorAll(".canvas"));
 	const boundsOfViewports = viewports.map((canvas) => {
 		const bounds = canvas.getBoundingClientRect();
 		return [bounds.left, bounds.top, bounds.right, bounds.bottom];
@@ -141,9 +141,9 @@ interface BoundListeners {
 // We need to keep a reference to any listener we add, otherwise we can't remove it.
 const activeListeners = new WeakMap<EditorWasm, BoundListeners>();
 
-export function mountInput(editor: EditorWasm, fullscreenState: FullscreenState, dialogState: DialogState) {
+export function mountInput(editor: EditorWasm, container: Element, fullscreenState: FullscreenState, dialogState: DialogState) {
 	const listeners: BoundListeners = {
-		resize: () => onWindowResize(editor),
+		resize: () => onWindowResize(editor, container),
 		contextmenu: (e) => e.preventDefault(),
 		keyup: (e) => onKeyUp(editor, fullscreenState, dialogState, e),
 		keydown: (e) => onKeyDown(editor, fullscreenState, dialogState, e),
