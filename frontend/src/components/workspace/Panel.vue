@@ -7,11 +7,11 @@
 					:class="{ active: tabIndex === tabActiveIndex }"
 					v-for="(tabLabel, tabIndex) in tabLabels"
 					:key="tabIndex"
-					@click.middle="closeDocumentWithConfirmation(tabIndex)"
-					@click="panelType === 'Document' && selectDocument(tabIndex)"
+					@click.middle="documents.closeDocumentWithConfirmation(tabIndex)"
+					@click="panelType === 'Document' && documents.selectDocument(tabIndex)"
 				>
 					<span>{{ tabLabel }}</span>
-					<IconButton :action="() => closeDocumentWithConfirmation(tabIndex)" :icon="'CloseX'" :size="16" v-if="tabCloseButtons" />
+					<IconButton :action="() => documents.closeDocumentWithConfirmation(tabIndex)" :icon="'CloseX'" :size="16" v-if="tabCloseButtons" />
 				</div>
 			</div>
 			<PopoverButton :icon="PopoverButtonIcon.VerticalEllipsis">
@@ -144,8 +144,6 @@
 <script lang="ts">
 import { defineComponent, PropType } from "vue";
 
-import { selectDocument, closeDocumentWithConfirmation } from "@/state/documents";
-
 import Document from "@/components/panels/Document.vue";
 import Properties from "@/components/panels/Properties.vue";
 import LayerTree from "@/components/panels/LayerTree.vue";
@@ -155,6 +153,7 @@ import PopoverButton, { PopoverButtonIcon } from "@/components/widgets/buttons/P
 import { MenuDirection } from "@/components/widgets/floating-menus/FloatingMenu.vue";
 
 export default defineComponent({
+	inject: ["documents"],
 	components: {
 		Document,
 		Properties,
@@ -172,8 +171,6 @@ export default defineComponent({
 	},
 	data() {
 		return {
-			selectDocument,
-			closeDocumentWithConfirmation,
 			PopoverButtonIcon,
 			MenuDirection,
 		};

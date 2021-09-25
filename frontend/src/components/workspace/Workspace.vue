@@ -1,7 +1,7 @@
 <template>
 	<LayoutRow class="workspace-grid-subdivision">
 		<LayoutCol class="workspace-grid-subdivision" style="flex-grow: 1597">
-			<Panel :panelType="'Document'" :tabCloseButtons="true" :tabMinWidths="true" :tabLabels="documents.documents" :tabActiveIndex="documents.activeDocumentIndex" />
+			<Panel :panelType="'Document'" :tabCloseButtons="true" :tabMinWidths="true" :tabLabels="documents.state.documents" :tabActiveIndex="documents.state.activeDocumentIndex" />
 		</LayoutCol>
 		<LayoutCol class="workspace-grid-resize-gutter"></LayoutCol>
 		<LayoutCol class="workspace-grid-subdivision" style="flex-grow: 319">
@@ -18,7 +18,7 @@
 			</LayoutRow> -->
 		</LayoutCol>
 	</LayoutRow>
-	<DialogModal v-if="dialog.visible" />
+	<DialogModal v-if="dialog.state.visible" />
 </template>
 
 <style lang="scss">

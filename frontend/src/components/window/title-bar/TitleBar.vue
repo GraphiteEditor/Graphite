@@ -4,7 +4,7 @@
 		<MenuBarInput v-if="platform !== ApplicationPlatform.Mac" />
 	</div>
 	<div class="header-third">
-		<WindowTitle :title="`${documents.title}${documents.unsaved ? '*' : ''} - Graphite`" />
+		<WindowTitle :title="`${documents.state.title}${documents.state.unsaved ? '*' : ''} - Graphite`" />
 	</div>
 	<div class="header-third">
 		<WindowButtonsWindows :maximized="maximized" v-if="platform === ApplicationPlatform.Windows || platform === ApplicationPlatform.Linux" />

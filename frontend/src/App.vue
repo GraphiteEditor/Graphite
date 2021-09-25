@@ -217,7 +217,7 @@ img {
 import { defineComponent } from "vue";
 
 import makeDialogState, { DialogState } from "@/state/dialog";
-import documents from "@/state/documents";
+import makeDocumentsState, { DocumentsState } from "@/state/documents";
 import makeFullscreenState, { FullscreenState } from "@/state/fullscreen";
 
 import MainWindow from "@/components/window/MainWindow.vue";
@@ -230,7 +230,7 @@ import { mountInput, unmountInput } from "./utilities/input";
 declare module "@vue/runtime-core" {
 	interface ComponentCustomProperties {
 		dialog: DialogState;
-		documents: typeof documents;
+		documents: DocumentsState;
 		fullscreen: FullscreenState;
 		editor: EditorWasm;
 	}
@@ -240,7 +240,7 @@ export default defineComponent({
 	provide() {
 		return {
 			dialog: this.$data.dialog,
-			documents,
+			documents: this.$data.documents,
 			editor: this.$data.editor,
 			fullscreen: this.$data.fullscreen,
 		};
@@ -249,10 +249,12 @@ export default defineComponent({
 		const editor = wasm();
 		const dialog = makeDialogState();
 		const fullscreen = makeFullscreenState();
+		const documents = makeDocumentsState(dialog);
 		return {
 			editor,
 			dialog,
 			fullscreen,
+			documents,
 			showUnsupportedModal: !("BigInt64Array" in window),
 		};
 	},
