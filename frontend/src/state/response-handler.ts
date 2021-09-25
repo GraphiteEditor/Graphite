@@ -1,18 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable camelcase */
 
-import { reactive } from "vue";
-import wasm from "@/utilities/wasm-loader";
-
-type ResponseCallback = (responseData: Response) => void;
-type ResponseMap = {
-	[response: string]: ResponseCallback | undefined;
-};
-
-const state = reactive({
-	responseMap: {} as ResponseMap,
-});
-
 export enum ResponseType {
 	UpdateCanvas = "UpdateCanvas",
 	UpdateScrollbars = "UpdateScrollbars",
@@ -33,31 +21,12 @@ export enum ResponseType {
 	DisplayConfirmationToCloseAllDocuments = "DisplayConfirmationToCloseAllDocuments",
 }
 
-export function registerResponseHandler(responseType: ResponseType, callback: ResponseCallback) {
-	state.responseMap[responseType] = callback;
-}
-
-export function handleResponse(responseType: string, responseData: any) {
-	const callback = state.responseMap[responseType];
-	const data = parseResponse(responseType, responseData);
-
-	if (callback && data) {
-		callback(data);
-	} else if (data) {
-		// eslint-disable-next-line no-console
-		console.error(`Received a Response of type "${responseType}" but no handler was registered for it from the client.`);
-	} else {
-		// eslint-disable-next-line no-console
-		console.error(`Received a Response of type "${responseType}" but but was not able to parse the data.`);
-	}
-}
-
-function parseResponse(responseType: string, data: any): Response {
+export function parseResponse(wasm_memory: () => any, responseType: string, data: any): Response {
 	switch (responseType) {
 		case "DocumentChanged":
 			return newDocumentChanged(data.DocumentChanged);
 		case "DisplayFolderTreeStructure":
-			return newDisplayFolderTreeStructure(data.DisplayFolderTreeStructure);
+			return newDisplayFolderTreeStructure(wasm_memory, data.DisplayFolderTreeStructure);
 		case "SetActiveTool":
 			return newSetActiveTool(data.SetActiveTool);
 		case "SetActiveDocument":
@@ -241,9 +210,9 @@ export interface DisplayFolderTreeStructure {
 	layerId: BigInt;
 	children: DisplayFolderTreeStructure[];
 }
-function newDisplayFolderTreeStructure(input: any): DisplayFolderTreeStructure {
+function newDisplayFolderTreeStructure(wasm_memory: () => any, input: any): DisplayFolderTreeStructure {
 	const { ptr, len } = input.data_buffer;
-	const wasmMemoryBuffer = wasm().wasm_memory().buffer;
+	const wasmMemoryBuffer = wasm_memory().buffer;
 
 	// Decode the folder structure encoding
 	const encoding = new DataView(wasmMemoryBuffer, ptr, len);

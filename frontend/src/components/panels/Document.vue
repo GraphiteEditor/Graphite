@@ -224,7 +224,7 @@
 <script lang="ts">
 import { defineComponent } from "vue";
 
-import { ResponseType, registerResponseHandler, Response, UpdateCanvas, UpdateScrollbars, SetActiveTool, SetCanvasZoom, SetCanvasRotation } from "@/state/response-handler";
+import { ResponseType, Response, UpdateCanvas, UpdateScrollbars, SetActiveTool, SetCanvasZoom, SetCanvasRotation } from "@/state/response-handler";
 import { SeparatorDirection, SeparatorType } from "@/components/widgets/widgets";
 import { comingSoon } from "@/utilities/errors";
 
@@ -313,12 +313,12 @@ export default defineComponent({
 		},
 	},
 	mounted() {
-		registerResponseHandler(ResponseType.UpdateCanvas, (responseData: Response) => {
+		this.editor.registerResponseHandler(ResponseType.UpdateCanvas, (responseData: Response) => {
 			const updateData = responseData as UpdateCanvas;
 			if (updateData) this.viewportSvg = updateData.document;
 		});
 
-		registerResponseHandler(ResponseType.UpdateScrollbars, (responseData: Response) => {
+		this.editor.registerResponseHandler(ResponseType.UpdateScrollbars, (responseData: Response) => {
 			const updateData = responseData as UpdateScrollbars;
 			if (updateData) {
 				this.scrollbarPos = updateData.position;
@@ -327,7 +327,7 @@ export default defineComponent({
 			}
 		});
 
-		registerResponseHandler(ResponseType.SetActiveTool, (responseData: Response) => {
+		this.editor.registerResponseHandler(ResponseType.SetActiveTool, (responseData: Response) => {
 			const toolData = responseData as SetActiveTool;
 			if (toolData) {
 				this.activeTool = toolData.tool_name;
@@ -335,14 +335,14 @@ export default defineComponent({
 			}
 		});
 
-		registerResponseHandler(ResponseType.SetCanvasZoom, (responseData: Response) => {
+		this.editor.registerResponseHandler(ResponseType.SetCanvasZoom, (responseData: Response) => {
 			const updateData = responseData as SetCanvasZoom;
 			if (updateData) {
 				this.documentZoom = updateData.new_zoom * 100;
 			}
 		});
 
-		registerResponseHandler(ResponseType.SetCanvasRotation, (responseData: Response) => {
+		this.editor.registerResponseHandler(ResponseType.SetCanvasRotation, (responseData: Response) => {
 			const updateData = responseData as SetCanvasRotation;
 			if (updateData) {
 				const newRotation = updateData.new_radians * (180 / Math.PI);

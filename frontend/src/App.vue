@@ -224,6 +224,7 @@ import MainWindow from "@/components/window/MainWindow.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
 import wasm, { EditorWasm } from "./utilities/wasm-loader";
 import { mountInput, unmountInput } from "./utilities/input";
+import { initErrorHandling } from "@/utilities/errors";
 
 // Vue injects don't play well with typescript, and all injects will show up as 'any'
 // As a workaround, we can define these types.
@@ -249,7 +250,8 @@ export default defineComponent({
 		const editor = wasm();
 		const dialog = makeDialogState();
 		const fullscreen = makeFullscreenState();
-		const documents = makeDocumentsState(dialog);
+		const documents = makeDocumentsState(editor, dialog);
+		initErrorHandling(editor, dialog);
 		return {
 			editor,
 			dialog,

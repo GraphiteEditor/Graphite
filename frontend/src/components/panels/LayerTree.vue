@@ -181,7 +181,7 @@
 <script lang="ts">
 import { defineComponent } from "vue";
 
-import { ResponseType, registerResponseHandler, Response, BlendMode, DisplayFolderTreeStructure, UpdateLayer, LayerPanelEntry, LayerType } from "@/state/response-handler";
+import { ResponseType, Response, BlendMode, DisplayFolderTreeStructure, UpdateLayer, LayerPanelEntry, LayerType } from "@/state/response-handler";
 import { SeparatorType } from "@/components/widgets/widgets";
 
 import LayoutRow from "@/components/layout/LayoutRow.vue";
@@ -388,7 +388,7 @@ export default defineComponent({
 		},
 	},
 	mounted() {
-		registerResponseHandler(ResponseType.DisplayFolderTreeStructure, (responseData: Response) => {
+		this.editor.registerResponseHandler(ResponseType.DisplayFolderTreeStructure, (responseData: Response) => {
 			const expandData = responseData as DisplayFolderTreeStructure;
 			if (!expandData) return;
 			console.log(expandData);
@@ -408,7 +408,7 @@ export default defineComponent({
 			recurse(expandData, this.layers, this.layerCache);
 		});
 
-		registerResponseHandler(ResponseType.UpdateLayer, (responseData) => {
+		this.editor.registerResponseHandler(ResponseType.UpdateLayer, (responseData) => {
 			const updateData = responseData as UpdateLayer;
 			if (updateData) {
 				const responsePath = updateData.path;

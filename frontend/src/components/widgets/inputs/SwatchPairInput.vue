@@ -69,7 +69,7 @@
 import { defineComponent } from "vue";
 
 import { rgbToDecimalRgb, RGB } from "@/utilities/color";
-import { ResponseType, registerResponseHandler, Response, UpdateWorkingColors } from "@/state/response-handler";
+import { ResponseType, Response, UpdateWorkingColors } from "@/state/response-handler";
 
 import ColorPicker from "@/components/widgets/floating-menus/ColorPicker.vue";
 import FloatingMenu, { MenuDirection, MenuType } from "@/components/widgets/floating-menus/FloatingMenu.vue";
@@ -133,7 +133,7 @@ export default defineComponent({
 		};
 	},
 	mounted() {
-		registerResponseHandler(ResponseType.UpdateWorkingColors, (responseData: Response) => {
+		this.editor.registerResponseHandler(ResponseType.UpdateWorkingColors, (responseData: Response) => {
 			const colorData = responseData as UpdateWorkingColors;
 			if (!colorData) return;
 			const { primary, secondary } = colorData;

@@ -1,6 +1,7 @@
-import { createDialog, dismissDialog } from "@/state/dialog";
+import { createDialog, DialogState, dismissDialog } from "@/state/dialog";
 import { TextButtonWidget } from "@/components/widgets/widgets";
-import { ResponseType, registerResponseHandler, Response, DisplayError, DisplayPanic } from "@/state/response-handler";
+import { ResponseType, Response, DisplayError, DisplayPanic } from "@/state/response-handler";
+import { EditorWasm } from "./wasm-loader";
 
 // Coming soon dialog
 export function comingSoon(issueNumber?: number) {
@@ -23,51 +24,53 @@ export function comingSoon(issueNumber?: number) {
 	createDialog("Warning", "Coming soon", details, buttons);
 }
 
-// Graphite error dialog
-registerResponseHandler(ResponseType.DisplayError, (responseData: Response) => {
-	const data = responseData as DisplayError;
+export function initErrorHandling(editor: EditorWasm, dialogState: DialogState) {
+	// Graphite error dialog
+	editor.registerResponseHandler(ResponseType.DisplayError, (responseData: Response) => {
+		const data = responseData as DisplayError;
 
-	const okButton: TextButtonWidget = {
-		kind: "TextButton",
-		callback: async () => dismissDialog(),
-		props: { label: "OK", emphasized: true, minWidth: 96 },
-	};
-	const buttons = [okButton];
+		const okButton: TextButtonWidget = {
+			kind: "TextButton",
+			callback: async () => dialogState.dismissDialog(),
+			props: { label: "OK", emphasized: true, minWidth: 96 },
+		};
+		const buttons = [okButton];
 
-	createDialog("Warning", data.title, data.description, buttons);
-});
+		dialogState.createDialog("Warning", data.title, data.description, buttons);
+	});
 
-// Code panic dialog and console error
-registerResponseHandler(ResponseType.DisplayPanic, (responseData: Response) => {
-	const data = responseData as DisplayPanic;
+	// Code panic dialog and console error
+	editor.registerResponseHandler(ResponseType.DisplayPanic, (responseData: Response) => {
+		const data = responseData as DisplayPanic;
 
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	(Error as any).stackTraceLimit = Infinity;
-	const stackTrace = new Error().stack || "";
-	const panicDetails = `${data.panic_info}\n\n${stackTrace}`;
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		(Error as any).stackTraceLimit = Infinity;
+		const stackTrace = new Error().stack || "";
+		const panicDetails = `${data.panic_info}\n\n${stackTrace}`;
 
-	// eslint-disable-next-line no-console
-	console.error(panicDetails);
+		// eslint-disable-next-line no-console
+		console.error(panicDetails);
 
-	const reloadButton: TextButtonWidget = {
-		kind: "TextButton",
-		callback: async () => window.location.reload(),
-		props: { label: "Reload", emphasized: true, minWidth: 96 },
-	};
-	const copyErrorLogButton: TextButtonWidget = {
-		kind: "TextButton",
-		callback: async () => navigator.clipboard.writeText(panicDetails),
-		props: { label: "Copy Error Log", emphasized: false, minWidth: 96 },
-	};
-	const reportOnGithubButton: TextButtonWidget = {
-		kind: "TextButton",
-		callback: async () => window.open(githubUrl(panicDetails), "_blank"),
-		props: { label: "Report Bug", emphasized: false, minWidth: 96 },
-	};
-	const buttons = [reloadButton, copyErrorLogButton, reportOnGithubButton];
+		const reloadButton: TextButtonWidget = {
+			kind: "TextButton",
+			callback: async () => window.location.reload(),
+			props: { label: "Reload", emphasized: true, minWidth: 96 },
+		};
+		const copyErrorLogButton: TextButtonWidget = {
+			kind: "TextButton",
+			callback: async () => navigator.clipboard.writeText(panicDetails),
+			props: { label: "Copy Error Log", emphasized: false, minWidth: 96 },
+		};
+		const reportOnGithubButton: TextButtonWidget = {
+			kind: "TextButton",
+			callback: async () => window.open(githubUrl(panicDetails), "_blank"),
+			props: { label: "Report Bug", emphasized: false, minWidth: 96 },
+		};
+		const buttons = [reloadButton, copyErrorLogButton, reportOnGithubButton];
 
-	createDialog("Warning", data.title, data.description, buttons);
-});
+		dialogState.createDialog("Warning", data.title, data.description, buttons);
+	});
+}
 
 function githubUrl(panicDetails: string) {
 	const url = new URL("https://github.com/GraphiteEditor/Graphite/issues/new");

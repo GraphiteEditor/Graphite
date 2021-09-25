@@ -1,22 +1,13 @@
 import { reactive, readonly } from "vue";
 
 import { DialogState } from "./dialog";
-import {
-	ResponseType,
-	registerResponseHandler,
-	Response,
-	SetActiveDocument,
-	UpdateOpenDocumentsList,
-	DisplayConfirmationToCloseDocument,
-	ExportDocument,
-	SaveDocument,
-} from "@/state/response-handler";
+import { ResponseType, Response, SetActiveDocument, UpdateOpenDocumentsList, DisplayConfirmationToCloseDocument, ExportDocument, SaveDocument } from "@/state/response-handler";
 import { download, upload } from "@/utilities/files";
-import wasm from "@/utilities/wasm-loader";
+import { EditorWasm } from "@/utilities/wasm-loader";
 
 export type DocumentsState = ReturnType<typeof makeDocumentsState>;
 
-export default function makeDocumentsState(dialogState: DialogState) {
+export default function makeDocumentsState(editor: EditorWasm, dialogState: DialogState) {
 	const state = reactive({
 		title: "",
 		unsaved: false,
@@ -25,7 +16,7 @@ export default function makeDocumentsState(dialogState: DialogState) {
 	});
 
 	function selectDocument(tabIndex: number) {
-		wasm().select_document(tabIndex);
+		editor.select_document(tabIndex);
 	}
 
 	function closeDocumentWithConfirmation(tabIndex: number) {
@@ -37,7 +28,7 @@ export default function makeDocumentsState(dialogState: DialogState) {
 			{
 				kind: "TextButton",
 				callback: () => {
-					wasm().save_document();
+					editor.save_document();
 					dialogState.dismissDialog();
 				},
 				props: { label: "Save", emphasized: true, minWidth: 96 },
@@ -45,7 +36,7 @@ export default function makeDocumentsState(dialogState: DialogState) {
 			{
 				kind: "TextButton",
 				callback: () => {
-					wasm().close_document(tabIndex);
+					editor.close_document(tabIndex);
 					dialogState.dismissDialog();
 				},
 				props: { label: "Discard", minWidth: 96 },
@@ -65,7 +56,7 @@ export default function makeDocumentsState(dialogState: DialogState) {
 			{
 				kind: "TextButton",
 				callback: () => {
-					wasm().close_all_documents();
+					editor.close_all_documents();
 					dialogState.dismissDialog();
 				},
 				props: { label: "Discard All", minWidth: 96 },
@@ -80,8 +71,7 @@ export default function makeDocumentsState(dialogState: DialogState) {
 		]);
 	}
 
-	// TODO: these use the global responseHandler instance.
-	registerResponseHandler(ResponseType.UpdateOpenDocumentsList, (responseData: Response) => {
+	editor.registerResponseHandler(ResponseType.UpdateOpenDocumentsList, (responseData: Response) => {
 		const documentListData = responseData as UpdateOpenDocumentsList;
 		if (documentListData) {
 			state.documents = documentListData.open_documents;
@@ -89,7 +79,7 @@ export default function makeDocumentsState(dialogState: DialogState) {
 		}
 	});
 
-	registerResponseHandler(ResponseType.SetActiveDocument, (responseData: Response) => {
+	editor.registerResponseHandler(ResponseType.SetActiveDocument, (responseData: Response) => {
 		const documentData = responseData as SetActiveDocument;
 		if (documentData) {
 			state.activeDocumentIndex = documentData.document_index;
@@ -97,27 +87,27 @@ export default function makeDocumentsState(dialogState: DialogState) {
 		}
 	});
 
-	registerResponseHandler(ResponseType.DisplayConfirmationToCloseDocument, (responseData: Response) => {
+	editor.registerResponseHandler(ResponseType.DisplayConfirmationToCloseDocument, (responseData: Response) => {
 		const data = responseData as DisplayConfirmationToCloseDocument;
 		closeDocumentWithConfirmation(data.document_index);
 	});
 
-	registerResponseHandler(ResponseType.DisplayConfirmationToCloseAllDocuments, (_: Response) => {
+	editor.registerResponseHandler(ResponseType.DisplayConfirmationToCloseAllDocuments, (_: Response) => {
 		closeAllDocumentsWithConfirmation();
 	});
 
-	registerResponseHandler(ResponseType.OpenDocumentBrowse, async (_: Response) => {
-		const extension = wasm().file_save_suffix();
+	editor.registerResponseHandler(ResponseType.OpenDocumentBrowse, async (_: Response) => {
+		const extension = editor.file_save_suffix();
 		const data = await upload(extension);
-		wasm().open_document_file(data.filename, data.content);
+		editor.open_document_file(data.filename, data.content);
 	});
 
-	registerResponseHandler(ResponseType.ExportDocument, (responseData: Response) => {
+	editor.registerResponseHandler(ResponseType.ExportDocument, (responseData: Response) => {
 		const updateData = responseData as ExportDocument;
 		if (updateData) download(updateData.name, updateData.document);
 	});
 
-	registerResponseHandler(ResponseType.SaveDocument, (responseData: Response) => {
+	editor.registerResponseHandler(ResponseType.SaveDocument, (responseData: Response) => {
 		const saveData = responseData as SaveDocument;
 		if (saveData) download(saveData.name, saveData.document);
 	});
