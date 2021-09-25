@@ -3,14 +3,14 @@
 		<FloatingMenu :type="MenuType.Dialog" :direction="MenuDirection.Center">
 			<LayoutRow>
 				<LayoutCol :class="'icon-column'">
-					<!-- `dialog.icon` class exists to provide special sizing in CSS to specific icons -->
-					<IconLabel :icon="dialog.icon" :class="dialog.icon.toLowerCase()" />
+					<!-- `dialog.state.icon` class exists to provide special sizing in CSS to specific icons -->
+					<IconLabel :icon="dialog.state.icon" :class="dialog.state.icon.toLowerCase()" />
 				</LayoutCol>
 				<LayoutCol :class="'main-column'">
-					<TextLabel :bold="true" :class="'heading'">{{ dialog.heading }}</TextLabel>
-					<TextLabel :class="'details'">{{ dialog.details }}</TextLabel>
+					<TextLabel :bold="true" :class="'heading'">{{ dialog.state.heading }}</TextLabel>
+					<TextLabel :class="'details'">{{ dialog.state.details }}</TextLabel>
 					<LayoutRow :class="'buttons-row'">
-						<TextButton v-for="(button, index) in dialog.buttons" :key="index" :title="button.tooltip" :action="button.callback" v-bind="button.props" />
+						<TextButton v-for="(button, index) in dialog.state.buttons" :key="index" :title="button.tooltip" :action="button.callback" v-bind="button.props" />
 					</LayoutRow>
 				</LayoutCol>
 			</LayoutRow>
@@ -77,8 +77,6 @@
 <script lang="ts">
 import { defineComponent } from "vue";
 
-import { dismissDialog } from "@/state/dialog";
-
 import LayoutRow from "@/components/layout/LayoutRow.vue";
 import LayoutCol from "@/components/layout/LayoutCol.vue";
 import FloatingMenu, { MenuDirection, MenuType } from "@/components/widgets/floating-menus/FloatingMenu.vue";
@@ -98,7 +96,7 @@ export default defineComponent({
 	},
 	methods: {
 		dismiss() {
-			dismissDialog();
+			this.dialog.dismissDialog();
 		},
 	},
 	data() {

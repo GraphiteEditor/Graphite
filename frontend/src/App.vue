@@ -216,7 +216,7 @@ img {
 <script lang="ts">
 import { defineComponent } from "vue";
 
-import dialog from "@/state/dialog";
+import makeDialogState, { DialogState } from "@/state/dialog";
 import documents from "@/state/documents";
 import makeFullscreenState from "@/state/fullscreen";
 
@@ -229,7 +229,7 @@ import { mountInput, unmountInput } from "./utilities/input";
 // As a workaround, we can define these types.
 declare module "@vue/runtime-core" {
 	interface ComponentCustomProperties {
-		dialog: typeof dialog;
+		dialog: DialogState;
 		documents: typeof documents;
 		fullscreen: ReturnType<typeof makeFullscreenState>;
 		editor: EditorWasm;
@@ -239,7 +239,7 @@ declare module "@vue/runtime-core" {
 export default defineComponent({
 	provide() {
 		return {
-			dialog,
+			dialog: this.$data.dialog,
 			documents,
 			editor: this.$data.editor,
 			fullscreen: this.$data.fullscreen,
@@ -247,9 +247,11 @@ export default defineComponent({
 	},
 	data() {
 		const editor = wasm();
+		const dialog = makeDialogState();
 		const fullscreen = makeFullscreenState();
 		return {
 			editor,
+			dialog,
 			fullscreen,
 			showUnsupportedModal: !("BigInt64Array" in window),
 		};
