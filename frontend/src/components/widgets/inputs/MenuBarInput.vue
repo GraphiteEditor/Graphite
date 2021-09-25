@@ -10,7 +10,7 @@
 				<IconLabel :icon="entry.icon" v-if="entry.icon" />
 				<span v-if="entry.label">{{ entry.label }}</span>
 			</div>
-			<MenuList :menuEntries="entry.children" :direction="MenuDirection.Bottom" :minWidth="240" :drawIcon="true" :defaultAction="comingSoon" :ref="(ref) => setEntryRefs(entry, ref)" />
+			<MenuList :menuEntries="entry.children" :direction="MenuDirection.Bottom" :minWidth="240" :drawIcon="true" :defaultAction="dialog.comingSoon" :ref="(ref) => setEntryRefs(entry, ref)" />
 		</div>
 	</div>
 </template>
@@ -53,7 +53,6 @@
 <script lang="ts">
 import { defineComponent } from "vue";
 
-import { comingSoon } from "@/utilities/errors";
 import { EditorWasm } from "@/utilities/wasm-loader";
 
 import IconLabel from "@/components/widgets/labels/IconLabel.vue";
@@ -167,7 +166,7 @@ function makeMenuEntries(editor: EditorWasm): MenuListEntries {
 }
 
 export default defineComponent({
-	inject: ["editor"],
+	inject: ["editor", "dialog"],
 	methods: {
 		setEntryRefs(menuEntry: MenuListEntry, ref: typeof MenuList) {
 			if (ref) menuEntry.ref = ref;
@@ -186,7 +185,7 @@ export default defineComponent({
 			ApplicationPlatform,
 			menuEntries: makeMenuEntries(this.editor),
 			MenuDirection,
-			comingSoon,
+			comingSoon: this.dialog.comingSoon,
 		};
 	},
 	components: {

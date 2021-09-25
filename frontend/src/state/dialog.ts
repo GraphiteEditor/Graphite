@@ -5,9 +5,6 @@ import { TextButtonWidget } from "@/components/widgets/widgets";
 
 export type DialogState = ReturnType<typeof makeDialogState>;
 
-// For now, keep a reference to the last initialized state. This is still a global variable, but others depend on these functions.
-let globalDialogState: DialogState | null;
-
 export default function makeDialogState() {
 	const state = reactive({
 		visible: false,
@@ -41,31 +38,32 @@ export default function makeDialogState() {
 		return state.visible;
 	}
 
-	const result = {
+	function comingSoon(issueNumber?: number) {
+		const bugMessage = `— but you can help add it!\nSee issue #${issueNumber} on GitHub.`;
+		const details = `This feature is not implemented yet${issueNumber ? bugMessage : ""}`;
+
+		const okButton: TextButtonWidget = {
+			kind: "TextButton",
+			callback: async () => dismissDialog(),
+			props: { label: "OK", emphasized: true, minWidth: 96 },
+		};
+		const issueButton: TextButtonWidget = {
+			kind: "TextButton",
+			callback: async () => window.open(`https://github.com/GraphiteEditor/Graphite/issues/${issueNumber}`, "_blank"),
+			props: { label: `Issue #${issueNumber}`, minWidth: 96 },
+		};
+		const buttons = [okButton];
+		if (issueNumber) buttons.push(issueButton);
+
+		createDialog("Warning", "Coming soon", details, buttons);
+	}
+
+	return {
 		state: readonly(state),
 		createDialog,
 		dismissDialog,
 		submitDialog,
 		dialogIsVisible,
+		comingSoon,
 	};
-	globalDialogState = result;
-	return result;
-}
-
-// TODO: these need to go after all users have been migrated away from them
-export function createDialog(icon: string, heading: string, details: string, buttons: TextButtonWidget[]) {
-	if (!globalDialogState) throw new Error("no DialogState initialized");
-	globalDialogState.createDialog(icon, heading, details, buttons);
-}
-export function dismissDialog() {
-	if (!globalDialogState) throw new Error("no DialogState initialized");
-	globalDialogState.dismissDialog();
-}
-export function submitDialog() {
-	if (!globalDialogState) throw new Error("no DialogState initialized");
-	globalDialogState.submitDialog();
-}
-export function dialogIsVisible() {
-	if (!globalDialogState) throw new Error("no DialogState initialized");
-	return globalDialogState.dialogIsVisible();
 }
