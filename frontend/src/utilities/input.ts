@@ -127,64 +127,53 @@ function makeModifiersBitfield(e: MouseEvent | KeyboardEvent): number {
 	return Number(e.ctrlKey) | (Number(e.shiftKey) << 1) | (Number(e.altKey) << 2);
 }
 
-interface BoundListeners {
-	resize: () => void;
-	contextmenu: (e: MouseEvent) => void;
-	keyup: (e: KeyboardEvent) => void;
-	keydown: (e: KeyboardEvent) => void;
-	mousemove: (e: MouseEvent) => void;
-	mousedown: (e: MouseEvent) => void;
-	mouseup: (e: MouseEvent) => void;
-	wheel: (e: WheelEvent) => void;
-}
-
 // We need to keep a reference to any listener we add, otherwise we can't remove it.
-const activeListeners = new WeakMap<EditorWasm, BoundListeners>();
+const activeListeners = new WeakMap<EditorWasm, () => void>();
 
-export function mountInput(editor: EditorWasm, container: Element, fullscreenState: FullscreenState, dialogState: DialogState) {
-	const listeners: BoundListeners = {
-		resize: () => onWindowResize(editor, container),
-		contextmenu: (e) => e.preventDefault(),
-		keyup: (e) => onKeyUp(editor, fullscreenState, dialogState, e),
-		keydown: (e) => onKeyDown(editor, fullscreenState, dialogState, e),
-		mousemove: (e) => onMouseMove(editor, e),
-		mousedown: (e) => onMouseDown(editor, dialogState, e),
-		mouseup: (e) => onMouseUp(editor, e),
-		wheel: (e) => onMouseScroll(editor, e),
-	};
-	activeListeners.set(editor, listeners);
+export function mountInput(editor: EditorWasm, container: HTMLElement, fullscreenState: FullscreenState, dialogState: DialogState) {
+	const resize = () => onWindowResize(editor, container);
+	const contextmenu = (e: MouseEvent) => e.preventDefault();
+	const keyup = (e: KeyboardEvent) => onKeyUp(editor, fullscreenState, dialogState, e);
+	const keydown = (e: KeyboardEvent) => onKeyDown(editor, fullscreenState, dialogState, e);
+	const mousemove = (e: MouseEvent) => onMouseMove(editor, e);
+	const mousedown = (e: MouseEvent) => onMouseDown(editor, dialogState, e);
+	const mouseup = (e: MouseEvent) => onMouseUp(editor, e);
+	const wheel = (e: WheelEvent) => onMouseScroll(editor, e);
 
-	window.addEventListener("resize", listeners.resize);
-	listeners.resize();
+	window.addEventListener("resize", resize);
+	resize();
 
-	document.addEventListener("contextmenu", listeners.contextmenu);
+	container.addEventListener("contextmenu", contextmenu);
 
-	window.addEventListener("keyup", listeners.keyup);
-	window.addEventListener("keydown", listeners.keydown);
+	container.addEventListener("keyup", keyup);
+	container.addEventListener("keydown", keydown);
 
-	window.addEventListener("mousemove", listeners.mousemove);
-	window.addEventListener("mousedown", listeners.mousedown);
-	window.addEventListener("mouseup", listeners.mouseup);
+	window.addEventListener("mousemove", mousemove);
+	container.addEventListener("mousedown", mousedown);
+	window.addEventListener("mouseup", mouseup);
 
-	window.addEventListener("wheel", listeners.wheel, { passive: false });
+	container.addEventListener("wheel", wheel, { passive: false });
+
+	activeListeners.set(editor, () => {
+		window.removeEventListener("resize", resize);
+
+		container.removeEventListener("contextmenu", contextmenu);
+
+		container.removeEventListener("keyup", keyup);
+		container.removeEventListener("keydown", keydown);
+
+		window.removeEventListener("mousemove", mousemove);
+		container.removeEventListener("mousedown", mousedown);
+		window.removeEventListener("mouseup", mouseup);
+
+		container.removeEventListener("wheel", wheel);
+	});
 }
 
 export function unmountInput(editor: EditorWasm) {
-	const listeners = activeListeners.get(editor);
-	if (!listeners) return;
+	const cleanup = activeListeners.get(editor);
+	if (!cleanup) return;
 	activeListeners.delete(editor);
 
-	window.removeEventListener("resize", listeners.resize);
-	listeners.resize();
-
-	document.removeEventListener("contextmenu", listeners.contextmenu);
-
-	window.removeEventListener("keyup", listeners.keyup);
-	window.removeEventListener("keydown", listeners.keydown);
-
-	window.removeEventListener("mousemove", listeners.mousemove);
-	window.removeEventListener("mousedown", listeners.mousedown);
-	window.removeEventListener("mouseup", listeners.mouseup);
-
-	window.removeEventListener("wheel", listeners.wheel);
+	cleanup();
 }
