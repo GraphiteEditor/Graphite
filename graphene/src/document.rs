@@ -3,7 +3,7 @@ use std::{
 	hash::{Hash, Hasher},
 };
 
-use glam::{DAffine2, DVec2};
+use glam::{DAffine2, DVec2, UVec2};
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -570,10 +570,13 @@ impl Document {
 				self.mark_as_dirty(path)?;
 				Some([vec![DocumentChanged], update_thumbnails_upstream(path)].concat())
 			}
-			Operation::SetText { path, text } => {
+			Operation::SetText { path, text, size } => {
 				let layer = self.layer_mut(path)?;
 				match &mut layer.data {
-					LayerDataType::Text(t) => t.text = text.to_string(),
+					LayerDataType::Text(t) => {
+						t.text = text.to_string();
+						t.size = DVec2::from_slice(size);
+					}
 					_ => return Err(DocumentError::NotText),
 				}
 				self.mark_as_dirty(path)?;

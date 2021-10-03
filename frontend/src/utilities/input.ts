@@ -74,6 +74,13 @@ export async function onMouseMove(e: MouseEvent) {
 }
 
 export async function onMouseDown(e: MouseEvent) {
+	function resize() {
+		if (editingTextField) {
+			editingTextField.style.height = "5px";
+			editingTextField.style.height = `${editingTextField.scrollHeight}px`;
+		}
+	}
+
 	const target = e.target && (e.target as HTMLElement);
 	const inCanvas = target && target.closest(".canvas");
 	const inDialog = target && target.closest(".dialog-modal .floating-menu-content");
@@ -89,10 +96,12 @@ export async function onMouseDown(e: MouseEvent) {
 
 	if (inCanvas) {
 		if (target.nodeName === "TEXTAREA") {
-			editingTextField = target as HTMLTextAreaElement;
+			const TextArea = target as HTMLTextAreaElement;
+			TextArea.addEventListener("input", resize);
+			editingTextField = TextArea;
 		} else if (editingTextField) {
 			if (editingTextField.dataset.path) {
-				(await wasm).on_input_changed(editingTextField.dataset.path, editingTextField.value);
+				(await wasm).on_input_changed(editingTextField.dataset.path, editingTextField.value, editingTextField.clientWidth, editingTextField.clientHeight);
 			} else {
 				console.error("Edited text had not path attribute");
 			}

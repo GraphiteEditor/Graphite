@@ -146,6 +146,7 @@ pub enum Operation {
 	SetText {
 		path: Vec<LayerId>,
 		text: String,
+		size: [f64; 2],
 	},
 }
 

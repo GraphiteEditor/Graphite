@@ -1,6 +1,6 @@
 use crate::message_prelude::*;
 use crate::tool::ToolActionHandlerData;
-use glam::DAffine2;
+use glam::{DAffine2, UVec2};
 use graphene::{layers::style, Operation};
 use serde::{Deserialize, Serialize};
 
@@ -8,10 +8,10 @@ use serde::{Deserialize, Serialize};
 pub struct Text;
 
 #[impl_message(Message, ToolMessage, Text)]
-#[derive(PartialEq, Clone, Debug, Hash, Serialize, Deserialize)]
+#[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub enum TextMessage {
 	PlaceText,
-	InputChanged { path: String, value: String },
+	InputChanged { path: String, value: String, size: [f64; 2] },
 }
 
 impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Text {
@@ -34,10 +34,10 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Text {
 						.into(),
 					]);
 				}
-				TextMessage::InputChanged { path, value } => {
+				TextMessage::InputChanged { path, value, size } => {
 					let path = path.split(",").map(|x| x.parse::<LayerId>().unwrap()).collect::<Vec<LayerId>>();
 					log::info!("Path {:?} to value {}", path, value);
-					responses.push_back(Operation::SetText { path: path, text: value }.into());
+					responses.push_back(Operation::SetText { path: path, text: value, size }.into());
 				}
 			}
 		}

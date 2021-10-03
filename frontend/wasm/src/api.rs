@@ -152,8 +152,8 @@ pub fn bounds_of_viewports(bounds_of_viewports: &[f64]) {
 
 /// When text field is edited
 #[wasm_bindgen]
-pub fn on_input_changed(path: String, value: String) {
-	let message = TextMessage::InputChanged { path, value };
+pub fn on_input_changed(path: String, value: String, width: f64, height: f64) {
+	let message = TextMessage::InputChanged { path, value, size: [width, height] };
 	dispatch(message);
 }
 
