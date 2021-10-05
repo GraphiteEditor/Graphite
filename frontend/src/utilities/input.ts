@@ -112,7 +112,7 @@ export async function onMouseScroll(e: WheelEvent) {
 	}
 }
 
-export async function onWindowResize() {
+async function updateViewportBounds() {
 	const viewports = Array.from(document.querySelectorAll(".canvas"));
 	const boundsOfViewports = viewports.map((canvas) => {
 		const bounds = canvas.getBoundingClientRect();
@@ -123,6 +123,17 @@ export async function onWindowResize() {
 	const data = Float64Array.from(flattened);
 
 	if (boundsOfViewports.length > 0) (await wasm).bounds_of_viewports(data);
+}
+
+export async function onWindowResize() {
+	await updateViewportBounds();
+}
+
+export async function onScroll(e: Event) {
+	const target = e.target && (e.target as HTMLElement);
+	if (target && target.classList.contains("main-window")) {
+		await updateViewportBounds();
+	}
 }
 
 export function makeModifiersBitfield(e: MouseEvent | KeyboardEvent): number {
