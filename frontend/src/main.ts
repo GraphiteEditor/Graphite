@@ -1,7 +1,7 @@
 import { createApp } from "vue";
 
 import { fullscreenModeChanged } from "@/utilities/fullscreen";
-import { onKeyUp, onKeyDown, onMouseMove, onMouseDown, onMouseUp, onMouseScroll, onWindowResize } from "@/utilities/input";
+import { onKeyUp, onKeyDown, onMouseMove, onMouseDown, onMouseUp, onMouseScroll, onWindowResize, onScroll } from "@/utilities/input";
 import "@/utilities/errors";
 import App from "@/App.vue";
 import { panicProxy } from "@/utilities/panic-proxy";
@@ -32,4 +32,5 @@ const wasm = import("@/../wasm/pkg").then(panicProxy);
 	window.addEventListener("mouseup", onMouseUp);
 
 	window.addEventListener("wheel", onMouseScroll, { passive: false });
+	window.addEventListener("scroll", onScroll, true);
 })();
