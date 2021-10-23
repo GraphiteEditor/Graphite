@@ -17,3 +17,4 @@ kurbo = { git = "https://github.com/GraphiteEditor/kurbo.git", features = [
 serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0" }
 glam = { version = "0.17", features = ["serde"] }
+fonterator = { git = "https://github.com/0HyperCube/fonterator.git" }

@@ -575,6 +575,7 @@ impl Document {
 				match &mut layer.data {
 					LayerDataType::Text(t) => {
 						t.text = text.to_string();
+						t.rerender();
 						t.size = DVec2::from_slice(size);
 					}
 					_ => return Err(DocumentError::NotText),

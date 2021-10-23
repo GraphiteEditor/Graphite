@@ -161,12 +161,13 @@ impl DocumentMessageHandler {
 		let shapes = self.selected_layers().filter_map(|path_to_shape| {
 			let viewport_transform = self.graphene_document.generate_transform_relative_to_viewport(path_to_shape).ok()?;
 
-			let shape = match &self.graphene_document.layer(path_to_shape).ok()?.data {
-				LayerDataType::Shape(shape) => Some(shape),
+			let path = match &self.graphene_document.layer(path_to_shape).ok()?.data {
+				LayerDataType::Shape(shape) => Some(shape.path.clone()),
 				LayerDataType::Folder(_) => None,
-				LayerDataType::Text(_) => None, // TODO Add text to bezier path
+				LayerDataType::Text(text) => Some(text.bezpath.clone()),
 			}?;
-			let path = shape.path.clone();
+
+			log::info!("Bez {:?}", path);
 
 			let segments = path
 				.segments()

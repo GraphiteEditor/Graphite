@@ -221,6 +221,8 @@
 						border: none;
 						outline: none;
 						background: none;
+						padding: 0;
+						margin-top: 0px;
 
 						-webkit-box-shadow: none;
 						-moz-box-shadow: none;
