@@ -99,6 +99,9 @@ export default defineComponent({
 			const shiftedOffsetStart = offsetStart - phasingShift;
 
 			const svgTextCoordinates = [];
+
+			let text = Math.floor(-this.origin / this.majorMarkSpacing - (this.origin <= 0 ? 1 : 0)) * this.majorMarkSpacing;
+
 			for (let location = shiftedOffsetStart; location < this.rulerLength; location += this.majorMarkSpacing) {
 				const destination = Math.round(location);
 				const x = isVertical ? 9 : destination + 2;
@@ -107,7 +110,9 @@ export default defineComponent({
 				let transform = `translate(${x} ${y})`;
 				if (isVertical) transform += " rotate(270)";
 
-				svgTextCoordinates.push({ transform, text: location });
+				svgTextCoordinates.push({ transform, text });
+
+				text += this.majorMarkSpacing;
 			}
 
 			return svgTextCoordinates;
