@@ -623,8 +623,9 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					}
 					.into(),
 				);
+				let root_layerdata = self.layerdata(&[]);
 
-				let scale = 0.5 + ASYMPTOTIC_EFFECT + self.layerdata(&[]).scale * SCALE_EFFECT;
+				let scale = 0.5 + ASYMPTOTIC_EFFECT + root_layerdata.scale * SCALE_EFFECT;
 				let viewport_size = ipp.viewport_bounds.size();
 				let viewport_mid = ipp.viewport_bounds.center();
 				let [bounds1, bounds2] = self.graphene_document.visible_layers_bounding_box().unwrap_or([viewport_mid; 2]);
@@ -639,6 +640,14 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 						position: scrollbar_position.into(),
 						size: scrollbar_size.into(),
 						multiplier: scrollbar_multiplier.into(),
+					}
+					.into(),
+				);
+
+				responses.push_back(
+					FrontendMessage::UpdateRulers {
+						origin: root_layerdata.translation.into(),
+						spacing: root_layerdata.scale,
 					}
 					.into(),
 				);

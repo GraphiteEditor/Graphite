@@ -15,6 +15,7 @@ const state = reactive({
 export enum ResponseType {
 	UpdateCanvas = "UpdateCanvas",
 	UpdateScrollbars = "UpdateScrollbars",
+	UpdateRulers = "UpdateRulers",
 	ExportDocument = "ExportDocument",
 	SaveDocument = "SaveDocument",
 	OpenDocumentBrowse = "OpenDocumentBrowse",
@@ -67,6 +68,8 @@ function parseResponse(responseType: string, data: any): Response {
 			return newUpdateCanvas(data.UpdateCanvas);
 		case "UpdateScrollbars":
 			return newUpdateScrollbars(data.UpdateScrollbars);
+		case "UpdateRulers":
+			return newUpdateRulers(data.UpdateRulers);
 		case "UpdateLayer":
 			return newUpdateLayer(data.UpdateLayer);
 		case "SetCanvasZoom":
@@ -94,7 +97,17 @@ function parseResponse(responseType: string, data: any): Response {
 	}
 }
 
-export type Response = SetActiveTool | UpdateCanvas | UpdateScrollbars | UpdateLayer | DocumentChanged | DisplayFolderTreeStructure | UpdateWorkingColors | SetCanvasZoom | SetCanvasRotation;
+export type Response =
+	| SetActiveTool
+	| UpdateCanvas
+	| UpdateScrollbars
+	| UpdateRulers
+	| UpdateLayer
+	| DocumentChanged
+	| DisplayFolderTreeStructure
+	| UpdateWorkingColors
+	| SetCanvasZoom
+	| SetCanvasRotation;
 
 export interface UpdateOpenDocumentsList {
 	open_documents: Array<string>;
@@ -201,6 +214,17 @@ function newUpdateScrollbars(input: any): UpdateScrollbars {
 		position: { x: input.position[0], y: input.position[1] },
 		size: { x: input.size[0], y: input.size[1] },
 		multiplier: { x: input.multiplier[0], y: input.multiplier[1] },
+	};
+}
+
+export interface UpdateRulers {
+	origin: { x: number; y: number };
+	spacing: number;
+}
+function newUpdateRulers(input: any): UpdateRulers {
+	return {
+		origin: { x: input.origin[0], y: input.origin[1] },
+		spacing: input.spacing,
 	};
 }
 
