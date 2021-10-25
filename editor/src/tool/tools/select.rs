@@ -12,7 +12,7 @@ use crate::input::keyboard::Key;
 use crate::input::{mouse::ViewportPosition, InputPreprocessor};
 use crate::tool::{DocumentToolData, Fsm, ToolActionHandlerData};
 use crate::{
-	consts::SELECTION_TOLERANCE,
+	consts::{SELECTION_TOLERANCE, SNAP_TOLERANCE},
 	document::{AlignAggregate, AlignAxis, DocumentMessageHandler, FlipAxis},
 	message_prelude::*,
 };
@@ -177,16 +177,64 @@ impl Fsm for SelectToolFsmState {
 				}
 				(Dragging, MouseMove) => {
 					responses.push_front(SelectMessage::UpdateSelectionBoundingBox.into());
+
+					let document_scale = document.layerdata(&[]).scale;
+
+					let mut snap_x = Vec::new();
+					let mut snap_y = Vec::new();
+					for path in data.layers_dragging.iter() {
+						if let Some([bound1, bound2]) = document.graphene_document.layer(&path).unwrap().current_bounding_box() {
+							let mouse_delta = (input.mouse.position - data.drag_current) / document_scale;
+							let [bound1, bound2] = [bound1 + mouse_delta, bound2 + mouse_delta];
+							let center = (bound1 + bound2) / 2.;
+							snap_x.extend([bound1.x, bound2.x, center.x]);
+							snap_y.extend([bound1.y, bound2.y, center.y]);
+						}
+					}
+
+					let mut closest_move = DVec2::splat(f64::MAX);
+					for path in document.all_layers_sorted() {
+						if !data.layers_dragging.contains(&path) && &path != data.bounding_box_path.as_ref().unwrap() {
+							if let Some([bound1, bound2]) = document.graphene_document.layer(&path).unwrap().current_bounding_box() {
+								let center = (bound1 + bound2) / 2.;
+								for target_x in [bound1.x, bound2.x, center.x] {
+									if let Some(min) = snap_x.iter().map(|x| (x - target_x)).reduce(|x, y| if x.abs() > y.abs() { y } else { x }) {
+										if min.abs() < closest_move.x.abs() {
+											closest_move.x = min;
+										}
+									}
+								}
+								for target_y in [bound1.y, bound2.y, center.y] {
+									if let Some(min) = snap_y.iter().map(|y| (y - target_y)).reduce(|x, y| if x.abs() > y.abs() { y } else { x }) {
+										if min.abs() < closest_move.y.abs() {
+											closest_move.y = min;
+										}
+									}
+								}
+							}
+						}
+					}
+
+					closest_move *= document_scale;
+
+					if closest_move.x.abs() > SNAP_TOLERANCE {
+						closest_move.x = 0.;
+					}
+
+					if closest_move.y.abs() > SNAP_TOLERANCE {
+						closest_move.y = 0.;
+					}
+
 					for path in data.layers_dragging.iter() {
 						responses.push_front(
 							Operation::TransformLayerInViewport {
 								path: path.clone(),
-								transform: DAffine2::from_translation(input.mouse.position - data.drag_current).to_cols_array(),
+								transform: DAffine2::from_translation(input.mouse.position - data.drag_current - closest_move).to_cols_array(),
 							}
 							.into(),
 						);
 					}
-					data.drag_current = input.mouse.position;
+					data.drag_current = input.mouse.position - closest_move;
 					Dragging
 				}
 				(DrawingBox, MouseMove) => {
