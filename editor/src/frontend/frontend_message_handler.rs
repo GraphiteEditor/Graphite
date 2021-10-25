@@ -18,6 +18,7 @@ pub enum FrontendMessage {
 	UpdateLayer { path: Path, data: LayerPanelEntry },
 	UpdateCanvas { document: String },
 	UpdateScrollbars { position: (f64, f64), size: (f64, f64), multiplier: (f64, f64) },
+	UpdateRulers { origin: (f64, f64), spacing: f64, interval: f64 },
 	ExportDocument { document: String, name: String },
 	SaveDocument { document: String, name: String },
 	OpenDocumentBrowse,
