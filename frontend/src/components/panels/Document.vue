@@ -111,11 +111,11 @@
 			</LayoutCol>
 			<LayoutCol :class="'viewport'">
 				<LayoutRow :class="'bar-area'">
-					<CanvasRuler :origin="0" :majorMarkSpacing="100" :direction="RulerDirection.Horizontal" :class="'top-ruler'" />
+					<CanvasRuler :origin="rulerOrigin.x" :majorMarkSpacing="rulerSpacing" :numberInterval="rulerInterval" :direction="RulerDirection.Horizontal" :class="'top-ruler'" />
 				</LayoutRow>
 				<LayoutRow :class="'canvas-area'">
 					<LayoutCol :class="'bar-area'">
-						<CanvasRuler :origin="0" :majorMarkSpacing="100" :direction="RulerDirection.Vertical" />
+						<CanvasRuler :origin="rulerOrigin.y" :majorMarkSpacing="rulerSpacing" :numberInterval="rulerInterval" :direction="RulerDirection.Vertical" />
 					</LayoutCol>
 					<LayoutCol :class="'canvas-area'">
 						<div class="canvas" ref="canvas">
@@ -224,7 +224,7 @@
 <script lang="ts">
 import { defineComponent } from "vue";
 
-import { ResponseType, registerResponseHandler, Response, UpdateCanvas, UpdateScrollbars, SetActiveTool, SetCanvasZoom, SetCanvasRotation } from "@/utilities/response-handler";
+import { ResponseType, registerResponseHandler, Response, UpdateCanvas, UpdateScrollbars, UpdateRulers, SetActiveTool, SetCanvasZoom, SetCanvasRotation } from "@/utilities/response-handler";
 import { SeparatorDirection, SeparatorType } from "@/components/widgets/widgets";
 import { comingSoon } from "@/utilities/errors";
 import { panicProxy } from "@/utilities/panic-proxy";
@@ -329,6 +329,15 @@ export default defineComponent({
 			}
 		});
 
+		registerResponseHandler(ResponseType.UpdateRulers, (responseData: Response) => {
+			const updateData = responseData as UpdateRulers;
+			if (updateData) {
+				this.rulerOrigin = updateData.origin;
+				this.rulerSpacing = updateData.spacing;
+				this.rulerInterval = updateData.interval;
+			}
+		});
+
 		registerResponseHandler(ResponseType.SetActiveTool, (responseData: Response) => {
 			const toolData = responseData as SetActiveTool;
 			if (toolData) {
@@ -374,6 +383,9 @@ export default defineComponent({
 			scrollbarPos: { x: 0.5, y: 0.5 },
 			scrollbarSize: { x: 0.5, y: 0.5 },
 			scrollbarMultiplier: { x: 0, y: 0 },
+			rulerOrigin: { x: 0, y: 0 },
+			rulerSpacing: 100,
+			rulerInterval: 100,
 			IncrementBehavior,
 			IncrementDirection,
 			MenuDirection,
