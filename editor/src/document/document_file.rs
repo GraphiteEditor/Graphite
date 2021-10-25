@@ -640,6 +640,8 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				let mut ruler_inverval = if log < 0. { 100. * 2_f64.powf(-log.ceil()) } else { 100. / 2_f64.powf(log.ceil()) };
 				let ruler_spacing = ruler_inverval * root_layerdata.scale;
 
+				let ruler_origin = self.graphene_document.root.transform.transform_point2(DVec2::ZERO);
+
 				responses.push_back(
 					FrontendMessage::UpdateScrollbars {
 						position: scrollbar_position.into(),
@@ -651,7 +653,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 
 				responses.push_back(
 					FrontendMessage::UpdateRulers {
-						origin: root_layerdata.translation.into(),
+						origin: ruler_origin.into(),
 						spacing: ruler_spacing,
 						interval: ruler_inverval,
 					}
