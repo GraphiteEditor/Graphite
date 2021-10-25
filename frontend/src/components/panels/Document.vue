@@ -335,7 +335,6 @@ export default defineComponent({
 				this.rulerOrigin = updateData.origin;
 				this.rulerSpacing = updateData.spacing;
 				this.rulerInterval = updateData.interval;
-				console.log("rulers: ", updateData.origin, updateData.spacing);
 			}
 		});
 
