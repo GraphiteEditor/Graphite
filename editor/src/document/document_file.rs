@@ -635,6 +635,11 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				let scrollbar_position = DVec2::splat(0.5) - (bounds1.lerp(bounds2, 0.5) - viewport_mid) / (bounds_length - viewport_size);
 				let scrollbar_multiplier = bounds_length - viewport_size;
 				let scrollbar_size = viewport_size / bounds_length;
+
+				let log = root_layerdata.scale.log2();
+				let mut ruler_inverval = if log < 0. { 100. * 2_f64.powf(-log.ceil()) } else { 100. / 2_f64.powf(log.ceil()) };
+				let ruler_spacing = ruler_inverval * root_layerdata.scale;
+
 				responses.push_back(
 					FrontendMessage::UpdateScrollbars {
 						position: scrollbar_position.into(),
@@ -647,7 +652,8 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				responses.push_back(
 					FrontendMessage::UpdateRulers {
 						origin: root_layerdata.translation.into(),
-						spacing: root_layerdata.scale,
+						spacing: ruler_spacing,
+						interval: ruler_inverval,
 					}
 					.into(),
 				);

@@ -220,11 +220,13 @@ function newUpdateScrollbars(input: any): UpdateScrollbars {
 export interface UpdateRulers {
 	origin: { x: number; y: number };
 	spacing: number;
+	interval: number;
 }
 function newUpdateRulers(input: any): UpdateRulers {
 	return {
 		origin: { x: input.origin[0], y: input.origin[1] },
 		spacing: input.spacing,
+		interval: input.interval,
 	};
 }
 

@@ -111,11 +111,11 @@
 			</LayoutCol>
 			<LayoutCol :class="'viewport'">
 				<LayoutRow :class="'bar-area'">
-					<CanvasRuler :origin="rulerOrigin.x" :majorMarkSpacing="100" :direction="RulerDirection.Horizontal" :class="'top-ruler'" />
+					<CanvasRuler :origin="rulerOrigin.x" :majorMarkSpacing="rulerSpacing" :numberInterval="rulerInterval" :direction="RulerDirection.Horizontal" :class="'top-ruler'" />
 				</LayoutRow>
 				<LayoutRow :class="'canvas-area'">
 					<LayoutCol :class="'bar-area'">
-						<CanvasRuler :origin="rulerOrigin.y" :majorMarkSpacing="100" :direction="RulerDirection.Vertical" />
+						<CanvasRuler :origin="rulerOrigin.y" :majorMarkSpacing="rulerSpacing" :numberInterval="rulerInterval" :direction="RulerDirection.Vertical" />
 					</LayoutCol>
 					<LayoutCol :class="'canvas-area'">
 						<div class="canvas" ref="canvas">
@@ -333,6 +333,8 @@ export default defineComponent({
 			const updateData = responseData as UpdateRulers;
 			if (updateData) {
 				this.rulerOrigin = updateData.origin;
+				this.rulerSpacing = updateData.spacing;
+				this.rulerInterval = updateData.interval;
 				console.log("rulers: ", updateData.origin, updateData.spacing);
 			}
 		});
@@ -383,6 +385,8 @@ export default defineComponent({
 			scrollbarSize: { x: 0.5, y: 0.5 },
 			scrollbarMultiplier: { x: 0, y: 0 },
 			rulerOrigin: { x: 0, y: 0 },
+			rulerSpacing: 100,
+			rulerInterval: 100,
 			IncrementBehavior,
 			IncrementDirection,
 			MenuDirection,
