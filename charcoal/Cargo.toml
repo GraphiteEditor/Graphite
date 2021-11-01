@@ -1,8 +1,9 @@
 [package]
 name = "graphite-charcoal"
 version = "0.1.0"
+rust-version = "1.56.0"
 authors = ["Graphite Authors <contact@graphite.design>"]
-edition = "2018"
+edition = "2021"
 readme = "../README.md"
 homepage = "https://www.graphite.design"
 repository = "https://github.com/GraphiteEditor/Graphite"

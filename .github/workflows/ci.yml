@@ -25,6 +25,9 @@ jobs:
     - name: 🚧 Install Node dependencies
       run: cd frontend && npm install
 
+    - name: 🔼 Update Rust to latest stable
+      run: rustc --version && rustup update stable && rustc --version
+
     - name: 📦 Install cargo-about
       run: cargo install cargo-about
 
