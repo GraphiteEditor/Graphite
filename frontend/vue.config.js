@@ -78,20 +78,22 @@ module.exports = {
 					})
 			);
 
-		// Vue SVG Loader enables importing .svg files into .vue single-file components and using them directly in the HTML
-		// https://vue-svg-loader.js.org/
+		// Change the loaders used by the Vue compilation process
 		config.module
-			// Replace Vue's existing base loader by first clearing it (https://cli.vuejs.org/guide/webpack.html#replacing-loaders-of-a-rule)
+			// Replace Vue's existing base loader by first clearing it
+			// https://cli.vuejs.org/guide/webpack.html#replacing-loaders-of-a-rule
 			.rule("svg")
 			.uses.clear()
 			.end()
-			// Add vue-loader as a loader
+			// Add vue-loader as a loader for Vue single-file components
+			// https://www.npmjs.com/package/vue-loader
 			.use("vue-loader")
 			.loader("vue-loader")
 			.end()
-			// Add vue-svg-loader as a loader
-			.use("vue-svg-loader")
-			.loader("vue-svg-loader")
+			// Add vue-svg-loader as a loader for importing .svg files into Vue single-file components
+			// Located in ./vue-svg-loader.js
+			.use("./vue-svg-loader")
+			.loader("./vue-svg-loader")
 			.end();
 	},
 };
