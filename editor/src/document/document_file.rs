@@ -637,7 +637,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				let scrollbar_size = viewport_size / bounds_length;
 
 				let log = root_layerdata.scale.log2();
-				let mut ruler_inverval = if log < 0. { 100. * 2_f64.powf(-log.ceil()) } else { 100. / 2_f64.powf(log.ceil()) };
+				let ruler_inverval = if log < 0. { 100. * 2_f64.powf(-log.ceil()) } else { 100. / 2_f64.powf(log.ceil()) };
 				let ruler_spacing = ruler_inverval * root_layerdata.scale;
 
 				let ruler_origin = self.graphene_document.root.transform.transform_point2(DVec2::ZERO);
