@@ -1,4 +1,6 @@
 [workspace]
+rust-version = "1.56.0"
+edition = "2021"
 members = [
 	"editor",
 	"graphene",
