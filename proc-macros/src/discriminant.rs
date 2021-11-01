@@ -59,16 +59,19 @@ pub fn derive_discriminant_impl(input_item: TokenStream) -> syn::Result<TokenStr
 			let a_span = a.span();
 			a.path
 				.is_ident("discriminant_attr")
-				.then(|| match syn::parse2::<ParenthesizedTokens>(a.tokens) {
-					Ok(ParenthesizedTokens { tokens, .. }) => {
-						let attr: Attribute = syn::parse_quote! {
-							#[#tokens]
-						};
-						Some(attr)
-					}
-					Err(e) => {
-						attr_errs.push(syn::Error::new(a_span, e));
-						None
+				.then(|| {
+					let _ = &a;
+					match syn::parse2::<ParenthesizedTokens>(a.tokens) {
+						Ok(ParenthesizedTokens { tokens, .. }) => {
+							let attr: Attribute = syn::parse_quote! {
+								#[#tokens]
+							};
+							Some(attr)
+						}
+						Err(e) => {
+							attr_errs.push(syn::Error::new(a_span, e));
+							None
+						}
 					}
 				})
 				.and_then(|opt| opt)
