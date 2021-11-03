@@ -1,4 +1,4 @@
-edition = "2018"
+edition = "2021"
 hard_tabs = true
 max_width = 200
 newline_style = "Unix"
