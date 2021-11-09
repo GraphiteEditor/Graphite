@@ -22,7 +22,7 @@ pub const SLOWING_DIVISOR: f64 = 10.;
 
 // SELECT TOOL
 pub const SELECTION_TOLERANCE: f64 = 1.;
-pub const SNAP_TOLERANCE: f64 = 20.;
+pub const SNAP_TOLERANCE: f64 = 5.;
 
 // PATH TOOL
 pub const VECTOR_MANIPULATOR_ANCHOR_MARKER_SIZE: f64 = 5.;

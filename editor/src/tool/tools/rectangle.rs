@@ -49,7 +49,6 @@ impl Default for RectangleToolFsmState {
 }
 #[derive(Clone, Debug, Default)]
 struct RectangleToolData {
-	sides: u8,
 	data: Resize,
 }
 
@@ -59,7 +58,7 @@ impl Fsm for RectangleToolFsmState {
 	fn transition(
 		self,
 		event: ToolMessage,
-		_document: &DocumentMessageHandler,
+		document: &DocumentMessageHandler,
 		tool_data: &DocumentToolData,
 		data: &mut Self::ToolData,
 		input: &InputPreprocessor,
@@ -71,7 +70,7 @@ impl Fsm for RectangleToolFsmState {
 		if let ToolMessage::Rectangle(event) = event {
 			match (self, event) {
 				(Ready, DragStart) => {
-					shape_data.drag_start = input.mouse.position;
+					shape_data.start(document, input.mouse.position);
 					responses.push_back(DocumentMessage::StartTransaction.into());
 					shape_data.path = Some(vec![generate_uuid()]);
 					responses.push_back(DocumentMessage::DeselectAllLayers.into());
@@ -89,7 +88,7 @@ impl Fsm for RectangleToolFsmState {
 					Dragging
 				}
 				(state, Resize { center, lock_ratio }) => {
-					if let Some(message) = shape_data.calculate_transform(center, lock_ratio, input) {
+					if let Some(message) = shape_data.calculate_transform(center, lock_ratio, input, document) {
 						responses.push_back(message);
 					}
 

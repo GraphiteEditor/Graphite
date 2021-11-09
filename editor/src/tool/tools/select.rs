@@ -10,9 +10,10 @@ use serde::{Deserialize, Serialize};
 use crate::consts::COLOR_ACCENT;
 use crate::input::keyboard::Key;
 use crate::input::{mouse::ViewportPosition, InputPreprocessor};
+use crate::tool::snapping;
 use crate::tool::{DocumentToolData, Fsm, ToolActionHandlerData};
 use crate::{
-	consts::{SELECTION_TOLERANCE, SNAP_TOLERANCE},
+	consts::SELECTION_TOLERANCE,
 	document::{AlignAggregate, AlignAxis, DocumentMessageHandler, FlipAxis},
 	message_prelude::*,
 };
@@ -71,6 +72,7 @@ struct SelectToolData {
 	layers_dragging: Vec<Vec<LayerId>>, // Paths and offsets
 	drag_box_id: Option<Vec<LayerId>>,
 	bounding_box_path: Option<Vec<LayerId>>,
+	snap_targets: Option<[Vec<f64>; 2]>,
 }
 
 impl SelectToolData {
@@ -173,58 +175,22 @@ impl Fsm for SelectToolFsmState {
 						DrawingBox
 					};
 					buffer.into_iter().rev().for_each(|message| responses.push_front(message));
+
+					// ToDo: Clean up cloning
+					let ignore_layers = match data.bounding_box_path.as_ref() {
+						Some(bounding_box) => Vec::from([bounding_box.to_vec()]),
+						None => Vec::new(),
+					};
+					data.snap_targets = Some(snapping::get_snap_targets(document, &data.layers_dragging, &ignore_layers));
+
 					state
 				}
 				(Dragging, MouseMove) => {
 					responses.push_front(SelectMessage::UpdateSelectionBoundingBox.into());
 
-					let document_scale = document.layerdata(&[]).scale;
+					let mouse_delta = input.mouse.position - data.drag_current;
 
-					let mut snap_x = Vec::new();
-					let mut snap_y = Vec::new();
-					for path in data.layers_dragging.iter() {
-						if let Some([bound1, bound2]) = document.graphene_document.layer(&path).unwrap().current_bounding_box() {
-							let mouse_delta = (input.mouse.position - data.drag_current) / document_scale;
-							let [bound1, bound2] = [bound1 + mouse_delta, bound2 + mouse_delta];
-							let center = (bound1 + bound2) / 2.;
-							snap_x.extend([bound1.x, bound2.x, center.x]);
-							snap_y.extend([bound1.y, bound2.y, center.y]);
-						}
-					}
-
-					let mut closest_move = DVec2::splat(f64::MAX);
-					for path in document.all_layers_sorted() {
-						if !data.layers_dragging.contains(&path) && &path != data.bounding_box_path.as_ref().unwrap() {
-							if let Some([bound1, bound2]) = document.graphene_document.layer(&path).unwrap().current_bounding_box() {
-								let center = (bound1 + bound2) / 2.;
-								for target_x in [bound1.x, bound2.x, center.x] {
-									if let Some(min) = snap_x.iter().map(|x| (x - target_x)).reduce(|x, y| if x.abs() > y.abs() { y } else { x }) {
-										if min.abs() < closest_move.x.abs() {
-											closest_move.x = min;
-										}
-									}
-								}
-								for target_y in [bound1.y, bound2.y, center.y] {
-									if let Some(min) = snap_y.iter().map(|y| (y - target_y)).reduce(|x, y| if x.abs() > y.abs() { y } else { x }) {
-										if min.abs() < closest_move.y.abs() {
-											closest_move.y = min;
-										}
-									}
-								}
-							}
-						}
-					}
-
-					closest_move *= document_scale;
-
-					if closest_move.x.abs() > SNAP_TOLERANCE {
-						closest_move.x = 0.;
-					}
-
-					if closest_move.y.abs() > SNAP_TOLERANCE {
-						closest_move.y = 0.;
-					}
-
+					let closest_move = -snapping::snap_layers(data.snap_targets.as_ref().unwrap(), document, &data.layers_dragging, mouse_delta);
 					for path in data.layers_dragging.iter() {
 						responses.push_front(
 							Operation::TransformLayerInViewport {
