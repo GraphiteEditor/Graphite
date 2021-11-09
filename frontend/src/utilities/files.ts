@@ -1,8 +1,5 @@
 export function download(filename: string, fileData: string) {
-	let type = "text/plain;charset=utf-8";
-	if (filename.endsWith(".svg")) {
-		type = "image/svg+xml;charset=utf-8";
-	}
+	const type = filename.endsWith(".svg") ? "image/svg+xml;charset=utf-8" : "text/plain;charset=utf-8";
 	const blob = new Blob([fileData], { type });
 	const url = URL.createObjectURL(blob);
 	const element = document.createElement("a");

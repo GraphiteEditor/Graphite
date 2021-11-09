@@ -3,16 +3,15 @@
 	<div class="unsupported-modal-backdrop" v-if="showUnsupportedModal">
 		<div class="unsupported-modal">
 			<h2>Your browser currently doesn't support Graphite</h2>
-			<p>
-				Unfortunately, some features won't work properly in your browser. Please use a modern browser other than Safari, such as Firefox, Chrome, or Edge. Rest assured, Safari compatibility is
-				planned.
-			</p>
+			<p>Unfortunately, some features won't work properly. Please upgrade to a modern browser such as Firefox, Chrome, Edge, or Safari version 15 or later.</p>
 			<p>
 				Your browser is missing support for the
 				<a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/BigInt64Array#browser_compatibility" target="_blank"><code>BigInt64Array</code></a> JavaScript
-				API which is required for using the editor. You can still explore the user interface.
+				API which is required for using the editor. However, you can still explore the user interface.
 			</p>
-			<LayoutRow> <button class="unsupported-modal-button" @click="closeModal()">I understand, let's just see the interface</button> </LayoutRow>
+			<LayoutRow>
+				<button class="unsupported-modal-button" @click="closeModal()">I understand, let's just see the interface</button>
+			</LayoutRow>
 		</div>
 	</div>
 </template>
