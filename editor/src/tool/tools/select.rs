@@ -181,7 +181,7 @@ impl Fsm for SelectToolFsmState {
 						Some(bounding_box) => Vec::from([bounding_box.to_vec()]),
 						None => Vec::new(),
 					};
-					data.snap_targets = Some(snapping::get_snap_targets(document, &data.layers_dragging, &ignore_layers));
+					data.snap_targets = Some(snapping::get_snap_targets(document, document.non_selected_layers_sorted(), &ignore_layers));
 
 					state
 				}
