@@ -67,7 +67,7 @@ pub fn snap_layers(snap_targets: &[Vec<f64>; 2], document: &DocumentMessageHandl
 	}
 
 	// Convert to viewport coords
-	closest_move = document.graphene_document.root.transform.inverse().transform_vector2(closest_move);
+	closest_move = document.graphene_document.root.transform.transform_vector2(closest_move);
 
 	// Do not move if over snap tolerence
 	if closest_move.x.abs() > SNAP_TOLERANCE {
@@ -94,7 +94,7 @@ pub fn snap_position(snap: &[Vec<f64>; 2], document: &DocumentMessageHandler, po
 		closest_move.y = min;
 	}
 	// Convert the resulting movement to viewport coords
-	closest_move = document.graphene_document.root.transform.inverse().transform_vector2(closest_move);
+	closest_move = document.graphene_document.root.transform.transform_vector2(closest_move);
 
 	// Do not move if over snap tolerence
 	if closest_move.x.abs() > SNAP_TOLERANCE {
