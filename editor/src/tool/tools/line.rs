@@ -1,7 +1,7 @@
 use crate::consts::LINE_ROTATE_SNAP_ANGLE;
 use crate::input::keyboard::Key;
 use crate::input::{mouse::ViewportPosition, InputPreprocessor};
-use crate::tool::{DocumentToolData, Fsm, ToolActionHandlerData, ToolOptions, ToolType};
+use crate::tool::{snapping, DocumentToolData, Fsm, ToolActionHandlerData, ToolOptions, ToolType};
 use crate::{document::DocumentMessageHandler, message_prelude::*};
 use glam::{DAffine2, DVec2};
 use graphene::{layers::style, Operation};
@@ -53,6 +53,7 @@ struct LineToolData {
 	angle: f64,
 	weight: u32,
 	path: Option<Vec<LayerId>>,
+	snap_targets: Option<[Vec<f64>; 2]>,
 }
 
 impl Fsm for LineToolFsmState {
@@ -61,7 +62,7 @@ impl Fsm for LineToolFsmState {
 	fn transition(
 		self,
 		event: ToolMessage,
-		_document: &DocumentMessageHandler,
+		document: &DocumentMessageHandler,
 		tool_data: &DocumentToolData,
 		data: &mut Self::ToolData,
 		input: &InputPreprocessor,
@@ -72,7 +73,13 @@ impl Fsm for LineToolFsmState {
 		if let ToolMessage::Line(event) = event {
 			match (self, event) {
 				(Ready, DragStart) => {
-					data.drag_start = input.mouse.position;
+					let snap_targets = snapping::get_snap_targets(document, document.all_layers_sorted(), &[]);
+
+					let snapped_position = snapping::snap_position(&snap_targets, input.mouse.position);
+					data.drag_start = snapped_position;
+
+					data.snap_targets = Some(snap_targets);
+
 					responses.push_back(DocumentMessage::StartTransaction.into());
 					data.path = Some(vec![generate_uuid()]);
 					responses.push_back(DocumentMessage::DeselectAllLayers.into());
@@ -95,7 +102,7 @@ impl Fsm for LineToolFsmState {
 					Dragging
 				}
 				(Dragging, Redraw { center, snap_angle, lock_angle }) => {
-					data.drag_current = input.mouse.position;
+					data.drag_current = snapping::snap_position(data.snap_targets.as_ref().expect("Snap targets not populated for line tool."), input.mouse.position);
 
 					let values: Vec<_> = [lock_angle, snap_angle, center].iter().map(|k| input.keyboard.get(*k as usize)).collect();
 					responses.push_back(generate_transform(data, values[0], values[1], values[2]));
@@ -103,7 +110,7 @@ impl Fsm for LineToolFsmState {
 					Dragging
 				}
 				(Dragging, DragStop) => {
-					data.drag_current = input.mouse.position;
+					data.drag_current = snapping::snap_position(data.snap_targets.as_ref().expect("Snap targets not populated for line tool."), input.mouse.position);
 
 					// TODO; introduce comparison threshold when operating with canvas coordinates (https://github.com/GraphiteEditor/Graphite/issues/100)
 					match data.drag_start == input.mouse.position {
