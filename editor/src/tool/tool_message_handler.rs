@@ -48,8 +48,8 @@ pub enum ToolMessage {
 pub struct ToolMessageHandler {
 	tool_state: ToolFsmState,
 }
-impl MessageHandler<ToolMessage, (&DocumentMessageHandler, &InputPreprocessor)> for ToolMessageHandler {
-	fn process_action(&mut self, message: ToolMessage, data: (&DocumentMessageHandler, &InputPreprocessor), responses: &mut VecDeque<Message>) {
+impl MessageHandler<ToolMessage, (&mut DocumentMessageHandler, &InputPreprocessor)> for ToolMessageHandler {
+	fn process_action(&mut self, message: ToolMessage, data: (&mut DocumentMessageHandler, &InputPreprocessor), responses: &mut VecDeque<Message>) {
 		let (document, input) = data;
 		use ToolMessage::*;
 		match message {

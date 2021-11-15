@@ -2,6 +2,7 @@ mod document_file;
 mod document_message_handler;
 pub mod layer_panel;
 mod movement_handler;
+mod snapping;
 mod transform_layer_handler;
 
 #[doc(inline)]

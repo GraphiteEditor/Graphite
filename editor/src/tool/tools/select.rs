@@ -10,7 +10,6 @@ use serde::{Deserialize, Serialize};
 use crate::consts::COLOR_ACCENT;
 use crate::input::keyboard::Key;
 use crate::input::{mouse::ViewportPosition, InputPreprocessor};
-use crate::tool::snapping;
 use crate::tool::{DocumentToolData, Fsm, ToolActionHandlerData};
 use crate::{
 	consts::SELECTION_TOLERANCE,
@@ -72,7 +71,6 @@ struct SelectToolData {
 	layers_dragging: Vec<Vec<LayerId>>, // Paths and offsets
 	drag_box_id: Option<Vec<LayerId>>,
 	bounding_box_path: Option<Vec<LayerId>>,
-	snap_targets: Option<[Vec<f64>; 2]>,
 }
 
 impl SelectToolData {
@@ -115,7 +113,7 @@ impl Fsm for SelectToolFsmState {
 	fn transition(
 		self,
 		event: ToolMessage,
-		document: &DocumentMessageHandler,
+		document: &mut DocumentMessageHandler,
 		_tool_data: &DocumentToolData,
 		data: &mut Self::ToolData,
 		input: &InputPreprocessor,
@@ -181,8 +179,7 @@ impl Fsm for SelectToolFsmState {
 						Some(bounding_box) => Vec::from([bounding_box.to_vec()]),
 						None => Vec::new(),
 					};
-					data.snap_targets = Some(snapping::get_snap_targets(document, document.non_selected_layers_sorted(), &ignore_layers));
-
+					document.snapping_handler.start_snap(&document.graphene_document, document.non_selected_layers_sorted(), &ignore_layers);
 					state
 				}
 				(Dragging, MouseMove) => {
@@ -190,17 +187,17 @@ impl Fsm for SelectToolFsmState {
 
 					let mouse_delta = input.mouse.position - data.drag_current;
 
-					let closest_move = -snapping::snap_layers(data.snap_targets.as_ref().unwrap(), document, &data.layers_dragging, mouse_delta);
+					let closest_move = document.snapping_handler.snap_layers(&document.graphene_document, &data.layers_dragging, mouse_delta);
 					for path in data.layers_dragging.iter() {
 						responses.push_front(
 							Operation::TransformLayerInViewport {
 								path: path.clone(),
-								transform: DAffine2::from_translation(input.mouse.position - data.drag_current - closest_move).to_cols_array(),
+								transform: DAffine2::from_translation(input.mouse.position - data.drag_current + closest_move).to_cols_array(),
 							}
 							.into(),
 						);
 					}
-					data.drag_current = input.mouse.position - closest_move;
+					data.drag_current = input.mouse.position + closest_move;
 					Dragging
 				}
 				(DrawingBox, MouseMove) => {

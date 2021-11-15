@@ -10,7 +10,7 @@
 			</div>
 			<div class="spacer"></div>
 			<div class="right side">
-				<OptionalInput v-model:checked="snappingEnabled" @update:checked="comingSoon(200)" :icon="'Snapping'" title="Snapping" />
+				<OptionalInput v-model:checked="snappingEnabled" @update:checked="setSnap" :icon="'Snapping'" title="Snapping" />
 				<PopoverButton>
 					<h3>Snapping</h3>
 					<p>The contents of this popover menu are coming soon</p>
@@ -263,6 +263,9 @@ const viewModeEntries: RadioEntries = [
 
 export default defineComponent({
 	methods: {
+		async setSnap(newSnap: boolean) {
+			(await wasm).set_snapping(newSnap);
+		},
 		async viewportResize() {
 			const canvas = this.$refs.canvas as HTMLElement;
 			// Get the width and height rounded up to the nearest even number because resizing is centered and dividing an odd number by 2 for centering causes antialiasing

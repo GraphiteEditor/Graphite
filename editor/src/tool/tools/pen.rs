@@ -1,5 +1,5 @@
 use crate::input::InputPreprocessor;
-use crate::tool::{snapping, DocumentToolData, Fsm, ToolActionHandlerData, ToolOptions, ToolType};
+use crate::tool::{DocumentToolData, Fsm, ToolActionHandlerData, ToolOptions, ToolType};
 use crate::{document::DocumentMessageHandler, message_prelude::*};
 use glam::DAffine2;
 use graphene::{layers::style, Operation};
@@ -52,7 +52,6 @@ struct PenToolData {
 	next_point: DAffine2,
 	weight: u32,
 	path: Option<Vec<LayerId>>,
-	snap_targets: Option<[Vec<f64>; 2]>,
 }
 
 impl Fsm for PenToolFsmState {
@@ -61,7 +60,7 @@ impl Fsm for PenToolFsmState {
 	fn transition(
 		self,
 		event: ToolMessage,
-		document: &DocumentMessageHandler,
+		document: &mut DocumentMessageHandler,
 		tool_data: &DocumentToolData,
 		data: &mut Self::ToolData,
 		input: &InputPreprocessor,
@@ -78,9 +77,10 @@ impl Fsm for PenToolFsmState {
 					responses.push_back(DocumentMessage::DeselectAllLayers.into());
 					data.path = Some(vec![generate_uuid()]);
 
-					let snap_targets = snapping::get_snap_targets(document, document.all_layers_sorted(), &[]);
-					let pos = transform.inverse() * DAffine2::from_translation(snapping::snap_position(&snap_targets, input.mouse.position));
-					data.snap_targets = Some(snap_targets);
+					document.snapping_handler.start_snap(&document.graphene_document, document.all_layers_sorted(), &[]);
+					let snapped_position = document.snapping_handler.snap_position(input.mouse.position);
+
+					let pos = transform.inverse() * DAffine2::from_translation(snapped_position);
 
 					data.points.push(pos);
 					data.next_point = pos;
@@ -93,7 +93,8 @@ impl Fsm for PenToolFsmState {
 					Dragging
 				}
 				(Dragging, DragStop) => {
-					let pos = transform.inverse() * DAffine2::from_translation(snapping::snap_position(data.snap_targets.as_ref().expect("No snap targets for pen tool."), input.mouse.position));
+					let snapped_position = document.snapping_handler.snap_position(input.mouse.position);
+					let pos = transform.inverse() * DAffine2::from_translation(snapped_position);
 
 					// TODO: introduce comparison threshold when operating with canvas coordinates (https://github.com/GraphiteEditor/Graphite/issues/100)
 					if data.points.last() != Some(&pos) {
@@ -106,7 +107,8 @@ impl Fsm for PenToolFsmState {
 					Dragging
 				}
 				(Dragging, PointerMove) => {
-					let pos = transform.inverse() * DAffine2::from_translation(snapping::snap_position(data.snap_targets.as_ref().expect("No snap targets for pen tool."), input.mouse.position));
+					let snapped_position = document.snapping_handler.snap_position(input.mouse.position);
+					let pos = transform.inverse() * DAffine2::from_translation(snapped_position);
 					data.next_point = pos;
 
 					responses.extend(make_operation(data, tool_data, true));

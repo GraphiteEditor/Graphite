@@ -58,7 +58,7 @@ impl Fsm for RectangleToolFsmState {
 	fn transition(
 		self,
 		event: ToolMessage,
-		document: &DocumentMessageHandler,
+		document: &mut DocumentMessageHandler,
 		tool_data: &DocumentToolData,
 		data: &mut Self::ToolData,
 		input: &InputPreprocessor,
@@ -88,7 +88,7 @@ impl Fsm for RectangleToolFsmState {
 					Dragging
 				}
 				(state, Resize { center, lock_ratio }) => {
-					if let Some(message) = shape_data.calculate_transform(center, lock_ratio, input) {
+					if let Some(message) = shape_data.calculate_transform(document, center, lock_ratio, input) {
 						responses.push_back(message);
 					}
 

@@ -1,4 +1,3 @@
-pub mod snapping;
 pub mod tool_message_handler;
 pub mod tool_options;
 pub mod tools;
@@ -27,7 +26,7 @@ pub mod tool_messages {
 	pub use super::tools::rectangle::{RectangleMessage, RectangleMessageDiscriminant};
 }
 
-pub type ToolActionHandlerData<'a> = (&'a DocumentMessageHandler, &'a DocumentToolData, &'a InputPreprocessor);
+pub type ToolActionHandlerData<'a> = (&'a mut DocumentMessageHandler, &'a DocumentToolData, &'a InputPreprocessor);
 
 pub trait Fsm {
 	type ToolData;
@@ -35,7 +34,7 @@ pub trait Fsm {
 	fn transition(
 		self,
 		message: ToolMessage,
-		document: &DocumentMessageHandler,
+		document: &mut DocumentMessageHandler,
 		tool_data: &DocumentToolData,
 		data: &mut Self::ToolData,
 		input: &InputPreprocessor,

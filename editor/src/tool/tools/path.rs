@@ -68,7 +68,7 @@ impl Fsm for PathToolFsmState {
 	fn transition(
 		self,
 		event: ToolMessage,
-		document: &DocumentMessageHandler,
+		document: &mut DocumentMessageHandler,
 		_tool_data: &DocumentToolData,
 		data: &mut Self::ToolData,
 		_input: &InputPreprocessor,
