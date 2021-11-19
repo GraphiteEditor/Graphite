@@ -11,7 +11,7 @@ pub struct Resize {
 	pub path: Option<Vec<LayerId>>,
 }
 impl Resize {
-	/// Starts of a resize, assigning the snap targets and snapping and assigning the starting position.
+	/// Starts a resize, assigning the snap targets and snapping the starting position.
 	pub fn start(&mut self, document: &mut DocumentMessageHandler, mouse_position: DVec2) {
 		let layers = document.all_layers_sorted();
 		document.snapping_handler.start_snap(&document.graphene_document, layers, &[]);

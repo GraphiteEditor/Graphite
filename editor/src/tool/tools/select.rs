@@ -174,10 +174,10 @@ impl Fsm for SelectToolFsmState {
 					};
 					buffer.into_iter().rev().for_each(|message| responses.push_front(message));
 
-					// ToDo: Clean up cloning
-					let ignore_layers = match data.bounding_box_path.as_ref() {
-						Some(bounding_box) => Vec::from([bounding_box.to_vec()]),
-						None => Vec::new(),
+					let ignore_layers = if let Some(bounding_box) = &data.bounding_box_path {
+						vec![bounding_box.clone()]
+					} else {
+						Vec::new()
 					};
 					document.snapping_handler.start_snap(&document.graphene_document, document.non_selected_layers_sorted(), &ignore_layers);
 					state

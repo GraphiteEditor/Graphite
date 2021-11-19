@@ -15,6 +15,8 @@ pub const VIEWPORT_SCROLL_RATE: f64 = 0.6;
 
 pub const VIEWPORT_ROTATE_SNAP_INTERVAL: f64 = 15.;
 
+pub const SNAP_TOLERANCE: f64 = 3.;
+
 // TRANSFORMING LAYER
 pub const ROTATE_SNAP_ANGLE: f64 = 15.;
 pub const SCALE_SNAP_INTERVAL: f64 = 0.1;
@@ -22,7 +24,6 @@ pub const SLOWING_DIVISOR: f64 = 10.;
 
 // SELECT TOOL
 pub const SELECTION_TOLERANCE: f64 = 1.;
-pub const SNAP_TOLERANCE: f64 = 3.;
 
 // PATH TOOL
 pub const VECTOR_MANIPULATOR_ANCHOR_MARKER_SIZE: f64 = 5.;
