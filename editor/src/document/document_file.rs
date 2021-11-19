@@ -3,14 +3,13 @@ use std::collections::VecDeque;
 
 pub use super::layer_panel::*;
 use super::movement_handler::{MovementMessage, MovementMessageHandler};
+use super::snapping::SnapHandler;
 use super::transform_layer_handler::{TransformLayerMessage, TransformLayerMessageHandler};
 
 use crate::consts::{ASYMPTOTIC_EFFECT, FILE_EXPORT_SUFFIX, FILE_SAVE_SUFFIX, SCALE_EFFECT, SCROLLBAR_SPACING};
 use crate::input::InputPreprocessor;
 use crate::message_prelude::*;
 use crate::EditorError;
-
-use super::snapping::SnapHandler;
 
 use glam::{DAffine2, DVec2};
 use graphene::layers::Folder;
