@@ -778,8 +778,8 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				}
 			}
 			RenameLayer(path, name) => responses.push_back(DocumentOperation::RenameLayer { path, name }.into()),
-			SetSnapping(new_snap) => {
-				self.snapping_handler.set_snapping_enabled(new_snap);
+			SetSnapping(new_status) => {
+				self.snapping_handler.set_snapping_enabled(new_status);
 			}
 		}
 	}

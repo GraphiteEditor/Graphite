@@ -99,9 +99,9 @@ impl SnapHandler {
 			position_viewport
 		}
 	}
-	pub fn set_snapping_enabled(&mut self, new_snapping_enabled: bool) {
-		self.snapping_enabled = new_snapping_enabled;
-		if !new_snapping_enabled {
+	pub fn set_snapping_enabled(&mut self, new_status: bool) {
+		self.snapping_enabled = new_status;
+		if !new_status {
 			self.snap_targets = None;
 		}
 	}

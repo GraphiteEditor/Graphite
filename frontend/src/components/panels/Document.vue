@@ -263,8 +263,8 @@ const viewModeEntries: RadioEntries = [
 
 export default defineComponent({
 	methods: {
-		async setSnap(newSnap: boolean) {
-			(await wasm).set_snapping(newSnap);
+		async setSnap(newStatus: boolean) {
+			(await wasm).set_snapping(newStatus);
 		},
 		async viewportResize() {
 			const canvas = this.$refs.canvas as HTMLElement;
