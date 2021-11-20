@@ -10,7 +10,7 @@
 					@click.middle="closeDocumentWithConfirmation(tabIndex)"
 					@click="panelType === 'Document' && selectDocument(tabIndex)"
 				>
-					<span>{{ tabLabel }}</span>
+					<span>{{ tabLabel }} {{ unsavedMarkers[tabIndex] ? "*" : "" }}</span>
 					<IconButton :action="() => closeDocumentWithConfirmation(tabIndex)" :icon="'CloseX'" :size="16" v-if="tabCloseButtons" />
 				</div>
 			</div>
@@ -167,6 +167,7 @@ export default defineComponent({
 		tabMinWidths: { type: Boolean, default: false },
 		tabCloseButtons: { type: Boolean, default: false },
 		tabLabels: { type: Array as PropType<string[]>, required: true },
+		unsavedMarkers: { type: Array as PropType<boolean[]>, default: () => [] },
 		tabActiveIndex: { type: Number, required: true },
 		panelType: { type: String, required: true },
 	},

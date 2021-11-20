@@ -16,10 +16,13 @@ import { panicProxy } from "@/utilities/panic-proxy";
 
 const wasm = import("@/../wasm/pkg").then(panicProxy);
 
+interface OpenDocumentInformation {
+	name: string;
+	unsaved: boolean;
+}
 const state = reactive({
 	title: "",
-	unsaved: false,
-	documents: [] as Array<string>,
+	documents: [] as OpenDocumentInformation[],
 	activeDocumentIndex: 0,
 });
 
@@ -27,10 +30,14 @@ export async function selectDocument(tabIndex: number) {
 	(await wasm).select_document(tabIndex);
 }
 
+export function markUnsavedActiveDocument() {
+	state.documents[state.activeDocumentIndex].unsaved = true;
+}
+
 export async function closeDocumentWithConfirmation(tabIndex: number) {
 	selectDocument(tabIndex);
 
-	const tabLabel = state.documents[tabIndex];
+	const tabLabel = state.documents[tabIndex].name;
 
 	createDialog("File", "Save changes before closing?", tabLabel, [
 		{
@@ -84,8 +91,8 @@ export default readonly(state);
 registerResponseHandler(ResponseType.UpdateOpenDocumentsList, (responseData: Response) => {
 	const documentListData = responseData as UpdateOpenDocumentsList;
 	if (documentListData) {
-		state.documents = documentListData.open_documents;
-		state.title = state.documents[state.activeDocumentIndex];
+		state.documents = documentListData.open_documents.map((name) => ({ name, unsaved: false }));
+		state.title = state.documents[state.activeDocumentIndex].name;
 	}
 });
 
@@ -93,7 +100,7 @@ registerResponseHandler(ResponseType.SetActiveDocument, (responseData: Response)
 	const documentData = responseData as SetActiveDocument;
 	if (documentData) {
 		state.activeDocumentIndex = documentData.document_index;
-		state.title = state.documents[state.activeDocumentIndex];
+		state.title = state.documents[state.activeDocumentIndex].name;
 	}
 });
 
@@ -119,6 +126,7 @@ registerResponseHandler(ResponseType.ExportDocument, (responseData: Response) =>
 
 registerResponseHandler(ResponseType.SaveDocument, (responseData: Response) => {
 	const saveData = responseData as SaveDocument;
+	state.documents[state.activeDocumentIndex].unsaved = false;
 	if (saveData) download(saveData.name, saveData.document);
 });
 
