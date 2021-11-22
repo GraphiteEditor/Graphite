@@ -1,270 +1,134 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable camelcase */
+/* eslint-disable max-classes-per-file */
 
 import { reactive } from "vue";
+import { plainToInstance, Transform, Type } from "class-transformer";
 
-type ResponseCallback = (responseData: Response) => void;
+type ResponseCallback<T extends Response> = (responseData: T) => void;
 type ResponseMap = {
-	[response: string]: ResponseCallback | undefined;
+	[response: string]: ResponseCallback<any> | undefined;
 };
 
 const state = reactive({
 	responseMap: {} as ResponseMap,
 });
 
-export enum ResponseType {
-	UpdateCanvas = "UpdateCanvas",
-	UpdateScrollbars = "UpdateScrollbars",
-	UpdateRulers = "UpdateRulers",
-	ExportDocument = "ExportDocument",
-	SaveDocument = "SaveDocument",
-	OpenDocumentBrowse = "OpenDocumentBrowse",
-	DisplayFolderTreeStructure = "DisplayFolderTreeStructure",
-	UpdateLayer = "UpdateLayer",
-	SetActiveTool = "SetActiveTool",
-	SetActiveDocument = "SetActiveDocument",
-	UpdateOpenDocumentsList = "UpdateOpenDocumentsList",
-	UpdateWorkingColors = "UpdateWorkingColors",
-	SetCanvasZoom = "SetCanvasZoom",
-	SetCanvasRotation = "SetCanvasRotation",
-	DisplayError = "DisplayError",
-	DisplayPanic = "DisplayPanic",
-	DisplayConfirmationToCloseDocument = "DisplayConfirmationToCloseDocument",
-	DisplayConfirmationToCloseAllDocuments = "DisplayConfirmationToCloseAllDocuments",
+export class Response {
+	static responseMarker = true;
 }
 
-export function registerResponseHandler(responseType: ResponseType, callback: ResponseCallback) {
-	state.responseMap[responseType] = callback;
+export class UpdateOpenDocumentsList extends Response {
+	open_documents!: string[];
 }
 
-export function handleResponse(responseType: string, responseData: any) {
-	const callback = state.responseMap[responseType];
-	const data = parseResponse(responseType, responseData);
+const To255Scale = Transform(({ value }) => value * 255);
+export class Color {
+	@To255Scale
+	red!: number;
 
-	if (callback && data) {
-		callback(data);
-	} else if (data) {
-		// eslint-disable-next-line no-console
-		console.error(`Received a Response of type "${responseType}" but no handler was registered for it from the client.`);
-	} else {
-		// eslint-disable-next-line no-console
-		console.error(`Received a Response of type "${responseType}" but but was not able to parse the data.`);
+	@To255Scale
+	green!: number;
+
+	@To255Scale
+	blue!: number;
+
+	alpha!: number;
+
+	toRgb() {
+		return { r: this.red, g: this.green, b: this.blue, a: this.alpha };
+	}
+
+	toString() {
+		const { r, g, b, a } = this.toRgb();
+		return `rgba(${r}, ${g}, ${b}, ${a})`;
 	}
 }
 
-function parseResponse(responseType: string, data: any): Response {
-	switch (responseType) {
-		case "DocumentChanged":
-			return newDocumentChanged(data.DocumentChanged);
-		case "DisplayFolderTreeStructure":
-			return newDisplayFolderTreeStructure(data.DisplayFolderTreeStructure);
-		case "SetActiveTool":
-			return newSetActiveTool(data.SetActiveTool);
-		case "SetActiveDocument":
-			return newSetActiveDocument(data.SetActiveDocument);
-		case "UpdateOpenDocumentsList":
-			return newUpdateOpenDocumentsList(data.UpdateOpenDocumentsList);
-		case "UpdateCanvas":
-			return newUpdateCanvas(data.UpdateCanvas);
-		case "UpdateScrollbars":
-			return newUpdateScrollbars(data.UpdateScrollbars);
-		case "UpdateRulers":
-			return newUpdateRulers(data.UpdateRulers);
-		case "UpdateLayer":
-			return newUpdateLayer(data.UpdateLayer);
-		case "SetCanvasZoom":
-			return newSetCanvasZoom(data.SetCanvasZoom);
-		case "SetCanvasRotation":
-			return newSetCanvasRotation(data.SetCanvasRotation);
-		case "ExportDocument":
-			return newExportDocument(data.ExportDocument);
-		case "SaveDocument":
-			return newSaveDocument(data.SaveDocument);
-		case "OpenDocumentBrowse":
-			return newOpenDocumentBrowse(data.OpenDocumentBrowse);
-		case "UpdateWorkingColors":
-			return newUpdateWorkingColors(data.UpdateWorkingColors);
-		case "DisplayError":
-			return newDisplayError(data.DisplayError);
-		case "DisplayPanic":
-			return newDisplayPanic(data.DisplayPanic);
-		case "DisplayConfirmationToCloseDocument":
-			return newDisplayConfirmationToCloseDocument(data.DisplayConfirmationToCloseDocument);
-		case "DisplayConfirmationToCloseAllDocuments":
-			return newDisplayConfirmationToCloseAllDocuments(data.DisplayConfirmationToCloseAllDocuments);
-		default:
-			throw new Error(`Unrecognized origin/responseType pair: ${origin}, '${responseType}'`);
+export class UpdateWorkingColors extends Response {
+	@Type(() => Color)
+	primary!: Color;
+
+	@Type(() => Color)
+	secondary!: Color;
+}
+
+export class SetActiveTool extends Response {
+	tool_name!: string;
+
+	tool_options!: object;
+}
+
+export class SetActiveDocument extends Response {
+	document_index!: number;
+}
+
+export class DisplayError extends Response {
+	title!: string;
+
+	description!: string;
+}
+
+export class DisplayPanic extends Response {
+	panic_info!: string;
+
+	title!: string;
+
+	description!: string;
+}
+
+export class DisplayConfirmationToCloseDocument extends Response {
+	document_index!: number;
+}
+
+export class DisplayConfirmationToCloseAllDocuments extends Response {}
+
+export class UpdateCanvas extends Response {
+	document!: string;
+}
+
+const TupleToVec2 = Transform(({ value }) => ({ x: value[0], y: value[1] }));
+
+export class UpdateScrollbars extends Response {
+	@TupleToVec2
+	position!: { x: number; y: number };
+
+	@TupleToVec2
+	size!: { x: number; y: number };
+
+	@TupleToVec2
+	multiplier!: { x: number; y: number };
+}
+
+export class UpdateRulers extends Response {
+	@TupleToVec2
+	origin!: { x: number; y: number };
+
+	spacing!: number;
+
+	interval!: number;
+}
+
+export class ExportDocument extends Response {
+	document!: string;
+
+	name!: string;
+}
+
+export class SaveDocument extends Response {
+	document!: string;
+
+	name!: string;
+}
+
+export class OpenDocumentBrowse extends Response {}
+
+export class DocumentChanged extends Response {}
+
+export class DisplayFolderTreeStructure extends Response {
+	constructor(public layerId: BigInt, public children: DisplayFolderTreeStructure[]) {
+		super();
 	}
-}
-
-export type Response =
-	| SetActiveTool
-	| UpdateCanvas
-	| UpdateScrollbars
-	| UpdateRulers
-	| UpdateLayer
-	| DocumentChanged
-	| DisplayFolderTreeStructure
-	| UpdateWorkingColors
-	| SetCanvasZoom
-	| SetCanvasRotation;
-
-export interface UpdateOpenDocumentsList {
-	open_documents: Array<string>;
-}
-function newUpdateOpenDocumentsList(input: any): UpdateOpenDocumentsList {
-	return { open_documents: input.open_documents };
-}
-
-export interface Color {
-	red: number;
-	green: number;
-	blue: number;
-	alpha: number;
-}
-function newColor(input: any): Color {
-	// TODO: Possibly change this in the Rust side to avoid any pitfalls
-	return { red: input.red * 255, green: input.green * 255, blue: input.blue * 255, alpha: input.alpha };
-}
-
-export interface UpdateWorkingColors {
-	primary: Color;
-	secondary: Color;
-}
-function newUpdateWorkingColors(input: any): UpdateWorkingColors {
-	return {
-		primary: newColor(input.primary),
-		secondary: newColor(input.secondary),
-	};
-}
-
-export interface SetActiveTool {
-	tool_name: string;
-	tool_options: object;
-}
-function newSetActiveTool(input: any): SetActiveTool {
-	return {
-		tool_name: input.tool_name,
-		tool_options: input.tool_options,
-	};
-}
-
-export interface SetActiveDocument {
-	document_index: number;
-}
-function newSetActiveDocument(input: any): SetActiveDocument {
-	return {
-		document_index: input.document_index,
-	};
-}
-
-export interface DisplayError {
-	title: string;
-	description: string;
-}
-function newDisplayError(input: any): DisplayError {
-	return {
-		title: input.title,
-		description: input.description,
-	};
-}
-
-export interface DisplayPanic {
-	panic_info: string;
-	title: string;
-	description: string;
-}
-function newDisplayPanic(input: any): DisplayPanic {
-	return {
-		panic_info: input.panic_info,
-		title: input.title,
-		description: input.description,
-	};
-}
-
-export interface DisplayConfirmationToCloseDocument {
-	document_index: number;
-}
-function newDisplayConfirmationToCloseDocument(input: any): DisplayConfirmationToCloseDocument {
-	return {
-		document_index: input.document_index,
-	};
-}
-
-function newDisplayConfirmationToCloseAllDocuments(_input: any): {} {
-	return {};
-}
-
-export interface UpdateCanvas {
-	document: string;
-}
-function newUpdateCanvas(input: any): UpdateCanvas {
-	return {
-		document: input.document,
-	};
-}
-
-export interface UpdateScrollbars {
-	position: { x: number; y: number };
-	size: { x: number; y: number };
-	multiplier: { x: number; y: number };
-}
-function newUpdateScrollbars(input: any): UpdateScrollbars {
-	return {
-		position: { x: input.position[0], y: input.position[1] },
-		size: { x: input.size[0], y: input.size[1] },
-		multiplier: { x: input.multiplier[0], y: input.multiplier[1] },
-	};
-}
-
-export interface UpdateRulers {
-	origin: { x: number; y: number };
-	spacing: number;
-	interval: number;
-}
-function newUpdateRulers(input: any): UpdateRulers {
-	return {
-		origin: { x: input.origin[0], y: input.origin[1] },
-		spacing: input.spacing,
-		interval: input.interval,
-	};
-}
-
-export interface ExportDocument {
-	document: string;
-	name: string;
-}
-function newExportDocument(input: any): ExportDocument {
-	return {
-		document: input.document,
-		name: input.name,
-	};
-}
-
-export interface SaveDocument {
-	document: string;
-	name: string;
-}
-function newSaveDocument(input: any): SaveDocument {
-	return {
-		document: input.document,
-		name: input.name,
-	};
-}
-
-export type OpenDocumentBrowse = {};
-function newOpenDocumentBrowse(_: any): OpenDocumentBrowse {
-	return {};
-}
-
-export type DocumentChanged = {};
-function newDocumentChanged(_: any): DocumentChanged {
-	return {};
-}
-
-export interface DisplayFolderTreeStructure {
-	layerId: BigInt;
-	children: DisplayFolderTreeStructure[];
 }
 function newDisplayFolderTreeStructure(input: any): DisplayFolderTreeStructure {
 	const { ptr, len } = input.data_buffer;
@@ -281,7 +145,7 @@ function newDisplayFolderTreeStructure(input: any): DisplayFolderTreeStructure {
 	const layerIdsSection = new DataView(wasmMemoryBuffer, ptr + 8 + structureSectionLength * 8);
 
 	let layersEncountered = 0;
-	let currentFolder: DisplayFolderTreeStructure = { layerId: BigInt(-1), children: [] };
+	let currentFolder = new DisplayFolderTreeStructure(BigInt(-1), []);
 	const currentFolderStack = [currentFolder];
 
 	for (let i = 0; i < structureSectionLength; i += 1) {
@@ -296,7 +160,7 @@ function newDisplayFolderTreeStructure(input: any): DisplayFolderTreeStructure {
 			const layerId = layerIdsSection.getBigUint64(layersEncountered * 8, true);
 			layersEncountered += 1;
 
-			const childLayer = { layerId, children: [] };
+			const childLayer = new DisplayFolderTreeStructure(layerId, []);
 			currentFolder.children.push(childLayer);
 		}
 
@@ -319,39 +183,92 @@ function newDisplayFolderTreeStructure(input: any): DisplayFolderTreeStructure {
 	return currentFolder;
 }
 
-export interface UpdateLayer {
-	path: BigUint64Array;
-	data: LayerPanelEntry;
+export class UpdateLayer extends Response {
+	constructor(public path: BigUint64Array, public data: LayerPanelEntry) {
+		super();
+	}
 }
+
 function newUpdateLayer(input: any): UpdateLayer {
-	return {
-		path: newPath(input.data.path),
-		data: newLayerPanelEntry(input.data),
-	};
+	return new UpdateLayer(newPath(input.data.path), newLayerPanelEntry(input.data));
 }
 
-export interface SetCanvasZoom {
-	new_zoom: number;
-}
-function newSetCanvasZoom(input: any): SetCanvasZoom {
-	return {
-		new_zoom: input.new_zoom,
-	};
+export class SetCanvasZoom extends Response {
+	new_zoom!: number;
 }
 
-export interface SetCanvasRotation {
-	new_radians: number;
-}
-function newSetCanvasRotation(input: any): SetCanvasRotation {
-	return {
-		new_radians: input.new_radians,
-	};
+export class SetCanvasRotation extends Response {
+	new_radians!: number;
 }
 
 function newPath(input: any): BigUint64Array {
 	// eslint-disable-next-line
 	const u32CombinedPairs = input.map((n: Array<number>) => BigInt((BigInt(n[0]) << BigInt(32)) | BigInt(n[1])));
 	return new BigUint64Array(u32CombinedPairs);
+}
+
+type Constructs<T> = new (...args: any[]) => T;
+
+// From https://stackoverflow.com/questions/60496276/typescript-derive-union-type-from-array-of-objects
+function createResponseMap<T extends Record<string, Constructs<Response> | ((data: any) => Response)>>(arg: T) {
+	return arg;
+}
+
+const responseMap = createResponseMap({
+	UpdateCanvas,
+	UpdateScrollbars,
+	UpdateRulers,
+	ExportDocument,
+	SaveDocument,
+	OpenDocumentBrowse,
+	DisplayFolderTreeStructure: newDisplayFolderTreeStructure,
+	UpdateLayer: newUpdateLayer,
+	SetActiveTool,
+	SetActiveDocument,
+	UpdateOpenDocumentsList,
+	UpdateWorkingColors,
+	SetCanvasZoom,
+	SetCanvasRotation,
+	DisplayError,
+	DisplayPanic,
+	DisplayConfirmationToCloseDocument,
+	DisplayConfirmationToCloseAllDocuments,
+});
+
+export type ResponseType = keyof typeof responseMap;
+
+function isResponseConstructor(fn: Constructs<Response> | ((data: any) => Response)): fn is Constructs<Response> {
+	return (fn as any).responseMarker !== undefined;
+}
+
+export function handleResponse(responseType: ResponseType, responseData: any) {
+	const dataParser = responseMap[responseType];
+	let data: Response;
+
+	if (!dataParser) {
+		// eslint-disable-next-line no-console
+		console.error(`Received a Response of type "${responseType}" but but was not able to parse the data.`);
+	}
+
+	if (isResponseConstructor(dataParser)) {
+		data = plainToInstance(dataParser, responseData[responseType]);
+	} else {
+		data = dataParser(responseData[responseType]);
+	}
+
+	// It is ok to use constructor.name even with minification since it is used consistently with registerHandler
+	const callback = state.responseMap[data.constructor.name];
+
+	if (callback && data) {
+		callback(data);
+	} else if (data) {
+		// eslint-disable-next-line no-console
+		console.error(`Received a Response of type "${responseType}" but no handler was registered for it from the client.`);
+	}
+}
+
+export function registerResponseHandler<T extends Response>(responseType: Constructs<T>, callback: ResponseCallback<T>) {
+	state.responseMap[responseType.name] = callback;
 }
 
 export enum BlendMode {
@@ -369,7 +286,7 @@ export enum BlendMode {
 	Exclusion = "exclusion",
 	Hue = "hue",
 	Saturation = "saturation",
-	Color = "color",
+	"Color" = "color",
 	Luminosity = "luminosity",
 }
 function newBlendMode(input: string): BlendMode {

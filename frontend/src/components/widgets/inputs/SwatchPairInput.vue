@@ -70,7 +70,7 @@ import { defineComponent } from "vue";
 
 import { rgbToDecimalRgb, RGB } from "@/utilities/color";
 import { panicProxy } from "@/utilities/panic-proxy";
-import { ResponseType, registerResponseHandler, Response, UpdateWorkingColors } from "@/utilities/response-handler";
+import { registerResponseHandler, UpdateWorkingColors } from "@/utilities/response-handler";
 
 import ColorPicker from "@/components/widgets/floating-menus/ColorPicker.vue";
 import FloatingMenu, { MenuDirection, MenuType } from "@/components/widgets/floating-menus/FloatingMenu.vue";
@@ -135,20 +135,17 @@ export default defineComponent({
 		};
 	},
 	mounted() {
-		registerResponseHandler(ResponseType.UpdateWorkingColors, (responseData: Response) => {
-			const colorData = responseData as UpdateWorkingColors;
+		registerResponseHandler(UpdateWorkingColors, (colorData) => {
 			if (!colorData) return;
 			const { primary, secondary } = colorData;
 
-			this.primaryColor = { r: primary.red, g: primary.green, b: primary.blue, a: primary.alpha };
-			let color = this.primaryColor;
+			this.primaryColor = primary.toRgb();
 			let button = this.getRef<HTMLButtonElement>("primaryButton");
-			button.style.setProperty("--swatch-color", `rgba(${color.r}, ${color.g}, ${color.b}, ${color.a})`);
+			button.style.setProperty("--swatch-color", primary.toString());
 
-			this.secondaryColor = { r: secondary.red, g: secondary.green, b: secondary.blue, a: secondary.alpha };
-			color = this.secondaryColor;
+			this.secondaryColor = secondary.toRgb();
 			button = this.getRef<HTMLButtonElement>("secondaryButton");
-			button.style.setProperty("--swatch-color", `rgba(${color.r}, ${color.g}, ${color.b}, ${color.a})`);
+			button.style.setProperty("--swatch-color", secondary.toString());
 		});
 
 		this.updatePrimaryColor();

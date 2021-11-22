@@ -71,7 +71,7 @@ module.exports = {
 			.init(
 				(Plugin) =>
 					new Plugin({
-						allow: "(Apache-2.0 OR BSD-2-Clause OR BSD-3-Clause OR MIT)",
+						allow: "(Apache-2.0 OR BSD-2-Clause OR BSD-3-Clause OR MIT OR 0BSD)",
 						emitError: true,
 						outputFilename: "third-party-licenses.txt",
 						outputWriter: formatThirdPartyLicenses,
@@ -150,7 +150,7 @@ License information is required on production builds. Aborting.`);
 	// Augment the imported Rust license list with the provided JS license list
 	jsLicenses.dependencies.forEach((jsLicense) => {
 		const { name, version, author, repository, licenseName } = jsLicense;
-		const licenseText = trimBlankLines(jsLicense.licenseText);
+		const licenseText = trimBlankLines(jsLicense.licenseText ?? "");
 
 		// Remove the `git+` or `git://` prefix and `.git` suffix
 		const repo = repository ? repository.replace(/^.*(github.com\/.*?\/.*?)(?:.git)/, "https://$1") : repository;

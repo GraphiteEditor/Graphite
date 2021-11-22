@@ -224,7 +224,7 @@
 <script lang="ts">
 import { defineComponent } from "vue";
 
-import { ResponseType, registerResponseHandler, Response, UpdateCanvas, UpdateScrollbars, UpdateRulers, SetActiveTool, SetCanvasZoom, SetCanvasRotation } from "@/utilities/response-handler";
+import { registerResponseHandler, UpdateCanvas, UpdateScrollbars, UpdateRulers, SetActiveTool, SetCanvasZoom, SetCanvasRotation } from "@/utilities/response-handler";
 import { SeparatorDirection, SeparatorType } from "@/components/widgets/widgets";
 import { comingSoon } from "@/utilities/errors";
 import { panicProxy } from "@/utilities/panic-proxy";
@@ -315,13 +315,11 @@ export default defineComponent({
 		},
 	},
 	mounted() {
-		registerResponseHandler(ResponseType.UpdateCanvas, (responseData: Response) => {
-			const updateData = responseData as UpdateCanvas;
+		registerResponseHandler(UpdateCanvas, (updateData) => {
 			if (updateData) this.viewportSvg = updateData.document;
 		});
 
-		registerResponseHandler(ResponseType.UpdateScrollbars, (responseData: Response) => {
-			const updateData = responseData as UpdateScrollbars;
+		registerResponseHandler(UpdateScrollbars, (updateData) => {
 			if (updateData) {
 				this.scrollbarPos = updateData.position;
 				this.scrollbarSize = updateData.size;
@@ -329,8 +327,7 @@ export default defineComponent({
 			}
 		});
 
-		registerResponseHandler(ResponseType.UpdateRulers, (responseData: Response) => {
-			const updateData = responseData as UpdateRulers;
+		registerResponseHandler(UpdateRulers, (updateData) => {
 			if (updateData) {
 				this.rulerOrigin = updateData.origin;
 				this.rulerSpacing = updateData.spacing;
@@ -338,23 +335,20 @@ export default defineComponent({
 			}
 		});
 
-		registerResponseHandler(ResponseType.SetActiveTool, (responseData: Response) => {
-			const toolData = responseData as SetActiveTool;
+		registerResponseHandler(SetActiveTool, (toolData) => {
 			if (toolData) {
 				this.activeTool = toolData.tool_name;
 				this.activeToolOptions = toolData.tool_options;
 			}
 		});
 
-		registerResponseHandler(ResponseType.SetCanvasZoom, (responseData: Response) => {
-			const updateData = responseData as SetCanvasZoom;
+		registerResponseHandler(SetCanvasZoom, (updateData) => {
 			if (updateData) {
 				this.documentZoom = updateData.new_zoom * 100;
 			}
 		});
 
-		registerResponseHandler(ResponseType.SetCanvasRotation, (responseData: Response) => {
-			const updateData = responseData as SetCanvasRotation;
+		registerResponseHandler(SetCanvasRotation, (updateData) => {
 			if (updateData) {
 				const newRotation = updateData.new_radians * (180 / Math.PI);
 				this.documentRotation = (360 + (newRotation % 360)) % 360;

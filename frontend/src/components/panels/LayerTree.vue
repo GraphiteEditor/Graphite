@@ -181,7 +181,7 @@
 <script lang="ts">
 import { defineComponent } from "vue";
 
-import { ResponseType, registerResponseHandler, Response, BlendMode, DisplayFolderTreeStructure, UpdateLayer, LayerPanelEntry, LayerType } from "@/utilities/response-handler";
+import { registerResponseHandler, BlendMode, DisplayFolderTreeStructure, UpdateLayer, LayerPanelEntry, LayerType } from "@/utilities/response-handler";
 import { panicProxy } from "@/utilities/panic-proxy";
 import { SeparatorType } from "@/components/widgets/widgets";
 
@@ -390,10 +390,8 @@ export default defineComponent({
 		},
 	},
 	mounted() {
-		registerResponseHandler(ResponseType.DisplayFolderTreeStructure, (responseData: Response) => {
-			const expandData = responseData as DisplayFolderTreeStructure;
+		registerResponseHandler(DisplayFolderTreeStructure, (expandData) => {
 			if (!expandData) return;
-			console.log(expandData);
 
 			const path = [] as Array<bigint>;
 			this.layers = [] as Array<LayerPanelEntry>;
@@ -410,15 +408,16 @@ export default defineComponent({
 			recurse(expandData, this.layers, this.layerCache);
 		});
 
-		registerResponseHandler(ResponseType.UpdateLayer, (responseData) => {
-			const updateData = responseData as UpdateLayer;
+		registerResponseHandler(UpdateLayer, (updateData) => {
 			if (updateData) {
 				const responsePath = updateData.path;
 				const responseLayer = updateData.data;
 
 				const layer = this.layerCache.get(responsePath.toString());
 				if (layer) Object.assign(this.layerCache.get(responsePath.toString()), responseLayer);
-				else this.layerCache.set(responsePath.toString(), responseLayer);
+				else {
+					this.layerCache.set(responsePath.toString(), responseLayer);
+				}
 				this.setBlendModeForSelectedLayers();
 				this.setOpacityForSelectedLayers();
 			}

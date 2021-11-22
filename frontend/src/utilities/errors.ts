@@ -1,6 +1,6 @@
 import { createDialog, dismissDialog } from "@/utilities/dialog";
 import { TextButtonWidget } from "@/components/widgets/widgets";
-import { ResponseType, registerResponseHandler, Response, DisplayError, DisplayPanic } from "@/utilities/response-handler";
+import { registerResponseHandler, DisplayError, DisplayPanic } from "@/utilities/response-handler";
 
 // Coming soon dialog
 export function comingSoon(issueNumber?: number) {
@@ -24,9 +24,7 @@ export function comingSoon(issueNumber?: number) {
 }
 
 // Graphite error dialog
-registerResponseHandler(ResponseType.DisplayError, (responseData: Response) => {
-	const data = responseData as DisplayError;
-
+registerResponseHandler(DisplayError, (data) => {
 	const okButton: TextButtonWidget = {
 		kind: "TextButton",
 		callback: async () => dismissDialog(),
@@ -38,9 +36,7 @@ registerResponseHandler(ResponseType.DisplayError, (responseData: Response) => {
 });
 
 // Code panic dialog and console error
-registerResponseHandler(ResponseType.DisplayPanic, (responseData: Response) => {
-	const data = responseData as DisplayPanic;
-
+registerResponseHandler(DisplayPanic, (data) => {
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	(Error as any).stackTraceLimit = Infinity;
 	const stackTrace = new Error().stack || "";
