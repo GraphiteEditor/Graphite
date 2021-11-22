@@ -393,7 +393,6 @@ export default defineComponent({
 		registerResponseHandler(ResponseType.DisplayFolderTreeStructure, (responseData: Response) => {
 			const expandData = responseData as DisplayFolderTreeStructure;
 			if (!expandData) return;
-			console.log(expandData);
 
 			const path = [] as Array<bigint>;
 			this.layers = [] as Array<LayerPanelEntry>;
