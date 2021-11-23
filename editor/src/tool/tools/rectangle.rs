@@ -58,7 +58,7 @@ impl Fsm for RectangleToolFsmState {
 	fn transition(
 		self,
 		event: ToolMessage,
-		document: &mut DocumentMessageHandler,
+		document: &DocumentMessageHandler,
 		tool_data: &DocumentToolData,
 		data: &mut Self::ToolData,
 		input: &InputPreprocessor,
@@ -101,12 +101,12 @@ impl Fsm for RectangleToolFsmState {
 						false => responses.push_back(DocumentMessage::CommitTransaction.into()),
 					}
 
-					shape_data.path = None;
+					shape_data.cleanup();
 					Ready
 				}
 				(Dragging, Abort) => {
 					responses.push_back(DocumentMessage::AbortTransaction.into());
-					shape_data.path = None;
+					shape_data.cleanup();
 
 					Ready
 				}

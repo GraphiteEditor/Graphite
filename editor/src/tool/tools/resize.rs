@@ -1,6 +1,7 @@
 use crate::input::keyboard::Key;
 use crate::input::{mouse::ViewportPosition, InputPreprocessor};
 use crate::message_prelude::*;
+use crate::tool::snapping::SnapHandler;
 use crate::tool::DocumentMessageHandler;
 use glam::{DAffine2, DVec2, Vec2Swizzles};
 use graphene::Operation;
@@ -9,20 +10,21 @@ use graphene::Operation;
 pub struct Resize {
 	pub drag_start: ViewportPosition,
 	pub path: Option<Vec<LayerId>>,
+	snap_handler: SnapHandler,
 }
 impl Resize {
 	/// Starts a resize, assigning the snap targets and snapping the starting position.
-	pub fn start(&mut self, document: &mut DocumentMessageHandler, mouse_position: DVec2) {
+	pub fn start(&mut self, document: &DocumentMessageHandler, mouse_position: DVec2) {
 		let layers = document.all_layers_sorted();
-		document.snapping_handler.start_snap(&document.graphene_document, layers, &[]);
-		self.drag_start = document.snapping_handler.snap_position(mouse_position);
+		self.snap_handler.start_snap(document, layers, &[]);
+		self.drag_start = self.snap_handler.snap_position(document, mouse_position);
 	}
 
 	pub fn calculate_transform(&self, document: &DocumentMessageHandler, center: Key, lock_ratio: Key, ipp: &InputPreprocessor) -> Option<Message> {
 		if let Some(path) = &self.path {
 			let mut start = self.drag_start;
 
-			let stop = document.snapping_handler.snap_position(ipp.mouse.position);
+			let stop = self.snap_handler.snap_position(document, ipp.mouse.position);
 
 			let mut size = stop - start;
 			if ipp.keyboard.get(lock_ratio as usize) {
@@ -43,5 +45,10 @@ impl Resize {
 		} else {
 			None
 		}
+	}
+
+	pub fn cleanup(&mut self) {
+		self.snap_handler.cleanup();
+		self.path = None;
 	}
 }

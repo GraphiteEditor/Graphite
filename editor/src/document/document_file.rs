@@ -3,7 +3,6 @@ use std::collections::VecDeque;
 
 pub use super::layer_panel::*;
 use super::movement_handler::{MovementMessage, MovementMessageHandler};
-use super::snapping::SnapHandler;
 use super::transform_layer_handler::{TransformLayerMessage, TransformLayerMessageHandler};
 
 use crate::consts::{ASYMPTOTIC_EFFECT, FILE_EXPORT_SUFFIX, FILE_SAVE_SUFFIX, SCALE_EFFECT, SCROLLBAR_SPACING};
@@ -66,7 +65,7 @@ pub struct DocumentMessageHandler {
 	pub layer_data: HashMap<Vec<LayerId>, LayerData>,
 	movement_handler: MovementMessageHandler,
 	transform_layer_handler: TransformLayerMessageHandler,
-	pub snapping_handler: SnapHandler,
+	pub snapping_enabled: bool,
 }
 
 impl Default for DocumentMessageHandler {
@@ -79,7 +78,7 @@ impl Default for DocumentMessageHandler {
 			layer_data: vec![(vec![], LayerData::new(true))].into_iter().collect(),
 			movement_handler: MovementMessageHandler::default(),
 			transform_layer_handler: TransformLayerMessageHandler::default(),
-			snapping_handler: SnapHandler::default(),
+			snapping_enabled: true,
 		}
 	}
 }
@@ -312,7 +311,7 @@ impl DocumentMessageHandler {
 			layer_data: vec![(vec![], LayerData::new(true))].into_iter().collect(),
 			movement_handler: MovementMessageHandler::default(),
 			transform_layer_handler: TransformLayerMessageHandler::default(),
-			snapping_handler: SnapHandler::default(),
+			snapping_enabled: true,
 		}
 	}
 
@@ -778,7 +777,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			}
 			RenameLayer(path, name) => responses.push_back(DocumentOperation::RenameLayer { path, name }.into()),
 			SetSnapping(new_status) => {
-				self.snapping_handler.set_snapping_enabled(new_status);
+				self.snapping_enabled = new_status;
 			}
 		}
 	}

@@ -41,7 +41,7 @@ impl Dispatcher {
 				Global(message) => self.global_message_handler.process_action(message, (), &mut self.messages),
 				Tool(message) => self
 					.tool_message_handler
-					.process_action(message, (self.documents_message_handler.active_document_mut(), &self.input_preprocessor), &mut self.messages),
+					.process_action(message, (self.documents_message_handler.active_document(), &self.input_preprocessor), &mut self.messages),
 				Frontend(message) => self.responses.push(message),
 				InputPreprocessor(message) => self.input_preprocessor.process_action(message, (), &mut self.messages),
 				InputMapper(message) => {

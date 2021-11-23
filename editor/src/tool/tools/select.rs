@@ -4,18 +4,18 @@ use graphene::layers::style::Stroke;
 use graphene::Operation;
 use graphene::Quad;
 
-use glam::{DAffine2, DVec2};
-use serde::{Deserialize, Serialize};
-
 use crate::consts::COLOR_ACCENT;
 use crate::input::keyboard::Key;
 use crate::input::{mouse::ViewportPosition, InputPreprocessor};
+use crate::tool::snapping::SnapHandler;
 use crate::tool::{DocumentToolData, Fsm, ToolActionHandlerData};
 use crate::{
 	consts::SELECTION_TOLERANCE,
 	document::{AlignAggregate, AlignAxis, DocumentMessageHandler, FlipAxis},
 	message_prelude::*,
 };
+use glam::{DAffine2, DVec2};
+use serde::{Deserialize, Serialize};
 
 #[derive(Default)]
 pub struct Select {
@@ -71,6 +71,7 @@ struct SelectToolData {
 	layers_dragging: Vec<Vec<LayerId>>, // Paths and offsets
 	drag_box_id: Option<Vec<LayerId>>,
 	bounding_box_path: Option<Vec<LayerId>>,
+	snap_handler: SnapHandler,
 }
 
 impl SelectToolData {
@@ -113,7 +114,7 @@ impl Fsm for SelectToolFsmState {
 	fn transition(
 		self,
 		event: ToolMessage,
-		document: &mut DocumentMessageHandler,
+		document: &DocumentMessageHandler,
 		_tool_data: &DocumentToolData,
 		data: &mut Self::ToolData,
 		input: &InputPreprocessor,
@@ -179,7 +180,7 @@ impl Fsm for SelectToolFsmState {
 					} else {
 						Vec::new()
 					};
-					document.snapping_handler.start_snap(&document.graphene_document, document.non_selected_layers_sorted(), &ignore_layers);
+					data.snap_handler.start_snap(document, document.non_selected_layers_sorted(), &ignore_layers);
 					state
 				}
 				(Dragging, MouseMove) => {
@@ -187,7 +188,7 @@ impl Fsm for SelectToolFsmState {
 
 					let mouse_delta = input.mouse.position - data.drag_current;
 
-					let closest_move = document.snapping_handler.snap_layers(&document.graphene_document, &data.layers_dragging, mouse_delta);
+					let closest_move = data.snap_handler.snap_layers(document, &data.layers_dragging, mouse_delta);
 					for path in data.layers_dragging.iter() {
 						responses.push_front(
 							Operation::TransformLayerInViewport {
@@ -220,6 +221,7 @@ impl Fsm for SelectToolFsmState {
 						true => DocumentMessage::Undo,
 						false => DocumentMessage::CommitTransaction,
 					};
+					data.snap_handler.cleanup();
 					responses.push_front(response.into());
 					Ready
 				}
