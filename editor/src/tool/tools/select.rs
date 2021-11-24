@@ -4,18 +4,18 @@ use graphene::layers::style::Stroke;
 use graphene::Operation;
 use graphene::Quad;
 
-use glam::{DAffine2, DVec2};
-use serde::{Deserialize, Serialize};
-
 use crate::consts::COLOR_ACCENT;
 use crate::input::keyboard::Key;
 use crate::input::{mouse::ViewportPosition, InputPreprocessor};
+use crate::tool::snapping::SnapHandler;
 use crate::tool::{DocumentToolData, Fsm, ToolActionHandlerData};
 use crate::{
 	consts::SELECTION_TOLERANCE,
 	document::{AlignAggregate, AlignAxis, DocumentMessageHandler, FlipAxis},
 	message_prelude::*,
 };
+use glam::{DAffine2, DVec2};
+use serde::{Deserialize, Serialize};
 
 #[derive(Default)]
 pub struct Select {
@@ -71,6 +71,7 @@ struct SelectToolData {
 	layers_dragging: Vec<Vec<LayerId>>, // Paths and offsets
 	drag_box_id: Option<Vec<LayerId>>,
 	bounding_box_path: Option<Vec<LayerId>>,
+	snap_handler: SnapHandler,
 }
 
 impl SelectToolData {
@@ -173,20 +174,31 @@ impl Fsm for SelectToolFsmState {
 						DrawingBox
 					};
 					buffer.into_iter().rev().for_each(|message| responses.push_front(message));
+
+					let ignore_layers = if let Some(bounding_box) = &data.bounding_box_path {
+						vec![bounding_box.clone()]
+					} else {
+						Vec::new()
+					};
+					data.snap_handler.start_snap(document, document.non_selected_layers_sorted(), &ignore_layers);
 					state
 				}
 				(Dragging, MouseMove) => {
 					responses.push_front(SelectMessage::UpdateSelectionBoundingBox.into());
+
+					let mouse_delta = input.mouse.position - data.drag_current;
+
+					let closest_move = data.snap_handler.snap_layers(document, &data.layers_dragging, mouse_delta);
 					for path in data.layers_dragging.iter() {
 						responses.push_front(
 							Operation::TransformLayerInViewport {
 								path: path.clone(),
-								transform: DAffine2::from_translation(input.mouse.position - data.drag_current).to_cols_array(),
+								transform: DAffine2::from_translation(input.mouse.position - data.drag_current + closest_move).to_cols_array(),
 							}
 							.into(),
 						);
 					}
-					data.drag_current = input.mouse.position;
+					data.drag_current = input.mouse.position + closest_move;
 					Dragging
 				}
 				(DrawingBox, MouseMove) => {
@@ -209,6 +221,7 @@ impl Fsm for SelectToolFsmState {
 						true => DocumentMessage::Undo,
 						false => DocumentMessage::CommitTransaction,
 					};
+					data.snap_handler.cleanup();
 					responses.push_front(response.into());
 					Ready
 				}
