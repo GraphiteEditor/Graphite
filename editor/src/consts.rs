@@ -15,6 +15,8 @@ pub const VIEWPORT_SCROLL_RATE: f64 = 0.6;
 
 pub const VIEWPORT_ROTATE_SNAP_INTERVAL: f64 = 15.;
 
+pub const SNAP_TOLERANCE: f64 = 3.;
+
 // TRANSFORMING LAYER
 pub const ROTATE_SNAP_ANGLE: f64 = 15.;
 pub const SCALE_SNAP_INTERVAL: f64 = 0.1;
