@@ -65,6 +65,7 @@ pub struct DocumentMessageHandler {
 	pub layer_data: HashMap<Vec<LayerId>, LayerData>,
 	movement_handler: MovementMessageHandler,
 	transform_layer_handler: TransformLayerMessageHandler,
+	pub snapping_enabled: bool,
 }
 
 impl Default for DocumentMessageHandler {
@@ -77,6 +78,7 @@ impl Default for DocumentMessageHandler {
 			layer_data: vec![(vec![], LayerData::new(true))].into_iter().collect(),
 			movement_handler: MovementMessageHandler::default(),
 			transform_layer_handler: TransformLayerMessageHandler::default(),
+			snapping_enabled: true,
 		}
 	}
 }
@@ -127,6 +129,7 @@ pub enum DocumentMessage {
 		insert_index: isize,
 	},
 	ReorderSelectedLayers(i32), // relative_position,
+	SetSnapping(bool),
 }
 
 impl From<DocumentOperation> for DocumentMessage {
@@ -308,6 +311,7 @@ impl DocumentMessageHandler {
 			layer_data: vec![(vec![], LayerData::new(true))].into_iter().collect(),
 			movement_handler: MovementMessageHandler::default(),
 			transform_layer_handler: TransformLayerMessageHandler::default(),
+			snapping_enabled: true,
 		}
 	}
 
@@ -772,6 +776,9 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				}
 			}
 			RenameLayer(path, name) => responses.push_back(DocumentOperation::RenameLayer { path, name }.into()),
+			SetSnapping(new_status) => {
+				self.snapping_enabled = new_status;
+			}
 		}
 	}
 
@@ -784,6 +791,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			RenderDocument,
 			ExportDocument,
 			SaveDocument,
+			SetSnapping,
 		);
 
 		if self.layer_data.values().any(|data| data.selected) {
