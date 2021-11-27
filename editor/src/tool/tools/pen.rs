@@ -1,4 +1,5 @@
 use crate::input::InputPreprocessor;
+use crate::tool::snapping::SnapHandler;
 use crate::tool::{DocumentToolData, Fsm, ToolActionHandlerData, ToolOptions, ToolType};
 use crate::{document::DocumentMessageHandler, message_prelude::*};
 use glam::DAffine2;
@@ -52,6 +53,7 @@ struct PenToolData {
 	next_point: DAffine2,
 	weight: u32,
 	path: Option<Vec<LayerId>>,
+	snap_handler: SnapHandler,
 }
 
 impl Fsm for PenToolFsmState {
@@ -67,7 +69,6 @@ impl Fsm for PenToolFsmState {
 		responses: &mut VecDeque<Message>,
 	) -> Self {
 		let transform = document.graphene_document.root.transform;
-		let pos = transform.inverse() * DAffine2::from_translation(input.mouse.position);
 
 		use PenMessage::*;
 		use PenToolFsmState::*;
@@ -77,6 +78,11 @@ impl Fsm for PenToolFsmState {
 					responses.push_back(DocumentMessage::StartTransaction.into());
 					responses.push_back(DocumentMessage::DeselectAllLayers.into());
 					data.path = Some(vec![generate_uuid()]);
+
+					data.snap_handler.start_snap(document, document.all_layers_sorted(), &[]);
+					let snapped_position = data.snap_handler.snap_position(document, input.mouse.position);
+
+					let pos = transform.inverse() * DAffine2::from_translation(snapped_position);
 
 					data.points.push(pos);
 					data.next_point = pos;
@@ -89,6 +95,9 @@ impl Fsm for PenToolFsmState {
 					Dragging
 				}
 				(Dragging, DragStop) => {
+					let snapped_position = data.snap_handler.snap_position(document, input.mouse.position);
+					let pos = transform.inverse() * DAffine2::from_translation(snapped_position);
+
 					// TODO: introduce comparison threshold when operating with canvas coordinates (https://github.com/GraphiteEditor/Graphite/issues/100)
 					if data.points.last() != Some(&pos) {
 						data.points.push(pos);
@@ -100,6 +109,8 @@ impl Fsm for PenToolFsmState {
 					Dragging
 				}
 				(Dragging, PointerMove) => {
+					let snapped_position = data.snap_handler.snap_position(document, input.mouse.position);
+					let pos = transform.inverse() * DAffine2::from_translation(snapped_position);
 					data.next_point = pos;
 
 					responses.extend(make_operation(data, tool_data, true));
@@ -117,6 +128,7 @@ impl Fsm for PenToolFsmState {
 
 					data.path = None;
 					data.points.clear();
+					data.snap_handler.cleanup();
 
 					Ready
 				}
@@ -124,6 +136,7 @@ impl Fsm for PenToolFsmState {
 					responses.push_back(DocumentMessage::AbortTransaction.into());
 					data.points.clear();
 					data.path = None;
+					data.snap_handler.cleanup();
 
 					Ready
 				}

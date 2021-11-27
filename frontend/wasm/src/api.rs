@@ -326,6 +326,13 @@ pub fn export_document() {
 	dispatch(message);
 }
 
+/// Set snapping disabled / enabled
+#[wasm_bindgen]
+pub fn set_snapping(new_status: bool) {
+	let message = DocumentMessage::SetSnapping(new_status);
+	dispatch(message);
+}
+
 /// Sets the zoom to the value
 #[wasm_bindgen]
 pub fn set_canvas_zoom(new_zoom: f64) {
