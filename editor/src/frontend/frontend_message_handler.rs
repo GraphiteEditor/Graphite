@@ -10,7 +10,7 @@ pub enum FrontendMessage {
 	DisplayFolderTreeStructure { data_buffer: RawBuffer },
 	SetActiveTool { tool_name: String, tool_options: Option<ToolOptions> },
 	SetActiveDocument { document_index: usize },
-	UpdateOpenDocumentsList { open_documents: Vec<String> },
+	UpdateOpenDocumentsList { open_documents: Vec<(String, bool)> },
 	DisplayError { title: String, description: String },
 	DisplayPanic { panic_info: String, title: String, description: String },
 	DisplayConfirmationToCloseDocument { document_index: usize },

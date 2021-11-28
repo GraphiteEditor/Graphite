@@ -59,8 +59,9 @@ pub struct VectorManipulatorShape {
 #[derive(Clone, Debug)]
 pub struct DocumentMessageHandler {
 	pub graphene_document: GrapheneDocument,
-	pub document_history: Vec<DocumentSave>,
+	pub document_undo_history: Vec<DocumentSave>,
 	pub document_redo_history: Vec<DocumentSave>,
+	pub document_saved_history_hash: u64,
 	pub name: String,
 	pub layer_data: HashMap<Vec<LayerId>, LayerData>,
 	movement_handler: MovementMessageHandler,
@@ -72,9 +73,10 @@ impl Default for DocumentMessageHandler {
 	fn default() -> Self {
 		Self {
 			graphene_document: GrapheneDocument::default(),
-			document_history: Vec::new(),
+			document_undo_history: Vec::new(),
 			document_redo_history: Vec::new(),
 			name: String::from("Untitled Document"),
+			document_saved_history_hash: 0,
 			layer_data: vec![(vec![], LayerData::new(true))].into_iter().collect(),
 			movement_handler: MovementMessageHandler::default(),
 			transform_layer_handler: TransformLayerMessageHandler::default(),
@@ -305,8 +307,9 @@ impl DocumentMessageHandler {
 	pub fn with_name(name: String) -> Self {
 		Self {
 			graphene_document: GrapheneDocument::default(),
-			document_history: Vec::new(),
+			document_undo_history: Vec::new(),
 			document_redo_history: Vec::new(),
+			document_saved_history_hash: 0,
 			name,
 			layer_data: vec![(vec![], LayerData::new(true))].into_iter().collect(),
 			movement_handler: MovementMessageHandler::default(),
@@ -332,23 +335,30 @@ impl DocumentMessageHandler {
 		layer_data(&mut self.layer_data, path)
 	}
 
-	pub fn backup(&mut self) {
+	pub fn backup(&mut self, responses: &mut VecDeque<Message>) {
 		self.document_redo_history.clear();
 		let new_layer_data = self
 			.layer_data
 			.iter()
 			.filter_map(|(key, value)| (!self.graphene_document.layer(key).unwrap().overlay).then(|| (key.clone(), *value)))
 			.collect();
-		self.document_history.push((self.graphene_document.clone_without_overlays(), new_layer_data))
+		self.document_undo_history.push((self.graphene_document.clone_without_overlays(), new_layer_data));
+
+		// Push the GetOpenDocumentsList message to the bus in order to update the save status of the open documents
+		responses.push_back(DocumentsMessage::GetOpenDocumentsList.into());
 	}
 
-	pub fn rollback(&mut self) -> Result<(), EditorError> {
-		self.backup();
-		self.undo()
+	pub fn rollback(&mut self, responses: &mut VecDeque<Message>) -> Result<(), EditorError> {
+		self.backup(responses);
+		self.undo(responses)
+		// TODO: Consider if we should check if the document is saved
 	}
 
-	pub fn undo(&mut self) -> Result<(), EditorError> {
-		match self.document_history.pop() {
+	pub fn undo(&mut self, responses: &mut VecDeque<Message>) -> Result<(), EditorError> {
+		// Push the GetOpenDocumentsList message to the bus in order to update the save status of the open documents
+		responses.push_back(DocumentsMessage::GetOpenDocumentsList.into());
+
+		match self.document_undo_history.pop() {
 			Some((document, layer_data)) => {
 				let document = std::mem::replace(&mut self.graphene_document, document);
 				let layer_data = std::mem::replace(&mut self.layer_data, layer_data);
@@ -359,7 +369,10 @@ impl DocumentMessageHandler {
 		}
 	}
 
-	pub fn redo(&mut self) -> Result<(), EditorError> {
+	pub fn redo(&mut self, responses: &mut VecDeque<Message>) -> Result<(), EditorError> {
+		// Push the GetOpenDocumentsList message to the bus in order to update the save status of the open documents
+		responses.push_back(DocumentsMessage::GetOpenDocumentsList.into());
+
 		match self.document_redo_history.pop() {
 			Some((document, layer_data)) => {
 				let document = std::mem::replace(&mut self.graphene_document, document);
@@ -368,11 +381,21 @@ impl DocumentMessageHandler {
 					.iter()
 					.filter_map(|(key, value)| (!self.graphene_document.layer(key).unwrap().overlay).then(|| (key.clone(), *value)))
 					.collect();
-				self.document_history.push((document.clone_without_overlays(), new_layer_data));
+				self.document_undo_history.push((document.clone_without_overlays(), new_layer_data));
 				Ok(())
 			}
 			None => Err(EditorError::NoTransactionInProgress),
 		}
+	}
+
+	pub fn current_history_hash(&self) -> u64 {
+		// We can use the last state of the document to serve as the hash to compare against
+		// This is useful since when the document is empty the hash will be 0
+		self.document_undo_history.last().map(|(graphene_document, _)| graphene_document.hash()).unwrap_or(0)
+	}
+
+	pub fn is_saved(&self) -> bool {
+		self.current_history_hash() == self.document_saved_history_hash
 	}
 
 	pub fn layer_panel_entry(&mut self, path: Vec<LayerId>) -> Result<LayerPanelEntry, EditorError> {
@@ -421,13 +444,13 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				.transform_layer_handler
 				.process_action(message, (&mut self.layer_data, &mut self.graphene_document, ipp), responses),
 			DeleteLayer(path) => responses.push_back(DocumentOperation::DeleteLayer { path }.into()),
-			StartTransaction => self.backup(),
+			StartTransaction => self.backup(responses),
 			RollbackTransaction => {
-				self.rollback().unwrap_or_else(|e| log::warn!("{}", e));
+				self.rollback(responses).unwrap_or_else(|e| log::warn!("{}", e));
 				responses.extend([RenderDocument.into(), DocumentStructureChanged.into()]);
 			}
 			AbortTransaction => {
-				self.undo().unwrap_or_else(|e| log::warn!("{}", e));
+				self.undo(responses).unwrap_or_else(|e| log::warn!("{}", e));
 				responses.extend([RenderDocument.into(), DocumentStructureChanged.into()]);
 			}
 			CommitTransaction => (),
@@ -455,6 +478,10 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				)
 			}
 			SaveDocument => {
+				self.document_saved_history_hash = self.current_history_hash();
+				// Update the save status of the just saved document
+				responses.push_back(DocumentsMessage::GetOpenDocumentsList.into());
+
 				let name = match self.name.ends_with(FILE_SAVE_SUFFIX) {
 					true => self.name.clone(),
 					false => self.name.clone() + FILE_SAVE_SUFFIX,
@@ -494,13 +521,13 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				responses.push_back(DocumentMessage::SetSelectedLayers(vec![new_folder_path]).into());
 			}
 			SetBlendModeForSelectedLayers(blend_mode) => {
-				self.backup();
+				self.backup(responses);
 				for path in self.layer_data.iter().filter_map(|(path, data)| data.selected.then(|| path.clone())) {
 					responses.push_back(DocumentOperation::SetLayerBlendMode { path, blend_mode }.into());
 				}
 			}
 			SetOpacityForSelectedLayers(opacity) => {
-				self.backup();
+				self.backup(responses);
 				let opacity = opacity.clamp(0., 1.);
 
 				for path in self.selected_layers().map(|path| path.to_vec()) {
@@ -520,7 +547,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				responses.push_back(ToolMessage::SelectedLayersChanged.into());
 			}
 			DeleteSelectedLayers => {
-				self.backup();
+				self.backup(responses);
 				responses.push_front(ToolMessage::SelectedLayersChanged.into());
 				for path in self.selected_layers().map(|path| path.to_vec()) {
 					responses.push_front(DocumentOperation::DeleteLayer { path }.into());
@@ -533,7 +560,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				}
 			}
 			DuplicateSelectedLayers => {
-				self.backup();
+				self.backup(responses);
 				for path in self.selected_layers_sorted() {
 					responses.push_back(DocumentOperation::DuplicateLayer { path }.into());
 				}
@@ -564,8 +591,8 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				responses.push_front(SetSelectedLayers(all_layer_paths).into());
 			}
 			DeselectAllLayers => responses.push_front(SetSelectedLayers(vec![]).into()),
-			DocumentHistoryBackward => self.undo().unwrap_or_else(|e| log::warn!("{}", e)),
-			DocumentHistoryForward => self.redo().unwrap_or_else(|e| log::warn!("{}", e)),
+			DocumentHistoryBackward => self.undo(responses).unwrap_or_else(|e| log::warn!("{}", e)),
+			DocumentHistoryForward => self.redo(responses).unwrap_or_else(|e| log::warn!("{}", e)),
 			Undo => {
 				responses.push_back(SelectMessage::Abort.into());
 				responses.push_back(DocumentHistoryBackward.into());
@@ -666,7 +693,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			}
 
 			NudgeSelectedLayers(x, y) => {
-				self.backup();
+				self.backup(responses);
 				for path in self.selected_layers().map(|path| path.to_vec()) {
 					let operation = DocumentOperation::TransformLayerInViewport {
 						path,
@@ -682,7 +709,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				responses.push_back(DocumentsMessage::PasteIntoFolder { path, insert_index }.into());
 			}
 			ReorderSelectedLayers(relative_position) => {
-				self.backup();
+				self.backup(responses);
 				let all_layer_paths = self.all_layers_sorted();
 				let selected_layers = self.selected_layers_sorted();
 				if let Some(pivot) = match relative_position.signum() {
@@ -717,7 +744,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				}
 			}
 			FlipSelectedLayers(axis) => {
-				self.backup();
+				self.backup(responses);
 				let scale = match axis {
 					FlipAxis::X => DVec2::new(-1., 1.),
 					FlipAxis::Y => DVec2::new(1., -1.),
@@ -739,7 +766,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				}
 			}
 			AlignSelectedLayers(axis, aggregate) => {
-				self.backup();
+				self.backup(responses);
 				let (paths, boxes): (Vec<_>, Vec<_>) = self
 					.selected_layers()
 					.filter_map(|path| self.graphene_document.viewport_bounding_box(path).ok()?.map(|b| (path, b)))

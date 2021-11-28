@@ -63,11 +63,14 @@ module.exports = {
 		"no-debugger": process.env.NODE_ENV === "production" ? "warn" : "off",
 		"no-param-reassign": ["error", { props: false }],
 		"no-bitwise": "off",
+		"no-use-before-define": "off",
+		"no-shadow": "off",
 
 		// TypeScript plugin config
 		"@typescript-eslint/camelcase": "off",
 		"@typescript-eslint/no-use-before-define": "off",
 		"@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_" }],
+		"@typescript-eslint/no-shadow": "error",
 
 		// Import plugin config (used to intelligently validate module import statements)
 		"import/prefer-default-export": "off",

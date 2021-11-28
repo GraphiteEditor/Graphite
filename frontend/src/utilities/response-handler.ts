@@ -5,7 +5,7 @@ import { reactive } from "vue";
 
 type ResponseCallback = (responseData: Response) => void;
 type ResponseMap = {
-	[response: string]: ResponseCallback[] | undefined;
+	[response: string]: ResponseCallback | undefined;
 };
 
 const state = reactive({
@@ -34,20 +34,15 @@ export enum ResponseType {
 }
 
 export function registerResponseHandler(responseType: ResponseType, callback: ResponseCallback) {
-	const callbacks = state.responseMap[responseType];
-	if (callbacks) {
-		callbacks.push(callback);
-	} else {
-		state.responseMap[responseType] = [callback];
-	}
+	state.responseMap[responseType] = callback;
 }
 
 export function handleResponse(responseType: string, responseData: any) {
-	const callbacks = state.responseMap[responseType];
+	const callback = state.responseMap[responseType];
 	const data = parseResponse(responseType, responseData);
 
-	if (callbacks && data) {
-		callbacks.forEach((callback) => callback(data));
+	if (callback && data) {
+		callback(data);
 	} else if (data) {
 		// eslint-disable-next-line no-console
 		console.error(`Received a Response of type "${responseType}" but no handler was registered for it from the client.`);
@@ -112,13 +107,17 @@ export type Response =
 	| DisplayFolderTreeStructure
 	| UpdateWorkingColors
 	| SetCanvasZoom
-	| SetCanvasRotation;
+	| SetCanvasRotation
+	| DisplayConfirmationToCloseDocument
+	| DisplayError
+	| UpdateOpenDocumentsList;
 
 export interface UpdateOpenDocumentsList {
-	open_documents: Array<string>;
+	open_documents: { name: string; isSaved: boolean }[];
 }
 function newUpdateOpenDocumentsList(input: any): UpdateOpenDocumentsList {
-	return { open_documents: input.open_documents };
+	const openDocuments = input.open_documents.map((docData: [string, boolean]) => ({ name: docData[0], isSaved: docData[1] }));
+	return { open_documents: openDocuments };
 }
 
 export interface Color {
@@ -196,7 +195,7 @@ function newDisplayConfirmationToCloseDocument(input: any): DisplayConfirmationT
 	};
 }
 
-function newDisplayConfirmationToCloseAllDocuments(_input: any): {} {
+function newDisplayConfirmationToCloseAllDocuments(_input: any): Record<string, never> {
 	return {};
 }
 
@@ -257,12 +256,12 @@ function newSaveDocument(input: any): SaveDocument {
 	};
 }
 
-export type OpenDocumentBrowse = {};
+export type OpenDocumentBrowse = Record<string, never>;
 function newOpenDocumentBrowse(_: any): OpenDocumentBrowse {
 	return {};
 }
 
-export type DocumentChanged = {};
+export type DocumentChanged = Record<string, never>;
 function newDocumentChanged(_: any): DocumentChanged {
 	return {};
 }
