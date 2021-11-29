@@ -153,7 +153,7 @@ interface MenuListEntryData {
 	checkbox?: boolean;
 	shortcut?: Array<string>;
 	shortcutRequiresLock?: boolean;
-	action?: Function;
+	action?: () => void;
 	children?: SectionsOfMenuListEntries;
 }
 
@@ -168,7 +168,7 @@ const MenuList = defineComponent({
 		direction: { type: String as PropType<MenuDirection>, default: MenuDirection.Bottom },
 		menuEntries: { type: Array as PropType<SectionsOfMenuListEntries>, required: true },
 		activeEntry: { type: Object as PropType<MenuListEntry>, required: false },
-		defaultAction: { type: Function as PropType<Function | undefined>, required: false },
+		defaultAction: { type: Function as PropType<() => void | undefined>, required: false },
 		minWidth: { type: Number, default: 0 },
 		drawIcon: { type: Boolean, default: false },
 		scrollable: { type: Boolean, default: false },
