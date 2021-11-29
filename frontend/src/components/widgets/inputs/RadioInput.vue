@@ -53,7 +53,6 @@
 	.icon-label,
 	.text-label {
 		display: inline-block;
-		vertical-align: top;
 	}
 
 	.text-label {
@@ -73,7 +72,7 @@ export interface RadioEntryData {
 	label?: string;
 	icon?: string;
 	tooltip?: string;
-	action?: Function;
+	action?: () => void;
 }
 
 export type RadioEntries = Array<RadioEntryData>;

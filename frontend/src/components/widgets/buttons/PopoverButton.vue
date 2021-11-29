@@ -26,7 +26,6 @@
 		outline: none;
 		border: none;
 		border-radius: 2px;
-		vertical-align: top;
 		background: var(--color-1-nearblack);
 		fill: var(--color-e-nearwhite);
 
