@@ -3,11 +3,10 @@
 echo 🔧 Install Rust
 curl https://sh.rustup.rs -sSf | sh -s -- -y
 export PATH=$PATH:/opt/buildhome/.cargo/bin
-echo Rust version:
-/opt/buildhome/.cargo/bin/rust --version
+echo rustc version:
+rustc --version
 
 echo 🚧 Install Node dependencies
-nvm use 16
 echo node version:
 node --version
 echo npm version:
