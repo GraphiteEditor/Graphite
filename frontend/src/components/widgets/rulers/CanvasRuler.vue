@@ -97,7 +97,7 @@ export default defineComponent({
 
 			return dPathAttribute;
 		},
-		svgTexts(): {} {
+		svgTexts(): { transform: string; text: number }[] {
 			const isVertical = this.direction === RulerDirection.Vertical;
 
 			const offsetStart = mod(this.origin, this.majorMarkSpacing);

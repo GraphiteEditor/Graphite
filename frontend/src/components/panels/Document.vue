@@ -172,7 +172,7 @@
 			flex-direction: column;
 
 			.working-colors .swap-and-reset {
-				font-size: 0;
+				display: flex;
 			}
 		}
 

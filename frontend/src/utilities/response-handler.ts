@@ -98,16 +98,25 @@ function parseResponse(responseType: string, data: any): Response {
 }
 
 export type Response =
+	| DocumentChanged
+	| DisplayFolderTreeStructure
 	| SetActiveTool
+	| SetActiveDocument
+	| UpdateOpenDocumentsList
 	| UpdateCanvas
 	| UpdateScrollbars
 	| UpdateRulers
 	| UpdateLayer
-	| DocumentChanged
-	| DisplayFolderTreeStructure
-	| UpdateWorkingColors
 	| SetCanvasZoom
-	| SetCanvasRotation;
+	| SetCanvasRotation
+	| ExportDocument
+	| SaveDocument
+	| OpenDocumentBrowse
+	| UpdateWorkingColors
+	| DisplayError
+	| DisplayPanic
+	| DisplayConfirmationToCloseDocument
+	| DisplayConfirmationToCloseAllDocuments;
 
 export interface UpdateOpenDocumentsList {
 	open_documents: Array<string>;
@@ -191,7 +200,9 @@ function newDisplayConfirmationToCloseDocument(input: any): DisplayConfirmationT
 	};
 }
 
-function newDisplayConfirmationToCloseAllDocuments(_input: any): {} {
+export type DisplayConfirmationToCloseAllDocuments = Record<string, never>;
+
+function newDisplayConfirmationToCloseAllDocuments(_input: any): DisplayConfirmationToCloseAllDocuments {
 	return {};
 }
 
@@ -252,12 +263,12 @@ function newSaveDocument(input: any): SaveDocument {
 	};
 }
 
-export type OpenDocumentBrowse = {};
+export type OpenDocumentBrowse = Record<string, never>;
 function newOpenDocumentBrowse(_: any): OpenDocumentBrowse {
 	return {};
 }
 
-export type DocumentChanged = {};
+export type DocumentChanged = Record<string, never>;
 function newDocumentChanged(_: any): DocumentChanged {
 	return {};
 }
