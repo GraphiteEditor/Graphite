@@ -344,8 +344,8 @@ impl DocumentMessageHandler {
 			.collect();
 		self.document_undo_history.push((self.graphene_document.clone_without_overlays(), new_layer_data));
 
-		// Push the GetOpenDocumentsList message to the bus in order to update the save status of the open documents
-		responses.push_back(DocumentsMessage::GetOpenDocumentsList.into());
+		// Push the UpdateOpenDocumentsList message to the bus in order to update the save status of the open documents
+		responses.push_back(DocumentsMessage::UpdateOpenDocumentsList.into());
 	}
 
 	pub fn rollback(&mut self, responses: &mut VecDeque<Message>) -> Result<(), EditorError> {
@@ -355,8 +355,8 @@ impl DocumentMessageHandler {
 	}
 
 	pub fn undo(&mut self, responses: &mut VecDeque<Message>) -> Result<(), EditorError> {
-		// Push the GetOpenDocumentsList message to the bus in order to update the save status of the open documents
-		responses.push_back(DocumentsMessage::GetOpenDocumentsList.into());
+		// Push the UpdateOpenDocumentsList message to the bus in order to update the save status of the open documents
+		responses.push_back(DocumentsMessage::UpdateOpenDocumentsList.into());
 
 		match self.document_undo_history.pop() {
 			Some((document, layer_data)) => {
@@ -370,8 +370,8 @@ impl DocumentMessageHandler {
 	}
 
 	pub fn redo(&mut self, responses: &mut VecDeque<Message>) -> Result<(), EditorError> {
-		// Push the GetOpenDocumentsList message to the bus in order to update the save status of the open documents
-		responses.push_back(DocumentsMessage::GetOpenDocumentsList.into());
+		// Push the UpdateOpenDocumentsList message to the bus in order to update the save status of the open documents
+		responses.push_back(DocumentsMessage::UpdateOpenDocumentsList.into());
 
 		match self.document_redo_history.pop() {
 			Some((document, layer_data)) => {
@@ -480,7 +480,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			SaveDocument => {
 				self.document_saved_history_hash = self.current_history_hash();
 				// Update the save status of the just saved document
-				responses.push_back(DocumentsMessage::GetOpenDocumentsList.into());
+				responses.push_back(DocumentsMessage::UpdateOpenDocumentsList.into());
 
 				let name = match self.name.ends_with(FILE_SAVE_SUFFIX) {
 					true => self.name.clone(),

@@ -28,7 +28,7 @@ pub enum DocumentsMessage {
 	NewDocument,
 	OpenDocument,
 	OpenDocumentFile(String, String),
-	GetOpenDocumentsList,
+	UpdateOpenDocumentsList,
 	NextDocument,
 	PrevDocument,
 }
@@ -101,7 +101,7 @@ impl DocumentsMessageHandler {
 
 	// Returns an iterator over the open documents in order
 	pub fn ordered_document_iterator(&self) -> impl Iterator<Item = &DocumentMessageHandler> {
-		self.document_ids.iter().map(|id| self.documents.get(id).expect("document id is not found in the document hashmap"))
+		self.document_ids.iter().map(|id| self.documents.get(id).expect("document id was not found in the document hashmap"))
 	}
 }
 
@@ -216,7 +216,7 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 					),
 				}
 			}
-			GetOpenDocumentsList => {
+			UpdateOpenDocumentsList => {
 				// Send the list of document tab names
 				let open_documents = self.ordered_document_iterator().map(|doc| (doc.name.clone(), doc.is_saved())).collect();
 				responses.push_back(FrontendMessage::UpdateOpenDocumentsList { open_documents }.into());
