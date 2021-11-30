@@ -17,7 +17,7 @@ export function panicProxy<T extends object>(module: T): T {
 			return function (...args: any) {
 				let result;
 				try {
-					// @ts-expect-error Needed to ignore the apply with this
+					// @ts-expect-error TypeScript does not know what `this` is, since it should be able to be anything
 					result = targetValue.apply(this, args);
 				} catch (err: any) {
 					// Suppress `unreachable` WebAssembly.RuntimeError exceptions

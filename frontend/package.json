@@ -6,8 +6,8 @@
 	"scripts": {
 		"serve": "vue-cli-service serve || (npm install && vue-cli-service serve)",
 		"build": "vue-cli-service build || (npm install && vue-cli-service build)",
-		"lint": "vue-cli-service lint || (npm install && vue-cli-service lint)",
-		"lint-no-fix": "vue-cli-service lint --no-fix || (echo 'There were lint errors. Please run `npm run lint` to fix auto-them. If the linter execution fails, try running `npm install` first.' && false)"
+		"lint": "vue-cli-service lint || echo There were lint errors. If the linter execution fails, try running `npm install` first.",
+		"lint-no-fix": "vue-cli-service lint --no-fix || echo There were lint errors. Please run `npm run lint` to fix auto-them. If the linter execution fails, try running `npm install` first."
 	},
 	"repository": {
 		"type": "git",
@@ -17,7 +17,7 @@
 	"license": "Apache-2.0",
 	"homepage": "https://www.graphite.design",
 	"dependencies": {
-		"vue": "^3.2.20"
+		"vue": "^3.2.23"
 	},
 	"devDependencies": {
 		"@typescript-eslint/eslint-plugin": "^5.4.0",
@@ -26,23 +26,21 @@
 		"@vue/cli-plugin-typescript": "^4.5.15",
 		"@vue/cli-service": "^4.5.15",
 		"@vue/compiler-sfc": "^3.2.20",
-		"@vue/eslint-config-airbnb": "^5.0.2",
-		"@vue/eslint-config-typescript": "^8.0.0",
+		"@vue/eslint-config-airbnb": "^5.3.0",
+		"@vue/eslint-config-typescript": "^9.1.0",
 		"@wasm-tool/wasm-pack-plugin": "^1.6.0",
-		"eslint": "^7.32.0",
-		"eslint-config-prettier": "^8.3.0",
+		"eslint": "^6.8.0",
+		"eslint-config-prettier": "^6.15.0",
 		"eslint-plugin-import": "^2.25.2",
 		"eslint-plugin-prettier-vue": "^3.1.0",
-		"eslint-plugin-vue": "^7.20.0",
+		"eslint-plugin-vue": "^8.1.1",
 		"license-checker-webpack-plugin": "^0.2.1",
 		"prettier": "^2.4.1",
 		"sass": "^1.43.4",
-		"sass-loader": "^8.0.2",
-		"typescript": "^4.4.4",
-		"vue-loader": "^16.8.2",
-		"vue-template-compiler": "^2.6.14"
-	},
-	"optionalDependencies": {
+		"sass-loader": "^10.0.0",
+		"typescript": "^4.5.2",
+		"vue-loader": "^16.8.3",
+		"vue-template-compiler": "^2.6.14",
 		"wasm-pack": "^0.10.1"
 	}
 }
