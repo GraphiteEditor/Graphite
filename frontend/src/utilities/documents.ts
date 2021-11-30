@@ -90,7 +90,6 @@ registerResponseHandler(ResponseType.UpdateOpenDocumentsList, (responseData: Res
 registerResponseHandler(ResponseType.SetActiveDocument, (responseData: Response) => {
 	const documentData = responseData as SetActiveDocument;
 	if (documentData) {
-		console.log(`Setting active index to ${documentData.document_index}`);
 		state.activeDocumentIndex = documentData.document_index;
 	}
 });
