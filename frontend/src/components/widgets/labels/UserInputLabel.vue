@@ -76,10 +76,6 @@
 		.dim {
 			fill: var(--color-7-middlegray);
 		}
-
-		svg {
-			vertical-align: top;
-		}
 	}
 
 	.hint-text {

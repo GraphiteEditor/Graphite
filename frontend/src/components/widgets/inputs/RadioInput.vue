@@ -53,7 +53,6 @@
 	.icon-label,
 	.text-label {
 		display: inline-block;
-		vertical-align: top;
 	}
 
 	.text-label {
