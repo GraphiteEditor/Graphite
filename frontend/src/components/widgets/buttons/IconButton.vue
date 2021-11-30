@@ -15,10 +15,9 @@
 	border: none;
 	border-radius: 2px;
 	background: none;
-	vertical-align: top;
 	fill: var(--color-e-nearwhite);
 
-	// The `where` pseduo-class does not contribtue to specificity
+	// The `where` pseudo-class does not contribtue to specificity
 	& + :where(.icon-button) {
 		margin-left: 0;
 	}

@@ -39,7 +39,7 @@ module.exports = {
 	// https://cli.vuejs.org/guide/webpack.html
 	chainWebpack: (config) => {
 		// WASM Pack Plugin integrates compiled Rust code (.wasm) and generated wasm-bindgen code (.js) with the webpack bundle
-		// Use this JS to import the bundled Rust entry points: const wasm = import("@/../wasm/pkg");
+		// Use this JS to import the bundled Rust entry points: const wasm = import("@/../wasm/pkg").then(panicProxy);
 		// Then call WASM functions with: (await wasm).function_name()
 		// https://github.com/wasm-tool/wasm-pack-plugin
 		config

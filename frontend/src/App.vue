@@ -72,6 +72,7 @@ body,
 	user-select: none;
 }
 
+html,
 body,
 input,
 textarea,

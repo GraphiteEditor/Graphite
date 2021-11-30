@@ -19,7 +19,8 @@ export class Response {
 }
 
 export class UpdateOpenDocumentsList extends Response {
-	open_documents!: string[];
+	@Transform(({ value }) => ({ name: value[0], isSaved: value[1] }))
+	open_documents!: { name: string; isSaved: boolean }[];
 }
 
 const To255Scale = Transform(({ value }) => value * 255);
@@ -52,6 +53,14 @@ export class UpdateWorkingColors extends Response {
 	@Type(() => Color)
 	secondary!: Color;
 }
+
+// export interface UpdateOpenDocumentsList {
+// 	open_documents: { name: string; isSaved: boolean }[];
+// }
+// function newUpdateOpenDocumentsList(input: any): UpdateOpenDocumentsList {
+// 	const openDocuments = input.open_documents.map((docData: [string, boolean]) => ({ name: docData[0], isSaved: docData[1] }));
+// 	return { open_documents: openDocuments };
+// }
 
 export class SetActiveTool extends Response {
 	tool_name!: string;
