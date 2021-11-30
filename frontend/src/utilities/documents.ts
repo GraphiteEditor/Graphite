@@ -17,10 +17,11 @@ import { panicProxy } from "@/utilities/panic-proxy";
 const wasm = import("@/../wasm/pkg").then(panicProxy);
 
 const state = reactive({
-	title: "",
-	unsaved: false,
-	documents: [] as Array<string>,
+	documents: [] as string[],
 	activeDocumentIndex: 0,
+	get activeDocument() {
+		return this.documents[this.activeDocumentIndex];
+	},
 });
 
 export async function selectDocument(tabIndex: number) {
@@ -83,17 +84,13 @@ export default readonly(state);
 
 registerResponseHandler(ResponseType.UpdateOpenDocumentsList, (responseData: Response) => {
 	const documentListData = responseData as UpdateOpenDocumentsList;
-	if (documentListData) {
-		state.documents = documentListData.open_documents;
-		state.title = state.documents[state.activeDocumentIndex];
-	}
+	state.documents = documentListData.open_documents.map(({ name, isSaved }) => `${name}${isSaved ? "" : "*"}`);
 });
 
 registerResponseHandler(ResponseType.SetActiveDocument, (responseData: Response) => {
 	const documentData = responseData as SetActiveDocument;
 	if (documentData) {
 		state.activeDocumentIndex = documentData.document_index;
-		state.title = state.documents[state.activeDocumentIndex];
 	}
 });
 
