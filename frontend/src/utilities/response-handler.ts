@@ -119,10 +119,11 @@ export type Response =
 	| DisplayConfirmationToCloseAllDocuments;
 
 export interface UpdateOpenDocumentsList {
-	open_documents: Array<string>;
+	open_documents: { name: string; isSaved: boolean }[];
 }
 function newUpdateOpenDocumentsList(input: any): UpdateOpenDocumentsList {
-	return { open_documents: input.open_documents };
+	const openDocuments = input.open_documents.map((docData: [string, boolean]) => ({ name: docData[0], isSaved: docData[1] }));
+	return { open_documents: openDocuments };
 }
 
 export interface Color {

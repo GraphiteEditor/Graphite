@@ -88,7 +88,7 @@ pub fn select_document(document: usize) {
 
 #[wasm_bindgen]
 pub fn get_open_documents_list() {
-	let message = DocumentsMessage::GetOpenDocumentsList;
+	let message = DocumentsMessage::UpdateOpenDocumentsList;
 	dispatch(message);
 }
 
