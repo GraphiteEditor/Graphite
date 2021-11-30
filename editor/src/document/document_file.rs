@@ -61,7 +61,7 @@ pub struct DocumentMessageHandler {
 	pub graphene_document: GrapheneDocument,
 	pub document_undo_history: Vec<DocumentSave>,
 	pub document_redo_history: Vec<DocumentSave>,
-	pub document_saved_history_hash: u64,
+	pub saved_document_identifier: u64,
 	pub name: String,
 	pub layer_data: HashMap<Vec<LayerId>, LayerData>,
 	movement_handler: MovementMessageHandler,
@@ -76,7 +76,7 @@ impl Default for DocumentMessageHandler {
 			document_undo_history: Vec::new(),
 			document_redo_history: Vec::new(),
 			name: String::from("Untitled Document"),
-			document_saved_history_hash: 0,
+			saved_document_identifier: 0,
 			layer_data: vec![(vec![], LayerData::new(true))].into_iter().collect(),
 			movement_handler: MovementMessageHandler::default(),
 			transform_layer_handler: TransformLayerMessageHandler::default(),
@@ -309,7 +309,7 @@ impl DocumentMessageHandler {
 			graphene_document: GrapheneDocument::default(),
 			document_undo_history: Vec::new(),
 			document_redo_history: Vec::new(),
-			document_saved_history_hash: 0,
+			saved_document_identifier: 0,
 			name,
 			layer_data: vec![(vec![], LayerData::new(true))].into_iter().collect(),
 			movement_handler: MovementMessageHandler::default(),
@@ -388,14 +388,17 @@ impl DocumentMessageHandler {
 		}
 	}
 
-	pub fn current_history_hash(&self) -> u64 {
-		// We can use the last state of the document to serve as the hash to compare against
-		// This is useful since when the document is empty the hash will be 0
-		self.document_undo_history.last().map(|(graphene_document, _)| graphene_document.hash()).unwrap_or(0)
+	pub fn current_identifier(&self) -> u64 {
+		// We can use the last state of the document to serve as the identifier to compare against
+		// This is useful since when the document is empty the identifier will be 0
+		self.document_undo_history
+			.last()
+			.map(|(graphene_document, _)| graphene_document.current_state_identifier())
+			.unwrap_or(0)
 	}
 
 	pub fn is_saved(&self) -> bool {
-		self.current_history_hash() == self.document_saved_history_hash
+		self.current_identifier() == self.saved_document_identifier
 	}
 
 	pub fn layer_panel_entry(&mut self, path: Vec<LayerId>) -> Result<LayerPanelEntry, EditorError> {
@@ -478,7 +481,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				)
 			}
 			SaveDocument => {
-				self.document_saved_history_hash = self.current_history_hash();
+				self.saved_document_identifier = self.current_identifier();
 				// Update the save status of the just saved document
 				responses.push_back(DocumentsMessage::UpdateOpenDocumentsList.into());
 
