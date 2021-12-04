@@ -7,7 +7,12 @@
 					:class="{ active: tabIndex === tabActiveIndex }"
 					v-for="(tabLabel, tabIndex) in tabLabels"
 					:key="tabIndex"
-					@click.middle="closeDocumentWithConfirmation(tabIndex)"
+					@click.middle="
+					(e) => {
+							e.stopPropagation();
+							closeDocumentWithConfirmation(tabIndex);
+						}
+					"
 					@click="panelType === 'Document' && selectDocument(tabIndex)"
 				>
 					<span>{{ tabLabel }}</span>

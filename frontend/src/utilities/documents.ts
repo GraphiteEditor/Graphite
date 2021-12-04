@@ -43,7 +43,7 @@ export async function closeDocumentWithConfirmation(tabIndex: number) {
 	// Show the document is being prompted to close
 	await selectDocument(tabIndex);
 
-	const tabLabel = targetDocument.name;
+	const tabLabel = targetDocument.displayName;
 
 	createDialog("File", "Save changes before closing?", tabLabel, [
 		{
