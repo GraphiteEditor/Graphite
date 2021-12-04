@@ -1,6 +1,7 @@
 import { toggleFullscreen } from "@/utilities/fullscreen";
 import { dialogIsVisible, dismissDialog, submitDialog } from "@/utilities/dialog";
 import { panicProxy } from "@/utilities/panic-proxy";
+import documents from "./documents";
 
 const wasm = import("@/../wasm/pkg").then(panicProxy);
 
@@ -123,6 +124,14 @@ export async function onWindowResize() {
 	const data = Float64Array.from(flattened);
 
 	if (boundsOfViewports.length > 0) (await wasm).bounds_of_viewports(data);
+}
+
+export function onBeforeUnload(event: BeforeUnloadEvent) {
+	const allDocumentsSaved = documents.documents.reduce((acc, doc) => doc.isSaved && acc, true);
+	if (!allDocumentsSaved) {
+		event.returnValue = "Unsaved work will be lost if the web browser tab is closed. Close anyway?";
+		event.preventDefault();
+	}
 }
 
 export function makeModifiersBitfield(e: MouseEvent | KeyboardEvent): number {

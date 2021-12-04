@@ -11,7 +11,17 @@
 					@click="panelType === 'Document' && selectDocument(tabIndex)"
 				>
 					<span>{{ tabLabel }}</span>
-					<IconButton :action="() => closeDocumentWithConfirmation(tabIndex)" :icon="'CloseX'" :size="16" v-if="tabCloseButtons" />
+					<IconButton
+						:action="
+							(e) => {
+								e.stopPropagation();
+								closeDocumentWithConfirmation(tabIndex);
+							}
+						"
+						:icon="'CloseX'"
+						:size="16"
+						v-if="tabCloseButtons"
+					/>
 				</div>
 			</div>
 			<PopoverButton :icon="PopoverButtonIcon.VerticalEllipsis">
