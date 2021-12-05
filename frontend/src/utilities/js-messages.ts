@@ -174,11 +174,7 @@ export function newDisplayFolderTreeStructure(input: any): DisplayFolderTreeStru
 	return currentFolder;
 }
 
-// NOTE: Why was it newPath(input.data.path) instead of input.path. Seems to work at input.path?
 export class UpdateLayer extends JsMessage {
-	@Transform(({ value }) => newPath(value))
-	public path!: BigUint64Array;
-
 	@Type(() => LayerPanelEntry)
 	public data!: LayerPanelEntry;
 }

@@ -411,7 +411,7 @@ export default defineComponent({
 
 		registerJsMessageHandler(UpdateLayer, (updateData) => {
 			if (updateData) {
-				const responsePath = updateData.path;
+				const responsePath = updateData.data.path;
 				const responseLayer = updateData.data;
 
 				const layer = this.layerCache.get(responsePath.toString());
