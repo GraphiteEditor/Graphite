@@ -36,10 +36,13 @@
 						class="layer"
 						:class="{ selected: layer.layer_data.selected }"
 						:style="{ marginLeft: layerIndent(layer) }"
-						@click.shift.exact.stop="handleShiftClick(layer)"
-						@click.ctrl.exact.stop="handleControlClick(layer)"
-						@click.alt.exact.stop="handleControlClick(layer)"
-						@click.exact.stop="handleClick(layer)"
+						@click="
+							handleInputEvent($event, 'layerTreeLayerClick', {
+								handleControlClick: () => handleControlClick(layer),
+								handleShiftClick: () => handleShiftClick(layer),
+								handleClick: () => handleClick(layer),
+							})
+						"
 					>
 						<div class="layer-thumbnail" v-html="layer.thumbnail"></div>
 						<div class="layer-type-icon">
@@ -183,6 +186,7 @@ import { defineComponent } from "vue";
 
 import { ResponseType, registerResponseHandler, Response, BlendMode, DisplayFolderTreeStructure, UpdateLayer, LayerPanelEntry, LayerType } from "@/utilities/response-handler";
 import { panicProxy } from "@/utilities/panic-proxy";
+import { handleInputEvent } from "@/utilities/input";
 import { SeparatorType } from "@/components/widgets/widgets";
 
 import LayoutRow from "@/components/layout/LayoutRow.vue";
@@ -254,6 +258,7 @@ export default defineComponent({
 			MenuDirection,
 			SeparatorType,
 			LayerType,
+			handleInputEvent,
 		};
 	},
 	methods: {

@@ -16,7 +16,7 @@ pub type KeyStates = BitVector<KEY_MASK_STORAGE_LENGTH>;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Key {
 	UnknownKey,
-	// MouseKeys
+	// Mouse keys
 	Lmb,
 	Rmb,
 	Mmb,

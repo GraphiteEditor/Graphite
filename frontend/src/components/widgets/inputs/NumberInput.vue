@@ -7,7 +7,7 @@
 			spellcheck="false"
 			v-model="text"
 			@change="onTextChanged()"
-			@keydown.esc="onCancelTextChange"
+			@keydown.esc="handleInputEvent($event, 'numberInputAbort', { onCancelTextChange })"
 			ref="input"
 			:disabled="disabled"
 		/>
