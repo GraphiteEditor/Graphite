@@ -132,6 +132,7 @@
 
 			.layer {
 				display: flex;
+				min-width: 0;
 				align-items: center;
 				border-radius: 2px;
 				background: var(--color-5-dullgray);
@@ -150,6 +151,7 @@
 					height: 100%;
 					background: white;
 					border-radius: 2px;
+					flex: 0 0 auto;
 
 					svg {
 						width: calc(100% - 4px);
@@ -161,6 +163,20 @@
 				.layer-type-icon {
 					margin-left: 8px;
 					margin-right: 4px;
+					flex: 0 0 auto;
+				}
+
+				.layer-name {
+					display: flex;
+					min-width: 0;
+					flex: 1 1 100%;
+					margin-right: 8px;
+
+					span {
+						text-overflow: ellipsis;
+						white-space: nowrap;
+						overflow: hidden;
+					}
 				}
 			}
 

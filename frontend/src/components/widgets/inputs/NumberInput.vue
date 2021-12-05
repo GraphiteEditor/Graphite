@@ -29,11 +29,16 @@
 	flex-direction: row-reverse;
 
 	label {
-		flex: 0 0 auto;
-		cursor: text;
+		flex: 1 1 100%;
 		line-height: 18px;
 		margin-left: 8px;
 		padding: 3px 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+
+	&:not(.disabled) label {
+		cursor: text;
 	}
 
 	input {
@@ -54,7 +59,6 @@
 
 		&:not(:focus).has-label {
 			text-align: right;
-			padding-left: 4px;
 			margin-left: 0;
 			margin-right: 8px;
 		}

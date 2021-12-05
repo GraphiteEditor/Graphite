@@ -10,7 +10,10 @@
 	display: flex;
 	align-items: center;
 	padding: 0 8px;
-	fill: var(--color-e-nearwhite);
+
+	svg {
+		fill: var(--color-e-nearwhite);
+	}
 
 	.text-label {
 		margin-right: 8px;
@@ -19,7 +22,10 @@
 	&:hover {
 		background: var(--color-6-lowergray);
 		color: var(--color-f-white);
-		fill: var(--color-f-white);
+
+		svg {
+			fill: var(--color-f-white);
+		}
 	}
 }
 </style>

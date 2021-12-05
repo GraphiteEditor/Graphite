@@ -10,7 +10,7 @@
 	line-height: 18px;
 
 	&.bold {
-		font-weight: bold;
+		font-weight: 700;
 	}
 
 	&.italic {
