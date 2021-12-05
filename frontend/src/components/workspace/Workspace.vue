@@ -1,7 +1,13 @@
 <template>
 	<LayoutRow class="workspace-grid-subdivision">
 		<LayoutCol class="workspace-grid-subdivision" style="flex-grow: 1597">
-			<Panel :panelType="'Document'" :tabCloseButtons="true" :tabMinWidths="true" :tabLabels="documents.documents" :tabActiveIndex="documents.activeDocumentIndex" />
+			<Panel
+				:panelType="'Document'"
+				:tabCloseButtons="true"
+				:tabMinWidths="true"
+				:tabLabels="documents.documents.map((doc) => doc.displayName)"
+				:tabActiveIndex="documents.activeDocumentIndex"
+			/>
 		</LayoutCol>
 		<LayoutCol class="workspace-grid-resize-gutter"></LayoutCol>
 		<LayoutCol class="workspace-grid-subdivision" style="flex-grow: 319">
