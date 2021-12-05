@@ -392,8 +392,6 @@ export default defineComponent({
 	},
 	mounted() {
 		registerJsMessageHandler(DisplayFolderTreeStructure, (expandData) => {
-			if (!expandData) return;
-
 			const path = [] as bigint[];
 			this.layers = [] as LayerPanelEntry[];
 			function recurse(folder: DisplayFolderTreeStructure, layers: LayerPanelEntry[], cache: Map<string, LayerPanelEntry>) {
@@ -410,18 +408,16 @@ export default defineComponent({
 		});
 
 		registerJsMessageHandler(UpdateLayer, (updateData) => {
-			if (updateData) {
-				const responsePath = updateData.data.path;
-				const responseLayer = updateData.data;
+			const responsePath = updateData.data.path;
+			const responseLayer = updateData.data;
 
-				const layer = this.layerCache.get(responsePath.toString());
-				if (layer) Object.assign(this.layerCache.get(responsePath.toString()), responseLayer);
-				else {
-					this.layerCache.set(responsePath.toString(), responseLayer);
-				}
-				this.setBlendModeForSelectedLayers();
-				this.setOpacityForSelectedLayers();
+			const layer = this.layerCache.get(responsePath.toString());
+			if (layer) Object.assign(this.layerCache.get(responsePath.toString()), responseLayer);
+			else {
+				this.layerCache.set(responsePath.toString(), responseLayer);
 			}
+			this.setBlendModeForSelectedLayers();
+			this.setOpacityForSelectedLayers();
 		});
 	},
 	components: {

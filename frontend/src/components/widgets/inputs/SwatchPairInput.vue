@@ -137,7 +137,6 @@ export default defineComponent({
 	},
 	mounted() {
 		registerJsMessageHandler(UpdateWorkingColors, (colorData) => {
-			if (!colorData) return;
 			const { primary, secondary } = colorData;
 
 			this.primaryColor = primary.toRgb();

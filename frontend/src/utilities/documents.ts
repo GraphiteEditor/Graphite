@@ -87,9 +87,7 @@ registerJsMessageHandler(UpdateOpenDocumentsList, (documentListData) => {
 });
 
 registerJsMessageHandler(SetActiveDocument, (documentData) => {
-	if (documentData) {
-		state.activeDocumentIndex = documentData.document_index;
-	}
+	state.activeDocumentIndex = documentData.document_index;
 });
 
 registerJsMessageHandler(DisplayConfirmationToCloseDocument, (data) => {
@@ -107,11 +105,11 @@ registerJsMessageHandler(OpenDocumentBrowse, async (_) => {
 });
 
 registerJsMessageHandler(ExportDocument, (updateData) => {
-	if (updateData) download(updateData.name, updateData.document);
+	download(updateData.name, updateData.document);
 });
 
 registerJsMessageHandler(SaveDocument, (saveData) => {
-	if (saveData) download(saveData.name, saveData.document);
+	download(saveData.name, saveData.document);
 });
 
 (async () => (await wasm).get_open_documents_list())();

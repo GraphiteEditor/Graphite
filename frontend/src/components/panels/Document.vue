@@ -320,43 +320,33 @@ export default defineComponent({
 	},
 	mounted() {
 		registerJsMessageHandler(UpdateCanvas, (updateData) => {
-			if (updateData) this.viewportSvg = updateData.document;
+			this.viewportSvg = updateData.document;
 		});
 
 		registerJsMessageHandler(UpdateScrollbars, (updateData) => {
-			if (updateData) {
-				this.scrollbarPos = updateData.position;
-				this.scrollbarSize = updateData.size;
-				this.scrollbarMultiplier = updateData.multiplier;
-			}
+			this.scrollbarPos = updateData.position;
+			this.scrollbarSize = updateData.size;
+			this.scrollbarMultiplier = updateData.multiplier;
 		});
 
 		registerJsMessageHandler(UpdateRulers, (updateData) => {
-			if (updateData) {
-				this.rulerOrigin = updateData.origin;
-				this.rulerSpacing = updateData.spacing;
-				this.rulerInterval = updateData.interval;
-			}
+			this.rulerOrigin = updateData.origin;
+			this.rulerSpacing = updateData.spacing;
+			this.rulerInterval = updateData.interval;
 		});
 
 		registerJsMessageHandler(SetActiveTool, (toolData) => {
-			if (toolData) {
-				this.activeTool = toolData.tool_name;
-				this.activeToolOptions = toolData.tool_options;
-			}
+			this.activeTool = toolData.tool_name;
+			this.activeToolOptions = toolData.tool_options;
 		});
 
 		registerJsMessageHandler(SetCanvasZoom, (updateData) => {
-			if (updateData) {
-				this.documentZoom = updateData.new_zoom * 100;
-			}
+			this.documentZoom = updateData.new_zoom * 100;
 		});
 
 		registerJsMessageHandler(SetCanvasRotation, (updateData) => {
-			if (updateData) {
-				const newRotation = updateData.new_radians * (180 / Math.PI);
-				this.documentRotation = (360 + (newRotation % 360)) % 360;
-			}
+			const newRotation = updateData.new_radians * (180 / Math.PI);
+			this.documentRotation = (360 + (newRotation % 360)) % 360;
 		});
 
 		window.addEventListener("resize", this.viewportResize);
