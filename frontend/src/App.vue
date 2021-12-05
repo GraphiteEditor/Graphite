@@ -70,6 +70,7 @@ body,
 	height: 100%;
 	background: var(--color-2-mildblack);
 	user-select: none;
+	overscroll-behavior: none;
 }
 
 html,
@@ -78,6 +79,7 @@ input,
 textarea,
 button {
 	font-family: "Source Sans Pro", Arial, sans-serif;
+	font-weight: 400;
 	font-size: 14px;
 	line-height: 1;
 	color: var(--color-e-nearwhite);
@@ -104,10 +106,12 @@ img {
 	// WebKit
 	&::-webkit-scrollbar {
 		width: calc(2px + 6px + 2px);
+		height: calc(2px + 6px + 2px);
 	}
 
 	&:not(:hover)::-webkit-scrollbar {
 		width: 0;
+		height: 0;
 	}
 
 	&::-webkit-scrollbar-track {

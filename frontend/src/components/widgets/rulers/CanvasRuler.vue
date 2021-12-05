@@ -10,7 +10,7 @@
 <style lang="scss">
 .canvas-ruler {
 	flex: 1 1 100%;
-	background: var(--color-5-dullgray);
+	background: var(--color-4-dimgray);
 	overflow: hidden;
 	position: relative;
 
