@@ -16,12 +16,17 @@ import { panicProxy } from "@/utilities/panic-proxy";
 
 const wasm = import("@/../wasm/pkg").then(panicProxy);
 
+class DocumentState {
+	readonly displayName: string;
+
+	constructor(readonly name: string, readonly isSaved: boolean) {
+		this.displayName = `${name}${isSaved ? "" : "*"}`;
+	}
+}
+
 const state = reactive({
-	documents: [] as string[],
+	documents: [] as DocumentState[],
 	activeDocumentIndex: 0,
-	get activeDocument() {
-		return this.documents[this.activeDocumentIndex];
-	},
 });
 
 export async function selectDocument(tabIndex: number) {
@@ -29,9 +34,16 @@ export async function selectDocument(tabIndex: number) {
 }
 
 export async function closeDocumentWithConfirmation(tabIndex: number) {
-	selectDocument(tabIndex);
+	const targetDocument = state.documents[tabIndex];
+	if (targetDocument.isSaved) {
+		(await wasm).close_document(tabIndex);
+		return;
+	}
 
-	const tabLabel = state.documents[tabIndex];
+	// Show the document is being prompted to close
+	await selectDocument(tabIndex);
+
+	const tabLabel = targetDocument.displayName;
 
 	createDialog("File", "Save changes before closing?", tabLabel, [
 		{
@@ -83,7 +95,7 @@ export async function closeAllDocumentsWithConfirmation() {
 export default readonly(state);
 
 registerJsMessageHandler(UpdateOpenDocumentsList, (documentListData) => {
-	state.documents = documentListData.open_documents.map(({ name, isSaved }) => `${name}${isSaved ? "" : "*"}`);
+	state.documents = documentListData.open_documents.map(({ name, isSaved }) => new DocumentState(name, isSaved));
 });
 
 registerJsMessageHandler(SetActiveDocument, (documentData) => {

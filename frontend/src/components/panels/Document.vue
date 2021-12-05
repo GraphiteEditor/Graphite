@@ -1,6 +1,6 @@
 <template>
 	<LayoutCol :class="'document'">
-		<LayoutRow :class="'options-bar'">
+		<LayoutRow :class="'options-bar scrollable-x'">
 			<div class="left side">
 				<DropdownInput :menuEntries="documentModeEntries" v-model:selectedIndex="documentModeSelectionIndex" :drawIcon="true" />
 
@@ -34,7 +34,7 @@
 
 				<Separator :type="SeparatorType.Unrelated" />
 
-				<RadioInput :entries="viewModeEntries" v-model:selectedIndex="viewModeIndex" />
+				<RadioInput :entries="viewModeEntries" v-model:selectedIndex="viewModeIndex" class="combined-after" />
 				<PopoverButton>
 					<h3>View Mode</h3>
 					<p>The contents of this popover menu are coming soon</p>
@@ -42,7 +42,7 @@
 
 				<Separator :type="SeparatorType.Section" />
 
-				<NumberInput @update:value="setRotation" v-model:value="documentRotation" :incrementFactor="15" :unit="`°`" ref="rotation" />
+				<NumberInput @update:value="setRotation" v-model:value="documentRotation" :incrementFactor="15" :unit="`°`" />
 
 				<Separator :type="SeparatorType.Section" />
 
@@ -68,7 +68,7 @@
 		</LayoutRow>
 		<LayoutRow :class="'shelf-and-viewport'">
 			<LayoutCol :class="'shelf'">
-				<div class="tools">
+				<div class="tools scrollable-y">
 					<ShelfItemInput icon="LayoutSelectTool" title="Select Tool (V)" :active="activeTool === 'Select'" :action="() => selectTool('Select')" />
 					<ShelfItemInput icon="LayoutCropTool" title="Crop Tool" :active="activeTool === 'Crop'" :action="() => comingSoon(289) && selectTool('Crop')" />
 					<ShelfItemInput icon="LayoutNavigateTool" title="Navigate Tool (Z)" :active="activeTool === 'Navigate'" :action="() => comingSoon(155) && selectTool('Navigate')" />
@@ -163,6 +163,10 @@
 			align-items: center;
 			margin: 0 4px;
 		}
+
+		.spacer {
+			min-width: 40px;
+		}
 	}
 
 	.shelf-and-viewport {
@@ -171,7 +175,17 @@
 			display: flex;
 			flex-direction: column;
 
+			.tools {
+				flex: 0 1 auto;
+			}
+
+			.spacer {
+				flex: 1 0 auto;
+				min-height: 8px;
+			}
+
 			.working-colors .swap-and-reset {
+				flex: 0 0 auto;
 				display: flex;
 			}
 		}

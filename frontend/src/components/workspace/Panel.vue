@@ -1,17 +1,32 @@
 <template>
 	<div class="panel">
 		<div class="tab-bar" :class="{ 'min-widths': tabMinWidths }">
-			<div class="tab-group">
+			<div class="tab-group scrollable-x">
 				<div
 					class="tab"
 					:class="{ active: tabIndex === tabActiveIndex }"
 					v-for="(tabLabel, tabIndex) in tabLabels"
 					:key="tabIndex"
-					@click.middle="closeDocumentWithConfirmation(tabIndex)"
+					@click.middle="
+						(e) => {
+							e.stopPropagation();
+							closeDocumentWithConfirmation(tabIndex);
+						}
+					"
 					@click="panelType === 'Document' && selectDocument(tabIndex)"
 				>
 					<span>{{ tabLabel }}</span>
-					<IconButton :action="() => closeDocumentWithConfirmation(tabIndex)" :icon="'CloseX'" :size="16" v-if="tabCloseButtons" />
+					<IconButton
+						:action="
+							(e) => {
+								e.stopPropagation();
+								closeDocumentWithConfirmation(tabIndex);
+							}
+						"
+						:icon="'CloseX'"
+						:size="16"
+						v-if="tabCloseButtons"
+					/>
 				</div>
 			</div>
 			<PopoverButton :icon="PopoverButtonIcon.VerticalEllipsis">
@@ -48,7 +63,17 @@
 			flex: 1 1 100%;
 			display: flex;
 			flex-direction: row;
-			overflow: hidden;
+			position: relative;
+
+			// This always hangs out at the end of the last tab, providing 16px (15px plus the 1px reserved for the separator line) to the right of the tabs.
+			// When the last tab is selected, its bottom rounded fillet adds 16px to the width, which stretches the scrollbar width allocation in only that situation.
+			// This pseudo-element ensures we always reserve that space to prevent the scrollbar from jumping when the last tab is selected.
+			// There is unfortunately no apparent way to remove that 16px gap from the end of the scroll container, since negative margin does not reduce the scrollbar allocation.
+			&::after {
+				content: "";
+				width: 15px;
+				flex: 0 0 auto;
+			}
 
 			.tab {
 				height: 100%;

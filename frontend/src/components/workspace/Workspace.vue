@@ -1,7 +1,14 @@
 <template>
 	<LayoutRow class="workspace-grid-subdivision">
 		<LayoutCol class="workspace-grid-subdivision" style="flex-grow: 1597">
-			<Panel :panelType="'Document'" :tabCloseButtons="true" :tabMinWidths="true" :tabLabels="documents.documents" :tabActiveIndex="documents.activeDocumentIndex" />
+			<Panel
+				:panelType="'Document'"
+				:tabCloseButtons="true"
+				:tabMinWidths="true"
+				:tabLabels="documents.documents.map((doc) => doc.displayName)"
+				:tabActiveIndex="documents.activeDocumentIndex"
+				ref="documentsPanel"
+			/>
 		</LayoutCol>
 		<LayoutCol class="workspace-grid-resize-gutter"></LayoutCol>
 		<LayoutCol class="workspace-grid-subdivision" style="flex-grow: 319">
@@ -63,6 +70,21 @@ export default defineComponent({
 	},
 	data() {
 		return {};
+	},
+	computed: {
+		activeDocumentIndex() {
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			return (this as any).documents.activeDocumentIndex;
+		},
+	},
+	watch: {
+		activeDocumentIndex(newIndex: number) {
+			this.$nextTick(() => {
+				const documentsPanel = this.$refs.documentsPanel as typeof Panel;
+				const newActiveTab = documentsPanel.$el.querySelectorAll(".tab-bar .tab-group .tab")[newIndex];
+				newActiveTab.scrollIntoView();
+			});
+		},
 	},
 });
 </script>
