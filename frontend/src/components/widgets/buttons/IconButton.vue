@@ -15,7 +15,10 @@
 	border: none;
 	border-radius: 2px;
 	background: none;
-	fill: var(--color-e-nearwhite);
+
+	svg {
+		fill: var(--color-e-nearwhite);
+	}
 
 	// The `where` pseudo-class does not contribtue to specificity
 	& + :where(.icon-button) {
@@ -25,7 +28,10 @@
 	&:hover {
 		background: var(--color-6-lowergray);
 		color: var(--color-f-white);
-		fill: var(--color-f-white);
+
+		svg {
+			fill: var(--color-f-white);
+		}
 	}
 
 	&.size-12 {

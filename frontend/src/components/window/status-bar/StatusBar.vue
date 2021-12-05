@@ -44,7 +44,7 @@
 	.plus {
 		display: flex;
 		align-items: center;
-		font-weight: bold;
+		font-weight: 700;
 	}
 
 	.user-input-label + .user-input-label {

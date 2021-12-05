@@ -58,6 +58,11 @@
 	.text-label {
 		margin: 0 4px;
 	}
+
+	&.combined-before button:first-of-type,
+	&.combined-after button:last-of-type {
+		border-radius: 0;
+	}
 }
 </style>
 
