@@ -1,8 +1,8 @@
 import { reactive, readonly } from "vue";
 
 import { createDialog, dismissDialog } from "@/utilities/dialog";
+import { registerJsMessageHandler } from "@/utilities/js-message-dispatcher";
 import {
-	registerResponseHandler,
 	DisplayConfirmationToCloseAllDocuments,
 	SetActiveDocument,
 	UpdateOpenDocumentsList,
@@ -10,7 +10,7 @@ import {
 	ExportDocument,
 	SaveDocument,
 	OpenDocumentBrowse,
-} from "@/utilities/response-handler";
+} from "@/utilities/js-messages";
 import { download, upload } from "@/utilities/files";
 import { panicProxy } from "@/utilities/panic-proxy";
 
@@ -82,35 +82,35 @@ export async function closeAllDocumentsWithConfirmation() {
 
 export default readonly(state);
 
-registerResponseHandler(UpdateOpenDocumentsList, (documentListData) => {
+registerJsMessageHandler(UpdateOpenDocumentsList, (documentListData) => {
 	state.documents = documentListData.open_documents.map(({ name, isSaved }) => `${name}${isSaved ? "" : "*"}`);
 });
 
-registerResponseHandler(SetActiveDocument, (documentData) => {
+registerJsMessageHandler(SetActiveDocument, (documentData) => {
 	if (documentData) {
 		state.activeDocumentIndex = documentData.document_index;
 	}
 });
 
-registerResponseHandler(DisplayConfirmationToCloseDocument, (data) => {
+registerJsMessageHandler(DisplayConfirmationToCloseDocument, (data) => {
 	closeDocumentWithConfirmation(data.document_index);
 });
 
-registerResponseHandler(DisplayConfirmationToCloseAllDocuments, (_) => {
+registerJsMessageHandler(DisplayConfirmationToCloseAllDocuments, (_) => {
 	closeAllDocumentsWithConfirmation();
 });
 
-registerResponseHandler(OpenDocumentBrowse, async (_) => {
+registerJsMessageHandler(OpenDocumentBrowse, async (_) => {
 	const extension = (await wasm).file_save_suffix();
 	const data = await upload(extension);
 	(await wasm).open_document_file(data.filename, data.content);
 });
 
-registerResponseHandler(ExportDocument, (updateData) => {
+registerJsMessageHandler(ExportDocument, (updateData) => {
 	if (updateData) download(updateData.name, updateData.document);
 });
 
-registerResponseHandler(SaveDocument, (saveData) => {
+registerJsMessageHandler(SaveDocument, (saveData) => {
 	if (saveData) download(saveData.name, saveData.document);
 });
 

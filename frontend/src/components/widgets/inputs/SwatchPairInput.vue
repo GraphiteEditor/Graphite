@@ -70,7 +70,8 @@ import { defineComponent } from "vue";
 
 import { rgbToDecimalRgb, RGB } from "@/utilities/color";
 import { panicProxy } from "@/utilities/panic-proxy";
-import { registerResponseHandler, UpdateWorkingColors } from "@/utilities/response-handler";
+import { registerJsMessageHandler } from "@/utilities/js-message-dispatcher";
+import { UpdateWorkingColors } from "@/utilities/js-messages";
 
 import ColorPicker from "@/components/widgets/floating-menus/ColorPicker.vue";
 import FloatingMenu, { MenuDirection, MenuType } from "@/components/widgets/floating-menus/FloatingMenu.vue";
@@ -135,7 +136,7 @@ export default defineComponent({
 		};
 	},
 	mounted() {
-		registerResponseHandler(UpdateWorkingColors, (colorData) => {
+		registerJsMessageHandler(UpdateWorkingColors, (colorData) => {
 			if (!colorData) return;
 			const { primary, secondary } = colorData;
 

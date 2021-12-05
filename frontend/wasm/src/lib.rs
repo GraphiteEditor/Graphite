@@ -66,7 +66,7 @@ fn handle_response(message: FrontendMessage) {
 }
 
 // The JavaScript function to call into with each FrontendMessage
-#[wasm_bindgen(module = "/../src/utilities/response-handler-binding.ts")]
+#[wasm_bindgen(module = "/../src/utilities/js-message-handler-binding.ts")]
 extern "C" {
 	#[wasm_bindgen(catch)]
 	fn handleResponse(responseType: String, responseData: JsValue) -> Result<(), JsValue>;

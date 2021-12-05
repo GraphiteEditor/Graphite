@@ -224,7 +224,8 @@
 <script lang="ts">
 import { defineComponent } from "vue";
 
-import { registerResponseHandler, UpdateCanvas, UpdateScrollbars, UpdateRulers, SetActiveTool, SetCanvasZoom, SetCanvasRotation } from "@/utilities/response-handler";
+import { registerJsMessageHandler } from "@/utilities/js-message-dispatcher";
+import { UpdateCanvas, UpdateScrollbars, UpdateRulers, SetActiveTool, SetCanvasZoom, SetCanvasRotation } from "@/utilities/js-messages";
 import { SeparatorDirection, SeparatorType } from "@/components/widgets/widgets";
 import { comingSoon } from "@/utilities/errors";
 import { panicProxy } from "@/utilities/panic-proxy";
@@ -318,11 +319,11 @@ export default defineComponent({
 		},
 	},
 	mounted() {
-		registerResponseHandler(UpdateCanvas, (updateData) => {
+		registerJsMessageHandler(UpdateCanvas, (updateData) => {
 			if (updateData) this.viewportSvg = updateData.document;
 		});
 
-		registerResponseHandler(UpdateScrollbars, (updateData) => {
+		registerJsMessageHandler(UpdateScrollbars, (updateData) => {
 			if (updateData) {
 				this.scrollbarPos = updateData.position;
 				this.scrollbarSize = updateData.size;
@@ -330,7 +331,7 @@ export default defineComponent({
 			}
 		});
 
-		registerResponseHandler(UpdateRulers, (updateData) => {
+		registerJsMessageHandler(UpdateRulers, (updateData) => {
 			if (updateData) {
 				this.rulerOrigin = updateData.origin;
 				this.rulerSpacing = updateData.spacing;
@@ -338,20 +339,20 @@ export default defineComponent({
 			}
 		});
 
-		registerResponseHandler(SetActiveTool, (toolData) => {
+		registerJsMessageHandler(SetActiveTool, (toolData) => {
 			if (toolData) {
 				this.activeTool = toolData.tool_name;
 				this.activeToolOptions = toolData.tool_options;
 			}
 		});
 
-		registerResponseHandler(SetCanvasZoom, (updateData) => {
+		registerJsMessageHandler(SetCanvasZoom, (updateData) => {
 			if (updateData) {
 				this.documentZoom = updateData.new_zoom * 100;
 			}
 		});
 
-		registerResponseHandler(SetCanvasRotation, (updateData) => {
+		registerJsMessageHandler(SetCanvasRotation, (updateData) => {
 			if (updateData) {
 				const newRotation = updateData.new_radians * (180 / Math.PI);
 				this.documentRotation = (360 + (newRotation % 360)) % 360;
