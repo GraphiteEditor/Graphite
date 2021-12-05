@@ -1,7 +1,7 @@
 import { createApp } from "vue";
 
 import { fullscreenModeChanged } from "@/utilities/fullscreen";
-import { onKeyUp, onKeyDown, onMouseMove, onMouseDown, onMouseUp, onMouseScroll, onWindowResize } from "@/utilities/input";
+import { onKeyUp, onKeyDown, onMouseMove, onMouseDown, onMouseUp, onMouseScroll, onWindowResize, onBeforeUnload } from "@/utilities/input";
 import "@/utilities/errors";
 import App from "@/App.vue";
 import { panicProxy } from "@/utilities/panic-proxy";
@@ -20,6 +20,8 @@ const wasm = import("@/../wasm/pkg").then(panicProxy);
 	// Bind global browser events
 	window.addEventListener("resize", onWindowResize);
 	onWindowResize();
+
+	window.addEventListener("beforeunload", onBeforeUnload);
 
 	document.addEventListener("contextmenu", (e) => e.preventDefault());
 	document.addEventListener("fullscreenchange", () => fullscreenModeChanged());
