@@ -106,6 +106,12 @@ export async function onMouseScroll(e: WheelEvent) {
 	const target = e.target && (e.target as HTMLElement);
 	const inCanvas = target && target.closest(".canvas");
 
+	const horizontalScrollableElement = e.target instanceof HTMLElement && e.target.closest(".scrollable-x");
+	if (horizontalScrollableElement && e.deltaY !== 0) {
+		horizontalScrollableElement.scrollTo(horizontalScrollableElement.scrollLeft + e.deltaY, 0);
+		return;
+	}
+
 	if (inCanvas) {
 		e.preventDefault();
 		const modifiers = makeModifiersBitfield(e);
