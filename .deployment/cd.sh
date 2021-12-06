@@ -12,7 +12,7 @@ node --version
 echo npm version:
 npm --version
 cd frontend
-npm install
+npm ci
 
 echo 📦 Install cargo-about
 cargo install cargo-about

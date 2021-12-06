@@ -23,7 +23,7 @@ jobs:
         node-version: '16.x'
 
     - name: 🚧 Install Node dependencies
-      run: cd frontend && npm install
+      run: cd frontend && npm ci
 
     - name: 🔼 Update Rust to latest stable
       run: rustc --version && rustup update stable && rustc --version
