@@ -53,7 +53,7 @@ module.exports = {
 	],
 	rules: {
 		// Standard ESLint config
-		indent: ["error", "tab", { SwitchCase: 1 }],
+		indent: "off",
 		quotes: ["error", "double"],
 		camelcase: ["error", { properties: "always" }],
 		"linebreak-style": ["error", "unix"],
@@ -67,6 +67,7 @@ module.exports = {
 		"no-use-before-define": "off",
 
 		// TypeScript plugin config
+		"@typescript-eslint/indent": ["error", "tab", { SwitchCase: 1 }],
 		"@typescript-eslint/camelcase": "off",
 		"@typescript-eslint/no-use-before-define": "off",
 		"@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_" }],
