@@ -26,7 +26,7 @@
 						/>
 					</div>
 					<button
-						v-if="layer.layer_type === LayerType.Folder"
+						v-if="layer.layer_type === LayerTypeOptions.Folder"
 						class="node-connector"
 						:class="{ expanded: layer.layer_data.expanded }"
 						@click.stop="handleNodeConnectorClick(layer.path)"
@@ -43,7 +43,7 @@
 					>
 						<div class="layer-thumbnail" v-html="layer.thumbnail"></div>
 						<div class="layer-type-icon">
-							<IconLabel v-if="layer.layer_type === LayerType.Folder" :icon="'NodeTypeFolder'" title="Folder" />
+							<IconLabel v-if="layer.layer_type === LayerTypeOptions.Folder" :icon="'NodeTypeFolder'" title="Folder" />
 							<IconLabel v-else :icon="'NodeTypePath'" title="Path" />
 						</div>
 						<div class="layer-name">
@@ -197,7 +197,8 @@
 <script lang="ts">
 import { defineComponent } from "vue";
 
-import { ResponseType, registerResponseHandler, Response, BlendMode, DisplayFolderTreeStructure, UpdateLayer, LayerPanelEntry, LayerType } from "@/utilities/response-handler";
+import { subscribeJsMessage } from "@/utilities/js-message-dispatcher";
+import { BlendMode, DisplayFolderTreeStructure, UpdateLayer, LayerPanelEntry, LayerTypeOptions } from "@/utilities/js-messages";
 import { panicProxy } from "@/utilities/panic-proxy";
 import { SeparatorType } from "@/components/widgets/widgets";
 
@@ -214,42 +215,42 @@ import { SectionsOfMenuListEntries } from "@/components/widgets/floating-menus/M
 
 const wasm = import("@/../wasm/pkg").then(panicProxy);
 
-const blendModeEntries: SectionsOfMenuListEntries = [
-	[{ label: "Normal", value: BlendMode.Normal }],
+const blendModeEntries: SectionsOfMenuListEntries<BlendMode> = [
+	[{ label: "Normal", value: "normal" }],
 	[
-		{ label: "Multiply", value: BlendMode.Multiply },
-		{ label: "Darken", value: BlendMode.Darken },
-		{ label: "Color Burn", value: BlendMode.ColorBurn },
+		{ label: "Multiply", value: "multiply" },
+		{ label: "Darken", value: "darken" },
+		{ label: "Color Burn", value: "color-burn" },
 		// { label: "Linear Burn", value: "" }, // Not supported by SVG
 		// { label: "Darker Color", value: "" }, // Not supported by SVG
 	],
 	[
-		{ label: "Screen", value: BlendMode.Screen },
-		{ label: "Lighten", value: BlendMode.Lighten },
-		{ label: "Color Dodge", value: BlendMode.ColorDodge },
+		{ label: "Screen", value: "screen" },
+		{ label: "Lighten", value: "lighten" },
+		{ label: "Color Dodge", value: "color-dodge" },
 		// { label: "Linear Dodge (Add)", value: "" }, // Not supported by SVG
 		// { label: "Lighter Color", value: "" }, // Not supported by SVG
 	],
 	[
-		{ label: "Overlay", value: BlendMode.Overlay },
-		{ label: "Soft Light", value: BlendMode.SoftLight },
-		{ label: "Hard Light", value: BlendMode.HardLight },
+		{ label: "Overlay", value: "overlay" },
+		{ label: "Soft Light", value: "soft-light" },
+		{ label: "Hard Light", value: "hard-light" },
 		// { label: "Vivid Light", value: "" }, // Not supported by SVG
 		// { label: "Linear Light", value: "" }, // Not supported by SVG
 		// { label: "Pin Light", value: "" }, // Not supported by SVG
 		// { label: "Hard Mix", value: "" }, // Not supported by SVG
 	],
 	[
-		{ label: "Difference", value: BlendMode.Difference },
-		{ label: "Exclusion", value: BlendMode.Exclusion },
+		{ label: "Difference", value: "difference" },
+		{ label: "Exclusion", value: "exclusion" },
 		// { label: "Subtract", value: "" }, // Not supported by SVG
 		// { label: "Divide", value: "" }, // Not supported by SVG
 	],
 	[
-		{ label: "Hue", value: BlendMode.Hue },
-		{ label: "Saturation", value: BlendMode.Saturation },
-		{ label: "Color", value: BlendMode.Color },
-		{ label: "Luminosity", value: BlendMode.Luminosity },
+		{ label: "Hue", value: "hue" },
+		{ label: "Saturation", value: "saturation" },
+		{ label: "Color", value: "color" },
+		{ label: "Luminosity", value: "luminosity" },
 	],
 ];
 
@@ -262,14 +263,14 @@ export default defineComponent({
 			opacityNumberInputDisabled: true,
 			// TODO: replace with BigUint64Array as index
 			layerCache: new Map() as Map<string, LayerPanelEntry>,
-			layers: [] as Array<LayerPanelEntry>,
-			layerDepths: [] as Array<number>,
+			layers: [] as LayerPanelEntry[],
+			layerDepths: [] as number[],
 			selectionRangeStartLayer: undefined as undefined | LayerPanelEntry,
 			selectionRangeEndLayer: undefined as undefined | LayerPanelEntry,
 			opacity: 100,
 			MenuDirection,
 			SeparatorType,
-			LayerType,
+			LayerTypeOptions,
 		};
 	},
 	methods: {
@@ -406,13 +407,10 @@ export default defineComponent({
 		},
 	},
 	mounted() {
-		registerResponseHandler(ResponseType.DisplayFolderTreeStructure, (responseData: Response) => {
-			const expandData = responseData as DisplayFolderTreeStructure;
-			if (!expandData) return;
-
-			const path = [] as Array<bigint>;
-			this.layers = [] as Array<LayerPanelEntry>;
-			function recurse(folder: DisplayFolderTreeStructure, layers: Array<LayerPanelEntry>, cache: Map<string, LayerPanelEntry>) {
+		subscribeJsMessage(DisplayFolderTreeStructure, (displayFolderTreeStructure) => {
+			const path = [] as bigint[];
+			this.layers = [] as LayerPanelEntry[];
+			function recurse(folder: DisplayFolderTreeStructure, layers: LayerPanelEntry[], cache: Map<string, LayerPanelEntry>) {
 				folder.children.forEach((item) => {
 					// TODO: fix toString
 					path.push(BigInt(item.layerId.toString()));
@@ -422,21 +420,21 @@ export default defineComponent({
 					path.pop();
 				});
 			}
-			recurse(expandData, this.layers, this.layerCache);
+			recurse(displayFolderTreeStructure, this.layers, this.layerCache);
 		});
 
-		registerResponseHandler(ResponseType.UpdateLayer, (responseData) => {
-			const updateData = responseData as UpdateLayer;
-			if (updateData) {
-				const responsePath = updateData.path;
-				const responseLayer = updateData.data;
+		subscribeJsMessage(UpdateLayer, (updateLayer) => {
+			const responsePath = updateLayer.data.path;
+			const responseLayer = updateLayer.data;
 
-				const layer = this.layerCache.get(responsePath.toString());
-				if (layer) Object.assign(this.layerCache.get(responsePath.toString()), responseLayer);
-				else this.layerCache.set(responsePath.toString(), responseLayer);
-				this.setBlendModeForSelectedLayers();
-				this.setOpacityForSelectedLayers();
+			const layer = this.layerCache.get(responsePath.toString());
+			if (layer) {
+				Object.assign(this.layerCache.get(responsePath.toString()), responseLayer);
+			} else {
+				this.layerCache.set(responsePath.toString(), responseLayer);
 			}
+			this.setBlendModeForSelectedLayers();
+			this.setOpacityForSelectedLayers();
 		});
 	},
 	components: {

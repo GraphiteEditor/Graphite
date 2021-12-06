@@ -143,21 +143,21 @@ import IconLabel from "@/components/widgets/labels/IconLabel.vue";
 import CheckboxInput from "@/components/widgets/inputs/CheckboxInput.vue";
 import UserInputLabel from "@/components/widgets/labels/UserInputLabel.vue";
 
-export type MenuListEntries = Array<MenuListEntry>;
-export type SectionsOfMenuListEntries = Array<MenuListEntries>;
+export type MenuListEntries<Value = string> = MenuListEntry<Value>[];
+export type SectionsOfMenuListEntries<Value = string> = MenuListEntries<Value>[];
 
-interface MenuListEntryData {
-	value?: string;
+interface MenuListEntryData<Value = string> {
+	value?: Value;
 	label?: string;
 	icon?: string;
 	checkbox?: boolean;
-	shortcut?: Array<string>;
+	shortcut?: string[];
 	shortcutRequiresLock?: boolean;
 	action?: () => void;
 	children?: SectionsOfMenuListEntries;
 }
 
-export type MenuListEntry = MenuListEntryData & { ref?: typeof FloatingMenu | typeof MenuList; checked?: boolean };
+export type MenuListEntry<Value = string> = MenuListEntryData<Value> & { ref?: typeof FloatingMenu | typeof MenuList; checked?: boolean };
 
 const KEYBOARD_LOCK_USE_FULLSCREEN = "This hotkey is reserved by the browser, but becomes available in fullscreen mode";
 const KEYBOARD_LOCK_SWITCH_BROWSER = "This hotkey is reserved by the browser, but becomes available in Chrome, Edge, and Opera which support the Keyboard.lock() API";
@@ -240,7 +240,7 @@ const MenuList = defineComponent({
 		},
 	},
 	computed: {
-		menuEntriesWithoutRefs(): Array<Array<MenuListEntryData>> {
+		menuEntriesWithoutRefs(): MenuListEntryData[][] {
 			const { menuEntries } = this;
 			return menuEntries.map((entries) =>
 				entries.map((entry) => {

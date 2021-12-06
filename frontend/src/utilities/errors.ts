@@ -1,6 +1,7 @@
 import { createDialog, dismissDialog } from "@/utilities/dialog";
 import { TextButtonWidget } from "@/components/widgets/widgets";
-import { ResponseType, registerResponseHandler, Response, DisplayError, DisplayPanic } from "@/utilities/response-handler";
+import { subscribeJsMessage } from "@/utilities/js-message-dispatcher";
+import { DisplayError, DisplayPanic } from "./js-messages";
 
 // Coming soon dialog
 export function comingSoon(issueNumber?: number) {
@@ -24,9 +25,7 @@ export function comingSoon(issueNumber?: number) {
 }
 
 // Graphite error dialog
-registerResponseHandler(ResponseType.DisplayError, (responseData: Response) => {
-	const data = responseData as DisplayError;
-
+subscribeJsMessage(DisplayError, (displayError) => {
 	const okButton: TextButtonWidget = {
 		kind: "TextButton",
 		callback: async () => dismissDialog(),
@@ -34,17 +33,15 @@ registerResponseHandler(ResponseType.DisplayError, (responseData: Response) => {
 	};
 	const buttons = [okButton];
 
-	createDialog("Warning", data.title, data.description, buttons);
+	createDialog("Warning", displayError.title, displayError.description, buttons);
 });
 
 // Code panic dialog and console error
-registerResponseHandler(ResponseType.DisplayPanic, (responseData: Response) => {
-	const data = responseData as DisplayPanic;
-
+subscribeJsMessage(DisplayPanic, (displayPanic) => {
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	(Error as any).stackTraceLimit = Infinity;
 	const stackTrace = new Error().stack || "";
-	const panicDetails = `${data.panic_info}\n\n${stackTrace}`;
+	const panicDetails = `${displayPanic.panic_info}\n\n${stackTrace}`;
 
 	// eslint-disable-next-line no-console
 	console.error(panicDetails);
@@ -66,7 +63,7 @@ registerResponseHandler(ResponseType.DisplayPanic, (responseData: Response) => {
 	};
 	const buttons = [reloadButton, copyErrorLogButton, reportOnGithubButton];
 
-	createDialog("Warning", data.title, data.description, buttons);
+	createDialog("Warning", displayPanic.title, displayPanic.description, buttons);
 });
 
 function githubUrl(panicDetails: string) {

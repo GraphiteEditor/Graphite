@@ -70,7 +70,8 @@ import { defineComponent } from "vue";
 
 import { rgbToDecimalRgb, RGB } from "@/utilities/color";
 import { panicProxy } from "@/utilities/panic-proxy";
-import { ResponseType, registerResponseHandler, Response, UpdateWorkingColors } from "@/utilities/response-handler";
+import { subscribeJsMessage } from "@/utilities/js-message-dispatcher";
+import { UpdateWorkingColors } from "@/utilities/js-messages";
 
 import ColorPicker from "@/components/widgets/floating-menus/ColorPicker.vue";
 import FloatingMenu, { MenuDirection, MenuType } from "@/components/widgets/floating-menus/FloatingMenu.vue";
@@ -135,20 +136,17 @@ export default defineComponent({
 		};
 	},
 	mounted() {
-		registerResponseHandler(ResponseType.UpdateWorkingColors, (responseData: Response) => {
-			const colorData = responseData as UpdateWorkingColors;
-			if (!colorData) return;
-			const { primary, secondary } = colorData;
+		subscribeJsMessage(UpdateWorkingColors, (updateWorkingColors) => {
+			const { primary, secondary } = updateWorkingColors;
 
-			this.primaryColor = { r: primary.red, g: primary.green, b: primary.blue, a: primary.alpha };
-			let color = this.primaryColor;
-			let button = this.getRef<HTMLButtonElement>("primaryButton");
-			button.style.setProperty("--swatch-color", `rgba(${color.r}, ${color.g}, ${color.b}, ${color.a})`);
+			this.primaryColor = primary.toRgba();
+			this.secondaryColor = secondary.toRgba();
 
-			this.secondaryColor = { r: secondary.red, g: secondary.green, b: secondary.blue, a: secondary.alpha };
-			color = this.secondaryColor;
-			button = this.getRef<HTMLButtonElement>("secondaryButton");
-			button.style.setProperty("--swatch-color", `rgba(${color.r}, ${color.g}, ${color.b}, ${color.a})`);
+			const primaryButton = this.getRef<HTMLButtonElement>("primaryButton");
+			primaryButton.style.setProperty("--swatch-color", primary.toRgbaCSS());
+
+			const secondaryButton = this.getRef<HTMLButtonElement>("secondaryButton");
+			secondaryButton.style.setProperty("--swatch-color", secondary.toRgbaCSS());
 		});
 
 		this.updatePrimaryColor();

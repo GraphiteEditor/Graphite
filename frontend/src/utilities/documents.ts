@@ -1,16 +1,16 @@
 import { reactive, readonly } from "vue";
 
 import { createDialog, dismissDialog } from "@/utilities/dialog";
+import { subscribeJsMessage } from "@/utilities/js-message-dispatcher";
 import {
-	ResponseType,
-	registerResponseHandler,
-	Response,
+	DisplayConfirmationToCloseAllDocuments,
 	SetActiveDocument,
 	UpdateOpenDocumentsList,
 	DisplayConfirmationToCloseDocument,
 	ExportDocument,
 	SaveDocument,
-} from "@/utilities/response-handler";
+	OpenDocumentBrowse,
+} from "@/utilities/js-messages";
 import { download, upload } from "@/utilities/files";
 import { panicProxy } from "@/utilities/panic-proxy";
 
@@ -94,41 +94,34 @@ export async function closeAllDocumentsWithConfirmation() {
 
 export default readonly(state);
 
-registerResponseHandler(ResponseType.UpdateOpenDocumentsList, (responseData: Response) => {
-	const documentListData = responseData as UpdateOpenDocumentsList;
-	state.documents = documentListData.open_documents.map(({ name, isSaved }) => new DocumentState(name, isSaved));
+subscribeJsMessage(UpdateOpenDocumentsList, (updateOpenDocumentList) => {
+	state.documents = updateOpenDocumentList.open_documents.map(({ name, isSaved }) => new DocumentState(name, isSaved));
 });
 
-registerResponseHandler(ResponseType.SetActiveDocument, (responseData: Response) => {
-	const documentData = responseData as SetActiveDocument;
-	if (documentData) {
-		state.activeDocumentIndex = documentData.document_index;
-	}
+subscribeJsMessage(SetActiveDocument, (setActiveDocument) => {
+	state.activeDocumentIndex = setActiveDocument.document_index;
 });
 
-registerResponseHandler(ResponseType.DisplayConfirmationToCloseDocument, (responseData: Response) => {
-	const data = responseData as DisplayConfirmationToCloseDocument;
-	closeDocumentWithConfirmation(data.document_index);
+subscribeJsMessage(DisplayConfirmationToCloseDocument, (displayConfirmationToCloseDocument) => {
+	closeDocumentWithConfirmation(displayConfirmationToCloseDocument.document_index);
 });
 
-registerResponseHandler(ResponseType.DisplayConfirmationToCloseAllDocuments, (_: Response) => {
+subscribeJsMessage(DisplayConfirmationToCloseAllDocuments, () => {
 	closeAllDocumentsWithConfirmation();
 });
 
-registerResponseHandler(ResponseType.OpenDocumentBrowse, async (_: Response) => {
+subscribeJsMessage(OpenDocumentBrowse, async () => {
 	const extension = (await wasm).file_save_suffix();
 	const data = await upload(extension);
 	(await wasm).open_document_file(data.filename, data.content);
 });
 
-registerResponseHandler(ResponseType.ExportDocument, (responseData: Response) => {
-	const updateData = responseData as ExportDocument;
-	if (updateData) download(updateData.name, updateData.document);
+subscribeJsMessage(ExportDocument, (exportDocument) => {
+	download(exportDocument.name, exportDocument.document);
 });
 
-registerResponseHandler(ResponseType.SaveDocument, (responseData: Response) => {
-	const saveData = responseData as SaveDocument;
-	if (saveData) download(saveData.name, saveData.document);
+subscribeJsMessage(SaveDocument, (saveDocument) => {
+	download(saveDocument.name, saveDocument.document);
 });
 
 (async () => (await wasm).get_open_documents_list())();

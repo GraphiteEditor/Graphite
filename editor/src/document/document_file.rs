@@ -153,7 +153,7 @@ impl DocumentMessageHandler {
 		}
 		self.layer_data(path).selected = true;
 		let data = self.layer_panel_entry(path.to_vec()).ok()?;
-		(!path.is_empty()).then(|| FrontendMessage::UpdateLayer { path: path.to_vec().into(), data }.into())
+		(!path.is_empty()).then(|| FrontendMessage::UpdateLayer { data }.into())
 	}
 
 	pub fn selected_layers_bounding_box(&self) -> Option<[DVec2; 2]> {
@@ -621,7 +621,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			LayerChanged(path) => {
 				responses.extend(self.layer_panel_entry(path.clone()).ok().and_then(|entry| {
 					let overlay = self.graphene_document.layer(&path).unwrap().overlay;
-					(!overlay).then(|| FrontendMessage::UpdateLayer { path: path.into(), data: entry }.into())
+					(!overlay).then(|| FrontendMessage::UpdateLayer { data: entry }.into())
 				}));
 			}
 

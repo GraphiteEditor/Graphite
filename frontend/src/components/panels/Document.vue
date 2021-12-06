@@ -238,7 +238,8 @@
 <script lang="ts">
 import { defineComponent } from "vue";
 
-import { ResponseType, registerResponseHandler, Response, UpdateCanvas, UpdateScrollbars, UpdateRulers, SetActiveTool, SetCanvasZoom, SetCanvasRotation } from "@/utilities/response-handler";
+import { subscribeJsMessage } from "@/utilities/js-message-dispatcher";
+import { UpdateCanvas, UpdateScrollbars, UpdateRulers, SetActiveTool, SetCanvasZoom, SetCanvasRotation } from "@/utilities/js-messages";
 import { SeparatorDirection, SeparatorType } from "@/components/widgets/widgets";
 import { comingSoon } from "@/utilities/errors";
 import { panicProxy } from "@/utilities/panic-proxy";
@@ -332,50 +333,34 @@ export default defineComponent({
 		},
 	},
 	mounted() {
-		registerResponseHandler(ResponseType.UpdateCanvas, (responseData: Response) => {
-			const updateData = responseData as UpdateCanvas;
-			if (updateData) this.viewportSvg = updateData.document;
+		subscribeJsMessage(UpdateCanvas, (updateCanvas) => {
+			this.viewportSvg = updateCanvas.document;
 		});
 
-		registerResponseHandler(ResponseType.UpdateScrollbars, (responseData: Response) => {
-			const updateData = responseData as UpdateScrollbars;
-			if (updateData) {
-				this.scrollbarPos = updateData.position;
-				this.scrollbarSize = updateData.size;
-				this.scrollbarMultiplier = updateData.multiplier;
-			}
+		subscribeJsMessage(UpdateScrollbars, (updateScrollbars) => {
+			this.scrollbarPos = updateScrollbars.position;
+			this.scrollbarSize = updateScrollbars.size;
+			this.scrollbarMultiplier = updateScrollbars.multiplier;
 		});
 
-		registerResponseHandler(ResponseType.UpdateRulers, (responseData: Response) => {
-			const updateData = responseData as UpdateRulers;
-			if (updateData) {
-				this.rulerOrigin = updateData.origin;
-				this.rulerSpacing = updateData.spacing;
-				this.rulerInterval = updateData.interval;
-			}
+		subscribeJsMessage(UpdateRulers, (updateRulers) => {
+			this.rulerOrigin = updateRulers.origin;
+			this.rulerSpacing = updateRulers.spacing;
+			this.rulerInterval = updateRulers.interval;
 		});
 
-		registerResponseHandler(ResponseType.SetActiveTool, (responseData: Response) => {
-			const toolData = responseData as SetActiveTool;
-			if (toolData) {
-				this.activeTool = toolData.tool_name;
-				this.activeToolOptions = toolData.tool_options;
-			}
+		subscribeJsMessage(SetActiveTool, (setActiveTool) => {
+			this.activeTool = setActiveTool.tool_name;
+			this.activeToolOptions = setActiveTool.tool_options;
 		});
 
-		registerResponseHandler(ResponseType.SetCanvasZoom, (responseData: Response) => {
-			const updateData = responseData as SetCanvasZoom;
-			if (updateData) {
-				this.documentZoom = updateData.new_zoom * 100;
-			}
+		subscribeJsMessage(SetCanvasZoom, (setCanvasZoom) => {
+			this.documentZoom = setCanvasZoom.new_zoom * 100;
 		});
 
-		registerResponseHandler(ResponseType.SetCanvasRotation, (responseData: Response) => {
-			const updateData = responseData as SetCanvasRotation;
-			if (updateData) {
-				const newRotation = updateData.new_radians * (180 / Math.PI);
-				this.documentRotation = (360 + (newRotation % 360)) % 360;
-			}
+		subscribeJsMessage(SetCanvasRotation, (setCanvasRotation) => {
+			const newRotation = setCanvasRotation.new_radians * (180 / Math.PI);
+			this.documentRotation = (360 + (newRotation % 360)) % 360;
 		});
 
 		window.addEventListener("resize", this.viewportResize);
