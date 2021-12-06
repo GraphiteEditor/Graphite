@@ -1,6 +1,6 @@
 export type Widgets = TextButtonWidget | IconButtonWidget | SeparatorWidget | PopoverButtonWidget | NumberInputWidget;
-export type WidgetRow = Array<Widgets>;
-export type WidgetLayout = Array<WidgetRow>;
+export type WidgetRow = Widgets[];
+export type WidgetLayout = WidgetRow[];
 
 // Text Button
 export interface TextButtonWidget {

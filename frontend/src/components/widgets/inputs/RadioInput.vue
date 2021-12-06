@@ -80,7 +80,7 @@ export interface RadioEntryData {
 	action?: () => void;
 }
 
-export type RadioEntries = Array<RadioEntryData>;
+export type RadioEntries = RadioEntryData[];
 
 export default defineComponent({
 	props: {
