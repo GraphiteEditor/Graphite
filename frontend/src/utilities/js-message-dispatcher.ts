@@ -65,18 +65,18 @@ function isJsMessageConstructor(fn: ConstructsJsMessage | ((data: any) => JsMess
 }
 
 export function handleJsMessage(responseType: JsMessageType, responseData: any) {
-	const MessageMaker = responseMap[responseType];
+	const messageMaker = responseMap[responseType];
 	let message: JsMessage;
 
-	if (!MessageMaker) {
+	if (!messageMaker) {
 		// eslint-disable-next-line no-console
 		console.error(`Received a Response of type "${responseType}" but but was not able to parse the data.`);
 	}
 
-	if (isJsMessageConstructor(MessageMaker)) {
-		message = plainToInstance(MessageMaker, responseData[responseType]);
+	if (isJsMessageConstructor(messageMaker)) {
+		message = plainToInstance(messageMaker, responseData[responseType]);
 	} else {
-		message = MessageMaker(responseData[responseType]);
+		message = messageMaker(responseData[responseType]);
 	}
 
 	// It is ok to use constructor.name even with minification since it is used consistently with registerHandler
