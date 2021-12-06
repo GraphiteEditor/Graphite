@@ -63,7 +63,7 @@ function isResponseConstructor(fn: ConstructsJsMessage | ((data: any) => JsMessa
 	return (fn as ConstructsJsMessage).responseMarker !== undefined;
 }
 
-export function handleResponse(responseType: JsMessageType, responseData: any) {
+export function handleJsMessage(responseType: JsMessageType, responseData: any) {
 	const MessageMaker = responseMap[responseType];
 	let message: JsMessage;
 
@@ -89,6 +89,6 @@ export function handleResponse(responseType: JsMessageType, responseData: any) {
 	}
 }
 
-export function registerJsMessageHandler<T extends JsMessage>(responseType: Constructs<T>, callback: JsMessageCallback<T>) {
+export function subscribeJsMessage<T extends JsMessage>(responseType: Constructs<T>, callback: JsMessageCallback<T>) {
 	state.responseMap[responseType.name] = callback;
 }

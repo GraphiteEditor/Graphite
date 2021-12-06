@@ -55,7 +55,7 @@ fn handle_response(message: FrontendMessage) {
 	let message_type = message.to_discriminant().local_name();
 	let message_data = JsValue::from_serde(&message).expect("Failed to serialize FrontendMessage");
 
-	let js_return_value = handleResponse(message_type, message_data);
+	let js_return_value = handleJsMessage(message_type, message_data);
 	if let Err(error) = js_return_value {
 		log::error!(
 			"While handling FrontendMessage \"{:?}\", JavaScript threw an error: {:?}",
@@ -66,8 +66,8 @@ fn handle_response(message: FrontendMessage) {
 }
 
 // The JavaScript function to call into with each FrontendMessage
-#[wasm_bindgen(module = "/../src/utilities/js-message-handler-binding.ts")]
+#[wasm_bindgen(module = "/../src/utilities/js-message-dispatcher-binding.ts")]
 extern "C" {
 	#[wasm_bindgen(catch)]
-	fn handleResponse(responseType: String, responseData: JsValue) -> Result<(), JsValue>;
+	fn handleJsMessage(responseType: String, responseData: JsValue) -> Result<(), JsValue>;
 }

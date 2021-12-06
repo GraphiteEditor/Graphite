@@ -1,6 +1,6 @@
 import { createDialog, dismissDialog } from "@/utilities/dialog";
 import { TextButtonWidget } from "@/components/widgets/widgets";
-import { registerJsMessageHandler } from "@/utilities/js-message-dispatcher";
+import { subscribeJsMessage } from "@/utilities/js-message-dispatcher";
 import { DisplayError, DisplayPanic } from "./js-messages";
 
 // Coming soon dialog
@@ -25,7 +25,7 @@ export function comingSoon(issueNumber?: number) {
 }
 
 // Graphite error dialog
-registerJsMessageHandler(DisplayError, (data) => {
+subscribeJsMessage(DisplayError, (displayError) => {
 	const okButton: TextButtonWidget = {
 		kind: "TextButton",
 		callback: async () => dismissDialog(),
@@ -33,15 +33,15 @@ registerJsMessageHandler(DisplayError, (data) => {
 	};
 	const buttons = [okButton];
 
-	createDialog("Warning", data.title, data.description, buttons);
+	createDialog("Warning", displayError.title, displayError.description, buttons);
 });
 
 // Code panic dialog and console error
-registerJsMessageHandler(DisplayPanic, (data) => {
+subscribeJsMessage(DisplayPanic, (displayPanic) => {
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	(Error as any).stackTraceLimit = Infinity;
 	const stackTrace = new Error().stack || "";
-	const panicDetails = `${data.panic_info}\n\n${stackTrace}`;
+	const panicDetails = `${displayPanic.panic_info}\n\n${stackTrace}`;
 
 	// eslint-disable-next-line no-console
 	console.error(panicDetails);
@@ -63,7 +63,7 @@ registerJsMessageHandler(DisplayPanic, (data) => {
 	};
 	const buttons = [reloadButton, copyErrorLogButton, reportOnGithubButton];
 
-	createDialog("Warning", data.title, data.description, buttons);
+	createDialog("Warning", displayPanic.title, displayPanic.description, buttons);
 });
 
 function githubUrl(panicDetails: string) {

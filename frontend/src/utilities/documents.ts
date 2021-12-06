@@ -1,7 +1,7 @@
 import { reactive, readonly } from "vue";
 
 import { createDialog, dismissDialog } from "@/utilities/dialog";
-import { registerJsMessageHandler } from "@/utilities/js-message-dispatcher";
+import { subscribeJsMessage } from "@/utilities/js-message-dispatcher";
 import {
 	DisplayConfirmationToCloseAllDocuments,
 	SetActiveDocument,
@@ -94,34 +94,34 @@ export async function closeAllDocumentsWithConfirmation() {
 
 export default readonly(state);
 
-registerJsMessageHandler(UpdateOpenDocumentsList, (documentListData) => {
-	state.documents = documentListData.open_documents.map(({ name, isSaved }) => new DocumentState(name, isSaved));
+subscribeJsMessage(UpdateOpenDocumentsList, (updateOpenDocumentList) => {
+	state.documents = updateOpenDocumentList.open_documents.map(({ name, isSaved }) => new DocumentState(name, isSaved));
 });
 
-registerJsMessageHandler(SetActiveDocument, (documentData) => {
-	state.activeDocumentIndex = documentData.document_index;
+subscribeJsMessage(SetActiveDocument, (setActiveDocument) => {
+	state.activeDocumentIndex = setActiveDocument.document_index;
 });
 
-registerJsMessageHandler(DisplayConfirmationToCloseDocument, (data) => {
-	closeDocumentWithConfirmation(data.document_index);
+subscribeJsMessage(DisplayConfirmationToCloseDocument, (displayConfirmationToCloseDocument) => {
+	closeDocumentWithConfirmation(displayConfirmationToCloseDocument.document_index);
 });
 
-registerJsMessageHandler(DisplayConfirmationToCloseAllDocuments, (_) => {
+subscribeJsMessage(DisplayConfirmationToCloseAllDocuments, () => {
 	closeAllDocumentsWithConfirmation();
 });
 
-registerJsMessageHandler(OpenDocumentBrowse, async (_) => {
+subscribeJsMessage(OpenDocumentBrowse, async () => {
 	const extension = (await wasm).file_save_suffix();
 	const data = await upload(extension);
 	(await wasm).open_document_file(data.filename, data.content);
 });
 
-registerJsMessageHandler(ExportDocument, (updateData) => {
-	download(updateData.name, updateData.document);
+subscribeJsMessage(ExportDocument, (exportDocument) => {
+	download(exportDocument.name, exportDocument.document);
 });
 
-registerJsMessageHandler(SaveDocument, (saveData) => {
-	download(saveData.name, saveData.document);
+subscribeJsMessage(SaveDocument, (saveDocument) => {
+	download(saveDocument.name, saveDocument.document);
 });
 
 (async () => (await wasm).get_open_documents_list())();

@@ -197,7 +197,7 @@
 <script lang="ts">
 import { defineComponent } from "vue";
 
-import { registerJsMessageHandler } from "@/utilities/js-message-dispatcher";
+import { subscribeJsMessage } from "@/utilities/js-message-dispatcher";
 import { BlendMode, DisplayFolderTreeStructure, UpdateLayer, LayerPanelEntry, LayerTypeOptions } from "@/utilities/js-messages";
 import { panicProxy } from "@/utilities/panic-proxy";
 import { SeparatorType } from "@/components/widgets/widgets";
@@ -407,7 +407,7 @@ export default defineComponent({
 		},
 	},
 	mounted() {
-		registerJsMessageHandler(DisplayFolderTreeStructure, (expandData) => {
+		subscribeJsMessage(DisplayFolderTreeStructure, (displayFolderTreeStructure) => {
 			const path = [] as bigint[];
 			this.layers = [] as LayerPanelEntry[];
 			function recurse(folder: DisplayFolderTreeStructure, layers: LayerPanelEntry[], cache: Map<string, LayerPanelEntry>) {
@@ -420,16 +420,17 @@ export default defineComponent({
 					path.pop();
 				});
 			}
-			recurse(expandData, this.layers, this.layerCache);
+			recurse(displayFolderTreeStructure, this.layers, this.layerCache);
 		});
 
-		registerJsMessageHandler(UpdateLayer, (updateData) => {
-			const responsePath = updateData.data.path;
-			const responseLayer = updateData.data;
+		subscribeJsMessage(UpdateLayer, (updateLayer) => {
+			const responsePath = updateLayer.data.path;
+			const responseLayer = updateLayer.data;
 
 			const layer = this.layerCache.get(responsePath.toString());
-			if (layer) Object.assign(this.layerCache.get(responsePath.toString()), responseLayer);
-			else {
+			if (layer) {
+				Object.assign(this.layerCache.get(responsePath.toString()), responseLayer);
+			} else {
 				this.layerCache.set(responsePath.toString(), responseLayer);
 			}
 			this.setBlendModeForSelectedLayers();

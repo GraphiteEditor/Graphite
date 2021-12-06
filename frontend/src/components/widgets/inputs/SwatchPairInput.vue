@@ -70,7 +70,7 @@ import { defineComponent } from "vue";
 
 import { rgbToDecimalRgb, RGB } from "@/utilities/color";
 import { panicProxy } from "@/utilities/panic-proxy";
-import { registerJsMessageHandler } from "@/utilities/js-message-dispatcher";
+import { subscribeJsMessage } from "@/utilities/js-message-dispatcher";
 import { UpdateWorkingColors } from "@/utilities/js-messages";
 
 import ColorPicker from "@/components/widgets/floating-menus/ColorPicker.vue";
@@ -136,16 +136,17 @@ export default defineComponent({
 		};
 	},
 	mounted() {
-		registerJsMessageHandler(UpdateWorkingColors, (colorData) => {
-			const { primary, secondary } = colorData;
+		subscribeJsMessage(UpdateWorkingColors, (updateWorkingColors) => {
+			const { primary, secondary } = updateWorkingColors;
 
-			this.primaryColor = primary.toRgb();
-			let button = this.getRef<HTMLButtonElement>("primaryButton");
-			button.style.setProperty("--swatch-color", primary.toString());
+			this.primaryColor = primary.toRgba();
+			this.secondaryColor = secondary.toRgba();
 
-			this.secondaryColor = secondary.toRgb();
-			button = this.getRef<HTMLButtonElement>("secondaryButton");
-			button.style.setProperty("--swatch-color", secondary.toString());
+			const primaryButton = this.getRef<HTMLButtonElement>("primaryButton");
+			primaryButton.style.setProperty("--swatch-color", primary.toRgbaCSS());
+
+			const secondaryButton = this.getRef<HTMLButtonElement>("secondaryButton");
+			secondaryButton.style.setProperty("--swatch-color", secondary.toRgbaCSS());
 		});
 
 		this.updatePrimaryColor();

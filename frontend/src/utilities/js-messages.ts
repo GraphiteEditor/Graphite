@@ -10,106 +10,106 @@ export class JsMessage {
 
 export class UpdateOpenDocumentsList extends JsMessage {
 	@Transform(({ value }) => value.map((tuple: [string, boolean]) => ({ name: tuple[0], isSaved: tuple[1] })))
-	open_documents!: { name: string; isSaved: boolean }[];
+	readonly open_documents!: { name: string; isSaved: boolean }[];
 }
 
 const To255Scale = Transform(({ value }) => value * 255);
 export class Color {
 	@To255Scale
-	red!: number;
+	readonly red!: number;
 
 	@To255Scale
-	green!: number;
+	readonly green!: number;
 
 	@To255Scale
-	blue!: number;
+	readonly blue!: number;
 
-	alpha!: number;
+	readonly alpha!: number;
 
-	toRgb() {
+	toRgba() {
 		return { r: this.red, g: this.green, b: this.blue, a: this.alpha };
 	}
 
-	toString() {
-		const { r, g, b, a } = this.toRgb();
+	toRgbaCSS() {
+		const { r, g, b, a } = this.toRgba();
 		return `rgba(${r}, ${g}, ${b}, ${a})`;
 	}
 }
 
 export class UpdateWorkingColors extends JsMessage {
 	@Type(() => Color)
-	primary!: Color;
+	readonly primary!: Color;
 
 	@Type(() => Color)
-	secondary!: Color;
+	readonly secondary!: Color;
 }
 
 export class SetActiveTool extends JsMessage {
-	tool_name!: string;
+	readonly tool_name!: string;
 
-	tool_options!: object;
+	readonly tool_options!: object;
 }
 
 export class SetActiveDocument extends JsMessage {
-	document_index!: number;
+	readonly document_index!: number;
 }
 
 export class DisplayError extends JsMessage {
-	title!: string;
+	readonly title!: string;
 
-	description!: string;
+	readonly description!: string;
 }
 
 export class DisplayPanic extends JsMessage {
-	panic_info!: string;
+	readonly panic_info!: string;
 
-	title!: string;
+	readonly title!: string;
 
-	description!: string;
+	readonly description!: string;
 }
 
 export class DisplayConfirmationToCloseDocument extends JsMessage {
-	document_index!: number;
+	readonly document_index!: number;
 }
 
 export class DisplayConfirmationToCloseAllDocuments extends JsMessage {}
 
 export class UpdateCanvas extends JsMessage {
-	document!: string;
+	readonly document!: string;
 }
 
 const TupleToVec2 = Transform(({ value }) => ({ x: value[0], y: value[1] }));
 
 export class UpdateScrollbars extends JsMessage {
 	@TupleToVec2
-	position!: { x: number; y: number };
+	readonly position!: { x: number; y: number };
 
 	@TupleToVec2
-	size!: { x: number; y: number };
+	readonly size!: { x: number; y: number };
 
 	@TupleToVec2
-	multiplier!: { x: number; y: number };
+	readonly multiplier!: { x: number; y: number };
 }
 
 export class UpdateRulers extends JsMessage {
 	@TupleToVec2
-	origin!: { x: number; y: number };
+	readonly origin!: { x: number; y: number };
 
-	spacing!: number;
+	readonly spacing!: number;
 
-	interval!: number;
+	readonly interval!: number;
 }
 
 export class ExportDocument extends JsMessage {
-	document!: string;
+	readonly document!: string;
 
-	name!: string;
+	readonly name!: string;
 }
 
 export class SaveDocument extends JsMessage {
-	document!: string;
+	readonly document!: string;
 
-	name!: string;
+	readonly name!: string;
 }
 
 export class OpenDocumentBrowse extends JsMessage {}
@@ -117,7 +117,7 @@ export class OpenDocumentBrowse extends JsMessage {}
 export class DocumentChanged extends JsMessage {}
 
 export class DisplayFolderTreeStructure extends JsMessage {
-	constructor(public layerId: BigInt, public children: DisplayFolderTreeStructure[]) {
+	constructor(readonly layerId: BigInt, readonly children: DisplayFolderTreeStructure[]) {
 		super();
 	}
 }
@@ -176,15 +176,15 @@ export function newDisplayFolderTreeStructure(input: any): DisplayFolderTreeStru
 
 export class UpdateLayer extends JsMessage {
 	@Type(() => LayerPanelEntry)
-	public data!: LayerPanelEntry;
+	readonly data!: LayerPanelEntry;
 }
 
 export class SetCanvasZoom extends JsMessage {
-	new_zoom!: number;
+	readonly new_zoom!: number;
 }
 
 export class SetCanvasRotation extends JsMessage {
-	new_radians!: number;
+	readonly new_radians!: number;
 }
 
 function newPath(input: any): BigUint64Array {

@@ -1,3 +1,6 @@
+// Allows for runtime reflection of types in javascript.
+// It is needed for class-transformer to work and is imported as a side effect.
+// The library replaces the Reflect Api on the window to support more features.
 import "reflect-metadata";
 import { createApp } from "vue";
 import { fullscreenModeChanged } from "@/utilities/fullscreen";
