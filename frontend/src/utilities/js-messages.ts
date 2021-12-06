@@ -194,22 +194,22 @@ function newPath(input: any): BigUint64Array {
 }
 
 export type BlendMode =
-	| "normal"
-	| "multiply"
-	| "darken"
-	| "color-burn"
-	| "screen"
-	| "lighten"
-	| "color-dodge"
-	| "overlay"
-	| "soft-light"
-	| "hard-light"
-	| "difference"
-	| "exclusion"
-	| "hue"
-	| "saturation"
-	| "color"
-	| "luminosity";
+	| "Normal"
+	| "Multiply"
+	| "Darken"
+	| "ColorBurn"
+	| "Screen"
+	| "Lighten"
+	| "ColorDodge"
+	| "Overlay"
+	| "SoftLight"
+	| "HardLight"
+	| "Difference"
+	| "Exclusion"
+	| "Hue"
+	| "Saturation"
+	| "Color"
+	| "Luminosity";
 
 export class LayerPanelEntry {
 	name!: string;

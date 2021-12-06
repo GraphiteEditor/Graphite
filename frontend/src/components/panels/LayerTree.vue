@@ -216,41 +216,41 @@ import { SectionsOfMenuListEntries } from "@/components/widgets/floating-menus/M
 const wasm = import("@/../wasm/pkg").then(panicProxy);
 
 const blendModeEntries: SectionsOfMenuListEntries<BlendMode> = [
-	[{ label: "Normal", value: "normal" }],
+	[{ label: "Normal", value: "Normal" }],
 	[
-		{ label: "Multiply", value: "multiply" },
-		{ label: "Darken", value: "darken" },
-		{ label: "Color Burn", value: "color-burn" },
+		{ label: "Multiply", value: "Multiply" },
+		{ label: "Darken", value: "Darken" },
+		{ label: "Color Burn", value: "ColorBurn" },
 		// { label: "Linear Burn", value: "" }, // Not supported by SVG
 		// { label: "Darker Color", value: "" }, // Not supported by SVG
 	],
 	[
-		{ label: "Screen", value: "screen" },
-		{ label: "Lighten", value: "lighten" },
-		{ label: "Color Dodge", value: "color-dodge" },
+		{ label: "Screen", value: "Screen" },
+		{ label: "Lighten", value: "Lighten" },
+		{ label: "Color Dodge", value: "ColorDodge" },
 		// { label: "Linear Dodge (Add)", value: "" }, // Not supported by SVG
 		// { label: "Lighter Color", value: "" }, // Not supported by SVG
 	],
 	[
-		{ label: "Overlay", value: "overlay" },
-		{ label: "Soft Light", value: "soft-light" },
-		{ label: "Hard Light", value: "hard-light" },
+		{ label: "Overlay", value: "Overlay" },
+		{ label: "Soft Light", value: "SoftLight" },
+		{ label: "Hard Light", value: "HardLight" },
 		// { label: "Vivid Light", value: "" }, // Not supported by SVG
 		// { label: "Linear Light", value: "" }, // Not supported by SVG
 		// { label: "Pin Light", value: "" }, // Not supported by SVG
 		// { label: "Hard Mix", value: "" }, // Not supported by SVG
 	],
 	[
-		{ label: "Difference", value: "difference" },
-		{ label: "Exclusion", value: "exclusion" },
+		{ label: "Difference", value: "Difference" },
+		{ label: "Exclusion", value: "Exclusion" },
 		// { label: "Subtract", value: "" }, // Not supported by SVG
 		// { label: "Divide", value: "" }, // Not supported by SVG
 	],
 	[
-		{ label: "Hue", value: "hue" },
-		{ label: "Saturation", value: "saturation" },
-		{ label: "Color", value: "color" },
-		{ label: "Luminosity", value: "luminosity" },
+		{ label: "Hue", value: "Hue" },
+		{ label: "Saturation", value: "Saturation" },
+		{ label: "Color", value: "Color" },
+		{ label: "Luminosity", value: "Luminosity" },
 	],
 ];
 
@@ -284,7 +284,7 @@ export default defineComponent({
 			(await wasm).toggle_layer_expansion(path);
 		},
 		async setLayerBlendMode() {
-			const blendMode = this.blendModeEntries.flat()[this.blendModeSelectedIndex].value as BlendMode;
+			const blendMode = this.blendModeEntries.flat()[this.blendModeSelectedIndex].value;
 			if (blendMode) {
 				(await wasm).set_blend_mode_for_selected_layers(blendMode);
 			}
