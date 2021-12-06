@@ -5,7 +5,8 @@
 import { Transform, Type } from "class-transformer";
 
 export class JsMessage {
-	static responseMarker = true;
+	// The marker provides a way to check if an object is a sub-class constructor for a jsMessage.
+	static readonly jsMessageMarker = true;
 }
 
 export class UpdateOpenDocumentsList extends JsMessage {
@@ -157,7 +158,6 @@ export function newDisplayFolderTreeStructure(input: any): DisplayFolderTreeStru
 
 		// Check the sign of the MSB, where a 1 is a negative (outward) indent
 		const subsequentDirectionOfDepthChange = (msbSigned & msbMask) === BigInt(0);
-		// debugger;
 		// Inward
 		if (subsequentDirectionOfDepthChange) {
 			currentFolderStack.push(currentFolder);
@@ -211,10 +211,6 @@ export type BlendMode =
 	| "color"
 	| "luminosity";
 
-function newOpacity(input: number): number {
-	return input * 100;
-}
-
 export class LayerPanelEntry {
 	name!: string;
 
@@ -222,10 +218,10 @@ export class LayerPanelEntry {
 
 	blend_mode!: BlendMode;
 
-	@Transform(({ value }) => newOpacity(value))
+	// On the rust side opacity is out of 1 rather than 100
+	@Transform(({ value }) => value * 100)
 	opacity!: number;
 
-	// No need to check the backend editor. Assume that it is always correct
 	layer_type!: LayerType;
 
 	@Transform(({ value }) => newPath(value))

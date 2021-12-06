@@ -2,6 +2,7 @@
 
 import { reactive } from "vue";
 import { plainToInstance } from "class-transformer";
+
 import {
 	DisplayConfirmationToCloseAllDocuments,
 	DisplayConfirmationToCloseDocument,
@@ -59,8 +60,8 @@ const responseMap = {
 
 export type JsMessageType = keyof typeof responseMap;
 
-function isResponseConstructor(fn: ConstructsJsMessage | ((data: any) => JsMessage)): fn is ConstructsJsMessage {
-	return (fn as ConstructsJsMessage).responseMarker !== undefined;
+function isJsMessageConstructor(fn: ConstructsJsMessage | ((data: any) => JsMessage)): fn is ConstructsJsMessage {
+	return (fn as ConstructsJsMessage).jsMessageMarker !== undefined;
 }
 
 export function handleJsMessage(responseType: JsMessageType, responseData: any) {
@@ -72,7 +73,7 @@ export function handleJsMessage(responseType: JsMessageType, responseData: any) 
 		console.error(`Received a Response of type "${responseType}" but but was not able to parse the data.`);
 	}
 
-	if (isResponseConstructor(MessageMaker)) {
+	if (isJsMessageConstructor(MessageMaker)) {
 		message = plainToInstance(MessageMaker, responseData[responseType]);
 	} else {
 		message = MessageMaker(responseData[responseType]);
