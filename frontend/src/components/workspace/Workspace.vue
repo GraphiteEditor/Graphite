@@ -5,8 +5,8 @@
 				:panelType="'Document'"
 				:tabCloseButtons="true"
 				:tabMinWidths="true"
-				:tabLabels="documents.documents.map((doc) => doc.displayName)"
-				:tabActiveIndex="documents.activeDocumentIndex"
+				:tabLabels="documents.state.documents.map((doc) => doc.displayName)"
+				:tabActiveIndex="documents.state.activeDocumentIndex"
 				ref="documentsPanel"
 			/>
 		</LayoutCol>

@@ -13,7 +13,7 @@
 							closeDocumentWithConfirmation(tabIndex);
 						}
 					"
-					@click="panelType === 'Document' && selectDocument(tabIndex)"
+					@click="panelType === 'Document' && documents.selectDocument(tabIndex)"
 				>
 					<span>{{ tabLabel }}</span>
 					<IconButton

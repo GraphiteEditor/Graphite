@@ -45,7 +45,7 @@ fn panic_hook(info: &panic::PanicInfo) {
 // }
 
 // The JavaScript function to call into with each FrontendMessage
-#[wasm_bindgen(module = "/../src/utilities/js-message-dispatcher-binding.ts")]
+#[wasm_bindgen(module = "/../src/utilities/wasm-loader-exports.ts")]
 extern "C" {
 	// The JavaScript function to call into with each FrontendMessage
 	#[wasm_bindgen(catch)]

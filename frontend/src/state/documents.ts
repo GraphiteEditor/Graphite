@@ -23,8 +23,7 @@ class DocumentSaveState {
 }
 
 export class DocumentsState {
-	private state = reactive({
-		title: "",
+	state = reactive({
 		unsaved: false,
 		documents: [] as DocumentSaveState[],
 		activeDocumentIndex: 0,
@@ -32,6 +31,8 @@ export class DocumentsState {
 
 	constructor(private editor: EditorState, private dialogState: DialogState) {
 		this.setupJsMessageListeners();
+		// Get the initial documents
+		editor.instance.get_open_documents_list();
 	}
 
 	selectDocument(tabIndex: number) {
@@ -92,7 +93,6 @@ export class DocumentsState {
 
 	private setupJsMessageListeners() {
 		this.editor.dispatcher.subscribeJsMessage(UpdateOpenDocumentsList, (updateOpenDocumentList) => {
-			console.log(updateOpenDocumentList);
 			this.state.documents = updateOpenDocumentList.open_documents.map(({ name, isSaved }) => new DocumentSaveState(name, isSaved));
 		});
 
