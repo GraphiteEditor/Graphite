@@ -1,13 +1,13 @@
 export type Widgets = TextButtonWidget | IconButtonWidget | SeparatorWidget | PopoverButtonWidget | NumberInputWidget;
-export type WidgetRow = Array<Widgets>;
-export type WidgetLayout = Array<WidgetRow>;
+export type WidgetRow = Widgets[];
+export type WidgetLayout = WidgetRow[];
 
 // Text Button
 export interface TextButtonWidget {
 	kind: "TextButton";
 	tooltip?: string;
 	message?: string | object;
-	callback?: Function;
+	callback?: () => void;
 	props: TextButtonProps;
 }
 
@@ -25,7 +25,7 @@ export interface IconButtonWidget {
 	kind: "IconButton";
 	tooltip?: string;
 	message?: string | object;
-	callback?: Function;
+	callback?: () => void;
 	props: IconButtonProps;
 }
 
@@ -40,7 +40,7 @@ export interface IconButtonProps {
 export interface PopoverButtonWidget {
 	kind: "PopoverButton";
 	tooltip?: string;
-	callback?: Function;
+	callback?: () => void;
 	// popover: WidgetLayout;
 	popover: { title: string; text: string }; // TODO: Replace this with a `WidgetLayout` like above for arbitrary layouts
 	props: PopoverButtonProps;

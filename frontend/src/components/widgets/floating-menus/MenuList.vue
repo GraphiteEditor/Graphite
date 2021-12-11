@@ -239,7 +239,7 @@ const MenuList = defineComponent({
 		},
 	},
 	computed: {
-		menuEntriesWithoutRefs(): Array<Array<MenuListEntryData>> {
+		menuEntriesWithoutRefs(): MenuListEntryData[][] {
 			const { menuEntries } = this;
 			return menuEntries.map((entries) =>
 				entries.map((entry) => {

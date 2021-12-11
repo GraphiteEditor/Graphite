@@ -14,15 +14,17 @@ use crate::{
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Document {
 	pub root: Layer,
+	/// The state_identifier serves to provide a way to uniquely identify a particular state that the document is in.
+	/// This identifier is not a hash and is not guaranteed to be equal for equivalent documents.
 	#[serde(skip)]
-	pub hasher: DefaultHasher,
+	pub state_identifier: DefaultHasher,
 }
 
 impl Default for Document {
 	fn default() -> Self {
 		Self {
 			root: Layer::new(LayerDataType::Folder(Folder::default()), DAffine2::IDENTITY.to_cols_array()),
-			hasher: DefaultHasher::new(),
+			state_identifier: DefaultHasher::new(),
 		}
 	}
 }
@@ -39,7 +41,7 @@ impl Document {
 	}
 
 	pub fn current_state_identifier(&self) -> u64 {
-		self.hasher.finish()
+		self.state_identifier.finish()
 	}
 
 	pub fn serialize_document(&self) -> String {
@@ -309,7 +311,7 @@ impl Document {
 	/// Mutate the document by applying the `operation` to it. If the operation necessitates a
 	/// reaction from the frontend, responses may be returned.
 	pub fn handle_operation(&mut self, operation: &Operation) -> Result<Option<Vec<DocumentResponse>>, DocumentError> {
-		operation.pseudo_hash().hash(&mut self.hasher);
+		operation.pseudo_hash().hash(&mut self.state_identifier);
 		use DocumentResponse::*;
 
 		let responses = match &operation {

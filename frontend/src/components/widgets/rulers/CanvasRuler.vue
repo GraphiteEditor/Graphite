@@ -10,7 +10,7 @@
 <style lang="scss">
 .canvas-ruler {
 	flex: 1 1 100%;
-	background: var(--color-5-dullgray);
+	background: var(--color-4-dimgray);
 	overflow: hidden;
 	position: relative;
 
@@ -55,10 +55,17 @@ export enum RulerDirection {
 	"Vertical" = "Vertical",
 }
 
+// Apparently the modulo operator in js does not work properly.
+const mod = (n: number, m: number) => {
+	const remain = n % m;
+	return Math.floor(remain >= 0 ? remain : remain + m);
+};
+
 export default defineComponent({
 	props: {
 		direction: { type: String as PropType<RulerDirection>, default: RulerDirection.Vertical },
 		origin: { type: Number, required: true },
+		numberInterval: { type: Number, required: true },
 		majorMarkSpacing: { type: Number, required: true },
 		mediumDivisions: { type: Number, default: 5 },
 		minorDivisions: { type: Number, default: 2 },
@@ -68,9 +75,8 @@ export default defineComponent({
 			const isVertical = this.direction === RulerDirection.Vertical;
 			const lineDirection = isVertical ? "H" : "V";
 
-			const offsetStart = this.origin % this.majorMarkSpacing;
-			const phasingShift = offsetStart < this.majorMarkSpacing ? this.majorMarkSpacing : 0;
-			const shiftedOffsetStart = offsetStart - phasingShift;
+			const offsetStart = mod(this.origin, this.majorMarkSpacing);
+			const shiftedOffsetStart = offsetStart - this.majorMarkSpacing;
 
 			const divisions = this.majorMarkSpacing / this.mediumDivisions / this.minorDivisions;
 			const majorMarksFrequency = this.mediumDivisions * this.minorDivisions;
@@ -91,14 +97,16 @@ export default defineComponent({
 
 			return dPathAttribute;
 		},
-		svgTexts(): {} {
+		svgTexts(): { transform: string; text: number }[] {
 			const isVertical = this.direction === RulerDirection.Vertical;
 
-			const offsetStart = this.origin % this.majorMarkSpacing;
-			const phasingShift = offsetStart < this.majorMarkSpacing ? this.majorMarkSpacing : 0;
-			const shiftedOffsetStart = offsetStart - phasingShift;
+			const offsetStart = mod(this.origin, this.majorMarkSpacing);
+			const shiftedOffsetStart = offsetStart - this.majorMarkSpacing;
 
 			const svgTextCoordinates = [];
+
+			let text = (Math.ceil(-this.origin / this.majorMarkSpacing) - 1) * this.numberInterval;
+
 			for (let location = shiftedOffsetStart; location < this.rulerLength; location += this.majorMarkSpacing) {
 				const destination = Math.round(location);
 				const x = isVertical ? 9 : destination + 2;
@@ -107,7 +115,9 @@ export default defineComponent({
 				let transform = `translate(${x} ${y})`;
 				if (isVertical) transform += " rotate(270)";
 
-				svgTextCoordinates.push({ transform, text: location });
+				svgTextCoordinates.push({ transform, text });
+
+				text += this.numberInterval;
 			}
 
 			return svgTextCoordinates;

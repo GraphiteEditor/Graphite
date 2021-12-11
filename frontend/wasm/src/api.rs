@@ -331,6 +331,12 @@ impl Editor {
 		self.dispatch(message);
 	}
 
+	/// Set snapping disabled / enabled
+	pub fn set_snapping(&mut self, new_status: bool) {
+		let message = DocumentMessage::SetSnapping(new_status);
+		self.dispatch(message);
+	}
+
 	/// Sets the zoom to the value
 	pub fn set_canvas_zoom(&mut self, new_zoom: f64) {
 		let message = MovementMessage::SetCanvasZoom(new_zoom);

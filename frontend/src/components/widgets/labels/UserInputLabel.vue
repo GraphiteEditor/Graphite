@@ -37,6 +37,7 @@
 
 	.input-key {
 		font-family: "Inconsolata", monospace;
+		font-weight: 400;
 		text-align: center;
 		color: var(--color-e-nearwhite);
 		border: 1px;
@@ -75,10 +76,6 @@
 
 		.dim {
 			fill: var(--color-7-middlegray);
-		}
-
-		svg {
-			vertical-align: top;
 		}
 	}
 

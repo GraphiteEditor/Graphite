@@ -1,6 +1,6 @@
 <template>
 	<LayoutCol :class="'document'">
-		<LayoutRow :class="'options-bar'">
+		<LayoutRow :class="'options-bar scrollable-x'">
 			<div class="left side">
 				<DropdownInput :menuEntries="documentModeEntries" v-model:selectedIndex="documentModeSelectionIndex" :drawIcon="true" />
 
@@ -10,7 +10,7 @@
 			</div>
 			<div class="spacer"></div>
 			<div class="right side">
-				<OptionalInput v-model:checked="snappingEnabled" @update:checked="dialog.comingSoon(200)" :icon="'Snapping'" title="Snapping" />
+				<OptionalInput v-model:checked="snappingEnabled" @update:checked="setSnap" :icon="'Snapping'" title="Snapping" />
 				<PopoverButton>
 					<h3>Snapping</h3>
 					<p>The contents of this popover menu are coming soon</p>
@@ -34,7 +34,7 @@
 
 				<Separator :type="SeparatorType.Unrelated" />
 
-				<RadioInput :entries="viewModeEntries" v-model:selectedIndex="viewModeIndex" />
+				<RadioInput :entries="viewModeEntries" v-model:selectedIndex="viewModeIndex" class="combined-after" />
 				<PopoverButton>
 					<h3>View Mode</h3>
 					<p>The contents of this popover menu are coming soon</p>
@@ -42,7 +42,7 @@
 
 				<Separator :type="SeparatorType.Section" />
 
-				<NumberInput @update:value="setRotation" v-model:value="documentRotation" :incrementFactor="15" :unit="`°`" ref="rotation" />
+				<NumberInput @update:value="setRotation" v-model:value="documentRotation" :incrementFactor="15" :unit="`°`" />
 
 				<Separator :type="SeparatorType.Section" />
 
@@ -68,7 +68,7 @@
 		</LayoutRow>
 		<LayoutRow :class="'shelf-and-viewport'">
 			<LayoutCol :class="'shelf'">
-				<div class="tools">
+				<div class="tools scrollable-y">
 					<ShelfItemInput icon="LayoutSelectTool" title="Select Tool (V)" :active="activeTool === 'Select'" :action="() => selectTool('Select')" />
 					<ShelfItemInput icon="LayoutCropTool" title="Crop Tool" :active="activeTool === 'Crop'" :action="() => dialog.comingSoon(289) && selectTool('Crop')" />
 					<ShelfItemInput icon="LayoutNavigateTool" title="Navigate Tool (Z)" :active="activeTool === 'Navigate'" :action="() => dialog.comingSoon(155) && selectTool('Navigate')" />
@@ -111,11 +111,11 @@
 			</LayoutCol>
 			<LayoutCol :class="'viewport'">
 				<LayoutRow :class="'bar-area'">
-					<CanvasRuler :origin="0" :majorMarkSpacing="100" :direction="RulerDirection.Horizontal" :class="'top-ruler'" />
+					<CanvasRuler :origin="rulerOrigin.x" :majorMarkSpacing="rulerSpacing" :numberInterval="rulerInterval" :direction="RulerDirection.Horizontal" :class="'top-ruler'" />
 				</LayoutRow>
 				<LayoutRow :class="'canvas-area'">
 					<LayoutCol :class="'bar-area'">
-						<CanvasRuler :origin="0" :majorMarkSpacing="100" :direction="RulerDirection.Vertical" />
+						<CanvasRuler :origin="rulerOrigin.y" :majorMarkSpacing="rulerSpacing" :numberInterval="rulerInterval" :direction="RulerDirection.Vertical" />
 					</LayoutCol>
 					<LayoutCol :class="'canvas-area'">
 						<div class="canvas" ref="canvas">
@@ -163,6 +163,10 @@
 			align-items: center;
 			margin: 0 4px;
 		}
+
+		.spacer {
+			min-width: 40px;
+		}
 	}
 
 	.shelf-and-viewport {
@@ -171,8 +175,18 @@
 			display: flex;
 			flex-direction: column;
 
+			.tools {
+				flex: 0 1 auto;
+			}
+
+			.spacer {
+				flex: 1 0 auto;
+				min-height: 8px;
+			}
+
 			.working-colors .swap-and-reset {
-				font-size: 0;
+				flex: 0 0 auto;
+				display: flex;
 			}
 		}
 
@@ -224,7 +238,7 @@
 <script lang="ts">
 import { defineComponent } from "vue";
 
-import { UpdateCanvas, UpdateScrollbars, SetActiveTool, SetCanvasZoom, SetCanvasRotation } from "@/utilities/js-messages";
+import { UpdateCanvas, UpdateScrollbars, UpdateRulers, SetActiveTool, SetCanvasZoom, SetCanvasRotation } from "@/utilities/js-messages";
 import { SeparatorDirection, SeparatorType } from "@/components/widgets/widgets";
 
 import LayoutRow from "@/components/layout/LayoutRow.vue";
@@ -247,6 +261,9 @@ import { SectionsOfMenuListEntries } from "@/components/widgets/floating-menus/M
 export default defineComponent({
 	inject: ["editor", "dialog"],
 	methods: {
+		async setSnap(newStatus: boolean) {
+			this.editor.instance.set_snapping(newStatus);
+		},
 		async viewportResize() {
 			const canvas = this.$refs.canvas as HTMLElement;
 			// Get the width and height rounded up to the nearest even number because resizing is centered and dividing an odd number by 2 for centering causes antialiasing
@@ -309,6 +326,12 @@ export default defineComponent({
 			this.scrollbarMultiplier = updateScrollbars.multiplier;
 		});
 
+		this.editor.dispatcher.subscribeJsMessage(UpdateRulers, (updateRulers) => {
+			this.rulerOrigin = updateRulers.origin;
+			this.rulerSpacing = updateRulers.spacing;
+			this.rulerInterval = updateRulers.interval;
+		});
+
 		this.editor.dispatcher.subscribeJsMessage(SetActiveTool, (setActiveTool) => {
 			this.activeTool = setActiveTool.tool_name;
 			this.activeToolOptions = setActiveTool.tool_options;
@@ -358,6 +381,9 @@ export default defineComponent({
 			scrollbarPos: { x: 0.5, y: 0.5 },
 			scrollbarSize: { x: 0.5, y: 0.5 },
 			scrollbarMultiplier: { x: 0, y: 0 },
+			rulerOrigin: { x: 0, y: 0 },
+			rulerSpacing: 100,
+			rulerInterval: 100,
 			IncrementBehavior,
 			IncrementDirection,
 			MenuDirection,

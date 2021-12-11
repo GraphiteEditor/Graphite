@@ -103,6 +103,12 @@ function onMouseScroll(editor: EditorState, e: WheelEvent) {
 	const target = e.target && (e.target as HTMLElement);
 	const inCanvas = target && target.closest(".canvas");
 
+	const horizontalScrollableElement = e.target instanceof Element && e.target.closest(".scrollable-x");
+	if (horizontalScrollableElement && e.deltaY !== 0) {
+		horizontalScrollableElement.scrollTo(horizontalScrollableElement.scrollLeft + e.deltaY, 0);
+		return;
+	}
+
 	if (inCanvas) {
 		e.preventDefault();
 		const modifiers = makeModifiersBitfield(e);
@@ -123,7 +129,17 @@ function onWindowResize(editor: EditorState, container: Element) {
 	if (boundsOfViewports.length > 0) editor.instance.bounds_of_viewports(data);
 }
 
-function makeModifiersBitfield(e: MouseEvent | KeyboardEvent): number {
+export function onBeforeUnload(event: BeforeUnloadEvent) {
+	// const allDocumentsSaved = documents.documents.reduce((acc, doc) => doc.isSaved && acc, true);
+	// TODO: Fix detection if document is actually saved
+	const allDocumentsSaved = true;
+	if (!allDocumentsSaved) {
+		event.returnValue = "Unsaved work will be lost if the web browser tab is closed. Close anyway?";
+		event.preventDefault();
+	}
+}
+
+export function makeModifiersBitfield(e: MouseEvent | KeyboardEvent): number {
 	return Number(e.ctrlKey) | (Number(e.shiftKey) << 1) | (Number(e.altKey) << 2);
 }
 

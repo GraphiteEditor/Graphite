@@ -101,7 +101,7 @@ impl DocumentsMessageHandler {
 
 	// Returns an iterator over the open documents in order
 	pub fn ordered_document_iterator(&self) -> impl Iterator<Item = &DocumentMessageHandler> {
-		self.document_ids.iter().map(move |id| self.documents.get(id).expect("document id was not found in the document hashmap"))
+		self.document_ids.iter().map(|id| self.documents.get(id).expect("document id was not found in the document hashmap"))
 	}
 }
 

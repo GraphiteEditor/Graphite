@@ -132,6 +132,7 @@
 
 			.layer {
 				display: flex;
+				min-width: 0;
 				align-items: center;
 				border-radius: 2px;
 				background: var(--color-5-dullgray);
@@ -150,6 +151,7 @@
 					height: 100%;
 					background: white;
 					border-radius: 2px;
+					flex: 0 0 auto;
 
 					svg {
 						width: calc(100% - 4px);
@@ -161,6 +163,20 @@
 				.layer-type-icon {
 					margin-left: 8px;
 					margin-right: 4px;
+					flex: 0 0 auto;
+				}
+
+				.layer-name {
+					display: flex;
+					min-width: 0;
+					flex: 1 1 100%;
+					margin-right: 8px;
+
+					span {
+						text-overflow: ellipsis;
+						white-space: nowrap;
+						overflow: hidden;
+					}
 				}
 			}
 
@@ -244,8 +260,8 @@ export default defineComponent({
 			opacityNumberInputDisabled: true,
 			// TODO: replace with BigUint64Array as index
 			layerCache: new Map() as Map<string, LayerPanelEntry>,
-			layers: [] as Array<LayerPanelEntry>,
-			layerDepths: [] as Array<number>,
+			layers: [] as LayerPanelEntry[],
+			layerDepths: [] as number[],
 			selectionRangeStartLayer: undefined as undefined | LayerPanelEntry,
 			selectionRangeEndLayer: undefined as undefined | LayerPanelEntry,
 			opacity: 100,
@@ -265,7 +281,7 @@ export default defineComponent({
 			this.editor.instance.toggle_layer_expansion(path);
 		},
 		async setLayerBlendMode() {
-			const blendMode = this.blendModeEntries.flat()[this.blendModeSelectedIndex].value as BlendMode;
+			const blendMode = this.blendModeEntries.flat()[this.blendModeSelectedIndex].value;
 			if (blendMode) {
 				this.editor.instance.set_blend_mode_for_selected_layers(blendMode);
 			}
@@ -389,11 +405,9 @@ export default defineComponent({
 	},
 	mounted() {
 		this.editor.dispatcher.subscribeJsMessage(DisplayFolderTreeStructure, (displayFolderTreeStructure) => {
-			if (!displayFolderTreeStructure) return;
-
-			const path = [] as Array<bigint>;
-			this.layers = [] as Array<LayerPanelEntry>;
-			function recurse(folder: DisplayFolderTreeStructure, layers: Array<LayerPanelEntry>, cache: Map<string, LayerPanelEntry>) {
+			const path = [] as bigint[];
+			this.layers = [] as LayerPanelEntry[];
+			function recurse(folder: DisplayFolderTreeStructure, layers: LayerPanelEntry[], cache: Map<string, LayerPanelEntry>) {
 				folder.children.forEach((item) => {
 					// TODO: fix toString
 					path.push(BigInt(item.layerId.toString()));
@@ -411,8 +425,11 @@ export default defineComponent({
 			const responseLayer = updateLayer.data;
 
 			const layer = this.layerCache.get(responsePath.toString());
-			if (layer) Object.assign(this.layerCache.get(responsePath.toString()), responseLayer);
-			else this.layerCache.set(responsePath.toString(), responseLayer);
+			if (layer) {
+				Object.assign(this.layerCache.get(responsePath.toString()), responseLayer);
+			} else {
+				this.layerCache.set(responsePath.toString(), responseLayer);
+			}
 			this.setBlendModeForSelectedLayers();
 			this.setOpacityForSelectedLayers();
 		});

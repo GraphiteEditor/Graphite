@@ -53,11 +53,15 @@
 	.icon-label,
 	.text-label {
 		display: inline-block;
-		vertical-align: top;
 	}
 
 	.text-label {
 		margin: 0 4px;
+	}
+
+	&.combined-before button:first-of-type,
+	&.combined-after button:last-of-type {
+		border-radius: 0;
 	}
 }
 </style>
@@ -73,10 +77,10 @@ export interface RadioEntryData {
 	label?: string;
 	icon?: string;
 	tooltip?: string;
-	action?: Function;
+	action?: () => void;
 }
 
-export type RadioEntries = Array<RadioEntryData>;
+export type RadioEntries = RadioEntryData[];
 
 export default defineComponent({
 	props: {

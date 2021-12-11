@@ -32,7 +32,20 @@ fn panic_hook(info: &panic::PanicInfo) {
 	//handle_response(FrontendMessage::DisplayPanic { panic_info, title, description });
 }
 
-#[wasm_bindgen(module = "/../src/utilities/wasm-loader-exports.ts")]
+// TODO: Fix Frontend Error Handling
+// #[wasm_bindgen(module = "/../src/utilities/wasm-loader-exports.ts")]
+// 	let js_return_value = handleJsMessage(message_type, message_data);
+// 	if let Err(error) = js_return_value {
+// 		log::error!(
+// 			"While handling FrontendMessage \"{:?}\", JavaScript threw an error: {:?}",
+// 			message.to_discriminant().local_name(),
+// 			error,
+// 		)
+// 	}
+// }
+
+// The JavaScript function to call into with each FrontendMessage
+#[wasm_bindgen(module = "/../src/utilities/js-message-dispatcher-binding.ts")]
 extern "C" {
 	// The JavaScript function to call into with each FrontendMessage
 	#[wasm_bindgen(catch)]

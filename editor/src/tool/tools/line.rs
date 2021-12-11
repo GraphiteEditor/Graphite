@@ -1,6 +1,7 @@
 use crate::consts::LINE_ROTATE_SNAP_ANGLE;
 use crate::input::keyboard::Key;
 use crate::input::{mouse::ViewportPosition, InputPreprocessor};
+use crate::tool::snapping::SnapHandler;
 use crate::tool::{DocumentToolData, Fsm, ToolActionHandlerData, ToolOptions, ToolType};
 use crate::{document::DocumentMessageHandler, message_prelude::*};
 use glam::{DAffine2, DVec2};
@@ -53,6 +54,7 @@ struct LineToolData {
 	angle: f64,
 	weight: u32,
 	path: Option<Vec<LayerId>>,
+	snap_handler: SnapHandler,
 }
 
 impl Fsm for LineToolFsmState {
@@ -61,7 +63,7 @@ impl Fsm for LineToolFsmState {
 	fn transition(
 		self,
 		event: ToolMessage,
-		_document: &DocumentMessageHandler,
+		document: &DocumentMessageHandler,
 		tool_data: &DocumentToolData,
 		data: &mut Self::ToolData,
 		input: &InputPreprocessor,
@@ -72,7 +74,9 @@ impl Fsm for LineToolFsmState {
 		if let ToolMessage::Line(event) = event {
 			match (self, event) {
 				(Ready, DragStart) => {
-					data.drag_start = input.mouse.position;
+					data.snap_handler.start_snap(document, document.all_layers_sorted(), &[]);
+					data.drag_start = data.snap_handler.snap_position(document, input.mouse.position);
+
 					responses.push_back(DocumentMessage::StartTransaction.into());
 					data.path = Some(vec![generate_uuid()]);
 					responses.push_back(DocumentMessage::DeselectAllLayers.into());
@@ -95,7 +99,7 @@ impl Fsm for LineToolFsmState {
 					Dragging
 				}
 				(Dragging, Redraw { center, snap_angle, lock_angle }) => {
-					data.drag_current = input.mouse.position;
+					data.drag_current = data.snap_handler.snap_position(document, input.mouse.position);
 
 					let values: Vec<_> = [lock_angle, snap_angle, center].iter().map(|k| input.keyboard.get(*k as usize)).collect();
 					responses.push_back(generate_transform(data, values[0], values[1], values[2]));
@@ -103,7 +107,8 @@ impl Fsm for LineToolFsmState {
 					Dragging
 				}
 				(Dragging, DragStop) => {
-					data.drag_current = input.mouse.position;
+					data.drag_current = data.snap_handler.snap_position(document, input.mouse.position);
+					data.snap_handler.cleanup();
 
 					// TODO; introduce comparison threshold when operating with canvas coordinates (https://github.com/GraphiteEditor/Graphite/issues/100)
 					match data.drag_start == input.mouse.position {
@@ -116,6 +121,7 @@ impl Fsm for LineToolFsmState {
 					Ready
 				}
 				(Dragging, Abort) => {
+					data.snap_handler.cleanup();
 					responses.push_back(DocumentMessage::AbortTransaction.into());
 					data.path = None;
 					Ready

@@ -3,6 +3,8 @@ import { TextButtonWidget } from "@/components/widgets/widgets";
 import { DisplayError, DisplayPanic } from "@/utilities/js-messages";
 import { EditorState } from "./wasm-loader";
 
+// TODO: Compare this file with current version
+
 export function initErrorHandling(editor: EditorState, dialogState: DialogState) {
 	// Graphite error dialog
 	editor.dispatcher.subscribeJsMessage(DisplayError, (displayError) => {
