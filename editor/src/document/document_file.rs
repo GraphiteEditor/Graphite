@@ -124,6 +124,7 @@ pub enum DocumentMessage {
 	DocumentHistoryBackward,
 	DocumentHistoryForward,
 	ClearOverlays,
+	SetViewMode(u8),
 	NudgeSelectedLayers(f64, f64),
 	AlignSelectedLayers(AlignAxis, AlignAggregate),
 	MoveSelectedLayersTo {
@@ -561,6 +562,9 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				for path in self.layer_data.keys().filter(|path| self.graphene_document.layer(path).unwrap().overlay).cloned() {
 					responses.push_front(DocumentOperation::DeleteLayer { path }.into());
 				}
+			}
+			SetViewMode(idx) => {
+				log::debug!("view mode set: {:?}", idx);
 			}
 			DuplicateSelectedLayers => {
 				self.backup(responses);

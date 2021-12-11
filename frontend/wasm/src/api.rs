@@ -333,6 +333,13 @@ pub fn set_snapping(new_status: bool) {
 	dispatch(message);
 }
 
+/// Swap between view modes
+#[wasm_bindgen]
+pub fn set_view_mode(new_mode: u8) {
+	let message = DocumentMessage::SetViewMode(new_mode);
+	dispatch(message);
+}
+
 /// Sets the zoom to the value
 #[wasm_bindgen]
 pub fn set_canvas_zoom(new_zoom: f64) {

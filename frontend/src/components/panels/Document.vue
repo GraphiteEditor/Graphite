@@ -271,10 +271,14 @@ const documentModeEntries: SectionsOfMenuListEntries = [
 	],
 ];
 const viewModeEntries: RadioEntries = [
-	{ value: "normal", icon: "ViewModeNormal", tooltip: "View Mode: Normal" },
-	{ value: "outline", icon: "ViewModeOutline", tooltip: "View Mode: Outline", action: () => comingSoon(319) },
+	{ value: "normal", icon: "ViewModeNormal", tooltip: "View Mode: Normal", action: () => setViewMode(0) },
+	{ value: "outline", icon: "ViewModeOutline", tooltip: "View Mode: Outline", action: () => setViewMode(1) },
 	{ value: "pixels", icon: "ViewModePixels", tooltip: "View Mode: Pixels", action: () => comingSoon(320) },
 ];
+
+async function setViewMode(newViewMode: number) {
+	(await wasm).set_view_mode(newViewMode);
+}
 
 export default defineComponent({
 	methods: {
