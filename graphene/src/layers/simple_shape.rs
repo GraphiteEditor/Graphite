@@ -29,8 +29,10 @@ pub struct Shape {
 	pub solid: bool,
 }
 
+
 impl LayerData for Shape {
 	fn render(&mut self, svg: &mut String, transforms: &mut Vec<DAffine2>) {
+		log::debug!("solid: {:?}", self.solid);
 		let mut path = self.path.clone();
 		let transform = self.transform(transforms);
 		let inverse = transform.inverse();
@@ -45,7 +47,7 @@ impl LayerData for Shape {
 			let _ = svg.write_str(&(entry.to_string() + if i != 5 { "," } else { "" }));
 		});
 		let _ = svg.write_str(r#")">"#);
-		let _ = write!(svg, r#"<path d="{}" {} />"#, path.to_svg(), self.style.render());
+		let _ = write!(svg, r#"<path d="{}" {} />"#, path.to_svg(), self.style.render(self.solid));
 		let _ = svg.write_str("</g>");
 	}
 

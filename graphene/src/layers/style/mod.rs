@@ -83,12 +83,13 @@ impl PathStyle {
 	pub fn clear_stroke(&mut self) {
 		self.stroke = None;
 	}
-	pub fn render(&self) -> String {
+	pub fn render(&self, solid: bool) -> String {
 		format!(
 			"{}{}",
-			match self.fill {
-				Some(fill) => fill.render(),
-				None => String::new(),
+			match (solid, self.fill) {
+				(false, _) => Fill::none().render(),
+				(true, Some(fill)) => fill.render(),
+				(true, None) => String::new(),
 			},
 			match self.stroke {
 				Some(stroke) => stroke.render(),

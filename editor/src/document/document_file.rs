@@ -16,7 +16,7 @@ use kurbo::PathSeg;
 use log::warn;
 use serde::{Deserialize, Serialize};
 
-use graphene::layers::BlendMode;
+use graphene::layers::{BlendMode, simple_shape::Shape as GrapheneShape};
 use graphene::{document::Document as GrapheneDocument, layers::LayerDataType, DocumentError, LayerId};
 use graphene::{DocumentResponse, Operation as DocumentOperation};
 
@@ -565,6 +565,13 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			}
 			SetViewMode(idx) => {
 				log::debug!("view mode set: {:?}", idx);
+				GrapheneDocument::visit_all_layers(&mut self.graphene_document.root, &mut |s: &mut GrapheneShape| {s.solid = idx == 0;});
+				responses.push_back(
+					FrontendMessage::UpdateCanvas {
+						document: self.graphene_document.render_root(),
+					}
+					.into(),
+				);
 			}
 			DuplicateSelectedLayers => {
 				self.backup(responses);

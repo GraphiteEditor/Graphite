@@ -154,6 +154,22 @@ impl Document {
 		Ok(())
 	}
 
+	/// Visit each layer recursively, applies modify_shape to each Shape
+	/// Currently used to swap between viewmodes
+	pub fn visit_all_layers<F: FnMut(&mut Shape)->()>(layer: &mut Layer, modify_shape: &mut F) {
+		match layer.data{
+			LayerDataType::Shape(ref mut shape) => {
+				modify_shape(shape);
+				layer.cache_dirty = true; //this layer should be updated on next render pass
+			},
+			LayerDataType::Folder(ref mut folder) => {
+				for sub_layer in folder.layers_mut(){
+					Document::visit_all_layers(sub_layer, modify_shape);
+				}
+			},
+		}
+	}
+
 	/// Adds a new layer to the folder specified by `path`.
 	/// Passing a negative `insert_index` indexes relative to the end.
 	/// -1 is equivalent to adding the layer to the top.
