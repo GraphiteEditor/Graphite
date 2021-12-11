@@ -53,22 +53,21 @@
 <script lang="ts">
 import { defineComponent } from "vue";
 
-import { EditorWasm } from "@/utilities/wasm-loader";
-
 import IconLabel from "@/components/widgets/labels/IconLabel.vue";
 import { ApplicationPlatform } from "@/components/window/MainWindow.vue";
 import MenuList, { MenuListEntry, MenuListEntries } from "@/components/widgets/floating-menus/MenuList.vue";
 import { MenuDirection } from "@/components/widgets/floating-menus/FloatingMenu.vue";
+import { EditorState } from "@/utilities/wasm-loader";
 
-function makeMenuEntries(editor: EditorWasm): MenuListEntries {
+function makeMenuEntries(editor: EditorState): MenuListEntries {
 	return [
 		{
 			label: "File",
 			ref: undefined,
 			children: [
 				[
-					{ label: "New", icon: "File", shortcut: ["Ctrl", "N"], shortcutRequiresLock: true, action: async () => editor.new_document() },
-					{ label: "Open…", shortcut: ["Ctrl", "O"], action: async () => editor.open_document() },
+					{ label: "New", icon: "File", shortcut: ["Ctrl", "N"], shortcutRequiresLock: true, action: async () => editor.instance.new_document() },
+					{ label: "Open…", shortcut: ["Ctrl", "O"], action: async () => editor.instance.open_document() },
 					{
 						label: "Open Recent",
 						shortcut: ["Ctrl", "⇧", "O"],
@@ -85,18 +84,18 @@ function makeMenuEntries(editor: EditorWasm): MenuListEntries {
 					},
 				],
 				[
-					{ label: "Close", shortcut: ["Ctrl", "W"], shortcutRequiresLock: true, action: async () => editor.close_active_document_with_confirmation() },
-					{ label: "Close All", shortcut: ["Ctrl", "Alt", "W"], action: async () => editor.close_all_documents_with_confirmation() },
+					{ label: "Close", shortcut: ["Ctrl", "W"], shortcutRequiresLock: true, action: async () => editor.instance.close_active_document_with_confirmation() },
+					{ label: "Close All", shortcut: ["Ctrl", "Alt", "W"], action: async () => editor.instance.close_all_documents_with_confirmation() },
 				],
 				[
-					{ label: "Save", shortcut: ["Ctrl", "S"], action: async () => editor.save_document() },
-					{ label: "Save As…", shortcut: ["Ctrl", "⇧", "S"], action: async () => editor.save_document() },
+					{ label: "Save", shortcut: ["Ctrl", "S"], action: async () => editor.instance.save_document() },
+					{ label: "Save As…", shortcut: ["Ctrl", "⇧", "S"], action: async () => editor.instance.save_document() },
 					{ label: "Save All", shortcut: ["Ctrl", "Alt", "S"] },
 					{ label: "Auto-Save", checkbox: true, checked: true },
 				],
 				[
 					{ label: "Import…", shortcut: ["Ctrl", "I"] },
-					{ label: "Export…", shortcut: ["Ctrl", "E"], action: async () => editor.export_document() },
+					{ label: "Export…", shortcut: ["Ctrl", "E"], action: async () => editor.instance.export_document() },
 				],
 				[{ label: "Quit", shortcut: ["Ctrl", "Q"] }],
 			],
@@ -106,8 +105,8 @@ function makeMenuEntries(editor: EditorWasm): MenuListEntries {
 			ref: undefined,
 			children: [
 				[
-					{ label: "Undo", shortcut: ["Ctrl", "Z"], action: async () => editor.undo() },
-					{ label: "Redo", shortcut: ["Ctrl", "⇧", "Z"], action: async () => editor.redo() },
+					{ label: "Undo", shortcut: ["Ctrl", "Z"], action: async () => editor.instance.undo() },
+					{ label: "Redo", shortcut: ["Ctrl", "⇧", "Z"], action: async () => editor.instance.redo() },
 				],
 				[
 					{ label: "Cut", shortcut: ["Ctrl", "X"] },
@@ -121,16 +120,16 @@ function makeMenuEntries(editor: EditorWasm): MenuListEntries {
 			ref: undefined,
 			children: [
 				[
-					{ label: "Select All", shortcut: ["Ctrl", "A"], action: async () => editor.select_all_layers() },
-					{ label: "Deselect All", shortcut: ["Ctrl", "Alt", "A"], action: async () => editor.deselect_all_layers() },
+					{ label: "Select All", shortcut: ["Ctrl", "A"], action: async () => editor.instance.select_all_layers() },
+					{ label: "Deselect All", shortcut: ["Ctrl", "Alt", "A"], action: async () => editor.instance.deselect_all_layers() },
 					{
 						label: "Order",
 						children: [
 							[
-								{ label: "Raise To Front", shortcut: ["Ctrl", "Shift", "]"], action: async () => editor.reorder_selected_layers(editor.i32_max()) },
-								{ label: "Raise", shortcut: ["Ctrl", "]"], action: async () => editor.reorder_selected_layers(1) },
-								{ label: "Lower", shortcut: ["Ctrl", "["], action: async () => editor.reorder_selected_layers(-1) },
-								{ label: "Lower to Back", shortcut: ["Ctrl", "Shift", "["], action: async () => editor.reorder_selected_layers(editor.i32_min()) },
+								{ label: "Raise To Front", shortcut: ["Ctrl", "Shift", "]"], action: async () => editor.instance.reorder_selected_layers(editor.rawWasm.i32_max()) },
+								{ label: "Raise", shortcut: ["Ctrl", "]"], action: async () => editor.instance.reorder_selected_layers(1) },
+								{ label: "Lower", shortcut: ["Ctrl", "["], action: async () => editor.instance.reorder_selected_layers(-1) },
+								{ label: "Lower to Back", shortcut: ["Ctrl", "Shift", "["], action: async () => editor.instance.reorder_selected_layers(editor.rawWasm.i32_min()) },
 							],
 						],
 					},
@@ -159,7 +158,7 @@ function makeMenuEntries(editor: EditorWasm): MenuListEntries {
 					{ label: "Graphite License", action: () => window.open("https://raw.githubusercontent.com/GraphiteEditor/Graphite/master/LICENSE.txt", "_blank") },
 					{ label: "Third-Party Licenses", action: () => window.open("/third-party-licenses.txt", "_blank") },
 				],
-				[{ label: "Debug: Panic (DANGER)", action: async () => editor.intentional_panic() }],
+				[{ label: "Debug: Panic (DANGER)", action: async () => editor.rawWasm.intentional_panic() }],
 			],
 		},
 	];

@@ -1,13 +1,11 @@
 import { DialogState } from "@/state/dialog";
 import { TextButtonWidget } from "@/components/widgets/widgets";
-import { ResponseType, Response, DisplayError, DisplayPanic } from "@/state/response-handler";
-import { EditorWasm } from "./wasm-loader";
+import { DisplayError, DisplayPanic } from "@/utilities/js-messages";
+import { EditorState } from "./wasm-loader";
 
-export function initErrorHandling(editor: EditorWasm, dialogState: DialogState) {
+export function initErrorHandling(editor: EditorState, dialogState: DialogState) {
 	// Graphite error dialog
-	editor.registerResponseHandler(ResponseType.DisplayError, (responseData: Response) => {
-		const data = responseData as DisplayError;
-
+	editor.dispatcher.subscribeJsMessage(DisplayError, (displayError) => {
 		const okButton: TextButtonWidget = {
 			kind: "TextButton",
 			callback: async () => dialogState.dismissDialog(),
@@ -15,17 +13,15 @@ export function initErrorHandling(editor: EditorWasm, dialogState: DialogState) 
 		};
 		const buttons = [okButton];
 
-		dialogState.createDialog("Warning", data.title, data.description, buttons);
+		dialogState.createDialog("Warning", displayError.title, displayError.description, buttons);
 	});
 
 	// Code panic dialog and console error
-	editor.registerResponseHandler(ResponseType.DisplayPanic, (responseData: Response) => {
-		const data = responseData as DisplayPanic;
-
+	editor.dispatcher.subscribeJsMessage(DisplayPanic, (displayPanic) => {
 		// eslint-disable-next-line @typescript-eslint/no-explicit-any
 		(Error as any).stackTraceLimit = Infinity;
 		const stackTrace = new Error().stack || "";
-		const panicDetails = `${data.panic_info}\n\n${stackTrace}`;
+		const panicDetails = `${displayPanic.panic_info}\n\n${stackTrace}`;
 
 		// eslint-disable-next-line no-console
 		console.error(panicDetails);
@@ -47,7 +43,7 @@ export function initErrorHandling(editor: EditorWasm, dialogState: DialogState) 
 		};
 		const buttons = [reloadButton, copyErrorLogButton, reportOnGithubButton];
 
-		dialogState.createDialog("Warning", data.title, data.description, buttons);
+		dialogState.createDialog("Warning", displayPanic.title, displayPanic.description, buttons);
 	});
 }
 

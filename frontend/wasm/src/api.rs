@@ -2,7 +2,7 @@
 // It serves as a thin wrapper over the editor backend API that relies
 // on the dispatcher messaging system and more complex Rust data types.
 
-use crate::handleResponse;
+use crate::handleJsMessage;
 use crate::helpers::Error;
 use crate::type_translators::{translate_blend_mode, translate_key, translate_tool_type};
 use crate::EDITOR_HAS_CRASHED;
@@ -52,7 +52,7 @@ impl Editor {
 		let message_type = message.to_discriminant().local_name();
 		let message_data = JsValue::from_serde(&message).expect("Failed to serialize FrontendMessage");
 
-		let js_return_value = handleResponse(&self.handle_response, message_type, message_data);
+		let js_return_value = handleJsMessage(&self.handle_response, message_type, message_data);
 		if let Err(error) = js_return_value {
 			log::error!(
 				"While handling FrontendMessage \"{:?}\", JavaScript threw an error: {:?}",
@@ -120,7 +120,7 @@ impl Editor {
 	}
 
 	pub fn get_open_documents_list(&mut self) {
-		let message = DocumentsMessage::GetOpenDocumentsList;
+		let message = DocumentsMessage::UpdateOpenDocumentsList;
 		self.dispatch(message);
 	}
 

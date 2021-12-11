@@ -69,10 +69,10 @@
 import { defineComponent } from "vue";
 
 import { rgbToDecimalRgb, RGB } from "@/utilities/color";
-import { ResponseType, Response, UpdateWorkingColors } from "@/state/response-handler";
 
 import ColorPicker from "@/components/widgets/floating-menus/ColorPicker.vue";
 import FloatingMenu, { MenuDirection, MenuType } from "@/components/widgets/floating-menus/FloatingMenu.vue";
+import { UpdateWorkingColors } from "@/utilities/js-messages";
 
 export default defineComponent({
 	inject: ["editor"],
@@ -112,7 +112,7 @@ export default defineComponent({
 			button.style.setProperty("--swatch-color", `rgba(${color.r}, ${color.g}, ${color.b}, ${color.a})`);
 
 			color = rgbToDecimalRgb(this.primaryColor);
-			this.editor.update_primary_color(color.r, color.g, color.b, color.a);
+			this.editor.instance.update_primary_color(color.r, color.g, color.b, color.a);
 		},
 
 		async updateSecondaryColor() {
@@ -121,7 +121,7 @@ export default defineComponent({
 			button.style.setProperty("--swatch-color", `rgba(${color.r}, ${color.g}, ${color.b}, ${color.a})`);
 
 			color = rgbToDecimalRgb(this.secondaryColor);
-			this.editor.update_secondary_color(color.r, color.g, color.b, color.a);
+			this.editor.instance.update_secondary_color(color.r, color.g, color.b, color.a);
 		},
 	},
 	data() {
@@ -133,10 +133,9 @@ export default defineComponent({
 		};
 	},
 	mounted() {
-		this.editor.registerResponseHandler(ResponseType.UpdateWorkingColors, (responseData: Response) => {
-			const colorData = responseData as UpdateWorkingColors;
-			if (!colorData) return;
-			const { primary, secondary } = colorData;
+		this.editor.dispatcher.subscribeJsMessage(UpdateWorkingColors, (updateWorkingColors) => {
+			if (!updateWorkingColors) return;
+			const { primary, secondary } = updateWorkingColors;
 
 			this.primaryColor = { r: primary.red, g: primary.green, b: primary.blue, a: primary.alpha };
 			let color = this.primaryColor;

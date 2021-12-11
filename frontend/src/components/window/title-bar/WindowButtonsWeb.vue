@@ -34,13 +34,13 @@ export default defineComponent({
 	inject: ["fullscreen"],
 	methods: {
 		async handleClick() {
-			if (this.fullscreen.state.windowFullscreen) this.fullscreen.exitFullscreen();
+			if (this.fullscreen.isFullscreen()) this.fullscreen.exitFullscreen();
 			else this.fullscreen.enterFullscreen();
 		},
 	},
 	computed: {
 		requestFullscreenHotkeys() {
-			return this.fullscreen.keyboardLockApiSupported && !this.fullscreen.state.keyboardLocked;
+			return this.fullscreen.keyboardLockApiSupported && !this.fullscreen.isKeyboardLocked();
 		},
 	},
 	components: {

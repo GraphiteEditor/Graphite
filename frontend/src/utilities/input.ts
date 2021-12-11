@@ -1,6 +1,6 @@
 import { DialogState } from "@/state/dialog";
 import { FullscreenState } from "@/state/fullscreen";
-import { EditorWasm } from "./wasm-loader";
+import { EditorState } from "./wasm-loader";
 
 let viewportMouseInteractionOngoing = false;
 
@@ -34,11 +34,11 @@ function shouldRedirectKeyboardEventToBackend(e: KeyboardEvent, fullscreenState:
 	return true;
 }
 
-function onKeyDown(editor: EditorWasm, fullscreenState: FullscreenState, dialogState: DialogState, e: KeyboardEvent) {
+function onKeyDown(editor: EditorState, fullscreenState: FullscreenState, dialogState: DialogState, e: KeyboardEvent) {
 	if (shouldRedirectKeyboardEventToBackend(e, fullscreenState, dialogState)) {
 		e.preventDefault();
 		const modifiers = makeModifiersBitfield(e);
-		editor.on_key_down(e.key, modifiers);
+		editor.instance.on_key_down(e.key, modifiers);
 		return;
 	}
 
@@ -53,24 +53,24 @@ function onKeyDown(editor: EditorWasm, fullscreenState: FullscreenState, dialogS
 	}
 }
 
-function onKeyUp(editor: EditorWasm, fullscreenState: FullscreenState, dialogState: DialogState, e: KeyboardEvent) {
+function onKeyUp(editor: EditorState, fullscreenState: FullscreenState, dialogState: DialogState, e: KeyboardEvent) {
 	if (shouldRedirectKeyboardEventToBackend(e, fullscreenState, dialogState)) {
 		e.preventDefault();
 		const modifiers = makeModifiersBitfield(e);
-		editor.on_key_up(e.key, modifiers);
+		editor.instance.on_key_up(e.key, modifiers);
 	}
 }
 
 // Mouse events
 
-function onMouseMove(editor: EditorWasm, e: MouseEvent) {
+function onMouseMove(editor: EditorState, e: MouseEvent) {
 	if (!e.buttons) viewportMouseInteractionOngoing = false;
 
 	const modifiers = makeModifiersBitfield(e);
-	editor.on_mouse_move(e.clientX, e.clientY, e.buttons, modifiers);
+	editor.instance.on_mouse_move(e.clientX, e.clientY, e.buttons, modifiers);
 }
 
-function onMouseDown(editor: EditorWasm, dialogState: DialogState, e: MouseEvent) {
+function onMouseDown(editor: EditorState, dialogState: DialogState, e: MouseEvent) {
 	const target = e.target && (e.target as HTMLElement);
 	const inCanvas = target && target.closest(".canvas");
 	const inDialog = target && target.closest(".dialog-modal .floating-menu-content");
@@ -88,29 +88,29 @@ function onMouseDown(editor: EditorWasm, dialogState: DialogState, e: MouseEvent
 
 	if (viewportMouseInteractionOngoing) {
 		const modifiers = makeModifiersBitfield(e);
-		editor.on_mouse_down(e.clientX, e.clientY, e.buttons, modifiers);
+		editor.instance.on_mouse_down(e.clientX, e.clientY, e.buttons, modifiers);
 	}
 }
 
-function onMouseUp(editor: EditorWasm, e: MouseEvent) {
+function onMouseUp(editor: EditorState, e: MouseEvent) {
 	if (!e.buttons) viewportMouseInteractionOngoing = false;
 
 	const modifiers = makeModifiersBitfield(e);
-	editor.on_mouse_up(e.clientX, e.clientY, e.buttons, modifiers);
+	editor.instance.on_mouse_up(e.clientX, e.clientY, e.buttons, modifiers);
 }
 
-function onMouseScroll(editor: EditorWasm, e: WheelEvent) {
+function onMouseScroll(editor: EditorState, e: WheelEvent) {
 	const target = e.target && (e.target as HTMLElement);
 	const inCanvas = target && target.closest(".canvas");
 
 	if (inCanvas) {
 		e.preventDefault();
 		const modifiers = makeModifiersBitfield(e);
-		editor.on_mouse_scroll(e.clientX, e.clientY, e.buttons, e.deltaX, e.deltaY, e.deltaZ, modifiers);
+		editor.instance.on_mouse_scroll(e.clientX, e.clientY, e.buttons, e.deltaX, e.deltaY, e.deltaZ, modifiers);
 	}
 }
 
-function onWindowResize(editor: EditorWasm, container: Element) {
+function onWindowResize(editor: EditorState, container: Element) {
 	const viewports = Array.from(container.querySelectorAll(".canvas"));
 	const boundsOfViewports = viewports.map((canvas) => {
 		const bounds = canvas.getBoundingClientRect();
@@ -120,7 +120,7 @@ function onWindowResize(editor: EditorWasm, container: Element) {
 	const flattened = boundsOfViewports.flat();
 	const data = Float64Array.from(flattened);
 
-	if (boundsOfViewports.length > 0) editor.bounds_of_viewports(data);
+	if (boundsOfViewports.length > 0) editor.instance.bounds_of_viewports(data);
 }
 
 function makeModifiersBitfield(e: MouseEvent | KeyboardEvent): number {
@@ -128,9 +128,9 @@ function makeModifiersBitfield(e: MouseEvent | KeyboardEvent): number {
 }
 
 // We need to keep a reference to any listener we add, otherwise we can't remove it.
-const activeListeners = new WeakMap<EditorWasm, () => void>();
+const activeListeners = new WeakMap<EditorState, () => void>();
 
-export function mountInput(editor: EditorWasm, container: HTMLElement, fullscreenState: FullscreenState, dialogState: DialogState) {
+export function mountInput(editor: EditorState, container: HTMLElement, fullscreenState: FullscreenState, dialogState: DialogState) {
 	const resize = () => onWindowResize(editor, container);
 	const contextmenu = (e: MouseEvent) => e.preventDefault();
 	const keyup = (e: KeyboardEvent) => onKeyUp(editor, fullscreenState, dialogState, e);
@@ -170,7 +170,7 @@ export function mountInput(editor: EditorWasm, container: HTMLElement, fullscree
 	});
 }
 
-export function unmountInput(editor: EditorWasm) {
+export function unmountInput(editor: EditorState) {
 	const cleanup = activeListeners.get(editor);
 	if (!cleanup) return;
 	activeListeners.delete(editor);

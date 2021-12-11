@@ -1,121 +1,125 @@
-import { reactive, readonly } from "vue";
+/* eslint-disable max-classes-per-file */
+import { reactive } from "vue";
 
 import { DialogState } from "./dialog";
-import { ResponseType, Response, SetActiveDocument, UpdateOpenDocumentsList, DisplayConfirmationToCloseDocument, ExportDocument, SaveDocument } from "@/state/response-handler";
 import { download, upload } from "@/utilities/files";
-import { EditorWasm } from "@/utilities/wasm-loader";
+import { EditorState } from "@/utilities/wasm-loader";
+import {
+	DisplayConfirmationToCloseAllDocuments,
+	DisplayConfirmationToCloseDocument,
+	ExportDocument,
+	OpenDocumentBrowse,
+	SaveDocument,
+	SetActiveDocument,
+	UpdateOpenDocumentsList,
+} from "@/utilities/js-messages";
 
-export type DocumentsState = ReturnType<typeof makeDocumentsState>;
+class DocumentSaveState {
+	readonly displayName: string;
 
-export default function makeDocumentsState(editor: EditorWasm, dialogState: DialogState) {
-	const state = reactive({
+	constructor(readonly name: string, readonly isSaved: boolean) {
+		this.displayName = `${name}${isSaved ? "" : "*"}`;
+	}
+}
+
+export class DocumentsState {
+	private state = reactive({
 		title: "",
 		unsaved: false,
-		documents: [] as Array<string>,
+		documents: [] as DocumentSaveState[],
 		activeDocumentIndex: 0,
 	});
 
-	function selectDocument(tabIndex: number) {
-		editor.select_document(tabIndex);
+	constructor(private editor: EditorState, private dialogState: DialogState) {
+		this.setupJsMessageListeners();
 	}
 
-	function closeDocumentWithConfirmation(tabIndex: number) {
-		selectDocument(tabIndex);
+	selectDocument(tabIndex: number) {
+		this.editor.instance.select_document(tabIndex);
+	}
 
-		const tabLabel = state.documents[tabIndex];
+	closeDocumentWithConfirmation(tabIndex: number) {
+		this.selectDocument(tabIndex);
 
-		dialogState.createDialog("File", "Save changes before closing?", tabLabel, [
+		const tabLabel = this.state.documents[tabIndex].displayName;
+
+		this.dialogState.createDialog("File", "Save changes before closing?", tabLabel, [
 			{
 				kind: "TextButton",
 				callback: () => {
-					editor.save_document();
-					dialogState.dismissDialog();
+					this.editor.instance.save_document();
+					this.dialogState.dismissDialog();
 				},
 				props: { label: "Save", emphasized: true, minWidth: 96 },
 			},
 			{
 				kind: "TextButton",
 				callback: () => {
-					editor.close_document(tabIndex);
-					dialogState.dismissDialog();
+					this.editor.instance.close_document(tabIndex);
+					this.dialogState.dismissDialog();
 				},
 				props: { label: "Discard", minWidth: 96 },
 			},
 			{
 				kind: "TextButton",
 				callback: () => {
-					dialogState.dismissDialog();
+					this.dialogState.dismissDialog();
 				},
 				props: { label: "Cancel", minWidth: 96 },
 			},
 		]);
 	}
 
-	function closeAllDocumentsWithConfirmation() {
-		dialogState.createDialog("Copy", "Close all documents?", "Unsaved work will be lost!", [
+	closeAllDocumentsWithConfirmation() {
+		this.dialogState.createDialog("Copy", "Close all documents?", "Unsaved work will be lost!", [
 			{
 				kind: "TextButton",
 				callback: () => {
-					editor.close_all_documents();
-					dialogState.dismissDialog();
+					this.editor.instance.close_all_documents();
+					this.dialogState.dismissDialog();
 				},
 				props: { label: "Discard All", minWidth: 96 },
 			},
 			{
 				kind: "TextButton",
 				callback: () => {
-					dialogState.dismissDialog();
+					this.dialogState.dismissDialog();
 				},
 				props: { label: "Cancel", minWidth: 96 },
 			},
 		]);
 	}
 
-	editor.registerResponseHandler(ResponseType.UpdateOpenDocumentsList, (responseData: Response) => {
-		const documentListData = responseData as UpdateOpenDocumentsList;
-		if (documentListData) {
-			state.documents = documentListData.open_documents;
-			state.title = state.documents[state.activeDocumentIndex];
-		}
-	});
+	private setupJsMessageListeners() {
+		this.editor.dispatcher.subscribeJsMessage(UpdateOpenDocumentsList, (updateOpenDocumentList) => {
+			console.log(updateOpenDocumentList);
+			this.state.documents = updateOpenDocumentList.open_documents.map(({ name, isSaved }) => new DocumentSaveState(name, isSaved));
+		});
 
-	editor.registerResponseHandler(ResponseType.SetActiveDocument, (responseData: Response) => {
-		const documentData = responseData as SetActiveDocument;
-		if (documentData) {
-			state.activeDocumentIndex = documentData.document_index;
-			state.title = state.documents[state.activeDocumentIndex];
-		}
-	});
+		this.editor.dispatcher.subscribeJsMessage(SetActiveDocument, (setActiveDocument) => {
+			this.state.activeDocumentIndex = setActiveDocument.document_index;
+		});
 
-	editor.registerResponseHandler(ResponseType.DisplayConfirmationToCloseDocument, (responseData: Response) => {
-		const data = responseData as DisplayConfirmationToCloseDocument;
-		closeDocumentWithConfirmation(data.document_index);
-	});
+		this.editor.dispatcher.subscribeJsMessage(DisplayConfirmationToCloseDocument, (displayConfirmationToCloseDocument) => {
+			this.closeDocumentWithConfirmation(displayConfirmationToCloseDocument.document_index);
+		});
 
-	editor.registerResponseHandler(ResponseType.DisplayConfirmationToCloseAllDocuments, (_: Response) => {
-		closeAllDocumentsWithConfirmation();
-	});
+		this.editor.dispatcher.subscribeJsMessage(DisplayConfirmationToCloseAllDocuments, () => {
+			this.closeAllDocumentsWithConfirmation();
+		});
 
-	editor.registerResponseHandler(ResponseType.OpenDocumentBrowse, async (_: Response) => {
-		const extension = editor.file_save_suffix();
-		const data = await upload(extension);
-		editor.open_document_file(data.filename, data.content);
-	});
+		this.editor.dispatcher.subscribeJsMessage(OpenDocumentBrowse, async () => {
+			const extension = this.editor.rawWasm.file_save_suffix();
+			const data = await upload(extension);
+			this.editor.instance.open_document_file(data.filename, data.content);
+		});
 
-	editor.registerResponseHandler(ResponseType.ExportDocument, (responseData: Response) => {
-		const updateData = responseData as ExportDocument;
-		if (updateData) download(updateData.name, updateData.document);
-	});
+		this.editor.dispatcher.subscribeJsMessage(ExportDocument, (exportDocument) => {
+			download(exportDocument.name, exportDocument.document);
+		});
 
-	editor.registerResponseHandler(ResponseType.SaveDocument, (responseData: Response) => {
-		const saveData = responseData as SaveDocument;
-		if (saveData) download(saveData.name, saveData.document);
-	});
-
-	return {
-		state: readonly(state),
-		selectDocument,
-		closeDocumentWithConfirmation,
-		closeAllDocumentsWithConfirmation,
-	};
+		this.editor.dispatcher.subscribeJsMessage(SaveDocument, (saveDocument) => {
+			download(saveDocument.name, saveDocument.document);
+		});
+	}
 }

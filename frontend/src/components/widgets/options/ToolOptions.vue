@@ -47,10 +47,10 @@ export default defineComponent({
 	methods: {
 		async updateToolOptions(path: string[], newValue: number) {
 			this.setToolOption(path, newValue);
-			this.editor.set_tool_options(this.activeTool || "", this.activeToolOptions);
+			this.editor.instance.set_tool_options(this.activeTool || "", this.activeToolOptions);
 		},
 		async sendToolMessage(message: string | object) {
-			this.editor.send_tool_message(this.activeTool || "", message);
+			this.editor.instance.send_tool_message(this.activeTool || "", message);
 		},
 		// Traverses the given path and returns the direct parent of the option
 		getRecordContainingOption(optionPath: string[]): Record<string, number> {

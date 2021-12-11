@@ -38,7 +38,7 @@ impl Document {
 		self.root.cache.clone()
 	}
 
-	pub fn hash(&self) -> u64 {
+	pub fn current_state_identifier(&self) -> u64 {
 		self.hasher.finish()
 	}
 

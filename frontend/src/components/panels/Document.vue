@@ -224,7 +224,7 @@
 <script lang="ts">
 import { defineComponent } from "vue";
 
-import { ResponseType, Response, UpdateCanvas, UpdateScrollbars, SetActiveTool, SetCanvasZoom, SetCanvasRotation } from "@/state/response-handler";
+import { UpdateCanvas, UpdateScrollbars, SetActiveTool, SetCanvasZoom, SetCanvasRotation } from "@/utilities/js-messages";
 import { SeparatorDirection, SeparatorType } from "@/components/widgets/widgets";
 
 import LayoutRow from "@/components/layout/LayoutRow.vue";
@@ -259,81 +259,68 @@ export default defineComponent({
 			this.canvasSvgHeight = `${height}px`;
 		},
 		async setCanvasZoom(newZoom: number) {
-			this.editor.set_canvas_zoom(newZoom / 100);
+			this.editor.instance.set_canvas_zoom(newZoom / 100);
 		},
 		async increaseCanvasZoom() {
-			this.editor.increase_canvas_zoom();
+			this.editor.instance.increase_canvas_zoom();
 		},
 		async decreaseCanvasZoom() {
-			this.editor.decrease_canvas_zoom();
+			this.editor.instance.decrease_canvas_zoom();
 		},
 		async setRotation(newRotation: number) {
-			this.editor.set_rotation(newRotation * (Math.PI / 180));
+			this.editor.instance.set_rotation(newRotation * (Math.PI / 180));
 		},
 		async translateCanvasX(newValue: number) {
 			const delta = newValue - this.scrollbarPos.x;
 			this.scrollbarPos.x = newValue;
-			this.editor.translate_canvas(-delta * this.scrollbarMultiplier.x, 0);
+			this.editor.instance.translate_canvas(-delta * this.scrollbarMultiplier.x, 0);
 		},
 		async translateCanvasY(newValue: number) {
 			const delta = newValue - this.scrollbarPos.y;
 			this.scrollbarPos.y = newValue;
-			this.editor.translate_canvas(0, -delta * this.scrollbarMultiplier.y);
+			this.editor.instance.translate_canvas(0, -delta * this.scrollbarMultiplier.y);
 		},
 		async pageX(delta: number) {
 			const move = delta < 0 ? 1 : -1;
-			this.editor.translate_canvas_by_fraction(move, 0);
+			this.editor.instance.translate_canvas_by_fraction(move, 0);
 		},
 		async pageY(delta: number) {
 			const move = delta < 0 ? 1 : -1;
-			this.editor.translate_canvas_by_fraction(0, move);
+			this.editor.instance.translate_canvas_by_fraction(0, move);
 		},
 		async selectTool(toolName: string) {
-			this.editor.select_tool(toolName);
+			this.editor.instance.select_tool(toolName);
 		},
 		async swapWorkingColors() {
-			this.editor.swap_colors();
+			this.editor.instance.swap_colors();
 		},
 		async resetWorkingColors() {
-			this.editor.reset_colors();
+			this.editor.instance.reset_colors();
 		},
 	},
 	mounted() {
-		this.editor.registerResponseHandler(ResponseType.UpdateCanvas, (responseData: Response) => {
-			const updateData = responseData as UpdateCanvas;
-			if (updateData) this.viewportSvg = updateData.document;
+		this.editor.dispatcher.subscribeJsMessage(UpdateCanvas, (updateCanvas) => {
+			this.viewportSvg = updateCanvas.document;
 		});
 
-		this.editor.registerResponseHandler(ResponseType.UpdateScrollbars, (responseData: Response) => {
-			const updateData = responseData as UpdateScrollbars;
-			if (updateData) {
-				this.scrollbarPos = updateData.position;
-				this.scrollbarSize = updateData.size;
-				this.scrollbarMultiplier = updateData.multiplier;
-			}
+		this.editor.dispatcher.subscribeJsMessage(UpdateScrollbars, (updateScrollbars) => {
+			this.scrollbarPos = updateScrollbars.position;
+			this.scrollbarSize = updateScrollbars.size;
+			this.scrollbarMultiplier = updateScrollbars.multiplier;
 		});
 
-		this.editor.registerResponseHandler(ResponseType.SetActiveTool, (responseData: Response) => {
-			const toolData = responseData as SetActiveTool;
-			if (toolData) {
-				this.activeTool = toolData.tool_name;
-				this.activeToolOptions = toolData.tool_options;
-			}
+		this.editor.dispatcher.subscribeJsMessage(SetActiveTool, (setActiveTool) => {
+			this.activeTool = setActiveTool.tool_name;
+			this.activeToolOptions = setActiveTool.tool_options;
 		});
 
-		this.editor.registerResponseHandler(ResponseType.SetCanvasZoom, (responseData: Response) => {
-			const updateData = responseData as SetCanvasZoom;
-			if (updateData) {
-				this.documentZoom = updateData.new_zoom * 100;
-			}
+		this.editor.dispatcher.subscribeJsMessage(SetCanvasZoom, (setCanvasZoom) => {
+			this.documentZoom = setCanvasZoom.new_zoom * 100;
 		});
 
-		this.editor.registerResponseHandler(ResponseType.SetCanvasRotation, (responseData: Response) => {
-			const updateData = responseData as SetCanvasRotation;
-			if (updateData) {
-				const newRotation = updateData.new_radians * (180 / Math.PI);
-				this.documentRotation = (360 + (newRotation % 360)) % 360;
-			}
+		this.editor.dispatcher.subscribeJsMessage(SetCanvasRotation, (setCanvasRotation) => {
+			const newRotation = setCanvasRotation.new_radians * (180 / Math.PI);
+			this.documentRotation = (360 + (newRotation % 360)) % 360;
 		});
 
 		window.addEventListener("resize", this.viewportResize);

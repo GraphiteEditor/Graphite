@@ -39,7 +39,8 @@ module.exports = {
 	// https://cli.vuejs.org/guide/webpack.html
 	chainWebpack: (config) => {
 		// WASM Pack Plugin integrates compiled Rust code (.wasm) and generated wasm-bindgen code (.js) with the webpack bundle
-		// Loading any integration of the wasm is found in utilities/wasm-loader.ts
+		// Use this JS to import the bundled Rust entry points: const wasm = import("@/../wasm/pkg").then(panicProxy);
+		// Then call WASM functions with: (await wasm).function_name()
 		// https://github.com/wasm-tool/wasm-pack-plugin
 		config
 			// https://cli.vuejs.org/guide/webpack.html#modifying-options-of-a-plugin
@@ -70,27 +71,29 @@ module.exports = {
 			.init(
 				(Plugin) =>
 					new Plugin({
-						allow: "(Apache-2.0 OR BSD-2-Clause OR BSD-3-Clause OR MIT)",
+						allow: "(Apache-2.0 OR BSD-2-Clause OR BSD-3-Clause OR MIT OR 0BSD)",
 						emitError: true,
 						outputFilename: "third-party-licenses.txt",
 						outputWriter: formatThirdPartyLicenses,
 					})
 			);
 
-		// Vue SVG Loader enables importing .svg files into .vue single-file components and using them directly in the HTML
-		// https://vue-svg-loader.js.org/
+		// Change the loaders used by the Vue compilation process
 		config.module
-			// Replace Vue's existing base loader by first clearing it (https://cli.vuejs.org/guide/webpack.html#replacing-loaders-of-a-rule)
+			// Replace Vue's existing base loader by first clearing it
+			// https://cli.vuejs.org/guide/webpack.html#replacing-loaders-of-a-rule
 			.rule("svg")
 			.uses.clear()
 			.end()
-			// Add vue-loader as a loader
+			// Add vue-loader as a loader for Vue single-file components
+			// https://www.npmjs.com/package/vue-loader
 			.use("vue-loader")
 			.loader("vue-loader")
 			.end()
-			// Add vue-svg-loader as a loader
-			.use("vue-svg-loader")
-			.loader("vue-svg-loader")
+			// Add vue-svg-loader as a loader for importing .svg files into Vue single-file components
+			// Located in ./vue-svg-loader.js
+			.use("./vue-svg-loader")
+			.loader("./vue-svg-loader")
 			.end();
 	},
 };
@@ -147,7 +150,7 @@ License information is required on production builds. Aborting.`);
 	// Augment the imported Rust license list with the provided JS license list
 	jsLicenses.dependencies.forEach((jsLicense) => {
 		const { name, version, author, repository, licenseName } = jsLicense;
-		const licenseText = trimBlankLines(jsLicense.licenseText);
+		const licenseText = trimBlankLines(jsLicense.licenseText ?? "");
 
 		// Remove the `git+` or `git://` prefix and `.git` suffix
 		const repo = repository ? repository.replace(/^.*(github.com\/.*?\/.*?)(?:.git)/, "https://$1") : repository;
@@ -180,13 +183,11 @@ License information is required on production builds. Aborting.`);
 		const packagesLineLength = Math.max(...packagesWithSameLicense.split("\n").map((line) => line.length));
 
 		formattedLicenseNotice += `--------------------------------------------------------------------------------
-
 The following packages are licensed under the terms of the ${license.licenseName} license as printed beneath:
 ${"_".repeat(packagesLineLength)}
 ${packagesWithSameLicense}
 ${"‾".repeat(packagesLineLength)}
 ${license.licenseText}
-
 `;
 	});
 

@@ -26,7 +26,7 @@
 						/>
 					</div>
 					<button
-						v-if="layer.layer_type === LayerType.Folder"
+						v-if="layer.layer_type === LayerTypeOptions.Folder"
 						class="node-connector"
 						:class="{ expanded: layer.layer_data.expanded }"
 						@click.stop="handleNodeConnectorClick(layer.path)"
@@ -43,7 +43,7 @@
 					>
 						<div class="layer-thumbnail" v-html="layer.thumbnail"></div>
 						<div class="layer-type-icon">
-							<IconLabel v-if="layer.layer_type === LayerType.Folder" :icon="'NodeTypeFolder'" title="Folder" />
+							<IconLabel v-if="layer.layer_type === LayerTypeOptions.Folder" :icon="'NodeTypeFolder'" title="Folder" />
 							<IconLabel v-else :icon="'NodeTypePath'" title="Path" />
 						</div>
 						<div class="layer-name">
@@ -181,7 +181,7 @@
 <script lang="ts">
 import { defineComponent } from "vue";
 
-import { ResponseType, Response, BlendMode, DisplayFolderTreeStructure, UpdateLayer, LayerPanelEntry, LayerType } from "@/state/response-handler";
+import { BlendMode, DisplayFolderTreeStructure, UpdateLayer, LayerPanelEntry, LayerTypeOptions } from "@/utilities/js-messages";
 import { SeparatorType } from "@/components/widgets/widgets";
 
 import LayoutRow from "@/components/layout/LayoutRow.vue";
@@ -195,42 +195,42 @@ import IconLabel from "@/components/widgets/labels/IconLabel.vue";
 import DropdownInput from "@/components/widgets/inputs/DropdownInput.vue";
 import { SectionsOfMenuListEntries } from "@/components/widgets/floating-menus/MenuList.vue";
 
-const blendModeEntries: SectionsOfMenuListEntries = [
-	[{ label: "Normal", value: BlendMode.Normal }],
+const blendModeEntries: SectionsOfMenuListEntries<BlendMode> = [
+	[{ label: "Normal", value: "Normal" }],
 	[
-		{ label: "Multiply", value: BlendMode.Multiply },
-		{ label: "Darken", value: BlendMode.Darken },
-		{ label: "Color Burn", value: BlendMode.ColorBurn },
+		{ label: "Multiply", value: "Multiply" },
+		{ label: "Darken", value: "Darken" },
+		{ label: "Color Burn", value: "ColorBurn" },
 		// { label: "Linear Burn", value: "" }, // Not supported by SVG
 		// { label: "Darker Color", value: "" }, // Not supported by SVG
 	],
 	[
-		{ label: "Screen", value: BlendMode.Screen },
-		{ label: "Lighten", value: BlendMode.Lighten },
-		{ label: "Color Dodge", value: BlendMode.ColorDodge },
+		{ label: "Screen", value: "Screen" },
+		{ label: "Lighten", value: "Lighten" },
+		{ label: "Color Dodge", value: "ColorDodge" },
 		// { label: "Linear Dodge (Add)", value: "" }, // Not supported by SVG
 		// { label: "Lighter Color", value: "" }, // Not supported by SVG
 	],
 	[
-		{ label: "Overlay", value: BlendMode.Overlay },
-		{ label: "Soft Light", value: BlendMode.SoftLight },
-		{ label: "Hard Light", value: BlendMode.HardLight },
+		{ label: "Overlay", value: "Overlay" },
+		{ label: "Soft Light", value: "SoftLight" },
+		{ label: "Hard Light", value: "HardLight" },
 		// { label: "Vivid Light", value: "" }, // Not supported by SVG
 		// { label: "Linear Light", value: "" }, // Not supported by SVG
 		// { label: "Pin Light", value: "" }, // Not supported by SVG
 		// { label: "Hard Mix", value: "" }, // Not supported by SVG
 	],
 	[
-		{ label: "Difference", value: BlendMode.Difference },
-		{ label: "Exclusion", value: BlendMode.Exclusion },
+		{ label: "Difference", value: "Difference" },
+		{ label: "Exclusion", value: "Exclusion" },
 		// { label: "Subtract", value: "" }, // Not supported by SVG
 		// { label: "Divide", value: "" }, // Not supported by SVG
 	],
 	[
-		{ label: "Hue", value: BlendMode.Hue },
-		{ label: "Saturation", value: BlendMode.Saturation },
-		{ label: "Color", value: BlendMode.Color },
-		{ label: "Luminosity", value: BlendMode.Luminosity },
+		{ label: "Hue", value: "Hue" },
+		{ label: "Saturation", value: "Saturation" },
+		{ label: "Color", value: "Color" },
+		{ label: "Luminosity", value: "Luminosity" },
 	],
 ];
 
@@ -251,7 +251,7 @@ export default defineComponent({
 			opacity: 100,
 			MenuDirection,
 			SeparatorType,
-			LayerType,
+			LayerTypeOptions,
 		};
 	},
 	methods: {
@@ -259,19 +259,19 @@ export default defineComponent({
 			return `${(layer.path.length - 1) * 16}px`;
 		},
 		async toggleLayerVisibility(path: BigUint64Array) {
-			this.editor.toggle_layer_visibility(path);
+			this.editor.instance.toggle_layer_visibility(path);
 		},
 		async handleNodeConnectorClick(path: BigUint64Array) {
-			this.editor.toggle_layer_expansion(path);
+			this.editor.instance.toggle_layer_expansion(path);
 		},
 		async setLayerBlendMode() {
 			const blendMode = this.blendModeEntries.flat()[this.blendModeSelectedIndex].value as BlendMode;
 			if (blendMode) {
-				this.editor.set_blend_mode_for_selected_layers(blendMode);
+				this.editor.instance.set_blend_mode_for_selected_layers(blendMode);
 			}
 		},
 		async setLayerOpacity() {
-			this.editor.set_opacity_for_selected_layers(this.opacity);
+			this.editor.instance.set_opacity_for_selected_layers(this.opacity);
 		},
 		async handleControlClick(clickedLayer: LayerPanelEntry) {
 			const index = this.layers.indexOf(clickedLayer);
@@ -311,7 +311,7 @@ export default defineComponent({
 			this.selectionRangeStartLayer = undefined;
 			this.selectionRangeEndLayer = undefined;
 
-			this.editor.deselect_all_layers();
+			this.editor.instance.deselect_all_layers();
 		},
 		async fillSelectionRange(start: LayerPanelEntry, end: LayerPanelEntry, selected = true) {
 			const startIndex = this.layers.findIndex((layer) => layer.path.join() === start.path.join());
@@ -344,7 +344,7 @@ export default defineComponent({
 				}
 				i += 1;
 			});
-			this.editor.select_layers(output);
+			this.editor.instance.select_layers(output);
 		},
 		setBlendModeForSelectedLayers() {
 			const selected = this.layers.filter((layer) => layer.layer_data.selected);
@@ -388,10 +388,8 @@ export default defineComponent({
 		},
 	},
 	mounted() {
-		this.editor.registerResponseHandler(ResponseType.DisplayFolderTreeStructure, (responseData: Response) => {
-			const expandData = responseData as DisplayFolderTreeStructure;
-			if (!expandData) return;
-			console.log(expandData);
+		this.editor.dispatcher.subscribeJsMessage(DisplayFolderTreeStructure, (displayFolderTreeStructure) => {
+			if (!displayFolderTreeStructure) return;
 
 			const path = [] as Array<bigint>;
 			this.layers = [] as Array<LayerPanelEntry>;
@@ -405,21 +403,18 @@ export default defineComponent({
 					path.pop();
 				});
 			}
-			recurse(expandData, this.layers, this.layerCache);
+			recurse(displayFolderTreeStructure, this.layers, this.layerCache);
 		});
 
-		this.editor.registerResponseHandler(ResponseType.UpdateLayer, (responseData: Response) => {
-			const updateData = responseData as UpdateLayer;
-			if (updateData) {
-				const responsePath = updateData.path;
-				const responseLayer = updateData.data;
+		this.editor.dispatcher.subscribeJsMessage(UpdateLayer, (updateLayer) => {
+			const responsePath = updateLayer.data.path;
+			const responseLayer = updateLayer.data;
 
-				const layer = this.layerCache.get(responsePath.toString());
-				if (layer) Object.assign(this.layerCache.get(responsePath.toString()), responseLayer);
-				else this.layerCache.set(responsePath.toString(), responseLayer);
-				this.setBlendModeForSelectedLayers();
-				this.setOpacityForSelectedLayers();
-			}
+			const layer = this.layerCache.get(responsePath.toString());
+			if (layer) Object.assign(this.layerCache.get(responsePath.toString()), responseLayer);
+			else this.layerCache.set(responsePath.toString(), responseLayer);
+			this.setBlendModeForSelectedLayers();
+			this.setOpacityForSelectedLayers();
 		});
 	},
 	components: {

@@ -216,13 +216,13 @@ img {
 <script lang="ts">
 import { defineComponent } from "vue";
 
-import makeDialogState, { DialogState } from "@/state/dialog";
-import makeDocumentsState, { DocumentsState } from "@/state/documents";
-import makeFullscreenState, { FullscreenState } from "@/state/fullscreen";
+import { DialogState } from "@/state/dialog";
+import { DocumentsState } from "@/state/documents";
+import { FullscreenState } from "@/state/fullscreen";
 
 import MainWindow from "@/components/window/MainWindow.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
-import createEditor, { EditorWasm } from "./utilities/wasm-loader";
+import { EditorState } from "./utilities/wasm-loader";
 import { mountInput, unmountInput } from "./utilities/input";
 import { initErrorHandling } from "@/utilities/errors";
 
@@ -233,7 +233,7 @@ declare module "@vue/runtime-core" {
 		dialog: DialogState;
 		documents: DocumentsState;
 		fullscreen: FullscreenState;
-		editor: EditorWasm;
+		editor: EditorState;
 	}
 }
 
@@ -247,10 +247,10 @@ export default defineComponent({
 		};
 	},
 	data() {
-		const editor = createEditor();
-		const dialog = makeDialogState();
-		const fullscreen = makeFullscreenState();
-		const documents = makeDocumentsState(editor, dialog);
+		const editor = new EditorState();
+		const dialog = new DialogState();
+		const fullscreen = new FullscreenState();
+		const documents = new DocumentsState(editor, dialog);
 		initErrorHandling(editor, dialog);
 		return {
 			editor,
@@ -267,16 +267,21 @@ export default defineComponent({
 	},
 	mounted() {
 		const { editor, fullscreen, dialog } = this.$data;
+
+		// This is needed to allow the app to have focus while inside of it
+		// Source: https://stackoverflow.com/questions/3656467/is-it-possible-to-focus-on-a-div-using-javascript-focus-function
+		this.$el.parentElement.tabIndex = 0;
+
 		mountInput(editor, this.$el.parentElement, fullscreen, dialog);
 		document.addEventListener("fullscreenchange", fullscreen.fullscreenModeChanged);
 		// Load the initial document list
-		editor.get_open_documents_list();
+		editor.instance.get_open_documents_list();
 	},
 	beforeUnmount() {
 		const { editor, fullscreen } = this.$data;
 		unmountInput(editor);
 		document.removeEventListener("fullscreenchange", fullscreen.fullscreenModeChanged);
-		editor.free();
+		editor.instance.free();
 	},
 	components: { MainWindow, LayoutRow },
 });

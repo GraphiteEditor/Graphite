@@ -1,45 +1,44 @@
-import { reactive, readonly } from "vue";
+import { reactive } from "vue";
 
-export type FullscreenState = ReturnType<typeof makeFullscreenState>;
-export default function makeFullscreenState() {
-	const state = reactive({
+export class FullscreenState {
+	private state = reactive({
 		windowFullscreen: false,
 		keyboardLocked: false,
 	});
 
-	function fullscreenModeChanged() {
-		state.windowFullscreen = Boolean(document.fullscreenElement);
-		if (!state.windowFullscreen) state.keyboardLocked = false;
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	readonly keyboardLockApiSupported = "keyboard" in navigator && "lock" in (navigator as any).keyboard;
+
+	fullscreenModeChanged() {
+		this.state.windowFullscreen = Boolean(document.fullscreenElement);
+		if (!this.state.windowFullscreen) this.state.keyboardLocked = false;
 	}
 
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	const keyboardLockApiSupported = "keyboard" in navigator && "lock" in (navigator as any).keyboard;
-
-	async function enterFullscreen() {
+	async enterFullscreen() {
 		await document.documentElement.requestFullscreen();
 
-		if (keyboardLockApiSupported) {
+		if (this.keyboardLockApiSupported) {
 			// eslint-disable-next-line @typescript-eslint/no-explicit-any
 			await (navigator as any).keyboard.lock(["ControlLeft", "ControlRight"]);
-			state.keyboardLocked = true;
+			this.state.keyboardLocked = true;
 		}
 	}
 
-	async function exitFullscreen() {
+	isFullscreen(): boolean {
+		return this.state.windowFullscreen;
+	}
+
+	isKeyboardLocked(): boolean {
+		return this.state.keyboardLocked;
+	}
+
+	// eslint-disable-next-line class-methods-use-this
+	async exitFullscreen() {
 		await document.exitFullscreen();
 	}
 
-	async function toggleFullscreen() {
-		if (state.windowFullscreen) await exitFullscreen();
-		else await enterFullscreen();
+	async toggleFullscreen() {
+		if (this.state.windowFullscreen) await this.exitFullscreen();
+		else await this.enterFullscreen();
 	}
-
-	return {
-		state: readonly(state),
-		fullscreenModeChanged,
-		keyboardLockApiSupported,
-		enterFullscreen,
-		exitFullscreen,
-		toggleFullscreen,
-	};
 }

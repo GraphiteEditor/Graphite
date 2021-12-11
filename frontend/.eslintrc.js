@@ -53,7 +53,7 @@ module.exports = {
 	],
 	rules: {
 		// Standard ESLint config
-		indent: ["error", "tab", { SwitchCase: 1 }],
+		indent: "off",
 		quotes: ["error", "double"],
 		camelcase: ["error", { properties: "always" }],
 		"linebreak-style": ["error", "unix"],
@@ -63,11 +63,15 @@ module.exports = {
 		"no-debugger": process.env.NODE_ENV === "production" ? "warn" : "off",
 		"no-param-reassign": ["error", { props: false }],
 		"no-bitwise": "off",
+		"no-shadow": "off",
+		"no-use-before-define": "off",
 
 		// TypeScript plugin config
+		"@typescript-eslint/indent": ["error", "tab", { SwitchCase: 1 }],
 		"@typescript-eslint/camelcase": "off",
 		"@typescript-eslint/no-use-before-define": "off",
 		"@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_" }],
+		"@typescript-eslint/no-loss-of-precision": "off", // TODO: Remove this line after upgrading to eslint 7.1 or greater
 
 		// Import plugin config (used to intelligently validate module import statements)
 		"import/prefer-default-export": "off",
@@ -81,5 +85,8 @@ module.exports = {
 				printWidth: 200,
 			},
 		],
+
+		// Vue plugin config (used to validate Vue single-file components)
+		"vue/multi-word-component-names": "off",
 	},
 };
