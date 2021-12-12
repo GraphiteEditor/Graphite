@@ -576,6 +576,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					},
 				};
 				GrapheneDocument::visit_all_layers(&mut self.graphene_document.root, &mut mode_update_func);
+				self.graphene_document.root.cache_dirty = true;
 				responses.push_back(
 					FrontendMessage::UpdateCanvas {
 						document: self.graphene_document.render_root(),
@@ -714,7 +715,6 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					.into(),
 				);
 			}
-
 			NudgeSelectedLayers(x, y) => {
 				self.backup(responses);
 				for path in self.selected_layers().map(|path| path.to_vec()) {
