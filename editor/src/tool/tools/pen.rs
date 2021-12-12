@@ -3,7 +3,7 @@ use crate::tool::snapping::SnapHandler;
 use crate::tool::{DocumentToolData, Fsm, ToolActionHandlerData, ToolOptions, ToolType};
 use crate::{document::DocumentMessageHandler, message_prelude::*};
 use glam::DAffine2;
-use graphene::{layers::style, Operation};
+use graphene::{layers::{style, style::ViewMode}, Operation};
 use serde::{Deserialize, Serialize};
 
 #[derive(Default)]
@@ -104,7 +104,7 @@ impl Fsm for PenToolFsmState {
 						data.next_point = pos;
 					}
 
-					responses.extend(make_operation(data, tool_data, true));
+					responses.extend(make_operation(data, tool_data, document.graphene_document.view_mode, true));
 
 					Dragging
 				}
@@ -113,14 +113,14 @@ impl Fsm for PenToolFsmState {
 					let pos = transform.inverse() * DAffine2::from_translation(snapped_position);
 					data.next_point = pos;
 
-					responses.extend(make_operation(data, tool_data, true));
+					responses.extend(make_operation(data, tool_data, document.graphene_document.view_mode, true));
 
 					Dragging
 				}
 				(Dragging, Confirm) => {
 					if data.points.len() >= 2 {
 						responses.push_back(DocumentMessage::DeselectAllLayers.into());
-						responses.extend(make_operation(data, tool_data, false));
+						responses.extend(make_operation(data, tool_data, document.graphene_document.view_mode, false));
 						responses.push_back(DocumentMessage::CommitTransaction.into());
 					} else {
 						responses.push_back(DocumentMessage::AbortTransaction.into());
@@ -148,7 +148,7 @@ impl Fsm for PenToolFsmState {
 	}
 }
 
-fn make_operation(data: &PenToolData, tool_data: &DocumentToolData, show_preview: bool) -> [Message; 2] {
+fn make_operation(data: &PenToolData, tool_data: &DocumentToolData, view_mode: ViewMode, show_preview: bool) -> [Message; 2] {
 	let mut points: Vec<(f64, f64)> = data.points.iter().map(|p| (p.translation.x, p.translation.y)).collect();
 	if show_preview {
 		points.push((data.next_point.translation.x, data.next_point.translation.y))
@@ -160,9 +160,11 @@ fn make_operation(data: &PenToolData, tool_data: &DocumentToolData, show_preview
 			insert_index: -1,
 			transform: DAffine2::IDENTITY.to_cols_array(),
 			points,
-			style: style::PathStyle::new(
+			style: style::PathStyle::with_mode(
 				Some(style::Stroke::new(tool_data.primary_color, data.weight as f32)),
-				Some(style::Fill::none()) ),
+				Some(style::Fill::none()),
+				view_mode
+			),
 		}
 		.into(),
 	]
