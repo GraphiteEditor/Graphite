@@ -157,7 +157,7 @@ impl Document {
 		Ok(())
 	}
 
-	/// Visit each layer recursively, applies modify_shape to each Layer which is a Shape
+	/// Visit each layer recursively, applies modify_shape to each Shape
 	/// Currently used to swap between viewmodes
 	pub fn visit_all_shapes<F: FnMut(&mut Shape)->()>(layer: &mut Layer, modify_shape: &mut F) {
 		match layer.data{

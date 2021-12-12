@@ -104,6 +104,7 @@ impl PathStyle {
 	}
 	pub fn render(&self) -> String {
 		// change stroke rendering so solid paths don't dissapear
+		// in wireframe view mode extra Stroke/Fill allocations are done
 		format!(
 			"{}{}",
 			match (self.view_mode, self.fill) {
