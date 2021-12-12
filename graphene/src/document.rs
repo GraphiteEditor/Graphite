@@ -7,7 +7,7 @@ use glam::{DAffine2, DVec2};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-	layers::{self, Folder, Layer, LayerData, LayerDataType, Shape},
+	layers::{self, Folder, Layer, LayerData, LayerDataType, Shape, style::ViewMode},
 	DocumentError, DocumentResponse, LayerId, Operation, Quad,
 };
 
@@ -18,6 +18,8 @@ pub struct Document {
 	/// This identifier is not a hash and is not guaranteed to be equal for equivalent documents.
 	#[serde(skip)]
 	pub state_identifier: DefaultHasher,
+	#[serde(skip)]
+	pub view_mode: ViewMode,
 }
 
 impl Default for Document {
@@ -25,6 +27,7 @@ impl Default for Document {
 		Self {
 			root: Layer::new(LayerDataType::Folder(Folder::default()), DAffine2::IDENTITY.to_cols_array()),
 			state_identifier: DefaultHasher::new(),
+			view_mode: ViewMode::default(),
 		}
 	}
 }
@@ -329,6 +332,8 @@ impl Document {
 	pub fn handle_operation(&mut self, operation: &Operation) -> Result<Option<Vec<DocumentResponse>>, DocumentError> {
 		operation.pseudo_hash().hash(&mut self.state_identifier);
 		use DocumentResponse::*;
+
+		// intercept operations here for wireframe view
 
 		let responses = match &operation {
 			Operation::AddEllipse { path, insert_index, transform, style } => {

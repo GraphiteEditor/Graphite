@@ -16,7 +16,7 @@ use kurbo::PathSeg;
 use log::warn;
 use serde::{Deserialize, Serialize};
 
-use graphene::layers::{BlendMode, simple_shape::Shape as GrapheneShape};
+use graphene::layers::{BlendMode, style::ViewMode, simple_shape::Shape as GrapheneShape};
 use graphene::{document::Document as GrapheneDocument, layers::LayerDataType, DocumentError, LayerId};
 use graphene::{DocumentResponse, Operation as DocumentOperation};
 
@@ -565,7 +565,17 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			}
 			SetViewMode(idx) => {
 				log::debug!("view mode set: {:?}", idx);
-				GrapheneDocument::visit_all_layers(&mut self.graphene_document.root, &mut |s: &mut GrapheneShape| {s.solid = idx == 0;});
+				let mut mode_update_func = match idx{
+					1 => {
+						self.graphene_document.view_mode = ViewMode::WireFrame;
+						|s: &mut GrapheneShape|{s.style.view_mode(ViewMode::WireFrame)}
+					},
+					_ => {
+						self.graphene_document.view_mode = ViewMode::Normal;
+						|s: &mut GrapheneShape|{s.style.view_mode(ViewMode::Normal)}
+					},
+				};
+				GrapheneDocument::visit_all_layers(&mut self.graphene_document.root, &mut mode_update_func);
 				responses.push_back(
 					FrontendMessage::UpdateCanvas {
 						document: self.graphene_document.render_root(),
@@ -635,7 +645,6 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					(!overlay).then(|| FrontendMessage::UpdateLayer { data: entry }.into())
 				}));
 			}
-
 			DispatchOperation(op) => match self.graphene_document.handle_operation(&op) {
 				Ok(Some(document_responses)) => {
 					for response in document_responses {

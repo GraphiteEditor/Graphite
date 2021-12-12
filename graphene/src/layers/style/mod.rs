@@ -10,6 +10,16 @@ fn format_opacity(name: &str, opacity: f32) -> String {
 	}
 }
 
+pub const WIRE_FRAME_STROKE_WIDTH: f32 = 1.0;
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum ViewMode{
+	Normal,
+	WireFrame,
+	Pixels,
+}
+impl Default for ViewMode{ fn default()->Self{ViewMode::Normal}}
+
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize)]
 pub struct Fill {
@@ -60,10 +70,16 @@ impl Stroke {
 pub struct PathStyle {
 	stroke: Option<Stroke>,
 	fill: Option<Fill>,
+
+	#[serde(skip)]
+	view_mode: ViewMode,
 }
 impl PathStyle {
 	pub fn new(stroke: Option<Stroke>, fill: Option<Fill>) -> Self {
-		Self { stroke, fill }
+		Self { stroke, fill, view_mode: ViewMode::default() }
+	}
+	pub fn with_mode(stroke: Option<Stroke>, fill: Option<Fill>, mode: ViewMode) -> Self {
+		Self { stroke, fill, view_mode: mode }
 	}
 	pub fn fill(&self) -> Option<Fill> {
 		self.fill
@@ -83,17 +99,23 @@ impl PathStyle {
 	pub fn clear_stroke(&mut self) {
 		self.stroke = None;
 	}
-	pub fn render(&self, solid: bool) -> String {
+	pub fn view_mode(&mut self, new_mode: ViewMode) {
+		self.view_mode = new_mode;
+	}
+	pub fn render(&self) -> String {
+		// change stroke rendering so solid paths don't dissapear
 		format!(
 			"{}{}",
-			match (solid, self.fill) {
-				(false, _) => Fill::none().render(),
-				(true, Some(fill)) => fill.render(),
-				(true, None) => String::new(),
+			match (self.view_mode, self.fill) {
+				(ViewMode::WireFrame, _) => Fill::none().render(),
+				(_, Some(fill)) => fill.render(),
+				(_, None) => String::new(),
 			},
-			match self.stroke {
-				Some(stroke) => stroke.render(),
-				None => String::new(),
+			match (self.view_mode, self.stroke) {
+				(ViewMode::WireFrame, Some(stroke)) => Stroke::new(stroke.color(), WIRE_FRAME_STROKE_WIDTH).render(),
+				(ViewMode::WireFrame, None) => Stroke::new(Color::BLACK, WIRE_FRAME_STROKE_WIDTH).render(),
+				(_, Some(stroke)) => stroke.render(),
+				(_, None) => String::new(),
 			},
 		)
 	}
