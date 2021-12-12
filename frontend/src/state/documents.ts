@@ -3,7 +3,7 @@ import { reactive } from "vue";
 
 import { DialogState } from "./dialog";
 import { download, upload } from "@/utilities/files";
-import { EditorState } from "@/utilities/wasm-loader";
+import { EditorState } from "@/state/wasm-loader";
 import {
 	DisplayConfirmationToCloseAllDocuments,
 	DisplayConfirmationToCloseDocument,

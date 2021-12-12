@@ -57,7 +57,7 @@ import IconLabel from "@/components/widgets/labels/IconLabel.vue";
 import { ApplicationPlatform } from "@/components/window/MainWindow.vue";
 import MenuList, { MenuListEntry, MenuListEntries } from "@/components/widgets/floating-menus/MenuList.vue";
 import { MenuDirection } from "@/components/widgets/floating-menus/FloatingMenu.vue";
-import { EditorState } from "@/utilities/wasm-loader";
+import { EditorState } from "@/state/wasm-loader";
 
 function makeMenuEntries(editor: EditorState): MenuListEntries {
 	return [

@@ -3,14 +3,15 @@ mod helpers;
 pub mod logging;
 pub mod type_translators;
 
+use editor::message_prelude::FrontendMessage;
 use logging::WasmLog;
+use std::cell::RefCell;
 use std::panic;
-use std::sync::atomic::AtomicBool;
 use wasm_bindgen::prelude::*;
 
 // Set up the persistent editor backend state
 static LOGGER: WasmLog = WasmLog;
-static EDITOR_HAS_CRASHED: AtomicBool = AtomicBool::new(false);
+thread_local! { pub static EDITOR_HAS_CRASHED: RefCell<Option<FrontendMessage>> = RefCell::new(None); }
 
 // Initialize the backend
 #[wasm_bindgen(start)]
@@ -27,22 +28,8 @@ fn panic_hook(info: &panic::PanicInfo) {
 	let title = "The editor crashed — sorry about that".to_string();
 	let description = "An internal error occurred. Reload the editor to continue. Please report this by filing an issue on GitHub.".to_string();
 
-	EDITOR_HAS_CRASHED.store(true, std::sync::atomic::Ordering::SeqCst);
-
-	//handle_response(FrontendMessage::DisplayPanic { panic_info, title, description });
+	EDITOR_HAS_CRASHED.with(|crash_status| crash_status.borrow_mut().replace(FrontendMessage::DisplayPanic { panic_info, title, description }.into()));
 }
-
-// TODO: Fix Frontend Error Handling
-// #[wasm_bindgen(module = "/../src/utilities/wasm-loader-exports.ts")]
-// 	let js_return_value = handleJsMessage(message_type, message_data);
-// 	if let Err(error) = js_return_value {
-// 		log::error!(
-// 			"While handling FrontendMessage \"{:?}\", JavaScript threw an error: {:?}",
-// 			message.to_discriminant().local_name(),
-// 			error,
-// 		)
-// 	}
-// }
 
 // The JavaScript function to call into with each FrontendMessage
 #[wasm_bindgen(module = "/../src/utilities/wasm-loader-exports.ts")]

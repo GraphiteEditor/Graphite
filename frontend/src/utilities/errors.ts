@@ -1,7 +1,7 @@
 import { DialogState } from "@/state/dialog";
 import { TextButtonWidget } from "@/components/widgets/widgets";
 import { DisplayError, DisplayPanic } from "@/utilities/js-messages";
-import { EditorState } from "./wasm-loader";
+import { EditorState } from "../state/wasm-loader";
 
 // TODO: Compare this file with current version
 

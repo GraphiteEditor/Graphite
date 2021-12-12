@@ -12,6 +12,8 @@ export class JsMessage {
 	static readonly jsMessageMarker = true;
 }
 
+export class GlobalJsMessage extends JsMessage {}
+
 export class UpdateOpenDocumentsList extends JsMessage {
 	@Transform(({ value }) => value.map((tuple: [string, boolean]) => ({ name: tuple[0], isSaved: tuple[1] })))
 	readonly open_documents!: { name: string; isSaved: boolean }[];
@@ -64,7 +66,7 @@ export class DisplayError extends JsMessage {
 	readonly description!: string;
 }
 
-export class DisplayPanic extends JsMessage {
+export class DisplayPanic extends GlobalJsMessage {
 	readonly panic_info!: string;
 
 	readonly title!: string;

@@ -10,7 +10,7 @@
 					@click.middle="
 						(e) => {
 							e.stopPropagation();
-							closeDocumentWithConfirmation(tabIndex);
+							documents.closeDocumentWithConfirmation(tabIndex);
 						}
 					"
 					@click="panelType === 'Document' && documents.selectDocument(tabIndex)"
@@ -20,7 +20,7 @@
 						:action="
 							(e) => {
 								e.stopPropagation();
-								closeDocumentWithConfirmation(tabIndex);
+								documents.closeDocumentWithConfirmation(tabIndex);
 							}
 						"
 						:icon="'CloseX'"

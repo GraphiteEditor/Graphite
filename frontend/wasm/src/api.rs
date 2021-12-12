@@ -2,6 +2,8 @@
 // It serves as a thin wrapper over the editor backend API that relies
 // on the dispatcher messaging system and more complex Rust data types.
 
+use std::borrow::Borrow;
+
 use crate::handleJsMessage;
 use crate::helpers::Error;
 use crate::type_translators::{translate_blend_mode, translate_key, translate_tool_type};
@@ -35,7 +37,9 @@ impl Editor {
 	// Sends a message to the dispatcher in the Editor Backend
 	fn dispatch<T: Into<Message>>(&mut self, message: T) {
 		// Process no further messages after a crash to avoid spamming the console
-		if EDITOR_HAS_CRASHED.load(std::sync::atomic::Ordering::SeqCst) {
+		let has_crashed = EDITOR_HAS_CRASHED.with(|crash_state| crash_state.borrow().clone());
+		if let Some(message) = has_crashed {
+			self.handle_response(message);
 			return;
 		}
 

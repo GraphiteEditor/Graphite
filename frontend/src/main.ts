@@ -3,7 +3,7 @@ import { createApp } from "vue";
 
 import "@/utilities/errors";
 import App from "@/App.vue";
-import { initWasm } from "./utilities/wasm-loader";
+import { initWasm } from "./state/wasm-loader";
 
 (async () => {
 	await initWasm();

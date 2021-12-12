@@ -21,7 +21,10 @@ import {
 	UpdateLayer,
 	JsMessage,
 	WasmInstance,
+	GlobalJsMessage,
 } from "../utilities/js-messages";
+// eslint-disable-next-line import/no-cycle
+import { globalEditorManager } from "./global-state";
 
 type JsMessageCallback<T extends JsMessage> = (responseData: T) => void;
 type JsMessageCallbackMap = {
@@ -76,6 +79,14 @@ export class JsDispatcher {
 			message = messageMaker(responseData[responseType], wasm);
 		}
 
+		if (message instanceof GlobalJsMessage) {
+			globalEditorManager.broadcastGlobalMessage(message);
+		} else {
+			this.dispatchJsMessage(message);
+		}
+	}
+
+	dispatchJsMessage(message: JsMessage) {
 		// It is ok to use constructor.name even with minification since it is used consistently with registerHandler
 		const callback = this.responseMap[message.constructor.name];
 
@@ -83,7 +94,7 @@ export class JsDispatcher {
 			callback(message);
 		} else if (message) {
 			// eslint-disable-next-line no-console
-			console.error(`Received a Response of type "${responseType}" but no handler was registered for it from the client.`);
+			console.error(`Received a Response of type "${message.constructor.name}" but no handler was registered for it from the client.`);
 		}
 	}
 

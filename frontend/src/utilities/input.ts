@@ -1,6 +1,6 @@
 import { DialogState } from "@/state/dialog";
 import { FullscreenState } from "@/state/fullscreen";
-import { EditorState } from "./wasm-loader";
+import { EditorState } from "../state/wasm-loader";
 
 let viewportMouseInteractionOngoing = false;
 
@@ -127,16 +127,6 @@ function onWindowResize(editor: EditorState, container: Element) {
 	const data = Float64Array.from(flattened);
 
 	if (boundsOfViewports.length > 0) editor.instance.bounds_of_viewports(data);
-}
-
-export function onBeforeUnload(event: BeforeUnloadEvent) {
-	// const allDocumentsSaved = documents.documents.reduce((acc, doc) => doc.isSaved && acc, true);
-	// TODO: Fix detection if document is actually saved
-	const allDocumentsSaved = true;
-	if (!allDocumentsSaved) {
-		event.returnValue = "Unsaved work will be lost if the web browser tab is closed. Close anyway?";
-		event.preventDefault();
-	}
 }
 
 export function makeModifiersBitfield(e: MouseEvent | KeyboardEvent): number {

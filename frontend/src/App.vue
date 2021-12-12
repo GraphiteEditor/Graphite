@@ -223,10 +223,11 @@ import { defineComponent } from "vue";
 import { DialogState } from "@/state/dialog";
 import { DocumentsState } from "@/state/documents";
 import { FullscreenState } from "@/state/fullscreen";
+import { globalEditorManager } from "@/state/global-state";
 
 import MainWindow from "@/components/window/MainWindow.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
-import { EditorState } from "./utilities/wasm-loader";
+import { EditorState } from "./state/wasm-loader";
 import { mountInput, unmountInput } from "./utilities/input";
 import { initErrorHandling } from "@/utilities/errors";
 
@@ -271,18 +272,18 @@ export default defineComponent({
 	},
 	mounted() {
 		const { editor, fullscreen, dialog } = this.$data;
+		globalEditorManager.registerInstance(this.$data);
 
 		// This is needed to allow the app to have focus while inside of it
 		// Source: https://stackoverflow.com/questions/3656467/is-it-possible-to-focus-on-a-div-using-javascript-focus-function
 		this.$el.parentElement.tabIndex = 0;
 
 		mountInput(editor, this.$el.parentElement, fullscreen, dialog);
-		document.addEventListener("fullscreenchange", fullscreen.fullscreenModeChanged);
 	},
 	beforeUnmount() {
-		const { editor, fullscreen } = this.$data;
+		globalEditorManager.removeInstance(this.$data);
+		const { editor } = this.$data;
 		unmountInput(editor);
-		document.removeEventListener("fullscreenchange", fullscreen.fullscreenModeChanged);
 		editor.instance.free();
 	},
 	components: { MainWindow, LayoutRow },
