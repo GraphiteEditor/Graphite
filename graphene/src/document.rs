@@ -159,7 +159,7 @@ impl Document {
 
 	/// Visit each layer recursively, applies modify_shape to each Shape
 	/// Currently used to swap between viewmodes
-	pub fn visit_all_shapes<F: FnMut(&mut Shape)->()>(layer: &mut Layer, modify_shape: &mut F) {
+	pub fn visit_all_shapes<F: FnMut(&mut Shape)->()>(layer: &mut Layer, modify_shape: &mut F) -> bool {
 		match layer.data{
 			LayerDataType::Shape(ref mut shape) => {
 				if !layer.overlay {
@@ -169,10 +169,12 @@ impl Document {
 			},
 			LayerDataType::Folder(ref mut folder) => {
 				for sub_layer in folder.layers_mut(){
-					Document::visit_all_shapes(sub_layer, modify_shape);
+					if Document::visit_all_shapes(sub_layer, modify_shape) {
+						layer.cache_dirty = true; }
 				}
 			},
 		}
+		layer.cache_dirty
 	}
 
 	/// Adds a new layer to the folder specified by `path`.
