@@ -4,7 +4,7 @@ import { DialogState } from "./dialog";
 import { DocumentsState } from "./documents";
 import { FullscreenState } from "./fullscreen";
 
-interface AppState {
+export interface AppState {
 	dialog: DialogState;
 	documents: DocumentsState;
 	fullscreen: FullscreenState;

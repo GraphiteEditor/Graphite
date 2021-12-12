@@ -1,4 +1,5 @@
-// eslint-disable-next-line import/no-cycle
+/* eslint-disable func-names */
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { JsDispatcher, JsMessageType } from "@/state/js-dispatcher";
 
 export type WasmInstance = typeof import("@/../wasm/pkg");
@@ -58,7 +59,6 @@ export class EditorState {
 	constructor() {
 		const wasm = getWasmInstance();
 		// Use an arrow function to preserve this context
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any
 		this.instance = new wasm.Editor((messageType: JsMessageType, data: any) => this.dispatcher.handleJsMessage(messageType, data, this.rawWasm, this.instance));
 		this.rawWasm = wasm;
 	}

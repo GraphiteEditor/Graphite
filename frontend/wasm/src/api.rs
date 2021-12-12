@@ -2,8 +2,6 @@
 // It serves as a thin wrapper over the editor backend API that relies
 // on the dispatcher messaging system and more complex Rust data types.
 
-use std::borrow::Borrow;
-
 use crate::handleJsMessage;
 use crate::helpers::Error;
 use crate::type_translators::{translate_blend_mode, translate_key, translate_tool_type};

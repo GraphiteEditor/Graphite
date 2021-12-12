@@ -224,26 +224,27 @@ import { defineComponent } from "vue";
 import { DialogState } from "@/state/dialog";
 import { DocumentsState } from "@/state/documents";
 import { FullscreenState } from "@/state/fullscreen";
-import { globalEditorManager } from "@/state/global-state";
+import { AppState, globalEditorManager } from "@/state/global-state";
 
 import MainWindow from "@/components/window/MainWindow.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
 import { EditorState } from "./state/wasm-loader";
-import { mountInput, unmountInput } from "./utilities/input";
+import { InputManager } from "./state/input";
 import { initErrorHandling } from "@/utilities/errors";
 
 // Vue injects don't play well with typescript, and all injects will show up as 'any'
 // As a workaround, we can define these types.
 declare module "@vue/runtime-core" {
-	interface ComponentCustomProperties {
-		dialog: DialogState;
-		documents: DocumentsState;
-		fullscreen: FullscreenState;
-		editor: EditorState;
-	}
+	// Types do not allow duplicate identifiers while interfaces do
+	// eslint-disable-next-line @typescript-eslint/no-empty-interface
+	interface ComponentCustomProperties extends AppState {}
 }
 
+// This is a little hacky but I don't know a better way of doing it since the DOM has
+// not loaded before the data function but this data is also needed in unmount
+let inputManager: InputManager | undefined;
 export default defineComponent({
+	state: {},
 	provide() {
 		return {
 			dialog: this.$data.dialog,
@@ -258,6 +259,7 @@ export default defineComponent({
 		const fullscreen = new FullscreenState();
 		const documents = new DocumentsState(editor, dialog);
 		initErrorHandling(editor, dialog);
+
 		return {
 			editor,
 			dialog,
@@ -272,19 +274,22 @@ export default defineComponent({
 		},
 	},
 	mounted() {
-		const { editor, fullscreen, dialog } = this.$data;
+		const { fullscreen, dialog, editor } = this.$data;
+		inputManager = new InputManager(this.$el.parentElement, fullscreen, dialog, editor);
 		globalEditorManager.registerInstance(this.$data);
 
 		// This is needed to allow the app to have focus while inside of it
 		// Source: https://stackoverflow.com/questions/1717897/jquery-keydown-on-div-not-working-in-firefox
 		this.$el.parentElement.tabIndex = 0;
-
-		mountInput(editor, this.$el.parentElement, fullscreen, dialog);
 	},
 	beforeUnmount() {
 		globalEditorManager.removeInstance(this.$data);
+
+		// Safe to force since we know it is defined in the mounted function
+		// eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+		inputManager!.removeListeners();
+
 		const { editor } = this.$data;
-		unmountInput(editor);
 		editor.instance.free();
 	},
 	components: { MainWindow, LayoutRow },
