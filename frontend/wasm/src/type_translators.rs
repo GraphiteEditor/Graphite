@@ -1,7 +1,7 @@
 use crate::helpers::match_string_to_enum;
 use editor::input::keyboard::Key;
 use editor::tool::ToolType;
-use graphene::layers::BlendMode;
+use graphene::layers::{BlendMode, style::ViewMode};
 
 pub fn translate_tool_type(name: &str) -> Option<ToolType> {
 	use ToolType::*;
@@ -125,4 +125,15 @@ pub fn translate_key(name: &str) -> Key {
 		"." => KeyPeriod,
 		_ => UnknownKey,
 	}
+}
+
+pub fn translate_view_mode(name: &str) -> Option<ViewMode>{
+	Some(
+		match name{
+			"Normal" => ViewMode::Normal,
+			"WireFrame" => ViewMode::WireFrame,
+			"Pixels" => ViewMode::Pixels,
+			_ => return None,
+		}
+	)
 }

@@ -270,20 +270,14 @@ const documentModeEntries: SectionsOfMenuListEntries = [
 		{ label: "Guide Mode", icon: "ViewportGuideMode", action: () => comingSoon(331) },
 	],
 ];
-const viewModeEntries: RadioEntries = [
-	{ value: "normal", icon: "ViewModeNormal", tooltip: "View Mode: Normal", action: () => setViewMode(0) },
-	{ value: "outline", icon: "ViewModeOutline", tooltip: "View Mode: Outline", action: () => setViewMode(1) },
-	{ value: "pixels", icon: "ViewModePixels", tooltip: "View Mode: Pixels", action: () => comingSoon(320) },
-];
-
-async function setViewMode(newViewMode: number) {
-	(await wasm).set_view_mode(newViewMode);
-}
 
 export default defineComponent({
 	methods: {
 		async setSnap(newStatus: boolean) {
 			(await wasm).set_snapping(newStatus);
+		},
+		async setViewMode(newViewMode: string) {
+			(await wasm).set_view_mode(newViewMode);
 		},
 		async viewportResize() {
 			const canvas = this.$refs.canvas as HTMLElement;
@@ -371,6 +365,11 @@ export default defineComponent({
 		window.addEventListener("DOMContentLoaded", this.viewportResize);
 	},
 	data() {
+		const viewModeEntries: RadioEntries = [
+			{ value: "normal", icon: "ViewModeNormal", tooltip: "View Mode: Normal", action: () => this.setViewMode("Normal") },
+			{ value: "outline", icon: "ViewModeOutline", tooltip: "View Mode: Outline", action: () => this.setViewMode("WireFrame") },
+			{ value: "pixels", icon: "ViewModePixels", tooltip: "View Mode: Pixels", action: () => comingSoon(320) },
+		];
 		return {
 			viewportSvg: "",
 			canvasSvgWidth: "100%",

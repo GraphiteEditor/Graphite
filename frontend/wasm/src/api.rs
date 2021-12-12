@@ -4,7 +4,7 @@
 
 use crate::dispatch;
 use crate::helpers::Error;
-use crate::type_translators::{translate_blend_mode, translate_key, translate_tool_type};
+use crate::type_translators::{translate_blend_mode, translate_key, translate_tool_type, translate_view_mode};
 use editor::consts::FILE_SAVE_SUFFIX;
 use editor::input::input_preprocessor::ModifierKeys;
 use editor::input::mouse::{EditorMouseState, ScrollDelta, ViewportBounds};
@@ -335,9 +335,12 @@ pub fn set_snapping(new_status: bool) {
 
 /// Swap between view modes
 #[wasm_bindgen]
-pub fn set_view_mode(new_mode: u8) {
-	let message = DocumentMessage::SetViewMode(new_mode);
-	dispatch(message);
+pub fn set_view_mode(new_mode: String) -> Result<(), JsValue> {
+	match translate_view_mode(new_mode.as_str()){
+		Some(mode) => dispatch(DocumentMessage::SetViewMode(mode)),
+		None => return Err(Error::new("Invalid view mode").into())
+	};
+	Ok(())
 }
 
 /// Sets the zoom to the value

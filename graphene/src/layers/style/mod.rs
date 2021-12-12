@@ -12,7 +12,7 @@ fn format_opacity(name: &str, opacity: f32) -> String {
 
 pub const WIRE_FRAME_STROKE_WIDTH: f32 = 1.0;
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Deserialize, Serialize)]
 pub enum ViewMode{
 	Normal,
 	WireFrame,

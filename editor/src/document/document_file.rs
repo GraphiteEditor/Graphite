@@ -124,7 +124,7 @@ pub enum DocumentMessage {
 	DocumentHistoryBackward,
 	DocumentHistoryForward,
 	ClearOverlays,
-	SetViewMode(u8),
+	SetViewMode(ViewMode),
 	NudgeSelectedLayers(f64, f64),
 	AlignSelectedLayers(AlignAxis, AlignAggregate),
 	MoveSelectedLayersTo {
@@ -563,17 +563,9 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					responses.push_front(DocumentOperation::DeleteLayer { path }.into());
 				}
 			}
-			SetViewMode(idx) => {
-				let mut mode_update_func = match idx{
-					1 => {
-						self.graphene_document.view_mode = ViewMode::WireFrame;
-						|s: &mut GrapheneShape|{s.style.view_mode(ViewMode::WireFrame)}
-					},
-					_ => {
-						self.graphene_document.view_mode = ViewMode::Normal;
-						|s: &mut GrapheneShape|{s.style.view_mode(ViewMode::Normal)}
-					},
-				};
+			SetViewMode(mode) => {
+				self.graphene_document.view_mode = mode;
+				let mut mode_update_func = |s: &mut GrapheneShape|{s.style.view_mode(mode)};
 				GrapheneDocument::visit_all_shapes(&mut self.graphene_document.root, &mut mode_update_func);
 				responses.push_back(
 					FrontendMessage::UpdateCanvas {
