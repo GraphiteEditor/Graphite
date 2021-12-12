@@ -160,7 +160,9 @@ fn make_operation(data: &PenToolData, tool_data: &DocumentToolData, show_preview
 			insert_index: -1,
 			transform: DAffine2::IDENTITY.to_cols_array(),
 			points,
-			style: style::PathStyle::new(Some(style::Stroke::new(tool_data.primary_color, data.weight as f32)), Some(style::Fill::none())),
+			style: style::PathStyle::new(
+				Some(style::Stroke::new(tool_data.primary_color, data.weight as f32)),
+				Some(style::Fill::none()) ),
 		}
 		.into(),
 	]

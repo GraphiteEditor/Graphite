@@ -564,7 +564,6 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				}
 			}
 			SetViewMode(idx) => {
-				log::debug!("view mode set: {:?}", idx);
 				let mut mode_update_func = match idx{
 					1 => {
 						self.graphene_document.view_mode = ViewMode::WireFrame;

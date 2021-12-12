@@ -91,7 +91,11 @@ impl Fsm for LineToolFsmState {
 							path: data.path.clone().unwrap(),
 							insert_index: -1,
 							transform: DAffine2::ZERO.to_cols_array(),
-							style: style::PathStyle::new(Some(style::Stroke::new(tool_data.primary_color, data.weight as f32)), None),
+							style: style::PathStyle::with_mode(
+								Some(style::Stroke::new(tool_data.primary_color, data.weight as f32)),
+								None,
+								document.graphene_document.view_mode
+							),
 						}
 						.into(),
 					);
