@@ -157,17 +157,19 @@ impl Document {
 		Ok(())
 	}
 
-	/// Visit each layer recursively, applies modify_shape to each Shape
+	/// Visit each layer recursively, applies modify_shape to each Layer which is a Shape
 	/// Currently used to swap between viewmodes
-	pub fn visit_all_layers<F: FnMut(&mut Shape)->()>(layer: &mut Layer, modify_shape: &mut F) {
+	pub fn visit_all_shapes<F: FnMut(&mut Shape)->()>(layer: &mut Layer, modify_shape: &mut F) {
 		match layer.data{
 			LayerDataType::Shape(ref mut shape) => {
-				modify_shape(shape);
-				layer.cache_dirty = true; //this layer should be updated on next render pass
+				if !layer.overlay {
+					modify_shape(shape);
+					layer.cache_dirty = true; //this layer should be updated on next render pass
+				}
 			},
 			LayerDataType::Folder(ref mut folder) => {
 				for sub_layer in folder.layers_mut(){
-					Document::visit_all_layers(sub_layer, modify_shape);
+					Document::visit_all_shapes(sub_layer, modify_shape);
 				}
 			},
 		}

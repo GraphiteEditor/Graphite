@@ -574,7 +574,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 						|s: &mut GrapheneShape|{s.style.view_mode(ViewMode::Normal)}
 					},
 				};
-				GrapheneDocument::visit_all_layers(&mut self.graphene_document.root, &mut mode_update_func);
+				GrapheneDocument::visit_all_shapes(&mut self.graphene_document.root, &mut mode_update_func);
 				self.graphene_document.root.cache_dirty = true;
 				responses.push_back(
 					FrontendMessage::UpdateCanvas {
