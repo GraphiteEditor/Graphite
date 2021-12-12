@@ -4,8 +4,7 @@
 
 import { Transform, Type } from "class-transformer";
 
-// Wasm types are here to remove dependency cycle
-export type WasmInstance = typeof import("@/../wasm/pkg");
+import { WasmInstance } from "@/state/wasm-loader";
 
 export class JsMessage {
 	// The marker provides a way to check if an object is a sub-class constructor for a jsMessage.

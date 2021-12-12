@@ -156,7 +156,7 @@ export function mountInput(editor: EditorState, container: HTMLElement, fullscre
 
 	window.addEventListener("mousemove", mousemove);
 	container.addEventListener("mousedown", mousedown);
-	window.addEventListener("mouseup", mouseup);
+	container.addEventListener("mouseup", mouseup);
 
 	container.addEventListener("wheel", wheel, { passive: false });
 
@@ -170,7 +170,7 @@ export function mountInput(editor: EditorState, container: HTMLElement, fullscre
 
 		window.removeEventListener("mousemove", mousemove);
 		container.removeEventListener("mousedown", mousedown);
-		window.removeEventListener("mouseup", mouseup);
+		container.removeEventListener("mouseup", mouseup);
 
 		container.removeEventListener("wheel", wheel);
 	});

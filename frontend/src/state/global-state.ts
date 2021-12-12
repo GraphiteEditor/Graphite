@@ -1,4 +1,3 @@
-/* eslint-disable import/no-cycle */
 import { JsMessage } from "@/utilities/js-messages";
 import { EditorState } from "@/state/wasm-loader";
 import { DialogState } from "./dialog";

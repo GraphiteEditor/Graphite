@@ -1,9 +1,9 @@
 <template>
 	<div style="display: flex">
-		<div style="width: 50%">
+		<div style="width: 50%; outline: none">
 			<App />
 		</div>
-		<div style="width: 50%">
+		<div style="width: 50%; outline: none">
 			<App />
 		</div>
 	</div>

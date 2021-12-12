@@ -1,12 +1,13 @@
 // eslint-disable-next-line import/no-cycle
 import { JsDispatcher, JsMessageType } from "@/state/js-dispatcher";
-import { WasmInstance } from "../utilities/js-messages";
+
+export type WasmInstance = typeof import("@/../wasm/pkg");
+export type RustEditorInstance = InstanceType<WasmInstance["Editor"]>;
 
 let wasmImport: WasmInstance | null = null;
 export async function initWasm() {
 	if (wasmImport !== null) return;
 
-	// eslint-disable-next-line import/no-cycle
 	wasmImport = await import("@/../wasm/pkg").then(panicProxy);
 }
 
@@ -50,7 +51,7 @@ function getWasmInstance() {
 export class EditorState {
 	readonly dispatcher = new JsDispatcher();
 
-	readonly instance: InstanceType<WasmInstance["Editor"]>;
+	readonly instance: RustEditorInstance;
 
 	readonly rawWasm: WasmInstance;
 
@@ -58,7 +59,7 @@ export class EditorState {
 		const wasm = getWasmInstance();
 		// Use an arrow function to preserve this context
 		// eslint-disable-next-line @typescript-eslint/no-explicit-any
-		this.instance = new wasm.Editor((messageType: JsMessageType, data: any) => this.dispatcher.handleJsMessage(messageType, data, this.rawWasm));
+		this.instance = new wasm.Editor((messageType: JsMessageType, data: any) => this.dispatcher.handleJsMessage(messageType, data, this.rawWasm, this.instance));
 		this.rawWasm = wasm;
 	}
 }

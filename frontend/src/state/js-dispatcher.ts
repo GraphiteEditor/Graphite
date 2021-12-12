@@ -20,11 +20,10 @@ import {
 	UpdateWorkingColors,
 	UpdateLayer,
 	JsMessage,
-	WasmInstance,
 	GlobalJsMessage,
 } from "../utilities/js-messages";
-// eslint-disable-next-line import/no-cycle
 import { globalEditorManager } from "./global-state";
+import { RustEditorInstance, WasmInstance } from "./wasm-loader";
 
 type JsMessageCallback<T extends JsMessage> = (responseData: T) => void;
 type JsMessageCallbackMap = {
@@ -32,9 +31,10 @@ type JsMessageCallbackMap = {
 };
 
 type Constructs<T> = new (...args: any[]) => T;
-type ConstructsJsMessage = typeof JsMessage;
 
-const responseMap = {
+// type ConstructsJsMessage = typeof JsMessage;
+
+const messageConstructorMap = {
 	UpdateCanvas,
 	UpdateScrollbars,
 	UpdateRulers,
@@ -55,28 +55,32 @@ const responseMap = {
 	DisplayConfirmationToCloseAllDocuments,
 } as const;
 
-export type JsMessageType = keyof typeof responseMap;
+export type JsMessageType = keyof typeof messageConstructorMap;
 
-function isJsMessageConstructor(fn: ConstructsJsMessage | ((data: any, wasm: WasmInstance) => JsMessage)): fn is ConstructsJsMessage {
-	return (fn as ConstructsJsMessage).jsMessageMarker !== undefined;
+type JSMessageFactory = (data: any, wasm: WasmInstance, instance: RustEditorInstance) => JsMessage;
+
+type MessageMaker = typeof JsMessage | JSMessageFactory;
+
+function isJsMessageConstructor(fn: MessageMaker): fn is typeof JsMessage {
+	return (fn as typeof JsMessage).jsMessageMarker !== undefined;
 }
 
 export class JsDispatcher {
 	private responseMap: JsMessageCallbackMap = {};
 
-	handleJsMessage(responseType: JsMessageType, responseData: any, wasm: WasmInstance) {
-		const messageMaker = responseMap[responseType];
+	handleJsMessage(messageType: JsMessageType, responseData: any, wasm: WasmInstance, instance: RustEditorInstance) {
+		const messageMaker = messageConstructorMap[messageType] as MessageMaker;
 		let message: JsMessage;
 
 		if (!messageMaker) {
 			// eslint-disable-next-line no-console
-			console.error(`Received a Response of type "${responseType}" but but was not able to parse the data.`);
+			console.error(`Received a Response of type "${messageType}" but but was not able to parse the data.`);
 		}
 
 		if (isJsMessageConstructor(messageMaker)) {
-			message = plainToInstance(messageMaker, responseData[responseType]);
+			message = plainToInstance(messageMaker, responseData[messageType]);
 		} else {
-			message = messageMaker(responseData[responseType], wasm);
+			message = messageMaker(responseData[messageType], wasm, instance);
 		}
 
 		if (message instanceof GlobalJsMessage) {

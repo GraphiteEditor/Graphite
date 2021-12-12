@@ -71,6 +71,7 @@ body,
 	background: var(--color-2-mildblack);
 	user-select: none;
 	overscroll-behavior: none;
+	outline: none;
 }
 
 html,
@@ -275,7 +276,7 @@ export default defineComponent({
 		globalEditorManager.registerInstance(this.$data);
 
 		// This is needed to allow the app to have focus while inside of it
-		// Source: https://stackoverflow.com/questions/3656467/is-it-possible-to-focus-on-a-div-using-javascript-focus-function
+		// Source: https://stackoverflow.com/questions/1717897/jquery-keydown-on-div-not-working-in-firefox
 		this.$el.parentElement.tabIndex = 0;
 
 		mountInput(editor, this.$el.parentElement, fullscreen, dialog);
