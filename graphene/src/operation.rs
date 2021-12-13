@@ -66,6 +66,7 @@ pub enum Operation {
 		bez_path: kurbo::BezPath,
 		style: style::PathStyle,
 	},
+	BooleanUnion,
 	DeleteLayer {
 		path: Vec<LayerId>,
 	},

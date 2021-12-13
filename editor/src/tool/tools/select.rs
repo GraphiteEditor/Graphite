@@ -260,7 +260,7 @@ impl Fsm for SelectToolFsmState {
 					self
 				}
 				(_, BooleanUnion) => {
-					log::debug!("boolean union clicked");
+					responses.push_back(DocumentMessage::DispatchOperation(Box::from(Operation::BooleanUnion)).into());
 					self
 				}
 				_ => self,
