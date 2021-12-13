@@ -242,7 +242,7 @@ declare module "@vue/runtime-core" {
 
 // This is a little hacky but I don't know a better way of doing it since the DOM has
 // not loaded before the data function but this data is also needed in unmount
-let inputManager: InputManager | undefined;
+const inputManagers = new WeakMap<AppState, InputManager>();
 export default defineComponent({
 	state: {},
 	provide() {
@@ -275,7 +275,7 @@ export default defineComponent({
 	},
 	mounted() {
 		const { fullscreen, dialog, editor } = this.$data;
-		inputManager = new InputManager(this.$el.parentElement, fullscreen, dialog, editor);
+		inputManagers.set(this.$data, new InputManager(this.$el.parentElement, fullscreen, dialog, editor));
 		globalEditorManager.registerInstance(this.$data);
 
 		// This is needed to allow the app to have focus while inside of it
@@ -285,9 +285,10 @@ export default defineComponent({
 	beforeUnmount() {
 		globalEditorManager.removeInstance(this.$data);
 
-		// Safe to force since we know it is defined in the mounted function
-		// eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-		inputManager!.removeListeners();
+		const inputManager = inputManagers.get(this.$data);
+		if (inputManager) {
+			inputManager.removeListeners();
+		}
 
 		const { editor } = this.$data;
 		editor.instance.free();
