@@ -7,7 +7,7 @@ use glam::{DAffine2, DVec2};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-	layers::{self, Folder, Layer, LayerData, LayerDataType, Shape, style::ViewMode},
+	layers::{self, style::ViewMode, Folder, Layer, LayerData, LayerDataType, Shape},
 	DocumentError, DocumentResponse, LayerId, Operation, Quad,
 };
 
@@ -159,20 +159,21 @@ impl Document {
 
 	/// Visit each layer recursively, applies modify_shape to each Shape
 	/// Currently used to swap between viewmodes
-	pub fn visit_all_shapes<F: FnMut(&mut Shape)->()>(layer: &mut Layer, modify_shape: &mut F) -> bool {
-		match layer.data{
+	pub fn visit_all_shapes<F: FnMut(&mut Shape) -> ()>(layer: &mut Layer, modify_shape: &mut F) -> bool {
+		match layer.data {
 			LayerDataType::Shape(ref mut shape) => {
 				if !layer.overlay {
 					modify_shape(shape);
 					layer.cache_dirty = true; //this layer should be updated on next render pass
 				}
-			},
+			}
 			LayerDataType::Folder(ref mut folder) => {
-				for sub_layer in folder.layers_mut(){
+				for sub_layer in folder.layers_mut() {
 					if Document::visit_all_shapes(sub_layer, modify_shape) {
-						layer.cache_dirty = true; }
+						layer.cache_dirty = true;
+					}
 				}
-			},
+			}
 		}
 		layer.cache_dirty
 	}

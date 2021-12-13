@@ -29,7 +29,6 @@ pub struct Shape {
 	pub solid: bool,
 }
 
-
 impl LayerData for Shape {
 	fn render(&mut self, svg: &mut String, transforms: &mut Vec<DAffine2>) {
 		let mut path = self.path.clone();

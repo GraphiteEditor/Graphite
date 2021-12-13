@@ -336,9 +336,9 @@ pub fn set_snapping(new_status: bool) {
 /// Swap between view modes
 #[wasm_bindgen]
 pub fn set_view_mode(new_mode: String) -> Result<(), JsValue> {
-	match translate_view_mode(new_mode.as_str()){
+	match translate_view_mode(new_mode.as_str()) {
 		Some(mode) => dispatch(DocumentMessage::SetViewMode(mode)),
-		None => return Err(Error::new("Invalid view mode").into())
+		None => return Err(Error::new("Invalid view mode").into()),
 	};
 	Ok(())
 }

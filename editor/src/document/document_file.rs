@@ -16,7 +16,7 @@ use kurbo::PathSeg;
 use log::warn;
 use serde::{Deserialize, Serialize};
 
-use graphene::layers::{BlendMode, style::ViewMode, simple_shape::Shape as GrapheneShape};
+use graphene::layers::{simple_shape::Shape as GrapheneShape, style::ViewMode, BlendMode};
 use graphene::{document::Document as GrapheneDocument, layers::LayerDataType, DocumentError, LayerId};
 use graphene::{DocumentResponse, Operation as DocumentOperation};
 
@@ -565,7 +565,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			}
 			SetViewMode(mode) => {
 				self.graphene_document.view_mode = mode;
-				let mut mode_update_func = |s: &mut GrapheneShape|{s.style.view_mode(mode)};
+				let mut mode_update_func = |s: &mut GrapheneShape| s.style.view_mode(mode);
 				GrapheneDocument::visit_all_shapes(&mut self.graphene_document.root, &mut mode_update_func);
 				responses.push_back(
 					FrontendMessage::UpdateCanvas {

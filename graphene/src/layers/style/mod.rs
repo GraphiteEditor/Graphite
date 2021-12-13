@@ -13,12 +13,16 @@ fn format_opacity(name: &str, opacity: f32) -> String {
 pub const WIRE_FRAME_STROKE_WIDTH: f32 = 1.0;
 
 #[derive(Debug, Clone, Copy, PartialEq, Deserialize, Serialize)]
-pub enum ViewMode{
+pub enum ViewMode {
 	Normal,
 	WireFrame,
 	Pixels,
 }
-impl Default for ViewMode{ fn default()->Self{ViewMode::Normal}}
+impl Default for ViewMode {
+	fn default() -> Self {
+		ViewMode::Normal
+	}
+}
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize)]
@@ -76,7 +80,11 @@ pub struct PathStyle {
 }
 impl PathStyle {
 	pub fn new(stroke: Option<Stroke>, fill: Option<Fill>) -> Self {
-		Self { stroke, fill, view_mode: ViewMode::default() }
+		Self {
+			stroke,
+			fill,
+			view_mode: ViewMode::default(),
+		}
 	}
 	pub fn with_mode(stroke: Option<Stroke>, fill: Option<Fill>, mode: ViewMode) -> Self {
 		Self { stroke, fill, view_mode: mode }
@@ -113,8 +121,7 @@ impl PathStyle {
 				(_, None) => String::new(),
 			},
 			match (self.view_mode, self.stroke) {
-				(ViewMode::WireFrame, Some(stroke)) => Stroke::new(stroke.color(), WIRE_FRAME_STROKE_WIDTH).render(),
-				(ViewMode::WireFrame, None) => Stroke::new(Color::BLACK, WIRE_FRAME_STROKE_WIDTH).render(),
+				(ViewMode::WireFrame, _) => Stroke::new(Color::BLACK, WIRE_FRAME_STROKE_WIDTH).render(),
 				(_, Some(stroke)) => stroke.render(),
 				(_, None) => String::new(),
 			},

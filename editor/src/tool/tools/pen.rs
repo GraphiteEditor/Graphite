@@ -3,7 +3,10 @@ use crate::tool::snapping::SnapHandler;
 use crate::tool::{DocumentToolData, Fsm, ToolActionHandlerData, ToolOptions, ToolType};
 use crate::{document::DocumentMessageHandler, message_prelude::*};
 use glam::DAffine2;
-use graphene::{layers::{style, style::ViewMode}, Operation};
+use graphene::{
+	layers::{style, style::ViewMode},
+	Operation,
+};
 use serde::{Deserialize, Serialize};
 
 #[derive(Default)]
@@ -160,11 +163,7 @@ fn make_operation(data: &PenToolData, tool_data: &DocumentToolData, view_mode: V
 			insert_index: -1,
 			transform: DAffine2::IDENTITY.to_cols_array(),
 			points,
-			style: style::PathStyle::with_mode(
-				Some(style::Stroke::new(tool_data.primary_color, data.weight as f32)),
-				Some(style::Fill::none()),
-				view_mode
-			),
+			style: style::PathStyle::with_mode(Some(style::Stroke::new(tool_data.primary_color, data.weight as f32)), Some(style::Fill::none()), view_mode),
 		}
 		.into(),
 	]
