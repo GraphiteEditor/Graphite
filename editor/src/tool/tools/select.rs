@@ -35,6 +35,8 @@ pub enum SelectMessage {
 	Align(AlignAxis, AlignAggregate),
 	FlipHorizontal,
 	FlipVertical,
+
+	BooleanUnion,
 }
 
 impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Select {
@@ -255,6 +257,10 @@ impl Fsm for SelectToolFsmState {
 				(_, FlipVertical) => {
 					responses.push_back(DocumentMessage::FlipSelectedLayers(FlipAxis::Y).into());
 
+					self
+				}
+				(_, BooleanUnion) => {
+					log::debug!("boolean union clicked");
 					self
 				}
 				_ => self,

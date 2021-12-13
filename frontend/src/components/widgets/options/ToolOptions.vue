@@ -132,7 +132,7 @@ export default defineComponent({
 
 				{ kind: "Separator", props: { type: SeparatorType.Section } },
 
-				{ kind: "IconButton", tooltip: "Boolean Union", callback: () => comingSoon(197), props: { icon: "BooleanUnion", size: 24 } },
+				{ kind: "IconButton", message: "BooleanUnion", tooltip: "Boolean Union", props: { icon: "BooleanUnion", size: 24 } },
 				{ kind: "IconButton", tooltip: "Boolean Subtract Front", callback: () => comingSoon(197), props: { icon: "BooleanSubtractFront", size: 24 } },
 				{ kind: "IconButton", tooltip: "Boolean Subtract Back", callback: () => comingSoon(197), props: { icon: "BooleanSubtractBack", size: 24 } },
 				{ kind: "IconButton", tooltip: "Boolean Intersect", callback: () => comingSoon(197), props: { icon: "BooleanIntersect", size: 24 } },
