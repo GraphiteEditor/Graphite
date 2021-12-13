@@ -125,6 +125,7 @@ pub enum DocumentMessage {
 	DocumentHistoryForward,
 	ClearOverlays,
 	SetViewMode(ViewMode),
+	ReRenderDocument,
 	NudgeSelectedLayers(f64, f64),
 	AlignSelectedLayers(AlignAxis, AlignAggregate),
 	MoveSelectedLayersTo {
@@ -564,7 +565,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				}
 			}
 			SetViewMode(mode) => {
-				self.graphene_document.view_mode = mode;
+				self.graphene_document.update_view_mode(mode);
 				let mut mode_update_func = |s: &mut GrapheneShape| s.style.view_mode(mode);
 				GrapheneDocument::visit_all_shapes(&mut self.graphene_document.root, &mut mode_update_func);
 				responses.push_back(
@@ -704,6 +705,12 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					}
 					.into(),
 				);
+			}
+			ReRenderDocument => {
+				//When the document is zoomed the wireframes must be re-rendered in order to maintain wireframe stroke width
+				if self.graphene_document.view_mode() == ViewMode::WireFrame{
+					GrapheneDocument::visit_all_shapes(&mut self.graphene_document.root, &mut(|_s: &mut GrapheneShape|{}));
+				}
 			}
 			NudgeSelectedLayers(x, y) => {
 				self.backup(responses);

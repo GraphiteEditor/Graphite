@@ -110,6 +110,10 @@ impl PathStyle {
 	pub fn view_mode(&mut self, new_mode: ViewMode) {
 		self.view_mode = new_mode;
 	}
+	pub fn get_view_mode(&self) -> ViewMode {
+		self.view_mode
+	}
+
 	pub fn render(&self) -> String {
 		// change stroke rendering so solid paths don't dissapear
 		// in wireframe view mode extra Stroke/Fill allocations are done

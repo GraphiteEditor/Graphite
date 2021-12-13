@@ -107,7 +107,7 @@ impl Fsm for PenToolFsmState {
 						data.next_point = pos;
 					}
 
-					responses.extend(make_operation(data, tool_data, document.graphene_document.view_mode, true));
+					responses.extend(make_operation(data, tool_data, document.graphene_document.view_mode(), true));
 
 					Dragging
 				}
@@ -116,14 +116,14 @@ impl Fsm for PenToolFsmState {
 					let pos = transform.inverse() * DAffine2::from_translation(snapped_position);
 					data.next_point = pos;
 
-					responses.extend(make_operation(data, tool_data, document.graphene_document.view_mode, true));
+					responses.extend(make_operation(data, tool_data, document.graphene_document.view_mode(), true));
 
 					Dragging
 				}
 				(Dragging, Confirm) => {
 					if data.points.len() >= 2 {
 						responses.push_back(DocumentMessage::DeselectAllLayers.into());
-						responses.extend(make_operation(data, tool_data, document.graphene_document.view_mode, false));
+						responses.extend(make_operation(data, tool_data, document.graphene_document.view_mode(), false));
 						responses.push_back(DocumentMessage::CommitTransaction.into());
 					} else {
 						responses.push_back(DocumentMessage::AbortTransaction.into());

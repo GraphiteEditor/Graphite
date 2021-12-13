@@ -10,9 +10,11 @@ use crate::LayerId;
 use crate::Quad;
 use kurbo::BezPath;
 
-use super::style;
-use super::style::PathStyle;
-use super::LayerData;
+use super::{
+	style,
+	style::{PathStyle, ViewMode},
+	LayerData,
+};
 
 use serde::{Deserialize, Serialize};
 use std::fmt::Write;
@@ -70,9 +72,10 @@ impl LayerData for Shape {
 
 impl Shape {
 	pub fn transform(&self, transforms: &[DAffine2]) -> DAffine2 {
-		let start = match self.render_index {
-			-1 => 0,
-			x => (transforms.len() as i32 - x).max(0) as usize,
+		let start = match (self.style.get_view_mode(), self.render_index) {
+			(ViewMode::WireFrame, _) => 0,
+			(_, -1) => 0,
+			(_, x) => (transforms.len() as i32 - x).max(0) as usize,
 		};
 		transforms.iter().skip(start).cloned().reduce(|a, b| a * b).unwrap_or(DAffine2::IDENTITY)
 	}

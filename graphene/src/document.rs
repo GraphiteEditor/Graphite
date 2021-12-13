@@ -19,7 +19,7 @@ pub struct Document {
 	#[serde(skip)]
 	pub state_identifier: DefaultHasher,
 	#[serde(skip)]
-	pub view_mode: ViewMode,
+	view_mode: ViewMode,
 }
 
 impl Default for Document {
@@ -39,6 +39,7 @@ impl Document {
 
 	/// Wrapper around render, that returns the whole document as a Response.
 	pub fn render_root(&mut self) -> String {
+		log::debug!("{:?}", self.root.transform);
 		self.root.render(&mut vec![]);
 		self.root.cache.clone()
 	}
@@ -52,6 +53,10 @@ impl Document {
 		// We fully expect the serialization to succeed
 		val.unwrap()
 	}
+
+	pub fn view_mode(&self) -> ViewMode {self.view_mode}
+
+	pub fn update_view_mode(&mut self, mode: ViewMode) {self.view_mode = mode;}
 
 	/// Checks whether each layer under `path` intersects with the provided `quad` and adds all intersection layers as paths to `intersections`.
 	pub fn intersects_quad(&self, quad: Quad, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>) {
@@ -157,9 +162,9 @@ impl Document {
 		Ok(())
 	}
 
-	/// Visit each layer recursively, applies modify_shape to each Shape
+	/// Visit each layer recursively, applies modify_shape to each non-overlay Shape
 	/// Currently used to swap between viewmodes
-	pub fn visit_all_shapes<F: FnMut(&mut Shape) -> ()>(layer: &mut Layer, modify_shape: &mut F) -> bool {
+	pub fn visit_all_shapes<F: FnMut(&mut Shape) -> ()>(layer: &mut Layer, modify_shape:&mut F) -> bool {
 		match layer.data {
 			LayerDataType::Shape(ref mut shape) => {
 				if !layer.overlay {
