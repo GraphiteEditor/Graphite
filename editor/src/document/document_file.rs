@@ -708,8 +708,8 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			}
 			ReRenderDocument => {
 				//When the document is zoomed the wireframes must be re-rendered in order to maintain wireframe stroke width
-				if self.graphene_document.view_mode() == ViewMode::WireFrame{
-					GrapheneDocument::visit_all_shapes(&mut self.graphene_document.root, &mut(|_s: &mut GrapheneShape|{}));
+				if self.graphene_document.view_mode() == ViewMode::WireFrame {
+					GrapheneDocument::visit_all_shapes(&mut self.graphene_document.root, &mut (|_s: &mut GrapheneShape| {}));
 				}
 			}
 			NudgeSelectedLayers(x, y) => {

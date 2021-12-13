@@ -54,9 +54,13 @@ impl Document {
 		val.unwrap()
 	}
 
-	pub fn view_mode(&self) -> ViewMode {self.view_mode}
+	pub fn view_mode(&self) -> ViewMode {
+		self.view_mode
+	}
 
-	pub fn update_view_mode(&mut self, mode: ViewMode) {self.view_mode = mode;}
+	pub fn update_view_mode(&mut self, mode: ViewMode) {
+		self.view_mode = mode;
+	}
 
 	/// Checks whether each layer under `path` intersects with the provided `quad` and adds all intersection layers as paths to `intersections`.
 	pub fn intersects_quad(&self, quad: Quad, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>) {
@@ -164,7 +168,7 @@ impl Document {
 
 	/// Visit each layer recursively, applies modify_shape to each non-overlay Shape
 	/// Currently used to swap between viewmodes
-	pub fn visit_all_shapes<F: FnMut(&mut Shape) -> ()>(layer: &mut Layer, modify_shape:&mut F) -> bool {
+	pub fn visit_all_shapes<F: FnMut(&mut Shape) -> ()>(layer: &mut Layer, modify_shape: &mut F) -> bool {
 		match layer.data {
 			LayerDataType::Shape(ref mut shape) => {
 				if !layer.overlay {

@@ -1,6 +1,6 @@
 pub use super::layer_panel::*;
 
-use super::{LayerData, DocumentMessage};
+use super::{DocumentMessage, LayerData};
 
 use crate::message_prelude::*;
 use crate::{
