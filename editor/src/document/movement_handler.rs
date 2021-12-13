@@ -203,6 +203,7 @@ impl MessageHandler<MovementMessage, (&mut LayerData, &Document, &InputPreproces
 					layerdata.scale *= new_scale;
 					responses.push_back(FrontendMessage::SetCanvasZoom { new_zoom: layerdata.scale }.into());
 					responses.push_back(ToolMessage::SelectedLayersChanged.into());
+					responses.push_back(DocumentMessage::ReRenderDocument.into());
 					self.create_document_transform_from_layerdata(layerdata, &ipp.viewport_bounds, responses);
 				}
 			}
