@@ -32,9 +32,9 @@ const wasm = import("@/../wasm/pkg").then(panicProxy);
 	window.addEventListener("keyup", onKeyUp);
 	window.addEventListener("keydown", onKeyDown);
 
-	window.addEventListener("mousemove", onMouseMove);
-	window.addEventListener("mousedown", onMouseDown);
-	window.addEventListener("mouseup", onMouseUp);
+	window.addEventListener("pointermove", onMouseMove);
+	window.addEventListener("pointerdown", onMouseDown);
+	window.addEventListener("pointerup", onMouseUp);
 
 	window.addEventListener("wheel", onMouseScroll, { passive: false });
 })();
