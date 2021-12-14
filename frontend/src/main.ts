@@ -4,7 +4,7 @@
 import "reflect-metadata";
 import { createApp } from "vue";
 import { fullscreenModeChanged } from "@/utilities/fullscreen";
-import { onKeyUp, onKeyDown, onMouseMove, onMouseDown, onMouseUp, onMouseScroll, onWindowResize, onBeforeUnload } from "@/utilities/input";
+import { onKeyUp, onKeyDown, onPointerMove, onPointerDown, onPointerUp, onMouseScroll, onWindowResize, onBeforeUnload } from "@/utilities/input";
 import "@/utilities/errors";
 import App from "@/App.vue";
 import { panicProxy } from "@/utilities/panic-proxy";
@@ -32,9 +32,9 @@ const wasm = import("@/../wasm/pkg").then(panicProxy);
 	window.addEventListener("keyup", onKeyUp);
 	window.addEventListener("keydown", onKeyDown);
 
-	window.addEventListener("pointermove", onMouseMove);
-	window.addEventListener("pointerdown", onMouseDown);
-	window.addEventListener("pointerup", onMouseUp);
+	window.addEventListener("pointerdown", onPointerDown);
+	window.addEventListener("pointermove", onPointerMove);
+	window.addEventListener("pointerup", onPointerUp);
 
 	window.addEventListener("wheel", onMouseScroll, { passive: false });
 })();

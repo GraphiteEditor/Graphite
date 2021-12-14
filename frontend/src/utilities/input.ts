@@ -5,7 +5,7 @@ import documents from "./documents";
 
 const wasm = import("@/../wasm/pkg").then(panicProxy);
 
-let viewportMouseInteractionOngoing = false;
+let viewportPointerInteractionOngoing = false;
 
 // Keyboard events
 
@@ -64,22 +64,26 @@ export async function onKeyUp(e: KeyboardEvent) {
 	}
 }
 
-// Mouse events
+// Pointer events
 
-export async function onMouseMove(e: MouseEvent) {
-	if (!e.buttons) viewportMouseInteractionOngoing = false;
+export async function onPointerMove(e: PointerEvent) {
+	if (!e.buttons) {
+		viewportPointerInteractionOngoing = false;
+	}
 
 	const modifiers = makeModifiersBitfield(e);
 	(await wasm).on_mouse_move(e.clientX, e.clientY, e.buttons, modifiers);
 }
 
-export async function onMouseDown(e: MouseEvent) {
-	const target = e.target && (e.target as HTMLElement);
+export async function onPointerDown(e: PointerEvent) {
+	const target = (e.target as HTMLElement);
 	const inCanvas = target && target.closest(".canvas");
 	const inDialog = target && target.closest(".dialog-modal .floating-menu-content");
 
 	// Block middle mouse button auto-scroll mode
-	if (e.button === 1) e.preventDefault();
+	if (e.button === 1) {
+		e.preventDefault();
+	}
 
 	if (dialogIsVisible() && !inDialog) {
 		dismissDialog();
@@ -87,16 +91,18 @@ export async function onMouseDown(e: MouseEvent) {
 		e.stopPropagation();
 	}
 
-	if (inCanvas) viewportMouseInteractionOngoing = true;
+	if (inCanvas) viewportPointerInteractionOngoing = true;
 
-	if (viewportMouseInteractionOngoing) {
+	if (viewportPointerInteractionOngoing) {
 		const modifiers = makeModifiersBitfield(e);
 		(await wasm).on_mouse_down(e.clientX, e.clientY, e.buttons, modifiers);
 	}
 }
 
-export async function onMouseUp(e: MouseEvent) {
-	if (!e.buttons) viewportMouseInteractionOngoing = false;
+export async function onPointerUp(e: PointerEvent) {
+	if (!e.buttons) {
+		viewportPointerInteractionOngoing = false;
+	}
 
 	const modifiers = makeModifiersBitfield(e);
 	(await wasm).on_mouse_up(e.clientX, e.clientY, e.buttons, modifiers);
@@ -140,6 +146,6 @@ export function onBeforeUnload(event: BeforeUnloadEvent) {
 	}
 }
 
-export function makeModifiersBitfield(e: MouseEvent | KeyboardEvent): number {
+export function makeModifiersBitfield(e: WheelEvent | PointerEvent | KeyboardEvent): number {
 	return Number(e.ctrlKey) | (Number(e.shiftKey) << 1) | (Number(e.altKey) << 2);
 }
