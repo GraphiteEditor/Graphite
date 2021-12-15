@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { plainToInstance } from "class-transformer";
 import {
 	DisplayConfirmationToCloseAllDocuments,
@@ -27,12 +26,13 @@ import { RustEditorInstance, WasmInstance } from "./wasm-loader";
 
 type JsMessageCallback<T extends JsMessage> = (responseData: T) => void;
 type JsMessageCallbackMap = {
+	// Don't know a better way of typing this since it can be any subclass of JsMessage
+	// The functions interacting with this map are strongly typed though around JsMessage
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	[response: string]: JsMessageCallback<any> | undefined;
 };
 
-type Constructs<T> = new (...args: any[]) => T;
-
-// type ConstructsJsMessage = typeof JsMessage;
+type Constructs<T> = new (...args: never[]) => T;
 
 const messageConstructorMap = {
 	UpdateCanvas,
@@ -57,7 +57,7 @@ const messageConstructorMap = {
 
 export type JsMessageType = keyof typeof messageConstructorMap;
 
-type JSMessageFactory = (data: any, wasm: WasmInstance, instance: RustEditorInstance) => JsMessage;
+type JSMessageFactory = (data: unknown, wasm: WasmInstance, instance: RustEditorInstance) => JsMessage;
 
 type MessageMaker = typeof JsMessage | JSMessageFactory;
 
@@ -68,7 +68,7 @@ function isJsMessageConstructor(fn: MessageMaker): fn is typeof JsMessage {
 export class JsDispatcher {
 	private responseMap: JsMessageCallbackMap = {};
 
-	handleJsMessage(messageType: JsMessageType, responseData: any, wasm: WasmInstance, instance: RustEditorInstance) {
+	handleJsMessage(messageType: JsMessageType, responseData: Record<string, unknown>, wasm: WasmInstance, instance: RustEditorInstance) {
 		const messageMaker = messageConstructorMap[messageType] as MessageMaker;
 		let message: JsMessage;
 

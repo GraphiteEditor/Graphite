@@ -1,5 +1,5 @@
 /* eslint-disable func-names */
-/* eslint-disable @typescript-eslint/no-explicit-any */
+
 import { JsDispatcher, JsMessageType } from "@/state/js-dispatcher";
 
 export type WasmInstance = typeof import("@/../wasm/pkg");
@@ -25,12 +25,12 @@ function panicProxy<T extends object>(module: T): T {
 			if (!isFunction || isClass) return targetValue;
 
 			// Replace the original function with a wrapper function that runs the original in a try-catch block
-			return function (...args: any) {
+			return function (...args: unknown[]) {
 				let result;
 				try {
 					// @ts-expect-error TypeScript does not know what `this` is, since it should be able to be anything
 					result = targetValue.apply(this, args);
-				} catch (err: any) {
+				} catch (err) {
 					// Suppress `unreachable` WebAssembly.RuntimeError exceptions
 					if (!`${err}`.startsWith("RuntimeError: unreachable")) throw err;
 				}
@@ -59,7 +59,7 @@ export class EditorState {
 	constructor() {
 		const wasm = getWasmInstance();
 		// Use an arrow function to preserve this context
-		this.instance = new wasm.Editor((messageType: JsMessageType, data: any) => this.dispatcher.handleJsMessage(messageType, data, this.rawWasm, this.instance));
+		this.instance = new wasm.Editor((messageType: JsMessageType, data: Record<string, unknown>) => this.dispatcher.handleJsMessage(messageType, data, this.rawWasm, this.instance));
 		this.rawWasm = wasm;
 	}
 }

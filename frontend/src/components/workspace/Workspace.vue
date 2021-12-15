@@ -73,8 +73,7 @@ export default defineComponent({
 	},
 	computed: {
 		activeDocumentIndex() {
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			return (this as any).documents.activeDocumentIndex;
+			return this.documents.state.activeDocumentIndex;
 		},
 	},
 	watch: {

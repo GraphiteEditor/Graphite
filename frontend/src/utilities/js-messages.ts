@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable camelcase */
 /* eslint-disable max-classes-per-file */
 
@@ -126,7 +125,12 @@ export class DisplayFolderTreeStructure extends JsMessage {
 		super();
 	}
 }
-export function newDisplayFolderTreeStructure(input: any, wasm: WasmInstance): DisplayFolderTreeStructure {
+
+interface DataBuffer {
+	ptr: number;
+	len: number;
+}
+export function newDisplayFolderTreeStructure(input: { data_buffer: DataBuffer }, wasm: WasmInstance): DisplayFolderTreeStructure {
 	const { ptr, len } = input.data_buffer;
 	const wasmMemoryBuffer = wasm.wasm_memory().buffer;
 
@@ -191,7 +195,7 @@ export class SetCanvasRotation extends JsMessage {
 	readonly new_radians!: number;
 }
 
-function newPath(input: any): BigUint64Array {
+function newPath(input: number[][]): BigUint64Array {
 	// eslint-disable-next-line
 	const u32CombinedPairs = input.map((n: number[]) => BigInt((BigInt(n[0]) << BigInt(32)) | BigInt(n[1])));
 	return new BigUint64Array(u32CombinedPairs);

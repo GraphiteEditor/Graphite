@@ -2,8 +2,6 @@ import { DialogState } from "@/state/dialog";
 import { FullscreenState } from "@/state/fullscreen";
 import { EditorState } from "./wasm-loader";
 
-let viewportMouseInteractionOngoing = false;
-
 type EventName = keyof HTMLElementEventMap;
 interface EventListenerTarget {
 	addEventListener: typeof window.addEventListener;
@@ -21,6 +19,8 @@ export class InputManager {
 		{ target: this.container, eventName: "mouseup", action: (e) => this.onMouseUp(e) },
 		{ target: this.container, eventName: "wheel", action: (e) => this.onMouseScroll(e), options: { passive: true } },
 	];
+
+	private viewportMouseInteractionOngoing = false;
 
 	constructor(private container: HTMLElement, private fullscreen: FullscreenState, private dialog: DialogState, private editor: EditorState) {
 		this.listeners.forEach(({ target, eventName, action, options }) => target.addEventListener(eventName, action, options));
@@ -87,7 +87,7 @@ export class InputManager {
 	}
 
 	private onMouseMove(e: MouseEvent) {
-		if (!e.buttons) viewportMouseInteractionOngoing = false;
+		if (!e.buttons) this.viewportMouseInteractionOngoing = false;
 
 		const modifiers = makeModifiersBitfield(e);
 		this.editor.instance.on_mouse_move(e.clientX, e.clientY, e.buttons, modifiers);
@@ -107,16 +107,16 @@ export class InputManager {
 			e.stopPropagation();
 		}
 
-		if (inCanvas) viewportMouseInteractionOngoing = true;
+		if (inCanvas) this.viewportMouseInteractionOngoing = true;
 
-		if (viewportMouseInteractionOngoing) {
+		if (this.viewportMouseInteractionOngoing) {
 			const modifiers = makeModifiersBitfield(e);
 			this.editor.instance.on_mouse_down(e.clientX, e.clientY, e.buttons, modifiers);
 		}
 	}
 
 	private onMouseUp(e: MouseEvent) {
-		if (!e.buttons) viewportMouseInteractionOngoing = false;
+		if (!e.buttons) this.viewportMouseInteractionOngoing = false;
 
 		const modifiers = makeModifiersBitfield(e);
 		this.editor.instance.on_mouse_up(e.clientX, e.clientY, e.buttons, modifiers);
