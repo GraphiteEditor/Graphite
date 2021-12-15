@@ -12,7 +12,8 @@ export async function initWasm() {
 	wasmImport = await import("@/../wasm/pkg").then(panicProxy);
 }
 
-// This works by proxying every function call wrapping a try-catch block to filter out redundant and confusing `RuntimeError: unreachable` exceptions sent to the console
+// This works by proxying every function call wrapping a try-catch block to filter out redundant and confusing
+// `RuntimeError: unreachable` exceptions sent to the console
 function panicProxy<T extends object>(module: T): T {
 	const proxyHandler = {
 		get(target: T, propKey: string | symbol, receiver: unknown): unknown {
@@ -59,7 +60,9 @@ export class EditorState {
 	constructor() {
 		const wasm = getWasmInstance();
 		// Use an arrow function to preserve this context
-		this.instance = new wasm.Editor((messageType: JsMessageType, data: Record<string, unknown>) => this.dispatcher.handleJsMessage(messageType, data, this.rawWasm, this.instance));
+		this.instance = new wasm.Editor((messageType: JsMessageType, data: Record<string, unknown>) => {
+			this.dispatcher.handleJsMessage(messageType, data, this.rawWasm, this.instance);
+		});
 		this.rawWasm = wasm;
 	}
 }

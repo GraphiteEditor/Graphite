@@ -34,7 +34,7 @@ class GlobalEditorManager {
 	}
 
 	onBeforeUnload(event: BeforeUnloadEvent) {
-		const allDocumentsSaved = [...this.activeInstances].reduce((acc, instance) => instance.documents.state.documents.reduce((acc, doc) => doc.isSaved && acc, true) && acc, true);
+		const allDocumentsSaved = [...this.activeInstances].flatMap((instance) => instance.documents.state.documents).reduce((acc, doc) => acc && doc.isSaved, true);
 		if (!allDocumentsSaved) {
 			event.returnValue = "Unsaved work will be lost if the web browser tab is closed. Close anyway?";
 			event.preventDefault();
