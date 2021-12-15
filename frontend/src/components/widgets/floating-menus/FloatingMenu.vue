@@ -202,14 +202,20 @@ export default defineComponent({
 	props: {
 		direction: { type: String, default: MenuDirection.Bottom },
 		type: { type: String, required: true },
-		windowEdgeMargin: { type: Number, default: 8 },
+		windowEdgeMargin: { type: Number, default: 6 },
 		minWidth: { type: Number, default: 0 },
 		scrollable: { type: Boolean, default: false },
 	},
 	data() {
+		const containerResizeObserver = new ResizeObserver((entries) => {
+			const content = entries[0].target.querySelector(".floating-menu-content") as HTMLElement;
+			content.style.minWidth = `${entries[0].contentRect.width}px`;
+		});
+
 		return {
 			open: false,
 			pointerStillDown: false,
+			containerResizeObserver,
 			MenuDirection,
 			MenuType,
 		};
@@ -218,25 +224,60 @@ export default defineComponent({
 		const floatingMenuContainer = this.$refs.floatingMenuContainer as HTMLElement;
 		const floatingMenuContent = this.$refs.floatingMenuContent as HTMLElement;
 		const workspace = document.querySelector(".workspace-row");
+		if (!floatingMenuContainer || !floatingMenuContent || !workspace) return;
 
-		if (floatingMenuContent && workspace) {
-			const workspaceBounds = workspace.getBoundingClientRect();
-			const floatingMenuBounds = floatingMenuContent.getBoundingClientRect();
+		const workspaceBounds = workspace.getBoundingClientRect();
+		const floatingMenuBounds = floatingMenuContent.getBoundingClientRect();
 
-			if (this.direction === MenuDirection.Left || this.direction === MenuDirection.Right) {
-				const topOffset = floatingMenuBounds.top - workspaceBounds.top - this.windowEdgeMargin;
-				if (topOffset < 0) floatingMenuContainer.style.transform = `translate(0, ${-topOffset}px)`;
+		type Edge = "Top" | "Bottom" | "Left" | "Right";
+		let zeroedBorderDirection1: Edge | undefined;
+		let zeroedBorderDirection2: Edge | undefined;
 
-				const bottomOffset = workspaceBounds.bottom - floatingMenuBounds.bottom - this.windowEdgeMargin;
-				if (bottomOffset < 0) floatingMenuContainer.style.transform = `translate(0, ${bottomOffset}px)`;
+		if (this.direction === MenuDirection.Top || this.direction === MenuDirection.Bottom) {
+			zeroedBorderDirection1 = this.direction === MenuDirection.Top ? "Bottom" : "Top";
+
+			if (floatingMenuBounds.left - this.windowEdgeMargin <= workspaceBounds.left) {
+				floatingMenuContent.style.left = `${this.windowEdgeMargin}px`;
+				if (workspaceBounds.left + floatingMenuContainer.getBoundingClientRect().left === 12) zeroedBorderDirection2 = "Left";
 			}
 
-			if (this.direction === MenuDirection.Top || this.direction === MenuDirection.Bottom) {
-				const leftOffset = floatingMenuBounds.left - workspaceBounds.left - this.windowEdgeMargin;
-				if (leftOffset < 0) floatingMenuContainer.style.transform = `translate(${-leftOffset}px, 0)`;
+			if (floatingMenuBounds.right + this.windowEdgeMargin >= workspaceBounds.right) {
+				floatingMenuContent.style.right = `${this.windowEdgeMargin}px`;
+				if (workspaceBounds.right - floatingMenuContainer.getBoundingClientRect().right === 12) zeroedBorderDirection2 = "Right";
+			}
+		}
 
-				const rightOffset = workspaceBounds.right - floatingMenuBounds.right - this.windowEdgeMargin;
-				if (rightOffset < 0) floatingMenuContainer.style.transform = `translate(${rightOffset}px, 0)`;
+		if (this.direction === MenuDirection.Left || this.direction === MenuDirection.Right) {
+			zeroedBorderDirection2 = this.direction === MenuDirection.Left ? "Right" : "Left";
+
+			if (floatingMenuBounds.top - this.windowEdgeMargin <= workspaceBounds.top) {
+				floatingMenuContent.style.top = `${this.windowEdgeMargin}px`;
+				if (workspaceBounds.top + floatingMenuContainer.getBoundingClientRect().top === 12) zeroedBorderDirection1 = "Top";
+			}
+
+			if (floatingMenuBounds.bottom + this.windowEdgeMargin >= workspaceBounds.bottom) {
+				floatingMenuContent.style.bottom = `${this.windowEdgeMargin}px`;
+				if (workspaceBounds.bottom - floatingMenuContainer.getBoundingClientRect().bottom === 12) zeroedBorderDirection1 = "Bottom";
+			}
+		}
+
+		// Remove the rounded corner from where the tail perfectly meets the corner
+		if (this.type === MenuType.Popover && this.windowEdgeMargin === 6 && zeroedBorderDirection1 && zeroedBorderDirection2) {
+			switch (`${zeroedBorderDirection1}${zeroedBorderDirection2}`) {
+				case "TopLeft":
+					floatingMenuContent.style.borderTopLeftRadius = "0";
+					break;
+				case "TopRight":
+					floatingMenuContent.style.borderTopRightRadius = "0";
+					break;
+				case "BottomLeft":
+					floatingMenuContent.style.borderBottomLeftRadius = "0";
+					break;
+				case "BottomRight":
+					floatingMenuContent.style.borderBottomRightRadius = "0";
+					break;
+				default:
+					break;
 			}
 		}
 	},
@@ -346,6 +387,7 @@ export default defineComponent({
 	},
 	watch: {
 		open(newState: boolean, oldState: boolean) {
+			// Switching from closed to open
 			if (newState && !oldState) {
 				// Close floating menu if pointer strays far enough away
 				window.addEventListener("pointermove", this.pointerMoveHandler);
@@ -355,10 +397,23 @@ export default defineComponent({
 
 				// Cancel the subsequent click event to prevent the floating menu from reopening if the floating menu's button is the click event target
 				window.addEventListener("pointerup", this.pointerUpHandler);
+
+				// Floating menu min-width resize observer
+				this.$nextTick(() => {
+					const floatingMenuContainer = this.$refs.floatingMenuContainer as HTMLElement;
+					if (floatingMenuContainer) {
+						this.containerResizeObserver.disconnect();
+						this.containerResizeObserver.observe(floatingMenuContainer);
+					}
+				});
 			}
+
+			// Switching from open to closed
 			if (!newState && oldState) {
 				window.removeEventListener("pointermove", this.pointerMoveHandler);
 				window.removeEventListener("pointerdown", this.pointerDownHandler);
+
+				this.containerResizeObserver.disconnect();
 			}
 		},
 	},
