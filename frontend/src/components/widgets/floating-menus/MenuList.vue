@@ -40,8 +40,6 @@
 .menu-list {
 	.floating-menu-container .floating-menu-content {
 		padding: 4px 0;
-		position: absolute;
-		min-width: 100%;
 
 		.row {
 			height: 20px;
