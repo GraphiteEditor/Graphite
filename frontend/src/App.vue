@@ -220,6 +220,7 @@ img {
 <script lang="ts">
 import { defineComponent } from "vue";
 
+// State providers
 import dialog from "@/utilities/dialog";
 import documents from "@/utilities/documents";
 import fullscreen from "@/utilities/fullscreen";
