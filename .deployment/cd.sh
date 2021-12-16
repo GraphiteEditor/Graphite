@@ -1,5 +1,7 @@
 #!/bin/sh
 
+git switch master || git switch -c master
+
 echo 🔧 Install Rust
 curl https://sh.rustup.rs -sSf | sh -s -- -y
 export PATH=$PATH:/opt/buildhome/.cargo/bin
