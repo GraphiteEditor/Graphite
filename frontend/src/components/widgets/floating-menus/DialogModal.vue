@@ -9,7 +9,7 @@
 				<LayoutCol :class="'main-column'">
 					<TextLabel :bold="true" :class="'heading'">{{ dialog.heading }}</TextLabel>
 					<TextLabel :class="'details'">{{ dialog.details }}</TextLabel>
-					<LayoutRow :class="'buttons-row'">
+					<LayoutRow :class="'buttons-row'" v-if="dialog.buttons.length > 0">
 						<TextButton v-for="(button, index) in dialog.buttons" :key="index" :title="button.tooltip" :action="button.callback" v-bind="button.props" />
 					</LayoutRow>
 				</LayoutCol>
@@ -57,12 +57,14 @@
 
 	.main-column {
 		.heading {
+			user-select: text;
 			white-space: pre-wrap;
 			max-width: 400px;
 			margin-bottom: 4px;
 		}
 
 		.details {
+			user-select: text;
 			white-space: pre-wrap;
 			max-width: 400px;
 		}
