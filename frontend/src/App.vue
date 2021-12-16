@@ -224,7 +224,6 @@ import { defineComponent } from "vue";
 import { DialogState } from "@/state/dialog";
 import { DocumentsState } from "@/state/documents";
 import { FullscreenState } from "@/state/fullscreen";
-import { AppState, globalEditorManager } from "@/state/global-state";
 
 import MainWindow from "@/components/window/MainWindow.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
@@ -235,14 +234,15 @@ import { initErrorHandling } from "@/utilities/errors";
 // Vue injects don't play well with typescript, and all injects will show up as 'any'
 // As a workaround, we can define these types.
 declare module "@vue/runtime-core" {
-	// Types do not allow duplicate identifiers while interfaces do
-	// eslint-disable-next-line @typescript-eslint/no-empty-interface
-	interface ComponentCustomProperties extends AppState {}
+	interface ComponentCustomProperties {
+		dialog: DialogState;
+		documents: DocumentsState;
+		fullscreen: FullscreenState;
+		editor: EditorState;
+		inputManger?: InputManager;
+	}
 }
 
-// This is a little hacky but I don't know a better way of doing it since the DOM has
-// not loaded before the data function but this data is also needed in unmount
-const inputManagers = new WeakMap<AppState, InputManager>();
 export default defineComponent({
 	state: {},
 	provide() {
@@ -266,6 +266,7 @@ export default defineComponent({
 			fullscreen,
 			documents,
 			showUnsupportedModal: !("BigInt64Array" in window),
+			inputManager: undefined as undefined | InputManager,
 		};
 	},
 	methods: {
@@ -274,22 +275,14 @@ export default defineComponent({
 		},
 	},
 	mounted() {
-		const { fullscreen, dialog, editor } = this.$data;
-		inputManagers.set(this.$data, new InputManager(this.$el.parentElement, fullscreen, dialog, editor));
-		globalEditorManager.registerInstance(this.$data);
-
-		// This is needed to allow the app to have focus while inside of it
-		// Source: https://stackoverflow.com/questions/1717897/jquery-keydown-on-div-not-working-in-firefox
-		this.$el.parentElement.tabIndex = 0;
+		const { fullscreen, dialog, editor, documents } = this;
+		this.inputManager = new InputManager(this.$el.parentElement, fullscreen, dialog, editor, documents);
 	},
 	beforeUnmount() {
-		globalEditorManager.removeInstance(this.$data);
-
-		const inputManager = inputManagers.get(this.$data);
+		const { inputManager } = this;
 		if (inputManager) {
 			inputManager.removeListeners();
 		}
-
 		const { editor } = this.$data;
 		editor.instance.free();
 	},

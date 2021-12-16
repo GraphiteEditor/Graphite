@@ -19,10 +19,8 @@ import {
 	UpdateWorkingColors,
 	UpdateLayer,
 	JsMessage,
-	GlobalJsMessage,
 } from "../utilities/js-messages";
-import { globalEditorManager } from "./global-state";
-import { RustEditorInstance, WasmInstance } from "./wasm-loader";
+import type { RustEditorInstance, WasmInstance } from "./wasm-loader";
 
 type JsMessageCallback<T extends JsMessage> = (responseData: T) => void;
 type JsMessageCallbackMap = {
@@ -61,36 +59,31 @@ type JSMessageFactory = (data: unknown, wasm: WasmInstance, instance: RustEditor
 
 type MessageMaker = typeof JsMessage | JSMessageFactory;
 
-function isJsMessageConstructor(fn: MessageMaker): fn is typeof JsMessage {
-	return (fn as typeof JsMessage).jsMessageMarker !== undefined;
-}
-
 export class JsDispatcher {
 	private responseMap: JsMessageCallbackMap = {};
 
 	handleJsMessage(messageType: JsMessageType, responseData: Record<string, unknown>, wasm: WasmInstance, instance: RustEditorInstance) {
-		const messageMaker = messageConstructorMap[messageType] as MessageMaker;
-		let message: JsMessage;
-
-		if (!messageMaker) {
+		const messageConstructor = messageConstructorMap[messageType] as MessageMaker;
+		if (!messageConstructor) {
 			// eslint-disable-next-line no-console
-			console.error(`Received a Response of type "${messageType}" but but was not able to parse the data.`);
+			console.error(`Received a frontend message of type "${messageType}" but but was not able to parse the data.`);
+			return;
 		}
 
-		if (isJsMessageConstructor(messageMaker)) {
-			message = plainToInstance(messageMaker, responseData[messageType]);
+		// Messages with non-empty data are provided by wasm-bindgen as an object with one key as the message name, like: { NameOfThisMessage: { ... } }
+		// Messages with empty data are provided by wasm-bindgen as a string with the message name, like: "NameOfThisMessage"
+		const unwrappedMessageData = responseData[messageType] || {};
+
+		const isJsMessageConstructor = (fn: MessageMaker): fn is typeof JsMessage => {
+			return (fn as typeof JsMessage).jsMessageMarker !== undefined;
+		};
+		let message: JsMessage;
+		if (isJsMessageConstructor(messageConstructor)) {
+			message = plainToInstance(messageConstructor, unwrappedMessageData);
 		} else {
-			message = messageMaker(responseData[messageType], wasm, instance);
+			message = messageConstructor(unwrappedMessageData, wasm, instance);
 		}
 
-		if (message instanceof GlobalJsMessage) {
-			globalEditorManager.broadcastGlobalMessage(message);
-		} else {
-			this.dispatchJsMessage(message);
-		}
-	}
-
-	dispatchJsMessage(message: JsMessage) {
 		// It is ok to use constructor.name even with minification since it is used consistently with registerHandler
 		const callback = this.responseMap[message.constructor.name];
 
@@ -98,7 +91,7 @@ export class JsDispatcher {
 			callback(message);
 		} else if (message) {
 			// eslint-disable-next-line no-console
-			console.error(`Received a Response of type "${message.constructor.name}" but no handler was registered for it from the client.`);
+			console.error(`Received a frontend message of type "${messageType}" but no handler was registered for it from the client.`);
 		}
 	}
 

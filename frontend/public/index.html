@@ -17,7 +17,8 @@
 
 <body>
 	<noscript>JavaScript is required</noscript>
-	<div id="app"></div>
+	<!-- This is needed to allow the app to have focus while inside of it https://stackoverflow.com/questions/1717897/jquery-keydown-on-div-not-working-in-firefox -->
+	<div id="app" tabindex="0"></div>
 </body>
 
 </html>

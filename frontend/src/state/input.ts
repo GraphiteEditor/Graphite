@@ -1,8 +1,9 @@
 import { DialogState } from "@/state/dialog";
 import { FullscreenState } from "@/state/fullscreen";
+import { DocumentsState } from "./documents";
 import { EditorState } from "./wasm-loader";
 
-type EventName = keyof HTMLElementEventMap;
+type EventName = keyof HTMLElementEventMap | keyof WindowEventHandlersEventMap;
 interface EventListenerTarget {
 	addEventListener: typeof window.addEventListener;
 	removeEventListener: typeof window.removeEventListener;
@@ -12,6 +13,7 @@ export class InputManager {
 	private listeners: { target: EventListenerTarget; eventName: EventName; action: (event: any) => void; options?: boolean | AddEventListenerOptions }[] = [
 		{ target: window, eventName: "resize", action: () => this.onWindowResize(this.container) },
 		{ target: window, eventName: "mousemove", action: (e) => this.onMouseMove(e) },
+		{ target: window, eventName: "beforeunload", action: (e) => this.onBeforeUnload(e) },
 		{ target: this.container, eventName: "contextmenu", action: (e) => e.preventDefault() },
 		{ target: this.container, eventName: "keyup", action: (e) => this.onKeyUp(e) },
 		{ target: this.container, eventName: "keydown", action: (e) => this.onKeyDown(e) },
@@ -22,7 +24,7 @@ export class InputManager {
 
 	private viewportMouseInteractionOngoing = false;
 
-	constructor(private container: HTMLElement, private fullscreen: FullscreenState, private dialog: DialogState, private editor: EditorState) {
+	constructor(private container: HTMLElement, private fullscreen: FullscreenState, private dialog: DialogState, private editor: EditorState, private document: DocumentsState) {
 		this.listeners.forEach(({ target, eventName, action, options }) => target.addEventListener(eventName, action, options));
 		this.onWindowResize(container);
 	}
@@ -139,7 +141,7 @@ export class InputManager {
 		}
 	}
 
-	onWindowResize(container: Element) {
+	private onWindowResize(container: Element) {
 		const viewports = Array.from(container.querySelectorAll(".canvas"));
 		const boundsOfViewports = viewports.map((canvas) => {
 			const bounds = canvas.getBoundingClientRect();
@@ -150,6 +152,14 @@ export class InputManager {
 		const data = Float64Array.from(flattened);
 
 		if (boundsOfViewports.length > 0) this.editor.instance.bounds_of_viewports(data);
+	}
+
+	private onBeforeUnload(event: BeforeUnloadEvent) {
+		const allDocumentsSaved = this.document.state.documents.reduce((acc, doc) => acc && doc.isSaved, true);
+		if (!allDocumentsSaved) {
+			event.returnValue = "Unsaved work will be lost if the web browser tab is closed. Close anyway?";
+			event.preventDefault();
+		}
 	}
 }
 

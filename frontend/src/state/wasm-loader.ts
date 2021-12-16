@@ -64,5 +64,6 @@ export class EditorState {
 			this.dispatcher.handleJsMessage(messageType, data, this.rawWasm, this.instance);
 		});
 		this.rawWasm = wasm;
+		// (await this.editor.instance).save_document
 	}
 }

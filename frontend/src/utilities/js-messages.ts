@@ -3,14 +3,12 @@
 
 import { Transform, Type } from "class-transformer";
 
-import { WasmInstance } from "@/state/wasm-loader";
+import type { WasmInstance } from "@/state/wasm-loader";
 
 export class JsMessage {
 	// The marker provides a way to check if an object is a sub-class constructor for a jsMessage.
 	static readonly jsMessageMarker = true;
 }
-
-export class GlobalJsMessage extends JsMessage {}
 
 export class UpdateOpenDocumentsList extends JsMessage {
 	@Transform(({ value }) => value.map((tuple: [string, boolean]) => ({ name: tuple[0], isSaved: tuple[1] })))
@@ -64,7 +62,7 @@ export class DisplayError extends JsMessage {
 	readonly description!: string;
 }
 
-export class DisplayPanic extends GlobalJsMessage {
+export class DisplayPanic extends JsMessage {
 	readonly panic_info!: string;
 
 	readonly title!: string;
