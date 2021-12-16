@@ -21,6 +21,7 @@ import {
 	UpdateScrollbars,
 	UpdateWorkingColors,
 	UpdateLayer,
+	DisplayAboutGraphiteDialog,
 } from "@/utilities/js-messages";
 
 const messageConstructors = {
@@ -42,6 +43,7 @@ const messageConstructors = {
 	DisplayPanic,
 	DisplayConfirmationToCloseDocument,
 	DisplayConfirmationToCloseAllDocuments,
+	DisplayAboutGraphiteDialog,
 } as const;
 type JsMessageType = keyof typeof messageConstructors;
 

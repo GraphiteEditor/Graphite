@@ -1,8 +1,9 @@
-// Allows for runtime reflection of types in javascript.
+// reflect-metadata allows for runtime reflection of types in JavaScript.
 // It is needed for class-transformer to work and is imported as a side effect.
-// The library replaces the Reflect Api on the window to support more features.
+// The library replaces the Reflect API on the window to support more features.
 import "reflect-metadata";
 import { createApp } from "vue";
+
 import { fullscreenModeChanged } from "@/utilities/fullscreen";
 import { onKeyUp, onKeyDown, onMouseMove, onMouseDown, onMouseUp, onMouseScroll, onWindowResize, onBeforeUnload } from "@/utilities/input";
 import "@/utilities/errors";
