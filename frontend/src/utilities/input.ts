@@ -1,7 +1,7 @@
 import { toggleFullscreen } from "@/utilities/fullscreen";
 import { dialogIsVisible, dismissDialog, submitDialog } from "@/utilities/dialog";
 import { panicProxy } from "@/utilities/panic-proxy";
-import documents from "./documents";
+import documents from "@/utilities/documents";
 
 const wasm = import("@/../wasm/pkg").then(panicProxy);
 
