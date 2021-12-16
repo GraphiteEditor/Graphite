@@ -247,10 +247,10 @@ export default defineComponent({
 	state: {},
 	provide() {
 		return {
-			dialog: this.$data.dialog,
-			documents: this.$data.documents,
-			editor: this.$data.editor,
-			fullscreen: this.$data.fullscreen,
+			dialog: this.dialog,
+			documents: this.documents,
+			editor: this.editor,
+			fullscreen: this.fullscreen,
 		};
 	},
 	data() {
@@ -283,7 +283,7 @@ export default defineComponent({
 		if (inputManager) {
 			inputManager.removeListeners();
 		}
-		const { editor } = this.$data;
+		const { editor } = this;
 		editor.instance.free();
 	},
 	components: { MainWindow, LayoutRow },
