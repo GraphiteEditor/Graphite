@@ -12,7 +12,9 @@
 		"allowSyntheticDefaultImports": true,
 		"sourceMap": true,
 		"baseUrl": ".",
-		"types": [],
+		"types": [
+			"node"
+		],
 		"paths": {
 			"@/*": [
 				"src/*"
