@@ -72,7 +72,7 @@ import { rgbToDecimalRgb, RGB } from "@/utilities/color";
 
 import ColorPicker from "@/components/widgets/floating-menus/ColorPicker.vue";
 import FloatingMenu, { MenuDirection, MenuType } from "@/components/widgets/floating-menus/FloatingMenu.vue";
-import { UpdateWorkingColors } from "@/utilities/js-messages";
+import { UpdateWorkingColors } from "@/dispatcher/js-messages";
 
 export default defineComponent({
 	inject: ["editor"],

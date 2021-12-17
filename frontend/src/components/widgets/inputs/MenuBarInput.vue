@@ -181,7 +181,7 @@ export default defineComponent({
 			ApplicationPlatform,
 			menuEntries: makeMenuEntries(this.editor),
 			MenuDirection,
-			comingSoon: this.dialog.comingSoon,
+			comingSoon: () => this.dialog.comingSoon(),
 		};
 	},
 	components: {

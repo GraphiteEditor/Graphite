@@ -1,6 +1,8 @@
 import { reactive } from "vue";
 
 import { TextButtonWidget } from "@/components/widgets/widgets";
+import { EditorState } from "@/state/wasm-loader";
+import { DisplayAboutGraphiteDialog } from "@/dispatcher/js-messages";
 
 export class DialogState {
 	private state = reactive({
@@ -10,6 +12,10 @@ export class DialogState {
 		details: "",
 		buttons: [] as TextButtonWidget[],
 	});
+
+	constructor(editor: EditorState) {
+		editor.dispatcher.subscribeJsMessage(DisplayAboutGraphiteDialog, () => this.onAboutHandler());
+	}
 
 	createDialog(icon: string, heading: string, details: string, buttons: TextButtonWidget[]) {
 		this.state.visible = true;
@@ -55,7 +61,7 @@ export class DialogState {
 		this.createDialog("Warning", "Coming soon", details, buttons);
 	}
 
-	onAboutHandler() {
+	private onAboutHandler() {
 		const date = new Date(process.env.VUE_APP_COMMIT_DATE || "");
 		const dateString = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 		const timeString = `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;

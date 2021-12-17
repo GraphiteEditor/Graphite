@@ -129,11 +129,11 @@ export default defineComponent({
 
 				{ kind: "Separator", props: { type: SeparatorType.Section } },
 
-				{ kind: "IconButton", tooltip: "Boolean Union", callback: () => this.comingSoon(197), props: { icon: "BooleanUnion", size: 24 } },
-				{ kind: "IconButton", tooltip: "Boolean Subtract Front", callback: () => this.comingSoon(197), props: { icon: "BooleanSubtractFront", size: 24 } },
-				{ kind: "IconButton", tooltip: "Boolean Subtract Back", callback: () => this.comingSoon(197), props: { icon: "BooleanSubtractBack", size: 24 } },
-				{ kind: "IconButton", tooltip: "Boolean Intersect", callback: () => this.comingSoon(197), props: { icon: "BooleanIntersect", size: 24 } },
-				{ kind: "IconButton", tooltip: "Boolean Difference", callback: () => this.comingSoon(197), props: { icon: "BooleanDifference", size: 24 } },
+				{ kind: "IconButton", tooltip: "Boolean Union", callback: () => this.dialog.comingSoon(197), props: { icon: "BooleanUnion", size: 24 } },
+				{ kind: "IconButton", tooltip: "Boolean Subtract Front", callback: () => this.dialog.comingSoon(197), props: { icon: "BooleanSubtractFront", size: 24 } },
+				{ kind: "IconButton", tooltip: "Boolean Subtract Back", callback: () => this.dialog.comingSoon(197), props: { icon: "BooleanSubtractBack", size: 24 } },
+				{ kind: "IconButton", tooltip: "Boolean Intersect", callback: () => this.dialog.comingSoon(197), props: { icon: "BooleanIntersect", size: 24 } },
+				{ kind: "IconButton", tooltip: "Boolean Difference", callback: () => this.dialog.comingSoon(197), props: { icon: "BooleanDifference", size: 24 } },
 
 				{ kind: "Separator", props: { type: SeparatorType.Related } },
 
@@ -154,7 +154,6 @@ export default defineComponent({
 		return {
 			toolOptionsWidgets,
 			SeparatorType,
-			comingSoon: this.dialog.comingSoon,
 		};
 	},
 	components: {

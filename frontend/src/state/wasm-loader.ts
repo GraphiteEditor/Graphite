@@ -1,7 +1,7 @@
 /* eslint-disable func-names */
 
-import { JsDispatcher } from "@/state/js-dispatcher";
-import { JsMessageType } from "@/utilities/js-messages";
+import { JsDispatcher } from "@/dispatcher/js-dispatcher";
+import { JsMessageType } from "@/dispatcher/js-messages";
 
 export type WasmInstance = typeof import("@/../wasm/pkg");
 export type RustEditorInstance = InstanceType<WasmInstance["Editor"]>;

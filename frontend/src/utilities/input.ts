@@ -135,7 +135,6 @@ export class InputManager {
 		}
 
 		if (inCanvas) {
-			e.preventDefault();
 			const modifiers = makeModifiersBitfield(e);
 			this.editor.instance.on_mouse_scroll(e.clientX, e.clientY, e.buttons, e.deltaX, e.deltaY, e.deltaZ, modifiers);
 		}

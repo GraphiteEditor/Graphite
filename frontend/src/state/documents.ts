@@ -12,7 +12,7 @@ import {
 	SaveDocument,
 	SetActiveDocument,
 	UpdateOpenDocumentsList,
-} from "@/utilities/js-messages";
+} from "@/dispatcher/js-messages";
 
 class DocumentSaveState {
 	readonly displayName: string;

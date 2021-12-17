@@ -1,4 +1,4 @@
-import { JsMessageType } from "@/utilities/js-messages";
+import type { JsMessageType } from "@/dispatcher/js-messages";
 
 // This file is instantiated by wasm-bindgen in `/frontend/wasm/src/lib.rs`
 type FrontendMessageHandler = (messageType: JsMessageType, message: Record<string, unknown>) => void;

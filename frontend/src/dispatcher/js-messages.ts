@@ -278,5 +278,6 @@ export const messageConstructors = {
 	DisplayPanic,
 	DisplayConfirmationToCloseDocument,
 	DisplayConfirmationToCloseAllDocuments,
+	DisplayAboutGraphiteDialog,
 } as const;
 export type JsMessageType = keyof typeof messageConstructors;

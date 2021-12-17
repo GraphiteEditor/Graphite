@@ -1,5 +1,5 @@
 import { plainToInstance } from "class-transformer";
-import { JsMessageType, messageConstructors, JsMessage } from "@/utilities/js-messages";
+import { JsMessageType, messageConstructors, JsMessage } from "@/dispatcher/js-messages";
 import type { RustEditorInstance, WasmInstance } from "@/state/wasm-loader";
 
 type JsMessageCallback<T extends JsMessage> = (messageData: T) => void;
