@@ -260,7 +260,7 @@ impl Fsm for SelectToolFsmState {
 					self
 				}
 				(_, BooleanUnion) => {
-					responses.push_back(DocumentMessage::DispatchOperation(Box::from(Operation::BooleanUnion)).into());
+					responses.push_back(DocumentMessage::BooleanOperation.into());
 					self
 				}
 				_ => self,

@@ -124,6 +124,7 @@ pub enum DocumentMessage {
 	DocumentHistoryBackward,
 	DocumentHistoryForward,
 	ClearOverlays,
+	BooleanOperation,
 	NudgeSelectedLayers(f64, f64),
 	AlignSelectedLayers(AlignAxis, AlignAggregate),
 	MoveSelectedLayersTo {
@@ -624,7 +625,6 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					(!overlay).then(|| FrontendMessage::UpdateLayer { data: entry }.into())
 				}));
 			}
-
 			DispatchOperation(op) => match self.graphene_document.handle_operation(&op) {
 				Ok(Some(document_responses)) => {
 					for response in document_responses {
@@ -694,7 +694,10 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					.into(),
 				);
 			}
-
+			BooleanOperation => {
+				// convert Iterator to Vec because Iterator does not implement several traits (Debug, Serialize, Deserialize, ...) required by DocumentOperation enum
+				responses.push_back(DocumentOperation::BooleanUnion{ selected: self.selected_layers().map(|path_slice| Vec::from(path_slice)).collect()}.into());
+			}
 			NudgeSelectedLayers(x, y) => {
 				self.backup(responses);
 				for path in self.selected_layers().map(|path| path.to_vec()) {

@@ -101,6 +101,24 @@ impl Document {
 		self.folder_mut(path)?.layer_mut(id).ok_or(DocumentError::LayerNotFound)
 	}
 
+	/// Return vector of immutable references to each shape specified in paths
+	/// If any path is not a shape, or does not exist, DocumentError::InvalidPath is returned
+	fn shapes(&self, paths: & Vec<Vec<LayerId>>) -> Result<Vec<& Shape>, DocumentError>{
+		let mut shapes: Vec<& Shape> = Vec::new();
+		for path in paths{
+			if let Ok(ref layer) = self.layer(path){
+				match layer.data {
+					LayerDataType::Shape(ref shape) => shapes.push(shape),
+					LayerDataType::Folder(_) => return Err(DocumentError::InvalidPath),
+				}
+			}
+			else{
+				return Err(DocumentError::InvalidPath);
+			}
+		}
+		Ok(shapes)
+	}
+
 	pub fn deepest_common_folder<'a>(&self, layers: impl Iterator<Item = &'a [LayerId]>) -> Result<&'a [LayerId], DocumentError> {
 		let common_prefix_of_path = self.common_prefix(layers);
 
@@ -404,8 +422,11 @@ impl Document {
 				self.set_layer(path, Layer::new(LayerDataType::Shape(Shape::poly_line(points, *style)), *transform), *insert_index)?;
 				Some([vec![DocumentChanged, CreatedLayer { path: path.clone() }], update_thumbnails_upstream(path)].concat())
 			}
-			Operation::BooleanUnion { } => {
-				log::debug!("boolean op");
+			Operation::BooleanUnion {selected} => {
+				match self.shapes(selected){
+					Ok(shapes) => log::debug!("boolean op on {:?}", shapes),
+					Err(err) => return Err(err),
+				};
 				None
 			},
 			Operation::DeleteLayer { path } => {
