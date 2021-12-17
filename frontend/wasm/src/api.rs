@@ -166,17 +166,17 @@ impl Editor {
 		self.dispatch(message);
 	}
 
-#[wasm_bindgen]
-pub fn request_about_graphite_dialog() {
-	let message = DocumentsMessage::RequestAboutGraphiteDialog;
-	dispatch(message);
-}
+	#[wasm_bindgen]
+	pub fn request_about_graphite_dialog(&mut self) {
+		let message = DocumentsMessage::RequestAboutGraphiteDialog;
+		self.dispatch(message);
+	}
 
-/// Send new bounds when document panel viewports get resized or moved within the editor
-/// [left, top, right, bottom]...
-#[wasm_bindgen]
-pub fn bounds_of_viewports(bounds_of_viewports: &[f64]) {
-	let chunked: Vec<_> = bounds_of_viewports.chunks(4).map(ViewportBounds::from_slice).collect();
+	/// Send new bounds when document panel viewports get resized or moved within the editor
+	/// [left, top, right, bottom]...
+	#[wasm_bindgen]
+	pub fn bounds_of_viewports(&mut self, bounds_of_viewports: &[f64]) {
+		let chunked: Vec<_> = bounds_of_viewports.chunks(4).map(ViewportBounds::from_slice).collect();
 
 		let message = InputPreprocessorMessage::BoundsOfViewports(chunked);
 		self.dispatch(message);
