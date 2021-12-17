@@ -281,6 +281,12 @@ pub fn redo() {
 	dispatch(message);
 }
 
+#[wasm_bindgen]
+pub fn select_layer(paths: Vec<LayerId>, ctrl: bool, shift: bool) {
+	let message = DocumentMessage::SelectLayer(paths, ctrl, shift);
+	dispatch(message);
+}
+
 /// Select all layers
 #[wasm_bindgen]
 pub fn select_all_layers() {

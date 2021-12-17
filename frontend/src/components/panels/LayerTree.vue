@@ -278,29 +278,25 @@ export default defineComponent({
 			return `${(layer.path.length - 1) * 16}px`;
 		},
 		async toggleLayerVisibility(path: BigUint64Array) {
-			// todo determine if need to replace
 			(await wasm).toggle_layer_visibility(path);
 		},
 		async handleNodeConnectorClick(path: BigUint64Array) {
-			// todo determine if need to replace
 			(await wasm).toggle_layer_expansion(path);
 		},
 		async setLayerBlendMode() {
-			// todo determine if need to replace
 			const blendMode = this.blendModeEntries.flat()[this.blendModeSelectedIndex].value;
 			if (blendMode) {
 				(await wasm).set_blend_mode_for_selected_layers(blendMode);
 			}
 		},
 		async setLayerOpacity() {
-			// todo determine if need to replace
 			(await wasm).set_opacity_for_selected_layers(this.opacity);
 		},
 		async selectLayer(clickedLayer: LayerPanelEntry, ctrl: boolean, shift: boolean) {
 			console.log(clickedLayer, ctrl, shift);
+			(await wasm).select_layer(clickedLayer.path, ctrl, shift);
 		},
 		async handleControlClick(clickedLayer: LayerPanelEntry) {
-			// todo send select event instead
 			const index = this.layers.indexOf(clickedLayer);
 			clickedLayer.layer_data.selected = !clickedLayer.layer_data.selected;
 
@@ -315,7 +311,6 @@ export default defineComponent({
 			this.sendSelectedLayers();
 		},
 		async handleShiftClick(clickedLayer: LayerPanelEntry) {
-			// todo send select event instead of
 			// The two paths of the range are stored in selectionRangeStartLayer and selectionRangeEndLayer
 			// So for a new Shift+Click, select all layers between selectionRangeStartLayer and selectionRangeEndLayer (stored in previous Shift+Click)
 			this.clearSelection();
@@ -327,7 +322,6 @@ export default defineComponent({
 			this.sendSelectedLayers();
 		},
 		async handleClick(clickedLayer: LayerPanelEntry) {
-			// todo send select event instead of
 			this.selectionRangeStartLayer = clickedLayer;
 			this.selectionRangeEndLayer = clickedLayer;
 
@@ -337,14 +331,12 @@ export default defineComponent({
 			this.sendSelectedLayers();
 		},
 		async deselectAllLayers() {
-			// todo remove, editor backend does this
 			this.selectionRangeStartLayer = undefined;
 			this.selectionRangeEndLayer = undefined;
 
 			(await wasm).deselect_all_layers();
 		},
 		async fillSelectionRange(start: LayerPanelEntry, end: LayerPanelEntry, selected = true) {
-			// todo do in backend
 			const startIndex = this.layers.findIndex((layer) => layer.path.join() === start.path.join());
 			const endIndex = this.layers.findIndex((layer) => layer.path.join() === end.path.join());
 			const [min, max] = [startIndex, endIndex].sort();
@@ -356,13 +348,11 @@ export default defineComponent({
 			}
 		},
 		async clearSelection() {
-			// todo remove, editor backend does this
 			this.layers.forEach((layer) => {
 				layer.layer_data.selected = false;
 			});
 		},
 		async sendSelectedLayers() {
-			// todo send select event instead
 			const paths = this.layers.filter((layer) => layer.layer_data.selected).map((layer) => layer.path);
 
 			const length = paths.reduce((acc, cur) => acc + cur.length, 0) + paths.length - 1;
@@ -380,7 +370,6 @@ export default defineComponent({
 			(await wasm).select_layers(output);
 		},
 		setBlendModeForSelectedLayers() {
-			// todo determine how multiple selected layers should work here
 			const selected = this.layers.filter((layer) => layer.layer_data.selected);
 
 			if (selected.length < 1) {
