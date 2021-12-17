@@ -55,8 +55,6 @@
 <script lang="ts">
 import { defineComponent } from "vue";
 
-import "@/utilities/dialogs";
-
 import Panel from "@/components/workspace/Panel.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
 import LayoutCol from "@/components/layout/LayoutCol.vue";
