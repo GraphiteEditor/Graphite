@@ -16,7 +16,7 @@ use kurbo::PathSeg;
 use log::warn;
 use serde::{Deserialize, Serialize};
 
-use graphene::layers::{simple_shape::Shape as GrapheneShape, style::ViewMode, BlendMode};
+use graphene::layers::{BlendMode};
 use graphene::{document::Document as GrapheneDocument, layers::LayerDataType, DocumentError, LayerId};
 use graphene::{DocumentResponse, Operation as DocumentOperation};
 
@@ -124,7 +124,6 @@ pub enum DocumentMessage {
 	DocumentHistoryBackward,
 	DocumentHistoryForward,
 	ClearOverlays,
-	ReRenderDocument,
 	NudgeSelectedLayers(f64, f64),
 	AlignSelectedLayers(AlignAxis, AlignAggregate),
 	MoveSelectedLayersTo {
@@ -693,12 +692,6 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					}
 					.into(),
 				);
-			}
-			ReRenderDocument => {
-				//When the document is zoomed the wireframes must be re-rendered in order to maintain wireframe stroke width
-				if self.graphene_document.view_mode() == ViewMode::WireFrame {
-					GrapheneDocument::visit_all_shapes(&mut self.graphene_document.root, &mut (|_s: &mut GrapheneShape| {}));
-				}
 			}
 			NudgeSelectedLayers(x, y) => {
 				self.backup(responses);
