@@ -1,7 +1,7 @@
 /* eslint-disable max-classes-per-file */
 import { reactive } from "vue";
 
-import { DialogState } from "./dialog";
+import { DialogState } from "@/state/dialog";
 import { download, upload } from "@/utilities/files";
 import { EditorState } from "@/state/wasm-loader";
 import {

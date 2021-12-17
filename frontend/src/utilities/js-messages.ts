@@ -259,7 +259,7 @@ export const LayerTypeOptions = {
 
 export type LayerType = typeof LayerTypeOptions[keyof typeof LayerTypeOptions];
 
-export const messageConstructorMap = {
+export const messageConstructors = {
 	UpdateCanvas,
 	UpdateScrollbars,
 	UpdateRulers,
@@ -279,4 +279,4 @@ export const messageConstructorMap = {
 	DisplayConfirmationToCloseDocument,
 	DisplayConfirmationToCloseAllDocuments,
 } as const;
-export type JsMessageType = keyof typeof messageConstructorMap;
+export type JsMessageType = keyof typeof messageConstructors;

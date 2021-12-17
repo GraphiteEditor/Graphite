@@ -3,11 +3,14 @@
 // The library replaces the Reflect API on the window to support more features.
 import "reflect-metadata";
 import { createApp } from "vue";
+
 import "@/utilities/errors";
+import { initWasm } from "@/state/wasm-loader";
+
 import App from "@/App.vue";
-import { initWasm } from "./state/wasm-loader";
 
 (async () => {
+	// Initialize the WASM editor backend
 	await initWasm();
 
 	// Initialize the Vue application
