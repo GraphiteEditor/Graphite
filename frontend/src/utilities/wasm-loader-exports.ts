@@ -1,7 +1,6 @@
-import { JsMessageType } from "@/state/js-dispatcher";
+import { JsMessageType } from "@/utilities/js-messages";
 
-// These functions are exported to the wasm module.
-// See /frontend/wasm/src/lib.rs
+// This file is instantiated by wasm-bindgen in `/frontend/wasm/src/lib.rs`
 type FrontendMessageHandler = (messageType: JsMessageType, message: Record<string, unknown>) => void;
 export function handleJsMessage(callback: FrontendMessageHandler, responseType: JsMessageType, responseData: Record<string, unknown>) {
 	callback(responseType, responseData);

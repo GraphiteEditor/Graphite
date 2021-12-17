@@ -46,7 +46,7 @@ function panicProxy<T extends object>(module: T): T {
 
 function getWasmInstance() {
 	if (!wasmImport) {
-		throw new Error("Wasm was not initialized at application startup");
+		throw new Error("Editor WASM backend was not initialized at application startup");
 	}
 	return wasmImport;
 }
@@ -60,11 +60,10 @@ export class EditorState {
 
 	constructor() {
 		const wasm = getWasmInstance();
-		// Use an arrow function to preserve this context
+		// Use an arrow function to preserve `this` context
 		this.instance = new wasm.Editor((messageType: JsMessageType, data: Record<string, unknown>) => {
 			this.dispatcher.handleJsMessage(messageType, data, this.rawWasm, this.instance);
 		});
 		this.rawWasm = wasm;
-		// (await this.editor.instance).save_document
 	}
 }

@@ -1,7 +1,7 @@
 import { DialogState } from "@/state/dialog";
 import { FullscreenState } from "@/state/fullscreen";
-import { DocumentsState } from "./documents";
-import { EditorState } from "./wasm-loader";
+import { DocumentsState } from "@/state/documents";
+import { EditorState } from "@/state/wasm-loader";
 
 type EventName = keyof HTMLElementEventMap | keyof WindowEventHandlersEventMap;
 interface EventListenerTarget {

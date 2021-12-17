@@ -188,11 +188,13 @@ License information is required on production builds. Aborting.`);
 		const packagesLineLength = Math.max(...packagesWithSameLicense.split("\n").map((line) => line.length));
 
 		formattedLicenseNotice += `--------------------------------------------------------------------------------
+
 The following packages are licensed under the terms of the ${license.licenseName} license as printed beneath:
 ${"_".repeat(packagesLineLength)}
 ${packagesWithSameLicense}
 ${"‾".repeat(packagesLineLength)}
 ${license.licenseText}
+
 `;
 	});
 

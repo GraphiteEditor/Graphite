@@ -1,4 +1,3 @@
-/* eslint-disable no-shadow */
 import { reactive } from "vue";
 
 import { TextButtonWidget } from "@/components/widgets/widgets";
