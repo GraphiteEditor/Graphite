@@ -231,17 +231,6 @@ import { EditorState } from "@/state/wasm-loader";
 import { InputManager } from "@/utilities/input";
 import { initErrorHandling } from "@/utilities/errors";
 
-// Vue injects don't play well with TypeScript, and all injects will show up as `any`. As a workaround, we can define these types.
-declare module "@vue/runtime-core" {
-	interface ComponentCustomProperties {
-		dialog: DialogState;
-		documents: DocumentsState;
-		fullscreen: FullscreenState;
-		editor: EditorState;
-		inputManger?: InputManager;
-	}
-}
-
 export default defineComponent({
 	provide() {
 		return {
