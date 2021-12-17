@@ -600,7 +600,7 @@ impl Document {
 			Operation::SetViewMode { mode } => {
 				self.view_mode = *mode;
 				Document::visit_all_shapes(&mut self.root, &mut |s: &mut Shape| s.style.view_mode(*mode));
-				Some( vec![DocumentResponse::DocumentChanged] )
+				Some(vec![DocumentResponse::DocumentChanged])
 			}
 		};
 		Ok(responses)

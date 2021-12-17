@@ -2,8 +2,8 @@ use crate::color::Color;
 use serde::{Deserialize, Serialize};
 const OPACITY_PRECISION: usize = 3;
 pub const WIRE_FRAME_STROKE_WIDTH: f32 = 1.0;
-pub const EMPTY_FILL : Fill = Fill::none();
-pub const THIN_BLACK_STROKE : Stroke = Stroke::new(Color::BLACK, WIRE_FRAME_STROKE_WIDTH);
+pub const EMPTY_FILL: Fill = Fill::none();
+pub const THIN_BLACK_STROKE: Stroke = Stroke::new(Color::BLACK, WIRE_FRAME_STROKE_WIDTH);
 
 fn format_opacity(name: &str, opacity: f32) -> String {
 	if (opacity - 1.).abs() > 10f32.powi(-(OPACITY_PRECISION as i32)) {
