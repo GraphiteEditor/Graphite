@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-var-requires, no-console */
 const path = require("path");
-const { spawnSync } = require("child_process");
+const { execSync, spawnSync } = require("child_process");
 
 const WasmPackPlugin = require("@wasm-tool/wasm-pack-plugin");
 const LicenseCheckerWebpackPlugin = require("license-checker-webpack-plugin");
@@ -33,6 +33,11 @@ function generateRustLicenses() {
 	// eslint-disable-next-line no-eval
 	return eval(stdout);
 }
+
+process.env.VUE_APP_COMMIT_DATE = execSync("git log -1 --format=%cd", { encoding: "utf-8" }).trim();
+process.env.VUE_APP_COMMIT_HASH = execSync("git rev-parse HEAD", { encoding: "utf-8" }).trim();
+process.env.VUE_APP_COMMIT_BRANCH = execSync("git rev-parse --abbrev-ref HEAD", { encoding: "utf-8" }).trim();
+process.env.VUE_APP_RELEASE_SERIES = "Pre-Alpha";
 
 module.exports = {
 	lintOnSave: "warning",

@@ -75,6 +75,8 @@ export class DisplayConfirmationToCloseDocument extends JsMessage {
 
 export class DisplayConfirmationToCloseAllDocuments extends JsMessage {}
 
+export class DisplayAboutGraphiteDialog extends JsMessage {}
+
 export class UpdateCanvas extends JsMessage {
 	readonly document!: string;
 }

@@ -141,6 +141,12 @@ pub fn close_all_documents_with_confirmation() {
 	dispatch(message);
 }
 
+#[wasm_bindgen]
+pub fn request_about_graphite_dialog() {
+	let message = DocumentsMessage::RequestAboutGraphiteDialog;
+	dispatch(message);
+}
+
 /// Send new bounds when document panel viewports get resized or moved within the editor
 /// [left, top, right, bottom]...
 #[wasm_bindgen]

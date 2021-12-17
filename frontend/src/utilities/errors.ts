@@ -1,7 +1,7 @@
 import { createDialog, dismissDialog } from "@/utilities/dialog";
 import { TextButtonWidget } from "@/components/widgets/widgets";
 import { subscribeJsMessage } from "@/utilities/js-message-dispatcher";
-import { DisplayError, DisplayPanic } from "./js-messages";
+import { DisplayError, DisplayPanic } from "@/utilities/js-messages";
 
 // Coming soon dialog
 export function comingSoon(issueNumber?: number) {
@@ -139,8 +139,7 @@ function browserVersion(): string {
 
 function operatingSystem(): string {
 	const osTable: Record<string, string> = {
-		"Windows NT 11": "Windows 11",
-		"Windows NT 10": "Windows 10",
+		"Windows NT 10": "Windows 10 or 11",
 		"Windows NT 6.3": "Windows 8.1",
 		"Windows NT 6.2": "Windows 8",
 		"Windows NT 6.1": "Windows 7",
