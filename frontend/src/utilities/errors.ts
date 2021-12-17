@@ -3,8 +3,6 @@ import { TextButtonWidget } from "@/components/widgets/widgets";
 import { DisplayError, DisplayPanic } from "@/utilities/js-messages";
 import { EditorState } from "../state/wasm-loader";
 
-// TODO: Compare this file with current version
-
 export function initErrorHandling(editor: EditorState, dialogState: DialogState) {
 	// Graphite error dialog
 	editor.dispatcher.subscribeJsMessage(DisplayError, (displayError) => {
@@ -123,8 +121,7 @@ function browserVersion(): string {
 
 function operatingSystem(): string {
 	const osTable: Record<string, string> = {
-		"Windows NT 11": "Windows 11",
-		"Windows NT 10": "Windows 10",
+		"Windows NT 10": "Windows 10 or 11",
 		"Windows NT 6.3": "Windows 8.1",
 		"Windows NT 6.2": "Windows 8",
 		"Windows NT 6.1": "Windows 7",

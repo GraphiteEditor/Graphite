@@ -150,13 +150,10 @@ function makeMenuEntries(editor: EditorState): MenuListEntries {
 			label: "Help",
 			ref: undefined,
 			children: [
+				[{ label: "About Graphite", action: async () => editor.instance.request_about_graphite_dialog() }],
 				[
 					{ label: "Report a Bug", action: () => window.open("https://github.com/GraphiteEditor/Graphite/issues/new", "_blank") },
 					{ label: "Visit on GitHub", action: () => window.open("https://github.com/GraphiteEditor/Graphite", "_blank") },
-				],
-				[
-					{ label: "Graphite License", action: () => window.open("https://raw.githubusercontent.com/GraphiteEditor/Graphite/master/LICENSE.txt", "_blank") },
-					{ label: "Third-Party Licenses", action: () => window.open("/third-party-licenses.txt", "_blank") },
 				],
 				[{ label: "Debug: Panic (DANGER)", action: async () => editor.rawWasm.intentional_panic() }],
 			],

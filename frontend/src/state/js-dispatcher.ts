@@ -1,25 +1,5 @@
 import { plainToInstance } from "class-transformer";
-import {
-	DisplayConfirmationToCloseAllDocuments,
-	DisplayConfirmationToCloseDocument,
-	DisplayError,
-	DisplayPanic,
-	ExportDocument,
-	newDisplayFolderTreeStructure,
-	OpenDocumentBrowse,
-	SaveDocument,
-	SetActiveDocument,
-	SetActiveTool,
-	SetCanvasRotation,
-	SetCanvasZoom,
-	UpdateCanvas,
-	UpdateOpenDocumentsList,
-	UpdateRulers,
-	UpdateScrollbars,
-	UpdateWorkingColors,
-	UpdateLayer,
-	JsMessage,
-} from "../utilities/js-messages";
+import { JsMessageType, messageConstructorMap, JsMessage } from "../utilities/js-messages";
 import type { RustEditorInstance, WasmInstance } from "./wasm-loader";
 
 type JsMessageCallback<T extends JsMessage> = (responseData: T) => void;
@@ -31,29 +11,6 @@ type JsMessageCallbackMap = {
 };
 
 type Constructs<T> = new (...args: never[]) => T;
-
-const messageConstructorMap = {
-	UpdateCanvas,
-	UpdateScrollbars,
-	UpdateRulers,
-	ExportDocument,
-	SaveDocument,
-	OpenDocumentBrowse,
-	DisplayFolderTreeStructure: newDisplayFolderTreeStructure,
-	UpdateLayer,
-	SetActiveTool,
-	SetActiveDocument,
-	UpdateOpenDocumentsList,
-	UpdateWorkingColors,
-	SetCanvasZoom,
-	SetCanvasRotation,
-	DisplayError,
-	DisplayPanic,
-	DisplayConfirmationToCloseDocument,
-	DisplayConfirmationToCloseAllDocuments,
-} as const;
-
-export type JsMessageType = keyof typeof messageConstructorMap;
 
 type JSMessageFactory = (data: unknown, wasm: WasmInstance, instance: RustEditorInstance) => JsMessage;
 

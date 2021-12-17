@@ -421,14 +421,14 @@ export default defineComponent({
 		});
 
 		this.editor.dispatcher.subscribeJsMessage(UpdateLayer, (updateLayer) => {
-			const responsePath = updateLayer.data.path;
-			const responseLayer = updateLayer.data;
+			const targetPath = updateLayer.data.path;
+			const targetLayer = updateLayer.data;
 
-			const layer = this.layerCache.get(responsePath.toString());
+			const layer = this.layerCache.get(targetPath.toString());
 			if (layer) {
-				Object.assign(this.layerCache.get(responsePath.toString()), responseLayer);
+				Object.assign(this.layerCache.get(targetPath.toString()), targetLayer);
 			} else {
-				this.layerCache.set(responsePath.toString(), responseLayer);
+				this.layerCache.set(targetPath.toString(), targetLayer);
 			}
 			this.setBlendModeForSelectedLayers();
 			this.setOpacityForSelectedLayers();

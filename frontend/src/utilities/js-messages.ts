@@ -76,6 +76,8 @@ export class DisplayConfirmationToCloseDocument extends JsMessage {
 
 export class DisplayConfirmationToCloseAllDocuments extends JsMessage {}
 
+export class DisplayAboutGraphiteDialog extends JsMessage {}
+
 export class UpdateCanvas extends JsMessage {
 	readonly document!: string;
 }
@@ -256,3 +258,25 @@ export const LayerTypeOptions = {
 } as const;
 
 export type LayerType = typeof LayerTypeOptions[keyof typeof LayerTypeOptions];
+
+export const messageConstructorMap = {
+	UpdateCanvas,
+	UpdateScrollbars,
+	UpdateRulers,
+	ExportDocument,
+	SaveDocument,
+	OpenDocumentBrowse,
+	DisplayFolderTreeStructure: newDisplayFolderTreeStructure,
+	UpdateLayer,
+	SetActiveTool,
+	SetActiveDocument,
+	UpdateOpenDocumentsList,
+	UpdateWorkingColors,
+	SetCanvasZoom,
+	SetCanvasRotation,
+	DisplayError,
+	DisplayPanic,
+	DisplayConfirmationToCloseDocument,
+	DisplayConfirmationToCloseAllDocuments,
+} as const;
+export type JsMessageType = keyof typeof messageConstructorMap;

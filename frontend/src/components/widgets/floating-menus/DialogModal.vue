@@ -57,12 +57,14 @@
 
 	.main-column {
 		.heading {
+			user-select: text;
 			white-space: pre-wrap;
 			max-width: 400px;
 			margin-bottom: 4px;
 		}
 
 		.details {
+			user-select: text;
 			white-space: pre-wrap;
 			max-width: 400px;
 		}
