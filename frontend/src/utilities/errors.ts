@@ -18,7 +18,7 @@ export function initErrorHandling(editor: EditorState, dialogState: DialogState)
 
 	// Code panic dialog and console error
 	editor.dispatcher.subscribeJsMessage(DisplayPanic, (displayPanic) => {
-		// Only supported by certain browsers
+		// stackTraceLimit API is only supported by some browsers
 		// eslint-disable-next-line @typescript-eslint/no-explicit-any
 		(Error as any).stackTraceLimit = Infinity;
 		const stackTrace = new Error().stack || "";

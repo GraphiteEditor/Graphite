@@ -42,9 +42,14 @@ export class DocumentsState {
 	closeDocumentWithConfirmation(tabIndex: number) {
 		this.selectDocument(tabIndex);
 
-		const tabLabel = this.state.documents[tabIndex].displayName;
+		const targetDocument = this.state.documents[tabIndex];
+		if (targetDocument.isSaved) {
+			this.editor.instance.close_document(tabIndex);
+			return;
+		}
 
-		this.dialogState.createDialog("File", "Save changes before closing?", tabLabel, [
+		// Show the document is being prompted to close
+		this.dialogState.createDialog("File", "Save changes before closing?", targetDocument.displayName, [
 			{
 				kind: "TextButton",
 				callback: () => {

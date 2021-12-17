@@ -244,7 +244,6 @@ declare module "@vue/runtime-core" {
 }
 
 export default defineComponent({
-	state: {},
 	provide() {
 		return {
 			dialog: this.dialog,
