@@ -39,7 +39,6 @@ impl Document {
 
 	/// Wrapper around render, that returns the whole document as a Response.
 	pub fn render_root(&mut self) -> String {
-		log::debug!("{:?}", self.root.transform);
 		self.root.render(&mut vec![]);
 		self.root.cache.clone()
 	}
@@ -597,6 +596,11 @@ impl Document {
 				}
 				self.mark_as_dirty(path)?;
 				Some([vec![DocumentChanged], update_thumbnails_upstream(path)].concat())
+			}
+			Operation::SetViewMode { mode } => {
+				self.view_mode = *mode;
+				Document::visit_all_shapes(&mut self.root, &mut |s: &mut Shape| s.style.view_mode(*mode));
+				Some( vec![DocumentResponse::DocumentChanged] )
 			}
 		};
 		Ok(responses)

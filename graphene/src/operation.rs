@@ -101,6 +101,9 @@ pub enum Operation {
 		bez_path: kurbo::BezPath,
 		transform: [f64; 6],
 	},
+	SetViewMode {
+		mode: style::ViewMode,
+	},
 	TransformLayerInScope {
 		path: Vec<LayerId>,
 		transform: [f64; 6],

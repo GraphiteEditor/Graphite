@@ -124,7 +124,6 @@ pub enum DocumentMessage {
 	DocumentHistoryBackward,
 	DocumentHistoryForward,
 	ClearOverlays,
-	SetViewMode(ViewMode),
 	ReRenderDocument,
 	NudgeSelectedLayers(f64, f64),
 	AlignSelectedLayers(AlignAxis, AlignAggregate),
@@ -563,17 +562,6 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				for path in self.layer_data.keys().filter(|path| self.graphene_document.layer(path).unwrap().overlay).cloned() {
 					responses.push_front(DocumentOperation::DeleteLayer { path }.into());
 				}
-			}
-			SetViewMode(mode) => {
-				self.graphene_document.update_view_mode(mode);
-				let mut mode_update_func = |s: &mut GrapheneShape| s.style.view_mode(mode);
-				GrapheneDocument::visit_all_shapes(&mut self.graphene_document.root, &mut mode_update_func);
-				responses.push_back(
-					FrontendMessage::UpdateCanvas {
-						document: self.graphene_document.render_root(),
-					}
-					.into(),
-				);
 			}
 			DuplicateSelectedLayers => {
 				self.backup(responses);

@@ -132,21 +132,21 @@ impl MessageHandler<MovementMessage, (&mut LayerData, &Document, &InputPreproces
 				layerdata.scale = new.clamp(VIEWPORT_ZOOM_SCALE_MIN, VIEWPORT_ZOOM_SCALE_MAX);
 				responses.push_back(FrontendMessage::SetCanvasZoom { new_zoom: layerdata.scale }.into());
 				responses.push_back(ToolMessage::SelectedLayersChanged.into());
-				responses.push_back(DocumentMessage::ReRenderDocument.into());
+				responses.push_back(DocumentMessage::DispatchOperation(Box::from(DocumentOperation::SetViewMode{mode: data.1.view_mode()})).into());
 				self.create_document_transform_from_layerdata(layerdata, &ipp.viewport_bounds, responses);
 			}
 			IncreaseCanvasZoom => {
 				layerdata.scale = *VIEWPORT_ZOOM_LEVELS.iter().find(|scale| **scale > layerdata.scale).unwrap_or(&layerdata.scale);
 				responses.push_back(FrontendMessage::SetCanvasZoom { new_zoom: layerdata.scale }.into());
 				responses.push_back(ToolMessage::SelectedLayersChanged.into());
-				responses.push_back(DocumentMessage::ReRenderDocument.into());
+				responses.push_back(DocumentMessage::DispatchOperation(Box::from(DocumentOperation::SetViewMode{mode: data.1.view_mode()})).into());
 				self.create_document_transform_from_layerdata(layerdata, &ipp.viewport_bounds, responses);
 			}
 			DecreaseCanvasZoom => {
 				layerdata.scale = *VIEWPORT_ZOOM_LEVELS.iter().rev().find(|scale| **scale < layerdata.scale).unwrap_or(&layerdata.scale);
 				responses.push_back(FrontendMessage::SetCanvasZoom { new_zoom: layerdata.scale }.into());
 				responses.push_back(ToolMessage::SelectedLayersChanged.into());
-				responses.push_back(DocumentMessage::ReRenderDocument.into());
+				responses.push_back(DocumentMessage::DispatchOperation(Box::from(DocumentOperation::SetViewMode{mode: data.1.view_mode()})).into());
 				self.create_document_transform_from_layerdata(layerdata, &ipp.viewport_bounds, responses);
 			}
 			WheelCanvasZoom => {
@@ -168,7 +168,7 @@ impl MessageHandler<MovementMessage, (&mut LayerData, &Document, &InputPreproces
 				layerdata.translation += transformed_delta;
 				responses.push_back(FrontendMessage::SetCanvasZoom { new_zoom: layerdata.scale }.into());
 				responses.push_back(ToolMessage::SelectedLayersChanged.into());
-				responses.push_back(DocumentMessage::ReRenderDocument.into());
+				responses.push_back(DocumentMessage::DispatchOperation(Box::from(DocumentOperation::SetViewMode{mode: data.1.view_mode()})).into());
 				self.create_document_transform_from_layerdata(layerdata, &ipp.viewport_bounds, responses);
 			}
 			WheelCanvasTranslate { use_y_as_x } => {
@@ -203,7 +203,7 @@ impl MessageHandler<MovementMessage, (&mut LayerData, &Document, &InputPreproces
 					layerdata.scale *= new_scale;
 					responses.push_back(FrontendMessage::SetCanvasZoom { new_zoom: layerdata.scale }.into());
 					responses.push_back(ToolMessage::SelectedLayersChanged.into());
-					responses.push_back(DocumentMessage::ReRenderDocument.into());
+					responses.push_back(DocumentMessage::DispatchOperation(Box::from(DocumentOperation::SetViewMode{mode: data.1.view_mode()})).into());
 					self.create_document_transform_from_layerdata(layerdata, &ipp.viewport_bounds, responses);
 				}
 			}

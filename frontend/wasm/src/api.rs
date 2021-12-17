@@ -12,6 +12,7 @@ use editor::misc::EditorError;
 use editor::tool::{tool_options::ToolOptions, tools, ToolType};
 use editor::LayerId;
 use editor::{message_prelude::*, Color};
+use graphene::operation::Operation;
 use wasm_bindgen::prelude::*;
 
 /// Intentionally panic for testing purposes
@@ -337,7 +338,7 @@ pub fn set_snapping(new_status: bool) {
 #[wasm_bindgen]
 pub fn set_view_mode(new_mode: String) -> Result<(), JsValue> {
 	match translate_view_mode(new_mode.as_str()) {
-		Some(mode) => dispatch(DocumentMessage::SetViewMode(mode)),
+		Some(mode) => dispatch(DocumentMessage::DispatchOperation(Box::from(Operation::SetViewMode{mode}))),
 		None => return Err(Error::new("Invalid view mode").into()),
 	};
 	Ok(())

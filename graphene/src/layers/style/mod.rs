@@ -1,6 +1,9 @@
 use crate::color::Color;
 use serde::{Deserialize, Serialize};
 const OPACITY_PRECISION: usize = 3;
+pub const WIRE_FRAME_STROKE_WIDTH: f32 = 1.0;
+pub const EMPTY_FILL : Fill = Fill::none();
+pub const THIN_BLACK_STROKE : Stroke = Stroke::new(Color::BLACK, WIRE_FRAME_STROKE_WIDTH);
 
 fn format_opacity(name: &str, opacity: f32) -> String {
 	if (opacity - 1.).abs() > 10f32.powi(-(OPACITY_PRECISION as i32)) {
@@ -9,8 +12,6 @@ fn format_opacity(name: &str, opacity: f32) -> String {
 		String::new()
 	}
 }
-
-pub const WIRE_FRAME_STROKE_WIDTH: f32 = 1.0;
 
 #[derive(Debug, Clone, Copy, PartialEq, Deserialize, Serialize)]
 pub enum ViewMode {
@@ -36,7 +37,7 @@ impl Fill {
 	pub fn color(&self) -> Option<Color> {
 		self.color
 	}
-	pub fn none() -> Self {
+	pub const fn none() -> Self {
 		Self { color: None }
 	}
 	pub fn render(&self) -> String {
@@ -55,7 +56,7 @@ pub struct Stroke {
 }
 
 impl Stroke {
-	pub fn new(color: Color, width: f32) -> Self {
+	pub const fn new(color: Color, width: f32) -> Self {
 		Self { color, width }
 	}
 	pub fn color(&self) -> Color {
@@ -116,16 +117,15 @@ impl PathStyle {
 
 	pub fn render(&self) -> String {
 		// change stroke rendering so solid paths don't dissapear
-		// in wireframe view mode extra Stroke/Fill allocations are done
 		format!(
 			"{}{}",
 			match (self.view_mode, self.fill) {
-				(ViewMode::WireFrame, _) => Fill::none().render(),
+				(ViewMode::WireFrame, _) => EMPTY_FILL.render(),
 				(_, Some(fill)) => fill.render(),
 				(_, None) => String::new(),
 			},
 			match (self.view_mode, self.stroke) {
-				(ViewMode::WireFrame, _) => Stroke::new(Color::BLACK, WIRE_FRAME_STROKE_WIDTH).render(),
+				(ViewMode::WireFrame, _) => THIN_BLACK_STROKE.render(),
 				(_, Some(stroke)) => stroke.render(),
 				(_, None) => String::new(),
 			},
