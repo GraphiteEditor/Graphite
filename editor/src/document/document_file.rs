@@ -16,7 +16,7 @@ use kurbo::PathSeg;
 use log::warn;
 use serde::{Deserialize, Serialize};
 
-use graphene::layers::{BlendMode};
+use graphene::layers::BlendMode;
 use graphene::{document::Document as GrapheneDocument, layers::LayerDataType, DocumentError, LayerId};
 use graphene::{DocumentResponse, Operation as DocumentOperation};
 
