@@ -25,6 +25,7 @@ pub enum DocumentsMessage {
 	CloseActiveDocumentWithConfirmation,
 	CloseAllDocumentsWithConfirmation,
 	CloseAllDocuments,
+	RequestAboutGraphiteDialog,
 	NewDocument,
 	OpenDocument,
 	OpenDocumentFile(String, String),
@@ -124,6 +125,9 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 		use DocumentMessage::*;
 		use DocumentsMessage::*;
 		match message {
+			RequestAboutGraphiteDialog => {
+				responses.push_back(FrontendMessage::DisplayAboutGraphiteDialog.into());
+			}
 			Document(message) => self.active_document_mut().process_action(message, ipp, responses),
 			SelectDocument(index) => {
 				// NOTE: Potentially this will break if we ever exceed 56 bit values due to how the message parsing system works.
