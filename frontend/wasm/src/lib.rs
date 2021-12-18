@@ -30,11 +30,3 @@ fn panic_hook(info: &panic::PanicInfo) {
 
 	EDITOR_HAS_CRASHED.with(|crash_status| crash_status.borrow_mut().replace(FrontendMessage::DisplayPanic { panic_info, title, description }));
 }
-
-// The TS file that wasm-bindgen instantiates and calls into
-#[wasm_bindgen(module = "/../src/utilities/wasm-loader-exports.ts")]
-extern "C" {
-	// The JavaScript function to call into with each FrontendMessage
-	#[wasm_bindgen(catch)]
-	fn handleJsMessage(callback: &JsValue, responseType: String, responseData: JsValue) -> Result<(), JsValue>;
-}

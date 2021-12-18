@@ -2,7 +2,6 @@
 // It serves as a thin wrapper over the editor backend API that relies
 // on the dispatcher messaging system and more complex Rust data types.
 
-use crate::handleJsMessage;
 use crate::helpers::Error;
 use crate::type_translators::{translate_blend_mode, translate_key, translate_tool_type};
 use crate::EDITOR_HAS_CRASHED;
@@ -19,13 +18,13 @@ use wasm_bindgen::prelude::*;
 #[wasm_bindgen]
 pub struct Editor {
 	editor: editor::Editor,
-	handle_response: JsValue,
+	handle_response: js_sys::Function,
 }
 
 #[wasm_bindgen]
 impl Editor {
 	#[wasm_bindgen(constructor)]
-	pub fn new(handle_response: JsValue) -> Editor {
+	pub fn new(handle_response: js_sys::Function) -> Editor {
 		Editor {
 			editor: editor::Editor::new(),
 			handle_response,
@@ -54,7 +53,8 @@ impl Editor {
 		let message_type = message.to_discriminant().local_name();
 		let message_data = JsValue::from_serde(&message).expect("Failed to serialize FrontendMessage");
 
-		let js_return_value = handleJsMessage(&self.handle_response, message_type, message_data);
+		let js_return_value = self.handle_response.call2(&JsValue::null(), &JsValue::from(message_type), &message_data);
+
 		if let Err(error) = js_return_value {
 			log::error!(
 				"While handling FrontendMessage \"{:?}\", JavaScript threw an error: {:?}",

@@ -126,6 +126,7 @@ version = "0.1.0"
 dependencies = [
  "graphite-editor",
  "graphite-graphene",
+ "js-sys",
  "log",
  "serde",
  "wasm-bindgen",
