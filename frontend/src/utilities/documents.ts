@@ -10,38 +10,36 @@ import {
 	ExportDocument,
 	SaveDocument,
 	OpenDocumentBrowse,
+	FrontendDocumentState,
 } from "@/utilities/js-messages";
 import { download, upload } from "@/utilities/files";
 import { panicProxy } from "@/utilities/panic-proxy";
 
 const wasm = import("@/../wasm/pkg").then(panicProxy);
 
-class DocumentState {
-	readonly displayName: string;
-
-	constructor(readonly name: string, readonly isSaved: boolean) {
-		this.displayName = `${name}${isSaved ? "" : "*"}`;
-	}
-}
-
 const state = reactive({
-	documents: [] as DocumentState[],
+	documents: [] as FrontendDocumentState[],
 	activeDocumentIndex: 0,
 });
 
-export async function selectDocument(tabIndex: number) {
-	(await wasm).select_document(tabIndex);
+export async function selectDocument(documentId: number) {
+	(await wasm).select_document(documentId);
 }
 
-export async function closeDocumentWithConfirmation(tabIndex: number) {
-	const targetDocument = state.documents[tabIndex];
+export async function closeDocumentWithConfirmation(documentId: number) {
+	// Assume we receive a correct document_id
+	console.log(
+		state.documents.map((a) => a),
+		documentId
+	);
+	const targetDocument = state.documents.find((doc) => doc.id === documentId) as FrontendDocumentState;
 	if (targetDocument.isSaved) {
-		(await wasm).close_document(tabIndex);
+		(await wasm).close_document(targetDocument.id);
 		return;
 	}
 
 	// Show the document is being prompted to close
-	await selectDocument(tabIndex);
+	await selectDocument(targetDocument.id);
 
 	const tabLabel = targetDocument.displayName;
 
@@ -57,7 +55,7 @@ export async function closeDocumentWithConfirmation(tabIndex: number) {
 		{
 			kind: "TextButton",
 			callback: async () => {
-				(await wasm).close_document(tabIndex);
+				(await wasm).close_document(targetDocument.id);
 				dismissDialog();
 			},
 			props: { label: "Discard", minWidth: 96 },
@@ -95,15 +93,17 @@ export async function closeAllDocumentsWithConfirmation() {
 export default readonly(state);
 
 subscribeJsMessage(UpdateOpenDocumentsList, (updateOpenDocumentList) => {
-	state.documents = updateOpenDocumentList.open_documents.map(({ name, isSaved }) => new DocumentState(name, isSaved));
+	state.documents = updateOpenDocumentList.open_documents;
 });
 
 subscribeJsMessage(SetActiveDocument, (setActiveDocument) => {
-	state.activeDocumentIndex = setActiveDocument.document_index;
+	// Assume we receive a correct document_id
+	const activeId = state.documents.findIndex((doc) => doc.id === setActiveDocument.document_id);
+	state.activeDocumentIndex = activeId;
 });
 
 subscribeJsMessage(DisplayConfirmationToCloseDocument, (displayConfirmationToCloseDocument) => {
-	closeDocumentWithConfirmation(displayConfirmationToCloseDocument.document_index);
+	closeDocumentWithConfirmation(displayConfirmationToCloseDocument.document_id);
 });
 
 subscribeJsMessage(DisplayConfirmationToCloseAllDocuments, () => {

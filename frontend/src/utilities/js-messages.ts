@@ -9,9 +9,17 @@ export class JsMessage {
 	static readonly jsMessageMarker = true;
 }
 
+export class FrontendDocumentState {
+	readonly displayName: string;
+
+	constructor(readonly name: string, readonly isSaved: boolean, readonly id: number) {
+		this.displayName = `${name}${isSaved ? "" : "*"}`;
+	}
+}
+
 export class UpdateOpenDocumentsList extends JsMessage {
-	@Transform(({ value }) => value.map((tuple: [string, boolean]) => ({ name: tuple[0], isSaved: tuple[1] })))
-	readonly open_documents!: { name: string; isSaved: boolean }[];
+	@Transform(({ value }) => value.map(({ name, is_saved, id }: any) => new FrontendDocumentState(name, is_saved, id)))
+	readonly open_documents!: FrontendDocumentState[];
 }
 
 const To255Scale = Transform(({ value }) => value * 255);
@@ -52,7 +60,7 @@ export class SetActiveTool extends JsMessage {
 }
 
 export class SetActiveDocument extends JsMessage {
-	readonly document_index!: number;
+	readonly document_id!: number;
 }
 
 export class DisplayError extends JsMessage {
@@ -70,7 +78,7 @@ export class DisplayPanic extends JsMessage {
 }
 
 export class DisplayConfirmationToCloseDocument extends JsMessage {
-	readonly document_index!: number;
+	readonly document_id!: number;
 }
 
 export class DisplayConfirmationToCloseAllDocuments extends JsMessage {}

@@ -81,8 +81,8 @@ pub fn send_tool_message(tool: String, message: &JsValue) -> Result<(), JsValue>
 }
 
 #[wasm_bindgen]
-pub fn select_document(document: usize) {
-	let message = DocumentsMessage::SelectDocument(document);
+pub fn select_document(document_id: i32) {
+	let message = DocumentsMessage::SelectDocument(document_id);
 	dispatch(message);
 }
 
@@ -117,8 +117,8 @@ pub fn save_document() {
 }
 
 #[wasm_bindgen]
-pub fn close_document(document: usize) {
-	let message = DocumentsMessage::CloseDocument(document);
+pub fn close_document(document_id: i32) {
+	let message = DocumentsMessage::CloseDocument(document_id);
 	dispatch(message);
 }
 

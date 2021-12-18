@@ -17,11 +17,15 @@ pub struct Dispatcher {
 	pub responses: Vec<FrontendMessage>,
 }
 
-const GROUP_MESSAGES: &[MessageDiscriminant] = &[
+// For optimization, these are messages guaranteed to be redundant when repeated
+// The last occurrence of the message in the message queue is sufficient to ensure correctness
+// In addition, these messages do not change any state in the backend (aside from caches)
+const SIDE_EFFECT_FREE_MESSAGES: &[MessageDiscriminant] = &[
 	MessageDiscriminant::Documents(DocumentsMessageDiscriminant::Document(DocumentMessageDiscriminant::RenderDocument)),
 	MessageDiscriminant::Documents(DocumentsMessageDiscriminant::Document(DocumentMessageDiscriminant::FolderChanged)),
 	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::UpdateLayer),
 	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::DisplayFolderTreeStructure),
+	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::UpdateOpenDocumentsList),
 	MessageDiscriminant::Tool(ToolMessageDiscriminant::SelectedLayersChanged),
 ];
 
@@ -31,7 +35,8 @@ impl Dispatcher {
 
 		use Message::*;
 		while let Some(message) = self.messages.pop_front() {
-			if GROUP_MESSAGES.contains(&message.to_discriminant()) && self.messages.contains(&message) {
+			// Skip processing of this message if it will be processed later
+			if SIDE_EFFECT_FREE_MESSAGES.contains(&message.to_discriminant()) && self.messages.contains(&message) {
 				continue;
 			}
 			log_message(&message);
