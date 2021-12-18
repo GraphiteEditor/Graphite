@@ -2,6 +2,7 @@ import { DialogState } from "@/state/dialog";
 import { TextButtonWidget } from "@/components/widgets/widgets";
 import { DisplayError, DisplayPanic } from "@/dispatcher/js-messages";
 import { EditorState } from "@/state/wasm-loader";
+import { deIndent } from "@/utilities/de-indent";
 
 export function initErrorHandling(editor: EditorState, dialogState: DialogState) {
 	// Graphite error dialog
@@ -51,31 +52,31 @@ export function initErrorHandling(editor: EditorState, dialogState: DialogState)
 function githubUrl(panicDetails: string) {
 	const url = new URL("https://github.com/GraphiteEditor/Graphite/issues/new");
 
-	const body = `
-**Describe the Crash**
-Explain clearly what you were doing when the crash occurred.
+	const body = deIndent`
+		**Describe the Crash**
+		Explain clearly what you were doing when the crash occurred.
 
-**Steps To Reproduce**
-Describe precisely how the crash occurred, step by step, starting with a new editor window.
-1. Open the Graphite Editor at https://editor.graphite.design
-2. 
-3. 
-4. 
-5. 
+		**Steps To Reproduce**
+		Describe precisely how the crash occurred, step by step, starting with a new editor window.
+		1. Open the Graphite Editor at https://editor.graphite.design
+		2. 
+		3. 
+		4. 
+		5. 
 
-**Additional Details**
-Provide any further information or context that you think would be helpful in fixing the issue. Screenshots or video can be linked or attached to this issue.
+		**Additional Details**
+		Provide any further information or context that you think would be helpful in fixing the issue. Screenshots or video can be linked or attached to this issue.
 
-**Browser and OS**
-${browserVersion()}, ${operatingSystem()}
+		**Browser and OS**
+		${browserVersion()}, ${operatingSystem()}
 
-**Stack Trace**
-Copied from the crash dialog in the Graphite Editor:
+		**Stack Trace**
+		Copied from the crash dialog in the Graphite Editor:
 
-\`\`\`
-${panicDetails}
-\`\`\`
-`.trim();
+		\`\`\`
+		${panicDetails}
+		\`\`\`
+	`.trim();
 
 	const fields = {
 		title: "[Crash Report] ",
