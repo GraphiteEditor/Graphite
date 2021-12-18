@@ -8,43 +8,40 @@ interface EventListenerTarget {
 	addEventListener: typeof window.addEventListener;
 	removeEventListener: typeof window.removeEventListener;
 }
-export class InputManager {
+
+export type InputManager = ReturnType<typeof createInputManager>;
+export function createInputManager(container: HTMLElement, fullscreen: FullscreenState, dialog: DialogState, editor: EditorState, document: DocumentsState) {
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	private listeners: { target: EventListenerTarget; eventName: EventName; action: (event: any) => void; options?: boolean | AddEventListenerOptions }[] = [
-		{ target: window, eventName: "resize", action: () => this.onWindowResize(this.container) },
-		{ target: window, eventName: "mousemove", action: (e) => this.onMouseMove(e) },
-		{ target: window, eventName: "beforeunload", action: (e) => this.onBeforeUnload(e) },
-		{ target: this.container, eventName: "contextmenu", action: (e) => e.preventDefault() },
-		{ target: this.container, eventName: "keyup", action: (e) => this.onKeyUp(e) },
-		{ target: this.container, eventName: "keydown", action: (e) => this.onKeyDown(e) },
-		{ target: this.container, eventName: "mousedown", action: (e) => this.onMouseDown(e) },
-		{ target: this.container, eventName: "mouseup", action: (e) => this.onMouseUp(e) },
-		{ target: this.container, eventName: "wheel", action: (e) => this.onMouseScroll(e), options: { passive: true } },
+	const listeners: { target: EventListenerTarget; eventName: EventName; action: (event: any) => void; options?: boolean | AddEventListenerOptions }[] = [
+		{ target: window, eventName: "resize", action: () => onWindowResize(container) },
+		{ target: window, eventName: "mousemove", action: (e) => onMouseMove(e) },
+		{ target: window, eventName: "beforeunload", action: (e) => onBeforeUnload(e) },
+		{ target: container, eventName: "contextmenu", action: (e) => e.preventDefault() },
+		{ target: container, eventName: "keyup", action: (e) => onKeyUp(e) },
+		{ target: container, eventName: "keydown", action: (e) => onKeyDown(e) },
+		{ target: container, eventName: "mousedown", action: (e) => onMouseDown(e) },
+		{ target: container, eventName: "mouseup", action: (e) => onMouseUp(e) },
+		{ target: container, eventName: "wheel", action: (e) => onMouseScroll(e), options: { passive: true } },
 	];
 
-	private viewportMouseInteractionOngoing = false;
+	let viewportMouseInteractionOngoing = false;
 
-	constructor(private container: HTMLElement, private fullscreen: FullscreenState, private dialog: DialogState, private editor: EditorState, private document: DocumentsState) {
-		this.listeners.forEach(({ target, eventName, action, options }) => target.addEventListener(eventName, action, options));
-		this.onWindowResize(container);
-	}
+	const removeListeners = () => {
+		listeners.forEach(({ target, eventName, action }) => target.removeEventListener(eventName, action));
+	};
 
-	public removeListeners() {
-		this.listeners.forEach(({ target, eventName, action }) => target.removeEventListener(eventName, action));
-	}
-
-	private shouldRedirectKeyboardEventToBackend(e: KeyboardEvent): boolean {
+	const shouldRedirectKeyboardEventToBackend = (e: KeyboardEvent): boolean => {
 		// Don't redirect user input from text entry into HTML elements
 		const target = e.target as HTMLElement;
 		if (target.nodeName === "INPUT" || target.nodeName === "TEXTAREA" || target.isContentEditable) return false;
 
 		// Don't redirect when a modal is covering the workspace
-		if (this.dialog.dialogIsVisible()) return false;
+		if (dialog.dialogIsVisible()) return false;
 
 		// Don't redirect a fullscreen request
 		if (e.key.toLowerCase() === "f11" && e.type === "keydown" && !e.repeat) {
 			e.preventDefault();
-			this.fullscreen.toggleFullscreen();
+			fullscreen.toggleFullscreen();
 			return false;
 		}
 
@@ -59,43 +56,43 @@ export class InputManager {
 
 		// Redirect to the backend
 		return true;
-	}
+	};
 
-	private onKeyDown(e: KeyboardEvent) {
-		if (this.shouldRedirectKeyboardEventToBackend(e)) {
+	const onKeyDown = (e: KeyboardEvent) => {
+		if (shouldRedirectKeyboardEventToBackend(e)) {
 			e.preventDefault();
 			const modifiers = makeModifiersBitfield(e);
-			this.editor.instance.on_key_down(e.key, modifiers);
+			editor.instance.on_key_down(e.key, modifiers);
 			return;
 		}
 
-		if (this.dialog.dialogIsVisible()) {
-			if (e.key === "Escape") this.dialog.dismissDialog();
+		if (dialog.dialogIsVisible()) {
+			if (e.key === "Escape") dialog.dismissDialog();
 			if (e.key === "Enter") {
-				this.dialog.submitDialog();
+				dialog.submitDialog();
 
 				// Prevent the Enter key from acting like a click on the last clicked button, which might reopen the dialog
 				e.preventDefault();
 			}
 		}
-	}
+	};
 
-	private onKeyUp(e: KeyboardEvent) {
-		if (this.shouldRedirectKeyboardEventToBackend(e)) {
+	const onKeyUp = (e: KeyboardEvent) => {
+		if (shouldRedirectKeyboardEventToBackend(e)) {
 			e.preventDefault();
 			const modifiers = makeModifiersBitfield(e);
-			this.editor.instance.on_key_up(e.key, modifiers);
+			editor.instance.on_key_up(e.key, modifiers);
 		}
-	}
+	};
 
-	private onMouseMove(e: MouseEvent) {
-		if (!e.buttons) this.viewportMouseInteractionOngoing = false;
+	const onMouseMove = (e: MouseEvent) => {
+		if (!e.buttons) viewportMouseInteractionOngoing = false;
 
 		const modifiers = makeModifiersBitfield(e);
-		this.editor.instance.on_mouse_move(e.clientX, e.clientY, e.buttons, modifiers);
-	}
+		editor.instance.on_mouse_move(e.clientX, e.clientY, e.buttons, modifiers);
+	};
 
-	private onMouseDown(e: MouseEvent) {
+	const onMouseDown = (e: MouseEvent) => {
 		const target = e.target && (e.target as HTMLElement);
 		const inCanvas = target && target.closest(".canvas");
 		const inDialog = target && target.closest(".dialog-modal .floating-menu-content");
@@ -103,28 +100,28 @@ export class InputManager {
 		// Block middle mouse button auto-scroll mode
 		if (e.button === 1) e.preventDefault();
 
-		if (this.dialog.dialogIsVisible() && !inDialog) {
-			this.dialog.dismissDialog();
+		if (dialog.dialogIsVisible() && !inDialog) {
+			dialog.dismissDialog();
 			e.preventDefault();
 			e.stopPropagation();
 		}
 
-		if (inCanvas) this.viewportMouseInteractionOngoing = true;
+		if (inCanvas) viewportMouseInteractionOngoing = true;
 
-		if (this.viewportMouseInteractionOngoing) {
+		if (viewportMouseInteractionOngoing) {
 			const modifiers = makeModifiersBitfield(e);
-			this.editor.instance.on_mouse_down(e.clientX, e.clientY, e.buttons, modifiers);
+			editor.instance.on_mouse_down(e.clientX, e.clientY, e.buttons, modifiers);
 		}
-	}
+	};
 
-	private onMouseUp(e: MouseEvent) {
-		if (!e.buttons) this.viewportMouseInteractionOngoing = false;
+	const onMouseUp = (e: MouseEvent) => {
+		if (!e.buttons) viewportMouseInteractionOngoing = false;
 
 		const modifiers = makeModifiersBitfield(e);
-		this.editor.instance.on_mouse_up(e.clientX, e.clientY, e.buttons, modifiers);
-	}
+		editor.instance.on_mouse_up(e.clientX, e.clientY, e.buttons, modifiers);
+	};
 
-	private onMouseScroll(e: WheelEvent) {
+	const onMouseScroll = (e: WheelEvent) => {
 		const target = e.target && (e.target as HTMLElement);
 		const inCanvas = target && target.closest(".canvas");
 
@@ -136,11 +133,11 @@ export class InputManager {
 
 		if (inCanvas) {
 			const modifiers = makeModifiersBitfield(e);
-			this.editor.instance.on_mouse_scroll(e.clientX, e.clientY, e.buttons, e.deltaX, e.deltaY, e.deltaZ, modifiers);
+			editor.instance.on_mouse_scroll(e.clientX, e.clientY, e.buttons, e.deltaX, e.deltaY, e.deltaZ, modifiers);
 		}
-	}
+	};
 
-	private onWindowResize(container: Element) {
+	const onWindowResize = (container: Element) => {
 		const viewports = Array.from(container.querySelectorAll(".canvas"));
 		const boundsOfViewports = viewports.map((canvas) => {
 			const bounds = canvas.getBoundingClientRect();
@@ -150,16 +147,24 @@ export class InputManager {
 		const flattened = boundsOfViewports.flat();
 		const data = Float64Array.from(flattened);
 
-		if (boundsOfViewports.length > 0) this.editor.instance.bounds_of_viewports(data);
-	}
+		if (boundsOfViewports.length > 0) editor.instance.bounds_of_viewports(data);
+	};
 
-	private onBeforeUnload(event: BeforeUnloadEvent) {
-		const allDocumentsSaved = this.document.state.documents.reduce((acc, doc) => acc && doc.isSaved, true);
+	const onBeforeUnload = (event: BeforeUnloadEvent) => {
+		const allDocumentsSaved = document.state.documents.reduce((acc, doc) => acc && doc.isSaved, true);
 		if (!allDocumentsSaved) {
 			event.returnValue = "Unsaved work will be lost if the web browser tab is closed. Close anyway?";
 			event.preventDefault();
 		}
-	}
+	};
+
+	// Run on creation
+	listeners.forEach(({ target, eventName, action, options }) => target.addEventListener(eventName, action, options));
+	onWindowResize(container);
+
+	return {
+		removeListeners,
+	};
 }
 
 export function makeModifiersBitfield(e: MouseEvent | KeyboardEvent): number {

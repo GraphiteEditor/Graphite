@@ -1,6 +1,6 @@
 /* eslint-disable func-names */
 
-import { JsDispatcher } from "@/dispatcher/js-dispatcher";
+import { createJsDispatcher } from "@/dispatcher/js-dispatcher";
 import { JsMessageType } from "@/dispatcher/js-messages";
 
 export type WasmInstance = typeof import("@/../wasm/pkg");
@@ -51,19 +51,19 @@ function getWasmInstance() {
 	return wasmImport;
 }
 
-export class EditorState {
-	readonly dispatcher = new JsDispatcher();
+export type EditorState = Readonly<ReturnType<typeof createEditorState>>;
+export function createEditorState() {
+	const dispatcher = createJsDispatcher();
+	const rawWasm = getWasmInstance();
 
-	readonly instance: RustEditorInstance;
+	// Use an arrow function to preserve `this` context
+	const instance = new rawWasm.Editor((messageType: JsMessageType, data: Record<string, unknown>) => {
+		dispatcher.handleJsMessage(messageType, data, rawWasm, instance);
+	});
 
-	readonly rawWasm: WasmInstance;
-
-	constructor() {
-		const wasm = getWasmInstance();
-		// Use an arrow function to preserve `this` context
-		this.instance = new wasm.Editor((messageType: JsMessageType, data: Record<string, unknown>) => {
-			this.dispatcher.handleJsMessage(messageType, data, this.rawWasm, this.instance);
-		});
-		this.rawWasm = wasm;
-	}
+	return {
+		dispatcher,
+		rawWasm,
+		instance,
+	};
 }

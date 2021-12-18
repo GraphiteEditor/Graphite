@@ -1,40 +1,50 @@
-import { reactive } from "vue";
+import { reactive, readonly } from "vue";
 
-export class FullscreenState {
-	private state = reactive({
+export type FullscreenState = ReturnType<typeof createFullscreenState>;
+export function createFullscreenState() {
+	const state = reactive({
 		keyboardLocked: false,
 	});
 
 	// Experimental Keyboard API: https://developer.mozilla.org/en-US/docs/Web/API/Navigator/keyboard
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	readonly keyboardLockApiSupported = "keyboard" in navigator && "lock" in (navigator as any).keyboard;
+	const keyboardLockApiSupported: Readonly<boolean> = "keyboard" in navigator && "lock" in (navigator as any).keyboard;
 
-	async enterFullscreen() {
+	const enterFullscreen = async () => {
 		await document.documentElement.requestFullscreen();
 
-		if (this.keyboardLockApiSupported) {
+		if (keyboardLockApiSupported) {
 			// eslint-disable-next-line @typescript-eslint/no-explicit-any
 			await (navigator as any).keyboard.lock(["ControlLeft", "ControlRight"]);
-			this.state.keyboardLocked = true;
+			state.keyboardLocked = true;
 		}
-	}
+	};
 
-	// eslint-disable-next-line class-methods-use-this
-	isFullscreen(): boolean {
+	const isFullscreen = (): boolean => {
 		return Boolean(document.fullscreenElement);
-	}
+	};
 
-	isKeyboardLocked(): boolean {
-		return this.state.keyboardLocked;
-	}
+	const isKeyboardLocked = (): boolean => {
+		return state.keyboardLocked;
+	};
 
 	// eslint-disable-next-line class-methods-use-this
-	async exitFullscreen() {
+	const exitFullscreen = async () => {
 		await document.exitFullscreen();
-	}
+	};
 
-	async toggleFullscreen() {
-		if (this.isFullscreen()) await this.exitFullscreen();
-		else await this.enterFullscreen();
-	}
+	const toggleFullscreen = async () => {
+		if (isFullscreen()) await exitFullscreen();
+		else await enterFullscreen();
+	};
+
+	return {
+		state: readonly(state),
+		keyboardLockApiSupported,
+		enterFullscreen,
+		isFullscreen,
+		isKeyboardLocked,
+		exitFullscreen,
+		toggleFullscreen,
+	};
 }

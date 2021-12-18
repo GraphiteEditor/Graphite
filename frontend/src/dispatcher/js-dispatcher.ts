@@ -16,14 +16,15 @@ type JSMessageFactory = (data: unknown, wasm: WasmInstance, instance: RustEditor
 
 type MessageMaker = typeof JsMessage | JSMessageFactory;
 
-export class JsDispatcher {
-	private subscriptions: JsMessageCallbackMap = {};
+export type JsDispatcher = ReturnType<typeof createJsDispatcher>;
+export function createJsDispatcher() {
+	const subscriptions: JsMessageCallbackMap = {};
 
-	subscribeJsMessage<T extends JsMessage>(messageType: Constructs<T>, callback: JsMessageCallback<T>) {
-		this.subscriptions[messageType.name] = callback;
-	}
+	const subscribeJsMessage = <T extends JsMessage>(messageType: Constructs<T>, callback: JsMessageCallback<T>) => {
+		subscriptions[messageType.name] = callback;
+	};
 
-	handleJsMessage(messageType: JsMessageType, messageData: Record<string, unknown>, wasm: WasmInstance, instance: RustEditorInstance) {
+	const handleJsMessage = (messageType: JsMessageType, messageData: Record<string, unknown>, wasm: WasmInstance, instance: RustEditorInstance) => {
 		const messageConstructor = messageConstructors[messageType] as MessageMaker;
 		if (!messageConstructor) {
 			// eslint-disable-next-line no-console
@@ -46,7 +47,7 @@ export class JsDispatcher {
 		}
 
 		// It is ok to use constructor.name even with minification since it is used consistently with registerHandler
-		const callback = this.subscriptions[message.constructor.name];
+		const callback = subscriptions[message.constructor.name];
 
 		if (callback && message) {
 			callback(message);
@@ -54,5 +55,10 @@ export class JsDispatcher {
 			// eslint-disable-next-line no-console
 			console.error(`Received a frontend message of type "${messageType}" but no handler was registered for it from the client.`);
 		}
-	}
+	};
+
+	return {
+		subscribeJsMessage,
+		handleJsMessage,
+	};
 }

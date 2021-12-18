@@ -1,5 +1,5 @@
 /* eslint-disable max-classes-per-file */
-import { reactive } from "vue";
+import { reactive, readonly } from "vue";
 
 import { DialogState } from "@/state/dialog";
 import { download, upload } from "@/utilities/files";
@@ -22,109 +22,113 @@ class DocumentSaveState {
 	}
 }
 
-export class DocumentsState {
-	state = reactive({
+export type DocumentsState = ReturnType<typeof createDocumentsState>;
+export function createDocumentsState(editor: EditorState, dialogState: DialogState) {
+	const state = reactive({
 		unsaved: false,
 		documents: [] as DocumentSaveState[],
 		activeDocumentIndex: 0,
 	});
 
-	constructor(private editor: EditorState, private dialogState: DialogState) {
-		this.setupJsMessageListeners();
-		// Get the initial documents
-		editor.instance.get_open_documents_list();
-	}
+	const selectDocument = (tabIndex: number) => {
+		editor.instance.select_document(tabIndex);
+	};
 
-	selectDocument(tabIndex: number) {
-		this.editor.instance.select_document(tabIndex);
-	}
+	const closeDocumentWithConfirmation = (tabIndex: number) => {
+		selectDocument(tabIndex);
 
-	closeDocumentWithConfirmation(tabIndex: number) {
-		this.selectDocument(tabIndex);
-
-		const targetDocument = this.state.documents[tabIndex];
+		const targetDocument = state.documents[tabIndex];
 		if (targetDocument.isSaved) {
-			this.editor.instance.close_document(tabIndex);
+			editor.instance.close_document(tabIndex);
 			return;
 		}
 
 		// Show the document is being prompted to close
-		this.dialogState.createDialog("File", "Save changes before closing?", targetDocument.displayName, [
+		dialogState.createDialog("File", "Save changes before closing?", targetDocument.displayName, [
 			{
 				kind: "TextButton",
 				callback: () => {
-					this.editor.instance.save_document();
-					this.dialogState.dismissDialog();
+					editor.instance.save_document();
+					dialogState.dismissDialog();
 				},
 				props: { label: "Save", emphasized: true, minWidth: 96 },
 			},
 			{
 				kind: "TextButton",
 				callback: () => {
-					this.editor.instance.close_document(tabIndex);
-					this.dialogState.dismissDialog();
+					editor.instance.close_document(tabIndex);
+					dialogState.dismissDialog();
 				},
 				props: { label: "Discard", minWidth: 96 },
 			},
 			{
 				kind: "TextButton",
 				callback: () => {
-					this.dialogState.dismissDialog();
+					dialogState.dismissDialog();
 				},
 				props: { label: "Cancel", minWidth: 96 },
 			},
 		]);
-	}
+	};
 
-	closeAllDocumentsWithConfirmation() {
-		this.dialogState.createDialog("Copy", "Close all documents?", "Unsaved work will be lost!", [
+	const closeAllDocumentsWithConfirmation = () => {
+		dialogState.createDialog("Copy", "Close all documents?", "Unsaved work will be lost!", [
 			{
 				kind: "TextButton",
 				callback: () => {
-					this.editor.instance.close_all_documents();
-					this.dialogState.dismissDialog();
+					editor.instance.close_all_documents();
+					dialogState.dismissDialog();
 				},
 				props: { label: "Discard All", minWidth: 96 },
 			},
 			{
 				kind: "TextButton",
 				callback: () => {
-					this.dialogState.dismissDialog();
+					dialogState.dismissDialog();
 				},
 				props: { label: "Cancel", minWidth: 96 },
 			},
 		]);
-	}
+	};
 
-	private setupJsMessageListeners() {
-		this.editor.dispatcher.subscribeJsMessage(UpdateOpenDocumentsList, (updateOpenDocumentList) => {
-			this.state.documents = updateOpenDocumentList.open_documents.map(({ name, isSaved }) => new DocumentSaveState(name, isSaved));
-		});
+	// Run on creation
+	editor.dispatcher.subscribeJsMessage(UpdateOpenDocumentsList, (updateOpenDocumentList) => {
+		state.documents = updateOpenDocumentList.open_documents.map(({ name, isSaved }) => new DocumentSaveState(name, isSaved));
+	});
 
-		this.editor.dispatcher.subscribeJsMessage(SetActiveDocument, (setActiveDocument) => {
-			this.state.activeDocumentIndex = setActiveDocument.document_index;
-		});
+	editor.dispatcher.subscribeJsMessage(SetActiveDocument, (setActiveDocument) => {
+		state.activeDocumentIndex = setActiveDocument.document_index;
+	});
 
-		this.editor.dispatcher.subscribeJsMessage(DisplayConfirmationToCloseDocument, (displayConfirmationToCloseDocument) => {
-			this.closeDocumentWithConfirmation(displayConfirmationToCloseDocument.document_index);
-		});
+	editor.dispatcher.subscribeJsMessage(DisplayConfirmationToCloseDocument, (displayConfirmationToCloseDocument) => {
+		closeDocumentWithConfirmation(displayConfirmationToCloseDocument.document_index);
+	});
 
-		this.editor.dispatcher.subscribeJsMessage(DisplayConfirmationToCloseAllDocuments, () => {
-			this.closeAllDocumentsWithConfirmation();
-		});
+	editor.dispatcher.subscribeJsMessage(DisplayConfirmationToCloseAllDocuments, () => {
+		closeAllDocumentsWithConfirmation();
+	});
 
-		this.editor.dispatcher.subscribeJsMessage(OpenDocumentBrowse, async () => {
-			const extension = this.editor.rawWasm.file_save_suffix();
-			const data = await upload(extension);
-			this.editor.instance.open_document_file(data.filename, data.content);
-		});
+	editor.dispatcher.subscribeJsMessage(OpenDocumentBrowse, async () => {
+		const extension = editor.rawWasm.file_save_suffix();
+		const data = await upload(extension);
+		editor.instance.open_document_file(data.filename, data.content);
+	});
 
-		this.editor.dispatcher.subscribeJsMessage(ExportDocument, (exportDocument) => {
-			download(exportDocument.name, exportDocument.document);
-		});
+	editor.dispatcher.subscribeJsMessage(ExportDocument, (exportDocument) => {
+		download(exportDocument.name, exportDocument.document);
+	});
 
-		this.editor.dispatcher.subscribeJsMessage(SaveDocument, (saveDocument) => {
-			download(saveDocument.name, saveDocument.document);
-		});
-	}
+	editor.dispatcher.subscribeJsMessage(SaveDocument, (saveDocument) => {
+		download(saveDocument.name, saveDocument.document);
+	});
+
+	// Get the initial documents
+	editor.instance.get_open_documents_list();
+
+	return {
+		state: readonly(state),
+		selectDocument,
+		closeDocumentWithConfirmation,
+		closeAllDocumentsWithConfirmation,
+	};
 }

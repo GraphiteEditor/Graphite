@@ -221,15 +221,26 @@ img {
 <script lang="ts">
 import { defineComponent } from "vue";
 
-import { DialogState } from "@/state/dialog";
-import { DocumentsState } from "@/state/documents";
-import { FullscreenState } from "@/state/fullscreen";
+import { DialogState, createDialogState } from "@/state/dialog";
+import { createDocumentsState, DocumentsState } from "@/state/documents";
+import { createFullscreenState, FullscreenState } from "@/state/fullscreen";
 
 import MainWindow from "@/components/window/MainWindow.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
-import { EditorState } from "@/state/wasm-loader";
-import { InputManager } from "@/utilities/input";
+import { createEditorState, EditorState } from "@/state/wasm-loader";
+import { createInputManager, InputManager } from "@/utilities/input";
 import { initErrorHandling } from "@/utilities/errors";
+
+// Vue injects don't play well with TypeScript, and all injects will show up as `any`. As a workaround, we can define these types.
+declare module "@vue/runtime-core" {
+	interface ComponentCustomProperties {
+		dialog: DialogState;
+		documents: DocumentsState;
+		fullscreen: FullscreenState;
+		editor: EditorState;
+		inputManger?: InputManager;
+	}
+}
 
 export default defineComponent({
 	provide() {
@@ -241,10 +252,10 @@ export default defineComponent({
 		};
 	},
 	data() {
-		const editor = new EditorState();
-		const dialog = new DialogState(editor);
-		const fullscreen = new FullscreenState();
-		const documents = new DocumentsState(editor, dialog);
+		const editor = createEditorState();
+		const dialog = createDialogState(editor);
+		const fullscreen = createFullscreenState();
+		const documents = createDocumentsState(editor, dialog);
 		initErrorHandling(editor, dialog);
 
 		return {
@@ -263,7 +274,7 @@ export default defineComponent({
 	},
 	mounted() {
 		const { fullscreen, dialog, editor, documents } = this;
-		this.inputManager = new InputManager(this.$el.parentElement, fullscreen, dialog, editor, documents);
+		this.inputManager = createInputManager(this.$el.parentElement, fullscreen, dialog, editor, documents);
 	},
 	beforeUnmount() {
 		const { inputManager } = this;
