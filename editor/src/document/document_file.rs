@@ -64,7 +64,7 @@ pub struct DocumentMessageHandler {
 	pub saved_document_identifier: u64,
 	pub name: String,
 	pub layer_data: HashMap<Vec<LayerId>, LayerData>,
-	layer_last_selected: Vec<LayerId>,
+	layer_last_selected_without_shift: Vec<LayerId>,
 	movement_handler: MovementMessageHandler,
 	transform_layer_handler: TransformLayerMessageHandler,
 	pub snapping_enabled: bool,
@@ -79,7 +79,7 @@ impl Default for DocumentMessageHandler {
 			name: String::from("Untitled Document"),
 			saved_document_identifier: 0,
 			layer_data: vec![(vec![], LayerData::new(true))].into_iter().collect(),
-			layer_last_selected: Vec::new(),
+			layer_last_selected_without_shift: Vec::new(),
 			movement_handler: MovementMessageHandler::default(),
 			transform_layer_handler: TransformLayerMessageHandler::default(),
 			snapping_enabled: true,
@@ -291,18 +291,6 @@ impl DocumentMessageHandler {
 		layers_with_indices.into_iter().map(|(path, _)| path).collect()
 	}
 
-	fn layer_index(&self, layer: &Vec<u64>) -> usize {
-		let a = match self.graphene_document.indices_for_path(layer) {
-			Err(err) => {
-				warn!("layer_index: Could not get indices for the layer {:?}: {:?}", layer, err);
-				None
-			}
-			Ok(indices) => Some(indices),
-		};
-
-		a.unwrap().iter().sum::<usize>()
-	}
-
 	/// Returns the paths to all layers in order
 	pub fn all_layers_sorted(&self) -> Vec<Vec<LayerId>> {
 		self.layers_sorted(None)
@@ -319,6 +307,27 @@ impl DocumentMessageHandler {
 		self.layers_sorted(Some(false))
 	}
 
+	/// Returns an index of a layer sorted from top (0) to bottom being (n)  
+	fn layer_index(&self, layer: &Vec<u64>) -> usize {
+		let path = match self.graphene_document.indices_for_path(layer) {
+			Err(err) => {
+				warn!("layer_index: Could not get indices for the layer {:?}: {:?}", layer, err);
+				None
+			}
+			Ok(indices) => Some(indices),
+		}
+		.unwrap_or_default();
+
+		log::debug!("{:?}", path);
+
+		// If our path doesn't exist, return the root
+		if path.len() > 0 {
+			path.iter().sum::<usize>() + path.len() - 1
+		} else {
+			0
+		}
+	}
+
 	pub fn with_name(name: String) -> Self {
 		Self {
 			graphene_document: GrapheneDocument::default(),
@@ -327,7 +336,7 @@ impl DocumentMessageHandler {
 			saved_document_identifier: 0,
 			name,
 			layer_data: vec![(vec![], LayerData::new(true))].into_iter().collect(),
-			layer_last_selected: Vec::new(),
+			layer_last_selected_without_shift: Vec::new(),
 			movement_handler: MovementMessageHandler::default(),
 			transform_layer_handler: TransformLayerMessageHandler::default(),
 			snapping_enabled: true,
@@ -586,10 +595,11 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			}
 			SelectLayer(path, ctrl, shift) => {
 				log::debug!("{:?} ctrl {} shift {}", path, ctrl, shift);
-				let mut paths = vec![path.clone()];
-				let last_selection_exists = self.layer_last_selected.len() > 0;
+				let mut paths = vec![];
+				let last_selection_exists = !self.layer_last_selected_without_shift.is_empty();
+				log::debug!("{:?}", self.layer_last_selected_without_shift);
 
-				// If we don't have ctrl selected, clear our last selection
+				// If we don't have ctrl selected, clear last selection
 				if !ctrl {
 					self.layer_data.iter_mut().filter(|(_, layer_data)| layer_data.selected).for_each(|(path, layer_data)| {
 						layer_data.selected = false;
@@ -599,14 +609,24 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 
 				// If we have shift down and a layer already selected
 				if shift && last_selection_exists {
-					self.layer_index(&path);
-					// for p in self.layers_sorted(None) {
-					// 	if self.layer_last_selected == p {}
-					// }
-				}
+					let mut bounds = (self.layer_index(&path), self.layer_index(&self.layer_last_selected_without_shift));
 
-				// Set our last selection
-				self.layer_last_selected = path;
+					// Swap if the bounds are out of order
+					if bounds.0 > bounds.1 {
+						bounds = (bounds.1, bounds.0);
+					}
+
+					log::debug!("{} -> {}", bounds.0, bounds.1);
+					// Todo: keep a list of sorted layers and recompute lazily
+					// Add to paths to select
+					for layer in self.all_layers_sorted()[bounds.0..=bounds.1].into_iter() {
+						paths.push(layer.clone());
+					}
+				} else {
+					// Set our last selection
+					self.layer_last_selected_without_shift = path.clone();
+					paths.push(path);
+				}
 
 				// Add our selected layers
 				responses.push_front(AddSelectedLayers(paths).into());
@@ -638,7 +658,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			}
 			DeselectAllLayers => {
 				responses.push_front(SetSelectedLayers(vec![]).into());
-				self.layer_last_selected.clear();
+				self.layer_last_selected_without_shift.clear();
 			}
 			DocumentHistoryBackward => self.undo(responses).unwrap_or_else(|e| log::warn!("{}", e)),
 			DocumentHistoryForward => self.redo(responses).unwrap_or_else(|e| log::warn!("{}", e)),
@@ -685,7 +705,8 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 								self.layer_data.insert(path.clone(), LayerData::new(false));
 								responses.push_back(LayerChanged(path.clone()).into());
 								if !self.graphene_document.layer(&path).unwrap().overlay {
-									responses.push_back(SetSelectedLayers(vec![path]).into())
+									self.layer_last_selected_without_shift = path.clone();
+									responses.push_back(SetSelectedLayers(vec![path]).into());
 								}
 							}
 							DocumentResponse::DocumentChanged => responses.push_back(RenderDocument.into()),
