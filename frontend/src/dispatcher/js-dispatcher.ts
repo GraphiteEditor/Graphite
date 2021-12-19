@@ -10,22 +10,16 @@ type JsMessageCallbackMap = {
 	[message: string]: JsMessageCallback<any> | undefined;
 };
 
-type Constructs<T> = new (...args: never[]) => T;
-
-type JSMessageFactory = (data: unknown, wasm: WasmInstance, instance: RustEditorInstance) => JsMessage;
-
-type MessageMaker = typeof JsMessage | JSMessageFactory;
-
 export type JsDispatcher = ReturnType<typeof createJsDispatcher>;
 export function createJsDispatcher() {
 	const subscriptions: JsMessageCallbackMap = {};
 
-	const subscribeJsMessage = <T extends JsMessage>(messageType: Constructs<T>, callback: JsMessageCallback<T>) => {
+	const subscribeJsMessage = <T extends JsMessage, Args extends unknown[]>(messageType: new (...args: Args) => T, callback: JsMessageCallback<T>) => {
 		subscriptions[messageType.name] = callback;
 	};
 
 	const handleJsMessage = (messageType: JsMessageType, messageData: Record<string, unknown>, wasm: WasmInstance, instance: RustEditorInstance) => {
-		const messageConstructor = messageConstructors[messageType] as MessageMaker;
+		const messageConstructor = messageConstructors[messageType];
 		if (!messageConstructor) {
 			// eslint-disable-next-line no-console
 			console.error(`Received a frontend message of type "${messageType}" but but was not able to parse the data.`);
@@ -36,8 +30,8 @@ export function createJsDispatcher() {
 		// Messages with empty data are provided by wasm-bindgen as a string with the message name, like: "NameOfThisMessage"
 		const unwrappedMessageData = messageData[messageType] || {};
 
-		const isJsMessageConstructor = (fn: MessageMaker): fn is typeof JsMessage => {
-			return (fn as typeof JsMessage).jsMessageMarker !== undefined;
+		const isJsMessageConstructor = (fn: typeof messageConstructor): fn is typeof JsMessage => {
+			return "jsMessageMarker" in fn;
 		};
 		let message: JsMessage;
 		if (isJsMessageConstructor(messageConstructor)) {

@@ -3,7 +3,7 @@
 
 import { Transform, Type } from "class-transformer";
 
-import type { WasmInstance } from "@/state/wasm-loader";
+import type { RustEditorInstance, WasmInstance } from "@/state/wasm-loader";
 
 export class JsMessage {
 	// The marker provides a way to check if an object is a sub-class constructor for a jsMessage.
@@ -130,8 +130,22 @@ interface DataBuffer {
 	ptr: number;
 	len: number;
 }
-export function newDisplayFolderTreeStructure(input: { data_buffer: DataBuffer }, wasm: WasmInstance): DisplayFolderTreeStructure {
-	const { ptr, len } = input.data_buffer;
+function isObject(o: unknown): o is Record<string, unknown> {
+	return typeof o === "object" && o !== null;
+}
+function isDataBuffer(o: unknown): o is DataBuffer {
+	return isObject(o) && typeof o.ptr === "number" && typeof o.len === "number";
+}
+function hasDataBuffer(o: unknown): o is { data_buffer: DataBuffer } {
+	return isObject(o) && isDataBuffer(o.data_buffer);
+}
+export function newDisplayFolderTreeStructure(input: unknown, wasm: WasmInstance): DisplayFolderTreeStructure {
+	if (!hasDataBuffer(input)) {
+		throw new TypeError("newDisplayFolderTreeStructure: input does not contain a DataBuffer");
+	}
+	const {
+		data_buffer: { ptr, len },
+	} = input;
 	const wasmMemoryBuffer = wasm.wasm_memory().buffer;
 
 	// Decode the folder structure encoding
@@ -259,7 +273,10 @@ export const LayerTypeOptions = {
 
 export type LayerType = typeof LayerTypeOptions[keyof typeof LayerTypeOptions];
 
-export const messageConstructors = {
+type JSMessageFactory = (data: unknown, wasm: WasmInstance, instance: RustEditorInstance) => JsMessage;
+type MessageMaker = typeof JsMessage | JSMessageFactory;
+
+const messageConstructorsRaw = {
 	UpdateCanvas,
 	UpdateScrollbars,
 	UpdateRulers,
@@ -279,5 +296,6 @@ export const messageConstructors = {
 	DisplayConfirmationToCloseDocument,
 	DisplayConfirmationToCloseAllDocuments,
 	DisplayAboutGraphiteDialog,
-} as const;
-export type JsMessageType = keyof typeof messageConstructors;
+};
+export type JsMessageType = keyof typeof messageConstructorsRaw;
+export const messageConstructors: Readonly<Record<JsMessageType, MessageMaker>> = messageConstructorsRaw;
