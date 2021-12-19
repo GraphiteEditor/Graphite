@@ -5,6 +5,7 @@ pub mod type_translators;
 
 use editor::{message_prelude::*, Editor};
 use logging::WasmLog;
+use serde_wasm_bindgen;
 use std::cell::RefCell;
 use std::panic;
 use std::sync::atomic::AtomicBool;
@@ -53,7 +54,7 @@ fn dispatch<T: Into<Message>>(message: T) {
 // Sends a FrontendMessage to JavaScript
 fn handle_response(message: FrontendMessage) {
 	let message_type = message.to_discriminant().local_name();
-	let message_data = JsValue::from_serde(&message).expect("Failed to serialize FrontendMessage");
+	let message_data = serde_wasm_bindgen::to_value(&message).expect("Failed to serialize FrontendMessage");
 
 	let js_return_value = handleJsMessage(message_type, message_data);
 	if let Err(error) = js_return_value {

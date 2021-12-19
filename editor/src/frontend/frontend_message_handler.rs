@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 pub struct FrontendDocumentState {
 	pub is_saved: bool,
 	pub name: String,
-	pub id: i32,
+	pub id: u64,
 }
 
 #[impl_message(Message, Frontend)]
@@ -16,11 +16,11 @@ pub struct FrontendDocumentState {
 pub enum FrontendMessage {
 	DisplayFolderTreeStructure { data_buffer: RawBuffer },
 	SetActiveTool { tool_name: String, tool_options: Option<ToolOptions> },
-	SetActiveDocument { document_id: i32 },
+	SetActiveDocument { document_id: u64 },
 	UpdateOpenDocumentsList { open_documents: Vec<FrontendDocumentState> },
 	DisplayError { title: String, description: String },
 	DisplayPanic { panic_info: String, title: String, description: String },
-	DisplayConfirmationToCloseDocument { document_id: i32 },
+	DisplayConfirmationToCloseDocument { document_id: u64 },
 	DisplayConfirmationToCloseAllDocuments,
 	UpdateLayer { data: LayerPanelEntry },
 	UpdateCanvas { document: String },

@@ -18,7 +18,8 @@ editor = { path = "../../editor", package = "graphite-editor" }
 graphene = { path = "../../graphene", package = "graphite-graphene" }
 log = "0.4"
 serde = { version = "1.0", features = ["derive"] }
-wasm-bindgen = { version = "0.2.73", features = ["serde-serialize"] }
+wasm-bindgen = { version = "0.2.73" }
+serde-wasm-bindgen = { git = "https://github.com/mfish33/serde-wasm-bindgen.git" }
 
 [dev-dependencies]
 wasm-bindgen-test = "0.3.22"

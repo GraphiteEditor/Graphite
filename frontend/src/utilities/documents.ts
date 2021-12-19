@@ -22,16 +22,12 @@ const state = reactive({
 	activeDocumentIndex: 0,
 });
 
-export async function selectDocument(documentId: number) {
+export async function selectDocument(documentId: BigInt) {
 	(await wasm).select_document(documentId);
 }
 
-export async function closeDocumentWithConfirmation(documentId: number) {
+export async function closeDocumentWithConfirmation(documentId: BigInt) {
 	// Assume we receive a correct document_id
-	console.log(
-		state.documents.map((a) => a),
-		documentId
-	);
 	const targetDocument = state.documents.find((doc) => doc.id === documentId) as FrontendDocumentState;
 	if (targetDocument.isSaved) {
 		(await wasm).close_document(targetDocument.id);

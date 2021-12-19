@@ -13,6 +13,7 @@ use editor::tool::{tool_options::ToolOptions, tools, ToolType};
 use editor::LayerId;
 use editor::{message_prelude::*, Color};
 use wasm_bindgen::prelude::*;
+use serde_wasm_bindgen;
 
 /// Intentionally panic for testing purposes
 #[wasm_bindgen]
@@ -42,7 +43,7 @@ pub fn select_tool(tool: String) -> Result<(), JsValue> {
 /// Update the options for a given tool
 #[wasm_bindgen]
 pub fn set_tool_options(tool: String, options: &JsValue) -> Result<(), JsValue> {
-	match options.into_serde::<ToolOptions>() {
+	match serde_wasm_bindgen::from_value::<ToolOptions>(options.clone()) {
 		Ok(options) => match translate_tool_type(&tool) {
 			Some(tool) => {
 				let message = ToolMessage::SetToolOptions(tool, options);
@@ -61,7 +62,7 @@ pub fn set_tool_options(tool: String, options: &JsValue) -> Result<(), JsValue> 
 pub fn send_tool_message(tool: String, message: &JsValue) -> Result<(), JsValue> {
 	let tool_message = match translate_tool_type(&tool) {
 		Some(tool) => match tool {
-			ToolType::Select => match message.into_serde::<tools::select::SelectMessage>() {
+			ToolType::Select => match serde_wasm_bindgen::from_value::<tools::select::SelectMessage>(message.clone()) {
 				Ok(select_message) => Ok(ToolMessage::Select(select_message)),
 				Err(err) => Err(Error::new(&format!("Invalid message for {}: {}", tool, err)).into()),
 			},
@@ -81,7 +82,7 @@ pub fn send_tool_message(tool: String, message: &JsValue) -> Result<(), JsValue>
 }
 
 #[wasm_bindgen]
-pub fn select_document(document_id: i32) {
+pub fn select_document(document_id: u64) {
 	let message = DocumentsMessage::SelectDocument(document_id);
 	dispatch(message);
 }
@@ -117,7 +118,7 @@ pub fn save_document() {
 }
 
 #[wasm_bindgen]
-pub fn close_document(document_id: i32) {
+pub fn close_document(document_id: u64) {
 	let message = DocumentsMessage::CloseDocument(document_id);
 	dispatch(message);
 }

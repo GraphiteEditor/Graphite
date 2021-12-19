@@ -12,7 +12,7 @@ export class JsMessage {
 export class FrontendDocumentState {
 	readonly displayName: string;
 
-	constructor(readonly name: string, readonly isSaved: boolean, readonly id: number) {
+	constructor(readonly name: string, readonly isSaved: boolean, readonly id: BigInt) {
 		this.displayName = `${name}${isSaved ? "" : "*"}`;
 	}
 }
@@ -60,7 +60,7 @@ export class SetActiveTool extends JsMessage {
 }
 
 export class SetActiveDocument extends JsMessage {
-	readonly document_id!: number;
+	readonly document_id!: BigInt;
 }
 
 export class DisplayError extends JsMessage {
@@ -78,7 +78,7 @@ export class DisplayPanic extends JsMessage {
 }
 
 export class DisplayConfirmationToCloseDocument extends JsMessage {
-	readonly document_id!: number;
+	readonly document_id!: BigInt;
 }
 
 export class DisplayConfirmationToCloseAllDocuments extends JsMessage {}
@@ -131,7 +131,9 @@ export class DisplayFolderTreeStructure extends JsMessage {
 	}
 }
 export function newDisplayFolderTreeStructure(input: any): DisplayFolderTreeStructure {
-	const { ptr, len } = input.data_buffer;
+	let { ptr, len } = input.data_buffer;
+	ptr = Number(ptr);
+	len = Number(len);
 	const wasmMemoryBuffer = (window as any).wasmMemory().buffer;
 
 	// Decode the folder structure encoding
@@ -195,12 +197,6 @@ export class SetCanvasRotation extends JsMessage {
 	readonly new_radians!: number;
 }
 
-function newPath(input: any): BigUint64Array {
-	// eslint-disable-next-line
-	const u32CombinedPairs = input.map((n: number[]) => BigInt((BigInt(n[0]) << BigInt(32)) | BigInt(n[1])));
-	return new BigUint64Array(u32CombinedPairs);
-}
-
 export type BlendMode =
 	| "Normal"
 	| "Multiply"
@@ -232,7 +228,7 @@ export class LayerPanelEntry {
 
 	layer_type!: LayerType;
 
-	@Transform(({ value }) => newPath(value))
+	@Transform(({ value }) => new BigUint64Array(value))
 	path!: BigUint64Array;
 
 	@Type(() => LayerData)

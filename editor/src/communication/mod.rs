@@ -36,15 +36,3 @@ pub fn generate_uuid() -> u64 {
 	}
 	lock.as_mut().map(ChaCha20Rng::next_u64).unwrap()
 }
-
-/// Generates a random signed 32 bit integer. This is safe to be used inside a struct that will
-/// be going to the frontend. Later this can be changed over to use a u64. wasm-bindgen only
-/// supports u64 and i64 as function parameters. When used as struct fields JSON.parse gets called
-/// and precision is often lost.
-pub fn generate_uuid_js_safe() -> i32 {
-	let mut lock = RNG.lock();
-	if lock.is_none() {
-		*lock = Some(ChaCha20Rng::seed_from_u64(0));
-	}
-	lock.as_mut().map(|rand| rand.next_u32() as i32).unwrap()
-}

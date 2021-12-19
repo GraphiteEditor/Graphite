@@ -19,8 +19,8 @@ pub enum DocumentsMessage {
 		insert_index: isize,
 	},
 	Paste,
-	SelectDocument(i32),
-	CloseDocument(i32),
+	SelectDocument(u64),
+	CloseDocument(u64),
 	#[child]
 	Document(DocumentMessage),
 	CloseActiveDocumentWithConfirmation,
@@ -36,9 +36,9 @@ pub enum DocumentsMessage {
 
 #[derive(Debug, Clone)]
 pub struct DocumentsMessageHandler {
-	documents: HashMap<i32, DocumentMessageHandler>,
-	document_ids: Vec<i32>,
-	active_document_id: i32,
+	documents: HashMap<u64, DocumentMessageHandler>,
+	document_ids: Vec<u64>,
+	active_document_id: u64,
 	copy_buffer: Vec<Layer>,
 }
 
@@ -75,7 +75,7 @@ impl DocumentsMessageHandler {
 	}
 
 	fn load_document(&mut self, new_document: DocumentMessageHandler, responses: &mut VecDeque<Message>) {
-		let new_id = generate_uuid_js_safe();
+		let new_id = generate_uuid();
 		self.active_document_id = new_id;
 		self.document_ids.push(new_id);
 		self.documents.insert(new_id, new_document);
@@ -108,15 +108,15 @@ impl DocumentsMessageHandler {
 		self.document_ids.iter().map(|id| self.documents.get(id).expect("document id was not found in the document hashmap"))
 	}
 
-	fn document_index(&self, document_id: i32) -> usize {
+	fn document_index(&self, document_id: u64) -> usize {
 		self.document_ids.iter().position(|id| id == &document_id).expect("Active document is missing from document id's")
 	}
 }
 
 impl Default for DocumentsMessageHandler {
 	fn default() -> Self {
-		let mut documents_map: HashMap<i32, DocumentMessageHandler> = HashMap::with_capacity(1);
-		let starting_key = generate_uuid_js_safe();
+		let mut documents_map: HashMap<u64, DocumentMessageHandler> = HashMap::with_capacity(1);
+		let starting_key = generate_uuid();
 		documents_map.insert(starting_key, DocumentMessageHandler::default());
 		Self {
 			documents: documents_map,
@@ -163,7 +163,7 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 
 				// Last tab was closed, so create a new blank tab
 				if self.document_ids.is_empty() {
-					let new_id = generate_uuid_js_safe();
+					let new_id = generate_uuid();
 					self.document_ids.push(new_id);
 					self.documents.insert(new_id, DocumentMessageHandler::default());
 				}

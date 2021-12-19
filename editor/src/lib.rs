@@ -53,7 +53,6 @@ impl Default for Editor {
 
 pub mod message_prelude {
 	pub use crate::communication::generate_uuid;
-	pub use crate::communication::generate_uuid_js_safe;
 	pub use crate::communication::message::{AsMessage, Message, MessageDiscriminant};
 	pub use crate::communication::{ActionList, MessageHandler};
 	pub use crate::document::{DocumentMessage, DocumentMessageDiscriminant};
