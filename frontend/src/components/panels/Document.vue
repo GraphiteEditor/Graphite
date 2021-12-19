@@ -70,31 +70,31 @@
 			<LayoutCol :class="'shelf'">
 				<div class="tools scrollable-y">
 					<ShelfItemInput icon="LayoutSelectTool" title="Select Tool (V)" :active="activeTool === 'Select'" :action="() => selectTool('Select')" />
-					<ShelfItemInput icon="LayoutCropTool" title="Crop Tool" :active="activeTool === 'Crop'" :action="() => this.dialog.comingSoon(289) && selectTool('Crop')" />
-					<ShelfItemInput icon="LayoutNavigateTool" title="Navigate Tool (Z)" :active="activeTool === 'Navigate'" :action="() => this.dialog.comingSoon(155) && selectTool('Navigate')" />
+					<ShelfItemInput icon="LayoutCropTool" title="Crop Tool" :active="activeTool === 'Crop'" :action="() => dialog.comingSoon(289) && selectTool('Crop')" />
+					<ShelfItemInput icon="LayoutNavigateTool" title="Navigate Tool (Z)" :active="activeTool === 'Navigate'" :action="() => dialog.comingSoon(155) && selectTool('Navigate')" />
 					<ShelfItemInput icon="LayoutEyedropperTool" title="Eyedropper Tool (I)" :active="activeTool === 'Eyedropper'" :action="() => selectTool('Eyedropper')" />
 
 					<Separator :type="SeparatorType.Section" :direction="SeparatorDirection.Vertical" />
 
-					<ShelfItemInput icon="ParametricTextTool" title="Text Tool (T)" :active="activeTool === 'Text'" :action="() => this.dialog.comingSoon(153) && selectTool('Text')" />
+					<ShelfItemInput icon="ParametricTextTool" title="Text Tool (T)" :active="activeTool === 'Text'" :action="() => dialog.comingSoon(153) && selectTool('Text')" />
 					<ShelfItemInput icon="ParametricFillTool" title="Fill Tool (F)" :active="activeTool === 'Fill'" :action="() => selectTool('Fill')" />
-					<ShelfItemInput icon="ParametricGradientTool" title="Gradient Tool (H)" :active="activeTool === 'Gradient'" :action="() => this.dialog.comingSoon() && selectTool('Gradient')" />
+					<ShelfItemInput icon="ParametricGradientTool" title="Gradient Tool (H)" :active="activeTool === 'Gradient'" :action="() => dialog.comingSoon() && selectTool('Gradient')" />
 
 					<Separator :type="SeparatorType.Section" :direction="SeparatorDirection.Vertical" />
 
-					<ShelfItemInput icon="RasterBrushTool" title="Brush Tool (B)" :active="activeTool === 'Brush'" :action="() => this.dialog.comingSoon() && selectTool('Brush')" />
-					<ShelfItemInput icon="RasterHealTool" title="Heal Tool (J)" :active="activeTool === 'Heal'" :action="() => this.dialog.comingSoon() && selectTool('Heal')" />
-					<ShelfItemInput icon="RasterCloneTool" title="Clone Tool (C)" :active="activeTool === 'Clone'" :action="() => this.dialog.comingSoon() && selectTool('Clone')" />
-					<ShelfItemInput icon="RasterPatchTool" title="Patch Tool" :active="activeTool === 'Patch'" :action="() => this.dialog.comingSoon() && selectTool('Patch')" />
-					<ShelfItemInput icon="RasterBlurSharpenTool" title="Detail Tool (D)" :active="activeTool === 'BlurSharpen'" :action="() => this.dialog.comingSoon() && selectTool('BlurSharpen')" />
-					<ShelfItemInput icon="RasterRelightTool" title="Relight Tool (O)" :active="activeTool === 'Relight'" :action="() => this.dialog.comingSoon() && selectTool('Relight')" />
+					<ShelfItemInput icon="RasterBrushTool" title="Brush Tool (B)" :active="activeTool === 'Brush'" :action="() => dialog.comingSoon() && selectTool('Brush')" />
+					<ShelfItemInput icon="RasterHealTool" title="Heal Tool (J)" :active="activeTool === 'Heal'" :action="() => dialog.comingSoon() && selectTool('Heal')" />
+					<ShelfItemInput icon="RasterCloneTool" title="Clone Tool (C)" :active="activeTool === 'Clone'" :action="() => dialog.comingSoon() && selectTool('Clone')" />
+					<ShelfItemInput icon="RasterPatchTool" title="Patch Tool" :active="activeTool === 'Patch'" :action="() => dialog.comingSoon() && selectTool('Patch')" />
+					<ShelfItemInput icon="RasterBlurSharpenTool" title="Detail Tool (D)" :active="activeTool === 'BlurSharpen'" :action="() => dialog.comingSoon() && selectTool('BlurSharpen')" />
+					<ShelfItemInput icon="RasterRelightTool" title="Relight Tool (O)" :active="activeTool === 'Relight'" :action="() => dialog.comingSoon() && selectTool('Relight')" />
 
 					<Separator :type="SeparatorType.Section" :direction="SeparatorDirection.Vertical" />
 
 					<ShelfItemInput icon="VectorPathTool" title="Path Tool (A)" :active="activeTool === 'Path'" :action="() => selectTool('Path')" />
 					<ShelfItemInput icon="VectorPenTool" title="Pen Tool (P)" :active="activeTool === 'Pen'" :action="() => selectTool('Pen')" />
-					<ShelfItemInput icon="VectorFreehandTool" title="Freehand Tool (N)" :active="activeTool === 'Freehand'" :action="() => this.dialog.comingSoon() && selectTool('Freehand')" />
-					<ShelfItemInput icon="VectorSplineTool" title="Spline Tool" :active="activeTool === 'Spline'" :action="() => this.dialog.comingSoon() && selectTool('Spline')" />
+					<ShelfItemInput icon="VectorFreehandTool" title="Freehand Tool (N)" :active="activeTool === 'Freehand'" :action="() => dialog.comingSoon() && selectTool('Freehand')" />
+					<ShelfItemInput icon="VectorSplineTool" title="Spline Tool" :active="activeTool === 'Spline'" :action="() => dialog.comingSoon() && selectTool('Spline')" />
 					<ShelfItemInput icon="VectorLineTool" title="Line Tool (L)" :active="activeTool === 'Line'" :action="() => selectTool('Line')" />
 					<ShelfItemInput icon="VectorRectangleTool" title="Rectangle Tool (M)" :active="activeTool === 'Rectangle'" :action="() => selectTool('Rectangle')" />
 					<ShelfItemInput icon="VectorEllipseTool" title="Ellipse Tool (E)" :active="activeTool === 'Ellipse'" :action="() => selectTool('Ellipse')" />

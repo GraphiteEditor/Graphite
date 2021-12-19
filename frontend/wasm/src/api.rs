@@ -421,15 +421,16 @@ impl Editor {
 	}
 }
 
-/// Intentionally panic for testing purposes
-#[wasm_bindgen]
-pub fn intentional_panic() {
-	panic!();
-}
-
+/// Access a handle to WASM memory
 #[wasm_bindgen]
 pub fn wasm_memory() -> JsValue {
 	wasm_bindgen::memory()
+}
+
+/// Intentionally panic for debugging purposes
+#[wasm_bindgen]
+pub fn intentional_panic() {
+	panic!();
 }
 
 /// Get the constant FILE_SAVE_SUFFIX

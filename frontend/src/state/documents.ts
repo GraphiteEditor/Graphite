@@ -22,7 +22,6 @@ class DocumentSaveState {
 	}
 }
 
-export type DocumentsState = ReturnType<typeof createDocumentsState>;
 export function createDocumentsState(editor: EditorState, dialogState: DialogState) {
 	const state = reactive({
 		unsaved: false,
@@ -132,3 +131,4 @@ export function createDocumentsState(editor: EditorState, dialogState: DialogSta
 		closeAllDocumentsWithConfirmation,
 	};
 }
+export type DocumentsState = ReturnType<typeof createDocumentsState>;

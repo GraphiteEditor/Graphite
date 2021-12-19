@@ -5,7 +5,6 @@ import { EditorState } from "@/state/wasm-loader";
 import { DisplayAboutGraphiteDialog } from "@/dispatcher/js-messages";
 import { stripIndents } from "@/utilities/strip-indents";
 
-export type DialogState = ReturnType<typeof createDialogState>;
 export function createDialogState(editor: EditorState) {
 	const state = reactive({
 		visible: false,
@@ -116,3 +115,4 @@ export function createDialogState(editor: EditorState) {
 		comingSoon,
 	};
 }
+export type DialogState = ReturnType<typeof createDialogState>;

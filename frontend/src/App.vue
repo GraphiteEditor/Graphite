@@ -238,6 +238,8 @@ declare module "@vue/runtime-core" {
 		documents: DocumentsState;
 		fullscreen: FullscreenState;
 		editor: EditorState;
+		// This must be set to optional because there is a time in the lifecycle of the component where inputManager is undefined.
+		// That's because we initialize inputManager in `mounted()` rather than `data()` since the div hasn't been created yet.
 		inputManger?: InputManager;
 	}
 }
@@ -278,9 +280,8 @@ export default defineComponent({
 	},
 	beforeUnmount() {
 		const { inputManager } = this;
-		if (inputManager) {
-			inputManager.removeListeners();
-		}
+		if (inputManager) inputManager.removeListeners();
+
 		const { editor } = this;
 		editor.instance.free();
 	},

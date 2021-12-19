@@ -1,6 +1,5 @@
 import { reactive, readonly } from "vue";
 
-export type FullscreenState = ReturnType<typeof createFullscreenState>;
 export function createFullscreenState() {
 	const state = reactive({
 		keyboardLocked: false,
@@ -20,14 +19,6 @@ export function createFullscreenState() {
 		}
 	};
 
-	const isFullscreen = (): boolean => {
-		return Boolean(document.fullscreenElement);
-	};
-
-	const isKeyboardLocked = (): boolean => {
-		return state.keyboardLocked;
-	};
-
 	// eslint-disable-next-line class-methods-use-this
 	const exitFullscreen = async () => {
 		await document.exitFullscreen();
@@ -38,13 +29,22 @@ export function createFullscreenState() {
 		else await enterFullscreen();
 	};
 
+	const isFullscreen = (): boolean => {
+		return Boolean(document.fullscreenElement);
+	};
+
+	const isKeyboardLocked = (): boolean => {
+		return state.keyboardLocked;
+	};
+
 	return {
 		state: readonly(state),
 		keyboardLockApiSupported,
 		enterFullscreen,
-		isFullscreen,
-		isKeyboardLocked,
 		exitFullscreen,
 		toggleFullscreen,
+		isFullscreen,
+		isKeyboardLocked,
 	};
 }
+export type FullscreenState = ReturnType<typeof createFullscreenState>;

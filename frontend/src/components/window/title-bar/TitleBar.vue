@@ -4,7 +4,7 @@
 		<MenuBarInput v-if="platform !== ApplicationPlatform.Mac" />
 	</div>
 	<div class="header-third">
-		<WindowTitle :title="`${documents.state.documents[documents.state.activeDocumentIndex].displayName} - Graphite`" />
+		<WindowTitle :title="`${activeDocumentDisplayName} - Graphite`" />
 	</div>
 	<div class="header-third">
 		<WindowButtonsWindows :maximized="maximized" v-if="platform === ApplicationPlatform.Windows || platform === ApplicationPlatform.Linux" />
@@ -51,6 +51,11 @@ export default defineComponent({
 		return {
 			ApplicationPlatform,
 		};
+	},
+	computed: {
+		activeDocumentDisplayName() {
+			return this.documents.state.documents[this.documents.state.activeDocumentIndex].displayName;
+		},
 	},
 	components: {
 		MenuBarInput,

@@ -9,7 +9,6 @@ interface EventListenerTarget {
 	removeEventListener: typeof window.removeEventListener;
 }
 
-export type InputManager = ReturnType<typeof createInputManager>;
 export function createInputManager(container: HTMLElement, fullscreen: FullscreenState, dialog: DialogState, editor: EditorState, document: DocumentsState) {
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	const listeners: { target: EventListenerTarget; eventName: EventName; action: (event: any) => void; options?: boolean | AddEventListenerOptions }[] = [
@@ -167,6 +166,7 @@ export function createInputManager(container: HTMLElement, fullscreen: Fullscree
 		removeListeners,
 	};
 }
+export type InputManager = ReturnType<typeof createInputManager>;
 
 export function makeModifiersBitfield(e: MouseEvent | KeyboardEvent): number {
 	return Number(e.ctrlKey) | (Number(e.shiftKey) << 1) | (Number(e.altKey) << 2);

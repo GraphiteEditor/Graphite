@@ -10,7 +10,6 @@ type JsMessageCallbackMap = {
 	[message: string]: JsMessageCallback<any> | undefined;
 };
 
-export type JsDispatcher = ReturnType<typeof createJsDispatcher>;
 export function createJsDispatcher() {
 	const subscriptions: JsMessageCallbackMap = {};
 
@@ -56,3 +55,4 @@ export function createJsDispatcher() {
 		handleJsMessage,
 	};
 }
+export type JsDispatcher = ReturnType<typeof createJsDispatcher>;

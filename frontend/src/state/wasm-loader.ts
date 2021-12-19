@@ -45,13 +45,10 @@ function panicProxy<T extends object>(module: T): T {
 }
 
 function getWasmInstance() {
-	if (!wasmImport) {
-		throw new Error("Editor WASM backend was not initialized at application startup");
-	}
-	return wasmImport;
+	if (wasmImport) return wasmImport;
+	throw new Error("Editor WASM backend was not initialized at application startup");
 }
 
-export type EditorState = Readonly<ReturnType<typeof createEditorState>>;
 export function createEditorState() {
 	const dispatcher = createJsDispatcher();
 	const rawWasm = getWasmInstance();
@@ -67,3 +64,4 @@ export function createEditorState() {
 		instance,
 	};
 }
+export type EditorState = Readonly<ReturnType<typeof createEditorState>>;
