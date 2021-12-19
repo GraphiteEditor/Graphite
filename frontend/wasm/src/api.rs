@@ -12,8 +12,8 @@ use editor::misc::EditorError;
 use editor::tool::{tool_options::ToolOptions, tools, ToolType};
 use editor::LayerId;
 use editor::{message_prelude::*, Color};
-use wasm_bindgen::prelude::*;
 use serde_wasm_bindgen;
+use wasm_bindgen::prelude::*;
 
 /// Intentionally panic for testing purposes
 #[wasm_bindgen]

@@ -5,10 +5,7 @@ use graphene::{
 	layers::{Layer, LayerData as DocumentLayerData},
 	LayerId,
 };
-use serde::{
-	ser::{SerializeStruct},
-	Deserialize, Serialize,
-};
+use serde::{ser::SerializeStruct, Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fmt;
 
