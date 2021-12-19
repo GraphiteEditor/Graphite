@@ -130,13 +130,14 @@ interface DataBuffer {
 	pointer: number;
 	length: number;
 }
-function isObject(o: unknown): o is Record<string, unknown> {
-	return typeof o === "object" && o !== null;
-}
-function isDataBuffer(o: unknown): o is DataBuffer {
-	return isObject(o) && typeof o.ptr === "number" && typeof o.len === "number";
-}
 function hasDataBuffer(o: unknown): o is { data_buffer: DataBuffer } {
+	const isObject = (o: unknown): o is Record<string, unknown> => {
+		return typeof o === "object" && o !== null;
+	};
+	const isDataBuffer = (o: unknown): o is DataBuffer => {
+		return isObject(o) && typeof o.ptr === "number" && typeof o.len === "number";
+	};
+
 	return isObject(o) && isDataBuffer(o.data_buffer);
 }
 export function newDisplayFolderTreeStructure(input: unknown, wasm: WasmInstance): DisplayFolderTreeStructure {

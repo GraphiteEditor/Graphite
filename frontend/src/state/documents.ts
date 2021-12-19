@@ -34,14 +34,17 @@ export function createDocumentsState(editor: EditorState, dialogState: DialogSta
 	};
 
 	const closeDocumentWithConfirmation = (tabIndex: number) => {
+		// Close automatically if it's already saved, no confirmation is needed
 		const targetDocument = state.documents[tabIndex];
 		if (targetDocument.isSaved) {
 			editor.instance.close_document(tabIndex);
 			return;
 		}
 
-		// Show the document is being prompted to close
+		// Switch to the document that's being prompted to close
 		selectDocument(tabIndex);
+
+		// Show the close confirmation prompt
 		dialogState.createDialog("File", "Save changes before closing?", targetDocument.displayName, [
 			{
 				kind: "TextButton",
@@ -89,7 +92,7 @@ export function createDocumentsState(editor: EditorState, dialogState: DialogSta
 		]);
 	};
 
-	// Run on creation
+	// Set up message subscriptions on creation
 	editor.dispatcher.subscribeJsMessage(UpdateOpenDocumentsList, (updateOpenDocumentList) => {
 		state.documents = updateOpenDocumentList.open_documents.map(({ name, isSaved }) => new DocumentSaveState(name, isSaved));
 	});
