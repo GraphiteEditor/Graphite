@@ -53,10 +53,11 @@ export function createEditorState() {
 	const dispatcher = createJsDispatcher();
 	const rawWasm = getWasmInstance();
 
-	// Use an arrow function to preserve `this` context
-	const instance = new rawWasm.Editor((messageType: JsMessageType, data: Record<string, unknown>) => {
+	const rustCallback = (messageType: JsMessageType, data: Record<string, unknown>) => {
 		dispatcher.handleJsMessage(messageType, data, rawWasm, instance);
-	});
+	};
+
+	const instance = new rawWasm.Editor(rustCallback);
 
 	return {
 		dispatcher,

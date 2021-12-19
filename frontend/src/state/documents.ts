@@ -34,8 +34,6 @@ export function createDocumentsState(editor: EditorState, dialogState: DialogSta
 	};
 
 	const closeDocumentWithConfirmation = (tabIndex: number) => {
-		selectDocument(tabIndex);
-
 		const targetDocument = state.documents[tabIndex];
 		if (targetDocument.isSaved) {
 			editor.instance.close_document(tabIndex);
@@ -43,6 +41,7 @@ export function createDocumentsState(editor: EditorState, dialogState: DialogSta
 		}
 
 		// Show the document is being prompted to close
+		selectDocument(tabIndex);
 		dialogState.createDialog("File", "Save changes before closing?", targetDocument.displayName, [
 			{
 				kind: "TextButton",

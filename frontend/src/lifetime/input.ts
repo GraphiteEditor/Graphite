@@ -20,7 +20,7 @@ export function createInputManager(container: HTMLElement, fullscreen: Fullscree
 		{ target: container, eventName: "keydown", action: (e) => onKeyDown(e) },
 		{ target: container, eventName: "mousedown", action: (e) => onMouseDown(e) },
 		{ target: container, eventName: "mouseup", action: (e) => onMouseUp(e) },
-		{ target: container, eventName: "wheel", action: (e) => onMouseScroll(e), options: { passive: true } },
+		{ target: container, eventName: "wheel", action: (e) => onMouseScroll(e), options: { passive: false } },
 	];
 
 	let viewportMouseInteractionOngoing = false;
