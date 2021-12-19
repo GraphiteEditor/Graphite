@@ -3,7 +3,7 @@ import { reactive, readonly } from "vue";
 import { TextButtonWidget } from "@/components/widgets/widgets";
 import { EditorState } from "@/state/wasm-loader";
 import { DisplayAboutGraphiteDialog } from "@/dispatcher/js-messages";
-import { deIndent } from "@/utilities/de-indent";
+import { stripIndents } from "@/utilities/strip-indents";
 
 export type DialogState = ReturnType<typeof createDialogState>;
 export function createDialogState(editor: EditorState) {
@@ -70,13 +70,13 @@ export function createDialogState(editor: EditorState) {
 
 		const hash = (process.env.VUE_APP_COMMIT_HASH || "").substring(0, 12);
 
-		const details = deIndent`
+		const details = stripIndents`
 			Release Series: ${process.env.VUE_APP_RELEASE_SERIES}
 
 			Date: ${dateString} ${timeString} ${timezoneNameString}
 			Hash: ${hash}
 			Branch: ${process.env.VUE_APP_COMMIT_BRANCH}
-		`.trim();
+			`;
 
 		const buttons: TextButtonWidget[] = [
 			{

@@ -2,7 +2,7 @@ import { DialogState } from "@/state/dialog";
 import { TextButtonWidget } from "@/components/widgets/widgets";
 import { DisplayError, DisplayPanic } from "@/dispatcher/js-messages";
 import { EditorState } from "@/state/wasm-loader";
-import { deIndent } from "@/utilities/de-indent";
+import { stripIndents } from "@/utilities/strip-indents";
 
 export function initErrorHandling(editor: EditorState, dialogState: DialogState) {
 	// Graphite error dialog
@@ -19,7 +19,7 @@ export function initErrorHandling(editor: EditorState, dialogState: DialogState)
 
 	// Code panic dialog and console error
 	editor.dispatcher.subscribeJsMessage(DisplayPanic, (displayPanic) => {
-		// stackTraceLimit API is only supported by some browsers
+		// `Error.stackTraceLimit` is only available in V8/Chromium
 		// eslint-disable-next-line @typescript-eslint/no-explicit-any
 		(Error as any).stackTraceLimit = Infinity;
 		const stackTrace = new Error().stack || "";
@@ -52,7 +52,7 @@ export function initErrorHandling(editor: EditorState, dialogState: DialogState)
 function githubUrl(panicDetails: string) {
 	const url = new URL("https://github.com/GraphiteEditor/Graphite/issues/new");
 
-	const body = deIndent`
+	const body = stripIndents`
 		**Describe the Crash**
 		Explain clearly what you were doing when the crash occurred.
 
@@ -76,7 +76,7 @@ function githubUrl(panicDetails: string) {
 		\`\`\`
 		${panicDetails}
 		\`\`\`
-	`.trim();
+		`;
 
 	const fields = {
 		title: "[Crash Report] ",
