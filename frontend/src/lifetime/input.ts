@@ -32,8 +32,7 @@ export function createInputManager(container: HTMLElement, fullscreen: Fullscree
 	const shouldRedirectKeyboardEventToBackend = (e: KeyboardEvent): boolean => {
 		// Don't redirect user input from text entry into HTML elements
 		const { target } = e;
-		if (!(target instanceof HTMLElement)) return false;
-		if (target.nodeName === "INPUT" || target.nodeName === "TEXTAREA" || target.isContentEditable) return false;
+		if (target instanceof HTMLElement && (target.nodeName === "INPUT" || target.nodeName === "TEXTAREA" || target.isContentEditable)) return false;
 
 		// Don't redirect when a modal is covering the workspace
 		if (dialog.dialogIsVisible()) return false;
@@ -94,8 +93,8 @@ export function createInputManager(container: HTMLElement, fullscreen: Fullscree
 
 	const onMouseDown = (e: MouseEvent) => {
 		const { target } = e;
-		const inCanvas = target instanceof HTMLElement && target.closest(".canvas");
-		const inDialog = target instanceof HTMLElement && target.closest(".dialog-modal .floating-menu-content");
+		const inCanvas = target instanceof Element && target.closest(".canvas");
+		const inDialog = target instanceof Element && target.closest(".dialog-modal .floating-menu-content");
 
 		// Block middle mouse button auto-scroll mode
 		if (e.button === 1) e.preventDefault();
@@ -123,9 +122,9 @@ export function createInputManager(container: HTMLElement, fullscreen: Fullscree
 
 	const onMouseScroll = (e: WheelEvent) => {
 		const { target } = e;
-		const inCanvas = target instanceof HTMLElement && target.closest(".canvas");
+		const inCanvas = target instanceof Element && target.closest(".canvas");
 
-		const horizontalScrollableElement = e.target instanceof Element && e.target.closest(".scrollable-x");
+		const horizontalScrollableElement = target instanceof Element && target.closest(".scrollable-x");
 		if (horizontalScrollableElement && e.deltaY !== 0) {
 			horizontalScrollableElement.scrollTo(horizontalScrollableElement.scrollLeft + e.deltaY, 0);
 			return;
