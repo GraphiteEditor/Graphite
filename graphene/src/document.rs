@@ -119,6 +119,56 @@ impl Document {
 			.unwrap_or_default()
 	}
 
+    // Checks order in the layer tree. Returns true if a < b in later order (closer to root) false otherwise. false if same.
+    pub fn layer_is_above(&self, a: &Vec<u64>, b: &Vec<u64>) -> bool {
+        let ap = match self.indices_for_path(a) {
+			Err(err) => None,
+			Ok(indices) => Some(indices),
+		}.unwrap_or_default();
+        let bp = match self.indices_for_path(b) {
+			Err(err) => None,
+			Ok(indices) => Some(indices),
+		}.unwrap_or_default();
+
+        for (ap, bp) in ap.iter().zip(bp.iter()) {
+            if ap < bp { 
+                return true;
+            }
+            if ap != bp { break; }
+        }
+        return false;
+    }
+
+    // Is a layer between a <-> b layers
+    pub fn layer_is_between(&self, layer: &Vec<u64>, a: &Vec<u64>, b: &Vec<u64>) -> bool {
+        let ap = match self.indices_for_path(a) {
+			Err(err) => None,
+			Ok(indices) => Some(indices),
+		}.unwrap_or_default();
+        let bp = match self.indices_for_path(b) {
+			Err(err) => None,
+			Ok(indices) => Some(indices),
+		}.unwrap_or_default();
+        let layerp = match self.indices_for_path(layer) {
+			Err(err) => None,
+			Ok(indices) => Some(indices),
+		}.unwrap_or_default();
+
+        if layer.len() < 1 {
+            return false;
+        }
+
+        if layer == a || layer == b { 
+            log::debug!("--- End cap! {:?} == a: {:?} or b: {:?} ---", layerp, ap, bp);
+            return true 
+        };
+
+        let layer_vs_a = self.layer_is_above(a, layer);
+        let layer_vs_b = self.layer_is_above(layer, b);
+        log::debug!("--- {:?} <- {:?} -> {:?} =? {:?} (a {:?}, b {:?}) ---", ap, layerp, bp, layer_vs_a == layer_vs_b, layer_vs_a, layer_vs_b);
+        return layer_vs_a == layer_vs_b;
+    }
+
 	/// Given a path to a layer, returns a vector of the indices in the layer tree
 	/// These indices can be used to order a list of layers
 	pub fn indices_for_path(&self, path: &[LayerId]) -> Result<Vec<usize>, DocumentError> {
@@ -126,7 +176,7 @@ impl Document {
 		let mut indices = vec![];
 		let (path, layer_id) = split_path(path)?;
 
-		// TODO: appears to be n^2, should we maintain a lookup table?
+		// TODO: appears to be n^2? should we maintain a lookup table?
 		for id in path {
 			let pos = root.layer_ids.iter().position(|x| *x == *id).ok_or(DocumentError::LayerNotFound)?;
 			indices.push(pos);

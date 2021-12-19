@@ -307,27 +307,6 @@ impl DocumentMessageHandler {
 		self.layers_sorted(Some(false))
 	}
 
-	/// Returns an index of a layer sorted from top (0) to bottom being (n)  
-	fn layer_index(&self, layer: &Vec<u64>) -> usize {
-		let path = match self.graphene_document.indices_for_path(layer) {
-			Err(err) => {
-				warn!("layer_index: Could not get indices for the layer {:?}: {:?}", layer, err);
-				None
-			}
-			Ok(indices) => Some(indices),
-		}
-		.unwrap_or_default();
-
-		log::debug!("{:?}", path);
-
-		// If our path doesn't exist, return the root
-		if path.len() > 0 {
-			path.iter().sum::<usize>() + path.len() - 1
-		} else {
-			0
-		}
-	}
-
 	pub fn with_name(name: String) -> Self {
 		Self {
 			graphene_document: GrapheneDocument::default(),
@@ -604,31 +583,33 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 
 				// If we don't have ctrl selected, clear last selection
 				if !ctrl {
+                    // Clear selection, figure out how to improve this
 					self.layer_data.iter_mut().filter(|(_, layer_data)| layer_data.selected).for_each(|(path, layer_data)| {
 						layer_data.selected = false;
 						responses.push_back(LayerChanged(path.clone()).into())
 					});
-				}
+				} 
 
-				// If we have shift down and a layer already selected
+				// If we have shift pressed and a layer already selected
 				if shift && last_selection_exists {
-					let mut bounds = (self.layer_index(&path), self.layer_index(&self.layer_last_selected_without_shift));
-
-					// Swap if the bounds are out of order
-					if bounds.0 > bounds.1 {
-						bounds = (bounds.1, bounds.0);
-					}
-
-					log::debug!("{} -> {}", bounds.0, bounds.1);
-					// Todo: keep a list of sorted layers and recompute lazily
 					// Add to paths to select
-					for layer in self.all_layers_sorted()[bounds.0..=bounds.1].into_iter() {
-						paths.push(layer.clone());
-					}
+                    self.layer_data.iter().filter(|(p, l)| 
+                        self.graphene_document.layer_is_between(&p, &path, &self.layer_last_selected_without_shift)
+                    ).for_each(|(layer_path, _)| { 
+                        paths.push(layer_path.clone()); 
+                    });
+		
 				} else {
-					// Set our last selection
-					self.layer_last_selected_without_shift = path.clone();
-					paths.push(path);
+                    if ctrl {
+                        let layer = self.layerdata_mut(&path); 
+                        layer.selected = !layer.selected;
+                        responses.push_back(LayerChanged(path.clone()).into());
+                    }
+                    else {
+                        // Set our last selection
+                        self.layer_last_selected_without_shift = path.clone();
+                        paths.push(path);
+                    }
 				}
 
 				// Add our selected layers
