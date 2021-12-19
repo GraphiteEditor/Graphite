@@ -131,6 +131,7 @@ export function createInputManager(container: HTMLElement, fullscreen: Fullscree
 		}
 
 		if (inCanvas) {
+			e.preventDefault();
 			const modifiers = makeModifiersBitfield(e);
 			editor.instance.on_mouse_scroll(e.clientX, e.clientY, e.buttons, e.deltaX, e.deltaY, e.deltaZ, modifiers);
 		}
