@@ -104,7 +104,7 @@ pub enum DocumentMessage {
 	DeleteLayer(Vec<LayerId>),
 	DeleteSelectedLayers,
 	DuplicateSelectedLayers,
-	CreateFolder(Vec<LayerId>),
+	CreateEmptyFolder(Vec<LayerId>),
 	SetBlendModeForSelectedLayers(BlendMode),
 	SetOpacityForSelectedLayers(f64),
 	RenameLayer(Vec<LayerId>, String),
@@ -522,14 +522,17 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					.into(),
 				)
 			}
-			CreateFolder(mut path) => {
+			CreateEmptyFolder(mut path) => {
 				let id = generate_uuid();
 				path.push(id);
 				self.layerdata_mut(&path).expanded = true;
 				responses.push_back(DocumentOperation::CreateFolder { path }.into())
 			}
 			GroupSelectedLayers => {
-				let common_prefix = self.graphene_document.common_prefix(self.selected_layers());
+				let selected_layers = self.selected_layers();
+
+				// let deepest_folder = self.graphene_document.deepest_common_folder(selected_layers);
+				let common_prefix = self.graphene_document.common_layer_path_prefix(selected_layers);
 				let (_id, common_prefix) = common_prefix.split_last().unwrap_or((&0, &[]));
 
 				let mut new_folder_path = common_prefix.to_vec();

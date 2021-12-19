@@ -102,7 +102,7 @@ impl Document {
 	}
 
 	pub fn deepest_common_folder<'a>(&self, layers: impl Iterator<Item = &'a [LayerId]>) -> Result<&'a [LayerId], DocumentError> {
-		let common_prefix_of_path = self.common_prefix(layers);
+		let common_prefix_of_path = self.common_layer_path_prefix(layers);
 
 		Ok(match self.layer(common_prefix_of_path)?.data {
 			LayerDataType::Folder(_) => common_prefix_of_path,
@@ -110,7 +110,7 @@ impl Document {
 		})
 	}
 
-	pub fn common_prefix<'a>(&self, layers: impl Iterator<Item = &'a [LayerId]>) -> &'a [LayerId] {
+	pub fn common_layer_path_prefix<'a>(&self, layers: impl Iterator<Item = &'a [LayerId]>) -> &'a [LayerId] {
 		layers
 			.reduce(|a, b| {
 				let number_of_uncommon_ids_in_a = (0..a.len()).position(|i| b.starts_with(&a[..a.len() - i])).unwrap_or_default();
@@ -126,6 +126,7 @@ impl Document {
 		let mut indices = vec![];
 		let (path, layer_id) = split_path(path)?;
 
+		// TODO: appears to be n^2, should we maintain a lookup table?
 		for id in path {
 			let pos = root.layer_ids.iter().position(|x| *x == *id).ok_or(DocumentError::LayerNotFound)?;
 			indices.push(pos);

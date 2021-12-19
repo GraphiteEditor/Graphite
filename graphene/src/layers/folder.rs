@@ -41,6 +41,7 @@ impl Folder {
 	/// When a insertion id is provided, try to insert the layer with the given id.
 	/// If that id is already used, return None.
 	/// When no insertion id is provided, search for the next free id and insert it with that.
+	/// Negative values for insert_index represent distance from the end
 	pub fn add_layer(&mut self, layer: Layer, id: Option<LayerId>, insert_index: isize) -> Option<LayerId> {
 		let mut insert_index = insert_index as i128;
 		if insert_index < 0 {
@@ -54,13 +55,16 @@ impl Folder {
 			if self.layer_ids.contains(&self.next_assignment_id) {
 				return None;
 			}
+
 			let id = self.next_assignment_id;
 			self.layers.insert(insert_index as usize, layer);
 			self.layer_ids.insert(insert_index as usize, id);
+
 			// Linear probing for collision avoidance
 			while self.layer_ids.contains(&self.next_assignment_id) {
 				self.next_assignment_id += 1;
 			}
+
 			Some(id)
 		} else {
 			None

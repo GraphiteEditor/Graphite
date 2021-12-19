@@ -427,7 +427,7 @@ pub fn delete_layer(path: Vec<LayerId>) {
 /// Requests the backend to add a layer to the layer list
 #[wasm_bindgen]
 pub fn add_folder(path: Vec<LayerId>) {
-	let message = DocumentMessage::CreateFolder(path);
+	let message = DocumentMessage::CreateEmptyFolder(path);
 	dispatch(message);
 }
 
