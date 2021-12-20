@@ -65,6 +65,7 @@ module.exports = {
 		"no-bitwise": "off",
 		"no-shadow": "off",
 		"no-use-before-define": "off",
+		"no-restricted-imports": ["error", { patterns: [".*", "!@/*"] }],
 
 		// TypeScript plugin config
 		"@typescript-eslint/indent": ["error", "tab", { SwitchCase: 1 }],

@@ -141,8 +141,8 @@ impl Serialize for RawBuffer {
 		S: serde::Serializer,
 	{
 		let mut buffer = serializer.serialize_struct("Buffer", 2)?;
-		buffer.serialize_field("ptr", &(self.0.as_ptr() as usize))?;
-		buffer.serialize_field("len", &(self.0.len()))?;
+		buffer.serialize_field("pointer", &(self.0.as_ptr() as usize))?;
+		buffer.serialize_field("length", &(self.0.len()))?;
 		buffer.end()
 	}
 }
