@@ -163,6 +163,7 @@ import PopoverButton, { PopoverButtonIcon } from "@/components/widgets/buttons/P
 import { MenuDirection } from "@/components/widgets/floating-menus/FloatingMenu.vue";
 
 export default defineComponent({
+	inject: ["documents"],
 	components: {
 		Document,
 		Properties,

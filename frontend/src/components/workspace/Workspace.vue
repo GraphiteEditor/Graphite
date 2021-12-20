@@ -5,20 +5,22 @@
 				:panelType="'Document'"
 				:tabCloseButtons="true"
 				:tabMinWidths="true"
-				:tabLabels="documents.documents.map((doc) => doc.displayName)"
+				:tabLabels="documents.state.documents.map((doc) => doc.displayName)"
 				:clickAction="
 					(e, tabIndex) => {
 						e.stopPropagation();
-						selectDocument(documents.documents[tabIndex].id);
+						const targetId = documents.state.documents[tabIndex].id;
+						this.documents.selectDocument(documents.state.documents[tabIndex].id);
 					}
 				"
 				:altClickAction="
 					(e, tabIndex) => {
 						e.stopPropagation();
-						closeDocumentWithConfirmation(documents.documents[tabIndex].id);
+						const targetId = documents.state.documents[tabIndex].id;
+						this.documents.closeDocumentWithConfirmation(targetId);
 					}
 				"
-				:tabActiveIndex="documents.activeDocumentIndex"
+				:tabActiveIndex="documents.state.activeDocumentIndex"
 				ref="documentsPanel"
 			/>
 		</LayoutCol>
@@ -37,7 +39,7 @@
 			</LayoutRow> -->
 		</LayoutCol>
 	</LayoutRow>
-	<DialogModal v-if="dialog.visible" />
+	<DialogModal v-if="dialog.state.visible" />
 </template>
 
 <style lang="scss">
@@ -71,7 +73,6 @@ import Panel from "@/components/workspace/Panel.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
 import LayoutCol from "@/components/layout/LayoutCol.vue";
 import DialogModal from "@/components/widgets/floating-menus/DialogModal.vue";
-import { closeDocumentWithConfirmation, selectDocument } from "@/utilities/documents";
 
 export default defineComponent({
 	inject: ["documents", "dialog"],
@@ -81,17 +82,9 @@ export default defineComponent({
 		Panel,
 		DialogModal,
 	},
-	data() {
-		return {
-			closeDocumentWithConfirmation,
-			selectDocument,
-			log: console.log,
-		};
-	},
 	computed: {
 		activeDocumentIndex() {
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			return (this as any).documents.activeDocumentIndex;
+			return this.documents.state.activeDocumentIndex;
 		},
 	},
 	watch: {

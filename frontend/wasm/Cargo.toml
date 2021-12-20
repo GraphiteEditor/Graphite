@@ -20,6 +20,7 @@ log = "0.4"
 serde = { version = "1.0", features = ["derive"] }
 wasm-bindgen = { version = "0.2.73" }
 serde-wasm-bindgen = { git = "https://github.com/mfish33/serde-wasm-bindgen.git" }
+js-sys = "0.3.55"
 
 [dev-dependencies]
 wasm-bindgen-test = "0.3.22"
