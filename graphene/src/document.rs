@@ -1,4 +1,5 @@
 use std::{
+	cmp::max,
 	collections::hash_map::DefaultHasher,
 	hash::{Hash, Hasher},
 };
@@ -119,55 +120,51 @@ impl Document {
 			.unwrap_or_default()
 	}
 
-    // Checks order in the layer tree. Returns true if a < b in later order (closer to root) false otherwise. false if same.
-    pub fn layer_is_above(&self, a: &Vec<u64>, b: &Vec<u64>) -> bool {
-        let ap = match self.indices_for_path(a) {
-			Err(err) => None,
-			Ok(indices) => Some(indices),
-		}.unwrap_or_default();
-        let bp = match self.indices_for_path(b) {
-			Err(err) => None,
-			Ok(indices) => Some(indices),
-		}.unwrap_or_default();
+	// Determines which layer is closer to the root
+	pub fn layer_closer_to_root(&self, A: &Vec<u64>, B: &Vec<u64>) -> bool {
+		let path_a = self.indices_for_path(A).unwrap();
+		let path_b = self.indices_for_path(B).unwrap();
 
-        for (ap, bp) in ap.iter().zip(bp.iter()) {
-            if ap < bp { 
-                return true;
-            }
-            if ap != bp { break; }
-        }
-        return false;
-    }
+		let longest = max(path_a.len(), path_b.len());
+		for i in 0..longest {
+			// usize::MAX becomes negative one here, sneaky. So folders are compared as [X, -1].
+			let a = *path_a.get(i).unwrap_or(&usize::MAX) as i32;
+			let b = *path_b.get(i).unwrap_or(&usize::MAX) as i32;
 
-    // Is a layer between a <-> b layers
-    pub fn layer_is_between(&self, layer: &Vec<u64>, a: &Vec<u64>, b: &Vec<u64>) -> bool {
-        let ap = match self.indices_for_path(a) {
-			Err(err) => None,
-			Ok(indices) => Some(indices),
-		}.unwrap_or_default();
-        let bp = match self.indices_for_path(b) {
-			Err(err) => None,
-			Ok(indices) => Some(indices),
-		}.unwrap_or_default();
-        let layerp = match self.indices_for_path(layer) {
-			Err(err) => None,
-			Ok(indices) => Some(indices),
-		}.unwrap_or_default();
+			// If these are equal it means we are comparing folder elements
+			if a == b {
+				continue;
+			}
 
-        if layer.len() < 1 {
-            return false;
-        }
+			// If this is smaller, it is closer to the root
+			if a < b {
+				return true;
+			}
 
-        if layer == a || layer == b { 
-            log::debug!("--- End cap! {:?} == a: {:?} or b: {:?} ---", layerp, ap, bp);
-            return true 
-        };
+			// Don't continue otherwise
+			break;
+		}
 
-        let layer_vs_a = self.layer_is_above(a, layer);
-        let layer_vs_b = self.layer_is_above(layer, b);
-        log::debug!("--- {:?} <- {:?} -> {:?} =? {:?} (a {:?}, b {:?}) ---", ap, layerp, bp, layer_vs_a == layer_vs_b, layer_vs_a, layer_vs_b);
-        return layer_vs_a == layer_vs_b;
-    }
+		return false;
+	}
+
+	// Is a layer between a <-> b layers
+	pub fn layer_is_between(&self, target: &Vec<u64>, A: &Vec<u64>, B: &Vec<u64>) -> bool {
+		// If the target is a nonsense path it isn't between
+		if target.len() < 1 {
+			return false;
+		}
+
+		// Inclusive
+		if target == A || target == B {
+			return true;
+		};
+
+		// These can't both be true and be between two values
+		let layer_vs_a = self.layer_closer_to_root(target, A);
+		let layer_vs_b = self.layer_closer_to_root(target, B);
+		return layer_vs_a != layer_vs_b;
+	}
 
 	/// Given a path to a layer, returns a vector of the indices in the layer tree
 	/// These indices can be used to order a list of layers

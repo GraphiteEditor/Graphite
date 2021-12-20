@@ -575,41 +575,39 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					responses.push_back(DocumentOperation::DuplicateLayer { path }.into());
 				}
 			}
-			SelectLayer(path, ctrl, shift) => {
-				log::debug!("{:?} ctrl {} shift {}", path, ctrl, shift);
+			SelectLayer(selected, ctrl, shift) => {
 				let mut paths = vec![];
 				let last_selection_exists = !self.layer_last_selected_without_shift.is_empty();
-				log::debug!("{:?}", self.layer_last_selected_without_shift);
 
 				// If we don't have ctrl selected, clear last selection
 				if !ctrl {
-                    // Clear selection, figure out how to improve this
+					// Todo: This clears the selection, figure out how to improve this
 					self.layer_data.iter_mut().filter(|(_, layer_data)| layer_data.selected).for_each(|(path, layer_data)| {
 						layer_data.selected = false;
 						responses.push_back(LayerChanged(path.clone()).into())
 					});
-				} 
+				}
 
-				// If we have shift pressed and a layer already selected
+				// If we have shift pressed and a layer already selected then fill the range
 				if shift && last_selection_exists {
 					// Add to paths to select
-                    self.layer_data.iter().filter(|(p, l)| 
-                        self.graphene_document.layer_is_between(&p, &path, &self.layer_last_selected_without_shift)
-                    ).for_each(|(layer_path, _)| { 
-                        paths.push(layer_path.clone()); 
-                    });
-		
+					self.layer_data
+						.iter()
+						.filter(|(target, _)| self.graphene_document.layer_is_between(&target, &selected, &self.layer_last_selected_without_shift))
+						.for_each(|(layer_path, _)| {
+							paths.push(layer_path.clone());
+						});
 				} else {
-                    if ctrl {
-                        let layer = self.layerdata_mut(&path); 
-                        layer.selected = !layer.selected;
-                        responses.push_back(LayerChanged(path.clone()).into());
-                    }
-                    else {
-                        // Set our last selection
-                        self.layer_last_selected_without_shift = path.clone();
-                        paths.push(path);
-                    }
+					if ctrl {
+						// This allows toggling selection when holding ctrl
+						let layer = self.layerdata_mut(&selected);
+						layer.selected = !layer.selected;
+						responses.push_back(LayerChanged(selected.clone()).into());
+					} else {
+						// Set our last selection
+						self.layer_last_selected_without_shift = selected.clone();
+						paths.push(selected);
+					}
 				}
 
 				// Add our selected layers
