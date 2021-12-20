@@ -127,34 +127,23 @@ export class DisplayFolderTreeStructure extends JsMessage {
 }
 
 interface DataBuffer {
-	pointer: number;
-	length: number;
+	ptr: number;
+	len: number;
 }
-function isObject(o: unknown): o is Record<string, unknown> {
-	return typeof o === "object" && o !== null;
-}
-function isDataBuffer(o: unknown): o is DataBuffer {
-	return isObject(o) && typeof o.ptr === "number" && typeof o.len === "number";
-}
-function hasDataBuffer(o: unknown): o is { data_buffer: DataBuffer } {
-	return isObject(o) && isDataBuffer(o.data_buffer);
-}
-export function newDisplayFolderTreeStructure(input: unknown, wasm: WasmInstance): DisplayFolderTreeStructure {
-	if (!hasDataBuffer(input)) {
-		throw new TypeError("newDisplayFolderTreeStructure: input does not contain a DataBuffer");
-	}
-	const { pointer, length } = input.data_buffer;
+
+export function newDisplayFolderTreeStructure(input: { data_buffer: DataBuffer }, wasm: WasmInstance): DisplayFolderTreeStructure {
+	const { ptr, len } = input.data_buffer;
 	const wasmMemoryBuffer = wasm.wasm_memory().buffer;
 
 	// Decode the folder structure encoding
-	const encoding = new DataView(wasmMemoryBuffer, pointer, length);
+	const encoding = new DataView(wasmMemoryBuffer, ptr, len);
 
 	// The structure section indicates how to read through the upcoming layer list and assign depths to each layer
 	const structureSectionLength = Number(encoding.getBigUint64(0, true));
-	const structureSectionMsbSigned = new DataView(wasmMemoryBuffer, pointer + 8, structureSectionLength * 8);
+	const structureSectionMsbSigned = new DataView(wasmMemoryBuffer, ptr + 8, structureSectionLength * 8);
 
 	// The layer IDs section lists each layer ID sequentially in the tree, as it will show up in the panel
-	const layerIdsSection = new DataView(wasmMemoryBuffer, pointer + 8 + structureSectionLength * 8);
+	const layerIdsSection = new DataView(wasmMemoryBuffer, ptr + 8 + structureSectionLength * 8);
 
 	let layersEncountered = 0;
 	let currentFolder = new DisplayFolderTreeStructure(BigInt(-1), []);
@@ -271,7 +260,9 @@ export const LayerTypeOptions = {
 
 export type LayerType = typeof LayerTypeOptions[keyof typeof LayerTypeOptions];
 
-type JSMessageFactory = (data: unknown, wasm: WasmInstance, instance: RustEditorInstance) => JsMessage;
+// Any is used since the type of the object should be known from the rust side
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type JSMessageFactory = (data: any, wasm: WasmInstance, instance: RustEditorInstance) => JsMessage;
 type MessageMaker = typeof JsMessage | JSMessageFactory;
 
 const messageConstructorsRaw = {
