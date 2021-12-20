@@ -20,11 +20,19 @@ function panicProxy<T extends object>(module: T): T {
 		get(target: T, propKey: string | symbol, receiver: unknown): unknown {
 			const targetValue = Reflect.get(target, propKey, receiver);
 
-			// Keep the original value being accessed if it isn't a function or it is a class
-			// TODO: Figure out how to also wrap class constructor functions instead of skipping them for now
+			// Keep the original value being accessed if it isn't a function
 			const isFunction = typeof targetValue === "function";
+			if (!isFunction) return targetValue;
+
+			// Special handling to wrap the return of a constructor in the proxy
 			const isClass = isFunction && /^\s*class\s+/.test(targetValue.toString());
-			if (!isFunction || isClass) return targetValue;
+			if (isClass) {
+				return function (...args: unknown[]) {
+					// eslint-disable-next-line new-cap
+					const result = new targetValue(...args);
+					return panicProxy(result);
+				};
+			}
 
 			// Replace the original function with a wrapper function that runs the original in a try-catch block
 			return function (...args: unknown[]) {
@@ -51,12 +59,12 @@ function getWasmInstance() {
 
 export function createEditorState() {
 	const dispatcher = createJsDispatcher();
-
 	const rawWasm = getWasmInstance();
 
 	const rustCallback = (messageType: JsMessageType, data: Record<string, unknown>) => {
 		dispatcher.handleJsMessage(messageType, data, rawWasm, instance);
 	};
+
 	const instance = new rawWasm.Editor(rustCallback);
 
 	return {
