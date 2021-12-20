@@ -4,6 +4,7 @@ pub mod intersection;
 pub mod layers;
 pub mod operation;
 pub mod response;
+pub mod boolean_ops;
 
 pub use intersection::Quad;
 pub use operation::Operation;

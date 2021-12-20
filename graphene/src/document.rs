@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
 	layers::{self, Folder, Layer, LayerData, LayerDataType, Shape},
 	DocumentError, DocumentResponse, LayerId, Operation, Quad,
+	boolean_ops::PathGraph,
 };
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -424,7 +425,7 @@ impl Document {
 			}
 			Operation::BooleanUnion {selected} => {
 				match self.shapes(selected){
-					Ok(shapes) => log::debug!("boolean op on {:?}", shapes),
+					Ok(shapes) => PathGraph::from(&shapes.get(0).unwrap().path, &shapes.get(1).unwrap().path, false),
 					Err(err) => return Err(err),
 				};
 				None
