@@ -265,7 +265,7 @@ export type LayerType = typeof LayerTypeOptions[keyof typeof LayerTypeOptions];
 type JSMessageFactory = (data: any, wasm: WasmInstance, instance: RustEditorInstance) => JsMessage;
 type MessageMaker = typeof JsMessage | JSMessageFactory;
 
-const messageConstructorsRaw = {
+export const messageConstructors: Record<string, MessageMaker> = {
 	UpdateCanvas,
 	UpdateScrollbars,
 	UpdateRulers,
@@ -285,6 +285,5 @@ const messageConstructorsRaw = {
 	DisplayConfirmationToCloseDocument,
 	DisplayConfirmationToCloseAllDocuments,
 	DisplayAboutGraphiteDialog,
-};
-export type JsMessageType = keyof typeof messageConstructorsRaw;
-export const messageConstructors: Readonly<Record<JsMessageType, MessageMaker>> = messageConstructorsRaw;
+} as const;
+export type JsMessageType = keyof typeof messageConstructors;
