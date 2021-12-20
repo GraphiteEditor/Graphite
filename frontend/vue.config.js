@@ -105,7 +105,7 @@ module.exports = {
 
 function formatThirdPartyLicenses(jsLicenses) {
 	let rustLicenses = null;
-	if (process.env.NODE_ENV === "production") {
+	if (process.env.NODE_ENV === "production" && process.env.SKIP_CARGO_ABOUT === undefined) {
 		try {
 			rustLicenses = generateRustLicenses();
 		} catch (e) {
