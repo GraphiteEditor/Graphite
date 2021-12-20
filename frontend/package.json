@@ -1,6 +1,5 @@
 {
 	"name": "graphite-web-frontend",
-	"version": "0.0.1",
 	"description": "Graphite's web app frontend. Planned to be replaced by a native GUI written in Rust in the future.",
 	"private": true,
 	"scripts": {
@@ -19,15 +18,15 @@
 	"dependencies": {
 		"class-transformer": "^0.5.0",
 		"reflect-metadata": "^0.1.13",
-		"vue": "^3.2.23"
+		"vue": "^3.2.26"
 	},
 	"devDependencies": {
-		"@typescript-eslint/eslint-plugin": "^5.4.0",
-		"@typescript-eslint/parser": "^5.4.0",
+		"@typescript-eslint/eslint-plugin": "^5.7.0",
+		"@typescript-eslint/parser": "^5.7.0",
 		"@vue/cli-plugin-eslint": "^4.5.15",
 		"@vue/cli-plugin-typescript": "^4.5.15",
 		"@vue/cli-service": "^4.5.15",
-		"@vue/compiler-sfc": "^3.2.20",
+		"@vue/compiler-sfc": "^3.2.26",
 		"@vue/eslint-config-airbnb": "^5.3.0",
 		"@vue/eslint-config-typescript": "^9.1.0",
 		"@wasm-tool/wasm-pack-plugin": "^1.6.0",
@@ -35,16 +34,17 @@
 		"eslint-config-prettier": "^6.15.0",
 		"eslint-plugin-import": "^2.25.2",
 		"eslint-plugin-prettier-vue": "^3.1.0",
-		"eslint-plugin-vue": "^8.1.1",
+		"eslint-plugin-vue": "^8.2.0",
 		"license-checker-webpack-plugin": "^0.2.1",
-		"prettier": "^2.4.1",
-		"sass": "^1.43.4",
-		"sass-loader": "^10.0.0",
-		"typescript": "^4.5.2",
+		"prettier": "^2.5.1",
+		"sass": "^1.45.0",
+		"sass-loader": "^10.2.0",
+		"typescript": "^4.5.4",
 		"vue-loader": "^16.8.3",
 		"vue-template-compiler": "^2.6.14"
 	},
 	"optionalDependencies": {
-		"wasm-pack": "^0.10.1"
-	}
+		"wasm-pack": "0.10.1"
+	},
+	"//": "@vue/cli-plugin-eslint 4.5.x does not support eslint 7.x or higher. sass-loader 10.x is the last version to support webpack 4. wasm-pack 0.10.2 is broken on Windows so it should remain pinned to 0.10.1 until a fix is released."
 }
