@@ -10,7 +10,7 @@ use crate::{EDITOR_HAS_CRASHED, EDITOR_INSTANCES};
 use editor::consts::FILE_SAVE_SUFFIX;
 use editor::input::input_preprocessor::ModifierKeys;
 use editor::input::mouse::{EditorMouseState, ScrollDelta, ViewportBounds};
-use editor::message_prelude::*;
+use editor::{message_prelude::*, Editor};
 use editor::misc::EditorError;
 use editor::tool::{tool_options::ToolOptions, tools, ToolType};
 use editor::Color;
@@ -21,20 +21,20 @@ use wasm_bindgen::prelude::*;
 // we must make all methods take a non mutable reference to self. Not doing this creates
 // an issue when rust calls into JS which calls back to rust in the same call stack.
 #[wasm_bindgen]
-pub struct Editor {
+pub struct JsEditorHandle {
 	editor_id: u64,
 	instance_received_crashed: Cell<bool>,
 	handle_response: js_sys::Function,
 }
 
 #[wasm_bindgen]
-impl Editor {
+impl JsEditorHandle {
 	#[wasm_bindgen(constructor)]
-	pub fn new(handle_response: js_sys::Function) -> Editor {
+	pub fn new(handle_response: js_sys::Function) -> JsEditorHandle {
 		let editor_id = generate_uuid();
-		let editor = editor::Editor::new();
+		let editor = Editor::new();
 		EDITOR_INSTANCES.with(|instances| instances.borrow_mut().insert(editor_id, editor));
-		Editor {
+		JsEditorHandle {
 			editor_id,
 			instance_received_crashed: Cell::new(false),
 			handle_response,
@@ -439,7 +439,7 @@ impl Editor {
 	}
 }
 
-impl Drop for Editor {
+impl Drop for JsEditorHandle {
 	fn drop(&mut self) {
 		EDITOR_INSTANCES.with(|instances| instances.borrow_mut().remove(&self.editor_id));
 	}
