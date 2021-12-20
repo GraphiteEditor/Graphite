@@ -20,4 +20,5 @@ echo 📦 Install cargo-about
 cargo install cargo-about
 
 echo 👷 Build Graphite web client
+export NODE_ENV=production
 npm run build
