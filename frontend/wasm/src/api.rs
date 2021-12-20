@@ -2,37 +2,40 @@
 // It serves as a thin wrapper over the editor backend API that relies
 // on the dispatcher messaging system and more complex Rust data types.
 
-use std::cell::{Cell, UnsafeCell};
+use std::cell::Cell;
 
 use crate::helpers::Error;
 use crate::type_translators::{translate_blend_mode, translate_key, translate_tool_type};
-use crate::EDITOR_HAS_CRASHED;
+use crate::{EDITOR_HAS_CRASHED, EDITOR_INSTANCES};
 use editor::consts::FILE_SAVE_SUFFIX;
 use editor::input::input_preprocessor::ModifierKeys;
 use editor::input::mouse::{EditorMouseState, ScrollDelta, ViewportBounds};
-use editor::message_prelude::*;
 use editor::misc::EditorError;
 use editor::tool::{tool_options::ToolOptions, tools, ToolType};
 use editor::Color;
 use editor::LayerId;
+use editor::{message_prelude::*, Editor};
 use wasm_bindgen::prelude::*;
 
 // To avoid wasm-bindgen from checking mutable reference issues using WasmRefCell
 // we must make all methods take a non mutable reference to self. Not doing this creates
 // an issue when rust calls into JS which calls back to rust in the same call stack.
 #[wasm_bindgen]
-pub struct Editor {
-	editor: UnsafeCell<editor::Editor>,
+pub struct JsEditorHandle {
+	editor_id: u64,
 	instance_received_crashed: Cell<bool>,
 	handle_response: js_sys::Function,
 }
 
 #[wasm_bindgen]
-impl Editor {
+impl JsEditorHandle {
 	#[wasm_bindgen(constructor)]
-	pub fn new(handle_response: js_sys::Function) -> Editor {
-		Editor {
-			editor: UnsafeCell::new(editor::Editor::new()),
+	pub fn new(handle_response: js_sys::Function) -> JsEditorHandle {
+		let editor_id = generate_uuid();
+		let editor = Editor::new();
+		EDITOR_INSTANCES.with(|instances| instances.borrow_mut().insert(editor_id, editor));
+		JsEditorHandle {
+			editor_id,
 			instance_received_crashed: Cell::new(false),
 			handle_response,
 		}
@@ -50,9 +53,13 @@ impl Editor {
 			return;
 		}
 
-		let editor = unsafe { self.editor.get().as_mut().unwrap() };
-		// Dispatch the message and receive a vector of FrontendMessage responses
-		let responses = editor.handle_message(message.into());
+		let responses = EDITOR_INSTANCES.with(|instances| {
+			instances
+				.borrow_mut()
+				.get_mut(&self.editor_id)
+				.expect("EDITOR_INSTANCES does not contain the current editor_id")
+				.handle_message(message.into())
+		});
 		for response in responses.into_iter() {
 			// Send each FrontendMessage to the JavaScript frontend
 			self.handle_response(response);
@@ -429,6 +436,12 @@ impl Editor {
 	pub fn add_folder(&self, path: Vec<LayerId>) {
 		let message = DocumentMessage::CreateFolder(path);
 		self.dispatch(message);
+	}
+}
+
+impl Drop for JsEditorHandle {
+	fn drop(&mut self) {
+		EDITOR_INSTANCES.with(|instances| instances.borrow_mut().remove(&self.editor_id));
 	}
 }
 
