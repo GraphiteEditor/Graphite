@@ -2,8 +2,14 @@ import { reactive, readonly } from "vue";
 
 export function createFullscreenState() {
 	const state = reactive({
+		windowFullscreen: false,
 		keyboardLocked: false,
 	});
+
+	const fullscreenModeChanged = () => {
+		state.windowFullscreen = Boolean(document.fullscreenElement);
+		if (!state.windowFullscreen) state.keyboardLocked = false;
+	};
 
 	// Experimental Keyboard API: https://developer.mozilla.org/en-US/docs/Web/API/Navigator/keyboard
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -25,16 +31,8 @@ export function createFullscreenState() {
 	};
 
 	const toggleFullscreen = async () => {
-		if (isFullscreen()) await exitFullscreen();
+		if (state.windowFullscreen) await exitFullscreen();
 		else await enterFullscreen();
-	};
-
-	const isFullscreen = (): boolean => {
-		return Boolean(document.fullscreenElement);
-	};
-
-	const isKeyboardLocked = (): boolean => {
-		return state.keyboardLocked;
 	};
 
 	return {
@@ -43,8 +41,7 @@ export function createFullscreenState() {
 		enterFullscreen,
 		exitFullscreen,
 		toggleFullscreen,
-		isFullscreen,
-		isKeyboardLocked,
+		fullscreenModeChanged,
 	};
 }
 export type FullscreenState = ReturnType<typeof createFullscreenState>;

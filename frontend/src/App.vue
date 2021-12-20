@@ -247,24 +247,24 @@ declare module "@vue/runtime-core" {
 export default defineComponent({
 	provide() {
 		return {
+			editor: this.editor,
 			dialog: this.dialog,
 			documents: this.documents,
-			editor: this.editor,
 			fullscreen: this.fullscreen,
 		};
 	},
 	data() {
 		const editor = createEditorState();
 		const dialog = createDialogState(editor);
-		const fullscreen = createFullscreenState();
 		const documents = createDocumentsState(editor, dialog);
+		const fullscreen = createFullscreenState();
 		initErrorHandling(editor, dialog);
 
 		return {
 			editor,
 			dialog,
-			fullscreen,
 			documents,
+			fullscreen,
 			showUnsupportedModal: !("BigInt64Array" in window),
 			inputManager: undefined as undefined | InputManager,
 		};
@@ -275,8 +275,7 @@ export default defineComponent({
 		},
 	},
 	mounted() {
-		const { fullscreen, dialog, editor, documents } = this;
-		this.inputManager = createInputManager(this.$el.parentElement, fullscreen, dialog, editor, documents);
+		this.inputManager = createInputManager(this.editor, this.$el.parentElement, this.dialog, this.documents, this.fullscreen);
 	},
 	beforeUnmount() {
 		const { inputManager } = this;

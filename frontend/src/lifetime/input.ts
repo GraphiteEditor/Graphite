@@ -9,25 +9,22 @@ interface EventListenerTarget {
 	removeEventListener: typeof window.removeEventListener;
 }
 
-export function createInputManager(container: HTMLElement, fullscreen: FullscreenState, dialog: DialogState, editor: EditorState, document: DocumentsState) {
+export function createInputManager(editor: EditorState, container: HTMLElement, dialog: DialogState, document: DocumentsState, fullscreen: FullscreenState) {
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	const listeners: { target: EventListenerTarget; eventName: EventName; action: (event: any) => void; options?: boolean | AddEventListenerOptions }[] = [
 		{ target: window, eventName: "resize", action: () => onWindowResize(container) },
-		{ target: window, eventName: "mousemove", action: (e) => onMouseMove(e) },
 		{ target: window, eventName: "beforeunload", action: (e) => onBeforeUnload(e) },
-		{ target: container, eventName: "contextmenu", action: (e) => e.preventDefault() },
-		{ target: container, eventName: "keyup", action: (e) => onKeyUp(e) },
-		{ target: container, eventName: "keydown", action: (e) => onKeyDown(e) },
-		{ target: container, eventName: "mousedown", action: (e) => onMouseDown(e) },
-		{ target: container, eventName: "mouseup", action: (e) => onMouseUp(e) },
-		{ target: container, eventName: "wheel", action: (e) => onMouseScroll(e), options: { passive: false } },
+		{ target: window.document, eventName: "contextmenu", action: (e) => e.preventDefault() },
+		{ target: window.document, eventName: "fullscreenchange", action: () => fullscreen.fullscreenModeChanged() },
+		{ target: window, eventName: "keyup", action: (e) => onKeyUp(e) },
+		{ target: window, eventName: "keydown", action: (e) => onKeyDown(e) },
+		{ target: window, eventName: "mousemove", action: (e) => onMouseMove(e) },
+		{ target: window, eventName: "mousedown", action: (e) => onMouseDown(e) },
+		{ target: window, eventName: "mouseup", action: (e) => onMouseUp(e) },
+		{ target: window, eventName: "wheel", action: (e) => onMouseScroll(e), options: { passive: false } },
 	];
 
 	let viewportMouseInteractionOngoing = false;
-
-	const removeListeners = () => {
-		listeners.forEach(({ target, eventName, action }) => target.removeEventListener(eventName, action));
-	};
 
 	const shouldRedirectKeyboardEventToBackend = (e: KeyboardEvent): boolean => {
 		// Don't redirect user input from text entry into HTML elements
@@ -137,7 +134,7 @@ export function createInputManager(container: HTMLElement, fullscreen: Fullscree
 		}
 	};
 
-	const onWindowResize = (container: Element) => {
+	const onWindowResize = (container: HTMLElement) => {
 		const viewports = Array.from(container.querySelectorAll(".canvas"));
 		const boundsOfViewports = viewports.map((canvas) => {
 			const bounds = canvas.getBoundingClientRect();
@@ -150,16 +147,24 @@ export function createInputManager(container: HTMLElement, fullscreen: Fullscree
 		if (boundsOfViewports.length > 0) editor.instance.bounds_of_viewports(data);
 	};
 
-	const onBeforeUnload = (event: BeforeUnloadEvent) => {
+	const onBeforeUnload = (e: BeforeUnloadEvent) => {
 		const allDocumentsSaved = document.state.documents.reduce((acc, doc) => acc && doc.isSaved, true);
 		if (!allDocumentsSaved) {
-			event.returnValue = "Unsaved work will be lost if the web browser tab is closed. Close anyway?";
-			event.preventDefault();
+			e.returnValue = "Unsaved work will be lost if the web browser tab is closed. Close anyway?";
+			e.preventDefault();
 		}
 	};
 
+	const addListeners = () => {
+		listeners.forEach(({ target, eventName, action, options }) => target.addEventListener(eventName, action, options));
+	};
+
+	const removeListeners = () => {
+		listeners.forEach(({ target, eventName, action }) => target.removeEventListener(eventName, action));
+	};
+
 	// Run on creation
-	listeners.forEach(({ target, eventName, action, options }) => target.addEventListener(eventName, action, options));
+	addListeners();
 	onWindowResize(container);
 
 	return {

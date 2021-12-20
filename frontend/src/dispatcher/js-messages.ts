@@ -127,23 +127,23 @@ export class DisplayFolderTreeStructure extends JsMessage {
 }
 
 interface DataBuffer {
-	ptr: number;
-	len: number;
+	pointer: number;
+	length: number;
 }
 
 export function newDisplayFolderTreeStructure(input: { data_buffer: DataBuffer }, wasm: WasmInstance): DisplayFolderTreeStructure {
-	const { ptr, len } = input.data_buffer;
+	const { pointer, length } = input.data_buffer;
 	const wasmMemoryBuffer = wasm.wasm_memory().buffer;
 
 	// Decode the folder structure encoding
-	const encoding = new DataView(wasmMemoryBuffer, ptr, len);
+	const encoding = new DataView(wasmMemoryBuffer, pointer, length);
 
 	// The structure section indicates how to read through the upcoming layer list and assign depths to each layer
 	const structureSectionLength = Number(encoding.getBigUint64(0, true));
-	const structureSectionMsbSigned = new DataView(wasmMemoryBuffer, ptr + 8, structureSectionLength * 8);
+	const structureSectionMsbSigned = new DataView(wasmMemoryBuffer, pointer + 8, structureSectionLength * 8);
 
 	// The layer IDs section lists each layer ID sequentially in the tree, as it will show up in the panel
-	const layerIdsSection = new DataView(wasmMemoryBuffer, ptr + 8 + structureSectionLength * 8);
+	const layerIdsSection = new DataView(wasmMemoryBuffer, pointer + 8 + structureSectionLength * 8);
 
 	let layersEncountered = 0;
 	let currentFolder = new DisplayFolderTreeStructure(BigInt(-1), []);
