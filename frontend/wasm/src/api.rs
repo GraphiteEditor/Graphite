@@ -10,11 +10,11 @@ use crate::{EDITOR_HAS_CRASHED, EDITOR_INSTANCES};
 use editor::consts::FILE_SAVE_SUFFIX;
 use editor::input::input_preprocessor::ModifierKeys;
 use editor::input::mouse::{EditorMouseState, ScrollDelta, ViewportBounds};
-use editor::{message_prelude::*, Editor};
 use editor::misc::EditorError;
 use editor::tool::{tool_options::ToolOptions, tools, ToolType};
 use editor::Color;
 use editor::LayerId;
+use editor::{message_prelude::*, Editor};
 use wasm_bindgen::prelude::*;
 
 // To avoid wasm-bindgen from checking mutable reference issues using WasmRefCell
