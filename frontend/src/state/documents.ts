@@ -29,7 +29,7 @@ export function createDocumentsState(editor: EditorState, dialogState: DialogSta
 	const closeDocumentWithConfirmation = async (documentId: BigInt) => {
 		// Assume we receive a correct document_id
 		const targetDocument = state.documents.find((doc) => doc.id === documentId) as FrontendDocumentState;
-		if (targetDocument.isSaved) {
+		if (targetDocument.is_saved) {
 			editor.instance.close_document(targetDocument.id);
 			return;
 		}

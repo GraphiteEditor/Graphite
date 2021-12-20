@@ -11,16 +11,19 @@ export class JsMessage {
 }
 
 export class FrontendDocumentState {
-	readonly displayName: string;
+	readonly name!: string;
 
-	constructor(readonly name: string, readonly isSaved: boolean, readonly id: BigInt) {
-		this.displayName = `${name}${isSaved ? "" : "*"}`;
+	readonly is_saved!: boolean;
+
+	readonly id!: BigInt;
+
+	get displayName() {
+		return `${this.name}${this.is_saved ? "" : "*"}`;
 	}
 }
 
 export class UpdateOpenDocumentsList extends JsMessage {
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	@Transform(({ value }) => value.map(({ name, is_saved, id }: any) => new FrontendDocumentState(name, is_saved, id)))
+	@Type(() => FrontendDocumentState)
 	readonly open_documents!: FrontendDocumentState[];
 }
 
