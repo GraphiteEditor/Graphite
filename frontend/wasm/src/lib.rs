@@ -6,12 +6,16 @@ pub mod type_translators;
 use editor::message_prelude::FrontendMessage;
 use logging::WasmLog;
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::panic;
 use wasm_bindgen::prelude::*;
 
 // Set up the persistent editor backend state
 static LOGGER: WasmLog = WasmLog;
-thread_local! { pub static EDITOR_HAS_CRASHED: RefCell<Option<FrontendMessage>> = RefCell::new(None); }
+thread_local! {
+	pub static EDITOR_HAS_CRASHED: RefCell<Option<FrontendMessage>> = RefCell::new(None);
+	pub static EDITOR_INSTANCES: RefCell<HashMap<u64, editor::Editor>> = RefCell::new(HashMap::new());
+}
 
 // Initialize the backend
 #[wasm_bindgen(start)]
