@@ -510,7 +510,6 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			GroupSelectedLayers => {
 				let selected_layers = self.selected_layers();
 
-				// let deepest_folder = self.graphene_document.deepest_common_folder(selected_layers);
 				let common_prefix = self.graphene_document.common_layer_path_prefix(selected_layers);
 				let (_id, common_prefix) = common_prefix.split_last().unwrap_or((&0, &[]));
 
