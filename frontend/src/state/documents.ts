@@ -34,7 +34,6 @@ export function createDocumentsState(editor: EditorState, dialogState: DialogSta
 	};
 
 	const closeDocumentWithConfirmation = (tabIndex: number) => {
-
 		// Close automatically if it's already saved, no confirmation is needed
 		const targetDocument = state.documents[tabIndex];
 		if (targetDocument.isSaved) {
