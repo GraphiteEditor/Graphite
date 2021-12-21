@@ -366,7 +366,7 @@ impl JsEditorHandle {
 	/// Swap between view modes
 	pub fn set_view_mode(&self, new_mode: String) -> Result<(), JsValue> {
 		match translate_view_mode(new_mode.as_str()) {
-			Some(mode) => self.dispatch( <Operation as Into<DocumentMessage>>::into(Operation::SetViewMode{ mode })),
+			Some(mode) => self.dispatch(<Operation as Into<DocumentMessage>>::into(Operation::SetViewMode { mode })),
 			None => return Err(Error::new("Invalid view mode").into()),
 		};
 		Ok(())
