@@ -199,7 +199,7 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 			}
 			NewDocument => {
 				let name = self.generate_new_document_name();
-				let new_document = DocumentMessageHandler::with_name(name);
+				let new_document = DocumentMessageHandler::with_name_and_centered_transform(name, ipp);
 				self.load_document(new_document, responses);
 			}
 			OpenDocument => {

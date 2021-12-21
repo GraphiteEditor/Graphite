@@ -318,6 +318,12 @@ impl DocumentMessageHandler {
 		}
 	}
 
+	pub fn with_name_and_centered_transform(name: String, ipp: &InputPreprocessor) -> Self {
+		let mut document = Self::with_name(name);
+		document.graphene_document.root.transform = document.layerdata(&[]).calculate_offset_transform(ipp.viewport_bounds.size() / 2.);
+		document
+	}
+
 	pub fn with_name_and_content(name: String, serialized_content: String) -> Result<Self, EditorError> {
 		let mut document = Self::with_name(name);
 		let internal_document = GrapheneDocument::with_content(&serialized_content);
