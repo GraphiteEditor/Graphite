@@ -23,28 +23,42 @@ jobs:
         node-version: '16.x'
 
     - name: 🚧 Install Node dependencies
-      run: cd frontend && npm ci
+      run: |
+        cd frontend
+        npm ci
 
     - name: 🔼 Update Rust to latest stable
-      run: rustc --version && rustup update stable && rustc --version
-
-    - name: 📦 Install cargo-about
-      run: cargo install cargo-about
+      run: |
+        rustc --version
+        rustup update stable
+        rustc --version
 
     - name: 🌐 Build Graphite web code
-      run: cd frontend && npm run build
+      env:
+        NODE_ENV: production
+        SKIP_CARGO_ABOUT: true
+      run: |
+        cd frontend
+        npm run build
 
     - name: 👕 Lint Graphite web formatting
-      run: export NODE_ENV=production && cd frontend && npm run lint
+      env:
+        NODE_ENV: production
+      run: |
+        cd frontend
+        npm run lint
 
     - name: 🔬 Check Rust formatting
-      run: cargo fmt --all -- --check
+      run: |
+        cargo fmt --all -- --check
 
     - name: 🦀 Build Rust code
-      run: cargo build --verbose
+      run: |
+        cargo build --verbose
 
     - name: 🧪 Run Rust tests
-      run: cargo test --verbose
+      run: |
+        cargo test --verbose
 
   cargo-deny:
     runs-on: ubuntu-latest

@@ -4,38 +4,15 @@
 import "reflect-metadata";
 import { createApp } from "vue";
 
-import { fullscreenModeChanged } from "@/utilities/fullscreen";
-import { onKeyUp, onKeyDown, onPointerMove, onPointerDown, onPointerUp, onMouseScroll, onWindowResize, onBeforeUnload } from "@/utilities/input";
-import "@/utilities/errors";
-import App from "@/App.vue";
-import { panicProxy } from "@/utilities/panic-proxy";
+import "@/lifetime/errors";
+import { initWasm } from "@/state/wasm-loader";
 
-const wasm = import("@/../wasm/pkg").then(panicProxy);
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-(window as any).wasmMemory = undefined;
+import App from "@/App.vue";
 
 (async () => {
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	(window as any).wasmMemory = (await wasm).wasm_memory;
+	// Initialize the WASM editor backend
+	await initWasm();
 
 	// Initialize the Vue application
 	createApp(App).mount("#app");
-
-	// Bind global browser events
-	window.addEventListener("resize", onWindowResize);
-	onWindowResize();
-
-	window.addEventListener("beforeunload", onBeforeUnload);
-
-	document.addEventListener("contextmenu", (e) => e.preventDefault());
-	document.addEventListener("fullscreenchange", () => fullscreenModeChanged());
-
-	window.addEventListener("keyup", onKeyUp);
-	window.addEventListener("keydown", onKeyDown);
-
-	window.addEventListener("pointerdown", onPointerDown);
-	window.addEventListener("pointermove", onPointerMove);
-	window.addEventListener("pointerup", onPointerUp);
-
-	window.addEventListener("wheel", onMouseScroll, { passive: false });
 })();

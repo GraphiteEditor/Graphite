@@ -1,10 +1,7 @@
 {
-	"name": "graphite-frontend-root-shortcut",
-	"version": "1.0.0",
-	"description": "A convenience package for calling the real package.json in /frontend.",
+	"description": "A convenience package for calling the real package.json in ./frontend",
 	"private": true,
 	"scripts": {
-		"start": "cd frontend && npm run serve",
 		"serve": "cd frontend && npm run serve",
 		"build": "cd frontend && npm run build",
 		"lint": "cd frontend && npm run lint",

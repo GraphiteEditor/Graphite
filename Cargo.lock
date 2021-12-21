@@ -80,11 +80,11 @@ dependencies = [
 
 [[package]]
 name = "graphite-charcoal"
-version = "0.1.0"
+version = "0.0.0"
 
 [[package]]
 name = "graphite-editor"
-version = "0.1.0"
+version = "0.0.0"
 dependencies = [
  "bitflags",
  "env_logger",
@@ -101,7 +101,7 @@ dependencies = [
 
 [[package]]
 name = "graphite-graphene"
-version = "0.1.0"
+version = "0.0.0"
 dependencies = [
  "glam",
  "kurbo",
@@ -112,7 +112,7 @@ dependencies = [
 
 [[package]]
 name = "graphite-proc-macros"
-version = "0.1.0"
+version = "0.0.0"
 dependencies = [
  "graphite-editor",
  "proc-macro2",
@@ -122,10 +122,11 @@ dependencies = [
 
 [[package]]
 name = "graphite-wasm"
-version = "0.1.0"
+version = "0.0.0"
 dependencies = [
  "graphite-editor",
  "graphite-graphene",
+ "js-sys",
  "log",
  "serde",
  "wasm-bindgen",
