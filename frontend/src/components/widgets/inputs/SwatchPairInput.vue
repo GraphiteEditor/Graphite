@@ -69,16 +69,13 @@
 import { defineComponent } from "vue";
 
 import { rgbToDecimalRgb, RGB } from "@/utilities/color";
-import { panicProxy } from "@/utilities/panic-proxy";
-import { subscribeJsMessage } from "@/utilities/js-message-dispatcher";
-import { UpdateWorkingColors } from "@/utilities/js-messages";
 
 import ColorPicker from "@/components/widgets/floating-menus/ColorPicker.vue";
 import FloatingMenu, { MenuDirection, MenuType } from "@/components/widgets/floating-menus/FloatingMenu.vue";
-
-const wasm = import("@/../wasm/pkg").then(panicProxy);
+import { UpdateWorkingColors } from "@/dispatcher/js-messages";
 
 export default defineComponent({
+	inject: ["editor"],
 	components: {
 		FloatingMenu,
 		ColorPicker,
@@ -115,7 +112,7 @@ export default defineComponent({
 			button.style.setProperty("--swatch-color", `rgba(${color.r}, ${color.g}, ${color.b}, ${color.a})`);
 
 			color = rgbToDecimalRgb(this.primaryColor);
-			(await wasm).update_primary_color(color.r, color.g, color.b, color.a);
+			this.editor.instance.update_primary_color(color.r, color.g, color.b, color.a);
 		},
 
 		async updateSecondaryColor() {
@@ -124,7 +121,7 @@ export default defineComponent({
 			button.style.setProperty("--swatch-color", `rgba(${color.r}, ${color.g}, ${color.b}, ${color.a})`);
 
 			color = rgbToDecimalRgb(this.secondaryColor);
-			(await wasm).update_secondary_color(color.r, color.g, color.b, color.a);
+			this.editor.instance.update_secondary_color(color.r, color.g, color.b, color.a);
 		},
 	},
 	data() {
@@ -136,7 +133,7 @@ export default defineComponent({
 		};
 	},
 	mounted() {
-		subscribeJsMessage(UpdateWorkingColors, (updateWorkingColors) => {
+		this.editor.dispatcher.subscribeJsMessage(UpdateWorkingColors, (updateWorkingColors) => {
 			const { primary, secondary } = updateWorkingColors;
 
 			this.primaryColor = primary.toRgba();

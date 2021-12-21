@@ -197,9 +197,7 @@
 <script lang="ts">
 import { defineComponent } from "vue";
 
-import { subscribeJsMessage } from "@/utilities/js-message-dispatcher";
-import { BlendMode, DisplayFolderTreeStructure, UpdateLayer, LayerPanelEntry, LayerTypeOptions } from "@/utilities/js-messages";
-import { panicProxy } from "@/utilities/panic-proxy";
+import { BlendMode, DisplayFolderTreeStructure, UpdateLayer, LayerPanelEntry, LayerTypeOptions } from "@/dispatcher/js-messages";
 import { SeparatorType } from "@/components/widgets/widgets";
 
 import LayoutRow from "@/components/layout/LayoutRow.vue";
@@ -212,8 +210,6 @@ import IconButton from "@/components/widgets/buttons/IconButton.vue";
 import IconLabel from "@/components/widgets/labels/IconLabel.vue";
 import DropdownInput from "@/components/widgets/inputs/DropdownInput.vue";
 import { SectionsOfMenuListEntries } from "@/components/widgets/floating-menus/MenuList.vue";
-
-const wasm = import("@/../wasm/pkg").then(panicProxy);
 
 const blendModeEntries: SectionsOfMenuListEntries<BlendMode> = [
 	[{ label: "Normal", value: "Normal" }],
@@ -255,6 +251,7 @@ const blendModeEntries: SectionsOfMenuListEntries<BlendMode> = [
 ];
 
 export default defineComponent({
+	inject: ["editor"],
 	data() {
 		return {
 			blendModeEntries,
@@ -278,19 +275,19 @@ export default defineComponent({
 			return `${(layer.path.length - 1) * 16}px`;
 		},
 		async toggleLayerVisibility(path: BigUint64Array) {
-			(await wasm).toggle_layer_visibility(path);
+			this.editor.instance.toggle_layer_visibility(path);
 		},
 		async handleNodeConnectorClick(path: BigUint64Array) {
-			(await wasm).toggle_layer_expansion(path);
+			this.editor.instance.toggle_layer_expansion(path);
 		},
 		async setLayerBlendMode() {
 			const blendMode = this.blendModeEntries.flat()[this.blendModeSelectedIndex].value;
 			if (blendMode) {
-				(await wasm).set_blend_mode_for_selected_layers(blendMode);
+				this.editor.instance.set_blend_mode_for_selected_layers(blendMode);
 			}
 		},
 		async setLayerOpacity() {
-			(await wasm).set_opacity_for_selected_layers(this.opacity);
+			this.editor.instance.set_opacity_for_selected_layers(this.opacity);
 		},
 		async handleControlClick(clickedLayer: LayerPanelEntry) {
 			const index = this.layers.indexOf(clickedLayer);
@@ -330,7 +327,7 @@ export default defineComponent({
 			this.selectionRangeStartLayer = undefined;
 			this.selectionRangeEndLayer = undefined;
 
-			(await wasm).deselect_all_layers();
+			this.editor.instance.deselect_all_layers();
 		},
 		async fillSelectionRange(start: LayerPanelEntry, end: LayerPanelEntry, selected = true) {
 			const startIndex = this.layers.findIndex((layer) => layer.path.join() === start.path.join());
@@ -363,7 +360,7 @@ export default defineComponent({
 				}
 				i += 1;
 			});
-			(await wasm).select_layers(output);
+			this.editor.instance.select_layers(output);
 		},
 		setBlendModeForSelectedLayers() {
 			const selected = this.layers.filter((layer) => layer.layer_data.selected);
@@ -407,7 +404,7 @@ export default defineComponent({
 		},
 	},
 	mounted() {
-		subscribeJsMessage(DisplayFolderTreeStructure, (displayFolderTreeStructure) => {
+		this.editor.dispatcher.subscribeJsMessage(DisplayFolderTreeStructure, (displayFolderTreeStructure) => {
 			const path = [] as bigint[];
 			this.layers = [] as LayerPanelEntry[];
 			function recurse(folder: DisplayFolderTreeStructure, layers: LayerPanelEntry[], cache: Map<string, LayerPanelEntry>) {
@@ -423,7 +420,7 @@ export default defineComponent({
 			recurse(displayFolderTreeStructure, this.layers, this.layerCache);
 		});
 
-		subscribeJsMessage(UpdateLayer, (updateLayer) => {
+		this.editor.dispatcher.subscribeJsMessage(UpdateLayer, (updateLayer) => {
 			const targetPath = updateLayer.data.path;
 			const targetLayer = updateLayer.data;
 

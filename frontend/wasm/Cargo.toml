@@ -1,6 +1,7 @@
 [package]
 name = "graphite-wasm"
-version = "0.1.0"
+publish = false
+version = "0.0.0"
 rust-version = "1.56.0"
 authors = ["Graphite Authors <contact@graphite.design>"]
 edition = "2021"
@@ -8,7 +9,6 @@ readme = "../../README.md"
 homepage = "https://www.graphite.design"
 repository = "https://github.com/GraphiteEditor/Graphite"
 license = "Apache-2.0"
-publish = false
 
 [lib]
 crate-type = ["cdylib", "rlib"]
@@ -19,6 +19,7 @@ graphene = { path = "../../graphene", package = "graphite-graphene" }
 log = "0.4"
 serde = { version = "1.0", features = ["derive"] }
 wasm-bindgen = { version = "0.2.73", features = ["serde-serialize"] }
+js-sys = "0.3.55"
 
 [dev-dependencies]
 wasm-bindgen-test = "0.3.22"
