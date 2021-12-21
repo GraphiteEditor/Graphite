@@ -59,6 +59,7 @@ pub struct VectorManipulatorShape {
 #[derive(Clone, Debug)]
 pub struct DocumentMessageHandler {
 	pub graphene_document: GrapheneDocument,
+	pub overlays_document: GrapheneDocument,
 	pub document_undo_history: Vec<DocumentSave>,
 	pub document_redo_history: Vec<DocumentSave>,
 	pub saved_document_identifier: u64,
@@ -73,6 +74,7 @@ impl Default for DocumentMessageHandler {
 	fn default() -> Self {
 		Self {
 			graphene_document: GrapheneDocument::default(),
+			overlays_document: GrapheneDocument::default(),
 			document_undo_history: Vec::new(),
 			document_redo_history: Vec::new(),
 			name: String::from("Untitled Document"),
@@ -84,6 +86,26 @@ impl Default for DocumentMessageHandler {
 		}
 	}
 }
+
+pub struct Overlays;
+
+#[impl_message(Message, OverlaysMessage, Overlays)]
+#[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
+pub enum OverlaysMessage {
+	DispatchOperation(Box<DocumentOperation>),
+}
+
+impl From<DocumentOperation> for OverlaysMessage {
+	fn from(operation: DocumentOperation) -> OverlaysMessage {
+		Self::DispatchOperation(Box::new(operation))
+	}
+}
+
+// impl From<DocumentOperation> for Message {
+// 	fn from(operation: DocumentOperation) -> Message {
+// 		OverlaysMessage::DispatchOperation(Box::new(operation)).into()
+// 	}
+// }
 
 #[impl_message(Message, DocumentsMessage, Document)]
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
@@ -307,6 +329,7 @@ impl DocumentMessageHandler {
 	pub fn with_name(name: String) -> Self {
 		Self {
 			graphene_document: GrapheneDocument::default(),
+			overlays_document: GrapheneDocument::default(),
 			document_undo_history: Vec::new(),
 			document_redo_history: Vec::new(),
 			saved_document_identifier: 0,
@@ -652,8 +675,14 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			},
 			RenderDocument => {
 				responses.push_back(
-					FrontendMessage::UpdateCanvas {
-						document: self.graphene_document.render_root(),
+					FrontendMessage::UpdateArtwork {
+						svg: self.graphene_document.render_root(),
+					}
+					.into(),
+				);
+				responses.push_back(
+					FrontendMessage::UpdateOverlays {
+						svg: String::from(r#"<rect width="100" height="100" fill="blue" />"#),
 					}
 					.into(),
 				);
@@ -671,8 +700,8 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				let scrollbar_size = viewport_size / bounds_length;
 
 				let log = root_layerdata.scale.log2();
-				let ruler_inverval = if log < 0. { 100. * 2_f64.powf(-log.ceil()) } else { 100. / 2_f64.powf(log.ceil()) };
-				let ruler_spacing = ruler_inverval * root_layerdata.scale;
+				let ruler_interval = if log < 0. { 100. * 2_f64.powf(-log.ceil()) } else { 100. / 2_f64.powf(log.ceil()) };
+				let ruler_spacing = ruler_interval * root_layerdata.scale;
 
 				let ruler_origin = self.graphene_document.root.transform.transform_point2(DVec2::ZERO);
 
@@ -689,7 +718,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					FrontendMessage::UpdateRulers {
 						origin: ruler_origin.into(),
 						spacing: ruler_spacing,
-						interval: ruler_inverval,
+						interval: ruler_interval,
 					}
 					.into(),
 				);

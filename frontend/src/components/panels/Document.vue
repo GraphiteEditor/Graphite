@@ -119,7 +119,8 @@
 					</LayoutCol>
 					<LayoutCol :class="'canvas-area'">
 						<div class="canvas" ref="canvas">
-							<svg v-html="viewportSvg" :style="{ width: canvasSvgWidth, height: canvasSvgHeight }"></svg>
+							<svg class="artwork" v-html="artworkSvg" :style="{ width: canvasSvgWidth, height: canvasSvgHeight }"></svg>
+							<svg class="overlays" v-html="overlaysSvg" :style="{ width: canvasSvgWidth, height: canvasSvgHeight }"></svg>
 						</div>
 					</LayoutCol>
 					<LayoutCol :class="'bar-area'">
@@ -223,11 +224,18 @@
 				overflow: hidden;
 
 				svg {
-					background: #ffffff;
 					position: absolute;
 					// Fallback values if JS hasn't set these to integers yet
 					width: 100%;
 					height: 100%;
+
+					&.artwork {
+						background: #ffffff;
+					}
+
+					&.overlays {
+						user-select: none;
+					}
 				}
 			}
 		}
@@ -238,7 +246,7 @@
 <script lang="ts">
 import { defineComponent } from "vue";
 
-import { UpdateCanvas, UpdateScrollbars, UpdateRulers, SetActiveTool, SetCanvasZoom, SetCanvasRotation } from "@/dispatcher/js-messages";
+import { UpdateArtwork, UpdateOverlays, UpdateScrollbars, UpdateRulers, SetActiveTool, SetCanvasZoom, SetCanvasRotation } from "@/dispatcher/js-messages";
 import { SeparatorDirection, SeparatorType } from "@/components/widgets/widgets";
 
 import LayoutRow from "@/components/layout/LayoutRow.vue";
@@ -316,8 +324,12 @@ export default defineComponent({
 		},
 	},
 	mounted() {
-		this.editor.dispatcher.subscribeJsMessage(UpdateCanvas, (updateCanvas) => {
-			this.viewportSvg = updateCanvas.document;
+		this.editor.dispatcher.subscribeJsMessage(UpdateArtwork, (UpdateArtwork) => {
+			this.artworkSvg = UpdateArtwork.svg;
+		});
+
+		this.editor.dispatcher.subscribeJsMessage(UpdateOverlays, (updateOverlays) => {
+			this.overlaysSvg = updateOverlays.svg;
 		});
 
 		this.editor.dispatcher.subscribeJsMessage(UpdateScrollbars, (updateScrollbars) => {
@@ -364,7 +376,8 @@ export default defineComponent({
 		];
 
 		return {
-			viewportSvg: "",
+			artworkSvg: "",
+			overlaysSvg: "",
 			canvasSvgWidth: "100%",
 			canvasSvgHeight: "100%",
 			activeTool: "Select",

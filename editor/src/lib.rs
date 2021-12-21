@@ -58,6 +58,7 @@ pub mod message_prelude {
 	pub use crate::document::{DocumentMessage, DocumentMessageDiscriminant};
 	pub use crate::document::{DocumentsMessage, DocumentsMessageDiscriminant};
 	pub use crate::document::{MovementMessage, MovementMessageDiscriminant};
+	pub use crate::document::{OverlaysMessage, OverlaysMessageDiscriminant};
 	pub use crate::document::{TransformLayerMessage, TransformLayerMessageDiscriminant};
 	pub use crate::frontend::{FrontendMessage, FrontendMessageDiscriminant};
 	pub use crate::global::{GlobalMessage, GlobalMessageDiscriminant};
