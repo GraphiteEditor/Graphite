@@ -21,6 +21,7 @@ export function createInputManager(editor: EditorState, container: HTMLElement, 
 		{ target: window, eventName: "pointermove", action: (e) => onPointerMove(e) },
 		{ target: window, eventName: "pointerdown", action: (e) => onPointerDown(e) },
 		{ target: window, eventName: "pointerup", action: (e) => onPointerUp(e) },
+		{ target: window, eventName: "mousedown", action: (e) => onMouseDown(e) },
 		{ target: window, eventName: "wheel", action: (e) => onMouseScroll(e), options: { passive: false } },
 	];
 
@@ -119,6 +120,12 @@ export function createInputManager(editor: EditorState, container: HTMLElement, 
 	};
 
 	// Mouse events
+
+	const onMouseDown = (e: MouseEvent) => {
+		// Block middle mouse button auto-scroll mode (the circlar widget that appears and allows quick scrolling by moving the cursor above or below it)
+		// This has to be in `mousedown`, not `pointerdown`, to avoid blocking Vue's middle click detection on HTML elements
+		if (e.button === 1) e.preventDefault();
+	};
 
 	const onMouseScroll = (e: WheelEvent) => {
 		const { target } = e;
