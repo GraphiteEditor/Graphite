@@ -4,7 +4,7 @@ import { createJsDispatcher } from "@/dispatcher/js-dispatcher";
 import { JsMessageType } from "@/dispatcher/js-messages";
 
 export type WasmInstance = typeof import("@/../wasm/pkg");
-export type RustEditorInstance = InstanceType<WasmInstance["Editor"]>;
+export type RustEditorInstance = InstanceType<WasmInstance["JsEditorHandle"]>;
 
 let wasmImport: WasmInstance | null = null;
 export async function initWasm() {
@@ -65,7 +65,7 @@ export function createEditorState() {
 		dispatcher.handleJsMessage(messageType, data, rawWasm, instance);
 	};
 
-	const instance = new rawWasm.Editor(rustCallback);
+	const instance = new rawWasm.JsEditorHandle(rustCallback);
 
 	return {
 		dispatcher,
