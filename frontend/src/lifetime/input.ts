@@ -97,9 +97,6 @@ export function createInputManager(editor: EditorState, container: HTMLElement, 
 		const inCanvas = target instanceof Element && target.closest(".canvas");
 		const inDialog = target instanceof Element && target.closest(".dialog-modal .floating-menu-content");
 
-		// Block middle mouse button auto-scroll mode
-		if (e.button === 1) e.preventDefault();
-
 		if (dialog.dialogIsVisible() && !inDialog) {
 			dialog.dismissDialog();
 			e.preventDefault();
