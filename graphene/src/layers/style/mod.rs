@@ -108,10 +108,10 @@ impl PathStyle {
 	pub fn clear_stroke(&mut self) {
 		self.stroke = None;
 	}
-	pub fn view_mode(&mut self, new_mode: ViewMode) {
+	pub fn update_view_mode(&mut self, new_mode: ViewMode) {
 		self.view_mode = new_mode;
 	}
-	pub fn get_view_mode(&self) -> ViewMode {
+	pub fn view_mode(&self) -> ViewMode {
 		self.view_mode
 	}
 

@@ -72,7 +72,7 @@ impl LayerData for Shape {
 
 impl Shape {
 	pub fn transform(&self, transforms: &[DAffine2]) -> DAffine2 {
-		let start = match (self.style.get_view_mode(), self.render_index) {
+		let start = match (self.style.view_mode(), self.render_index) {
 			(ViewMode::WireFrame, _) => 0,
 			(_, -1) => 0,
 			(_, x) => (transforms.len() as i32 - x).max(0) as usize,
