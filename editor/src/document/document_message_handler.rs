@@ -86,7 +86,7 @@ impl DocumentsMessageHandler {
 			.document_ids
 			.iter()
 			.filter_map(|id| {
-				self.documents.get(&id).map(|doc| FrontendDocumentState {
+				self.documents.get(id).map(|doc| FrontendDocumentState {
 					is_saved: doc.is_saved(),
 					id: *id,
 					name: doc.name.clone(),
@@ -110,7 +110,7 @@ impl DocumentsMessageHandler {
 	}
 
 	fn document_index(&self, document_id: u64) -> usize {
-		self.document_ids.iter().position(|id| id == &document_id).expect("Active document is missing from document id's")
+		self.document_ids.iter().position(|id| id == &document_id).expect("Active document is missing from document ids")
 	}
 }
 
@@ -119,6 +119,7 @@ impl Default for DocumentsMessageHandler {
 		let mut documents_map: HashMap<u64, DocumentMessageHandler> = HashMap::with_capacity(1);
 		let starting_key = generate_uuid();
 		documents_map.insert(starting_key, DocumentMessageHandler::default());
+
 		Self {
 			documents: documents_map,
 			document_ids: vec![starting_key],
@@ -188,7 +189,7 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 					.document_ids
 					.iter()
 					.filter_map(|id| {
-						self.documents.get(&id).map(|doc| FrontendDocumentState {
+						self.documents.get(id).map(|doc| FrontendDocumentState {
 							is_saved: doc.is_saved(),
 							id: *id,
 							name: doc.name.clone(),
@@ -233,7 +234,7 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 					.document_ids
 					.iter()
 					.filter_map(|id| {
-						self.documents.get(&id).map(|doc| FrontendDocumentState {
+						self.documents.get(id).map(|doc| FrontendDocumentState {
 							is_saved: doc.is_saved(),
 							id: *id,
 							name: doc.name.clone(),

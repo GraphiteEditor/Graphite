@@ -27,18 +27,21 @@ export function createDocumentsState(editor: EditorState, dialogState: DialogSta
 	};
 
 	const closeDocumentWithConfirmation = async (documentId: BigInt) => {
-		// Assume we receive a correct document_id
+		// Assume we receive a correct document id
 		const targetDocument = state.documents.find((doc) => doc.id === documentId) as FrontendDocumentState;
+
+		// Close automatically if it's already saved, no confirmation is needed
 		if (targetDocument.is_saved) {
 			editor.instance.close_document(targetDocument.id);
 			return;
 		}
 
-		// Show the document is being prompted to close
+		// Switch to the document that's being prompted to close
 		await selectDocument(targetDocument.id);
 
 		const tabLabel = targetDocument.displayName;
 
+		// Show the close confirmation prompt
 		dialogState.createDialog("File", "Save changes before closing?", tabLabel, [
 			{
 				kind: "TextButton",
@@ -92,7 +95,7 @@ export function createDocumentsState(editor: EditorState, dialogState: DialogSta
 	});
 
 	editor.dispatcher.subscribeJsMessage(SetActiveDocument, (setActiveDocument) => {
-		// Assume we receive a correct document_id
+		// Assume we receive a correct document id
 		const activeId = state.documents.findIndex((doc) => doc.id === setActiveDocument.document_id);
 		state.activeDocumentIndex = activeId;
 	});
