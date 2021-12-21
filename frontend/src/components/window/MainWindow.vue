@@ -16,6 +16,7 @@
 .main-window {
 	height: 100%;
 	overflow: auto;
+	touch-action: none;
 }
 
 .title-bar-row {

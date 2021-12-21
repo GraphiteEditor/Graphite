@@ -8,8 +8,8 @@
 				class="row"
 				:class="{ open: isMenuEntryOpen(entry), active: entry === activeEntry }"
 				@click="handleEntryClick(entry)"
-				@mouseenter="handleEntryMouseEnter(entry)"
-				@mouseleave="handleEntryMouseLeave(entry)"
+				@pointerenter="handleEntryPointerEnter(entry)"
+				@pointerleave="handleEntryPointerLeave(entry)"
 				:data-hover-menu-spawner-extend="entry.children && []"
 			>
 				<CheckboxInput v-if="entry.checkbox" v-model:checked="entry.checked" :outlineStyle="true" :class="'entry-checkbox'" />
@@ -184,13 +184,13 @@ const MenuList = defineComponent({
 
 			this.$emit("update:activeEntry", menuEntry);
 		},
-		handleEntryMouseEnter(menuEntry: MenuListEntry) {
+		handleEntryPointerEnter(menuEntry: MenuListEntry) {
 			if (!menuEntry.children || !menuEntry.children.length) return;
 
 			if (menuEntry.ref) menuEntry.ref.setOpen();
 			else throw new Error("The menu bar floating menu has no associated ref");
 		},
-		handleEntryMouseLeave(menuEntry: MenuListEntry) {
+		handleEntryPointerLeave(menuEntry: MenuListEntry) {
 			if (!menuEntry.children || !menuEntry.children.length) return;
 
 			if (menuEntry.ref) menuEntry.ref.setClosed();
