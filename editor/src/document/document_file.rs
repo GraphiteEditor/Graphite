@@ -64,7 +64,7 @@ pub struct DocumentMessageHandler {
 	pub saved_document_identifier: u64,
 	pub name: String,
 	pub layer_data: HashMap<Vec<LayerId>, LayerData>,
-	layer_last_selected_without_shift: Vec<LayerId>,
+	layer_last_selected: Vec<LayerId>,
 	movement_handler: MovementMessageHandler,
 	transform_layer_handler: TransformLayerMessageHandler,
 	pub snapping_enabled: bool,
@@ -79,7 +79,7 @@ impl Default for DocumentMessageHandler {
 			name: String::from("Untitled Document"),
 			saved_document_identifier: 0,
 			layer_data: vec![(vec![], LayerData::new(true))].into_iter().collect(),
-			layer_last_selected_without_shift: Vec::new(),
+			layer_last_selected: Vec::new(),
 			movement_handler: MovementMessageHandler::default(),
 			transform_layer_handler: TransformLayerMessageHandler::default(),
 			snapping_enabled: true,
@@ -315,7 +315,7 @@ impl DocumentMessageHandler {
 			saved_document_identifier: 0,
 			name,
 			layer_data: vec![(vec![], LayerData::new(true))].into_iter().collect(),
-			layer_last_selected_without_shift: Vec::new(),
+			layer_last_selected: Vec::new(),
 			movement_handler: MovementMessageHandler::default(),
 			transform_layer_handler: TransformLayerMessageHandler::default(),
 			snapping_enabled: true,
@@ -576,7 +576,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			}
 			SelectLayer(selected, ctrl, shift) => {
 				let mut paths = vec![];
-				let last_selection_exists = !self.layer_last_selected_without_shift.is_empty();
+				let last_selection_exists = !self.layer_last_selected.is_empty();
 
 				// If we don't have ctrl selected, clear last selection
 				if !ctrl {
@@ -592,7 +592,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					// Add to paths to select
 					self.layer_data
 						.iter()
-						.filter(|(target, _)| self.graphene_document.layer_is_between(&target, &selected, &self.layer_last_selected_without_shift))
+						.filter(|(target, _)| self.graphene_document.layer_is_between(&target, &selected, &self.layer_last_selected))
 						.for_each(|(layer_path, _)| {
 							paths.push(layer_path.clone());
 						});
@@ -601,10 +601,15 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 						// This allows toggling selection when holding ctrl
 						let layer = self.layerdata_mut(&selected);
 						layer.selected = !layer.selected;
+
+						// If we've added to the selection with ctrl
+						if layer.selected {
+							self.layer_last_selected = selected.clone();
+						}
 						responses.push_back(LayerChanged(selected.clone()).into());
 					} else {
 						// Set our last selection
-						self.layer_last_selected_without_shift = selected.clone();
+						self.layer_last_selected = selected.clone();
 						paths.push(selected);
 					}
 				}
@@ -639,7 +644,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			}
 			DeselectAllLayers => {
 				responses.push_front(SetSelectedLayers(vec![]).into());
-				self.layer_last_selected_without_shift.clear();
+				self.layer_last_selected.clear();
 			}
 			DocumentHistoryBackward => self.undo(responses).unwrap_or_else(|e| log::warn!("{}", e)),
 			DocumentHistoryForward => self.redo(responses).unwrap_or_else(|e| log::warn!("{}", e)),
@@ -686,7 +691,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 								self.layer_data.insert(path.clone(), LayerData::new(false));
 								responses.push_back(LayerChanged(path.clone()).into());
 								if !self.graphene_document.layer(&path).unwrap().overlay {
-									self.layer_last_selected_without_shift = path.clone();
+									self.layer_last_selected = path.clone();
 									responses.push_back(SetSelectedLayers(vec![path]).into());
 								}
 							}
