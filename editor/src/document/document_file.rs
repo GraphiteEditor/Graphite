@@ -19,6 +19,7 @@ use serde::{Deserialize, Serialize};
 use graphene::layers::BlendMode;
 use graphene::{document::Document as GrapheneDocument, layers::LayerDataType, DocumentError, LayerId};
 use graphene::{DocumentResponse, Operation as DocumentOperation};
+use graphene::boolean_ops::BooleanOperation as BooleanOperationType;
 
 type DocumentSave = (GrapheneDocument, HashMap<Vec<LayerId>, LayerData>);
 
@@ -124,7 +125,7 @@ pub enum DocumentMessage {
 	DocumentHistoryBackward,
 	DocumentHistoryForward,
 	ClearOverlays,
-	BooleanOperation,
+	BooleanOperation(BooleanOperationType),
 	NudgeSelectedLayers(f64, f64),
 	AlignSelectedLayers(AlignAxis, AlignAggregate),
 	MoveSelectedLayersTo {
@@ -694,9 +695,9 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					.into(),
 				);
 			}
-			BooleanOperation => {
+			BooleanOperation(op) => {
 				// convert Iterator to Vec because Iterator does not implement several traits (Debug, Serialize, Deserialize, ...) required by DocumentOperation enum
-				responses.push_back(DocumentOperation::BooleanUnion{ selected: self.selected_layers().map(|path_slice| Vec::from(path_slice)).collect()}.into());
+				responses.push_back(DocumentOperation::BooleanOperation{ operation: op, selected: self.selected_layers().map(|path_slice| Vec::from(path_slice)).collect()}.into());
 			}
 			NudgeSelectedLayers(x, y) => {
 				self.backup(responses);

@@ -7,6 +7,7 @@ use crate::{
 	color::Color,
 	layers::{style, BlendMode, Layer},
 	LayerId,
+	boolean_ops::BooleanOperation as BooleanOperationType,
 };
 
 use serde::{Deserialize, Serialize};
@@ -66,7 +67,8 @@ pub enum Operation {
 		bez_path: kurbo::BezPath,
 		style: style::PathStyle,
 	},
-	BooleanUnion {
+	BooleanOperation {
+		operation: BooleanOperationType,
 		selected: Vec<Vec<LayerId>>,
 	},
 	DeleteLayer {

@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
 	layers::{self, Folder, Layer, LayerData, LayerDataType, Shape},
 	DocumentError, DocumentResponse, LayerId, Operation, Quad,
-	boolean_ops::PathGraph,
+	intersection::intersections,
 };
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -423,11 +423,15 @@ impl Document {
 				self.set_layer(path, Layer::new(LayerDataType::Shape(Shape::poly_line(points, *style)), *transform), *insert_index)?;
 				Some([vec![DocumentChanged, CreatedLayer { path: path.clone() }], update_thumbnails_upstream(path)].concat())
 			}
-			Operation::BooleanUnion {selected} => {
-				match self.shapes(selected){
-					Ok(shapes) => PathGraph::from(&shapes.get(0).unwrap().path, &shapes.get(1).unwrap().path, false),
-					Err(err) => return Err(err),
-				};
+			Operation::BooleanOperation {operation, selected} => {
+				// How should tool behave? what kinds of selection are valid?
+				if selected.len() > 1{
+					let shapes = self.shapes(selected)?;
+					let crosss = intersections(&shapes[0].path, &shapes[1].path);
+					for cross in crosss{
+						log::debug!("intersection @: {}, {}", cross.point.x, cross.point.y);
+					}
+				}
 				None
 			},
 			Operation::DeleteLayer { path } => {

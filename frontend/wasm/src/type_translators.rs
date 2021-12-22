@@ -2,6 +2,7 @@ use crate::helpers::match_string_to_enum;
 use editor::input::keyboard::Key;
 use editor::tool::ToolType;
 use graphene::layers::BlendMode;
+use graphene::boolean_ops::BooleanOperation;
 
 pub fn translate_tool_type(name: &str) -> Option<ToolType> {
 	use ToolType::*;
@@ -124,5 +125,16 @@ pub fn translate_key(name: &str) -> Key {
 		"," => KeyComma,
 		"." => KeyPeriod,
 		_ => UnknownKey,
+	}
+}
+
+pub fn translate_boolean_operation(operation: &str) -> Option<BooleanOperation> {
+	match operation{
+		"Union" => Some(BooleanOperation::Union),
+		"Difference" => Some(BooleanOperation::Difference),
+		"Intersection" => Some(BooleanOperation::Intersection),
+		"SubFront" => Some(BooleanOperation::SubFront),
+		"SubBack" => Some(BooleanOperation::SubBack),
+		_ => None,
 	}
 }

@@ -1,7 +1,7 @@
 <template>
-	<div class="window-buttons-web" @click="handleClick" :title="fullscreen.windowFullscreen ? 'Exit Fullscreen (F11)' : 'Enter Fullscreen (F11)'">
+	<div class="window-buttons-web" @click="handleClick" :title="fullscreen.state.windowFullscreen ? 'Exit Fullscreen (F11)' : 'Enter Fullscreen (F11)'">
 		<TextLabel v-if="requestFullscreenHotkeys" :italic="true">Go fullscreen to access all hotkeys</TextLabel>
-		<IconLabel :icon="fullscreen.windowFullscreen ? 'FullscreenExit' : 'FullscreenEnter'" />
+		<IconLabel :icon="fullscreen.state.windowFullscreen ? 'FullscreenExit' : 'FullscreenEnter'" />
 	</div>
 </template>
 
@@ -33,24 +33,20 @@
 <script lang="ts">
 import { defineComponent } from "vue";
 
-import fullscreen, { keyboardLockApiSupported, enterFullscreen, exitFullscreen } from "@/utilities/fullscreen";
-
 import IconLabel from "@/components/widgets/labels/IconLabel.vue";
 import TextLabel from "@/components/widgets/labels/TextLabel.vue";
-
-const canUseKeyboardLock = keyboardLockApiSupported();
 
 export default defineComponent({
 	inject: ["fullscreen"],
 	methods: {
 		async handleClick() {
-			if (fullscreen.windowFullscreen) exitFullscreen();
-			else enterFullscreen();
+			if (this.fullscreen.state.windowFullscreen) this.fullscreen.exitFullscreen();
+			else this.fullscreen.enterFullscreen();
 		},
 	},
 	computed: {
 		requestFullscreenHotkeys() {
-			return canUseKeyboardLock && !fullscreen.keyboardLocked;
+			return this.fullscreen.keyboardLockApiSupported && !this.fullscreen.state.keyboardLocked;
 		},
 	},
 	components: {

@@ -71,6 +71,7 @@ body,
 	background: var(--color-2-mildblack);
 	user-select: none;
 	overscroll-behavior: none;
+	outline: none;
 }
 
 html,
@@ -220,29 +221,68 @@ img {
 <script lang="ts">
 import { defineComponent } from "vue";
 
-// State providers
-import dialog from "@/utilities/dialog";
-import documents from "@/utilities/documents";
-import fullscreen from "@/utilities/fullscreen";
+import { DialogState, createDialogState } from "@/state/dialog";
+import { createDocumentsState, DocumentsState } from "@/state/documents";
+import { createFullscreenState, FullscreenState } from "@/state/fullscreen";
 
 import MainWindow from "@/components/window/MainWindow.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
+import { createEditorState, EditorState } from "@/state/wasm-loader";
+import { createInputManager, InputManager } from "@/lifetime/input";
+import { initErrorHandling } from "@/lifetime/errors";
+
+// Vue injects don't play well with TypeScript, and all injects will show up as `any`. As a workaround, we can define these types.
+declare module "@vue/runtime-core" {
+	interface ComponentCustomProperties {
+		dialog: DialogState;
+		documents: DocumentsState;
+		fullscreen: FullscreenState;
+		editor: EditorState;
+		// This must be set to optional because there is a time in the lifecycle of the component where inputManager is undefined.
+		// That's because we initialize inputManager in `mounted()` rather than `data()` since the div hasn't been created yet.
+		inputManger?: InputManager;
+	}
+}
 
 export default defineComponent({
-	provide: {
-		dialog,
-		documents,
-		fullscreen,
+	provide() {
+		return {
+			editor: this.editor,
+			dialog: this.dialog,
+			documents: this.documents,
+			fullscreen: this.fullscreen,
+		};
 	},
 	data() {
+		const editor = createEditorState();
+		const dialog = createDialogState(editor);
+		const documents = createDocumentsState(editor, dialog);
+		const fullscreen = createFullscreenState();
+		initErrorHandling(editor, dialog);
+
 		return {
+			editor,
+			dialog,
+			documents,
+			fullscreen,
 			showUnsupportedModal: !("BigInt64Array" in window),
+			inputManager: undefined as undefined | InputManager,
 		};
 	},
 	methods: {
 		closeModal() {
 			this.showUnsupportedModal = false;
 		},
+	},
+	mounted() {
+		this.inputManager = createInputManager(this.editor, this.$el.parentElement, this.dialog, this.documents, this.fullscreen);
+	},
+	beforeUnmount() {
+		const { inputManager } = this;
+		if (inputManager) inputManager.removeListeners();
+
+		const { editor } = this;
+		editor.instance.free();
 	},
 	components: { MainWindow, LayoutRow },
 });

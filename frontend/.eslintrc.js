@@ -59,12 +59,13 @@ module.exports = {
 		"linebreak-style": ["error", "unix"],
 		"eol-last": ["error", "always"],
 		"max-len": ["error", { code: 200, tabWidth: 4 }],
-		"no-console": process.env.NODE_ENV === "production" ? "warn" : "off",
-		"no-debugger": process.env.NODE_ENV === "production" ? "warn" : "off",
+		"no-console": "warn",
+		"no-debugger": "warn",
 		"no-param-reassign": ["error", { props: false }],
 		"no-bitwise": "off",
 		"no-shadow": "off",
 		"no-use-before-define": "off",
+		"no-restricted-imports": ["error", { patterns: [".*", "!@/*"] }],
 
 		// TypeScript plugin config
 		"@typescript-eslint/indent": ["error", "tab", { SwitchCase: 1 }],

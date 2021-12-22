@@ -10,17 +10,17 @@
 					@click.middle="
 						(e) => {
 							e.stopPropagation();
-							closeDocumentWithConfirmation(tabIndex);
+							documents.closeDocumentWithConfirmation(tabIndex);
 						}
 					"
-					@click="panelType === 'Document' && selectDocument(tabIndex)"
+					@click="panelType === 'Document' && documents.selectDocument(tabIndex)"
 				>
 					<span>{{ tabLabel }}</span>
 					<IconButton
 						:action="
 							(e) => {
 								e.stopPropagation();
-								closeDocumentWithConfirmation(tabIndex);
+								documents.closeDocumentWithConfirmation(tabIndex);
 							}
 						"
 						:icon="'CloseX'"
@@ -169,8 +169,6 @@
 <script lang="ts">
 import { defineComponent, PropType } from "vue";
 
-import { selectDocument, closeDocumentWithConfirmation } from "@/utilities/documents";
-
 import Document from "@/components/panels/Document.vue";
 import Properties from "@/components/panels/Properties.vue";
 import LayerTree from "@/components/panels/LayerTree.vue";
@@ -180,6 +178,7 @@ import PopoverButton, { PopoverButtonIcon } from "@/components/widgets/buttons/P
 import { MenuDirection } from "@/components/widgets/floating-menus/FloatingMenu.vue";
 
 export default defineComponent({
+	inject: ["documents"],
 	components: {
 		Document,
 		Properties,
@@ -197,8 +196,6 @@ export default defineComponent({
 	},
 	data() {
 		return {
-			selectDocument,
-			closeDocumentWithConfirmation,
 			PopoverButtonIcon,
 			MenuDirection,
 		};
