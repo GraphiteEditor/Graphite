@@ -84,7 +84,7 @@ pub fn layer_panel_entry(layer_data: &LayerData, transform: DAffine2, layer: &La
 		opacity: layer.opacity,
 		layer_type: (&layer.data).into(),
 		layer_data: *layer_data,
-		path: path,
+		path,
 		thumbnail,
 	}
 }

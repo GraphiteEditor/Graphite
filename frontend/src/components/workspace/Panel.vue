@@ -7,11 +7,11 @@
 					:class="{ active: tabIndex === tabActiveIndex }"
 					v-for="(tabLabel, tabIndex) in tabLabels"
 					:key="tabIndex"
-					@click.middle="(e) => altClickAction && altClickAction(e, tabIndex)"
-					@click="(e) => clickAction && clickAction(e, tabIndex)"
+					@click="(e) => e.stopPropagation() || (clickAction && clickAction(tabIndex))"
+					@click.middle="(e) => e.stopPropagation() || (closeAction && closeAction(tabIndex))"
 				>
 					<span>{{ tabLabel }}</span>
-					<IconButton :action="(e) => altClickAction && altClickAction(e, tabIndex)" :icon="'CloseX'" :size="16" v-if="tabCloseButtons" />
+					<IconButton :action="(e) => closeAction && closeAction(e, tabIndex)" :icon="'CloseX'" :size="16" v-if="tabCloseButtons" />
 				</div>
 			</div>
 			<PopoverButton :icon="PopoverButtonIcon.VerticalEllipsis">
@@ -178,8 +178,8 @@ export default defineComponent({
 		tabLabels: { type: Array as PropType<string[]>, required: true },
 		tabActiveIndex: { type: Number, required: true },
 		panelType: { type: String, required: true },
-		altClickAction: { type: Function as PropType<(e: PointerEvent, index: number) => void>, required: false },
-		clickAction: { type: Function as PropType<(e: PointerEvent, index: number) => void>, required: false },
+		clickAction: { type: Function as PropType<(index: number) => void>, required: false },
+		closeAction: { type: Function as PropType<(index: number) => void>, required: false },
 	},
 	data() {
 		return {

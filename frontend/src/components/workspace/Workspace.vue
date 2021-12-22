@@ -7,15 +7,13 @@
 				:tabMinWidths="true"
 				:tabLabels="documents.state.documents.map((doc) => doc.displayName)"
 				:clickAction="
-					(e, tabIndex) => {
-						e.stopPropagation();
+					(tabIndex) => {
 						const targetId = documents.state.documents[tabIndex].id;
 						editor.instance.select_document(targetId);
 					}
 				"
-				:altClickAction="
-					(e, tabIndex) => {
-						e.stopPropagation();
+				:closeAction="
+					(tabIndex) => {
 						const targetId = documents.state.documents[tabIndex].id;
 						editor.instance.close_document_with_confirmation(targetId);
 					}

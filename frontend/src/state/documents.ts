@@ -27,6 +27,7 @@ export function createDocumentsState(editor: EditorState, dialogState: DialogSta
 		const targetDocument = state.documents.find((doc) => doc.id === documentId) as FrontendDocumentDetails;
 		const tabLabel = targetDocument.displayName;
 
+		// Show the close confirmation prompt
 		dialogState.createDialog("File", "Save changes before closing?", tabLabel, [
 			{
 				kind: "TextButton",
@@ -80,7 +81,7 @@ export function createDocumentsState(editor: EditorState, dialogState: DialogSta
 	});
 
 	editor.dispatcher.subscribeJsMessage(SetActiveDocument, (setActiveDocument) => {
-		// Assume we receive a correct document_id
+		// Assume we receive a correct document id
 		const activeId = state.documents.findIndex((doc) => doc.id === setActiveDocument.document_id);
 		state.activeDocumentIndex = activeId;
 	});
