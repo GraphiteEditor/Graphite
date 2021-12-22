@@ -160,6 +160,12 @@ export function createInputManager(editor: EditorState, container: HTMLElement, 
 	};
 
 	const onBeforeUnload = (e: BeforeUnloadEvent) => {
+		// Skip the message if the editor crashed, since work is already lost
+		if (editor.instance.has_crashed()) return;
+
+		// Skip the message during development, since it's annoying when testing
+		if (process.env.NODE_ENV === "development") return;
+
 		const allDocumentsSaved = document.state.documents.reduce((acc, doc) => acc && doc.isSaved, true);
 		if (!allDocumentsSaved) {
 			e.returnValue = "Unsaved work will be lost if the web browser tab is closed. Close anyway?";
