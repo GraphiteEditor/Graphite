@@ -580,7 +580,8 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 
 				// If we don't have ctrl selected, clear last selection
 				if !ctrl {
-					// Todo: This clears the selection, figure out how to improve this
+					// Todo: This clears the selection, but we'd like to improve this, don't repeat yourself etc.
+					// responses.push_back(DeselectAllLayers.into()); doesn't work here
 					self.layer_data.iter_mut().filter(|(_, layer_data)| layer_data.selected).for_each(|(path, layer_data)| {
 						layer_data.selected = false;
 						responses.push_back(LayerChanged(path.clone()).into())

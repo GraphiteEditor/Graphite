@@ -141,16 +141,9 @@ impl Document {
 			}
 
 			// If index_a is smaller, index_a is closer to the root
-			if index_a < index_b {
-				// path_a is closer
-				return true;
-			}
-
-			// If neither of the above are true, path_b is closer
-			break;
+			return index_a < index_b;
 		}
 
-		// path_b is closer
 		return false;
 	}
 
