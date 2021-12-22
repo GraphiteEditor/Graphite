@@ -601,11 +601,14 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					self.layer_range_selection_reference = selected;
 				}
 
-				// Add or set our selected layers
-				if ctrl {
-					responses.push_front(AddSelectedLayers(paths).into());
-				} else {
-					responses.push_front(SetSelectedLayers(paths).into());
+				// Don't create messages for empty operations
+				if paths.len() > 0 {
+					// Add or set our selected layers
+					if ctrl {
+						responses.push_front(AddSelectedLayers(paths).into());
+					} else {
+						responses.push_front(SetSelectedLayers(paths).into());
+					}
 				}
 			}
 			SetSelectedLayers(paths) => {
