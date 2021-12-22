@@ -304,8 +304,8 @@ impl DocumentMessageHandler {
 		self.layers_sorted(Some(false))
 	}
 
-	pub fn with_name(name: String) -> Self {
-		Self {
+	pub fn with_name(name: String, ipp: &InputPreprocessor) -> Self {
+		let mut document = Self {
 			graphene_document: GrapheneDocument::default(),
 			document_undo_history: Vec::new(),
 			document_redo_history: Vec::new(),
@@ -315,17 +315,13 @@ impl DocumentMessageHandler {
 			movement_handler: MovementMessageHandler::default(),
 			transform_layer_handler: TransformLayerMessageHandler::default(),
 			snapping_enabled: true,
-		}
-	}
-
-	pub fn with_name_and_centered_transform(name: String, ipp: &InputPreprocessor) -> Self {
-		let mut document = Self::with_name(name);
+		};
 		document.graphene_document.root.transform = document.layerdata(&[]).calculate_offset_transform(ipp.viewport_bounds.size() / 2.);
 		document
 	}
 
-	pub fn with_name_and_content(name: String, serialized_content: String) -> Result<Self, EditorError> {
-		let mut document = Self::with_name(name);
+	pub fn with_name_and_content(name: String, serialized_content: String, ipp: &InputPreprocessor) -> Result<Self, EditorError> {
+		let mut document = Self::with_name(name, ipp);
 		let internal_document = GrapheneDocument::with_content(&serialized_content);
 		match internal_document {
 			Ok(handle) => {
