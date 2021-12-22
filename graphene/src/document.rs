@@ -120,7 +120,8 @@ impl Document {
 			.unwrap_or_default()
 	}
 
-	// Determines which layer is closer to the root
+	// Determines which layer is closer to the root, if path_a return true, if path_b return false
+	// Answers the question: Is A closer than B?
 	pub fn layer_closer_to_root(&self, path_a: &Vec<u64>, path_b: &Vec<u64>) -> bool {
 		// Convert UUIDs to indices
 		let indices_for_path_a = self.indices_for_path(path_a).unwrap();
@@ -128,35 +129,39 @@ impl Document {
 
 		let longest = max(indices_for_path_a.len(), indices_for_path_b.len());
 		for i in 0..longest {
-			// usize::MAX becomes negative one here, sneaky. So folders are compared as [X, -1].
+			// usize::MAX becomes negative one here, sneaky. So folders are compared as [X, -1]. This is intentional.
 			let index_a = *indices_for_path_a.get(i).unwrap_or(&usize::MAX) as i32;
 			let index_b = *indices_for_path_b.get(i).unwrap_or(&usize::MAX) as i32;
 
-			// If these are equal it means we are comparing folder elements
+			// index_a == index_b -> true, this means the two indices being compared are within the same folder
+			// eg -> [2, X] == [2, X] since we are only comparing the twos in this iteration
+			// Continue onto comparing the X indices.
 			if index_a == index_b {
 				continue;
 			}
 
-			// If this is smaller, it is closer to the root
+			// If index_a is smaller, index_a is closer to the root
 			if index_a < index_b {
+				// path_a is closer
 				return true;
 			}
 
-			// Don't continue otherwise
+			// If neither of the above are true, path_b is closer
 			break;
 		}
 
+		// path_b is closer
 		return false;
 	}
 
-	// Is a layer between a <-> b layers
+	// Is  the target layer between a <-> b layers, inclusive
 	pub fn layer_is_between(&self, target: &Vec<u64>, path_a: &Vec<u64>, path_b: &Vec<u64>) -> bool {
-		// If the target is a nonsense path it isn't between
+		// If the target is a nonsense path, it isn't between
 		if target.len() < 1 {
 			return false;
 		}
 
-		// Inclusive
+		// This function is inclusive, so we consider path_a, path_b to be between themselves
 		if target == path_a || target == path_b {
 			return true;
 		};
@@ -164,6 +169,8 @@ impl Document {
 		// These can't both be true and be between two values
 		let layer_vs_a = self.layer_closer_to_root(target, path_a);
 		let layer_vs_b = self.layer_closer_to_root(target, path_b);
+
+		// To be inbetween you need to be above A and below B or vice versa
 		return layer_vs_a != layer_vs_b;
 	}
 
