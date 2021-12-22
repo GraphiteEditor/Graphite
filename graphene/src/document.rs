@@ -121,23 +121,24 @@ impl Document {
 	}
 
 	// Determines which layer is closer to the root
-	pub fn layer_closer_to_root(&self, A: &Vec<u64>, B: &Vec<u64>) -> bool {
-		let path_a = self.indices_for_path(A).unwrap();
-		let path_b = self.indices_for_path(B).unwrap();
+	pub fn layer_closer_to_root(&self, path_a: &Vec<u64>, path_b: &Vec<u64>) -> bool {
+		// Convert UUIDs to indices
+		let indices_for_path_a = self.indices_for_path(path_a).unwrap();
+		let indices_for_path_b = self.indices_for_path(path_b).unwrap();
 
-		let longest = max(path_a.len(), path_b.len());
+		let longest = max(indices_for_path_a.len(), indices_for_path_b.len());
 		for i in 0..longest {
 			// usize::MAX becomes negative one here, sneaky. So folders are compared as [X, -1].
-			let a = *path_a.get(i).unwrap_or(&usize::MAX) as i32;
-			let b = *path_b.get(i).unwrap_or(&usize::MAX) as i32;
+			let index_a = *indices_for_path_a.get(i).unwrap_or(&usize::MAX) as i32;
+			let index_b = *indices_for_path_b.get(i).unwrap_or(&usize::MAX) as i32;
 
 			// If these are equal it means we are comparing folder elements
-			if a == b {
+			if index_a == index_b {
 				continue;
 			}
 
 			// If this is smaller, it is closer to the root
-			if a < b {
+			if index_a < index_b {
 				return true;
 			}
 
@@ -149,20 +150,20 @@ impl Document {
 	}
 
 	// Is a layer between a <-> b layers
-	pub fn layer_is_between(&self, target: &Vec<u64>, A: &Vec<u64>, B: &Vec<u64>) -> bool {
+	pub fn layer_is_between(&self, target: &Vec<u64>, path_a: &Vec<u64>, path_b: &Vec<u64>) -> bool {
 		// If the target is a nonsense path it isn't between
 		if target.len() < 1 {
 			return false;
 		}
 
 		// Inclusive
-		if target == A || target == B {
+		if target == path_a || target == path_b {
 			return true;
 		};
 
 		// These can't both be true and be between two values
-		let layer_vs_a = self.layer_closer_to_root(target, A);
-		let layer_vs_b = self.layer_closer_to_root(target, B);
+		let layer_vs_a = self.layer_closer_to_root(target, path_a);
+		let layer_vs_b = self.layer_closer_to_root(target, path_b);
 		return layer_vs_a != layer_vs_b;
 	}
 
