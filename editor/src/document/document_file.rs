@@ -602,7 +602,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 						let layer = self.layerdata_mut(&selected);
 						layer.selected = !layer.selected;
 
-						// If we've added to the selection with ctrl
+						// If we've added to the selection with ctrl, set last selected
 						if layer.selected {
 							self.layer_last_selected = selected.clone();
 						}
