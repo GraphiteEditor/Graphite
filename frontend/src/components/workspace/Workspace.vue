@@ -10,14 +10,14 @@
 					(e, tabIndex) => {
 						e.stopPropagation();
 						const targetId = documents.state.documents[tabIndex].id;
-						this.documents.selectDocument(documents.state.documents[tabIndex].id);
+						editor.instance.select_document(targetId);
 					}
 				"
 				:altClickAction="
 					(e, tabIndex) => {
 						e.stopPropagation();
 						const targetId = documents.state.documents[tabIndex].id;
-						this.documents.closeDocumentWithConfirmation(targetId);
+						editor.instance.close_document_with_confirmation(targetId);
 					}
 				"
 				:tabActiveIndex="documents.state.activeDocumentIndex"
@@ -75,7 +75,7 @@ import LayoutCol from "@/components/layout/LayoutCol.vue";
 import DialogModal from "@/components/widgets/floating-menus/DialogModal.vue";
 
 export default defineComponent({
-	inject: ["documents", "dialog"],
+	inject: ["documents", "dialog", "editor"],
 	components: {
 		LayoutRow,
 		LayoutCol,

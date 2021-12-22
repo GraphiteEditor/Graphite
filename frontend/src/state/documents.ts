@@ -8,7 +8,7 @@ import {
 	DisplayConfirmationToCloseAllDocuments,
 	DisplayConfirmationToCloseDocument,
 	ExportDocument,
-	FrontendDocumentState,
+	FrontendDocumentDetails,
 	OpenDocumentBrowse,
 	SaveDocument,
 	SetActiveDocument,
@@ -18,25 +18,13 @@ import {
 export function createDocumentsState(editor: EditorState, dialogState: DialogState) {
 	const state = reactive({
 		unsaved: false,
-		documents: [] as FrontendDocumentState[],
+		documents: [] as FrontendDocumentDetails[],
 		activeDocumentIndex: 0,
 	});
 
-	const selectDocument = (documentId: BigInt) => {
-		editor.instance.select_document(documentId);
-	};
-
 	const closeDocumentWithConfirmation = async (documentId: BigInt) => {
 		// Assume we receive a correct document_id
-		const targetDocument = state.documents.find((doc) => doc.id === documentId) as FrontendDocumentState;
-		if (targetDocument.is_saved) {
-			editor.instance.close_document(targetDocument.id);
-			return;
-		}
-
-		// Show the document is being prompted to close
-		await selectDocument(targetDocument.id);
-
+		const targetDocument = state.documents.find((doc) => doc.id === documentId) as FrontendDocumentDetails;
 		const tabLabel = targetDocument.displayName;
 
 		dialogState.createDialog("File", "Save changes before closing?", tabLabel, [
@@ -124,8 +112,6 @@ export function createDocumentsState(editor: EditorState, dialogState: DialogSta
 
 	return {
 		state: readonly(state),
-		selectDocument,
-		closeDocumentWithConfirmation,
 		closeAllDocumentsWithConfirmation,
 	};
 }

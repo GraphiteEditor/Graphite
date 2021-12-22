@@ -1,4 +1,4 @@
-use crate::frontend::frontend_message_handler::FrontendDocumentState;
+use crate::frontend::frontend_message_handler::FrontendDocumentDetails;
 use crate::input::InputPreprocessor;
 use crate::message_prelude::*;
 use graphene::layers::Layer;
@@ -24,6 +24,7 @@ pub enum DocumentsMessage {
 	#[child]
 	Document(DocumentMessage),
 	CloseActiveDocumentWithConfirmation,
+	CloseDocumentWithConfirmation(u64),
 	CloseAllDocumentsWithConfirmation,
 	CloseAllDocuments,
 	RequestAboutGraphiteDialog,
@@ -86,7 +87,7 @@ impl DocumentsMessageHandler {
 			.document_ids
 			.iter()
 			.filter_map(|id| {
-				self.documents.get(&id).map(|doc| FrontendDocumentState {
+				self.documents.get(&id).map(|doc| FrontendDocumentDetails {
 					is_saved: doc.is_saved(),
 					id: *id,
 					name: doc.name.clone(),
@@ -147,7 +148,17 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 				}
 			}
 			CloseActiveDocumentWithConfirmation => {
-				responses.push_back(FrontendMessage::DisplayConfirmationToCloseDocument { document_id: self.active_document_id }.into());
+				responses.push_back(DocumentsMessage::CloseDocumentWithConfirmation(self.active_document_id).into());
+			}
+			CloseDocumentWithConfirmation(id) => {
+				let target_document = self.documents.get(&id).unwrap();
+				if target_document.is_saved() {
+					responses.push_back(DocumentsMessage::CloseDocument(id).into());
+				} else {
+					responses.push_back(FrontendMessage::DisplayConfirmationToCloseDocument { document_id: id }.into());
+					// Select the document being closed
+					responses.push_back(DocumentsMessage::SelectDocument(id).into());
+				}
 			}
 			CloseAllDocumentsWithConfirmation => {
 				responses.push_back(FrontendMessage::DisplayConfirmationToCloseAllDocuments.into());
@@ -188,7 +199,7 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 					.document_ids
 					.iter()
 					.filter_map(|id| {
-						self.documents.get(&id).map(|doc| FrontendDocumentState {
+						self.documents.get(&id).map(|doc| FrontendDocumentDetails {
 							is_saved: doc.is_saved(),
 							id: *id,
 							name: doc.name.clone(),
@@ -233,7 +244,7 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 					.document_ids
 					.iter()
 					.filter_map(|id| {
-						self.documents.get(&id).map(|doc| FrontendDocumentState {
+						self.documents.get(&id).map(|doc| FrontendDocumentDetails {
 							is_saved: doc.is_saved(),
 							id: *id,
 							name: doc.name.clone(),

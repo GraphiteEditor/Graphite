@@ -10,7 +10,7 @@ export class JsMessage {
 	static readonly jsMessageMarker = true;
 }
 
-export class FrontendDocumentState {
+export class FrontendDocumentDetails {
 	readonly name!: string;
 
 	readonly is_saved!: boolean;
@@ -23,8 +23,8 @@ export class FrontendDocumentState {
 }
 
 export class UpdateOpenDocumentsList extends JsMessage {
-	@Type(() => FrontendDocumentState)
-	readonly open_documents!: FrontendDocumentState[];
+	@Type(() => FrontendDocumentDetails)
+	readonly open_documents!: FrontendDocumentDetails[];
 }
 
 const To255Scale = Transform(({ value }) => value * 255);
@@ -139,8 +139,8 @@ export class DisplayFolderTreeStructure extends JsMessage {
 }
 
 interface DataBuffer {
-	pointer: bigint;
-	length: bigint;
+	pointer: BigInt;
+	length: BigInt;
 }
 
 export function newDisplayFolderTreeStructure(input: { data_buffer: DataBuffer }, wasm: WasmInstance): DisplayFolderTreeStructure {

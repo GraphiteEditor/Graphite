@@ -16,6 +16,7 @@ use editor::tool::{tool_options::ToolOptions, tools, ToolType};
 use editor::Color;
 use editor::LayerId;
 
+use serde::Serialize;
 use serde_wasm_bindgen;
 use wasm_bindgen::prelude::*;
 
@@ -27,16 +28,19 @@ pub struct Editor {
 	editor: UnsafeCell<editor::Editor>,
 	instance_received_crashed: Cell<bool>,
 	handle_response: js_sys::Function,
+	serializer: serde_wasm_bindgen::Serializer,
 }
 
 #[wasm_bindgen]
 impl Editor {
 	#[wasm_bindgen(constructor)]
 	pub fn new(handle_response: js_sys::Function) -> Editor {
+		let serializer = serde_wasm_bindgen::Serializer::new().serialize_64_bit_numbers_as_big_int(true);
 		Editor {
 			editor: UnsafeCell::new(editor::Editor::new()),
 			instance_received_crashed: Cell::new(false),
 			handle_response,
+			serializer,
 		}
 	}
 
@@ -64,7 +68,7 @@ impl Editor {
 	// Sends a FrontendMessage to JavaScript
 	fn handle_response(&self, message: FrontendMessage) {
 		let message_type = message.to_discriminant().local_name();
-		let message_data = serde_wasm_bindgen::to_value(&message).expect("Failed to serialize FrontendMessage");
+		let message_data = message.serialize(&self.serializer).expect("Failed to serialize FrontendMessage");
 
 		let js_return_value = self.handle_response.call2(&JsValue::null(), &JsValue::from(message_type), &message_data);
 
@@ -171,6 +175,11 @@ impl Editor {
 
 	pub fn close_active_document_with_confirmation(&self) {
 		let message = DocumentsMessage::CloseActiveDocumentWithConfirmation;
+		self.dispatch(message);
+	}
+
+	pub fn close_document_with_confirmation(&self, document_id: u64) {
+		let message = DocumentsMessage::CloseDocumentWithConfirmation(document_id);
 		self.dispatch(message);
 	}
 

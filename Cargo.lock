@@ -302,7 +302,7 @@ dependencies = [
 [[package]]
 name = "serde-wasm-bindgen"
 version = "0.3.1"
-source = "git+https://github.com/mfish33/serde-wasm-bindgen.git#37b3805f3d2c8a46298569133b30a8a0c261d7bf"
+source = "git+https://github.com/mfish33/serde-wasm-bindgen.git#6b6e9016b29367510266f62a7aa464a52baa87c6"
 dependencies = [
  "fnv",
  "js-sys",
