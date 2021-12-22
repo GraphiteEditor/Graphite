@@ -18,13 +18,16 @@ export function createInputManager(editor: EditorState, container: HTMLElement, 
 		{ target: window.document, eventName: "fullscreenchange", action: () => fullscreen.fullscreenModeChanged() },
 		{ target: window, eventName: "keyup", action: (e) => onKeyUp(e) },
 		{ target: window, eventName: "keydown", action: (e) => onKeyDown(e) },
-		{ target: window, eventName: "mousemove", action: (e) => onMouseMove(e) },
+		{ target: window, eventName: "pointermove", action: (e) => onPointerMove(e) },
+		{ target: window, eventName: "pointerdown", action: (e) => onPointerDown(e) },
+		{ target: window, eventName: "pointerup", action: (e) => onPointerUp(e) },
 		{ target: window, eventName: "mousedown", action: (e) => onMouseDown(e) },
-		{ target: window, eventName: "mouseup", action: (e) => onMouseUp(e) },
 		{ target: window, eventName: "wheel", action: (e) => onMouseScroll(e), options: { passive: false } },
 	];
 
-	let viewportMouseInteractionOngoing = false;
+	let viewportPointerInteractionOngoing = false;
+
+	// Keyboard events
 
 	const shouldRedirectKeyboardEventToBackend = (e: KeyboardEvent): boolean => {
 		// Don't redirect user input from text entry into HTML elements
@@ -81,20 +84,19 @@ export function createInputManager(editor: EditorState, container: HTMLElement, 
 		}
 	};
 
-	const onMouseMove = (e: MouseEvent) => {
-		if (!e.buttons) viewportMouseInteractionOngoing = false;
+	// Pointer events
+
+	const onPointerMove = (e: PointerEvent) => {
+		if (!e.buttons) viewportPointerInteractionOngoing = false;
 
 		const modifiers = makeModifiersBitfield(e);
 		editor.instance.on_mouse_move(e.clientX, e.clientY, e.buttons, modifiers);
 	};
 
-	const onMouseDown = (e: MouseEvent) => {
+	const onPointerDown = (e: PointerEvent) => {
 		const { target } = e;
 		const inCanvas = target instanceof Element && target.closest(".canvas");
 		const inDialog = target instanceof Element && target.closest(".dialog-modal .floating-menu-content");
-
-		// Block middle mouse button auto-scroll mode
-		if (e.button === 1) e.preventDefault();
 
 		if (dialog.dialogIsVisible() && !inDialog) {
 			dialog.dismissDialog();
@@ -102,19 +104,27 @@ export function createInputManager(editor: EditorState, container: HTMLElement, 
 			e.stopPropagation();
 		}
 
-		if (inCanvas) viewportMouseInteractionOngoing = true;
+		if (inCanvas) viewportPointerInteractionOngoing = true;
 
-		if (viewportMouseInteractionOngoing) {
+		if (viewportPointerInteractionOngoing) {
 			const modifiers = makeModifiersBitfield(e);
 			editor.instance.on_mouse_down(e.clientX, e.clientY, e.buttons, modifiers);
 		}
 	};
 
-	const onMouseUp = (e: MouseEvent) => {
-		if (!e.buttons) viewportMouseInteractionOngoing = false;
+	const onPointerUp = (e: PointerEvent) => {
+		if (!e.buttons) viewportPointerInteractionOngoing = false;
 
 		const modifiers = makeModifiersBitfield(e);
 		editor.instance.on_mouse_up(e.clientX, e.clientY, e.buttons, modifiers);
+	};
+
+	// Mouse events
+
+	const onMouseDown = (e: MouseEvent) => {
+		// Block middle mouse button auto-scroll mode (the circlar widget that appears and allows quick scrolling by moving the cursor above or below it)
+		// This has to be in `mousedown`, not `pointerdown`, to avoid blocking Vue's middle click detection on HTML elements
+		if (e.button === 1) e.preventDefault();
 	};
 
 	const onMouseScroll = (e: WheelEvent) => {
@@ -134,6 +144,8 @@ export function createInputManager(editor: EditorState, container: HTMLElement, 
 		}
 	};
 
+	// Window events
+
 	const onWindowResize = (container: HTMLElement) => {
 		const viewports = Array.from(container.querySelectorAll(".canvas"));
 		const boundsOfViewports = viewports.map((canvas) => {
@@ -148,12 +160,20 @@ export function createInputManager(editor: EditorState, container: HTMLElement, 
 	};
 
 	const onBeforeUnload = (e: BeforeUnloadEvent) => {
+		// Skip the message if the editor crashed, since work is already lost
+		if (editor.instance.has_crashed()) return;
+
+		// Skip the message during development, since it's annoying when testing
+		if (process.env.NODE_ENV === "development") return;
+
 		const allDocumentsSaved = document.state.documents.reduce((acc, doc) => acc && doc.is_saved, true);
 		if (!allDocumentsSaved) {
 			e.returnValue = "Unsaved work will be lost if the web browser tab is closed. Close anyway?";
 			e.preventDefault();
 		}
 	};
+
+	// Event bindings
 
 	const addListeners = () => {
 		listeners.forEach(({ target, eventName, action, options }) => target.addEventListener(eventName, action, options));
@@ -173,6 +193,6 @@ export function createInputManager(editor: EditorState, container: HTMLElement, 
 }
 export type InputManager = ReturnType<typeof createInputManager>;
 
-export function makeModifiersBitfield(e: MouseEvent | KeyboardEvent): number {
+export function makeModifiersBitfield(e: WheelEvent | PointerEvent | KeyboardEvent): number {
 	return Number(e.ctrlKey) | (Number(e.shiftKey) << 1) | (Number(e.altKey) << 2);
 }
