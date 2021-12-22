@@ -578,19 +578,9 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				let mut paths = vec![];
 				let last_selection_exists = !self.layer_range_selection_reference.is_empty();
 
-				// If we don't have ctrl selected, clear last selection
-				if !ctrl {
-					// Todo: This clears the selection, but we'd like to improve this, don't repeat yourself etc.
-					// responses.push_back(DeselectAllLayers.into()); doesn't work here
-					self.layer_data.iter_mut().filter(|(_, layer_data)| layer_data.selected).for_each(|(path, layer_data)| {
-						layer_data.selected = false;
-						responses.push_back(LayerChanged(path.clone()).into())
-					});
-				}
-
 				// If we have shift pressed and a layer already selected then fill the range
 				if shift && last_selection_exists {
-					// Add to paths to select
+					// Fill the selection range
 					self.layer_data
 						.iter()
 						.filter(|(target, _)| self.graphene_document.layer_is_between(&target, &selected, &self.layer_range_selection_reference))
@@ -599,7 +589,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 						});
 				} else {
 					if ctrl {
-						// This allows toggling selection when holding ctrl
+						// Toggle selection when holding ctrl
 						let layer = self.layerdata_mut(&selected);
 						layer.selected = !layer.selected;
 						responses.push_back(LayerChanged(selected.clone()).into());
@@ -611,8 +601,12 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					self.layer_range_selection_reference = selected;
 				}
 
-				// Add our selected layers
-				responses.push_front(AddSelectedLayers(paths).into());
+				// Add or set our selected layers
+				if ctrl {
+					responses.push_front(AddSelectedLayers(paths).into());
+				} else {
+					responses.push_front(SetSelectedLayers(paths).into());
+				}
 			}
 			SetSelectedLayers(paths) => {
 				self.layer_data.iter_mut().filter(|(_, layer_data)| layer_data.selected).for_each(|(path, layer_data)| {
