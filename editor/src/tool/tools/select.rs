@@ -5,10 +5,13 @@ use graphene::Operation;
 use graphene::Quad;
 
 use crate::consts::COLOR_ACCENT;
-use crate::input::keyboard::Key;
-use crate::input::{mouse::ViewportPosition, InputPreprocessor};
-use crate::tool::snapping::SnapHandler;
-use crate::tool::{DocumentToolData, Fsm, ToolActionHandlerData};
+use crate::input::{
+	keyboard::{Key, MouseMotion},
+	mouse::ViewportPosition,
+	InputPreprocessor,
+};
+use crate::misc::{HintData, HintGroup, HintInfo, KeysGroup};
+use crate::tool::{snapping::SnapHandler, DocumentToolData, Fsm, ToolActionHandlerData};
 use crate::{
 	consts::SELECTION_TOLERANCE,
 	document::{AlignAggregate, AlignAxis, DocumentMessageHandler, FlipAxis},
@@ -39,8 +42,19 @@ pub enum SelectMessage {
 
 impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Select {
 	fn process_action(&mut self, action: ToolMessage, data: ToolActionHandlerData<'a>, responses: &mut VecDeque<Message>) {
-		self.fsm_state = self.fsm_state.transition(action, data.0, data.1, &mut self.data, data.2, responses);
+		if action == ToolMessage::UpdateHints {
+			self.fsm_state.update_hints(responses);
+			return;
+		}
+
+		let new_state = self.fsm_state.transition(action, data.0, data.1, &mut self.data, data.2, responses);
+
+		if self.fsm_state != new_state {
+			self.fsm_state = new_state;
+			self.fsm_state.update_hints(responses);
+		}
 	}
+
 	fn actions(&self) -> ActionList {
 		use SelectToolFsmState::*;
 		match self.fsm_state {
@@ -51,7 +65,7 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Select {
 	}
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 enum SelectToolFsmState {
 	Ready,
 	Dragging,
@@ -122,6 +136,7 @@ impl Fsm for SelectToolFsmState {
 	) -> Self {
 		use SelectMessage::*;
 		use SelectToolFsmState::*;
+
 		if let ToolMessage::Select(event) = event {
 			match (self, event) {
 				(_, UpdateSelectionBoundingBox) => {
@@ -262,5 +277,122 @@ impl Fsm for SelectToolFsmState {
 		} else {
 			self
 		}
+	}
+
+	fn update_hints(&self, responses: &mut VecDeque<Message>) {
+		let hint_data = match self {
+			SelectToolFsmState::Ready => HintData(vec![
+				HintGroup(vec![HintInfo {
+					key_groups: vec![],
+					mouse: Some(MouseMotion::LmbDrag),
+					label: String::from("Drag Selected"),
+					plus: false,
+				}]),
+				HintGroup(vec![
+					HintInfo {
+						key_groups: vec![KeysGroup(vec![Key::KeyG])],
+						mouse: None,
+						label: String::from("Grab Selected"),
+						plus: false,
+					},
+					HintInfo {
+						key_groups: vec![KeysGroup(vec![Key::KeyR])],
+						mouse: None,
+						label: String::from("Rotate Selected"),
+						plus: false,
+					},
+					HintInfo {
+						key_groups: vec![KeysGroup(vec![Key::KeyS])],
+						mouse: None,
+						label: String::from("Scale Selected"),
+						plus: false,
+					},
+				]),
+				HintGroup(vec![
+					HintInfo {
+						key_groups: vec![],
+						mouse: Some(MouseMotion::Lmb),
+						label: String::from("Select Object"),
+						plus: false,
+					},
+					HintInfo {
+						key_groups: vec![KeysGroup(vec![Key::KeyControl])],
+						mouse: None,
+						label: String::from("Innermost"),
+						plus: true,
+					},
+					HintInfo {
+						key_groups: vec![KeysGroup(vec![Key::KeyShift])],
+						mouse: None,
+						label: String::from("Grow/Shrink Selection"),
+						plus: true,
+					},
+				]),
+				HintGroup(vec![
+					HintInfo {
+						key_groups: vec![],
+						mouse: Some(MouseMotion::LmbDrag),
+						label: String::from("Select Area"),
+						plus: false,
+					},
+					HintInfo {
+						key_groups: vec![KeysGroup(vec![Key::KeyShift])],
+						mouse: None,
+						label: String::from("Grow/Shrink Selection"),
+						plus: true,
+					},
+				]),
+				HintGroup(vec![
+					HintInfo {
+						key_groups: vec![
+							KeysGroup(vec![Key::KeyArrowUp]),
+							KeysGroup(vec![Key::KeyArrowRight]),
+							KeysGroup(vec![Key::KeyArrowDown]),
+							KeysGroup(vec![Key::KeyArrowLeft]),
+						],
+						mouse: None,
+						label: String::from("Nudge Selected"),
+						plus: false,
+					},
+					HintInfo {
+						key_groups: vec![KeysGroup(vec![Key::KeyShift])],
+						mouse: None,
+						label: String::from("Big Increment Nudge"),
+						plus: true,
+					},
+				]),
+				HintGroup(vec![
+					HintInfo {
+						key_groups: vec![KeysGroup(vec![Key::KeyAlt])],
+						mouse: Some(MouseMotion::LmbDrag),
+						label: String::from("Move Duplicate"),
+						plus: false,
+					},
+					HintInfo {
+						key_groups: vec![KeysGroup(vec![Key::KeyControl, Key::KeyD])],
+						mouse: None,
+						label: String::from("Duplicate"),
+						plus: false,
+					},
+				]),
+			]),
+			SelectToolFsmState::Dragging => HintData(vec![HintGroup(vec![
+				HintInfo {
+					key_groups: vec![KeysGroup(vec![Key::KeyShift])],
+					mouse: None,
+					label: String::from("Constrain 45° (coming soon)"),
+					plus: false,
+				},
+				HintInfo {
+					key_groups: vec![KeysGroup(vec![Key::KeyControl])],
+					mouse: None,
+					label: String::from("Snap to Points (coming soon)"),
+					plus: false,
+				},
+			])]),
+			SelectToolFsmState::DrawingBox => HintData(vec![]),
+		};
+
+		responses.push_back(FrontendMessage::UpdateInputHints { hint_data }.into());
 	}
 }

@@ -66,13 +66,13 @@ function makeMenuEntries(editor: EditorState): MenuListEntries {
 			ref: undefined,
 			children: [
 				[
-					{ label: "New", icon: "File", shortcut: ["Ctrl", "N"], shortcutRequiresLock: true, action: async () => editor.instance.new_document() },
-					{ label: "Open…", shortcut: ["Ctrl", "O"], action: async () => editor.instance.open_document() },
+					{ label: "New", icon: "File", shortcut: ["KeyControl", "KeyN"], shortcutRequiresLock: true, action: async () => editor.instance.new_document() },
+					{ label: "Open…", shortcut: ["KeyControl", "KeyO"], action: async () => editor.instance.open_document() },
 					{
 						label: "Open Recent",
-						shortcut: ["Ctrl", "⇧", "O"],
+						shortcut: ["KeyControl", "KeyShift", "KeyO"],
 						children: [
-							[{ label: "Reopen Last Closed", shortcut: ["Ctrl", "⇧", "T"], shortcutRequiresLock: true }, { label: "Clear Recently Opened" }],
+							[{ label: "Reopen Last Closed", shortcut: ["KeyControl", "KeyShift", "KeyT"], shortcutRequiresLock: true }, { label: "Clear Recently Opened" }],
 							[
 								{ label: "Some Recent File.gdd" },
 								{ label: "Another Recent File.gdd" },
@@ -84,20 +84,20 @@ function makeMenuEntries(editor: EditorState): MenuListEntries {
 					},
 				],
 				[
-					{ label: "Close", shortcut: ["Ctrl", "W"], shortcutRequiresLock: true, action: async () => editor.instance.close_active_document_with_confirmation() },
-					{ label: "Close All", shortcut: ["Ctrl", "Alt", "W"], action: async () => editor.instance.close_all_documents_with_confirmation() },
+					{ label: "Close", shortcut: ["KeyControl", "KeyW"], shortcutRequiresLock: true, action: async () => editor.instance.close_active_document_with_confirmation() },
+					{ label: "Close All", shortcut: ["KeyControl", "KeyAlt", "KeyW"], action: async () => editor.instance.close_all_documents_with_confirmation() },
 				],
 				[
-					{ label: "Save", shortcut: ["Ctrl", "S"], action: async () => editor.instance.save_document() },
-					{ label: "Save As…", shortcut: ["Ctrl", "⇧", "S"], action: async () => editor.instance.save_document() },
-					{ label: "Save All", shortcut: ["Ctrl", "Alt", "S"] },
+					{ label: "Save", shortcut: ["KeyControl", "KeyS"], action: async () => editor.instance.save_document() },
+					{ label: "Save As…", shortcut: ["KeyControl", "KeyShift", "KeyS"], action: async () => editor.instance.save_document() },
+					{ label: "Save All", shortcut: ["KeyControl", "KeyAlt", "KeyS"] },
 					{ label: "Auto-Save", checkbox: true, checked: true },
 				],
 				[
-					{ label: "Import…", shortcut: ["Ctrl", "I"] },
-					{ label: "Export…", shortcut: ["Ctrl", "E"], action: async () => editor.instance.export_document() },
+					{ label: "Import…", shortcut: ["KeyControl", "KeyI"] },
+					{ label: "Export…", shortcut: ["KeyControl", "KeyE"], action: async () => editor.instance.export_document() },
 				],
-				[{ label: "Quit", shortcut: ["Ctrl", "Q"] }],
+				[{ label: "Quit", shortcut: ["KeyControl", "KeyQ"] }],
 			],
 		},
 		{
@@ -105,13 +105,13 @@ function makeMenuEntries(editor: EditorState): MenuListEntries {
 			ref: undefined,
 			children: [
 				[
-					{ label: "Undo", shortcut: ["Ctrl", "Z"], action: async () => editor.instance.undo() },
-					{ label: "Redo", shortcut: ["Ctrl", "⇧", "Z"], action: async () => editor.instance.redo() },
+					{ label: "Undo", shortcut: ["KeyControl", "KeyZ"], action: async () => editor.instance.undo() },
+					{ label: "Redo", shortcut: ["KeyControl", "KeyShift", "KeyZ"], action: async () => editor.instance.redo() },
 				],
 				[
-					{ label: "Cut", shortcut: ["Ctrl", "X"] },
-					{ label: "Copy", icon: "Copy", shortcut: ["Ctrl", "C"] },
-					{ label: "Paste", icon: "Paste", shortcut: ["Ctrl", "V"] },
+					{ label: "Cut", shortcut: ["KeyControl", "KeyX"] },
+					{ label: "Copy", icon: "Copy", shortcut: ["KeyControl", "KeyC"] },
+					{ label: "Paste", icon: "Paste", shortcut: ["KeyControl", "KeyV"] },
 				],
 			],
 		},
@@ -120,16 +120,16 @@ function makeMenuEntries(editor: EditorState): MenuListEntries {
 			ref: undefined,
 			children: [
 				[
-					{ label: "Select All", shortcut: ["Ctrl", "A"], action: async () => editor.instance.select_all_layers() },
-					{ label: "Deselect All", shortcut: ["Ctrl", "Alt", "A"], action: async () => editor.instance.deselect_all_layers() },
+					{ label: "Select All", shortcut: ["KeyControl", "KeyA"], action: async () => editor.instance.select_all_layers() },
+					{ label: "Deselect All", shortcut: ["KeyControl", "KeyAlt", "KeyA"], action: async () => editor.instance.deselect_all_layers() },
 					{
 						label: "Order",
 						children: [
 							[
-								{ label: "Raise To Front", shortcut: ["Ctrl", "Shift", "]"], action: async () => editor.instance.reorder_selected_layers(editor.rawWasm.i32_max()) },
-								{ label: "Raise", shortcut: ["Ctrl", "]"], action: async () => editor.instance.reorder_selected_layers(1) },
-								{ label: "Lower", shortcut: ["Ctrl", "["], action: async () => editor.instance.reorder_selected_layers(-1) },
-								{ label: "Lower to Back", shortcut: ["Ctrl", "Shift", "["], action: async () => editor.instance.reorder_selected_layers(editor.rawWasm.i32_min()) },
+								{ label: "Raise To Front", shortcut: ["KeyControl", "KeyShift", "]"], action: async () => editor.instance.reorder_selected_layers(editor.rawWasm.i32_max()) },
+								{ label: "Raise", shortcut: ["KeyControl", "]"], action: async () => editor.instance.reorder_selected_layers(1) },
+								{ label: "Lower", shortcut: ["KeyControl", "["], action: async () => editor.instance.reorder_selected_layers(-1) },
+								{ label: "Lower to Back", shortcut: ["KeyControl", "KeyShift", "["], action: async () => editor.instance.reorder_selected_layers(editor.rawWasm.i32_min()) },
 							],
 						],
 					},

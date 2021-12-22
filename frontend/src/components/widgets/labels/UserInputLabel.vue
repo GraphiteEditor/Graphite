@@ -3,7 +3,7 @@
 		<template v-for="(keyGroup, keyGroupIndex) in inputKeys" :key="keyGroupIndex">
 			<span class="group-gap" v-if="keyGroupIndex > 0"></span>
 			<span class="input-key" v-for="inputKey in keyGroup" :key="inputKey" :class="keyCapWidth(inputKey)">
-				{{ inputKey }}
+				{{ keyText(inputKey) }}
 			</span>
 		</template>
 		<span class="input-mouse" v-if="inputMouse">
@@ -92,15 +92,15 @@ import IconLabel from "@/components/widgets/labels/IconLabel.vue";
 
 export enum MouseInputInteraction {
 	"None" = "None",
-	"LMB" = "LMB",
-	"RMB" = "RMB",
-	"MMB" = "MMB",
+	"Lmb" = "Lmb",
+	"Rmb" = "Rmb",
+	"Mmb" = "Mmb",
 	"ScrollUp" = "ScrollUp",
 	"ScrollDown" = "ScrollDown",
 	"Drag" = "Drag",
-	"LMBDrag" = "LMBDrag",
-	"RMBDrag" = "RMBDrag",
-	"MMBDrag" = "MMBDrag",
+	"LmbDrag" = "LmbDrag",
+	"RmbDrag" = "RmbDrag",
+	"MmbDrag" = "MmbDrag",
 }
 
 export default defineComponent({
@@ -115,29 +115,57 @@ export default defineComponent({
 		},
 	},
 	methods: {
-		keyCapWidth(keyText: string) {
-			return `width-${keyText.length * 8 + 8}`;
+		keyCapWidth(keyText: string): string {
+			const text = this.keyText(keyText) || " ";
+			return `width-${text.length * 8 + 8}`;
+		},
+		keyText(keyText: string): string {
+			// Strip off the "Key" prefix
+			const text = keyText.replace(/^(?:Key)?(.*)$/, "$1");
+
+			if (/^[A-Z0-9]$/.test(text)) return text;
+
+			const textMap: Record<string, string> = {
+				Shift: "⇧",
+				Control: "Ctrl",
+				Alt: "Alt",
+				ArrowUp: "↑",
+				ArrowRight: "→",
+				ArrowDown: "↓",
+				ArrowLeft: "←",
+				Tab: "↹",
+				Backspace: "Bksp",
+				Delete: "Del",
+				Option: "⌥",
+				Command: "⌘",
+				Enter: "↵",
+				PageUp: "PgUp",
+				PageDown: "PgDn",
+			};
+			if (text in textMap) return textMap[text];
+
+			return text;
 		},
 		mouseInputInteractionToIcon(mouseInputInteraction: MouseInputInteraction) {
 			switch (mouseInputInteraction) {
-				case MouseInputInteraction.LMB:
-					return "MouseHintLMB";
-				case MouseInputInteraction.RMB:
-					return "MouseHintRMB";
-				case MouseInputInteraction.MMB:
-					return "MouseHintMMB";
+				case MouseInputInteraction.Lmb:
+					return "MouseHintLmb";
+				case MouseInputInteraction.Rmb:
+					return "MouseHintRmb";
+				case MouseInputInteraction.Mmb:
+					return "MouseHintMmb";
 				case MouseInputInteraction.ScrollUp:
 					return "MouseHintScrollUp";
 				case MouseInputInteraction.ScrollDown:
 					return "MouseHintScrollDown";
 				case MouseInputInteraction.Drag:
 					return "MouseHintDrag";
-				case MouseInputInteraction.LMBDrag:
-					return "MouseHintLMBDrag";
-				case MouseInputInteraction.RMBDrag:
-					return "MouseHintRMBDrag";
-				case MouseInputInteraction.MMBDrag:
-					return "MouseHintMMBDrag";
+				case MouseInputInteraction.LmbDrag:
+					return "MouseHintLmbDrag";
+				case MouseInputInteraction.RmbDrag:
+					return "MouseHintRmbDrag";
+				case MouseInputInteraction.MmbDrag:
+					return "MouseHintMmbDrag";
 				default:
 				case MouseInputInteraction.None:
 					return "MouseHintNone";

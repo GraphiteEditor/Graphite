@@ -1,5 +1,7 @@
 use crate::consts::SELECTION_TOLERANCE;
+use crate::input::keyboard::{Key, MouseMotion};
 use crate::message_prelude::*;
+use crate::misc::{HintData, HintGroup, HintInfo, KeysGroup};
 use crate::tool::{ToolActionHandlerData, ToolMessage};
 use glam::DVec2;
 use graphene::layers::LayerDataType;
@@ -18,6 +20,26 @@ pub enum EyedropperMessage {
 
 impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Eyedropper {
 	fn process_action(&mut self, action: ToolMessage, data: ToolActionHandlerData<'a>, responses: &mut VecDeque<Message>) {
+		let hint_data = HintData(vec![HintGroup(vec![
+			HintInfo {
+				key_groups: vec![],
+				mouse: Some(MouseMotion::Lmb),
+				label: String::from("Sample Fill"),
+				plus: false,
+			},
+			HintInfo {
+				key_groups: vec![],
+				mouse: Some(MouseMotion::Rmb),
+				label: String::from("Sample Fill as Secondary"),
+				plus: false,
+			},
+		])]);
+		responses.push_back(FrontendMessage::UpdateInputHints { hint_data }.into());
+
+		if action == ToolMessage::UpdateHints {
+			return;
+		}
+
 		let mouse_pos = data.2.mouse.position;
 		let tolerance = DVec2::splat(SELECTION_TOLERANCE);
 		let quad = Quad::from_box([mouse_pos - tolerance, mouse_pos + tolerance]);
@@ -36,5 +58,6 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Eyedropper {
 			}
 		}
 	}
+
 	advertise_actions!(EyedropperMessageDiscriminant; LeftMouseDown, RightMouseDown);
 }

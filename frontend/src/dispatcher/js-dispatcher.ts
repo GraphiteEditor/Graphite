@@ -21,7 +21,10 @@ export function createJsDispatcher() {
 		const messageConstructor = messageConstructors[messageType];
 		if (!messageConstructor) {
 			// eslint-disable-next-line no-console
-			console.error(`Received a frontend message of type "${messageType}" but but was not able to parse the data.`);
+			console.error(
+				`Received a frontend message of type "${messageType}" but was not able to parse the data. ` +
+					"(Perhaps this message parser isn't exported in `messageConstructors` at the end of the `js-messages.ts`.)"
+			);
 			return;
 		}
 

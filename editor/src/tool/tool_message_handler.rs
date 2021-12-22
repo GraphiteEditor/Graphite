@@ -12,6 +12,7 @@ use std::collections::VecDeque;
 #[impl_message(Message, Tool)]
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub enum ToolMessage {
+	UpdateHints,
 	ActivateTool(ToolType),
 	SelectPrimaryColor(Color),
 	SelectSecondaryColor(Color),
@@ -88,18 +89,22 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, &InputPreprocessor)> 
 				};
 
 				// Send the Abort state transition to the tool
-				let mut send_message_to_tool = |tool_type, message: ToolMessage| {
+				let mut send_message_to_tool = |tool_type, message: ToolMessage, update_hints: bool| {
 					if let Some(tool) = tool_data.tools.get_mut(&tool_type) {
 						tool.process_action(message, (document, document_data, input), responses);
+
+						if update_hints {
+							tool.process_action(ToolMessage::UpdateHints, (document, document_data, input), responses);
+						}
 					}
 				};
 
 				// Send the old and new tools a transition to their FSM Abort states
 				if let Some(tool_message) = reset_message(new_tool) {
-					send_message_to_tool(new_tool, tool_message);
+					send_message_to_tool(new_tool, tool_message, true);
 				}
 				if let Some(tool_message) = reset_message(old_tool) {
-					send_message_to_tool(old_tool, tool_message);
+					send_message_to_tool(old_tool, tool_message, false);
 				}
 
 				// Special cases for specific tools
@@ -113,7 +118,7 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, &InputPreprocessor)> 
 
 				// Notify the frontend about the new active tool to be displayed
 				let tool_name = new_tool.to_string();
-				let tool_options = self.tool_state.document_tool_data.tool_options.get(&new_tool).map(|tool_options| *tool_options);
+				let tool_options = self.tool_state.document_tool_data.tool_options.get(&new_tool).copied();
 				responses.push_back(FrontendMessage::SetActiveTool { tool_name, tool_options }.into());
 			}
 			SelectedLayersChanged => {

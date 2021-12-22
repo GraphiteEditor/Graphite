@@ -18,6 +18,7 @@ const SHIFT_NUDGE_AMOUNT: f64 = 10.;
 pub enum InputMapperMessage {
 	PointerMove,
 	MouseScroll,
+	#[child]
 	KeyUp(Key),
 	#[child]
 	KeyDown(Key),
@@ -43,6 +44,7 @@ impl KeyMappingEntries {
 		}
 		None
 	}
+
 	fn push(&mut self, entry: MappingEntry) {
 		self.0.push(entry)
 	}
