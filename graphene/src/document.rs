@@ -121,7 +121,7 @@ impl Document {
 	}
 
 	// Determines which layer is closer to the root, if path_a return true, if path_b return false
-	// Answers the question: Is A closer than B?
+	// Answers the question: Is A closer to the root than B?
 	pub fn layer_closer_to_root(&self, path_a: &Vec<u64>, path_b: &Vec<u64>) -> bool {
 		// Convert UUIDs to indices
 		let indices_for_path_a = self.indices_for_path(path_a).unwrap();
@@ -133,8 +133,8 @@ impl Document {
 			let index_a = *indices_for_path_a.get(i).unwrap_or(&usize::MAX) as i32;
 			let index_b = *indices_for_path_b.get(i).unwrap_or(&usize::MAX) as i32;
 
-			// index_a == index_b -> true, this means the two indices being compared are within the same folder
-			// eg -> [2, X] == [2, X] since we are only comparing the twos in this iteration
+			// index_a == index_b -> true, this means the "2" indices being compared are within the same folder
+			// eg -> [2, X] == [2, X] since we are only comparing the "2" in this iteration
 			// Continue onto comparing the X indices.
 			if index_a == index_b {
 				continue;
