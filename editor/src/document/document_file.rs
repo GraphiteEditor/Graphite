@@ -601,15 +601,13 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 						// This allows toggling selection when holding ctrl
 						let layer = self.layerdata_mut(&selected);
 						layer.selected = !layer.selected;
-
-						// We've added to the selection with ctrl, update range marker
-						self.layer_range_selection_reference = selected.clone();
 						responses.push_back(LayerChanged(selected.clone()).into());
 					} else {
-						// Set our last selection
-						self.layer_range_selection_reference = selected.clone();
-						paths.push(selected);
+						paths.push(selected.clone());
 					}
+
+					// Set our last selection reference
+					self.layer_range_selection_reference = selected;
 				}
 
 				// Add our selected layers
