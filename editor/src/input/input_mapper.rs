@@ -209,7 +209,7 @@ impl Default for Mapping {
 			entry! {action=DocumentMessage::Undo, key_down=KeyZ, modifiers=[KeyControl]},
 			entry! {action=DocumentMessage::DeselectAllLayers, key_down=KeyA, modifiers=[KeyControl, KeyAlt]},
 			entry! {action=DocumentMessage::SelectAllLayers, key_down=KeyA, modifiers=[KeyControl]},
-			entry! {action=DocumentMessage::CreateFolder(vec![]), key_down=KeyN, modifiers=[KeyControl, KeyShift]},
+			entry! {action=DocumentMessage::CreateEmptyFolder(vec![]), key_down=KeyN, modifiers=[KeyControl, KeyShift]},
 			entry! {action=DocumentMessage::DeleteSelectedLayers, key_down=KeyDelete},
 			entry! {action=DocumentMessage::DeleteSelectedLayers, key_down=KeyX},
 			entry! {action=DocumentMessage::DeleteSelectedLayers, key_down=KeyBackspace},

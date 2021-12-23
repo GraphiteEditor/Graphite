@@ -196,7 +196,7 @@ mod test {
 		const LINE_INDEX: usize = 0;
 		const PEN_INDEX: usize = 1;
 
-		editor.handle_message(DocumentMessage::CreateFolder(vec![]));
+		editor.handle_message(DocumentMessage::CreateEmptyFolder(vec![]));
 
 		let document_before_added_shapes = editor.dispatcher.documents_message_handler.active_document().graphene_document.clone();
 		let folder_id = document_before_added_shapes.root.as_folder().unwrap().layer_ids[FOLDER_INDEX];
