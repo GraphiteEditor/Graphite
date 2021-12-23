@@ -321,6 +321,11 @@ impl JsEditorHandle {
 		self.dispatch(message);
 	}
 
+	pub fn select_layer(&self, paths: Vec<LayerId>, ctrl: bool, shift: bool) {
+		let message = DocumentMessage::SelectLayer(paths, ctrl, shift);
+		self.dispatch(message);
+	}
+
 	/// Select all layers
 	pub fn select_all_layers(&self) {
 		let message = DocumentMessage::SelectAllLayers;
@@ -451,7 +456,7 @@ impl JsEditorHandle {
 
 	/// Requests the backend to add a layer to the layer list
 	pub fn add_folder(&self, path: Vec<LayerId>) {
-		let message = DocumentMessage::CreateFolder(path);
+		let message = DocumentMessage::CreateEmptyFolder(path);
 		self.dispatch(message);
 	}
 }
