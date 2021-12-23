@@ -1,13 +1,11 @@
-use crate::input::keyboard::{Key, MouseMotion};
-use crate::input::InputPreprocessor;
+use crate::document::DocumentMessageHandler;
+use crate::input::{keyboard::Key, keyboard::MouseMotion, InputPreprocessor};
+use crate::message_prelude::*;
 use crate::misc::{HintData, HintGroup, HintInfo, KeysGroup};
-use crate::tool::{DocumentToolData, Fsm, ToolActionHandlerData};
-use crate::{document::DocumentMessageHandler, message_prelude::*};
+use crate::tool::{tools::resize::Resize, DocumentToolData, Fsm, ToolActionHandlerData};
 use glam::DAffine2;
 use graphene::{layers::style, Operation};
 use serde::{Deserialize, Serialize};
-
-use super::resize::*;
 
 #[derive(Default)]
 pub struct Ellipse {
@@ -59,6 +57,7 @@ impl Default for EllipseToolFsmState {
 		EllipseToolFsmState::Ready
 	}
 }
+
 #[derive(Clone, Debug, Default)]
 struct EllipseToolData {
 	data: Resize,
@@ -141,13 +140,13 @@ impl Fsm for EllipseToolFsmState {
 				HintInfo {
 					key_groups: vec![KeysGroup(vec![Key::KeyShift])],
 					mouse: None,
-					label: String::from("Constrain Square"),
+					label: String::from("Constrain Circular"),
 					plus: true,
 				},
 				HintInfo {
 					key_groups: vec![KeysGroup(vec![Key::KeyAlt])],
 					mouse: None,
-					label: String::from("From Circular"),
+					label: String::from("From Center"),
 					plus: true,
 				},
 			])]),

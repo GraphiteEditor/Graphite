@@ -85,6 +85,8 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, &InputPreprocessor)> 
 					ToolType::Rectangle => Some(RectangleMessage::Abort.into()),
 					ToolType::Ellipse => Some(EllipseMessage::Abort.into()),
 					ToolType::Shape => Some(ShapeMessage::Abort.into()),
+					ToolType::Eyedropper => Some(EyedropperMessage::Abort.into()),
+					ToolType::Fill => Some(FillMessage::Abort.into()),
 					_ => None,
 				};
 
