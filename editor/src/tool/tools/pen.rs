@@ -154,33 +154,26 @@ impl Fsm for PenToolFsmState {
 
 	fn update_hints(&self, responses: &mut VecDeque<Message>) {
 		let hint_data = match self {
-			PenToolFsmState::Ready => HintData(vec![HintGroup(vec![
-				HintInfo {
+			PenToolFsmState::Ready => HintData(vec![HintGroup(vec![HintInfo {
+				key_groups: vec![],
+				mouse: Some(MouseMotion::Lmb),
+				label: String::from("Draw Path"),
+				plus: false,
+			}])]),
+			PenToolFsmState::Drawing => HintData(vec![
+				HintGroup(vec![HintInfo {
 					key_groups: vec![],
 					mouse: Some(MouseMotion::Lmb),
-					label: String::from("Draw Path"),
+					label: String::from("Extend Path"),
 					plus: false,
-				},
-				HintInfo {
+				}]),
+				HintGroup(vec![HintInfo {
 					key_groups: vec![KeysGroup(vec![Key::KeyEnter])],
 					mouse: None,
 					label: String::from("End Path"),
 					plus: false,
-				},
-				HintInfo {
-					key_groups: vec![KeysGroup(vec![Key::KeyR])],
-					mouse: None,
-					label: String::from("TODO"),
-					plus: false,
-				},
-				HintInfo {
-					key_groups: vec![KeysGroup(vec![Key::KeyS])],
-					mouse: None,
-					label: String::from("TODO"),
-					plus: false,
-				},
-			])]),
-			PenToolFsmState::Drawing => HintData(vec![]),
+				}]),
+			]),
 		};
 
 		responses.push_back(FrontendMessage::UpdateInputHints { hint_data }.into());
