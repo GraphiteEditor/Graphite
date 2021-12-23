@@ -32,7 +32,6 @@ pub struct PathGraph{
 }
 
 #[allow(dead_code)] //<---- remove this @ release
-
 impl PathGraph{
    pub fn from_paths(alpha: & BezPath, beta: & BezPath, reverse: bool) -> Option<PathGraph>{
       let mut new = PathGraph{edges: Vec::new(), graph: Vec::new()};
@@ -68,7 +67,7 @@ impl PathGraph{
 
 /// This functions assumes t in [0,1], behavior is undefined otherwise
 /// FIX: function currently panics when line_intersection returns None, this happens when the quad is flat like a line
-pub fn split_path_seg(p: &PathSeg, t: f64) -> (PathSeg, PathSeg){
+pub fn split_path_seg(p: &PathSeg, t: f64) -> (PathSeg, PathSeg) {
    match p{
       PathSeg::Cubic(cubic) => {
          let split = cubic.eval(t);
@@ -90,4 +89,4 @@ pub fn split_path_seg(p: &PathSeg, t: f64) -> (PathSeg, PathSeg){
    }
 }
 
-pub fn boolean_operation(select: BooleanOperation, shapes: Vec<Shape>){}
+pub fn boolean_operation(select: BooleanOperation, shapes: Vec<Shape>) {}

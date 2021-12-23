@@ -5,6 +5,7 @@ use std::{
 
 use glam::{DAffine2, DVec2};
 use serde::{Deserialize, Serialize};
+use kurbo::Affine;
 
 use crate::{
 	layers::{self, Folder, Layer, LayerData, LayerDataType, Shape},
@@ -102,19 +103,36 @@ impl Document {
 		self.folder_mut(path)?.layer_mut(id).ok_or(DocumentError::LayerNotFound)
 	}
 
-	/// Return vector of immutable references to each shape specified in paths
-	/// If any path is not a shape, or does not exist, DocumentError::InvalidPath is returned
-	fn shapes(&self, paths: & Vec<Vec<LayerId>>) -> Result<Vec<& Shape>, DocumentError>{
-		let mut shapes: Vec<& Shape> = Vec::new();
-		for path in paths{
-			if let Ok(ref layer) = self.layer(path){
-				match layer.data {
-					LayerDataType::Shape(ref shape) => shapes.push(shape),
-					LayerDataType::Folder(_) => return Err(DocumentError::InvalidPath),
+	fn shape_as_seen(&self, path: &Vec<LayerId>) -> Result<Shape, DocumentError> {
+		fn helper(layer: &Layer, mut transform: DAffine2, mut slice: usize, path: &Vec<LayerId>) -> Result<Shape, DocumentError> {
+			match &layer.data {
+				LayerDataType::Shape(shape) => {
+					let mut clone = shape.clone();
+					clone.path.apply_affine(Affine::new(transform.to_cols_array()));
+					Ok(clone)
+				}
+				LayerDataType::Folder(folder) => {
+					transform = layer.transform * transform;
+					if slice >= path.len() {return Err(DocumentError::InvalidPath);}
+					if let Some(sub_layer) = folder.layer(path[slice]){
+						slice += 1;
+						return helper(sub_layer, transform, slice, path);
+					}
+					Err(DocumentError::InvalidPath)
 				}
 			}
-			else{
-				return Err(DocumentError::InvalidPath);
+		}
+		helper(& self.root, DAffine2::IDENTITY, 0, path)
+	}
+
+	/// Return vector of immutable references to each shape specified in paths
+	/// If any path is not a shape, or does not exist, DocumentError::InvalidPath is returned
+	fn shapes_as_seen(&self, paths: & Vec<Vec<LayerId>>) -> Result<Vec<Shape>, DocumentError>{
+		let mut shapes: Vec<Shape> = Vec::new();
+		for path in paths{
+			match self.shape_as_seen(path) {
+				Ok(shape) => shapes.push(shape),
+				Err(err) => return Err(err),
 			}
 		}
 		Ok(shapes)
@@ -425,11 +443,13 @@ impl Document {
 			}
 			Operation::BooleanOperation {operation, selected} => {
 				// How should tool behave? what kinds of selection are valid?
+				log::debug!("selected: {:?}", selected);
 				if selected.len() > 1{
-					let shapes = self.shapes(selected)?;
+					let shapes = self.shapes_as_seen(selected)?;
+					log::debug!("shapes: {:?}", shapes);
 					let crosss = intersections(&shapes[0].path, &shapes[1].path);
 					for cross in crosss{
-						log::debug!("intersection @: {}, {}", cross.point.x, cross.point.y);
+						log::debug!("intersection @: {:?}, {:?}", cross.point.x, cross.point.y);
 					}
 				}
 				None

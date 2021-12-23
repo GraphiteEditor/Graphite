@@ -118,49 +118,52 @@ macro_rules! mat_from_points {
 }
 
 /// Rough algorithm
-/// 	- base case? more adapative way to decide when "close enough"
+/// 	- Behavior: when shapes have indentical pathsegs algorithm returns endpoints as intersects?
+/// 	- Improvement: more adapative way to decide when "close enough"
 /// 	- Optimization: Don't actualy split the curve, just pass start/end values
 /// 	- Optimization: Compute curve's derivitive once
 /// 	- Optimization: bounding_box's dont need ot be recomputed
 /// 	- Optimization: Lots of extra copying happening
 /// 	- Optimization: how efficiently does std::Vec::append work?
-fn path_intersections(a: & PathSeg, b: & PathSeg, recursion: &mut usize, t_a: f64, t_b: f64) -> Vec<Intersect> {
+/// 	- Optimization: specialized line/quad/cubic combination algorithms
+fn path_intersections(a: &PathSeg, b: &PathSeg, mut recursion: usize, t_a: f64, t_b: f64) -> Vec<Intersect> {
 	let mut intersections = Vec::new();
-	if <PathSeg as ParamCurveExtrema>::bounding_box(&a).intersect(<PathSeg as ParamCurveExtrema>::bounding_box(&b)).area() > F64PRECISION {
-		*recursion += 1;
+	//special case
+	if let (PathSeg::Line(line_a), PathSeg::Line(line_b)) = (a, b){
+		if let Some(cross) = line_intersection(&line_a, &line_b) {intersections.push(cross);}
+	}
+	else if <PathSeg as ParamCurveExtrema>::bounding_box(&a).intersect(<PathSeg as ParamCurveExtrema>::bounding_box(&b)).area() > F64PRECISION {
+		recursion += 1;
 		// base case, we are close enough to try linear approximation
-		if *recursion > 20{ //arbitrarily chosen limit
+		if recursion > 20{ //arbitrarily chosen limit
 			if let Some(mut cross) = line_intersection(&Line{p0: a.start(), p1: a.end()}, &Line{p0: b.start(), p1: b.end()}){
 				// intersection t_value equals the recursive t_value + interpolated intersection value
-				cross.t_a = t_a + cross.t_a / (1 << *recursion) as f64;
-				cross.t_b = t_b + cross.t_b / (1 << *recursion) as f64;
+				cross.t_a = t_a + cross.t_a / (1 << recursion) as f64;
+				cross.t_b = t_b + cross.t_b / (1 << recursion) as f64;
 				intersections.push(cross);
 			}
 		}
 		let (a1, a2) = split_path_seg(a, 0.5);
 		let (b1, b2) = split_path_seg(b, 0.5);
-		intersections.append(&mut path_intersections(&a1, &b1, recursion, t_a - 1.0 / (1 << *recursion) as f64, t_b - 1.0 / (1 << *recursion) as f64));
-		intersections.append(&mut path_intersections(&a1, &b2, recursion, t_a - 1.0 / (1 << *recursion) as f64, t_b + 1.0 / (1 << *recursion) as f64));
-		intersections.append(&mut path_intersections(&a2, &b1, recursion, t_a + 1.0 / (1 << *recursion) as f64, t_b - 1.0 / (1 << *recursion) as f64));
-		intersections.append(&mut path_intersections(&a2, &b2, recursion, t_a + 1.0 / (1 << *recursion) as f64, t_b + 1.0 / (1 << *recursion) as f64));
+		intersections.append(&mut path_intersections(&a1, &b1, recursion, t_a - 1.0 / (1 << recursion) as f64, t_b - 1.0 / (1 << recursion) as f64));
+		intersections.append(&mut path_intersections(&a1, &b2, recursion, t_a - 1.0 / (1 << recursion) as f64, t_b + 1.0 / (1 << recursion) as f64));
+		intersections.append(&mut path_intersections(&a2, &b1, recursion, t_a + 1.0 / (1 << recursion) as f64, t_b - 1.0 / (1 << recursion) as f64));
+		intersections.append(&mut path_intersections(&a2, &b2, recursion, t_a + 1.0 / (1 << recursion) as f64, t_b + 1.0 / (1 << recursion) as f64));
 	}
 	intersections
 }
 
 pub fn intersections(a: &BezPath, b: &BezPath) -> Vec<Intersect>{
 	let mut intersections: Vec<Intersect> = Vec::new();
-	let to_check = intersection_candidates(a, b);
-	let a_segs: Vec<PathSeg> = a.segments().collect();
-	let b_segs: Vec<PathSeg> = b.segments().collect();
-	for (a_idx, b_idx) in to_check{
-		// a_idx and b_idx should both be valid indices
-		for mut path_intersection in path_intersections(a_segs.get(a_idx).unwrap(), b_segs.get(b_idx).unwrap(), &mut 1, 0.5, 0.5){
+	a.segments().enumerate().for_each(|(a_idx, a_seg)| b.segments().enumerate().for_each(|(b_idx, b_seg)|{
+		for mut path_intersection in path_intersections(&a_seg, &b_seg, 1, 0.5, 0.5){
 			intersections.push({path_intersection.add_idx(a_idx, b_idx); path_intersection});
 		}
-	}
+	}));
 	intersections
 }
 
+/// does not work for intersecting horizontal or vertical lines
 pub fn intersection_candidates(a: &BezPath, b: &BezPath) -> Vec<(usize, usize)> {
 	// optimization ideas
 	//		- store computed bounding boxes
@@ -181,12 +184,17 @@ pub fn line_intersect_point(a: &Line, b: &Line) -> Option<Point> {
 	Some(b.eval(t_vals[0]))
 }
 
-/// returns intersection point and t values as if lines extended forever
+/// returns intersection point and t values, treating lines as Bezier curves
 pub fn line_intersection(a: &Line, b: &Line) -> Option<Intersect> {
 	let slopes = DMat2::from_cols_array(&[(b.p1 - b.p0).x, (b.p1 - b.p0).y,  (a.p0 - a.p1).x, (a.p0 - a.p1).y]);
-	if slopes.determinant() == 0.0 {return None}
+	if slopes.determinant() == 0.0 {return None;}
 	let t_vals = slopes.inverse() * DVec2::new((b.p0 - a.p0).x, (b.p1 - a.p1).y);
+	if !valid_t(t_vals[0]) || !valid_t(t_vals[1]) {return None;}
 	Some(Intersect::from((b.eval(t_vals[0]), t_vals[1], t_vals[0])))
+}
+
+fn valid_t(t: f64) -> bool {
+	t > -F64PRECISION && t < 1.0 + F64PRECISION
 }
 
 pub fn get_arbitrary_point_on_path(path: &BezPath) -> Option<Point> {
