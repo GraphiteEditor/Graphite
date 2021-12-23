@@ -120,7 +120,7 @@ impl Fsm for PenToolFsmState {
 
 					Dragging
 				}
-				(Dragging, Confirm) => {
+				(Dragging, Confirm) | (Dragging, Abort) => {
 					if data.points.len() >= 2 {
 						responses.push_back(DocumentMessage::DeselectAllLayers.into());
 						responses.extend(make_operation(data, tool_data, document.graphene_document.view_mode(), false));
@@ -131,14 +131,6 @@ impl Fsm for PenToolFsmState {
 
 					data.path = None;
 					data.points.clear();
-					data.snap_handler.cleanup();
-
-					Ready
-				}
-				(Dragging, Abort) => {
-					responses.push_back(DocumentMessage::AbortTransaction.into());
-					data.points.clear();
-					data.path = None;
 					data.snap_handler.cleanup();
 
 					Ready
