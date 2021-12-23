@@ -158,6 +158,7 @@ impl DocumentMessageHandler {
 			saved_document_identifier: 0,
 			name,
 			layer_data: vec![(vec![], LayerData::new(true))].into_iter().collect(),
+			layer_range_selection_reference: Vec::new(),
 			movement_handler: MovementMessageHandler::default(),
 			transform_layer_handler: TransformLayerMessageHandler::default(),
 			snapping_enabled: true,
