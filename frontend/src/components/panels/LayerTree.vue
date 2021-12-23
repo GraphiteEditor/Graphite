@@ -36,10 +36,10 @@
 						class="layer"
 						:class="{ selected: layer.layer_data.selected }"
 						:style="{ marginLeft: layerIndent(layer) }"
-						@click.shift.exact.stop="handleShiftClick(layer)"
-						@click.ctrl.exact.stop="handleControlClick(layer)"
-						@click.alt.exact.stop="handleControlClick(layer)"
-						@click.exact.stop="handleClick(layer)"
+						@click.shift.exact.stop="selectLayer(layer, false, true)"
+						@click.shift.ctrl.exact.stop="selectLayer(layer, true, true)"
+						@click.ctrl.exact.stop="selectLayer(layer, true, false)"
+						@click.exact.stop="selectLayer(layer, false, false)"
 					>
 						<div class="layer-thumbnail" v-html="layer.thumbnail"></div>
 						<div class="layer-type-icon">
@@ -289,39 +289,8 @@ export default defineComponent({
 		async setLayerOpacity() {
 			this.editor.instance.set_opacity_for_selected_layers(this.opacity);
 		},
-		async handleControlClick(clickedLayer: LayerPanelEntry) {
-			const index = this.layers.indexOf(clickedLayer);
-			clickedLayer.layer_data.selected = !clickedLayer.layer_data.selected;
-
-			this.selectionRangeEndLayer = undefined;
-			this.selectionRangeStartLayer =
-				this.layers.slice(index).filter((layer) => layer.layer_data.selected)[0] ||
-				this.layers
-					.slice(0, index)
-					.reverse()
-					.filter((layer) => layer.layer_data.selected)[0];
-
-			this.sendSelectedLayers();
-		},
-		async handleShiftClick(clickedLayer: LayerPanelEntry) {
-			// The two paths of the range are stored in selectionRangeStartLayer and selectionRangeEndLayer
-			// So for a new Shift+Click, select all layers between selectionRangeStartLayer and selectionRangeEndLayer (stored in previous Shift+Click)
-			this.clearSelection();
-
-			this.selectionRangeEndLayer = clickedLayer;
-			if (!this.selectionRangeStartLayer) this.selectionRangeStartLayer = clickedLayer;
-			this.fillSelectionRange(this.selectionRangeStartLayer, this.selectionRangeEndLayer, true);
-
-			this.sendSelectedLayers();
-		},
-		async handleClick(clickedLayer: LayerPanelEntry) {
-			this.selectionRangeStartLayer = clickedLayer;
-			this.selectionRangeEndLayer = clickedLayer;
-
-			this.clearSelection();
-			clickedLayer.layer_data.selected = true;
-
-			this.sendSelectedLayers();
+		async selectLayer(clickedLayer: LayerPanelEntry, ctrl: boolean, shift: boolean) {
+			this.editor.instance.select_layer(clickedLayer.path, ctrl, shift);
 		},
 		async deselectAllLayers() {
 			this.selectionRangeStartLayer = undefined;
@@ -329,38 +298,10 @@ export default defineComponent({
 
 			this.editor.instance.deselect_all_layers();
 		},
-		async fillSelectionRange(start: LayerPanelEntry, end: LayerPanelEntry, selected = true) {
-			const startIndex = this.layers.findIndex((layer) => layer.path.join() === start.path.join());
-			const endIndex = this.layers.findIndex((layer) => layer.path.join() === end.path.join());
-			const [min, max] = [startIndex, endIndex].sort();
-
-			if (min !== -1) {
-				for (let i = min; i <= max; i += 1) {
-					this.layers[i].layer_data.selected = selected;
-				}
-			}
-		},
 		async clearSelection() {
 			this.layers.forEach((layer) => {
 				layer.layer_data.selected = false;
 			});
-		},
-		async sendSelectedLayers() {
-			const paths = this.layers.filter((layer) => layer.layer_data.selected).map((layer) => layer.path);
-
-			const length = paths.reduce((acc, cur) => acc + cur.length, 0) + paths.length - 1;
-			const output = new BigUint64Array(length);
-
-			let i = 0;
-			paths.forEach((path, index) => {
-				output.set(path, i);
-				i += path.length;
-				if (index < paths.length) {
-					output[i] = (1n << 64n) - 1n;
-				}
-				i += 1;
-			});
-			this.editor.instance.select_layers(output);
 		},
 		setBlendModeForSelectedLayers() {
 			const selected = this.layers.filter((layer) => layer.layer_data.selected);
@@ -383,6 +324,7 @@ export default defineComponent({
 			}
 		},
 		setOpacityForSelectedLayers() {
+			// todo figure out why this is here
 			const selected = this.layers.filter((layer) => layer.layer_data.selected);
 
 			if (selected.length < 1) {
