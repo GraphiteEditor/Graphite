@@ -150,6 +150,36 @@ impl From<DocumentOperation> for Message {
 }
 
 impl DocumentMessageHandler {
+	pub fn with_name(name: String, ipp: &InputPreprocessor) -> Self {
+		let mut document = Self {
+			graphene_document: GrapheneDocument::default(),
+			document_undo_history: Vec::new(),
+			document_redo_history: Vec::new(),
+			saved_document_identifier: 0,
+			name,
+			layer_data: vec![(vec![], LayerData::new(true))].into_iter().collect(),
+			layer_range_selection_reference: Vec::new(),
+			movement_handler: MovementMessageHandler::default(),
+			transform_layer_handler: TransformLayerMessageHandler::default(),
+			snapping_enabled: true,
+		};
+		document.graphene_document.root.transform = document.layerdata(&[]).calculate_offset_transform(ipp.viewport_bounds.size() / 2.);
+		document
+	}
+
+	pub fn with_name_and_content(name: String, serialized_content: String, ipp: &InputPreprocessor) -> Result<Self, EditorError> {
+		let mut document = Self::with_name(name, ipp);
+		let internal_document = GrapheneDocument::with_content(&serialized_content);
+		match internal_document {
+			Ok(handle) => {
+				document.graphene_document = handle;
+				Ok(document)
+			}
+			Err(DocumentError::InvalidFile(msg)) => Err(EditorError::Document(msg)),
+			_ => Err(EditorError::Document(String::from("Failed to open file"))),
+		}
+	}
+
 	fn select_layer(&mut self, path: &[LayerId]) -> Option<Message> {
 		if self.graphene_document.layer(path).ok()?.overlay {
 			return None;
@@ -305,34 +335,6 @@ impl DocumentMessageHandler {
 	#[allow(dead_code)] // used for test cases
 	pub fn non_selected_layers_sorted(&self) -> Vec<Vec<LayerId>> {
 		self.layers_sorted(Some(false))
-	}
-
-	pub fn with_name(name: String) -> Self {
-		Self {
-			graphene_document: GrapheneDocument::default(),
-			document_undo_history: Vec::new(),
-			document_redo_history: Vec::new(),
-			saved_document_identifier: 0,
-			name,
-			layer_data: vec![(vec![], LayerData::new(true))].into_iter().collect(),
-			layer_range_selection_reference: Vec::new(),
-			movement_handler: MovementMessageHandler::default(),
-			transform_layer_handler: TransformLayerMessageHandler::default(),
-			snapping_enabled: true,
-		}
-	}
-
-	pub fn with_name_and_content(name: String, serialized_content: String) -> Result<Self, EditorError> {
-		let mut document = Self::with_name(name);
-		let internal_document = GrapheneDocument::with_content(&serialized_content);
-		match internal_document {
-			Ok(handle) => {
-				document.graphene_document = handle;
-				Ok(document)
-			}
-			Err(DocumentError::InvalidFile(msg)) => Err(EditorError::Document(msg)),
-			_ => Err(EditorError::Document(String::from("Failed to open file"))),
-		}
 	}
 
 	pub fn layer_data(&mut self, path: &[LayerId]) -> &mut LayerData {
