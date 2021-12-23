@@ -126,10 +126,18 @@ function makeMenuEntries(editor: EditorState): MenuListEntries {
 						label: "Order",
 						children: [
 							[
-								{ label: "Raise To Front", shortcut: ["KeyControl", "KeyShift", "]"], action: async () => editor.instance.reorder_selected_layers(editor.rawWasm.i32_max()) },
-								{ label: "Raise", shortcut: ["KeyControl", "]"], action: async () => editor.instance.reorder_selected_layers(1) },
-								{ label: "Lower", shortcut: ["KeyControl", "["], action: async () => editor.instance.reorder_selected_layers(-1) },
-								{ label: "Lower to Back", shortcut: ["KeyControl", "KeyShift", "["], action: async () => editor.instance.reorder_selected_layers(editor.rawWasm.i32_min()) },
+								{
+									label: "Raise To Front",
+									shortcut: ["KeyControl", "KeyShift", "KeyLeftBracket"],
+									action: async () => editor.instance.reorder_selected_layers(editor.rawWasm.i32_max()),
+								},
+								{ label: "Raise", shortcut: ["KeyControl", "KeyRightBracket"], action: async () => editor.instance.reorder_selected_layers(1) },
+								{ label: "Lower", shortcut: ["KeyControl", "KeyLeftBracket"], action: async () => editor.instance.reorder_selected_layers(-1) },
+								{
+									label: "Lower to Back",
+									shortcut: ["KeyControl", "KeyShift", "KeyRightBracket"],
+									action: async () => editor.instance.reorder_selected_layers(editor.rawWasm.i32_min()),
+								},
 							],
 						],
 					},

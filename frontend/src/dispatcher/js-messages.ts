@@ -11,7 +11,7 @@ export class JsMessage {
 }
 
 // ============================================================================
-// Create classes to replicate Rust's FrontendMessages and data structures below.
+// Add additional classes to replicate Rust's FrontendMessages and data structures below.
 //
 // Remember to add each message to the `messageConstructors` export at the bottom of the file.
 //

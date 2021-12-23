@@ -23,7 +23,7 @@ export function createJsDispatcher() {
 			// eslint-disable-next-line no-console
 			console.error(
 				`Received a frontend message of type "${messageType}" but was not able to parse the data. ` +
-					"(Perhaps this message parser isn't exported in `messageConstructors` at the end of the `js-messages.ts`.)"
+					"(Perhaps this message parser isn't exported in `messageConstructors` at the bottom of `js-messages.ts`.)"
 			);
 			return;
 		}

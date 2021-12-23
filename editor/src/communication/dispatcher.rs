@@ -84,7 +84,7 @@ impl Dispatcher {
 			) || MessageDiscriminant::from(message).local_name().ends_with("MouseMove"))
 		{
 			log::trace!("Message: {:?}", message);
-			log::trace!("Hints: {:?}", self.input_mapper.hints(self.collect_actions()));
+			// log::trace!("Hints: {:?}", self.input_mapper.hints(self.collect_actions()));
 		}
 	}
 }

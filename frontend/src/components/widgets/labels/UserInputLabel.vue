@@ -2,7 +2,7 @@
 	<div class="user-input-label">
 		<template v-for="(keyGroup, keyGroupIndex) in inputKeys" :key="keyGroupIndex">
 			<span class="group-gap" v-if="keyGroupIndex > 0"></span>
-			<template v-for="inputKey in keyGroup" :key="(keyInfo = keyTextOrIcon(inputKey)) || inputKey">
+			<template v-for="inputKey in keyGroup" :key="((keyInfo = keyTextOrIcon(inputKey)), inputKey)">
 				<span class="input-key" :class="keyInfo.width">
 					<IconLabel v-if="keyInfo.icon" :icon="keyInfo.icon" />
 					<template v-else>{{ keyInfo.text }}</template>
@@ -49,7 +49,7 @@
 		border-color: var(--color-7-middlegray);
 		border-radius: 4px;
 		height: 16px;
-		// Firefox renders the text 1px lower than Chrome (tested on Windows) with 16px, so moving it up 1px to 15px makes them agree
+		// Firefox renders the text 1px lower than Chrome (tested on Windows) with 16px line-height, so moving it up 1 pixel with 15px makes them agree
 		line-height: 15px;
 
 		&.width-16 {
