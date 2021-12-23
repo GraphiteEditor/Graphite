@@ -19,8 +19,6 @@ pub struct Document {
 	/// This identifier is not a hash and is not guaranteed to be equal for equivalent documents.
 	#[serde(skip)]
 	pub state_identifier: DefaultHasher,
-	#[serde(skip)]
-	view_mode: ViewMode,
 }
 
 impl Default for Document {
@@ -28,7 +26,6 @@ impl Default for Document {
 		Self {
 			root: Layer::new(LayerDataType::Folder(Folder::default()), DAffine2::IDENTITY.to_cols_array()),
 			state_identifier: DefaultHasher::new(),
-			view_mode: ViewMode::default(),
 		}
 	}
 }
@@ -39,8 +36,8 @@ impl Document {
 	}
 
 	/// Wrapper around render, that returns the whole document as a Response.
-	pub fn render_root(&mut self) -> String {
-		self.root.render(&mut vec![]);
+	pub fn render_root(&mut self, mode: ViewMode) -> String {
+		self.root.render(&mut vec![], mode);
 		self.root.cache.clone()
 	}
 
@@ -52,14 +49,6 @@ impl Document {
 		let val = serde_json::to_string(self);
 		// We fully expect the serialization to succeed
 		val.unwrap()
-	}
-
-	pub fn view_mode(&self) -> ViewMode {
-		self.view_mode
-	}
-
-	pub fn update_view_mode(&mut self, mode: ViewMode) {
-		self.view_mode = mode;
 	}
 
 	/// Checks whether each layer under `path` intersects with the provided `quad` and adds all intersection layers as paths to `intersections`.
@@ -215,7 +204,6 @@ impl Document {
 	}
 
 	/// Visit each layer recursively, applies modify_shape to each non-overlay Shape
-	/// Currently used to swap between viewmodes
 	pub fn visit_all_shapes<F: FnMut(&mut Shape) -> ()>(layer: &mut Layer, modify_shape: &mut F) -> bool {
 		match layer.data {
 			LayerDataType::Shape(ref mut shape) => {
@@ -645,11 +633,6 @@ impl Document {
 				}
 				self.mark_as_dirty(path)?;
 				Some([vec![DocumentChanged], update_thumbnails_upstream(path)].concat())
-			}
-			Operation::SetViewMode { mode } => {
-				self.view_mode = *mode;
-				Document::visit_all_shapes(&mut self.root, &mut |s: &mut Shape| s.style.update_view_mode(*mode));
-				Some(vec![DocumentResponse::DocumentChanged])
 			}
 		};
 		Ok(responses)

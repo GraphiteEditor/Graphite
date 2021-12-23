@@ -13,7 +13,6 @@ use editor::input::mouse::{EditorMouseState, ScrollDelta, ViewportBounds};
 use editor::misc::EditorError;
 use editor::tool::{tool_options::ToolOptions, tools, ToolType};
 use editor::{message_prelude::*, Color, Editor, LayerId};
-use graphene::operation::Operation;
 use wasm_bindgen::prelude::*;
 
 // To avoid wasm-bindgen from checking mutable reference issues using WasmRefCell
@@ -380,7 +379,7 @@ impl JsEditorHandle {
 	/// Swap between view modes
 	pub fn set_view_mode(&self, new_mode: String) -> Result<(), JsValue> {
 		match translate_view_mode(new_mode.as_str()) {
-			Some(mode) => self.dispatch(<Operation as Into<DocumentMessage>>::into(Operation::SetViewMode { mode })),
+			Some(mode) => self.dispatch(DocumentMessage::SetViewMode((mode, true))),
 			None => return Err(Error::new("Invalid view mode").into()),
 		};
 		Ok(())

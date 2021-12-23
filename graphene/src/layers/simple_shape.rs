@@ -32,9 +32,9 @@ pub struct Shape {
 }
 
 impl LayerData for Shape {
-	fn render(&mut self, svg: &mut String, transforms: &mut Vec<DAffine2>) {
+	fn render(&mut self, svg: &mut String, transforms: &mut Vec<DAffine2>, mode: (ViewMode, bool)) {
 		let mut path = self.path.clone();
-		let transform = self.transform(transforms);
+		let transform = self.transform(transforms, mode.0);
 		let inverse = transform.inverse();
 		if !inverse.is_finite() {
 			let _ = write!(svg, "<!-- SVG shape has an invalid transform -->");
@@ -47,7 +47,7 @@ impl LayerData for Shape {
 			let _ = svg.write_str(&(entry.to_string() + if i != 5 { "," } else { "" }));
 		});
 		let _ = svg.write_str(r#")">"#);
-		let _ = write!(svg, r#"<path d="{}" {} />"#, path.to_svg(), self.style.render());
+		let _ = write!(svg, r#"<path d="{}" {} />"#, path.to_svg(), self.style.render(mode));
 		let _ = svg.write_str("</g>");
 	}
 
@@ -71,8 +71,8 @@ impl LayerData for Shape {
 }
 
 impl Shape {
-	pub fn transform(&self, transforms: &[DAffine2]) -> DAffine2 {
-		let start = match (self.style.view_mode(), self.render_index) {
+	pub fn transform(&self, transforms: &[DAffine2], mode: ViewMode) -> DAffine2 {
+		let start = match (mode, self.render_index) {
 			(ViewMode::WireFrame, _) => 0,
 			(_, -1) => 0,
 			(_, x) => (transforms.len() as i32 - x).max(0) as usize,

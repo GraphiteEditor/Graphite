@@ -16,8 +16,8 @@ use kurbo::PathSeg;
 use log::warn;
 use serde::{Deserialize, Serialize};
 
-use graphene::layers::BlendMode;
-use graphene::{document::Document as GrapheneDocument, layers::LayerDataType, DocumentError, LayerId};
+use graphene::layers::{style::ViewMode, BlendMode, LayerDataType};
+use graphene::{document::Document as GrapheneDocument, DocumentError, LayerId};
 use graphene::{DocumentResponse, Operation as DocumentOperation};
 
 type DocumentSave = (GrapheneDocument, HashMap<Vec<LayerId>, LayerData>);
@@ -68,6 +68,7 @@ pub struct DocumentMessageHandler {
 	movement_handler: MovementMessageHandler,
 	transform_layer_handler: TransformLayerMessageHandler,
 	pub snapping_enabled: bool,
+	pub view_mode: ViewMode,
 }
 
 impl Default for DocumentMessageHandler {
@@ -83,6 +84,7 @@ impl Default for DocumentMessageHandler {
 			movement_handler: MovementMessageHandler::default(),
 			transform_layer_handler: TransformLayerMessageHandler::default(),
 			snapping_enabled: true,
+			view_mode: ViewMode::default(),
 		}
 	}
 }
@@ -127,6 +129,7 @@ pub enum DocumentMessage {
 	DocumentHistoryBackward,
 	DocumentHistoryForward,
 	ClearOverlays,
+	SetViewMode((ViewMode, bool)),
 	NudgeSelectedLayers(f64, f64),
 	AlignSelectedLayers(AlignAxis, AlignAggregate),
 	MoveSelectedLayersTo {
@@ -162,6 +165,7 @@ impl DocumentMessageHandler {
 			movement_handler: MovementMessageHandler::default(),
 			transform_layer_handler: TransformLayerMessageHandler::default(),
 			snapping_enabled: true,
+			view_mode: ViewMode::default(),
 		};
 		document.graphene_document.root.transform = document.layerdata(&[]).calculate_offset_transform(ipp.viewport_bounds.size() / 2.);
 		document
@@ -479,7 +483,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 							size.x,
 							size.y,
 							"\n",
-							self.graphene_document.render_root()
+							self.graphene_document.render_root(self.view_mode)
 						),
 						name,
 					}
@@ -570,6 +574,13 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					responses.push_front(DocumentOperation::DeleteLayer { path }.into());
 				}
 			}
+			SetViewMode((mode, update)) => {
+				if update {
+					self.view_mode = mode
+				};
+				GrapheneDocument::visit_all_shapes(&mut self.graphene_document.root, &mut |_| {}); // mark all non-overlay caches as dirty
+				responses.push_back(DocumentMessage::RenderDocument.into());
+			}
 			DuplicateSelectedLayers => {
 				self.backup(responses);
 				for path in self.selected_layers_sorted() {
@@ -659,7 +670,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				responses.push_back(FolderChanged(vec![]).into());
 			}
 			FolderChanged(path) => {
-				let _ = self.graphene_document.render_root();
+				let _ = self.graphene_document.render_root(self.view_mode);
 				responses.extend([LayerChanged(path).into(), DocumentStructureChanged.into()]);
 			}
 			DocumentStructureChanged => {
@@ -701,7 +712,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			RenderDocument => {
 				responses.push_back(
 					FrontendMessage::UpdateCanvas {
-						document: self.graphene_document.render_root(),
+						document: self.graphene_document.render_root(self.view_mode),
 					}
 					.into(),
 				);

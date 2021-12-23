@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 const OPACITY_PRECISION: usize = 3;
 pub const WIRE_FRAME_STROKE_WIDTH: f32 = 1.0;
 pub const EMPTY_FILL: Fill = Fill::none();
-pub const THIN_BLACK_STROKE: Stroke = Stroke::new(Color::BLACK, WIRE_FRAME_STROKE_WIDTH);
+pub const WIRE_FRAME_STROKE: Stroke = Stroke::new(Color::BLACK, WIRE_FRAME_STROKE_WIDTH);
 
 fn format_opacity(name: &str, opacity: f32) -> String {
 	if (opacity - 1.).abs() > 10f32.powi(-(OPACITY_PRECISION as i32)) {
@@ -75,20 +75,10 @@ impl Stroke {
 pub struct PathStyle {
 	stroke: Option<Stroke>,
 	fill: Option<Fill>,
-
-	#[serde(skip)]
-	view_mode: ViewMode,
 }
 impl PathStyle {
 	pub fn new(stroke: Option<Stroke>, fill: Option<Fill>) -> Self {
-		Self {
-			stroke,
-			fill,
-			view_mode: ViewMode::default(),
-		}
-	}
-	pub fn with_mode(stroke: Option<Stroke>, fill: Option<Fill>, mode: ViewMode) -> Self {
-		Self { stroke, fill, view_mode: mode }
+		Self { stroke, fill }
 	}
 	pub fn fill(&self) -> Option<Fill> {
 		self.fill
@@ -108,24 +98,21 @@ impl PathStyle {
 	pub fn clear_stroke(&mut self) {
 		self.stroke = None;
 	}
-	pub fn update_view_mode(&mut self, new_mode: ViewMode) {
-		self.view_mode = new_mode;
-	}
-	pub fn view_mode(&self) -> ViewMode {
-		self.view_mode
-	}
 
-	pub fn render(&self) -> String {
+	pub fn render(&self, mode: (ViewMode, bool)) -> String {
 		// change stroke rendering so solid paths don't dissapear
+
+		// mode.1 acts as an ViewMode override, useful for layers with purposes like an overlay layer, which should ignore the view mode
+		let view_mode = if mode.1 { ViewMode::Normal } else { mode.0 };
 		format!(
 			"{}{}",
-			match (self.view_mode, self.fill) {
+			match (view_mode, self.fill) {
 				(ViewMode::WireFrame, _) => EMPTY_FILL.render(),
 				(_, Some(fill)) => fill.render(),
 				(_, None) => String::new(),
 			},
-			match (self.view_mode, self.stroke) {
-				(ViewMode::WireFrame, _) => THIN_BLACK_STROKE.render(),
+			match (view_mode, self.stroke) {
+				(ViewMode::WireFrame, _) => WIRE_FRAME_STROKE.render(),
 				(_, Some(stroke)) => stroke.render(),
 				(_, None) => String::new(),
 			},

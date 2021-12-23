@@ -1,6 +1,6 @@
 use glam::DVec2;
 
-use crate::{DocumentError, LayerId, Quad};
+use crate::{layers::style::ViewMode, DocumentError, LayerId, Quad};
 
 use super::{Layer, LayerData, LayerDataType};
 
@@ -15,9 +15,10 @@ pub struct Folder {
 }
 
 impl LayerData for Folder {
-	fn render(&mut self, svg: &mut String, transforms: &mut Vec<glam::DAffine2>) {
+	fn render(&mut self, svg: &mut String, transforms: &mut Vec<glam::DAffine2>, mode: (ViewMode, bool)) {
 		for layer in &mut self.layers {
-			let _ = writeln!(svg, "{}", layer.render(transforms));
+			// using mode.0 means that a sub_layer can override a parent layer
+			let _ = writeln!(svg, "{}", layer.render(transforms, mode.0));
 		}
 	}
 

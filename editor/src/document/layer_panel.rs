@@ -1,8 +1,8 @@
 use crate::consts::VIEWPORT_ROTATE_SNAP_INTERVAL;
 use glam::{DAffine2, DVec2};
-use graphene::layers::{BlendMode, LayerDataType};
 use graphene::{
-	layers::{Layer, LayerData as DocumentLayerData},
+	layers::style::ViewMode,
+	layers::{BlendMode, Layer, LayerData as DocumentLayerData, LayerDataType},
 	LayerId,
 };
 use serde::{
@@ -64,7 +64,7 @@ pub fn layer_panel_entry(layer_data: &LayerData, transform: DAffine2, layer: &La
 	let arr = arr.iter().map(|x| (*x).into()).collect::<Vec<(f64, f64)>>();
 
 	let mut thumbnail = String::new();
-	layer.data.clone().render(&mut thumbnail, &mut vec![transform]);
+	layer.data.clone().render(&mut thumbnail, &mut vec![transform], (ViewMode::Normal, layer.overlay));
 	let transform = transform.to_cols_array().iter().map(ToString::to_string).collect::<Vec<_>>().join(",");
 	let thumbnail = if let [(x_min, y_min), (x_max, y_max)] = arr.as_slice() {
 		format!(
