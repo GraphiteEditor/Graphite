@@ -1,0 +1,4 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 12 12">
+	<path class="bright" d="M11,3v6H4.41l-3-3l3-3H11 M12,2H4L0,6l4,4h8V2L12,2z" />
+	<polygon class="bright" points="9.35,4.35 8.65,3.65 7,5.29 5.35,3.65 4.65,4.35 6.29,6 4.65,7.65 5.35,8.35 7,6.71 8.65,8.35 9.35,7.65 7.71,6" />
+</svg>
