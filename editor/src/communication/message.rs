@@ -23,8 +23,6 @@ pub enum Message {
 	#[child]
 	Documents(DocumentsMessage),
 	#[child]
-	Overlays(OverlaysMessage),
-	#[child]
 	Global(GlobalMessage),
 	#[child]
 	Tool(ToolMessage),

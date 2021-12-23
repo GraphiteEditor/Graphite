@@ -18,7 +18,7 @@ use serde::{Deserialize, Serialize};
 
 use graphene::layers::BlendMode;
 use graphene::{document::Document as GrapheneDocument, layers::LayerDataType, DocumentError, LayerId};
-use graphene::{DocumentResponse, Operation as DocumentOperation};
+use graphene::{Operation as DocumentOperation, DocumentResponse};
 
 type DocumentSave = (GrapheneDocument, HashMap<Vec<LayerId>, LayerData>);
 
@@ -87,19 +87,18 @@ impl Default for DocumentMessageHandler {
 	}
 }
 
-pub struct Overlays;
 
-#[impl_message(Message, OverlaysMessage, Overlays)]
+#[impl_message(Message, DocumentMessage, Overlay)]
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
-pub enum OverlaysMessage {
+pub enum OverlayMessage {
 	DispatchOperation(Box<DocumentOperation>),
 }
 
-impl From<DocumentOperation> for OverlaysMessage {
+/*impl From<DocumentOperation> for OverlaysMessage {
 	fn from(operation: DocumentOperation) -> OverlaysMessage {
 		Self::DispatchOperation(Box::new(operation))
 	}
-}
+}*/
 
 // impl From<DocumentOperation> for Message {
 // 	fn from(operation: DocumentOperation) -> Message {
@@ -115,6 +114,8 @@ pub enum DocumentMessage {
 	#[child]
 	TransformLayers(TransformLayerMessage),
 	DispatchOperation(Box<DocumentOperation>),
+	#[child]
+	Overlay(OverlayMessage),
 	SetSelectedLayers(Vec<Vec<LayerId>>),
 	AddSelectedLayers(Vec<Vec<LayerId>>),
 	SelectAllLayers,
@@ -480,6 +481,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				responses.extend([RenderDocument.into(), DocumentStructureChanged.into()]);
 			}
 			CommitTransaction => (),
+			Overlay(_) => todo!("implement overlay handling"),
 			ExportDocument => {
 				let bbox = self.graphene_document.visible_layers_bounding_box().unwrap_or([DVec2::ZERO, ipp.viewport_bounds.size()]);
 				let size = bbox[1] - bbox[0];
