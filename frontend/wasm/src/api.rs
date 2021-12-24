@@ -81,7 +81,8 @@ impl JsEditorHandle {
 	}
 
 	// ========================================================================
-	// Create JS -> Rust wrapper functions below
+	// Add additional JS -> Rust wrapper functions below as needed for calling the
+	// backend from the web frontend.
 	// ========================================================================
 
 	pub fn has_crashed(&self) -> JsValue {

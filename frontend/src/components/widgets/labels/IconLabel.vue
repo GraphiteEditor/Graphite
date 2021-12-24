@@ -99,17 +99,28 @@ import WindowButtonWinMinimize from "@/../assets/12px-solid/window-button-win-mi
 import WindowButtonWinMaximize from "@/../assets/12px-solid/window-button-win-maximize.svg";
 import WindowButtonWinRestoreDown from "@/../assets/12px-solid/window-button-win-restore-down.svg";
 import WindowButtonWinClose from "@/../assets/12px-solid/window-button-win-close.svg";
+import KeyboardArrowUp from "@/../assets/12px-solid/keyboard-arrow-up.svg";
+import KeyboardArrowRight from "@/../assets/12px-solid/keyboard-arrow-right.svg";
+import KeyboardArrowDown from "@/../assets/12px-solid/keyboard-arrow-down.svg";
+import KeyboardArrowLeft from "@/../assets/12px-solid/keyboard-arrow-left.svg";
+import KeyboardBackspace from "@/../assets/12px-solid/keyboard-backspace.svg";
+import KeyboardCommand from "@/../assets/12px-solid/keyboard-command.svg";
+import KeyboardEnter from "@/../assets/12px-solid/keyboard-enter.svg";
+import KeyboardOption from "@/../assets/12px-solid/keyboard-option.svg";
+import KeyboardShift from "@/../assets/12px-solid/keyboard-shift.svg";
+import KeyboardSpace from "@/../assets/12px-solid/keyboard-space.svg";
+import KeyboardTab from "@/../assets/12px-solid/keyboard-tab.svg";
 
 import MouseHintNone from "@/../assets/16px-two-tone/mouse-hint-none.svg";
-import MouseHintLMB from "@/../assets/16px-two-tone/mouse-hint-lmb.svg";
-import MouseHintRMB from "@/../assets/16px-two-tone/mouse-hint-rmb.svg";
-import MouseHintMMB from "@/../assets/16px-two-tone/mouse-hint-mmb.svg";
+import MouseHintLmb from "@/../assets/16px-two-tone/mouse-hint-lmb.svg";
+import MouseHintRmb from "@/../assets/16px-two-tone/mouse-hint-rmb.svg";
+import MouseHintMmb from "@/../assets/16px-two-tone/mouse-hint-mmb.svg";
 import MouseHintScrollUp from "@/../assets/16px-two-tone/mouse-hint-scroll-up.svg";
 import MouseHintScrollDown from "@/../assets/16px-two-tone/mouse-hint-scroll-down.svg";
 import MouseHintDrag from "@/../assets/16px-two-tone/mouse-hint-drag.svg";
-import MouseHintLMBDrag from "@/../assets/16px-two-tone/mouse-hint-lmb-drag.svg";
-import MouseHintRMBDrag from "@/../assets/16px-two-tone/mouse-hint-rmb-drag.svg";
-import MouseHintMMBDrag from "@/../assets/16px-two-tone/mouse-hint-mmb-drag.svg";
+import MouseHintLmbDrag from "@/../assets/16px-two-tone/mouse-hint-lmb-drag.svg";
+import MouseHintRmbDrag from "@/../assets/16px-two-tone/mouse-hint-rmb-drag.svg";
+import MouseHintMmbDrag from "@/../assets/16px-two-tone/mouse-hint-mmb-drag.svg";
 
 import NodeTypePath from "@/../assets/24px-full-color/node-type-path.svg";
 import NodeTypeFolder from "@/../assets/24px-full-color/node-type-folder.svg";
@@ -182,16 +193,27 @@ const icons = {
 	WindowButtonWinMaximize: { component: WindowButtonWinMaximize, size: 12 },
 	WindowButtonWinRestoreDown: { component: WindowButtonWinRestoreDown, size: 12 },
 	WindowButtonWinClose: { component: WindowButtonWinClose, size: 12 },
+	KeyboardArrowUp: { component: KeyboardArrowUp, size: 12 },
+	KeyboardArrowRight: { component: KeyboardArrowRight, size: 12 },
+	KeyboardArrowDown: { component: KeyboardArrowDown, size: 12 },
+	KeyboardArrowLeft: { component: KeyboardArrowLeft, size: 12 },
+	KeyboardBackspace: { component: KeyboardBackspace, size: 12 },
+	KeyboardCommand: { component: KeyboardCommand, size: 12 },
+	KeyboardEnter: { component: KeyboardEnter, size: 12 },
+	KeyboardOption: { component: KeyboardOption, size: 12 },
+	KeyboardShift: { component: KeyboardShift, size: 12 },
+	KeyboardSpace: { component: KeyboardSpace, size: 12 },
+	KeyboardTab: { component: KeyboardTab, size: 12 },
 	MouseHintNone: { component: MouseHintNone, size: 16 },
-	MouseHintLMB: { component: MouseHintLMB, size: 16 },
-	MouseHintRMB: { component: MouseHintRMB, size: 16 },
-	MouseHintMMB: { component: MouseHintMMB, size: 16 },
+	MouseHintLmb: { component: MouseHintLmb, size: 16 },
+	MouseHintRmb: { component: MouseHintRmb, size: 16 },
+	MouseHintMmb: { component: MouseHintMmb, size: 16 },
 	MouseHintScrollUp: { component: MouseHintScrollUp, size: 16 },
 	MouseHintScrollDown: { component: MouseHintScrollDown, size: 16 },
 	MouseHintDrag: { component: MouseHintDrag, size: 16 },
-	MouseHintLMBDrag: { component: MouseHintLMBDrag, size: 16 },
-	MouseHintRMBDrag: { component: MouseHintRMBDrag, size: 16 },
-	MouseHintMMBDrag: { component: MouseHintMMBDrag, size: 16 },
+	MouseHintLmbDrag: { component: MouseHintLmbDrag, size: 16 },
+	MouseHintRmbDrag: { component: MouseHintRmbDrag, size: 16 },
+	MouseHintMmbDrag: { component: MouseHintMmbDrag, size: 16 },
 	NodeTypePath: { component: NodeTypePath, size: 24 },
 	NodeTypeFolder: { component: NodeTypeFolder, size: 24 },
 };
