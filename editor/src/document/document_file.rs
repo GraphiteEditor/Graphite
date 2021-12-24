@@ -51,7 +51,9 @@ pub enum VectorManipulatorSegment {
 
 #[derive(PartialEq, Clone, Debug)]
 pub struct VectorManipulatorShape {
+	/// The outline of the shape.
 	pub path: kurbo::BezPath,
+	/// The control points / manipulator handles.
 	pub segments: Vec<VectorManipulatorSegment>,
 	pub transform: DAffine2,
 }

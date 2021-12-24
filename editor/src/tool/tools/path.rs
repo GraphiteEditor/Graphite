@@ -25,6 +25,7 @@ pub struct Path {
 #[impl_message(Message, ToolMessage, Path)]
 #[derive(PartialEq, Clone, Debug, Hash, Serialize, Deserialize)]
 pub enum PathMessage {
+	MouseDown,
 	RedrawOverlay,
 	Abort,
 }
@@ -33,12 +34,15 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Path {
 	fn process_action(&mut self, action: ToolMessage, data: ToolActionHandlerData<'a>, responses: &mut VecDeque<Message>) {
 		self.fsm_state = self.fsm_state.transition(action, data.0, data.1, &mut self.data, data.2, responses);
 	}
-	fn actions(&self) -> ActionList {
-		use PathToolFsmState::*;
-		match self.fsm_state {
-			Ready => actions!(PathMessageDiscriminant;),
-		}
-	}
+
+	// different actions depending on state may be wanted:
+	// fn actions(&self) -> ActionList {
+	// 	use PathToolFsmState::*;
+	// 	match self.fsm_state {
+	// 		Ready => actions!(PathMessageDiscriminant; MouseDown),
+	// 	}
+	// }
+	advertise_actions!(PathMessageDiscriminant; MouseDown);
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -71,7 +75,7 @@ impl Fsm for PathToolFsmState {
 		document: &DocumentMessageHandler,
 		_tool_data: &DocumentToolData,
 		data: &mut Self::ToolData,
-		_input: &InputPreprocessor,
+		input: &InputPreprocessor,
 		responses: &mut VecDeque<Message>,
 	) -> Self {
 		if let ToolMessage::Path(event) = event {
@@ -141,22 +145,20 @@ impl Fsm for PathToolFsmState {
 
 							// Draw the draggable square points on the end of every line segment or bezier curve segment
 							for anchor in anchors {
-								let marker = data.anchor_marker_pool[anchor_i].clone();
-
 								let scale = DVec2::splat(VECTOR_MANIPULATOR_ANCHOR_MARKER_SIZE);
 								let angle = 0.;
 								let translation = (anchor - (scale / 2.) + BIAS).round();
 								let transform = DAffine2::from_scale_angle_translation(scale, angle, translation).to_cols_array();
 
+								let marker = &data.anchor_marker_pool[anchor_i];
 								responses.push_back(Operation::SetLayerTransformInViewport { path: marker.clone(), transform }.into());
-								responses.push_back(Operation::SetLayerVisibility { path: marker, visible: true }.into());
-
+								responses.push_back(Operation::SetLayerVisibility { path: marker.clone(), visible: true }.into());
 								anchor_i += 1;
 							}
 
 							// Draw the draggable handle for cubic and quadratic bezier segments
 							for handle in handles {
-								let marker = data.handle_marker_pool[handle_i].clone();
+								let marker = &data.handle_marker_pool[handle_i];
 
 								let scale = DVec2::splat(VECTOR_MANIPULATOR_ANCHOR_MARKER_SIZE);
 								let angle = 0.;
@@ -164,7 +166,7 @@ impl Fsm for PathToolFsmState {
 								let transform = DAffine2::from_scale_angle_translation(scale, angle, translation).to_cols_array();
 
 								responses.push_back(Operation::SetLayerTransformInViewport { path: marker.clone(), transform }.into());
-								responses.push_back(Operation::SetLayerVisibility { path: marker, visible: true }.into());
+								responses.push_back(Operation::SetLayerVisibility { path: marker.clone(), visible: true }.into());
 
 								handle_i += 1;
 							}
@@ -187,6 +189,114 @@ impl Fsm for PathToolFsmState {
 					for i in shape_i..data.shape_outline_pool.len() {
 						let shape_i = data.shape_outline_pool[i].clone();
 						responses.push_back(Operation::SetLayerVisibility { path: shape_i, visible: false }.into());
+					}
+
+					self
+				}
+				(_, MouseDown) => {
+					// todo: DRY refactor (this arm is very similar to the (_, RedrawOverlay) arm)
+					// WIP: selecting control point working
+					// next: correctly modifying path
+					// to test: E, make ellipse, A, click control point, see it change color
+					// todo: use cargo clippy?
+
+					let mouse_pos = input.mouse.position;
+					let mut points = Vec::new();
+
+					let (mut anchor_i, mut handle_i, _line_i, mut shape_i) = (0, 0, 0, 0);
+					let shapes_to_draw = document.selected_layers_vector_points();
+					let (total_anchors, total_handles, _total_anchor_handle_lines) = calculate_total_overlays_per_type(&shapes_to_draw);
+					grow_overlay_pool_entries(&mut data.anchor_marker_pool, total_anchors, add_anchor_marker, responses);
+					grow_overlay_pool_entries(&mut data.handle_marker_pool, total_handles, add_handle_marker, responses);
+
+					#[derive(Debug)]
+					enum PointRef {
+						Anchor(usize),
+						Handle(usize),
+					}
+					#[derive(Debug)]
+					struct Point(DVec2, PointRef, f64);
+
+					// todo: use const?
+					// use crate::consts::SELECTION_TOLERANCE;
+					// let tolerance = DVec2::splat(SELECTION_TOLERANCE);
+					// let quad = Quad::from_box([mouse_pos - tolerance, mouse_pos + tolerance]);
+					let select_threshold = 6.;
+					let select_threshold_squared = select_threshold * select_threshold;
+
+					for shape_to_draw in &shapes_to_draw {
+						let shape_layer_path = &data.shape_outline_pool[shape_i];
+						shape_i += 1;
+
+						let bez = {
+							use kurbo::PathEl;
+							let mut bez: Vec<_> = shape_to_draw.path.clone().into_iter().collect();
+							for a in &mut bez {
+								match a {
+									PathEl::LineTo(p) => {
+										p.x += 5.;
+									}
+									_ => {}
+								}
+							}
+							let bez: BezPath = bez.into_iter().collect();
+							bez
+						};
+
+						// todo: change path correctly
+						responses.push_back(
+							Operation::SetShapePathInViewport {
+								path: shape_layer_path.clone(),
+								bez_path: bez,
+								transform: shape_to_draw.transform.to_cols_array(),
+							}
+							.into(),
+						);
+
+						for segment in &shape_to_draw.segments {
+							// TODO: We draw each anchor point twice because segment has it on both ends, fix this
+							// TODO: DRY, see above
+							let (anchors, handles, _anchor_handle_lines) = match segment {
+								VectorManipulatorSegment::Line(a1, a2) => (vec![*a1, *a2], vec![], vec![]),
+								VectorManipulatorSegment::Quad(a1, h1, a2) => (vec![*a1, *a2], vec![*h1], vec![(*h1, *a1)]),
+								VectorManipulatorSegment::Cubic(a1, h1, h2, a2) => (vec![*a1, *a2], vec![*h1, *h2], vec![(*h1, *a1), (*h2, *a2)]),
+							};
+
+							for anchor in anchors {
+								let d2 = mouse_pos.distance_squared(anchor.into());
+								if d2 < select_threshold_squared {
+									points.push(Point(anchor.clone(), PointRef::Anchor(anchor_i), d2));
+								}
+								anchor_i += 1;
+							}
+							for handle in handles {
+								let d2 = mouse_pos.distance_squared(handle.into());
+								if d2 < select_threshold_squared {
+									points.push(Point(handle.clone(), PointRef::Handle(handle_i), d2));
+								}
+								handle_i += 1;
+							}
+						}
+					}
+
+					points.sort_by(|a, b| a.2.partial_cmp(&b.2).unwrap_or(std::cmp::Ordering::Equal));
+					let closest_point_within_click_threshold = points.first();
+					// log::debug!("PATH TOOL: {:?} {:?}", mouse_pos, points);
+
+					if let Some(point) = closest_point_within_click_threshold {
+						let path = match point.1 {
+							PointRef::Anchor(i) => data.anchor_marker_pool[i].clone(),
+							PointRef::Handle(i) => data.handle_marker_pool[i].clone(),
+						};
+						// todo: use Operation::SetShapePathInViewport instead
+						// 	currently using SetLayerFill just to show some effect
+						responses.push_back(
+							Operation::SetLayerFill {
+								path,
+								color: Color::from_rgb8(if mouse_pos.x > 500. { 0 } else { 255 }, if mouse_pos.x > 500. { 255 } else { 0 }, 0),
+							}
+							.into(),
+						);
 					}
 
 					self
