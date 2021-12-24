@@ -16,6 +16,7 @@ pub type KeyStates = BitVector<KEY_MASK_STORAGE_LENGTH>;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Key {
 	UnknownKey,
+
 	// MouseKeys
 	Lmb,
 	Rmb,
@@ -85,6 +86,20 @@ pub enum Key {
 
 	// This has to be the last element in the enum.
 	NumKeys,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum MouseMotion {
+	None,
+	Lmb,
+	Rmb,
+	Mmb,
+	ScrollUp,
+	ScrollDown,
+	Drag,
+	LmbDrag,
+	RmbDrag,
+	MmbDrag,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

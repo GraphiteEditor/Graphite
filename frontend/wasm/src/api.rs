@@ -44,8 +44,8 @@ impl JsEditorHandle {
 	// Sends a message to the dispatcher in the Editor Backend
 	fn dispatch<T: Into<Message>>(&self, message: T) {
 		// Process no further messages after a crash to avoid spamming the console
-		let has_crashed = EDITOR_HAS_CRASHED.with(|crash_state| crash_state.borrow().clone());
-		if let Some(message) = has_crashed {
+		let possible_crash_message = EDITOR_HAS_CRASHED.with(|crash_state| crash_state.borrow().clone());
+		if let Some(message) = possible_crash_message {
 			if !self.instance_received_crashed.get() {
 				self.handle_response(message);
 				self.instance_received_crashed.set(true);
@@ -80,6 +80,16 @@ impl JsEditorHandle {
 				error,
 			)
 		}
+	}
+
+	// ========================================================================
+	// Add additional JS -> Rust wrapper functions below as needed for calling the
+	// backend from the web frontend.
+	// ========================================================================
+
+	pub fn has_crashed(&self) -> JsValue {
+		let has_crashed = EDITOR_HAS_CRASHED.with(|crash_state| crash_state.borrow().is_some());
+		has_crashed.into()
 	}
 
 	/// Modify the currently selected tool in the document state store
@@ -313,6 +323,11 @@ impl JsEditorHandle {
 		self.dispatch(message);
 	}
 
+	pub fn select_layer(&self, paths: Vec<LayerId>, ctrl: bool, shift: bool) {
+		let message = DocumentMessage::SelectLayer(paths, ctrl, shift);
+		self.dispatch(message);
+	}
+
 	/// Select all layers
 	pub fn select_all_layers(&self) {
 		let message = DocumentMessage::SelectAllLayers;
@@ -443,7 +458,7 @@ impl JsEditorHandle {
 
 	/// Requests the backend to add a layer to the layer list
 	pub fn add_folder(&self, path: Vec<LayerId>) {
-		let message = DocumentMessage::CreateFolder(path);
+		let message = DocumentMessage::CreateEmptyFolder(path);
 		self.dispatch(message);
 	}
 }
