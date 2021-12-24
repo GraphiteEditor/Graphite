@@ -1,5 +1,6 @@
 use crate::document::layer_panel::{LayerPanelEntry, RawBuffer};
 use crate::message_prelude::*;
+use crate::misc::HintData;
 use crate::tool::tool_options::ToolOptions;
 use crate::Color;
 use serde::{Deserialize, Serialize};
@@ -18,6 +19,7 @@ pub enum FrontendMessage {
 	SetActiveTool { tool_name: String, tool_options: Option<ToolOptions> },
 	SetActiveDocument { document_id: u64 },
 	UpdateOpenDocumentsList { open_documents: Vec<FrontendDocumentDetails> },
+	UpdateInputHints { hint_data: HintData },
 	DisplayError { title: String, description: String },
 	DisplayPanic { panic_info: String, title: String, description: String },
 	DisplayConfirmationToCloseDocument { document_id: u64 },

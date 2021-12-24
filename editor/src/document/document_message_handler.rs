@@ -218,14 +218,14 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 			}
 			NewDocument => {
 				let name = self.generate_new_document_name();
-				let new_document = DocumentMessageHandler::with_name(name);
+				let new_document = DocumentMessageHandler::with_name(name, ipp);
 				self.load_document(new_document, responses);
 			}
 			OpenDocument => {
 				responses.push_back(FrontendMessage::OpenDocumentBrowse.into());
 			}
 			OpenDocumentFile(name, serialized_contents) => {
-				let document = DocumentMessageHandler::with_name_and_content(name, serialized_contents);
+				let document = DocumentMessageHandler::with_name_and_content(name, serialized_contents, ipp);
 				match document {
 					Ok(document) => {
 						self.load_document(document, responses);

@@ -39,7 +39,7 @@ impl Dispatcher {
 			if SIDE_EFFECT_FREE_MESSAGES.contains(&message.to_discriminant()) && self.messages.contains(&message) {
 				continue;
 			}
-			log_message(&message);
+			self.log_message(&message);
 			match message {
 				NoOp => (),
 				Documents(message) => self.documents_message_handler.process_action(message, &self.input_preprocessor, &mut self.messages),
@@ -79,18 +79,18 @@ impl Dispatcher {
 			responses: vec![],
 		}
 	}
-}
 
-fn log_message(message: &Message) {
-	use Message::*;
-	if log::max_level() == log::LevelFilter::Trace
-		&& !(matches!(
-			message,
-			InputPreprocessor(_) | Frontend(FrontendMessage::SetCanvasZoom { .. }) | Frontend(FrontendMessage::SetCanvasRotation { .. })
-		) || MessageDiscriminant::from(message).local_name().ends_with("MouseMove"))
-	{
-		log::trace!("Message: {:?}", message);
-		//log::trace!("Hints:{:?}", self.input_mapper.hints(self.collect_actions()));
+	fn log_message(&self, message: &Message) {
+		use Message::*;
+		if log::max_level() == log::LevelFilter::Trace
+			&& !(matches!(
+				message,
+				InputPreprocessor(_) | Frontend(FrontendMessage::SetCanvasZoom { .. }) | Frontend(FrontendMessage::SetCanvasRotation { .. })
+			) || MessageDiscriminant::from(message).local_name().ends_with("MouseMove"))
+		{
+			log::trace!("Message: {:?}", message);
+			// log::trace!("Hints: {:?}", self.input_mapper.hints(self.collect_actions()));
+		}
 	}
 }
 
