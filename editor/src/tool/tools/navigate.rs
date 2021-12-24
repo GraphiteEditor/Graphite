@@ -15,5 +15,6 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Navigate {
 	fn process_action(&mut self, action: ToolMessage, data: ToolActionHandlerData<'a>, responses: &mut VecDeque<Message>) {
 		todo!("{}::handle_input {:?} {:?} {:?} ", module_path!(), action, data, responses);
 	}
+
 	advertise_actions!();
 }
