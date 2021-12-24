@@ -36,12 +36,14 @@ export class UpdateOpenDocumentsList extends JsMessage {
 	readonly open_documents!: FrontendDocumentDetails[];
 }
 
+export type HintData = HintInfo[][];
+
 export class UpdateInputHints extends JsMessage {
 	@Type(() => HintInfo)
 	readonly hint_data!: HintData;
 }
 
-export type HintData = HintInfo[][];
+export type KeysGroup = string[];
 
 export class HintInfo {
 	readonly keys!: string[];
@@ -52,8 +54,6 @@ export class HintInfo {
 
 	readonly plus!: boolean;
 }
-
-export class KeysGroup extends Array<string> {}
 
 const To255Scale = Transform(({ value }) => value * 255);
 export class Color {
