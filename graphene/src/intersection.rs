@@ -1,7 +1,7 @@
 use std::ops::Mul;
 
 use glam::{DAffine2, DVec2, DMat2};
-use kurbo::{BezPath, Line, PathSeg, Point, Shape, QuadBez, ParamCurve, ParamCurveExtrema};
+use kurbo::{BezPath, Line, PathSeg, Point, Shape, Rect, QuadBez, ParamCurve, ParamCurveExtrema};
 use crate::boolean_ops::split_path_seg;
 
 pub const F64PRECISION: f64 = 0.00000001;
@@ -119,7 +119,9 @@ macro_rules! mat_from_points {
 
 /// Rough algorithm
 /// 	- Behavior: when shapes have indentical pathsegs algorithm returns endpoints as intersects?
+/// 	- Bug: algorithm finds same intersection multiple times in same recursion path
 /// 	- Improvement: more adapative way to decide when "close enough"
+///   - improvement: quality metric
 /// 	- Optimization: Don't actualy split the curve, just pass start/end values
 /// 	- Optimization: Compute curve's derivitive once
 /// 	- Optimization: bounding_box's dont need ot be recomputed
@@ -132,22 +134,24 @@ fn path_intersections(a: &PathSeg, b: &PathSeg, mut recursion: usize, t_a: f64, 
 	if let (PathSeg::Line(line_a), PathSeg::Line(line_b)) = (a, b){
 		if let Some(cross) = line_intersection(&line_a, &line_b) {intersections.push(cross);}
 	}
-	else if <PathSeg as ParamCurveExtrema>::bounding_box(&a).intersect(<PathSeg as ParamCurveExtrema>::bounding_box(&b)).area() > F64PRECISION {
+	else if overlap( &<PathSeg as ParamCurveExtrema>::bounding_box(&a), &<PathSeg as ParamCurveExtrema>::bounding_box(&b)) {
 		recursion += 1;
 		// base case, we are close enough to try linear approximation
-		if recursion > 20{ //arbitrarily chosen limit
+		if recursion == 20 { return intersections; } // bail out!! before lshift with overflow
+		if recursion > 15 { //arbitrarily chosen limit
 			if let Some(mut cross) = line_intersection(&Line{p0: a.start(), p1: a.end()}, &Line{p0: b.start(), p1: b.end()}){
 				// intersection t_value equals the recursive t_value + interpolated intersection value
 				cross.t_a = t_a + cross.t_a / (1 << recursion) as f64;
 				cross.t_b = t_b + cross.t_b / (1 << recursion) as f64;
 				intersections.push(cross);
+				return intersections;
 			}
 		}
 		let (a1, a2) = split_path_seg(a, 0.5);
 		let (b1, b2) = split_path_seg(b, 0.5);
-		intersections.append(&mut path_intersections(&a1, &b1, recursion, t_a - 1.0 / (1 << recursion) as f64, t_b - 1.0 / (1 << recursion) as f64));
-		intersections.append(&mut path_intersections(&a1, &b2, recursion, t_a - 1.0 / (1 << recursion) as f64, t_b + 1.0 / (1 << recursion) as f64));
-		intersections.append(&mut path_intersections(&a2, &b1, recursion, t_a + 1.0 / (1 << recursion) as f64, t_b - 1.0 / (1 << recursion) as f64));
+		intersections.append(&mut path_intersections(&a1, &b1, recursion, t_a, t_b));
+		intersections.append(&mut path_intersections(&a1, &b2, recursion, t_a, t_b + 1.0 / (1 << recursion) as f64));
+		intersections.append(&mut path_intersections(&a2, &b1, recursion, t_a + 1.0 / (1 << recursion) as f64, t_b));
 		intersections.append(&mut path_intersections(&a2, &b2, recursion, t_a + 1.0 / (1 << recursion) as f64, t_b + 1.0 / (1 << recursion) as f64));
 	}
 	intersections
@@ -156,20 +160,21 @@ fn path_intersections(a: &PathSeg, b: &PathSeg, mut recursion: usize, t_a: f64, 
 pub fn intersections(a: &BezPath, b: &BezPath) -> Vec<Intersect>{
 	let mut intersections: Vec<Intersect> = Vec::new();
 	a.segments().enumerate().for_each(|(a_idx, a_seg)| b.segments().enumerate().for_each(|(b_idx, b_seg)|{
-		for mut path_intersection in path_intersections(&a_seg, &b_seg, 1, 0.5, 0.5){
+		for mut path_intersection in path_intersections(&a_seg, &b_seg, 0, 0.0, 0.0){
 			intersections.push({path_intersection.add_idx(a_idx, b_idx); path_intersection});
 		}
 	}));
 	intersections
 }
 
-/// does not work for intersecting horizontal or vertical lines
+
 pub fn intersection_candidates(a: &BezPath, b: &BezPath) -> Vec<(usize, usize)> {
 	// optimization ideas
 	//		- store computed bounding boxes
 	let mut intersections = Vec::new();
+
 	a.segments().enumerate().for_each(|(a_idx, a_seg)| b.segments().enumerate().for_each(|(b_idx, b_seg)| {
-		if <PathSeg as ParamCurveExtrema>::bounding_box(&a_seg).intersect(<PathSeg as ParamCurveExtrema>::bounding_box(&b_seg)).area() > 0.0{
+		if overlap(&<PathSeg as ParamCurveExtrema>::bounding_box(&a_seg), &<PathSeg as ParamCurveExtrema>::bounding_box(&b_seg)) {
 			intersections.push((a_idx, b_idx));
 		}
 	}));
@@ -191,6 +196,14 @@ pub fn line_intersection(a: &Line, b: &Line) -> Option<Intersect> {
 	let t_vals = slopes.inverse() * DVec2::new((a.p0 - b.p0).x, (a.p0 - b.p0).y);
 	if !valid_t(t_vals[0]) || !valid_t(t_vals[1]) {return None;}
 	Some(Intersect::from((b.eval(t_vals[0]), t_vals[1], t_vals[0])))
+}
+
+/// returns true rectangles overlap
+/// does using slices here cause a slowdown?
+pub fn overlap(a: &Rect, b: &Rect) -> bool {
+	fn in_range(n: f64, range: &[f64]) -> bool { n >= range[0] && n <= range[1] }
+	(in_range(b.x0, &[a.x0, a.x1]) || in_range(b.x1, &[a.x0, a.x1]) || in_range(a.x0, &[b.x0, b.x1]) || in_range(a.x1, &[b.x0, b.x1])) &&
+	(in_range(b.y0, &[a.y0, a.y1]) || in_range(b.y1, &[a.y0, a.y1]) || in_range(a.y0, &[b.y0, b.y1]) || in_range(a.y1, &[b.y0, b.y1]))
 }
 
 fn valid_t(t: f64) -> bool {
