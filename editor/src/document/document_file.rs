@@ -16,8 +16,8 @@ use kurbo::PathSeg;
 use log::warn;
 use serde::{Deserialize, Serialize};
 
-use graphene::layers::BlendMode;
-use graphene::{document::Document as GrapheneDocument, layers::LayerDataType, DocumentError, LayerId};
+use graphene::layers::{style::ViewMode, BlendMode, LayerDataType};
+use graphene::{document::Document as GrapheneDocument, DocumentError, LayerId};
 use graphene::{DocumentResponse, Operation as DocumentOperation};
 
 type DocumentSave = (GrapheneDocument, HashMap<Vec<LayerId>, LayerData>);
@@ -68,6 +68,7 @@ pub struct DocumentMessageHandler {
 	movement_handler: MovementMessageHandler,
 	transform_layer_handler: TransformLayerMessageHandler,
 	pub snapping_enabled: bool,
+	pub view_mode: ViewMode,
 }
 
 impl Default for DocumentMessageHandler {
@@ -83,6 +84,7 @@ impl Default for DocumentMessageHandler {
 			movement_handler: MovementMessageHandler::default(),
 			transform_layer_handler: TransformLayerMessageHandler::default(),
 			snapping_enabled: true,
+			view_mode: ViewMode::default(),
 		}
 	}
 }
@@ -122,6 +124,9 @@ pub enum DocumentMessage {
 	ExportDocument,
 	SaveDocument,
 	RenderDocument,
+	DirtyRenderDocument,
+	DirtyRenderDocumentInOutlineView,
+	SetViewMode(ViewMode),
 	Undo,
 	Redo,
 	DocumentHistoryBackward,
@@ -162,6 +167,7 @@ impl DocumentMessageHandler {
 			movement_handler: MovementMessageHandler::default(),
 			transform_layer_handler: TransformLayerMessageHandler::default(),
 			snapping_enabled: true,
+			view_mode: ViewMode::default(),
 		};
 		document.graphene_document.root.transform = document.layerdata(&[]).calculate_offset_transform(ipp.viewport_bounds.size() / 2.);
 		document
@@ -479,7 +485,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 							size.x,
 							size.y,
 							"\n",
-							self.graphene_document.render_root()
+							self.graphene_document.render_root(self.view_mode)
 						),
 						name,
 					}
@@ -570,6 +576,10 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					responses.push_front(DocumentOperation::DeleteLayer { path }.into());
 				}
 			}
+			SetViewMode(mode) => {
+				self.view_mode = mode;
+				responses.push_front(DocumentMessage::DirtyRenderDocument.into());
+			}
 			DuplicateSelectedLayers => {
 				self.backup(responses);
 				for path in self.selected_layers_sorted() {
@@ -659,7 +669,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				responses.push_back(FolderChanged(vec![]).into());
 			}
 			FolderChanged(path) => {
-				let _ = self.graphene_document.render_root();
+				let _ = self.graphene_document.render_root(self.view_mode);
 				responses.extend([LayerChanged(path).into(), DocumentStructureChanged.into()]);
 			}
 			DocumentStructureChanged => {
@@ -672,7 +682,6 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					(!overlay).then(|| FrontendMessage::UpdateLayer { data: entry }.into())
 				}));
 			}
-
 			DispatchOperation(op) => match self.graphene_document.handle_operation(&op) {
 				Ok(Some(document_responses)) => {
 					for response in document_responses {
@@ -702,7 +711,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			RenderDocument => {
 				responses.push_back(
 					FrontendMessage::UpdateCanvas {
-						document: self.graphene_document.render_root(),
+						document: self.graphene_document.render_root(self.view_mode),
 					}
 					.into(),
 				);
@@ -720,8 +729,8 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				let scrollbar_size = viewport_size / bounds_length;
 
 				let log = root_layerdata.scale.log2();
-				let ruler_inverval = if log < 0. { 100. * 2_f64.powf(-log.ceil()) } else { 100. / 2_f64.powf(log.ceil()) };
-				let ruler_spacing = ruler_inverval * root_layerdata.scale;
+				let ruler_interval = if log < 0. { 100. * 2_f64.powf(-log.ceil()) } else { 100. / 2_f64.powf(log.ceil()) };
+				let ruler_spacing = ruler_interval * root_layerdata.scale;
 
 				let ruler_origin = self.graphene_document.root.transform.transform_point2(DVec2::ZERO);
 
@@ -738,12 +747,22 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					FrontendMessage::UpdateRulers {
 						origin: ruler_origin.into(),
 						spacing: ruler_spacing,
-						interval: ruler_inverval,
+						interval: ruler_interval,
 					}
 					.into(),
 				);
 			}
+			DirtyRenderDocument => {
+				// Mark all non-overlay caches as dirty
+				GrapheneDocument::visit_all_shapes(&mut self.graphene_document.root, &mut |_| {});
 
+				responses.push_back(DocumentMessage::RenderDocument.into());
+			}
+			DirtyRenderDocumentInOutlineView => {
+				if self.view_mode == ViewMode::Outline {
+					responses.push_front(DocumentMessage::DirtyRenderDocument.into());
+				}
+			}
 			NudgeSelectedLayers(x, y) => {
 				self.backup(responses);
 				for path in self.selected_layers().map(|path| path.to_vec()) {
