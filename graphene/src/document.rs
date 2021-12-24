@@ -385,8 +385,6 @@ impl Document {
 		operation.pseudo_hash().hash(&mut self.state_identifier);
 		use DocumentResponse::*;
 
-		// Intercept operations here for outline view
-
 		let responses = match &operation {
 			Operation::AddEllipse { path, insert_index, transform, style } => {
 				let layer = Layer::new(LayerDataType::Shape(Shape::ellipse(*style)), *transform);
