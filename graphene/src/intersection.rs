@@ -188,7 +188,7 @@ pub fn line_intersect_point(a: &Line, b: &Line) -> Option<Point> {
 pub fn line_intersection(a: &Line, b: &Line) -> Option<Intersect> {
 	let slopes = DMat2::from_cols_array(&[(b.p1 - b.p0).x, (b.p1 - b.p0).y,  (a.p0 - a.p1).x, (a.p0 - a.p1).y]);
 	if slopes.determinant() == 0.0 {return None;}
-	let t_vals = slopes.inverse() * DVec2::new((b.p0 - a.p0).x, (b.p1 - a.p1).y);
+	let t_vals = slopes.inverse() * DVec2::new((a.p0 - b.p0).x, (a.p0 - b.p0).y);
 	if !valid_t(t_vals[0]) || !valid_t(t_vals[1]) {return None;}
 	Some(Intersect::from((b.eval(t_vals[0]), t_vals[1], t_vals[0])))
 }

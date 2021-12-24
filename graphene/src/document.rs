@@ -9,8 +9,10 @@ use kurbo::Affine;
 
 use crate::{
 	layers::{self, Folder, Layer, LayerData, LayerDataType, Shape},
+	layers::style::{PathStyle, Stroke},
 	DocumentError, DocumentResponse, LayerId, Operation, Quad,
 	intersection::intersections,
+	color::Color,
 };
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -108,6 +110,7 @@ impl Document {
 			match &layer.data {
 				LayerDataType::Shape(shape) => {
 					let mut clone = shape.clone();
+					transform = layer.transform * transform;
 					clone.path.apply_affine(Affine::new(transform.to_cols_array()));
 					Ok(clone)
 				}
@@ -122,7 +125,14 @@ impl Document {
 				}
 			}
 		}
-		helper(& self.root, DAffine2::IDENTITY, 0, path)
+		// skip the root layer, whose transform doesn't effect the coordinates
+		if let LayerDataType::Folder(root) = & self.root.data{
+			match root.layer(path[0]) {
+				Some(layer) => helper(&layer, DAffine2::IDENTITY, 1, path),
+				None => Err(DocumentError::InvalidPath),
+			}
+		}
+		else { Err(DocumentError::NotAFolder) }
 	}
 
 	/// Return vector of immutable references to each shape specified in paths
@@ -446,13 +456,24 @@ impl Document {
 				log::debug!("selected: {:?}", selected);
 				if selected.len() > 1{
 					let shapes = self.shapes_as_seen(selected)?;
-					log::debug!("shapes: {:?}", shapes);
+					let mut responses = Vec::new();
 					let crosss = intersections(&shapes[0].path, &shapes[1].path);
+					log::debug!("found {} intersections", crosss.len());
 					for cross in crosss{
-						log::debug!("intersection @: {:?}, {:?}", cross.point.x, cross.point.y);
+						log::debug!("cross: {:?}", cross.point);
+						match self.handle_operation(&Operation::AddOverlayEllipse{
+							path: vec![],
+							transform: [10.0, 0.0, 0.0, 10.0, cross.point.x, cross.point.y],
+							style: PathStyle::new(Some(Stroke::new(Color::BLUE, 1.0)), None),
+						}){
+							Ok(Some(ref mut response)) => responses.append(response),
+							Ok(None) => (),
+							Err(err) => return Err(err),
+						}
 					}
+					Some(responses)
 				}
-				None
+				else {None}
 			},
 			Operation::DeleteLayer { path } => {
 				fn aggregate_deletions(folder: &Folder, path: &mut Vec<LayerId>, responses: &mut Vec<DocumentResponse>) {
