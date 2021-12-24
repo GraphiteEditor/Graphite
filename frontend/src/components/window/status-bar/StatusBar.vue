@@ -1,43 +1,22 @@
 <template>
 	<div class="status-bar">
-		<UserInputLabel :inputMouse="'LMBDrag'">Drag Selected</UserInputLabel>
-		<Separator :type="SeparatorType.Section" />
-		<UserInputLabel :inputKeys="[['G']]">Grab Selected</UserInputLabel>
-		<UserInputLabel :inputKeys="[['R']]">Rotate Selected</UserInputLabel>
-		<UserInputLabel :inputKeys="[['S']]">Scale Selected</UserInputLabel>
-		<Separator :type="SeparatorType.Section" />
-		<UserInputLabel :inputMouse="'LMB'">Select Object</UserInputLabel>
-		<span class="plus">+</span>
-		<UserInputLabel :inputKeys="[['Ctrl']]">Innermost</UserInputLabel>
-		<span class="plus">+</span>
-		<UserInputLabel :inputKeys="[['⇧']]">Grow/Shrink Selection</UserInputLabel>
-		<Separator :type="SeparatorType.Section" />
-		<UserInputLabel :inputMouse="'LMBDrag'">Select Area</UserInputLabel>
-		<span class="plus">+</span>
-		<UserInputLabel :inputKeys="[['⇧']]">Grow/Shrink Selection</UserInputLabel>
-		<Separator :type="SeparatorType.Section" />
-		<UserInputLabel :inputKeys="[['↑'], ['→'], ['↓'], ['←']]">Nudge Selected</UserInputLabel>
-		<span class="plus">+</span>
-		<UserInputLabel :inputKeys="[['⇧']]">Big Increment Nudge</UserInputLabel>
-		<Separator :type="SeparatorType.Section" />
-		<UserInputLabel :inputKeys="[['Alt']]" :inputMouse="'LMBDrag'">Move Duplicate</UserInputLabel>
-		<UserInputLabel :inputKeys="[['Ctrl', 'D']]">Duplicate</UserInputLabel>
+		<template v-for="(hintGroup, index) in hintData" :key="hintGroup">
+			<Separator :type="SeparatorType.Section" v-if="index !== 0" />
+			<template v-for="hint in hintGroup" :key="hint">
+				<span v-if="hint.plus" class="plus">+</span>
+				<UserInputLabel :inputMouse="hint.mouse" :inputKeys="hint.key_groups">{{ hint.label }}</UserInputLabel>
+			</template>
+		</template>
 	</div>
 </template>
 
 <style lang="scss">
 .status-bar {
 	display: flex;
-	flex-wrap: wrap;
+	height: 24px;
 	margin: 0 -4px;
-	// TODO: Use CSS grid to solve issue that makes overflowed items have inconsistent left padding on second row when overflowed
-
-	> * {
-		height: 24px;
-	}
 
 	.separator.section {
-		height: 24px;
 		margin: 0;
 	}
 
@@ -60,8 +39,10 @@ import { SeparatorType } from "@/components/widgets/widgets";
 
 import UserInputLabel from "@/components/widgets/labels/UserInputLabel.vue";
 import Separator from "@/components/widgets/separators/Separator.vue";
+import { HintData, UpdateInputHints } from "@/dispatcher/js-messages";
 
 export default defineComponent({
+	inject: ["editor"],
 	components: {
 		UserInputLabel,
 		Separator,
@@ -69,7 +50,17 @@ export default defineComponent({
 	data() {
 		return {
 			SeparatorType,
+			hintData: [] as HintData,
 		};
+	},
+	mounted() {
+		this.editor.dispatcher.subscribeJsMessage(UpdateInputHints, (updateInputHints) => {
+			this.hintData = updateInputHints.hint_data;
+		});
+
+		// Switch away from, and back to, the Select Tool to make it display the correct hints in the status bar
+		this.editor.instance.select_tool("Path");
+		this.editor.instance.select_tool("Select");
 	},
 });
 </script>

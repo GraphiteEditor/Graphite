@@ -18,6 +18,7 @@ const SHIFT_NUDGE_AMOUNT: f64 = 10.;
 pub enum InputMapperMessage {
 	PointerMove,
 	MouseScroll,
+	#[child]
 	KeyUp(Key),
 	#[child]
 	KeyDown(Key),
@@ -43,6 +44,7 @@ impl KeyMappingEntries {
 		}
 		None
 	}
+
 	fn push(&mut self, entry: MappingEntry) {
 		self.0.push(entry)
 	}
@@ -187,7 +189,8 @@ impl Default for Mapping {
 			entry! {action=PenMessage::Confirm, key_down=KeyEscape},
 			entry! {action=PenMessage::Confirm, key_down=KeyEnter},
 			// Fill
-			entry! {action=FillMessage::MouseDown, key_down=Lmb},
+			entry! {action=FillMessage::LeftMouseDown, key_down=Lmb},
+			entry! {action=FillMessage::RightMouseDown, key_down=Rmb},
 			// Tool Actions
 			entry! {action=ToolMessage::ActivateTool(ToolType::Select), key_down=KeyV},
 			entry! {action=ToolMessage::ActivateTool(ToolType::Eyedropper), key_down=KeyI},
