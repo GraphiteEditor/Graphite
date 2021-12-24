@@ -72,7 +72,7 @@ impl JsEditorHandle {
 	// Sends a FrontendMessage to JavaScript
 	fn handle_response(&self, message: FrontendMessage) {
 		let message_type = message.to_discriminant().local_name();
-		
+
 		let serializer = serde_wasm_bindgen::Serializer::new().serialize_large_number_types_as_bigints(true);
 		let message_data = message.serialize(&serializer).expect("Failed to serialize FrontendMessage");
 
