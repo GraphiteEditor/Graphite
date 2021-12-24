@@ -1,12 +1,26 @@
 use crate::color::Color;
+use crate::consts::{LAYER_OUTLINE_STROKE_COLOR, LAYER_OUTLINE_STROKE_WIDTH};
 use serde::{Deserialize, Serialize};
+
 const OPACITY_PRECISION: usize = 3;
 
 fn format_opacity(name: &str, opacity: f32) -> String {
-	if (opacity - 1.).abs() > 10f32.powi(-(OPACITY_PRECISION as i32)) {
+	if (opacity - 1.).abs() > 10_f32.powi(-(OPACITY_PRECISION as i32)) {
 		format!(r#" {}-opacity="{:.precision$}""#, name, opacity, precision = OPACITY_PRECISION)
 	} else {
 		String::new()
+	}
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Deserialize, Serialize)]
+pub enum ViewMode {
+	Normal,
+	Outline,
+	Pixels,
+}
+impl Default for ViewMode {
+	fn default() -> Self {
+		ViewMode::Normal
 	}
 }
 
@@ -22,7 +36,7 @@ impl Fill {
 	pub fn color(&self) -> Option<Color> {
 		self.color
 	}
-	pub fn none() -> Self {
+	pub const fn none() -> Self {
 		Self { color: None }
 	}
 	pub fn render(&self) -> String {
@@ -41,7 +55,7 @@ pub struct Stroke {
 }
 
 impl Stroke {
-	pub fn new(color: Color, width: f32) -> Self {
+	pub const fn new(color: Color, width: f32) -> Self {
 		Self { color, width }
 	}
 	pub fn color(&self) -> Color {
@@ -83,17 +97,18 @@ impl PathStyle {
 	pub fn clear_stroke(&mut self) {
 		self.stroke = None;
 	}
-	pub fn render(&self) -> String {
-		format!(
-			"{}{}",
-			match self.fill {
-				Some(fill) => fill.render(),
-				None => String::new(),
-			},
-			match self.stroke {
-				Some(stroke) => stroke.render(),
-				None => String::new(),
-			},
-		)
+
+	pub fn render(&self, view_mode: ViewMode) -> String {
+		let fill_attribute = match (view_mode, self.fill) {
+			(ViewMode::Outline, _) => Fill::none().render(),
+			(_, Some(fill)) => fill.render(),
+			(_, None) => String::new(),
+		};
+		let stroke_attribute = match (view_mode, self.stroke) {
+			(ViewMode::Outline, _) => Stroke::new(LAYER_OUTLINE_STROKE_COLOR, LAYER_OUTLINE_STROKE_WIDTH).render(),
+			(_, Some(stroke)) => stroke.render(),
+			(_, None) => String::new(),
+		};
+		format!("{}{}", fill_attribute, stroke_attribute)
 	}
 }
