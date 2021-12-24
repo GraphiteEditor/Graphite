@@ -8,7 +8,7 @@ use glam::{DAffine2, DVec2};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-	layers::{self, Folder, Layer, LayerData, LayerDataType, Shape},
+	layers::{self, style::ViewMode, Folder, Layer, LayerData, LayerDataType, Shape},
 	DocumentError, DocumentResponse, LayerId, Operation, Quad,
 };
 
@@ -36,8 +36,8 @@ impl Document {
 	}
 
 	/// Wrapper around render, that returns the whole document as a Response.
-	pub fn render_root(&mut self) -> String {
-		self.root.render(&mut vec![]);
+	pub fn render_root(&mut self, mode: ViewMode) -> String {
+		self.root.render(&mut vec![], mode);
 		self.root.cache.clone()
 	}
 
@@ -201,6 +201,28 @@ impl Document {
 		}
 		folder.add_layer(layer, layer_id, insert_index).ok_or(DocumentError::IndexOutOfBounds)?;
 		Ok(())
+	}
+
+	/// Visit each layer recursively, applies modify_shape to each non-overlay Shape
+	pub fn visit_all_shapes<F: FnMut(&mut Shape)>(layer: &mut Layer, modify_shape: &mut F) -> bool {
+		match layer.data {
+			LayerDataType::Shape(ref mut shape) => {
+				if !layer.overlay {
+					modify_shape(shape);
+
+					// This layer should be updated on next render pass
+					layer.cache_dirty = true;
+				}
+			}
+			LayerDataType::Folder(ref mut folder) => {
+				for sub_layer in folder.layers_mut() {
+					if Document::visit_all_shapes(sub_layer, modify_shape) {
+						layer.cache_dirty = true;
+					}
+				}
+			}
+		}
+		layer.cache_dirty
 	}
 
 	/// Adds a new layer to the folder specified by `path`.
