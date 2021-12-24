@@ -301,8 +301,9 @@ dependencies = [
 
 [[package]]
 name = "serde-wasm-bindgen"
-version = "0.3.1"
-source = "git+https://github.com/mfish33/serde-wasm-bindgen.git#6b6e9016b29367510266f62a7aa464a52baa87c6"
+version = "0.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d5cefe81e058ce25d1acbd79160e110d2eb4b9459024d46818d7553e4be6ff7e"
 dependencies = [
  "fnv",
  "js-sys",

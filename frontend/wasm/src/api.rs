@@ -28,7 +28,6 @@ pub struct JsEditorHandle {
 	editor_id: u64,
 	instance_received_crashed: Cell<bool>,
 	handle_response: js_sys::Function,
-	serializer: serde_wasm_bindgen::Serializer,
 }
 
 #[wasm_bindgen]
@@ -38,12 +37,10 @@ impl JsEditorHandle {
 		let editor_id = generate_uuid();
 		let editor = Editor::new();
 		EDITOR_INSTANCES.with(|instances| instances.borrow_mut().insert(editor_id, editor));
-		let serializer = serde_wasm_bindgen::Serializer::new().serialize_64_bit_numbers_as_big_int(true);
 		JsEditorHandle {
 			editor_id,
 			instance_received_crashed: Cell::new(false),
 			handle_response,
-			serializer,
 		}
 	}
 
@@ -75,7 +72,9 @@ impl JsEditorHandle {
 	// Sends a FrontendMessage to JavaScript
 	fn handle_response(&self, message: FrontendMessage) {
 		let message_type = message.to_discriminant().local_name();
-		let message_data = message.serialize(&self.serializer).expect("Failed to serialize FrontendMessage");
+		
+		let serializer = serde_wasm_bindgen::Serializer::new().serialize_large_number_types_as_bigints(true);
+		let message_data = message.serialize(&serializer).expect("Failed to serialize FrontendMessage");
 
 		let js_return_value = self.handle_response.call2(&JsValue::null(), &JsValue::from(message_type), &message_data);
 
