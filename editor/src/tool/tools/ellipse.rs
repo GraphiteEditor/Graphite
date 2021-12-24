@@ -1,12 +1,11 @@
-use crate::input::keyboard::Key;
-use crate::input::InputPreprocessor;
-use crate::tool::{DocumentToolData, Fsm, ToolActionHandlerData};
-use crate::{document::DocumentMessageHandler, message_prelude::*};
+use crate::document::DocumentMessageHandler;
+use crate::input::{keyboard::Key, keyboard::MouseMotion, InputPreprocessor};
+use crate::message_prelude::*;
+use crate::misc::{HintData, HintGroup, HintInfo, KeysGroup};
+use crate::tool::{tools::resize::Resize, DocumentToolData, Fsm, ToolActionHandlerData};
 use glam::DAffine2;
 use graphene::{layers::style, Operation};
 use serde::{Deserialize, Serialize};
-
-use super::resize::*;
 
 #[derive(Default)]
 pub struct Ellipse {
@@ -25,13 +24,24 @@ pub enum EllipseMessage {
 
 impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Ellipse {
 	fn process_action(&mut self, action: ToolMessage, data: ToolActionHandlerData<'a>, responses: &mut VecDeque<Message>) {
-		self.fsm_state = self.fsm_state.transition(action, data.0, data.1, &mut self.data, data.2, responses);
+		if action == ToolMessage::UpdateHints {
+			self.fsm_state.update_hints(responses);
+			return;
+		}
+
+		let new_state = self.fsm_state.transition(action, data.0, data.1, &mut self.data, data.2, responses);
+
+		if self.fsm_state != new_state {
+			self.fsm_state = new_state;
+			self.fsm_state.update_hints(responses);
+		}
 	}
+
 	fn actions(&self) -> ActionList {
 		use EllipseToolFsmState::*;
 		match self.fsm_state {
 			Ready => actions!(EllipseMessageDiscriminant; DragStart),
-			Dragging => actions!(EllipseMessageDiscriminant; DragStop, Abort, Resize),
+			Drawing => actions!(EllipseMessageDiscriminant; DragStop, Abort, Resize),
 		}
 	}
 }
@@ -39,7 +49,7 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Ellipse {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum EllipseToolFsmState {
 	Ready,
-	Dragging,
+	Drawing,
 }
 
 impl Default for EllipseToolFsmState {
@@ -47,6 +57,7 @@ impl Default for EllipseToolFsmState {
 		EllipseToolFsmState::Ready
 	}
 }
+
 #[derive(Clone, Debug, Default)]
 struct EllipseToolData {
 	data: Resize,
@@ -85,7 +96,7 @@ impl Fsm for EllipseToolFsmState {
 						.into(),
 					);
 
-					Dragging
+					Drawing
 				}
 				(state, Resize { center, lock_ratio }) => {
 					if let Some(message) = shape_data.calculate_transform(document, center, lock_ratio, input) {
@@ -94,7 +105,7 @@ impl Fsm for EllipseToolFsmState {
 
 					state
 				}
-				(Dragging, DragStop) => {
+				(Drawing, DragStop) => {
 					// TODO: introduce comparison threshold when operating with canvas coordinates (https://github.com/GraphiteEditor/Graphite/issues/100)
 					match shape_data.drag_start == input.mouse.position {
 						true => responses.push_back(DocumentMessage::AbortTransaction.into()),
@@ -104,7 +115,7 @@ impl Fsm for EllipseToolFsmState {
 					shape_data.cleanup();
 					Ready
 				}
-				(Dragging, Abort) => {
+				(Drawing, Abort) => {
 					responses.push_back(DocumentMessage::AbortTransaction.into());
 					shape_data.cleanup();
 
@@ -115,5 +126,46 @@ impl Fsm for EllipseToolFsmState {
 		} else {
 			self
 		}
+	}
+
+	fn update_hints(&self, responses: &mut VecDeque<Message>) {
+		let hint_data = match self {
+			EllipseToolFsmState::Ready => HintData(vec![HintGroup(vec![
+				HintInfo {
+					key_groups: vec![],
+					mouse: Some(MouseMotion::LmbDrag),
+					label: String::from("Draw Ellipse"),
+					plus: false,
+				},
+				HintInfo {
+					key_groups: vec![KeysGroup(vec![Key::KeyShift])],
+					mouse: None,
+					label: String::from("Constrain Circular"),
+					plus: true,
+				},
+				HintInfo {
+					key_groups: vec![KeysGroup(vec![Key::KeyAlt])],
+					mouse: None,
+					label: String::from("From Center"),
+					plus: true,
+				},
+			])]),
+			EllipseToolFsmState::Drawing => HintData(vec![HintGroup(vec![
+				HintInfo {
+					key_groups: vec![KeysGroup(vec![Key::KeyShift])],
+					mouse: None,
+					label: String::from("Constrain Circular"),
+					plus: false,
+				},
+				HintInfo {
+					key_groups: vec![KeysGroup(vec![Key::KeyAlt])],
+					mouse: None,
+					label: String::from("From Center"),
+					plus: false,
+				},
+			])]),
+		};
+
+		responses.push_back(FrontendMessage::UpdateInputHints { hint_data }.into());
 	}
 }
