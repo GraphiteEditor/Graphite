@@ -509,7 +509,7 @@ impl Document {
 					let crosss = intersections(&shapes[0].path, &shapes[1].path);
 					log::debug!("found {} intersections", crosss.len());
 					for cross in crosss{
-						log::debug!("cross: {:?}", cross.point);
+						log::debug!("cross: {:?} @quality: {:?}", cross.point, cross.quality);
 						match self.handle_operation(&Operation::AddOverlayEllipse{
 							path: vec![],
 							transform: [10.0, 0.0, 0.0, 10.0, cross.point.x, cross.point.y],

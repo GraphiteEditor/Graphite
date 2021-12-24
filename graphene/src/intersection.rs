@@ -72,6 +72,7 @@ pub struct Intersect{
 	pub a_seg_idx: usize,
 	pub b_seg_idx: usize,
 	pub mark: i8,
+	pub quality: f64,
 }
 
 impl Intersect{
@@ -83,7 +84,51 @@ impl Intersect{
 
 impl From<(Point, f64, f64)> for Intersect{
 	fn from(place_time: (Point, f64, f64)) -> Self{
-		Intersect{point: place_time.0, t_a: place_time.1, t_b: place_time.2, a_seg_idx: 0, b_seg_idx: 0, mark: -1}
+		Intersect{point: place_time.0, t_a: place_time.1, t_b: place_time.2, a_seg_idx: 0, b_seg_idx: 0, mark: -1, quality: 0.0}
+	}
+}
+
+// because extrema are owned by each SubCurve ( and not refrenced ), they must be copied on each split
+struct SubCurve<'a> {
+	pub curve: &'a PathSeg,
+	pub start: f64,
+	pub end: f64,
+	pub extrema: Vec<(Point, f64)>,
+}
+
+impl<'a> SubCurve<'a> {
+	fn bounding_box(&self) -> Rect {
+		let mut ll = self.curve.eval(self.start);
+		let mut ur = self.curve.eval(self.end);
+		vec![(self.curve.eval(self.start), self.start), (self.curve.eval(self.end), self.end)].iter().chain(self.extrema.iter())
+			.for_each(|(p, _)|{
+				if p.x < ll.x {ll.x = p.x;}
+				if p.x > ur.x {ur.x = p.x;}
+				if p.y < ll.y {ll.y = p.y;}
+				if p.y > ur.y {ur.y = p.y;}
+			});
+		Rect {x0: ll.x, y0: ll.y, x1: ur.x, y1: ur.y}
+	}
+
+	fn eval(&self, t: f64) -> Point {
+		self.curve.eval(t)
+	}
+
+	fn split(&self, t: f64) -> (SubCurve, SubCurve) {
+		(SubCurve {curve: self.curve, start: self.start, end: t, extrema: self.extrema.clone()},
+		 SubCurve {curve: self.curve, start: t, end: self.end, extrema: self.extrema.clone()})
+	}
+}
+
+impl<'a> From< &'a PathSeg > for SubCurve<'a> {
+	fn from(parent: &'a PathSeg) -> Self {
+		// extrema contains local min/max, not the endpoints
+		SubCurve {
+			curve: parent,
+			start: 0.0,
+			end: 1.0,
+			extrema: parent.extrema().iter().filter_map(|t| { if *t > 0.0 || *t < 1.0 { Some((parent.eval(*t), *t)) } else {None} } ).collect(),
+		}
 	}
 }
 
@@ -124,7 +169,7 @@ macro_rules! mat_from_points {
 ///   - improvement: quality metric
 /// 	- Optimization: Don't actualy split the curve, just pass start/end values
 /// 	- Optimization: Compute curve's derivitive once
-/// 	- Optimization: bounding_box's dont need ot be recomputed
+/// 	- Optimization: bounding_box's dont need to be recomputed?
 /// 	- Optimization: Lots of extra copying happening
 /// 	- Optimization: how efficiently does std::Vec::append work?
 /// 	- Optimization: specialized line/quad/cubic combination algorithms
@@ -136,13 +181,15 @@ fn path_intersections(a: &PathSeg, b: &PathSeg, mut recursion: usize, t_a: f64, 
 	}
 	else if overlap( &<PathSeg as ParamCurveExtrema>::bounding_box(&a), &<PathSeg as ParamCurveExtrema>::bounding_box(&b)) {
 		recursion += 1;
+		// bail out!! before lshift with overflow
+		if recursion == 32 { return intersections; }
 		// base case, we are close enough to try linear approximation
-		if recursion == 20 { return intersections; } // bail out!! before lshift with overflow
 		if recursion > 15 { //arbitrarily chosen limit
 			if let Some(mut cross) = line_intersection(&Line{p0: a.start(), p1: a.end()}, &Line{p0: b.start(), p1: b.end()}){
 				// intersection t_value equals the recursive t_value + interpolated intersection value
 				cross.t_a = t_a + cross.t_a / (1 << recursion) as f64;
 				cross.t_b = t_b + cross.t_b / (1 << recursion) as f64;
+				cross.quality = guess_quality(a, b, &cross);
 				intersections.push(cross);
 				return intersections;
 			}
@@ -155,6 +202,13 @@ fn path_intersections(a: &PathSeg, b: &PathSeg, mut recursion: usize, t_a: f64, 
 		intersections.append(&mut path_intersections(&a2, &b2, recursion, t_a + 1.0 / (1 << recursion) as f64, t_b + 1.0 / (1 << recursion) as f64));
 	}
 	intersections
+}
+
+fn guess_quality(a: &PathSeg, b: &PathSeg, guess: &Intersect) -> f64{
+	let dist_a = guess.point - b.eval(guess.t_b);
+	let dist_b = guess.point - a.eval(guess.t_a);
+	// prevent division by 0
+	return (2.0 / (1.0 + dist_a.x * dist_b.x * dist_a.y * dist_b.y )).abs()
 }
 
 pub fn intersections(a: &BezPath, b: &BezPath) -> Vec<Intersect>{
