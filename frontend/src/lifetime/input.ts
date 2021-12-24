@@ -38,6 +38,7 @@ export function createInputManager(editor: EditorState, container: HTMLElement, 
 		if (dialog.dialogIsVisible()) return false;
 
 		const key = getLatinKey(e);
+		if (!key) return false;
 
 		// Don't redirect a fullscreen request
 		if (key === "f11" && e.type === "keydown" && !e.repeat) {
@@ -61,6 +62,7 @@ export function createInputManager(editor: EditorState, container: HTMLElement, 
 
 	const onKeyDown = (e: KeyboardEvent) => {
 		const key = getLatinKey(e);
+		if (!key) return;
 
 		if (shouldRedirectKeyboardEventToBackend(e)) {
 			e.preventDefault();
@@ -82,6 +84,7 @@ export function createInputManager(editor: EditorState, container: HTMLElement, 
 
 	const onKeyUp = (e: KeyboardEvent) => {
 		const key = getLatinKey(e);
+		if (!key) return;
 
 		if (shouldRedirectKeyboardEventToBackend(e)) {
 			e.preventDefault();
@@ -204,7 +207,7 @@ export function makeModifiersBitfield(e: WheelEvent | PointerEvent | KeyboardEve
 }
 
 // This function is a naive, temporary solution to allow non-Latin keyboards to fall back on the physical QWERTY layout
-function getLatinKey(e: KeyboardEvent): string {
+function getLatinKey(e: KeyboardEvent): string | null {
 	const key = e.key.toLowerCase();
 	const isPrintable = isKeyPrintable(e.key);
 
@@ -213,10 +216,45 @@ function getLatinKey(e: KeyboardEvent): string {
 
 	// These non-Latin characters should fall back to the Latin equivalent at the key location
 	const LAST_LATIN_UNICODE_CHAR = 0x024f;
-	if (key.length > 1 || key.charCodeAt(0) > LAST_LATIN_UNICODE_CHAR) return e.code.toLowerCase();
+	if (key.length > 1 || key.charCodeAt(0) > LAST_LATIN_UNICODE_CHAR) return keyCodeToKey(e.code);
 
 	// Otherwise, ths is a printable Latin character
 	return e.key.toLowerCase();
+}
+
+function keyCodeToKey(code: string): string | null {
+	// Letters
+	if (code.match(/^Key[A-Z]$/)) return code.replace("Key", "").toLowerCase();
+
+	// Numbers
+	if (code.match(/^Digit[0-9]$/)) return code.replace("Digit", "");
+	if (code.match(/^Numpad[0-9]$/)) return code.replace("Numpad", "");
+
+	// Function keys
+	if (code.match(/^F[1-9]|F1[0-9]|F20$/)) return code.replace("F", "").toLowerCase();
+
+	// Other characters
+	const mapping: Record<string, string> = {
+		BracketLeft: "[",
+		BracketRight: "]",
+		Backslash: "\\",
+		Slash: "/",
+		Period: ".",
+		Comma: ",",
+		Equal: "=",
+		Minus: "-",
+		Quote: "'",
+		Semicolon: ";",
+		NumpadEqual: "=",
+		NumpadDivide: "/",
+		NumpadMultiply: "*",
+		NumpadSubtract: "-",
+		NumpadAdd: "+",
+		NumpadDecimal: ".",
+	};
+	if (code in mapping) return mapping[code];
+
+	return null;
 }
 
 function isKeyPrintable(key: string): boolean {
