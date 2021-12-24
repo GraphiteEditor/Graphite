@@ -14,8 +14,9 @@ import {
 	SetActiveDocument,
 	UpdateOpenDocumentsList,
 } from "@/dispatcher/js-messages";
+import { AutoSaveState } from "@/state/auto-save";
 
-export function createDocumentsState(editor: EditorState, dialogState: DialogState) {
+export function createDocumentsState(editor: EditorState, dialogState: DialogState, autoSave: AutoSaveState) {
 	const state = reactive({
 		unsaved: false,
 		documents: [] as FrontendDocumentDetails[],
@@ -108,6 +109,7 @@ export function createDocumentsState(editor: EditorState, dialogState: DialogSta
 		download(saveDocument.name, saveDocument.document);
 	});
 
+	autoSave.openAutoSavedDocuments();
 	// Get the initial documents
 	editor.instance.get_open_documents_list();
 

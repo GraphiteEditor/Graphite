@@ -174,8 +174,23 @@ impl JsEditorHandle {
 		self.dispatch(message);
 	}
 
+	pub fn open_auto_saved_document(&self, document_id: u64, document_name: String, document_is_saved: bool, document: String) {
+		let message = DocumentsMessage::OpenDocumentFileWithId {
+			document_id,
+			document_name,
+			document_is_saved,
+			document,
+		};
+		self.dispatch(message);
+	}
+
 	pub fn save_document(&self) {
 		let message = DocumentMessage::SaveDocument;
+		self.dispatch(message);
+	}
+
+	pub fn trigger_auto_save(&self, document_id: u64) {
+		let message = DocumentsMessage::AutoSaveDocument(document_id);
 		self.dispatch(message);
 	}
 

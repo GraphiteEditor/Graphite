@@ -11,6 +11,8 @@ pub use response::DocumentResponse;
 
 pub type LayerId = u64;
 
+pub const GRAPHITE_DOCUMENT_VERSION:&'static str = "0.0.1";
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum DocumentError {
 	LayerNotFound,

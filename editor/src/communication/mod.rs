@@ -32,7 +32,7 @@ where
 pub fn generate_uuid() -> u64 {
 	let mut lock = RNG.lock();
 	if lock.is_none() {
-		*lock = Some(ChaCha20Rng::seed_from_u64(0));
+		*lock = Some(ChaCha20Rng::from_entropy());
 	}
 	lock.as_mut().map(ChaCha20Rng::next_u64).unwrap()
 }

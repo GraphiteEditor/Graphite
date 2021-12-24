@@ -29,6 +29,8 @@ pub enum FrontendMessage {
 	UpdateRulers { origin: (f64, f64), spacing: f64, interval: f64 },
 	ExportDocument { document: String, name: String },
 	SaveDocument { document: String, name: String },
+	AutoSaveDocument { document: String, details: FrontendDocumentDetails },
+	RemoveAutoSaveDocument { document_id: u64 },
 	OpenDocumentBrowse,
 	UpdateWorkingColors { primary: Color, secondary: Color },
 	SetCanvasZoom { new_zoom: f64 },

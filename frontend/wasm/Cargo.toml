@@ -14,7 +14,7 @@ license = "Apache-2.0"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-editor = { path = "../../editor", package = "graphite-editor" }
+editor = { path = "../../editor", package = "graphite-editor", features = ["js"] }
 graphene = { path = "../../graphene", package = "graphite-graphene" }
 log = "0.4"
 serde = { version = "1.0", features = ["derive"] }

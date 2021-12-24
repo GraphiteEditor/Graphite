@@ -17,7 +17,9 @@ thiserror = "1.0.24"
 serde = { version = "1.0", features = ["derive"] }
 graphite-proc-macros = { path = "../proc-macros" }
 glam = { version="0.17", features = ["serde"] }
+rand = "0.8.4"
 rand_chacha = "0.3.1"
+getrandom = "0.2.3"
 spin = "0.9.2"
 kurbo = { git = "https://github.com/GraphiteEditor/kurbo.git", features = [
 	"serde",
@@ -29,3 +31,6 @@ package = "graphite-graphene"
 
 [dev-dependencies]
 env_logger = "0.8.4"
+
+[features]
+js = ["getrandom/js"]

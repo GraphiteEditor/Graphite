@@ -405,6 +405,14 @@ impl DocumentMessageHandler {
 		self.current_identifier() == self.saved_document_identifier
 	}
 
+	pub fn saved(&mut self, state: bool) {
+		if state {
+			self.saved_document_identifier = self.current_identifier();
+		} else {
+			self.saved_document_identifier = generate_uuid();
+		}
+	}
+
 	pub fn layer_panel_entry(&mut self, path: Vec<LayerId>) -> Result<LayerPanelEntry, EditorError> {
 		let data: LayerData = *layer_data(&mut self.layer_data, &path);
 		let layer = self.graphene_document.layer(&path)?;
@@ -485,7 +493,8 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				)
 			}
 			SaveDocument => {
-				self.saved_document_identifier = self.current_identifier();
+				self.saved(true);
+				responses.push_back(DocumentsMessage::AutoSaveActiveDocument.into());
 				// Update the save status of the just saved document
 				responses.push_back(DocumentsMessage::UpdateOpenDocumentsList.into());
 

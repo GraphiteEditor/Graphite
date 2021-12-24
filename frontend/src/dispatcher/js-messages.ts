@@ -268,6 +268,25 @@ export const LayerTypeOptions = {
 
 export type LayerType = typeof LayerTypeOptions[keyof typeof LayerTypeOptions];
 
+export class FrontendDocumentDetailsIndexedDb extends FrontendDocumentDetails {
+	@Transform(({ value }: { value: BigInt }) => value.toString())
+	// @ts-expect-error Use a string since IndexedDB can not use BigInts for keys
+	id!: string;
+}
+
+export class AutoSaveDocument extends JsMessage {
+	document!: string;
+
+	@Type(() => FrontendDocumentDetailsIndexedDb)
+	details!: FrontendDocumentDetailsIndexedDb;
+}
+
+export class RemoveAutoSaveDocument extends JsMessage {
+	// Use a string since IndexedDB can not use BigInts for keys
+	@Transform(({ value }: { value: BigInt }) => value.toString())
+	document_id!: string;
+}
+
 // Any is used since the type of the object should be known from the rust side
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type JSMessageFactory = (data: any, wasm: WasmInstance, instance: RustEditorInstance) => JsMessage;
@@ -293,5 +312,7 @@ export const messageConstructors: Record<string, MessageMaker> = {
 	DisplayConfirmationToCloseDocument,
 	DisplayConfirmationToCloseAllDocuments,
 	DisplayAboutGraphiteDialog,
+	AutoSaveDocument,
+	RemoveAutoSaveDocument,
 } as const;
 export type JsMessageType = keyof typeof messageConstructors;
