@@ -1,12 +1,11 @@
 use crate::color::Color;
+use crate::consts::{LAYER_OUTLINE_STROKE_COLOR, LAYER_OUTLINE_STROKE_WIDTH};
 use serde::{Deserialize, Serialize};
+
 const OPACITY_PRECISION: usize = 3;
-pub const WIRE_FRAME_STROKE_WIDTH: f32 = 1.0;
-pub const EMPTY_FILL: Fill = Fill::none();
-pub const WIRE_FRAME_STROKE: Stroke = Stroke::new(Color::BLACK, WIRE_FRAME_STROKE_WIDTH);
 
 fn format_opacity(name: &str, opacity: f32) -> String {
-	if (opacity - 1.).abs() > 10f32.powi(-(OPACITY_PRECISION as i32)) {
+	if (opacity - 1.).abs() > 10_f32.powi(-(OPACITY_PRECISION as i32)) {
 		format!(r#" {}-opacity="{:.precision$}""#, name, opacity, precision = OPACITY_PRECISION)
 	} else {
 		String::new()
@@ -16,7 +15,7 @@ fn format_opacity(name: &str, opacity: f32) -> String {
 #[derive(Debug, Clone, Copy, PartialEq, Deserialize, Serialize)]
 pub enum ViewMode {
 	Normal,
-	WireFrame,
+	Outline,
 	Pixels,
 }
 impl Default for ViewMode {
@@ -99,23 +98,19 @@ impl PathStyle {
 		self.stroke = None;
 	}
 
-	pub fn render(&self, mode: (ViewMode, bool)) -> String {
-		// change stroke rendering so solid paths don't dissapear
+	pub fn render(&self, view_mode: ViewMode) -> String {
+		// Change stroke rendering so solid paths don't dissapear
 
-		// mode.1 acts as an ViewMode override, useful for layers with purposes like an overlay layer, which should ignore the view mode
-		let view_mode = if mode.1 { ViewMode::Normal } else { mode.0 };
-		format!(
-			"{}{}",
-			match (view_mode, self.fill) {
-				(ViewMode::WireFrame, _) => EMPTY_FILL.render(),
-				(_, Some(fill)) => fill.render(),
-				(_, None) => String::new(),
-			},
-			match (view_mode, self.stroke) {
-				(ViewMode::WireFrame, _) => WIRE_FRAME_STROKE.render(),
-				(_, Some(stroke)) => stroke.render(),
-				(_, None) => String::new(),
-			},
-		)
+		let fill_attribute = match (view_mode, self.fill) {
+			(ViewMode::Outline, _) => Fill::none().render(),
+			(_, Some(fill)) => fill.render(),
+			(_, None) => String::new(),
+		};
+		let stroke_attribute = match (view_mode, self.stroke) {
+			(ViewMode::Outline, _) => Stroke::new(LAYER_OUTLINE_STROKE_COLOR, LAYER_OUTLINE_STROKE_WIDTH).render(),
+			(_, Some(stroke)) => stroke.render(),
+			(_, None) => String::new(),
+		};
+		format!("{}{}", fill_attribute, stroke_attribute)
 	}
 }

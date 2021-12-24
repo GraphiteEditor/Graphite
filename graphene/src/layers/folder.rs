@@ -15,10 +15,9 @@ pub struct Folder {
 }
 
 impl LayerData for Folder {
-	fn render(&mut self, svg: &mut String, transforms: &mut Vec<glam::DAffine2>, mode: (ViewMode, bool)) {
+	fn render(&mut self, svg: &mut String, transforms: &mut Vec<glam::DAffine2>, view_mode: ViewMode) {
 		for layer in &mut self.layers {
-			// using mode.0 means that a sub_layer can override a parent layer
-			let _ = writeln!(svg, "{}", layer.render(transforms, mode.0));
+			let _ = writeln!(svg, "{}", layer.render(transforms, view_mode));
 		}
 	}
 

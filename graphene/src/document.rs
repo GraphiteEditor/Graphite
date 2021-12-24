@@ -204,12 +204,14 @@ impl Document {
 	}
 
 	/// Visit each layer recursively, applies modify_shape to each non-overlay Shape
-	pub fn visit_all_shapes<F: FnMut(&mut Shape) -> ()>(layer: &mut Layer, modify_shape: &mut F) -> bool {
+	pub fn visit_all_shapes<F: FnMut(&mut Shape)>(layer: &mut Layer, modify_shape: &mut F) -> bool {
 		match layer.data {
 			LayerDataType::Shape(ref mut shape) => {
 				if !layer.overlay {
 					modify_shape(shape);
-					layer.cache_dirty = true; //this layer should be updated on next render pass
+
+					// This layer should be updated on next render pass
+					layer.cache_dirty = true;
 				}
 			}
 			LayerDataType::Folder(ref mut folder) => {
@@ -383,7 +385,7 @@ impl Document {
 		operation.pseudo_hash().hash(&mut self.state_identifier);
 		use DocumentResponse::*;
 
-		// intercept operations here for wireframe view
+		// Intercept operations here for outline view
 
 		let responses = match &operation {
 			Operation::AddEllipse { path, insert_index, transform, style } => {

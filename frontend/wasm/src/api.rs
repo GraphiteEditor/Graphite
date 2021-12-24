@@ -10,9 +10,10 @@ use crate::{EDITOR_HAS_CRASHED, EDITOR_INSTANCES};
 use editor::consts::FILE_SAVE_SUFFIX;
 use editor::input::input_preprocessor::ModifierKeys;
 use editor::input::mouse::{EditorMouseState, ScrollDelta, ViewportBounds};
+use editor::message_prelude::*;
 use editor::misc::EditorError;
 use editor::tool::{tool_options::ToolOptions, tools, ToolType};
-use editor::{message_prelude::*, Color, Editor, LayerId};
+use editor::{Color, Editor, LayerId};
 use wasm_bindgen::prelude::*;
 
 // To avoid wasm-bindgen from checking mutable reference issues using WasmRefCell
@@ -377,10 +378,10 @@ impl JsEditorHandle {
 		self.dispatch(message);
 	}
 
-	/// Swap between view modes
+	/// Set the view mode to change the way layers are drawn in the viewport
 	pub fn set_view_mode(&self, new_mode: String) -> Result<(), JsValue> {
 		match translate_view_mode(new_mode.as_str()) {
-			Some(mode) => self.dispatch(DocumentMessage::SetViewMode((mode, true))),
+			Some(view_mode) => self.dispatch(DocumentMessage::SetViewMode(view_mode)),
 			None => return Err(Error::new("Invalid view mode").into()),
 		};
 		Ok(())

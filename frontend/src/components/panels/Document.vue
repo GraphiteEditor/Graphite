@@ -362,7 +362,7 @@ export default defineComponent({
 		];
 		const viewModeEntries: RadioEntries = [
 			{ value: "normal", icon: "ViewModeNormal", tooltip: "View Mode: Normal", action: () => this.setViewMode("Normal") },
-			{ value: "outline", icon: "ViewModeOutline", tooltip: "View Mode: Outline", action: () => this.setViewMode("WireFrame") },
+			{ value: "outline", icon: "ViewModeOutline", tooltip: "View Mode: Outline", action: () => this.setViewMode("Outline") },
 			{ value: "pixels", icon: "ViewModePixels", tooltip: "View Mode: Pixels", action: () => this.dialog.comingSoon(320) },
 		];
 

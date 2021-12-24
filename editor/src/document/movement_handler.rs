@@ -1,17 +1,15 @@
-pub use super::layer_panel::*;
-
-use super::{DocumentMessage, LayerData};
-
+pub use crate::document::layer_panel::*;
+use crate::document::{DocumentMessage, LayerData};
 use crate::message_prelude::*;
 use crate::{
 	consts::{VIEWPORT_SCROLL_RATE, VIEWPORT_ZOOM_LEVELS, VIEWPORT_ZOOM_MOUSE_RATE, VIEWPORT_ZOOM_SCALE_MAX, VIEWPORT_ZOOM_SCALE_MIN, VIEWPORT_ZOOM_WHEEL_RATE},
 	input::{mouse::ViewportBounds, mouse::ViewportPosition, InputPreprocessor},
 };
-use glam::DVec2;
 use graphene::document::Document;
 use graphene::layers::style::ViewMode;
 use graphene::Operation as DocumentOperation;
 
+use glam::DVec2;
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 
@@ -133,24 +131,27 @@ impl MessageHandler<MovementMessage, (&mut LayerData, &Document, &InputPreproces
 				layerdata.scale = new.clamp(VIEWPORT_ZOOM_SCALE_MIN, VIEWPORT_ZOOM_SCALE_MAX);
 				responses.push_back(FrontendMessage::SetCanvasZoom { new_zoom: layerdata.scale }.into());
 				responses.push_back(ToolMessage::SelectedLayersChanged.into());
-				responses.push_back(DocumentMessage::SetViewMode((ViewMode::default(), false)).into());
+				responses.push_back(DocumentMessage::DirtyRenderDocumentInOutlineView.into());
 				self.create_document_transform_from_layerdata(layerdata, &ipp.viewport_bounds, responses);
 			}
 			IncreaseCanvasZoom => {
+				// TODO: Eliminate redundant code by making this call SetCanvasZoom
 				layerdata.scale = *VIEWPORT_ZOOM_LEVELS.iter().find(|scale| **scale > layerdata.scale).unwrap_or(&layerdata.scale);
 				responses.push_back(FrontendMessage::SetCanvasZoom { new_zoom: layerdata.scale }.into());
 				responses.push_back(ToolMessage::SelectedLayersChanged.into());
-				responses.push_back(DocumentMessage::SetViewMode((ViewMode::default(), false)).into());
+				responses.push_back(DocumentMessage::DirtyRenderDocumentInOutlineView.into());
 				self.create_document_transform_from_layerdata(layerdata, &ipp.viewport_bounds, responses);
 			}
 			DecreaseCanvasZoom => {
+				// TODO: Eliminate redundant code by making this call SetCanvasZoom
 				layerdata.scale = *VIEWPORT_ZOOM_LEVELS.iter().rev().find(|scale| **scale < layerdata.scale).unwrap_or(&layerdata.scale);
 				responses.push_back(FrontendMessage::SetCanvasZoom { new_zoom: layerdata.scale }.into());
 				responses.push_back(ToolMessage::SelectedLayersChanged.into());
-				responses.push_back(DocumentMessage::SetViewMode((ViewMode::default(), false)).into());
+				responses.push_back(DocumentMessage::DirtyRenderDocumentInOutlineView.into());
 				self.create_document_transform_from_layerdata(layerdata, &ipp.viewport_bounds, responses);
 			}
 			WheelCanvasZoom => {
+				// TODO: Eliminate redundant code by making this call SetCanvasZoom
 				let scroll = ipp.mouse.scroll_delta.scroll_delta();
 				let mouse = ipp.mouse.position;
 				let viewport_bounds = ipp.viewport_bounds.size();
@@ -169,7 +170,7 @@ impl MessageHandler<MovementMessage, (&mut LayerData, &Document, &InputPreproces
 				layerdata.translation += transformed_delta;
 				responses.push_back(FrontendMessage::SetCanvasZoom { new_zoom: layerdata.scale }.into());
 				responses.push_back(ToolMessage::SelectedLayersChanged.into());
-				responses.push_back(DocumentMessage::SetViewMode((ViewMode::default(), false)).into());
+				responses.push_back(DocumentMessage::DirtyRenderDocumentInOutlineView.into());
 				self.create_document_transform_from_layerdata(layerdata, &ipp.viewport_bounds, responses);
 			}
 			WheelCanvasTranslate { use_y_as_x } => {
@@ -204,7 +205,7 @@ impl MessageHandler<MovementMessage, (&mut LayerData, &Document, &InputPreproces
 					layerdata.scale *= new_scale;
 					responses.push_back(FrontendMessage::SetCanvasZoom { new_zoom: layerdata.scale }.into());
 					responses.push_back(ToolMessage::SelectedLayersChanged.into());
-					responses.push_back(DocumentMessage::SetViewMode((ViewMode::default(), false)).into());
+					responses.push_back(DocumentMessage::DirtyRenderDocumentInOutlineView.into());
 					self.create_document_transform_from_layerdata(layerdata, &ipp.viewport_bounds, responses);
 				}
 			}

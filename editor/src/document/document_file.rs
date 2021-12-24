@@ -124,12 +124,14 @@ pub enum DocumentMessage {
 	ExportDocument,
 	SaveDocument,
 	RenderDocument,
+	DirtyRenderDocument,
+	DirtyRenderDocumentInOutlineView,
+	SetViewMode(ViewMode),
 	Undo,
 	Redo,
 	DocumentHistoryBackward,
 	DocumentHistoryForward,
 	ClearOverlays,
-	SetViewMode((ViewMode, bool)),
 	NudgeSelectedLayers(f64, f64),
 	AlignSelectedLayers(AlignAxis, AlignAggregate),
 	MoveSelectedLayersTo {
@@ -574,12 +576,9 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					responses.push_front(DocumentOperation::DeleteLayer { path }.into());
 				}
 			}
-			SetViewMode((mode, update)) => {
-				if update {
-					self.view_mode = mode
-				};
-				GrapheneDocument::visit_all_shapes(&mut self.graphene_document.root, &mut |_| {}); // mark all non-overlay caches as dirty
-				responses.push_back(DocumentMessage::RenderDocument.into());
+			SetViewMode(mode) => {
+				self.view_mode = mode;
+				responses.push_front(DocumentMessage::DirtyRenderDocument.into());
 			}
 			DuplicateSelectedLayers => {
 				self.backup(responses);
@@ -730,8 +729,8 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				let scrollbar_size = viewport_size / bounds_length;
 
 				let log = root_layerdata.scale.log2();
-				let ruler_inverval = if log < 0. { 100. * 2_f64.powf(-log.ceil()) } else { 100. / 2_f64.powf(log.ceil()) };
-				let ruler_spacing = ruler_inverval * root_layerdata.scale;
+				let ruler_interval = if log < 0. { 100. * 2_f64.powf(-log.ceil()) } else { 100. / 2_f64.powf(log.ceil()) };
+				let ruler_spacing = ruler_interval * root_layerdata.scale;
 
 				let ruler_origin = self.graphene_document.root.transform.transform_point2(DVec2::ZERO);
 
@@ -748,10 +747,21 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					FrontendMessage::UpdateRulers {
 						origin: ruler_origin.into(),
 						spacing: ruler_spacing,
-						interval: ruler_inverval,
+						interval: ruler_interval,
 					}
 					.into(),
 				);
+			}
+			DirtyRenderDocument => {
+				// Mark all non-overlay caches as dirty
+				GrapheneDocument::visit_all_shapes(&mut self.graphene_document.root, &mut |_| {});
+
+				responses.push_back(DocumentMessage::RenderDocument.into());
+			}
+			DirtyRenderDocumentInOutlineView => {
+				if self.view_mode == ViewMode::Outline {
+					responses.push_front(DocumentMessage::DirtyRenderDocument.into());
+				}
 			}
 			NudgeSelectedLayers(x, y) => {
 				self.backup(responses);
