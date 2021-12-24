@@ -99,8 +99,6 @@ impl PathStyle {
 	}
 
 	pub fn render(&self, view_mode: ViewMode) -> String {
-		//TODO: Change stroke rendering so solid paths don't dissapear
-
 		let fill_attribute = match (view_mode, self.fill) {
 			(ViewMode::Outline, _) => Fill::none().render(),
 			(_, Some(fill)) => fill.render(),
