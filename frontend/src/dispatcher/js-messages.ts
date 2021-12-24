@@ -41,9 +41,7 @@ export class UpdateInputHints extends JsMessage {
 	readonly hint_data!: HintData;
 }
 
-export class HintGroup extends Array<HintInfo> {}
-
-export class HintData extends Array<HintGroup> {}
+export type HintData = HintInfo[][];
 
 export class HintInfo {
 	readonly keys!: string[];
