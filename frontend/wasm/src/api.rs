@@ -5,17 +5,18 @@
 use std::cell::Cell;
 
 use crate::helpers::Error;
-use crate::type_translators::{translate_blend_mode, translate_key, translate_tool_type};
+use crate::type_translators::{translate_blend_mode, translate_key, translate_tool_type, translate_view_mode};
 use crate::{EDITOR_HAS_CRASHED, EDITOR_INSTANCES};
 use editor::consts::FILE_SAVE_SUFFIX;
 use editor::input::input_preprocessor::ModifierKeys;
 use editor::input::mouse::{EditorMouseState, ScrollDelta, ViewportBounds};
+use editor::message_prelude::*;
 use editor::misc::EditorError;
 use editor::tool::{tool_options::ToolOptions, tools, ToolType};
 use editor::Color;
 use editor::LayerId;
 
-use editor::{message_prelude::*, Editor};
+use editor::Editor;
 use serde::Serialize;
 use serde_wasm_bindgen;
 use wasm_bindgen::prelude::*;
@@ -387,6 +388,15 @@ impl JsEditorHandle {
 	pub fn set_snapping(&self, new_status: bool) {
 		let message = DocumentMessage::SetSnapping(new_status);
 		self.dispatch(message);
+	}
+
+	/// Set the view mode to change the way layers are drawn in the viewport
+	pub fn set_view_mode(&self, new_mode: String) -> Result<(), JsValue> {
+		match translate_view_mode(new_mode.as_str()) {
+			Some(view_mode) => self.dispatch(DocumentMessage::SetViewMode(view_mode)),
+			None => return Err(Error::new("Invalid view mode").into()),
+		};
+		Ok(())
 	}
 
 	/// Sets the zoom to the value
