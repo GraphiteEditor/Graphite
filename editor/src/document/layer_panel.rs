@@ -2,10 +2,7 @@ use crate::consts::VIEWPORT_ROTATE_SNAP_INTERVAL;
 use glam::{DAffine2, DVec2};
 use graphene::layers::{style::ViewMode, BlendMode, Layer, LayerData as DocumentLayerData, LayerDataType};
 use graphene::LayerId;
-use serde::{
-	ser::SerializeStruct,
-	Deserialize, Serialize,
-};
+use serde::{ser::SerializeStruct, Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fmt;
 
