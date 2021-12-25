@@ -8,11 +8,12 @@ mod transform_layer_handler;
 pub use document_file::LayerData;
 
 #[doc(inline)]
-pub use document_file::{AlignAggregate, AlignAxis, DocumentMessage, DocumentMessageDiscriminant, DocumentMessageHandler, FlipAxis, VectorManipulatorSegment, VectorManipulatorShape, OverlayMessage,
-OverlayMessageDiscriminant};
+pub use document_file::{
+	AlignAggregate, AlignAxis, DocumentMessage, DocumentMessageDiscriminant, DocumentMessageHandler, FlipAxis, OverlayMessage, OverlayMessageDiscriminant, VectorManipulatorSegment,
+	VectorManipulatorShape,
+};
 #[doc(inline)]
 pub use document_message_handler::{DocumentsMessage, DocumentsMessageDiscriminant, DocumentsMessageHandler};
-#[doc(inline)]
 #[doc(inline)]
 pub use movement_handler::{MovementMessage, MovementMessageDiscriminant};
 #[doc(inline)]
