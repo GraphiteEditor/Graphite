@@ -175,7 +175,7 @@ export function createInputManager(editor: EditorState, container: HTMLElement, 
 		// Skip the message during development, since it's annoying when testing
 		if (process.env.NODE_ENV === "development") return;
 
-		const allDocumentsSaved = document.state.documents.reduce((acc, doc) => acc && doc.isSaved, true);
+		const allDocumentsSaved = document.state.documents.reduce((acc, doc) => acc && doc.is_saved, true);
 		if (!allDocumentsSaved) {
 			e.returnValue = "Unsaved work will be lost if the web browser tab is closed. Close anyway?";
 			e.preventDefault();

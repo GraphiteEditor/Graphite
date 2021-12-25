@@ -13,7 +13,12 @@ use editor::input::mouse::{EditorMouseState, ScrollDelta, ViewportBounds};
 use editor::message_prelude::*;
 use editor::misc::EditorError;
 use editor::tool::{tool_options::ToolOptions, tools, ToolType};
-use editor::{Color, Editor, LayerId};
+use editor::Color;
+use editor::LayerId;
+
+use editor::Editor;
+use serde::Serialize;
+use serde_wasm_bindgen;
 use wasm_bindgen::prelude::*;
 
 // To avoid wasm-bindgen from checking mutable reference issues using WasmRefCell
@@ -29,7 +34,7 @@ pub struct JsEditorHandle {
 #[wasm_bindgen]
 impl JsEditorHandle {
 	#[wasm_bindgen(constructor)]
-	pub fn new(handle_response: js_sys::Function) -> JsEditorHandle {
+	pub fn new(handle_response: js_sys::Function) -> Self {
 		let editor_id = generate_uuid();
 		let editor = Editor::new();
 		EDITOR_INSTANCES.with(|instances| instances.borrow_mut().insert(editor_id, editor));
@@ -68,7 +73,9 @@ impl JsEditorHandle {
 	// Sends a FrontendMessage to JavaScript
 	fn handle_response(&self, message: FrontendMessage) {
 		let message_type = message.to_discriminant().local_name();
-		let message_data = JsValue::from_serde(&message).expect("Failed to serialize FrontendMessage");
+
+		let serializer = serde_wasm_bindgen::Serializer::new().serialize_large_number_types_as_bigints(true);
+		let message_data = message.serialize(&serializer).expect("Failed to serialize FrontendMessage");
 
 		let js_return_value = self.handle_response.call2(&JsValue::null(), &JsValue::from(message_type), &message_data);
 
@@ -106,7 +113,7 @@ impl JsEditorHandle {
 
 	/// Update the options for a given tool
 	pub fn set_tool_options(&self, tool: String, options: &JsValue) -> Result<(), JsValue> {
-		match options.into_serde::<ToolOptions>() {
+		match serde_wasm_bindgen::from_value::<ToolOptions>(options.clone()) {
 			Ok(options) => match translate_tool_type(&tool) {
 				Some(tool) => {
 					let message = ToolMessage::SetToolOptions(tool, options);
@@ -124,7 +131,7 @@ impl JsEditorHandle {
 	pub fn send_tool_message(&self, tool: String, message: &JsValue) -> Result<(), JsValue> {
 		let tool_message = match translate_tool_type(&tool) {
 			Some(tool) => match tool {
-				ToolType::Select => match message.into_serde::<tools::select::SelectMessage>() {
+				ToolType::Select => match serde_wasm_bindgen::from_value::<tools::select::SelectMessage>(message.clone()) {
 					Ok(select_message) => Ok(ToolMessage::Select(select_message)),
 					Err(err) => Err(Error::new(&format!("Invalid message for {}: {}", tool, err)).into()),
 				},
@@ -143,8 +150,8 @@ impl JsEditorHandle {
 		}
 	}
 
-	pub fn select_document(&self, document: usize) {
-		let message = DocumentsMessage::SelectDocument(document);
+	pub fn select_document(&self, document_id: u64) {
+		let message = DocumentsMessage::SelectDocument(document_id);
 		self.dispatch(message);
 	}
 
@@ -173,8 +180,8 @@ impl JsEditorHandle {
 		self.dispatch(message);
 	}
 
-	pub fn close_document(&self, document: usize) {
-		let message = DocumentsMessage::CloseDocument(document);
+	pub fn close_document(&self, document_id: u64) {
+		let message = DocumentsMessage::CloseDocument(document_id);
 		self.dispatch(message);
 	}
 
@@ -185,6 +192,11 @@ impl JsEditorHandle {
 
 	pub fn close_active_document_with_confirmation(&self) {
 		let message = DocumentsMessage::CloseActiveDocumentWithConfirmation;
+		self.dispatch(message);
+	}
+
+	pub fn close_document_with_confirmation(&self, document_id: u64) {
+		let message = DocumentsMessage::CloseDocumentWithConfirmation(document_id);
 		self.dispatch(message);
 	}
 

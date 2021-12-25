@@ -6,6 +6,18 @@
 				:tabCloseButtons="true"
 				:tabMinWidths="true"
 				:tabLabels="documents.state.documents.map((doc) => doc.displayName)"
+				:clickAction="
+					(tabIndex) => {
+						const targetId = documents.state.documents[tabIndex].id;
+						editor.instance.select_document(targetId);
+					}
+				"
+				:closeAction="
+					(tabIndex) => {
+						const targetId = documents.state.documents[tabIndex].id;
+						editor.instance.close_document_with_confirmation(targetId);
+					}
+				"
 				:tabActiveIndex="documents.state.activeDocumentIndex"
 				ref="documentsPanel"
 			/>
@@ -61,15 +73,12 @@ import LayoutCol from "@/components/layout/LayoutCol.vue";
 import DialogModal from "@/components/widgets/floating-menus/DialogModal.vue";
 
 export default defineComponent({
-	inject: ["documents", "dialog"],
+	inject: ["documents", "dialog", "editor"],
 	components: {
 		LayoutRow,
 		LayoutCol,
 		Panel,
 		DialogModal,
-	},
-	data() {
-		return {};
 	},
 	computed: {
 		activeDocumentIndex() {
