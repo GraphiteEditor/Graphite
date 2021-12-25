@@ -8,47 +8,30 @@ import {
 	DisplayConfirmationToCloseAllDocuments,
 	DisplayConfirmationToCloseDocument,
 	ExportDocument,
+	FrontendDocumentDetails,
 	OpenDocumentBrowse,
 	SaveDocument,
 	SetActiveDocument,
 	UpdateOpenDocumentsList,
 } from "@/dispatcher/js-messages";
 
-class DocumentSaveState {
-	readonly displayName: string;
-
-	constructor(readonly name: string, readonly isSaved: boolean) {
-		this.displayName = `${name}${isSaved ? "" : "*"}`;
-	}
-}
-
 export function createDocumentsState(editor: EditorState, dialogState: DialogState) {
 	const state = reactive({
 		unsaved: false,
-		documents: [] as DocumentSaveState[],
+		documents: [] as FrontendDocumentDetails[],
 		activeDocumentIndex: 0,
 	});
 
-	const selectDocument = (tabIndex: number) => {
-		editor.instance.select_document(tabIndex);
-	};
-
-	const closeDocumentWithConfirmation = (tabIndex: number) => {
-		// Close automatically if it's already saved, no confirmation is needed
-		const targetDocument = state.documents[tabIndex];
-		if (targetDocument.isSaved) {
-			editor.instance.close_document(tabIndex);
-			return;
-		}
-
-		// Switch to the document that's being prompted to close
-		selectDocument(tabIndex);
+	const closeDocumentWithConfirmation = async (documentId: BigInt) => {
+		// Assume we receive a correct document_id
+		const targetDocument = state.documents.find((doc) => doc.id === documentId) as FrontendDocumentDetails;
+		const tabLabel = targetDocument.displayName;
 
 		// Show the close confirmation prompt
-		dialogState.createDialog("File", "Save changes before closing?", targetDocument.displayName, [
+		dialogState.createDialog("File", "Save changes before closing?", tabLabel, [
 			{
 				kind: "TextButton",
-				callback: () => {
+				callback: async () => {
 					editor.instance.save_document();
 					dialogState.dismissDialog();
 				},
@@ -56,15 +39,15 @@ export function createDocumentsState(editor: EditorState, dialogState: DialogSta
 			},
 			{
 				kind: "TextButton",
-				callback: () => {
-					editor.instance.close_document(tabIndex);
+				callback: async () => {
+					editor.instance.close_document(targetDocument.id);
 					dialogState.dismissDialog();
 				},
 				props: { label: "Discard", minWidth: 96 },
 			},
 			{
 				kind: "TextButton",
-				callback: () => {
+				callback: async () => {
 					dialogState.dismissDialog();
 				},
 				props: { label: "Cancel", minWidth: 96 },
@@ -94,15 +77,17 @@ export function createDocumentsState(editor: EditorState, dialogState: DialogSta
 
 	// Set up message subscriptions on creation
 	editor.dispatcher.subscribeJsMessage(UpdateOpenDocumentsList, (updateOpenDocumentList) => {
-		state.documents = updateOpenDocumentList.open_documents.map(({ name, isSaved }) => new DocumentSaveState(name, isSaved));
+		state.documents = updateOpenDocumentList.open_documents;
 	});
 
 	editor.dispatcher.subscribeJsMessage(SetActiveDocument, (setActiveDocument) => {
-		state.activeDocumentIndex = setActiveDocument.document_index;
+		// Assume we receive a correct document id
+		const activeId = state.documents.findIndex((doc) => doc.id === setActiveDocument.document_id);
+		state.activeDocumentIndex = activeId;
 	});
 
 	editor.dispatcher.subscribeJsMessage(DisplayConfirmationToCloseDocument, (displayConfirmationToCloseDocument) => {
-		closeDocumentWithConfirmation(displayConfirmationToCloseDocument.document_index);
+		closeDocumentWithConfirmation(displayConfirmationToCloseDocument.document_id);
 	});
 
 	editor.dispatcher.subscribeJsMessage(DisplayConfirmationToCloseAllDocuments, () => {
@@ -128,8 +113,6 @@ export function createDocumentsState(editor: EditorState, dialogState: DialogSta
 
 	return {
 		state: readonly(state),
-		selectDocument,
-		closeDocumentWithConfirmation,
 		closeAllDocumentsWithConfirmation,
 	};
 }

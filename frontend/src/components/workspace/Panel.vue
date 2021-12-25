@@ -7,26 +7,11 @@
 					:class="{ active: tabIndex === tabActiveIndex }"
 					v-for="(tabLabel, tabIndex) in tabLabels"
 					:key="tabIndex"
-					@click.middle="
-						(e) => {
-							e.stopPropagation();
-							documents.closeDocumentWithConfirmation(tabIndex);
-						}
-					"
-					@click="panelType === 'Document' && documents.selectDocument(tabIndex)"
+					@click="(e) => e.stopPropagation() || (clickAction && clickAction(tabIndex))"
+					@click.middle="(e) => e.stopPropagation() || (closeAction && closeAction(tabIndex))"
 				>
 					<span>{{ tabLabel }}</span>
-					<IconButton
-						:action="
-							(e) => {
-								e.stopPropagation();
-								documents.closeDocumentWithConfirmation(tabIndex);
-							}
-						"
-						:icon="'CloseX'"
-						:size="16"
-						v-if="tabCloseButtons"
-					/>
+					<IconButton :action="(e) => e.stopPropagation() || (closeAction && closeAction(tabIndex))" :icon="'CloseX'" :size="16" v-if="tabCloseButtons" />
 				</div>
 			</div>
 			<PopoverButton :icon="PopoverButtonIcon.VerticalEllipsis">
@@ -193,6 +178,8 @@ export default defineComponent({
 		tabLabels: { type: Array as PropType<string[]>, required: true },
 		tabActiveIndex: { type: Number, required: true },
 		panelType: { type: String, required: true },
+		clickAction: { type: Function as PropType<(index: number) => void>, required: false },
+		closeAction: { type: Function as PropType<(index: number) => void>, required: false },
 	},
 	data() {
 		return {
