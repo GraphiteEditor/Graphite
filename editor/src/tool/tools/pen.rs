@@ -1,4 +1,6 @@
+use crate::input::keyboard::{Key, MouseMotion};
 use crate::input::InputPreprocessor;
+use crate::misc::{HintData, HintGroup, HintInfo, KeysGroup};
 use crate::tool::snapping::SnapHandler;
 use crate::tool::{DocumentToolData, Fsm, ToolActionHandlerData, ToolOptions, ToolType};
 use crate::{document::DocumentMessageHandler, message_prelude::*};
@@ -26,18 +28,29 @@ pub enum PenMessage {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum PenToolFsmState {
 	Ready,
-	Dragging,
+	Drawing,
 }
 
 impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Pen {
 	fn process_action(&mut self, action: ToolMessage, data: ToolActionHandlerData<'a>, responses: &mut VecDeque<Message>) {
-		self.fsm_state = self.fsm_state.transition(action, data.0, data.1, &mut self.data, data.2, responses);
+		if action == ToolMessage::UpdateHints {
+			self.fsm_state.update_hints(responses);
+			return;
+		}
+
+		let new_state = self.fsm_state.transition(action, data.0, data.1, &mut self.data, data.2, responses);
+
+		if self.fsm_state != new_state {
+			self.fsm_state = new_state;
+			self.fsm_state.update_hints(responses);
+		}
 	}
+
 	fn actions(&self) -> ActionList {
 		use PenToolFsmState::*;
 		match self.fsm_state {
 			Ready => actions!(PenMessageDiscriminant; Undo, DragStart, DragStop, Confirm, Abort),
-			Dragging => actions!(PenMessageDiscriminant; DragStop, PointerMove, Confirm, Abort),
+			Drawing => actions!(PenMessageDiscriminant; DragStop, PointerMove, Confirm, Abort),
 		}
 	}
 }
@@ -92,9 +105,9 @@ impl Fsm for PenToolFsmState {
 						_ => 5,
 					};
 
-					Dragging
+					Drawing
 				}
-				(Dragging, DragStop) => {
+				(Drawing, DragStop) => {
 					let snapped_position = data.snap_handler.snap_position(document, input.mouse.position);
 					let pos = transform.inverse() * DAffine2::from_translation(snapped_position);
 
@@ -106,18 +119,18 @@ impl Fsm for PenToolFsmState {
 
 					responses.extend(make_operation(data, tool_data, true));
 
-					Dragging
+					Drawing
 				}
-				(Dragging, PointerMove) => {
+				(Drawing, PointerMove) => {
 					let snapped_position = data.snap_handler.snap_position(document, input.mouse.position);
 					let pos = transform.inverse() * DAffine2::from_translation(snapped_position);
 					data.next_point = pos;
 
 					responses.extend(make_operation(data, tool_data, true));
 
-					Dragging
+					Drawing
 				}
-				(Dragging, Confirm) => {
+				(Drawing, Confirm) | (Drawing, Abort) => {
 					if data.points.len() >= 2 {
 						responses.push_back(DocumentMessage::DeselectAllLayers.into());
 						responses.extend(make_operation(data, tool_data, false));
@@ -132,19 +145,38 @@ impl Fsm for PenToolFsmState {
 
 					Ready
 				}
-				(Dragging, Abort) => {
-					responses.push_back(DocumentMessage::AbortTransaction.into());
-					data.points.clear();
-					data.path = None;
-					data.snap_handler.cleanup();
-
-					Ready
-				}
 				_ => self,
 			}
 		} else {
 			self
 		}
+	}
+
+	fn update_hints(&self, responses: &mut VecDeque<Message>) {
+		let hint_data = match self {
+			PenToolFsmState::Ready => HintData(vec![HintGroup(vec![HintInfo {
+				key_groups: vec![],
+				mouse: Some(MouseMotion::Lmb),
+				label: String::from("Draw Path"),
+				plus: false,
+			}])]),
+			PenToolFsmState::Drawing => HintData(vec![
+				HintGroup(vec![HintInfo {
+					key_groups: vec![],
+					mouse: Some(MouseMotion::Lmb),
+					label: String::from("Extend Path"),
+					plus: false,
+				}]),
+				HintGroup(vec![HintInfo {
+					key_groups: vec![KeysGroup(vec![Key::KeyEnter])],
+					mouse: None,
+					label: String::from("End Path"),
+					plus: false,
+				}]),
+			]),
+		};
+
+		responses.push_back(FrontendMessage::UpdateInputHints { hint_data }.into());
 	}
 }
 

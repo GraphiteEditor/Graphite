@@ -7,26 +7,11 @@
 					:class="{ active: tabIndex === tabActiveIndex }"
 					v-for="(tabLabel, tabIndex) in tabLabels"
 					:key="tabIndex"
-					@click.middle="
-						(e) => {
-							e.stopPropagation();
-							closeDocumentWithConfirmation(tabIndex);
-						}
-					"
-					@click="panelType === 'Document' && selectDocument(tabIndex)"
+					@click="(e) => e.stopPropagation() || (clickAction && clickAction(tabIndex))"
+					@click.middle="(e) => e.stopPropagation() || (closeAction && closeAction(tabIndex))"
 				>
 					<span>{{ tabLabel }}</span>
-					<IconButton
-						:action="
-							(e) => {
-								e.stopPropagation();
-								closeDocumentWithConfirmation(tabIndex);
-							}
-						"
-						:icon="'CloseX'"
-						:size="16"
-						v-if="tabCloseButtons"
-					/>
+					<IconButton :action="(e) => e.stopPropagation() || (closeAction && closeAction(tabIndex))" :icon="'CloseX'" :size="16" v-if="tabCloseButtons" />
 				</div>
 			</div>
 			<PopoverButton :icon="PopoverButtonIcon.VerticalEllipsis">
@@ -169,8 +154,6 @@
 <script lang="ts">
 import { defineComponent, PropType } from "vue";
 
-import { selectDocument, closeDocumentWithConfirmation } from "@/utilities/documents";
-
 import Document from "@/components/panels/Document.vue";
 import Properties from "@/components/panels/Properties.vue";
 import LayerTree from "@/components/panels/LayerTree.vue";
@@ -180,6 +163,7 @@ import PopoverButton, { PopoverButtonIcon } from "@/components/widgets/buttons/P
 import { MenuDirection } from "@/components/widgets/floating-menus/FloatingMenu.vue";
 
 export default defineComponent({
+	inject: ["documents"],
 	components: {
 		Document,
 		Properties,
@@ -194,11 +178,11 @@ export default defineComponent({
 		tabLabels: { type: Array as PropType<string[]>, required: true },
 		tabActiveIndex: { type: Number, required: true },
 		panelType: { type: String, required: true },
+		clickAction: { type: Function as PropType<(index: number) => void>, required: false },
+		closeAction: { type: Function as PropType<(index: number) => void>, required: false },
 	},
 	data() {
 		return {
-			selectDocument,
-			closeDocumentWithConfirmation,
 			PopoverButtonIcon,
 			MenuDirection,
 		};

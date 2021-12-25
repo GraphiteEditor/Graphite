@@ -36,10 +36,10 @@
 						class="layer"
 						:class="{ selected: layer.layer_data.selected }"
 						:style="{ marginLeft: layerIndent(layer) }"
-						@click.shift.exact.stop="handleShiftClick(layer)"
-						@click.ctrl.exact.stop="handleControlClick(layer)"
-						@click.alt.exact.stop="handleControlClick(layer)"
-						@click.exact.stop="handleClick(layer)"
+						@click.shift.exact.stop="selectLayer(layer, false, true)"
+						@click.shift.ctrl.exact.stop="selectLayer(layer, true, true)"
+						@click.ctrl.exact.stop="selectLayer(layer, true, false)"
+						@click.exact.stop="selectLayer(layer, false, false)"
 					>
 						<div class="layer-thumbnail" v-html="layer.thumbnail"></div>
 						<div class="layer-type-icon">
@@ -197,9 +197,7 @@
 <script lang="ts">
 import { defineComponent } from "vue";
 
-import { subscribeJsMessage } from "@/utilities/js-message-dispatcher";
-import { BlendMode, DisplayFolderTreeStructure, UpdateLayer, LayerPanelEntry, LayerTypeOptions } from "@/utilities/js-messages";
-import { panicProxy } from "@/utilities/panic-proxy";
+import { BlendMode, DisplayFolderTreeStructure, UpdateLayer, LayerPanelEntry, LayerTypeOptions } from "@/dispatcher/js-messages";
 import { SeparatorType } from "@/components/widgets/widgets";
 
 import LayoutRow from "@/components/layout/LayoutRow.vue";
@@ -212,8 +210,6 @@ import IconButton from "@/components/widgets/buttons/IconButton.vue";
 import IconLabel from "@/components/widgets/labels/IconLabel.vue";
 import DropdownInput from "@/components/widgets/inputs/DropdownInput.vue";
 import { SectionsOfMenuListEntries } from "@/components/widgets/floating-menus/MenuList.vue";
-
-const wasm = import("@/../wasm/pkg").then(panicProxy);
 
 const blendModeEntries: SectionsOfMenuListEntries<BlendMode> = [
 	[{ label: "Normal", value: "Normal" }],
@@ -255,6 +251,7 @@ const blendModeEntries: SectionsOfMenuListEntries<BlendMode> = [
 ];
 
 export default defineComponent({
+	inject: ["editor"],
 	data() {
 		return {
 			blendModeEntries,
@@ -278,92 +275,33 @@ export default defineComponent({
 			return `${(layer.path.length - 1) * 16}px`;
 		},
 		async toggleLayerVisibility(path: BigUint64Array) {
-			(await wasm).toggle_layer_visibility(path);
+			this.editor.instance.toggle_layer_visibility(path);
 		},
 		async handleNodeConnectorClick(path: BigUint64Array) {
-			(await wasm).toggle_layer_expansion(path);
+			this.editor.instance.toggle_layer_expansion(path);
 		},
 		async setLayerBlendMode() {
 			const blendMode = this.blendModeEntries.flat()[this.blendModeSelectedIndex].value;
 			if (blendMode) {
-				(await wasm).set_blend_mode_for_selected_layers(blendMode);
+				this.editor.instance.set_blend_mode_for_selected_layers(blendMode);
 			}
 		},
 		async setLayerOpacity() {
-			(await wasm).set_opacity_for_selected_layers(this.opacity);
+			this.editor.instance.set_opacity_for_selected_layers(this.opacity);
 		},
-		async handleControlClick(clickedLayer: LayerPanelEntry) {
-			const index = this.layers.indexOf(clickedLayer);
-			clickedLayer.layer_data.selected = !clickedLayer.layer_data.selected;
-
-			this.selectionRangeEndLayer = undefined;
-			this.selectionRangeStartLayer =
-				this.layers.slice(index).filter((layer) => layer.layer_data.selected)[0] ||
-				this.layers
-					.slice(0, index)
-					.reverse()
-					.filter((layer) => layer.layer_data.selected)[0];
-
-			this.sendSelectedLayers();
-		},
-		async handleShiftClick(clickedLayer: LayerPanelEntry) {
-			// The two paths of the range are stored in selectionRangeStartLayer and selectionRangeEndLayer
-			// So for a new Shift+Click, select all layers between selectionRangeStartLayer and selectionRangeEndLayer (stored in previous Shift+Click)
-			this.clearSelection();
-
-			this.selectionRangeEndLayer = clickedLayer;
-			if (!this.selectionRangeStartLayer) this.selectionRangeStartLayer = clickedLayer;
-			this.fillSelectionRange(this.selectionRangeStartLayer, this.selectionRangeEndLayer, true);
-
-			this.sendSelectedLayers();
-		},
-		async handleClick(clickedLayer: LayerPanelEntry) {
-			this.selectionRangeStartLayer = clickedLayer;
-			this.selectionRangeEndLayer = clickedLayer;
-
-			this.clearSelection();
-			clickedLayer.layer_data.selected = true;
-
-			this.sendSelectedLayers();
+		async selectLayer(clickedLayer: LayerPanelEntry, ctrl: boolean, shift: boolean) {
+			this.editor.instance.select_layer(clickedLayer.path, ctrl, shift);
 		},
 		async deselectAllLayers() {
 			this.selectionRangeStartLayer = undefined;
 			this.selectionRangeEndLayer = undefined;
 
-			(await wasm).deselect_all_layers();
-		},
-		async fillSelectionRange(start: LayerPanelEntry, end: LayerPanelEntry, selected = true) {
-			const startIndex = this.layers.findIndex((layer) => layer.path.join() === start.path.join());
-			const endIndex = this.layers.findIndex((layer) => layer.path.join() === end.path.join());
-			const [min, max] = [startIndex, endIndex].sort();
-
-			if (min !== -1) {
-				for (let i = min; i <= max; i += 1) {
-					this.layers[i].layer_data.selected = selected;
-				}
-			}
+			this.editor.instance.deselect_all_layers();
 		},
 		async clearSelection() {
 			this.layers.forEach((layer) => {
 				layer.layer_data.selected = false;
 			});
-		},
-		async sendSelectedLayers() {
-			const paths = this.layers.filter((layer) => layer.layer_data.selected).map((layer) => layer.path);
-
-			const length = paths.reduce((acc, cur) => acc + cur.length, 0) + paths.length - 1;
-			const output = new BigUint64Array(length);
-
-			let i = 0;
-			paths.forEach((path, index) => {
-				output.set(path, i);
-				i += path.length;
-				if (index < paths.length) {
-					output[i] = (1n << 64n) - 1n;
-				}
-				i += 1;
-			});
-			(await wasm).select_layers(output);
 		},
 		setBlendModeForSelectedLayers() {
 			const selected = this.layers.filter((layer) => layer.layer_data.selected);
@@ -386,6 +324,7 @@ export default defineComponent({
 			}
 		},
 		setOpacityForSelectedLayers() {
+			// todo figure out why this is here
 			const selected = this.layers.filter((layer) => layer.layer_data.selected);
 
 			if (selected.length < 1) {
@@ -407,7 +346,7 @@ export default defineComponent({
 		},
 	},
 	mounted() {
-		subscribeJsMessage(DisplayFolderTreeStructure, (displayFolderTreeStructure) => {
+		this.editor.dispatcher.subscribeJsMessage(DisplayFolderTreeStructure, (displayFolderTreeStructure) => {
 			const path = [] as bigint[];
 			this.layers = [] as LayerPanelEntry[];
 			function recurse(folder: DisplayFolderTreeStructure, layers: LayerPanelEntry[], cache: Map<string, LayerPanelEntry>) {
@@ -423,7 +362,7 @@ export default defineComponent({
 			recurse(displayFolderTreeStructure, this.layers, this.layerCache);
 		});
 
-		subscribeJsMessage(UpdateLayer, (updateLayer) => {
+		this.editor.dispatcher.subscribeJsMessage(UpdateLayer, (updateLayer) => {
 			const targetPath = updateLayer.data.path;
 			const targetLayer = updateLayer.data;
 

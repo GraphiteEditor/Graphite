@@ -1,5 +1,5 @@
 <template>
-	<button class="icon-button" :class="`size-${String(size)}`" @click="action">
+	<button class="icon-button" :class="`size-${String(size)}`" @click="(e) => action(e)">
 		<IconLabel :icon="icon" />
 	</button>
 </template>

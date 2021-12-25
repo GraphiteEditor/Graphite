@@ -1,6 +1,7 @@
 use crate::consts::LINE_ROTATE_SNAP_ANGLE;
-use crate::input::keyboard::Key;
+use crate::input::keyboard::{Key, MouseMotion};
 use crate::input::{mouse::ViewportPosition, InputPreprocessor};
+use crate::misc::{HintData, HintGroup, HintInfo, KeysGroup};
 use crate::tool::snapping::SnapHandler;
 use crate::tool::{DocumentToolData, Fsm, ToolActionHandlerData, ToolOptions, ToolType};
 use crate::{document::DocumentMessageHandler, message_prelude::*};
@@ -25,13 +26,24 @@ pub enum LineMessage {
 
 impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Line {
 	fn process_action(&mut self, action: ToolMessage, data: ToolActionHandlerData<'a>, responses: &mut VecDeque<Message>) {
-		self.fsm_state = self.fsm_state.transition(action, data.0, data.1, &mut self.data, data.2, responses);
+		if action == ToolMessage::UpdateHints {
+			self.fsm_state.update_hints(responses);
+			return;
+		}
+
+		let new_state = self.fsm_state.transition(action, data.0, data.1, &mut self.data, data.2, responses);
+
+		if self.fsm_state != new_state {
+			self.fsm_state = new_state;
+			self.fsm_state.update_hints(responses);
+		}
 	}
+
 	fn actions(&self) -> ActionList {
 		use LineToolFsmState::*;
 		match self.fsm_state {
 			Ready => actions!(LineMessageDiscriminant;  DragStart),
-			Dragging => actions!(LineMessageDiscriminant; DragStop, Redraw, Abort),
+			Drawing => actions!(LineMessageDiscriminant; DragStop, Redraw, Abort),
 		}
 	}
 }
@@ -39,7 +51,7 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Line {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum LineToolFsmState {
 	Ready,
-	Dragging,
+	Drawing,
 }
 
 impl Default for LineToolFsmState {
@@ -96,21 +108,21 @@ impl Fsm for LineToolFsmState {
 						.into(),
 					);
 
-					Dragging
+					Drawing
 				}
-				(Dragging, Redraw { center, snap_angle, lock_angle }) => {
+				(Drawing, Redraw { center, snap_angle, lock_angle }) => {
 					data.drag_current = data.snap_handler.snap_position(document, input.mouse.position);
 
 					let values: Vec<_> = [lock_angle, snap_angle, center].iter().map(|k| input.keyboard.get(*k as usize)).collect();
 					responses.push_back(generate_transform(data, values[0], values[1], values[2]));
 
-					Dragging
+					Drawing
 				}
-				(Dragging, DragStop) => {
+				(Drawing, DragStop) => {
 					data.drag_current = data.snap_handler.snap_position(document, input.mouse.position);
 					data.snap_handler.cleanup();
 
-					// TODO; introduce comparison threshold when operating with canvas coordinates (https://github.com/GraphiteEditor/Graphite/issues/100)
+					// TODO: introduce comparison threshold when operating with canvas coordinates (https://github.com/GraphiteEditor/Graphite/issues/100)
 					match data.drag_start == input.mouse.position {
 						true => responses.push_back(DocumentMessage::AbortTransaction.into()),
 						false => responses.push_back(DocumentMessage::CommitTransaction.into()),
@@ -120,7 +132,7 @@ impl Fsm for LineToolFsmState {
 
 					Ready
 				}
-				(Dragging, Abort) => {
+				(Drawing, Abort) => {
 					data.snap_handler.cleanup();
 					responses.push_back(DocumentMessage::AbortTransaction.into());
 					data.path = None;
@@ -131,6 +143,59 @@ impl Fsm for LineToolFsmState {
 		} else {
 			self
 		}
+	}
+
+	fn update_hints(&self, responses: &mut VecDeque<Message>) {
+		let hint_data = match self {
+			LineToolFsmState::Ready => HintData(vec![HintGroup(vec![
+				HintInfo {
+					key_groups: vec![],
+					mouse: Some(MouseMotion::LmbDrag),
+					label: String::from("Draw Line"),
+					plus: false,
+				},
+				HintInfo {
+					key_groups: vec![KeysGroup(vec![Key::KeyShift])],
+					mouse: None,
+					label: String::from("Snap 15°"),
+					plus: true,
+				},
+				HintInfo {
+					key_groups: vec![KeysGroup(vec![Key::KeyAlt])],
+					mouse: None,
+					label: String::from("From Center"),
+					plus: true,
+				},
+				HintInfo {
+					key_groups: vec![KeysGroup(vec![Key::KeyControl])],
+					mouse: None,
+					label: String::from("Lock Angle"),
+					plus: true,
+				},
+			])]),
+			LineToolFsmState::Drawing => HintData(vec![HintGroup(vec![
+				HintInfo {
+					key_groups: vec![KeysGroup(vec![Key::KeyShift])],
+					mouse: None,
+					label: String::from("Snap 15°"),
+					plus: false,
+				},
+				HintInfo {
+					key_groups: vec![KeysGroup(vec![Key::KeyAlt])],
+					mouse: None,
+					label: String::from("From Center"),
+					plus: false,
+				},
+				HintInfo {
+					key_groups: vec![KeysGroup(vec![Key::KeyControl])],
+					mouse: None,
+					label: String::from("Lock Angle"),
+					plus: false,
+				},
+			])]),
+		};
+
+		responses.push_back(FrontendMessage::UpdateInputHints { hint_data }.into());
 	}
 }
 

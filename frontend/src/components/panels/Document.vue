@@ -18,7 +18,7 @@
 
 				<Separator :type="SeparatorType.Unrelated" />
 
-				<OptionalInput v-model:checked="gridEnabled" @update:checked="comingSoon(318)" :icon="'Grid'" title="Grid" />
+				<OptionalInput v-model:checked="gridEnabled" @update:checked="dialog.comingSoon(318)" :icon="'Grid'" title="Grid" />
 				<PopoverButton>
 					<h3>Grid</h3>
 					<p>The contents of this popover menu are coming soon</p>
@@ -26,7 +26,7 @@
 
 				<Separator :type="SeparatorType.Unrelated" />
 
-				<OptionalInput v-model:checked="overlaysEnabled" @update:checked="comingSoon(99)" :icon="'Overlays'" title="Overlays" />
+				<OptionalInput v-model:checked="overlaysEnabled" @update:checked="dialog.comingSoon(99)" :icon="'Overlays'" title="Overlays" />
 				<PopoverButton>
 					<h3>Overlays</h3>
 					<p>The contents of this popover menu are coming soon</p>
@@ -70,31 +70,31 @@
 			<LayoutCol :class="'shelf'">
 				<div class="tools scrollable-y">
 					<ShelfItemInput icon="LayoutSelectTool" title="Select Tool (V)" :active="activeTool === 'Select'" :action="() => selectTool('Select')" />
-					<ShelfItemInput icon="LayoutCropTool" title="Crop Tool" :active="activeTool === 'Crop'" :action="() => comingSoon(289) && selectTool('Crop')" />
-					<ShelfItemInput icon="LayoutNavigateTool" title="Navigate Tool (Z)" :active="activeTool === 'Navigate'" :action="() => comingSoon(155) && selectTool('Navigate')" />
+					<ShelfItemInput icon="LayoutCropTool" title="Crop Tool" :active="activeTool === 'Crop'" :action="() => dialog.comingSoon(289) && selectTool('Crop')" />
+					<ShelfItemInput icon="LayoutNavigateTool" title="Navigate Tool (Z)" :active="activeTool === 'Navigate'" :action="() => dialog.comingSoon(155) && selectTool('Navigate')" />
 					<ShelfItemInput icon="LayoutEyedropperTool" title="Eyedropper Tool (I)" :active="activeTool === 'Eyedropper'" :action="() => selectTool('Eyedropper')" />
 
 					<Separator :type="SeparatorType.Section" :direction="SeparatorDirection.Vertical" />
 
-					<ShelfItemInput icon="ParametricTextTool" title="Text Tool (T)" :active="activeTool === 'Text'" :action="() => comingSoon(153) && selectTool('Text')" />
+					<ShelfItemInput icon="ParametricTextTool" title="Text Tool (T)" :active="activeTool === 'Text'" :action="() => dialog.comingSoon(153) && selectTool('Text')" />
 					<ShelfItemInput icon="ParametricFillTool" title="Fill Tool (F)" :active="activeTool === 'Fill'" :action="() => selectTool('Fill')" />
-					<ShelfItemInput icon="ParametricGradientTool" title="Gradient Tool (H)" :active="activeTool === 'Gradient'" :action="() => comingSoon() && selectTool('Gradient')" />
+					<ShelfItemInput icon="ParametricGradientTool" title="Gradient Tool (H)" :active="activeTool === 'Gradient'" :action="() => dialog.comingSoon() && selectTool('Gradient')" />
 
 					<Separator :type="SeparatorType.Section" :direction="SeparatorDirection.Vertical" />
 
-					<ShelfItemInput icon="RasterBrushTool" title="Brush Tool (B)" :active="activeTool === 'Brush'" :action="() => comingSoon() && selectTool('Brush')" />
-					<ShelfItemInput icon="RasterHealTool" title="Heal Tool (J)" :active="activeTool === 'Heal'" :action="() => comingSoon() && selectTool('Heal')" />
-					<ShelfItemInput icon="RasterCloneTool" title="Clone Tool (C)" :active="activeTool === 'Clone'" :action="() => comingSoon() && selectTool('Clone')" />
-					<ShelfItemInput icon="RasterPatchTool" title="Patch Tool" :active="activeTool === 'Patch'" :action="() => comingSoon() && selectTool('Patch')" />
-					<ShelfItemInput icon="RasterBlurSharpenTool" title="Detail Tool (D)" :active="activeTool === 'BlurSharpen'" :action="() => comingSoon() && selectTool('BlurSharpen')" />
-					<ShelfItemInput icon="RasterRelightTool" title="Relight Tool (O)" :active="activeTool === 'Relight'" :action="() => comingSoon() && selectTool('Relight')" />
+					<ShelfItemInput icon="RasterBrushTool" title="Brush Tool (B)" :active="activeTool === 'Brush'" :action="() => dialog.comingSoon() && selectTool('Brush')" />
+					<ShelfItemInput icon="RasterHealTool" title="Heal Tool (J)" :active="activeTool === 'Heal'" :action="() => dialog.comingSoon() && selectTool('Heal')" />
+					<ShelfItemInput icon="RasterCloneTool" title="Clone Tool (C)" :active="activeTool === 'Clone'" :action="() => dialog.comingSoon() && selectTool('Clone')" />
+					<ShelfItemInput icon="RasterPatchTool" title="Patch Tool" :active="activeTool === 'Patch'" :action="() => dialog.comingSoon() && selectTool('Patch')" />
+					<ShelfItemInput icon="RasterBlurSharpenTool" title="Detail Tool (D)" :active="activeTool === 'BlurSharpen'" :action="() => dialog.comingSoon() && selectTool('BlurSharpen')" />
+					<ShelfItemInput icon="RasterRelightTool" title="Relight Tool (O)" :active="activeTool === 'Relight'" :action="() => dialog.comingSoon() && selectTool('Relight')" />
 
 					<Separator :type="SeparatorType.Section" :direction="SeparatorDirection.Vertical" />
 
 					<ShelfItemInput icon="VectorPathTool" title="Path Tool (A)" :active="activeTool === 'Path'" :action="() => selectTool('Path')" />
 					<ShelfItemInput icon="VectorPenTool" title="Pen Tool (P)" :active="activeTool === 'Pen'" :action="() => selectTool('Pen')" />
-					<ShelfItemInput icon="VectorFreehandTool" title="Freehand Tool (N)" :active="activeTool === 'Freehand'" :action="() => comingSoon() && selectTool('Freehand')" />
-					<ShelfItemInput icon="VectorSplineTool" title="Spline Tool" :active="activeTool === 'Spline'" :action="() => comingSoon() && selectTool('Spline')" />
+					<ShelfItemInput icon="VectorFreehandTool" title="Freehand Tool (N)" :active="activeTool === 'Freehand'" :action="() => dialog.comingSoon() && selectTool('Freehand')" />
+					<ShelfItemInput icon="VectorSplineTool" title="Spline Tool" :active="activeTool === 'Spline'" :action="() => dialog.comingSoon() && selectTool('Spline')" />
 					<ShelfItemInput icon="VectorLineTool" title="Line Tool (L)" :active="activeTool === 'Line'" :action="() => selectTool('Line')" />
 					<ShelfItemInput icon="VectorRectangleTool" title="Rectangle Tool (M)" :active="activeTool === 'Rectangle'" :action="() => selectTool('Rectangle')" />
 					<ShelfItemInput icon="VectorEllipseTool" title="Ellipse Tool (E)" :active="activeTool === 'Ellipse'" :action="() => selectTool('Ellipse')" />
@@ -238,11 +238,8 @@
 <script lang="ts">
 import { defineComponent } from "vue";
 
-import { subscribeJsMessage } from "@/utilities/js-message-dispatcher";
-import { UpdateCanvas, UpdateScrollbars, UpdateRulers, SetActiveTool, SetCanvasZoom, SetCanvasRotation } from "@/utilities/js-messages";
+import { UpdateCanvas, UpdateScrollbars, UpdateRulers, SetActiveTool, SetCanvasZoom, SetCanvasRotation } from "@/dispatcher/js-messages";
 import { SeparatorDirection, SeparatorType } from "@/components/widgets/widgets";
-import { comingSoon } from "@/utilities/errors";
-import { panicProxy } from "@/utilities/panic-proxy";
 
 import LayoutRow from "@/components/layout/LayoutRow.vue";
 import LayoutCol from "@/components/layout/LayoutCol.vue";
@@ -261,27 +258,16 @@ import OptionalInput from "@/components/widgets/inputs/OptionalInput.vue";
 import ToolOptions from "@/components/widgets/options/ToolOptions.vue";
 import { SectionsOfMenuListEntries } from "@/components/widgets/floating-menus/MenuList.vue";
 
-const wasm = import("@/../wasm/pkg").then(panicProxy);
-
-const documentModeEntries: SectionsOfMenuListEntries = [
-	[
-		{ label: "Design Mode", icon: "ViewportDesignMode" },
-		{ label: "Select Mode", icon: "ViewportSelectMode", action: () => comingSoon(330) },
-		{ label: "Guide Mode", icon: "ViewportGuideMode", action: () => comingSoon(331) },
-	],
-];
-const viewModeEntries: RadioEntries = [
-	{ value: "normal", icon: "ViewModeNormal", tooltip: "View Mode: Normal" },
-	{ value: "outline", icon: "ViewModeOutline", tooltip: "View Mode: Outline", action: () => comingSoon(319) },
-	{ value: "pixels", icon: "ViewModePixels", tooltip: "View Mode: Pixels", action: () => comingSoon(320) },
-];
-
 export default defineComponent({
+	inject: ["editor", "dialog"],
 	methods: {
-		async setSnap(newStatus: boolean) {
-			(await wasm).set_snapping(newStatus);
+		setSnap(newStatus: boolean) {
+			this.editor.instance.set_snapping(newStatus);
 		},
-		async viewportResize() {
+		setViewMode(newViewMode: string) {
+			this.editor.instance.set_view_mode(newViewMode);
+		},
+		viewportResize() {
 			const canvas = this.$refs.canvas as HTMLElement;
 			// Get the width and height rounded up to the nearest even number because resizing is centered and dividing an odd number by 2 for centering causes antialiasing
 			let width = Math.ceil(parseFloat(getComputedStyle(canvas).width));
@@ -292,73 +278,73 @@ export default defineComponent({
 			this.canvasSvgWidth = `${width}px`;
 			this.canvasSvgHeight = `${height}px`;
 		},
-		async setCanvasZoom(newZoom: number) {
-			(await wasm).set_canvas_zoom(newZoom / 100);
+		setCanvasZoom(newZoom: number) {
+			this.editor.instance.set_canvas_zoom(newZoom / 100);
 		},
-		async increaseCanvasZoom() {
-			(await wasm).increase_canvas_zoom();
+		increaseCanvasZoom() {
+			this.editor.instance.increase_canvas_zoom();
 		},
-		async decreaseCanvasZoom() {
-			(await wasm).decrease_canvas_zoom();
+		decreaseCanvasZoom() {
+			this.editor.instance.decrease_canvas_zoom();
 		},
-		async setRotation(newRotation: number) {
-			(await wasm).set_rotation(newRotation * (Math.PI / 180));
+		setRotation(newRotation: number) {
+			this.editor.instance.set_rotation(newRotation * (Math.PI / 180));
 		},
-		async translateCanvasX(newValue: number) {
+		translateCanvasX(newValue: number) {
 			const delta = newValue - this.scrollbarPos.x;
 			this.scrollbarPos.x = newValue;
-			(await wasm).translate_canvas(-delta * this.scrollbarMultiplier.x, 0);
+			this.editor.instance.translate_canvas(-delta * this.scrollbarMultiplier.x, 0);
 		},
-		async translateCanvasY(newValue: number) {
+		translateCanvasY(newValue: number) {
 			const delta = newValue - this.scrollbarPos.y;
 			this.scrollbarPos.y = newValue;
-			(await wasm).translate_canvas(0, -delta * this.scrollbarMultiplier.y);
+			this.editor.instance.translate_canvas(0, -delta * this.scrollbarMultiplier.y);
 		},
-		async pageX(delta: number) {
+		pageX(delta: number) {
 			const move = delta < 0 ? 1 : -1;
-			(await wasm).translate_canvas_by_fraction(move, 0);
+			this.editor.instance.translate_canvas_by_fraction(move, 0);
 		},
-		async pageY(delta: number) {
+		pageY(delta: number) {
 			const move = delta < 0 ? 1 : -1;
-			(await wasm).translate_canvas_by_fraction(0, move);
+			this.editor.instance.translate_canvas_by_fraction(0, move);
 		},
-		async selectTool(toolName: string) {
-			(await wasm).select_tool(toolName);
+		selectTool(toolName: string) {
+			this.editor.instance.select_tool(toolName);
 		},
-		async swapWorkingColors() {
-			(await wasm).swap_colors();
+		swapWorkingColors() {
+			this.editor.instance.swap_colors();
 		},
-		async resetWorkingColors() {
-			(await wasm).reset_colors();
+		resetWorkingColors() {
+			this.editor.instance.reset_colors();
 		},
 	},
 	mounted() {
-		subscribeJsMessage(UpdateCanvas, (updateCanvas) => {
+		this.editor.dispatcher.subscribeJsMessage(UpdateCanvas, (updateCanvas) => {
 			this.viewportSvg = updateCanvas.document;
 		});
 
-		subscribeJsMessage(UpdateScrollbars, (updateScrollbars) => {
+		this.editor.dispatcher.subscribeJsMessage(UpdateScrollbars, (updateScrollbars) => {
 			this.scrollbarPos = updateScrollbars.position;
 			this.scrollbarSize = updateScrollbars.size;
 			this.scrollbarMultiplier = updateScrollbars.multiplier;
 		});
 
-		subscribeJsMessage(UpdateRulers, (updateRulers) => {
+		this.editor.dispatcher.subscribeJsMessage(UpdateRulers, (updateRulers) => {
 			this.rulerOrigin = updateRulers.origin;
 			this.rulerSpacing = updateRulers.spacing;
 			this.rulerInterval = updateRulers.interval;
 		});
 
-		subscribeJsMessage(SetActiveTool, (setActiveTool) => {
+		this.editor.dispatcher.subscribeJsMessage(SetActiveTool, (setActiveTool) => {
 			this.activeTool = setActiveTool.tool_name;
 			this.activeToolOptions = setActiveTool.tool_options;
 		});
 
-		subscribeJsMessage(SetCanvasZoom, (setCanvasZoom) => {
+		this.editor.dispatcher.subscribeJsMessage(SetCanvasZoom, (setCanvasZoom) => {
 			this.documentZoom = setCanvasZoom.new_zoom * 100;
 		});
 
-		subscribeJsMessage(SetCanvasRotation, (setCanvasRotation) => {
+		this.editor.dispatcher.subscribeJsMessage(SetCanvasRotation, (setCanvasRotation) => {
 			const newRotation = setCanvasRotation.new_radians * (180 / Math.PI);
 			this.documentRotation = (360 + (newRotation % 360)) % 360;
 		});
@@ -367,6 +353,19 @@ export default defineComponent({
 		window.addEventListener("DOMContentLoaded", this.viewportResize);
 	},
 	data() {
+		const documentModeEntries: SectionsOfMenuListEntries = [
+			[
+				{ label: "Design Mode", icon: "ViewportDesignMode" },
+				{ label: "Select Mode", icon: "ViewportSelectMode", action: () => this.dialog.comingSoon(330) },
+				{ label: "Guide Mode", icon: "ViewportGuideMode", action: () => this.dialog.comingSoon(331) },
+			],
+		];
+		const viewModeEntries: RadioEntries = [
+			{ value: "normal", icon: "ViewModeNormal", tooltip: "View Mode: Normal", action: () => this.setViewMode("Normal") },
+			{ value: "outline", icon: "ViewModeOutline", tooltip: "View Mode: Outline", action: () => this.setViewMode("Outline") },
+			{ value: "pixels", icon: "ViewModePixels", tooltip: "View Mode: Pixels", action: () => this.dialog.comingSoon(320) },
+		];
+
 		return {
 			viewportSvg: "",
 			canvasSvgWidth: "100%",
@@ -395,7 +394,6 @@ export default defineComponent({
 			ScrollbarDirection,
 			RulerDirection,
 			SeparatorType,
-			comingSoon,
 		};
 	},
 	components: {
