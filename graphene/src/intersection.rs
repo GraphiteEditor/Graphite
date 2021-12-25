@@ -65,6 +65,18 @@ pub fn intersect_quad_bez_path(quad: Quad, shape: &BezPath, closed: bool) -> boo
 	get_arbitrary_point_on_path(shape).map(|shape_point| quad.path().contains(shape_point)).unwrap_or_default()
 }
 
+pub fn get_arbitrary_point_on_path(path: &BezPath) -> Option<Point> {
+	path.segments().next().map(|seg| match seg {
+		PathSeg::Line(line) => line.p0,
+		PathSeg::Quad(quad) => quad.p0,
+		PathSeg::Cubic(cubic) => cubic.p0,
+	})
+}
+
+/// \/                               \/
+/// Bezier Curve Intersection algorithm
+/// \/                               \/
+
 pub struct Intersect{
 	pub point: Point,
 	pub t_a: f64,
@@ -117,6 +129,14 @@ impl<'a> SubCurve<'a> {
 	fn split(&self, t: f64) -> (SubCurve, SubCurve) {
 		(SubCurve {curve: self.curve, start: self.start, end: t, extrema: self.extrema.clone()},
 		 SubCurve {curve: self.curve, start: t, end: self.end, extrema: self.extrema.clone()})
+	}
+
+	fn start(&self) -> Point {
+		self.curve.eval(self.start)
+	}
+
+	fn end(&self) -> Point {
+		self.curve.eval(self.end)
 	}
 }
 
@@ -173,33 +193,33 @@ macro_rules! mat_from_points {
 /// 	- Optimization: Lots of extra copying happening
 /// 	- Optimization: how efficiently does std::Vec::append work?
 /// 	- Optimization: specialized line/quad/cubic combination algorithms
-fn path_intersections(a: &PathSeg, b: &PathSeg, mut recursion: usize, t_a: f64, t_b: f64) -> Vec<Intersect> {
+fn path_intersections(a: &SubCurve, b: &SubCurve, mut recursion: usize) -> Vec<Intersect> {
 	let mut intersections = Vec::new();
 	//special case
-	if let (PathSeg::Line(line_a), PathSeg::Line(line_b)) = (a, b){
+	if let (PathSeg::Line(line_a), PathSeg::Line(line_b)) = (a.curve, b.curve){
 		if let Some(cross) = line_intersection(&line_a, &line_b) {intersections.push(cross);}
 	}
-	else if overlap( &<PathSeg as ParamCurveExtrema>::bounding_box(&a), &<PathSeg as ParamCurveExtrema>::bounding_box(&b)) {
+	else if overlap( &a.bounding_box(), &b.bounding_box()) {
 		recursion += 1;
-		// bail out!! before lshift with overflow
+		// bail out!! before lshift with overflow, algorithm should never reach here
 		if recursion == 32 { return intersections; }
 		// base case, we are close enough to try linear approximation
 		if recursion > 15 { //arbitrarily chosen limit
 			if let Some(mut cross) = line_intersection(&Line{p0: a.start(), p1: a.end()}, &Line{p0: b.start(), p1: b.end()}){
 				// intersection t_value equals the recursive t_value + interpolated intersection value
-				cross.t_a = t_a + cross.t_a / (1 << recursion) as f64;
-				cross.t_b = t_b + cross.t_b / (1 << recursion) as f64;
-				cross.quality = guess_quality(a, b, &cross);
-				intersections.push(cross);
+				cross.t_a = a.start + cross.t_a / (1 << recursion) as f64;
+				cross.t_b = b.start + cross.t_b / (1 << recursion) as f64;
+				cross.quality = guess_quality(a.curve, b.curve, &cross);
+				if cross.quality > 10000.0 { intersections.push(cross); } //arbitrarily chosen threshold
 				return intersections;
 			}
 		}
-		let (a1, a2) = split_path_seg(a, 0.5);
-		let (b1, b2) = split_path_seg(b, 0.5);
-		intersections.append(&mut path_intersections(&a1, &b1, recursion, t_a, t_b));
-		intersections.append(&mut path_intersections(&a1, &b2, recursion, t_a, t_b + 1.0 / (1 << recursion) as f64));
-		intersections.append(&mut path_intersections(&a2, &b1, recursion, t_a + 1.0 / (1 << recursion) as f64, t_b));
-		intersections.append(&mut path_intersections(&a2, &b2, recursion, t_a + 1.0 / (1 << recursion) as f64, t_b + 1.0 / (1 << recursion) as f64));
+		let (a1, a2) = a.split(0.5);
+		let (b1, b2) = b.split(0.5);
+		intersections.append(&mut path_intersections(&a1, &b1, recursion));
+		intersections.append(&mut path_intersections(&a1, &b2, recursion));
+		intersections.append(&mut path_intersections(&a2, &b1, recursion));
+		intersections.append(&mut path_intersections(&a2, &b2, recursion));
 	}
 	intersections
 }
@@ -214,7 +234,7 @@ fn guess_quality(a: &PathSeg, b: &PathSeg, guess: &Intersect) -> f64{
 pub fn intersections(a: &BezPath, b: &BezPath) -> Vec<Intersect>{
 	let mut intersections: Vec<Intersect> = Vec::new();
 	a.segments().enumerate().for_each(|(a_idx, a_seg)| b.segments().enumerate().for_each(|(b_idx, b_seg)|{
-		for mut path_intersection in path_intersections(&a_seg, &b_seg, 0, 0.0, 0.0){
+		for mut path_intersection in path_intersections(&SubCurve::from(&a_seg), &SubCurve::from(&b_seg), 0){
 			intersections.push({path_intersection.add_idx(a_idx, b_idx); path_intersection});
 		}
 	}));
@@ -262,12 +282,4 @@ pub fn overlap(a: &Rect, b: &Rect) -> bool {
 
 fn valid_t(t: f64) -> bool {
 	t > -F64PRECISION && t < 1.0 + F64PRECISION
-}
-
-pub fn get_arbitrary_point_on_path(path: &BezPath) -> Option<Point> {
-	path.segments().next().map(|seg| match seg {
-		PathSeg::Line(line) => line.p0,
-		PathSeg::Quad(quad) => quad.p0,
-		PathSeg::Cubic(cubic) => cubic.p0,
-	})
 }
