@@ -1,3 +1,4 @@
+use crate::frontend::frontend_message_handler::FrontendDocumentDetails;
 use crate::input::InputPreprocessor;
 use crate::message_prelude::*;
 use graphene::layers::Layer;
@@ -18,11 +19,12 @@ pub enum DocumentsMessage {
 		insert_index: isize,
 	},
 	Paste,
-	SelectDocument(usize),
-	CloseDocument(usize),
+	SelectDocument(u64),
+	CloseDocument(u64),
 	#[child]
 	Document(DocumentMessage),
 	CloseActiveDocumentWithConfirmation,
+	CloseDocumentWithConfirmation(u64),
 	CloseAllDocumentsWithConfirmation,
 	CloseAllDocuments,
 	RequestAboutGraphiteDialog,
@@ -38,20 +40,17 @@ pub enum DocumentsMessage {
 pub struct DocumentsMessageHandler {
 	documents: HashMap<u64, DocumentMessageHandler>,
 	document_ids: Vec<u64>,
-	document_id_counter: u64,
-	active_document_index: usize,
+	active_document_id: u64,
 	copy_buffer: Vec<Layer>,
 }
 
 impl DocumentsMessageHandler {
 	pub fn active_document(&self) -> &DocumentMessageHandler {
-		let id = self.document_ids[self.active_document_index];
-		self.documents.get(&id).unwrap()
+		self.documents.get(&self.active_document_id).unwrap()
 	}
 
 	pub fn active_document_mut(&mut self) -> &mut DocumentMessageHandler {
-		let id = self.document_ids[self.active_document_index];
-		self.documents.get_mut(&id).unwrap()
+		self.documents.get_mut(&self.active_document_id).unwrap()
 	}
 
 	fn generate_new_document_name(&self) -> String {
@@ -78,21 +77,27 @@ impl DocumentsMessageHandler {
 	}
 
 	fn load_document(&mut self, new_document: DocumentMessageHandler, responses: &mut VecDeque<Message>) {
-		self.document_id_counter += 1;
-		self.active_document_index = self.document_ids.len();
-		self.document_ids.push(self.document_id_counter);
-		self.documents.insert(self.document_id_counter, new_document);
+		let new_id = generate_uuid();
+		self.active_document_id = new_id;
+		self.document_ids.push(new_id);
+		self.documents.insert(new_id, new_document);
 
 		// Send the new list of document tab names
 		let open_documents = self
 			.document_ids
 			.iter()
-			.filter_map(|id| self.documents.get(&id).map(|doc| (doc.name.clone(), doc.is_saved())))
+			.filter_map(|id| {
+				self.documents.get(&id).map(|doc| FrontendDocumentDetails {
+					is_saved: doc.is_saved(),
+					id: *id,
+					name: doc.name.clone(),
+				})
+			})
 			.collect::<Vec<_>>();
 
 		responses.push_back(FrontendMessage::UpdateOpenDocumentsList { open_documents }.into());
 
-		responses.push_back(DocumentsMessage::SelectDocument(self.active_document_index).into());
+		responses.push_back(DocumentsMessage::SelectDocument(self.active_document_id).into());
 		responses.push_back(DocumentMessage::RenderDocument.into());
 		responses.push_back(DocumentMessage::DocumentStructureChanged.into());
 		for layer in self.active_document().layer_data.keys() {
@@ -104,18 +109,23 @@ impl DocumentsMessageHandler {
 	pub fn ordered_document_iterator(&self) -> impl Iterator<Item = &DocumentMessageHandler> {
 		self.document_ids.iter().map(|id| self.documents.get(id).expect("document id was not found in the document hashmap"))
 	}
+
+	fn document_index(&self, document_id: u64) -> usize {
+		self.document_ids.iter().position(|id| id == &document_id).expect("Active document is missing from document ids")
+	}
 }
 
 impl Default for DocumentsMessageHandler {
 	fn default() -> Self {
 		let mut documents_map: HashMap<u64, DocumentMessageHandler> = HashMap::with_capacity(1);
-		documents_map.insert(0, DocumentMessageHandler::default());
+		let starting_key = generate_uuid();
+		documents_map.insert(starting_key, DocumentMessageHandler::default());
+
 		Self {
 			documents: documents_map,
-			document_ids: vec![0],
+			document_ids: vec![starting_key],
 			copy_buffer: vec![],
-			active_document_index: 0,
-			document_id_counter: 0,
+			active_document_id: starting_key,
 		}
 	}
 }
@@ -129,11 +139,9 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 				responses.push_back(FrontendMessage::DisplayAboutGraphiteDialog.into());
 			}
 			Document(message) => self.active_document_mut().process_action(message, ipp, responses),
-			SelectDocument(index) => {
-				// NOTE: Potentially this will break if we ever exceed 56 bit values due to how the message parsing system works.
-				assert!(index < self.documents.len(), "Tried to select a document that was not initialized");
-				self.active_document_index = index;
-				responses.push_back(FrontendMessage::SetActiveDocument { document_index: index }.into());
+			SelectDocument(id) => {
+				self.active_document_id = id;
+				responses.push_back(FrontendMessage::SetActiveDocument { document_id: id }.into());
 				responses.push_back(RenderDocument.into());
 				responses.push_back(DocumentMessage::DocumentStructureChanged.into());
 				for layer in self.active_document().layer_data.keys() {
@@ -141,12 +149,17 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 				}
 			}
 			CloseActiveDocumentWithConfirmation => {
-				responses.push_back(
-					FrontendMessage::DisplayConfirmationToCloseDocument {
-						document_index: self.active_document_index,
-					}
-					.into(),
-				);
+				responses.push_back(DocumentsMessage::CloseDocumentWithConfirmation(self.active_document_id).into());
+			}
+			CloseDocumentWithConfirmation(id) => {
+				let target_document = self.documents.get(&id).unwrap();
+				if target_document.is_saved() {
+					responses.push_back(DocumentsMessage::CloseDocument(id).into());
+				} else {
+					responses.push_back(FrontendMessage::DisplayConfirmationToCloseDocument { document_id: id }.into());
+					// Select the document being closed
+					responses.push_back(DocumentsMessage::SelectDocument(id).into());
+				}
 			}
 			CloseAllDocumentsWithConfirmation => {
 				responses.push_back(FrontendMessage::DisplayConfirmationToCloseAllDocuments.into());
@@ -159,38 +172,44 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 				// Create a new blank document
 				responses.push_back(NewDocument.into());
 			}
-			CloseDocument(index) => {
-				assert!(index < self.documents.len(), "Tried to close a document that was not initialized");
-				// Get the ID based on the current collection of the documents.
-				let id = self.document_ids[index];
-				// Map the ID to an index and remove the document
+			CloseDocument(id) => {
+				let document_index = self.document_index(id);
 				self.documents.remove(&id);
-				self.document_ids.remove(index);
+				self.document_ids.remove(document_index);
 
 				// Last tab was closed, so create a new blank tab
 				if self.document_ids.is_empty() {
-					self.document_id_counter += 1;
-					self.document_ids.push(self.document_id_counter);
-					self.documents.insert(self.document_id_counter, DocumentMessageHandler::default());
+					let new_id = generate_uuid();
+					self.document_ids.push(new_id);
+					self.documents.insert(new_id, DocumentMessageHandler::default());
 				}
 
-				self.active_document_index = if self.active_document_index >= self.document_ids.len() {
-					self.document_ids.len() - 1
+				self.active_document_id = if id != self.active_document_id {
+					// If we are not closing the active document, stay on it
+					self.active_document_id
+				} else if document_index >= self.document_ids.len() {
+					// If we closed the last document take the one previous (same as last)
+					*self.document_ids.last().unwrap()
 				} else {
-					index
+					// Move to the next tab
+					self.document_ids[document_index]
 				};
 
 				// Send the new list of document tab names
-				let open_documents = self.ordered_document_iterator().map(|doc| (doc.name.clone(), doc.is_saved())).collect();
-
+				let open_documents = self
+					.document_ids
+					.iter()
+					.filter_map(|id| {
+						self.documents.get(&id).map(|doc| FrontendDocumentDetails {
+							is_saved: doc.is_saved(),
+							id: *id,
+							name: doc.name.clone(),
+						})
+					})
+					.collect::<Vec<_>>();
 				// Update the list of new documents on the front end, active tab, and ensure that document renders
 				responses.push_back(FrontendMessage::UpdateOpenDocumentsList { open_documents }.into());
-				responses.push_back(
-					FrontendMessage::SetActiveDocument {
-						document_index: self.active_document_index,
-					}
-					.into(),
-				);
+				responses.push_back(FrontendMessage::SetActiveDocument { document_id: self.active_document_id }.into());
 				responses.push_back(RenderDocument.into());
 				responses.push_back(DocumentMessage::DocumentStructureChanged.into());
 				for layer in self.active_document().layer_data.keys() {
@@ -199,14 +218,14 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 			}
 			NewDocument => {
 				let name = self.generate_new_document_name();
-				let new_document = DocumentMessageHandler::with_name(name);
+				let new_document = DocumentMessageHandler::with_name(name, ipp);
 				self.load_document(new_document, responses);
 			}
 			OpenDocument => {
 				responses.push_back(FrontendMessage::OpenDocumentBrowse.into());
 			}
 			OpenDocumentFile(name, serialized_contents) => {
-				let document = DocumentMessageHandler::with_name_and_content(name, serialized_contents);
+				let document = DocumentMessageHandler::with_name_and_content(name, serialized_contents, ipp);
 				match document {
 					Ok(document) => {
 						self.load_document(document, responses);
@@ -222,17 +241,31 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 			}
 			UpdateOpenDocumentsList => {
 				// Send the list of document tab names
-				let open_documents = self.ordered_document_iterator().map(|doc| (doc.name.clone(), doc.is_saved())).collect();
+				let open_documents = self
+					.document_ids
+					.iter()
+					.filter_map(|id| {
+						self.documents.get(&id).map(|doc| FrontendDocumentDetails {
+							is_saved: doc.is_saved(),
+							id: *id,
+							name: doc.name.clone(),
+						})
+					})
+					.collect::<Vec<_>>();
 				responses.push_back(FrontendMessage::UpdateOpenDocumentsList { open_documents }.into());
 			}
 			NextDocument => {
-				let next = (self.active_document_index + 1) % self.document_ids.len();
-				responses.push_back(SelectDocument(next).into());
+				let current_index = self.document_index(self.active_document_id);
+				let next_index = (current_index + 1) % self.document_ids.len();
+				let next_id = self.document_ids[next_index];
+				responses.push_back(SelectDocument(next_id).into());
 			}
 			PrevDocument => {
 				let len = self.document_ids.len();
-				let prev = (self.active_document_index + len - 1) % len;
-				responses.push_back(SelectDocument(prev).into());
+				let current_index = self.document_index(self.active_document_id);
+				let prev_index = (current_index + len - 1) % len;
+				let prev_id = self.document_ids[prev_index];
+				responses.push_back(SelectDocument(prev_id).into());
 			}
 			Copy => {
 				let paths = self.active_document().selected_layers_sorted();

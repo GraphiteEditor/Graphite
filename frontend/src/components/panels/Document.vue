@@ -272,6 +272,9 @@ export default defineComponent({
 		setSnap(newStatus: boolean) {
 			this.editor.instance.set_snapping(newStatus);
 		},
+		setViewMode(newViewMode: string) {
+			this.editor.instance.set_view_mode(newViewMode);
+		},
 		viewportResize() {
 			const canvas = this.$refs.canvas as HTMLElement;
 			// Get the width and height rounded up to the nearest even number because resizing is centered and dividing an odd number by 2 for centering causes antialiasing
@@ -370,8 +373,8 @@ export default defineComponent({
 			],
 		];
 		const viewModeEntries: RadioEntries = [
-			{ value: "normal", icon: "ViewModeNormal", tooltip: "View Mode: Normal" },
-			{ value: "outline", icon: "ViewModeOutline", tooltip: "View Mode: Outline", action: () => this.dialog.comingSoon(319) },
+			{ value: "normal", icon: "ViewModeNormal", tooltip: "View Mode: Normal", action: () => this.setViewMode("Normal") },
+			{ value: "outline", icon: "ViewModeOutline", tooltip: "View Mode: Outline", action: () => this.setViewMode("Outline") },
 			{ value: "pixels", icon: "ViewModePixels", tooltip: "View Mode: Pixels", action: () => this.dialog.comingSoon(320) },
 		];
 

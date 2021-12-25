@@ -3,8 +3,10 @@ use crate::consts::VECTOR_MANIPULATOR_ANCHOR_MARKER_SIZE;
 use crate::document::DocumentMessageHandler;
 use crate::document::VectorManipulatorSegment;
 use crate::document::VectorManipulatorShape;
+use crate::input::keyboard::{Key, MouseMotion};
 use crate::input::InputPreprocessor;
 use crate::message_prelude::*;
+use crate::misc::{HintData, HintGroup, HintInfo, KeysGroup};
 use crate::tool::ToolActionHandlerData;
 use crate::tool::{DocumentToolData, Fsm};
 use glam::{DAffine2, DVec2};
@@ -31,8 +33,19 @@ pub enum PathMessage {
 
 impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Path {
 	fn process_action(&mut self, action: ToolMessage, data: ToolActionHandlerData<'a>, responses: &mut VecDeque<Message>) {
-		self.fsm_state = self.fsm_state.transition(action, data.0, data.1, &mut self.data, data.2, responses);
+		if action == ToolMessage::UpdateHints {
+			self.fsm_state.update_hints(responses);
+			return;
+		}
+
+		let new_state = self.fsm_state.transition(action, data.0, data.1, &mut self.data, data.2, responses);
+
+		if self.fsm_state != new_state {
+			self.fsm_state = new_state;
+			self.fsm_state.update_hints(responses);
+		}
 	}
+
 	fn actions(&self) -> ActionList {
 		use PathToolFsmState::*;
 		match self.fsm_state {
@@ -212,6 +225,74 @@ impl Fsm for PathToolFsmState {
 		} else {
 			self
 		}
+	}
+
+	fn update_hints(&self, responses: &mut VecDeque<Message>) {
+		let hint_data = match self {
+			PathToolFsmState::Ready => HintData(vec![
+				HintGroup(vec![
+					HintInfo {
+						key_groups: vec![],
+						mouse: Some(MouseMotion::Lmb),
+						label: String::from("Select Point (coming soon)"),
+						plus: false,
+					},
+					HintInfo {
+						key_groups: vec![KeysGroup(vec![Key::KeyShift])],
+						mouse: None,
+						label: String::from("Add/Remove Point"),
+						plus: true,
+					},
+				]),
+				HintGroup(vec![HintInfo {
+					key_groups: vec![],
+					mouse: Some(MouseMotion::LmbDrag),
+					label: String::from("Drag Selected (coming soon)"),
+					plus: false,
+				}]),
+				HintGroup(vec![
+					HintInfo {
+						key_groups: vec![
+							KeysGroup(vec![Key::KeyArrowUp]),
+							KeysGroup(vec![Key::KeyArrowRight]),
+							KeysGroup(vec![Key::KeyArrowDown]),
+							KeysGroup(vec![Key::KeyArrowLeft]),
+						],
+						mouse: None,
+						label: String::from("Nudge Selected (coming soon)"),
+						plus: false,
+					},
+					HintInfo {
+						key_groups: vec![KeysGroup(vec![Key::KeyShift])],
+						mouse: None,
+						label: String::from("Big Increment Nudge"),
+						plus: true,
+					},
+				]),
+				HintGroup(vec![
+					HintInfo {
+						key_groups: vec![KeysGroup(vec![Key::KeyG])],
+						mouse: None,
+						label: String::from("Grab Selected (coming soon)"),
+						plus: false,
+					},
+					HintInfo {
+						key_groups: vec![KeysGroup(vec![Key::KeyR])],
+						mouse: None,
+						label: String::from("Rotate Selected (coming soon)"),
+						plus: false,
+					},
+					HintInfo {
+						key_groups: vec![KeysGroup(vec![Key::KeyS])],
+						mouse: None,
+						label: String::from("Scale Selected (coming soon)"),
+						plus: false,
+					},
+				]),
+			]),
+		};
+
+		responses.push_back(FrontendMessage::UpdateInputHints { hint_data }.into());
 	}
 }
 

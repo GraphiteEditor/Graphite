@@ -10,9 +10,49 @@ export class JsMessage {
 	static readonly jsMessageMarker = true;
 }
 
+// ============================================================================
+// Add additional classes to replicate Rust's FrontendMessages and data structures below.
+//
+// Remember to add each message to the `messageConstructors` export at the bottom of the file.
+//
+// Read class-transformer docs at https://github.com/typestack/class-transformer#table-of-contents
+// for details about how to transform the JSON from wasm-bindgen into classes.
+// ============================================================================
+
+export class FrontendDocumentDetails {
+	readonly name!: string;
+
+	readonly is_saved!: boolean;
+
+	readonly id!: BigInt;
+
+	get displayName() {
+		return `${this.name}${this.is_saved ? "" : "*"}`;
+	}
+}
+
 export class UpdateOpenDocumentsList extends JsMessage {
-	@Transform(({ value }) => value.map((tuple: [string, boolean]) => ({ name: tuple[0], isSaved: tuple[1] })))
-	readonly open_documents!: { name: string; isSaved: boolean }[];
+	@Type(() => FrontendDocumentDetails)
+	readonly open_documents!: FrontendDocumentDetails[];
+}
+
+export type HintData = HintInfo[][];
+
+export class UpdateInputHints extends JsMessage {
+	@Type(() => HintInfo)
+	readonly hint_data!: HintData;
+}
+
+export type KeysGroup = string[];
+
+export class HintInfo {
+	readonly keys!: string[];
+
+	readonly mouse!: KeysGroup | null;
+
+	readonly label!: string;
+
+	readonly plus!: boolean;
 }
 
 const To255Scale = Transform(({ value }) => value * 255);
@@ -53,7 +93,7 @@ export class SetActiveTool extends JsMessage {
 }
 
 export class SetActiveDocument extends JsMessage {
-	readonly document_index!: number;
+	readonly document_id!: BigInt;
 }
 
 export class DisplayError extends JsMessage {
@@ -71,7 +111,7 @@ export class DisplayPanic extends JsMessage {
 }
 
 export class DisplayConfirmationToCloseDocument extends JsMessage {
-	readonly document_index!: number;
+	readonly document_id!: BigInt;
 }
 
 export class DisplayConfirmationToCloseAllDocuments extends JsMessage {}
@@ -131,23 +171,25 @@ export class DisplayFolderTreeStructure extends JsMessage {
 }
 
 interface DataBuffer {
-	pointer: number;
-	length: number;
+	pointer: BigInt;
+	length: BigInt;
 }
 
 export function newDisplayFolderTreeStructure(input: { data_buffer: DataBuffer }, wasm: WasmInstance): DisplayFolderTreeStructure {
 	const { pointer, length } = input.data_buffer;
+	const pointerNum = Number(pointer);
+	const lengthNum = Number(length);
 	const wasmMemoryBuffer = wasm.wasm_memory().buffer;
 
 	// Decode the folder structure encoding
-	const encoding = new DataView(wasmMemoryBuffer, pointer, length);
+	const encoding = new DataView(wasmMemoryBuffer, pointerNum, lengthNum);
 
 	// The structure section indicates how to read through the upcoming layer list and assign depths to each layer
 	const structureSectionLength = Number(encoding.getBigUint64(0, true));
-	const structureSectionMsbSigned = new DataView(wasmMemoryBuffer, pointer + 8, structureSectionLength * 8);
+	const structureSectionMsbSigned = new DataView(wasmMemoryBuffer, pointerNum + 8, structureSectionLength * 8);
 
 	// The layer IDs section lists each layer ID sequentially in the tree, as it will show up in the panel
-	const layerIdsSection = new DataView(wasmMemoryBuffer, pointer + 8 + structureSectionLength * 8);
+	const layerIdsSection = new DataView(wasmMemoryBuffer, pointerNum + 8 + structureSectionLength * 8);
 
 	let layersEncountered = 0;
 	let currentFolder = new DisplayFolderTreeStructure(BigInt(-1), []);
@@ -200,12 +242,6 @@ export class SetCanvasRotation extends JsMessage {
 	readonly new_radians!: number;
 }
 
-function newPath(input: number[][]): BigUint64Array {
-	// eslint-disable-next-line
-	const u32CombinedPairs = input.map((n: number[]) => BigInt((BigInt(n[0]) << BigInt(32)) | BigInt(n[1])));
-	return new BigUint64Array(u32CombinedPairs);
-}
-
 export type BlendMode =
 	| "Normal"
 	| "Multiply"
@@ -237,7 +273,7 @@ export class LayerPanelEntry {
 
 	layer_type!: LayerType;
 
-	@Transform(({ value }) => newPath(value))
+	@Transform(({ value }) => new BigUint64Array(value))
 	path!: BigUint64Array;
 
 	@Type(() => LayerData)
@@ -282,6 +318,7 @@ export const messageConstructors: Record<string, MessageMaker> = {
 	SetActiveTool,
 	SetActiveDocument,
 	UpdateOpenDocumentsList,
+	UpdateInputHints,
 	UpdateWorkingColors,
 	SetCanvasZoom,
 	SetCanvasRotation,

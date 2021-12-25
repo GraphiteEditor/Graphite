@@ -17,11 +17,15 @@ pub struct Dispatcher {
 	pub responses: Vec<FrontendMessage>,
 }
 
-const GROUP_MESSAGES: &[MessageDiscriminant] = &[
+// For optimization, these are messages guaranteed to be redundant when repeated
+// The last occurrence of the message in the message queue is sufficient to ensure correctness
+// In addition, these messages do not change any state in the backend (aside from caches)
+const SIDE_EFFECT_FREE_MESSAGES: &[MessageDiscriminant] = &[
 	MessageDiscriminant::Documents(DocumentsMessageDiscriminant::Document(DocumentMessageDiscriminant::RenderDocument)),
 	MessageDiscriminant::Documents(DocumentsMessageDiscriminant::Document(DocumentMessageDiscriminant::FolderChanged)),
 	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::UpdateLayer),
 	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::DisplayFolderTreeStructure),
+	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::UpdateOpenDocumentsList),
 	MessageDiscriminant::Tool(ToolMessageDiscriminant::SelectedLayersChanged),
 ];
 
@@ -31,10 +35,11 @@ impl Dispatcher {
 
 		use Message::*;
 		while let Some(message) = self.messages.pop_front() {
-			if GROUP_MESSAGES.contains(&message.to_discriminant()) && self.messages.contains(&message) {
+			// Skip processing of this message if it will be processed later
+			if SIDE_EFFECT_FREE_MESSAGES.contains(&message.to_discriminant()) && self.messages.contains(&message) {
 				continue;
 			}
-			log_message(&message);
+			self.log_message(&message);
 			match message {
 				NoOp => (),
 				Documents(message) => self.documents_message_handler.process_action(message, &self.input_preprocessor, &mut self.messages),
@@ -74,18 +79,18 @@ impl Dispatcher {
 			responses: vec![],
 		}
 	}
-}
 
-fn log_message(message: &Message) {
-	use Message::*;
-	if log::max_level() == log::LevelFilter::Trace
-		&& !(matches!(
-			message,
-			InputPreprocessor(_) | Frontend(FrontendMessage::SetCanvasZoom { .. }) | Frontend(FrontendMessage::SetCanvasRotation { .. })
-		) || MessageDiscriminant::from(message).local_name().ends_with("MouseMove"))
-	{
-		log::trace!("Message: {:?}", message);
-		//log::trace!("Hints:{:?}", self.input_mapper.hints(self.collect_actions()));
+	fn log_message(&self, message: &Message) {
+		use Message::*;
+		if log::max_level() == log::LevelFilter::Trace
+			&& !(matches!(
+				message,
+				InputPreprocessor(_) | Frontend(FrontendMessage::SetCanvasZoom { .. }) | Frontend(FrontendMessage::SetCanvasRotation { .. })
+			) || MessageDiscriminant::from(message).local_name().ends_with("MouseMove"))
+		{
+			log::trace!("Message: {:?}", message);
+			// log::trace!("Hints: {:?}", self.input_mapper.hints(self.collect_actions()));
+		}
 	}
 }
 
@@ -191,7 +196,7 @@ mod test {
 		const LINE_INDEX: usize = 0;
 		const PEN_INDEX: usize = 1;
 
-		editor.handle_message(DocumentMessage::CreateFolder(vec![]));
+		editor.handle_message(DocumentMessage::CreateEmptyFolder(vec![]));
 
 		let document_before_added_shapes = editor.dispatcher.documents_message_handler.active_document().graphene_document.clone();
 		let folder_id = document_before_added_shapes.root.as_folder().unwrap().layer_ids[FOLDER_INDEX];

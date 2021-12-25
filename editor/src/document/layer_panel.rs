@@ -1,14 +1,8 @@
 use crate::consts::VIEWPORT_ROTATE_SNAP_INTERVAL;
 use glam::{DAffine2, DVec2};
-use graphene::layers::{BlendMode, LayerDataType};
-use graphene::{
-	layers::{Layer, LayerData as DocumentLayerData},
-	LayerId,
-};
-use serde::{
-	ser::{SerializeSeq, SerializeStruct},
-	Deserialize, Serialize,
-};
+use graphene::layers::{style::ViewMode, BlendMode, Layer, LayerData as DocumentLayerData, LayerDataType};
+use graphene::LayerId;
+use serde::{ser::SerializeStruct, Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fmt;
 
@@ -64,7 +58,7 @@ pub fn layer_panel_entry(layer_data: &LayerData, transform: DAffine2, layer: &La
 	let arr = arr.iter().map(|x| (*x).into()).collect::<Vec<(f64, f64)>>();
 
 	let mut thumbnail = String::new();
-	layer.data.clone().render(&mut thumbnail, &mut vec![transform]);
+	layer.data.clone().render(&mut thumbnail, &mut vec![transform], ViewMode::Normal);
 	let transform = transform.to_cols_array().iter().map(ToString::to_string).collect::<Vec<_>>().join(",");
 	let thumbnail = if let [(x_min, y_min), (x_max, y_max)] = arr.as_slice() {
 		format!(
@@ -87,36 +81,8 @@ pub fn layer_panel_entry(layer_data: &LayerData, transform: DAffine2, layer: &La
 		opacity: layer.opacity,
 		layer_type: (&layer.data).into(),
 		layer_data: *layer_data,
-		path: path.into(),
+		path,
 		thumbnail,
-	}
-}
-
-#[derive(Debug, Clone, Deserialize, PartialEq)]
-pub struct Path(Vec<LayerId>);
-
-impl From<Vec<LayerId>> for Path {
-	fn from(iter: Vec<LayerId>) -> Self {
-		Self(iter)
-	}
-}
-impl Serialize for Path {
-	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-	where
-		S: serde::Serializer,
-	{
-		let mut seq = serializer.serialize_seq(Some(self.0.len()))?;
-		for e in self.0.iter() {
-			#[cfg(target_arch = "wasm32")]
-			{
-				// LayerIds are sent as (u32, u32) because json does not support u64s
-				let id = ((e >> 32) as u32, (e << 32 >> 32) as u32);
-				seq.serialize_element(&id)?;
-			}
-			#[cfg(not(target_arch = "wasm32"))]
-			seq.serialize_element(e)?;
-		}
-		seq.end()
 	}
 }
 
@@ -155,7 +121,7 @@ pub struct LayerPanelEntry {
 	pub opacity: f64,
 	pub layer_type: LayerType,
 	pub layer_data: LayerData,
-	pub path: crate::document::layer_panel::Path,
+	pub path: Vec<LayerId>,
 	pub thumbnail: String,
 }
 

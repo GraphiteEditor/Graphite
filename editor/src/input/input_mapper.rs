@@ -18,6 +18,7 @@ const SHIFT_NUDGE_AMOUNT: f64 = 10.;
 pub enum InputMapperMessage {
 	PointerMove,
 	MouseScroll,
+	#[child]
 	KeyUp(Key),
 	#[child]
 	KeyDown(Key),
@@ -43,6 +44,7 @@ impl KeyMappingEntries {
 		}
 		None
 	}
+
 	fn push(&mut self, entry: MappingEntry) {
 		self.0.push(entry)
 	}
@@ -187,7 +189,8 @@ impl Default for Mapping {
 			entry! {action=PenMessage::Confirm, key_down=KeyEscape},
 			entry! {action=PenMessage::Confirm, key_down=KeyEnter},
 			// Fill
-			entry! {action=FillMessage::MouseDown, key_down=Lmb},
+			entry! {action=FillMessage::LeftMouseDown, key_down=Lmb},
+			entry! {action=FillMessage::RightMouseDown, key_down=Rmb},
 			// Tool Actions
 			entry! {action=ToolMessage::ActivateTool(ToolType::Select), key_down=KeyV},
 			entry! {action=ToolMessage::ActivateTool(ToolType::Eyedropper), key_down=KeyI},
@@ -209,7 +212,7 @@ impl Default for Mapping {
 			entry! {action=DocumentMessage::Undo, key_down=KeyZ, modifiers=[KeyControl]},
 			entry! {action=DocumentMessage::DeselectAllLayers, key_down=KeyA, modifiers=[KeyControl, KeyAlt]},
 			entry! {action=DocumentMessage::SelectAllLayers, key_down=KeyA, modifiers=[KeyControl]},
-			entry! {action=DocumentMessage::CreateFolder(vec![]), key_down=KeyN, modifiers=[KeyControl, KeyShift]},
+			entry! {action=DocumentMessage::CreateEmptyFolder(vec![]), key_down=KeyN, modifiers=[KeyControl, KeyShift]},
 			entry! {action=DocumentMessage::DeleteSelectedLayers, key_down=KeyDelete},
 			entry! {action=DocumentMessage::DeleteSelectedLayers, key_down=KeyX},
 			entry! {action=DocumentMessage::DeleteSelectedLayers, key_down=KeyBackspace},

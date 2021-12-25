@@ -5,16 +5,20 @@
 use std::cell::Cell;
 
 use crate::helpers::Error;
-use crate::type_translators::{translate_blend_mode, translate_key, translate_tool_type};
+use crate::type_translators::{translate_blend_mode, translate_key, translate_tool_type, translate_view_mode};
 use crate::{EDITOR_HAS_CRASHED, EDITOR_INSTANCES};
 use editor::consts::FILE_SAVE_SUFFIX;
 use editor::input::input_preprocessor::ModifierKeys;
 use editor::input::mouse::{EditorMouseState, ScrollDelta, ViewportBounds};
+use editor::message_prelude::*;
 use editor::misc::EditorError;
 use editor::tool::{tool_options::ToolOptions, tools, ToolType};
 use editor::Color;
 use editor::LayerId;
-use editor::{message_prelude::*, Editor};
+
+use editor::Editor;
+use serde::Serialize;
+use serde_wasm_bindgen;
 use wasm_bindgen::prelude::*;
 
 // To avoid wasm-bindgen from checking mutable reference issues using WasmRefCell
@@ -30,7 +34,7 @@ pub struct JsEditorHandle {
 #[wasm_bindgen]
 impl JsEditorHandle {
 	#[wasm_bindgen(constructor)]
-	pub fn new(handle_response: js_sys::Function) -> JsEditorHandle {
+	pub fn new(handle_response: js_sys::Function) -> Self {
 		let editor_id = generate_uuid();
 		let editor = Editor::new();
 		EDITOR_INSTANCES.with(|instances| instances.borrow_mut().insert(editor_id, editor));
@@ -44,8 +48,8 @@ impl JsEditorHandle {
 	// Sends a message to the dispatcher in the Editor Backend
 	fn dispatch<T: Into<Message>>(&self, message: T) {
 		// Process no further messages after a crash to avoid spamming the console
-		let has_crashed = EDITOR_HAS_CRASHED.with(|crash_state| crash_state.borrow().clone());
-		if let Some(message) = has_crashed {
+		let possible_crash_message = EDITOR_HAS_CRASHED.with(|crash_state| crash_state.borrow().clone());
+		if let Some(message) = possible_crash_message {
 			if !self.instance_received_crashed.get() {
 				self.handle_response(message);
 				self.instance_received_crashed.set(true);
@@ -69,7 +73,9 @@ impl JsEditorHandle {
 	// Sends a FrontendMessage to JavaScript
 	fn handle_response(&self, message: FrontendMessage) {
 		let message_type = message.to_discriminant().local_name();
-		let message_data = JsValue::from_serde(&message).expect("Failed to serialize FrontendMessage");
+
+		let serializer = serde_wasm_bindgen::Serializer::new().serialize_large_number_types_as_bigints(true);
+		let message_data = message.serialize(&serializer).expect("Failed to serialize FrontendMessage");
 
 		let js_return_value = self.handle_response.call2(&JsValue::null(), &JsValue::from(message_type), &message_data);
 
@@ -80,6 +86,16 @@ impl JsEditorHandle {
 				error,
 			)
 		}
+	}
+
+	// ========================================================================
+	// Add additional JS -> Rust wrapper functions below as needed for calling the
+	// backend from the web frontend.
+	// ========================================================================
+
+	pub fn has_crashed(&self) -> JsValue {
+		let has_crashed = EDITOR_HAS_CRASHED.with(|crash_state| crash_state.borrow().is_some());
+		has_crashed.into()
 	}
 
 	/// Modify the currently selected tool in the document state store
@@ -97,7 +113,7 @@ impl JsEditorHandle {
 
 	/// Update the options for a given tool
 	pub fn set_tool_options(&self, tool: String, options: &JsValue) -> Result<(), JsValue> {
-		match options.into_serde::<ToolOptions>() {
+		match serde_wasm_bindgen::from_value::<ToolOptions>(options.clone()) {
 			Ok(options) => match translate_tool_type(&tool) {
 				Some(tool) => {
 					let message = ToolMessage::SetToolOptions(tool, options);
@@ -115,7 +131,7 @@ impl JsEditorHandle {
 	pub fn send_tool_message(&self, tool: String, message: &JsValue) -> Result<(), JsValue> {
 		let tool_message = match translate_tool_type(&tool) {
 			Some(tool) => match tool {
-				ToolType::Select => match message.into_serde::<tools::select::SelectMessage>() {
+				ToolType::Select => match serde_wasm_bindgen::from_value::<tools::select::SelectMessage>(message.clone()) {
 					Ok(select_message) => Ok(ToolMessage::Select(select_message)),
 					Err(err) => Err(Error::new(&format!("Invalid message for {}: {}", tool, err)).into()),
 				},
@@ -134,8 +150,8 @@ impl JsEditorHandle {
 		}
 	}
 
-	pub fn select_document(&self, document: usize) {
-		let message = DocumentsMessage::SelectDocument(document);
+	pub fn select_document(&self, document_id: u64) {
+		let message = DocumentsMessage::SelectDocument(document_id);
 		self.dispatch(message);
 	}
 
@@ -164,8 +180,8 @@ impl JsEditorHandle {
 		self.dispatch(message);
 	}
 
-	pub fn close_document(&self, document: usize) {
-		let message = DocumentsMessage::CloseDocument(document);
+	pub fn close_document(&self, document_id: u64) {
+		let message = DocumentsMessage::CloseDocument(document_id);
 		self.dispatch(message);
 	}
 
@@ -176,6 +192,11 @@ impl JsEditorHandle {
 
 	pub fn close_active_document_with_confirmation(&self) {
 		let message = DocumentsMessage::CloseActiveDocumentWithConfirmation;
+		self.dispatch(message);
+	}
+
+	pub fn close_document_with_confirmation(&self, document_id: u64) {
+		let message = DocumentsMessage::CloseDocumentWithConfirmation(document_id);
 		self.dispatch(message);
 	}
 
@@ -313,6 +334,11 @@ impl JsEditorHandle {
 		self.dispatch(message);
 	}
 
+	pub fn select_layer(&self, paths: Vec<LayerId>, ctrl: bool, shift: bool) {
+		let message = DocumentMessage::SelectLayer(paths, ctrl, shift);
+		self.dispatch(message);
+	}
+
 	/// Select all layers
 	pub fn select_all_layers(&self) {
 		let message = DocumentMessage::SelectAllLayers;
@@ -362,6 +388,15 @@ impl JsEditorHandle {
 	pub fn set_snapping(&self, new_status: bool) {
 		let message = DocumentMessage::SetSnapping(new_status);
 		self.dispatch(message);
+	}
+
+	/// Set the view mode to change the way layers are drawn in the viewport
+	pub fn set_view_mode(&self, new_mode: String) -> Result<(), JsValue> {
+		match translate_view_mode(new_mode.as_str()) {
+			Some(view_mode) => self.dispatch(DocumentMessage::SetViewMode(view_mode)),
+			None => return Err(Error::new("Invalid view mode").into()),
+		};
+		Ok(())
 	}
 
 	/// Sets the zoom to the value
@@ -434,7 +469,7 @@ impl JsEditorHandle {
 
 	/// Requests the backend to add a layer to the layer list
 	pub fn add_folder(&self, path: Vec<LayerId>) {
-		let message = DocumentMessage::CreateFolder(path);
+		let message = DocumentMessage::CreateEmptyFolder(path);
 		self.dispatch(message);
 	}
 }

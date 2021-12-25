@@ -1,8 +1,8 @@
 <template>
 	<div class="persistent-scrollbar" :class="direction.toLowerCase()">
-		<button class="arrow decrease" @mousedown="changePosition(-50)"></button>
-		<div class="scroll-track" ref="scrollTrack" @mousedown="grabArea">
-			<div class="scroll-thumb" @mousedown="grabHandle" :class="{ dragging }" ref="handle" :style="[thumbStart, thumbEnd, sides]"></div>
+		<button class="arrow decrease" @pointerdown="changePosition(-50)"></button>
+		<div class="scroll-track" ref="scrollTrack" @pointerdown="grabArea">
+			<div class="scroll-thumb" @pointerdown="grabHandle" :class="{ dragging }" ref="handle" :style="[thumbStart, thumbEnd, sides]"></div>
 		</div>
 		<button class="arrow increase" @click="changePosition(50)"></button>
 	</div>
@@ -117,7 +117,7 @@ const lerp = (x: number, y: number, a: number) => x * (1 - a) + y * a;
 // This includes the 1/2 handle length gap  of the possible handle positionson each side so the end of the handle doesn't go off the track.
 const handleToTrack = (handleLen: number, handlePos: number) => lerp(handleLen / 2, 1 - handleLen / 2, handlePos);
 
-const mousePosition = (direction: ScrollbarDirection, e: MouseEvent) => (direction === ScrollbarDirection.Vertical ? e.clientY : e.clientX);
+const pointerPosition = (direction: ScrollbarDirection, e: PointerEvent) => (direction === ScrollbarDirection.Vertical ? e.clientY : e.clientX);
 
 export enum ScrollbarDirection {
 	"Horizontal" = "Horizontal",
@@ -149,14 +149,12 @@ export default defineComponent({
 		return {
 			ScrollbarDirection,
 			dragging: false,
-			mousePos: 0,
+			pointerPos: 0,
 		};
 	},
 	mounted() {
-		window.addEventListener("mouseup", () => {
-			this.dragging = false;
-		});
-		window.addEventListener("mousemove", this.mouseMove);
+		window.addEventListener("pointerup", this.pointerUp);
+		window.addEventListener("pointermove", this.pointerMove);
 	},
 	methods: {
 		trackLength(): number {
@@ -171,28 +169,28 @@ export default defineComponent({
 			const clampedPosition = Math.min(Math.max(newPos, 0), 1);
 			this.$emit("update:handlePosition", clampedPosition);
 		},
-		updateHandlePosition(e: MouseEvent) {
-			const position = mousePosition(this.direction, e);
-			this.clampHandlePosition(this.handlePosition + (position - this.mousePos) / (this.trackLength() * (1 - this.handleLength)));
-			this.mousePos = position;
+		updateHandlePosition(e: PointerEvent) {
+			const position = pointerPosition(this.direction, e);
+			this.clampHandlePosition(this.handlePosition + (position - this.pointerPos) / (this.trackLength() * (1 - this.handleLength)));
+			this.pointerPos = position;
 		},
-		grabHandle(e: MouseEvent) {
+		grabHandle(e: PointerEvent) {
 			if (!this.dragging) {
 				this.dragging = true;
-				this.mousePos = mousePosition(this.direction, e);
+				this.pointerPos = pointerPosition(this.direction, e);
 			}
 		},
-		grabArea(e: MouseEvent) {
+		grabArea(e: PointerEvent) {
 			if (!this.dragging) {
-				const mousePos = mousePosition(this.direction, e);
-				const oldMouse = handleToTrack(this.handleLength, this.handlePosition) * this.trackLength() + this.trackOffset();
-				this.$emit("pressTrack", mousePos - oldMouse);
+				const pointerPos = pointerPosition(this.direction, e);
+				const oldPointer = handleToTrack(this.handleLength, this.handlePosition) * this.trackLength() + this.trackOffset();
+				this.$emit("pressTrack", pointerPos - oldPointer);
 			}
 		},
-		mouseUp() {
+		pointerUp() {
 			this.dragging = false;
 		},
-		mouseMove(e: MouseEvent) {
+		pointerMove(e: PointerEvent) {
 			if (this.dragging) {
 				this.updateHandlePosition(e);
 			}

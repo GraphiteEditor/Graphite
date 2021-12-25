@@ -10,15 +10,15 @@ use crate::input::InputPreprocessor;
 use crate::message_prelude::*;
 use crate::EditorError;
 
+use graphene::layers::{style::ViewMode, BlendMode, LayerDataType};
+use graphene::{document::Document as GrapheneDocument, DocumentError, LayerId};
+use graphene::{DocumentResponse, Operation as DocumentOperation};
+
 use glam::{DAffine2, DVec2};
 use graphene::layers::Folder;
 use kurbo::PathSeg;
 use log::warn;
 use serde::{Deserialize, Serialize};
-
-use graphene::layers::BlendMode;
-use graphene::{document::Document as GrapheneDocument, layers::LayerDataType, DocumentError, LayerId};
-use graphene::{Operation as DocumentOperation, DocumentResponse};
 
 type DocumentSave = (GrapheneDocument, HashMap<Vec<LayerId>, LayerData>);
 
@@ -65,9 +65,11 @@ pub struct DocumentMessageHandler {
 	pub saved_document_identifier: u64,
 	pub name: String,
 	pub layer_data: HashMap<Vec<LayerId>, LayerData>,
+	layer_range_selection_reference: Vec<LayerId>,
 	movement_handler: MovementMessageHandler,
 	transform_layer_handler: TransformLayerMessageHandler,
 	pub snapping_enabled: bool,
+	pub view_mode: ViewMode,
 }
 
 impl Default for DocumentMessageHandler {
@@ -80,13 +82,14 @@ impl Default for DocumentMessageHandler {
 			name: String::from("Untitled Document"),
 			saved_document_identifier: 0,
 			layer_data: vec![(vec![], LayerData::new(true))].into_iter().collect(),
+			layer_range_selection_reference: Vec::new(),
 			movement_handler: MovementMessageHandler::default(),
 			transform_layer_handler: TransformLayerMessageHandler::default(),
 			snapping_enabled: true,
+			view_mode: ViewMode::default(),
 		}
 	}
 }
-
 
 #[impl_message(Message, DocumentMessage, Overlay)]
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
@@ -119,12 +122,13 @@ pub enum DocumentMessage {
 	SetSelectedLayers(Vec<Vec<LayerId>>),
 	AddSelectedLayers(Vec<Vec<LayerId>>),
 	SelectAllLayers,
+	SelectLayer(Vec<LayerId>, bool, bool),
 	SelectionChanged,
 	DeselectAllLayers,
 	DeleteLayer(Vec<LayerId>),
 	DeleteSelectedLayers,
 	DuplicateSelectedLayers,
-	CreateFolder(Vec<LayerId>),
+	CreateEmptyFolder(Vec<LayerId>),
 	SetBlendModeForSelectedLayers(BlendMode),
 	SetOpacityForSelectedLayers(f64),
 	RenameLayer(Vec<LayerId>, String),
@@ -142,6 +146,9 @@ pub enum DocumentMessage {
 	ExportDocument,
 	SaveDocument,
 	RenderDocument,
+	DirtyRenderDocument,
+	DirtyRenderDocumentInOutlineView,
+	SetViewMode(ViewMode),
 	Undo,
 	Redo,
 	DocumentHistoryBackward,
@@ -170,6 +177,38 @@ impl From<DocumentOperation> for Message {
 }
 
 impl DocumentMessageHandler {
+	pub fn with_name(name: String, ipp: &InputPreprocessor) -> Self {
+		let mut document = Self {
+			graphene_document: GrapheneDocument::default(),
+			overlays_document: GrapheneDocument::default(),
+			document_undo_history: Vec::new(),
+			document_redo_history: Vec::new(),
+			saved_document_identifier: 0,
+			name,
+			layer_data: vec![(vec![], LayerData::new(true))].into_iter().collect(),
+			layer_range_selection_reference: Vec::new(),
+			movement_handler: MovementMessageHandler::default(),
+			transform_layer_handler: TransformLayerMessageHandler::default(),
+			snapping_enabled: true,
+			view_mode: ViewMode::default(),
+		};
+		document.graphene_document.root.transform = document.layerdata(&[]).calculate_offset_transform(ipp.viewport_bounds.size() / 2.);
+		document
+	}
+
+	pub fn with_name_and_content(name: String, serialized_content: String, ipp: &InputPreprocessor) -> Result<Self, EditorError> {
+		let mut document = Self::with_name(name, ipp);
+		let internal_document = GrapheneDocument::with_content(&serialized_content);
+		match internal_document {
+			Ok(handle) => {
+				document.graphene_document = handle;
+				Ok(document)
+			}
+			Err(DocumentError::InvalidFile(msg)) => Err(EditorError::Document(msg)),
+			_ => Err(EditorError::Document(String::from("Failed to open file"))),
+		}
+	}
+
 	fn select_layer(&mut self, path: &[LayerId]) -> Option<Message> {
 		if self.graphene_document.layer(path).ok()?.overlay {
 			return None;
@@ -327,34 +366,6 @@ impl DocumentMessageHandler {
 		self.layers_sorted(Some(false))
 	}
 
-	pub fn with_name(name: String) -> Self {
-		Self {
-			graphene_document: GrapheneDocument::default(),
-			overlays_document: GrapheneDocument::default(),
-			document_undo_history: Vec::new(),
-			document_redo_history: Vec::new(),
-			saved_document_identifier: 0,
-			name,
-			layer_data: vec![(vec![], LayerData::new(true))].into_iter().collect(),
-			movement_handler: MovementMessageHandler::default(),
-			transform_layer_handler: TransformLayerMessageHandler::default(),
-			snapping_enabled: true,
-		}
-	}
-
-	pub fn with_name_and_content(name: String, serialized_content: String) -> Result<Self, EditorError> {
-		let mut document = Self::with_name(name);
-		let internal_document = GrapheneDocument::with_content(&serialized_content);
-		match internal_document {
-			Ok(handle) => {
-				document.graphene_document = handle;
-				Ok(document)
-			}
-			Err(DocumentError::InvalidFile(msg)) => Err(EditorError::Document(msg)),
-			_ => Err(EditorError::Document(String::from("Failed to open file"))),
-		}
-	}
-
 	pub fn layer_data(&mut self, path: &[LayerId]) -> &mut LayerData {
 		layer_data(&mut self.layer_data, path)
 	}
@@ -498,7 +509,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 							size.x,
 							size.y,
 							"\n",
-							self.graphene_document.render_root()
+							self.graphene_document.render_root(self.view_mode)
 						),
 						name,
 					}
@@ -522,14 +533,16 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					.into(),
 				)
 			}
-			CreateFolder(mut path) => {
+			CreateEmptyFolder(mut path) => {
 				let id = generate_uuid();
 				path.push(id);
 				self.layerdata_mut(&path).expanded = true;
 				responses.push_back(DocumentOperation::CreateFolder { path }.into())
 			}
 			GroupSelectedLayers => {
-				let common_prefix = self.graphene_document.common_prefix(self.selected_layers());
+				let selected_layers = self.selected_layers();
+
+				let common_prefix = self.graphene_document.common_layer_path_prefix(selected_layers);
 				let (_id, common_prefix) = common_prefix.split_last().unwrap_or((&0, &[]));
 
 				let mut new_folder_path = common_prefix.to_vec();
@@ -587,10 +600,51 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					responses.push_front(DocumentOperation::DeleteLayer { path }.into());
 				}
 			}
+			SetViewMode(mode) => {
+				self.view_mode = mode;
+				responses.push_front(DocumentMessage::DirtyRenderDocument.into());
+			}
 			DuplicateSelectedLayers => {
 				self.backup(responses);
 				for path in self.selected_layers_sorted() {
 					responses.push_back(DocumentOperation::DuplicateLayer { path }.into());
+				}
+			}
+			SelectLayer(selected, ctrl, shift) => {
+				let mut paths = vec![];
+				let last_selection_exists = !self.layer_range_selection_reference.is_empty();
+
+				// If we have shift pressed and a layer already selected then fill the range
+				if shift && last_selection_exists {
+					// Fill the selection range
+					self.layer_data
+						.iter()
+						.filter(|(target, _)| self.graphene_document.layer_is_between(&target, &selected, &self.layer_range_selection_reference))
+						.for_each(|(layer_path, _)| {
+							paths.push(layer_path.clone());
+						});
+				} else {
+					if ctrl {
+						// Toggle selection when holding ctrl
+						let layer = self.layerdata_mut(&selected);
+						layer.selected = !layer.selected;
+						responses.push_back(LayerChanged(selected.clone()).into());
+					} else {
+						paths.push(selected.clone());
+					}
+
+					// Set our last selection reference
+					self.layer_range_selection_reference = selected;
+				}
+
+				// Don't create messages for empty operations
+				if paths.len() > 0 {
+					// Add or set our selected layers
+					if ctrl {
+						responses.push_front(AddSelectedLayers(paths).into());
+					} else {
+						responses.push_front(SetSelectedLayers(paths).into());
+					}
 				}
 			}
 			SetSelectedLayers(paths) => {
@@ -618,7 +672,10 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					.collect::<Vec<_>>();
 				responses.push_front(SetSelectedLayers(all_layer_paths).into());
 			}
-			DeselectAllLayers => responses.push_front(SetSelectedLayers(vec![]).into()),
+			DeselectAllLayers => {
+				responses.push_front(SetSelectedLayers(vec![]).into());
+				self.layer_range_selection_reference.clear();
+			}
 			DocumentHistoryBackward => self.undo(responses).unwrap_or_else(|e| log::warn!("{}", e)),
 			DocumentHistoryForward => self.redo(responses).unwrap_or_else(|e| log::warn!("{}", e)),
 			Undo => {
@@ -636,7 +693,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				responses.push_back(FolderChanged(vec![]).into());
 			}
 			FolderChanged(path) => {
-				let _ = self.graphene_document.render_root();
+				let _ = self.graphene_document.render_root(self.view_mode);
 				responses.extend([LayerChanged(path).into(), DocumentStructureChanged.into()]);
 			}
 			DocumentStructureChanged => {
@@ -649,7 +706,6 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					(!overlay).then(|| FrontendMessage::UpdateLayer { data: entry }.into())
 				}));
 			}
-
 			DispatchOperation(op) => match self.graphene_document.handle_operation(&op) {
 				Ok(Some(document_responses)) => {
 					for response in document_responses {
@@ -664,7 +720,8 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 								self.layer_data.insert(path.clone(), LayerData::new(false));
 								responses.push_back(LayerChanged(path.clone()).into());
 								if !self.graphene_document.layer(&path).unwrap().overlay {
-									responses.push_back(SetSelectedLayers(vec![path]).into())
+									self.layer_range_selection_reference = path.clone();
+									responses.push_back(SetSelectedLayers(vec![path]).into());
 								}
 							}
 							DocumentResponse::DocumentChanged => responses.push_back(RenderDocument.into()),
@@ -678,7 +735,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			RenderDocument => {
 				responses.push_back(
 					FrontendMessage::UpdateArtwork {
-						svg: self.graphene_document.render_root(),
+						svg: self.graphene_document.render_root(self.view_mode),
 					}
 					.into(),
 				);
@@ -725,7 +782,17 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					.into(),
 				);
 			}
+			DirtyRenderDocument => {
+				// Mark all non-overlay caches as dirty
+				GrapheneDocument::visit_all_shapes(&mut self.graphene_document.root, &mut |_| {});
 
+				responses.push_back(DocumentMessage::RenderDocument.into());
+			}
+			DirtyRenderDocumentInOutlineView => {
+				if self.view_mode == ViewMode::Outline {
+					responses.push_front(DocumentMessage::DirtyRenderDocument.into());
+				}
+			}
 			NudgeSelectedLayers(x, y) => {
 				self.backup(responses);
 				for path in self.selected_layers().map(|path| path.to_vec()) {
