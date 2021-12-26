@@ -299,7 +299,7 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 					}
 					.into(),
 				)
-			},
+			}
 			AutoSaveActiveDocument => responses.push_back(DocumentsMessage::AutoSaveDocument(self.active_document_id).into()),
 			NextDocument => {
 				let current_index = self.document_index(self.active_document_id);

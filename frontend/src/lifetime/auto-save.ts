@@ -19,7 +19,7 @@ const databaseConnection: Promise<IDBDatabase> = new Promise((resolve) => {
 	};
 
 	dbOpenRequest.onerror = () => {
-		console.error("Error", dbOpenRequest.error);
+		console.error("Graphite IndexedDb error:", dbOpenRequest.error);
 	};
 
 	dbOpenRequest.onsuccess = () => {

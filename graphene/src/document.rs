@@ -1,4 +1,4 @@
-use crate::GRAPHITE_DOCUMENT_VERSION;
+use crate::consts::GRAPHITE_DOCUMENT_VERSION;
 use std::{
 	cmp::max,
 	collections::hash_map::DefaultHasher,

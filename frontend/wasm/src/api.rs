@@ -41,7 +41,7 @@ impl JsEditorHandle {
 		JsEditorHandle {
 			editor_id,
 			instance_received_crashed: Cell::new(false),
-			handle_response
+			handle_response,
 		}
 	}
 
