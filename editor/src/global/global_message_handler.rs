@@ -47,7 +47,13 @@ impl MessageHandler<GlobalMessage, ()> for GlobalMessageHandler {
 				let mut case = TestCase::default();
 				std::mem::swap(&mut self.input_messages, &mut case.input_messages);
 				std::mem::swap(&mut self.output_messages, &mut case.output_messages);
-				responses.push_back(FrontendMessage::ExportDocument{document: ron::to_string(&case).expect("Failed to serialize message trace"), name: String::from("test_case.ron")}.into());
+				responses.push_back(
+					FrontendMessage::ExportDocument {
+						document: ron::ser::to_string_pretty(&case, ron::ser::PrettyConfig::default()).expect("Failed to serialize message trace"),
+						name: String::from("test_case.ron"),
+					}
+					.into(),
+				);
 			}
 		}
 	}

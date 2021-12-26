@@ -51,12 +51,12 @@ impl Dispatcher {
 				Frontend(message) => {
 					self.record_output(message.clone());
 					self.responses.push(message)
-				},
+				}
 				InputPreprocessor(message) => self.input_preprocessor.process_action(message, (), &mut self.messages),
 				InputMapper(message) => {
 					let actions = self.collect_actions();
 					self.input_mapper.process_action(message, (&self.input_preprocessor, actions), &mut self.messages)
-				},
+				}
 			}
 		}
 		for message in self.responses.clone() {
@@ -89,14 +89,14 @@ impl Dispatcher {
 
 	#[cfg_attr(not(testing), allow(unused))]
 	fn record_input(&mut self, message: Message) {
-		#[cfg(testing)]
-		self.global_message_handler.handle_message(GlobalMessage::RecordInput(Box::new(message)))
+		#[cfg(feature = "testing")]
+		self.global_message_handler.process_action(GlobalMessage::RecordInput(Box::new(message)), (), &mut VecDeque::new())
 	}
 
 	#[cfg_attr(not(testing), allow(unused))]
 	fn record_output(&mut self, message: FrontendMessage) {
-		#[cfg(testing)]
-		self.global_message_handler.handle_message(GlobalMessage::RecordOutput(message))
+		#[cfg(feature = "testing")]
+		self.global_message_handler.process_action(GlobalMessage::RecordOutput(message), (), &mut VecDeque::new())
 	}
 
 	fn log_message(&self, message: &Message) {
