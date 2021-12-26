@@ -10,6 +10,15 @@ export class JsMessage {
 	static readonly jsMessageMarker = true;
 }
 
+// ============================================================================
+// Add additional classes to replicate Rust's FrontendMessages and data structures below.
+//
+// Remember to add each message to the `messageConstructors` export at the bottom of the file.
+//
+// Read class-transformer docs at https://github.com/typestack/class-transformer#table-of-contents
+// for details about how to transform the JSON from wasm-bindgen into classes.
+// ============================================================================
+
 export class FrontendDocumentDetails {
 	readonly name!: string;
 
@@ -25,6 +34,25 @@ export class FrontendDocumentDetails {
 export class UpdateOpenDocumentsList extends JsMessage {
 	@Type(() => FrontendDocumentDetails)
 	readonly open_documents!: FrontendDocumentDetails[];
+}
+
+export type HintData = HintInfo[][];
+
+export class UpdateInputHints extends JsMessage {
+	@Type(() => HintInfo)
+	readonly hint_data!: HintData;
+}
+
+export type KeysGroup = string[];
+
+export class HintInfo {
+	readonly keys!: string[];
+
+	readonly mouse!: KeysGroup | null;
+
+	readonly label!: string;
+
+	readonly plus!: boolean;
 }
 
 const To255Scale = Transform(({ value }) => value * 255);
@@ -304,6 +332,7 @@ export const messageConstructors: Record<string, MessageMaker> = {
 	SetActiveTool,
 	SetActiveDocument,
 	UpdateOpenDocumentsList,
+	UpdateInputHints,
 	UpdateWorkingColors,
 	SetCanvasZoom,
 	SetCanvasRotation,

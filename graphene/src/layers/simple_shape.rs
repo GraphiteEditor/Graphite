@@ -1,18 +1,18 @@
 use glam::DAffine2;
 use glam::DMat2;
 use glam::DVec2;
-
 use kurbo::Affine;
+use kurbo::BezPath;
 use kurbo::Shape as KurboShape;
 
 use crate::intersection::intersect_quad_bez_path;
+use crate::layers::{
+	style,
+	style::{PathStyle, ViewMode},
+	LayerData,
+};
 use crate::LayerId;
 use crate::Quad;
-use kurbo::BezPath;
-
-use super::style;
-use super::style::PathStyle;
-use super::LayerData;
 
 use serde::{Deserialize, Serialize};
 use std::fmt::Write;
@@ -30,9 +30,9 @@ pub struct Shape {
 }
 
 impl LayerData for Shape {
-	fn render(&mut self, svg: &mut String, transforms: &mut Vec<DAffine2>) {
+	fn render(&mut self, svg: &mut String, transforms: &mut Vec<DAffine2>, view_mode: ViewMode) {
 		let mut path = self.path.clone();
-		let transform = self.transform(transforms);
+		let transform = self.transform(transforms, view_mode);
 		let inverse = transform.inverse();
 		if !inverse.is_finite() {
 			let _ = write!(svg, "<!-- SVG shape has an invalid transform -->");
@@ -45,7 +45,7 @@ impl LayerData for Shape {
 			let _ = svg.write_str(&(entry.to_string() + if i != 5 { "," } else { "" }));
 		});
 		let _ = svg.write_str(r#")">"#);
-		let _ = write!(svg, r#"<path d="{}" {} />"#, path.to_svg(), self.style.render());
+		let _ = write!(svg, r#"<path d="{}" {} />"#, path.to_svg(), self.style.render(view_mode));
 		let _ = svg.write_str("</g>");
 	}
 
@@ -69,10 +69,11 @@ impl LayerData for Shape {
 }
 
 impl Shape {
-	pub fn transform(&self, transforms: &[DAffine2]) -> DAffine2 {
-		let start = match self.render_index {
-			-1 => 0,
-			x => (transforms.len() as i32 - x).max(0) as usize,
+	pub fn transform(&self, transforms: &[DAffine2], mode: ViewMode) -> DAffine2 {
+		let start = match (mode, self.render_index) {
+			(ViewMode::Outline, _) => 0,
+			(_, -1) => 0,
+			(_, x) => (transforms.len() as i32 - x).max(0) as usize,
 		};
 		transforms.iter().skip(start).cloned().reduce(|a, b| a * b).unwrap_or(DAffine2::IDENTITY)
 	}
@@ -82,7 +83,7 @@ impl Shape {
 			path: bez_path,
 			style,
 			render_index: 1,
-			solid: solid,
+			solid,
 		}
 	}
 

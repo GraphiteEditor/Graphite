@@ -78,7 +78,7 @@
 
 			.user-input-label {
 				margin: 0;
-				margin-left: 4px;
+				margin-left: 16px;
 			}
 
 			.submenu-arrow {

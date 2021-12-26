@@ -41,6 +41,8 @@ pub trait Fsm {
 		input: &InputPreprocessor,
 		messages: &mut VecDeque<Message>,
 	) -> Self;
+
+	fn update_hints(&self, responses: &mut VecDeque<Message>);
 }
 
 #[derive(Debug, Clone)]
