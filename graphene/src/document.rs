@@ -526,16 +526,11 @@ impl Document {
 				let (folder_path, _) = split_path(path.as_slice()).unwrap_or_else(|_| (&[], 0));
 				let folder = self.folder_mut(folder_path)?;
 				if let Some(new_layer_id) = folder.add_layer(layer, None, -1) {
+					let new_path = [folder_path, &[new_layer_id]].concat();
 					self.mark_as_dirty(folder_path)?;
 					Some(
 						[
-							vec![
-								DocumentChanged,
-								CreatedLayer {
-									path: [folder_path, &[new_layer_id]].concat(),
-								},
-								FolderChanged { path: folder_path.to_vec() },
-							],
+							vec![DocumentChanged, CreatedLayer { path: new_path }, FolderChanged { path: folder_path.to_vec() }],
 							update_thumbnails_upstream(path.as_slice()),
 						]
 						.concat(),
