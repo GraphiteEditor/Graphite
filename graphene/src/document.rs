@@ -525,9 +525,19 @@ impl Document {
 				let layer = self.layer(path)?.clone();
 				let (folder_path, _) = split_path(path.as_slice()).unwrap_or_else(|_| (&[], 0));
 				let folder = self.folder_mut(folder_path)?;
-				folder.add_layer(layer, None, -1).ok_or(DocumentError::IndexOutOfBounds)?;
-				self.mark_as_dirty(&path[..path.len() - 1])?;
-				Some(vec![DocumentChanged, FolderChanged { path: folder_path.to_vec() }])
+				if let Some(new_layer_id) = folder.add_layer(layer, None, -1) {
+					let new_path = [folder_path, &[new_layer_id]].concat();
+					self.mark_as_dirty(folder_path)?;
+					Some(
+						[
+							vec![DocumentChanged, CreatedLayer { path: new_path }, FolderChanged { path: folder_path.to_vec() }],
+							update_thumbnails_upstream(path.as_slice()),
+						]
+						.concat(),
+					)
+				} else {
+					return Err(DocumentError::IndexOutOfBounds);
+				}
 			}
 			Operation::RenameLayer { path, name } => {
 				self.layer_mut(path)?.name = Some(name.clone());
