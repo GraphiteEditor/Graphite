@@ -132,23 +132,27 @@ impl<'a> SubCurve<'a> {
 		bound
 	}
 
+	/// eval subcurve at t as though the subcurve is a bezier curve
 	fn eval(&self, t: f64) -> Point {
+		let interp_t = self.start_t + t * (self.end_t - self.start_t);
 		self.curve.eval(t)
 	}
 
+	/// split subcurve at t, as though the subcurve is a bezier curve, where t is a value between 0.0 and 1.0
 	fn split(&self, t: f64) -> (SubCurve, SubCurve) {
+		let split_t = self.start_t + t * (self.end_t - self.start_t);
 		(SubCurve {
 			curve: self.curve,
 			start_t: self.start_t,
-			end_t: t,
-			local: [self.curve.eval(self.start_t), self.curve.eval(t)],
+			end_t: split_t,
+			local: [self.curve.eval(self.start_t), self.curve.eval(split_t)],
 			extrema: self.extrema
 		},
 		 SubCurve {
 			 curve: self.curve,
-			 start_t: t,
+			 start_t: split_t,
 			 end_t: self.end_t,
-			 local: [self.curve.eval(t), self.curve.eval(self.end_t)],
+			 local: [self.curve.eval(split_t), self.curve.eval(self.end_t)],
 			 extrema: self.extrema
 		})
 	}
@@ -190,9 +194,10 @@ fn path_intersections(a: &SubCurve, b: &SubCurve, mut recursion: usize) -> Vec<I
 				cross.t_a = a.start_t + cross.t_a / (1 << recursion) as f64;
 				cross.t_b = b.start_t + cross.t_b / (1 << recursion) as f64;
 				cross.quality = guess_quality(a.curve, b.curve, &cross);
-				if cross.quality > 10000.0 { intersections.push(cross); } //arbitrarily chosen threshold
+				intersections.push(cross); //arbitrarily chosen threshold
 				return intersections;
 			}
+			log::debug!("line no cross");
 		}
 		let (a1, a2) = a.split(0.5);
 		let (b1, b2) = b.split(0.5);
@@ -220,7 +225,6 @@ pub fn intersections(a: &BezPath, b: &BezPath) -> Vec<Intersect>{
 		b.segments().enumerate().for_each(|(b_idx, b_seg)| {
 			let b_extrema = b_seg.extrema().iter().filter_map(|t| if *t > F64PRECISION && *t < 1.0 - F64PRECISION { Some(b_seg.eval(*t)) } else { None }).collect();
 			for mut path_intersection in path_intersections(&SubCurve::new(&a_seg, &a_extrema), &SubCurve::new(&b_seg, &b_extrema), 0){
-				log::debug!("found @: {:?}", path_intersection.point);
 				intersections.push({path_intersection.add_idx(a_idx, b_idx); path_intersection});
 			}
 		})
