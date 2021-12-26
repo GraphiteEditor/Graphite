@@ -4,9 +4,9 @@ use super::{
 	keyboard::{Key, KeyStates, NUMBER_OF_KEYS},
 	InputPreprocessor,
 };
+use crate::document::Clipboard::*;
 use crate::message_prelude::*;
 use crate::tool::ToolType;
-use crate::document::Clipboard::*;
 
 use serde::{Deserialize, Serialize};
 use std::fmt::Write;

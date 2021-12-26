@@ -6,9 +6,9 @@ use super::movement_handler::{MovementMessage, MovementMessageHandler};
 use super::transform_layer_handler::{TransformLayerMessage, TransformLayerMessageHandler};
 
 use crate::consts::{ASYMPTOTIC_EFFECT, FILE_EXPORT_SUFFIX, FILE_SAVE_SUFFIX, SCALE_EFFECT, SCROLLBAR_SPACING};
+use crate::document::Clipboard;
 use crate::input::InputPreprocessor;
 use crate::message_prelude::*;
-use crate::document::Clipboard;
 use crate::EditorError;
 
 use glam::{DAffine2, DVec2};
@@ -779,7 +779,14 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			MoveSelectedLayersTo { path, insert_index } => {
 				responses.push_back(DocumentsMessage::Copy(Clipboard::System).into());
 				responses.push_back(DocumentMessage::DeleteSelectedLayers.into());
-				responses.push_back(DocumentsMessage::PasteIntoFolder { clipboard: Clipboard::System, path, insert_index }.into());
+				responses.push_back(
+					DocumentsMessage::PasteIntoFolder {
+						clipboard: Clipboard::System,
+						path,
+						insert_index,
+					}
+					.into(),
+				);
 			}
 			ReorderSelectedLayers(relative_position) => {
 				self.backup(responses);

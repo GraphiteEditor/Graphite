@@ -10,7 +10,7 @@ pub use document_file::LayerData;
 #[doc(inline)]
 pub use document_file::{AlignAggregate, AlignAxis, DocumentMessage, DocumentMessageDiscriminant, DocumentMessageHandler, FlipAxis, VectorManipulatorSegment, VectorManipulatorShape};
 #[doc(inline)]
-pub use document_message_handler::{DocumentsMessage, DocumentsMessageDiscriminant, DocumentsMessageHandler, Clipboard};
+pub use document_message_handler::{Clipboard, DocumentsMessage, DocumentsMessageDiscriminant, DocumentsMessageHandler};
 #[doc(inline)]
 pub use movement_handler::{MovementMessage, MovementMessageDiscriminant};
 #[doc(inline)]
