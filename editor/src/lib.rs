@@ -35,7 +35,7 @@ impl Editor {
 		Self { dispatcher: Dispatcher::new() }
 	}
 
-	pub fn handle_message<T: Into<Message>>(&mut self, message: T) -> Vec<FrontendMessage> {
+	pub fn handle_message<T: Into<Message> + Clone>(&mut self, message: T) -> Vec<FrontendMessage> {
 		self.dispatcher.handle_message(message);
 
 		let mut responses = Vec::new();

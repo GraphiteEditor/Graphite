@@ -10,12 +10,18 @@ homepage = "https://www.graphite.design"
 repository = "https://github.com/GraphiteEditor/Graphite"
 license = "Apache-2.0"
 
+[features]
+testing = ["ron"]
+# TODO: temporary, replace with npm build mode
+default = ["testing"]
+
 [dependencies]
 log = "0.4"
 bitflags = "1.2.1"
 thiserror = "1.0.24"
 serde = { version = "1.0", features = ["derive"] }
 graphite-proc-macros = { path = "../proc-macros" }
+ron = {version =  "0.7", optional = true}
 glam = { version="0.17", features = ["serde"] }
 rand_chacha = "0.3.1"
 spin = "0.9.2"

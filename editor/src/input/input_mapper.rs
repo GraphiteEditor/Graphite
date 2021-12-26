@@ -288,6 +288,7 @@ impl Default for Mapping {
 			entry! {action=GlobalMessage::LogInfo, key_down=Key1},
 			entry! {action=GlobalMessage::LogDebug, key_down=Key2},
 			entry! {action=GlobalMessage::LogTrace, key_down=Key3},
+			entry! {action=GlobalMessage::ExportTrace, key_down=KeyT, modifiers=[KeyAlt]},
 		];
 
 		let (mut key_up, mut key_down, mut pointer_move, mut mouse_scroll) = mappings;

@@ -30,7 +30,8 @@ const SIDE_EFFECT_FREE_MESSAGES: &[MessageDiscriminant] = &[
 ];
 
 impl Dispatcher {
-	pub fn handle_message<T: Into<Message>>(&mut self, message: T) {
+	pub fn handle_message<T: Into<Message> + Clone>(&mut self, message: T) {
+		self.record_input(message.clone().into());
 		self.messages.push_back(message.into());
 
 		use Message::*;
@@ -47,13 +48,19 @@ impl Dispatcher {
 				Tool(message) => self
 					.tool_message_handler
 					.process_action(message, (self.documents_message_handler.active_document(), &self.input_preprocessor), &mut self.messages),
-				Frontend(message) => self.responses.push(message),
+				Frontend(message) => {
+					self.record_output(message.clone());
+					self.responses.push(message)
+				},
 				InputPreprocessor(message) => self.input_preprocessor.process_action(message, (), &mut self.messages),
 				InputMapper(message) => {
 					let actions = self.collect_actions();
 					self.input_mapper.process_action(message, (&self.input_preprocessor, actions), &mut self.messages)
-				}
+				},
 			}
+		}
+		for message in self.responses.clone() {
+			self.record_output(message)
 		}
 	}
 
@@ -78,6 +85,18 @@ impl Dispatcher {
 			messages: VecDeque::new(),
 			responses: vec![],
 		}
+	}
+
+	#[cfg_attr(not(testing), allow(unused))]
+	fn record_input(&mut self, message: Message) {
+		#[cfg(testing)]
+		self.global_message_handler.handle_message(GlobalMessage::RecordInput(Box::new(message)))
+	}
+
+	#[cfg_attr(not(testing), allow(unused))]
+	fn record_output(&mut self, message: FrontendMessage) {
+		#[cfg(testing)]
+		self.global_message_handler.handle_message(GlobalMessage::RecordOutput(message))
 	}
 
 	fn log_message(&self, message: &Message) {
