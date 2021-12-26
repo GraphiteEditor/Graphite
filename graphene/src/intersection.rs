@@ -4,7 +4,7 @@ use glam::{DAffine2, DVec2, DMat2};
 use kurbo::{BezPath, Line, PathSeg, Point, Shape, Rect, QuadBez, ParamCurve, ParamCurveExtrema};
 use crate::boolean_ops::split_path_seg;
 
-pub const F64PRECISION: f64 = 0.00000001;
+pub const F64PRECISION: f64 = 0.0000000001; // for f64 comparisons
 
 #[derive(Debug, Clone, Default, Copy)]
 pub struct Quad([DVec2; 4]);
@@ -103,23 +103,33 @@ impl From<(Point, f64, f64)> for Intersect{
 // because extrema are owned by each SubCurve ( and not refrenced ), they must be copied on each split
 struct SubCurve<'a> {
 	pub curve: &'a PathSeg,
-	pub start: f64,
-	pub end: f64,
-	pub extrema: Vec<(Point, f64)>,
+	pub start_t: f64,
+	pub end_t: f64,
+	local: [Point; 2], //local endpoints
+	pub extrema: &'a Vec<Point>,
 }
 
 impl<'a> SubCurve<'a> {
+	pub fn new(parent: &'a PathSeg, extrema: &'a Vec<Point>) -> Self {
+		SubCurve{
+			curve: parent,
+			start_t: 0.0,
+			end_t: 1.0,
+			local: [parent.eval(0.0), parent.eval(1.0)],
+			extrema: extrema,
+		}
+	}
+
 	fn bounding_box(&self) -> Rect {
-		let mut ll = self.curve.eval(self.start);
-		let mut ur = self.curve.eval(self.end);
-		vec![(self.curve.eval(self.start), self.start), (self.curve.eval(self.end), self.end)].iter().chain(self.extrema.iter())
-			.for_each(|(p, _)|{
-				if p.x < ll.x {ll.x = p.x;}
-				if p.x > ur.x {ur.x = p.x;}
-				if p.y < ll.y {ll.y = p.y;}
-				if p.y > ur.y {ur.y = p.y;}
+		let mut bound = Rect {x0: self.start().x, y0: self.start().y, x1: self.end().x, y1: self.end().y};
+		self.local.iter().chain(self.extrema.iter())
+			.for_each(|p|{
+				if p.x < bound.x0 {bound.x0 = p.x;}
+				if p.x > bound.x1 {bound.x1 = p.x;}
+				if p.y < bound.y0 {bound.y0 = p.y;}
+				if p.y > bound.y1 {bound.y1 = p.y;}
 			});
-		Rect {x0: ll.x, y0: ll.y, x1: ur.x, y1: ur.y}
+		bound
 	}
 
 	fn eval(&self, t: f64) -> Point {
@@ -127,58 +137,28 @@ impl<'a> SubCurve<'a> {
 	}
 
 	fn split(&self, t: f64) -> (SubCurve, SubCurve) {
-		(SubCurve {curve: self.curve, start: self.start, end: t, extrema: self.extrema.clone()},
-		 SubCurve {curve: self.curve, start: t, end: self.end, extrema: self.extrema.clone()})
+		(SubCurve {
+			curve: self.curve,
+			start_t: self.start_t,
+			end_t: t,
+			local: [self.curve.eval(self.start_t), self.curve.eval(t)],
+			extrema: self.extrema
+		},
+		 SubCurve {
+			 curve: self.curve,
+			 start_t: t,
+			 end_t: self.end_t,
+			 local: [self.curve.eval(t), self.curve.eval(self.end_t)],
+			 extrema: self.extrema
+		})
 	}
 
 	fn start(&self) -> Point {
-		self.curve.eval(self.start)
+		self.local[0]
 	}
 
 	fn end(&self) -> Point {
-		self.curve.eval(self.end)
-	}
-}
-
-impl<'a> From< &'a PathSeg > for SubCurve<'a> {
-	fn from(parent: &'a PathSeg) -> Self {
-		// extrema contains local min/max, not the endpoints
-		SubCurve {
-			curve: parent,
-			start: 0.0,
-			end: 1.0,
-			extrema: parent.extrema().iter().filter_map(|t| { if *t > 0.0 || *t < 1.0 { Some((parent.eval(*t), *t)) } else {None} } ).collect(),
-		}
-	}
-}
-
-fn line_raise(l: &Line) -> QuadBez{
-	QuadBez{p0: l.p0, p1: l.p0, p2: l.p1}
-}
-
-fn promote_pathseg(a: &PathSeg, b: &PathSeg) -> (PathSeg, PathSeg) {
-	let mut greater = PathSeg::from(*a);
-	let mut smaller = PathSeg::from(*b);
-	// these functions are defined here because they are quite specific
-	fn precedence_fn(seg: &PathSeg) -> usize {match seg {PathSeg::Cubic(_) => 2, PathSeg::Quad(_) => 1, PathSeg::Line(_) => 0}}
-	fn promote_fn(seg: &PathSeg) -> PathSeg {match seg{PathSeg::Quad(quadbez) => PathSeg::Cubic(quadbez.raise()), PathSeg::Line(ref line) => PathSeg::Quad(line_raise(line)), _ => *seg,}}
-
-	if precedence_fn(b) > precedence_fn(a) {greater = PathSeg::from(*b); smaller = PathSeg::from(*a);}
-
-	while precedence_fn(&greater) > precedence_fn(&smaller) {smaller = promote_fn(& smaller);}
-	(greater, smaller)
-}
-
-#[allow(unused_macros)]
-macro_rules! mat_from_points {
-	($p1:expr, $p2:expr, $p3:expr, $p4:expr) => {
-		DMat4::from_cols_array(&[$p1.x, $p1.y, 0.0, 0.0,  $p2.x, $p2.y, 0.0, 0.0,  $p3.x, $p3.y, 0.0, 0.0,  $p4.x, $p4.y, 0.0, 0.0])
-	};
-	($p1:expr, $p2:expr, $p3:expr) => {
-		DMat3::from_cols_array(&[$p1.x, $p1.y, 0.0,  $p2.x, $p2.y, 0.0,  $p3.x, $p3.y, 0.0])
-	};
-	($p1:expr, $p2:expr) => {
-		DMat2::from_cols_array(&[$p1.x, $p1.y,  $p2.x, $p2.y])
+		self.local[1]
 	}
 }
 
@@ -204,11 +184,11 @@ fn path_intersections(a: &SubCurve, b: &SubCurve, mut recursion: usize) -> Vec<I
 		// bail out!! before lshift with overflow, algorithm should never reach here
 		if recursion == 32 { return intersections; }
 		// base case, we are close enough to try linear approximation
-		if recursion > 15 { //arbitrarily chosen limit
+		if recursion > 10 { //arbitrarily chosen limit
 			if let Some(mut cross) = line_intersection(&Line{p0: a.start(), p1: a.end()}, &Line{p0: b.start(), p1: b.end()}){
 				// intersection t_value equals the recursive t_value + interpolated intersection value
-				cross.t_a = a.start + cross.t_a / (1 << recursion) as f64;
-				cross.t_b = b.start + cross.t_b / (1 << recursion) as f64;
+				cross.t_a = a.start_t + cross.t_a / (1 << recursion) as f64;
+				cross.t_b = b.start_t + cross.t_b / (1 << recursion) as f64;
 				cross.quality = guess_quality(a.curve, b.curve, &cross);
 				if cross.quality > 10000.0 { intersections.push(cross); } //arbitrarily chosen threshold
 				return intersections;
@@ -233,11 +213,18 @@ fn guess_quality(a: &PathSeg, b: &PathSeg, guess: &Intersect) -> f64{
 
 pub fn intersections(a: &BezPath, b: &BezPath) -> Vec<Intersect>{
 	let mut intersections: Vec<Intersect> = Vec::new();
-	a.segments().enumerate().for_each(|(a_idx, a_seg)| b.segments().enumerate().for_each(|(b_idx, b_seg)|{
-		for mut path_intersection in path_intersections(&SubCurve::from(&a_seg), &SubCurve::from(&b_seg), 0){
-			intersections.push({path_intersection.add_idx(a_idx, b_idx); path_intersection});
-		}
-	}));
+	// there is some duplicate computation of b_extrema here, but i doubt it's significant
+	a.segments().enumerate().for_each(|(a_idx, a_seg)| {
+		// extrema at endpoints should not be included here
+		let a_extrema = a_seg.extrema().iter().filter_map(|t| if *t > F64PRECISION && *t < 1.0 - F64PRECISION { Some(a_seg.eval(*t)) } else { None }).collect();
+		b.segments().enumerate().for_each(|(b_idx, b_seg)| {
+			let b_extrema = b_seg.extrema().iter().filter_map(|t| if *t > F64PRECISION && *t < 1.0 - F64PRECISION { Some(b_seg.eval(*t)) } else { None }).collect();
+			for mut path_intersection in path_intersections(&SubCurve::new(&a_seg, &a_extrema), &SubCurve::new(&b_seg, &b_extrema), 0){
+				log::debug!("found @: {:?}", path_intersection.point);
+				intersections.push({path_intersection.add_idx(a_idx, b_idx); path_intersection});
+			}
+		})
+	});
 	intersections
 }
 
@@ -276,8 +263,9 @@ pub fn line_intersection(a: &Line, b: &Line) -> Option<Intersect> {
 /// does using slices here cause a slowdown?
 pub fn overlap(a: &Rect, b: &Rect) -> bool {
 	fn in_range(n: f64, range: &[f64]) -> bool { n >= range[0] && n <= range[1] }
-	(in_range(b.x0, &[a.x0, a.x1]) || in_range(b.x1, &[a.x0, a.x1]) || in_range(a.x0, &[b.x0, b.x1]) || in_range(a.x1, &[b.x0, b.x1])) &&
-	(in_range(b.y0, &[a.y0, a.y1]) || in_range(b.y1, &[a.y0, a.y1]) || in_range(a.y0, &[b.y0, b.y1]) || in_range(a.y1, &[b.y0, b.y1]))
+	fn in_range_e(n: f64, range: &[f64]) -> bool { n > range[0] && n < range[1] }
+	(in_range(b.x0, &[a.x0, a.x1]) || in_range(b.x1, &[a.x0, a.x1]) || in_range_e(a.x0, &[b.x0, b.x1]) || in_range_e(a.x1, &[b.x0, b.x1])) &&
+	(in_range(b.y0, &[a.y0, a.y1]) || in_range(b.y1, &[a.y0, a.y1]) || in_range_e(a.y0, &[b.y0, b.y1]) || in_range_e(a.y1, &[b.y0, b.y1]))
 }
 
 fn valid_t(t: f64) -> bool {
