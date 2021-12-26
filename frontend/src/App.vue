@@ -230,7 +230,7 @@ import LayoutRow from "@/components/layout/LayoutRow.vue";
 import { createEditorState, EditorState } from "@/state/wasm-loader";
 import { createInputManager, InputManager } from "@/lifetime/input";
 import { initErrorHandling } from "@/lifetime/errors";
-import { AutoSaveState, createAutoSaveState } from "@/state/auto-save";
+import { createAutoSave } from "@/lifetime/auto-save";
 
 // Vue injects don't play well with TypeScript, and all injects will show up as `any`. As a workaround, we can define these types.
 declare module "@vue/runtime-core" {
@@ -239,7 +239,6 @@ declare module "@vue/runtime-core" {
 		documents: DocumentsState;
 		fullscreen: FullscreenState;
 		editor: EditorState;
-		autoSave: AutoSaveState;
 		// This must be set to optional because there is a time in the lifecycle of the component where inputManager is undefined.
 		// That's because we initialize inputManager in `mounted()` rather than `data()` since the div hasn't been created yet.
 		inputManger?: InputManager;
@@ -258,15 +257,14 @@ export default defineComponent({
 	data() {
 		const editor = createEditorState();
 		const dialog = createDialogState(editor);
-		const autoSave = createAutoSaveState(editor);
-		const documents = createDocumentsState(editor, dialog, autoSave);
+		const documents = createDocumentsState(editor, dialog);
 		const fullscreen = createFullscreenState();
 		initErrorHandling(editor, dialog);
+		createAutoSave(editor, documents);
 
 		return {
 			editor,
 			dialog,
-			autoSave,
 			documents,
 			fullscreen,
 			showUnsupportedModal: !("BigInt64Array" in window),
