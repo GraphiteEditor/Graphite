@@ -107,6 +107,8 @@ impl Fsm for PenToolFsmState {
 						_ => 5,
 					};
 
+					responses.push_back(make_operation(data, tool_data, true));
+
 					Drawing
 				}
 				(Drawing, DragStop) => {
@@ -119,7 +121,8 @@ impl Fsm for PenToolFsmState {
 						data.next_point = pos;
 					}
 
-					make_operation(data, tool_data, true, responses);
+					responses.push_back(remove_preview(data));
+					responses.push_back(make_operation(data, tool_data, true));
 
 					Drawing
 				}
@@ -128,14 +131,16 @@ impl Fsm for PenToolFsmState {
 					let pos = transform.inverse() * DAffine2::from_translation(snapped_position);
 					data.next_point = pos;
 
-					make_operation(data, tool_data, true, responses);
+					responses.push_back(remove_preview(data));
+					responses.push_back(make_operation(data, tool_data, true));
 
 					Drawing
 				}
 				(Drawing, Confirm) | (Drawing, Abort) => {
 					if data.points.len() >= 2 {
 						responses.push_back(DocumentMessage::DeselectAllLayers.into());
-						make_operation(data, tool_data, false, responses);
+						responses.push_back(remove_preview(data));
+						responses.push_back(make_operation(data, tool_data, false));
 						responses.push_back(DocumentMessage::CommitTransaction.into());
 					} else {
 						responses.push_back(DocumentMessage::AbortTransaction.into());
@@ -182,24 +187,22 @@ impl Fsm for PenToolFsmState {
 	}
 }
 
-fn make_operation(data: &mut PenToolData, tool_data: &DocumentToolData, show_preview: bool, responses: &mut VecDeque<Message>) {
+fn remove_preview(data: &PenToolData) -> Message {
+	Operation::DeleteLayer { path: data.path.clone().unwrap() }.into()
+}
+
+fn make_operation(data: &PenToolData, tool_data: &DocumentToolData, show_preview: bool) -> Message {
 	let mut points: Vec<(f64, f64)> = data.points.iter().map(|p| (p.translation.x, p.translation.y)).collect();
 	if show_preview {
 		points.push((data.next_point.translation.x, data.next_point.translation.y))
 	}
-	if data.layer_exists {
-		responses.push_back(Operation::DeleteLayer { path: data.path.clone().unwrap() }.into());
-	}
 
-	responses.push_back(
-		Operation::AddPen {
-			path: data.path.clone().unwrap(),
-			insert_index: -1,
-			transform: DAffine2::IDENTITY.to_cols_array(),
-			points,
-			style: style::PathStyle::new(Some(style::Stroke::new(tool_data.primary_color, data.weight as f32)), Some(style::Fill::none())),
-		}
-		.into(),
-	);
-	data.layer_exists = true;
+	Operation::AddPen {
+		path: data.path.clone().unwrap(),
+		insert_index: -1,
+		transform: DAffine2::IDENTITY.to_cols_array(),
+		points,
+		style: style::PathStyle::new(Some(style::Stroke::new(tool_data.primary_color, data.weight as f32)), Some(style::Fill::none())),
+	}
+	.into()
 }
