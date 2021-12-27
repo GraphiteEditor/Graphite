@@ -31,6 +31,8 @@ pub struct Editor {
 }
 
 impl Editor {
+	/// Construct a new editor instance.
+	/// Remember to provide a random seed with `editor::communication::set_uuid_seed(seed)` before any editors can be used.
 	pub fn new() -> Self {
 		Self { dispatcher: Dispatcher::new() }
 	}
