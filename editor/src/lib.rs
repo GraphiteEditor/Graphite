@@ -3,7 +3,7 @@
 
 extern crate graphite_proc_macros;
 
-mod communication;
+pub mod communication;
 #[macro_use]
 pub mod misc;
 pub mod consts;

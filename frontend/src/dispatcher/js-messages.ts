@@ -19,16 +19,24 @@ export class JsMessage {
 // for details about how to transform the JSON from wasm-bindgen into classes.
 // ============================================================================
 
-export class FrontendDocumentDetails {
+// Allows the auto save system to use a string for the id rather than a Bigint
+// IndexedDb does not allow for BigInts as primary keys. Typescript does not allow
+// subclasses to change the type of class variables in subclasses. It is an abstract
+// class to point out that it should not be instantiated directly.
+export abstract class DocumentDetails {
 	readonly name!: string;
 
 	readonly is_saved!: boolean;
 
-	readonly id!: BigInt;
+	readonly id!: BigInt | string;
 
 	get displayName() {
 		return `${this.name}${this.is_saved ? "" : "*"}`;
 	}
+}
+
+export class FrontendDocumentDetails extends DocumentDetails {
+	readonly id!: BigInt;
 }
 
 export class UpdateOpenDocumentsList extends JsMessage {
@@ -296,17 +304,16 @@ export const LayerTypeOptions = {
 
 export type LayerType = typeof LayerTypeOptions[keyof typeof LayerTypeOptions];
 
-export class FrontendDocumentDetailsIndexedDb extends FrontendDocumentDetails {
+export class IndexedDbDocumentDetails extends DocumentDetails {
 	@Transform(({ value }: { value: BigInt }) => value.toString())
-	// @ts-expect-error Use a string since IndexedDB can not use BigInts for keys
 	id!: string;
 }
 
 export class AutoSaveDocument extends JsMessage {
 	document!: string;
 
-	@Type(() => FrontendDocumentDetailsIndexedDb)
-	details!: FrontendDocumentDetailsIndexedDb;
+	@Type(() => IndexedDbDocumentDetails)
+	details!: IndexedDbDocumentDetails;
 }
 
 export class RemoveAutoSaveDocument extends JsMessage {

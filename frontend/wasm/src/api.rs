@@ -524,3 +524,8 @@ pub fn i32_max() -> i32 {
 pub fn i32_min() -> i32 {
 	i32::MIN
 }
+
+#[wasm_bindgen]
+pub fn set_random_seed(seed: u64) {
+	editor::communication::set_uuid_seed(seed)
+}
