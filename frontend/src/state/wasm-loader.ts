@@ -10,7 +10,12 @@ let wasmImport: WasmInstance | null = null;
 export async function initWasm() {
 	if (wasmImport !== null) return;
 
-	wasmImport = await import("@/../wasm/pkg").then(panicProxy);
+	// Separating in two lines satisfies typescript when used below
+	const importedWasm = await import("@/../wasm/pkg").then(panicProxy);
+	wasmImport = importedWasm;
+
+	const randomSeed = BigInt(Math.floor(Math.random() * Number.MAX_SAFE_INTEGER));
+	importedWasm.set_random_seed(randomSeed);
 }
 
 // This works by proxying every function call wrapping a try-catch block to filter out redundant and confusing
