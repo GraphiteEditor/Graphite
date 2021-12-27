@@ -89,7 +89,8 @@ impl DocumentsMessageHandler {
 		if replace_first_empty && self.document_ids.len() == 1 {
 			let first_id = self.document_ids[0];
 			let first_document = self.documents.get(&first_id).unwrap();
-			if first_document.serialize_root().len() == 2 {
+			let empty_document = DocumentMessageHandler::default();
+			if first_document.serialize_root().len() == empty_document.serialize_root().len() {
 				// The first document must not have been touched
 				responses.push_back(DocumentsMessage::CloseDocument(first_id).into());
 			}
@@ -240,15 +241,17 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 			OpenDocument => {
 				responses.push_back(FrontendMessage::OpenDocumentBrowse.into());
 			}
-			OpenDocumentFile(document_name, document) => responses.push_back(
-				DocumentsMessage::OpenDocumentFileWithId {
-					document,
-					document_name,
-					document_id: generate_uuid(),
-					document_is_saved: true,
-				}
-				.into(),
-			),
+			OpenDocumentFile(document_name, document) => {
+				responses.push_back(
+					DocumentsMessage::OpenDocumentFileWithId {
+						document,
+						document_name,
+						document_id: generate_uuid(),
+						document_is_saved: true,
+					}
+					.into(),
+				);
+			}
 			OpenDocumentFileWithId {
 				document_name,
 				document_id,
@@ -258,8 +261,7 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 				let document = DocumentMessageHandler::with_name_and_content(document_name, document, ipp);
 				match document {
 					Ok(mut document) => {
-						log::debug!("Setting Saved: {}", document_is_saved);
-						document.saved(document_is_saved);
+						document.set_save_state(document_is_saved);
 						self.load_document(document, document_id, true, responses);
 					}
 					Err(e) => responses.push_back(

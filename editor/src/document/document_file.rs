@@ -413,7 +413,7 @@ impl DocumentMessageHandler {
 		self.current_identifier() == self.saved_document_identifier
 	}
 
-	pub fn saved(&mut self, state: bool) {
+	pub fn set_save_state(&mut self, state: bool) {
 		if state {
 			self.saved_document_identifier = self.current_identifier();
 		} else {
@@ -501,7 +501,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				)
 			}
 			SaveDocument => {
-				self.saved(true);
+				self.set_save_state(true);
 				responses.push_back(DocumentsMessage::AutoSaveActiveDocument.into());
 				// Update the save status of the just saved document
 				responses.push_back(DocumentsMessage::UpdateOpenDocumentsList.into());
