@@ -222,12 +222,26 @@ impl Fsm for PathToolFsmState {
 					grow_overlay_pool_entries(&mut data.handle_marker_pool, total_handles, add_handle_marker, responses);
 
 					#[derive(Debug)]
-					enum PointRef {
+					enum PointType {
 						Anchor(usize),
 						Handle(usize),
 					}
 					#[derive(Debug)]
-					struct Point(DVec2, PointRef, f64);
+					struct Point {
+						position: DVec2,
+						point_type: PointType,
+						mouse_proximity: f64,
+					}
+
+					impl Point {
+						fn new(position: DVec2, point_type: PointType, mouse_proximity: f64) -> Self {
+							Self {
+								position,
+								point_type,
+								mouse_proximity,
+							}
+						}
+					}
 
 					// todo: use const?
 					// use crate::consts::SELECTION_TOLERANCE;
@@ -241,16 +255,7 @@ impl Fsm for PathToolFsmState {
 						shape_i += 1;
 
 						let bez = {
-							use kurbo::PathEl;
-							let mut bez: Vec<_> = shape_to_draw.path.clone().into_iter().collect();
-							for a in &mut bez {
-								match a {
-									PathEl::LineTo(p) => {
-										p.x += 5.;
-									}
-									_ => {}
-								}
-							}
+							let bez: Vec<_> = shape_to_draw.path.clone().into_iter().collect();
 							let bez: BezPath = bez.into_iter().collect();
 							bez
 						};
@@ -277,38 +282,32 @@ impl Fsm for PathToolFsmState {
 							for anchor in anchors {
 								let d2 = mouse_pos.distance_squared(anchor.into());
 								if d2 < select_threshold_squared {
-									points.push(Point(anchor.clone(), PointRef::Anchor(anchor_i), d2));
+									points.push(Point::new(anchor.clone(), PointType::Anchor(anchor_i), d2));
 								}
 								anchor_i += 1;
 							}
 							for handle in handles {
 								let d2 = mouse_pos.distance_squared(handle.into());
 								if d2 < select_threshold_squared {
-									points.push(Point(handle.clone(), PointRef::Handle(handle_i), d2));
+									points.push(Point::new(handle.clone(), PointType::Handle(handle_i), d2));
 								}
 								handle_i += 1;
 							}
 						}
 					}
 
-					points.sort_by(|a, b| a.2.partial_cmp(&b.2).unwrap_or(std::cmp::Ordering::Equal));
+					points.sort_by(|a, b| a.mouse_proximity.partial_cmp(&b.mouse_proximity).unwrap_or(std::cmp::Ordering::Equal));
 					let closest_point_within_click_threshold = points.first();
 					// log::debug!("PATH TOOL: {:?} {:?}", mouse_pos, points);
 
 					if let Some(point) = closest_point_within_click_threshold {
-						let path = match point.1 {
-							PointRef::Anchor(i) => data.anchor_marker_pool[i].clone(),
-							PointRef::Handle(i) => data.handle_marker_pool[i].clone(),
+						let path = match point.point_type {
+							PointType::Anchor(i) => data.anchor_marker_pool[i].clone(),
+							PointType::Handle(i) => data.handle_marker_pool[i].clone(),
 						};
 						// todo: use Operation::SetShapePathInViewport instead
 						// 	currently using SetLayerFill just to show some effect
-						responses.push_back(
-							Operation::SetLayerFill {
-								path,
-								color: Color::from_rgb8(if mouse_pos.x > 500. { 0 } else { 255 }, if mouse_pos.x > 500. { 255 } else { 0 }, 0),
-							}
-							.into(),
-						);
+						responses.push_back(Operation::SetLayerFill { path, color: COLOR_ACCENT }.into());
 					}
 
 					self
