@@ -13,7 +13,7 @@ use crate::input::{
 use crate::misc::{HintData, HintGroup, HintInfo, KeysGroup};
 use crate::tool::{snapping::SnapHandler, DocumentToolData, Fsm, ToolActionHandlerData};
 use crate::{
-	consts::SELECTION_TOLERANCE,
+	consts::{SELECTION_DRAG_ANGLE, SELECTION_TOLERANCE},
 	document::{AlignAggregate, AlignAxis, DocumentMessageHandler, FlipAxis},
 	message_prelude::*,
 };
@@ -31,7 +31,7 @@ pub struct Select {
 pub enum SelectMessage {
 	DragStart { add_to_selection: Key },
 	DragStop,
-	MouseMove,
+	MouseMove { snap_angle: Key },
 	Abort,
 	UpdateSelectionBoundingBox,
 
@@ -198,25 +198,35 @@ impl Fsm for SelectToolFsmState {
 					data.snap_handler.start_snap(document, document.non_selected_layers_sorted(), &ignore_layers);
 					state
 				}
-				(Dragging, MouseMove) => {
+				(Dragging, MouseMove { snap_angle }) => {
 					responses.push_front(SelectMessage::UpdateSelectionBoundingBox.into());
 
-					let mouse_delta = input.mouse.position - data.drag_current;
+					let mouse_position = if input.keyboard.get(snap_angle as usize) {
+						let mouse_position = input.mouse.position - data.drag_start;
+						let snap_resolution = SELECTION_DRAG_ANGLE.to_radians();
+						let angle = -mouse_position.angle_between(DVec2::X);
+						let snapped_angle = (angle / snap_resolution).round() * snap_resolution;
+						DVec2::new(snapped_angle.cos(), snapped_angle.sin()) * mouse_position.length() + data.drag_start
+					} else {
+						input.mouse.position
+					};
+
+					let mouse_delta = mouse_position - data.drag_current;
 
 					let closest_move = data.snap_handler.snap_layers(document, &data.layers_dragging, mouse_delta);
 					for path in data.layers_dragging.iter() {
 						responses.push_front(
 							Operation::TransformLayerInViewport {
 								path: path.clone(),
-								transform: DAffine2::from_translation(input.mouse.position - data.drag_current + closest_move).to_cols_array(),
+								transform: DAffine2::from_translation(mouse_delta + closest_move).to_cols_array(),
 							}
 							.into(),
 						);
 					}
-					data.drag_current = input.mouse.position + closest_move;
+					data.drag_current = mouse_position + closest_move;
 					Dragging
 				}
-				(DrawingBox, MouseMove) => {
+				(DrawingBox, MouseMove { snap_angle: _ }) => {
 					data.drag_current = input.mouse.position;
 					let half_pixel_offset = DVec2::splat(0.5);
 					let start = data.drag_start + half_pixel_offset;
@@ -380,7 +390,7 @@ impl Fsm for SelectToolFsmState {
 				HintInfo {
 					key_groups: vec![KeysGroup(vec![Key::KeyShift])],
 					mouse: None,
-					label: String::from("Constrain to Axis (coming soon)"),
+					label: String::from("Constrain to Axis"),
 					plus: false,
 				},
 				HintInfo {
