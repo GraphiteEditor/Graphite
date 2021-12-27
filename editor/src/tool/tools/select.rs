@@ -390,7 +390,7 @@ impl Fsm for SelectToolFsmState {
 				HintInfo {
 					key_groups: vec![KeysGroup(vec![Key::KeyShift])],
 					mouse: None,
-					label: String::from("Constrain to Axis (coming soon)"),
+					label: String::from("Constrain to Axis"),
 					plus: false,
 				},
 				HintInfo {
