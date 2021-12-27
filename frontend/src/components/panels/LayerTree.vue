@@ -15,7 +15,7 @@
 			</PopoverButton>
 		</LayoutRow>
 		<LayoutRow :class="'layer-tree scrollable-y'">
-			<LayoutCol :class="'list'" ref="layer_tree_list" @click="deselectAllLayers" @dragover="dragOver($event)">
+			<LayoutCol :class="'list'" ref="layer_tree_list" @click="deselectAllLayers" @dragover="updateLine($event)" @dragend="drop()">
 				<div class="layer-row" v-for="(layer, index) in layers" :key="layer.path">
 					<div class="layer-visibility">
 						<IconButton
@@ -86,8 +86,9 @@
 			position: relative;
 			background-color: yellow;
 			height: 3px;
-			width: 100%;
 			margin-right: 16px;
+			margin-top: 3px;
+			margin-bottom: 3px;
 		}
 		.layer-row {
 			display: flex;
@@ -276,7 +277,7 @@ export default defineComponent({
 			selectionRangeStartLayer: undefined as undefined | LayerPanelEntry,
 			selectionRangeEndLayer: undefined as undefined | LayerPanelEntry,
 			opacity: 100,
-			insertLine: undefined as undefined | HTMLDivElement,
+			draggingData: undefined as undefined | { path: BigUint64Array; above: boolean; nearestPath: BigUint64Array; insertLine: HTMLDivElement },
 			MenuDirection,
 			SeparatorType,
 			LayerTypeOptions,
@@ -315,57 +316,109 @@ export default defineComponent({
 				layer.layer_data.selected = false;
 			});
 		},
+		closest(tree: HTMLElement, clientY: number): [BigUint64Array, boolean, Node] {
+			const { children } = tree;
+
+			// Closest distance to Y centre of row.
+			let closest = Number.MAX_VALUE;
+
+			// The nearest row parent (element of the tree)
+			let nearestElement = tree.lastChild as Node;
+
+			// The nearest element in the path to the mouse
+			let nearestPath = new BigUint64Array();
+
+			// Item goes above or below the mouse
+			let above = false;
+
+			for (let i = 0; i < children.length; i += 1) {
+				if (children[i].childElementCount > 2) {
+					const child = children[i].children[2] as HTMLElement;
+					const index = child.getAttribute("data-index");
+
+					const rect = child.getBoundingClientRect();
+					const position = rect.top + rect.height / 2;
+					const distance = position - clientY;
+
+					if (index) {
+						const layer = this.layers[parseInt(index, 10)];
+
+						// Inserting above current row
+						if (distance > 0 && distance < closest) {
+							closest = distance;
+							nearestPath = layer.path;
+							above = true;
+							if (child.parentNode) {
+								nearestElement = child.parentNode;
+							}
+						} // Inserting below current row
+						else if (distance < 0 && distance > -40 && -distance < closest && layer.layer_type !== LayerTypeOptions.Folder) {
+							closest = -distance;
+							nearestPath = layer.path;
+							if (child.parentNode && child.parentNode.nextSibling) {
+								nearestElement = child.parentNode.nextSibling;
+							}
+						}
+						// Allow inserting with no nesting at the end of the panel
+						else if (closest === Number.MAX_VALUE) {
+							nearestPath = layer.path.slice(0, 1);
+						}
+					}
+				}
+			}
+			return [nearestPath, above, nearestElement];
+		},
 		async dragStart(event: DragEvent, layer: LayerPanelEntry) {
-			// eslint-disable-next-line no-console
-			console.log("drag: ", layer.path);
+			// Set style of cursor for drag
 			if (event.dataTransfer) {
 				event.dataTransfer.dropEffect = "move";
 				event.dataTransfer.effectAllowed = "move";
 			}
 			const tree = (this.$refs.layer_tree_list as typeof LayoutCol).$el;
-			this.insertLine = document.createElement("div") as HTMLDivElement;
-			this.insertLine.classList.add("insert-mark");
-			tree.appendChild(this.insertLine);
+
+			// Create the insert line
+			const insertLine = document.createElement("div") as HTMLDivElement;
+			insertLine.classList.add("insert-mark");
+			tree.appendChild(insertLine);
+
+			const [nearestPath, above, nearestElement] = this.closest(tree, event.clientY);
+
+			// Set the initial state of the line
+			if (nearestElement.parentNode) {
+				insertLine.style.marginLeft = `${28 + nearestPath.length * 16}px`;
+				tree.insertBefore(insertLine, nearestElement);
+			}
+
+			this.draggingData = { path: layer.path, above, nearestPath, insertLine };
 		},
-		async dragOver(event: DragEvent) {
+		updateLine(event: DragEvent) {
+			// Stop the drag from being shown as cancelled
+			event.preventDefault();
+
 			const tree = (this.$refs.layer_tree_list as typeof LayoutCol).$el as HTMLElement;
-			const { children } = tree;
 
-			let closest = Number.MAX_VALUE;
-			let nearestPath = new BigUint64Array();
-			let nearestElement = tree.lastChild as Node;
-			for (let i = 0; i < children.length; i += 1) {
-				if (children[i].childElementCount > 2) {
-					const child = children[i].children[2] as HTMLElement;
+			const [nearestPath, above, nearestElement] = this.closest(tree, event.clientY);
 
-					const rect = child.getBoundingClientRect();
-					const position = rect.top + rect.height / 2;
-					const distance = position - event.clientY;
-					const index = child.getAttribute("data-index");
-					if (index) {
-						const { path } = this.layers[parseInt(index, 10)];
-						if (distance > 0 && distance < closest) {
-							closest = distance;
-							nearestPath = path;
-							if (child.parentNode) {
-								nearestElement = child.parentNode;
-							}
-						} else if (distance < 0 && -distance < closest) {
-							closest = -distance;
-							nearestPath = path;
-							if (child.parentNode && child.parentNode.nextSibling) {
-								nearestElement = child.parentNode.nextSibling;
-							}
-						}
-					}
+			if (this.draggingData) {
+				this.draggingData.nearestPath = nearestPath;
+				this.draggingData.above = above;
+
+				if (nearestElement.parentNode) {
+					this.draggingData.insertLine.style.marginLeft = `${28 + nearestPath.length * 16}px`;
+					tree.insertBefore(this.draggingData.insertLine, nearestElement);
 				}
 			}
-			if (this.insertLine && nearestElement.parentNode) {
-				this.insertLine.style.marginLeft = "38px";
-				tree.insertBefore(this.insertLine, nearestElement);
+		},
+		removeLine() {
+			if (this.draggingData) {
+				this.draggingData.insertLine.remove();
 			}
-
-			console.log(nearestPath.join(","), event.clientY);
+		},
+		async drop() {
+			this.removeLine();
+			if (this.draggingData) {
+				this.editor.instance.move_layer(this.draggingData.path, this.draggingData.above, this.draggingData.nearestPath);
+			}
 		},
 		setBlendModeForSelectedLayers() {
 			const selected = this.layers.filter((layer) => layer.layer_data.selected);

@@ -372,6 +372,12 @@ impl JsEditorHandle {
 		self.dispatch(message);
 	}
 
+	/// Move a layer to be next to the specified neighbour
+	pub fn move_layer(&self, layer: Vec<LayerId>, insert_above: bool, neighbour: Vec<LayerId>) {
+		let message = DocumentMessage::MoveLayer { layer, insert_above, neighbour };
+		self.dispatch(message);
+	}
+
 	/// Set the blend mode for the selected layers
 	pub fn set_blend_mode_for_selected_layers(&self, blend_mode_svg_style_name: String) -> Result<(), JsValue> {
 		let blend_mode = translate_blend_mode(blend_mode_svg_style_name.as_str());
