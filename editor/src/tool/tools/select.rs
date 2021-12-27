@@ -177,8 +177,8 @@ impl Fsm for SelectToolFsmState {
 						Dragging
 					} else if let Some(intersection) = intersection.pop() {
 						selected = vec![intersection];
-						buffer.push(DocumentMessage::StartTransaction.into());
 						buffer.push(DocumentMessage::SetSelectedLayers(selected.clone()).into());
+						buffer.push(DocumentMessage::StartTransaction.into());
 						data.layers_dragging = selected;
 						Dragging
 					} else {
