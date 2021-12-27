@@ -1,3 +1,4 @@
+use crate::consts::GRAPHENE_DOCUMENT_VERSION;
 use std::{
 	cmp::max,
 	collections::hash_map::DefaultHasher,
@@ -19,6 +20,7 @@ pub struct Document {
 	/// This identifier is not a hash and is not guaranteed to be equal for equivalent documents.
 	#[serde(skip)]
 	pub state_identifier: DefaultHasher,
+	pub graphene_document_version: String,
 }
 
 impl Default for Document {
@@ -26,6 +28,7 @@ impl Default for Document {
 		Self {
 			root: Layer::new(LayerDataType::Folder(Folder::default()), DAffine2::IDENTITY.to_cols_array()),
 			state_identifier: DefaultHasher::new(),
+			graphene_document_version: GRAPHENE_DOCUMENT_VERSION.to_string(),
 		}
 	}
 }
