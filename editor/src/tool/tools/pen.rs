@@ -66,6 +66,7 @@ struct PenToolData {
 	next_point: DAffine2,
 	weight: u32,
 	path: Option<Vec<LayerId>>,
+	path_used: bool,
 	snap_handler: SnapHandler,
 }
 
@@ -88,6 +89,7 @@ impl Fsm for PenToolFsmState {
 		if let ToolMessage::Pen(event) = event {
 			match (self, event) {
 				(Ready, DragStart) => {
+					log::error!("Drag start");
 					responses.push_back(DocumentMessage::StartTransaction.into());
 					responses.push_back(DocumentMessage::DeselectAllLayers.into());
 					data.path = Some(vec![generate_uuid()]);
@@ -117,7 +119,7 @@ impl Fsm for PenToolFsmState {
 						data.next_point = pos;
 					}
 
-					responses.extend(make_operation(data, tool_data, true));
+					make_operation(data, tool_data, true, responses);
 
 					Drawing
 				}
@@ -126,14 +128,14 @@ impl Fsm for PenToolFsmState {
 					let pos = transform.inverse() * DAffine2::from_translation(snapped_position);
 					data.next_point = pos;
 
-					responses.extend(make_operation(data, tool_data, true));
+					make_operation(data, tool_data, true, responses);
 
 					Drawing
 				}
 				(Drawing, Confirm) | (Drawing, Abort) => {
 					if data.points.len() >= 2 {
 						responses.push_back(DocumentMessage::DeselectAllLayers.into());
-						responses.extend(make_operation(data, tool_data, false));
+						make_operation(data, tool_data, false, responses);
 						responses.push_back(DocumentMessage::CommitTransaction.into());
 					} else {
 						responses.push_back(DocumentMessage::AbortTransaction.into());
@@ -180,13 +182,16 @@ impl Fsm for PenToolFsmState {
 	}
 }
 
-fn make_operation(data: &PenToolData, tool_data: &DocumentToolData, show_preview: bool) -> [Message; 2] {
+fn make_operation(data: &mut PenToolData, tool_data: &DocumentToolData, show_preview: bool, responses: &mut VecDeque<Message>) {
 	let mut points: Vec<(f64, f64)> = data.points.iter().map(|p| (p.translation.x, p.translation.y)).collect();
 	if show_preview {
 		points.push((data.next_point.translation.x, data.next_point.translation.y))
 	}
-	[
-		Operation::DeleteLayer { path: data.path.clone().unwrap() }.into(),
+	if data.path_used {
+		responses.push_back(Operation::DeleteLayer { path: data.path.clone().unwrap() }.into());
+	}
+
+	responses.push_back(
 		Operation::AddPen {
 			path: data.path.clone().unwrap(),
 			insert_index: -1,
@@ -195,5 +200,6 @@ fn make_operation(data: &PenToolData, tool_data: &DocumentToolData, show_preview
 			style: style::PathStyle::new(Some(style::Stroke::new(tool_data.primary_color, data.weight as f32)), Some(style::Fill::none())),
 		}
 		.into(),
-	]
+	);
+	data.path_used = true;
 }
