@@ -201,7 +201,7 @@ impl Fsm for SelectToolFsmState {
 				(Dragging, MouseMove { snap_angle }) => {
 					responses.push_front(SelectMessage::UpdateSelectionBoundingBox.into());
 
-					let mut mouse_position = if input.keyboard.get(snap_angle as usize) {
+					let mouse_position = if input.keyboard.get(snap_angle as usize) {
 						let mouse_position = input.mouse.position - data.drag_start;
 						let snap_resolution = SELECTION_DRAG_ANGLE.to_radians();
 						let angle = -mouse_position.angle_between(DVec2::X);
