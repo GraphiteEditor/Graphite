@@ -10,13 +10,14 @@ use std::collections::{HashMap, VecDeque};
 use super::DocumentMessageHandler;
 use crate::consts::DEFAULT_DOCUMENT_NAME;
 
+#[repr(u8)]
 #[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Clipboard {
 	System,
 	User,
-	_ClipbordCount,
+	_ClipboardCount,
 }
-static CLIPBORD_COUNT: u8 = Clipboard::_ClipbordCount as u8;
+static CLIPBOARD_COUNT: u8 = Clipboard::_ClipboardCount as u8;
 
 #[impl_message(Message, Documents)]
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
@@ -133,7 +134,7 @@ impl Default for DocumentsMessageHandler {
 		Self {
 			documents: documents_map,
 			document_ids: vec![starting_key],
-			copy_buffer: vec![vec![]; CLIPBORD_COUNT as usize],
+			copy_buffer: vec![vec![]; CLIPBOARD_COUNT as usize],
 			active_document_id: starting_key,
 		}
 	}
@@ -278,7 +279,7 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 			}
 			Copy(clipboard) => {
 				let paths = self.active_document().selected_layers_sorted();
-				self.copy_buffer.clear();
+				self.copy_buffer[clipboard as usize].clear();
 				for path in paths {
 					match self.active_document().graphene_document.layer(&path).map(|t| t.clone()) {
 						Ok(layer) => {
