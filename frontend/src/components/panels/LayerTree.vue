@@ -15,8 +15,8 @@
 			</PopoverButton>
 		</LayoutRow>
 		<LayoutRow :class="'layer-tree scrollable-y'">
-			<LayoutCol :class="'list'" @click="deselectAllLayers">
-				<div class="layer-row" v-for="layer in layers" :key="layer.path">
+			<LayoutCol :class="'list'" ref="layer_tree_list" @click="deselectAllLayers" @dragover="dragOver($event)">
+				<div class="layer-row" v-for="(layer, index) in layers" :key="layer.path">
 					<div class="layer-visibility">
 						<IconButton
 							:action="(e) => (toggleLayerVisibility(layer.path), e.stopPropagation())"
@@ -40,6 +40,9 @@
 						@click.shift.ctrl.exact.stop="selectLayer(layer, true, true)"
 						@click.ctrl.exact.stop="selectLayer(layer, true, false)"
 						@click.exact.stop="selectLayer(layer, false, false)"
+						:data-index="index"
+						draggable="true"
+						@dragstart="dragStart($event, layer)"
 					>
 						<div class="layer-thumbnail" v-html="layer.thumbnail"></div>
 						<div class="layer-type-icon">
@@ -78,6 +81,14 @@
 	}
 
 	.layer-tree {
+		position: relative;
+		.insert-mark {
+			position: relative;
+			background-color: yellow;
+			height: 3px;
+			width: 100%;
+			margin-right: 16px;
+		}
 		.layer-row {
 			display: flex;
 			height: 36px;
@@ -265,6 +276,7 @@ export default defineComponent({
 			selectionRangeStartLayer: undefined as undefined | LayerPanelEntry,
 			selectionRangeEndLayer: undefined as undefined | LayerPanelEntry,
 			opacity: 100,
+			insertLine: undefined as undefined | HTMLDivElement,
 			MenuDirection,
 			SeparatorType,
 			LayerTypeOptions,
@@ -302,6 +314,58 @@ export default defineComponent({
 			this.layers.forEach((layer) => {
 				layer.layer_data.selected = false;
 			});
+		},
+		async dragStart(event: DragEvent, layer: LayerPanelEntry) {
+			// eslint-disable-next-line no-console
+			console.log("drag: ", layer.path);
+			if (event.dataTransfer) {
+				event.dataTransfer.dropEffect = "move";
+				event.dataTransfer.effectAllowed = "move";
+			}
+			const tree = (this.$refs.layer_tree_list as typeof LayoutCol).$el;
+			this.insertLine = document.createElement("div") as HTMLDivElement;
+			this.insertLine.classList.add("insert-mark");
+			tree.appendChild(this.insertLine);
+		},
+		async dragOver(event: DragEvent) {
+			const tree = (this.$refs.layer_tree_list as typeof LayoutCol).$el as HTMLElement;
+			const { children } = tree;
+
+			let closest = Number.MAX_VALUE;
+			let nearestPath = new BigUint64Array();
+			let nearestElement = tree.lastChild as Node;
+			for (let i = 0; i < children.length; i += 1) {
+				if (children[i].childElementCount > 2) {
+					const child = children[i].children[2] as HTMLElement;
+
+					const rect = child.getBoundingClientRect();
+					const position = rect.top + rect.height / 2;
+					const distance = position - event.clientY;
+					const index = child.getAttribute("data-index");
+					if (index) {
+						const { path } = this.layers[parseInt(index, 10)];
+						if (distance > 0 && distance < closest) {
+							closest = distance;
+							nearestPath = path;
+							if (child.parentNode) {
+								nearestElement = child.parentNode;
+							}
+						} else if (distance < 0 && -distance < closest) {
+							closest = -distance;
+							nearestPath = path;
+							if (child.parentNode && child.parentNode.nextSibling) {
+								nearestElement = child.parentNode.nextSibling;
+							}
+						}
+					}
+				}
+			}
+			if (this.insertLine && nearestElement.parentNode) {
+				this.insertLine.style.marginLeft = "38px";
+				tree.insertBefore(this.insertLine, nearestElement);
+			}
+
+			console.log(nearestPath.join(","), event.clientY);
 		},
 		setBlendModeForSelectedLayers() {
 			const selected = this.layers.filter((layer) => layer.layer_data.selected);
