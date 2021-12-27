@@ -150,7 +150,7 @@ impl Default for Mapping {
 			entry! {action=TransformLayerMessage::TypeDecimalPoint, key_down=KeyPeriod},
 			entry! {action=TransformLayerMessage::MouseMove{slow_key: KeyShift, snap_key: KeyControl}, triggers=[KeyShift, KeyControl]},
 			// Select
-			entry! {action=SelectMessage::MouseMove, message=InputMapperMessage::PointerMove},
+			entry! {action=SelectMessage::MouseMove{snap_angle: KeyShift}, message=InputMapperMessage::PointerMove},
 			entry! {action=SelectMessage::DragStart{add_to_selection: KeyShift}, key_down=Lmb},
 			entry! {action=SelectMessage::DragStop, key_up=Lmb},
 			entry! {action=SelectMessage::Abort, key_down=Rmb},

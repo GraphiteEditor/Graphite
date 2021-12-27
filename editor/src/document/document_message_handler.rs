@@ -40,8 +40,16 @@ pub enum DocumentsMessage {
 	RequestAboutGraphiteDialog,
 	NewDocument,
 	OpenDocument,
+	OpenDocumentFileWithId {
+		document: String,
+		document_name: String,
+		document_id: u64,
+		document_is_saved: bool,
+	},
 	OpenDocumentFile(String, String),
 	UpdateOpenDocumentsList,
+	AutoSaveDocument(u64),
+	AutoSaveActiveDocument,
 	NextDocument,
 	PrevDocument,
 }
@@ -86,11 +94,23 @@ impl DocumentsMessageHandler {
 		name
 	}
 
-	fn load_document(&mut self, new_document: DocumentMessageHandler, responses: &mut VecDeque<Message>) {
-		let new_id = generate_uuid();
-		self.active_document_id = new_id;
-		self.document_ids.push(new_id);
-		self.documents.insert(new_id, new_document);
+	// TODO Fix how this doesn't preserve tab order upon loading new document from file>load
+	fn load_document(&mut self, new_document: DocumentMessageHandler, document_id: u64, replace_first_empty: bool, responses: &mut VecDeque<Message>) {
+		// Special case when loading a document on an empty page
+		if replace_first_empty && self.active_document().is_unmodified_default() {
+			responses.push_back(DocumentsMessage::CloseDocument(self.active_document_id).into());
+
+			let active_document_index = self
+				.document_ids
+				.iter()
+				.position(|id| self.active_document_id == *id)
+				.expect("Did not find matching active document id");
+			self.document_ids.insert(active_document_index + 1, document_id);
+		} else {
+			self.document_ids.push(document_id);
+		}
+
+		self.documents.insert(document_id, new_document);
 
 		// Send the new list of document tab names
 		let open_documents = self
@@ -107,12 +127,7 @@ impl DocumentsMessageHandler {
 
 		responses.push_back(FrontendMessage::UpdateOpenDocumentsList { open_documents }.into());
 
-		responses.push_back(DocumentsMessage::SelectDocument(self.active_document_id).into());
-		responses.push_back(DocumentMessage::RenderDocument.into());
-		responses.push_back(DocumentMessage::DocumentStructureChanged.into());
-		for layer in self.active_document().layer_data.keys() {
-			responses.push_back(DocumentMessage::LayerChanged(layer.clone()).into());
-		}
+		responses.push_back(DocumentsMessage::SelectDocument(document_id).into());
 	}
 
 	// Returns an iterator over the open documents in order
@@ -150,6 +165,10 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 			}
 			Document(message) => self.active_document_mut().process_action(message, ipp, responses),
 			SelectDocument(id) => {
+				let active_document = self.active_document();
+				if !active_document.is_saved() {
+					responses.push_back(DocumentsMessage::AutoSaveDocument(self.active_document_id).into());
+				}
 				self.active_document_id = id;
 				responses.push_back(FrontendMessage::SetActiveDocument { document_id: id }.into());
 				responses.push_back(RenderDocument.into());
@@ -220,6 +239,7 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 				// Update the list of new documents on the front end, active tab, and ensure that document renders
 				responses.push_back(FrontendMessage::UpdateOpenDocumentsList { open_documents }.into());
 				responses.push_back(FrontendMessage::SetActiveDocument { document_id: self.active_document_id }.into());
+				responses.push_back(FrontendMessage::RemoveAutoSaveDocument { document_id: id }.into());
 				responses.push_back(RenderDocument.into());
 				responses.push_back(DocumentMessage::DocumentStructureChanged.into());
 				for layer in self.active_document().layer_data.keys() {
@@ -229,16 +249,33 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 			NewDocument => {
 				let name = self.generate_new_document_name();
 				let new_document = DocumentMessageHandler::with_name(name, ipp);
-				self.load_document(new_document, responses);
+				self.load_document(new_document, generate_uuid(), false, responses);
 			}
 			OpenDocument => {
 				responses.push_back(FrontendMessage::OpenDocumentBrowse.into());
 			}
-			OpenDocumentFile(name, serialized_contents) => {
-				let document = DocumentMessageHandler::with_name_and_content(name, serialized_contents, ipp);
+			OpenDocumentFile(document_name, document) => {
+				responses.push_back(
+					DocumentsMessage::OpenDocumentFileWithId {
+						document,
+						document_name,
+						document_id: generate_uuid(),
+						document_is_saved: true,
+					}
+					.into(),
+				);
+			}
+			OpenDocumentFileWithId {
+				document_name,
+				document_id,
+				document,
+				document_is_saved,
+			} => {
+				let document = DocumentMessageHandler::with_name_and_content(document_name, document, ipp);
 				match document {
-					Ok(document) => {
-						self.load_document(document, responses);
+					Ok(mut document) => {
+						document.set_save_state(document_is_saved);
+						self.load_document(document, document_id, true, responses);
 					}
 					Err(e) => responses.push_back(
 						FrontendMessage::DisplayError {
@@ -264,18 +301,33 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 					.collect::<Vec<_>>();
 				responses.push_back(FrontendMessage::UpdateOpenDocumentsList { open_documents }.into());
 			}
+			AutoSaveDocument(id) => {
+				let document = self.documents.get(&id).unwrap();
+				responses.push_back(
+					FrontendMessage::AutoSaveDocument {
+						document: document.graphene_document.serialize_document(),
+						details: FrontendDocumentDetails {
+							is_saved: document.is_saved(),
+							id,
+							name: document.name.clone(),
+						},
+					}
+					.into(),
+				)
+			}
+			AutoSaveActiveDocument => responses.push_back(DocumentsMessage::AutoSaveDocument(self.active_document_id).into()),
 			NextDocument => {
 				let current_index = self.document_index(self.active_document_id);
 				let next_index = (current_index + 1) % self.document_ids.len();
 				let next_id = self.document_ids[next_index];
-				responses.push_back(SelectDocument(next_id).into());
+				responses.push_back(DocumentsMessage::SelectDocument(next_id).into());
 			}
 			PrevDocument => {
 				let len = self.document_ids.len();
 				let current_index = self.document_index(self.active_document_id);
 				let prev_index = (current_index + len - 1) % len;
 				let prev_id = self.document_ids[prev_index];
-				responses.push_back(SelectDocument(prev_id).into());
+				responses.push_back(DocumentsMessage::SelectDocument(prev_id).into());
 			}
 			Copy(clipboard) => {
 				let paths = self.active_document().selected_layers_sorted();

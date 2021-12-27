@@ -3,7 +3,7 @@
 
 extern crate graphite_proc_macros;
 
-mod communication;
+pub mod communication;
 #[macro_use]
 pub mod misc;
 pub mod consts;
@@ -31,6 +31,8 @@ pub struct Editor {
 }
 
 impl Editor {
+	/// Construct a new editor instance.
+	/// Remember to provide a random seed with `editor::communication::set_uuid_seed(seed)` before any editors can be used.
 	pub fn new() -> Self {
 		Self { dispatcher: Dispatcher::new() }
 	}
