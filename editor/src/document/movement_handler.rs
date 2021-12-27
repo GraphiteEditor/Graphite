@@ -6,7 +6,6 @@ use crate::{
 	input::{mouse::ViewportBounds, mouse::ViewportPosition, InputPreprocessor},
 };
 use graphene::document::Document;
-use graphene::layers::style::ViewMode;
 use graphene::Operation as DocumentOperation;
 
 use glam::DVec2;
@@ -159,10 +158,10 @@ impl MessageHandler<MovementMessage, (&mut LayerData, &Document, &InputPreproces
 				if ipp.mouse.scroll_delta.y > 0 {
 					zoom_factor = 1. / zoom_factor
 				};
-				let new_viewport_bounds = viewport_bounds * (1. / zoom_factor);
+				let new_viewport_bounds = viewport_bounds / zoom_factor;
 				let delta_size = viewport_bounds - new_viewport_bounds;
-				let mouse_percent = mouse / viewport_bounds;
-				let delta = (delta_size * -2.) * (mouse_percent - DVec2::splat(0.5));
+				let mouse_fraction = mouse / viewport_bounds;
+				let delta = delta_size * (DVec2::splat(0.5) - mouse_fraction);
 
 				let transformed_delta = document.root.transform.inverse().transform_vector2(delta);
 				let new = (layerdata.scale * zoom_factor).clamp(VIEWPORT_ZOOM_SCALE_MIN, VIEWPORT_ZOOM_SCALE_MAX);

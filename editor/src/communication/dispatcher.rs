@@ -96,7 +96,7 @@ impl Dispatcher {
 
 #[cfg(test)]
 mod test {
-	use crate::{document::DocumentMessageHandler, message_prelude::*, misc::test_utils::EditorTestUtils, Editor};
+	use crate::{communication::set_uuid_seed, document::DocumentMessageHandler, message_prelude::*, misc::test_utils::EditorTestUtils, Editor};
 	use graphene::{color::Color, Operation};
 
 	fn init_logger() {
@@ -108,6 +108,7 @@ mod test {
 	/// 2. A blue shape
 	/// 3. A green ellipse
 	fn create_editor_with_three_layers() -> Editor {
+		set_uuid_seed(0);
 		let mut editor = Editor::new();
 
 		editor.select_primary_color(Color::RED);
