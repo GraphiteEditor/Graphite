@@ -66,7 +66,7 @@ struct PenToolData {
 	next_point: DAffine2,
 	weight: u32,
 	path: Option<Vec<LayerId>>,
-	path_used: bool,
+	layer_exists: bool,
 	snap_handler: SnapHandler,
 }
 
@@ -89,10 +89,10 @@ impl Fsm for PenToolFsmState {
 		if let ToolMessage::Pen(event) = event {
 			match (self, event) {
 				(Ready, DragStart) => {
-					log::error!("Drag start");
 					responses.push_back(DocumentMessage::StartTransaction.into());
 					responses.push_back(DocumentMessage::DeselectAllLayers.into());
 					data.path = Some(vec![generate_uuid()]);
+					data.layer_exists = false;
 
 					data.snap_handler.start_snap(document, document.all_layers_sorted(), &[]);
 					let snapped_position = data.snap_handler.snap_position(document, input.mouse.position);
@@ -187,7 +187,7 @@ fn make_operation(data: &mut PenToolData, tool_data: &DocumentToolData, show_pre
 	if show_preview {
 		points.push((data.next_point.translation.x, data.next_point.translation.y))
 	}
-	if data.path_used {
+	if data.layer_exists {
 		responses.push_back(Operation::DeleteLayer { path: data.path.clone().unwrap() }.into());
 	}
 
@@ -201,5 +201,5 @@ fn make_operation(data: &mut PenToolData, tool_data: &DocumentToolData, show_pre
 		}
 		.into(),
 	);
-	data.path_used = true;
+	data.layer_exists = true;
 }
