@@ -6,7 +6,6 @@ use crate::{
 	input::{mouse::ViewportBounds, mouse::ViewportPosition, InputPreprocessor},
 };
 use graphene::document::Document;
-use graphene::layers::style::ViewMode;
 use graphene::Operation as DocumentOperation;
 
 use glam::DVec2;
