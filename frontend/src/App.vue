@@ -230,7 +230,7 @@ import LayoutRow from "@/components/layout/LayoutRow.vue";
 import { createEditorState, EditorState } from "@/state/wasm-loader";
 import { createInputManager, InputManager } from "@/lifetime/input";
 import { initErrorHandling } from "@/lifetime/errors";
-import { createAutoSave } from "@/lifetime/auto-save";
+import { createAutoSaveManager } from "@/lifetime/auto-save";
 
 // Vue injects don't play well with TypeScript, and all injects will show up as `any`. As a workaround, we can define these types.
 declare module "@vue/runtime-core" {
@@ -260,7 +260,7 @@ export default defineComponent({
 		const documents = createDocumentsState(editor, dialog);
 		const fullscreen = createFullscreenState();
 		initErrorHandling(editor, dialog);
-		createAutoSave(editor, documents);
+		createAutoSaveManager(editor, documents);
 
 		return {
 			editor,

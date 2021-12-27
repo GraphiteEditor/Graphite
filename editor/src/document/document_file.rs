@@ -5,6 +5,7 @@ pub use super::layer_panel::*;
 use super::movement_handler::{MovementMessage, MovementMessageHandler};
 use super::transform_layer_handler::{TransformLayerMessage, TransformLayerMessageHandler};
 
+use crate::consts::DEFAULT_DOCUMENT_NAME;
 use crate::consts::{ASYMPTOTIC_EFFECT, FILE_EXPORT_SUFFIX, FILE_SAVE_SUFFIX, SCALE_EFFECT, SCROLLBAR_SPACING};
 use crate::input::InputPreprocessor;
 use crate::message_prelude::*;
@@ -184,6 +185,13 @@ impl DocumentMessageHandler {
 			Err(DocumentError::InvalidFile(msg)) => Err(EditorError::Document(msg)),
 			_ => Err(EditorError::Document(String::from("Failed to open file"))),
 		}
+	}
+
+	pub fn is_unmodified_default(&self) -> bool {
+		self.serialize_root().len() == Self::default().serialize_root().len()
+			&& self.document_undo_history.len() == 0
+			&& self.document_redo_history.len() == 0
+			&& self.name.starts_with(DEFAULT_DOCUMENT_NAME)
 	}
 
 	fn select_layer(&mut self, path: &[LayerId]) -> Option<Message> {
@@ -413,8 +421,8 @@ impl DocumentMessageHandler {
 		self.current_identifier() == self.saved_document_identifier
 	}
 
-	pub fn set_save_state(&mut self, state: bool) {
-		if state {
+	pub fn set_save_state(&mut self, is_saved: bool) {
+		if is_saved {
 			self.saved_document_identifier = self.current_identifier();
 		} else {
 			self.saved_document_identifier = generate_uuid();

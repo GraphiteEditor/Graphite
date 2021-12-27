@@ -89,8 +89,7 @@ impl DocumentsMessageHandler {
 		if replace_first_empty && self.document_ids.len() == 1 {
 			let first_id = self.document_ids[0];
 			let first_document = self.documents.get(&first_id).unwrap();
-			let empty_document = DocumentMessageHandler::default();
-			if first_document.serialize_root().len() == empty_document.serialize_root().len() {
+			if first_document.is_unmodified_default() {
 				// The first document must not have been touched
 				responses.push_back(DocumentsMessage::CloseDocument(first_id).into());
 			}

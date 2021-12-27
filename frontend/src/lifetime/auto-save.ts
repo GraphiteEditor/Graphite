@@ -27,7 +27,7 @@ const databaseConnection: Promise<IDBDatabase> = new Promise((resolve) => {
 	};
 });
 
-export function createAutoSave(editor: EditorState, documents: DocumentsState) {
+export function createAutoSaveManager(editor: EditorState, documents: DocumentsState) {
 	const openAutoSavedDocuments = async (): Promise<void> => {
 		const db = await databaseConnection;
 		const transaction = db.transaction(GRAPHITE_AUTO_SAVE_STORE, "readonly");
