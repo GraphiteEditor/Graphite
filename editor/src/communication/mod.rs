@@ -30,7 +30,7 @@ where
 }
 
 thread_local! {
-	pub static UUID_SEED:Cell<Option<u64>> = Cell::new(None);
+	pub static UUID_SEED: Cell<Option<u64>> = Cell::new(None);
 }
 
 pub fn set_uuid_seed(random_seed: u64) {

@@ -2,7 +2,6 @@ import { AutoSaveDocument, RemoveAutoSaveDocument } from "@/dispatcher/js-messag
 import { DocumentsState } from "@/state/documents";
 import { EditorState } from "@/state/wasm-loader";
 
-/* eslint-disable no-console */
 const GRAPHITE_INDEXED_DB_NAME = "graphite-indexed-db";
 const GRAPHITE_INDEXED_DB_VERSION = 1;
 const GRAPHITE_AUTO_SAVE_STORE = "auto-save-documents";
@@ -19,6 +18,7 @@ const databaseConnection: Promise<IDBDatabase> = new Promise((resolve) => {
 	};
 
 	dbOpenRequest.onerror = () => {
+		// eslint-disable-next-line no-console
 		console.error("Graphite IndexedDb error:", dbOpenRequest.error);
 	};
 

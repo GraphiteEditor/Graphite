@@ -19,8 +19,8 @@ export class JsMessage {
 // for details about how to transform the JSON from wasm-bindgen into classes.
 // ============================================================================
 
-// Allows the auto save system to use a string for the id rather than a Bigint
-// IndexedDb does not allow for BigInts as primary keys. Typescript does not allow
+// Allows the auto save system to use a string for the id rather than a BigInt.
+// IndexedDb does not allow for BigInts as primary keys. TypeScript does not allow
 // subclasses to change the type of class variables in subclasses. It is an abstract
 // class to point out that it should not be instantiated directly.
 export abstract class DocumentDetails {
