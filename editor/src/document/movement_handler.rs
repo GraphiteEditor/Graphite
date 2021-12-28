@@ -1,3 +1,4 @@
+use crate::consts::VIEWPORT_ROTATE_SNAP_INTERVAL;
 pub use crate::document::layer_panel::*;
 use crate::document::{DocumentMessage, LayerData};
 use crate::message_prelude::*;
@@ -40,16 +41,26 @@ pub struct MovementMessageHandler {
 	zooming: bool,
 	snapping: bool,
 	mouse_pos: ViewportPosition,
+	snap_rotate: bool,
 }
 
 impl MovementMessageHandler {
+	pub fn snapped_angle(&self, layerdata: &LayerData) -> f64 {
+		let increment_radians: f64 = VIEWPORT_ROTATE_SNAP_INTERVAL.to_radians();
+		if self.snap_rotate {
+			(layerdata.rotation / increment_radians).round() * increment_radians
+		} else {
+			layerdata.rotation
+		}
+	}
+
 	fn create_document_transform_from_layerdata(&self, layerdata: &LayerData, viewport_bounds: &ViewportBounds, responses: &mut VecDeque<Message>) {
 		let half_viewport = viewport_bounds.size() / 2.;
 		let scaled_half_viewport = half_viewport / layerdata.scale;
 		responses.push_back(
 			DocumentOperation::SetLayerTransform {
 				path: vec![],
-				transform: layerdata.calculate_offset_transform(scaled_half_viewport).to_cols_array(),
+				transform: layerdata.calculate_offset_transform(scaled_half_viewport, self.snapped_angle(layerdata)).to_cols_array(),
 			}
 			.into(),
 		);
@@ -68,7 +79,7 @@ impl MessageHandler<MovementMessage, (&mut LayerData, &Document, &InputPreproces
 			RotateCanvasBegin { snap } => {
 				self.rotating = true;
 				self.snapping = snap;
-				layerdata.snap_rotate = snap;
+				self.snap_rotate = snap;
 				self.mouse_pos = ipp.mouse.position;
 			}
 			EnableSnapping => self.snapping = true,
@@ -78,8 +89,8 @@ impl MessageHandler<MovementMessage, (&mut LayerData, &Document, &InputPreproces
 				self.mouse_pos = ipp.mouse.position;
 			}
 			TransformCanvasEnd => {
-				layerdata.rotation = layerdata.snapped_angle();
-				layerdata.snap_rotate = false;
+				layerdata.rotation = self.snapped_angle(layerdata);
+				self.snap_rotate = false;
 				self.translating = false;
 				self.rotating = false;
 				self.zooming = false;
@@ -104,11 +115,11 @@ impl MessageHandler<MovementMessage, (&mut LayerData, &Document, &InputPreproces
 					let snapping = self.snapping;
 
 					layerdata.rotation += rotation;
-					layerdata.snap_rotate = snapping;
+					self.snap_rotate = snapping;
 					responses.push_back(ToolMessage::SelectedLayersChanged.into());
 					responses.push_back(
 						FrontendMessage::SetCanvasRotation {
-							new_radians: layerdata.snapped_angle(),
+							new_radians: self.snapped_angle(layerdata),
 						}
 						.into(),
 					);
