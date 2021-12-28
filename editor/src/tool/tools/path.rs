@@ -333,56 +333,51 @@ where
 
 fn add_anchor_marker(responses: &mut VecDeque<Message>) -> Vec<LayerId> {
 	let layer_path = vec![generate_uuid()];
-	responses.push_back(
-		Operation::AddOverlayRect {
-			path: layer_path.clone(),
-			transform: DAffine2::IDENTITY.to_cols_array(),
-			style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 2.0)), Some(Fill::new(Color::WHITE))),
-		}
-		.into(),
-	);
+
+	let operation = Operation::AddOverlayRect {
+		path: layer_path.clone(),
+		transform: DAffine2::IDENTITY.to_cols_array(),
+		style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 2.0)), Some(Fill::new(Color::WHITE))),
+	};
+	responses.push_back(DocumentMessage::Overlay(operation.into()).into());
 
 	layer_path
 }
 
 fn add_handle_marker(responses: &mut VecDeque<Message>) -> Vec<LayerId> {
 	let layer_path = vec![generate_uuid()];
-	responses.push_back(
-		Operation::AddOverlayEllipse {
-			path: layer_path.clone(),
-			transform: DAffine2::IDENTITY.to_cols_array(),
-			style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 2.0)), Some(Fill::new(Color::WHITE))),
-		}
-		.into(),
-	);
+
+	let operation = Operation::AddOverlayEllipse {
+		path: layer_path.clone(),
+		transform: DAffine2::IDENTITY.to_cols_array(),
+		style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 2.0)), Some(Fill::new(Color::WHITE))),
+	};
+	responses.push_back(DocumentMessage::Overlay(operation.into()).into());
 
 	layer_path
 }
 
 fn add_anchor_handle_line(responses: &mut VecDeque<Message>) -> Vec<LayerId> {
 	let layer_path = vec![generate_uuid()];
-	responses.push_back(
-		Operation::AddOverlayLine {
-			path: layer_path.clone(),
-			transform: DAffine2::IDENTITY.to_cols_array(),
-			style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 1.0)), Some(Fill::none())),
-		}
-		.into(),
-	);
+	let operation = Operation::AddOverlayLine {
+		path: layer_path.clone(),
+		transform: DAffine2::IDENTITY.to_cols_array(),
+		style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 1.0)), Some(Fill::none())),
+	};
+	responses.push_back(DocumentMessage::Overlay(operation.into()).into());
 
 	layer_path
 }
 
 fn add_shape_outline(responses: &mut VecDeque<Message>) -> Vec<LayerId> {
 	let layer_path = vec![generate_uuid()];
-	responses.push_back(
-		Operation::AddOverlayShape {
-			path: layer_path.clone(),
-			bez_path: BezPath::default(),
-			style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 1.0)), Some(Fill::none())),
-		}
-		.into(),
-	);
+
+	let operation = Operation::AddOverlayShape {
+		path: layer_path.clone(),
+		bez_path: BezPath::default(),
+		style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 1.0)), Some(Fill::none())),
+	};
+	responses.push_back(DocumentMessage::Overlay(operation.into()).into());
 
 	layer_path
 }

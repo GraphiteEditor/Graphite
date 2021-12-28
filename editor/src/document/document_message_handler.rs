@@ -37,19 +37,25 @@ pub enum DocumentsMessage {
 }
 
 #[derive(Debug, Clone)]
+pub struct DocumentAndOverlay {
+	document: DocumentMessageHandler,
+	overlays: DocumentMessageHandler,
+}
+
+#[derive(Debug, Clone)]
 pub struct DocumentsMessageHandler {
-	documents: HashMap<u64, DocumentMessageHandler>,
+	documents: HashMap<u64, DocumentAndOverlay>,
 	document_ids: Vec<u64>,
 	active_document_id: u64,
 	copy_buffer: Vec<Layer>,
 }
 
 impl DocumentsMessageHandler {
-	pub fn active_document(&self) -> &DocumentMessageHandler {
+	pub fn active_document(&self) -> &DocumentAndOverlay {
 		self.documents.get(&self.active_document_id).unwrap()
 	}
 
-	pub fn active_document_mut(&mut self) -> &mut DocumentMessageHandler {
+	pub fn active_document_mut(&mut self) -> &mut DocumentAndOverlay {
 		self.documents.get_mut(&self.active_document_id).unwrap()
 	}
 
@@ -80,17 +86,23 @@ impl DocumentsMessageHandler {
 		let new_id = generate_uuid();
 		self.active_document_id = new_id;
 		self.document_ids.push(new_id);
-		self.documents.insert(new_id, new_document);
+		self.documents.insert(
+			new_id,
+			DocumentAndOverlay {
+				document: new_document,
+				overlays: DocumentMessageHandler::default(),
+			},
+		);
 
 		// Send the new list of document tab names
 		let open_documents = self
 			.document_ids
 			.iter()
 			.filter_map(|id| {
-				self.documents.get(&id).map(|doc| FrontendDocumentDetails {
-					is_saved: doc.is_saved(),
+				self.documents.get(&id).map(|DocumentAndOverlay { document, overlays }| FrontendDocumentDetails {
+					is_saved: document.is_saved(),
 					id: *id,
-					name: doc.name.clone(),
+					name: document.name.clone(),
 				})
 			})
 			.collect::<Vec<_>>();

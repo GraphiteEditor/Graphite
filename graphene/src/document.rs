@@ -207,12 +207,10 @@ impl Document {
 	pub fn visit_all_shapes<F: FnMut(&mut Shape)>(layer: &mut Layer, modify_shape: &mut F) -> bool {
 		match layer.data {
 			LayerDataType::Shape(ref mut shape) => {
-				if !layer.overlay {
-					modify_shape(shape);
+				modify_shape(shape);
 
-					// This layer should be updated on next render pass
-					layer.cache_dirty = true;
-				}
+				// This layer should be updated on next render pass
+				layer.cache_dirty = true;
 			}
 			LayerDataType::Folder(ref mut folder) => {
 				for sub_layer in folder.layers_mut() {
@@ -361,24 +359,6 @@ impl Document {
 		self.set_transform_relative_to_scope(layer, None, transform)
 	}
 
-	fn remove_overlays(&mut self, path: &mut Vec<LayerId>) {
-		if self.layer(path).unwrap().overlay {
-			self.delete(path).unwrap()
-		}
-		let ids = self.folder(path).map(|folder| folder.layer_ids.clone()).unwrap_or_default();
-		for id in ids {
-			path.push(id);
-			self.remove_overlays(path);
-			path.pop();
-		}
-	}
-
-	pub fn clone_without_overlays(&self) -> Self {
-		let mut document = self.clone();
-		document.remove_overlays(&mut vec![]);
-		document
-	}
-
 	/// Mutate the document by applying the `operation` to it. If the operation necessitates a
 	/// reaction from the frontend, responses may be returned.
 	pub fn handle_operation(&mut self, operation: &Operation) -> Result<Option<Vec<DocumentResponse>>, DocumentError> {
@@ -397,9 +377,7 @@ impl Document {
 				let mut ellipse = Shape::ellipse(*style);
 				ellipse.render_index = -1;
 
-				let mut layer = Layer::new(LayerDataType::Shape(ellipse), *transform);
-				layer.overlay = true;
-
+				let layer = Layer::new(LayerDataType::Shape(ellipse), *transform);
 				self.set_layer(path, layer, -1)?;
 
 				Some([vec![DocumentChanged, CreatedLayer { path: path.clone() }]].concat())
@@ -415,9 +393,7 @@ impl Document {
 				let mut rect = Shape::rectangle(*style);
 				rect.render_index = -1;
 
-				let mut layer = Layer::new(LayerDataType::Shape(rect), *transform);
-				layer.overlay = true;
-
+				let layer = Layer::new(LayerDataType::Shape(rect), *transform);
 				self.set_layer(path, layer, -1)?;
 
 				Some([vec![DocumentChanged, CreatedLayer { path: path.clone() }]].concat())
@@ -433,9 +409,7 @@ impl Document {
 				let mut line = Shape::line(*style);
 				line.render_index = -1;
 
-				let mut layer = Layer::new(LayerDataType::Shape(line), *transform);
-				layer.overlay = true;
-
+				let layer = Layer::new(LayerDataType::Shape(line), *transform);
 				self.set_layer(path, layer, -1)?;
 
 				Some([vec![DocumentChanged, CreatedLayer { path: path.clone() }]].concat())
@@ -457,9 +431,7 @@ impl Document {
 				let mut shape = Shape::from_bez_path(bez_path.clone(), *style, false);
 				shape.render_index = -1;
 
-				let mut layer = Layer::new(LayerDataType::Shape(shape), DAffine2::IDENTITY.to_cols_array());
-				layer.overlay = true;
-
+				let layer = Layer::new(LayerDataType::Shape(shape), DAffine2::IDENTITY.to_cols_array());
 				self.set_layer(path, layer, -1)?;
 
 				Some([vec![DocumentChanged, CreatedLayer { path: path.clone() }]].concat())

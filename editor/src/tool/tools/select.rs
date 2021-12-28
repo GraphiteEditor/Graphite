@@ -106,14 +106,13 @@ impl SelectToolData {
 
 fn add_bounding_box(responses: &mut Vec<Message>) -> Vec<LayerId> {
 	let path = vec![generate_uuid()];
-	responses.push(
-		Operation::AddOverlayRect {
-			path: path.clone(),
-			transform: DAffine2::ZERO.to_cols_array(),
-			style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 1.0)), Some(Fill::none())),
-		}
-		.into(),
-	);
+
+	let operation = Operation::AddOverlayRect {
+		path: path.clone(),
+		transform: DAffine2::ZERO.to_cols_array(),
+		style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 1.0)), Some(Fill::none())),
+	};
+	responses.push(DocumentMessage::Overlay(operation.into()).into());
 
 	path
 }
@@ -144,6 +143,7 @@ impl Fsm for SelectToolFsmState {
 					let response = match (document.selected_layers_bounding_box(), data.bounding_box_path.take()) {
 						(None, Some(path)) => Operation::DeleteLayer { path }.into(),
 						(Some([pos1, pos2]), path) => {
+							log::debug!("GOT HERE");
 							let path = path.unwrap_or_else(|| add_bounding_box(&mut buffer));
 
 							data.bounding_box_path = Some(path.clone());
@@ -152,7 +152,6 @@ impl Fsm for SelectToolFsmState {
 							let pos1 = pos1 + half_pixel_offset;
 							let pos2 = pos2 - half_pixel_offset;
 							let transform = transform_from_box(pos1, pos2);
-
 							Operation::SetLayerTransformInViewport { path, transform }.into()
 						}
 						(_, _) => Message::NoOp,
