@@ -167,15 +167,9 @@ impl Fsm for SelectToolFsmState {
 					let mut buffer = Vec::new();
 					let mut selected: Vec<_> = document.selected_layers().map(|path| path.to_vec()).collect();
 					let quad = data.selection_quad();
-					let intersection = document.graphene_document.intersects_quad_root(quad);
-					// If no layer is currently selected and the user clicks on a shape, select that.
-					if selected.is_empty() {
-						if let Some(layer) = intersection.last() {
-							selected.push(layer.clone());
-							buffer.push(DocumentMessage::SetSelectedLayers(selected.clone()).into());
-						}
-					}
+					let mut intersection = document.graphene_document.intersects_quad_root(quad);
 					// If the user clicks on a layer that is in their current selection, go into the dragging mode.
+					// If the user clicks on new shape, make that layer their new selection.
 					// Otherwise enter the box select mode
 					let state = if selected.iter().any(|path| intersection.contains(path)) {
 						buffer.push(DocumentMessage::StartTransaction.into());
@@ -184,9 +178,19 @@ impl Fsm for SelectToolFsmState {
 					} else {
 						if !input.keyboard.get(add_to_selection as usize) {
 							buffer.push(DocumentMessage::DeselectAllLayers.into());
+							data.layers_dragging.clear();
 						}
-						data.drag_box_id = Some(add_bounding_box(&mut buffer));
-						DrawingBox
+
+						if let Some(intersection) = intersection.pop() {
+							selected = vec![intersection];
+							buffer.push(DocumentMessage::AddSelectedLayers(selected.clone()).into());
+							buffer.push(DocumentMessage::StartTransaction.into());
+							data.layers_dragging.append(&mut selected);
+							Dragging
+						} else {
+							data.drag_box_id = Some(add_bounding_box(&mut buffer));
+							DrawingBox
+						}
 					};
 					buffer.into_iter().rev().for_each(|message| responses.push_front(message));
 
