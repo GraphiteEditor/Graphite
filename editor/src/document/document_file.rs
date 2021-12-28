@@ -3,6 +3,7 @@ use std::collections::VecDeque;
 
 pub use super::layer_panel::*;
 use super::movement_handler::{MovementMessage, MovementMessageHandler};
+use super::overlay_message_handler::OverlayMessageHandler;
 use super::transform_layer_handler::{TransformLayerMessage, TransformLayerMessageHandler};
 
 use crate::consts::{ASYMPTOTIC_EFFECT, FILE_EXPORT_SUFFIX, FILE_SAVE_SUFFIX, SCALE_EFFECT, SCROLLBAR_SPACING};
@@ -66,6 +67,7 @@ pub struct DocumentMessageHandler {
 	pub layer_data: HashMap<Vec<LayerId>, LayerData>,
 	layer_range_selection_reference: Vec<LayerId>,
 	movement_handler: MovementMessageHandler,
+	overlay_message_handler: OverlayMessageHandler,
 	transform_layer_handler: TransformLayerMessageHandler,
 	pub snapping_enabled: bool,
 	pub view_mode: ViewMode,
@@ -82,30 +84,13 @@ impl Default for DocumentMessageHandler {
 			layer_data: vec![(vec![], LayerData::new(true))].into_iter().collect(),
 			layer_range_selection_reference: Vec::new(),
 			movement_handler: MovementMessageHandler::default(),
+			overlay_message_handler: OverlayMessageHandler::default(),
 			transform_layer_handler: TransformLayerMessageHandler::default(),
 			snapping_enabled: true,
 			view_mode: ViewMode::default(),
 		}
 	}
 }
-
-#[impl_message(Message, DocumentMessage, Overlay)]
-#[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
-pub enum OverlayMessage {
-	DispatchOperation(Box<DocumentOperation>),
-}
-
-impl From<DocumentOperation> for OverlayMessage {
-	fn from(operation: DocumentOperation) -> OverlayMessage {
-		Self::DispatchOperation(Box::new(operation))
-	}
-}
-
-// impl From<DocumentOperation> for Message {
-// 	fn from(operation: DocumentOperation) -> Message {
-// 		OverlayMessage::DispatchOperation(Box::new(operation)).into()
-// 	}
-// }
 
 #[impl_message(Message, DocumentsMessage, Document)]
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
@@ -187,6 +172,7 @@ impl DocumentMessageHandler {
 			transform_layer_handler: TransformLayerMessageHandler::default(),
 			snapping_enabled: true,
 			view_mode: ViewMode::default(),
+			overlay_message_handler: OverlayMessageHandler::default(),
 		};
 		document.graphene_document.root.transform = document.layerdata(&[]).calculate_offset_transform(ipp.viewport_bounds.size() / 2.);
 		document
@@ -477,6 +463,8 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			CommitTransaction => (),
 			Overlay(message) => {
 				log::debug!("{:?}", message);
+				self.overlay_message_handler
+					.process_action(message, (layer_data(&mut self.layer_data, &[]), &self.graphene_document, ipp), responses)
 			}
 			ExportDocument => {
 				let bbox = self.graphene_document.visible_layers_bounding_box().unwrap_or([DVec2::ZERO, ipp.viewport_bounds.size()]);
@@ -712,7 +700,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				);
 				responses.push_back(
 					FrontendMessage::UpdateOverlays {
-						svg: self.overlays_document.render_root(self.view_mode),
+						svg: self.overlay_message_handler.overlays_graphene_document.render_root(self.view_mode),
 					}
 					.into(),
 				);

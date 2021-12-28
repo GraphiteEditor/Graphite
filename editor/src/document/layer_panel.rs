@@ -52,7 +52,7 @@ pub fn layer_data<'a>(layer_data: &'a mut HashMap<Vec<LayerId>, LayerData>, path
 }
 
 pub fn layer_panel_entry(layer_data: &LayerData, transform: DAffine2, layer: &Layer, path: Vec<LayerId>) -> LayerPanelEntry {
-	let layer_type: LayerType = (&layer.data).into();
+	let layer_type: LayerDataTypeDiscriminant = (&layer.data).into();
 	let name = layer.name.clone().unwrap_or_else(|| format!("Unnamed {}", layer_type));
 	let arr = layer.data.bounding_box(transform).unwrap_or([DVec2::ZERO, DVec2::ZERO]);
 	let arr = arr.iter().map(|x| (*x).into()).collect::<Vec<(f64, f64)>>();
@@ -119,35 +119,35 @@ pub struct LayerPanelEntry {
 	pub visible: bool,
 	pub blend_mode: BlendMode,
 	pub opacity: f64,
-	pub layer_type: LayerType,
+	pub layer_type: LayerDataTypeDiscriminant,
 	pub layer_data: LayerData,
 	pub path: Vec<LayerId>,
 	pub thumbnail: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
-pub enum LayerType {
+pub enum LayerDataTypeDiscriminant {
 	Folder,
 	Shape,
 }
 
-impl fmt::Display for LayerType {
+impl fmt::Display for LayerDataTypeDiscriminant {
 	fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
 		let name = match self {
-			LayerType::Folder => "Folder",
-			LayerType::Shape => "Shape",
+			LayerDataTypeDiscriminant::Folder => "Folder",
+			LayerDataTypeDiscriminant::Shape => "Shape",
 		};
 
 		formatter.write_str(name)
 	}
 }
 
-impl From<&LayerDataType> for LayerType {
+impl From<&LayerDataType> for LayerDataTypeDiscriminant {
 	fn from(data: &LayerDataType) -> Self {
 		use LayerDataType::*;
 		match data {
-			Folder(_) => LayerType::Folder,
-			Shape(_) => LayerType::Shape,
+			Folder(_) => LayerDataTypeDiscriminant::Folder,
+			Shape(_) => LayerDataTypeDiscriminant::Shape,
 		}
 	}
 }
