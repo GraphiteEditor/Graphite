@@ -96,7 +96,13 @@ impl Dispatcher {
 
 #[cfg(test)]
 mod test {
-	use crate::{communication::set_uuid_seed, document::{DocumentMessageHandler, Clipboard::*}, message_prelude::*, misc::test_utils::EditorTestUtils, Editor};
+	use crate::{
+		communication::set_uuid_seed,
+		document::{Clipboard::*, DocumentMessageHandler},
+		message_prelude::*,
+		misc::test_utils::EditorTestUtils,
+		Editor,
+	};
 	use graphene::{color::Color, Operation};
 
 	fn init_logger() {
@@ -132,7 +138,11 @@ mod test {
 
 		let document_before_copy = editor.dispatcher.documents_message_handler.active_document().graphene_document.clone();
 		editor.handle_message(DocumentsMessage::Copy(User));
-		editor.handle_message(DocumentsMessage::PasteIntoFolder { clipboard:User, path: vec![], insert_index: -1 });
+		editor.handle_message(DocumentsMessage::PasteIntoFolder {
+			clipboard: User,
+			path: vec![],
+			insert_index: -1,
+		});
 		let document_after_copy = editor.dispatcher.documents_message_handler.active_document().graphene_document.clone();
 
 		let layers_before_copy = document_before_copy.root.as_folder().unwrap().layers();
@@ -165,7 +175,11 @@ mod test {
 
 		editor.handle_message(DocumentMessage::SetSelectedLayers(vec![vec![shape_id]]));
 		editor.handle_message(DocumentsMessage::Copy(User));
-		editor.handle_message(DocumentsMessage::PasteIntoFolder { clipboard:User,  path: vec![], insert_index: -1 });
+		editor.handle_message(DocumentsMessage::PasteIntoFolder {
+			clipboard: User,
+			path: vec![],
+			insert_index: -1,
+		});
 
 		let document_after_copy = editor.dispatcher.documents_message_handler.active_document().graphene_document.clone();
 
@@ -225,8 +239,16 @@ mod test {
 
 		editor.handle_message(DocumentsMessage::Copy(User));
 		editor.handle_message(DocumentMessage::DeleteSelectedLayers);
-		editor.handle_message(DocumentsMessage::PasteIntoFolder { clipboard:User, path: vec![], insert_index: -1 });
-		editor.handle_message(DocumentsMessage::PasteIntoFolder { clipboard:User, path: vec![], insert_index: -1 });
+		editor.handle_message(DocumentsMessage::PasteIntoFolder {
+			clipboard: User,
+			path: vec![],
+			insert_index: -1,
+		});
+		editor.handle_message(DocumentsMessage::PasteIntoFolder {
+			clipboard: User,
+			path: vec![],
+			insert_index: -1,
+		});
 
 		let document_after_copy = editor.dispatcher.documents_message_handler.active_document().graphene_document.clone();
 
@@ -287,8 +309,16 @@ mod test {
 		editor.handle_message(DocumentsMessage::Copy(User));
 		editor.handle_message(DocumentMessage::DeleteSelectedLayers);
 		editor.draw_rect(0., 800., 12., 200.);
-		editor.handle_message(DocumentsMessage::PasteIntoFolder { clipboard:User, path: vec![], insert_index: -1 });
-		editor.handle_message(DocumentsMessage::PasteIntoFolder { clipboard:User, path: vec![], insert_index: -1 });
+		editor.handle_message(DocumentsMessage::PasteIntoFolder {
+			clipboard: User,
+			path: vec![],
+			insert_index: -1,
+		});
+		editor.handle_message(DocumentsMessage::PasteIntoFolder {
+			clipboard: User,
+			path: vec![],
+			insert_index: -1,
+		});
 
 		let document_after_copy = editor.dispatcher.documents_message_handler.active_document().graphene_document.clone();
 
