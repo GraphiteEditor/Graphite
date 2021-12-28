@@ -143,7 +143,7 @@ pub enum DocumentMessage {
 	MoveLayer {
 		layer: Vec<LayerId>,
 		insert_above: bool,
-		neighbour: Vec<LayerId>,
+		neighbor: Vec<LayerId>,
 	},
 	SetSnapping(bool),
 }
@@ -899,23 +899,23 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			MoveLayer {
 				layer: target_layer,
 				insert_above,
-				neighbour,
+				neighbor,
 			} => {
-				let neighbour_id = neighbour.last().expect("Tried to move next to root");
-				let neighbour_path = &neighbour[..neighbour.len() - 1];
+				let neighbor_id = neighbor.last().expect("Tried to move next to root");
+				let neighbor_path = &neighbor[..neighbor.len() - 1];
 
-				let containing_folder = self.graphene_document.folder(neighbour_path).expect("Neighbour does not exist");
+				let containing_folder = self.graphene_document.folder(neighbor_path).expect("Neighbor does not exist");
 
-				let neighbour_index = containing_folder.position_of_layer(*neighbour_id).expect("Neighbour layer does not exist");
+				let neighbor_index = containing_folder.position_of_layer(*neighbor_id).expect("Neighbor layer does not exist");
 
-				let insert_index = if insert_above { neighbour_index } else { neighbour_index + 1 } as isize;
+				let insert_index = if insert_above { neighbor_index } else { neighbor_index + 1 } as isize;
 				let layer = self.graphene_document.layer(&target_layer).expect("Layer moving does not exist.").to_owned();
 
 				responses.extend([
 					DocumentOperation::PasteLayer {
 						layer,
 						insert_index,
-						path: neighbour_path.to_vec(),
+						path: neighbor_path.to_vec(),
 					}
 					.into(),
 					DocumentOperation::DeleteLayer { path: target_layer }.into(),

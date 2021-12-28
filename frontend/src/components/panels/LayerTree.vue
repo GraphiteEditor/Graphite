@@ -82,14 +82,34 @@
 
 	.layer-tree {
 		position: relative;
+
 		.insert-mark {
 			position: relative;
-			background-color: yellow;
-			height: 3px;
 			margin-right: 16px;
-			margin-top: 3px;
-			margin-bottom: 3px;
+			height: 0;
+			z-index: 2;
+
+			&::after {
+				content: "";
+				position: absolute;
+				background: var(--color-accent-hover);
+				width: 100%;
+				height: 6px;
+			}
+
+			&:not(:first-child, :last-child) {
+				top: -2px;
+			}
+
+			&:first-child::after {
+				top: 0;
+			}
+
+			&:last-child::after {
+				bottom: 0;
+			}
 		}
+
 		.layer-row {
 			display: flex;
 			height: 36px;
@@ -97,7 +117,8 @@
 			flex: 0 0 auto;
 			position: relative;
 
-			& + .layer-row {
+			& + .layer-row,
+			& + .insert-mark + .layer-row {
 				margin-top: 2px;
 			}
 

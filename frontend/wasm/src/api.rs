@@ -372,9 +372,9 @@ impl JsEditorHandle {
 		self.dispatch(message);
 	}
 
-	/// Move a layer to be next to the specified neighbour
-	pub fn move_layer(&self, layer: Vec<LayerId>, insert_above: bool, neighbour: Vec<LayerId>) {
-		let message = DocumentMessage::MoveLayer { layer, insert_above, neighbour };
+	/// Move a layer to be next to the specified neighbor
+	pub fn move_layer(&self, layer: Vec<LayerId>, insert_above: bool, neighbor: Vec<LayerId>) {
+		let message = DocumentMessage::MoveLayer { layer, insert_above, neighbor };
 		self.dispatch(message);
 	}
 
