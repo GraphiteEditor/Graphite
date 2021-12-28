@@ -512,7 +512,7 @@ impl Document {
 						log::debug!("cross: {:?} @quality: {:?}", cross.point, cross.quality);
 						match self.handle_operation(&Operation::AddOverlayEllipse{
 							path: vec![],
-							transform: [10.0, 0.0, 0.0, 10.0, cross.point.x, cross.point.y],
+							transform: [2.0, 0.0, 0.0, 2.0, cross.point.x - 1.0, cross.point.y - 1.0],
 							style: PathStyle::new(Some(Stroke::new(Color::BLUE, 1.0)), None),
 						}){
 							Ok(Some(ref mut response)) => responses.append(response),

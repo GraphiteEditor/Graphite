@@ -77,13 +77,19 @@ pub fn get_arbitrary_point_on_path(path: &BezPath) -> Option<Point> {
 /// Bezier Curve Intersection algorithm
 /// \/                               \/
 
+
+/// each intersection has two curves, which are distinguished between using this enum
+pub enum Origin{
+   Alpha,
+   Beta,
+}
+
 pub struct Intersect{
 	pub point: Point,
 	pub t_a: f64,
 	pub t_b: f64,
 	pub a_seg_idx: usize,
 	pub b_seg_idx: usize,
-	pub mark: i8,
 	pub quality: f64,
 }
 
@@ -92,15 +98,22 @@ impl Intersect{
 		self.a_seg_idx = a_idx;
 		self.b_seg_idx = b_idx;
 	}
+
+	pub fn seg_idx(&self, o: Origin) -> usize {
+		match o {Origin::Alpha => self.a_seg_idx, Origin::Beta => self.b_seg_idx,}
+	}
+
+	pub fn t_val(&self, o: Origin) -> f64 {
+		match o {Origin::Alpha => self.t_a, Origin::Beta => self.t_b,}
+	}
 }
 
 impl From<(Point, f64, f64)> for Intersect{
 	fn from(place_time: (Point, f64, f64)) -> Self{
-		Intersect{point: place_time.0, t_a: place_time.1, t_b: place_time.2, a_seg_idx: 0, b_seg_idx: 0, mark: -1, quality: 0.0}
+		Intersect{point: place_time.0, t_a: place_time.1, t_b: place_time.2, a_seg_idx: 0, b_seg_idx: 0, quality: 0.0}
 	}
 }
 
-// because extrema are owned by each SubCurve ( and not refrenced ), they must be copied on each split
 struct SubCurve<'a> {
 	pub curve: &'a PathSeg,
 	pub start_t: f64,
@@ -169,6 +182,7 @@ impl<'a> SubCurve<'a> {
 /// Rough algorithm
 /// 	- Behavior: when shapes have indentical pathsegs algorithm returns endpoints as intersects?
 /// 	- Bug: algorithm finds same intersection multiple times in same recursion path
+/// 	- Improvement: algorithm behavior when curves have differing "native curvatures"
 /// 	- Improvement: more adapative way to decide when "close enough"
 ///   - improvement: quality metric
 /// 	- Optimization: Don't actualy split the curve, just pass start/end values
@@ -197,7 +211,7 @@ fn path_intersections(a: &SubCurve, b: &SubCurve, mut recursion: usize) -> Vec<I
 				intersections.push(cross); //arbitrarily chosen threshold
 				return intersections;
 			}
-			log::debug!("line no cross");
+			log::debug!("line no cross"); // some intersections end up here, sign that false positives are possible
 		}
 		let (a1, a2) = a.split(0.5);
 		let (b1, b2) = b.split(0.5);
@@ -220,7 +234,7 @@ pub fn intersections(a: &BezPath, b: &BezPath) -> Vec<Intersect>{
 	let mut intersections: Vec<Intersect> = Vec::new();
 	// there is some duplicate computation of b_extrema here, but i doubt it's significant
 	a.segments().enumerate().for_each(|(a_idx, a_seg)| {
-		// extrema at endpoints should not be included here
+		// extrema at endpoints should not be included here as they must be calculated for each subcurve
 		let a_extrema = a_seg.extrema().iter().filter_map(|t| if *t > F64PRECISION && *t < 1.0 - F64PRECISION { Some(a_seg.eval(*t)) } else { None }).collect();
 		b.segments().enumerate().for_each(|(b_idx, b_seg)| {
 			let b_extrema = b_seg.extrema().iter().filter_map(|t| if *t > F64PRECISION && *t < 1.0 - F64PRECISION { Some(b_seg.eval(*t)) } else { None }).collect();
@@ -234,8 +248,6 @@ pub fn intersections(a: &BezPath, b: &BezPath) -> Vec<Intersect>{
 
 
 pub fn intersection_candidates(a: &BezPath, b: &BezPath) -> Vec<(usize, usize)> {
-	// optimization ideas
-	//		- store computed bounding boxes
 	let mut intersections = Vec::new();
 
 	a.segments().enumerate().for_each(|(a_idx, a_seg)| b.segments().enumerate().for_each(|(b_idx, b_seg)| {
@@ -263,7 +275,7 @@ pub fn line_intersection(a: &Line, b: &Line) -> Option<Intersect> {
 	Some(Intersect::from((b.eval(t_vals[0]), t_vals[1], t_vals[0])))
 }
 
-/// returns true rectangles overlap
+/// returns true if rectangles overlap, even if either rectangle has 0 area
 /// does using slices here cause a slowdown?
 pub fn overlap(a: &Rect, b: &Rect) -> bool {
 	fn in_range(n: f64, range: &[f64]) -> bool { n >= range[0] && n <= range[1] }
@@ -272,6 +284,8 @@ pub fn overlap(a: &Rect, b: &Rect) -> bool {
 	(in_range(b.y0, &[a.y0, a.y1]) || in_range(b.y1, &[a.y0, a.y1]) || in_range_e(a.y0, &[b.y0, b.y1]) || in_range_e(a.y1, &[b.y0, b.y1]))
 }
 
+/// tests if a t value belongs to [0.0, 1.0]
+/// uses F64PRECISION to allow a slightly larger range of values
 fn valid_t(t: f64) -> bool {
 	t > -F64PRECISION && t < 1.0 + F64PRECISION
 }
