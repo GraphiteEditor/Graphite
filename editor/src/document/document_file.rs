@@ -4,6 +4,7 @@ use std::collections::VecDeque;
 pub use super::layer_panel::*;
 use super::movement_handler::{MovementMessage, MovementMessageHandler};
 use super::transform_layer_handler::{TransformLayerMessage, TransformLayerMessageHandler};
+use super::vectorize_layerdata;
 
 use crate::consts::DEFAULT_DOCUMENT_NAME;
 use crate::consts::{ASYMPTOTIC_EFFECT, FILE_EXPORT_SUFFIX, FILE_SAVE_SUFFIX, SCALE_EFFECT, SCROLLBAR_SPACING};
@@ -58,16 +59,21 @@ pub struct VectorManipulatorShape {
 	pub transform: DAffine2,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct DocumentMessageHandler {
 	pub graphene_document: GrapheneDocument,
+	#[serde(skip)]
 	pub document_undo_history: Vec<DocumentSave>,
+	#[serde(skip)]
 	pub document_redo_history: Vec<DocumentSave>,
 	pub saved_document_identifier: u64,
 	pub name: String,
+	#[serde(with = "vectorize_layerdata")]
 	pub layer_data: HashMap<Vec<LayerId>, LayerData>,
 	layer_range_selection_reference: Vec<LayerId>,
+	#[serde(skip)]
 	movement_handler: MovementMessageHandler,
+	#[serde(skip)]
 	transform_layer_handler: TransformLayerMessageHandler,
 	pub snapping_enabled: bool,
 	pub view_mode: ViewMode,
@@ -157,6 +163,15 @@ impl From<DocumentOperation> for Message {
 }
 
 impl DocumentMessageHandler {
+	pub fn serialize_document(&self) -> String {
+		let val = serde_json::to_string(self);
+		// We fully expect the serialization to succeed
+		val.unwrap()
+	}
+	pub fn deserialize_document(serialized_content: &str) -> Result<Self, DocumentError> {
+		log::info!("Deserialising: {:?}", serialized_content);
+		serde_json::from_str(serialized_content).map_err(|e| DocumentError::InvalidFile(e.to_string()))
+	}
 	pub fn with_name(name: String, ipp: &InputPreprocessor) -> Self {
 		let mut document = Self {
 			graphene_document: GrapheneDocument::default(),
@@ -175,12 +190,10 @@ impl DocumentMessageHandler {
 		document
 	}
 
-	pub fn with_name_and_content(name: String, serialized_content: String, ipp: &InputPreprocessor) -> Result<Self, EditorError> {
-		let mut document = Self::with_name(name, ipp);
-		let internal_document = GrapheneDocument::with_content(&serialized_content);
-		match internal_document {
-			Ok(handle) => {
-				document.graphene_document = handle;
+	pub fn with_name_and_content(name: String, serialized_content: String) -> Result<Self, EditorError> {
+		match Self::deserialize_document(&serialized_content) {
+			Ok(mut document) => {
+				document.name = name;
 				Ok(document)
 			}
 			Err(DocumentError::InvalidFile(msg)) => Err(EditorError::Document(msg)),
@@ -525,7 +538,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				};
 				responses.push_back(
 					FrontendMessage::SaveDocument {
-						document: self.graphene_document.serialize_document(),
+						document: self.serialize_document(),
 						name,
 					}
 					.into(),

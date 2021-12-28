@@ -1,4 +1,3 @@
-use crate::document::LayerData;
 use crate::frontend::frontend_message_handler::FrontendDocumentDetails;
 use crate::input::InputPreprocessor;
 use crate::message_prelude::*;
@@ -110,21 +109,6 @@ impl DocumentsMessageHandler {
 		} else {
 			self.document_ids.push(document_id);
 		}
-
-		fn generate_layerdata(path: &mut Vec<LayerId>, new_document: &mut DocumentMessageHandler) -> Result<(), graphene::DocumentError> {
-			new_document.create_layerdata(path);
-			let layer = new_document.graphene_document.layer(path)?;
-			if let graphene::layers::LayerDataType::Folder(f) = &layer.data {
-				for l in f.layer_ids.clone() {
-					path.push(l);
-					generate_layerdata(path, new_document)?;
-					path.pop();
-				}
-			}
-			Ok(())
-		}
-
-		generate_layerdata(&mut Vec::new(), &mut new_document).unwrap();
 
 		responses.extend(
 			new_document
@@ -297,7 +281,7 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 				document,
 				document_is_saved,
 			} => {
-				let document = DocumentMessageHandler::with_name_and_content(document_name, document, ipp);
+				let document = DocumentMessageHandler::with_name_and_content(document_name, document);
 				match document {
 					Ok(mut document) => {
 						document.set_save_state(document_is_saved);
@@ -331,7 +315,7 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 				let document = self.documents.get(&id).unwrap();
 				responses.push_back(
 					FrontendMessage::AutoSaveDocument {
-						document: document.graphene_document.serialize_document(),
+						document: document.serialize_document(),
 						details: FrontendDocumentDetails {
 							is_saved: document.is_saved(),
 							id,
