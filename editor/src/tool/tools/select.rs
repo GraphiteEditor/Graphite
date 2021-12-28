@@ -175,18 +175,22 @@ impl Fsm for SelectToolFsmState {
 						buffer.push(DocumentMessage::StartTransaction.into());
 						data.layers_dragging = selected;
 						Dragging
-					} else if let Some(intersection) = intersection.pop() {
-						selected = vec![intersection];
-						buffer.push(DocumentMessage::SetSelectedLayers(selected.clone()).into());
-						buffer.push(DocumentMessage::StartTransaction.into());
-						data.layers_dragging = selected;
-						Dragging
 					} else {
 						if !input.keyboard.get(add_to_selection as usize) {
 							buffer.push(DocumentMessage::DeselectAllLayers.into());
+							data.layers_dragging.clear();
 						}
-						data.drag_box_id = Some(add_bounding_box(&mut buffer));
-						DrawingBox
+
+						if let Some(intersection) = intersection.pop() {
+							selected = vec![intersection];
+							buffer.push(DocumentMessage::AddSelectedLayers(selected.clone()).into());
+							buffer.push(DocumentMessage::StartTransaction.into());
+							data.layers_dragging.append(&mut selected);
+							Dragging
+						} else {
+							data.drag_box_id = Some(add_bounding_box(&mut buffer));
+							DrawingBox
+						}
 					};
 					buffer.into_iter().rev().for_each(|message| responses.push_front(message));
 
