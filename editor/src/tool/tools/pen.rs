@@ -66,6 +66,7 @@ struct PenToolData {
 	next_point: DAffine2,
 	weight: u32,
 	path: Option<Vec<LayerId>>,
+	layer_exists: bool,
 	snap_handler: SnapHandler,
 }
 
@@ -91,6 +92,7 @@ impl Fsm for PenToolFsmState {
 					responses.push_back(DocumentMessage::StartTransaction.into());
 					responses.push_back(DocumentMessage::DeselectAllLayers.into());
 					data.path = Some(vec![generate_uuid()]);
+					data.layer_exists = false;
 
 					data.snap_handler.start_snap(document, document.all_layers_sorted(), &[]);
 					let snapped_position = data.snap_handler.snap_position(document, input.mouse.position);
@@ -105,6 +107,8 @@ impl Fsm for PenToolFsmState {
 						_ => 5,
 					};
 
+					responses.push_back(make_operation(data, tool_data, true));
+
 					Drawing
 				}
 				(Drawing, DragStop) => {
@@ -117,7 +121,8 @@ impl Fsm for PenToolFsmState {
 						data.next_point = pos;
 					}
 
-					responses.extend(make_operation(data, tool_data, true));
+					responses.push_back(remove_preview(data));
+					responses.push_back(make_operation(data, tool_data, true));
 
 					Drawing
 				}
@@ -126,14 +131,16 @@ impl Fsm for PenToolFsmState {
 					let pos = transform.inverse() * DAffine2::from_translation(snapped_position);
 					data.next_point = pos;
 
-					responses.extend(make_operation(data, tool_data, true));
+					responses.push_back(remove_preview(data));
+					responses.push_back(make_operation(data, tool_data, true));
 
 					Drawing
 				}
 				(Drawing, Confirm) | (Drawing, Abort) => {
 					if data.points.len() >= 2 {
 						responses.push_back(DocumentMessage::DeselectAllLayers.into());
-						responses.extend(make_operation(data, tool_data, false));
+						responses.push_back(remove_preview(data));
+						responses.push_back(make_operation(data, tool_data, false));
 						responses.push_back(DocumentMessage::CommitTransaction.into());
 					} else {
 						responses.push_back(DocumentMessage::AbortTransaction.into());
@@ -180,20 +187,22 @@ impl Fsm for PenToolFsmState {
 	}
 }
 
-fn make_operation(data: &PenToolData, tool_data: &DocumentToolData, show_preview: bool) -> [Message; 2] {
+fn remove_preview(data: &PenToolData) -> Message {
+	Operation::DeleteLayer { path: data.path.clone().unwrap() }.into()
+}
+
+fn make_operation(data: &PenToolData, tool_data: &DocumentToolData, show_preview: bool) -> Message {
 	let mut points: Vec<(f64, f64)> = data.points.iter().map(|p| (p.translation.x, p.translation.y)).collect();
 	if show_preview {
 		points.push((data.next_point.translation.x, data.next_point.translation.y))
 	}
-	[
-		Operation::DeleteLayer { path: data.path.clone().unwrap() }.into(),
-		Operation::AddPen {
-			path: data.path.clone().unwrap(),
-			insert_index: -1,
-			transform: DAffine2::IDENTITY.to_cols_array(),
-			points,
-			style: style::PathStyle::new(Some(style::Stroke::new(tool_data.primary_color, data.weight as f32)), Some(style::Fill::none())),
-		}
-		.into(),
-	]
+
+	Operation::AddPen {
+		path: data.path.clone().unwrap(),
+		insert_index: -1,
+		transform: DAffine2::IDENTITY.to_cols_array(),
+		points,
+		style: style::PathStyle::new(Some(style::Stroke::new(tool_data.primary_color, data.weight as f32)), Some(style::Fill::none())),
+	}
+	.into()
 }
