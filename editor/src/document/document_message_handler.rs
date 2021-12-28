@@ -1,3 +1,4 @@
+use crate::document::LayerData;
 use crate::frontend::frontend_message_handler::FrontendDocumentDetails;
 use crate::input::InputPreprocessor;
 use crate::message_prelude::*;
@@ -95,7 +96,7 @@ impl DocumentsMessageHandler {
 	}
 
 	// TODO Fix how this doesn't preserve tab order upon loading new document from file>load
-	fn load_document(&mut self, new_document: DocumentMessageHandler, document_id: u64, replace_first_empty: bool, responses: &mut VecDeque<Message>) {
+	fn load_document(&mut self, mut new_document: DocumentMessageHandler, document_id: u64, replace_first_empty: bool, responses: &mut VecDeque<Message>) {
 		// Special case when loading a document on an empty page
 		if replace_first_empty && self.active_document().is_unmodified_default() {
 			responses.push_back(DocumentsMessage::CloseDocument(self.active_document_id).into());
@@ -109,6 +110,31 @@ impl DocumentsMessageHandler {
 		} else {
 			self.document_ids.push(document_id);
 		}
+
+		fn generate_layerdata(path: &mut Vec<LayerId>, new_document: &mut DocumentMessageHandler) -> Result<(), graphene::DocumentError> {
+			new_document.create_layerdata(path);
+			let layer = new_document.graphene_document.layer(path)?;
+			if let graphene::layers::LayerDataType::Folder(f) = &layer.data {
+				for l in f.layer_ids.clone() {
+					path.push(l);
+					generate_layerdata(path, new_document)?;
+					path.pop();
+				}
+			}
+			Ok(())
+		}
+
+		generate_layerdata(&mut Vec::new(), &mut new_document).unwrap();
+
+		responses.extend(
+			new_document
+				.layer_panel(&[])
+				.unwrap()
+				.into_iter()
+				.map(|entry| FrontendMessage::UpdateLayer { data: entry })
+				.map(|msg| msg.into())
+				.collect::<Vec<_>>(),
+		);
 
 		self.documents.insert(document_id, new_document);
 

@@ -252,6 +252,10 @@ impl DocumentMessageHandler {
 		self.layer_data.entry(path.to_vec()).or_insert_with(|| LayerData::new(true))
 	}
 
+	pub fn create_layerdata(&mut self, path: &[LayerId]) {
+		self.layer_data.insert(path.to_vec(), LayerData::new(true));
+	}
+
 	pub fn selected_layers(&self) -> impl Iterator<Item = &[LayerId]> {
 		self.layer_data.iter().filter_map(|(path, data)| data.selected.then(|| path.as_slice()))
 	}
