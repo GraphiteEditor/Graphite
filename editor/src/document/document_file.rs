@@ -171,7 +171,7 @@ impl DocumentMessageHandler {
 			snapping_enabled: true,
 			view_mode: ViewMode::default(),
 		};
-		document.graphene_document.root.transform = document.layerdata(&[]).calculate_offset_transform(ipp.viewport_bounds.size() / 2.);
+		document.graphene_document.root.transform = document.layerdata(&[]).calculate_offset_transform(ipp.viewport_bounds.size() / 2., 0.);
 		document
 	}
 
