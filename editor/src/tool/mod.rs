@@ -119,13 +119,14 @@ impl ToolFsmState {
 
 fn default_tool_options() -> HashMap<ToolType, ToolOptions> {
 	let tool_init = |tool: ToolType| (tool, tool.default_options());
-	std::array::IntoIter::new([
+	[
 		tool_init(ToolType::Select),
 		tool_init(ToolType::Pen),
 		tool_init(ToolType::Line),
 		tool_init(ToolType::Ellipse),
 		tool_init(ToolType::Shape), // TODO: Add more tool defaults
-	])
+	]
+	.into_iter()
 	.collect()
 }
 
