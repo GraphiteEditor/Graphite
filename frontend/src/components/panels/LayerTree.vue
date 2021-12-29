@@ -442,7 +442,7 @@ export default defineComponent({
 		async drop() {
 			this.removeLine();
 			if (this.draggingData) {
-				this.editor.instance.move_layer(this.draggingData.path, this.draggingData.above, this.draggingData.nearestPath);
+				this.editor.instance.move_layer_in_tree(this.draggingData.path, this.draggingData.above, this.draggingData.nearestPath);
 			}
 		},
 		setBlendModeForSelectedLayers() {

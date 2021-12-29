@@ -490,7 +490,7 @@ impl Document {
 				responses.extend(update_thumbnails_upstream(folder));
 				Some(responses)
 			}
-			Operation::PasteLayer { path, layer, insert_index } => {
+			Operation::InsertLayer { path, layer, insert_index } => {
 				let folder = self.folder_mut(path)?;
 				let id = folder.add_layer(layer.clone(), None, *insert_index).ok_or(DocumentError::IndexOutOfBounds)?;
 				let full_path = [path.clone(), vec![id]].concat();

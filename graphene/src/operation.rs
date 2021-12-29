@@ -76,7 +76,7 @@ pub enum Operation {
 		path: Vec<LayerId>,
 		name: String,
 	},
-	PasteLayer {
+	InsertLayer {
 		layer: Layer,
 		path: Vec<LayerId>,
 		insert_index: isize,

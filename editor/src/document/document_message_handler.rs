@@ -1,14 +1,15 @@
+use super::{DocumentMessageHandler, LayerData};
+use crate::consts::DEFAULT_DOCUMENT_NAME;
 use crate::frontend::frontend_message_handler::FrontendDocumentDetails;
 use crate::input::InputPreprocessor;
 use crate::message_prelude::*;
 use graphene::layers::Layer;
 use graphene::{LayerId, Operation as DocumentOperation};
+
 use log::warn;
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, VecDeque};
 
-use super::DocumentMessageHandler;
-use crate::consts::DEFAULT_DOCUMENT_NAME;
+use std::collections::{HashMap, VecDeque};
 
 #[repr(u8)]
 #[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Debug)]
@@ -17,7 +18,8 @@ pub enum Clipboard {
 	User,
 	_ClipboardCount,
 }
-static CLIPBOARD_COUNT: u8 = Clipboard::_ClipboardCount as u8;
+
+const CLIPBOARD_COUNT: u8 = Clipboard::_ClipboardCount as u8;
 
 #[impl_message(Message, Documents)]
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
@@ -59,7 +61,13 @@ pub struct DocumentsMessageHandler {
 	documents: HashMap<u64, DocumentMessageHandler>,
 	document_ids: Vec<u64>,
 	active_document_id: u64,
-	copy_buffer: Vec<Vec<Layer>>,
+	copy_buffer: [Vec<CopyBufferEntry>; CLIPBOARD_COUNT as usize],
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CopyBufferEntry {
+	layer: Layer,
+	layer_data: LayerData,
 }
 
 impl DocumentsMessageHandler {
@@ -155,10 +163,12 @@ impl Default for DocumentsMessageHandler {
 		let starting_key = generate_uuid();
 		documents_map.insert(starting_key, DocumentMessageHandler::default());
 
+		const EMPTY_VEC: Vec<CopyBufferEntry> = vec![];
+
 		Self {
 			documents: documents_map,
 			document_ids: vec![starting_key],
-			copy_buffer: vec![vec![]; CLIPBOARD_COUNT as usize],
+			copy_buffer: [EMPTY_VEC; CLIPBOARD_COUNT as usize],
 			active_document_id: starting_key,
 		}
 	}
@@ -344,11 +354,12 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 				let paths = self.active_document().selected_layers_sorted();
 				self.copy_buffer[clipboard as usize].clear();
 				for path in paths {
-					match self.active_document().graphene_document.layer(&path).map(|t| t.clone()) {
-						Ok(layer) => {
-							self.copy_buffer[clipboard as usize].push(layer);
+					let document = self.active_document();
+					match (document.graphene_document.layer(&path).map(|t| t.clone()), document.layer_data(&path).clone()) {
+						(Ok(layer), layer_data) => {
+							self.copy_buffer[clipboard as usize].push(CopyBufferEntry { layer, layer_data });
 						}
-						Err(e) => warn!("Could not access selected layer {:?}: {:?}", path, e),
+						(Err(e), _) => warn!("Could not access selected layer {:?}: {:?}", path, e),
 					}
 				}
 			}
@@ -369,24 +380,29 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 				);
 			}
 			PasteIntoFolder { clipboard, path, insert_index } => {
-				let paste = |layer: &Layer, responses: &mut VecDeque<_>| {
-					log::trace!("Pasting into folder {:?} as index: {}", path, insert_index);
+				let paste = |entry: &CopyBufferEntry, responses: &mut VecDeque<_>| {
+					log::trace!("Pasting into folder {:?} as index: {}", &path, insert_index);
+
 					responses.push_back(
-						DocumentOperation::PasteLayer {
-							layer: layer.clone(),
+						DocumentOperation::InsertLayer {
+							layer: entry.layer.clone(),
 							path: path.clone(),
 							insert_index,
 						}
 						.into(),
-					)
+					);
+
+					let layer_data_entry = entry.layer_data;
+					responses.push_back(DocumentMessage::UpdateLayerData { path: path.clone(), layer_data_entry }.into());
 				};
+
 				if insert_index == -1 {
-					for layer in self.copy_buffer[clipboard as usize].iter() {
-						paste(layer, responses)
+					for entry in self.copy_buffer[clipboard as usize].iter() {
+						paste(entry, responses)
 					}
 				} else {
-					for layer in self.copy_buffer[clipboard as usize].iter().rev() {
-						paste(layer, responses)
+					for entry in self.copy_buffer[clipboard as usize].iter().rev() {
+						paste(entry, responses)
 					}
 				}
 			}

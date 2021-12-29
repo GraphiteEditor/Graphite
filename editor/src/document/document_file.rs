@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::collections::VecDeque;
 
+use super::document_message_handler::CopyBufferEntry;
 pub use super::layer_panel::*;
 use super::movement_handler::{MovementMessage, MovementMessageHandler};
 use super::transform_layer_handler::{TransformLayerMessage, TransformLayerMessageHandler};
@@ -105,6 +106,10 @@ pub enum DocumentMessage {
 	#[child]
 	TransformLayers(TransformLayerMessage),
 	DispatchOperation(Box<DocumentOperation>),
+	UpdateLayerData {
+		path: Vec<LayerId>,
+		layer_data_entry: LayerData,
+	},
 	SetSelectedLayers(Vec<Vec<LayerId>>),
 	AddSelectedLayers(Vec<Vec<LayerId>>),
 	SelectAllLayers,
@@ -148,7 +153,7 @@ pub enum DocumentMessage {
 		insert_index: isize,
 	},
 	ReorderSelectedLayers(i32), // relative_position,
-	MoveLayer {
+	MoveLayerInTree {
 		layer: Vec<LayerId>,
 		insert_above: bool,
 		neighbor: Vec<LayerId>,
@@ -658,6 +663,9 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					}
 				}
 			}
+			UpdateLayerData { path, layer_data_entry } => {
+				self.layer_data.insert(path, layer_data_entry);
+			}
 			SetSelectedLayers(paths) => {
 				self.layer_data.iter_mut().filter(|(_, layer_data)| layer_data.selected).for_each(|(path, layer_data)| {
 					layer_data.selected = false;
@@ -916,7 +924,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				}
 			}
 			RenameLayer(path, name) => responses.push_back(DocumentOperation::RenameLayer { path, name }.into()),
-			MoveLayer {
+			MoveLayerInTree {
 				layer: target_layer,
 				insert_above,
 				neighbor,
@@ -934,7 +942,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 
 					responses.push_back(DocumentMessage::StartTransaction.into());
 					responses.push_back(
-						DocumentOperation::PasteLayer {
+						DocumentOperation::InsertLayer {
 							layer,
 							insert_index,
 							path: neighbor_path.to_vec(),
@@ -961,7 +969,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			ExportDocument,
 			SaveDocument,
 			SetSnapping,
-			MoveLayer,
+			MoveLayerInTree,
 		);
 
 		if self.layer_data.values().any(|data| data.selected) {
