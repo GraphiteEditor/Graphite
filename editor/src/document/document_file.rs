@@ -177,7 +177,7 @@ impl DocumentMessageHandler {
 
 	pub fn with_name(name: String, ipp: &InputPreprocessor) -> Self {
 		let mut document = Self { name, ..Self::default() };
-		document.graphene_document.root.transform = document.layer_data(&[]).calculate_offset_transform(ipp.viewport_bounds.size() / 2., 0.);
+		document.graphene_document.root.transform = document.movement_handler.calculate_offset_transform(ipp.viewport_bounds.size() / 2.);
 		document
 	}
 
@@ -475,9 +475,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 	fn process_action(&mut self, message: DocumentMessage, ipp: &InputPreprocessor, responses: &mut VecDeque<Message>) {
 		use DocumentMessage::*;
 		match message {
-			Movement(message) => self
-				.movement_handler
-				.process_action(message, (Self::layer_data_mut_no_borrow_self(&mut self.layer_data, &[]), &self.graphene_document, ipp), responses),
+			Movement(message) => self.movement_handler.process_action(message, (&self.graphene_document, ipp), responses),
 			TransformLayers(message) => self
 				.transform_layer_handler
 				.process_action(message, (&mut self.layer_data, &mut self.graphene_document, ipp), responses),
@@ -745,9 +743,9 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					}
 					.into(),
 				);
-				let root_layerdata = self.layer_data(&[]);
+				let document_transform = &self.movement_handler;
 
-				let scale = 0.5 + ASYMPTOTIC_EFFECT + root_layerdata.scale * SCALE_EFFECT;
+				let scale = 0.5 + ASYMPTOTIC_EFFECT + document_transform.scale * SCALE_EFFECT;
 				let viewport_size = ipp.viewport_bounds.size();
 				let viewport_mid = ipp.viewport_bounds.center();
 				let [bounds1, bounds2] = self.graphene_document.visible_layers_bounding_box().unwrap_or([viewport_mid; 2]);
@@ -758,9 +756,9 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				let scrollbar_multiplier = bounds_length - viewport_size;
 				let scrollbar_size = viewport_size / bounds_length;
 
-				let log = root_layerdata.scale.log2();
+				let log = document_transform.scale.log2();
 				let ruler_interval = if log < 0. { 100. * 2_f64.powf(-log.ceil()) } else { 100. / 2_f64.powf(log.ceil()) };
-				let ruler_spacing = ruler_interval * root_layerdata.scale;
+				let ruler_spacing = ruler_interval * document_transform.scale;
 
 				let ruler_origin = self.graphene_document.root.transform.transform_point2(DVec2::ZERO);
 

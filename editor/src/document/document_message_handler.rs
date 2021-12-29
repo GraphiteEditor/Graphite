@@ -95,7 +95,7 @@ impl DocumentsMessageHandler {
 	}
 
 	// TODO Fix how this doesn't preserve tab order upon loading new document from file>load
-	fn load_document(&mut self, mut new_document: DocumentMessageHandler, document_id: u64, replace_first_empty: bool, responses: &mut VecDeque<Message>) {
+	fn load_document(&mut self, new_document: DocumentMessageHandler, document_id: u64, replace_first_empty: bool, responses: &mut VecDeque<Message>) {
 		// Special case when loading a document on an empty page
 		if replace_first_empty && self.active_document().is_unmodified_default() {
 			responses.push_back(DocumentsMessage::CloseDocument(self.active_document_id).into());
