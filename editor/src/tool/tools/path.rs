@@ -111,18 +111,24 @@ impl Fsm for PathToolFsmState {
 						let shape_layer_path = &data.shape_outline_pool[shape_i];
 
 						responses.push_back(
-							Operation::SetShapePathInViewport {
-								path: shape_layer_path.clone(),
-								bez_path: shape_to_draw.path.clone(),
-								transform: shape_to_draw.transform.to_cols_array(),
-							}
+							DocumentMessage::Overlay(
+								Operation::SetShapePathInViewport {
+									path: shape_layer_path.clone(),
+									bez_path: shape_to_draw.path.clone(),
+									transform: shape_to_draw.transform.to_cols_array(),
+								}
+								.into(),
+							)
 							.into(),
 						);
 						responses.push_back(
-							Operation::SetLayerVisibility {
-								path: shape_layer_path.clone(),
-								visible: true,
-							}
+							DocumentMessage::Overlay(
+								Operation::SetLayerVisibility {
+									path: shape_layer_path.clone(),
+									visible: true,
+								}
+								.into(),
+							)
 							.into(),
 						);
 						shape_i += 1;
@@ -146,8 +152,8 @@ impl Fsm for PathToolFsmState {
 								let translation = (anchor_handle_line.1 + BIAS).round() + DVec2::splat(0.5);
 								let transform = DAffine2::from_scale_angle_translation(scale, angle, translation).to_cols_array();
 
-								responses.push_back(Operation::SetLayerTransformInViewport { path: marker.clone(), transform }.into());
-								responses.push_back(Operation::SetLayerVisibility { path: marker, visible: true }.into());
+								responses.push_back(DocumentMessage::Overlay(Operation::SetLayerTransformInViewport { path: marker.clone(), transform }.into()).into());
+								responses.push_back(DocumentMessage::Overlay(Operation::SetLayerVisibility { path: marker, visible: true }.into()).into());
 
 								line_i += 1;
 							}
@@ -161,8 +167,8 @@ impl Fsm for PathToolFsmState {
 								let translation = (anchor - (scale / 2.) + BIAS).round();
 								let transform = DAffine2::from_scale_angle_translation(scale, angle, translation).to_cols_array();
 
-								responses.push_back(Operation::SetLayerTransformInViewport { path: marker.clone(), transform }.into());
-								responses.push_back(Operation::SetLayerVisibility { path: marker, visible: true }.into());
+								responses.push_back(DocumentMessage::Overlay(Operation::SetLayerTransformInViewport { path: marker.clone(), transform }.into()).into());
+								responses.push_back(DocumentMessage::Overlay(Operation::SetLayerVisibility { path: marker, visible: true }.into()).into());
 
 								anchor_i += 1;
 							}
@@ -176,8 +182,8 @@ impl Fsm for PathToolFsmState {
 								let translation = (handle - (scale / 2.) + BIAS).round();
 								let transform = DAffine2::from_scale_angle_translation(scale, angle, translation).to_cols_array();
 
-								responses.push_back(Operation::SetLayerTransformInViewport { path: marker.clone(), transform }.into());
-								responses.push_back(Operation::SetLayerVisibility { path: marker, visible: true }.into());
+								responses.push_back(DocumentMessage::Overlay(Operation::SetLayerTransformInViewport { path: marker.clone(), transform }.into()).into());
+								responses.push_back(DocumentMessage::Overlay(Operation::SetLayerVisibility { path: marker, visible: true }.into()).into());
 
 								handle_i += 1;
 							}
@@ -187,19 +193,19 @@ impl Fsm for PathToolFsmState {
 					// Hide the remaining pooled overlays
 					for i in anchor_i..data.anchor_marker_pool.len() {
 						let marker = data.anchor_marker_pool[i].clone();
-						responses.push_back(Operation::SetLayerVisibility { path: marker, visible: false }.into());
+						responses.push_back(DocumentMessage::Overlay(Operation::SetLayerVisibility { path: marker, visible: false }.into()).into());
 					}
 					for i in handle_i..data.handle_marker_pool.len() {
 						let marker = data.handle_marker_pool[i].clone();
-						responses.push_back(Operation::SetLayerVisibility { path: marker, visible: false }.into());
+						responses.push_back(DocumentMessage::Overlay(Operation::SetLayerVisibility { path: marker, visible: false }.into()).into());
 					}
 					for i in line_i..data.anchor_handle_line_pool.len() {
 						let line = data.anchor_handle_line_pool[i].clone();
-						responses.push_back(Operation::SetLayerVisibility { path: line, visible: false }.into());
+						responses.push_back(DocumentMessage::Overlay(Operation::SetLayerVisibility { path: line, visible: false }.into()).into());
 					}
 					for i in shape_i..data.shape_outline_pool.len() {
 						let shape_i = data.shape_outline_pool[i].clone();
-						responses.push_back(Operation::SetLayerVisibility { path: shape_i, visible: false }.into());
+						responses.push_back(DocumentMessage::Overlay(Operation::SetLayerVisibility { path: shape_i, visible: false }.into()).into());
 					}
 
 					self
@@ -207,16 +213,16 @@ impl Fsm for PathToolFsmState {
 				(_, Abort) => {
 					// Destory the overlay layer pools
 					while let Some(layer) = data.anchor_marker_pool.pop() {
-						responses.push_back(Operation::DeleteLayer { path: layer }.into());
+						responses.push_back(DocumentMessage::Overlay(Operation::DeleteLayer { path: layer }.into()).into());
 					}
 					while let Some(layer) = data.handle_marker_pool.pop() {
-						responses.push_back(Operation::DeleteLayer { path: layer }.into());
+						responses.push_back(DocumentMessage::Overlay(Operation::DeleteLayer { path: layer }.into()).into());
 					}
 					while let Some(layer) = data.anchor_handle_line_pool.pop() {
-						responses.push_back(Operation::DeleteLayer { path: layer }.into());
+						responses.push_back(DocumentMessage::Overlay(Operation::DeleteLayer { path: layer }.into()).into());
 					}
 					while let Some(layer) = data.shape_outline_pool.pop() {
-						responses.push_back(Operation::DeleteLayer { path: layer }.into());
+						responses.push_back(DocumentMessage::Overlay(Operation::DeleteLayer { path: layer }.into()).into());
 					}
 
 					Ready

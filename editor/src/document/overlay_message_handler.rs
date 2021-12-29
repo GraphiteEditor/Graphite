@@ -6,6 +6,7 @@ use graphene::document::Document;
 use graphene::Operation as DocumentOperation;
 
 use graphene::document::Document as GrapheneDocument;
+use graphene::layers::style::ViewMode;
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 
@@ -33,16 +34,23 @@ impl MessageHandler<OverlayMessage, (&mut LayerData, &Document, &InputPreprocess
 		use OverlayMessage::*;
 		match message {
 			DispatchOperation(operation) => match self.overlays_graphene_document.handle_operation(&operation) {
-				Ok(_) => (),
+				Ok(_) => log::debug!("OverlayOperation {:?}", operation),
 				Err(e) => log::error!("OverlayError: {:?}", e),
 			},
 			ClearAllOverlays => todo!(),
 		}
+
+		responses.push_back(
+			FrontendMessage::UpdateOverlays {
+				svg: self.overlays_graphene_document.render_root(ViewMode::Normal),
+			}
+			.into(),
+		);
 	}
 
 	fn actions(&self) -> ActionList {
 		actions!(OverlayMessageDiscriminant;
-			ClearAllOverlays,
+			ClearAllOverlays
 		)
 	}
 }

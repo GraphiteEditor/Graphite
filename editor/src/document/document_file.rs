@@ -483,9 +483,9 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			}
 			CommitTransaction => (),
 			Overlay(message) => {
-				log::debug!("{:?}", message);
 				self.overlay_message_handler
-					.process_action(message, (Self::layer_data_mut_no_borrow_self(&mut self.layer_data, &[]), &self.graphene_document, ipp), responses)
+					.process_action(message, (Self::layer_data_mut_no_borrow_self(&mut self.layer_data, &[]), &self.graphene_document, ipp), responses);
+				// responses.push_back(OverlayMessage::RenderOverlays.into());
 			}
 			ExportDocument => {
 				let bbox = self.graphene_document.visible_layers_bounding_box().unwrap_or([DVec2::ZERO, ipp.viewport_bounds.size()]);
@@ -723,12 +723,6 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				responses.push_back(
 					FrontendMessage::UpdateArtwork {
 						svg: self.graphene_document.render_root(self.view_mode),
-					}
-					.into(),
-				);
-				responses.push_back(
-					FrontendMessage::UpdateOverlays {
-						svg: self.overlay_message_handler.overlays_graphene_document.render_root(self.view_mode),
 					}
 					.into(),
 				);

@@ -126,6 +126,7 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, &InputPreprocessor)> 
 			SelectedLayersChanged => {
 				match self.tool_state.tool_data.active_tool_type {
 					ToolType::Select => responses.push_back(SelectMessage::UpdateSelectionBoundingBox.into()),
+					// TODO resolve RedrawOverlay
 					ToolType::Path => responses.push_back(PathMessage::RedrawOverlay.into()),
 					_ => (),
 				};

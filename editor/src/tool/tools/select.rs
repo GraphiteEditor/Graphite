@@ -141,7 +141,7 @@ impl Fsm for SelectToolFsmState {
 				(_, UpdateSelectionBoundingBox) => {
 					let mut buffer = Vec::new();
 					let response = match (document.selected_layers_bounding_box(), data.bounding_box_path.take()) {
-						(None, Some(path)) => Operation::DeleteLayer { path }.into(),
+						(None, Some(path)) => DocumentMessage::Overlay(Operation::DeleteLayer { path }.into()).into(),
 						(Some([pos1, pos2]), path) => {
 							let path = path.unwrap_or_else(|| add_bounding_box(&mut buffer));
 
@@ -151,7 +151,7 @@ impl Fsm for SelectToolFsmState {
 							let pos1 = pos1 + half_pixel_offset;
 							let pos2 = pos2 - half_pixel_offset;
 							let transform = transform_from_box(pos1, pos2);
-							Operation::SetLayerTransformInViewport { path, transform }.into()
+							DocumentMessage::Overlay(Operation::SetLayerTransformInViewport { path, transform }.into()).into()
 						}
 						(_, _) => Message::NoOp,
 					};
@@ -235,10 +235,13 @@ impl Fsm for SelectToolFsmState {
 					let size = data.drag_current - start + half_pixel_offset;
 
 					responses.push_front(
-						Operation::SetLayerTransformInViewport {
-							path: data.drag_box_id.clone().unwrap(),
-							transform: DAffine2::from_scale_angle_translation(size, 0., start).to_cols_array(),
-						}
+						DocumentMessage::Overlay(
+							Operation::SetLayerTransformInViewport {
+								path: data.drag_box_id.clone().unwrap(),
+								transform: DAffine2::from_scale_angle_translation(size, 0., start).to_cols_array(),
+							}
+							.into(),
+						)
 						.into(),
 					);
 					DrawingBox
@@ -256,15 +259,18 @@ impl Fsm for SelectToolFsmState {
 					let quad = data.selection_quad();
 					responses.push_front(DocumentMessage::AddSelectedLayers(document.graphene_document.intersects_quad_root(quad)).into());
 					responses.push_front(
-						Operation::DeleteLayer {
-							path: data.drag_box_id.take().unwrap(),
-						}
+						DocumentMessage::Overlay(
+							Operation::DeleteLayer {
+								path: data.drag_box_id.take().unwrap(),
+							}
+							.into(),
+						)
 						.into(),
 					);
 					Ready
 				}
 				(_, Abort) => {
-					let mut delete = |path: &mut Option<Vec<LayerId>>| path.take().map(|path| responses.push_front(Operation::DeleteLayer { path }.into()));
+					let mut delete = |path: &mut Option<Vec<LayerId>>| path.take().map(|path| responses.push_front(DocumentMessage::Overlay(Operation::DeleteLayer { path }.into()).into()));
 					delete(&mut data.drag_box_id);
 					delete(&mut data.bounding_box_path);
 					Ready
