@@ -143,7 +143,6 @@ impl Fsm for SelectToolFsmState {
 					let response = match (document.selected_layers_bounding_box(), data.bounding_box_path.take()) {
 						(None, Some(path)) => Operation::DeleteLayer { path }.into(),
 						(Some([pos1, pos2]), path) => {
-							log::debug!("GOT HERE");
 							let path = path.unwrap_or_else(|| add_bounding_box(&mut buffer));
 
 							data.bounding_box_path = Some(path.clone());
