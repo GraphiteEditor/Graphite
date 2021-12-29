@@ -95,7 +95,7 @@ impl DocumentsMessageHandler {
 	}
 
 	// TODO Fix how this doesn't preserve tab order upon loading new document from file>load
-	fn load_document(&mut self, new_document: DocumentMessageHandler, document_id: u64, replace_first_empty: bool, responses: &mut VecDeque<Message>) {
+	fn load_document(&mut self, mut new_document: DocumentMessageHandler, document_id: u64, replace_first_empty: bool, responses: &mut VecDeque<Message>) {
 		// Special case when loading a document on an empty page
 		if replace_first_empty && self.active_document().is_unmodified_default() {
 			responses.push_back(DocumentsMessage::CloseDocument(self.active_document_id).into());
@@ -109,6 +109,15 @@ impl DocumentsMessageHandler {
 		} else {
 			self.document_ids.push(document_id);
 		}
+
+		responses.extend(
+			new_document
+				.layer_data
+				.keys()
+				.filter_map(|path| new_document.layer_panel_entry_from_path(path))
+				.map(|entry| FrontendMessage::UpdateLayer { data: entry }.into())
+				.collect::<Vec<_>>(),
+		);
 
 		self.documents.insert(document_id, new_document);
 
@@ -273,7 +282,7 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 				document,
 				document_is_saved,
 			} => {
-				let document = DocumentMessageHandler::with_name_and_content(document_name, document, ipp);
+				let document = DocumentMessageHandler::with_name_and_content(document_name, document);
 				match document {
 					Ok(mut document) => {
 						document.set_save_state(document_is_saved);
@@ -307,7 +316,7 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 				let document = self.documents.get(&id).unwrap();
 				responses.push_back(
 					FrontendMessage::AutoSaveDocument {
-						document: document.graphene_document.serialize_document(),
+						document: document.serialize_document(),
 						details: FrontendDocumentDetails {
 							is_saved: document.is_saved(),
 							id,

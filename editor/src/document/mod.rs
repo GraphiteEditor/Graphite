@@ -3,6 +3,7 @@ mod document_message_handler;
 pub mod layer_panel;
 mod movement_handler;
 mod transform_layer_handler;
+mod vectorize_layerdata;
 
 #[doc(inline)]
 pub use document_file::LayerData;
