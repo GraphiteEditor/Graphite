@@ -4,6 +4,7 @@ use std::collections::VecDeque;
 pub use super::layer_panel::*;
 use super::movement_handler::{MovementMessage, MovementMessageHandler};
 use super::transform_layer_handler::{TransformLayerMessage, TransformLayerMessageHandler};
+use super::vectorize_layerdata;
 
 use crate::consts::DEFAULT_DOCUMENT_NAME;
 use crate::consts::{ASYMPTOTIC_EFFECT, FILE_EXPORT_SUFFIX, FILE_SAVE_SUFFIX, SCALE_EFFECT, SCROLLBAR_SPACING};
@@ -58,16 +59,21 @@ pub struct VectorManipulatorShape {
 	pub transform: DAffine2,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct DocumentMessageHandler {
 	pub graphene_document: GrapheneDocument,
+	#[serde(skip)]
 	pub document_undo_history: Vec<DocumentSave>,
+	#[serde(skip)]
 	pub document_redo_history: Vec<DocumentSave>,
 	pub saved_document_identifier: u64,
 	pub name: String,
+	#[serde(with = "vectorize_layerdata")]
 	pub layer_data: HashMap<Vec<LayerId>, LayerData>,
 	layer_range_selection_reference: Vec<LayerId>,
+	#[serde(skip)]
 	movement_handler: MovementMessageHandler,
+	#[serde(skip)]
 	transform_layer_handler: TransformLayerMessageHandler,
 	pub snapping_enabled: bool,
 	pub view_mode: ViewMode,
@@ -115,6 +121,7 @@ pub enum DocumentMessage {
 	ToggleLayerVisibility(Vec<LayerId>),
 	FlipSelectedLayers(FlipAxis),
 	ToggleLayerExpansion(Vec<LayerId>),
+	SetLayerExpansion(Vec<LayerId>, bool),
 	FolderChanged(Vec<LayerId>),
 	LayerChanged(Vec<LayerId>),
 	DocumentStructureChanged,
@@ -157,30 +164,27 @@ impl From<DocumentOperation> for Message {
 }
 
 impl DocumentMessageHandler {
+	pub fn serialize_document(&self) -> String {
+		let val = serde_json::to_string(self);
+		// We fully expect the serialization to succeed
+		val.unwrap()
+	}
+
+	pub fn deserialize_document(serialized_content: &str) -> Result<Self, DocumentError> {
+		log::info!("Deserialising: {:?}", serialized_content);
+		serde_json::from_str(serialized_content).map_err(|e| DocumentError::InvalidFile(e.to_string()))
+	}
+
 	pub fn with_name(name: String, ipp: &InputPreprocessor) -> Self {
-		let mut document = Self {
-			graphene_document: GrapheneDocument::default(),
-			document_undo_history: Vec::new(),
-			document_redo_history: Vec::new(),
-			saved_document_identifier: 0,
-			name,
-			layer_data: vec![(vec![], LayerData::new(true))].into_iter().collect(),
-			layer_range_selection_reference: Vec::new(),
-			movement_handler: MovementMessageHandler::default(),
-			transform_layer_handler: TransformLayerMessageHandler::default(),
-			snapping_enabled: true,
-			view_mode: ViewMode::default(),
-		};
-		document.graphene_document.root.transform = document.layerdata(&[]).calculate_offset_transform(ipp.viewport_bounds.size() / 2., 0.);
+		let mut document = Self { name, ..Self::default() };
+		document.graphene_document.root.transform = document.layer_data(&[]).calculate_offset_transform(ipp.viewport_bounds.size() / 2., 0.);
 		document
 	}
 
-	pub fn with_name_and_content(name: String, serialized_content: String, ipp: &InputPreprocessor) -> Result<Self, EditorError> {
-		let mut document = Self::with_name(name, ipp);
-		let internal_document = GrapheneDocument::with_content(&serialized_content);
-		match internal_document {
-			Ok(handle) => {
-				document.graphene_document = handle;
+	pub fn with_name_and_content(name: String, serialized_content: String) -> Result<Self, EditorError> {
+		match Self::deserialize_document(&serialized_content) {
+			Ok(mut document) => {
+				document.name = name;
 				Ok(document)
 			}
 			Err(DocumentError::InvalidFile(msg)) => Err(EditorError::Document(msg)),
@@ -199,7 +203,7 @@ impl DocumentMessageHandler {
 		if self.graphene_document.layer(path).ok()?.overlay {
 			return None;
 		}
-		self.layer_data(path).selected = true;
+		self.layer_data_mut(path).selected = true;
 		let data = self.layer_panel_entry(path.to_vec()).ok()?;
 		(!path.is_empty()).then(|| FrontendMessage::UpdateLayer { data }.into())
 	}
@@ -244,12 +248,8 @@ impl DocumentMessageHandler {
 		shapes.collect::<Vec<VectorManipulatorShape>>()
 	}
 
-	pub fn layerdata(&self, path: &[LayerId]) -> &LayerData {
-		self.layer_data.get(path).expect("Layerdata does not exist")
-	}
-
-	pub fn layerdata_mut(&mut self, path: &[LayerId]) -> &mut LayerData {
-		self.layer_data.entry(path.to_vec()).or_insert_with(|| LayerData::new(true))
+	pub fn create_layer_data(&mut self, path: &[LayerId]) {
+		self.layer_data.insert(path.to_vec(), LayerData::new(true));
 	}
 
 	pub fn selected_layers(&self) -> impl Iterator<Item = &[LayerId]> {
@@ -265,7 +265,7 @@ impl DocumentMessageHandler {
 				LayerDataType::Shape(_) => (),
 				LayerDataType::Folder(ref folder) => {
 					path.push(*id);
-					if self.layerdata(path).expanded {
+					if self.layer_data(path).expanded {
 						structure.push(space);
 						self.serialize_structure(folder, structure, data, path);
 						space = 0;
@@ -352,8 +352,18 @@ impl DocumentMessageHandler {
 		self.layers_sorted(Some(false))
 	}
 
-	pub fn layer_data(&mut self, path: &[LayerId]) -> &mut LayerData {
-		layer_data(&mut self.layer_data, path)
+	pub fn layer_data(&self, path: &[LayerId]) -> &LayerData {
+		self.layer_data.get(path).expect("Layerdata does not exist")
+	}
+
+	pub fn layer_data_mut(&mut self, path: &[LayerId]) -> &mut LayerData {
+		Self::layer_data_mut_no_borrow_self(&mut self.layer_data, path)
+	}
+
+	pub fn layer_data_mut_no_borrow_self<'a>(layer_data: &'a mut HashMap<Vec<LayerId>, LayerData>, path: &[LayerId]) -> &'a mut LayerData {
+		layer_data
+			.get_mut(path)
+			.unwrap_or_else(|| panic!("Layer data cannot be found because the path {:?} does not exist", path))
 	}
 
 	pub fn backup(&mut self, responses: &mut VecDeque<Message>) {
@@ -431,7 +441,7 @@ impl DocumentMessageHandler {
 	}
 
 	pub fn layer_panel_entry(&mut self, path: Vec<LayerId>) -> Result<LayerPanelEntry, EditorError> {
-		let data: LayerData = *layer_data(&mut self.layer_data, &path);
+		let data: LayerData = *self.layer_data_mut(&path);
 		let layer = self.graphene_document.layer(&path)?;
 		let entry = layer_panel_entry(&data, self.graphene_document.multiply_transforms(&path)?, layer, path);
 		Ok(entry)
@@ -442,26 +452,22 @@ impl DocumentMessageHandler {
 	pub fn layer_panel(&mut self, path: &[LayerId]) -> Result<Vec<LayerPanelEntry>, EditorError> {
 		let folder = self.graphene_document.folder(path)?;
 		let paths: Vec<Vec<LayerId>> = folder.layer_ids.iter().map(|id| [path, &[*id]].concat()).collect();
-		let data: Vec<LayerData> = paths.iter().map(|path| *layer_data(&mut self.layer_data, path)).collect();
-		let folder = self.graphene_document.folder(path)?;
-		let entries = folder
-			.layers()
-			.iter()
-			.zip(paths.iter().zip(data))
-			.rev()
-			.filter(|(layer, _)| !layer.overlay)
-			.map(|(layer, (path, data))| {
-				layer_panel_entry(
-					&data,
-					self.graphene_document
-						.generate_transform_across_scope(path, Some(self.graphene_document.root.transform.inverse()))
-						.unwrap(),
-					layer,
-					path.to_vec(),
-				)
-			})
-			.collect();
+		let entries = paths.iter().rev().filter_map(|path| self.layer_panel_entry_from_path(path)).collect();
 		Ok(entries)
+	}
+
+	pub fn layer_panel_entry_from_path(&self, path: &[LayerId]) -> Option<LayerPanelEntry> {
+		let layer_data = self.layer_data(path);
+		let transform = self
+			.graphene_document
+			.generate_transform_across_scope(path, Some(self.graphene_document.root.transform.inverse()))
+			.ok()?;
+		let layer = self.graphene_document.layer(path).ok()?;
+
+		match layer.overlay {
+			true => None,
+			false => Some(layer_panel_entry(layer_data, transform, layer, path.to_vec())),
+		}
 	}
 }
 
@@ -471,7 +477,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 		match message {
 			Movement(message) => self
 				.movement_handler
-				.process_action(message, (layer_data(&mut self.layer_data, &[]), &self.graphene_document, ipp), responses),
+				.process_action(message, (Self::layer_data_mut_no_borrow_self(&mut self.layer_data, &[]), &self.graphene_document, ipp), responses),
 			TransformLayers(message) => self
 				.transform_layer_handler
 				.process_action(message, (&mut self.layer_data, &mut self.graphene_document, ipp), responses),
@@ -521,7 +527,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				};
 				responses.push_back(
 					FrontendMessage::SaveDocument {
-						document: self.graphene_document.serialize_document(),
+						document: self.serialize_document(),
 						name,
 					}
 					.into(),
@@ -530,8 +536,8 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			CreateEmptyFolder(mut path) => {
 				let id = generate_uuid();
 				path.push(id);
-				self.layerdata_mut(&path).expanded = true;
-				responses.push_back(DocumentOperation::CreateFolder { path }.into())
+				responses.push_back(DocumentOperation::CreateFolder { path: path.clone() }.into());
+				responses.push_back(DocumentMessage::SetLayerExpansion(path, true).into());
 			}
 			GroupSelectedLayers => {
 				let selected_layers = self.selected_layers();
@@ -574,7 +580,12 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				responses.push_back(DocumentOperation::ToggleLayerVisibility { path }.into());
 			}
 			ToggleLayerExpansion(path) => {
-				self.layer_data(&path).expanded ^= true;
+				self.layer_data_mut(&path).expanded ^= true;
+				responses.push_back(DocumentStructureChanged.into());
+				responses.push_back(LayerChanged(path).into())
+			}
+			SetLayerExpansion(path, is_expanded) => {
+				self.layer_data_mut(&path).expanded = is_expanded;
 				responses.push_back(DocumentStructureChanged.into());
 				responses.push_back(LayerChanged(path).into())
 			}
@@ -621,7 +632,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				} else {
 					if ctrl {
 						// Toggle selection when holding ctrl
-						let layer = self.layerdata_mut(&selected);
+						let layer = self.layer_data_mut(&selected);
 						layer.selected = !layer.selected;
 						responses.push_back(LayerChanged(selected.clone()).into());
 					} else {
@@ -734,7 +745,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					}
 					.into(),
 				);
-				let root_layerdata = self.layerdata(&[]);
+				let root_layerdata = self.layer_data(&[]);
 
 				let scale = 0.5 + ASYMPTOTIC_EFFECT + root_layerdata.scale * SCALE_EFFECT;
 				let viewport_size = ipp.viewport_bounds.size();
