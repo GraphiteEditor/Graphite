@@ -112,11 +112,10 @@ impl DocumentsMessageHandler {
 
 		responses.extend(
 			new_document
-				.layer_panel(&[])
-				.unwrap()
-				.into_iter()
-				.map(|entry| FrontendMessage::UpdateLayer { data: entry })
-				.map(|msg| msg.into())
+				.layer_data
+				.keys()
+				.filter_map(|path| new_document.layer_panel_entry_from_path(path))
+				.map(|entry| FrontendMessage::UpdateLayer { data: entry }.into())
 				.collect::<Vec<_>>(),
 		);
 
