@@ -15,7 +15,7 @@
 			</PopoverButton>
 		</LayoutRow>
 		<LayoutRow :class="'layer-tree scrollable-y'">
-			<LayoutCol :class="'list'" ref="layer_tree_list" @click="deselectAllLayers" @dragover="updateLine($event)" @dragend="drop()">
+			<LayoutCol :class="'list'" ref="layerTreeList" @click="deselectAllLayers" @dragover="updateLine($event)" @dragend="drop()">
 				<div class="layer-row" v-for="(layer, index) in layers" :key="layer.path">
 					<div class="layer-visibility">
 						<IconButton
@@ -81,35 +81,6 @@
 	}
 
 	.layer-tree {
-		position: relative;
-
-		.insert-mark {
-			position: relative;
-			margin-right: 16px;
-			height: 0;
-			z-index: 2;
-
-			&::after {
-				content: "";
-				position: absolute;
-				background: var(--color-accent-hover);
-				width: 100%;
-				height: 6px;
-			}
-
-			&:not(:first-child, :last-child) {
-				top: -2px;
-			}
-
-			&:first-child::after {
-				top: 0;
-			}
-
-			&:last-child::after {
-				bottom: 0;
-			}
-		}
-
 		.layer-row {
 			display: flex;
 			height: 36px;
@@ -223,6 +194,33 @@
 				z-index: 0;
 			}
 		}
+
+		.insert-mark {
+			position: relative;
+			margin-right: 16px;
+			height: 0;
+			z-index: 2;
+
+			&::after {
+				content: "";
+				position: absolute;
+				background: var(--color-accent-hover);
+				width: 100%;
+				height: 6px;
+			}
+
+			&:not(:first-child, :last-child) {
+				top: -2px;
+			}
+
+			&:first-child::after {
+				top: 0;
+			}
+
+			&:last-child::after {
+				bottom: 0;
+			}
+		}
 	}
 }
 </style>
@@ -283,6 +281,10 @@ const blendModeEntries: SectionsOfMenuListEntries<BlendMode> = [
 	],
 ];
 
+const RANGE_TO_INSERT_WITHIN_BOTTOM_FOLDER_NOT_ROOT = 40;
+const LAYER_LEFT_MARGIN_OFFSET = 28;
+const LAYER_LEFT_INDENT_OFFSET = 16;
+
 export default defineComponent({
 	inject: ["editor"],
 	data() {
@@ -338,10 +340,10 @@ export default defineComponent({
 			});
 		},
 		closest(tree: HTMLElement, clientY: number): [BigUint64Array, boolean, Node] {
-			const { children } = tree;
+			const treeChildren = tree.children;
 
-			// Closest distance to Y centre of row.
-			let closest = Number.MAX_VALUE;
+			// Closest distance to the middle of the row along the Y axis
+			let closest = Infinity;
 
 			// The nearest row parent (element of the tree)
 			let nearestElement = tree.lastChild as Node;
@@ -352,41 +354,42 @@ export default defineComponent({
 			// Item goes above or below the mouse
 			let above = false;
 
-			for (let i = 0; i < children.length; i += 1) {
-				if (children[i].childElementCount > 2) {
-					const child = children[i].children[2] as HTMLElement;
-					const index = child.getAttribute("data-index");
+			Array.from(treeChildren).forEach((treeChild) => {
+				if (treeChild.childElementCount <= 2) return;
 
-					const rect = child.getBoundingClientRect();
-					const position = rect.top + rect.height / 2;
-					const distance = position - clientY;
+				const child = treeChild.children[2] as HTMLElement;
 
-					if (index) {
-						const layer = this.layers[parseInt(index, 10)];
+				const indexAttribute = child.getAttribute("data-index");
+				if (!indexAttribute) return;
+				const layer = this.layers[parseInt(indexAttribute, 10)];
 
-						// Inserting above current row
-						if (distance > 0 && distance < closest) {
-							closest = distance;
-							nearestPath = layer.path;
-							above = true;
-							if (child.parentNode) {
-								nearestElement = child.parentNode;
-							}
-						} // Inserting below current row
-						else if (distance < 0 && distance > -40 && -distance < closest && layer.layer_type !== LayerTypeOptions.Folder) {
-							closest = -distance;
-							nearestPath = layer.path;
-							if (child.parentNode && child.parentNode.nextSibling) {
-								nearestElement = child.parentNode.nextSibling;
-							}
-						}
-						// Allow inserting with no nesting at the end of the panel
-						else if (closest === Number.MAX_VALUE) {
-							nearestPath = layer.path.slice(0, 1);
-						}
+				const rect = child.getBoundingClientRect();
+				const position = rect.top + rect.height / 2;
+				const distance = position - clientY;
+
+				// Inserting above current row
+				if (distance > 0 && distance < closest) {
+					closest = distance;
+					nearestPath = layer.path;
+					above = true;
+					if (child.parentNode) {
+						nearestElement = child.parentNode;
 					}
 				}
-			}
+				// Inserting below current row
+				else if (distance > -closest && distance > -RANGE_TO_INSERT_WITHIN_BOTTOM_FOLDER_NOT_ROOT && distance < 0 && layer.layer_type !== LayerTypeOptions.Folder) {
+					closest = -distance;
+					nearestPath = layer.path;
+					if (child.parentNode && child.parentNode.nextSibling) {
+						nearestElement = child.parentNode.nextSibling;
+					}
+				}
+				// Inserting with no nesting at the end of the panel
+				else if (closest === Infinity) {
+					nearestPath = layer.path.slice(0, 1);
+				}
+			});
+
 			return [nearestPath, above, nearestElement];
 		},
 		async dragStart(event: DragEvent, layer: LayerPanelEntry) {
@@ -395,7 +398,8 @@ export default defineComponent({
 				event.dataTransfer.dropEffect = "move";
 				event.dataTransfer.effectAllowed = "move";
 			}
-			const tree = (this.$refs.layer_tree_list as typeof LayoutCol).$el;
+
+			const tree = (this.$refs.layerTreeList as typeof LayoutCol).$el;
 
 			// Create the insert line
 			const insertLine = document.createElement("div") as HTMLDivElement;
@@ -406,7 +410,7 @@ export default defineComponent({
 
 			// Set the initial state of the line
 			if (nearestElement.parentNode) {
-				insertLine.style.marginLeft = `${28 + nearestPath.length * 16}px`;
+				insertLine.style.marginLeft = `${LAYER_LEFT_MARGIN_OFFSET + LAYER_LEFT_INDENT_OFFSET * nearestPath.length}px`;
 				tree.insertBefore(insertLine, nearestElement);
 			}
 
@@ -416,7 +420,7 @@ export default defineComponent({
 			// Stop the drag from being shown as cancelled
 			event.preventDefault();
 
-			const tree = (this.$refs.layer_tree_list as typeof LayoutCol).$el as HTMLElement;
+			const tree = (this.$refs.layerTreeList as typeof LayoutCol).$el as HTMLElement;
 
 			const [nearestPath, above, nearestElement] = this.closest(tree, event.clientY);
 
@@ -425,7 +429,7 @@ export default defineComponent({
 				this.draggingData.above = above;
 
 				if (nearestElement.parentNode) {
-					this.draggingData.insertLine.style.marginLeft = `${28 + nearestPath.length * 16}px`;
+					this.draggingData.insertLine.style.marginLeft = `${LAYER_LEFT_MARGIN_OFFSET + LAYER_LEFT_INDENT_OFFSET * nearestPath.length}px`;
 					tree.insertBefore(this.draggingData.insertLine, nearestElement);
 				}
 			}
