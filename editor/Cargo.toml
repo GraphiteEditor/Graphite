@@ -15,6 +15,7 @@ log = "0.4"
 bitflags = "1.2.1"
 thiserror = "1.0.24"
 serde = { version = "1.0", features = ["derive"] }
+serde_json = { version = "1.0" }
 graphite-proc-macros = { path = "../proc-macros" }
 glam = { version="0.17", features = ["serde"] }
 rand_chacha = "0.3.1"
