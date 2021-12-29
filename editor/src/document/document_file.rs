@@ -205,6 +205,8 @@ impl DocumentMessageHandler {
 	}
 
 	fn select_layer(&mut self, path: &[LayerId]) -> Option<Message> {
+		println!("Select_layer fail: {:?}", self.all_layers_sorted());
+
 		self.layer_data_mut(path).selected = true;
 		let data = self.layer_panel_entry(path.to_vec()).ok()?;
 		(!path.is_empty()).then(|| FrontendMessage::UpdateLayer { data }.into())
@@ -572,7 +574,8 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				}
 			}
 			ToggleLayerVisibility(path) => {
-				responses.push_back(DocumentOperation::ToggleLayerVisibility { path }.into());
+				responses.push_back(DocumentOperation::ToggleLayerVisibility { path: path.clone() }.into());
+				responses.push_back(OverlayMessage::UpdateAssociatedoOverlay(path).into());
 			}
 			ToggleLayerExpansion(path) => {
 				self.layer_data_mut(&path).expanded ^= true;
