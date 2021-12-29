@@ -354,16 +354,7 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 				}
 			}
 			Cut(clipboard) => {
-				let paths = self.active_document().selected_layers_sorted();
-				self.copy_buffer[clipboard as usize].clear();
-				for path in paths {
-					match self.active_document().graphene_document.layer(&path).map(|t| t.clone()) {
-						Ok(layer) => {
-							self.copy_buffer[clipboard as usize].push(layer);
-						}
-						Err(e) => warn!("Could not access selected layer {:?}: {:?}", path, e),
-					}
-				}
+				responses.push_back(Copy(clipboard).into());
 				responses.push_back(DeleteSelectedLayers.into());
 			}
 			Paste(clipboard) => {
