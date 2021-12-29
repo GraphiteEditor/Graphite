@@ -121,6 +121,7 @@ pub enum DocumentMessage {
 	ToggleLayerVisibility(Vec<LayerId>),
 	FlipSelectedLayers(FlipAxis),
 	ToggleLayerExpansion(Vec<LayerId>),
+	SetLayerExpansion(Vec<LayerId>, bool),
 	FolderChanged(Vec<LayerId>),
 	LayerChanged(Vec<LayerId>),
 	DocumentStructureChanged,
@@ -535,8 +536,8 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			CreateEmptyFolder(mut path) => {
 				let id = generate_uuid();
 				path.push(id);
-				self.layer_data_mut(&path).expanded = true;
-				responses.push_back(DocumentOperation::CreateFolder { path }.into())
+				responses.push_back(DocumentOperation::CreateFolder { path: path.clone() }.into());
+				responses.push_back(DocumentMessage::SetLayerExpansion(path, true).into());
 			}
 			GroupSelectedLayers => {
 				let selected_layers = self.selected_layers();
@@ -580,6 +581,11 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			}
 			ToggleLayerExpansion(path) => {
 				self.layer_data_mut(&path).expanded ^= true;
+				responses.push_back(DocumentStructureChanged.into());
+				responses.push_back(LayerChanged(path).into())
+			}
+			SetLayerExpansion(path, is_expanded) => {
+				self.layer_data_mut(&path).expanded = is_expanded;
 				responses.push_back(DocumentStructureChanged.into());
 				responses.push_back(LayerChanged(path).into())
 			}
