@@ -35,10 +35,6 @@ impl LayerData {
 	}
 }
 
-pub fn layer_data<'a>(layer_data: &'a mut HashMap<Vec<LayerId>, LayerData>, path: &[LayerId]) -> &'a mut LayerData {
-	layer_data.get_mut(path).expect(&format!("Layer data cannot be found because the path {:?} does not exist", path))
-}
-
 pub fn layer_panel_entry(layer_data: &LayerData, transform: DAffine2, layer: &Layer, path: Vec<LayerId>) -> LayerPanelEntry {
 	let layer_type: LayerType = (&layer.data).into();
 	let name = layer.name.clone().unwrap_or_else(|| format!("Unnamed {}", layer_type));
