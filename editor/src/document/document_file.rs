@@ -660,7 +660,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			}
 			SetSelectedLayers(paths) => {
 				self.layer_data.iter_mut().filter(|(_, layer_data)| layer_data.selected).for_each(|(path, layer_data)| {
-					layer_data.selected = false; // TODO:: MARKER (remove this comment)
+					layer_data.selected = false;
 					responses.push_back(LayerChanged(path.clone()).into())
 				});
 
