@@ -63,7 +63,7 @@ impl Fsm for FillToolFsmState {
 		event: ToolMessage,
 		document: &DocumentMessageHandler,
 		tool_data: &DocumentToolData,
-		data: &mut Self::ToolData,
+		_data: &mut Self::ToolData,
 		input: &InputPreprocessor,
 		responses: &mut VecDeque<Message>,
 	) -> Self {

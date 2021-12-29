@@ -103,6 +103,10 @@ impl Layer {
 		}
 	}
 
+	pub fn iter(&self) -> LayerIter<'_> {
+		LayerIter { stack: vec![self] }
+	}
+
 	pub fn render(&mut self, transforms: &mut Vec<DAffine2>, view_mode: ViewMode) -> &str {
 		if !self.visible {
 			return "";
@@ -173,6 +177,43 @@ impl Clone for Layer {
 			cache_dirty: true,
 			blend_mode: self.blend_mode,
 			opacity: self.opacity,
+		}
+	}
+}
+
+impl<'a> IntoIterator for &'a Layer {
+	type Item = &'a Layer;
+	type IntoIter = LayerIter<'a>;
+
+	fn into_iter(self) -> Self::IntoIter {
+		self.iter()
+	}
+}
+
+#[derive(Debug)]
+pub struct LayerIter<'a> {
+	pub stack: Vec<&'a Layer>,
+}
+
+impl Default for LayerIter<'_> {
+	fn default() -> Self {
+		Self { stack: vec![] }
+	}
+}
+
+impl<'a> Iterator for LayerIter<'a> {
+	type Item = &'a Layer;
+
+	fn next(&mut self) -> Option<Self::Item> {
+		match self.stack.pop() {
+			Some(layer) => {
+				if let LayerDataType::Folder(folder) = &layer.data {
+					let layers = folder.layers();
+					self.stack.extend(layers);
+				};
+				Some(layer)
+			}
+			None => None,
 		}
 	}
 }

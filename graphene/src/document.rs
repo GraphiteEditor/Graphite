@@ -1,3 +1,4 @@
+use crate::consts::GRAPHENE_DOCUMENT_VERSION;
 use std::{
 	cmp::max,
 	collections::hash_map::DefaultHasher,
@@ -19,6 +20,7 @@ pub struct Document {
 	/// This identifier is not a hash and is not guaranteed to be equal for equivalent documents.
 	#[serde(skip)]
 	pub state_identifier: DefaultHasher,
+	pub graphene_document_version: String,
 }
 
 impl Default for Document {
@@ -26,15 +28,12 @@ impl Default for Document {
 		Self {
 			root: Layer::new(LayerDataType::Folder(Folder::default()), DAffine2::IDENTITY.to_cols_array()),
 			state_identifier: DefaultHasher::new(),
+			graphene_document_version: GRAPHENE_DOCUMENT_VERSION.to_string(),
 		}
 	}
 }
 
 impl Document {
-	pub fn with_content(serialized_content: &str) -> Result<Self, DocumentError> {
-		serde_json::from_str(serialized_content).map_err(|e| DocumentError::InvalidFile(e.to_string()))
-	}
-
 	/// Wrapper around render, that returns the whole document as a Response.
 	pub fn render_root(&mut self, mode: ViewMode) -> String {
 		self.root.render(&mut vec![], mode);
@@ -43,12 +42,6 @@ impl Document {
 
 	pub fn current_state_identifier(&self) -> u64 {
 		self.state_identifier.finish()
-	}
-
-	pub fn serialize_document(&self) -> String {
-		let val = serde_json::to_string(self);
-		// We fully expect the serialization to succeed
-		val.unwrap()
 	}
 
 	/// Checks whether each layer under `path` intersects with the provided `quad` and adds all intersection layers as paths to `intersections`.
@@ -497,9 +490,19 @@ impl Document {
 				let layer = self.layer(path)?.clone();
 				let (folder_path, _) = split_path(path.as_slice()).unwrap_or_else(|_| (&[], 0));
 				let folder = self.folder_mut(folder_path)?;
-				folder.add_layer(layer, None, -1).ok_or(DocumentError::IndexOutOfBounds)?;
-				self.mark_as_dirty(&path[..path.len() - 1])?;
-				Some(vec![DocumentChanged, FolderChanged { path: folder_path.to_vec() }])
+				if let Some(new_layer_id) = folder.add_layer(layer, None, -1) {
+					let new_path = [folder_path, &[new_layer_id]].concat();
+					self.mark_as_dirty(folder_path)?;
+					Some(
+						[
+							vec![DocumentChanged, CreatedLayer { path: new_path }, FolderChanged { path: folder_path.to_vec() }],
+							update_thumbnails_upstream(path.as_slice()),
+						]
+						.concat(),
+					)
+				} else {
+					return Err(DocumentError::IndexOutOfBounds);
+				}
 			}
 			Operation::RenameLayer { path, name } => {
 				self.layer_mut(path)?.name = Some(name.clone());

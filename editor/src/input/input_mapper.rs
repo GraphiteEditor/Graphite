@@ -4,6 +4,7 @@ use super::{
 	keyboard::{Key, KeyStates, NUMBER_OF_KEYS},
 	InputPreprocessor,
 };
+use crate::document::Clipboard::*;
 use crate::message_prelude::*;
 use crate::tool::ToolType;
 
@@ -133,7 +134,7 @@ impl Default for Mapping {
 		// it as an available action in the respective message handler file (such as the bottom of `document_message_handler.rs`)
 		let mappings = mapping![
 			// Higher priority than entries in sections below
-			entry! {action=DocumentsMessage::Paste, key_down=KeyV, modifiers=[KeyControl]},
+			entry! {action=DocumentsMessage::Paste(User), key_down=KeyV, modifiers=[KeyControl]},
 			entry! {action=MovementMessage::EnableSnapping, key_down=KeyShift},
 			entry! {action=MovementMessage::DisableSnapping, key_up=KeyShift},
 			// Transform layers
@@ -149,7 +150,7 @@ impl Default for Mapping {
 			entry! {action=TransformLayerMessage::TypeDecimalPoint, key_down=KeyPeriod},
 			entry! {action=TransformLayerMessage::MouseMove{slow_key: KeyShift, snap_key: KeyControl}, triggers=[KeyShift, KeyControl]},
 			// Select
-			entry! {action=SelectMessage::MouseMove, message=InputMapperMessage::PointerMove},
+			entry! {action=SelectMessage::MouseMove{snap_angle: KeyShift}, message=InputMapperMessage::PointerMove},
 			entry! {action=SelectMessage::DragStart{add_to_selection: KeyShift}, key_down=Lmb},
 			entry! {action=SelectMessage::DragStop, key_up=Lmb},
 			entry! {action=SelectMessage::Abort, key_down=Rmb},
@@ -207,7 +208,7 @@ impl Default for Mapping {
 			// Editor Actions
 			entry! {action=FrontendMessage::OpenDocumentBrowse, key_down=KeyO, modifiers=[KeyControl]},
 			// Document Actions
-			entry! {action=DocumentsMessage::Paste, key_down=KeyV, modifiers=[KeyControl]},
+			entry! {action=DocumentsMessage::Paste(User), key_down=KeyV, modifiers=[KeyControl]},
 			entry! {action=DocumentMessage::Redo, key_down=KeyZ, modifiers=[KeyControl, KeyShift]},
 			entry! {action=DocumentMessage::Undo, key_down=KeyZ, modifiers=[KeyControl]},
 			entry! {action=DocumentMessage::DeselectAllLayers, key_down=KeyA, modifiers=[KeyControl, KeyAlt]},
@@ -252,7 +253,7 @@ impl Default for Mapping {
 			entry! {action=DocumentsMessage::CloseAllDocumentsWithConfirmation, key_down=KeyW, modifiers=[KeyControl, KeyAlt]},
 			entry! {action=DocumentsMessage::CloseActiveDocumentWithConfirmation, key_down=KeyW, modifiers=[KeyControl]},
 			entry! {action=DocumentMessage::DuplicateSelectedLayers, key_down=KeyD, modifiers=[KeyControl]},
-			entry! {action=DocumentsMessage::Copy, key_down=KeyC, modifiers=[KeyControl]},
+			entry! {action=DocumentsMessage::Copy(User), key_down=KeyC, modifiers=[KeyControl]},
 			entry! {action=DocumentMessage::GroupSelectedLayers, key_down=KeyG, modifiers=[KeyControl]},
 			// Nudging
 			entry! {action=DocumentMessage::NudgeSelectedLayers(-SHIFT_NUDGE_AMOUNT, -SHIFT_NUDGE_AMOUNT), key_down=KeyArrowUp, modifiers=[KeyShift, KeyArrowLeft]},
