@@ -10,15 +10,25 @@ use std::collections::{HashMap, VecDeque};
 use super::DocumentMessageHandler;
 use crate::consts::DEFAULT_DOCUMENT_NAME;
 
+#[repr(u8)]
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Clipboard {
+	System,
+	User,
+	_ClipboardCount,
+}
+static CLIPBOARD_COUNT: u8 = Clipboard::_ClipboardCount as u8;
+
 #[impl_message(Message, Documents)]
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub enum DocumentsMessage {
-	Copy,
+	Copy(Clipboard),
 	PasteIntoFolder {
+		clipboard: Clipboard,
 		path: Vec<LayerId>,
 		insert_index: isize,
 	},
-	Paste,
+	Paste(Clipboard),
 	SelectDocument(u64),
 	CloseDocument(u64),
 	#[child]
@@ -49,7 +59,7 @@ pub struct DocumentsMessageHandler {
 	documents: HashMap<u64, DocumentMessageHandler>,
 	document_ids: Vec<u64>,
 	active_document_id: u64,
-	copy_buffer: Vec<Layer>,
+	copy_buffer: Vec<Vec<Layer>>,
 }
 
 impl DocumentsMessageHandler {
@@ -139,7 +149,7 @@ impl Default for DocumentsMessageHandler {
 		Self {
 			documents: documents_map,
 			document_ids: vec![starting_key],
-			copy_buffer: vec![],
+			copy_buffer: vec![vec![]; CLIPBOARD_COUNT as usize],
 			active_document_id: starting_key,
 		}
 	}
@@ -239,7 +249,9 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 			NewDocument => {
 				let name = self.generate_new_document_name();
 				let new_document = DocumentMessageHandler::with_name(name, ipp);
-				self.load_document(new_document, generate_uuid(), false, responses);
+				let document_id = generate_uuid();
+				self.active_document_id = document_id;
+				self.load_document(new_document, document_id, false, responses);
 			}
 			OpenDocument => {
 				responses.push_back(FrontendMessage::OpenDocumentBrowse.into());
@@ -319,19 +331,19 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 				let prev_id = self.document_ids[prev_index];
 				responses.push_back(DocumentsMessage::SelectDocument(prev_id).into());
 			}
-			Copy => {
+			Copy(clipboard) => {
 				let paths = self.active_document().selected_layers_sorted();
-				self.copy_buffer.clear();
+				self.copy_buffer[clipboard as usize].clear();
 				for path in paths {
 					match self.active_document().graphene_document.layer(&path).map(|t| t.clone()) {
 						Ok(layer) => {
-							self.copy_buffer.push(layer);
+							self.copy_buffer[clipboard as usize].push(layer);
 						}
 						Err(e) => warn!("Could not access selected layer {:?}: {:?}", path, e),
 					}
 				}
 			}
-			Paste => {
+			Paste(clipboard) => {
 				let document = self.active_document();
 				let shallowest_common_folder = document
 					.graphene_document
@@ -340,13 +352,14 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 
 				responses.push_back(
 					PasteIntoFolder {
+						clipboard,
 						path: shallowest_common_folder.to_vec(),
 						insert_index: -1,
 					}
 					.into(),
 				);
 			}
-			PasteIntoFolder { path, insert_index } => {
+			PasteIntoFolder { clipboard, path, insert_index } => {
 				let paste = |layer: &Layer, responses: &mut VecDeque<_>| {
 					log::trace!("Pasting into folder {:?} as index: {}", path, insert_index);
 					responses.push_back(
@@ -359,11 +372,11 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 					)
 				};
 				if insert_index == -1 {
-					for layer in self.copy_buffer.iter() {
+					for layer in self.copy_buffer[clipboard as usize].iter() {
 						paste(layer, responses)
 					}
 				} else {
-					for layer in self.copy_buffer.iter().rev() {
+					for layer in self.copy_buffer[clipboard as usize].iter().rev() {
 						paste(layer, responses)
 					}
 				}

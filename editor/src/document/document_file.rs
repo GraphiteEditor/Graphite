@@ -7,6 +7,7 @@ use super::transform_layer_handler::{TransformLayerMessage, TransformLayerMessag
 
 use crate::consts::DEFAULT_DOCUMENT_NAME;
 use crate::consts::{ASYMPTOTIC_EFFECT, FILE_EXPORT_SUFFIX, FILE_SAVE_SUFFIX, SCALE_EFFECT, SCROLLBAR_SPACING};
+use crate::document::Clipboard;
 use crate::input::InputPreprocessor;
 use crate::message_prelude::*;
 use crate::EditorError;
@@ -175,7 +176,7 @@ impl DocumentMessageHandler {
 			snapping_enabled: true,
 			view_mode: ViewMode::default(),
 		};
-		document.graphene_document.root.transform = document.layerdata(&[]).calculate_offset_transform(ipp.viewport_bounds.size() / 2.);
+		document.graphene_document.root.transform = document.layerdata(&[]).calculate_offset_transform(ipp.viewport_bounds.size() / 2., 0.);
 		document
 	}
 
@@ -546,12 +547,13 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				let mut new_folder_path = common_prefix.to_vec();
 				new_folder_path.push(generate_uuid());
 
-				responses.push_back(DocumentsMessage::Copy.into());
+				responses.push_back(DocumentsMessage::Copy(Clipboard::System).into());
 				responses.push_back(DocumentMessage::DeleteSelectedLayers.into());
 				responses.push_back(DocumentOperation::CreateFolder { path: new_folder_path.clone() }.into());
 				responses.push_back(DocumentMessage::ToggleLayerExpansion(new_folder_path.clone()).into());
 				responses.push_back(
 					DocumentsMessage::PasteIntoFolder {
+						clipboard: Clipboard::System,
 						path: new_folder_path.clone(),
 						insert_index: -1,
 					}
@@ -797,9 +799,16 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				responses.push_back(ToolMessage::SelectedLayersChanged.into());
 			}
 			MoveSelectedLayersTo { path, insert_index } => {
-				responses.push_back(DocumentsMessage::Copy.into());
+				responses.push_back(DocumentsMessage::Copy(Clipboard::System).into());
 				responses.push_back(DocumentMessage::DeleteSelectedLayers.into());
-				responses.push_back(DocumentsMessage::PasteIntoFolder { path, insert_index }.into());
+				responses.push_back(
+					DocumentsMessage::PasteIntoFolder {
+						clipboard: Clipboard::System,
+						path,
+						insert_index,
+					}
+					.into(),
+				);
 			}
 			ReorderSelectedLayers(relative_position) => {
 				self.backup(responses);
