@@ -25,6 +25,7 @@ const CLIPBOARD_COUNT: u8 = Clipboard::_ClipboardCount as u8;
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub enum DocumentsMessage {
 	Copy(Clipboard),
+	Cut(Clipboard),
 	PasteIntoFolder {
 		clipboard: Clipboard,
 		path: Vec<LayerId>,
@@ -363,6 +364,10 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 					}
 				}
 			}
+			Cut(clipboard) => {
+				responses.push_back(Copy(clipboard).into());
+				responses.push_back(DeleteSelectedLayers.into());
+			}
 			Paste(clipboard) => {
 				let document = self.active_document();
 				let shallowest_common_folder = document
@@ -429,6 +434,7 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 		if self.active_document().layer_data.values().any(|data| data.selected) {
 			let select = actions!(DocumentsMessageDiscriminant;
 				Copy,
+				Cut,
 			);
 			common.extend(select);
 		}
