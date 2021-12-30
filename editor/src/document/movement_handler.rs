@@ -1,6 +1,7 @@
 use crate::consts::VIEWPORT_ROTATE_SNAP_INTERVAL;
 pub use crate::document::layer_panel::*;
 use crate::document::DocumentMessage;
+use crate::input::keyboard::Key;
 use crate::message_prelude::*;
 use crate::{
 	consts::{VIEWPORT_SCROLL_RATE, VIEWPORT_ZOOM_LEVELS, VIEWPORT_ZOOM_MOUSE_RATE, VIEWPORT_ZOOM_SCALE_MAX, VIEWPORT_ZOOM_SCALE_MIN, VIEWPORT_ZOOM_WHEEL_RATE},
@@ -16,12 +17,10 @@ use std::collections::VecDeque;
 #[impl_message(Message, DocumentMessage, Movement)]
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub enum MovementMessage {
-	MouseMove,
+	MouseMove { snap_angle: Key },
 	TranslateCanvasBegin,
 	WheelCanvasTranslate { use_y_as_x: bool },
-	RotateCanvasBegin { snap: bool },
-	EnableSnapping,
-	DisableSnapping,
+	RotateCanvasBegin,
 	ZoomCanvasBegin,
 	TransformCanvasEnd,
 	SetCanvasRotation(f64),
@@ -101,15 +100,9 @@ impl MessageHandler<MovementMessage, (&Document, &InputPreprocessor)> for Moveme
 				self.translating = true;
 				self.mouse_pos = ipp.mouse.position;
 			}
-			RotateCanvasBegin { snap } => {
+			RotateCanvasBegin => {
 				self.rotating = true;
-				self.snap_rotate = snap;
 				self.mouse_pos = ipp.mouse.position;
-			}
-			EnableSnapping => self.snap_rotate = true,
-			DisableSnapping => {
-				self.rotation = self.snapped_angle();
-				self.snap_rotate = false
 			}
 			ZoomCanvasBegin => {
 				self.zooming = true;
@@ -122,7 +115,7 @@ impl MessageHandler<MovementMessage, (&Document, &InputPreprocessor)> for Moveme
 				self.rotating = false;
 				self.zooming = false;
 			}
-			MouseMove => {
+			MouseMove { snap_angle } => {
 				if self.translating {
 					let delta = ipp.mouse.position - self.mouse_pos;
 					let transformed_delta = document.root.transform.inverse().transform_vector2(delta);
@@ -131,7 +124,15 @@ impl MessageHandler<MovementMessage, (&Document, &InputPreprocessor)> for Moveme
 					responses.push_back(ToolMessage::SelectedLayersChanged.into());
 					self.create_document_transform(&ipp.viewport_bounds, responses);
 				}
+
 				if self.rotating {
+					let new_snap = ipp.keyboard.get(snap_angle as usize);
+					// When disabling snap, keep the viewed rotation as it was previously.
+					if !new_snap && self.snap_rotate {
+						self.rotation = self.snapped_angle();
+					}
+					self.snap_rotate = new_snap;
+
 					let half_viewport = ipp.viewport_bounds.size() / 2.;
 					let rotation = {
 						let start_vec = self.mouse_pos - half_viewport;
@@ -271,13 +272,6 @@ impl MessageHandler<MovementMessage, (&Document, &InputPreprocessor)> for Moveme
 			TranslateCanvasByViewportFraction,
 		);
 
-		if self.rotating {
-			let snapping = actions!(MovementMessageDiscriminant;
-				EnableSnapping,
-				DisableSnapping,
-			);
-			common.extend(snapping);
-		}
 		if self.translating || self.rotating || self.zooming {
 			let transforming = actions!(MovementMessageDiscriminant;
 				TransformCanvasEnd,
