@@ -497,7 +497,7 @@ export default defineComponent({
 					path.push(BigInt(item.layerId.toString()));
 					const mapping = cache.get(path.toString());
 					if (mapping) layers.push(mapping);
-					if (item.children.length > 1) recurse(item, layers, cache);
+					if (item.children.length >= 1) recurse(item, layers, cache);
 					path.pop();
 				});
 			}
