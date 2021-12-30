@@ -31,6 +31,5 @@ fn panic_hook(info: &panic::PanicInfo) {
 	let panic_info = info.to_string();
 	let title = "The editor crashed — sorry about that".to_string();
 	let description = "An internal error occurred. Reload the editor to continue. Please report this by filing an issue on GitHub.".to_string();
-
 	EDITOR_HAS_CRASHED.with(|crash_status| crash_status.borrow_mut().replace(FrontendMessage::DisplayPanic { panic_info, title, description }));
 }
