@@ -338,6 +338,7 @@ mod test {
 		assert_eq!(&layers_after_copy[5], ellipse_before_copy);
 	}
 	#[test]
+	#[ignore] // TODO: Re-enable test, see issue #444 (https://github.com/GraphiteEditor/Graphite/pull/444)
 	/// - create rect, shape and ellipse
 	/// - select ellipse and rect
 	/// - move them down and back up again
