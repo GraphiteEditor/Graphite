@@ -194,6 +194,7 @@ impl Default for Mapping {
 			entry! {action=FillMessage::RightMouseDown, key_down=Rmb},
 			// Tool Actions
 			entry! {action=ToolMessage::ActivateTool(ToolType::Select), key_down=KeyV},
+			entry! {action=ToolMessage::ActivateTool(ToolType::Navigate), key_down=KeyZ},
 			entry! {action=ToolMessage::ActivateTool(ToolType::Eyedropper), key_down=KeyI},
 			entry! {action=ToolMessage::ActivateTool(ToolType::Fill), key_down=KeyF},
 			entry! {action=ToolMessage::ActivateTool(ToolType::Path), key_down=KeyA},
