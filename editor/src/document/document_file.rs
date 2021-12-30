@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::collections::VecDeque;
 
+use super::document_message_handler::CopyBufferEntry;
 pub use super::layer_panel::*;
 use super::movement_handler::{MovementMessage, MovementMessageHandler};
 use super::transform_layer_handler::{TransformLayerMessage, TransformLayerMessageHandler};
@@ -105,6 +106,10 @@ pub enum DocumentMessage {
 	#[child]
 	TransformLayers(TransformLayerMessage),
 	DispatchOperation(Box<DocumentOperation>),
+	UpdateLayerData {
+		path: Vec<LayerId>,
+		layer_data_entry: LayerData,
+	},
 	SetSelectedLayers(Vec<Vec<LayerId>>),
 	AddSelectedLayers(Vec<Vec<LayerId>>),
 	SelectAllLayers,
@@ -148,6 +153,11 @@ pub enum DocumentMessage {
 		insert_index: isize,
 	},
 	ReorderSelectedLayers(i32), // relative_position,
+	MoveLayerInTree {
+		layer: Vec<LayerId>,
+		insert_above: bool,
+		neighbor: Vec<LayerId>,
+	},
 	SetSnapping(bool),
 }
 
@@ -651,6 +661,9 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					}
 				}
 			}
+			UpdateLayerData { path, layer_data_entry } => {
+				self.layer_data.insert(path, layer_data_entry);
+			}
 			SetSelectedLayers(paths) => {
 				self.layer_data.iter_mut().filter(|(_, layer_data)| layer_data.selected).for_each(|(path, layer_data)| {
 					layer_data.selected = false;
@@ -909,6 +922,42 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				}
 			}
 			RenameLayer(path, name) => responses.push_back(DocumentOperation::RenameLayer { path, name }.into()),
+			MoveLayerInTree {
+				layer: target_layer,
+				insert_above,
+				neighbor,
+			} => {
+				let neighbor_id = neighbor.last().expect("Tried to move next to root");
+				let neighbor_path = &neighbor[..neighbor.len() - 1];
+
+				if !neighbor.starts_with(&target_layer) {
+					let containing_folder = self.graphene_document.folder(neighbor_path).expect("Neighbor does not exist");
+					let neighbor_index = containing_folder.position_of_layer(*neighbor_id).expect("Neighbor layer does not exist");
+
+					let layer = self.graphene_document.layer(&target_layer).expect("Layer moving does not exist.").to_owned();
+					let destination_path = [neighbor_path.to_vec(), vec![generate_uuid()]].concat();
+					let insert_index = if insert_above { neighbor_index } else { neighbor_index + 1 } as isize;
+
+					responses.push_back(DocumentMessage::StartTransaction.into());
+					responses.push_back(
+						DocumentOperation::InsertLayer {
+							layer,
+							destination_path: destination_path.clone(),
+							insert_index,
+						}
+						.into(),
+					);
+					responses.push_back(
+						DocumentMessage::UpdateLayerData {
+							path: destination_path,
+							layer_data_entry: *self.layer_data(&target_layer),
+						}
+						.into(),
+					);
+					responses.push_back(DocumentOperation::DeleteLayer { path: target_layer }.into());
+					responses.push_back(DocumentMessage::CommitTransaction.into());
+				}
+			}
 			SetSnapping(new_status) => {
 				self.snapping_enabled = new_status;
 			}
@@ -925,6 +974,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			ExportDocument,
 			SaveDocument,
 			SetSnapping,
+			MoveLayerInTree,
 		);
 
 		if self.layer_data.values().any(|data| data.selected) {
