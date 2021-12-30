@@ -69,7 +69,7 @@ impl MovementMessageHandler {
 
 impl MessageHandler<MovementMessage, (&mut LayerData, &Document, &InputPreprocessor)> for MovementMessageHandler {
 	fn process_action(&mut self, message: MovementMessage, data: (&mut LayerData, &Document, &InputPreprocessor), responses: &mut VecDeque<Message>) {
-		let (layerdata, document, ipp) = data;
+		let (layer_data, document, ipp) = data;
 		use MovementMessage::*;
 		match message {
 			TranslateCanvasBegin => {
@@ -89,7 +89,8 @@ impl MessageHandler<MovementMessage, (&mut LayerData, &Document, &InputPreproces
 				self.mouse_pos = ipp.mouse.position;
 			}
 			TransformCanvasEnd => {
-				layerdata.rotation = self.snapped_angle(layerdata);
+				layer_data.rotation = self.snapped_angle(layer_data);
+				responses.push_back(ToolMessage::DocumentIsDirty.into());
 				self.snap_rotate = false;
 				self.translating = false;
 				self.rotating = false;
@@ -100,9 +101,9 @@ impl MessageHandler<MovementMessage, (&mut LayerData, &Document, &InputPreproces
 					let delta = ipp.mouse.position - self.mouse_pos;
 					let transformed_delta = document.root.transform.inverse().transform_vector2(delta);
 
-					layerdata.translation += transformed_delta;
-					responses.push_back(ToolMessage::SelectedLayersChanged.into());
-					self.create_document_transform_from_layerdata(layerdata, &ipp.viewport_bounds, responses);
+					layer_data.translation += transformed_delta;
+					responses.push_back(ToolMessage::DocumentIsDirty.into());
+					self.create_document_transform_from_layerdata(layer_data, &ipp.viewport_bounds, responses);
 				}
 				if self.rotating {
 					let half_viewport = ipp.viewport_bounds.size() / 2.;
@@ -114,51 +115,51 @@ impl MessageHandler<MovementMessage, (&mut LayerData, &Document, &InputPreproces
 
 					let snapping = self.snapping;
 
-					layerdata.rotation += rotation;
+					layer_data.rotation += rotation;
+					responses.push_back(ToolMessage::DocumentIsDirty.into());
 					self.snap_rotate = snapping;
-					responses.push_back(ToolMessage::SelectedLayersChanged.into());
 					responses.push_back(
 						FrontendMessage::SetCanvasRotation {
-							new_radians: self.snapped_angle(layerdata),
+							new_radians: self.snapped_angle(layer_data),
 						}
 						.into(),
 					);
-					self.create_document_transform_from_layerdata(layerdata, &ipp.viewport_bounds, responses);
+					self.create_document_transform_from_layerdata(layer_data, &ipp.viewport_bounds, responses);
 				}
 				if self.zooming {
 					let difference = self.mouse_pos.y as f64 - ipp.mouse.position.y as f64;
 					let amount = 1. + difference * VIEWPORT_ZOOM_MOUSE_RATE;
 
-					let new = (layerdata.scale * amount).clamp(VIEWPORT_ZOOM_SCALE_MIN, VIEWPORT_ZOOM_SCALE_MAX);
-					layerdata.scale = new;
-					responses.push_back(FrontendMessage::SetCanvasZoom { new_zoom: layerdata.scale }.into());
-					responses.push_back(ToolMessage::SelectedLayersChanged.into());
-					self.create_document_transform_from_layerdata(layerdata, &ipp.viewport_bounds, responses);
+					let new = (layer_data.scale * amount).clamp(VIEWPORT_ZOOM_SCALE_MIN, VIEWPORT_ZOOM_SCALE_MAX);
+					layer_data.scale = new;
+					responses.push_back(ToolMessage::DocumentIsDirty.into());
+					responses.push_back(FrontendMessage::SetCanvasZoom { new_zoom: layer_data.scale }.into());
+					self.create_document_transform_from_layerdata(layer_data, &ipp.viewport_bounds, responses);
 				}
 				self.mouse_pos = ipp.mouse.position;
 			}
 			SetCanvasZoom(new) => {
-				layerdata.scale = new.clamp(VIEWPORT_ZOOM_SCALE_MIN, VIEWPORT_ZOOM_SCALE_MAX);
-				responses.push_back(FrontendMessage::SetCanvasZoom { new_zoom: layerdata.scale }.into());
-				responses.push_back(ToolMessage::SelectedLayersChanged.into());
+				layer_data.scale = new.clamp(VIEWPORT_ZOOM_SCALE_MIN, VIEWPORT_ZOOM_SCALE_MAX);
+				responses.push_back(ToolMessage::DocumentIsDirty.into());
+				responses.push_back(FrontendMessage::SetCanvasZoom { new_zoom: layer_data.scale }.into());
 				responses.push_back(DocumentMessage::DirtyRenderDocumentInOutlineView.into());
-				self.create_document_transform_from_layerdata(layerdata, &ipp.viewport_bounds, responses);
+				self.create_document_transform_from_layerdata(layer_data, &ipp.viewport_bounds, responses);
 			}
 			IncreaseCanvasZoom => {
 				// TODO: Eliminate redundant code by making this call SetCanvasZoom
-				layerdata.scale = *VIEWPORT_ZOOM_LEVELS.iter().find(|scale| **scale > layerdata.scale).unwrap_or(&layerdata.scale);
-				responses.push_back(FrontendMessage::SetCanvasZoom { new_zoom: layerdata.scale }.into());
-				responses.push_back(ToolMessage::SelectedLayersChanged.into());
+				layer_data.scale = *VIEWPORT_ZOOM_LEVELS.iter().find(|scale| **scale > layer_data.scale).unwrap_or(&layer_data.scale);
+				responses.push_back(ToolMessage::DocumentIsDirty.into());
+				responses.push_back(FrontendMessage::SetCanvasZoom { new_zoom: layer_data.scale }.into());
 				responses.push_back(DocumentMessage::DirtyRenderDocumentInOutlineView.into());
-				self.create_document_transform_from_layerdata(layerdata, &ipp.viewport_bounds, responses);
+				self.create_document_transform_from_layerdata(layer_data, &ipp.viewport_bounds, responses);
 			}
 			DecreaseCanvasZoom => {
 				// TODO: Eliminate redundant code by making this call SetCanvasZoom
-				layerdata.scale = *VIEWPORT_ZOOM_LEVELS.iter().rev().find(|scale| **scale < layerdata.scale).unwrap_or(&layerdata.scale);
-				responses.push_back(FrontendMessage::SetCanvasZoom { new_zoom: layerdata.scale }.into());
-				responses.push_back(ToolMessage::SelectedLayersChanged.into());
+				layer_data.scale = *VIEWPORT_ZOOM_LEVELS.iter().rev().find(|scale| **scale < layer_data.scale).unwrap_or(&layer_data.scale);
+				responses.push_back(ToolMessage::DocumentIsDirty.into());
+				responses.push_back(FrontendMessage::SetCanvasZoom { new_zoom: layer_data.scale }.into());
 				responses.push_back(DocumentMessage::DirtyRenderDocumentInOutlineView.into());
-				self.create_document_transform_from_layerdata(layerdata, &ipp.viewport_bounds, responses);
+				self.create_document_transform_from_layerdata(layer_data, &ipp.viewport_bounds, responses);
 			}
 			WheelCanvasZoom => {
 				// TODO: Eliminate redundant code by making this call SetCanvasZoom
@@ -175,13 +176,13 @@ impl MessageHandler<MovementMessage, (&mut LayerData, &Document, &InputPreproces
 				let delta = delta_size * (DVec2::splat(0.5) - mouse_fraction);
 
 				let transformed_delta = document.root.transform.inverse().transform_vector2(delta);
-				let new = (layerdata.scale * zoom_factor).clamp(VIEWPORT_ZOOM_SCALE_MIN, VIEWPORT_ZOOM_SCALE_MAX);
-				layerdata.scale = new;
-				layerdata.translation += transformed_delta;
-				responses.push_back(FrontendMessage::SetCanvasZoom { new_zoom: layerdata.scale }.into());
-				responses.push_back(ToolMessage::SelectedLayersChanged.into());
+				let new = (layer_data.scale * zoom_factor).clamp(VIEWPORT_ZOOM_SCALE_MIN, VIEWPORT_ZOOM_SCALE_MAX);
+				layer_data.scale = new;
+				layer_data.translation += transformed_delta;
+				responses.push_back(ToolMessage::DocumentIsDirty.into());
+				responses.push_back(FrontendMessage::SetCanvasZoom { new_zoom: layer_data.scale }.into());
 				responses.push_back(DocumentMessage::DirtyRenderDocumentInOutlineView.into());
-				self.create_document_transform_from_layerdata(layerdata, &ipp.viewport_bounds, responses);
+				self.create_document_transform_from_layerdata(layer_data, &ipp.viewport_bounds, responses);
 			}
 			WheelCanvasTranslate { use_y_as_x } => {
 				let delta = match use_y_as_x {
@@ -189,15 +190,15 @@ impl MessageHandler<MovementMessage, (&mut LayerData, &Document, &InputPreproces
 					true => (-ipp.mouse.scroll_delta.y as f64, 0.).into(),
 				} * VIEWPORT_SCROLL_RATE;
 				let transformed_delta = document.root.transform.inverse().transform_vector2(delta);
-				layerdata.translation += transformed_delta;
-				responses.push_back(ToolMessage::SelectedLayersChanged.into());
-				self.create_document_transform_from_layerdata(layerdata, &ipp.viewport_bounds, responses);
+				layer_data.translation += transformed_delta;
+				responses.push_back(ToolMessage::DocumentIsDirty.into());
+				self.create_document_transform_from_layerdata(layer_data, &ipp.viewport_bounds, responses);
 			}
 			SetCanvasRotation(new) => {
-				layerdata.rotation = new;
-				self.create_document_transform_from_layerdata(layerdata, &ipp.viewport_bounds, responses);
+				layer_data.rotation = new;
+				responses.push_back(ToolMessage::DocumentIsDirty.into());
+				self.create_document_transform_from_layerdata(layer_data, &ipp.viewport_bounds, responses);
 				responses.push_back(FrontendMessage::SetCanvasRotation { new_radians: new }.into());
-				responses.push_back(ToolMessage::SelectedLayersChanged.into());
 			}
 			ZoomCanvasToFitAll => {
 				if let Some([pos1, pos2]) = document.visible_layers_bounding_box() {
@@ -211,27 +212,27 @@ impl MessageHandler<MovementMessage, (&mut LayerData, &Document, &InputPreproces
 					let size = 1. / size;
 					let new_scale = size.min_element();
 
-					layerdata.translation += center;
-					layerdata.scale *= new_scale;
-					responses.push_back(FrontendMessage::SetCanvasZoom { new_zoom: layerdata.scale }.into());
-					responses.push_back(ToolMessage::SelectedLayersChanged.into());
+					layer_data.translation += center;
+					layer_data.scale *= new_scale;
+					responses.push_back(ToolMessage::DocumentIsDirty.into());
+					responses.push_back(FrontendMessage::SetCanvasZoom { new_zoom: layer_data.scale }.into());
 					responses.push_back(DocumentMessage::DirtyRenderDocumentInOutlineView.into());
-					self.create_document_transform_from_layerdata(layerdata, &ipp.viewport_bounds, responses);
+					self.create_document_transform_from_layerdata(layer_data, &ipp.viewport_bounds, responses);
 				}
 			}
 			TranslateCanvas(delta) => {
 				let transformed_delta = document.root.transform.inverse().transform_vector2(delta);
 
-				layerdata.translation += transformed_delta;
-				responses.push_back(ToolMessage::SelectedLayersChanged.into());
-				self.create_document_transform_from_layerdata(layerdata, &ipp.viewport_bounds, responses);
+				layer_data.translation += transformed_delta;
+				responses.push_back(ToolMessage::DocumentIsDirty.into());
+				self.create_document_transform_from_layerdata(layer_data, &ipp.viewport_bounds, responses);
 			}
 			TranslateCanvasByViewportFraction(delta) => {
 				let transformed_delta = document.root.transform.inverse().transform_vector2(delta * ipp.viewport_bounds.size());
 
-				layerdata.translation += transformed_delta;
-				responses.push_back(ToolMessage::SelectedLayersChanged.into());
-				self.create_document_transform_from_layerdata(layerdata, &ipp.viewport_bounds, responses);
+				layer_data.translation += transformed_delta;
+				responses.push_back(ToolMessage::DocumentIsDirty.into());
+				self.create_document_transform_from_layerdata(layer_data, &ipp.viewport_bounds, responses);
 			}
 		}
 	}

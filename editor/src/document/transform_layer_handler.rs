@@ -86,7 +86,7 @@ impl<'a> Selected<'a> {
 				);
 			}
 
-			self.responses.push_back(ToolMessage::SelectedLayersChanged.into());
+			self.responses.push_back(ToolMessage::DocumentIsDirty.into());
 		}
 	}
 
@@ -423,7 +423,7 @@ impl MessageHandler<TransformLayerMessage, (&mut HashMap<Vec<LayerId>, LayerData
 
 				self.operation = Operation::Grabbing(Default::default());
 
-				responses.push_back(ToolMessage::SelectedLayersChanged.into());
+				responses.push_back(ToolMessage::DocumentIsDirty.into());
 			}
 			BeginRotate => {
 				if let Operation::Rotating(_) = self.operation {
@@ -434,7 +434,7 @@ impl MessageHandler<TransformLayerMessage, (&mut HashMap<Vec<LayerId>, LayerData
 
 				self.operation = Operation::Rotating(Default::default());
 
-				responses.push_back(ToolMessage::SelectedLayersChanged.into());
+				responses.push_back(ToolMessage::DocumentIsDirty.into());
 			}
 			BeginScale => {
 				if let Operation::Scaling(_) = self.operation {
@@ -446,7 +446,7 @@ impl MessageHandler<TransformLayerMessage, (&mut HashMap<Vec<LayerId>, LayerData
 				self.operation = Operation::Scaling(Default::default());
 				self.operation.apply_operation(&mut selected, self.snap);
 
-				responses.push_back(ToolMessage::SelectedLayersChanged.into());
+				responses.push_back(ToolMessage::DocumentIsDirty.into());
 			}
 			CancelOperation => {
 				selected.revert_operation();
@@ -456,7 +456,7 @@ impl MessageHandler<TransformLayerMessage, (&mut HashMap<Vec<LayerId>, LayerData
 
 				self.operation = Operation::None;
 
-				responses.push_back(ToolMessage::SelectedLayersChanged.into());
+				responses.push_back(ToolMessage::DocumentIsDirty.into());
 			}
 			ApplyOperation => {
 				self.original_transforms.clear();
@@ -464,7 +464,7 @@ impl MessageHandler<TransformLayerMessage, (&mut HashMap<Vec<LayerId>, LayerData
 
 				self.operation = Operation::None;
 
-				responses.push_back(ToolMessage::SelectedLayersChanged.into());
+				responses.push_back(ToolMessage::DocumentIsDirty.into());
 			}
 			MouseMove { slow_key, snap_key } => {
 				self.slow = ipp.keyboard.get(slow_key as usize);

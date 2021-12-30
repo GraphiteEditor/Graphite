@@ -186,7 +186,7 @@ pub fn derive_message(input_item: TokenStream) -> TokenStream {
 	TokenStream::from(derive_as_message_impl(input_item.into()).unwrap_or_else(|err| err.to_compile_error()))
 }
 
-/// This macro is basically an abbreviation for the usual [`ToDiscriminant`], [`TransitiveChild`] and [`AsMessage`] invokations
+/// This macro is basically an abbreviation for the usual [`ToDiscriminant`], [`TransitiveChild`] and [`AsMessage`] invocations
 ///
 /// This macro is enum-only.
 ///
@@ -202,7 +202,7 @@ pub fn derive_message(input_item: TokenStream) -> TokenStream {
 /// 	It derives `ToDiscriminant`, `AsMessage` on the discriminant, and `TransitiveChild` on both (adding `#[parent_is_top]` to both).
 /// 	It also derives the following `std` traits on the discriminant: `Debug, Copy, Clone, PartialEq, Eq, Hash`.
 /// 3. three arguments: this is for all other message enums that are transitive children of the top level message enum. The syntax is
-/// 	`#[impl_message(<Type>, <Type>, <Ident>)]`, where the first `<Type>` is the top parent message type, the secont `<Type>` is the parent message type
+/// 	`#[impl_message(<Type>, <Type>, <Ident>)]`, where the first `<Type>` is the top parent message type, the second `<Type>` is the parent message type
 /// 	and `<Ident>` is the identifier of the variant used to construct this child.
 /// 	It derives `ToDiscriminant`, `AsMessage` on the discriminant, and `TransitiveChild` on both.
 /// 	It also derives the following `std` traits on the discriminant: `Debug, Copy, Clone, PartialEq, Eq, Hash`.
