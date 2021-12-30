@@ -197,6 +197,8 @@ export enum MenuType {
 	Dialog = "Dialog",
 }
 
+const POINTER_STRAY_DISTANCE = 100;
+
 export default defineComponent({
 	components: {},
 	props: {
@@ -313,7 +315,6 @@ export default defineComponent({
 			floatingMenuContent.style.minWidth = minWidth;
 		},
 		pointerMoveHandler(e: PointerEvent) {
-			const POINTER_STRAY_DISTANCE = 100;
 			const target = e.target as HTMLElement;
 			const pointerOverFloatingMenuKeepOpen = target && (target.closest("[data-hover-menu-keep-open]") as HTMLElement);
 			const pointerOverFloatingMenuSpawner = target && (target.closest("[data-hover-menu-spawner]") as HTMLElement);
