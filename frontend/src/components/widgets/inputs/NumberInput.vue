@@ -151,6 +151,7 @@
 
 <script lang="ts">
 import { defineComponent, PropType } from "vue";
+import { clamp } from "@/utilities/math";
 
 export enum IncrementBehavior {
 	Add = "Add",
@@ -168,8 +169,8 @@ export default defineComponent({
 	components: {},
 	props: {
 		value: { type: Number, required: true },
-		min: { type: Number, required: false },
-		max: { type: Number, required: false },
+		min: { type: Number, default: -Infinity },
+		max: { type: Number, default: Infinity },
 		incrementBehavior: { type: String as PropType<IncrementBehavior>, default: IncrementBehavior.Add },
 		incrementFactor: { type: Number, default: 1 },
 		incrementCallbackIncrease: { type: Function, required: false },
@@ -251,12 +252,14 @@ export default defineComponent({
 			if (invalid) sanitized = this.value;
 
 			if (this.isInteger) sanitized = Math.round(sanitized);
-			if (typeof this.min === "number" && !Number.isNaN(this.min)) sanitized = Math.max(sanitized, this.min);
-			if (typeof this.max === "number" && !Number.isNaN(this.max)) sanitized = Math.min(sanitized, this.max);
+			sanitized = clamp(newValue, this.min, this.max);
 
 			if (!invalid) this.$emit("update:value", sanitized);
 
-			const roundingPower = 10 ** this.displayDecimalPlaces;
+			const leftSideStringNum = sanitized.toString().split(".")[0];
+			// If the only left side digit is a zero it should not count towards rounding power
+			const leftSideDigits = leftSideStringNum.length === 1 && leftSideStringNum[0] === "0" ? 0 : leftSideStringNum.length;
+			const roundingPower = 10 ** Math.max(this.displayDecimalPlaces - leftSideDigits, 0);
 			const displayValue = Math.round(sanitized * roundingPower) / roundingPower;
 			this.text = `${displayValue}${this.unit}`;
 		},
@@ -269,11 +272,12 @@ export default defineComponent({
 				return;
 			}
 
-			let sanitized = newValue;
-			if (typeof this.min === "number") sanitized = Math.max(sanitized, this.min);
-			if (typeof this.max === "number") sanitized = Math.min(sanitized, this.max);
+			const sanitized = clamp(newValue, this.min, this.max);
 
-			const roundingPower = 10 ** this.displayDecimalPlaces;
+			const leftSideStringNum = sanitized.toString().split(".")[0];
+			// If the only left side digit is a zero it should not count towards rounding power
+			const leftSideDigits = leftSideStringNum.length === 1 && leftSideStringNum[0] === "0" ? 0 : leftSideStringNum.length;
+			const roundingPower = 10 ** Math.max(this.displayDecimalPlaces - leftSideDigits, 0);
 			const displayValue = Math.round(sanitized * roundingPower) / roundingPower;
 			this.text = `${displayValue}${this.unit}`;
 		},
