@@ -345,11 +345,12 @@ mod test {
 		init_logger();
 		let mut editor = create_editor_with_three_layers();
 
-		// println!("{:?}", editor.dispatcher.documents_message_handler.active_document().all_layers_sorted());
+		let sorted_layers = editor.dispatcher.documents_message_handler.active_document().all_layers_sorted();
+		println!("Sorted layers: {:?}", sorted_layers);
 
 		let verify_order = |handler: &mut DocumentMessageHandler| (handler.all_layers_sorted(), handler.non_selected_layers_sorted(), handler.selected_layers_sorted());
 
-		editor.handle_message(DocumentMessage::SetSelectedLayers(vec![vec![0], vec![2]]));
+		editor.handle_message(DocumentMessage::SetSelectedLayers(sorted_layers[..2].to_vec()));
 
 		editor.handle_message(DocumentMessage::ReorderSelectedLayers(1));
 		let (all, non_selected, selected) = verify_order(&mut editor.dispatcher.documents_message_handler.active_document_mut());
