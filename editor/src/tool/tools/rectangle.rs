@@ -114,6 +114,7 @@ impl Fsm for RectangleToolFsmState {
 					}
 
 					shape_data.cleanup();
+
 					Ready
 				}
 				(Drawing, Abort) => {
