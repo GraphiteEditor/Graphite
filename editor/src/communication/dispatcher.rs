@@ -26,7 +26,7 @@ const SIDE_EFFECT_FREE_MESSAGES: &[MessageDiscriminant] = &[
 	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::UpdateLayer),
 	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::DisplayFolderTreeStructure),
 	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::UpdateOpenDocumentsList),
-	MessageDiscriminant::Tool(ToolMessageDiscriminant::SelectedLayersChanged),
+	MessageDiscriminant::Tool(ToolMessageDiscriminant::DocumentIsDirty),
 ];
 
 impl Dispatcher {

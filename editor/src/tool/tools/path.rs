@@ -27,8 +27,9 @@ pub struct Path {
 #[impl_message(Message, ToolMessage, Path)]
 #[derive(PartialEq, Clone, Debug, Hash, Serialize, Deserialize)]
 pub enum PathMessage {
-	RedrawOverlay,
+	// Standard messages
 	Abort,
+	DocumentIsDirty,
 }
 
 impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Path {
@@ -91,10 +92,10 @@ impl Fsm for PathToolFsmState {
 			use PathMessage::*;
 			use PathToolFsmState::*;
 			match (self, event) {
-				(_, RedrawOverlay) => {
+				(_, DocumentIsDirty) => {
 					let (mut anchor_i, mut handle_i, mut line_i, mut shape_i) = (0, 0, 0, 0);
 
-					let shapes_to_draw = document.selected_layers_vector_points();
+					let shapes_to_draw = document.selected_visible_layers_vector_points();
 					// Grow the overlay pools by the shortfall, if any
 					let (total_anchors, total_handles, total_anchor_handle_lines) = calculate_total_overlays_per_type(&shapes_to_draw);
 					let total_shapes = shapes_to_draw.len();

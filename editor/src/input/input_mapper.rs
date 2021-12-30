@@ -220,6 +220,7 @@ impl Default for Mapping {
 			entry! {action=DocumentMessage::ExportDocument, key_down=KeyE, modifiers=[KeyControl]},
 			entry! {action=DocumentMessage::SaveDocument, key_down=KeyS, modifiers=[KeyControl]},
 			entry! {action=DocumentMessage::SaveDocument, key_down=KeyS, modifiers=[KeyControl, KeyShift]},
+			entry! {action=DocumentMessage::DebugPrintDocument, key_down=Key9},
 			// Initiate Transform Layers
 			entry! {action=TransformLayerMessage::BeginGrab, key_down=KeyG},
 			entry! {action=TransformLayerMessage::BeginRotate, key_down=KeyR},

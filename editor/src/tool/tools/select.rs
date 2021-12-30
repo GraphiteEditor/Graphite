@@ -29,11 +29,13 @@ pub struct Select {
 #[impl_message(Message, ToolMessage, Select)]
 #[derive(PartialEq, Clone, Debug, Hash, Serialize, Deserialize)]
 pub enum SelectMessage {
+	// Standard messages
+	Abort,
+	DocumentIsDirty,
+
 	DragStart { add_to_selection: Key },
 	DragStop,
 	MouseMove { snap_angle: Key },
-	Abort,
-	UpdateSelectionBoundingBox,
 
 	Align(AlignAxis, AlignAggregate),
 	FlipHorizontal,
@@ -83,8 +85,8 @@ struct SelectToolData {
 	drag_start: ViewportPosition,
 	drag_current: ViewportPosition,
 	layers_dragging: Vec<Vec<LayerId>>, // Paths and offsets
-	drag_box_id: Option<Vec<LayerId>>,
-	bounding_box_path: Option<Vec<LayerId>>,
+	drag_box_overlay_layer: Option<Vec<LayerId>>,
+	bounding_box_overlay_layer: Option<Vec<LayerId>>,
 	snap_handler: SnapHandler,
 }
 
@@ -138,14 +140,14 @@ impl Fsm for SelectToolFsmState {
 
 		if let ToolMessage::Select(event) = event {
 			match (self, event) {
-				(_, UpdateSelectionBoundingBox) => {
+				(_, DocumentIsDirty) => {
 					let mut buffer = Vec::new();
-					let response = match (document.selected_layers_bounding_box(), data.bounding_box_path.take()) {
+					let response = match (document.selected_visible_layers_bounding_box(), data.bounding_box_overlay_layer.take()) {
 						(None, Some(path)) => DocumentMessage::Overlay(Operation::DeleteLayer { path }.into()).into(),
 						(Some([pos1, pos2]), path) => {
 							let path = path.unwrap_or_else(|| add_bounding_box(&mut buffer));
 
-							data.bounding_box_path = Some(path.clone());
+							data.bounding_box_overlay_layer = Some(path.clone());
 
 							let half_pixel_offset = DVec2::splat(0.5);
 							let pos1 = pos1 + half_pixel_offset;
@@ -163,7 +165,7 @@ impl Fsm for SelectToolFsmState {
 					data.drag_start = input.mouse.position;
 					data.drag_current = input.mouse.position;
 					let mut buffer = Vec::new();
-					let mut selected: Vec<_> = document.selected_layers().map(|path| path.to_vec()).collect();
+					let mut selected: Vec<_> = document.selected_visible_layers().map(|path| path.to_vec()).collect();
 					let quad = data.selection_quad();
 					let mut intersection = document.graphene_document.intersects_quad_root(quad);
 					// If the user clicks on a layer that is in their current selection, go into the dragging mode.
@@ -186,13 +188,14 @@ impl Fsm for SelectToolFsmState {
 							data.layers_dragging.append(&mut selected);
 							Dragging
 						} else {
-							data.drag_box_id = Some(add_bounding_box(&mut buffer));
+							data.drag_box_overlay_layer = Some(add_bounding_box(&mut buffer));
 							DrawingBox
 						}
 					};
 					buffer.into_iter().rev().for_each(|message| responses.push_front(message));
 
-					let ignore_layers = if let Some(bounding_box) = &data.bounding_box_path {
+					// TODO: Probably delete this now that the overlay system has moved to a separate Graphene document? (@0hypercube)
+					let ignore_layers = if let Some(bounding_box) = &data.bounding_box_overlay_layer {
 						vec![bounding_box.clone()]
 					} else {
 						Vec::new()
@@ -201,7 +204,8 @@ impl Fsm for SelectToolFsmState {
 					state
 				}
 				(Dragging, MouseMove { snap_angle }) => {
-					responses.push_front(SelectMessage::UpdateSelectionBoundingBox.into());
+					// TODO: This is a cheat. Break out the relevant functionality from the handler above and call it from there and here.
+					responses.push_front(SelectMessage::DocumentIsDirty.into());
 
 					let mouse_position = if input.keyboard.get(snap_angle as usize) {
 						let mouse_position = input.mouse.position - data.drag_start;
@@ -237,7 +241,7 @@ impl Fsm for SelectToolFsmState {
 					responses.push_front(
 						DocumentMessage::Overlay(
 							Operation::SetLayerTransformInViewport {
-								path: data.drag_box_id.clone().unwrap(),
+								path: data.drag_box_overlay_layer.clone().unwrap(),
 								transform: DAffine2::from_scale_angle_translation(size, 0., start).to_cols_array(),
 							}
 							.into(),
@@ -261,7 +265,7 @@ impl Fsm for SelectToolFsmState {
 					responses.push_front(
 						DocumentMessage::Overlay(
 							Operation::DeleteLayer {
-								path: data.drag_box_id.take().unwrap(),
+								path: data.drag_box_overlay_layer.take().unwrap(),
 							}
 							.into(),
 						)
@@ -271,8 +275,8 @@ impl Fsm for SelectToolFsmState {
 				}
 				(_, Abort) => {
 					let mut delete = |path: &mut Option<Vec<LayerId>>| path.take().map(|path| responses.push_front(DocumentMessage::Overlay(Operation::DeleteLayer { path }.into()).into()));
-					delete(&mut data.drag_box_id);
-					delete(&mut data.bounding_box_path);
+					delete(&mut data.drag_box_overlay_layer);
+					delete(&mut data.bounding_box_overlay_layer);
 					Ready
 				}
 				(_, Align(axis, aggregate)) => {
