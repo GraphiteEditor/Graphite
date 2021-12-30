@@ -383,17 +383,23 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 				let paste = |entry: &CopyBufferEntry, responses: &mut VecDeque<_>| {
 					log::trace!("Pasting into folder {:?} as index: {}", &path, insert_index);
 
+					let destination_path = [path.to_vec(), vec![generate_uuid()]].concat();
+
 					responses.push_back(
 						DocumentOperation::InsertLayer {
 							layer: entry.layer.clone(),
-							path: path.clone(),
+							destination_path: destination_path.clone(),
 							insert_index,
 						}
 						.into(),
 					);
-
-					let layer_data_entry = entry.layer_data;
-					responses.push_back(DocumentMessage::UpdateLayerData { path: path.clone(), layer_data_entry }.into());
+					responses.push_back(
+						DocumentMessage::UpdateLayerData {
+							path: destination_path,
+							layer_data_entry: entry.layer_data,
+						}
+						.into(),
+					);
 				};
 
 				if insert_index == -1 {

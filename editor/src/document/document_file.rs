@@ -932,20 +932,27 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				let neighbor_id = neighbor.last().expect("Tried to move next to root");
 				let neighbor_path = &neighbor[..neighbor.len() - 1];
 
-				let containing_folder = self.graphene_document.folder(neighbor_path).expect("Neighbor does not exist");
-
 				if !neighbor.starts_with(&target_layer) {
+					let containing_folder = self.graphene_document.folder(neighbor_path).expect("Neighbor does not exist");
 					let neighbor_index = containing_folder.position_of_layer(*neighbor_id).expect("Neighbor layer does not exist");
 
-					let insert_index = if insert_above { neighbor_index } else { neighbor_index + 1 } as isize;
 					let layer = self.graphene_document.layer(&target_layer).expect("Layer moving does not exist.").to_owned();
+					let destination_path = [neighbor_path.to_vec(), vec![generate_uuid()]].concat();
+					let insert_index = if insert_above { neighbor_index } else { neighbor_index + 1 } as isize;
 
 					responses.push_back(DocumentMessage::StartTransaction.into());
 					responses.push_back(
 						DocumentOperation::InsertLayer {
 							layer,
+							destination_path: destination_path.clone(),
 							insert_index,
-							path: neighbor_path.to_vec(),
+						}
+						.into(),
+					);
+					responses.push_back(
+						DocumentMessage::UpdateLayerData {
+							path: destination_path,
+							layer_data_entry: *self.layer_data(&target_layer),
 						}
 						.into(),
 					);

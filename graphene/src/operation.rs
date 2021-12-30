@@ -78,7 +78,7 @@ pub enum Operation {
 	},
 	InsertLayer {
 		layer: Layer,
-		path: Vec<LayerId>,
+		destination_path: Vec<LayerId>,
 		insert_index: isize,
 	},
 	CreateFolder {
