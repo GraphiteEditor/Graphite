@@ -22,12 +22,12 @@
 				ref="documentsPanel"
 			/>
 		</LayoutCol>
-		<LayoutCol class="workspace-grid-resize-gutter"></LayoutCol>
+		<LayoutCol class="workspace-grid-resize-gutter" @mousedown="resizePanel($event)"></LayoutCol>
 		<LayoutCol class="workspace-grid-subdivision" style="flex-grow: 319">
 			<LayoutRow class="workspace-grid-subdivision" style="flex-grow: 402">
 				<Panel :panelType="'Properties'" :tabLabels="['Properties']" :tabActiveIndex="0" />
 			</LayoutRow>
-			<LayoutRow class="workspace-grid-resize-gutter"></LayoutRow>
+			<LayoutRow class="workspace-grid-resize-gutter" @mousedown="resizePanel($event)"></LayoutRow>
 			<LayoutRow class="workspace-grid-subdivision" style="flex-grow: 590">
 				<Panel :panelType="'LayerTree'" :tabLabels="['Layer Tree']" :tabActiveIndex="0" />
 			</LayoutRow>
@@ -83,6 +83,46 @@ export default defineComponent({
 	computed: {
 		activeDocumentIndex() {
 			return this.documents.state.activeDocumentIndex;
+		},
+	},
+	methods: {
+		resizePanel(event: MouseEvent) {
+			const gutter = event.target as HTMLElement;
+			const nextSibling = gutter.nextElementSibling as HTMLElement;
+			const previousSibling = gutter.previousElementSibling as HTMLElement;
+			const parent = gutter.parentElement as HTMLElement;
+
+			// Are we resizing horizontally?
+			const horizontal = parent.classList.contains("layout-row");
+
+			// Get the current size in px of the panels being resized
+			const nextSiblingSize = horizontal ? nextSibling.getBoundingClientRect().width : nextSibling.getBoundingClientRect().height;
+			const previousSiblingSize = horizontal ? previousSibling.getBoundingClientRect().width : previousSibling.getBoundingClientRect().height;
+
+			// Prevent cursor flicker as mouse temporarily leaves the gutter
+			parent.style.cursor = horizontal ? "ew-resize" : "ns-resize";
+
+			const mouseStart = horizontal ? event.clientX : event.clientY;
+
+			function updatePosition(event: MouseEvent) {
+				const mouseCurrent = horizontal ? event.clientX : event.clientY;
+				const mouseDelta = mouseStart - mouseCurrent;
+
+				nextSibling.style.flexGrow = (nextSiblingSize + mouseDelta).toString();
+				previousSibling.style.flexGrow = (previousSiblingSize - mouseDelta).toString();
+			}
+
+			parent.addEventListener("mousemove", updatePosition);
+
+			function cleanup() {
+				parent.style.cursor = "inherit";
+				parent.removeEventListener("mousemove", updatePosition);
+				parent.removeEventListener("mouseleave", cleanup);
+				parent.removeEventListener("mouseup", cleanup);
+			}
+
+			parent.addEventListener("mouseleave", cleanup);
+			parent.addEventListener("mouseup", cleanup);
 		},
 	},
 	watch: {
