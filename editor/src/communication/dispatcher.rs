@@ -349,7 +349,7 @@ mod test {
 
 		let verify_order = |handler: &mut DocumentMessageHandler| (handler.all_layers_sorted(), handler.non_selected_layers_sorted(), handler.selected_layers_sorted());
 
-		editor.handle_message(DocumentMessage::SetSelectedLayers(vec![vec![4624806548793763328], vec![4884056990215423907]]));
+		editor.handle_message(DocumentMessage::SetSelectedLayers(vec![vec![0], vec![2]]));
 
 		editor.handle_message(DocumentMessage::ReorderSelectedLayers(1));
 		let (all, non_selected, selected) = verify_order(&mut editor.dispatcher.documents_message_handler.active_document_mut());
