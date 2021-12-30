@@ -82,7 +82,9 @@ impl Fsm for FillToolFsmState {
 							RightMouseDown => tool_data.secondary_color,
 							Abort => unreachable!(),
 						};
+						responses.push_back(DocumentMessage::StartTransaction.into());
 						responses.push_back(Operation::SetLayerFill { path: path.to_vec(), color }.into());
+						responses.push_back(DocumentMessage::CommitTransaction.into());
 					}
 
 					Ready

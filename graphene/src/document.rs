@@ -490,11 +490,16 @@ impl Document {
 				responses.extend(update_thumbnails_upstream(folder));
 				Some(responses)
 			}
-			Operation::PasteLayer { path, layer, insert_index } => {
-				let folder = self.folder_mut(path)?;
-				let id = folder.add_layer(layer.clone(), None, *insert_index).ok_or(DocumentError::IndexOutOfBounds)?;
-				let full_path = [path.clone(), vec![id]].concat();
-				self.mark_as_dirty(&full_path)?;
+			Operation::InsertLayer {
+				destination_path,
+				layer,
+				insert_index,
+			} => {
+				let (folder_path, layer_id) = split_path(destination_path)?;
+				let folder = self.folder_mut(folder_path)?;
+				folder.add_layer(layer.clone(), Some(layer_id), *insert_index).ok_or(DocumentError::IndexOutOfBounds)?;
+				self.mark_as_dirty(destination_path)?;
+
 				fn aggregate_insertions(folder: &Folder, path: &mut Vec<LayerId>, responses: &mut Vec<DocumentResponse>) {
 					for (id, layer) in folder.layer_ids.iter().zip(folder.layers()) {
 						path.push(*id);
@@ -505,13 +510,14 @@ impl Document {
 						path.pop();
 					}
 				}
+
 				let mut responses = Vec::new();
-				if let Ok(folder) = self.folder(&full_path) {
-					aggregate_insertions(folder, &mut full_path.clone(), &mut responses)
+				if let Ok(folder) = self.folder(destination_path) {
+					aggregate_insertions(folder, &mut destination_path.clone(), &mut responses)
 				};
 
-				responses.extend([DocumentChanged, CreatedLayer { path: full_path }, FolderChanged { path: path.clone() }]);
-				responses.extend(update_thumbnails_upstream(path));
+				responses.extend([DocumentChanged, CreatedLayer { path: destination_path.clone() }, FolderChanged { path: folder_path.to_vec() }]);
+				responses.extend(update_thumbnails_upstream(destination_path));
 				Some(responses)
 			}
 			Operation::DuplicateLayer { path } => {
