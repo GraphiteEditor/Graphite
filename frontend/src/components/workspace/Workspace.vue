@@ -1,6 +1,6 @@
 <template>
 	<LayoutRow class="workspace-grid-subdivision">
-		<LayoutCol class="workspace-grid-subdivision" style="flex-grow: 1597">
+		<LayoutCol class="workspace-grid-subdivision">
 			<Panel
 				:panelType="'Document'"
 				:tabCloseButtons="true"
@@ -23,7 +23,7 @@
 			/>
 		</LayoutCol>
 		<LayoutCol class="workspace-grid-resize-gutter" @mousedown="resizePanel($event)"></LayoutCol>
-		<LayoutCol class="workspace-grid-subdivision" style="flex-grow: 319">
+		<LayoutCol class="workspace-grid-subdivision" style="flex-grow: 0.17">
 			<LayoutRow class="workspace-grid-subdivision" style="flex-grow: 402">
 				<Panel :panelType="'Properties'" :tabLabels="['Properties']" :tabActiveIndex="0" />
 			</LayoutRow>
