@@ -135,10 +135,10 @@ impl DocumentsMessageHandler {
 			.document_ids
 			.iter()
 			.filter_map(|id| {
-				self.documents.get(&id).map(|doc| FrontendDocumentDetails {
-					is_saved: doc.is_saved(),
+				self.documents.get(id).map(|document| FrontendDocumentDetails {
+					is_saved: document.is_saved(),
 					id: *id,
-					name: doc.name.clone(),
+					name: document.name.clone(),
 				})
 			})
 			.collect::<Vec<_>>();
