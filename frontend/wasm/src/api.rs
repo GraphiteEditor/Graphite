@@ -349,6 +349,24 @@ impl JsEditorHandle {
 		self.dispatch(message);
 	}
 
+	/// Cut selected layers
+	pub fn cut(&self) {
+		let message = DocumentsMessage::Cut(Clipboard::User);
+		self.dispatch(message);
+	}
+
+	/// Copy selected layers
+	pub fn copy(&self) {
+		let message = DocumentsMessage::Copy(Clipboard::User);
+		self.dispatch(message);
+	}
+
+	/// Paste selected layers
+	pub fn paste(&self) {
+		let message = DocumentsMessage::Paste(Clipboard::User);
+		self.dispatch(message);
+	}
+
 	pub fn select_layer(&self, paths: Vec<LayerId>, ctrl: bool, shift: bool) {
 		let message = DocumentMessage::SelectLayer(paths, ctrl, shift);
 		self.dispatch(message);
