@@ -109,9 +109,9 @@ function makeMenuEntries(editor: EditorState): MenuListEntries {
 					{ label: "Redo", shortcut: ["KeyControl", "KeyShift", "KeyZ"], action: async () => editor.instance.redo() },
 				],
 				[
-					{ label: "Cut", shortcut: ["KeyControl", "KeyX"] },
-					{ label: "Copy", icon: "Copy", shortcut: ["KeyControl", "KeyC"] },
-					{ label: "Paste", icon: "Paste", shortcut: ["KeyControl", "KeyV"] },
+					{ label: "Cut", shortcut: ["KeyControl", "KeyX"], action: async () => editor.instance.cut() },
+					{ label: "Copy", icon: "Copy", shortcut: ["KeyControl", "KeyC"], action: async () => editor.instance.copy() },
+					{ label: "Paste", icon: "Paste", shortcut: ["KeyControl", "KeyV"], action: async () => editor.instance.paste() },
 				],
 			],
 		},
