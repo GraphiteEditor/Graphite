@@ -79,6 +79,7 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, &InputPreprocessor)> 
 				// Get the Abort state of a tool's FSM
 				let reset_message = |tool| match tool {
 					ToolType::Select => Some(SelectMessage::Abort.into()),
+					ToolType::Navigate => Some(NavigateMessage::TransformCanvasEnd.into()),
 					ToolType::Path => Some(PathMessage::Abort.into()),
 					ToolType::Pen => Some(PenMessage::Abort.into()),
 					ToolType::Line => Some(LineMessage::Abort.into()),
