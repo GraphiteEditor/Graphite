@@ -100,7 +100,7 @@ export default defineComponent({
 			const previousSiblingSize = horizontal ? previousSibling.getBoundingClientRect().width : previousSibling.getBoundingClientRect().height;
 
 			// Prevent cursor flicker as mouse temporarily leaves the gutter
-			parent.style.cursor = horizontal ? "ew-resize" : "ns-resize";
+			document.body.style.cursor = horizontal ? "ew-resize" : "ns-resize";
 
 			const mouseStart = horizontal ? event.clientX : event.clientY;
 
@@ -112,17 +112,17 @@ export default defineComponent({
 				previousSibling.style.flexGrow = (previousSiblingSize - mouseDelta).toString();
 			}
 
-			parent.addEventListener("mousemove", updatePosition);
+			document.addEventListener("mousemove", updatePosition);
 
 			function cleanup() {
-				parent.style.cursor = "inherit";
-				parent.removeEventListener("mousemove", updatePosition);
-				parent.removeEventListener("mouseleave", cleanup);
-				parent.removeEventListener("mouseup", cleanup);
+				document.body.style.cursor = "inherit";
+				document.removeEventListener("mousemove", updatePosition);
+				document.removeEventListener("mouseleave", cleanup);
+				document.removeEventListener("mouseup", cleanup);
 			}
 
-			parent.addEventListener("mouseleave", cleanup);
-			parent.addEventListener("mouseup", cleanup);
+			document.addEventListener("mouseleave", cleanup);
+			document.addEventListener("mouseup", cleanup);
 		},
 	},
 	watch: {
