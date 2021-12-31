@@ -32,6 +32,7 @@ pub struct JsEditorHandle {
 }
 
 #[wasm_bindgen]
+#[allow(clippy::too_many_arguments)]
 impl JsEditorHandle {
 	#[wasm_bindgen(constructor)]
 	pub fn new(handle_response: js_sys::Function) -> Self {

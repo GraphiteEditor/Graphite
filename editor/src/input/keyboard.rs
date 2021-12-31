@@ -197,7 +197,7 @@ macro_rules! bit_ops {
 macro_rules! bit_ops_assign {
 	($(($op:ident, $func:ident)),* $(,)?) => {
 		$(impl<const LENGTH: usize> $op for BitVector<LENGTH> {
-			fn $func(&mut self, right: Self)  {
+			fn $func(&mut self, right: Self) {
 				for (left, right) in self.0.iter_mut().zip(right.0.iter()) {
 					$op::$func(left, right);
 				}

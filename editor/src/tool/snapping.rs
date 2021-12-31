@@ -58,13 +58,11 @@ impl SnapHandler {
 						.unwrap_or(0.),
 				);
 
-				// Do not move if over snap tolerance
-				let clamped_closest_move = DVec2::new(
+				// Clamp, do not move if over snap tolerance
+				DVec2::new(
 					if closest_move.x.abs() > SNAP_TOLERANCE { 0. } else { closest_move.x },
 					if closest_move.y.abs() > SNAP_TOLERANCE { 0. } else { closest_move.y },
-				);
-
-				clamped_closest_move
+				)
 			} else {
 				DVec2::ZERO
 			}

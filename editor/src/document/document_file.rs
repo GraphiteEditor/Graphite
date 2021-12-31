@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 use std::collections::VecDeque;
 
-use super::document_message_handler::CopyBufferEntry;
 pub use super::layer_panel::*;
 use super::movement_handler::{MovementMessage, MovementMessageHandler};
 use super::overlay_message_handler::OverlayMessageHandler;
@@ -187,7 +186,7 @@ impl DocumentMessageHandler {
 	}
 
 	pub fn deserialize_document(serialized_content: &str) -> Result<Self, DocumentError> {
-		log::info!("Deserialising: {:?}", serialized_content);
+		log::info!("Deserializing: {:?}", serialized_content);
 		serde_json::from_str(serialized_content).map_err(|e| DocumentError::InvalidFile(e.to_string()))
 	}
 
@@ -210,8 +209,8 @@ impl DocumentMessageHandler {
 
 	pub fn is_unmodified_default(&self) -> bool {
 		self.serialize_root().len() == Self::default().serialize_root().len()
-			&& self.document_undo_history.len() == 0
-			&& self.document_redo_history.len() == 0
+			&& self.document_undo_history.is_empty()
+			&& self.document_redo_history.is_empty()
 			&& self.name.starts_with(DEFAULT_DOCUMENT_NAME)
 	}
 
@@ -437,7 +436,7 @@ impl DocumentMessageHandler {
 			Some((document, layer_data)) => {
 				let document = std::mem::replace(&mut self.graphene_document, document);
 				let layer_data = std::mem::replace(&mut self.layer_data, layer_data);
-				self.document_undo_history.push((document.clone(), layer_data.clone()));
+				self.document_undo_history.push((document, layer_data));
 				Ok(())
 			}
 			None => Err(EditorError::NoTransactionInProgress),
@@ -645,7 +644,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					// Fill the selection range
 					self.layer_data
 						.iter()
-						.filter(|(target, _)| self.graphene_document.layer_is_between(&target, &selected, &self.layer_range_selection_reference))
+						.filter(|(target, _)| self.graphene_document.layer_is_between(target, &selected, &self.layer_range_selection_reference))
 						.for_each(|(layer_path, _)| {
 							paths.push(layer_path.clone());
 						});
@@ -664,7 +663,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				}
 
 				// Don't create messages for empty operations
-				if paths.len() > 0 {
+				if !paths.is_empty() {
 					// Add or set our selected layers
 					if ctrl {
 						responses.push_front(AddSelectedLayers(paths).into());

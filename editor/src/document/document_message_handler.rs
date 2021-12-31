@@ -249,7 +249,7 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 					.document_ids
 					.iter()
 					.filter_map(|id| {
-						self.documents.get(&id).map(|doc| FrontendDocumentDetails {
+						self.documents.get(id).map(|doc| FrontendDocumentDetails {
 							is_saved: doc.is_saved(),
 							id: *id,
 							name: doc.name.clone(),
@@ -314,7 +314,7 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 					.document_ids
 					.iter()
 					.filter_map(|id| {
-						self.documents.get(&id).map(|doc| FrontendDocumentDetails {
+						self.documents.get(id).map(|doc| FrontendDocumentDetails {
 							is_saved: doc.is_saved(),
 							id: *id,
 							name: doc.name.clone(),
@@ -356,7 +356,7 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 				self.copy_buffer[clipboard as usize].clear();
 				for path in paths {
 					let document = self.active_document();
-					match (document.graphene_document.layer(&path).map(|t| t.clone()), document.layer_data(&path).clone()) {
+					match (document.graphene_document.layer(&path).map(|t| t.clone()), *document.layer_data(&path)) {
 						(Ok(layer), layer_data) => {
 							self.copy_buffer[clipboard as usize].push(CopyBufferEntry { layer, layer_data });
 						}
