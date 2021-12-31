@@ -4,7 +4,7 @@ use glam::{DAffine2, DVec2, DMat2};
 use kurbo::{BezPath, Line, PathSeg, Point, Shape, Rect, QuadBez, ParamCurve, ParamCurveExtrema};
 use crate::boolean_ops::split_path_seg;
 
-pub const F64PRECISION: f64 = 0.0000000001; // for f64 comparisons
+pub const F64PRECISION: f64 = f64::EPSILON * 1000.0; // for f64 comparisons
 
 #[derive(Debug, Clone, Default, Copy)]
 pub struct Quad([DVec2; 4]);
@@ -79,9 +79,20 @@ pub fn get_arbitrary_point_on_path(path: &BezPath) -> Option<Point> {
 
 
 /// each intersection has two curves, which are distinguished between using this enum
+#[derive(PartialEq, Eq, Clone)]
 pub enum Origin{
    Alpha,
    Beta,
+}
+
+impl std::ops::Not for Origin{
+	type Output = Self;
+	fn not(self) -> Self {
+		match self{
+			Origin::Alpha => Origin::Beta,
+			Origin::Beta => Origin::Alpha,
+		}
+	}
 }
 
 pub struct Intersect{
@@ -179,7 +190,8 @@ impl<'a> SubCurve<'a> {
 	}
 }
 
-/// Rough algorithm
+/// Bezier Curve Intersection Algorithm
+/// 	- TODO: Consistenly use the maximum f64 precision possible, account for the locations where limitations will effect results
 /// 	- Behavior: when shapes have indentical pathsegs algorithm returns endpoints as intersects?
 /// 	- Bug: algorithm finds same intersection multiple times in same recursion path
 /// 	- Improvement: algorithm behavior when curves have differing "native curvatures"
