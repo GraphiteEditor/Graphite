@@ -42,7 +42,7 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Line {
 	fn actions(&self) -> ActionList {
 		use LineToolFsmState::*;
 		match self.fsm_state {
-			Ready => actions!(LineMessageDiscriminant;  DragStart),
+			Ready => actions!(LineMessageDiscriminant; DragStart),
 			Drawing => actions!(LineMessageDiscriminant; DragStop, Redraw, Abort),
 		}
 	}

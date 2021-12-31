@@ -30,8 +30,8 @@ pub struct OverlayMessageHandler {
 }
 
 impl MessageHandler<OverlayMessage, (&mut LayerData, &Document, &InputPreprocessor)> for OverlayMessageHandler {
-	fn process_action(&mut self, message: OverlayMessage, data: (&mut LayerData, &Document, &InputPreprocessor), responses: &mut VecDeque<Message>) {
-		let (layer_data, document, ipp) = data;
+	fn process_action(&mut self, message: OverlayMessage, _data: (&mut LayerData, &Document, &InputPreprocessor), responses: &mut VecDeque<Message>) {
+		// let (layer_data, document, ipp) = data;
 		use OverlayMessage::*;
 		match message {
 			DispatchOperation(operation) => match self.overlays_graphene_document.handle_operation(&operation) {

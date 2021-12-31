@@ -31,6 +31,7 @@ impl ViewportBounds {
 
 #[derive(Debug, Copy, Clone, Default, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub struct ScrollDelta {
+	// TODO: Switch these to `f64` values (not trivial because floats don't provide PartialEq, Eq, and Hash)
 	pub x: i32,
 	pub y: i32,
 	pub z: i32,
