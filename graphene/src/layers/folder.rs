@@ -102,7 +102,7 @@ impl Folder {
 	}
 
 	pub fn position_of_layer(&self, layer_id: LayerId) -> Result<usize, DocumentError> {
-		self.layer_ids.iter().position(|x| *x == layer_id).ok_or(DocumentError::LayerNotFound)
+		self.layer_ids.iter().position(|x| *x == layer_id).ok_or_else(|| DocumentError::LayerNotFound([layer_id].into()))
 	}
 
 	pub fn folder(&self, id: LayerId) -> Option<&Folder> {

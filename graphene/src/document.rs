@@ -61,7 +61,7 @@ impl Document {
 	pub fn folder(&self, path: &[LayerId]) -> Result<&Folder, DocumentError> {
 		let mut root = &self.root;
 		for id in path {
-			root = root.as_folder()?.layer(*id).ok_or(DocumentError::LayerNotFound)?;
+			root = root.as_folder()?.layer(*id).ok_or_else(|| DocumentError::LayerNotFound(path.into()))?;
 		}
 		root.as_folder()
 	}
@@ -72,7 +72,7 @@ impl Document {
 	fn folder_mut(&mut self, path: &[LayerId]) -> Result<&mut Folder, DocumentError> {
 		let mut root = &mut self.root;
 		for id in path {
-			root = root.as_folder_mut()?.layer_mut(*id).ok_or(DocumentError::LayerNotFound)?;
+			root = root.as_folder_mut()?.layer_mut(*id).ok_or_else(|| DocumentError::LayerNotFound(path.into()))?;
 		}
 		root.as_folder_mut()
 	}
@@ -83,7 +83,7 @@ impl Document {
 			return Ok(&self.root);
 		}
 		let (path, id) = split_path(path)?;
-		self.folder(path)?.layer(id).ok_or(DocumentError::LayerNotFound)
+		self.folder(path)?.layer(id).ok_or_else(|| DocumentError::LayerNotFound(path.into()))
 	}
 
 	/// Returns a mutable reference to the layer or folder at the path.
@@ -92,7 +92,7 @@ impl Document {
 			return Ok(&mut self.root);
 		}
 		let (path, id) = split_path(path)?;
-		self.folder_mut(path)?.layer_mut(id).ok_or(DocumentError::LayerNotFound)
+		self.folder_mut(path)?.layer_mut(id).ok_or_else(|| DocumentError::LayerNotFound(path.into()))
 	}
 
 	pub fn deepest_common_folder<'a>(&self, layers: impl Iterator<Item = &'a [LayerId]>) -> Result<&'a [LayerId], DocumentError> {
@@ -113,9 +113,36 @@ impl Document {
 			.unwrap_or_default()
 	}
 
+	pub fn common_path_prefix<'a>(&self, layers: impl Iterator<Item = &'a [LayerId]>) -> Vec<u64> {
+		let mut path_len: usize = usize::MAX;
+		let mut path: Vec<u64> = vec![];
+		layers.for_each(|layer| {
+			for i in 0..std::cmp::min(layer.len(), path_len) {
+				let a = *layer.get(i).unwrap();
+				let l = layer.len();
+
+				if i >= path.len() {
+					path.insert(i, a);
+					if l < path_len {
+						path_len = l;
+					}
+				}
+
+				let b = *path.get(i).unwrap();
+
+				if a != b {
+					path_len = i;
+					path.drain(path_len..path.len());
+				}
+			}
+		});
+
+		path
+	}
+
 	// Determines which layer is closer to the root, if path_a return true, if path_b return false
 	// Answers the question: Is A closer to the root than B?
-	pub fn layer_closer_to_root(&self, path_a: &Vec<u64>, path_b: &Vec<u64>) -> bool {
+	pub fn layer_closer_to_root(&self, path_a: &[u64], path_b: &[u64]) -> bool {
 		// Convert UUIDs to indices
 		let indices_for_path_a = self.indices_for_path(path_a).unwrap();
 		let indices_for_path_b = self.indices_for_path(path_b).unwrap();
@@ -137,13 +164,13 @@ impl Document {
 			return index_a < index_b;
 		}
 
-		return false;
+		false
 	}
 
 	// Is  the target layer between a <-> b layers, inclusive
-	pub fn layer_is_between(&self, target: &Vec<u64>, path_a: &Vec<u64>, path_b: &Vec<u64>) -> bool {
-		// If the target is a nonsense path, it isn't between
-		if target.len() < 1 {
+	pub fn layer_is_between(&self, target: &[u64], path_a: &[u64], path_b: &[u64]) -> bool {
+		// If the target is the root, it isn't between
+		if target.is_empty() {
 			return false;
 		}
 
@@ -157,7 +184,7 @@ impl Document {
 		let layer_vs_b = self.layer_closer_to_root(target, path_b);
 
 		// To be inbetween you need to be above A and below B or vice versa
-		return layer_vs_a != layer_vs_b;
+		layer_vs_a != layer_vs_b
 	}
 
 	/// Given a path to a layer, returns a vector of the indices in the layer tree
@@ -169,12 +196,12 @@ impl Document {
 
 		// TODO: appears to be n^2? should we maintain a lookup table?
 		for id in path {
-			let pos = root.layer_ids.iter().position(|x| *x == *id).ok_or(DocumentError::LayerNotFound)?;
+			let pos = root.layer_ids.iter().position(|x| *x == *id).ok_or_else(|| DocumentError::LayerNotFound(path.into()))?;
 			indices.push(pos);
-			root = root.folder(*id).ok_or(DocumentError::LayerNotFound)?;
+			root = root.folder(*id).ok_or(DocumentError::LayerNotFound(path.into()))?;
 		}
 
-		indices.push(root.layer_ids.iter().position(|x| *x == layer_id).ok_or(DocumentError::LayerNotFound)?);
+		indices.push(root.layer_ids.iter().position(|x| *x == layer_id).ok_or_else(|| DocumentError::LayerNotFound(path.into()))?);
 
 		Ok(indices)
 	}
@@ -268,7 +295,7 @@ impl Document {
 		let mut root = &mut self.root;
 		root.cache_dirty = true;
 		for id in path {
-			root = root.as_folder_mut()?.layer_mut(*id).ok_or(DocumentError::LayerNotFound)?;
+			root = root.as_folder_mut()?.layer_mut(*id).ok_or_else(|| DocumentError::LayerNotFound(path.into()))?;
 			root.cache_dirty = true;
 		}
 		Ok(())
@@ -301,7 +328,7 @@ impl Document {
 		let mut transforms = vec![self.root.transform];
 		for id in path {
 			if let Ok(folder) = root.as_folder() {
-				root = folder.layer(*id).ok_or(DocumentError::LayerNotFound)?;
+				root = folder.layer(*id).ok_or_else(|| DocumentError::LayerNotFound(path.into()))?;
 			}
 			transforms.push(root.transform);
 		}
@@ -313,7 +340,7 @@ impl Document {
 		let mut trans = self.root.transform;
 		for id in path {
 			if let Ok(folder) = root.as_folder() {
-				root = folder.layer(*id).ok_or(DocumentError::LayerNotFound)?;
+				root = folder.layer(*id).ok_or_else(|| DocumentError::LayerNotFound(path.into()))?;
 			}
 			trans = trans * root.transform;
 		}
@@ -515,6 +542,7 @@ impl Document {
 				Some(vec![LayerChanged { path: path.clone() }])
 			}
 			Operation::CreateFolder { path } => {
+				log::debug!("Creating a folder with path {:?}", path);
 				self.set_layer(path, Layer::new(LayerDataType::Folder(Folder::default()), DAffine2::IDENTITY.to_cols_array()), -1)?;
 				self.mark_as_dirty(path)?;
 
@@ -632,4 +660,44 @@ fn update_thumbnails_upstream(path: &[LayerId]) -> Vec<DocumentResponse> {
 		responses.push(DocumentResponse::LayerChanged { path: path[0..(length - i)].to_vec() });
 	}
 	responses
+}
+
+#[test]
+fn common_layer_path_prefix_test() {
+	let mut fake_layers: Vec<Vec<u64>> = vec![vec![]];
+	fake_layers.push(vec![1, 2]);
+	// fake_layers.push(vec![1, 2]);
+	// fake_layers.push(vec![1, 2]);
+	// fake_layers.push(vec![1, 2, 0]);
+
+	let layers = fake_layers.iter().map(|layer| layer.as_slice());
+	let result = common_path_prefix(layers);
+	println!("Layers {:?}", result);
+}
+
+pub fn common_path_prefix<'a>(layers: impl Iterator<Item = &'a [LayerId]>) -> Vec<u64> {
+	let mut path_len: usize = usize::MAX;
+	let mut path: Vec<u64> = vec![];
+	layers.for_each(|layer| {
+		for i in 0..std::cmp::min(layer.len(), path_len) {
+			let a = *layer.get(i).unwrap();
+			let l = layer.len();
+
+			if i >= path.len() {
+				path.insert(i, a);
+				if l < path_len {
+					path_len = l;
+				}
+			}
+
+			let b = *path.get(i).unwrap();
+
+			if a != b {
+				path_len = i;
+				path.drain(path_len..path.len());
+			}
+		}
+	});
+
+	path
 }

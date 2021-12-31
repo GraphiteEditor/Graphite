@@ -567,11 +567,9 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			GroupSelectedLayers => {
 				let selected_layers = self.selected_layers();
 
-				let common_prefix = self.graphene_document.common_layer_path_prefix(selected_layers);
-				let (_id, common_prefix) = common_prefix.split_last().unwrap_or((&0, &[]));
-
-				let mut new_folder_path = common_prefix.to_vec();
+				let mut new_folder_path: Vec<u64> = self.graphene_document.common_path_prefix(selected_layers);
 				new_folder_path.push(generate_uuid());
+				log::debug!("new_folder_path {:?}", new_folder_path);
 
 				responses.push_back(DocumentsMessage::Copy(Clipboard::System).into());
 				responses.push_back(DocumentMessage::DeleteSelectedLayers.into());
@@ -621,10 +619,10 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			}
 			DeleteSelectedLayers => {
 				self.backup(responses);
-				responses.push_front(ToolMessage::DocumentIsDirty.into());
 				for path in self.selected_layers().map(|path| path.to_vec()) {
 					responses.push_front(DocumentOperation::DeleteLayer { path }.into());
 				}
+				responses.push_front(ToolMessage::DocumentIsDirty.into());
 			}
 			SetViewMode(mode) => {
 				self.view_mode = mode;
@@ -645,7 +643,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					// Fill the selection range
 					self.layer_data
 						.iter()
-						.filter(|(target, _)| self.graphene_document.layer_is_between(&target, &selected, &self.layer_range_selection_reference))
+						.filter(|(target, _)| self.graphene_document.layer_is_between(target, &selected, &self.layer_range_selection_reference))
 						.for_each(|(layer_path, _)| {
 							paths.push(layer_path.clone());
 						});
@@ -654,7 +652,9 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 						// Toggle selection when holding ctrl
 						let layer = self.layer_data_mut(&selected);
 						layer.selected = !layer.selected;
+						log::debug!("Ctrl Selection: {:?}", selected);
 						responses.push_back(LayerChanged(selected.clone()).into());
+						responses.push_back(ToolMessage::DocumentIsDirty.into());
 					} else {
 						paths.push(selected.clone());
 					}
@@ -664,7 +664,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				}
 
 				// Don't create messages for empty operations
-				if paths.len() > 0 {
+				if !paths.is_empty() {
 					// Add or set our selected layers
 					if ctrl {
 						responses.push_front(AddSelectedLayers(paths).into());
@@ -677,6 +677,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				self.layer_data.insert(path, layer_data_entry);
 			}
 			SetSelectedLayers(paths) => {
+				log::debug!("Set Selection: {:?}", paths);
 				self.layer_data.iter_mut().filter(|(_, layer_data)| layer_data.selected).for_each(|(path, layer_data)| {
 					layer_data.selected = false;
 					responses.push_back(LayerChanged(path.clone()).into())
@@ -685,6 +686,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				responses.push_front(AddSelectedLayers(paths).into());
 			}
 			AddSelectedLayers(paths) => {
+				log::debug!("Add Selection: {:?}", paths);
 				for path in paths {
 					responses.extend(self.select_layer(&path));
 				}
