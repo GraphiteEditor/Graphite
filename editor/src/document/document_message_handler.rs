@@ -1,4 +1,4 @@
-use super::{DocumentMessageHandler, LayerData};
+use super::{DocumentMessageHandler, LayerMetadata};
 use crate::consts::DEFAULT_DOCUMENT_NAME;
 use crate::frontend::frontend_message_handler::FrontendDocumentDetails;
 use crate::input::InputPreprocessor;
@@ -68,7 +68,7 @@ pub struct DocumentsMessageHandler {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CopyBufferEntry {
 	layer: Layer,
-	layer_data: LayerData,
+	layer_metadata: LayerMetadata,
 }
 
 impl DocumentsMessageHandler {
@@ -121,7 +121,7 @@ impl DocumentsMessageHandler {
 
 		responses.extend(
 			new_document
-				.layer_data
+				.layer_metadata
 				.keys()
 				.filter_map(|path| new_document.layer_panel_entry_from_path(path))
 				.map(|entry| FrontendMessage::UpdateLayer { data: entry }.into())
@@ -193,7 +193,7 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 				responses.push_back(FrontendMessage::SetActiveDocument { document_id: id }.into());
 				responses.push_back(RenderDocument.into());
 				responses.push_back(DocumentMessage::DocumentStructureChanged.into());
-				for layer in self.active_document().layer_data.keys() {
+				for layer in self.active_document().layer_metadata.keys() {
 					responses.push_back(DocumentMessage::LayerChanged(layer.clone()).into());
 				}
 			}
@@ -262,7 +262,7 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 				responses.push_back(FrontendMessage::RemoveAutoSaveDocument { document_id: id }.into());
 				responses.push_back(RenderDocument.into());
 				responses.push_back(DocumentMessage::DocumentStructureChanged.into());
-				for layer in self.active_document().layer_data.keys() {
+				for layer in self.active_document().layer_metadata.keys() {
 					responses.push_back(DocumentMessage::LayerChanged(layer.clone()).into());
 				}
 			}
@@ -356,9 +356,9 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 				self.copy_buffer[clipboard as usize].clear();
 				for path in paths {
 					let document = self.active_document();
-					match (document.graphene_document.layer(&path).map(|t| t.clone()), *document.layer_data(&path)) {
-						(Ok(layer), layer_data) => {
-							self.copy_buffer[clipboard as usize].push(CopyBufferEntry { layer, layer_data });
+					match (document.graphene_document.layer(&path).map(|t| t.clone()), *document.layer_metadata(&path)) {
+						(Ok(layer), layer_metadata) => {
+							self.copy_buffer[clipboard as usize].push(CopyBufferEntry { layer, layer_metadata });
 						}
 						(Err(e), _) => warn!("Could not access selected layer {:?}: {:?}", path, e),
 					}
@@ -399,9 +399,9 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 						.into(),
 					);
 					responses.push_back(
-						DocumentMessage::UpdateLayerData {
-							path: destination_path,
-							layer_data_entry: entry.layer_data,
+						DocumentMessage::UpdateLayerMetadata {
+							layer_path: destination_path,
+							layer_metadata: entry.layer_metadata,
 						}
 						.into(),
 					);
@@ -431,7 +431,7 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 			Paste,
 		);
 
-		if self.active_document().layer_data.values().any(|data| data.selected) {
+		if self.active_document().layer_metadata.values().any(|data| data.selected) {
 			let select = actions!(DocumentsMessageDiscriminant;
 				Copy,
 				Cut,

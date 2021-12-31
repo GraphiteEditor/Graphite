@@ -5,7 +5,7 @@ pub use super::layer_panel::*;
 use super::movement_handler::{MovementMessage, MovementMessageHandler};
 use super::overlay_message_handler::OverlayMessageHandler;
 use super::transform_layer_handler::{TransformLayerMessage, TransformLayerMessageHandler};
-use super::vectorize_layerdata;
+use super::vectorize_layer_metadata;
 
 use crate::consts::DEFAULT_DOCUMENT_NAME;
 use crate::consts::{ASYMPTOTIC_EFFECT, FILE_EXPORT_SUFFIX, FILE_SAVE_SUFFIX, SCALE_EFFECT, SCROLLBAR_SPACING};
@@ -24,7 +24,7 @@ use kurbo::PathSeg;
 use log::warn;
 use serde::{Deserialize, Serialize};
 
-type DocumentSave = (GrapheneDocument, HashMap<Vec<LayerId>, LayerData>);
+type DocumentSave = (GrapheneDocument, HashMap<Vec<LayerId>, LayerMetadata>);
 
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize, Hash)]
 pub enum FlipAxis {
@@ -69,8 +69,8 @@ pub struct DocumentMessageHandler {
 	pub document_redo_history: Vec<DocumentSave>,
 	pub saved_document_identifier: u64,
 	pub name: String,
-	#[serde(with = "vectorize_layerdata")]
-	pub layer_data: HashMap<Vec<LayerId>, LayerData>,
+	#[serde(with = "vectorize_layer_metadata")]
+	pub layer_metadata: HashMap<Vec<LayerId>, LayerMetadata>,
 	layer_range_selection_reference: Vec<LayerId>,
 	#[serde(skip)]
 	movement_handler: MovementMessageHandler,
@@ -90,7 +90,7 @@ impl Default for DocumentMessageHandler {
 			document_redo_history: Vec::new(),
 			name: String::from("Untitled Document"),
 			saved_document_identifier: 0,
-			layer_data: vec![(vec![], LayerData::new(true))].into_iter().collect(),
+			layer_metadata: vec![(vec![], LayerMetadata::new(true))].into_iter().collect(),
 			layer_range_selection_reference: Vec::new(),
 			movement_handler: MovementMessageHandler::default(),
 			overlay_message_handler: OverlayMessageHandler::default(),
@@ -111,9 +111,9 @@ pub enum DocumentMessage {
 	DispatchOperation(Box<DocumentOperation>),
 	#[child]
 	Overlay(OverlayMessage),
-	UpdateLayerData {
-		path: Vec<LayerId>,
-		layer_data_entry: LayerData,
+	UpdateLayerMetadata {
+		layer_path: Vec<LayerId>,
+		layer_metadata: LayerMetadata,
 	},
 	SetSelectedLayers(Vec<Vec<LayerId>>),
 	AddSelectedLayers(Vec<Vec<LayerId>>),
@@ -217,7 +217,7 @@ impl DocumentMessageHandler {
 	fn select_layer(&mut self, path: &[LayerId]) -> Option<Message> {
 		println!("Select_layer fail: {:?}", self.all_layers_sorted());
 
-		self.layer_data_mut(path).selected = true;
+		self.layer_metadata_mut(path).selected = true;
 		let data = self.layer_panel_entry(path.to_vec()).ok()?;
 		(!path.is_empty()).then(|| FrontendMessage::UpdateLayer { data }.into())
 	}
@@ -269,12 +269,8 @@ impl DocumentMessageHandler {
 		shapes.collect::<Vec<VectorManipulatorShape>>()
 	}
 
-	pub fn create_layer_data(&mut self, path: &[LayerId]) {
-		self.layer_data.insert(path.to_vec(), LayerData::new(true));
-	}
-
 	pub fn selected_layers(&self) -> impl Iterator<Item = &[LayerId]> {
-		self.layer_data.iter().filter_map(|(path, data)| data.selected.then(|| path.as_slice()))
+		self.layer_metadata.iter().filter_map(|(path, data)| data.selected.then(|| path.as_slice()))
 	}
 
 	pub fn selected_visible_layers(&self) -> impl Iterator<Item = &[LayerId]> {
@@ -293,7 +289,7 @@ impl DocumentMessageHandler {
 				LayerDataType::Shape(_) => (),
 				LayerDataType::Folder(ref folder) => {
 					path.push(*id);
-					if self.layer_data(path).expanded {
+					if self.layer_metadata(path).expanded {
 						structure.push(space);
 						self.serialize_structure(folder, structure, data, path);
 						space = 0;
@@ -339,7 +335,7 @@ impl DocumentMessageHandler {
 
 	/// Returns an unsorted list of all layer paths including folders at all levels, except the document's top-level root folder itself
 	pub fn all_layers(&self) -> Vec<Vec<LayerId>> {
-		self.layer_data.keys().filter(|path| !path.is_empty()).cloned().collect()
+		self.layer_metadata.keys().filter(|path| !path.is_empty()).cloned().collect()
 	}
 
 	/// Returns the paths to all layers in order, optionally including only selected or non-selected layers.
@@ -347,14 +343,13 @@ impl DocumentMessageHandler {
 		// Compute the indices for each layer to be able to sort them
 		let mut layers_with_indices: Vec<(Vec<LayerId>, Vec<usize>)> = self
 
-			.layer_data
+			.layer_metadata
 			.iter()
 			// 'path.len() > 0' filters out root layer since it has no indices
 			.filter_map(|(path, data)| (!path.is_empty() && (data.selected == selected.unwrap_or(data.selected))).then(|| path.clone()))
 			.filter_map(|path| {
-				// Currently it is possible that layer_data contains layers that are don't actually exist (has been partially fixed in #281)
-				// and thus indices_for_path can return an error. We currently skip these layers and log a warning.
-				// Once this problem is solved this code can be simplified
+				// TODO: Currently it is possible that `layer_metadata` contains layers that are don't actually exist (has been partially fixed in #281) and thus
+				// TODO: `indices_for_path` can return an error. We currently skip these layers and log a warning. Once this problem is solved this code can be simplified.
 				match self.graphene_document.indices_for_path(&path) {
 					Err(err) => {
 						warn!("layers_sorted: Could not get indices for the layer {:?}: {:?}", path, err);
@@ -385,23 +380,23 @@ impl DocumentMessageHandler {
 		self.layers_sorted(Some(false))
 	}
 
-	pub fn layer_data(&self, path: &[LayerId]) -> &LayerData {
-		self.layer_data.get(path).expect("Layerdata does not exist")
+	pub fn layer_metadata(&self, path: &[LayerId]) -> &LayerMetadata {
+		self.layer_metadata.get(path).unwrap_or_else(|| panic!("Editor's layer metadata for {:?} does not exist", path))
 	}
 
-	pub fn layer_data_mut(&mut self, path: &[LayerId]) -> &mut LayerData {
-		Self::layer_data_mut_no_borrow_self(&mut self.layer_data, path)
+	pub fn layer_metadata_mut(&mut self, path: &[LayerId]) -> &mut LayerMetadata {
+		Self::layer_metadata_mut_no_borrow_self(&mut self.layer_metadata, path)
 	}
 
-	pub fn layer_data_mut_no_borrow_self<'a>(layer_data: &'a mut HashMap<Vec<LayerId>, LayerData>, path: &[LayerId]) -> &'a mut LayerData {
-		layer_data
+	pub fn layer_metadata_mut_no_borrow_self<'a>(layer_metadata: &'a mut HashMap<Vec<LayerId>, LayerMetadata>, path: &[LayerId]) -> &'a mut LayerMetadata {
+		layer_metadata
 			.get_mut(path)
 			.unwrap_or_else(|| panic!("Layer data cannot be found because the path {:?} does not exist", path))
 	}
 
 	pub fn backup(&mut self, responses: &mut VecDeque<Message>) {
 		self.document_redo_history.clear();
-		self.document_undo_history.push((self.graphene_document.clone(), self.layer_data.clone()));
+		self.document_undo_history.push((self.graphene_document.clone(), self.layer_metadata.clone()));
 
 		// Push the UpdateOpenDocumentsList message to the bus in order to update the save status of the open documents
 		responses.push_back(DocumentsMessage::UpdateOpenDocumentsList.into());
@@ -418,10 +413,10 @@ impl DocumentMessageHandler {
 		responses.push_back(DocumentsMessage::UpdateOpenDocumentsList.into());
 
 		match self.document_undo_history.pop() {
-			Some((document, layer_data)) => {
+			Some((document, layer_metadata)) => {
 				let document = std::mem::replace(&mut self.graphene_document, document);
-				let layer_data = std::mem::replace(&mut self.layer_data, layer_data);
-				self.document_redo_history.push((document, layer_data));
+				let layer_metadata = std::mem::replace(&mut self.layer_metadata, layer_metadata);
+				self.document_redo_history.push((document, layer_metadata));
 				Ok(())
 			}
 			None => Err(EditorError::NoTransactionInProgress),
@@ -433,10 +428,10 @@ impl DocumentMessageHandler {
 		responses.push_back(DocumentsMessage::UpdateOpenDocumentsList.into());
 
 		match self.document_redo_history.pop() {
-			Some((document, layer_data)) => {
+			Some((document, layer_metadata)) => {
 				let document = std::mem::replace(&mut self.graphene_document, document);
-				let layer_data = std::mem::replace(&mut self.layer_data, layer_data);
-				self.document_undo_history.push((document, layer_data));
+				let layer_metadata = std::mem::replace(&mut self.layer_metadata, layer_metadata);
+				self.document_undo_history.push((document, layer_metadata));
 				Ok(())
 			}
 			None => Err(EditorError::NoTransactionInProgress),
@@ -465,7 +460,7 @@ impl DocumentMessageHandler {
 	}
 
 	pub fn layer_panel_entry(&mut self, path: Vec<LayerId>) -> Result<LayerPanelEntry, EditorError> {
-		let data: LayerData = *self.layer_data_mut(&path);
+		let data: LayerMetadata = *self.layer_metadata_mut(&path);
 		let layer = self.graphene_document.layer(&path)?;
 		let entry = layer_panel_entry(&data, self.graphene_document.multiply_transforms(&path)?, layer, path);
 		Ok(entry)
@@ -481,14 +476,14 @@ impl DocumentMessageHandler {
 	}
 
 	pub fn layer_panel_entry_from_path(&self, path: &[LayerId]) -> Option<LayerPanelEntry> {
-		let layer_data = self.layer_data(path);
+		let layer_metadata = self.layer_metadata(path);
 		let transform = self
 			.graphene_document
 			.generate_transform_across_scope(path, Some(self.graphene_document.root.transform.inverse()))
 			.ok()?;
 		let layer = self.graphene_document.layer(path).ok()?;
 
-		Some(layer_panel_entry(layer_data, transform, layer, path.to_vec()))
+		Some(layer_panel_entry(layer_metadata, transform, layer, path.to_vec()))
 	}
 }
 
@@ -499,7 +494,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			Movement(message) => self.movement_handler.process_action(message, (&self.graphene_document, ipp), responses),
 			TransformLayers(message) => self
 				.transform_layer_handler
-				.process_action(message, (&mut self.layer_data, &mut self.graphene_document, ipp), responses),
+				.process_action(message, (&mut self.layer_metadata, &mut self.graphene_document, ipp), responses),
 			DeleteLayer(path) => responses.push_back(DocumentOperation::DeleteLayer { path }.into()),
 			StartTransaction => self.backup(responses),
 			RollbackTransaction => {
@@ -512,8 +507,11 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			}
 			CommitTransaction => (),
 			Overlay(message) => {
-				self.overlay_message_handler
-					.process_action(message, (Self::layer_data_mut_no_borrow_self(&mut self.layer_data, &[]), &self.graphene_document, ipp), responses);
+				self.overlay_message_handler.process_action(
+					message,
+					(Self::layer_metadata_mut_no_borrow_self(&mut self.layer_metadata, &[]), &self.graphene_document, ipp),
+					responses,
+				);
 				// responses.push_back(OverlayMessage::RenderOverlays.into());
 			}
 			ExportDocument => {
@@ -588,7 +586,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			}
 			SetBlendModeForSelectedLayers(blend_mode) => {
 				self.backup(responses);
-				for path in self.layer_data.iter().filter_map(|(path, data)| data.selected.then(|| path.clone())) {
+				for path in self.layer_metadata.iter().filter_map(|(path, data)| data.selected.then(|| path.clone())) {
 					responses.push_back(DocumentOperation::SetLayerBlendMode { path, blend_mode }.into());
 				}
 			}
@@ -605,12 +603,12 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				responses.push_back(ToolMessage::DocumentIsDirty.into());
 			}
 			ToggleLayerExpansion(path) => {
-				self.layer_data_mut(&path).expanded ^= true;
+				self.layer_metadata_mut(&path).expanded ^= true;
 				responses.push_back(DocumentStructureChanged.into());
 				responses.push_back(LayerChanged(path).into())
 			}
 			SetLayerExpansion(path, is_expanded) => {
-				self.layer_data_mut(&path).expanded = is_expanded;
+				self.layer_metadata_mut(&path).expanded = is_expanded;
 				responses.push_back(DocumentStructureChanged.into());
 				responses.push_back(LayerChanged(path).into())
 			}
@@ -642,7 +640,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				// If we have shift pressed and a layer already selected then fill the range
 				if shift && last_selection_exists {
 					// Fill the selection range
-					self.layer_data
+					self.layer_metadata
 						.iter()
 						.filter(|(target, _)| self.graphene_document.layer_is_between(target, &selected, &self.layer_range_selection_reference))
 						.for_each(|(layer_path, _)| {
@@ -651,7 +649,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				} else {
 					if ctrl {
 						// Toggle selection when holding ctrl
-						let layer = self.layer_data_mut(&selected);
+						let layer = self.layer_metadata_mut(&selected);
 						layer.selected = !layer.selected;
 						responses.push_back(LayerChanged(selected.clone()).into());
 					} else {
@@ -672,12 +670,13 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					}
 				}
 			}
-			UpdateLayerData { path, layer_data_entry } => {
-				self.layer_data.insert(path, layer_data_entry);
+			UpdateLayerMetadata { layer_path: path, layer_metadata } => {
+				self.layer_metadata.insert(path, layer_metadata);
 			}
 			SetSelectedLayers(paths) => {
-				self.layer_data.iter_mut().filter(|(_, layer_data)| layer_data.selected).for_each(|(path, layer_data)| {
-					layer_data.selected = false;
+				let selected = self.layer_metadata.iter_mut().filter(|(_, layer_metadata)| layer_metadata.selected);
+				selected.for_each(|(path, layer_metadata)| {
+					layer_metadata.selected = false;
 					responses.push_back(LayerChanged(path.clone()).into())
 				});
 
@@ -692,7 +691,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				responses.push_back(ToolMessage::DocumentIsDirty.into());
 			}
 			DebugPrintDocument => {
-				log::debug!("{:#?}\n{:#?}", self.graphene_document, self.layer_data);
+				log::debug!("{:#?}\n{:#?}", self.graphene_document, self.layer_metadata);
 			}
 			SelectAllLayers => {
 				let all_layer_paths = self.all_layers();
@@ -737,11 +736,11 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 						match &response {
 							DocumentResponse::FolderChanged { path } => responses.push_back(FolderChanged(path.clone()).into()),
 							DocumentResponse::DeletedLayer { path } => {
-								self.layer_data.remove(path);
+								self.layer_metadata.remove(path);
 							}
 							DocumentResponse::LayerChanged { path } => responses.push_back(LayerChanged(path.clone()).into()),
 							DocumentResponse::CreatedLayer { path } => {
-								self.layer_data.insert(path.clone(), LayerData::new(false));
+								self.layer_metadata.insert(path.clone(), LayerMetadata::new(false));
 								responses.push_back(LayerChanged(path.clone()).into());
 								self.layer_range_selection_reference = path.clone();
 								responses.push_back(SetSelectedLayers(vec![path.clone()]).into());
@@ -953,9 +952,9 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 						.into(),
 					);
 					responses.push_back(
-						DocumentMessage::UpdateLayerData {
-							path: destination_path,
-							layer_data_entry: *self.layer_data(&target_layer),
+						DocumentMessage::UpdateLayerMetadata {
+							layer_path: destination_path,
+							layer_metadata: *self.layer_metadata(&target_layer),
 						}
 						.into(),
 					);
@@ -983,7 +982,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			MoveLayerInTree,
 		);
 
-		if self.layer_data.values().any(|data| data.selected) {
+		if self.layer_metadata.values().any(|data| data.selected) {
 			let select = actions!(DocumentMessageDiscriminant;
 				DeleteSelectedLayers,
 				DuplicateSelectedLayers,
