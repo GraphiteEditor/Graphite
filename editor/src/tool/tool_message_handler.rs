@@ -12,14 +12,14 @@ use std::collections::VecDeque;
 #[impl_message(Message, Tool)]
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub enum ToolMessage {
-	UpdateHints,
-	ActivateTool(ToolType),
 	SelectPrimaryColor(Color),
 	SelectSecondaryColor(Color),
-	SelectedLayersChanged,
 	SwapColors,
 	ResetColors,
 	NoOp,
+	ActivateTool(ToolType),
+	DocumentIsDirty,
+	UpdateHints,
 	SetToolOptions(ToolType, ToolOptions),
 	#[child]
 	Fill(FillMessage),
@@ -76,23 +76,8 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, &InputPreprocessor)> 
 					return;
 				}
 
-				// Get the Abort state of a tool's FSM
-				let reset_message = |tool| match tool {
-					ToolType::Select => Some(SelectMessage::Abort.into()),
-					ToolType::Navigate => Some(NavigateMessage::TransformCanvasEnd.into()),
-					ToolType::Path => Some(PathMessage::Abort.into()),
-					ToolType::Pen => Some(PenMessage::Abort.into()),
-					ToolType::Line => Some(LineMessage::Abort.into()),
-					ToolType::Rectangle => Some(RectangleMessage::Abort.into()),
-					ToolType::Ellipse => Some(EllipseMessage::Abort.into()),
-					ToolType::Shape => Some(ShapeMessage::Abort.into()),
-					ToolType::Eyedropper => Some(EyedropperMessage::Abort.into()),
-					ToolType::Fill => Some(FillMessage::Abort.into()),
-					_ => None,
-				};
-
 				// Send the Abort state transition to the tool
-				let mut send_message_to_tool = |tool_type, message: ToolMessage, update_hints: bool| {
+				let mut send_abort_to_tool = |tool_type, message: ToolMessage, update_hints: bool| {
 					if let Some(tool) = tool_data.tools.get_mut(&tool_type) {
 						tool.process_action(message, (document, document_data, input), responses);
 
@@ -101,19 +86,17 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, &InputPreprocessor)> 
 						}
 					}
 				};
-
 				// Send the old and new tools a transition to their FSM Abort states
-				if let Some(tool_message) = reset_message(new_tool) {
-					send_message_to_tool(new_tool, tool_message, true);
+				if let Some(tool_message) = standard_tool_message(new_tool, StandardToolMessageType::Abort) {
+					send_abort_to_tool(new_tool, tool_message, true);
 				}
-				if let Some(tool_message) = reset_message(old_tool) {
-					send_message_to_tool(old_tool, tool_message, false);
+				if let Some(tool_message) = standard_tool_message(old_tool, StandardToolMessageType::Abort) {
+					send_abort_to_tool(old_tool, tool_message, false);
 				}
 
-				// Special cases for specific tools
-				// TODO: Refactor to avoid doing this here
-				if new_tool == ToolType::Select || new_tool == ToolType::Path {
-					responses.push_back(ToolMessage::SelectedLayersChanged.into());
+				// Send the DocumentIsDirty message to the active tool's sub-tool message handler
+				if let Some(message) = standard_tool_message(new_tool, StandardToolMessageType::DocumentIsDirty) {
+					responses.push_back(message.into());
 				}
 
 				// Store the new active tool
@@ -124,12 +107,12 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, &InputPreprocessor)> 
 				let tool_options = self.tool_state.document_tool_data.tool_options.get(&new_tool).copied();
 				responses.push_back(FrontendMessage::SetActiveTool { tool_name, tool_options }.into());
 			}
-			SelectedLayersChanged => {
-				match self.tool_state.tool_data.active_tool_type {
-					ToolType::Select => responses.push_back(SelectMessage::UpdateSelectionBoundingBox.into()),
-					ToolType::Path => responses.push_back(PathMessage::RedrawOverlay.into()),
-					_ => (),
-				};
+			DocumentIsDirty => {
+				// Send the DocumentIsDirty message to the active tool's sub-tool message handler
+				let active_tool = self.tool_state.tool_data.active_tool_type;
+				if let Some(message) = standard_tool_message(active_tool, StandardToolMessageType::DocumentIsDirty) {
+					responses.push_back(message.into());
+				}
 			}
 			SwapColors => {
 				let document_data = &mut self.tool_state.document_tool_data;
@@ -172,9 +155,47 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, &InputPreprocessor)> 
 	}
 }
 
+enum StandardToolMessageType {
+	Abort,
+	DocumentIsDirty,
+}
+
+// TODO: Find a nicer way in Rust to make this generic so we don't have to manually map to enum variants
+fn standard_tool_message(tool: ToolType, message_type: StandardToolMessageType) -> Option<ToolMessage> {
+	match message_type {
+		StandardToolMessageType::DocumentIsDirty => match tool {
+			ToolType::Select => Some(SelectMessage::DocumentIsDirty.into()),
+			ToolType::Path => Some(PathMessage::DocumentIsDirty.into()),
+			//ToolType::Navigate => Some(NavigateMessage::DocumentIsDirty.into())
+			// ToolType::Pen => Some(PenMessage::DocumentIsDirty.into()),
+			// ToolType::Line => Some(LineMessage::DocumentIsDirty.into()),
+			// ToolType::Rectangle => Some(RectangleMessage::DocumentIsDirty.into()),
+			// ToolType::Ellipse => Some(EllipseMessage::DocumentIsDirty.into()),
+			// ToolType::Shape => Some(ShapeMessage::DocumentIsDirty.into()),
+			// ToolType::Eyedropper => Some(EyedropperMessage::DocumentIsDirty.into()),
+			// ToolType::Fill => Some(FillMessage::DocumentIsDirty.into()),
+			_ => None,
+		},
+		StandardToolMessageType::Abort => match tool {
+			ToolType::Select => Some(SelectMessage::Abort.into()),
+			ToolType::Path => Some(PathMessage::Abort.into()),
+			ToolType::Navigate => Some(NavigateMessage::Abort.into()),
+			ToolType::Pen => Some(PenMessage::Abort.into()),
+			ToolType::Line => Some(LineMessage::Abort.into()),
+			ToolType::Rectangle => Some(RectangleMessage::Abort.into()),
+			ToolType::Ellipse => Some(EllipseMessage::Abort.into()),
+			ToolType::Shape => Some(ShapeMessage::Abort.into()),
+			ToolType::Eyedropper => Some(EyedropperMessage::Abort.into()),
+			ToolType::Fill => Some(FillMessage::Abort.into()),
+			_ => None,
+		},
+	}
+}
+
 fn message_to_tool_type(message: &ToolMessage) -> ToolType {
 	use ToolMessage::*;
-	let tool_type = match message {
+
+	match message {
 		Fill(_) => ToolType::Fill,
 		Rectangle(_) => ToolType::Rectangle,
 		Ellipse(_) => ToolType::Ellipse,
@@ -187,9 +208,7 @@ fn message_to_tool_type(message: &ToolMessage) -> ToolType {
 		Navigate(_) => ToolType::Navigate,
 		Path(_) => ToolType::Path,
 		_ => unreachable!(),
-	};
-
-	tool_type
+	}
 }
 
 fn update_working_colors(document_data: &DocumentToolData, responses: &mut VecDeque<Message>) {

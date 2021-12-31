@@ -110,6 +110,7 @@ impl MessageHandler<MovementMessage, (&Document, &InputPreprocessor)> for Moveme
 			}
 			TransformCanvasEnd => {
 				self.rotation = self.snapped_angle();
+				responses.push_back(ToolMessage::DocumentIsDirty.into());
 				self.snap_rotate = false;
 				self.translating = false;
 				self.rotating = false;
@@ -121,7 +122,7 @@ impl MessageHandler<MovementMessage, (&Document, &InputPreprocessor)> for Moveme
 					let transformed_delta = document.root.transform.inverse().transform_vector2(delta);
 
 					self.translation += transformed_delta;
-					responses.push_back(ToolMessage::SelectedLayersChanged.into());
+					responses.push_back(ToolMessage::DocumentIsDirty.into());
 					self.create_document_transform(&ipp.viewport_bounds, responses);
 				}
 
@@ -141,7 +142,7 @@ impl MessageHandler<MovementMessage, (&Document, &InputPreprocessor)> for Moveme
 					};
 
 					self.rotation += rotation;
-					responses.push_back(ToolMessage::SelectedLayersChanged.into());
+					responses.push_back(ToolMessage::DocumentIsDirty.into());
 					responses.push_back(FrontendMessage::SetCanvasRotation { new_radians: self.snapped_angle() }.into());
 					self.create_document_transform(&ipp.viewport_bounds, responses);
 				}
@@ -151,8 +152,8 @@ impl MessageHandler<MovementMessage, (&Document, &InputPreprocessor)> for Moveme
 
 					let new = (self.scale * amount).clamp(VIEWPORT_ZOOM_SCALE_MIN, VIEWPORT_ZOOM_SCALE_MAX);
 					self.scale = new;
+					responses.push_back(ToolMessage::DocumentIsDirty.into());
 					responses.push_back(FrontendMessage::SetCanvasZoom { new_zoom: self.scale }.into());
-					responses.push_back(ToolMessage::SelectedLayersChanged.into());
 					self.create_document_transform(&ipp.viewport_bounds, responses);
 				}
 				self.mouse_pos = ipp.mouse.position;
@@ -160,7 +161,7 @@ impl MessageHandler<MovementMessage, (&Document, &InputPreprocessor)> for Moveme
 			SetCanvasZoom(new) => {
 				self.scale = new.clamp(VIEWPORT_ZOOM_SCALE_MIN, VIEWPORT_ZOOM_SCALE_MAX);
 				responses.push_back(FrontendMessage::SetCanvasZoom { new_zoom: self.scale }.into());
-				responses.push_back(ToolMessage::SelectedLayersChanged.into());
+				responses.push_back(ToolMessage::DocumentIsDirty.into());
 				responses.push_back(DocumentMessage::DirtyRenderDocumentInOutlineView.into());
 				self.create_document_transform(&ipp.viewport_bounds, responses);
 			}
@@ -168,7 +169,7 @@ impl MessageHandler<MovementMessage, (&Document, &InputPreprocessor)> for Moveme
 				// TODO: Eliminate redundant code by making this call SetCanvasZoom
 				self.scale = *VIEWPORT_ZOOM_LEVELS.iter().find(|scale| **scale > self.scale).unwrap_or(&self.scale);
 				responses.push_back(FrontendMessage::SetCanvasZoom { new_zoom: self.scale }.into());
-				responses.push_back(ToolMessage::SelectedLayersChanged.into());
+				responses.push_back(ToolMessage::DocumentIsDirty.into());
 				responses.push_back(DocumentMessage::DirtyRenderDocumentInOutlineView.into());
 				self.create_document_transform(&ipp.viewport_bounds, responses);
 			}
@@ -176,7 +177,7 @@ impl MessageHandler<MovementMessage, (&Document, &InputPreprocessor)> for Moveme
 				// TODO: Eliminate redundant code by making this call SetCanvasZoom
 				self.scale = *VIEWPORT_ZOOM_LEVELS.iter().rev().find(|scale| **scale < self.scale).unwrap_or(&self.scale);
 				responses.push_back(FrontendMessage::SetCanvasZoom { new_zoom: self.scale }.into());
-				responses.push_back(ToolMessage::SelectedLayersChanged.into());
+				responses.push_back(ToolMessage::DocumentIsDirty.into());
 				responses.push_back(DocumentMessage::DirtyRenderDocumentInOutlineView.into());
 				self.create_document_transform(&ipp.viewport_bounds, responses);
 			}
@@ -199,7 +200,7 @@ impl MessageHandler<MovementMessage, (&Document, &InputPreprocessor)> for Moveme
 				self.scale = new;
 				self.translation += transformed_delta;
 				responses.push_back(FrontendMessage::SetCanvasZoom { new_zoom: self.scale }.into());
-				responses.push_back(ToolMessage::SelectedLayersChanged.into());
+				responses.push_back(ToolMessage::DocumentIsDirty.into());
 				responses.push_back(DocumentMessage::DirtyRenderDocumentInOutlineView.into());
 				self.create_document_transform(&ipp.viewport_bounds, responses);
 			}
@@ -210,14 +211,13 @@ impl MessageHandler<MovementMessage, (&Document, &InputPreprocessor)> for Moveme
 				} * VIEWPORT_SCROLL_RATE;
 				let transformed_delta = document.root.transform.inverse().transform_vector2(delta);
 				self.translation += transformed_delta;
-				responses.push_back(ToolMessage::SelectedLayersChanged.into());
+				responses.push_back(ToolMessage::DocumentIsDirty.into());
 				self.create_document_transform(&ipp.viewport_bounds, responses);
 			}
 			SetCanvasRotation(new) => {
 				self.rotation = new;
 				self.create_document_transform(&ipp.viewport_bounds, responses);
 				responses.push_back(FrontendMessage::SetCanvasRotation { new_radians: new }.into());
-				responses.push_back(ToolMessage::SelectedLayersChanged.into());
 			}
 			ZoomCanvasToFitAll => {
 				if let Some([pos1, pos2]) = document.visible_layers_bounding_box() {
@@ -234,7 +234,7 @@ impl MessageHandler<MovementMessage, (&Document, &InputPreprocessor)> for Moveme
 					self.translation += center;
 					self.scale *= new_scale;
 					responses.push_back(FrontendMessage::SetCanvasZoom { new_zoom: self.scale }.into());
-					responses.push_back(ToolMessage::SelectedLayersChanged.into());
+					responses.push_back(ToolMessage::DocumentIsDirty.into());
 					responses.push_back(DocumentMessage::DirtyRenderDocumentInOutlineView.into());
 					self.create_document_transform(&ipp.viewport_bounds, responses);
 				}
@@ -243,14 +243,14 @@ impl MessageHandler<MovementMessage, (&Document, &InputPreprocessor)> for Moveme
 				let transformed_delta = document.root.transform.inverse().transform_vector2(delta);
 
 				self.translation += transformed_delta;
-				responses.push_back(ToolMessage::SelectedLayersChanged.into());
+				responses.push_back(ToolMessage::DocumentIsDirty.into());
 				self.create_document_transform(&ipp.viewport_bounds, responses);
 			}
 			TranslateCanvasByViewportFraction(delta) => {
 				let transformed_delta = document.root.transform.inverse().transform_vector2(delta * ipp.viewport_bounds.size());
 
 				self.translation += transformed_delta;
-				responses.push_back(ToolMessage::SelectedLayersChanged.into());
+				responses.push_back(ToolMessage::DocumentIsDirty.into());
 				self.create_document_transform(&ipp.viewport_bounds, responses);
 			}
 		}

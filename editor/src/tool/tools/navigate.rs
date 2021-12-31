@@ -17,6 +17,7 @@ pub enum NavigateMessage {
 	RotateCanvasBegin,
 	ZoomCanvasBegin,
 	TransformCanvasEnd,
+	Abort,
 }
 
 impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Navigate {
@@ -89,6 +90,10 @@ impl Fsm for NavigateToolFsmState {
 					NavigateToolFsmState::Zooming
 				}
 				TransformCanvasEnd => {
+					messages.push_front(MovementMessage::TransformCanvasEnd.into());
+					NavigateToolFsmState::Ready
+				}
+				Abort => {
 					messages.push_front(MovementMessage::TransformCanvasEnd.into());
 					NavigateToolFsmState::Ready
 				}
