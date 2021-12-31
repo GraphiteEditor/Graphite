@@ -115,7 +115,7 @@ impl Document {
 
 	// Determines which layer is closer to the root, if path_a return true, if path_b return false
 	// Answers the question: Is A closer to the root than B?
-	pub fn layer_closer_to_root(&self, path_a: &Vec<u64>, path_b: &Vec<u64>) -> bool {
+	pub fn layer_closer_to_root(&self, path_a: &[u64], path_b: &[u64]) -> bool {
 		// Convert UUIDs to indices
 		let indices_for_path_a = self.indices_for_path(path_a).unwrap();
 		let indices_for_path_b = self.indices_for_path(path_b).unwrap();
@@ -126,24 +126,20 @@ impl Document {
 			let index_a = *indices_for_path_a.get(i).unwrap_or(&usize::MAX) as i32;
 			let index_b = *indices_for_path_b.get(i).unwrap_or(&usize::MAX) as i32;
 
-			// index_a == index_b -> true, this means the "2" indices being compared are within the same folder
-			// eg -> [2, X] == [2, X] since we are only comparing the "2" in this iteration
-			// Continue onto comparing the X indices.
-			if index_a == index_b {
-				continue;
+			// At the point at which the two paths first differ, compare to see which is closer to the root
+			if index_a != index_b {
+				// If index_a is smaller, index_a is closer to the root
+				return index_a < index_b;
 			}
-
-			// If index_a is smaller, index_a is closer to the root
-			return index_a < index_b;
 		}
 
-		return false;
+		false
 	}
 
-	// Is  the target layer between a <-> b layers, inclusive
-	pub fn layer_is_between(&self, target: &Vec<u64>, path_a: &Vec<u64>, path_b: &Vec<u64>) -> bool {
+	// Is the target layer between a <-> b layers, inclusive
+	pub fn layer_is_between(&self, target: &[u64], path_a: &[u64], path_b: &[u64]) -> bool {
 		// If the target is a nonsense path, it isn't between
-		if target.len() < 1 {
+		if target.is_empty() {
 			return false;
 		}
 
@@ -156,8 +152,8 @@ impl Document {
 		let layer_vs_a = self.layer_closer_to_root(target, path_a);
 		let layer_vs_b = self.layer_closer_to_root(target, path_b);
 
-		// To be inbetween you need to be above A and below B or vice versa
-		return layer_vs_a != layer_vs_b;
+		// To be in-between you need to be above A and below B or vice versa
+		layer_vs_a != layer_vs_b
 	}
 
 	/// Given a path to a layer, returns a vector of the indices in the layer tree

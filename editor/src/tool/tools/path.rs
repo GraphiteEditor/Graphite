@@ -303,7 +303,7 @@ impl Fsm for PathToolFsmState {
 	}
 }
 
-fn calculate_total_overlays_per_type(shapes_to_draw: &Vec<VectorManipulatorShape>) -> (usize, usize, usize) {
+fn calculate_total_overlays_per_type(shapes_to_draw: &[VectorManipulatorShape]) -> (usize, usize, usize) {
 	let (mut total_anchors, mut total_handles, mut total_anchor_handle_lines) = (0, 0, 0);
 
 	for shape_to_draw in shapes_to_draw {
