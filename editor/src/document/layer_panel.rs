@@ -1,22 +1,24 @@
-use glam::{DAffine2, DVec2};
-use graphene::layers::{style::ViewMode, BlendMode, Layer, LayerData as DocumentLayerData, LayerDataType};
+use graphene::layers::{style::ViewMode, BlendMode, Layer, LayerData, LayerDataType};
 use graphene::LayerId;
-use serde::{ser::SerializeStruct, Deserialize, Serialize};
+
 use std::fmt;
 
+use glam::{DAffine2, DVec2};
+use serde::{ser::SerializeStruct, Deserialize, Serialize};
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Copy)]
-pub struct LayerData {
+pub struct LayerMetadata {
 	pub selected: bool,
 	pub expanded: bool,
 }
 
-impl LayerData {
-	pub fn new(expanded: bool) -> LayerData {
-		LayerData { selected: false, expanded }
+impl LayerMetadata {
+	pub fn new(expanded: bool) -> LayerMetadata {
+		LayerMetadata { selected: false, expanded }
 	}
 }
 
-pub fn layer_panel_entry(layer_data: &LayerData, transform: DAffine2, layer: &Layer, path: Vec<LayerId>) -> LayerPanelEntry {
+pub fn layer_panel_entry(layer_metadata: &LayerMetadata, transform: DAffine2, layer: &Layer, path: Vec<LayerId>) -> LayerPanelEntry {
 	let layer_type: LayerDataTypeDiscriminant = (&layer.data).into();
 	let name = layer.name.clone().unwrap_or_else(|| format!("Unnamed {}", layer_type));
 	let arr = layer.data.bounding_box(transform).unwrap_or([DVec2::ZERO, DVec2::ZERO]);
@@ -45,7 +47,7 @@ pub fn layer_panel_entry(layer_data: &LayerData, transform: DAffine2, layer: &La
 		blend_mode: layer.blend_mode,
 		opacity: layer.opacity,
 		layer_type: (&layer.data).into(),
-		layer_data: *layer_data,
+		layer_metadata: *layer_metadata,
 		path,
 		thumbnail,
 	}
@@ -85,7 +87,7 @@ pub struct LayerPanelEntry {
 	pub blend_mode: BlendMode,
 	pub opacity: f64,
 	pub layer_type: LayerDataTypeDiscriminant,
-	pub layer_data: LayerData,
+	pub layer_metadata: LayerMetadata,
 	pub path: Vec<LayerId>,
 	pub thumbnail: String,
 }

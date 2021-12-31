@@ -28,13 +28,13 @@
 					<button
 						v-if="layer.layer_type === LayerTypeOptions.Folder"
 						class="node-connector"
-						:class="{ expanded: layer.layer_data.expanded }"
+						:class="{ expanded: layer.layer_metadata.expanded }"
 						@click.stop="handleNodeConnectorClick(layer.path)"
 					></button>
 					<div v-else class="node-connector-missing"></div>
 					<div
 						class="layer"
-						:class="{ selected: layer.layer_data.selected }"
+						:class="{ selected: layer.layer_metadata.selected }"
 						:style="{ marginLeft: layerIndent(layer) }"
 						@click.shift.exact.stop="selectLayer(layer, false, true)"
 						@click.shift.ctrl.exact.stop="selectLayer(layer, true, true)"
@@ -336,7 +336,7 @@ export default defineComponent({
 		},
 		async clearSelection() {
 			this.layers.forEach((layer) => {
-				layer.layer_data.selected = false;
+				layer.layer_metadata.selected = false;
 			});
 		},
 		closest(tree: HTMLElement, clientY: number): [BigUint64Array, boolean, Node] {
@@ -446,7 +446,7 @@ export default defineComponent({
 			}
 		},
 		setBlendModeForSelectedLayers() {
-			const selected = this.layers.filter((layer) => layer.layer_data.selected);
+			const selected = this.layers.filter((layer) => layer.layer_metadata.selected);
 
 			if (selected.length < 1) {
 				this.blendModeSelectedIndex = 0;
@@ -467,7 +467,7 @@ export default defineComponent({
 		},
 		setOpacityForSelectedLayers() {
 			// todo figure out why this is here
-			const selected = this.layers.filter((layer) => layer.layer_data.selected);
+			const selected = this.layers.filter((layer) => layer.layer_metadata.selected);
 
 			if (selected.length < 1) {
 				this.opacity = 100;

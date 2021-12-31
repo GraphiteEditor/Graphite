@@ -284,13 +284,13 @@ export class LayerPanelEntry {
 	@Transform(({ value }) => new BigUint64Array(value))
 	path!: BigUint64Array;
 
-	@Type(() => LayerData)
-	layer_data!: LayerData;
+	@Type(() => LayerMetadata)
+	layer_metadata!: LayerMetadata;
 
 	thumbnail!: string;
 }
 
-export class LayerData {
+export class LayerMetadata {
 	expanded!: boolean;
 
 	selected!: boolean;

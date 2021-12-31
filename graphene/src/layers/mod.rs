@@ -18,18 +18,11 @@ use serde::{Deserialize, Serialize};
 
 use std::fmt::Write;
 
-pub trait LayerData {
-	fn render(&mut self, svg: &mut String, transforms: &mut Vec<glam::DAffine2>, view_mode: ViewMode);
-	fn intersects_quad(&self, quad: Quad, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>);
-	fn bounding_box(&self, transform: glam::DAffine2) -> Option<[DVec2; 2]>;
-}
-
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub enum LayerDataType {
 	Folder(Folder),
 	Shape(Shape),
 }
-
 impl LayerDataType {
 	pub fn inner(&self) -> &dyn LayerData {
 		match self {
@@ -44,6 +37,12 @@ impl LayerDataType {
 			LayerDataType::Folder(f) => f,
 		}
 	}
+}
+
+pub trait LayerData {
+	fn render(&mut self, svg: &mut String, transforms: &mut Vec<glam::DAffine2>, view_mode: ViewMode);
+	fn intersects_quad(&self, quad: Quad, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>);
+	fn bounding_box(&self, transform: glam::DAffine2) -> Option<[DVec2; 2]>;
 }
 
 impl LayerData for LayerDataType {
