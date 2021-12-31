@@ -30,6 +30,7 @@
 	// Rust Analyzer config
 	"rust-analyzer.experimental.procAttrMacros": true,
 	"rust-analyzer.cargo.target": "wasm32-unknown-unknown",
+	"rust-analyzer.checkOnSave.command": "clippy",
 	// ESLint config
 	"eslint.format.enable": true,
 	"eslint.workingDirectories": [

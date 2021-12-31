@@ -26,7 +26,7 @@ const SIDE_EFFECT_FREE_MESSAGES: &[MessageDiscriminant] = &[
 	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::UpdateLayer),
 	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::DisplayFolderTreeStructure),
 	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::UpdateOpenDocumentsList),
-	MessageDiscriminant::Tool(ToolMessageDiscriminant::SelectedLayersChanged),
+	MessageDiscriminant::Tool(ToolMessageDiscriminant::DocumentIsDirty),
 ];
 
 impl Dispatcher {
@@ -338,29 +338,32 @@ mod test {
 		assert_eq!(&layers_after_copy[5], ellipse_before_copy);
 	}
 
-	// TODO Re-instate test when ReorderSelectedLayers selection issue (#444) is resolved
-	// #[test]
-	// /// - create rect, shape and ellipse
-	// /// - select ellipse and rect
-	// /// - move them down and back up again
-	// fn move_selection() {
-	// 	init_logger();
-	// 	let mut editor = create_editor_with_three_layers();
+	#[test]
+	#[ignore] // TODO: Re-enable test, see issue #444 (https://github.com/GraphiteEditor/Graphite/pull/444)
+	/// - create rect, shape and ellipse
+	/// - select ellipse and rect
+	/// - move them down and back up again
+	fn move_selection() {
+		init_logger();
+		let mut editor = create_editor_with_three_layers();
 
-	// 	let verify_order = |handler: &mut DocumentMessageHandler| (handler.all_layers_sorted(), handler.non_selected_layers_sorted(), handler.selected_layers_sorted());
+		let sorted_layers = editor.dispatcher.documents_message_handler.active_document().all_layers_sorted();
+		println!("Sorted layers: {:?}", sorted_layers);
 
-	// 	editor.handle_message(DocumentMessage::SetSelectedLayers(vec![vec![0], vec![2]]));
+		let verify_order = |handler: &mut DocumentMessageHandler| (handler.all_layers_sorted(), handler.non_selected_layers_sorted(), handler.selected_layers_sorted());
 
-	// 	editor.handle_message(DocumentMessage::ReorderSelectedLayers(1));
-	// 	let (all, non_selected, selected) = verify_order(&mut editor.dispatcher.documents_message_handler.active_document_mut());
-	// 	assert_eq!(all, non_selected.into_iter().chain(selected.into_iter()).collect::<Vec<_>>());
+		editor.handle_message(DocumentMessage::SetSelectedLayers(sorted_layers[..2].to_vec()));
 
-	// 	editor.handle_message(DocumentMessage::ReorderSelectedLayers(-1));
-	// 	let (all, non_selected, selected) = verify_order(&mut editor.dispatcher.documents_message_handler.active_document_mut());
-	// 	assert_eq!(all, selected.into_iter().chain(non_selected.into_iter()).collect::<Vec<_>>());
+		editor.handle_message(DocumentMessage::ReorderSelectedLayers(1));
+		let (all, non_selected, selected) = verify_order(&mut editor.dispatcher.documents_message_handler.active_document_mut());
+		assert_eq!(all, non_selected.into_iter().chain(selected.into_iter()).collect::<Vec<_>>());
 
-	// 	editor.handle_message(DocumentMessage::ReorderSelectedLayers(i32::MAX));
-	// 	let (all, non_selected, selected) = verify_order(&mut editor.dispatcher.documents_message_handler.active_document_mut());
-	// 	assert_eq!(all, non_selected.into_iter().chain(selected.into_iter()).collect::<Vec<_>>());
-	// }
+		editor.handle_message(DocumentMessage::ReorderSelectedLayers(-1));
+		let (all, non_selected, selected) = verify_order(&mut editor.dispatcher.documents_message_handler.active_document_mut());
+		assert_eq!(all, selected.into_iter().chain(non_selected.into_iter()).collect::<Vec<_>>());
+
+		editor.handle_message(DocumentMessage::ReorderSelectedLayers(i32::MAX));
+		let (all, non_selected, selected) = verify_order(&mut editor.dispatcher.documents_message_handler.active_document_mut());
+		assert_eq!(all, non_selected.into_iter().chain(selected.into_iter()).collect::<Vec<_>>());
+	}
 }
