@@ -2,36 +2,17 @@ use glam::{DAffine2, DVec2};
 use graphene::layers::{style::ViewMode, BlendMode, Layer, LayerData as DocumentLayerData, LayerDataType};
 use graphene::LayerId;
 use serde::{ser::SerializeStruct, Deserialize, Serialize};
-use std::collections::HashMap;
 use std::fmt;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Copy)]
 pub struct LayerData {
 	pub selected: bool,
 	pub expanded: bool,
-	pub translation: DVec2,
-	pub rotation: f64,
-	pub scale: f64,
 }
 
 impl LayerData {
 	pub fn new(expanded: bool) -> LayerData {
-		LayerData {
-			selected: false,
-			expanded,
-			translation: DVec2::ZERO,
-			rotation: 0.,
-			scale: 1.,
-		}
-	}
-
-	pub fn calculate_offset_transform(&self, offset: DVec2, snapped_angle: f64) -> DAffine2 {
-		// TODO: replace with DAffine2::from_scale_angle_translation and fix the errors
-		let offset_transform = DAffine2::from_translation(offset);
-		let scale_transform = DAffine2::from_scale(DVec2::new(self.scale, self.scale));
-		let angle_transform = DAffine2::from_angle(snapped_angle);
-		let translation_transform = DAffine2::from_translation(self.translation);
-		scale_transform * offset_transform * angle_transform * translation_transform
+		LayerData { selected: false, expanded }
 	}
 }
 
