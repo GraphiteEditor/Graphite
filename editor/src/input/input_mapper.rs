@@ -135,8 +135,6 @@ impl Default for Mapping {
 		let mappings = mapping![
 			// Higher priority than entries in sections below
 			entry! {action=DocumentsMessage::Paste(User), key_down=KeyV, modifiers=[KeyControl]},
-			entry! {action=MovementMessage::EnableSnapping, key_down=KeyShift},
-			entry! {action=MovementMessage::DisableSnapping, key_up=KeyShift},
 			// Transform layers
 			entry! {action=TransformLayerMessage::ApplyOperation, key_down=KeyEnter},
 			entry! {action=TransformLayerMessage::ApplyOperation, key_down=Lmb},
@@ -155,6 +153,12 @@ impl Default for Mapping {
 			entry! {action=SelectMessage::DragStop, key_up=Lmb},
 			entry! {action=SelectMessage::Abort, key_down=Rmb},
 			entry! {action=SelectMessage::Abort, key_down=KeyEscape},
+			// Navigate
+			entry! {action=NavigateMessage::MouseMove{snap_angle: KeyControl}, message=InputMapperMessage::PointerMove},
+			entry! {action=NavigateMessage::RotateCanvasBegin, key_down=Rmb},
+			entry! {action=NavigateMessage::ZoomCanvasBegin, key_down=Lmb},
+			entry! {action=NavigateMessage::TransformCanvasEnd, key_up=Rmb},
+			entry! {action=NavigateMessage::TransformCanvasEnd, key_up=Lmb},
 			// Eyedropper
 			entry! {action=EyedropperMessage::LeftMouseDown, key_down=Lmb},
 			entry! {action=EyedropperMessage::RightMouseDown, key_down=Rmb},
@@ -194,6 +198,7 @@ impl Default for Mapping {
 			entry! {action=FillMessage::RightMouseDown, key_down=Rmb},
 			// Tool Actions
 			entry! {action=ToolMessage::ActivateTool(ToolType::Select), key_down=KeyV},
+			entry! {action=ToolMessage::ActivateTool(ToolType::Navigate), key_down=KeyZ},
 			entry! {action=ToolMessage::ActivateTool(ToolType::Eyedropper), key_down=KeyI},
 			entry! {action=ToolMessage::ActivateTool(ToolType::Fill), key_down=KeyF},
 			entry! {action=ToolMessage::ActivateTool(ToolType::Path), key_down=KeyA},
@@ -226,11 +231,9 @@ impl Default for Mapping {
 			entry! {action=TransformLayerMessage::BeginRotate, key_down=KeyR},
 			entry! {action=TransformLayerMessage::BeginScale, key_down=KeyS},
 			// Document movement
-			entry! {action=MovementMessage::MouseMove, message=InputMapperMessage::PointerMove},
-			entry! {action=MovementMessage::RotateCanvasBegin{snap:false}, key_down=Mmb, modifiers=[KeyControl]},
-			entry! {action=MovementMessage::RotateCanvasBegin{snap:true}, key_down=Mmb, modifiers=[KeyControl, KeyShift]},
+			entry! {action=MovementMessage::MouseMove{snap_angle: KeyShift}, message=InputMapperMessage::PointerMove},
+			entry! {action=MovementMessage::RotateCanvasBegin, key_down=Mmb, modifiers=[KeyControl]},
 			entry! {action=MovementMessage::ZoomCanvasBegin, key_down=Mmb, modifiers=[KeyShift]},
-			entry! {action=MovementMessage::ZoomCanvasToFitAll, key_down=Key0, modifiers=[KeyControl]},
 			entry! {action=MovementMessage::TranslateCanvasBegin, key_down=Mmb},
 			entry! {action=MovementMessage::TransformCanvasEnd, key_up=Mmb},
 			entry! {action=MovementMessage::TranslateCanvasBegin, key_down=Lmb, modifiers=[KeySpace]},
@@ -240,6 +243,7 @@ impl Default for Mapping {
 			entry! {action=MovementMessage::DecreaseCanvasZoom, key_down=KeyMinus, modifiers=[KeyControl]},
 			entry! {action=MovementMessage::SetCanvasZoom(1.), key_down=Key1, modifiers=[KeyControl]},
 			entry! {action=MovementMessage::SetCanvasZoom(2.), key_down=Key2, modifiers=[KeyControl]},
+			entry! {action=MovementMessage::ZoomCanvasToFitAll, key_down=Key0, modifiers=[KeyControl]},
 			entry! {action=MovementMessage::WheelCanvasZoom, message=InputMapperMessage::MouseScroll, modifiers=[KeyControl]},
 			entry! {action=MovementMessage::WheelCanvasTranslate{use_y_as_x: true}, message=InputMapperMessage::MouseScroll, modifiers=[KeyShift]},
 			entry! {action=MovementMessage::WheelCanvasTranslate{use_y_as_x: false}, message=InputMapperMessage::MouseScroll},

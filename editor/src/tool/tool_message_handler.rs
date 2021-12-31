@@ -166,6 +166,7 @@ fn standard_tool_message(tool: ToolType, message_type: StandardToolMessageType) 
 		StandardToolMessageType::DocumentIsDirty => match tool {
 			ToolType::Select => Some(SelectMessage::DocumentIsDirty.into()),
 			ToolType::Path => Some(PathMessage::DocumentIsDirty.into()),
+			//ToolType::Navigate => Some(NavigateMessage::DocumentIsDirty.into())
 			// ToolType::Pen => Some(PenMessage::DocumentIsDirty.into()),
 			// ToolType::Line => Some(LineMessage::DocumentIsDirty.into()),
 			// ToolType::Rectangle => Some(RectangleMessage::DocumentIsDirty.into()),
@@ -178,6 +179,7 @@ fn standard_tool_message(tool: ToolType, message_type: StandardToolMessageType) 
 		StandardToolMessageType::Abort => match tool {
 			ToolType::Select => Some(SelectMessage::Abort.into()),
 			ToolType::Path => Some(PathMessage::Abort.into()),
+			ToolType::Navigate => Some(NavigateMessage::Abort.into()),
 			ToolType::Pen => Some(PenMessage::Abort.into()),
 			ToolType::Line => Some(LineMessage::Abort.into()),
 			ToolType::Rectangle => Some(RectangleMessage::Abort.into()),
