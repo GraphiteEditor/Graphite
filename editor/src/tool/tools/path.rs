@@ -217,7 +217,7 @@ impl Fsm for PathToolFsmState {
 					let mouse_pos = input.mouse.position;
 					let mut points = Vec::new();
 
-					let (mut anchor_i, mut handle_i, _line_i, mut shape_i) = (0, 0, 0, 0);
+					let (mut anchor_i, mut handle_i, _line_i, _shape_i) = (0, 0, 0, 0);
 					let shapes_to_draw = document.selected_visible_layers_vector_points();
 					let (total_anchors, total_handles, _total_anchor_handle_lines) = calculate_total_overlays_per_type(&shapes_to_draw);
 					grow_overlay_pool_entries(&mut data.anchor_marker_pool, total_anchors, add_anchor_marker, responses);
@@ -226,19 +226,24 @@ impl Fsm for PathToolFsmState {
 					#[derive(Debug)]
 					enum PointType {
 						Anchor(usize),
-						Handle(usize),
+						Handle {
+							handle_i: usize,
+							layer_path: Vec<LayerId>,
+							shape_offset: usize,
+							handle_offset: usize,
+						},
 					}
 					#[derive(Debug)]
 					struct Point {
-						position: DVec2,
+						// position: DVec2,
 						point_type: PointType,
 						mouse_proximity: f64,
 					}
 
 					impl Point {
-						fn new(position: DVec2, point_type: PointType, mouse_proximity: f64) -> Self {
+						fn new(_position: DVec2, point_type: PointType, mouse_proximity: f64) -> Self {
 							Self {
-								position,
+								// position,
 								point_type,
 								mouse_proximity,
 							}
@@ -252,28 +257,7 @@ impl Fsm for PathToolFsmState {
 					let select_threshold = 6.;
 					let select_threshold_squared = select_threshold * select_threshold;
 
-					for shape_to_draw in &shapes_to_draw {
-						let shape_layer_path = &data.shape_outline_pool[shape_i];
-						shape_i += 1;
-
-						let bez = {
-							let bez: BezPath = shape_to_draw.path.clone().into_iter().collect();
-							bez
-						};
-
-						// todo: change path correctly
-						responses.push_back(
-							DocumentMessage::Overlay(
-								Operation::SetShapePathInViewport {
-									path: shape_layer_path.clone(),
-									bez_path: bez,
-									transform: shape_to_draw.transform.to_cols_array(),
-								}
-								.into(),
-							)
-							.into(),
-						);
-
+					for (shape_offset, shape_to_draw) in shapes_to_draw.iter().enumerate() {
 						let segment = shape_manipulator_points(shape_to_draw);
 
 						for anchor in segment.anchors {
@@ -284,10 +268,19 @@ impl Fsm for PathToolFsmState {
 							anchor_i += 1;
 						}
 
-						for handle in segment.handles {
+						for (handle_offset, handle) in segment.handles.into_iter().enumerate() {
 							let d2 = mouse_pos.distance_squared(handle);
 							if d2 < select_threshold_squared {
-								points.push(Point::new(handle, PointType::Handle(handle_i), d2));
+								points.push(Point::new(
+									handle,
+									PointType::Handle {
+										handle_i,
+										layer_path: shape_to_draw.layer_path.clone(),
+										shape_offset,
+										handle_offset,
+									},
+									d2,
+								));
 							}
 							handle_i += 1;
 						}
@@ -300,7 +293,63 @@ impl Fsm for PathToolFsmState {
 					if let Some(point) = closest_point_within_click_threshold {
 						let path = match point.point_type {
 							PointType::Anchor(i) => data.anchor_marker_pool[i].clone(),
-							PointType::Handle(i) => data.handle_marker_pool[i].clone(),
+							PointType::Handle {
+								handle_i: i,
+								ref layer_path,
+								shape_offset,
+								handle_offset,
+							} => {
+								let shape = &shapes_to_draw[shape_offset];
+
+								let bez = {
+									use kurbo::{PathEl, Vec2};
+									let mut bez: Vec<PathEl> = shape.path.clone().into_iter().collect();
+
+									fn bez_path_index_at_handle_index(bez: &[PathEl], target: usize) -> Option<usize> {
+										let mut offset = 0;
+										for (i, el) in bez.iter().enumerate() {
+											if offset == target {
+												match el {
+													PathEl::ClosePath => {}
+													_ => return Some(i),
+												};
+											}
+											offset += match el {
+												PathEl::ClosePath => 0,
+												_ => 1,
+											};
+										}
+										None
+									}
+
+									// todo: WIP incorrect mapping between clicked point and moved point
+									if let Some(i) = bez_path_index_at_handle_index(&bez, handle_offset) {
+										let delta: Vec2 = Vec2::new(10., 10.) + Vec2::new(mouse_pos.x, mouse_pos.y);
+										let replacement = match &bez[i] {
+											PathEl::MoveTo(p) => PathEl::MoveTo(*p + delta),
+											PathEl::LineTo(p) => PathEl::LineTo(*p + delta),
+											PathEl::QuadTo(a1, p) => PathEl::QuadTo(*a1, *p + delta),
+											PathEl::CurveTo(a1, a2, p) => PathEl::CurveTo(*a1, *a2, *p + delta),
+											PathEl::ClosePath => unreachable!(),
+										};
+										bez[i] = replacement;
+									}
+									let bez: BezPath = bez.into_iter().collect();
+									bez
+								};
+
+								// todo: change path correctly
+								responses.push_back(
+									Operation::SetShapePathInViewport {
+										path: layer_path.clone(),
+										bez_path: bez,
+										transform: shape.transform.to_cols_array(),
+									}
+									.into(),
+								);
+
+								data.handle_marker_pool[i].clone()
+							}
 						};
 						// todo: use Operation::SetShapePathInViewport instead
 						// currently using SetLayerFill just to show some effect

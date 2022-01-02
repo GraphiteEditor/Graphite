@@ -55,6 +55,8 @@ pub enum VectorManipulatorSegment {
 
 #[derive(PartialEq, Clone, Debug)]
 pub struct VectorManipulatorShape {
+	// The path to the layer
+	pub layer_path: Vec<LayerId>,
 	/// The outline of the shape
 	pub path: kurbo::BezPath,
 	/// The control points / manipulator handles
@@ -264,6 +266,7 @@ impl DocumentMessageHandler {
 				.collect::<Vec<VectorManipulatorSegment>>();
 
 			Some(VectorManipulatorShape {
+				layer_path: path_to_shape.to_vec(),
 				path,
 				segments,
 				transform: viewport_transform,

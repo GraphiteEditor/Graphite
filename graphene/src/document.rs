@@ -535,6 +535,19 @@ impl Document {
 				self.mark_as_dirty(path)?;
 				Some([vec![DocumentChanged], update_thumbnails_upstream(path)].concat())
 			}
+			Operation::SetShapePath { path, bez_path } => {
+				// let transform = DAffine2::from_cols_array(transform);
+				// self.set_transform_relative_to_viewport(path, transform)?;
+				self.mark_as_dirty(path)?;
+
+				match &mut self.layer_mut(path)?.data {
+					LayerDataType::Shape(shape) => {
+						shape.path = bez_path.clone();
+					}
+					LayerDataType::Folder(_) => (),
+				}
+				Some(vec![DocumentChanged, LayerChanged { path: path.clone() }])
+			}
 			Operation::SetShapePathInViewport { path, bez_path, transform } => {
 				let transform = DAffine2::from_cols_array(transform);
 				self.set_transform_relative_to_viewport(path, transform)?;
