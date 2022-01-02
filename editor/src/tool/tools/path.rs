@@ -264,18 +264,20 @@ impl Fsm for PathToolFsmState {
 						shape_i += 1;
 
 						let bez = {
-							let bez: Vec<_> = shape_to_draw.path.clone().into_iter().collect();
-							let bez: BezPath = bez.into_iter().collect();
+							let bez: BezPath = shape_to_draw.path.clone().into_iter().collect();
 							bez
 						};
 
 						// todo: change path correctly
 						responses.push_back(
-							Operation::SetShapePathInViewport {
-								path: shape_layer_path.clone(),
-								bez_path: bez,
-								transform: shape_to_draw.transform.to_cols_array(),
-							}
+							DocumentMessage::Overlay(
+								Operation::SetShapePathInViewport {
+									path: shape_layer_path.clone(),
+									bez_path: bez,
+									transform: shape_to_draw.transform.to_cols_array(),
+								}
+								.into(),
+							)
 							.into(),
 						);
 
@@ -289,16 +291,16 @@ impl Fsm for PathToolFsmState {
 							};
 
 							for anchor in anchors {
-								let d2 = mouse_pos.distance_squared(anchor.into());
+								let d2 = mouse_pos.distance_squared(anchor);
 								if d2 < select_threshold_squared {
-									points.push(Point::new(anchor.clone(), PointType::Anchor(anchor_i), d2));
+									points.push(Point::new(anchor, PointType::Anchor(anchor_i), d2));
 								}
 								anchor_i += 1;
 							}
 							for handle in handles {
-								let d2 = mouse_pos.distance_squared(handle.into());
+								let d2 = mouse_pos.distance_squared(handle);
 								if d2 < select_threshold_squared {
-									points.push(Point::new(handle.clone(), PointType::Handle(handle_i), d2));
+									points.push(Point::new(handle, PointType::Handle(handle_i), d2));
 								}
 								handle_i += 1;
 							}
@@ -315,8 +317,8 @@ impl Fsm for PathToolFsmState {
 							PointType::Handle(i) => data.handle_marker_pool[i].clone(),
 						};
 						// todo: use Operation::SetShapePathInViewport instead
-						// 	currently using SetLayerFill just to show some effect
-						responses.push_back(Operation::SetLayerFill { path, color: COLOR_ACCENT }.into());
+						// currently using SetLayerFill just to show some effect
+						responses.push_back(DocumentMessage::Overlay(Operation::SetLayerFill { path, color: COLOR_ACCENT }.into()).into());
 					}
 
 					self
