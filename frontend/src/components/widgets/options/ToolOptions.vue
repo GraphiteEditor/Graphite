@@ -31,17 +31,19 @@
 <script lang="ts">
 import { defineComponent, PropType } from "vue";
 
-import { WidgetRow, SeparatorType, IconButtonWidget } from "@/components/widgets/widgets";
+import { WidgetRow, IconButtonWidget } from "@/utilities/widgets";
 
-import Separator from "@/components/widgets/separators/Separator.vue";
 import IconButton from "@/components/widgets/buttons/IconButton.vue";
 import PopoverButton from "@/components/widgets/buttons/PopoverButton.vue";
 import NumberInput from "@/components/widgets/inputs/NumberInput.vue";
+import Separator from "@/components/widgets/separators/Separator.vue";
+
+export type ToolName = "Select" | "Shape" | "Line" | "Pen";
 
 export default defineComponent({
 	inject: ["editor", "dialog"],
 	props: {
-		activeTool: { type: String },
+		activeTool: { type: String as PropType<ToolName> },
 		activeToolOptions: { type: Object as PropType<Record<string, object>> },
 	},
 	methods: {
@@ -54,11 +56,15 @@ export default defineComponent({
 		},
 		// Traverses the given path and returns the direct parent of the option
 		getRecordContainingOption(optionPath: string[]): Record<string, number> {
-			const allButLast = optionPath.slice(0, -1);
+			// TODO: Formalize types and avoid casting with `as`
 			let currentRecord = this.activeToolOptions as Record<string, object | number>;
-			[this.activeTool || "", ...allButLast].forEach((attr) => {
+
+			const allButLastOptions = optionPath.slice(0, -1);
+			[this.activeTool || "", ...allButLastOptions].forEach((attr) => {
+				// Dig into the tree in each loop iteration
 				currentRecord = currentRecord[attr] as Record<string, object | number>;
 			});
+
 			return currentRecord as Record<string, number>;
 		},
 		// Traverses the given path into the active tool's option struct, and sets the value at the path tail
@@ -88,19 +94,19 @@ export default defineComponent({
 		},
 	},
 	data() {
-		const toolOptionsWidgets: Record<string, WidgetRow> = {
+		const toolOptionsWidgets: Record<ToolName, WidgetRow> = {
 			Select: [
 				{ kind: "IconButton", message: { Align: ["X", "Min"] }, tooltip: "Align Left", props: { icon: "AlignLeft", size: 24 } },
 				{ kind: "IconButton", message: { Align: ["X", "Center"] }, tooltip: "Align Horizontal Center", props: { icon: "AlignHorizontalCenter", size: 24 } },
 				{ kind: "IconButton", message: { Align: ["X", "Max"] }, tooltip: "Align Right", props: { icon: "AlignRight", size: 24 } },
 
-				{ kind: "Separator", props: { type: SeparatorType.Unrelated } },
+				{ kind: "Separator", props: { type: "Unrelated" } },
 
 				{ kind: "IconButton", message: { Align: ["Y", "Min"] }, tooltip: "Align Top", props: { icon: "AlignTop", size: 24 } },
 				{ kind: "IconButton", message: { Align: ["Y", "Center"] }, tooltip: "Align Vertical Center", props: { icon: "AlignVerticalCenter", size: 24 } },
 				{ kind: "IconButton", message: { Align: ["Y", "Max"] }, tooltip: "Align Bottom", props: { icon: "AlignBottom", size: 24 } },
 
-				{ kind: "Separator", props: { type: SeparatorType.Related } },
+				{ kind: "Separator", props: { type: "Related" } },
 
 				{
 					kind: "PopoverButton",
@@ -111,12 +117,12 @@ export default defineComponent({
 					props: {},
 				},
 
-				{ kind: "Separator", props: { type: SeparatorType.Section } },
+				{ kind: "Separator", props: { type: "Section" } },
 
 				{ kind: "IconButton", message: "FlipHorizontal", tooltip: "Flip Horizontal", props: { icon: "FlipHorizontal", size: 24 } },
 				{ kind: "IconButton", message: "FlipVertical", tooltip: "Flip Vertical", props: { icon: "FlipVertical", size: 24 } },
 
-				{ kind: "Separator", props: { type: SeparatorType.Related } },
+				{ kind: "Separator", props: { type: "Related" } },
 
 				{
 					kind: "PopoverButton",
@@ -127,15 +133,15 @@ export default defineComponent({
 					props: {},
 				},
 
-				{ kind: "Separator", props: { type: SeparatorType.Section } },
+				{ kind: "Separator", props: { type: "Section" } },
 
-				{ kind: "IconButton", tooltip: "Boolean Union", callback: () => this.dialog.comingSoon(197), props: { icon: "BooleanUnion", size: 24 } },
-				{ kind: "IconButton", tooltip: "Boolean Subtract Front", callback: () => this.dialog.comingSoon(197), props: { icon: "BooleanSubtractFront", size: 24 } },
-				{ kind: "IconButton", tooltip: "Boolean Subtract Back", callback: () => this.dialog.comingSoon(197), props: { icon: "BooleanSubtractBack", size: 24 } },
-				{ kind: "IconButton", tooltip: "Boolean Intersect", callback: () => this.dialog.comingSoon(197), props: { icon: "BooleanIntersect", size: 24 } },
-				{ kind: "IconButton", tooltip: "Boolean Difference", callback: () => this.dialog.comingSoon(197), props: { icon: "BooleanDifference", size: 24 } },
+				{ kind: "IconButton", tooltip: "Boolean Union", callback: (): void => this.dialog.comingSoon(197), props: { icon: "BooleanUnion", size: 24 } },
+				{ kind: "IconButton", tooltip: "Boolean Subtract Front", callback: (): void => this.dialog.comingSoon(197), props: { icon: "BooleanSubtractFront", size: 24 } },
+				{ kind: "IconButton", tooltip: "Boolean Subtract Back", callback: (): void => this.dialog.comingSoon(197), props: { icon: "BooleanSubtractBack", size: 24 } },
+				{ kind: "IconButton", tooltip: "Boolean Intersect", callback: (): void => this.dialog.comingSoon(197), props: { icon: "BooleanIntersect", size: 24 } },
+				{ kind: "IconButton", tooltip: "Boolean Difference", callback: (): void => this.dialog.comingSoon(197), props: { icon: "BooleanDifference", size: 24 } },
 
-				{ kind: "Separator", props: { type: SeparatorType.Related } },
+				{ kind: "Separator", props: { type: "Related" } },
 
 				{
 					kind: "PopoverButton",
@@ -153,7 +159,6 @@ export default defineComponent({
 
 		return {
 			toolOptionsWidgets,
-			SeparatorType,
 		};
 	},
 	components: {

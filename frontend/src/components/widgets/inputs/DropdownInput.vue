@@ -1,16 +1,16 @@
 <template>
 	<div class="dropdown-input">
-		<div class="dropdown-box" :class="{ disabled }" :style="{ minWidth: `${minWidth}px`, disabled: 'disabled' }" @click="clickDropdownBox" data-hover-menu-spawner>
+		<div class="dropdown-box" :class="{ disabled }" :style="{ minWidth: `${minWidth}px`, disabled: 'disabled' }" @click="() => clickDropdownBox()" data-hover-menu-spawner>
 			<IconLabel :class="'dropdown-icon'" :icon="activeEntry.icon" v-if="activeEntry.icon" />
 			<span>{{ activeEntry.label }}</span>
 			<IconLabel :class="'dropdown-arrow'" :icon="'DropdownArrow'" />
 		</div>
 		<MenuList
-			v-model:active-entry="activeEntry"
-			@update:activeEntry="activeEntryChanged"
-			@width-changed="onWidthChanged"
+			v-model:activeEntry="activeEntry"
+			@update:activeEntry="(newActiveEntry) => activeEntryChanged(newActiveEntry)"
+			@widthChanged="(newWidth) => onWidthChanged(newWidth)"
 			:menuEntries="menuEntries"
-			:direction="MenuDirection.Bottom"
+			:direction="'Bottom'"
 			:drawIcon="drawIcon"
 			:scrollable="true"
 			ref="menuList"
@@ -90,21 +90,19 @@
 <script lang="ts">
 import { defineComponent, PropType } from "vue";
 
-import IconLabel from "@/components/widgets/labels/IconLabel.vue";
 import MenuList, { MenuListEntry, SectionsOfMenuListEntries } from "@/components/widgets/floating-menus/MenuList.vue";
-import { MenuDirection } from "@/components/widgets/floating-menus/FloatingMenu.vue";
+import IconLabel from "@/components/widgets/labels/IconLabel.vue";
 
 export default defineComponent({
 	props: {
 		menuEntries: { type: Array as PropType<SectionsOfMenuListEntries>, required: true },
-		selectedIndex: { type: Number, required: true },
-		drawIcon: { type: Boolean, default: false },
-		disabled: { type: Boolean, default: false },
+		selectedIndex: { type: Number as PropType<number>, required: true },
+		drawIcon: { type: Boolean as PropType<boolean>, default: false },
+		disabled: { type: Boolean as PropType<boolean>, default: false },
 	},
 	data() {
 		return {
 			activeEntry: this.menuEntries.flat()[this.selectedIndex],
-			MenuDirection,
 			minWidth: 0,
 		};
 	},

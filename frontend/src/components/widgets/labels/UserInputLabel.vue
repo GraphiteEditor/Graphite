@@ -10,7 +10,7 @@
 			</template>
 		</template>
 		<span class="input-mouse" v-if="inputMouse">
-			<IconLabel :icon="mouseMovementIcon(inputMouse)" />
+			<IconLabel :icon="`MouseHint${inputMouse}`" />
 		</span>
 		<span class="hint-text" v-if="hasSlotContent">
 			<slot></slot>
@@ -95,28 +95,17 @@
 </style>
 
 <script lang="ts">
-import { defineComponent } from "vue";
+import { defineComponent, PropType } from "vue";
+
+import { HintInfo } from "@/dispatcher/js-messages";
 
 import IconLabel from "@/components/widgets/labels/IconLabel.vue";
-
-export enum MouseInputInteraction {
-	"None" = "None",
-	"Lmb" = "Lmb",
-	"Rmb" = "Rmb",
-	"Mmb" = "Mmb",
-	"ScrollUp" = "ScrollUp",
-	"ScrollDown" = "ScrollDown",
-	"Drag" = "Drag",
-	"LmbDrag" = "LmbDrag",
-	"RmbDrag" = "RmbDrag",
-	"MmbDrag" = "MmbDrag",
-}
 
 export default defineComponent({
 	components: { IconLabel },
 	props: {
-		inputKeys: { type: Array, default: () => [] },
-		inputMouse: { type: String },
+		inputKeys: { type: Array as PropType<HintInfo["key_groups"]>, default: () => [] },
+		inputMouse: { type: String as PropType<HintInfo["mouse"]>, default: null },
 	},
 	computed: {
 		hasSlotContent(): boolean {
@@ -173,50 +162,14 @@ export default defineComponent({
 			let result;
 
 			// Letters and numbers
-			if (/^[A-Z0-9]$/.test(text)) {
-				result = text;
-			}
+			if (/^[A-Z0-9]$/.test(text)) result = text;
 			// Abbreviated names
-			else if (text in textMap) {
-				result = textMap[text];
-			}
+			else if (text in textMap) result = textMap[text];
 			// Other
-			else {
-				result = text;
-			}
+			else result = text;
 
 			return { text: result, icon: null, width: `width-${(result || " ").length * 8 + 8}` };
 		},
-		mouseMovementIcon(mouseInputInteraction: MouseInputInteraction) {
-			switch (mouseInputInteraction) {
-				case MouseInputInteraction.Lmb:
-					return "MouseHintLmb";
-				case MouseInputInteraction.Rmb:
-					return "MouseHintRmb";
-				case MouseInputInteraction.Mmb:
-					return "MouseHintMmb";
-				case MouseInputInteraction.ScrollUp:
-					return "MouseHintScrollUp";
-				case MouseInputInteraction.ScrollDown:
-					return "MouseHintScrollDown";
-				case MouseInputInteraction.Drag:
-					return "MouseHintDrag";
-				case MouseInputInteraction.LmbDrag:
-					return "MouseHintLmbDrag";
-				case MouseInputInteraction.RmbDrag:
-					return "MouseHintRmbDrag";
-				case MouseInputInteraction.MmbDrag:
-					return "MouseHintMmbDrag";
-				default:
-				case MouseInputInteraction.None:
-					return "MouseHintNone";
-			}
-		},
-	},
-	data() {
-		return {
-			MouseInputInteraction,
-		};
 	},
 });
 </script>

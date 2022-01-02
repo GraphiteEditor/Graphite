@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-var-requires, no-console */
-const path = require("path");
 const { execSync, spawnSync } = require("child_process");
+const path = require("path");
 
 const WasmPackPlugin = require("@wasm-tool/wasm-pack-plugin");
 const LicenseCheckerWebpackPlugin = require("license-checker-webpack-plugin");
