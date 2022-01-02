@@ -80,9 +80,9 @@
 </style>
 
 <script lang="ts">
-import { defineComponent } from "vue";
+import { defineComponent, PropType } from "vue";
 
-import IconLabel from "@/components/widgets/labels/IconLabel.vue";
+import IconLabel, { IconName } from "@/components/widgets/labels/IconLabel.vue";
 
 export default defineComponent({
 	data() {
@@ -96,9 +96,9 @@ export default defineComponent({
 		},
 	},
 	props: {
-		checked: { type: Boolean, required: true },
-		icon: { type: String, default: "Checkmark" },
-		outlineStyle: { type: Boolean, default: false },
+		checked: { type: Boolean as PropType<boolean>, required: true },
+		icon: { type: String as PropType<IconName>, default: "Checkmark" },
+		outlineStyle: { type: Boolean as PropType<boolean>, default: false },
 	},
 	components: { IconLabel },
 });

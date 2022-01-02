@@ -1,12 +1,12 @@
 <template>
 	<div class="color-picker">
-		<div class="saturation-picker" ref="saturationPicker" data-picker-action="MoveSaturation" @pointerdown="onPointerDown">
+		<div class="saturation-picker" ref="saturationPicker" @pointerdown="(e) => onPointerDown(e)">
 			<div ref="saturationCursor" class="selection-circle"></div>
 		</div>
-		<div class="hue-picker" ref="huePicker" data-picker-action="MoveHue" @pointerdown="onPointerDown">
+		<div class="hue-picker" ref="huePicker" @pointerdown="(e) => onPointerDown(e)">
 			<div ref="hueCursor" class="selection-pincers"></div>
 		</div>
-		<div class="opacity-picker" ref="opacityPicker" data-picker-action="MoveOpacity" @pointerdown="onPointerDown">
+		<div class="opacity-picker" ref="opacityPicker" @pointerdown="(e) => onPointerDown(e)">
 			<div ref="opacityCursor" class="selection-pincers"></div>
 		</div>
 	</div>
@@ -117,43 +117,28 @@
 </style>
 
 <script lang="ts">
-import { defineComponent } from "vue";
+import { defineComponent, PropType } from "vue";
 
-import { hsvToRgb, rgbToHsv, isRGB } from "@/utilities/color";
+import { RGBA } from "@/dispatcher/js-messages";
+import { hsvaToRgba, rgbaToHsva } from "@/utilities/color";
 import { clamp } from "@/utilities/math";
 
-const enum ColorPickerState {
-	Idle = "Idle",
-	MoveHue = "MoveHue",
-	MoveOpacity = "MoveOpacity",
-	MoveSaturation = "MoveSaturation",
-}
+type ColorPickerState = "Idle" | "MoveHue" | "MoveOpacity" | "MoveSaturation";
+
+// TODO: Clean up the fundamental code design in this file to simplify it and use better practices.
+// TODO: Such as removing the `picker*` data variables and reducing the number of functions which call each other in weird, non-obvious ways.
 
 export default defineComponent({
-	components: {},
 	props: {
-		color: { type: Object, required: true },
+		color: { type: Object as PropType<RGBA>, required: true },
 	},
 	data() {
 		return {
-			state: ColorPickerState.Idle,
-			// Disable proxy on this object
-			// https://v3.vuejs.org/api/options-data.html#data-2
-			// eslint-disable-next-line vue/no-reserved-keys
-			_: {
-				colorPicker: {
-					color: { h: 0, s: 0, v: 0, a: 1 },
-					hue: {
-						rect: { width: 0, height: 0, top: 0, left: 0 },
-					},
-					opacity: {
-						rect: { width: 0, height: 0, top: 0, left: 0 },
-					},
-					saturation: {
-						rect: { width: 0, height: 0, top: 0, left: 0 },
-					},
-				},
-			},
+			state: "Idle" as ColorPickerState,
+			pickerHSVA: { h: 0, s: 0, v: 0, a: 1 },
+			pickerHueRect: { width: 0, height: 0, top: 0, left: 0 },
+			pickerOpacityRect: { width: 0, height: 0, top: 0, left: 0 },
+			pickerSaturationRect: { width: 0, height: 0, top: 0, left: 0 },
 		};
 	},
 	mounted() {
@@ -171,116 +156,122 @@ export default defineComponent({
 			document.removeEventListener("pointermove", this.onPointerMove);
 			document.removeEventListener("pointerup", this.onPointerUp);
 		},
-		getRef<T>(name: string) {
-			return this.$refs[name] as T;
-		},
 		onPointerDown(e: PointerEvent) {
-			if (!(e.currentTarget instanceof Element)) return;
-			const picker = e.currentTarget.getAttribute("data-picker-action");
-			this.state = (() => {
-				switch (picker) {
-					case "MoveHue":
-						return ColorPickerState.MoveHue;
-					case "MoveOpacity":
-						return ColorPickerState.MoveOpacity;
-					case "MoveSaturation":
-						return ColorPickerState.MoveSaturation;
-					default:
-						return ColorPickerState.Idle;
-				}
-			})();
+			if (!(e.currentTarget instanceof HTMLElement)) return;
 
-			if (this.state !== ColorPickerState.Idle) {
-				this.addEvents();
-				this.updateRects();
-				this.onPointerMove(e);
+			if ((this.$refs.saturationPicker as HTMLElement).contains(e.currentTarget)) {
+				this.state = "MoveSaturation";
+			} else if ((this.$refs.huePicker as HTMLElement).contains(e.currentTarget)) {
+				this.state = "MoveHue";
+			} else if ((this.$refs.opacityPicker as HTMLElement).contains(e.currentTarget)) {
+				this.state = "MoveOpacity";
+			} else {
+				this.state = "Idle";
 			}
+
+			if (this.state === "Idle") return;
+
+			this.addEvents();
+			this.updateRects();
+			this.onPointerMove(e);
 		},
 		onPointerMove(e: PointerEvent) {
-			const { colorPicker } = this.$data._;
-
-			if (this.state === ColorPickerState.MoveHue) {
-				this.setHuePosition(e.clientY - colorPicker.hue.rect.top);
-			} else if (this.state === ColorPickerState.MoveOpacity) {
-				this.setOpacityPosition(e.clientY - colorPicker.opacity.rect.top);
-			} else if (this.state === ColorPickerState.MoveSaturation) {
-				this.setSaturationPosition(e.clientX - colorPicker.saturation.rect.left, e.clientY - colorPicker.saturation.rect.top);
+			switch (this.state) {
+				case "MoveHue":
+					this.setHueCursorPosition(e.clientY - this.pickerHueRect.top);
+					break;
+				case "MoveOpacity":
+					this.setOpacityCursorPosition(e.clientY - this.pickerOpacityRect.top);
+					break;
+				case "MoveSaturation":
+					this.setSaturationCursorPosition(e.clientX - this.pickerSaturationRect.left, e.clientY - this.pickerSaturationRect.top);
+					break;
+				default:
+					return;
 			}
 
-			if (this.state !== ColorPickerState.Idle) {
-				this.updateHue();
-				this.$emit("update:color", hsvToRgb(colorPicker.color));
-			}
+			this.updateHue();
+			// The `color` prop's watcher calls `this.updateColor()`
+			this.$emit("update:color", hsvaToRgba(this.pickerHSVA));
 		},
 		onPointerUp() {
-			if (this.state !== ColorPickerState.Idle) {
-				this.state = ColorPickerState.Idle;
-				this.removeEvents();
-			}
+			if (this.state === "Idle") return;
+
+			this.state = "Idle";
+			this.removeEvents();
 		},
 		updateRects() {
-			const { colorPicker } = this.$data._;
-
-			const saturationPicker = this.getRef<HTMLElement>("saturationPicker");
+			// Saturation
+			const saturationPicker = this.$refs.saturationPicker as HTMLElement;
 			const saturation = saturationPicker.getBoundingClientRect();
-			colorPicker.saturation.rect.width = saturation.width;
-			colorPicker.saturation.rect.height = saturation.height;
-			colorPicker.saturation.rect.left = saturation.left;
-			colorPicker.saturation.rect.top = saturation.top;
 
-			const huePicker = this.getRef<HTMLElement>("huePicker");
+			this.pickerSaturationRect.width = saturation.width;
+			this.pickerSaturationRect.height = saturation.height;
+			this.pickerSaturationRect.left = saturation.left;
+			this.pickerSaturationRect.top = saturation.top;
+
+			// Hue
+			const huePicker = this.$refs.huePicker as HTMLElement;
 			const hue = huePicker.getBoundingClientRect();
-			colorPicker.hue.rect.width = hue.width;
-			colorPicker.hue.rect.height = hue.height;
-			colorPicker.hue.rect.left = hue.left;
-			colorPicker.hue.rect.top = hue.top;
 
-			const opacityPicker = this.getRef<HTMLElement>("opacityPicker");
+			this.pickerHueRect.width = hue.width;
+			this.pickerHueRect.height = hue.height;
+			this.pickerHueRect.left = hue.left;
+			this.pickerHueRect.top = hue.top;
+
+			// Opacity
+			const opacityPicker = this.$refs.opacityPicker as HTMLElement;
 			const opacity = opacityPicker.getBoundingClientRect();
-			colorPicker.opacity.rect.width = opacity.width;
-			colorPicker.opacity.rect.height = opacity.height;
-			colorPicker.opacity.rect.left = opacity.left;
-			colorPicker.opacity.rect.top = opacity.top;
+
+			this.pickerOpacityRect.width = opacity.width;
+			this.pickerOpacityRect.height = opacity.height;
+			this.pickerOpacityRect.left = opacity.left;
+			this.pickerOpacityRect.top = opacity.top;
 		},
-		setSaturationPosition(x: number, y: number) {
-			const { colorPicker } = this.$data._;
-			const saturationCursor = this.getRef<HTMLElement>("saturationCursor");
-			const saturationPosition = [clamp(x, 0, colorPicker.saturation.rect.width), clamp(y, 0, colorPicker.saturation.rect.height)];
-			saturationCursor.style.transform = `translate(${saturationPosition[0]}px, ${saturationPosition[1]}px)`;
-			colorPicker.color.s = saturationPosition[0] / colorPicker.saturation.rect.width;
-			colorPicker.color.v = (1 - saturationPosition[1] / colorPicker.saturation.rect.height) * 255;
+		setSaturationCursorPosition(x: number, y: number) {
+			const saturationPositionX = clamp(x, 0, this.pickerSaturationRect.width);
+			const saturationPositionY = clamp(y, 0, this.pickerSaturationRect.height);
+
+			const saturationCursor = this.$refs.saturationCursor as HTMLElement;
+			saturationCursor.style.transform = `translate(${saturationPositionX}px, ${saturationPositionY}px)`;
+
+			this.pickerHSVA.s = saturationPositionX / this.pickerSaturationRect.width;
+			this.pickerHSVA.v = (1 - saturationPositionY / this.pickerSaturationRect.height) * 255;
 		},
-		setHuePosition(y: number) {
-			const { colorPicker } = this.$data._;
-			const hueCursor = this.getRef<HTMLElement>("hueCursor");
-			const huePosition = clamp(y, 0, colorPicker.hue.rect.height);
+		setHueCursorPosition(y: number) {
+			const huePosition = clamp(y, 0, this.pickerHueRect.height);
+
+			const hueCursor = this.$refs.hueCursor as HTMLElement;
 			hueCursor.style.transform = `translateY(${huePosition}px)`;
-			colorPicker.color.h = clamp(1 - huePosition / colorPicker.hue.rect.height);
+
+			this.pickerHSVA.h = clamp(1 - huePosition / this.pickerHueRect.height);
 		},
-		setOpacityPosition(y: number) {
-			const { colorPicker } = this.$data._;
-			const opacityCursor = this.getRef<HTMLElement>("opacityCursor");
-			const opacityPosition = clamp(y, 0, colorPicker.opacity.rect.height);
+		setOpacityCursorPosition(y: number) {
+			const opacityPosition = clamp(y, 0, this.pickerOpacityRect.height);
+
+			const opacityCursor = this.$refs.opacityCursor as HTMLElement;
 			opacityCursor.style.transform = `translateY(${opacityPosition}px)`;
-			colorPicker.color.a = clamp(1 - opacityPosition / colorPicker.opacity.rect.height);
+
+			this.pickerHSVA.a = clamp(1 - opacityPosition / this.pickerOpacityRect.height);
 		},
 		updateHue() {
-			const { colorPicker } = this.$data._;
-			let color = hsvToRgb({ h: colorPicker.color.h, s: 1, v: 255, a: 1 });
-			this.$el.style.setProperty("--saturation-picker-hue", `rgb(${color.r}, ${color.g}, ${color.b})`);
-			color = hsvToRgb(colorPicker.color);
-			this.$el.style.setProperty("--opacity-picker-color", `rgb(${color.r}, ${color.g}, ${color.b})`);
+			const hsva = hsvaToRgba({ h: this.pickerHSVA.h, s: 1, v: 255, a: 1 });
+			const rgba = hsvaToRgba(this.pickerHSVA);
+
+			this.$el.style.setProperty("--saturation-picker-hue", `rgb(${hsva.r}, ${hsva.g}, ${hsva.b})`);
+			this.$el.style.setProperty("--opacity-picker-color", `rgb(${rgba.r}, ${rgba.g}, ${rgba.b})`);
 		},
 		updateColor() {
-			if (this.state !== ColorPickerState.Idle) return;
-			const { color } = this;
-			if (!isRGB(color)) return;
-			const { colorPicker } = this.$data._;
-			colorPicker.color = rgbToHsv(color);
+			if (this.state !== "Idle") return;
+
+			this.pickerHSVA = rgbaToHsva(this.color);
+
 			this.updateRects();
-			this.setSaturationPosition(colorPicker.color.s * colorPicker.saturation.rect.width, (1 - colorPicker.color.v / 255) * colorPicker.saturation.rect.height);
-			this.setOpacityPosition((1 - colorPicker.color.a) * colorPicker.opacity.rect.height);
-			this.setHuePosition((1 - colorPicker.color.h) * colorPicker.hue.rect.height);
+
+			this.setSaturationCursorPosition(this.pickerHSVA.s * this.pickerSaturationRect.width, (1 - this.pickerHSVA.v / 255) * this.pickerSaturationRect.height);
+			this.setOpacityCursorPosition((1 - this.pickerHSVA.a) * this.pickerOpacityRect.height);
+			this.setHueCursorPosition((1 - this.pickerHSVA.h) * this.pickerHueRect.height);
+
 			this.updateHue();
 		},
 	},

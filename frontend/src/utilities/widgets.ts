@@ -74,6 +74,9 @@ export interface NumberInputProps {
 }
 
 // Separator
+export type SeparatorDirection = "Horizontal" | "Vertical";
+export type SeparatorType = "Related" | "Unrelated" | "Section" | "List";
+
 export interface SeparatorWidget {
 	kind: "Separator";
 	props: SeparatorProps;
@@ -82,16 +85,4 @@ export interface SeparatorWidget {
 export interface SeparatorProps {
 	direction?: SeparatorDirection;
 	type?: SeparatorType;
-}
-
-export enum SeparatorDirection {
-	"Horizontal" = "Horizontal",
-	"Vertical" = "Vertical",
-}
-
-export enum SeparatorType {
-	"Related" = "Related",
-	"Unrelated" = "Unrelated",
-	"Section" = "Section",
-	"List" = "List",
 }

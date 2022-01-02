@@ -34,14 +34,15 @@
 </style>
 
 <script lang="ts">
-import { defineComponent } from "vue";
+import { defineComponent, PropType } from "vue";
 
 import CheckboxInput from "@/components/widgets/inputs/CheckboxInput.vue";
+import { IconName } from "@/components/widgets/labels/IconLabel.vue";
 
 export default defineComponent({
 	props: {
-		checked: { type: Boolean, required: true },
-		icon: { type: String, default: "Checkmark" },
+		checked: { type: Boolean as PropType<boolean>, required: true },
+		icon: { type: String as PropType<IconName>, default: "Checkmark" },
 	},
 	components: {
 		CheckboxInput,

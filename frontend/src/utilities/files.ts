@@ -1,4 +1,4 @@
-export function download(filename: string, fileData: string) {
+export function download(filename: string, fileData: string): void {
 	const type = filename.endsWith(".svg") ? "image/svg+xml;charset=utf-8" : "text/plain;charset=utf-8";
 	const blob = new Blob([fileData], { type });
 	const url = URL.createObjectURL(blob);
@@ -11,7 +11,7 @@ export function download(filename: string, fileData: string) {
 	element.click();
 }
 
-export async function upload(acceptedEextensions: string) {
+export async function upload(acceptedEextensions: string): Promise<{ filename: string; content: string }> {
 	return new Promise<{ filename: string; content: string }>((resolve, _) => {
 		const element = document.createElement("input");
 		element.type = "file";

@@ -85,7 +85,7 @@ export type RadioEntries = RadioEntryData[];
 export default defineComponent({
 	props: {
 		entries: { type: Array as PropType<RadioEntries>, required: true },
-		selectedIndex: { type: Number, required: true },
+		selectedIndex: { type: Number as PropType<number>, required: true },
 	},
 	methods: {
 		handleEntryClick(menuEntry: RadioEntryData) {

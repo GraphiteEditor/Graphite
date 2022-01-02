@@ -38,14 +38,14 @@
 </style>
 
 <script lang="ts">
-import { defineComponent } from "vue";
+import { defineComponent, PropType } from "vue";
 
 import IconLabel from "@/components/widgets/labels/IconLabel.vue";
 
 export default defineComponent({
 	components: { IconLabel },
 	props: {
-		maximized: { type: Boolean, default: false },
+		maximized: { type: Boolean as PropType<boolean>, default: false },
 	},
 });
 </script>

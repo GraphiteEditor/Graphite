@@ -10,23 +10,24 @@ const GRAPHITE_AUTO_SAVE_ORDER_KEY = "auto-save-documents-order";
 const databaseConnection: Promise<IDBDatabase> = new Promise((resolve) => {
 	const dbOpenRequest = indexedDB.open(GRAPHITE_INDEXED_DB_NAME, GRAPHITE_INDEXED_DB_VERSION);
 
-	dbOpenRequest.onupgradeneeded = () => {
+	dbOpenRequest.onupgradeneeded = (): void => {
 		const db = dbOpenRequest.result;
 		if (!db.objectStoreNames.contains(GRAPHITE_AUTO_SAVE_STORE)) {
 			db.createObjectStore(GRAPHITE_AUTO_SAVE_STORE, { keyPath: "details.id" });
 		}
 	};
 
-	dbOpenRequest.onerror = () => {
+	dbOpenRequest.onerror = (): void => {
 		// eslint-disable-next-line no-console
 		console.error("Graphite IndexedDb error:", dbOpenRequest.error);
 	};
 
-	dbOpenRequest.onsuccess = () => {
+	dbOpenRequest.onsuccess = (): void => {
 		resolve(dbOpenRequest.result);
 	};
 });
 
+// eslint-disable-next-line @typescript-eslint/explicit-function-return-type
 export function createAutoSaveManager(editor: EditorState, documents: DocumentsState) {
 	const openAutoSavedDocuments = async (): Promise<void> => {
 		const db = await databaseConnection;
@@ -34,7 +35,7 @@ export function createAutoSaveManager(editor: EditorState, documents: DocumentsS
 		const request = transaction.objectStore(GRAPHITE_AUTO_SAVE_STORE).getAll();
 
 		return new Promise((resolve) => {
-			request.onsuccess = () => {
+			request.onsuccess = (): void => {
 				const previouslySavedDocuments: AutoSaveDocument[] = request.result;
 
 				const documentOrder: string[] = JSON.parse(window.localStorage.getItem(GRAPHITE_AUTO_SAVE_ORDER_KEY) || "[]");
@@ -48,7 +49,7 @@ export function createAutoSaveManager(editor: EditorState, documents: DocumentsS
 		});
 	};
 
-	const storeDocumentOrder = () => {
+	const storeDocumentOrder = (): void => {
 		// Make sure to store as string since JSON does not play nice with BigInt
 		const documentOrder = documents.state.documents.map((doc) => doc.id.toString());
 		window.localStorage.setItem(GRAPHITE_AUTO_SAVE_ORDER_KEY, JSON.stringify(documentOrder));

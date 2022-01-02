@@ -14,11 +14,11 @@
 </style>
 
 <script lang="ts">
-import { defineComponent } from "vue";
+import { defineComponent, PropType } from "vue";
 
 export default defineComponent({
 	props: {
-		title: { type: String, required: true },
+		title: { type: String as PropType<string>, required: true },
 	},
 });
 </script>
