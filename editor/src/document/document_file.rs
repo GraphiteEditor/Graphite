@@ -55,10 +55,13 @@ pub enum VectorManipulatorSegment {
 
 #[derive(PartialEq, Clone, Debug)]
 pub struct VectorManipulatorShape {
-	/// The outline of the shape.
+	/// The outline of the shape
 	pub path: kurbo::BezPath,
-	/// The control points / manipulator handles.
+	/// The control points / manipulator handles
 	pub segments: Vec<VectorManipulatorSegment>,
+	/// The compound Bezier curve is closed
+	pub closed: bool,
+	/// The transformation matrix to apply
 	pub transform: DAffine2,
 }
 
@@ -264,6 +267,7 @@ impl DocumentMessageHandler {
 				path,
 				segments,
 				transform: viewport_transform,
+				closed: shape.closed,
 			})
 		});
 
