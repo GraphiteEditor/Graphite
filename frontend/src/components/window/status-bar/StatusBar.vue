@@ -1,7 +1,7 @@
 <template>
 	<div class="status-bar">
 		<template v-for="(hintGroup, index) in hintData" :key="hintGroup">
-			<Separator :type="SeparatorType.Section" v-if="index !== 0" />
+			<Separator :type="'Section'" v-if="index !== 0" />
 			<template v-for="hint in hintGroup" :key="hint">
 				<span v-if="hint.plus" class="plus">+</span>
 				<UserInputLabel :inputMouse="hint.mouse" :inputKeys="hint.key_groups">{{ hint.label }}</UserInputLabel>
@@ -35,11 +35,10 @@
 <script lang="ts">
 import { defineComponent } from "vue";
 
-import { SeparatorType } from "@/components/widgets/widgets";
+import { HintData, UpdateInputHints } from "@/dispatcher/js-messages";
 
 import UserInputLabel from "@/components/widgets/labels/UserInputLabel.vue";
 import Separator from "@/components/widgets/separators/Separator.vue";
-import { HintData, UpdateInputHints } from "@/dispatcher/js-messages";
 
 export default defineComponent({
 	inject: ["editor"],
@@ -49,7 +48,6 @@ export default defineComponent({
 	},
 	data() {
 		return {
-			SeparatorType,
 			hintData: [] as HintData,
 		};
 	},

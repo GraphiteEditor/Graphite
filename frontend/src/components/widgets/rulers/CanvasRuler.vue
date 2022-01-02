@@ -50,29 +50,26 @@ const MAJOR_MARK_THICKNESS = 16;
 const MEDIUM_MARK_THICKNESS = 6;
 const MINOR_MARK_THICKNESS = 3;
 
-export enum RulerDirection {
-	"Horizontal" = "Horizontal",
-	"Vertical" = "Vertical",
-}
+export type RulerDirection = "Horizontal" | "Vertical";
 
 // Apparently the modulo operator in js does not work properly.
-const mod = (n: number, m: number) => {
-	const remain = n % m;
-	return Math.floor(remain >= 0 ? remain : remain + m);
+const mod = (n: number, m: number): number => {
+	const remainder = n % m;
+	return Math.floor(remainder >= 0 ? remainder : remainder + m);
 };
 
 export default defineComponent({
 	props: {
-		direction: { type: String as PropType<RulerDirection>, default: RulerDirection.Vertical },
-		origin: { type: Number, required: true },
-		numberInterval: { type: Number, required: true },
-		majorMarkSpacing: { type: Number, required: true },
-		mediumDivisions: { type: Number, default: 5 },
-		minorDivisions: { type: Number, default: 2 },
+		direction: { type: String as PropType<RulerDirection>, default: "Vertical" },
+		origin: { type: Number as PropType<number>, required: true },
+		numberInterval: { type: Number as PropType<number>, required: true },
+		majorMarkSpacing: { type: Number as PropType<number>, required: true },
+		mediumDivisions: { type: Number as PropType<number>, default: 5 },
+		minorDivisions: { type: Number as PropType<number>, default: 2 },
 	},
 	computed: {
 		svgPath(): string {
-			const isVertical = this.direction === RulerDirection.Vertical;
+			const isVertical = this.direction === "Vertical";
 			const lineDirection = isVertical ? "H" : "V";
 
 			const offsetStart = mod(this.origin, this.majorMarkSpacing);
@@ -98,7 +95,7 @@ export default defineComponent({
 			return dPathAttribute;
 		},
 		svgTexts(): { transform: string; text: number }[] {
-			const isVertical = this.direction === RulerDirection.Vertical;
+			const isVertical = this.direction === "Vertical";
 
 			const offsetStart = mod(this.origin, this.majorMarkSpacing);
 			const shiftedOffsetStart = offsetStart - this.majorMarkSpacing;
@@ -128,7 +125,7 @@ export default defineComponent({
 			if (!this.$refs.rulerRef) return;
 
 			const rulerElement = this.$refs.rulerRef as HTMLElement;
-			const isVertical = this.direction === RulerDirection.Vertical;
+			const isVertical = this.direction === "Vertical";
 
 			const newLength = isVertical ? rulerElement.clientHeight : rulerElement.clientWidth;
 			const roundedUp = (Math.floor(newLength / this.majorMarkSpacing) + 1) * this.majorMarkSpacing;
@@ -152,7 +149,6 @@ export default defineComponent({
 		return {
 			rulerLength: 0,
 			svgBounds: { width: "0px", height: "0px" },
-			RulerDirection,
 		};
 	},
 });
