@@ -28,8 +28,10 @@ pub struct Path {
 #[derive(PartialEq, Clone, Debug, Hash, Serialize, Deserialize)]
 pub enum PathMessage {
 	MouseDown,
-	RedrawOverlay,
+
+	// Standard messages
 	Abort,
+	DocumentIsDirty,
 }
 
 impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Path {
@@ -94,10 +96,10 @@ impl Fsm for PathToolFsmState {
 			use PathMessage::*;
 			use PathToolFsmState::*;
 			match (self, event) {
-				(_, RedrawOverlay) => {
+				(_, DocumentIsDirty) => {
 					let (mut anchor_i, mut handle_i, mut line_i, mut shape_i) = (0, 0, 0, 0);
 
-					let shapes_to_draw = document.selected_layers_vector_points();
+					let shapes_to_draw = document.selected_visible_layers_vector_points();
 					// Grow the overlay pools by the shortfall, if any
 					let (total_anchors, total_handles, total_anchor_handle_lines) = calculate_total_overlays_per_type(&shapes_to_draw);
 					let total_shapes = shapes_to_draw.len();
@@ -114,18 +116,24 @@ impl Fsm for PathToolFsmState {
 						let shape_layer_path = &data.shape_outline_pool[shape_i];
 
 						responses.push_back(
-							Operation::SetShapePathInViewport {
-								path: shape_layer_path.clone(),
-								bez_path: shape_to_draw.path.clone(),
-								transform: shape_to_draw.transform.to_cols_array(),
-							}
+							DocumentMessage::Overlay(
+								Operation::SetShapePathInViewport {
+									path: shape_layer_path.clone(),
+									bez_path: shape_to_draw.path.clone(),
+									transform: shape_to_draw.transform.to_cols_array(),
+								}
+								.into(),
+							)
 							.into(),
 						);
 						responses.push_back(
-							Operation::SetLayerVisibility {
-								path: shape_layer_path.clone(),
-								visible: true,
-							}
+							DocumentMessage::Overlay(
+								Operation::SetLayerVisibility {
+									path: shape_layer_path.clone(),
+									visible: true,
+								}
+								.into(),
+							)
 							.into(),
 						);
 						shape_i += 1;
@@ -140,7 +148,7 @@ impl Fsm for PathToolFsmState {
 
 							// Draw the line connecting the anchor with handle for cubic and quadratic bezier segments
 							for anchor_handle_line in anchor_handle_lines {
-								let marker = data.anchor_handle_line_pool[line_i].clone();
+								let marker = &data.anchor_handle_line_pool[line_i];
 
 								let line_vector = anchor_handle_line.0 - anchor_handle_line.1;
 
@@ -149,8 +157,8 @@ impl Fsm for PathToolFsmState {
 								let translation = (anchor_handle_line.1 + BIAS).round() + DVec2::splat(0.5);
 								let transform = DAffine2::from_scale_angle_translation(scale, angle, translation).to_cols_array();
 
-								responses.push_back(Operation::SetLayerTransformInViewport { path: marker.clone(), transform }.into());
-								responses.push_back(Operation::SetLayerVisibility { path: marker, visible: true }.into());
+								responses.push_back(DocumentMessage::Overlay(Operation::SetLayerTransformInViewport { path: marker.clone(), transform }.into()).into());
+								responses.push_back(DocumentMessage::Overlay(Operation::SetLayerVisibility { path: marker.clone(), visible: true }.into()).into());
 
 								line_i += 1;
 							}
@@ -163,8 +171,9 @@ impl Fsm for PathToolFsmState {
 								let transform = DAffine2::from_scale_angle_translation(scale, angle, translation).to_cols_array();
 
 								let marker = &data.anchor_marker_pool[anchor_i];
-								responses.push_back(Operation::SetLayerTransformInViewport { path: marker.clone(), transform }.into());
-								responses.push_back(Operation::SetLayerVisibility { path: marker.clone(), visible: true }.into());
+								responses.push_back(DocumentMessage::Overlay(Operation::SetLayerTransformInViewport { path: marker.clone(), transform }.into()).into());
+								responses.push_back(DocumentMessage::Overlay(Operation::SetLayerVisibility { path: marker.clone(), visible: true }.into()).into());
+
 								anchor_i += 1;
 							}
 
@@ -177,8 +186,8 @@ impl Fsm for PathToolFsmState {
 								let translation = (handle - (scale / 2.) + BIAS).round();
 								let transform = DAffine2::from_scale_angle_translation(scale, angle, translation).to_cols_array();
 
-								responses.push_back(Operation::SetLayerTransformInViewport { path: marker.clone(), transform }.into());
-								responses.push_back(Operation::SetLayerVisibility { path: marker.clone(), visible: true }.into());
+								responses.push_back(DocumentMessage::Overlay(Operation::SetLayerTransformInViewport { path: marker.clone(), transform }.into()).into());
+								responses.push_back(DocumentMessage::Overlay(Operation::SetLayerVisibility { path: marker.clone(), visible: true }.into()).into());
 
 								handle_i += 1;
 							}
@@ -188,19 +197,19 @@ impl Fsm for PathToolFsmState {
 					// Hide the remaining pooled overlays
 					for i in anchor_i..data.anchor_marker_pool.len() {
 						let marker = data.anchor_marker_pool[i].clone();
-						responses.push_back(Operation::SetLayerVisibility { path: marker, visible: false }.into());
+						responses.push_back(DocumentMessage::Overlay(Operation::SetLayerVisibility { path: marker, visible: false }.into()).into());
 					}
 					for i in handle_i..data.handle_marker_pool.len() {
 						let marker = data.handle_marker_pool[i].clone();
-						responses.push_back(Operation::SetLayerVisibility { path: marker, visible: false }.into());
+						responses.push_back(DocumentMessage::Overlay(Operation::SetLayerVisibility { path: marker, visible: false }.into()).into());
 					}
 					for i in line_i..data.anchor_handle_line_pool.len() {
 						let line = data.anchor_handle_line_pool[i].clone();
-						responses.push_back(Operation::SetLayerVisibility { path: line, visible: false }.into());
+						responses.push_back(DocumentMessage::Overlay(Operation::SetLayerVisibility { path: line, visible: false }.into()).into());
 					}
 					for i in shape_i..data.shape_outline_pool.len() {
 						let shape_i = data.shape_outline_pool[i].clone();
-						responses.push_back(Operation::SetLayerVisibility { path: shape_i, visible: false }.into());
+						responses.push_back(DocumentMessage::Overlay(Operation::SetLayerVisibility { path: shape_i, visible: false }.into()).into());
 					}
 
 					self
@@ -216,7 +225,7 @@ impl Fsm for PathToolFsmState {
 					let mut points = Vec::new();
 
 					let (mut anchor_i, mut handle_i, _line_i, mut shape_i) = (0, 0, 0, 0);
-					let shapes_to_draw = document.selected_layers_vector_points();
+					let shapes_to_draw = document.selected_visible_layers_vector_points();
 					let (total_anchors, total_handles, _total_anchor_handle_lines) = calculate_total_overlays_per_type(&shapes_to_draw);
 					grow_overlay_pool_entries(&mut data.anchor_marker_pool, total_anchors, add_anchor_marker, responses);
 					grow_overlay_pool_entries(&mut data.handle_marker_pool, total_handles, add_handle_marker, responses);
@@ -315,16 +324,16 @@ impl Fsm for PathToolFsmState {
 				(_, Abort) => {
 					// Destory the overlay layer pools
 					while let Some(layer) = data.anchor_marker_pool.pop() {
-						responses.push_back(Operation::DeleteLayer { path: layer }.into());
+						responses.push_back(DocumentMessage::Overlay(Operation::DeleteLayer { path: layer }.into()).into());
 					}
 					while let Some(layer) = data.handle_marker_pool.pop() {
-						responses.push_back(Operation::DeleteLayer { path: layer }.into());
+						responses.push_back(DocumentMessage::Overlay(Operation::DeleteLayer { path: layer }.into()).into());
 					}
 					while let Some(layer) = data.anchor_handle_line_pool.pop() {
-						responses.push_back(Operation::DeleteLayer { path: layer }.into());
+						responses.push_back(DocumentMessage::Overlay(Operation::DeleteLayer { path: layer }.into()).into());
 					}
 					while let Some(layer) = data.shape_outline_pool.pop() {
-						responses.push_back(Operation::DeleteLayer { path: layer }.into());
+						responses.push_back(DocumentMessage::Overlay(Operation::DeleteLayer { path: layer }.into()).into());
 					}
 
 					Ready
@@ -404,7 +413,7 @@ impl Fsm for PathToolFsmState {
 	}
 }
 
-fn calculate_total_overlays_per_type(shapes_to_draw: &Vec<VectorManipulatorShape>) -> (usize, usize, usize) {
+fn calculate_total_overlays_per_type(shapes_to_draw: &[VectorManipulatorShape]) -> (usize, usize, usize) {
 	let (mut total_anchors, mut total_handles, mut total_anchor_handle_lines) = (0, 0, 0);
 
 	for shape_to_draw in shapes_to_draw {
@@ -441,56 +450,51 @@ where
 
 fn add_anchor_marker(responses: &mut VecDeque<Message>) -> Vec<LayerId> {
 	let layer_path = vec![generate_uuid()];
-	responses.push_back(
-		Operation::AddOverlayRect {
-			path: layer_path.clone(),
-			transform: DAffine2::IDENTITY.to_cols_array(),
-			style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 2.0)), Some(Fill::new(Color::WHITE))),
-		}
-		.into(),
-	);
+
+	let operation = Operation::AddOverlayRect {
+		path: layer_path.clone(),
+		transform: DAffine2::IDENTITY.to_cols_array(),
+		style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 2.0)), Some(Fill::new(Color::WHITE))),
+	};
+	responses.push_back(DocumentMessage::Overlay(operation.into()).into());
 
 	layer_path
 }
 
 fn add_handle_marker(responses: &mut VecDeque<Message>) -> Vec<LayerId> {
 	let layer_path = vec![generate_uuid()];
-	responses.push_back(
-		Operation::AddOverlayEllipse {
-			path: layer_path.clone(),
-			transform: DAffine2::IDENTITY.to_cols_array(),
-			style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 2.0)), Some(Fill::new(Color::WHITE))),
-		}
-		.into(),
-	);
+
+	let operation = Operation::AddOverlayEllipse {
+		path: layer_path.clone(),
+		transform: DAffine2::IDENTITY.to_cols_array(),
+		style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 2.0)), Some(Fill::new(Color::WHITE))),
+	};
+	responses.push_back(DocumentMessage::Overlay(operation.into()).into());
 
 	layer_path
 }
 
 fn add_anchor_handle_line(responses: &mut VecDeque<Message>) -> Vec<LayerId> {
 	let layer_path = vec![generate_uuid()];
-	responses.push_back(
-		Operation::AddOverlayLine {
-			path: layer_path.clone(),
-			transform: DAffine2::IDENTITY.to_cols_array(),
-			style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 1.0)), Some(Fill::none())),
-		}
-		.into(),
-	);
+	let operation = Operation::AddOverlayLine {
+		path: layer_path.clone(),
+		transform: DAffine2::IDENTITY.to_cols_array(),
+		style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 1.0)), Some(Fill::none())),
+	};
+	responses.push_back(DocumentMessage::Overlay(operation.into()).into());
 
 	layer_path
 }
 
 fn add_shape_outline(responses: &mut VecDeque<Message>) -> Vec<LayerId> {
 	let layer_path = vec![generate_uuid()];
-	responses.push_back(
-		Operation::AddOverlayShape {
-			path: layer_path.clone(),
-			bez_path: BezPath::default(),
-			style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 1.0)), Some(Fill::none())),
-		}
-		.into(),
-	);
+
+	let operation = Operation::AddOverlayShape {
+		path: layer_path.clone(),
+		bez_path: BezPath::default(),
+		style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 1.0)), Some(Fill::none())),
+	};
+	responses.push_back(DocumentMessage::Overlay(operation.into()).into());
 
 	layer_path
 }

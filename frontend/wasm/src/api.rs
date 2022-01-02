@@ -32,6 +32,7 @@ pub struct JsEditorHandle {
 }
 
 #[wasm_bindgen]
+#[allow(clippy::too_many_arguments)]
 impl JsEditorHandle {
 	#[wasm_bindgen(constructor)]
 	pub fn new(handle_response: js_sys::Function) -> Self {
@@ -175,8 +176,23 @@ impl JsEditorHandle {
 		self.dispatch(message);
 	}
 
+	pub fn open_auto_saved_document(&self, document_id: u64, document_name: String, document_is_saved: bool, document: String) {
+		let message = DocumentsMessage::OpenDocumentFileWithId {
+			document_id,
+			document_name,
+			document_is_saved,
+			document,
+		};
+		self.dispatch(message);
+	}
+
 	pub fn save_document(&self) {
 		let message = DocumentMessage::SaveDocument;
+		self.dispatch(message);
+	}
+
+	pub fn trigger_auto_save(&self, document_id: u64) {
+		let message = DocumentsMessage::AutoSaveDocument(document_id);
 		self.dispatch(message);
 	}
 
@@ -334,6 +350,24 @@ impl JsEditorHandle {
 		self.dispatch(message);
 	}
 
+	/// Cut selected layers
+	pub fn cut(&self) {
+		let message = DocumentsMessage::Cut(Clipboard::User);
+		self.dispatch(message);
+	}
+
+	/// Copy selected layers
+	pub fn copy(&self) {
+		let message = DocumentsMessage::Copy(Clipboard::User);
+		self.dispatch(message);
+	}
+
+	/// Paste selected layers
+	pub fn paste(&self) {
+		let message = DocumentsMessage::Paste(Clipboard::User);
+		self.dispatch(message);
+	}
+
 	pub fn select_layer(&self, paths: Vec<LayerId>, ctrl: bool, shift: bool) {
 		let message = DocumentMessage::SelectLayer(paths, ctrl, shift);
 		self.dispatch(message);
@@ -354,6 +388,12 @@ impl JsEditorHandle {
 	/// Reorder selected layer
 	pub fn reorder_selected_layers(&self, delta: i32) {
 		let message = DocumentMessage::ReorderSelectedLayers(delta);
+		self.dispatch(message);
+	}
+
+	/// Move a layer to be next to the specified neighbor
+	pub fn move_layer_in_tree(&self, layer: Vec<LayerId>, insert_above: bool, neighbor: Vec<LayerId>) {
+		let message = DocumentMessage::MoveLayerInTree { layer, insert_above, neighbor };
 		self.dispatch(message);
 	}
 
@@ -508,4 +548,9 @@ pub fn i32_max() -> i32 {
 #[wasm_bindgen]
 pub fn i32_min() -> i32 {
 	i32::MIN
+}
+
+#[wasm_bindgen]
+pub fn set_random_seed(seed: u64) {
+	editor::communication::set_uuid_seed(seed)
 }

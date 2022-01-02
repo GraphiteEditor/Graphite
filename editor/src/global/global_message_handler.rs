@@ -13,12 +13,6 @@ pub enum GlobalMessage {
 #[derive(Debug, Default)]
 pub struct GlobalMessageHandler {}
 
-impl GlobalMessageHandler {
-	pub fn new() -> Self {
-		Self::default()
-	}
-}
-
 impl MessageHandler<GlobalMessage, ()> for GlobalMessageHandler {
 	fn process_action(&mut self, message: GlobalMessage, _data: (), _responses: &mut VecDeque<Message>) {
 		use GlobalMessage::*;

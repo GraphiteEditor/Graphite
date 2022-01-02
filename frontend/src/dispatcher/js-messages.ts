@@ -19,16 +19,24 @@ export class JsMessage {
 // for details about how to transform the JSON from wasm-bindgen into classes.
 // ============================================================================
 
-export class FrontendDocumentDetails {
+// Allows the auto save system to use a string for the id rather than a BigInt.
+// IndexedDb does not allow for BigInts as primary keys. TypeScript does not allow
+// subclasses to change the type of class variables in subclasses. It is an abstract
+// class to point out that it should not be instantiated directly.
+export abstract class DocumentDetails {
 	readonly name!: string;
 
 	readonly is_saved!: boolean;
 
-	readonly id!: BigInt;
+	readonly id!: BigInt | string;
 
 	get displayName() {
 		return `${this.name}${this.is_saved ? "" : "*"}`;
 	}
+}
+
+export class FrontendDocumentDetails extends DocumentDetails {
+	readonly id!: BigInt;
 }
 
 export class UpdateOpenDocumentsList extends JsMessage {
@@ -118,8 +126,12 @@ export class DisplayConfirmationToCloseAllDocuments extends JsMessage {}
 
 export class DisplayAboutGraphiteDialog extends JsMessage {}
 
-export class UpdateCanvas extends JsMessage {
-	readonly document!: string;
+export class UpdateArtwork extends JsMessage {
+	readonly svg!: string;
+}
+
+export class UpdateOverlays extends JsMessage {
+	readonly svg!: string;
 }
 
 const TupleToVec2 = Transform(({ value }) => ({ x: value[0], y: value[1] }));
@@ -272,13 +284,13 @@ export class LayerPanelEntry {
 	@Transform(({ value }) => new BigUint64Array(value))
 	path!: BigUint64Array;
 
-	@Type(() => LayerData)
-	layer_data!: LayerData;
+	@Type(() => LayerMetadata)
+	layer_metadata!: LayerMetadata;
 
 	thumbnail!: string;
 }
 
-export class LayerData {
+export class LayerMetadata {
 	expanded!: boolean;
 
 	selected!: boolean;
@@ -296,13 +308,32 @@ export const LayerTypeOptions = {
 
 export type LayerType = typeof LayerTypeOptions[keyof typeof LayerTypeOptions];
 
+export class IndexedDbDocumentDetails extends DocumentDetails {
+	@Transform(({ value }: { value: BigInt }) => value.toString())
+	id!: string;
+}
+
+export class AutoSaveDocument extends JsMessage {
+	document!: string;
+
+	@Type(() => IndexedDbDocumentDetails)
+	details!: IndexedDbDocumentDetails;
+}
+
+export class RemoveAutoSaveDocument extends JsMessage {
+	// Use a string since IndexedDB can not use BigInts for keys
+	@Transform(({ value }: { value: BigInt }) => value.toString())
+	document_id!: string;
+}
+
 // Any is used since the type of the object should be known from the rust side
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type JSMessageFactory = (data: any, wasm: WasmInstance, instance: RustEditorInstance) => JsMessage;
 type MessageMaker = typeof JsMessage | JSMessageFactory;
 
 export const messageConstructors: Record<string, MessageMaker> = {
-	UpdateCanvas,
+	UpdateArtwork,
+	UpdateOverlays,
 	UpdateScrollbars,
 	UpdateRulers,
 	ExportDocument,
@@ -322,5 +353,7 @@ export const messageConstructors: Record<string, MessageMaker> = {
 	DisplayConfirmationToCloseDocument,
 	DisplayConfirmationToCloseAllDocuments,
 	DisplayAboutGraphiteDialog,
+	AutoSaveDocument,
+	RemoveAutoSaveDocument,
 } as const;
 export type JsMessageType = keyof typeof messageConstructors;

@@ -9,7 +9,7 @@ use rand_chacha::{
 use spin::Mutex;
 
 pub use crate::input::InputPreprocessor;
-use std::collections::VecDeque;
+use std::{cell::Cell, collections::VecDeque};
 
 pub type ActionList = Vec<Vec<MessageDiscriminant>>;
 
@@ -29,10 +29,21 @@ where
 	fn actions(&self) -> ActionList;
 }
 
+thread_local! {
+	pub static UUID_SEED: Cell<Option<u64>> = Cell::new(None);
+}
+
+pub fn set_uuid_seed(random_seed: u64) {
+	UUID_SEED.with(|seed| seed.set(Some(random_seed)))
+}
+
 pub fn generate_uuid() -> u64 {
 	let mut lock = RNG.lock();
 	if lock.is_none() {
-		*lock = Some(ChaCha20Rng::seed_from_u64(0));
+		UUID_SEED.with(|seed| {
+			let random_seed = seed.get().expect("random seed not set before editor was initialized");
+			*lock = Some(ChaCha20Rng::seed_from_u64(random_seed));
+		})
 	}
 	lock.as_mut().map(ChaCha20Rng::next_u64).unwrap()
 }

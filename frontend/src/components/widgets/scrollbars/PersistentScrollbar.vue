@@ -114,7 +114,7 @@ import { defineComponent, PropType } from "vue";
 const lerp = (x: number, y: number, a: number) => x * (1 - a) + y * a;
 
 // Convert the position of the handle (0-1) to the position on the track (0-1).
-// This includes the 1/2 handle length gap  of the possible handle positionson each side so the end of the handle doesn't go off the track.
+// This includes the 1/2 handle length gap of the possible handle positionson each side so the end of the handle doesn't go off the track.
 const handleToTrack = (handleLen: number, handlePos: number) => lerp(handleLen / 2, 1 - handleLen / 2, handlePos);
 
 const pointerPosition = (direction: ScrollbarDirection, e: PointerEvent) => (direction === ScrollbarDirection.Vertical ? e.clientY : e.clientX);

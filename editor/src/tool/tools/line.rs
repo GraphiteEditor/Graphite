@@ -42,7 +42,7 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Line {
 	fn actions(&self) -> ActionList {
 		use LineToolFsmState::*;
 		match self.fsm_state {
-			Ready => actions!(LineMessageDiscriminant;  DragStart),
+			Ready => actions!(LineMessageDiscriminant; DragStart),
 			Drawing => actions!(LineMessageDiscriminant; DragStop, Redraw, Abort),
 		}
 	}
@@ -226,12 +226,13 @@ fn generate_transform(data: &mut LineToolData, lock: bool, snap: bool, center: b
 	}
 
 	if center {
-		start -= dir / 2.;
+		start -= scale * DVec2::new(angle.cos(), angle.sin());
+		scale *= 2.;
 	}
 
 	Operation::SetLayerTransformInViewport {
 		path: data.path.clone().unwrap(),
-		transform: glam::DAffine2::from_scale_angle_translation(DVec2::splat(scale), angle, start).to_cols_array(),
+		transform: glam::DAffine2::from_scale_angle_translation(DVec2::new(scale, 1.), angle, start).to_cols_array(),
 	}
 	.into()
 }

@@ -13,7 +13,7 @@ use crate::input::{
 use crate::misc::{HintData, HintGroup, HintInfo, KeysGroup};
 use crate::tool::{snapping::SnapHandler, DocumentToolData, Fsm, ToolActionHandlerData};
 use crate::{
-	consts::SELECTION_TOLERANCE,
+	consts::{SELECTION_DRAG_ANGLE, SELECTION_TOLERANCE},
 	document::{AlignAggregate, AlignAxis, DocumentMessageHandler, FlipAxis},
 	message_prelude::*,
 };
@@ -29,11 +29,13 @@ pub struct Select {
 #[impl_message(Message, ToolMessage, Select)]
 #[derive(PartialEq, Clone, Debug, Hash, Serialize, Deserialize)]
 pub enum SelectMessage {
+	// Standard messages
+	Abort,
+	DocumentIsDirty,
+
 	DragStart { add_to_selection: Key },
 	DragStop,
-	MouseMove,
-	Abort,
-	UpdateSelectionBoundingBox,
+	MouseMove { snap_angle: Key },
 
 	Align(AlignAxis, AlignAggregate),
 	FlipHorizontal,
@@ -83,8 +85,8 @@ struct SelectToolData {
 	drag_start: ViewportPosition,
 	drag_current: ViewportPosition,
 	layers_dragging: Vec<Vec<LayerId>>, // Paths and offsets
-	drag_box_id: Option<Vec<LayerId>>,
-	bounding_box_path: Option<Vec<LayerId>>,
+	drag_box_overlay_layer: Option<Vec<LayerId>>,
+	bounding_box_overlay_layer: Option<Vec<LayerId>>,
 	snap_handler: SnapHandler,
 }
 
@@ -106,14 +108,13 @@ impl SelectToolData {
 
 fn add_bounding_box(responses: &mut Vec<Message>) -> Vec<LayerId> {
 	let path = vec![generate_uuid()];
-	responses.push(
-		Operation::AddOverlayRect {
-			path: path.clone(),
-			transform: DAffine2::ZERO.to_cols_array(),
-			style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 1.0)), Some(Fill::none())),
-		}
-		.into(),
-	);
+
+	let operation = Operation::AddOverlayRect {
+		path: path.clone(),
+		transform: DAffine2::ZERO.to_cols_array(),
+		style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 1.0)), Some(Fill::none())),
+	};
+	responses.push(DocumentMessage::Overlay(operation.into()).into());
 
 	path
 }
@@ -139,21 +140,20 @@ impl Fsm for SelectToolFsmState {
 
 		if let ToolMessage::Select(event) = event {
 			match (self, event) {
-				(_, UpdateSelectionBoundingBox) => {
+				(_, DocumentIsDirty) => {
 					let mut buffer = Vec::new();
-					let response = match (document.selected_layers_bounding_box(), data.bounding_box_path.take()) {
-						(None, Some(path)) => Operation::DeleteLayer { path }.into(),
+					let response = match (document.selected_visible_layers_bounding_box(), data.bounding_box_overlay_layer.take()) {
+						(None, Some(path)) => DocumentMessage::Overlay(Operation::DeleteLayer { path }.into()).into(),
 						(Some([pos1, pos2]), path) => {
 							let path = path.unwrap_or_else(|| add_bounding_box(&mut buffer));
 
-							data.bounding_box_path = Some(path.clone());
+							data.bounding_box_overlay_layer = Some(path.clone());
 
 							let half_pixel_offset = DVec2::splat(0.5);
 							let pos1 = pos1 + half_pixel_offset;
 							let pos2 = pos2 - half_pixel_offset;
 							let transform = transform_from_box(pos1, pos2);
-
-							Operation::SetLayerTransformInViewport { path, transform }.into()
+							DocumentMessage::Overlay(Operation::SetLayerTransformInViewport { path, transform }.into()).into()
 						}
 						(_, _) => Message::NoOp,
 					};
@@ -165,17 +165,11 @@ impl Fsm for SelectToolFsmState {
 					data.drag_start = input.mouse.position;
 					data.drag_current = input.mouse.position;
 					let mut buffer = Vec::new();
-					let mut selected: Vec<_> = document.selected_layers().map(|path| path.to_vec()).collect();
+					let mut selected: Vec<_> = document.selected_visible_layers().map(|path| path.to_vec()).collect();
 					let quad = data.selection_quad();
-					let intersection = document.graphene_document.intersects_quad_root(quad);
-					// If no layer is currently selected and the user clicks on a shape, select that.
-					if selected.is_empty() {
-						if let Some(layer) = intersection.last() {
-							selected.push(layer.clone());
-							buffer.push(DocumentMessage::SetSelectedLayers(selected.clone()).into());
-						}
-					}
+					let mut intersection = document.graphene_document.intersects_quad_root(quad);
 					// If the user clicks on a layer that is in their current selection, go into the dragging mode.
+					// If the user clicks on new shape, make that layer their new selection.
 					// Otherwise enter the box select mode
 					let state = if selected.iter().any(|path| intersection.contains(path)) {
 						buffer.push(DocumentMessage::StartTransaction.into());
@@ -184,13 +178,24 @@ impl Fsm for SelectToolFsmState {
 					} else {
 						if !input.keyboard.get(add_to_selection as usize) {
 							buffer.push(DocumentMessage::DeselectAllLayers.into());
+							data.layers_dragging.clear();
 						}
-						data.drag_box_id = Some(add_bounding_box(&mut buffer));
-						DrawingBox
+
+						if let Some(intersection) = intersection.pop() {
+							selected = vec![intersection];
+							buffer.push(DocumentMessage::AddSelectedLayers(selected.clone()).into());
+							buffer.push(DocumentMessage::StartTransaction.into());
+							data.layers_dragging.append(&mut selected);
+							Dragging
+						} else {
+							data.drag_box_overlay_layer = Some(add_bounding_box(&mut buffer));
+							DrawingBox
+						}
 					};
 					buffer.into_iter().rev().for_each(|message| responses.push_front(message));
 
-					let ignore_layers = if let Some(bounding_box) = &data.bounding_box_path {
+					// TODO: Probably delete this now that the overlay system has moved to a separate Graphene document? (@0hypercube)
+					let ignore_layers = if let Some(bounding_box) = &data.bounding_box_overlay_layer {
 						vec![bounding_box.clone()]
 					} else {
 						Vec::new()
@@ -198,35 +203,49 @@ impl Fsm for SelectToolFsmState {
 					data.snap_handler.start_snap(document, document.non_selected_layers_sorted(), &ignore_layers);
 					state
 				}
-				(Dragging, MouseMove) => {
-					responses.push_front(SelectMessage::UpdateSelectionBoundingBox.into());
+				(Dragging, MouseMove { snap_angle }) => {
+					// TODO: This is a cheat. Break out the relevant functionality from the handler above and call it from there and here.
+					responses.push_front(SelectMessage::DocumentIsDirty.into());
 
-					let mouse_delta = input.mouse.position - data.drag_current;
+					let mouse_position = if input.keyboard.get(snap_angle as usize) {
+						let mouse_position = input.mouse.position - data.drag_start;
+						let snap_resolution = SELECTION_DRAG_ANGLE.to_radians();
+						let angle = -mouse_position.angle_between(DVec2::X);
+						let snapped_angle = (angle / snap_resolution).round() * snap_resolution;
+						DVec2::new(snapped_angle.cos(), snapped_angle.sin()) * mouse_position.length() + data.drag_start
+					} else {
+						input.mouse.position
+					};
+
+					let mouse_delta = mouse_position - data.drag_current;
 
 					let closest_move = data.snap_handler.snap_layers(document, &data.layers_dragging, mouse_delta);
 					for path in data.layers_dragging.iter() {
 						responses.push_front(
 							Operation::TransformLayerInViewport {
 								path: path.clone(),
-								transform: DAffine2::from_translation(input.mouse.position - data.drag_current + closest_move).to_cols_array(),
+								transform: DAffine2::from_translation(mouse_delta + closest_move).to_cols_array(),
 							}
 							.into(),
 						);
 					}
-					data.drag_current = input.mouse.position + closest_move;
+					data.drag_current = mouse_position + closest_move;
 					Dragging
 				}
-				(DrawingBox, MouseMove) => {
+				(DrawingBox, MouseMove { snap_angle: _ }) => {
 					data.drag_current = input.mouse.position;
 					let half_pixel_offset = DVec2::splat(0.5);
 					let start = data.drag_start + half_pixel_offset;
 					let size = data.drag_current - start + half_pixel_offset;
 
 					responses.push_front(
-						Operation::SetLayerTransformInViewport {
-							path: data.drag_box_id.clone().unwrap(),
-							transform: DAffine2::from_scale_angle_translation(size, 0., start).to_cols_array(),
-						}
+						DocumentMessage::Overlay(
+							Operation::SetLayerTransformInViewport {
+								path: data.drag_box_overlay_layer.clone().unwrap(),
+								transform: DAffine2::from_scale_angle_translation(size, 0., start).to_cols_array(),
+							}
+							.into(),
+						)
 						.into(),
 					);
 					DrawingBox
@@ -244,17 +263,20 @@ impl Fsm for SelectToolFsmState {
 					let quad = data.selection_quad();
 					responses.push_front(DocumentMessage::AddSelectedLayers(document.graphene_document.intersects_quad_root(quad)).into());
 					responses.push_front(
-						Operation::DeleteLayer {
-							path: data.drag_box_id.take().unwrap(),
-						}
+						DocumentMessage::Overlay(
+							Operation::DeleteLayer {
+								path: data.drag_box_overlay_layer.take().unwrap(),
+							}
+							.into(),
+						)
 						.into(),
 					);
 					Ready
 				}
 				(_, Abort) => {
-					let mut delete = |path: &mut Option<Vec<LayerId>>| path.take().map(|path| responses.push_front(Operation::DeleteLayer { path }.into()));
-					delete(&mut data.drag_box_id);
-					delete(&mut data.bounding_box_path);
+					let mut delete = |path: &mut Option<Vec<LayerId>>| path.take().map(|path| responses.push_front(DocumentMessage::Overlay(Operation::DeleteLayer { path }.into()).into()));
+					delete(&mut data.drag_box_overlay_layer);
+					delete(&mut data.bounding_box_overlay_layer);
 					Ready
 				}
 				(_, Align(axis, aggregate)) => {
@@ -380,7 +402,7 @@ impl Fsm for SelectToolFsmState {
 				HintInfo {
 					key_groups: vec![KeysGroup(vec![Key::KeyShift])],
 					mouse: None,
-					label: String::from("Constrain to Axis (coming soon)"),
+					label: String::from("Constrain to Axis"),
 					plus: false,
 				},
 				HintInfo {

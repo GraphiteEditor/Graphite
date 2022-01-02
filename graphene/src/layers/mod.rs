@@ -18,18 +18,11 @@ use serde::{Deserialize, Serialize};
 
 use std::fmt::Write;
 
-pub trait LayerData {
-	fn render(&mut self, svg: &mut String, transforms: &mut Vec<glam::DAffine2>, view_mode: ViewMode);
-	fn intersects_quad(&self, quad: Quad, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>);
-	fn bounding_box(&self, transform: glam::DAffine2) -> Option<[DVec2; 2]>;
-}
-
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub enum LayerDataType {
 	Folder(Folder),
 	Shape(Shape),
 }
-
 impl LayerDataType {
 	pub fn inner(&self) -> &dyn LayerData {
 		match self {
@@ -44,6 +37,12 @@ impl LayerDataType {
 			LayerDataType::Folder(f) => f,
 		}
 	}
+}
+
+pub trait LayerData {
+	fn render(&mut self, svg: &mut String, transforms: &mut Vec<glam::DAffine2>, view_mode: ViewMode);
+	fn intersects_quad(&self, quad: Quad, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>);
+	fn bounding_box(&self, transform: glam::DAffine2) -> Option<[DVec2; 2]>;
 }
 
 impl LayerData for LayerDataType {
@@ -86,7 +85,6 @@ pub struct Layer {
 	pub cache_dirty: bool,
 	pub blend_mode: BlendMode,
 	pub opacity: f64,
-	pub overlay: bool,
 }
 
 impl Layer {
@@ -101,8 +99,11 @@ impl Layer {
 			cache_dirty: true,
 			blend_mode: BlendMode::Normal,
 			opacity: 1.,
-			overlay: false,
 		}
+	}
+
+	pub fn iter(&self) -> LayerIter<'_> {
+		LayerIter { stack: vec![self] }
 	}
 
 	pub fn render(&mut self, transforms: &mut Vec<DAffine2>, view_mode: ViewMode) -> &str {
@@ -112,7 +113,7 @@ impl Layer {
 		if self.cache_dirty {
 			transforms.push(self.transform);
 			self.thumbnail_cache.clear();
-			self.data.render(&mut self.thumbnail_cache, transforms, if self.overlay { ViewMode::Normal } else { view_mode });
+			self.data.render(&mut self.thumbnail_cache, transforms, view_mode);
 
 			self.cache.clear();
 			let _ = writeln!(self.cache, r#"<g transform="matrix("#);
@@ -133,7 +134,7 @@ impl Layer {
 	}
 
 	pub fn intersects_quad(&self, quad: Quad, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>) {
-		if !self.visible || self.overlay {
+		if !self.visible {
 			return;
 		}
 		let transformed_quad = self.transform.inverse() * quad;
@@ -175,7 +176,43 @@ impl Clone for Layer {
 			cache_dirty: true,
 			blend_mode: self.blend_mode,
 			opacity: self.opacity,
-			overlay: self.overlay,
+		}
+	}
+}
+
+impl<'a> IntoIterator for &'a Layer {
+	type Item = &'a Layer;
+	type IntoIter = LayerIter<'a>;
+
+	fn into_iter(self) -> Self::IntoIter {
+		self.iter()
+	}
+}
+
+#[derive(Debug)]
+pub struct LayerIter<'a> {
+	pub stack: Vec<&'a Layer>,
+}
+
+impl Default for LayerIter<'_> {
+	fn default() -> Self {
+		Self { stack: vec![] }
+	}
+}
+
+impl<'a> Iterator for LayerIter<'a> {
+	type Item = &'a Layer;
+
+	fn next(&mut self) -> Option<Self::Item> {
+		match self.stack.pop() {
+			Some(layer) => {
+				if let LayerDataType::Folder(folder) = &layer.data {
+					let layers = folder.layers();
+					self.stack.extend(layers);
+				};
+				Some(layer)
+			}
+			None => None,
 		}
 	}
 }
