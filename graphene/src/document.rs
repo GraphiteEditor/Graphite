@@ -140,6 +140,10 @@ impl Document {
 		path
 	}
 
+	pub fn is_folder(&self, path: &[LayerId]) -> bool {
+		return self.folder(path).is_ok();
+	}
+
 	// Determines which layer is closer to the root, if path_a return true, if path_b return false
 	// Answers the question: Is A closer to the root than B?
 	pub fn layer_closer_to_root(&self, path_a: &[u64], path_b: &[u64]) -> bool {

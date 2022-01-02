@@ -352,15 +352,18 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 				responses.push_back(DocumentsMessage::SelectDocument(prev_id).into());
 			}
 			Copy(clipboard) => {
-				let paths = self.active_document().selected_layers_sorted();
-				self.copy_buffer[clipboard as usize].clear();
-				for path in paths {
-					let document = self.active_document();
-					match (document.graphene_document.layer(&path).map(|t| t.clone()), document.layer_data(&path).clone()) {
+				// We can't use `self.active_document()` because it counts as an immutable borrow of the entirety of `self`
+				let active_document = self.documents.get(&self.active_document_id).unwrap();
+
+				let copy_buffer = &mut self.copy_buffer;
+				copy_buffer[clipboard as usize].clear();
+
+				for layer_path in active_document.selected_layers_without_children() {
+					match (active_document.graphene_document.layer(layer_path).map(|t| t.clone()), *active_document.layer_data(layer_path)) {
 						(Ok(layer), layer_data) => {
-							self.copy_buffer[clipboard as usize].push(CopyBufferEntry { layer, layer_data });
+							copy_buffer[clipboard as usize].push(CopyBufferEntry { layer, layer_data });
 						}
-						(Err(e), _) => warn!("Could not access selected layer {:?}: {:?}", path, e),
+						(Err(e), _) => warn!("Could not access selected layer {:?}: {:?}", layer_path, e),
 					}
 				}
 			}

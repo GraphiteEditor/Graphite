@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 use std::collections::VecDeque;
 
-use super::document_message_handler::CopyBufferEntry;
 pub use super::layer_panel::*;
 use super::movement_handler::{MovementMessage, MovementMessageHandler};
 use super::overlay_message_handler::OverlayMessageHandler;
@@ -276,6 +275,21 @@ impl DocumentMessageHandler {
 
 	pub fn selected_layers(&self) -> impl Iterator<Item = &[LayerId]> {
 		self.layer_data.iter().filter_map(|(path, data)| data.selected.then(|| path.as_slice()))
+	}
+
+	pub fn selected_layers_without_children(&self) -> impl Iterator<Item = &[LayerId]> {
+		let selected_folders: Vec<&Folder> = self
+			.layer_data
+			.iter()
+			.filter_map(|(path, data)| (data.selected && self.graphene_document.is_folder(path)).then(|| self.graphene_document.folder(path).unwrap()))
+			.collect();
+
+		self.selected_layers()
+			.filter(move |path| selected_folders.is_empty() || !selected_folders.iter().any(|folder| (*folder).folder_contains(path[path.len() - 1])))
+	}
+
+	pub fn selected_layers_contains(&self, path: &[LayerId]) -> bool {
+		self.layer_data.get(path).map(|layer| layer.selected).unwrap_or(false)
 	}
 
 	pub fn selected_visible_layers(&self) -> impl Iterator<Item = &[LayerId]> {
@@ -566,10 +580,14 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			}
 			GroupSelectedLayers => {
 				let selected_layers = self.selected_layers();
+				// TODO simplify and protect unwrap
+				let mut new_folder_path: Vec<u64> = self.graphene_document.deepest_common_folder(selected_layers).unwrap().to_vec();
 
-				let mut new_folder_path: Vec<u64> = self.graphene_document.common_path_prefix(selected_layers);
+				if !new_folder_path.is_empty() && self.selected_layers_contains(&new_folder_path) {
+					new_folder_path.remove(new_folder_path.len() - 1);
+				}
+
 				new_folder_path.push(generate_uuid());
-				log::debug!("new_folder_path {:?}", new_folder_path);
 
 				responses.push_back(DocumentsMessage::Copy(Clipboard::System).into());
 				responses.push_back(DocumentMessage::DeleteSelectedLayers.into());
@@ -619,9 +637,11 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			}
 			DeleteSelectedLayers => {
 				self.backup(responses);
-				for path in self.selected_layers().map(|path| path.to_vec()) {
+
+				for path in self.selected_layers_without_children().map(|path| path.to_vec()) {
 					responses.push_front(DocumentOperation::DeleteLayer { path }.into());
 				}
+
 				responses.push_front(ToolMessage::DocumentIsDirty.into());
 			}
 			SetViewMode(mode) => {
@@ -652,7 +672,6 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 						// Toggle selection when holding ctrl
 						let layer = self.layer_data_mut(&selected);
 						layer.selected = !layer.selected;
-						log::debug!("Ctrl Selection: {:?}", selected);
 						responses.push_back(LayerChanged(selected.clone()).into());
 						responses.push_back(ToolMessage::DocumentIsDirty.into());
 					} else {
@@ -677,7 +696,6 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				self.layer_data.insert(path, layer_data_entry);
 			}
 			SetSelectedLayers(paths) => {
-				log::debug!("Set Selection: {:?}", paths);
 				self.layer_data.iter_mut().filter(|(_, layer_data)| layer_data.selected).for_each(|(path, layer_data)| {
 					layer_data.selected = false;
 					responses.push_back(LayerChanged(path.clone()).into())
@@ -686,7 +704,6 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				responses.push_front(AddSelectedLayers(paths).into());
 			}
 			AddSelectedLayers(paths) => {
-				log::debug!("Add Selection: {:?}", paths);
 				for path in paths {
 					responses.extend(self.select_layer(&path));
 				}

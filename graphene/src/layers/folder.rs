@@ -101,6 +101,11 @@ impl Folder {
 		Some(&mut self.layers[pos])
 	}
 
+	pub fn folder_contains(&self, id: LayerId) -> bool {
+		log::debug!("For {:?} Folder does contain {:?}", id, self.layer_ids.contains(&id));
+		self.layer_ids.contains(&id)
+	}
+
 	pub fn position_of_layer(&self, layer_id: LayerId) -> Result<usize, DocumentError> {
 		self.layer_ids.iter().position(|x| *x == layer_id).ok_or_else(|| DocumentError::LayerNotFound([layer_id].into()))
 	}
