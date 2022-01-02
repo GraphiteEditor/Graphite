@@ -29,16 +29,17 @@
 </style>
 
 <script lang="ts">
-import { defineComponent } from "vue";
+import { defineComponent, PropType } from "vue";
 
 import IconButton from "@/components/widgets/buttons/IconButton.vue";
+import { IconName } from "@/components/widgets/labels/IconLabel.vue";
 
 export default defineComponent({
 	components: { IconButton },
 	props: {
-		icon: { type: String, required: true },
-		action: { type: Function, required: true },
-		active: { type: Boolean, default: false },
+		icon: { type: String as PropType<IconName>, required: true },
+		action: { type: Function as PropType<(e?: MouseEvent) => void>, required: true },
+		active: { type: Boolean as PropType<boolean>, default: false },
 	},
 });
 </script>

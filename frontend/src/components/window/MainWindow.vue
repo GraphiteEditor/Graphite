@@ -39,18 +39,13 @@
 <script lang="ts">
 import { defineComponent } from "vue";
 
-import TitleBar from "@/components/window/title-bar/TitleBar.vue";
-import StatusBar from "@/components/window/status-bar/StatusBar.vue";
-import LayoutRow from "@/components/layout/LayoutRow.vue";
 import LayoutCol from "@/components/layout/LayoutCol.vue";
+import LayoutRow from "@/components/layout/LayoutRow.vue";
+import StatusBar from "@/components/window/status-bar/StatusBar.vue";
+import TitleBar from "@/components/window/title-bar/TitleBar.vue";
 import Workspace from "@/components/workspace/Workspace.vue";
 
-export enum ApplicationPlatform {
-	"Windows" = "Windows",
-	"Mac" = "Mac",
-	"Linux" = "Linux",
-	"Web" = "Web",
-}
+export type ApplicationPlatform = "Windows" | "Mac" | "Linux" | "Web";
 
 export default defineComponent({
 	components: {
@@ -62,7 +57,7 @@ export default defineComponent({
 	},
 	data() {
 		return {
-			platform: ApplicationPlatform.Web,
+			platform: "Web" as ApplicationPlatform,
 			maximized: true,
 		};
 	},

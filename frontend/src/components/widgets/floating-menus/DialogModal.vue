@@ -1,6 +1,6 @@
 <template>
 	<div class="dialog-modal">
-		<FloatingMenu :type="MenuType.Dialog" :direction="MenuDirection.Center">
+		<FloatingMenu :type="'Dialog'" :direction="'Center'">
 			<LayoutRow>
 				<LayoutCol :class="'icon-column'">
 					<!-- `dialog.state.icon` class exists to provide special sizing in CSS to specific icons -->
@@ -79,12 +79,12 @@
 <script lang="ts">
 import { defineComponent } from "vue";
 
-import LayoutRow from "@/components/layout/LayoutRow.vue";
 import LayoutCol from "@/components/layout/LayoutCol.vue";
-import FloatingMenu, { MenuDirection, MenuType } from "@/components/widgets/floating-menus/FloatingMenu.vue";
+import LayoutRow from "@/components/layout/LayoutRow.vue";
+import TextButton from "@/components/widgets/buttons/TextButton.vue";
+import FloatingMenu from "@/components/widgets/floating-menus/FloatingMenu.vue";
 import IconLabel from "@/components/widgets/labels/IconLabel.vue";
 import TextLabel from "@/components/widgets/labels/TextLabel.vue";
-import TextButton from "@/components/widgets/buttons/TextButton.vue";
 
 export default defineComponent({
 	inject: ["dialog"],
@@ -100,12 +100,6 @@ export default defineComponent({
 		dismiss() {
 			this.dialog.dismissDialog();
 		},
-	},
-	data() {
-		return {
-			MenuDirection,
-			MenuType,
-		};
 	},
 });
 </script>

@@ -1,12 +1,13 @@
 import { reactive, readonly } from "vue";
 
+// eslint-disable-next-line @typescript-eslint/explicit-function-return-type
 export function createFullscreenState() {
 	const state = reactive({
 		windowFullscreen: false,
 		keyboardLocked: false,
 	});
 
-	const fullscreenModeChanged = () => {
+	const fullscreenModeChanged = (): void => {
 		state.windowFullscreen = Boolean(document.fullscreenElement);
 		if (!state.windowFullscreen) state.keyboardLocked = false;
 	};
@@ -15,7 +16,7 @@ export function createFullscreenState() {
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	const keyboardLockApiSupported: Readonly<boolean> = "keyboard" in navigator && "lock" in (navigator as any).keyboard;
 
-	const enterFullscreen = async () => {
+	const enterFullscreen = async (): Promise<void> => {
 		await document.documentElement.requestFullscreen();
 
 		if (keyboardLockApiSupported) {
@@ -26,11 +27,11 @@ export function createFullscreenState() {
 	};
 
 	// eslint-disable-next-line class-methods-use-this
-	const exitFullscreen = async () => {
+	const exitFullscreen = async (): Promise<void> => {
 		await document.exitFullscreen();
 	};
 
-	const toggleFullscreen = async () => {
+	const toggleFullscreen = async (): Promise<void> => {
 		if (state.windowFullscreen) await exitFullscreen();
 		else await enterFullscreen();
 	};

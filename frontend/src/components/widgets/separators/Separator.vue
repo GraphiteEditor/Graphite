@@ -1,6 +1,6 @@
 <template>
 	<div class="separator" :class="[direction.toLowerCase(), type.toLowerCase()]">
-		<div v-if="[SeparatorType.Section, SeparatorType.List].includes(type)"></div>
+		<div v-if="['Section', 'List'].includes(type)"></div>
 	</div>
 </template>
 
@@ -69,21 +69,14 @@
 </style>
 
 <script lang="ts">
-import { defineComponent } from "vue";
+import { defineComponent, PropType } from "vue";
 
-import { SeparatorDirection, SeparatorType } from "@/components/widgets/widgets";
+import { SeparatorDirection, SeparatorType } from "@/utilities/widgets";
 
 export default defineComponent({
-	components: {},
 	props: {
-		direction: { type: String, default: SeparatorDirection.Horizontal },
-		type: { type: String, default: SeparatorType.Unrelated },
-	},
-	data() {
-		return {
-			SeparatorDirection,
-			SeparatorType,
-		};
+		direction: { type: String as PropType<SeparatorDirection>, default: "Horizontal" },
+		type: { type: String as PropType<SeparatorType>, default: "Unrelated" },
 	},
 });
 </script>
