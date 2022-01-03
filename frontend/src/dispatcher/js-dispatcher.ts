@@ -1,4 +1,5 @@
 import { plainToInstance } from "class-transformer";
+
 import { JsMessageType, messageConstructors, JsMessage } from "@/dispatcher/js-messages";
 import type { RustEditorInstance, WasmInstance } from "@/state/wasm-loader";
 
@@ -10,14 +11,15 @@ type JsMessageCallbackMap = {
 	[message: string]: JsMessageCallback<any> | undefined;
 };
 
+// eslint-disable-next-line @typescript-eslint/explicit-function-return-type
 export function createJsDispatcher() {
 	const subscriptions: JsMessageCallbackMap = {};
 
-	const subscribeJsMessage = <T extends JsMessage, Args extends unknown[]>(messageType: new (...args: Args) => T, callback: JsMessageCallback<T>) => {
+	const subscribeJsMessage = <T extends JsMessage, Args extends unknown[]>(messageType: new (...args: Args) => T, callback: JsMessageCallback<T>): void => {
 		subscriptions[messageType.name] = callback;
 	};
 
-	const handleJsMessage = (messageType: JsMessageType, messageData: Record<string, unknown>, wasm: WasmInstance, instance: RustEditorInstance) => {
+	const handleJsMessage = (messageType: JsMessageType, messageData: Record<string, unknown>, wasm: WasmInstance, instance: RustEditorInstance): void => {
 		const messageConstructor = messageConstructors[messageType];
 		if (!messageConstructor) {
 			// eslint-disable-next-line no-console

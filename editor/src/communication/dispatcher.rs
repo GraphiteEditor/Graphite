@@ -7,6 +7,7 @@ pub use crate::tool::ToolMessageHandler;
 use crate::global::GlobalMessageHandler;
 use std::collections::VecDeque;
 
+#[derive(Debug, Default)]
 pub struct Dispatcher {
 	input_preprocessor: InputPreprocessor,
 	input_mapper: InputMapper,
@@ -30,6 +31,10 @@ const SIDE_EFFECT_FREE_MESSAGES: &[MessageDiscriminant] = &[
 ];
 
 impl Dispatcher {
+	pub fn new() -> Self {
+		Self::default()
+	}
+
 	pub fn handle_message<T: Into<Message>>(&mut self, message: T) {
 		self.messages.push_back(message.into());
 
@@ -66,18 +71,6 @@ impl Dispatcher {
 		list.extend(self.tool_message_handler.actions());
 		list.extend(self.documents_message_handler.actions());
 		list
-	}
-
-	pub fn new() -> Dispatcher {
-		Dispatcher {
-			input_preprocessor: InputPreprocessor::default(),
-			global_message_handler: GlobalMessageHandler::new(),
-			input_mapper: InputMapper::default(),
-			documents_message_handler: DocumentsMessageHandler::default(),
-			tool_message_handler: ToolMessageHandler::default(),
-			messages: VecDeque::new(),
-			responses: vec![],
-		}
 	}
 
 	fn log_message(&self, message: &Message) {

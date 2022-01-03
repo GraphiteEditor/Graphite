@@ -4,10 +4,10 @@ pub mod layer_panel;
 mod movement_handler;
 mod overlay_message_handler;
 mod transform_layer_handler;
-mod vectorize_layerdata;
+mod vectorize_layer_metadata;
 
 #[doc(inline)]
-pub use document_file::LayerData;
+pub use document_file::LayerMetadata;
 
 #[doc(inline)]
 pub use document_file::{AlignAggregate, AlignAxis, DocumentMessage, DocumentMessageDiscriminant, DocumentMessageHandler, FlipAxis, VectorManipulatorSegment, VectorManipulatorShape};

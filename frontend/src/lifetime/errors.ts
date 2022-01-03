@@ -1,10 +1,10 @@
-import { DialogState } from "@/state/dialog";
-import { TextButtonWidget } from "@/components/widgets/widgets";
 import { DisplayError, DisplayPanic } from "@/dispatcher/js-messages";
+import { DialogState } from "@/state/dialog";
 import { EditorState } from "@/state/wasm-loader";
 import { stripIndents } from "@/utilities/strip-indents";
+import { TextButtonWidget } from "@/utilities/widgets";
 
-export function initErrorHandling(editor: EditorState, dialogState: DialogState) {
+export function initErrorHandling(editor: EditorState, dialogState: DialogState): void {
 	// Graphite error dialog
 	editor.dispatcher.subscribeJsMessage(DisplayError, (displayError) => {
 		const okButton: TextButtonWidget = {
@@ -49,7 +49,7 @@ export function initErrorHandling(editor: EditorState, dialogState: DialogState)
 	});
 }
 
-function githubUrl(panicDetails: string) {
+function githubUrl(panicDetails: string): string {
 	const url = new URL("https://github.com/GraphiteEditor/Graphite/issues/new");
 
 	const body = stripIndents`

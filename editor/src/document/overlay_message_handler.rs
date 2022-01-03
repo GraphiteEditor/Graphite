@@ -1,5 +1,5 @@
 pub use crate::document::layer_panel::*;
-use crate::document::{DocumentMessage, LayerData};
+use crate::document::{DocumentMessage, LayerMetadata};
 use crate::input::InputPreprocessor;
 use crate::message_prelude::*;
 use graphene::document::Document;
@@ -29,9 +29,9 @@ pub struct OverlayMessageHandler {
 	overlay_path_mapping: HashMap<Vec<LayerId>, Vec<LayerId>>,
 }
 
-impl MessageHandler<OverlayMessage, (&mut LayerData, &Document, &InputPreprocessor)> for OverlayMessageHandler {
-	fn process_action(&mut self, message: OverlayMessage, data: (&mut LayerData, &Document, &InputPreprocessor), responses: &mut VecDeque<Message>) {
-		let (layer_data, document, ipp) = data;
+impl MessageHandler<OverlayMessage, (&mut LayerMetadata, &Document, &InputPreprocessor)> for OverlayMessageHandler {
+	fn process_action(&mut self, message: OverlayMessage, _data: (&mut LayerMetadata, &Document, &InputPreprocessor), responses: &mut VecDeque<Message>) {
+		// let (layer_metadata, document, ipp) = data;
 		use OverlayMessage::*;
 		match message {
 			DispatchOperation(operation) => match self.overlays_graphene_document.handle_operation(&operation) {

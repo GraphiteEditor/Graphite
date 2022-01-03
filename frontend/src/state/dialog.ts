@@ -1,10 +1,11 @@
 import { reactive, readonly } from "vue";
 
-import { TextButtonWidget } from "@/components/widgets/widgets";
-import { EditorState } from "@/state/wasm-loader";
 import { DisplayAboutGraphiteDialog } from "@/dispatcher/js-messages";
+import { EditorState } from "@/state/wasm-loader";
 import { stripIndents } from "@/utilities/strip-indents";
+import { TextButtonWidget } from "@/utilities/widgets";
 
+// eslint-disable-next-line @typescript-eslint/explicit-function-return-type
 export function createDialogState(editor: EditorState) {
 	const state = reactive({
 		visible: false,
@@ -14,7 +15,7 @@ export function createDialogState(editor: EditorState) {
 		buttons: [] as TextButtonWidget[],
 	});
 
-	const createDialog = (icon: string, heading: string, details: string, buttons: TextButtonWidget[]) => {
+	const createDialog = (icon: string, heading: string, details: string, buttons: TextButtonWidget[]): void => {
 		state.visible = true;
 		state.icon = icon;
 		state.heading = heading;
@@ -22,11 +23,11 @@ export function createDialogState(editor: EditorState) {
 		state.buttons = buttons;
 	};
 
-	const dismissDialog = () => {
+	const dismissDialog = (): void => {
 		state.visible = false;
 	};
 
-	const submitDialog = () => {
+	const submitDialog = (): void => {
 		const firstEmphasizedButton = state.buttons.find((button) => button.props.emphasized && button.callback);
 		if (firstEmphasizedButton) {
 			// If statement satisfies TypeScript
@@ -38,7 +39,7 @@ export function createDialogState(editor: EditorState) {
 		return state.visible;
 	};
 
-	const comingSoon = (issueNumber?: number) => {
+	const comingSoon = (issueNumber?: number): void => {
 		const bugMessage = `— but you can help add it!\nSee issue #${issueNumber} on GitHub.`;
 		const details = `This feature is not implemented yet${issueNumber ? bugMessage : ""}`;
 
@@ -58,7 +59,7 @@ export function createDialogState(editor: EditorState) {
 		createDialog("Warning", "Coming soon", details, buttons);
 	};
 
-	const onAboutHandler = () => {
+	const onAboutHandler = (): void => {
 		const date = new Date(process.env.VUE_APP_COMMIT_DATE || "");
 		const dateString = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 		const timeString = `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
@@ -80,22 +81,22 @@ export function createDialogState(editor: EditorState) {
 		const buttons: TextButtonWidget[] = [
 			{
 				kind: "TextButton",
-				callback: () => window.open("https://www.graphite.design", "_blank"),
+				callback: (): unknown => window.open("https://www.graphite.design", "_blank"),
 				props: { label: "Website", emphasized: false, minWidth: 0 },
 			},
 			{
 				kind: "TextButton",
-				callback: () => window.open("https://github.com/GraphiteEditor/Graphite/graphs/contributors", "_blank"),
+				callback: (): unknown => window.open("https://github.com/GraphiteEditor/Graphite/graphs/contributors", "_blank"),
 				props: { label: "Credits", emphasized: false, minWidth: 0 },
 			},
 			{
 				kind: "TextButton",
-				callback: () => window.open("https://raw.githubusercontent.com/GraphiteEditor/Graphite/master/LICENSE.txt", "_blank"),
+				callback: (): unknown => window.open("https://raw.githubusercontent.com/GraphiteEditor/Graphite/master/LICENSE.txt", "_blank"),
 				props: { label: "License", emphasized: false, minWidth: 0 },
 			},
 			{
 				kind: "TextButton",
-				callback: () => window.open("/third-party-licenses.txt", "_blank"),
+				callback: (): unknown => window.open("/third-party-licenses.txt", "_blank"),
 				props: { label: "Third-Party Licenses", emphasized: false, minWidth: 0 },
 			},
 		];
