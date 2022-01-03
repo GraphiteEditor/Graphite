@@ -113,33 +113,6 @@ impl Document {
 			.unwrap_or_default()
 	}
 
-	pub fn common_path_prefix<'a>(&self, layers: impl Iterator<Item = &'a [LayerId]>) -> Vec<u64> {
-		let mut path_len: usize = usize::MAX;
-		let mut path: Vec<u64> = vec![];
-		layers.for_each(|layer| {
-			for i in 0..std::cmp::min(layer.len(), path_len) {
-				let a = *layer.get(i).unwrap();
-				let l = layer.len();
-
-				if i >= path.len() {
-					path.insert(i, a);
-					if l < path_len {
-						path_len = l;
-					}
-				}
-
-				let b = *path.get(i).unwrap();
-
-				if a != b {
-					path_len = i;
-					path.drain(path_len..path.len());
-				}
-			}
-		});
-
-		path
-	}
-
 	pub fn is_folder(&self, path: &[LayerId]) -> bool {
 		return self.folder(path).is_ok();
 	}
@@ -659,44 +632,4 @@ fn update_thumbnails_upstream(path: &[LayerId]) -> Vec<DocumentResponse> {
 		responses.push(DocumentResponse::LayerChanged { path: path[0..(length - i)].to_vec() });
 	}
 	responses
-}
-
-#[test]
-fn common_layer_path_prefix_test() {
-	let mut fake_layers: Vec<Vec<u64>> = vec![vec![]];
-	fake_layers.push(vec![1, 2]);
-	// fake_layers.push(vec![1, 2]);
-	// fake_layers.push(vec![1, 2]);
-	// fake_layers.push(vec![1, 2, 0]);
-
-	let layers = fake_layers.iter().map(|layer| layer.as_slice());
-	let result = common_path_prefix(layers);
-	println!("Layers {:?}", result);
-}
-
-pub fn common_path_prefix<'a>(layers: impl Iterator<Item = &'a [LayerId]>) -> Vec<u64> {
-	let mut path_len: usize = usize::MAX;
-	let mut path: Vec<u64> = vec![];
-	layers.for_each(|layer| {
-		for i in 0..std::cmp::min(layer.len(), path_len) {
-			let a = *layer.get(i).unwrap();
-			let l = layer.len();
-
-			if i >= path.len() {
-				path.insert(i, a);
-				if l < path_len {
-					path_len = l;
-				}
-			}
-
-			let b = *path.get(i).unwrap();
-
-			if a != b {
-				path_len = i;
-				path.drain(path_len..path.len());
-			}
-		}
-	});
-
-	path
 }
