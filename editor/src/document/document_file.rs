@@ -274,10 +274,7 @@ impl DocumentMessageHandler {
 	}
 
 	pub fn selected_layers_without_children(&self) -> Vec<Vec<LayerId>> {
-		let mut without_children: Vec<Vec<LayerId>> = vec![];
-		recurse_layer_tree(self, vec![], &mut without_children, false);
-
-		// Traversing the layer tree was chosen for both readability and instead of an n^2 comparison approach.
+		// Traversing the layer tree recursively was chosen for both readability and instead of an n^2 comparison approach.
 		// A future optmiziation would be not needing to start at the root []
 		fn recurse_layer_tree(ctx: &DocumentMessageHandler, mut path: Vec<u64>, without_children: &mut Vec<Vec<LayerId>>, selected: bool) {
 			if let Ok(folder) = ctx.graphene_document.folder(&path) {
@@ -297,6 +294,9 @@ impl DocumentMessageHandler {
 				}
 			}
 		}
+
+		let mut without_children: Vec<Vec<LayerId>> = vec![];
+		recurse_layer_tree(self, vec![], &mut without_children, false);
 		without_children
 	}
 
@@ -593,7 +593,6 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				responses.push_back(DocumentMessage::SetLayerExpansion(path, true).into());
 			}
 			GroupSelectedLayers => {
-				// TODO simplify and protect unwrap
 				let mut new_folder_path: Vec<u64> = self.graphene_document.shallowest_common_folder(self.selected_layers()).unwrap_or(&[]).to_vec();
 
 				// Required for grouping parent folders with their own children
