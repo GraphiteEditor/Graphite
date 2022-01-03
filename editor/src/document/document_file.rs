@@ -274,30 +274,23 @@ impl DocumentMessageHandler {
 	}
 
 	pub fn selected_layers_without_children(&self) -> Vec<Vec<LayerId>> {
-		// Traversing the layer tree recursively was chosen for both readability and instead of an n^2 comparison approach.
-		// A future optmiziation would be not needing to start at the root []
-		fn recurse_layer_tree(ctx: &DocumentMessageHandler, mut path: Vec<u64>, without_children: &mut Vec<Vec<LayerId>>, selected: bool) {
-			if let Ok(folder) = ctx.graphene_document.folder(&path) {
-				for child in folder.list_layers() {
-					path.push(*child);
-					let selected_or_parent_selected = selected || ctx.selected_layers_contains(&path);
-					let selected_without_any_parent_selected = !selected && ctx.selected_layers_contains(&path);
-					if ctx.graphene_document.is_folder(&path) {
-						if selected_without_any_parent_selected {
-							without_children.push(path.clone());
-						}
-						recurse_layer_tree(ctx, path.clone(), without_children, selected_or_parent_selected);
-					} else if selected_without_any_parent_selected {
-						without_children.push(path.clone());
-					}
-					path.pop();
-				}
+		let mut sorted_layers = self.selected_layers().collect::<Vec<_>>();
+		sorted_layers.sort();
+
+		if sorted_layers.is_empty() {
+			return vec![];
+		}
+
+		let mut current_path = sorted_layers.first().unwrap();
+		let mut keep = vec![current_path.to_vec()];
+		for path in &sorted_layers {
+			if !path.starts_with(current_path) {
+				keep.push(path.to_vec());
+				current_path = path;
 			}
 		}
 
-		let mut without_children: Vec<Vec<LayerId>> = vec![];
-		recurse_layer_tree(self, vec![], &mut without_children, false);
-		without_children
+		keep
 	}
 
 	pub fn selected_layers_contains(&self, path: &[LayerId]) -> bool {
