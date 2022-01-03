@@ -112,8 +112,31 @@ export class UpdateWorkingColors extends JsMessage {
 	readonly secondary!: Color;
 }
 
+export type ToolName =
+	| "Select"
+	| "Crop"
+	| "Navigate"
+	| "Eyedropper"
+	| "Text"
+	| "Fill"
+	| "Gradient"
+	| "Brush"
+	| "Heal"
+	| "Clone"
+	| "Patch"
+	| "Detail"
+	| "Relight"
+	| "Path"
+	| "Pen"
+	| "Freehand"
+	| "Spline"
+	| "Line"
+	| "Rectangle"
+	| "Ellipse"
+	| "Shape";
+
 export class SetActiveTool extends JsMessage {
-	readonly tool_name!: string;
+	readonly tool_name!: ToolName;
 
 	readonly tool_options!: object;
 }

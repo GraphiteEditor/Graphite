@@ -5,12 +5,12 @@
 				<IconLabel :icon="'GraphiteLogo'" />
 			</div>
 		</div>
-		<div class="entry-container" v-for="entry in menuEntries" :key="entry">
+		<div class="entry-container" v-for="(entry, index) in menuEntries" :key="index">
 			<div @click="handleEntryClick(entry)" class="entry" :class="{ open: entry.ref && entry.ref.isOpen() }" data-hover-menu-spawner>
 				<IconLabel :icon="entry.icon" v-if="entry.icon" />
 				<span v-if="entry.label">{{ entry.label }}</span>
 			</div>
-			<MenuList :menuEntries="entry.children" :direction="'Bottom'" :minWidth="240" :drawIcon="true" :defaultAction="comingSoon" :ref="(ref) => setEntryRefs(entry, ref)" />
+			<MenuList :menuEntries="entry.children || []" :direction="'Bottom'" :minWidth="240" :drawIcon="true" :defaultAction="comingSoon" :ref="(ref) => setEntryRefs(entry, ref)" />
 		</div>
 	</div>
 </template>

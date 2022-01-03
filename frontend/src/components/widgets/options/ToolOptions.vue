@@ -31,6 +31,7 @@
 <script lang="ts">
 import { defineComponent, PropType } from "vue";
 
+import { ToolName } from "@/dispatcher/js-messages";
 import { WidgetRow, IconButtonWidget } from "@/utilities/widgets";
 
 import IconButton from "@/components/widgets/buttons/IconButton.vue";
@@ -38,13 +39,11 @@ import PopoverButton from "@/components/widgets/buttons/PopoverButton.vue";
 import NumberInput from "@/components/widgets/inputs/NumberInput.vue";
 import Separator from "@/components/widgets/separators/Separator.vue";
 
-export type ToolName = "Select" | "Shape" | "Line" | "Pen";
-
 export default defineComponent({
 	inject: ["editor", "dialog"],
 	props: {
-		activeTool: { type: String as PropType<ToolName> },
-		activeToolOptions: { type: Object as PropType<Record<string, object>> },
+		activeTool: { type: String as PropType<ToolName>, required: true },
+		activeToolOptions: { type: Object as PropType<Record<string, object>>, required: true },
 	},
 	methods: {
 		async updateToolOptions(path: string[], newValue: number) {
@@ -152,9 +151,26 @@ export default defineComponent({
 					props: {},
 				},
 			],
-			Shape: [{ kind: "NumberInput", optionPath: ["shape_type", "Polygon", "vertices"], props: { min: 3, isInteger: true, label: "Sides" } }],
-			Line: [{ kind: "NumberInput", optionPath: ["weight"], props: { min: 1, isInteger: true, unit: " px", label: "Weight" } }],
+			Crop: [],
+			Navigate: [],
+			Eyedropper: [],
+			Text: [],
+			Fill: [],
+			Gradient: [],
+			Brush: [],
+			Heal: [],
+			Clone: [],
+			Patch: [],
+			Detail: [],
+			Relight: [],
+			Path: [],
 			Pen: [{ kind: "NumberInput", optionPath: ["weight"], props: { min: 1, isInteger: true, unit: " px", label: "Weight" } }],
+			Freehand: [],
+			Spline: [],
+			Line: [{ kind: "NumberInput", optionPath: ["weight"], props: { min: 1, isInteger: true, unit: " px", label: "Weight" } }],
+			Rectangle: [],
+			Ellipse: [],
+			Shape: [{ kind: "NumberInput", optionPath: ["shape_type", "Polygon", "vertices"], props: { min: 3, isInteger: true, label: "Sides" } }],
 		};
 
 		return {

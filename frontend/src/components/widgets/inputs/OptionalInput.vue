@@ -1,6 +1,6 @@
 <template>
 	<div class="optional-input">
-		<CheckboxInput :checked="checked" @input="(e) => $emit('update:checked', e.target.checked)" :icon="icon" />
+		<CheckboxInput :checked="checked" @input="(e) => $emit('update:checked', (e.target as HTMLInputElement).checked)" :icon="icon" />
 	</div>
 </template>
 
@@ -36,8 +36,9 @@
 <script lang="ts">
 import { defineComponent, PropType } from "vue";
 
+import { IconName } from "@/utilities/icons";
+
 import CheckboxInput from "@/components/widgets/inputs/CheckboxInput.vue";
-import { IconName } from "@/components/widgets/labels/IconLabel.vue";
 
 export default defineComponent({
 	props: {

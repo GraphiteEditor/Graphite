@@ -2,7 +2,7 @@
 	<div class="user-input-label">
 		<template v-for="(keyGroup, keyGroupIndex) in inputKeys" :key="keyGroupIndex">
 			<span class="group-gap" v-if="keyGroupIndex > 0"></span>
-			<template v-for="inputKey in keyGroup" :key="((keyInfo = keyTextOrIcon(inputKey)), inputKey)">
+			<template v-for="(keyInfo, index) in keyTextOrIconList(keyGroup)" :key="index">
 				<span class="input-key" :class="keyInfo.width">
 					<IconLabel v-if="keyInfo.icon" :icon="keyInfo.icon" />
 					<template v-else>{{ keyInfo.text }}</template>
@@ -10,7 +10,7 @@
 			</template>
 		</template>
 		<span class="input-mouse" v-if="inputMouse">
-			<IconLabel :icon="`MouseHint${inputMouse}`" />
+			<IconLabel :icon="mouseHintIcon(inputMouse)" />
 		</span>
 		<span class="hint-text" v-if="hasSlotContent">
 			<slot></slot>
@@ -97,7 +97,9 @@
 <script lang="ts">
 import { defineComponent, PropType } from "vue";
 
-import { HintInfo } from "@/dispatcher/js-messages";
+import { HintInfo, KeysGroup } from "@/dispatcher/js-messages";
+
+import { IconName } from "@/utilities/icons";
 
 import IconLabel from "@/components/widgets/labels/IconLabel.vue";
 
@@ -113,7 +115,10 @@ export default defineComponent({
 		},
 	},
 	methods: {
-		keyTextOrIcon(keyText: string): { text: string | null; icon: string | null; width: string } {
+		keyTextOrIconList(keyGroup: KeysGroup): { text: string | null; icon: IconName | null; width: string }[] {
+			return keyGroup.map((inputKey) => this.keyTextOrIcon(inputKey));
+		},
+		keyTextOrIcon(keyText: string): { text: string | null; icon: IconName | null; width: string } {
 			// Definitions
 			const textMap: Record<string, string> = {
 				Control: "Ctrl",
@@ -153,7 +158,7 @@ export default defineComponent({
 			if (text in iconsAndWidths) {
 				return {
 					text: null,
-					icon: `Keyboard${text}`,
+					icon: this.keyboardHintIcon(text),
 					width: `width-${iconsAndWidths[text] * 8 + 8}`,
 				};
 			}
@@ -169,6 +174,12 @@ export default defineComponent({
 			else result = text;
 
 			return { text: result, icon: null, width: `width-${(result || " ").length * 8 + 8}` };
+		},
+		mouseHintIcon(input: HintInfo["mouse"]): IconName {
+			return `MouseHint${input}` as IconName;
+		},
+		keyboardHintIcon(input: HintInfo["key_groups"][0][0]): IconName {
+			return `Keyboard${input}` as IconName;
 		},
 	},
 });

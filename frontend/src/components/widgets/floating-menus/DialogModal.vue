@@ -10,7 +10,7 @@
 					<TextLabel :bold="true" :class="'heading'">{{ dialog.state.heading }}</TextLabel>
 					<TextLabel :class="'details'">{{ dialog.state.details }}</TextLabel>
 					<LayoutRow :class="'buttons-row'" v-if="dialog.state.buttons.length > 0">
-						<TextButton v-for="(button, index) in dialog.state.buttons" :key="index" :title="button.tooltip" :action="button.callback" v-bind="button.props" />
+						<TextButton v-for="(button, index) in dialog.state.buttons" :key="index" :title="button.tooltip" :action="() => button.callback && button.callback()" v-bind="button.props" />
 					</LayoutRow>
 				</LayoutCol>
 			</LayoutRow>
