@@ -251,7 +251,7 @@ export default defineComponent({
 		setText(value: number) {
 			// Find the amount of digits on the left side of the number
 			// 10.25 == 2
-			// 1.23 == 3
+			// 1.23 == 1
 			// 0.23 == 0 - Reason for the slightly more complicated code
 			const leftSideDigits = Math.max(Math.floor(value).toString().length, 0) * Math.sign(value);
 
