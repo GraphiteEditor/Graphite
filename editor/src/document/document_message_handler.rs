@@ -1,14 +1,15 @@
+use super::{DocumentMessageHandler, LayerMetadata};
+use crate::consts::DEFAULT_DOCUMENT_NAME;
 use crate::frontend::frontend_message_handler::FrontendDocumentDetails;
 use crate::input::InputPreprocessor;
 use crate::message_prelude::*;
 use graphene::layers::Layer;
 use graphene::{LayerId, Operation as DocumentOperation};
+
 use log::warn;
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, VecDeque};
 
-use super::DocumentMessageHandler;
-use crate::consts::DEFAULT_DOCUMENT_NAME;
+use std::collections::{HashMap, VecDeque};
 
 #[repr(u8)]
 #[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Debug)]
@@ -17,12 +18,14 @@ pub enum Clipboard {
 	User,
 	_ClipboardCount,
 }
-static CLIPBOARD_COUNT: u8 = Clipboard::_ClipboardCount as u8;
+
+const CLIPBOARD_COUNT: u8 = Clipboard::_ClipboardCount as u8;
 
 #[impl_message(Message, Documents)]
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub enum DocumentsMessage {
 	Copy(Clipboard),
+	Cut(Clipboard),
 	PasteIntoFolder {
 		clipboard: Clipboard,
 		path: Vec<LayerId>,
@@ -59,7 +62,13 @@ pub struct DocumentsMessageHandler {
 	documents: HashMap<u64, DocumentMessageHandler>,
 	document_ids: Vec<u64>,
 	active_document_id: u64,
-	copy_buffer: Vec<Vec<Layer>>,
+	copy_buffer: [Vec<CopyBufferEntry>; CLIPBOARD_COUNT as usize],
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CopyBufferEntry {
+	layer: Layer,
+	layer_metadata: LayerMetadata,
 }
 
 impl DocumentsMessageHandler {
@@ -95,7 +104,7 @@ impl DocumentsMessageHandler {
 	}
 
 	// TODO Fix how this doesn't preserve tab order upon loading new document from file>load
-	fn load_document(&mut self, mut new_document: DocumentMessageHandler, document_id: u64, replace_first_empty: bool, responses: &mut VecDeque<Message>) {
+	fn load_document(&mut self, new_document: DocumentMessageHandler, document_id: u64, replace_first_empty: bool, responses: &mut VecDeque<Message>) {
 		// Special case when loading a document on an empty page
 		if replace_first_empty && self.active_document().is_unmodified_default() {
 			responses.push_back(DocumentsMessage::CloseDocument(self.active_document_id).into());
@@ -112,7 +121,7 @@ impl DocumentsMessageHandler {
 
 		responses.extend(
 			new_document
-				.layer_data
+				.layer_metadata
 				.keys()
 				.filter_map(|path| new_document.layer_panel_entry_from_path(path))
 				.map(|entry| FrontendMessage::UpdateLayer { data: entry }.into())
@@ -126,10 +135,10 @@ impl DocumentsMessageHandler {
 			.document_ids
 			.iter()
 			.filter_map(|id| {
-				self.documents.get(&id).map(|doc| FrontendDocumentDetails {
-					is_saved: doc.is_saved(),
+				self.documents.get(id).map(|document| FrontendDocumentDetails {
+					is_saved: document.is_saved(),
 					id: *id,
-					name: doc.name.clone(),
+					name: document.name.clone(),
 				})
 			})
 			.collect::<Vec<_>>();
@@ -155,10 +164,12 @@ impl Default for DocumentsMessageHandler {
 		let starting_key = generate_uuid();
 		documents_map.insert(starting_key, DocumentMessageHandler::default());
 
+		const EMPTY_VEC: Vec<CopyBufferEntry> = vec![];
+
 		Self {
 			documents: documents_map,
 			document_ids: vec![starting_key],
-			copy_buffer: vec![vec![]; CLIPBOARD_COUNT as usize],
+			copy_buffer: [EMPTY_VEC; CLIPBOARD_COUNT as usize],
 			active_document_id: starting_key,
 		}
 	}
@@ -182,7 +193,7 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 				responses.push_back(FrontendMessage::SetActiveDocument { document_id: id }.into());
 				responses.push_back(RenderDocument.into());
 				responses.push_back(DocumentMessage::DocumentStructureChanged.into());
-				for layer in self.active_document().layer_data.keys() {
+				for layer in self.active_document().layer_metadata.keys() {
 					responses.push_back(DocumentMessage::LayerChanged(layer.clone()).into());
 				}
 			}
@@ -238,7 +249,7 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 					.document_ids
 					.iter()
 					.filter_map(|id| {
-						self.documents.get(&id).map(|doc| FrontendDocumentDetails {
+						self.documents.get(id).map(|doc| FrontendDocumentDetails {
 							is_saved: doc.is_saved(),
 							id: *id,
 							name: doc.name.clone(),
@@ -251,7 +262,7 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 				responses.push_back(FrontendMessage::RemoveAutoSaveDocument { document_id: id }.into());
 				responses.push_back(RenderDocument.into());
 				responses.push_back(DocumentMessage::DocumentStructureChanged.into());
-				for layer in self.active_document().layer_data.keys() {
+				for layer in self.active_document().layer_metadata.keys() {
 					responses.push_back(DocumentMessage::LayerChanged(layer.clone()).into());
 				}
 			}
@@ -303,7 +314,7 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 					.document_ids
 					.iter()
 					.filter_map(|id| {
-						self.documents.get(&id).map(|doc| FrontendDocumentDetails {
+						self.documents.get(id).map(|doc| FrontendDocumentDetails {
 							is_saved: doc.is_saved(),
 							id: *id,
 							name: doc.name.clone(),
@@ -344,13 +355,18 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 				let paths = self.active_document().selected_layers_sorted();
 				self.copy_buffer[clipboard as usize].clear();
 				for path in paths {
-					match self.active_document().graphene_document.layer(&path).map(|t| t.clone()) {
-						Ok(layer) => {
-							self.copy_buffer[clipboard as usize].push(layer);
+					let document = self.active_document();
+					match (document.graphene_document.layer(&path).map(|t| t.clone()), *document.layer_metadata(&path)) {
+						(Ok(layer), layer_metadata) => {
+							self.copy_buffer[clipboard as usize].push(CopyBufferEntry { layer, layer_metadata });
 						}
-						Err(e) => warn!("Could not access selected layer {:?}: {:?}", path, e),
+						(Err(e), _) => warn!("Could not access selected layer {:?}: {:?}", path, e),
 					}
 				}
+			}
+			Cut(clipboard) => {
+				responses.push_back(Copy(clipboard).into());
+				responses.push_back(DeleteSelectedLayers.into());
 			}
 			Paste(clipboard) => {
 				let document = self.active_document();
@@ -369,24 +385,35 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 				);
 			}
 			PasteIntoFolder { clipboard, path, insert_index } => {
-				let paste = |layer: &Layer, responses: &mut VecDeque<_>| {
-					log::trace!("Pasting into folder {:?} as index: {}", path, insert_index);
+				let paste = |entry: &CopyBufferEntry, responses: &mut VecDeque<_>| {
+					log::trace!("Pasting into folder {:?} as index: {}", &path, insert_index);
+
+					let destination_path = [path.to_vec(), vec![generate_uuid()]].concat();
+
 					responses.push_back(
-						DocumentOperation::PasteLayer {
-							layer: layer.clone(),
-							path: path.clone(),
+						DocumentOperation::InsertLayer {
+							layer: entry.layer.clone(),
+							destination_path: destination_path.clone(),
 							insert_index,
 						}
 						.into(),
-					)
+					);
+					responses.push_back(
+						DocumentMessage::UpdateLayerMetadata {
+							layer_path: destination_path,
+							layer_metadata: entry.layer_metadata,
+						}
+						.into(),
+					);
 				};
+
 				if insert_index == -1 {
-					for layer in self.copy_buffer[clipboard as usize].iter() {
-						paste(layer, responses)
+					for entry in self.copy_buffer[clipboard as usize].iter() {
+						paste(entry, responses)
 					}
 				} else {
-					for layer in self.copy_buffer[clipboard as usize].iter().rev() {
-						paste(layer, responses)
+					for entry in self.copy_buffer[clipboard as usize].iter().rev() {
+						paste(entry, responses)
 					}
 				}
 			}
@@ -404,9 +431,10 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 			Paste,
 		);
 
-		if self.active_document().layer_data.values().any(|data| data.selected) {
+		if self.active_document().layer_metadata.values().any(|data| data.selected) {
 			let select = actions!(DocumentsMessageDiscriminant;
 				Copy,
+				Cut,
 			);
 			common.extend(select);
 		}

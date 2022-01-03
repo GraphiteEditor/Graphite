@@ -12,8 +12,8 @@
 			:disabled="disabled"
 		/>
 		<label v-if="label" :for="`number-input-${id}`">{{ label }}</label>
-		<button v-if="!Number.isNaN(value)" class="arrow left" @click="onIncrement(IncrementDirection.Decrease)"></button>
-		<button v-if="!Number.isNaN(value)" class="arrow right" @click="onIncrement(IncrementDirection.Increase)"></button>
+		<button v-if="!Number.isNaN(value)" class="arrow left" @click="onIncrement('Decrease')"></button>
+		<button v-if="!Number.isNaN(value)" class="arrow right" @click="onIncrement('Increase')"></button>
 	</div>
 </template>
 
@@ -151,42 +151,32 @@
 
 <script lang="ts">
 import { defineComponent, PropType } from "vue";
+
 import { clamp } from "@/utilities/math";
 
-export enum IncrementBehavior {
-	Add = "Add",
-	Multiply = "Multiply",
-	Callback = "Callback",
-	None = "None",
-}
-
-export enum IncrementDirection {
-	Decrease = "Decrease",
-	Increase = "Increase",
-}
+export type IncrementBehavior = "Add" | "Multiply" | "Callback" | "None";
+export type IncrementDirection = "Decrease" | "Increase";
 
 export default defineComponent({
-	components: {},
 	props: {
-		value: { type: Number, required: true },
-		min: { type: Number, default: -Infinity },
-		max: { type: Number, default: Infinity },
-		incrementBehavior: { type: String as PropType<IncrementBehavior>, default: IncrementBehavior.Add },
-		incrementFactor: { type: Number, default: 1 },
-		incrementCallbackIncrease: { type: Function, required: false },
-		incrementCallbackDecrease: { type: Function, required: false },
-		isInteger: { type: Boolean, default: false },
-		unit: { type: String, default: "" },
-		unitIsHiddenWhenEditing: { type: Boolean, default: true },
-		displayDecimalPlaces: { type: Number, default: 3 },
-		label: { type: String, required: false },
-		disabled: { type: Boolean, default: false },
+		value: { type: Number as PropType<number>, required: true },
+		min: { type: Number as PropType<number>, required: false },
+		max: { type: Number as PropType<number>, required: false },
+		incrementBehavior: { type: String as PropType<IncrementBehavior>, default: "Add" },
+		incrementFactor: { type: Number as PropType<number>, default: 1 },
+		incrementCallbackIncrease: { type: Function as PropType<() => void>, required: false },
+		incrementCallbackDecrease: { type: Function as PropType<() => void>, required: false },
+		isInteger: { type: Boolean as PropType<boolean>, default: false },
+		unit: { type: String as PropType<string>, default: "" },
+		unitIsHiddenWhenEditing: { type: Boolean as PropType<boolean>, default: true },
+		displayDecimalPlaces: { type: Number as PropType<number>, default: 3 },
+		label: { type: String as PropType<string>, required: false },
+		disabled: { type: Boolean as PropType<boolean>, default: false },
 	},
 	data() {
 		return {
 			text: `${this.value}${this.unit}`,
 			editing: false,
-			IncrementDirection,
 			id: `${Math.random()}`.substring(2),
 		};
 	},
@@ -226,19 +216,19 @@ export default defineComponent({
 			if (Number.isNaN(this.value)) return;
 
 			switch (this.incrementBehavior) {
-				case IncrementBehavior.Add: {
-					const directionAddend = direction === IncrementDirection.Increase ? this.incrementFactor : -this.incrementFactor;
+				case "Add": {
+					const directionAddend = direction === "Increase" ? this.incrementFactor : -this.incrementFactor;
 					this.updateValue(this.value + directionAddend);
 					break;
 				}
-				case IncrementBehavior.Multiply: {
-					const directionMultiplier = direction === IncrementDirection.Increase ? this.incrementFactor : 1 / this.incrementFactor;
+				case "Multiply": {
+					const directionMultiplier = direction === "Increase" ? this.incrementFactor : 1 / this.incrementFactor;
 					this.updateValue(this.value * directionMultiplier);
 					break;
 				}
-				case IncrementBehavior.Callback: {
-					if (direction === IncrementDirection.Increase && this.incrementCallbackIncrease) this.incrementCallbackIncrease();
-					if (direction === IncrementDirection.Decrease && this.incrementCallbackDecrease) this.incrementCallbackDecrease();
+				case "Callback": {
+					if (direction === "Increase" && this.incrementCallbackIncrease) this.incrementCallbackIncrease();
+					if (direction === "Decrease" && this.incrementCallbackDecrease) this.incrementCallbackDecrease();
 					break;
 				}
 				default:

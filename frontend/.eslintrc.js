@@ -73,9 +73,54 @@ module.exports = {
 		"@typescript-eslint/no-use-before-define": "off",
 		"@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_" }],
 		"@typescript-eslint/no-loss-of-precision": "off", // TODO: Remove this line after upgrading to eslint 7.1 or greater
+		"@typescript-eslint/explicit-function-return-type": ["error"],
 
 		// Import plugin config (used to intelligently validate module import statements)
 		"import/prefer-default-export": "off",
+		"import/no-relative-packages": "error",
+		"import/order": [
+			"error",
+			{
+				alphabetize: {
+					order: "asc",
+					caseInsensitive: true,
+				},
+				warnOnUnassignedImports: true,
+				"newlines-between": "always-and-inside-groups",
+				pathGroups: [
+					{
+						pattern: "**/*.vue",
+						group: "unknown",
+						position: "after",
+					},
+					{
+						pattern: "**/assets/12px-solid/*.svg",
+						group: "unknown",
+						position: "after",
+					},
+					{
+						pattern: "**/assets/16px-solid/*.svg",
+						group: "unknown",
+						position: "after",
+					},
+					{
+						pattern: "**/assets/16px-two-tone/*.svg",
+						group: "unknown",
+						position: "after",
+					},
+					{
+						pattern: "**/assets/24px-full-color/*.svg",
+						group: "unknown",
+						position: "after",
+					},
+					{
+						pattern: "**/assets/24px-two-tone/*.svg",
+						group: "unknown",
+						position: "after",
+					},
+				],
+			},
+		],
 
 		// Prettier plugin config (used to enforce HTML, CSS, and JS formatting styles as an ESLint plugin, where fixes are reported to ESLint to be applied when linting)
 		"prettier-vue/prettier": [
@@ -90,4 +135,12 @@ module.exports = {
 		// Vue plugin config (used to validate Vue single-file components)
 		"vue/multi-word-component-names": "off",
 	},
+	overrides: [
+		{
+			files: ["*.js"],
+			rules: {
+				"@typescript-eslint/explicit-function-return-type": ["off"],
+			},
+		},
+	],
 };

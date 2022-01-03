@@ -1,14 +1,14 @@
 <template>
 	<div class="header-third">
-		<WindowButtonsMac :maximized="maximized" v-if="platform === ApplicationPlatform.Mac" />
-		<MenuBarInput v-if="platform !== ApplicationPlatform.Mac" />
+		<WindowButtonsMac :maximized="maximized" v-if="platform === 'Mac'" />
+		<MenuBarInput v-if="platform !== 'Mac'" />
 	</div>
 	<div class="header-third">
 		<WindowTitle :title="`${activeDocumentDisplayName} - Graphite`" />
 	</div>
 	<div class="header-third">
-		<WindowButtonsWindows :maximized="maximized" v-if="platform === ApplicationPlatform.Windows || platform === ApplicationPlatform.Linux" />
-		<WindowButtonsWeb :maximized="maximized" v-if="platform === ApplicationPlatform.Web" />
+		<WindowButtonsWindows :maximized="maximized" v-if="platform === 'Windows' || platform === 'Linux'" />
+		<WindowButtonsWeb :maximized="maximized" v-if="platform === 'Web'" />
 	</div>
 </template>
 
@@ -32,25 +32,21 @@
 </style>
 
 <script lang="ts">
-import { defineComponent } from "vue";
+import { defineComponent, PropType } from "vue";
 
-import WindowTitle from "@/components/window/title-bar/WindowTitle.vue";
-import WindowButtonsWindows from "@/components/window/title-bar/WindowButtonsWindows.vue";
+import MenuBarInput from "@/components/widgets/inputs/MenuBarInput.vue";
 import WindowButtonsMac from "@/components/window/title-bar/WindowButtonsMac.vue";
 import WindowButtonsWeb from "@/components/window/title-bar/WindowButtonsWeb.vue";
-import MenuBarInput from "@/components/widgets/inputs/MenuBarInput.vue";
-import { ApplicationPlatform } from "@/components/window/MainWindow.vue";
+import WindowButtonsWindows from "@/components/window/title-bar/WindowButtonsWindows.vue";
+import WindowTitle from "@/components/window/title-bar/WindowTitle.vue";
+
+export type Platform = "Windows" | "Mac" | "Linux" | "Web";
 
 export default defineComponent({
 	inject: ["documents"],
 	props: {
-		platform: { type: String, required: true },
-		maximized: { type: Boolean, required: true },
-	},
-	data() {
-		return {
-			ApplicationPlatform,
-		};
+		platform: { type: String as PropType<Platform>, required: true },
+		maximized: { type: Boolean as PropType<boolean>, required: true },
 	},
 	computed: {
 		activeDocumentDisplayName() {

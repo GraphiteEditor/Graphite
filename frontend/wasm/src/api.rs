@@ -32,6 +32,7 @@ pub struct JsEditorHandle {
 }
 
 #[wasm_bindgen]
+#[allow(clippy::too_many_arguments)]
 impl JsEditorHandle {
 	#[wasm_bindgen(constructor)]
 	pub fn new(handle_response: js_sys::Function) -> Self {
@@ -349,6 +350,24 @@ impl JsEditorHandle {
 		self.dispatch(message);
 	}
 
+	/// Cut selected layers
+	pub fn cut(&self) {
+		let message = DocumentsMessage::Cut(Clipboard::User);
+		self.dispatch(message);
+	}
+
+	/// Copy selected layers
+	pub fn copy(&self) {
+		let message = DocumentsMessage::Copy(Clipboard::User);
+		self.dispatch(message);
+	}
+
+	/// Paste selected layers
+	pub fn paste(&self) {
+		let message = DocumentsMessage::Paste(Clipboard::User);
+		self.dispatch(message);
+	}
+
 	pub fn select_layer(&self, paths: Vec<LayerId>, ctrl: bool, shift: bool) {
 		let message = DocumentMessage::SelectLayer(paths, ctrl, shift);
 		self.dispatch(message);
@@ -369,6 +388,12 @@ impl JsEditorHandle {
 	/// Reorder selected layer
 	pub fn reorder_selected_layers(&self, delta: i32) {
 		let message = DocumentMessage::ReorderSelectedLayers(delta);
+		self.dispatch(message);
+	}
+
+	/// Move a layer to be next to the specified neighbor
+	pub fn move_layer_in_tree(&self, layer: Vec<LayerId>, insert_above: bool, neighbor: Vec<LayerId>) {
+		let message = DocumentMessage::MoveLayerInTree { layer, insert_above, neighbor };
 		self.dispatch(message);
 	}
 

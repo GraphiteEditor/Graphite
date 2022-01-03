@@ -115,7 +115,7 @@ impl Document {
 
 	// Determines which layer is closer to the root, if path_a return true, if path_b return false
 	// Answers the question: Is A closer to the root than B?
-	pub fn layer_closer_to_root(&self, path_a: &Vec<u64>, path_b: &Vec<u64>) -> bool {
+	pub fn layer_closer_to_root(&self, path_a: &[u64], path_b: &[u64]) -> bool {
 		// Convert UUIDs to indices
 		let indices_for_path_a = self.indices_for_path(path_a).unwrap();
 		let indices_for_path_b = self.indices_for_path(path_b).unwrap();
@@ -126,24 +126,20 @@ impl Document {
 			let index_a = *indices_for_path_a.get(i).unwrap_or(&usize::MAX) as i32;
 			let index_b = *indices_for_path_b.get(i).unwrap_or(&usize::MAX) as i32;
 
-			// index_a == index_b -> true, this means the "2" indices being compared are within the same folder
-			// eg -> [2, X] == [2, X] since we are only comparing the "2" in this iteration
-			// Continue onto comparing the X indices.
-			if index_a == index_b {
-				continue;
+			// At the point at which the two paths first differ, compare to see which is closer to the root
+			if index_a != index_b {
+				// If index_a is smaller, index_a is closer to the root
+				return index_a < index_b;
 			}
-
-			// If index_a is smaller, index_a is closer to the root
-			return index_a < index_b;
 		}
 
-		return false;
+		false
 	}
 
-	// Is  the target layer between a <-> b layers, inclusive
-	pub fn layer_is_between(&self, target: &Vec<u64>, path_a: &Vec<u64>, path_b: &Vec<u64>) -> bool {
+	// Is the target layer between a <-> b layers, inclusive
+	pub fn layer_is_between(&self, target: &[u64], path_a: &[u64], path_b: &[u64]) -> bool {
 		// If the target is a nonsense path, it isn't between
-		if target.len() < 1 {
+		if target.is_empty() {
 			return false;
 		}
 
@@ -156,8 +152,8 @@ impl Document {
 		let layer_vs_a = self.layer_closer_to_root(target, path_a);
 		let layer_vs_b = self.layer_closer_to_root(target, path_b);
 
-		// To be inbetween you need to be above A and below B or vice versa
-		return layer_vs_a != layer_vs_b;
+		// To be in-between you need to be above A and below B or vice versa
+		layer_vs_a != layer_vs_b
 	}
 
 	/// Given a path to a layer, returns a vector of the indices in the layer tree
@@ -200,12 +196,10 @@ impl Document {
 	pub fn visit_all_shapes<F: FnMut(&mut Shape)>(layer: &mut Layer, modify_shape: &mut F) -> bool {
 		match layer.data {
 			LayerDataType::Shape(ref mut shape) => {
-				if !layer.overlay {
-					modify_shape(shape);
+				modify_shape(shape);
 
-					// This layer should be updated on next render pass
-					layer.cache_dirty = true;
-				}
+				// This layer should be updated on next render pass
+				layer.cache_dirty = true;
 			}
 			LayerDataType::Folder(ref mut folder) => {
 				for sub_layer in folder.layers_mut() {
@@ -354,24 +348,6 @@ impl Document {
 		self.set_transform_relative_to_scope(layer, None, transform)
 	}
 
-	fn remove_overlays(&mut self, path: &mut Vec<LayerId>) {
-		if self.layer(path).unwrap().overlay {
-			self.delete(path).unwrap()
-		}
-		let ids = self.folder(path).map(|folder| folder.layer_ids.clone()).unwrap_or_default();
-		for id in ids {
-			path.push(id);
-			self.remove_overlays(path);
-			path.pop();
-		}
-	}
-
-	pub fn clone_without_overlays(&self) -> Self {
-		let mut document = self.clone();
-		document.remove_overlays(&mut vec![]);
-		document
-	}
-
 	/// Mutate the document by applying the `operation` to it. If the operation necessitates a
 	/// reaction from the frontend, responses may be returned.
 	pub fn handle_operation(&mut self, operation: &Operation) -> Result<Option<Vec<DocumentResponse>>, DocumentError> {
@@ -390,9 +366,7 @@ impl Document {
 				let mut ellipse = Shape::ellipse(*style);
 				ellipse.render_index = -1;
 
-				let mut layer = Layer::new(LayerDataType::Shape(ellipse), *transform);
-				layer.overlay = true;
-
+				let layer = Layer::new(LayerDataType::Shape(ellipse), *transform);
 				self.set_layer(path, layer, -1)?;
 
 				Some([vec![DocumentChanged, CreatedLayer { path: path.clone() }]].concat())
@@ -408,9 +382,7 @@ impl Document {
 				let mut rect = Shape::rectangle(*style);
 				rect.render_index = -1;
 
-				let mut layer = Layer::new(LayerDataType::Shape(rect), *transform);
-				layer.overlay = true;
-
+				let layer = Layer::new(LayerDataType::Shape(rect), *transform);
 				self.set_layer(path, layer, -1)?;
 
 				Some([vec![DocumentChanged, CreatedLayer { path: path.clone() }]].concat())
@@ -426,9 +398,7 @@ impl Document {
 				let mut line = Shape::line(*style);
 				line.render_index = -1;
 
-				let mut layer = Layer::new(LayerDataType::Shape(line), *transform);
-				layer.overlay = true;
-
+				let layer = Layer::new(LayerDataType::Shape(line), *transform);
 				self.set_layer(path, layer, -1)?;
 
 				Some([vec![DocumentChanged, CreatedLayer { path: path.clone() }]].concat())
@@ -450,9 +420,7 @@ impl Document {
 				let mut shape = Shape::from_bez_path(bez_path.clone(), *style, false);
 				shape.render_index = -1;
 
-				let mut layer = Layer::new(LayerDataType::Shape(shape), DAffine2::IDENTITY.to_cols_array());
-				layer.overlay = true;
-
+				let layer = Layer::new(LayerDataType::Shape(shape), DAffine2::IDENTITY.to_cols_array());
 				self.set_layer(path, layer, -1)?;
 
 				Some([vec![DocumentChanged, CreatedLayer { path: path.clone() }]].concat())
@@ -490,11 +458,16 @@ impl Document {
 				responses.extend(update_thumbnails_upstream(folder));
 				Some(responses)
 			}
-			Operation::PasteLayer { path, layer, insert_index } => {
-				let folder = self.folder_mut(path)?;
-				let id = folder.add_layer(layer.clone(), None, *insert_index).ok_or(DocumentError::IndexOutOfBounds)?;
-				let full_path = [path.clone(), vec![id]].concat();
-				self.mark_as_dirty(&full_path)?;
+			Operation::InsertLayer {
+				destination_path,
+				layer,
+				insert_index,
+			} => {
+				let (folder_path, layer_id) = split_path(destination_path)?;
+				let folder = self.folder_mut(folder_path)?;
+				folder.add_layer(layer.clone(), Some(layer_id), *insert_index).ok_or(DocumentError::IndexOutOfBounds)?;
+				self.mark_as_dirty(destination_path)?;
+
 				fn aggregate_insertions(folder: &Folder, path: &mut Vec<LayerId>, responses: &mut Vec<DocumentResponse>) {
 					for (id, layer) in folder.layer_ids.iter().zip(folder.layers()) {
 						path.push(*id);
@@ -505,13 +478,14 @@ impl Document {
 						path.pop();
 					}
 				}
+
 				let mut responses = Vec::new();
-				if let Ok(folder) = self.folder(&full_path) {
-					aggregate_insertions(folder, &mut full_path.clone(), &mut responses)
+				if let Ok(folder) = self.folder(destination_path) {
+					aggregate_insertions(folder, &mut destination_path.clone(), &mut responses)
 				};
 
-				responses.extend([DocumentChanged, CreatedLayer { path: full_path }, FolderChanged { path: path.clone() }]);
-				responses.extend(update_thumbnails_upstream(path));
+				responses.extend([DocumentChanged, CreatedLayer { path: destination_path.clone() }, FolderChanged { path: folder_path.to_vec() }]);
+				responses.extend(update_thumbnails_upstream(destination_path));
 				Some(responses)
 			}
 			Operation::DuplicateLayer { path } => {

@@ -69,13 +69,15 @@
 <script lang="ts">
 import { defineComponent, PropType } from "vue";
 
+import { IconName } from "@/utilities/icons";
+
 import IconLabel from "@/components/widgets/labels/IconLabel.vue";
 import TextLabel from "@/components/widgets/labels/TextLabel.vue";
 
 export interface RadioEntryData {
 	value?: string;
 	label?: string;
-	icon?: string;
+	icon?: IconName;
 	tooltip?: string;
 	action?: () => void;
 }
@@ -85,7 +87,7 @@ export type RadioEntries = RadioEntryData[];
 export default defineComponent({
 	props: {
 		entries: { type: Array as PropType<RadioEntries>, required: true },
-		selectedIndex: { type: Number, required: true },
+		selectedIndex: { type: Number as PropType<number>, required: true },
 	},
 	methods: {
 		handleEntryClick(menuEntry: RadioEntryData) {

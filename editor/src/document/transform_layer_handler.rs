@@ -1,6 +1,6 @@
 pub use super::layer_panel::*;
 
-use super::LayerData;
+use super::LayerMetadata;
 
 use crate::consts::{ROTATE_SNAP_ANGLE, SCALE_SNAP_INTERVAL, SLOWING_DIVISOR};
 use crate::input::keyboard::Key;
@@ -25,11 +25,11 @@ impl<'a> Selected<'a> {
 	pub fn new(
 		original_transforms: &'a mut OriginalTransforms,
 		pivot: &'a mut DVec2,
-		layer_data: &'a mut HashMap<Vec<LayerId>, LayerData>,
+		layer_metadata: &'a mut HashMap<Vec<LayerId>, LayerMetadata>,
 		responses: &'a mut VecDeque<Message>,
 		document: &'a mut Document,
 	) -> Self {
-		let selected = layer_data.iter().filter_map(|(layer_path, data)| data.selected.then(|| layer_path.to_owned())).collect();
+		let selected = layer_metadata.iter().filter_map(|(layer_path, data)| data.selected.then(|| layer_path.to_owned())).collect();
 		for path in &selected {
 			if !original_transforms.contains_key::<Vec<LayerId>>(path) {
 				original_transforms.insert(path.clone(), document.layer(path).unwrap().transform);
@@ -86,7 +86,7 @@ impl<'a> Selected<'a> {
 				);
 			}
 
-			self.responses.push_back(ToolMessage::SelectedLayersChanged.into());
+			self.responses.push_back(ToolMessage::DocumentIsDirty.into());
 		}
 	}
 
@@ -394,12 +394,12 @@ pub struct TransformLayerMessageHandler {
 	pivot: DVec2,
 }
 
-impl MessageHandler<TransformLayerMessage, (&mut HashMap<Vec<LayerId>, LayerData>, &mut Document, &InputPreprocessor)> for TransformLayerMessageHandler {
-	fn process_action(&mut self, message: TransformLayerMessage, data: (&mut HashMap<Vec<LayerId>, LayerData>, &mut Document, &InputPreprocessor), responses: &mut VecDeque<Message>) {
+impl MessageHandler<TransformLayerMessage, (&mut HashMap<Vec<LayerId>, LayerMetadata>, &mut Document, &InputPreprocessor)> for TransformLayerMessageHandler {
+	fn process_action(&mut self, message: TransformLayerMessage, data: (&mut HashMap<Vec<LayerId>, LayerMetadata>, &mut Document, &InputPreprocessor), responses: &mut VecDeque<Message>) {
 		use TransformLayerMessage::*;
 
-		let (layer_data, document, ipp) = data;
-		let mut selected = Selected::new(&mut self.original_transforms, &mut self.pivot, layer_data, responses, document);
+		let (layer_metadata, document, ipp) = data;
+		let mut selected = Selected::new(&mut self.original_transforms, &mut self.pivot, layer_metadata, responses, document);
 
 		let mut begin_operation = |operation: Operation, typing: &mut Typing, mouse_position: &mut DVec2, start_mouse: &mut DVec2| {
 			if !(operation == Operation::None) {
@@ -423,7 +423,7 @@ impl MessageHandler<TransformLayerMessage, (&mut HashMap<Vec<LayerId>, LayerData
 
 				self.operation = Operation::Grabbing(Default::default());
 
-				responses.push_back(ToolMessage::SelectedLayersChanged.into());
+				responses.push_back(ToolMessage::DocumentIsDirty.into());
 			}
 			BeginRotate => {
 				if let Operation::Rotating(_) = self.operation {
@@ -434,7 +434,7 @@ impl MessageHandler<TransformLayerMessage, (&mut HashMap<Vec<LayerId>, LayerData
 
 				self.operation = Operation::Rotating(Default::default());
 
-				responses.push_back(ToolMessage::SelectedLayersChanged.into());
+				responses.push_back(ToolMessage::DocumentIsDirty.into());
 			}
 			BeginScale => {
 				if let Operation::Scaling(_) = self.operation {
@@ -446,7 +446,7 @@ impl MessageHandler<TransformLayerMessage, (&mut HashMap<Vec<LayerId>, LayerData
 				self.operation = Operation::Scaling(Default::default());
 				self.operation.apply_operation(&mut selected, self.snap);
 
-				responses.push_back(ToolMessage::SelectedLayersChanged.into());
+				responses.push_back(ToolMessage::DocumentIsDirty.into());
 			}
 			CancelOperation => {
 				selected.revert_operation();
@@ -456,7 +456,7 @@ impl MessageHandler<TransformLayerMessage, (&mut HashMap<Vec<LayerId>, LayerData
 
 				self.operation = Operation::None;
 
-				responses.push_back(ToolMessage::SelectedLayersChanged.into());
+				responses.push_back(ToolMessage::DocumentIsDirty.into());
 			}
 			ApplyOperation => {
 				self.original_transforms.clear();
@@ -464,7 +464,7 @@ impl MessageHandler<TransformLayerMessage, (&mut HashMap<Vec<LayerId>, LayerData
 
 				self.operation = Operation::None;
 
-				responses.push_back(ToolMessage::SelectedLayersChanged.into());
+				responses.push_back(ToolMessage::DocumentIsDirty.into());
 			}
 			MouseMove { slow_key, snap_key } => {
 				self.slow = ipp.keyboard.get(slow_key as usize);

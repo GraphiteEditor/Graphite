@@ -4,35 +4,35 @@
 			<div class="left side">
 				<DropdownInput :menuEntries="documentModeEntries" v-model:selectedIndex="documentModeSelectionIndex" :drawIcon="true" />
 
-				<Separator :type="SeparatorType.Section" />
+				<Separator :type="'Section'" />
 
 				<ToolOptions :activeTool="activeTool" :activeToolOptions="activeToolOptions" />
 			</div>
 			<div class="spacer"></div>
 			<div class="right side">
-				<OptionalInput v-model:checked="snappingEnabled" @update:checked="setSnap" :icon="'Snapping'" title="Snapping" />
+				<OptionalInput v-model:checked="snappingEnabled" @update:checked="(newStatus) => setSnap(newStatus)" :icon="'Snapping'" title="Snapping" />
 				<PopoverButton>
 					<h3>Snapping</h3>
 					<p>The contents of this popover menu are coming soon</p>
 				</PopoverButton>
 
-				<Separator :type="SeparatorType.Unrelated" />
+				<Separator :type="'Unrelated'" />
 
-				<OptionalInput v-model:checked="gridEnabled" @update:checked="dialog.comingSoon(318)" :icon="'Grid'" title="Grid" />
+				<OptionalInput v-model:checked="gridEnabled" @update:checked="() => dialog.comingSoon(318)" :icon="'Grid'" title="Grid" />
 				<PopoverButton>
 					<h3>Grid</h3>
 					<p>The contents of this popover menu are coming soon</p>
 				</PopoverButton>
 
-				<Separator :type="SeparatorType.Unrelated" />
+				<Separator :type="'Unrelated'" />
 
-				<OptionalInput v-model:checked="overlaysEnabled" @update:checked="dialog.comingSoon(99)" :icon="'Overlays'" title="Overlays" />
+				<OptionalInput v-model:checked="overlaysEnabled" @update:checked="() => dialog.comingSoon(99)" :icon="'Overlays'" title="Overlays" />
 				<PopoverButton>
 					<h3>Overlays</h3>
 					<p>The contents of this popover menu are coming soon</p>
 				</PopoverButton>
 
-				<Separator :type="SeparatorType.Unrelated" />
+				<Separator :type="'Unrelated'" />
 
 				<RadioInput :entries="viewModeEntries" v-model:selectedIndex="viewModeIndex" class="combined-after" />
 				<PopoverButton>
@@ -40,27 +40,27 @@
 					<p>The contents of this popover menu are coming soon</p>
 				</PopoverButton>
 
-				<Separator :type="SeparatorType.Section" />
+				<Separator :type="'Section'" />
 
-				<NumberInput @update:value="setRotation" v-model:value="documentRotation" :incrementFactor="15" :unit="`°`" />
+				<NumberInput @update:value="(newRotation) => setRotation(newRotation)" v-model:value="documentRotation" :incrementFactor="15" :unit="'°'" />
 
-				<Separator :type="SeparatorType.Section" />
+				<Separator :type="'Section'" />
 
-				<IconButton :action="() => this.$refs.zoom.onIncrement(IncrementDirection.Increase)" :icon="'ZoomIn'" :size="24" title="Zoom In" />
-				<IconButton :action="() => this.$refs.zoom.onIncrement(IncrementDirection.Decrease)" :icon="'ZoomOut'" :size="24" title="Zoom Out" />
-				<IconButton :action="() => this.$refs.zoom.updateValue(100)" :icon="'ZoomReset'" :size="24" title="Zoom to 100%" />
+				<IconButton :action="increaseCanvasZoom" :icon="'ZoomIn'" :size="24" title="Zoom In" />
+				<IconButton :action="decreaseCanvasZoom" :icon="'ZoomOut'" :size="24" title="Zoom Out" />
+				<IconButton :action="() => setCanvasZoom(100)" :icon="'ZoomReset'" :size="24" title="Zoom to 100%" />
 
-				<Separator :type="SeparatorType.Related" />
+				<Separator :type="'Related'" />
 
 				<NumberInput
 					v-model:value="documentZoom"
-					@update:value="setCanvasZoom"
+					@update:value="(newZoom) => setCanvasZoom(newZoom)"
 					:min="0.000001"
 					:max="1000000"
-					:incrementBehavior="IncrementBehavior.Callback"
+					:incrementBehavior="'Callback'"
 					:incrementCallbackIncrease="increaseCanvasZoom"
 					:incrementCallbackDecrease="decreaseCanvasZoom"
-					:unit="`%`"
+					:unit="'%'"
 					:displayDecimalPlaces="4"
 					ref="zoom"
 				/>
@@ -70,31 +70,36 @@
 			<LayoutCol :class="'shelf'">
 				<div class="tools scrollable-y">
 					<ShelfItemInput icon="LayoutSelectTool" title="Select Tool (V)" :active="activeTool === 'Select'" :action="() => selectTool('Select')" />
-					<ShelfItemInput icon="LayoutCropTool" title="Crop Tool" :active="activeTool === 'Crop'" :action="() => dialog.comingSoon(289) && selectTool('Crop')" />
-					<ShelfItemInput icon="LayoutNavigateTool" title="Navigate Tool (Z)" :active="activeTool === 'Navigate'" :action="() => dialog.comingSoon(155) && selectTool('Navigate')" />
+					<ShelfItemInput icon="LayoutCropTool" title="Crop Tool" :active="activeTool === 'Crop'" :action="() => (dialog.comingSoon(289), false) && selectTool('Crop')" />
+					<ShelfItemInput icon="LayoutNavigateTool" title="Navigate Tool (Z)" :active="activeTool === 'Navigate'" :action="() => selectTool('Navigate')" />
 					<ShelfItemInput icon="LayoutEyedropperTool" title="Eyedropper Tool (I)" :active="activeTool === 'Eyedropper'" :action="() => selectTool('Eyedropper')" />
 
-					<Separator :type="SeparatorType.Section" :direction="SeparatorDirection.Vertical" />
+					<Separator :type="'Section'" :direction="'Vertical'" />
 
-					<ShelfItemInput icon="ParametricTextTool" title="Text Tool (T)" :active="activeTool === 'Text'" :action="() => dialog.comingSoon(153) && selectTool('Text')" />
+					<ShelfItemInput icon="ParametricTextTool" title="Text Tool (T)" :active="activeTool === 'Text'" :action="() => (dialog.comingSoon(153), false) && selectTool('Text')" />
 					<ShelfItemInput icon="ParametricFillTool" title="Fill Tool (F)" :active="activeTool === 'Fill'" :action="() => selectTool('Fill')" />
-					<ShelfItemInput icon="ParametricGradientTool" title="Gradient Tool (H)" :active="activeTool === 'Gradient'" :action="() => dialog.comingSoon() && selectTool('Gradient')" />
+					<ShelfItemInput
+						icon="ParametricGradientTool"
+						title="Gradient Tool (H)"
+						:active="activeTool === 'Gradient'"
+						:action="() => (dialog.comingSoon(), false) && selectTool('Gradient')"
+					/>
 
-					<Separator :type="SeparatorType.Section" :direction="SeparatorDirection.Vertical" />
+					<Separator :type="'Section'" :direction="'Vertical'" />
 
-					<ShelfItemInput icon="RasterBrushTool" title="Brush Tool (B)" :active="activeTool === 'Brush'" :action="() => dialog.comingSoon() && selectTool('Brush')" />
-					<ShelfItemInput icon="RasterHealTool" title="Heal Tool (J)" :active="activeTool === 'Heal'" :action="() => dialog.comingSoon() && selectTool('Heal')" />
-					<ShelfItemInput icon="RasterCloneTool" title="Clone Tool (C)" :active="activeTool === 'Clone'" :action="() => dialog.comingSoon() && selectTool('Clone')" />
-					<ShelfItemInput icon="RasterPatchTool" title="Patch Tool" :active="activeTool === 'Patch'" :action="() => dialog.comingSoon() && selectTool('Patch')" />
-					<ShelfItemInput icon="RasterBlurSharpenTool" title="Detail Tool (D)" :active="activeTool === 'BlurSharpen'" :action="() => dialog.comingSoon() && selectTool('BlurSharpen')" />
-					<ShelfItemInput icon="RasterRelightTool" title="Relight Tool (O)" :active="activeTool === 'Relight'" :action="() => dialog.comingSoon() && selectTool('Relight')" />
+					<ShelfItemInput icon="RasterBrushTool" title="Brush Tool (B)" :active="activeTool === 'Brush'" :action="() => (dialog.comingSoon(), false) && selectTool('Brush')" />
+					<ShelfItemInput icon="RasterHealTool" title="Heal Tool (J)" :active="activeTool === 'Heal'" :action="() => (dialog.comingSoon(), false) && selectTool('Heal')" />
+					<ShelfItemInput icon="RasterCloneTool" title="Clone Tool (C)" :active="activeTool === 'Clone'" :action="() => (dialog.comingSoon(), false) && selectTool('Clone')" />
+					<ShelfItemInput icon="RasterPatchTool" title="Patch Tool" :active="activeTool === 'Patch'" :action="() => (dialog.comingSoon(), false) && selectTool('Patch')" />
+					<ShelfItemInput icon="RasterDetailTool" title="Detail Tool (D)" :active="activeTool === 'Detail'" :action="() => (dialog.comingSoon(), false) && selectTool('Detail')" />
+					<ShelfItemInput icon="RasterRelightTool" title="Relight Tool (O)" :active="activeTool === 'Relight'" :action="() => (dialog.comingSoon(), false) && selectTool('Relight')" />
 
-					<Separator :type="SeparatorType.Section" :direction="SeparatorDirection.Vertical" />
+					<Separator :type="'Section'" :direction="'Vertical'" />
 
 					<ShelfItemInput icon="VectorPathTool" title="Path Tool (A)" :active="activeTool === 'Path'" :action="() => selectTool('Path')" />
 					<ShelfItemInput icon="VectorPenTool" title="Pen Tool (P)" :active="activeTool === 'Pen'" :action="() => selectTool('Pen')" />
-					<ShelfItemInput icon="VectorFreehandTool" title="Freehand Tool (N)" :active="activeTool === 'Freehand'" :action="() => dialog.comingSoon() && selectTool('Freehand')" />
-					<ShelfItemInput icon="VectorSplineTool" title="Spline Tool" :active="activeTool === 'Spline'" :action="() => dialog.comingSoon() && selectTool('Spline')" />
+					<ShelfItemInput icon="VectorFreehandTool" title="Freehand Tool (N)" :active="activeTool === 'Freehand'" :action="() => (dialog.comingSoon(), false) && selectTool('Freehand')" />
+					<ShelfItemInput icon="VectorSplineTool" title="Spline Tool" :active="activeTool === 'Spline'" :action="() => (dialog.comingSoon(), false) && selectTool('Spline')" />
 					<ShelfItemInput icon="VectorLineTool" title="Line Tool (L)" :active="activeTool === 'Line'" :action="() => selectTool('Line')" />
 					<ShelfItemInput icon="VectorRectangleTool" title="Rectangle Tool (M)" :active="activeTool === 'Rectangle'" :action="() => selectTool('Rectangle')" />
 					<ShelfItemInput icon="VectorEllipseTool" title="Ellipse Tool (E)" :active="activeTool === 'Ellipse'" :action="() => selectTool('Ellipse')" />
@@ -111,35 +116,36 @@
 			</LayoutCol>
 			<LayoutCol :class="'viewport'">
 				<LayoutRow :class="'bar-area'">
-					<CanvasRuler :origin="rulerOrigin.x" :majorMarkSpacing="rulerSpacing" :numberInterval="rulerInterval" :direction="RulerDirection.Horizontal" :class="'top-ruler'" />
+					<CanvasRuler :origin="rulerOrigin.x" :majorMarkSpacing="rulerSpacing" :numberInterval="rulerInterval" :direction="'Horizontal'" :class="'top-ruler'" />
 				</LayoutRow>
 				<LayoutRow :class="'canvas-area'">
 					<LayoutCol :class="'bar-area'">
-						<CanvasRuler :origin="rulerOrigin.y" :majorMarkSpacing="rulerSpacing" :numberInterval="rulerInterval" :direction="RulerDirection.Vertical" />
+						<CanvasRuler :origin="rulerOrigin.y" :majorMarkSpacing="rulerSpacing" :numberInterval="rulerInterval" :direction="'Vertical'" />
 					</LayoutCol>
 					<LayoutCol :class="'canvas-area'">
 						<div class="canvas" ref="canvas">
-							<svg v-html="viewportSvg" :style="{ width: canvasSvgWidth, height: canvasSvgHeight }"></svg>
+							<svg class="artwork" v-html="artworkSvg" :style="{ width: canvasSvgWidth, height: canvasSvgHeight }"></svg>
+							<svg class="overlays" v-html="overlaysSvg" :style="{ width: canvasSvgWidth, height: canvasSvgHeight }"></svg>
 						</div>
 					</LayoutCol>
 					<LayoutCol :class="'bar-area'">
 						<PersistentScrollbar
-							:direction="ScrollbarDirection.Vertical"
+							:direction="'Vertical'"
 							:handlePosition="scrollbarPos.y"
-							@update:handlePosition="translateCanvasY"
+							@update:handlePosition="(newValue) => translateCanvasY(newValue)"
 							v-model:handleLength="scrollbarSize.y"
-							@pressTrack="pageY"
+							@pressTrack="(delta) => pageY(delta)"
 							:class="'right-scrollbar'"
 						/>
 					</LayoutCol>
 				</LayoutRow>
 				<LayoutRow :class="'bar-area'">
 					<PersistentScrollbar
-						:direction="ScrollbarDirection.Horizontal"
+						:direction="'Horizontal'"
 						:handlePosition="scrollbarPos.x"
-						@update:handlePosition="translateCanvasX"
+						@update:handlePosition="(newValue) => translateCanvasX(newValue)"
 						v-model:handleLength="scrollbarSize.x"
-						@pressTrack="pageX"
+						@pressTrack="(delta) => pageX(delta)"
 						:class="'bottom-scrollbar'"
 					/>
 				</LayoutRow>
@@ -223,11 +229,18 @@
 				overflow: hidden;
 
 				svg {
-					background: #ffffff;
 					position: absolute;
 					// Fallback values if JS hasn't set these to integers yet
 					width: 100%;
 					height: 100%;
+
+					&.artwork {
+						background: #ffffff;
+					}
+
+					&.overlays {
+						user-select: none;
+					}
 				}
 			}
 		}
@@ -238,25 +251,23 @@
 <script lang="ts">
 import { defineComponent } from "vue";
 
-import { UpdateCanvas, UpdateScrollbars, UpdateRulers, SetActiveTool, SetCanvasZoom, SetCanvasRotation } from "@/dispatcher/js-messages";
-import { SeparatorDirection, SeparatorType } from "@/components/widgets/widgets";
+import { UpdateArtwork, UpdateOverlays, UpdateScrollbars, UpdateRulers, SetActiveTool, SetCanvasZoom, SetCanvasRotation, ToolName } from "@/dispatcher/js-messages";
 
-import LayoutRow from "@/components/layout/LayoutRow.vue";
 import LayoutCol from "@/components/layout/LayoutCol.vue";
-import SwatchPairInput from "@/components/widgets/inputs/SwatchPairInput.vue";
-import { MenuDirection } from "@/components/widgets/floating-menus/FloatingMenu.vue";
-import ShelfItemInput from "@/components/widgets/inputs/ShelfItemInput.vue";
-import Separator from "@/components/widgets/separators/Separator.vue";
-import PersistentScrollbar, { ScrollbarDirection } from "@/components/widgets/scrollbars/PersistentScrollbar.vue";
-import CanvasRuler, { RulerDirection } from "@/components/widgets/rulers/CanvasRuler.vue";
+import LayoutRow from "@/components/layout/LayoutRow.vue";
 import IconButton from "@/components/widgets/buttons/IconButton.vue";
 import PopoverButton from "@/components/widgets/buttons/PopoverButton.vue";
-import RadioInput, { RadioEntries } from "@/components/widgets/inputs/RadioInput.vue";
-import NumberInput, { IncrementDirection, IncrementBehavior } from "@/components/widgets/inputs/NumberInput.vue";
-import DropdownInput from "@/components/widgets/inputs/DropdownInput.vue";
-import OptionalInput from "@/components/widgets/inputs/OptionalInput.vue";
-import ToolOptions from "@/components/widgets/options/ToolOptions.vue";
 import { SectionsOfMenuListEntries } from "@/components/widgets/floating-menus/MenuList.vue";
+import DropdownInput from "@/components/widgets/inputs/DropdownInput.vue";
+import NumberInput from "@/components/widgets/inputs/NumberInput.vue";
+import OptionalInput from "@/components/widgets/inputs/OptionalInput.vue";
+import RadioInput, { RadioEntries } from "@/components/widgets/inputs/RadioInput.vue";
+import ShelfItemInput from "@/components/widgets/inputs/ShelfItemInput.vue";
+import SwatchPairInput from "@/components/widgets/inputs/SwatchPairInput.vue";
+import ToolOptions from "@/components/widgets/options/ToolOptions.vue";
+import CanvasRuler from "@/components/widgets/rulers/CanvasRuler.vue";
+import PersistentScrollbar from "@/components/widgets/scrollbars/PersistentScrollbar.vue";
+import Separator from "@/components/widgets/separators/Separator.vue";
 
 export default defineComponent({
 	inject: ["editor", "dialog"],
@@ -319,8 +330,12 @@ export default defineComponent({
 		},
 	},
 	mounted() {
-		this.editor.dispatcher.subscribeJsMessage(UpdateCanvas, (updateCanvas) => {
-			this.viewportSvg = updateCanvas.document;
+		this.editor.dispatcher.subscribeJsMessage(UpdateArtwork, (UpdateArtwork) => {
+			this.artworkSvg = UpdateArtwork.svg;
+		});
+
+		this.editor.dispatcher.subscribeJsMessage(UpdateOverlays, (updateOverlays) => {
+			this.overlaysSvg = updateOverlays.svg;
 		});
 
 		this.editor.dispatcher.subscribeJsMessage(UpdateScrollbars, (updateScrollbars) => {
@@ -356,21 +371,22 @@ export default defineComponent({
 		const documentModeEntries: SectionsOfMenuListEntries = [
 			[
 				{ label: "Design Mode", icon: "ViewportDesignMode" },
-				{ label: "Select Mode", icon: "ViewportSelectMode", action: () => this.dialog.comingSoon(330) },
-				{ label: "Guide Mode", icon: "ViewportGuideMode", action: () => this.dialog.comingSoon(331) },
+				{ label: "Select Mode", icon: "ViewportSelectMode", action: (): void => this.dialog.comingSoon(330) },
+				{ label: "Guide Mode", icon: "ViewportGuideMode", action: (): void => this.dialog.comingSoon(331) },
 			],
 		];
 		const viewModeEntries: RadioEntries = [
-			{ value: "normal", icon: "ViewModeNormal", tooltip: "View Mode: Normal", action: () => this.setViewMode("Normal") },
-			{ value: "outline", icon: "ViewModeOutline", tooltip: "View Mode: Outline", action: () => this.setViewMode("Outline") },
-			{ value: "pixels", icon: "ViewModePixels", tooltip: "View Mode: Pixels", action: () => this.dialog.comingSoon(320) },
+			{ value: "normal", icon: "ViewModeNormal", tooltip: "View Mode: Normal", action: (): void => this.setViewMode("Normal") },
+			{ value: "outline", icon: "ViewModeOutline", tooltip: "View Mode: Outline", action: (): void => this.setViewMode("Outline") },
+			{ value: "pixels", icon: "ViewModePixels", tooltip: "View Mode: Pixels", action: (): void => this.dialog.comingSoon(320) },
 		];
 
 		return {
-			viewportSvg: "",
+			artworkSvg: "",
+			overlaysSvg: "",
 			canvasSvgWidth: "100%",
 			canvasSvgHeight: "100%",
-			activeTool: "Select",
+			activeTool: "Select" as ToolName,
 			activeToolOptions: {},
 			documentModeEntries,
 			viewModeEntries,
@@ -387,13 +403,6 @@ export default defineComponent({
 			rulerOrigin: { x: 0, y: 0 },
 			rulerSpacing: 100,
 			rulerInterval: 100,
-			IncrementBehavior,
-			IncrementDirection,
-			MenuDirection,
-			SeparatorDirection,
-			ScrollbarDirection,
-			RulerDirection,
-			SeparatorType,
 		};
 	},
 	components: {

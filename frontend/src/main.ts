@@ -9,7 +9,7 @@ import { initWasm } from "@/state/wasm-loader";
 
 import App from "@/App.vue";
 
-(async () => {
+(async (): Promise<void> => {
 	// Initialize the WASM editor backend
 	await initWasm();
 
