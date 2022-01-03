@@ -359,7 +359,7 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 				copy_buffer[clipboard as usize].clear();
 
 				for layer_path in active_document.selected_layers_without_children() {
-					match (active_document.graphene_document.layer(layer_path).map(|t| t.clone()), *active_document.layer_data(layer_path)) {
+					match (active_document.graphene_document.layer(&layer_path).map(|t| t.clone()), *active_document.layer_data(&layer_path)) {
 						(Ok(layer), layer_data) => {
 							copy_buffer[clipboard as usize].push(CopyBufferEntry { layer, layer_data });
 						}
@@ -373,10 +373,15 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 			}
 			Paste(clipboard) => {
 				let document = self.active_document();
-				let shallowest_common_folder = document
+				let mut shallowest_common_folder = document
 					.graphene_document
-					.deepest_common_folder(document.selected_layers())
+					.shallowest_common_folder(document.selected_layers())
 					.expect("While pasting, the selected layers did not exist while attempting to find the appropriate folder path for insertion");
+
+				// We want to paste folders at the same depth as their copy source
+				if !shallowest_common_folder.is_empty() && document.selected_layers_contains(shallowest_common_folder) {
+					shallowest_common_folder = &shallowest_common_folder[..shallowest_common_folder.len() - 1];
+				}
 
 				responses.push_back(
 					PasteIntoFolder {

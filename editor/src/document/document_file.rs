@@ -277,15 +277,31 @@ impl DocumentMessageHandler {
 		self.layer_data.iter().filter_map(|(path, data)| data.selected.then(|| path.as_slice()))
 	}
 
-	pub fn selected_layers_without_children(&self) -> impl Iterator<Item = &[LayerId]> {
-		let selected_folders: Vec<&Folder> = self
-			.layer_data
-			.iter()
-			.filter_map(|(path, data)| (data.selected && self.graphene_document.is_folder(path)).then(|| self.graphene_document.folder(path).unwrap()))
-			.collect();
+	pub fn selected_layers_without_children(&self) -> Vec<Vec<LayerId>> {
+		let mut without_children: Vec<Vec<LayerId>> = vec![];
+		recurse_layer_tree(self, vec![], &mut without_children, false);
 
-		self.selected_layers()
-			.filter(move |path| selected_folders.is_empty() || !selected_folders.iter().any(|folder| (*folder).folder_contains(path[path.len() - 1])))
+		// Traversing the layer tree was chosen for both readability and instead of an n^2 comparison approach.
+		// A future optmiziation would be not needing to start at the root []
+		fn recurse_layer_tree(ctx: &DocumentMessageHandler, mut path: Vec<u64>, without_children: &mut Vec<Vec<LayerId>>, selected: bool) {
+			if let Ok(folder) = ctx.graphene_document.folder(&path) {
+				for child in folder.list_layers() {
+					path.push(*child);
+					let selected_or_parent_selected = selected || ctx.selected_layers_contains(&path);
+					let selected_without_any_parent_selected = !selected && ctx.selected_layers_contains(&path);
+					if ctx.graphene_document.is_folder(&path) {
+						if selected_without_any_parent_selected {
+							without_children.push(path.clone());
+						}
+						recurse_layer_tree(ctx, path.clone(), without_children, selected_or_parent_selected);
+					} else if selected_without_any_parent_selected {
+						without_children.push(path.clone());
+					}
+					path.pop();
+				}
+			}
+		}
+		without_children
 	}
 
 	pub fn selected_layers_contains(&self, path: &[LayerId]) -> bool {
@@ -579,10 +595,10 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				responses.push_back(DocumentMessage::SetLayerExpansion(path, true).into());
 			}
 			GroupSelectedLayers => {
-				let selected_layers = self.selected_layers();
 				// TODO simplify and protect unwrap
-				let mut new_folder_path: Vec<u64> = self.graphene_document.deepest_common_folder(selected_layers).unwrap().to_vec();
+				let mut new_folder_path: Vec<u64> = self.graphene_document.shallowest_common_folder(self.selected_layers()).unwrap_or(&[]).to_vec();
 
+				// Required for grouping parent folders with their own children
 				if !new_folder_path.is_empty() && self.selected_layers_contains(&new_folder_path) {
 					new_folder_path.remove(new_folder_path.len() - 1);
 				}
@@ -638,7 +654,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			DeleteSelectedLayers => {
 				self.backup(responses);
 
-				for path in self.selected_layers_without_children().map(|path| path.to_vec()) {
+				for path in self.selected_layers_without_children() {
 					responses.push_front(DocumentOperation::DeleteLayer { path }.into());
 				}
 

@@ -102,7 +102,6 @@ impl Folder {
 	}
 
 	pub fn folder_contains(&self, id: LayerId) -> bool {
-		log::debug!("For {:?} Folder does contain {:?}", id, self.layer_ids.contains(&id));
 		self.layer_ids.contains(&id)
 	}
 
