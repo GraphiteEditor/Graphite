@@ -171,7 +171,7 @@ impl Document {
 		for id in path {
 			let pos = root.layer_ids.iter().position(|x| *x == *id).ok_or_else(|| DocumentError::LayerNotFound(path.into()))?;
 			indices.push(pos);
-			root = root.folder(*id).ok_or(DocumentError::LayerNotFound(path.into()))?;
+			root = root.folder(*id).ok_or_else(|| DocumentError::LayerNotFound(path.into()))?;
 		}
 
 		indices.push(root.layer_ids.iter().position(|x| *x == layer_id).ok_or_else(|| DocumentError::LayerNotFound(path.into()))?);
