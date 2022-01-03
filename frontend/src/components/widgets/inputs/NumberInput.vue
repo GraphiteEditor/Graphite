@@ -246,11 +246,17 @@ export default defineComponent({
 
 			if (!invalid) this.$emit("update:value", sanitized);
 
-			const leftSideStringNum = sanitized.toString().split(".")[0];
-			// If the only left side digit is a zero it should not count towards rounding power
-			const leftSideDigits = leftSideStringNum.length === 1 && leftSideStringNum[0] === "0" ? 0 : leftSideStringNum.length;
+			this.setText(sanitized);
+		},
+		setText(value: number) {
+			// Find the amount of digits on the left side of the number
+			// 10.25 == 2
+			// 1.23 == 3
+			// 0.23 == 0 - Reason for the slightly more complicated code
+			const leftSideDigits = Math.max(Math.floor(value).toString().length, 0) * Math.sign(value);
+
 			const roundingPower = 10 ** Math.max(this.displayDecimalPlaces - leftSideDigits, 0);
-			const displayValue = Math.round(sanitized * roundingPower) / roundingPower;
+			const displayValue = Math.round(value * roundingPower) / roundingPower;
 			this.text = `${displayValue}${this.unit}`;
 		},
 	},
@@ -264,12 +270,7 @@ export default defineComponent({
 
 			const sanitized = clamp(newValue, this.min, this.max);
 
-			const leftSideStringNum = sanitized.toString().split(".")[0];
-			// If the only left side digit is a zero it should not count towards rounding power
-			const leftSideDigits = leftSideStringNum.length === 1 && leftSideStringNum[0] === "0" ? 0 : leftSideStringNum.length;
-			const roundingPower = 10 ** Math.max(this.displayDecimalPlaces - leftSideDigits, 0);
-			const displayValue = Math.round(sanitized * roundingPower) / roundingPower;
-			this.text = `${displayValue}${this.unit}`;
+			this.setText(sanitized);
 		},
 	},
 	mounted() {
