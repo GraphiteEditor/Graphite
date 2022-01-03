@@ -14,7 +14,7 @@
 			>
 				<CheckboxInput v-if="entry.checkbox" v-model:checked="entry.checked" :outlineStyle="true" :class="'entry-checkbox'" />
 				<IconLabel v-else-if="entry.icon && drawIcon" :icon="entry.icon" :class="'entry-icon'" />
-				<div v-else-if="drawIcon" class="no-icon" />
+				<div v-else-if="drawIcon" class="no-icon"></div>
 
 				<span class="entry-label">{{ entry.label }}</span>
 
@@ -132,6 +132,8 @@
 <script lang="ts">
 import { defineComponent, PropType } from "vue";
 
+import { IconName } from "@/utilities/icons";
+
 import FloatingMenu, { MenuDirection } from "@/components/widgets/floating-menus/FloatingMenu.vue";
 import CheckboxInput from "@/components/widgets/inputs/CheckboxInput.vue";
 import IconLabel from "@/components/widgets/labels/IconLabel.vue";
@@ -144,7 +146,7 @@ export type SectionsOfMenuListEntries<Value = string> = MenuListEntries<Value>[]
 interface MenuListEntryData<Value = string> {
 	value?: Value;
 	label?: string;
-	icon?: string;
+	icon?: IconName;
 	checkbox?: boolean;
 	shortcut?: string[];
 	shortcutRequiresLock?: boolean;

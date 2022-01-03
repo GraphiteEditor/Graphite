@@ -177,7 +177,7 @@
 </style>
 
 <script lang="ts">
-import { defineComponent, PropType } from "vue";
+import { defineComponent, PropType, StyleValue } from "vue";
 
 export type MenuDirection = "Top" | "Bottom" | "Left" | "Right" | "TopLeft" | "TopRight" | "BottomLeft" | "BottomRight" | "Center";
 export type MenuType = "Popover" | "Dropdown" | "Dialog";
@@ -401,7 +401,7 @@ export default defineComponent({
 		},
 	},
 	computed: {
-		floatingMenuContentStyle(): Partial<CSSStyleDeclaration> {
+		floatingMenuContentStyle(): StyleValue {
 			return {
 				minWidth: this.minWidth > 0 ? `${this.minWidth}px` : "",
 			};

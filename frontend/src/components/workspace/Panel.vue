@@ -7,11 +7,11 @@
 					:class="{ active: tabIndex === tabActiveIndex }"
 					v-for="(tabLabel, tabIndex) in tabLabels"
 					:key="tabIndex"
-					@click="(e) => e.stopPropagation() || (clickAction && clickAction(tabIndex))"
-					@click.middle="(e) => e.stopPropagation() || (closeAction && closeAction(tabIndex))"
+					@click="(e) => (e && e.stopPropagation(), clickAction && clickAction(tabIndex))"
+					@click.middle="(e) => (e && e.stopPropagation(), closeAction && closeAction(tabIndex))"
 				>
 					<span>{{ tabLabel }}</span>
-					<IconButton :action="(e) => e.stopPropagation() || (closeAction && closeAction(tabIndex))" :icon="'CloseX'" :size="16" v-if="tabCloseButtons" />
+					<IconButton :action="(e) => (e && e.stopPropagation(), closeAction && closeAction(tabIndex))" :icon="'CloseX'" :size="16" v-if="tabCloseButtons" />
 				</div>
 			</div>
 			<PopoverButton :icon="'VerticalEllipsis'">
