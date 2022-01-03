@@ -31,8 +31,9 @@
 <script lang="ts">
 import { defineComponent, PropType } from "vue";
 
+import { IconName } from "@/utilities/icons";
+
 import IconButton from "@/components/widgets/buttons/IconButton.vue";
-import { IconName } from "@/components/widgets/labels/IconLabel.vue";
 
 export default defineComponent({
 	components: { IconButton },

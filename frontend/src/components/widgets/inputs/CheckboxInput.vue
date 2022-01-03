@@ -1,6 +1,6 @@
 <template>
 	<div class="checkbox-input" :class="{ 'outline-style': outlineStyle }">
-		<input type="checkbox" :id="`checkbox-input-${id}`" :checked="checked" @input="(e) => $emit('update:checked', e.target.checked)" />
+		<input type="checkbox" :id="`checkbox-input-${id}`" :checked="checked" @input="(e) => $emit('update:checked', (e.target as HTMLInputElement).checked)" />
 		<label :for="`checkbox-input-${id}`">
 			<div class="checkbox-box">
 				<IconLabel :icon="icon" />
@@ -82,7 +82,9 @@
 <script lang="ts">
 import { defineComponent, PropType } from "vue";
 
-import IconLabel, { IconName } from "@/components/widgets/labels/IconLabel.vue";
+import { IconName } from "@/utilities/icons";
+
+import IconLabel from "@/components/widgets/labels/IconLabel.vue";
 
 export default defineComponent({
 	data() {

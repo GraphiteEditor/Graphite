@@ -1,14 +1,14 @@
 <template>
 	<div class="dropdown-input">
-		<div class="dropdown-box" :class="{ disabled }" :style="{ minWidth: `${minWidth}px`, disabled: 'disabled' }" @click="() => clickDropdownBox()" data-hover-menu-spawner>
+		<div class="dropdown-box" :class="{ disabled }" :style="{ minWidth: `${minWidth}px` }" @click="() => clickDropdownBox()" data-hover-menu-spawner>
 			<IconLabel :class="'dropdown-icon'" :icon="activeEntry.icon" v-if="activeEntry.icon" />
 			<span>{{ activeEntry.label }}</span>
 			<IconLabel :class="'dropdown-arrow'" :icon="'DropdownArrow'" />
 		</div>
 		<MenuList
 			v-model:activeEntry="activeEntry"
-			@update:activeEntry="(newActiveEntry) => activeEntryChanged(newActiveEntry)"
-			@widthChanged="(newWidth) => onWidthChanged(newWidth)"
+			@update:activeEntry="(newActiveEntry: typeof MenuListEntry) => activeEntryChanged(newActiveEntry)"
+			@widthChanged="(newWidth: number) => onWidthChanged(newWidth)"
 			:menuEntries="menuEntries"
 			:direction="'Bottom'"
 			:drawIcon="drawIcon"
