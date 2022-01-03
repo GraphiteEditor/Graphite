@@ -2,6 +2,7 @@ import { reactive, readonly } from "vue";
 
 import { DisplayAboutGraphiteDialog } from "@/dispatcher/js-messages";
 import { EditorState } from "@/state/wasm-loader";
+import { IconName } from "@/utilities/icons";
 import { stripIndents } from "@/utilities/strip-indents";
 import { TextButtonWidget } from "@/utilities/widgets";
 
@@ -9,13 +10,13 @@ import { TextButtonWidget } from "@/utilities/widgets";
 export function createDialogState(editor: EditorState) {
 	const state = reactive({
 		visible: false,
-		icon: "",
+		icon: "" as IconName,
 		heading: "",
 		details: "",
 		buttons: [] as TextButtonWidget[],
 	});
 
-	const createDialog = (icon: string, heading: string, details: string, buttons: TextButtonWidget[]): void => {
+	const createDialog = (icon: IconName, heading: string, details: string, buttons: TextButtonWidget[]): void => {
 		state.visible = true;
 		state.icon = icon;
 		state.heading = heading;

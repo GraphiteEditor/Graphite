@@ -30,10 +30,10 @@
 		</LayoutRow>
 		<LayoutRow :class="'layer-tree scrollable-y'">
 			<LayoutCol :class="'list'" ref="layerTreeList" @click="() => deselectAllLayers()" @dragover="updateLine($event)" @dragend="drop()">
-				<div class="layer-row" v-for="(layer, index) in layers" :key="layer.path">
+				<div class="layer-row" v-for="(layer, index) in layers" :key="String(layer.path.slice(-1))">
 					<div class="layer-visibility">
 						<IconButton
-							:action="(e) => (toggleLayerVisibility(layer.path), e.stopPropagation())"
+							:action="(e) => (toggleLayerVisibility(layer.path), e && e.stopPropagation())"
 							:icon="layer.visible ? 'EyeVisible' : 'EyeHidden'"
 							:size="24"
 							:title="layer.visible ? 'Visible' : 'Hidden'"

@@ -59,7 +59,9 @@
 <script lang="ts">
 import { defineComponent, PropType } from "vue";
 
-import IconLabel, { IconName, IconSize } from "@/components/widgets/labels/IconLabel.vue";
+import { IconName, IconSize } from "@/utilities/icons";
+
+import IconLabel from "@/components/widgets/labels/IconLabel.vue";
 
 export default defineComponent({
 	props: {
