@@ -1,5 +1,5 @@
 <template>
-	<button class="icon-button" :class="`size-${String(size)}`" @click="(e) => action(e)">
+	<button class="icon-button" :class="`size-${size}`" @click="(e) => action(e)">
 		<IconLabel :icon="icon" />
 	</button>
 </template>
@@ -57,16 +57,18 @@
 </style>
 
 <script lang="ts">
-import { defineComponent } from "vue";
+import { defineComponent, PropType } from "vue";
+
+import { IconName, IconSize } from "@/utilities/icons";
 
 import IconLabel from "@/components/widgets/labels/IconLabel.vue";
 
 export default defineComponent({
 	props: {
-		action: { type: Function, required: true },
-		icon: { type: String, required: true },
-		size: { type: Number, required: true },
-		gapAfter: { type: Boolean, default: false },
+		action: { type: Function as PropType<(e?: MouseEvent) => void>, required: true },
+		icon: { type: String as PropType<IconName>, required: true },
+		size: { type: Number as PropType<IconSize>, required: true },
+		gapAfter: { type: Boolean as PropType<boolean>, default: false },
 	},
 	components: { IconLabel },
 });

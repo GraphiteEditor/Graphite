@@ -1,8 +1,8 @@
 <template>
 	<div class="persistent-scrollbar" :class="direction.toLowerCase()">
 		<button class="arrow decrease" @pointerdown="changePosition(-50)"></button>
-		<div class="scroll-track" ref="scrollTrack" @pointerdown="grabArea">
-			<div class="scroll-thumb" @pointerdown="grabHandle" :class="{ dragging }" ref="handle" :style="[thumbStart, thumbEnd, sides]"></div>
+		<div class="scroll-track" ref="scrollTrack" @pointerdown="(e) => grabArea(e)">
+			<div class="scroll-thumb" @pointerdown="(e) => grabHandle(e)" :class="{ dragging }" ref="handle" :style="[thumbStart, thumbEnd, sides]"></div>
 		</div>
 		<button class="arrow increase" @click="changePosition(50)"></button>
 	</div>
@@ -110,44 +110,40 @@
 <script lang="ts">
 import { defineComponent, PropType } from "vue";
 
+export type ScrollbarDirection = "Horizontal" | "Vertical";
+
 // Linear Interpolation
-const lerp = (x: number, y: number, a: number) => x * (1 - a) + y * a;
+const lerp = (x: number, y: number, a: number): number => x * (1 - a) + y * a;
 
 // Convert the position of the handle (0-1) to the position on the track (0-1).
-// This includes the 1/2 handle length gap  of the possible handle positionson each side so the end of the handle doesn't go off the track.
-const handleToTrack = (handleLen: number, handlePos: number) => lerp(handleLen / 2, 1 - handleLen / 2, handlePos);
+// This includes the 1/2 handle length gap of the possible handle positionson each side so the end of the handle doesn't go off the track.
+const handleToTrack = (handleLen: number, handlePos: number): number => lerp(handleLen / 2, 1 - handleLen / 2, handlePos);
 
-const pointerPosition = (direction: ScrollbarDirection, e: PointerEvent) => (direction === ScrollbarDirection.Vertical ? e.clientY : e.clientX);
-
-export enum ScrollbarDirection {
-	"Horizontal" = "Horizontal",
-	"Vertical" = "Vertical",
-}
+const pointerPosition = (direction: ScrollbarDirection, e: PointerEvent): number => (direction === "Vertical" ? e.clientY : e.clientX);
 
 export default defineComponent({
 	props: {
-		direction: { type: String as PropType<ScrollbarDirection>, default: ScrollbarDirection.Vertical },
-		handlePosition: { type: Number, default: 0.5 },
-		handleLength: { type: Number, default: 0.5 },
+		direction: { type: String as PropType<ScrollbarDirection>, default: "Vertical" },
+		handlePosition: { type: Number as PropType<number>, default: 0.5 },
+		handleLength: { type: Number as PropType<number>, default: 0.5 },
 	},
 	computed: {
 		thumbStart(): { left: string } | { top: string } {
 			const start = handleToTrack(this.handleLength, this.handlePosition) - this.handleLength / 2;
 
-			return this.direction === ScrollbarDirection.Vertical ? { top: `${start * 100}%` } : { left: `${start * 100}%` };
+			return this.direction === "Vertical" ? { top: `${start * 100}%` } : { left: `${start * 100}%` };
 		},
 		thumbEnd(): { right: string } | { bottom: string } {
 			const end = 1 - handleToTrack(this.handleLength, this.handlePosition) - this.handleLength / 2;
 
-			return this.direction === ScrollbarDirection.Vertical ? { bottom: `${end * 100}%` } : { right: `${end * 100}%` };
+			return this.direction === "Vertical" ? { bottom: `${end * 100}%` } : { right: `${end * 100}%` };
 		},
 		sides(): { left: string; right: string } | { top: string; bottom: string } {
-			return this.direction === ScrollbarDirection.Vertical ? { left: "0%", right: "0%" } : { top: "0%", bottom: "0%" };
+			return this.direction === "Vertical" ? { left: "0%", right: "0%" } : { top: "0%", bottom: "0%" };
 		},
 	},
 	data() {
 		return {
-			ScrollbarDirection,
 			dragging: false,
 			pointerPos: 0,
 		};
@@ -159,11 +155,11 @@ export default defineComponent({
 	methods: {
 		trackLength(): number {
 			const track = this.$refs.scrollTrack as HTMLElement;
-			return this.direction === ScrollbarDirection.Vertical ? track.clientHeight - this.handleLength : track.clientWidth;
+			return this.direction === "Vertical" ? track.clientHeight - this.handleLength : track.clientWidth;
 		},
 		trackOffset(): number {
 			const track = this.$refs.scrollTrack as HTMLElement;
-			return this.direction === ScrollbarDirection.Vertical ? track.getBoundingClientRect().top : track.getBoundingClientRect().left;
+			return this.direction === "Vertical" ? track.getBoundingClientRect().top : track.getBoundingClientRect().left;
 		},
 		clampHandlePosition(newPos: number) {
 			const clampedPosition = Math.min(Math.max(newPos, 0), 1);

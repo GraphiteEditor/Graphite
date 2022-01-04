@@ -67,10 +67,10 @@
 <script lang="ts">
 import { defineComponent, unref } from "vue";
 
-import Panel from "@/components/workspace/Panel.vue";
-import LayoutRow from "@/components/layout/LayoutRow.vue";
 import LayoutCol from "@/components/layout/LayoutCol.vue";
+import LayoutRow from "@/components/layout/LayoutRow.vue";
 import DialogModal from "@/components/widgets/floating-menus/DialogModal.vue";
+import Panel from "@/components/workspace/Panel.vue";
 
 export default defineComponent({
 	inject: ["documents", "dialog", "editor", "inputManager"],

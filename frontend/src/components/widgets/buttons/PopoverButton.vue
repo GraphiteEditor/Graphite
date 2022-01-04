@@ -1,7 +1,7 @@
 <template>
 	<div class="popover-button">
 		<IconButton :action="handleClick" :icon="icon" :size="16" data-hover-menu-spawner />
-		<FloatingMenu :type="MenuType.Popover" :direction="MenuDirection.Bottom" ref="floatingMenu">
+		<FloatingMenu :type="'Popover'" :direction="'Bottom'" ref="floatingMenu">
 			<slot></slot>
 		</FloatingMenu>
 	</div>
@@ -47,15 +47,12 @@
 </style>
 
 <script lang="ts">
-import { defineComponent } from "vue";
+import { defineComponent, PropType } from "vue";
 
 import IconButton from "@/components/widgets/buttons/IconButton.vue";
-import FloatingMenu, { MenuDirection, MenuType } from "@/components/widgets/floating-menus/FloatingMenu.vue";
+import FloatingMenu from "@/components/widgets/floating-menus/FloatingMenu.vue";
 
-export enum PopoverButtonIcon {
-	"DropdownArrow" = "DropdownArrow",
-	"VerticalEllipsis" = "VerticalEllipsis",
-}
+export type PopoverButtonIcon = "DropdownArrow" | "VerticalEllipsis";
 
 export default defineComponent({
 	components: {
@@ -63,8 +60,8 @@ export default defineComponent({
 		IconButton,
 	},
 	props: {
-		action: { type: Function, required: false },
-		icon: { type: String, default: PopoverButtonIcon.DropdownArrow },
+		action: { type: Function as PropType<() => void>, required: false },
+		icon: { type: String as PropType<PopoverButtonIcon>, default: "DropdownArrow" },
 	},
 	methods: {
 		handleClick() {
@@ -72,12 +69,6 @@ export default defineComponent({
 
 			if (this.action) this.action();
 		},
-	},
-	data() {
-		return {
-			MenuDirection,
-			MenuType,
-		};
 	},
 });
 </script>

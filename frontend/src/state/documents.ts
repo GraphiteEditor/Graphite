@@ -1,9 +1,6 @@
 /* eslint-disable max-classes-per-file */
 import { reactive, readonly } from "vue";
 
-import { DialogState } from "@/state/dialog";
-import { download, upload } from "@/utilities/files";
-import { EditorState } from "@/state/wasm-loader";
 import {
 	DisplayConfirmationToCloseAllDocuments,
 	DisplayConfirmationToCloseDocument,
@@ -14,7 +11,11 @@ import {
 	SetActiveDocument,
 	UpdateOpenDocumentsList,
 } from "@/dispatcher/js-messages";
+import { DialogState } from "@/state/dialog";
+import { EditorState } from "@/state/wasm-loader";
+import { download, upload } from "@/utilities/files";
 
+// eslint-disable-next-line @typescript-eslint/explicit-function-return-type
 export function createDocumentsState(editor: EditorState, dialogState: DialogState) {
 	const state = reactive({
 		unsaved: false,
@@ -22,7 +23,7 @@ export function createDocumentsState(editor: EditorState, dialogState: DialogSta
 		activeDocumentIndex: 0,
 	});
 
-	const closeDocumentWithConfirmation = async (documentId: BigInt) => {
+	const closeDocumentWithConfirmation = async (documentId: BigInt): Promise<void> => {
 		// Assume we receive a correct document_id
 		const targetDocument = state.documents.find((doc) => doc.id === documentId) as FrontendDocumentDetails;
 		const tabLabel = targetDocument.displayName;
@@ -31,7 +32,7 @@ export function createDocumentsState(editor: EditorState, dialogState: DialogSta
 		dialogState.createDialog("File", "Save changes before closing?", tabLabel, [
 			{
 				kind: "TextButton",
-				callback: async () => {
+				callback: async (): Promise<void> => {
 					editor.instance.save_document();
 					dialogState.dismissDialog();
 				},
@@ -39,7 +40,7 @@ export function createDocumentsState(editor: EditorState, dialogState: DialogSta
 			},
 			{
 				kind: "TextButton",
-				callback: async () => {
+				callback: async (): Promise<void> => {
 					editor.instance.close_document(targetDocument.id);
 					dialogState.dismissDialog();
 				},
@@ -47,7 +48,7 @@ export function createDocumentsState(editor: EditorState, dialogState: DialogSta
 			},
 			{
 				kind: "TextButton",
-				callback: async () => {
+				callback: async (): Promise<void> => {
 					dialogState.dismissDialog();
 				},
 				props: { label: "Cancel", minWidth: 96 },
@@ -55,11 +56,11 @@ export function createDocumentsState(editor: EditorState, dialogState: DialogSta
 		]);
 	};
 
-	const closeAllDocumentsWithConfirmation = () => {
+	const closeAllDocumentsWithConfirmation = (): void => {
 		dialogState.createDialog("Copy", "Close all documents?", "Unsaved work will be lost!", [
 			{
 				kind: "TextButton",
-				callback: () => {
+				callback: (): void => {
 					editor.instance.close_all_documents();
 					dialogState.dismissDialog();
 				},
@@ -67,7 +68,7 @@ export function createDocumentsState(editor: EditorState, dialogState: DialogSta
 			},
 			{
 				kind: "TextButton",
-				callback: () => {
+				callback: (): void => {
 					dialogState.dismissDialog();
 				},
 				props: { label: "Cancel", minWidth: 96 },

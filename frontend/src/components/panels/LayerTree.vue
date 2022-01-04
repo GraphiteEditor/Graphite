@@ -1,13 +1,27 @@
 <template>
 	<LayoutCol :class="'layer-tree-panel'">
 		<LayoutRow :class="'options-bar'">
-			<DropdownInput v-model:selectedIndex="blendModeSelectedIndex" @update:selectedIndex="setLayerBlendMode" :menuEntries="blendModeEntries" :disabled="blendModeDropdownDisabled" />
+			<DropdownInput
+				v-model:selectedIndex="blendModeSelectedIndex"
+				@update:selectedIndex="(newSelectedIndex) => setLayerBlendMode(newSelectedIndex)"
+				:menuEntries="blendModeEntries"
+				:disabled="blendModeDropdownDisabled"
+			/>
 
-			<Separator :type="SeparatorType.Related" />
+			<Separator :type="'Related'" />
 
-			<NumberInput v-model:value="opacity" @update:value="setLayerOpacity" :min="0" :max="100" :unit="`%`" :displayDecimalPlaces="2" :label="'Opacity'" :disabled="opacityNumberInputDisabled" />
+			<NumberInput
+				v-model:value="opacity"
+				@update:value="(newOpacity) => setLayerOpacity(newOpacity)"
+				:min="0"
+				:max="100"
+				:unit="'%'"
+				:displayDecimalPlaces="2"
+				:label="'Opacity'"
+				:disabled="opacityNumberInputDisabled"
+			/>
 
-			<Separator :type="SeparatorType.Related" />
+			<Separator :type="'Related'" />
 
 			<PopoverButton>
 				<h3>Compositing Options</h3>
@@ -15,26 +29,26 @@
 			</PopoverButton>
 		</LayoutRow>
 		<LayoutRow :class="'layer-tree scrollable-y'">
-			<LayoutCol :class="'list'" ref="layerTreeList" @click="deselectAllLayers" @dragover="updateLine($event)" @dragend="drop()">
-				<div class="layer-row" v-for="(layer, index) in layers" :key="layer.path">
+			<LayoutCol :class="'list'" ref="layerTreeList" @click="() => deselectAllLayers()" @dragover="updateLine($event)" @dragend="drop()">
+				<div class="layer-row" v-for="(layer, index) in layers" :key="String(layer.path.slice(-1))">
 					<div class="layer-visibility">
 						<IconButton
-							:action="(e) => (toggleLayerVisibility(layer.path), e.stopPropagation())"
+							:action="(e) => (toggleLayerVisibility(layer.path), e && e.stopPropagation())"
 							:icon="layer.visible ? 'EyeVisible' : 'EyeHidden'"
 							:size="24"
 							:title="layer.visible ? 'Visible' : 'Hidden'"
 						/>
 					</div>
 					<button
-						v-if="layer.layer_type === LayerTypeOptions.Folder"
+						v-if="layer.layer_type === 'Folder'"
 						class="node-connector"
-						:class="{ expanded: layer.layer_data.expanded }"
+						:class="{ expanded: layer.layer_metadata.expanded }"
 						@click.stop="handleNodeConnectorClick(layer.path)"
 					></button>
 					<div v-else class="node-connector-missing"></div>
 					<div
 						class="layer"
-						:class="{ selected: layer.layer_data.selected }"
+						:class="{ selected: layer.layer_metadata.selected }"
 						:style="{ marginLeft: layerIndent(layer) }"
 						@click.shift.exact.stop="selectLayer(layer, false, true)"
 						@click.shift.ctrl.exact.stop="selectLayer(layer, true, true)"
@@ -46,7 +60,7 @@
 					>
 						<div class="layer-thumbnail" v-html="layer.thumbnail"></div>
 						<div class="layer-type-icon">
-							<IconLabel v-if="layer.layer_type === LayerTypeOptions.Folder" :icon="'NodeTypeFolder'" title="Folder" />
+							<IconLabel v-if="layer.layer_type === 'Folder'" :icon="'NodeTypeFolder'" title="Folder" />
 							<IconLabel v-else :icon="'NodeTypePath'" title="Path" />
 						</div>
 						<div class="layer-name">
@@ -228,19 +242,17 @@
 <script lang="ts">
 import { defineComponent } from "vue";
 
-import { BlendMode, DisplayFolderTreeStructure, UpdateLayer, LayerPanelEntry, LayerTypeOptions } from "@/dispatcher/js-messages";
-import { SeparatorType } from "@/components/widgets/widgets";
+import { BlendMode, DisplayFolderTreeStructure, UpdateLayer, LayerPanelEntry } from "@/dispatcher/js-messages";
 
-import LayoutRow from "@/components/layout/LayoutRow.vue";
 import LayoutCol from "@/components/layout/LayoutCol.vue";
-import Separator from "@/components/widgets/separators/Separator.vue";
-import NumberInput from "@/components/widgets/inputs/NumberInput.vue";
-import PopoverButton from "@/components/widgets/buttons/PopoverButton.vue";
-import { MenuDirection } from "@/components/widgets/floating-menus/FloatingMenu.vue";
+import LayoutRow from "@/components/layout/LayoutRow.vue";
 import IconButton from "@/components/widgets/buttons/IconButton.vue";
-import IconLabel from "@/components/widgets/labels/IconLabel.vue";
-import DropdownInput from "@/components/widgets/inputs/DropdownInput.vue";
+import PopoverButton from "@/components/widgets/buttons/PopoverButton.vue";
 import { SectionsOfMenuListEntries } from "@/components/widgets/floating-menus/MenuList.vue";
+import DropdownInput from "@/components/widgets/inputs/DropdownInput.vue";
+import NumberInput from "@/components/widgets/inputs/NumberInput.vue";
+import IconLabel from "@/components/widgets/labels/IconLabel.vue";
+import Separator from "@/components/widgets/separators/Separator.vue";
 
 const blendModeEntries: SectionsOfMenuListEntries<BlendMode> = [
 	[{ label: "Normal", value: "Normal" }],
@@ -301,13 +313,10 @@ export default defineComponent({
 			selectionRangeEndLayer: undefined as undefined | LayerPanelEntry,
 			opacity: 100,
 			draggingData: undefined as undefined | { path: BigUint64Array; above: boolean; nearestPath: BigUint64Array; insertLine: HTMLDivElement },
-			MenuDirection,
-			SeparatorType,
-			LayerTypeOptions,
 		};
 	},
 	methods: {
-		layerIndent(layer: LayerPanelEntry): string {
+		layerIndent(layer: LayerPanelEntry) {
 			return `${(layer.path.length - 1) * 16}px`;
 		},
 		async toggleLayerVisibility(path: BigUint64Array) {
@@ -316,14 +325,12 @@ export default defineComponent({
 		async handleNodeConnectorClick(path: BigUint64Array) {
 			this.editor.instance.toggle_layer_expansion(path);
 		},
-		async setLayerBlendMode() {
-			const blendMode = this.blendModeEntries.flat()[this.blendModeSelectedIndex].value;
-			if (blendMode) {
-				this.editor.instance.set_blend_mode_for_selected_layers(blendMode);
-			}
+		async setLayerBlendMode(newSelectedIndex: number) {
+			const blendMode = this.blendModeEntries.flat()[newSelectedIndex].value;
+			if (blendMode) this.editor.instance.set_blend_mode_for_selected_layers(blendMode);
 		},
-		async setLayerOpacity() {
-			this.editor.instance.set_opacity_for_selected_layers(this.opacity);
+		async setLayerOpacity(newOpacity: number) {
+			this.editor.instance.set_opacity_for_selected_layers(newOpacity);
 		},
 		async selectLayer(clickedLayer: LayerPanelEntry, ctrl: boolean, shift: boolean) {
 			this.editor.instance.select_layer(clickedLayer.path, ctrl, shift);
@@ -336,7 +343,7 @@ export default defineComponent({
 		},
 		async clearSelection() {
 			this.layers.forEach((layer) => {
-				layer.layer_data.selected = false;
+				layer.layer_metadata.selected = false;
 			});
 		},
 		closest(tree: HTMLElement, clientY: number): [BigUint64Array, boolean, Node] {
@@ -377,7 +384,7 @@ export default defineComponent({
 					}
 				}
 				// Inserting below current row
-				else if (distance > -closest && distance > -RANGE_TO_INSERT_WITHIN_BOTTOM_FOLDER_NOT_ROOT && distance < 0 && layer.layer_type !== LayerTypeOptions.Folder) {
+				else if (distance > -closest && distance > -RANGE_TO_INSERT_WITHIN_BOTTOM_FOLDER_NOT_ROOT && distance < 0 && layer.layer_type !== "Folder") {
 					closest = -distance;
 					nearestPath = layer.path;
 					if (child.parentNode && child.parentNode.nextSibling) {
@@ -446,7 +453,7 @@ export default defineComponent({
 			}
 		},
 		setBlendModeForSelectedLayers() {
-			const selected = this.layers.filter((layer) => layer.layer_data.selected);
+			const selected = this.layers.filter((layer) => layer.layer_metadata.selected);
 
 			if (selected.length < 1) {
 				this.blendModeSelectedIndex = 0;
@@ -467,7 +474,7 @@ export default defineComponent({
 		},
 		setOpacityForSelectedLayers() {
 			// todo figure out why this is here
-			const selected = this.layers.filter((layer) => layer.layer_data.selected);
+			const selected = this.layers.filter((layer) => layer.layer_metadata.selected);
 
 			if (selected.length < 1) {
 				this.opacity = 100;
@@ -491,7 +498,8 @@ export default defineComponent({
 		this.editor.dispatcher.subscribeJsMessage(DisplayFolderTreeStructure, (displayFolderTreeStructure) => {
 			const path = [] as bigint[];
 			this.layers = [] as LayerPanelEntry[];
-			function recurse(folder: DisplayFolderTreeStructure, layers: LayerPanelEntry[], cache: Map<string, LayerPanelEntry>) {
+
+			const recurse = (folder: DisplayFolderTreeStructure, layers: LayerPanelEntry[], cache: Map<string, LayerPanelEntry>): void => {
 				folder.children.forEach((item) => {
 					// TODO: fix toString
 					path.push(BigInt(item.layerId.toString()));
@@ -500,7 +508,8 @@ export default defineComponent({
 					if (item.children.length >= 1) recurse(item, layers, cache);
 					path.pop();
 				});
-			}
+			};
+
 			recurse(displayFolderTreeStructure, this.layers, this.layerCache);
 		});
 
