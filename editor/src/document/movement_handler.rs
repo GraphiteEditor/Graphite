@@ -17,9 +17,16 @@ use std::collections::VecDeque;
 #[impl_message(Message, DocumentMessage, Movement)]
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub enum MovementMessage {
-	MouseMove { snap_angle: Key, snap_zoom: Key, zoom_from_viewport: Option<DVec2> },
+	MouseMove {
+		snap_angle: Key,
+		wait_for_snap_angle_release: bool,
+		snap_zoom: Key,
+		zoom_from_viewport: Option<DVec2>,
+	},
 	TranslateCanvasBegin,
-	WheelCanvasTranslate { use_y_as_x: bool },
+	WheelCanvasTranslate {
+		use_y_as_x: bool,
+	},
 	RotateCanvasBegin,
 	ZoomCanvasBegin,
 	TransformCanvasEnd,
@@ -37,12 +44,17 @@ pub enum MovementMessage {
 pub struct MovementMessageHandler {
 	translating: bool,
 	pub translation: DVec2,
+
 	rotating: bool,
 	pub rotation: f64,
+
 	zooming: bool,
 	pub scale: f64,
+
 	snap_rotate: bool,
 	snap_scale: bool,
+	released_snap_rotate: bool,
+
 	mouse_pos: ViewportPosition,
 }
 
@@ -56,6 +68,7 @@ impl Default for MovementMessageHandler {
 			rotation: 0.,
 			zooming: false,
 			snap_rotate: false,
+			released_snap_rotate: false,
 			snap_scale: false,
 			mouse_pos: ViewportPosition::default(),
 		}
@@ -133,6 +146,7 @@ impl MessageHandler<MovementMessage, (&Document, &InputPreprocessor)> for Moveme
 				self.scale = self.snapped_scale();
 				responses.push_back(ToolMessage::DocumentIsDirty.into());
 				self.snap_rotate = false;
+				self.released_snap_rotate = false;
 				self.snap_scale = false;
 				self.translating = false;
 				self.rotating = false;
@@ -140,6 +154,7 @@ impl MessageHandler<MovementMessage, (&Document, &InputPreprocessor)> for Moveme
 			}
 			MouseMove {
 				snap_angle,
+				wait_for_snap_angle_release,
 				snap_zoom,
 				zoom_from_viewport,
 			} => {
@@ -151,11 +166,14 @@ impl MessageHandler<MovementMessage, (&Document, &InputPreprocessor)> for Moveme
 
 				if self.rotating {
 					let new_snap = ipp.keyboard.get(snap_angle as usize);
-					// When disabling snap, keep the viewed rotation as it was previously.
-					if !new_snap && self.snap_rotate {
-						self.rotation = self.snapped_angle();
+					if !(wait_for_snap_angle_release && new_snap && !self.released_snap_rotate) {
+						// When disabling snap, keep the viewed rotation as it was previously.
+						if !new_snap && self.snap_rotate {
+							self.rotation = self.snapped_angle();
+						}
+						self.snap_rotate = new_snap;
+						self.released_snap_rotate = true;
 					}
-					self.snap_rotate = new_snap;
 
 					let half_viewport = ipp.viewport_bounds.size() / 2.;
 					let rotation = {

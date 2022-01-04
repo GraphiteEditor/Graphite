@@ -233,7 +233,7 @@ impl Default for Mapping {
 			entry! {action=TransformLayerMessage::BeginRotate, key_down=KeyR},
 			entry! {action=TransformLayerMessage::BeginScale, key_down=KeyS},
 			// Document movement
-			entry! {action=MovementMessage::MouseMove{snap_angle: KeyShift, snap_zoom: KeyControl, zoom_from_viewport: None}, message=InputMapperMessage::PointerMove},
+			entry! {action=MovementMessage::MouseMove{snap_angle: KeyControl, wait_for_snap_angle_release: true, snap_zoom: KeyControl, zoom_from_viewport: None}, message=InputMapperMessage::PointerMove},
 			entry! {action=MovementMessage::RotateCanvasBegin, key_down=Mmb, modifiers=[KeyControl]},
 			entry! {action=MovementMessage::ZoomCanvasBegin, key_down=Mmb, modifiers=[KeyShift]},
 			entry! {action=MovementMessage::TranslateCanvasBegin, key_down=Mmb},

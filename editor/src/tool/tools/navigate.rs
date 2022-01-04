@@ -84,6 +84,7 @@ impl Fsm for NavigateToolFsmState {
 					messages.push_front(
 						MovementMessage::MouseMove {
 							snap_angle,
+							wait_for_snap_angle_release: false,
 							snap_zoom,
 							zoom_from_viewport: Some(data.drag_start),
 						}
