@@ -219,7 +219,7 @@ img {
 </style>
 
 <script lang="ts">
-import { defineComponent } from "vue";
+import { defineComponent, toRef } from "vue";
 
 import { DialogState, createDialogState } from "@/state/dialog";
 import { createDocumentsState, DocumentsState } from "@/state/documents";
@@ -241,7 +241,7 @@ declare module "@vue/runtime-core" {
 		editor: EditorState;
 		// This must be set to optional because there is a time in the lifecycle of the component where inputManager is undefined.
 		// That's because we initialize inputManager in `mounted()` rather than `data()` since the div hasn't been created yet.
-		inputManger?: InputManager;
+		inputManager?: InputManager;
 	}
 }
 
@@ -252,6 +252,7 @@ export default defineComponent({
 			dialog: this.dialog,
 			documents: this.documents,
 			fullscreen: this.fullscreen,
+			inputManager: toRef(this, "inputManager"),
 		};
 	},
 	data() {
