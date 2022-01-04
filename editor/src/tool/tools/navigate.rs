@@ -12,7 +12,7 @@ pub struct Navigate {
 #[impl_message(Message, ToolMessage, Navigate)]
 #[derive(PartialEq, Clone, Debug, Hash, Serialize, Deserialize)]
 pub enum NavigateMessage {
-	MouseMove { snap_angle: Key },
+	MouseMove { snap_angle: Key, snap_zoom: Key },
 	TranslateCanvasBegin,
 	RotateCanvasBegin,
 	ZoomCanvasBegin,
@@ -73,8 +73,8 @@ impl Fsm for NavigateToolFsmState {
 		if let ToolMessage::Navigate(navigate) = message {
 			use NavigateMessage::*;
 			match navigate {
-				MouseMove { snap_angle } => {
-					messages.push_front(MovementMessage::MouseMove { snap_angle }.into());
+				MouseMove { snap_angle, snap_zoom } => {
+					messages.push_front(MovementMessage::MouseMove { snap_angle, snap_zoom }.into());
 					self
 				}
 				TranslateCanvasBegin => {
@@ -126,17 +126,31 @@ impl Fsm for NavigateToolFsmState {
 						plus: true,
 					},
 				]),
-				HintGroup(vec![HintInfo {
-					key_groups: vec![],
-					mouse: Some(MouseMotion::LmbDrag),
-					label: String::from("Zoom in and out (drag up and down)"),
-					plus: false,
-				}]),
+				HintGroup(vec![
+					HintInfo {
+						key_groups: vec![],
+						mouse: Some(MouseMotion::LmbDrag),
+						label: String::from("Zoom in and out (drag up and down)"),
+						plus: false,
+					},
+					HintInfo {
+						key_groups: vec![KeysGroup(vec![Key::KeyShift])],
+						mouse: None,
+						label: String::from("Snap zoom to nearest increment"),
+						plus: true,
+					},
+				]),
 			]),
 			NavigateToolFsmState::Rotating => HintData(vec![HintGroup(vec![HintInfo {
 				key_groups: vec![KeysGroup(vec![Key::KeyControl])],
 				mouse: None,
 				label: String::from("Snap to 15° increments"),
+				plus: false,
+			}])]),
+			NavigateToolFsmState::Zooming => HintData(vec![HintGroup(vec![HintInfo {
+				key_groups: vec![KeysGroup(vec![Key::KeyShift])],
+				mouse: None,
+				label: String::from("Snap zoom to nearest increment"),
 				plus: false,
 			}])]),
 			_ => HintData(Vec::new()),

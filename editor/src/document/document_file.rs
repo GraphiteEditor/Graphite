@@ -760,9 +760,9 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					}
 					.into(),
 				);
-				let document_transform = &self.movement_handler;
+				let document_transform_scale = self.movement_handler.snapped_scale();
 
-				let scale = 0.5 + ASYMPTOTIC_EFFECT + document_transform.scale * SCALE_EFFECT;
+				let scale = 0.5 + ASYMPTOTIC_EFFECT + document_transform_scale * SCALE_EFFECT;
 				let viewport_size = ipp.viewport_bounds.size();
 				let viewport_mid = ipp.viewport_bounds.center();
 				let [bounds1, bounds2] = self.graphene_document.visible_layers_bounding_box().unwrap_or([viewport_mid; 2]);
@@ -773,9 +773,9 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				let scrollbar_multiplier = bounds_length - viewport_size;
 				let scrollbar_size = viewport_size / bounds_length;
 
-				let log = document_transform.scale.log2();
+				let log = document_transform_scale.log2();
 				let ruler_interval = if log < 0. { 100. * 2_f64.powf(-log.ceil()) } else { 100. / 2_f64.powf(log.ceil()) };
-				let ruler_spacing = ruler_interval * document_transform.scale;
+				let ruler_spacing = ruler_interval * document_transform_scale;
 
 				let ruler_origin = self.graphene_document.root.transform.transform_point2(DVec2::ZERO);
 

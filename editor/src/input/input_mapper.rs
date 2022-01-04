@@ -154,11 +154,13 @@ impl Default for Mapping {
 			entry! {action=SelectMessage::Abort, key_down=Rmb},
 			entry! {action=SelectMessage::Abort, key_down=KeyEscape},
 			// Navigate
-			entry! {action=NavigateMessage::MouseMove{snap_angle: KeyControl}, message=InputMapperMessage::PointerMove},
+			entry! {action=NavigateMessage::MouseMove{snap_angle: KeyControl, snap_zoom: KeyShift}, message=InputMapperMessage::PointerMove},
+			entry! {action=NavigateMessage::TranslateCanvasBegin, key_down=Mmb},
 			entry! {action=NavigateMessage::RotateCanvasBegin, key_down=Rmb},
 			entry! {action=NavigateMessage::ZoomCanvasBegin, key_down=Lmb},
 			entry! {action=NavigateMessage::TransformCanvasEnd, key_up=Rmb},
 			entry! {action=NavigateMessage::TransformCanvasEnd, key_up=Lmb},
+			entry! {action=NavigateMessage::TransformCanvasEnd, key_up=Mmb},
 			// Eyedropper
 			entry! {action=EyedropperMessage::LeftMouseDown, key_down=Lmb},
 			entry! {action=EyedropperMessage::RightMouseDown, key_down=Rmb},
@@ -231,7 +233,7 @@ impl Default for Mapping {
 			entry! {action=TransformLayerMessage::BeginRotate, key_down=KeyR},
 			entry! {action=TransformLayerMessage::BeginScale, key_down=KeyS},
 			// Document movement
-			entry! {action=MovementMessage::MouseMove{snap_angle: KeyShift}, message=InputMapperMessage::PointerMove},
+			entry! {action=MovementMessage::MouseMove{snap_angle: KeyShift, snap_zoom: KeyControl}, message=InputMapperMessage::PointerMove},
 			entry! {action=MovementMessage::RotateCanvasBegin, key_down=Mmb, modifiers=[KeyControl]},
 			entry! {action=MovementMessage::ZoomCanvasBegin, key_down=Mmb, modifiers=[KeyShift]},
 			entry! {action=MovementMessage::TranslateCanvasBegin, key_down=Mmb},
