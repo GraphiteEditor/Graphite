@@ -72,6 +72,8 @@ import LayoutRow from "@/components/layout/LayoutRow.vue";
 import DialogModal from "@/components/widgets/floating-menus/DialogModal.vue";
 import Panel from "@/components/workspace/Panel.vue";
 
+const MIN_PANEL_SIZE = 100;
+
 export default defineComponent({
 	inject: ["documents", "dialog", "editor", "inputManager"],
 	components: {
@@ -108,7 +110,10 @@ export default defineComponent({
 
 			function updatePosition(event: MouseEvent) {
 				const mouseCurrent = horizontal ? event.clientX : event.clientY;
-				const mouseDelta = mouseStart - mouseCurrent;
+				let mouseDelta = mouseStart - mouseCurrent;
+
+				mouseDelta = Math.max(nextSiblingSize + mouseDelta, MIN_PANEL_SIZE) - nextSiblingSize;
+				mouseDelta = previousSiblingSize - Math.max(previousSiblingSize - mouseDelta, MIN_PANEL_SIZE);
 
 				nextSibling.style.flexGrow = (nextSiblingSize + mouseDelta).toString();
 				previousSibling.style.flexGrow = (previousSiblingSize - mouseDelta).toString();
