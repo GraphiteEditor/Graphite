@@ -366,6 +366,7 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 						(Err(e), _) => warn!("Could not access selected layer {:?}: {:?}", layer_path, e),
 					}
 				}
+				//responses.push_back(DeselectAllLayers.into());
 			}
 			Cut(clipboard) => {
 				responses.push_back(Copy(clipboard).into());
@@ -373,16 +374,12 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 			}
 			Paste(clipboard) => {
 				let document = self.active_document();
-				let mut shallowest_common_folder = document
+				let shallowest_common_folder = document
 					.graphene_document
 					.shallowest_common_folder(document.selected_layers())
 					.expect("While pasting, the selected layers did not exist while attempting to find the appropriate folder path for insertion");
 
-				// We want to paste folders at the same depth as their copy source
-				if !shallowest_common_folder.is_empty() && document.selected_layers_contains(shallowest_common_folder) {
-					shallowest_common_folder = &shallowest_common_folder[..shallowest_common_folder.len() - 1];
-				}
-
+				responses.push_back(StartTransaction.into());
 				responses.push_back(
 					PasteIntoFolder {
 						clipboard,
@@ -391,6 +388,7 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 					}
 					.into(),
 				);
+				responses.push_back(CommitTransaction.into());
 			}
 			PasteIntoFolder { clipboard, path, insert_index } => {
 				let paste = |entry: &CopyBufferEntry, responses: &mut VecDeque<_>| {
