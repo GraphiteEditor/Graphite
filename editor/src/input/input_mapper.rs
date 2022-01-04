@@ -154,7 +154,7 @@ impl Default for Mapping {
 			entry! {action=SelectMessage::Abort, key_down=Rmb},
 			entry! {action=SelectMessage::Abort, key_down=KeyEscape},
 			// Navigate
-			entry! {action=NavigateMessage::MouseMove{snap_angle: KeyControl, snap_zoom: KeyShift}, message=InputMapperMessage::PointerMove},
+			entry! {action=NavigateMessage::MouseMove{snap_angle: KeyControl, snap_zoom: KeyControl}, message=InputMapperMessage::PointerMove},
 			entry! {action=NavigateMessage::TranslateCanvasBegin, key_down=Mmb},
 			entry! {action=NavigateMessage::RotateCanvasBegin, key_down=Rmb},
 			entry! {action=NavigateMessage::ZoomCanvasBegin, key_down=Lmb},
