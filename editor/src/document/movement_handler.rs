@@ -17,7 +17,7 @@ use std::collections::VecDeque;
 #[impl_message(Message, DocumentMessage, Movement)]
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub enum MovementMessage {
-	MouseMove { snap_angle: Key, snap_zoom: Key },
+	MouseMove { snap_angle: Key, snap_zoom: Key, zoom_from_viewport: Option<DVec2> },
 	TranslateCanvasBegin,
 	WheelCanvasTranslate { use_y_as_x: bool },
 	RotateCanvasBegin,
@@ -101,6 +101,14 @@ impl MovementMessageHandler {
 			.into(),
 		);
 	}
+	pub fn centre_zoom(&self, viewport_bounds: DVec2, zoom_factor: f64, mouse: DVec2) -> [Message; 2] {
+		let new_viewport_bounds = viewport_bounds / zoom_factor;
+		let delta_size = viewport_bounds - new_viewport_bounds;
+		let mouse_fraction = mouse / viewport_bounds;
+		let delta = delta_size * (DVec2::splat(0.5) - mouse_fraction);
+
+		[MovementMessage::TranslateCanvas(delta).into(), MovementMessage::SetCanvasZoom(self.scale * zoom_factor).into()]
+	}
 }
 
 impl MessageHandler<MovementMessage, (&Document, &InputPreprocessor)> for MovementMessageHandler {
@@ -130,7 +138,11 @@ impl MessageHandler<MovementMessage, (&Document, &InputPreprocessor)> for Moveme
 				self.rotating = false;
 				self.zooming = false;
 			}
-			MouseMove { snap_angle, snap_zoom } => {
+			MouseMove {
+				snap_angle,
+				snap_zoom,
+				zoom_from_viewport,
+			} => {
 				if self.translating {
 					let delta = ipp.mouse.position - self.mouse_pos;
 
@@ -165,7 +177,11 @@ impl MessageHandler<MovementMessage, (&Document, &InputPreprocessor)> for Moveme
 					let difference = self.mouse_pos.y as f64 - ipp.mouse.position.y as f64;
 					let amount = 1. + difference * VIEWPORT_ZOOM_MOUSE_RATE;
 
-					responses.push_back(SetCanvasZoom(self.scale * amount).into());
+					if let Some(mouse) = zoom_from_viewport {
+						responses.extend(self.centre_zoom(ipp.viewport_bounds.size(), amount, mouse));
+					} else {
+						responses.push_back(SetCanvasZoom(self.scale * amount).into());
+					}
 				}
 				self.mouse_pos = ipp.mouse.position;
 			}
@@ -184,19 +200,12 @@ impl MessageHandler<MovementMessage, (&Document, &InputPreprocessor)> for Moveme
 			}
 			WheelCanvasZoom => {
 				let scroll = ipp.mouse.scroll_delta.scroll_delta();
-				let mouse = ipp.mouse.position;
-				let viewport_bounds = ipp.viewport_bounds.size();
 				let mut zoom_factor = 1. + scroll.abs() * VIEWPORT_ZOOM_WHEEL_RATE;
 				if ipp.mouse.scroll_delta.y > 0 {
 					zoom_factor = 1. / zoom_factor
 				};
-				let new_viewport_bounds = viewport_bounds / zoom_factor;
-				let delta_size = viewport_bounds - new_viewport_bounds;
-				let mouse_fraction = mouse / viewport_bounds;
-				let delta = delta_size * (DVec2::splat(0.5) - mouse_fraction);
 
-				responses.push_back(TranslateCanvas(delta).into());
-				responses.push_back(SetCanvasZoom(self.scale * zoom_factor).into());
+				responses.extend(self.centre_zoom(ipp.viewport_bounds.size(), zoom_factor, ipp.mouse.position));
 			}
 			WheelCanvasTranslate { use_y_as_x } => {
 				let delta = match use_y_as_x {

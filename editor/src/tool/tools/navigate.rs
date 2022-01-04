@@ -2,11 +2,13 @@ use crate::input::keyboard::MouseMotion;
 use crate::misc::{HintData, HintGroup, HintInfo, KeysGroup};
 use crate::tool::{Fsm, ToolActionHandlerData};
 use crate::{input::keyboard::Key, message_prelude::*};
+use glam::DVec2;
 use serde::{Deserialize, Serialize};
 
 #[derive(Default)]
 pub struct Navigate {
 	fsm_state: NavigateToolFsmState,
+	data: NavigateToolData,
 }
 
 #[impl_message(Message, ToolMessage, Navigate)]
@@ -27,7 +29,7 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Navigate {
 			return;
 		}
 
-		let new_state = self.fsm_state.transition(action, data.0, data.1, &mut (), data.2, responses);
+		let new_state = self.fsm_state.transition(action, data.0, data.1, &mut self.data, data.2, responses);
 
 		if self.fsm_state != new_state {
 			self.fsm_state = new_state;
@@ -58,34 +60,49 @@ impl Default for NavigateToolFsmState {
 	}
 }
 
+#[derive(Clone, Debug, Default)]
+struct NavigateToolData {
+	drag_start: DVec2,
+}
+
 impl Fsm for NavigateToolFsmState {
-	type ToolData = ();
+	type ToolData = NavigateToolData;
 
 	fn transition(
 		self,
 		message: ToolMessage,
 		_document: &crate::document::DocumentMessageHandler,
 		_tool_data: &crate::tool::DocumentToolData,
-		_data: &mut Self::ToolData,
-		_input: &crate::input::InputPreprocessor,
+		data: &mut Self::ToolData,
+		input: &crate::input::InputPreprocessor,
 		messages: &mut VecDeque<Message>,
 	) -> Self {
 		if let ToolMessage::Navigate(navigate) = message {
 			use NavigateMessage::*;
 			match navigate {
 				MouseMove { snap_angle, snap_zoom } => {
-					messages.push_front(MovementMessage::MouseMove { snap_angle, snap_zoom }.into());
+					messages.push_front(
+						MovementMessage::MouseMove {
+							snap_angle,
+							snap_zoom,
+							zoom_from_viewport: Some(data.drag_start),
+						}
+						.into(),
+					);
 					self
 				}
 				TranslateCanvasBegin => {
+					data.drag_start = input.mouse.position;
 					messages.push_front(MovementMessage::TranslateCanvasBegin.into());
 					NavigateToolFsmState::Translating
 				}
 				RotateCanvasBegin => {
+					data.drag_start = input.mouse.position;
 					messages.push_front(MovementMessage::RotateCanvasBegin.into());
 					NavigateToolFsmState::Rotating
 				}
 				ZoomCanvasBegin => {
+					data.drag_start = input.mouse.position;
 					messages.push_front(MovementMessage::ZoomCanvasBegin.into());
 					NavigateToolFsmState::Zooming
 				}
