@@ -236,7 +236,7 @@ impl MessageHandler<MovementMessage, (&Document, &InputPreprocessor)> for Moveme
 				self.rotation = new_radians;
 				self.create_document_transform(&ipp.viewport_bounds, responses);
 				responses.push_back(ToolMessage::DocumentIsDirty.into());
-				responses.push_back(FrontendMessage::SetCanvasRotation { new_radians }.into());
+				responses.push_back(FrontendMessage::SetCanvasRotation { new_radians: self.snapped_angle() }.into());
 			}
 			ZoomCanvasToFitAll => {
 				if let Some([pos1, pos2]) = document.visible_layers_bounding_box() {
