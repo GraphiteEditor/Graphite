@@ -86,7 +86,7 @@ impl Fsm for LineToolFsmState {
 		if let ToolMessage::Line(event) = event {
 			match (self, event) {
 				(Ready, DragStart) => {
-					data.snap_handler.start_snap(document, document.all_layers_sorted(), &[]);
+					data.snap_handler.start_snap(responses, input.viewport_bounds.size(), document, document.all_layers_sorted(), &[]);
 					data.drag_start = data.snap_handler.snap_position(document, input.mouse.position);
 
 					responses.push_back(DocumentMessage::StartTransaction.into());
@@ -120,7 +120,7 @@ impl Fsm for LineToolFsmState {
 				}
 				(Drawing, DragStop) => {
 					data.drag_current = data.snap_handler.snap_position(document, input.mouse.position);
-					data.snap_handler.cleanup();
+					data.snap_handler.cleanup(responses);
 
 					// TODO: introduce comparison threshold when operating with canvas coordinates (https://github.com/GraphiteEditor/Graphite/issues/100)
 					match data.drag_start == input.mouse.position {
@@ -133,7 +133,7 @@ impl Fsm for LineToolFsmState {
 					Ready
 				}
 				(Drawing, Abort) => {
-					data.snap_handler.cleanup();
+					data.snap_handler.cleanup(responses);
 					responses.push_back(DocumentMessage::AbortTransaction.into());
 					data.path = None;
 					Ready

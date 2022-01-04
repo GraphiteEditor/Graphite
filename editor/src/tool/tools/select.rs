@@ -200,7 +200,8 @@ impl Fsm for SelectToolFsmState {
 					} else {
 						Vec::new()
 					};
-					data.snap_handler.start_snap(document, document.non_selected_layers_sorted(), &ignore_layers);
+					data.snap_handler
+						.start_snap(responses, input.viewport_bounds.size(), document, document.non_selected_layers_sorted(), &ignore_layers);
 					state
 				}
 				(Dragging, MouseMove { snap_angle }) => {
@@ -255,7 +256,7 @@ impl Fsm for SelectToolFsmState {
 						true => DocumentMessage::Undo,
 						false => DocumentMessage::CommitTransaction,
 					};
-					data.snap_handler.cleanup();
+					data.snap_handler.cleanup(responses);
 					responses.push_front(response.into());
 					Ready
 				}

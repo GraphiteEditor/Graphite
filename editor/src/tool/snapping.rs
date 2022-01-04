@@ -1,24 +1,71 @@
-use glam::DVec2;
-use graphene::LayerId;
+use std::f64::consts::PI;
 
-use crate::consts::SNAP_TOLERANCE;
+use glam::{DAffine2, DVec2};
+use graphene::{
+	layers::style::{self, Stroke},
+	LayerId, Operation,
+};
+
+use crate::{
+	consts::{COLOR_ACCENT, SNAP_TOLERANCE},
+	message_prelude::*,
+};
 
 use super::DocumentMessageHandler;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct SnapHandler {
 	snap_targets: Option<(Vec<f64>, Vec<f64>)>,
-}
-impl Default for SnapHandler {
-	fn default() -> Self {
-		Self { snap_targets: None }
-	}
+	overlay_paths: Vec<Vec<LayerId>>,
 }
 
 impl SnapHandler {
+	fn add_overlays(&mut self, responses: &mut VecDeque<Message>, viewport_bounds: DVec2) {
+		fn add_overlay_line(responses: &mut VecDeque<Message>, transform: DAffine2) -> Vec<LayerId> {
+			let layer_path = vec![generate_uuid()];
+
+			let operation = Operation::AddOverlayLine {
+				path: layer_path.clone(),
+				transform: transform.to_cols_array(),
+				style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 1.0)), None),
+			};
+			responses.push_back(DocumentMessage::Overlay(operation.into()).into());
+
+			layer_path
+		}
+
+		if let Some((x_targets, y_targets)) = &self.snap_targets {
+			for x_target in x_targets {
+				self.overlay_paths.push(add_overlay_line(
+					responses,
+					DAffine2::from_scale_angle_translation(DVec2::new(viewport_bounds.y, 1.), PI / 2., DVec2::new(x_target.round(), 0.)),
+				));
+			}
+			for y_target in y_targets {
+				self.overlay_paths.push(add_overlay_line(
+					responses,
+					DAffine2::from_scale_angle_translation(DVec2::new(viewport_bounds.x, 1.), 0., DVec2::new(0., y_target.round())),
+				));
+			}
+		}
+	}
+
+	fn remove_overlays(&mut self, responses: &mut VecDeque<Message>) {
+		while let Some(layer) = self.overlay_paths.pop() {
+			responses.push_back(DocumentMessage::Overlay(Operation::DeleteLayer { path: layer }.into()).into());
+		}
+	}
+
 	/// Gets a list of snap targets for the X and Y axes in Viewport coords for the target layers (usually all layers or all non-selected layers.)
 	/// This should be called at the start of a drag.
-	pub fn start_snap(&mut self, document_message_handler: &DocumentMessageHandler, target_layers: Vec<Vec<LayerId>>, ignore_layers: &[Vec<LayerId>]) {
+	pub fn start_snap(
+		&mut self,
+		responses: &mut VecDeque<Message>,
+		viewport_bounds: DVec2,
+		document_message_handler: &DocumentMessageHandler,
+		target_layers: Vec<Vec<LayerId>>,
+		ignore_layers: &[Vec<LayerId>],
+	) {
 		if document_message_handler.snapping_enabled {
 			// Could be made into sorted Vec or a HashSet for more performant lookups.
 			self.snap_targets = Some(
@@ -30,6 +77,7 @@ impl SnapHandler {
 					.map(|vec| vec.into())
 					.unzip(),
 			);
+			self.add_overlays(responses, viewport_bounds);
 		}
 	}
 
@@ -104,7 +152,8 @@ impl SnapHandler {
 		}
 	}
 
-	pub fn cleanup(&mut self) {
+	pub fn cleanup(&mut self, responses: &mut VecDeque<Message>) {
+		self.remove_overlays(responses);
 		self.snap_targets = None;
 	}
 }

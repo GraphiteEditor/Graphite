@@ -83,7 +83,7 @@ impl Fsm for ShapeToolFsmState {
 		if let ToolMessage::Shape(event) = event {
 			match (self, event) {
 				(Ready, DragStart) => {
-					shape_data.start(document, input.mouse.position);
+					shape_data.start(responses, input.viewport_bounds.size(), document, input.mouse.position);
 					responses.push_back(DocumentMessage::StartTransaction.into());
 					shape_data.path = Some(vec![generate_uuid()]);
 					responses.push_back(DocumentMessage::DeselectAllLayers.into());
@@ -121,12 +121,12 @@ impl Fsm for ShapeToolFsmState {
 						false => responses.push_back(DocumentMessage::CommitTransaction.into()),
 					}
 
-					shape_data.cleanup();
+					shape_data.cleanup(responses);
 					Ready
 				}
 				(Drawing, Abort) => {
 					responses.push_back(DocumentMessage::AbortTransaction.into());
-					shape_data.cleanup();
+					shape_data.cleanup(responses);
 
 					Ready
 				}

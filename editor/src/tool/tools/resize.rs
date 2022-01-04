@@ -14,9 +14,9 @@ pub struct Resize {
 }
 impl Resize {
 	/// Starts a resize, assigning the snap targets and snapping the starting position.
-	pub fn start(&mut self, document: &DocumentMessageHandler, mouse_position: DVec2) {
+	pub fn start(&mut self, responses: &mut VecDeque<Message>, viewport_bounds: DVec2, document: &DocumentMessageHandler, mouse_position: DVec2) {
 		let layers = document.all_layers_sorted();
-		self.snap_handler.start_snap(document, layers, &[]);
+		self.snap_handler.start_snap(responses, viewport_bounds, document, layers, &[]);
 		self.drag_start = self.snap_handler.snap_position(document, mouse_position);
 	}
 
@@ -47,8 +47,8 @@ impl Resize {
 		}
 	}
 
-	pub fn cleanup(&mut self) {
-		self.snap_handler.cleanup();
+	pub fn cleanup(&mut self, responses: &mut VecDeque<Message>) {
+		self.snap_handler.cleanup(responses);
 		self.path = None;
 	}
 }
