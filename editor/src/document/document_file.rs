@@ -274,8 +274,8 @@ impl DocumentMessageHandler {
 	}
 
 	pub fn selected_layers_without_children(&self) -> Vec<Vec<LayerId>> {
-		// Traversing the layer tree recursively was chosen for both readability and instead of an n^2 comparison approach.
-		// A future optmiziation would be not needing to start at the root []
+		// TODO optimize this after MVP. Look at commit 1aaf5c0d7dbe67cd9f4ba8b536a4771a2cef6439, optimization was started
+		// Traversing the layer tree recursively was chosen for readability, but should be replaced with an optimized approach later
 		fn recurse_layer_tree(ctx: &DocumentMessageHandler, mut path: Vec<u64>, without_children: &mut Vec<Vec<LayerId>>, selected: bool) {
 			if let Ok(folder) = ctx.graphene_document.folder(&path) {
 				for child in folder.list_layers() {
