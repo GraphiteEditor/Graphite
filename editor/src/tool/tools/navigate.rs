@@ -152,9 +152,9 @@ impl Fsm for NavigateToolFsmState {
 						plus: false,
 					},
 					HintInfo {
-						key_groups: vec![KeysGroup(vec![Key::KeyShift])],
+						key_groups: vec![KeysGroup(vec![Key::KeyControl])],
 						mouse: None,
-						label: String::from("Snap zoom to nearest increment"),
+						label: String::from("Snap to increment"),
 						plus: true,
 					},
 				]),
@@ -166,9 +166,9 @@ impl Fsm for NavigateToolFsmState {
 				plus: false,
 			}])]),
 			NavigateToolFsmState::Zooming => HintData(vec![HintGroup(vec![HintInfo {
-				key_groups: vec![KeysGroup(vec![Key::KeyShift])],
+				key_groups: vec![KeysGroup(vec![Key::KeyControl])],
 				mouse: None,
-				label: String::from("Snap zoom to nearest increment"),
+				label: String::from("Snap to increment"),
 				plus: false,
 			}])]),
 			_ => HintData(Vec::new()),
