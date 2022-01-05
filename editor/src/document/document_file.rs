@@ -275,7 +275,6 @@ impl DocumentMessageHandler {
 
 	pub fn selected_layers_without_children(&self) -> Vec<Vec<LayerId>> {
 		let mut sorted_layers = self.selected_layers().collect::<Vec<_>>();
-		// Sorting here creates groups of similar UUID paths
 		sorted_layers.sort();
 
 		if sorted_layers.is_empty() {
