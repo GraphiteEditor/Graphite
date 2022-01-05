@@ -273,25 +273,29 @@ impl DocumentMessageHandler {
 		self.layer_metadata.iter().filter_map(|(path, data)| data.selected.then(|| path.as_slice()))
 	}
 
-	pub fn selected_layers_without_children(&self) -> Vec<Vec<LayerId>> {
+	pub fn selected_layers_without_children(&self) -> impl Iterator<Item = &[LayerId]> {
 		let mut sorted_layers = self.selected_layers().collect::<Vec<_>>();
 		// Sorting here creates groups of similar UUID paths
 		sorted_layers.sort();
 
-		if sorted_layers.is_empty() {
-			return vec![];
+		let mut current_path: &[u64] = &[];
+		let mut layers_to_keep = vec![];
+
+		// Required since we are returning an iterator, cannot return early
+		if let Some(first) = sorted_layers.first() {
+			current_path = first;
+			layers_to_keep.push(*first);
 		}
 
-		let mut current_path = sorted_layers.first().unwrap();
-		let mut keep = vec![current_path.to_vec()];
 		for path in &sorted_layers {
 			if !path.starts_with(current_path) {
-				keep.push(path.to_vec());
+				layers_to_keep.push(path);
 				current_path = path;
 			}
 		}
 
-		keep
+		// We need to maintain layer ordering
+		self.selected_layers().filter(move |p| layers_to_keep.binary_search(p).is_ok())
 	}
 
 	pub fn selected_layers_contains(&self, path: &[LayerId]) -> bool {
@@ -646,7 +650,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				self.backup(responses);
 
 				for path in self.selected_layers_without_children() {
-					responses.push_front(DocumentOperation::DeleteLayer { path }.into());
+					responses.push_front(DocumentOperation::DeleteLayer { path: path.to_vec() }.into());
 				}
 
 				responses.push_front(ToolMessage::DocumentIsDirty.into());
