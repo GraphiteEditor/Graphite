@@ -438,13 +438,13 @@ impl JsEditorHandle {
 
 	/// Zoom in to the next step
 	pub fn increase_canvas_zoom(&self) {
-		let message = MovementMessage::IncreaseCanvasZoom;
+		let message = MovementMessage::IncreaseCanvasZoom { centre_mouse: false };
 		self.dispatch(message);
 	}
 
 	/// Zoom out to the next step
 	pub fn decrease_canvas_zoom(&self) {
-		let message = MovementMessage::DecreaseCanvasZoom;
+		let message = MovementMessage::DecreaseCanvasZoom { centre_mouse: false };
 		self.dispatch(message);
 	}
 

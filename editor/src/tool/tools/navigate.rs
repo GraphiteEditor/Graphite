@@ -14,6 +14,7 @@ pub struct Navigate {
 #[impl_message(Message, ToolMessage, Navigate)]
 #[derive(PartialEq, Clone, Debug, Hash, Serialize, Deserialize)]
 pub enum NavigateMessage {
+	ClickZoom { zoom_in: bool },
 	MouseMove { snap_angle: Key, snap_zoom: Key },
 	TranslateCanvasBegin,
 	RotateCanvasBegin,
@@ -41,7 +42,7 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Navigate {
 		use NavigateToolFsmState::*;
 		match self.fsm_state {
 			Ready => actions!(NavigateMessageDiscriminant; TranslateCanvasBegin, RotateCanvasBegin, ZoomCanvasBegin),
-			_ => actions!(NavigateMessageDiscriminant; MouseMove, TransformCanvasEnd),
+			_ => actions!(NavigateMessageDiscriminant; ClickZoom, MouseMove, TransformCanvasEnd),
 		}
 	}
 }
@@ -80,6 +81,22 @@ impl Fsm for NavigateToolFsmState {
 		if let ToolMessage::Navigate(navigate) = message {
 			use NavigateMessage::*;
 			match navigate {
+				ClickZoom { zoom_in } => {
+					messages.push_front(MovementMessage::TransformCanvasEnd.into());
+
+					if data.drag_start == (input.mouse.position) {
+						messages.push_front(
+							if zoom_in {
+								MovementMessage::IncreaseCanvasZoom { centre_mouse: true }
+							} else {
+								MovementMessage::DecreaseCanvasZoom { centre_mouse: true }
+							}
+							.into(),
+						);
+					}
+
+					NavigateToolFsmState::Ready
+				}
 				MouseMove { snap_angle, snap_zoom } => {
 					messages.push_front(
 						MovementMessage::MouseMove {

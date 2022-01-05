@@ -32,8 +32,12 @@ pub enum MovementMessage {
 	TransformCanvasEnd,
 	SetCanvasRotation(f64),
 	SetCanvasZoom(f64),
-	IncreaseCanvasZoom,
-	DecreaseCanvasZoom,
+	IncreaseCanvasZoom {
+		centre_mouse: bool,
+	},
+	DecreaseCanvasZoom {
+		centre_mouse: bool,
+	},
 	WheelCanvasZoom,
 	ZoomCanvasToFitAll,
 	TranslateCanvas(DVec2),
@@ -214,11 +218,21 @@ impl MessageHandler<MovementMessage, (&Document, &InputPreprocessor)> for Moveme
 				responses.push_back(DocumentMessage::DirtyRenderDocumentInOutlineView.into());
 				self.create_document_transform(&ipp.viewport_bounds, responses);
 			}
-			IncreaseCanvasZoom => {
-				responses.push_back(SetCanvasZoom(*VIEWPORT_ZOOM_LEVELS.iter().find(|scale| **scale > self.scale).unwrap_or(&self.scale)).into());
+			IncreaseCanvasZoom { centre_mouse } => {
+				let new_scale = *VIEWPORT_ZOOM_LEVELS.iter().find(|scale| **scale > self.scale).unwrap_or(&self.scale);
+				if centre_mouse {
+					responses.extend(self.centre_zoom(ipp.viewport_bounds.size(), new_scale / self.scale, ipp.mouse.position));
+				} else {
+					responses.push_back(SetCanvasZoom(new_scale).into());
+				}
 			}
-			DecreaseCanvasZoom => {
-				responses.push_back(SetCanvasZoom(*VIEWPORT_ZOOM_LEVELS.iter().rev().find(|scale| **scale < self.scale).unwrap_or(&self.scale)).into());
+			DecreaseCanvasZoom { centre_mouse } => {
+				let new_scale = *VIEWPORT_ZOOM_LEVELS.iter().rev().find(|scale| **scale < self.scale).unwrap_or(&self.scale);
+				if centre_mouse {
+					responses.extend(self.centre_zoom(ipp.viewport_bounds.size(), new_scale / self.scale, ipp.mouse.position));
+				} else {
+					responses.push_back(SetCanvasZoom(new_scale).into());
+				}
 			}
 			WheelCanvasZoom => {
 				let scroll = ipp.mouse.scroll_delta.scroll_delta();
