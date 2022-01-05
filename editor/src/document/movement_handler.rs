@@ -118,13 +118,13 @@ impl MovementMessageHandler {
 			.into(),
 		);
 	}
-	pub fn centre_zoom(&self, viewport_bounds: DVec2, zoom_factor: f64, mouse: DVec2) -> [Message; 2] {
+	pub fn centre_zoom(&self, viewport_bounds: DVec2, zoom_factor: f64, mouse: DVec2) -> Message {
 		let new_viewport_bounds = viewport_bounds / zoom_factor;
 		let delta_size = viewport_bounds - new_viewport_bounds;
 		let mouse_fraction = mouse / viewport_bounds;
 		let delta = delta_size * (DVec2::splat(0.5) - mouse_fraction);
 
-		[MovementMessage::TranslateCanvas(delta).into(), MovementMessage::SetCanvasZoom(self.scale * zoom_factor).into()]
+		MovementMessage::TranslateCanvas(delta).into()
 	}
 }
 
@@ -201,12 +201,13 @@ impl MessageHandler<MovementMessage, (&Document, &InputPreprocessor)> for Moveme
 					let difference = self.mouse_pos.y as f64 - ipp.mouse.position.y as f64;
 					let amount = 1. + difference * VIEWPORT_ZOOM_MOUSE_RATE;
 
+					self.scale *= amount;
 					if let Some(mouse) = zoom_from_viewport {
-						self.scale *= amount;
 						let zoom_factor = self.snapped_scale() / zoom_start;
-						responses.extend(self.centre_zoom(ipp.viewport_bounds.size(), zoom_factor, mouse));
+						responses.push_back(SetCanvasZoom(self.scale).into());
+						responses.push_back(self.centre_zoom(ipp.viewport_bounds.size(), zoom_factor, mouse));
 					} else {
-						responses.push_back(SetCanvasZoom(self.scale * amount).into());
+						responses.push_back(SetCanvasZoom(self.scale).into());
 					}
 				}
 				self.mouse_pos = ipp.mouse.position;
@@ -221,18 +222,16 @@ impl MessageHandler<MovementMessage, (&Document, &InputPreprocessor)> for Moveme
 			IncreaseCanvasZoom { centre_mouse } => {
 				let new_scale = *VIEWPORT_ZOOM_LEVELS.iter().find(|scale| **scale > self.scale).unwrap_or(&self.scale);
 				if centre_mouse {
-					responses.extend(self.centre_zoom(ipp.viewport_bounds.size(), new_scale / self.scale, ipp.mouse.position));
-				} else {
-					responses.push_back(SetCanvasZoom(new_scale).into());
+					responses.push_back(self.centre_zoom(ipp.viewport_bounds.size(), new_scale / self.scale, ipp.mouse.position));
 				}
+				responses.push_back(SetCanvasZoom(new_scale).into());
 			}
 			DecreaseCanvasZoom { centre_mouse } => {
 				let new_scale = *VIEWPORT_ZOOM_LEVELS.iter().rev().find(|scale| **scale < self.scale).unwrap_or(&self.scale);
 				if centre_mouse {
-					responses.extend(self.centre_zoom(ipp.viewport_bounds.size(), new_scale / self.scale, ipp.mouse.position));
-				} else {
-					responses.push_back(SetCanvasZoom(new_scale).into());
+					responses.push_back(self.centre_zoom(ipp.viewport_bounds.size(), new_scale / self.scale, ipp.mouse.position));
 				}
+				responses.push_back(SetCanvasZoom(new_scale).into());
 			}
 			WheelCanvasZoom => {
 				let scroll = ipp.mouse.scroll_delta.scroll_delta();
@@ -241,7 +240,8 @@ impl MessageHandler<MovementMessage, (&Document, &InputPreprocessor)> for Moveme
 					zoom_factor = 1. / zoom_factor
 				};
 
-				responses.extend(self.centre_zoom(ipp.viewport_bounds.size(), zoom_factor, ipp.mouse.position));
+				responses.push_back(self.centre_zoom(ipp.viewport_bounds.size(), zoom_factor, ipp.mouse.position));
+				responses.push_back(SetCanvasZoom(self.scale * zoom_factor).into());
 			}
 			WheelCanvasTranslate { use_y_as_x } => {
 				let delta = match use_y_as_x {
