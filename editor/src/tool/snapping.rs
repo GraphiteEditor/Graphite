@@ -58,20 +58,12 @@ impl SnapHandler {
 
 	/// Gets a list of snap targets for the X and Y axes in Viewport coords for the target layers (usually all layers or all non-selected layers.)
 	/// This should be called at the start of a drag.
-	pub fn start_snap(
-		&mut self,
-		responses: &mut VecDeque<Message>,
-		viewport_bounds: DVec2,
-		document_message_handler: &DocumentMessageHandler,
-		target_layers: Vec<Vec<LayerId>>,
-		ignore_layers: &[Vec<LayerId>],
-	) {
+	pub fn start_snap(&mut self, responses: &mut VecDeque<Message>, viewport_bounds: DVec2, document_message_handler: &DocumentMessageHandler, target_layers: Vec<Vec<LayerId>>) {
 		if document_message_handler.snapping_enabled {
 			// Could be made into sorted Vec or a HashSet for more performant lookups.
 			self.snap_targets = Some(
 				target_layers
 					.iter()
-					.filter(|path| !ignore_layers.contains(path))
 					.filter_map(|path| document_message_handler.graphene_document.viewport_bounding_box(path).ok()?)
 					.flat_map(|[bound1, bound2]| [bound1, bound2, ((bound1 + bound2) / 2.)])
 					.map(|vec| vec.into())

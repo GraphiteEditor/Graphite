@@ -94,7 +94,7 @@ impl Fsm for PenToolFsmState {
 					data.path = Some(vec![generate_uuid()]);
 					data.layer_exists = false;
 
-					data.snap_handler.start_snap(responses, input.viewport_bounds.size(), document, document.all_layers_sorted(), &[]);
+					data.snap_handler.start_snap(responses, input.viewport_bounds.size(), document, document.all_layers_sorted());
 					let snapped_position = data.snap_handler.snap_position(document, input.mouse.position);
 
 					let pos = transform.inverse() * DAffine2::from_translation(snapped_position);

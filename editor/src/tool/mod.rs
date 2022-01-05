@@ -1,4 +1,4 @@
-mod snapping;
+pub mod snapping;
 pub mod tool_message_handler;
 pub mod tool_options;
 pub mod tools;

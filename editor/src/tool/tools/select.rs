@@ -174,6 +174,8 @@ impl Fsm for SelectToolFsmState {
 					let state = if selected.iter().any(|path| intersection.contains(path)) {
 						buffer.push(DocumentMessage::StartTransaction.into());
 						data.layers_dragging = selected;
+						data.snap_handler.start_snap(responses, input.viewport_bounds.size(), document, document.non_selected_layers_sorted());
+
 						Dragging
 					} else {
 						if !input.keyboard.get(add_to_selection as usize) {
@@ -186,6 +188,7 @@ impl Fsm for SelectToolFsmState {
 							buffer.push(DocumentMessage::AddSelectedLayers(selected.clone()).into());
 							buffer.push(DocumentMessage::StartTransaction.into());
 							data.layers_dragging.append(&mut selected);
+							data.snap_handler.start_snap(responses, input.viewport_bounds.size(), document, document.non_selected_layers_sorted());
 							Dragging
 						} else {
 							data.drag_box_overlay_layer = Some(add_bounding_box(&mut buffer));
@@ -193,15 +196,6 @@ impl Fsm for SelectToolFsmState {
 						}
 					};
 					buffer.into_iter().rev().for_each(|message| responses.push_front(message));
-
-					// TODO: Probably delete this now that the overlay system has moved to a separate Graphene document? (@0hypercube)
-					let ignore_layers = if let Some(bounding_box) = &data.bounding_box_overlay_layer {
-						vec![bounding_box.clone()]
-					} else {
-						Vec::new()
-					};
-					data.snap_handler
-						.start_snap(responses, input.viewport_bounds.size(), document, document.non_selected_layers_sorted(), &ignore_layers);
 					state
 				}
 				(Dragging, MouseMove { snap_angle }) => {
@@ -278,6 +272,7 @@ impl Fsm for SelectToolFsmState {
 					let mut delete = |path: &mut Option<Vec<LayerId>>| path.take().map(|path| responses.push_front(DocumentMessage::Overlay(Operation::DeleteLayer { path }.into()).into()));
 					delete(&mut data.drag_box_overlay_layer);
 					delete(&mut data.bounding_box_overlay_layer);
+					data.snap_handler.cleanup(responses);
 					Ready
 				}
 				(_, Align(axis, aggregate)) => {
