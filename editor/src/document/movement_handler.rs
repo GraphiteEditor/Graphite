@@ -185,6 +185,8 @@ impl MessageHandler<MovementMessage, (&Document, &InputPreprocessor)> for Moveme
 					responses.push_back(SetCanvasRotation(self.rotation + rotation).into());
 				}
 				if self.zooming {
+					let zoom_start = self.snapped_scale();
+
 					let new_snap = ipp.keyboard.get(snap_zoom as usize);
 					// When disabling snap, keep the viewed zoom as it was previously.
 					if !new_snap && self.snap_scale {
@@ -196,7 +198,9 @@ impl MessageHandler<MovementMessage, (&Document, &InputPreprocessor)> for Moveme
 					let amount = 1. + difference * VIEWPORT_ZOOM_MOUSE_RATE;
 
 					if let Some(mouse) = zoom_from_viewport {
-						responses.extend(self.centre_zoom(ipp.viewport_bounds.size(), amount, mouse));
+						self.scale *= amount;
+						let zoom_factor = self.snapped_scale() / zoom_start;
+						responses.extend(self.centre_zoom(ipp.viewport_bounds.size(), zoom_factor, mouse));
 					} else {
 						responses.push_back(SetCanvasZoom(self.scale * amount).into());
 					}
