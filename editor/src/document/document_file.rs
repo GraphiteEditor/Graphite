@@ -273,6 +273,37 @@ impl DocumentMessageHandler {
 		self.layer_metadata.iter().filter_map(|(path, data)| data.selected.then(|| path.as_slice()))
 	}
 
+	pub fn selected_layers_without_children(&self) -> Vec<Vec<LayerId>> {
+		// TODO optimize this after MVP. Look at commit 1aaf5c0d7dbe67cd9f4ba8b536a4771a2cef6439, optimization was started
+		// Traversing the layer tree recursively was chosen for readability, but should be replaced with an optimized approach later
+		fn recurse_layer_tree(ctx: &DocumentMessageHandler, mut path: Vec<u64>, without_children: &mut Vec<Vec<LayerId>>, selected: bool) {
+			if let Ok(folder) = ctx.graphene_document.folder(&path) {
+				for child in folder.list_layers() {
+					path.push(*child);
+					let selected_or_parent_selected = selected || ctx.selected_layers_contains(&path);
+					let selected_without_any_parent_selected = !selected && ctx.selected_layers_contains(&path);
+					if ctx.graphene_document.is_folder(&path) {
+						if selected_without_any_parent_selected {
+							without_children.push(path.clone());
+						}
+						recurse_layer_tree(ctx, path.clone(), without_children, selected_or_parent_selected);
+					} else if selected_without_any_parent_selected {
+						without_children.push(path.clone());
+					}
+					path.pop();
+				}
+			}
+		}
+
+		let mut without_children: Vec<Vec<LayerId>> = vec![];
+		recurse_layer_tree(self, vec![], &mut without_children, false);
+		without_children
+	}
+
+	pub fn selected_layers_contains(&self, path: &[LayerId]) -> bool {
+		self.layer_metadata.get(path).map(|layer| layer.selected).unwrap_or(false)
+	}
+
 	pub fn selected_visible_layers(&self) -> impl Iterator<Item = &[LayerId]> {
 		self.selected_layers().filter(|path| match self.graphene_document.layer(path) {
 			Ok(layer) => layer.visible,
@@ -562,12 +593,13 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				responses.push_back(DocumentMessage::SetLayerExpansion(path, true).into());
 			}
 			GroupSelectedLayers => {
-				let selected_layers = self.selected_layers();
+				let mut new_folder_path: Vec<u64> = self.graphene_document.shallowest_common_folder(self.selected_layers()).unwrap_or(&[]).to_vec();
 
-				let common_prefix = self.graphene_document.common_layer_path_prefix(selected_layers);
-				let (_id, common_prefix) = common_prefix.split_last().unwrap_or((&0, &[]));
+				// Required for grouping parent folders with their own children
+				if !new_folder_path.is_empty() && self.selected_layers_contains(&new_folder_path) {
+					new_folder_path.remove(new_folder_path.len() - 1);
+				}
 
-				let mut new_folder_path = common_prefix.to_vec();
 				new_folder_path.push(generate_uuid());
 
 				responses.push_back(DocumentsMessage::Copy(Clipboard::System).into());
@@ -618,10 +650,12 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			}
 			DeleteSelectedLayers => {
 				self.backup(responses);
-				responses.push_front(ToolMessage::DocumentIsDirty.into());
-				for path in self.selected_layers().map(|path| path.to_vec()) {
+
+				for path in self.selected_layers_without_children() {
 					responses.push_front(DocumentOperation::DeleteLayer { path }.into());
 				}
+
+				responses.push_front(ToolMessage::DocumentIsDirty.into());
 			}
 			SetViewMode(mode) => {
 				self.view_mode = mode;
@@ -652,6 +686,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 						let layer = self.layer_metadata_mut(&selected);
 						layer.selected = !layer.selected;
 						responses.push_back(LayerChanged(selected.clone()).into());
+						responses.push_back(ToolMessage::DocumentIsDirty.into());
 					} else {
 						paths.push(selected.clone());
 					}
