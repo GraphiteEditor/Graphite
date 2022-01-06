@@ -124,6 +124,7 @@
 					</LayoutCol>
 					<LayoutCol :class="'canvas-area'">
 						<div class="canvas" ref="canvas">
+							<svg class="artboards" v-html="artboardSvg" :style="{ width: canvasSvgWidth, height: canvasSvgHeight }"></svg>
 							<svg class="artwork" v-html="artworkSvg" :style="{ width: canvasSvgWidth, height: canvasSvgHeight }"></svg>
 							<svg class="overlays" v-html="overlaysSvg" :style="{ width: canvasSvgWidth, height: canvasSvgHeight }"></svg>
 						</div>
@@ -234,8 +235,12 @@
 					width: 100%;
 					height: 100%;
 
-					&.artwork {
-						background: #ffffff;
+					// &.artwork {
+					// 	background: #ffffff;
+					// }
+
+					&.artboards {
+						user-select: none;
 					}
 
 					&.overlays {
@@ -251,7 +256,7 @@
 <script lang="ts">
 import { defineComponent } from "vue";
 
-import { UpdateArtwork, UpdateOverlays, UpdateScrollbars, UpdateRulers, SetActiveTool, SetCanvasZoom, SetCanvasRotation, ToolName } from "@/dispatcher/js-messages";
+import { UpdateArtwork, UpdateOverlays, UpdateScrollbars, UpdateRulers, SetActiveTool, SetCanvasZoom, SetCanvasRotation, ToolName, UpdateArtboards } from "@/dispatcher/js-messages";
 
 import LayoutCol from "@/components/layout/LayoutCol.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
@@ -338,6 +343,10 @@ export default defineComponent({
 			this.overlaysSvg = updateOverlays.svg;
 		});
 
+		this.editor.dispatcher.subscribeJsMessage(UpdateArtboards, (updateArtboards) => {
+			this.artboardSvg = updateArtboards.svg;
+		});
+
 		this.editor.dispatcher.subscribeJsMessage(UpdateScrollbars, (updateScrollbars) => {
 			this.scrollbarPos = updateScrollbars.position;
 			this.scrollbarSize = updateScrollbars.size;
@@ -382,6 +391,7 @@ export default defineComponent({
 		];
 
 		return {
+			artboardSvg: "",
 			artworkSvg: "",
 			overlaysSvg: "",
 			canvasSvgWidth: "100%",

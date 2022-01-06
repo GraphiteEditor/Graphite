@@ -88,6 +88,17 @@ impl MovementMessageHandler {
 			}
 			.into(),
 		);
+
+		responses.push_back(
+			ArtboardMessage::DispatchOperation(
+				DocumentOperation::SetLayerTransform {
+					path: vec![],
+					transform: self.calculate_offset_transform(scaled_half_viewport).to_cols_array(),
+				}
+				.into(),
+			)
+			.into(),
+		);
 	}
 }
 
