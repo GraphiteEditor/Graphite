@@ -219,9 +219,14 @@ impl DocumentMessageHandler {
 	fn select_layer(&mut self, path: &[LayerId]) -> Option<Message> {
 		println!("Select_layer fail: {:?}", self.all_layers_sorted());
 
-		self.layer_metadata_mut(path).selected = true;
-		let data = self.layer_panel_entry(path.to_vec()).ok()?;
-		(!path.is_empty()).then(|| FrontendMessage::UpdateLayer { data }.into())
+		if let Some(layer) = self.layer_metadata.get_mut(path) {
+			layer.selected = true;
+			let data = self.layer_panel_entry(path.to_vec()).ok()?;
+			(!path.is_empty()).then(|| FrontendMessage::UpdateLayer { data }.into())
+		} else {
+			log::warn!("Tried to select non existing layer {:?}", path);
+			None
+		}
 	}
 
 	pub fn selected_visible_layers_bounding_box(&self) -> Option<[DVec2; 2]> {
@@ -493,7 +498,10 @@ impl DocumentMessageHandler {
 	}
 
 	pub fn layer_panel_entry(&mut self, path: Vec<LayerId>) -> Result<LayerPanelEntry, EditorError> {
-		let data: LayerMetadata = self.layer_metadata.get_mut(&path).ok_or_else(|| EditorError::Document(format!("Could not get layer metadata for {:?}", path)))?.clone();
+		let data: LayerMetadata = *self
+			.layer_metadata
+			.get_mut(&path)
+			.ok_or_else(|| EditorError::Document(format!("Could not get layer metadata for {:?}", path)))?;
 		let layer = self.graphene_document.layer(&path)?;
 		let entry = layer_panel_entry(&data, self.graphene_document.multiply_transforms(&path)?, layer, path);
 		Ok(entry)
@@ -528,7 +536,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			TransformLayers(message) => self
 				.transform_layer_handler
 				.process_action(message, (&mut self.layer_metadata, &mut self.graphene_document, ipp), responses),
-			DeleteLayer(path) => responses.push_back(DocumentOperation::DeleteLayer { path }.into()),
+			DeleteLayer(path) => responses.push_front(DocumentOperation::DeleteLayer { path }.into()),
 			StartTransaction => self.backup(responses),
 			RollbackTransaction => {
 				self.rollback(responses).unwrap_or_else(|e| log::warn!("{}", e));
@@ -618,31 +626,25 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				);
 				responses.push_back(DocumentMessage::SetSelectedLayers(vec![new_folder_path]).into());
 			}
-			UngroupLayers(mut folder_path) => {
+			UngroupLayers(folder_path) => {
 				// Select all the children of the folder
 				let to_select = self.graphene_document.folder_direct_children(&folder_path);
-				let mut message_buffer = vec![];
-				// Copy them
-				log::debug!("to_select {:?}", &to_select);
-				message_buffer.push(DocumentMessage::SetSelectedLayers(to_select).into());
-				message_buffer.push(DocumentsMessage::Copy(Clipboard::System).into());
-				
-				let id = folder_path.pop().unwrap();
-				// // Paste them into the folder above
-				message_buffer.push(
+				let message_buffer = [
+					// Copy them
+					DocumentMessage::SetSelectedLayers(to_select).into(),
+					DocumentsMessage::Copy(Clipboard::System).into(),
+					// // Paste them into the folder above
 					DocumentsMessage::PasteIntoFolder {
 						clipboard: Clipboard::System,
-						path: folder_path.clone(),
+						path: folder_path[..folder_path.len() - 1].to_vec(),
 						insert_index: -1,
 					}
 					.into(),
-				);
-				folder_path.push(id);
-				
-				// Delete parent folder
-				message_buffer.push(DocumentMessage::DeleteLayer(folder_path).into());
-				message_buffer.reverse();
-				for message in message_buffer {
+					// Delete parent folder
+					DocumentMessage::DeleteLayer(folder_path).into(),
+				];
+
+				for message in message_buffer.into_iter().rev() {
 					responses.push_front(message);
 				}
 				// panic!("Panic at the disco! {:?}", responses);
