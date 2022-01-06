@@ -140,6 +140,7 @@ pub enum DocumentMessage {
 	RollbackTransaction,
 	GroupSelectedLayers,
 	UngroupSelectedLayers,
+	UngroupLayers(Vec<LayerId>),
 	AbortTransaction,
 	CommitTransaction,
 	ExportDocument,
@@ -492,7 +493,7 @@ impl DocumentMessageHandler {
 	}
 
 	pub fn layer_panel_entry(&mut self, path: Vec<LayerId>) -> Result<LayerPanelEntry, EditorError> {
-		let data: LayerMetadata = *self.layer_metadata_mut(&path);
+		let data: LayerMetadata = self.layer_metadata.get_mut(&path).ok_or_else(|| EditorError::Document(format!("Could not get layer metadata for {:?}", path)))?.clone();
 		let layer = self.graphene_document.layer(&path)?;
 		let entry = layer_panel_entry(&data, self.graphene_document.multiply_transforms(&path)?, layer, path);
 		Ok(entry)
@@ -617,30 +618,41 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				);
 				responses.push_back(DocumentMessage::SetSelectedLayers(vec![new_folder_path]).into());
 			}
+			UngroupLayers(mut folder_path) => {
+				// Select all the children of the folder
+				let to_select = self.graphene_document.folder_direct_children(&folder_path);
+				let mut message_buffer = vec![];
+				// Copy them
+				log::debug!("to_select {:?}", &to_select);
+				message_buffer.push(DocumentMessage::SetSelectedLayers(to_select).into());
+				message_buffer.push(DocumentsMessage::Copy(Clipboard::System).into());
+				
+				let id = folder_path.pop().unwrap();
+				// // Paste them into the folder above
+				message_buffer.push(
+					DocumentsMessage::PasteIntoFolder {
+						clipboard: Clipboard::System,
+						path: folder_path.clone(),
+						insert_index: -1,
+					}
+					.into(),
+				);
+				folder_path.push(id);
+				
+				// Delete parent folder
+				message_buffer.push(DocumentMessage::DeleteLayer(folder_path).into());
+				message_buffer.reverse();
+				for message in message_buffer {
+					responses.push_front(message);
+				}
+				// panic!("Panic at the disco! {:?}", responses);
+			}
 			UngroupSelectedLayers => {
 				let folder_paths = self.graphene_document.sorted_folders_by_depth(self.selected_layers());
-				let top_folders = self.graphene_document.shallowest_folders(self.selected_layers());
+				// let top_folders = self.graphene_document.shallowest_folders(self.selected_layers());
 				for folder_path in folder_paths {
-					// Select all the children of the folder
-					let to_select = self.graphene_document.folder_direct_children(&folder_path);
-
-					// Copy them
-					log::debug!("to_select {:?}", &to_select);
-					responses.push_back(DocumentMessage::SetSelectedLayers(to_select).into());
-					responses.push_back(DocumentsMessage::Copy(Clipboard::System).into());
-
-					// Paste them into the folder above
-					responses.push_back(
-						DocumentsMessage::PasteIntoFolder {
-							clipboard: Clipboard::System,
-							path: folder_path[..folder_path.len() - 1].to_vec(),
-							insert_index: -1,
-						}
-						.into(),
-					);
+					responses.push_back(DocumentMessage::UngroupLayers(folder_path).into());
 				}
-				responses.push_back(DocumentMessage::SetSelectedLayers(top_folders).into());
-				responses.push_back(DocumentMessage::DeleteSelectedLayers.into());
 			}
 			SetBlendModeForSelectedLayers(blend_mode) => {
 				self.backup(responses);

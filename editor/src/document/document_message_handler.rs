@@ -394,18 +394,18 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 
 					let destination_path = [path.to_vec(), vec![generate_uuid()]].concat();
 
-					responses.push_back(
-						DocumentOperation::InsertLayer {
-							layer: entry.layer.clone(),
-							destination_path: destination_path.clone(),
-							insert_index,
+					responses.push_front(
+						DocumentMessage::UpdateLayerMetadata {
+							layer_path: destination_path.clone(),
+							layer_metadata: entry.layer_metadata,
 						}
 						.into(),
 					);
-					responses.push_back(
-						DocumentMessage::UpdateLayerMetadata {
-							layer_path: destination_path,
-							layer_metadata: entry.layer_metadata,
+					responses.push_front(
+						DocumentOperation::InsertLayer {
+							layer: entry.layer.clone(),
+							destination_path: destination_path,
+							insert_index,
 						}
 						.into(),
 					);
