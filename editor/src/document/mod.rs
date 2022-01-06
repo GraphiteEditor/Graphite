@@ -1,9 +1,9 @@
+mod artboard_message_handler;
 mod document_file;
 mod document_message_handler;
 pub mod layer_panel;
 mod movement_handler;
 mod overlay_message_handler;
-mod artboard_message_handler;
 mod transform_layer_handler;
 mod vectorize_layer_metadata;
 

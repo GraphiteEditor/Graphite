@@ -58,11 +58,11 @@ pub mod message_prelude {
 	pub use crate::communication::message::{AsMessage, Message, MessageDiscriminant};
 	pub use crate::communication::{ActionList, MessageHandler};
 	pub use crate::document::Clipboard;
+	pub use crate::document::{ArtboardMessage, ArtboardMessageDiscriminant};
 	pub use crate::document::{DocumentMessage, DocumentMessageDiscriminant};
 	pub use crate::document::{DocumentsMessage, DocumentsMessageDiscriminant};
 	pub use crate::document::{MovementMessage, MovementMessageDiscriminant};
 	pub use crate::document::{OverlayMessage, OverlayMessageDiscriminant};
-	pub use crate::document::{ArtboardMessage, ArtboardMessageDiscriminant};
 	pub use crate::document::{TransformLayerMessage, TransformLayerMessageDiscriminant};
 	pub use crate::frontend::{FrontendMessage, FrontendMessageDiscriminant};
 	pub use crate::global::{GlobalMessage, GlobalMessageDiscriminant};

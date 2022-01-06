@@ -18,14 +18,14 @@ pub struct Document {
 	/// The state_identifier serves to provide a way to uniquely identify a particular state that the document is in.
 	/// This identifier is not a hash and is not guaranteed to be equal for equivalent documents.
 	#[serde(skip)]
-	pub state_identifier: DefaultHasher
+	pub state_identifier: DefaultHasher,
 }
 
 impl Default for Document {
 	fn default() -> Self {
 		Self {
 			root: Layer::new(LayerDataType::Folder(Folder::default()), DAffine2::IDENTITY.to_cols_array()),
-			state_identifier: DefaultHasher::new()
+			state_identifier: DefaultHasher::new(),
 		}
 	}
 }
