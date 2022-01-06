@@ -50,8 +50,8 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Navigate {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum NavigateToolFsmState {
 	Ready,
-	Translating,
-	Rotating,
+	Panning,
+	Tilting,
 	Zooming,
 }
 
@@ -84,15 +84,13 @@ impl Fsm for NavigateToolFsmState {
 				ClickZoom { zoom_in } => {
 					messages.push_front(MovementMessage::TransformCanvasEnd.into());
 
-					if data.drag_start == (input.mouse.position) {
-						messages.push_front(
-							if zoom_in {
-								MovementMessage::IncreaseCanvasZoom { centre_mouse: true }
-							} else {
-								MovementMessage::DecreaseCanvasZoom { centre_mouse: true }
-							}
-							.into(),
-						);
+					// Mouse has not moved from mousedown to mouseup
+					if data.drag_start == input.mouse.position {
+						messages.push_front(if zoom_in {
+							MovementMessage::IncreaseCanvasZoom { center_on_mouse: true }.into()
+						} else {
+							MovementMessage::DecreaseCanvasZoom { center_on_mouse: true }.into()
+						});
 					}
 
 					NavigateToolFsmState::Ready
@@ -112,12 +110,12 @@ impl Fsm for NavigateToolFsmState {
 				TranslateCanvasBegin => {
 					data.drag_start = input.mouse.position;
 					messages.push_front(MovementMessage::TranslateCanvasBegin.into());
-					NavigateToolFsmState::Translating
+					NavigateToolFsmState::Panning
 				}
 				RotateCanvasBegin => {
 					data.drag_start = input.mouse.position;
 					messages.push_front(MovementMessage::RotateCanvasBegin.into());
-					NavigateToolFsmState::Rotating
+					NavigateToolFsmState::Tilting
 				}
 				ZoomCanvasBegin => {
 					data.drag_start = input.mouse.position;
@@ -141,23 +139,17 @@ impl Fsm for NavigateToolFsmState {
 	fn update_hints(&self, responses: &mut VecDeque<Message>) {
 		let hint_data = match self {
 			NavigateToolFsmState::Ready => HintData(vec![
-				HintGroup(vec![HintInfo {
-					key_groups: vec![],
-					mouse: Some(MouseMotion::MmbDrag),
-					label: String::from("Translate"),
-					plus: false,
-				}]),
 				HintGroup(vec![
 					HintInfo {
 						key_groups: vec![],
-						mouse: Some(MouseMotion::RmbDrag),
-						label: String::from("Rotate (drag around centre)"),
+						mouse: Some(MouseMotion::Lmb),
+						label: String::from("Zoom In"),
 						plus: false,
 					},
 					HintInfo {
-						key_groups: vec![KeysGroup(vec![Key::KeyControl])],
+						key_groups: vec![KeysGroup(vec![Key::KeyShift])],
 						mouse: None,
-						label: String::from("Snap rotation to 15° increments"),
+						label: String::from("Zoom Out"),
 						plus: true,
 					},
 				]),
@@ -165,27 +157,47 @@ impl Fsm for NavigateToolFsmState {
 					HintInfo {
 						key_groups: vec![],
 						mouse: Some(MouseMotion::LmbDrag),
-						label: String::from("Zoom in and out (drag up and down)"),
+						label: String::from("Zoom"),
 						plus: false,
 					},
 					HintInfo {
 						key_groups: vec![KeysGroup(vec![Key::KeyControl])],
 						mouse: None,
-						label: String::from("Snap to increment"),
+						label: String::from("Snap Increments"),
+						plus: true,
+					},
+				]),
+				HintGroup(vec![HintInfo {
+					key_groups: vec![],
+					mouse: Some(MouseMotion::MmbDrag),
+					label: String::from("Pan"),
+					plus: false,
+				}]),
+				HintGroup(vec![
+					HintInfo {
+						key_groups: vec![],
+						mouse: Some(MouseMotion::RmbDrag),
+						label: String::from("Tilt"),
+						plus: false,
+					},
+					HintInfo {
+						key_groups: vec![KeysGroup(vec![Key::KeyControl])],
+						mouse: None,
+						label: String::from("Snap 15°"),
 						plus: true,
 					},
 				]),
 			]),
-			NavigateToolFsmState::Rotating => HintData(vec![HintGroup(vec![HintInfo {
+			NavigateToolFsmState::Tilting => HintData(vec![HintGroup(vec![HintInfo {
 				key_groups: vec![KeysGroup(vec![Key::KeyControl])],
 				mouse: None,
-				label: String::from("Snap to 15° increments"),
+				label: String::from("Snap 15°"),
 				plus: false,
 			}])]),
 			NavigateToolFsmState::Zooming => HintData(vec![HintGroup(vec![HintInfo {
 				key_groups: vec![KeysGroup(vec![Key::KeyControl])],
 				mouse: None,
-				label: String::from("Snap to increment"),
+				label: String::from("Snap Increments"),
 				plus: false,
 			}])]),
 			_ => HintData(Vec::new()),
