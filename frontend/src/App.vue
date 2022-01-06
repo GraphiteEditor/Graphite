@@ -219,7 +219,7 @@ img {
 </style>
 
 <script lang="ts">
-import { defineComponent, toRef } from "vue";
+import { defineComponent } from "vue";
 
 import { createAutoSaveManager } from "@/lifetime/auto-save";
 import { initErrorHandling } from "@/lifetime/errors";
@@ -252,7 +252,6 @@ export default defineComponent({
 			dialog: this.dialog,
 			documents: this.documents,
 			fullscreen: this.fullscreen,
-			inputManager: toRef(this, "inputManager"),
 		};
 	},
 	data() {

@@ -202,8 +202,6 @@ export function createInputManager(editor: EditorState, container: HTMLElement, 
 
 	return {
 		removeListeners,
-		onWindowResize,
-		container,
 	};
 }
 export type InputManager = ReturnType<typeof createInputManager>;

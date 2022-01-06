@@ -65,7 +65,7 @@
 </style>
 
 <script lang="ts">
-import { defineComponent, unref } from "vue";
+import { defineComponent } from "vue";
 
 import LayoutCol from "@/components/layout/LayoutCol.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
@@ -75,7 +75,7 @@ import Panel from "@/components/workspace/Panel.vue";
 const MIN_PANEL_SIZE = 100;
 
 export default defineComponent({
-	inject: ["documents", "dialog", "editor", "inputManager"],
+	inject: ["documents", "dialog", "editor"],
 	components: {
 		LayoutRow,
 		LayoutCol,
@@ -106,8 +106,6 @@ export default defineComponent({
 
 			const mouseStart = horizontal ? event.clientX : event.clientY;
 
-			const inputManager = unref(this.inputManager);
-
 			function updatePosition(event: MouseEvent): void {
 				const mouseCurrent = horizontal ? event.clientX : event.clientY;
 				let mouseDelta = mouseStart - mouseCurrent;
@@ -118,9 +116,11 @@ export default defineComponent({
 				nextSibling.style.flexGrow = (nextSiblingSize + mouseDelta).toString();
 				previousSibling.style.flexGrow = (previousSiblingSize - mouseDelta).toString();
 
-				if (inputManager) {
-					inputManager.onWindowResize(inputManager.container);
-				}
+				window.dispatchEvent(
+					new CustomEvent("resize", {
+						detail: {},
+					})
+				);
 			}
 
 			document.addEventListener("mousemove", updatePosition);
