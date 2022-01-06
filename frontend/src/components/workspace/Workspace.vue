@@ -108,7 +108,7 @@ export default defineComponent({
 
 			const inputManager = unref(this.inputManager);
 
-			function updatePosition(event: MouseEvent) {
+			function updatePosition(event: MouseEvent): void {
 				const mouseCurrent = horizontal ? event.clientX : event.clientY;
 				let mouseDelta = mouseStart - mouseCurrent;
 
@@ -125,7 +125,7 @@ export default defineComponent({
 
 			document.addEventListener("mousemove", updatePosition);
 
-			function cleanup() {
+			function cleanup(): void {
 				document.body.style.cursor = "inherit";
 				document.removeEventListener("mousemove", updatePosition);
 				document.removeEventListener("mouseleave", cleanup);
