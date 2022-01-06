@@ -22,12 +22,12 @@
 				ref="documentsPanel"
 			/>
 		</LayoutCol>
-		<LayoutCol class="workspace-grid-resize-gutter" @mousedown="resizePanel($event)"></LayoutCol>
+		<LayoutCol class="workspace-grid-resize-gutter" @pointerdown="resizePanel($event)"></LayoutCol>
 		<LayoutCol class="workspace-grid-subdivision" style="flex-grow: 0.17">
 			<LayoutRow class="workspace-grid-subdivision" style="flex-grow: 402">
 				<Panel :panelType="'Properties'" :tabLabels="['Properties']" :tabActiveIndex="0" />
 			</LayoutRow>
-			<LayoutRow class="workspace-grid-resize-gutter" @mousedown="resizePanel($event)"></LayoutRow>
+			<LayoutRow class="workspace-grid-resize-gutter" @pointerdown="resizePanel($event)"></LayoutRow>
 			<LayoutRow class="workspace-grid-subdivision" style="flex-grow: 590">
 				<Panel :panelType="'LayerTree'" :tabLabels="['Layer Tree']" :tabActiveIndex="0" />
 			</LayoutRow>
@@ -88,25 +88,24 @@ export default defineComponent({
 		},
 	},
 	methods: {
-		resizePanel(event: MouseEvent) {
+		resizePanel(event: PointerEvent) {
 			const gutter = event.target as HTMLElement;
 			const nextSibling = gutter.nextElementSibling as HTMLElement;
 			const previousSibling = gutter.previousElementSibling as HTMLElement;
-			const parent = gutter.parentElement as HTMLElement;
 
 			// Are we resizing horizontally?
-			const horizontal = parent.classList.contains("layout-row");
+			const horizontal = gutter.classList.contains("layout-col");
 
 			// Get the current size in px of the panels being resized
 			const nextSiblingSize = horizontal ? nextSibling.getBoundingClientRect().width : nextSibling.getBoundingClientRect().height;
 			const previousSiblingSize = horizontal ? previousSibling.getBoundingClientRect().width : previousSibling.getBoundingClientRect().height;
 
 			// Prevent cursor flicker as mouse temporarily leaves the gutter
-			document.body.style.cursor = horizontal ? "ew-resize" : "ns-resize";
+			gutter.setPointerCapture(event.pointerId);
 
 			const mouseStart = horizontal ? event.clientX : event.clientY;
 
-			function updatePosition(event: MouseEvent): void {
+			function updatePosition(event: PointerEvent): void {
 				const mouseCurrent = horizontal ? event.clientX : event.clientY;
 				let mouseDelta = mouseStart - mouseCurrent;
 
@@ -123,17 +122,17 @@ export default defineComponent({
 				);
 			}
 
-			document.addEventListener("mousemove", updatePosition);
+			document.addEventListener("pointermove", updatePosition);
 
-			function cleanup(): void {
-				document.body.style.cursor = "inherit";
-				document.removeEventListener("mousemove", updatePosition);
-				document.removeEventListener("mouseleave", cleanup);
-				document.removeEventListener("mouseup", cleanup);
+			function cleanup(event: PointerEvent): void {
+				gutter.releasePointerCapture(event.pointerId);
+				document.removeEventListener("pointermove", updatePosition);
+				document.removeEventListener("pointerleave", cleanup);
+				document.removeEventListener("pointerup", cleanup);
 			}
 
-			document.addEventListener("mouseleave", cleanup);
-			document.addEventListener("mouseup", cleanup);
+			document.addEventListener("pointerleave", cleanup);
+			document.addEventListener("pointerup", cleanup);
 		},
 	},
 	watch: {
