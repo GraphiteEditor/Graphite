@@ -339,17 +339,17 @@ mod test {
 		init_logger();
 		let mut editor = create_editor_with_three_layers();
 
-		fn to_vec<'a>(paths: Vec<&'a [LayerId]>) -> Vec<Vec<LayerId>> {
+		fn map_to_vec<'a>(paths: Vec<&'a [LayerId]>) -> Vec<Vec<LayerId>> {
 			paths.iter().map(|layer| layer.to_vec()).collect::<Vec<_>>()
 		}
-		let sorted_layers = to_vec(editor.dispatcher.documents_message_handler.active_document().all_layers_sorted());
+		let sorted_layers = map_to_vec(editor.dispatcher.documents_message_handler.active_document().all_layers_sorted());
 		println!("Sorted layers: {:?}", sorted_layers);
 
 		let verify_order = |handler: &mut DocumentMessageHandler| {
 			(
-				to_vec(handler.all_layers_sorted()),
-				to_vec(handler.non_selected_layers_sorted()),
-				to_vec(handler.selected_layers_sorted()),
+				map_to_vec(handler.all_layers_sorted()),
+				map_to_vec(handler.non_selected_layers_sorted()),
+				map_to_vec(handler.selected_layers_sorted()),
 			)
 		};
 
