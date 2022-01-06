@@ -5,14 +5,9 @@ use crate::consts::SNAP_TOLERANCE;
 
 use super::DocumentMessageHandler;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct SnapHandler {
 	snap_targets: Option<(Vec<f64>, Vec<f64>)>,
-}
-impl Default for SnapHandler {
-	fn default() -> Self {
-		Self { snap_targets: None }
-	}
 }
 
 impl SnapHandler {

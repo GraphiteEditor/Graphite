@@ -360,7 +360,7 @@ impl DocumentMessageHandler {
 			.filter_map(|path| (!path.is_empty()).then(|| path))
 			.filter_map(|path| {
 				// TODO: `indices_for_path` can return an error. We currently skip these layers and log a warning. Once this problem is solved this code can be simplified.
-				match self.graphene_document.indices_for_path(&path) {
+				match self.graphene_document.indices_for_path(path) {
 					Err(err) => {
 						warn!("layers_sorted: Could not get indices for the layer {:?}: {:?}", path, err);
 						None
@@ -387,7 +387,7 @@ impl DocumentMessageHandler {
 	/// Returns the paths to all non_selected layers in order
 	#[allow(dead_code)] // used for test cases
 	pub fn non_selected_layers_sorted(&self) -> Vec<&[LayerId]> {
-		self.sort_layers(self.all_layers().filter(|layer| self.selected_layers().find(|path| path == layer).is_none()))
+		self.sort_layers(self.all_layers().filter(|layer| !self.selected_layers().any(|path| &path == layer)))
 	}
 
 	pub fn layer_metadata(&self, path: &[LayerId]) -> &LayerMetadata {
