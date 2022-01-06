@@ -139,6 +139,7 @@ pub enum DocumentMessage {
 	StartTransaction,
 	RollbackTransaction,
 	GroupSelectedLayers,
+	UngroupSelectedLayers,
 	AbortTransaction,
 	CommitTransaction,
 	ExportDocument,
@@ -593,7 +594,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				responses.push_back(DocumentMessage::SetLayerExpansion(path, true).into());
 			}
 			GroupSelectedLayers => {
-				let mut new_folder_path: Vec<u64> = self.graphene_document.shallowest_common_folder(self.selected_layers()).unwrap_or(&[]).to_vec();
+				let mut new_folder_path: Vec<u64> = self.graphene_document.shallowest_parent_folder(self.selected_layers()).unwrap_or(&[]).to_vec();
 
 				// Required for grouping parent folders with their own children
 				if !new_folder_path.is_empty() && self.selected_layers_contains(&new_folder_path) {
@@ -615,6 +616,31 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					.into(),
 				);
 				responses.push_back(DocumentMessage::SetSelectedLayers(vec![new_folder_path]).into());
+			}
+			UngroupSelectedLayers => {
+				let folder_paths = self.graphene_document.sorted_folders_by_depth(self.selected_layers());
+				let top_folders = self.graphene_document.shallowest_folders(self.selected_layers());
+				for folder_path in folder_paths {
+					// Select all the children of the folder
+					let to_select = self.graphene_document.folder_direct_children(&folder_path);
+
+					// Copy them
+					log::debug!("to_select {:?}", &to_select);
+					responses.push_back(DocumentMessage::SetSelectedLayers(to_select).into());
+					responses.push_back(DocumentsMessage::Copy(Clipboard::System).into());
+
+					// Paste them into the folder above
+					responses.push_back(
+						DocumentsMessage::PasteIntoFolder {
+							clipboard: Clipboard::System,
+							path: folder_path[..folder_path.len() - 1].to_vec(),
+							insert_index: -1,
+						}
+						.into(),
+					);
+				}
+				responses.push_back(DocumentMessage::SetSelectedLayers(top_folders).into());
+				responses.push_back(DocumentMessage::DeleteSelectedLayers.into());
 			}
 			SetBlendModeForSelectedLayers(blend_mode) => {
 				self.backup(responses);
@@ -1024,6 +1050,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				NudgeSelectedLayers,
 				ReorderSelectedLayers,
 				GroupSelectedLayers,
+				UngroupSelectedLayers,
 			);
 			common.extend(select);
 		}

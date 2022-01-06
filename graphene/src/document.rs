@@ -95,7 +95,20 @@ impl Document {
 		self.folder_mut(path)?.layer_mut(id).ok_or_else(|| DocumentError::LayerNotFound(path.into()))
 	}
 
-	pub fn shallowest_common_folder<'a>(&self, layers: impl Iterator<Item = &'a [LayerId]>) -> Result<&'a [LayerId], DocumentError> {
+	pub fn common_layer_path_prefix<'a>(&self, layers: impl Iterator<Item = &'a [LayerId]>) -> &'a [LayerId] {
+		layers
+			.reduce(|a, b| {
+				let number_of_uncommon_ids_in_a = (0..a.len()).position(|i| b.starts_with(&a[..a.len() - i])).unwrap_or_default();
+				&a[..(a.len() - number_of_uncommon_ids_in_a)]
+			})
+			.unwrap_or_default()
+	}
+
+	pub fn folders<'a>(&self, layers: impl Iterator<Item = &'a [LayerId]>) -> Vec<Vec<LayerId>> {
+		layers.filter_map(|layer| if self.is_folder(layer) { Some(layer.to_vec()) } else { None }).collect::<Vec<_>>()
+	}
+
+	pub fn shallowest_parent_folder<'a>(&self, layers: impl Iterator<Item = &'a [LayerId]>) -> Result<&'a [LayerId], DocumentError> {
 		let common_prefix_of_path = self.common_layer_path_prefix(layers);
 
 		Ok(match self.layer(common_prefix_of_path)?.data {
@@ -104,13 +117,33 @@ impl Document {
 		})
 	}
 
-	pub fn common_layer_path_prefix<'a>(&self, layers: impl Iterator<Item = &'a [LayerId]>) -> &'a [LayerId] {
-		layers
-			.reduce(|a, b| {
-				let number_of_uncommon_ids_in_a = (0..a.len()).position(|i| b.starts_with(&a[..a.len() - i])).unwrap_or_default();
-				&a[..(a.len() - number_of_uncommon_ids_in_a)]
-			})
-			.unwrap_or_default()
+	pub fn sorted_folders_by_depth<'a>(&self, layers: impl Iterator<Item = &'a [LayerId]>) -> Vec<Vec<LayerId>> {
+		let mut folders = self.folders(layers);
+		folders.sort_by_key(|a| a.len());
+		folders.reverse();
+		folders
+	}
+
+	pub fn shallowest_folders<'a>(&self, layers: impl Iterator<Item = &'a [LayerId]>) -> Vec<Vec<LayerId>> {
+		let mut sorted_folders = self.folders(layers);
+		sorted_folders.sort();
+		sorted_folders.dedup_by(|a, b| a.starts_with(b));
+		sorted_folders
+	}
+
+	pub fn shallowest_unique_layers<'a>(&self, layers: impl Iterator<Item = &'a [LayerId]>) -> Vec<Vec<LayerId>> {
+		let mut sorted_folders = layers.map(|layer| layer.to_vec()).collect::<Vec<_>>();
+		sorted_folders.sort();
+		sorted_folders.dedup_by(|a, b| a.starts_with(b));
+		sorted_folders
+	}
+
+	pub fn folder_direct_children(&self, path: &[LayerId]) -> Vec<Vec<LayerId>> {
+		if let Ok(folder) = self.folder(path) {
+			folder.list_layers().iter().map(|f| [path, &[*f]].concat()).collect()
+		} else {
+			vec![]
+		}
 	}
 
 	pub fn is_folder(&self, path: &[LayerId]) -> bool {
