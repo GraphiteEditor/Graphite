@@ -103,24 +103,14 @@ impl Document {
 		layers.filter(|layer| self.is_folder(layer))
 	}
 
-	// TODO: shouldn't this be deepest?
-	pub fn shallowest_parent_folder<'a>(&self, layers: impl Iterator<Item = &'a [LayerId]>) -> Result<&'a [LayerId], DocumentError> {
+	// Returns the shallowest folder given the selection, even if the selection doesn't contain any folders
+	pub fn shallowest_common_folder<'a>(&self, layers: impl Iterator<Item = &'a [LayerId]>) -> Result<&'a [LayerId], DocumentError> {
 		let common_prefix_of_path = self.common_layer_path_prefix(layers);
 
 		Ok(match self.layer(common_prefix_of_path)?.data {
 			LayerDataType::Folder(_) => common_prefix_of_path,
-			// The common prefix can never be a shape
-			// this whole function is equivalently to the common_layer_path_prefix function
-			// TODO: remove
 			LayerDataType::Shape(_) => &common_prefix_of_path[..common_prefix_of_path.len() - 1],
 		})
-	}
-
-	// Deepest to shallowest (longest to shortest path length)
-	pub fn sorted_folders_by_depth<'a>(&'a self, layers: impl Iterator<Item = &'a [LayerId]>) -> Vec<&'a [LayerId]> {
-		let mut folders: Vec<_> = self.folders(layers).collect();
-		folders.sort_by_key(|a| std::cmp::Reverse(a.len()));
-		folders
 	}
 
 	// Return returns all folders that are not contained in any other of the given folders
@@ -135,6 +125,12 @@ impl Document {
 		// Sorting here creates groups of similar UUID paths
 		sorted_layers.dedup_by(|a, b| a.starts_with(b));
 		sorted_layers
+	}
+	// Deepest to shallowest (longest to shortest path length)
+	pub fn sorted_folders_by_depth<'a>(&'a self, layers: impl Iterator<Item = &'a [LayerId]>) -> Vec<&'a [LayerId]> {
+		let mut folders: Vec<_> = self.folders(layers).collect();
+		folders.sort_by_key(|a| std::cmp::Reverse(a.len()));
+		folders
 	}
 
 	pub fn folder_children_paths(&self, path: &[LayerId]) -> Vec<Vec<LayerId>> {
