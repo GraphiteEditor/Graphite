@@ -607,12 +607,12 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			}
 			UngroupLayers(folder_path) => {
 				// Select all the children of the folder
-				let to_select = self.graphene_document.folder_direct_children(&folder_path);
+				let to_select = self.graphene_document.folder_children(&folder_path);
 				let message_buffer = [
 					// Copy them
 					DocumentMessage::SetSelectedLayers(to_select).into(),
 					DocumentsMessage::Copy(Clipboard::System).into(),
-					// // Paste them into the folder above
+					// Paste them into the folder above
 					DocumentsMessage::PasteIntoFolder {
 						clipboard: Clipboard::System,
 						path: folder_path[..folder_path.len() - 1].to_vec(),
@@ -623,17 +623,18 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					DocumentMessage::DeleteLayer(folder_path).into(),
 				];
 
+				// Push these messages in reverse due to push_front
 				for message in message_buffer.into_iter().rev() {
 					responses.push_front(message);
 				}
-				// panic!("Panic at the disco! {:?}", responses);
 			}
 			UngroupSelectedLayers => {
+				responses.push_back(DocumentMessage::StartTransaction.into());
 				let folder_paths = self.graphene_document.sorted_folders_by_depth(self.selected_layers());
-				// let top_folders = self.graphene_document.shallowest_folders(self.selected_layers());
 				for folder_path in folder_paths {
 					responses.push_back(DocumentMessage::UngroupLayers(folder_path).into());
 				}
+				responses.push_back(DocumentMessage::CommitTransaction.into());
 			}
 			SetBlendModeForSelectedLayers(blend_mode) => {
 				self.backup(responses);
@@ -904,7 +905,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 						let insert = all_layer_paths.get(insert_pos);
 						if let Some(insert_path) = insert {
 							let (id, path) = insert_path.split_last().expect("Can't move the root folder");
-							if let Some(folder) = self.graphene_document.layer(path).ok().map(|layer| layer.as_folder().ok()).flatten() {
+							if let Some(folder) = self.graphene_document.layer(path).ok().and_then(|layer| layer.as_folder().ok()) {
 								let selected: Vec<_> = selected_layers
 									.iter()
 									.filter(|layer| layer.starts_with(path) && layer.len() == path.len() + 1)

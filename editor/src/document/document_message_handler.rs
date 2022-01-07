@@ -404,7 +404,7 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 					responses.push_front(
 						DocumentOperation::InsertLayer {
 							layer: entry.layer.clone(),
-							destination_path: destination_path,
+							destination_path,
 							insert_index,
 						}
 						.into(),
@@ -412,11 +412,11 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 				};
 
 				if insert_index == -1 {
-					for entry in self.copy_buffer[clipboard as usize].iter() {
+					for entry in self.copy_buffer[clipboard as usize].iter().rev() {
 						paste(entry, responses)
 					}
 				} else {
-					for entry in self.copy_buffer[clipboard as usize].iter().rev() {
+					for entry in self.copy_buffer[clipboard as usize].iter() {
 						paste(entry, responses)
 					}
 				}
