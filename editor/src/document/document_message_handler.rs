@@ -359,7 +359,7 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 				copy_buffer[clipboard as usize].clear();
 
 				for layer_path in active_document.selected_layers_without_children() {
-					match (active_document.graphene_document.layer(&layer_path).map(|t| t.clone()), *active_document.layer_metadata(&layer_path)) {
+					match (active_document.graphene_document.layer(layer_path).map(|t| t.clone()), *active_document.layer_metadata(layer_path)) {
 						(Ok(layer), layer_metadata) => {
 							copy_buffer[clipboard as usize].push(CopyBufferEntry { layer, layer_metadata });
 						}
