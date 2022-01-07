@@ -27,7 +27,9 @@ pub struct Path {
 #[impl_message(Message, ToolMessage, Path)]
 #[derive(PartialEq, Clone, Debug, Hash, Serialize, Deserialize)]
 pub enum PathMessage {
-	MouseDown,
+	DragStart,
+	PointerMove,
+	DragStop,
 
 	// Standard messages
 	Abort,
@@ -50,18 +52,19 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Path {
 	}
 
 	// different actions depending on state may be wanted:
-	// fn actions(&self) -> ActionList {
-	// 	use PathToolFsmState::*;
-	// 	match self.fsm_state {
-	// 		Ready => actions!(PathMessageDiscriminant; MouseDown),
-	// 	}
-	// }
-	advertise_actions!(PathMessageDiscriminant; MouseDown);
+	fn actions(&self) -> ActionList {
+		use PathToolFsmState::*;
+		match self.fsm_state {
+			Ready => actions!(PathMessageDiscriminant; DragStart),
+			Dragging => actions!(PathMessageDiscriminant; DragStop, PointerMove),
+		}
+	}
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum PathToolFsmState {
 	Ready,
+	Dragging,
 }
 
 impl Default for PathToolFsmState {
@@ -76,6 +79,7 @@ struct PathToolData {
 	handle_marker_pool: Vec<Vec<LayerId>>,
 	anchor_handle_line_pool: Vec<Vec<LayerId>>,
 	shape_outline_pool: Vec<Vec<LayerId>>,
+	dragging: Vec<LayerId>,
 }
 
 impl PathToolData {}
@@ -207,7 +211,7 @@ impl Fsm for PathToolFsmState {
 
 					self
 				}
-				(_, MouseDown) => {
+				(_, DragStart) => {
 					// todo: DRY refactor (this arm is very similar to the (_, RedrawOverlay) arm)
 					// WIP: selecting control point working
 					// next: correctly modifying path
@@ -353,11 +357,32 @@ impl Fsm for PathToolFsmState {
 						};
 						// todo: use Operation::SetShapePathInViewport instead
 						// currently using SetLayerFill just to show some effect
+						data.dragging = path.clone();
 						responses.push_back(DocumentMessage::Overlay(Operation::SetLayerFill { path, color: COLOR_ACCENT }.into()).into());
+						Dragging
+					} else {
+						Ready
 					}
-
-					self
 				}
+				(Dragging, PointerMove) => {
+					let scale = DVec2::splat(VECTOR_MANIPULATOR_ANCHOR_MARKER_SIZE);
+					let angle = 0.;
+					let translation = (input.mouse.position - (scale / 2.)).round();
+					let transform = DAffine2::from_scale_angle_translation(scale, angle, translation).to_cols_array();
+					responses.push_back(
+						DocumentMessage::Overlay(
+							Operation::SetLayerTransformInViewport {
+								path: data.dragging.clone(),
+								transform,
+							}
+							.into(),
+						)
+						.into(),
+					);
+					Dragging
+				}
+				(_, PointerMove) => self,
+				(_, DragStop) => Ready,
 				(_, Abort) => {
 					// Destory the overlay layer pools
 					while let Some(layer) = data.anchor_marker_pool.pop() {
@@ -444,6 +469,7 @@ impl Fsm for PathToolFsmState {
 					},
 				]),
 			]),
+			PathToolFsmState::Dragging => HintData(vec![]),
 		};
 
 		responses.push_back(FrontendMessage::UpdateInputHints { hint_data }.into());
