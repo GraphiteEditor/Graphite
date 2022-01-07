@@ -273,31 +273,14 @@ impl DocumentMessageHandler {
 		self.layer_metadata.iter().filter_map(|(path, data)| data.selected.then(|| path.as_slice()))
 	}
 
-	pub fn selected_layers_without_children(&self) -> Vec<Vec<LayerId>> {
-		// TODO optimize this after MVP. Look at commit 1aaf5c0d7dbe67cd9f4ba8b536a4771a2cef6439, optimization was started
-		// Traversing the layer tree recursively was chosen for readability, but should be replaced with an optimized approach later
-		fn recurse_layer_tree(ctx: &DocumentMessageHandler, mut path: Vec<u64>, without_children: &mut Vec<Vec<LayerId>>, selected: bool) {
-			if let Ok(folder) = ctx.graphene_document.folder(&path) {
-				for child in folder.list_layers() {
-					path.push(*child);
-					let selected_or_parent_selected = selected || ctx.selected_layers_contains(&path);
-					let selected_without_any_parent_selected = !selected && ctx.selected_layers_contains(&path);
-					if ctx.graphene_document.is_folder(&path) {
-						if selected_without_any_parent_selected {
-							without_children.push(path.clone());
-						}
-						recurse_layer_tree(ctx, path.clone(), without_children, selected_or_parent_selected);
-					} else if selected_without_any_parent_selected {
-						without_children.push(path.clone());
-					}
-					path.pop();
-				}
-			}
-		}
+	pub fn selected_layers_without_children(&self) -> Vec<&[LayerId]> {
+		let mut sorted_layers = self.selected_layers().collect::<Vec<_>>();
+		// Sorting here creates groups of similar UUID paths
+		sorted_layers.sort();
+		sorted_layers.dedup_by(|a, b| a.starts_with(b));
 
-		let mut without_children: Vec<Vec<LayerId>> = vec![];
-		recurse_layer_tree(self, vec![], &mut without_children, false);
-		without_children
+		// We need to maintain layer ordering
+		self.sort_layers(sorted_layers.iter().copied())
 	}
 
 	pub fn selected_layers_contains(&self, path: &[LayerId]) -> bool {
@@ -365,23 +348,19 @@ impl DocumentMessageHandler {
 	}
 
 	/// Returns an unsorted list of all layer paths including folders at all levels, except the document's top-level root folder itself
-	pub fn all_layers(&self) -> Vec<Vec<LayerId>> {
-		self.layer_metadata.keys().filter(|path| !path.is_empty()).cloned().collect()
+	pub fn all_layers(&self) -> impl Iterator<Item = &[LayerId]> {
+		self.layer_metadata.keys().filter_map(|path| (!path.is_empty()).then(|| path.as_slice()))
 	}
 
 	/// Returns the paths to all layers in order, optionally including only selected or non-selected layers.
-	fn layers_sorted(&self, selected: Option<bool>) -> Vec<Vec<LayerId>> {
+	fn sort_layers<'a>(&self, paths: impl Iterator<Item = &'a [LayerId]>) -> Vec<&'a [LayerId]> {
 		// Compute the indices for each layer to be able to sort them
-		let mut layers_with_indices: Vec<(Vec<LayerId>, Vec<usize>)> = self
-
-			.layer_metadata
-			.iter()
+		let mut layers_with_indices: Vec<(&[LayerId], Vec<usize>)> = paths
 			// 'path.len() > 0' filters out root layer since it has no indices
-			.filter_map(|(path, data)| (!path.is_empty() && (data.selected == selected.unwrap_or(data.selected))).then(|| path.clone()))
+			.filter_map(|path| (!path.is_empty()).then(|| path))
 			.filter_map(|path| {
-				// TODO: Currently it is possible that `layer_metadata` contains layers that are don't actually exist (has been partially fixed in #281) and thus
 				// TODO: `indices_for_path` can return an error. We currently skip these layers and log a warning. Once this problem is solved this code can be simplified.
-				match self.graphene_document.indices_for_path(&path) {
+				match self.graphene_document.indices_for_path(path) {
 					Err(err) => {
 						warn!("layers_sorted: Could not get indices for the layer {:?}: {:?}", path, err);
 						None
@@ -396,19 +375,19 @@ impl DocumentMessageHandler {
 	}
 
 	/// Returns the paths to all layers in order
-	pub fn all_layers_sorted(&self) -> Vec<Vec<LayerId>> {
-		self.layers_sorted(None)
+	pub fn all_layers_sorted(&self) -> Vec<&[LayerId]> {
+		self.sort_layers(self.all_layers())
 	}
 
 	/// Returns the paths to all selected layers in order
-	pub fn selected_layers_sorted(&self) -> Vec<Vec<LayerId>> {
-		self.layers_sorted(Some(true))
+	pub fn selected_layers_sorted(&self) -> Vec<&[LayerId]> {
+		self.sort_layers(self.selected_layers())
 	}
 
 	/// Returns the paths to all non_selected layers in order
 	#[allow(dead_code)] // used for test cases
-	pub fn non_selected_layers_sorted(&self) -> Vec<Vec<LayerId>> {
-		self.layers_sorted(Some(false))
+	pub fn non_selected_layers_sorted(&self) -> Vec<&[LayerId]> {
+		self.sort_layers(self.all_layers().filter(|layer| !self.selected_layers().any(|path| &path == layer)))
 	}
 
 	pub fn layer_metadata(&self, path: &[LayerId]) -> &LayerMetadata {
@@ -652,7 +631,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				self.backup(responses);
 
 				for path in self.selected_layers_without_children() {
-					responses.push_front(DocumentOperation::DeleteLayer { path }.into());
+					responses.push_front(DocumentOperation::DeleteLayer { path: path.to_vec() }.into());
 				}
 
 				responses.push_front(ToolMessage::DocumentIsDirty.into());
@@ -664,7 +643,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			DuplicateSelectedLayers => {
 				self.backup(responses);
 				for path in self.selected_layers_sorted() {
-					responses.push_back(DocumentOperation::DuplicateLayer { path }.into());
+					responses.push_back(DocumentOperation::DuplicateLayer { path: path.to_vec() }.into());
 				}
 			}
 			SelectLayer(selected, ctrl, shift) => {
@@ -730,7 +709,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			}
 			SelectAllLayers => {
 				let all_layer_paths = self.all_layers();
-				responses.push_front(SetSelectedLayers(all_layer_paths).into());
+				responses.push_front(SetSelectedLayers(all_layer_paths.map(|path| path.to_vec()).collect()).into());
 			}
 			DeselectAllLayers => {
 				responses.push_front(SetSelectedLayers(vec![]).into());
