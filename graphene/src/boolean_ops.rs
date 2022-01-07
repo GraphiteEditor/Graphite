@@ -6,7 +6,7 @@ use crate::{
    color::Color,
    intersection::{Intersect, F64PRECISION, Origin, intersections, line_intersect_point},
 };
-use kurbo::{BezPath, Point, PathEl, Rect, PathSeg, ParamCurve, ParamCurveArclen, ParamCurveExtrema, ParamCurveDeriv, Line, QuadBez, CubicBez};
+use kurbo::{BezPath, Point, PathEl, Rect, PathSeg, ParamCurve, ParamCurveArea, ParamCurveArclen, ParamCurveExtrema, ParamCurveDeriv, Line, QuadBez, CubicBez};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
@@ -32,7 +32,7 @@ struct Vertex {
 }
 
 // "!" operator reverses direction
-#[derive(PartialEq, Eq, Clone,)]
+#[derive(PartialEq, Eq, Clone, Copy)]
 enum Direction {
    CCW = 1,
    CW = 0,
@@ -40,15 +40,14 @@ enum Direction {
 
 /// TODO: computing a cycle direction and cycle length is expensive, find ways to optimize/avoid/
 /// TODO: test edge cases of direction algorithm
+/// Improvement: Use this http://ich.deanmcnamee.com/graphics/2016/03/30/CurveArea.html to calculate direction
 /// Behavior: Intersection and Union cases are distinuguished between by cycle length
 ///   - This only effects shapes whose intersection is a single shape, and the intersection is similalarly sized to the union
 ///   - can be solved by first computing at low accuracy, and if the values are close recomputing.
 struct Cycle {
    vertices: Vec<usize>,
    dir: Option<Direction>,
-   ex: [Option<(f64, usize)>; 4], //lowest, leftest, highest, rightest
-   time: usize, //(most recent, prior)
-   length: Option<f64>,
+   area: f64,
 }
 
 impl Cycle {
@@ -56,30 +55,16 @@ impl Cycle {
       Cycle{
          vertices: vec![start],
          dir: None,
-         ex: [None, None, None, None],
-         time: 1,
-         length: None,
+         area: 0.0,
       }
-   }
-
-   pub fn new_measured(start: usize) -> Self {
-      let mut cycle = Cycle::new(start);
-      cycle.length = 0.0;
-      cycle
    }
 
    /// returns true when the cycle is complete, a cycle is complete when it revisits its first vertex
    /// for purposes of computing direction this function assumes vertices are traversed in order
-   pub fn extend(&mut self, graph: &PathGraph, vertex: usize, edge_curve: &BezPath) -> bool {
-      if vertex == self.vertices[0] { return true; }
+   fn extend(&mut self, vertex: usize, edge_curve: &BezPath) -> bool {
       self.vertices.push(vertex);
-      self.update_ex(bounding_box(edge_curve));
-      if let Some(ref mut cycle_length) = self.length {
-         //TODO: the accuracy value below should be replaced with a more carefully chosen one
-         //    - could dynamically adjust value by looking at the manhatten distance between the segments end points,
-         //    or maybe the bounding rectangle area,
-         *cycle_length += path_length(edge_curve, Some(0.0001));
-      }
+      self.area += path_area(edge_curve);
+      if vertex == self.vertices[0] { return true; }
       return false;
    }
 
@@ -87,47 +72,18 @@ impl Cycle {
       &self.vertices
    }
 
-   fn update_ex(&mut self, bound: Rect) {
-      self.update_extreme(0, bound.y0, |a, b| a <= b);
-      self.update_extreme(1, bound.x0, |a, b| a <= b);
-      self.update_extreme(2, bound.y1, |a, b| a >= b);
-      self.update_extreme(3, bound.x1, |a, b| a >= b);
+   pub fn area(&self) -> f64 {
+      self.area
    }
 
-   fn update_extreme<F: Fn(f64, f64) -> bool>(&mut self, old: usize, new: f64, comp: F) {
-      if let Some((val, _)) = self.ex[old] {
-         if comp(new, val) {
-            self.ex[old] = Some((new, self.time));
-            self.time += 1;
+   pub fn direction(&mut self) -> Result<Direction, ()> {
+      match self.dir {
+         Some(direction) => Ok(direction),
+         None => {
+            if self.area > 0.0 { self.dir = Some(Direction::CCW); Ok(Direction::CCW) }
+            else if self.area < 0.0 { self.dir = Some(Direction::CW); Ok(Direction::CW) }
+            else { Err(()) }
          }
-      }
-      else {
-         self.ex[old] = Some((new, self.time));
-         self.time += 1;
-      }
-   }
-
-   fn compute_direction(& self) -> Result<Direction, ()> {
-      let mut cw = true;
-      let mut ccw = true;
-      let mut prev_time = 0;
-
-      self.ex.iter()
-         .map(|o| o.unwrap()) //All values should be Some()
-         .skip_while(|(_, time)| *time != self.time - 1) //find most recent
-         .cycle()
-         .take_while(|(_, time)| {
-            if *time == self.time - 1 { return false; }
-            if prev_time != 0 && *time > prev_time { ccw = false; }
-            if prev_time != 0 && *time < prev_time { cw = false; }
-            prev_time = *time;
-            return true;
-         });
-
-      match (ccw, cw) {
-         (true, false) => Ok(Direction::CCW),
-         (false, true) => Ok(Direction::CW),
-         _ => Err(()),
       }
    }
 
@@ -135,30 +91,12 @@ impl Cycle {
    /// - if the path crosses itself the computed direction may be (probably will be) wrong
    /// - the path does not need to end in a ClosePath, however if it doesn't, the final vertex must compare exactly equal to the start vertex.
    ///   Which, with floating point precision, is unlikely.
-   pub fn compute_direction_for_path(path: &BezPath) -> Result<Direction, ()> {
-      let mut cycle = None;
-      let mut start = Point::new(0.0, 0.0);
-      let mut current = Point::new(0.0, 0.0); //this value should never be read
-      for element in path.iter(){
-         match element {
-            PathEl::MoveTo(p0) => {
-               if let Some(_) = cycle { return Err(()); }
-               else {cycle = Some(Cycle::new(0)); current = p0; start = p0;}
-            }
-            PathEl::LineTo(p0) | PathEl::QuadTo(_, p0) | PathEl::CurveTo(.., p0) => {
-               // cycle should never be None as all valid paths begin with a MoveTo
-               cycle.unwrap().update_ex(Rect::from((current, p0)));
-               current = p0;
-            }
-            PathEl::ClosePath => {
-               cycle.unwrap().update_ex(Rect::from((current, start)));
-               current = start;
-            }
-         }
-      }
-      if current != start { return Err(()); }
-      if let Some(c) = cycle { return c.compute_direction(); }
-      Err(())
+   pub fn direction_for_path(path: &BezPath) -> Result<Direction, ()> {
+      let mut area = 0.0;
+      path.segments().for_each(|seg| area += seg.signed_area());
+      if area > 0.0 { Ok(Direction::CCW) }
+      else if area < 0.0 { Ok(Direction::CW) }
+      else { Err(()) }
    }
 }
 
@@ -266,23 +204,23 @@ impl PathGraph{
    /// where a valid cycle alternates edge Origin
    /// cvert: the current vertex, or the last vertex added to cycle
    /// state: the Origin of the last edge
-   fn get_cycle(&self, cycle: &mut Cycle, cvert: usize, state: Origin, measure: bool) {
+   fn get_cycle(&self, cycle: &mut Cycle, cvert: usize, state: Origin) {
       // a properly constructed path graph will have exactly one edge at each vertex of each Origin
       let next_edge = self.vertex(cvert).edges.iter().find(|edge| edge.from != state).unwrap();
-      if !cycle.extend(self, next_edge.destination, &next_edge.curve) {
-         return self.get_cycle(cycle, next_edge.destination, !state, measure);
+      if !cycle.extend(next_edge.destination, &next_edge.curve) {
+         return self.get_cycle(cycle, next_edge.destination, !state);
       }
    }
 
-   pub fn get_cycles(&self, measure: bool) -> Vec<Cycle> {
-      let cycles = Vec::new();
+   pub fn get_cycles(&self) -> Vec<Cycle> {
+      let mut cycles = Vec::new();
       self.vertices.iter().enumerate()
          .for_each(|(vertex_idx, _vertex)| {
-            let mut temp = if measure {Cycle::new_measured(vertex_idx)} else {Cycle::new(vertex_idx)};
-            self.get_cycle(&mut temp, vertex_idx, Origin::Alpha, measure);
+            let mut temp = Cycle::new(vertex_idx);
+            self.get_cycle(&mut temp, vertex_idx, Origin::Alpha);
             cycles.push(temp);
-            temp = if measure {Cycle::new_measured(vertex_idx)} else {Cycle::new(vertex_idx)};
-            self.get_cycle(&mut temp, vertex_idx, Origin::Beta, measure);
+            temp = Cycle::new(vertex_idx);
+            self.get_cycle(&mut temp, vertex_idx, Origin::Beta);
             cycles.push(temp);
          });
       cycles
@@ -334,28 +272,36 @@ pub fn boolean_operation(select: BooleanOperation, alpha: Shape, beta: Shape) ->
    let alpha = alpha.path;
    let beta = beta.path;
    if alpha.is_empty() || beta.is_empty() { return Err(()); }
-   let alpha_dir = Cycle::compute_direction_for_path(&alpha)?;
-   let beta_dir = Cycle::compute_direction_for_path(&beta)?;
+   let alpha_dir = Cycle::direction_for_path(&alpha)?;
+   let beta_dir = Cycle::direction_for_path(&beta)?;
    match select {
       BooleanOperation::Union => {
          let graph = PathGraph::from_paths(&alpha, &beta, alpha_dir != beta_dir).ok_or(())?;
-         collect_shapes(&graph, graph.get_cycles(true), alpha_dir)
+         let cycles = graph.get_cycles();
+         // "extra calls to ParamCurveArea::area here"
+         let outline = cycles.iter().reduce(|max, cycle| if cycle.area() >= max.area() {cycle} else {max}).unwrap();
+         let mut insides = collect_shapes(&graph, &mut graph.get_cycles(), |dir| dir != alpha_dir)?;
+         insides.push(graph.get_shape(&outline));
+         Ok(insides)
       }
       BooleanOperation::Difference => {
          let graph = PathGraph::from_paths(&alpha, &beta, alpha_dir == beta_dir).ok_or(())?;
-         Err(()) //not yet implemented
+         collect_shapes(&graph, &mut graph.get_cycles(), |_| true)
       }
       BooleanOperation::Intersection => {
          let graph = PathGraph::from_paths(&alpha, &beta, alpha_dir != beta_dir).ok_or(())?;
-         Err(()) //not yet implemented
+         let mut cycles = graph.get_cycles();
+         // "extra calls to ParamCurveArea::area here"
+         cycles.remove(cycles.iter().enumerate().reduce(|(midx, max), (idx, cycle)| if cycle.area() >= max.area() {(idx, cycle)} else {(midx, max)}).unwrap().0);
+         collect_shapes(&graph, &mut graph.get_cycles(), |dir| dir == alpha_dir)
       }
       BooleanOperation::SubBack => {
          let graph = PathGraph::from_paths(&alpha, &beta, alpha_dir == beta_dir).ok_or(())?;
-         collect_shapes(&graph, graph.get_cycles(false), alpha_dir)
+         collect_shapes(&graph, &mut graph.get_cycles(), |dir| dir == alpha_dir)
       }
       BooleanOperation::SubFront => {
          let graph = PathGraph::from_paths(&alpha, &beta, alpha_dir == beta_dir).ok_or(())?;
-         collect_shapes(&graph, graph.get_cycles(false), beta_dir)
+         collect_shapes(&graph, &mut graph.get_cycles(), |dir| dir == beta_dir)
       }
    }
 }
@@ -365,12 +311,15 @@ pub fn bounding_box(curve: &BezPath) -> Rect {
    curve.segments().map(|seg| <PathSeg as ParamCurveExtrema>::bounding_box(&seg) ).reduce(|bounds, rect| bounds.union(rect)).unwrap()
 }
 
-pub fn collect_shapes(graph: &PathGraph, cycles: Vec<Cycle>, direction: Direction) -> Result<Vec<Shape>, ()> {
+fn collect_shapes<F>(graph: &PathGraph, cycles: &mut Vec<Cycle>, predicate: F) -> Result<Vec<Shape>, ()>
+where
+   F: Fn(Direction) -> bool
+{
    let mut shapes = Vec::new();
-   for ref cycle in cycles {
-      if let Ok(dir) = cycle.compute_direction() {
-         if dir == direction { shapes.push(graph.get_shape(cycle)); }
-         else { return Err(()); }
+   if cycles.len() == 0 { return Err(()) }
+   for ref mut cycle in cycles {
+      if let Ok(dir) = cycle.direction() {
+         if predicate(dir) { shapes.push(graph.get_shape(cycle)); }
       }
       else { return Err(()); }
    }
@@ -393,4 +342,8 @@ pub fn path_length(a: &BezPath, accuracy: Option<f64>) -> f64 {
       None => a.segments().for_each(|seg| sum += seg.arclen(F64PRECISION)),
    }
    sum
+}
+
+pub fn path_area(a: &BezPath) -> f64 {
+   a.segments().fold(0.0, |mut area, seg| {area += seg.signed_area(); area})
 }

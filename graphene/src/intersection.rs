@@ -79,7 +79,7 @@ pub fn get_arbitrary_point_on_path(path: &BezPath) -> Option<Point> {
 
 
 /// each intersection has two curves, which are distinguished between using this enum
-#[derive(PartialEq, Eq, Clone)]
+#[derive(PartialEq, Eq, Clone, Copy)]
 pub enum Origin{
    Alpha,
    Beta,
