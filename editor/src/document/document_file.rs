@@ -281,13 +281,10 @@ impl DocumentMessageHandler {
 	}
 
 	pub fn selected_layers_without_children(&self) -> Vec<&[LayerId]> {
-		let mut sorted_layers = self.selected_layers().collect::<Vec<_>>();
-		// Sorting here creates groups of similar UUID paths
-		sorted_layers.sort();
-		sorted_layers.dedup_by(|a, b| a.starts_with(b));
+		let unique_layers = self.graphene_document.shallowest_unique_layers(self.selected_layers());
 
 		// We need to maintain layer ordering
-		self.sort_layers(sorted_layers.iter().copied())
+		self.sort_layers(unique_layers.iter().copied())
 	}
 
 	pub fn selected_layers_contains(&self, path: &[LayerId]) -> bool {
@@ -613,7 +610,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			}
 			UngroupLayers(folder_path) => {
 				// Select all the children of the folder
-				let to_select = self.graphene_document.folder_children(&folder_path);
+				let to_select = self.graphene_document.folder_children_paths(&folder_path);
 				let message_buffer = [
 					// Copy them
 					DocumentMessage::SetSelectedLayers(to_select).into(),
@@ -638,7 +635,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				responses.push_back(DocumentMessage::StartTransaction.into());
 				let folder_paths = self.graphene_document.sorted_folders_by_depth(self.selected_layers());
 				for folder_path in folder_paths {
-					responses.push_back(DocumentMessage::UngroupLayers(folder_path).into());
+					responses.push_back(DocumentMessage::UngroupLayers(folder_path.to_vec()).into());
 				}
 				responses.push_back(DocumentMessage::CommitTransaction.into());
 			}

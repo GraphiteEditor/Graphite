@@ -96,50 +96,48 @@ impl Document {
 	}
 
 	pub fn common_layer_path_prefix<'a>(&self, layers: impl Iterator<Item = &'a [LayerId]>) -> &'a [LayerId] {
-		layers
-			.reduce(|a, b| {
-				let number_of_uncommon_ids_in_a = (0..a.len()).position(|i| b.starts_with(&a[..a.len() - i])).unwrap_or_default();
-				&a[..(a.len() - number_of_uncommon_ids_in_a)]
-			})
-			.unwrap_or_default()
+		layers.reduce(|a, b| &a[..a.iter().zip(b.iter()).take_while(|&(a, b)| a == b).count()]).unwrap_or_default()
 	}
 
-	pub fn folders<'a>(&self, layers: impl Iterator<Item = &'a [LayerId]>) -> Vec<Vec<LayerId>> {
-		layers.filter_map(|layer| if self.is_folder(layer) { Some(layer.to_vec()) } else { None }).collect::<Vec<_>>()
+	pub fn folders<'a>(&'a self, layers: impl Iterator<Item = &'a [LayerId]>) -> impl Iterator<Item = &'a [LayerId]> {
+		layers.filter(|layer| self.is_folder(layer))
 	}
 
+	// TODO: shouldn't this be deepest?
 	pub fn shallowest_parent_folder<'a>(&self, layers: impl Iterator<Item = &'a [LayerId]>) -> Result<&'a [LayerId], DocumentError> {
 		let common_prefix_of_path = self.common_layer_path_prefix(layers);
 
 		Ok(match self.layer(common_prefix_of_path)?.data {
 			LayerDataType::Folder(_) => common_prefix_of_path,
+			// The common prefix can never be a shape
+			// this whole function is equivalently to the common_layer_path_prefix function
+			// TODO: remove
 			LayerDataType::Shape(_) => &common_prefix_of_path[..common_prefix_of_path.len() - 1],
 		})
 	}
 
 	// Deepest to shallowest (longest to shortest path length)
-	pub fn sorted_folders_by_depth<'a>(&self, layers: impl Iterator<Item = &'a [LayerId]>) -> Vec<Vec<LayerId>> {
-		let mut folders = self.folders(layers);
-		folders.sort_by_key(|a| a.len());
-		folders.reverse();
+	pub fn sorted_folders_by_depth<'a>(&'a self, layers: impl Iterator<Item = &'a [LayerId]>) -> Vec<&'a [LayerId]> {
+		let mut folders: Vec<_> = self.folders(layers).collect();
+		folders.sort_by_key(|a| std::cmp::Reverse(a.len()));
 		folders
 	}
 
-	pub fn shallowest_folders<'a>(&self, layers: impl Iterator<Item = &'a [LayerId]>) -> Vec<Vec<LayerId>> {
-		let mut sorted_folders = self.folders(layers);
-		sorted_folders.sort();
-		sorted_folders.dedup_by(|a, b| a.starts_with(b));
-		sorted_folders
+	// Return returns all folders that are not contained in any other of the given folders
+	pub fn shallowest_folders<'a>(&'a self, layers: impl Iterator<Item = &'a [LayerId]>) -> Vec<&[LayerId]> {
+		self.shallowest_unique_layers(self.folders(layers))
 	}
 
-	pub fn shallowest_unique_layers<'a>(&self, layers: impl Iterator<Item = &'a [LayerId]>) -> Vec<Vec<LayerId>> {
-		let mut sorted_folders = layers.map(|layer| layer.to_vec()).collect::<Vec<_>>();
-		sorted_folders.sort();
-		sorted_folders.dedup_by(|a, b| a.starts_with(b));
-		sorted_folders
+	// Return returns all layers that are not contained in any other of the given folders
+	pub fn shallowest_unique_layers<'a>(&'a self, layers: impl Iterator<Item = &'a [LayerId]>) -> Vec<&[LayerId]> {
+		let mut sorted_layers: Vec<_> = layers.collect();
+		sorted_layers.sort();
+		// Sorting here creates groups of similar UUID paths
+		sorted_layers.dedup_by(|a, b| a.starts_with(b));
+		sorted_layers
 	}
 
-	pub fn folder_children(&self, path: &[LayerId]) -> Vec<Vec<LayerId>> {
+	pub fn folder_children_paths(&self, path: &[LayerId]) -> Vec<Vec<LayerId>> {
 		if let Ok(folder) = self.folder(path) {
 			folder.list_layers().iter().map(|f| [path, &[*f]].concat()).collect()
 		} else {
