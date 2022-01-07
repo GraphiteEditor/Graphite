@@ -5,15 +5,21 @@ use std::{
 };
 
 use glam::{DAffine2, DVec2};
-use serde::{Deserialize, Serialize};
 use kurbo::Affine;
+use serde::{Deserialize, Serialize};
 
 use crate::{
-	layers::{self, Folder, Layer, LayerData, LayerDataType, Shape},
-	layers::style::{PathStyle, Stroke},
-	DocumentError, DocumentResponse, LayerId, Operation, Quad,
-	intersection::intersections,
+	boolean_ops::boolean_operation,
+	//TODO: remove statemens below which were added for testing
 	color::Color,
+	intersection::intersections,
+	layers::style::{PathStyle, Stroke},
+	layers::{self, Folder, Layer, LayerData, LayerDataType, Shape},
+	DocumentError,
+	DocumentResponse,
+	LayerId,
+	Operation,
+	Quad,
 };
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -117,8 +123,10 @@ impl Document {
 				}
 				LayerDataType::Folder(folder) => {
 					transform = layer.transform * transform;
-					if slice >= path.len() {return Err(DocumentError::InvalidPath);}
-					if let Some(sub_layer) = folder.layer(path[slice]){
+					if slice >= path.len() {
+						return Err(DocumentError::InvalidPath);
+					}
+					if let Some(sub_layer) = folder.layer(path[slice]) {
 						slice += 1;
 						return helper(sub_layer, transform, slice, path);
 					}
@@ -127,20 +135,21 @@ impl Document {
 			}
 		}
 		// skip the root layer, whose transform doesn't effect the coordinates
-		if let LayerDataType::Folder(root) = & self.root.data{
+		if let LayerDataType::Folder(root) = &self.root.data {
 			match root.layer(path[0]) {
 				Some(layer) => helper(&layer, DAffine2::IDENTITY, 1, path),
 				None => Err(DocumentError::InvalidPath),
 			}
+		} else {
+			Err(DocumentError::NotAFolder)
 		}
-		else { Err(DocumentError::NotAFolder) }
 	}
 
 	/// Return vector of immutable references to each shape specified in paths
 	/// If any path is not a shape, or does not exist, DocumentError::InvalidPath is returned
-	fn shapes_as_seen(&self, paths: & Vec<Vec<LayerId>>) -> Result<Vec<Shape>, DocumentError>{
+	fn shapes_as_seen(&self, paths: &Vec<Vec<LayerId>>) -> Result<Vec<Shape>, DocumentError> {
 		let mut shapes: Vec<Shape> = Vec::new();
-		for path in paths{
+		for path in paths {
 			match self.shape_as_seen(path) {
 				Ok(shape) => shapes.push(shape),
 				Err(err) => return Err(err),
@@ -500,30 +509,30 @@ impl Document {
 				self.set_layer(path, Layer::new(LayerDataType::Shape(Shape::poly_line(points, *style)), *transform), *insert_index)?;
 				Some([vec![DocumentChanged, CreatedLayer { path: path.clone() }], update_thumbnails_upstream(path)].concat())
 			}
-			Operation::BooleanOperation {operation, selected} => {
-				// How should tool behave? what kinds of selection are valid?
-				log::debug!("selected: {:?}", selected);
-				if selected.len() > 1{
+			Operation::BooleanOperation { operation, selected } => {
+				// Behavior: what kinds of selection are valid?
+				// Behavior: What should the PathStyle of combined shapes be?
+				// Behavior: Where in the tree structure should new shapes go? This also effects how the transforms are handled
+				//		- currently new shapes are added to the root, with the identity transform
+
+				//it could equal 2.. but we for Union and Intersection operations more than two selections could make sense
+				let mut responses = Vec::new();
+				if selected.len() > 1 && selected.len() < 3 {
+					// to deal with union of shapes with different transforms, we
 					let shapes = self.shapes_as_seen(selected)?;
-					let mut responses = Vec::new();
-					let crosss = intersections(&shapes[0].path, &shapes[1].path);
-					log::debug!("found {} intersections", crosss.len());
-					for cross in crosss{
-						log::debug!("cross: {:?} @quality: {:?}", cross.point, cross.quality);
-						match self.handle_operation(&Operation::AddOverlayEllipse{
-							path: vec![],
-							transform: [2.0, 0.0, 0.0, 2.0, cross.point.x - 1.0, cross.point.y - 1.0],
-							style: PathStyle::new(Some(Stroke::new(Color::BLUE, 1.0)), None),
-						}){
-							Ok(Some(ref mut response)) => responses.append(response),
-							Ok(None) => (),
-							Err(err) => return Err(err),
-						}
+					let new_shapes = boolean_operation(*operation, shapes[0], shapes[1])?;
+
+					for path in selected {
+						self.delete(path);
+						responses.push(DocumentResponse::DeletedLayer { path: *path })
 					}
-					Some(responses)
+					for new_shape in new_shapes {
+						let new_id = self.add_layer(&[], Layer::new(LayerDataType::Shape(new_shape), DAffine2::IDENTITY.to_cols_array()), -1)?;
+						responses.push(DocumentResponse::CreatedLayer { path: vec![new_id] })
+					}
 				}
-				else {None}
-			},
+				Some([vec![DocumentChanged, DocumentResponse::FolderChanged { path: vec![] }], responses].concat())
+			}
 			Operation::DeleteLayer { path } => {
 				fn aggregate_deletions(folder: &Folder, path: &mut Vec<LayerId>, responses: &mut Vec<DocumentResponse>) {
 					for (id, layer) in folder.layer_ids.iter().zip(folder.layers()) {

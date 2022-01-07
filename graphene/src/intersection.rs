@@ -1,8 +1,8 @@
 use std::ops::Mul;
 
-use glam::{DAffine2, DVec2, DMat2};
-use kurbo::{BezPath, Line, PathSeg, Point, Shape, Rect, QuadBez, ParamCurve, ParamCurveExtrema};
 use crate::boolean_ops::split_path_seg;
+use glam::{DAffine2, DMat2, DVec2};
+use kurbo::{BezPath, Line, ParamCurve, ParamCurveExtrema, PathSeg, Point, QuadBez, Rect, Shape};
 
 pub const F64PRECISION: f64 = f64::EPSILON * 1000.0; // for f64 comparisons
 
@@ -77,25 +77,24 @@ pub fn get_arbitrary_point_on_path(path: &BezPath) -> Option<Point> {
 /// Bezier Curve Intersection algorithm
 /// \/                               \/
 
-
 /// each intersection has two curves, which are distinguished between using this enum
 #[derive(PartialEq, Eq, Clone, Copy)]
-pub enum Origin{
-   Alpha,
-   Beta,
+pub enum Origin {
+	Alpha,
+	Beta,
 }
 
-impl std::ops::Not for Origin{
+impl std::ops::Not for Origin {
 	type Output = Self;
 	fn not(self) -> Self {
-		match self{
+		match self {
 			Origin::Alpha => Origin::Beta,
 			Origin::Beta => Origin::Alpha,
 		}
 	}
 }
 
-pub struct Intersect{
+pub struct Intersect {
 	pub point: Point,
 	pub t_a: f64,
 	pub t_b: f64,
@@ -104,24 +103,37 @@ pub struct Intersect{
 	pub quality: f64,
 }
 
-impl Intersect{
+impl Intersect {
 	pub fn add_idx(&mut self, a_idx: usize, b_idx: usize) {
 		self.a_seg_idx = a_idx;
 		self.b_seg_idx = b_idx;
 	}
 
 	pub fn seg_idx(&self, o: Origin) -> usize {
-		match o {Origin::Alpha => self.a_seg_idx, Origin::Beta => self.b_seg_idx,}
+		match o {
+			Origin::Alpha => self.a_seg_idx,
+			Origin::Beta => self.b_seg_idx,
+		}
 	}
 
 	pub fn t_val(&self, o: Origin) -> f64 {
-		match o {Origin::Alpha => self.t_a, Origin::Beta => self.t_b,}
+		match o {
+			Origin::Alpha => self.t_a,
+			Origin::Beta => self.t_b,
+		}
 	}
 }
 
-impl From<(Point, f64, f64)> for Intersect{
-	fn from(place_time: (Point, f64, f64)) -> Self{
-		Intersect{point: place_time.0, t_a: place_time.1, t_b: place_time.2, a_seg_idx: 0, b_seg_idx: 0, quality: 0.0}
+impl From<(Point, f64, f64)> for Intersect {
+	fn from(place_time: (Point, f64, f64)) -> Self {
+		Intersect {
+			point: place_time.0,
+			t_a: place_time.1,
+			t_b: place_time.2,
+			a_seg_idx: 0,
+			b_seg_idx: 0,
+			quality: 0.0,
+		}
 	}
 }
 
@@ -135,7 +147,7 @@ struct SubCurve<'a> {
 
 impl<'a> SubCurve<'a> {
 	pub fn new(parent: &'a PathSeg, extrema: &'a Vec<Point>) -> Self {
-		SubCurve{
+		SubCurve {
 			curve: parent,
 			start_t: 0.0,
 			end_t: 1.0,
@@ -145,14 +157,26 @@ impl<'a> SubCurve<'a> {
 	}
 
 	fn bounding_box(&self) -> Rect {
-		let mut bound = Rect {x0: self.start().x, y0: self.start().y, x1: self.end().x, y1: self.end().y};
-		self.local.iter().chain(self.extrema.iter())
-			.for_each(|p|{
-				if p.x < bound.x0 {bound.x0 = p.x;}
-				if p.x > bound.x1 {bound.x1 = p.x;}
-				if p.y < bound.y0 {bound.y0 = p.y;}
-				if p.y > bound.y1 {bound.y1 = p.y;}
-			});
+		let mut bound = Rect {
+			x0: self.start().x,
+			y0: self.start().y,
+			x1: self.end().x,
+			y1: self.end().y,
+		};
+		self.local.iter().chain(self.extrema.iter()).for_each(|p| {
+			if p.x < bound.x0 {
+				bound.x0 = p.x;
+			}
+			if p.x > bound.x1 {
+				bound.x1 = p.x;
+			}
+			if p.y < bound.y0 {
+				bound.y0 = p.y;
+			}
+			if p.y > bound.y1 {
+				bound.y1 = p.y;
+			}
+		});
 		bound
 	}
 
@@ -165,20 +189,22 @@ impl<'a> SubCurve<'a> {
 	/// split subcurve at t, as though the subcurve is a bezier curve, where t is a value between 0.0 and 1.0
 	fn split(&self, t: f64) -> (SubCurve, SubCurve) {
 		let split_t = self.start_t + t * (self.end_t - self.start_t);
-		(SubCurve {
-			curve: self.curve,
-			start_t: self.start_t,
-			end_t: split_t,
-			local: [self.curve.eval(self.start_t), self.curve.eval(split_t)],
-			extrema: self.extrema
-		},
-		 SubCurve {
-			 curve: self.curve,
-			 start_t: split_t,
-			 end_t: self.end_t,
-			 local: [self.curve.eval(split_t), self.curve.eval(self.end_t)],
-			 extrema: self.extrema
-		})
+		(
+			SubCurve {
+				curve: self.curve,
+				start_t: self.start_t,
+				end_t: split_t,
+				local: [self.curve.eval(self.start_t), self.curve.eval(split_t)],
+				extrema: self.extrema,
+			},
+			SubCurve {
+				curve: self.curve,
+				start_t: split_t,
+				end_t: self.end_t,
+				local: [self.curve.eval(split_t), self.curve.eval(self.end_t)],
+				extrema: self.extrema,
+			},
+		)
 	}
 
 	fn start(&self) -> Point {
@@ -192,11 +218,12 @@ impl<'a> SubCurve<'a> {
 
 /// Bezier Curve Intersection Algorithm
 /// 	- TODO: Consistenly use the maximum f64 precision possible, account for the locations where limitations will effect results
+/// 	- TODO:
 /// 	- Behavior: when shapes have indentical pathsegs algorithm returns endpoints as intersects?
 /// 	- Bug: algorithm finds same intersection multiple times in same recursion path
 /// 	- Improvement: algorithm behavior when curves have differing "native curvatures"
 /// 	- Improvement: more adapative way to decide when "close enough"
-///   - improvement: quality metric
+///   - improvement: quality metric?
 /// 	- Optimization: Don't actualy split the curve, just pass start/end values
 /// 	- Optimization: Compute curve's derivitive once
 /// 	- Optimization: bounding_box's dont need to be recomputed?
@@ -206,16 +233,20 @@ impl<'a> SubCurve<'a> {
 fn path_intersections(a: &SubCurve, b: &SubCurve, mut recursion: usize) -> Vec<Intersect> {
 	let mut intersections = Vec::new();
 	//special case
-	if let (PathSeg::Line(line_a), PathSeg::Line(line_b)) = (a.curve, b.curve){
-		if let Some(cross) = line_intersection(&line_a, &line_b) {intersections.push(cross);}
-	}
-	else if overlap( &a.bounding_box(), &b.bounding_box()) {
+	if let (PathSeg::Line(line_a), PathSeg::Line(line_b)) = (a.curve, b.curve) {
+		if let Some(cross) = line_intersection(&line_a, &line_b) {
+			intersections.push(cross);
+		}
+	} else if overlap(&a.bounding_box(), &b.bounding_box()) {
 		recursion += 1;
 		// bail out!! before lshift with overflow, algorithm should never reach here
-		if recursion == 32 { return intersections; }
+		if recursion == 32 {
+			return intersections;
+		}
 		// base case, we are close enough to try linear approximation
-		if recursion > 10 { //arbitrarily chosen limit
-			if let Some(mut cross) = line_intersection(&Line{p0: a.start(), p1: a.end()}, &Line{p0: b.start(), p1: b.end()}){
+		if recursion > 10 {
+			//arbitrarily chosen limit
+			if let Some(mut cross) = line_intersection(&Line { p0: a.start(), p1: a.end() }, &Line { p0: b.start(), p1: b.end() }) {
 				// intersection t_value equals the recursive t_value + interpolated intersection value
 				cross.t_a = a.start_t + cross.t_a / (1 << recursion) as f64;
 				cross.t_b = b.start_t + cross.t_b / (1 << recursion) as f64;
@@ -235,65 +266,87 @@ fn path_intersections(a: &SubCurve, b: &SubCurve, mut recursion: usize) -> Vec<I
 	intersections
 }
 
-fn guess_quality(a: &PathSeg, b: &PathSeg, guess: &Intersect) -> f64{
+fn guess_quality(a: &PathSeg, b: &PathSeg, guess: &Intersect) -> f64 {
 	let dist_a = guess.point - b.eval(guess.t_b);
 	let dist_b = guess.point - a.eval(guess.t_a);
 	// prevent division by 0
-	return (2.0 / (1.0 + dist_a.x * dist_b.x * dist_a.y * dist_b.y )).abs()
+	return (2.0 / (1.0 + dist_a.x * dist_b.x * dist_a.y * dist_b.y)).abs();
 }
 
-pub fn intersections(a: &BezPath, b: &BezPath) -> Vec<Intersect>{
+pub fn intersections(a: &BezPath, b: &BezPath) -> Vec<Intersect> {
 	let mut intersections: Vec<Intersect> = Vec::new();
 	// there is some duplicate computation of b_extrema here, but i doubt it's significant
 	a.segments().enumerate().for_each(|(a_idx, a_seg)| {
 		// extrema at endpoints should not be included here as they must be calculated for each subcurve
-		let a_extrema = a_seg.extrema().iter().filter_map(|t| if *t > F64PRECISION && *t < 1.0 - F64PRECISION { Some(a_seg.eval(*t)) } else { None }).collect();
+		let a_extrema = a_seg
+			.extrema()
+			.iter()
+			.filter_map(|t| if *t > F64PRECISION && *t < 1.0 - F64PRECISION { Some(a_seg.eval(*t)) } else { None })
+			.collect();
 		b.segments().enumerate().for_each(|(b_idx, b_seg)| {
-			let b_extrema = b_seg.extrema().iter().filter_map(|t| if *t > F64PRECISION && *t < 1.0 - F64PRECISION { Some(b_seg.eval(*t)) } else { None }).collect();
-			for mut path_intersection in path_intersections(&SubCurve::new(&a_seg, &a_extrema), &SubCurve::new(&b_seg, &b_extrema), 0){
-				intersections.push({path_intersection.add_idx(a_idx, b_idx); path_intersection});
+			let b_extrema = b_seg
+				.extrema()
+				.iter()
+				.filter_map(|t| if *t > F64PRECISION && *t < 1.0 - F64PRECISION { Some(b_seg.eval(*t)) } else { None })
+				.collect();
+			for mut path_intersection in path_intersections(&SubCurve::new(&a_seg, &a_extrema), &SubCurve::new(&b_seg, &b_extrema), 0) {
+				intersections.push({
+					path_intersection.add_idx(a_idx, b_idx);
+					path_intersection
+				});
 			}
 		})
 	});
 	intersections
 }
 
-
 pub fn intersection_candidates(a: &BezPath, b: &BezPath) -> Vec<(usize, usize)> {
 	let mut intersections = Vec::new();
 
-	a.segments().enumerate().for_each(|(a_idx, a_seg)| b.segments().enumerate().for_each(|(b_idx, b_seg)| {
-		if overlap(&<PathSeg as ParamCurveExtrema>::bounding_box(&a_seg), &<PathSeg as ParamCurveExtrema>::bounding_box(&b_seg)) {
-			intersections.push((a_idx, b_idx));
-		}
-	}));
+	a.segments().enumerate().for_each(|(a_idx, a_seg)| {
+		b.segments().enumerate().for_each(|(b_idx, b_seg)| {
+			if overlap(&<PathSeg as ParamCurveExtrema>::bounding_box(&a_seg), &<PathSeg as ParamCurveExtrema>::bounding_box(&b_seg)) {
+				intersections.push((a_idx, b_idx));
+			}
+		})
+	});
 	intersections
 }
 
 /// returns intersection point as if lines extended forever
 pub fn line_intersect_point(a: &Line, b: &Line) -> Option<Point> {
-	let slopes = DMat2::from_cols_array(&[(b.p1 - b.p0).x, (b.p1 - b.p0).y,  (a.p0 - a.p1).x, (a.p0 - a.p1).y]);
-	if slopes.determinant() == 0.0 {return None}
+	let slopes = DMat2::from_cols_array(&[(b.p1 - b.p0).x, (b.p1 - b.p0).y, (a.p0 - a.p1).x, (a.p0 - a.p1).y]);
+	if slopes.determinant() == 0.0 {
+		return None;
+	}
 	let t_vals = slopes.inverse() * DVec2::new((b.p0 - a.p0).x, (b.p1 - a.p1).y);
 	Some(b.eval(t_vals[0]))
 }
 
 /// returns intersection point and t values, treating lines as Bezier curves
 pub fn line_intersection(a: &Line, b: &Line) -> Option<Intersect> {
-	let slopes = DMat2::from_cols_array(&[(b.p1 - b.p0).x, (b.p1 - b.p0).y,  (a.p0 - a.p1).x, (a.p0 - a.p1).y]);
-	if slopes.determinant() == 0.0 {return None;}
+	let slopes = DMat2::from_cols_array(&[(b.p1 - b.p0).x, (b.p1 - b.p0).y, (a.p0 - a.p1).x, (a.p0 - a.p1).y]);
+	if slopes.determinant() == 0.0 {
+		return None;
+	}
 	let t_vals = slopes.inverse() * DVec2::new((a.p0 - b.p0).x, (a.p0 - b.p0).y);
-	if !valid_t(t_vals[0]) || !valid_t(t_vals[1]) {return None;}
+	if !valid_t(t_vals[0]) || !valid_t(t_vals[1]) {
+		return None;
+	}
 	Some(Intersect::from((b.eval(t_vals[0]), t_vals[1], t_vals[0])))
 }
 
 /// returns true if rectangles overlap, even if either rectangle has 0 area
 /// does using slices here cause a slowdown?
 pub fn overlap(a: &Rect, b: &Rect) -> bool {
-	fn in_range(n: f64, range: &[f64]) -> bool { n >= range[0] && n <= range[1] }
-	fn in_range_e(n: f64, range: &[f64]) -> bool { n > range[0] && n < range[1] }
-	(in_range(b.x0, &[a.x0, a.x1]) || in_range(b.x1, &[a.x0, a.x1]) || in_range_e(a.x0, &[b.x0, b.x1]) || in_range_e(a.x1, &[b.x0, b.x1])) &&
-	(in_range(b.y0, &[a.y0, a.y1]) || in_range(b.y1, &[a.y0, a.y1]) || in_range_e(a.y0, &[b.y0, b.y1]) || in_range_e(a.y1, &[b.y0, b.y1]))
+	fn in_range(n: f64, range: &[f64]) -> bool {
+		n >= range[0] && n <= range[1]
+	}
+	fn in_range_e(n: f64, range: &[f64]) -> bool {
+		n > range[0] && n < range[1]
+	}
+	(in_range(b.x0, &[a.x0, a.x1]) || in_range(b.x1, &[a.x0, a.x1]) || in_range_e(a.x0, &[b.x0, b.x1]) || in_range_e(a.x1, &[b.x0, b.x1]))
+		&& (in_range(b.y0, &[a.y0, a.y1]) || in_range(b.y1, &[a.y0, a.y1]) || in_range_e(a.y0, &[b.y0, b.y1]) || in_range_e(a.y1, &[b.y0, b.y1]))
 }
 
 /// tests if a t value belongs to [0.0, 1.0]
