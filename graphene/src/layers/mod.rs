@@ -189,15 +189,9 @@ impl<'a> IntoIterator for &'a Layer {
 	}
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct LayerIter<'a> {
 	pub stack: Vec<&'a Layer>,
-}
-
-impl Default for LayerIter<'_> {
-	fn default() -> Self {
-		Self { stack: vec![] }
-	}
 }
 
 impl<'a> Iterator for LayerIter<'a> {
