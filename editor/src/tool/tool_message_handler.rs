@@ -1,5 +1,4 @@
 use crate::message_prelude::*;
-use glam::DVec2;
 use graphene::color::Color;
 
 use crate::input::InputPreprocessor;
@@ -22,10 +21,6 @@ pub enum ToolMessage {
 	DocumentIsDirty,
 	UpdateHints,
 	SetToolOptions(ToolType, ToolOptions),
-	SetSnapping(bool),
-	AddSnappable(Vec<LayerId>),
-	RemoveSnappable(Vec<LayerId>),
-	SnapLayer(Vec<LayerId>),
 	#[child]
 	Fill(FillMessage),
 	#[child]
