@@ -375,7 +375,7 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 				let document = self.active_document();
 				let shallowest_common_folder = document
 					.graphene_document
-					.shallowest_parent_folder(document.selected_layers())
+					.shallowest_common_folder(document.selected_layers())
 					.expect("While pasting, the selected layers did not exist while attempting to find the appropriate folder path for insertion");
 				responses.push_back(StartTransaction.into());
 				responses.push_back(
