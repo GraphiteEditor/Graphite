@@ -434,6 +434,9 @@ impl DocumentMessageHandler {
 				let document = std::mem::replace(&mut self.graphene_document, document);
 				let layer_metadata = std::mem::replace(&mut self.layer_metadata, layer_metadata);
 				self.document_redo_history.push((document, layer_metadata));
+				for layer in self.layer_metadata.keys() {
+					responses.push_back(DocumentMessage::LayerChanged(layer.clone()).into())
+				}
 				Ok(())
 			}
 			None => Err(EditorError::NoTransactionInProgress),
