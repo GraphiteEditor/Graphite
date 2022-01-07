@@ -139,6 +139,8 @@ pub enum DocumentMessage {
 	StartTransaction,
 	RollbackTransaction,
 	GroupSelectedLayers,
+	UngroupSelectedLayers,
+	UngroupLayers(Vec<LayerId>),
 	AbortTransaction,
 	CommitTransaction,
 	ExportDocument,
@@ -217,9 +219,14 @@ impl DocumentMessageHandler {
 	fn select_layer(&mut self, path: &[LayerId]) -> Option<Message> {
 		println!("Select_layer fail: {:?}", self.all_layers_sorted());
 
-		self.layer_metadata_mut(path).selected = true;
-		let data = self.layer_panel_entry(path.to_vec()).ok()?;
-		(!path.is_empty()).then(|| FrontendMessage::UpdateLayer { data }.into())
+		if let Some(layer) = self.layer_metadata.get_mut(path) {
+			layer.selected = true;
+			let data = self.layer_panel_entry(path.to_vec()).ok()?;
+			(!path.is_empty()).then(|| FrontendMessage::UpdateLayer { data }.into())
+		} else {
+			log::warn!("Tried to select non existing layer {:?}", path);
+			None
+		}
 	}
 
 	pub fn selected_visible_layers_bounding_box(&self) -> Option<[DVec2; 2]> {
@@ -274,13 +281,10 @@ impl DocumentMessageHandler {
 	}
 
 	pub fn selected_layers_without_children(&self) -> Vec<&[LayerId]> {
-		let mut sorted_layers = self.selected_layers().collect::<Vec<_>>();
-		// Sorting here creates groups of similar UUID paths
-		sorted_layers.sort();
-		sorted_layers.dedup_by(|a, b| a.starts_with(b));
+		let unique_layers = self.graphene_document.shallowest_unique_layers(self.selected_layers());
 
 		// We need to maintain layer ordering
-		self.sort_layers(sorted_layers.iter().copied())
+		self.sort_layers(unique_layers.iter().copied())
 	}
 
 	pub fn selected_layers_contains(&self, path: &[LayerId]) -> bool {
@@ -427,6 +431,9 @@ impl DocumentMessageHandler {
 				let document = std::mem::replace(&mut self.graphene_document, document);
 				let layer_metadata = std::mem::replace(&mut self.layer_metadata, layer_metadata);
 				self.document_redo_history.push((document, layer_metadata));
+				for layer in self.layer_metadata.keys() {
+					responses.push_back(DocumentMessage::LayerChanged(layer.clone()).into())
+				}
 				Ok(())
 			}
 			None => Err(EditorError::NoTransactionInProgress),
@@ -442,6 +449,9 @@ impl DocumentMessageHandler {
 				let document = std::mem::replace(&mut self.graphene_document, document);
 				let layer_metadata = std::mem::replace(&mut self.layer_metadata, layer_metadata);
 				self.document_undo_history.push((document, layer_metadata));
+				for layer in self.layer_metadata.keys() {
+					responses.push_back(DocumentMessage::LayerChanged(layer.clone()).into())
+				}
 				Ok(())
 			}
 			None => Err(EditorError::NoTransactionInProgress),
@@ -470,7 +480,10 @@ impl DocumentMessageHandler {
 	}
 
 	pub fn layer_panel_entry(&mut self, path: Vec<LayerId>) -> Result<LayerPanelEntry, EditorError> {
-		let data: LayerMetadata = *self.layer_metadata_mut(&path);
+		let data: LayerMetadata = *self
+			.layer_metadata
+			.get_mut(&path)
+			.ok_or_else(|| EditorError::Document(format!("Could not get layer metadata for {:?}", path)))?;
 		let layer = self.graphene_document.layer(&path)?;
 		let entry = layer_panel_entry(&data, self.graphene_document.multiply_transforms(&path)?, layer, path);
 		Ok(entry)
@@ -505,7 +518,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			TransformLayers(message) => self
 				.transform_layer_handler
 				.process_action(message, (&mut self.layer_metadata, &mut self.graphene_document, ipp), responses),
-			DeleteLayer(path) => responses.push_back(DocumentOperation::DeleteLayer { path }.into()),
+			DeleteLayer(path) => responses.push_front(DocumentOperation::DeleteLayer { path }.into()),
 			StartTransaction => self.backup(responses),
 			RollbackTransaction => {
 				self.rollback(responses).unwrap_or_else(|e| log::warn!("{}", e));
@@ -594,6 +607,37 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					.into(),
 				);
 				responses.push_back(DocumentMessage::SetSelectedLayers(vec![new_folder_path]).into());
+			}
+			UngroupLayers(folder_path) => {
+				// Select all the children of the folder
+				let to_select = self.graphene_document.folder_children_paths(&folder_path);
+				let message_buffer = [
+					// Copy them
+					DocumentMessage::SetSelectedLayers(to_select).into(),
+					DocumentsMessage::Copy(Clipboard::System).into(),
+					// Paste them into the folder above
+					DocumentsMessage::PasteIntoFolder {
+						clipboard: Clipboard::System,
+						path: folder_path[..folder_path.len() - 1].to_vec(),
+						insert_index: -1,
+					}
+					.into(),
+					// Delete parent folder
+					DocumentMessage::DeleteLayer(folder_path).into(),
+				];
+
+				// Push these messages in reverse due to push_front
+				for message in message_buffer.into_iter().rev() {
+					responses.push_front(message);
+				}
+			}
+			UngroupSelectedLayers => {
+				responses.push_back(DocumentMessage::StartTransaction.into());
+				let folder_paths = self.graphene_document.sorted_folders_by_depth(self.selected_layers());
+				for folder_path in folder_paths {
+					responses.push_back(DocumentMessage::UngroupLayers(folder_path.to_vec()).into());
+				}
+				responses.push_back(DocumentMessage::CommitTransaction.into());
 			}
 			SetBlendModeForSelectedLayers(blend_mode) => {
 				self.backup(responses);
@@ -864,7 +908,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 						let insert = all_layer_paths.get(insert_pos);
 						if let Some(insert_path) = insert {
 							let (id, path) = insert_path.split_last().expect("Can't move the root folder");
-							if let Some(folder) = self.graphene_document.layer(path).ok().map(|layer| layer.as_folder().ok()).flatten() {
+							if let Some(folder) = self.graphene_document.layer(path).ok().and_then(|layer| layer.as_folder().ok()) {
 								let selected: Vec<_> = selected_layers
 									.iter()
 									.filter(|layer| layer.starts_with(path) && layer.len() == path.len() + 1)
@@ -1003,6 +1047,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				NudgeSelectedLayers,
 				ReorderSelectedLayers,
 				GroupSelectedLayers,
+				UngroupSelectedLayers,
 			);
 			common.extend(select);
 		}

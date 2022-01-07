@@ -261,6 +261,7 @@ impl Default for Mapping {
 			entry! {action=DocumentsMessage::Copy(User), key_down=KeyC, modifiers=[KeyControl]},
 			entry! {action=DocumentsMessage::Cut(User), key_down=KeyX, modifiers=[KeyControl]},
 			entry! {action=DocumentMessage::GroupSelectedLayers, key_down=KeyG, modifiers=[KeyControl]},
+			entry! {action=DocumentMessage::UngroupSelectedLayers, key_down=KeyG, modifiers=[KeyControl, KeyShift]},
 			// Nudging
 			entry! {action=DocumentMessage::NudgeSelectedLayers(-SHIFT_NUDGE_AMOUNT, -SHIFT_NUDGE_AMOUNT), key_down=KeyArrowUp, modifiers=[KeyShift, KeyArrowLeft]},
 			entry! {action=DocumentMessage::NudgeSelectedLayers(SHIFT_NUDGE_AMOUNT, -SHIFT_NUDGE_AMOUNT), key_down=KeyArrowUp, modifiers=[KeyShift, KeyArrowRight]},
