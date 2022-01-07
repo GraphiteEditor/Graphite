@@ -57,6 +57,7 @@
 						:data-index="index"
 						draggable="true"
 						@dragstart="dragStart($event, layer)"
+						:title="layer.path"
 					>
 						<div class="layer-thumbnail" v-html="layer.thumbnail"></div>
 						<div class="layer-type-icon">

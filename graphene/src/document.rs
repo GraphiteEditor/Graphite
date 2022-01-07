@@ -95,6 +95,15 @@ impl Document {
 		self.folder_mut(path)?.layer_mut(id).ok_or_else(|| DocumentError::LayerNotFound(path.into()))
 	}
 
+	pub fn common_layer_path_prefix<'a>(&self, layers: impl Iterator<Item = &'a [LayerId]>) -> &'a [LayerId] {
+		layers.reduce(|a, b| &a[..a.iter().zip(b.iter()).take_while(|&(a, b)| a == b).count()]).unwrap_or_default()
+	}
+
+	pub fn folders<'a>(&'a self, layers: impl Iterator<Item = &'a [LayerId]>) -> impl Iterator<Item = &'a [LayerId]> {
+		layers.filter(|layer| self.is_folder(layer))
+	}
+
+	// Returns the shallowest folder given the selection, even if the selection doesn't contain any folders
 	pub fn shallowest_common_folder<'a>(&self, layers: impl Iterator<Item = &'a [LayerId]>) -> Result<&'a [LayerId], DocumentError> {
 		let common_prefix_of_path = self.common_layer_path_prefix(layers);
 
@@ -104,13 +113,32 @@ impl Document {
 		})
 	}
 
-	pub fn common_layer_path_prefix<'a>(&self, layers: impl Iterator<Item = &'a [LayerId]>) -> &'a [LayerId] {
-		layers
-			.reduce(|a, b| {
-				let number_of_uncommon_ids_in_a = (0..a.len()).position(|i| b.starts_with(&a[..a.len() - i])).unwrap_or_default();
-				&a[..(a.len() - number_of_uncommon_ids_in_a)]
-			})
-			.unwrap_or_default()
+	// Return returns all folders that are not contained in any other of the given folders
+	pub fn shallowest_folders<'a>(&'a self, layers: impl Iterator<Item = &'a [LayerId]>) -> Vec<&[LayerId]> {
+		self.shallowest_unique_layers(self.folders(layers))
+	}
+
+	// Return returns all layers that are not contained in any other of the given folders
+	pub fn shallowest_unique_layers<'a>(&'a self, layers: impl Iterator<Item = &'a [LayerId]>) -> Vec<&[LayerId]> {
+		let mut sorted_layers: Vec<_> = layers.collect();
+		sorted_layers.sort();
+		// Sorting here creates groups of similar UUID paths
+		sorted_layers.dedup_by(|a, b| a.starts_with(b));
+		sorted_layers
+	}
+	// Deepest to shallowest (longest to shortest path length)
+	pub fn sorted_folders_by_depth<'a>(&'a self, layers: impl Iterator<Item = &'a [LayerId]>) -> Vec<&'a [LayerId]> {
+		let mut folders: Vec<_> = self.folders(layers).collect();
+		folders.sort_by_key(|a| std::cmp::Reverse(a.len()));
+		folders
+	}
+
+	pub fn folder_children_paths(&self, path: &[LayerId]) -> Vec<Vec<LayerId>> {
+		if let Ok(folder) = self.folder(path) {
+			folder.list_layers().iter().map(|f| [path, &[*f]].concat()).collect()
+		} else {
+			vec![]
+		}
 	}
 
 	pub fn is_folder(&self, path: &[LayerId]) -> bool {
@@ -457,7 +485,7 @@ impl Document {
 				};
 				self.delete(path)?;
 
-				let (folder, _) = split_path(path.as_slice()).unwrap_or_else(|_| (&[], 0));
+				let (folder, _) = split_path(path.as_slice()).unwrap_or((&[], 0));
 				responses.extend([DocumentChanged, DeletedLayer { path: path.clone() }, FolderChanged { path: folder.to_vec() }]);
 				responses.extend(update_thumbnails_upstream(folder));
 				Some(responses)
@@ -494,7 +522,7 @@ impl Document {
 			}
 			Operation::DuplicateLayer { path } => {
 				let layer = self.layer(path)?.clone();
-				let (folder_path, _) = split_path(path.as_slice()).unwrap_or_else(|_| (&[], 0));
+				let (folder_path, _) = split_path(path.as_slice()).unwrap_or((&[], 0));
 				let folder = self.folder_mut(folder_path)?;
 				if let Some(new_layer_id) = folder.add_layer(layer, None, -1) {
 					let new_path = [folder_path, &[new_layer_id]].concat();

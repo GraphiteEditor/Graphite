@@ -339,7 +339,7 @@ mod test {
 		init_logger();
 		let mut editor = create_editor_with_three_layers();
 
-		fn map_to_vec<'a>(paths: Vec<&'a [LayerId]>) -> Vec<Vec<LayerId>> {
+		fn map_to_vec(paths: Vec<&[LayerId]>) -> Vec<Vec<LayerId>> {
 			paths.iter().map(|layer| layer.to_vec()).collect::<Vec<_>>()
 		}
 		let sorted_layers = map_to_vec(editor.dispatcher.documents_message_handler.active_document().all_layers_sorted());
@@ -356,15 +356,15 @@ mod test {
 		editor.handle_message(DocumentMessage::SetSelectedLayers(sorted_layers[..2].to_vec()));
 
 		editor.handle_message(DocumentMessage::ReorderSelectedLayers(1));
-		let (all, non_selected, selected) = verify_order(&mut editor.dispatcher.documents_message_handler.active_document_mut());
+		let (all, non_selected, selected) = verify_order(editor.dispatcher.documents_message_handler.active_document_mut());
 		assert_eq!(all, non_selected.into_iter().chain(selected.into_iter()).collect::<Vec<_>>());
 
 		editor.handle_message(DocumentMessage::ReorderSelectedLayers(-1));
-		let (all, non_selected, selected) = verify_order(&mut editor.dispatcher.documents_message_handler.active_document_mut());
+		let (all, non_selected, selected) = verify_order(editor.dispatcher.documents_message_handler.active_document_mut());
 		assert_eq!(all, selected.into_iter().chain(non_selected.into_iter()).collect::<Vec<_>>());
 
 		editor.handle_message(DocumentMessage::ReorderSelectedLayers(i32::MAX));
-		let (all, non_selected, selected) = verify_order(&mut editor.dispatcher.documents_message_handler.active_document_mut());
+		let (all, non_selected, selected) = verify_order(editor.dispatcher.documents_message_handler.active_document_mut());
 		assert_eq!(all, non_selected.into_iter().chain(selected.into_iter()).collect::<Vec<_>>());
 	}
 }
