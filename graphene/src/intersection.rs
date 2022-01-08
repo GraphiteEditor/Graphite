@@ -320,7 +320,7 @@ pub fn line_intersect_point(a: &Line, b: &Line) -> Option<Point> {
 	if slopes.determinant() == 0.0 {
 		return None;
 	}
-	let t_vals = slopes.inverse() * DVec2::new((b.p0 - a.p0).x, (b.p1 - a.p1).y);
+	let t_vals = slopes.inverse() * DVec2::new((a.p0 - b.p0).x, (a.p0 - b.p0).y);
 	Some(b.eval(t_vals[0]))
 }
 

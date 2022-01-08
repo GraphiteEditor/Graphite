@@ -302,34 +302,26 @@ impl PathGraph {
 }
 
 /// This functions assumes t in [0,1], behavior is undefined otherwise
-/// Fix: function currently panics when line_intersection returns None, this happens when the quad is flat like a line
-/// Check: function may panic in other avoidable scenarios
+/// TODO: test values outside 1
 pub fn split_path_seg(p: &PathSeg, t: f64) -> (PathSeg, PathSeg) {
 	match p {
 		PathSeg::Cubic(cubic) => {
-			let split = cubic.eval(t);
-			let handle = cubic.deriv().eval(t).to_vec2();
+			let a1 = Line::new(cubic.p0, cubic.p1).eval(t);
+			let a2 = Line::new(cubic.p1, cubic.p2).eval(t);
+			let a3 = Line::new(cubic.p2, cubic.p3).eval(t);
+			let b1 = Line::new(a1, a2).eval(t);
+			let b2 = Line::new(a2, a3).eval(t);
+			let c1 = Line::new(b1, b2).eval(t);
 			(
-				PathSeg::Cubic(CubicBez {
-					p0: cubic.p0,
-					p1: cubic.p1,
-					p2: split - handle,
-					p3: split,
-				}),
-				PathSeg::Cubic(CubicBez {
-					p0: split,
-					p1: split + handle,
-					p2: cubic.p2,
-					p3: cubic.p3,
-				}),
+				PathSeg::Cubic(CubicBez { p0: cubic.p0, p1: a1, p2: b1, p3: c1 }),
+				PathSeg::Cubic(CubicBez { p0: c1, p1: b2, p2: a3, p3: cubic.p3 }),
 			)
 		}
 		PathSeg::Quad(quad) => {
-			let split = quad.eval(t);
-			let handle = quad.deriv().eval(t).to_vec2();
-			let mid1 = line_intersect_point(&Line::new(quad.p0, quad.p1), &Line::new(split, split + handle)).unwrap();
-			let mid2 = line_intersect_point(&Line::new(quad.p2, quad.p1), &Line::new(split, split + handle)).unwrap();
-			(PathSeg::Quad(QuadBez { p0: quad.p0, p1: mid1, p2: split }), PathSeg::Quad(QuadBez { p0: split, p1: mid2, p2: quad.p2 }))
+			let b1 = Line::new(quad.p0, quad.p1).eval(t);
+			let b2 = Line::new(quad.p1, quad.p2).eval(t);
+			let c1 = Line::new(b1, b2).eval(t);
+			(PathSeg::Quad(QuadBez { p0: quad.p0, p1: b1, p2: c1 }), PathSeg::Quad(QuadBez { p0: c1, p1: b2, p2: quad.p2 }))
 		}
 		PathSeg::Line(line) => {
 			let split = line.eval(t);
@@ -351,7 +343,6 @@ pub fn boolean_operation(select: BooleanOperation, alpha: &Shape, beta: &Shape) 
 	}
 	let alpha_dir = Cycle::direction_for_path(&alpha)?;
 	let beta_dir = Cycle::direction_for_path(&beta)?;
-	log::debug!("alpha: {:?}, beta: {:?}", alpha_dir, beta_dir);
 	match select {
 		BooleanOperation::Union => {
 			let graph = PathGraph::from_paths(&alpha, &beta, alpha_dir != beta_dir).ok_or(())?;
@@ -424,6 +415,10 @@ pub fn is_closed(curve: &BezPath) -> bool {
 	curve.iter().last() == Some(PathEl::ClosePath)
 }
 
+/// when the two curves are not continuous or if their derivitives are not continuous, and the two curves are not lines
+/// they must be represented as two subpaths.
+/// TODO: Make this function correctly detect cases when the paths can be continuously concatenated and when they must be two subpaths
+/// Behavior: function panics if path b is empty
 pub fn concat_paths(a: &mut BezPath, b: &BezPath) {
 	b.iter().for_each(|element| a.push(element));
 }
