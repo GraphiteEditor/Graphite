@@ -518,6 +518,12 @@ impl JsEditorHandle {
 		let message = ArtboardMessage::AddArtboard { top, left, height, width };
 		self.dispatch(message);
 	}
+
+	// Force renders the document. Used for first render since it is dependent on vue loading.
+	pub fn render_document(&self) {
+		let message = DocumentMessage::RenderDocument;
+		self.dispatch(message);
+	}
 }
 
 impl Drop for JsEditorHandle {

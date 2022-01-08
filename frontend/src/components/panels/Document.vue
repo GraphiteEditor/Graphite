@@ -375,6 +375,9 @@ export default defineComponent({
 
 		window.addEventListener("resize", this.viewportResize);
 		window.addEventListener("DOMContentLoaded", this.viewportResize);
+
+		// Render the document when the component has loaded
+		this.editor.instance.render_document();
 	},
 	data() {
 		const documentModeEntries: SectionsOfMenuListEntries = [

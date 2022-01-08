@@ -75,7 +75,6 @@ pub struct DocumentMessageHandler {
 	#[serde(with = "vectorize_layer_metadata")]
 	pub layer_metadata: HashMap<Vec<LayerId>, LayerMetadata>,
 	layer_range_selection_reference: Vec<LayerId>,
-	#[serde(skip)]
 	movement_handler: MovementMessageHandler,
 	#[serde(skip)]
 	overlay_message_handler: OverlayMessageHandler,
@@ -208,21 +207,14 @@ impl DocumentMessageHandler {
 		}
 	}
 
-	pub fn with_name(name: String, ipp: &InputPreprocessor) -> Self {
-		let mut document = Self { name, ..Self::default() };
-		let starting_root_transform = document.movement_handler.calculate_offset_transform(ipp.viewport_bounds.size() / 2.);
-		document.graphene_document.root.transform = starting_root_transform;
-		document.artboard_message_handler.artboards_graphene_document.root.transform = starting_root_transform;
-		document
+	pub fn with_name(name: String) -> Self {
+		Self { name, ..Self::default() }
 	}
 
-	pub fn with_name_and_content(name: String, serialized_content: String, ipp: &InputPreprocessor) -> Result<Self, EditorError> {
+	pub fn with_name_and_content(name: String, serialized_content: String) -> Result<Self, EditorError> {
 		match Self::deserialize_document(&serialized_content) {
 			Ok(mut document) => {
 				document.name = name;
-				let starting_root_transform = document.movement_handler.calculate_offset_transform(ipp.viewport_bounds.size() / 2.);
-				document.graphene_document.root.transform = starting_root_transform;
-				document.artboard_message_handler.artboards_graphene_document.root.transform = starting_root_transform;
 				Ok(document)
 			}
 			Err(DocumentError::InvalidFile(msg)) => Err(EditorError::Document(msg)),
@@ -797,7 +789,11 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				let scale = 0.5 + ASYMPTOTIC_EFFECT + document_transform.scale * SCALE_EFFECT;
 				let viewport_size = ipp.viewport_bounds.size();
 				let viewport_mid = ipp.viewport_bounds.center();
-				let [bounds1, bounds2] = self.graphene_document.visible_layers_bounding_box().unwrap_or([viewport_mid; 2]);
+				let [bounds1, bounds2] = if self.artboard_message_handler.has_artboards() {
+					self.artboard_message_handler.artboards_graphene_document.visible_layers_bounding_box().unwrap_or([viewport_mid; 2])
+				} else {
+					self.graphene_document.visible_layers_bounding_box().unwrap_or([viewport_mid; 2])
+				};
 				let bounds1 = bounds1.min(viewport_mid) - viewport_size * scale;
 				let bounds2 = bounds2.max(viewport_mid) + viewport_size * scale;
 				let bounds_length = (bounds2 - bounds1) * (1. + SCROLLBAR_SPACING);

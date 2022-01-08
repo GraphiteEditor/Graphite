@@ -268,7 +268,7 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 			}
 			NewDocument => {
 				let name = self.generate_new_document_name();
-				let new_document = DocumentMessageHandler::with_name(name, ipp);
+				let new_document = DocumentMessageHandler::with_name(name);
 				let document_id = generate_uuid();
 				self.active_document_id = document_id;
 				self.load_document(new_document, document_id, false, responses);
@@ -293,7 +293,7 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 				document,
 				document_is_saved,
 			} => {
-				let document = DocumentMessageHandler::with_name_and_content(document_name, document, ipp);
+				let document = DocumentMessageHandler::with_name_and_content(document_name, document);
 				match document {
 					Ok(mut document) => {
 						document.set_save_state(document_is_saved);

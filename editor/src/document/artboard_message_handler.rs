@@ -34,6 +34,12 @@ pub struct ArtboardMessageHandler {
 	pub artboard_ids: Vec<LayerId>,
 }
 
+impl ArtboardMessageHandler {
+	pub fn has_artboards(&self) -> bool {
+		!self.artboard_ids.is_empty()
+	}
+}
+
 impl MessageHandler<ArtboardMessage, (&mut LayerMetadata, &Document, &InputPreprocessor)> for ArtboardMessageHandler {
 	fn process_action(&mut self, message: ArtboardMessage, _data: (&mut LayerMetadata, &Document, &InputPreprocessor), responses: &mut VecDeque<Message>) {
 		// let (layer_metadata, document, ipp) = data;

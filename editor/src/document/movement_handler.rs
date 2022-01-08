@@ -5,7 +5,7 @@ use crate::input::keyboard::Key;
 use crate::message_prelude::*;
 use crate::{
 	consts::{VIEWPORT_SCROLL_RATE, VIEWPORT_ZOOM_LEVELS, VIEWPORT_ZOOM_MOUSE_RATE, VIEWPORT_ZOOM_SCALE_MAX, VIEWPORT_ZOOM_SCALE_MIN, VIEWPORT_ZOOM_WHEEL_RATE},
-	input::{mouse::ViewportBounds, mouse::ViewportPosition, InputPreprocessor},
+	input::{mouse::ViewportPosition, InputPreprocessor},
 };
 use graphene::document::Document;
 use graphene::Operation as DocumentOperation;
@@ -69,36 +69,19 @@ impl MovementMessageHandler {
 			self.rotation
 		}
 	}
-	pub fn calculate_offset_transform(&self, offset: DVec2) -> DAffine2 {
+	pub fn calculate_current_transform(&self) -> DAffine2 {
 		// TODO: replace with DAffine2::from_scale_angle_translation and fix the errors
-		let offset_transform = DAffine2::from_translation(offset);
 		let scale_transform = DAffine2::from_scale(DVec2::new(self.scale, self.scale));
 		let angle_transform = DAffine2::from_angle(self.snapped_angle());
 		let translation_transform = DAffine2::from_translation(self.translation);
-		scale_transform * offset_transform * angle_transform * translation_transform
+		scale_transform * angle_transform * translation_transform
 	}
 
-	fn create_document_transform(&self, viewport_bounds: &ViewportBounds, responses: &mut VecDeque<Message>) {
-		let half_viewport = viewport_bounds.size() / 2.;
-		let scaled_half_viewport = half_viewport / self.scale;
-		responses.push_back(
-			DocumentOperation::SetLayerTransform {
-				path: vec![],
-				transform: self.calculate_offset_transform(scaled_half_viewport).to_cols_array(),
-			}
-			.into(),
-		);
+	fn create_document_transform(&self, responses: &mut VecDeque<Message>) {
+		let transform = self.calculate_current_transform().to_cols_array();
+		responses.push_back(DocumentOperation::SetLayerTransform { path: vec![], transform }.into());
 
-		responses.push_back(
-			ArtboardMessage::DispatchOperation(
-				DocumentOperation::SetLayerTransform {
-					path: vec![],
-					transform: self.calculate_offset_transform(scaled_half_viewport).to_cols_array(),
-				}
-				.into(),
-			)
-			.into(),
-		);
+		responses.push_back(ArtboardMessage::DispatchOperation(DocumentOperation::SetLayerTransform { path: vec![], transform }.into()).into());
 	}
 }
 
@@ -134,7 +117,7 @@ impl MessageHandler<MovementMessage, (&Document, &InputPreprocessor)> for Moveme
 
 					self.translation += transformed_delta;
 					responses.push_back(ToolMessage::DocumentIsDirty.into());
-					self.create_document_transform(&ipp.viewport_bounds, responses);
+					self.create_document_transform(responses);
 				}
 
 				if self.rotating {
@@ -155,7 +138,7 @@ impl MessageHandler<MovementMessage, (&Document, &InputPreprocessor)> for Moveme
 					self.rotation += rotation;
 					responses.push_back(ToolMessage::DocumentIsDirty.into());
 					responses.push_back(FrontendMessage::SetCanvasRotation { new_radians: self.snapped_angle() }.into());
-					self.create_document_transform(&ipp.viewport_bounds, responses);
+					self.create_document_transform(responses);
 				}
 				if self.zooming {
 					let difference = self.mouse_pos.y as f64 - ipp.mouse.position.y as f64;
@@ -165,7 +148,7 @@ impl MessageHandler<MovementMessage, (&Document, &InputPreprocessor)> for Moveme
 					self.scale = new;
 					responses.push_back(ToolMessage::DocumentIsDirty.into());
 					responses.push_back(FrontendMessage::SetCanvasZoom { new_zoom: self.scale }.into());
-					self.create_document_transform(&ipp.viewport_bounds, responses);
+					self.create_document_transform(responses);
 				}
 				self.mouse_pos = ipp.mouse.position;
 			}
@@ -174,7 +157,7 @@ impl MessageHandler<MovementMessage, (&Document, &InputPreprocessor)> for Moveme
 				responses.push_back(FrontendMessage::SetCanvasZoom { new_zoom: self.scale }.into());
 				responses.push_back(ToolMessage::DocumentIsDirty.into());
 				responses.push_back(DocumentMessage::DirtyRenderDocumentInOutlineView.into());
-				self.create_document_transform(&ipp.viewport_bounds, responses);
+				self.create_document_transform(responses);
 			}
 			IncreaseCanvasZoom => {
 				// TODO: Eliminate redundant code by making this call SetCanvasZoom
@@ -182,7 +165,7 @@ impl MessageHandler<MovementMessage, (&Document, &InputPreprocessor)> for Moveme
 				responses.push_back(FrontendMessage::SetCanvasZoom { new_zoom: self.scale }.into());
 				responses.push_back(ToolMessage::DocumentIsDirty.into());
 				responses.push_back(DocumentMessage::DirtyRenderDocumentInOutlineView.into());
-				self.create_document_transform(&ipp.viewport_bounds, responses);
+				self.create_document_transform(responses);
 			}
 			DecreaseCanvasZoom => {
 				// TODO: Eliminate redundant code by making this call SetCanvasZoom
@@ -190,17 +173,19 @@ impl MessageHandler<MovementMessage, (&Document, &InputPreprocessor)> for Moveme
 				responses.push_back(FrontendMessage::SetCanvasZoom { new_zoom: self.scale }.into());
 				responses.push_back(ToolMessage::DocumentIsDirty.into());
 				responses.push_back(DocumentMessage::DirtyRenderDocumentInOutlineView.into());
-				self.create_document_transform(&ipp.viewport_bounds, responses);
+				self.create_document_transform(responses);
 			}
 			WheelCanvasZoom => {
 				// TODO: Eliminate redundant code by making this call SetCanvasZoom
 				let scroll = ipp.mouse.scroll_delta.scroll_delta();
 				let mouse = ipp.mouse.position;
-				let viewport_bounds = ipp.viewport_bounds.size();
 				let mut zoom_factor = 1. + scroll.abs() * VIEWPORT_ZOOM_WHEEL_RATE;
 				if ipp.mouse.scroll_delta.y > 0 {
 					zoom_factor = 1. / zoom_factor
 				};
+
+				// TODO: FIND OUT WHY THIS WORKS??????
+				let viewport_bounds = DVec2::ONE;
 				let new_viewport_bounds = viewport_bounds / zoom_factor;
 				let delta_size = viewport_bounds - new_viewport_bounds;
 				let mouse_fraction = mouse / viewport_bounds;
@@ -213,7 +198,7 @@ impl MessageHandler<MovementMessage, (&Document, &InputPreprocessor)> for Moveme
 				responses.push_back(FrontendMessage::SetCanvasZoom { new_zoom: self.scale }.into());
 				responses.push_back(ToolMessage::DocumentIsDirty.into());
 				responses.push_back(DocumentMessage::DirtyRenderDocumentInOutlineView.into());
-				self.create_document_transform(&ipp.viewport_bounds, responses);
+				self.create_document_transform(responses);
 			}
 			WheelCanvasTranslate { use_y_as_x } => {
 				let delta = match use_y_as_x {
@@ -223,11 +208,11 @@ impl MessageHandler<MovementMessage, (&Document, &InputPreprocessor)> for Moveme
 				let transformed_delta = document.root.transform.inverse().transform_vector2(delta);
 				self.translation += transformed_delta;
 				responses.push_back(ToolMessage::DocumentIsDirty.into());
-				self.create_document_transform(&ipp.viewport_bounds, responses);
+				self.create_document_transform(responses);
 			}
 			SetCanvasRotation(new_radians) => {
 				self.rotation = new_radians;
-				self.create_document_transform(&ipp.viewport_bounds, responses);
+				self.create_document_transform(responses);
 				responses.push_back(ToolMessage::DocumentIsDirty.into());
 				responses.push_back(FrontendMessage::SetCanvasRotation { new_radians }.into());
 			}
@@ -248,7 +233,7 @@ impl MessageHandler<MovementMessage, (&Document, &InputPreprocessor)> for Moveme
 					responses.push_back(FrontendMessage::SetCanvasZoom { new_zoom: self.scale }.into());
 					responses.push_back(ToolMessage::DocumentIsDirty.into());
 					responses.push_back(DocumentMessage::DirtyRenderDocumentInOutlineView.into());
-					self.create_document_transform(&ipp.viewport_bounds, responses);
+					self.create_document_transform(responses);
 				}
 			}
 			TranslateCanvas(delta) => {
@@ -256,14 +241,14 @@ impl MessageHandler<MovementMessage, (&Document, &InputPreprocessor)> for Moveme
 
 				self.translation += transformed_delta;
 				responses.push_back(ToolMessage::DocumentIsDirty.into());
-				self.create_document_transform(&ipp.viewport_bounds, responses);
+				self.create_document_transform(responses);
 			}
 			TranslateCanvasByViewportFraction(delta) => {
 				let transformed_delta = document.root.transform.inverse().transform_vector2(delta * ipp.viewport_bounds.size());
 
 				self.translation += transformed_delta;
 				responses.push_back(ToolMessage::DocumentIsDirty.into());
-				self.create_document_transform(&ipp.viewport_bounds, responses);
+				self.create_document_transform(responses);
 			}
 		}
 	}
