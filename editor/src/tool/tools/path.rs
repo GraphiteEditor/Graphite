@@ -13,9 +13,12 @@ use glam::{DAffine2, DVec2};
 use graphene::color::Color;
 use graphene::layers::style;
 use graphene::layers::style::Fill;
+use graphene::layers::style::PathStyle;
 use graphene::layers::style::Stroke;
 use graphene::Operation;
 use kurbo::BezPath;
+use kurbo::PathEl;
+use kurbo::Vec2;
 use serde::{Deserialize, Serialize};
 
 #[derive(Default)]
@@ -79,10 +82,19 @@ struct PathToolData {
 	handle_marker_pool: Vec<Vec<LayerId>>,
 	anchor_handle_line_pool: Vec<Vec<LayerId>>,
 	shape_outline_pool: Vec<Vec<LayerId>>,
-	dragging: Vec<LayerId>,
+	selected_shapes: Vec<VectorManipulatorShape>,
+	selection: PathToolSelection,
 }
 
 impl PathToolData {}
+#[derive(Clone, Debug, Default)]
+struct PathToolSelection {
+	closest_layer_path: Vec<LayerId>,
+	closest_shape_id: usize,
+	overlay_path: Vec<LayerId>,
+	bez_path_elements: Vec<kurbo::PathEl>,
+	bez_segment_id: usize,
+}
 
 impl Fsm for PathToolFsmState {
 	type ToolData = PathToolData;
@@ -221,6 +233,7 @@ impl Fsm for PathToolFsmState {
 					let mouse_pos = input.mouse.position;
 					let mut points = Vec::new();
 
+
 					let (mut anchor_i, mut handle_i, _line_i, _shape_i) = (0, 0, 0, 0);
 					let shapes_to_draw = document.selected_visible_layers_vector_points();
 					let (total_anchors, total_handles, _total_anchor_handle_lines) = calculate_total_overlays_per_type(&shapes_to_draw);
@@ -229,12 +242,15 @@ impl Fsm for PathToolFsmState {
 
 					#[derive(Debug)]
 					enum PointType {
-						Anchor(usize),
+						Anchor{
+							anchor_i: usize,
+							layer_path: Vec<LayerId>,
+							shape_offset: usize,
+						},
 						Handle {
 							handle_i: usize,
 							layer_path: Vec<LayerId>,
 							shape_offset: usize,
-							handle_offset: usize,
 						},
 					}
 					#[derive(Debug)]
@@ -254,7 +270,7 @@ impl Fsm for PathToolFsmState {
 						}
 					}
 
-					// todo: use const?
+					// TODO simplify the following block
 					// use crate::consts::SELECTION_TOLERANCE;
 					// let tolerance = DVec2::splat(SELECTION_TOLERANCE);
 					// let quad = Quad::from_box([mouse_pos - tolerance, mouse_pos + tolerance]);
@@ -267,12 +283,16 @@ impl Fsm for PathToolFsmState {
 						for anchor in segment.anchors {
 							let d2 = mouse_pos.distance_squared(anchor);
 							if d2 < select_threshold_squared {
-								points.push(Point::new(anchor, PointType::Anchor(anchor_i), d2));
+								points.push(Point::new(anchor, PointType::Anchor{
+										anchor_i,
+										layer_path: shape_to_draw.layer_path.clone(),
+										shape_offset,
+									}, d2));
 							}
 							anchor_i += 1;
 						}
 
-						for (handle_offset, handle) in segment.handles.into_iter().enumerate() {
+						for (_, handle) in segment.handles.into_iter().enumerate() {
 							let d2 = mouse_pos.distance_squared(handle);
 							if d2 < select_threshold_squared {
 								points.push(Point::new(
@@ -281,7 +301,6 @@ impl Fsm for PathToolFsmState {
 										handle_i,
 										layer_path: shape_to_draw.layer_path.clone(),
 										shape_offset,
-										handle_offset,
 									},
 									d2,
 								));
@@ -292,97 +311,81 @@ impl Fsm for PathToolFsmState {
 
 					points.sort_by(|a, b| a.mouse_proximity.partial_cmp(&b.mouse_proximity).unwrap_or(std::cmp::Ordering::Equal));
 					let closest_point_within_click_threshold = points.first();
-					// log::debug!("PATH TOOL: {:?} {:?}", mouse_pos, points);
 
 					if let Some(point) = closest_point_within_click_threshold {
 						let path = match point.point_type {
-							PointType::Anchor(i) => data.anchor_marker_pool[i].clone(),
-							PointType::Handle {
-								handle_i: i,
+							PointType::Anchor{
+								anchor_i,
 								ref layer_path,
 								shape_offset,
-								handle_offset,
+							} =>  {
+								data.selected_shapes = shapes_to_draw;
+								let shape = &data.selected_shapes[shape_offset];
+								let path = shape.path.clone();
+								let bez: Vec<PathEl> = (&path).into_iter().collect();
+								let transformed = shape.transform.inverse().transform_point2(input.mouse.position);
+								data.selection.bez_segment_id = closest_anchor(&bez, Vec2::new(transformed.x, transformed.y));
+								data.selection.bez_path_elements = bez;
+								data.selection.closest_layer_path = layer_path.clone();
+								data.selection.closest_shape_id = shape_offset;
+								data.anchor_marker_pool[anchor_i].clone()
+							},
+							PointType::Handle {
+								handle_i,
+								ref layer_path,
+								shape_offset,
 							} => {
-								let shape = &shapes_to_draw[shape_offset];
-
-								let bez = {
-									use kurbo::{PathEl, Vec2};
-									let mut bez: Vec<PathEl> = shape.path.clone().into_iter().collect();
-
-									fn bez_path_index_at_handle_index(bez: &[PathEl], target: usize) -> Option<usize> {
-										let mut offset = 0;
-										for (i, el) in bez.iter().enumerate() {
-											if offset == target {
-												match el {
-													PathEl::ClosePath => {}
-													_ => return Some(i),
-												};
-											}
-											offset += match el {
-												PathEl::ClosePath => 0,
-												_ => 1,
-											};
-										}
-										None
-									}
-
-									// todo: WIP incorrect mapping between clicked point and moved point
-									if let Some(i) = bez_path_index_at_handle_index(&bez, handle_offset) {
-										let delta: Vec2 = Vec2::new(10., 10.) + Vec2::new(mouse_pos.x, mouse_pos.y);
-										let replacement = match &bez[i] {
-											PathEl::MoveTo(p) => PathEl::MoveTo(*p + delta),
-											PathEl::LineTo(p) => PathEl::LineTo(*p + delta),
-											PathEl::QuadTo(a1, p) => PathEl::QuadTo(*a1, *p + delta),
-											PathEl::CurveTo(a1, a2, p) => PathEl::CurveTo(*a1, *a2, *p + delta),
-											PathEl::ClosePath => unreachable!(),
-										};
-										bez[i] = replacement;
-									}
-									let bez: BezPath = bez.into_iter().collect();
-									bez
-								};
-
-								// todo: change path correctly
-								responses.push_back(
-									Operation::SetShapePathInViewport {
-										path: layer_path.clone(),
-										bez_path: bez,
-										transform: shape.transform.to_cols_array(),
-									}
-									.into(),
-								);
-
-								data.handle_marker_pool[i].clone()
+								// TODO make this work for the handles, right now just selects the anchors
+								data.selected_shapes = shapes_to_draw;
+								let shape = &data.selected_shapes[shape_offset];
+								let path = shape.path.clone();
+								let bez: Vec<PathEl> = (&path).into_iter().collect();
+								let transformed = shape.transform.inverse().transform_point2(input.mouse.position);
+								data.selection.bez_segment_id = closest_anchor(&bez, Vec2::new(transformed.x, transformed.y));
+								data.selection.bez_path_elements = bez;
+								data.selection.closest_layer_path = layer_path.clone();
+								data.selection.closest_shape_id = shape_offset;								
+								data.handle_marker_pool[handle_i].clone()
 							}
 						};
-						// todo: use Operation::SetShapePathInViewport instead
-						// currently using SetLayerFill just to show some effect
-						data.dragging = path.clone();
-						responses.push_back(DocumentMessage::Overlay(Operation::SetLayerFill { path, color: COLOR_ACCENT }.into()).into());
+						
+						data.selection.overlay_path = path;
+						responses.push_back(DocumentMessage::Overlay(Operation::SetLayerFill { path: data.selection.overlay_path.clone(), color: COLOR_ACCENT }.into()).into());
 						Dragging
 					} else {
 						Ready
 					}
 				}
 				(Dragging, PointerMove) => {
-					let scale = DVec2::splat(VECTOR_MANIPULATOR_ANCHOR_MARKER_SIZE);
-					let angle = 0.;
-					let translation = (input.mouse.position - (scale / 2.)).round();
-					let transform = DAffine2::from_scale_angle_translation(scale, angle, translation).to_cols_array();
+					let shape = &data.selected_shapes[data.selection.closest_shape_id];
+					let transformed = shape.transform.inverse().transform_point2(input.mouse.position);
+					let delta: Vec2 = Vec2::new(transformed.x, transformed.y);
+					let replacement = match &data.selection.bez_path_elements[data.selection.bez_segment_id] {
+						PathEl::MoveTo(_) => PathEl::MoveTo(delta.to_point()),
+						PathEl::LineTo(_) => PathEl::LineTo(delta.to_point()),
+						PathEl::QuadTo(a1, _) => PathEl::QuadTo(*a1, delta.to_point()),
+						PathEl::CurveTo(a1, a2, _) => PathEl::CurveTo(*a1, *a2, delta.to_point()),
+						PathEl::ClosePath => unreachable!(),
+					};
+					data.selection.bez_path_elements[data.selection.bez_segment_id] = replacement;
+
 					responses.push_back(
-						DocumentMessage::Overlay(
-							Operation::SetLayerTransformInViewport {
-								path: data.dragging.clone(),
-								transform,
-							}
-							.into(),
-						)
+						Operation::SetShapePathInViewport {
+							path: data.selection.closest_layer_path.clone(),
+							bez_path: data.selection.bez_path_elements.clone().into_iter().collect(),
+							transform: shape.transform.to_cols_array(),
+						}
 						.into(),
 					);
+
 					Dragging
 				}
 				(_, PointerMove) => self,
-				(_, DragStop) => Ready,
+				(_, DragStop) => {
+					let style = PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 2.0)), Some(Fill::new(Color::WHITE)));
+					responses.push_back(DocumentMessage::Overlay(Operation::SetLayerStyle { path: data.selection.overlay_path.clone(), style }.into()).into());
+					Ready
+				},
 				(_, Abort) => {
 					// Destory the overlay layer pools
 					while let Some(layer) = data.anchor_marker_pool.pop() {
@@ -610,4 +613,29 @@ fn add_shape_outline(responses: &mut VecDeque<Message>) -> Vec<LayerId> {
 	responses.push_back(DocumentMessage::Overlay(operation.into()).into());
 
 	layer_path
+}
+
+
+fn closest_anchor(bez: &[kurbo::PathEl], pos: kurbo::Vec2) -> usize {
+	let mut closest: usize = 0;
+	let mut closest_dist: f64 = 100000000.0;
+	for (i, el) in bez.iter().enumerate() {
+		let p = match el {
+			kurbo::PathEl::MoveTo(p) => Some(p.to_vec2()),
+			kurbo::PathEl::LineTo(p) => Some(p.to_vec2()),
+			kurbo::PathEl::QuadTo(_, p) => Some(p.to_vec2()),
+			kurbo::PathEl::CurveTo(_, _, p) => Some(p.to_vec2()),
+			kurbo::PathEl::ClosePath => None,
+		};
+		if p.is_none() {
+			continue;
+		}
+		let unwraped_p = p.expect("Closed path, lame");
+		let dist_sqrd = (unwraped_p - pos).hypot2();
+		if dist_sqrd < closest_dist {
+			closest_dist = dist_sqrd;
+			closest = i;
+		}
+	}
+	closest
 }
