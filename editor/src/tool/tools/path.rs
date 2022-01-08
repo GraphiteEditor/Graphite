@@ -225,10 +225,6 @@ impl Fsm for PathToolFsmState {
 				}
 				(_, DragStart) => {
 					// todo: DRY refactor (this arm is very similar to the (_, RedrawOverlay) arm)
-					// WIP: selecting control point working
-					// next: correctly modifying path
-					// to test: E, make ellipse, A, click control point, see it change color
-					// todo: use cargo clippy?
 
 					let mouse_pos = input.mouse.position;
 					let mut points = Vec::new();
@@ -255,7 +251,6 @@ impl Fsm for PathToolFsmState {
 					}
 					#[derive(Debug)]
 					struct Point {
-						// position: DVec2,
 						point_type: PointType,
 						mouse_proximity: f64,
 					}
@@ -263,7 +258,6 @@ impl Fsm for PathToolFsmState {
 					impl Point {
 						fn new(_position: DVec2, point_type: PointType, mouse_proximity: f64) -> Self {
 							Self {
-								// position,
 								point_type,
 								mouse_proximity,
 							}
@@ -271,9 +265,6 @@ impl Fsm for PathToolFsmState {
 					}
 
 					// TODO simplify the following block
-					// use crate::consts::SELECTION_TOLERANCE;
-					// let tolerance = DVec2::splat(SELECTION_TOLERANCE);
-					// let quad = Quad::from_box([mouse_pos - tolerance, mouse_pos + tolerance]);
 					let select_threshold = 6.;
 					let select_threshold_squared = select_threshold * select_threshold;
 
@@ -615,10 +606,10 @@ fn add_shape_outline(responses: &mut VecDeque<Message>) -> Vec<LayerId> {
 	layer_path
 }
 
-
+// Brute force comparison to determine which path element we want to select
 fn closest_anchor(bez: &[kurbo::PathEl], pos: kurbo::Vec2) -> usize {
 	let mut closest: usize = 0;
-	let mut closest_dist: f64 = 100000000.0;
+	let mut closest_dist: f64 = f64::MAX;
 	for (i, el) in bez.iter().enumerate() {
 		let p = match el {
 			kurbo::PathEl::MoveTo(p) => Some(p.to_vec2()),
@@ -627,11 +618,8 @@ fn closest_anchor(bez: &[kurbo::PathEl], pos: kurbo::Vec2) -> usize {
 			kurbo::PathEl::CurveTo(_, _, p) => Some(p.to_vec2()),
 			kurbo::PathEl::ClosePath => None,
 		};
-		if p.is_none() {
-			continue;
-		}
-		let unwraped_p = p.expect("Closed path, lame");
-		let dist_sqrd = (unwraped_p - pos).hypot2();
+		if p.is_none() { continue; }
+		let dist_sqrd = (p.unwrap() - pos).hypot2();
 		if dist_sqrd < closest_dist {
 			closest_dist = dist_sqrd;
 			closest = i;
