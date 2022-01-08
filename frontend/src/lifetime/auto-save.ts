@@ -2,8 +2,8 @@ import { AutoSaveDocument, RemoveAutoSaveDocument } from "@/dispatcher/js-messag
 import { DocumentsState } from "@/state/documents";
 import { EditorState, getWasmInstance } from "@/state/wasm-loader";
 
-const GRAPHITE_INDEXED_DB_NAME = "graphite-indexed-db";
 const GRAPHITE_INDEXED_DB_VERSION = 2;
+const GRAPHITE_INDEXED_DB_NAME = "graphite-indexed-db";
 const GRAPHITE_AUTO_SAVE_STORE = "auto-save-documents";
 const GRAPHITE_AUTO_SAVE_ORDER_KEY = "auto-save-documents-order";
 

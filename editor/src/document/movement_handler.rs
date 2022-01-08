@@ -81,6 +81,7 @@ impl MovementMessageHandler {
 	fn create_document_transform(&self, viewport_bounds: &ViewportBounds, responses: &mut VecDeque<Message>) {
 		let half_viewport = viewport_bounds.size() / 2.;
 		let scaled_half_viewport = half_viewport / self.scale;
+
 		responses.push_back(
 			DocumentOperation::SetLayerTransform {
 				path: vec![],

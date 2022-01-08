@@ -234,17 +234,12 @@
 					// Fallback values if JS hasn't set these to integers yet
 					width: 100%;
 					height: 100%;
+					// Allows dev tools to select the artwork without being blocked by the SVG containers
+					pointer-events: none;
 
-					// &.artwork {
-					// 	background: #ffffff;
-					// }
-
-					&.artboards {
-						user-select: none;
-					}
-
-					&.overlays {
-						user-select: none;
+					// Prevent inheritance from reaching the child elements
+					> * {
+						pointer-events: auto;
 					}
 				}
 			}
@@ -391,8 +386,8 @@ export default defineComponent({
 		];
 
 		return {
-			artboardSvg: "",
 			artworkSvg: "",
+			artboardSvg: "",
 			overlaysSvg: "",
 			canvasSvgWidth: "100%",
 			canvasSvgHeight: "100%",

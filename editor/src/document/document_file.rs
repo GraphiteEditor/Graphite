@@ -208,7 +208,7 @@ impl DocumentMessageHandler {
 		match deserialized_result {
 			Ok(document) => {
 				if document.version != GRAPHITE_DOCUMENT_VERSION {
-					Err(DocumentError::InvalidFile("Graphite Document Version Mismatch".to_string()))
+					Err(DocumentError::InvalidFile("Graphite document version mismatch".to_string()))
 				} else {
 					Ok(document)
 				}

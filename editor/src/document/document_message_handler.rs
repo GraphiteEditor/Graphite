@@ -196,6 +196,7 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 				for layer in self.active_document().layer_metadata.keys() {
 					responses.push_back(DocumentMessage::LayerChanged(layer.clone()).into());
 				}
+				responses.push_back(ToolMessage::DocumentIsDirty.into());
 			}
 			CloseActiveDocumentWithConfirmation => {
 				responses.push_back(DocumentsMessage::CloseDocumentWithConfirmation(self.active_document_id).into());

@@ -4,13 +4,9 @@ use crate::input::InputPreprocessor;
 use crate::message_prelude::*;
 use glam::{DAffine2, DVec2};
 use graphene::color::Color;
-use graphene::document::Document;
-use graphene::layers::style;
-use graphene::layers::style::Fill;
-use graphene::Operation as DocumentOperation;
-
 use graphene::document::Document as GrapheneDocument;
-use graphene::layers::style::ViewMode;
+use graphene::layers::style::{self, Fill, ViewMode};
+use graphene::Operation as DocumentOperation;
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 
@@ -34,8 +30,8 @@ pub struct ArtboardMessageHandler {
 	pub artboard_ids: Vec<LayerId>,
 }
 
-impl MessageHandler<ArtboardMessage, (&mut LayerMetadata, &Document, &InputPreprocessor)> for ArtboardMessageHandler {
-	fn process_action(&mut self, message: ArtboardMessage, _data: (&mut LayerMetadata, &Document, &InputPreprocessor), responses: &mut VecDeque<Message>) {
+impl MessageHandler<ArtboardMessage, (&mut LayerMetadata, &GrapheneDocument, &InputPreprocessor)> for ArtboardMessageHandler {
+	fn process_action(&mut self, message: ArtboardMessage, _data: (&mut LayerMetadata, &GrapheneDocument, &InputPreprocessor), responses: &mut VecDeque<Message>) {
 		// let (layer_metadata, document, ipp) = data;
 		use ArtboardMessage::*;
 		match message {
@@ -63,11 +59,11 @@ impl MessageHandler<ArtboardMessage, (&mut LayerMetadata, &Document, &InputPrepr
 			RenderArtboards => {}
 		}
 
-		// Render an infinite canvas if there is no artboards
+		// Render an infinite canvas if there are no artboards
 		if self.artboard_ids.is_empty() {
 			responses.push_back(
 				FrontendMessage::UpdateArtboards {
-					svg: "<rect width=\"100%\" height=\"100%\" style=\"fill:white\" />".to_string(),
+					svg: r##"<rect width="100%" height="100%" fill="#ffffff" />"##.to_string(),
 				}
 				.into(),
 			)

@@ -71,7 +71,7 @@ function makeMenuEntries(editor: EditorState): MenuListEntries {
 						icon: "File",
 						action: (): void => {
 							editor.instance.new_document();
-							editor.instance.create_artboard(-1910 / 2, -1080 / 2, 1910, 1080);
+							editor.instance.create_artboard(0, 0, 1920, 1080);
 						},
 					},
 					{ label: "Open…", shortcut: ["KeyControl", "KeyO"], action: (): void => editor.instance.open_document() },
