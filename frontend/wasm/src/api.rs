@@ -6,7 +6,7 @@ use std::sync::atomic::Ordering;
 use crate::helpers::Error;
 use crate::type_translators::{translate_blend_mode, translate_key, translate_tool_type, translate_view_mode};
 use crate::{EDITOR_HAS_CRASHED, EDITOR_INSTANCES};
-use editor::consts::FILE_SAVE_SUFFIX;
+use editor::consts::{FILE_SAVE_SUFFIX, GRAPHITE_DOCUMENT_VERSION};
 use editor::input::input_preprocessor::ModifierKeys;
 use editor::input::mouse::{EditorMouseState, ScrollDelta, ViewportBounds};
 use editor::message_prelude::*;
@@ -503,6 +503,12 @@ impl JsEditorHandle {
 		let message = DocumentMessage::CreateEmptyFolder(path);
 		self.dispatch(message);
 	}
+
+	// Creates an artboard at a specified point with a width and height
+	pub fn create_artboard(&self, top: f64, left: f64, height: f64, width: f64) {
+		let message = ArtboardMessage::AddArtboard { top, left, height, width };
+		self.dispatch(message);
+	}
 }
 
 // Needed to make JsEditorHandle functions pub to rust. Do not fully
@@ -537,6 +543,11 @@ pub fn file_save_suffix() -> String {
 	FILE_SAVE_SUFFIX.into()
 }
 
+/// Get the constant FILE_SAVE_SUFFIX
+#[wasm_bindgen]
+pub fn graphite_version() -> String {
+	GRAPHITE_DOCUMENT_VERSION.to_string()
+}
 /// Get the constant i32::MAX
 #[wasm_bindgen]
 pub fn i32_max() -> i32 {

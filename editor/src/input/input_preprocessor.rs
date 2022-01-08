@@ -122,6 +122,16 @@ impl MessageHandler<InputPreprocessorMessage, ()> for InputPreprocessor {
 						)
 						.into(),
 					);
+					responses.push_back(
+						DocumentMessage::Artboard(
+							graphene::Operation::TransformLayer {
+								path: vec![],
+								transform: glam::DAffine2::from_translation(translation).to_cols_array(),
+							}
+							.into(),
+						)
+						.into(),
+					);
 				}
 			}
 		};

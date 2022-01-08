@@ -29,9 +29,9 @@
 			</PopoverButton>
 		</LayoutRow>
 		<LayoutRow :class="'layer-tree scrollable-y'">
-			<LayoutCol :class="'list'" ref="layerTreeList" @click="() => deselectAllLayers()" @dragover="updateLine($event)" @dragend="drop()">
+			<LayoutCol :class="'list'" ref="layerTreeList" @click="() => deselectAllLayers()" @dragover="updateInsertLine($event)" @dragend="drop()">
 				<div class="layer-row" v-for="(layer, index) in layers" :key="String(layer.path.slice(-1))">
-					<div class="layer-visibility">
+					<div class="visibility">
 						<IconButton
 							:action="(e) => (toggleLayerVisibility(layer.path), e && e.stopPropagation())"
 							:icon="layer.visible ? 'EyeVisible' : 'EyeHidden'"
@@ -39,17 +39,11 @@
 							:title="layer.visible ? 'Visible' : 'Hidden'"
 						/>
 					</div>
-					<button
-						v-if="layer.layer_type === 'Folder'"
-						class="node-connector"
-						:class="{ expanded: layer.layer_metadata.expanded }"
-						@click.stop="handleNodeConnectorClick(layer.path)"
-					></button>
-					<div v-else class="node-connector-missing"></div>
+					<div class="indent" :style="{ marginLeft: layerIndent(layer) }"></div>
+					<button v-if="layer.layer_type === 'Folder'" class="expand-arrow" :class="{ expanded: layer.layer_metadata.expanded }" @click.stop="handleExpandArrowClick(layer.path)"></button>
 					<div
 						class="layer"
 						:class="{ selected: layer.layer_metadata.selected }"
-						:style="{ marginLeft: layerIndent(layer) }"
 						@click.shift.exact.stop="selectLayer(layer, false, true)"
 						@click.shift.ctrl.exact.stop="selectLayer(layer, true, true)"
 						@click.ctrl.exact.stop="selectLayer(layer, true, false)"
@@ -57,8 +51,8 @@
 						:data-index="index"
 						draggable="true"
 						@dragstart="dragStart($event, layer)"
+						:title="layer.path"
 					>
-						<div class="layer-thumbnail" v-html="layer.thumbnail"></div>
 						<div class="layer-type-icon">
 							<IconLabel v-if="layer.layer_type === 'Folder'" :icon="'NodeTypeFolder'" title="Folder" />
 							<IconLabel v-else :icon="'NodeTypePath'" title="Path" />
@@ -66,8 +60,8 @@
 						<div class="layer-name">
 							<span>{{ layer.name }}</span>
 						</div>
+						<div class="thumbnail" v-html="layer.thumbnail"></div>
 					</div>
-					<!-- <div class="glue" :style="{ marginLeft: layerIndent(layer) }"></div> -->
 				</div>
 			</LayoutCol>
 		</LayoutRow>
@@ -95,78 +89,112 @@
 	}
 
 	.layer-tree {
+		// Crop away the 1px border below the bottom layer entry when it uses the full space of this panel
+		margin-bottom: -1px;
+
 		.layer-row {
-			display: flex;
-			height: 36px;
-			align-items: center;
 			flex: 0 0 auto;
+			display: flex;
+			align-items: center;
 			position: relative;
+			height: 36px;
+			margin: 0 4px;
+			border-bottom: 1px solid var(--color-4-dimgray);
 
-			& + .layer-row,
-			& + .insert-mark + .layer-row {
-				margin-top: 2px;
+			.visibility {
+				height: 100%;
+				flex: 0 0 auto;
+				display: flex;
+				align-items: center;
+
+				.icon-button {
+					height: 100%;
+					width: calc(24px + 2 * 4px);
+				}
 			}
 
-			.layer-visibility {
-				flex: 0 0 auto;
-				margin-left: 4px;
-			}
-
-			.node-connector {
-				flex: 0 0 auto;
-				width: 12px;
-				height: 12px;
-				margin: 0 2px;
-				border-radius: 50%;
-				background: var(--color-data-raster);
+			.expand-arrow {
+				margin-left: -16px;
+				width: 16px;
+				height: 100%;
+				padding: 0;
 				outline: none;
 				border: none;
 				position: relative;
+				background: none;
+				flex: 0 0 auto;
+				display: flex;
+				align-items: center;
+				justify-content: center;
+				border-radius: 2px;
+
+				&:hover {
+					background: var(--color-6-lowergray);
+				}
 
 				&::after {
 					content: "";
 					position: absolute;
 					width: 0;
 					height: 0;
-					top: 3px;
-					left: 4px;
 					border-style: solid;
 					border-width: 3px 0 3px 6px;
-					border-color: transparent transparent transparent var(--color-2-mildblack);
+					border-color: transparent transparent transparent var(--color-e-nearwhite);
+
+					&:hover {
+						color: var(--color-f-white);
+					}
 				}
 
 				&.expanded::after {
-					top: 4px;
-					left: 3px;
 					border-width: 6px 3px 0 3px;
-					border-color: var(--color-2-mildblack) transparent transparent transparent;
-				}
-			}
+					border-color: var(--color-e-nearwhite) transparent transparent transparent;
 
-			.node-connector-missing {
-				width: 16px;
-				flex: 0 0 auto;
+					&:hover {
+						color: var(--color-f-white);
+					}
+				}
 			}
 
 			.layer {
 				display: flex;
-				min-width: 0;
 				align-items: center;
-				border-radius: 2px;
-				background: var(--color-5-dullgray);
-				margin-right: 16px;
+				z-index: 1;
+				min-width: 0;
 				width: 100%;
 				height: 100%;
-				z-index: 1;
+				border-radius: 2px;
+				padding: 0 4px;
+				margin-right: 8px;
 
 				&.selected {
-					background: var(--color-7-middlegray);
+					background: var(--color-5-dullgray);
 					color: var(--color-f-white);
 				}
 
-				.layer-thumbnail {
+				.layer-type-icon {
+					flex: 0 0 auto;
+					margin: 0 4px;
+				}
+
+				.layer-name {
+					flex: 1 1 100%;
+					display: flex;
+					min-width: 0;
+					margin: 0 4px;
+
+					span {
+						text-overflow: ellipsis;
+						white-space: nowrap;
+						overflow: hidden;
+					}
+				}
+
+				.thumbnail {
+					height: calc(100% - 4px);
+					margin: 2px 0;
+					margin-left: 4px;
 					width: 64px;
-					height: 100%;
 					background: white;
 					border-radius: 2px;
 					flex: 0 0 auto;
@@ -177,35 +205,6 @@
 						margin: 2px;
 					}
 				}
-
-				.layer-type-icon {
-					margin-left: 8px;
-					margin-right: 4px;
-					flex: 0 0 auto;
-				}
-
-				.layer-name {
-					display: flex;
-					min-width: 0;
-					flex: 1 1 100%;
-					margin-right: 8px;
-
-					span {
-						text-overflow: ellipsis;
-						white-space: nowrap;
-						overflow: hidden;
-					}
-				}
-			}
-
-			.glue {
-				position: absolute;
-				background: var(--color-data-raster);
-				height: 6px;
-				bottom: -4px;
-				left: 44px;
-				right: 16px;
-				z-index: 0;
 			}
 		}
 
@@ -220,11 +219,11 @@
 				position: absolute;
 				background: var(--color-accent-hover);
 				width: 100%;
-				height: 6px;
+				height: 5px;
 			}
 
 			&:not(:first-child, :last-child) {
-				top: -2px;
+				top: -3px;
 			}
 
 			&:first-child::after {
@@ -232,7 +231,8 @@
 			}
 
 			&:last-child::after {
-				bottom: 0;
+				// Shifted up 1px to account for the shifting down of the entire `.layer-tree` panel
+				bottom: 1px;
 			}
 		}
 	}
@@ -317,12 +317,12 @@ export default defineComponent({
 	},
 	methods: {
 		layerIndent(layer: LayerPanelEntry) {
-			return `${(layer.path.length - 1) * 16}px`;
+			return `${layer.path.length * 16}px`;
 		},
 		async toggleLayerVisibility(path: BigUint64Array) {
 			this.editor.instance.toggle_layer_visibility(path);
 		},
-		async handleNodeConnectorClick(path: BigUint64Array) {
+		async handleExpandArrowClick(path: BigUint64Array) {
 			this.editor.instance.toggle_layer_expansion(path);
 		},
 		async setLayerBlendMode(newSelectedIndex: number) {
@@ -415,15 +415,15 @@ export default defineComponent({
 
 			const [nearestPath, above, nearestElement] = this.closest(tree, event.clientY);
 
-			// Set the initial state of the line
+			// Set the initial state of the insert line
 			if (nearestElement.parentNode) {
-				insertLine.style.marginLeft = `${LAYER_LEFT_MARGIN_OFFSET + LAYER_LEFT_INDENT_OFFSET * nearestPath.length}px`;
+				insertLine.style.marginLeft = `${LAYER_LEFT_MARGIN_OFFSET + LAYER_LEFT_INDENT_OFFSET * nearestPath.length}px`; // TODO: use layerIndent function to calculate this
 				tree.insertBefore(insertLine, nearestElement);
 			}
 
 			this.draggingData = { path: layer.path, above, nearestPath, insertLine };
 		},
-		updateLine(event: DragEvent) {
+		updateInsertLine(event: DragEvent) {
 			// Stop the drag from being shown as cancelled
 			event.preventDefault();
 

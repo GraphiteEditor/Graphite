@@ -190,6 +190,10 @@ impl Default for Mapping {
 			entry! {action=LineMessage::Abort, key_down=Rmb},
 			entry! {action=LineMessage::Abort, key_down=KeyEscape},
 			entry! {action=LineMessage::Redraw { center: KeyAlt, lock_angle: KeyControl, snap_angle: KeyShift }, triggers=[KeyAlt, KeyShift, KeyControl]},
+			// Path
+			entry! {action=PathMessage::DragStart, key_down=Lmb},
+			entry! {action=PathMessage::PointerMove, message=InputMapperMessage::PointerMove},
+			entry! {action=PathMessage::DragStop, key_up=Lmb},
 			// Pen
 			entry! {action=PenMessage::PointerMove, message=InputMapperMessage::PointerMove},
 			entry! {action=PenMessage::DragStart, key_down=Lmb},
@@ -265,6 +269,7 @@ impl Default for Mapping {
 			entry! {action=DocumentsMessage::Copy(User), key_down=KeyC, modifiers=[KeyControl]},
 			entry! {action=DocumentsMessage::Cut(User), key_down=KeyX, modifiers=[KeyControl]},
 			entry! {action=DocumentMessage::GroupSelectedLayers, key_down=KeyG, modifiers=[KeyControl]},
+			entry! {action=DocumentMessage::UngroupSelectedLayers, key_down=KeyG, modifiers=[KeyControl, KeyShift]},
 			// Nudging
 			entry! {action=DocumentMessage::NudgeSelectedLayers(-SHIFT_NUDGE_AMOUNT, -SHIFT_NUDGE_AMOUNT), key_down=KeyArrowUp, modifiers=[KeyShift, KeyArrowLeft]},
 			entry! {action=DocumentMessage::NudgeSelectedLayers(SHIFT_NUDGE_AMOUNT, -SHIFT_NUDGE_AMOUNT), key_down=KeyArrowUp, modifiers=[KeyShift, KeyArrowRight]},

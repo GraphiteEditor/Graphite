@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 use std::collections::VecDeque;
 
+use super::artboard_message_handler::ArtboardMessage;
+use super::artboard_message_handler::ArtboardMessageHandler;
 pub use super::layer_panel::*;
 use super::movement_handler::{MovementMessage, MovementMessageHandler};
 use super::overlay_message_handler::OverlayMessageHandler;
@@ -8,6 +10,7 @@ use super::transform_layer_handler::{TransformLayerMessage, TransformLayerMessag
 use super::vectorize_layer_metadata;
 
 use crate::consts::DEFAULT_DOCUMENT_NAME;
+use crate::consts::GRAPHITE_DOCUMENT_VERSION;
 use crate::consts::{ASYMPTOTIC_EFFECT, FILE_EXPORT_SUFFIX, FILE_SAVE_SUFFIX, SCALE_EFFECT, SCROLLBAR_SPACING};
 use crate::document::Clipboard;
 use crate::input::InputPreprocessor;
@@ -55,8 +58,15 @@ pub enum VectorManipulatorSegment {
 
 #[derive(PartialEq, Clone, Debug)]
 pub struct VectorManipulatorShape {
+	/// The path to the layer
+	pub layer_path: Vec<LayerId>,
+	/// The outline of the shape
 	pub path: kurbo::BezPath,
+	/// The control points / manipulator handles
 	pub segments: Vec<VectorManipulatorSegment>,
+	/// The compound Bezier curve is closed
+	pub closed: bool,
+	/// The transformation matrix to apply
 	pub transform: DAffine2,
 }
 
@@ -76,10 +86,12 @@ pub struct DocumentMessageHandler {
 	movement_handler: MovementMessageHandler,
 	#[serde(skip)]
 	overlay_message_handler: OverlayMessageHandler,
+	artboard_message_handler: ArtboardMessageHandler,
 	#[serde(skip)]
 	transform_layer_handler: TransformLayerMessageHandler,
 	pub snapping_enabled: bool,
 	pub view_mode: ViewMode,
+	pub version: String,
 }
 
 impl Default for DocumentMessageHandler {
@@ -94,9 +106,11 @@ impl Default for DocumentMessageHandler {
 			layer_range_selection_reference: Vec::new(),
 			movement_handler: MovementMessageHandler::default(),
 			overlay_message_handler: OverlayMessageHandler::default(),
+			artboard_message_handler: ArtboardMessageHandler::default(),
 			transform_layer_handler: TransformLayerMessageHandler::default(),
 			snapping_enabled: true,
 			view_mode: ViewMode::default(),
+			version: GRAPHITE_DOCUMENT_VERSION.to_string(),
 		}
 	}
 }
@@ -111,6 +125,8 @@ pub enum DocumentMessage {
 	DispatchOperation(Box<DocumentOperation>),
 	#[child]
 	Overlay(OverlayMessage),
+	#[child]
+	Artboard(ArtboardMessage),
 	UpdateLayerMetadata {
 		layer_path: Vec<LayerId>,
 		layer_metadata: LayerMetadata,
@@ -139,6 +155,8 @@ pub enum DocumentMessage {
 	StartTransaction,
 	RollbackTransaction,
 	GroupSelectedLayers,
+	UngroupSelectedLayers,
+	UngroupLayers(Vec<LayerId>),
 	AbortTransaction,
 	CommitTransaction,
 	ExportDocument,
@@ -186,20 +204,34 @@ impl DocumentMessageHandler {
 	}
 
 	pub fn deserialize_document(serialized_content: &str) -> Result<Self, DocumentError> {
-		log::info!("Deserializing: {:?}", serialized_content);
-		serde_json::from_str(serialized_content).map_err(|e| DocumentError::InvalidFile(e.to_string()))
+		let deserialized_result: Result<Self, DocumentError> = serde_json::from_str(serialized_content).map_err(|e| DocumentError::InvalidFile(e.to_string()));
+		match deserialized_result {
+			Ok(document) => {
+				if document.version != GRAPHITE_DOCUMENT_VERSION {
+					Err(DocumentError::InvalidFile("Graphite document version mismatch".to_string()))
+				} else {
+					Ok(document)
+				}
+			}
+			Err(e) => Err(e),
+		}
 	}
 
 	pub fn with_name(name: String, ipp: &InputPreprocessor) -> Self {
 		let mut document = Self { name, ..Self::default() };
-		document.graphene_document.root.transform = document.movement_handler.calculate_offset_transform(ipp.viewport_bounds.size() / 2.);
+		let starting_root_transform = document.movement_handler.calculate_offset_transform(ipp.viewport_bounds.size() / 2.);
+		document.graphene_document.root.transform = starting_root_transform;
+		document.artboard_message_handler.artboards_graphene_document.root.transform = starting_root_transform;
 		document
 	}
 
-	pub fn with_name_and_content(name: String, serialized_content: String) -> Result<Self, EditorError> {
+	pub fn with_name_and_content(name: String, serialized_content: String, ipp: &InputPreprocessor) -> Result<Self, EditorError> {
 		match Self::deserialize_document(&serialized_content) {
 			Ok(mut document) => {
 				document.name = name;
+				let starting_root_transform = document.movement_handler.calculate_offset_transform(ipp.viewport_bounds.size() / 2.);
+				document.graphene_document.root.transform = starting_root_transform;
+				document.artboard_message_handler.artboards_graphene_document.root.transform = starting_root_transform;
 				Ok(document)
 			}
 			Err(DocumentError::InvalidFile(msg)) => Err(EditorError::Document(msg)),
@@ -217,9 +249,14 @@ impl DocumentMessageHandler {
 	fn select_layer(&mut self, path: &[LayerId]) -> Option<Message> {
 		println!("Select_layer fail: {:?}", self.all_layers_sorted());
 
-		self.layer_metadata_mut(path).selected = true;
-		let data = self.layer_panel_entry(path.to_vec()).ok()?;
-		(!path.is_empty()).then(|| FrontendMessage::UpdateLayer { data }.into())
+		if let Some(layer) = self.layer_metadata.get_mut(path) {
+			layer.selected = true;
+			let data = self.layer_panel_entry(path.to_vec()).ok()?;
+			(!path.is_empty()).then(|| FrontendMessage::UpdateLayer { data }.into())
+		} else {
+			log::warn!("Tried to select non existing layer {:?}", path);
+			None
+		}
 	}
 
 	pub fn selected_visible_layers_bounding_box(&self) -> Option<[DVec2; 2]> {
@@ -259,9 +296,11 @@ impl DocumentMessageHandler {
 				.collect::<Vec<VectorManipulatorSegment>>();
 
 			Some(VectorManipulatorShape {
+				layer_path: path_to_shape.to_vec(),
 				path,
 				segments,
 				transform: viewport_transform,
+				closed: shape.closed,
 			})
 		});
 
@@ -273,31 +312,11 @@ impl DocumentMessageHandler {
 		self.layer_metadata.iter().filter_map(|(path, data)| data.selected.then(|| path.as_slice()))
 	}
 
-	pub fn selected_layers_without_children(&self) -> Vec<Vec<LayerId>> {
-		// TODO optimize this after MVP. Look at commit 1aaf5c0d7dbe67cd9f4ba8b536a4771a2cef6439, optimization was started
-		// Traversing the layer tree recursively was chosen for readability, but should be replaced with an optimized approach later
-		fn recurse_layer_tree(ctx: &DocumentMessageHandler, mut path: Vec<u64>, without_children: &mut Vec<Vec<LayerId>>, selected: bool) {
-			if let Ok(folder) = ctx.graphene_document.folder(&path) {
-				for child in folder.list_layers() {
-					path.push(*child);
-					let selected_or_parent_selected = selected || ctx.selected_layers_contains(&path);
-					let selected_without_any_parent_selected = !selected && ctx.selected_layers_contains(&path);
-					if ctx.graphene_document.is_folder(&path) {
-						if selected_without_any_parent_selected {
-							without_children.push(path.clone());
-						}
-						recurse_layer_tree(ctx, path.clone(), without_children, selected_or_parent_selected);
-					} else if selected_without_any_parent_selected {
-						without_children.push(path.clone());
-					}
-					path.pop();
-				}
-			}
-		}
+	pub fn selected_layers_without_children(&self) -> Vec<&[LayerId]> {
+		let unique_layers = self.graphene_document.shallowest_unique_layers(self.selected_layers());
 
-		let mut without_children: Vec<Vec<LayerId>> = vec![];
-		recurse_layer_tree(self, vec![], &mut without_children, false);
-		without_children
+		// We need to maintain layer ordering
+		self.sort_layers(unique_layers.iter().copied())
 	}
 
 	pub fn selected_layers_contains(&self, path: &[LayerId]) -> bool {
@@ -365,23 +384,19 @@ impl DocumentMessageHandler {
 	}
 
 	/// Returns an unsorted list of all layer paths including folders at all levels, except the document's top-level root folder itself
-	pub fn all_layers(&self) -> Vec<Vec<LayerId>> {
-		self.layer_metadata.keys().filter(|path| !path.is_empty()).cloned().collect()
+	pub fn all_layers(&self) -> impl Iterator<Item = &[LayerId]> {
+		self.layer_metadata.keys().filter_map(|path| (!path.is_empty()).then(|| path.as_slice()))
 	}
 
 	/// Returns the paths to all layers in order, optionally including only selected or non-selected layers.
-	fn layers_sorted(&self, selected: Option<bool>) -> Vec<Vec<LayerId>> {
+	fn sort_layers<'a>(&self, paths: impl Iterator<Item = &'a [LayerId]>) -> Vec<&'a [LayerId]> {
 		// Compute the indices for each layer to be able to sort them
-		let mut layers_with_indices: Vec<(Vec<LayerId>, Vec<usize>)> = self
-
-			.layer_metadata
-			.iter()
+		let mut layers_with_indices: Vec<(&[LayerId], Vec<usize>)> = paths
 			// 'path.len() > 0' filters out root layer since it has no indices
-			.filter_map(|(path, data)| (!path.is_empty() && (data.selected == selected.unwrap_or(data.selected))).then(|| path.clone()))
+			.filter_map(|path| (!path.is_empty()).then(|| path))
 			.filter_map(|path| {
-				// TODO: Currently it is possible that `layer_metadata` contains layers that are don't actually exist (has been partially fixed in #281) and thus
 				// TODO: `indices_for_path` can return an error. We currently skip these layers and log a warning. Once this problem is solved this code can be simplified.
-				match self.graphene_document.indices_for_path(&path) {
+				match self.graphene_document.indices_for_path(path) {
 					Err(err) => {
 						warn!("layers_sorted: Could not get indices for the layer {:?}: {:?}", path, err);
 						None
@@ -396,19 +411,19 @@ impl DocumentMessageHandler {
 	}
 
 	/// Returns the paths to all layers in order
-	pub fn all_layers_sorted(&self) -> Vec<Vec<LayerId>> {
-		self.layers_sorted(None)
+	pub fn all_layers_sorted(&self) -> Vec<&[LayerId]> {
+		self.sort_layers(self.all_layers())
 	}
 
 	/// Returns the paths to all selected layers in order
-	pub fn selected_layers_sorted(&self) -> Vec<Vec<LayerId>> {
-		self.layers_sorted(Some(true))
+	pub fn selected_layers_sorted(&self) -> Vec<&[LayerId]> {
+		self.sort_layers(self.selected_layers())
 	}
 
 	/// Returns the paths to all non_selected layers in order
 	#[allow(dead_code)] // used for test cases
-	pub fn non_selected_layers_sorted(&self) -> Vec<Vec<LayerId>> {
-		self.layers_sorted(Some(false))
+	pub fn non_selected_layers_sorted(&self) -> Vec<&[LayerId]> {
+		self.sort_layers(self.all_layers().filter(|layer| !self.selected_layers().any(|path| &path == layer)))
 	}
 
 	pub fn layer_metadata(&self, path: &[LayerId]) -> &LayerMetadata {
@@ -448,6 +463,9 @@ impl DocumentMessageHandler {
 				let document = std::mem::replace(&mut self.graphene_document, document);
 				let layer_metadata = std::mem::replace(&mut self.layer_metadata, layer_metadata);
 				self.document_redo_history.push((document, layer_metadata));
+				for layer in self.layer_metadata.keys() {
+					responses.push_back(DocumentMessage::LayerChanged(layer.clone()).into())
+				}
 				Ok(())
 			}
 			None => Err(EditorError::NoTransactionInProgress),
@@ -463,6 +481,9 @@ impl DocumentMessageHandler {
 				let document = std::mem::replace(&mut self.graphene_document, document);
 				let layer_metadata = std::mem::replace(&mut self.layer_metadata, layer_metadata);
 				self.document_undo_history.push((document, layer_metadata));
+				for layer in self.layer_metadata.keys() {
+					responses.push_back(DocumentMessage::LayerChanged(layer.clone()).into())
+				}
 				Ok(())
 			}
 			None => Err(EditorError::NoTransactionInProgress),
@@ -491,7 +512,10 @@ impl DocumentMessageHandler {
 	}
 
 	pub fn layer_panel_entry(&mut self, path: Vec<LayerId>) -> Result<LayerPanelEntry, EditorError> {
-		let data: LayerMetadata = *self.layer_metadata_mut(&path);
+		let data: LayerMetadata = *self
+			.layer_metadata
+			.get_mut(&path)
+			.ok_or_else(|| EditorError::Document(format!("Could not get layer metadata for {:?}", path)))?;
 		let layer = self.graphene_document.layer(&path)?;
 		let entry = layer_panel_entry(&data, self.graphene_document.multiply_transforms(&path)?, layer, path);
 		Ok(entry)
@@ -526,7 +550,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			TransformLayers(message) => self
 				.transform_layer_handler
 				.process_action(message, (&mut self.layer_metadata, &mut self.graphene_document, ipp), responses),
-			DeleteLayer(path) => responses.push_back(DocumentOperation::DeleteLayer { path }.into()),
+			DeleteLayer(path) => responses.push_front(DocumentOperation::DeleteLayer { path }.into()),
 			StartTransaction => self.backup(responses),
 			RollbackTransaction => {
 				self.rollback(responses).unwrap_or_else(|e| log::warn!("{}", e));
@@ -544,6 +568,13 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					responses,
 				);
 				// responses.push_back(OverlayMessage::RenderOverlays.into());
+			}
+			Artboard(message) => {
+				self.artboard_message_handler.process_action(
+					message,
+					(Self::layer_metadata_mut_no_borrow_self(&mut self.layer_metadata, &[]), &self.graphene_document, ipp),
+					responses,
+				);
 			}
 			ExportDocument => {
 				let bbox = self.graphene_document.visible_layers_bounding_box().unwrap_or([DVec2::ZERO, ipp.viewport_bounds.size()]);
@@ -616,6 +647,37 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				);
 				responses.push_back(DocumentMessage::SetSelectedLayers(vec![new_folder_path]).into());
 			}
+			UngroupLayers(folder_path) => {
+				// Select all the children of the folder
+				let to_select = self.graphene_document.folder_children_paths(&folder_path);
+				let message_buffer = [
+					// Copy them
+					DocumentMessage::SetSelectedLayers(to_select).into(),
+					DocumentsMessage::Copy(Clipboard::System).into(),
+					// Paste them into the folder above
+					DocumentsMessage::PasteIntoFolder {
+						clipboard: Clipboard::System,
+						path: folder_path[..folder_path.len() - 1].to_vec(),
+						insert_index: -1,
+					}
+					.into(),
+					// Delete parent folder
+					DocumentMessage::DeleteLayer(folder_path).into(),
+				];
+
+				// Push these messages in reverse due to push_front
+				for message in message_buffer.into_iter().rev() {
+					responses.push_front(message);
+				}
+			}
+			UngroupSelectedLayers => {
+				responses.push_back(DocumentMessage::StartTransaction.into());
+				let folder_paths = self.graphene_document.sorted_folders_by_depth(self.selected_layers());
+				for folder_path in folder_paths {
+					responses.push_back(DocumentMessage::UngroupLayers(folder_path.to_vec()).into());
+				}
+				responses.push_back(DocumentMessage::CommitTransaction.into());
+			}
 			SetBlendModeForSelectedLayers(blend_mode) => {
 				self.backup(responses);
 				for path in self.layer_metadata.iter().filter_map(|(path, data)| data.selected.then(|| path.clone())) {
@@ -652,7 +714,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				self.backup(responses);
 
 				for path in self.selected_layers_without_children() {
-					responses.push_front(DocumentOperation::DeleteLayer { path }.into());
+					responses.push_front(DocumentOperation::DeleteLayer { path: path.to_vec() }.into());
 				}
 
 				responses.push_front(ToolMessage::DocumentIsDirty.into());
@@ -664,7 +726,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			DuplicateSelectedLayers => {
 				self.backup(responses);
 				for path in self.selected_layers_sorted() {
-					responses.push_back(DocumentOperation::DuplicateLayer { path }.into());
+					responses.push_back(DocumentOperation::DuplicateLayer { path: path.to_vec() }.into());
 				}
 			}
 			SelectLayer(selected, ctrl, shift) => {
@@ -730,7 +792,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			}
 			SelectAllLayers => {
 				let all_layer_paths = self.all_layers();
-				responses.push_front(SetSelectedLayers(all_layer_paths).into());
+				responses.push_front(SetSelectedLayers(all_layer_paths.map(|path| path.to_vec()).collect()).into());
 			}
 			DeselectAllLayers => {
 				responses.push_front(SetSelectedLayers(vec![]).into());
@@ -795,8 +857,9 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					}
 					.into(),
 				);
-				let document_transform_scale = self.movement_handler.snapped_scale();
+				responses.push_back(ArtboardMessage::RenderArtboards.into());
 
+				let document_transform_scale = self.movement_handler.snapped_scale();
 				let scale = 0.5 + ASYMPTOTIC_EFFECT + document_transform_scale * SCALE_EFFECT;
 				let viewport_size = ipp.viewport_bounds.size();
 				let viewport_mid = ipp.viewport_bounds.center();
@@ -885,7 +948,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 						let insert = all_layer_paths.get(insert_pos);
 						if let Some(insert_path) = insert {
 							let (id, path) = insert_path.split_last().expect("Can't move the root folder");
-							if let Some(folder) = self.graphene_document.layer(path).ok().map(|layer| layer.as_folder().ok()).flatten() {
+							if let Some(folder) = self.graphene_document.layer(path).ok().and_then(|layer| layer.as_folder().ok()) {
 								let selected: Vec<_> = selected_layers
 									.iter()
 									.filter(|layer| layer.starts_with(path) && layer.len() == path.len() + 1)
@@ -1024,6 +1087,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				NudgeSelectedLayers,
 				ReorderSelectedLayers,
 				GroupSelectedLayers,
+				UngroupSelectedLayers,
 			);
 			common.extend(select);
 		}

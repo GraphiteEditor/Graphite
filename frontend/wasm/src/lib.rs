@@ -33,6 +33,7 @@ fn panic_hook(info: &panic::PanicInfo) {
 	let panic_info = info.to_string();
 	let title = "The editor crashed — sorry about that".to_string();
 	let description = "An internal error occurred. Reload the editor to continue. Please report this by filing an issue on GitHub.".to_string();
+	log::error!("{}", info);
 	EDITOR_INSTANCES.with(|instances| {
 		instances.borrow_mut().values_mut().for_each(|instance| {
 			instance.1.handle_response_rust_proxy(FrontendMessage::DisplayPanic {

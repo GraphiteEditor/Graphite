@@ -1,5 +1,5 @@
 use super::{DocumentMessageHandler, LayerMetadata};
-use crate::consts::DEFAULT_DOCUMENT_NAME;
+use crate::consts::{DEFAULT_DOCUMENT_NAME, GRAPHITE_DOCUMENT_VERSION};
 use crate::frontend::frontend_message_handler::FrontendDocumentDetails;
 use crate::input::InputPreprocessor;
 use crate::message_prelude::*;
@@ -196,6 +196,7 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 				for layer in self.active_document().layer_metadata.keys() {
 					responses.push_back(DocumentMessage::LayerChanged(layer.clone()).into());
 				}
+				responses.push_back(ToolMessage::DocumentIsDirty.into());
 			}
 			CloseActiveDocumentWithConfirmation => {
 				responses.push_back(DocumentsMessage::CloseDocumentWithConfirmation(self.active_document_id).into());
@@ -293,7 +294,7 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 				document,
 				document_is_saved,
 			} => {
-				let document = DocumentMessageHandler::with_name_and_content(document_name, document);
+				let document = DocumentMessageHandler::with_name_and_content(document_name, document, ipp);
 				match document {
 					Ok(mut document) => {
 						document.set_save_state(document_is_saved);
@@ -333,6 +334,7 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 							id,
 							name: document.name.clone(),
 						},
+						version: GRAPHITE_DOCUMENT_VERSION.to_string(),
 					}
 					.into(),
 				)
@@ -359,7 +361,7 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 				copy_buffer[clipboard as usize].clear();
 
 				for layer_path in active_document.selected_layers_without_children() {
-					match (active_document.graphene_document.layer(&layer_path).map(|t| t.clone()), *active_document.layer_metadata(&layer_path)) {
+					match (active_document.graphene_document.layer(layer_path).map(|t| t.clone()), *active_document.layer_metadata(layer_path)) {
 						(Ok(layer), layer_metadata) => {
 							copy_buffer[clipboard as usize].push(CopyBufferEntry { layer, layer_metadata });
 						}
@@ -394,29 +396,29 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 
 					let destination_path = [path.to_vec(), vec![generate_uuid()]].concat();
 
-					responses.push_back(
-						DocumentOperation::InsertLayer {
-							layer: entry.layer.clone(),
-							destination_path: destination_path.clone(),
-							insert_index,
+					responses.push_front(
+						DocumentMessage::UpdateLayerMetadata {
+							layer_path: destination_path.clone(),
+							layer_metadata: entry.layer_metadata,
 						}
 						.into(),
 					);
-					responses.push_back(
-						DocumentMessage::UpdateLayerMetadata {
-							layer_path: destination_path,
-							layer_metadata: entry.layer_metadata,
+					responses.push_front(
+						DocumentOperation::InsertLayer {
+							layer: entry.layer.clone(),
+							destination_path,
+							insert_index,
 						}
 						.into(),
 					);
 				};
 
 				if insert_index == -1 {
-					for entry in self.copy_buffer[clipboard as usize].iter() {
+					for entry in self.copy_buffer[clipboard as usize].iter().rev() {
 						paste(entry, responses)
 					}
 				} else {
-					for entry in self.copy_buffer[clipboard as usize].iter().rev() {
+					for entry in self.copy_buffer[clipboard as usize].iter() {
 						paste(entry, responses)
 					}
 				}

@@ -121,6 +121,17 @@ impl MovementMessageHandler {
 			}
 			.into(),
 		);
+
+		responses.push_back(
+			ArtboardMessage::DispatchOperation(
+				DocumentOperation::SetLayerTransform {
+					path: vec![],
+					transform: self.calculate_offset_transform(scaled_half_viewport).to_cols_array(),
+				}
+				.into(),
+			)
+			.into(),
+		);
 	}
 	pub fn center_zoom(&self, viewport_bounds: DVec2, zoom_factor: f64, mouse: DVec2) -> Message {
 		let new_viewport_bounds = viewport_bounds / zoom_factor;
