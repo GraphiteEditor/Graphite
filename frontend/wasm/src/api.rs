@@ -1,8 +1,7 @@
 // This file is where functions are defined to be called directly from JS.
 // It serves as a thin wrapper over the editor backend API that relies
 // on the dispatcher messaging system and more complex Rust data types.
-
-use std::cell::Cell;
+use std::sync::atomic::Ordering;
 
 use crate::helpers::Error;
 use crate::type_translators::{translate_blend_mode, translate_key, translate_tool_type, translate_view_mode};
@@ -25,9 +24,9 @@ use wasm_bindgen::prelude::*;
 // we must make all methods take a non mutable reference to self. Not doing this creates
 // an issue when rust calls into JS which calls back to rust in the same call stack.
 #[wasm_bindgen]
+#[derive(Clone)]
 pub struct JsEditorHandle {
 	editor_id: u64,
-	instance_received_crashed: Cell<bool>,
 	handle_response: js_sys::Function,
 }
 
@@ -38,23 +37,15 @@ impl JsEditorHandle {
 	pub fn new(handle_response: js_sys::Function) -> Self {
 		let editor_id = generate_uuid();
 		let editor = Editor::new();
-		EDITOR_INSTANCES.with(|instances| instances.borrow_mut().insert(editor_id, editor));
-		JsEditorHandle {
-			editor_id,
-			instance_received_crashed: Cell::new(false),
-			handle_response,
-		}
+		let editor_handle = JsEditorHandle { editor_id, handle_response };
+		EDITOR_INSTANCES.with(|instances| instances.borrow_mut().insert(editor_id, (editor, editor_handle.clone())));
+		editor_handle
 	}
 
 	// Sends a message to the dispatcher in the Editor Backend
 	fn dispatch<T: Into<Message>>(&self, message: T) {
 		// Process no further messages after a crash to avoid spamming the console
-		let possible_crash_message = EDITOR_HAS_CRASHED.with(|crash_state| crash_state.borrow().clone());
-		if let Some(message) = possible_crash_message {
-			if !self.instance_received_crashed.get() {
-				self.handle_response(message);
-				self.instance_received_crashed.set(true);
-			}
+		if EDITOR_HAS_CRASHED.load(Ordering::SeqCst) {
 			return;
 		}
 
@@ -63,6 +54,7 @@ impl JsEditorHandle {
 				.borrow_mut()
 				.get_mut(&self.editor_id)
 				.expect("EDITOR_INSTANCES does not contain the current editor_id")
+				.0
 				.handle_message(message.into())
 		});
 		for response in responses.into_iter() {
@@ -94,9 +86,8 @@ impl JsEditorHandle {
 	// backend from the web frontend.
 	// ========================================================================
 
-	pub fn has_crashed(&self) -> JsValue {
-		let has_crashed = EDITOR_HAS_CRASHED.with(|crash_state| crash_state.borrow().is_some());
-		has_crashed.into()
+	pub fn has_crashed(&self) -> bool {
+		EDITOR_HAS_CRASHED.load(Ordering::SeqCst)
 	}
 
 	/// Modify the currently selected tool in the document state store
@@ -517,6 +508,14 @@ impl JsEditorHandle {
 	pub fn create_artboard(&self, top: f64, left: f64, height: f64, width: f64) {
 		let message = ArtboardMessage::AddArtboard { top, left, height, width };
 		self.dispatch(message);
+	}
+}
+
+// Needed to make JsEditorHandle functions pub to rust. Do not fully
+// understand reason but has to do with #[wasm_bindgen] procedural macro.
+impl JsEditorHandle {
+	pub fn handle_response_rust_proxy(&self, message: FrontendMessage) {
+		self.handle_response(message);
 	}
 }
 

@@ -353,15 +353,18 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 				responses.push_back(DocumentsMessage::SelectDocument(prev_id).into());
 			}
 			Copy(clipboard) => {
-				let paths = self.active_document().selected_layers_sorted();
-				self.copy_buffer[clipboard as usize].clear();
-				for path in paths {
-					let document = self.active_document();
-					match (document.graphene_document.layer(&path).map(|t| t.clone()), *document.layer_metadata(&path)) {
+				// We can't use `self.active_document()` because it counts as an immutable borrow of the entirety of `self`
+				let active_document = self.documents.get(&self.active_document_id).unwrap();
+
+				let copy_buffer = &mut self.copy_buffer;
+				copy_buffer[clipboard as usize].clear();
+
+				for layer_path in active_document.selected_layers_without_children() {
+					match (active_document.graphene_document.layer(layer_path).map(|t| t.clone()), *active_document.layer_metadata(layer_path)) {
 						(Ok(layer), layer_metadata) => {
-							self.copy_buffer[clipboard as usize].push(CopyBufferEntry { layer, layer_metadata });
+							copy_buffer[clipboard as usize].push(CopyBufferEntry { layer, layer_metadata });
 						}
-						(Err(e), _) => warn!("Could not access selected layer {:?}: {:?}", path, e),
+						(Err(e), _) => warn!("Could not access selected layer {:?}: {:?}", layer_path, e),
 					}
 				}
 			}
@@ -373,9 +376,9 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 				let document = self.active_document();
 				let shallowest_common_folder = document
 					.graphene_document
-					.deepest_common_folder(document.selected_layers())
+					.shallowest_common_folder(document.selected_layers())
 					.expect("While pasting, the selected layers did not exist while attempting to find the appropriate folder path for insertion");
-
+				responses.push_back(StartTransaction.into());
 				responses.push_back(
 					PasteIntoFolder {
 						clipboard,
@@ -384,6 +387,7 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 					}
 					.into(),
 				);
+				responses.push_back(CommitTransaction.into());
 			}
 			PasteIntoFolder { clipboard, path, insert_index } => {
 				let paste = |entry: &CopyBufferEntry, responses: &mut VecDeque<_>| {
@@ -391,29 +395,29 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 
 					let destination_path = [path.to_vec(), vec![generate_uuid()]].concat();
 
-					responses.push_back(
-						DocumentOperation::InsertLayer {
-							layer: entry.layer.clone(),
-							destination_path: destination_path.clone(),
-							insert_index,
+					responses.push_front(
+						DocumentMessage::UpdateLayerMetadata {
+							layer_path: destination_path.clone(),
+							layer_metadata: entry.layer_metadata,
 						}
 						.into(),
 					);
-					responses.push_back(
-						DocumentMessage::UpdateLayerMetadata {
-							layer_path: destination_path,
-							layer_metadata: entry.layer_metadata,
+					responses.push_front(
+						DocumentOperation::InsertLayer {
+							layer: entry.layer.clone(),
+							destination_path,
+							insert_index,
 						}
 						.into(),
 					);
 				};
 
 				if insert_index == -1 {
-					for entry in self.copy_buffer[clipboard as usize].iter() {
+					for entry in self.copy_buffer[clipboard as usize].iter().rev() {
 						paste(entry, responses)
 					}
 				} else {
-					for entry in self.copy_buffer[clipboard as usize].iter().rev() {
+					for entry in self.copy_buffer[clipboard as usize].iter() {
 						paste(entry, responses)
 					}
 				}
