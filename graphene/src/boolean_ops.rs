@@ -1,12 +1,12 @@
 use crate::{
 	color::Color,
-	intersection::{intersections, line_intersect_point, Intersect, Origin, F64PRECISION},
+	intersection::{intersections, Intersect, Origin, F64PRECISION},
 	layers::{
 		simple_shape::Shape,
 		style::{Fill, PathStyle, Stroke},
 	},
 };
-use kurbo::{BezPath, CubicBez, Line, ParamCurve, ParamCurveArclen, ParamCurveArea, ParamCurveDeriv, ParamCurveExtrema, PathEl, PathSeg, QuadBez, Rect};
+use kurbo::{BezPath, CubicBez, Line, ParamCurve, ParamCurveArclen, ParamCurveArea, ParamCurveExtrema, PathEl, PathSeg, QuadBez, Rect};
 use serde::{Deserialize, Serialize};
 use std::fmt; // are using fmt::Result, but don't want to conlict with std::result::Result
 use std::fmt::{Debug, Formatter};

@@ -427,6 +427,7 @@ impl JsEditorHandle {
 			Some(op) => self.dispatch(DocumentMessage::BooleanOperation(op)),
 			None => return Err(Error::new("Invalid boolean operation").into()),
 		}
+		Ok(())
 	}
 
 	/// Set the view mode to change the way layers are drawn in the viewport

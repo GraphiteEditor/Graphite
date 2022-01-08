@@ -95,8 +95,8 @@ impl Document {
 		self.folder_mut(path)?.layer_mut(id).ok_or_else(|| DocumentError::LayerNotFound(path.into()))
 	}
 
-	fn shape_as_seen(&self, path: &Vec<LayerId>) -> Result<Shape, DocumentError> {
-		fn helper(layer: &Layer, mut transform: DAffine2, mut slice: usize, path: &Vec<LayerId>) -> Result<Shape, DocumentError> {
+	fn shape_as_seen(&self, path: &[LayerId]) -> Result<Shape, DocumentError> {
+		fn helper(layer: &Layer, mut transform: DAffine2, mut slice: usize, path: &[LayerId]) -> Result<Shape, DocumentError> {
 			match &layer.data {
 				LayerDataType::Shape(shape) => {
 					let mut clone = shape.clone();
@@ -120,7 +120,7 @@ impl Document {
 		// skip the root layer, whose transform doesn't effect the coordinates
 		if let LayerDataType::Folder(root) = &self.root.data {
 			match root.layer(path[0]) {
-				Some(layer) => helper(&layer, DAffine2::IDENTITY, 1, path),
+				Some(layer) => helper(layer, DAffine2::IDENTITY, 1, path),
 				None => Err(DocumentError::InvalidPath),
 			}
 		} else {

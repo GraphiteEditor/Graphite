@@ -4,10 +4,10 @@ use std::{
 };
 
 use crate::{
+	boolean_ops::BooleanOperation as BooleanOperationType,
 	color::Color,
 	layers::{style, BlendMode, Layer},
 	LayerId,
-	boolean_ops::BooleanOperation as BooleanOperationType,
 };
 
 use serde::{Deserialize, Serialize};

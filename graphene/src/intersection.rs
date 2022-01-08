@@ -1,8 +1,7 @@
 use std::ops::Mul;
 
-use crate::boolean_ops::split_path_seg;
 use glam::{DAffine2, DMat2, DVec2};
-use kurbo::{BezPath, Line, ParamCurve, ParamCurveExtrema, PathSeg, Point, QuadBez, Rect, Shape};
+use kurbo::{BezPath, Line, ParamCurve, ParamCurveExtrema, PathSeg, Point, Rect, Shape};
 
 pub const F64PRECISION: f64 = f64::EPSILON * 1000.0; // for f64 comparisons
 
@@ -152,7 +151,7 @@ impl<'a> SubCurve<'a> {
 			start_t: 0.0,
 			end_t: 1.0,
 			local: [parent.eval(0.0), parent.eval(1.0)],
-			extrema: extrema,
+			extrema,
 		}
 	}
 
@@ -182,8 +181,7 @@ impl<'a> SubCurve<'a> {
 
 	/// eval subcurve at t as though the subcurve is a bezier curve
 	fn eval(&self, t: f64) -> Point {
-		let interp_t = self.start_t + t * (self.end_t - self.start_t);
-		self.curve.eval(t)
+		self.curve.eval(self.start_t + t * (self.end_t - self.start_t))
 	}
 
 	/// split subcurve at t, as though the subcurve is a bezier curve, where t is a value between 0.0 and 1.0
@@ -216,31 +214,28 @@ impl<'a> SubCurve<'a> {
 	}
 }
 
-/// Bezier Curve Intersection Algorithm
-/// 	- TODO: Consistenly use the maximum f64 precision possible, account for the locations where limitations will effect results
-/// 	- TODO:
-/// 	- Behavior: when shapes have indentical pathsegs algorithm returns endpoints as intersects?
-/// 	- Bug: algorithm finds same intersection multiple times in same recursion path
-/// 	- Bug: intersections of "perfectly alligned" line or curve
-/// 	- Improvement: algorithm behavior when curves have differing "native curvatures"
-/// 	- Improvement: more adapative way to decide when "close enough"
-///   - improvement: quality metric?
-/// 	- Optimization: Don't actualy split the curve, just pass start/end values
-/// 	- Optimization: Compute curve's derivitive once
-/// 	- Optimization: bounding_box's dont need to be recomputed?
-/// 	- Optimization: Lots of extra copying happening
-/// 	- Optimization: how efficiently does std::Vec::append work?
-/// 	- Optimization: specialized line/quad/cubic combination algorithms
+/**
+Bezier Curve Intersection Algorithm
+- TODO: Consistenly use the maximum f64 precision possible, account for the locations where limitations will effect results
+- Bug: algorithm finds same intersection multiple times in same recursion path
+- Bug: intersections of "perfectly alligned" line or curve
+- Improvement: algorithm behavior when curves have very different sizes
+- Improvement: more adapative way to decide when "close enough"
+- Improvement: quality metric?
+- Optimization: any extra copying happening?
+- Optimization: how efficiently does std::Vec::append work?
+- Optimization: specialized line/quad/cubic combination algorithms
+*/
 fn path_intersections(a: &SubCurve, b: &SubCurve, mut recursion: usize) -> Vec<Intersect> {
 	let mut intersections = Vec::new();
 	//special case
 	if let (PathSeg::Line(line_a), PathSeg::Line(line_b)) = (a.curve, b.curve) {
-		if let Some(cross) = line_intersection(&line_a, &line_b) {
+		if let Some(cross) = line_intersection(line_a, line_b) {
 			intersections.push(cross);
 		}
 	} else if overlap(&a.bounding_box(), &b.bounding_box()) {
 		recursion += 1;
-		// bail out!! before lshift with overflow, algorithm should never reach here
+		// bail out!!, should instead bail out when we reach the precision limits of either shape
 		if recursion == 32 {
 			return intersections;
 		}
