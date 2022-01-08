@@ -1,5 +1,5 @@
 use super::{DocumentMessageHandler, LayerMetadata};
-use crate::consts::DEFAULT_DOCUMENT_NAME;
+use crate::consts::{DEFAULT_DOCUMENT_NAME, GRAPHITE_DOCUMENT_VERSION};
 use crate::frontend::frontend_message_handler::FrontendDocumentDetails;
 use crate::input::InputPreprocessor;
 use crate::message_prelude::*;
@@ -196,6 +196,7 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 				for layer in self.active_document().layer_metadata.keys() {
 					responses.push_back(DocumentMessage::LayerChanged(layer.clone()).into());
 				}
+				responses.push_back(ToolMessage::DocumentIsDirty.into());
 			}
 			CloseActiveDocumentWithConfirmation => {
 				responses.push_back(DocumentsMessage::CloseDocumentWithConfirmation(self.active_document_id).into());
@@ -293,7 +294,7 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 				document,
 				document_is_saved,
 			} => {
-				let document = DocumentMessageHandler::with_name_and_content(document_name, document);
+				let document = DocumentMessageHandler::with_name_and_content(document_name, document, ipp);
 				match document {
 					Ok(mut document) => {
 						document.set_save_state(document_is_saved);
@@ -333,6 +334,7 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 							id,
 							name: document.name.clone(),
 						},
+						version: GRAPHITE_DOCUMENT_VERSION.to_string(),
 					}
 					.into(),
 				)

@@ -175,6 +175,10 @@ export class UpdateOverlays extends JsMessage {
 	readonly svg!: string;
 }
 
+export class UpdateArtboards extends JsMessage {
+	readonly svg!: string;
+}
+
 const TupleToVec2 = Transform(({ value }) => ({ x: value[0], y: value[1] }));
 
 export class UpdateScrollbars extends JsMessage {
@@ -349,6 +353,8 @@ export class AutoSaveDocument extends JsMessage {
 
 	@Type(() => IndexedDbDocumentDetails)
 	details!: IndexedDbDocumentDetails;
+
+	version!: string;
 }
 
 export class RemoveAutoSaveDocument extends JsMessage {
@@ -386,5 +392,6 @@ export const messageConstructors: Record<string, MessageMaker> = {
 	DisplayAboutGraphiteDialog,
 	AutoSaveDocument,
 	RemoveAutoSaveDocument,
+	UpdateArtboards,
 } as const;
 export type JsMessageType = keyof typeof messageConstructors;

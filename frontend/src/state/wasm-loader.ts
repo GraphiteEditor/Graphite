@@ -57,7 +57,7 @@ function panicProxy<T extends object>(module: T): T {
 	return new Proxy<T>(module, proxyHandler);
 }
 
-function getWasmInstance(): WasmInstance {
+export function getWasmInstance(): WasmInstance {
 	if (wasmImport) return wasmImport;
 	throw new Error("Editor WASM backend was not initialized at application startup");
 }
