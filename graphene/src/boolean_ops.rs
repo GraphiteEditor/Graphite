@@ -48,7 +48,7 @@ impl Debug for Vertex {
 }
 
 // "!" operator reverses direction
-#[derive(PartialEq, Eq, Clone, Copy)]
+#[derive(PartialEq, Eq, Clone, Copy, Debug)]
 enum Direction {
 	CCW = 1,
 	CW = 0,
@@ -162,12 +162,14 @@ impl PathGraph {
 		}
 		new.add_edges_from_path(alpha, Origin::Alpha, reverse);
 		new.add_edges_from_path(beta, Origin::Beta, reverse);
-		log::debug!("{:?}", new);
+		// log::debug!("size: {}, {:?}", new.size(), new);
 		Some(new)
 	}
 
 	/// Behavior: path should be split at intersection point, not intersection t value, in case of discrepancy between paths
 	///   - implementing this behavior may not be feasible, instead reduce discrepancies
+	/// TODO: This function panics if an time value is NAN, no time value should ever be NAN, but this case should be handled, maybe not here
+	/// NOTE: about intersection time_val order
 	fn add_edges_from_path(&mut self, path: &BezPath, origin: Origin, reverse: bool) {
 		let mut seg_idx = 0;
 		//cstart holds the idx of the vertex the current edge is starting from
@@ -178,21 +180,25 @@ impl PathGraph {
 		let mut start_idx = None;
 
 		for seg in path.segments() {
-			if let Some((next_idx, time)) = self.intersect_at_idx(seg_idx, origin) {
-				let (seg1, seg2) = split_path_seg(&seg, time);
-				match cstart {
-					Some(idx) => {
-						current.push(seg1);
-						self.add_edge(origin, idx, next_idx, current, reverse);
-						cstart = Some(next_idx);
-						current = Vec::new();
-						current.push(seg2);
-					}
-					None => {
-						cstart = Some(next_idx);
-						start_idx = Some(next_idx);
-						beginning.push(seg1);
-						current.push(seg2);
+			let mut intersects = self.intersects_in_seg(seg_idx, origin);
+			if intersects.len() > 0 {
+				intersects.sort_by(|(_, t1), (_, t2)| t1.partial_cmp(t2).unwrap());
+				for (vertex_id, t_val) in intersects {
+					let (seg1, seg2) = split_path_seg(&seg, t_val);
+					match cstart {
+						Some(idx) => {
+							current.push(seg1);
+							self.add_edge(origin, idx, vertex_id, current, reverse);
+							cstart = Some(vertex_id);
+							current = Vec::new();
+							current.push(seg2);
+						}
+						None => {
+							cstart = Some(vertex_id);
+							start_idx = Some(vertex_id);
+							beginning.push(seg1);
+							current.push(seg2);
+						}
 					}
 				}
 			} else {
@@ -221,15 +227,19 @@ impl PathGraph {
 		}
 	}
 
-	/// returns the intersect idx and time from the path segment reffered to by seg_idx and origin, if it exists
-	fn intersect_at_idx(&self, seg_idx: usize, origin: Origin) -> Option<(usize, f64)> {
-		self.vertices.iter().enumerate().find_map(|(v_idx, vertex)| {
-			if vertex.intersect.seg_idx(origin) == seg_idx {
-				Some((v_idx, vertex.intersect.t_val(origin)))
-			} else {
-				None
-			}
-		})
+	/// returns all intersects in segment with seg_idx from origin
+	fn intersects_in_seg(&self, seg_idx: usize, origin: Origin) -> Vec<(usize, f64)> {
+		self.vertices
+			.iter()
+			.enumerate()
+			.filter_map(|(v_idx, vertex)| {
+				if vertex.intersect.seg_idx(origin) == seg_idx {
+					Some((v_idx, vertex.intersect.t_val(origin)))
+				} else {
+					None
+				}
+			})
+			.collect()
 	}
 
 	// return number of vertices in graph, this is equivalent to the number of intersections
@@ -340,11 +350,11 @@ pub fn boolean_operation(select: BooleanOperation, alpha: &Shape, beta: &Shape) 
 	}
 	let alpha_dir = Cycle::direction_for_path(&alpha)?;
 	let beta_dir = Cycle::direction_for_path(&beta)?;
+	log::debug!("alpha: {:?}, beta: {:?}", alpha_dir, beta_dir);
 	match select {
 		BooleanOperation::Union => {
 			let graph = PathGraph::from_paths(&alpha, &beta, alpha_dir != beta_dir).ok_or(())?;
 			let cycles = graph.get_cycles();
-			log::debug!("num cycles: {:?}", cycles.len());
 			// "extra calls to ParamCurveArea::area here"
 			let outline = cycles.iter().reduce(|max, cycle| if cycle.area() >= max.area() { cycle } else { max }).unwrap();
 			let mut insides = collect_shapes(&graph, &mut graph.get_cycles(), |dir| dir != alpha_dir)?;
@@ -367,7 +377,7 @@ pub fn boolean_operation(select: BooleanOperation, alpha: &Shape, beta: &Shape) 
 					.unwrap()
 					.0,
 			);
-			collect_shapes(&graph, &mut graph.get_cycles(), |dir| dir == alpha_dir)
+			collect_shapes(&graph, &mut cycles, |dir| dir == alpha_dir)
 		}
 		BooleanOperation::SubBack => {
 			let graph = PathGraph::from_paths(&alpha, &beta, alpha_dir == beta_dir).ok_or(())?;
