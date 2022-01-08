@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 use std::collections::VecDeque;
 
+use super::artboard_message_handler::ArtboardMessage;
+use super::artboard_message_handler::ArtboardMessageHandler;
 pub use super::layer_panel::*;
 use super::movement_handler::{MovementMessage, MovementMessageHandler};
 use super::overlay_message_handler::OverlayMessageHandler;
@@ -8,6 +10,7 @@ use super::transform_layer_handler::{TransformLayerMessage, TransformLayerMessag
 use super::vectorize_layer_metadata;
 
 use crate::consts::DEFAULT_DOCUMENT_NAME;
+use crate::consts::GRAPHITE_DOCUMENT_VERSION;
 use crate::consts::{ASYMPTOTIC_EFFECT, FILE_EXPORT_SUFFIX, FILE_SAVE_SUFFIX, SCALE_EFFECT, SCROLLBAR_SPACING};
 use crate::document::Clipboard;
 use crate::input::InputPreprocessor;
@@ -83,10 +86,12 @@ pub struct DocumentMessageHandler {
 	movement_handler: MovementMessageHandler,
 	#[serde(skip)]
 	overlay_message_handler: OverlayMessageHandler,
+	artboard_message_handler: ArtboardMessageHandler,
 	#[serde(skip)]
 	transform_layer_handler: TransformLayerMessageHandler,
 	pub snapping_enabled: bool,
 	pub view_mode: ViewMode,
+	pub version: String,
 }
 
 impl Default for DocumentMessageHandler {
@@ -101,9 +106,11 @@ impl Default for DocumentMessageHandler {
 			layer_range_selection_reference: Vec::new(),
 			movement_handler: MovementMessageHandler::default(),
 			overlay_message_handler: OverlayMessageHandler::default(),
+			artboard_message_handler: ArtboardMessageHandler::default(),
 			transform_layer_handler: TransformLayerMessageHandler::default(),
 			snapping_enabled: true,
 			view_mode: ViewMode::default(),
+			version: GRAPHITE_DOCUMENT_VERSION.to_string(),
 		}
 	}
 }
@@ -118,6 +125,8 @@ pub enum DocumentMessage {
 	DispatchOperation(Box<DocumentOperation>),
 	#[child]
 	Overlay(OverlayMessage),
+	#[child]
+	Artboard(ArtboardMessage),
 	UpdateLayerMetadata {
 		layer_path: Vec<LayerId>,
 		layer_metadata: LayerMetadata,
@@ -195,20 +204,34 @@ impl DocumentMessageHandler {
 	}
 
 	pub fn deserialize_document(serialized_content: &str) -> Result<Self, DocumentError> {
-		log::info!("Deserializing: {:?}", serialized_content);
-		serde_json::from_str(serialized_content).map_err(|e| DocumentError::InvalidFile(e.to_string()))
+		let deserialized_result: Result<Self, DocumentError> = serde_json::from_str(serialized_content).map_err(|e| DocumentError::InvalidFile(e.to_string()));
+		match deserialized_result {
+			Ok(document) => {
+				if document.version != GRAPHITE_DOCUMENT_VERSION {
+					Err(DocumentError::InvalidFile("Graphite document version mismatch".to_string()))
+				} else {
+					Ok(document)
+				}
+			}
+			Err(e) => Err(e),
+		}
 	}
 
 	pub fn with_name(name: String, ipp: &InputPreprocessor) -> Self {
 		let mut document = Self { name, ..Self::default() };
-		document.graphene_document.root.transform = document.movement_handler.calculate_offset_transform(ipp.viewport_bounds.size() / 2.);
+		let starting_root_transform = document.movement_handler.calculate_offset_transform(ipp.viewport_bounds.size() / 2.);
+		document.graphene_document.root.transform = starting_root_transform;
+		document.artboard_message_handler.artboards_graphene_document.root.transform = starting_root_transform;
 		document
 	}
 
-	pub fn with_name_and_content(name: String, serialized_content: String) -> Result<Self, EditorError> {
+	pub fn with_name_and_content(name: String, serialized_content: String, ipp: &InputPreprocessor) -> Result<Self, EditorError> {
 		match Self::deserialize_document(&serialized_content) {
 			Ok(mut document) => {
 				document.name = name;
+				let starting_root_transform = document.movement_handler.calculate_offset_transform(ipp.viewport_bounds.size() / 2.);
+				document.graphene_document.root.transform = starting_root_transform;
+				document.artboard_message_handler.artboards_graphene_document.root.transform = starting_root_transform;
 				Ok(document)
 			}
 			Err(DocumentError::InvalidFile(msg)) => Err(EditorError::Document(msg)),
@@ -546,6 +569,13 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				);
 				// responses.push_back(OverlayMessage::RenderOverlays.into());
 			}
+			Artboard(message) => {
+				self.artboard_message_handler.process_action(
+					message,
+					(Self::layer_metadata_mut_no_borrow_self(&mut self.layer_metadata, &[]), &self.graphene_document, ipp),
+					responses,
+				);
+			}
 			ExportDocument => {
 				let bbox = self.graphene_document.visible_layers_bounding_box().unwrap_or([DVec2::ZERO, ipp.viewport_bounds.size()]);
 				let size = bbox[1] - bbox[0];
@@ -827,6 +857,8 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					}
 					.into(),
 				);
+				responses.push_back(ArtboardMessage::RenderArtboards.into());
+
 				let document_transform = &self.movement_handler;
 
 				let scale = 0.5 + ASYMPTOTIC_EFFECT + document_transform.scale * SCALE_EFFECT;

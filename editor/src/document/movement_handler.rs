@@ -81,11 +81,23 @@ impl MovementMessageHandler {
 	fn create_document_transform(&self, viewport_bounds: &ViewportBounds, responses: &mut VecDeque<Message>) {
 		let half_viewport = viewport_bounds.size() / 2.;
 		let scaled_half_viewport = half_viewport / self.scale;
+
 		responses.push_back(
 			DocumentOperation::SetLayerTransform {
 				path: vec![],
 				transform: self.calculate_offset_transform(scaled_half_viewport).to_cols_array(),
 			}
+			.into(),
+		);
+
+		responses.push_back(
+			ArtboardMessage::DispatchOperation(
+				DocumentOperation::SetLayerTransform {
+					path: vec![],
+					transform: self.calculate_offset_transform(scaled_half_viewport).to_cols_array(),
+				}
+				.into(),
+			)
 			.into(),
 		);
 	}
