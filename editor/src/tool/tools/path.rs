@@ -54,7 +54,7 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Path {
 		}
 	}
 
-	// different actions depending on state may be wanted:
+	// Different actions depending on state may be wanted:
 	fn actions(&self) -> ActionList {
 		use PathToolFsmState::*;
 		match self.fsm_state {
@@ -229,7 +229,6 @@ impl Fsm for PathToolFsmState {
 					let mouse_pos = input.mouse.position;
 					let mut points = Vec::new();
 
-
 					let (mut anchor_i, mut handle_i, _line_i, _shape_i) = (0, 0, 0, 0);
 					let shapes_to_draw = document.selected_visible_layers_vector_points();
 					let (total_anchors, total_handles, _total_anchor_handle_lines) = calculate_total_overlays_per_type(&shapes_to_draw);
@@ -238,16 +237,8 @@ impl Fsm for PathToolFsmState {
 
 					#[derive(Debug)]
 					enum PointType {
-						Anchor{
-							anchor_i: usize,
-							layer_path: Vec<LayerId>,
-							shape_offset: usize,
-						},
-						Handle {
-							handle_i: usize,
-							layer_path: Vec<LayerId>,
-							shape_offset: usize,
-						},
+						Anchor { anchor_i: usize, layer_path: Vec<LayerId>, shape_offset: usize },
+						Handle { handle_i: usize, layer_path: Vec<LayerId>, shape_offset: usize },
 					}
 					#[derive(Debug)]
 					struct Point {
@@ -257,10 +248,7 @@ impl Fsm for PathToolFsmState {
 
 					impl Point {
 						fn new(_position: DVec2, point_type: PointType, mouse_proximity: f64) -> Self {
-							Self {
-								point_type,
-								mouse_proximity,
-							}
+							Self { point_type, mouse_proximity }
 						}
 					}
 
@@ -274,11 +262,15 @@ impl Fsm for PathToolFsmState {
 						for anchor in segment.anchors {
 							let d2 = mouse_pos.distance_squared(anchor);
 							if d2 < select_threshold_squared {
-								points.push(Point::new(anchor, PointType::Anchor{
+								points.push(Point::new(
+									anchor,
+									PointType::Anchor {
 										anchor_i,
 										layer_path: shape_to_draw.layer_path.clone(),
 										shape_offset,
-									}, d2));
+									},
+									d2,
+								));
 							}
 							anchor_i += 1;
 						}
@@ -305,11 +297,11 @@ impl Fsm for PathToolFsmState {
 
 					if let Some(point) = closest_point_within_click_threshold {
 						let path = match point.point_type {
-							PointType::Anchor{
+							PointType::Anchor {
 								anchor_i,
 								ref layer_path,
 								shape_offset,
-							} =>  {
+							} => {
 								data.selected_shapes = shapes_to_draw;
 								let shape = &data.selected_shapes[shape_offset];
 								let path = shape.path.clone();
@@ -320,7 +312,7 @@ impl Fsm for PathToolFsmState {
 								data.selection.closest_layer_path = layer_path.clone();
 								data.selection.closest_shape_id = shape_offset;
 								data.anchor_marker_pool[anchor_i].clone()
-							},
+							}
 							PointType::Handle {
 								handle_i,
 								ref layer_path,
@@ -335,13 +327,22 @@ impl Fsm for PathToolFsmState {
 								data.selection.bez_segment_id = closest_anchor(&bez, Vec2::new(transformed.x, transformed.y));
 								data.selection.bez_path_elements = bez;
 								data.selection.closest_layer_path = layer_path.clone();
-								data.selection.closest_shape_id = shape_offset;								
+								data.selection.closest_shape_id = shape_offset;
 								data.handle_marker_pool[handle_i].clone()
 							}
 						};
-						
+
 						data.selection.overlay_path = path;
-						responses.push_back(DocumentMessage::Overlay(Operation::SetLayerFill { path: data.selection.overlay_path.clone(), color: COLOR_ACCENT }.into()).into());
+						responses.push_back(
+							DocumentMessage::Overlay(
+								Operation::SetLayerFill {
+									path: data.selection.overlay_path.clone(),
+									color: COLOR_ACCENT,
+								}
+								.into(),
+							)
+							.into(),
+						);
 						Dragging
 					} else {
 						Ready
@@ -374,9 +375,18 @@ impl Fsm for PathToolFsmState {
 				(_, PointerMove) => self,
 				(_, DragStop) => {
 					let style = PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 2.0)), Some(Fill::new(Color::WHITE)));
-					responses.push_back(DocumentMessage::Overlay(Operation::SetLayerStyle { path: data.selection.overlay_path.clone(), style }.into()).into());
+					responses.push_back(
+						DocumentMessage::Overlay(
+							Operation::SetLayerStyle {
+								path: data.selection.overlay_path.clone(),
+								style,
+							}
+							.into(),
+						)
+						.into(),
+					);
 					Ready
-				},
+				}
 				(_, Abort) => {
 					// Destory the overlay layer pools
 					while let Some(layer) = data.anchor_marker_pool.pop() {
@@ -609,7 +619,7 @@ fn add_shape_outline(responses: &mut VecDeque<Message>) -> Vec<LayerId> {
 // Brute force comparison to determine which path element we want to select
 fn closest_anchor(bez: &[kurbo::PathEl], pos: kurbo::Vec2) -> usize {
 	let mut closest: usize = 0;
-	let mut closest_dist: f64 = f64::MAX;
+	let mut closest_distance: f64 = f64::MAX;
 	for (i, el) in bez.iter().enumerate() {
 		let p = match el {
 			kurbo::PathEl::MoveTo(p) => Some(p.to_vec2()),
@@ -618,10 +628,12 @@ fn closest_anchor(bez: &[kurbo::PathEl], pos: kurbo::Vec2) -> usize {
 			kurbo::PathEl::CurveTo(_, _, p) => Some(p.to_vec2()),
 			kurbo::PathEl::ClosePath => None,
 		};
-		if p.is_none() { continue; }
-		let dist_sqrd = (p.unwrap() - pos).hypot2();
-		if dist_sqrd < closest_dist {
-			closest_dist = dist_sqrd;
+		if p.is_none() {
+			continue;
+		}
+		let distance_squared = (p.unwrap() - pos).hypot2();
+		if distance_squared < closest_distance {
+			closest_distance = distance_squared;
 			closest = i;
 		}
 	}

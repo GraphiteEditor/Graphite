@@ -55,7 +55,7 @@ pub enum VectorManipulatorSegment {
 
 #[derive(PartialEq, Clone, Debug)]
 pub struct VectorManipulatorShape {
-	// The path to the layer
+	/// The path to the layer
 	pub layer_path: Vec<LayerId>,
 	/// The outline of the shape
 	pub path: kurbo::BezPath,
