@@ -519,8 +519,9 @@ impl Document {
 				// Behavior: What should the PathStyle of combined shapes be?
 				// Behavior: Where in the tree structure should new shapes go? This also effects how the transforms are handled
 				//		- currently new shapes are added to the root, with the identity transform
+				// Behavior: Old shapes could be deleted, or added to
 
-				//it could equal 2.. but we for Union and Intersection operations more than two selections could make sense
+				//it could equal 2.. but for Union and Intersection operations more than two selections could make sense
 				let mut responses = Vec::new();
 				if selected.len() > 1 && selected.len() < 3 {
 					// to deal with union of shapes with different transforms, we

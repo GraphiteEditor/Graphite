@@ -20,8 +20,6 @@ pub enum BooleanOperation {
 	SubBack,
 }
 
-// represents a directional graph with edges "colored" by Origin
-// each edge also represents a portion of a visible shape
 struct Edge {
 	pub from: Origin,
 	pub destination: usize,
@@ -47,17 +45,13 @@ impl Debug for Vertex {
 	}
 }
 
-// "!" operator reverses direction
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
 enum Direction {
-	CCW = 1,
-	CW = 0,
+	CCW,
+	CW,
 }
 
-/// TODO: computing a cycle direction and cycle length is expensive, find ways to optimize/avoid/
-/// TODO: test edge cases of direction algorithm
-/// Improvement: Use this http://ich.deanmcnamee.com/graphics/2016/03/30/CurveArea.html to calculate direction
-/// Behavior: Intersection and Union cases are distinuguished between by cycle length
+/// Behavior: Intersection and Union cases are distinuguished between by cycle area magnitude
 ///   - This only effects shapes whose intersection is a single shape, and the intersection is similalarly sized to the union
 ///   - can be solved by first computing at low accuracy, and if the values are close recomputing.
 #[derive(Clone)]
@@ -123,7 +117,7 @@ impl Cycle {
 
 	/// - if the path has multiple sub paths the function Errs
 	/// - if the path is empty (has no segments) the function Errs
-	/// - if the path crosses itself the computed direction may be (probably will be) wrong
+	/// - if the path crosses itself the computed direction may be (probably will be) wrong, on account of it not really being defined
 	/// - the path does not need to end in a ClosePath, however if it doesn't, the final vertex must compare exactly equal to the start vertex.
 	///   Which, with floating point precision, is unlikely.
 	pub fn direction_for_path(path: &BezPath) -> Result<Direction, ()> {
@@ -146,7 +140,9 @@ struct PathGraph {
 }
 
 /// Boolean Operation Algorithm
-///   - Behavior: Has somewhat undefined behavior when shapes have self intersections
+///   - Behavior: Has somewhat (totally?) undefined behavior when shapes have self intersections
+/// PathGraph: represents a directional graph with edges "colored" by Origin
+/// each edge also represents a portion of a visible shape
 #[allow(dead_code)] //<---- remove this @ release
 impl PathGraph {
 	pub fn from_paths(alpha: &BezPath, beta: &BezPath, reverse: bool) -> Option<PathGraph> {
@@ -171,6 +167,7 @@ impl PathGraph {
 	///   - implementing this behavior may not be feasible, instead reduce discrepancies
 	/// TODO: This function panics if an time value is NAN, no time value should ever be NAN, but this case should be handled, maybe not here
 	/// NOTE: about intersection time_val order
+	/// BUG: reverse flag doesn't seem to actually be reversing, could be that the actual PathSegs need to be reversed?
 	fn add_edges_from_path(&mut self, path: &BezPath, origin: Origin, reverse: bool) {
 		let mut seg_idx = 0;
 		//cstart holds the idx of the vertex the current edge is starting from
@@ -179,7 +176,7 @@ impl PathGraph {
 		// in order to iterate through once, store information for incomplete first edge
 		let mut beginning = Vec::new();
 		let mut start_idx = None;
-
+		#[allow(clippy::explicit_counter_loop)]
 		for seg in path.segments() {
 			let mut intersects = self.intersects_in_seg(seg_idx, origin);
 			if intersects.len() > 0 {
@@ -191,8 +188,7 @@ impl PathGraph {
 							current.push(seg1);
 							self.add_edge(origin, idx, vertex_id, current, reverse);
 							cstart = Some(vertex_id);
-							current = Vec::new();
-							current.push(seg2);
+							current = vec![seg2];
 						}
 						None => {
 							cstart = Some(vertex_id);
@@ -415,10 +411,6 @@ pub fn is_closed(curve: &BezPath) -> bool {
 	curve.iter().last() == Some(PathEl::ClosePath)
 }
 
-/// when the two curves are not continuous or if their derivitives are not continuous, and the two curves are not lines
-/// they must be represented as two subpaths.
-/// TODO: Make this function correctly detect cases when the paths can be continuously concatenated and when they must be two subpaths
-/// Behavior: function panics if path b is empty
 pub fn concat_paths(a: &mut BezPath, b: &BezPath) {
 	b.iter().for_each(|element| a.push(element));
 }

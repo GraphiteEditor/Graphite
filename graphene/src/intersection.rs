@@ -77,6 +77,7 @@ pub fn get_arbitrary_point_on_path(path: &BezPath) -> Option<Point> {
 /// \/                               \/
 
 /// each intersection has two curves, which are distinguished between using this enum
+/// TODO: refactor so actual curve data and Origin aren't seperate
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum Origin {
 	Alpha,
@@ -216,7 +217,7 @@ impl<'a> SubCurve<'a> {
 
 /**
 Bezier Curve Intersection Algorithm
-- TODO: Consistenly use the maximum f64 precision possible, account for the locations where limitations will effect results
+- TODO: How does f64 precision effect the algorithm?
 - Bug: algorithm finds same intersection multiple times in same recursion path
 - Bug: intersections of "perfectly alligned" line or curve
 - Improvement: algorithm behavior when curves have very different sizes
@@ -236,6 +237,7 @@ fn path_intersections(a: &SubCurve, b: &SubCurve, mut recursion: usize) -> Vec<I
 	} else if overlap(&a.bounding_box(), &b.bounding_box()) {
 		recursion += 1;
 		// bail out!!, should instead bail out when we reach the precision limits of either shape
+		// bail out before lshift with overflow
 		if recursion == 32 {
 			return intersections;
 		}
