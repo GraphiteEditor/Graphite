@@ -1,10 +1,6 @@
 #!/bin/sh
 
-if [[ -z "${CF_PAGES_BRANCH}" ]]; then
-	git switch master || git switch -c unknown-branch
-else
-	git switch $CF_PAGES_BRANCH || git switch -c $CF_PAGES_BRANCH
-fi
+git switch master || git switch -c master
 
 echo 🔧 Install Rust
 curl https://sh.rustup.rs -sSf | sh -s -- -y

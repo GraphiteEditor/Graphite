@@ -58,7 +58,7 @@ impl Document {
 	pub fn folder(&self, path: &[LayerId]) -> Result<&Folder, DocumentError> {
 		let mut root = &self.root;
 		for id in path {
-			root = root.as_folder()?.layer(*id).ok_or_else(|| DocumentError::LayerNotFound(path.into()))?;
+			root = root.as_folder()?.layer(*id).ok_or(DocumentError::LayerNotFound)?;
 		}
 		root.as_folder()
 	}
@@ -69,7 +69,7 @@ impl Document {
 	fn folder_mut(&mut self, path: &[LayerId]) -> Result<&mut Folder, DocumentError> {
 		let mut root = &mut self.root;
 		for id in path {
-			root = root.as_folder_mut()?.layer_mut(*id).ok_or_else(|| DocumentError::LayerNotFound(path.into()))?;
+			root = root.as_folder_mut()?.layer_mut(*id).ok_or(DocumentError::LayerNotFound)?;
 		}
 		root.as_folder_mut()
 	}
@@ -80,7 +80,7 @@ impl Document {
 			return Ok(&self.root);
 		}
 		let (path, id) = split_path(path)?;
-		self.folder(path)?.layer(id).ok_or_else(|| DocumentError::LayerNotFound(path.into()))
+		self.folder(path)?.layer(id).ok_or(DocumentError::LayerNotFound)
 	}
 
 	/// Returns a mutable reference to the layer or folder at the path.
@@ -89,10 +89,10 @@ impl Document {
 			return Ok(&mut self.root);
 		}
 		let (path, id) = split_path(path)?;
-		self.folder_mut(path)?.layer_mut(id).ok_or_else(|| DocumentError::LayerNotFound(path.into()))
+		self.folder_mut(path)?.layer_mut(id).ok_or(DocumentError::LayerNotFound)
 	}
 
-	pub fn shallowest_common_folder<'a>(&self, layers: impl Iterator<Item = &'a [LayerId]>) -> Result<&'a [LayerId], DocumentError> {
+	pub fn deepest_common_folder<'a>(&self, layers: impl Iterator<Item = &'a [LayerId]>) -> Result<&'a [LayerId], DocumentError> {
 		let common_prefix_of_path = self.common_layer_path_prefix(layers);
 
 		Ok(match self.layer(common_prefix_of_path)?.data {
@@ -108,10 +108,6 @@ impl Document {
 				&a[..(a.len() - number_of_uncommon_ids_in_a)]
 			})
 			.unwrap_or_default()
-	}
-
-	pub fn is_folder(&self, path: &[LayerId]) -> bool {
-		return self.folder(path).is_ok();
 	}
 
 	// Determines which layer is closer to the root, if path_a return true, if path_b return false
@@ -137,9 +133,9 @@ impl Document {
 		false
 	}
 
-	// Is  the target layer between a <-> b layers, inclusive
+	// Is the target layer between a <-> b layers, inclusive
 	pub fn layer_is_between(&self, target: &[u64], path_a: &[u64], path_b: &[u64]) -> bool {
-		// If the target is the root, it isn't between
+		// If the target is a nonsense path, it isn't between
 		if target.is_empty() {
 			return false;
 		}
@@ -166,12 +162,12 @@ impl Document {
 
 		// TODO: appears to be n^2? should we maintain a lookup table?
 		for id in path {
-			let pos = root.layer_ids.iter().position(|x| *x == *id).ok_or_else(|| DocumentError::LayerNotFound(path.into()))?;
+			let pos = root.layer_ids.iter().position(|x| *x == *id).ok_or(DocumentError::LayerNotFound)?;
 			indices.push(pos);
-			root = root.folder(*id).ok_or_else(|| DocumentError::LayerNotFound(path.into()))?;
+			root = root.folder(*id).ok_or(DocumentError::LayerNotFound)?;
 		}
 
-		indices.push(root.layer_ids.iter().position(|x| *x == layer_id).ok_or_else(|| DocumentError::LayerNotFound(path.into()))?);
+		indices.push(root.layer_ids.iter().position(|x| *x == layer_id).ok_or(DocumentError::LayerNotFound)?);
 
 		Ok(indices)
 	}
@@ -265,7 +261,7 @@ impl Document {
 		let mut root = &mut self.root;
 		root.cache_dirty = true;
 		for id in path {
-			root = root.as_folder_mut()?.layer_mut(*id).ok_or_else(|| DocumentError::LayerNotFound(path.into()))?;
+			root = root.as_folder_mut()?.layer_mut(*id).ok_or(DocumentError::LayerNotFound)?;
 			root.cache_dirty = true;
 		}
 		Ok(())
@@ -298,7 +294,7 @@ impl Document {
 		let mut transforms = vec![self.root.transform];
 		for id in path {
 			if let Ok(folder) = root.as_folder() {
-				root = folder.layer(*id).ok_or_else(|| DocumentError::LayerNotFound(path.into()))?;
+				root = folder.layer(*id).ok_or(DocumentError::LayerNotFound)?;
 			}
 			transforms.push(root.transform);
 		}
@@ -310,7 +306,7 @@ impl Document {
 		let mut trans = self.root.transform;
 		for id in path {
 			if let Ok(folder) = root.as_folder() {
-				root = folder.layer(*id).ok_or_else(|| DocumentError::LayerNotFound(path.into()))?;
+				root = folder.layer(*id).ok_or(DocumentError::LayerNotFound)?;
 			}
 			trans = trans * root.transform;
 		}

@@ -14,7 +14,7 @@ pub type LayerId = u64;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum DocumentError {
-	LayerNotFound(Vec<LayerId>),
+	LayerNotFound,
 	InvalidPath,
 	IndexOutOfBounds,
 	NotAFolder,
