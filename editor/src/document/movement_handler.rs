@@ -17,16 +17,27 @@ use std::collections::VecDeque;
 #[impl_message(Message, DocumentMessage, Movement)]
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub enum MovementMessage {
-	MouseMove { snap_angle: Key },
+	MouseMove {
+		snap_angle: Key,
+		wait_for_snap_angle_release: bool,
+		snap_zoom: Key,
+		zoom_from_viewport: Option<DVec2>,
+	},
 	TranslateCanvasBegin,
-	WheelCanvasTranslate { use_y_as_x: bool },
+	WheelCanvasTranslate {
+		use_y_as_x: bool,
+	},
 	RotateCanvasBegin,
 	ZoomCanvasBegin,
 	TransformCanvasEnd,
 	SetCanvasRotation(f64),
 	SetCanvasZoom(f64),
-	IncreaseCanvasZoom,
-	DecreaseCanvasZoom,
+	IncreaseCanvasZoom {
+		center_on_mouse: bool,
+	},
+	DecreaseCanvasZoom {
+		center_on_mouse: bool,
+	},
 	WheelCanvasZoom,
 	ZoomCanvasToFitAll,
 	TranslateCanvas(DVec2),
@@ -35,27 +46,37 @@ pub enum MovementMessage {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct MovementMessageHandler {
-	translating: bool,
-	pub translation: DVec2,
-	rotating: bool,
-	pub rotation: f64,
+	pub pan: DVec2,
+	panning: bool,
+	snap_tilt: bool,
+	snap_tilt_released: bool,
+
+	pub tilt: f64,
+	tilting: bool,
+
+	pub zoom: f64,
 	zooming: bool,
-	pub scale: f64,
-	snap_rotate: bool,
-	mouse_pos: ViewportPosition,
+	snap_zoom: bool,
+
+	mouse_position: ViewportPosition,
 }
 
 impl Default for MovementMessageHandler {
 	fn default() -> Self {
 		Self {
-			scale: 1.,
-			translating: false,
-			translation: DVec2::ZERO,
-			rotating: false,
-			rotation: 0.,
+			pan: DVec2::ZERO,
+			panning: false,
+			snap_tilt: false,
+			snap_tilt_released: false,
+
+			tilt: 0.,
+			tilting: false,
+
+			zoom: 1.,
 			zooming: false,
-			snap_rotate: false,
-			mouse_pos: ViewportPosition::default(),
+			snap_zoom: false,
+
+			mouse_position: ViewportPosition::default(),
 		}
 	}
 }
@@ -63,25 +84,36 @@ impl Default for MovementMessageHandler {
 impl MovementMessageHandler {
 	pub fn snapped_angle(&self) -> f64 {
 		let increment_radians: f64 = VIEWPORT_ROTATE_SNAP_INTERVAL.to_radians();
-		if self.snap_rotate {
-			(self.rotation / increment_radians).round() * increment_radians
+		if self.snap_tilt {
+			(self.tilt / increment_radians).round() * increment_radians
 		} else {
-			self.rotation
+			self.tilt
 		}
 	}
+
+	pub fn snapped_scale(&self) -> f64 {
+		if self.snap_zoom {
+			*VIEWPORT_ZOOM_LEVELS
+				.iter()
+				.min_by(|a, b| (**a - self.zoom).abs().partial_cmp(&(**b - self.zoom).abs()).unwrap())
+				.unwrap_or(&self.zoom)
+		} else {
+			self.zoom
+		}
+	}
+
 	pub fn calculate_offset_transform(&self, offset: DVec2) -> DAffine2 {
 		// TODO: replace with DAffine2::from_scale_angle_translation and fix the errors
 		let offset_transform = DAffine2::from_translation(offset);
-		let scale_transform = DAffine2::from_scale(DVec2::new(self.scale, self.scale));
+		let scale_transform = DAffine2::from_scale(DVec2::splat(self.snapped_scale()));
 		let angle_transform = DAffine2::from_angle(self.snapped_angle());
-		let translation_transform = DAffine2::from_translation(self.translation);
+		let translation_transform = DAffine2::from_translation(self.pan);
 		scale_transform * offset_transform * angle_transform * translation_transform
 	}
 
 	fn create_document_transform(&self, viewport_bounds: &ViewportBounds, responses: &mut VecDeque<Message>) {
 		let half_viewport = viewport_bounds.size() / 2.;
-		let scaled_half_viewport = half_viewport / self.scale;
-
+		let scaled_half_viewport = half_viewport / self.snapped_scale();
 		responses.push_back(
 			DocumentOperation::SetLayerTransform {
 				path: vec![],
@@ -101,6 +133,14 @@ impl MovementMessageHandler {
 			.into(),
 		);
 	}
+	pub fn center_zoom(&self, viewport_bounds: DVec2, zoom_factor: f64, mouse: DVec2) -> Message {
+		let new_viewport_bounds = viewport_bounds / zoom_factor;
+		let delta_size = viewport_bounds - new_viewport_bounds;
+		let mouse_fraction = mouse / viewport_bounds;
+		let delta = delta_size * (DVec2::splat(0.5) - mouse_fraction);
+
+		MovementMessage::TranslateCanvas(delta).into()
+	}
 }
 
 impl MessageHandler<MovementMessage, (&Document, &InputPreprocessor)> for MovementMessageHandler {
@@ -109,128 +149,129 @@ impl MessageHandler<MovementMessage, (&Document, &InputPreprocessor)> for Moveme
 		use MovementMessage::*;
 		match message {
 			TranslateCanvasBegin => {
-				self.translating = true;
-				self.mouse_pos = ipp.mouse.position;
+				self.panning = true;
+				self.mouse_position = ipp.mouse.position;
 			}
 			RotateCanvasBegin => {
-				self.rotating = true;
-				self.mouse_pos = ipp.mouse.position;
+				self.tilting = true;
+				self.mouse_position = ipp.mouse.position;
 			}
 			ZoomCanvasBegin => {
 				self.zooming = true;
-				self.mouse_pos = ipp.mouse.position;
+				self.mouse_position = ipp.mouse.position;
 			}
 			TransformCanvasEnd => {
-				self.rotation = self.snapped_angle();
+				self.tilt = self.snapped_angle();
+				self.zoom = self.snapped_scale();
 				responses.push_back(ToolMessage::DocumentIsDirty.into());
-				self.snap_rotate = false;
-				self.translating = false;
-				self.rotating = false;
+				self.snap_tilt = false;
+				self.snap_tilt_released = false;
+				self.snap_zoom = false;
+				self.panning = false;
+				self.tilting = false;
 				self.zooming = false;
 			}
-			MouseMove { snap_angle } => {
-				if self.translating {
-					let delta = ipp.mouse.position - self.mouse_pos;
-					let transformed_delta = document.root.transform.inverse().transform_vector2(delta);
+			MouseMove {
+				snap_angle,
+				wait_for_snap_angle_release,
+				snap_zoom,
+				zoom_from_viewport,
+			} => {
+				if self.panning {
+					let delta = ipp.mouse.position - self.mouse_position;
 
-					self.translation += transformed_delta;
-					responses.push_back(ToolMessage::DocumentIsDirty.into());
-					self.create_document_transform(&ipp.viewport_bounds, responses);
+					responses.push_back(TranslateCanvas(delta).into());
 				}
 
-				if self.rotating {
+				if self.tilting {
 					let new_snap = ipp.keyboard.get(snap_angle as usize);
-					// When disabling snap, keep the viewed rotation as it was previously.
-					if !new_snap && self.snap_rotate {
-						self.rotation = self.snapped_angle();
+					if !(wait_for_snap_angle_release && new_snap && !self.snap_tilt_released) {
+						// When disabling snap, keep the viewed rotation as it was previously.
+						if !new_snap && self.snap_tilt {
+							self.tilt = self.snapped_angle();
+						}
+						self.snap_tilt = new_snap;
+						self.snap_tilt_released = true;
 					}
-					self.snap_rotate = new_snap;
 
 					let half_viewport = ipp.viewport_bounds.size() / 2.;
 					let rotation = {
-						let start_vec = self.mouse_pos - half_viewport;
+						let start_vec = self.mouse_position - half_viewport;
 						let end_vec = ipp.mouse.position - half_viewport;
 						start_vec.angle_between(end_vec)
 					};
 
-					self.rotation += rotation;
-					responses.push_back(ToolMessage::DocumentIsDirty.into());
-					responses.push_back(FrontendMessage::SetCanvasRotation { new_radians: self.snapped_angle() }.into());
-					self.create_document_transform(&ipp.viewport_bounds, responses);
+					responses.push_back(SetCanvasRotation(self.tilt + rotation).into());
 				}
+
 				if self.zooming {
-					let difference = self.mouse_pos.y as f64 - ipp.mouse.position.y as f64;
+					let zoom_start = self.snapped_scale();
+
+					let new_snap = ipp.keyboard.get(snap_zoom as usize);
+					// When disabling snap, keep the viewed zoom as it was previously
+					if !new_snap && self.snap_zoom {
+						self.zoom = self.snapped_scale();
+					}
+					self.snap_zoom = new_snap;
+
+					let difference = self.mouse_position.y as f64 - ipp.mouse.position.y as f64;
 					let amount = 1. + difference * VIEWPORT_ZOOM_MOUSE_RATE;
 
-					let new = (self.scale * amount).clamp(VIEWPORT_ZOOM_SCALE_MIN, VIEWPORT_ZOOM_SCALE_MAX);
-					self.scale = new;
-					responses.push_back(ToolMessage::DocumentIsDirty.into());
-					responses.push_back(FrontendMessage::SetCanvasZoom { new_zoom: self.scale }.into());
-					self.create_document_transform(&ipp.viewport_bounds, responses);
+					self.zoom *= amount;
+					if let Some(mouse) = zoom_from_viewport {
+						let zoom_factor = self.snapped_scale() / zoom_start;
+
+						responses.push_back(SetCanvasZoom(self.zoom).into());
+						responses.push_back(self.center_zoom(ipp.viewport_bounds.size(), zoom_factor, mouse));
+					} else {
+						responses.push_back(SetCanvasZoom(self.zoom).into());
+					}
 				}
-				self.mouse_pos = ipp.mouse.position;
+				self.mouse_position = ipp.mouse.position;
 			}
 			SetCanvasZoom(new) => {
-				self.scale = new.clamp(VIEWPORT_ZOOM_SCALE_MIN, VIEWPORT_ZOOM_SCALE_MAX);
-				responses.push_back(FrontendMessage::SetCanvasZoom { new_zoom: self.scale }.into());
+				self.zoom = new.clamp(VIEWPORT_ZOOM_SCALE_MIN, VIEWPORT_ZOOM_SCALE_MAX);
+				responses.push_back(FrontendMessage::SetCanvasZoom { new_zoom: self.snapped_scale() }.into());
 				responses.push_back(ToolMessage::DocumentIsDirty.into());
 				responses.push_back(DocumentMessage::DirtyRenderDocumentInOutlineView.into());
 				self.create_document_transform(&ipp.viewport_bounds, responses);
 			}
-			IncreaseCanvasZoom => {
-				// TODO: Eliminate redundant code by making this call SetCanvasZoom
-				self.scale = *VIEWPORT_ZOOM_LEVELS.iter().find(|scale| **scale > self.scale).unwrap_or(&self.scale);
-				responses.push_back(FrontendMessage::SetCanvasZoom { new_zoom: self.scale }.into());
-				responses.push_back(ToolMessage::DocumentIsDirty.into());
-				responses.push_back(DocumentMessage::DirtyRenderDocumentInOutlineView.into());
-				self.create_document_transform(&ipp.viewport_bounds, responses);
+			IncreaseCanvasZoom { center_on_mouse } => {
+				let new_scale = *VIEWPORT_ZOOM_LEVELS.iter().find(|scale| **scale > self.zoom).unwrap_or(&self.zoom);
+				if center_on_mouse {
+					responses.push_back(self.center_zoom(ipp.viewport_bounds.size(), new_scale / self.zoom, ipp.mouse.position));
+				}
+				responses.push_back(SetCanvasZoom(new_scale).into());
 			}
-			DecreaseCanvasZoom => {
-				// TODO: Eliminate redundant code by making this call SetCanvasZoom
-				self.scale = *VIEWPORT_ZOOM_LEVELS.iter().rev().find(|scale| **scale < self.scale).unwrap_or(&self.scale);
-				responses.push_back(FrontendMessage::SetCanvasZoom { new_zoom: self.scale }.into());
-				responses.push_back(ToolMessage::DocumentIsDirty.into());
-				responses.push_back(DocumentMessage::DirtyRenderDocumentInOutlineView.into());
-				self.create_document_transform(&ipp.viewport_bounds, responses);
+			DecreaseCanvasZoom { center_on_mouse } => {
+				let new_scale = *VIEWPORT_ZOOM_LEVELS.iter().rev().find(|scale| **scale < self.zoom).unwrap_or(&self.zoom);
+				if center_on_mouse {
+					responses.push_back(self.center_zoom(ipp.viewport_bounds.size(), new_scale / self.zoom, ipp.mouse.position));
+				}
+				responses.push_back(SetCanvasZoom(new_scale).into());
 			}
 			WheelCanvasZoom => {
-				// TODO: Eliminate redundant code by making this call SetCanvasZoom
 				let scroll = ipp.mouse.scroll_delta.scroll_delta();
-				let mouse = ipp.mouse.position;
-				let viewport_bounds = ipp.viewport_bounds.size();
 				let mut zoom_factor = 1. + scroll.abs() * VIEWPORT_ZOOM_WHEEL_RATE;
 				if ipp.mouse.scroll_delta.y > 0 {
 					zoom_factor = 1. / zoom_factor
 				};
-				let new_viewport_bounds = viewport_bounds / zoom_factor;
-				let delta_size = viewport_bounds - new_viewport_bounds;
-				let mouse_fraction = mouse / viewport_bounds;
-				let delta = delta_size * (DVec2::splat(0.5) - mouse_fraction);
 
-				let transformed_delta = document.root.transform.inverse().transform_vector2(delta);
-				let new = (self.scale * zoom_factor).clamp(VIEWPORT_ZOOM_SCALE_MIN, VIEWPORT_ZOOM_SCALE_MAX);
-				self.scale = new;
-				self.translation += transformed_delta;
-				responses.push_back(FrontendMessage::SetCanvasZoom { new_zoom: self.scale }.into());
-				responses.push_back(ToolMessage::DocumentIsDirty.into());
-				responses.push_back(DocumentMessage::DirtyRenderDocumentInOutlineView.into());
-				self.create_document_transform(&ipp.viewport_bounds, responses);
+				responses.push_back(self.center_zoom(ipp.viewport_bounds.size(), zoom_factor, ipp.mouse.position));
+				responses.push_back(SetCanvasZoom(self.zoom * zoom_factor).into());
 			}
 			WheelCanvasTranslate { use_y_as_x } => {
 				let delta = match use_y_as_x {
 					false => -ipp.mouse.scroll_delta.as_dvec2(),
 					true => (-ipp.mouse.scroll_delta.y as f64, 0.).into(),
 				} * VIEWPORT_SCROLL_RATE;
-				let transformed_delta = document.root.transform.inverse().transform_vector2(delta);
-				self.translation += transformed_delta;
-				responses.push_back(ToolMessage::DocumentIsDirty.into());
-				self.create_document_transform(&ipp.viewport_bounds, responses);
+				responses.push_back(TranslateCanvas(delta).into());
 			}
 			SetCanvasRotation(new_radians) => {
-				self.rotation = new_radians;
+				self.tilt = new_radians;
 				self.create_document_transform(&ipp.viewport_bounds, responses);
 				responses.push_back(ToolMessage::DocumentIsDirty.into());
-				responses.push_back(FrontendMessage::SetCanvasRotation { new_radians }.into());
+				responses.push_back(FrontendMessage::SetCanvasRotation { new_radians: self.snapped_angle() }.into());
 			}
 			ZoomCanvasToFitAll => {
 				if let Some([pos1, pos2]) = document.visible_layers_bounding_box() {
@@ -244,9 +285,9 @@ impl MessageHandler<MovementMessage, (&Document, &InputPreprocessor)> for Moveme
 					let size = 1. / size;
 					let new_scale = size.min_element();
 
-					self.translation += center;
-					self.scale *= new_scale;
-					responses.push_back(FrontendMessage::SetCanvasZoom { new_zoom: self.scale }.into());
+					self.pan += center;
+					self.zoom *= new_scale;
+					responses.push_back(FrontendMessage::SetCanvasZoom { new_zoom: self.zoom }.into());
 					responses.push_back(ToolMessage::DocumentIsDirty.into());
 					responses.push_back(DocumentMessage::DirtyRenderDocumentInOutlineView.into());
 					self.create_document_transform(&ipp.viewport_bounds, responses);
@@ -255,14 +296,14 @@ impl MessageHandler<MovementMessage, (&Document, &InputPreprocessor)> for Moveme
 			TranslateCanvas(delta) => {
 				let transformed_delta = document.root.transform.inverse().transform_vector2(delta);
 
-				self.translation += transformed_delta;
+				self.pan += transformed_delta;
 				responses.push_back(ToolMessage::DocumentIsDirty.into());
 				self.create_document_transform(&ipp.viewport_bounds, responses);
 			}
 			TranslateCanvasByViewportFraction(delta) => {
 				let transformed_delta = document.root.transform.inverse().transform_vector2(delta * ipp.viewport_bounds.size());
 
-				self.translation += transformed_delta;
+				self.pan += transformed_delta;
 				responses.push_back(ToolMessage::DocumentIsDirty.into());
 				self.create_document_transform(&ipp.viewport_bounds, responses);
 			}
@@ -285,7 +326,7 @@ impl MessageHandler<MovementMessage, (&Document, &InputPreprocessor)> for Moveme
 			TranslateCanvasByViewportFraction,
 		);
 
-		if self.translating || self.rotating || self.zooming {
+		if self.panning || self.tilting || self.zooming {
 			let transforming = actions!(MovementMessageDiscriminant;
 				TransformCanvasEnd,
 			);
