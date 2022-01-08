@@ -448,8 +448,8 @@ impl Document {
 
 				Some([vec![DocumentChanged, CreatedLayer { path: path.clone() }], update_thumbnails_upstream(path)].concat())
 			}
-			Operation::AddOverlayShape { path, style, bez_path } => {
-				let mut shape = Shape::from_bez_path(bez_path.clone(), *style, false);
+			Operation::AddOverlayShape { path, style, bez_path, closed } => {
+				let mut shape = Shape::from_bez_path(bez_path.clone(), *style, *closed);
 				shape.render_index = -1;
 
 				let layer = Layer::new(LayerDataType::Shape(shape), DAffine2::IDENTITY.to_cols_array());
@@ -546,14 +546,14 @@ impl Document {
 				self.set_layer(path, Layer::new(LayerDataType::Folder(Folder::default()), DAffine2::IDENTITY.to_cols_array()), -1)?;
 				self.mark_as_dirty(path)?;
 
-				Some(vec![DocumentChanged, CreatedLayer { path: path.clone() }])
+				Some([vec![DocumentChanged, CreatedLayer { path: path.clone() }], update_thumbnails_upstream(path)].concat())
 			}
 			Operation::TransformLayer { path, transform } => {
 				let layer = self.layer_mut(path).unwrap();
 				let transform = DAffine2::from_cols_array(transform) * layer.transform;
 				layer.transform = transform;
 				self.mark_as_dirty(path)?;
-				Some(vec![DocumentChanged])
+				Some([vec![DocumentChanged], update_thumbnails_upstream(path)].concat())
 			}
 			Operation::TransformLayerInViewport { path, transform } => {
 				let transform = DAffine2::from_cols_array(transform);
@@ -567,6 +567,17 @@ impl Document {
 				self.mark_as_dirty(path)?;
 				Some([vec![DocumentChanged], update_thumbnails_upstream(path)].concat())
 			}
+			Operation::SetShapePath { path, bez_path } => {
+				self.mark_as_dirty(path)?;
+
+				match &mut self.layer_mut(path)?.data {
+					LayerDataType::Shape(shape) => {
+						shape.path = bez_path.clone();
+					}
+					LayerDataType::Folder(_) => (),
+				}
+				Some(vec![DocumentChanged, LayerChanged { path: path.clone() }])
+			}
 			Operation::SetShapePathInViewport { path, bez_path, transform } => {
 				let transform = DAffine2::from_cols_array(transform);
 				self.set_transform_relative_to_viewport(path, transform)?;
@@ -578,7 +589,7 @@ impl Document {
 					}
 					LayerDataType::Folder(_) => (),
 				}
-				Some(vec![DocumentChanged, LayerChanged { path: path.clone() }])
+				Some([vec![DocumentChanged, LayerChanged { path: path.clone() }], update_thumbnails_upstream(path)].concat())
 			}
 			Operation::TransformLayerInScope { path, transform, scope } => {
 				let transform = DAffine2::from_cols_array(transform);
@@ -632,7 +643,7 @@ impl Document {
 					_ => return Err(DocumentError::NotAShape),
 				}
 				self.mark_as_dirty(path)?;
-				Some(vec![DocumentChanged, LayerChanged { path: path.clone() }])
+				Some([vec![DocumentChanged, LayerChanged { path: path.clone() }], update_thumbnails_upstream(path)].concat())
 			}
 			Operation::SetLayerFill { path, color } => {
 				let layer = self.layer_mut(path)?;

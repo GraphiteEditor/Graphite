@@ -186,6 +186,10 @@ impl Default for Mapping {
 			entry! {action=LineMessage::Abort, key_down=Rmb},
 			entry! {action=LineMessage::Abort, key_down=KeyEscape},
 			entry! {action=LineMessage::Redraw{center: KeyAlt, lock_angle: KeyControl, snap_angle: KeyShift}, triggers=[KeyAlt, KeyShift, KeyControl]},
+			// Path
+			entry! {action=PathMessage::DragStart, key_down=Lmb},
+			entry! {action=PathMessage::PointerMove, message=InputMapperMessage::PointerMove},
+			entry! {action=PathMessage::DragStop, key_up=Lmb},
 			// Pen
 			entry! {action=PenMessage::PointerMove, message=InputMapperMessage::PointerMove},
 			entry! {action=PenMessage::DragStart, key_down=Lmb},

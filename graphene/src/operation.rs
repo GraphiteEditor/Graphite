@@ -65,6 +65,7 @@ pub enum Operation {
 		path: Vec<LayerId>,
 		bez_path: kurbo::BezPath,
 		style: style::PathStyle,
+		closed: bool,
 	},
 	DeleteLayer {
 		path: Vec<LayerId>,
@@ -95,6 +96,10 @@ pub enum Operation {
 	SetLayerTransformInViewport {
 		path: Vec<LayerId>,
 		transform: [f64; 6],
+	},
+	SetShapePath {
+		path: Vec<LayerId>,
+		bez_path: kurbo::BezPath,
 	},
 	SetShapePathInViewport {
 		path: Vec<LayerId>,
