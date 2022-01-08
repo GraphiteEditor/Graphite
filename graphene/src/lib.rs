@@ -1,5 +1,6 @@
 pub mod boolean_ops;
 pub mod color;
+pub mod consts;
 pub mod document;
 pub mod intersection;
 pub mod layers;
@@ -14,7 +15,7 @@ pub type LayerId = u64;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum DocumentError {
-	LayerNotFound,
+	LayerNotFound(Vec<LayerId>),
 	InvalidPath,
 	IndexOutOfBounds,
 	NotAFolder,

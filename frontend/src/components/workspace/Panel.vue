@@ -7,29 +7,14 @@
 					:class="{ active: tabIndex === tabActiveIndex }"
 					v-for="(tabLabel, tabIndex) in tabLabels"
 					:key="tabIndex"
-					@click.middle="
-						(e) => {
-							e.stopPropagation();
-							documents.closeDocumentWithConfirmation(tabIndex);
-						}
-					"
-					@click="panelType === 'Document' && documents.selectDocument(tabIndex)"
+					@click="(e) => (e && e.stopPropagation(), clickAction && clickAction(tabIndex))"
+					@click.middle="(e) => (e && e.stopPropagation(), closeAction && closeAction(tabIndex))"
 				>
 					<span>{{ tabLabel }}</span>
-					<IconButton
-						:action="
-							(e) => {
-								e.stopPropagation();
-								documents.closeDocumentWithConfirmation(tabIndex);
-							}
-						"
-						:icon="'CloseX'"
-						:size="16"
-						v-if="tabCloseButtons"
-					/>
+					<IconButton :action="(e) => (e && e.stopPropagation(), closeAction && closeAction(tabIndex))" :icon="'CloseX'" :size="16" v-if="tabCloseButtons" />
 				</div>
 			</div>
-			<PopoverButton :icon="PopoverButtonIcon.VerticalEllipsis">
+			<PopoverButton :icon="'VerticalEllipsis'">
 				<h3>Panel Options</h3>
 				<p>The contents of this popover menu are coming soon</p>
 			</PopoverButton>
@@ -170,35 +155,32 @@
 import { defineComponent, PropType } from "vue";
 
 import Document from "@/components/panels/Document.vue";
-import Properties from "@/components/panels/Properties.vue";
 import LayerTree from "@/components/panels/LayerTree.vue";
 import Minimap from "@/components/panels/Minimap.vue";
+import Properties from "@/components/panels/Properties.vue";
 import IconButton from "@/components/widgets/buttons/IconButton.vue";
-import PopoverButton, { PopoverButtonIcon } from "@/components/widgets/buttons/PopoverButton.vue";
-import { MenuDirection } from "@/components/widgets/floating-menus/FloatingMenu.vue";
+import PopoverButton from "@/components/widgets/buttons/PopoverButton.vue";
+
+const components = {
+	Document,
+	Properties,
+	LayerTree,
+	Minimap,
+	IconButton,
+	PopoverButton,
+};
 
 export default defineComponent({
 	inject: ["documents"],
-	components: {
-		Document,
-		Properties,
-		LayerTree,
-		Minimap,
-		IconButton,
-		PopoverButton,
-	},
+	components,
 	props: {
-		tabMinWidths: { type: Boolean, default: false },
-		tabCloseButtons: { type: Boolean, default: false },
+		tabMinWidths: { type: Boolean as PropType<boolean>, default: false },
+		tabCloseButtons: { type: Boolean as PropType<boolean>, default: false },
 		tabLabels: { type: Array as PropType<string[]>, required: true },
-		tabActiveIndex: { type: Number, required: true },
-		panelType: { type: String, required: true },
-	},
-	data() {
-		return {
-			PopoverButtonIcon,
-			MenuDirection,
-		};
+		tabActiveIndex: { type: Number as PropType<number>, required: true },
+		panelType: { type: String as PropType<keyof typeof components>, required: true },
+		clickAction: { type: Function as PropType<(index: number) => void>, required: false },
+		closeAction: { type: Function as PropType<(index: number) => void>, required: false },
 	},
 });
 </script>

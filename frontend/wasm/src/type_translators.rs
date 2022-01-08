@@ -1,8 +1,8 @@
 use crate::helpers::match_string_to_enum;
 use editor::input::keyboard::Key;
 use editor::tool::ToolType;
-use graphene::layers::BlendMode;
 use graphene::boolean_ops::BooleanOperation;
+use graphene::layers::{style::ViewMode, BlendMode};
 
 pub fn translate_tool_type(name: &str) -> Option<ToolType> {
 	use ToolType::*;
@@ -129,7 +129,7 @@ pub fn translate_key(name: &str) -> Key {
 }
 
 pub fn translate_boolean_operation(operation: &str) -> Option<BooleanOperation> {
-	match operation{
+	match operation {
 		"Union" => Some(BooleanOperation::Union),
 		"Difference" => Some(BooleanOperation::Difference),
 		"Intersection" => Some(BooleanOperation::Intersection),
@@ -137,4 +137,13 @@ pub fn translate_boolean_operation(operation: &str) -> Option<BooleanOperation> 
 		"SubBack" => Some(BooleanOperation::SubBack),
 		_ => None,
 	}
+}
+
+pub fn translate_view_mode(name: &str) -> Option<ViewMode> {
+	Some(match name {
+		"Normal" => ViewMode::Normal,
+		"Outline" => ViewMode::Outline,
+		"Pixels" => ViewMode::Pixels,
+		_ => return None,
+	})
 }

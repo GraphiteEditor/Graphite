@@ -66,6 +66,7 @@ pub enum Operation {
 		path: Vec<LayerId>,
 		bez_path: kurbo::BezPath,
 		style: style::PathStyle,
+		closed: bool,
 	},
 	BooleanOperation {
 		operation: BooleanOperationType,
@@ -81,9 +82,9 @@ pub enum Operation {
 		path: Vec<LayerId>,
 		name: String,
 	},
-	PasteLayer {
+	InsertLayer {
 		layer: Layer,
-		path: Vec<LayerId>,
+		destination_path: Vec<LayerId>,
 		insert_index: isize,
 	},
 	CreateFolder {
@@ -100,6 +101,10 @@ pub enum Operation {
 	SetLayerTransformInViewport {
 		path: Vec<LayerId>,
 		transform: [f64; 6],
+	},
+	SetShapePath {
+		path: Vec<LayerId>,
+		bez_path: kurbo::BezPath,
 	},
 	SetShapePathInViewport {
 		path: Vec<LayerId>,

@@ -1,55 +1,51 @@
 // This file is where functions are defined to be called directly from JS.
 // It serves as a thin wrapper over the editor backend API that relies
 // on the dispatcher messaging system and more complex Rust data types.
-
-use std::cell::Cell;
+use std::sync::atomic::Ordering;
 
 use crate::helpers::Error;
-use crate::type_translators::{translate_blend_mode, translate_key, translate_tool_type, translate_boolean_operation};
+use crate::type_translators::{translate_blend_mode, translate_boolean_operation, translate_key, translate_tool_type, translate_view_mode};
 use crate::{EDITOR_HAS_CRASHED, EDITOR_INSTANCES};
-use editor::consts::FILE_SAVE_SUFFIX;
+use editor::consts::{FILE_SAVE_SUFFIX, GRAPHITE_DOCUMENT_VERSION};
 use editor::input::input_preprocessor::ModifierKeys;
 use editor::input::mouse::{EditorMouseState, ScrollDelta, ViewportBounds};
+use editor::message_prelude::*;
 use editor::misc::EditorError;
 use editor::tool::{tool_options::ToolOptions, tools, ToolType};
 use editor::Color;
 use editor::LayerId;
-use editor::{message_prelude::*, Editor};
+
+use editor::Editor;
+use serde::Serialize;
+use serde_wasm_bindgen;
 use wasm_bindgen::prelude::*;
 
 // To avoid wasm-bindgen from checking mutable reference issues using WasmRefCell
 // we must make all methods take a non mutable reference to self. Not doing this creates
 // an issue when rust calls into JS which calls back to rust in the same call stack.
 #[wasm_bindgen]
+#[derive(Clone)]
 pub struct JsEditorHandle {
 	editor_id: u64,
-	instance_received_crashed: Cell<bool>,
 	handle_response: js_sys::Function,
 }
 
 #[wasm_bindgen]
+#[allow(clippy::too_many_arguments)]
 impl JsEditorHandle {
 	#[wasm_bindgen(constructor)]
-	pub fn new(handle_response: js_sys::Function) -> JsEditorHandle {
+	pub fn new(handle_response: js_sys::Function) -> Self {
 		let editor_id = generate_uuid();
 		let editor = Editor::new();
-		EDITOR_INSTANCES.with(|instances| instances.borrow_mut().insert(editor_id, editor));
-		JsEditorHandle {
-			editor_id,
-			instance_received_crashed: Cell::new(false),
-			handle_response,
-		}
+		let editor_handle = JsEditorHandle { editor_id, handle_response };
+		EDITOR_INSTANCES.with(|instances| instances.borrow_mut().insert(editor_id, (editor, editor_handle.clone())));
+		editor_handle
 	}
 
 	// Sends a message to the dispatcher in the Editor Backend
 	fn dispatch<T: Into<Message>>(&self, message: T) {
 		// Process no further messages after a crash to avoid spamming the console
-		let possible_crash_message = EDITOR_HAS_CRASHED.with(|crash_state| crash_state.borrow().clone());
-		if let Some(message) = possible_crash_message {
-			if !self.instance_received_crashed.get() {
-				self.handle_response(message);
-				self.instance_received_crashed.set(true);
-			}
+		if EDITOR_HAS_CRASHED.load(Ordering::SeqCst) {
 			return;
 		}
 
@@ -58,6 +54,7 @@ impl JsEditorHandle {
 				.borrow_mut()
 				.get_mut(&self.editor_id)
 				.expect("EDITOR_INSTANCES does not contain the current editor_id")
+				.0
 				.handle_message(message.into())
 		});
 		for response in responses.into_iter() {
@@ -69,7 +66,9 @@ impl JsEditorHandle {
 	// Sends a FrontendMessage to JavaScript
 	fn handle_response(&self, message: FrontendMessage) {
 		let message_type = message.to_discriminant().local_name();
-		let message_data = JsValue::from_serde(&message).expect("Failed to serialize FrontendMessage");
+
+		let serializer = serde_wasm_bindgen::Serializer::new().serialize_large_number_types_as_bigints(true);
+		let message_data = message.serialize(&serializer).expect("Failed to serialize FrontendMessage");
 
 		let js_return_value = self.handle_response.call2(&JsValue::null(), &JsValue::from(message_type), &message_data);
 
@@ -87,9 +86,8 @@ impl JsEditorHandle {
 	// backend from the web frontend.
 	// ========================================================================
 
-	pub fn has_crashed(&self) -> JsValue {
-		let has_crashed = EDITOR_HAS_CRASHED.with(|crash_state| crash_state.borrow().is_some());
-		has_crashed.into()
+	pub fn has_crashed(&self) -> bool {
+		EDITOR_HAS_CRASHED.load(Ordering::SeqCst)
 	}
 
 	/// Modify the currently selected tool in the document state store
@@ -107,7 +105,7 @@ impl JsEditorHandle {
 
 	/// Update the options for a given tool
 	pub fn set_tool_options(&self, tool: String, options: &JsValue) -> Result<(), JsValue> {
-		match options.into_serde::<ToolOptions>() {
+		match serde_wasm_bindgen::from_value::<ToolOptions>(options.clone()) {
 			Ok(options) => match translate_tool_type(&tool) {
 				Some(tool) => {
 					let message = ToolMessage::SetToolOptions(tool, options);
@@ -125,7 +123,7 @@ impl JsEditorHandle {
 	pub fn send_tool_message(&self, tool: String, message: &JsValue) -> Result<(), JsValue> {
 		let tool_message = match translate_tool_type(&tool) {
 			Some(tool) => match tool {
-				ToolType::Select => match message.into_serde::<tools::select::SelectMessage>() {
+				ToolType::Select => match serde_wasm_bindgen::from_value::<tools::select::SelectMessage>(message.clone()) {
 					Ok(select_message) => Ok(ToolMessage::Select(select_message)),
 					Err(err) => Err(Error::new(&format!("Invalid message for {}: {}", tool, err)).into()),
 				},
@@ -144,8 +142,8 @@ impl JsEditorHandle {
 		}
 	}
 
-	pub fn select_document(&self, document: usize) {
-		let message = DocumentsMessage::SelectDocument(document);
+	pub fn select_document(&self, document_id: u64) {
+		let message = DocumentsMessage::SelectDocument(document_id);
 		self.dispatch(message);
 	}
 
@@ -169,13 +167,28 @@ impl JsEditorHandle {
 		self.dispatch(message);
 	}
 
+	pub fn open_auto_saved_document(&self, document_id: u64, document_name: String, document_is_saved: bool, document: String) {
+		let message = DocumentsMessage::OpenDocumentFileWithId {
+			document_id,
+			document_name,
+			document_is_saved,
+			document,
+		};
+		self.dispatch(message);
+	}
+
 	pub fn save_document(&self) {
 		let message = DocumentMessage::SaveDocument;
 		self.dispatch(message);
 	}
 
-	pub fn close_document(&self, document: usize) {
-		let message = DocumentsMessage::CloseDocument(document);
+	pub fn trigger_auto_save(&self, document_id: u64) {
+		let message = DocumentsMessage::AutoSaveDocument(document_id);
+		self.dispatch(message);
+	}
+
+	pub fn close_document(&self, document_id: u64) {
+		let message = DocumentsMessage::CloseDocument(document_id);
 		self.dispatch(message);
 	}
 
@@ -186,6 +199,11 @@ impl JsEditorHandle {
 
 	pub fn close_active_document_with_confirmation(&self) {
 		let message = DocumentsMessage::CloseActiveDocumentWithConfirmation;
+		self.dispatch(message);
+	}
+
+	pub fn close_document_with_confirmation(&self, document_id: u64) {
+		let message = DocumentsMessage::CloseDocumentWithConfirmation(document_id);
 		self.dispatch(message);
 	}
 
@@ -323,6 +341,24 @@ impl JsEditorHandle {
 		self.dispatch(message);
 	}
 
+	/// Cut selected layers
+	pub fn cut(&self) {
+		let message = DocumentsMessage::Cut(Clipboard::User);
+		self.dispatch(message);
+	}
+
+	/// Copy selected layers
+	pub fn copy(&self) {
+		let message = DocumentsMessage::Copy(Clipboard::User);
+		self.dispatch(message);
+	}
+
+	/// Paste selected layers
+	pub fn paste(&self) {
+		let message = DocumentsMessage::Paste(Clipboard::User);
+		self.dispatch(message);
+	}
+
 	pub fn select_layer(&self, paths: Vec<LayerId>, ctrl: bool, shift: bool) {
 		let message = DocumentMessage::SelectLayer(paths, ctrl, shift);
 		self.dispatch(message);
@@ -343,6 +379,12 @@ impl JsEditorHandle {
 	/// Reorder selected layer
 	pub fn reorder_selected_layers(&self, delta: i32) {
 		let message = DocumentMessage::ReorderSelectedLayers(delta);
+		self.dispatch(message);
+	}
+
+	/// Move a layer to be next to the specified neighbor
+	pub fn move_layer_in_tree(&self, layer: Vec<LayerId>, insert_above: bool, neighbor: Vec<LayerId>) {
+		let message = DocumentMessage::MoveLayerInTree { layer, insert_above, neighbor };
 		self.dispatch(message);
 	}
 
@@ -380,11 +422,19 @@ impl JsEditorHandle {
 	}
 
 	/// Boolean operation
-	pub fn boolean_operation(&self, kind: String) -> Result<(), JsValue>{
-		match translate_boolean_operation(kind.as_str()){
+	pub fn boolean_operation(&self, kind: String) -> Result<(), JsValue> {
+		match translate_boolean_operation(kind.as_str()) {
 			Some(op) => self.dispatch(DocumentMessage::BooleanOperation(op)),
 			None => return Err(Error::new("Invalid boolean operation").into()),
 		}
+	}
+
+	/// Set the view mode to change the way layers are drawn in the viewport
+	pub fn set_view_mode(&self, new_mode: String) -> Result<(), JsValue> {
+		match translate_view_mode(new_mode.as_str()) {
+			Some(view_mode) => self.dispatch(DocumentMessage::SetViewMode(view_mode)),
+			None => return Err(Error::new("Invalid view mode").into()),
+		};
 		Ok(())
 	}
 
@@ -396,13 +446,13 @@ impl JsEditorHandle {
 
 	/// Zoom in to the next step
 	pub fn increase_canvas_zoom(&self) {
-		let message = MovementMessage::IncreaseCanvasZoom;
+		let message = MovementMessage::IncreaseCanvasZoom { center_on_mouse: false };
 		self.dispatch(message);
 	}
 
 	/// Zoom out to the next step
 	pub fn decrease_canvas_zoom(&self) {
-		let message = MovementMessage::DecreaseCanvasZoom;
+		let message = MovementMessage::DecreaseCanvasZoom { center_on_mouse: false };
 		self.dispatch(message);
 	}
 
@@ -461,6 +511,20 @@ impl JsEditorHandle {
 		let message = DocumentMessage::CreateEmptyFolder(path);
 		self.dispatch(message);
 	}
+
+	// Creates an artboard at a specified point with a width and height
+	pub fn create_artboard(&self, top: f64, left: f64, height: f64, width: f64) {
+		let message = ArtboardMessage::AddArtboard { top, left, height, width };
+		self.dispatch(message);
+	}
+}
+
+// Needed to make JsEditorHandle functions pub to rust. Do not fully
+// understand reason but has to do with #[wasm_bindgen] procedural macro.
+impl JsEditorHandle {
+	pub fn handle_response_rust_proxy(&self, message: FrontendMessage) {
+		self.handle_response(message);
+	}
 }
 
 impl Drop for JsEditorHandle {
@@ -487,6 +551,11 @@ pub fn file_save_suffix() -> String {
 	FILE_SAVE_SUFFIX.into()
 }
 
+/// Get the constant FILE_SAVE_SUFFIX
+#[wasm_bindgen]
+pub fn graphite_version() -> String {
+	GRAPHITE_DOCUMENT_VERSION.to_string()
+}
 /// Get the constant i32::MAX
 #[wasm_bindgen]
 pub fn i32_max() -> i32 {
@@ -497,4 +566,9 @@ pub fn i32_max() -> i32 {
 #[wasm_bindgen]
 pub fn i32_min() -> i32 {
 	i32::MIN
+}
+
+#[wasm_bindgen]
+pub fn set_random_seed(seed: u64) {
+	editor::communication::set_uuid_seed(seed)
 }

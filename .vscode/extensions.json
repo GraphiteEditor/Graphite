@@ -3,6 +3,7 @@
 		"matklad.rust-analyzer",
 		"dbaeumer.vscode-eslint",
 		"octref.vetur",
-		"formulahendry.auto-close-tag"
+		"formulahendry.auto-close-tag",
+		"aaron-bond.better-comments"
 	]
 }

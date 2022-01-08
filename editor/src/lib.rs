@@ -3,7 +3,7 @@
 
 extern crate graphite_proc_macros;
 
-mod communication;
+pub mod communication;
 #[macro_use]
 pub mod misc;
 pub mod consts;
@@ -31,6 +31,8 @@ pub struct Editor {
 }
 
 impl Editor {
+	/// Construct a new editor instance.
+	/// Remember to provide a random seed with `editor::communication::set_uuid_seed(seed)` before any editors can be used.
 	pub fn new() -> Self {
 		Self { dispatcher: Dispatcher::new() }
 	}
@@ -55,9 +57,12 @@ pub mod message_prelude {
 	pub use crate::communication::generate_uuid;
 	pub use crate::communication::message::{AsMessage, Message, MessageDiscriminant};
 	pub use crate::communication::{ActionList, MessageHandler};
+	pub use crate::document::Clipboard;
+	pub use crate::document::{ArtboardMessage, ArtboardMessageDiscriminant};
 	pub use crate::document::{DocumentMessage, DocumentMessageDiscriminant};
 	pub use crate::document::{DocumentsMessage, DocumentsMessageDiscriminant};
 	pub use crate::document::{MovementMessage, MovementMessageDiscriminant};
+	pub use crate::document::{OverlayMessage, OverlayMessageDiscriminant};
 	pub use crate::document::{TransformLayerMessage, TransformLayerMessageDiscriminant};
 	pub use crate::frontend::{FrontendMessage, FrontendMessageDiscriminant};
 	pub use crate::global::{GlobalMessage, GlobalMessageDiscriminant};

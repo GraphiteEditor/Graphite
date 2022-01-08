@@ -10,16 +10,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
 	boolean_ops::boolean_operation,
-	//TODO: remove statemens below which were added for testing
-	color::Color,
-	intersection::intersections,
-	layers::style::{PathStyle, Stroke},
+	layers::style::ViewMode,
 	layers::{self, Folder, Layer, LayerData, LayerDataType, Shape},
-	DocumentError,
-	DocumentResponse,
-	LayerId,
-	Operation,
-	Quad,
+	DocumentError, DocumentResponse, LayerId, Operation, Quad,
 };
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -41,24 +34,14 @@ impl Default for Document {
 }
 
 impl Document {
-	pub fn with_content(serialized_content: &str) -> Result<Self, DocumentError> {
-		serde_json::from_str(serialized_content).map_err(|e| DocumentError::InvalidFile(e.to_string()))
-	}
-
 	/// Wrapper around render, that returns the whole document as a Response.
-	pub fn render_root(&mut self) -> String {
-		self.root.render(&mut vec![]);
+	pub fn render_root(&mut self, mode: ViewMode) -> String {
+		self.root.render(&mut vec![], mode);
 		self.root.cache.clone()
 	}
 
 	pub fn current_state_identifier(&self) -> u64 {
 		self.state_identifier.finish()
-	}
-
-	pub fn serialize_document(&self) -> String {
-		let val = serde_json::to_string(self);
-		// We fully expect the serialization to succeed
-		val.unwrap()
 	}
 
 	/// Checks whether each layer under `path` intersects with the provided `quad` and adds all intersection layers as paths to `intersections`.
@@ -78,7 +61,7 @@ impl Document {
 	pub fn folder(&self, path: &[LayerId]) -> Result<&Folder, DocumentError> {
 		let mut root = &self.root;
 		for id in path {
-			root = root.as_folder()?.layer(*id).ok_or(DocumentError::LayerNotFound)?;
+			root = root.as_folder()?.layer(*id).ok_or_else(|| DocumentError::LayerNotFound(path.into()))?;
 		}
 		root.as_folder()
 	}
@@ -89,7 +72,7 @@ impl Document {
 	fn folder_mut(&mut self, path: &[LayerId]) -> Result<&mut Folder, DocumentError> {
 		let mut root = &mut self.root;
 		for id in path {
-			root = root.as_folder_mut()?.layer_mut(*id).ok_or(DocumentError::LayerNotFound)?;
+			root = root.as_folder_mut()?.layer_mut(*id).ok_or_else(|| DocumentError::LayerNotFound(path.into()))?;
 		}
 		root.as_folder_mut()
 	}
@@ -100,7 +83,7 @@ impl Document {
 			return Ok(&self.root);
 		}
 		let (path, id) = split_path(path)?;
-		self.folder(path)?.layer(id).ok_or(DocumentError::LayerNotFound)
+		self.folder(path)?.layer(id).ok_or_else(|| DocumentError::LayerNotFound(path.into()))
 	}
 
 	/// Returns a mutable reference to the layer or folder at the path.
@@ -109,7 +92,7 @@ impl Document {
 			return Ok(&mut self.root);
 		}
 		let (path, id) = split_path(path)?;
-		self.folder_mut(path)?.layer_mut(id).ok_or(DocumentError::LayerNotFound)
+		self.folder_mut(path)?.layer_mut(id).ok_or_else(|| DocumentError::LayerNotFound(path.into()))
 	}
 
 	fn shape_as_seen(&self, path: &Vec<LayerId>) -> Result<Shape, DocumentError> {
@@ -158,7 +141,16 @@ impl Document {
 		Ok(shapes)
 	}
 
-	pub fn deepest_common_folder<'a>(&self, layers: impl Iterator<Item = &'a [LayerId]>) -> Result<&'a [LayerId], DocumentError> {
+	pub fn common_layer_path_prefix<'a>(&self, layers: impl Iterator<Item = &'a [LayerId]>) -> &'a [LayerId] {
+		layers.reduce(|a, b| &a[..a.iter().zip(b.iter()).take_while(|&(a, b)| a == b).count()]).unwrap_or_default()
+	}
+
+	pub fn folders<'a>(&'a self, layers: impl Iterator<Item = &'a [LayerId]>) -> impl Iterator<Item = &'a [LayerId]> {
+		layers.filter(|layer| self.is_folder(layer))
+	}
+
+	// Returns the shallowest folder given the selection, even if the selection doesn't contain any folders
+	pub fn shallowest_common_folder<'a>(&self, layers: impl Iterator<Item = &'a [LayerId]>) -> Result<&'a [LayerId], DocumentError> {
 		let common_prefix_of_path = self.common_layer_path_prefix(layers);
 
 		Ok(match self.layer(common_prefix_of_path)?.data {
@@ -167,18 +159,41 @@ impl Document {
 		})
 	}
 
-	pub fn common_layer_path_prefix<'a>(&self, layers: impl Iterator<Item = &'a [LayerId]>) -> &'a [LayerId] {
-		layers
-			.reduce(|a, b| {
-				let number_of_uncommon_ids_in_a = (0..a.len()).position(|i| b.starts_with(&a[..a.len() - i])).unwrap_or_default();
-				&a[..(a.len() - number_of_uncommon_ids_in_a)]
-			})
-			.unwrap_or_default()
+	// Return returns all folders that are not contained in any other of the given folders
+	pub fn shallowest_folders<'a>(&'a self, layers: impl Iterator<Item = &'a [LayerId]>) -> Vec<&[LayerId]> {
+		self.shallowest_unique_layers(self.folders(layers))
+	}
+
+	// Return returns all layers that are not contained in any other of the given folders
+	pub fn shallowest_unique_layers<'a>(&'a self, layers: impl Iterator<Item = &'a [LayerId]>) -> Vec<&[LayerId]> {
+		let mut sorted_layers: Vec<_> = layers.collect();
+		sorted_layers.sort();
+		// Sorting here creates groups of similar UUID paths
+		sorted_layers.dedup_by(|a, b| a.starts_with(b));
+		sorted_layers
+	}
+	// Deepest to shallowest (longest to shortest path length)
+	pub fn sorted_folders_by_depth<'a>(&'a self, layers: impl Iterator<Item = &'a [LayerId]>) -> Vec<&'a [LayerId]> {
+		let mut folders: Vec<_> = self.folders(layers).collect();
+		folders.sort_by_key(|a| std::cmp::Reverse(a.len()));
+		folders
+	}
+
+	pub fn folder_children_paths(&self, path: &[LayerId]) -> Vec<Vec<LayerId>> {
+		if let Ok(folder) = self.folder(path) {
+			folder.list_layers().iter().map(|f| [path, &[*f]].concat()).collect()
+		} else {
+			vec![]
+		}
+	}
+
+	pub fn is_folder(&self, path: &[LayerId]) -> bool {
+		return self.folder(path).is_ok();
 	}
 
 	// Determines which layer is closer to the root, if path_a return true, if path_b return false
 	// Answers the question: Is A closer to the root than B?
-	pub fn layer_closer_to_root(&self, path_a: &Vec<u64>, path_b: &Vec<u64>) -> bool {
+	pub fn layer_closer_to_root(&self, path_a: &[u64], path_b: &[u64]) -> bool {
 		// Convert UUIDs to indices
 		let indices_for_path_a = self.indices_for_path(path_a).unwrap();
 		let indices_for_path_b = self.indices_for_path(path_b).unwrap();
@@ -189,24 +204,20 @@ impl Document {
 			let index_a = *indices_for_path_a.get(i).unwrap_or(&usize::MAX) as i32;
 			let index_b = *indices_for_path_b.get(i).unwrap_or(&usize::MAX) as i32;
 
-			// index_a == index_b -> true, this means the "2" indices being compared are within the same folder
-			// eg -> [2, X] == [2, X] since we are only comparing the "2" in this iteration
-			// Continue onto comparing the X indices.
-			if index_a == index_b {
-				continue;
+			// At the point at which the two paths first differ, compare to see which is closer to the root
+			if index_a != index_b {
+				// If index_a is smaller, index_a is closer to the root
+				return index_a < index_b;
 			}
-
-			// If index_a is smaller, index_a is closer to the root
-			return index_a < index_b;
 		}
 
-		return false;
+		false
 	}
 
 	// Is  the target layer between a <-> b layers, inclusive
-	pub fn layer_is_between(&self, target: &Vec<u64>, path_a: &Vec<u64>, path_b: &Vec<u64>) -> bool {
-		// If the target is a nonsense path, it isn't between
-		if target.len() < 1 {
+	pub fn layer_is_between(&self, target: &[u64], path_a: &[u64], path_b: &[u64]) -> bool {
+		// If the target is the root, it isn't between
+		if target.is_empty() {
 			return false;
 		}
 
@@ -219,8 +230,8 @@ impl Document {
 		let layer_vs_a = self.layer_closer_to_root(target, path_a);
 		let layer_vs_b = self.layer_closer_to_root(target, path_b);
 
-		// To be inbetween you need to be above A and below B or vice versa
-		return layer_vs_a != layer_vs_b;
+		// To be in-between you need to be above A and below B or vice versa
+		layer_vs_a != layer_vs_b
 	}
 
 	/// Given a path to a layer, returns a vector of the indices in the layer tree
@@ -232,12 +243,12 @@ impl Document {
 
 		// TODO: appears to be n^2? should we maintain a lookup table?
 		for id in path {
-			let pos = root.layer_ids.iter().position(|x| *x == *id).ok_or(DocumentError::LayerNotFound)?;
+			let pos = root.layer_ids.iter().position(|x| *x == *id).ok_or_else(|| DocumentError::LayerNotFound(path.into()))?;
 			indices.push(pos);
-			root = root.folder(*id).ok_or(DocumentError::LayerNotFound)?;
+			root = root.folder(*id).ok_or_else(|| DocumentError::LayerNotFound(path.into()))?;
 		}
 
-		indices.push(root.layer_ids.iter().position(|x| *x == layer_id).ok_or(DocumentError::LayerNotFound)?);
+		indices.push(root.layer_ids.iter().position(|x| *x == layer_id).ok_or_else(|| DocumentError::LayerNotFound(path.into()))?);
 
 		Ok(indices)
 	}
@@ -257,6 +268,26 @@ impl Document {
 		}
 		folder.add_layer(layer, layer_id, insert_index).ok_or(DocumentError::IndexOutOfBounds)?;
 		Ok(())
+	}
+
+	/// Visit each layer recursively, applies modify_shape to each non-overlay Shape
+	pub fn visit_all_shapes<F: FnMut(&mut Shape)>(layer: &mut Layer, modify_shape: &mut F) -> bool {
+		match layer.data {
+			LayerDataType::Shape(ref mut shape) => {
+				modify_shape(shape);
+
+				// This layer should be updated on next render pass
+				layer.cache_dirty = true;
+			}
+			LayerDataType::Folder(ref mut folder) => {
+				for sub_layer in folder.layers_mut() {
+					if Document::visit_all_shapes(sub_layer, modify_shape) {
+						layer.cache_dirty = true;
+					}
+				}
+			}
+		}
+		layer.cache_dirty
 	}
 
 	/// Adds a new layer to the folder specified by `path`.
@@ -311,7 +342,7 @@ impl Document {
 		let mut root = &mut self.root;
 		root.cache_dirty = true;
 		for id in path {
-			root = root.as_folder_mut()?.layer_mut(*id).ok_or(DocumentError::LayerNotFound)?;
+			root = root.as_folder_mut()?.layer_mut(*id).ok_or_else(|| DocumentError::LayerNotFound(path.into()))?;
 			root.cache_dirty = true;
 		}
 		Ok(())
@@ -344,7 +375,7 @@ impl Document {
 		let mut transforms = vec![self.root.transform];
 		for id in path {
 			if let Ok(folder) = root.as_folder() {
-				root = folder.layer(*id).ok_or(DocumentError::LayerNotFound)?;
+				root = folder.layer(*id).ok_or_else(|| DocumentError::LayerNotFound(path.into()))?;
 			}
 			transforms.push(root.transform);
 		}
@@ -356,7 +387,7 @@ impl Document {
 		let mut trans = self.root.transform;
 		for id in path {
 			if let Ok(folder) = root.as_folder() {
-				root = folder.layer(*id).ok_or(DocumentError::LayerNotFound)?;
+				root = folder.layer(*id).ok_or_else(|| DocumentError::LayerNotFound(path.into()))?;
 			}
 			trans = trans * root.transform;
 		}
@@ -395,24 +426,6 @@ impl Document {
 		self.set_transform_relative_to_scope(layer, None, transform)
 	}
 
-	fn remove_overlays(&mut self, path: &mut Vec<LayerId>) {
-		if self.layer(path).unwrap().overlay {
-			self.delete(path).unwrap()
-		}
-		let ids = self.folder(path).map(|folder| folder.layer_ids.clone()).unwrap_or_default();
-		for id in ids {
-			path.push(id);
-			self.remove_overlays(path);
-			path.pop();
-		}
-	}
-
-	pub fn clone_without_overlays(&self) -> Self {
-		let mut document = self.clone();
-		document.remove_overlays(&mut vec![]);
-		document
-	}
-
 	/// Mutate the document by applying the `operation` to it. If the operation necessitates a
 	/// reaction from the frontend, responses may be returned.
 	pub fn handle_operation(&mut self, operation: &Operation) -> Result<Option<Vec<DocumentResponse>>, DocumentError> {
@@ -431,9 +444,7 @@ impl Document {
 				let mut ellipse = Shape::ellipse(*style);
 				ellipse.render_index = -1;
 
-				let mut layer = Layer::new(LayerDataType::Shape(ellipse), *transform);
-				layer.overlay = true;
-
+				let layer = Layer::new(LayerDataType::Shape(ellipse), *transform);
 				self.set_layer(path, layer, -1)?;
 
 				Some([vec![DocumentChanged, CreatedLayer { path: path.clone() }]].concat())
@@ -449,9 +460,7 @@ impl Document {
 				let mut rect = Shape::rectangle(*style);
 				rect.render_index = -1;
 
-				let mut layer = Layer::new(LayerDataType::Shape(rect), *transform);
-				layer.overlay = true;
-
+				let layer = Layer::new(LayerDataType::Shape(rect), *transform);
 				self.set_layer(path, layer, -1)?;
 
 				Some([vec![DocumentChanged, CreatedLayer { path: path.clone() }]].concat())
@@ -467,9 +476,7 @@ impl Document {
 				let mut line = Shape::line(*style);
 				line.render_index = -1;
 
-				let mut layer = Layer::new(LayerDataType::Shape(line), *transform);
-				layer.overlay = true;
-
+				let layer = Layer::new(LayerDataType::Shape(line), *transform);
 				self.set_layer(path, layer, -1)?;
 
 				Some([vec![DocumentChanged, CreatedLayer { path: path.clone() }]].concat())
@@ -487,13 +494,11 @@ impl Document {
 
 				Some([vec![DocumentChanged, CreatedLayer { path: path.clone() }], update_thumbnails_upstream(path)].concat())
 			}
-			Operation::AddOverlayShape { path, style, bez_path } => {
-				let mut shape = Shape::from_bez_path(bez_path.clone(), *style, false);
+			Operation::AddOverlayShape { path, style, bez_path, closed } => {
+				let mut shape = Shape::from_bez_path(bez_path.clone(), *style, *closed);
 				shape.render_index = -1;
 
-				let mut layer = Layer::new(LayerDataType::Shape(shape), DAffine2::IDENTITY.to_cols_array());
-				layer.overlay = true;
-
+				let layer = Layer::new(LayerDataType::Shape(shape), DAffine2::IDENTITY.to_cols_array());
 				self.set_layer(path, layer, -1)?;
 
 				Some([vec![DocumentChanged, CreatedLayer { path: path.clone() }]].concat())
@@ -550,16 +555,21 @@ impl Document {
 				};
 				self.delete(path)?;
 
-				let (folder, _) = split_path(path.as_slice()).unwrap_or_else(|_| (&[], 0));
+				let (folder, _) = split_path(path.as_slice()).unwrap_or((&[], 0));
 				responses.extend([DocumentChanged, DeletedLayer { path: path.clone() }, FolderChanged { path: folder.to_vec() }]);
 				responses.extend(update_thumbnails_upstream(folder));
 				Some(responses)
 			}
-			Operation::PasteLayer { path, layer, insert_index } => {
-				let folder = self.folder_mut(path)?;
-				let id = folder.add_layer(layer.clone(), None, *insert_index).ok_or(DocumentError::IndexOutOfBounds)?;
-				let full_path = [path.clone(), vec![id]].concat();
-				self.mark_as_dirty(&full_path)?;
+			Operation::InsertLayer {
+				destination_path,
+				layer,
+				insert_index,
+			} => {
+				let (folder_path, layer_id) = split_path(destination_path)?;
+				let folder = self.folder_mut(folder_path)?;
+				folder.add_layer(layer.clone(), Some(layer_id), *insert_index).ok_or(DocumentError::IndexOutOfBounds)?;
+				self.mark_as_dirty(destination_path)?;
+
 				fn aggregate_insertions(folder: &Folder, path: &mut Vec<LayerId>, responses: &mut Vec<DocumentResponse>) {
 					for (id, layer) in folder.layer_ids.iter().zip(folder.layers()) {
 						path.push(*id);
@@ -570,22 +580,33 @@ impl Document {
 						path.pop();
 					}
 				}
+
 				let mut responses = Vec::new();
-				if let Ok(folder) = self.folder(&full_path) {
-					aggregate_insertions(folder, &mut full_path.clone(), &mut responses)
+				if let Ok(folder) = self.folder(destination_path) {
+					aggregate_insertions(folder, &mut destination_path.clone(), &mut responses)
 				};
 
-				responses.extend([DocumentChanged, CreatedLayer { path: full_path }, FolderChanged { path: path.clone() }]);
-				responses.extend(update_thumbnails_upstream(path));
+				responses.extend([DocumentChanged, CreatedLayer { path: destination_path.clone() }, FolderChanged { path: folder_path.to_vec() }]);
+				responses.extend(update_thumbnails_upstream(destination_path));
 				Some(responses)
 			}
 			Operation::DuplicateLayer { path } => {
 				let layer = self.layer(path)?.clone();
-				let (folder_path, _) = split_path(path.as_slice()).unwrap_or_else(|_| (&[], 0));
+				let (folder_path, _) = split_path(path.as_slice()).unwrap_or((&[], 0));
 				let folder = self.folder_mut(folder_path)?;
-				folder.add_layer(layer, None, -1).ok_or(DocumentError::IndexOutOfBounds)?;
-				self.mark_as_dirty(&path[..path.len() - 1])?;
-				Some(vec![DocumentChanged, FolderChanged { path: folder_path.to_vec() }])
+				if let Some(new_layer_id) = folder.add_layer(layer, None, -1) {
+					let new_path = [folder_path, &[new_layer_id]].concat();
+					self.mark_as_dirty(folder_path)?;
+					Some(
+						[
+							vec![DocumentChanged, CreatedLayer { path: new_path }, FolderChanged { path: folder_path.to_vec() }],
+							update_thumbnails_upstream(path.as_slice()),
+						]
+						.concat(),
+					)
+				} else {
+					return Err(DocumentError::IndexOutOfBounds);
+				}
 			}
 			Operation::RenameLayer { path, name } => {
 				self.layer_mut(path)?.name = Some(name.clone());
@@ -595,14 +616,14 @@ impl Document {
 				self.set_layer(path, Layer::new(LayerDataType::Folder(Folder::default()), DAffine2::IDENTITY.to_cols_array()), -1)?;
 				self.mark_as_dirty(path)?;
 
-				Some(vec![DocumentChanged, CreatedLayer { path: path.clone() }])
+				Some([vec![DocumentChanged, CreatedLayer { path: path.clone() }], update_thumbnails_upstream(path)].concat())
 			}
 			Operation::TransformLayer { path, transform } => {
 				let layer = self.layer_mut(path).unwrap();
 				let transform = DAffine2::from_cols_array(transform) * layer.transform;
 				layer.transform = transform;
 				self.mark_as_dirty(path)?;
-				Some(vec![DocumentChanged])
+				Some([vec![DocumentChanged], update_thumbnails_upstream(path)].concat())
 			}
 			Operation::TransformLayerInViewport { path, transform } => {
 				let transform = DAffine2::from_cols_array(transform);
@@ -616,6 +637,17 @@ impl Document {
 				self.mark_as_dirty(path)?;
 				Some([vec![DocumentChanged], update_thumbnails_upstream(path)].concat())
 			}
+			Operation::SetShapePath { path, bez_path } => {
+				self.mark_as_dirty(path)?;
+
+				match &mut self.layer_mut(path)?.data {
+					LayerDataType::Shape(shape) => {
+						shape.path = bez_path.clone();
+					}
+					LayerDataType::Folder(_) => (),
+				}
+				Some(vec![DocumentChanged, LayerChanged { path: path.clone() }])
+			}
 			Operation::SetShapePathInViewport { path, bez_path, transform } => {
 				let transform = DAffine2::from_cols_array(transform);
 				self.set_transform_relative_to_viewport(path, transform)?;
@@ -627,7 +659,7 @@ impl Document {
 					}
 					LayerDataType::Folder(_) => (),
 				}
-				Some(vec![DocumentChanged, LayerChanged { path: path.clone() }])
+				Some([vec![DocumentChanged, LayerChanged { path: path.clone() }], update_thumbnails_upstream(path)].concat())
 			}
 			Operation::TransformLayerInScope { path, transform, scope } => {
 				let transform = DAffine2::from_cols_array(transform);
@@ -681,7 +713,7 @@ impl Document {
 					_ => return Err(DocumentError::NotAShape),
 				}
 				self.mark_as_dirty(path)?;
-				Some(vec![DocumentChanged, LayerChanged { path: path.clone() }])
+				Some([vec![DocumentChanged, LayerChanged { path: path.clone() }], update_thumbnails_upstream(path)].concat())
 			}
 			Operation::SetLayerFill { path, color } => {
 				let layer = self.layer_mut(path)?;

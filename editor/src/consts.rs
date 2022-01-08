@@ -24,6 +24,7 @@ pub const SLOWING_DIVISOR: f64 = 10.;
 
 // SELECT TOOL
 pub const SELECTION_TOLERANCE: f64 = 1.;
+pub const SELECTION_DRAG_ANGLE: f64 = 90.;
 
 // PATH TOOL
 pub const VECTOR_MANIPULATOR_ANCHOR_MARKER_SIZE: f64 = 5.;
@@ -42,3 +43,6 @@ pub const FILE_EXPORT_SUFFIX: &str = ".svg";
 
 // COLORS
 pub const COLOR_ACCENT: Color = Color::from_unsafe(0x00 as f32 / 255., 0xA8 as f32 / 255., 0xFF as f32 / 255.);
+
+// Document
+pub const GRAPHITE_DOCUMENT_VERSION: &str = "0.0.1";

@@ -1,6 +1,6 @@
 use glam::DVec2;
 
-use crate::{DocumentError, LayerId, Quad};
+use crate::{layers::style::ViewMode, DocumentError, LayerId, Quad};
 
 use super::{Layer, LayerData, LayerDataType};
 
@@ -15,9 +15,9 @@ pub struct Folder {
 }
 
 impl LayerData for Folder {
-	fn render(&mut self, svg: &mut String, transforms: &mut Vec<glam::DAffine2>) {
+	fn render(&mut self, svg: &mut String, transforms: &mut Vec<glam::DAffine2>, view_mode: ViewMode) {
 		for layer in &mut self.layers {
-			let _ = writeln!(svg, "{}", layer.render(transforms));
+			let _ = writeln!(svg, "{}", layer.render(transforms, view_mode));
 		}
 	}
 
@@ -101,8 +101,12 @@ impl Folder {
 		Some(&mut self.layers[pos])
 	}
 
+	pub fn folder_contains(&self, id: LayerId) -> bool {
+		self.layer_ids.contains(&id)
+	}
+
 	pub fn position_of_layer(&self, layer_id: LayerId) -> Result<usize, DocumentError> {
-		self.layer_ids.iter().position(|x| *x == layer_id).ok_or(DocumentError::LayerNotFound)
+		self.layer_ids.iter().position(|x| *x == layer_id).ok_or_else(|| DocumentError::LayerNotFound([layer_id].into()))
 	}
 
 	pub fn folder(&self, id: LayerId) -> Option<&Folder> {

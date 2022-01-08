@@ -221,15 +221,16 @@ img {
 <script lang="ts">
 import { defineComponent } from "vue";
 
-import { DialogState, createDialogState } from "@/state/dialog";
+import { createAutoSaveManager } from "@/lifetime/auto-save";
+import { initErrorHandling } from "@/lifetime/errors";
+import { createInputManager, InputManager } from "@/lifetime/input";
+import { createDialogState, DialogState } from "@/state/dialog";
 import { createDocumentsState, DocumentsState } from "@/state/documents";
 import { createFullscreenState, FullscreenState } from "@/state/fullscreen";
-
-import MainWindow from "@/components/window/MainWindow.vue";
-import LayoutRow from "@/components/layout/LayoutRow.vue";
 import { createEditorState, EditorState } from "@/state/wasm-loader";
-import { createInputManager, InputManager } from "@/lifetime/input";
-import { initErrorHandling } from "@/lifetime/errors";
+
+import LayoutRow from "@/components/layout/LayoutRow.vue";
+import MainWindow from "@/components/window/MainWindow.vue";
 
 // Vue injects don't play well with TypeScript, and all injects will show up as `any`. As a workaround, we can define these types.
 declare module "@vue/runtime-core" {
@@ -240,7 +241,7 @@ declare module "@vue/runtime-core" {
 		editor: EditorState;
 		// This must be set to optional because there is a time in the lifecycle of the component where inputManager is undefined.
 		// That's because we initialize inputManager in `mounted()` rather than `data()` since the div hasn't been created yet.
-		inputManger?: InputManager;
+		inputManager?: InputManager;
 	}
 }
 
@@ -259,6 +260,7 @@ export default defineComponent({
 		const documents = createDocumentsState(editor, dialog);
 		const fullscreen = createFullscreenState();
 		initErrorHandling(editor, dialog);
+		createAutoSaveManager(editor, documents);
 
 		return {
 			editor,

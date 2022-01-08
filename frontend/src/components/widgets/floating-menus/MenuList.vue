@@ -1,7 +1,7 @@
 <template>
-	<FloatingMenu :class="'menu-list'" :direction="direction" :type="MenuType.Dropdown" ref="floatingMenu" :windowEdgeMargin="0" :scrollable="scrollable" data-hover-menu-keep-open>
+	<FloatingMenu :class="'menu-list'" :direction="direction" :type="'Dropdown'" ref="floatingMenu" :windowEdgeMargin="0" :scrollable="scrollable" data-hover-menu-keep-open>
 		<template v-for="(section, sectionIndex) in menuEntries" :key="sectionIndex">
-			<Separator :type="SeparatorType.List" :direction="SeparatorDirection.Vertical" v-if="sectionIndex > 0" />
+			<Separator :type="'List'" :direction="'Vertical'" v-if="sectionIndex > 0" />
 			<div
 				v-for="(entry, entryIndex) in section"
 				:key="entryIndex"
@@ -14,7 +14,7 @@
 			>
 				<CheckboxInput v-if="entry.checkbox" v-model:checked="entry.checked" :outlineStyle="true" :class="'entry-checkbox'" />
 				<IconLabel v-else-if="entry.icon && drawIcon" :icon="entry.icon" :class="'entry-icon'" />
-				<div v-else-if="drawIcon" class="no-icon" />
+				<div v-else-if="drawIcon" class="no-icon"></div>
 
 				<span class="entry-label">{{ entry.label }}</span>
 
@@ -26,7 +26,7 @@
 
 				<MenuList
 					v-if="entry.children"
-					:direction="MenuDirection.TopRight"
+					:direction="'TopRight'"
 					:menuEntries="entry.children"
 					v-bind="{ defaultAction, minWidth, drawIcon, scrollable }"
 					:ref="(ref) => setEntryRefs(entry, ref)"
@@ -132,13 +132,13 @@
 <script lang="ts">
 import { defineComponent, PropType } from "vue";
 
-import { SeparatorDirection, SeparatorType } from "@/components/widgets/widgets";
+import { IconName } from "@/utilities/icons";
 
-import FloatingMenu, { MenuDirection, MenuType } from "@/components/widgets/floating-menus/FloatingMenu.vue";
-import Separator from "@/components/widgets/separators/Separator.vue";
-import IconLabel from "@/components/widgets/labels/IconLabel.vue";
+import FloatingMenu, { MenuDirection } from "@/components/widgets/floating-menus/FloatingMenu.vue";
 import CheckboxInput from "@/components/widgets/inputs/CheckboxInput.vue";
+import IconLabel from "@/components/widgets/labels/IconLabel.vue";
 import UserInputLabel from "@/components/widgets/labels/UserInputLabel.vue";
+import Separator from "@/components/widgets/separators/Separator.vue";
 
 export type MenuListEntries<Value = string> = MenuListEntry<Value>[];
 export type SectionsOfMenuListEntries<Value = string> = MenuListEntries<Value>[];
@@ -146,7 +146,7 @@ export type SectionsOfMenuListEntries<Value = string> = MenuListEntries<Value>[]
 interface MenuListEntryData<Value = string> {
 	value?: Value;
 	label?: string;
-	icon?: string;
+	icon?: IconName;
 	checkbox?: boolean;
 	shortcut?: string[];
 	shortcutRequiresLock?: boolean;
@@ -162,13 +162,13 @@ const KEYBOARD_LOCK_SWITCH_BROWSER = "This hotkey is reserved by the browser, bu
 const MenuList = defineComponent({
 	inject: ["fullscreen"],
 	props: {
-		direction: { type: String as PropType<MenuDirection>, default: MenuDirection.Bottom },
+		direction: { type: String as PropType<MenuDirection>, default: "Bottom" },
 		menuEntries: { type: Array as PropType<SectionsOfMenuListEntries>, required: true },
 		activeEntry: { type: Object as PropType<MenuListEntry>, required: false },
-		defaultAction: { type: Function as PropType<() => void | undefined>, required: false },
-		minWidth: { type: Number, default: 0 },
-		drawIcon: { type: Boolean, default: false },
-		scrollable: { type: Boolean, default: false },
+		defaultAction: { type: Function as PropType<() => void>, required: false },
+		minWidth: { type: Number as PropType<number>, default: 0 },
+		drawIcon: { type: Boolean as PropType<boolean>, default: false },
+		scrollable: { type: Boolean as PropType<boolean>, default: false },
 	},
 	methods: {
 		setEntryRefs(menuEntry: MenuListEntry, ref: typeof FloatingMenu) {
@@ -231,7 +231,7 @@ const MenuList = defineComponent({
 					// Restore open/closed state if it was forced open for measurement
 					if (!initiallyOpen) floatingMenu.setClosed();
 
-					this.$emit("width-changed", width);
+					this.$emit("widthChanged", width);
 				});
 			});
 		},
@@ -265,10 +265,6 @@ const MenuList = defineComponent({
 	data() {
 		return {
 			keyboardLockInfoMessage: this.fullscreen.keyboardLockApiSupported ? KEYBOARD_LOCK_USE_FULLSCREEN : KEYBOARD_LOCK_SWITCH_BROWSER,
-			SeparatorDirection,
-			SeparatorType,
-			MenuDirection,
-			MenuType,
 		};
 	},
 	components: {

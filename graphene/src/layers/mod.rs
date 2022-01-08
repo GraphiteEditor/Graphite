@@ -1,4 +1,5 @@
 pub mod style;
+use style::ViewMode;
 
 use glam::DAffine2;
 use glam::{DMat2, DVec2};
@@ -17,18 +18,11 @@ use serde::{Deserialize, Serialize};
 
 use std::fmt::Write;
 
-pub trait LayerData {
-	fn render(&mut self, svg: &mut String, transforms: &mut Vec<glam::DAffine2>);
-	fn intersects_quad(&self, quad: Quad, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>);
-	fn bounding_box(&self, transform: glam::DAffine2) -> Option<[DVec2; 2]>;
-}
-
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub enum LayerDataType {
 	Folder(Folder),
 	Shape(Shape),
 }
-
 impl LayerDataType {
 	pub fn inner(&self) -> &dyn LayerData {
 		match self {
@@ -45,13 +39,21 @@ impl LayerDataType {
 	}
 }
 
+pub trait LayerData {
+	fn render(&mut self, svg: &mut String, transforms: &mut Vec<glam::DAffine2>, view_mode: ViewMode);
+	fn intersects_quad(&self, quad: Quad, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>);
+	fn bounding_box(&self, transform: glam::DAffine2) -> Option<[DVec2; 2]>;
+}
+
 impl LayerData for LayerDataType {
-	fn render(&mut self, svg: &mut String, transforms: &mut Vec<glam::DAffine2>) {
-		self.inner_mut().render(svg, transforms)
+	fn render(&mut self, svg: &mut String, transforms: &mut Vec<glam::DAffine2>, view_mode: ViewMode) {
+		self.inner_mut().render(svg, transforms, view_mode)
 	}
+
 	fn intersects_quad(&self, quad: Quad, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>) {
 		self.inner().intersects_quad(quad, path, intersections)
 	}
+
 	fn bounding_box(&self, transform: glam::DAffine2) -> Option<[DVec2; 2]> {
 		self.inner().bounding_box(transform)
 	}
@@ -83,7 +85,6 @@ pub struct Layer {
 	pub cache_dirty: bool,
 	pub blend_mode: BlendMode,
 	pub opacity: f64,
-	pub overlay: bool,
 }
 
 impl Layer {
@@ -98,18 +99,21 @@ impl Layer {
 			cache_dirty: true,
 			blend_mode: BlendMode::Normal,
 			opacity: 1.,
-			overlay: false,
 		}
 	}
 
-	pub fn render(&mut self, transforms: &mut Vec<DAffine2>) -> &str {
+	pub fn iter(&self) -> LayerIter<'_> {
+		LayerIter { stack: vec![self] }
+	}
+
+	pub fn render(&mut self, transforms: &mut Vec<DAffine2>, view_mode: ViewMode) -> &str {
 		if !self.visible {
 			return "";
 		}
 		if self.cache_dirty {
 			transforms.push(self.transform);
 			self.thumbnail_cache.clear();
-			self.data.render(&mut self.thumbnail_cache, transforms);
+			self.data.render(&mut self.thumbnail_cache, transforms, view_mode);
 
 			self.cache.clear();
 			let _ = writeln!(self.cache, r#"<g transform="matrix("#);
@@ -130,7 +134,7 @@ impl Layer {
 	}
 
 	pub fn intersects_quad(&self, quad: Quad, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>) {
-		if !self.visible || self.overlay {
+		if !self.visible {
 			return;
 		}
 		let transformed_quad = self.transform.inverse() * quad;
@@ -172,7 +176,37 @@ impl Clone for Layer {
 			cache_dirty: true,
 			blend_mode: self.blend_mode,
 			opacity: self.opacity,
-			overlay: self.overlay,
+		}
+	}
+}
+
+impl<'a> IntoIterator for &'a Layer {
+	type Item = &'a Layer;
+	type IntoIter = LayerIter<'a>;
+
+	fn into_iter(self) -> Self::IntoIter {
+		self.iter()
+	}
+}
+
+#[derive(Debug, Default)]
+pub struct LayerIter<'a> {
+	pub stack: Vec<&'a Layer>,
+}
+
+impl<'a> Iterator for LayerIter<'a> {
+	type Item = &'a Layer;
+
+	fn next(&mut self) -> Option<Self::Item> {
+		match self.stack.pop() {
+			Some(layer) => {
+				if let LayerDataType::Folder(folder) = &layer.data {
+					let layers = folder.layers();
+					self.stack.extend(layers);
+				};
+				Some(layer)
+			}
+			None => None,
 		}
 	}
 }

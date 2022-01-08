@@ -19,9 +19,29 @@ export class JsMessage {
 // for details about how to transform the JSON from wasm-bindgen into classes.
 // ============================================================================
 
+// Allows the auto save system to use a string for the id rather than a BigInt.
+// IndexedDb does not allow for BigInts as primary keys. TypeScript does not allow
+// subclasses to change the type of class variables in subclasses. It is an abstract
+// class to point out that it should not be instantiated directly.
+export abstract class DocumentDetails {
+	readonly name!: string;
+
+	readonly is_saved!: boolean;
+
+	readonly id!: BigInt | string;
+
+	get displayName(): string {
+		return `${this.name}${this.is_saved ? "" : "*"}`;
+	}
+}
+
+export class FrontendDocumentDetails extends DocumentDetails {
+	readonly id!: BigInt;
+}
+
 export class UpdateOpenDocumentsList extends JsMessage {
-	@Transform(({ value }) => value.map((tuple: [string, boolean]) => ({ name: tuple[0], isSaved: tuple[1] })))
-	readonly open_documents!: { name: string; isSaved: boolean }[];
+	@Type(() => FrontendDocumentDetails)
+	readonly open_documents!: FrontendDocumentDetails[];
 }
 
 export class UpdateInputHints extends JsMessage {
@@ -29,21 +49,37 @@ export class UpdateInputHints extends JsMessage {
 	readonly hint_data!: HintData;
 }
 
-export class HintGroup extends Array<HintInfo> {}
+export type HintData = HintGroup[];
 
-export class HintData extends Array<HintGroup> {}
+export type HintGroup = HintInfo[];
 
 export class HintInfo {
-	readonly keys!: string[];
+	readonly key_groups!: KeysGroup[];
 
-	readonly mouse!: KeysGroup | null;
+	readonly mouse!: MouseMotion | null;
 
 	readonly label!: string;
 
 	readonly plus!: boolean;
 }
 
-export class KeysGroup extends Array<string> {}
+export type KeysGroup = string[]; // Array of Rust enum `Key`
+
+export type MouseMotion = string;
+
+export type RGBA = {
+	r: number;
+	g: number;
+	b: number;
+	a: number;
+};
+
+export type HSVA = {
+	h: number;
+	s: number;
+	v: number;
+	a: number;
+};
 
 const To255Scale = Transform(({ value }) => value * 255);
 export class Color {
@@ -58,11 +94,11 @@ export class Color {
 
 	readonly alpha!: number;
 
-	toRgba() {
+	toRgba(): RGBA {
 		return { r: this.red, g: this.green, b: this.blue, a: this.alpha };
 	}
 
-	toRgbaCSS() {
+	toRgbaCSS(): string {
 		const { r, g, b, a } = this.toRgba();
 		return `rgba(${r}, ${g}, ${b}, ${a})`;
 	}
@@ -76,14 +112,37 @@ export class UpdateWorkingColors extends JsMessage {
 	readonly secondary!: Color;
 }
 
+export type ToolName =
+	| "Select"
+	| "Crop"
+	| "Navigate"
+	| "Eyedropper"
+	| "Text"
+	| "Fill"
+	| "Gradient"
+	| "Brush"
+	| "Heal"
+	| "Clone"
+	| "Patch"
+	| "Detail"
+	| "Relight"
+	| "Path"
+	| "Pen"
+	| "Freehand"
+	| "Spline"
+	| "Line"
+	| "Rectangle"
+	| "Ellipse"
+	| "Shape";
+
 export class SetActiveTool extends JsMessage {
-	readonly tool_name!: string;
+	readonly tool_name!: ToolName;
 
 	readonly tool_options!: object;
 }
 
 export class SetActiveDocument extends JsMessage {
-	readonly document_index!: number;
+	readonly document_id!: BigInt;
 }
 
 export class DisplayError extends JsMessage {
@@ -101,15 +160,23 @@ export class DisplayPanic extends JsMessage {
 }
 
 export class DisplayConfirmationToCloseDocument extends JsMessage {
-	readonly document_index!: number;
+	readonly document_id!: BigInt;
 }
 
 export class DisplayConfirmationToCloseAllDocuments extends JsMessage {}
 
 export class DisplayAboutGraphiteDialog extends JsMessage {}
 
-export class UpdateCanvas extends JsMessage {
-	readonly document!: string;
+export class UpdateArtwork extends JsMessage {
+	readonly svg!: string;
+}
+
+export class UpdateOverlays extends JsMessage {
+	readonly svg!: string;
+}
+
+export class UpdateArtboards extends JsMessage {
+	readonly svg!: string;
 }
 
 const TupleToVec2 = Transform(({ value }) => ({ x: value[0], y: value[1] }));
@@ -157,23 +224,25 @@ export class DisplayFolderTreeStructure extends JsMessage {
 }
 
 interface DataBuffer {
-	pointer: number;
-	length: number;
+	pointer: BigInt;
+	length: BigInt;
 }
 
 export function newDisplayFolderTreeStructure(input: { data_buffer: DataBuffer }, wasm: WasmInstance): DisplayFolderTreeStructure {
 	const { pointer, length } = input.data_buffer;
+	const pointerNum = Number(pointer);
+	const lengthNum = Number(length);
 	const wasmMemoryBuffer = wasm.wasm_memory().buffer;
 
 	// Decode the folder structure encoding
-	const encoding = new DataView(wasmMemoryBuffer, pointer, length);
+	const encoding = new DataView(wasmMemoryBuffer, pointerNum, lengthNum);
 
 	// The structure section indicates how to read through the upcoming layer list and assign depths to each layer
 	const structureSectionLength = Number(encoding.getBigUint64(0, true));
-	const structureSectionMsbSigned = new DataView(wasmMemoryBuffer, pointer + 8, structureSectionLength * 8);
+	const structureSectionMsbSigned = new DataView(wasmMemoryBuffer, pointerNum + 8, structureSectionLength * 8);
 
 	// The layer IDs section lists each layer ID sequentially in the tree, as it will show up in the panel
-	const layerIdsSection = new DataView(wasmMemoryBuffer, pointer + 8 + structureSectionLength * 8);
+	const layerIdsSection = new DataView(wasmMemoryBuffer, pointerNum + 8 + structureSectionLength * 8);
 
 	let layersEncountered = 0;
 	let currentFolder = new DisplayFolderTreeStructure(BigInt(-1), []);
@@ -226,12 +295,6 @@ export class SetCanvasRotation extends JsMessage {
 	readonly new_radians!: number;
 }
 
-function newPath(input: number[][]): BigUint64Array {
-	// eslint-disable-next-line
-	const u32CombinedPairs = input.map((n: number[]) => BigInt((BigInt(n[0]) << BigInt(32)) | BigInt(n[1])));
-	return new BigUint64Array(u32CombinedPairs);
-}
-
 export type BlendMode =
 	| "Normal"
 	| "Multiply"
@@ -263,32 +326,42 @@ export class LayerPanelEntry {
 
 	layer_type!: LayerType;
 
-	@Transform(({ value }) => newPath(value))
+	@Transform(({ value }) => new BigUint64Array(value))
 	path!: BigUint64Array;
 
-	@Type(() => LayerData)
-	layer_data!: LayerData;
+	@Type(() => LayerMetadata)
+	layer_metadata!: LayerMetadata;
 
 	thumbnail!: string;
 }
 
-export class LayerData {
+export class LayerMetadata {
 	expanded!: boolean;
 
 	selected!: boolean;
 }
 
-export const LayerTypeOptions = {
-	Folder: "Folder",
-	Shape: "Shape",
-	Circle: "Circle",
-	Rect: "Rect",
-	Line: "Line",
-	PolyLine: "PolyLine",
-	Ellipse: "Ellipse",
-} as const;
+export type LayerType = "Folder" | "Shape" | "Circle" | "Rect" | "Line" | "PolyLine" | "Ellipse";
 
-export type LayerType = typeof LayerTypeOptions[keyof typeof LayerTypeOptions];
+export class IndexedDbDocumentDetails extends DocumentDetails {
+	@Transform(({ value }: { value: BigInt }) => value.toString())
+	id!: string;
+}
+
+export class AutoSaveDocument extends JsMessage {
+	document!: string;
+
+	@Type(() => IndexedDbDocumentDetails)
+	details!: IndexedDbDocumentDetails;
+
+	version!: string;
+}
+
+export class RemoveAutoSaveDocument extends JsMessage {
+	// Use a string since IndexedDB can not use BigInts for keys
+	@Transform(({ value }: { value: BigInt }) => value.toString())
+	document_id!: string;
+}
 
 // Any is used since the type of the object should be known from the rust side
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -296,7 +369,8 @@ type JSMessageFactory = (data: any, wasm: WasmInstance, instance: RustEditorInst
 type MessageMaker = typeof JsMessage | JSMessageFactory;
 
 export const messageConstructors: Record<string, MessageMaker> = {
-	UpdateCanvas,
+	UpdateArtwork,
+	UpdateOverlays,
 	UpdateScrollbars,
 	UpdateRulers,
 	ExportDocument,
@@ -316,5 +390,8 @@ export const messageConstructors: Record<string, MessageMaker> = {
 	DisplayConfirmationToCloseDocument,
 	DisplayConfirmationToCloseAllDocuments,
 	DisplayAboutGraphiteDialog,
+	AutoSaveDocument,
+	RemoveAutoSaveDocument,
+	UpdateArtboards,
 } as const;
 export type JsMessageType = keyof typeof messageConstructors;

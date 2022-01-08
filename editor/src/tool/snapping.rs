@@ -5,26 +5,21 @@ use crate::consts::SNAP_TOLERANCE;
 
 use super::DocumentMessageHandler;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct SnapHandler {
 	snap_targets: Option<(Vec<f64>, Vec<f64>)>,
-}
-impl Default for SnapHandler {
-	fn default() -> Self {
-		Self { snap_targets: None }
-	}
 }
 
 impl SnapHandler {
 	/// Gets a list of snap targets for the X and Y axes in Viewport coords for the target layers (usually all layers or all non-selected layers.)
 	/// This should be called at the start of a drag.
-	pub fn start_snap(&mut self, document_message_handler: &DocumentMessageHandler, target_layers: Vec<Vec<LayerId>>, ignore_layers: &[Vec<LayerId>]) {
+	pub fn start_snap(&mut self, document_message_handler: &DocumentMessageHandler, target_layers: Vec<&[LayerId]>, ignore_layers: &[Vec<LayerId>]) {
 		if document_message_handler.snapping_enabled {
 			// Could be made into sorted Vec or a HashSet for more performant lookups.
 			self.snap_targets = Some(
 				target_layers
 					.iter()
-					.filter(|path| !ignore_layers.contains(path))
+					.filter(|path| !ignore_layers.iter().any(|layer| layer.as_slice() == **path))
 					.filter_map(|path| document_message_handler.graphene_document.viewport_bounding_box(path).ok()?)
 					.flat_map(|[bound1, bound2]| [bound1, bound2, ((bound1 + bound2) / 2.)])
 					.map(|vec| vec.into())
@@ -58,13 +53,11 @@ impl SnapHandler {
 						.unwrap_or(0.),
 				);
 
-				// Do not move if over snap tolerance
-				let clamped_closest_move = DVec2::new(
+				// Clamp, do not move if over snap tolerance
+				DVec2::new(
 					if closest_move.x.abs() > SNAP_TOLERANCE { 0. } else { closest_move.x },
 					if closest_move.y.abs() > SNAP_TOLERANCE { 0. } else { closest_move.y },
-				);
-
-				clamped_closest_move
+				)
 			} else {
 				DVec2::ZERO
 			}

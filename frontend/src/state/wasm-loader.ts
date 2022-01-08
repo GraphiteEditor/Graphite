@@ -7,10 +7,15 @@ export type WasmInstance = typeof import("@/../wasm/pkg");
 export type RustEditorInstance = InstanceType<WasmInstance["JsEditorHandle"]>;
 
 let wasmImport: WasmInstance | null = null;
-export async function initWasm() {
+export async function initWasm(): Promise<void> {
 	if (wasmImport !== null) return;
 
-	wasmImport = await import("@/../wasm/pkg").then(panicProxy);
+	// Separating in two lines satisfies typescript when used below
+	const importedWasm = await import("@/../wasm/pkg").then(panicProxy);
+	wasmImport = importedWasm;
+
+	const randomSeed = BigInt(Math.floor(Math.random() * Number.MAX_SAFE_INTEGER));
+	importedWasm.set_random_seed(randomSeed);
 }
 
 // This works by proxying every function call wrapping a try-catch block to filter out redundant and confusing
@@ -27,7 +32,7 @@ function panicProxy<T extends object>(module: T): T {
 			// Special handling to wrap the return of a constructor in the proxy
 			const isClass = isFunction && /^\s*class\s+/.test(targetValue.toString());
 			if (isClass) {
-				return function (...args: unknown[]) {
+				return function (...args: unknown[]): unknown {
 					// eslint-disable-next-line new-cap
 					const result = new targetValue(...args);
 					return panicProxy(result);
@@ -35,7 +40,7 @@ function panicProxy<T extends object>(module: T): T {
 			}
 
 			// Replace the original function with a wrapper function that runs the original in a try-catch block
-			return function (...args: unknown[]) {
+			return function (...args: unknown[]): unknown {
 				let result;
 				try {
 					// @ts-expect-error TypeScript does not know what `this` is, since it should be able to be anything
@@ -52,16 +57,17 @@ function panicProxy<T extends object>(module: T): T {
 	return new Proxy<T>(module, proxyHandler);
 }
 
-function getWasmInstance() {
+export function getWasmInstance(): WasmInstance {
 	if (wasmImport) return wasmImport;
 	throw new Error("Editor WASM backend was not initialized at application startup");
 }
 
-export function createEditorState() {
+type CreateEditorStateType = { dispatcher: ReturnType<typeof createJsDispatcher>; rawWasm: WasmInstance; instance: RustEditorInstance };
+export function createEditorState(): CreateEditorStateType {
 	const dispatcher = createJsDispatcher();
 	const rawWasm = getWasmInstance();
 
-	const rustCallback = (messageType: JsMessageType, data: Record<string, unknown>) => {
+	const rustCallback = (messageType: JsMessageType, data: Record<string, unknown>): void => {
 		dispatcher.handleJsMessage(messageType, data, rawWasm, instance);
 	};
 
