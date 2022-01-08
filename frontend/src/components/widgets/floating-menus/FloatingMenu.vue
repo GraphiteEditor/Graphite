@@ -1,6 +1,6 @@
 <template>
-	<div class="floating-menu" :class="[direction.toLowerCase(), type.toLowerCase()]" v-if="open || type === MenuType.Dialog" ref="floatingMenu">
-		<div class="tail" v-if="type === MenuType.Popover"></div>
+	<div class="floating-menu" :class="[direction.toLowerCase(), type.toLowerCase()]" v-if="open || type === 'Dialog'" ref="floatingMenu">
+		<div class="tail" v-if="type === 'Popover'"></div>
 		<div class="floating-menu-container" ref="floatingMenuContainer">
 			<div class="floating-menu-content" :class="{ 'scrollable-y': scrollable }" ref="floatingMenuContent" :style="floatingMenuContentStyle">
 				<slot></slot>
@@ -177,36 +177,20 @@
 </style>
 
 <script lang="ts">
-import { defineComponent } from "vue";
+import { defineComponent, PropType, StyleValue } from "vue";
 
-export enum MenuDirection {
-	Top = "Top",
-	Bottom = "Bottom",
-	Left = "Left",
-	Right = "Right",
-	TopLeft = "TopLeft",
-	TopRight = "TopRight",
-	BottomLeft = "BottomLeft",
-	BottomRight = "BottomRight",
-	Center = "Center",
-}
-
-export enum MenuType {
-	Popover = "Popover",
-	Dropdown = "Dropdown",
-	Dialog = "Dialog",
-}
+export type MenuDirection = "Top" | "Bottom" | "Left" | "Right" | "TopLeft" | "TopRight" | "BottomLeft" | "BottomRight" | "Center";
+export type MenuType = "Popover" | "Dropdown" | "Dialog";
 
 const POINTER_STRAY_DISTANCE = 100;
 
 export default defineComponent({
-	components: {},
 	props: {
-		direction: { type: String, default: MenuDirection.Bottom },
-		type: { type: String, required: true },
-		windowEdgeMargin: { type: Number, default: 6 },
-		minWidth: { type: Number, default: 0 },
-		scrollable: { type: Boolean, default: false },
+		direction: { type: String as PropType<MenuDirection>, default: "Bottom" },
+		type: { type: String as PropType<MenuType>, required: true },
+		windowEdgeMargin: { type: Number as PropType<number>, default: 6 },
+		minWidth: { type: Number as PropType<number>, default: 0 },
+		scrollable: { type: Boolean as PropType<boolean>, default: false },
 	},
 	data() {
 		const containerResizeObserver = new ResizeObserver((entries) => {
@@ -218,8 +202,6 @@ export default defineComponent({
 			open: false,
 			pointerStillDown: false,
 			containerResizeObserver,
-			MenuDirection,
-			MenuType,
 		};
 	},
 	updated() {
@@ -235,8 +217,8 @@ export default defineComponent({
 		let zeroedBorderDirection1: Edge | undefined;
 		let zeroedBorderDirection2: Edge | undefined;
 
-		if (this.direction === MenuDirection.Top || this.direction === MenuDirection.Bottom) {
-			zeroedBorderDirection1 = this.direction === MenuDirection.Top ? "Bottom" : "Top";
+		if (this.direction === "Top" || this.direction === "Bottom") {
+			zeroedBorderDirection1 = this.direction === "Top" ? "Bottom" : "Top";
 
 			if (floatingMenuBounds.left - this.windowEdgeMargin <= workspaceBounds.left) {
 				floatingMenuContent.style.left = `${this.windowEdgeMargin}px`;
@@ -249,8 +231,8 @@ export default defineComponent({
 			}
 		}
 
-		if (this.direction === MenuDirection.Left || this.direction === MenuDirection.Right) {
-			zeroedBorderDirection2 = this.direction === MenuDirection.Left ? "Right" : "Left";
+		if (this.direction === "Left" || this.direction === "Right") {
+			zeroedBorderDirection2 = this.direction === "Left" ? "Right" : "Left";
 
 			if (floatingMenuBounds.top - this.windowEdgeMargin <= workspaceBounds.top) {
 				floatingMenuContent.style.top = `${this.windowEdgeMargin}px`;
@@ -264,7 +246,7 @@ export default defineComponent({
 		}
 
 		// Remove the rounded corner from where the tail perfectly meets the corner
-		if (this.type === MenuType.Popover && this.windowEdgeMargin === 6 && zeroedBorderDirection1 && zeroedBorderDirection2) {
+		if (this.type === "Popover" && this.windowEdgeMargin === 6 && zeroedBorderDirection1 && zeroedBorderDirection2) {
 			switch (`${zeroedBorderDirection1}${zeroedBorderDirection2}`) {
 				case "TopLeft":
 					floatingMenuContent.style.borderTopLeftRadius = "0";
@@ -419,7 +401,7 @@ export default defineComponent({
 		},
 	},
 	computed: {
-		floatingMenuContentStyle(): Partial<CSSStyleDeclaration> {
+		floatingMenuContentStyle(): StyleValue {
 			return {
 				minWidth: this.minWidth > 0 ? `${this.minWidth}px` : "",
 			};

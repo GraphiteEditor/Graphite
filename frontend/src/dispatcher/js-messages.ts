@@ -30,7 +30,7 @@ export abstract class DocumentDetails {
 
 	readonly id!: BigInt | string;
 
-	get displayName() {
+	get displayName(): string {
 		return `${this.name}${this.is_saved ? "" : "*"}`;
 	}
 }
@@ -44,24 +44,42 @@ export class UpdateOpenDocumentsList extends JsMessage {
 	readonly open_documents!: FrontendDocumentDetails[];
 }
 
-export type HintData = HintInfo[][];
-
 export class UpdateInputHints extends JsMessage {
 	@Type(() => HintInfo)
 	readonly hint_data!: HintData;
 }
 
-export type KeysGroup = string[];
+export type HintData = HintGroup[];
+
+export type HintGroup = HintInfo[];
 
 export class HintInfo {
-	readonly keys!: string[];
+	readonly key_groups!: KeysGroup[];
 
-	readonly mouse!: KeysGroup | null;
+	readonly mouse!: MouseMotion | null;
 
 	readonly label!: string;
 
 	readonly plus!: boolean;
 }
+
+export type KeysGroup = string[]; // Array of Rust enum `Key`
+
+export type MouseMotion = string;
+
+export type RGBA = {
+	r: number;
+	g: number;
+	b: number;
+	a: number;
+};
+
+export type HSVA = {
+	h: number;
+	s: number;
+	v: number;
+	a: number;
+};
 
 const To255Scale = Transform(({ value }) => value * 255);
 export class Color {
@@ -76,11 +94,11 @@ export class Color {
 
 	readonly alpha!: number;
 
-	toRgba() {
+	toRgba(): RGBA {
 		return { r: this.red, g: this.green, b: this.blue, a: this.alpha };
 	}
 
-	toRgbaCSS() {
+	toRgbaCSS(): string {
 		const { r, g, b, a } = this.toRgba();
 		return `rgba(${r}, ${g}, ${b}, ${a})`;
 	}
@@ -94,8 +112,31 @@ export class UpdateWorkingColors extends JsMessage {
 	readonly secondary!: Color;
 }
 
+export type ToolName =
+	| "Select"
+	| "Crop"
+	| "Navigate"
+	| "Eyedropper"
+	| "Text"
+	| "Fill"
+	| "Gradient"
+	| "Brush"
+	| "Heal"
+	| "Clone"
+	| "Patch"
+	| "Detail"
+	| "Relight"
+	| "Path"
+	| "Pen"
+	| "Freehand"
+	| "Spline"
+	| "Line"
+	| "Rectangle"
+	| "Ellipse"
+	| "Shape";
+
 export class SetActiveTool extends JsMessage {
-	readonly tool_name!: string;
+	readonly tool_name!: ToolName;
 
 	readonly tool_options!: object;
 }
@@ -296,17 +337,7 @@ export class LayerMetadata {
 	selected!: boolean;
 }
 
-export const LayerTypeOptions = {
-	Folder: "Folder",
-	Shape: "Shape",
-	Circle: "Circle",
-	Rect: "Rect",
-	Line: "Line",
-	PolyLine: "PolyLine",
-	Ellipse: "Ellipse",
-} as const;
-
-export type LayerType = typeof LayerTypeOptions[keyof typeof LayerTypeOptions];
+export type LayerType = "Folder" | "Shape" | "Circle" | "Rect" | "Line" | "PolyLine" | "Ellipse";
 
 export class IndexedDbDocumentDetails extends DocumentDetails {
 	@Transform(({ value }: { value: BigInt }) => value.toString())

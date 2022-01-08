@@ -8,7 +8,6 @@ use graphene::Operation as DocumentOperation;
 use graphene::document::Document as GrapheneDocument;
 use graphene::layers::style::ViewMode;
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, VecDeque};
 
 #[impl_message(Message, DocumentMessage, Overlay)]
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]

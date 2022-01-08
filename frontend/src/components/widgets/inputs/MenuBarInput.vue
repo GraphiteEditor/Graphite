@@ -5,12 +5,12 @@
 				<IconLabel :icon="'GraphiteLogo'" />
 			</div>
 		</div>
-		<div class="entry-container" v-for="entry in menuEntries" :key="entry">
+		<div class="entry-container" v-for="(entry, index) in menuEntries" :key="index">
 			<div @click="handleEntryClick(entry)" class="entry" :class="{ open: entry.ref && entry.ref.isOpen() }" data-hover-menu-spawner>
 				<IconLabel :icon="entry.icon" v-if="entry.icon" />
 				<span v-if="entry.label">{{ entry.label }}</span>
 			</div>
-			<MenuList :menuEntries="entry.children" :direction="MenuDirection.Bottom" :minWidth="240" :drawIcon="true" :defaultAction="comingSoon" :ref="(ref) => setEntryRefs(entry, ref)" />
+			<MenuList :menuEntries="entry.children || []" :direction="'Bottom'" :minWidth="240" :drawIcon="true" :defaultAction="comingSoon" :ref="(ref) => setEntryRefs(entry, ref)" />
 		</div>
 	</div>
 </template>
@@ -53,11 +53,10 @@
 <script lang="ts">
 import { defineComponent } from "vue";
 
-import IconLabel from "@/components/widgets/labels/IconLabel.vue";
-import { ApplicationPlatform } from "@/components/window/MainWindow.vue";
-import MenuList, { MenuListEntry, MenuListEntries } from "@/components/widgets/floating-menus/MenuList.vue";
-import { MenuDirection } from "@/components/widgets/floating-menus/FloatingMenu.vue";
 import { EditorState } from "@/state/wasm-loader";
+
+import MenuList, { MenuListEntry, MenuListEntries } from "@/components/widgets/floating-menus/MenuList.vue";
+import IconLabel from "@/components/widgets/labels/IconLabel.vue";
 
 function makeMenuEntries(editor: EditorState): MenuListEntries {
 	return [
@@ -66,8 +65,8 @@ function makeMenuEntries(editor: EditorState): MenuListEntries {
 			ref: undefined,
 			children: [
 				[
-					{ label: "New", icon: "File", shortcut: ["KeyControl", "KeyN"], shortcutRequiresLock: true, action: async () => editor.instance.new_document() },
-					{ label: "Open…", shortcut: ["KeyControl", "KeyO"], action: async () => editor.instance.open_document() },
+					{ label: "New", icon: "File", shortcut: ["KeyControl", "KeyN"], shortcutRequiresLock: true, action: async (): Promise<void> => editor.instance.new_document() },
+					{ label: "Open…", shortcut: ["KeyControl", "KeyO"], action: async (): Promise<void> => editor.instance.open_document() },
 					{
 						label: "Open Recent",
 						shortcut: ["KeyControl", "KeyShift", "KeyO"],
@@ -84,18 +83,18 @@ function makeMenuEntries(editor: EditorState): MenuListEntries {
 					},
 				],
 				[
-					{ label: "Close", shortcut: ["KeyControl", "KeyW"], shortcutRequiresLock: true, action: async () => editor.instance.close_active_document_with_confirmation() },
-					{ label: "Close All", shortcut: ["KeyControl", "KeyAlt", "KeyW"], action: async () => editor.instance.close_all_documents_with_confirmation() },
+					{ label: "Close", shortcut: ["KeyControl", "KeyW"], shortcutRequiresLock: true, action: async (): Promise<void> => editor.instance.close_active_document_with_confirmation() },
+					{ label: "Close All", shortcut: ["KeyControl", "KeyAlt", "KeyW"], action: async (): Promise<void> => editor.instance.close_all_documents_with_confirmation() },
 				],
 				[
-					{ label: "Save", shortcut: ["KeyControl", "KeyS"], action: async () => editor.instance.save_document() },
-					{ label: "Save As…", shortcut: ["KeyControl", "KeyShift", "KeyS"], action: async () => editor.instance.save_document() },
+					{ label: "Save", shortcut: ["KeyControl", "KeyS"], action: async (): Promise<void> => editor.instance.save_document() },
+					{ label: "Save As…", shortcut: ["KeyControl", "KeyShift", "KeyS"], action: async (): Promise<void> => editor.instance.save_document() },
 					{ label: "Save All", shortcut: ["KeyControl", "KeyAlt", "KeyS"] },
 					{ label: "Auto-Save", checkbox: true, checked: true },
 				],
 				[
 					{ label: "Import…", shortcut: ["KeyControl", "KeyI"] },
-					{ label: "Export…", shortcut: ["KeyControl", "KeyE"], action: async () => editor.instance.export_document() },
+					{ label: "Export…", shortcut: ["KeyControl", "KeyE"], action: async (): Promise<void> => editor.instance.export_document() },
 				],
 				[{ label: "Quit", shortcut: ["KeyControl", "KeyQ"] }],
 			],
@@ -105,13 +104,13 @@ function makeMenuEntries(editor: EditorState): MenuListEntries {
 			ref: undefined,
 			children: [
 				[
-					{ label: "Undo", shortcut: ["KeyControl", "KeyZ"], action: async () => editor.instance.undo() },
-					{ label: "Redo", shortcut: ["KeyControl", "KeyShift", "KeyZ"], action: async () => editor.instance.redo() },
+					{ label: "Undo", shortcut: ["KeyControl", "KeyZ"], action: async (): Promise<void> => editor.instance.undo() },
+					{ label: "Redo", shortcut: ["KeyControl", "KeyShift", "KeyZ"], action: async (): Promise<void> => editor.instance.redo() },
 				],
 				[
-					{ label: "Cut", shortcut: ["KeyControl", "KeyX"], action: async () => editor.instance.cut() },
-					{ label: "Copy", icon: "Copy", shortcut: ["KeyControl", "KeyC"], action: async () => editor.instance.copy() },
-					{ label: "Paste", icon: "Paste", shortcut: ["KeyControl", "KeyV"], action: async () => editor.instance.paste() },
+					{ label: "Cut", shortcut: ["KeyControl", "KeyX"], action: async (): Promise<void> => editor.instance.cut() },
+					{ label: "Copy", icon: "Copy", shortcut: ["KeyControl", "KeyC"], action: async (): Promise<void> => editor.instance.copy() },
+					{ label: "Paste", icon: "Paste", shortcut: ["KeyControl", "KeyV"], action: async (): Promise<void> => editor.instance.paste() },
 				],
 			],
 		},
@@ -120,8 +119,8 @@ function makeMenuEntries(editor: EditorState): MenuListEntries {
 			ref: undefined,
 			children: [
 				[
-					{ label: "Select All", shortcut: ["KeyControl", "KeyA"], action: async () => editor.instance.select_all_layers() },
-					{ label: "Deselect All", shortcut: ["KeyControl", "KeyAlt", "KeyA"], action: async () => editor.instance.deselect_all_layers() },
+					{ label: "Select All", shortcut: ["KeyControl", "KeyA"], action: async (): Promise<void> => editor.instance.select_all_layers() },
+					{ label: "Deselect All", shortcut: ["KeyControl", "KeyAlt", "KeyA"], action: async (): Promise<void> => editor.instance.deselect_all_layers() },
 					{
 						label: "Order",
 						children: [
@@ -129,14 +128,14 @@ function makeMenuEntries(editor: EditorState): MenuListEntries {
 								{
 									label: "Raise To Front",
 									shortcut: ["KeyControl", "KeyShift", "KeyLeftBracket"],
-									action: async () => editor.instance.reorder_selected_layers(editor.rawWasm.i32_max()),
+									action: async (): Promise<void> => editor.instance.reorder_selected_layers(editor.rawWasm.i32_max()),
 								},
-								{ label: "Raise", shortcut: ["KeyControl", "KeyRightBracket"], action: async () => editor.instance.reorder_selected_layers(1) },
-								{ label: "Lower", shortcut: ["KeyControl", "KeyLeftBracket"], action: async () => editor.instance.reorder_selected_layers(-1) },
+								{ label: "Raise", shortcut: ["KeyControl", "KeyRightBracket"], action: async (): Promise<void> => editor.instance.reorder_selected_layers(1) },
+								{ label: "Lower", shortcut: ["KeyControl", "KeyLeftBracket"], action: async (): Promise<void> => editor.instance.reorder_selected_layers(-1) },
 								{
 									label: "Lower to Back",
 									shortcut: ["KeyControl", "KeyShift", "KeyRightBracket"],
-									action: async () => editor.instance.reorder_selected_layers(editor.rawWasm.i32_min()),
+									action: async (): Promise<void> => editor.instance.reorder_selected_layers(editor.rawWasm.i32_min()),
 								},
 							],
 						],
@@ -158,12 +157,12 @@ function makeMenuEntries(editor: EditorState): MenuListEntries {
 			label: "Help",
 			ref: undefined,
 			children: [
-				[{ label: "About Graphite", action: async () => editor.instance.request_about_graphite_dialog() }],
+				[{ label: "About Graphite", action: async (): Promise<void> => editor.instance.request_about_graphite_dialog() }],
 				[
-					{ label: "Report a Bug", action: () => window.open("https://github.com/GraphiteEditor/Graphite/issues/new", "_blank") },
-					{ label: "Visit on GitHub", action: () => window.open("https://github.com/GraphiteEditor/Graphite", "_blank") },
+					{ label: "Report a Bug", action: (): unknown => window.open("https://github.com/GraphiteEditor/Graphite/issues/new", "_blank") },
+					{ label: "Visit on GitHub", action: (): unknown => window.open("https://github.com/GraphiteEditor/Graphite", "_blank") },
 				],
-				[{ label: "Debug: Panic (DANGER)", action: async () => editor.rawWasm.intentional_panic() }],
+				[{ label: "Debug: Panic (DANGER)", action: async (): Promise<void> => editor.rawWasm.intentional_panic() }],
 			],
 		},
 	];
@@ -186,10 +185,8 @@ export default defineComponent({
 	},
 	data() {
 		return {
-			ApplicationPlatform,
 			menuEntries: makeMenuEntries(this.editor),
-			MenuDirection,
-			comingSoon: () => this.dialog.comingSoon(),
+			comingSoon: (): void => this.dialog.comingSoon(),
 		};
 	},
 	components: {

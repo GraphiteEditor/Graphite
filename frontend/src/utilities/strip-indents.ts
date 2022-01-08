@@ -1,4 +1,4 @@
-export function stripIndents(stringPieces: TemplateStringsArray, ...substitutions: unknown[]) {
+export function stripIndents(stringPieces: TemplateStringsArray, ...substitutions: unknown[]): string {
 	const interleavedSubstitutions = stringPieces.flatMap((stringPiece, index) => [stringPiece, substitutions[index] !== undefined ? substitutions[index] : ""]);
 	const stringLines = interleavedSubstitutions.join("").split("\n");
 
