@@ -520,11 +520,11 @@ impl Document {
 				if selected.len() > 1 && selected.len() < 3 {
 					// to deal with union of shapes with different transforms, we
 					let shapes = self.shapes_as_seen(selected)?;
-					let new_shapes = boolean_operation(*operation, shapes[0], shapes[1])?;
+					let new_shapes = boolean_operation(*operation, &shapes[0], &shapes[1])?;
 
 					for path in selected {
-						self.delete(path);
-						responses.push(DocumentResponse::DeletedLayer { path: *path })
+						self.delete(path)?;
+						responses.push(DocumentResponse::DeletedLayer { path: path.clone() })
 					}
 					for new_shape in new_shapes {
 						let new_id = self.add_layer(&[], Layer::new(LayerDataType::Shape(new_shape), DAffine2::IDENTITY.to_cols_array()), -1)?;

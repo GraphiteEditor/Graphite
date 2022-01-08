@@ -78,7 +78,7 @@ pub fn get_arbitrary_point_on_path(path: &BezPath) -> Option<Point> {
 /// \/                               \/
 
 /// each intersection has two curves, which are distinguished between using this enum
-#[derive(PartialEq, Eq, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum Origin {
 	Alpha,
 	Beta,
@@ -221,6 +221,7 @@ impl<'a> SubCurve<'a> {
 /// 	- TODO:
 /// 	- Behavior: when shapes have indentical pathsegs algorithm returns endpoints as intersects?
 /// 	- Bug: algorithm finds same intersection multiple times in same recursion path
+/// 	- Bug: intersections of "perfectly alligned" line or curve
 /// 	- Improvement: algorithm behavior when curves have differing "native curvatures"
 /// 	- Improvement: more adapative way to decide when "close enough"
 ///   - improvement: quality metric?

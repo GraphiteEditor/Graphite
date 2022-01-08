@@ -1,10 +1,10 @@
+pub mod boolean_ops;
 pub mod color;
 pub mod document;
 pub mod intersection;
 pub mod layers;
 pub mod operation;
 pub mod response;
-pub mod boolean_ops;
 
 pub use intersection::Quad;
 pub use operation::Operation;
@@ -21,4 +21,11 @@ pub enum DocumentError {
 	NonReorderableSelection,
 	NotAShape,
 	InvalidFile(String),
+}
+
+//TODO: below impl is a placeholder for BooleanError type
+impl From<()> for DocumentError {
+	fn from(_: ()) -> Self {
+		DocumentError::InvalidFile("Unknown Error".to_string())
+	}
 }
