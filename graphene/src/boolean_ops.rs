@@ -60,6 +60,7 @@ enum Direction {
 /// Behavior: Intersection and Union cases are distinuguished between by cycle length
 ///   - This only effects shapes whose intersection is a single shape, and the intersection is similalarly sized to the union
 ///   - can be solved by first computing at low accuracy, and if the values are close recomputing.
+#[derive(Clone)]
 struct Cycle {
 	vertices: Vec<(usize, Origin)>,
 	dir: Option<Direction>,
@@ -354,10 +355,10 @@ pub fn boolean_operation(select: BooleanOperation, alpha: &Shape, beta: &Shape) 
 	match select {
 		BooleanOperation::Union => {
 			let graph = PathGraph::from_paths(&alpha, &beta, alpha_dir != beta_dir).ok_or(())?;
-			let cycles = graph.get_cycles();
+			let mut cycles = graph.get_cycles();
 			// "extra calls to ParamCurveArea::area here"
-			let outline = cycles.iter().reduce(|max, cycle| if cycle.area() >= max.area() { cycle } else { max }).unwrap();
-			let mut insides = collect_shapes(&graph, &mut graph.get_cycles(), |dir| dir != alpha_dir)?;
+			let outline: Cycle = (*cycles.iter().reduce(|max, cycle| if cycle.area().abs() >= max.area().abs() { cycle } else { max }).unwrap()).clone();
+			let mut insides = collect_shapes(&graph, &mut cycles, |dir| dir != alpha_dir)?;
 			insides.push(graph.get_shape(&outline));
 			Ok(insides)
 		}
@@ -373,7 +374,7 @@ pub fn boolean_operation(select: BooleanOperation, alpha: &Shape, beta: &Shape) 
 				cycles
 					.iter()
 					.enumerate()
-					.reduce(|(midx, max), (idx, cycle)| if cycle.area() >= max.area() { (idx, cycle) } else { (midx, max) })
+					.reduce(|(midx, max), (idx, cycle)| if cycle.area().abs() >= max.area().abs() { (idx, cycle) } else { (midx, max) })
 					.unwrap()
 					.0,
 			);
