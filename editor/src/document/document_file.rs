@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 use std::collections::VecDeque;
 
+use super::artboard_message_handler::ArtboardMessage;
+use super::artboard_message_handler::ArtboardMessageHandler;
 pub use super::layer_panel::*;
 use super::movement_handler::{MovementMessage, MovementMessageHandler};
 use super::overlay_message_handler::OverlayMessageHandler;
@@ -8,6 +10,7 @@ use super::transform_layer_handler::{TransformLayerMessage, TransformLayerMessag
 use super::vectorize_layer_metadata;
 
 use crate::consts::DEFAULT_DOCUMENT_NAME;
+use crate::consts::GRAPHITE_DOCUMENT_VERSION;
 use crate::consts::{ASYMPTOTIC_EFFECT, FILE_EXPORT_SUFFIX, FILE_SAVE_SUFFIX, SCALE_EFFECT, SCROLLBAR_SPACING};
 use crate::document::Clipboard;
 use crate::input::InputPreprocessor;
@@ -55,8 +58,15 @@ pub enum VectorManipulatorSegment {
 
 #[derive(PartialEq, Clone, Debug)]
 pub struct VectorManipulatorShape {
+	/// The path to the layer
+	pub layer_path: Vec<LayerId>,
+	/// The outline of the shape
 	pub path: kurbo::BezPath,
+	/// The control points / manipulator handles
 	pub segments: Vec<VectorManipulatorSegment>,
+	/// The compound Bezier curve is closed
+	pub closed: bool,
+	/// The transformation matrix to apply
 	pub transform: DAffine2,
 }
 
@@ -76,10 +86,12 @@ pub struct DocumentMessageHandler {
 	movement_handler: MovementMessageHandler,
 	#[serde(skip)]
 	overlay_message_handler: OverlayMessageHandler,
+	artboard_message_handler: ArtboardMessageHandler,
 	#[serde(skip)]
 	transform_layer_handler: TransformLayerMessageHandler,
 	pub snapping_enabled: bool,
 	pub view_mode: ViewMode,
+	pub version: String,
 }
 
 impl Default for DocumentMessageHandler {
@@ -94,9 +106,11 @@ impl Default for DocumentMessageHandler {
 			layer_range_selection_reference: Vec::new(),
 			movement_handler: MovementMessageHandler::default(),
 			overlay_message_handler: OverlayMessageHandler::default(),
+			artboard_message_handler: ArtboardMessageHandler::default(),
 			transform_layer_handler: TransformLayerMessageHandler::default(),
 			snapping_enabled: true,
 			view_mode: ViewMode::default(),
+			version: GRAPHITE_DOCUMENT_VERSION.to_string(),
 		}
 	}
 }
@@ -111,6 +125,8 @@ pub enum DocumentMessage {
 	DispatchOperation(Box<DocumentOperation>),
 	#[child]
 	Overlay(OverlayMessage),
+	#[child]
+	Artboard(ArtboardMessage),
 	UpdateLayerMetadata {
 		layer_path: Vec<LayerId>,
 		layer_metadata: LayerMetadata,
@@ -139,6 +155,8 @@ pub enum DocumentMessage {
 	StartTransaction,
 	RollbackTransaction,
 	GroupSelectedLayers,
+	UngroupSelectedLayers,
+	UngroupLayers(Vec<LayerId>),
 	AbortTransaction,
 	CommitTransaction,
 	ExportDocument,
@@ -186,20 +204,34 @@ impl DocumentMessageHandler {
 	}
 
 	pub fn deserialize_document(serialized_content: &str) -> Result<Self, DocumentError> {
-		log::info!("Deserializing: {:?}", serialized_content);
-		serde_json::from_str(serialized_content).map_err(|e| DocumentError::InvalidFile(e.to_string()))
+		let deserialized_result: Result<Self, DocumentError> = serde_json::from_str(serialized_content).map_err(|e| DocumentError::InvalidFile(e.to_string()));
+		match deserialized_result {
+			Ok(document) => {
+				if document.version != GRAPHITE_DOCUMENT_VERSION {
+					Err(DocumentError::InvalidFile("Graphite document version mismatch".to_string()))
+				} else {
+					Ok(document)
+				}
+			}
+			Err(e) => Err(e),
+		}
 	}
 
 	pub fn with_name(name: String, ipp: &InputPreprocessor) -> Self {
 		let mut document = Self { name, ..Self::default() };
-		document.graphene_document.root.transform = document.movement_handler.calculate_offset_transform(ipp.viewport_bounds.size() / 2.);
+		let starting_root_transform = document.movement_handler.calculate_offset_transform(ipp.viewport_bounds.size() / 2.);
+		document.graphene_document.root.transform = starting_root_transform;
+		document.artboard_message_handler.artboards_graphene_document.root.transform = starting_root_transform;
 		document
 	}
 
-	pub fn with_name_and_content(name: String, serialized_content: String) -> Result<Self, EditorError> {
+	pub fn with_name_and_content(name: String, serialized_content: String, ipp: &InputPreprocessor) -> Result<Self, EditorError> {
 		match Self::deserialize_document(&serialized_content) {
 			Ok(mut document) => {
 				document.name = name;
+				let starting_root_transform = document.movement_handler.calculate_offset_transform(ipp.viewport_bounds.size() / 2.);
+				document.graphene_document.root.transform = starting_root_transform;
+				document.artboard_message_handler.artboards_graphene_document.root.transform = starting_root_transform;
 				Ok(document)
 			}
 			Err(DocumentError::InvalidFile(msg)) => Err(EditorError::Document(msg)),
@@ -217,9 +249,14 @@ impl DocumentMessageHandler {
 	fn select_layer(&mut self, path: &[LayerId]) -> Option<Message> {
 		println!("Select_layer fail: {:?}", self.all_layers_sorted());
 
-		self.layer_metadata_mut(path).selected = true;
-		let data = self.layer_panel_entry(path.to_vec()).ok()?;
-		(!path.is_empty()).then(|| FrontendMessage::UpdateLayer { data }.into())
+		if let Some(layer) = self.layer_metadata.get_mut(path) {
+			layer.selected = true;
+			let data = self.layer_panel_entry(path.to_vec()).ok()?;
+			(!path.is_empty()).then(|| FrontendMessage::UpdateLayer { data }.into())
+		} else {
+			log::warn!("Tried to select non existing layer {:?}", path);
+			None
+		}
 	}
 
 	pub fn selected_visible_layers_bounding_box(&self) -> Option<[DVec2; 2]> {
@@ -259,9 +296,11 @@ impl DocumentMessageHandler {
 				.collect::<Vec<VectorManipulatorSegment>>();
 
 			Some(VectorManipulatorShape {
+				layer_path: path_to_shape.to_vec(),
 				path,
 				segments,
 				transform: viewport_transform,
+				closed: shape.closed,
 			})
 		});
 
@@ -274,13 +313,10 @@ impl DocumentMessageHandler {
 	}
 
 	pub fn selected_layers_without_children(&self) -> Vec<&[LayerId]> {
-		let mut sorted_layers = self.selected_layers().collect::<Vec<_>>();
-		// Sorting here creates groups of similar UUID paths
-		sorted_layers.sort();
-		sorted_layers.dedup_by(|a, b| a.starts_with(b));
+		let unique_layers = self.graphene_document.shallowest_unique_layers(self.selected_layers());
 
 		// We need to maintain layer ordering
-		self.sort_layers(sorted_layers.iter().copied())
+		self.sort_layers(unique_layers.iter().copied())
 	}
 
 	pub fn selected_layers_contains(&self, path: &[LayerId]) -> bool {
@@ -427,6 +463,9 @@ impl DocumentMessageHandler {
 				let document = std::mem::replace(&mut self.graphene_document, document);
 				let layer_metadata = std::mem::replace(&mut self.layer_metadata, layer_metadata);
 				self.document_redo_history.push((document, layer_metadata));
+				for layer in self.layer_metadata.keys() {
+					responses.push_back(DocumentMessage::LayerChanged(layer.clone()).into())
+				}
 				Ok(())
 			}
 			None => Err(EditorError::NoTransactionInProgress),
@@ -442,6 +481,9 @@ impl DocumentMessageHandler {
 				let document = std::mem::replace(&mut self.graphene_document, document);
 				let layer_metadata = std::mem::replace(&mut self.layer_metadata, layer_metadata);
 				self.document_undo_history.push((document, layer_metadata));
+				for layer in self.layer_metadata.keys() {
+					responses.push_back(DocumentMessage::LayerChanged(layer.clone()).into())
+				}
 				Ok(())
 			}
 			None => Err(EditorError::NoTransactionInProgress),
@@ -470,7 +512,10 @@ impl DocumentMessageHandler {
 	}
 
 	pub fn layer_panel_entry(&mut self, path: Vec<LayerId>) -> Result<LayerPanelEntry, EditorError> {
-		let data: LayerMetadata = *self.layer_metadata_mut(&path);
+		let data: LayerMetadata = *self
+			.layer_metadata
+			.get_mut(&path)
+			.ok_or_else(|| EditorError::Document(format!("Could not get layer metadata for {:?}", path)))?;
 		let layer = self.graphene_document.layer(&path)?;
 		let entry = layer_panel_entry(&data, self.graphene_document.multiply_transforms(&path)?, layer, path);
 		Ok(entry)
@@ -505,7 +550,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			TransformLayers(message) => self
 				.transform_layer_handler
 				.process_action(message, (&mut self.layer_metadata, &mut self.graphene_document, ipp), responses),
-			DeleteLayer(path) => responses.push_back(DocumentOperation::DeleteLayer { path }.into()),
+			DeleteLayer(path) => responses.push_front(DocumentOperation::DeleteLayer { path }.into()),
 			StartTransaction => self.backup(responses),
 			RollbackTransaction => {
 				self.rollback(responses).unwrap_or_else(|e| log::warn!("{}", e));
@@ -523,6 +568,13 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					responses,
 				);
 				// responses.push_back(OverlayMessage::RenderOverlays.into());
+			}
+			Artboard(message) => {
+				self.artboard_message_handler.process_action(
+					message,
+					(Self::layer_metadata_mut_no_borrow_self(&mut self.layer_metadata, &[]), &self.graphene_document, ipp),
+					responses,
+				);
 			}
 			ExportDocument => {
 				let bbox = self.graphene_document.visible_layers_bounding_box().unwrap_or([DVec2::ZERO, ipp.viewport_bounds.size()]);
@@ -594,6 +646,37 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					.into(),
 				);
 				responses.push_back(DocumentMessage::SetSelectedLayers(vec![new_folder_path]).into());
+			}
+			UngroupLayers(folder_path) => {
+				// Select all the children of the folder
+				let to_select = self.graphene_document.folder_children_paths(&folder_path);
+				let message_buffer = [
+					// Copy them
+					DocumentMessage::SetSelectedLayers(to_select).into(),
+					DocumentsMessage::Copy(Clipboard::System).into(),
+					// Paste them into the folder above
+					DocumentsMessage::PasteIntoFolder {
+						clipboard: Clipboard::System,
+						path: folder_path[..folder_path.len() - 1].to_vec(),
+						insert_index: -1,
+					}
+					.into(),
+					// Delete parent folder
+					DocumentMessage::DeleteLayer(folder_path).into(),
+				];
+
+				// Push these messages in reverse due to push_front
+				for message in message_buffer.into_iter().rev() {
+					responses.push_front(message);
+				}
+			}
+			UngroupSelectedLayers => {
+				responses.push_back(DocumentMessage::StartTransaction.into());
+				let folder_paths = self.graphene_document.sorted_folders_by_depth(self.selected_layers());
+				for folder_path in folder_paths {
+					responses.push_back(DocumentMessage::UngroupLayers(folder_path.to_vec()).into());
+				}
+				responses.push_back(DocumentMessage::CommitTransaction.into());
 			}
 			SetBlendModeForSelectedLayers(blend_mode) => {
 				self.backup(responses);
@@ -774,6 +857,8 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					}
 					.into(),
 				);
+				responses.push_back(ArtboardMessage::RenderArtboards.into());
+
 				let document_transform = &self.movement_handler;
 
 				let scale = 0.5 + ASYMPTOTIC_EFFECT + document_transform.scale * SCALE_EFFECT;
@@ -864,7 +949,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 						let insert = all_layer_paths.get(insert_pos);
 						if let Some(insert_path) = insert {
 							let (id, path) = insert_path.split_last().expect("Can't move the root folder");
-							if let Some(folder) = self.graphene_document.layer(path).ok().map(|layer| layer.as_folder().ok()).flatten() {
+							if let Some(folder) = self.graphene_document.layer(path).ok().and_then(|layer| layer.as_folder().ok()) {
 								let selected: Vec<_> = selected_layers
 									.iter()
 									.filter(|layer| layer.starts_with(path) && layer.len() == path.len() + 1)
@@ -1003,6 +1088,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				NudgeSelectedLayers,
 				ReorderSelectedLayers,
 				GroupSelectedLayers,
+				UngroupSelectedLayers,
 			);
 			common.extend(select);
 		}

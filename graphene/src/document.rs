@@ -1,4 +1,3 @@
-use crate::consts::GRAPHENE_DOCUMENT_VERSION;
 use std::{
 	cmp::max,
 	collections::hash_map::DefaultHasher,
@@ -20,7 +19,6 @@ pub struct Document {
 	/// This identifier is not a hash and is not guaranteed to be equal for equivalent documents.
 	#[serde(skip)]
 	pub state_identifier: DefaultHasher,
-	pub graphene_document_version: String,
 }
 
 impl Default for Document {
@@ -28,7 +26,6 @@ impl Default for Document {
 		Self {
 			root: Layer::new(LayerDataType::Folder(Folder::default()), DAffine2::IDENTITY.to_cols_array()),
 			state_identifier: DefaultHasher::new(),
-			graphene_document_version: GRAPHENE_DOCUMENT_VERSION.to_string(),
 		}
 	}
 }
@@ -95,6 +92,15 @@ impl Document {
 		self.folder_mut(path)?.layer_mut(id).ok_or_else(|| DocumentError::LayerNotFound(path.into()))
 	}
 
+	pub fn common_layer_path_prefix<'a>(&self, layers: impl Iterator<Item = &'a [LayerId]>) -> &'a [LayerId] {
+		layers.reduce(|a, b| &a[..a.iter().zip(b.iter()).take_while(|&(a, b)| a == b).count()]).unwrap_or_default()
+	}
+
+	pub fn folders<'a>(&'a self, layers: impl Iterator<Item = &'a [LayerId]>) -> impl Iterator<Item = &'a [LayerId]> {
+		layers.filter(|layer| self.is_folder(layer))
+	}
+
+	// Returns the shallowest folder given the selection, even if the selection doesn't contain any folders
 	pub fn shallowest_common_folder<'a>(&self, layers: impl Iterator<Item = &'a [LayerId]>) -> Result<&'a [LayerId], DocumentError> {
 		let common_prefix_of_path = self.common_layer_path_prefix(layers);
 
@@ -104,13 +110,32 @@ impl Document {
 		})
 	}
 
-	pub fn common_layer_path_prefix<'a>(&self, layers: impl Iterator<Item = &'a [LayerId]>) -> &'a [LayerId] {
-		layers
-			.reduce(|a, b| {
-				let number_of_uncommon_ids_in_a = (0..a.len()).position(|i| b.starts_with(&a[..a.len() - i])).unwrap_or_default();
-				&a[..(a.len() - number_of_uncommon_ids_in_a)]
-			})
-			.unwrap_or_default()
+	// Return returns all folders that are not contained in any other of the given folders
+	pub fn shallowest_folders<'a>(&'a self, layers: impl Iterator<Item = &'a [LayerId]>) -> Vec<&[LayerId]> {
+		self.shallowest_unique_layers(self.folders(layers))
+	}
+
+	// Return returns all layers that are not contained in any other of the given folders
+	pub fn shallowest_unique_layers<'a>(&'a self, layers: impl Iterator<Item = &'a [LayerId]>) -> Vec<&[LayerId]> {
+		let mut sorted_layers: Vec<_> = layers.collect();
+		sorted_layers.sort();
+		// Sorting here creates groups of similar UUID paths
+		sorted_layers.dedup_by(|a, b| a.starts_with(b));
+		sorted_layers
+	}
+	// Deepest to shallowest (longest to shortest path length)
+	pub fn sorted_folders_by_depth<'a>(&'a self, layers: impl Iterator<Item = &'a [LayerId]>) -> Vec<&'a [LayerId]> {
+		let mut folders: Vec<_> = self.folders(layers).collect();
+		folders.sort_by_key(|a| std::cmp::Reverse(a.len()));
+		folders
+	}
+
+	pub fn folder_children_paths(&self, path: &[LayerId]) -> Vec<Vec<LayerId>> {
+		if let Ok(folder) = self.folder(path) {
+			folder.list_layers().iter().map(|f| [path, &[*f]].concat()).collect()
+		} else {
+			vec![]
+		}
 	}
 
 	pub fn is_folder(&self, path: &[LayerId]) -> bool {
@@ -420,8 +445,8 @@ impl Document {
 
 				Some([vec![DocumentChanged, CreatedLayer { path: path.clone() }], update_thumbnails_upstream(path)].concat())
 			}
-			Operation::AddOverlayShape { path, style, bez_path } => {
-				let mut shape = Shape::from_bez_path(bez_path.clone(), *style, false);
+			Operation::AddOverlayShape { path, style, bez_path, closed } => {
+				let mut shape = Shape::from_bez_path(bez_path.clone(), *style, *closed);
 				shape.render_index = -1;
 
 				let layer = Layer::new(LayerDataType::Shape(shape), DAffine2::IDENTITY.to_cols_array());
@@ -457,7 +482,7 @@ impl Document {
 				};
 				self.delete(path)?;
 
-				let (folder, _) = split_path(path.as_slice()).unwrap_or_else(|_| (&[], 0));
+				let (folder, _) = split_path(path.as_slice()).unwrap_or((&[], 0));
 				responses.extend([DocumentChanged, DeletedLayer { path: path.clone() }, FolderChanged { path: folder.to_vec() }]);
 				responses.extend(update_thumbnails_upstream(folder));
 				Some(responses)
@@ -494,7 +519,7 @@ impl Document {
 			}
 			Operation::DuplicateLayer { path } => {
 				let layer = self.layer(path)?.clone();
-				let (folder_path, _) = split_path(path.as_slice()).unwrap_or_else(|_| (&[], 0));
+				let (folder_path, _) = split_path(path.as_slice()).unwrap_or((&[], 0));
 				let folder = self.folder_mut(folder_path)?;
 				if let Some(new_layer_id) = folder.add_layer(layer, None, -1) {
 					let new_path = [folder_path, &[new_layer_id]].concat();
@@ -518,14 +543,14 @@ impl Document {
 				self.set_layer(path, Layer::new(LayerDataType::Folder(Folder::default()), DAffine2::IDENTITY.to_cols_array()), -1)?;
 				self.mark_as_dirty(path)?;
 
-				Some(vec![DocumentChanged, CreatedLayer { path: path.clone() }])
+				Some([vec![DocumentChanged, CreatedLayer { path: path.clone() }], update_thumbnails_upstream(path)].concat())
 			}
 			Operation::TransformLayer { path, transform } => {
 				let layer = self.layer_mut(path).unwrap();
 				let transform = DAffine2::from_cols_array(transform) * layer.transform;
 				layer.transform = transform;
 				self.mark_as_dirty(path)?;
-				Some(vec![DocumentChanged])
+				Some([vec![DocumentChanged], update_thumbnails_upstream(path)].concat())
 			}
 			Operation::TransformLayerInViewport { path, transform } => {
 				let transform = DAffine2::from_cols_array(transform);
@@ -539,6 +564,17 @@ impl Document {
 				self.mark_as_dirty(path)?;
 				Some([vec![DocumentChanged], update_thumbnails_upstream(path)].concat())
 			}
+			Operation::SetShapePath { path, bez_path } => {
+				self.mark_as_dirty(path)?;
+
+				match &mut self.layer_mut(path)?.data {
+					LayerDataType::Shape(shape) => {
+						shape.path = bez_path.clone();
+					}
+					LayerDataType::Folder(_) => (),
+				}
+				Some(vec![DocumentChanged, LayerChanged { path: path.clone() }])
+			}
 			Operation::SetShapePathInViewport { path, bez_path, transform } => {
 				let transform = DAffine2::from_cols_array(transform);
 				self.set_transform_relative_to_viewport(path, transform)?;
@@ -550,7 +586,7 @@ impl Document {
 					}
 					LayerDataType::Folder(_) => (),
 				}
-				Some(vec![DocumentChanged, LayerChanged { path: path.clone() }])
+				Some([vec![DocumentChanged, LayerChanged { path: path.clone() }], update_thumbnails_upstream(path)].concat())
 			}
 			Operation::TransformLayerInScope { path, transform, scope } => {
 				let transform = DAffine2::from_cols_array(transform);
@@ -604,7 +640,7 @@ impl Document {
 					_ => return Err(DocumentError::NotAShape),
 				}
 				self.mark_as_dirty(path)?;
-				Some(vec![DocumentChanged, LayerChanged { path: path.clone() }])
+				Some([vec![DocumentChanged, LayerChanged { path: path.clone() }], update_thumbnails_upstream(path)].concat())
 			}
 			Operation::SetLayerFill { path, color } => {
 				let layer = self.layer_mut(path)?;
