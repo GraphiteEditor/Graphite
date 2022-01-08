@@ -26,7 +26,6 @@ impl From<DocumentOperation> for OverlayMessage {
 #[derive(Debug, Clone, Default)]
 pub struct OverlayMessageHandler {
 	pub overlays_graphene_document: GrapheneDocument,
-	_overlay_path_mapping: HashMap<Vec<LayerId>, Vec<LayerId>>,
 }
 
 impl MessageHandler<OverlayMessage, (&mut LayerMetadata, &Document, &InputPreprocessor)> for OverlayMessageHandler {
