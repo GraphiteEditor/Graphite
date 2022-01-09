@@ -134,11 +134,11 @@ export default defineComponent({
 
 				{ kind: "Separator", props: { type: "Section" } },
 
-				{ kind: "IconButton", tooltip: "Boolean Union", callback: () => this.editor.instance.boolean_operation("Union"), props: { icon: "BooleanUnion", size: 24 } },
-				{ kind: "IconButton", tooltip: "Boolean Subtract Front", callback: () => this.editor.instance.boolean_operation("SubFront"), props: { icon: "BooleanSubtractFront", size: 24 } },
-				{ kind: "IconButton", tooltip: "Boolean Subtract Back", callback: () => this.editor.instance.boolean_operation("SubBack"), props: { icon: "BooleanSubtractBack", size: 24 } },
-				{ kind: "IconButton", tooltip: "Boolean Intersect", callback: () => this.editor.instance.boolean_operation("Intersection"), props: { icon: "BooleanIntersect", size: 24 } },
-				{ kind: "IconButton", tooltip: "Boolean Difference", callback: () => this.editor.instance.boolean_operation("Difference"), props: { icon: "BooleanDifference", size: 24 } },
+				{ kind: "IconButton", tooltip: "Boolean Union", callback: (): void => this.editor.instance.boolean_operation("Union"), props: { icon: "BooleanUnion", size: 24 } },
+				{ kind: "IconButton", tooltip: "Boolean Subtract Front", callback: (): void => this.editor.instance.boolean_operation("SubFront"), props: { icon: "BooleanSubtractFront", size: 24 } },
+				{ kind: "IconButton", tooltip: "Boolean Subtract Back", callback: (): void => this.editor.instance.boolean_operation("SubBack"), props: { icon: "BooleanSubtractBack", size: 24 } },
+				{ kind: "IconButton", tooltip: "Boolean Intersect", callback: (): void => this.editor.instance.boolean_operation("Intersection"), props: { icon: "BooleanIntersect", size: 24 } },
+				{ kind: "IconButton", tooltip: "Boolean Difference", callback: (): void => this.editor.instance.boolean_operation("Difference"), props: { icon: "BooleanDifference", size: 24 } },
 
 				{ kind: "Separator", props: { type: "Related" } },
 

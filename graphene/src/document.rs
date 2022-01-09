@@ -128,7 +128,7 @@ impl Document {
 		}
 	}
 
-	/// Return vector of immutable references to each shape specified in paths
+	/// Return vector Shapes for each specified in paths
 	/// If any path is not a shape, or does not exist, DocumentError::InvalidPath is returned
 	fn shapes_as_seen(&self, paths: &Vec<Vec<LayerId>>) -> Result<Vec<Shape>, DocumentError> {
 		let mut shapes: Vec<Shape> = Vec::new();

@@ -335,16 +335,9 @@ pub fn line_intersection(a: &Line, b: &Line) -> Option<Intersect> {
 }
 
 /// returns true if rectangles overlap, even if either rectangle has 0 area
-/// does using slices here cause a slowdown?
+/// uses kurbo::Rect{x0, y0, x1, y1} where x0 <= x1 and y0 <= y1
 pub fn overlap(a: &Rect, b: &Rect) -> bool {
-	fn in_range(n: f64, range: &[f64]) -> bool {
-		n >= range[0] && n <= range[1]
-	}
-	fn in_range_e(n: f64, range: &[f64]) -> bool {
-		n > range[0] && n < range[1]
-	}
-	(in_range(b.x0, &[a.x0, a.x1]) || in_range(b.x1, &[a.x0, a.x1]) || in_range_e(a.x0, &[b.x0, b.x1]) || in_range_e(a.x1, &[b.x0, b.x1]))
-		&& (in_range(b.y0, &[a.y0, a.y1]) || in_range(b.y1, &[a.y0, a.y1]) || in_range_e(a.y0, &[b.y0, b.y1]) || in_range_e(a.y1, &[b.y0, b.y1]))
+	a.x0 <= b.x1 && a.y0 <= b.y1 && b.x0 <= a.x1 && b.y0 <= a.y1
 }
 
 /// tests if a t value belongs to [0.0, 1.0]
