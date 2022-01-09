@@ -8,8 +8,8 @@ use crate::{
 };
 use kurbo::{BezPath, CubicBez, Line, ParamCurve, ParamCurveArclen, ParamCurveArea, ParamCurveExtrema, PathEl, PathSeg, QuadBez, Rect};
 use serde::{Deserialize, Serialize};
-use std::fmt; // are using fmt::Result, but don't want to conlict with std::result::Result
 use std::fmt::{Debug, Formatter};
+use std::{fmt, ops::Not}; // are using fmt::Result, but don't want to conlict with std::result::Result
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq)]
 pub enum BooleanOperation {
@@ -157,7 +157,7 @@ impl PathGraph {
 		if new.size() == 0 || new.size() % 2 != 0 {
 			return None;
 		}
-		new.add_edges_from_path(alpha, Origin::Alpha, reverse);
+		new.add_edges_from_path(alpha, Origin::Alpha, false);
 		new.add_edges_from_path(beta, Origin::Beta, reverse);
 		// log::debug!("size: {}, {:?}", new.size(), new);
 		Some(new)
@@ -210,10 +210,15 @@ impl PathGraph {
 		self.add_edge(origin, cstart.unwrap(), start_idx.unwrap(), current, reverse);
 	}
 
-	fn add_edge(&mut self, origin: Origin, vertex: usize, destination: usize, curve: Vec<PathSeg>, reverse: bool) {
+	fn add_edge(&mut self, origin: Origin, vertex: usize, destination: usize, mut curve: Vec<PathSeg>, reverse: bool) {
+		if reverse {
+			for seg in &mut curve {
+				reverse_pathseg(seg);
+			}
+		}
 		let mut new_edge = Edge {
 			from: origin,
-			destination: destination,
+			destination,
 			curve: BezPath::from_path_segments(curve.into_iter()),
 		};
 		if reverse {
@@ -339,6 +344,7 @@ pub fn boolean_operation(select: BooleanOperation, alpha: &Shape, beta: &Shape) 
 	}
 	let alpha_dir = Cycle::direction_for_path(&alpha)?;
 	let beta_dir = Cycle::direction_for_path(&beta)?;
+	log::debug!("alpha: {:?} beta: {:?}", alpha_dir, beta_dir);
 	match select {
 		BooleanOperation::Union => {
 			let graph = PathGraph::from_paths(&alpha, &beta, alpha_dir != beta_dir).ok_or(())?;
@@ -369,11 +375,11 @@ pub fn boolean_operation(select: BooleanOperation, alpha: &Shape, beta: &Shape) 
 		}
 		BooleanOperation::SubBack => {
 			let graph = PathGraph::from_paths(&alpha, &beta, alpha_dir == beta_dir).ok_or(())?;
-			collect_shapes(&graph, &mut graph.get_cycles(), |dir| dir == alpha_dir)
+			collect_shapes(&graph, &mut graph.get_cycles(), |dir| dir != alpha_dir)
 		}
 		BooleanOperation::SubFront => {
 			let graph = PathGraph::from_paths(&alpha, &beta, alpha_dir == beta_dir).ok_or(())?;
-			collect_shapes(&graph, &mut graph.get_cycles(), |dir| dir == beta_dir)
+			collect_shapes(&graph, &mut graph.get_cycles(), |dir| dir == alpha_dir)
 		}
 	}
 }
@@ -395,8 +401,9 @@ where
 	if cycles.len() == 0 {
 		return Err(());
 	}
-	for ref mut cycle in cycles {
+	for cycle in cycles {
 		if let Ok(dir) = cycle.direction() {
+			log::debug!("dir: {:?}", dir);
 			if predicate(dir) {
 				shapes.push(graph.get_shape(cycle));
 			}
@@ -405,6 +412,17 @@ where
 		}
 	}
 	Ok(shapes)
+}
+
+pub fn reverse_pathseg(seg: &mut PathSeg) {
+	match seg {
+		PathSeg::Line(line) => std::mem::swap(&mut line.p0, &mut line.p1),
+		PathSeg::Quad(quad) => std::mem::swap(&mut quad.p0, &mut quad.p1),
+		PathSeg::Cubic(cubic) => {
+			std::mem::swap(&mut cubic.p0, &mut cubic.p3);
+			std::mem::swap(&mut cubic.p1, &mut cubic.p2);
+		}
+	}
 }
 
 pub fn is_closed(curve: &BezPath) -> bool {
