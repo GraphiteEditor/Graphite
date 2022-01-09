@@ -8,10 +8,9 @@ use super::movement_handler::{MovementMessage, MovementMessageHandler};
 use super::overlay_message_handler::OverlayMessageHandler;
 use super::transform_layer_handler::{TransformLayerMessage, TransformLayerMessageHandler};
 use super::vectorize_layer_metadata;
-
-use crate::consts::DEFAULT_DOCUMENT_NAME;
-use crate::consts::GRAPHITE_DOCUMENT_VERSION;
-use crate::consts::{ASYMPTOTIC_EFFECT, FILE_EXPORT_SUFFIX, FILE_SAVE_SUFFIX, SCALE_EFFECT, SCROLLBAR_SPACING};
+use crate::consts::{
+	ASYMPTOTIC_EFFECT, DEFAULT_DOCUMENT_NAME, FILE_EXPORT_SUFFIX, FILE_SAVE_SUFFIX, GRAPHITE_DOCUMENT_VERSION, SCALE_EFFECT, SCROLLBAR_SPACING, VIEWPORT_ZOOM_TO_FIT_PADDING_SCALE_FACTOR,
+};
 use crate::document::Clipboard;
 use crate::input::InputPreprocessor;
 use crate::message_prelude::*;
@@ -582,7 +581,8 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				);
 			}
 			ExportDocument => {
-				let bbox = self.graphene_document.visible_layers_bounding_box().unwrap_or([DVec2::ZERO, ipp.viewport_bounds.size()]);
+				// TODO(MFISH33): Add Dialog to select artboards
+				let bbox = self.document_bounds().unwrap_or([DVec2::ZERO, ipp.viewport_bounds.size()]);
 				let size = bbox[1] - bbox[0];
 				let name = match self.name.ends_with(FILE_SAVE_SUFFIX) {
 					true => self.name.clone().replace(FILE_SAVE_SUFFIX, FILE_EXPORT_SUFFIX),
@@ -1073,7 +1073,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					responses.push_back(
 						MovementMessage::FitViewportToBounds {
 							bounds,
-							padding_scale_factor: Some(1.05),
+							padding_scale_factor: Some(VIEWPORT_ZOOM_TO_FIT_PADDING_SCALE_FACTOR),
 							prevent_zoom_past_100: true,
 						}
 						.into(),

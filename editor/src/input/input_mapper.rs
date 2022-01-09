@@ -134,7 +134,6 @@ impl Default for Mapping {
 		// it as an available action in the respective message handler file (such as the bottom of `document_message_handler.rs`)
 		let mappings = mapping![
 			// Higher priority than entries in sections below
-			entry! {action=DocumentMessage::ZoomCanvasToFitAll, key_down=Key0, modifiers=[KeyControl]},
 			entry! {action=DocumentsMessage::Paste(User), key_down=KeyV, modifiers=[KeyControl]},
 			// Transform layers
 			entry! {action=TransformLayerMessage::ApplyOperation, key_down=KeyEnter},
@@ -235,6 +234,7 @@ impl Default for Mapping {
 			entry! {action=DocumentMessage::SaveDocument, key_down=KeyS, modifiers=[KeyControl]},
 			entry! {action=DocumentMessage::SaveDocument, key_down=KeyS, modifiers=[KeyControl, KeyShift]},
 			entry! {action=DocumentMessage::DebugPrintDocument, key_down=Key9},
+			entry! {action=DocumentMessage::ZoomCanvasToFitAll, key_down=Key0, modifiers=[KeyControl]},
 			// Initiate Transform Layers
 			entry! {action=TransformLayerMessage::BeginGrab, key_down=KeyG},
 			entry! {action=TransformLayerMessage::BeginRotate, key_down=KeyR},

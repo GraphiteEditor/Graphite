@@ -46,3 +46,4 @@ pub const COLOR_ACCENT: Color = Color::from_unsafe(0x00 as f32 / 255., 0xA8 as f
 
 // Document
 pub const GRAPHITE_DOCUMENT_VERSION: &str = "0.0.2";
+pub const VIEWPORT_ZOOM_TO_FIT_PADDING_SCALE_FACTOR: f32 = 1.05;
