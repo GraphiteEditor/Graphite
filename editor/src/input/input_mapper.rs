@@ -234,6 +234,7 @@ impl Default for Mapping {
 			entry! {action=DocumentMessage::SaveDocument, key_down=KeyS, modifiers=[KeyControl]},
 			entry! {action=DocumentMessage::SaveDocument, key_down=KeyS, modifiers=[KeyControl, KeyShift]},
 			entry! {action=DocumentMessage::DebugPrintDocument, key_down=Key9},
+			entry! {action=DocumentMessage::ZoomCanvasToFitAll, key_down=Key0, modifiers=[KeyControl]},
 			// Initiate Transform Layers
 			entry! {action=TransformLayerMessage::BeginGrab, key_down=KeyG},
 			entry! {action=TransformLayerMessage::BeginRotate, key_down=KeyR},
@@ -251,7 +252,6 @@ impl Default for Mapping {
 			entry! {action=MovementMessage::DecreaseCanvasZoom { center_on_mouse: false }, key_down=KeyMinus, modifiers=[KeyControl]},
 			entry! {action=MovementMessage::SetCanvasZoom(1.), key_down=Key1, modifiers=[KeyControl]},
 			entry! {action=MovementMessage::SetCanvasZoom(2.), key_down=Key2, modifiers=[KeyControl]},
-			entry! {action=MovementMessage::ZoomCanvasToFitAll, key_down=Key0, modifiers=[KeyControl]},
 			entry! {action=MovementMessage::WheelCanvasZoom, message=InputMapperMessage::MouseScroll, modifiers=[KeyControl]},
 			entry! {action=MovementMessage::WheelCanvasTranslate { use_y_as_x: true }, message=InputMapperMessage::MouseScroll, modifiers=[KeyShift]},
 			entry! {action=MovementMessage::WheelCanvasTranslate { use_y_as_x: false }, message=InputMapperMessage::MouseScroll},

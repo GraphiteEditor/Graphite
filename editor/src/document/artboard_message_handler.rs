@@ -30,6 +30,12 @@ pub struct ArtboardMessageHandler {
 	pub artboard_ids: Vec<LayerId>,
 }
 
+impl ArtboardMessageHandler {
+	pub fn is_infinite_canvas(&self) -> bool {
+		self.artboard_ids.is_empty()
+	}
+}
+
 impl MessageHandler<ArtboardMessage, (&mut LayerMetadata, &GrapheneDocument, &InputPreprocessor)> for ArtboardMessageHandler {
 	fn process_action(&mut self, message: ArtboardMessage, _data: (&mut LayerMetadata, &GrapheneDocument, &InputPreprocessor), responses: &mut VecDeque<Message>) {
 		// let (layer_metadata, document, ipp) = data;
@@ -55,29 +61,31 @@ impl MessageHandler<ArtboardMessage, (&mut LayerMetadata, &GrapheneDocument, &In
 					)
 					.into(),
 				);
-			}
-			RenderArtboards => {}
-		}
 
-		// Render an infinite canvas if there are no artboards
-		if self.artboard_ids.is_empty() {
-			responses.push_back(
-				FrontendMessage::UpdateArtboards {
-					svg: r##"<rect width="100%" height="100%" fill="#ffffff" />"##.to_string(),
+				responses.push_back(DocumentMessage::RenderDocument.into());
+			}
+			RenderArtboards => {
+				// Render an infinite canvas if there are no artboards
+				if self.artboard_ids.is_empty() {
+					responses.push_back(
+						FrontendMessage::UpdateArtboards {
+							svg: r##"<rect width="100%" height="100%" fill="#ffffff" />"##.to_string(),
+						}
+						.into(),
+					)
+				} else {
+					responses.push_back(
+						FrontendMessage::UpdateArtboards {
+							svg: self.artboards_graphene_document.render_root(ViewMode::Normal),
+						}
+						.into(),
+					);
 				}
-				.into(),
-			)
-		} else {
-			responses.push_back(
-				FrontendMessage::UpdateArtboards {
-					svg: self.artboards_graphene_document.render_root(ViewMode::Normal),
-				}
-				.into(),
-			);
+			}
 		}
 	}
 
 	fn actions(&self) -> ActionList {
-		actions!(ArtBoardMessageDiscriminant;)
+		actions!(ArtboardMessageDiscriminant;)
 	}
 }

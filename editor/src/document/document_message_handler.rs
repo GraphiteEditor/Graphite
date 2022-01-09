@@ -294,7 +294,7 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 				document,
 				document_is_saved,
 			} => {
-				let document = DocumentMessageHandler::with_name_and_content(document_name, document, ipp);
+				let document = DocumentMessageHandler::with_name_and_content(document_name, document);
 				match document {
 					Ok(mut document) => {
 						document.set_save_state(document_is_saved);
