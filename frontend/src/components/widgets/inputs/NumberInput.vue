@@ -268,7 +268,11 @@ export default defineComponent({
 				return;
 			}
 
-			const sanitized = clamp(newValue, this.min, this.max);
+			// We cannot use the clamp function here as we need undifined values to lead to no clamp.
+
+			let sanitized = newValue;
+			if (typeof this.min === "number") sanitized = Math.max(sanitized, this.min);
+			if (typeof this.max === "number") sanitized = Math.min(sanitized, this.max);
 
 			this.setText(sanitized);
 		},
