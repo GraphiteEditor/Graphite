@@ -95,47 +95,20 @@ impl Document {
 		self.folder_mut(path)?.layer_mut(id).ok_or_else(|| DocumentError::LayerNotFound(path.into()))
 	}
 
-	fn shape_as_seen(&self, path: &[LayerId]) -> Result<Shape, DocumentError> {
-		fn helper(layer: &Layer, mut transform: DAffine2, mut slice: usize, path: &[LayerId]) -> Result<Shape, DocumentError> {
-			match &layer.data {
-				LayerDataType::Shape(shape) => {
-					let mut clone = shape.clone();
-					transform = layer.transform * transform;
-					clone.path.apply_affine(Affine::new(transform.to_cols_array()));
-					Ok(clone)
-				}
-				LayerDataType::Folder(folder) => {
-					transform = layer.transform * transform;
-					if slice >= path.len() {
-						return Err(DocumentError::InvalidPath);
-					}
-					if let Some(sub_layer) = folder.layer(path[slice]) {
-						slice += 1;
-						return helper(sub_layer, transform, slice, path);
-					}
-					Err(DocumentError::InvalidPath)
-				}
-			}
-		}
-		// skip the root layer, whose transform doesn't effect the coordinates
-		if let LayerDataType::Folder(root) = &self.root.data {
-			match root.layer(path[0]) {
-				Some(layer) => helper(layer, DAffine2::IDENTITY, 1, path),
-				None => Err(DocumentError::InvalidPath),
-			}
-		} else {
-			Err(DocumentError::NotAFolder)
-		}
-	}
-
 	/// Return vector Shapes for each specified in paths
 	/// If any path is not a shape, or does not exist, DocumentError::InvalidPath is returned
-	fn shapes_as_seen(&self, paths: &Vec<Vec<LayerId>>) -> Result<Vec<Shape>, DocumentError> {
+	fn transformed_shapes(&self, paths: &Vec<Vec<LayerId>>) -> Result<Vec<Shape>, DocumentError> {
 		let mut shapes: Vec<Shape> = Vec::new();
+		let undo_viewport = self.root.transform.inverse();
 		for path in paths {
-			match self.shape_as_seen(path) {
-				Ok(shape) => shapes.push(shape),
-				Err(err) => return Err(err),
+			match (self.multiply_transforms(path), &self.layer(path)?.data) {
+				(Ok(shape_transform), LayerDataType::Shape(shape)) => {
+					let mut new_shape = shape.clone();
+					new_shape.path.apply_affine(Affine::new((undo_viewport * shape_transform).to_cols_array()));
+					shapes.push(new_shape);
+				}
+				(Ok(_), _) => return Err(DocumentError::InvalidPath),
+				(Err(err), _) => return Err(err),
 			}
 		}
 		Ok(shapes)
@@ -525,7 +498,7 @@ impl Document {
 				let mut responses = Vec::new();
 				if selected.len() > 1 && selected.len() < 3 {
 					// to deal with union of shapes with different transforms, we
-					let shapes = self.shapes_as_seen(selected)?;
+					let shapes = self.transformed_shapes(selected)?;
 					let new_shapes = boolean_operation(*operation, &shapes[0], &shapes[1])?;
 
 					for path in selected {
