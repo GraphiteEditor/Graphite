@@ -39,7 +39,11 @@ pub enum MovementMessage {
 		center_on_mouse: bool,
 	},
 	WheelCanvasZoom,
-	ZoomCanvasToFitAll,
+	FitViewportToBounds {
+		bounds: [DVec2; 2],
+		padding_scale_factor: Option<f32>,
+		prevent_zoom_past_100: bool,
+	},
 	TranslateCanvas(DVec2),
 	TranslateCanvasByViewportFraction(DVec2),
 }
@@ -273,25 +277,34 @@ impl MessageHandler<MovementMessage, (&Document, &InputPreprocessor)> for Moveme
 				responses.push_back(ToolMessage::DocumentIsDirty.into());
 				responses.push_back(FrontendMessage::SetCanvasRotation { new_radians: self.snapped_angle() }.into());
 			}
-			ZoomCanvasToFitAll => {
-				if let Some([pos1, pos2]) = document.visible_layers_bounding_box() {
-					let pos1 = document.root.transform.inverse().transform_point2(pos1);
-					let pos2 = document.root.transform.inverse().transform_point2(pos2);
-					let v1 = document.root.transform.inverse().transform_point2(DVec2::ZERO);
-					let v2 = document.root.transform.inverse().transform_point2(ipp.viewport_bounds.size());
+			FitViewportToBounds {
+				bounds: [bounds_corner_a, bounds_corner_b],
+				padding_scale_factor,
+				prevent_zoom_past_100,
+			} => {
+				let pos1 = document.root.transform.inverse().transform_point2(bounds_corner_a);
+				let pos2 = document.root.transform.inverse().transform_point2(bounds_corner_b);
+				let v1 = document.root.transform.inverse().transform_point2(DVec2::ZERO);
+				let v2 = document.root.transform.inverse().transform_point2(ipp.viewport_bounds.size());
 
-					let center = v1.lerp(v2, 0.5) - pos1.lerp(pos2, 0.5);
-					let size = (pos2 - pos1) / (v2 - v1);
-					let size = 1. / size;
-					let new_scale = size.min_element();
+				let center = v1.lerp(v2, 0.5) - pos1.lerp(pos2, 0.5);
+				let size = (pos2 - pos1) / (v2 - v1);
+				let size = 1. / size;
+				let new_scale = size.min_element();
 
-					self.pan += center;
-					self.zoom *= new_scale;
-					responses.push_back(FrontendMessage::SetCanvasZoom { new_zoom: self.zoom }.into());
-					responses.push_back(ToolMessage::DocumentIsDirty.into());
-					responses.push_back(DocumentMessage::DirtyRenderDocumentInOutlineView.into());
-					self.create_document_transform(&ipp.viewport_bounds, responses);
+				self.pan += center;
+				self.zoom *= new_scale;
+
+				self.zoom /= padding_scale_factor.unwrap_or(1.) as f64;
+
+				if self.zoom > 1. && prevent_zoom_past_100 {
+					self.zoom = 1.
 				}
+
+				responses.push_back(FrontendMessage::SetCanvasZoom { new_zoom: self.zoom }.into());
+				responses.push_back(ToolMessage::DocumentIsDirty.into());
+				responses.push_back(DocumentMessage::DirtyRenderDocumentInOutlineView.into());
+				self.create_document_transform(&ipp.viewport_bounds, responses);
 			}
 			TranslateCanvas(delta) => {
 				let transformed_delta = document.root.transform.inverse().transform_vector2(delta);
@@ -321,7 +334,6 @@ impl MessageHandler<MovementMessage, (&Document, &InputPreprocessor)> for Moveme
 			IncreaseCanvasZoom,
 			DecreaseCanvasZoom,
 			WheelCanvasTranslate,
-			ZoomCanvasToFitAll,
 			TranslateCanvas,
 			TranslateCanvasByViewportFraction,
 		);
