@@ -220,6 +220,7 @@ Bezier Curve Intersection Algorithm
 - TODO: How does f64 precision effect the algorithm?
 - Bug: algorithm finds same intersection multiple times in same recursion path
 - Bug: intersections of "perfectly alligned" line or curve
+- Bug: intersections on the end of segments
 - Improvement: algorithm behavior when curves have very different sizes
 - Improvement: more adapative way to decide when "close enough"
 - Improvement: quality metric?

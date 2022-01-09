@@ -902,7 +902,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				responses.push_back(
 					DocumentOperation::BooleanOperation {
 						operation: op,
-						selected: self.selected_layers().map(|path_slice| Vec::from(path_slice)).collect(),
+						selected: self.selected_layers_sorted().iter().map(|slice| (*slice).into()).collect(),
 					}
 					.into(),
 				);
