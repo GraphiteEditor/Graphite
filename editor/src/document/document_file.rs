@@ -82,7 +82,6 @@ pub struct DocumentMessageHandler {
 	#[serde(with = "vectorize_layer_metadata")]
 	pub layer_metadata: HashMap<Vec<LayerId>, LayerMetadata>,
 	layer_range_selection_reference: Vec<LayerId>,
-	#[serde(skip)]
 	movement_handler: MovementMessageHandler,
 	#[serde(skip)]
 	overlay_message_handler: OverlayMessageHandler,
@@ -182,6 +181,7 @@ pub enum DocumentMessage {
 		neighbor: Vec<LayerId>,
 	},
 	SetSnapping(bool),
+	ZoomCanvasToFitAll,
 }
 
 impl From<DocumentOperation> for DocumentMessage {
@@ -225,13 +225,10 @@ impl DocumentMessageHandler {
 		document
 	}
 
-	pub fn with_name_and_content(name: String, serialized_content: String, ipp: &InputPreprocessor) -> Result<Self, EditorError> {
+	pub fn with_name_and_content(name: String, serialized_content: String) -> Result<Self, EditorError> {
 		match Self::deserialize_document(&serialized_content) {
 			Ok(mut document) => {
 				document.name = name;
-				let starting_root_transform = document.movement_handler.calculate_offset_transform(ipp.viewport_bounds.size() / 2.);
-				document.graphene_document.root.transform = starting_root_transform;
-				document.artboard_message_handler.artboards_graphene_document.root.transform = starting_root_transform;
 				Ok(document)
 			}
 			Err(DocumentError::InvalidFile(msg)) => Err(EditorError::Document(msg)),
@@ -539,6 +536,14 @@ impl DocumentMessageHandler {
 		let layer = self.graphene_document.layer(path).ok()?;
 
 		Some(layer_panel_entry(layer_metadata, transform, layer, path.to_vec()))
+	}
+
+	pub fn document_bounds(&self) -> Option<[DVec2; 2]> {
+		if self.artboard_message_handler.is_infinite_canvas() {
+			self.graphene_document.viewport_bounding_box(&[]).ok().flatten()
+		} else {
+			self.artboard_message_handler.artboards_graphene_document.viewport_bounding_box(&[]).ok().flatten()
+		}
 	}
 }
 
@@ -863,7 +868,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				let scale = 0.5 + ASYMPTOTIC_EFFECT + document_transform_scale * SCALE_EFFECT;
 				let viewport_size = ipp.viewport_bounds.size();
 				let viewport_mid = ipp.viewport_bounds.center();
-				let [bounds1, bounds2] = self.graphene_document.visible_layers_bounding_box().unwrap_or([viewport_mid; 2]);
+				let [bounds1, bounds2] = self.document_bounds().unwrap_or([viewport_mid; 2]);
 				let bounds1 = bounds1.min(viewport_mid) - viewport_size * scale;
 				let bounds2 = bounds2.max(viewport_mid) + viewport_size * scale;
 				let bounds_length = (bounds2 - bounds1) * (1. + SCROLLBAR_SPACING);
@@ -1063,6 +1068,18 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			SetSnapping(new_status) => {
 				self.snapping_enabled = new_status;
 			}
+			ZoomCanvasToFitAll => {
+				if let Some(bounds) = self.document_bounds() {
+					responses.push_back(
+						MovementMessage::FitViewportToBounds {
+							bounds,
+							padding_scale_factor: Some(1.05),
+							prevent_zoom_past_100: true,
+						}
+						.into(),
+					)
+				}
+			}
 		}
 	}
 
@@ -1078,6 +1095,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			SetSnapping,
 			DebugPrintDocument,
 			MoveLayerInTree,
+			ZoomCanvasToFitAll,
 		);
 
 		if self.layer_metadata.values().any(|data| data.selected) {

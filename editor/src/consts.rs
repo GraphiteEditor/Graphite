@@ -45,4 +45,4 @@ pub const FILE_EXPORT_SUFFIX: &str = ".svg";
 pub const COLOR_ACCENT: Color = Color::from_unsafe(0x00 as f32 / 255., 0xA8 as f32 / 255., 0xFF as f32 / 255.);
 
 // Document
-pub const GRAPHITE_DOCUMENT_VERSION: &str = "0.0.1";
+pub const GRAPHITE_DOCUMENT_VERSION: &str = "0.0.2";

@@ -134,6 +134,7 @@ impl Default for Mapping {
 		// it as an available action in the respective message handler file (such as the bottom of `document_message_handler.rs`)
 		let mappings = mapping![
 			// Higher priority than entries in sections below
+			entry! {action=DocumentMessage::ZoomCanvasToFitAll, key_down=Key0, modifiers=[KeyControl]},
 			entry! {action=DocumentsMessage::Paste(User), key_down=KeyV, modifiers=[KeyControl]},
 			// Transform layers
 			entry! {action=TransformLayerMessage::ApplyOperation, key_down=KeyEnter},
@@ -251,7 +252,6 @@ impl Default for Mapping {
 			entry! {action=MovementMessage::DecreaseCanvasZoom { center_on_mouse: false }, key_down=KeyMinus, modifiers=[KeyControl]},
 			entry! {action=MovementMessage::SetCanvasZoom(1.), key_down=Key1, modifiers=[KeyControl]},
 			entry! {action=MovementMessage::SetCanvasZoom(2.), key_down=Key2, modifiers=[KeyControl]},
-			entry! {action=MovementMessage::ZoomCanvasToFitAll, key_down=Key0, modifiers=[KeyControl]},
 			entry! {action=MovementMessage::WheelCanvasZoom, message=InputMapperMessage::MouseScroll, modifiers=[KeyControl]},
 			entry! {action=MovementMessage::WheelCanvasTranslate { use_y_as_x: true }, message=InputMapperMessage::MouseScroll, modifiers=[KeyShift]},
 			entry! {action=MovementMessage::WheelCanvasTranslate { use_y_as_x: false }, message=InputMapperMessage::MouseScroll},
