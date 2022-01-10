@@ -399,7 +399,7 @@ export default defineComponent({
 			return { insertFolder, insertIndex, insertAboveNode };
 		},
 		async dragStart(event: DragEvent, layer: LayerPanelEntry) {
-			this.selectLayer(layer, event.ctrlKey, event.shiftKey);
+			if (!layer.layer_metadata.selected) this.selectLayer(layer, event.ctrlKey, event.shiftKey);
 
 			// Set style of cursor for drag
 			if (event.dataTransfer) {
