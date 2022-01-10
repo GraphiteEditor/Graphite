@@ -832,10 +832,12 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 							}
 							DocumentResponse::LayerChanged { path } => responses.push_back(LayerChanged(path.clone()).into()),
 							DocumentResponse::CreatedLayer { path } => {
-								self.layer_metadata.insert(path.clone(), LayerMetadata::new(false));
+								if !self.layer_metadata.contains_key(path) {
+									self.layer_metadata.insert(path.clone(), LayerMetadata::new(false));
+								}
 								responses.push_back(LayerChanged(path.clone()).into());
 								self.layer_range_selection_reference = path.clone();
-								responses.push_back(SetSelectedLayers(vec![path.clone()]).into());
+								responses.push_back(AddSelectedLayers(vec![path.clone()]).into());
 							}
 							DocumentResponse::DocumentChanged => responses.push_back(RenderDocument.into()),
 						};
