@@ -16,8 +16,8 @@ pub enum BooleanOperation {
 	Union,
 	Difference,
 	Intersection,
-	SubFront,
-	SubBack,
+	SubtractFront,
+	SubtractBack,
 }
 
 struct Edge {
@@ -373,11 +373,11 @@ pub fn boolean_operation(select: BooleanOperation, alpha: &Shape, beta: &Shape) 
 			);
 			collect_shapes(&graph, &mut cycles, |dir| dir == alpha_dir)
 		}
-		BooleanOperation::SubBack => {
+		BooleanOperation::SubtractBack => {
 			let graph = PathGraph::from_paths(&alpha, &beta, alpha_dir == beta_dir).ok_or(())?;
 			collect_shapes(&graph, &mut graph.get_cycles(), |dir| dir != alpha_dir)
 		}
-		BooleanOperation::SubFront => {
+		BooleanOperation::SubtractFront => {
 			let graph = PathGraph::from_paths(&alpha, &beta, alpha_dir == beta_dir).ok_or(())?;
 			collect_shapes(&graph, &mut graph.get_cycles(), |dir| dir == alpha_dir)
 		}

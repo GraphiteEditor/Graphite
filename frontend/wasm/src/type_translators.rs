@@ -133,8 +133,8 @@ pub fn translate_boolean_operation(operation: &str) -> Option<BooleanOperation> 
 		"Union" => Some(BooleanOperation::Union),
 		"Difference" => Some(BooleanOperation::Difference),
 		"Intersection" => Some(BooleanOperation::Intersection),
-		"SubFront" => Some(BooleanOperation::SubFront),
-		"SubBack" => Some(BooleanOperation::SubBack),
+		"SubtractFront" => Some(BooleanOperation::SubtractFront),
+		"SubtractBack" => Some(BooleanOperation::SubtractBack),
 		_ => None,
 	}
 }
