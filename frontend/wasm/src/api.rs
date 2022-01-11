@@ -505,9 +505,11 @@ impl JsEditorHandle {
 		self.dispatch(message);
 	}
 
-	// Creates an artboard at a specified point with a width and height
-	pub fn create_artboard(&self, top: f64, left: f64, height: f64, width: f64) {
+	/// Creates an artboard at a specified point with a width and height
+	pub fn create_artboard_and_fit_to_viewport(&self, top: f64, left: f64, height: f64, width: f64) {
 		let message = ArtboardMessage::AddArtboard { top, left, height, width };
+		self.dispatch(message);
+		let message = DocumentMessage::ZoomCanvasToFitAll;
 		self.dispatch(message);
 	}
 }
