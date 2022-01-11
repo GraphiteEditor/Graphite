@@ -152,8 +152,6 @@
 <script lang="ts">
 import { defineComponent, PropType } from "vue";
 
-import { clamp } from "@/utilities/math";
-
 export type IncrementBehavior = "Add" | "Multiply" | "Callback" | "None";
 export type IncrementDirection = "Decrease" | "Increase";
 
@@ -242,17 +240,18 @@ export default defineComponent({
 			if (invalid) sanitized = this.value;
 
 			if (this.isInteger) sanitized = Math.round(sanitized);
-			sanitized = clamp(newValue, this.min, this.max);
+			if (typeof this.min === "number" && !Number.isNaN(this.min)) sanitized = Math.max(sanitized, this.min);
+			if (typeof this.max === "number" && !Number.isNaN(this.max)) sanitized = Math.min(sanitized, this.max);
 
 			if (!invalid) this.$emit("update:value", sanitized);
 
 			this.setText(sanitized);
 		},
 		setText(value: number) {
-			// Find the amount of digits on the left side of the Decimal
+			// Find the amount of digits on the left side of the decimal
 			// 10.25 == 2
 			// 1.23 == 1
-			// 0.23 == 0 - Reason for the slightly more complicated code
+			// 0.23 == 0 (Reason for the slightly more complicated code)
 			const leftSideDigits = Math.max(Math.floor(value).toString().length, 0) * Math.sign(value);
 
 			const roundingPower = 10 ** Math.max(this.displayDecimalPlaces - leftSideDigits, 0);
@@ -268,8 +267,7 @@ export default defineComponent({
 				return;
 			}
 
-			// We cannot use the clamp function here as we need undifined values to lead to no clamp.
-
+			// The simple `clamp()` function can't be used here since `undefined` values need to be boundless
 			let sanitized = newValue;
 			if (typeof this.min === "number") sanitized = Math.max(sanitized, this.min);
 			if (typeof this.max === "number") sanitized = Math.min(sanitized, this.max);
