@@ -1,9 +1,8 @@
 use std::ops::Mul;
 
+use crate::consts::F64PRECISION;
 use glam::{DAffine2, DMat2, DVec2};
 use kurbo::{BezPath, Line, ParamCurve, ParamCurveExtrema, PathSeg, Point, Rect, Shape};
-
-pub const F64PRECISION: f64 = f64::EPSILON * 1000.0; // for f64 comparisons
 
 #[derive(Debug, Clone, Default, Copy)]
 pub struct Quad([DVec2; 4]);

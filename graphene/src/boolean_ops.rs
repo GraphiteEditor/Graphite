@@ -1,6 +1,7 @@
 use crate::{
 	color::Color,
-	intersection::{intersections, Intersect, Origin, F64PRECISION},
+	consts::F64PRECISION,
+	intersection::{intersections, Intersect, Origin},
 	layers::{
 		simple_shape::Shape,
 		style::{Fill, PathStyle, Stroke},
