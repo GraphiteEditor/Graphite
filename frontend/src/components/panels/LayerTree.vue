@@ -391,8 +391,8 @@ export default defineComponent({
 					closest = -distance;
 				}
 				// Inserting with no nesting at the end of the panel
-				else if (closest === Infinity) {
-					insertIndex = folderIndex;
+				else if (closest === Infinity && layer.path.length === 1) {
+					insertIndex = folderIndex + 1;
 				}
 			});
 
