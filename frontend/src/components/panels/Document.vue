@@ -251,7 +251,17 @@
 <script lang="ts">
 import { defineComponent } from "vue";
 
-import { UpdateArtwork, UpdateOverlays, UpdateScrollbars, UpdateRulers, SetActiveTool, SetCanvasZoom, SetCanvasRotation, ToolName, UpdateArtboards } from "@/dispatcher/js-messages";
+import {
+	UpdateDocumentArtwork,
+	UpdateDocumentOverlays,
+	UpdateDocumentScrollbars,
+	UpdateDocumentRulers,
+	UpdateActiveTool,
+	UpdateCanvasZoom,
+	UpdateCanvasRotation,
+	ToolName,
+	UpdateDocumentArtboards,
+} from "@/dispatcher/js-messages";
 
 import LayoutCol from "@/components/layout/LayoutCol.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
@@ -330,41 +340,41 @@ export default defineComponent({
 		},
 	},
 	mounted() {
-		this.editor.dispatcher.subscribeJsMessage(UpdateArtwork, (UpdateArtwork) => {
-			this.artworkSvg = UpdateArtwork.svg;
+		this.editor.dispatcher.subscribeJsMessage(UpdateDocumentArtwork, (UpdateDocumentArtwork) => {
+			this.artworkSvg = UpdateDocumentArtwork.svg;
 		});
 
-		this.editor.dispatcher.subscribeJsMessage(UpdateOverlays, (updateOverlays) => {
-			this.overlaysSvg = updateOverlays.svg;
+		this.editor.dispatcher.subscribeJsMessage(UpdateDocumentOverlays, (updateDocumentOverlays) => {
+			this.overlaysSvg = updateDocumentOverlays.svg;
 		});
 
-		this.editor.dispatcher.subscribeJsMessage(UpdateArtboards, (updateArtboards) => {
-			this.artboardSvg = updateArtboards.svg;
+		this.editor.dispatcher.subscribeJsMessage(UpdateDocumentArtboards, (updateDocumentArtboards) => {
+			this.artboardSvg = updateDocumentArtboards.svg;
 		});
 
-		this.editor.dispatcher.subscribeJsMessage(UpdateScrollbars, (updateScrollbars) => {
-			this.scrollbarPos = updateScrollbars.position;
-			this.scrollbarSize = updateScrollbars.size;
-			this.scrollbarMultiplier = updateScrollbars.multiplier;
+		this.editor.dispatcher.subscribeJsMessage(UpdateDocumentScrollbars, (updateDocumentScrollbars) => {
+			this.scrollbarPos = updateDocumentScrollbars.position;
+			this.scrollbarSize = updateDocumentScrollbars.size;
+			this.scrollbarMultiplier = updateDocumentScrollbars.multiplier;
 		});
 
-		this.editor.dispatcher.subscribeJsMessage(UpdateRulers, (updateRulers) => {
-			this.rulerOrigin = updateRulers.origin;
-			this.rulerSpacing = updateRulers.spacing;
-			this.rulerInterval = updateRulers.interval;
+		this.editor.dispatcher.subscribeJsMessage(UpdateDocumentRulers, (updateDocumentRulers) => {
+			this.rulerOrigin = updateDocumentRulers.origin;
+			this.rulerSpacing = updateDocumentRulers.spacing;
+			this.rulerInterval = updateDocumentRulers.interval;
 		});
 
-		this.editor.dispatcher.subscribeJsMessage(SetActiveTool, (setActiveTool) => {
-			this.activeTool = setActiveTool.tool_name;
-			this.activeToolOptions = setActiveTool.tool_options;
+		this.editor.dispatcher.subscribeJsMessage(UpdateActiveTool, (updateActiveTool) => {
+			this.activeTool = updateActiveTool.tool_name;
+			this.activeToolOptions = updateActiveTool.tool_options;
 		});
 
-		this.editor.dispatcher.subscribeJsMessage(SetCanvasZoom, (setCanvasZoom) => {
-			this.documentZoom = setCanvasZoom.new_zoom * 100;
+		this.editor.dispatcher.subscribeJsMessage(UpdateCanvasZoom, (updateCanvasZoom) => {
+			this.documentZoom = updateCanvasZoom.factor * 100;
 		});
 
-		this.editor.dispatcher.subscribeJsMessage(SetCanvasRotation, (setCanvasRotation) => {
-			const newRotation = setCanvasRotation.new_radians * (180 / Math.PI);
+		this.editor.dispatcher.subscribeJsMessage(UpdateCanvasRotation, (updateCanvasRotation) => {
+			const newRotation = updateCanvasRotation.angle_radians * (180 / Math.PI);
 			this.documentRotation = (360 + (newRotation % 360)) % 360;
 		});
 

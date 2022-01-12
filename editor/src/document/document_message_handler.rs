@@ -243,7 +243,7 @@ impl DocumentMessageHandler {
 		if let Some(layer) = self.layer_metadata.get_mut(path) {
 			layer.selected = true;
 			let data = self.layer_panel_entry(path.to_vec()).ok()?;
-			(!path.is_empty()).then(|| FrontendMessage::UpdateLayer { data }.into())
+			(!path.is_empty()).then(|| FrontendMessage::UpdateDocumentLayer { data }.into())
 		} else {
 			log::warn!("Tried to select non existing layer {:?}", path);
 			None
@@ -594,7 +594,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					false => self.name.clone() + FILE_EXPORT_SUFFIX,
 				};
 				responses.push_back(
-					FrontendMessage::ExportDocument {
+					FrontendMessage::TriggerFileDownload {
 						document: format!(
 							r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="{} {} {} {}">{}{}</svg>"#,
 							bbox[0].x,
@@ -620,7 +620,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					false => self.name.clone() + FILE_SAVE_SUFFIX,
 				};
 				responses.push_back(
-					FrontendMessage::SaveDocument {
+					FrontendMessage::TriggerFileDownload {
 						document: self.serialize_document(),
 						name,
 					}
@@ -830,11 +830,11 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			}
 			DocumentStructureChanged => {
 				let data_buffer: RawBuffer = self.serialize_root().into();
-				responses.push_back(FrontendMessage::DisplayFolderTreeStructure { data_buffer }.into())
+				responses.push_back(FrontendMessage::DisplayDocumentLayerTreeStructure { data_buffer }.into())
 			}
 			LayerChanged(path) => {
 				if let Ok(layer_entry) = self.layer_panel_entry(path) {
-					responses.push_back(FrontendMessage::UpdateLayer { data: layer_entry }.into());
+					responses.push_back(FrontendMessage::UpdateDocumentLayer { data: layer_entry }.into());
 				}
 			}
 			DispatchOperation(op) => match self.graphene_document.handle_operation(&op) {
@@ -866,7 +866,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			},
 			RenderDocument => {
 				responses.push_back(
-					FrontendMessage::UpdateArtwork {
+					FrontendMessage::UpdateDocumentArtwork {
 						svg: self.graphene_document.render_root(self.view_mode),
 					}
 					.into(),
@@ -892,7 +892,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				let ruler_origin = self.graphene_document.root.transform.transform_point2(DVec2::ZERO);
 
 				responses.push_back(
-					FrontendMessage::UpdateScrollbars {
+					FrontendMessage::UpdateDocumentScrollbars {
 						position: scrollbar_position.into(),
 						size: scrollbar_size.into(),
 						multiplier: scrollbar_multiplier.into(),
@@ -901,7 +901,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				);
 
 				responses.push_back(
-					FrontendMessage::UpdateRulers {
+					FrontendMessage::UpdateDocumentRulers {
 						origin: ruler_origin.into(),
 						spacing: ruler_spacing,
 						interval: ruler_interval,

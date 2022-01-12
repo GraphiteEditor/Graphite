@@ -235,7 +235,7 @@ impl MessageHandler<MovementMessage, (&Document, &InputPreprocessor)> for Moveme
 			}
 			SetCanvasZoom(new) => {
 				self.zoom = new.clamp(VIEWPORT_ZOOM_SCALE_MIN, VIEWPORT_ZOOM_SCALE_MAX);
-				responses.push_back(FrontendMessage::SetCanvasZoom { new_zoom: self.snapped_scale() }.into());
+				responses.push_back(FrontendMessage::UpdateCanvasZoom { factor: self.snapped_scale() }.into());
 				responses.push_back(ToolMessage::DocumentIsDirty.into());
 				responses.push_back(DocumentMessage::DirtyRenderDocumentInOutlineView.into());
 				self.create_document_transform(&ipp.viewport_bounds, responses);
@@ -275,7 +275,7 @@ impl MessageHandler<MovementMessage, (&Document, &InputPreprocessor)> for Moveme
 				self.tilt = new_radians;
 				self.create_document_transform(&ipp.viewport_bounds, responses);
 				responses.push_back(ToolMessage::DocumentIsDirty.into());
-				responses.push_back(FrontendMessage::SetCanvasRotation { new_radians: self.snapped_angle() }.into());
+				responses.push_back(FrontendMessage::UpdateCanvasRotation { angle_radians: self.snapped_angle() }.into());
 			}
 			FitViewportToBounds {
 				bounds: [bounds_corner_a, bounds_corner_b],
@@ -301,7 +301,7 @@ impl MessageHandler<MovementMessage, (&Document, &InputPreprocessor)> for Moveme
 					self.zoom = 1.
 				}
 
-				responses.push_back(FrontendMessage::SetCanvasZoom { new_zoom: self.zoom }.into());
+				responses.push_back(FrontendMessage::UpdateCanvasZoom { factor: self.zoom }.into());
 				responses.push_back(ToolMessage::DocumentIsDirty.into());
 				responses.push_back(DocumentMessage::DirtyRenderDocumentInOutlineView.into());
 				self.create_document_transform(&ipp.viewport_bounds, responses);

@@ -105,7 +105,7 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, &InputPreprocessor)> 
 				// Notify the frontend about the new active tool to be displayed
 				let tool_name = new_tool.to_string();
 				let tool_options = self.tool_state.document_tool_data.tool_options.get(&new_tool).copied();
-				responses.push_back(FrontendMessage::SetActiveTool { tool_name, tool_options }.into());
+				responses.push_back(FrontendMessage::UpdateActiveTool { tool_name, tool_options }.into());
 			}
 			DocumentIsDirty => {
 				// Send the DocumentIsDirty message to the active tool's sub-tool message handler
