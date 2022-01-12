@@ -113,7 +113,7 @@ impl Default for DocumentMessageHandler {
 	}
 }
 
-#[impl_message(Message, DocumentsMessage, Document)]
+#[impl_message(Message, PortfolioMessage, Document)]
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub enum DocumentMessage {
 	#[child]
@@ -436,7 +436,7 @@ impl DocumentMessageHandler {
 		self.document_undo_history.push((self.graphene_document.clone(), self.layer_metadata.clone()));
 
 		// Push the UpdateOpenDocumentsList message to the bus in order to update the save status of the open documents
-		responses.push_back(DocumentsMessage::UpdateOpenDocumentsList.into());
+		responses.push_back(PortfolioMessage::UpdateOpenDocumentsList.into());
 	}
 
 	pub fn rollback(&mut self, responses: &mut VecDeque<Message>) -> Result<(), EditorError> {
@@ -447,7 +447,7 @@ impl DocumentMessageHandler {
 
 	pub fn undo(&mut self, responses: &mut VecDeque<Message>) -> Result<(), EditorError> {
 		// Push the UpdateOpenDocumentsList message to the bus in order to update the save status of the open documents
-		responses.push_back(DocumentsMessage::UpdateOpenDocumentsList.into());
+		responses.push_back(PortfolioMessage::UpdateOpenDocumentsList.into());
 
 		match self.document_undo_history.pop() {
 			Some((document, layer_metadata)) => {
@@ -465,7 +465,7 @@ impl DocumentMessageHandler {
 
 	pub fn redo(&mut self, responses: &mut VecDeque<Message>) -> Result<(), EditorError> {
 		// Push the UpdateOpenDocumentsList message to the bus in order to update the save status of the open documents
-		responses.push_back(DocumentsMessage::UpdateOpenDocumentsList.into());
+		responses.push_back(PortfolioMessage::UpdateOpenDocumentsList.into());
 
 		match self.document_redo_history.pop() {
 			Some((document, layer_metadata)) => {
@@ -611,9 +611,9 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			}
 			SaveDocument => {
 				self.set_save_state(true);
-				responses.push_back(DocumentsMessage::AutoSaveActiveDocument.into());
+				responses.push_back(PortfolioMessage::AutoSaveActiveDocument.into());
 				// Update the save status of the just saved document
-				responses.push_back(DocumentsMessage::UpdateOpenDocumentsList.into());
+				responses.push_back(PortfolioMessage::UpdateOpenDocumentsList.into());
 
 				let name = match self.name.ends_with(FILE_SAVE_SUFFIX) {
 					true => self.name.clone(),
@@ -643,12 +643,12 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 
 				new_folder_path.push(generate_uuid());
 
-				responses.push_back(DocumentsMessage::Copy(Clipboard::System).into());
+				responses.push_back(PortfolioMessage::Copy(Clipboard::System).into());
 				responses.push_back(DocumentMessage::DeleteSelectedLayers.into());
 				responses.push_back(DocumentOperation::CreateFolder { path: new_folder_path.clone() }.into());
 				responses.push_back(DocumentMessage::ToggleLayerExpansion(new_folder_path.clone()).into());
 				responses.push_back(
-					DocumentsMessage::PasteIntoFolder {
+					PortfolioMessage::PasteIntoFolder {
 						clipboard: Clipboard::System,
 						path: new_folder_path.clone(),
 						insert_index: -1,
@@ -663,9 +663,9 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				let message_buffer = [
 					// Copy them
 					DocumentMessage::SetSelectedLayers(to_select).into(),
-					DocumentsMessage::Copy(Clipboard::System).into(),
+					PortfolioMessage::Copy(Clipboard::System).into(),
 					// Paste them into the folder above
-					DocumentsMessage::PasteIntoFolder {
+					PortfolioMessage::PasteIntoFolder {
 						clipboard: Clipboard::System,
 						path: folder_path[..folder_path.len() - 1].to_vec(),
 						insert_index: -1,
@@ -939,10 +939,10 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 					return;
 				}
 				let insert_index = self.update_insert_index(&layers, &path, insert_index).unwrap();
-				responses.push_back(DocumentsMessage::Copy(Clipboard::System).into());
+				responses.push_back(PortfolioMessage::Copy(Clipboard::System).into());
 				responses.push_back(DocumentMessage::DeleteSelectedLayers.into());
 				responses.push_back(
-					DocumentsMessage::PasteIntoFolder {
+					PortfolioMessage::PasteIntoFolder {
 						clipboard: Clipboard::System,
 						path,
 						insert_index,
