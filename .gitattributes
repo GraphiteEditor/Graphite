@@ -1,1 +1,6 @@
+# Requires Git to check out files with the LF (not CRLF) line endings for files it automatically recognizes as being text-based
+# The `*` targets all files
+# The `text=auto` makes it apply a conversion only to files detected as text-based
+# The `eol=lf` sets the conversion to an LF line ending
+# https://git-scm.com/docs/gitattributes
 * text=auto eol=lf
