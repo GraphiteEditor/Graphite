@@ -174,11 +174,6 @@ pub enum DocumentMessage {
 		insert_index: isize,
 	},
 	ReorderSelectedLayers(i32), // relative_position,
-	MoveLayerInTree {
-		layer: Vec<LayerId>,
-		insert_above: bool,
-		neighbor: Vec<LayerId>,
-	},
 	SetSnapping(bool),
 	ZoomCanvasToFitAll,
 }
@@ -537,6 +532,16 @@ impl DocumentMessageHandler {
 		Some(layer_panel_entry(layer_metadata, transform, layer, path.to_vec()))
 	}
 
+	/// When working with an insert index, deleting the layers may cause the insert index to point to a different location (if the layer being deleted was located before the insert index).
+	///
+	/// This function updates the insert index so that it points to the same place after the specified `layers` are deleted.
+	fn update_insert_index<'a>(&self, layers: &[&'a [LayerId]], path: &[LayerId], insert_index: isize) -> Result<isize, DocumentError> {
+		let folder = self.graphene_document.folder(path)?;
+		let layer_ids_above = if insert_index < 0 { &folder.layer_ids } else { &folder.layer_ids[..(insert_index as usize)] };
+
+		Ok(insert_index - layer_ids_above.iter().filter(|layer_id| layers.iter().any(|x| *x == [path, &[**layer_id]].concat())).count() as isize)
+	}
+
 	pub fn document_bounds(&self) -> Option<[DVec2; 2]> {
 		if self.artboard_message_handler.is_infinite_canvas() {
 			self.graphene_document.viewport_bounding_box(&[]).ok().flatten()
@@ -842,10 +847,14 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 							}
 							DocumentResponse::LayerChanged { path } => responses.push_back(LayerChanged(path.clone()).into()),
 							DocumentResponse::CreatedLayer { path } => {
+								if self.layer_metadata.contains_key(path) {
+									log::warn!("CreatedLayer overrides existing layer metadata.");
+								}
 								self.layer_metadata.insert(path.clone(), LayerMetadata::new(false));
+
 								responses.push_back(LayerChanged(path.clone()).into());
 								self.layer_range_selection_reference = path.clone();
-								responses.push_back(SetSelectedLayers(vec![path.clone()]).into());
+								responses.push_back(AddSelectedLayers(vec![path.clone()]).into());
 							}
 							DocumentResponse::DocumentChanged => responses.push_back(RenderDocument.into()),
 						};
@@ -923,6 +932,13 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				responses.push_back(ToolMessage::DocumentIsDirty.into());
 			}
 			MoveSelectedLayersTo { path, insert_index } => {
+				let layers = self.selected_layers().collect::<Vec<_>>();
+
+				// Trying to insert into self.
+				if layers.iter().any(|layer| path.starts_with(layer)) {
+					return;
+				}
+				let insert_index = self.update_insert_index(&layers, &path, insert_index).unwrap();
 				responses.push_back(DocumentsMessage::Copy(Clipboard::System).into());
 				responses.push_back(DocumentMessage::DeleteSelectedLayers.into());
 				responses.push_back(
@@ -954,15 +970,11 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 						if let Some(insert_path) = insert {
 							let (id, path) = insert_path.split_last().expect("Can't move the root folder");
 							if let Some(folder) = self.graphene_document.layer(path).ok().and_then(|layer| layer.as_folder().ok()) {
-								let selected: Vec<_> = selected_layers
-									.iter()
-									.filter(|layer| layer.starts_with(path) && layer.len() == path.len() + 1)
-									.map(|x| x.last().unwrap())
-									.collect();
-								let non_selected: Vec<_> = folder.layer_ids.iter().filter(|id| selected.iter().all(|x| x != id)).collect();
-								let offset = if relative_position < 0 || non_selected.is_empty() { 0 } else { 1 };
-								let fallback = offset * (non_selected.len());
-								let insert_index = non_selected.iter().position(|x| *x == id).map(|x| x + offset).unwrap_or(fallback) as isize;
+								let layer_index = folder.layer_ids.iter().position(|comparison_id| comparison_id == id).unwrap() as isize;
+
+								// If moving down, insert below this layer, if moving up, insert above this layer
+								let insert_index = if relative_position < 0 { layer_index } else { layer_index + 1 };
+
 								responses.push_back(DocumentMessage::MoveSelectedLayersTo { path: path.to_vec(), insert_index }.into());
 							}
 						}
@@ -1029,42 +1041,6 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				}
 			}
 			RenameLayer(path, name) => responses.push_back(DocumentOperation::RenameLayer { path, name }.into()),
-			MoveLayerInTree {
-				layer: target_layer,
-				insert_above,
-				neighbor,
-			} => {
-				let neighbor_id = neighbor.last().expect("Tried to move next to root");
-				let neighbor_path = &neighbor[..neighbor.len() - 1];
-
-				if !neighbor.starts_with(&target_layer) {
-					let containing_folder = self.graphene_document.folder(neighbor_path).expect("Neighbor does not exist");
-					let neighbor_index = containing_folder.position_of_layer(*neighbor_id).expect("Neighbor layer does not exist");
-
-					let layer = self.graphene_document.layer(&target_layer).expect("Layer moving does not exist.").to_owned();
-					let destination_path = [neighbor_path.to_vec(), vec![generate_uuid()]].concat();
-					let insert_index = if insert_above { neighbor_index } else { neighbor_index + 1 } as isize;
-
-					responses.push_back(DocumentMessage::StartTransaction.into());
-					responses.push_back(
-						DocumentOperation::InsertLayer {
-							layer,
-							destination_path: destination_path.clone(),
-							insert_index,
-						}
-						.into(),
-					);
-					responses.push_back(
-						DocumentMessage::UpdateLayerMetadata {
-							layer_path: destination_path,
-							layer_metadata: *self.layer_metadata(&target_layer),
-						}
-						.into(),
-					);
-					responses.push_back(DocumentOperation::DeleteLayer { path: target_layer }.into());
-					responses.push_back(DocumentMessage::CommitTransaction.into());
-				}
-			}
 			SetSnapping(new_status) => {
 				self.snapping_enabled = new_status;
 			}
@@ -1094,7 +1070,6 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 			SaveDocument,
 			SetSnapping,
 			DebugPrintDocument,
-			MoveLayerInTree,
 			ZoomCanvasToFitAll,
 		);
 
