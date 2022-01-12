@@ -57,12 +57,7 @@ module.exports = {
 						crateDirectory: path.resolve(__dirname, "wasm"),
 						// Remove when this issue is resolved: https://github.com/wasm-tool/wasm-pack-plugin/issues/93
 						outDir: path.resolve(__dirname, "wasm/pkg"),
-						watchDirectories: [
-							path.resolve(__dirname, "../editor"),
-							path.resolve(__dirname, "../graphene"),
-							path.resolve(__dirname, "../charcoal"),
-							path.resolve(__dirname, "../proc-macros"),
-						],
+						watchDirectories: ["../editor", "../graphene", "../proc-macros"].map((folder) => path.resolve(__dirname, folder)),
 					})
 			)
 			.end();
