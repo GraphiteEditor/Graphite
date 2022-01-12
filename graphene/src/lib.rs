@@ -7,6 +7,7 @@ pub mod layers;
 pub mod operation;
 pub mod response;
 
+use boolean_ops::BooleanOperationError;
 pub use intersection::Quad;
 pub use operation::Operation;
 pub use response::DocumentResponse;
@@ -24,9 +25,9 @@ pub enum DocumentError {
 	InvalidFile(String),
 }
 
-//TODO: below impl is a placeholder for BooleanError type
-impl From<()> for DocumentError {
-	fn from(_: ()) -> Self {
-		DocumentError::InvalidFile("Unknown Error".to_string())
+//TODO: change how BooleanOperationErrors are handled
+impl From<BooleanOperationError> for DocumentError {
+	fn from(err: BooleanOperationError) -> Self {
+		DocumentError::InvalidFile(format!("{:?}", err))
 	}
 }
