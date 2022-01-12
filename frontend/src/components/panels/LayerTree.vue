@@ -242,7 +242,7 @@
 <script lang="ts">
 import { defineComponent } from "vue";
 
-import { BlendMode, DisplayFolderTreeStructure, UpdateLayer, LayerPanelEntry } from "@/dispatcher/js-messages";
+import { BlendMode, DisplayDocumentLayerTreeStructure, UpdateDocumentLayer, LayerPanelEntry } from "@/dispatcher/js-messages";
 
 import LayoutCol from "@/components/layout/LayoutCol.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
@@ -498,11 +498,11 @@ export default defineComponent({
 		},
 	},
 	mounted() {
-		this.editor.dispatcher.subscribeJsMessage(DisplayFolderTreeStructure, (displayFolderTreeStructure) => {
+		this.editor.dispatcher.subscribeJsMessage(DisplayDocumentLayerTreeStructure, (displayDocumentLayerTreeStructure) => {
 			const path = [] as bigint[];
 			this.layers = [] as { folderIndex: number; entry: LayerPanelEntry }[];
 
-			const recurse = (folder: DisplayFolderTreeStructure, layers: { folderIndex: number; entry: LayerPanelEntry }[], cache: Map<string, LayerPanelEntry>): void => {
+			const recurse = (folder: DisplayDocumentLayerTreeStructure, layers: { folderIndex: number; entry: LayerPanelEntry }[], cache: Map<string, LayerPanelEntry>): void => {
 				folder.children.forEach((item, index) => {
 					// TODO: fix toString
 					path.push(BigInt(item.layerId.toString()));
@@ -513,12 +513,12 @@ export default defineComponent({
 				});
 			};
 
-			recurse(displayFolderTreeStructure, this.layers, this.layerCache);
+			recurse(displayDocumentLayerTreeStructure, this.layers, this.layerCache);
 		});
 
-		this.editor.dispatcher.subscribeJsMessage(UpdateLayer, (updateLayer) => {
-			const targetPath = updateLayer.data.path;
-			const targetLayer = updateLayer.data;
+		this.editor.dispatcher.subscribeJsMessage(UpdateDocumentLayer, (updateDocumentLayer) => {
+			const targetPath = updateDocumentLayer.data.path;
+			const targetLayer = updateDocumentLayer.data;
 
 			const layer = this.layerCache.get(targetPath.toString());
 			if (layer) {

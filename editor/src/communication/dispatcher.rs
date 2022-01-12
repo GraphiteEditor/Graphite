@@ -24,8 +24,8 @@ pub struct Dispatcher {
 const SIDE_EFFECT_FREE_MESSAGES: &[MessageDiscriminant] = &[
 	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::Document(DocumentMessageDiscriminant::RenderDocument)),
 	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::Document(DocumentMessageDiscriminant::FolderChanged)),
-	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::UpdateLayer),
-	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::DisplayFolderTreeStructure),
+	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::UpdateDocumentLayer),
+	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::DisplayDocumentLayerTreeStructure),
 	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::UpdateOpenDocumentsList),
 	MessageDiscriminant::Tool(ToolMessageDiscriminant::DocumentIsDirty),
 ];
@@ -78,7 +78,7 @@ impl Dispatcher {
 		if log::max_level() == log::LevelFilter::Trace
 			&& !(matches!(
 				message,
-				InputPreprocessor(_) | Frontend(FrontendMessage::SetCanvasZoom { .. }) | Frontend(FrontendMessage::SetCanvasRotation { .. })
+				InputPreprocessor(_) | Frontend(FrontendMessage::UpdateCanvasZoom { .. }) | Frontend(FrontendMessage::UpdateCanvasRotation { .. })
 			) || MessageDiscriminant::from(message).local_name().ends_with("MouseMove"))
 		{
 			log::trace!("Message: {:?}", message);

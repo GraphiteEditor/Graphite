@@ -36,7 +36,7 @@ fn panic_hook(info: &panic::PanicInfo) {
 	log::error!("{}", info);
 	EDITOR_INSTANCES.with(|instances| {
 		instances.borrow_mut().values_mut().for_each(|instance| {
-			instance.1.handle_response_rust_proxy(FrontendMessage::DisplayPanic {
+			instance.1.handle_response_rust_proxy(FrontendMessage::DisplayDialogPanic {
 				panic_info: panic_info.clone(),
 				title: title.clone(),
 				description: description.clone(),

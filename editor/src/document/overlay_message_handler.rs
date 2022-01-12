@@ -41,7 +41,7 @@ impl MessageHandler<OverlayMessage, (&mut LayerMetadata, &Document, &InputPrepro
 
 		// Render overlays
 		responses.push_back(
-			FrontendMessage::UpdateOverlays {
+			FrontendMessage::UpdateDocumentOverlays {
 				svg: self.overlays_graphene_document.render_root(ViewMode::Normal),
 			}
 			.into(),

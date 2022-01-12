@@ -1,6 +1,6 @@
 import { reactive, readonly } from "vue";
 
-import { DisplayAboutGraphiteDialog } from "@/dispatcher/js-messages";
+import { DisplayDialogAboutGraphite } from "@/dispatcher/js-messages";
 import { EditorState } from "@/state/wasm-loader";
 import { IconName } from "@/utilities/icons";
 import { stripIndents } from "@/utilities/strip-indents";
@@ -106,7 +106,7 @@ export function createDialogState(editor: EditorState) {
 	};
 
 	// Run on creation
-	editor.dispatcher.subscribeJsMessage(DisplayAboutGraphiteDialog, () => onAboutHandler());
+	editor.dispatcher.subscribeJsMessage(DisplayDialogAboutGraphite, () => onAboutHandler());
 
 	return {
 		state: readonly(state),
