@@ -3,6 +3,7 @@
 	"description": "Graphite's web app frontend. Planned to be replaced by a native GUI written in Rust in the future.",
 	"private": true,
 	"scripts": {
+		"start": "vue-cli-service serve || (npm install && vue-cli-service serve)",
 		"serve": "vue-cli-service serve || (npm install && vue-cli-service serve)",
 		"build": "vue-cli-service build || (npm install && vue-cli-service build)",
 		"lint": "vue-cli-service lint || echo There were lint errors. If the linter execution fails, try running `npm install` first.",

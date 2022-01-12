@@ -2,7 +2,6 @@
 members = [
 	"editor",
 	"graphene",
-	"charcoal",
 	"proc-macros",
 	"frontend/wasm",
 ]
