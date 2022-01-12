@@ -134,7 +134,7 @@ impl Default for Mapping {
 		// it as an available action in the respective message handler file (such as the bottom of `document_message_handler.rs`)
 		let mappings = mapping![
 			// Higher priority than entries in sections below
-			entry! {action=DocumentsMessage::Paste(User), key_down=KeyV, modifiers=[KeyControl]},
+			entry! {action=PortfolioMessage::Paste(User), key_down=KeyV, modifiers=[KeyControl]},
 			// Transform layers
 			entry! {action=TransformLayerMessage::ApplyOperation, key_down=KeyEnter},
 			entry! {action=TransformLayerMessage::ApplyOperation, key_down=Lmb},
@@ -221,7 +221,7 @@ impl Default for Mapping {
 			// Editor Actions
 			entry! {action=FrontendMessage::OpenDocumentBrowse, key_down=KeyO, modifiers=[KeyControl]},
 			// Document Actions
-			entry! {action=DocumentsMessage::Paste(User), key_down=KeyV, modifiers=[KeyControl]},
+			entry! {action=PortfolioMessage::Paste(User), key_down=KeyV, modifiers=[KeyControl]},
 			entry! {action=DocumentMessage::Redo, key_down=KeyZ, modifiers=[KeyControl, KeyShift]},
 			entry! {action=DocumentMessage::Undo, key_down=KeyZ, modifiers=[KeyControl]},
 			entry! {action=DocumentMessage::DeselectAllLayers, key_down=KeyA, modifiers=[KeyControl, KeyAlt]},
@@ -260,14 +260,14 @@ impl Default for Mapping {
 			entry! {action=MovementMessage::TranslateCanvasByViewportFraction(DVec2::new(0., 1.)), key_down=KeyPageUp},
 			entry! {action=MovementMessage::TranslateCanvasByViewportFraction(DVec2::new(0., -1.)), key_down=KeyPageDown},
 			// Document actions
-			entry! {action=DocumentsMessage::NewDocument, key_down=KeyN, modifiers=[KeyControl]},
-			entry! {action=DocumentsMessage::NextDocument, key_down=KeyTab, modifiers=[KeyControl]},
-			entry! {action=DocumentsMessage::PrevDocument, key_down=KeyTab, modifiers=[KeyControl, KeyShift]},
-			entry! {action=DocumentsMessage::CloseAllDocumentsWithConfirmation, key_down=KeyW, modifiers=[KeyControl, KeyAlt]},
-			entry! {action=DocumentsMessage::CloseActiveDocumentWithConfirmation, key_down=KeyW, modifiers=[KeyControl]},
+			entry! {action=PortfolioMessage::NewDocument, key_down=KeyN, modifiers=[KeyControl]},
+			entry! {action=PortfolioMessage::NextDocument, key_down=KeyTab, modifiers=[KeyControl]},
+			entry! {action=PortfolioMessage::PrevDocument, key_down=KeyTab, modifiers=[KeyControl, KeyShift]},
+			entry! {action=PortfolioMessage::CloseAllDocumentsWithConfirmation, key_down=KeyW, modifiers=[KeyControl, KeyAlt]},
+			entry! {action=PortfolioMessage::CloseActiveDocumentWithConfirmation, key_down=KeyW, modifiers=[KeyControl]},
 			entry! {action=DocumentMessage::DuplicateSelectedLayers, key_down=KeyD, modifiers=[KeyControl]},
-			entry! {action=DocumentsMessage::Copy(User), key_down=KeyC, modifiers=[KeyControl]},
-			entry! {action=DocumentsMessage::Cut(User), key_down=KeyX, modifiers=[KeyControl]},
+			entry! {action=PortfolioMessage::Copy(User), key_down=KeyC, modifiers=[KeyControl]},
+			entry! {action=PortfolioMessage::Cut(User), key_down=KeyX, modifiers=[KeyControl]},
 			entry! {action=DocumentMessage::GroupSelectedLayers, key_down=KeyG, modifiers=[KeyControl]},
 			entry! {action=DocumentMessage::UngroupSelectedLayers, key_down=KeyG, modifiers=[KeyControl, KeyShift]},
 			// Nudging
