@@ -143,32 +143,32 @@ impl JsEditorHandle {
 	}
 
 	pub fn select_document(&self, document_id: u64) {
-		let message = DocumentsMessage::SelectDocument(document_id);
+		let message = PortfolioMessage::SelectDocument(document_id);
 		self.dispatch(message);
 	}
 
 	pub fn get_open_documents_list(&self) {
-		let message = DocumentsMessage::UpdateOpenDocumentsList;
+		let message = PortfolioMessage::UpdateOpenDocumentsList;
 		self.dispatch(message);
 	}
 
 	pub fn new_document(&self) {
-		let message = DocumentsMessage::NewDocument;
+		let message = PortfolioMessage::NewDocument;
 		self.dispatch(message);
 	}
 
 	pub fn open_document(&self) {
-		let message = DocumentsMessage::OpenDocument;
+		let message = PortfolioMessage::OpenDocument;
 		self.dispatch(message);
 	}
 
 	pub fn open_document_file(&self, name: String, content: String) {
-		let message = DocumentsMessage::OpenDocumentFile(name, content);
+		let message = PortfolioMessage::OpenDocumentFile(name, content);
 		self.dispatch(message);
 	}
 
 	pub fn open_auto_saved_document(&self, document_id: u64, document_name: String, document_is_saved: bool, document: String) {
-		let message = DocumentsMessage::OpenDocumentFileWithId {
+		let message = PortfolioMessage::OpenDocumentFileWithId {
 			document_id,
 			document_name,
 			document_is_saved,
@@ -183,38 +183,38 @@ impl JsEditorHandle {
 	}
 
 	pub fn trigger_auto_save(&self, document_id: u64) {
-		let message = DocumentsMessage::AutoSaveDocument(document_id);
+		let message = PortfolioMessage::AutoSaveDocument(document_id);
 		self.dispatch(message);
 	}
 
 	pub fn close_document(&self, document_id: u64) {
-		let message = DocumentsMessage::CloseDocument(document_id);
+		let message = PortfolioMessage::CloseDocument(document_id);
 		self.dispatch(message);
 	}
 
 	pub fn close_all_documents(&self) {
-		let message = DocumentsMessage::CloseAllDocuments;
+		let message = PortfolioMessage::CloseAllDocuments;
 		self.dispatch(message);
 	}
 
 	pub fn close_active_document_with_confirmation(&self) {
-		let message = DocumentsMessage::CloseActiveDocumentWithConfirmation;
+		let message = PortfolioMessage::CloseActiveDocumentWithConfirmation;
 		self.dispatch(message);
 	}
 
 	pub fn close_document_with_confirmation(&self, document_id: u64) {
-		let message = DocumentsMessage::CloseDocumentWithConfirmation(document_id);
+		let message = PortfolioMessage::CloseDocumentWithConfirmation(document_id);
 		self.dispatch(message);
 	}
 
 	pub fn close_all_documents_with_confirmation(&self) {
-		let message = DocumentsMessage::CloseAllDocumentsWithConfirmation;
+		let message = PortfolioMessage::CloseAllDocumentsWithConfirmation;
 		self.dispatch(message);
 	}
 
 	#[wasm_bindgen]
 	pub fn request_about_graphite_dialog(&self) {
-		let message = DocumentsMessage::RequestAboutGraphiteDialog;
+		let message = PortfolioMessage::RequestAboutGraphiteDialog;
 		self.dispatch(message);
 	}
 
@@ -343,19 +343,19 @@ impl JsEditorHandle {
 
 	/// Cut selected layers
 	pub fn cut(&self) {
-		let message = DocumentsMessage::Cut(Clipboard::User);
+		let message = PortfolioMessage::Cut(Clipboard::User);
 		self.dispatch(message);
 	}
 
 	/// Copy selected layers
 	pub fn copy(&self) {
-		let message = DocumentsMessage::Copy(Clipboard::User);
+		let message = PortfolioMessage::Copy(Clipboard::User);
 		self.dispatch(message);
 	}
 
 	/// Paste selected layers
 	pub fn paste(&self) {
-		let message = DocumentsMessage::Paste(Clipboard::User);
+		let message = PortfolioMessage::Paste(Clipboard::User);
 		self.dispatch(message);
 	}
 

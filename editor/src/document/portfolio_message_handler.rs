@@ -21,9 +21,9 @@ pub enum Clipboard {
 
 const CLIPBOARD_COUNT: u8 = Clipboard::_ClipboardCount as u8;
 
-#[impl_message(Message, Documents)]
+#[impl_message(Message, Portfolio)]
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
-pub enum DocumentsMessage {
+pub enum PortfolioMessage {
 	Copy(Clipboard),
 	Cut(Clipboard),
 	PasteIntoFolder {
@@ -58,7 +58,7 @@ pub enum DocumentsMessage {
 }
 
 #[derive(Debug, Clone)]
-pub struct DocumentsMessageHandler {
+pub struct PortfolioMessageHandler {
 	documents: HashMap<u64, DocumentMessageHandler>,
 	document_ids: Vec<u64>,
 	active_document_id: u64,
@@ -71,7 +71,7 @@ pub struct CopyBufferEntry {
 	layer_metadata: LayerMetadata,
 }
 
-impl DocumentsMessageHandler {
+impl PortfolioMessageHandler {
 	pub fn active_document(&self) -> &DocumentMessageHandler {
 		self.documents.get(&self.active_document_id).unwrap()
 	}
@@ -107,7 +107,7 @@ impl DocumentsMessageHandler {
 	fn load_document(&mut self, new_document: DocumentMessageHandler, document_id: u64, replace_first_empty: bool, responses: &mut VecDeque<Message>) {
 		// Special case when loading a document on an empty page
 		if replace_first_empty && self.active_document().is_unmodified_default() {
-			responses.push_back(DocumentsMessage::CloseDocument(self.active_document_id).into());
+			responses.push_back(PortfolioMessage::CloseDocument(self.active_document_id).into());
 
 			let active_document_index = self
 				.document_ids
@@ -145,7 +145,7 @@ impl DocumentsMessageHandler {
 
 		responses.push_back(FrontendMessage::UpdateOpenDocumentsList { open_documents }.into());
 
-		responses.push_back(DocumentsMessage::SelectDocument(document_id).into());
+		responses.push_back(PortfolioMessage::SelectDocument(document_id).into());
 	}
 
 	// Returns an iterator over the open documents in order
@@ -158,7 +158,7 @@ impl DocumentsMessageHandler {
 	}
 }
 
-impl Default for DocumentsMessageHandler {
+impl Default for PortfolioMessageHandler {
 	fn default() -> Self {
 		let mut documents_map: HashMap<u64, DocumentMessageHandler> = HashMap::with_capacity(1);
 		let starting_key = generate_uuid();
@@ -175,10 +175,10 @@ impl Default for DocumentsMessageHandler {
 	}
 }
 
-impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHandler {
-	fn process_action(&mut self, message: DocumentsMessage, ipp: &InputPreprocessor, responses: &mut VecDeque<Message>) {
+impl MessageHandler<PortfolioMessage, &InputPreprocessor> for PortfolioMessageHandler {
+	fn process_action(&mut self, message: PortfolioMessage, ipp: &InputPreprocessor, responses: &mut VecDeque<Message>) {
 		use DocumentMessage::*;
-		use DocumentsMessage::*;
+		use PortfolioMessage::*;
 		match message {
 			RequestAboutGraphiteDialog => {
 				responses.push_back(FrontendMessage::DisplayAboutGraphiteDialog.into());
@@ -187,7 +187,7 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 			SelectDocument(id) => {
 				let active_document = self.active_document();
 				if !active_document.is_saved() {
-					responses.push_back(DocumentsMessage::AutoSaveDocument(self.active_document_id).into());
+					responses.push_back(PortfolioMessage::AutoSaveDocument(self.active_document_id).into());
 				}
 				self.active_document_id = id;
 				responses.push_back(FrontendMessage::SetActiveDocument { document_id: id }.into());
@@ -199,16 +199,16 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 				responses.push_back(ToolMessage::DocumentIsDirty.into());
 			}
 			CloseActiveDocumentWithConfirmation => {
-				responses.push_back(DocumentsMessage::CloseDocumentWithConfirmation(self.active_document_id).into());
+				responses.push_back(PortfolioMessage::CloseDocumentWithConfirmation(self.active_document_id).into());
 			}
 			CloseDocumentWithConfirmation(id) => {
 				let target_document = self.documents.get(&id).unwrap();
 				if target_document.is_saved() {
-					responses.push_back(DocumentsMessage::CloseDocument(id).into());
+					responses.push_back(PortfolioMessage::CloseDocument(id).into());
 				} else {
 					responses.push_back(FrontendMessage::DisplayConfirmationToCloseDocument { document_id: id }.into());
 					// Select the document being closed
-					responses.push_back(DocumentsMessage::SelectDocument(id).into());
+					responses.push_back(PortfolioMessage::SelectDocument(id).into());
 				}
 			}
 			CloseAllDocumentsWithConfirmation => {
@@ -257,7 +257,7 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 						})
 					})
 					.collect::<Vec<_>>();
-				// Update the list of new documents on the front end, active tab, and ensure that document renders
+
 				responses.push_back(FrontendMessage::UpdateOpenDocumentsList { open_documents }.into());
 				responses.push_back(FrontendMessage::SetActiveDocument { document_id: self.active_document_id }.into());
 				responses.push_back(FrontendMessage::RemoveAutoSaveDocument { document_id: id }.into());
@@ -279,7 +279,7 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 			}
 			OpenDocumentFile(document_name, document) => {
 				responses.push_back(
-					DocumentsMessage::OpenDocumentFileWithId {
+					PortfolioMessage::OpenDocumentFileWithId {
 						document,
 						document_name,
 						document_id: generate_uuid(),
@@ -339,19 +339,19 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 					.into(),
 				)
 			}
-			AutoSaveActiveDocument => responses.push_back(DocumentsMessage::AutoSaveDocument(self.active_document_id).into()),
+			AutoSaveActiveDocument => responses.push_back(PortfolioMessage::AutoSaveDocument(self.active_document_id).into()),
 			NextDocument => {
 				let current_index = self.document_index(self.active_document_id);
 				let next_index = (current_index + 1) % self.document_ids.len();
 				let next_id = self.document_ids[next_index];
-				responses.push_back(DocumentsMessage::SelectDocument(next_id).into());
+				responses.push_back(PortfolioMessage::SelectDocument(next_id).into());
 			}
 			PrevDocument => {
 				let len = self.document_ids.len();
 				let current_index = self.document_index(self.active_document_id);
 				let prev_index = (current_index + len - 1) % len;
 				let prev_id = self.document_ids[prev_index];
-				responses.push_back(DocumentsMessage::SelectDocument(prev_id).into());
+				responses.push_back(PortfolioMessage::SelectDocument(prev_id).into());
 			}
 			Copy(clipboard) => {
 				// We can't use `self.active_document()` because it counts as an immutable borrow of the entirety of `self`
@@ -427,7 +427,7 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 		}
 	}
 	fn actions(&self) -> ActionList {
-		let mut common = actions!(DocumentsMessageDiscriminant;
+		let mut common = actions!(PortfolioMessageDiscriminant;
 			NewDocument,
 			CloseActiveDocumentWithConfirmation,
 			CloseAllDocumentsWithConfirmation,
@@ -439,7 +439,7 @@ impl MessageHandler<DocumentsMessage, &InputPreprocessor> for DocumentsMessageHa
 		);
 
 		if self.active_document().layer_metadata.values().any(|data| data.selected) {
-			let select = actions!(DocumentsMessageDiscriminant;
+			let select = actions!(PortfolioMessageDiscriminant;
 				Copy,
 				Cut,
 			);

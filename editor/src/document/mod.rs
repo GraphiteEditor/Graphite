@@ -17,7 +17,7 @@ pub use movement_handler::{MovementMessage, MovementMessageDiscriminant};
 #[doc(inline)]
 pub use overlay_message_handler::{OverlayMessage, OverlayMessageDiscriminant};
 #[doc(inline)]
-pub use portfolio_message_handler::{Clipboard, DocumentsMessage, DocumentsMessageDiscriminant, DocumentsMessageHandler};
+pub use portfolio_message_handler::{Clipboard, PortfolioMessage, PortfolioMessageDiscriminant, PortfolioMessageHandler};
 
 #[doc(inline)]
 pub use artboard_message_handler::{ArtboardMessage, ArtboardMessageDiscriminant};

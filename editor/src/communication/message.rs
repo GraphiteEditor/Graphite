@@ -21,7 +21,7 @@ where
 pub enum Message {
 	NoOp,
 	#[child]
-	Documents(DocumentsMessage),
+	Portfolio(PortfolioMessage),
 	#[child]
 	Global(GlobalMessage),
 	#[child]

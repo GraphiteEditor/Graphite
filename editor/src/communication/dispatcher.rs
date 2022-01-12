@@ -1,6 +1,6 @@
 use crate::message_prelude::*;
 
-pub use crate::document::DocumentsMessageHandler;
+pub use crate::document::PortfolioMessageHandler;
 pub use crate::input::{InputMapper, InputPreprocessor};
 pub use crate::tool::ToolMessageHandler;
 
@@ -13,7 +13,7 @@ pub struct Dispatcher {
 	input_mapper: InputMapper,
 	global_message_handler: GlobalMessageHandler,
 	tool_message_handler: ToolMessageHandler,
-	documents_message_handler: DocumentsMessageHandler,
+	portfolio_message_handler: PortfolioMessageHandler,
 	messages: VecDeque<Message>,
 	pub responses: Vec<FrontendMessage>,
 }
@@ -22,8 +22,8 @@ pub struct Dispatcher {
 // The last occurrence of the message in the message queue is sufficient to ensure correctness
 // In addition, these messages do not change any state in the backend (aside from caches)
 const SIDE_EFFECT_FREE_MESSAGES: &[MessageDiscriminant] = &[
-	MessageDiscriminant::Documents(DocumentsMessageDiscriminant::Document(DocumentMessageDiscriminant::RenderDocument)),
-	MessageDiscriminant::Documents(DocumentsMessageDiscriminant::Document(DocumentMessageDiscriminant::FolderChanged)),
+	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::Document(DocumentMessageDiscriminant::RenderDocument)),
+	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::Document(DocumentMessageDiscriminant::FolderChanged)),
 	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::UpdateLayer),
 	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::DisplayFolderTreeStructure),
 	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::UpdateOpenDocumentsList),
@@ -47,11 +47,11 @@ impl Dispatcher {
 			self.log_message(&message);
 			match message {
 				NoOp => (),
-				Documents(message) => self.documents_message_handler.process_action(message, &self.input_preprocessor, &mut self.messages),
+				Portfolio(message) => self.portfolio_message_handler.process_action(message, &self.input_preprocessor, &mut self.messages),
 				Global(message) => self.global_message_handler.process_action(message, (), &mut self.messages),
 				Tool(message) => self
 					.tool_message_handler
-					.process_action(message, (self.documents_message_handler.active_document(), &self.input_preprocessor), &mut self.messages),
+					.process_action(message, (self.portfolio_message_handler.active_document(), &self.input_preprocessor), &mut self.messages),
 				Frontend(message) => self.responses.push(message),
 				InputPreprocessor(message) => self.input_preprocessor.process_action(message, (), &mut self.messages),
 				InputMapper(message) => {
@@ -69,7 +69,7 @@ impl Dispatcher {
 		list.extend(self.input_mapper.actions());
 		list.extend(self.global_message_handler.actions());
 		list.extend(self.tool_message_handler.actions());
-		list.extend(self.documents_message_handler.actions());
+		list.extend(self.portfolio_message_handler.actions());
 		list
 	}
 
@@ -129,14 +129,14 @@ mod test {
 		init_logger();
 		let mut editor = create_editor_with_three_layers();
 
-		let document_before_copy = editor.dispatcher.documents_message_handler.active_document().graphene_document.clone();
-		editor.handle_message(DocumentsMessage::Copy(User));
-		editor.handle_message(DocumentsMessage::PasteIntoFolder {
+		let document_before_copy = editor.dispatcher.portfolio_message_handler.active_document().graphene_document.clone();
+		editor.handle_message(PortfolioMessage::Copy(User));
+		editor.handle_message(PortfolioMessage::PasteIntoFolder {
 			clipboard: User,
 			path: vec![],
 			insert_index: -1,
 		});
-		let document_after_copy = editor.dispatcher.documents_message_handler.active_document().graphene_document.clone();
+		let document_after_copy = editor.dispatcher.portfolio_message_handler.active_document().graphene_document.clone();
 
 		let layers_before_copy = document_before_copy.root.as_folder().unwrap().layers();
 		let layers_after_copy = document_after_copy.root.as_folder().unwrap().layers();
@@ -163,18 +163,18 @@ mod test {
 		init_logger();
 		let mut editor = create_editor_with_three_layers();
 
-		let document_before_copy = editor.dispatcher.documents_message_handler.active_document().graphene_document.clone();
+		let document_before_copy = editor.dispatcher.portfolio_message_handler.active_document().graphene_document.clone();
 		let shape_id = document_before_copy.root.as_folder().unwrap().layer_ids[1];
 
 		editor.handle_message(DocumentMessage::SetSelectedLayers(vec![vec![shape_id]]));
-		editor.handle_message(DocumentsMessage::Copy(User));
-		editor.handle_message(DocumentsMessage::PasteIntoFolder {
+		editor.handle_message(PortfolioMessage::Copy(User));
+		editor.handle_message(PortfolioMessage::PasteIntoFolder {
 			clipboard: User,
 			path: vec![],
 			insert_index: -1,
 		});
 
-		let document_after_copy = editor.dispatcher.documents_message_handler.active_document().graphene_document.clone();
+		let document_after_copy = editor.dispatcher.portfolio_message_handler.active_document().graphene_document.clone();
 
 		let layers_before_copy = document_before_copy.root.as_folder().unwrap().layers();
 		let layers_after_copy = document_after_copy.root.as_folder().unwrap().layers();
@@ -206,7 +206,7 @@ mod test {
 
 		editor.handle_message(DocumentMessage::CreateEmptyFolder(vec![]));
 
-		let document_before_added_shapes = editor.dispatcher.documents_message_handler.active_document().graphene_document.clone();
+		let document_before_added_shapes = editor.dispatcher.portfolio_message_handler.active_document().graphene_document.clone();
 		let folder_id = document_before_added_shapes.root.as_folder().unwrap().layer_ids[FOLDER_INDEX];
 
 		// TODO: This adding of a Line and Pen should be rewritten using the corresponding functions in EditorTestUtils.
@@ -228,22 +228,22 @@ mod test {
 
 		editor.handle_message(DocumentMessage::SetSelectedLayers(vec![vec![folder_id]]));
 
-		let document_before_copy = editor.dispatcher.documents_message_handler.active_document().graphene_document.clone();
+		let document_before_copy = editor.dispatcher.portfolio_message_handler.active_document().graphene_document.clone();
 
-		editor.handle_message(DocumentsMessage::Copy(User));
+		editor.handle_message(PortfolioMessage::Copy(User));
 		editor.handle_message(DocumentMessage::DeleteSelectedLayers);
-		editor.handle_message(DocumentsMessage::PasteIntoFolder {
+		editor.handle_message(PortfolioMessage::PasteIntoFolder {
 			clipboard: User,
 			path: vec![],
 			insert_index: -1,
 		});
-		editor.handle_message(DocumentsMessage::PasteIntoFolder {
+		editor.handle_message(PortfolioMessage::PasteIntoFolder {
 			clipboard: User,
 			path: vec![],
 			insert_index: -1,
 		});
 
-		let document_after_copy = editor.dispatcher.documents_message_handler.active_document().graphene_document.clone();
+		let document_after_copy = editor.dispatcher.portfolio_message_handler.active_document().graphene_document.clone();
 
 		let layers_before_copy = document_before_copy.root.as_folder().unwrap().layers();
 		let layers_after_copy = document_after_copy.root.as_folder().unwrap().layers();
@@ -294,26 +294,26 @@ mod test {
 		const SHAPE_INDEX: usize = 1;
 		const RECT_INDEX: usize = 0;
 
-		let document_before_copy = editor.dispatcher.documents_message_handler.active_document().graphene_document.clone();
+		let document_before_copy = editor.dispatcher.portfolio_message_handler.active_document().graphene_document.clone();
 		let rect_id = document_before_copy.root.as_folder().unwrap().layer_ids[RECT_INDEX];
 		let ellipse_id = document_before_copy.root.as_folder().unwrap().layer_ids[ELLIPSE_INDEX];
 
 		editor.handle_message(DocumentMessage::SetSelectedLayers(vec![vec![rect_id], vec![ellipse_id]]));
-		editor.handle_message(DocumentsMessage::Copy(User));
+		editor.handle_message(PortfolioMessage::Copy(User));
 		editor.handle_message(DocumentMessage::DeleteSelectedLayers);
 		editor.draw_rect(0., 800., 12., 200.);
-		editor.handle_message(DocumentsMessage::PasteIntoFolder {
+		editor.handle_message(PortfolioMessage::PasteIntoFolder {
 			clipboard: User,
 			path: vec![],
 			insert_index: -1,
 		});
-		editor.handle_message(DocumentsMessage::PasteIntoFolder {
+		editor.handle_message(PortfolioMessage::PasteIntoFolder {
 			clipboard: User,
 			path: vec![],
 			insert_index: -1,
 		});
 
-		let document_after_copy = editor.dispatcher.documents_message_handler.active_document().graphene_document.clone();
+		let document_after_copy = editor.dispatcher.portfolio_message_handler.active_document().graphene_document.clone();
 
 		let layers_before_copy = document_before_copy.root.as_folder().unwrap().layers();
 		let layers_after_copy = document_after_copy.root.as_folder().unwrap().layers();
@@ -343,7 +343,7 @@ mod test {
 		fn map_to_vec(paths: Vec<&[LayerId]>) -> Vec<Vec<LayerId>> {
 			paths.iter().map(|layer| layer.to_vec()).collect::<Vec<_>>()
 		}
-		let sorted_layers = map_to_vec(editor.dispatcher.documents_message_handler.active_document().all_layers_sorted());
+		let sorted_layers = map_to_vec(editor.dispatcher.portfolio_message_handler.active_document().all_layers_sorted());
 		println!("Sorted layers: {:?}", sorted_layers);
 
 		let verify_order = |handler: &mut DocumentMessageHandler| {
@@ -357,15 +357,15 @@ mod test {
 		editor.handle_message(DocumentMessage::SetSelectedLayers(sorted_layers[..2].to_vec()));
 
 		editor.handle_message(DocumentMessage::ReorderSelectedLayers(1));
-		let (all, non_selected, selected) = verify_order(editor.dispatcher.documents_message_handler.active_document_mut());
+		let (all, non_selected, selected) = verify_order(editor.dispatcher.portfolio_message_handler.active_document_mut());
 		assert_eq!(all, non_selected.into_iter().chain(selected.into_iter()).collect::<Vec<_>>());
 
 		editor.handle_message(DocumentMessage::ReorderSelectedLayers(-1));
-		let (all, non_selected, selected) = verify_order(editor.dispatcher.documents_message_handler.active_document_mut());
+		let (all, non_selected, selected) = verify_order(editor.dispatcher.portfolio_message_handler.active_document_mut());
 		assert_eq!(all, selected.into_iter().chain(non_selected.into_iter()).collect::<Vec<_>>());
 
 		editor.handle_message(DocumentMessage::ReorderSelectedLayers(i32::MAX));
-		let (all, non_selected, selected) = verify_order(editor.dispatcher.documents_message_handler.active_document_mut());
+		let (all, non_selected, selected) = verify_order(editor.dispatcher.portfolio_message_handler.active_document_mut());
 		assert_eq!(all, non_selected.into_iter().chain(selected.into_iter()).collect::<Vec<_>>());
 	}
 }
