@@ -68,14 +68,14 @@ impl MessageHandler<ArtboardMessage, (&mut LayerMetadata, &GrapheneDocument, &In
 				// Render an infinite canvas if there are no artboards
 				if self.artboard_ids.is_empty() {
 					responses.push_back(
-						FrontendMessage::UpdateArtboards {
+						FrontendMessage::UpdateDocumentArtboards {
 							svg: r##"<rect width="100%" height="100%" fill="#ffffff" />"##.to_string(),
 						}
 						.into(),
 					)
 				} else {
 					responses.push_back(
-						FrontendMessage::UpdateArtboards {
+						FrontendMessage::UpdateDocumentArtboards {
 							svg: self.artboards_graphene_document.render_root(ViewMode::Normal),
 						}
 						.into(),

@@ -124,7 +124,7 @@ impl PortfolioMessageHandler {
 				.layer_metadata
 				.keys()
 				.filter_map(|path| new_document.layer_panel_entry_from_path(path))
-				.map(|entry| FrontendMessage::UpdateLayer { data: entry }.into())
+				.map(|entry| FrontendMessage::UpdateDocumentLayer { data: entry }.into())
 				.collect::<Vec<_>>(),
 		);
 
@@ -181,7 +181,7 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessor> for PortfolioMessageHa
 		use PortfolioMessage::*;
 		match message {
 			RequestAboutGraphiteDialog => {
-				responses.push_back(FrontendMessage::DisplayAboutGraphiteDialog.into());
+				responses.push_back(FrontendMessage::DisplayDialogAboutGraphite.into());
 			}
 			Document(message) => self.active_document_mut().process_action(message, ipp, responses),
 			SelectDocument(id) => {
@@ -190,7 +190,7 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessor> for PortfolioMessageHa
 					responses.push_back(PortfolioMessage::AutoSaveDocument(self.active_document_id).into());
 				}
 				self.active_document_id = id;
-				responses.push_back(FrontendMessage::SetActiveDocument { document_id: id }.into());
+				responses.push_back(FrontendMessage::UpdateActiveDocument { document_id: id }.into());
 				responses.push_back(RenderDocument.into());
 				responses.push_back(DocumentMessage::DocumentStructureChanged.into());
 				for layer in self.active_document().layer_metadata.keys() {
@@ -259,8 +259,8 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessor> for PortfolioMessageHa
 					.collect::<Vec<_>>();
 
 				responses.push_back(FrontendMessage::UpdateOpenDocumentsList { open_documents }.into());
-				responses.push_back(FrontendMessage::SetActiveDocument { document_id: self.active_document_id }.into());
-				responses.push_back(FrontendMessage::RemoveAutoSaveDocument { document_id: id }.into());
+				responses.push_back(FrontendMessage::UpdateActiveDocument { document_id: self.active_document_id }.into());
+				responses.push_back(FrontendMessage::TriggerIndexedDbRemoveDocument { document_id: id }.into());
 				responses.push_back(RenderDocument.into());
 				responses.push_back(DocumentMessage::DocumentStructureChanged.into());
 				for layer in self.active_document().layer_metadata.keys() {
@@ -275,7 +275,7 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessor> for PortfolioMessageHa
 				self.load_document(new_document, document_id, false, responses);
 			}
 			OpenDocument => {
-				responses.push_back(FrontendMessage::OpenDocumentBrowse.into());
+				responses.push_back(FrontendMessage::TriggerFileUpload.into());
 			}
 			OpenDocumentFile(document_name, document) => {
 				responses.push_back(
@@ -301,7 +301,7 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessor> for PortfolioMessageHa
 						self.load_document(document, document_id, true, responses);
 					}
 					Err(e) => responses.push_back(
-						FrontendMessage::DisplayError {
+						FrontendMessage::DisplayDialogError {
 							title: "Failed to open document".to_string(),
 							description: e.to_string(),
 						}
@@ -327,7 +327,7 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessor> for PortfolioMessageHa
 			AutoSaveDocument(id) => {
 				let document = self.documents.get(&id).unwrap();
 				responses.push_back(
-					FrontendMessage::AutoSaveDocument {
+					FrontendMessage::TriggerIndexedDbWriteDocument {
 						document: document.serialize_document(),
 						details: FrontendDocumentDetails {
 							is_saved: document.is_saved(),
