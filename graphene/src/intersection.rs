@@ -1,3 +1,4 @@
+use std::cmp::{max_by, min_by};
 use std::ops::Mul;
 
 use crate::consts::F64PRECISION;
@@ -184,6 +185,10 @@ impl<'a> SubCurve<'a> {
 		self.curve.eval(self.start_t + t * (self.end_t - self.start_t))
 	}
 
+	fn available_precision(&self) -> f64 {
+		(self.start_t - self.end_t).abs()
+	}
+
 	/// split subcurve at t, as though the subcurve is a bezier curve, where t is a value between 0.0 and 1.0
 	fn split(&self, t: f64) -> (SubCurve, SubCurve) {
 		let split_t = self.start_t + t * (self.end_t - self.start_t);
@@ -217,6 +222,7 @@ impl<'a> SubCurve<'a> {
 /**
 Bezier Curve Intersection Algorithm
 - TODO: How does f64 precision effect the algorithm?
+- TODO: profile algorithm
 - Bug: algorithm finds same intersection multiple times in same recursion path
 - Bug: intersections of "perfectly alligned" line or curve
 - Bug: intersections on the end of segments
@@ -227,7 +233,7 @@ Bezier Curve Intersection Algorithm
 - Optimization: how efficiently does std::Vec::append work?
 - Optimization: specialized line/quad/cubic combination algorithms
 */
-fn path_intersections(a: &SubCurve, b: &SubCurve, mut recursion: usize) -> Vec<Intersect> {
+fn path_intersections(a: &SubCurve, b: &SubCurve, mut recursion: f64) -> Vec<Intersect> {
 	let mut intersections = Vec::new();
 	//special case
 	if let (PathSeg::Line(line_a), PathSeg::Line(line_b)) = (a.curve, b.curve) {
@@ -235,25 +241,27 @@ fn path_intersections(a: &SubCurve, b: &SubCurve, mut recursion: usize) -> Vec<I
 			intersections.push(cross);
 		}
 	} else if overlap(&a.bounding_box(), &b.bounding_box()) {
-		recursion += 1;
-		// bail out!!, should instead bail out when we reach the precision limits of either shape
-		// bail out before lshift with overflow
-		if recursion == 32 {
+		//TODO: change SubCurve Split to use new curve when the bounds of precision are approached
+		if a.available_precision() <= F64PRECISION || b.available_precision() <= F64PRECISION {
+			log::debug!("precision reached");
 			return intersections;
 		}
 		// base case, we are close enough to try linear approximation
-		if recursion > 10 {
+		if recursion > (1 << 10) as f64 {
 			//arbitrarily chosen limit
 			if let Some(mut cross) = line_intersection(&Line { p0: a.start(), p1: a.end() }, &Line { p0: b.start(), p1: b.end() }) {
 				// intersection t_value equals the recursive t_value + interpolated intersection value
-				cross.t_a = a.start_t + cross.t_a / (1 << recursion) as f64;
-				cross.t_b = b.start_t + cross.t_b / (1 << recursion) as f64;
+				cross.t_a = a.start_t + cross.t_a / recursion;
+				cross.t_b = b.start_t + cross.t_b / recursion;
 				cross.quality = guess_quality(a.curve, b.curve, &cross);
-				intersections.push(cross); //arbitrarily chosen threshold
+				//
+				if cross.quality <= F64PRECISION {
+					intersections.push(cross); //arbitrarily chosen threshold
+				}
 				return intersections;
 			}
-			log::debug!("line no cross"); // some intersections end up here, sign that false positives are possible
 		}
+		recursion /= 2.0;
 		let (a1, a2) = a.split(0.5);
 		let (b1, b2) = b.split(0.5);
 		intersections.append(&mut path_intersections(&a1, &b1, recursion));
@@ -264,18 +272,20 @@ fn path_intersections(a: &SubCurve, b: &SubCurve, mut recursion: usize) -> Vec<I
 	intersections
 }
 
+/// Optimization: inline? maybe...
+/// For quality Q in the worst case, the point on curve "a" corresponding to "guess" is distance Q from the point on curve "b"
 fn guess_quality(a: &PathSeg, b: &PathSeg, guess: &Intersect) -> f64 {
-	let dist_a = guess.point - b.eval(guess.t_b);
-	let dist_b = guess.point - a.eval(guess.t_a);
-	// prevent division by 0
-	return (2.0 / (1.0 + dist_a.x * dist_b.x * dist_a.y * dist_b.y)).abs();
+	let at_a = b.eval(guess.t_b);
+	let at_b = a.eval(guess.t_a);
+	at_a.distance(guess.point) + at_b.distance(guess.point)
 }
 
 pub fn intersections(a: &BezPath, b: &BezPath) -> Vec<Intersect> {
 	let mut intersections: Vec<Intersect> = Vec::new();
-	// there is some duplicate computation of b_extrema here, but i doubt it's significant
+	// there is some duplicate computation of b_extrema here, but I doubt it's significant
 	a.segments().enumerate().for_each(|(a_idx, a_seg)| {
 		// extrema at endpoints should not be included here as they must be calculated for each subcurve
+		// Note: below filtering may filter out extrema near the endpoints
 		let a_extrema = a_seg
 			.extrema()
 			.iter()
@@ -287,7 +297,7 @@ pub fn intersections(a: &BezPath, b: &BezPath) -> Vec<Intersect> {
 				.iter()
 				.filter_map(|t| if *t > F64PRECISION && *t < 1.0 - F64PRECISION { Some(b_seg.eval(*t)) } else { None })
 				.collect();
-			for mut path_intersection in path_intersections(&SubCurve::new(&a_seg, &a_extrema), &SubCurve::new(&b_seg, &b_extrema), 0) {
+			for mut path_intersection in path_intersections(&SubCurve::new(&a_seg, &a_extrema), &SubCurve::new(&b_seg, &b_extrema), 1.0) {
 				intersections.push({
 					path_intersection.add_idx(a_idx, b_idx);
 					path_intersection

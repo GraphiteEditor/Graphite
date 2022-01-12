@@ -168,7 +168,6 @@ impl PathGraph {
 	///   - implementing this behavior may not be feasible, instead reduce discrepancies
 	/// TODO: This function panics if an time value is NAN, no time value should ever be NAN, but this case should be handled, maybe not here
 	/// NOTE: about intersection time_val order
-	/// BUG: reverse flag doesn't seem to actually be reversing, could be that the actual PathSegs need to be reversed?
 	fn add_edges_from_path(&mut self, path: &BezPath, origin: Origin, reverse: bool) {
 		let mut seg_idx = 0;
 		//cstart holds the idx of the vertex the current edge is starting from

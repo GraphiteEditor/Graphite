@@ -898,7 +898,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				);
 			}
 			BooleanOperation(op) => {
-				// convert Iterator to Vec because Iterator does not implement several traits (Debug, Serialize, Deserialize, ...) required by DocumentOperation enum
+				// convert Vec<&[LayerId]> to Vec<Vec<&LayerId>> because Vec<&[LayerId]> does not implement several traits (Debug, Serialize, Deserialize, ...) required by DocumentOperation enum
 				responses.push_back(
 					DocumentOperation::BooleanOperation {
 						operation: op,
