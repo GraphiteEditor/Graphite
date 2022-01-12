@@ -384,7 +384,6 @@ impl JsEditorHandle {
 
 	/// Move a layer to be next to the specified neighbor
 	pub fn move_layer_in_tree(&self, path: Vec<LayerId>, insert_index: isize) {
-		log::info!("Move layers in tree, Path {:?}, insert index {}", &path, insert_index);
 		let message = DocumentMessage::MoveSelectedLayersTo { path, insert_index };
 		self.dispatch(message);
 	}
