@@ -1,4 +1,4 @@
-use crate::document::layer_panel::{LayerPanelEntry, RawBuffer};
+use crate::document::{LayerPanelEntry, RawBuffer};
 use crate::message_prelude::*;
 use crate::misc::HintData;
 use crate::tool::tool_options::ToolOptions;
