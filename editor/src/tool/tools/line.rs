@@ -15,13 +15,14 @@ pub struct Line {
 	data: LineToolData,
 }
 
+#[remain::sorted]
 #[impl_message(Message, ToolMessage, Line)]
 #[derive(PartialEq, Clone, Debug, Hash, Serialize, Deserialize)]
 pub enum LineMessage {
+	Abort,
 	DragStart,
 	DragStop,
 	Redraw { center: Key, lock_angle: Key, snap_angle: Key },
-	Abort,
 }
 
 impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Line {

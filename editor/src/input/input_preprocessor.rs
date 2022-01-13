@@ -9,16 +9,17 @@ use bitflags::bitflags;
 pub use graphene::DocumentResponse;
 use serde::{Deserialize, Serialize};
 
+#[remain::sorted]
 #[impl_message(Message, InputPreprocessor)]
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub enum InputPreprocessorMessage {
+	BoundsOfViewports(Vec<ViewportBounds>),
+	KeyDown(Key, ModifierKeys),
+	KeyUp(Key, ModifierKeys),
 	MouseDown(EditorMouseState, ModifierKeys),
-	MouseUp(EditorMouseState, ModifierKeys),
 	MouseMove(EditorMouseState, ModifierKeys),
 	MouseScroll(EditorMouseState, ModifierKeys),
-	KeyUp(Key, ModifierKeys),
-	KeyDown(Key, ModifierKeys),
-	BoundsOfViewports(Vec<ViewportBounds>),
+	MouseUp(EditorMouseState, ModifierKeys),
 }
 
 bitflags! {
@@ -44,55 +45,10 @@ enum KeyPosition {
 }
 
 impl MessageHandler<InputPreprocessorMessage, ()> for InputPreprocessor {
+	#[remain::check]
 	fn process_action(&mut self, message: InputPreprocessorMessage, _data: (), responses: &mut VecDeque<Message>) {
+		#[remain::sorted]
 		match message {
-			InputPreprocessorMessage::MouseMove(editor_mouse_state, modifier_keys) => {
-				self.handle_modifier_keys(modifier_keys, responses);
-
-				let mouse_state = editor_mouse_state.to_mouse_state(&self.viewport_bounds);
-				self.mouse.position = mouse_state.position;
-
-				responses.push_back(InputMapperMessage::PointerMove.into());
-			}
-			InputPreprocessorMessage::MouseDown(editor_mouse_state, modifier_keys) => {
-				self.handle_modifier_keys(modifier_keys, responses);
-
-				let mouse_state = editor_mouse_state.to_mouse_state(&self.viewport_bounds);
-				self.mouse.position = mouse_state.position;
-
-				if let Some(message) = self.translate_mouse_event(mouse_state, KeyPosition::Pressed) {
-					responses.push_back(message);
-				}
-			}
-			InputPreprocessorMessage::MouseUp(editor_mouse_state, modifier_keys) => {
-				self.handle_modifier_keys(modifier_keys, responses);
-
-				let mouse_state = editor_mouse_state.to_mouse_state(&self.viewport_bounds);
-				self.mouse.position = mouse_state.position;
-
-				if let Some(message) = self.translate_mouse_event(mouse_state, KeyPosition::Released) {
-					responses.push_back(message);
-				}
-			}
-			InputPreprocessorMessage::MouseScroll(editor_mouse_state, modifier_keys) => {
-				self.handle_modifier_keys(modifier_keys, responses);
-
-				let mouse_state = editor_mouse_state.to_mouse_state(&self.viewport_bounds);
-				self.mouse.position = mouse_state.position;
-				self.mouse.scroll_delta = mouse_state.scroll_delta;
-
-				responses.push_back(InputMapperMessage::MouseScroll.into());
-			}
-			InputPreprocessorMessage::KeyDown(key, modifier_keys) => {
-				self.handle_modifier_keys(modifier_keys, responses);
-				self.keyboard.set(key as usize);
-				responses.push_back(InputMapperMessage::KeyDown(key).into());
-			}
-			InputPreprocessorMessage::KeyUp(key, modifier_keys) => {
-				self.handle_modifier_keys(modifier_keys, responses);
-				self.keyboard.unset(key as usize);
-				responses.push_back(InputMapperMessage::KeyUp(key).into());
-			}
 			InputPreprocessorMessage::BoundsOfViewports(bounds_of_viewports) => {
 				assert_eq!(bounds_of_viewports.len(), 1, "Only one viewport is currently supported");
 
@@ -132,6 +88,53 @@ impl MessageHandler<InputPreprocessorMessage, ()> for InputPreprocessor {
 						)
 						.into(),
 					);
+				}
+			}
+			InputPreprocessorMessage::KeyDown(key, modifier_keys) => {
+				self.handle_modifier_keys(modifier_keys, responses);
+				self.keyboard.set(key as usize);
+				responses.push_back(InputMapperMessage::KeyDown(key).into());
+			}
+			InputPreprocessorMessage::KeyUp(key, modifier_keys) => {
+				self.handle_modifier_keys(modifier_keys, responses);
+				self.keyboard.unset(key as usize);
+				responses.push_back(InputMapperMessage::KeyUp(key).into());
+			}
+			InputPreprocessorMessage::MouseDown(editor_mouse_state, modifier_keys) => {
+				self.handle_modifier_keys(modifier_keys, responses);
+
+				let mouse_state = editor_mouse_state.to_mouse_state(&self.viewport_bounds);
+				self.mouse.position = mouse_state.position;
+
+				if let Some(message) = self.translate_mouse_event(mouse_state, KeyPosition::Pressed) {
+					responses.push_back(message);
+				}
+			}
+			InputPreprocessorMessage::MouseMove(editor_mouse_state, modifier_keys) => {
+				self.handle_modifier_keys(modifier_keys, responses);
+
+				let mouse_state = editor_mouse_state.to_mouse_state(&self.viewport_bounds);
+				self.mouse.position = mouse_state.position;
+
+				responses.push_back(InputMapperMessage::PointerMove.into());
+			}
+			InputPreprocessorMessage::MouseScroll(editor_mouse_state, modifier_keys) => {
+				self.handle_modifier_keys(modifier_keys, responses);
+
+				let mouse_state = editor_mouse_state.to_mouse_state(&self.viewport_bounds);
+				self.mouse.position = mouse_state.position;
+				self.mouse.scroll_delta = mouse_state.scroll_delta;
+
+				responses.push_back(InputMapperMessage::MouseScroll.into());
+			}
+			InputPreprocessorMessage::MouseUp(editor_mouse_state, modifier_keys) => {
+				self.handle_modifier_keys(modifier_keys, responses);
+
+				let mouse_state = editor_mouse_state.to_mouse_state(&self.viewport_bounds);
+				self.mouse.position = mouse_state.position;
+
+				if let Some(message) = self.translate_mouse_event(mouse_state, KeyPosition::Released) {
+					responses.push_back(message);
 				}
 			}
 		};

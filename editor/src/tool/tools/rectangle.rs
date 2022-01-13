@@ -15,13 +15,14 @@ pub struct Rectangle {
 	data: RectangleToolData,
 }
 
+#[remain::sorted]
 #[impl_message(Message, ToolMessage, Rectangle)]
 #[derive(PartialEq, Clone, Debug, Hash, Serialize, Deserialize)]
 pub enum RectangleMessage {
+	Abort,
 	DragStart,
 	DragStop,
 	Resize { center: Key, lock_ratio: Key },
-	Abort,
 }
 
 impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Rectangle {

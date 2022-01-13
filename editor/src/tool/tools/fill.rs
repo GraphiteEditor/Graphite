@@ -15,12 +15,13 @@ pub struct Fill {
 	data: FillToolData,
 }
 
+#[remain::sorted]
 #[impl_message(Message, ToolMessage, Fill)]
 #[derive(PartialEq, Clone, Debug, Hash, Serialize, Deserialize)]
 pub enum FillMessage {
+	Abort,
 	LeftMouseDown,
 	RightMouseDown,
-	Abort,
 }
 
 impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Fill {

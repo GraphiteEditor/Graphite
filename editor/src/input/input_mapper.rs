@@ -14,15 +14,16 @@ use std::fmt::Write;
 const NUDGE_AMOUNT: f64 = 1.;
 const SHIFT_NUDGE_AMOUNT: f64 = 10.;
 
+#[remain::sorted]
 #[impl_message(Message, InputMapper)]
 #[derive(PartialEq, Clone, Debug, Hash, Serialize, Deserialize)]
 pub enum InputMapperMessage {
-	PointerMove,
-	MouseScroll,
-	#[child]
-	KeyUp(Key),
 	#[child]
 	KeyDown(Key),
+	#[child]
+	KeyUp(Key),
+	MouseScroll,
+	PointerMove,
 }
 
 #[derive(PartialEq, Clone, Debug)]
@@ -116,8 +117,8 @@ macro_rules! mapping {
 				let arr = match entry.trigger {
 					InputMapperMessage::KeyDown(key) => &mut key_down[key as usize],
 					InputMapperMessage::KeyUp(key) => &mut key_up[key as usize],
-					InputMapperMessage::PointerMove => &mut pointer_move,
 					InputMapperMessage::MouseScroll => &mut mouse_scroll,
+					InputMapperMessage::PointerMove => &mut pointer_move,
 				};
 				arr.push(entry.clone());
 			}
@@ -341,8 +342,8 @@ impl Mapping {
 		let list = match message {
 			KeyDown(key) => &self.key_down[key as usize],
 			KeyUp(key) => &self.key_up[key as usize],
-			PointerMove => &self.pointer_move,
 			MouseScroll => &self.mouse_scroll,
+			PointerMove => &self.pointer_move,
 		};
 		list.match_mapping(keys, actions)
 	}

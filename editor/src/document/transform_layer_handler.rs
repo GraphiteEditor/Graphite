@@ -358,25 +358,22 @@ impl Typing {
 	}
 }
 
+#[remain::sorted]
 #[impl_message(Message, DocumentMessage, TransformLayers)]
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub enum TransformLayerMessage {
-	BeginGrab,
-	BeginScale,
-	BeginRotate,
-
-	CancelOperation,
 	ApplyOperation,
-
-	TypeNumber(u8),
+	BeginGrab,
+	BeginRotate,
+	BeginScale,
+	CancelOperation,
+	ConstrainX,
+	ConstrainY,
+	MouseMove { slow_key: Key, snap_key: Key },
 	TypeBackspace,
 	TypeDecimalPoint,
 	TypeNegate,
-
-	ConstrainX,
-	ConstrainY,
-
-	MouseMove { slow_key: Key, snap_key: Key },
+	TypeNumber(u8),
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -395,6 +392,7 @@ pub struct TransformLayerMessageHandler {
 }
 
 impl MessageHandler<TransformLayerMessage, (&mut HashMap<Vec<LayerId>, LayerMetadata>, &mut Document, &InputPreprocessor)> for TransformLayerMessageHandler {
+	#[remain::check]
 	fn process_action(&mut self, message: TransformLayerMessage, data: (&mut HashMap<Vec<LayerId>, LayerMetadata>, &mut Document, &InputPreprocessor), responses: &mut VecDeque<Message>) {
 		use TransformLayerMessage::*;
 
@@ -413,7 +411,16 @@ impl MessageHandler<TransformLayerMessage, (&mut HashMap<Vec<LayerId>, LayerMeta
 			*start_mouse = ipp.mouse.position;
 		};
 
+		#[remain::sorted]
 		match message {
+			ApplyOperation => {
+				self.original_transforms.clear();
+				self.typing.clear();
+
+				self.operation = Operation::None;
+
+				responses.push_back(ToolMessage::DocumentIsDirty.into());
+			}
 			BeginGrab => {
 				if let Operation::Grabbing(_) = self.operation {
 					return;
@@ -458,14 +465,8 @@ impl MessageHandler<TransformLayerMessage, (&mut HashMap<Vec<LayerId>, LayerMeta
 
 				responses.push_back(ToolMessage::DocumentIsDirty.into());
 			}
-			ApplyOperation => {
-				self.original_transforms.clear();
-				self.typing.clear();
-
-				self.operation = Operation::None;
-
-				responses.push_back(ToolMessage::DocumentIsDirty.into());
-			}
+			ConstrainX => self.operation.constrain_axis(Axis::X, &mut selected, self.snap),
+			ConstrainY => self.operation.constrain_axis(Axis::Y, &mut selected, self.snap),
 			MouseMove { slow_key, snap_key } => {
 				self.slow = ipp.keyboard.get(slow_key as usize);
 
@@ -515,12 +516,10 @@ impl MessageHandler<TransformLayerMessage, (&mut HashMap<Vec<LayerId>, LayerMeta
 				}
 				self.mouse_position = ipp.mouse.position;
 			}
-			TypeNumber(number) => self.operation.handle_typed(self.typing.type_number(number), &mut selected, self.snap),
 			TypeBackspace => self.operation.handle_typed(self.typing.type_backspace(), &mut selected, self.snap),
 			TypeDecimalPoint => self.operation.handle_typed(self.typing.type_decimal_point(), &mut selected, self.snap),
 			TypeNegate => self.operation.handle_typed(self.typing.type_negate(), &mut selected, self.snap),
-			ConstrainX => self.operation.constrain_axis(Axis::X, &mut selected, self.snap),
-			ConstrainY => self.operation.constrain_axis(Axis::Y, &mut selected, self.snap),
+			TypeNumber(number) => self.operation.handle_typed(self.typing.type_number(number), &mut selected, self.snap),
 		}
 	}
 

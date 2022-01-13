@@ -10,11 +10,12 @@ use graphene::Operation as DocumentOperation;
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 
+#[remain::sorted]
 #[impl_message(Message, DocumentMessage, Artboard)]
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub enum ArtboardMessage {
-	DispatchOperation(Box<DocumentOperation>),
 	AddArtboard { top: f64, left: f64, height: f64, width: f64 },
+	DispatchOperation(Box<DocumentOperation>),
 	RenderArtboards,
 }
 
@@ -37,14 +38,12 @@ impl ArtboardMessageHandler {
 }
 
 impl MessageHandler<ArtboardMessage, (&mut LayerMetadata, &GrapheneDocument, &InputPreprocessor)> for ArtboardMessageHandler {
+	#[remain::check]
 	fn process_action(&mut self, message: ArtboardMessage, _data: (&mut LayerMetadata, &GrapheneDocument, &InputPreprocessor), responses: &mut VecDeque<Message>) {
 		// let (layer_metadata, document, ipp) = data;
 		use ArtboardMessage::*;
+		#[remain::sorted]
 		match message {
-			DispatchOperation(operation) => match self.artboards_graphene_document.handle_operation(&operation) {
-				Ok(_) => (),
-				Err(e) => log::error!("Artboard Error: {:?}", e),
-			},
 			AddArtboard { top, left, height, width } => {
 				let artboard_id = generate_uuid();
 				self.artboard_ids.push(artboard_id);
@@ -64,6 +63,10 @@ impl MessageHandler<ArtboardMessage, (&mut LayerMetadata, &GrapheneDocument, &In
 
 				responses.push_back(DocumentMessage::RenderDocument.into());
 			}
+			DispatchOperation(operation) => match self.artboards_graphene_document.handle_operation(&operation) {
+				Ok(_) => (),
+				Err(e) => log::error!("Artboard Error: {:?}", e),
+			},
 			RenderArtboards => {
 				// Render an infinite canvas if there are no artboards
 				if self.artboard_ids.is_empty() {

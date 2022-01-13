@@ -27,16 +27,17 @@ pub struct Path {
 	data: PathToolData,
 }
 
+#[remain::sorted]
 #[impl_message(Message, ToolMessage, Path)]
 #[derive(PartialEq, Clone, Debug, Hash, Serialize, Deserialize)]
 pub enum PathMessage {
-	DragStart,
-	PointerMove,
-	DragStop,
-
 	// Standard messages
 	Abort,
 	DocumentIsDirty,
+
+	DragStart,
+	DragStop,
+	PointerMove,
 }
 
 impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Path {
