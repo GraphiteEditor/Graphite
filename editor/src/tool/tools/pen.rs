@@ -14,15 +14,16 @@ pub struct Pen {
 	data: PenToolData,
 }
 
+#[remain::sorted]
 #[impl_message(Message, ToolMessage, Pen)]
 #[derive(PartialEq, Clone, Debug, Hash, Serialize, Deserialize)]
 pub enum PenMessage {
-	Undo,
+	Abort,
+	Confirm,
 	DragStart,
 	DragStop,
 	PointerMove,
-	Confirm,
-	Abort,
+	Undo,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

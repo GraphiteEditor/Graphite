@@ -15,13 +15,14 @@ pub struct Shape {
 	data: ShapeToolData,
 }
 
+#[remain::sorted]
 #[impl_message(Message, ToolMessage, Shape)]
 #[derive(PartialEq, Clone, Debug, Hash, Serialize, Deserialize)]
 pub enum ShapeMessage {
+	Abort,
 	DragStart,
 	DragStop,
 	Resize { center: Key, lock_ratio: Key },
-	Abort,
 }
 
 impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Shape {

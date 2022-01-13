@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Default)]
 pub struct Crop;
 
+#[remain::sorted]
 #[impl_message(Message, ToolMessage, Crop)]
 #[derive(PartialEq, Clone, Debug, Hash, Serialize, Deserialize)]
 pub enum CropMessage {

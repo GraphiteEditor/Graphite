@@ -15,12 +15,13 @@ pub struct Eyedropper {
 	data: EyedropperToolData,
 }
 
+#[remain::sorted]
 #[impl_message(Message, ToolMessage, Eyedropper)]
 #[derive(PartialEq, Clone, Debug, Hash, Serialize, Deserialize)]
 pub enum EyedropperMessage {
+	Abort,
 	LeftMouseDown,
 	RightMouseDown,
-	Abort,
 }
 
 impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Eyedropper {
