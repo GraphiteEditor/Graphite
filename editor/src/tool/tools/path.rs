@@ -15,6 +15,7 @@ use graphene::layers::style;
 use graphene::layers::style::Fill;
 use graphene::layers::style::PathStyle;
 use graphene::layers::style::Stroke;
+use graphene::layers::Layer;
 use graphene::Operation;
 use kurbo::BezPath;
 use kurbo::PathEl;
@@ -82,18 +83,79 @@ struct PathToolData {
 	handle_marker_pool: Vec<Vec<LayerId>>,
 	anchor_handle_line_pool: Vec<Vec<LayerId>>,
 	shape_outline_pool: Vec<Vec<LayerId>>,
-	selected_shapes: Vec<VectorManipulatorShape>,
 	selection: PathToolSelection,
 }
 
 impl PathToolData {}
 #[derive(Clone, Debug, Default)]
 struct PathToolSelection {
-	closest_layer_path: Vec<LayerId>,
-	closest_shape_id: usize,
+	shapes_selected: Vec<VectorManipulatorShape>,
+
+	layer_modified_path: Vec<LayerId>,
+	shape_modified_id: usize,
+	shape_path_elements: Vec<kurbo::PathEl>,
+	segment_modified_id: usize,
+
 	overlay_path: Vec<LayerId>,
-	bez_path_elements: Vec<kurbo::PathEl>,
-	bez_segment_id: usize,
+}
+
+impl PathToolSelection {
+	pub fn select_nearest(&mut self, shape_index: usize, mouse_position: DVec2, modified_layer: Vec<LayerId>) {
+		let selected_shape = &self.shapes_selected[shape_index];
+		let bez_path = selected_shape.path.clone();
+		let path_elements: Vec<PathEl> = (&bez_path).into_iter().collect();
+		let mouse_to_shape = selected_shape.transform.inverse().transform_point2(mouse_position);
+
+		self.segment_modified_id = self.closest_path_element(&path_elements, Vec2::new(mouse_to_shape.x, mouse_to_shape.y));
+		self.shape_path_elements = path_elements;
+		self.layer_modified_path = modified_layer;
+		self.shape_modified_id = shape_index;
+	}
+
+	pub fn shape_being_edited(&self) -> &VectorManipulatorShape {
+		&self.shapes_selected[self.shape_modified_id]
+	}
+
+	// Brute force comparison to determine which handle we want to select
+	fn closest_path_element(&self, bez: &[kurbo::PathEl], pos: kurbo::Vec2) -> usize {
+		let min_dist = |p1: Vec2, p2: Vec2| -> Vec2 {
+			if (p1 - pos).hypot2() < (p2 - pos).hypot2() {
+				p1
+			} else {
+				p2
+			}
+		};
+
+		let mut closest: usize = 0;
+		let mut closest_distance: f64 = f64::MAX;
+		for (i, el) in bez.iter().enumerate() {
+			let p = match el {
+				kurbo::PathEl::MoveTo(a) => Some(a.to_vec2()),
+				kurbo::PathEl::LineTo(a) => Some(a.to_vec2()),
+				kurbo::PathEl::QuadTo(a, b) => {
+					let a = a.to_vec2();
+					let b = b.to_vec2();
+					Some(min_dist(a, b))
+				}
+				kurbo::PathEl::CurveTo(a, b, c) => {
+					let a = a.to_vec2();
+					let b = b.to_vec2();
+					let c = c.to_vec2();
+					Some(min_dist(min_dist(a, b), min_dist(b, c)))
+				}
+				kurbo::PathEl::ClosePath => None,
+			};
+			if p.is_none() {
+				continue;
+			}
+			let distance_squared = (p.unwrap() - pos).hypot2();
+			if distance_squared < closest_distance {
+				closest_distance = distance_squared;
+				closest = i;
+			}
+		}
+		closest
+	}
 }
 
 impl Fsm for PathToolFsmState {
@@ -115,10 +177,10 @@ impl Fsm for PathToolFsmState {
 				(_, DocumentIsDirty) => {
 					let (mut anchor_i, mut handle_i, mut line_i, mut shape_i) = (0, 0, 0, 0);
 
-					let shapes_to_draw = document.selected_visible_layers_vector_points();
+					data.selection.shapes_selected = document.selected_visible_layers_vector_points();
 					// Grow the overlay pools by the shortfall, if any
-					let (total_anchors, total_handles, total_anchor_handle_lines) = calculate_total_overlays_per_type(&shapes_to_draw);
-					let total_shapes = shapes_to_draw.len();
+					let (total_anchors, total_handles, total_anchor_handle_lines) = calculate_total_overlays_per_type(&data.selection.shapes_selected);
+					let total_shapes = data.selection.shapes_selected.len();
 					grow_overlay_pool_entries(&mut data.shape_outline_pool, total_shapes, add_shape_outline, responses);
 					grow_overlay_pool_entries(&mut data.anchor_handle_line_pool, total_anchor_handle_lines, add_anchor_handle_line, responses);
 					grow_overlay_pool_entries(&mut data.anchor_marker_pool, total_anchors, add_anchor_marker, responses);
@@ -128,7 +190,7 @@ impl Fsm for PathToolFsmState {
 					const BIAS: f64 = 0.0001;
 
 					// Draw the overlays for each shape
-					for shape_to_draw in &shapes_to_draw {
+					for shape_to_draw in &data.selection.shapes_selected {
 						let shape_layer_path = &data.shape_outline_pool[shape_i];
 
 						responses.push_back(
@@ -229,9 +291,9 @@ impl Fsm for PathToolFsmState {
 					let mouse_pos = input.mouse.position;
 					let mut points = Vec::new();
 
-					let (mut anchor_i, mut handle_i, _line_i, _shape_i) = (0, 0, 0, 0);
-					let shapes_to_draw = document.selected_visible_layers_vector_points();
-					let (total_anchors, total_handles, _total_anchor_handle_lines) = calculate_total_overlays_per_type(&shapes_to_draw);
+					let (mut anchor_i, mut handle_i) = (0, 0);
+					data.selection.shapes_selected = document.selected_visible_layers_vector_points();
+					let (total_anchors, total_handles, _total_anchor_handle_lines) = calculate_total_overlays_per_type(&data.selection.shapes_selected);
 					grow_overlay_pool_entries(&mut data.anchor_marker_pool, total_anchors, add_anchor_marker, responses);
 					grow_overlay_pool_entries(&mut data.handle_marker_pool, total_handles, add_handle_marker, responses);
 
@@ -256,8 +318,8 @@ impl Fsm for PathToolFsmState {
 					let select_threshold = 6.;
 					let select_threshold_squared = select_threshold * select_threshold;
 
-					for (shape_offset, shape_to_draw) in shapes_to_draw.iter().enumerate() {
-						let segment = shape_manipulator_points(shape_to_draw);
+					for (shape_offset, shape_to_modifiy) in data.selection.shapes_selected.iter().enumerate() {
+						let segment = shape_manipulator_points(shape_to_modifiy);
 
 						for anchor in segment.anchors {
 							let d2 = mouse_pos.distance_squared(anchor);
@@ -266,7 +328,7 @@ impl Fsm for PathToolFsmState {
 									anchor,
 									PointType::Anchor {
 										anchor_i,
-										layer_path: shape_to_draw.layer_path.clone(),
+										layer_path: shape_to_modifiy.layer_path.clone(),
 										shape_offset,
 									},
 									d2,
@@ -282,7 +344,7 @@ impl Fsm for PathToolFsmState {
 									handle,
 									PointType::Handle {
 										handle_i,
-										layer_path: shape_to_draw.layer_path.clone(),
+										layer_path: shape_to_modifiy.layer_path.clone(),
 										shape_offset,
 									},
 									d2,
@@ -294,7 +356,6 @@ impl Fsm for PathToolFsmState {
 
 					points.sort_by(|a, b| a.mouse_proximity.partial_cmp(&b.mouse_proximity).unwrap_or(std::cmp::Ordering::Equal));
 					let closest_point_within_click_threshold = points.first();
-
 					if let Some(point) = closest_point_within_click_threshold {
 						let path = match point.point_type {
 							PointType::Anchor {
@@ -302,15 +363,7 @@ impl Fsm for PathToolFsmState {
 								ref layer_path,
 								shape_offset,
 							} => {
-								data.selected_shapes = shapes_to_draw;
-								let shape = &data.selected_shapes[shape_offset];
-								let path = shape.path.clone();
-								let bez: Vec<PathEl> = (&path).into_iter().collect();
-								let transformed = shape.transform.inverse().transform_point2(input.mouse.position);
-								data.selection.bez_segment_id = closest_anchor(&bez, Vec2::new(transformed.x, transformed.y));
-								data.selection.bez_path_elements = bez;
-								data.selection.closest_layer_path = layer_path.clone();
-								data.selection.closest_shape_id = shape_offset;
+								data.selection.select_nearest(shape_offset, input.mouse.position, layer_path.clone());
 								data.anchor_marker_pool[anchor_i].clone()
 							}
 							PointType::Handle {
@@ -318,16 +371,7 @@ impl Fsm for PathToolFsmState {
 								ref layer_path,
 								shape_offset,
 							} => {
-								// TODO make this work for the handles, right now just selects the anchors
-								data.selected_shapes = shapes_to_draw;
-								let shape = &data.selected_shapes[shape_offset];
-								let path = shape.path.clone();
-								let bez: Vec<PathEl> = (&path).into_iter().collect();
-								let transformed = shape.transform.inverse().transform_point2(input.mouse.position);
-								data.selection.bez_segment_id = closest_anchor(&bez, Vec2::new(transformed.x, transformed.y));
-								data.selection.bez_path_elements = bez;
-								data.selection.closest_layer_path = layer_path.clone();
-								data.selection.closest_shape_id = shape_offset;
+								data.selection.select_nearest(shape_offset, input.mouse.position, layer_path.clone());
 								data.handle_marker_pool[handle_i].clone()
 							}
 						};
@@ -349,23 +393,22 @@ impl Fsm for PathToolFsmState {
 					}
 				}
 				(Dragging, PointerMove) => {
-					let shape = &data.selected_shapes[data.selection.closest_shape_id];
-					let transformed = shape.transform.inverse().transform_point2(input.mouse.position);
-					let delta: Vec2 = Vec2::new(transformed.x, transformed.y);
-					let replacement = match &data.selection.bez_path_elements[data.selection.bez_segment_id] {
+					let mouse_to_shape = data.selection.shape_being_edited().transform.inverse().transform_point2(input.mouse.position);
+					let delta = Vec2::new(mouse_to_shape.x, mouse_to_shape.y);
+					let replacement = match &data.selection.shape_path_elements[data.selection.segment_modified_id] {
 						PathEl::MoveTo(_) => PathEl::MoveTo(delta.to_point()),
 						PathEl::LineTo(_) => PathEl::LineTo(delta.to_point()),
-						PathEl::QuadTo(a1, _) => PathEl::QuadTo(*a1, delta.to_point()),
-						PathEl::CurveTo(a1, a2, _) => PathEl::CurveTo(*a1, *a2, delta.to_point()),
+						PathEl::QuadTo(a1, p) => PathEl::QuadTo(*a1, delta.to_point()),
+						PathEl::CurveTo(a1, a2, p) => PathEl::CurveTo(*a1, *a2, delta.to_point()),
 						PathEl::ClosePath => unreachable!(),
 					};
-					data.selection.bez_path_elements[data.selection.bez_segment_id] = replacement;
+					data.selection.shape_path_elements[data.selection.segment_modified_id] = replacement;
 
 					responses.push_back(
 						Operation::SetShapePathInViewport {
-							path: data.selection.closest_layer_path.clone(),
-							bez_path: data.selection.bez_path_elements.clone().into_iter().collect(),
-							transform: shape.transform.to_cols_array(),
+							path: data.selection.layer_modified_path.clone(),
+							bez_path: data.selection.shape_path_elements.clone().into_iter().collect(),
+							transform: data.selection.shape_being_edited().transform.to_cols_array(),
 						}
 						.into(),
 					);
@@ -614,28 +657,4 @@ fn add_shape_outline(responses: &mut VecDeque<Message>) -> Vec<LayerId> {
 	responses.push_back(DocumentMessage::Overlay(operation.into()).into());
 
 	layer_path
-}
-
-// Brute force comparison to determine which path element we want to select
-fn closest_anchor(bez: &[kurbo::PathEl], pos: kurbo::Vec2) -> usize {
-	let mut closest: usize = 0;
-	let mut closest_distance: f64 = f64::MAX;
-	for (i, el) in bez.iter().enumerate() {
-		let p = match el {
-			kurbo::PathEl::MoveTo(p) => Some(p.to_vec2()),
-			kurbo::PathEl::LineTo(p) => Some(p.to_vec2()),
-			kurbo::PathEl::QuadTo(_, p) => Some(p.to_vec2()),
-			kurbo::PathEl::CurveTo(_, _, p) => Some(p.to_vec2()),
-			kurbo::PathEl::ClosePath => None,
-		};
-		if p.is_none() {
-			continue;
-		}
-		let distance_squared = (p.unwrap() - pos).hypot2();
-		if distance_squared < closest_distance {
-			closest_distance = distance_squared;
-			closest = i;
-		}
-	}
-	closest
 }
