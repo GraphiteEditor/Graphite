@@ -13,13 +13,14 @@ pub struct Ellipse {
 	data: EllipseToolData,
 }
 
+#[remain::sorted]
 #[impl_message(Message, ToolMessage, Ellipse)]
 #[derive(PartialEq, Clone, Debug, Hash, Serialize, Deserialize)]
 pub enum EllipseMessage {
+	Abort,
 	DragStart,
 	DragStop,
 	Resize { center: Key, lock_ratio: Key },
-	Abort,
 }
 
 impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Ellipse {

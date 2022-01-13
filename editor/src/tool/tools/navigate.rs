@@ -11,16 +11,17 @@ pub struct Navigate {
 	data: NavigateToolData,
 }
 
+#[remain::sorted]
 #[impl_message(Message, ToolMessage, Navigate)]
 #[derive(PartialEq, Clone, Debug, Hash, Serialize, Deserialize)]
 pub enum NavigateMessage {
+	Abort,
 	ClickZoom { zoom_in: bool },
 	MouseMove { snap_angle: Key, snap_zoom: Key },
-	TranslateCanvasBegin,
 	RotateCanvasBegin,
-	ZoomCanvasBegin,
 	TransformCanvasEnd,
-	Abort,
+	TranslateCanvasBegin,
+	ZoomCanvasBegin,
 }
 
 impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Navigate {

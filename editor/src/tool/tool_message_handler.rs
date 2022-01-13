@@ -9,63 +9,55 @@ use crate::{
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 
+#[remain::sorted]
 #[impl_message(Message, Tool)]
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub enum ToolMessage {
-	SelectPrimaryColor(Color),
-	SelectSecondaryColor(Color),
-	SwapColors,
-	ResetColors,
-	NoOp,
 	ActivateTool(ToolType),
+	#[child]
+	Crop(CropMessage),
 	DocumentIsDirty,
-	UpdateHints,
-	SetToolOptions(ToolType, ToolOptions),
-	#[child]
-	Fill(FillMessage),
-	#[child]
-	Rectangle(RectangleMessage),
 	#[child]
 	Ellipse(EllipseMessage),
 	#[child]
-	Select(SelectMessage),
+	Eyedropper(EyedropperMessage),
+	#[child]
+	Fill(FillMessage),
 	#[child]
 	Line(LineMessage),
 	#[child]
-	Crop(CropMessage),
-	#[child]
-	Eyedropper(EyedropperMessage),
-	#[child]
 	Navigate(NavigateMessage),
+	NoOp,
 	#[child]
 	Path(PathMessage),
 	#[child]
 	Pen(PenMessage),
 	#[child]
+	Rectangle(RectangleMessage),
+	ResetColors,
+	#[child]
+	Select(SelectMessage),
+	SelectPrimaryColor(Color),
+	SelectSecondaryColor(Color),
+	SetToolOptions(ToolType, ToolOptions),
+	#[child]
 	Shape(ShapeMessage),
+	SwapColors,
+	UpdateHints,
 }
 
 #[derive(Debug, Default)]
 pub struct ToolMessageHandler {
 	tool_state: ToolFsmState,
 }
+
 impl MessageHandler<ToolMessage, (&DocumentMessageHandler, &InputPreprocessor)> for ToolMessageHandler {
+	#[remain::check]
 	fn process_action(&mut self, message: ToolMessage, data: (&DocumentMessageHandler, &InputPreprocessor), responses: &mut VecDeque<Message>) {
 		let (document, input) = data;
 		use ToolMessage::*;
+		#[remain::sorted]
 		match message {
-			SelectPrimaryColor(color) => {
-				let document_data = &mut self.tool_state.document_tool_data;
-				document_data.primary_color = color;
-
-				update_working_colors(&self.tool_state.document_tool_data, responses);
-			}
-			SelectSecondaryColor(color) => {
-				let document_data = &mut self.tool_state.document_tool_data;
-				document_data.secondary_color = color;
-
-				update_working_colors(document_data, responses);
-			}
 			ActivateTool(new_tool) => {
 				let tool_data = &mut self.tool_state.tool_data;
 				let document_data = &self.tool_state.document_tool_data;
@@ -114,13 +106,6 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, &InputPreprocessor)> 
 					responses.push_back(message.into());
 				}
 			}
-			SwapColors => {
-				let document_data = &mut self.tool_state.document_tool_data;
-
-				std::mem::swap(&mut document_data.primary_color, &mut document_data.secondary_color);
-
-				update_working_colors(document_data, responses);
-			}
 			ResetColors => {
 				let document_data = &mut self.tool_state.document_tool_data;
 
@@ -129,24 +114,44 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, &InputPreprocessor)> 
 
 				update_working_colors(document_data, responses);
 			}
+			SelectPrimaryColor(color) => {
+				let document_data = &mut self.tool_state.document_tool_data;
+				document_data.primary_color = color;
+
+				update_working_colors(&self.tool_state.document_tool_data, responses);
+			}
+			SelectSecondaryColor(color) => {
+				let document_data = &mut self.tool_state.document_tool_data;
+				document_data.secondary_color = color;
+
+				update_working_colors(document_data, responses);
+			}
 			SetToolOptions(tool_type, tool_options) => {
 				let document_data = &mut self.tool_state.document_tool_data;
 
 				document_data.tool_options.insert(tool_type, tool_options);
 			}
-			message => {
-				let tool_type = message_to_tool_type(&message);
+			SwapColors => {
+				let document_data = &mut self.tool_state.document_tool_data;
+
+				std::mem::swap(&mut document_data.primary_color, &mut document_data.secondary_color);
+
+				update_working_colors(document_data, responses);
+			}
+			tool_message => {
+				let tool_type = message_to_tool_type(&tool_message);
 				let document_data = &self.tool_state.document_tool_data;
 				let tool_data = &mut self.tool_state.tool_data;
 
 				if let Some(tool) = tool_data.tools.get_mut(&tool_type) {
 					if tool_type == tool_data.active_tool_type {
-						tool.process_action(message, (document, document_data, input), responses);
+						tool.process_action(tool_message, (document, document_data, input), responses);
 					}
 				}
 			}
 		}
 	}
+
 	fn actions(&self) -> ActionList {
 		let mut list = actions!(ToolMessageDiscriminant; ResetColors, SwapColors, ActivateTool, SetToolOptions);
 		list.extend(self.tool_state.tool_data.active_tool().actions());

@@ -26,6 +26,7 @@ pub struct Select {
 	data: SelectToolData,
 }
 
+// #[remain::sorted] // https://github.com/dtolnay/remain/issues/16
 #[impl_message(Message, ToolMessage, Select)]
 #[derive(PartialEq, Clone, Debug, Hash, Serialize, Deserialize)]
 pub enum SelectMessage {
