@@ -1,7 +1,5 @@
-use super::tool_message::ToolMessage;
 use super::tool_options::{SelectAppendMode, ShapeType, ToolOptions};
 use super::tools::*;
-use crate::communication::message::Message;
 use crate::communication::message_handler::MessageHandler;
 use crate::document::DocumentMessageHandler;
 use crate::input::InputPreprocessorMessageHandler;

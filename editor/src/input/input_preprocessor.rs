@@ -24,8 +24,9 @@ mod test {
 	use crate::input::input_preprocessor::ModifierKeys;
 	use crate::input::keyboard::Key;
 	use crate::input::mouse::{EditorMouseState, ViewportPosition};
-	use crate::input::{InputMapperMessage, InputPreprocessorMessage, InputPreprocessorMessageHandler};
+	use crate::input::InputPreprocessorMessageHandler;
 	use crate::message_prelude::MessageHandler;
+	use crate::message_prelude::*;
 
 	use std::collections::VecDeque;
 

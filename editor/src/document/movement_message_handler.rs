@@ -1,4 +1,3 @@
-use super::DocumentMessage;
 use crate::consts::{VIEWPORT_ROTATE_SNAP_INTERVAL, VIEWPORT_SCROLL_RATE, VIEWPORT_ZOOM_LEVELS, VIEWPORT_ZOOM_MOUSE_RATE, VIEWPORT_ZOOM_SCALE_MAX, VIEWPORT_ZOOM_SCALE_MIN, VIEWPORT_ZOOM_WHEEL_RATE};
 use crate::input::mouse::{ViewportBounds, ViewportPosition};
 use crate::input::InputPreprocessorMessageHandler;

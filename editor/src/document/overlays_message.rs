@@ -1,4 +1,3 @@
-use super::DocumentMessage;
 use crate::message_prelude::*;
 
 use graphene::Operation as DocumentOperation;

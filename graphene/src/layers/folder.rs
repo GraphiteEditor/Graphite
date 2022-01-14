@@ -1,6 +1,7 @@
 use super::layer_info::{Layer, LayerData, LayerDataType};
 use super::style::ViewMode;
-use crate::{DocumentError, LayerId, Quad};
+use crate::intersection::Quad;
+use crate::{DocumentError, LayerId};
 
 use glam::DVec2;
 use serde::{Deserialize, Serialize};

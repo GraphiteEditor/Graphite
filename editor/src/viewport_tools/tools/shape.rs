@@ -1,4 +1,4 @@
-use super::resize::Resize;
+use super::shared::resize::Resize;
 use crate::document::DocumentMessageHandler;
 use crate::input::keyboard::{Key, MouseMotion};
 use crate::input::InputPreprocessorMessageHandler;

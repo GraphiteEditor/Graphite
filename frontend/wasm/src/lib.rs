@@ -1,10 +1,9 @@
 pub mod api;
+pub mod helpers;
 pub mod logging;
 pub mod type_translators;
 
-mod helpers;
-
-use editor::message_prelude::FrontendMessage;
+use editor::message_prelude::*;
 
 use logging::WasmLog;
 use std::cell::RefCell;
