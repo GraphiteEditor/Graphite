@@ -21,13 +21,13 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, &InputPreprocessorMes
 		let (document, input) = data;
 		#[remain::sorted]
 		match message {
-			ActivateTool(new_tool) => {
+			ActivateTool { tool_type } => {
 				let tool_data = &mut self.tool_state.tool_data;
 				let document_data = &self.tool_state.document_tool_data;
 				let old_tool = tool_data.active_tool_type;
 
 				// Do nothing if switching to the same tool
-				if new_tool == old_tool {
+				if tool_type == old_tool {
 					return;
 				}
 
@@ -42,24 +42,24 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, &InputPreprocessorMes
 					}
 				};
 				// Send the old and new tools a transition to their FSM Abort states
-				if let Some(tool_message) = standard_tool_message(new_tool, StandardToolMessageType::Abort) {
-					send_abort_to_tool(new_tool, tool_message, true);
+				if let Some(tool_message) = standard_tool_message(tool_type, StandardToolMessageType::Abort) {
+					send_abort_to_tool(tool_type, tool_message, true);
 				}
 				if let Some(tool_message) = standard_tool_message(old_tool, StandardToolMessageType::Abort) {
 					send_abort_to_tool(old_tool, tool_message, false);
 				}
 
 				// Send the DocumentIsDirty message to the active tool's sub-tool message handler
-				if let Some(message) = standard_tool_message(new_tool, StandardToolMessageType::DocumentIsDirty) {
+				if let Some(message) = standard_tool_message(tool_type, StandardToolMessageType::DocumentIsDirty) {
 					responses.push_back(message.into());
 				}
 
 				// Store the new active tool
-				tool_data.active_tool_type = new_tool;
+				tool_data.active_tool_type = tool_type;
 
 				// Notify the frontend about the new active tool to be displayed
-				let tool_name = new_tool.to_string();
-				let tool_options = self.tool_state.document_tool_data.tool_options.get(&new_tool).copied();
+				let tool_name = tool_type.to_string();
+				let tool_options = self.tool_state.document_tool_data.tool_options.get(&tool_type).copied();
 				responses.push_back(FrontendMessage::UpdateActiveTool { tool_name, tool_options }.into());
 			}
 			DocumentIsDirty => {
@@ -77,19 +77,19 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, &InputPreprocessorMes
 
 				update_working_colors(document_data, responses);
 			}
-			SelectPrimaryColor(color) => {
+			SelectPrimaryColor { color } => {
 				let document_data = &mut self.tool_state.document_tool_data;
 				document_data.primary_color = color;
 
 				update_working_colors(&self.tool_state.document_tool_data, responses);
 			}
-			SelectSecondaryColor(color) => {
+			SelectSecondaryColor { color } => {
 				let document_data = &mut self.tool_state.document_tool_data;
 				document_data.secondary_color = color;
 
 				update_working_colors(document_data, responses);
 			}
-			SetToolOptions(tool_type, tool_options) => {
+			SetToolOptions { tool_type, tool_options } => {
 				let document_data = &mut self.tool_state.document_tool_data;
 
 				document_data.tool_options.insert(tool_type, tool_options);

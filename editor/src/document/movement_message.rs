@@ -27,12 +27,20 @@ pub enum MovementMessage {
 		zoom_from_viewport: Option<DVec2>,
 	},
 	RotateCanvasBegin,
-	SetCanvasRotation(f64),
-	SetCanvasZoom(f64),
+	SetCanvasRotation {
+		angle_radians: f64,
+	},
+	SetCanvasZoom {
+		zoom_factor: f64,
+	},
 	TransformCanvasEnd,
-	TranslateCanvas(DVec2),
+	TranslateCanvas {
+		delta: DVec2,
+	},
 	TranslateCanvasBegin,
-	TranslateCanvasByViewportFraction(DVec2),
+	TranslateCanvasByViewportFraction {
+		delta: DVec2,
+	},
 	WheelCanvasTranslate {
 		use_y_as_x: bool,
 	},

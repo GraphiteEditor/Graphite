@@ -23,7 +23,7 @@ bitflags! {
 mod test {
 	use crate::input::input_preprocessor::ModifierKeys;
 	use crate::input::keyboard::Key;
-	use crate::input::mouse::{EditorMouseState, ViewportPosition};
+	use crate::input::mouse::EditorMouseState;
 	use crate::input::{InputMapperMessage, InputPreprocessorMessage, InputPreprocessorMessageHandler};
 	use crate::message_prelude::MessageHandler;
 
@@ -32,9 +32,11 @@ mod test {
 	#[test]
 	fn process_action_mouse_move_handle_modifier_keys() {
 		let mut input_preprocessor = InputPreprocessorMessageHandler::default();
-		let mut editor_mouse_state = EditorMouseState::new();
-		editor_mouse_state.editor_position = ViewportPosition::new(4., 809.);
-		let message = InputPreprocessorMessage::MouseMove(editor_mouse_state, ModifierKeys::ALT);
+
+		let editor_mouse_state = EditorMouseState::from_editor_position(4., 809.);
+		let modifier_keys = ModifierKeys::ALT;
+		let message = InputPreprocessorMessage::MouseMove { editor_mouse_state, modifier_keys };
+
 		let mut responses = VecDeque::new();
 
 		input_preprocessor.process_action(message, (), &mut responses);
@@ -46,7 +48,11 @@ mod test {
 	#[test]
 	fn process_action_mouse_down_handle_modifier_keys() {
 		let mut input_preprocessor = InputPreprocessorMessageHandler::default();
-		let message = InputPreprocessorMessage::MouseDown(EditorMouseState::new(), ModifierKeys::CONTROL);
+
+		let editor_mouse_state = EditorMouseState::new();
+		let modifier_keys = ModifierKeys::CONTROL;
+		let message = InputPreprocessorMessage::MouseDown { editor_mouse_state, modifier_keys };
+
 		let mut responses = VecDeque::new();
 
 		input_preprocessor.process_action(message, (), &mut responses);
@@ -58,7 +64,11 @@ mod test {
 	#[test]
 	fn process_action_mouse_up_handle_modifier_keys() {
 		let mut input_preprocessor = InputPreprocessorMessageHandler::default();
-		let message = InputPreprocessorMessage::MouseUp(EditorMouseState::new(), ModifierKeys::SHIFT);
+
+		let editor_mouse_state = EditorMouseState::new();
+		let modifier_keys = ModifierKeys::SHIFT;
+		let message = InputPreprocessorMessage::MouseUp { editor_mouse_state, modifier_keys };
+
 		let mut responses = VecDeque::new();
 
 		input_preprocessor.process_action(message, (), &mut responses);
@@ -71,7 +81,11 @@ mod test {
 	fn process_action_key_down_handle_modifier_keys() {
 		let mut input_preprocessor = InputPreprocessorMessageHandler::default();
 		input_preprocessor.keyboard.set(Key::KeyControl as usize);
-		let message = InputPreprocessorMessage::KeyDown(Key::KeyA, ModifierKeys::empty());
+
+		let key = Key::KeyA;
+		let modifier_keys = ModifierKeys::empty();
+		let message = InputPreprocessorMessage::KeyDown { key, modifier_keys };
+
 		let mut responses = VecDeque::new();
 
 		input_preprocessor.process_action(message, (), &mut responses);
@@ -83,7 +97,11 @@ mod test {
 	#[test]
 	fn process_action_key_up_handle_modifier_keys() {
 		let mut input_preprocessor = InputPreprocessorMessageHandler::default();
-		let message = InputPreprocessorMessage::KeyUp(Key::KeyS, ModifierKeys::CONTROL | ModifierKeys::SHIFT);
+
+		let key = Key::KeyS;
+		let modifier_keys = ModifierKeys::CONTROL | ModifierKeys::SHIFT;
+		let message = InputPreprocessorMessage::KeyUp { key, modifier_keys };
+
 		let mut responses = VecDeque::new();
 
 		input_preprocessor.process_action(message, (), &mut responses);

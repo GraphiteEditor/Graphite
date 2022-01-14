@@ -15,6 +15,7 @@ const KEY_MASK_STORAGE_LENGTH: usize = (NUMBER_OF_KEYS + STORAGE_SIZE_BITS - 1) 
 
 pub type KeyStates = BitVector<KEY_MASK_STORAGE_LENGTH>;
 
+// TODO: Consider renaming to `KeyMessage` for consistency with other messages that implement `#[impl_message(..)]`
 #[impl_message(Message, InputMapperMessage, KeyDown)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Key {
