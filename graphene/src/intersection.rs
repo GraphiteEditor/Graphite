@@ -1,7 +1,6 @@
-use std::ops::Mul;
-
 use glam::{DAffine2, DVec2};
 use kurbo::{BezPath, Line, PathSeg, Point, Shape};
+use std::ops::Mul;
 
 #[derive(Debug, Clone, Default, Copy)]
 pub struct Quad([DVec2; 4]);

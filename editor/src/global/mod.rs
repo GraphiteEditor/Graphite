@@ -1,3 +1,7 @@
-pub mod global_message_handler;
+mod global_message;
+mod global_message_handler;
 
-pub use global_message_handler::{GlobalMessage, GlobalMessageDiscriminant, GlobalMessageHandler};
+#[doc(inline)]
+pub use global_message::{GlobalMessage, GlobalMessageDiscriminant};
+#[doc(inline)]
+pub use global_message_handler::GlobalMessageHandler;
