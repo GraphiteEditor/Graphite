@@ -1,10 +1,12 @@
-use graphene::layers::{style::ViewMode, BlendMode, Layer, LayerData, LayerDataType};
+use graphene::layers::blend_mode::BlendMode;
+use graphene::layers::layer_info::{Layer, LayerData, LayerDataType};
+use graphene::layers::style::ViewMode;
 use graphene::LayerId;
 
-use std::fmt;
-
 use glam::{DAffine2, DVec2};
-use serde::{ser::SerializeStruct, Deserialize, Serialize};
+use serde::ser::SerializeStruct;
+use serde::{Deserialize, Serialize};
+use std::fmt;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Copy)]
 pub struct LayerMetadata {

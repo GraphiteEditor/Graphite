@@ -1,28 +1,30 @@
 // This file is where functions are defined to be called directly from JS.
 // It serves as a thin wrapper over the editor backend API that relies
 // on the dispatcher messaging system and more complex Rust data types.
-use std::sync::atomic::Ordering;
 
 use crate::helpers::Error;
 use crate::type_translators::{translate_blend_mode, translate_key, translate_tool_type, translate_view_mode};
 use crate::{EDITOR_HAS_CRASHED, EDITOR_INSTANCES};
+
 use editor::consts::{FILE_SAVE_SUFFIX, GRAPHITE_DOCUMENT_VERSION};
 use editor::input::input_preprocessor::ModifierKeys;
 use editor::input::mouse::{EditorMouseState, ScrollDelta, ViewportBounds};
 use editor::message_prelude::*;
 use editor::misc::EditorError;
-use editor::tool::{tool_options::ToolOptions, tools, ToolType};
+use editor::viewport_tools::tool::ToolType;
+use editor::viewport_tools::tool_options::ToolOptions;
+use editor::viewport_tools::tools;
 use editor::Color;
+use editor::Editor;
 use editor::LayerId;
 
-use editor::Editor;
 use serde::Serialize;
 use serde_wasm_bindgen;
+use std::sync::atomic::Ordering;
 use wasm_bindgen::prelude::*;
 
-// To avoid wasm-bindgen from checking mutable reference issues using WasmRefCell
-// we must make all methods take a non mutable reference to self. Not doing this creates
-// an issue when rust calls into JS which calls back to rust in the same call stack.
+// To avoid wasm-bindgen from checking mutable reference issues using WasmRefCell we must make all methods take a non mutable reference to self.
+// Not doing this creates an issue when rust calls into JS which calls back to rust in the same call stack.
 #[wasm_bindgen]
 #[derive(Clone)]
 pub struct JsEditorHandle {

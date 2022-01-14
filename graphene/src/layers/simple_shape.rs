@@ -1,19 +1,10 @@
-use glam::DAffine2;
-use glam::DMat2;
-use glam::DVec2;
-use kurbo::Affine;
-use kurbo::BezPath;
-use kurbo::Shape as KurboShape;
-
-use crate::intersection::intersect_quad_bez_path;
-use crate::layers::{
-	style,
-	style::{PathStyle, ViewMode},
-	LayerData,
-};
+use super::layer_info::LayerData;
+use super::style::{self, PathStyle, ViewMode};
+use crate::intersection::{intersect_quad_bez_path, Quad};
 use crate::LayerId;
-use crate::Quad;
 
+use glam::{DAffine2, DMat2, DVec2};
+use kurbo::{Affine, BezPath, Shape as KurboShape};
 use serde::{Deserialize, Serialize};
 use std::fmt::Write;
 
@@ -107,6 +98,7 @@ impl Shape {
 		relative_points.for_each(|p| path.line_to(p));
 
 		path.close_path();
+
 		Self {
 			path,
 			style,
@@ -146,6 +138,7 @@ impl Shape {
 			.map(|v: DVec2| kurbo::Point { x: v.x, y: v.y })
 			.enumerate()
 			.for_each(|(i, p)| if i == 0 { path.move_to(p) } else { path.line_to(p) });
+
 		Self {
 			path,
 			style,

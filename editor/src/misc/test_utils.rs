@@ -1,12 +1,9 @@
-use crate::{
-	input::{
-		mouse::{EditorMouseState, MouseKeys, ScrollDelta, ViewportPosition},
-		InputPreprocessorMessage, ModifierKeys,
-	},
-	message_prelude::{Message, ToolMessage},
-	tool::ToolType,
-	Editor,
-};
+use crate::input::input_preprocessor::ModifierKeys;
+use crate::input::mouse::{EditorMouseState, MouseKeys, ScrollDelta, ViewportPosition};
+use crate::message_prelude::*;
+use crate::viewport_tools::tool::ToolType;
+use crate::Editor;
+
 use graphene::color::Color;
 
 /// A set of utility functions to make the writing of editor test more declarative

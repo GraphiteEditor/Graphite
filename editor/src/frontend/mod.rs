@@ -1,3 +1,6 @@
-pub mod frontend_message_handler;
+pub mod utility_types;
 
-pub use frontend_message_handler::{FrontendMessage, FrontendMessageDiscriminant};
+mod frontend_message;
+
+#[doc(inline)]
+pub use frontend_message::{FrontendMessage, FrontendMessageDiscriminant};

@@ -1,62 +1,14 @@
-use super::{DocumentMessageHandler, LayerMetadata};
+use super::clipboards::{CopyBufferEntry, CLIPBOARD_COUNT};
+use super::DocumentMessageHandler;
 use crate::consts::{DEFAULT_DOCUMENT_NAME, GRAPHITE_DOCUMENT_VERSION};
-use crate::frontend::frontend_message_handler::FrontendDocumentDetails;
-use crate::input::InputPreprocessor;
+use crate::frontend::utility_types::FrontendDocumentDetails;
+use crate::input::InputPreprocessorMessageHandler;
 use crate::message_prelude::*;
-use graphene::layers::Layer;
-use graphene::{LayerId, Operation as DocumentOperation};
+
+use graphene::Operation as DocumentOperation;
 
 use log::warn;
-use serde::{Deserialize, Serialize};
-
 use std::collections::{HashMap, VecDeque};
-
-#[repr(u8)]
-#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Debug)]
-pub enum Clipboard {
-	System,
-	User,
-	_ClipboardCount,
-}
-
-const CLIPBOARD_COUNT: u8 = Clipboard::_ClipboardCount as u8;
-
-#[remain::sorted]
-#[impl_message(Message, Portfolio)]
-#[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
-pub enum PortfolioMessage {
-	AutoSaveActiveDocument,
-	AutoSaveDocument(u64),
-	CloseActiveDocumentWithConfirmation,
-	CloseAllDocuments,
-	CloseAllDocumentsWithConfirmation,
-	CloseDocument(u64),
-	CloseDocumentWithConfirmation(u64),
-	Copy(Clipboard),
-	Cut(Clipboard),
-	#[child]
-	Document(DocumentMessage),
-	NewDocument,
-	NextDocument,
-	OpenDocument,
-	OpenDocumentFile(String, String),
-	OpenDocumentFileWithId {
-		document: String,
-		document_name: String,
-		document_id: u64,
-		document_is_saved: bool,
-	},
-	Paste(Clipboard),
-	PasteIntoFolder {
-		clipboard: Clipboard,
-		path: Vec<LayerId>,
-		insert_index: isize,
-	},
-	PrevDocument,
-	RequestAboutGraphiteDialog,
-	SelectDocument(u64),
-	UpdateOpenDocumentsList,
-}
 
 #[derive(Debug, Clone)]
 pub struct PortfolioMessageHandler {
@@ -64,12 +16,6 @@ pub struct PortfolioMessageHandler {
 	document_ids: Vec<u64>,
 	active_document_id: u64,
 	copy_buffer: [Vec<CopyBufferEntry>; CLIPBOARD_COUNT as usize],
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct CopyBufferEntry {
-	layer: Layer,
-	layer_metadata: LayerMetadata,
 }
 
 impl PortfolioMessageHandler {
@@ -149,7 +95,7 @@ impl PortfolioMessageHandler {
 		responses.push_back(PortfolioMessage::SelectDocument(document_id).into());
 	}
 
-	// Returns an iterator over the open documents in order
+	/// Returns an iterator over the open documents in order.
 	pub fn ordered_document_iterator(&self) -> impl Iterator<Item = &DocumentMessageHandler> {
 		self.document_ids.iter().map(|id| self.documents.get(id).expect("document id was not found in the document hashmap"))
 	}
@@ -176,9 +122,9 @@ impl Default for PortfolioMessageHandler {
 	}
 }
 
-impl MessageHandler<PortfolioMessage, &InputPreprocessor> for PortfolioMessageHandler {
+impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for PortfolioMessageHandler {
 	#[remain::check]
-	fn process_action(&mut self, message: PortfolioMessage, ipp: &InputPreprocessor, responses: &mut VecDeque<Message>) {
+	fn process_action(&mut self, message: PortfolioMessage, ipp: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) {
 		use DocumentMessage::*;
 		use PortfolioMessage::*;
 		#[remain::sorted]
@@ -429,6 +375,7 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessor> for PortfolioMessageHa
 			}
 		}
 	}
+
 	fn actions(&self) -> ActionList {
 		let mut common = actions!(PortfolioMessageDiscriminant;
 			NewDocument,
