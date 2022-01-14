@@ -12,6 +12,7 @@ use crate::discriminant::derive_discriminant_impl;
 use crate::helper_structs::AttrInnerSingleString;
 use crate::hint::derive_hint_impl;
 use crate::transitive_child::derive_transitive_child_impl;
+
 use proc_macro::TokenStream;
 use syn::parse_macro_input;
 
@@ -276,6 +277,7 @@ pub fn edge(attr: TokenStream, item: TokenStream) -> TokenStream {
 #[cfg(test)]
 mod tests {
 	use super::*;
+
 	use proc_macro2::TokenStream as TokenStream2;
 
 	fn ts_assert_eq(l: TokenStream2, r: TokenStream2) {

@@ -42,6 +42,7 @@ pub fn two_segment_path(left_ident: Ident, right_ident: Ident) -> Path {
 #[cfg(test)]
 mod tests {
 	use super::*;
+
 	use quote::ToTokens;
 	use syn::spanned::Spanned;
 

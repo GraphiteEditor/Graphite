@@ -1,24 +1,13 @@
 pub mod color;
 pub mod consts;
 pub mod document;
+pub mod error;
 pub mod intersection;
 pub mod layers;
 pub mod operation;
 pub mod response;
 
-pub use intersection::Quad;
+pub use document::LayerId;
+pub use error::DocumentError;
 pub use operation::Operation;
 pub use response::DocumentResponse;
-
-pub type LayerId = u64;
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum DocumentError {
-	LayerNotFound(Vec<LayerId>),
-	InvalidPath,
-	IndexOutOfBounds,
-	NotAFolder,
-	NonReorderableSelection,
-	NotAShape,
-	InvalidFile(String),
-}

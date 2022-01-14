@@ -36,13 +36,16 @@ pub struct ScrollDelta {
 	pub y: i32,
 	pub z: i32,
 }
+
 impl ScrollDelta {
 	pub fn new(x: i32, y: i32, z: i32) -> ScrollDelta {
 		ScrollDelta { x, y, z }
 	}
+
 	pub fn as_dvec2(&self) -> DVec2 {
 		DVec2::new(self.x as f64, self.y as f64)
 	}
+
 	pub fn scroll_delta(&self) -> f64 {
 		let (dx, dy) = (self.x, self.y);
 		dy.signum() as f64 * ((dy * dy + i32::min(dy.abs(), dx.abs()).pow(2)) as f64).sqrt()
@@ -70,7 +73,8 @@ impl MouseState {
 	}
 
 	pub fn from_keys_and_editor_position(keys: u8, position: ViewportPosition) -> Self {
-		let mouse_keys = MouseKeys::from_bits(keys).expect("invalid modifier keys");
+		let mouse_keys = MouseKeys::from_bits(keys).expect("Invalid modifier keys");
+
 		Self {
 			position,
 			mouse_keys,
@@ -100,7 +104,8 @@ impl EditorMouseState {
 	}
 
 	pub fn from_keys_and_editor_position(keys: u8, editor_position: EditorPosition) -> Self {
-		let mouse_keys = MouseKeys::from_bits(keys).expect("invalid modifier keys");
+		let mouse_keys = MouseKeys::from_bits(keys).expect("Invalid modifier keys");
+
 		Self {
 			editor_position,
 			mouse_keys,
