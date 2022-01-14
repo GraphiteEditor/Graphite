@@ -1,9 +1,8 @@
+use super::layer_info::{Layer, LayerData, LayerDataType};
+use super::style::ViewMode;
+use crate::{DocumentError, LayerId, Quad};
+
 use glam::DVec2;
-
-use crate::{layers::style::ViewMode, DocumentError, LayerId, Quad};
-
-use super::{Layer, LayerData, LayerDataType};
-
 use serde::{Deserialize, Serialize};
 use std::fmt::Write;
 

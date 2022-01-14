@@ -1,61 +1,24 @@
+use super::tool::{message_to_tool_type, standard_tool_message, update_working_colors, StandardToolMessageType, ToolFsmState};
+use super::tool_message::ToolMessage;
+use crate::document::DocumentMessageHandler;
+use crate::input::InputPreprocessorMessageHandler;
 use crate::message_prelude::*;
+
 use graphene::color::Color;
 
-use crate::input::InputPreprocessor;
-use crate::{
-	document::DocumentMessageHandler,
-	tool::{tool_options::ToolOptions, DocumentToolData, ToolFsmState, ToolType},
-};
-use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
-
-#[remain::sorted]
-#[impl_message(Message, Tool)]
-#[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
-pub enum ToolMessage {
-	ActivateTool(ToolType),
-	#[child]
-	Crop(CropMessage),
-	DocumentIsDirty,
-	#[child]
-	Ellipse(EllipseMessage),
-	#[child]
-	Eyedropper(EyedropperMessage),
-	#[child]
-	Fill(FillMessage),
-	#[child]
-	Line(LineMessage),
-	#[child]
-	Navigate(NavigateMessage),
-	NoOp,
-	#[child]
-	Path(PathMessage),
-	#[child]
-	Pen(PenMessage),
-	#[child]
-	Rectangle(RectangleMessage),
-	ResetColors,
-	#[child]
-	Select(SelectMessage),
-	SelectPrimaryColor(Color),
-	SelectSecondaryColor(Color),
-	SetToolOptions(ToolType, ToolOptions),
-	#[child]
-	Shape(ShapeMessage),
-	SwapColors,
-	UpdateHints,
-}
 
 #[derive(Debug, Default)]
 pub struct ToolMessageHandler {
 	tool_state: ToolFsmState,
 }
 
-impl MessageHandler<ToolMessage, (&DocumentMessageHandler, &InputPreprocessor)> for ToolMessageHandler {
+impl MessageHandler<ToolMessage, (&DocumentMessageHandler, &InputPreprocessorMessageHandler)> for ToolMessageHandler {
 	#[remain::check]
-	fn process_action(&mut self, message: ToolMessage, data: (&DocumentMessageHandler, &InputPreprocessor), responses: &mut VecDeque<Message>) {
-		let (document, input) = data;
+	fn process_action(&mut self, message: ToolMessage, data: (&DocumentMessageHandler, &InputPreprocessorMessageHandler), responses: &mut VecDeque<Message>) {
 		use ToolMessage::*;
+
+		let (document, input) = data;
 		#[remain::sorted]
 		match message {
 			ActivateTool(new_tool) => {
@@ -158,70 +121,4 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, &InputPreprocessor)> 
 
 		list
 	}
-}
-
-enum StandardToolMessageType {
-	Abort,
-	DocumentIsDirty,
-}
-
-// TODO: Find a nicer way in Rust to make this generic so we don't have to manually map to enum variants
-fn standard_tool_message(tool: ToolType, message_type: StandardToolMessageType) -> Option<ToolMessage> {
-	match message_type {
-		StandardToolMessageType::DocumentIsDirty => match tool {
-			ToolType::Select => Some(SelectMessage::DocumentIsDirty.into()),
-			ToolType::Path => Some(PathMessage::DocumentIsDirty.into()),
-			//ToolType::Navigate => Some(NavigateMessage::DocumentIsDirty.into())
-			// ToolType::Pen => Some(PenMessage::DocumentIsDirty.into()),
-			// ToolType::Line => Some(LineMessage::DocumentIsDirty.into()),
-			// ToolType::Rectangle => Some(RectangleMessage::DocumentIsDirty.into()),
-			// ToolType::Ellipse => Some(EllipseMessage::DocumentIsDirty.into()),
-			// ToolType::Shape => Some(ShapeMessage::DocumentIsDirty.into()),
-			// ToolType::Eyedropper => Some(EyedropperMessage::DocumentIsDirty.into()),
-			// ToolType::Fill => Some(FillMessage::DocumentIsDirty.into()),
-			_ => None,
-		},
-		StandardToolMessageType::Abort => match tool {
-			ToolType::Select => Some(SelectMessage::Abort.into()),
-			ToolType::Path => Some(PathMessage::Abort.into()),
-			ToolType::Navigate => Some(NavigateMessage::Abort.into()),
-			ToolType::Pen => Some(PenMessage::Abort.into()),
-			ToolType::Line => Some(LineMessage::Abort.into()),
-			ToolType::Rectangle => Some(RectangleMessage::Abort.into()),
-			ToolType::Ellipse => Some(EllipseMessage::Abort.into()),
-			ToolType::Shape => Some(ShapeMessage::Abort.into()),
-			ToolType::Eyedropper => Some(EyedropperMessage::Abort.into()),
-			ToolType::Fill => Some(FillMessage::Abort.into()),
-			_ => None,
-		},
-	}
-}
-
-fn message_to_tool_type(message: &ToolMessage) -> ToolType {
-	use ToolMessage::*;
-
-	match message {
-		Fill(_) => ToolType::Fill,
-		Rectangle(_) => ToolType::Rectangle,
-		Ellipse(_) => ToolType::Ellipse,
-		Shape(_) => ToolType::Shape,
-		Line(_) => ToolType::Line,
-		Pen(_) => ToolType::Pen,
-		Select(_) => ToolType::Select,
-		Crop(_) => ToolType::Crop,
-		Eyedropper(_) => ToolType::Eyedropper,
-		Navigate(_) => ToolType::Navigate,
-		Path(_) => ToolType::Path,
-		_ => unreachable!(),
-	}
-}
-
-fn update_working_colors(document_data: &DocumentToolData, responses: &mut VecDeque<Message>) {
-	responses.push_back(
-		FrontendMessage::UpdateWorkingColors {
-			primary: document_data.primary_color,
-			secondary: document_data.secondary_color,
-		}
-		.into(),
-	);
 }

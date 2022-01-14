@@ -1,22 +1,17 @@
-use graphene::layers::style;
-use graphene::layers::style::Fill;
-use graphene::layers::style::Stroke;
-use graphene::Operation;
-use graphene::Quad;
-
-use crate::consts::COLOR_ACCENT;
-use crate::input::{
-	keyboard::{Key, MouseMotion},
-	mouse::ViewportPosition,
-	InputPreprocessor,
-};
+use crate::consts::{COLOR_ACCENT, SELECTION_DRAG_ANGLE, SELECTION_TOLERANCE};
+use crate::document::utility_types::{AlignAggregate, AlignAxis, FlipAxis};
+use crate::document::DocumentMessageHandler;
+use crate::input::keyboard::{Key, MouseMotion};
+use crate::input::mouse::ViewportPosition;
+use crate::input::InputPreprocessorMessageHandler;
+use crate::message_prelude::*;
 use crate::misc::{HintData, HintGroup, HintInfo, KeysGroup};
-use crate::tool::{snapping::SnapHandler, DocumentToolData, Fsm, ToolActionHandlerData};
-use crate::{
-	consts::{SELECTION_DRAG_ANGLE, SELECTION_TOLERANCE},
-	document::{AlignAggregate, AlignAxis, DocumentMessageHandler, FlipAxis},
-	message_prelude::*,
-};
+use crate::viewport_tools::snapping::SnapHandler;
+use crate::viewport_tools::tool::{DocumentToolData, Fsm, ToolActionHandlerData};
+
+use graphene::layers::style::{self, Fill, Stroke};
+use graphene::{Operation, Quad};
+
 use glam::{DAffine2, DVec2};
 use serde::{Deserialize, Serialize};
 
@@ -115,7 +110,7 @@ fn add_bounding_box(responses: &mut Vec<Message>) -> Vec<LayerId> {
 		transform: DAffine2::ZERO.to_cols_array(),
 		style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 1.0)), Some(Fill::none())),
 	};
-	responses.push(DocumentMessage::Overlay(operation.into()).into());
+	responses.push(DocumentMessage::Overlays(operation.into()).into());
 
 	path
 }
@@ -133,7 +128,7 @@ impl Fsm for SelectToolFsmState {
 		document: &DocumentMessageHandler,
 		_tool_data: &DocumentToolData,
 		data: &mut Self::ToolData,
-		input: &InputPreprocessor,
+		input: &InputPreprocessorMessageHandler,
 		responses: &mut VecDeque<Message>,
 	) -> Self {
 		use SelectMessage::*;
@@ -144,7 +139,7 @@ impl Fsm for SelectToolFsmState {
 				(_, DocumentIsDirty) => {
 					let mut buffer = Vec::new();
 					let response = match (document.selected_visible_layers_bounding_box(), data.bounding_box_overlay_layer.take()) {
-						(None, Some(path)) => DocumentMessage::Overlay(Operation::DeleteLayer { path }.into()).into(),
+						(None, Some(path)) => DocumentMessage::Overlays(Operation::DeleteLayer { path }.into()).into(),
 						(Some([pos1, pos2]), path) => {
 							let path = path.unwrap_or_else(|| add_bounding_box(&mut buffer));
 
@@ -154,7 +149,7 @@ impl Fsm for SelectToolFsmState {
 							let pos1 = pos1 + half_pixel_offset;
 							let pos2 = pos2 - half_pixel_offset;
 							let transform = transform_from_box(pos1, pos2);
-							DocumentMessage::Overlay(Operation::SetLayerTransformInViewport { path, transform }.into()).into()
+							DocumentMessage::Overlays(Operation::SetLayerTransformInViewport { path, transform }.into()).into()
 						}
 						(_, _) => Message::NoOp,
 					};
@@ -195,7 +190,7 @@ impl Fsm for SelectToolFsmState {
 					};
 					buffer.into_iter().rev().for_each(|message| responses.push_front(message));
 
-					// TODO: Probably delete this now that the overlay system has moved to a separate Graphene document? (@0hypercube)
+					// TODO: Probably delete this now that the overlays system has moved to a separate Graphene document? (@0hypercube)
 					let ignore_layers = if let Some(bounding_box) = &data.bounding_box_overlay_layer {
 						vec![bounding_box.clone()]
 					} else {
@@ -240,7 +235,7 @@ impl Fsm for SelectToolFsmState {
 					let size = data.drag_current - start + half_pixel_offset;
 
 					responses.push_front(
-						DocumentMessage::Overlay(
+						DocumentMessage::Overlays(
 							Operation::SetLayerTransformInViewport {
 								path: data.drag_box_overlay_layer.clone().unwrap(),
 								transform: DAffine2::from_scale_angle_translation(size, 0., start).to_cols_array(),
@@ -264,7 +259,7 @@ impl Fsm for SelectToolFsmState {
 					let quad = data.selection_quad();
 					responses.push_front(DocumentMessage::AddSelectedLayers(document.graphene_document.intersects_quad_root(quad)).into());
 					responses.push_front(
-						DocumentMessage::Overlay(
+						DocumentMessage::Overlays(
 							Operation::DeleteLayer {
 								path: data.drag_box_overlay_layer.take().unwrap(),
 							}
@@ -275,7 +270,7 @@ impl Fsm for SelectToolFsmState {
 					Ready
 				}
 				(_, Abort) => {
-					let mut delete = |path: &mut Option<Vec<LayerId>>| path.take().map(|path| responses.push_front(DocumentMessage::Overlay(Operation::DeleteLayer { path }.into()).into()));
+					let mut delete = |path: &mut Option<Vec<LayerId>>| path.take().map(|path| responses.push_front(DocumentMessage::Overlays(Operation::DeleteLayer { path }.into()).into()));
 					delete(&mut data.drag_box_overlay_layer);
 					delete(&mut data.bounding_box_overlay_layer);
 					Ready

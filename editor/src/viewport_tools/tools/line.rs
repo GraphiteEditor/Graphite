@@ -1,12 +1,18 @@
 use crate::consts::LINE_ROTATE_SNAP_ANGLE;
+use crate::document::DocumentMessageHandler;
 use crate::input::keyboard::{Key, MouseMotion};
-use crate::input::{mouse::ViewportPosition, InputPreprocessor};
+use crate::input::mouse::ViewportPosition;
+use crate::input::InputPreprocessorMessageHandler;
+use crate::message_prelude::*;
 use crate::misc::{HintData, HintGroup, HintInfo, KeysGroup};
-use crate::tool::snapping::SnapHandler;
-use crate::tool::{DocumentToolData, Fsm, ToolActionHandlerData, ToolOptions, ToolType};
-use crate::{document::DocumentMessageHandler, message_prelude::*};
+use crate::viewport_tools::snapping::SnapHandler;
+use crate::viewport_tools::tool::{DocumentToolData, Fsm, ToolActionHandlerData, ToolType};
+use crate::viewport_tools::tool_options::ToolOptions;
+
+use graphene::layers::style;
+use graphene::Operation;
+
 use glam::{DAffine2, DVec2};
-use graphene::{layers::style, Operation};
 use serde::{Deserialize, Serialize};
 
 #[derive(Default)]
@@ -42,6 +48,7 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Line {
 
 	fn actions(&self) -> ActionList {
 		use LineToolFsmState::*;
+
 		match self.fsm_state {
 			Ready => actions!(LineMessageDiscriminant; DragStart),
 			Drawing => actions!(LineMessageDiscriminant; DragStop, Redraw, Abort),
@@ -60,6 +67,7 @@ impl Default for LineToolFsmState {
 		LineToolFsmState::Ready
 	}
 }
+
 #[derive(Clone, Debug, Default)]
 struct LineToolData {
 	drag_start: ViewportPosition,
@@ -79,11 +87,12 @@ impl Fsm for LineToolFsmState {
 		document: &DocumentMessageHandler,
 		tool_data: &DocumentToolData,
 		data: &mut Self::ToolData,
-		input: &InputPreprocessor,
+		input: &InputPreprocessorMessageHandler,
 		responses: &mut VecDeque<Message>,
 	) -> Self {
 		use LineMessage::*;
 		use LineToolFsmState::*;
+
 		if let ToolMessage::Line(event) = event {
 			match (self, event) {
 				(Ready, DragStart) => {

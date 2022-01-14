@@ -1,16 +1,11 @@
-use crate::document::{LayerPanelEntry, RawBuffer};
+use super::utility_types::FrontendDocumentDetails;
+use crate::document::layer_panel::{LayerPanelEntry, RawBuffer};
 use crate::message_prelude::*;
 use crate::misc::HintData;
-use crate::tool::tool_options::ToolOptions;
+use crate::viewport_tools::tool_options::ToolOptions;
 use crate::Color;
-use serde::{Deserialize, Serialize};
 
-#[derive(PartialEq, Clone, Deserialize, Serialize, Debug)]
-pub struct FrontendDocumentDetails {
-	pub is_saved: bool,
-	pub name: String,
-	pub id: u64,
-}
+use serde::{Deserialize, Serialize};
 
 #[remain::sorted]
 #[impl_message(Message, Frontend)]

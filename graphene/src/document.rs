@@ -1,16 +1,15 @@
-use std::{
-	cmp::max,
-	collections::hash_map::DefaultHasher,
-	hash::{Hash, Hasher},
-};
+use crate::layers;
+use crate::layers::folder::Folder;
+use crate::layers::layer_info::{Layer, LayerData, LayerDataType};
+use crate::layers::simple_shape::Shape;
+use crate::layers::style::ViewMode;
+use crate::{DocumentError, DocumentResponse, LayerId, Operation, Quad};
 
 use glam::{DAffine2, DVec2};
 use serde::{Deserialize, Serialize};
-
-use crate::{
-	layers::{self, style::ViewMode, Folder, Layer, LayerData, LayerDataType, Shape},
-	DocumentError, DocumentResponse, LayerId, Operation, Quad,
-};
+use std::cmp::max;
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Document {

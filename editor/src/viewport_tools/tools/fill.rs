@@ -1,12 +1,14 @@
 use crate::consts::SELECTION_TOLERANCE;
 use crate::document::DocumentMessageHandler;
-use crate::input::{keyboard::MouseMotion, InputPreprocessor};
+use crate::input::keyboard::MouseMotion;
+use crate::input::InputPreprocessorMessageHandler;
 use crate::message_prelude::*;
 use crate::misc::{HintData, HintGroup, HintInfo};
-use crate::tool::ToolActionHandlerData;
-use crate::tool::{DocumentToolData, Fsm, ToolMessage};
-use glam::DVec2;
+use crate::viewport_tools::tool::{DocumentToolData, Fsm, ToolActionHandlerData};
+
 use graphene::{Operation, Quad};
+
+use glam::DVec2;
 use serde::{Deserialize, Serialize};
 
 #[derive(Default)]
@@ -65,7 +67,7 @@ impl Fsm for FillToolFsmState {
 		document: &DocumentMessageHandler,
 		tool_data: &DocumentToolData,
 		_data: &mut Self::ToolData,
-		input: &InputPreprocessor,
+		input: &InputPreprocessorMessageHandler,
 		responses: &mut VecDeque<Message>,
 	) -> Self {
 		use FillMessage::*;

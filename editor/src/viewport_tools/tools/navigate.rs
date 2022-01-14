@@ -1,7 +1,10 @@
-use crate::input::keyboard::MouseMotion;
+use crate::document::DocumentMessageHandler;
+use crate::input::keyboard::{Key, MouseMotion};
+use crate::input::InputPreprocessorMessageHandler;
+use crate::message_prelude::*;
 use crate::misc::{HintData, HintGroup, HintInfo, KeysGroup};
-use crate::tool::{Fsm, ToolActionHandlerData};
-use crate::{input::keyboard::Key, message_prelude::*};
+use crate::viewport_tools::tool::{DocumentToolData, Fsm, ToolActionHandlerData};
+
 use glam::DVec2;
 use serde::{Deserialize, Serialize};
 
@@ -73,14 +76,15 @@ impl Fsm for NavigateToolFsmState {
 	fn transition(
 		self,
 		message: ToolMessage,
-		_document: &crate::document::DocumentMessageHandler,
-		_tool_data: &crate::tool::DocumentToolData,
+		_document: &DocumentMessageHandler,
+		_tool_data: &DocumentToolData,
 		data: &mut Self::ToolData,
-		input: &crate::input::InputPreprocessor,
+		input: &InputPreprocessorMessageHandler,
 		messages: &mut VecDeque<Message>,
 	) -> Self {
 		if let ToolMessage::Navigate(navigate) = message {
 			use NavigateMessage::*;
+
 			match navigate {
 				ClickZoom { zoom_in } => {
 					messages.push_front(MovementMessage::TransformCanvasEnd.into());

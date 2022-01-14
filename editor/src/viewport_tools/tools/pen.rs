@@ -1,11 +1,16 @@
+use crate::document::DocumentMessageHandler;
 use crate::input::keyboard::{Key, MouseMotion};
-use crate::input::InputPreprocessor;
+use crate::input::InputPreprocessorMessageHandler;
+use crate::message_prelude::*;
 use crate::misc::{HintData, HintGroup, HintInfo, KeysGroup};
-use crate::tool::snapping::SnapHandler;
-use crate::tool::{DocumentToolData, Fsm, ToolActionHandlerData, ToolOptions, ToolType};
-use crate::{document::DocumentMessageHandler, message_prelude::*};
+use crate::viewport_tools::snapping::SnapHandler;
+use crate::viewport_tools::tool::{DocumentToolData, Fsm, ToolActionHandlerData, ToolType};
+use crate::viewport_tools::tool_options::ToolOptions;
+
+use graphene::layers::style;
+use graphene::Operation;
+
 use glam::DAffine2;
-use graphene::{layers::style, Operation};
 use serde::{Deserialize, Serialize};
 
 #[derive(Default)]
@@ -80,7 +85,7 @@ impl Fsm for PenToolFsmState {
 		document: &DocumentMessageHandler,
 		tool_data: &DocumentToolData,
 		data: &mut Self::ToolData,
-		input: &InputPreprocessor,
+		input: &InputPreprocessorMessageHandler,
 		responses: &mut VecDeque<Message>,
 	) -> Self {
 		let transform = document.graphene_document.root.transform;

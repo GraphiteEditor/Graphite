@@ -1,53 +1,15 @@
-use crate::consts::VIEWPORT_ROTATE_SNAP_INTERVAL;
-pub use crate::document::layer_panel::*;
-use crate::document::DocumentMessage;
-use crate::input::keyboard::Key;
+use super::DocumentMessage;
+use crate::consts::{VIEWPORT_ROTATE_SNAP_INTERVAL, VIEWPORT_SCROLL_RATE, VIEWPORT_ZOOM_LEVELS, VIEWPORT_ZOOM_MOUSE_RATE, VIEWPORT_ZOOM_SCALE_MAX, VIEWPORT_ZOOM_SCALE_MIN, VIEWPORT_ZOOM_WHEEL_RATE};
+use crate::input::mouse::{ViewportBounds, ViewportPosition};
+use crate::input::InputPreprocessorMessageHandler;
 use crate::message_prelude::*;
-use crate::{
-	consts::{VIEWPORT_SCROLL_RATE, VIEWPORT_ZOOM_LEVELS, VIEWPORT_ZOOM_MOUSE_RATE, VIEWPORT_ZOOM_SCALE_MAX, VIEWPORT_ZOOM_SCALE_MIN, VIEWPORT_ZOOM_WHEEL_RATE},
-	input::{mouse::ViewportBounds, mouse::ViewportPosition, InputPreprocessor},
-};
+
 use graphene::document::Document;
 use graphene::Operation as DocumentOperation;
 
 use glam::{DAffine2, DVec2};
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
-
-#[remain::sorted]
-#[impl_message(Message, DocumentMessage, Movement)]
-#[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
-pub enum MovementMessage {
-	DecreaseCanvasZoom {
-		center_on_mouse: bool,
-	},
-	FitViewportToBounds {
-		bounds: [DVec2; 2],
-		padding_scale_factor: Option<f32>,
-		prevent_zoom_past_100: bool,
-	},
-	IncreaseCanvasZoom {
-		center_on_mouse: bool,
-	},
-	MouseMove {
-		snap_angle: Key,
-		wait_for_snap_angle_release: bool,
-		snap_zoom: Key,
-		zoom_from_viewport: Option<DVec2>,
-	},
-	RotateCanvasBegin,
-	SetCanvasRotation(f64),
-	SetCanvasZoom(f64),
-	TransformCanvasEnd,
-	TranslateCanvas(DVec2),
-	TranslateCanvasBegin,
-	TranslateCanvasByViewportFraction(DVec2),
-	WheelCanvasTranslate {
-		use_y_as_x: bool,
-	},
-	WheelCanvasZoom,
-	ZoomCanvasBegin,
-}
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct MovementMessageHandler {
@@ -138,6 +100,7 @@ impl MovementMessageHandler {
 			.into(),
 		);
 	}
+
 	pub fn center_zoom(&self, viewport_bounds: DVec2, zoom_factor: f64, mouse: DVec2) -> Message {
 		let new_viewport_bounds = viewport_bounds / zoom_factor;
 		let delta_size = viewport_bounds - new_viewport_bounds;
@@ -148,9 +111,9 @@ impl MovementMessageHandler {
 	}
 }
 
-impl MessageHandler<MovementMessage, (&Document, &InputPreprocessor)> for MovementMessageHandler {
+impl MessageHandler<MovementMessage, (&Document, &InputPreprocessorMessageHandler)> for MovementMessageHandler {
 	#[remain::check]
-	fn process_action(&mut self, message: MovementMessage, data: (&Document, &InputPreprocessor), responses: &mut VecDeque<Message>) {
+	fn process_action(&mut self, message: MovementMessage, data: (&Document, &InputPreprocessorMessageHandler), responses: &mut VecDeque<Message>) {
 		let (document, ipp) = data;
 		use MovementMessage::*;
 		#[remain::sorted]
@@ -325,6 +288,7 @@ impl MessageHandler<MovementMessage, (&Document, &InputPreprocessor)> for Moveme
 			}
 		}
 	}
+
 	fn actions(&self) -> ActionList {
 		let mut common = actions!(MovementMessageDiscriminant;
 			MouseMove,

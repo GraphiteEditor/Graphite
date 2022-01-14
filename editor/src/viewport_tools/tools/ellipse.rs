@@ -1,10 +1,15 @@
+use super::resize::Resize;
 use crate::document::DocumentMessageHandler;
-use crate::input::{keyboard::Key, keyboard::MouseMotion, InputPreprocessor};
+use crate::input::keyboard::{Key, MouseMotion};
+use crate::input::InputPreprocessorMessageHandler;
 use crate::message_prelude::*;
 use crate::misc::{HintData, HintGroup, HintInfo, KeysGroup};
-use crate::tool::{tools::resize::Resize, DocumentToolData, Fsm, ToolActionHandlerData};
+use crate::viewport_tools::tool::{DocumentToolData, Fsm, ToolActionHandlerData};
+
+use graphene::layers::style;
+use graphene::Operation;
+
 use glam::DAffine2;
-use graphene::{layers::style, Operation};
 use serde::{Deserialize, Serialize};
 
 #[derive(Default)]
@@ -73,7 +78,7 @@ impl Fsm for EllipseToolFsmState {
 		document: &DocumentMessageHandler,
 		tool_data: &DocumentToolData,
 		data: &mut Self::ToolData,
-		input: &InputPreprocessor,
+		input: &InputPreprocessorMessageHandler,
 		responses: &mut VecDeque<Message>,
 	) -> Self {
 		let mut shape_data = &mut data.data;

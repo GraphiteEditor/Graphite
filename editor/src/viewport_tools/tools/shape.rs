@@ -1,31 +1,35 @@
+use super::resize::Resize;
+use crate::document::DocumentMessageHandler;
 use crate::input::keyboard::{Key, MouseMotion};
-use crate::input::InputPreprocessor;
+use crate::input::InputPreprocessorMessageHandler;
+use crate::message_prelude::*;
 use crate::misc::{HintData, HintGroup, HintInfo, KeysGroup};
-use crate::tool::{DocumentToolData, Fsm, ToolActionHandlerData};
-use crate::{document::DocumentMessageHandler, message_prelude::*};
+use crate::viewport_tools::tool::{DocumentToolData, Fsm, ToolActionHandlerData, ToolType};
+use crate::viewport_tools::tool_options::{ShapeType, ToolOptions};
+
+use graphene::layers::style;
+use graphene::Operation;
+
 use glam::DAffine2;
-use graphene::{layers::style, Operation};
 use serde::{Deserialize, Serialize};
 
-use super::resize::*;
-
 #[derive(Default)]
-pub struct Rectangle {
-	fsm_state: RectangleToolFsmState,
-	data: RectangleToolData,
+pub struct Shape {
+	fsm_state: ShapeToolFsmState,
+	data: ShapeToolData,
 }
 
 #[remain::sorted]
-#[impl_message(Message, ToolMessage, Rectangle)]
+#[impl_message(Message, ToolMessage, Shape)]
 #[derive(PartialEq, Clone, Debug, Hash, Serialize, Deserialize)]
-pub enum RectangleMessage {
+pub enum ShapeMessage {
 	Abort,
 	DragStart,
 	DragStop,
 	Resize { center: Key, lock_ratio: Key },
 }
 
-impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Rectangle {
+impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Shape {
 	fn process_action(&mut self, action: ToolMessage, data: ToolActionHandlerData<'a>, responses: &mut VecDeque<Message>) {
 		if action == ToolMessage::UpdateHints {
 			self.fsm_state.update_hints(responses);
@@ -41,32 +45,33 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Rectangle {
 	}
 
 	fn actions(&self) -> ActionList {
-		use RectangleToolFsmState::*;
+		use ShapeToolFsmState::*;
 		match self.fsm_state {
-			Ready => actions!(RectangleMessageDiscriminant; DragStart),
-			Drawing => actions!(RectangleMessageDiscriminant; DragStop, Abort, Resize),
+			Ready => actions!(ShapeMessageDiscriminant; DragStart),
+			Drawing => actions!(ShapeMessageDiscriminant; DragStop, Abort, Resize),
 		}
 	}
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum RectangleToolFsmState {
+enum ShapeToolFsmState {
 	Ready,
 	Drawing,
 }
 
-impl Default for RectangleToolFsmState {
+impl Default for ShapeToolFsmState {
 	fn default() -> Self {
-		RectangleToolFsmState::Ready
+		ShapeToolFsmState::Ready
 	}
 }
 #[derive(Clone, Debug, Default)]
-struct RectangleToolData {
+struct ShapeToolData {
+	sides: u8,
 	data: Resize,
 }
 
-impl Fsm for RectangleToolFsmState {
-	type ToolData = RectangleToolData;
+impl Fsm for ShapeToolFsmState {
+	type ToolData = ShapeToolData;
 
 	fn transition(
 		self,
@@ -74,25 +79,32 @@ impl Fsm for RectangleToolFsmState {
 		document: &DocumentMessageHandler,
 		tool_data: &DocumentToolData,
 		data: &mut Self::ToolData,
-		input: &InputPreprocessor,
+		input: &InputPreprocessorMessageHandler,
 		responses: &mut VecDeque<Message>,
 	) -> Self {
 		let mut shape_data = &mut data.data;
-		use RectangleMessage::*;
-		use RectangleToolFsmState::*;
-		if let ToolMessage::Rectangle(event) = event {
+		use ShapeMessage::*;
+		use ShapeToolFsmState::*;
+		if let ToolMessage::Shape(event) = event {
 			match (self, event) {
 				(Ready, DragStart) => {
 					shape_data.start(document, input.mouse.position);
 					responses.push_back(DocumentMessage::StartTransaction.into());
 					shape_data.path = Some(vec![generate_uuid()]);
 					responses.push_back(DocumentMessage::DeselectAllLayers.into());
+					data.sides = match tool_data.tool_options.get(&ToolType::Shape) {
+						Some(&ToolOptions::Shape {
+							shape_type: ShapeType::Polygon { vertices },
+						}) => vertices as u8,
+						_ => 6,
+					};
 
 					responses.push_back(
-						Operation::AddRect {
+						Operation::AddNgon {
 							path: shape_data.path.clone().unwrap(),
 							insert_index: -1,
 							transform: DAffine2::ZERO.to_cols_array(),
+							sides: data.sides,
 							style: style::PathStyle::new(None, Some(style::Fill::new(tool_data.primary_color))),
 						}
 						.into(),
@@ -115,7 +127,6 @@ impl Fsm for RectangleToolFsmState {
 					}
 
 					shape_data.cleanup();
-
 					Ready
 				}
 				(Drawing, Abort) => {
@@ -133,17 +144,17 @@ impl Fsm for RectangleToolFsmState {
 
 	fn update_hints(&self, responses: &mut VecDeque<Message>) {
 		let hint_data = match self {
-			RectangleToolFsmState::Ready => HintData(vec![HintGroup(vec![
+			ShapeToolFsmState::Ready => HintData(vec![HintGroup(vec![
 				HintInfo {
 					key_groups: vec![],
 					mouse: Some(MouseMotion::LmbDrag),
-					label: String::from("Draw Rectangle"),
+					label: String::from("Draw Shape"),
 					plus: false,
 				},
 				HintInfo {
 					key_groups: vec![KeysGroup(vec![Key::KeyShift])],
 					mouse: None,
-					label: String::from("Constrain Square"),
+					label: String::from("Constrain 1:1 Aspect"),
 					plus: true,
 				},
 				HintInfo {
@@ -153,11 +164,11 @@ impl Fsm for RectangleToolFsmState {
 					plus: true,
 				},
 			])]),
-			RectangleToolFsmState::Drawing => HintData(vec![HintGroup(vec![
+			ShapeToolFsmState::Drawing => HintData(vec![HintGroup(vec![
 				HintInfo {
 					key_groups: vec![KeysGroup(vec![Key::KeyShift])],
 					mouse: None,
-					label: String::from("Constrain Square"),
+					label: String::from("Constrain 1:1 Aspect"),
 					plus: false,
 				},
 				HintInfo {

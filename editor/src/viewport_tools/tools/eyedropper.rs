@@ -1,12 +1,15 @@
 use crate::consts::SELECTION_TOLERANCE;
 use crate::document::DocumentMessageHandler;
-use crate::input::{keyboard::MouseMotion, InputPreprocessor};
+use crate::input::keyboard::MouseMotion;
+use crate::input::InputPreprocessorMessageHandler;
 use crate::message_prelude::*;
 use crate::misc::{HintData, HintGroup, HintInfo};
-use crate::tool::{DocumentToolData, Fsm, ToolActionHandlerData, ToolMessage};
-use glam::DVec2;
-use graphene::layers::LayerDataType;
+use crate::viewport_tools::tool::{DocumentToolData, Fsm, ToolActionHandlerData};
+
+use graphene::layers::layer_info::LayerDataType;
 use graphene::Quad;
+
+use glam::DVec2;
 use serde::{Deserialize, Serialize};
 
 #[derive(Default)]
@@ -65,7 +68,7 @@ impl Fsm for EyedropperToolFsmState {
 		document: &DocumentMessageHandler,
 		_tool_data: &DocumentToolData,
 		_data: &mut Self::ToolData,
-		input: &InputPreprocessor,
+		input: &InputPreprocessorMessageHandler,
 		responses: &mut VecDeque<Message>,
 	) -> Self {
 		use EyedropperMessage::*;
@@ -77,6 +80,7 @@ impl Fsm for EyedropperToolFsmState {
 					let tolerance = DVec2::splat(SELECTION_TOLERANCE);
 					let quad = Quad::from_box([mouse_pos - tolerance, mouse_pos + tolerance]);
 
+					// TODO: Destroy this pyramid
 					if let Some(path) = document.graphene_document.intersects_quad_root(quad).last() {
 						if let Ok(layer) = document.graphene_document.layer(path) {
 							if let LayerDataType::Shape(shape) = &layer.data {

@@ -1,73 +1,28 @@
-use std::collections::HashMap;
-use std::collections::VecDeque;
-
-use super::artboard_message_handler::ArtboardMessage;
-use super::artboard_message_handler::ArtboardMessageHandler;
-pub use super::layer_panel::*;
-use super::movement_handler::{MovementMessage, MovementMessageHandler};
-use super::overlay_message_handler::OverlayMessageHandler;
-use super::transform_layer_handler::{TransformLayerMessage, TransformLayerMessageHandler};
+use super::clipboards::Clipboard;
+use super::layer_panel::{layer_panel_entry, LayerMetadata, LayerPanelEntry, RawBuffer};
+use super::utility_types::{AlignAggregate, AlignAxis, DocumentSave, FlipAxis, VectorManipulatorSegment, VectorManipulatorShape};
 use super::vectorize_layer_metadata;
+use super::{ArtboardMessage, ArtboardMessageHandler, MovementMessage, MovementMessageHandler, OverlaysMessageHandler, TransformLayerMessageHandler};
 use crate::consts::{
 	ASYMPTOTIC_EFFECT, DEFAULT_DOCUMENT_NAME, FILE_EXPORT_SUFFIX, FILE_SAVE_SUFFIX, GRAPHITE_DOCUMENT_VERSION, SCALE_EFFECT, SCROLLBAR_SPACING, VIEWPORT_ZOOM_TO_FIT_PADDING_SCALE_FACTOR,
 };
-use crate::document::Clipboard;
-use crate::input::InputPreprocessor;
+use crate::input::InputPreprocessorMessageHandler;
 use crate::message_prelude::*;
 use crate::EditorError;
 
-use graphene::layers::{style::ViewMode, BlendMode, LayerDataType};
-use graphene::{document::Document as GrapheneDocument, DocumentError, LayerId};
+use graphene::document::Document as GrapheneDocument;
+use graphene::layers::folder::Folder;
+use graphene::layers::layer_info::LayerDataType;
+use graphene::layers::style::ViewMode;
+use graphene::{DocumentError, LayerId};
 use graphene::{DocumentResponse, Operation as DocumentOperation};
 
 use glam::{DAffine2, DVec2};
-use graphene::layers::Folder;
 use kurbo::PathSeg;
 use log::warn;
 use serde::{Deserialize, Serialize};
-
-type DocumentSave = (GrapheneDocument, HashMap<Vec<LayerId>, LayerMetadata>);
-
-#[derive(PartialEq, Clone, Debug, Serialize, Deserialize, Hash)]
-pub enum FlipAxis {
-	X,
-	Y,
-}
-
-#[derive(PartialEq, Clone, Debug, Serialize, Deserialize, Hash)]
-pub enum AlignAxis {
-	X,
-	Y,
-}
-
-#[derive(PartialEq, Clone, Debug, Serialize, Deserialize, Hash)]
-pub enum AlignAggregate {
-	Min,
-	Max,
-	Center,
-	Average,
-}
-
-#[derive(PartialEq, Clone, Debug)]
-pub enum VectorManipulatorSegment {
-	Line(DVec2, DVec2),
-	Quad(DVec2, DVec2, DVec2),
-	Cubic(DVec2, DVec2, DVec2, DVec2),
-}
-
-#[derive(PartialEq, Clone, Debug)]
-pub struct VectorManipulatorShape {
-	/// The path to the layer
-	pub layer_path: Vec<LayerId>,
-	/// The outline of the shape
-	pub path: kurbo::BezPath,
-	/// The control points / manipulator handles
-	pub segments: Vec<VectorManipulatorSegment>,
-	/// The compound Bezier curve is closed
-	pub closed: bool,
-	/// The transformation matrix to apply
-	pub transform: DAffine2,
-}
+use std::collections::HashMap;
+use std::collections::VecDeque;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct DocumentMessageHandler {
@@ -83,7 +38,7 @@ pub struct DocumentMessageHandler {
 	layer_range_selection_reference: Vec<LayerId>,
 	movement_handler: MovementMessageHandler,
 	#[serde(skip)]
-	overlay_message_handler: OverlayMessageHandler,
+	overlays_message_handler: OverlaysMessageHandler,
 	artboard_message_handler: ArtboardMessageHandler,
 	#[serde(skip)]
 	transform_layer_handler: TransformLayerMessageHandler,
@@ -98,96 +53,18 @@ impl Default for DocumentMessageHandler {
 			graphene_document: GrapheneDocument::default(),
 			document_undo_history: Vec::new(),
 			document_redo_history: Vec::new(),
-			name: String::from("Untitled Document"),
 			saved_document_identifier: 0,
+			name: String::from("Untitled Document"),
 			layer_metadata: vec![(vec![], LayerMetadata::new(true))].into_iter().collect(),
 			layer_range_selection_reference: Vec::new(),
 			movement_handler: MovementMessageHandler::default(),
-			overlay_message_handler: OverlayMessageHandler::default(),
+			overlays_message_handler: OverlaysMessageHandler::default(),
 			artboard_message_handler: ArtboardMessageHandler::default(),
 			transform_layer_handler: TransformLayerMessageHandler::default(),
 			snapping_enabled: true,
 			view_mode: ViewMode::default(),
 			version: GRAPHITE_DOCUMENT_VERSION.to_string(),
 		}
-	}
-}
-
-#[remain::sorted]
-#[impl_message(Message, PortfolioMessage, Document)]
-#[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
-pub enum DocumentMessage {
-	AbortTransaction,
-	AddSelectedLayers(Vec<Vec<LayerId>>),
-	AlignSelectedLayers(AlignAxis, AlignAggregate),
-	#[child]
-	Artboard(ArtboardMessage),
-	CommitTransaction,
-	CreateEmptyFolder(Vec<LayerId>),
-	DebugPrintDocument,
-	DeleteLayer(Vec<LayerId>),
-	DeleteSelectedLayers,
-	DeselectAllLayers,
-	DirtyRenderDocument,
-	DirtyRenderDocumentInOutlineView,
-	DispatchOperation(Box<DocumentOperation>),
-	DocumentHistoryBackward,
-	DocumentHistoryForward,
-	DocumentStructureChanged,
-	DuplicateSelectedLayers,
-	ExportDocument,
-	FlipSelectedLayers(FlipAxis),
-	FolderChanged(Vec<LayerId>),
-	GroupSelectedLayers,
-	LayerChanged(Vec<LayerId>),
-	#[child]
-	Movement(MovementMessage),
-	MoveSelectedLayersTo {
-		path: Vec<LayerId>,
-		insert_index: isize,
-	},
-	NudgeSelectedLayers(f64, f64),
-	#[child]
-	Overlay(OverlayMessage),
-	Redo,
-	RenameLayer(Vec<LayerId>, String),
-	RenderDocument,
-	ReorderSelectedLayers(i32), // relative_position,
-	RollbackTransaction,
-	SaveDocument,
-	SelectAllLayers,
-	SelectionChanged,
-	SelectLayer(Vec<LayerId>, bool, bool),
-	SetBlendModeForSelectedLayers(BlendMode),
-	SetLayerExpansion(Vec<LayerId>, bool),
-	SetOpacityForSelectedLayers(f64),
-	SetSelectedLayers(Vec<Vec<LayerId>>),
-	SetSnapping(bool),
-	SetViewMode(ViewMode),
-	StartTransaction,
-	ToggleLayerExpansion(Vec<LayerId>),
-	ToggleLayerVisibility(Vec<LayerId>),
-	#[child]
-	TransformLayers(TransformLayerMessage),
-	Undo,
-	UngroupLayers(Vec<LayerId>),
-	UngroupSelectedLayers,
-	UpdateLayerMetadata {
-		layer_path: Vec<LayerId>,
-		layer_metadata: LayerMetadata,
-	},
-	ZoomCanvasToFitAll,
-}
-
-impl From<DocumentOperation> for DocumentMessage {
-	fn from(operation: DocumentOperation) -> DocumentMessage {
-		Self::DispatchOperation(Box::new(operation))
-	}
-}
-
-impl From<DocumentOperation> for Message {
-	fn from(operation: DocumentOperation) -> Message {
-		DocumentMessage::DispatchOperation(Box::new(operation)).into()
 	}
 }
 
@@ -212,7 +89,7 @@ impl DocumentMessageHandler {
 		}
 	}
 
-	pub fn with_name(name: String, ipp: &InputPreprocessor) -> Self {
+	pub fn with_name(name: String, ipp: &InputPreprocessorMessageHandler) -> Self {
 		let mut document = Self { name, ..Self::default() };
 		let starting_root_transform = document.movement_handler.calculate_offset_transform(ipp.viewport_bounds.size() / 2.);
 		document.graphene_document.root.transform = starting_root_transform;
@@ -256,13 +133,13 @@ impl DocumentMessageHandler {
 		self.graphene_document.combined_viewport_bounding_box(paths)
 	}
 
-	// TODO: Consider moving this to some kind of overlay manager in the future
+	// TODO: Consider moving this to some kind of overlays manager in the future
 	pub fn selected_visible_layers_vector_points(&self) -> Vec<VectorManipulatorShape> {
 		let shapes = self.selected_layers().filter_map(|path_to_shape| {
 			let viewport_transform = self.graphene_document.generate_transform_relative_to_viewport(path_to_shape).ok()?;
 			let layer = self.graphene_document.layer(path_to_shape);
 
-			// Filter out the non-visible layers from the filter_map
+			// Filter out the non-visible layers from the `filter_map`
 			match &layer {
 				Ok(layer) if layer.visible => {}
 				_ => return None,
@@ -552,9 +429,9 @@ impl DocumentMessageHandler {
 	}
 }
 
-impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHandler {
+impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for DocumentMessageHandler {
 	#[remain::check]
-	fn process_action(&mut self, message: DocumentMessage, ipp: &InputPreprocessor, responses: &mut VecDeque<Message>) {
+	fn process_action(&mut self, message: DocumentMessage, ipp: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) {
 		use DocumentMessage::*;
 		#[remain::sorted]
 		match message {
@@ -798,13 +675,13 @@ impl MessageHandler<DocumentMessage, &InputPreprocessor> for DocumentMessageHand
 				}
 				responses.push_back(ToolMessage::DocumentIsDirty.into());
 			}
-			Overlay(message) => {
-				self.overlay_message_handler.process_action(
+			Overlays(message) => {
+				self.overlays_message_handler.process_action(
 					message,
 					(Self::layer_metadata_mut_no_borrow_self(&mut self.layer_metadata, &[]), &self.graphene_document, ipp),
 					responses,
 				);
-				// responses.push_back(OverlayMessage::RenderOverlays.into());
+				// responses.push_back(OverlaysMessage::RenderOverlays.into());
 			}
 			Redo => {
 				responses.push_back(SelectMessage::Abort.into());

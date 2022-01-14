@@ -1,24 +1,18 @@
-use crate::consts::COLOR_ACCENT;
-use crate::consts::VECTOR_MANIPULATOR_ANCHOR_MARKER_SIZE;
+use crate::consts::{COLOR_ACCENT, VECTOR_MANIPULATOR_ANCHOR_MARKER_SIZE};
+use crate::document::utility_types::{VectorManipulatorSegment, VectorManipulatorShape};
 use crate::document::DocumentMessageHandler;
-use crate::document::VectorManipulatorSegment;
-use crate::document::VectorManipulatorShape;
 use crate::input::keyboard::{Key, MouseMotion};
-use crate::input::InputPreprocessor;
+use crate::input::InputPreprocessorMessageHandler;
 use crate::message_prelude::*;
 use crate::misc::{HintData, HintGroup, HintInfo, KeysGroup};
-use crate::tool::ToolActionHandlerData;
-use crate::tool::{DocumentToolData, Fsm};
-use glam::{DAffine2, DVec2};
+use crate::viewport_tools::tool::{DocumentToolData, Fsm, ToolActionHandlerData};
+
 use graphene::color::Color;
-use graphene::layers::style;
-use graphene::layers::style::Fill;
-use graphene::layers::style::PathStyle;
-use graphene::layers::style::Stroke;
+use graphene::layers::style::{self, Fill, PathStyle, Stroke};
 use graphene::Operation;
-use kurbo::BezPath;
-use kurbo::PathEl;
-use kurbo::Vec2;
+
+use glam::{DAffine2, DVec2};
+use kurbo::{BezPath, PathEl, Vec2};
 use serde::{Deserialize, Serialize};
 
 #[derive(Default)]
@@ -88,6 +82,7 @@ struct PathToolData {
 }
 
 impl PathToolData {}
+
 #[derive(Clone, Debug, Default)]
 struct PathToolSelection {
 	closest_layer_path: Vec<LayerId>,
@@ -106,12 +101,13 @@ impl Fsm for PathToolFsmState {
 		document: &DocumentMessageHandler,
 		_tool_data: &DocumentToolData,
 		data: &mut Self::ToolData,
-		input: &InputPreprocessor,
+		input: &InputPreprocessorMessageHandler,
 		responses: &mut VecDeque<Message>,
 	) -> Self {
 		if let ToolMessage::Path(event) = event {
 			use PathMessage::*;
 			use PathToolFsmState::*;
+
 			match (self, event) {
 				(_, DocumentIsDirty) => {
 					let (mut anchor_i, mut handle_i, mut line_i, mut shape_i) = (0, 0, 0, 0);
@@ -133,7 +129,7 @@ impl Fsm for PathToolFsmState {
 						let shape_layer_path = &data.shape_outline_pool[shape_i];
 
 						responses.push_back(
-							DocumentMessage::Overlay(
+							DocumentMessage::Overlays(
 								Operation::SetShapePathInViewport {
 									path: shape_layer_path.clone(),
 									bez_path: shape_to_draw.path.clone(),
@@ -144,7 +140,7 @@ impl Fsm for PathToolFsmState {
 							.into(),
 						);
 						responses.push_back(
-							DocumentMessage::Overlay(
+							DocumentMessage::Overlays(
 								Operation::SetLayerVisibility {
 									path: shape_layer_path.clone(),
 									visible: true,
@@ -168,8 +164,8 @@ impl Fsm for PathToolFsmState {
 							let translation = (anchor_handle_line.1 + BIAS).round() + DVec2::splat(0.5);
 							let transform = DAffine2::from_scale_angle_translation(scale, angle, translation).to_cols_array();
 
-							responses.push_back(DocumentMessage::Overlay(Operation::SetLayerTransformInViewport { path: marker.clone(), transform }.into()).into());
-							responses.push_back(DocumentMessage::Overlay(Operation::SetLayerVisibility { path: marker.clone(), visible: true }.into()).into());
+							responses.push_back(DocumentMessage::Overlays(Operation::SetLayerTransformInViewport { path: marker.clone(), transform }.into()).into());
+							responses.push_back(DocumentMessage::Overlays(Operation::SetLayerVisibility { path: marker.clone(), visible: true }.into()).into());
 
 							line_i += 1;
 						}
@@ -182,8 +178,8 @@ impl Fsm for PathToolFsmState {
 							let transform = DAffine2::from_scale_angle_translation(scale, angle, translation).to_cols_array();
 
 							let marker = &data.anchor_marker_pool[anchor_i];
-							responses.push_back(DocumentMessage::Overlay(Operation::SetLayerTransformInViewport { path: marker.clone(), transform }.into()).into());
-							responses.push_back(DocumentMessage::Overlay(Operation::SetLayerVisibility { path: marker.clone(), visible: true }.into()).into());
+							responses.push_back(DocumentMessage::Overlays(Operation::SetLayerTransformInViewport { path: marker.clone(), transform }.into()).into());
+							responses.push_back(DocumentMessage::Overlays(Operation::SetLayerVisibility { path: marker.clone(), visible: true }.into()).into());
 
 							anchor_i += 1;
 						}
@@ -197,8 +193,8 @@ impl Fsm for PathToolFsmState {
 							let translation = (handle - (scale / 2.) + BIAS).round();
 							let transform = DAffine2::from_scale_angle_translation(scale, angle, translation).to_cols_array();
 
-							responses.push_back(DocumentMessage::Overlay(Operation::SetLayerTransformInViewport { path: marker.clone(), transform }.into()).into());
-							responses.push_back(DocumentMessage::Overlay(Operation::SetLayerVisibility { path: marker.clone(), visible: true }.into()).into());
+							responses.push_back(DocumentMessage::Overlays(Operation::SetLayerTransformInViewport { path: marker.clone(), transform }.into()).into());
+							responses.push_back(DocumentMessage::Overlays(Operation::SetLayerVisibility { path: marker.clone(), visible: true }.into()).into());
 
 							handle_i += 1;
 						}
@@ -207,19 +203,19 @@ impl Fsm for PathToolFsmState {
 					// Hide the remaining pooled overlays
 					for i in anchor_i..data.anchor_marker_pool.len() {
 						let marker = data.anchor_marker_pool[i].clone();
-						responses.push_back(DocumentMessage::Overlay(Operation::SetLayerVisibility { path: marker, visible: false }.into()).into());
+						responses.push_back(DocumentMessage::Overlays(Operation::SetLayerVisibility { path: marker, visible: false }.into()).into());
 					}
 					for i in handle_i..data.handle_marker_pool.len() {
 						let marker = data.handle_marker_pool[i].clone();
-						responses.push_back(DocumentMessage::Overlay(Operation::SetLayerVisibility { path: marker, visible: false }.into()).into());
+						responses.push_back(DocumentMessage::Overlays(Operation::SetLayerVisibility { path: marker, visible: false }.into()).into());
 					}
 					for i in line_i..data.anchor_handle_line_pool.len() {
 						let line = data.anchor_handle_line_pool[i].clone();
-						responses.push_back(DocumentMessage::Overlay(Operation::SetLayerVisibility { path: line, visible: false }.into()).into());
+						responses.push_back(DocumentMessage::Overlays(Operation::SetLayerVisibility { path: line, visible: false }.into()).into());
 					}
 					for i in shape_i..data.shape_outline_pool.len() {
 						let shape_i = data.shape_outline_pool[i].clone();
-						responses.push_back(DocumentMessage::Overlay(Operation::SetLayerVisibility { path: shape_i, visible: false }.into()).into());
+						responses.push_back(DocumentMessage::Overlays(Operation::SetLayerVisibility { path: shape_i, visible: false }.into()).into());
 					}
 
 					self
@@ -335,7 +331,7 @@ impl Fsm for PathToolFsmState {
 
 						data.selection.overlay_path = path;
 						responses.push_back(
-							DocumentMessage::Overlay(
+							DocumentMessage::Overlays(
 								Operation::SetLayerFill {
 									path: data.selection.overlay_path.clone(),
 									color: COLOR_ACCENT,
@@ -377,7 +373,7 @@ impl Fsm for PathToolFsmState {
 				(_, DragStop) => {
 					let style = PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 2.0)), Some(Fill::new(Color::WHITE)));
 					responses.push_back(
-						DocumentMessage::Overlay(
+						DocumentMessage::Overlays(
 							Operation::SetLayerStyle {
 								path: data.selection.overlay_path.clone(),
 								style,
@@ -391,16 +387,16 @@ impl Fsm for PathToolFsmState {
 				(_, Abort) => {
 					// Destory the overlay layer pools
 					while let Some(layer) = data.anchor_marker_pool.pop() {
-						responses.push_back(DocumentMessage::Overlay(Operation::DeleteLayer { path: layer }.into()).into());
+						responses.push_back(DocumentMessage::Overlays(Operation::DeleteLayer { path: layer }.into()).into());
 					}
 					while let Some(layer) = data.handle_marker_pool.pop() {
-						responses.push_back(DocumentMessage::Overlay(Operation::DeleteLayer { path: layer }.into()).into());
+						responses.push_back(DocumentMessage::Overlays(Operation::DeleteLayer { path: layer }.into()).into());
 					}
 					while let Some(layer) = data.anchor_handle_line_pool.pop() {
-						responses.push_back(DocumentMessage::Overlay(Operation::DeleteLayer { path: layer }.into()).into());
+						responses.push_back(DocumentMessage::Overlays(Operation::DeleteLayer { path: layer }.into()).into());
 					}
 					while let Some(layer) = data.shape_outline_pool.pop() {
-						responses.push_back(DocumentMessage::Overlay(Operation::DeleteLayer { path: layer }.into()).into());
+						responses.push_back(DocumentMessage::Overlays(Operation::DeleteLayer { path: layer }.into()).into());
 					}
 
 					Ready
@@ -573,7 +569,7 @@ fn add_anchor_marker(responses: &mut VecDeque<Message>) -> Vec<LayerId> {
 		transform: DAffine2::IDENTITY.to_cols_array(),
 		style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 2.0)), Some(Fill::new(Color::WHITE))),
 	};
-	responses.push_back(DocumentMessage::Overlay(operation.into()).into());
+	responses.push_back(DocumentMessage::Overlays(operation.into()).into());
 
 	layer_path
 }
@@ -586,7 +582,7 @@ fn add_handle_marker(responses: &mut VecDeque<Message>) -> Vec<LayerId> {
 		transform: DAffine2::IDENTITY.to_cols_array(),
 		style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 2.0)), Some(Fill::new(Color::WHITE))),
 	};
-	responses.push_back(DocumentMessage::Overlay(operation.into()).into());
+	responses.push_back(DocumentMessage::Overlays(operation.into()).into());
 
 	layer_path
 }
@@ -598,7 +594,7 @@ fn add_anchor_handle_line(responses: &mut VecDeque<Message>) -> Vec<LayerId> {
 		transform: DAffine2::IDENTITY.to_cols_array(),
 		style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 1.0)), Some(Fill::none())),
 	};
-	responses.push_back(DocumentMessage::Overlay(operation.into()).into());
+	responses.push_back(DocumentMessage::Overlays(operation.into()).into());
 
 	layer_path
 }
@@ -612,7 +608,7 @@ fn add_shape_outline(responses: &mut VecDeque<Message>) -> Vec<LayerId> {
 		style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 1.0)), Some(Fill::none())),
 		closed: false,
 	};
-	responses.push_back(DocumentMessage::Overlay(operation.into()).into());
+	responses.push_back(DocumentMessage::Overlays(operation.into()).into());
 
 	layer_path
 }

@@ -1,10 +1,13 @@
+use crate::document::DocumentMessageHandler;
 use crate::input::keyboard::Key;
-use crate::input::{mouse::ViewportPosition, InputPreprocessor};
+use crate::input::mouse::ViewportPosition;
+use crate::input::InputPreprocessorMessageHandler;
 use crate::message_prelude::*;
-use crate::tool::snapping::SnapHandler;
-use crate::tool::DocumentMessageHandler;
-use glam::{DAffine2, DVec2, Vec2Swizzles};
+use crate::viewport_tools::snapping::SnapHandler;
+
 use graphene::Operation;
+
+use glam::{DAffine2, DVec2, Vec2Swizzles};
 
 #[derive(Clone, Debug, Default)]
 pub struct Resize {
@@ -20,7 +23,7 @@ impl Resize {
 		self.drag_start = self.snap_handler.snap_position(document, mouse_position);
 	}
 
-	pub fn calculate_transform(&self, document: &DocumentMessageHandler, center: Key, lock_ratio: Key, ipp: &InputPreprocessor) -> Option<Message> {
+	pub fn calculate_transform(&self, document: &DocumentMessageHandler, center: Key, lock_ratio: Key, ipp: &InputPreprocessorMessageHandler) -> Option<Message> {
 		if let Some(path) = &self.path {
 			let mut start = self.drag_start;
 

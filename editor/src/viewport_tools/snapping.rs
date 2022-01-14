@@ -1,9 +1,9 @@
-use glam::DVec2;
+use crate::consts::SNAP_TOLERANCE;
+use crate::document::DocumentMessageHandler;
+
 use graphene::LayerId;
 
-use crate::consts::SNAP_TOLERANCE;
-
-use super::DocumentMessageHandler;
+use glam::DVec2;
 
 #[derive(Debug, Clone, Default)]
 pub struct SnapHandler {
@@ -99,6 +99,7 @@ impl SnapHandler {
 		}
 	}
 
+	/// Removes snap target data. Call this when snapping is done.
 	pub fn cleanup(&mut self) {
 		self.snap_targets = None;
 	}
