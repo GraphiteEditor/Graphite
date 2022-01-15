@@ -38,13 +38,13 @@ impl SnapHandler {
 			for x_target in x_targets {
 				self.overlay_paths.push(add_overlay_line(
 					responses,
-					DAffine2::from_scale_angle_translation(DVec2::new(viewport_bounds.y, 1.), PI / 2., DVec2::new(x_target.round(), 0.)),
+					DAffine2::from_scale_angle_translation(DVec2::new(viewport_bounds.y, 1.), PI / 2., DVec2::new((x_target + 0.5).round() - 0.5, 0.)),
 				));
 			}
 			for y_target in y_targets {
 				self.overlay_paths.push(add_overlay_line(
 					responses,
-					DAffine2::from_scale_angle_translation(DVec2::new(viewport_bounds.x, 1.), 0., DVec2::new(0., y_target.round())),
+					DAffine2::from_scale_angle_translation(DVec2::new(viewport_bounds.x, 1.), 0., DVec2::new(0., (y_target + 0.5).round() - 0.5)),
 				));
 			}
 		}
