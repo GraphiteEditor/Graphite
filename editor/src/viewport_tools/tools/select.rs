@@ -34,7 +34,7 @@ pub enum SelectMessage {
 	DragStop,
 	MouseMove { snap_angle: Key },
 
-	Align(AlignAxis, AlignAggregate),
+	Align { axis: AlignAxis, aggregate: AlignAggregate },
 	FlipHorizontal,
 	FlipVertical,
 }
@@ -180,7 +180,7 @@ impl Fsm for SelectToolFsmState {
 
 						if let Some(intersection) = intersection.pop() {
 							selected = vec![intersection];
-							buffer.push(DocumentMessage::AddSelectedLayers(selected.clone()).into());
+							buffer.push(DocumentMessage::AddSelectedLayers { additional_layers: selected.clone() }.into());
 							buffer.push(DocumentMessage::StartTransaction.into());
 							data.layers_dragging.append(&mut selected);
 							Dragging
@@ -258,7 +258,12 @@ impl Fsm for SelectToolFsmState {
 				}
 				(DrawingBox, DragStop) => {
 					let quad = data.selection_quad();
-					responses.push_front(DocumentMessage::AddSelectedLayers(document.graphene_document.intersects_quad_root(quad)).into());
+					responses.push_front(
+						DocumentMessage::AddSelectedLayers {
+							additional_layers: document.graphene_document.intersects_quad_root(quad),
+						}
+						.into(),
+					);
 					responses.push_front(
 						DocumentMessage::Overlays(
 							Operation::DeleteLayer {
@@ -276,18 +281,18 @@ impl Fsm for SelectToolFsmState {
 					delete(&mut data.bounding_box_overlay_layer);
 					Ready
 				}
-				(_, Align(axis, aggregate)) => {
-					responses.push_back(DocumentMessage::AlignSelectedLayers(axis, aggregate).into());
+				(_, Align { axis, aggregate }) => {
+					responses.push_back(DocumentMessage::AlignSelectedLayers { axis, aggregate }.into());
 
 					self
 				}
 				(_, FlipHorizontal) => {
-					responses.push_back(DocumentMessage::FlipSelectedLayers(FlipAxis::X).into());
+					responses.push_back(DocumentMessage::FlipSelectedLayers { flip_axis: FlipAxis::X }.into());
 
 					self
 				}
 				(_, FlipVertical) => {
-					responses.push_back(DocumentMessage::FlipSelectedLayers(FlipAxis::Y).into());
+					responses.push_back(DocumentMessage::FlipSelectedLayers { flip_axis: FlipAxis::Y }.into());
 
 					self
 				}

@@ -17,6 +17,6 @@ pub enum TransformLayerMessage {
 	MouseMove { slow_key: Key, snap_key: Key },
 	TypeBackspace,
 	TypeDecimalPoint,
+	TypeDigit { digit: u8 },
 	TypeNegate,
-	TypeNumber(u8),
 }

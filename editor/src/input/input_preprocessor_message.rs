@@ -12,11 +12,11 @@ use serde::{Deserialize, Serialize};
 #[impl_message(Message, InputPreprocessor)]
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub enum InputPreprocessorMessage {
-	BoundsOfViewports(Vec<ViewportBounds>),
-	KeyDown(Key, ModifierKeys),
-	KeyUp(Key, ModifierKeys),
-	MouseDown(EditorMouseState, ModifierKeys),
-	MouseMove(EditorMouseState, ModifierKeys),
-	MouseScroll(EditorMouseState, ModifierKeys),
-	MouseUp(EditorMouseState, ModifierKeys),
+	BoundsOfViewports { bounds_of_viewports: Vec<ViewportBounds> },
+	KeyDown { key: Key, modifier_keys: ModifierKeys },
+	KeyUp { key: Key, modifier_keys: ModifierKeys },
+	MouseDown { editor_mouse_state: EditorMouseState, modifier_keys: ModifierKeys },
+	MouseMove { editor_mouse_state: EditorMouseState, modifier_keys: ModifierKeys },
+	MouseScroll { editor_mouse_state: EditorMouseState, modifier_keys: ModifierKeys },
+	MouseUp { editor_mouse_state: EditorMouseState, modifier_keys: ModifierKeys },
 }

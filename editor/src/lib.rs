@@ -80,7 +80,6 @@ pub mod message_prelude {
 	pub use crate::viewport_tools::tools::rectangle::{RectangleMessage, RectangleMessageDiscriminant};
 	pub use crate::viewport_tools::tools::select::{SelectMessage, SelectMessageDiscriminant};
 	pub use crate::viewport_tools::tools::shape::{ShapeMessage, ShapeMessageDiscriminant};
-
 	pub use graphite_proc_macros::*;
 
 	pub use std::collections::VecDeque;
