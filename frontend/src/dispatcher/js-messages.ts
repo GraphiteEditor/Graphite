@@ -39,6 +39,8 @@ export class FrontendDocumentDetails extends DocumentDetails {
 	readonly id!: BigInt;
 }
 
+export type FrontendMouseCursor = string;
+
 export class UpdateOpenDocumentsList extends JsMessage {
 	@Type(() => FrontendDocumentDetails)
 	readonly open_documents!: FrontendDocumentDetails[];
@@ -166,6 +168,10 @@ export class DisplayConfirmationToCloseDocument extends JsMessage {
 export class DisplayConfirmationToCloseAllDocuments extends JsMessage {}
 
 export class DisplayDialogAboutGraphite extends JsMessage {}
+
+export class DisplayMouseCursor extends JsMessage {
+	readonly cursor!: FrontendMouseCursor;
+}
 
 export class UpdateDocumentArtwork extends JsMessage {
 	readonly svg!: string;
@@ -383,6 +389,7 @@ export const messageConstructors: Record<string, MessageMaker> = {
 	DisplayConfirmationToCloseDocument,
 	DisplayConfirmationToCloseAllDocuments,
 	DisplayDialogAboutGraphite,
+	DisplayMouseCursor,
 	TriggerIndexedDbWriteDocument,
 	TriggerIndexedDbRemoveDocument,
 	UpdateDocumentArtboards,

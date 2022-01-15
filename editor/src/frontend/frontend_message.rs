@@ -1,4 +1,4 @@
-use super::utility_types::FrontendDocumentDetails;
+use super::utility_types::{FrontendDocumentDetails, FrontendMouseCursor};
 use crate::document::layer_panel::{LayerPanelEntry, RawBuffer};
 use crate::message_prelude::*;
 use crate::misc::HintData;
@@ -18,6 +18,7 @@ pub enum FrontendMessage {
 	DisplayDialogError { title: String, description: String },
 	DisplayDialogPanic { panic_info: String, title: String, description: String },
 	DisplayDocumentLayerTreeStructure { data_buffer: RawBuffer },
+	DisplayMouseCursor { cursor: FrontendMouseCursor },
 
 	// Trigger prefix: cause a browser API to do something
 	TriggerFileDownload { document: String, name: String },

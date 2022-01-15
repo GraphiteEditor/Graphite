@@ -6,3 +6,12 @@ pub struct FrontendDocumentDetails {
 	pub name: String,
 	pub id: u64,
 }
+
+#[derive(Clone, Copy, Debug, Eq, Deserialize, PartialEq, Serialize)]
+pub enum FrontendMouseCursor {
+	Default,
+	ZoomIn,
+	ZoomOut,
+	Grabbing,
+	Crosshair,
+}
