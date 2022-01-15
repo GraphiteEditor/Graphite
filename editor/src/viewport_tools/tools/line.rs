@@ -1,5 +1,6 @@
 use crate::consts::LINE_ROTATE_SNAP_ANGLE;
 use crate::document::DocumentMessageHandler;
+use crate::frontend::utility_types::FrontendMouseCursor;
 use crate::input::keyboard::{Key, MouseMotion};
 use crate::input::mouse::ViewportPosition;
 use crate::input::InputPreprocessorMessageHandler;
@@ -38,11 +39,17 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Line {
 			return;
 		}
 
+		if action == ToolMessage::UpdateCursor {
+			self.fsm_state.update_cursor(responses);
+			return;
+		}
+
 		let new_state = self.fsm_state.transition(action, data.0, data.1, &mut self.data, data.2, responses);
 
 		if self.fsm_state != new_state {
 			self.fsm_state = new_state;
 			self.fsm_state.update_hints(responses);
+			self.fsm_state.update_cursor(responses);
 		}
 	}
 
@@ -206,6 +213,15 @@ impl Fsm for LineToolFsmState {
 		};
 
 		responses.push_back(FrontendMessage::UpdateInputHints { hint_data }.into());
+	}
+
+	fn update_cursor(&self, responses: &mut VecDeque<Message>) {
+		responses.push_back(
+			FrontendMessage::DisplayMouseCursor {
+				cursor: FrontendMouseCursor::Crosshair,
+			}
+			.into(),
+		);
 	}
 }
 
