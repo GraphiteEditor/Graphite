@@ -220,6 +220,13 @@ impl Fsm for NavigateToolFsmState {
 	}
 
 	fn update_cursor(&self, responses: &mut VecDeque<Message>) {
-		responses.push_back(FrontendMessage::UpdateMouseCursor { cursor: FrontendMouseCursor::Default }.into());
+		let cursor = match *self {
+			NavigateToolFsmState::Ready => FrontendMouseCursor::ZoomIn,
+			NavigateToolFsmState::Panning => FrontendMouseCursor::Grabbing,
+			NavigateToolFsmState::Tilting => FrontendMouseCursor::Default,
+			NavigateToolFsmState::Zooming => FrontendMouseCursor::Grabbing,
+		};
+
+		responses.push_back(FrontendMessage::UpdateMouseCursor { cursor }.into());
 	}
 }
