@@ -26,8 +26,9 @@ impl ArtboardMessageHandler {
 impl MessageHandler<ArtboardMessage, (&mut LayerMetadata, &GrapheneDocument, &InputPreprocessorMessageHandler)> for ArtboardMessageHandler {
 	#[remain::check]
 	fn process_action(&mut self, message: ArtboardMessage, _data: (&mut LayerMetadata, &GrapheneDocument, &InputPreprocessorMessageHandler), responses: &mut VecDeque<Message>) {
-		// let (layer_metadata, document, ipp) = data;
 		use ArtboardMessage::*;
+
+		// let (layer_metadata, document, ipp) = data;
 		#[remain::sorted]
 		match message {
 			AddArtboard { top, left, height, width } => {

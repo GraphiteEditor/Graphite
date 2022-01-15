@@ -73,6 +73,7 @@ impl Fsm for EyedropperToolFsmState {
 	) -> Self {
 		use EyedropperMessage::*;
 		use EyedropperToolFsmState::*;
+
 		if let ToolMessage::Eyedropper(event) = event {
 			match (self, event) {
 				(Ready, lmb_or_rmb) if lmb_or_rmb == LeftMouseDown || lmb_or_rmb == RightMouseDown => {
