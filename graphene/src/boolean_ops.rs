@@ -176,6 +176,7 @@ impl PathGraph {
 	///   - implementing this behavior may not be feasible, instead reduce discrepancies
 	/// TODO: This function panics if an time value is NAN, no time value should ever be NAN, but this case should be handled, maybe not here
 	/// NOTE: about intersection time_val order
+	/// NOTE: the map_or's below are because cargo fmt unnecesarily (in my opinion) expands "if let" statements
 	fn add_edges_from_path(&mut self, path: &BezPath, origin: Origin, reverse: bool) {
 		let mut seg_idx = 0;
 		//cstart holds the idx of the vertex the current edge is starting from
@@ -193,16 +194,17 @@ impl PathGraph {
 					let (seg1, seg2) = split_path_seg(&seg, t_val);
 					match cstart {
 						Some(idx) => {
-							current.push(seg1);
+							seg1.map_or((), |end_of_edge| current.push(end_of_edge));
 							self.add_edge(origin, idx, vertex_id, current, reverse);
 							cstart = Some(vertex_id);
-							current = vec![seg2];
+							current = Vec::new();
+							seg2.map_or((), |start_of_edge| current.push(start_of_edge));
 						}
 						None => {
 							cstart = Some(vertex_id);
 							start_idx = Some(vertex_id);
-							beginning.push(seg1);
-							current.push(seg2);
+							seg1.map_or((), |end_of_begining| beginning.push(end_of_begining));
+							seg2.map_or((), |start_of_edge| current.push(start_of_edge));
 						}
 					}
 				}
@@ -310,9 +312,19 @@ impl PathGraph {
 	}
 }
 
-/// This functions assumes t in [0,1], behavior is undefined otherwise
+/// if t is on (0, 1), returns the split path
+/// if t is outside [0, 1], returns None, None
+/// otherwise returns the whole path
 /// TODO: test values outside 1
-pub fn split_path_seg(p: &PathSeg, t: f64) -> (PathSeg, PathSeg) {
+pub fn split_path_seg(p: &PathSeg, t: f64) -> (Option<PathSeg>, Option<PathSeg>) {
+	if t <= F64PRECISION {
+		if t >= 1.0 - F64PRECISION {
+			return (None, None);
+		}
+		return (Some(*p), None);
+	} else if t >= 1.0 - F64PRECISION {
+		return (None, Some(*p));
+	}
 	match p {
 		PathSeg::Cubic(cubic) => {
 			let a1 = Line::new(cubic.p0, cubic.p1).eval(t);
@@ -322,21 +334,38 @@ pub fn split_path_seg(p: &PathSeg, t: f64) -> (PathSeg, PathSeg) {
 			let b2 = Line::new(a2, a3).eval(t);
 			let c1 = Line::new(b1, b2).eval(t);
 			(
-				PathSeg::Cubic(CubicBez { p0: cubic.p0, p1: a1, p2: b1, p3: c1 }),
-				PathSeg::Cubic(CubicBez { p0: c1, p1: b2, p2: a3, p3: cubic.p3 }),
+				Some(PathSeg::Cubic(CubicBez { p0: cubic.p0, p1: a1, p2: b1, p3: c1 })),
+				Some(PathSeg::Cubic(CubicBez { p0: c1, p1: b2, p2: a3, p3: cubic.p3 })),
 			)
 		}
 		PathSeg::Quad(quad) => {
 			let b1 = Line::new(quad.p0, quad.p1).eval(t);
 			let b2 = Line::new(quad.p1, quad.p2).eval(t);
 			let c1 = Line::new(b1, b2).eval(t);
-			(PathSeg::Quad(QuadBez { p0: quad.p0, p1: b1, p2: c1 }), PathSeg::Quad(QuadBez { p0: c1, p1: b2, p2: quad.p2 }))
+			(
+				Some(PathSeg::Quad(QuadBez { p0: quad.p0, p1: b1, p2: c1 })),
+				Some(PathSeg::Quad(QuadBez { p0: c1, p1: b2, p2: quad.p2 })),
+			)
 		}
 		PathSeg::Line(line) => {
 			let split = line.eval(t);
-			(PathSeg::Line(Line { p0: line.p0, p1: split }), PathSeg::Line(Line { p0: split, p1: line.p1 }))
+			(Some(PathSeg::Line(Line { p0: line.p0, p1: split })), Some(PathSeg::Line(Line { p0: split, p1: line.p1 })))
 		}
 	}
+}
+
+pub fn sub_path_seg(p: &PathSeg, mut t1: f64, mut t2: f64) -> (Option<PathSeg>, Option<PathSeg>, Option<PathSeg>) {
+	if t1 > t2 {
+		std::mem::swap(&mut t1, &mut t2);
+	}
+	let (p1, unhewn) = split_path_seg(p, t1);
+	let (p2, p3) = if let Some(unhewn_seg) = unhewn {
+		let t2_in_unhewn = (t2 - t1) / (1.0 - t1);
+		split_path_seg(&unhewn_seg, t2_in_unhewn)
+	} else {
+		(None, None)
+	};
+	(p1, p2, p3)
 }
 
 /// TODO: For the Union and intersection operations, what should the new Fill and Stroke be? --> see document.rs

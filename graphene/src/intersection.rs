@@ -1,7 +1,9 @@
 use std::cmp::{max_by, min_by};
 use std::ops::Mul;
+use std::rc::Rc;
 
-use crate::consts::F64PRECISION;
+use crate::boolean_ops::{bounding_box, split_path_seg, sub_path_seg};
+use crate::consts::{CURVE_FIDELITY, F64PRECISION};
 use glam::{DAffine2, DMat2, DVec2};
 use kurbo::{BezPath, Line, ParamCurve, ParamCurveExtrema, PathSeg, Point, Rect, Shape};
 
@@ -141,7 +143,7 @@ struct SubCurve<'a> {
 	pub curve: &'a PathSeg,
 	pub start_t: f64,
 	pub end_t: f64,
-	local: [Point; 2], //local endpoints
+	local: [Point; 2], // local endpoints
 	pub extrema: &'a Vec<Point>,
 }
 
@@ -189,9 +191,25 @@ impl<'a> SubCurve<'a> {
 		(self.start_t - self.end_t).abs()
 	}
 
+	// In a bounding box of A area, the points are at most A units apart
+	fn size_precision_ratio(&self) -> f64 {
+		self.bounding_box().area()
+	}
+
 	/// split subcurve at t, as though the subcurve is a bezier curve, where t is a value between 0.0 and 1.0
 	fn split(&self, t: f64) -> (SubCurve, SubCurve) {
-		let split_t = self.start_t + t * (self.end_t - self.start_t);
+		let mut split_t = self.start_t + t * (self.end_t - self.start_t);
+
+		// if self.available_precision() <= CURVE_FIDELITY {
+		// 	match sub_path_seg(self.curve, self.start_t, self.end_t) {
+		// 		(_, Some(sub_curve), _) | (Some(sub_curve), None, None) | (None, None, Some(sub_curve)) => {
+		// 			self.curve = &sub_curve;
+		// 			split_t = t;
+		// 		}
+		// 		_ => (),
+		// 	}
+		// }
+
 		(
 			SubCurve {
 				curve: self.curve,
@@ -241,27 +259,28 @@ fn path_intersections(a: &SubCurve, b: &SubCurve, mut recursion: f64) -> Vec<Int
 			intersections.push(cross);
 		}
 	} else if overlap(&a.bounding_box(), &b.bounding_box()) {
-		//TODO: change SubCurve Split to use new curve when the bounds of precision are approached
+		// Eventually the points in the curve become to close together to split the curve and get more accurate
 		if a.available_precision() <= F64PRECISION || b.available_precision() <= F64PRECISION {
-			log::debug!("precision reached");
+			log::debug!("precision reached, a:{:?} b:{:?}", a.available_precision(), b.available_precision());
+			log::debug!("size/precision, a:{:?} b:{:?}", a.size_precision_ratio(), b.size_precision_ratio());
 			return intersections;
 		}
 		// base case, we are close enough to try linear approximation
-		if recursion > (1 << 10) as f64 {
-			//arbitrarily chosen limit
+		if recursion < (1 << 10) as f64 {
 			if let Some(mut cross) = line_intersection(&Line { p0: a.start(), p1: a.end() }, &Line { p0: b.start(), p1: b.end() }) {
 				// intersection t_value equals the recursive t_value + interpolated intersection value
-				cross.t_a = a.start_t + cross.t_a / recursion;
-				cross.t_b = b.start_t + cross.t_b / recursion;
+				cross.t_a = a.start_t + cross.t_a * recursion;
+				cross.t_b = b.start_t + cross.t_b * recursion;
 				cross.quality = guess_quality(a.curve, b.curve, &cross);
 				//
+				// log::debug!("checking: {:?}", cross.quality);
 				if cross.quality <= F64PRECISION {
-					intersections.push(cross); //arbitrarily chosen threshold
+					intersections.push(cross);
+					return intersections;
 				}
-				return intersections;
 			}
 		}
-		recursion /= 2.0;
+		recursion /= 2.0; //bit shifts can't be used for floating-point division?
 		let (a1, a2) = a.split(0.5);
 		let (b1, b2) = b.split(0.5);
 		intersections.append(&mut path_intersections(&a1, &b1, recursion));
@@ -274,6 +293,7 @@ fn path_intersections(a: &SubCurve, b: &SubCurve, mut recursion: f64) -> Vec<Int
 
 /// Optimization: inline? maybe...
 /// For quality Q in the worst case, the point on curve "a" corresponding to "guess" is distance Q from the point on curve "b"
+/// kurbo::Point::distance does weird things?
 fn guess_quality(a: &PathSeg, b: &PathSeg, guess: &Intersect) -> f64 {
 	let at_a = b.eval(guess.t_b);
 	let at_b = a.eval(guess.t_a);
