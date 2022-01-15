@@ -1,5 +1,4 @@
 use super::tool::{message_to_tool_type, standard_tool_message, update_working_colors, StandardToolMessageType, ToolFsmState};
-use super::tool_message::ToolMessage;
 use crate::document::DocumentMessageHandler;
 use crate::input::InputPreprocessorMessageHandler;
 use crate::message_prelude::*;

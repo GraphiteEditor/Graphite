@@ -2,7 +2,7 @@ use super::clipboards::Clipboard;
 use super::layer_panel::{layer_panel_entry, LayerMetadata, LayerPanelEntry, RawBuffer};
 use super::utility_types::{AlignAggregate, AlignAxis, DocumentSave, FlipAxis, VectorManipulatorSegment, VectorManipulatorShape};
 use super::vectorize_layer_metadata;
-use super::{ArtboardMessage, ArtboardMessageHandler, MovementMessage, MovementMessageHandler, OverlaysMessageHandler, TransformLayerMessageHandler};
+use super::{ArtboardMessageHandler, MovementMessageHandler, OverlaysMessageHandler, TransformLayerMessageHandler};
 use crate::consts::{
 	ASYMPTOTIC_EFFECT, DEFAULT_DOCUMENT_NAME, FILE_EXPORT_SUFFIX, FILE_SAVE_SUFFIX, GRAPHITE_DOCUMENT_VERSION, SCALE_EFFECT, SCROLLBAR_SPACING, VIEWPORT_ZOOM_TO_FIT_PADDING_SCALE_FACTOR,
 };
@@ -14,8 +14,7 @@ use graphene::document::Document as GrapheneDocument;
 use graphene::layers::folder::Folder;
 use graphene::layers::layer_info::LayerDataType;
 use graphene::layers::style::ViewMode;
-use graphene::{DocumentError, LayerId};
-use graphene::{DocumentResponse, Operation as DocumentOperation};
+use graphene::{DocumentError, DocumentResponse, LayerId, Operation as DocumentOperation};
 
 use glam::{DAffine2, DVec2};
 use kurbo::PathSeg;
@@ -220,30 +219,38 @@ impl DocumentMessageHandler {
 		structure.push(space | 1 << 63);
 	}
 
-	/// Serializes the layer structure into a compressed 1d structure
+	/// Serializes the layer structure into a condensed 1D structure.
 	///
+	/// # Format
 	/// It is a string of numbers broken into three sections:
-	/// (4),(2,1,-2,-0),(16533113728871998040,3427872634365736244,18115028555707261608,15878401910454357952,449479075714955186) <- Example encoded data
-	/// L = 4 = structure.len()                                                                                                 <- First value in the encoding: L, the length of the structure section
-	/// structure = 2,1,-2,-0                                                                                                   <- Subsequent L values: structure section
-	/// data = 16533113728871998040,3427872634365736244,18115028555707261608,15878401910454357952,449479075714955186            <- Remaining values: data section (layer IDs)
+	///
+	/// | Data                                                                                                                           | Description                                  | Length           |
+	/// |--------------------------------------------------------------------------------------------------------------------------------|----------------------------------------------|------------------|
+	/// | `4,` `2, 1, -2, -0,` `16533113728871998040,3427872634365736244,18115028555707261608,15878401910454357952,449479075714955186`   | Encoded example data                         |                  |
+	/// | `L` = `4` = `structure.len()`                                                                                                  | `L`, the length of the **Structure** section | First value      |
+	/// | **Structure** section = `2, 1, -2, -0`                                                                                         | The **Structure** section                    | Next `L` values  |
+	/// | **Data** section = `16533113728871998040, 3427872634365736244, 18115028555707261608, 15878401910454357952, 449479075714955186` | The **Data** section (layer IDs)             | Remaining values |
 	///
 	/// The data section lists the layer IDs for all folders/layers in the tree as read from top to bottom.
-	/// The structure section lists signed numbers. The sign indicates a folder indentation change (+ is down a level, - is up a level).
-	/// the numbers in the structure block encode the indentation,
-	/// 2 mean read two element from the data section, then place a [
-	/// -x means read x elements from the data section and then insert a ]
+	/// The structure section lists signed numbers. The sign indicates a folder indentation change (`+` is down a level, `-` is up a level).
+	/// The numbers in the structure block encode the indentation. For example:
+	/// - `2` means read two element from the data section, then place a `[`.
+	/// - `-x` means read `x` elements from the data section and then insert a `]`.
 	///
+	/// ```text
 	/// 2     V 1  V -2  A -0 A
 	/// 16533113728871998040,3427872634365736244,  18115028555707261608, 15878401910454357952,449479075714955186
 	/// 16533113728871998040,3427872634365736244,[ 18115028555707261608,[15878401910454357952,449479075714955186]    ]
+	/// ```
 	///
-	/// resulting layer panel:
+	/// Resulting layer panel:
+	/// ```text
 	/// 16533113728871998040
 	/// 3427872634365736244
 	/// [3427872634365736244,18115028555707261608]
 	/// [3427872634365736244,18115028555707261608,15878401910454357952]
 	/// [3427872634365736244,18115028555707261608,449479075714955186]
+	/// ```
 	pub fn serialize_root(&self) -> Vec<u64> {
 		let (mut structure, mut data) = (vec![0], Vec::new());
 		self.serialize_structure(self.graphene_document.root.as_folder().unwrap(), &mut structure, &mut data, &mut vec![]);

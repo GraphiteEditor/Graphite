@@ -24,19 +24,19 @@ macro_rules! count_args {
 ///
 /// ```ignore
 /// let tools = gen_tools_hash_map! {
-/// 	Select => select::Select,
-/// 	Crop => crop::Crop,
+///     Select => select::Select,
+///     Crop => crop::Crop,
 /// };
 /// ```
 /// expands to
 /// ```ignore
 /// let tools = {
-/// 	let mut hash_map: std::collections::HashMap<crate::tool::ToolType, Box<dyn crate::tool::Tool>> = std::collections::HashMap::with_capacity(count_args!(/* Macro args */));
+///     let mut hash_map: std::collections::HashMap<crate::tool::ToolType, Box<dyn crate::tool::Tool>> = std::collections::HashMap::with_capacity(count_args!(/* Macro args */));
 ///
-/// 	hash_map.insert(crate::tool::ToolType::Select, Box::new(select::Select::default()));
-/// 	hash_map.insert(crate::tool::ToolType::Crop, Box::new(crop::Crop::default()));
+///     hash_map.insert(crate::tool::ToolType::Select, Box::new(select::Select::default()));
+///     hash_map.insert(crate::tool::ToolType::Crop, Box::new(crop::Crop::default()));
 ///
-/// 	hash_map
+///     hash_map
 /// };
 /// ```
 macro_rules! gen_tools_hash_map {
@@ -54,8 +54,8 @@ macro_rules! gen_tools_hash_map {
 ///
 /// ```ignore
 /// enum E {
-/// 	A(u8),
-/// 	B
+///     A(u8),
+///     B
 /// }
 ///
 /// // this line is important
@@ -71,8 +71,8 @@ macro_rules! gen_tools_hash_map {
 /// // ...
 ///
 /// let s = match a {
-/// 	A { .. } => "A",
-/// 	B { .. } => "B"
+///     A { .. } => "A",
+///     B { .. } => "B"
 /// };
 /// ```
 macro_rules! match_variant_name {
@@ -122,7 +122,7 @@ macro_rules! actions {
 ///
 /// ```ignore
 /// fn actions(&self) -> ActionList {
-///		actions!(…)
+///     actions!(…)
 /// }
 /// ```
 macro_rules! advertise_actions {

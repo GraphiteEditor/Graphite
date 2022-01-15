@@ -6,8 +6,8 @@ use crate::message_prelude::*;
 use crate::misc::{HintData, HintGroup, HintInfo};
 use crate::viewport_tools::tool::{DocumentToolData, Fsm, ToolActionHandlerData};
 
+use graphene::intersection::Quad;
 use graphene::layers::layer_info::LayerDataType;
-use graphene::Quad;
 
 use glam::DVec2;
 use serde::{Deserialize, Serialize};

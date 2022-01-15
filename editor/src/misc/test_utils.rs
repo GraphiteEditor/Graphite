@@ -1,7 +1,6 @@
 use crate::input::input_preprocessor::ModifierKeys;
 use crate::input::mouse::{EditorMouseState, MouseKeys, ScrollDelta, ViewportPosition};
-use crate::input::InputPreprocessorMessage;
-use crate::message_prelude::{Message, ToolMessage};
+use crate::message_prelude::*;
 use crate::viewport_tools::tool::ToolType;
 use crate::Editor;
 

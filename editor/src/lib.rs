@@ -1,15 +1,12 @@
-// Since our policy is tabs, we want to stop clippy from warning about that
-#![allow(clippy::tabs_in_doc_comments)]
-
 extern crate graphite_proc_macros;
 
 pub mod communication;
 #[macro_use]
 pub mod misc;
 pub mod consts;
-mod document;
-mod frontend;
-mod global;
+pub mod document;
+pub mod frontend;
+pub mod global;
 pub mod input;
 pub mod viewport_tools;
 
@@ -57,7 +54,10 @@ pub mod message_prelude {
 	pub use crate::communication::generate_uuid;
 	pub use crate::communication::message::{AsMessage, Message, MessageDiscriminant};
 	pub use crate::communication::message_handler::{ActionList, MessageHandler};
+
 	pub use crate::document::clipboards::Clipboard;
+	pub use crate::LayerId;
+
 	pub use crate::document::{ArtboardMessage, ArtboardMessageDiscriminant};
 	pub use crate::document::{DocumentMessage, DocumentMessageDiscriminant};
 	pub use crate::document::{MovementMessage, MovementMessageDiscriminant};
@@ -80,7 +80,7 @@ pub mod message_prelude {
 	pub use crate::viewport_tools::tools::rectangle::{RectangleMessage, RectangleMessageDiscriminant};
 	pub use crate::viewport_tools::tools::select::{SelectMessage, SelectMessageDiscriminant};
 	pub use crate::viewport_tools::tools::shape::{ShapeMessage, ShapeMessageDiscriminant};
-	pub use crate::LayerId;
 	pub use graphite_proc_macros::*;
+
 	pub use std::collections::VecDeque;
 }

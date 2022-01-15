@@ -2,8 +2,9 @@ use super::blend_mode::BlendMode;
 use super::folder::Folder;
 use super::simple_shape::Shape;
 use super::style::ViewMode;
+use crate::intersection::Quad;
+use crate::DocumentError;
 use crate::LayerId;
-use crate::{DocumentError, Quad};
 
 use glam::{DAffine2, DMat2, DVec2};
 use serde::{Deserialize, Serialize};

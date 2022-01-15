@@ -1,4 +1,3 @@
-use super::DocumentMessage;
 use crate::input::keyboard::Key;
 use crate::message_prelude::*;
 

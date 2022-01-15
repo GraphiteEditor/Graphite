@@ -1,5 +1,4 @@
 use super::layer_panel::LayerMetadata;
-use super::{ArtboardMessage, DocumentMessage};
 use crate::input::InputPreprocessorMessageHandler;
 use crate::message_prelude::*;
 

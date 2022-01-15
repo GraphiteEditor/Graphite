@@ -1,15 +1,18 @@
+use crate::intersection::Quad;
 use crate::layers;
 use crate::layers::folder::Folder;
 use crate::layers::layer_info::{Layer, LayerData, LayerDataType};
 use crate::layers::simple_shape::Shape;
 use crate::layers::style::ViewMode;
-use crate::{DocumentError, DocumentResponse, LayerId, Operation, Quad};
+use crate::{DocumentError, DocumentResponse, Operation};
 
 use glam::{DAffine2, DVec2};
 use serde::{Deserialize, Serialize};
 use std::cmp::max;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
+
+pub type LayerId = u64;
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Document {

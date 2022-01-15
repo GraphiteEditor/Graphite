@@ -1,7 +1,7 @@
 use super::layer_info::LayerData;
 use super::style::{self, PathStyle, ViewMode};
-use crate::intersection::intersect_quad_bez_path;
-use crate::{LayerId, Quad};
+use crate::intersection::{intersect_quad_bez_path, Quad};
+use crate::LayerId;
 
 use glam::{DAffine2, DMat2, DVec2};
 use kurbo::{Affine, BezPath, Shape as KurboShape};
