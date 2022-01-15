@@ -71,8 +71,8 @@ pub enum Operation {
 		path: Vec<LayerId>,
 	},
 	RenameLayer {
-		path: Vec<LayerId>,
-		name: String,
+		layer_path: Vec<LayerId>,
+		new_name: String,
 	},
 	InsertLayer {
 		layer: Layer,

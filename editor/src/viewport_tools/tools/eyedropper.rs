@@ -87,8 +87,8 @@ impl Fsm for EyedropperToolFsmState {
 								if let Some(fill) = shape.style.fill() {
 									if let Some(color) = fill.color() {
 										match lmb_or_rmb {
-											EyedropperMessage::LeftMouseDown => responses.push_back(ToolMessage::SelectPrimaryColor(color).into()),
-											EyedropperMessage::RightMouseDown => responses.push_back(ToolMessage::SelectSecondaryColor(color).into()),
+											EyedropperMessage::LeftMouseDown => responses.push_back(ToolMessage::SelectPrimaryColor { color }.into()),
+											EyedropperMessage::RightMouseDown => responses.push_back(ToolMessage::SelectSecondaryColor { color }.into()),
 											_ => {}
 										}
 									}

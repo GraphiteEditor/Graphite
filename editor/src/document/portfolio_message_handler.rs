@@ -54,7 +54,7 @@ impl PortfolioMessageHandler {
 	fn load_document(&mut self, new_document: DocumentMessageHandler, document_id: u64, replace_first_empty: bool, responses: &mut VecDeque<Message>) {
 		// Special case when loading a document on an empty page
 		if replace_first_empty && self.active_document().is_unmodified_default() {
-			responses.push_back(PortfolioMessage::CloseDocument(self.active_document_id).into());
+			responses.push_back(PortfolioMessage::CloseDocument { document_id: self.active_document_id }.into());
 
 			let active_document_index = self
 				.document_ids
@@ -92,7 +92,7 @@ impl PortfolioMessageHandler {
 
 		responses.push_back(FrontendMessage::UpdateOpenDocumentsList { open_documents }.into());
 
-		responses.push_back(PortfolioMessage::SelectDocument(document_id).into());
+		responses.push_back(PortfolioMessage::SelectDocument { document_id }.into());
 	}
 
 	/// Returns an iterator over the open documents in order.
@@ -129,15 +129,15 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 		use PortfolioMessage::*;
 		#[remain::sorted]
 		match message {
-			AutoSaveActiveDocument => responses.push_back(PortfolioMessage::AutoSaveDocument(self.active_document_id).into()),
-			AutoSaveDocument(id) => {
-				let document = self.documents.get(&id).unwrap();
+			AutoSaveActiveDocument => responses.push_back(PortfolioMessage::AutoSaveDocument { document_id: self.active_document_id }.into()),
+			AutoSaveDocument { document_id } => {
+				let document = self.documents.get(&document_id).unwrap();
 				responses.push_back(
 					FrontendMessage::TriggerIndexedDbWriteDocument {
 						document: document.serialize_document(),
 						details: FrontendDocumentDetails {
 							is_saved: document.is_saved(),
-							id,
+							id: document_id,
 							name: document.name.clone(),
 						},
 						version: GRAPHITE_DOCUMENT_VERSION.to_string(),
@@ -146,7 +146,7 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 				)
 			}
 			CloseActiveDocumentWithConfirmation => {
-				responses.push_back(PortfolioMessage::CloseDocumentWithConfirmation(self.active_document_id).into());
+				responses.push_back(PortfolioMessage::CloseDocumentWithConfirmation { document_id: self.active_document_id }.into());
 			}
 			CloseAllDocuments => {
 				// Empty the list of internal document data
@@ -159,9 +159,9 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 			CloseAllDocumentsWithConfirmation => {
 				responses.push_back(FrontendMessage::DisplayConfirmationToCloseAllDocuments.into());
 			}
-			CloseDocument(id) => {
-				let document_index = self.document_index(id);
-				self.documents.remove(&id);
+			CloseDocument { document_id } => {
+				let document_index = self.document_index(document_id);
+				self.documents.remove(&document_id);
 				self.document_ids.remove(document_index);
 
 				// Last tab was closed, so create a new blank tab
@@ -171,7 +171,7 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 					self.documents.insert(new_id, DocumentMessageHandler::default());
 				}
 
-				self.active_document_id = if id != self.active_document_id {
+				self.active_document_id = if document_id != self.active_document_id {
 					// If we are not closing the active document, stay on it
 					self.active_document_id
 				} else if document_index >= self.document_ids.len() {
@@ -197,24 +197,24 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 
 				responses.push_back(FrontendMessage::UpdateOpenDocumentsList { open_documents }.into());
 				responses.push_back(FrontendMessage::UpdateActiveDocument { document_id: self.active_document_id }.into());
-				responses.push_back(FrontendMessage::TriggerIndexedDbRemoveDocument { document_id: id }.into());
+				responses.push_back(FrontendMessage::TriggerIndexedDbRemoveDocument { document_id }.into());
 				responses.push_back(RenderDocument.into());
 				responses.push_back(DocumentMessage::DocumentStructureChanged.into());
 				for layer in self.active_document().layer_metadata.keys() {
-					responses.push_back(DocumentMessage::LayerChanged(layer.clone()).into());
+					responses.push_back(DocumentMessage::LayerChanged { affected_layer_path: layer.clone() }.into());
 				}
 			}
-			CloseDocumentWithConfirmation(id) => {
-				let target_document = self.documents.get(&id).unwrap();
+			CloseDocumentWithConfirmation { document_id } => {
+				let target_document = self.documents.get(&document_id).unwrap();
 				if target_document.is_saved() {
-					responses.push_back(PortfolioMessage::CloseDocument(id).into());
+					responses.push_back(PortfolioMessage::CloseDocument { document_id }.into());
 				} else {
-					responses.push_back(FrontendMessage::DisplayConfirmationToCloseDocument { document_id: id }.into());
+					responses.push_back(FrontendMessage::DisplayConfirmationToCloseDocument { document_id }.into());
 					// Select the document being closed
-					responses.push_back(PortfolioMessage::SelectDocument(id).into());
+					responses.push_back(PortfolioMessage::SelectDocument { document_id }.into());
 				}
 			}
-			Copy(clipboard) => {
+			Copy { clipboard } => {
 				// We can't use `self.active_document()` because it counts as an immutable borrow of the entirety of `self`
 				let active_document = self.documents.get(&self.active_document_id).unwrap();
 
@@ -230,8 +230,8 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 					}
 				}
 			}
-			Cut(clipboard) => {
-				responses.push_back(Copy(clipboard).into());
+			Cut { clipboard } => {
+				responses.push_back(Copy { clipboard }.into());
 				responses.push_back(DeleteSelectedLayers.into());
 			}
 			Document(message) => self.active_document_mut().process_action(message, ipp, responses),
@@ -246,29 +246,29 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 				let current_index = self.document_index(self.active_document_id);
 				let next_index = (current_index + 1) % self.document_ids.len();
 				let next_id = self.document_ids[next_index];
-				responses.push_back(PortfolioMessage::SelectDocument(next_id).into());
+				responses.push_back(PortfolioMessage::SelectDocument { document_id: next_id }.into());
 			}
 			OpenDocument => {
 				responses.push_back(FrontendMessage::TriggerFileUpload.into());
 			}
-			OpenDocumentFile(document_name, document) => {
+			OpenDocumentFile(document_name, document_serialized_content) => {
 				responses.push_back(
 					PortfolioMessage::OpenDocumentFileWithId {
-						document,
-						document_name,
 						document_id: generate_uuid(),
+						document_name,
 						document_is_saved: true,
+						document_serialized_content,
 					}
 					.into(),
 				);
 			}
 			OpenDocumentFileWithId {
-				document_name,
 				document_id,
-				document,
+				document_name,
 				document_is_saved,
+				document_serialized_content,
 			} => {
-				let document = DocumentMessageHandler::with_name_and_content(document_name, document);
+				let document = DocumentMessageHandler::with_name_and_content(document_name, document_serialized_content);
 				match document {
 					Ok(mut document) => {
 						document.set_save_state(document_is_saved);
@@ -283,7 +283,7 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 					),
 				}
 			}
-			Paste(clipboard) => {
+			Paste { clipboard } => {
 				let document = self.active_document();
 				let shallowest_common_folder = document
 					.graphene_document
@@ -294,14 +294,18 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 				responses.push_back(
 					PasteIntoFolder {
 						clipboard,
-						path: shallowest_common_folder.to_vec(),
+						folder_path: shallowest_common_folder.to_vec(),
 						insert_index: -1,
 					}
 					.into(),
 				);
 				responses.push_back(CommitTransaction.into());
 			}
-			PasteIntoFolder { clipboard, path, insert_index } => {
+			PasteIntoFolder {
+				clipboard,
+				folder_path: path,
+				insert_index,
+			} => {
 				let paste = |entry: &CopyBufferEntry, responses: &mut VecDeque<_>| {
 					log::trace!("Pasting into folder {:?} as index: {}", &path, insert_index);
 
@@ -339,22 +343,22 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 				let current_index = self.document_index(self.active_document_id);
 				let prev_index = (current_index + len - 1) % len;
 				let prev_id = self.document_ids[prev_index];
-				responses.push_back(PortfolioMessage::SelectDocument(prev_id).into());
+				responses.push_back(PortfolioMessage::SelectDocument { document_id: prev_id }.into());
 			}
 			RequestAboutGraphiteDialog => {
 				responses.push_back(FrontendMessage::DisplayDialogAboutGraphite.into());
 			}
-			SelectDocument(id) => {
+			SelectDocument { document_id } => {
 				let active_document = self.active_document();
 				if !active_document.is_saved() {
-					responses.push_back(PortfolioMessage::AutoSaveDocument(self.active_document_id).into());
+					responses.push_back(PortfolioMessage::AutoSaveDocument { document_id: self.active_document_id }.into());
 				}
-				self.active_document_id = id;
-				responses.push_back(FrontendMessage::UpdateActiveDocument { document_id: id }.into());
+				self.active_document_id = document_id;
+				responses.push_back(FrontendMessage::UpdateActiveDocument { document_id }.into());
 				responses.push_back(RenderDocument.into());
 				responses.push_back(DocumentMessage::DocumentStructureChanged.into());
 				for layer in self.active_document().layer_metadata.keys() {
-					responses.push_back(DocumentMessage::LayerChanged(layer.clone()).into());
+					responses.push_back(DocumentMessage::LayerChanged { affected_layer_path: layer.clone() }.into());
 				}
 				responses.push_back(ToolMessage::DocumentIsDirty.into());
 			}

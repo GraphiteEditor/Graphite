@@ -51,15 +51,18 @@ impl EditorTestUtils for Editor {
 	fn move_mouse(&mut self, x: f64, y: f64) {
 		let mut editor_mouse_state = EditorMouseState::new();
 		editor_mouse_state.editor_position = ViewportPosition::new(x, y);
-		self.input(InputPreprocessorMessage::MouseMove(editor_mouse_state, ModifierKeys::default()));
+		let modifier_keys = ModifierKeys::default();
+		self.input(InputPreprocessorMessage::MouseMove { editor_mouse_state, modifier_keys });
 	}
 
-	fn mousedown(&mut self, state: EditorMouseState) {
-		self.input(InputPreprocessorMessage::MouseDown(state, ModifierKeys::default()));
+	fn mousedown(&mut self, editor_mouse_state: EditorMouseState) {
+		let modifier_keys = ModifierKeys::default();
+		self.input(InputPreprocessorMessage::MouseDown { editor_mouse_state, modifier_keys });
 	}
 
-	fn mouseup(&mut self, state: EditorMouseState) {
-		self.handle_message(InputPreprocessorMessage::MouseUp(state, ModifierKeys::default()));
+	fn mouseup(&mut self, editor_mouse_state: EditorMouseState) {
+		let modifier_keys = ModifierKeys::default();
+		self.handle_message(InputPreprocessorMessage::MouseUp { editor_mouse_state, modifier_keys });
 	}
 
 	fn lmb_mousedown(&mut self, x: f64, y: f64) {
@@ -74,11 +77,11 @@ impl EditorTestUtils for Editor {
 		self.handle_message(Message::InputPreprocessor(message));
 	}
 
-	fn select_tool(&mut self, typ: ToolType) {
-		self.handle_message(Message::Tool(ToolMessage::ActivateTool(typ)));
+	fn select_tool(&mut self, tool_type: ToolType) {
+		self.handle_message(Message::Tool(ToolMessage::ActivateTool { tool_type }));
 	}
 
 	fn select_primary_color(&mut self, color: Color) {
-		self.handle_message(Message::Tool(ToolMessage::SelectPrimaryColor(color)));
+		self.handle_message(Message::Tool(ToolMessage::SelectPrimaryColor { color }));
 	}
 }

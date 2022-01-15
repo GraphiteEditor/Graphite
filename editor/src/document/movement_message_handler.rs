@@ -106,7 +106,7 @@ impl MovementMessageHandler {
 		let mouse_fraction = mouse / viewport_bounds;
 		let delta = delta_size * (DVec2::splat(0.5) - mouse_fraction);
 
-		MovementMessage::TranslateCanvas(delta).into()
+		MovementMessage::TranslateCanvas { delta }.into()
 	}
 }
 
@@ -122,7 +122,7 @@ impl MessageHandler<MovementMessage, (&Document, &InputPreprocessorMessageHandle
 				if center_on_mouse {
 					responses.push_back(self.center_zoom(ipp.viewport_bounds.size(), new_scale / self.zoom, ipp.mouse.position));
 				}
-				responses.push_back(SetCanvasZoom(new_scale).into());
+				responses.push_back(SetCanvasZoom { zoom_factor: new_scale }.into());
 			}
 			FitViewportToBounds {
 				bounds: [bounds_corner_a, bounds_corner_b],
@@ -158,7 +158,7 @@ impl MessageHandler<MovementMessage, (&Document, &InputPreprocessorMessageHandle
 				if center_on_mouse {
 					responses.push_back(self.center_zoom(ipp.viewport_bounds.size(), new_scale / self.zoom, ipp.mouse.position));
 				}
-				responses.push_back(SetCanvasZoom(new_scale).into());
+				responses.push_back(SetCanvasZoom { zoom_factor: new_scale }.into());
 			}
 			MouseMove {
 				snap_angle,
@@ -169,7 +169,7 @@ impl MessageHandler<MovementMessage, (&Document, &InputPreprocessorMessageHandle
 				if self.panning {
 					let delta = ipp.mouse.position - self.mouse_position;
 
-					responses.push_back(TranslateCanvas(delta).into());
+					responses.push_back(TranslateCanvas { delta }.into());
 				}
 
 				if self.tilting {
@@ -190,7 +190,7 @@ impl MessageHandler<MovementMessage, (&Document, &InputPreprocessorMessageHandle
 						start_vec.angle_between(end_vec)
 					};
 
-					responses.push_back(SetCanvasRotation(self.tilt + rotation).into());
+					responses.push_back(SetCanvasRotation { angle_radians: self.tilt + rotation }.into());
 				}
 
 				if self.zooming {
@@ -210,10 +210,10 @@ impl MessageHandler<MovementMessage, (&Document, &InputPreprocessorMessageHandle
 					if let Some(mouse) = zoom_from_viewport {
 						let zoom_factor = self.snapped_scale() / zoom_start;
 
-						responses.push_back(SetCanvasZoom(self.zoom).into());
+						responses.push_back(SetCanvasZoom { zoom_factor: self.zoom }.into());
 						responses.push_back(self.center_zoom(ipp.viewport_bounds.size(), zoom_factor, mouse));
 					} else {
-						responses.push_back(SetCanvasZoom(self.zoom).into());
+						responses.push_back(SetCanvasZoom { zoom_factor: self.zoom }.into());
 					}
 				}
 				self.mouse_position = ipp.mouse.position;
@@ -222,14 +222,14 @@ impl MessageHandler<MovementMessage, (&Document, &InputPreprocessorMessageHandle
 				self.tilting = true;
 				self.mouse_position = ipp.mouse.position;
 			}
-			SetCanvasRotation(new_radians) => {
-				self.tilt = new_radians;
+			SetCanvasRotation { angle_radians } => {
+				self.tilt = angle_radians;
 				self.create_document_transform(&ipp.viewport_bounds, responses);
 				responses.push_back(ToolMessage::DocumentIsDirty.into());
 				responses.push_back(FrontendMessage::UpdateCanvasRotation { angle_radians: self.snapped_angle() }.into());
 			}
-			SetCanvasZoom(new) => {
-				self.zoom = new.clamp(VIEWPORT_ZOOM_SCALE_MIN, VIEWPORT_ZOOM_SCALE_MAX);
+			SetCanvasZoom { zoom_factor } => {
+				self.zoom = zoom_factor.clamp(VIEWPORT_ZOOM_SCALE_MIN, VIEWPORT_ZOOM_SCALE_MAX);
 				responses.push_back(FrontendMessage::UpdateCanvasZoom { factor: self.snapped_scale() }.into());
 				responses.push_back(ToolMessage::DocumentIsDirty.into());
 				responses.push_back(DocumentMessage::DirtyRenderDocumentInOutlineView.into());
@@ -246,7 +246,7 @@ impl MessageHandler<MovementMessage, (&Document, &InputPreprocessorMessageHandle
 				self.tilting = false;
 				self.zooming = false;
 			}
-			TranslateCanvas(delta) => {
+			TranslateCanvas { delta } => {
 				let transformed_delta = document.root.transform.inverse().transform_vector2(delta);
 
 				self.pan += transformed_delta;
@@ -257,7 +257,7 @@ impl MessageHandler<MovementMessage, (&Document, &InputPreprocessorMessageHandle
 				self.panning = true;
 				self.mouse_position = ipp.mouse.position;
 			}
-			TranslateCanvasByViewportFraction(delta) => {
+			TranslateCanvasByViewportFraction { delta } => {
 				let transformed_delta = document.root.transform.inverse().transform_vector2(delta * ipp.viewport_bounds.size());
 
 				self.pan += transformed_delta;
@@ -269,7 +269,7 @@ impl MessageHandler<MovementMessage, (&Document, &InputPreprocessorMessageHandle
 					false => -ipp.mouse.scroll_delta.as_dvec2(),
 					true => (-ipp.mouse.scroll_delta.y as f64, 0.).into(),
 				} * VIEWPORT_SCROLL_RATE;
-				responses.push_back(TranslateCanvas(delta).into());
+				responses.push_back(TranslateCanvas { delta }.into());
 			}
 			WheelCanvasZoom => {
 				let scroll = ipp.mouse.scroll_delta.scroll_delta();
@@ -279,7 +279,7 @@ impl MessageHandler<MovementMessage, (&Document, &InputPreprocessorMessageHandle
 				};
 
 				responses.push_back(self.center_zoom(ipp.viewport_bounds.size(), zoom_factor, ipp.mouse.position));
-				responses.push_back(SetCanvasZoom(self.zoom * zoom_factor).into());
+				responses.push_back(SetCanvasZoom { zoom_factor: self.zoom * zoom_factor }.into());
 			}
 			ZoomCanvasBegin => {
 				self.zooming = true;
