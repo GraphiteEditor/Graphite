@@ -222,7 +222,7 @@
 			}
 
 			.canvas {
-				background: var(--color-1-nearblack);
+				background: var(--color-2-mildblack);
 				width: 100%;
 				height: 100%;
 				// Allows the SVG to be placed at explicit integer values of width and height to prevent non-pixel-perfect SVG scaling
