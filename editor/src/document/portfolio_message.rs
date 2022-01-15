@@ -10,14 +10,24 @@ use serde::{Deserialize, Serialize};
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub enum PortfolioMessage {
 	AutoSaveActiveDocument,
-	AutoSaveDocument(u64),
+	AutoSaveDocument {
+		document_id: u64,
+	},
 	CloseActiveDocumentWithConfirmation,
 	CloseAllDocuments,
 	CloseAllDocumentsWithConfirmation,
-	CloseDocument(u64),
-	CloseDocumentWithConfirmation(u64),
-	Copy(Clipboard),
-	Cut(Clipboard),
+	CloseDocument {
+		document_id: u64,
+	},
+	CloseDocumentWithConfirmation {
+		document_id: u64,
+	},
+	Copy {
+		clipboard: Clipboard,
+	},
+	Cut {
+		clipboard: Clipboard,
+	},
 	#[child]
 	Document(DocumentMessage),
 	NewDocument,
@@ -25,19 +35,23 @@ pub enum PortfolioMessage {
 	OpenDocument,
 	OpenDocumentFile(String, String),
 	OpenDocumentFileWithId {
-		document: String,
-		document_name: String,
 		document_id: u64,
+		document_name: String,
 		document_is_saved: bool,
+		document_serialized_content: String,
 	},
-	Paste(Clipboard),
+	Paste {
+		clipboard: Clipboard,
+	},
 	PasteIntoFolder {
 		clipboard: Clipboard,
-		path: Vec<LayerId>,
+		folder_path: Vec<LayerId>,
 		insert_index: isize,
 	},
 	PrevDocument,
 	RequestAboutGraphiteDialog,
-	SelectDocument(u64),
+	SelectDocument {
+		document_id: u64,
+	},
 	UpdateOpenDocumentsList,
 }

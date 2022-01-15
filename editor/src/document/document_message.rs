@@ -14,14 +14,23 @@ use serde::{Deserialize, Serialize};
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub enum DocumentMessage {
 	AbortTransaction,
-	AddSelectedLayers(Vec<Vec<LayerId>>),
-	AlignSelectedLayers(AlignAxis, AlignAggregate),
+	AddSelectedLayers {
+		additional_layers: Vec<Vec<LayerId>>,
+	},
+	AlignSelectedLayers {
+		axis: AlignAxis,
+		aggregate: AlignAggregate,
+	},
 	#[child]
 	Artboard(ArtboardMessage),
 	CommitTransaction,
-	CreateEmptyFolder(Vec<LayerId>),
+	CreateEmptyFolder {
+		container_path: Vec<LayerId>,
+	},
 	DebugPrintDocument,
-	DeleteLayer(Vec<LayerId>),
+	DeleteLayer {
+		layer_path: Vec<LayerId>,
+	},
 	DeleteSelectedLayers,
 	DeselectAllLayers,
 	DirtyRenderDocument,
@@ -32,41 +41,78 @@ pub enum DocumentMessage {
 	DocumentStructureChanged,
 	DuplicateSelectedLayers,
 	ExportDocument,
-	FlipSelectedLayers(FlipAxis),
-	FolderChanged(Vec<LayerId>),
+	FlipSelectedLayers {
+		flip_axis: FlipAxis,
+	},
+	FolderChanged {
+		affected_folder_path: Vec<LayerId>,
+	},
 	GroupSelectedLayers,
-	LayerChanged(Vec<LayerId>),
+	LayerChanged {
+		affected_layer_path: Vec<LayerId>,
+	},
 	#[child]
 	Movement(MovementMessage),
 	MoveSelectedLayersTo {
-		path: Vec<LayerId>,
+		folder_path: Vec<LayerId>,
 		insert_index: isize,
 	},
-	NudgeSelectedLayers(f64, f64),
+	NudgeSelectedLayers {
+		delta_x: f64,
+		delta_y: f64,
+	},
 	#[child]
 	Overlays(OverlaysMessage),
 	Redo,
-	RenameLayer(Vec<LayerId>, String),
+	RenameLayer {
+		layer_path: Vec<LayerId>,
+		new_name: String,
+	},
 	RenderDocument,
-	ReorderSelectedLayers(i32), // relative_position,
+	ReorderSelectedLayers {
+		relative_index_offset: isize,
+	},
 	RollbackTransaction,
 	SaveDocument,
 	SelectAllLayers,
 	SelectionChanged,
-	SelectLayer(Vec<LayerId>, bool, bool),
-	SetBlendModeForSelectedLayers(BlendMode),
-	SetLayerExpansion(Vec<LayerId>, bool),
-	SetOpacityForSelectedLayers(f64),
-	SetSelectedLayers(Vec<Vec<LayerId>>),
-	SetSnapping(bool),
-	SetViewMode(ViewMode),
+	SelectLayer {
+		layer_path: Vec<LayerId>,
+		ctrl: bool,
+		shift: bool,
+	},
+	SetBlendModeForSelectedLayers {
+		blend_mode: BlendMode,
+	},
+	SetLayerExpansion {
+		layer_path: Vec<LayerId>,
+		set_expanded: bool,
+	},
+	SetOpacityForSelectedLayers {
+		opacity: f64,
+	},
+	SetSelectedLayers {
+		replacement_selected_layers: Vec<Vec<LayerId>>,
+	},
+	SetSnapping {
+		snap: bool,
+	},
+	SetViewMode {
+		view_mode: ViewMode,
+	},
 	StartTransaction,
-	ToggleLayerExpansion(Vec<LayerId>),
-	ToggleLayerVisibility(Vec<LayerId>),
+	ToggleLayerExpansion {
+		layer_path: Vec<LayerId>,
+	},
+	ToggleLayerVisibility {
+		layer_path: Vec<LayerId>,
+	},
 	#[child]
 	TransformLayers(TransformLayerMessage),
 	Undo,
-	UngroupLayers(Vec<LayerId>),
+	UngroupLayers {
+		folder_path: Vec<LayerId>,
+	},
 	UngroupSelectedLayers,
 	UpdateLayerMetadata {
 		layer_path: Vec<LayerId>,

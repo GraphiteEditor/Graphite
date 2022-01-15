@@ -157,8 +157,8 @@ impl MessageHandler<TransformLayerMessage, (&mut HashMap<Vec<LayerId>, LayerMeta
 			}
 			TypeBackspace => self.transform_operation.handle_typed(self.typing.type_backspace(), &mut selected, self.snap),
 			TypeDecimalPoint => self.transform_operation.handle_typed(self.typing.type_decimal_point(), &mut selected, self.snap),
+			TypeDigit { digit } => self.transform_operation.handle_typed(self.typing.type_number(digit), &mut selected, self.snap),
 			TypeNegate => self.transform_operation.handle_typed(self.typing.type_negate(), &mut selected, self.snap),
-			TypeNumber(number) => self.transform_operation.handle_typed(self.typing.type_number(number), &mut selected, self.snap),
 		}
 	}
 
@@ -174,7 +174,7 @@ impl MessageHandler<TransformLayerMessage, (&mut HashMap<Vec<LayerId>, LayerMeta
 				MouseMove,
 				CancelTransformOperation,
 				ApplyTransformOperation,
-				TypeNumber,
+				TypeDigit,
 				TypeBackspace,
 				TypeDecimalPoint,
 				TypeNegate,

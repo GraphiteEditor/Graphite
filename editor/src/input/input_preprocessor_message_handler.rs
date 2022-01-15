@@ -18,7 +18,7 @@ impl MessageHandler<InputPreprocessorMessage, ()> for InputPreprocessorMessageHa
 	fn process_action(&mut self, message: InputPreprocessorMessage, _data: (), responses: &mut VecDeque<Message>) {
 		#[remain::sorted]
 		match message {
-			InputPreprocessorMessage::BoundsOfViewports(bounds_of_viewports) => {
+			InputPreprocessorMessage::BoundsOfViewports { bounds_of_viewports } => {
 				assert_eq!(bounds_of_viewports.len(), 1, "Only one viewport is currently supported");
 
 				for bounds in bounds_of_viewports {
@@ -59,17 +59,17 @@ impl MessageHandler<InputPreprocessorMessage, ()> for InputPreprocessorMessageHa
 					);
 				}
 			}
-			InputPreprocessorMessage::KeyDown(key, modifier_keys) => {
+			InputPreprocessorMessage::KeyDown { key, modifier_keys } => {
 				self.handle_modifier_keys(modifier_keys, responses);
 				self.keyboard.set(key as usize);
 				responses.push_back(InputMapperMessage::KeyDown(key).into());
 			}
-			InputPreprocessorMessage::KeyUp(key, modifier_keys) => {
+			InputPreprocessorMessage::KeyUp { key, modifier_keys } => {
 				self.handle_modifier_keys(modifier_keys, responses);
 				self.keyboard.unset(key as usize);
 				responses.push_back(InputMapperMessage::KeyUp(key).into());
 			}
-			InputPreprocessorMessage::MouseDown(editor_mouse_state, modifier_keys) => {
+			InputPreprocessorMessage::MouseDown { editor_mouse_state, modifier_keys } => {
 				self.handle_modifier_keys(modifier_keys, responses);
 
 				let mouse_state = editor_mouse_state.to_mouse_state(&self.viewport_bounds);
@@ -79,7 +79,7 @@ impl MessageHandler<InputPreprocessorMessage, ()> for InputPreprocessorMessageHa
 					responses.push_back(message);
 				}
 			}
-			InputPreprocessorMessage::MouseMove(editor_mouse_state, modifier_keys) => {
+			InputPreprocessorMessage::MouseMove { editor_mouse_state, modifier_keys } => {
 				self.handle_modifier_keys(modifier_keys, responses);
 
 				let mouse_state = editor_mouse_state.to_mouse_state(&self.viewport_bounds);
@@ -87,7 +87,7 @@ impl MessageHandler<InputPreprocessorMessage, ()> for InputPreprocessorMessageHa
 
 				responses.push_back(InputMapperMessage::PointerMove.into());
 			}
-			InputPreprocessorMessage::MouseScroll(editor_mouse_state, modifier_keys) => {
+			InputPreprocessorMessage::MouseScroll { editor_mouse_state, modifier_keys } => {
 				self.handle_modifier_keys(modifier_keys, responses);
 
 				let mouse_state = editor_mouse_state.to_mouse_state(&self.viewport_bounds);
@@ -96,7 +96,7 @@ impl MessageHandler<InputPreprocessorMessage, ()> for InputPreprocessorMessageHa
 
 				responses.push_back(InputMapperMessage::MouseScroll.into());
 			}
-			InputPreprocessorMessage::MouseUp(editor_mouse_state, modifier_keys) => {
+			InputPreprocessorMessage::MouseUp { editor_mouse_state, modifier_keys } => {
 				self.handle_modifier_keys(modifier_keys, responses);
 
 				let mouse_state = editor_mouse_state.to_mouse_state(&self.viewport_bounds);

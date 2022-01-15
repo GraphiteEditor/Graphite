@@ -537,7 +537,7 @@ impl Document {
 					return Err(DocumentError::IndexOutOfBounds);
 				}
 			}
-			Operation::RenameLayer { path, name } => {
+			Operation::RenameLayer { layer_path: path, new_name: name } => {
 				self.layer_mut(path)?.name = Some(name.clone());
 				Some(vec![LayerChanged { path: path.clone() }])
 			}
