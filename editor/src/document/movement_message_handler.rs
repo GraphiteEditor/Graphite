@@ -113,8 +113,10 @@ impl MovementMessageHandler {
 impl MessageHandler<MovementMessage, (&Document, &InputPreprocessorMessageHandler)> for MovementMessageHandler {
 	#[remain::check]
 	fn process_action(&mut self, message: MovementMessage, data: (&Document, &InputPreprocessorMessageHandler), responses: &mut VecDeque<Message>) {
-		let (document, ipp) = data;
 		use MovementMessage::*;
+
+		let (document, ipp) = data;
+
 		#[remain::sorted]
 		match message {
 			DecreaseCanvasZoom { center_on_mouse } => {
