@@ -169,10 +169,6 @@ export class DisplayConfirmationToCloseAllDocuments extends JsMessage {}
 
 export class DisplayDialogAboutGraphite extends JsMessage {}
 
-export class DisplayMouseCursor extends JsMessage {
-	readonly cursor!: FrontendMouseCursor;
-}
-
 export class UpdateDocumentArtwork extends JsMessage {
 	readonly svg!: string;
 }
@@ -205,6 +201,10 @@ export class UpdateDocumentRulers extends JsMessage {
 	readonly spacing!: number;
 
 	readonly interval!: number;
+}
+
+export class UpdateMouseCursor extends JsMessage {
+	readonly cursor!: FrontendMouseCursor;
 }
 
 export class TriggerFileDownload extends JsMessage {
@@ -384,12 +384,12 @@ export const messageConstructors: Record<string, MessageMaker> = {
 	UpdateWorkingColors,
 	UpdateCanvasZoom,
 	UpdateCanvasRotation,
+	UpdateMouseCursor,
 	DisplayDialogError,
 	DisplayDialogPanic,
 	DisplayConfirmationToCloseDocument,
 	DisplayConfirmationToCloseAllDocuments,
 	DisplayDialogAboutGraphite,
-	DisplayMouseCursor,
 	TriggerIndexedDbWriteDocument,
 	TriggerIndexedDbRemoveDocument,
 	UpdateDocumentArtboards,

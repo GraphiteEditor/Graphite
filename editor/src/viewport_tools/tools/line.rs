@@ -217,7 +217,7 @@ impl Fsm for LineToolFsmState {
 
 	fn update_cursor(&self, responses: &mut VecDeque<Message>) {
 		responses.push_back(
-			FrontendMessage::DisplayMouseCursor {
+			FrontendMessage::UpdateMouseCursor {
 				cursor: FrontendMouseCursor::Crosshair,
 			}
 			.into(),

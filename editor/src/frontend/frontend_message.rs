@@ -18,7 +18,6 @@ pub enum FrontendMessage {
 	DisplayDialogError { title: String, description: String },
 	DisplayDialogPanic { panic_info: String, title: String, description: String },
 	DisplayDocumentLayerTreeStructure { data_buffer: RawBuffer },
-	DisplayMouseCursor { cursor: FrontendMouseCursor },
 
 	// Trigger prefix: cause a browser API to do something
 	TriggerFileDownload { document: String, name: String },
@@ -38,6 +37,7 @@ pub enum FrontendMessage {
 	UpdateDocumentRulers { origin: (f64, f64), spacing: f64, interval: f64 },
 	UpdateDocumentScrollbars { position: (f64, f64), size: (f64, f64), multiplier: (f64, f64) },
 	UpdateInputHints { hint_data: HintData },
+	UpdateMouseCursor { cursor: FrontendMouseCursor },
 	UpdateOpenDocumentsList { open_documents: Vec<FrontendDocumentDetails> },
 	UpdateWorkingColors { primary: Color, secondary: Color },
 }

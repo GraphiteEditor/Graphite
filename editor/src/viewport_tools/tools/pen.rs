@@ -202,7 +202,7 @@ impl Fsm for PenToolFsmState {
 	}
 
 	fn update_cursor(&self, responses: &mut VecDeque<Message>) {
-		responses.push_back(FrontendMessage::DisplayMouseCursor { cursor: FrontendMouseCursor::Default }.into());
+		responses.push_back(FrontendMessage::UpdateMouseCursor { cursor: FrontendMouseCursor::Default }.into());
 	}
 }
 
