@@ -10,7 +10,9 @@ use serde::{Deserialize, Serialize};
 #[impl_message(Message, Tool)]
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub enum ToolMessage {
-	ActivateTool(ToolType),
+	ActivateTool {
+		tool_type: ToolType,
+	},
 	#[child]
 	Crop(CropMessage),
 	DocumentIsDirty,
@@ -34,9 +36,16 @@ pub enum ToolMessage {
 	ResetColors,
 	#[child]
 	Select(SelectMessage),
-	SelectPrimaryColor(Color),
-	SelectSecondaryColor(Color),
-	SetToolOptions(ToolType, ToolOptions),
+	SelectPrimaryColor {
+		color: Color,
+	},
+	SelectSecondaryColor {
+		color: Color,
+	},
+	SetToolOptions {
+		tool_type: ToolType,
+		tool_options: ToolOptions,
+	},
 	#[child]
 	Shape(ShapeMessage),
 	SwapColors,
