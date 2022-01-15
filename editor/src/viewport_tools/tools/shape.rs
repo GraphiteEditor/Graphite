@@ -46,6 +46,7 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Shape {
 
 	fn actions(&self) -> ActionList {
 		use ShapeToolFsmState::*;
+
 		match self.fsm_state {
 			Ready => actions!(ShapeMessageDiscriminant; DragStart),
 			Drawing => actions!(ShapeMessageDiscriminant; DragStop, Abort, Resize),
@@ -82,9 +83,11 @@ impl Fsm for ShapeToolFsmState {
 		input: &InputPreprocessorMessageHandler,
 		responses: &mut VecDeque<Message>,
 	) -> Self {
-		let mut shape_data = &mut data.data;
 		use ShapeMessage::*;
 		use ShapeToolFsmState::*;
+
+		let mut shape_data = &mut data.data;
+
 		if let ToolMessage::Shape(event) = event {
 			match (self, event) {
 				(Ready, DragStart) => {

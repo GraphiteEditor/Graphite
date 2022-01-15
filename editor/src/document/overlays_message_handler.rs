@@ -14,8 +14,9 @@ pub struct OverlaysMessageHandler {
 impl MessageHandler<OverlaysMessage, (&mut LayerMetadata, &Document, &InputPreprocessorMessageHandler)> for OverlaysMessageHandler {
 	#[remain::check]
 	fn process_action(&mut self, message: OverlaysMessage, _data: (&mut LayerMetadata, &Document, &InputPreprocessorMessageHandler), responses: &mut VecDeque<Message>) {
-		// let (layer_metadata, document, ipp) = data;
 		use OverlaysMessage::*;
+
+		// let (layer_metadata, document, ipp) = data;
 		#[remain::sorted]
 		match message {
 			ClearAllOverlays => todo!(),

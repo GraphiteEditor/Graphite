@@ -42,9 +42,10 @@ impl Dispatcher {
 
 	#[remain::check]
 	pub fn handle_message<T: Into<Message>>(&mut self, message: T) {
+		use Message::*;
+
 		self.message_queue.push_back(message.into());
 
-		use Message::*;
 		while let Some(message) = self.message_queue.pop_front() {
 			// Skip processing of this message if it will be processed later
 			if SIDE_EFFECT_FREE_MESSAGES.contains(&message.to_discriminant()) && self.message_queue.contains(&message) {
@@ -106,6 +107,7 @@ impl Dispatcher {
 
 	fn log_message(&self, message: &Message) {
 		use Message::*;
+
 		if log::max_level() == log::LevelFilter::Trace
 			&& !(matches!(
 				message,
@@ -126,6 +128,7 @@ mod test {
 	use crate::message_prelude::*;
 	use crate::misc::test_utils::EditorTestUtils;
 	use crate::Editor;
+
 	use graphene::color::Color;
 	use graphene::Operation;
 

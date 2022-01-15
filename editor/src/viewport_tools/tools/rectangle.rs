@@ -45,6 +45,7 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Rectangle {
 
 	fn actions(&self) -> ActionList {
 		use RectangleToolFsmState::*;
+
 		match self.fsm_state {
 			Ready => actions!(RectangleMessageDiscriminant; DragStart),
 			Drawing => actions!(RectangleMessageDiscriminant; DragStop, Abort, Resize),
@@ -80,9 +81,11 @@ impl Fsm for RectangleToolFsmState {
 		input: &InputPreprocessorMessageHandler,
 		responses: &mut VecDeque<Message>,
 	) -> Self {
-		let mut shape_data = &mut data.data;
 		use RectangleMessage::*;
 		use RectangleToolFsmState::*;
+
+		let mut shape_data = &mut data.data;
+
 		if let ToolMessage::Rectangle(event) = event {
 			match (self, event) {
 				(Ready, DragStart) => {
