@@ -203,7 +203,30 @@ export class UpdateDocumentRulers extends JsMessage {
 	readonly interval!: number;
 }
 
+const ToCssCursorProperty = Transform(({ value }) => {
+	switch (value) {
+		case "Default":
+			return "default";
+
+		case "ZoomIn":
+			return "zoom-in";
+
+		case "ZoomOut":
+			return "zoom-out";
+
+		case "Grabbing":
+			return "grabbing";
+
+		case "Crosshair":
+			return "crosshair";
+
+		default:
+			return "default";
+	}
+});
+
 export class UpdateMouseCursor extends JsMessage {
+	@ToCssCursorProperty
 	readonly cursor!: FrontendMouseCursor;
 }
 

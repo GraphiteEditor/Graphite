@@ -123,7 +123,7 @@
 						<CanvasRuler :origin="rulerOrigin.y" :majorMarkSpacing="rulerSpacing" :numberInterval="rulerInterval" :direction="'Vertical'" />
 					</LayoutCol>
 					<LayoutCol :class="'canvas-area'">
-						<div class="canvas" ref="canvas">
+						<div class="canvas" ref="canvas" :style="{ cursor: canvasCursor }">
 							<svg class="artboards" v-html="artboardSvg" :style="{ width: canvasSvgWidth, height: canvasSvgHeight }"></svg>
 							<svg class="artwork" v-html="artworkSvg" :style="{ width: canvasSvgWidth, height: canvasSvgHeight }"></svg>
 							<svg class="overlays" v-html="overlaysSvg" :style="{ width: canvasSvgWidth, height: canvasSvgHeight }"></svg>
@@ -261,6 +261,7 @@ import {
 	UpdateCanvasRotation,
 	ToolName,
 	UpdateDocumentArtboards,
+	UpdateMouseCursor,
 } from "@/dispatcher/js-messages";
 
 import LayoutCol from "@/components/layout/LayoutCol.vue";
@@ -378,6 +379,10 @@ export default defineComponent({
 			this.documentRotation = (360 + (newRotation % 360)) % 360;
 		});
 
+		this.editor.dispatcher.subscribeJsMessage(UpdateMouseCursor, (updateMouseCursor) => {
+			this.canvasCursor = updateMouseCursor.cursor;
+		});
+
 		window.addEventListener("resize", this.viewportResize);
 		window.addEventListener("DOMContentLoaded", this.viewportResize);
 	},
@@ -401,6 +406,7 @@ export default defineComponent({
 			overlaysSvg: "",
 			canvasSvgWidth: "100%",
 			canvasSvgHeight: "100%",
+			canvasCursor: "default",
 			activeTool: "Select" as ToolName,
 			activeToolOptions: {},
 			documentModeEntries,
