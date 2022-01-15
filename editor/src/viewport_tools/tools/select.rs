@@ -218,6 +218,12 @@ impl Fsm for SelectToolFsmState {
 
 					let closest_move = data.snap_handler.snap_layers(document, &data.layers_dragging, mouse_delta);
 					for path in data.layers_dragging.iter() {
+						// Do not transform layers when transforming a parent folder.
+						// O(n^2)
+						if data.layers_dragging.iter().any(|selected| path[0..path.len() - 1].starts_with(selected)) {
+							continue;
+						}
+
 						responses.push_front(
 							Operation::TransformLayerInViewport {
 								path: path.clone(),
