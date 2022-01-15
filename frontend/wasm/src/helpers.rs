@@ -1,6 +1,6 @@
 use wasm_bindgen::prelude::*;
 
-// The JavaScript `Error` type
+/// The JavaScript `Error` type
 #[wasm_bindgen]
 extern "C" {
 	#[derive(Clone, Debug)]

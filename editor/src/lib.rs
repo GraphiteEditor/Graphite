@@ -1,17 +1,14 @@
-// Since our policy is tabs, we want to stop clippy from warning about that
-#![allow(clippy::tabs_in_doc_comments)]
-
 extern crate graphite_proc_macros;
 
 pub mod communication;
 #[macro_use]
 pub mod misc;
 pub mod consts;
-mod document;
-mod frontend;
-mod global;
+pub mod document;
+pub mod frontend;
+pub mod global;
 pub mod input;
-pub mod tool;
+pub mod viewport_tools;
 
 #[doc(inline)]
 pub use graphene::color::Color;
@@ -56,29 +53,34 @@ impl Default for Editor {
 pub mod message_prelude {
 	pub use crate::communication::generate_uuid;
 	pub use crate::communication::message::{AsMessage, Message, MessageDiscriminant};
-	pub use crate::communication::{ActionList, MessageHandler};
-	pub use crate::document::Clipboard;
+	pub use crate::communication::message_handler::{ActionList, MessageHandler};
+
+	pub use crate::document::clipboards::Clipboard;
+	pub use crate::LayerId;
+
+	pub use crate::document::{ArtboardMessage, ArtboardMessageDiscriminant};
 	pub use crate::document::{DocumentMessage, DocumentMessageDiscriminant};
-	pub use crate::document::{DocumentsMessage, DocumentsMessageDiscriminant};
 	pub use crate::document::{MovementMessage, MovementMessageDiscriminant};
-	pub use crate::document::{OverlayMessage, OverlayMessageDiscriminant};
+	pub use crate::document::{OverlaysMessage, OverlaysMessageDiscriminant};
+	pub use crate::document::{PortfolioMessage, PortfolioMessageDiscriminant};
 	pub use crate::document::{TransformLayerMessage, TransformLayerMessageDiscriminant};
 	pub use crate::frontend::{FrontendMessage, FrontendMessageDiscriminant};
 	pub use crate::global::{GlobalMessage, GlobalMessageDiscriminant};
 	pub use crate::input::{InputMapperMessage, InputMapperMessageDiscriminant, InputPreprocessorMessage, InputPreprocessorMessageDiscriminant};
 	pub use crate::misc::derivable_custom_traits::{ToDiscriminant, TransitiveChild};
-	pub use crate::tool::tool_messages::*;
-	pub use crate::tool::tools::crop::{CropMessage, CropMessageDiscriminant};
-	pub use crate::tool::tools::eyedropper::{EyedropperMessage, EyedropperMessageDiscriminant};
-	pub use crate::tool::tools::fill::{FillMessage, FillMessageDiscriminant};
-	pub use crate::tool::tools::line::{LineMessage, LineMessageDiscriminant};
-	pub use crate::tool::tools::navigate::{NavigateMessage, NavigateMessageDiscriminant};
-	pub use crate::tool::tools::path::{PathMessage, PathMessageDiscriminant};
-	pub use crate::tool::tools::pen::{PenMessage, PenMessageDiscriminant};
-	pub use crate::tool::tools::rectangle::{RectangleMessage, RectangleMessageDiscriminant};
-	pub use crate::tool::tools::select::{SelectMessage, SelectMessageDiscriminant};
-	pub use crate::tool::tools::shape::{ShapeMessage, ShapeMessageDiscriminant};
-	pub use crate::LayerId;
+	pub use crate::viewport_tools::tool_message::{ToolMessage, ToolMessageDiscriminant};
+	pub use crate::viewport_tools::tools::crop::{CropMessage, CropMessageDiscriminant};
+	pub use crate::viewport_tools::tools::ellipse::{EllipseMessage, EllipseMessageDiscriminant};
+	pub use crate::viewport_tools::tools::eyedropper::{EyedropperMessage, EyedropperMessageDiscriminant};
+	pub use crate::viewport_tools::tools::fill::{FillMessage, FillMessageDiscriminant};
+	pub use crate::viewport_tools::tools::line::{LineMessage, LineMessageDiscriminant};
+	pub use crate::viewport_tools::tools::navigate::{NavigateMessage, NavigateMessageDiscriminant};
+	pub use crate::viewport_tools::tools::path::{PathMessage, PathMessageDiscriminant};
+	pub use crate::viewport_tools::tools::pen::{PenMessage, PenMessageDiscriminant};
+	pub use crate::viewport_tools::tools::rectangle::{RectangleMessage, RectangleMessageDiscriminant};
+	pub use crate::viewport_tools::tools::select::{SelectMessage, SelectMessageDiscriminant};
+	pub use crate::viewport_tools::tools::shape::{ShapeMessage, ShapeMessageDiscriminant};
 	pub use graphite_proc_macros::*;
+
 	pub use std::collections::VecDeque;
 }

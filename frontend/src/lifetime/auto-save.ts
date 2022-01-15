@@ -1,9 +1,9 @@
-import { AutoSaveDocument, RemoveAutoSaveDocument } from "@/dispatcher/js-messages";
+import { TriggerIndexedDbWriteDocument, TriggerIndexedDbRemoveDocument } from "@/dispatcher/js-messages";
 import { DocumentsState } from "@/state/documents";
-import { EditorState } from "@/state/wasm-loader";
+import { EditorState, getWasmInstance } from "@/state/wasm-loader";
 
+const GRAPHITE_INDEXED_DB_VERSION = 2;
 const GRAPHITE_INDEXED_DB_NAME = "graphite-indexed-db";
-const GRAPHITE_INDEXED_DB_VERSION = 1;
 const GRAPHITE_AUTO_SAVE_STORE = "auto-save-documents";
 const GRAPHITE_AUTO_SAVE_ORDER_KEY = "auto-save-documents-order";
 
@@ -12,9 +12,12 @@ const databaseConnection: Promise<IDBDatabase> = new Promise((resolve) => {
 
 	dbOpenRequest.onupgradeneeded = (): void => {
 		const db = dbOpenRequest.result;
-		if (!db.objectStoreNames.contains(GRAPHITE_AUTO_SAVE_STORE)) {
-			db.createObjectStore(GRAPHITE_AUTO_SAVE_STORE, { keyPath: "details.id" });
+		// Wipes out all auto-save data on upgrade
+		if (db.objectStoreNames.contains(GRAPHITE_AUTO_SAVE_STORE)) {
+			db.deleteObjectStore(GRAPHITE_AUTO_SAVE_STORE);
 		}
+
+		db.createObjectStore(GRAPHITE_AUTO_SAVE_STORE, { keyPath: "details.id" });
 	};
 
 	dbOpenRequest.onerror = (): void => {
@@ -36,13 +39,20 @@ export function createAutoSaveManager(editor: EditorState, documents: DocumentsS
 
 		return new Promise((resolve) => {
 			request.onsuccess = (): void => {
-				const previouslySavedDocuments: AutoSaveDocument[] = request.result;
+				const previouslySavedDocuments: TriggerIndexedDbWriteDocument[] = request.result;
 
 				const documentOrder: string[] = JSON.parse(window.localStorage.getItem(GRAPHITE_AUTO_SAVE_ORDER_KEY) || "[]");
-				const orderedSavedDocuments = documentOrder.map((id) => previouslySavedDocuments.find((autoSave) => autoSave.details.id === id)).filter((x) => x !== undefined) as AutoSaveDocument[];
+				const orderedSavedDocuments = documentOrder
+					.map((id) => previouslySavedDocuments.find((autoSave) => autoSave.details.id === id))
+					.filter((x) => x !== undefined) as TriggerIndexedDbWriteDocument[];
 
-				orderedSavedDocuments.forEach((doc: AutoSaveDocument) => {
-					editor.instance.open_auto_saved_document(BigInt(doc.details.id), doc.details.name, doc.details.is_saved, doc.document);
+				const currentDocumentVersion = getWasmInstance().graphite_version();
+				orderedSavedDocuments.forEach((doc: TriggerIndexedDbWriteDocument) => {
+					if (doc.version === currentDocumentVersion) {
+						editor.instance.open_auto_saved_document(BigInt(doc.details.id), doc.details.name, doc.details.is_saved, doc.document);
+					} else {
+						removeDocument(doc.details.id);
+					}
 				});
 				resolve(undefined);
 			};
@@ -55,18 +65,22 @@ export function createAutoSaveManager(editor: EditorState, documents: DocumentsS
 		window.localStorage.setItem(GRAPHITE_AUTO_SAVE_ORDER_KEY, JSON.stringify(documentOrder));
 	};
 
-	editor.dispatcher.subscribeJsMessage(AutoSaveDocument, async (autoSaveDocument) => {
+	const removeDocument = async (id: string): Promise<void> => {
+		const db = await databaseConnection;
+		const transaction = db.transaction(GRAPHITE_AUTO_SAVE_STORE, "readwrite");
+		transaction.objectStore(GRAPHITE_AUTO_SAVE_STORE).delete(id);
+		storeDocumentOrder();
+	};
+
+	editor.dispatcher.subscribeJsMessage(TriggerIndexedDbWriteDocument, async (autoSaveDocument) => {
 		const db = await databaseConnection;
 		const transaction = db.transaction(GRAPHITE_AUTO_SAVE_STORE, "readwrite");
 		transaction.objectStore(GRAPHITE_AUTO_SAVE_STORE).put(autoSaveDocument);
 		storeDocumentOrder();
 	});
 
-	editor.dispatcher.subscribeJsMessage(RemoveAutoSaveDocument, async (removeAutoSaveDocument) => {
-		const db = await databaseConnection;
-		const transaction = db.transaction(GRAPHITE_AUTO_SAVE_STORE, "readwrite");
-		transaction.objectStore(GRAPHITE_AUTO_SAVE_STORE).delete(removeAutoSaveDocument.document_id);
-		storeDocumentOrder();
+	editor.dispatcher.subscribeJsMessage(TriggerIndexedDbRemoveDocument, async (removeAutoSaveDocument) => {
+		removeDocument(removeAutoSaveDocument.document_id);
 	});
 
 	// On creation

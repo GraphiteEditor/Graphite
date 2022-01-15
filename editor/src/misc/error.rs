@@ -1,5 +1,6 @@
-use crate::Color;
+use graphene::color::Color;
 use graphene::DocumentError;
+
 use thiserror::Error;
 
 /// The error type used by the Graphite editor.

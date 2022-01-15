@@ -1,7 +1,7 @@
-/// Necessary because serde can't serialize hashmaps when the keys don't implement display.
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::iter::FromIterator;
 
+/// Necessary because serde can't serialize hashmaps when the keys don't implement display.
 pub fn serialize<'a, T, K, V, S>(target: T, ser: S) -> Result<S::Ok, S::Error>
 where
 	S: Serializer,

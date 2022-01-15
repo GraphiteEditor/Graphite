@@ -64,7 +64,6 @@ TODO: Add more to make a comprehensive list, finish writing definitions, separat
 - ## Graphite Editor (Frontend)
 - ## Graphite Editor (Backend)
 - ## Graphene (Document Graph Engine)
-- ## Charcoal (Asset Render Engine)
 - ## Trace
 - ## Path
 - ## Shape

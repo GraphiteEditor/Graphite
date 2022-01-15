@@ -1,5 +1,6 @@
 use crate::color::Color;
 use crate::consts::{LAYER_OUTLINE_STROKE_COLOR, LAYER_OUTLINE_STROKE_WIDTH};
+
 use serde::{Deserialize, Serialize};
 
 const OPACITY_PRECISION: usize = 3;
@@ -18,6 +19,7 @@ pub enum ViewMode {
 	Outline,
 	Pixels,
 }
+
 impl Default for ViewMode {
 	fn default() -> Self {
 		ViewMode::Normal
@@ -29,16 +31,20 @@ impl Default for ViewMode {
 pub struct Fill {
 	color: Option<Color>,
 }
+
 impl Fill {
 	pub fn new(color: Color) -> Self {
 		Self { color: Some(color) }
 	}
+
 	pub fn color(&self) -> Option<Color> {
 		self.color
 	}
+
 	pub const fn none() -> Self {
 		Self { color: None }
 	}
+
 	pub fn render(&self) -> String {
 		match self.color {
 			Some(c) => format!(r##" fill="#{}"{}"##, c.rgb_hex(), format_opacity("fill", c.a())),
@@ -58,12 +64,15 @@ impl Stroke {
 	pub const fn new(color: Color, width: f32) -> Self {
 		Self { color, width }
 	}
+
 	pub fn color(&self) -> Color {
 		self.color
 	}
+
 	pub fn width(&self) -> f32 {
 		self.width
 	}
+
 	pub fn render(&self) -> String {
 		format!(r##" stroke="#{}"{} stroke-width="{}""##, self.color.rgb_hex(), format_opacity("stroke", self.color.a()), self.width)
 	}
@@ -75,25 +84,32 @@ pub struct PathStyle {
 	stroke: Option<Stroke>,
 	fill: Option<Fill>,
 }
+
 impl PathStyle {
 	pub fn new(stroke: Option<Stroke>, fill: Option<Fill>) -> Self {
 		Self { stroke, fill }
 	}
+
 	pub fn fill(&self) -> Option<Fill> {
 		self.fill
 	}
+
 	pub fn stroke(&self) -> Option<Stroke> {
 		self.stroke
 	}
+
 	pub fn set_fill(&mut self, fill: Fill) {
 		self.fill = Some(fill);
 	}
+
 	pub fn set_stroke(&mut self, stroke: Stroke) {
 		self.stroke = Some(stroke);
 	}
+
 	pub fn clear_fill(&mut self) {
 		self.fill = None;
 	}
+
 	pub fn clear_stroke(&mut self) {
 		self.stroke = None;
 	}
@@ -109,6 +125,7 @@ impl PathStyle {
 			(_, Some(stroke)) => stroke.render(),
 			(_, None) => String::new(),
 		};
+
 		format!("{}{}", fill_attribute, stroke_attribute)
 	}
 }

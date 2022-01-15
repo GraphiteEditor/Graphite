@@ -1,19 +1,10 @@
-use glam::DAffine2;
-use glam::DMat2;
-use glam::DVec2;
-use kurbo::Affine;
-use kurbo::BezPath;
-use kurbo::Shape as KurboShape;
-
-use crate::intersection::intersect_quad_bez_path;
-use crate::layers::{
-	style,
-	style::{PathStyle, ViewMode},
-	LayerData,
-};
+use super::layer_info::LayerData;
+use super::style::{self, PathStyle, ViewMode};
+use crate::intersection::{intersect_quad_bez_path, Quad};
 use crate::LayerId;
-use crate::Quad;
 
+use glam::{DAffine2, DMat2, DVec2};
+use kurbo::{Affine, BezPath, Shape as KurboShape};
 use serde::{Deserialize, Serialize};
 use std::fmt::Write;
 
@@ -26,7 +17,7 @@ pub struct Shape {
 	pub path: BezPath,
 	pub style: style::PathStyle,
 	pub render_index: i32,
-	pub solid: bool,
+	pub closed: bool,
 }
 
 impl LayerData for Shape {
@@ -62,7 +53,7 @@ impl LayerData for Shape {
 	}
 
 	fn intersects_quad(&self, quad: Quad, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>) {
-		if intersect_quad_bez_path(quad, &self.path, self.solid) {
+		if intersect_quad_bez_path(quad, &self.path, self.closed) {
 			intersections.push(path.clone());
 		}
 	}
@@ -78,12 +69,12 @@ impl Shape {
 		transforms.iter().skip(start).cloned().reduce(|a, b| a * b).unwrap_or(DAffine2::IDENTITY)
 	}
 
-	pub fn from_bez_path(bez_path: BezPath, style: PathStyle, solid: bool) -> Self {
+	pub fn from_bez_path(bez_path: BezPath, style: PathStyle, closed: bool) -> Self {
 		Self {
 			path: bez_path,
 			style,
 			render_index: 1,
-			solid,
+			closed,
 		}
 	}
 
@@ -107,11 +98,12 @@ impl Shape {
 		relative_points.for_each(|p| path.line_to(p));
 
 		path.close_path();
+
 		Self {
 			path,
 			style,
 			render_index: 1,
-			solid: true,
+			closed: true,
 		}
 	}
 	pub fn rectangle(style: PathStyle) -> Self {
@@ -119,7 +111,7 @@ impl Shape {
 			path: kurbo::Rect::new(0., 0., 1., 1.).to_path(0.01),
 			style,
 			render_index: 1,
-			solid: true,
+			closed: true,
 		}
 	}
 	pub fn ellipse(style: PathStyle) -> Self {
@@ -127,7 +119,7 @@ impl Shape {
 			path: kurbo::Ellipse::from_rect(kurbo::Rect::new(0., 0., 1., 1.)).to_path(0.01),
 			style,
 			render_index: 1,
-			solid: true,
+			closed: true,
 		}
 	}
 	pub fn line(style: PathStyle) -> Self {
@@ -135,7 +127,7 @@ impl Shape {
 			path: kurbo::Line::new((0., 0.), (1., 0.)).to_path(0.01),
 			style,
 			render_index: 1,
-			solid: true,
+			closed: false,
 		}
 	}
 	pub fn poly_line(points: Vec<impl Into<glam::DVec2>>, style: PathStyle) -> Self {
@@ -146,11 +138,12 @@ impl Shape {
 			.map(|v: DVec2| kurbo::Point { x: v.x, y: v.y })
 			.enumerate()
 			.for_each(|(i, p)| if i == 0 { path.move_to(p) } else { path.line_to(p) });
+
 		Self {
 			path,
 			style,
 			render_index: 0,
-			solid: false,
+			closed: false,
 		}
 	}
 }

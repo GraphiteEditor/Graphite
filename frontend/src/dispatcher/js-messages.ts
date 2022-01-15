@@ -135,23 +135,23 @@ export type ToolName =
 	| "Ellipse"
 	| "Shape";
 
-export class SetActiveTool extends JsMessage {
+export class UpdateActiveTool extends JsMessage {
 	readonly tool_name!: ToolName;
 
 	readonly tool_options!: object;
 }
 
-export class SetActiveDocument extends JsMessage {
+export class UpdateActiveDocument extends JsMessage {
 	readonly document_id!: BigInt;
 }
 
-export class DisplayError extends JsMessage {
+export class DisplayDialogError extends JsMessage {
 	readonly title!: string;
 
 	readonly description!: string;
 }
 
-export class DisplayPanic extends JsMessage {
+export class DisplayDialogPanic extends JsMessage {
 	readonly panic_info!: string;
 
 	readonly title!: string;
@@ -165,19 +165,23 @@ export class DisplayConfirmationToCloseDocument extends JsMessage {
 
 export class DisplayConfirmationToCloseAllDocuments extends JsMessage {}
 
-export class DisplayAboutGraphiteDialog extends JsMessage {}
+export class DisplayDialogAboutGraphite extends JsMessage {}
 
-export class UpdateArtwork extends JsMessage {
+export class UpdateDocumentArtwork extends JsMessage {
 	readonly svg!: string;
 }
 
-export class UpdateOverlays extends JsMessage {
+export class UpdateDocumentOverlays extends JsMessage {
+	readonly svg!: string;
+}
+
+export class UpdateDocumentArtboards extends JsMessage {
 	readonly svg!: string;
 }
 
 const TupleToVec2 = Transform(({ value }) => ({ x: value[0], y: value[1] }));
 
-export class UpdateScrollbars extends JsMessage {
+export class UpdateDocumentScrollbars extends JsMessage {
 	@TupleToVec2
 	readonly position!: { x: number; y: number };
 
@@ -188,7 +192,7 @@ export class UpdateScrollbars extends JsMessage {
 	readonly multiplier!: { x: number; y: number };
 }
 
-export class UpdateRulers extends JsMessage {
+export class UpdateDocumentRulers extends JsMessage {
 	@TupleToVec2
 	readonly origin!: { x: number; y: number };
 
@@ -197,24 +201,18 @@ export class UpdateRulers extends JsMessage {
 	readonly interval!: number;
 }
 
-export class ExportDocument extends JsMessage {
+export class TriggerFileDownload extends JsMessage {
 	readonly document!: string;
 
 	readonly name!: string;
 }
 
-export class SaveDocument extends JsMessage {
-	readonly document!: string;
-
-	readonly name!: string;
-}
-
-export class OpenDocumentBrowse extends JsMessage {}
+export class TriggerFileUpload extends JsMessage {}
 
 export class DocumentChanged extends JsMessage {}
 
-export class DisplayFolderTreeStructure extends JsMessage {
-	constructor(readonly layerId: BigInt, readonly children: DisplayFolderTreeStructure[]) {
+export class DisplayDocumentLayerTreeStructure extends JsMessage {
+	constructor(readonly layerId: BigInt, readonly children: DisplayDocumentLayerTreeStructure[]) {
 		super();
 	}
 }
@@ -224,7 +222,7 @@ interface DataBuffer {
 	length: BigInt;
 }
 
-export function newDisplayFolderTreeStructure(input: { data_buffer: DataBuffer }, wasm: WasmInstance): DisplayFolderTreeStructure {
+export function newDisplayDocumentLayerTreeStructure(input: { data_buffer: DataBuffer }, wasm: WasmInstance): DisplayDocumentLayerTreeStructure {
 	const { pointer, length } = input.data_buffer;
 	const pointerNum = Number(pointer);
 	const lengthNum = Number(length);
@@ -241,7 +239,7 @@ export function newDisplayFolderTreeStructure(input: { data_buffer: DataBuffer }
 	const layerIdsSection = new DataView(wasmMemoryBuffer, pointerNum + 8 + structureSectionLength * 8);
 
 	let layersEncountered = 0;
-	let currentFolder = new DisplayFolderTreeStructure(BigInt(-1), []);
+	let currentFolder = new DisplayDocumentLayerTreeStructure(BigInt(-1), []);
 	const currentFolderStack = [currentFolder];
 
 	for (let i = 0; i < structureSectionLength; i += 1) {
@@ -256,7 +254,7 @@ export function newDisplayFolderTreeStructure(input: { data_buffer: DataBuffer }
 			const layerId = layerIdsSection.getBigUint64(layersEncountered * 8, true);
 			layersEncountered += 1;
 
-			const childLayer = new DisplayFolderTreeStructure(layerId, []);
+			const childLayer = new DisplayDocumentLayerTreeStructure(layerId, []);
 			currentFolder.children.push(childLayer);
 		}
 
@@ -278,17 +276,17 @@ export function newDisplayFolderTreeStructure(input: { data_buffer: DataBuffer }
 	return currentFolder;
 }
 
-export class UpdateLayer extends JsMessage {
+export class UpdateDocumentLayer extends JsMessage {
 	@Type(() => LayerPanelEntry)
 	readonly data!: LayerPanelEntry;
 }
 
-export class SetCanvasZoom extends JsMessage {
-	readonly new_zoom!: number;
+export class UpdateCanvasZoom extends JsMessage {
+	readonly factor!: number;
 }
 
-export class SetCanvasRotation extends JsMessage {
-	readonly new_radians!: number;
+export class UpdateCanvasRotation extends JsMessage {
+	readonly angle_radians!: number;
 }
 
 export type BlendMode =
@@ -344,14 +342,16 @@ export class IndexedDbDocumentDetails extends DocumentDetails {
 	id!: string;
 }
 
-export class AutoSaveDocument extends JsMessage {
+export class TriggerIndexedDbWriteDocument extends JsMessage {
 	document!: string;
 
 	@Type(() => IndexedDbDocumentDetails)
 	details!: IndexedDbDocumentDetails;
+
+	version!: string;
 }
 
-export class RemoveAutoSaveDocument extends JsMessage {
+export class TriggerIndexedDbRemoveDocument extends JsMessage {
 	// Use a string since IndexedDB can not use BigInts for keys
 	@Transform(({ value }: { value: BigInt }) => value.toString())
 	document_id!: string;
@@ -363,28 +363,28 @@ type JSMessageFactory = (data: any, wasm: WasmInstance, instance: RustEditorInst
 type MessageMaker = typeof JsMessage | JSMessageFactory;
 
 export const messageConstructors: Record<string, MessageMaker> = {
-	UpdateArtwork,
-	UpdateOverlays,
-	UpdateScrollbars,
-	UpdateRulers,
-	ExportDocument,
-	SaveDocument,
-	OpenDocumentBrowse,
-	DisplayFolderTreeStructure: newDisplayFolderTreeStructure,
-	UpdateLayer,
-	SetActiveTool,
-	SetActiveDocument,
+	UpdateDocumentArtwork,
+	UpdateDocumentOverlays,
+	UpdateDocumentScrollbars,
+	UpdateDocumentRulers,
+	TriggerFileDownload,
+	TriggerFileUpload,
+	DisplayDocumentLayerTreeStructure: newDisplayDocumentLayerTreeStructure,
+	UpdateDocumentLayer,
+	UpdateActiveTool,
+	UpdateActiveDocument,
 	UpdateOpenDocumentsList,
 	UpdateInputHints,
 	UpdateWorkingColors,
-	SetCanvasZoom,
-	SetCanvasRotation,
-	DisplayError,
-	DisplayPanic,
+	UpdateCanvasZoom,
+	UpdateCanvasRotation,
+	DisplayDialogError,
+	DisplayDialogPanic,
 	DisplayConfirmationToCloseDocument,
 	DisplayConfirmationToCloseAllDocuments,
-	DisplayAboutGraphiteDialog,
-	AutoSaveDocument,
-	RemoveAutoSaveDocument,
+	DisplayDialogAboutGraphite,
+	TriggerIndexedDbWriteDocument,
+	TriggerIndexedDbRemoveDocument,
+	UpdateDocumentArtboards,
 } as const;
 export type JsMessageType = keyof typeof messageConstructors;
