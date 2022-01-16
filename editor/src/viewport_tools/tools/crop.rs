@@ -10,6 +10,11 @@ pub struct Crop;
 #[impl_message(Message, ToolMessage, Crop)]
 #[derive(PartialEq, Clone, Debug, Hash, Serialize, Deserialize)]
 pub enum CropMessage {
+	// Standard messages
+	// #[remain::unsorted]
+	// Abort,
+
+	// Tool-specific messages
 	MouseMove,
 }
 

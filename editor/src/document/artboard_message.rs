@@ -8,8 +8,17 @@ use serde::{Deserialize, Serialize};
 #[impl_message(Message, DocumentMessage, Artboard)]
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub enum ArtboardMessage {
-	AddArtboard { top: f64, left: f64, height: f64, width: f64 },
+	// Sub-messages
+	#[remain::unsorted]
 	DispatchOperation(Box<DocumentOperation>),
+
+	// Messages
+	AddArtboard {
+		top: f64,
+		left: f64,
+		height: f64,
+		width: f64,
+	},
 	RenderArtboards,
 }
 

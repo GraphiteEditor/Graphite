@@ -13,6 +13,23 @@ use serde::{Deserialize, Serialize};
 #[impl_message(Message, PortfolioMessage, Document)]
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub enum DocumentMessage {
+	// Sub-messages
+	#[remain::unsorted]
+	DispatchOperation(Box<DocumentOperation>),
+	#[remain::unsorted]
+	#[child]
+	Artboard(ArtboardMessage),
+	#[remain::unsorted]
+	#[child]
+	Movement(MovementMessage),
+	#[remain::unsorted]
+	#[child]
+	Overlays(OverlaysMessage),
+	#[remain::unsorted]
+	#[child]
+	TransformLayers(TransformLayerMessage),
+
+	// Messages
 	AbortTransaction,
 	AddSelectedLayers {
 		additional_layers: Vec<Vec<LayerId>>,
@@ -21,8 +38,6 @@ pub enum DocumentMessage {
 		axis: AlignAxis,
 		aggregate: AlignAggregate,
 	},
-	#[child]
-	Artboard(ArtboardMessage),
 	CommitTransaction,
 	CreateEmptyFolder {
 		container_path: Vec<LayerId>,
@@ -35,7 +50,6 @@ pub enum DocumentMessage {
 	DeselectAllLayers,
 	DirtyRenderDocument,
 	DirtyRenderDocumentInOutlineView,
-	DispatchOperation(Box<DocumentOperation>),
 	DocumentHistoryBackward,
 	DocumentHistoryForward,
 	DocumentStructureChanged,
@@ -51,8 +65,6 @@ pub enum DocumentMessage {
 	LayerChanged {
 		affected_layer_path: Vec<LayerId>,
 	},
-	#[child]
-	Movement(MovementMessage),
 	MoveSelectedLayersTo {
 		folder_path: Vec<LayerId>,
 		insert_index: isize,
@@ -62,8 +74,6 @@ pub enum DocumentMessage {
 		delta_x: f64,
 		delta_y: f64,
 	},
-	#[child]
-	Overlays(OverlaysMessage),
 	Redo,
 	RenameLayer {
 		layer_path: Vec<LayerId>,
@@ -111,8 +121,6 @@ pub enum DocumentMessage {
 	ToggleLayerVisibility {
 		layer_path: Vec<LayerId>,
 	},
-	#[child]
-	TransformLayers(TransformLayerMessage),
 	Undo,
 	UngroupLayers {
 		folder_path: Vec<LayerId>,

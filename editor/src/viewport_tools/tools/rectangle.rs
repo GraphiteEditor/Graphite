@@ -23,10 +23,17 @@ pub struct Rectangle {
 #[impl_message(Message, ToolMessage, Rectangle)]
 #[derive(PartialEq, Clone, Debug, Hash, Serialize, Deserialize)]
 pub enum RectangleMessage {
+	// Standard messages
+	#[remain::unsorted]
 	Abort,
+
+	// Tool-specific messages
 	DragStart,
 	DragStop,
-	Resize { center: Key, lock_ratio: Key },
+	Resize {
+		center: Key,
+		lock_ratio: Key,
+	},
 }
 
 impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Rectangle {
