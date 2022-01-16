@@ -98,7 +98,7 @@ impl Document {
 		layers.reduce(|a, b| &a[..a.iter().zip(b.iter()).take_while(|&(a, b)| a == b).count()]).unwrap_or_default()
 	}
 
-	pub fn folders<'a, T: AsRef<[LayerId]>>(&'a self, layers: impl Iterator<Item = T> + 'a) -> impl Iterator<Item = T> + 'a
+	pub fn folders<'a, T>(&'a self, layers: impl Iterator<Item = T> + 'a) -> impl Iterator<Item = T> + 'a
 	where
 		T: AsRef<[LayerId]> + std::cmp::Ord + 'a,
 	{
