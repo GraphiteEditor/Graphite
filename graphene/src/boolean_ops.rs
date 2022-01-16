@@ -29,6 +29,15 @@ pub enum BooleanOperationError {
 	Unexpected, // for debugging, when complete nothing should be unexpected
 }
 
+/// A simple and idiomatic way to write short "if Let" statements
+macro_rules! do_if {
+	($option:expr, $name:ident{$todo:expr}) => {
+		if let Some($name) = $option {
+			$todo
+		}
+	};
+}
+
 struct Edge {
 	pub from: Origin,
 	pub destination: usize,
@@ -176,7 +185,6 @@ impl PathGraph {
 	///   - implementing this behavior may not be feasible, instead reduce discrepancies
 	/// TODO: This function panics if an time value is NAN, no time value should ever be NAN, but this case should be handled, maybe not here
 	/// NOTE: about intersection time_val order
-	/// NOTE: the map_or's below are because cargo fmt unnecesarily (in my opinion) expands "if let" statements
 	fn add_edges_from_path(&mut self, path: &BezPath, origin: Origin, reverse: bool) {
 		let mut seg_idx = 0;
 		//cstart holds the idx of the vertex the current edge is starting from
@@ -194,17 +202,17 @@ impl PathGraph {
 					let (seg1, seg2) = split_path_seg(&seg, t_val);
 					match cstart {
 						Some(idx) => {
-							seg1.map_or((), |end_of_edge| current.push(end_of_edge));
+							do_if!(seg1, end_of_edge { current.push(end_of_edge)});
 							self.add_edge(origin, idx, vertex_id, current, reverse);
 							cstart = Some(vertex_id);
 							current = Vec::new();
-							seg2.map_or((), |start_of_edge| current.push(start_of_edge));
+							do_if!(seg2, start_of_edge { current.push(start_of_edge)});
 						}
 						None => {
 							cstart = Some(vertex_id);
 							start_idx = Some(vertex_id);
-							seg1.map_or((), |end_of_begining| beginning.push(end_of_begining));
-							seg2.map_or((), |start_of_edge| current.push(start_of_edge));
+							do_if!(seg1, end_of_begining {beginning.push(end_of_begining)});
+							do_if!(seg2, start_of_edge {current.push(start_of_edge)});
 						}
 					}
 				}
