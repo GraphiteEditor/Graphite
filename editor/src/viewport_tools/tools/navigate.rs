@@ -19,9 +19,18 @@ pub struct Navigate {
 #[impl_message(Message, ToolMessage, Navigate)]
 #[derive(PartialEq, Clone, Debug, Hash, Serialize, Deserialize)]
 pub enum NavigateMessage {
+	// Standard messages
+	#[remain::unsorted]
 	Abort,
-	ClickZoom { zoom_in: bool },
-	MouseMove { snap_angle: Key, snap_zoom: Key },
+
+	// Tool-specific messages
+	ClickZoom {
+		zoom_in: bool,
+	},
+	MouseMove {
+		snap_angle: Key,
+		snap_zoom: Key,
+	},
 	RotateCanvasBegin,
 	TransformCanvasEnd,
 	TranslateCanvasBegin,

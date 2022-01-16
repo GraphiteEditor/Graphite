@@ -9,6 +9,12 @@ use serde::{Deserialize, Serialize};
 #[impl_message(Message, Portfolio)]
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub enum PortfolioMessage {
+	// Sub-messages
+	#[remain::unsorted]
+	#[child]
+	Document(DocumentMessage),
+
+	// Messages
 	AutoSaveActiveDocument,
 	AutoSaveDocument {
 		document_id: u64,
@@ -28,12 +34,13 @@ pub enum PortfolioMessage {
 	Cut {
 		clipboard: Clipboard,
 	},
-	#[child]
-	Document(DocumentMessage),
 	NewDocument,
 	NextDocument,
 	OpenDocument,
-	OpenDocumentFile(String, String),
+	OpenDocumentFile {
+		document_name: String,
+		document_serialized_content: String,
+	},
 	OpenDocumentFileWithId {
 		document_id: u64,
 		document_name: String,

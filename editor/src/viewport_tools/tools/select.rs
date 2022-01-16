@@ -24,21 +24,30 @@ pub struct Select {
 	data: SelectToolData,
 }
 
-// #[remain::sorted] // https://github.com/dtolnay/remain/issues/16
+#[remain::sorted]
 #[impl_message(Message, ToolMessage, Select)]
 #[derive(PartialEq, Clone, Debug, Hash, Serialize, Deserialize)]
 pub enum SelectMessage {
 	// Standard messages
+	#[remain::unsorted]
 	Abort,
+	#[remain::unsorted]
 	DocumentIsDirty,
 
-	DragStart { add_to_selection: Key },
+	// Tool-specific messages
+	Align {
+		axis: AlignAxis,
+		aggregate: AlignAggregate,
+	},
+	DragStart {
+		add_to_selection: Key,
+	},
 	DragStop,
-	MouseMove { snap_angle: Key },
-
-	Align { axis: AlignAxis, aggregate: AlignAggregate },
 	FlipHorizontal,
 	FlipVertical,
+	MouseMove {
+		snap_angle: Key,
+	},
 }
 
 impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Select {
