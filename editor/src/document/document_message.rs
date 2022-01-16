@@ -91,6 +91,9 @@ pub enum DocumentMessage {
 	SetOpacityForSelectedLayers {
 		opacity: f64,
 	},
+	SetOverlaysVisibility {
+		visible: bool,
+	},
 	SetSelectedLayers {
 		replacement_selected_layers: Vec<Vec<LayerId>>,
 	},

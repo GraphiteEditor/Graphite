@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 pub enum OverlaysMessage {
 	ClearAllOverlays,
 	DispatchOperation(Box<DocumentOperation>),
+	Rerender,
 }
 
 impl From<DocumentOperation> for OverlaysMessage {

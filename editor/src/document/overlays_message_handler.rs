@@ -1,8 +1,5 @@
-use super::layer_panel::LayerMetadata;
-use crate::input::InputPreprocessorMessageHandler;
 use crate::message_prelude::*;
 
-use graphene::document::Document;
 use graphene::document::Document as GrapheneDocument;
 use graphene::layers::style::ViewMode;
 
@@ -11,12 +8,11 @@ pub struct OverlaysMessageHandler {
 	pub overlays_graphene_document: GrapheneDocument,
 }
 
-impl MessageHandler<OverlaysMessage, (&mut LayerMetadata, &Document, &InputPreprocessorMessageHandler)> for OverlaysMessageHandler {
+impl MessageHandler<OverlaysMessage, bool> for OverlaysMessageHandler {
 	#[remain::check]
-	fn process_action(&mut self, message: OverlaysMessage, _data: (&mut LayerMetadata, &Document, &InputPreprocessorMessageHandler), responses: &mut VecDeque<Message>) {
+	fn process_action(&mut self, message: OverlaysMessage, overlays_visible: bool, responses: &mut VecDeque<Message>) {
 		use OverlaysMessage::*;
 
-		// let (layer_metadata, document, ipp) = data;
 		#[remain::sorted]
 		match message {
 			ClearAllOverlays => todo!(),
@@ -24,12 +20,17 @@ impl MessageHandler<OverlaysMessage, (&mut LayerMetadata, &Document, &InputPrepr
 				Ok(_) => (),
 				Err(e) => log::error!("OverlaysError: {:?}", e),
 			},
+			Rerender => (),
 		}
 
 		// Render overlays
 		responses.push_back(
 			FrontendMessage::UpdateDocumentOverlays {
-				svg: self.overlays_graphene_document.render_root(ViewMode::Normal),
+				svg: if overlays_visible {
+					self.overlays_graphene_document.render_root(ViewMode::Normal)
+				} else {
+					String::from("")
+				},
 			}
 			.into(),
 		);
