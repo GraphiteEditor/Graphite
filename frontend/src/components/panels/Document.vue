@@ -26,7 +26,7 @@
 
 				<Separator :type="'Unrelated'" />
 
-				<OptionalInput v-model:checked="overlaysEnabled" @update:checked="(visible: boolean) => setOverlaysVisible(visible)" :icon="'Overlays'" title="Overlays" />
+				<OptionalInput v-model:checked="overlaysEnabled" @update:checked="(visible: boolean) => setOverlaysVisibility(visible)" :icon="'Overlays'" title="Overlays" />
 				<PopoverButton>
 					<h3>Overlays</h3>
 					<p>The contents of this popover menu are coming soon</p>
@@ -285,8 +285,8 @@ export default defineComponent({
 		setSnapping(snap: boolean) {
 			this.editor.instance.set_snapping(snap);
 		},
-		setOverlaysVisible(visible: boolean) {
-			this.editor.instance.set_overlays_visible(visible);
+		setOverlaysVisibility(visible: boolean) {
+			this.editor.instance.set_overlays_visibility(visible);
 		},
 		setViewMode(newViewMode: string) {
 			this.editor.instance.set_view_mode(newViewMode);

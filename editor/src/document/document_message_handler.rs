@@ -907,9 +907,9 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 					responses.push_back(DocumentOperation::SetLayerOpacity { path, opacity }.into());
 				}
 			}
-			SetOverlaysVisible { visible } => {
+			SetOverlaysVisibility { visible } => {
 				self.overlays_visible = visible;
-				responses.push_back(OverlaysMessage::Redraw.into());
+				responses.push_back(OverlaysMessage::Rerender.into());
 			}
 			SetSelectedLayers { replacement_selected_layers } => {
 				let selected = self.layer_metadata.iter_mut().filter(|(_, layer_metadata)| layer_metadata.selected);

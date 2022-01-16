@@ -20,7 +20,7 @@ impl MessageHandler<OverlaysMessage, bool> for OverlaysMessageHandler {
 				Ok(_) => (),
 				Err(e) => log::error!("OverlaysError: {:?}", e),
 			},
-			Redraw => (),
+			Rerender => (),
 		}
 
 		// Render overlays

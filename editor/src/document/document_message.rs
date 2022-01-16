@@ -91,7 +91,7 @@ pub enum DocumentMessage {
 	SetOpacityForSelectedLayers {
 		opacity: f64,
 	},
-	SetOverlaysVisible {
+	SetOverlaysVisibility {
 		visible: bool,
 	},
 	SetSelectedLayers {
