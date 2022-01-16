@@ -39,8 +39,6 @@ export class FrontendDocumentDetails extends DocumentDetails {
 	readonly id!: BigInt;
 }
 
-export type MouseCursorIcon = "default" | "zoom-in" | "zoom-out" | "grabbing" | "crosshair";
-
 export class UpdateOpenDocumentsList extends JsMessage {
 	@Type(() => FrontendDocumentDetails)
 	readonly open_documents!: FrontendDocumentDetails[];
@@ -202,6 +200,8 @@ export class UpdateDocumentRulers extends JsMessage {
 
 	readonly interval!: number;
 }
+
+export type MouseCursorIcon = "default" | "zoom-in" | "zoom-out" | "grabbing" | "crosshair";
 
 const ToCssCursorProperty = Transform(({ value }) => {
 	const cssNames: Record<string, MouseCursorIcon> = {
