@@ -10,7 +10,7 @@
 			</div>
 			<div class="spacer"></div>
 			<div class="right side">
-				<OptionalInput v-model:checked="snappingEnabled" @update:checked="(newStatus: boolean) => setSnap(newStatus)" :icon="'Snapping'" title="Snapping" />
+				<OptionalInput v-model:checked="snappingEnabled" @update:checked="(snap: boolean) => setSnapping(snap)" :icon="'Snapping'" title="Snapping" />
 				<PopoverButton>
 					<h3>Snapping</h3>
 					<p>The contents of this popover menu are coming soon</p>
@@ -26,7 +26,7 @@
 
 				<Separator :type="'Unrelated'" />
 
-				<OptionalInput v-model:checked="overlaysEnabled" @update:checked="() => dialog.comingSoon(99)" :icon="'Overlays'" title="Overlays" />
+				<OptionalInput v-model:checked="overlaysEnabled" @update:checked="(visible: boolean) => setOverlaysVisible(visible)" :icon="'Overlays'" title="Overlays" />
 				<PopoverButton>
 					<h3>Overlays</h3>
 					<p>The contents of this popover menu are coming soon</p>
@@ -282,8 +282,11 @@ import Separator from "@/components/widgets/separators/Separator.vue";
 export default defineComponent({
 	inject: ["editor", "dialog"],
 	methods: {
-		setSnap(newStatus: boolean) {
-			this.editor.instance.set_snapping(newStatus);
+		setSnapping(snap: boolean) {
+			this.editor.instance.set_snapping(snap);
+		},
+		setOverlaysVisible(visible: boolean) {
+			this.editor.instance.set_overlays_visible(visible);
 		},
 		setViewMode(newViewMode: string) {
 			this.editor.instance.set_view_mode(newViewMode);

@@ -6,9 +6,19 @@ use graphene::document::Document;
 use graphene::document::Document as GrapheneDocument;
 use graphene::layers::style::ViewMode;
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct OverlaysMessageHandler {
 	pub overlays_graphene_document: GrapheneDocument,
+	pub visible: bool,
+}
+
+impl Default for OverlaysMessageHandler {
+	fn default() -> Self {
+		Self {
+			overlays_graphene_document: Default::default(),
+			visible: true,
+		}
+	}
 }
 
 impl MessageHandler<OverlaysMessage, (&mut LayerMetadata, &Document, &InputPreprocessorMessageHandler)> for OverlaysMessageHandler {
@@ -24,18 +34,25 @@ impl MessageHandler<OverlaysMessage, (&mut LayerMetadata, &Document, &InputPrepr
 				Ok(_) => (),
 				Err(e) => log::error!("OverlaysError: {:?}", e),
 			},
+			SetOverlaysVisible { visible } => {
+				self.visible = visible;
+			}
 		}
 
 		// Render overlays
 		responses.push_back(
 			FrontendMessage::UpdateDocumentOverlays {
-				svg: self.overlays_graphene_document.render_root(ViewMode::Normal),
+				svg: if self.visible {
+					self.overlays_graphene_document.render_root(ViewMode::Normal)
+				} else {
+					String::from("")
+				},
 			}
 			.into(),
 		);
 	}
 
 	fn actions(&self) -> ActionList {
-		actions!(OverlaysMessageDiscriminant; ClearAllOverlays)
+		actions!(OverlaysMessageDiscriminant; ClearAllOverlays, SetOverlaysVisible)
 	}
 }
