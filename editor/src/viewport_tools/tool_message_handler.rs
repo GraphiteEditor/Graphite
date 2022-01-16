@@ -20,6 +20,7 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, &InputPreprocessorMes
 		let (document, input) = data;
 		#[remain::sorted]
 		match message {
+			// Messages
 			ActivateTool { tool_type } => {
 				let tool_data = &mut self.tool_state.tool_data;
 				let document_data = &self.tool_state.document_tool_data;
@@ -101,6 +102,9 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, &InputPreprocessorMes
 
 				update_working_colors(document_data, responses);
 			}
+
+			// Sub-messages
+			#[remain::unsorted]
 			tool_message => {
 				let tool_type = match &tool_message {
 					UpdateCursor | UpdateHints => self.tool_state.tool_data.active_tool_type,

@@ -10,32 +10,49 @@ use serde::{Deserialize, Serialize};
 #[impl_message(Message, Tool)]
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub enum ToolMessage {
+	// Sub-messages
+	#[remain::unsorted]
+	#[child]
+	Crop(CropMessage),
+	#[remain::unsorted]
+	#[child]
+	Ellipse(EllipseMessage),
+	#[remain::unsorted]
+	#[child]
+	Eyedropper(EyedropperMessage),
+	#[remain::unsorted]
+	#[child]
+	Fill(FillMessage),
+	#[remain::unsorted]
+	#[child]
+	Line(LineMessage),
+	#[remain::unsorted]
+	#[child]
+	Navigate(NavigateMessage),
+	#[remain::unsorted]
+	#[child]
+	Path(PathMessage),
+	#[remain::unsorted]
+	#[child]
+	Pen(PenMessage),
+	#[remain::unsorted]
+	#[child]
+	Rectangle(RectangleMessage),
+	#[remain::unsorted]
+	#[child]
+	Select(SelectMessage),
+	#[remain::unsorted]
+	#[child]
+	Shape(ShapeMessage),
+
+	// Messages
+	#[remain::unsorted]
+	NoOp,
 	ActivateTool {
 		tool_type: ToolType,
 	},
-	#[child]
-	Crop(CropMessage),
 	DocumentIsDirty,
-	#[child]
-	Ellipse(EllipseMessage),
-	#[child]
-	Eyedropper(EyedropperMessage),
-	#[child]
-	Fill(FillMessage),
-	#[child]
-	Line(LineMessage),
-	#[child]
-	Navigate(NavigateMessage),
-	NoOp,
-	#[child]
-	Path(PathMessage),
-	#[child]
-	Pen(PenMessage),
-	#[child]
-	Rectangle(RectangleMessage),
 	ResetColors,
-	#[child]
-	Select(SelectMessage),
 	SelectPrimaryColor {
 		color: Color,
 	},
@@ -46,8 +63,6 @@ pub enum ToolMessage {
 		tool_type: ToolType,
 		tool_options: ToolOptions,
 	},
-	#[child]
-	Shape(ShapeMessage),
 	SwapColors,
 	UpdateCursor,
 	UpdateHints,

@@ -58,6 +58,8 @@ impl Dispatcher {
 			// Process the action by forwarding it to the relevant message handler, or saving the FrontendMessage to be sent to the frontend
 			#[remain::sorted]
 			match message {
+				#[remain::unsorted]
+				NoOp => {}
 				Frontend(message) => {
 					// `FrontendMessage`s are saved and will be sent to the frontend after the message queue is done being processed
 					self.responses.push(message);
@@ -74,7 +76,6 @@ impl Dispatcher {
 				InputPreprocessor(message) => {
 					self.message_handlers.input_preprocessor_message_handler.process_action(message, (), &mut self.message_queue);
 				}
-				NoOp => {}
 				Portfolio(message) => {
 					self.message_handlers
 						.portfolio_message_handler
