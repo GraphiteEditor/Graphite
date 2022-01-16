@@ -1,6 +1,6 @@
 use crate::consts::SELECTION_TOLERANCE;
 use crate::document::DocumentMessageHandler;
-use crate::frontend::utility_types::FrontendMouseCursor;
+use crate::frontend::utility_types::MouseCursorIcon;
 use crate::input::keyboard::MouseMotion;
 use crate::input::InputPreprocessorMessageHandler;
 use crate::message_prelude::*;
@@ -130,6 +130,6 @@ impl Fsm for FillToolFsmState {
 	}
 
 	fn update_cursor(&self, responses: &mut VecDeque<Message>) {
-		responses.push_back(FrontendMessage::UpdateMouseCursor { cursor: FrontendMouseCursor::Default }.into());
+		responses.push_back(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Default }.into());
 	}
 }

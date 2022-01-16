@@ -1,5 +1,5 @@
 use crate::document::DocumentMessageHandler;
-use crate::frontend::utility_types::FrontendMouseCursor;
+use crate::frontend::utility_types::MouseCursorIcon;
 use crate::input::keyboard::{Key, MouseMotion};
 use crate::input::InputPreprocessorMessageHandler;
 use crate::message_prelude::*;
@@ -221,10 +221,10 @@ impl Fsm for NavigateToolFsmState {
 
 	fn update_cursor(&self, responses: &mut VecDeque<Message>) {
 		let cursor = match *self {
-			NavigateToolFsmState::Ready => FrontendMouseCursor::ZoomIn,
-			NavigateToolFsmState::Panning => FrontendMouseCursor::Grabbing,
-			NavigateToolFsmState::Tilting => FrontendMouseCursor::Default,
-			NavigateToolFsmState::Zooming => FrontendMouseCursor::ZoomIn,
+			NavigateToolFsmState::Ready => MouseCursorIcon::ZoomIn,
+			NavigateToolFsmState::Panning => MouseCursorIcon::Grabbing,
+			NavigateToolFsmState::Tilting => MouseCursorIcon::Default,
+			NavigateToolFsmState::Zooming => MouseCursorIcon::ZoomIn,
 		};
 
 		responses.push_back(FrontendMessage::UpdateMouseCursor { cursor }.into());

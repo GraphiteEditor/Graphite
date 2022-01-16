@@ -1,7 +1,7 @@
 use crate::consts::{COLOR_ACCENT, SELECTION_DRAG_ANGLE, SELECTION_TOLERANCE};
 use crate::document::utility_types::{AlignAggregate, AlignAxis, FlipAxis};
 use crate::document::DocumentMessageHandler;
-use crate::frontend::utility_types::FrontendMouseCursor;
+use crate::frontend::utility_types::MouseCursorIcon;
 use crate::input::keyboard::{Key, MouseMotion};
 use crate::input::mouse::ViewportPosition;
 use crate::input::InputPreprocessorMessageHandler;
@@ -429,6 +429,6 @@ impl Fsm for SelectToolFsmState {
 	}
 
 	fn update_cursor(&self, responses: &mut VecDeque<Message>) {
-		responses.push_back(FrontendMessage::UpdateMouseCursor { cursor: FrontendMouseCursor::Default }.into());
+		responses.push_back(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Default }.into());
 	}
 }

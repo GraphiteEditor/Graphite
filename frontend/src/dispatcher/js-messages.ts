@@ -39,7 +39,7 @@ export class FrontendDocumentDetails extends DocumentDetails {
 	readonly id!: BigInt;
 }
 
-export type FrontendMouseCursor = string;
+export type MouseCursorIcon = string;
 
 export class UpdateOpenDocumentsList extends JsMessage {
 	@Type(() => FrontendDocumentDetails)
@@ -227,7 +227,7 @@ const ToCssCursorProperty = Transform(({ value }) => {
 
 export class UpdateMouseCursor extends JsMessage {
 	@ToCssCursorProperty
-	readonly cursor!: FrontendMouseCursor;
+	readonly cursor!: MouseCursorIcon;
 }
 
 export class TriggerFileDownload extends JsMessage {

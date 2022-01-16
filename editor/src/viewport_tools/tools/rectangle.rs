@@ -1,6 +1,6 @@
 use super::shared::resize::Resize;
 use crate::document::DocumentMessageHandler;
-use crate::frontend::utility_types::FrontendMouseCursor;
+use crate::frontend::utility_types::MouseCursorIcon;
 use crate::input::keyboard::{Key, MouseMotion};
 use crate::input::InputPreprocessorMessageHandler;
 use crate::message_prelude::*;
@@ -186,11 +186,6 @@ impl Fsm for RectangleToolFsmState {
 	}
 
 	fn update_cursor(&self, responses: &mut VecDeque<Message>) {
-		responses.push_back(
-			FrontendMessage::UpdateMouseCursor {
-				cursor: FrontendMouseCursor::Crosshair,
-			}
-			.into(),
-		);
+		responses.push_back(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Crosshair }.into());
 	}
 }

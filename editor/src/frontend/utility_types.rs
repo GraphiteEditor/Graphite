@@ -8,7 +8,7 @@ pub struct FrontendDocumentDetails {
 }
 
 #[derive(Clone, Copy, Debug, Eq, Deserialize, PartialEq, Serialize)]
-pub enum FrontendMouseCursor {
+pub enum MouseCursorIcon {
 	Default,
 	ZoomIn,
 	ZoomOut,
