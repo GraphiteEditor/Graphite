@@ -200,7 +200,7 @@ impl DocumentMessageHandler {
 
 	fn serialize_structure(&self, folder: &Folder, structure: &mut Vec<u64>, data: &mut Vec<LayerId>, path: &mut Vec<LayerId>) {
 		let mut space = 0;
-		for (id, layer) in folder.layer_ids.iter().rev().zip(folder.layers()) {
+		for (id, layer) in folder.layer_ids.iter().zip(folder.layers()).rev() {
 			data.push(*id);
 			space += 1;
 			match layer.data {
@@ -255,7 +255,9 @@ impl DocumentMessageHandler {
 		let (mut structure, mut data) = (vec![0], Vec::new());
 		self.serialize_structure(self.graphene_document.root.as_folder().unwrap(), &mut structure, &mut data, &mut vec![]);
 		structure[0] = structure.len() as u64 - 1;
+		log::info!("Structure {:?}, data {:?}", structure, data);
 		structure.extend(data);
+
 		structure
 	}
 
