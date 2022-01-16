@@ -10,7 +10,7 @@
 			</div>
 			<div class="spacer"></div>
 			<div class="right side">
-				<OptionalInput v-model:checked="snappingEnabled" @update:checked="(newStatus) => setSnap(newStatus)" :icon="'Snapping'" title="Snapping" />
+				<OptionalInput v-model:checked="snappingEnabled" @update:checked="(newStatus: boolean) => setSnap(newStatus)" :icon="'Snapping'" title="Snapping" />
 				<PopoverButton>
 					<h3>Snapping</h3>
 					<p>The contents of this popover menu are coming soon</p>
@@ -42,7 +42,7 @@
 
 				<Separator :type="'Section'" />
 
-				<NumberInput @update:value="(newRotation) => setRotation(newRotation)" v-model:value="documentRotation" :incrementFactor="15" :unit="'°'" />
+				<NumberInput @update:value="(newRotation: number) => setRotation(newRotation)" v-model:value="documentRotation" :incrementFactor="15" :unit="'°'" />
 
 				<Separator :type="'Section'" />
 
@@ -54,7 +54,7 @@
 
 				<NumberInput
 					v-model:value="documentZoom"
-					@update:value="(newZoom) => setCanvasZoom(newZoom)"
+					@update:value="(newZoom: number) => setCanvasZoom(newZoom)"
 					:min="0.000001"
 					:max="1000000"
 					:incrementBehavior="'Callback'"
@@ -133,9 +133,9 @@
 						<PersistentScrollbar
 							:direction="'Vertical'"
 							:handlePosition="scrollbarPos.y"
-							@update:handlePosition="(newValue) => translateCanvasY(newValue)"
+							@update:handlePosition="(newValue: number) => translateCanvasY(newValue)"
 							v-model:handleLength="scrollbarSize.y"
-							@pressTrack="(delta) => pageY(delta)"
+							@pressTrack="(delta: number) => pageY(delta)"
 							:class="'right-scrollbar'"
 						/>
 					</LayoutCol>
@@ -144,9 +144,9 @@
 					<PersistentScrollbar
 						:direction="'Horizontal'"
 						:handlePosition="scrollbarPos.x"
-						@update:handlePosition="(newValue) => translateCanvasX(newValue)"
+						@update:handlePosition="(newValue: number) => translateCanvasX(newValue)"
 						v-model:handleLength="scrollbarSize.x"
-						@pressTrack="(delta) => pageX(delta)"
+						@pressTrack="(delta: number) => pageX(delta)"
 						:class="'bottom-scrollbar'"
 					/>
 				</LayoutRow>
