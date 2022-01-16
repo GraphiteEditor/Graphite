@@ -136,7 +136,6 @@ impl Fsm for ShapeToolFsmState {
 						false => responses.push_back(DocumentMessage::CommitTransaction.into()),
 					}
 
-
 					shape_data.cleanup(responses);
 
 					Ready
@@ -145,7 +144,7 @@ impl Fsm for ShapeToolFsmState {
 					responses.push_back(DocumentMessage::AbortTransaction.into());
 
 					shape_data.cleanup(responses);
-          
+
 					Ready
 				}
 				_ => self,

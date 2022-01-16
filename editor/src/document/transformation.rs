@@ -87,7 +87,7 @@ impl Rotation {
 			self.dragged_angle
 		}
 	}
-  
+
 	#[must_use]
 	pub fn increment_amount(self, delta: f64) -> Self {
 		Self {

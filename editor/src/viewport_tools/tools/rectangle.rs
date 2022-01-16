@@ -133,8 +133,8 @@ impl Fsm for RectangleToolFsmState {
 				}
 				(Drawing, Abort) => {
 					responses.push_back(DocumentMessage::AbortTransaction.into());
-          
-          shape_data.cleanup(responses);
+
+					shape_data.cleanup(responses);
 
 					Ready
 				}

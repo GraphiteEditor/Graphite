@@ -440,7 +440,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 	#[remain::check]
 	fn process_action(&mut self, message: DocumentMessage, ipp: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) {
 		use DocumentMessage::*;
-    
+
 		#[remain::sorted]
 		match message {
 			AbortTransaction => {

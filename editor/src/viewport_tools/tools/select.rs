@@ -195,7 +195,7 @@ impl Fsm for SelectToolFsmState {
 							buffer.push(DocumentMessage::StartTransaction.into());
 							data.layers_dragging.append(&mut selected);
 							data.snap_handler.start_snap(responses, input.viewport_bounds.size(), document, document.non_selected_layers_sorted());
-              
+
 							Dragging
 						} else {
 							data.drag_box_overlay_layer = Some(add_bounding_box(&mut buffer));
