@@ -1,32 +1,18 @@
-use super::layer_panel::LayerMetadata;
-use crate::input::InputPreprocessorMessageHandler;
 use crate::message_prelude::*;
 
-use graphene::document::Document;
 use graphene::document::Document as GrapheneDocument;
 use graphene::layers::style::ViewMode;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct OverlaysMessageHandler {
 	pub overlays_graphene_document: GrapheneDocument,
-	pub visible: bool,
 }
 
-impl Default for OverlaysMessageHandler {
-	fn default() -> Self {
-		Self {
-			overlays_graphene_document: Default::default(),
-			visible: true,
-		}
-	}
-}
-
-impl MessageHandler<OverlaysMessage, (&mut LayerMetadata, &Document, &InputPreprocessorMessageHandler)> for OverlaysMessageHandler {
+impl MessageHandler<OverlaysMessage, bool> for OverlaysMessageHandler {
 	#[remain::check]
-	fn process_action(&mut self, message: OverlaysMessage, _data: (&mut LayerMetadata, &Document, &InputPreprocessorMessageHandler), responses: &mut VecDeque<Message>) {
+	fn process_action(&mut self, message: OverlaysMessage, overlays_visible: bool, responses: &mut VecDeque<Message>) {
 		use OverlaysMessage::*;
 
-		// let (layer_metadata, document, ipp) = data;
 		#[remain::sorted]
 		match message {
 			ClearAllOverlays => todo!(),
@@ -34,15 +20,13 @@ impl MessageHandler<OverlaysMessage, (&mut LayerMetadata, &Document, &InputPrepr
 				Ok(_) => (),
 				Err(e) => log::error!("OverlaysError: {:?}", e),
 			},
-			SetOverlaysVisible { visible } => {
-				self.visible = visible;
-			}
+			Redraw => (),
 		}
 
 		// Render overlays
 		responses.push_back(
 			FrontendMessage::UpdateDocumentOverlays {
-				svg: if self.visible {
+				svg: if overlays_visible {
 					self.overlays_graphene_document.render_root(ViewMode::Normal)
 				} else {
 					String::from("")
@@ -53,6 +37,6 @@ impl MessageHandler<OverlaysMessage, (&mut LayerMetadata, &Document, &InputPrepr
 	}
 
 	fn actions(&self) -> ActionList {
-		actions!(OverlaysMessageDiscriminant; ClearAllOverlays, SetOverlaysVisible)
+		actions!(OverlaysMessageDiscriminant; ClearAllOverlays)
 	}
 }

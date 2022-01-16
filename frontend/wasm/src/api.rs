@@ -423,7 +423,7 @@ impl JsEditorHandle {
 
 	/// Set display of overlays on or off
 	pub fn set_overlays_visible(&self, visible: bool) {
-		let message = OverlaysMessage::SetOverlaysVisible { visible };
+		let message = DocumentMessage::SetOverlaysVisible { visible };
 		self.dispatch(message);
 	}
 
