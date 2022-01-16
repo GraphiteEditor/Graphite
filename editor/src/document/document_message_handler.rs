@@ -420,8 +420,9 @@ impl DocumentMessageHandler {
 	/// When working with an insert index, deleting the layers may cause the insert index to point to a different location (if the layer being deleted was located before the insert index).
 	///
 	/// This function updates the insert index so that it points to the same place after the specified `layers` are deleted.
-	fn update_insert_index<'a>(&self, layers: &[&'a [LayerId]], path: &[LayerId], insert_index: isize) -> Result<isize, DocumentError> {
+	fn update_insert_index<'a>(&self, layers: &[&'a [LayerId]], path: &[LayerId], insert_index: isize, reverse_index: bool) -> Result<isize, DocumentError> {
 		let folder = self.graphene_document.folder(path)?;
+		let insert_index = if reverse_index { folder.layer_ids.len() as isize - insert_index } else { insert_index };
 		let layer_ids_above = if insert_index < 0 { &folder.layer_ids } else { &folder.layer_ids[..(insert_index as usize)] };
 
 		Ok(insert_index - layer_ids_above.iter().filter(|layer_id| layers.iter().any(|x| *x == [path, &[**layer_id]].concat())).count() as isize)
@@ -670,7 +671,11 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 				}
 			}
 			Movement(message) => self.movement_handler.process_action(message, (&self.graphene_document, ipp), responses),
-			MoveSelectedLayersTo { folder_path, insert_index } => {
+			MoveSelectedLayersTo {
+				folder_path,
+				insert_index,
+				reverse_index,
+			} => {
 				let selected_layers = self.selected_layers().collect::<Vec<_>>();
 
 				// Prevent trying to insert into self
@@ -678,7 +683,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 					return;
 				}
 
-				let insert_index = self.update_insert_index(&selected_layers, &folder_path, insert_index).unwrap();
+				let insert_index = self.update_insert_index(&selected_layers, &folder_path, insert_index, reverse_index).unwrap();
 
 				responses.push_back(PortfolioMessage::Copy { clipboard: Clipboard::System }.into());
 				responses.push_back(DocumentMessage::DeleteSelectedLayers.into());
@@ -809,6 +814,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 									DocumentMessage::MoveSelectedLayersTo {
 										folder_path: folder_path.to_vec(),
 										insert_index,
+										reverse_index: false,
 									}
 									.into(),
 								);
