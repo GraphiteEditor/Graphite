@@ -26,10 +26,18 @@ pub struct Line {
 #[impl_message(Message, ToolMessage, Line)]
 #[derive(PartialEq, Clone, Debug, Hash, Serialize, Deserialize)]
 pub enum LineMessage {
+	// Standard messages
+	#[remain::unsorted]
 	Abort,
+
+	// Tool-specific messages
 	DragStart,
 	DragStop,
-	Redraw { center: Key, lock_angle: Key, snap_angle: Key },
+	Redraw {
+		center: Key,
+		lock_angle: Key,
+		snap_angle: Key,
+	},
 }
 
 impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Line {

@@ -15,11 +15,15 @@ impl MessageHandler<OverlaysMessage, bool> for OverlaysMessageHandler {
 
 		#[remain::sorted]
 		match message {
-			ClearAllOverlays => todo!(),
+			// Sub-messages
+			#[remain::unsorted]
 			DispatchOperation(operation) => match self.overlays_graphene_document.handle_operation(&operation) {
 				Ok(_) => (),
 				Err(e) => log::error!("OverlaysError: {:?}", e),
 			},
+
+			// Messages
+			ClearAllOverlays => todo!(),
 			Rerender => (),
 		}
 

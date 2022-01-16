@@ -130,6 +130,11 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 
 		#[remain::sorted]
 		match message {
+			// Sub-messages
+			#[remain::unsorted]
+			Document(message) => self.active_document_mut().process_action(message, ipp, responses),
+
+			// Messages
 			AutoSaveActiveDocument => responses.push_back(PortfolioMessage::AutoSaveDocument { document_id: self.active_document_id }.into()),
 			AutoSaveDocument { document_id } => {
 				let document = self.documents.get(&document_id).unwrap();
@@ -235,7 +240,6 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 				responses.push_back(Copy { clipboard }.into());
 				responses.push_back(DeleteSelectedLayers.into());
 			}
-			Document(message) => self.active_document_mut().process_action(message, ipp, responses),
 			NewDocument => {
 				let name = self.generate_new_document_name();
 				let new_document = DocumentMessageHandler::with_name(name, ipp);
@@ -252,7 +256,10 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 			OpenDocument => {
 				responses.push_back(FrontendMessage::TriggerFileUpload.into());
 			}
-			OpenDocumentFile(document_name, document_serialized_content) => {
+			OpenDocumentFile {
+				document_name,
+				document_serialized_content,
+			} => {
 				responses.push_back(
 					PortfolioMessage::OpenDocumentFileWithId {
 						document_id: generate_uuid(),

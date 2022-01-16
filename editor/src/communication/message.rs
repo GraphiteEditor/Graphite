@@ -20,6 +20,8 @@ where
 #[impl_message]
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum Message {
+	#[remain::unsorted]
+	NoOp,
 	#[child]
 	Frontend(FrontendMessage),
 	#[child]
@@ -28,7 +30,6 @@ pub enum Message {
 	InputMapper(InputMapperMessage),
 	#[child]
 	InputPreprocessor(InputPreprocessorMessage),
-	NoOp,
 	#[child]
 	Portfolio(PortfolioMessage),
 	#[child]
