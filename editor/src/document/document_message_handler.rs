@@ -48,6 +48,7 @@ pub enum AlignAggregate {
 	Average,
 }
 
+
 #[derive(PartialEq, Clone, Debug)]
 pub enum VectorManipulatorSegment {
 	Line(DVec2, DVec2),
@@ -55,19 +56,42 @@ pub enum VectorManipulatorSegment {
 	Cubic(DVec2, DVec2, DVec2, DVec2),
 }
 
+
 #[derive(PartialEq, Clone, Debug)]
 pub struct VectorManipulatorShape {
 	/// The path to the layer
 	pub layer_path: Vec<LayerId>,
 	/// The outline of the shape
 	pub path: kurbo::BezPath,
-	/// The control points / manipulator handles
+	/// The segments containing the control points / manipulator handles
 	pub segments: Vec<VectorManipulatorSegment>,
+	/// The control points / manipulator handles
+	pub points: Vec<VectorManipulatorAnchor>,
 	/// The compound Bezier curve is closed
 	pub closed: bool,
 	/// The transformation matrix to apply
 	pub transform: DAffine2,
 }
+
+#[derive(PartialEq, Clone, Debug)]
+pub struct VectorManipulatorAnchor {
+	// The element at this point
+	pub element: kurbo::PathEl,
+	// The control point / manipulator handle position
+	pub position: kurbo::Vec2,
+	// Anchor handles
+	pub handles: (Option<VectorManipulatorHandle>, Option<VectorManipulatorHandle>)
+}
+
+#[derive(PartialEq, Clone, Debug)]
+pub struct VectorManipulatorHandle {
+	// The element at this point
+	pub element: kurbo::PathEl,
+	// The sibling element if this is a handle
+	pub position: kurbo::Vec2,
+}
+
+
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct DocumentMessageHandler {
@@ -273,11 +297,11 @@ impl DocumentMessageHandler {
 			}?;
 			let path = shape.path.clone();
 
+			let place = |point: kurbo::Point| -> DVec2 { viewport_transform.transform_point2(DVec2::from((point.x, point.y))) };
+
 			let segments = path
 				.segments()
 				.map(|segment| -> VectorManipulatorSegment {
-					let place = |point: kurbo::Point| -> DVec2 { viewport_transform.transform_point2(DVec2::from((point.x, point.y))) };
-
 					match segment {
 						PathSeg::Line(line) => VectorManipulatorSegment::Line(place(line.p0), place(line.p1)),
 						PathSeg::Quad(quad) => VectorManipulatorSegment::Quad(place(quad.p0), place(quad.p1), place(quad.p2)),
@@ -286,10 +310,19 @@ impl DocumentMessageHandler {
 				})
 				.collect::<Vec<VectorManipulatorSegment>>();
 
+			let points = path.segments().map(|segment| -> VectorManipulatorAnchor {
+				match segment {
+					PathSeg::Line(_) => todo!(),
+					PathSeg::Quad(_) => todo!(),
+					PathSeg::Cubic(_) => todo!(),
+				}
+			}).collect::<Vec<VectorManipulatorAnchor>>();
+
 			Some(VectorManipulatorShape {
 				layer_path: path_to_shape.to_vec(),
 				path,
 				segments,
+				points,
 				transform: viewport_transform,
 				closed: shape.closed,
 			})
