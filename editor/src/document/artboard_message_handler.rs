@@ -1,5 +1,3 @@
-use super::layer_panel::LayerMetadata;
-use crate::input::InputPreprocessorMessageHandler;
 use crate::message_prelude::*;
 
 use graphene::color::Color;
