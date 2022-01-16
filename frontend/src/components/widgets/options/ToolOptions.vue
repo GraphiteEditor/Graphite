@@ -9,7 +9,7 @@
 			</PopoverButton>
 			<NumberInput
 				v-if="option.kind === 'NumberInput'"
-				@update:value="(value) => updateToolOptions(option.optionPath, value)"
+				@update:value="(value: number) => updateToolOptions(option.optionPath, value)"
 				:title="option.tooltip"
 				:value="getToolOption(option.optionPath)"
 				v-bind="option.props"

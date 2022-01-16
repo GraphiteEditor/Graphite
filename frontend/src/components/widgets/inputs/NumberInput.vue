@@ -152,8 +152,7 @@
 <script lang="ts">
 import { defineComponent, PropType } from "vue";
 
-export type IncrementBehavior = "Add" | "Multiply" | "Callback" | "None";
-export type IncrementDirection = "Decrease" | "Increase";
+import { IncrementBehavior, IncrementDirection } from "@/utilities/widgets";
 
 export default defineComponent({
 	props: {
