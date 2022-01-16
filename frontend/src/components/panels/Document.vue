@@ -123,7 +123,7 @@
 						<CanvasRuler :origin="rulerOrigin.y" :majorMarkSpacing="rulerSpacing" :numberInterval="rulerInterval" :direction="'Vertical'" />
 					</LayoutCol>
 					<LayoutCol :class="'canvas-area'">
-						<div class="canvas" ref="canvas" :style="{ cursor: canvasCursor }">
+						<div class="canvas" ref="canvas" :style="{ cursor: canvasCursor }" v-on:pointerdown="canvasPointerDown">
 							<svg class="artboards" v-html="artboardSvg" :style="{ width: canvasSvgWidth, height: canvasSvgHeight }"></svg>
 							<svg class="artwork" v-html="artworkSvg" :style="{ width: canvasSvgWidth, height: canvasSvgHeight }"></svg>
 							<svg class="overlays" v-html="overlaysSvg" :style="{ width: canvasSvgWidth, height: canvasSvgHeight }"></svg>
@@ -338,6 +338,10 @@ export default defineComponent({
 		},
 		resetWorkingColors() {
 			this.editor.instance.reset_colors();
+		},
+		canvasPointerDown(event: PointerEvent) {
+			const canvas = this.$refs.canvas as HTMLElement;
+			canvas.setPointerCapture(event.pointerId);
 		},
 	},
 	mounted() {
