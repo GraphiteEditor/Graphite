@@ -224,7 +224,7 @@ impl Fsm for NavigateToolFsmState {
 			NavigateToolFsmState::Ready => FrontendMouseCursor::ZoomIn,
 			NavigateToolFsmState::Panning => FrontendMouseCursor::Grabbing,
 			NavigateToolFsmState::Tilting => FrontendMouseCursor::Default,
-			NavigateToolFsmState::Zooming => FrontendMouseCursor::Grabbing,
+			NavigateToolFsmState::Zooming => FrontendMouseCursor::ZoomIn,
 		};
 
 		responses.push_back(FrontendMessage::UpdateMouseCursor { cursor }.into());
