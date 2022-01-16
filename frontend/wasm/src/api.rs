@@ -389,7 +389,11 @@ impl JsEditorHandle {
 
 	/// Move a layer to be next to the specified neighbor
 	pub fn move_layer_in_tree(&self, folder_path: Vec<LayerId>, insert_index: isize) {
-		let message = DocumentMessage::MoveSelectedLayersTo { folder_path, insert_index };
+		let message = DocumentMessage::MoveSelectedLayersTo {
+			folder_path,
+			insert_index,
+			reverse_index: true,
+		};
 		self.dispatch(message);
 	}
 
