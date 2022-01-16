@@ -187,6 +187,7 @@ img {
 	justify-content: center;
 	display: flex;
 }
+
 .unsupported-modal {
 	background: var(--color-3-darkgray);
 	border-radius: 4px;
@@ -199,6 +200,7 @@ img {
 		color: var(--color-accent-hover);
 	}
 }
+
 .unsupported-modal-button {
 	flex: 1;
 	background: var(--color-1-nearblack);

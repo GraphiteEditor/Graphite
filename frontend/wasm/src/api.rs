@@ -419,9 +419,15 @@ impl JsEditorHandle {
 		self.dispatch(message);
 	}
 
-	/// Set snapping disabled / enabled
+	/// Set snapping on or off
 	pub fn set_snapping(&self, snap: bool) {
 		let message = DocumentMessage::SetSnapping { snap };
+		self.dispatch(message);
+	}
+
+	/// Set display of overlays on or off
+	pub fn set_overlays_visibility(&self, visible: bool) {
+		let message = DocumentMessage::SetOverlaysVisibility { visible };
 		self.dispatch(message);
 	}
 

@@ -41,6 +41,7 @@ pub struct DocumentMessageHandler {
 	artboard_message_handler: ArtboardMessageHandler,
 	#[serde(skip)]
 	transform_layer_handler: TransformLayerMessageHandler,
+	pub overlays_visible: bool,
 	pub snapping_enabled: bool,
 	pub view_mode: ViewMode,
 	pub version: String,
@@ -61,6 +62,7 @@ impl Default for DocumentMessageHandler {
 			artboard_message_handler: ArtboardMessageHandler::default(),
 			transform_layer_handler: TransformLayerMessageHandler::default(),
 			snapping_enabled: true,
+			overlays_visible: true,
 			view_mode: ViewMode::default(),
 			version: GRAPHITE_DOCUMENT_VERSION.to_string(),
 		}
@@ -181,7 +183,7 @@ impl DocumentMessageHandler {
 	}
 
 	pub fn selected_layers_without_children(&self) -> Vec<&[LayerId]> {
-		let unique_layers = self.graphene_document.shallowest_unique_layers(self.selected_layers());
+		let unique_layers = GrapheneDocument::shallowest_unique_layers(self.selected_layers());
 
 		// We need to maintain layer ordering
 		self.sort_layers(unique_layers.iter().copied())
@@ -710,11 +712,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 				responses.push_back(ToolMessage::DocumentIsDirty.into());
 			}
 			Overlays(message) => {
-				self.overlays_message_handler.process_action(
-					message,
-					(Self::layer_metadata_mut_no_borrow_self(&mut self.layer_metadata, &[]), &self.graphene_document, ipp),
-					responses,
-				);
+				self.overlays_message_handler.process_action(message, self.overlays_visible, responses);
 				// responses.push_back(OverlaysMessage::RenderOverlays.into());
 			}
 			Redo => {
@@ -916,6 +914,10 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 				for path in self.selected_layers().map(|path| path.to_vec()) {
 					responses.push_back(DocumentOperation::SetLayerOpacity { path, opacity }.into());
 				}
+			}
+			SetOverlaysVisibility { visible } => {
+				self.overlays_visible = visible;
+				responses.push_back(OverlaysMessage::Rerender.into());
 			}
 			SetSelectedLayers { replacement_selected_layers } => {
 				let selected = self.layer_metadata.iter_mut().filter(|(_, layer_metadata)| layer_metadata.selected);

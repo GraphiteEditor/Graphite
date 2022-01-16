@@ -114,11 +114,11 @@ impl Document {
 
 	// Return returns all folders that are not contained in any other of the given folders
 	pub fn shallowest_folders<'a>(&'a self, layers: impl Iterator<Item = &'a [LayerId]>) -> Vec<&[LayerId]> {
-		self.shallowest_unique_layers(self.folders(layers))
+		Self::shallowest_unique_layers(self.folders(layers))
 	}
 
 	// Return returns all layers that are not contained in any other of the given folders
-	pub fn shallowest_unique_layers<'a>(&'a self, layers: impl Iterator<Item = &'a [LayerId]>) -> Vec<&[LayerId]> {
+	pub fn shallowest_unique_layers<'a>(layers: impl Iterator<Item = &'a [LayerId]>) -> Vec<&'a [LayerId]> {
 		let mut sorted_layers: Vec<_> = layers.collect();
 		sorted_layers.sort();
 		// Sorting here creates groups of similar UUID paths
