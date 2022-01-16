@@ -1,4 +1,5 @@
 use crate::consts::{VIEWPORT_ROTATE_SNAP_INTERVAL, VIEWPORT_SCROLL_RATE, VIEWPORT_ZOOM_LEVELS, VIEWPORT_ZOOM_MOUSE_RATE, VIEWPORT_ZOOM_SCALE_MAX, VIEWPORT_ZOOM_SCALE_MIN, VIEWPORT_ZOOM_WHEEL_RATE};
+use crate::frontend::utility_types::MouseCursorIcon;
 use crate::input::mouse::{ViewportBounds, ViewportPosition};
 use crate::input::InputPreprocessorMessageHandler;
 use crate::message_prelude::*;
@@ -221,6 +222,7 @@ impl MessageHandler<MovementMessage, (&Document, &InputPreprocessorMessageHandle
 				self.mouse_position = ipp.mouse.position;
 			}
 			RotateCanvasBegin => {
+				responses.push_back(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Default }.into());
 				self.tilting = true;
 				self.mouse_position = ipp.mouse.position;
 			}
@@ -241,6 +243,7 @@ impl MessageHandler<MovementMessage, (&Document, &InputPreprocessorMessageHandle
 				self.tilt = self.snapped_angle();
 				self.zoom = self.snapped_scale();
 				responses.push_back(ToolMessage::DocumentIsDirty.into());
+				responses.push_back(ToolMessage::UpdateCursor.into());
 				self.snap_tilt = false;
 				self.snap_tilt_released = false;
 				self.snap_zoom = false;
@@ -256,6 +259,7 @@ impl MessageHandler<MovementMessage, (&Document, &InputPreprocessorMessageHandle
 				self.create_document_transform(&ipp.viewport_bounds, responses);
 			}
 			TranslateCanvasBegin => {
+				responses.push_back(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Grabbing }.into());
 				self.panning = true;
 				self.mouse_position = ipp.mouse.position;
 			}
@@ -284,6 +288,7 @@ impl MessageHandler<MovementMessage, (&Document, &InputPreprocessorMessageHandle
 				responses.push_back(SetCanvasZoom { zoom_factor: self.zoom * zoom_factor }.into());
 			}
 			ZoomCanvasBegin => {
+				responses.push_back(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::ZoomIn }.into());
 				self.zooming = true;
 				self.mouse_position = ipp.mouse.position;
 			}

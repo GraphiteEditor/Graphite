@@ -101,6 +101,13 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, &InputPreprocessorMes
 
 				update_working_colors(document_data, responses);
 			}
+			ToolMessage::UpdateCursor => {
+				let document_data = &self.tool_state.document_tool_data;
+				self.tool_state
+					.tool_data
+					.active_tool_mut()
+					.process_action(ToolMessage::UpdateCursor, (document, document_data, input), responses);
+			}
 			tool_message => {
 				let tool_type = message_to_tool_type(&tool_message);
 				let document_data = &self.tool_state.document_tool_data;
