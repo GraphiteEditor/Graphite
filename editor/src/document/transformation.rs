@@ -244,7 +244,8 @@ impl<'a> Selected<'a> {
 			let pivot = DAffine2::from_translation(*self.pivot);
 			let transformation = pivot * delta * pivot.inverse();
 
-			for layer_path in &self.selected {
+			// TODO: Cache the result of `shallowest_unique_layers` to avoid this heavy computation every frame of movement, see https://github.com/GraphiteEditor/Graphite/pull/481
+			for layer_path in Document::shallowest_unique_layers(self.selected.iter().map(|path| path.as_slice())) {
 				let parent_folder_path = &layer_path[..layer_path.len() - 1];
 				let original_layer_transforms = *self.original_transforms.get(layer_path).unwrap();
 
