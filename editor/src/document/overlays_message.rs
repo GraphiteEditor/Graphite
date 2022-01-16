@@ -8,8 +8,12 @@ use serde::{Deserialize, Serialize};
 #[impl_message(Message, DocumentMessage, Overlays)]
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub enum OverlaysMessage {
-	ClearAllOverlays,
+	// Sub-messages
+	#[remain::unsorted]
 	DispatchOperation(Box<DocumentOperation>),
+
+	// Messages
+	ClearAllOverlays,
 	Rerender,
 }
 

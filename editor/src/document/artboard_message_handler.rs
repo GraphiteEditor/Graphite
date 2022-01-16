@@ -1,5 +1,3 @@
-use super::layer_panel::LayerMetadata;
-use crate::input::InputPreprocessorMessageHandler;
 use crate::message_prelude::*;
 
 use graphene::color::Color;
@@ -23,14 +21,21 @@ impl ArtboardMessageHandler {
 	}
 }
 
-impl MessageHandler<ArtboardMessage, (&mut LayerMetadata, &GrapheneDocument, &InputPreprocessorMessageHandler)> for ArtboardMessageHandler {
+impl MessageHandler<ArtboardMessage, ()> for ArtboardMessageHandler {
 	#[remain::check]
-	fn process_action(&mut self, message: ArtboardMessage, _data: (&mut LayerMetadata, &GrapheneDocument, &InputPreprocessorMessageHandler), responses: &mut VecDeque<Message>) {
+	fn process_action(&mut self, message: ArtboardMessage, _: (), responses: &mut VecDeque<Message>) {
 		use ArtboardMessage::*;
 
-		// let (layer_metadata, document, ipp) = data;
 		#[remain::sorted]
 		match message {
+			// Sub-messages
+			#[remain::unsorted]
+			DispatchOperation(operation) => match self.artboards_graphene_document.handle_operation(&operation) {
+				Ok(_) => (),
+				Err(e) => log::error!("Artboard Error: {:?}", e),
+			},
+
+			// Messages
 			AddArtboard { top, left, height, width } => {
 				let artboard_id = generate_uuid();
 				self.artboard_ids.push(artboard_id);
@@ -50,10 +55,6 @@ impl MessageHandler<ArtboardMessage, (&mut LayerMetadata, &GrapheneDocument, &In
 
 				responses.push_back(DocumentMessage::RenderDocument.into());
 			}
-			DispatchOperation(operation) => match self.artboards_graphene_document.handle_operation(&operation) {
-				Ok(_) => (),
-				Err(e) => log::error!("Artboard Error: {:?}", e),
-			},
 			RenderArtboards => {
 				// Render an infinite canvas if there are no artboards
 				if self.artboard_ids.is_empty() {

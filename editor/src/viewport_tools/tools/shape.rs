@@ -24,10 +24,17 @@ pub struct Shape {
 #[impl_message(Message, ToolMessage, Shape)]
 #[derive(PartialEq, Clone, Debug, Hash, Serialize, Deserialize)]
 pub enum ShapeMessage {
+	// Standard messages
+	#[remain::unsorted]
 	Abort,
+
+	// Tool-specific messages
 	DragStart,
 	DragStop,
-	Resize { center: Key, lock_ratio: Key },
+	Resize {
+		center: Key,
+		lock_ratio: Key,
+	},
 }
 
 impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Shape {

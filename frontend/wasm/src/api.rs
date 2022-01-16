@@ -164,8 +164,11 @@ impl JsEditorHandle {
 		self.dispatch(message);
 	}
 
-	pub fn open_document_file(&self, name: String, content: String) {
-		let message = PortfolioMessage::OpenDocumentFile(name, content);
+	pub fn open_document_file(&self, document_name: String, document_serialized_content: String) {
+		let message = PortfolioMessage::OpenDocumentFile {
+			document_name,
+			document_serialized_content,
+		};
 		self.dispatch(message);
 	}
 

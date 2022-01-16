@@ -23,7 +23,11 @@ pub struct Eyedropper {
 #[impl_message(Message, ToolMessage, Eyedropper)]
 #[derive(PartialEq, Clone, Debug, Hash, Serialize, Deserialize)]
 pub enum EyedropperMessage {
+	// Standard messages
+	#[remain::unsorted]
 	Abort,
+
+	// Tool-specific messages
 	LeftMouseDown,
 	RightMouseDown,
 }

@@ -27,9 +27,12 @@ pub struct Path {
 #[derive(PartialEq, Clone, Debug, Hash, Serialize, Deserialize)]
 pub enum PathMessage {
 	// Standard messages
+	#[remain::unsorted]
 	Abort,
+	#[remain::unsorted]
 	DocumentIsDirty,
 
+	// Tool-specific messages
 	DragStart,
 	DragStop,
 	PointerMove,
