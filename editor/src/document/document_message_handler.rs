@@ -257,7 +257,6 @@ impl DocumentMessageHandler {
 		let (mut structure, mut data) = (vec![0], Vec::new());
 		self.serialize_structure(self.graphene_document.root.as_folder().unwrap(), &mut structure, &mut data, &mut vec![]);
 		structure[0] = structure.len() as u64 - 1;
-		log::info!("Structure {:?}, data {:?}", structure, data);
 		structure.extend(data);
 
 		structure
