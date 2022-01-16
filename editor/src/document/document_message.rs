@@ -68,6 +68,7 @@ pub enum DocumentMessage {
 	MoveSelectedLayersTo {
 		folder_path: Vec<LayerId>,
 		insert_index: isize,
+		reverse_index: bool,
 	},
 	NudgeSelectedLayers {
 		delta_x: f64,
