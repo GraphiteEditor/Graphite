@@ -1,8 +1,10 @@
 use crate::consts::{VIEWPORT_ROTATE_SNAP_INTERVAL, VIEWPORT_SCROLL_RATE, VIEWPORT_ZOOM_LEVELS, VIEWPORT_ZOOM_MOUSE_RATE, VIEWPORT_ZOOM_SCALE_MAX, VIEWPORT_ZOOM_SCALE_MIN, VIEWPORT_ZOOM_WHEEL_RATE};
 use crate::frontend::utility_types::MouseCursorIcon;
+use crate::input::keyboard::Key;
 use crate::input::mouse::{ViewportBounds, ViewportPosition};
 use crate::input::InputPreprocessorMessageHandler;
 use crate::message_prelude::*;
+use crate::misc::{HintData, HintGroup, HintInfo, KeysGroup};
 
 use graphene::document::Document;
 use graphene::Operation as DocumentOperation;
@@ -223,6 +225,18 @@ impl MessageHandler<MovementMessage, (&Document, &InputPreprocessorMessageHandle
 			}
 			RotateCanvasBegin => {
 				responses.push_back(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Default }.into());
+				responses.push_back(
+					FrontendMessage::UpdateInputHints {
+						hint_data: HintData(vec![HintGroup(vec![HintInfo {
+							key_groups: vec![KeysGroup(vec![Key::KeyControl])],
+							mouse: None,
+							label: String::from("Snap 15°"),
+							plus: false,
+						}])]),
+					}
+					.into(),
+				);
+
 				self.tilting = true;
 				self.mouse_position = ipp.mouse.position;
 			}
@@ -244,6 +258,7 @@ impl MessageHandler<MovementMessage, (&Document, &InputPreprocessorMessageHandle
 				self.zoom = self.snapped_scale();
 				responses.push_back(ToolMessage::DocumentIsDirty.into());
 				responses.push_back(ToolMessage::UpdateCursor.into());
+				responses.push_back(ToolMessage::UpdateHints.into());
 				self.snap_tilt = false;
 				self.snap_tilt_released = false;
 				self.snap_zoom = false;
@@ -260,6 +275,8 @@ impl MessageHandler<MovementMessage, (&Document, &InputPreprocessorMessageHandle
 			}
 			TranslateCanvasBegin => {
 				responses.push_back(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Grabbing }.into());
+				responses.push_back(FrontendMessage::UpdateInputHints { hint_data: HintData(Vec::new()) }.into());
+
 				self.panning = true;
 				self.mouse_position = ipp.mouse.position;
 			}
@@ -289,6 +306,18 @@ impl MessageHandler<MovementMessage, (&Document, &InputPreprocessorMessageHandle
 			}
 			ZoomCanvasBegin => {
 				responses.push_back(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::ZoomIn }.into());
+				responses.push_back(
+					FrontendMessage::UpdateInputHints {
+						hint_data: HintData(vec![HintGroup(vec![HintInfo {
+							key_groups: vec![KeysGroup(vec![Key::KeyControl])],
+							mouse: None,
+							label: String::from("Snap Increments"),
+							plus: false,
+						}])]),
+					}
+					.into(),
+				);
+
 				self.zooming = true;
 				self.mouse_position = ipp.mouse.position;
 			}
