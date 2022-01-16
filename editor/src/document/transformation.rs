@@ -241,13 +241,7 @@ impl<'a> Selected<'a> {
 			let pivot = DAffine2::from_translation(*self.pivot);
 			let transformation = pivot * delta * pivot.inverse();
 
-			for layer_path in &self.selected {
-				// Do not transform layers when transforming a parent folder.
-				// O(n^2)
-				if self.selected.iter().any(|selected| layer_path[0..layer_path.len() - 1].starts_with(selected)) {
-					continue;
-				}
-
+			for layer_path in Document::shallowest_unique_layers(self.selected.iter().map(|path| path.as_slice())) {
 				let parent_folder_path = &layer_path[..layer_path.len() - 1];
 				let original_layer_transforms = *self.original_transforms.get(layer_path).unwrap();
 

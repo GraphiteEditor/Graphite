@@ -9,6 +9,7 @@ use crate::misc::{HintData, HintGroup, HintInfo, KeysGroup};
 use crate::viewport_tools::snapping::SnapHandler;
 use crate::viewport_tools::tool::{DocumentToolData, Fsm, ToolActionHandlerData};
 
+use graphene::document::Document;
 use graphene::intersection::Quad;
 use graphene::layers::style::{self, Fill, Stroke};
 use graphene::Operation;
@@ -218,16 +219,10 @@ impl Fsm for SelectToolFsmState {
 					let mouse_delta = mouse_position - data.drag_current;
 
 					let closest_move = data.snap_handler.snap_layers(document, &data.layers_dragging, mouse_delta);
-					for path in data.layers_dragging.iter() {
-						// Do not transform layers when transforming a parent folder.
-						// O(n^2)
-						if data.layers_dragging.iter().any(|selected| path[0..path.len() - 1].starts_with(selected)) {
-							continue;
-						}
-
+					for path in Document::shallowest_unique_layers(data.layers_dragging.iter().map(|path| path.as_slice())) {
 						responses.push_front(
 							Operation::TransformLayerInViewport {
-								path: path.clone(),
+								path: path.to_vec(),
 								transform: DAffine2::from_translation(mouse_delta + closest_move).to_cols_array(),
 							}
 							.into(),
