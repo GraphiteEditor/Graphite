@@ -27,6 +27,7 @@ pub trait Fsm {
 	) -> Self;
 
 	fn update_hints(&self, responses: &mut VecDeque<Message>);
+	fn update_cursor(&self, responses: &mut VecDeque<Message>);
 }
 
 #[derive(Debug, Clone)]

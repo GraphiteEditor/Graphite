@@ -1,4 +1,5 @@
 use crate::document::DocumentMessageHandler;
+use crate::frontend::utility_types::MouseCursorIcon;
 use crate::input::keyboard::{Key, MouseMotion};
 use crate::input::InputPreprocessorMessageHandler;
 use crate::message_prelude::*;
@@ -44,11 +45,17 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Pen {
 			return;
 		}
 
+		if action == ToolMessage::UpdateCursor {
+			self.fsm_state.update_cursor(responses);
+			return;
+		}
+
 		let new_state = self.fsm_state.transition(action, data.0, data.1, &mut self.data, data.2, responses);
 
 		if self.fsm_state != new_state {
 			self.fsm_state = new_state;
 			self.fsm_state.update_hints(responses);
+			self.fsm_state.update_cursor(responses);
 		}
 	}
 
@@ -192,6 +199,10 @@ impl Fsm for PenToolFsmState {
 		};
 
 		responses.push_back(FrontendMessage::UpdateInputHints { hint_data }.into());
+	}
+
+	fn update_cursor(&self, responses: &mut VecDeque<Message>) {
+		responses.push_back(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Default }.into());
 	}
 }
 
