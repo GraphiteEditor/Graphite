@@ -54,6 +54,7 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Pen {
 
 	fn actions(&self) -> ActionList {
 		use PenToolFsmState::*;
+
 		match self.fsm_state {
 			Ready => actions!(PenMessageDiscriminant; Undo, DragStart, DragStop, Confirm, Abort),
 			Drawing => actions!(PenMessageDiscriminant; DragStop, PointerMove, Confirm, Abort),
@@ -88,10 +89,11 @@ impl Fsm for PenToolFsmState {
 		input: &InputPreprocessorMessageHandler,
 		responses: &mut VecDeque<Message>,
 	) -> Self {
-		let transform = document.graphene_document.root.transform;
-
 		use PenMessage::*;
 		use PenToolFsmState::*;
+
+		let transform = document.graphene_document.root.transform;
+
 		if let ToolMessage::Pen(event) = event {
 			match (self, event) {
 				(Ready, DragStart) => {

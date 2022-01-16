@@ -45,6 +45,7 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Ellipse {
 
 	fn actions(&self) -> ActionList {
 		use EllipseToolFsmState::*;
+
 		match self.fsm_state {
 			Ready => actions!(EllipseMessageDiscriminant; DragStart),
 			Drawing => actions!(EllipseMessageDiscriminant; DragStop, Abort, Resize),
@@ -81,9 +82,11 @@ impl Fsm for EllipseToolFsmState {
 		input: &InputPreprocessorMessageHandler,
 		responses: &mut VecDeque<Message>,
 	) -> Self {
-		let mut shape_data = &mut data.data;
 		use EllipseMessage::*;
 		use EllipseToolFsmState::*;
+
+		let mut shape_data = &mut data.data;
+
 		if let ToolMessage::Ellipse(event) = event {
 			match (self, event) {
 				(Ready, DragStart) => {

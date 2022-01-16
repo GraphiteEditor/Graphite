@@ -56,6 +56,7 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Select {
 
 	fn actions(&self) -> ActionList {
 		use SelectToolFsmState::*;
+
 		match self.fsm_state {
 			Ready => actions!(SelectMessageDiscriminant; DragStart),
 			Dragging => actions!(SelectMessageDiscriminant; DragStop, MouseMove),
@@ -235,7 +236,7 @@ impl Fsm for SelectToolFsmState {
 					data.drag_current = mouse_position + closest_move;
 					Dragging
 				}
-				(DrawingBox, MouseMove { snap_angle: _ }) => {
+				(DrawingBox, MouseMove { .. }) => {
 					data.drag_current = input.mouse.position;
 					let half_pixel_offset = DVec2::splat(0.5);
 					let start = data.drag_start + half_pixel_offset;

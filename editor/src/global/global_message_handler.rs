@@ -9,6 +9,7 @@ impl MessageHandler<GlobalMessage, ()> for GlobalMessageHandler {
 	#[remain::check]
 	fn process_action(&mut self, message: GlobalMessage, _data: (), _responses: &mut VecDeque<Message>) {
 		use GlobalMessage::*;
+
 		#[remain::sorted]
 		match message {
 			LogDebug => {

@@ -112,7 +112,7 @@ impl Layer {
 			self.cache.clear();
 			let _ = writeln!(self.cache, r#"<g transform="matrix("#);
 			self.transform.to_cols_array().iter().enumerate().for_each(|(i, f)| {
-				let _ = self.cache.write_str(&(f.to_string() + if i != 5 { "," } else { "" }));
+				let _ = self.cache.write_str(&(f.to_string() + if i == 5 { "" } else { "," }));
 			});
 			let _ = write!(
 				self.cache,

@@ -52,6 +52,7 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Path {
 	// Different actions depending on state may be wanted:
 	fn actions(&self) -> ActionList {
 		use PathToolFsmState::*;
+
 		match self.fsm_state {
 			Ready => actions!(PathMessageDiscriminant; DragStart),
 			Dragging => actions!(PathMessageDiscriminant; DragStop, PointerMove),
