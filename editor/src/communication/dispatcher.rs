@@ -128,6 +128,7 @@ mod test {
 	use crate::message_prelude::*;
 	use crate::misc::test_utils::EditorTestUtils;
 	use crate::Editor;
+
 	use graphene::color::Color;
 	use graphene::Operation;
 

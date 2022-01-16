@@ -87,6 +87,7 @@ impl Rotation {
 			self.dragged_angle
 		}
 	}
+  
 	#[must_use]
 	pub fn increment_amount(self, delta: f64) -> Self {
 		Self {
@@ -124,6 +125,7 @@ impl Scale {
 			Axis::Y => DVec2::new(1., factor),
 		}
 	}
+
 	#[must_use]
 	pub fn increment_amount(self, delta: f64) -> Self {
 		Self {

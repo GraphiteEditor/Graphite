@@ -51,6 +51,7 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Navigate {
 
 	fn actions(&self) -> ActionList {
 		use NavigateToolFsmState::*;
+
 		match self.fsm_state {
 			Ready => actions!(NavigateMessageDiscriminant; TranslateCanvasBegin, RotateCanvasBegin, ZoomCanvasBegin),
 			_ => actions!(NavigateMessageDiscriminant; ClickZoom, MouseMove, TransformCanvasEnd),

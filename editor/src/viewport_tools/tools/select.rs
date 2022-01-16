@@ -179,6 +179,7 @@ impl Fsm for SelectToolFsmState {
 					let state = if selected.iter().any(|path| intersection.contains(path)) {
 						buffer.push(DocumentMessage::StartTransaction.into());
 						data.layers_dragging = selected;
+
 						data.snap_handler.start_snap(responses, input.viewport_bounds.size(), document, document.non_selected_layers_sorted());
 
 						Dragging
@@ -194,6 +195,7 @@ impl Fsm for SelectToolFsmState {
 							buffer.push(DocumentMessage::StartTransaction.into());
 							data.layers_dragging.append(&mut selected);
 							data.snap_handler.start_snap(responses, input.viewport_bounds.size(), document, document.non_selected_layers_sorted());
+              
 							Dragging
 						} else {
 							data.drag_box_overlay_layer = Some(add_bounding_box(&mut buffer));
@@ -201,6 +203,7 @@ impl Fsm for SelectToolFsmState {
 						}
 					};
 					buffer.into_iter().rev().for_each(|message| responses.push_front(message));
+
 					state
 				}
 				(Dragging, MouseMove { snap_angle }) => {
