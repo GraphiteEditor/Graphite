@@ -39,7 +39,7 @@ export class FrontendDocumentDetails extends DocumentDetails {
 	readonly id!: BigInt;
 }
 
-export type MouseCursorIcon = string;
+export type MouseCursorIcon = "default" | "zoom-in" | "zoom-out" | "grabbing" | "crosshair";
 
 export class UpdateOpenDocumentsList extends JsMessage {
 	@Type(() => FrontendDocumentDetails)
