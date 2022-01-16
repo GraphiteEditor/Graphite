@@ -3,13 +3,13 @@
 		<div class="secondary swatch">
 			<button @click="() => clickSecondarySwatch()" ref="secondaryButton" data-hover-menu-spawner></button>
 			<FloatingMenu :type="'Popover'" :direction="'Right'" horizontal ref="secondarySwatchFloatingMenu">
-				<ColorPicker @update:color="(color) => secondaryColorChanged(color)" :color="secondaryColor" />
+				<ColorPicker @update:color="(color: RGBA_) => secondaryColorChanged(color)" :color="secondaryColor" />
 			</FloatingMenu>
 		</div>
 		<div class="primary swatch">
 			<button @click="() => clickPrimarySwatch()" ref="primaryButton" data-hover-menu-spawner></button>
 			<FloatingMenu :type="'Popover'" :direction="'Right'" horizontal ref="primarySwatchFloatingMenu">
-				<ColorPicker @update:color="(color) => primaryColorChanged(color)" :color="primaryColor" />
+				<ColorPicker @update:color="(color: RGBA_) => primaryColorChanged(color)" :color="primaryColor" />
 			</FloatingMenu>
 		</div>
 	</div>
@@ -68,11 +68,16 @@
 <script lang="ts">
 import { defineComponent } from "vue";
 
-import { RGBA, UpdateWorkingColors } from "@/dispatcher/js-messages";
+import { type RGBA, UpdateWorkingColors } from "@/dispatcher/js-messages";
 import { rgbaToDecimalRgba } from "@/utilities/color";
 
 import ColorPicker from "@/components/widgets/floating-menus/ColorPicker.vue";
 import FloatingMenu from "@/components/widgets/floating-menus/FloatingMenu.vue";
+
+// Satisfies Volar (https://github.com/johnsoncodehk/volar/issues/596)
+declare global {
+	type RGBA_ = RGBA;
+}
 
 export default defineComponent({
 	inject: ["editor"],

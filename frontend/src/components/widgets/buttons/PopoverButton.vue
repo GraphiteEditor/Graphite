@@ -49,10 +49,10 @@
 <script lang="ts">
 import { defineComponent, PropType } from "vue";
 
+import { PopoverButtonIcon } from "@/utilities/widgets";
+
 import IconButton from "@/components/widgets/buttons/IconButton.vue";
 import FloatingMenu from "@/components/widgets/floating-menus/FloatingMenu.vue";
-
-export type PopoverButtonIcon = "DropdownArrow" | "VerticalEllipsis";
 
 export default defineComponent({
 	components: {
