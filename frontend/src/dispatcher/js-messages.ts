@@ -204,25 +204,14 @@ export class UpdateDocumentRulers extends JsMessage {
 }
 
 const ToCssCursorProperty = Transform(({ value }) => {
-	switch (value) {
-		case "Default":
-			return "default";
+	const cssNames: Record<string, MouseCursorIcon> = {
+		ZoomIn: "zoom-in",
+		ZoomOut: "zoom-out",
+		Grabbing: "grabbing",
+		Crosshair: "crosshair",
+	};
 
-		case "ZoomIn":
-			return "zoom-in";
-
-		case "ZoomOut":
-			return "zoom-out";
-
-		case "Grabbing":
-			return "grabbing";
-
-		case "Crosshair":
-			return "crosshair";
-
-		default:
-			return "default";
-	}
+	return cssNames[value] || "default";
 });
 
 export class UpdateMouseCursor extends JsMessage {
