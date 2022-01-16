@@ -1,4 +1,5 @@
 use crate::document::DocumentMessageHandler;
+use crate::frontend::utility_types::MouseCursorIcon;
 use crate::input::keyboard::{Key, MouseMotion};
 use crate::input::InputPreprocessorMessageHandler;
 use crate::message_prelude::*;
@@ -44,16 +45,23 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Pen {
 			return;
 		}
 
+		if action == ToolMessage::UpdateCursor {
+			self.fsm_state.update_cursor(responses);
+			return;
+		}
+
 		let new_state = self.fsm_state.transition(action, data.0, data.1, &mut self.data, data.2, responses);
 
 		if self.fsm_state != new_state {
 			self.fsm_state = new_state;
 			self.fsm_state.update_hints(responses);
+			self.fsm_state.update_cursor(responses);
 		}
 	}
 
 	fn actions(&self) -> ActionList {
 		use PenToolFsmState::*;
+
 		match self.fsm_state {
 			Ready => actions!(PenMessageDiscriminant; Undo, DragStart, DragStop, Confirm, Abort),
 			Drawing => actions!(PenMessageDiscriminant; DragStop, PointerMove, Confirm, Abort),
@@ -88,10 +96,11 @@ impl Fsm for PenToolFsmState {
 		input: &InputPreprocessorMessageHandler,
 		responses: &mut VecDeque<Message>,
 	) -> Self {
-		let transform = document.graphene_document.root.transform;
-
 		use PenMessage::*;
 		use PenToolFsmState::*;
+
+		let transform = document.graphene_document.root.transform;
+
 		if let ToolMessage::Pen(event) = event {
 			match (self, event) {
 				(Ready, DragStart) => {
@@ -190,6 +199,10 @@ impl Fsm for PenToolFsmState {
 		};
 
 		responses.push_back(FrontendMessage::UpdateInputHints { hint_data }.into());
+	}
+
+	fn update_cursor(&self, responses: &mut VecDeque<Message>) {
+		responses.push_back(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Default }.into());
 	}
 }
 

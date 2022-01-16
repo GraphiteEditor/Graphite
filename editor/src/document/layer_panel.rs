@@ -114,6 +114,7 @@ impl fmt::Display for LayerDataTypeDiscriminant {
 impl From<&LayerDataType> for LayerDataTypeDiscriminant {
 	fn from(data: &LayerDataType) -> Self {
 		use LayerDataType::*;
+
 		match data {
 			Folder(_) => LayerDataTypeDiscriminant::Folder,
 			Shape(_) => LayerDataTypeDiscriminant::Shape,

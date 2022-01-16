@@ -10,7 +10,7 @@
 			</div>
 			<div class="spacer"></div>
 			<div class="right side">
-				<OptionalInput v-model:checked="snappingEnabled" @update:checked="(newStatus) => setSnap(newStatus)" :icon="'Snapping'" title="Snapping" />
+				<OptionalInput v-model:checked="snappingEnabled" @update:checked="(newStatus: boolean) => setSnap(newStatus)" :icon="'Snapping'" title="Snapping" />
 				<PopoverButton>
 					<h3>Snapping</h3>
 					<p>The contents of this popover menu are coming soon</p>
@@ -42,7 +42,7 @@
 
 				<Separator :type="'Section'" />
 
-				<NumberInput @update:value="(newRotation) => setRotation(newRotation)" v-model:value="documentRotation" :incrementFactor="15" :unit="'°'" />
+				<NumberInput @update:value="(newRotation: number) => setRotation(newRotation)" v-model:value="documentRotation" :incrementFactor="15" :unit="'°'" />
 
 				<Separator :type="'Section'" />
 
@@ -54,7 +54,7 @@
 
 				<NumberInput
 					v-model:value="documentZoom"
-					@update:value="(newZoom) => setCanvasZoom(newZoom)"
+					@update:value="(newZoom: number) => setCanvasZoom(newZoom)"
 					:min="0.000001"
 					:max="1000000"
 					:incrementBehavior="'Callback'"
@@ -123,7 +123,7 @@
 						<CanvasRuler :origin="rulerOrigin.y" :majorMarkSpacing="rulerSpacing" :numberInterval="rulerInterval" :direction="'Vertical'" />
 					</LayoutCol>
 					<LayoutCol :class="'canvas-area'">
-						<div class="canvas" ref="canvas">
+						<div class="canvas" ref="canvas" :style="{ cursor: canvasCursor }" @pointerdown="(e: PointerEvent) => canvasPointerDown(e)">
 							<svg class="artboards" v-html="artboardSvg" :style="{ width: canvasSvgWidth, height: canvasSvgHeight }"></svg>
 							<svg class="artwork" v-html="artworkSvg" :style="{ width: canvasSvgWidth, height: canvasSvgHeight }"></svg>
 							<svg class="overlays" v-html="overlaysSvg" :style="{ width: canvasSvgWidth, height: canvasSvgHeight }"></svg>
@@ -133,9 +133,9 @@
 						<PersistentScrollbar
 							:direction="'Vertical'"
 							:handlePosition="scrollbarPos.y"
-							@update:handlePosition="(newValue) => translateCanvasY(newValue)"
+							@update:handlePosition="(newValue: number) => translateCanvasY(newValue)"
 							v-model:handleLength="scrollbarSize.y"
-							@pressTrack="(delta) => pageY(delta)"
+							@pressTrack="(delta: number) => pageY(delta)"
 							:class="'right-scrollbar'"
 						/>
 					</LayoutCol>
@@ -144,9 +144,9 @@
 					<PersistentScrollbar
 						:direction="'Horizontal'"
 						:handlePosition="scrollbarPos.x"
-						@update:handlePosition="(newValue) => translateCanvasX(newValue)"
+						@update:handlePosition="(newValue: number) => translateCanvasX(newValue)"
 						v-model:handleLength="scrollbarSize.x"
-						@pressTrack="(delta) => pageX(delta)"
+						@pressTrack="(delta: number) => pageX(delta)"
 						:class="'bottom-scrollbar'"
 					/>
 				</LayoutRow>
@@ -222,7 +222,7 @@
 			}
 
 			.canvas {
-				background: var(--color-1-nearblack);
+				background: var(--color-2-mildblack);
 				width: 100%;
 				height: 100%;
 				// Allows the SVG to be placed at explicit integer values of width and height to prevent non-pixel-perfect SVG scaling
@@ -261,6 +261,7 @@ import {
 	UpdateCanvasRotation,
 	ToolName,
 	UpdateDocumentArtboards,
+	UpdateMouseCursor,
 } from "@/dispatcher/js-messages";
 
 import LayoutCol from "@/components/layout/LayoutCol.vue";
@@ -338,6 +339,10 @@ export default defineComponent({
 		resetWorkingColors() {
 			this.editor.instance.reset_colors();
 		},
+		canvasPointerDown(e: PointerEvent) {
+			const canvas = this.$refs.canvas as HTMLElement;
+			canvas.setPointerCapture(e.pointerId);
+		},
 	},
 	mounted() {
 		this.editor.dispatcher.subscribeJsMessage(UpdateDocumentArtwork, (UpdateDocumentArtwork) => {
@@ -378,6 +383,10 @@ export default defineComponent({
 			this.documentRotation = (360 + (newRotation % 360)) % 360;
 		});
 
+		this.editor.dispatcher.subscribeJsMessage(UpdateMouseCursor, (updateMouseCursor) => {
+			this.canvasCursor = updateMouseCursor.cursor;
+		});
+
 		window.addEventListener("resize", this.viewportResize);
 		window.addEventListener("DOMContentLoaded", this.viewportResize);
 	},
@@ -401,6 +410,7 @@ export default defineComponent({
 			overlaysSvg: "",
 			canvasSvgWidth: "100%",
 			canvasSvgHeight: "100%",
+			canvasCursor: "default",
 			activeTool: "Select" as ToolName,
 			activeToolOptions: {},
 			documentModeEntries,

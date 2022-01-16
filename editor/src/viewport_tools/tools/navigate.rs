@@ -1,4 +1,5 @@
 use crate::document::DocumentMessageHandler;
+use crate::frontend::utility_types::MouseCursorIcon;
 use crate::input::keyboard::{Key, MouseMotion};
 use crate::input::InputPreprocessorMessageHandler;
 use crate::message_prelude::*;
@@ -34,11 +35,17 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Navigate {
 			return;
 		}
 
+		if action == ToolMessage::UpdateCursor {
+			self.fsm_state.update_cursor(responses);
+			return;
+		}
+
 		let new_state = self.fsm_state.transition(action, data.0, data.1, &mut self.data, data.2, responses);
 
 		if self.fsm_state != new_state {
 			self.fsm_state = new_state;
 			self.fsm_state.update_hints(responses);
+			self.fsm_state.update_cursor(responses);
 		}
 	}
 
@@ -209,5 +216,16 @@ impl Fsm for NavigateToolFsmState {
 		};
 
 		responses.push_back(FrontendMessage::UpdateInputHints { hint_data }.into());
+	}
+
+	fn update_cursor(&self, responses: &mut VecDeque<Message>) {
+		let cursor = match *self {
+			NavigateToolFsmState::Ready => MouseCursorIcon::ZoomIn,
+			NavigateToolFsmState::Panning => MouseCursorIcon::Grabbing,
+			NavigateToolFsmState::Tilting => MouseCursorIcon::Default,
+			NavigateToolFsmState::Zooming => MouseCursorIcon::ZoomIn,
+		};
+
+		responses.push_back(FrontendMessage::UpdateMouseCursor { cursor }.into());
 	}
 }

@@ -1,5 +1,6 @@
 use crate::consts::SELECTION_TOLERANCE;
 use crate::document::DocumentMessageHandler;
+use crate::frontend::utility_types::MouseCursorIcon;
 use crate::input::keyboard::MouseMotion;
 use crate::input::InputPreprocessorMessageHandler;
 use crate::message_prelude::*;
@@ -34,11 +35,17 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Fill {
 			return;
 		}
 
+		if action == ToolMessage::UpdateCursor {
+			self.fsm_state.update_cursor(responses);
+			return;
+		}
+
 		let new_state = self.fsm_state.transition(action, data.0, data.1, &mut self.data, data.2, responses);
 
 		if self.fsm_state != new_state {
 			self.fsm_state = new_state;
 			self.fsm_state.update_hints(responses);
+			self.fsm_state.update_cursor(responses);
 		}
 	}
 
@@ -73,6 +80,7 @@ impl Fsm for FillToolFsmState {
 	) -> Self {
 		use FillMessage::*;
 		use FillToolFsmState::*;
+
 		if let ToolMessage::Fill(event) = event {
 			match (self, event) {
 				(Ready, lmb_or_rmb) if lmb_or_rmb == LeftMouseDown || lmb_or_rmb == RightMouseDown => {
@@ -119,5 +127,9 @@ impl Fsm for FillToolFsmState {
 		};
 
 		responses.push_back(FrontendMessage::UpdateInputHints { hint_data }.into());
+	}
+
+	fn update_cursor(&self, responses: &mut VecDeque<Message>) {
+		responses.push_back(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Default }.into());
 	}
 }

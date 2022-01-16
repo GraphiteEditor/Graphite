@@ -234,6 +234,7 @@ impl Default for Mapping {
 impl Mapping {
 	pub fn match_message(&self, message: InputMapperMessage, keys: &KeyStates, actions: ActionList) -> Option<Message> {
 		use InputMapperMessage::*;
+
 		let list = match message {
 			KeyDown(key) => &self.key_down[key as usize],
 			KeyUp(key) => &self.key_up[key as usize],

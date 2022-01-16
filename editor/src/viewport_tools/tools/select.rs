@@ -1,6 +1,7 @@
 use crate::consts::{COLOR_ACCENT, SELECTION_DRAG_ANGLE, SELECTION_TOLERANCE};
 use crate::document::utility_types::{AlignAggregate, AlignAxis, FlipAxis};
 use crate::document::DocumentMessageHandler;
+use crate::frontend::utility_types::MouseCursorIcon;
 use crate::input::keyboard::{Key, MouseMotion};
 use crate::input::mouse::ViewportPosition;
 use crate::input::InputPreprocessorMessageHandler;
@@ -46,16 +47,23 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Select {
 			return;
 		}
 
+		if action == ToolMessage::UpdateCursor {
+			self.fsm_state.update_cursor(responses);
+			return;
+		}
+
 		let new_state = self.fsm_state.transition(action, data.0, data.1, &mut self.data, data.2, responses);
 
 		if self.fsm_state != new_state {
 			self.fsm_state = new_state;
 			self.fsm_state.update_hints(responses);
+			self.fsm_state.update_cursor(responses);
 		}
 	}
 
 	fn actions(&self) -> ActionList {
 		use SelectToolFsmState::*;
+
 		match self.fsm_state {
 			Ready => actions!(SelectMessageDiscriminant; DragStart),
 			Dragging => actions!(SelectMessageDiscriminant; DragStop, MouseMove),
@@ -224,7 +232,7 @@ impl Fsm for SelectToolFsmState {
 					data.drag_current = mouse_position + closest_move;
 					Dragging
 				}
-				(DrawingBox, MouseMove { snap_angle: _ }) => {
+				(DrawingBox, MouseMove { .. }) => {
 					data.drag_current = input.mouse.position;
 					let half_pixel_offset = DVec2::splat(0.5);
 					let start = data.drag_start + half_pixel_offset;
@@ -414,5 +422,9 @@ impl Fsm for SelectToolFsmState {
 		};
 
 		responses.push_back(FrontendMessage::UpdateInputHints { hint_data }.into());
+	}
+
+	fn update_cursor(&self, responses: &mut VecDeque<Message>) {
+		responses.push_back(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Default }.into());
 	}
 }

@@ -3,7 +3,7 @@
 		<LayoutRow :class="'options-bar'">
 			<DropdownInput
 				v-model:selectedIndex="blendModeSelectedIndex"
-				@update:selectedIndex="(newSelectedIndex) => setLayerBlendMode(newSelectedIndex)"
+				@update:selectedIndex="(newSelectedIndex: number) => setLayerBlendMode(newSelectedIndex)"
 				:menuEntries="blendModeEntries"
 				:disabled="blendModeDropdownDisabled"
 			/>
@@ -12,7 +12,7 @@
 
 			<NumberInput
 				v-model:value="opacity"
-				@update:value="(newOpacity) => setLayerOpacity(newOpacity)"
+				@update:value="(newOpacity: number) => setLayerOpacity(newOpacity)"
 				:min="0"
 				:max="100"
 				:unit="'%'"
@@ -29,7 +29,7 @@
 			</PopoverButton>
 		</LayoutRow>
 		<LayoutRow :class="'layer-tree scrollable-y'">
-			<LayoutCol :class="'list'" ref="layerTreeList" @click="() => deselectAllLayers()" @dragover="updateInsertLine($event)" @dragend="drop($event)">
+			<LayoutCol :class="'list'" ref="layerTreeList" @click="() => deselectAllLayers()" @dragover="updateInsertLine($event)" @dragend="drop()">
 				<div class="layer-row" v-for="({ entry: layer }, index) in layers" :key="String(layer.path.slice(-1))">
 					<div class="visibility">
 						<IconButton
@@ -51,7 +51,7 @@
 						:data-index="index"
 						draggable="true"
 						@dragstart="dragStart($event, layer)"
-						:title="layer.path"
+						:title="String(layer.path)"
 					>
 						<div class="layer-type-icon">
 							<IconLabel v-if="layer.layer_type === 'Folder'" :icon="'NodeTypeFolder'" title="Folder" />

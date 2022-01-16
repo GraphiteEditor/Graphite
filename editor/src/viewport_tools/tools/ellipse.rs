@@ -1,5 +1,6 @@
 use super::shared::resize::Resize;
 use crate::document::DocumentMessageHandler;
+use crate::frontend::utility_types::MouseCursorIcon;
 use crate::input::keyboard::{Key, MouseMotion};
 use crate::input::InputPreprocessorMessageHandler;
 use crate::message_prelude::*;
@@ -35,16 +36,23 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Ellipse {
 			return;
 		}
 
+		if action == ToolMessage::UpdateCursor {
+			self.fsm_state.update_cursor(responses);
+			return;
+		}
+
 		let new_state = self.fsm_state.transition(action, data.0, data.1, &mut self.data, data.2, responses);
 
 		if self.fsm_state != new_state {
 			self.fsm_state = new_state;
 			self.fsm_state.update_hints(responses);
+			self.fsm_state.update_cursor(responses);
 		}
 	}
 
 	fn actions(&self) -> ActionList {
 		use EllipseToolFsmState::*;
+
 		match self.fsm_state {
 			Ready => actions!(EllipseMessageDiscriminant; DragStart),
 			Drawing => actions!(EllipseMessageDiscriminant; DragStop, Abort, Resize),
@@ -81,9 +89,11 @@ impl Fsm for EllipseToolFsmState {
 		input: &InputPreprocessorMessageHandler,
 		responses: &mut VecDeque<Message>,
 	) -> Self {
-		let mut shape_data = &mut data.data;
 		use EllipseMessage::*;
 		use EllipseToolFsmState::*;
+
+		let mut shape_data = &mut data.data;
+
 		if let ToolMessage::Ellipse(event) = event {
 			match (self, event) {
 				(Ready, DragStart) => {
@@ -173,5 +183,9 @@ impl Fsm for EllipseToolFsmState {
 		};
 
 		responses.push_back(FrontendMessage::UpdateInputHints { hint_data }.into());
+	}
+
+	fn update_cursor(&self, responses: &mut VecDeque<Message>) {
+		responses.push_back(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Crosshair }.into());
 	}
 }

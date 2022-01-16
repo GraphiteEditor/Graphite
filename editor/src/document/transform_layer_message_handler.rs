@@ -39,7 +39,7 @@ impl MessageHandler<TransformLayerMessage, (&mut HashMap<Vec<LayerId>, LayerMeta
 		let mut selected = Selected::new(&mut self.original_transforms, &mut self.pivot, layer_metadata, responses, document);
 
 		let mut begin_operation = |operation: TransformOperation, typing: &mut Typing, mouse_position: &mut DVec2, start_mouse: &mut DVec2| {
-			if !(operation == TransformOperation::None) {
+			if operation != TransformOperation::None {
 				selected.revert_operation();
 				typing.clear();
 			} else {

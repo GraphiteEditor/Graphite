@@ -78,10 +78,10 @@ impl DocumentMessageHandler {
 		let deserialized_result: Result<Self, DocumentError> = serde_json::from_str(serialized_content).map_err(|e| DocumentError::InvalidFile(e.to_string()));
 		match deserialized_result {
 			Ok(document) => {
-				if document.version != GRAPHITE_DOCUMENT_VERSION {
-					Err(DocumentError::InvalidFile("Graphite document version mismatch".to_string()))
-				} else {
+				if document.version == GRAPHITE_DOCUMENT_VERSION {
 					Ok(document)
+				} else {
+					Err(DocumentError::InvalidFile("Graphite document version mismatch".to_string()))
 				}
 			}
 			Err(e) => Err(e),
@@ -585,7 +585,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 			}
 			ExportDocument => {
 				// TODO(MFISH33): Add Dialog to select artboards
-				let bbox = self.document_bounds().unwrap_or([DVec2::ZERO, ipp.viewport_bounds.size()]);
+				let bbox = self.document_bounds().unwrap_or_else(|| [DVec2::ZERO, ipp.viewport_bounds.size()]);
 				let size = bbox[1] - bbox[0];
 				let name = match self.name.ends_with(FILE_SAVE_SUFFIX) {
 					true => self.name.clone().replace(FILE_SAVE_SUFFIX, FILE_EXPORT_SUFFIX),

@@ -29,7 +29,7 @@
 					:direction="'TopRight'"
 					:menuEntries="entry.children"
 					v-bind="{ defaultAction, minWidth, drawIcon, scrollable }"
-					:ref="(ref) => setEntryRefs(entry, ref)"
+					:ref="(ref: any) => setEntryRefs(entry, ref)"
 				/>
 			</div>
 		</template>

@@ -60,8 +60,10 @@ pub fn translate_blend_mode(blend_mode_svg_style_name: &str) -> Option<BlendMode
 }
 
 pub fn translate_key(name: &str) -> Key {
-	log::trace!("Key event received: {}", name);
 	use Key::*;
+
+	log::trace!("Key event received: {}", name);
+
 	match name.to_lowercase().as_str() {
 		"a" => KeyA,
 		"b" => KeyB,
