@@ -31,12 +31,13 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, &InputPreprocessorMes
 				}
 
 				// Send the Abort state transition to the tool
-				let mut send_abort_to_tool = |tool_type, message: ToolMessage, update_hints: bool| {
+				let mut send_abort_to_tool = |tool_type, message: ToolMessage, update_hints_and_cursor: bool| {
 					if let Some(tool) = tool_data.tools.get_mut(&tool_type) {
 						tool.process_action(message, (document, document_data, input), responses);
 
-						if update_hints {
+						if update_hints_and_cursor {
 							tool.process_action(ToolMessage::UpdateHints, (document, document_data, input), responses);
+							tool.process_action(ToolMessage::UpdateCursor, (document, document_data, input), responses);
 						}
 					}
 				};

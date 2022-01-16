@@ -183,7 +183,7 @@ impl DocumentMessageHandler {
 	}
 
 	pub fn selected_layers_without_children(&self) -> Vec<&[LayerId]> {
-		let unique_layers = self.graphene_document.shallowest_unique_layers(self.selected_layers());
+		let unique_layers = GrapheneDocument::shallowest_unique_layers(self.selected_layers());
 
 		// We need to maintain layer ordering
 		self.sort_layers(unique_layers.iter().copied())

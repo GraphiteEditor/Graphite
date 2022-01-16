@@ -1,6 +1,7 @@
 use crate::consts::{COLOR_ACCENT, SELECTION_DRAG_ANGLE, SELECTION_TOLERANCE};
 use crate::document::utility_types::{AlignAggregate, AlignAxis, FlipAxis};
 use crate::document::DocumentMessageHandler;
+use crate::frontend::utility_types::MouseCursorIcon;
 use crate::input::keyboard::{Key, MouseMotion};
 use crate::input::mouse::ViewportPosition;
 use crate::input::InputPreprocessorMessageHandler;
@@ -9,6 +10,7 @@ use crate::misc::{HintData, HintGroup, HintInfo, KeysGroup};
 use crate::viewport_tools::snapping::SnapHandler;
 use crate::viewport_tools::tool::{DocumentToolData, Fsm, ToolActionHandlerData};
 
+use graphene::document::Document;
 use graphene::intersection::Quad;
 use graphene::layers::style::{self, Fill, Stroke};
 use graphene::Operation;
@@ -46,11 +48,17 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Select {
 			return;
 		}
 
+		if action == ToolMessage::UpdateCursor {
+			self.fsm_state.update_cursor(responses);
+			return;
+		}
+
 		let new_state = self.fsm_state.transition(action, data.0, data.1, &mut self.data, data.2, responses);
 
 		if self.fsm_state != new_state {
 			self.fsm_state = new_state;
 			self.fsm_state.update_hints(responses);
+			self.fsm_state.update_cursor(responses);
 		}
 	}
 
@@ -218,10 +226,11 @@ impl Fsm for SelectToolFsmState {
 					let mouse_delta = mouse_position - data.drag_current;
 
 					let closest_move = data.snap_handler.snap_layers(document, &data.layers_dragging, mouse_delta);
-					for path in data.layers_dragging.iter() {
+					// TODO: Cache the result of `shallowest_unique_layers` to avoid this heavy computation every frame of movement, see https://github.com/GraphiteEditor/Graphite/pull/481
+					for path in Document::shallowest_unique_layers(data.layers_dragging.iter().map(|path| path.as_slice())) {
 						responses.push_front(
 							Operation::TransformLayerInViewport {
-								path: path.clone(),
+								path: path.to_vec(),
 								transform: DAffine2::from_translation(mouse_delta + closest_move).to_cols_array(),
 							}
 							.into(),
@@ -419,5 +428,9 @@ impl Fsm for SelectToolFsmState {
 		};
 
 		responses.push_back(FrontendMessage::UpdateInputHints { hint_data }.into());
+	}
+
+	fn update_cursor(&self, responses: &mut VecDeque<Message>) {
+		responses.push_back(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Default }.into());
 	}
 }
