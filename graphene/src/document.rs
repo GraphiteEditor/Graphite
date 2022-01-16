@@ -57,10 +57,10 @@ impl Document {
 
 	/// Returns a reference to the requested folder. Fails if the path does not exist,
 	/// or if the requested layer is not of type folder.
-	pub fn folder(&self, path: &[LayerId]) -> Result<&Folder, DocumentError> {
+	pub fn folder(&self, path: impl AsRef<[LayerId]>) -> Result<&Folder, DocumentError> {
 		let mut root = &self.root;
-		for id in path {
-			root = root.as_folder()?.layer(*id).ok_or_else(|| DocumentError::LayerNotFound(path.into()))?;
+		for id in path.as_ref() {
+			root = root.as_folder()?.layer(*id).ok_or_else(|| DocumentError::LayerNotFound(path.as_ref().into()))?;
 		}
 		root.as_folder()
 	}
@@ -98,8 +98,11 @@ impl Document {
 		layers.reduce(|a, b| &a[..a.iter().zip(b.iter()).take_while(|&(a, b)| a == b).count()]).unwrap_or_default()
 	}
 
-	pub fn folders<'a>(&'a self, layers: impl Iterator<Item = &'a [LayerId]>) -> impl Iterator<Item = &'a [LayerId]> {
-		layers.filter(|layer| self.is_folder(layer))
+	pub fn folders<'a, T: AsRef<[LayerId]>>(&'a self, layers: impl Iterator<Item = T> + 'a) -> impl Iterator<Item = T> + 'a
+	where
+		T: AsRef<[LayerId]> + std::cmp::Ord + 'a,
+	{
+		layers.filter(|layer| self.is_folder(layer.as_ref()))
 	}
 
 	// Returns the shallowest folder given the selection, even if the selection doesn't contain any folders
@@ -113,22 +116,31 @@ impl Document {
 	}
 
 	// Return returns all folders that are not contained in any other of the given folders
-	pub fn shallowest_folders<'a>(&'a self, layers: impl Iterator<Item = &'a [LayerId]>) -> Vec<&[LayerId]> {
+	pub fn shallowest_folders<'a, T>(&'a self, layers: impl Iterator<Item = T>) -> Vec<T>
+	where
+		T: AsRef<[LayerId]> + std::cmp::Ord + 'a,
+	{
 		Self::shallowest_unique_layers(self.folders(layers))
 	}
 
 	// Return returns all layers that are not contained in any other of the given folders
-	pub fn shallowest_unique_layers<'a>(layers: impl Iterator<Item = &'a [LayerId]>) -> Vec<&'a [LayerId]> {
+	pub fn shallowest_unique_layers<'a, T>(layers: impl Iterator<Item = T>) -> Vec<T>
+	where
+		T: AsRef<[LayerId]> + std::cmp::Ord + 'a,
+	{
 		let mut sorted_layers: Vec<_> = layers.collect();
 		sorted_layers.sort();
 		// Sorting here creates groups of similar UUID paths
-		sorted_layers.dedup_by(|a, b| a.starts_with(b));
+		sorted_layers.dedup_by(|a, b| a.as_ref().starts_with(b.as_ref()));
 		sorted_layers
 	}
 	// Deepest to shallowest (longest to shortest path length)
-	pub fn sorted_folders_by_depth<'a>(&'a self, layers: impl Iterator<Item = &'a [LayerId]>) -> Vec<&'a [LayerId]> {
+	pub fn sorted_folders_by_depth<'a, T>(&'a self, layers: impl Iterator<Item = T>) -> Vec<T>
+	where
+		T: AsRef<[LayerId]> + std::cmp::Ord + 'a,
+	{
 		let mut folders: Vec<_> = self.folders(layers).collect();
-		folders.sort_by_key(|a| std::cmp::Reverse(a.len()));
+		folders.sort_by_key(|a| std::cmp::Reverse(a.as_ref().len()));
 		folders
 	}
 
@@ -140,8 +152,8 @@ impl Document {
 		}
 	}
 
-	pub fn is_folder(&self, path: &[LayerId]) -> bool {
-		return self.folder(path).is_ok();
+	pub fn is_folder(&self, path: impl AsRef<[LayerId]>) -> bool {
+		return self.folder(path.as_ref()).is_ok();
 	}
 
 	// Determines which layer is closer to the root, if path_a return true, if path_b return false
@@ -262,7 +274,7 @@ impl Document {
 		if !self.layer(path)?.visible {
 			return Ok(());
 		}
-		if let Ok(folder) = self.folder(path) {
+		if let Ok(folder) = self.folder(&path) {
 			for layer in folder.layer_ids.iter() {
 				path.push(*layer);
 				self.visible_layers(path, paths)?;
