@@ -201,6 +201,24 @@ export class UpdateDocumentRulers extends JsMessage {
 	readonly interval!: number;
 }
 
+export type MouseCursorIcon = "default" | "zoom-in" | "zoom-out" | "grabbing" | "crosshair";
+
+const ToCssCursorProperty = Transform(({ value }) => {
+	const cssNames: Record<string, MouseCursorIcon> = {
+		ZoomIn: "zoom-in",
+		ZoomOut: "zoom-out",
+		Grabbing: "grabbing",
+		Crosshair: "crosshair",
+	};
+
+	return cssNames[value] || "default";
+});
+
+export class UpdateMouseCursor extends JsMessage {
+	@ToCssCursorProperty
+	readonly cursor!: MouseCursorIcon;
+}
+
 export class TriggerFileDownload extends JsMessage {
 	readonly document!: string;
 
@@ -378,6 +396,7 @@ export const messageConstructors: Record<string, MessageMaker> = {
 	UpdateWorkingColors,
 	UpdateCanvasZoom,
 	UpdateCanvasRotation,
+	UpdateMouseCursor,
 	DisplayDialogError,
 	DisplayDialogPanic,
 	DisplayConfirmationToCloseDocument,

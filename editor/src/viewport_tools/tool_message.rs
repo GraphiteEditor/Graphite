@@ -49,5 +49,6 @@ pub enum ToolMessage {
 	#[child]
 	Shape(ShapeMessage),
 	SwapColors,
+	UpdateCursor,
 	UpdateHints,
 }
