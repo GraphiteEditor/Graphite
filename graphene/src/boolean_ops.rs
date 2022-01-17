@@ -177,7 +177,7 @@ impl PathGraph {
 		}
 		new.add_edges_from_path(alpha, Origin::Alpha, false);
 		new.add_edges_from_path(beta, Origin::Beta, reverse);
-		// log::debug!("size: {}, {:?}", new.size(), new);
+		log::debug!("size: {}, {:?}", new.size(), new);
 		Ok(new)
 	}
 
@@ -186,43 +186,40 @@ impl PathGraph {
 	/// TODO: This function panics if an time value is NAN, no time value should ever be NAN, but this case should be handled, maybe not here
 	/// NOTE: about intersection time_val order
 	fn add_edges_from_path(&mut self, path: &BezPath, origin: Origin, reverse: bool) {
-		let mut seg_idx = 0;
 		//cstart holds the idx of the vertex the current edge is starting from
 		let mut cstart = None;
 		let mut current = Vec::new();
 		// in order to iterate through once, store information for incomplete first edge
 		let mut beginning = Vec::new();
 		let mut start_idx = None;
-		#[allow(clippy::explicit_counter_loop)]
-		for seg in path.segments() {
-			let mut intersects = self.intersects_in_seg(seg_idx, origin);
-			if intersects.len() > 0 {
-				intersects.sort_by(|(_, t1), (_, t2)| t1.partial_cmp(t2).unwrap());
-				for (vertex_id, t_val) in intersects {
-					let (seg1, seg2) = split_path_seg(&seg, t_val);
+
+		for (seg_idx, seg) in path.segments().enumerate() {
+			let (v_ids, mut t_values) = self.intersects_in_seg(seg_idx, origin);
+			log::debug!("v_ids: {:?}", v_ids);
+			if !v_ids.is_empty() {
+				let sub_segs = subdivide_path_seg(&seg, &mut t_values);
+				for (vertex_id, sub_seg) in v_ids.into_iter().zip(sub_segs.iter()) {
 					match cstart {
 						Some(idx) => {
-							do_if!(seg1, end_of_edge { current.push(end_of_edge)});
+							do_if!(sub_seg, end_of_edge { current.push(*end_of_edge)});
 							self.add_edge(origin, idx, vertex_id, current, reverse);
 							cstart = Some(vertex_id);
 							current = Vec::new();
-							do_if!(seg2, start_of_edge { current.push(start_of_edge)});
 						}
 						None => {
 							cstart = Some(vertex_id);
 							start_idx = Some(vertex_id);
-							do_if!(seg1, end_of_begining {beginning.push(end_of_begining)});
-							do_if!(seg2, start_of_edge {current.push(start_of_edge)});
+							do_if!(sub_seg, end_of_begining {beginning.push(*end_of_begining)});
 						}
 					}
 				}
+				do_if!(sub_segs.last().unwrap(), start_of_edge {current.push(*start_of_edge)});
 			} else {
 				match cstart {
 					Some(_) => current.push(seg),
 					None => beginning.push(seg),
 				}
 			}
-			seg_idx += 1;
 		}
 		current.append(&mut beginning);
 		self.add_edge(origin, cstart.unwrap(), start_idx.unwrap(), current, reverse);
@@ -247,19 +244,22 @@ impl PathGraph {
 		}
 	}
 
-	/// returns all intersects in segment with seg_idx from origin
-	fn intersects_in_seg(&self, seg_idx: usize, origin: Origin) -> Vec<(usize, f64)> {
-		self.vertices
-			.iter()
-			.enumerate()
-			.filter_map(|(v_idx, vertex)| {
-				if vertex.intersect.seg_idx(origin) == seg_idx {
-					Some((v_idx, vertex.intersect.t_val(origin)))
-				} else {
-					None
-				}
-			})
-			.collect()
+	/// returns the Vertex idx and intersect t-value for all intersects in segment identified by seg_idx from origin
+	/// sorts both lists for ascending t_value
+	fn intersects_in_seg(&self, seg_idx: usize, origin: Origin) -> (Vec<usize>, Vec<f64>) {
+		let mut vertice_idx = Vec::new();
+		let mut t_values = Vec::new();
+		for (v_idx, vertex) in self.vertices.iter().enumerate() {
+			if vertex.intersect.seg_idx(origin) == seg_idx {
+				let next_t = vertex.intersect.t_val(origin);
+				let insert_idx = match t_values.binary_search_by(|val: &f64| (*val).partial_cmp(&next_t).unwrap_or(std::cmp::Ordering::Less)) {
+					Ok(val) | Err(val) => val,
+				};
+				t_values.insert(insert_idx, next_t);
+				vertice_idx.insert(insert_idx, v_idx)
+			}
+		}
+		(vertice_idx, t_values)
 	}
 
 	// return number of vertices in graph, this is equivalent to the number of intersections
@@ -362,18 +362,25 @@ pub fn split_path_seg(p: &PathSeg, t: f64) -> (Option<PathSeg>, Option<PathSeg>)
 	}
 }
 
-pub fn sub_path_seg(p: &PathSeg, mut t1: f64, mut t2: f64) -> (Option<PathSeg>, Option<PathSeg>, Option<PathSeg>) {
-	if t1 > t2 {
-		std::mem::swap(&mut t1, &mut t2);
+/// splits p at each of t_vals
+/// t_vals should be sorted in ascending order
+/// the length of the returned vector is equal to 1 + t_vals.len()
+pub fn subdivide_path_seg(p: &PathSeg, t_vals: &mut [f64]) -> Vec<Option<PathSeg>> {
+	let mut sub_segs = Vec::new();
+	let mut to_split = Some(*p);
+	let mut prev_split = 0.0;
+	for split in t_vals {
+		if let Some(unhewn) = to_split {
+			let (sub_seg, _to_split) = split_path_seg(&unhewn, (*split - prev_split) / (1.0 - prev_split));
+			to_split = _to_split;
+			sub_segs.push(sub_seg);
+			prev_split = *split;
+		} else {
+			sub_segs.push(None);
+		}
 	}
-	let (p1, unhewn) = split_path_seg(p, t1);
-	let (p2, p3) = if let Some(unhewn_seg) = unhewn {
-		let t2_in_unhewn = (t2 - t1) / (1.0 - t1);
-		split_path_seg(&unhewn_seg, t2_in_unhewn)
-	} else {
-		(None, None)
-	};
-	(p1, p2, p3)
+	sub_segs.push(to_split);
+	sub_segs
 }
 
 /// TODO: For the Union and intersection operations, what should the new Fill and Stroke be? --> see document.rs

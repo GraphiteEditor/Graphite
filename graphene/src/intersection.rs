@@ -2,7 +2,7 @@ use std::cmp::{max_by, min_by};
 use std::ops::Mul;
 use std::rc::Rc;
 
-use crate::boolean_ops::{bounding_box, split_path_seg, sub_path_seg};
+use crate::boolean_ops::{bounding_box, split_path_seg};
 use crate::consts::{CURVE_FIDELITY, F64PRECISION};
 use glam::{DAffine2, DMat2, DVec2};
 use kurbo::{BezPath, Line, ParamCurve, ParamCurveExtrema, PathSeg, Point, Rect, Shape};
@@ -263,7 +263,8 @@ fn path_intersections(a: &SubCurve, b: &SubCurve, mut recursion: f64) -> Vec<Int
 				}
 			}
 			// Eventually the points in the curve become to close together to split the curve meaningfully
-			// Also provides a base case and prevents infinite recursion
+			// Also provides a base case and prevents infinite
+			// NOTE: this may happen especially near end of a PathSeg
 			if a.available_precision() <= F64PRECISION || b.available_precision() <= F64PRECISION {
 				log::debug!("precision reached, a:{:?} b:{:?}", a.available_precision(), b.available_precision());
 				log::debug!("size/precision, a:{:?} b:{:?}", a.size_precision_ratio(), b.size_precision_ratio());
