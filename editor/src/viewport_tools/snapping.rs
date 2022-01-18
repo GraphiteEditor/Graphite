@@ -1,16 +1,12 @@
-use std::f64::consts::PI;
+use crate::consts::{COLOR_ACCENT, SNAP_OVERLAY_FADE_DISTANCE, SNAP_OVERLAY_UNSNAPPED_OPACITY, SNAP_TOLERANCE};
+use crate::document::DocumentMessageHandler;
+use crate::message_prelude::*;
+
+use graphene::layers::style::{self, Stroke};
+use graphene::{LayerId, Operation};
 
 use glam::{DAffine2, DVec2};
-use graphene::{
-	layers::style::{self, Stroke},
-	LayerId, Operation,
-};
-
-use crate::{
-	consts::{COLOR_ACCENT, SNAP_OVERLAY_UNSNAPPED_OPACITY, SNAP_OVERLAY_VISIBLE, SNAP_TOLERANCE},
-	document::DocumentMessageHandler,
-	message_prelude::*,
-};
+use std::f64::consts::PI;
 
 #[derive(Debug, Clone, Default)]
 pub struct SnapHandler {
@@ -53,28 +49,28 @@ impl SnapHandler {
 		}
 
 		let mut index = 0;
-		for (x_target, distance) in positions_distances.0.filter(|(_pos, dist)| dist.abs() < SNAP_OVERLAY_VISIBLE) {
+		for (x_target, distance) in positions_distances.0.filter(|(_pos, dist)| dist.abs() < SNAP_OVERLAY_FADE_DISTANCE) {
 			add_overlay_line(
 				responses,
 				DAffine2::from_scale_angle_translation(DVec2::new(viewport_bounds.y, 1.), PI / 2., DVec2::new((x_target + 0.5).round() - 0.5, 0.)).to_cols_array(),
 				if closest_distance.x == distance {
 					1.
 				} else {
-					SNAP_OVERLAY_UNSNAPPED_OPACITY - distance.abs() / (SNAP_OVERLAY_VISIBLE / SNAP_OVERLAY_UNSNAPPED_OPACITY)
+					SNAP_OVERLAY_UNSNAPPED_OPACITY - distance.abs() / (SNAP_OVERLAY_FADE_DISTANCE / SNAP_OVERLAY_UNSNAPPED_OPACITY)
 				},
 				index,
 				overlay_paths,
 			);
 			index += 1;
 		}
-		for (y_target, distance) in positions_distances.1.filter(|(_pos, dist)| dist.abs() < SNAP_OVERLAY_VISIBLE) {
+		for (y_target, distance) in positions_distances.1.filter(|(_pos, dist)| dist.abs() < SNAP_OVERLAY_FADE_DISTANCE) {
 			add_overlay_line(
 				responses,
 				DAffine2::from_scale_angle_translation(DVec2::new(viewport_bounds.x, 1.), 0., DVec2::new(0., (y_target + 0.5).round() - 0.5)).to_cols_array(),
 				if closest_distance.y == distance {
 					1.
 				} else {
-					SNAP_OVERLAY_UNSNAPPED_OPACITY - distance.abs() / (SNAP_OVERLAY_VISIBLE / SNAP_OVERLAY_UNSNAPPED_OPACITY)
+					SNAP_OVERLAY_UNSNAPPED_OPACITY - distance.abs() / (SNAP_OVERLAY_FADE_DISTANCE / SNAP_OVERLAY_UNSNAPPED_OPACITY)
 				},
 				index,
 				overlay_paths,
