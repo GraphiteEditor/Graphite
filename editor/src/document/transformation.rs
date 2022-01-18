@@ -245,7 +245,7 @@ impl<'a> Selected<'a> {
 			let transformation = pivot * delta * pivot.inverse();
 
 			// TODO: Cache the result of `shallowest_unique_layers` to avoid this heavy computation every frame of movement, see https://github.com/GraphiteEditor/Graphite/pull/481
-			for layer_path in Document::shallowest_unique_layers(self.selected.iter().map(|path| path.as_slice())) {
+			for layer_path in Document::shallowest_unique_layers(self.selected.iter()) {
 				let parent_folder_path = &layer_path[..layer_path.len() - 1];
 				let original_layer_transforms = *self.original_transforms.get(layer_path).unwrap();
 

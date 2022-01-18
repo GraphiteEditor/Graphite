@@ -236,10 +236,10 @@ impl Fsm for SelectToolFsmState {
 
 					let closest_move = data.snap_handler.snap_layers(responses, input.viewport_bounds.size(), document, &data.layers_dragging, mouse_delta);
 					// TODO: Cache the result of `shallowest_unique_layers` to avoid this heavy computation every frame of movement, see https://github.com/GraphiteEditor/Graphite/pull/481
-					for path in Document::shallowest_unique_layers(data.layers_dragging.iter().map(|path| path.as_slice())) {
+					for path in Document::shallowest_unique_layers(data.layers_dragging.iter()) {
 						responses.push_front(
 							Operation::TransformLayerInViewport {
-								path: path.to_vec(),
+								path: path.clone(),
 								transform: DAffine2::from_translation(mouse_delta + closest_move).to_cols_array(),
 							}
 							.into(),
