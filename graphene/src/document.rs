@@ -98,6 +98,8 @@ impl Document {
 		layers.reduce(|a, b| &a[..a.iter().zip(b.iter()).take_while(|&(a, b)| a == b).count()]).unwrap_or_default()
 	}
 
+	/// Filters out the non folders from an iterator of paths.
+	/// Takes and Iterator over &[LayerId] or &Vec<LayerId>.
 	pub fn folders<'a, T>(&'a self, layers: impl Iterator<Item = T> + 'a) -> impl Iterator<Item = T> + 'a
 	where
 		T: AsRef<[LayerId]> + std::cmp::Ord + 'a,
@@ -105,7 +107,7 @@ impl Document {
 		layers.filter(|layer| self.is_folder(layer.as_ref()))
 	}
 
-	// Returns the shallowest folder given the selection, even if the selection doesn't contain any folders
+	/// Returns the shallowest folder given the selection, even if the selection doesn't contain any folders
 	pub fn shallowest_common_folder<'a>(&self, layers: impl Iterator<Item = &'a [LayerId]>) -> Result<&'a [LayerId], DocumentError> {
 		let common_prefix_of_path = self.common_layer_path_prefix(layers);
 
@@ -115,7 +117,8 @@ impl Document {
 		})
 	}
 
-	// Return returns all folders that are not contained in any other of the given folders
+	/// Return returns all folders that are not contained in any other of the given folders
+	/// Takes and Iterator over &[LayerId] or &Vec<LayerId>.
 	pub fn shallowest_folders<'a, T>(&'a self, layers: impl Iterator<Item = T>) -> Vec<T>
 	where
 		T: AsRef<[LayerId]> + std::cmp::Ord + 'a,
@@ -123,7 +126,8 @@ impl Document {
 		Self::shallowest_unique_layers(self.folders(layers))
 	}
 
-	// Return returns all layers that are not contained in any other of the given folders
+	/// Return returns all layers that are not contained in any other of the given folders
+	/// Takes and Iterator over &[LayerId] or &Vec<LayerId>.
 	pub fn shallowest_unique_layers<'a, T>(layers: impl Iterator<Item = T>) -> Vec<T>
 	where
 		T: AsRef<[LayerId]> + std::cmp::Ord + 'a,
@@ -134,7 +138,8 @@ impl Document {
 		sorted_layers.dedup_by(|a, b| a.as_ref().starts_with(b.as_ref()));
 		sorted_layers
 	}
-	// Deepest to shallowest (longest to shortest path length)
+	/// Deepest to shallowest (longest to shortest path length)
+	/// Takes and Iterator over &[LayerId] or &Vec<LayerId>.
 	pub fn sorted_folders_by_depth<'a, T>(&'a self, layers: impl Iterator<Item = T>) -> Vec<T>
 	where
 		T: AsRef<[LayerId]> + std::cmp::Ord + 'a,
