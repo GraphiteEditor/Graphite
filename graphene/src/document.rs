@@ -117,7 +117,7 @@ impl Document {
 		})
 	}
 
-	/// Return returns all folders that are not contained in any other of the given folders
+	/// Returns all folders that are not contained in any other of the given folders
 	/// Takes and Iterator over &[LayerId] or &Vec<LayerId>.
 	pub fn shallowest_folders<'a, T>(&'a self, layers: impl Iterator<Item = T>) -> Vec<T>
 	where
@@ -126,7 +126,7 @@ impl Document {
 		Self::shallowest_unique_layers(self.folders(layers))
 	}
 
-	/// Return returns all layers that are not contained in any other of the given folders
+	/// Returns all layers that are not contained in any other of the given folders
 	/// Takes and Iterator over &[LayerId] or &Vec<LayerId>.
 	pub fn shallowest_unique_layers<'a, T>(layers: impl Iterator<Item = T>) -> Vec<T>
 	where
