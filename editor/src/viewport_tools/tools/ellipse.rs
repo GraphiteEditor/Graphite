@@ -23,10 +23,17 @@ pub struct Ellipse {
 #[impl_message(Message, ToolMessage, Ellipse)]
 #[derive(PartialEq, Clone, Debug, Hash, Serialize, Deserialize)]
 pub enum EllipseMessage {
+	// Standard messages
+	#[remain::unsorted]
 	Abort,
+
+	// Tool-specific messages
 	DragStart,
 	DragStop,
-	Resize { center: Key, lock_ratio: Key },
+	Resize {
+		center: Key,
+		lock_ratio: Key,
+	},
 }
 
 impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Ellipse {

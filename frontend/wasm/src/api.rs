@@ -164,8 +164,11 @@ impl JsEditorHandle {
 		self.dispatch(message);
 	}
 
-	pub fn open_document_file(&self, name: String, content: String) {
-		let message = PortfolioMessage::OpenDocumentFile(name, content);
+	pub fn open_document_file(&self, document_name: String, document_serialized_content: String) {
+		let message = PortfolioMessage::OpenDocumentFile {
+			document_name,
+			document_serialized_content,
+		};
 		self.dispatch(message);
 	}
 
@@ -386,7 +389,11 @@ impl JsEditorHandle {
 
 	/// Move a layer to be next to the specified neighbor
 	pub fn move_layer_in_tree(&self, folder_path: Vec<LayerId>, insert_index: isize) {
-		let message = DocumentMessage::MoveSelectedLayersTo { folder_path, insert_index };
+		let message = DocumentMessage::MoveSelectedLayersTo {
+			folder_path,
+			insert_index,
+			reverse_index: true,
+		};
 		self.dispatch(message);
 	}
 

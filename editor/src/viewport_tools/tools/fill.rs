@@ -23,7 +23,11 @@ pub struct Fill {
 #[impl_message(Message, ToolMessage, Fill)]
 #[derive(PartialEq, Clone, Debug, Hash, Serialize, Deserialize)]
 pub enum FillMessage {
+	// Standard messages
+	#[remain::unsorted]
 	Abort,
+
+	// Tool-specific messages
 	LeftMouseDown,
 	RightMouseDown,
 }

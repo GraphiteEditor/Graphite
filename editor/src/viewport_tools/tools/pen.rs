@@ -24,7 +24,11 @@ pub struct Pen {
 #[impl_message(Message, ToolMessage, Pen)]
 #[derive(PartialEq, Clone, Debug, Hash, Serialize, Deserialize)]
 pub enum PenMessage {
+	// Standard messages
+	#[remain::unsorted]
 	Abort,
+
+	// Tool-specific messages
 	Confirm,
 	DragStart,
 	DragStop,

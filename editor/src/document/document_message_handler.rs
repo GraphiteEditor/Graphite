@@ -202,7 +202,7 @@ impl DocumentMessageHandler {
 
 	fn serialize_structure(&self, folder: &Folder, structure: &mut Vec<u64>, data: &mut Vec<LayerId>, path: &mut Vec<LayerId>) {
 		let mut space = 0;
-		for (id, layer) in folder.layer_ids.iter().zip(folder.layers()) {
+		for (id, layer) in folder.layer_ids.iter().zip(folder.layers()).rev() {
 			data.push(*id);
 			space += 1;
 			match layer.data {
@@ -258,6 +258,7 @@ impl DocumentMessageHandler {
 		self.serialize_structure(self.graphene_document.root.as_folder().unwrap(), &mut structure, &mut data, &mut vec![]);
 		structure[0] = structure.len() as u64 - 1;
 		structure.extend(data);
+
 		structure
 	}
 
@@ -422,8 +423,9 @@ impl DocumentMessageHandler {
 	/// When working with an insert index, deleting the layers may cause the insert index to point to a different location (if the layer being deleted was located before the insert index).
 	///
 	/// This function updates the insert index so that it points to the same place after the specified `layers` are deleted.
-	fn update_insert_index<'a>(&self, layers: &[&'a [LayerId]], path: &[LayerId], insert_index: isize) -> Result<isize, DocumentError> {
+	fn update_insert_index<'a>(&self, layers: &[&'a [LayerId]], path: &[LayerId], insert_index: isize, reverse_index: bool) -> Result<isize, DocumentError> {
 		let folder = self.graphene_document.folder(path)?;
+		let insert_index = if reverse_index { folder.layer_ids.len() as isize - insert_index } else { insert_index };
 		let layer_ids_above = if insert_index < 0 { &folder.layer_ids } else { &folder.layer_ids[..(insert_index as usize)] };
 
 		Ok(insert_index - layer_ids_above.iter().filter(|layer_id| layers.iter().any(|x| *x == [path, &[**layer_id]].concat())).count() as isize)
@@ -445,6 +447,60 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 
 		#[remain::sorted]
 		match message {
+			// Sub-messages
+			#[remain::unsorted]
+			DispatchOperation(op) => match self.graphene_document.handle_operation(&op) {
+				Ok(Some(document_responses)) => {
+					for response in document_responses {
+						match &response {
+							DocumentResponse::FolderChanged { path } => responses.push_back(FolderChanged { affected_folder_path: path.clone() }.into()),
+							DocumentResponse::DeletedLayer { path } => {
+								self.layer_metadata.remove(path);
+							}
+							DocumentResponse::LayerChanged { path } => responses.push_back(LayerChanged { affected_layer_path: path.clone() }.into()),
+							DocumentResponse::CreatedLayer { path } => {
+								if self.layer_metadata.contains_key(path) {
+									log::warn!("CreatedLayer overrides existing layer metadata.");
+								}
+								self.layer_metadata.insert(path.clone(), LayerMetadata::new(false));
+
+								responses.push_back(LayerChanged { affected_layer_path: path.clone() }.into());
+								self.layer_range_selection_reference = path.clone();
+								responses.push_back(
+									AddSelectedLayers {
+										additional_layers: vec![path.clone()],
+									}
+									.into(),
+								);
+							}
+							DocumentResponse::DocumentChanged => responses.push_back(RenderDocument.into()),
+						};
+						responses.push_back(ToolMessage::DocumentIsDirty.into());
+					}
+				}
+				Err(e) => log::error!("DocumentError: {:?}", e),
+				Ok(_) => (),
+			},
+			#[remain::unsorted]
+			Artboard(message) => {
+				self.artboard_message_handler.process_action(message, (), responses);
+			}
+			#[remain::unsorted]
+			Movement(message) => {
+				self.movement_handler.process_action(message, (&self.graphene_document, ipp), responses);
+			}
+			#[remain::unsorted]
+			Overlays(message) => {
+				self.overlays_message_handler.process_action(message, self.overlays_visible, responses);
+				// responses.push_back(OverlaysMessage::RenderOverlays.into());
+			}
+			#[remain::unsorted]
+			TransformLayers(message) => {
+				self.transform_layer_handler
+					.process_action(message, (&mut self.layer_metadata, &mut self.graphene_document, ipp), responses);
+			}
+
+			// Messages
 			AbortTransaction => {
 				self.undo(responses).unwrap_or_else(|e| log::warn!("{}", e));
 				responses.extend([RenderDocument.into(), DocumentStructureChanged.into()]);
@@ -494,13 +550,6 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 					responses.push_back(ToolMessage::DocumentIsDirty.into());
 				}
 			}
-			Artboard(message) => {
-				self.artboard_message_handler.process_action(
-					message,
-					(Self::layer_metadata_mut_no_borrow_self(&mut self.layer_metadata, &[]), &self.graphene_document, ipp),
-					responses,
-				);
-			}
 			CommitTransaction => (),
 			CreateEmptyFolder { mut container_path } => {
 				let id = generate_uuid();
@@ -542,38 +591,6 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 					responses.push_front(DocumentMessage::DirtyRenderDocument.into());
 				}
 			}
-			DispatchOperation(op) => match self.graphene_document.handle_operation(&op) {
-				Ok(Some(document_responses)) => {
-					for response in document_responses {
-						match &response {
-							DocumentResponse::FolderChanged { path } => responses.push_back(FolderChanged { affected_folder_path: path.clone() }.into()),
-							DocumentResponse::DeletedLayer { path } => {
-								self.layer_metadata.remove(path);
-							}
-							DocumentResponse::LayerChanged { path } => responses.push_back(LayerChanged { affected_layer_path: path.clone() }.into()),
-							DocumentResponse::CreatedLayer { path } => {
-								if self.layer_metadata.contains_key(path) {
-									log::warn!("CreatedLayer overrides existing layer metadata.");
-								}
-								self.layer_metadata.insert(path.clone(), LayerMetadata::new(false));
-
-								responses.push_back(LayerChanged { affected_layer_path: path.clone() }.into());
-								self.layer_range_selection_reference = path.clone();
-								responses.push_back(
-									AddSelectedLayers {
-										additional_layers: vec![path.clone()],
-									}
-									.into(),
-								);
-							}
-							DocumentResponse::DocumentChanged => responses.push_back(RenderDocument.into()),
-						};
-						responses.push_back(ToolMessage::DocumentIsDirty.into());
-					}
-				}
-				Err(e) => log::error!("DocumentError: {:?}", e),
-				Ok(_) => (),
-			},
 			DocumentHistoryBackward => self.undo(responses).unwrap_or_else(|e| log::warn!("{}", e)),
 			DocumentHistoryForward => self.redo(responses).unwrap_or_else(|e| log::warn!("{}", e)),
 			DocumentStructureChanged => {
@@ -671,8 +688,11 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 					responses.push_back(FrontendMessage::UpdateDocumentLayer { data: layer_entry }.into());
 				}
 			}
-			Movement(message) => self.movement_handler.process_action(message, (&self.graphene_document, ipp), responses),
-			MoveSelectedLayersTo { folder_path, insert_index } => {
+			MoveSelectedLayersTo {
+				folder_path,
+				insert_index,
+				reverse_index,
+			} => {
 				let selected_layers = self.selected_layers().collect::<Vec<_>>();
 
 				// Prevent trying to insert into self
@@ -680,7 +700,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 					return;
 				}
 
-				let insert_index = self.update_insert_index(&selected_layers, &folder_path, insert_index).unwrap();
+				let insert_index = self.update_insert_index(&selected_layers, &folder_path, insert_index, reverse_index).unwrap();
 
 				responses.push_back(PortfolioMessage::Copy { clipboard: Clipboard::System }.into());
 				responses.push_back(DocumentMessage::DeleteSelectedLayers.into());
@@ -703,10 +723,6 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 					responses.push_back(operation.into());
 				}
 				responses.push_back(ToolMessage::DocumentIsDirty.into());
-			}
-			Overlays(message) => {
-				self.overlays_message_handler.process_action(message, self.overlays_visible, responses);
-				// responses.push_back(OverlaysMessage::RenderOverlays.into());
 			}
 			Redo => {
 				responses.push_back(SelectMessage::Abort.into());
@@ -807,6 +823,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 									DocumentMessage::MoveSelectedLayersTo {
 										folder_path: folder_path.to_vec(),
 										insert_index,
+										reverse_index: false,
 									}
 									.into(),
 								);
@@ -938,9 +955,6 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 				responses.push_back(DocumentOperation::ToggleLayerVisibility { path: layer_path }.into());
 				responses.push_back(ToolMessage::DocumentIsDirty.into());
 			}
-			TransformLayers(message) => self
-				.transform_layer_handler
-				.process_action(message, (&mut self.layer_metadata, &mut self.graphene_document, ipp), responses),
 			Undo => {
 				responses.push_back(SelectMessage::Abort.into());
 				responses.push_back(DocumentHistoryBackward.into());
