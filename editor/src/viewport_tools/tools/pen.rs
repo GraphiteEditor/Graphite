@@ -109,8 +109,8 @@ impl Fsm for PenToolFsmState {
 					data.path = Some(vec![generate_uuid()]);
 					data.layer_exists = false;
 
-					data.snap_handler.start_snap(responses, input.viewport_bounds.size(), document, document.all_layers_sorted());
-					let snapped_position = data.snap_handler.snap_position(document, input.mouse.position);
+					data.snap_handler.start_snap(document, document.all_layers_sorted());
+					let snapped_position = data.snap_handler.snap_position(responses, input.viewport_bounds.size(), document, input.mouse.position);
 
 					let pos = transform.inverse() * DAffine2::from_translation(snapped_position);
 
@@ -127,7 +127,7 @@ impl Fsm for PenToolFsmState {
 					Drawing
 				}
 				(Drawing, DragStop) => {
-					let snapped_position = data.snap_handler.snap_position(document, input.mouse.position);
+					let snapped_position = data.snap_handler.snap_position(responses, input.viewport_bounds.size(), document, input.mouse.position);
 					let pos = transform.inverse() * DAffine2::from_translation(snapped_position);
 
 					// TODO: introduce comparison threshold when operating with canvas coordinates (https://github.com/GraphiteEditor/Graphite/issues/100)
@@ -142,7 +142,7 @@ impl Fsm for PenToolFsmState {
 					Drawing
 				}
 				(Drawing, PointerMove) => {
-					let snapped_position = data.snap_handler.snap_position(document, input.mouse.position);
+					let snapped_position = data.snap_handler.snap_position(responses, input.viewport_bounds.size(), document, input.mouse.position);
 					let pos = transform.inverse() * DAffine2::from_translation(snapped_position);
 					data.next_point = pos;
 

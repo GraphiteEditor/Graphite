@@ -181,7 +181,8 @@ impl Fsm for SelectToolFsmState {
 						buffer.push(DocumentMessage::StartTransaction.into());
 						data.layers_dragging = selected;
 
-						data.snap_handler.start_snap(responses, input.viewport_bounds.size(), document, document.non_selected_layers_sorted());
+						data.snap_handler
+							.start_snap(document, document.all_layers().filter(|layer| !data.layers_dragging.iter().any(|path| path == layer)).collect());
 
 						Dragging
 					} else {
@@ -195,7 +196,8 @@ impl Fsm for SelectToolFsmState {
 							buffer.push(DocumentMessage::AddSelectedLayers { additional_layers: selected.clone() }.into());
 							buffer.push(DocumentMessage::StartTransaction.into());
 							data.layers_dragging.append(&mut selected);
-							data.snap_handler.start_snap(responses, input.viewport_bounds.size(), document, document.non_selected_layers_sorted());
+							data.snap_handler
+								.start_snap(document, document.all_layers().filter(|layer| !data.layers_dragging.iter().any(|path| path == layer)).collect());
 
 							Dragging
 						} else {
@@ -223,7 +225,7 @@ impl Fsm for SelectToolFsmState {
 
 					let mouse_delta = mouse_position - data.drag_current;
 
-					let closest_move = data.snap_handler.snap_layers(document, &data.layers_dragging, mouse_delta);
+					let closest_move = data.snap_handler.snap_layers(responses, input.viewport_bounds.size(), document, &data.layers_dragging, mouse_delta);
 					// TODO: Cache the result of `shallowest_unique_layers` to avoid this heavy computation every frame of movement, see https://github.com/GraphiteEditor/Graphite/pull/481
 					for path in Document::shallowest_unique_layers(data.layers_dragging.iter().map(|path| path.as_slice())) {
 						responses.push_front(
