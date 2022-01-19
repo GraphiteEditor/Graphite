@@ -135,7 +135,7 @@ fn add_bounding_box(responses: &mut Vec<Message>) -> Vec<LayerId> {
 }
 
 fn transform_from_box(pos1: DVec2, pos2: DVec2) -> [f64; 6] {
-	DAffine2::from_scale_angle_translation(pos2 - pos1, 0., pos1).to_cols_array()
+	DAffine2::from_scale_angle_translation((pos2 - pos1).round(), 0., pos1.round() - DVec2::splat(0.5)).to_cols_array()
 }
 
 impl Fsm for SelectToolFsmState {
@@ -164,9 +164,6 @@ impl Fsm for SelectToolFsmState {
 
 							data.bounding_box_overlay_layer = Some(path.clone());
 
-							let half_pixel_offset = DVec2::splat(0.5);
-							let pos1 = pos1 + half_pixel_offset;
-							let pos2 = pos2 - half_pixel_offset;
 							let transform = transform_from_box(pos1, pos2);
 							DocumentMessage::Overlays(Operation::SetLayerTransformInViewport { path, transform }.into()).into()
 						}
@@ -250,15 +247,12 @@ impl Fsm for SelectToolFsmState {
 				}
 				(DrawingBox, MouseMove { .. }) => {
 					data.drag_current = input.mouse.position;
-					let half_pixel_offset = DVec2::splat(0.5);
-					let start = data.drag_start + half_pixel_offset;
-					let size = data.drag_current - start + half_pixel_offset;
 
 					responses.push_front(
 						DocumentMessage::Overlays(
 							Operation::SetLayerTransformInViewport {
 								path: data.drag_box_overlay_layer.clone().unwrap(),
-								transform: DAffine2::from_scale_angle_translation(size, 0., start).to_cols_array(),
+								transform: transform_from_box(data.drag_start, data.drag_current),
 							}
 							.into(),
 						)

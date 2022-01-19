@@ -52,7 +52,7 @@ impl SnapHandler {
 		for (x_target, distance) in positions_distances.0.filter(|(_pos, dist)| dist.abs() < SNAP_OVERLAY_FADE_DISTANCE) {
 			add_overlay_line(
 				responses,
-				DAffine2::from_scale_angle_translation(DVec2::new(viewport_bounds.y, 1.), PI / 2., DVec2::new((x_target + 0.5).round() - 0.5, 0.)).to_cols_array(),
+				DAffine2::from_scale_angle_translation(DVec2::new(viewport_bounds.y, 1.), PI / 2., DVec2::new((x_target).round() - 0.5, 0.)).to_cols_array(),
 				if closest_distance.x == distance {
 					1.
 				} else {
@@ -66,7 +66,7 @@ impl SnapHandler {
 		for (y_target, distance) in positions_distances.1.filter(|(_pos, dist)| dist.abs() < SNAP_OVERLAY_FADE_DISTANCE) {
 			add_overlay_line(
 				responses,
-				DAffine2::from_scale_angle_translation(DVec2::new(viewport_bounds.x, 1.), 0., DVec2::new(0., (y_target + 0.5).round() - 0.5)).to_cols_array(),
+				DAffine2::from_scale_angle_translation(DVec2::new(viewport_bounds.x, 1.), 0., DVec2::new(0., (y_target).round() - 0.5)).to_cols_array(),
 				if closest_distance.y == distance {
 					1.
 				} else {
