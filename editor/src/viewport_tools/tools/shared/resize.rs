@@ -18,8 +18,7 @@ pub struct Resize {
 impl Resize {
 	/// Starts a resize, assigning the snap targets and snapping the starting position.
 	pub fn start(&mut self, responses: &mut VecDeque<Message>, viewport_bounds: DVec2, document: &DocumentMessageHandler, mouse_position: DVec2) {
-		let layers = document.all_layers_sorted();
-		self.snap_handler.start_snap(document, layers);
+		self.snap_handler.start_snap(document, document.visible_layers());
 		self.drag_start = self.snap_handler.snap_position(responses, viewport_bounds, document, mouse_position);
 	}
 

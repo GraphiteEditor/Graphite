@@ -188,7 +188,7 @@ impl Fsm for SelectToolFsmState {
 						data.layers_dragging = selected;
 
 						data.snap_handler
-							.start_snap(document, document.all_layers().filter(|layer| !data.layers_dragging.iter().any(|path| path == layer)).collect());
+							.start_snap(document, document.visible_layers().filter(|layer| !data.layers_dragging.iter().any(|path| path == layer)));
 
 						Dragging
 					} else {
@@ -203,7 +203,7 @@ impl Fsm for SelectToolFsmState {
 							buffer.push(DocumentMessage::StartTransaction.into());
 							data.layers_dragging.append(&mut selected);
 							data.snap_handler
-								.start_snap(document, document.all_layers().filter(|layer| !data.layers_dragging.iter().any(|path| path == layer)).collect());
+								.start_snap(document, document.visible_layers().filter(|layer| !data.layers_dragging.iter().any(|path| path == layer)));
 
 							Dragging
 						} else {
