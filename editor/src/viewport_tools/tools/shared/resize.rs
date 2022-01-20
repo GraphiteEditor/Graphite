@@ -17,17 +17,24 @@ pub struct Resize {
 }
 impl Resize {
 	/// Starts a resize, assigning the snap targets and snapping the starting position.
-	pub fn start(&mut self, document: &DocumentMessageHandler, mouse_position: DVec2) {
-		let layers = document.all_layers_sorted();
-		self.snap_handler.start_snap(document, layers, &[]);
-		self.drag_start = self.snap_handler.snap_position(document, mouse_position);
+	pub fn start(&mut self, responses: &mut VecDeque<Message>, viewport_bounds: DVec2, document: &DocumentMessageHandler, mouse_position: DVec2) {
+		self.snap_handler.start_snap(document, document.visible_layers());
+		self.drag_start = self.snap_handler.snap_position(responses, viewport_bounds, document, mouse_position);
 	}
 
-	pub fn calculate_transform(&self, document: &DocumentMessageHandler, center: Key, lock_ratio: Key, ipp: &InputPreprocessorMessageHandler) -> Option<Message> {
+	pub fn calculate_transform(
+		&mut self,
+		responses: &mut VecDeque<Message>,
+		viewport_bounds: DVec2,
+		document: &DocumentMessageHandler,
+		center: Key,
+		lock_ratio: Key,
+		ipp: &InputPreprocessorMessageHandler,
+	) -> Option<Message> {
 		if let Some(path) = &self.path {
 			let mut start = self.drag_start;
 
-			let stop = self.snap_handler.snap_position(document, ipp.mouse.position);
+			let stop = self.snap_handler.snap_position(responses, viewport_bounds, document, ipp.mouse.position);
 
 			let mut size = stop - start;
 			if ipp.keyboard.get(lock_ratio as usize) {
@@ -50,8 +57,8 @@ impl Resize {
 		}
 	}
 
-	pub fn cleanup(&mut self) {
-		self.snap_handler.cleanup();
+	pub fn cleanup(&mut self, responses: &mut VecDeque<Message>) {
+		self.snap_handler.cleanup(responses);
 		self.path = None;
 	}
 }
