@@ -111,8 +111,8 @@ impl Fsm for LineToolFsmState {
 		if let ToolMessage::Line(event) = event {
 			match (self, event) {
 				(Ready, DragStart) => {
-					data.snap_handler.start_snap(document, document.all_layers_sorted(), &[]);
-					data.drag_start = data.snap_handler.snap_position(document, input.mouse.position);
+					data.snap_handler.start_snap(document, document.visible_layers());
+					data.drag_start = data.snap_handler.snap_position(responses, input.viewport_bounds.size(), document, input.mouse.position);
 
 					responses.push_back(DocumentMessage::StartTransaction.into());
 					data.path = Some(vec![generate_uuid()]);
@@ -136,7 +136,7 @@ impl Fsm for LineToolFsmState {
 					Drawing
 				}
 				(Drawing, Redraw { center, snap_angle, lock_angle }) => {
-					data.drag_current = data.snap_handler.snap_position(document, input.mouse.position);
+					data.drag_current = data.snap_handler.snap_position(responses, input.viewport_bounds.size(), document, input.mouse.position);
 
 					let values: Vec<_> = [lock_angle, snap_angle, center].iter().map(|k| input.keyboard.get(*k as usize)).collect();
 					responses.push_back(generate_transform(data, values[0], values[1], values[2]));
@@ -144,8 +144,8 @@ impl Fsm for LineToolFsmState {
 					Drawing
 				}
 				(Drawing, DragStop) => {
-					data.drag_current = data.snap_handler.snap_position(document, input.mouse.position);
-					data.snap_handler.cleanup();
+					data.drag_current = data.snap_handler.snap_position(responses, input.viewport_bounds.size(), document, input.mouse.position);
+					data.snap_handler.cleanup(responses);
 
 					// TODO: introduce comparison threshold when operating with canvas coordinates (https://github.com/GraphiteEditor/Graphite/issues/100)
 					match data.drag_start == input.mouse.position {
@@ -158,7 +158,7 @@ impl Fsm for LineToolFsmState {
 					Ready
 				}
 				(Drawing, Abort) => {
-					data.snap_handler.cleanup();
+					data.snap_handler.cleanup(responses);
 					responses.push_back(DocumentMessage::AbortTransaction.into());
 					data.path = None;
 					Ready

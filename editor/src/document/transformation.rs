@@ -60,6 +60,7 @@ impl Translation {
 		}
 	}
 
+	#[must_use]
 	pub fn increment_amount(self, delta: DVec2) -> Self {
 		Self {
 			dragged_distance: self.dragged_distance + delta,
@@ -87,6 +88,7 @@ impl Rotation {
 		}
 	}
 
+	#[must_use]
 	pub fn increment_amount(self, delta: f64) -> Self {
 		Self {
 			dragged_angle: self.dragged_angle + delta,
@@ -124,6 +126,7 @@ impl Scale {
 		}
 	}
 
+	#[must_use]
 	pub fn increment_amount(self, delta: f64) -> Self {
 		Self {
 			dragged_factor: self.dragged_factor + delta,

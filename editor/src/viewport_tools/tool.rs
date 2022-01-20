@@ -16,6 +16,7 @@ pub type ToolActionHandlerData<'a> = (&'a DocumentMessageHandler, &'a DocumentTo
 pub trait Fsm {
 	type ToolData;
 
+	#[must_use]
 	fn transition(
 		self,
 		message: ToolMessage,
