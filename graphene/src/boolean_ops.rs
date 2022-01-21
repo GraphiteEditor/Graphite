@@ -308,14 +308,14 @@ impl PathGraph {
 		cycles
 	}
 
-	pub fn get_shape(&self, cycle: &Cycle) -> Shape {
+	pub fn get_shape(&self, cycle: &Cycle, style: &PathStyle) -> Shape {
 		let mut path = BezPath::new();
 		let vertices = cycle.vertices();
 		for idx in 1..vertices.len() {
 			// we expect the cycle to be valid, this should not panic
 			concat_paths(&mut path, &self.edge(vertices[idx - 1].0, vertices[idx].0, vertices[idx].1).unwrap().curve);
 		}
-		Shape::from_bez_path(path, PathStyle::new(Some(Stroke::new(Color::BLACK, 1.0)), Some(Fill::none())), false)
+		Shape::from_bez_path(path, *style, false)
 	}
 }
 
@@ -384,29 +384,27 @@ pub fn subdivide_path_seg(p: &PathSeg, t_vals: &mut [f64]) -> Vec<Option<PathSeg
 
 /// TODO: For the Union and intersection operations, what should the new Fill and Stroke be? --> see document.rs
 pub fn boolean_operation(select: BooleanOperation, alpha: &Shape, beta: &Shape) -> Result<Vec<Shape>, BooleanOperationError> {
-	let alpha = &alpha.path;
-	let beta = &beta.path;
-	if alpha.is_empty() || beta.is_empty() {
+	if alpha.path.is_empty() || beta.path.is_empty() {
 		return Err(BooleanOperationError::InvalidSelection);
 	}
-	let alpha_dir = Cycle::direction_for_path(&alpha)?;
-	let beta_dir = Cycle::direction_for_path(&beta)?;
+	let alpha_dir = Cycle::direction_for_path(&alpha.path)?;
+	let beta_dir = Cycle::direction_for_path(&beta.path)?;
 	match select {
 		BooleanOperation::Union => {
-			let graph = PathGraph::from_paths(&alpha, &beta, alpha_dir != beta_dir)?;
+			let graph = PathGraph::from_paths(&alpha.path, &beta.path, alpha_dir != beta_dir)?;
 			let mut cycles = graph.get_cycles();
 			// "extra calls to ParamCurveArea::area here"
 			let outline: Cycle = (*cycles.iter().reduce(|max, cycle| if cycle.area().abs() >= max.area().abs() { cycle } else { max }).unwrap()).clone();
-			let mut insides = collect_shapes(&graph, &mut cycles, |dir| dir != alpha_dir)?;
-			insides.push(graph.get_shape(&outline));
+			let mut insides = collect_shapes(&graph, &mut cycles, |dir| dir != alpha_dir, &alpha.style)?;
+			insides.push(graph.get_shape(&outline, &alpha.style));
 			Ok(insides)
 		}
 		BooleanOperation::Difference => {
-			let graph = PathGraph::from_paths(&alpha, &beta, alpha_dir == beta_dir)?;
-			collect_shapes(&graph, &mut graph.get_cycles(), |_| true)
+			let graph = PathGraph::from_paths(&alpha.path, &beta.path, alpha_dir == beta_dir)?;
+			collect_shapes(&graph, &mut graph.get_cycles(), |_| true, &alpha.style)
 		}
 		BooleanOperation::Intersection => {
-			let graph = PathGraph::from_paths(&alpha, &beta, alpha_dir != beta_dir)?;
+			let graph = PathGraph::from_paths(&alpha.path, &beta.path, alpha_dir != beta_dir)?;
 			let mut cycles = graph.get_cycles();
 			// "extra calls to ParamCurveArea::area here"
 			cycles.remove(
@@ -417,15 +415,15 @@ pub fn boolean_operation(select: BooleanOperation, alpha: &Shape, beta: &Shape) 
 					.unwrap()
 					.0,
 			);
-			collect_shapes(&graph, &mut cycles, |dir| dir == alpha_dir)
+			collect_shapes(&graph, &mut cycles, |dir| dir == alpha_dir, &alpha.style)
 		}
 		BooleanOperation::SubtractBack => {
-			let graph = PathGraph::from_paths(&alpha, &beta, alpha_dir == beta_dir)?;
-			collect_shapes(&graph, &mut graph.get_cycles(), |dir| dir != alpha_dir)
+			let graph = PathGraph::from_paths(&alpha.path, &beta.path, alpha_dir == beta_dir)?;
+			collect_shapes(&graph, &mut graph.get_cycles(), |dir| dir != alpha_dir, &alpha.style)
 		}
 		BooleanOperation::SubtractFront => {
-			let graph = PathGraph::from_paths(&alpha, &beta, alpha_dir == beta_dir)?;
-			collect_shapes(&graph, &mut graph.get_cycles(), |dir| dir == alpha_dir)
+			let graph = PathGraph::from_paths(&alpha.path, &beta.path, alpha_dir == beta_dir)?;
+			collect_shapes(&graph, &mut graph.get_cycles(), |dir| dir == alpha_dir, &alpha.style)
 		}
 	}
 }
@@ -439,7 +437,7 @@ pub fn bounding_box(curve: &BezPath) -> Rect {
 		.unwrap()
 }
 
-fn collect_shapes<F>(graph: &PathGraph, cycles: &mut Vec<Cycle>, predicate: F) -> Result<Vec<Shape>, BooleanOperationError>
+fn collect_shapes<F>(graph: &PathGraph, cycles: &mut Vec<Cycle>, predicate: F, style: &PathStyle) -> Result<Vec<Shape>, BooleanOperationError>
 where
 	F: Fn(Direction) -> bool,
 {
@@ -451,7 +449,7 @@ where
 		match cycle.direction() {
 			Ok(dir) => {
 				if predicate(dir) {
-					shapes.push(graph.get_shape(cycle));
+					shapes.push(graph.get_shape(cycle, style));
 				}
 			}
 			Err(err) => return Err(err),

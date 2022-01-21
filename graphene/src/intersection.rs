@@ -234,6 +234,7 @@ Bezier Curve Intersection Algorithm
 - Bug: intersections of "perfectly alligned" line or curve
 	- If the algorithm is rewritten to be non-recursive it can be restructured to be more breadth first then depth first.
 	  This would allow easy recognition of the case where many (or all) bounding boxes intersect, this case is correlated with alligned curves
+	- Alternatively, this bug can be solved only for the linear case, which probably covers the great majority of cases
 - Bug: deep recursion can result in stack overflow
 - Improvement: intersections on the end of segments
 	- Intersections near the end of segments seem to be consistently lower 'quality', why?
