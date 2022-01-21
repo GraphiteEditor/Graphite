@@ -8,7 +8,10 @@ mod transform_layer_handler;
 mod vectorize_layer_metadata;
 
 #[doc(inline)]
-pub use document_message_handler::{AlignAggregate, AlignAxis, DocumentMessage, DocumentMessageDiscriminant, DocumentMessageHandler, FlipAxis, VectorManipulatorSegment, VectorManipulatorShape};
+pub use document_message_handler::{
+	AlignAggregate, AlignAxis, DocumentMessage, DocumentMessageDiscriminant, DocumentMessageHandler, FlipAxis, VectorManipulatorAnchor, VectorManipulatorPoint, VectorManipulatorSegment,
+	VectorManipulatorShape,
+};
 
 #[doc(inline)]
 pub use layer_panel::{LayerDataTypeDiscriminant, LayerMetadata, LayerPanelEntry, RawBuffer};

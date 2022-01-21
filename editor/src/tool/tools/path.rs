@@ -1,6 +1,8 @@
 use crate::consts::COLOR_ACCENT;
 use crate::consts::VECTOR_MANIPULATOR_ANCHOR_MARKER_SIZE;
 use crate::document::DocumentMessageHandler;
+use crate::document::VectorManipulatorAnchor;
+use crate::document::VectorManipulatorPoint;
 use crate::document::VectorManipulatorSegment;
 use crate::document::VectorManipulatorShape;
 use crate::input::keyboard::{Key, MouseMotion};
@@ -93,11 +95,11 @@ struct PathToolSelector {
 	selected_layer_path: Vec<LayerId>,
 	overlay_path: Vec<LayerId>,
 
-	selected_shape_id: usize,
+	selected_shape: usize,
 	selected_shape_elements: Vec<kurbo::PathEl>,
-	selected_element_id: usize,
 
-	selected_is_handle: bool,
+	selected_point: VectorManipulatorPoint,
+	selected_anchor: VectorManipulatorAnchor,
 }
 
 impl PathToolSelector {
@@ -114,14 +116,14 @@ impl PathToolSelector {
 			// Localize mouse position to shape
 			let mouse_to_shape = selected_shape.transform.inverse().transform_point2(mouse_position);
 			// Find the closest control point for this shape
-			let (element_id, distance, is_handle) = self.closest_control_id(&selected_shape.path, Vec2::new(mouse_to_shape.x, mouse_to_shape.y));
+			let (anchor, point, distance) = self.closest_manipulator(selected_shape, Vec2::new(mouse_to_shape.x, mouse_to_shape.y));
 			// Choose the first manipulator under the threshold
 			if distance < select_threshold_squared {
 				self.selected_shape_elements = selected_shape.path.clone().into_iter().collect();
 				self.selected_layer_path = selected_shape.layer_path.clone();
-				self.selected_shape_id = shape_index;
-				self.selected_element_id = element_id;
-				self.selected_is_handle = is_handle;
+				self.selected_shape = shape_index;
+				self.selected_point = point.clone();
+				self.selected_anchor = anchor.clone();
 				return true;
 			}
 		}
@@ -129,18 +131,14 @@ impl PathToolSelector {
 	}
 
 	pub fn selected_shape(&self) -> &VectorManipulatorShape {
-		&self.selected_shapes[self.selected_shape_id]
+		&self.selected_shapes[self.selected_shape]
 	}
 
 	pub fn move_selected_to(&mut self, mouse_position: DVec2) -> Operation {
 		let mouse_to_shape = self.selected_shape().transform.inverse().transform_point2(mouse_position);
 		let mouse_position = Vec2::new(mouse_to_shape.x, mouse_to_shape.y);
 
-		if self.selected_is_handle {
-			self.move_handle(mouse_position);
-		} else {
-			self.move_anchor(mouse_position);
-		}
+		self.move_point(mouse_position);
 
 		Operation::SetShapePathInViewport {
 			path: self.selected_layer_path.clone(),
@@ -149,49 +147,54 @@ impl PathToolSelector {
 		}
 	}
 
-	fn move_anchor(&mut self, transformed_position: Vec2) {
-		let neighbor_index = (self.selected_element_id + 1) % self.selected_shape_elements.len();
-		let point = transformed_position.to_point();
-		let (selected, point) = match &self.selected_shape_elements[self.selected_element_id] {
-			PathEl::MoveTo(p) => (PathEl::MoveTo(point), p),
-			PathEl::LineTo(p) => (PathEl::LineTo(point), p),
-			PathEl::QuadTo(a1, p) => (PathEl::QuadTo(*a1 - (*p - transformed_position).to_vec2(), point), p),
-			PathEl::CurveTo(a1, a2, p) => (PathEl::CurveTo(*a1, *a2 - (*p - transformed_position).to_vec2(), point), p),
-			PathEl::ClosePath => (PathEl::MoveTo(point), &point),
-		};
-		let neighbor = match &self.selected_shape_elements[neighbor_index] {
-			PathEl::MoveTo(p) => PathEl::MoveTo(*point),
-			PathEl::LineTo(p) => PathEl::LineTo(*point),
-			PathEl::QuadTo(a1, p) => PathEl::QuadTo(*a1 - (*point - transformed_position).to_vec2(), *p),
-			PathEl::CurveTo(a1, a2, p) => PathEl::CurveTo(*a1 - (*point - transformed_position).to_vec2(), *a2, *p),
-			PathEl::ClosePath => PathEl::MoveTo(*point),
-		};
-		self.selected_shape_elements[neighbor_index] = neighbor;
-		self.selected_shape_elements[self.selected_element_id] = selected;
-	}
+	fn move_point(&mut self, mouse_position: Vec2) {
+		let mouse_position_point = mouse_position.to_point();
+		let (h1, h2) = &self.selected_anchor.handles;
 
-	fn move_handle(&mut self, transformed_position: Vec2) {
-		let neighbor_index = (self.selected_element_id + 1) % self.selected_shape_elements.len();
-		let point = transformed_position.to_point();
-		let (selected, handle) = match &self.selected_shape_elements[self.selected_element_id] {
-			PathEl::MoveTo(p) => (PathEl::MoveTo(point), p),
-			PathEl::LineTo(p) => (PathEl::LineTo(point), p),
-			PathEl::QuadTo(a1, p) => (PathEl::QuadTo(point, *p), a1),
-			PathEl::CurveTo(a1, a2, p) => (PathEl::CurveTo(*a1, point, *p), a2),
-			PathEl::ClosePath => (PathEl::MoveTo(point), &point),
-		};
+		// We are dragging an anchor point
+		if !self.selected_point.is_guide {
+			let (selected, point) = match &self.selected_shape_elements[self.selected_anchor.point.element_id] {
+				PathEl::MoveTo(p) => (PathEl::MoveTo(mouse_position_point), p),
+				PathEl::LineTo(p) => (PathEl::LineTo(mouse_position_point), p),
+				PathEl::QuadTo(a1, p) => (PathEl::QuadTo(*a1 - (*p - mouse_position).to_vec2(), mouse_position_point), p),
+				PathEl::CurveTo(a1, a2, p) => (PathEl::CurveTo(*a1, *a2 - (*p - mouse_position).to_vec2(), mouse_position_point), p),
+				PathEl::ClosePath => (PathEl::MoveTo(mouse_position_point), &mouse_position_point),
+			};
 
-		let neighbor = match &self.selected_shape_elements[neighbor_index] {
-			PathEl::MoveTo(_) => PathEl::MoveTo(point),
-			PathEl::LineTo(_) => PathEl::LineTo(point),
-			PathEl::QuadTo(a1, p) => PathEl::QuadTo(*a1 + (*handle - transformed_position).to_vec2(), *p),
-			PathEl::CurveTo(a1, a2, p) => PathEl::CurveTo(*a1 + (*handle - transformed_position).to_vec2(), *a2, *p),
-			PathEl::ClosePath => PathEl::MoveTo(*handle),
-		};
-		self.selected_shape_elements[neighbor_index] = neighbor;
-		self.selected_shape_elements[self.selected_element_id] = selected;
+			if let Some(handle) = h2 {
+				let neighbor = match &self.selected_shape_elements[handle.element_id] {
+					PathEl::MoveTo(_) => PathEl::MoveTo(*point),
+					PathEl::LineTo(_) => PathEl::LineTo(*point),
+					PathEl::QuadTo(a1, p) => PathEl::QuadTo(*a1 - (*point - mouse_position).to_vec2(), *p),
+					PathEl::CurveTo(a1, a2, p) => PathEl::CurveTo(*a1 - (*point - mouse_position).to_vec2(), *a2, *p),
+					PathEl::ClosePath => PathEl::MoveTo(*point),
+				};
+				self.selected_shape_elements[handle.element_id] = neighbor;
+			}
+			self.selected_shape_elements[self.selected_point.element_id] = selected;
+		}
+		// We are dragging a handle
+		else {
+			let selected = match &self.selected_shape_elements[self.selected_point.element_id] {
+				PathEl::MoveTo(p) => PathEl::MoveTo(*p),
+				PathEl::LineTo(p) => PathEl::LineTo(*p),
+				PathEl::QuadTo(a1, p) => PathEl::QuadTo(mouse_position_point, *p),
+				PathEl::CurveTo(a1, a2, p) => PathEl::CurveTo(mouse_position_point, *a2, *p),
+				PathEl::ClosePath => PathEl::MoveTo(mouse_position_point),
+			};
 
-
+			if let Some(handle) = self.selected_anchor.opposing_handle(&self.selected_point) {
+				let neighbor = match &self.selected_shape_elements[handle.element_id] {
+					PathEl::MoveTo(p) => PathEl::MoveTo(*p),
+					PathEl::LineTo(p) => PathEl::LineTo(*p),
+					PathEl::QuadTo(a1, p) => PathEl::QuadTo(*a1 - (mouse_position_point - mouse_position).to_vec2(), *p),
+					PathEl::CurveTo(a1, a2, p) => PathEl::CurveTo(*a1 - (mouse_position_point - mouse_position).to_vec2(), *a2, *p),
+					PathEl::ClosePath => PathEl::MoveTo(mouse_position_point),
+				};
+				self.selected_shape_elements[handle.element_id] = neighbor;
+			}
+			self.selected_shape_elements[self.selected_point.element_id] = selected;
+		}
 	}
 
 	fn update_overlays() {
@@ -208,49 +211,20 @@ impl PathToolSelector {
 	}
 
 	// Brute force comparison to determine which handle / anchor we want to select
-	fn closest_control_id(&self, bez: &BezPath, pos: kurbo::Vec2) -> (usize, f64, bool) {
-		let min_dist = |p1: Vec2, p2: Vec2| -> Vec2 {
-			if (p1 - pos).hypot2() < (p2 - pos).hypot2() {
-				p1
-			} else {
-				p2
-			}
-		};
-
-		let mut closest_id: usize = 0;
+	fn closest_manipulator<'a>(&self, shape: &'a VectorManipulatorShape, pos: kurbo::Vec2) -> (&'a VectorManipulatorAnchor, &'a VectorManipulatorPoint, f64) {
+		let mut closest_anchor: &'a VectorManipulatorAnchor = &shape.points[0];
+		let mut closest_point: &'a VectorManipulatorPoint = &shape.points[0].point;
 		let mut closest_distance: f64 = f64::MAX;
-		let mut is_handle = false;
-		for (i, el) in bez.iter().enumerate() {
-			let result = match el {
-				kurbo::PathEl::MoveTo(a) => Some((a.to_vec2(), false)),
-				kurbo::PathEl::LineTo(a) => Some((a.to_vec2(), false)),
-				kurbo::PathEl::QuadTo(a, b) => {
-					let a = a.to_vec2();
-					let b = b.to_vec2();
-					let result = min_dist(a, b);
-					Some((min_dist(a, b), result != b))
-				}
-				kurbo::PathEl::CurveTo(a, b, c) => {
-					let a = a.to_vec2();
-					let b = b.to_vec2();
-					let c = c.to_vec2();
-					let result = min_dist(min_dist(a, b), min_dist(b, c));
-					Some((result, result != c))
-				}
-				kurbo::PathEl::ClosePath => None,
-			};
-			if result.is_none() {
-				continue;
-			}
-			let (point, handle) = result.unwrap();
-			let distance_squared = (point - pos).hypot2();
+		for anchor in shape.points.iter() {
+			let point = anchor.closest_handle_or_anchor(pos);
+			let distance_squared = (point.position - pos).hypot2();
 			if distance_squared < closest_distance {
 				closest_distance = distance_squared;
-				closest_id = i;
-				is_handle = handle;
+				closest_anchor = anchor;
+				closest_point = point;
 			}
 		}
-		(closest_id, closest_distance, is_handle)
+		(closest_anchor, closest_point, closest_distance)
 	}
 }
 

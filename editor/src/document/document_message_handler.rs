@@ -48,7 +48,6 @@ pub enum AlignAggregate {
 	Average,
 }
 
-
 #[derive(PartialEq, Clone, Debug)]
 pub enum VectorManipulatorSegment {
 	Line(DVec2, DVec2),
@@ -56,8 +55,7 @@ pub enum VectorManipulatorSegment {
 	Cubic(DVec2, DVec2, DVec2, DVec2),
 }
 
-
-#[derive(PartialEq, Clone, Debug)]
+#[derive(PartialEq, Clone, Debug, Default)]
 pub struct VectorManipulatorShape {
 	/// The path to the layer
 	pub layer_path: Vec<LayerId>,
@@ -73,25 +71,55 @@ pub struct VectorManipulatorShape {
 	pub transform: DAffine2,
 }
 
-#[derive(PartialEq, Clone, Debug)]
-pub struct VectorManipulatorAnchor {
-	// The element at this point
-	pub element: kurbo::PathEl,
-	// The control point / manipulator handle position
-	pub position: kurbo::Vec2,
-	// Anchor handles
-	pub handles: (Option<VectorManipulatorHandle>, Option<VectorManipulatorHandle>)
-}
-
-#[derive(PartialEq, Clone, Debug)]
-pub struct VectorManipulatorHandle {
-	// The element at this point
-	pub element: kurbo::PathEl,
+#[derive(PartialEq, Clone, Debug, Default)]
+pub struct VectorManipulatorPoint {
+	// The associated position in the BezPath
+	pub element_id: usize,
 	// The sibling element if this is a handle
 	pub position: kurbo::Vec2,
+	// Are we handle?
+	pub is_guide: bool,
+}
+#[derive(PartialEq, Clone, Debug, Default)]
+pub struct VectorManipulatorAnchor {
+	// The associated position in the BezPath
+	pub point: VectorManipulatorPoint,
+	// Anchor handles
+	pub handles: (Option<VectorManipulatorPoint>, Option<VectorManipulatorPoint>),
 }
 
+impl VectorManipulatorAnchor {
+	pub fn closest_handle_or_anchor(&self, target: kurbo::Vec2) -> &VectorManipulatorPoint {
+		let mut closest_point: &VectorManipulatorPoint = &self.point;
+		let mut distance = (self.point.position - target).hypot2();
 
+		let (handle1, handle2) = &self.handles;
+		if let Some(handle1) = handle1 {
+			let handle1_dist = (handle1.position - target).hypot2();
+			if distance > handle1_dist {
+				distance = handle1_dist;
+				closest_point = handle1;
+			}
+		}
+
+		if let Some(handle2) = handle2 {
+			let handle2_dist = (handle2.position - target).hypot2();
+			if distance > handle2_dist {
+				closest_point = handle2;
+			}
+		}
+
+		closest_point
+	}
+
+	pub fn opposing_handle(&self, handle: &VectorManipulatorPoint) -> &Option<VectorManipulatorPoint> {
+		if Some(handle) == self.handles.0.as_ref() {
+			&self.handles.1
+		} else {
+			&self.handles.0
+		}
+	}
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct DocumentMessageHandler {
@@ -310,13 +338,51 @@ impl DocumentMessageHandler {
 				})
 				.collect::<Vec<VectorManipulatorSegment>>();
 
-			let points = path.segments().map(|segment| -> VectorManipulatorAnchor {
-				match segment {
-					PathSeg::Line(_) => todo!(),
-					PathSeg::Quad(_) => todo!(),
-					PathSeg::Cubic(_) => todo!(),
-				}
-			}).collect::<Vec<VectorManipulatorAnchor>>();
+			let points: Vec<VectorManipulatorAnchor> = path
+				.elements()
+				.windows(2)
+				.enumerate()
+				.map(|(index, element)| -> VectorManipulatorAnchor {
+					let mut handle1 = None;
+					let mut anchor_position: kurbo::Vec2 = kurbo::Vec2::ZERO;
+					let mut handle2 = None;
+					let current_element = element[0];
+					let next_element = element[1];
+
+					match current_element {
+						kurbo::PathEl::MoveTo(anchor) | kurbo::PathEl::LineTo(anchor) => anchor_position = anchor.to_vec2(),
+						kurbo::PathEl::QuadTo(handle, anchor) | kurbo::PathEl::CurveTo(_, handle, anchor) => {
+							anchor_position = anchor.to_vec2();
+							handle1 = Some(VectorManipulatorPoint {
+								element_id: index,
+								position: handle.to_vec2(),
+								is_guide: true,
+							});
+						}
+						_ => (),
+					}
+
+					match next_element {
+						kurbo::PathEl::CurveTo(handle, _, _) | kurbo::PathEl::QuadTo(handle, _) => {
+							handle2 = Some(VectorManipulatorPoint {
+								element_id: index + 1,
+								position: handle.to_vec2(),
+								is_guide: true,
+							});
+						}
+						_ => (),
+					}
+
+					VectorManipulatorAnchor {
+						point: VectorManipulatorPoint {
+							element_id: index,
+							position: anchor_position,
+							is_guide: false,
+						},
+						handles: (handle1, handle2),
+					}
+				})
+				.collect();
 
 			Some(VectorManipulatorShape {
 				layer_path: path_to_shape.to_vec(),
