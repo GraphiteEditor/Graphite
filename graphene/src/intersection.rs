@@ -231,9 +231,12 @@ impl<'a> SubCurve<'a> {
 Bezier Curve Intersection Algorithm
 - TODO: How does f64 precision effect the algorithm?
 - TODO: profile algorithm
-- Bug: algorithm finds same intersection multiple times in same recursion path
 - Bug: intersections of "perfectly alligned" line or curve
-- Bug: intersections on the end of segments
+	- If the algorithm is rewritten to be non-recursive it can be restructured to be more breadth first then depth first.
+	  This would allow easy recognition of the case where many (or all) bounding boxes intersect, this case is correlated with alligned curves
+- Bug: deep recursion can result in stack overflow
+- Improvement: intersections on the end of segments
+	- Intersections near the end of segments seem to be consistently lower 'quality', why?
 - Improvement: algorithm behavior when curves have very different sizes
 - Improvement: more adapative way to decide when "close enough"
 - Improvement: quality metric?
@@ -241,46 +244,52 @@ Bezier Curve Intersection Algorithm
 - Optimization: how efficiently does std::Vec::append work?
 - Optimization: specialized line/quad/cubic combination algorithms
 */
-fn path_intersections(a: &SubCurve, b: &SubCurve, mut recursion: f64) -> Vec<Intersect> {
-	let mut intersections = Vec::new();
-	//special case
+fn path_intersections(a: &SubCurve, b: &SubCurve, mut recursion: f64, intersections: &mut Vec<Intersect>) {
+	// special case
 	if let (PathSeg::Line(line_a), PathSeg::Line(line_b)) = (a.curve, b.curve) {
 		if let Some(cross) = line_intersection(line_a, line_b) {
 			intersections.push(cross);
 		}
 	} else if overlap(&a.bounding_box(), &b.bounding_box()) {
-		// base case, we are close enough to try linear approximation
+		// we are close enough to try linear approximation
 		if recursion < (1 << 10) as f64 {
 			if let Some(mut cross) = line_intersection(&Line { p0: a.start(), p1: a.end() }, &Line { p0: b.start(), p1: b.end() }) {
 				// intersection t_value equals the recursive t_value + interpolated intersection value
 				cross.t_a = a.start_t + cross.t_a * recursion;
 				cross.t_b = b.start_t + cross.t_b * recursion;
 				cross.quality = guess_quality(a.curve, b.curve, &cross);
-				//
+
 				// log::debug!("checking: {:?}", cross.quality);
 				if cross.quality <= F64PRECISION {
 					intersections.push(cross);
-					return intersections;
+					return;
+				}
+				// Eventually the points in the curve become to close together to split the curve meaningfully
+				// Also provides a base case and prevents infinite recursion
+				if a.available_precision() <= F64PRECISION || b.available_precision() <= F64PRECISION {
+					log::debug!("precision reached");
+					println!("precision reached");
+					intersections.push(cross);
+					return;
 				}
 			}
-			// Eventually the points in the curve become to close together to split the curve meaningfully
-			// Also provides a base case and prevents infinite
-			// NOTE: this may happen especially near end of a PathSeg
-			// NOTE: duplicate circles also cause this to happen, seems to be a result of duplicate not algorithm
+
+			// Alternate base case
+			// Note: may occur for the less precise side of an PathSeg endpoint intersect
 			if a.available_precision() <= F64PRECISION || b.available_precision() <= F64PRECISION {
-				log::debug!("precision reached");
-				return intersections;
+				log::debug!("precision reached without finding intersect");
+				println!("precision reached without finding intersect");
+				return;
 			}
 		}
-		recursion /= 2.0; //bit shifts can't be used for floating-point division?
+		recursion /= 2.0;
 		let (a1, a2) = a.split(0.5);
 		let (b1, b2) = b.split(0.5);
-		intersections.append(&mut path_intersections(&a1, &b1, recursion));
-		intersections.append(&mut path_intersections(&a1, &b2, recursion));
-		intersections.append(&mut path_intersections(&a2, &b1, recursion));
-		intersections.append(&mut path_intersections(&a2, &b2, recursion));
+		path_intersections(&a1, &b1, recursion, intersections);
+		path_intersections(&a1, &b2, recursion, intersections);
+		path_intersections(&a2, &b1, recursion, intersections);
+		path_intersections(&a2, &b2, recursion, intersections);
 	}
-	intersections
 }
 
 /// Optimization: inline? maybe...
@@ -312,7 +321,9 @@ pub fn intersections(a: &BezPath, b: &BezPath) -> Vec<Intersect> {
 				.iter()
 				.filter_map(|t| if *t > F64PRECISION && *t < 1.0 - F64PRECISION { Some(b_seg.eval(*t)) } else { None })
 				.collect();
-			for mut path_intersection in path_intersections(&SubCurve::new(&a_seg, &a_extrema), &SubCurve::new(&b_seg, &b_extrema), 1.0) {
+			let mut intersects = Vec::new();
+			path_intersections(&SubCurve::new(&a_seg, &a_extrema), &SubCurve::new(&b_seg, &b_extrema), 1.0, &mut intersects);
+			for mut path_intersection in intersects {
 				intersections.push({
 					path_intersection.add_idx(a_idx, b_idx);
 					path_intersection
@@ -375,10 +386,13 @@ fn valid_t(t: f64) -> bool {
 	t > -F64PRECISION && t < 1.0
 }
 
+/// each of these tests has been visualy, but not mathematically verified
+/// each test looks for exact floating point comparisions, so isn't flexible to small adjustments in the algorithm
 mod tests {
+	#[allow(unused_imports)] // this import is used
 	use super::*;
 
-	// two intersect points, on different PathSegs
+	/// two intersect points, on different PathSegs
 	#[test]
 	fn curve_intersection_basic() {
 		let a =
@@ -450,6 +464,35 @@ mod tests {
 				t_b: 0.1717096219530834,
 				a_seg_idx: 3,
 				b_seg_idx: 2,
+				quality: 0.0,
+			},
+		];
+		let result = intersections(&a, &b);
+		assert_eq!(expected.len(), result.len());
+		assert!(expected.iter().zip(result.iter()).fold(true, |equal, (a, b)| equal && a == b));
+	}
+
+	/// intersect points at ends of PathSegs
+	#[test]
+	fn curve_intersection_seg_edges() {
+		let a =
+			BezPath::from_svg("M-355.41190151646936 -204.93220299904385C-355.41190151646936 -164.32790664074417 -389.9224217662629 -131.4116207799262 -432.4933059063151 -131.4116207799262C-475.06419004636723 -131.4116207799262 -509.5747102961608 -164.32790664074417 -509.5747102961608 -204.93220299904382C-509.5747102961608 -245.53649935734347 -475.06419004636723 -278.45278521816147 -432.4933059063151 -278.45278521816147C-389.9224217662629 -278.45278521816147 -355.41190151646936 -245.5364993573435 -355.41190151646936 -204.93220299904385").expect("");
+		let b = BezPath::from_svg("M-450.7808181070286 -146.42509665727817C-450.7808181070286 -185.38383768558714 -421.2406499166092 -216.96613737992166 -384.8010057614469 -216.96613737992166C-348.3613616062847 -216.96613737992166 -318.82119341586525 -185.38383768558714 -318.82119341586525 -146.4250966572782C-318.82119341586525 -107.46635562896924 -348.3613616062846 -75.88405593463473 -384.8010057614469 -75.88405593463472C-421.2406499166092 -75.8840559346347 -450.78081810702855 -107.46635562896921 -450.7808181070286 -146.42509665727817").expect("");
+		let expected = [
+			Intersect {
+				point: Point::new(-449.629331039312, -133.2349088577284),
+				t_a: 0.1383488820074267,
+				t_b: 0.8842879656175459,
+				a_seg_idx: 1,
+				b_seg_idx: 3,
+				quality: 0.00000000000002842170943040401,
+			},
+			Intersect {
+				point: Point::new(-355.5702650533912, -209.683276560014),
+				t_a: 0.9606918211578568,
+				t_b: 0.28804943846673475,
+				a_seg_idx: 3,
+				b_seg_idx: 1,
 				quality: 0.0,
 			},
 		];
