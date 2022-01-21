@@ -395,13 +395,13 @@ pub fn boolean_operation(select: BooleanOperation, alpha: &Shape, beta: &Shape) 
 			let mut cycles = graph.get_cycles();
 			// "extra calls to ParamCurveArea::area here"
 			let outline: Cycle = (*cycles.iter().reduce(|max, cycle| if cycle.area().abs() >= max.area().abs() { cycle } else { max }).unwrap()).clone();
-			let mut insides = collect_shapes(&graph, &mut cycles, |dir| dir != alpha_dir, &alpha.style)?;
+			let mut insides = collect_shapes(&graph, &mut cycles, |dir| dir != alpha_dir, |_| &alpha.style)?;
 			insides.push(graph.get_shape(&outline, &alpha.style));
 			Ok(insides)
 		}
 		BooleanOperation::Difference => {
 			let graph = PathGraph::from_paths(&alpha.path, &beta.path, alpha_dir == beta_dir)?;
-			collect_shapes(&graph, &mut graph.get_cycles(), |_| true, &alpha.style)
+			collect_shapes(&graph, &mut graph.get_cycles(), |_| true, |dir| if dir == alpha_dir { &alpha.style } else { &beta.style })
 		}
 		BooleanOperation::Intersection => {
 			let graph = PathGraph::from_paths(&alpha.path, &beta.path, alpha_dir != beta_dir)?;
@@ -415,15 +415,15 @@ pub fn boolean_operation(select: BooleanOperation, alpha: &Shape, beta: &Shape) 
 					.unwrap()
 					.0,
 			);
-			collect_shapes(&graph, &mut cycles, |dir| dir == alpha_dir, &alpha.style)
+			collect_shapes(&graph, &mut cycles, |dir| dir == alpha_dir, |_| &alpha.style)
 		}
 		BooleanOperation::SubtractBack => {
 			let graph = PathGraph::from_paths(&alpha.path, &beta.path, alpha_dir == beta_dir)?;
-			collect_shapes(&graph, &mut graph.get_cycles(), |dir| dir != alpha_dir, &alpha.style)
+			collect_shapes(&graph, &mut graph.get_cycles(), |dir| dir != alpha_dir, |_| &alpha.style)
 		}
 		BooleanOperation::SubtractFront => {
 			let graph = PathGraph::from_paths(&alpha.path, &beta.path, alpha_dir == beta_dir)?;
-			collect_shapes(&graph, &mut graph.get_cycles(), |dir| dir == alpha_dir, &alpha.style)
+			collect_shapes(&graph, &mut graph.get_cycles(), |dir| dir == alpha_dir, |_| &beta.style)
 		}
 	}
 }
@@ -437,9 +437,10 @@ pub fn bounding_box(curve: &BezPath) -> Rect {
 		.unwrap()
 }
 
-fn collect_shapes<F>(graph: &PathGraph, cycles: &mut Vec<Cycle>, predicate: F, style: &PathStyle) -> Result<Vec<Shape>, BooleanOperationError>
+fn collect_shapes<'a, F, G>(graph: &PathGraph, cycles: &mut Vec<Cycle>, predicate: F, style: G) -> Result<Vec<Shape>, BooleanOperationError>
 where
 	F: Fn(Direction) -> bool,
+	G: Fn(Direction) -> &'a PathStyle,
 {
 	let mut shapes = Vec::new();
 	if cycles.len() == 0 {
@@ -449,7 +450,7 @@ where
 		match cycle.direction() {
 			Ok(dir) => {
 				if predicate(dir) {
-					shapes.push(graph.get_shape(cycle, style));
+					shapes.push(graph.get_shape(cycle, style(dir)));
 				}
 			}
 			Err(err) => return Err(err),
