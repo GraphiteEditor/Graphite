@@ -498,7 +498,7 @@ impl Document {
 				//it could equal 2.. but for Union and Intersection operations more than two selections could make sense
 				//Bug:: The order of selected does not correspond to the order of layers in the LayerTree
 				let mut responses = Vec::new();
-				log::debug!("{:?}", selected);
+				// log::debug!("{:?}", selected);
 				if selected.len() > 1 && selected.len() < 3 {
 					// to deal with union of shapes with different transforms, we
 					let shapes = self.transformed_shapes(selected)?;

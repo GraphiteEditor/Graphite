@@ -96,6 +96,7 @@ impl std::ops::Not for Origin {
 	}
 }
 
+#[derive(Debug, PartialEq)]
 pub struct Intersect {
 	pub point: Point,
 	pub t_a: f64,
@@ -204,14 +205,14 @@ impl<'a> SubCurve<'a> {
 				curve: self.curve,
 				start_t: self.start_t,
 				end_t: split_t,
-				local: [self.curve.eval(self.start_t), self.curve.eval(split_t)],
+				local: [self.start(), self.curve.eval(split_t)],
 				extrema: self.extrema,
 			},
 			SubCurve {
 				curve: self.curve,
 				start_t: split_t,
 				end_t: self.end_t,
-				local: [self.curve.eval(split_t), self.curve.eval(self.end_t)],
+				local: [self.curve.eval(split_t), self.end()],
 				extrema: self.extrema,
 			},
 		)
@@ -265,9 +266,9 @@ fn path_intersections(a: &SubCurve, b: &SubCurve, mut recursion: f64) -> Vec<Int
 			// Eventually the points in the curve become to close together to split the curve meaningfully
 			// Also provides a base case and prevents infinite
 			// NOTE: this may happen especially near end of a PathSeg
+			// NOTE: duplicate circles also cause this to happen, seems to be a result of duplicate not algorithm
 			if a.available_precision() <= F64PRECISION || b.available_precision() <= F64PRECISION {
-				log::debug!("precision reached, a:{:?} b:{:?}", a.available_precision(), b.available_precision());
-				log::debug!("size/precision, a:{:?} b:{:?}", a.size_precision_ratio(), b.size_precision_ratio());
+				log::debug!("precision reached");
 				return intersections;
 			}
 		}
@@ -291,6 +292,10 @@ fn guess_quality(a: &PathSeg, b: &PathSeg, guess: &Intersect) -> f64 {
 }
 
 pub fn intersections(a: &BezPath, b: &BezPath) -> Vec<Intersect> {
+	// print out paths for testing
+	log::info!("{:?}", a.to_svg());
+	log::info!("{:?}", b.to_svg());
+
 	let mut intersections: Vec<Intersect> = Vec::new();
 	// there is some duplicate computation of b_extrema here, but I doubt it's significant
 	a.segments().enumerate().for_each(|(a_idx, a_seg)| {
@@ -315,6 +320,10 @@ pub fn intersections(a: &BezPath, b: &BezPath) -> Vec<Intersect> {
 			}
 		})
 	});
+
+	// print out result for testing
+	log::info!("{:?}", intersections);
+
 	intersections
 }
 
@@ -363,5 +372,89 @@ pub fn overlap(a: &Rect, b: &Rect) -> bool {
 /// tests if a t value belongs to [0.0, 1.0]
 /// uses F64PRECISION to allow a slightly larger range of values
 fn valid_t(t: f64) -> bool {
-	t > -F64PRECISION && t < 1.0 + F64PRECISION
+	t > -F64PRECISION && t < 1.0
+}
+
+mod tests {
+	use super::*;
+
+	// two intersect points, on different PathSegs
+	#[test]
+	fn curve_intersection_basic() {
+		let a =
+			BezPath::from_svg("M-739.7999877929688 -50.89999999999998L-676.7999877929688 -50.89999999999998L-676.7999877929688 27.100000000000023L-739.7999877929688 27.100000000000023Z").expect("");
+		let b = BezPath::from_svg("M-649.2999877929688 72.10000000000002L-694.7999877929688 72.10000000000002L-694.7999877929688 0.8222196224152754L-649.2999877929688 0.8222196224152754Z").expect("");
+		let expected = [
+			Intersect {
+				point: Point::new(-676.7999877929688, 0.8222196224152754),
+				t_a: 0.6631053797745545,
+				t_b: 0.3956043956043956,
+				a_seg_idx: 1,
+				b_seg_idx: 2,
+				quality: 0.0,
+			},
+			Intersect {
+				point: Point::new(-694.7999877929688, 27.10000000000003),
+				t_a: 0.2857142857142857,
+				t_b: 0.6313327906904278,
+				a_seg_idx: 2,
+				b_seg_idx: 1,
+				quality: 0.0,
+			},
+		];
+		let result = intersections(&a, &b);
+		assert_eq!(expected.len(), result.len());
+		assert!(expected.iter().zip(result.iter()).fold(true, |equal, (a, b)| equal && a == b));
+
+		let a =
+			BezPath::from_svg("M-663.1000244140627 -549.4740810512067C-663.1000244140627 -516.8197385387762 -690.6345122994688 -490.3481636282921 -724.6000244140627 -490.3481636282921C-758.5655365286565 -490.3481636282921 -786.1000244140627 -516.8197385387762 -786.1000244140627 -549.4740810512067C-786.1000244140627 -582.128423563637 -758.5655365286565 -608.5999984741211 -724.6000244140627 -608.5999984741211C-690.6345122994688 -608.5999984741211 -663.1000244140627 -582.128423563637 -663.1000244140627 -549.4740810512067").expect("");
+		let b = BezPath::from_svg("M-834.7843084184785 -566.2292363273158C-834.7843084184785 -597.2326143708982 -805.749982642916 -622.3658181414634 -769.9343267290242 -622.3658181414634C-734.1186708151323 -622.3658181414634 -705.0843450395697 -597.2326143708982 -705.0843450395697 -566.2292363273158C-705.0843450395697 -535.2258582837335 -734.1186708151323 -510.0926545131682 -769.9343267290242 -510.0926545131682C-805.749982642916 -510.0926545131682 -834.7843084184785 -535.2258582837334 -834.7843084184785 -566.2292363273158").expect("");
+		let expected = [
+			Intersect {
+				point: Point::new(-770.4753350264828, -510.09456728384305),
+				t_a: 0.5368149286026136,
+				t_b: 0.005039955230097687,
+				a_seg_idx: 1,
+				b_seg_idx: 3,
+				quality: 0.0,
+			},
+			Intersect {
+				point: Point::new(-727.3175070060661, -608.5433117814998),
+				t_a: 0.9731908875121124,
+				t_b: 0.45548363569548905,
+				a_seg_idx: 2,
+				b_seg_idx: 1,
+				quality: 0.0,
+			},
+		];
+		let result = intersections(&a, &b);
+		assert_eq!(expected.len(), result.len());
+		assert!(expected.iter().zip(result.iter()).fold(true, |equal, (a, b)| equal && a == b));
+
+		let a =
+			BezPath::from_svg("M-421.6225245705596 -963.1740648809906L-446.65763791855386 -1011.5169335848782L-496.72786461454245 -1011.5169335848782L-521.7629779625368 -963.1740648809906L-496.7278646145425 -914.831196177103L-446.6576379185539 -914.831196177103Z").expect("");
+		let b = BezPath::from_svg("M-561.0072096972251 -1026.4026766566521L-502.81748678026577 -1026.4026766566521L-502.81748678026577 -945.8843391320225L-561.0072096972251 -945.8843391320225Z")
+			.expect("");
+		let expected = [
+			Intersect {
+				point: Point::new(-502.81748678026577, -999.757857413672),
+				t_a: 0.24324324324304233,
+				t_b: 0.33091616223235865,
+				a_seg_idx: 2,
+				b_seg_idx: 1,
+				quality: 0.0,
+			},
+			Intersect {
+				point: Point::new(-512.8092221038916, -945.8843391320225),
+				t_a: 0.35764790573087535,
+				t_b: 0.1717096219530834,
+				a_seg_idx: 3,
+				b_seg_idx: 2,
+				quality: 0.0,
+			},
+		];
+		let result = intersections(&a, &b);
+		assert_eq!(expected.len(), result.len());
+		assert!(expected.iter().zip(result.iter()).fold(true, |equal, (a, b)| equal && a == b));
+	}
 }

@@ -177,7 +177,7 @@ impl PathGraph {
 		}
 		new.add_edges_from_path(alpha, Origin::Alpha, false);
 		new.add_edges_from_path(beta, Origin::Beta, reverse);
-		log::debug!("size: {}, {:?}", new.size(), new);
+		// log::debug!("size: {}, {:?}", new.size(), new);
 		Ok(new)
 	}
 
@@ -195,7 +195,6 @@ impl PathGraph {
 
 		for (seg_idx, seg) in path.segments().enumerate() {
 			let (v_ids, mut t_values) = self.intersects_in_seg(seg_idx, origin);
-			log::debug!("v_ids: {:?}", v_ids);
 			if !v_ids.is_empty() {
 				let sub_segs = subdivide_path_seg(&seg, &mut t_values);
 				for (vertex_id, sub_seg) in v_ids.into_iter().zip(sub_segs.iter()) {
@@ -392,7 +391,6 @@ pub fn boolean_operation(select: BooleanOperation, alpha: &Shape, beta: &Shape) 
 	}
 	let alpha_dir = Cycle::direction_for_path(&alpha)?;
 	let beta_dir = Cycle::direction_for_path(&beta)?;
-	log::debug!("alpha: {:?} beta: {:?}", alpha_dir, beta_dir);
 	match select {
 		BooleanOperation::Union => {
 			let graph = PathGraph::from_paths(&alpha, &beta, alpha_dir != beta_dir)?;
@@ -452,7 +450,6 @@ where
 	for cycle in cycles {
 		match cycle.direction() {
 			Ok(dir) => {
-				log::debug!("dir: {:?}", dir);
 				if predicate(dir) {
 					shapes.push(graph.get_shape(cycle));
 				}
