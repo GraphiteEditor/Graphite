@@ -284,7 +284,11 @@ impl PathGraph {
 
 	/// where a valid cycle alternates edge Origin
 	fn get_cycle(&self, cycle: &mut Cycle, marker_map: &mut Vec<u8>) {
-		marker_map[cycle.prev_vertex()] += 1;
+		if cycle.prev_edge_origin() == Origin::Alpha {
+			marker_map[cycle.prev_vertex()] |= 1;
+		} else {
+			marker_map[cycle.prev_vertex()] |= 2;
+		}
 		let next_edge = self.vertex(cycle.prev_vertex()).edges.iter().find(|edge| edge.from != cycle.prev_edge_origin()).unwrap();
 		if !cycle.extend(next_edge.destination, next_edge.from, &next_edge.curve) {
 			return self.get_cycle(cycle, marker_map);
@@ -295,12 +299,15 @@ impl PathGraph {
 		let mut cycles = Vec::new();
 		let mut markers = Vec::new();
 		markers.resize(self.size(), 0);
+
 		self.vertices.iter().enumerate().for_each(|(vertex_idx, _vertex)| {
-			if markers[vertex_idx] < 2 {
+			if (markers[vertex_idx] & 1) == 0 {
 				let mut temp = Cycle::new(vertex_idx, Origin::Alpha);
 				self.get_cycle(&mut temp, &mut markers);
 				cycles.push(temp);
-				temp = Cycle::new(vertex_idx, Origin::Beta);
+			}
+			if (markers[vertex_idx] & 2) == 0 {
+				let mut temp = Cycle::new(vertex_idx, Origin::Beta);
 				self.get_cycle(&mut temp, &mut markers);
 				cycles.push(temp);
 			}
