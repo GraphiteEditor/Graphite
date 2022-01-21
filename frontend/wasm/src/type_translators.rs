@@ -1,8 +1,11 @@
 use crate::helpers::match_string_to_enum;
+
 use editor::input::keyboard::Key;
-use editor::tool::ToolType;
+use editor::viewport_tools::tool::ToolType;
+
 use graphene::boolean_ops::BooleanOperation;
-use graphene::layers::{style::ViewMode, BlendMode};
+use graphene::layers::blend_mode::BlendMode;
+use graphene::layers::style::ViewMode;
 
 pub fn translate_tool_type(name: &str) -> Option<ToolType> {
 	use ToolType::*;
@@ -59,8 +62,10 @@ pub fn translate_blend_mode(blend_mode_svg_style_name: &str) -> Option<BlendMode
 }
 
 pub fn translate_key(name: &str) -> Key {
-	log::trace!("Key event received: {}", name);
 	use Key::*;
+
+	log::trace!("Key event received: {}", name);
+
 	match name.to_lowercase().as_str() {
 		"a" => KeyA,
 		"b" => KeyB,

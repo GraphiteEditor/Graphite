@@ -1,3 +1,5 @@
+import { IconName, IconSize } from "@/utilities/icons";
+
 export type Widgets = TextButtonWidget | IconButtonWidget | SeparatorWidget | PopoverButtonWidget | NumberInputWidget;
 export type WidgetRow = Widgets[];
 export type WidgetLayout = WidgetRow[];
@@ -31,8 +33,8 @@ export interface IconButtonWidget {
 
 export interface IconButtonProps {
 	// `action` is used via `IconButtonWidget.callback`
-	icon: string;
-	size: number;
+	icon: IconName;
+	size: IconSize;
 	gapAfter?: boolean;
 }
 
@@ -48,8 +50,11 @@ export interface PopoverButtonWidget {
 
 export interface PopoverButtonProps {
 	// `action` is used via `PopoverButtonWidget.callback`
-	icon?: string;
+	icon?: PopoverButtonIcon;
 }
+
+type Extends<T, U extends T> = U;
+export type PopoverButtonIcon = Extends<IconName, "DropdownArrow" | "VerticalEllipsis">;
 
 // Number Input
 export interface NumberInputWidget {
@@ -63,7 +68,7 @@ export interface NumberInputProps {
 	value: number;
 	min?: number;
 	max?: number;
-	incrementBehavior?: boolean;
+	incrementBehavior?: IncrementBehavior;
 	incrementFactor?: number;
 	isInteger?: boolean;
 	unit?: string;
@@ -72,6 +77,9 @@ export interface NumberInputProps {
 	label?: string;
 	disabled?: boolean;
 }
+
+export type IncrementBehavior = "Add" | "Multiply" | "Callback" | "None";
+export type IncrementDirection = "Decrease" | "Increase";
 
 // Separator
 export type SeparatorDirection = "Horizontal" | "Vertical";

@@ -1,19 +1,20 @@
-use std::{
-	cmp::max,
-	collections::hash_map::DefaultHasher,
-	hash::{Hash, Hasher},
-};
+use crate::boolean_ops::boolean_operation;
+use crate::intersection::Quad;
+use crate::layers;
+use crate::layers::folder::Folder;
+use crate::layers::layer_info::{Layer, LayerData, LayerDataType};
+use crate::layers::simple_shape::Shape;
+use crate::layers::style::ViewMode;
+use crate::{DocumentError, DocumentResponse, Operation};
 
 use glam::{DAffine2, DVec2};
 use kurbo::Affine;
 use serde::{Deserialize, Serialize};
+use std::cmp::max;
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
 
-use crate::{
-	boolean_ops::boolean_operation,
-	layers::style::ViewMode,
-	layers::{self, Folder, Layer, LayerData, LayerDataType, Shape},
-	DocumentError, DocumentResponse, LayerId, Operation, Quad,
-};
+pub type LayerId = u64;
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Document {
@@ -58,10 +59,10 @@ impl Document {
 
 	/// Returns a reference to the requested folder. Fails if the path does not exist,
 	/// or if the requested layer is not of type folder.
-	pub fn folder(&self, path: &[LayerId]) -> Result<&Folder, DocumentError> {
+	pub fn folder(&self, path: impl AsRef<[LayerId]>) -> Result<&Folder, DocumentError> {
 		let mut root = &self.root;
-		for id in path {
-			root = root.as_folder()?.layer(*id).ok_or_else(|| DocumentError::LayerNotFound(path.into()))?;
+		for id in path.as_ref() {
+			root = root.as_folder()?.layer(*id).ok_or_else(|| DocumentError::LayerNotFound(path.as_ref().into()))?;
 		}
 		root.as_folder()
 	}
@@ -118,11 +119,16 @@ impl Document {
 		layers.reduce(|a, b| &a[..a.iter().zip(b.iter()).take_while(|&(a, b)| a == b).count()]).unwrap_or_default()
 	}
 
-	pub fn folders<'a>(&'a self, layers: impl Iterator<Item = &'a [LayerId]>) -> impl Iterator<Item = &'a [LayerId]> {
-		layers.filter(|layer| self.is_folder(layer))
+	/// Filters out the non folders from an iterator of paths.
+	/// Takes and Iterator over &[LayerId] or &Vec<LayerId>.
+	pub fn folders<'a, T>(&'a self, layers: impl Iterator<Item = T> + 'a) -> impl Iterator<Item = T> + 'a
+	where
+		T: AsRef<[LayerId]> + std::cmp::Ord + 'a,
+	{
+		layers.filter(|layer| self.is_folder(layer.as_ref()))
 	}
 
-	// Returns the shallowest folder given the selection, even if the selection doesn't contain any folders
+	/// Returns the shallowest folder given the selection, even if the selection doesn't contain any folders
 	pub fn shallowest_common_folder<'a>(&self, layers: impl Iterator<Item = &'a [LayerId]>) -> Result<&'a [LayerId], DocumentError> {
 		let common_prefix_of_path = self.common_layer_path_prefix(layers);
 
@@ -132,23 +138,35 @@ impl Document {
 		})
 	}
 
-	// Return returns all folders that are not contained in any other of the given folders
-	pub fn shallowest_folders<'a>(&'a self, layers: impl Iterator<Item = &'a [LayerId]>) -> Vec<&[LayerId]> {
-		self.shallowest_unique_layers(self.folders(layers))
+	/// Returns all folders that are not contained in any other of the given folders
+	/// Takes and Iterator over &[LayerId] or &Vec<LayerId>.
+	pub fn shallowest_folders<'a, T>(&'a self, layers: impl Iterator<Item = T>) -> Vec<T>
+	where
+		T: AsRef<[LayerId]> + std::cmp::Ord + 'a,
+	{
+		Self::shallowest_unique_layers(self.folders(layers))
 	}
 
-	// Return returns all layers that are not contained in any other of the given folders
-	pub fn shallowest_unique_layers<'a>(&'a self, layers: impl Iterator<Item = &'a [LayerId]>) -> Vec<&[LayerId]> {
+	/// Returns all layers that are not contained in any other of the given folders
+	/// Takes and Iterator over &[LayerId] or &Vec<LayerId>.
+	pub fn shallowest_unique_layers<'a, T>(layers: impl Iterator<Item = T>) -> Vec<T>
+	where
+		T: AsRef<[LayerId]> + std::cmp::Ord + 'a,
+	{
 		let mut sorted_layers: Vec<_> = layers.collect();
 		sorted_layers.sort();
 		// Sorting here creates groups of similar UUID paths
-		sorted_layers.dedup_by(|a, b| a.starts_with(b));
+		sorted_layers.dedup_by(|a, b| a.as_ref().starts_with(b.as_ref()));
 		sorted_layers
 	}
-	// Deepest to shallowest (longest to shortest path length)
-	pub fn sorted_folders_by_depth<'a>(&'a self, layers: impl Iterator<Item = &'a [LayerId]>) -> Vec<&'a [LayerId]> {
+	/// Deepest to shallowest (longest to shortest path length)
+	/// Takes and Iterator over &[LayerId] or &Vec<LayerId>.
+	pub fn sorted_folders_by_depth<'a, T>(&'a self, layers: impl Iterator<Item = T>) -> Vec<T>
+	where
+		T: AsRef<[LayerId]> + std::cmp::Ord + 'a,
+	{
 		let mut folders: Vec<_> = self.folders(layers).collect();
-		folders.sort_by_key(|a| std::cmp::Reverse(a.len()));
+		folders.sort_by_key(|a| std::cmp::Reverse(a.as_ref().len()));
 		folders
 	}
 
@@ -160,8 +178,8 @@ impl Document {
 		}
 	}
 
-	pub fn is_folder(&self, path: &[LayerId]) -> bool {
-		return self.folder(path).is_ok();
+	pub fn is_folder(&self, path: impl AsRef<[LayerId]>) -> bool {
+		return self.folder(path.as_ref()).is_ok();
 	}
 
 	// Determines which layer is closer to the root, if path_a return true, if path_b return false
@@ -282,7 +300,7 @@ impl Document {
 		if !self.layer(path)?.visible {
 			return Ok(());
 		}
-		if let Ok(folder) = self.folder(path) {
+		if let Ok(folder) = self.folder(&path) {
 			for layer in folder.layer_ids.iter() {
 				path.push(*layer);
 				self.visible_layers(path, paths)?;
@@ -402,8 +420,9 @@ impl Document {
 	/// Mutate the document by applying the `operation` to it. If the operation necessitates a
 	/// reaction from the frontend, responses may be returned.
 	pub fn handle_operation(&mut self, operation: &Operation) -> Result<Option<Vec<DocumentResponse>>, DocumentError> {
-		operation.pseudo_hash().hash(&mut self.state_identifier);
 		use DocumentResponse::*;
+
+		operation.pseudo_hash().hash(&mut self.state_identifier);
 
 		let responses = match &operation {
 			Operation::AddEllipse { path, insert_index, transform, style } => {
@@ -585,7 +604,7 @@ impl Document {
 					return Err(DocumentError::IndexOutOfBounds);
 				}
 			}
-			Operation::RenameLayer { path, name } => {
+			Operation::RenameLayer { layer_path: path, new_name: name } => {
 				self.layer_mut(path)?.name = Some(name.clone());
 				Some(vec![LayerChanged { path: path.clone() }])
 			}

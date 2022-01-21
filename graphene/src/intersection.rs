@@ -1,9 +1,6 @@
-use std::cmp::{max_by, min_by};
 use std::ops::Mul;
-use std::rc::Rc;
 
-use crate::boolean_ops::{bounding_box, split_path_seg};
-use crate::consts::{CURVE_FIDELITY, F64PRECISION};
+use crate::consts::F64PRECISION;
 use glam::{DAffine2, DMat2, DVec2};
 use kurbo::{BezPath, Line, ParamCurve, ParamCurveExtrema, PathSeg, Point, Rect, Shape};
 

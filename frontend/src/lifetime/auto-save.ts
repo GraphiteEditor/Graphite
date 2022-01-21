@@ -1,4 +1,4 @@
-import { AutoSaveDocument, RemoveAutoSaveDocument } from "@/dispatcher/js-messages";
+import { TriggerIndexedDbWriteDocument, TriggerIndexedDbRemoveDocument } from "@/dispatcher/js-messages";
 import { DocumentsState } from "@/state/documents";
 import { EditorState, getWasmInstance } from "@/state/wasm-loader";
 
@@ -39,13 +39,15 @@ export function createAutoSaveManager(editor: EditorState, documents: DocumentsS
 
 		return new Promise((resolve) => {
 			request.onsuccess = (): void => {
-				const previouslySavedDocuments: AutoSaveDocument[] = request.result;
+				const previouslySavedDocuments: TriggerIndexedDbWriteDocument[] = request.result;
 
 				const documentOrder: string[] = JSON.parse(window.localStorage.getItem(GRAPHITE_AUTO_SAVE_ORDER_KEY) || "[]");
-				const orderedSavedDocuments = documentOrder.map((id) => previouslySavedDocuments.find((autoSave) => autoSave.details.id === id)).filter((x) => x !== undefined) as AutoSaveDocument[];
+				const orderedSavedDocuments = documentOrder
+					.map((id) => previouslySavedDocuments.find((autoSave) => autoSave.details.id === id))
+					.filter((x) => x !== undefined) as TriggerIndexedDbWriteDocument[];
 
 				const currentDocumentVersion = getWasmInstance().graphite_version();
-				orderedSavedDocuments.forEach((doc: AutoSaveDocument) => {
+				orderedSavedDocuments.forEach((doc: TriggerIndexedDbWriteDocument) => {
 					if (doc.version === currentDocumentVersion) {
 						editor.instance.open_auto_saved_document(BigInt(doc.details.id), doc.details.name, doc.details.is_saved, doc.document);
 					} else {
@@ -70,14 +72,14 @@ export function createAutoSaveManager(editor: EditorState, documents: DocumentsS
 		storeDocumentOrder();
 	};
 
-	editor.dispatcher.subscribeJsMessage(AutoSaveDocument, async (autoSaveDocument) => {
+	editor.dispatcher.subscribeJsMessage(TriggerIndexedDbWriteDocument, async (autoSaveDocument) => {
 		const db = await databaseConnection;
 		const transaction = db.transaction(GRAPHITE_AUTO_SAVE_STORE, "readwrite");
 		transaction.objectStore(GRAPHITE_AUTO_SAVE_STORE).put(autoSaveDocument);
 		storeDocumentOrder();
 	});
 
-	editor.dispatcher.subscribeJsMessage(RemoveAutoSaveDocument, async (removeAutoSaveDocument) => {
+	editor.dispatcher.subscribeJsMessage(TriggerIndexedDbRemoveDocument, async (removeAutoSaveDocument) => {
 		removeDocument(removeAutoSaveDocument.document_id);
 	});
 

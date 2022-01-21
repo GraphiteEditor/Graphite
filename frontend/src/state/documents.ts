@@ -4,11 +4,10 @@ import { reactive, readonly } from "vue";
 import {
 	DisplayConfirmationToCloseAllDocuments,
 	DisplayConfirmationToCloseDocument,
-	ExportDocument,
+	TriggerFileDownload,
 	FrontendDocumentDetails,
-	OpenDocumentBrowse,
-	SaveDocument,
-	SetActiveDocument,
+	TriggerFileUpload,
+	UpdateActiveDocument,
 	UpdateOpenDocumentsList,
 } from "@/dispatcher/js-messages";
 import { DialogState } from "@/state/dialog";
@@ -81,9 +80,9 @@ export function createDocumentsState(editor: EditorState, dialogState: DialogSta
 		state.documents = updateOpenDocumentList.open_documents;
 	});
 
-	editor.dispatcher.subscribeJsMessage(SetActiveDocument, (setActiveDocument) => {
+	editor.dispatcher.subscribeJsMessage(UpdateActiveDocument, (updateActiveDocument) => {
 		// Assume we receive a correct document id
-		const activeId = state.documents.findIndex((doc) => doc.id === setActiveDocument.document_id);
+		const activeId = state.documents.findIndex((doc) => doc.id === updateActiveDocument.document_id);
 		state.activeDocumentIndex = activeId;
 	});
 
@@ -95,18 +94,14 @@ export function createDocumentsState(editor: EditorState, dialogState: DialogSta
 		closeAllDocumentsWithConfirmation();
 	});
 
-	editor.dispatcher.subscribeJsMessage(OpenDocumentBrowse, async () => {
+	editor.dispatcher.subscribeJsMessage(TriggerFileUpload, async () => {
 		const extension = editor.rawWasm.file_save_suffix();
 		const data = await upload(extension);
 		editor.instance.open_document_file(data.filename, data.content);
 	});
 
-	editor.dispatcher.subscribeJsMessage(ExportDocument, (exportDocument) => {
-		download(exportDocument.name, exportDocument.document);
-	});
-
-	editor.dispatcher.subscribeJsMessage(SaveDocument, (saveDocument) => {
-		download(saveDocument.name, saveDocument.document);
+	editor.dispatcher.subscribeJsMessage(TriggerFileDownload, (triggerFileDownload) => {
+		download(triggerFileDownload.name, triggerFileDownload.document);
 	});
 
 	// Get the initial documents

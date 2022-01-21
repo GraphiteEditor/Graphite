@@ -1,16 +1,13 @@
-use std::{
-	collections::hash_map::DefaultHasher,
-	hash::{Hash, Hasher},
-};
-
-use crate::{
-	boolean_ops::BooleanOperation as BooleanOperationType,
-	color::Color,
-	layers::{style, BlendMode, Layer},
-	LayerId,
-};
+use crate::boolean_ops::BooleanOperation as BooleanOperationType;
+use crate::color::Color;
+use crate::layers::blend_mode::BlendMode;
+use crate::layers::layer_info::Layer;
+use crate::layers::style;
+use crate::LayerId;
 
 use serde::{Deserialize, Serialize};
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
 
 #[repr(C)]
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
@@ -79,8 +76,8 @@ pub enum Operation {
 		path: Vec<LayerId>,
 	},
 	RenameLayer {
-		path: Vec<LayerId>,
-		name: String,
+		layer_path: Vec<LayerId>,
+		new_name: String,
 	},
 	InsertLayer {
 		layer: Layer,

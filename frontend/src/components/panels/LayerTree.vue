@@ -3,7 +3,7 @@
 		<LayoutRow :class="'options-bar'">
 			<DropdownInput
 				v-model:selectedIndex="blendModeSelectedIndex"
-				@update:selectedIndex="(newSelectedIndex) => setLayerBlendMode(newSelectedIndex)"
+				@update:selectedIndex="(newSelectedIndex: number) => setLayerBlendMode(newSelectedIndex)"
 				:menuEntries="blendModeEntries"
 				:disabled="blendModeDropdownDisabled"
 			/>
@@ -12,7 +12,7 @@
 
 			<NumberInput
 				v-model:value="opacity"
-				@update:value="(newOpacity) => setLayerOpacity(newOpacity)"
+				@update:value="(newOpacity: number) => setLayerOpacity(newOpacity)"
 				:min="0"
 				:max="100"
 				:unit="'%'"
@@ -30,7 +30,7 @@
 		</LayoutRow>
 		<LayoutRow :class="'layer-tree scrollable-y'">
 			<LayoutCol :class="'list'" ref="layerTreeList" @click="() => deselectAllLayers()" @dragover="updateInsertLine($event)" @dragend="drop()">
-				<div class="layer-row" v-for="(layer, index) in layers" :key="String(layer.path.slice(-1))">
+				<div class="layer-row" v-for="({ entry: layer }, index) in layers" :key="String(layer.path.slice(-1))">
 					<div class="visibility">
 						<IconButton
 							:action="(e) => (toggleLayerVisibility(layer.path), e && e.stopPropagation())"
@@ -51,7 +51,7 @@
 						:data-index="index"
 						draggable="true"
 						@dragstart="dragStart($event, layer)"
-						:title="layer.path"
+						:title="String(layer.path)"
 					>
 						<div class="layer-type-icon">
 							<IconLabel v-if="layer.layer_type === 'Folder'" :icon="'NodeTypeFolder'" title="Folder" />
@@ -242,7 +242,7 @@
 <script lang="ts">
 import { defineComponent } from "vue";
 
-import { BlendMode, DisplayFolderTreeStructure, UpdateLayer, LayerPanelEntry } from "@/dispatcher/js-messages";
+import { BlendMode, DisplayDocumentLayerTreeStructure, UpdateDocumentLayer, LayerPanelEntry } from "@/dispatcher/js-messages";
 
 import LayoutCol from "@/components/layout/LayoutCol.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
@@ -307,12 +307,12 @@ export default defineComponent({
 			opacityNumberInputDisabled: true,
 			// TODO: replace with BigUint64Array as index
 			layerCache: new Map() as Map<string, LayerPanelEntry>,
-			layers: [] as LayerPanelEntry[],
+			layers: [] as { folderIndex: number; entry: LayerPanelEntry }[],
 			layerDepths: [] as number[],
 			selectionRangeStartLayer: undefined as undefined | LayerPanelEntry,
 			selectionRangeEndLayer: undefined as undefined | LayerPanelEntry,
 			opacity: 100,
-			draggingData: undefined as undefined | { path: BigUint64Array; above: boolean; nearestPath: BigUint64Array; insertLine: HTMLDivElement },
+			draggingData: undefined as undefined | { insertFolder: BigUint64Array; insertIndex: number; insertLine: HTMLDivElement },
 		};
 	},
 	methods: {
@@ -343,32 +343,32 @@ export default defineComponent({
 		},
 		async clearSelection() {
 			this.layers.forEach((layer) => {
-				layer.layer_metadata.selected = false;
+				layer.entry.layer_metadata.selected = false;
 			});
 		},
-		closest(tree: HTMLElement, clientY: number): [BigUint64Array, boolean, Node] {
+		closest(tree: HTMLElement, clientY: number): { insertFolder: BigUint64Array; insertIndex: number; insertAboveNode: Node } {
 			const treeChildren = tree.children;
 
 			// Closest distance to the middle of the row along the Y axis
 			let closest = Infinity;
 
 			// The nearest row parent (element of the tree)
-			let nearestElement = tree.lastChild as Node;
+			let insertAboveNode = tree.lastChild as Node;
 
-			// The nearest element in the path to the mouse
-			let nearestPath = new BigUint64Array();
+			// Folder to insert into
+			let insertFolder = new BigUint64Array();
 
-			// Item goes above or below the mouse
-			let above = false;
+			// Insert index
+			let insertIndex = -1;
 
 			Array.from(treeChildren).forEach((treeChild) => {
-				if (treeChild.childElementCount <= 2) return;
-
-				const child = treeChild.children[2] as HTMLElement;
+				const layerComponents = treeChild.getElementsByClassName("layer");
+				if (layerComponents.length !== 1) return;
+				const child = layerComponents[0];
 
 				const indexAttribute = child.getAttribute("data-index");
 				if (!indexAttribute) return;
-				const layer = this.layers[parseInt(indexAttribute, 10)];
+				const { folderIndex, entry: layer } = this.layers[parseInt(indexAttribute, 10)];
 
 				const rect = child.getBoundingClientRect();
 				const position = rect.top + rect.height / 2;
@@ -376,30 +376,31 @@ export default defineComponent({
 
 				// Inserting above current row
 				if (distance > 0 && distance < closest) {
+					insertAboveNode = treeChild;
+					insertFolder = layer.path.slice(0, layer.path.length - 1);
+					insertIndex = folderIndex;
 					closest = distance;
-					nearestPath = layer.path;
-					above = true;
-					if (child.parentNode) {
-						nearestElement = child.parentNode;
-					}
 				}
 				// Inserting below current row
-				else if (distance > -closest && distance > -RANGE_TO_INSERT_WITHIN_BOTTOM_FOLDER_NOT_ROOT && distance < 0 && layer.layer_type !== "Folder") {
-					closest = -distance;
-					nearestPath = layer.path;
+				else if (distance > -closest && distance > -RANGE_TO_INSERT_WITHIN_BOTTOM_FOLDER_NOT_ROOT && distance < 0) {
 					if (child.parentNode && child.parentNode.nextSibling) {
-						nearestElement = child.parentNode.nextSibling;
+						insertAboveNode = child.parentNode.nextSibling;
 					}
+					insertFolder = layer.layer_type === "Folder" ? layer.path : layer.path.slice(0, layer.path.length - 1);
+					insertIndex = layer.layer_type === "Folder" ? 0 : folderIndex + 1;
+					closest = -distance;
 				}
 				// Inserting with no nesting at the end of the panel
-				else if (closest === Infinity) {
-					nearestPath = layer.path.slice(0, 1);
+				else if (closest === Infinity && layer.path.length === 1) {
+					insertIndex = folderIndex + 1;
 				}
 			});
 
-			return [nearestPath, above, nearestElement];
+			return { insertFolder, insertIndex, insertAboveNode };
 		},
 		async dragStart(event: DragEvent, layer: LayerPanelEntry) {
+			if (!layer.layer_metadata.selected) this.selectLayer(layer, event.ctrlKey, event.shiftKey);
+
 			// Set style of cursor for drag
 			if (event.dataTransfer) {
 				event.dataTransfer.dropEffect = "move";
@@ -413,31 +414,30 @@ export default defineComponent({
 			insertLine.classList.add("insert-mark");
 			tree.appendChild(insertLine);
 
-			const [nearestPath, above, nearestElement] = this.closest(tree, event.clientY);
+			const { insertFolder, insertIndex, insertAboveNode } = this.closest(tree, event.clientY);
 
 			// Set the initial state of the insert line
-			if (nearestElement.parentNode) {
-				insertLine.style.marginLeft = `${LAYER_LEFT_MARGIN_OFFSET + LAYER_LEFT_INDENT_OFFSET * nearestPath.length}px`; // TODO: use layerIndent function to calculate this
-				tree.insertBefore(insertLine, nearestElement);
+			if (insertAboveNode.parentNode) {
+				insertLine.style.marginLeft = `${LAYER_LEFT_MARGIN_OFFSET + LAYER_LEFT_INDENT_OFFSET * (insertFolder.length + 1)}px`; // TODO: use layerIndent function to calculate this
+				tree.insertBefore(insertLine, insertAboveNode);
 			}
 
-			this.draggingData = { path: layer.path, above, nearestPath, insertLine };
+			this.draggingData = { insertFolder, insertIndex, insertLine };
 		},
 		updateInsertLine(event: DragEvent) {
 			// Stop the drag from being shown as cancelled
 			event.preventDefault();
 
 			const tree = (this.$refs.layerTreeList as typeof LayoutCol).$el as HTMLElement;
-
-			const [nearestPath, above, nearestElement] = this.closest(tree, event.clientY);
+			const { insertFolder, insertIndex, insertAboveNode } = this.closest(tree, event.clientY);
 
 			if (this.draggingData) {
-				this.draggingData.nearestPath = nearestPath;
-				this.draggingData.above = above;
+				this.draggingData.insertFolder = insertFolder;
+				this.draggingData.insertIndex = insertIndex;
 
-				if (nearestElement.parentNode) {
-					this.draggingData.insertLine.style.marginLeft = `${LAYER_LEFT_MARGIN_OFFSET + LAYER_LEFT_INDENT_OFFSET * nearestPath.length}px`;
-					tree.insertBefore(this.draggingData.insertLine, nearestElement);
+				if (insertAboveNode.parentNode) {
+					this.draggingData.insertLine.style.marginLeft = `${LAYER_LEFT_MARGIN_OFFSET + LAYER_LEFT_INDENT_OFFSET * (insertFolder.length + 1)}px`;
+					tree.insertBefore(this.draggingData.insertLine, insertAboveNode);
 				}
 			}
 		},
@@ -448,12 +448,15 @@ export default defineComponent({
 		},
 		async drop() {
 			this.removeLine();
+
 			if (this.draggingData) {
-				this.editor.instance.move_layer_in_tree(this.draggingData.path, this.draggingData.above, this.draggingData.nearestPath);
+				const { insertFolder, insertIndex } = this.draggingData;
+
+				this.editor.instance.move_layer_in_tree(insertFolder, insertIndex);
 			}
 		},
 		setBlendModeForSelectedLayers() {
-			const selected = this.layers.filter((layer) => layer.layer_metadata.selected);
+			const selected = this.layers.filter((layer) => layer.entry.layer_metadata.selected);
 
 			if (selected.length < 1) {
 				this.blendModeSelectedIndex = 0;
@@ -462,8 +465,8 @@ export default defineComponent({
 			}
 			this.blendModeDropdownDisabled = false;
 
-			const firstEncounteredBlendMode = selected[0].blend_mode;
-			const allBlendModesAlike = !selected.find((layer) => layer.blend_mode !== firstEncounteredBlendMode);
+			const firstEncounteredBlendMode = selected[0].entry.blend_mode;
+			const allBlendModesAlike = !selected.find((layer) => layer.entry.blend_mode !== firstEncounteredBlendMode);
 
 			if (allBlendModesAlike) {
 				this.blendModeSelectedIndex = this.blendModeEntries.flat().findIndex((entry) => entry.value === firstEncounteredBlendMode);
@@ -474,7 +477,7 @@ export default defineComponent({
 		},
 		setOpacityForSelectedLayers() {
 			// todo figure out why this is here
-			const selected = this.layers.filter((layer) => layer.layer_metadata.selected);
+			const selected = this.layers.filter((layer) => layer.entry.layer_metadata.selected);
 
 			if (selected.length < 1) {
 				this.opacity = 100;
@@ -483,8 +486,8 @@ export default defineComponent({
 			}
 			this.opacityNumberInputDisabled = false;
 
-			const firstEncounteredOpacity = selected[0].opacity;
-			const allOpacitiesAlike = !selected.find((layer) => layer.opacity !== firstEncounteredOpacity);
+			const firstEncounteredOpacity = selected[0].entry.opacity;
+			const allOpacitiesAlike = !selected.find((layer) => layer.entry.opacity !== firstEncounteredOpacity);
 
 			if (allOpacitiesAlike) {
 				this.opacity = firstEncounteredOpacity;
@@ -495,27 +498,27 @@ export default defineComponent({
 		},
 	},
 	mounted() {
-		this.editor.dispatcher.subscribeJsMessage(DisplayFolderTreeStructure, (displayFolderTreeStructure) => {
+		this.editor.dispatcher.subscribeJsMessage(DisplayDocumentLayerTreeStructure, (displayDocumentLayerTreeStructure) => {
 			const path = [] as bigint[];
-			this.layers = [] as LayerPanelEntry[];
+			this.layers = [] as { folderIndex: number; entry: LayerPanelEntry }[];
 
-			const recurse = (folder: DisplayFolderTreeStructure, layers: LayerPanelEntry[], cache: Map<string, LayerPanelEntry>): void => {
-				folder.children.forEach((item) => {
+			const recurse = (folder: DisplayDocumentLayerTreeStructure, layers: { folderIndex: number; entry: LayerPanelEntry }[], cache: Map<string, LayerPanelEntry>): void => {
+				folder.children.forEach((item, index) => {
 					// TODO: fix toString
 					path.push(BigInt(item.layerId.toString()));
 					const mapping = cache.get(path.toString());
-					if (mapping) layers.push(mapping);
+					if (mapping) layers.push({ folderIndex: index, entry: mapping });
 					if (item.children.length >= 1) recurse(item, layers, cache);
 					path.pop();
 				});
 			};
 
-			recurse(displayFolderTreeStructure, this.layers, this.layerCache);
+			recurse(displayDocumentLayerTreeStructure, this.layers, this.layerCache);
 		});
 
-		this.editor.dispatcher.subscribeJsMessage(UpdateLayer, (updateLayer) => {
-			const targetPath = updateLayer.data.path;
-			const targetLayer = updateLayer.data;
+		this.editor.dispatcher.subscribeJsMessage(UpdateDocumentLayer, (updateDocumentLayer) => {
+			const targetPath = updateDocumentLayer.data.path;
+			const targetLayer = updateDocumentLayer.data;
 
 			const layer = this.layerCache.get(targetPath.toString());
 			if (layer) {

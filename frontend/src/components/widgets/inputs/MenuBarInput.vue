@@ -10,7 +10,7 @@
 				<IconLabel :icon="entry.icon" v-if="entry.icon" />
 				<span v-if="entry.label">{{ entry.label }}</span>
 			</div>
-			<MenuList :menuEntries="entry.children || []" :direction="'Bottom'" :minWidth="240" :drawIcon="true" :defaultAction="comingSoon" :ref="(ref) => setEntryRefs(entry, ref)" />
+			<MenuList :menuEntries="entry.children || []" :direction="'Bottom'" :minWidth="240" :drawIcon="true" :defaultAction="comingSoon" :ref="(ref: any) => setEntryRefs(entry, ref)" />
 		</div>
 	</div>
 </template>
@@ -71,7 +71,7 @@ function makeMenuEntries(editor: EditorState): MenuListEntries {
 						icon: "File",
 						action: (): void => {
 							editor.instance.new_document();
-							editor.instance.create_artboard(0, 0, 1920, 1080);
+							editor.instance.create_artboard_and_fit_to_viewport(0, 0, 1920, 1080);
 						},
 					},
 					{ label: "Open…", shortcut: ["KeyControl", "KeyO"], action: (): void => editor.instance.open_document() },

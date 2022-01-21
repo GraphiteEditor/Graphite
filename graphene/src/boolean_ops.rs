@@ -1,16 +1,11 @@
 use crate::{
-	color::Color,
 	consts::F64PRECISION,
 	intersection::{intersections, Intersect, Origin},
-	layers::{
-		simple_shape::Shape,
-		style::{Fill, PathStyle, Stroke},
-	},
+	layers::{simple_shape::Shape, style::PathStyle},
 };
 use kurbo::{BezPath, CubicBez, Line, ParamCurve, ParamCurveArclen, ParamCurveArea, ParamCurveExtrema, PathEl, PathSeg, QuadBez, Rect};
 use serde::{Deserialize, Serialize};
-use std::fmt::{Debug, Formatter};
-use std::{fmt, ops::Not}; // are using fmt::Result, but don't want to conlict with std::result::Result
+use std::fmt::{self, Debug, Formatter};
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq)]
 pub enum BooleanOperation {

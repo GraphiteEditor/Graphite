@@ -5,22 +5,8 @@
 		"editor.formatOnPaste": true,
 		"editor.defaultFormatter": "matklad.rust-analyzer",
 	},
-	// Web: save on format (consolidate these when https://github.com/microsoft/vscode/issues/51935 is implemented)
-	"[typescript]": {
-		"editor.codeActionsOnSave": {
-			"source.fixAll.eslint": true,
-		},
-		"editor.formatOnSave": true,
-		"editor.defaultFormatter": "dbaeumer.vscode-eslint",
-	},
-	"[javascript]": {
-		"editor.codeActionsOnSave": {
-			"source.fixAll.eslint": true,
-		},
-		"editor.formatOnSave": true,
-		"editor.defaultFormatter": "dbaeumer.vscode-eslint",
-	},
-	"[vue]": {
+	// Web: save on format
+	"[typescript][javascript][vue]": {
 		"editor.codeActionsOnSave": {
 			"source.fixAll.eslint": true,
 		},
@@ -34,14 +20,15 @@
 	// ESLint config
 	"eslint.format.enable": true,
 	"eslint.workingDirectories": [
-		"./frontend",
+		"./frontend"
 	],
 	"eslint.validate": [
 		"javascript",
 		"typescript",
 	],
 	// Vue config
-	"vetur.format.enable": false,
+	"volar.completion.preferredAttrNameCase": "camel",
+	"volar.completion.preferredTagNameCase": "pascal",
 	// VS Code config
 	"html.format.wrapLineLength": 200,
 	"files.eol": "\n",

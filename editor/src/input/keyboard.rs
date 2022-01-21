@@ -1,17 +1,21 @@
 use crate::message_prelude::*;
-use serde::{Deserialize, Serialize};
 
-pub const NUMBER_OF_KEYS: usize = Key::NumKeys as usize;
-// Edit this to specify the storage type used
+use serde::{Deserialize, Serialize};
+use std::fmt::{Display, Formatter};
+use std::ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign};
+
 // TODO: Increase size of type
+/// Edit this to specify the storage type used.
 pub type StorageType = u128;
 
-// base 2 logarithm of the storage type used to represents how many bits you need to fully address every bit in that storage type
+// Base-2 logarithm of the storage type used to represents how many bits you need to fully address every bit in that storage type
 const STORAGE_SIZE: u32 = (std::mem::size_of::<StorageType>() * 8).trailing_zeros();
 const STORAGE_SIZE_BITS: usize = 1 << STORAGE_SIZE;
 const KEY_MASK_STORAGE_LENGTH: usize = (NUMBER_OF_KEYS + STORAGE_SIZE_BITS - 1) >> STORAGE_SIZE;
+
 pub type KeyStates = BitVector<KEY_MASK_STORAGE_LENGTH>;
 
+// TODO: Consider renaming to `KeyMessage` for consistency with other messages that implement `#[impl_message(..)]`
 #[impl_message(Message, InputMapperMessage, KeyDown)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Key {
@@ -84,9 +88,11 @@ pub enum Key {
 	KeyComma,
 	KeyPeriod,
 
-	// This has to be the last element in the enum.
+	// This has to be the last element in the enum
 	NumKeys,
 }
+
+pub const NUMBER_OF_KEYS: usize = Key::NumKeys as usize;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum MouseMotion {
@@ -105,12 +111,6 @@ pub enum MouseMotion {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct BitVector<const LENGTH: usize>([StorageType; LENGTH]);
 
-use std::{
-	fmt::{Display, Formatter},
-	ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign},
-	usize,
-};
-
 impl<const LENGTH: usize> BitVector<LENGTH> {
 	#[inline]
 	fn convert_index(bitvector_index: usize) -> (usize, StorageType) {
@@ -118,37 +118,48 @@ impl<const LENGTH: usize> BitVector<LENGTH> {
 		let offset = bitvector_index >> STORAGE_SIZE;
 		(offset, bit)
 	}
+
 	pub const fn new() -> Self {
 		Self([0; LENGTH])
 	}
+
 	pub fn set(&mut self, bitvector_index: usize) {
 		let (offset, bit) = Self::convert_index(bitvector_index);
 		self.0[offset] |= bit;
 	}
+
 	pub fn unset(&mut self, bitvector_index: usize) {
 		let (offset, bit) = Self::convert_index(bitvector_index);
 		self.0[offset] &= !bit;
 	}
+
 	pub fn toggle(&mut self, bitvector_index: usize) {
 		let (offset, bit) = Self::convert_index(bitvector_index);
 		self.0[offset] ^= bit;
 	}
+
 	pub fn get(&self, bitvector_index: usize) -> bool {
 		let (offset, bit) = Self::convert_index(bitvector_index);
 		(self.0[offset] & bit) != 0
 	}
+
 	pub fn is_empty(&self) -> bool {
 		let mut result = 0;
+
 		for storage in self.0.iter() {
 			result |= storage;
 		}
+
 		result == 0
 	}
+
 	pub fn ones(&self) -> u32 {
 		let mut result = 0;
+
 		for storage in self.0.iter() {
 			result += storage.count_ones();
 		}
+
 		result
 	}
 }
@@ -164,6 +175,7 @@ impl<const LENGTH: usize> Display for BitVector<LENGTH> {
 		for storage in self.0.iter().rev() {
 			write!(f, "{:0width$b}", storage, width = STORAGE_SIZE_BITS)?;
 		}
+
 		Ok(())
 	}
 }
@@ -181,6 +193,7 @@ macro_rules! bit_ops {
 					result
 				}
 			}
+
 			impl<const LENGTH: usize> $op for &BitVector<LENGTH> {
 				type Output = BitVector<LENGTH>;
 				fn $func(self, right: Self) -> Self::Output {

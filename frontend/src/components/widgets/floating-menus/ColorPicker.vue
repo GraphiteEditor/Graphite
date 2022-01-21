@@ -1,12 +1,12 @@
 <template>
 	<div class="color-picker">
-		<div class="saturation-picker" ref="saturationPicker" @pointerdown="(e) => onPointerDown(e)">
+		<div class="saturation-picker" ref="saturationPicker" @pointerdown="(e: PointerEvent) => onPointerDown(e)">
 			<div ref="saturationCursor" class="selection-circle"></div>
 		</div>
-		<div class="hue-picker" ref="huePicker" @pointerdown="(e) => onPointerDown(e)">
+		<div class="hue-picker" ref="huePicker" @pointerdown="(e: PointerEvent) => onPointerDown(e)">
 			<div ref="hueCursor" class="selection-pincers"></div>
 		</div>
-		<div class="opacity-picker" ref="opacityPicker" @pointerdown="(e) => onPointerDown(e)">
+		<div class="opacity-picker" ref="opacityPicker" @pointerdown="(e: PointerEvent) => onPointerDown(e)">
 			<div ref="opacityCursor" class="selection-pincers"></div>
 		</div>
 	</div>

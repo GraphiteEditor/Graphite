@@ -10,7 +10,7 @@
 			</div>
 			<div class="spacer"></div>
 			<div class="right side">
-				<OptionalInput v-model:checked="snappingEnabled" @update:checked="(newStatus) => setSnap(newStatus)" :icon="'Snapping'" title="Snapping" />
+				<OptionalInput v-model:checked="snappingEnabled" @update:checked="(snap: boolean) => setSnapping(snap)" :icon="'Snapping'" title="Snapping" />
 				<PopoverButton>
 					<h3>Snapping</h3>
 					<p>The contents of this popover menu are coming soon</p>
@@ -26,7 +26,7 @@
 
 				<Separator :type="'Unrelated'" />
 
-				<OptionalInput v-model:checked="overlaysEnabled" @update:checked="() => dialog.comingSoon(99)" :icon="'Overlays'" title="Overlays" />
+				<OptionalInput v-model:checked="overlaysEnabled" @update:checked="(visible: boolean) => setOverlaysVisibility(visible)" :icon="'Overlays'" title="Overlays" />
 				<PopoverButton>
 					<h3>Overlays</h3>
 					<p>The contents of this popover menu are coming soon</p>
@@ -42,7 +42,7 @@
 
 				<Separator :type="'Section'" />
 
-				<NumberInput @update:value="(newRotation) => setRotation(newRotation)" v-model:value="documentRotation" :incrementFactor="15" :unit="'°'" />
+				<NumberInput @update:value="(newRotation: number) => setRotation(newRotation)" v-model:value="documentRotation" :incrementFactor="15" :unit="'°'" />
 
 				<Separator :type="'Section'" />
 
@@ -54,7 +54,7 @@
 
 				<NumberInput
 					v-model:value="documentZoom"
-					@update:value="(newZoom) => setCanvasZoom(newZoom)"
+					@update:value="(newZoom: number) => setCanvasZoom(newZoom)"
 					:min="0.000001"
 					:max="1000000"
 					:incrementBehavior="'Callback'"
@@ -123,7 +123,7 @@
 						<CanvasRuler :origin="rulerOrigin.y" :majorMarkSpacing="rulerSpacing" :numberInterval="rulerInterval" :direction="'Vertical'" />
 					</LayoutCol>
 					<LayoutCol :class="'canvas-area'">
-						<div class="canvas" ref="canvas">
+						<div class="canvas" ref="canvas" :style="{ cursor: canvasCursor }" @pointerdown="(e: PointerEvent) => canvasPointerDown(e)">
 							<svg class="artboards" v-html="artboardSvg" :style="{ width: canvasSvgWidth, height: canvasSvgHeight }"></svg>
 							<svg class="artwork" v-html="artworkSvg" :style="{ width: canvasSvgWidth, height: canvasSvgHeight }"></svg>
 							<svg class="overlays" v-html="overlaysSvg" :style="{ width: canvasSvgWidth, height: canvasSvgHeight }"></svg>
@@ -133,9 +133,9 @@
 						<PersistentScrollbar
 							:direction="'Vertical'"
 							:handlePosition="scrollbarPos.y"
-							@update:handlePosition="(newValue) => translateCanvasY(newValue)"
+							@update:handlePosition="(newValue: number) => translateCanvasY(newValue)"
 							v-model:handleLength="scrollbarSize.y"
-							@pressTrack="(delta) => pageY(delta)"
+							@pressTrack="(delta: number) => pageY(delta)"
 							:class="'right-scrollbar'"
 						/>
 					</LayoutCol>
@@ -144,9 +144,9 @@
 					<PersistentScrollbar
 						:direction="'Horizontal'"
 						:handlePosition="scrollbarPos.x"
-						@update:handlePosition="(newValue) => translateCanvasX(newValue)"
+						@update:handlePosition="(newValue: number) => translateCanvasX(newValue)"
 						v-model:handleLength="scrollbarSize.x"
-						@pressTrack="(delta) => pageX(delta)"
+						@pressTrack="(delta: number) => pageX(delta)"
 						:class="'bottom-scrollbar'"
 					/>
 				</LayoutRow>
@@ -222,7 +222,7 @@
 			}
 
 			.canvas {
-				background: var(--color-1-nearblack);
+				background: var(--color-2-mildblack);
 				width: 100%;
 				height: 100%;
 				// Allows the SVG to be placed at explicit integer values of width and height to prevent non-pixel-perfect SVG scaling
@@ -251,7 +251,18 @@
 <script lang="ts">
 import { defineComponent } from "vue";
 
-import { UpdateArtwork, UpdateOverlays, UpdateScrollbars, UpdateRulers, SetActiveTool, SetCanvasZoom, SetCanvasRotation, ToolName, UpdateArtboards } from "@/dispatcher/js-messages";
+import {
+	UpdateDocumentArtwork,
+	UpdateDocumentOverlays,
+	UpdateDocumentScrollbars,
+	UpdateDocumentRulers,
+	UpdateActiveTool,
+	UpdateCanvasZoom,
+	UpdateCanvasRotation,
+	ToolName,
+	UpdateDocumentArtboards,
+	UpdateMouseCursor,
+} from "@/dispatcher/js-messages";
 
 import LayoutCol from "@/components/layout/LayoutCol.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
@@ -272,8 +283,11 @@ import Separator from "@/components/widgets/separators/Separator.vue";
 export default defineComponent({
 	inject: ["editor", "dialog"],
 	methods: {
-		setSnap(newStatus: boolean) {
-			this.editor.instance.set_snapping(newStatus);
+		setSnapping(snap: boolean) {
+			this.editor.instance.set_snapping(snap);
+		},
+		setOverlaysVisibility(visible: boolean) {
+			this.editor.instance.set_overlays_visibility(visible);
 		},
 		setViewMode(newViewMode: string) {
 			this.editor.instance.set_view_mode(newViewMode);
@@ -328,44 +342,52 @@ export default defineComponent({
 		resetWorkingColors() {
 			this.editor.instance.reset_colors();
 		},
+		canvasPointerDown(e: PointerEvent) {
+			const canvas = this.$refs.canvas as HTMLElement;
+			canvas.setPointerCapture(e.pointerId);
+		},
 	},
 	mounted() {
-		this.editor.dispatcher.subscribeJsMessage(UpdateArtwork, (UpdateArtwork) => {
-			this.artworkSvg = UpdateArtwork.svg;
+		this.editor.dispatcher.subscribeJsMessage(UpdateDocumentArtwork, (UpdateDocumentArtwork) => {
+			this.artworkSvg = UpdateDocumentArtwork.svg;
 		});
 
-		this.editor.dispatcher.subscribeJsMessage(UpdateOverlays, (updateOverlays) => {
-			this.overlaysSvg = updateOverlays.svg;
+		this.editor.dispatcher.subscribeJsMessage(UpdateDocumentOverlays, (updateDocumentOverlays) => {
+			this.overlaysSvg = updateDocumentOverlays.svg;
 		});
 
-		this.editor.dispatcher.subscribeJsMessage(UpdateArtboards, (updateArtboards) => {
-			this.artboardSvg = updateArtboards.svg;
+		this.editor.dispatcher.subscribeJsMessage(UpdateDocumentArtboards, (updateDocumentArtboards) => {
+			this.artboardSvg = updateDocumentArtboards.svg;
 		});
 
-		this.editor.dispatcher.subscribeJsMessage(UpdateScrollbars, (updateScrollbars) => {
-			this.scrollbarPos = updateScrollbars.position;
-			this.scrollbarSize = updateScrollbars.size;
-			this.scrollbarMultiplier = updateScrollbars.multiplier;
+		this.editor.dispatcher.subscribeJsMessage(UpdateDocumentScrollbars, (updateDocumentScrollbars) => {
+			this.scrollbarPos = updateDocumentScrollbars.position;
+			this.scrollbarSize = updateDocumentScrollbars.size;
+			this.scrollbarMultiplier = updateDocumentScrollbars.multiplier;
 		});
 
-		this.editor.dispatcher.subscribeJsMessage(UpdateRulers, (updateRulers) => {
-			this.rulerOrigin = updateRulers.origin;
-			this.rulerSpacing = updateRulers.spacing;
-			this.rulerInterval = updateRulers.interval;
+		this.editor.dispatcher.subscribeJsMessage(UpdateDocumentRulers, (updateDocumentRulers) => {
+			this.rulerOrigin = updateDocumentRulers.origin;
+			this.rulerSpacing = updateDocumentRulers.spacing;
+			this.rulerInterval = updateDocumentRulers.interval;
 		});
 
-		this.editor.dispatcher.subscribeJsMessage(SetActiveTool, (setActiveTool) => {
-			this.activeTool = setActiveTool.tool_name;
-			this.activeToolOptions = setActiveTool.tool_options;
+		this.editor.dispatcher.subscribeJsMessage(UpdateActiveTool, (updateActiveTool) => {
+			this.activeTool = updateActiveTool.tool_name;
+			this.activeToolOptions = updateActiveTool.tool_options;
 		});
 
-		this.editor.dispatcher.subscribeJsMessage(SetCanvasZoom, (setCanvasZoom) => {
-			this.documentZoom = setCanvasZoom.new_zoom * 100;
+		this.editor.dispatcher.subscribeJsMessage(UpdateCanvasZoom, (updateCanvasZoom) => {
+			this.documentZoom = updateCanvasZoom.factor * 100;
 		});
 
-		this.editor.dispatcher.subscribeJsMessage(SetCanvasRotation, (setCanvasRotation) => {
-			const newRotation = setCanvasRotation.new_radians * (180 / Math.PI);
+		this.editor.dispatcher.subscribeJsMessage(UpdateCanvasRotation, (updateCanvasRotation) => {
+			const newRotation = updateCanvasRotation.angle_radians * (180 / Math.PI);
 			this.documentRotation = (360 + (newRotation % 360)) % 360;
+		});
+
+		this.editor.dispatcher.subscribeJsMessage(UpdateMouseCursor, (updateMouseCursor) => {
+			this.canvasCursor = updateMouseCursor.cursor;
 		});
 
 		window.addEventListener("resize", this.viewportResize);
@@ -391,6 +413,7 @@ export default defineComponent({
 			overlaysSvg: "",
 			canvasSvgWidth: "100%",
 			canvasSvgHeight: "100%",
+			canvasCursor: "default",
 			activeTool: "Select" as ToolName,
 			activeToolOptions: {},
 			documentModeEntries,

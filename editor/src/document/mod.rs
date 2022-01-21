@@ -1,25 +1,48 @@
-mod artboard_message_handler;
-mod document_file;
-mod document_message_handler;
+pub mod clipboards;
 pub mod layer_panel;
-mod movement_handler;
-mod overlay_message_handler;
-mod transform_layer_handler;
-mod vectorize_layer_metadata;
+pub mod transformation;
+pub mod utility_types;
+pub mod vectorize_layer_metadata;
+
+mod artboard_message;
+mod artboard_message_handler;
+mod document_message;
+mod document_message_handler;
+mod movement_message;
+mod movement_message_handler;
+mod overlays_message;
+mod overlays_message_handler;
+mod portfolio_message;
+mod portfolio_message_handler;
+mod transform_layer_message;
+mod transform_layer_message_handler;
 
 #[doc(inline)]
-pub use document_file::LayerMetadata;
+pub use artboard_message::{ArtboardMessage, ArtboardMessageDiscriminant};
+#[doc(inline)]
+pub use artboard_message_handler::ArtboardMessageHandler;
 
 #[doc(inline)]
-pub use document_file::{AlignAggregate, AlignAxis, DocumentMessage, DocumentMessageDiscriminant, DocumentMessageHandler, FlipAxis, VectorManipulatorSegment, VectorManipulatorShape};
+pub use document_message::{DocumentMessage, DocumentMessageDiscriminant};
 #[doc(inline)]
-pub use document_message_handler::{Clipboard, DocumentsMessage, DocumentsMessageDiscriminant, DocumentsMessageHandler};
-#[doc(inline)]
-pub use movement_handler::{MovementMessage, MovementMessageDiscriminant};
-#[doc(inline)]
-pub use overlay_message_handler::{OverlayMessage, OverlayMessageDiscriminant};
+pub use document_message_handler::DocumentMessageHandler;
 
 #[doc(inline)]
-pub use artboard_message_handler::{ArtboardMessage, ArtboardMessageDiscriminant};
+pub use movement_message::{MovementMessage, MovementMessageDiscriminant};
 #[doc(inline)]
-pub use transform_layer_handler::{TransformLayerMessage, TransformLayerMessageDiscriminant};
+pub use movement_message_handler::MovementMessageHandler;
+
+#[doc(inline)]
+pub use overlays_message::{OverlaysMessage, OverlaysMessageDiscriminant};
+#[doc(inline)]
+pub use overlays_message_handler::OverlaysMessageHandler;
+
+#[doc(inline)]
+pub use portfolio_message::{PortfolioMessage, PortfolioMessageDiscriminant};
+#[doc(inline)]
+pub use portfolio_message_handler::PortfolioMessageHandler;
+
+#[doc(inline)]
+pub use transform_layer_message::{TransformLayerMessage, TransformLayerMessageDiscriminant};
+#[doc(inline)]
+pub use transform_layer_message_handler::TransformLayerMessageHandler;

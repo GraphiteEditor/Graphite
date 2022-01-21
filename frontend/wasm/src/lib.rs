@@ -1,9 +1,10 @@
 pub mod api;
-mod helpers;
+pub mod helpers;
 pub mod logging;
 pub mod type_translators;
 
-use editor::message_prelude::FrontendMessage;
+use editor::message_prelude::*;
+
 use logging::WasmLog;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -12,12 +13,11 @@ use std::sync::atomic::AtomicBool;
 use wasm_bindgen::prelude::*;
 
 // Set up the persistent editor backend state
-static LOGGER: WasmLog = WasmLog;
+pub static EDITOR_HAS_CRASHED: AtomicBool = AtomicBool::new(false);
+pub static LOGGER: WasmLog = WasmLog;
 thread_local! {
 	pub static EDITOR_INSTANCES: RefCell<HashMap<u64, (editor::Editor, api::JsEditorHandle)>> = RefCell::new(HashMap::new());
 }
-
-pub static EDITOR_HAS_CRASHED: AtomicBool = AtomicBool::new(false);
 
 // Initialize the backend
 #[wasm_bindgen(start)]
@@ -36,7 +36,7 @@ fn panic_hook(info: &panic::PanicInfo) {
 	log::error!("{}", info);
 	EDITOR_INSTANCES.with(|instances| {
 		instances.borrow_mut().values_mut().for_each(|instance| {
-			instance.1.handle_response_rust_proxy(FrontendMessage::DisplayPanic {
+			instance.1.handle_response_rust_proxy(FrontendMessage::DisplayDialogPanic {
 				panic_info: panic_info.clone(),
 				title: title.clone(),
 				description: description.clone(),

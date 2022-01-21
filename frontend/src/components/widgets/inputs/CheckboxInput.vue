@@ -98,7 +98,7 @@ export default defineComponent({
 		},
 	},
 	props: {
-		checked: { type: Boolean as PropType<boolean>, required: true },
+		checked: { type: Boolean as PropType<boolean>, default: false },
 		icon: { type: String as PropType<IconName>, default: "Checkmark" },
 		outlineStyle: { type: Boolean as PropType<boolean>, default: false },
 	},
