@@ -1,33 +1,16 @@
 pub mod dispatcher;
 pub mod message;
-use crate::message_prelude::*;
-pub use dispatcher::*;
-use rand_chacha::{
-	rand_core::{RngCore, SeedableRng},
-	ChaCha20Rng,
-};
+pub mod message_handler;
+
+pub use crate::communication::dispatcher::*;
+pub use crate::input::InputPreprocessorMessageHandler;
+
+use rand_chacha::rand_core::{RngCore, SeedableRng};
+use rand_chacha::ChaCha20Rng;
 use spin::Mutex;
-
-pub use crate::input::InputPreprocessor;
-use std::{cell::Cell, collections::VecDeque};
-
-pub type ActionList = Vec<Vec<MessageDiscriminant>>;
+use std::cell::Cell;
 
 static RNG: Mutex<Option<ChaCha20Rng>> = Mutex::new(None);
-
-// TODO: Add Send + Sync requirement
-// Use something like rw locks for synchronization
-pub trait MessageHandlerData {}
-
-pub trait MessageHandler<A: ToDiscriminant, T>
-where
-	A::Discriminant: AsMessage,
-	<A::Discriminant as TransitiveChild>::TopParent: TransitiveChild<Parent = <A::Discriminant as TransitiveChild>::TopParent, TopParent = <A::Discriminant as TransitiveChild>::TopParent> + AsMessage,
-{
-	/// Return true if the Action is consumed.
-	fn process_action(&mut self, action: A, data: T, responses: &mut VecDeque<Message>);
-	fn actions(&self) -> ActionList;
-}
 
 thread_local! {
 	pub static UUID_SEED: Cell<Option<u64>> = Cell::new(None);

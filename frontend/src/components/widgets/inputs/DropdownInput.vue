@@ -7,7 +7,7 @@
 		</div>
 		<MenuList
 			v-model:activeEntry="activeEntry"
-			@update:activeEntry="(newActiveEntry: typeof MenuListEntry) => activeEntryChanged(newActiveEntry)"
+			@update:activeEntry="(newActiveEntry: typeof MENU_LIST_ENTRY) => activeEntryChanged(newActiveEntry)"
 			@widthChanged="(newWidth: number) => onWidthChanged(newWidth)"
 			:menuEntries="menuEntries"
 			:direction="'Bottom'"
@@ -92,6 +92,11 @@ import { defineComponent, PropType } from "vue";
 
 import MenuList, { MenuListEntry, SectionsOfMenuListEntries } from "@/components/widgets/floating-menus/MenuList.vue";
 import IconLabel from "@/components/widgets/labels/IconLabel.vue";
+
+// Satisfies Volar (https://github.com/johnsoncodehk/volar/issues/596)
+declare global {
+	const MENU_LIST_ENTRY: MenuListEntry;
+}
 
 export default defineComponent({
 	props: {

@@ -9,7 +9,7 @@
 			</PopoverButton>
 			<NumberInput
 				v-if="option.kind === 'NumberInput'"
-				@update:value="(value) => updateToolOptions(option.optionPath, value)"
+				@update:value="(value: number) => updateToolOptions(option.optionPath, value)"
 				:title="option.tooltip"
 				:value="getToolOption(option.optionPath)"
 				v-bind="option.props"
@@ -95,15 +95,15 @@ export default defineComponent({
 	data() {
 		const toolOptionsWidgets: Record<ToolName, WidgetRow> = {
 			Select: [
-				{ kind: "IconButton", message: { Align: ["X", "Min"] }, tooltip: "Align Left", props: { icon: "AlignLeft", size: 24 } },
-				{ kind: "IconButton", message: { Align: ["X", "Center"] }, tooltip: "Align Horizontal Center", props: { icon: "AlignHorizontalCenter", size: 24 } },
-				{ kind: "IconButton", message: { Align: ["X", "Max"] }, tooltip: "Align Right", props: { icon: "AlignRight", size: 24 } },
+				{ kind: "IconButton", message: { Align: { axis: "X", aggregate: "Min" } }, tooltip: "Align Left", props: { icon: "AlignLeft", size: 24 } },
+				{ kind: "IconButton", message: { Align: { axis: "X", aggregate: "Center" } }, tooltip: "Align Horizontal Center", props: { icon: "AlignHorizontalCenter", size: 24 } },
+				{ kind: "IconButton", message: { Align: { axis: "X", aggregate: "Max" } }, tooltip: "Align Right", props: { icon: "AlignRight", size: 24 } },
 
 				{ kind: "Separator", props: { type: "Unrelated" } },
 
-				{ kind: "IconButton", message: { Align: ["Y", "Min"] }, tooltip: "Align Top", props: { icon: "AlignTop", size: 24 } },
-				{ kind: "IconButton", message: { Align: ["Y", "Center"] }, tooltip: "Align Vertical Center", props: { icon: "AlignVerticalCenter", size: 24 } },
-				{ kind: "IconButton", message: { Align: ["Y", "Max"] }, tooltip: "Align Bottom", props: { icon: "AlignBottom", size: 24 } },
+				{ kind: "IconButton", message: { Align: { axis: "Y", aggregate: "Min" } }, tooltip: "Align Top", props: { icon: "AlignTop", size: 24 } },
+				{ kind: "IconButton", message: { Align: { axis: "Y", aggregate: "Center" } }, tooltip: "Align Vertical Center", props: { icon: "AlignVerticalCenter", size: 24 } },
+				{ kind: "IconButton", message: { Align: { axis: "Y", aggregate: "Max" } }, tooltip: "Align Bottom", props: { icon: "AlignBottom", size: 24 } },
 
 				{ kind: "Separator", props: { type: "Related" } },
 
