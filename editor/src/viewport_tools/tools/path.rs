@@ -9,7 +9,7 @@ use crate::misc::{HintData, HintGroup, HintInfo, KeysGroup};
 use crate::viewport_tools::tool::{DocumentToolData, Fsm, ToolActionHandlerData};
 
 use graphene::color::Color;
-use graphene::layers::style::{self, Fill, PathStyle, Stroke};
+use graphene::layers::style::{self, Fill, Stroke};
 use graphene::Operation;
 
 use glam::{DAffine2, DVec2};
@@ -97,8 +97,7 @@ impl PathToolData {}
 struct PathToolSelector {
 	selected_shapes: Vec<VectorManipulatorShape>,
 	selected_layer_path: Vec<LayerId>,
-	overlay_path: Vec<LayerId>,
-
+	// overlay_path: Vec<LayerId>, // Re-add when overlays are enabled again
 	selected_shape: usize,
 	selected_shape_elements: Vec<kurbo::PathEl>,
 
@@ -152,26 +151,31 @@ impl PathToolSelector {
 	}
 
 	fn move_point(&mut self, mouse_position: Vec2) {
-		let mouse_position_point = mouse_position.to_point();
+		let mouse_position_as_point = mouse_position.to_point();
 		let (h1, h2) = &self.selected_anchor.handles;
+		let h1_selected = !h1.is_none() && *h1.as_ref().unwrap() == self.selected_point;
+		let h2_selected = !h2.is_none() && *h2.as_ref().unwrap() == self.selected_point;
 
-		// We are dragging an anchor point
-		if !self.selected_point.is_guide {
+		// If neither handle is selected, we are dragging an anchor point
+		if !(h1_selected || h2_selected) {
+			// Move the anchor point and hande on the same path element
 			let (selected, point) = match &self.selected_shape_elements[self.selected_anchor.point.element_id] {
-				PathEl::MoveTo(p) => (PathEl::MoveTo(mouse_position_point), p),
-				PathEl::LineTo(p) => (PathEl::LineTo(mouse_position_point), p),
-				PathEl::QuadTo(a1, p) => (PathEl::QuadTo(*a1 - (*p - mouse_position).to_vec2(), mouse_position_point), p),
-				PathEl::CurveTo(a1, a2, p) => (PathEl::CurveTo(*a1, *a2 - (*p - mouse_position).to_vec2(), mouse_position_point), p),
-				PathEl::ClosePath => (PathEl::MoveTo(mouse_position_point), &mouse_position_point),
+				PathEl::MoveTo(p) => (PathEl::MoveTo(mouse_position_as_point), p),
+				PathEl::LineTo(p) => (PathEl::MoveTo(mouse_position_as_point), p),
+				PathEl::QuadTo(a1, p) => (PathEl::QuadTo(*a1 - (*p - mouse_position).to_vec2(), mouse_position_as_point), p),
+				PathEl::CurveTo(a1, a2, p) => (PathEl::CurveTo(*a1, *a2 - (*p - mouse_position).to_vec2(), mouse_position_as_point), p),
+				PathEl::ClosePath => (PathEl::MoveTo(mouse_position_as_point), &mouse_position_as_point),
 			};
 
+			// Move the handle on the adjacent path element
+			let point_delta = (*point - mouse_position).to_vec2();
 			if let Some(handle) = h2 {
 				let neighbor = match &self.selected_shape_elements[handle.element_id] {
 					PathEl::MoveTo(_) => PathEl::MoveTo(*point),
 					PathEl::LineTo(_) => PathEl::LineTo(*point),
-					PathEl::QuadTo(a1, p) => PathEl::QuadTo(*a1 - (*point - mouse_position).to_vec2(), *p),
-					PathEl::CurveTo(a1, a2, p) => PathEl::CurveTo(*a1 - (*point - mouse_position).to_vec2(), *a2, *p),
-					PathEl::ClosePath => PathEl::MoveTo(*point),
+					PathEl::QuadTo(a1, p) => PathEl::QuadTo(*a1 - point_delta, *p),
+					PathEl::CurveTo(a1, a2, p) => PathEl::CurveTo(*a1 - point_delta, *a2, *p),
+					PathEl::ClosePath => PathEl::MoveTo(mouse_position_as_point),
 				};
 				self.selected_shape_elements[handle.element_id] = neighbor;
 			}
@@ -179,21 +183,32 @@ impl PathToolSelector {
 		}
 		// We are dragging a handle
 		else {
-			let selected = match &self.selected_shape_elements[self.selected_point.element_id] {
-				PathEl::MoveTo(p) => PathEl::MoveTo(*p),
-				PathEl::LineTo(p) => PathEl::LineTo(*p),
-				PathEl::QuadTo(a1, p) => PathEl::QuadTo(mouse_position_point, *p),
-				PathEl::CurveTo(a1, a2, p) => PathEl::CurveTo(mouse_position_point, *a2, *p),
-				PathEl::ClosePath => PathEl::MoveTo(mouse_position_point),
+			// Move the selected handle
+			let (selected, anchor) = match &self.selected_shape_elements[self.selected_point.element_id] {
+				PathEl::MoveTo(p) => (PathEl::MoveTo(*p), *p),
+				PathEl::LineTo(p) => (PathEl::LineTo(*p), *p),
+				PathEl::QuadTo(_, p) => (PathEl::QuadTo(mouse_position_as_point, *p), *p),
+				PathEl::CurveTo(a1, a2, p) => (
+					PathEl::CurveTo(if h2_selected { mouse_position_as_point } else { *a1 }, if h1_selected { mouse_position_as_point } else { *a2 }, *p),
+					*p,
+				),
+				PathEl::ClosePath => (PathEl::MoveTo(mouse_position_as_point), mouse_position_as_point),
 			};
 
+			// Move the opposing handle on the adjacent path element
+			let other_handle_pos = ((anchor.to_vec2() - mouse_position) + anchor.to_vec2()).to_point();
 			if let Some(handle) = self.selected_anchor.opposing_handle(&self.selected_point) {
+				// log::debug!("Opposing handle {:?} ", handle);
 				let neighbor = match &self.selected_shape_elements[handle.element_id] {
 					PathEl::MoveTo(p) => PathEl::MoveTo(*p),
 					PathEl::LineTo(p) => PathEl::LineTo(*p),
-					PathEl::QuadTo(a1, p) => PathEl::QuadTo(*a1 - (mouse_position_point - mouse_position).to_vec2(), *p),
-					PathEl::CurveTo(a1, a2, p) => PathEl::CurveTo(*a1 - (mouse_position_point - mouse_position).to_vec2(), *a2, *p),
-					PathEl::ClosePath => PathEl::MoveTo(mouse_position_point),
+					PathEl::QuadTo(a1, p) => PathEl::QuadTo(*a1, *p),
+					PathEl::CurveTo(a1, a2, p) => PathEl::CurveTo(
+						if h1_selected { other_handle_pos } else { *a1 },
+						if h2_selected { (*p - mouse_position) + (*p).to_vec2() } else { *a2 },
+						*p,
+					),
+					PathEl::ClosePath => PathEl::MoveTo(mouse_position_as_point),
 				};
 				self.selected_shape_elements[handle.element_id] = neighbor;
 			}
@@ -201,20 +216,20 @@ impl PathToolSelector {
 		}
 	}
 
-	fn update_overlays() {
-		// responses.push_back(
-		// 	DocumentMessage::Overlay(
-		// 		Operation::SetLayerFill {
-		// 			path: data.selection.overlay_path.clone(),
-		// 			color: COLOR_ACCENT,
-		// 		}
-		// 		.into(),
-		// 	)
-		// 	.into(),
-		// );
-	}
+	// Todo Move the overlay changes to when selected, not drag start
+	// responses.push_back(
+	// 	DocumentMessage::Overlay(
+	// 		Operation::SetLayerFill {
+	// 			path: data.selection.overlay_path.clone(),
+	// 			color: COLOR_ACCENT,
+	// 		}
+	// 		.into(),
+	// 	)
+	// 	.into(),
+	// );
 
-	// Brute force comparison to determine which handle / anchor we want to select
+	// TODO Use quadtree or some equivalent spatial locality data structure to improve this to O(log(n))
+	// Brute force comparison to determine which handle / anchor we want to select, O(n)
 	fn closest_manipulator<'a>(&self, shape: &'a VectorManipulatorShape, pos: kurbo::Vec2) -> (&'a VectorManipulatorAnchor, &'a VectorManipulatorPoint, f64) {
 		let mut closest_anchor: &'a VectorManipulatorAnchor = &shape.points[0];
 		let mut closest_point: &'a VectorManipulatorPoint = &shape.points[0].point;
@@ -380,17 +395,18 @@ impl Fsm for PathToolFsmState {
 				}
 				(_, PointerMove) => self,
 				(_, DragStop) => {
-					let style = PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 2.0)), Some(Fill::new(Color::WHITE)));
-					responses.push_back(
-						DocumentMessage::Overlays(
-							Operation::SetLayerStyle {
-								path: data.selector.overlay_path.clone(),
-								style,
-							}
-							.into(),
-						)
-						.into(),
-					);
+					// Todo Move the overlay changes to when deselected, not drag stop
+					// let style = PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 2.0)), Some(Fill::new(Color::WHITE)));
+					// responses.push_back(
+					// 	DocumentMessage::Overlay(
+					// 		Operation::SetLayerStyle {
+					// 			path: data.selector.overlay_path.clone(),
+					// 			style,
+					// 		}
+					// 		.into(),
+					// 	)
+					// 	.into(),
+					// );
 					Ready
 				}
 				(_, Abort) => {

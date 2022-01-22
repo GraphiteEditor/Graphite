@@ -58,8 +58,6 @@ pub struct VectorManipulatorPoint {
 	pub element_id: usize,
 	// The sibling element if this is a handle
 	pub position: kurbo::Vec2,
-	// Are we handle?
-	pub is_guide: bool,
 }
 
 #[derive(PartialEq, Clone, Debug, Default)]

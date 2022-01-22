@@ -165,6 +165,7 @@ impl DocumentMessageHandler {
 				})
 				.collect::<Vec<VectorManipulatorSegment>>();
 
+			let points_count = path.elements().len();
 			let points: Vec<VectorManipulatorAnchor> = path
 				.elements()
 				.windows(2)
@@ -183,7 +184,6 @@ impl DocumentMessageHandler {
 							handle1 = Some(VectorManipulatorPoint {
 								element_id: index,
 								position: handle.to_vec2(),
-								is_guide: true,
 							});
 						}
 						_ => (),
@@ -192,9 +192,8 @@ impl DocumentMessageHandler {
 					match next_element {
 						kurbo::PathEl::CurveTo(handle, _, _) | kurbo::PathEl::QuadTo(handle, _) => {
 							handle2 = Some(VectorManipulatorPoint {
-								element_id: index + 1,
+								element_id: (index + 1) % points_count,
 								position: handle.to_vec2(),
-								is_guide: true,
 							});
 						}
 						_ => (),
@@ -204,7 +203,6 @@ impl DocumentMessageHandler {
 						point: VectorManipulatorPoint {
 							element_id: index,
 							position: anchor_position,
-							is_guide: false,
 						},
 						handles: (handle1, handle2),
 					}
