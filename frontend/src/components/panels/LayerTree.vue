@@ -366,7 +366,7 @@ export default defineComponent({
 			// Insert index
 			let insertIndex = -1;
 
-			// Weather you are inserting into a folder and should show the folder outline
+			// Whether you are inserting into a folder and should show the folder outline
 			let highlightFolder = false;
 
 			Array.from(treeChildren).forEach((treeChild) => {
