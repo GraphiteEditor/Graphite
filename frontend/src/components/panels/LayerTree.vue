@@ -30,7 +30,12 @@
 		</LayoutRow>
 		<LayoutRow :class="'layer-tree scrollable-y'">
 			<LayoutCol :class="'list'" ref="layerTreeList" @click="() => deselectAllLayers()" @dragover="updateInsertLine($event)" @dragend="drop()">
-				<div class="layer-row" v-for="({ entry: layer }, index) in layers" :key="String(layer.path.slice(-1))">
+				<div
+					class="layer-row"
+					v-for="({ entry: layer }, index) in layers"
+					:key="String(layer.path.slice(-1))"
+					v-bind:class="{ 'insert-folder': draggingData && draggingData.highlightFolder && draggingData.insertFolder === layer.path }"
+				>
 					<div class="visibility">
 						<IconButton
 							:action="(e) => (toggleLayerVisibility(layer.path), e && e.stopPropagation())"
@@ -317,7 +322,7 @@ export default defineComponent({
 			selectionRangeStartLayer: undefined as undefined | LayerPanelEntry,
 			selectionRangeEndLayer: undefined as undefined | LayerPanelEntry,
 			opacity: 100,
-			draggingData: undefined as undefined | { insertFolder: BigUint64Array; insertIndex: number; insertLine: HTMLDivElement; highlightedFolder: HTMLDivElement | undefined },
+			draggingData: undefined as undefined | { insertFolder: BigUint64Array; insertIndex: number; insertLine: HTMLDivElement; highlightFolder: boolean },
 		};
 	},
 	methods: {
@@ -428,12 +433,8 @@ export default defineComponent({
 
 			const { insertFolder, insertIndex, insertAboveNode, highlightFolder } = this.closest(tree, event.clientY);
 
-			let highlightedFolder;
-
 			// Highlight folder
 			if (highlightFolder && insertAboveNode instanceof HTMLDivElement) {
-				highlightedFolder = insertAboveNode;
-				insertAboveNode.classList.add("insert-folder");
 				insertLine.hidden = true;
 			} else if (insertAboveNode.parentNode) {
 				// Set the initial state of the insert line
@@ -443,7 +444,7 @@ export default defineComponent({
 				insertLine.hidden = false;
 			}
 
-			this.draggingData = { insertFolder, insertIndex, insertLine, highlightedFolder };
+			this.draggingData = { insertFolder, insertIndex, insertLine, highlightFolder };
 		},
 		updateInsertLine(event: DragEvent) {
 			// Stop the drag from being shown as cancelled
@@ -455,15 +456,10 @@ export default defineComponent({
 			if (this.draggingData) {
 				this.draggingData.insertFolder = insertFolder;
 				this.draggingData.insertIndex = insertIndex;
-
-				if (this.draggingData.highlightedFolder) {
-					this.draggingData.highlightedFolder.classList.remove("insert-folder");
-				}
+				this.draggingData.highlightFolder = highlightFolder;
 
 				// Highlight folder
-				if (highlightFolder && insertAboveNode instanceof HTMLDivElement) {
-					this.draggingData.highlightedFolder = insertAboveNode;
-					insertAboveNode.classList.add("insert-folder");
+				if (highlightFolder) {
 					this.draggingData.insertLine.hidden = true;
 				} else if (insertAboveNode.parentNode) {
 					// Set the initial state of the insert line
@@ -476,9 +472,6 @@ export default defineComponent({
 		},
 		removeLine() {
 			if (this.draggingData) {
-				if (this.draggingData.highlightedFolder) {
-					this.draggingData.highlightedFolder.classList.remove("insert-folder");
-				}
 				this.draggingData.insertLine.remove();
 			}
 		},
