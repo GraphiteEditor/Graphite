@@ -208,6 +208,11 @@
 			}
 		}
 
+		.insert-folder {
+			outline: 3px solid var(--color-accent-hover);
+			outline-offset: -3px;
+		}
+
 		.insert-mark {
 			position: relative;
 			margin-right: 16px;
@@ -293,7 +298,7 @@ const blendModeEntries: SectionsOfMenuListEntries<BlendMode> = [
 	],
 ];
 
-const RANGE_TO_INSERT_WITHIN_BOTTOM_FOLDER_NOT_ROOT = 40;
+const RANGE_TO_INSERT_WITHIN_BOTTOM_FOLDER_NOT_ROOT = 20;
 const LAYER_LEFT_MARGIN_OFFSET = 28;
 const LAYER_LEFT_INDENT_OFFSET = 16;
 
@@ -312,7 +317,7 @@ export default defineComponent({
 			selectionRangeStartLayer: undefined as undefined | LayerPanelEntry,
 			selectionRangeEndLayer: undefined as undefined | LayerPanelEntry,
 			opacity: 100,
-			draggingData: undefined as undefined | { insertFolder: BigUint64Array; insertIndex: number; insertLine: HTMLDivElement },
+			draggingData: undefined as undefined | { insertFolder: BigUint64Array; insertIndex: number; insertLine: HTMLDivElement; highlightedFolder: HTMLDivElement | undefined },
 		};
 	},
 	methods: {
@@ -346,7 +351,7 @@ export default defineComponent({
 				layer.entry.layer_metadata.selected = false;
 			});
 		},
-		closest(tree: HTMLElement, clientY: number): { insertFolder: BigUint64Array; insertIndex: number; insertAboveNode: Node } {
+		closest(tree: HTMLElement, clientY: number): { insertFolder: BigUint64Array; insertIndex: number; insertAboveNode: Node; highlightFolder: boolean } {
 			const treeChildren = tree.children;
 
 			// Closest distance to the middle of the row along the Y axis
@@ -360,6 +365,9 @@ export default defineComponent({
 
 			// Insert index
 			let insertIndex = -1;
+
+			// Weather you are inserting into a folder and should show the folder outline
+			let highlightFolder = false;
 
 			Array.from(treeChildren).forEach((treeChild) => {
 				const layerComponents = treeChild.getElementsByClassName("layer");
@@ -379,15 +387,19 @@ export default defineComponent({
 					insertAboveNode = treeChild;
 					insertFolder = layer.path.slice(0, layer.path.length - 1);
 					insertIndex = folderIndex;
+					highlightFolder = false;
 					closest = distance;
 				}
 				// Inserting below current row
 				else if (distance > -closest && distance > -RANGE_TO_INSERT_WITHIN_BOTTOM_FOLDER_NOT_ROOT && distance < 0) {
 					if (child.parentNode && child.parentNode.nextSibling) {
-						insertAboveNode = child.parentNode.nextSibling;
+						if (layer.layer_type !== "Folder") insertAboveNode = child.parentNode.nextSibling;
+						else insertAboveNode = child.parentNode;
 					}
+
 					insertFolder = layer.layer_type === "Folder" ? layer.path : layer.path.slice(0, layer.path.length - 1);
 					insertIndex = layer.layer_type === "Folder" ? 0 : folderIndex + 1;
+					highlightFolder = layer.layer_type === "Folder";
 					closest = -distance;
 				}
 				// Inserting with no nesting at the end of the panel
@@ -396,7 +408,7 @@ export default defineComponent({
 				}
 			});
 
-			return { insertFolder, insertIndex, insertAboveNode };
+			return { insertFolder, insertIndex, insertAboveNode, highlightFolder };
 		},
 		async dragStart(event: DragEvent, layer: LayerPanelEntry) {
 			if (!layer.layer_metadata.selected) this.selectLayer(layer, event.ctrlKey, event.shiftKey);
@@ -414,35 +426,59 @@ export default defineComponent({
 			insertLine.classList.add("insert-mark");
 			tree.appendChild(insertLine);
 
-			const { insertFolder, insertIndex, insertAboveNode } = this.closest(tree, event.clientY);
+			const { insertFolder, insertIndex, insertAboveNode, highlightFolder } = this.closest(tree, event.clientY);
 
-			// Set the initial state of the insert line
-			if (insertAboveNode.parentNode) {
+			let highlightedFolder;
+
+			// Highlight folder
+			if (highlightFolder && insertAboveNode instanceof HTMLDivElement) {
+				highlightedFolder = insertAboveNode;
+				insertAboveNode.classList.add("insert-folder");
+				insertLine.hidden = true;
+			} else if (insertAboveNode.parentNode) {
+				// Set the initial state of the insert line
+
 				insertLine.style.marginLeft = `${LAYER_LEFT_MARGIN_OFFSET + LAYER_LEFT_INDENT_OFFSET * (insertFolder.length + 1)}px`; // TODO: use layerIndent function to calculate this
 				tree.insertBefore(insertLine, insertAboveNode);
+				insertLine.hidden = false;
 			}
 
-			this.draggingData = { insertFolder, insertIndex, insertLine };
+			this.draggingData = { insertFolder, insertIndex, insertLine, highlightedFolder };
 		},
 		updateInsertLine(event: DragEvent) {
 			// Stop the drag from being shown as cancelled
 			event.preventDefault();
 
 			const tree = (this.$refs.layerTreeList as typeof LayoutCol).$el as HTMLElement;
-			const { insertFolder, insertIndex, insertAboveNode } = this.closest(tree, event.clientY);
+			const { insertFolder, insertIndex, insertAboveNode, highlightFolder } = this.closest(tree, event.clientY);
 
 			if (this.draggingData) {
 				this.draggingData.insertFolder = insertFolder;
 				this.draggingData.insertIndex = insertIndex;
 
-				if (insertAboveNode.parentNode) {
+				if (this.draggingData.highlightedFolder) {
+					this.draggingData.highlightedFolder.classList.remove("insert-folder");
+				}
+
+				// Highlight folder
+				if (highlightFolder && insertAboveNode instanceof HTMLDivElement) {
+					this.draggingData.highlightedFolder = insertAboveNode;
+					insertAboveNode.classList.add("insert-folder");
+					this.draggingData.insertLine.hidden = true;
+				} else if (insertAboveNode.parentNode) {
+					// Set the initial state of the insert line
+
 					this.draggingData.insertLine.style.marginLeft = `${LAYER_LEFT_MARGIN_OFFSET + LAYER_LEFT_INDENT_OFFSET * (insertFolder.length + 1)}px`;
 					tree.insertBefore(this.draggingData.insertLine, insertAboveNode);
+					this.draggingData.insertLine.hidden = false;
 				}
 			}
 		},
 		removeLine() {
 			if (this.draggingData) {
+				if (this.draggingData.highlightedFolder) {
+					this.draggingData.highlightedFolder.classList.remove("insert-folder");
+				}
 				this.draggingData.insertLine.remove();
 			}
 		},
