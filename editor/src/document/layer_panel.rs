@@ -98,6 +98,7 @@ pub struct LayerPanelEntry {
 pub enum LayerDataTypeDiscriminant {
 	Folder,
 	Shape,
+	Text,
 }
 
 impl fmt::Display for LayerDataTypeDiscriminant {
@@ -105,6 +106,7 @@ impl fmt::Display for LayerDataTypeDiscriminant {
 		let name = match self {
 			LayerDataTypeDiscriminant::Folder => "Folder",
 			LayerDataTypeDiscriminant::Shape => "Shape",
+			LayerDataTypeDiscriminant::Text => "Text",
 		};
 
 		formatter.write_str(name)
@@ -118,6 +120,7 @@ impl From<&LayerDataType> for LayerDataTypeDiscriminant {
 		match data {
 			Folder(_) => LayerDataTypeDiscriminant::Folder,
 			Shape(_) => LayerDataTypeDiscriminant::Shape,
+			Text(_) => LayerDataTypeDiscriminant::Text,
 		}
 	}
 }

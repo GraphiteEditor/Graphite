@@ -27,6 +27,7 @@ export function createInputManager(editor: EditorState, container: HTMLElement, 
 	];
 
 	let viewportPointerInteractionOngoing = false;
+	let textInput = undefined as undefined | HTMLTextAreaElement;
 
 	// Keyboard events
 
@@ -114,7 +115,12 @@ export function createInputManager(editor: EditorState, container: HTMLElement, 
 			e.stopPropagation();
 		}
 
-		if (inCanvas) viewportPointerInteractionOngoing = true;
+		if (target instanceof HTMLTextAreaElement) {
+			textInput = target;
+		} else if (textInput) {
+			editor.instance.on_change_text(textInput.value);
+			textInput = undefined;
+		} else if (inCanvas) viewportPointerInteractionOngoing = true;
 
 		if (viewportPointerInteractionOngoing) {
 			const modifiers = makeModifiersBitfield(e);
@@ -125,8 +131,10 @@ export function createInputManager(editor: EditorState, container: HTMLElement, 
 	const onPointerUp = (e: PointerEvent): void => {
 		if (!e.buttons) viewportPointerInteractionOngoing = false;
 
-		const modifiers = makeModifiersBitfield(e);
-		editor.instance.on_mouse_up(e.clientX, e.clientY, e.buttons, modifiers);
+		if (!textInput) {
+			const modifiers = makeModifiersBitfield(e);
+			editor.instance.on_mouse_up(e.clientX, e.clientY, e.buttons, modifiers);
+		}
 	};
 
 	// Mouse events

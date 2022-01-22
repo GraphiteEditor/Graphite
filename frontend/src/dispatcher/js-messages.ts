@@ -201,7 +201,7 @@ export class UpdateDocumentRulers extends JsMessage {
 	readonly interval!: number;
 }
 
-export type MouseCursorIcon = "default" | "zoom-in" | "zoom-out" | "grabbing" | "crosshair";
+export type MouseCursorIcon = "default" | "zoom-in" | "zoom-out" | "grabbing" | "crosshair" | "text";
 
 const ToCssCursorProperty = Transform(({ value }) => {
 	const cssNames: Record<string, MouseCursorIcon> = {
@@ -209,6 +209,7 @@ const ToCssCursorProperty = Transform(({ value }) => {
 		ZoomOut: "zoom-out",
 		Grabbing: "grabbing",
 		Crosshair: "crosshair",
+		Text: "text",
 	};
 
 	return cssNames[value] || "default";

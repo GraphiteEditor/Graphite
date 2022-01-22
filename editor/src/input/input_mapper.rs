@@ -59,6 +59,8 @@ impl Default for Mapping {
 			// Eyedropper
 			entry! {action=EyedropperMessage::LeftMouseDown, key_down=Lmb},
 			entry! {action=EyedropperMessage::RightMouseDown, key_down=Rmb},
+			// Text
+			entry! {action=TextMessage::LeftMouseDown, key_down=Lmb},
 			// Rectangle
 			entry! {action=RectangleMessage::DragStart, key_down=Lmb},
 			entry! {action=RectangleMessage::DragStop, key_up=Lmb},
@@ -101,6 +103,7 @@ impl Default for Mapping {
 			entry! {action=ToolMessage::ActivateTool { tool_type: ToolType::Select }, key_down=KeyV},
 			entry! {action=ToolMessage::ActivateTool { tool_type: ToolType::Navigate }, key_down=KeyZ},
 			entry! {action=ToolMessage::ActivateTool { tool_type: ToolType::Eyedropper }, key_down=KeyI},
+			entry! {action=ToolMessage::ActivateTool { tool_type: ToolType::Text }, key_down=KeyT},
 			entry! {action=ToolMessage::ActivateTool { tool_type: ToolType::Fill }, key_down=KeyF},
 			entry! {action=ToolMessage::ActivateTool { tool_type: ToolType::Path }, key_down=KeyA},
 			entry! {action=ToolMessage::ActivateTool { tool_type: ToolType::Pen }, key_down=KeyP},

@@ -154,7 +154,7 @@ export default defineComponent({
 			Crop: [],
 			Navigate: [],
 			Eyedropper: [],
-			Text: [],
+			Text: [{ kind: "NumberInput", optionPath: ["font_size"], props: { min: 1, isInteger: true, unit: " px", label: "Font size" } }],
 			Fill: [],
 			Gradient: [],
 			Brush: [],

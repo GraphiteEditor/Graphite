@@ -1,3 +1,4 @@
 target/
 *.spv
 *.exrc
+*font_text.svg

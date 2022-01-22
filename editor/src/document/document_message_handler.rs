@@ -146,11 +146,11 @@ impl DocumentMessageHandler {
 				_ => return None,
 			};
 
-			let shape = match &layer.ok()?.data {
-				LayerDataType::Shape(shape) => Some(shape),
-				LayerDataType::Folder(_) => None,
+			let (path, closed) = match &layer.ok()?.data {
+				LayerDataType::Shape(shape) => Some((shape.path.clone(), shape.closed)),
+				LayerDataType::Text(text) => Some((text.to_bez_path(), true)),
+				_ => None,
 			}?;
-			let path = shape.path.clone();
 
 			let segments = path
 				.segments()
@@ -170,7 +170,7 @@ impl DocumentMessageHandler {
 				path,
 				segments,
 				transform: viewport_transform,
-				closed: shape.closed,
+				closed,
 			})
 		});
 
@@ -205,17 +205,14 @@ impl DocumentMessageHandler {
 		for (id, layer) in folder.layer_ids.iter().zip(folder.layers()).rev() {
 			data.push(*id);
 			space += 1;
-			match layer.data {
-				LayerDataType::Shape(_) => (),
-				LayerDataType::Folder(ref folder) => {
-					path.push(*id);
-					if self.layer_metadata(path).expanded {
-						structure.push(space);
-						self.serialize_structure(folder, structure, data, path);
-						space = 0;
-					}
-					path.pop();
+			if let LayerDataType::Folder(ref folder) = layer.data {
+				path.push(*id);
+				if self.layer_metadata(path).expanded {
+					structure.push(space);
+					self.serialize_structure(folder, structure, data, path);
+					space = 0;
 				}
+				path.pop();
 			}
 		}
 		structure.push(space | 1 << 63);

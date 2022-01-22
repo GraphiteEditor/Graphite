@@ -76,7 +76,7 @@
 
 					<Separator :type="'Section'" :direction="'Vertical'" />
 
-					<ShelfItemInput icon="ParametricTextTool" title="Text Tool (T)" :active="activeTool === 'Text'" :action="() => (dialog.comingSoon(153), false) && selectTool('Text')" />
+					<ShelfItemInput icon="ParametricTextTool" title="Text Tool (T)" :active="activeTool === 'Text'" :action="() => selectTool('Text')" />
 					<ShelfItemInput icon="ParametricFillTool" title="Fill Tool (F)" :active="activeTool === 'Fill'" :action="() => selectTool('Fill')" />
 					<ShelfItemInput
 						icon="ParametricGradientTool"
@@ -242,6 +242,16 @@
 						pointer-events: auto;
 					}
 				}
+				textarea {
+					color: black;
+					background: none;
+					cursor: text;
+					width: 100%;
+					height: 100%;
+					border: none;
+					margin: 0;
+					padding: 0;
+				}
 			}
 		}
 	}
@@ -343,8 +353,11 @@ export default defineComponent({
 			this.editor.instance.reset_colors();
 		},
 		canvasPointerDown(e: PointerEvent) {
-			const canvas = this.$refs.canvas as HTMLElement;
-			canvas.setPointerCapture(e.pointerId);
+			const onEditbox = e.target instanceof HTMLTextAreaElement;
+			if (!onEditbox) {
+				const canvas = this.$refs.canvas as HTMLElement;
+				canvas.setPointerCapture(e.pointerId);
+			}
 		},
 	},
 	mounted() {

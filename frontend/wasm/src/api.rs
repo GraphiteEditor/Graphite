@@ -296,6 +296,14 @@ impl JsEditorHandle {
 		self.dispatch(message);
 	}
 
+	/// A text box was changed
+	pub fn on_change_text(&self, new_text: String) -> Result<(), JsValue> {
+		let message = TextMessage::TextChange { new_text };
+		self.dispatch(message);
+
+		Ok(())
+	}
+
 	/// Update primary color
 	pub fn update_primary_color(&self, red: f32, green: f32, blue: f32, alpha: f32) -> Result<(), JsValue> {
 		let primary_color = match Color::from_rgbaf32(red, green, blue, alpha) {
