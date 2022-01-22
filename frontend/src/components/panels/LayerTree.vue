@@ -34,7 +34,7 @@
 					class="layer-row"
 					v-for="({ entry: layer }, index) in layers"
 					:key="String(layer.path.slice(-1))"
-					v-bind:class="{ 'insert-folder': draggingData && draggingData.highlightFolder && draggingData.insertFolder === layer.path }"
+					:class="{ 'insert-folder': draggingData && draggingData.highlightFolder && draggingData.insertFolder === layer.path }"
 				>
 					<div class="visibility">
 						<IconButton
