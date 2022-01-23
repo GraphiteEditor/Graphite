@@ -272,7 +272,7 @@ impl PathGraph {
 		self.vertex(from).edges.iter().find(|edge| edge.destination == to && edge.from == origin)
 	}
 
-	// return reference to intersect associated with the vertex at idx
+	/// return reference to intersect associated with the vertex at idx
 	pub fn intersect(&self, idx: usize) -> &Intersect {
 		&self.vertices[idx].intersect
 	}
@@ -472,11 +472,22 @@ pub fn reverse_pathseg(seg: &mut PathSeg) {
 	}
 }
 
+pub fn reverse_path(path: &BezPath) -> BezPath {
+	let mut temp = Vec::new();
+	path.segments().for_each(|mut seg| {
+		reverse_pathseg(&mut seg);
+		temp.push(seg);
+	});
+	BezPath::from_path_segments(temp.into_iter().rev())
+}
+
 pub fn is_closed(curve: &BezPath) -> bool {
 	curve.iter().last() == Some(PathEl::ClosePath)
 }
 
 pub fn concat_paths(a: &mut BezPath, b: &BezPath) {
+	// remove closepaths and moves
+	if let Some(PathEl::ClosePath) = b.iter().last() {}
 	b.iter().for_each(|element| a.push(element));
 }
 
