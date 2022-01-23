@@ -6,6 +6,7 @@ use crate::input::keyboard::{Key, MouseMotion};
 use crate::input::InputPreprocessorMessageHandler;
 use crate::message_prelude::*;
 use crate::misc::{HintData, HintGroup, HintInfo, KeysGroup};
+use crate::viewport_tools::snapping::SnapHandler;
 use crate::viewport_tools::tool::{DocumentToolData, Fsm, ToolActionHandlerData};
 
 use graphene::color::Color;
@@ -88,13 +89,15 @@ struct PathToolData {
 	handle_marker_pool: Vec<Vec<LayerId>>,
 	anchor_handle_line_pool: Vec<Vec<LayerId>>,
 	shape_outline_pool: Vec<Vec<LayerId>>,
-	selector: PathToolSelector,
+
+	manipulation_handler: ManipulationHandler,
+	snap_handler: SnapHandler,
 }
 
 impl PathToolData {}
 
 #[derive(Clone, Debug, Default)]
-struct PathToolSelector {
+struct ManipulationHandler {
 	selected_shapes: Vec<VectorManipulatorShape>,
 	selected_layer_path: Vec<LayerId>,
 	// overlay_path: Vec<LayerId>, // Re-add when overlays are enabled again
@@ -105,7 +108,7 @@ struct PathToolSelector {
 	selected_anchor: VectorManipulatorAnchor,
 }
 
-impl PathToolSelector {
+impl ManipulationHandler {
 	pub fn set_selected_shapes(&mut self, shapes: Vec<VectorManipulatorShape>) {
 		self.selected_shapes = shapes;
 	}
@@ -264,10 +267,10 @@ impl Fsm for PathToolFsmState {
 				(_, DocumentIsDirty) => {
 					let (mut anchor_i, mut handle_i, mut line_i, mut shape_i) = (0, 0, 0, 0);
 
-					data.selector.selected_shapes = document.selected_visible_layers_vector_points();
+					data.manipulation_handler.selected_shapes = document.selected_visible_layers_vector_points();
 					// Grow the overlay pools by the shortfall, if any
-					let (total_anchors, total_handles, total_anchor_handle_lines) = calculate_total_overlays_per_type(&data.selector.selected_shapes);
-					let total_shapes = data.selector.selected_shapes.len();
+					let (total_anchors, total_handles, total_anchor_handle_lines) = calculate_total_overlays_per_type(&data.manipulation_handler.selected_shapes);
+					let total_shapes = data.manipulation_handler.selected_shapes.len();
 					grow_overlay_pool_entries(&mut data.shape_outline_pool, total_shapes, add_shape_outline, responses);
 					grow_overlay_pool_entries(&mut data.anchor_handle_line_pool, total_anchor_handle_lines, add_anchor_handle_line, responses);
 					grow_overlay_pool_entries(&mut data.anchor_marker_pool, total_anchors, add_anchor_marker, responses);
@@ -277,7 +280,7 @@ impl Fsm for PathToolFsmState {
 					const BIAS: f64 = 0.0001;
 
 					// Draw the overlays for each shape
-					for shape_to_draw in &data.selector.selected_shapes {
+					for shape_to_draw in &data.manipulation_handler.selected_shapes {
 						let shape_layer_path = &data.shape_outline_pool[shape_i];
 
 						responses.push_back(
@@ -374,11 +377,12 @@ impl Fsm for PathToolFsmState {
 				}
 				(_, DragStart) => {
 					// Set the shapes we have selected
-					data.selector.set_selected_shapes(document.selected_visible_layers_vector_points());
+					data.manipulation_handler.set_selected_shapes(document.selected_visible_layers_vector_points());
 
 					// Select the first point within the threshold
 					let select_threshold = 10.0;
-					if data.selector.select_manipulator(input.mouse.position, select_threshold) {
+					if data.manipulation_handler.select_manipulator(input.mouse.position, select_threshold) {
+						data.snap_handler.start_snap(document, document.visible_layers());
 						Dragging
 					} else {
 						Ready
@@ -386,7 +390,8 @@ impl Fsm for PathToolFsmState {
 				}
 				(Dragging, PointerMove) => {
 					// Move the selected points by the mouse position
-					let move_operation = data.selector.move_selected_to(input.mouse.position);
+					let snapped_position = data.snap_handler.snap_position(responses, input.viewport_bounds.size(), document, input.mouse.position);
+					let move_operation = data.manipulation_handler.move_selected_to(snapped_position);
 					responses.push_back(move_operation.into());
 					Dragging
 				}
@@ -404,6 +409,7 @@ impl Fsm for PathToolFsmState {
 					// 	)
 					// 	.into(),
 					// );
+					data.snap_handler.cleanup(responses);
 					Ready
 				}
 				(_, Abort) => {
