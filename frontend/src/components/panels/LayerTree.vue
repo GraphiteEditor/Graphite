@@ -30,67 +30,46 @@
 		</LayoutRow>
 		<LayoutRow :class="'layer-tree scrollable-y'">
 			<LayoutCol :class="'list'" ref="layerTreeList" @click="() => deselectAllLayers()" @dragover="updateInsertLine($event)" @dragend="drop()">
-				<template v-for="({ entry: layer, bottomLayer, folderIndex }, index) in layers" :key="String(layer.path.slice(-1))">
-					<div
-						v-if="
-							draggingData &&
-							!draggingData.highlightFolder &&
-							draggingData.insertIndex === folderIndex &&
-							draggingData.insertFolder.toString() === layer.path.slice(0, layer.path.length - 1).toString()
-						"
-						class="insert-mark"
-						:style="{ marginLeft: markIndent(layer) }"
-					></div>
-					<div class="layer-row" :class="{ 'insert-folder': draggingData && draggingData.highlightFolder && draggingData.insertFolder === layer.path }">
-						<div class="visibility">
-							<IconButton
-								:action="(e) => (toggleLayerVisibility(layer.path), e && e.stopPropagation())"
-								:icon="layer.visible ? 'EyeVisible' : 'EyeHidden'"
-								:size="24"
-								:title="layer.visible ? 'Visible' : 'Hidden'"
-							/>
-						</div>
-						<div class="indent" :style="{ marginLeft: layerIndent(layer) }"></div>
-						<button
-							v-if="layer.layer_type === 'Folder'"
-							class="expand-arrow"
-							:class="{ expanded: layer.layer_metadata.expanded }"
-							@click.stop="handleExpandArrowClick(layer.path)"
-						></button>
-						<div
-							class="layer"
-							:class="{ selected: layer.layer_metadata.selected }"
-							@click.shift.exact.stop="selectLayer(layer, false, true)"
-							@click.shift.ctrl.exact.stop="selectLayer(layer, true, true)"
-							@click.ctrl.exact.stop="selectLayer(layer, true, false)"
-							@click.exact.stop="selectLayer(layer, false, false)"
-							:data-index="index"
-							draggable="true"
-							@dragstart="dragStart($event, layer)"
-							:title="String(layer.path)"
-						>
-							<div class="layer-type-icon">
-								<IconLabel v-if="layer.layer_type === 'Folder'" :icon="'NodeTypeFolder'" title="Folder" />
-								<IconLabel v-else :icon="'NodeTypePath'" title="Path" />
-							</div>
-							<div class="layer-name">
-								<span>{{ layer.name }}</span>
-							</div>
-							<div class="thumbnail" v-html="layer.thumbnail"></div>
-						</div>
+				<LayoutRow class="layer-row" v-for="(listing, index) in layers" v-bind="insertionMarkings(listing)" :key="String(listing.entry.path.slice(-1))">
+					<div class="visibility">
+						<IconButton
+							:action="(e) => (toggleLayerVisibility(listing.entry.path), e && e.stopPropagation())"
+							:size="24"
+							:icon="listing.entry.visible ? 'EyeVisible' : 'EyeHidden'"
+							:title="listing.entry.visible ? 'Visible' : 'Hidden'"
+						/>
 					</div>
+
+					<div class="indent" :style="{ marginLeft: layerIndent(listing.entry) }"></div>
+
+					<button
+						v-if="listing.entry.layer_type === 'Folder'"
+						class="expand-arrow"
+						:class="{ expanded: listing.entry.layer_metadata.expanded }"
+						@click.stop="handleExpandArrowClick(listing.entry.path)"
+					></button>
 					<div
-						v-if="
-							bottomLayer &&
-							draggingData &&
-							!draggingData.highlightFolder &&
-							draggingData.insertIndex === folderIndex + 1 &&
-							draggingData.insertFolder.toString() === layer.path.slice(0, layer.path.length - 1).toString()
-						"
-						class="insert-mark"
-						:style="{ marginLeft: markIndent(layer) }"
-					></div>
-				</template>
+						class="layer"
+						:class="{ selected: listing.entry.layer_metadata.selected }"
+						@click.shift.exact.stop="selectLayer(listing.entry, false, true)"
+						@click.shift.ctrl.exact.stop="selectLayer(listing.entry, true, true)"
+						@click.ctrl.exact.stop="selectLayer(listing.entry, true, false)"
+						@click.exact.stop="selectLayer(listing.entry, false, false)"
+						:data-index="index"
+						draggable="true"
+						@dragstart="dragStart($event, listing.entry)"
+						:title="String(listing.entry.path)"
+					>
+						<div class="layer-type-icon">
+							<IconLabel v-if="listing.entry.layer_type === 'Folder'" :icon="'NodeTypeFolder'" title="Folder" />
+							<IconLabel v-else :icon="'NodeTypePath'" title="Path" />
+						</div>
+						<div class="layer-name">
+							<span>{{ listing.entry.name }}</span>
+						</div>
+						<div class="thumbnail" v-html="listing.entry.thumbnail"></div>
+					</div>
+				</LayoutRow>
 			</LayoutCol>
 		</LayoutRow>
 	</LayoutCol>
@@ -122,7 +101,6 @@
 
 		.layer-row {
 			flex: 0 0 auto;
-			display: flex;
 			align-items: center;
 			position: relative;
 			height: 36px;
@@ -234,38 +212,31 @@
 					}
 				}
 			}
-		}
 
-		.insert-folder {
-			outline: 3px solid var(--color-accent-hover);
-			outline-offset: -3px;
-		}
+			&.insert-folder {
+				outline: 3px solid var(--color-accent-hover);
+				outline-offset: -3px;
+			}
 
-		.insert-mark {
-			position: relative;
-			margin-right: 16px;
-			height: 0;
-			z-index: 2;
-
-			&::after {
+			&.insert-mark-above::before,
+			&.insert-mark-below::after {
 				content: "";
 				position: absolute;
 				background: var(--color-accent-hover);
-				width: 100%;
-				height: 5px;
-			}
-
-			&:not(:first-child, :last-child) {
+				left: var(--insert-mark-indent);
+				right: 8px;
 				top: -3px;
+				height: 5px;
+				z-index: 2;
 			}
 
-			&:first-child::after {
+			&:first-child.insert-mark-above::before {
 				top: 0;
 			}
 
-			&:last-child::after {
-				// Shifted up 1px to account for the shifting down of the entire `.layer-tree` panel
-				bottom: 1px;
+			&:last-child.insert-mark-below::after {
+				top: unset;
+				bottom: 0;
 			}
 		}
 	}
@@ -286,6 +257,8 @@ import DropdownInput from "@/components/widgets/inputs/DropdownInput.vue";
 import NumberInput from "@/components/widgets/inputs/NumberInput.vue";
 import IconLabel from "@/components/widgets/labels/IconLabel.vue";
 import Separator from "@/components/widgets/separators/Separator.vue";
+
+type LayerListingInfo = { entry: LayerPanelEntry; bottomLayer: boolean; folderIndex: number };
 
 const blendModeEntries: SectionsOfMenuListEntries<BlendMode> = [
 	[{ label: "Normal", value: "Normal" }],
@@ -327,7 +300,7 @@ const blendModeEntries: SectionsOfMenuListEntries<BlendMode> = [
 ];
 
 const RANGE_TO_INSERT_WITHIN_BOTTOM_FOLDER_NOT_ROOT = 20;
-const LAYER_LEFT_MARGIN_OFFSET = 28;
+const LAYER_LEFT_MARGIN_OFFSET = 32;
 const LAYER_LEFT_INDENT_OFFSET = 16;
 
 export default defineComponent({
@@ -340,7 +313,7 @@ export default defineComponent({
 			opacityNumberInputDisabled: true,
 			// TODO: replace with BigUint64Array as index
 			layerCache: new Map() as Map<string, LayerPanelEntry>,
-			layers: [] as { folderIndex: number; bottomLayer: boolean; entry: LayerPanelEntry }[],
+			layers: [] as LayerListingInfo[],
 			layerDepths: [] as number[],
 			selectionRangeStartLayer: undefined as undefined | LayerPanelEntry,
 			selectionRangeEndLayer: undefined as undefined | LayerPanelEntry,
@@ -349,11 +322,29 @@ export default defineComponent({
 		};
 	},
 	methods: {
-		layerIndent(layer: LayerPanelEntry) {
+		layerIndent(layer: LayerPanelEntry): string {
 			return `${layer.path.length * LAYER_LEFT_INDENT_OFFSET}px`;
 		},
-		markIndent(layer: LayerPanelEntry) {
+		markIndent(layer: LayerPanelEntry): string {
 			return `${LAYER_LEFT_MARGIN_OFFSET + layer.path.length * LAYER_LEFT_INDENT_OFFSET}px`;
+		},
+		insertionMarkings(listing: LayerListingInfo): { class: ("insert-folder" | "insert-mark-above" | "insert-mark-below")[]; style?: string } {
+			const showInsertionFolder = this.draggingData && this.draggingData.highlightFolder && this.draggingData.insertFolder === listing.entry.path;
+
+			const insertionLine =
+				this.draggingData && !this.draggingData.highlightFolder && this.draggingData.insertFolder.toString() === listing.entry.path.slice(0, listing.entry.path.length - 1).toString();
+			const showInsertionLineAbove = this.draggingData && insertionLine && this.draggingData.insertIndex === listing.folderIndex;
+			const showInsertionLineBelow = this.draggingData && insertionLine && this.draggingData.insertIndex === listing.folderIndex + 1 && listing.bottomLayer;
+
+			const classes = [] as ("insert-folder" | "insert-mark-above" | "insert-mark-below")[];
+			if (showInsertionFolder) classes.push("insert-folder");
+			if (showInsertionLineAbove) classes.push("insert-mark-above");
+			if (showInsertionLineBelow) classes.push("insert-mark-below");
+
+			let style;
+			if (showInsertionLineAbove || showInsertionLineBelow) style = `--insert-mark-indent: ${this.markIndent(listing.entry)}`;
+
+			return { class: classes, style };
 		},
 		async toggleLayerVisibility(path: BigUint64Array) {
 			this.editor.instance.toggle_layer_visibility(path);
