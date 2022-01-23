@@ -30,44 +30,67 @@
 		</LayoutRow>
 		<LayoutRow :class="'layer-tree scrollable-y'">
 			<LayoutCol :class="'list'" ref="layerTreeList" @click="() => deselectAllLayers()" @dragover="updateInsertLine($event)" @dragend="drop()">
-				<div
-					class="layer-row"
-					v-for="({ entry: layer }, index) in layers"
-					:key="String(layer.path.slice(-1))"
-					:class="{ 'insert-folder': draggingData && draggingData.highlightFolder && draggingData.insertFolder === layer.path }"
-				>
-					<div class="visibility">
-						<IconButton
-							:action="(e) => (toggleLayerVisibility(layer.path), e && e.stopPropagation())"
-							:icon="layer.visible ? 'EyeVisible' : 'EyeHidden'"
-							:size="24"
-							:title="layer.visible ? 'Visible' : 'Hidden'"
-						/>
-					</div>
-					<div class="indent" :style="{ marginLeft: layerIndent(layer) }"></div>
-					<button v-if="layer.layer_type === 'Folder'" class="expand-arrow" :class="{ expanded: layer.layer_metadata.expanded }" @click.stop="handleExpandArrowClick(layer.path)"></button>
+				<template v-for="({ entry: layer, bottomLayer, folderIndex }, index) in layers" :key="String(layer.path.slice(-1))">
 					<div
-						class="layer"
-						:class="{ selected: layer.layer_metadata.selected }"
-						@click.shift.exact.stop="selectLayer(layer, false, true)"
-						@click.shift.ctrl.exact.stop="selectLayer(layer, true, true)"
-						@click.ctrl.exact.stop="selectLayer(layer, true, false)"
-						@click.exact.stop="selectLayer(layer, false, false)"
-						:data-index="index"
-						draggable="true"
-						@dragstart="dragStart($event, layer)"
-						:title="String(layer.path)"
-					>
-						<div class="layer-type-icon">
-							<IconLabel v-if="layer.layer_type === 'Folder'" :icon="'NodeTypeFolder'" title="Folder" />
-							<IconLabel v-else :icon="'NodeTypePath'" title="Path" />
+						v-if="
+							draggingData &&
+							!draggingData.highlightFolder &&
+							draggingData.insertIndex === folderIndex &&
+							draggingData.insertFolder.toString() === layer.path.slice(0, layer.path.length - 1).toString()
+						"
+						class="insert-mark"
+						:style="{ marginLeft: markIndent(layer) }"
+					></div>
+					<div class="layer-row" :class="{ 'insert-folder': draggingData && draggingData.highlightFolder && draggingData.insertFolder === layer.path }">
+						<div class="visibility">
+							<IconButton
+								:action="(e) => (toggleLayerVisibility(layer.path), e && e.stopPropagation())"
+								:icon="layer.visible ? 'EyeVisible' : 'EyeHidden'"
+								:size="24"
+								:title="layer.visible ? 'Visible' : 'Hidden'"
+							/>
 						</div>
-						<div class="layer-name">
-							<span>{{ layer.name }}</span>
+						<div class="indent" :style="{ marginLeft: layerIndent(layer) }"></div>
+						<button
+							v-if="layer.layer_type === 'Folder'"
+							class="expand-arrow"
+							:class="{ expanded: layer.layer_metadata.expanded }"
+							@click.stop="handleExpandArrowClick(layer.path)"
+						></button>
+						<div
+							class="layer"
+							:class="{ selected: layer.layer_metadata.selected }"
+							@click.shift.exact.stop="selectLayer(layer, false, true)"
+							@click.shift.ctrl.exact.stop="selectLayer(layer, true, true)"
+							@click.ctrl.exact.stop="selectLayer(layer, true, false)"
+							@click.exact.stop="selectLayer(layer, false, false)"
+							:data-index="index"
+							draggable="true"
+							@dragstart="dragStart($event, layer)"
+							:title="String(layer.path)"
+						>
+							<div class="layer-type-icon">
+								<IconLabel v-if="layer.layer_type === 'Folder'" :icon="'NodeTypeFolder'" title="Folder" />
+								<IconLabel v-else :icon="'NodeTypePath'" title="Path" />
+							</div>
+							<div class="layer-name">
+								<span>{{ layer.name }}</span>
+							</div>
+							<div class="thumbnail" v-html="layer.thumbnail"></div>
 						</div>
-						<div class="thumbnail" v-html="layer.thumbnail"></div>
 					</div>
-				</div>
+					<div
+						v-if="
+							bottomLayer &&
+							draggingData &&
+							!draggingData.highlightFolder &&
+							draggingData.insertIndex === folderIndex + 1 &&
+							draggingData.insertFolder.toString() === layer.path.slice(0, layer.path.length - 1).toString()
+						"
+						class="insert-mark"
+						:style="{ marginLeft: markIndent(layer) }"
+					></div>
+				</template>
 			</LayoutCol>
 		</LayoutRow>
 	</LayoutCol>
@@ -317,17 +340,20 @@ export default defineComponent({
 			opacityNumberInputDisabled: true,
 			// TODO: replace with BigUint64Array as index
 			layerCache: new Map() as Map<string, LayerPanelEntry>,
-			layers: [] as { folderIndex: number; entry: LayerPanelEntry }[],
+			layers: [] as { folderIndex: number; bottomLayer: boolean; entry: LayerPanelEntry }[],
 			layerDepths: [] as number[],
 			selectionRangeStartLayer: undefined as undefined | LayerPanelEntry,
 			selectionRangeEndLayer: undefined as undefined | LayerPanelEntry,
 			opacity: 100,
-			draggingData: undefined as undefined | { insertFolder: BigUint64Array; insertIndex: number; insertLine: HTMLDivElement; highlightFolder: boolean },
+			draggingData: undefined as undefined | { insertFolder: BigUint64Array; insertIndex: number; highlightFolder: boolean },
 		};
 	},
 	methods: {
 		layerIndent(layer: LayerPanelEntry) {
-			return `${layer.path.length * 16}px`;
+			return `${layer.path.length * LAYER_LEFT_INDENT_OFFSET}px`;
+		},
+		markIndent(layer: LayerPanelEntry) {
+			return `${LAYER_LEFT_MARGIN_OFFSET + layer.path.length * LAYER_LEFT_INDENT_OFFSET}px`;
 		},
 		async toggleLayerVisibility(path: BigUint64Array) {
 			this.editor.instance.toggle_layer_visibility(path);
@@ -356,14 +382,11 @@ export default defineComponent({
 				layer.entry.layer_metadata.selected = false;
 			});
 		},
-		closest(tree: HTMLElement, clientY: number): { insertFolder: BigUint64Array; insertIndex: number; insertAboveNode: Node; highlightFolder: boolean } {
+		closest(tree: HTMLElement, clientY: number): { insertFolder: BigUint64Array; insertIndex: number; highlightFolder: boolean } {
 			const treeChildren = tree.children;
 
 			// Closest distance to the middle of the row along the Y axis
 			let closest = Infinity;
-
-			// The nearest row parent (element of the tree)
-			let insertAboveNode = tree.lastChild as Node;
 
 			// Folder to insert into
 			let insertFolder = new BigUint64Array();
@@ -389,7 +412,6 @@ export default defineComponent({
 
 				// Inserting above current row
 				if (distance > 0 && distance < closest) {
-					insertAboveNode = treeChild;
 					insertFolder = layer.path.slice(0, layer.path.length - 1);
 					insertIndex = folderIndex;
 					highlightFolder = false;
@@ -397,11 +419,6 @@ export default defineComponent({
 				}
 				// Inserting below current row
 				else if (distance > -closest && distance > -RANGE_TO_INSERT_WITHIN_BOTTOM_FOLDER_NOT_ROOT && distance < 0) {
-					if (child.parentNode && child.parentNode.nextSibling) {
-						if (layer.layer_type !== "Folder") insertAboveNode = child.parentNode.nextSibling;
-						else insertAboveNode = child.parentNode;
-					}
-
 					insertFolder = layer.layer_type === "Folder" ? layer.path : layer.path.slice(0, layer.path.length - 1);
 					insertIndex = layer.layer_type === "Folder" ? 0 : folderIndex + 1;
 					highlightFolder = layer.layer_type === "Folder";
@@ -413,7 +430,7 @@ export default defineComponent({
 				}
 			});
 
-			return { insertFolder, insertIndex, insertAboveNode, highlightFolder };
+			return { insertFolder, insertIndex, highlightFolder };
 		},
 		async dragStart(event: DragEvent, layer: LayerPanelEntry) {
 			if (!layer.layer_metadata.selected) this.selectLayer(layer, event.ctrlKey, event.shiftKey);
@@ -423,65 +440,26 @@ export default defineComponent({
 				event.dataTransfer.dropEffect = "move";
 				event.dataTransfer.effectAllowed = "move";
 			}
-
 			const tree = (this.$refs.layerTreeList as typeof LayoutCol).$el;
 
-			// Create the insert line
-			const insertLine = document.createElement("div") as HTMLDivElement;
-			insertLine.classList.add("insert-mark");
-			tree.appendChild(insertLine);
+			const { insertFolder, insertIndex, highlightFolder } = this.closest(tree, event.clientY);
 
-			const { insertFolder, insertIndex, insertAboveNode, highlightFolder } = this.closest(tree, event.clientY);
-
-			// Highlight folder
-			if (highlightFolder && insertAboveNode instanceof HTMLDivElement) {
-				insertLine.hidden = true;
-			} else if (insertAboveNode.parentNode) {
-				// Set the initial state of the insert line
-
-				insertLine.style.marginLeft = `${LAYER_LEFT_MARGIN_OFFSET + LAYER_LEFT_INDENT_OFFSET * (insertFolder.length + 1)}px`; // TODO: use layerIndent function to calculate this
-				tree.insertBefore(insertLine, insertAboveNode);
-				insertLine.hidden = false;
-			}
-
-			this.draggingData = { insertFolder, insertIndex, insertLine, highlightFolder };
+			this.draggingData = { insertFolder, insertIndex, highlightFolder };
 		},
 		updateInsertLine(event: DragEvent) {
 			// Stop the drag from being shown as cancelled
 			event.preventDefault();
 
 			const tree = (this.$refs.layerTreeList as typeof LayoutCol).$el as HTMLElement;
-			const { insertFolder, insertIndex, insertAboveNode, highlightFolder } = this.closest(tree, event.clientY);
-
-			if (this.draggingData) {
-				this.draggingData.insertFolder = insertFolder;
-				this.draggingData.insertIndex = insertIndex;
-				this.draggingData.highlightFolder = highlightFolder;
-
-				// Highlight folder
-				if (highlightFolder) {
-					this.draggingData.insertLine.hidden = true;
-				} else if (insertAboveNode.parentNode) {
-					// Set the initial state of the insert line
-
-					this.draggingData.insertLine.style.marginLeft = `${LAYER_LEFT_MARGIN_OFFSET + LAYER_LEFT_INDENT_OFFSET * (insertFolder.length + 1)}px`;
-					tree.insertBefore(this.draggingData.insertLine, insertAboveNode);
-					this.draggingData.insertLine.hidden = false;
-				}
-			}
-		},
-		removeLine() {
-			if (this.draggingData) {
-				this.draggingData.insertLine.remove();
-			}
+			this.draggingData = this.closest(tree, event.clientY);
 		},
 		async drop() {
-			this.removeLine();
-
 			if (this.draggingData) {
 				const { insertFolder, insertIndex } = this.draggingData;
 
 				this.editor.instance.move_layer_in_tree(insertFolder, insertIndex);
+
+				this.draggingData = undefined;
 			}
 		},
 		setBlendModeForSelectedLayers() {
@@ -529,14 +507,14 @@ export default defineComponent({
 	mounted() {
 		this.editor.dispatcher.subscribeJsMessage(DisplayDocumentLayerTreeStructure, (displayDocumentLayerTreeStructure) => {
 			const path = [] as bigint[];
-			this.layers = [] as { folderIndex: number; entry: LayerPanelEntry }[];
+			this.layers = [] as { folderIndex: number; bottomLayer: boolean; entry: LayerPanelEntry }[];
 
-			const recurse = (folder: DisplayDocumentLayerTreeStructure, layers: { folderIndex: number; entry: LayerPanelEntry }[], cache: Map<string, LayerPanelEntry>): void => {
+			const recurse = (folder: DisplayDocumentLayerTreeStructure, layers: { folderIndex: number; bottomLayer: boolean; entry: LayerPanelEntry }[], cache: Map<string, LayerPanelEntry>): void => {
 				folder.children.forEach((item, index) => {
 					// TODO: fix toString
 					path.push(BigInt(item.layerId.toString()));
 					const mapping = cache.get(path.toString());
-					if (mapping) layers.push({ folderIndex: index, entry: mapping });
+					if (mapping) layers.push({ folderIndex: index, bottomLayer: index === folder.children.length - 1, entry: mapping });
 					if (item.children.length >= 1) recurse(item, layers, cache);
 					path.pop();
 				});
