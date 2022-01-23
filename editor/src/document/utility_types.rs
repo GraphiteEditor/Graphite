@@ -4,6 +4,7 @@ use graphene::document::Document as GrapheneDocument;
 use graphene::LayerId;
 
 use glam::{DAffine2, DVec2};
+use kurbo::Vec2;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -57,7 +58,7 @@ pub struct VectorManipulatorPoint {
 	// The associated position in the BezPath
 	pub element_id: usize,
 	// The sibling element if this is a handle
-	pub position: kurbo::Vec2,
+	pub position: glam::DVec2,
 }
 
 #[derive(PartialEq, Clone, Debug, Default)]
@@ -69,13 +70,12 @@ pub struct VectorManipulatorAnchor {
 }
 
 impl VectorManipulatorAnchor {
-	pub fn closest_handle_or_anchor(&self, target: kurbo::Vec2) -> &VectorManipulatorPoint {
+	pub fn closest_handle_or_anchor(&self, shape: &VectorManipulatorShape, target: glam::DVec2) -> &VectorManipulatorPoint {
 		let mut closest_point: &VectorManipulatorPoint = &self.point;
-		let mut distance = (self.point.position - target).hypot2();
-
+		let mut distance = self.point.position.distance_squared(target);
 		let (handle1, handle2) = &self.handles;
 		if let Some(handle1) = handle1 {
-			let handle1_dist = (handle1.position - target).hypot2();
+			let handle1_dist = handle1.position.distance_squared(target);
 			if distance > handle1_dist {
 				distance = handle1_dist;
 				closest_point = handle1;
@@ -83,7 +83,7 @@ impl VectorManipulatorAnchor {
 		}
 
 		if let Some(handle2) = handle2 {
-			let handle2_dist = (handle2.position - target).hypot2();
+			let handle2_dist = handle2.position.distance_squared(target);
 			if distance > handle2_dist {
 				closest_point = handle2;
 			}

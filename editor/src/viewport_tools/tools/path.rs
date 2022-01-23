@@ -116,10 +116,8 @@ impl PathToolSelector {
 		let select_threshold_squared = select_threshold * select_threshold;
 		for shape_index in 0..self.selected_shapes.len() {
 			let selected_shape = &self.selected_shapes[shape_index];
-			// Localize mouse position to shape
-			let mouse_to_shape = selected_shape.transform.inverse().transform_point2(mouse_position);
 			// Find the closest control point for this shape
-			let (anchor, point, distance) = self.closest_manipulator(selected_shape, Vec2::new(mouse_to_shape.x, mouse_to_shape.y));
+			let (anchor, point, distance) = self.closest_manipulator(selected_shape, mouse_position);
 			// Choose the first manipulator under the threshold
 			if distance < select_threshold_squared {
 				self.selected_shape_elements = selected_shape.path.clone().into_iter().collect();
@@ -161,18 +159,18 @@ impl PathToolSelector {
 			// Move the anchor point and hande on the same path element
 			let (selected, point) = match &self.selected_shape_elements[self.selected_anchor.point.element_id] {
 				PathEl::MoveTo(p) => (PathEl::MoveTo(mouse_position_as_point), p),
-				PathEl::LineTo(p) => (PathEl::MoveTo(mouse_position_as_point), p),
+				PathEl::LineTo(p) => (PathEl::LineTo(mouse_position_as_point), p),
 				PathEl::QuadTo(a1, p) => (PathEl::QuadTo(*a1 - (*p - mouse_position).to_vec2(), mouse_position_as_point), p),
 				PathEl::CurveTo(a1, a2, p) => (PathEl::CurveTo(*a1, *a2 - (*p - mouse_position).to_vec2(), mouse_position_as_point), p),
 				PathEl::ClosePath => (PathEl::MoveTo(mouse_position_as_point), &mouse_position_as_point),
 			};
 
 			// Move the handle on the adjacent path element
-			let point_delta = (*point - mouse_position).to_vec2();
 			if let Some(handle) = h2 {
+				let point_delta = (*point - mouse_position).to_vec2();
 				let neighbor = match &self.selected_shape_elements[handle.element_id] {
-					PathEl::MoveTo(_) => PathEl::MoveTo(*point),
-					PathEl::LineTo(_) => PathEl::LineTo(*point),
+					PathEl::MoveTo(_) => PathEl::MoveTo(mouse_position_as_point),
+					PathEl::LineTo(_) => PathEl::LineTo(mouse_position_as_point),
 					PathEl::QuadTo(a1, p) => PathEl::QuadTo(*a1 - point_delta, *p),
 					PathEl::CurveTo(a1, a2, p) => PathEl::CurveTo(*a1 - point_delta, *a2, *p),
 					PathEl::ClosePath => PathEl::MoveTo(mouse_position_as_point),
@@ -196,9 +194,8 @@ impl PathToolSelector {
 			};
 
 			// Move the opposing handle on the adjacent path element
-			let other_handle_pos = ((anchor.to_vec2() - mouse_position) + anchor.to_vec2()).to_point();
+			let other_handle_pos = (anchor - mouse_position) + anchor.to_vec2();
 			if let Some(handle) = self.selected_anchor.opposing_handle(&self.selected_point) {
-				// log::debug!("Opposing handle {:?} ", handle);
 				let neighbor = match &self.selected_shape_elements[handle.element_id] {
 					PathEl::MoveTo(p) => PathEl::MoveTo(*p),
 					PathEl::LineTo(p) => PathEl::LineTo(*p),
@@ -230,13 +227,13 @@ impl PathToolSelector {
 
 	// TODO Use quadtree or some equivalent spatial locality data structure to improve this to O(log(n))
 	// Brute force comparison to determine which handle / anchor we want to select, O(n)
-	fn closest_manipulator<'a>(&self, shape: &'a VectorManipulatorShape, pos: kurbo::Vec2) -> (&'a VectorManipulatorAnchor, &'a VectorManipulatorPoint, f64) {
+	fn closest_manipulator<'a>(&self, shape: &'a VectorManipulatorShape, pos: glam::DVec2) -> (&'a VectorManipulatorAnchor, &'a VectorManipulatorPoint, f64) {
 		let mut closest_anchor: &'a VectorManipulatorAnchor = &shape.points[0];
 		let mut closest_point: &'a VectorManipulatorPoint = &shape.points[0].point;
-		let mut closest_distance: f64 = f64::MAX;
+		let mut closest_distance: f64 = f64::MAX; // Not ideal
 		for anchor in shape.points.iter() {
-			let point = anchor.closest_handle_or_anchor(pos);
-			let distance_squared = (point.position - pos).hypot2();
+			let point = anchor.closest_handle_or_anchor(shape, pos);
+			let distance_squared = point.position.distance_squared(pos);
 			if distance_squared < closest_distance {
 				closest_distance = distance_squared;
 				closest_anchor = anchor;
@@ -380,7 +377,7 @@ impl Fsm for PathToolFsmState {
 					data.selector.set_selected_shapes(document.selected_visible_layers_vector_points());
 
 					// Select the first point within the threshold
-					let select_threshold = 0.02;
+					let select_threshold = 10.0;
 					if data.selector.select_manipulator(input.mouse.position, select_threshold) {
 						Dragging
 					} else {

@@ -165,49 +165,52 @@ impl DocumentMessageHandler {
 				})
 				.collect::<Vec<VectorManipulatorSegment>>();
 
-			let points_count = path.elements().len();
-			let points: Vec<VectorManipulatorAnchor> = path
+			let elements_count = path.elements().len();
+			let create_anchor_manipulator = |element_index: usize, elements: (kurbo::PathEl, kurbo::PathEl)| -> VectorManipulatorAnchor {
+				let mut handle1 = None;
+				let mut anchor_position: glam::DVec2 = glam::DVec2::ZERO;
+				let mut handle2 = None;
+				let (current_element, next_element) = elements;
+
+				match current_element {
+					kurbo::PathEl::MoveTo(anchor) | kurbo::PathEl::LineTo(anchor) => anchor_position = place(anchor),
+					kurbo::PathEl::QuadTo(handle, anchor) | kurbo::PathEl::CurveTo(_, handle, anchor) => {
+						anchor_position = place(anchor);
+						handle1 = Some(VectorManipulatorPoint {
+							element_id: element_index,
+							position: place(handle),
+						});
+					}
+					_ => (),
+				}
+
+				match next_element {
+					kurbo::PathEl::CurveTo(handle, _, _) | kurbo::PathEl::QuadTo(handle, _) => {
+						handle2 = Some(VectorManipulatorPoint {
+							element_id: element_index + 1,
+							position: place(handle),
+						});
+					}
+					_ => (),
+				}
+
+				VectorManipulatorAnchor {
+					point: VectorManipulatorPoint {
+						element_id: element_index,
+						position: anchor_position,
+					},
+					handles: (handle1, handle2),
+				}
+			};
+
+			let mut points: Vec<VectorManipulatorAnchor> = path
 				.elements()
 				.windows(2)
 				.enumerate()
-				.map(|(index, element)| -> VectorManipulatorAnchor {
-					let mut handle1 = None;
-					let mut anchor_position: kurbo::Vec2 = kurbo::Vec2::ZERO;
-					let mut handle2 = None;
-					let current_element = element[0];
-					let next_element = element[1];
-
-					match current_element {
-						kurbo::PathEl::MoveTo(anchor) | kurbo::PathEl::LineTo(anchor) => anchor_position = anchor.to_vec2(),
-						kurbo::PathEl::QuadTo(handle, anchor) | kurbo::PathEl::CurveTo(_, handle, anchor) => {
-							anchor_position = anchor.to_vec2();
-							handle1 = Some(VectorManipulatorPoint {
-								element_id: index,
-								position: handle.to_vec2(),
-							});
-						}
-						_ => (),
-					}
-
-					match next_element {
-						kurbo::PathEl::CurveTo(handle, _, _) | kurbo::PathEl::QuadTo(handle, _) => {
-							handle2 = Some(VectorManipulatorPoint {
-								element_id: (index + 1) % points_count,
-								position: handle.to_vec2(),
-							});
-						}
-						_ => (),
-					}
-
-					VectorManipulatorAnchor {
-						point: VectorManipulatorPoint {
-							element_id: index,
-							position: anchor_position,
-						},
-						handles: (handle1, handle2),
-					}
-				})
+				.map(|(index, element)| -> VectorManipulatorAnchor { create_anchor_manipulator(index, (element[0], element[1])) })
 				.collect();
+
+			points.push(create_anchor_manipulator(elements_count - 1, (*path.elements().last().unwrap(), *path.elements().first().unwrap())));
 
 			Some(VectorManipulatorShape {
 				layer_path: path_to_shape.to_vec(),
