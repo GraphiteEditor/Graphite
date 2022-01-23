@@ -225,9 +225,16 @@
 				background: var(--color-accent-hover);
 				left: var(--insert-mark-indent);
 				right: 8px;
-				top: -3px;
 				height: 5px;
 				z-index: 2;
+			}
+
+			&.insert-mark-above::before {
+				top: -3px;
+			}
+
+			&.insert-mark-below::after {
+				bottom: -3px;
 			}
 
 			&:first-child.insert-mark-above::before {
@@ -235,7 +242,6 @@
 			}
 
 			&:last-child.insert-mark-below::after {
-				top: unset;
 				bottom: 0;
 			}
 		}
