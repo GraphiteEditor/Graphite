@@ -1,5 +1,6 @@
 <template>
 	<MainWindow />
+
 	<div class="unsupported-modal-backdrop" v-if="showUnsupportedModal">
 		<div class="unsupported-modal">
 			<h2>Your browser currently doesn't support Graphite</h2>
@@ -91,72 +92,74 @@ img {
 	display: block;
 }
 
-.scrollable,
-.scrollable-x,
-.scrollable-y {
-	// Standard
-	scrollbar-width: thin;
-	scrollbar-width: 6px;
-	scrollbar-gutter: 6px;
-	scrollbar-color: var(--color-5-dullgray) transparent;
+.layout-row,
+.layout-col {
+	.scrollable-x,
+	.scrollable-y {
+		// Standard
+		scrollbar-width: thin;
+		scrollbar-width: 6px;
+		scrollbar-gutter: 6px;
+		scrollbar-color: var(--color-5-dullgray) transparent;
 
-	&:not(:hover) {
-		scrollbar-width: none;
-	}
+		&:not(:hover) {
+			scrollbar-width: none;
+		}
 
-	// WebKit
-	&::-webkit-scrollbar {
-		width: calc(2px + 6px + 2px);
-		height: calc(2px + 6px + 2px);
-	}
+		// WebKit
+		&::-webkit-scrollbar {
+			width: calc(2px + 6px + 2px);
+			height: calc(2px + 6px + 2px);
+		}
 
-	&:not(:hover)::-webkit-scrollbar {
-		width: 0;
-		height: 0;
-	}
+		&:not(:hover)::-webkit-scrollbar {
+			width: 0;
+			height: 0;
+		}
 
-	&::-webkit-scrollbar-track {
-		box-shadow: inset 0 0 0 1px var(--color-5-dullgray);
-		border: 2px solid transparent;
-		border-radius: 10px;
+		&::-webkit-scrollbar-track {
+			box-shadow: inset 0 0 0 1px var(--color-5-dullgray);
+			border: 2px solid transparent;
+			border-radius: 10px;
 
-		&:hover {
-			box-shadow: inset 0 0 0 1px var(--color-6-lowergray);
+			&:hover {
+				box-shadow: inset 0 0 0 1px var(--color-6-lowergray);
+			}
+		}
+
+		&::-webkit-scrollbar-thumb {
+			background-clip: padding-box;
+			background-color: var(--color-5-dullgray);
+			border: 2px solid transparent;
+			border-radius: 10px;
+			margin: 2px;
+
+			&:hover {
+				background-color: var(--color-6-lowergray);
+			}
 		}
 	}
 
-	&::-webkit-scrollbar-thumb {
-		background-clip: padding-box;
-		background-color: var(--color-5-dullgray);
-		border: 2px solid transparent;
-		border-radius: 10px;
-		margin: 2px;
-
-		&:hover {
-			background-color: var(--color-6-lowergray);
-		}
+	.scrollable-x.scrollable-y {
+		// Standard
+		overflow: auto;
+		// WebKit
+		overflow: overlay;
 	}
-}
 
-.scrollable {
-	// Standard
-	overflow: auto;
-	// WebKit
-	overflow: overlay;
-}
+	.scrollable-x:not(.scrollable-y) {
+		// Standard
+		overflow-x: auto;
+		// WebKit
+		overflow-x: overlay;
+	}
 
-.scrollable-x {
-	// Standard
-	overflow-x: auto;
-	// WebKit
-	overflow-x: overlay;
-}
-
-.scrollable-y {
-	// Standard
-	overflow-y: auto;
-	// WebKit
-	overflow-y: overlay;
+	.scrollable-y:not(.scrollable-x) {
+		// Standard
+		overflow-y: auto;
+		// WebKit
+		overflow-y: overlay;
+	}
 }
 
 // For placeholder messages (remove eventually)
