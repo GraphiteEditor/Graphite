@@ -213,7 +213,7 @@
 				}
 			}
 
-			&.insert-folder {
+			&.insert-folder .layer {
 				outline: 3px solid var(--color-accent-hover);
 				outline-offset: -3px;
 			}
