@@ -1,12 +1,12 @@
 <template>
 	<LayoutCol class="main-window">
-		<LayoutRow :class="'title-bar-row'">
+		<LayoutRow class="title-bar-row">
 			<TitleBar :platform="platform" :maximized="maximized" />
 		</LayoutRow>
-		<LayoutRow :class="'workspace-row'">
+		<LayoutRow class="workspace-row">
 			<Workspace />
 		</LayoutRow>
-		<LayoutRow :class="'status-bar-row'">
+		<LayoutRow class="status-bar-row">
 			<StatusBar />
 		</LayoutRow>
 	</LayoutCol>

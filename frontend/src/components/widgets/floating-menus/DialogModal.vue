@@ -2,14 +2,14 @@
 	<div class="dialog-modal">
 		<FloatingMenu :type="'Dialog'" :direction="'Center'">
 			<LayoutRow>
-				<LayoutCol :class="'icon-column'">
+				<LayoutCol class="icon-column">
 					<!-- `dialog.state.icon` class exists to provide special sizing in CSS to specific icons -->
 					<IconLabel :icon="dialog.state.icon" :class="dialog.state.icon.toLowerCase()" />
 				</LayoutCol>
-				<LayoutCol :class="'main-column'">
-					<TextLabel :bold="true" :class="'heading'">{{ dialog.state.heading }}</TextLabel>
-					<TextLabel :class="'details'">{{ dialog.state.details }}</TextLabel>
-					<LayoutRow :class="'buttons-row'" v-if="dialog.state.buttons.length > 0">
+				<LayoutCol class="main-column">
+					<TextLabel :bold="true" class="heading">{{ dialog.state.heading }}</TextLabel>
+					<TextLabel class="details">{{ dialog.state.details }}</TextLabel>
+					<LayoutRow class="buttons-row" v-if="dialog.state.buttons.length > 0">
 						<TextButton v-for="(button, index) in dialog.state.buttons" :key="index" :title="button.tooltip" :action="() => button.callback && button.callback()" v-bind="button.props" />
 					</LayoutRow>
 				</LayoutCol>
