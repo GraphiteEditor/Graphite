@@ -10,6 +10,7 @@ use crate::viewport_tools::snapping::SnapHandler;
 use crate::viewport_tools::tool::{DocumentToolData, Fsm, ToolActionHandlerData};
 
 use graphene::color::Color;
+use graphene::intersection::Quad;
 use graphene::layers::style::{self, Fill, Stroke};
 use graphene::Operation;
 
@@ -385,6 +386,14 @@ impl Fsm for PathToolFsmState {
 						data.snap_handler.start_snap(document, document.visible_layers());
 						Dragging
 					} else {
+						let intersection = document.graphene_document.intersects_quad_root(Quad::from_box([input.mouse.position, input.mouse.position]));
+						responses.push_back(DocumentMessage::StartTransaction.into());
+						responses.push_back(
+							DocumentMessage::SetSelectedLayers {
+								replacement_selected_layers: intersection,
+							}
+							.into(),
+						);
 						Ready
 					}
 				}
