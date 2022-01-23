@@ -60,6 +60,7 @@ impl Translation {
 		}
 	}
 
+	#[must_use]
 	pub fn increment_amount(self, delta: DVec2) -> Self {
 		Self {
 			dragged_distance: self.dragged_distance + delta,
@@ -87,6 +88,7 @@ impl Rotation {
 		}
 	}
 
+	#[must_use]
 	pub fn increment_amount(self, delta: f64) -> Self {
 		Self {
 			dragged_angle: self.dragged_angle + delta,
@@ -124,6 +126,7 @@ impl Scale {
 		}
 	}
 
+	#[must_use]
 	pub fn increment_amount(self, delta: f64) -> Self {
 		Self {
 			dragged_factor: self.dragged_factor + delta,
@@ -242,7 +245,7 @@ impl<'a> Selected<'a> {
 			let transformation = pivot * delta * pivot.inverse();
 
 			// TODO: Cache the result of `shallowest_unique_layers` to avoid this heavy computation every frame of movement, see https://github.com/GraphiteEditor/Graphite/pull/481
-			for layer_path in Document::shallowest_unique_layers(self.selected.iter().map(|path| path.as_slice())) {
+			for layer_path in Document::shallowest_unique_layers(self.selected.iter()) {
 				let parent_folder_path = &layer_path[..layer_path.len() - 1];
 				let original_layer_transforms = *self.original_transforms.get(layer_path).unwrap();
 

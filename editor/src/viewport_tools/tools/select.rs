@@ -135,7 +135,7 @@ fn add_bounding_box(responses: &mut Vec<Message>) -> Vec<LayerId> {
 }
 
 fn transform_from_box(pos1: DVec2, pos2: DVec2) -> [f64; 6] {
-	DAffine2::from_scale_angle_translation(pos2 - pos1, 0., pos1).to_cols_array()
+	DAffine2::from_scale_angle_translation((pos2 - pos1).round(), 0., pos1.round() - DVec2::splat(0.5)).to_cols_array()
 }
 
 impl Fsm for SelectToolFsmState {
@@ -164,9 +164,6 @@ impl Fsm for SelectToolFsmState {
 
 							data.bounding_box_overlay_layer = Some(path.clone());
 
-							let half_pixel_offset = DVec2::splat(0.5);
-							let pos1 = pos1 + half_pixel_offset;
-							let pos2 = pos2 - half_pixel_offset;
 							let transform = transform_from_box(pos1, pos2);
 							DocumentMessage::Overlays(Operation::SetLayerTransformInViewport { path, transform }.into()).into()
 						}
@@ -189,6 +186,10 @@ impl Fsm for SelectToolFsmState {
 					let state = if selected.iter().any(|path| intersection.contains(path)) {
 						buffer.push(DocumentMessage::StartTransaction.into());
 						data.layers_dragging = selected;
+
+						data.snap_handler
+							.start_snap(document, document.visible_layers().filter(|layer| !data.layers_dragging.iter().any(|path| path == layer)));
+
 						Dragging
 					} else {
 						if !input.keyboard.get(add_to_selection as usize) {
@@ -201,6 +202,9 @@ impl Fsm for SelectToolFsmState {
 							buffer.push(DocumentMessage::AddSelectedLayers { additional_layers: selected.clone() }.into());
 							buffer.push(DocumentMessage::StartTransaction.into());
 							data.layers_dragging.append(&mut selected);
+							data.snap_handler
+								.start_snap(document, document.visible_layers().filter(|layer| !data.layers_dragging.iter().any(|path| path == layer)));
+
 							Dragging
 						} else {
 							data.drag_box_overlay_layer = Some(add_bounding_box(&mut buffer));
@@ -209,13 +213,6 @@ impl Fsm for SelectToolFsmState {
 					};
 					buffer.into_iter().rev().for_each(|message| responses.push_front(message));
 
-					// TODO: Probably delete this now that the overlays system has moved to a separate Graphene document? (@0hypercube)
-					let ignore_layers = if let Some(bounding_box) = &data.bounding_box_overlay_layer {
-						vec![bounding_box.clone()]
-					} else {
-						Vec::new()
-					};
-					data.snap_handler.start_snap(document, document.non_selected_layers_sorted(), &ignore_layers);
 					state
 				}
 				(Dragging, MouseMove { snap_angle }) => {
@@ -234,12 +231,12 @@ impl Fsm for SelectToolFsmState {
 
 					let mouse_delta = mouse_position - data.drag_current;
 
-					let closest_move = data.snap_handler.snap_layers(document, &data.layers_dragging, mouse_delta);
+					let closest_move = data.snap_handler.snap_layers(responses, document, &data.layers_dragging, input.viewport_bounds.size(), mouse_delta);
 					// TODO: Cache the result of `shallowest_unique_layers` to avoid this heavy computation every frame of movement, see https://github.com/GraphiteEditor/Graphite/pull/481
-					for path in Document::shallowest_unique_layers(data.layers_dragging.iter().map(|path| path.as_slice())) {
+					for path in Document::shallowest_unique_layers(data.layers_dragging.iter()) {
 						responses.push_front(
 							Operation::TransformLayerInViewport {
-								path: path.to_vec(),
+								path: path.clone(),
 								transform: DAffine2::from_translation(mouse_delta + closest_move).to_cols_array(),
 							}
 							.into(),
@@ -250,15 +247,12 @@ impl Fsm for SelectToolFsmState {
 				}
 				(DrawingBox, MouseMove { .. }) => {
 					data.drag_current = input.mouse.position;
-					let half_pixel_offset = DVec2::splat(0.5);
-					let start = data.drag_start + half_pixel_offset;
-					let size = data.drag_current - start + half_pixel_offset;
 
 					responses.push_front(
 						DocumentMessage::Overlays(
 							Operation::SetLayerTransformInViewport {
 								path: data.drag_box_overlay_layer.clone().unwrap(),
-								transform: DAffine2::from_scale_angle_translation(size, 0., start).to_cols_array(),
+								transform: transform_from_box(data.drag_start, data.drag_current),
 							}
 							.into(),
 						)
@@ -271,7 +265,7 @@ impl Fsm for SelectToolFsmState {
 						true => DocumentMessage::Undo,
 						false => DocumentMessage::CommitTransaction,
 					};
-					data.snap_handler.cleanup();
+					data.snap_handler.cleanup(responses);
 					responses.push_front(response.into());
 					Ready
 				}
@@ -298,6 +292,7 @@ impl Fsm for SelectToolFsmState {
 					let mut delete = |path: &mut Option<Vec<LayerId>>| path.take().map(|path| responses.push_front(DocumentMessage::Overlays(Operation::DeleteLayer { path }.into()).into()));
 					delete(&mut data.drag_box_overlay_layer);
 					delete(&mut data.bounding_box_overlay_layer);
+					data.snap_handler.cleanup(responses);
 					Ready
 				}
 				(_, Align { axis, aggregate }) => {

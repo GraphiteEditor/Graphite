@@ -182,6 +182,10 @@ impl DocumentMessageHandler {
 		self.layer_metadata.iter().filter_map(|(path, data)| data.selected.then(|| path.as_slice()))
 	}
 
+	pub fn non_selected_layers(&self) -> impl Iterator<Item = &[LayerId]> {
+		self.layer_metadata.iter().filter_map(|(path, data)| (!data.selected).then(|| path.as_slice()))
+	}
+
 	pub fn selected_layers_without_children(&self) -> Vec<&[LayerId]> {
 		let unique_layers = GrapheneDocument::shallowest_unique_layers(self.selected_layers());
 
@@ -195,6 +199,13 @@ impl DocumentMessageHandler {
 
 	pub fn selected_visible_layers(&self) -> impl Iterator<Item = &[LayerId]> {
 		self.selected_layers().filter(|path| match self.graphene_document.layer(path) {
+			Ok(layer) => layer.visible,
+			Err(_) => false,
+		})
+	}
+
+	pub fn visible_layers(&self) -> impl Iterator<Item = &[LayerId]> {
+		self.all_layers().filter(|path| match self.graphene_document.layer(path) {
 			Ok(layer) => layer.visible,
 			Err(_) => false,
 		})
@@ -264,7 +275,7 @@ impl DocumentMessageHandler {
 		self.layer_metadata.keys().filter_map(|path| (!path.is_empty()).then(|| path.as_slice()))
 	}
 
-	/// Returns the paths to all layers in order, optionally including only selected or non-selected layers.
+	/// Returns the paths to all layers in order
 	fn sort_layers<'a>(&self, paths: impl Iterator<Item = &'a [LayerId]>) -> Vec<&'a [LayerId]> {
 		// Compute the indices for each layer to be able to sort them
 		let mut layers_with_indices: Vec<(&[LayerId], Vec<usize>)> = paths
@@ -299,7 +310,7 @@ impl DocumentMessageHandler {
 	/// Returns the paths to all non_selected layers in order
 	#[allow(dead_code)] // used for test cases
 	pub fn non_selected_layers_sorted(&self) -> Vec<&[LayerId]> {
-		self.sort_layers(self.all_layers().filter(|layer| !self.selected_layers().any(|path| &path == layer)))
+		self.sort_layers(self.non_selected_layers())
 	}
 
 	pub fn layer_metadata(&self, path: &[LayerId]) -> &LayerMetadata {
