@@ -1,9 +1,9 @@
 <template>
 	<div class="dropdown-input">
 		<div class="dropdown-box" :class="{ disabled }" :style="{ minWidth: `${minWidth}px` }" @click="() => clickDropdownBox()" data-hover-menu-spawner>
-			<IconLabel :class="'dropdown-icon'" :icon="activeEntry.icon" v-if="activeEntry.icon" />
+			<IconLabel class="dropdown-icon" :icon="activeEntry.icon" v-if="activeEntry.icon" />
 			<span>{{ activeEntry.label }}</span>
-			<IconLabel :class="'dropdown-arrow'" :icon="'DropdownArrow'" />
+			<IconLabel class="dropdown-arrow" :icon="'DropdownArrow'" />
 		</div>
 		<MenuList
 			v-model:activeEntry="activeEntry"
@@ -12,7 +12,7 @@
 			:menuEntries="menuEntries"
 			:direction="'Bottom'"
 			:drawIcon="drawIcon"
-			:scrollable="true"
+			:scrollableY="true"
 			ref="menuList"
 		/>
 	</div>

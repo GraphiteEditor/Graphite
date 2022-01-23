@@ -1,6 +1,6 @@
 <template>
-	<LayoutCol :class="'layer-tree-panel'">
-		<LayoutRow :class="'options-bar'">
+	<LayoutCol class="layer-tree-panel">
+		<LayoutRow class="options-bar">
 			<DropdownInput
 				v-model:selectedIndex="blendModeSelectedIndex"
 				@update:selectedIndex="(newSelectedIndex: number) => setLayerBlendMode(newSelectedIndex)"
@@ -28,8 +28,8 @@
 				<p>The contents of this popover menu are coming soon</p>
 			</PopoverButton>
 		</LayoutRow>
-		<LayoutRow :class="'layer-tree scrollable-y'">
-			<LayoutCol :class="'list'" ref="layerTreeList" @click="() => deselectAllLayers()" @dragover="updateInsertLine($event)" @dragend="drop()">
+		<LayoutRow class="layer-tree" :scrollableY="true">
+			<LayoutCol class="list" ref="layerTreeList" @click="() => deselectAllLayers()" @dragover="updateInsertLine($event)" @dragend="drop()">
 				<div class="layer-row" v-for="({ entry: layer }, index) in layers" :key="String(layer.path.slice(-1))">
 					<div class="visibility">
 						<IconButton
