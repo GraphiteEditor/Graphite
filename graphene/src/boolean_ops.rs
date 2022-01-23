@@ -5,10 +5,7 @@ use crate::{
 };
 use kurbo::{BezPath, CubicBez, Line, ParamCurve, ParamCurveArclen, ParamCurveArea, ParamCurveExtrema, PathEl, PathSeg, QuadBez, Rect};
 use serde::{Deserialize, Serialize};
-use std::{
-	fmt::{self, Debug, Formatter},
-	path::Path,
-};
+use std::fmt::{self, Debug, Formatter};
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq)]
 pub enum BooleanOperation {
@@ -220,8 +217,8 @@ impl PathGraph {
 		self.add_edge(origin, cstart.unwrap(), start_idx.unwrap(), current);
 	}
 
-	fn add_edge(&mut self, origin: Origin, vertex: usize, destination: usize, mut curve: Vec<PathSeg>) {
-		let mut new_edge = Edge {
+	fn add_edge(&mut self, origin: Origin, vertex: usize, destination: usize, curve: Vec<PathSeg>) {
+		let new_edge = Edge {
 			from: origin,
 			destination,
 			curve: BezPath::from_path_segments(curve.into_iter()),
