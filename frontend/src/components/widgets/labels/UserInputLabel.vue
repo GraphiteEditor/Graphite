@@ -1,5 +1,5 @@
 <template>
-	<div class="user-input-label">
+	<LayoutRow class="user-input-label">
 		<template v-for="(keyGroup, keyGroupIndex) in inputKeys" :key="keyGroupIndex">
 			<span class="group-gap" v-if="keyGroupIndex > 0"></span>
 			<template v-for="(keyInfo, index) in keyTextOrIconList(keyGroup)" :key="index">
@@ -15,14 +15,14 @@
 		<span class="hint-text" v-if="hasSlotContent">
 			<slot></slot>
 		</span>
-	</div>
+	</LayoutRow>
 </template>
 
 <style lang="scss">
 .user-input-label {
+	flex: 0 0 auto;
 	height: 100%;
 	margin: 0 8px;
-	display: flex;
 	align-items: center;
 	white-space: nowrap;
 
@@ -39,6 +39,9 @@
 	}
 
 	.input-key {
+		display: flex;
+		justify-content: center;
+		align-items: center;
 		font-family: "Inconsolata", monospace;
 		font-weight: 400;
 		text-align: center;
@@ -49,7 +52,7 @@
 		border-color: var(--color-7-middlegray);
 		border-radius: 4px;
 		height: 16px;
-		// Firefox renders the text 1px lower than Chrome (tested on Windows) with 16px line-height, so moving it up 1 pixel with 15px makes them agree
+		// Firefox renders the text 1px lower than Chrome (tested on Windows) with 16px line-height, so moving it up 1 pixel by using 15px makes them agree
 		line-height: 15px;
 
 		&.width-16 {
@@ -74,7 +77,6 @@
 
 		.icon-label {
 			margin: 1px;
-			display: inline-block;
 		}
 	}
 
@@ -101,10 +103,14 @@ import { HintInfo, KeysGroup } from "@/dispatcher/js-messages";
 
 import { IconName } from "@/utilities/icons";
 
+import LayoutRow from "@/components/layout/LayoutRow.vue";
 import IconLabel from "@/components/widgets/labels/IconLabel.vue";
 
 export default defineComponent({
-	components: { IconLabel },
+	components: {
+		IconLabel,
+		LayoutRow,
+	},
 	props: {
 		inputKeys: { type: Array as PropType<HintInfo["key_groups"]>, default: () => [] },
 		inputMouse: { type: String as PropType<HintInfo["mouse"]>, default: null },

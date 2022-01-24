@@ -6,7 +6,6 @@
 
 <style lang="scss">
 .text-button {
-	display: inline-flex;
 	justify-content: center;
 	align-items: center;
 	flex: 0 0 auto;

@@ -1,22 +1,21 @@
 <template>
-	<div class="color-picker">
-		<div class="saturation-picker" ref="saturationPicker" @pointerdown="(e: PointerEvent) => onPointerDown(e)">
+	<LayoutRow class="color-picker">
+		<LayoutCol class="saturation-picker" ref="saturationPicker" @pointerdown="(e: PointerEvent) => onPointerDown(e)">
 			<div ref="saturationCursor" class="selection-circle"></div>
-		</div>
-		<div class="hue-picker" ref="huePicker" @pointerdown="(e: PointerEvent) => onPointerDown(e)">
+		</LayoutCol>
+		<LayoutCol class="hue-picker" ref="huePicker" @pointerdown="(e: PointerEvent) => onPointerDown(e)">
 			<div ref="hueCursor" class="selection-pincers"></div>
-		</div>
-		<div class="opacity-picker" ref="opacityPicker" @pointerdown="(e: PointerEvent) => onPointerDown(e)">
+		</LayoutCol>
+		<LayoutCol class="opacity-picker" ref="opacityPicker" @pointerdown="(e: PointerEvent) => onPointerDown(e)">
 			<div ref="opacityCursor" class="selection-pincers"></div>
-		</div>
-	</div>
+		</LayoutCol>
+	</LayoutRow>
 </template>
 
 <style lang="scss">
 .color-picker {
 	--saturation-picker-hue: #ff0000;
 	--opacity-picker-color: #ff0000;
-	display: flex;
 
 	.saturation-picker {
 		width: 256px;
@@ -51,15 +50,15 @@
 
 		&::before {
 			content: "";
-			display: block;
 			width: 100%;
 			height: 100%;
+			z-index: -1;
+			position: relative;
+			// Checkered transparent pattern
 			background: linear-gradient(45deg, #cccccc 25%, transparent 25%, transparent 75%, #cccccc 75%), linear-gradient(45deg, #cccccc 25%, transparent 25%, transparent 75%, #cccccc 75%),
 				linear-gradient(#ffffff, #ffffff);
 			background-size: 16px 16px;
 			background-position: 0 0, 8px 8px;
-			position: relative;
-			z-index: -1;
 		}
 	}
 
@@ -123,6 +122,9 @@ import { RGBA } from "@/dispatcher/js-messages";
 import { hsvaToRgba, rgbaToHsva } from "@/utilities/color";
 import { clamp } from "@/utilities/math";
 
+import LayoutCol from "@/components/layout/LayoutCol.vue";
+import LayoutRow from "@/components/layout/LayoutRow.vue";
+
 type ColorPickerState = "Idle" | "MoveHue" | "MoveOpacity" | "MoveSaturation";
 
 // TODO: Clean up the fundamental code design in this file to simplify it and use better practices.
@@ -157,13 +159,22 @@ export default defineComponent({
 			document.removeEventListener("pointerup", this.onPointerUp);
 		},
 		onPointerDown(e: PointerEvent) {
-			if (!(e.currentTarget instanceof HTMLElement)) return;
+			const saturationPicker = this.$refs.saturationPicker as typeof LayoutCol;
+			const saturationPickerElement = saturationPicker && (saturationPicker.$el as HTMLElement);
 
-			if ((this.$refs.saturationPicker as HTMLElement).contains(e.currentTarget)) {
+			const huePicker = this.$refs.huePicker as typeof LayoutCol;
+			const huePickerElement = huePicker && (huePicker.$el as HTMLElement);
+
+			const opacityPicker = this.$refs.opacityPicker as typeof LayoutCol;
+			const opacityPickerElement = opacityPicker && (opacityPicker.$el as HTMLElement);
+
+			if (!(e.currentTarget instanceof HTMLElement) || !saturationPickerElement || !huePickerElement || !opacityPickerElement) return;
+
+			if (saturationPickerElement.contains(e.currentTarget)) {
 				this.state = "MoveSaturation";
-			} else if ((this.$refs.huePicker as HTMLElement).contains(e.currentTarget)) {
+			} else if (huePickerElement.contains(e.currentTarget)) {
 				this.state = "MoveHue";
-			} else if ((this.$refs.opacityPicker as HTMLElement).contains(e.currentTarget)) {
+			} else if (opacityPickerElement.contains(e.currentTarget)) {
 				this.state = "MoveOpacity";
 			} else {
 				this.state = "Idle";
@@ -191,6 +202,7 @@ export default defineComponent({
 			}
 
 			this.updateHue();
+
 			// The `color` prop's watcher calls `this.updateColor()`
 			this.$emit("update:color", hsvaToRgba(this.pickerHSVA));
 		},
@@ -198,12 +210,23 @@ export default defineComponent({
 			if (this.state === "Idle") return;
 
 			this.state = "Idle";
+
 			this.removeEvents();
 		},
 		updateRects() {
+			const saturationPicker = this.$refs.saturationPicker as typeof LayoutCol;
+			const saturationPickerElement = saturationPicker && (saturationPicker.$el as HTMLElement);
+
+			const huePicker = this.$refs.huePicker as typeof LayoutCol;
+			const huePickerElement = huePicker && (huePicker.$el as HTMLElement);
+
+			const opacityPicker = this.$refs.opacityPicker as typeof LayoutCol;
+			const opacityPickerElement = opacityPicker && (opacityPicker.$el as HTMLElement);
+
+			if (!saturationPickerElement || !huePickerElement || !opacityPickerElement) return;
+
 			// Saturation
-			const saturationPicker = this.$refs.saturationPicker as HTMLElement;
-			const saturation = saturationPicker.getBoundingClientRect();
+			const saturation = saturationPickerElement.getBoundingClientRect();
 
 			this.pickerSaturationRect.width = saturation.width;
 			this.pickerSaturationRect.height = saturation.height;
@@ -211,8 +234,7 @@ export default defineComponent({
 			this.pickerSaturationRect.top = saturation.top;
 
 			// Hue
-			const huePicker = this.$refs.huePicker as HTMLElement;
-			const hue = huePicker.getBoundingClientRect();
+			const hue = huePickerElement.getBoundingClientRect();
 
 			this.pickerHueRect.width = hue.width;
 			this.pickerHueRect.height = hue.height;
@@ -220,8 +242,7 @@ export default defineComponent({
 			this.pickerHueRect.top = hue.top;
 
 			// Opacity
-			const opacityPicker = this.$refs.opacityPicker as HTMLElement;
-			const opacity = opacityPicker.getBoundingClientRect();
+			const opacity = opacityPickerElement.getBoundingClientRect();
 
 			this.pickerOpacityRect.width = opacity.width;
 			this.pickerOpacityRect.height = opacity.height;
@@ -274,6 +295,10 @@ export default defineComponent({
 
 			this.updateHue();
 		},
+	},
+	components: {
+		LayoutRow,
+		LayoutCol,
 	},
 });
 </script>
