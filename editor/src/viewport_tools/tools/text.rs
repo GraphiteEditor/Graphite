@@ -149,9 +149,8 @@ Test for really long word: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 						responses.push_back(Operation::SetTextEditable { path: data.path.clone(), editable }.into());
 
 						Editing
-					} else
-					// Removing old text as editable
-					{
+					} else {
+						// Removing old text as editable
 						let editable = false;
 						responses.push_back(Operation::SetTextEditable { path: data.path.clone(), editable }.into());
 						Ready

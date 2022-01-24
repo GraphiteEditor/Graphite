@@ -274,6 +274,15 @@ impl JsEditorHandle {
 		self.dispatch(message);
 	}
 
+	/// Mouse double clicked
+	pub fn on_double_click(&self, x: f64, y: f64, mouse_keys: u8, modifiers: u8) {
+		let editor_mouse_state = EditorMouseState::from_keys_and_editor_position(mouse_keys, (x, y).into());
+		let modifier_keys = ModifierKeys::from_bits(modifiers).expect("Invalid modifier keys");
+
+		let message = InputPreprocessorMessage::DoubleClick { editor_mouse_state, modifier_keys };
+		self.dispatch(message);
+	}
+
 	/// A keyboard button depressed within screenspace the bounds of the viewport
 	pub fn on_key_down(&self, name: String, modifiers: u8) {
 		let key = translate_key(&name);

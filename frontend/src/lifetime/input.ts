@@ -22,6 +22,7 @@ export function createInputManager(editor: EditorState, container: HTMLElement, 
 		{ target: window, eventName: "pointermove", action: (e: PointerEvent): void => onPointerMove(e) },
 		{ target: window, eventName: "pointerdown", action: (e: PointerEvent): void => onPointerDown(e) },
 		{ target: window, eventName: "pointerup", action: (e: PointerEvent): void => onPointerUp(e) },
+		{ target: window, eventName: "dblclick", action: (e: PointerEvent): void => onDoubleClick(e) },
 		{ target: window, eventName: "mousedown", action: (e: MouseEvent): void => onMouseDown(e) },
 		{ target: window, eventName: "wheel", action: (e: WheelEvent): void => onMouseScroll(e), options: { passive: false } },
 	];
@@ -134,6 +135,15 @@ export function createInputManager(editor: EditorState, container: HTMLElement, 
 		if (!textInput) {
 			const modifiers = makeModifiersBitfield(e);
 			editor.instance.on_mouse_up(e.clientX, e.clientY, e.buttons, modifiers);
+		}
+	};
+
+	const onDoubleClick = (e: PointerEvent): void => {
+		if (!e.buttons) viewportPointerInteractionOngoing = false;
+
+		if (!textInput) {
+			const modifiers = makeModifiersBitfield(e);
+			editor.instance.on_double_click(e.clientX, e.clientY, e.buttons, modifiers);
 		}
 	};
 
