@@ -174,7 +174,6 @@ impl PathGraph {
 		Ok(new)
 	}
 
-	/// TODO: When a edge has the path start/end that should be removed
 	/// TODO: When a path has multiple subpaths, that should not be removed, have to iterate by PathEl not PathSeg
 	/// NOTE: about intersection time_val order
 	fn add_edges_from_path(&mut self, path: &BezPath, origin: Origin) {
@@ -211,6 +210,15 @@ impl PathGraph {
 					None => beginning.push(seg),
 				}
 			}
+		}
+
+		// when a PathSeg does not start at EXACTLY the same place the last curve ends, Kurbo inserts a moveto into the final SVG
+		// *modify curve such that its start is moved to its end
+		// ?could also insert a line segment to connect start and end, this behavior is more consistent with SVG closepath behavior
+		if let (Some(end_seg), Some(start_seg)) = (current.last(), beginning.get_mut(0)) {
+			*(match start_seg {
+				PathSeg::Line(Line { p0, .. }) | PathSeg::Quad(QuadBez { p0, .. }) | PathSeg::Cubic(CubicBez { p0, .. }) => p0,
+			}) = end_seg.end();
 		}
 		current.append(&mut beginning);
 		self.add_edge(origin, cstart.unwrap(), start_idx.unwrap(), current);
