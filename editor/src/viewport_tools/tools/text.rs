@@ -159,7 +159,8 @@ Test for really long word: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 					new_state
 				}
 				(Editing, Abort) => {
-					responses.push_back(DocumentMessage::AbortTransaction.into());
+					let editable = false;
+					responses.push_back(Operation::SetTextEditable { path: data.path.clone(), editable }.into());
 					Ready
 				}
 				(_, TextChange { new_text }) => {
