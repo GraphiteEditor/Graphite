@@ -266,7 +266,6 @@ fn path_intersections(a: &SubCurve, b: &SubCurve, mut recursion: f64, intersecti
 				// Also provides a base case and prevents infinite recursion
 				if a.available_precision() <= F64PRECISION || b.available_precision() <= F64PRECISION {
 					log::debug!("precision reached");
-					println!("precision reached");
 					intersections.push(cross);
 					return;
 				}
@@ -276,7 +275,6 @@ fn path_intersections(a: &SubCurve, b: &SubCurve, mut recursion: f64, intersecti
 			// Note: may occur for the less precise side of an PathSeg endpoint intersect
 			if a.available_precision() <= F64PRECISION || b.available_precision() <= F64PRECISION {
 				log::debug!("precision reached without finding intersect");
-				println!("precision reached without finding intersect");
 				return;
 			}
 		}
@@ -300,8 +298,8 @@ fn guess_quality(a: &PathSeg, b: &PathSeg, guess: &Intersect) -> f64 {
 
 pub fn intersections(a: &BezPath, b: &BezPath) -> Vec<Intersect> {
 	// print out paths for testing
-	log::info!("{:?}", a.to_svg());
-	log::info!("{:?}", b.to_svg());
+	// log::info!("{:?}", a.to_svg());
+	// log::info!("{:?}", b.to_svg());
 
 	let mut intersections: Vec<Intersect> = Vec::new();
 	// there is some duplicate computation of b_extrema here, but I doubt it's significant
@@ -331,7 +329,7 @@ pub fn intersections(a: &BezPath, b: &BezPath) -> Vec<Intersect> {
 	});
 
 	// print out result for testing
-	log::info!("{:?}", intersections);
+	// log::info!("{:?}", intersections);
 
 	intersections
 }

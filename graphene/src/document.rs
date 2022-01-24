@@ -519,7 +519,7 @@ impl Document {
 				let mut responses = Vec::new();
 				// log::debug!("{:?}", selected);
 				if selected.len() > 1 && selected.len() < 3 {
-					// to deal with union of shapes with different transforms, we
+					// ? apparently selected should be reversed
 					let shapes = self.transformed_shapes(selected)?;
 					let new_shapes = boolean_operation(*operation, &shapes[0], &shapes[1])?;
 
@@ -528,6 +528,7 @@ impl Document {
 						responses.push(DocumentResponse::DeletedLayer { path: path.clone() })
 					}
 					for new_shape in new_shapes {
+						log::debug!("{:?}", new_shape.path);
 						let new_id = self.add_layer(&[], Layer::new(LayerDataType::Shape(new_shape), DAffine2::IDENTITY.to_cols_array()), -1)?;
 						responses.push(DocumentResponse::CreatedLayer { path: vec![new_id] })
 					}

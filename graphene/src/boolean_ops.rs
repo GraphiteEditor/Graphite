@@ -174,9 +174,8 @@ impl PathGraph {
 		Ok(new)
 	}
 
-	/// Behavior: path should be split at intersection point, not intersection t value, in case of discrepancy between paths
-	///   - implementing this behavior may not be feasible, instead reduce discrepancies
-	/// TODO: This function panics if an time value is NAN, no time value should ever be NAN, but this case should be handled, maybe not here
+	/// TODO: When a edge has the path start/end that should be removed
+	/// TODO: When a path has multiple subpaths, that should not be removed, have to iterate by PathEl not PathSeg
 	/// NOTE: about intersection time_val order
 	fn add_edges_from_path(&mut self, path: &BezPath, origin: Origin) {
 		//cstart holds the idx of the vertex the current edge is starting from
@@ -372,7 +371,6 @@ pub fn subdivide_path_seg(p: &PathSeg, t_vals: &mut [f64]) -> Vec<Option<PathSeg
 	sub_segs
 }
 
-/// TODO: For the Union and intersection operations, what should the new Fill and Stroke be? --> see document.rs
 /// ? It may be better to move alpha and beta then take references
 pub fn boolean_operation(select: BooleanOperation, alpha: &Shape, beta: &Shape) -> Result<Vec<Shape>, BooleanOperationError> {
 	if alpha.path.is_empty() || beta.path.is_empty() {
@@ -426,7 +424,7 @@ pub fn boolean_operation(select: BooleanOperation, alpha: &Shape, beta: &Shape) 
 			} else {
 				PathGraph::from_paths(&alpha.path, &reverse_path(&beta.path))?
 			};
-			collect_shapes(&graph, &mut graph.get_cycles(), |dir| dir != alpha_dir, |_| &alpha.style)
+			collect_shapes(&graph, &mut graph.get_cycles(), |dir| dir != alpha_dir, |_| &beta.style)
 		}
 		BooleanOperation::SubtractFront => {
 			let graph = if beta_dir != alpha_dir {
@@ -434,7 +432,7 @@ pub fn boolean_operation(select: BooleanOperation, alpha: &Shape, beta: &Shape) 
 			} else {
 				PathGraph::from_paths(&alpha.path, &reverse_path(&beta.path))?
 			};
-			collect_shapes(&graph, &mut graph.get_cycles(), |dir| dir == alpha_dir, |_| &beta.style)
+			collect_shapes(&graph, &mut graph.get_cycles(), |dir| dir == alpha_dir, |_| &alpha.style)
 		}
 	}
 }
@@ -501,7 +499,7 @@ pub fn reverse_path(path: &BezPath) -> BezPath {
 			}
 		}
 	}
-
+	curve.append(&mut temp);
 	BezPath::from_path_segments(curve.into_iter().rev())
 }
 
@@ -522,11 +520,16 @@ pub fn close_path(curve: &mut BezPath) {
 
 /// concat b to a, where b is not a new subpath but a continuation of a
 pub fn concat_paths(a: &mut Vec<PathEl>, b: &BezPath) {
-	// remove closepaths and moves
+	if a.is_empty() {
+		a.append(&mut b.elements().to_vec());
+		return;
+	}
+	// remove closepath
 	if let Some(PathEl::ClosePath) = a.last() {
 		a.remove(a.len() - 1);
 	}
-	b.iter().for_each(|element| a.push(element));
+	// skip inital moveto
+	b.iter().skip(1).for_each(|element| a.push(element));
 }
 
 pub fn path_length(a: &BezPath, accuracy: Option<f64>) -> f64 {
