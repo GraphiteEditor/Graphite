@@ -1,13 +1,13 @@
 <template>
-	<div class="window-buttons-web" @click="() => handleClick()" :title="fullscreen.state.windowFullscreen ? 'Exit Fullscreen (F11)' : 'Enter Fullscreen (F11)'">
+	<LayoutRow class="window-buttons-web" @click="() => handleClick()" :title="fullscreen.state.windowFullscreen ? 'Exit Fullscreen (F11)' : 'Enter Fullscreen (F11)'">
 		<TextLabel v-if="requestFullscreenHotkeys" :italic="true">Go fullscreen to access all hotkeys</TextLabel>
 		<IconLabel :icon="fullscreen.state.windowFullscreen ? 'FullscreenExit' : 'FullscreenEnter'" />
-	</div>
+	</LayoutRow>
 </template>
 
 <style lang="scss">
 .window-buttons-web {
-	display: flex;
+	flex: 0 0 auto;
 	align-items: center;
 	padding: 0 8px;
 
@@ -33,6 +33,7 @@
 <script lang="ts">
 import { defineComponent } from "vue";
 
+import LayoutRow from "@/components/layout/LayoutRow.vue";
 import IconLabel from "@/components/widgets/labels/IconLabel.vue";
 import TextLabel from "@/components/widgets/labels/TextLabel.vue";
 
@@ -52,6 +53,7 @@ export default defineComponent({
 	components: {
 		IconLabel,
 		TextLabel,
+		LayoutRow,
 	},
 });
 </script>

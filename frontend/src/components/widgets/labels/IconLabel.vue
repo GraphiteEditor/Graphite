@@ -1,12 +1,11 @@
 <template>
-	<div class="icon-label" :class="`size-${icons[icon].size}`">
+	<LayoutRow class="icon-label" :class="`size-${icons[icon].size}`">
 		<component :is="icon" />
-	</div>
+	</LayoutRow>
 </template>
 
 <style lang="scss">
 .icon-label {
-	display: block;
 	flex: 0 0 auto;
 	fill: var(--color-e-nearwhite);
 
@@ -32,10 +31,11 @@ import { DefineComponent, defineComponent, PropType } from "vue";
 
 import { IconName, IconSize, ICON_LIST } from "@/utilities/icons";
 
+import LayoutRow from "@/components/layout/LayoutRow.vue";
+
 const icons: Record<IconName, { component: DefineComponent; size: IconSize }> = ICON_LIST;
 
 export default defineComponent({
-	components: Object.fromEntries(Object.entries(icons).map(([name, data]) => [name, data.component])),
 	props: {
 		icon: { type: String as PropType<IconName>, required: true },
 		gapAfter: { type: Boolean as PropType<boolean>, default: false },
@@ -44,6 +44,10 @@ export default defineComponent({
 		return {
 			icons,
 		};
+	},
+	components: {
+		LayoutRow,
+		...Object.fromEntries(Object.entries(icons).map(([name, data]) => [name, data.component])),
 	},
 });
 </script>

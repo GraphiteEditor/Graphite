@@ -6,7 +6,7 @@
 
 <style lang="scss">
 .icon-button {
-	display: inline-flex;
+	display: flex;
 	justify-content: center;
 	align-items: center;
 	flex: 0 0 auto;

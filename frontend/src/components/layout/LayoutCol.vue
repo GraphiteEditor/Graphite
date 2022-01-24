@@ -1,5 +1,5 @@
 <template>
-	<div class="layout-col" :class="{ 'scrollable-x': scrollableX, 'scrollable-y': scrollableY }">
+	<div class="layout-col" :class="{ 'scrollable-x': scrollableX, 'scrollable-y': scrollableY }" :data-scrollable-x="scrollableX || null" :data-scrollable-y="scrollableY || null">
 		<slot></slot>
 	</div>
 </template>

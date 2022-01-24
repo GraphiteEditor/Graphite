@@ -2,7 +2,7 @@
 	<MainWindow />
 
 	<div class="unsupported-modal-backdrop" v-if="showUnsupportedModal">
-		<div class="unsupported-modal">
+		<LayoutCol class="unsupported-modal">
 			<h2>Your browser currently doesn't support Graphite</h2>
 			<p>Unfortunately, some features won't work properly. Please upgrade to a modern browser such as Firefox, Chrome, Edge, or Safari version 15 or later.</p>
 			<p>
@@ -13,7 +13,7 @@
 			<LayoutRow>
 				<button class="unsupported-modal-button" @click="closeModal()">I understand, let's just see the interface</button>
 			</LayoutRow>
-		</div>
+		</LayoutCol>
 	</div>
 </template>
 
@@ -186,39 +186,43 @@ img {
 	left: 0;
 	bottom: 0;
 	right: 0;
+	display: flex;
 	align-items: center;
 	justify-content: center;
-	display: flex;
-}
 
-.unsupported-modal {
-	background: var(--color-3-darkgray);
-	border-radius: 4px;
-	box-shadow: 2px 2px 5px 0 rgba(var(--color-0-black-rgb), 50%);
-	padding: 0 16px 16px 16px;
-	border: 1px solid var(--color-4-dimgray);
-	max-width: 500px;
+	.unsupported-modal {
+		background: var(--color-3-darkgray);
+		border-radius: 4px;
+		box-shadow: 2px 2px 5px 0 rgba(var(--color-0-black-rgb), 50%);
+		padding: 0 16px 16px 16px;
+		border: 1px solid var(--color-4-dimgray);
+		max-width: 500px;
 
-	& a {
-		color: var(--color-accent-hover);
-	}
-}
+		p {
+			margin-top: 0;
+		}
 
-.unsupported-modal-button {
-	flex: 1;
-	background: var(--color-1-nearblack);
-	border: 0 none;
-	padding: 12px;
-	border-radius: 2px;
+		a {
+			color: var(--color-accent-hover);
+		}
 
-	&:hover {
-		background: var(--color-6-lowergray);
-		color: var(--color-f-white);
-	}
+		.unsupported-modal-button {
+			flex: 1;
+			background: var(--color-1-nearblack);
+			border: 0 none;
+			padding: 12px;
+			border-radius: 2px;
 
-	&:active {
-		background: var(--color-accent-hover);
-		color: var(--color-f-white);
+			&:hover {
+				background: var(--color-6-lowergray);
+				color: var(--color-f-white);
+			}
+
+			&:active {
+				background: var(--color-accent-hover);
+				color: var(--color-f-white);
+			}
+		}
 	}
 }
 </style>
@@ -234,6 +238,7 @@ import { createDocumentsState, DocumentsState } from "@/state/documents";
 import { createFullscreenState, FullscreenState } from "@/state/fullscreen";
 import { createEditorState, EditorState } from "@/state/wasm-loader";
 
+import LayoutCol from "@/components/layout/LayoutCol.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
 import MainWindow from "@/components/window/MainWindow.vue";
 
@@ -291,6 +296,10 @@ export default defineComponent({
 		const { editor } = this;
 		editor.instance.free();
 	},
-	components: { MainWindow, LayoutRow },
+	components: {
+		MainWindow,
+		LayoutRow,
+		LayoutCol,
+	},
 });
 </script>

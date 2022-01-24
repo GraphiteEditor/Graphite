@@ -15,7 +15,6 @@
 
 	.arrow {
 		flex: 0 0 auto;
-		display: block;
 		background: none;
 		outline: none;
 		border: none;

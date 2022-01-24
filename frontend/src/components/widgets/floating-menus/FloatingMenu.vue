@@ -2,7 +2,7 @@
 	<div class="floating-menu" :class="[direction.toLowerCase(), type.toLowerCase()]" v-if="open || type === 'Dialog'" ref="floatingMenu">
 		<div class="tail" v-if="type === 'Popover'"></div>
 		<div class="floating-menu-container" ref="floatingMenuContainer">
-			<LayoutCol class="floating-menu-content" :scrollableY="scrollableY" ref="floatingMenuContent" :style="floatingMenuContentStyle">
+			<LayoutCol class="floating-menu-content" data-floating-menu-content :scrollableY="scrollableY" ref="floatingMenuContent" :style="floatingMenuContentStyle">
 				<slot></slot>
 			</LayoutCol>
 		</div>
@@ -45,8 +45,6 @@
 			font-size: inherit;
 			padding: 8px;
 			z-index: 0;
-			display: flex;
-			flex-direction: column;
 			// Draw over the application without being clipped by the containing panel's `overflow: hidden`
 			position: fixed;
 		}
@@ -196,7 +194,7 @@ export default defineComponent({
 	},
 	data() {
 		const containerResizeObserver = new ResizeObserver((entries) => {
-			const content = entries[0].target.querySelector(".floating-menu-content") as HTMLElement;
+			const content = entries[0].target.querySelector("[data-floating-menu-content]") as HTMLElement;
 			content.style.minWidth = `${entries[0].contentRect.width}px`;
 		});
 		return {
@@ -209,7 +207,7 @@ export default defineComponent({
 		const floatingMenuContainer = this.$refs.floatingMenuContainer as HTMLElement;
 		const floatingMenuContentComponent = this.$refs.floatingMenuContent as typeof LayoutCol;
 		const floatingMenuContent = floatingMenuContentComponent && (floatingMenuContentComponent.$el as HTMLElement);
-		const workspace = document.querySelector(".workspace-row");
+		const workspace = document.querySelector("[data-workspace]");
 
 		if (!floatingMenuContainer || !floatingMenuContentComponent || !floatingMenuContent || !workspace) return;
 
@@ -346,7 +344,7 @@ export default defineComponent({
 		},
 		isPointerEventOutsideFloatingMenu(e: PointerEvent, extraDistanceAllowed = 0): boolean {
 			// Considers all child menus as well as the top-level one.
-			const allContainedFloatingMenus = [...this.$el.querySelectorAll(".floating-menu-content")];
+			const allContainedFloatingMenus = [...this.$el.querySelectorAll("[data-floating-menu-content]")];
 			return !allContainedFloatingMenus.find((element) => !this.isPointerEventOutsideMenuElement(e, element, extraDistanceAllowed));
 		},
 		isPointerEventOutsideMenuElement(e: PointerEvent, element: HTMLElement, extraDistanceAllowed = 0): boolean {
