@@ -24,6 +24,7 @@ pub enum FrontendMessage {
 	TriggerFileUpload,
 	TriggerIndexedDbRemoveDocument { document_id: u64 },
 	TriggerIndexedDbWriteDocument { document: String, details: FrontendDocumentDetails, version: String },
+	TriggerTextCommit,
 
 	// Update prefix: give the frontend a new value or state for it to use
 	UpdateActiveDocument { document_id: u64 },

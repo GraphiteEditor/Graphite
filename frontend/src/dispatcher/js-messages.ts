@@ -376,6 +376,8 @@ export class TriggerIndexedDbRemoveDocument extends JsMessage {
 	document_id!: string;
 }
 
+export class TriggerTextCommit extends JsMessage {}
+
 // Any is used since the type of the object should be known from the rust side
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type JSMessageFactory = (data: any, wasm: WasmInstance, instance: RustEditorInstance) => JsMessage;
@@ -405,6 +407,7 @@ export const messageConstructors: Record<string, MessageMaker> = {
 	DisplayDialogAboutGraphite,
 	TriggerIndexedDbWriteDocument,
 	TriggerIndexedDbRemoveDocument,
+	TriggerTextCommit,
 	UpdateDocumentArtboards,
 } as const;
 export type JsMessageType = keyof typeof messageConstructors;

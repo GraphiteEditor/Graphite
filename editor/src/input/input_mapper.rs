@@ -63,6 +63,8 @@ impl Default for Mapping {
 			entry! {action=EyedropperMessage::RightMouseDown, key_down=Rmb},
 			// Text
 			entry! {action=TextMessage::LeftMouseDown, key_down=Lmb},
+			entry! {action=TextMessage::Abort, key_down=KeyEscape},
+			entry! {action=TextMessage::CommitText, key_down=KeyControl, modifiers=[KeyControl]},
 			// Rectangle
 			entry! {action=RectangleMessage::DragStart, key_down=Lmb},
 			entry! {action=RectangleMessage::DragStop, key_up=Lmb},

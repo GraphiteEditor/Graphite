@@ -1,3 +1,4 @@
+import { TriggerTextCommit } from "@/dispatcher/js-messages";
 import { DialogState } from "@/state/dialog";
 import { DocumentsState } from "@/state/documents";
 import { FullscreenState } from "@/state/fullscreen";
@@ -33,15 +34,16 @@ export function createInputManager(editor: EditorState, container: HTMLElement, 
 	// Keyboard events
 
 	const shouldRedirectKeyboardEventToBackend = (e: KeyboardEvent): boolean => {
-		// Don't redirect user input from text entry into HTML elements
-		const { target } = e;
-		if (target instanceof HTMLElement && (target.nodeName === "INPUT" || target.nodeName === "TEXTAREA" || target.isContentEditable)) return false;
-
 		// Don't redirect when a modal is covering the workspace
 		if (dialog.dialogIsVisible()) return false;
 
 		const key = getLatinKey(e);
 		if (!key) return false;
+
+		// Don't redirect user input from text entry into HTML elements
+		const { target } = e;
+		if (key !== "escape" && !(key === "enter" && e.ctrlKey) && target instanceof HTMLElement && (target.nodeName === "INPUT" || target.nodeName === "TEXTAREA" || target.isContentEditable))
+			return false;
 
 		// Don't redirect a fullscreen request
 		if (key === "f11" && e.type === "keydown" && !e.repeat) {
@@ -119,7 +121,7 @@ export function createInputManager(editor: EditorState, container: HTMLElement, 
 		if (target instanceof HTMLTextAreaElement) {
 			textInput = target;
 		} else if (textInput) {
-			editor.instance.on_change_text(textInput.value);
+			editor.instance.on_change_text(textInput.value, true);
 			textInput = undefined;
 		} else if (inCanvas) viewportPointerInteractionOngoing = true;
 
@@ -213,6 +215,10 @@ export function createInputManager(editor: EditorState, container: HTMLElement, 
 	const removeListeners = (): void => {
 		listeners.forEach(({ target, eventName, action }) => target.removeEventListener(eventName, action));
 	};
+
+	editor.dispatcher.subscribeJsMessage(TriggerTextCommit, () => {
+		if (textInput) editor.instance.on_change_text(textInput.value, false);
+	});
 
 	// Run on creation
 	addListeners();

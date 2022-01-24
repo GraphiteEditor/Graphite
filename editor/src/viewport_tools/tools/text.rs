@@ -29,9 +29,11 @@ pub enum TextMessage {
 	Abort,
 
 	// Tool-specific messages
+	CommitText,
 	LeftMouseDown,
 	TextChange {
 		new_text: String,
+		cancel_editing: bool,
 	},
 }
 
@@ -56,7 +58,14 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Text {
 		}
 	}
 
-	advertise_actions!(TextMessageDiscriminant; LeftMouseDown);
+	fn actions(&self) -> ActionList {
+		use TextToolFsmState::*;
+
+		match self.fsm_state {
+			Ready => actions!(TextMessageDiscriminant; LeftMouseDown),
+			Editing => actions!(TextMessageDiscriminant; LeftMouseDown, Abort, CommitText),
+		}
+	}
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -163,13 +172,21 @@ Test for really long word: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 					responses.push_back(Operation::SetTextEditable { path: data.path.clone(), editable }.into());
 					Ready
 				}
-				(_, TextChange { new_text }) => {
-					let editable = false;
-					responses.push_back(Operation::SetTextEditable { path: data.path.clone(), editable }.into());
-
+				(Editing, CommitText) => {
+					responses.push_back(FrontendMessage::TriggerTextCommit.into());
+					Editing
+				}
+				(Editing, TextChange { new_text, cancel_editing }) => {
 					responses.push_back(Operation::SetTextContent { path: data.path.clone(), new_text }.into());
 
-					Ready
+					if cancel_editing {
+						let editable = false;
+						responses.push_back(Operation::SetTextEditable { path: data.path.clone(), editable }.into());
+
+						Ready
+					} else {
+						Editing
+					}
 				}
 				_ => self,
 			}
@@ -198,25 +215,25 @@ Test for really long word: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 				HintInfo {
 					key_groups: vec![],
 					mouse: Some(MouseMotion::Lmb),
-					label: String::from("Complete edit"),
+					label: String::from("Complete Edit"),
+					plus: false,
+				},
+				HintInfo {
+					key_groups: vec![KeysGroup(vec![Key::KeyControl, Key::KeyEnter])],
+					mouse: None,
+					label: String::from("Commit edit"),
 					plus: false,
 				},
 				HintInfo {
 					key_groups: vec![KeysGroup(vec![Key::KeyEscape])],
 					mouse: None,
-					label: String::from("Cancel edit"),
+					label: String::from("Abort Edit"),
 					plus: false,
 				},
 				HintInfo {
 					key_groups: vec![KeysGroup(vec![Key::KeyEnter])],
 					mouse: None,
 					label: String::from("New line"),
-					plus: false,
-				},
-				HintInfo {
-					key_groups: vec![],
-					mouse: Some(MouseMotion::Lmb),
-					label: String::from("Complete edit"),
 					plus: false,
 				},
 			])]),
