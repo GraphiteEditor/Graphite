@@ -1,5 +1,5 @@
 <template>
-	<div class="tool-options">
+	<LayoutRow class="tool-options">
 		<template v-for="(option, index) in toolOptionsWidgets[activeTool] || []" :key="index">
 			<!-- TODO: Use `<component :is="" v-bind="attributesObject"></component>` to avoid all the separate components with `v-if` -->
 			<IconButton v-if="option.kind === 'IconButton'" :action="() => handleIconButtonAction(option)" :title="option.tooltip" v-bind="option.props" />
@@ -16,14 +16,13 @@
 			/>
 			<Separator v-if="option.kind === 'Separator'" v-bind="option.props" />
 		</template>
-	</div>
+	</LayoutRow>
 </template>
 
 <style lang="scss">
 .tool-options {
 	height: 100%;
 	flex: 0 0 auto;
-	display: flex;
 	align-items: center;
 }
 </style>
@@ -34,6 +33,7 @@ import { defineComponent, PropType } from "vue";
 import { ToolName } from "@/dispatcher/js-messages";
 import { WidgetRow, IconButtonWidget } from "@/utilities/widgets";
 
+import LayoutRow from "@/components/layout/LayoutRow.vue";
 import IconButton from "@/components/widgets/buttons/IconButton.vue";
 import PopoverButton from "@/components/widgets/buttons/PopoverButton.vue";
 import NumberInput from "@/components/widgets/inputs/NumberInput.vue";
@@ -182,6 +182,7 @@ export default defineComponent({
 		IconButton,
 		PopoverButton,
 		NumberInput,
+		LayoutRow,
 	},
 });
 </script>

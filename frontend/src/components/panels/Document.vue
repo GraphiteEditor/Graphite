@@ -1,15 +1,17 @@
 <template>
 	<LayoutCol class="document">
 		<LayoutRow class="options-bar" :scrollableX="true">
-			<div class="left side">
+			<LayoutRow class="left side">
 				<DropdownInput :menuEntries="documentModeEntries" v-model:selectedIndex="documentModeSelectionIndex" :drawIcon="true" />
 
 				<Separator :type="'Section'" />
 
 				<ToolOptions :activeTool="activeTool" :activeToolOptions="activeToolOptions" />
-			</div>
-			<div class="spacer"></div>
-			<div class="right side">
+			</LayoutRow>
+
+			<LayoutRow class="spacer"></LayoutRow>
+
+			<LayoutRow class="right side">
 				<OptionalInput v-model:checked="snappingEnabled" @update:checked="(snap: boolean) => setSnapping(snap)" :icon="'Snapping'" title="Snapping" />
 				<PopoverButton>
 					<h3>Snapping</h3>
@@ -64,7 +66,7 @@
 					:displayDecimalPlaces="4"
 					ref="zoom"
 				/>
-			</div>
+			</LayoutRow>
 		</LayoutRow>
 		<LayoutRow class="shelf-and-viewport">
 			<LayoutCol class="shelf">
@@ -106,14 +108,14 @@
 					<ShelfItemInput icon="VectorShapeTool" title="Shape Tool (Y)" :active="activeTool === 'Shape'" :action="() => selectTool('Shape')" />
 				</LayoutCol>
 
-				<div class="spacer"></div>
+				<LayoutCol class="spacer"></LayoutCol>
 
 				<LayoutCol class="working-colors">
 					<SwatchPairInput />
-					<div class="swap-and-reset">
+					<LayoutRow class="swap-and-reset">
 						<IconButton :action="swapWorkingColors" :icon="'Swap'" title="Swap (Shift+X)" :size="16" />
 						<IconButton :action="resetWorkingColors" :icon="'ResetColors'" title="Reset (Ctrl+Shift+X)" :size="16" />
-					</div>
+					</LayoutRow>
 				</LayoutCol>
 			</LayoutCol>
 			<LayoutCol class="viewport">
@@ -125,7 +127,7 @@
 						<CanvasRuler :origin="rulerOrigin.y" :majorMarkSpacing="rulerSpacing" :numberInterval="rulerInterval" :direction="'Vertical'" />
 					</LayoutCol>
 					<LayoutCol class="canvas-area">
-						<div class="canvas" ref="canvas" :style="{ cursor: canvasCursor }" @pointerdown="(e: PointerEvent) => canvasPointerDown(e)">
+						<div class="canvas" data-canvas ref="canvas" :style="{ cursor: canvasCursor }" @pointerdown="(e: PointerEvent) => canvasPointerDown(e)">
 							<svg class="artboards" v-html="artboardSvg" :style="{ width: canvasSvgWidth, height: canvasSvgHeight }"></svg>
 							<svg class="artwork" v-html="artworkSvg" :style="{ width: canvasSvgWidth, height: canvasSvgHeight }"></svg>
 							<svg class="overlays" v-html="overlaysSvg" :style="{ width: canvasSvgWidth, height: canvasSvgHeight }"></svg>
@@ -168,7 +170,6 @@
 		.side {
 			height: 100%;
 			flex: 0 0 auto;
-			display: flex;
 			align-items: center;
 			margin: 0 4px;
 		}
@@ -181,8 +182,6 @@
 	.shelf-and-viewport {
 		.shelf {
 			flex: 0 0 auto;
-			display: flex;
-			flex-direction: column;
 
 			.tools {
 				flex: 0 1 auto;
@@ -198,7 +197,6 @@
 
 				.swap-and-reset {
 					flex: 0 0 auto;
-					display: flex;
 				}
 			}
 		}

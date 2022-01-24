@@ -1,10 +1,11 @@
 <template>
 	<LayoutCol class="panel">
-		<LayoutRow class="tab-bar" :class="{ 'min-widths': tabMinWidths }">
+		<LayoutRow class="tab-bar" data-tab-bar :class="{ 'min-widths': tabMinWidths }">
 			<LayoutRow class="tab-group" :scrollableX="true">
-				<div
+				<LayoutRow
 					class="tab"
 					:class="{ active: tabIndex === tabActiveIndex }"
+					data-tab
 					v-for="(tabLabel, tabIndex) in tabLabels"
 					:key="tabIndex"
 					@click="(e) => (e && e.stopPropagation(), clickAction && clickAction(tabIndex))"
@@ -12,7 +13,7 @@
 				>
 					<span>{{ tabLabel }}</span>
 					<IconButton :action="(e) => (e && e.stopPropagation(), closeAction && closeAction(tabIndex))" :icon="'CloseX'" :size="16" v-if="tabCloseButtons" />
-				</div>
+				</LayoutRow>
 			</LayoutRow>
 			<PopoverButton :icon="'VerticalEllipsis'">
 				<h3>Panel Options</h3>
@@ -55,9 +56,9 @@
 			}
 
 			.tab {
+				flex: 0 1 auto;
 				height: 100%;
 				padding: 0 8px;
-				display: flex;
 				align-items: center;
 				position: relative;
 
@@ -138,7 +139,6 @@
 	.panel-body {
 		background: var(--color-3-darkgray);
 		flex: 1 1 100%;
-		display: flex;
 		flex-direction: column;
 		min-height: 0;
 	}
@@ -152,7 +152,6 @@ import LayoutCol from "@/components/layout/LayoutCol.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
 import Document from "@/components/panels/Document.vue";
 import LayerTree from "@/components/panels/LayerTree.vue";
-import Minimap from "@/components/panels/Minimap.vue";
 import Properties from "@/components/panels/Properties.vue";
 import IconButton from "@/components/widgets/buttons/IconButton.vue";
 import PopoverButton from "@/components/widgets/buttons/PopoverButton.vue";
@@ -161,7 +160,6 @@ const panelComponents = {
 	Document,
 	Properties,
 	LayerTree,
-	Minimap,
 	IconButton,
 	PopoverButton,
 };

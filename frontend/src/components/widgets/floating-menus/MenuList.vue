@@ -2,7 +2,7 @@
 	<FloatingMenu class="menu-list" :direction="direction" :type="'Dropdown'" ref="floatingMenu" :windowEdgeMargin="0" :scrollableY="scrollableY" data-hover-menu-keep-open>
 		<template v-for="(section, sectionIndex) in menuEntries" :key="sectionIndex">
 			<Separator :type="'List'" :direction="'Vertical'" v-if="sectionIndex > 0" />
-			<div
+			<LayoutRow
 				v-for="(entry, entryIndex) in section"
 				:key="entryIndex"
 				class="row"
@@ -31,7 +31,7 @@
 					v-bind="{ defaultAction, minWidth, drawIcon, scrollableY }"
 					:ref="(ref: any) => setEntryRefs(entry, ref)"
 				/>
-			</div>
+			</LayoutRow>
 		</template>
 	</FloatingMenu>
 </template>
@@ -43,7 +43,6 @@
 
 		.row {
 			height: 20px;
-			display: flex;
 			align-items: center;
 			white-space: nowrap;
 			position: relative;
@@ -134,6 +133,7 @@ import { defineComponent, PropType } from "vue";
 
 import { IconName } from "@/utilities/icons";
 
+import LayoutRow from "@/components/layout/LayoutRow.vue";
 import FloatingMenu, { MenuDirection } from "@/components/widgets/floating-menus/FloatingMenu.vue";
 import CheckboxInput from "@/components/widgets/inputs/CheckboxInput.vue";
 import IconLabel from "@/components/widgets/labels/IconLabel.vue";
@@ -263,9 +263,7 @@ const MenuList = defineComponent({
 		},
 	},
 	data() {
-		return {
-			keyboardLockInfoMessage: this.fullscreen.keyboardLockApiSupported ? KEYBOARD_LOCK_USE_FULLSCREEN : KEYBOARD_LOCK_SWITCH_BROWSER,
-		};
+		return { keyboardLockInfoMessage: this.fullscreen.keyboardLockApiSupported ? KEYBOARD_LOCK_USE_FULLSCREEN : KEYBOARD_LOCK_SWITCH_BROWSER };
 	},
 	components: {
 		FloatingMenu,
@@ -273,6 +271,7 @@ const MenuList = defineComponent({
 		IconLabel,
 		CheckboxInput,
 		UserInputLabel,
+		LayoutRow,
 	},
 });
 export default MenuList;
