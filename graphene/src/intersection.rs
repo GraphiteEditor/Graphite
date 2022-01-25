@@ -1,6 +1,6 @@
 use std::ops::Mul;
 
-use crate::consts::F64PRECISION;
+use crate::consts::{CURVE_FIDELITY, F64PRECISION};
 use glam::{DAffine2, DMat2, DVec2};
 use kurbo::{BezPath, Line, ParamCurve, ParamCurveExtrema, PathSeg, Point, Rect, Shape};
 
@@ -258,7 +258,7 @@ fn path_intersections(a: &SubCurve, b: &SubCurve, mut recursion: f64, intersecti
 				cross.quality = guess_quality(a.curve, b.curve, &cross);
 
 				// log::debug!("checking: {:?}", cross.quality);
-				if cross.quality <= F64PRECISION {
+				if cross.quality <= CURVE_FIDELITY {
 					intersections.push(cross);
 					return;
 				}
@@ -272,7 +272,7 @@ fn path_intersections(a: &SubCurve, b: &SubCurve, mut recursion: f64, intersecti
 			}
 
 			// Alternate base case
-			// Note: may occur for the less precise side of an PathSeg endpoint intersect
+			// Note: may occur for the less forgiving side of an PathSeg endpoint intersect
 			if a.available_precision() <= F64PRECISION || b.available_precision() <= F64PRECISION {
 				log::debug!("precision reached without finding intersect");
 				return;
