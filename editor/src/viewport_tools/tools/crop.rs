@@ -1,5 +1,5 @@
-use crate::{message_prelude::*, layout::widgets::PropertyHolder};
 use crate::viewport_tools::tool::ToolActionHandlerData;
+use crate::{layout::widgets::PropertyHolder, message_prelude::*};
 
 use serde::{Deserialize, Serialize};
 

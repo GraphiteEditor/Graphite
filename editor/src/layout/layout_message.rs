@@ -8,7 +8,7 @@ use super::widgets::WidgetLayout;
 #[impl_message(Message, Layout)]
 #[derive(PartialEq, Clone, Deserialize, Serialize, Debug)]
 pub enum LayoutMessage {
-	SendLayout{ layout: WidgetLayout, layout_target: LayoutTarget },
+	SendLayout { layout: WidgetLayout, layout_target: LayoutTarget },
 	UpdateLayout { layout_target: LayoutTarget, widget_id: u64, value: serde_json::Value },
 	WidgetDefaultMarker,
 }
@@ -16,5 +16,5 @@ pub enum LayoutMessage {
 #[remain::sorted]
 #[derive(PartialEq, Clone, Deserialize, Serialize, Debug, Hash, Eq)]
 pub enum LayoutTarget {
-    ToolOptions
+	ToolOptions,
 }

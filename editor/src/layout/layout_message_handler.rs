@@ -51,7 +51,7 @@ impl MessageHandler<LayoutMessage, ()> for LayoutMessageHandler {
 					Widget::IconButton(icon_button) => {
 						let callback_message = (icon_button.on_update.callback)(icon_button);
 						responses.push_back(callback_message);
-					},
+					}
 					Widget::PopoverButton(_) => {}
 				};
 				self.send_layout(layout_target, responses);

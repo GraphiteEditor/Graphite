@@ -4,7 +4,7 @@ use crate::frontend::utility_types::MouseCursorIcon;
 use crate::input::keyboard::{Key, MouseMotion};
 use crate::input::mouse::ViewportPosition;
 use crate::input::InputPreprocessorMessageHandler;
-use crate::layout::widgets::{NumberInput, PropertyHolder, Widget, WidgetCallback, WidgetHolder, WidgetLayout, LayoutRow};
+use crate::layout::widgets::{LayoutRow, NumberInput, PropertyHolder, Widget, WidgetCallback, WidgetHolder, WidgetLayout};
 use crate::message_prelude::*;
 use crate::misc::{HintData, HintGroup, HintInfo, KeysGroup};
 use crate::viewport_tools::snapping::SnapHandler;

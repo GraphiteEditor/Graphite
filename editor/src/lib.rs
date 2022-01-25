@@ -59,7 +59,6 @@ pub mod message_prelude {
 	pub use crate::document::clipboards::Clipboard;
 	pub use crate::LayerId;
 
-	pub use crate::layout::{LayoutMessage, LayoutMessageDiscriminant};
 	pub use crate::document::{ArtboardMessage, ArtboardMessageDiscriminant};
 	pub use crate::document::{DocumentMessage, DocumentMessageDiscriminant};
 	pub use crate::document::{MovementMessage, MovementMessageDiscriminant};
@@ -69,6 +68,7 @@ pub mod message_prelude {
 	pub use crate::frontend::{FrontendMessage, FrontendMessageDiscriminant};
 	pub use crate::global::{GlobalMessage, GlobalMessageDiscriminant};
 	pub use crate::input::{InputMapperMessage, InputMapperMessageDiscriminant, InputPreprocessorMessage, InputPreprocessorMessageDiscriminant};
+	pub use crate::layout::{LayoutMessage, LayoutMessageDiscriminant};
 	pub use crate::misc::derivable_custom_traits::{ToDiscriminant, TransitiveChild};
 	pub use crate::viewport_tools::tool_message::{ToolMessage, ToolMessageDiscriminant};
 	pub use crate::viewport_tools::tools::crop::{CropMessage, CropMessageDiscriminant};

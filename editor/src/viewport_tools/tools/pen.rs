@@ -2,7 +2,7 @@ use crate::document::DocumentMessageHandler;
 use crate::frontend::utility_types::MouseCursorIcon;
 use crate::input::keyboard::{Key, MouseMotion};
 use crate::input::InputPreprocessorMessageHandler;
-use crate::layout::widgets::{PropertyHolder, WidgetLayout, LayoutRow, WidgetHolder, Widget, NumberInput, WidgetCallback};
+use crate::layout::widgets::{LayoutRow, NumberInput, PropertyHolder, Widget, WidgetCallback, WidgetHolder, WidgetLayout};
 use crate::message_prelude::*;
 use crate::misc::{HintData, HintGroup, HintInfo, KeysGroup};
 use crate::viewport_tools::snapping::SnapHandler;
@@ -18,7 +18,7 @@ use serde::{Deserialize, Serialize};
 pub struct Pen {
 	fsm_state: PenToolFsmState,
 	data: PenToolData,
-	options:PenOptions
+	options: PenOptions,
 }
 
 pub struct PenOptions {
@@ -45,7 +45,7 @@ pub enum PenMessage {
 	DragStop,
 	PointerMove,
 	Undo,
-	UpdateOptions(PenOptionsUpdate)
+	UpdateOptions(PenOptionsUpdate),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
