@@ -30,7 +30,12 @@
 		</LayoutRow>
 		<LayoutRow :class="'layer-tree scrollable-y'">
 			<LayoutCol :class="'list'" ref="layerTreeList" @click="() => deselectAllLayers()" @dragover="updateInsertLine($event)" @dragend="drop()">
-				<LayoutRow class="layer-row" v-for="(listing, index) in layers" v-bind="insertionMarkings(listing)" :key="String(listing.entry.path.slice(-1))">
+				<LayoutRow
+					class="layer-row"
+					v-for="(listing, index) in layers"
+					:key="String(listing.entry.path.slice(-1))"
+					v-bind:class="{ 'insert-folder': draggingData && draggingData.highlightFolder && draggingData.insertFolder === listing.entry.path }"
+				>
 					<div class="visibility">
 						<IconButton
 							:action="(e) => (toggleLayerVisibility(listing.entry.path), e && e.stopPropagation())"
@@ -71,6 +76,7 @@
 					</div>
 				</LayoutRow>
 			</LayoutCol>
+			<div class="insert-mark" v-if="draggingData && !draggingData.highlightFolder" v-bind:style="{ left: markIndent(draggingData!.insertFolder), top: `${draggingData.markerHeight}px` }"></div>
 		</LayoutRow>
 	</LayoutCol>
 </template>
@@ -98,6 +104,17 @@
 	.layer-tree {
 		// Crop away the 1px border below the bottom layer entry when it uses the full space of this panel
 		margin-bottom: -1px;
+
+		position: relative;
+
+		.insert-mark {
+			right: 0px;
+			position: absolute;
+			background: var(--color-accent-hover);
+			margin-top: -2px;
+			height: 5px;
+			z-index: 1;
+		}
 
 		.layer-row {
 			flex: 0 0 auto;
@@ -217,33 +234,6 @@
 				outline: 3px solid var(--color-accent-hover);
 				outline-offset: -3px;
 			}
-
-			&.insert-mark-above::before,
-			&.insert-mark-below::after {
-				content: "";
-				position: absolute;
-				background: var(--color-accent-hover);
-				left: var(--insert-mark-indent);
-				right: 8px;
-				height: 5px;
-				z-index: 2;
-			}
-
-			&.insert-mark-above::before {
-				top: -3px;
-			}
-
-			&.insert-mark-below::after {
-				bottom: -3px;
-			}
-
-			&:first-child.insert-mark-above::before {
-				top: 0;
-			}
-
-			&:last-child.insert-mark-below::after {
-				bottom: 0;
-			}
 		}
 	}
 }
@@ -306,8 +296,11 @@ const blendModeEntries: SectionsOfMenuListEntries<BlendMode> = [
 ];
 
 const RANGE_TO_INSERT_WITHIN_BOTTOM_FOLDER_NOT_ROOT = 20;
-const LAYER_LEFT_MARGIN_OFFSET = 32;
+const LAYER_LEFT_MARGIN_OFFSET = 52;
 const LAYER_LEFT_INDENT_OFFSET = 16;
+const INSERT_MARK_OFFSET = 2;
+
+type DraggingData = { insertFolder: BigUint64Array; insertIndex: number; highlightFolder: boolean; markerHeight: number };
 
 export default defineComponent({
 	inject: ["editor"],
@@ -324,33 +317,15 @@ export default defineComponent({
 			selectionRangeStartLayer: undefined as undefined | LayerPanelEntry,
 			selectionRangeEndLayer: undefined as undefined | LayerPanelEntry,
 			opacity: 100,
-			draggingData: undefined as undefined | { insertFolder: BigUint64Array; insertIndex: number; highlightFolder: boolean },
+			draggingData: undefined as undefined | DraggingData,
 		};
 	},
 	methods: {
 		layerIndent(layer: LayerPanelEntry): string {
 			return `${layer.path.length * LAYER_LEFT_INDENT_OFFSET}px`;
 		},
-		markIndent(layer: LayerPanelEntry): string {
-			return `${LAYER_LEFT_MARGIN_OFFSET + layer.path.length * LAYER_LEFT_INDENT_OFFSET}px`;
-		},
-		insertionMarkings(listing: LayerListingInfo): { class: ("insert-folder" | "insert-mark-above" | "insert-mark-below")[]; style?: string } {
-			const showInsertionFolder = this.draggingData && this.draggingData.highlightFolder && this.draggingData.insertFolder === listing.entry.path;
-
-			const insertionLine =
-				this.draggingData && !this.draggingData.highlightFolder && this.draggingData.insertFolder.toString() === listing.entry.path.slice(0, listing.entry.path.length - 1).toString();
-			const showInsertionLineAbove = this.draggingData && insertionLine && this.draggingData.insertIndex === listing.folderIndex;
-			const showInsertionLineBelow = this.draggingData && insertionLine && this.draggingData.insertIndex === listing.folderIndex + 1 && listing.bottomLayer;
-
-			const classes = [] as ("insert-folder" | "insert-mark-above" | "insert-mark-below")[];
-			if (showInsertionFolder) classes.push("insert-folder");
-			if (showInsertionLineAbove) classes.push("insert-mark-above");
-			if (showInsertionLineBelow) classes.push("insert-mark-below");
-
-			let style;
-			if (showInsertionLineAbove || showInsertionLineBelow) style = `--insert-mark-indent: ${this.markIndent(listing.entry)}`;
-
-			return { class: classes, style };
+		markIndent(path: BigUint64Array): string {
+			return `${LAYER_LEFT_MARGIN_OFFSET + path.length * LAYER_LEFT_INDENT_OFFSET}px`;
 		},
 		async toggleLayerVisibility(path: BigUint64Array) {
 			this.editor.instance.toggle_layer_visibility(path);
@@ -379,7 +354,7 @@ export default defineComponent({
 				layer.entry.layer_metadata.selected = false;
 			});
 		},
-		closest(tree: HTMLElement, clientY: number): { insertFolder: BigUint64Array; insertIndex: number; highlightFolder: boolean } {
+		closest(tree: HTMLElement, clientY: number): DraggingData {
 			const treeChildren = tree.children;
 
 			// Closest distance to the middle of the row along the Y axis
@@ -394,7 +369,13 @@ export default defineComponent({
 			// Whether you are inserting into a folder and should show the folder outline
 			let highlightFolder = false;
 
-			Array.from(treeChildren).forEach((treeChild) => {
+			const treeOffset = tree.getBoundingClientRect().top;
+			// Marker height
+			let markerHeight = 0;
+
+			let previousHeight = undefined as undefined | number;
+
+			Array.from(treeChildren).forEach((treeChild, index) => {
 				const layerComponents = treeChild.getElementsByClassName("layer");
 				if (layerComponents.length !== 1) return;
 				const child = layerComponents[0];
@@ -413,6 +394,7 @@ export default defineComponent({
 					insertIndex = folderIndex;
 					highlightFolder = false;
 					closest = distance;
+					markerHeight = previousHeight || treeOffset + INSERT_MARK_OFFSET;
 				}
 				// Inserting below current row
 				else if (distance > -closest && distance > -RANGE_TO_INSERT_WITHIN_BOTTOM_FOLDER_NOT_ROOT && distance < 0) {
@@ -420,14 +402,20 @@ export default defineComponent({
 					insertIndex = layer.layer_type === "Folder" ? 0 : folderIndex + 1;
 					highlightFolder = layer.layer_type === "Folder";
 					closest = -distance;
+					markerHeight = index === treeChildren.length - 1 ? rect.bottom - INSERT_MARK_OFFSET : rect.bottom;
 				}
 				// Inserting with no nesting at the end of the panel
-				else if (closest === Infinity && layer.path.length === 1) {
-					insertIndex = folderIndex + 1;
+				else if (closest === Infinity) {
+					if (layer.path.length === 1) insertIndex = folderIndex + 1;
+
+					markerHeight = rect.bottom - INSERT_MARK_OFFSET;
 				}
+				previousHeight = rect.bottom;
 			});
 
-			return { insertFolder, insertIndex, highlightFolder };
+			markerHeight -= treeOffset;
+
+			return { insertFolder, insertIndex, highlightFolder, markerHeight };
 		},
 		async dragStart(event: DragEvent, layer: LayerPanelEntry) {
 			if (!layer.layer_metadata.selected) this.selectLayer(layer, event.ctrlKey, event.shiftKey);
@@ -439,9 +427,7 @@ export default defineComponent({
 			}
 			const tree = (this.$refs.layerTreeList as typeof LayoutCol).$el;
 
-			const { insertFolder, insertIndex, highlightFolder } = this.closest(tree, event.clientY);
-
-			this.draggingData = { insertFolder, insertIndex, highlightFolder };
+			this.draggingData = this.closest(tree, event.clientY);
 		},
 		updateInsertLine(event: DragEvent) {
 			// Stop the drag from being shown as cancelled
