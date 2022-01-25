@@ -115,7 +115,7 @@ impl ManipulationHandler {
 	}
 
 	// Select the first manipulator within the threshold
-	pub fn select_manipulator(&mut self, mouse_position: DVec2, select_threshold: f64) -> bool {
+	pub fn select_manipulator(&mut self, mouse_position: DVec2, select_threshold: f64, should_mirror: bool) -> bool {
 		// TODO convert select_threshold to viewspace, so it remains consistent with zoom level
 		let select_threshold_squared = select_threshold * select_threshold;
 		for shape_index in 0..self.selected_shapes.len() {
@@ -129,6 +129,7 @@ impl ManipulationHandler {
 				self.selected_shape = shape_index;
 				self.selected_point = point.clone();
 				self.selected_anchor = anchor.clone();
+				self.selected_anchor.handle_mirroring = anchor.handle_mirroring;
 				return true;
 			}
 		}
@@ -139,10 +140,10 @@ impl ManipulationHandler {
 		&self.selected_shapes[self.selected_shape]
 	}
 
-	pub fn move_selected_to(&mut self, mouse_position: DVec2) -> Operation {
+	pub fn move_selected_to(&mut self, mouse_position: DVec2, should_mirror: bool) -> Operation {
 		let mouse_to_shape = self.selected_shape().transform.inverse().transform_point2(mouse_position);
 		let mouse_position = Vec2::new(mouse_to_shape.x, mouse_to_shape.y);
-
+		self.selected_anchor.handle_mirroring = should_mirror;
 		self.move_point(mouse_position);
 
 		Operation::SetShapePathInViewport {
@@ -158,14 +159,28 @@ impl ManipulationHandler {
 		let h1_selected = !h1.is_none() && *h1.as_ref().unwrap() == self.selected_point;
 		let h2_selected = !h2.is_none() && *h2.as_ref().unwrap() == self.selected_point;
 
+		let place_mirrored_handle = |center: kurbo::Point, original: kurbo::Point, selected: bool, mirror: bool| -> kurbo::Point {
+			if !selected || !mirror {
+				return original;
+			}
+
+			// Keep rotational similarity, but distance variable
+			let radius = (center - original).hypot();
+			let phi = (center - mouse_position_as_point).atan2();
+			kurbo::Point {
+				x: radius * phi.cos(),
+				y: radius * phi.sin(),
+			} + center.to_vec2()
+		};
+
 		// If neither handle is selected, we are dragging an anchor point
 		if !(h1_selected || h2_selected) {
 			// Move the anchor point and hande on the same path element
 			let (selected, point) = match &self.selected_shape_elements[self.selected_anchor.point.element_id] {
 				PathEl::MoveTo(p) => (PathEl::MoveTo(mouse_position_as_point), p),
 				PathEl::LineTo(p) => (PathEl::LineTo(mouse_position_as_point), p),
-				PathEl::QuadTo(a1, p) => (PathEl::QuadTo(*a1 - (*p - mouse_position).to_vec2(), mouse_position_as_point), p),
-				PathEl::CurveTo(a1, a2, p) => (PathEl::CurveTo(*a1, *a2 - (*p - mouse_position).to_vec2(), mouse_position_as_point), p),
+				PathEl::QuadTo(a1, p) => (PathEl::QuadTo(*a1 - (*p - mouse_position_as_point), mouse_position_as_point), p),
+				PathEl::CurveTo(a1, a2, p) => (PathEl::CurveTo(*a1, *a2 - (*p - mouse_position_as_point), mouse_position_as_point), p),
 				PathEl::ClosePath => (PathEl::ClosePath, &mouse_position_as_point),
 			};
 
@@ -203,15 +218,14 @@ impl ManipulationHandler {
 			};
 
 			// Move the opposing handle on the adjacent path element
-			let other_handle_pos = (anchor - mouse_position) + anchor.to_vec2();
 			if let Some(handle) = self.selected_anchor.opposing_handle(&self.selected_point) {
 				let neighbor = match &self.selected_shape_elements[handle.element_id] {
 					PathEl::MoveTo(p) => PathEl::MoveTo(*p),
 					PathEl::LineTo(p) => PathEl::LineTo(*p),
 					PathEl::QuadTo(a1, p) => PathEl::QuadTo(*a1, *p),
 					PathEl::CurveTo(a1, a2, p) => PathEl::CurveTo(
-						if h1_selected { other_handle_pos } else { *a1 },
-						if h2_selected { (*p - mouse_position) + (*p).to_vec2() } else { *a2 },
+						place_mirrored_handle(anchor, *a1, h1_selected, self.selected_anchor.handle_mirroring),
+						place_mirrored_handle(*p, *a2, h2_selected, self.selected_anchor.handle_mirroring),
 						*p,
 					),
 					PathEl::ClosePath => PathEl::ClosePath,
@@ -241,7 +255,7 @@ impl ManipulationHandler {
 		let mut closest_point: &'a VectorManipulatorPoint = &shape.points[0].point;
 		let mut closest_distance: f64 = f64::MAX; // Not ideal
 		for anchor in shape.points.iter() {
-			let point = anchor.closest_handle_or_anchor(shape, pos);
+			let point = anchor.closest_handle_or_anchor(pos);
 			let distance_squared = point.position.distance_squared(pos);
 			if distance_squared < closest_distance {
 				closest_distance = distance_squared;
@@ -273,7 +287,7 @@ impl Fsm for PathToolFsmState {
 				(_, DocumentIsDirty) => {
 					let (mut anchor_i, mut handle_i, mut line_i, mut shape_i) = (0, 0, 0, 0);
 
-					data.manipulation_handler.selected_shapes = document.selected_visible_layers_vector_points();
+					data.manipulation_handler.selected_shapes = document.selected_visible_layers_vector_shapes();
 					// Grow the overlay pools by the shortfall, if any
 					let (total_anchors, total_handles, total_anchor_handle_lines) = calculate_total_overlays_per_type(&data.manipulation_handler.selected_shapes);
 					let total_shapes = data.manipulation_handler.selected_shapes.len();
@@ -382,15 +396,17 @@ impl Fsm for PathToolFsmState {
 					self
 				}
 				(_, DragStart) => {
+					let should_not_mirror = input.keyboard.get(Key::KeyAlt as usize);
 					// Set the shapes we have selected
-					data.manipulation_handler.set_selected_shapes(document.selected_visible_layers_vector_points());
+					data.manipulation_handler.set_selected_shapes(document.selected_visible_layers_vector_shapes());
 
-					// Select the first point within the threshold
+					// Select the first point within the threshold (in pixels)
 					let select_threshold = 10.0;
-					if data.manipulation_handler.select_manipulator(input.mouse.position, select_threshold) {
+					if data.manipulation_handler.select_manipulator(input.mouse.position, select_threshold, !should_not_mirror) {
 						data.snap_handler.start_snap(document, document.visible_layers());
 						Dragging
 					} else {
+						// Select shapes directly under our mouse
 						let intersection = document.graphene_document.intersects_quad_root(Quad::from_box([input.mouse.position, input.mouse.position]));
 						responses.push_back(DocumentMessage::StartTransaction.into());
 						responses.push_back(
@@ -403,9 +419,11 @@ impl Fsm for PathToolFsmState {
 					}
 				}
 				(Dragging, PointerMove) => {
+					let should_not_mirror = input.keyboard.get(Key::KeyAlt as usize);
+
 					// Move the selected points by the mouse position
 					let snapped_position = data.snap_handler.snap_position(responses, input.viewport_bounds.size(), document, input.mouse.position);
-					let move_operation = data.manipulation_handler.move_selected_to(snapped_position);
+					let move_operation = data.manipulation_handler.move_selected_to(snapped_position, !should_not_mirror);
 					responses.push_back(move_operation.into());
 					Dragging
 				}

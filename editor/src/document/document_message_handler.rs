@@ -135,7 +135,7 @@ impl DocumentMessageHandler {
 	}
 
 	// TODO: Consider moving this to some kind of overlays manager in the future
-	pub fn selected_visible_layers_vector_points(&self) -> Vec<VectorManipulatorShape> {
+	pub fn selected_visible_layers_vector_shapes(&self) -> Vec<VectorManipulatorShape> {
 		let shapes = self.selected_layers().filter_map(|path_to_shape| {
 			let viewport_transform = self.graphene_document.generate_transform_relative_to_viewport(path_to_shape).ok()?;
 			let layer = self.graphene_document.layer(path_to_shape);
@@ -202,20 +202,22 @@ impl DocumentMessageHandler {
 					},
 					close_element_id: None,
 					handles: (handle1, handle2),
+					handle_mirroring: true,
 				}
 			};
 
-			let elements = path.elements().iter().enumerate().map(|(index, element)| (index, *element)).collect::<Vec<IndexedEl>>();
+			let indexed_elements = path.elements().iter().enumerate().map(|(index, element)| (index, *element)).collect::<Vec<IndexedEl>>();
 
 			// Create the manipulation points
 			let mut points: Vec<VectorManipulatorAnchor> = vec![];
 			let (mut first, mut last): (Option<IndexedEl>, Option<IndexedEl>) = (None, None);
 			let mut close_element_id: Option<usize> = None;
-			for elements in elements.windows(2) {
+			for elements in indexed_elements.windows(2) {
 				let (current_index, current_element) = elements[0];
 				let (_, next_element) = elements[1];
-				// TODO: Currently a unique case for [MoveTo, curveTo, ...], refactor more generally if possible
-				if matches!(current_element, kurbo::PathEl::MoveTo(_)) && matches!(next_element, kurbo::PathEl::CurveTo(_, _, _)) {
+
+				// TODO: Currently a unique case for [MoveTo, CurveTo, ...], refactor more generally if possible
+				if matches!(current_element, kurbo::PathEl::MoveTo(_)) && (matches!(next_element, kurbo::PathEl::CurveTo(_, _, _)) || matches!(next_element, kurbo::PathEl::QuadTo(_, _))) {
 					close_element_id = Some(current_index);
 					continue;
 				}

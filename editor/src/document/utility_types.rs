@@ -67,12 +67,14 @@ pub struct VectorManipulatorAnchor {
 	pub point: VectorManipulatorPoint,
 	// Does this anchor point have a path close element we also needs to move?
 	pub close_element_id: Option<usize>,
+	// Should we mirror the handles
+	pub handle_mirroring: bool,
 	// Anchor handles
 	pub handles: (Option<VectorManipulatorPoint>, Option<VectorManipulatorPoint>),
 }
 
 impl VectorManipulatorAnchor {
-	pub fn closest_handle_or_anchor(&self, shape: &VectorManipulatorShape, target: glam::DVec2) -> &VectorManipulatorPoint {
+	pub fn closest_handle_or_anchor(&self, target: glam::DVec2) -> &VectorManipulatorPoint {
 		let mut closest_point: &VectorManipulatorPoint = &self.point;
 		let mut distance = self.point.position.distance_squared(target);
 		let (handle1, handle2) = &self.handles;
