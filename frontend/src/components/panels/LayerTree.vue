@@ -76,7 +76,7 @@
 					</div>
 				</LayoutRow>
 			</LayoutCol>
-			<div class="insert-mark" v-if="draggingData && !draggingData.highlightFolder" v-bind:style="{ left: markIndent(draggingData!.insertFolder), top: `${draggingData.markerHeight}px` }"></div>
+			<div class="insert-mark" v-if="draggingData && !draggingData.highlightFolder" :style="{ left: markIndent(draggingData!.insertFolder), top: `${draggingData.markerHeight}px` }"></div>
 		</LayoutRow>
 	</LayoutCol>
 </template>
