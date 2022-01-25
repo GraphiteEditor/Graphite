@@ -17,6 +17,7 @@ pub trait Fsm {
 	type ToolData;
 	type ToolOptions;
 
+	#[must_use]
 	fn transition(
 		self,
 		message: ToolMessage,

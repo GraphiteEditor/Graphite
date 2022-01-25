@@ -1,25 +1,25 @@
 <template>
-	<div class="swatch-pair">
-		<div class="secondary swatch">
+	<LayoutCol class="swatch-pair">
+		<LayoutRow class="secondary swatch">
 			<button @click="() => clickSecondarySwatch()" ref="secondaryButton" data-hover-menu-spawner></button>
 			<FloatingMenu :type="'Popover'" :direction="'Right'" horizontal ref="secondarySwatchFloatingMenu">
 				<ColorPicker @update:color="(color: RGBA_) => secondaryColorChanged(color)" :color="secondaryColor" />
 			</FloatingMenu>
-		</div>
-		<div class="primary swatch">
+		</LayoutRow>
+		<LayoutRow class="primary swatch">
 			<button @click="() => clickPrimarySwatch()" ref="primaryButton" data-hover-menu-spawner></button>
 			<FloatingMenu :type="'Popover'" :direction="'Right'" horizontal ref="primarySwatchFloatingMenu">
 				<ColorPicker @update:color="(color: RGBA_) => primaryColorChanged(color)" :color="primaryColor" />
 			</FloatingMenu>
-		</div>
-	</div>
+		</LayoutRow>
+	</LayoutCol>
 </template>
 
 <style lang="scss">
 .swatch-pair {
-	display: flex;
 	// Reversed order of elements paired with `column-reverse` allows primary to overlap secondary without relying on `z-index`
 	flex-direction: column-reverse;
+	flex: 0 0 auto;
 
 	.swatch {
 		width: 28px;
@@ -71,6 +71,8 @@ import { defineComponent } from "vue";
 import { type RGBA, UpdateWorkingColors } from "@/dispatcher/js-messages";
 import { rgbaToDecimalRgba } from "@/utilities/color";
 
+import LayoutCol from "@/components/layout/LayoutCol.vue";
+import LayoutRow from "@/components/layout/LayoutRow.vue";
 import ColorPicker from "@/components/widgets/floating-menus/ColorPicker.vue";
 import FloatingMenu from "@/components/widgets/floating-menus/FloatingMenu.vue";
 
@@ -84,6 +86,8 @@ export default defineComponent({
 	components: {
 		FloatingMenu,
 		ColorPicker,
+		LayoutRow,
+		LayoutCol,
 	},
 	methods: {
 		clickPrimarySwatch() {

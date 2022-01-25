@@ -1,15 +1,17 @@
 <template>
-	<LayoutCol :class="'document'">
-		<LayoutRow :class="'options-bar scrollable-x'">
-			<div class="left side">
+	<LayoutCol class="document">
+		<LayoutRow class="options-bar" :scrollableX="true">
+			<LayoutRow class="left side">
 				<DropdownInput :menuEntries="documentModeEntries" v-model:selectedIndex="documentModeSelectionIndex" :drawIcon="true" />
 
 				<Separator :type="'Section'" />
 
 				<WidgetLayout :layout="toolOptionsLayout" />
-			</div>
-			<div class="spacer"></div>
-			<div class="right side">
+			</LayoutRow>
+
+			<LayoutRow class="spacer"></LayoutRow>
+
+			<LayoutRow class="right side">
 				<OptionalInput v-model:checked="snappingEnabled" @update:checked="(snap: boolean) => setSnapping(snap)" :icon="'Snapping'" title="Snapping" />
 				<PopoverButton>
 					<h3>Snapping</h3>
@@ -64,11 +66,11 @@
 					:displayDecimalPlaces="4"
 					ref="zoom"
 				/>
-			</div>
+			</LayoutRow>
 		</LayoutRow>
-		<LayoutRow :class="'shelf-and-viewport'">
-			<LayoutCol :class="'shelf'">
-				<div class="tools scrollable-y">
+		<LayoutRow class="shelf-and-viewport">
+			<LayoutCol class="shelf">
+				<LayoutCol class="tools" :scrollableY="true">
 					<ShelfItemInput icon="LayoutSelectTool" title="Select Tool (V)" :active="activeTool === 'Select'" :action="() => selectTool('Select')" />
 					<ShelfItemInput icon="LayoutCropTool" title="Crop Tool" :active="activeTool === 'Crop'" :action="() => (dialog.comingSoon(289), false) && selectTool('Crop')" />
 					<ShelfItemInput icon="LayoutNavigateTool" title="Navigate Tool (Z)" :active="activeTool === 'Navigate'" :action="() => selectTool('Navigate')" />
@@ -104,50 +106,52 @@
 					<ShelfItemInput icon="VectorRectangleTool" title="Rectangle Tool (M)" :active="activeTool === 'Rectangle'" :action="() => selectTool('Rectangle')" />
 					<ShelfItemInput icon="VectorEllipseTool" title="Ellipse Tool (E)" :active="activeTool === 'Ellipse'" :action="() => selectTool('Ellipse')" />
 					<ShelfItemInput icon="VectorShapeTool" title="Shape Tool (Y)" :active="activeTool === 'Shape'" :action="() => selectTool('Shape')" />
-				</div>
-				<div class="spacer"></div>
-				<div class="working-colors">
+				</LayoutCol>
+
+				<LayoutCol class="spacer"></LayoutCol>
+
+				<LayoutCol class="working-colors">
 					<SwatchPairInput />
-					<div class="swap-and-reset">
+					<LayoutRow class="swap-and-reset">
 						<IconButton :action="swapWorkingColors" :icon="'Swap'" title="Swap (Shift+X)" :size="16" />
 						<IconButton :action="resetWorkingColors" :icon="'ResetColors'" title="Reset (Ctrl+Shift+X)" :size="16" />
-					</div>
-				</div>
+					</LayoutRow>
+				</LayoutCol>
 			</LayoutCol>
-			<LayoutCol :class="'viewport'">
-				<LayoutRow :class="'bar-area'">
-					<CanvasRuler :origin="rulerOrigin.x" :majorMarkSpacing="rulerSpacing" :numberInterval="rulerInterval" :direction="'Horizontal'" :class="'top-ruler'" />
+			<LayoutCol class="viewport">
+				<LayoutRow class="bar-area">
+					<CanvasRuler :origin="rulerOrigin.x" :majorMarkSpacing="rulerSpacing" :numberInterval="rulerInterval" :direction="'Horizontal'" class="top-ruler" />
 				</LayoutRow>
-				<LayoutRow :class="'canvas-area'">
-					<LayoutCol :class="'bar-area'">
+				<LayoutRow class="canvas-area">
+					<LayoutCol class="bar-area">
 						<CanvasRuler :origin="rulerOrigin.y" :majorMarkSpacing="rulerSpacing" :numberInterval="rulerInterval" :direction="'Vertical'" />
 					</LayoutCol>
-					<LayoutCol :class="'canvas-area'">
-						<div class="canvas" ref="canvas" :style="{ cursor: canvasCursor }" @pointerdown="(e: PointerEvent) => canvasPointerDown(e)">
+					<LayoutCol class="canvas-area">
+						<div class="canvas" data-canvas ref="canvas" :style="{ cursor: canvasCursor }" @pointerdown="(e: PointerEvent) => canvasPointerDown(e)">
 							<svg class="artboards" v-html="artboardSvg" :style="{ width: canvasSvgWidth, height: canvasSvgHeight }"></svg>
 							<svg class="artwork" v-html="artworkSvg" :style="{ width: canvasSvgWidth, height: canvasSvgHeight }"></svg>
 							<svg class="overlays" v-html="overlaysSvg" :style="{ width: canvasSvgWidth, height: canvasSvgHeight }"></svg>
 						</div>
 					</LayoutCol>
-					<LayoutCol :class="'bar-area'">
+					<LayoutCol class="bar-area">
 						<PersistentScrollbar
 							:direction="'Vertical'"
 							:handlePosition="scrollbarPos.y"
 							@update:handlePosition="(newValue: number) => translateCanvasY(newValue)"
 							v-model:handleLength="scrollbarSize.y"
 							@pressTrack="(delta: number) => pageY(delta)"
-							:class="'right-scrollbar'"
+							class="right-scrollbar"
 						/>
 					</LayoutCol>
 				</LayoutRow>
-				<LayoutRow :class="'bar-area'">
+				<LayoutRow class="bar-area">
 					<PersistentScrollbar
 						:direction="'Horizontal'"
 						:handlePosition="scrollbarPos.x"
 						@update:handlePosition="(newValue: number) => translateCanvasX(newValue)"
 						v-model:handleLength="scrollbarSize.x"
 						@pressTrack="(delta: number) => pageX(delta)"
-						:class="'bottom-scrollbar'"
+						class="bottom-scrollbar"
 					/>
 				</LayoutRow>
 			</LayoutCol>
@@ -166,7 +170,6 @@
 		.side {
 			height: 100%;
 			flex: 0 0 auto;
-			display: flex;
 			align-items: center;
 			margin: 0 4px;
 		}
@@ -179,8 +182,6 @@
 	.shelf-and-viewport {
 		.shelf {
 			flex: 0 0 auto;
-			display: flex;
-			flex-direction: column;
 
 			.tools {
 				flex: 0 1 auto;
@@ -191,9 +192,12 @@
 				min-height: 8px;
 			}
 
-			.working-colors .swap-and-reset {
+			.working-colors {
 				flex: 0 0 auto;
-				display: flex;
+
+				.swap-and-reset {
+					flex: 0 0 auto;
+				}
 			}
 		}
 

@@ -1,10 +1,10 @@
 <template>
-	<div class="radio-input" ref="radioInput">
+	<LayoutRow class="radio-input">
 		<button :class="{ active: index === selectedIndex }" v-for="(entry, index) in entries" :key="index" @click="handleEntryClick(entry)" :title="entry.tooltip">
 			<IconLabel v-if="entry.icon" :icon="entry.icon" />
 			<TextLabel v-if="entry.label">{{ entry.label }}</TextLabel>
 		</button>
-	</div>
+	</LayoutRow>
 </template>
 
 <style lang="scss">
@@ -16,7 +16,7 @@
 		padding: 0 4px;
 		outline: none;
 		border: none;
-		display: inline-flex;
+		display: flex;
 		align-items: center;
 
 		&:hover {
@@ -50,11 +50,6 @@
 		}
 	}
 
-	.icon-label,
-	.text-label {
-		display: inline-block;
-	}
-
 	.text-label {
 		margin: 0 4px;
 	}
@@ -71,6 +66,7 @@ import { defineComponent, PropType } from "vue";
 
 import { IconName } from "@/utilities/icons";
 
+import LayoutRow from "@/components/layout/LayoutRow.vue";
 import IconLabel from "@/components/widgets/labels/IconLabel.vue";
 import TextLabel from "@/components/widgets/labels/TextLabel.vue";
 
@@ -100,6 +96,7 @@ export default defineComponent({
 	components: {
 		IconLabel,
 		TextLabel,
+		LayoutRow,
 	},
 });
 </script>
