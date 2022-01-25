@@ -166,20 +166,25 @@ impl ManipulationHandler {
 				PathEl::LineTo(p) => (PathEl::LineTo(mouse_position_as_point), p),
 				PathEl::QuadTo(a1, p) => (PathEl::QuadTo(*a1 - (*p - mouse_position).to_vec2(), mouse_position_as_point), p),
 				PathEl::CurveTo(a1, a2, p) => (PathEl::CurveTo(*a1, *a2 - (*p - mouse_position).to_vec2(), mouse_position_as_point), p),
-				PathEl::ClosePath => (PathEl::MoveTo(mouse_position_as_point), &mouse_position_as_point),
+				PathEl::ClosePath => (PathEl::ClosePath, &mouse_position_as_point),
 			};
 
 			// Move the handle on the adjacent path element
 			if let Some(handle) = h2 {
 				let point_delta = (*point - mouse_position).to_vec2();
 				let neighbor = match &self.selected_shape_elements[handle.element_id] {
-					PathEl::MoveTo(_) => PathEl::MoveTo(mouse_position_as_point),
+					PathEl::MoveTo(p) => PathEl::MoveTo(*p),
 					PathEl::LineTo(_) => PathEl::LineTo(mouse_position_as_point),
 					PathEl::QuadTo(a1, p) => PathEl::QuadTo(*a1 - point_delta, *p),
 					PathEl::CurveTo(a1, a2, p) => PathEl::CurveTo(*a1 - point_delta, *a2, *p),
-					PathEl::ClosePath => PathEl::MoveTo(mouse_position_as_point),
+					PathEl::ClosePath => PathEl::ClosePath,
 				};
 				self.selected_shape_elements[handle.element_id] = neighbor;
+
+				// Handle the invisible point
+				if let Some(close_id) = self.selected_anchor.close_element_id {
+					self.selected_shape_elements[close_id] = PathEl::MoveTo(mouse_position_as_point);
+				}
 			}
 			self.selected_shape_elements[self.selected_point.element_id] = selected;
 		}
@@ -194,7 +199,7 @@ impl ManipulationHandler {
 					PathEl::CurveTo(if h2_selected { mouse_position_as_point } else { *a1 }, if h1_selected { mouse_position_as_point } else { *a2 }, *p),
 					*p,
 				),
-				PathEl::ClosePath => (PathEl::MoveTo(mouse_position_as_point), mouse_position_as_point),
+				PathEl::ClosePath => (PathEl::ClosePath, mouse_position_as_point),
 			};
 
 			// Move the opposing handle on the adjacent path element
@@ -209,7 +214,7 @@ impl ManipulationHandler {
 						if h2_selected { (*p - mouse_position) + (*p).to_vec2() } else { *a2 },
 						*p,
 					),
-					PathEl::ClosePath => PathEl::MoveTo(mouse_position_as_point),
+					PathEl::ClosePath => PathEl::ClosePath,
 				};
 				self.selected_shape_elements[handle.element_id] = neighbor;
 			}

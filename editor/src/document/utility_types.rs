@@ -65,6 +65,8 @@ pub struct VectorManipulatorPoint {
 pub struct VectorManipulatorAnchor {
 	// The associated position in the BezPath
 	pub point: VectorManipulatorPoint,
+	// Does this anchor point have a path close element we also needs to move?
+	pub close_element_id: Option<usize>,
 	// Anchor handles
 	pub handles: (Option<VectorManipulatorPoint>, Option<VectorManipulatorPoint>),
 }
