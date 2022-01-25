@@ -105,10 +105,10 @@ impl JsEditorHandle {
 	}
 
 	/// Update layout of a given ui
-	pub fn update_layout(&self, layout_target:JsValue, widget_id:u64, value: JsValue) -> Result<(), JsValue> {
+	pub fn update_layout(&self, layout_target: JsValue, widget_id: u64, value: JsValue) -> Result<(), JsValue> {
 		match (from_value(layout_target), from_value(value)) {
 			(Ok(layout_target), Ok(value)) => {
-				let message = LayoutMessage::UpdateLayout {layout_target, widget_id, value};
+				let message = LayoutMessage::UpdateLayout { layout_target, widget_id, value };
 				self.dispatch(message);
 				Ok(())
 			}
