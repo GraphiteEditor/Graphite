@@ -1,5 +1,4 @@
 use super::tool::ToolType;
-use super::tool_options::ToolOptions;
 use crate::message_prelude::*;
 
 use graphene::color::Color;
@@ -58,10 +57,6 @@ pub enum ToolMessage {
 	},
 	SelectSecondaryColor {
 		color: Color,
-	},
-	SetToolOptions {
-		tool_type: ToolType,
-		tool_options: ToolOptions,
 	},
 	SwapColors,
 	UpdateCursor,

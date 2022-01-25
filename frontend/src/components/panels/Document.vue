@@ -6,7 +6,7 @@
 
 				<Separator :type="'Section'" />
 
-				<ToolOptions :activeTool="activeTool" :activeToolOptions="activeToolOptions" />
+				<WidgetLayout :layout="toolOptionsLayout" />
 			</div>
 			<div class="spacer"></div>
 			<div class="right side">
@@ -262,6 +262,8 @@ import {
 	ToolName,
 	UpdateDocumentArtboards,
 	UpdateMouseCursor,
+	UpdateToolOptionsLayout,
+	defaultWidgetLayout,
 } from "@/dispatcher/js-messages";
 
 import LayoutCol from "@/components/layout/LayoutCol.vue";
@@ -275,10 +277,10 @@ import OptionalInput from "@/components/widgets/inputs/OptionalInput.vue";
 import RadioInput, { RadioEntries } from "@/components/widgets/inputs/RadioInput.vue";
 import ShelfItemInput from "@/components/widgets/inputs/ShelfItemInput.vue";
 import SwatchPairInput from "@/components/widgets/inputs/SwatchPairInput.vue";
-import ToolOptions from "@/components/widgets/options/ToolOptions.vue";
 import CanvasRuler from "@/components/widgets/rulers/CanvasRuler.vue";
 import PersistentScrollbar from "@/components/widgets/scrollbars/PersistentScrollbar.vue";
 import Separator from "@/components/widgets/separators/Separator.vue";
+import WidgetLayout from "@/components/widgets/WidgetLayout.vue";
 
 export default defineComponent({
 	inject: ["editor", "dialog"],
@@ -374,7 +376,6 @@ export default defineComponent({
 
 		this.editor.dispatcher.subscribeJsMessage(UpdateActiveTool, (updateActiveTool) => {
 			this.activeTool = updateActiveTool.tool_name;
-			this.activeToolOptions = updateActiveTool.tool_options;
 		});
 
 		this.editor.dispatcher.subscribeJsMessage(UpdateCanvasZoom, (updateCanvasZoom) => {
@@ -388,6 +389,10 @@ export default defineComponent({
 
 		this.editor.dispatcher.subscribeJsMessage(UpdateMouseCursor, (updateMouseCursor) => {
 			this.canvasCursor = updateMouseCursor.cursor;
+		});
+
+		this.editor.dispatcher.subscribeJsMessage(UpdateToolOptionsLayout, (updateToolOptionsLayout) => {
+			this.toolOptionsLayout = updateToolOptionsLayout;
 		});
 
 		window.addEventListener("resize", this.viewportResize);
@@ -415,7 +420,7 @@ export default defineComponent({
 			canvasSvgHeight: "100%",
 			canvasCursor: "default",
 			activeTool: "Select" as ToolName,
-			activeToolOptions: {},
+			toolOptionsLayout: defaultWidgetLayout(),
 			documentModeEntries,
 			viewModeEntries,
 			documentModeSelectionIndex: 0,
@@ -447,7 +452,7 @@ export default defineComponent({
 		NumberInput,
 		DropdownInput,
 		OptionalInput,
-		ToolOptions,
+		WidgetLayout,
 	},
 });
 </script>

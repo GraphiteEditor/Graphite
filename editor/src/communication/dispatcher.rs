@@ -1,6 +1,7 @@
 use crate::document::PortfolioMessageHandler;
 use crate::global::GlobalMessageHandler;
 use crate::input::{InputMapperMessageHandler, InputPreprocessorMessageHandler};
+use crate::layout::layout_message_handler::LayoutMessageHandler;
 use crate::message_prelude::*;
 use crate::viewport_tools::tool_message_handler::ToolMessageHandler;
 
@@ -19,8 +20,9 @@ struct DispatcherMessageHandlers {
 	global_message_handler: GlobalMessageHandler,
 	input_mapper_message_handler: InputMapperMessageHandler,
 	input_preprocessor_message_handler: InputPreprocessorMessageHandler,
+	layout_message_handler:LayoutMessageHandler,
 	portfolio_message_handler: PortfolioMessageHandler,
-	tool_message_handler: ToolMessageHandler,
+	tool_message_handler: ToolMessageHandler
 }
 
 // For optimization, these are messages guaranteed to be redundant when repeated.
@@ -75,6 +77,9 @@ impl Dispatcher {
 				}
 				InputPreprocessor(message) => {
 					self.message_handlers.input_preprocessor_message_handler.process_action(message, (), &mut self.message_queue);
+				},
+				Layout(message) => {
+					self.message_handlers.layout_message_handler.process_action(message, (), &mut self.message_queue)
 				}
 				Portfolio(message) => {
 					self.message_handlers

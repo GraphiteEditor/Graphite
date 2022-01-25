@@ -1,4 +1,4 @@
-use crate::message_prelude::*;
+use crate::{message_prelude::*, layout::widgets::PropertyHolder};
 use crate::viewport_tools::tool::ToolActionHandlerData;
 
 use serde::{Deserialize, Serialize};
@@ -25,3 +25,5 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Crop {
 
 	advertise_actions!();
 }
+
+impl PropertyHolder for Crop {}

@@ -12,14 +12,13 @@ use editor::input::mouse::{EditorMouseState, ScrollDelta, ViewportBounds};
 use editor::message_prelude::*;
 use editor::misc::EditorError;
 use editor::viewport_tools::tool::ToolType;
-use editor::viewport_tools::tool_options::ToolOptions;
 use editor::viewport_tools::tools;
 use editor::Color;
 use editor::Editor;
 use editor::LayerId;
 
 use serde::Serialize;
-use serde_wasm_bindgen;
+use serde_wasm_bindgen::{self, from_value};
 use std::sync::atomic::Ordering;
 use wasm_bindgen::prelude::*;
 
@@ -105,19 +104,15 @@ impl JsEditorHandle {
 		}
 	}
 
-	/// Update the options for a given tool
-	pub fn set_tool_options(&self, tool: String, options: &JsValue) -> Result<(), JsValue> {
-		match serde_wasm_bindgen::from_value::<ToolOptions>(options.clone()) {
-			Ok(tool_options) => match translate_tool_type(&tool) {
-				Some(tool_type) => {
-					let message = ToolMessage::SetToolOptions { tool_type, tool_options };
-					self.dispatch(message);
-
-					Ok(())
-				}
-				None => Err(Error::new(&format!("Couldn't set options for {} because it was not recognized as a valid tool", tool)).into()),
-			},
-			Err(err) => Err(Error::new(&format!("Invalid JSON for ToolOptions: {}", err)).into()),
+	/// Update layout of a given ui
+	pub fn update_layout(&self, layout_target:JsValue, widget_id:u64, value: JsValue) -> Result<(), JsValue> {
+		match (from_value(layout_target), from_value(value)) {
+			(Ok(layout_target), Ok(value)) => {
+				let message = LayoutMessage::UpdateLayout {layout_target, widget_id, value};
+				self.dispatch(message);
+				Ok(())
+			}
+			_ => Err(Error::new("Could not update UI").into()),
 		}
 	}
 

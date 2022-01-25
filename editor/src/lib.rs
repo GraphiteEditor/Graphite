@@ -8,6 +8,7 @@ pub mod document;
 pub mod frontend;
 pub mod global;
 pub mod input;
+pub mod layout;
 pub mod viewport_tools;
 
 #[doc(inline)]
@@ -58,6 +59,7 @@ pub mod message_prelude {
 	pub use crate::document::clipboards::Clipboard;
 	pub use crate::LayerId;
 
+	pub use crate::layout::{LayoutMessage, LayoutMessageDiscriminant};
 	pub use crate::document::{ArtboardMessage, ArtboardMessageDiscriminant};
 	pub use crate::document::{DocumentMessage, DocumentMessageDiscriminant};
 	pub use crate::document::{MovementMessage, MovementMessageDiscriminant};

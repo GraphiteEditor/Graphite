@@ -1,8 +1,8 @@
-use super::tool_options::{SelectAppendMode, ShapeType, ToolOptions};
 use super::tools::*;
 use crate::communication::message_handler::MessageHandler;
 use crate::document::DocumentMessageHandler;
 use crate::input::InputPreprocessorMessageHandler;
+use crate::layout::widgets::PropertyHolder;
 use crate::message_prelude::*;
 
 use graphene::color::Color;
@@ -15,6 +15,7 @@ pub type ToolActionHandlerData<'a> = (&'a DocumentMessageHandler, &'a DocumentTo
 
 pub trait Fsm {
 	type ToolData;
+	type ToolOptions;
 
 	fn transition(
 		self,
@@ -22,6 +23,7 @@ pub trait Fsm {
 		document: &DocumentMessageHandler,
 		tool_data: &DocumentToolData,
 		data: &mut Self::ToolData,
+		options: &Self::ToolOptions,
 		input: &InputPreprocessorMessageHandler,
 		messages: &mut VecDeque<Message>,
 	) -> Self;
@@ -34,14 +36,16 @@ pub trait Fsm {
 pub struct DocumentToolData {
 	pub primary_color: Color,
 	pub secondary_color: Color,
-	pub tool_options: HashMap<ToolType, ToolOptions>,
 }
 
-type SubToolMessageHandler = dyn for<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>>;
+pub trait ToolCommon: for<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> + PropertyHolder {}
+impl<T> ToolCommon for T where T: for<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> + PropertyHolder {}
+
+type Tool = dyn ToolCommon;
 
 pub struct ToolData {
 	pub active_tool_type: ToolType,
-	pub tools: HashMap<ToolType, Box<SubToolMessageHandler>>,
+	pub tools: HashMap<ToolType, Box<Tool>>,
 }
 
 impl fmt::Debug for ToolData {
@@ -51,10 +55,10 @@ impl fmt::Debug for ToolData {
 }
 
 impl ToolData {
-	pub fn active_tool_mut(&mut self) -> &mut Box<SubToolMessageHandler> {
+	pub fn active_tool_mut(&mut self) -> &mut Box<Tool> {
 		self.tools.get_mut(&self.active_tool_type).expect("The active tool is not initialized")
 	}
-	pub fn active_tool(&self) -> &SubToolMessageHandler {
+	pub fn active_tool(&self) -> &Tool {
 		self.tools.get(&self.active_tool_type).map(|x| x.as_ref()).expect("The active tool is not initialized")
 	}
 }
@@ -97,7 +101,6 @@ impl Default for ToolFsmState {
 			document_tool_data: DocumentToolData {
 				primary_color: Color::BLACK,
 				secondary_color: Color::WHITE,
-				tool_options: default_tool_options(),
 			},
 		}
 	}
@@ -113,34 +116,6 @@ impl ToolFsmState {
 	}
 }
 
-fn default_tool_options() -> HashMap<ToolType, ToolOptions> {
-	let tool_init = |tool: ToolType| (tool, tool.default_options());
-	[
-		tool_init(ToolType::Select),
-		tool_init(ToolType::Crop),
-		tool_init(ToolType::Navigate),
-		tool_init(ToolType::Eyedropper),
-		tool_init(ToolType::Text),
-		tool_init(ToolType::Fill),
-		tool_init(ToolType::Gradient),
-		tool_init(ToolType::Brush),
-		tool_init(ToolType::Heal),
-		tool_init(ToolType::Clone),
-		tool_init(ToolType::Patch),
-		tool_init(ToolType::BlurSharpen),
-		tool_init(ToolType::Relight),
-		tool_init(ToolType::Path),
-		tool_init(ToolType::Pen),
-		tool_init(ToolType::Freehand),
-		tool_init(ToolType::Spline),
-		tool_init(ToolType::Line),
-		tool_init(ToolType::Rectangle),
-		tool_init(ToolType::Ellipse),
-		tool_init(ToolType::Shape),
-	]
-	.into_iter()
-	.collect()
-}
 
 #[repr(usize)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -197,36 +172,6 @@ impl fmt::Display for ToolType {
 		});
 
 		formatter.write_str(name)
-	}
-}
-
-impl ToolType {
-	fn default_options(&self) -> ToolOptions {
-		match self {
-			ToolType::Select => ToolOptions::Select { append_mode: SelectAppendMode::New },
-			ToolType::Crop => ToolOptions::Crop {},
-			ToolType::Navigate => ToolOptions::Navigate {},
-			ToolType::Eyedropper => ToolOptions::Eyedropper {},
-			ToolType::Text => ToolOptions::Text {},
-			ToolType::Fill => ToolOptions::Fill {},
-			ToolType::Gradient => ToolOptions::Gradient {},
-			ToolType::Brush => ToolOptions::Brush {},
-			ToolType::Heal => ToolOptions::Heal {},
-			ToolType::Clone => ToolOptions::Clone {},
-			ToolType::Patch => ToolOptions::Patch {},
-			ToolType::BlurSharpen => ToolOptions::BlurSharpen {},
-			ToolType::Relight => ToolOptions::Relight {},
-			ToolType::Path => ToolOptions::Path {},
-			ToolType::Pen => ToolOptions::Pen { weight: 5 },
-			ToolType::Freehand => ToolOptions::Freehand {},
-			ToolType::Spline => ToolOptions::Spline {},
-			ToolType::Line => ToolOptions::Line { weight: 5 },
-			ToolType::Rectangle => ToolOptions::Rectangle {},
-			ToolType::Ellipse => ToolOptions::Ellipse {},
-			ToolType::Shape => ToolOptions::Shape {
-				shape_type: ShapeType::Polygon { vertices: 6 },
-			},
-		}
 	}
 }
 

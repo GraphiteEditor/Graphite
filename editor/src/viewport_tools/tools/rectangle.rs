@@ -3,6 +3,7 @@ use crate::document::DocumentMessageHandler;
 use crate::frontend::utility_types::MouseCursorIcon;
 use crate::input::keyboard::{Key, MouseMotion};
 use crate::input::InputPreprocessorMessageHandler;
+use crate::layout::widgets::PropertyHolder;
 use crate::message_prelude::*;
 use crate::misc::{HintData, HintGroup, HintInfo, KeysGroup};
 use crate::viewport_tools::tool::{DocumentToolData, Fsm, ToolActionHandlerData};
@@ -36,6 +37,8 @@ pub enum RectangleMessage {
 	},
 }
 
+impl PropertyHolder for Rectangle {}
+
 impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Rectangle {
 	fn process_action(&mut self, action: ToolMessage, data: ToolActionHandlerData<'a>, responses: &mut VecDeque<Message>) {
 		if action == ToolMessage::UpdateHints {
@@ -48,7 +51,7 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Rectangle {
 			return;
 		}
 
-		let new_state = self.fsm_state.transition(action, data.0, data.1, &mut self.data, data.2, responses);
+		let new_state = self.fsm_state.transition(action, data.0, data.1, &mut self.data, &(), data.2, responses);
 
 		if self.fsm_state != new_state {
 			self.fsm_state = new_state;
@@ -85,6 +88,7 @@ struct RectangleToolData {
 
 impl Fsm for RectangleToolFsmState {
 	type ToolData = RectangleToolData;
+	type ToolOptions = ();
 
 	fn transition(
 		self,
@@ -92,6 +96,7 @@ impl Fsm for RectangleToolFsmState {
 		document: &DocumentMessageHandler,
 		tool_data: &DocumentToolData,
 		data: &mut Self::ToolData,
+		_tool_options: &Self::ToolOptions,
 		input: &InputPreprocessorMessageHandler,
 		responses: &mut VecDeque<Message>,
 	) -> Self {
