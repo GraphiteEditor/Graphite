@@ -1,4 +1,4 @@
-use crate::consts::SELECTION_TOLERANCE;
+use crate::consts::{COLOR_ACCENT, SELECTION_TOLERANCE};
 use crate::document::DocumentMessageHandler;
 use crate::frontend::utility_types::MouseCursorIcon;
 use crate::input::keyboard::{Key, MouseMotion};
@@ -10,7 +10,7 @@ use crate::viewport_tools::tool_options::ToolOptions;
 
 use glam::{DAffine2, DVec2};
 use graphene::intersection::Quad;
-use graphene::layers::style;
+use graphene::layers::style::{self, Fill, Stroke};
 use graphene::Operation;
 use serde::{Deserialize, Serialize};
 
@@ -27,6 +27,9 @@ pub enum TextMessage {
 	// Standard messages
 	#[remain::unsorted]
 	Abort,
+
+	#[remain::unsorted]
+	DocumentIsDirty,
 
 	// Tool-specific messages
 	CommitText,
@@ -82,6 +85,50 @@ impl Default for TextToolFsmState {
 #[derive(Clone, Debug, Default)]
 struct TextToolData {
 	path: Vec<LayerId>,
+	overlays: Vec<Vec<LayerId>>,
+}
+
+fn transform_from_box(pos1: DVec2, pos2: DVec2) -> [f64; 6] {
+	DAffine2::from_scale_angle_translation((pos2 - pos1).round(), 0., pos1.round() - DVec2::splat(0.5)).to_cols_array()
+}
+
+fn resize_overlays(overlays: &mut Vec<Vec<LayerId>>, responses: &mut VecDeque<Message>, newlen: usize) {
+	while overlays.len() > newlen {
+		let operation = Operation::DeleteLayer { path: overlays.pop().unwrap() };
+		responses.push_back(DocumentMessage::Overlays(operation.into()).into());
+	}
+	while overlays.len() < newlen {
+		let path = vec![generate_uuid()];
+		overlays.push(path.clone());
+
+		let operation = Operation::AddOverlayRect {
+			path,
+			transform: DAffine2::ZERO.to_cols_array(),
+			style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 1.0)), Some(Fill::none())),
+		};
+		responses.push_back(DocumentMessage::Overlays(operation.into()).into());
+	}
+}
+
+fn update_overlays(document: &DocumentMessageHandler, data: &mut TextToolData, responses: &mut VecDeque<Message>) {
+	let visible_text_layers = document.selected_visible_text_layers().collect::<Vec<_>>();
+
+	resize_overlays(&mut data.overlays, responses, visible_text_layers.len());
+
+	for (layer_path, overlay_path) in visible_text_layers.into_iter().zip(&data.overlays) {
+		let bounds = document
+			.graphene_document
+			.layer(layer_path)
+			.unwrap()
+			.current_bounding_box_with_transform(document.graphene_document.multiply_transforms(layer_path).unwrap())
+			.unwrap();
+
+		let operation = Operation::SetLayerTransformInViewport {
+			path: overlay_path.to_vec(),
+			transform: transform_from_box(bounds[0], bounds[1]),
+		};
+		responses.push_back(DocumentMessage::Overlays(operation.into()).into());
+	}
 }
 
 impl Fsm for TextToolFsmState {
@@ -101,6 +148,11 @@ impl Fsm for TextToolFsmState {
 
 		if let ToolMessage::Text(event) = event {
 			match (self, event) {
+				(state, DocumentIsDirty) => {
+					update_overlays(document, data, responses);
+
+					state
+				}
 				(state, Interact) => {
 					let mouse_pos = input.mouse.position;
 					let tolerance = DVec2::splat(SELECTION_TOLERANCE);
@@ -114,14 +166,30 @@ impl Fsm for TextToolFsmState {
 					// Editing existing text
 					{
 						if state == TextToolFsmState::Editing {
-							let editable = false;
-							responses.push_back(DocumentMessage::SetTextboxEditable { path: data.path.clone(), editable }.into());
+							responses.push_back(
+								DocumentMessage::SetTextboxEditable {
+									path: data.path.clone(),
+									editable: false,
+								}
+								.into(),
+							);
 						}
 
 						data.path = l.clone();
 
-						let editable = true;
-						responses.push_back(DocumentMessage::SetTextboxEditable { path: data.path.clone(), editable }.into());
+						responses.push_back(
+							DocumentMessage::SetTextboxEditable {
+								path: data.path.clone(),
+								editable: true,
+							}
+							.into(),
+						);
+						responses.push_back(
+							DocumentMessage::SetSelectedLayers {
+								replacement_selected_layers: vec![data.path.clone()],
+							}
+							.into(),
+						);
 
 						Editing
 					}
@@ -153,33 +221,69 @@ Test for really long word: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 						);
 						responses.push_back(Operation::SetLayerTransformInViewport { path: data.path.clone(), transform }.into());
 
-						let editable = true;
-						responses.push_back(DocumentMessage::SetTextboxEditable { path: data.path.clone(), editable }.into());
+						responses.push_back(
+							DocumentMessage::SetTextboxEditable {
+								path: data.path.clone(),
+								editable: true,
+							}
+							.into(),
+						);
+
+						responses.push_back(
+							DocumentMessage::SetSelectedLayers {
+								replacement_selected_layers: vec![data.path.clone()],
+							}
+							.into(),
+						);
 
 						Editing
 					} else {
 						// Removing old text as editable
-						let editable = false;
-						responses.push_back(DocumentMessage::SetTextboxEditable { path: data.path.clone(), editable }.into());
+						responses.push_back(
+							DocumentMessage::SetTextboxEditable {
+								path: data.path.clone(),
+								editable: false,
+							}
+							.into(),
+						);
+
+						resize_overlays(&mut data.overlays, responses, 0);
+
 						Ready
 					};
 
 					new_state
 				}
 				(Editing, Abort) => {
-					let editable = false;
-					responses.push_back(DocumentMessage::SetTextboxEditable { path: data.path.clone(), editable }.into());
+					responses.push_back(
+						DocumentMessage::SetTextboxEditable {
+							path: data.path.clone(),
+							editable: false,
+						}
+						.into(),
+					);
+
+					resize_overlays(&mut data.overlays, responses, 0);
+
 					Ready
 				}
 				(Editing, CommitText) => {
 					responses.push_back(FrontendMessage::TriggerTextCommit.into());
+
 					Editing
 				}
 				(Editing, TextChange { new_text }) => {
 					responses.push_back(Operation::SetTextContent { path: data.path.clone(), new_text }.into());
 
-					let editable = false;
-					responses.push_back(DocumentMessage::SetTextboxEditable { path: data.path.clone(), editable }.into());
+					responses.push_back(
+						DocumentMessage::SetTextboxEditable {
+							path: data.path.clone(),
+							editable: false,
+						}
+						.into(),
+					);
+
+					resize_overlays(&mut data.overlays, responses, 0);
 
 					Ready
 				}

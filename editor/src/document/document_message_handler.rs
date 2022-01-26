@@ -1,5 +1,5 @@
 use super::clipboards::Clipboard;
-use super::layer_panel::{layer_panel_entry, LayerMetadata, LayerPanelEntry, RawBuffer};
+use super::layer_panel::{layer_panel_entry, LayerDataTypeDiscriminant, LayerMetadata, LayerPanelEntry, RawBuffer};
 use super::utility_types::{AlignAggregate, AlignAxis, DocumentSave, FlipAxis, VectorManipulatorSegment, VectorManipulatorShape};
 use super::vectorize_layer_metadata;
 use super::{ArtboardMessageHandler, MovementMessageHandler, OverlaysMessageHandler, TransformLayerMessageHandler};
@@ -200,6 +200,16 @@ impl DocumentMessageHandler {
 	pub fn selected_visible_layers(&self) -> impl Iterator<Item = &[LayerId]> {
 		self.selected_layers().filter(|path| match self.graphene_document.layer(path) {
 			Ok(layer) => layer.visible,
+			Err(_) => false,
+		})
+	}
+
+	pub fn selected_visible_text_layers(&self) -> impl Iterator<Item = &[LayerId]> {
+		self.selected_layers().filter(|path| match self.graphene_document.layer(path) {
+			Ok(layer) => {
+				let discriminant: LayerDataTypeDiscriminant = (&layer.data).into();
+				layer.visible && discriminant == LayerDataTypeDiscriminant::Text
+			}
 			Err(_) => false,
 		})
 	}

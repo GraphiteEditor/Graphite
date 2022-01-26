@@ -264,7 +264,7 @@
 					}
 
 					div:focus {
-						border: 1px solid var(--color-accent-hover);
+						border: none;
 						outline: none;
 						margin: -1px;
 					}
