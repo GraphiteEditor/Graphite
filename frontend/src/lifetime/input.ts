@@ -15,7 +15,7 @@ export function createInputManager(editor: EditorState, container: HTMLElement, 
 	const listeners: { target: EventListenerTarget; eventName: EventName; action: (event: any) => void; options?: boolean | AddEventListenerOptions }[] = [
 		{ target: window, eventName: "resize", action: (): void => onWindowResize(container) },
 		{ target: window, eventName: "beforeunload", action: (e: BeforeUnloadEvent): void => onBeforeUnload(e) },
-		// { target: window.document, eventName: "contextmenu", action: (e: MouseEvent): void => e.preventDefault() },
+		{ target: window.document, eventName: "contextmenu", action: (e: MouseEvent): void => e.preventDefault() },
 		{ target: window.document, eventName: "fullscreenchange", action: (): void => fullscreen.fullscreenModeChanged() },
 		{ target: window, eventName: "keyup", action: (e: KeyboardEvent): void => onKeyUp(e) },
 		{ target: window, eventName: "keydown", action: (e: KeyboardEvent): void => onKeyDown(e) },
