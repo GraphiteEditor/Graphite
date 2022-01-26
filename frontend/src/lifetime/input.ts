@@ -121,7 +121,7 @@ export function createInputManager(editor: EditorState, container: HTMLElement, 
 
 		if (textInput && !inTextInput) {
 			console.log(textInput);
-			editor.instance.on_change_text(textInput.innerText || "", true);
+			editor.instance.on_change_text(textInput.innerText || "");
 		} else if (inCanvas && !inTextInput) viewportPointerInteractionOngoing = true;
 
 		if (viewportPointerInteractionOngoing) {

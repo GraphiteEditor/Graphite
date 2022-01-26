@@ -33,7 +33,6 @@ pub enum TextMessage {
 	Interact,
 	TextChange {
 		new_text: String,
-		cancel_editing: bool,
 	},
 }
 
@@ -176,17 +175,13 @@ Test for really long word: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 					responses.push_back(FrontendMessage::TriggerTextCommit.into());
 					Editing
 				}
-				(Editing, TextChange { new_text, cancel_editing }) => {
+				(Editing, TextChange { new_text }) => {
 					responses.push_back(Operation::SetTextContent { path: data.path.clone(), new_text }.into());
 
-					if cancel_editing {
-						let editable = false;
-						responses.push_back(DocumentMessage::SetTextboxEditable { path: data.path.clone(), editable }.into());
+					let editable = false;
+					responses.push_back(DocumentMessage::SetTextboxEditable { path: data.path.clone(), editable }.into());
 
-						Ready
-					} else {
-						Editing
-					}
+					Ready
 				}
 				_ => self,
 			}

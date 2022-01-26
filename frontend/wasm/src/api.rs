@@ -306,8 +306,8 @@ impl JsEditorHandle {
 	}
 
 	/// A text box was changed
-	pub fn on_change_text(&self, new_text: String, cancel_editing: bool) -> Result<(), JsValue> {
-		let message = TextMessage::TextChange { new_text, cancel_editing };
+	pub fn on_change_text(&self, new_text: String) -> Result<(), JsValue> {
+		let message = TextMessage::TextChange { new_text };
 		self.dispatch(message);
 
 		Ok(())

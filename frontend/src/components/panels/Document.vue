@@ -453,7 +453,7 @@ export default defineComponent({
 			this.canvasCursor = updateMouseCursor.cursor;
 		});
 		this.editor.dispatcher.subscribeJsMessage(TriggerTextCommit, () => {
-			if (this.textInput) this.editor.instance.on_change_text(this.textInput.innerText || "", false);
+			if (this.textInput) this.editor.instance.on_change_text(this.textInput.innerText || "");
 		});
 
 		this.editor.dispatcher.subscribeJsMessage(DisplayEditableTextbox, (displayEditableTextbox) => {
