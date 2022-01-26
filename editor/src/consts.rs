@@ -30,6 +30,7 @@ pub const SELECTION_DRAG_ANGLE: f64 = 90.;
 
 // Path tool
 pub const VECTOR_MANIPULATOR_ANCHOR_MARKER_SIZE: f64 = 5.;
+pub const SELECTION_THRESHOLD: f64 = 10.;
 
 // Line tool
 pub const LINE_ROTATE_SNAP_ANGLE: f64 = 15.;

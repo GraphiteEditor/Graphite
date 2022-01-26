@@ -53,6 +53,7 @@ pub enum ToolMessage {
 	},
 	DocumentIsDirty,
 	ResetColors,
+	SelectionChanged,
 	SelectPrimaryColor {
 		color: Color,
 	},

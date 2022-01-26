@@ -234,6 +234,7 @@ impl ToolType {
 pub enum StandardToolMessageType {
 	Abort,
 	DocumentIsDirty,
+	SelectionChanged,
 }
 
 // TODO: Find a nicer way in Rust to make this generic so we don't have to manually map to enum variants
@@ -273,6 +274,10 @@ pub fn standard_tool_message(tool: ToolType, message_type: StandardToolMessageTy
 			ToolType::Shape => Some(ShapeMessage::Abort.into()),
 			ToolType::Eyedropper => Some(EyedropperMessage::Abort.into()),
 			ToolType::Fill => Some(FillMessage::Abort.into()),
+			_ => None,
+		},
+		StandardToolMessageType::SelectionChanged => match tool {
+			ToolType::Path => Some(PathMessage::SelectionChanged.into()),
 			_ => None,
 		},
 	}

@@ -1,4 +1,4 @@
-use crate::consts::{COLOR_ACCENT, VECTOR_MANIPULATOR_ANCHOR_MARKER_SIZE};
+use crate::consts::{COLOR_ACCENT, SELECTION_THRESHOLD, VECTOR_MANIPULATOR_ANCHOR_MARKER_SIZE};
 use crate::document::utility_types::{VectorManipulatorAnchor, VectorManipulatorPoint, VectorManipulatorSegment, VectorManipulatorShape};
 use crate::document::DocumentMessageHandler;
 use crate::frontend::utility_types::MouseCursorIcon;
@@ -33,6 +33,8 @@ pub enum PathMessage {
 	Abort,
 	#[remain::unsorted]
 	DocumentIsDirty,
+	#[remain::unsorted]
+	SelectionChanged,
 
 	// Tool-specific messages
 	DragStart,
@@ -110,10 +112,6 @@ struct ManipulationHandler {
 }
 
 impl ManipulationHandler {
-	pub fn set_selected_shapes(&mut self, shapes: Vec<VectorManipulatorShape>) {
-		self.selected_shapes = shapes;
-	}
-
 	// Select the first manipulator within the threshold
 	pub fn select_manipulator(&mut self, mouse_position: DVec2, select_threshold: f64, should_mirror: bool) -> bool {
 		// TODO convert select_threshold to viewspace, so it remains consistent with zoom level
@@ -129,7 +127,7 @@ impl ManipulationHandler {
 				self.selected_shape = shape_index;
 				self.selected_point = point.clone();
 				self.selected_anchor = anchor.clone();
-				self.selected_anchor.handle_mirroring = anchor.handle_mirroring;
+				self.selected_anchor.handle_mirroring = should_mirror;
 				return true;
 			}
 		}
@@ -159,17 +157,20 @@ impl ManipulationHandler {
 		let h1_selected = !h1.is_none() && *h1.as_ref().unwrap() == self.selected_point;
 		let h2_selected = !h2.is_none() && *h2.as_ref().unwrap() == self.selected_point;
 
-		let place_mirrored_handle = |center: kurbo::Point, original: kurbo::Point, selected: bool, mirror: bool| -> kurbo::Point {
+		let place_mirrored_handle = |center: kurbo::Point, original: kurbo::Point, offset_angle: f64, mirror: bool, selected: bool, element_shared_with_anchor: bool| -> kurbo::Point {
 			if !selected || !mirror {
 				return original;
 			}
 
 			// Keep rotational similarity, but distance variable
-			let radius = (center - original).hypot();
+			let radius = center.distance(original);
 			let phi = (center - mouse_position_as_point).atan2();
+			let flip = if element_shared_with_anchor { 1.0 } else { -1.0 };
+			let angle = phi + ((flip * offset_angle) - std::f64::consts::PI);
+
 			kurbo::Point {
-				x: radius * phi.cos(),
-				y: radius * phi.sin(),
+				x: radius * angle.cos(),
+				y: radius * angle.sin(),
 			} + center.to_vec2()
 		};
 
@@ -217,6 +218,9 @@ impl ManipulationHandler {
 				PathEl::ClosePath => (PathEl::ClosePath, mouse_position_as_point),
 			};
 
+			let is_mirroring = self.selected_anchor.handle_mirroring;
+			let angle_offset = self.selected_anchor.angle_between_handles();
+
 			// Move the opposing handle on the adjacent path element
 			if let Some(handle) = self.selected_anchor.opposing_handle(&self.selected_point) {
 				let neighbor = match &self.selected_shape_elements[handle.element_id] {
@@ -224,8 +228,8 @@ impl ManipulationHandler {
 					PathEl::LineTo(p) => PathEl::LineTo(*p),
 					PathEl::QuadTo(a1, p) => PathEl::QuadTo(*a1, *p),
 					PathEl::CurveTo(a1, a2, p) => PathEl::CurveTo(
-						place_mirrored_handle(anchor, *a1, h1_selected, self.selected_anchor.handle_mirroring),
-						place_mirrored_handle(*p, *a2, h2_selected, self.selected_anchor.handle_mirroring),
+						place_mirrored_handle(anchor, *a1, angle_offset, h1_selected, is_mirroring, true),
+						place_mirrored_handle(*p, *a2, angle_offset, h2_selected, is_mirroring, false),
 						*p,
 					),
 					PathEl::ClosePath => PathEl::ClosePath,
@@ -284,10 +288,16 @@ impl Fsm for PathToolFsmState {
 			use PathToolFsmState::*;
 
 			match (self, event) {
+				(_, SelectionChanged) => {
+					data.manipulation_handler.selected_shapes = document.selected_visible_layers_vector_shapes();
+					self
+				}
 				(_, DocumentIsDirty) => {
 					let (mut anchor_i, mut handle_i, mut line_i, mut shape_i) = (0, 0, 0, 0);
 
-					data.manipulation_handler.selected_shapes = document.selected_visible_layers_vector_shapes();
+					// Update the shapes by reference
+					document.update_selected_vector_shapes(&mut data.manipulation_handler.selected_shapes);
+
 					// Grow the overlay pools by the shortfall, if any
 					let (total_anchors, total_handles, total_anchor_handle_lines) = calculate_total_overlays_per_type(&data.manipulation_handler.selected_shapes);
 					let total_shapes = data.manipulation_handler.selected_shapes.len();
@@ -397,24 +407,31 @@ impl Fsm for PathToolFsmState {
 				}
 				(_, DragStart) => {
 					let should_not_mirror = input.keyboard.get(Key::KeyAlt as usize);
-					// Set the shapes we have selected
-					data.manipulation_handler.set_selected_shapes(document.selected_visible_layers_vector_shapes());
 
 					// Select the first point within the threshold (in pixels)
-					let select_threshold = 10.0;
+					let select_threshold = SELECTION_THRESHOLD;
 					if data.manipulation_handler.select_manipulator(input.mouse.position, select_threshold, !should_not_mirror) {
 						data.snap_handler.start_snap(document, document.visible_layers());
+						let snap_points = data
+							.manipulation_handler
+							.selected_shapes
+							.iter()
+							.flat_map(|shape| shape.points.iter().map(|anchor| anchor.point.position))
+							.collect();
+						data.snap_handler.add_snap_points(document, snap_points);
 						Dragging
 					} else {
 						// Select shapes directly under our mouse
 						let intersection = document.graphene_document.intersects_quad_root(Quad::from_box([input.mouse.position, input.mouse.position]));
-						responses.push_back(DocumentMessage::StartTransaction.into());
-						responses.push_back(
-							DocumentMessage::SetSelectedLayers {
-								replacement_selected_layers: intersection,
-							}
-							.into(),
-						);
+						if !intersection.is_empty() {
+							responses.push_back(DocumentMessage::StartTransaction.into());
+							responses.push_back(
+								DocumentMessage::SetSelectedLayers {
+									replacement_selected_layers: intersection,
+								}
+								.into(),
+							);
+						}
 						Ready
 					}
 				}
@@ -427,7 +444,6 @@ impl Fsm for PathToolFsmState {
 					responses.push_back(move_operation.into());
 					Dragging
 				}
-				(_, PointerMove) => self,
 				(_, DragStop) => {
 					// Todo Move the overlay changes to when deselected, not drag stop
 					// let style = PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 2.0)), Some(Fill::new(Color::WHITE)));
@@ -461,6 +477,7 @@ impl Fsm for PathToolFsmState {
 
 					Ready
 				}
+				(_, PointerMove) => self,
 			}
 		} else {
 			self
@@ -474,20 +491,20 @@ impl Fsm for PathToolFsmState {
 					HintInfo {
 						key_groups: vec![],
 						mouse: Some(MouseMotion::Lmb),
-						label: String::from("Select Point (coming soon)"),
+						label: String::from("Select Point"),
 						plus: false,
 					},
 					HintInfo {
 						key_groups: vec![KeysGroup(vec![Key::KeyShift])],
 						mouse: None,
-						label: String::from("Add/Remove Point"),
+						label: String::from("Add/Remove Point (coming soon)"),
 						plus: true,
 					},
 				]),
 				HintGroup(vec![HintInfo {
 					key_groups: vec![],
 					mouse: Some(MouseMotion::LmbDrag),
-					label: String::from("Drag Selected (coming soon)"),
+					label: String::from("Drag Selected"),
 					plus: false,
 				}]),
 				HintGroup(vec![
@@ -530,7 +547,12 @@ impl Fsm for PathToolFsmState {
 					},
 				]),
 			]),
-			PathToolFsmState::Dragging => HintData(vec![]),
+			PathToolFsmState::Dragging => HintData(vec![HintGroup(vec![HintInfo {
+				key_groups: vec![KeysGroup(vec![Key::KeyAlt])],
+				mouse: None,
+				label: String::from("Handle Mirroring Disabled"),
+				plus: false,
+			}])]),
 		};
 
 		responses.push_back(FrontendMessage::UpdateInputHints { hint_data }.into());

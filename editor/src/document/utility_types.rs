@@ -4,7 +4,6 @@ use graphene::document::Document as GrapheneDocument;
 use graphene::LayerId;
 
 use glam::{DAffine2, DVec2};
-use kurbo::Vec2;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -53,7 +52,7 @@ pub struct VectorManipulatorShape {
 	pub transform: DAffine2,
 }
 
-#[derive(PartialEq, Clone, Debug, Default)]
+#[derive(PartialEq, Clone, Debug, Copy, Default)]
 pub struct VectorManipulatorPoint {
 	// The associated position in the BezPath
 	pub element_id: usize,
@@ -96,11 +95,28 @@ impl VectorManipulatorAnchor {
 		closest_point
 	}
 
+	/// Angle bewtween handles in radians
+	pub fn angle_between_handles(&self) -> f64 {
+		if let (Some(h1), Some(h2)) = &self.handles {
+			return (self.point.position - h1.position).angle_between(self.point.position - h2.position);
+		}
+		0.0
+	}
+
 	pub fn opposing_handle(&self, handle: &VectorManipulatorPoint) -> &Option<VectorManipulatorPoint> {
 		if Some(handle) == self.handles.0.as_ref() {
 			&self.handles.1
 		} else {
 			&self.handles.0
+		}
+	}
+}
+
+impl VectorManipulatorPoint {
+	pub(crate) fn clone(&self) -> VectorManipulatorPoint {
+		VectorManipulatorPoint {
+			element_id: self.element_id,
+			position: self.position,
 		}
 	}
 }

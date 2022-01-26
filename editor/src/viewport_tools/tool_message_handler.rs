@@ -50,6 +50,11 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, &InputPreprocessorMes
 					send_abort_to_tool(old_tool, tool_message, false);
 				}
 
+				// Send the SelectionChanged message to the active tool, this will ensure the selection is updated
+				if let Some(message) = standard_tool_message(tool_type, StandardToolMessageType::SelectionChanged) {
+					responses.push_back(message.into());
+				}
+
 				// Send the DocumentIsDirty message to the active tool's sub-tool message handler
 				if let Some(message) = standard_tool_message(tool_type, StandardToolMessageType::DocumentIsDirty) {
 					responses.push_back(message.into());
@@ -77,6 +82,12 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, &InputPreprocessorMes
 				document_data.secondary_color = Color::WHITE;
 
 				update_working_colors(document_data, responses);
+			}
+			SelectionChanged => {
+				let active_tool = self.tool_state.tool_data.active_tool_type;
+				if let Some(message) = standard_tool_message(active_tool, StandardToolMessageType::SelectionChanged) {
+					responses.push_back(message.into());
+				}
 			}
 			SelectPrimaryColor { color } => {
 				let document_data = &mut self.tool_state.document_tool_data;
