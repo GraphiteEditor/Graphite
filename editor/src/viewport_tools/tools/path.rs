@@ -407,10 +407,10 @@ impl Fsm for PathToolFsmState {
 				}
 				(_, DragStart) => {
 					let should_not_mirror = input.keyboard.get(Key::KeyAlt as usize);
-
 					// Select the first point within the threshold (in pixels)
 					let select_threshold = SELECTION_THRESHOLD;
 					if data.manipulation_handler.select_manipulator(input.mouse.position, select_threshold, !should_not_mirror) {
+						responses.push_back(DocumentMessage::StartTransaction.into());
 						data.snap_handler.start_snap(document, document.visible_layers());
 						let snap_points = data
 							.manipulation_handler
@@ -424,7 +424,6 @@ impl Fsm for PathToolFsmState {
 						// Select shapes directly under our mouse
 						let intersection = document.graphene_document.intersects_quad_root(Quad::from_box([input.mouse.position, input.mouse.position]));
 						if !intersection.is_empty() {
-							responses.push_back(DocumentMessage::StartTransaction.into());
 							responses.push_back(
 								DocumentMessage::SetSelectedLayers {
 									replacement_selected_layers: intersection,
