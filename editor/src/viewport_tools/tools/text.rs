@@ -201,39 +201,27 @@ Test for really long word: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 				HintInfo {
 					key_groups: vec![],
 					mouse: Some(MouseMotion::Lmb),
-					label: String::from("Add text"),
+					label: String::from("Add Text"),
 					plus: false,
 				},
 				HintInfo {
 					key_groups: vec![],
 					mouse: Some(MouseMotion::Lmb),
-					label: String::from("Edit text"),
+					label: String::from("Edit Text"),
 					plus: false,
 				},
 			])]),
 			TextToolFsmState::Editing => HintData(vec![HintGroup(vec![
 				HintInfo {
-					key_groups: vec![],
-					mouse: Some(MouseMotion::Lmb),
-					label: String::from("Complete Edit"),
-					plus: false,
-				},
-				HintInfo {
 					key_groups: vec![KeysGroup(vec![Key::KeyControl, Key::KeyEnter])],
 					mouse: None,
-					label: String::from("Commit edit"),
+					label: String::from("Commit Edit"),
 					plus: false,
 				},
 				HintInfo {
 					key_groups: vec![KeysGroup(vec![Key::KeyEscape])],
 					mouse: None,
-					label: String::from("Abort Edit"),
-					plus: false,
-				},
-				HintInfo {
-					key_groups: vec![KeysGroup(vec![Key::KeyEnter])],
-					mouse: None,
-					label: String::from("New line"),
+					label: String::from("Discard Edit"),
 					plus: false,
 				},
 			])]),
