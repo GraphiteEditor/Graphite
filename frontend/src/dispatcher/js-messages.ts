@@ -299,6 +299,8 @@ export class DisplayEditableTextbox extends JsMessage {
 	readonly text!: string;
 
 	readonly line_width!: undefined | number;
+
+	readonly font_size!: number;
 }
 
 export class DisplayRemoveEditableTextbox extends JsMessage {}

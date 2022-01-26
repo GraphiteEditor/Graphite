@@ -967,6 +967,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 						FrontendMessage::DisplayEditableTextbox {
 							text: text.text.clone(),
 							line_width: text.line_width,
+							font_size: text.size,
 						}
 						.into(),
 					);

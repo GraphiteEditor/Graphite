@@ -463,6 +463,7 @@ export default defineComponent({
 			this.textInput.contentEditable = "true";
 			this.textInput.style.width = displayEditableTextbox.line_width ? `${displayEditableTextbox.line_width}px` : "max-content";
 			this.textInput.style.height = "auto";
+			this.textInput.style.fontSize = `${displayEditableTextbox.font_size}px`;
 		});
 
 		this.editor.dispatcher.subscribeJsMessage(DisplayRemoveEditableTextbox, () => {
