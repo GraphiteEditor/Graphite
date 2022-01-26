@@ -241,9 +241,9 @@ pub fn standard_tool_message(tool: ToolType, message_type: StandardToolMessageTy
 	match message_type {
 		StandardToolMessageType::DocumentIsDirty => match tool {
 			ToolType::Select => Some(SelectMessage::DocumentIsDirty.into()),
-			ToolType::Crop => None,        // Some(CropMessage::DocumentIsDirty.into()),
-			ToolType::Navigate => None,    // Some(NavigateMessage::DocumentIsDirty.into()),
-			ToolType::Eyedropper => None,  // Some(EyedropperMessage::DocumentIsDirty.into()),
+			ToolType::Crop => None,       // Some(CropMessage::DocumentIsDirty.into()),
+			ToolType::Navigate => None,   // Some(NavigateMessage::DocumentIsDirty.into()),
+			ToolType::Eyedropper => None, // Some(EyedropperMessage::DocumentIsDirty.into()),
 			ToolType::Text => Some(TextMessage::DocumentIsDirty.into()),
 			ToolType::Fill => None,        // Some(FillMessage::DocumentIsDirty.into()),
 			ToolType::Gradient => None,    // Some(GradientMessage::DocumentIsDirty.into()),
