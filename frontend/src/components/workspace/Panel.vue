@@ -1,10 +1,11 @@
 <template>
-	<div class="panel">
-		<div class="tab-bar" :class="{ 'min-widths': tabMinWidths }">
-			<div class="tab-group scrollable-x">
-				<div
+	<LayoutCol class="panel">
+		<LayoutRow class="tab-bar" data-tab-bar :class="{ 'min-widths': tabMinWidths }">
+			<LayoutRow class="tab-group" :scrollableX="true">
+				<LayoutRow
 					class="tab"
 					:class="{ active: tabIndex === tabActiveIndex }"
+					data-tab
 					v-for="(tabLabel, tabIndex) in tabLabels"
 					:key="tabIndex"
 					@click="(e) => (e && e.stopPropagation(), clickAction && clickAction(tabIndex))"
@@ -12,42 +13,36 @@
 				>
 					<span>{{ tabLabel }}</span>
 					<IconButton :action="(e) => (e && e.stopPropagation(), closeAction && closeAction(tabIndex))" :icon="'CloseX'" :size="16" v-if="tabCloseButtons" />
-				</div>
-			</div>
+				</LayoutRow>
+			</LayoutRow>
 			<PopoverButton :icon="'VerticalEllipsis'">
 				<h3>Panel Options</h3>
 				<p>The contents of this popover menu are coming soon</p>
 			</PopoverButton>
-		</div>
-		<div class="panel-body">
+		</LayoutRow>
+		<LayoutCol class="panel-body">
 			<component :is="panelType" />
-		</div>
-	</div>
+		</LayoutCol>
+	</LayoutCol>
 </template>
 
 <style lang="scss">
 .panel {
 	background: var(--color-1-nearblack);
 	border-radius: 8px;
-	flex-grow: 1;
-	display: flex;
-	flex-direction: column;
 	overflow: hidden;
 
 	.tab-bar {
 		height: 28px;
-		display: flex;
-		flex-direction: row;
+		min-height: auto;
 
 		&.min-widths .tab-group .tab {
-			min-width: 124px;
+			min-width: 120px;
 			max-width: 360px;
 		}
 
 		.tab-group {
 			flex: 1 1 100%;
-			display: flex;
-			flex-direction: row;
 			position: relative;
 
 			// This always hangs out at the end of the last tab, providing 16px (15px plus the 1px reserved for the separator line) to the right of the tabs.
@@ -61,9 +56,9 @@
 			}
 
 			.tab {
+				flex: 0 1 auto;
 				height: 100%;
 				padding: 0 8px;
-				display: flex;
 				align-items: center;
 				position: relative;
 
@@ -144,7 +139,6 @@
 	.panel-body {
 		background: var(--color-3-darkgray);
 		flex: 1 1 100%;
-		display: flex;
 		flex-direction: column;
 		min-height: 0;
 	}
@@ -154,33 +148,38 @@
 <script lang="ts">
 import { defineComponent, PropType } from "vue";
 
+import LayoutCol from "@/components/layout/LayoutCol.vue";
+import LayoutRow from "@/components/layout/LayoutRow.vue";
 import Document from "@/components/panels/Document.vue";
 import LayerTree from "@/components/panels/LayerTree.vue";
-import Minimap from "@/components/panels/Minimap.vue";
 import Properties from "@/components/panels/Properties.vue";
 import IconButton from "@/components/widgets/buttons/IconButton.vue";
 import PopoverButton from "@/components/widgets/buttons/PopoverButton.vue";
 
-const components = {
+const panelComponents = {
 	Document,
 	Properties,
 	LayerTree,
-	Minimap,
 	IconButton,
 	PopoverButton,
 };
+type PanelTypes = keyof typeof panelComponents;
 
 export default defineComponent({
 	inject: ["documents"],
-	components,
 	props: {
 		tabMinWidths: { type: Boolean as PropType<boolean>, default: false },
 		tabCloseButtons: { type: Boolean as PropType<boolean>, default: false },
 		tabLabels: { type: Array as PropType<string[]>, required: true },
 		tabActiveIndex: { type: Number as PropType<number>, required: true },
-		panelType: { type: String as PropType<keyof typeof components>, required: true },
+		panelType: { type: String as PropType<PanelTypes>, required: true },
 		clickAction: { type: Function as PropType<(index: number) => void>, required: false },
 		closeAction: { type: Function as PropType<(index: number) => void>, required: false },
+	},
+	components: {
+		LayoutCol,
+		LayoutRow,
+		...panelComponents,
 	},
 });
 </script>

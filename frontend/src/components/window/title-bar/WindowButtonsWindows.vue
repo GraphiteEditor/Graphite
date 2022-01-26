@@ -1,21 +1,21 @@
 <template>
-	<div class="windows window-button minimize" title="Minimize">
+	<LayoutRow class="window-button windows minimize" title="Minimize">
 		<IconLabel :icon="'WindowButtonWinMinimize'" />
-	</div>
-	<div class="windows window-button maximize" title="Maximize" v-if="!maximized">
+	</LayoutRow>
+	<LayoutRow class="window-button windows maximize" title="Maximize" v-if="!maximized">
 		<IconLabel :icon="'WindowButtonWinMaximize'" />
-	</div>
-	<div class="windows window-button restore-down" title="Restore Down" v-if="maximized">
+	</LayoutRow>
+	<LayoutRow class="window-button windows restore-down" title="Restore Down" v-if="maximized">
 		<IconLabel :icon="'WindowButtonWinRestoreDown'" />
-	</div>
-	<div class="windows window-button close" title="Close">
+	</LayoutRow>
+	<LayoutRow class="window-button windows close" title="Close">
 		<IconLabel :icon="'WindowButtonWinClose'" />
-	</div>
+	</LayoutRow>
 </template>
 
 <style lang="scss">
-.windows.window-button {
-	display: flex;
+.window-button.windows {
+	flex: 0 0 auto;
 	align-items: center;
 	padding: 0 17px;
 
@@ -40,10 +40,14 @@
 <script lang="ts">
 import { defineComponent, PropType } from "vue";
 
+import LayoutRow from "@/components/layout/LayoutRow.vue";
 import IconLabel from "@/components/widgets/labels/IconLabel.vue";
 
 export default defineComponent({
-	components: { IconLabel },
+	components: {
+		IconLabel,
+		LayoutRow,
+	},
 	props: {
 		maximized: { type: Boolean as PropType<boolean>, default: false },
 	},

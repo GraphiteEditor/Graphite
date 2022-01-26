@@ -105,8 +105,8 @@ export function createInputManager(editor: EditorState, container: HTMLElement, 
 
 	const onPointerDown = (e: PointerEvent): void => {
 		const { target } = e;
-		const inCanvas = target instanceof Element && target.closest(".canvas");
-		const inDialog = target instanceof Element && target.closest(".dialog-modal .floating-menu-content");
+		const inCanvas = target instanceof Element && target.closest("[data-canvas]");
+		const inDialog = target instanceof Element && target.closest("[data-dialog-modal] [data-floating-menu-content]");
 
 		if (dialog.dialogIsVisible() && !inDialog) {
 			dialog.dismissDialog();
@@ -139,9 +139,9 @@ export function createInputManager(editor: EditorState, container: HTMLElement, 
 
 	const onMouseScroll = (e: WheelEvent): void => {
 		const { target } = e;
-		const inCanvas = target instanceof Element && target.closest(".canvas");
+		const inCanvas = target instanceof Element && target.closest("[data-canvas]");
 
-		const horizontalScrollableElement = target instanceof Element && target.closest(".scrollable-x");
+		const horizontalScrollableElement = target instanceof Element && target.closest("[data-scrollable-x]");
 		if (horizontalScrollableElement && e.deltaY !== 0) {
 			horizontalScrollableElement.scrollTo(horizontalScrollableElement.scrollLeft + e.deltaY, 0);
 			return;
@@ -157,7 +157,7 @@ export function createInputManager(editor: EditorState, container: HTMLElement, 
 	// Window events
 
 	const onWindowResize = (container: HTMLElement): void => {
-		const viewports = Array.from(container.querySelectorAll(".canvas"));
+		const viewports = Array.from(container.querySelectorAll("[data-canvas]"));
 		const boundsOfViewports = viewports.map((canvas) => {
 			const bounds = canvas.getBoundingClientRect();
 			return [bounds.left, bounds.top, bounds.right, bounds.bottom];
