@@ -19,7 +19,7 @@ pub struct Text {
 	pub text: String,
 	pub style: style::PathStyle,
 	pub size: f64,
-	pub line_width: f64,
+	pub line_width: Option<f64>,
 	#[serde(skip)]
 	pub editable: bool,
 	#[serde(skip)]
@@ -43,16 +43,15 @@ impl LayerData for Text {
 		if self.editable {
 			let _ = write!(
 				svg,
-				r#"<foreignObject transform="matrix({})" style="width: {}px; height: 1000px">"#,
+				r#"<foreignObject transform="matrix({})"></foreignObject>"#,
 				transform
 					.to_cols_array()
 					.iter()
 					.enumerate()
 					.map(|(i, entry)| { entry.to_string() + if i == 5 { "" } else { "," } })
 					.collect::<String>(),
-				self.line_width,
 			);
-			let _ = write!(svg, r#"<textarea {}>{}</textarea></foreignObject>"#, self.style.render(view_mode), self.text,);
+		//let _ = write!(svg, r#"<textarea {}>{}</textarea>"#, self.style.render(view_mode), self.text,);
 		} else {
 			let mut path = self.to_bez_path();
 
@@ -96,7 +95,7 @@ impl Text {
 			text,
 			style,
 			size,
-			line_width: 300.,
+			line_width: None,
 			editable: false,
 			cached_path: BezPath::new(),
 		};

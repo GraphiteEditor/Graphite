@@ -295,6 +295,14 @@ export function newDisplayDocumentLayerTreeStructure(input: { data_buffer: DataB
 	return currentFolder;
 }
 
+export class DisplayEditableTextbox extends JsMessage {
+	readonly text!: string;
+
+	readonly line_width!: undefined | number;
+}
+
+export class DisplayRemoveEditableTextbox extends JsMessage {}
+
 export class UpdateDocumentLayer extends JsMessage {
 	@Type(() => LayerPanelEntry)
 	readonly data!: LayerPanelEntry;
@@ -391,6 +399,8 @@ export const messageConstructors: Record<string, MessageMaker> = {
 	TriggerFileDownload,
 	TriggerFileUpload,
 	DisplayDocumentLayerTreeStructure: newDisplayDocumentLayerTreeStructure,
+	DisplayEditableTextbox,
+	DisplayRemoveEditableTextbox,
 	UpdateDocumentLayer,
 	UpdateActiveTool,
 	UpdateActiveDocument,

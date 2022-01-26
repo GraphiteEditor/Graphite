@@ -111,6 +111,10 @@ pub enum DocumentMessage {
 	SetSnapping {
 		snap: bool,
 	},
+	SetTextboxEditable {
+		path: Vec<LayerId>,
+		editable: bool,
+	},
 	SetViewMode {
 		view_mode: ViewMode,
 	},

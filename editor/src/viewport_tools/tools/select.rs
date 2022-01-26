@@ -187,7 +187,7 @@ impl Fsm for SelectToolFsmState {
 						.unwrap_or(false)
 					{
 						responses.push_front(ToolMessage::ActivateTool { tool_type: ToolType::Text }.into());
-						responses.push_back(TextMessage::LeftMouseDown.into());
+						responses.push_back(TextMessage::Interact.into());
 					}
 
 					self

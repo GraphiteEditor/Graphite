@@ -41,27 +41,29 @@ impl OutlineBuilder for Builder {
 	}
 }
 
-fn word_over_length(mut str: Chars, positions: &[GlyphPosition], mut index: usize, mut pos: f64, scale: f64, line_width: f64) -> bool {
-	assert_eq!(str.nth(index), Some(' '));
-	pos += positions[index].x_advance as f64 * scale;
-
-	for c in str {
-		index += 1;
-
-		if c == ' ' || c == '\n' {
-			return false;
-		}
-
+fn word_over_length(mut str: Chars, positions: &[GlyphPosition], mut index: usize, mut pos: f64, scale: f64, line_width: Option<f64>) -> bool {
+	if let Some(line_width) = line_width {
+		assert_eq!(str.nth(index), Some(' '));
 		pos += positions[index].x_advance as f64 * scale;
 
-		if pos > line_width {
-			return true;
+		for c in str {
+			index += 1;
+
+			if c == ' ' || c == '\n' {
+				return false;
+			}
+
+			pos += positions[index].x_advance as f64 * scale;
+
+			if pos > line_width {
+				return true;
+			}
 		}
 	}
 	false
 }
 
-pub fn to_kurbo(str: &str, buzz_face: rustybuzz::Face, font_size: f64, line_width: f64) -> BezPath {
+pub fn to_kurbo(str: &str, buzz_face: rustybuzz::Face, font_size: f64, line_width: Option<f64>) -> BezPath {
 	let scale = (buzz_face.units_per_em() as f64).recip() * font_size;
 	let line_hight = font_size;
 
@@ -83,8 +85,10 @@ pub fn to_kurbo(str: &str, buzz_face: rustybuzz::Face, font_size: f64, line_widt
 		if char == '\n' || (char == ' ' && word_over_length(str.chars(), positions, index, builder.pos.x, scale, line_width)) {
 			builder.pos = Point::new(0., builder.pos.y + line_hight);
 		} else {
-			if builder.pos.x + (pos.x_advance as f64 * scale) >= line_width {
-				builder.pos = Point::new(0., builder.pos.y + line_hight);
+			if let Some(line_width) = line_width {
+				if builder.pos.x + (pos.x_advance as f64 * scale) >= line_width {
+					builder.pos = Point::new(0., builder.pos.y + line_hight);
+				}
 			}
 			builder.offset = Vec2::new(pos.x_offset as f64, pos.y_offset as f64) * scale;
 			buzz_face.outline_glyph(GlyphId(info.glyph_id as u16), &mut builder);
@@ -108,7 +112,7 @@ In publishing and graphic design, Lorem ipsum is a placeholder text commonly use
 Lorem ipsum is typically a corrupted version of De finibus bonorum et malorum, a 1st-century BC text by the Roman statesman and philosopher Cicero, with words altered, added, and removed to make it nonsensical and improper Latin.
 
 Test for really long word: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"#;
-	let svg = to_kurbo(text, buzz_face, 20., 400.).to_svg();
+	let svg = to_kurbo(text, buzz_face, 20., Some(400.)).to_svg();
 
 	let mut file = File::create("src/layers/text/SourceSansPro/font_text.svg").unwrap();
 	write!(

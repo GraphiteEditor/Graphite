@@ -30,7 +30,7 @@ pub enum TextMessage {
 
 	// Tool-specific messages
 	CommitText,
-	LeftMouseDown,
+	Interact,
 	TextChange {
 		new_text: String,
 		cancel_editing: bool,
@@ -62,8 +62,8 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Text {
 		use TextToolFsmState::*;
 
 		match self.fsm_state {
-			Ready => actions!(TextMessageDiscriminant; LeftMouseDown),
-			Editing => actions!(TextMessageDiscriminant; LeftMouseDown, Abort, CommitText),
+			Ready => actions!(TextMessageDiscriminant; Interact),
+			Editing => actions!(TextMessageDiscriminant; Interact, Abort, CommitText),
 		}
 	}
 }
@@ -102,7 +102,7 @@ impl Fsm for TextToolFsmState {
 
 		if let ToolMessage::Text(event) = event {
 			match (self, event) {
-				(state, LeftMouseDown) => {
+				(state, Interact) => {
 					let mouse_pos = input.mouse.position;
 					let tolerance = DVec2::splat(SELECTION_TOLERANCE);
 					let quad = Quad::from_box([mouse_pos - tolerance, mouse_pos + tolerance]);
@@ -116,13 +116,13 @@ impl Fsm for TextToolFsmState {
 					{
 						if state == TextToolFsmState::Editing {
 							let editable = false;
-							responses.push_back(Operation::SetTextEditable { path: data.path.clone(), editable }.into());
+							responses.push_back(DocumentMessage::SetTextboxEditable { path: data.path.clone(), editable }.into());
 						}
 
 						data.path = l.clone();
 
 						let editable = true;
-						responses.push_back(Operation::SetTextEditable { path: data.path.clone(), editable }.into());
+						responses.push_back(DocumentMessage::SetTextboxEditable { path: data.path.clone(), editable }.into());
 
 						Editing
 					}
@@ -155,13 +155,13 @@ Test for really long word: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 						responses.push_back(Operation::SetLayerTransformInViewport { path: data.path.clone(), transform }.into());
 
 						let editable = true;
-						responses.push_back(Operation::SetTextEditable { path: data.path.clone(), editable }.into());
+						responses.push_back(DocumentMessage::SetTextboxEditable { path: data.path.clone(), editable }.into());
 
 						Editing
 					} else {
 						// Removing old text as editable
 						let editable = false;
-						responses.push_back(Operation::SetTextEditable { path: data.path.clone(), editable }.into());
+						responses.push_back(DocumentMessage::SetTextboxEditable { path: data.path.clone(), editable }.into());
 						Ready
 					};
 
@@ -169,7 +169,7 @@ Test for really long word: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 				}
 				(Editing, Abort) => {
 					let editable = false;
-					responses.push_back(Operation::SetTextEditable { path: data.path.clone(), editable }.into());
+					responses.push_back(DocumentMessage::SetTextboxEditable { path: data.path.clone(), editable }.into());
 					Ready
 				}
 				(Editing, CommitText) => {
@@ -181,7 +181,7 @@ Test for really long word: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 
 					if cancel_editing {
 						let editable = false;
-						responses.push_back(Operation::SetTextEditable { path: data.path.clone(), editable }.into());
+						responses.push_back(DocumentMessage::SetTextboxEditable { path: data.path.clone(), editable }.into());
 
 						Ready
 					} else {

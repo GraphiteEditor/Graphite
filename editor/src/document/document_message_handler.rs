@@ -949,6 +949,21 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 			SetSnapping { snap } => {
 				self.snapping_enabled = snap;
 			}
+			SetTextboxEditable { path, editable } => {
+				let text = self.graphene_document.layer(&path).unwrap().as_text().unwrap();
+				responses.push_back(DocumentOperation::SetTextEditable { path, editable }.into());
+				if editable {
+					responses.push_back(
+						FrontendMessage::DisplayEditableTextbox {
+							text: text.text.clone(),
+							line_width: text.line_width,
+						}
+						.into(),
+					);
+				} else {
+					responses.push_back(FrontendMessage::DisplayRemoveEditableTextbox.into());
+				}
+			}
 			SetViewMode { view_mode } => {
 				self.view_mode = view_mode;
 				responses.push_front(DocumentMessage::DirtyRenderDocument.into());

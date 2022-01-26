@@ -1,22 +1,21 @@
-import { TriggerTextCommit } from "@/dispatcher/js-messages";
 import { DialogState } from "@/state/dialog";
 import { DocumentsState } from "@/state/documents";
 import { FullscreenState } from "@/state/fullscreen";
 import { EditorState } from "@/state/wasm-loader";
 
-type EventName = keyof HTMLElementEventMap | keyof WindowEventHandlersEventMap;
+type EventName = keyof HTMLElementEventMap | keyof WindowEventHandlersEventMap | "modifyinputfield";
 interface EventListenerTarget {
 	addEventListener: typeof window.addEventListener;
 	removeEventListener: typeof window.removeEventListener;
 }
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
-export function createInputManager(editor: EditorState, container: HTMLElement, dialog: DialogState, document: DocumentsState, fullscreen: FullscreenState) {
+export function createInputManager(editor: EditorState, container: HTMLElement, dialog: DialogState, documentState: DocumentsState, fullscreen: FullscreenState) {
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	const listeners: { target: EventListenerTarget; eventName: EventName; action: (event: any) => void; options?: boolean | AddEventListenerOptions }[] = [
 		{ target: window, eventName: "resize", action: (): void => onWindowResize(container) },
 		{ target: window, eventName: "beforeunload", action: (e: BeforeUnloadEvent): void => onBeforeUnload(e) },
-		{ target: window.document, eventName: "contextmenu", action: (e: MouseEvent): void => e.preventDefault() },
+		// { target: window.document, eventName: "contextmenu", action: (e: MouseEvent): void => e.preventDefault() },
 		{ target: window.document, eventName: "fullscreenchange", action: (): void => fullscreen.fullscreenModeChanged() },
 		{ target: window, eventName: "keyup", action: (e: KeyboardEvent): void => onKeyUp(e) },
 		{ target: window, eventName: "keydown", action: (e: KeyboardEvent): void => onKeyDown(e) },
@@ -26,10 +25,11 @@ export function createInputManager(editor: EditorState, container: HTMLElement, 
 		{ target: window, eventName: "dblclick", action: (e: PointerEvent): void => onDoubleClick(e) },
 		{ target: window, eventName: "mousedown", action: (e: MouseEvent): void => onMouseDown(e) },
 		{ target: window, eventName: "wheel", action: (e: WheelEvent): void => onMouseScroll(e), options: { passive: false } },
+		{ target: window, eventName: "modifyinputfield", action: (e: CustomEvent): void => onmodifyinputfiled(e) },
 	];
 
 	let viewportPointerInteractionOngoing = false;
-	let textInput = undefined as undefined | HTMLTextAreaElement;
+	let textInput = undefined as undefined | HTMLDivElement;
 
 	// Keyboard events
 
@@ -111,6 +111,7 @@ export function createInputManager(editor: EditorState, container: HTMLElement, 
 		const { target } = e;
 		const inCanvas = target instanceof Element && target.closest("[data-canvas]");
 		const inDialog = target instanceof Element && target.closest("[data-dialog-modal] [data-floating-menu-content]");
+		const inTextInput = target === textInput;
 
 		if (dialog.dialogIsVisible() && !inDialog) {
 			dialog.dismissDialog();
@@ -118,12 +119,10 @@ export function createInputManager(editor: EditorState, container: HTMLElement, 
 			e.stopPropagation();
 		}
 
-		if (target instanceof HTMLTextAreaElement) {
-			textInput = target;
-		} else if (textInput) {
-			editor.instance.on_change_text(textInput.value, true);
-			textInput = undefined;
-		} else if (inCanvas) viewportPointerInteractionOngoing = true;
+		if (textInput && !inTextInput) {
+			console.log(textInput);
+			editor.instance.on_change_text(textInput.innerText || "", true);
+		} else if (inCanvas && !inTextInput) viewportPointerInteractionOngoing = true;
 
 		if (viewportPointerInteractionOngoing) {
 			const modifiers = makeModifiersBitfield(e);
@@ -174,6 +173,10 @@ export function createInputManager(editor: EditorState, container: HTMLElement, 
 		}
 	};
 
+	const onmodifyinputfiled = (e: CustomEvent): void => {
+		textInput = e.detail;
+	};
+
 	// Window events
 
 	const onWindowResize = (container: HTMLElement): void => {
@@ -190,7 +193,7 @@ export function createInputManager(editor: EditorState, container: HTMLElement, 
 	};
 
 	const onBeforeUnload = (e: BeforeUnloadEvent): void => {
-		const activeDocument = document.state.documents[document.state.activeDocumentIndex];
+		const activeDocument = documentState.state.documents[documentState.state.activeDocumentIndex];
 		if (!activeDocument.is_saved) editor.instance.trigger_auto_save(activeDocument.id);
 
 		// Skip the message if the editor crashed, since work is already lost
@@ -199,7 +202,7 @@ export function createInputManager(editor: EditorState, container: HTMLElement, 
 		// Skip the message during development, since it's annoying when testing
 		if (process.env.NODE_ENV === "development") return;
 
-		const allDocumentsSaved = document.state.documents.reduce((acc, doc) => acc && doc.is_saved, true);
+		const allDocumentsSaved = documentState.state.documents.reduce((acc, doc) => acc && doc.is_saved, true);
 		if (!allDocumentsSaved) {
 			e.returnValue = "Unsaved work will be lost if the web browser tab is closed. Close anyway?";
 			e.preventDefault();
@@ -215,10 +218,6 @@ export function createInputManager(editor: EditorState, container: HTMLElement, 
 	const removeListeners = (): void => {
 		listeners.forEach(({ target, eventName, action }) => target.removeEventListener(eventName, action));
 	};
-
-	editor.dispatcher.subscribeJsMessage(TriggerTextCommit, () => {
-		if (textInput) editor.instance.on_change_text(textInput.value, false);
-	});
 
 	// Run on creation
 	addListeners();
