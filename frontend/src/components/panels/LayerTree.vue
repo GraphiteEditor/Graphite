@@ -104,11 +104,10 @@
 	.layer-tree {
 		// Crop away the 1px border below the bottom layer entry when it uses the full space of this panel
 		margin-bottom: -1px;
-
 		position: relative;
 
 		.insert-mark {
-			right: 0px;
+			right: 0;
 			position: absolute;
 			background: var(--color-accent-hover);
 			margin-top: -2px;
