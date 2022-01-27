@@ -10,12 +10,12 @@ interface EventListenerTarget {
 }
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
-export function createInputManager(editor: EditorState, container: HTMLElement, dialog: DialogState, documentState: DocumentsState, fullscreen: FullscreenState) {
+export function createInputManager(editor: EditorState, container: HTMLElement, dialog: DialogState, document: DocumentsState, fullscreen: FullscreenState) {
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	const listeners: { target: EventListenerTarget; eventName: EventName; action: (event: any) => void; options?: boolean | AddEventListenerOptions }[] = [
 		{ target: window, eventName: "resize", action: (): void => onWindowResize(container) },
 		{ target: window, eventName: "beforeunload", action: (e: BeforeUnloadEvent): void => onBeforeUnload(e) },
-		// { target: window.document, eventName: "contextmenu", action: (e: MouseEvent): void => e.preventDefault() },
+		{ target: window.document, eventName: "contextmenu", action: (e: MouseEvent): void => e.preventDefault() },
 		{ target: window.document, eventName: "fullscreenchange", action: (): void => fullscreen.fullscreenModeChanged() },
 		{ target: window, eventName: "keyup", action: (e: KeyboardEvent): void => onKeyUp(e) },
 		{ target: window, eventName: "keydown", action: (e: KeyboardEvent): void => onKeyDown(e) },
@@ -192,7 +192,7 @@ export function createInputManager(editor: EditorState, container: HTMLElement, 
 	};
 
 	const onBeforeUnload = (e: BeforeUnloadEvent): void => {
-		const activeDocument = documentState.state.documents[documentState.state.activeDocumentIndex];
+		const activeDocument = document.state.documents[document.state.activeDocumentIndex];
 		if (!activeDocument.is_saved) editor.instance.trigger_auto_save(activeDocument.id);
 
 		// Skip the message if the editor crashed, since work is already lost
@@ -201,7 +201,7 @@ export function createInputManager(editor: EditorState, container: HTMLElement, 
 		// Skip the message during development, since it's annoying when testing
 		if (process.env.NODE_ENV === "development") return;
 
-		const allDocumentsSaved = documentState.state.documents.reduce((acc, doc) => acc && doc.is_saved, true);
+		const allDocumentsSaved = document.state.documents.reduce((acc, doc) => acc && doc.is_saved, true);
 		if (!allDocumentsSaved) {
 			e.returnValue = "Unsaved work will be lost if the web browser tab is closed. Close anyway?";
 			e.preventDefault();
