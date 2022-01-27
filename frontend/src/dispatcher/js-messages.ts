@@ -398,7 +398,7 @@ export function isWidgetSection(layoutRow: WidgetRow | WidgetSection): layoutRow
 	return !!(layoutRow as WidgetSection).layout;
 }
 
-export type WidgetKind = "NumberInput" | "Separator" | "IconButton" | "PopoverButton";
+export type WidgetKind = "NumberInput" | "Separator" | "IconButton" | "PopoverButton" | "OptionalInput" | "RadioInput";
 
 export interface Widget {
 	kind: WidgetKind;
@@ -408,6 +408,13 @@ export interface Widget {
 }
 
 export class UpdateToolOptionsLayout extends JsMessage implements WidgetLayout {
+	layout_target!: unknown;
+
+	@Transform(({ value }) => createWidgetLayout(value))
+	layout!: LayoutRow[];
+}
+
+export class UpdateDocumentBarLayout extends JsMessage {
 	layout_target!: unknown;
 
 	@Transform(({ value }) => createWidgetLayout(value))
@@ -474,5 +481,6 @@ export const messageConstructors: Record<string, MessageMaker> = {
 	UpdateDocumentArtboards,
 	UpdateToolOptionsLayout,
 	DisplayDialogComingSoon,
+	UpdateDocumentBarLayout,
 } as const;
 export type JsMessageType = keyof typeof messageConstructors;

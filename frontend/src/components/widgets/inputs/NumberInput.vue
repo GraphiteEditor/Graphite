@@ -173,7 +173,7 @@ export default defineComponent({
 	},
 	data() {
 		return {
-			text: `${this.value}${this.unit}`,
+			text: this.generateText(this.value),
 			editing: false,
 			id: `${Math.random()}`.substring(2),
 		};
@@ -236,9 +236,9 @@ export default defineComponent({
 			if (typeof this.min === "number" && !Number.isNaN(this.min)) sanitized = Math.max(sanitized, this.min);
 			if (typeof this.max === "number" && !Number.isNaN(this.max)) sanitized = Math.min(sanitized, this.max);
 			if (!invalid) this.$emit("update:value", sanitized);
-			this.setText(sanitized);
+			this.text = this.generateText(sanitized);
 		},
-		setText(value: number) {
+		generateText(value: number): string {
 			// Find the amount of digits on the left side of the decimal
 			// 10.25 == 2
 			// 1.23 == 1
@@ -246,7 +246,7 @@ export default defineComponent({
 			const leftSideDigits = Math.max(Math.floor(value).toString().length, 0) * Math.sign(value);
 			const roundingPower = 10 ** Math.max(this.displayDecimalPlaces - leftSideDigits, 0);
 			const displayValue = Math.round(value * roundingPower) / roundingPower;
-			this.text = `${displayValue}${this.unit}`;
+			return `${displayValue}${this.unit}`;
 		},
 	},
 	watch: {
@@ -260,7 +260,7 @@ export default defineComponent({
 			let sanitized = newValue;
 			if (typeof this.min === "number") sanitized = Math.max(sanitized, this.min);
 			if (typeof this.max === "number") sanitized = Math.min(sanitized, this.max);
-			this.setText(sanitized);
+			this.text = this.generateText(sanitized);
 		},
 	},
 	mounted() {

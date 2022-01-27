@@ -130,12 +130,3 @@ pub fn translate_key(name: &str) -> Key {
 		_ => UnknownKey,
 	}
 }
-
-pub fn translate_view_mode(name: &str) -> Option<ViewMode> {
-	Some(match name {
-		"Normal" => ViewMode::Normal,
-		"Outline" => ViewMode::Outline,
-		"Pixels" => ViewMode::Pixels,
-		_ => return None,
-	})
-}

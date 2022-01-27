@@ -88,9 +88,7 @@ impl<T> WidgetCallback<T> {
 
 impl<T> Default for WidgetCallback<T> {
 	fn default() -> Self {
-		Self {
-			callback: |_| LayoutMessage::WidgetDefaultMarker.into(),
-		}
+		Self { callback: |_| Message::NoOp }
 	}
 }
 
@@ -99,7 +97,9 @@ impl<T> Default for WidgetCallback<T> {
 pub enum Widget {
 	IconButton(IconButton),
 	NumberInput(NumberInput),
+	OptionalInput(OptionalInput),
 	PopoverButton(PopoverButton),
+	RadioInput(RadioInput),
 	Separator(Separator),
 }
 
@@ -114,8 +114,33 @@ pub struct NumberInput {
 	pub max: Option<f64>,
 	#[serde(rename = "isInteger")]
 	pub is_integer: bool,
+	#[serde(rename = "incrementBehavior")]
+	pub increment_behavior: NumberInputIncrementBehavior,
+	#[serde(rename = "incrementFactor")]
+	pub increment_factor: f64,
+	#[serde(skip)]
+	#[derivative(Debug = "ignore", PartialEq = "ignore")]
+	pub increment_callback_increase: WidgetCallback<NumberInput>,
+	#[serde(skip)]
+	#[derivative(Debug = "ignore", PartialEq = "ignore")]
+	pub increment_callback_decrease: WidgetCallback<NumberInput>,
 	pub label: String,
 	pub unit: String,
+}
+
+#[derive(Clone, Serialize, Deserialize, Derivative)]
+#[derivative(Debug, PartialEq)]
+pub enum NumberInputIncrementBehavior {
+	Add,
+	Multiply,
+	Callback,
+	None,
+}
+
+impl Default for NumberInputIncrementBehavior {
+	fn default() -> Self {
+		Self::None
+	}
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -158,7 +183,41 @@ pub struct IconButton {
 
 #[derive(Clone, Serialize, Deserialize, Derivative, Default)]
 #[derivative(Debug, PartialEq)]
+pub struct OptionalInput {
+	pub checked: bool,
+	pub icon: String,
+	pub title: String,
+	#[serde(skip)]
+	#[derivative(Debug = "ignore", PartialEq = "ignore")]
+	pub on_update: WidgetCallback<OptionalInput>,
+}
+
+#[derive(Clone, Serialize, Deserialize, Derivative, Default)]
+#[derivative(Debug, PartialEq)]
 pub struct PopoverButton {
 	pub title: String,
 	pub text: String,
+}
+
+#[derive(Clone, Serialize, Deserialize, Derivative, Default)]
+#[derivative(Debug, PartialEq)]
+pub struct RadioInput {
+	pub entries: Vec<RadioEntryData>,
+
+	// use u32 since it will be serialized as a normal JS number
+	// TODO(mfish33): Replace with usize when using native UI
+	#[serde(rename = "selectedIndex")]
+	pub selected_index: u32,
+}
+
+#[derive(Clone, Serialize, Deserialize, Derivative, Default)]
+#[derivative(Debug, PartialEq)]
+pub struct RadioEntryData {
+	pub value: String,
+	pub label: String,
+	pub icon: String,
+	pub tooltip: String,
+	#[serde(skip)]
+	#[derivative(Debug = "ignore", PartialEq = "ignore")]
+	pub on_update: WidgetCallback<()>,
 }

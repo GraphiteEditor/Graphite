@@ -16,5 +16,6 @@ pub enum LayoutMessage {
 #[remain::sorted]
 #[derive(PartialEq, Clone, Deserialize, Serialize, Debug, Hash, Eq)]
 pub enum LayoutTarget {
+	DocumentBar,
 	ToolOptions,
 }

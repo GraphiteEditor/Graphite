@@ -34,6 +34,7 @@ pub enum FrontendMessage {
 	UpdateCanvasZoom { factor: f64 },
 	UpdateDocumentArtboards { svg: String },
 	UpdateDocumentArtwork { svg: String },
+	UpdateDocumentBarLayout { layout_target: LayoutTarget, layout: SubLayout },
 	UpdateDocumentLayer { data: LayerPanelEntry },
 	UpdateDocumentOverlays { svg: String },
 	UpdateDocumentRulers { origin: (f64, f64), spacing: f64, interval: f64 },

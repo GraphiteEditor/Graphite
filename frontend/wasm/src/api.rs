@@ -3,7 +3,7 @@
 // on the dispatcher messaging system and more complex Rust data types.
 
 use crate::helpers::Error;
-use crate::type_translators::{translate_blend_mode, translate_key, translate_tool_type, translate_view_mode};
+use crate::type_translators::{translate_blend_mode, translate_key, translate_tool_type};
 use crate::{EDITOR_HAS_CRASHED, EDITOR_INSTANCES};
 
 use editor::consts::{FILE_SAVE_SUFFIX, GRAPHITE_DOCUMENT_VERSION};
@@ -212,7 +212,6 @@ impl JsEditorHandle {
 		self.dispatch(message);
 	}
 
-	#[wasm_bindgen]
 	pub fn request_about_graphite_dialog(&self) {
 		let message = PortfolioMessage::RequestAboutGraphiteDialog;
 		self.dispatch(message);
@@ -220,7 +219,6 @@ impl JsEditorHandle {
 
 	/// Send new bounds when document panel viewports get resized or moved within the editor
 	/// [left, top, right, bottom]...
-	#[wasm_bindgen]
 	pub fn bounds_of_viewports(&self, bounds_of_viewports: &[f64]) {
 		let chunked: Vec<_> = bounds_of_viewports.chunks(4).map(ViewportBounds::from_slice).collect();
 
@@ -414,52 +412,6 @@ impl JsEditorHandle {
 	/// Export the document
 	pub fn export_document(&self) {
 		let message = DocumentMessage::ExportDocument;
-		self.dispatch(message);
-	}
-
-	/// Set snapping on or off
-	pub fn set_snapping(&self, snap: bool) {
-		let message = DocumentMessage::SetSnapping { snap };
-		self.dispatch(message);
-	}
-
-	/// Set display of overlays on or off
-	pub fn set_overlays_visibility(&self, visible: bool) {
-		let message = DocumentMessage::SetOverlaysVisibility { visible };
-		self.dispatch(message);
-	}
-
-	/// Set the view mode to change the way layers are drawn in the viewport
-	pub fn set_view_mode(&self, view_mode: String) -> Result<(), JsValue> {
-		if let Some(view_mode) = translate_view_mode(view_mode.as_str()) {
-			self.dispatch(DocumentMessage::SetViewMode { view_mode });
-			Ok(())
-		} else {
-			Err(Error::new("Invalid view mode").into())
-		}
-	}
-
-	/// Sets the zoom to the value
-	pub fn set_canvas_zoom(&self, zoom_factor: f64) {
-		let message = MovementMessage::SetCanvasZoom { zoom_factor };
-		self.dispatch(message);
-	}
-
-	/// Zoom in to the next step
-	pub fn increase_canvas_zoom(&self) {
-		let message = MovementMessage::IncreaseCanvasZoom { center_on_mouse: false };
-		self.dispatch(message);
-	}
-
-	/// Zoom out to the next step
-	pub fn decrease_canvas_zoom(&self) {
-		let message = MovementMessage::DecreaseCanvasZoom { center_on_mouse: false };
-		self.dispatch(message);
-	}
-
-	/// Sets the rotation to the new value (in radians)
-	pub fn set_rotation(&self, angle_radians: f64) {
-		let message = MovementMessage::SetCanvasRotation { angle_radians };
 		self.dispatch(message);
 	}
 

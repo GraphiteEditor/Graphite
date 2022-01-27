@@ -7,6 +7,11 @@ use crate::consts::{
 	ASYMPTOTIC_EFFECT, DEFAULT_DOCUMENT_NAME, FILE_EXPORT_SUFFIX, FILE_SAVE_SUFFIX, GRAPHITE_DOCUMENT_VERSION, SCALE_EFFECT, SCROLLBAR_SPACING, VIEWPORT_ZOOM_TO_FIT_PADDING_SCALE_FACTOR,
 };
 use crate::input::InputPreprocessorMessageHandler;
+use crate::layout::layout_message::LayoutTarget;
+use crate::layout::widgets::{
+	IconButton, LayoutRow, NumberInput, OptionalInput, PopoverButton, PropertyHolder, RadioEntryData, RadioInput, Separator, SeparatorDirection, SeparatorType, Widget, WidgetCallback, WidgetHolder,
+	WidgetLayout, NumberInputIncrementBehavior,
+};
 use crate::message_prelude::*;
 use crate::EditorError;
 
@@ -451,6 +456,154 @@ impl DocumentMessageHandler {
 	}
 }
 
+impl PropertyHolder for DocumentMessageHandler {
+	fn properties(&self) -> WidgetLayout {
+		WidgetLayout::new(vec![LayoutRow::Row {
+			name: "".into(),
+			widgets: vec![
+				WidgetHolder::new(Widget::OptionalInput(OptionalInput {
+					checked: self.snapping_enabled,
+					icon: "Snapping".into(),
+					title: "Snapping".into(),
+					on_update: WidgetCallback::new(|updated_optional_input| DocumentMessage::SetSnapping { snap: updated_optional_input.checked }.into()),
+				})),
+				WidgetHolder::new(Widget::PopoverButton(PopoverButton {
+					title: "Snapping".into(),
+					text: "The contents of this popover menu are coming soon".into(),
+				})),
+				WidgetHolder::new(Widget::Separator(Separator {
+					separator_type: SeparatorType::Unrelated,
+					direction: SeparatorDirection::Horizontal,
+				})),
+				WidgetHolder::new(Widget::OptionalInput(OptionalInput {
+					checked: true,
+					icon: "Grid".into(),
+					title: "Grid".into(),
+					on_update: WidgetCallback::new(|_| FrontendMessage::DisplayDialogComingSoon { issue: Some(318) }.into()),
+				})),
+				WidgetHolder::new(Widget::PopoverButton(PopoverButton {
+					title: "Grid".into(),
+					text: "The contents of this popover menu are coming soon".into(),
+				})),
+				WidgetHolder::new(Widget::Separator(Separator {
+					separator_type: SeparatorType::Unrelated,
+					direction: SeparatorDirection::Horizontal,
+				})),
+				WidgetHolder::new(Widget::OptionalInput(OptionalInput {
+					checked: self.overlays_visible,
+					icon: "Overlays".into(),
+					title: "Overlays".into(),
+					on_update: WidgetCallback::new(|updated_optional_input| {
+						DocumentMessage::SetOverlaysVisibility {
+							visible: updated_optional_input.checked,
+						}
+						.into()
+					}),
+				})),
+				WidgetHolder::new(Widget::PopoverButton(PopoverButton {
+					title: "Overlays".into(),
+					text: "The contents of this popover menu are coming soon".into(),
+				})),
+				WidgetHolder::new(Widget::Separator(Separator {
+					separator_type: SeparatorType::Unrelated,
+					direction: SeparatorDirection::Horizontal,
+				})),
+				WidgetHolder::new(Widget::RadioInput(RadioInput {
+					selected_index: if self.view_mode == ViewMode::Normal { 0 } else { 1 },
+					entries: vec![
+						RadioEntryData {
+							value: "normal".into(),
+							icon: "ViewModeNormal".into(),
+							tooltip: "View Mode: Normal".into(),
+							on_update: WidgetCallback::new(|_| DocumentMessage::SetViewMode { view_mode: ViewMode::Normal }.into()),
+							..RadioEntryData::default()
+						},
+						RadioEntryData {
+							value: "outline".into(),
+							icon: "ViewModeOutline".into(),
+							tooltip: "View Mode: Outline".into(),
+							on_update: WidgetCallback::new(|_| DocumentMessage::SetViewMode { view_mode: ViewMode::Outline }.into()),
+							..RadioEntryData::default()
+						},
+						RadioEntryData {
+							value: "pixels".into(),
+							icon: "ViewModePixels".into(),
+							tooltip: "View Mode: Pixels".into(),
+							on_update: WidgetCallback::new(|_| FrontendMessage::DisplayDialogComingSoon { issue: Some(320) }.into()),
+							..RadioEntryData::default()
+						},
+					],
+				})),
+				WidgetHolder::new(Widget::PopoverButton(PopoverButton {
+					title: "View Mode".into(),
+					text: "The contents of this popover menu are coming soon".into(),
+				})),
+				WidgetHolder::new(Widget::Separator(Separator {
+					separator_type: SeparatorType::Section,
+					direction: SeparatorDirection::Horizontal,
+				})),
+				WidgetHolder::new(Widget::NumberInput(NumberInput {
+					unit: "°".into(),
+					value: self.movement_handler.tilt / (std::f64::consts::PI / 180.),
+					increment_factor: 15.,
+					on_update: WidgetCallback::new(|number_input| {
+						MovementMessage::SetCanvasRotation {
+							angle_radians: number_input.value * (std::f64::consts::PI / 180.),
+						}
+						.into()
+					}),
+					..NumberInput::default()
+				})),
+				WidgetHolder::new(Widget::Separator(Separator {
+					separator_type: SeparatorType::Section,
+					direction: SeparatorDirection::Horizontal,
+				})),
+				WidgetHolder::new(Widget::IconButton(IconButton {
+					size: 24,
+					icon: "ZoomIn".into(),
+					title: "Zoom In".into(),
+					on_update: WidgetCallback::new(|_| MovementMessage::IncreaseCanvasZoom { center_on_mouse: false }.into()),
+					..IconButton::default()
+				})),
+				WidgetHolder::new(Widget::IconButton(IconButton {
+					size: 24,
+					icon: "ZoomOut".into(),
+					title: "Zoom Out".into(),
+					on_update: WidgetCallback::new(|_| MovementMessage::DecreaseCanvasZoom { center_on_mouse: false }.into()),
+					..IconButton::default()
+				})),
+				WidgetHolder::new(Widget::IconButton(IconButton {
+					size: 24,
+					icon: "ZoomReset".into(),
+					title: "Zoom to 100%".into(),
+					on_update: WidgetCallback::new(|_| MovementMessage::SetCanvasZoom { zoom_factor: 1. }.into()),
+					..IconButton::default()
+				})),
+				WidgetHolder::new(Widget::Separator(Separator {
+					separator_type: SeparatorType::Related,
+					direction: SeparatorDirection::Horizontal,
+				})),
+				WidgetHolder::new(Widget::NumberInput(NumberInput {
+					unit: "%".into(),
+					value: self.movement_handler.zoom * 100.,
+					min: Some(0.000001),
+					max: Some(1000000.),
+					on_update: WidgetCallback::new(|number_input| {
+						MovementMessage::SetCanvasZoom {
+							zoom_factor: number_input.value / 100.,
+						}
+						.into()
+					}),
+					increment_behavior:NumberInputIncrementBehavior::Callback,
+					increment_callback_decrease: WidgetCallback::new(|_| MovementMessage::DecreaseCanvasZoom { center_on_mouse: false }.into()),
+					increment_callback_increase: WidgetCallback::new(|_| MovementMessage::IncreaseCanvasZoom { center_on_mouse: false }.into()),
+					..NumberInput::default()
+				})),
+			],
+		}])
+	}
+}
+
 impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for DocumentMessageHandler {
 	#[remain::check]
 	fn process_action(&mut self, message: DocumentMessage, ipp: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) {
@@ -499,6 +652,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 			#[remain::unsorted]
 			Movement(message) => {
 				self.movement_handler.process_action(message, (&self.graphene_document, ipp), responses);
+				self.register_properties(responses, LayoutTarget::DocumentBar);
 			}
 			#[remain::unsorted]
 			Overlays(message) => {
