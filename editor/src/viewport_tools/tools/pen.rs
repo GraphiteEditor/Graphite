@@ -11,7 +11,7 @@ use crate::viewport_tools::tool_options::ToolOptions;
 use graphene::layers::style;
 use graphene::Operation;
 
-use glam::DAffine2;
+use glam::{DAffine2, DVec2};
 use serde::{Deserialize, Serialize};
 
 #[derive(Default)]
@@ -80,8 +80,8 @@ impl Default for PenToolFsmState {
 }
 #[derive(Clone, Debug, Default)]
 struct PenToolData {
-	points: Vec<DAffine2>,
-	next_point: DAffine2,
+	points: Vec<DVec2>,
+	next_point: DVec2,
 	weight: u32,
 	path: Option<Vec<LayerId>>,
 	layer_exists: bool,
@@ -116,7 +116,7 @@ impl Fsm for PenToolFsmState {
 					data.snap_handler.start_snap(document, document.visible_layers());
 					let snapped_position = data.snap_handler.snap_position(responses, input.viewport_bounds.size(), document, input.mouse.position);
 
-					let pos = transform.inverse() * DAffine2::from_translation(snapped_position);
+					let pos = transform.inverse().transform_point2(snapped_position);
 
 					data.points.push(pos);
 					data.next_point = pos;
@@ -132,7 +132,7 @@ impl Fsm for PenToolFsmState {
 				}
 				(Drawing, DragStop) => {
 					let snapped_position = data.snap_handler.snap_position(responses, input.viewport_bounds.size(), document, input.mouse.position);
-					let pos = transform.inverse() * DAffine2::from_translation(snapped_position);
+					let pos = transform.inverse().transform_point2(snapped_position);
 
 					// TODO: introduce comparison threshold when operating with canvas coordinates (https://github.com/GraphiteEditor/Graphite/issues/100)
 					if data.points.last() != Some(&pos) {
@@ -147,7 +147,7 @@ impl Fsm for PenToolFsmState {
 				}
 				(Drawing, PointerMove) => {
 					let snapped_position = data.snap_handler.snap_position(responses, input.viewport_bounds.size(), document, input.mouse.position);
-					let pos = transform.inverse() * DAffine2::from_translation(snapped_position);
+					let pos = transform.inverse().transform_point2(snapped_position);
 					data.next_point = pos;
 
 					responses.push_back(remove_preview(data));
@@ -215,9 +215,9 @@ fn remove_preview(data: &PenToolData) -> Message {
 }
 
 fn make_operation(data: &PenToolData, tool_data: &DocumentToolData, show_preview: bool) -> Message {
-	let mut points: Vec<(f64, f64)> = data.points.iter().map(|p| (p.translation.x, p.translation.y)).collect();
+	let mut points: Vec<(f64, f64)> = data.points.iter().map(|p| (p.x, p.y)).collect();
 	if show_preview {
-		points.push((data.next_point.translation.x, data.next_point.translation.y))
+		points.push((data.next_point.x, data.next_point.y))
 	}
 
 	Operation::AddPen {
