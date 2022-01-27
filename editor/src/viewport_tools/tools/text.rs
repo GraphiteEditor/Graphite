@@ -12,6 +12,7 @@ use glam::{DAffine2, DVec2};
 use graphene::intersection::Quad;
 use graphene::layers::style::{self, Fill, Stroke};
 use graphene::Operation;
+use kurbo::Shape;
 use serde::{Deserialize, Serialize};
 
 #[derive(Default)]
@@ -35,6 +36,9 @@ pub enum TextMessage {
 	CommitText,
 	Interact,
 	TextChange {
+		new_text: String,
+	},
+	UpdateBounds {
 		new_text: String,
 	},
 }
@@ -282,6 +286,26 @@ impl Fsm for TextToolFsmState {
 					resize_overlays(&mut data.overlays, responses, 0);
 
 					Ready
+				}
+				(Editing, UpdateBounds { new_text }) => {
+					resize_overlays(&mut data.overlays, responses, 1);
+					let mut path = document.graphene_document.layer(&data.path).unwrap().as_text().unwrap().bounding_box(&new_text).to_path(0.1);
+
+					fn glam_to_kurbo(transform: DAffine2) -> kurbo::Affine {
+						kurbo::Affine::new(transform.to_cols_array())
+					}
+
+					path.apply_affine(glam_to_kurbo(document.graphene_document.multiply_transforms(&data.path).unwrap()));
+
+					let kurbo::Rect { x0, y0, x1, y1 } = path.bounding_box();
+
+					let operation = Operation::SetLayerTransformInViewport {
+						path: data.overlays[0].clone(),
+						transform: transform_from_box(DVec2::new(x0, y0), DVec2::new(x1, y1)),
+					};
+					responses.push_back(DocumentMessage::Overlays(operation.into()).into());
+
+					Editing
 				}
 				_ => self,
 			}

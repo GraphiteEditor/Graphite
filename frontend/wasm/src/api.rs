@@ -305,9 +305,17 @@ impl JsEditorHandle {
 		self.dispatch(message);
 	}
 
-	/// A text box was changed
+	/// A text box was committed
 	pub fn on_change_text(&self, new_text: String) -> Result<(), JsValue> {
 		let message = TextMessage::TextChange { new_text };
+		self.dispatch(message);
+
+		Ok(())
+	}
+
+	/// A text box was changed
+	pub fn update_bounds(&self, new_text: String) -> Result<(), JsValue> {
+		let message = TextMessage::UpdateBounds { new_text };
 		self.dispatch(message);
 
 		Ok(())

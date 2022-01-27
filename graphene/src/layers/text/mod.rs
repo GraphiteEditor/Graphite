@@ -4,7 +4,7 @@ use crate::intersection::{intersect_quad_bez_path, Quad};
 use crate::LayerId;
 
 use glam::{DAffine2, DMat2, DVec2};
-use kurbo::{Affine, BezPath, Shape};
+use kurbo::{Affine, BezPath, Rect, Shape};
 use serde::{Deserialize, Serialize};
 use std::fmt::Write;
 
@@ -62,7 +62,7 @@ impl LayerData for Text {
 	}
 
 	fn bounding_box(&self, transform: glam::DAffine2) -> Option<[DVec2; 2]> {
-		let mut path = self.to_bez_path_nonmut();
+		let mut path = self.bounding_box(&self.text).to_path(0.1);
 
 		if transform.matrix2 == DMat2::ZERO {
 			return None;
@@ -74,7 +74,7 @@ impl LayerData for Text {
 	}
 
 	fn intersects_quad(&self, quad: Quad, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>) {
-		if intersect_quad_bez_path(quad, &self.to_bez_path_nonmut().bounding_box().to_path(0.), true) {
+		if intersect_quad_bez_path(quad, &self.bounding_box(&self.text).to_path(0.), true) {
 			intersections.push(path.clone());
 		}
 	}
@@ -120,9 +120,19 @@ impl Text {
 	}
 
 	#[inline]
+	fn font_face() -> rustybuzz::Face<'static> {
+		rustybuzz::Face::from_slice(include_bytes!("SourceSansPro/SourceSansPro-Regular.ttf"), 0).unwrap()
+	}
+
+	#[inline]
 	fn generate_path(&self) -> BezPath {
-		let buzz_face = rustybuzz::Face::from_slice(include_bytes!("SourceSansPro/SourceSansPro-Regular.ttf"), 0).unwrap();
-		to_kurbo::to_kurbo(&self.text, buzz_face, self.size, self.line_width)
+		to_kurbo::to_kurbo(&self.text, Self::font_face(), self.size, self.line_width)
+	}
+
+	#[inline]
+	pub fn bounding_box(&self, text: &str) -> Rect {
+		let far = to_kurbo::bounding_box(text, Self::font_face(), self.size, self.line_width);
+		Rect::new(0., 0., far.x, far.y)
 	}
 
 	pub fn regenerate_path(&mut self) {

@@ -1,5 +1,6 @@
 use std::str::Chars;
 
+use glam::DVec2;
 use kurbo::{BezPath, Point, Vec2};
 use rustybuzz::{GlyphPosition, UnicodeBuffer};
 use ttf_parser::{GlyphId, OutlineBuilder};
@@ -96,6 +97,35 @@ pub fn to_kurbo(str: &str, buzz_face: rustybuzz::Face, font_size: f64, line_widt
 		}
 	}
 	builder.path
+}
+
+pub fn bounding_box(str: &str, buzz_face: rustybuzz::Face, font_size: f64, line_width: Option<f64>) -> DVec2 {
+	let scale = (buzz_face.units_per_em() as f64).recip() * font_size;
+	let line_hight = font_size;
+
+	let mut buffer = UnicodeBuffer::new();
+	buffer.push_str(str);
+	let glyph_buffer = rustybuzz::shape(&buzz_face, &[], buffer);
+
+	let positions = glyph_buffer.glyph_positions();
+
+	let mut pos = DVec2::ZERO;
+	let mut bounds = DVec2::ZERO;
+
+	for (index, (char, glyph_pos)) in str.chars().zip(positions).enumerate() {
+		if char == '\n' || (char == ' ' && word_over_length(str.chars(), positions, index, pos.x, scale, line_width)) {
+			pos = DVec2::new(0., pos.y + line_hight);
+		} else {
+			if let Some(line_width) = line_width {
+				if pos.x + (glyph_pos.x_advance as f64 * scale) >= line_width {
+					pos = DVec2::new(0., pos.y + line_hight);
+				}
+			}
+			pos += DVec2::new(glyph_pos.x_advance as f64, glyph_pos.y_advance as f64) * scale;
+		}
+		bounds = bounds.max(pos);
+	}
+	bounds
 }
 
 #[test]
