@@ -207,13 +207,7 @@ impl Fsm for TextToolFsmState {
 								path: data.path.clone(),
 								transform: DAffine2::ZERO.to_cols_array(),
 								insert_index: -1,
-								text: r#"The quick brown
-fox jumped over the lazy cat.
-In publishing and graphic design, Lorem ipsum is a placeholder text commonly used to demonstrate the visual form of a document or a typeface without relying on meaningful content. Lorem ipsum may be used as a placeholder before the final copy is available. It is also used to temporarily replace text in a process called greeking, which allows designers to consider the form of a webpage or publication, without the meaning of the text influencing the design.
-
-Lorem ipsum is typically a corrupted version of De finibus bonorum et malorum, a 1st-century BC text by the Roman statesman and philosopher Cicero, with words altered, added, and removed to make it nonsensical and improper Latin.
-
-Test for really long word: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"#.to_string(),
+								text: r#""#.to_string(),
 								style: style::PathStyle::new(Some(style::Stroke::new(tool_data.primary_color, 0.)), None),
 								size: font_size as f64,
 							}
