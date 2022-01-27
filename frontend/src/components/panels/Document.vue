@@ -261,6 +261,9 @@
 						overflow: visible;
 						white-space: pre-wrap;
 						display: inline-block;
+						// Workaround to force Chrome to display the flashing text entry cursor when text is empty
+						padding-left: 1px;
+						margin-left: -1px;
 					}
 
 					div:focus {
