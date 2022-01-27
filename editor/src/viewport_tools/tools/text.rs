@@ -254,14 +254,16 @@ Test for really long word: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 
 					new_state
 				}
-				(Editing, Abort) => {
-					responses.push_back(
-						DocumentMessage::SetTextboxEditable {
-							path: data.path.clone(),
-							editable: false,
-						}
-						.into(),
-					);
+				(state, Abort) => {
+					if state == TextToolFsmState::Editing {
+						responses.push_back(
+							DocumentMessage::SetTextboxEditable {
+								path: data.path.clone(),
+								editable: false,
+							}
+							.into(),
+						);
+					}
 
 					resize_overlays(&mut data.overlays, responses, 0);
 
