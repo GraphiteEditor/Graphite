@@ -9,8 +9,8 @@ use crate::consts::{
 use crate::input::InputPreprocessorMessageHandler;
 use crate::layout::layout_message::LayoutTarget;
 use crate::layout::widgets::{
-	IconButton, LayoutRow, NumberInput, OptionalInput, PopoverButton, PropertyHolder, RadioEntryData, RadioInput, Separator, SeparatorDirection, SeparatorType, Widget, WidgetCallback, WidgetHolder,
-	WidgetLayout, NumberInputIncrementBehavior,
+	IconButton, LayoutRow, NumberInput, NumberInputIncrementBehavior, OptionalInput, PopoverButton, PropertyHolder, RadioEntryData, RadioInput, Separator, SeparatorDirection, SeparatorType, Widget,
+	WidgetCallback, WidgetHolder, WidgetLayout,
 };
 use crate::message_prelude::*;
 use crate::EditorError;
@@ -594,7 +594,7 @@ impl PropertyHolder for DocumentMessageHandler {
 						}
 						.into()
 					}),
-					increment_behavior:NumberInputIncrementBehavior::Callback,
+					increment_behavior: NumberInputIncrementBehavior::Callback,
 					increment_callback_decrease: WidgetCallback::new(|_| MovementMessage::DecreaseCanvasZoom { center_on_mouse: false }.into()),
 					increment_callback_increase: WidgetCallback::new(|_| MovementMessage::IncreaseCanvasZoom { center_on_mouse: false }.into()),
 					..NumberInput::default()
