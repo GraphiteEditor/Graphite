@@ -1,4 +1,4 @@
-use crate::consts::{COLOR_ACCENT, SELECTION_DRAG_ANGLE, SELECTION_TOLERANCE};
+use crate::consts::{COLOR_ACCENT, SELECTION_DRAG_ANGLE, SELECTION_TOLERANCE, VECTOR_MANIPULATOR_ANCHOR_MARKER_SIZE};
 use crate::document::utility_types::{AlignAggregate, AlignAxis, FlipAxis};
 use crate::document::DocumentMessageHandler;
 use crate::frontend::utility_types::MouseCursorIcon;
@@ -10,6 +10,7 @@ use crate::misc::{HintData, HintGroup, HintInfo, KeysGroup};
 use crate::viewport_tools::snapping::SnapHandler;
 use crate::viewport_tools::tool::{DocumentToolData, Fsm, ToolActionHandlerData};
 
+use graphene::color::Color;
 use graphene::document::Document;
 use graphene::intersection::Quad;
 use graphene::layers::style::{self, Fill, Stroke};
@@ -101,7 +102,7 @@ struct SelectToolData {
 	drag_current: ViewportPosition,
 	layers_dragging: Vec<Vec<LayerId>>, // Paths and offsets
 	drag_box_overlay_layer: Option<Vec<LayerId>>,
-	bounding_box_overlay_layer: Option<Vec<LayerId>>,
+	bounding_box_overlays: Option<(Vec<LayerId>, [Vec<LayerId>; 8])>,
 	snap_handler: SnapHandler,
 }
 
@@ -134,6 +135,39 @@ fn add_bounding_box(responses: &mut Vec<Message>) -> Vec<LayerId> {
 	path
 }
 
+fn evaluate_points((left, top): (f64, f64), (right, bottom): (f64, f64)) -> [DVec2; 8] {
+	[
+		DVec2::new(left, top),
+		DVec2::new(left, (top + bottom) / 2.),
+		DVec2::new(left, bottom),
+		DVec2::new((left + right) / 2., top),
+		DVec2::new((left + right) / 2., bottom),
+		DVec2::new(right, top),
+		DVec2::new(right, (top + bottom) / 2.),
+		DVec2::new(right, bottom),
+	]
+}
+
+fn add_transform_handles(responses: &mut Vec<Message>) -> [Vec<LayerId>; 8] {
+	const EMPTY_VEC: Vec<LayerId> = Vec::new();
+	let mut transform_handle_paths = [EMPTY_VEC; 8];
+
+	for item in &mut transform_handle_paths {
+		let current_path = vec![generate_uuid()];
+
+		let operation = Operation::AddOverlayRect {
+			path: current_path.clone(),
+			transform: DAffine2::ZERO.to_cols_array(),
+			style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 2.0)), Some(Fill::new(Color::WHITE))),
+		};
+		responses.push(DocumentMessage::Overlays(operation.into()).into());
+
+		*item = current_path;
+	}
+
+	transform_handle_paths
+}
+
 fn transform_from_box(pos1: DVec2, pos2: DVec2) -> [f64; 6] {
 	DAffine2::from_scale_angle_translation((pos2 - pos1).round(), 0., pos1.round() - DVec2::splat(0.5)).to_cols_array()
 }
@@ -157,19 +191,37 @@ impl Fsm for SelectToolFsmState {
 			match (self, event) {
 				(_, DocumentIsDirty) => {
 					let mut buffer = Vec::new();
-					let response = match (document.selected_visible_layers_bounding_box(), data.bounding_box_overlay_layer.take()) {
-						(None, Some(path)) => DocumentMessage::Overlays(Operation::DeleteLayer { path }.into()).into(),
-						(Some([pos1, pos2]), path) => {
-							let path = path.unwrap_or_else(|| add_bounding_box(&mut buffer));
+					match (document.selected_visible_layers_bounding_box(), data.bounding_box_overlays.take()) {
+						(None, Some((bounding_box, transform_handles))) => {
+							buffer.push(DocumentMessage::Overlays(Operation::DeleteLayer { path: bounding_box }.into()).into());
+							buffer.extend(
+								transform_handles
+									.iter()
+									.map(|path| DocumentMessage::Overlays(Operation::DeleteLayer { path: path.clone() }.into()).into()),
+							);
+						}
+						(Some([pos1, pos2]), paths) => {
+							let paths = paths.unwrap_or_else(|| (add_bounding_box(&mut buffer), add_transform_handles(&mut buffer)));
 
-							data.bounding_box_overlay_layer = Some(path.clone());
+							data.bounding_box_overlays = Some(paths.clone());
+
+							let (bounding_box, transform_handles) = paths;
 
 							let transform = transform_from_box(pos1, pos2);
-							DocumentMessage::Overlays(Operation::SetLayerTransformInViewport { path, transform }.into()).into()
+							buffer.push(DocumentMessage::Overlays(Operation::SetLayerTransformInViewport { path: bounding_box, transform }.into()).into());
+
+							// Helps push values that end in approximately half, plus or minus some floating point imprecision, towards the same side of the round() function
+							const BIAS: f64 = 0.0001;
+
+							for (position, path) in evaluate_points(pos1.into(), pos2.into()).into_iter().zip(transform_handles) {
+								let scale = DVec2::splat(VECTOR_MANIPULATOR_ANCHOR_MARKER_SIZE);
+								let translation = (position - (scale / 2.) - 0.5 + BIAS).round();
+								let transform = DAffine2::from_scale_angle_translation(scale, 0., translation).to_cols_array();
+								buffer.push(DocumentMessage::Overlays(Operation::SetLayerTransformInViewport { path, transform }.into()).into());
+							}
 						}
-						(_, _) => Message::NoOp,
+						(_, _) => {}
 					};
-					responses.push_front(response);
 					buffer.into_iter().rev().for_each(|message| responses.push_front(message));
 					self
 				}
@@ -289,9 +341,15 @@ impl Fsm for SelectToolFsmState {
 					Ready
 				}
 				(_, Abort) => {
-					let mut delete = |path: &mut Option<Vec<LayerId>>| path.take().map(|path| responses.push_front(DocumentMessage::Overlays(Operation::DeleteLayer { path }.into()).into()));
-					delete(&mut data.drag_box_overlay_layer);
-					delete(&mut data.bounding_box_overlay_layer);
+					let mut delete = |path: Vec<LayerId>| responses.push_front(DocumentMessage::Overlays(Operation::DeleteLayer { path }.into()).into());
+					if let Some(path) = data.drag_box_overlay_layer.take() {
+						delete(path)
+					};
+					if let Some((bounding_box, transform_handles)) = data.bounding_box_overlays.take() {
+						delete(bounding_box);
+						transform_handles.into_iter().for_each(delete);
+					}
+
 					data.snap_handler.cleanup(responses);
 					Ready
 				}
