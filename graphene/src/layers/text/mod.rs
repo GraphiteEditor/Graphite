@@ -23,7 +23,7 @@ pub struct Text {
 	#[serde(skip)]
 	pub editable: bool,
 	#[serde(skip)]
-	cached_path: BezPath,
+	cached_path: Option<BezPath>,
 }
 
 impl LayerData for Text {
@@ -51,7 +51,6 @@ impl LayerData for Text {
 					.map(|(i, entry)| { entry.to_string() + if i == 5 { "" } else { "," } })
 					.collect::<String>(),
 			);
-		//let _ = write!(svg, r#"<textarea {}>{}</textarea>"#, self.style.render(view_mode), self.text,);
 		} else {
 			let mut path = self.to_bez_path();
 
@@ -63,7 +62,7 @@ impl LayerData for Text {
 	}
 
 	fn bounding_box(&self, transform: glam::DAffine2) -> Option<[DVec2; 2]> {
-		let mut path = self.to_bez_path();
+		let mut path = self.to_bez_path_nonmut();
 
 		if transform.matrix2 == DMat2::ZERO {
 			return None;
@@ -75,7 +74,7 @@ impl LayerData for Text {
 	}
 
 	fn intersects_quad(&self, quad: Quad, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>) {
-		if intersect_quad_bez_path(quad, &self.to_bez_path().bounding_box().to_path(0.), true) {
+		if intersect_quad_bez_path(quad, &self.to_bez_path_nonmut().bounding_box().to_path(0.), true) {
 			intersections.push(path.clone());
 		}
 	}
@@ -97,7 +96,7 @@ impl Text {
 			size,
 			line_width: None,
 			editable: false,
-			cached_path: BezPath::new(),
+			cached_path: None,
 		};
 
 		new.regenerate_path();
@@ -105,14 +104,29 @@ impl Text {
 		new
 	}
 
+	/// Converts to a BezPath, populating the cache if necessary
 	#[inline]
-	pub fn to_bez_path(&self) -> BezPath {
-		self.cached_path.clone()
+	pub fn to_bez_path(&mut self) -> BezPath {
+		if self.cached_path.is_none() {
+			self.regenerate_path();
+		}
+		self.cached_path.clone().unwrap()
+	}
+
+	/// Converts to a bezpath, without populating the cache
+	#[inline]
+	pub fn to_bez_path_nonmut(&self) -> BezPath {
+		self.cached_path.clone().unwrap_or_else(|| self.generate_path())
+	}
+
+	#[inline]
+	fn generate_path(&self) -> BezPath {
+		let buzz_face = rustybuzz::Face::from_slice(include_bytes!("SourceSansPro/SourceSansPro-Regular.ttf"), 0).unwrap();
+		to_kurbo::to_kurbo(&self.text, buzz_face, self.size, self.line_width)
 	}
 
 	pub fn regenerate_path(&mut self) {
-		let buzz_face = rustybuzz::Face::from_slice(include_bytes!("SourceSansPro/SourceSansPro-Regular.ttf"), 0).unwrap();
-		self.cached_path = to_kurbo::to_kurbo(&self.text, buzz_face, self.size, self.line_width);
+		self.cached_path = Some(self.generate_path());
 	}
 
 	pub fn update_text(&mut self, text: String) {

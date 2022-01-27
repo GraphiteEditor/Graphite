@@ -148,7 +148,7 @@ impl DocumentMessageHandler {
 
 			let (path, closed) = match &layer.ok()?.data {
 				LayerDataType::Shape(shape) => Some((shape.path.clone(), shape.closed)),
-				LayerDataType::Text(text) => Some((text.to_bez_path(), true)),
+				LayerDataType::Text(text) => Some((text.to_bez_path_nonmut(), true)),
 				_ => None,
 			}?;
 
