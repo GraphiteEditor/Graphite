@@ -95,7 +95,7 @@ impl VectorManipulatorAnchor {
 		closest_point
 	}
 
-	/// Angle bewtween handles in radians
+	/// Angle between handles in radians
 	pub fn angle_between_handles(&self) -> f64 {
 		if let (Some(h1), Some(h2)) = &self.handles {
 			return (self.point.position - h1.position).angle_between(self.point.position - h2.position);

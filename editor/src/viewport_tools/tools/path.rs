@@ -11,7 +11,7 @@ use crate::viewport_tools::tool::{DocumentToolData, Fsm, ToolActionHandlerData};
 
 use graphene::color::Color;
 use graphene::intersection::Quad;
-use graphene::layers::style::{self, Fill, Stroke};
+use graphene::layers::style::{self, Fill, PathStyle, Stroke};
 use graphene::Operation;
 
 use glam::{DAffine2, DVec2};
@@ -92,7 +92,6 @@ struct PathToolData {
 	handle_marker_pool: Vec<Vec<LayerId>>,
 	anchor_handle_line_pool: Vec<Vec<LayerId>>,
 	shape_outline_pool: Vec<Vec<LayerId>>,
-
 	manipulation_handler: ManipulationHandler,
 	snap_handler: SnapHandler,
 }
@@ -101,20 +100,22 @@ impl PathToolData {}
 
 #[derive(Clone, Debug, Default)]
 struct ManipulationHandler {
+	// The selected shapes, the cloned path and the kurbo PathElements
 	selected_shapes: Vec<VectorManipulatorShape>,
 	selected_layer_path: Vec<LayerId>,
-
-	selected_shape: usize,
 	selected_shape_elements: Vec<kurbo::PathEl>,
-
+	// The shape that had a point selected from most recently
+	selected_shape: usize,
+	// This can represent any draggable point anchor or handle
 	selected_point: VectorManipulatorPoint,
+	// This is specifically the related anchor, even if we have a handle selected
 	selected_anchor: VectorManipulatorAnchor,
-
-	alt_toggle: bool,
+	// Debounce for toggling mirroring with alt
+	alt_mirror_toggle_debounce: bool,
 }
 
 impl ManipulationHandler {
-	// Select the first manipulator within the threshold
+	/// Select the first manipulator within the selection threshold
 	pub fn select_manipulator(&mut self, mouse_position: DVec2, select_threshold: f64) -> bool {
 		let select_threshold_squared = select_threshold * select_threshold;
 		for shape_index in 0..self.selected_shapes.len() {
@@ -129,29 +130,33 @@ impl ManipulationHandler {
 				self.selected_point = point.clone();
 				self.selected_anchor = anchor.clone();
 				// Due to the shape data structure not persisting across selections we need to rely on the svg to tell know if we should mirror
-				self.selected_anchor.handle_mirroring = (self.selected_anchor.angle_between_handles() - std::f64::consts::PI).abs() < 0.01;
-				self.alt_toggle = false;
+				self.selected_anchor.handle_mirroring = (anchor.angle_between_handles() - std::f64::consts::PI).abs() < 0.1;
+				self.alt_mirror_toggle_debounce = false;
 				return true;
 			}
 		}
 		false
 	}
 
+	/// Provide the currently selected shape
 	pub fn selected_shape(&self) -> &VectorManipulatorShape {
 		&self.selected_shapes[self.selected_shape]
 	}
 
-	pub fn move_selected_to(&mut self, mouse_position: DVec2, should_mirror: bool) -> Operation {
-		let mouse_to_shape = self.selected_shape().transform.inverse().transform_point2(mouse_position);
-		let mouse_position = Vec2::new(mouse_to_shape.x, mouse_to_shape.y);
+	/// A wrapper around move_point to handle mirror state / submit the changes
+	pub fn move_selected_to(&mut self, target_position: DVec2, should_mirror: bool) -> Operation {
+		let target_to_shape = self.selected_shape().transform.inverse().transform_point2(target_position);
+		let target_position = Vec2::new(target_to_shape.x, target_to_shape.y);
 
-		if !should_mirror && self.alt_toggle != should_mirror {
+		// Should we mirror the opposing handle or not?
+		if !should_mirror && self.alt_mirror_toggle_debounce != should_mirror {
 			self.selected_anchor.handle_mirroring = !self.selected_anchor.handle_mirroring;
 		}
-		self.alt_toggle = should_mirror;
+		self.alt_mirror_toggle_debounce = should_mirror;
 
-		self.move_point(mouse_position);
+		self.move_point(target_position);
 
+		// We've made our changes to the shape, submit them
 		Operation::SetShapePathInViewport {
 			path: self.selected_layer_path.clone(),
 			bez_path: self.selected_shape_elements.clone().into_iter().collect(),
@@ -159,8 +164,9 @@ impl ManipulationHandler {
 		}
 	}
 
-	fn move_point(&mut self, mouse_position: Vec2) {
-		let mouse_position_as_point = mouse_position.to_point();
+	/// Move the selected point to the specificed target position
+	fn move_point(&mut self, target_position: Vec2) {
+		let target_position_as_point = target_position.to_point();
 		let (h1, h2) = &self.selected_anchor.handles;
 		let h1_selected = !h1.is_none() && *h1.as_ref().unwrap() == self.selected_point;
 		let h2_selected = !h2.is_none() && *h2.as_ref().unwrap() == self.selected_point;
@@ -172,7 +178,7 @@ impl ManipulationHandler {
 
 			// Keep rotational similarity, but distance variable
 			let radius = center.distance(original);
-			let phi = (center - mouse_position_as_point).atan2();
+			let phi = (center - target_position_as_point).atan2();
 
 			kurbo::Point {
 				x: radius * phi.cos() + center.x,
@@ -184,19 +190,19 @@ impl ManipulationHandler {
 		if !(h1_selected || h2_selected) {
 			// Move the anchor point and hande on the same path element
 			let (selected, point) = match &self.selected_shape_elements[self.selected_anchor.point.element_id] {
-				PathEl::MoveTo(p) => (PathEl::MoveTo(mouse_position_as_point), p),
-				PathEl::LineTo(p) => (PathEl::LineTo(mouse_position_as_point), p),
-				PathEl::QuadTo(a1, p) => (PathEl::QuadTo(*a1 - (*p - mouse_position_as_point), mouse_position_as_point), p),
-				PathEl::CurveTo(a1, a2, p) => (PathEl::CurveTo(*a1, *a2 - (*p - mouse_position_as_point), mouse_position_as_point), p),
-				PathEl::ClosePath => (PathEl::ClosePath, &mouse_position_as_point),
+				PathEl::MoveTo(p) => (PathEl::MoveTo(target_position_as_point), p),
+				PathEl::LineTo(p) => (PathEl::LineTo(target_position_as_point), p),
+				PathEl::QuadTo(a1, p) => (PathEl::QuadTo(*a1 - (*p - target_position_as_point), target_position_as_point), p),
+				PathEl::CurveTo(a1, a2, p) => (PathEl::CurveTo(*a1, *a2 - (*p - target_position_as_point), target_position_as_point), p),
+				PathEl::ClosePath => (PathEl::ClosePath, &target_position_as_point),
 			};
 
 			// Move the handle on the adjacent path element
 			if let Some(handle) = h2 {
-				let point_delta = (*point - mouse_position).to_vec2();
+				let point_delta = (*point - target_position).to_vec2();
 				let neighbor = match &self.selected_shape_elements[handle.element_id] {
 					PathEl::MoveTo(p) => PathEl::MoveTo(*p),
-					PathEl::LineTo(_) => PathEl::LineTo(mouse_position_as_point),
+					PathEl::LineTo(_) => PathEl::LineTo(target_position_as_point),
 					PathEl::QuadTo(a1, p) => PathEl::QuadTo(*a1 - point_delta, *p),
 					PathEl::CurveTo(a1, a2, p) => PathEl::CurveTo(*a1 - point_delta, *a2, *p),
 					PathEl::ClosePath => PathEl::ClosePath,
@@ -205,7 +211,7 @@ impl ManipulationHandler {
 
 				// Handle the invisible point that can be caused by MoveTo
 				if let Some(close_id) = self.selected_anchor.close_element_id {
-					self.selected_shape_elements[close_id] = PathEl::MoveTo(mouse_position_as_point);
+					self.selected_shape_elements[close_id] = PathEl::MoveTo(target_position_as_point);
 				}
 			}
 			self.selected_shape_elements[self.selected_point.element_id] = selected;
@@ -218,12 +224,12 @@ impl ManipulationHandler {
 			let (selected, anchor) = match &self.selected_shape_elements[self.selected_point.element_id] {
 				PathEl::MoveTo(p) => (PathEl::MoveTo(*p), *p),
 				PathEl::LineTo(p) => (PathEl::LineTo(*p), *p),
-				PathEl::QuadTo(_, p) => (PathEl::QuadTo(mouse_position_as_point, *p), *p),
+				PathEl::QuadTo(_, p) => (PathEl::QuadTo(target_position_as_point, *p), *p),
 				PathEl::CurveTo(a1, a2, p) => (
-					PathEl::CurveTo(if h2_selected { mouse_position_as_point } else { *a1 }, if h1_selected { mouse_position_as_point } else { *a2 }, *p),
+					PathEl::CurveTo(if h2_selected { target_position_as_point } else { *a1 }, if h1_selected { target_position_as_point } else { *a2 }, *p),
 					*p,
 				),
-				PathEl::ClosePath => (PathEl::ClosePath, mouse_position_as_point),
+				PathEl::ClosePath => (PathEl::ClosePath, target_position_as_point),
 			};
 
 			// Move the opposing handle on the adjacent path element
@@ -244,18 +250,6 @@ impl ManipulationHandler {
 			self.selected_shape_elements[self.selected_point.element_id] = selected;
 		}
 	}
-
-	// Todo Move the overlay changes to when selected, not drag start
-	// responses.push_back(
-	// 	DocumentMessage::Overlay(
-	// 		Operation::SetLayerFill {
-	// 			path: data.selection.overlay_path.clone(),
-	// 			color: COLOR_ACCENT,
-	// 		}
-	// 		.into(),
-	// 	)
-	// 	.into(),
-	// );
 
 	// TODO Use quadtree or some equivalent spatial locality data structure to improve this to O(log(n))
 	// Brute force comparison to determine which handle / anchor we want to select, O(n)
@@ -380,6 +374,15 @@ impl Fsm for PathToolFsmState {
 							responses.push_back(DocumentMessage::Overlays(Operation::SetLayerTransformInViewport { path: marker.clone(), transform }.into()).into());
 							responses.push_back(DocumentMessage::Overlays(Operation::SetLayerVisibility { path: marker.clone(), visible: true }.into()).into());
 
+							// Need to determine another way to do comparison
+							// if data.manipulation_handler.selected_anchor == *anchor {
+							// 	let style = PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 2.0)), Some(Fill::new(COLOR_ACCENT)));
+							// 	responses.push_back(DocumentMessage::Overlays(Operation::SetLayerStyle { path: marker.clone(), style }.into()).into());
+							// } else {
+							// 	let style = PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 2.0)), Some(Fill::new(Color::WHITE)));
+							// 	responses.push_back(DocumentMessage::Overlays(Operation::SetLayerStyle { path: marker.clone(), style }.into()).into());
+							// }
+
 							anchor_i += 1;
 						}
 
@@ -468,18 +471,6 @@ impl Fsm for PathToolFsmState {
 					Dragging
 				}
 				(_, DragStop) => {
-					// Todo Move the overlay changes to when deselected, not drag stop
-					// let style = PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 2.0)), Some(Fill::new(Color::WHITE)));
-					// responses.push_back(
-					// 	DocumentMessage::Overlay(
-					// 		Operation::SetLayerStyle {
-					// 			path: data.selector.overlay_path.clone(),
-					// 			style,
-					// 		}
-					// 		.into(),
-					// 	)
-					// 	.into(),
-					// );
 					data.snap_handler.cleanup(responses);
 					Ready
 				}
