@@ -114,7 +114,6 @@ struct ManipulationHandler {
 impl ManipulationHandler {
 	// Select the first manipulator within the threshold
 	pub fn select_manipulator(&mut self, mouse_position: DVec2, select_threshold: f64, should_mirror: bool) -> bool {
-		// TODO convert select_threshold to viewspace, so it remains consistent with zoom level
 		let select_threshold_squared = select_threshold * select_threshold;
 		for shape_index in 0..self.selected_shapes.len() {
 			let selected_shape = &self.selected_shapes[shape_index];
@@ -157,7 +156,7 @@ impl ManipulationHandler {
 		let h1_selected = !h1.is_none() && *h1.as_ref().unwrap() == self.selected_point;
 		let h2_selected = !h2.is_none() && *h2.as_ref().unwrap() == self.selected_point;
 
-		let place_mirrored_handle = |center: kurbo::Point, original: kurbo::Point, offset_angle: f64, mirror: bool, selected: bool, element_shared_with_anchor: bool| -> kurbo::Point {
+		let place_mirrored_handle = |center: kurbo::Point, original: kurbo::Point, mirror: bool, selected: bool| -> kurbo::Point {
 			if !selected || !mirror {
 				return original;
 			}
@@ -165,13 +164,11 @@ impl ManipulationHandler {
 			// Keep rotational similarity, but distance variable
 			let radius = center.distance(original);
 			let phi = (center - mouse_position_as_point).atan2();
-			let flip = if element_shared_with_anchor { 1.0 } else { -1.0 };
-			let angle = phi + ((flip * offset_angle) - std::f64::consts::PI);
 
 			kurbo::Point {
-				x: radius * angle.cos(),
-				y: radius * angle.sin(),
-			} + center.to_vec2()
+				x: radius * phi.cos() + center.x,
+				y: radius * phi.sin() + center.y,
+			}
 		};
 
 		// If neither handle is selected, we are dragging an anchor point
@@ -197,7 +194,7 @@ impl ManipulationHandler {
 				};
 				self.selected_shape_elements[handle.element_id] = neighbor;
 
-				// Handle the invisible point
+				// Handle the invisible point that can be caused by MoveTo
 				if let Some(close_id) = self.selected_anchor.close_element_id {
 					self.selected_shape_elements[close_id] = PathEl::MoveTo(mouse_position_as_point);
 				}
@@ -206,6 +203,9 @@ impl ManipulationHandler {
 		}
 		// We are dragging a handle
 		else {
+			// Due to the shape data structure not persisting across selections we need to rely on the svg to tell know if we should mirror
+			let should_mirror = self.selected_anchor.handle_mirroring && (self.selected_anchor.angle_between_handles() - std::f64::consts::PI).abs() < 0.01;
+
 			// Move the selected handle
 			let (selected, anchor) = match &self.selected_shape_elements[self.selected_point.element_id] {
 				PathEl::MoveTo(p) => (PathEl::MoveTo(*p), *p),
@@ -218,9 +218,6 @@ impl ManipulationHandler {
 				PathEl::ClosePath => (PathEl::ClosePath, mouse_position_as_point),
 			};
 
-			let is_mirroring = self.selected_anchor.handle_mirroring;
-			let angle_offset = self.selected_anchor.angle_between_handles();
-
 			// Move the opposing handle on the adjacent path element
 			if let Some(handle) = self.selected_anchor.opposing_handle(&self.selected_point) {
 				let neighbor = match &self.selected_shape_elements[handle.element_id] {
@@ -228,8 +225,8 @@ impl ManipulationHandler {
 					PathEl::LineTo(p) => PathEl::LineTo(*p),
 					PathEl::QuadTo(a1, p) => PathEl::QuadTo(*a1, *p),
 					PathEl::CurveTo(a1, a2, p) => PathEl::CurveTo(
-						place_mirrored_handle(anchor, *a1, angle_offset, h1_selected, is_mirroring, true),
-						place_mirrored_handle(*p, *a2, angle_offset, h2_selected, is_mirroring, false),
+						place_mirrored_handle(anchor, *a1, h1_selected, should_mirror),
+						place_mirrored_handle(*p, *a2, h2_selected, should_mirror),
 						*p,
 					),
 					PathEl::ClosePath => PathEl::ClosePath,
