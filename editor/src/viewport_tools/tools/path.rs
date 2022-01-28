@@ -103,17 +103,19 @@ impl PathToolData {}
 struct ManipulationHandler {
 	selected_shapes: Vec<VectorManipulatorShape>,
 	selected_layer_path: Vec<LayerId>,
-	// overlay_path: Vec<LayerId>, // Re-add when overlays are enabled again
+
 	selected_shape: usize,
 	selected_shape_elements: Vec<kurbo::PathEl>,
 
 	selected_point: VectorManipulatorPoint,
 	selected_anchor: VectorManipulatorAnchor,
+
+	alt_toggle: bool,
 }
 
 impl ManipulationHandler {
 	// Select the first manipulator within the threshold
-	pub fn select_manipulator(&mut self, mouse_position: DVec2, select_threshold: f64, should_mirror: bool) -> bool {
+	pub fn select_manipulator(&mut self, mouse_position: DVec2, select_threshold: f64) -> bool {
 		let select_threshold_squared = select_threshold * select_threshold;
 		for shape_index in 0..self.selected_shapes.len() {
 			let selected_shape = &self.selected_shapes[shape_index];
@@ -126,7 +128,9 @@ impl ManipulationHandler {
 				self.selected_shape = shape_index;
 				self.selected_point = point.clone();
 				self.selected_anchor = anchor.clone();
-				self.selected_anchor.handle_mirroring = should_mirror;
+				// Due to the shape data structure not persisting across selections we need to rely on the svg to tell know if we should mirror
+				self.selected_anchor.handle_mirroring = (self.selected_anchor.angle_between_handles() - std::f64::consts::PI).abs() < 0.01;
+				self.alt_toggle = false;
 				return true;
 			}
 		}
@@ -140,7 +144,12 @@ impl ManipulationHandler {
 	pub fn move_selected_to(&mut self, mouse_position: DVec2, should_mirror: bool) -> Operation {
 		let mouse_to_shape = self.selected_shape().transform.inverse().transform_point2(mouse_position);
 		let mouse_position = Vec2::new(mouse_to_shape.x, mouse_to_shape.y);
-		self.selected_anchor.handle_mirroring = should_mirror;
+
+		if !should_mirror && self.alt_toggle != should_mirror {
+			self.selected_anchor.handle_mirroring = !self.selected_anchor.handle_mirroring;
+		}
+		self.alt_toggle = should_mirror;
+
 		self.move_point(mouse_position);
 
 		Operation::SetShapePathInViewport {
@@ -203,8 +212,7 @@ impl ManipulationHandler {
 		}
 		// We are dragging a handle
 		else {
-			// Due to the shape data structure not persisting across selections we need to rely on the svg to tell know if we should mirror
-			let should_mirror = self.selected_anchor.handle_mirroring && (self.selected_anchor.angle_between_handles() - std::f64::consts::PI).abs() < 0.01;
+			let should_mirror = self.selected_anchor.handle_mirroring;
 
 			// Move the selected handle
 			let (selected, anchor) = match &self.selected_shape_elements[self.selected_point.element_id] {
@@ -333,30 +341,39 @@ impl Fsm for PathToolFsmState {
 						);
 						shape_i += 1;
 
-						let segment = shape_manipulator_points(shape_to_draw);
+						let anchors = &shape_to_draw.points;
 
 						// Draw the line connecting the anchor with handle for cubic and quadratic bezier segments
-						for anchor_handle_line in segment.anchor_handle_lines {
-							let marker = &data.anchor_handle_line_pool[line_i];
+						for anchor in anchors {
+							let (handle1, handle2) = anchor.handles;
+							let mut draw_connector = |position: DVec2| {
+								let marker = &data.anchor_handle_line_pool[line_i];
+								let line_vector = anchor.point.position - position;
+								let scale = DVec2::splat(line_vector.length());
+								let angle = -line_vector.angle_between(DVec2::X);
+								let translation = (position + BIAS).round() + DVec2::splat(0.5);
+								let transform = DAffine2::from_scale_angle_translation(scale, angle, translation).to_cols_array();
 
-							let line_vector = anchor_handle_line.0 - anchor_handle_line.1;
+								responses.push_back(DocumentMessage::Overlays(Operation::SetLayerTransformInViewport { path: marker.clone(), transform }.into()).into());
+								responses.push_back(DocumentMessage::Overlays(Operation::SetLayerVisibility { path: marker.clone(), visible: true }.into()).into());
 
-							let scale = DVec2::splat(line_vector.length());
-							let angle = -line_vector.angle_between(DVec2::X);
-							let translation = (anchor_handle_line.1 + BIAS).round() + DVec2::splat(0.5);
-							let transform = DAffine2::from_scale_angle_translation(scale, angle, translation).to_cols_array();
+								line_i += 1;
+							};
 
-							responses.push_back(DocumentMessage::Overlays(Operation::SetLayerTransformInViewport { path: marker.clone(), transform }.into()).into());
-							responses.push_back(DocumentMessage::Overlays(Operation::SetLayerVisibility { path: marker.clone(), visible: true }.into()).into());
+							if let Some(handle) = handle1 {
+								draw_connector(handle.position);
+							}
 
-							line_i += 1;
+							if let Some(handle) = handle2 {
+								draw_connector(handle.position);
+							}
 						}
 
 						// Draw the draggable square points on the end of every line segment or bezier curve segment
-						for anchor in segment.anchors {
+						for anchor in anchors {
 							let scale = DVec2::splat(VECTOR_MANIPULATOR_ANCHOR_MARKER_SIZE);
 							let angle = 0.;
-							let translation = (anchor - (scale / 2.) + BIAS).round();
+							let translation = (anchor.point.position - (scale / 2.) + BIAS).round();
 							let transform = DAffine2::from_scale_angle_translation(scale, angle, translation).to_cols_array();
 
 							let marker = &data.anchor_marker_pool[anchor_i];
@@ -367,18 +384,29 @@ impl Fsm for PathToolFsmState {
 						}
 
 						// Draw the draggable handle for cubic and quadratic bezier segments
-						for handle in segment.handles {
-							let marker = &data.handle_marker_pool[handle_i];
+						for anchor in anchors {
+							let (handle1, handle2) = anchor.handles;
 
-							let scale = DVec2::splat(VECTOR_MANIPULATOR_ANCHOR_MARKER_SIZE);
-							let angle = 0.;
-							let translation = (handle - (scale / 2.) + BIAS).round();
-							let transform = DAffine2::from_scale_angle_translation(scale, angle, translation).to_cols_array();
+							let mut draw_handle = |position: DVec2| {
+								let marker = &data.handle_marker_pool[handle_i];
+								let scale = DVec2::splat(VECTOR_MANIPULATOR_ANCHOR_MARKER_SIZE);
+								let angle = 0.;
+								let translation = (position - (scale / 2.) + BIAS).round();
+								let transform = DAffine2::from_scale_angle_translation(scale, angle, translation).to_cols_array();
 
-							responses.push_back(DocumentMessage::Overlays(Operation::SetLayerTransformInViewport { path: marker.clone(), transform }.into()).into());
-							responses.push_back(DocumentMessage::Overlays(Operation::SetLayerVisibility { path: marker.clone(), visible: true }.into()).into());
+								responses.push_back(DocumentMessage::Overlays(Operation::SetLayerTransformInViewport { path: marker.clone(), transform }.into()).into());
+								responses.push_back(DocumentMessage::Overlays(Operation::SetLayerVisibility { path: marker.clone(), visible: true }.into()).into());
 
-							handle_i += 1;
+								handle_i += 1;
+							};
+
+							if let Some(handle) = handle1 {
+								draw_handle(handle.position);
+							}
+
+							if let Some(handle) = handle2 {
+								draw_handle(handle.position);
+							}
 						}
 					}
 
@@ -403,10 +431,9 @@ impl Fsm for PathToolFsmState {
 					self
 				}
 				(_, DragStart) => {
-					let should_not_mirror = input.keyboard.get(Key::KeyAlt as usize);
 					// Select the first point within the threshold (in pixels)
 					let select_threshold = SELECTION_THRESHOLD;
-					if data.manipulation_handler.select_manipulator(input.mouse.position, select_threshold, !should_not_mirror) {
+					if data.manipulation_handler.select_manipulator(input.mouse.position, select_threshold) {
 						responses.push_back(DocumentMessage::StartTransaction.into());
 						data.snap_handler.start_snap(document, document.visible_layers());
 						let snap_points = data
@@ -546,7 +573,7 @@ impl Fsm for PathToolFsmState {
 			PathToolFsmState::Dragging => HintData(vec![HintGroup(vec![HintInfo {
 				key_groups: vec![KeysGroup(vec![Key::KeyAlt])],
 				mouse: None,
-				label: String::from("Handle Mirroring Disabled"),
+				label: String::from("Handle Mirroring Toggle"),
 				plus: false,
 			}])]),
 		};
@@ -557,45 +584,6 @@ impl Fsm for PathToolFsmState {
 	fn update_cursor(&self, responses: &mut VecDeque<Message>) {
 		responses.push_back(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Default }.into());
 	}
-}
-
-struct VectorManipulatorTypes {
-	anchors: Vec<glam::DVec2>,
-	handles: Vec<glam::DVec2>,
-	anchor_handle_lines: Vec<(glam::DVec2, glam::DVec2)>,
-}
-
-fn shape_manipulator_points(shape: &VectorManipulatorShape) -> VectorManipulatorTypes {
-	// TODO: Performance can be improved by using three iterators (calling `.iter()` for each of the three) instead of a vector, achievable with some file restructuring
-	let initial_counts = calculate_shape_overlays_per_type(shape);
-	let mut result = VectorManipulatorTypes {
-		anchors: Vec::with_capacity(initial_counts.0),
-		handles: Vec::with_capacity(initial_counts.1),
-		anchor_handle_lines: Vec::with_capacity(initial_counts.2),
-	};
-
-	for (i, segment) in shape.segments.iter().enumerate() {
-		// An open shape needs an extra point, which is part of the first segment (when `i` is 0)
-		let include_start_and_end = !shape.closed && i == 0;
-
-		match segment {
-			VectorManipulatorSegment::Line(a1, a2) => {
-				result.anchors.extend(if include_start_and_end { vec![*a1, *a2] } else { vec![*a2] });
-			}
-			VectorManipulatorSegment::Quad(a1, h1, a2) => {
-				result.anchors.extend(if include_start_and_end { vec![*a1, *a2] } else { vec![*a2] });
-				result.handles.extend(vec![*h1]);
-				result.anchor_handle_lines.extend(vec![(*h1, *a1)]);
-			}
-			VectorManipulatorSegment::Cubic(a1, h1, h2, a2) => {
-				result.anchors.extend(if include_start_and_end { vec![*a1, *a2] } else { vec![*a2] });
-				result.handles.extend(vec![*h1, *h2]);
-				result.anchor_handle_lines.extend(vec![(*h1, *a1), (*h2, *a2)]);
-			}
-		};
-	}
-
-	result
 }
 
 fn calculate_total_overlays_per_type(shapes: &[VectorManipulatorShape]) -> (usize, usize, usize) {

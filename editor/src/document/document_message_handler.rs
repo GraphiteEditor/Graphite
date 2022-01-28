@@ -243,6 +243,8 @@ impl DocumentMessageHandler {
 	// TODO Figure out a new home for this
 	fn create_anchor_points<Transform: Fn(kurbo::Point) -> DVec2>(&self, path: &BezPath, point_transform: Transform) -> Vec<VectorManipulatorAnchor> {
 		type IndexedEl = (usize, kurbo::PathEl);
+
+		// Create an anchor on the boundary between two kurbo PathElements with optional handles
 		let create_anchor_manipulator = |first: IndexedEl, second: IndexedEl| -> VectorManipulatorAnchor {
 			let mut handle1 = None;
 			let mut anchor_position: glam::DVec2 = glam::DVec2::ZERO;
@@ -283,14 +285,23 @@ impl DocumentMessageHandler {
 			}
 		};
 
+		// We need the indices paired with the kurbo path elements
 		let indexed_elements = path.elements().iter().enumerate().map(|(index, element)| (index, *element)).collect::<Vec<IndexedEl>>();
+
 		// Create the manipulation points
 		let mut points: Vec<VectorManipulatorAnchor> = vec![];
 		let (mut first, mut last): (Option<IndexedEl>, Option<IndexedEl>) = (None, None);
 		let mut close_element_id: Option<usize> = None;
+
+		// Create an anchor at each join between two kurbo segments
 		for elements in indexed_elements.windows(2) {
 			let (current_index, current_element) = elements[0];
 			let (_, next_element) = elements[1];
+
+			// An anchor cannot stradle a line / curve segment and a ClosePath segment
+			if matches!(next_element, kurbo::PathEl::ClosePath) {
+				break;
+			}
 
 			// TODO: Currently a unique case for [MoveTo, CurveTo, ...], refactor more generally if possible
 			if matches!(current_element, kurbo::PathEl::MoveTo(_)) && (matches!(next_element, kurbo::PathEl::CurveTo(_, _, _)) || matches!(next_element, kurbo::PathEl::QuadTo(_, _))) {
@@ -298,6 +309,7 @@ impl DocumentMessageHandler {
 				continue;
 			}
 
+			// Keep track of the first and last elements of this shape
 			if first.is_none() {
 				first = Some(elements[0]);
 			}
