@@ -76,7 +76,7 @@
 					</div>
 				</LayoutRow>
 			</LayoutCol>
-			<div class="insert-mark" v-if="draggingData && !draggingData.highlightFolder" :style="{ left: markIndent(draggingData!.insertFolder), top: `${draggingData.markerHeight}px` }"></div>
+			<div class="insert-mark" v-if="draggingData && !draggingData.highlightFolder" :style="{ left: markIndent(draggingData.insertFolder), top: markTopOffset(draggingData.markerHeight) }"></div>
 		</LayoutRow>
 	</LayoutCol>
 </template>
@@ -105,15 +105,6 @@
 		// Crop away the 1px border below the bottom layer entry when it uses the full space of this panel
 		margin-bottom: -1px;
 		position: relative;
-
-		.insert-mark {
-			right: 0;
-			position: absolute;
-			background: var(--color-accent-hover);
-			margin-top: -2px;
-			height: 5px;
-			z-index: 1;
-		}
 
 		.layer-row {
 			flex: 0 0 auto;
@@ -234,6 +225,16 @@
 				outline-offset: -3px;
 			}
 		}
+
+		.insert-mark {
+			position: absolute;
+			// `left` is applied dynamically
+			right: 0;
+			background: var(--color-accent-hover);
+			margin-top: -2px;
+			height: 5px;
+			z-index: 1;
+		}
 	}
 }
 </style>
@@ -295,8 +296,8 @@ const blendModeEntries: SectionsOfMenuListEntries<BlendMode> = [
 ];
 
 const RANGE_TO_INSERT_WITHIN_BOTTOM_FOLDER_NOT_ROOT = 20;
-const LAYER_LEFT_MARGIN_OFFSET = 52;
 const LAYER_LEFT_INDENT_OFFSET = 16;
+const LAYER_LEFT_MARGIN_OFFSET = 4 + 32 + LAYER_LEFT_INDENT_OFFSET;
 const INSERT_MARK_OFFSET = 2;
 
 type DraggingData = { insertFolder: BigUint64Array; insertIndex: number; highlightFolder: boolean; markerHeight: number };
@@ -325,6 +326,9 @@ export default defineComponent({
 		},
 		markIndent(path: BigUint64Array): string {
 			return `${LAYER_LEFT_MARGIN_OFFSET + path.length * LAYER_LEFT_INDENT_OFFSET}px`;
+		},
+		markTopOffset(height: number): string {
+			return `${height}px`;
 		},
 		async toggleLayerVisibility(path: BigUint64Array) {
 			this.editor.instance.toggle_layer_visibility(path);
@@ -355,6 +359,7 @@ export default defineComponent({
 		},
 		closest(tree: HTMLElement, clientY: number): DraggingData {
 			const treeChildren = tree.children;
+			const treeOffset = tree.getBoundingClientRect().top;
 
 			// Closest distance to the middle of the row along the Y axis
 			let closest = Infinity;
@@ -368,10 +373,7 @@ export default defineComponent({
 			// Whether you are inserting into a folder and should show the folder outline
 			let highlightFolder = false;
 
-			const treeOffset = tree.getBoundingClientRect().top;
-			// Marker height
 			let markerHeight = 0;
-
 			let previousHeight = undefined as undefined | number;
 
 			Array.from(treeChildren).forEach((treeChild, index) => {
