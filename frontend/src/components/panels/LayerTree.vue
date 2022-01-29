@@ -296,8 +296,8 @@ const blendModeEntries: SectionsOfMenuListEntries<BlendMode> = [
 ];
 
 const RANGE_TO_INSERT_WITHIN_BOTTOM_FOLDER_NOT_ROOT = 20;
-const LAYER_LEFT_INDENT_OFFSET = 16;
-const LAYER_LEFT_MARGIN_OFFSET = 4 + 32 + LAYER_LEFT_INDENT_OFFSET;
+const LAYER_INDENT = 16;
+const INSERT_MARK_MARGIN_LEFT = 4 + 32 + LAYER_INDENT;
 const INSERT_MARK_OFFSET = 2;
 
 type DraggingData = { insertFolder: BigUint64Array; insertIndex: number; highlightFolder: boolean; markerHeight: number };
@@ -322,10 +322,10 @@ export default defineComponent({
 	},
 	methods: {
 		layerIndent(layer: LayerPanelEntry): string {
-			return `${layer.path.length * LAYER_LEFT_INDENT_OFFSET}px`;
+			return `${layer.path.length * LAYER_INDENT}px`;
 		},
 		markIndent(path: BigUint64Array): string {
-			return `${LAYER_LEFT_MARGIN_OFFSET + path.length * LAYER_LEFT_INDENT_OFFSET}px`;
+			return `${INSERT_MARK_MARGIN_LEFT + path.length * LAYER_INDENT}px`;
 		},
 		markTopOffset(height: number): string {
 			return `${height}px`;
