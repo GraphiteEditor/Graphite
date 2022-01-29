@@ -379,7 +379,7 @@ export default defineComponent({
 			listing.editingName = true;
 			const tree = (this.$refs.layerTreeList as typeof LayoutCol).$el as HTMLElement;
 			this.$nextTick(() => {
-				(tree.querySelector("input:not([disabled]") as HTMLInputElement).select();
+				(tree.querySelector("input:not([disabled])") as HTMLInputElement).select();
 			});
 		},
 		async onEditLayerNameChange(listing: LayerListingInfo, inputElement: EventTarget | null) {
