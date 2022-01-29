@@ -25,6 +25,9 @@ pub enum ToolMessage {
 	Fill(FillMessage),
 	#[remain::unsorted]
 	#[child]
+	Freehand(FreehandMessage),
+	#[remain::unsorted]
+	#[child]
 	Line(LineMessage),
 	#[remain::unsorted]
 	#[child]

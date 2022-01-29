@@ -52,6 +52,13 @@ pub enum Operation {
 		points: Vec<(f64, f64)>,
 		style: style::PathStyle,
 	},
+	AddFreehand {
+		path: Vec<LayerId>,
+		transform: [f64; 6],
+		insert_index: isize,
+		points: Vec<(f64, f64)>,
+		style: style::PathStyle,
+	},
 	AddNgon {
 		path: Vec<LayerId>,
 		insert_index: isize,
