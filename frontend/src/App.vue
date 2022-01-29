@@ -87,6 +87,10 @@ button {
 	color: var(--color-e-nearwhite);
 }
 
+::selection {
+	background: var(--color-accent);
+}
+
 svg,
 img {
 	display: block;

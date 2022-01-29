@@ -10,6 +10,7 @@ use std::hash::{Hash, Hasher};
 
 #[repr(C)]
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+// TODO: Rename all instances of `path` to `layer_path`
 pub enum Operation {
 	AddEllipse {
 		path: Vec<LayerId>,
@@ -123,6 +124,10 @@ pub enum Operation {
 	SetLayerVisibility {
 		path: Vec<LayerId>,
 		visible: bool,
+	},
+	SetLayerName {
+		path: Vec<LayerId>,
+		name: String,
 	},
 	SetLayerBlendMode {
 		path: Vec<LayerId>,
