@@ -29,21 +29,21 @@
 			</PopoverButton>
 		</LayoutRow>
 		<LayoutRow class="layer-tree" :scrollableY="true">
-			<LayoutCol class="list" ref="layerTreeList" @click="() => deselectAllLayers()" @dragover="updateInsertLine($event)" @dragend="drop()">
+			<LayoutCol class="list" ref="layerTreeList" @click="() => deselectAllLayers()" @dragover="(e) => draggable && updateInsertLine(e)" @dragend="draggable && drop()">
 				<LayoutRow
 					class="layer-row"
 					v-for="(listing, index) in layers"
 					:key="String(listing.entry.path.slice(-1))"
 					:class="{ 'insert-folder': draggingData && draggingData.highlightFolder && draggingData.insertFolder === listing.entry.path }"
 				>
-					<div class="visibility">
+					<LayoutRow class="visibility">
 						<IconButton
 							:action="(e) => (toggleLayerVisibility(listing.entry.path), e && e.stopPropagation())"
 							:size="24"
 							:icon="listing.entry.visible ? 'EyeVisible' : 'EyeHidden'"
 							:title="listing.entry.visible ? 'Visible' : 'Hidden'"
 						/>
-					</div>
+					</LayoutRow>
 
 					<div class="indent" :style="{ marginLeft: layerIndent(listing.entry) }"></div>
 
@@ -53,27 +53,36 @@
 						:class="{ expanded: listing.entry.layer_metadata.expanded }"
 						@click.stop="handleExpandArrowClick(listing.entry.path)"
 					></button>
-					<div
+					<LayoutRow
 						class="layer"
 						:class="{ selected: listing.entry.layer_metadata.selected }"
-						@click.shift.exact.stop="selectLayer(listing.entry, false, true)"
-						@click.shift.ctrl.exact.stop="selectLayer(listing.entry, true, true)"
-						@click.ctrl.exact.stop="selectLayer(listing.entry, true, false)"
-						@click.exact.stop="selectLayer(listing.entry, false, false)"
+						@click.shift.exact.stop="!listing.editingName && selectLayer(listing.entry, false, true)"
+						@click.shift.ctrl.exact.stop="!listing.editingName && selectLayer(listing.entry, true, true)"
+						@click.ctrl.exact.stop="!listing.editingName && selectLayer(listing.entry, true, false)"
+						@click.exact.stop="!listing.editingName && selectLayer(listing.entry, false, false)"
 						:data-index="index"
-						draggable="true"
-						@dragstart="dragStart($event, listing.entry)"
-						:title="String(listing.entry.path)"
+						:draggable="draggable"
+						@dragstart="(e) => draggable && dragStart(e, listing.entry)"
+						:title="`${listing.entry.name}\n${devMode ? 'Layer Path: ' + listing.entry.path.join(' / ') : ''}`"
 					>
-						<div class="layer-type-icon">
+						<LayoutRow class="layer-type-icon">
 							<IconLabel v-if="listing.entry.layer_type === 'Folder'" :icon="'NodeTypeFolder'" title="Folder" />
 							<IconLabel v-else :icon="'NodeTypePath'" title="Path" />
-						</div>
-						<div class="layer-name">
-							<span>{{ listing.entry.name }}</span>
-						</div>
+						</LayoutRow>
+						<LayoutRow class="layer-name" @dblclick="onEditLayerName(listing)">
+							<input
+								type="text"
+								:value="listing.entry.name"
+								:placeholder="listing.entry.layer_type"
+								:disabled="!listing.editingName"
+								@change="(e) => onEditLayerNameChange(listing, e.target)"
+								@blur="onEditLayerNameDeselect(listing)"
+								@keydown.enter="(e) => onEditLayerNameChange(listing, e.target)"
+								@keydown.escape="onEditLayerNameDeselect(listing)"
+							/>
+						</LayoutRow>
 						<div class="thumbnail" v-html="listing.entry.thumbnail"></div>
-					</div>
+					</LayoutRow>
 				</LayoutRow>
 			</LayoutCol>
 			<div class="insert-mark" v-if="draggingData && !draggingData.highlightFolder" :style="{ left: markIndent(draggingData.insertFolder), top: markTopOffset(draggingData.markerHeight) }"></div>
@@ -115,9 +124,8 @@
 			border-bottom: 1px solid var(--color-4-dimgray);
 
 			.visibility {
-				height: 100%;
 				flex: 0 0 auto;
-				display: flex;
+				height: 100%;
 				align-items: center;
 
 				.icon-button {
@@ -170,14 +178,12 @@
 			}
 
 			.layer {
-				display: flex;
 				align-items: center;
 				z-index: 1;
-				min-width: 0;
 				width: 100%;
 				height: 100%;
-				border-radius: 2px;
 				padding: 0 4px;
+				border-radius: 2px;
 				margin-right: 8px;
 
 				&.selected {
@@ -192,14 +198,41 @@
 
 				.layer-name {
 					flex: 1 1 100%;
-					display: flex;
-					min-width: 0;
 					margin: 0 4px;
 
-					span {
+					input {
+						color: inherit;
+						background: none;
+						border: none;
+						outline: none;
+						margin: 0;
+						padding: 0;
 						text-overflow: ellipsis;
 						white-space: nowrap;
 						overflow: hidden;
+						border-radius: 2px;
+						height: 24px;
+						width: 100%;
+
+						&:disabled {
+							user-select: none;
+							// Workaround for `user-select: none` not working on <input> elements
+							pointer-events: none;
+						}
+
+						&::placeholder {
+							color: inherit;
+							font-style: italic;
+						}
+
+						&:focus {
+							background: var(--color-1-nearblack);
+							padding: 0 4px;
+
+							&::placeholder {
+								opacity: 0.5;
+							}
+						}
 					}
 				}
 
@@ -254,7 +287,7 @@ import NumberInput from "@/components/widgets/inputs/NumberInput.vue";
 import IconLabel from "@/components/widgets/labels/IconLabel.vue";
 import Separator from "@/components/widgets/separators/Separator.vue";
 
-type LayerListingInfo = { entry: LayerPanelEntry; bottomLayer: boolean; folderIndex: number };
+type LayerListingInfo = { folderIndex: number; bottomLayer: boolean; editingName: boolean; entry: LayerPanelEntry };
 
 const blendModeEntries: SectionsOfMenuListEntries<BlendMode> = [
 	[{ label: "Normal", value: "Normal" }],
@@ -317,7 +350,9 @@ export default defineComponent({
 			selectionRangeStartLayer: undefined as undefined | LayerPanelEntry,
 			selectionRangeEndLayer: undefined as undefined | LayerPanelEntry,
 			opacity: 100,
+			draggable: true,
 			draggingData: undefined as undefined | DraggingData,
+			devMode: process.env.NODE_ENV === "development",
 		};
 	},
 	methods: {
@@ -335,6 +370,36 @@ export default defineComponent({
 		},
 		async handleExpandArrowClick(path: BigUint64Array) {
 			this.editor.instance.toggle_layer_expansion(path);
+		},
+		onEditLayerName(listing: LayerListingInfo) {
+			if (listing.editingName) return;
+
+			this.draggable = false;
+
+			listing.editingName = true;
+			const tree = (this.$refs.layerTreeList as typeof LayoutCol).$el as HTMLElement;
+			this.$nextTick(() => {
+				(tree.querySelector("input:not([disabled])") as HTMLInputElement).select();
+			});
+		},
+		async onEditLayerNameChange(listing: LayerListingInfo, inputElement: EventTarget | null) {
+			// Eliminate duplicate events
+			if (!listing.editingName) return;
+
+			this.draggable = true;
+
+			const name = (inputElement as HTMLInputElement).value;
+			listing.editingName = false;
+			this.editor.instance.set_layer_name(listing.entry.path, name);
+		},
+		onEditLayerNameDeselect(listing: LayerListingInfo) {
+			this.draggable = true;
+
+			listing.editingName = false;
+			this.$nextTick(() => {
+				const selection = window.getSelection();
+				if (selection) selection.removeAllRanges();
+			});
 		},
 		async setLayerBlendMode(newSelectedIndex: number) {
 			const blendMode = this.blendModeEntries.flat()[newSelectedIndex].value;
@@ -446,6 +511,7 @@ export default defineComponent({
 				this.draggingData = undefined;
 			}
 		},
+		// TODO: Move blend mode setting logic to backend based on the layers it knows are selected
 		setBlendModeForSelectedLayers() {
 			const selected = this.layers.filter((layer) => layer.entry.layer_metadata.selected);
 
@@ -466,8 +532,8 @@ export default defineComponent({
 				this.blendModeSelectedIndex = NaN;
 			}
 		},
+		// TODO: Move opacity setting logic to backend based on the layers it knows are selected
 		setOpacityForSelectedLayers() {
-			// todo figure out why this is here
 			const selected = this.layers.filter((layer) => layer.entry.layer_metadata.selected);
 
 			if (selected.length < 1) {
@@ -490,15 +556,21 @@ export default defineComponent({
 	},
 	mounted() {
 		this.editor.dispatcher.subscribeJsMessage(DisplayDocumentLayerTreeStructure, (displayDocumentLayerTreeStructure) => {
+			const layerWithNameBeingEdited = this.layers.find((layer: LayerListingInfo) => layer.editingName);
+			const layerPathWithNameBeingEdited = layerWithNameBeingEdited && layerWithNameBeingEdited.entry.path;
+			const layerIdWithNameBeingEdited = layerPathWithNameBeingEdited && layerPathWithNameBeingEdited.slice(-1)[0];
 			const path = [] as bigint[];
-			this.layers = [] as { folderIndex: number; bottomLayer: boolean; entry: LayerPanelEntry }[];
+			this.layers = [] as LayerListingInfo[];
 
-			const recurse = (folder: DisplayDocumentLayerTreeStructure, layers: { folderIndex: number; bottomLayer: boolean; entry: LayerPanelEntry }[], cache: Map<string, LayerPanelEntry>): void => {
+			const recurse = (folder: DisplayDocumentLayerTreeStructure, layers: LayerListingInfo[], cache: Map<string, LayerPanelEntry>): void => {
 				folder.children.forEach((item, index) => {
 					// TODO: fix toString
-					path.push(BigInt(item.layerId.toString()));
+					const layerId = BigInt(item.layerId.toString());
+					path.push(layerId);
+
 					const mapping = cache.get(path.toString());
-					if (mapping) layers.push({ folderIndex: index, bottomLayer: index === folder.children.length - 1, entry: mapping });
+					if (mapping) layers.push({ folderIndex: index, bottomLayer: index === folder.children.length - 1, entry: mapping, editingName: layerIdWithNameBeingEdited === layerId });
+
 					if (item.children.length >= 1) recurse(item, layers, cache);
 					path.pop();
 				});
