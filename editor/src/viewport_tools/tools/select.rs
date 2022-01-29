@@ -102,7 +102,7 @@ struct SelectToolData {
 	drag_current: ViewportPosition,
 	layers_dragging: Vec<Vec<LayerId>>, // Paths and offsets
 	drag_box_overlay_layer: Option<Vec<LayerId>>,
-	bounding_box_overlays: Option<(Vec<LayerId>, [Vec<LayerId>; 8])>,
+	bounding_box_overlays: Option<BoundingBoxOverlays>,
 	snap_handler: SnapHandler,
 }
 
@@ -119,6 +119,51 @@ impl SelectToolData {
 		} else {
 			[self.drag_start, self.drag_current]
 		}
+	}
+}
+
+// const SELECT_THRESHOLD: f64 = 20.;
+#[derive(Clone, Debug, Default)]
+struct BoundingBoxOverlays {
+	pub bounding_box: Vec<LayerId>,
+	pub transform_handles: [Vec<LayerId>; 8],
+	pub bounds: [DVec2; 2],
+	// pub selected_handle_index: Option<usize>,
+}
+
+impl BoundingBoxOverlays {
+	#[must_use]
+	pub fn new(buffer: &mut Vec<Message>) -> Self {
+		Self {
+			bounding_box: add_bounding_box(buffer),
+			transform_handles: add_transform_handles(buffer),
+			..Default::default()
+		}
+	}
+	pub fn transform(&mut self, buffer: &mut Vec<Message>) {
+		let transform = transform_from_box(self.bounds[0], self.bounds[1]);
+		let path = self.bounding_box.clone();
+		buffer.push(DocumentMessage::Overlays(Operation::SetLayerTransformInViewport { path, transform }.into()).into());
+
+		// Helps push values that end in approximately half, plus or minus some floating point imprecision, towards the same side of the round() function
+		const BIAS: f64 = 0.0001;
+
+		for (position, path) in evaluate_points(self.bounds[0].into(), self.bounds[1].into()).into_iter().zip(&self.transform_handles) {
+			let scale = DVec2::splat(VECTOR_MANIPULATOR_ANCHOR_MARKER_SIZE);
+			let translation = (position - (scale / 2.) - 0.5 + BIAS).round();
+			let transform = DAffine2::from_scale_angle_translation(scale, 0., translation).to_cols_array();
+			let path = path.clone();
+			buffer.push(DocumentMessage::Overlays(Operation::SetLayerTransformInViewport { path, transform }.into()).into());
+		}
+	}
+
+	pub fn delete(self, buffer: &mut impl Extend<Message>) {
+		buffer.extend([DocumentMessage::Overlays(Operation::DeleteLayer { path: self.bounding_box }.into()).into()]);
+		buffer.extend(
+			self.transform_handles
+				.iter()
+				.map(|path| DocumentMessage::Overlays(Operation::DeleteLayer { path: path.clone() }.into()).into()),
+		);
 	}
 }
 
@@ -192,33 +237,14 @@ impl Fsm for SelectToolFsmState {
 				(_, DocumentIsDirty) => {
 					let mut buffer = Vec::new();
 					match (document.selected_visible_layers_bounding_box(), data.bounding_box_overlays.take()) {
-						(None, Some((bounding_box, transform_handles))) => {
-							buffer.push(DocumentMessage::Overlays(Operation::DeleteLayer { path: bounding_box }.into()).into());
-							buffer.extend(
-								transform_handles
-									.iter()
-									.map(|path| DocumentMessage::Overlays(Operation::DeleteLayer { path: path.clone() }.into()).into()),
-							);
-						}
-						(Some([pos1, pos2]), paths) => {
-							let paths = paths.unwrap_or_else(|| (add_bounding_box(&mut buffer), add_transform_handles(&mut buffer)));
+						(None, Some(bounding_box_overlays)) => bounding_box_overlays.delete(&mut buffer),
+						(Some(bounds), paths) => {
+							let mut bounding_box_overlays = paths.unwrap_or_else(|| BoundingBoxOverlays::new(&mut buffer));
 
-							data.bounding_box_overlays = Some(paths.clone());
+							bounding_box_overlays.bounds = bounds;
+							bounding_box_overlays.transform(&mut buffer);
 
-							let (bounding_box, transform_handles) = paths;
-
-							let transform = transform_from_box(pos1, pos2);
-							buffer.push(DocumentMessage::Overlays(Operation::SetLayerTransformInViewport { path: bounding_box, transform }.into()).into());
-
-							// Helps push values that end in approximately half, plus or minus some floating point imprecision, towards the same side of the round() function
-							const BIAS: f64 = 0.0001;
-
-							for (position, path) in evaluate_points(pos1.into(), pos2.into()).into_iter().zip(transform_handles) {
-								let scale = DVec2::splat(VECTOR_MANIPULATOR_ANCHOR_MARKER_SIZE);
-								let translation = (position - (scale / 2.) - 0.5 + BIAS).round();
-								let transform = DAffine2::from_scale_angle_translation(scale, 0., translation).to_cols_array();
-								buffer.push(DocumentMessage::Overlays(Operation::SetLayerTransformInViewport { path, transform }.into()).into());
-							}
+							data.bounding_box_overlays = Some(bounding_box_overlays);
 						}
 						(_, _) => {}
 					};
@@ -341,13 +367,11 @@ impl Fsm for SelectToolFsmState {
 					Ready
 				}
 				(_, Abort) => {
-					let mut delete = |path: Vec<LayerId>| responses.push_front(DocumentMessage::Overlays(Operation::DeleteLayer { path }.into()).into());
 					if let Some(path) = data.drag_box_overlay_layer.take() {
-						delete(path)
+						responses.push_front(DocumentMessage::Overlays(Operation::DeleteLayer { path }.into()).into())
 					};
-					if let Some((bounding_box, transform_handles)) = data.bounding_box_overlays.take() {
-						delete(bounding_box);
-						transform_handles.into_iter().for_each(delete);
+					if let Some(bounding_box_overlays) = data.bounding_box_overlays.take() {
+						bounding_box_overlays.delete(responses);
 					}
 
 					data.snap_handler.cleanup(responses);
