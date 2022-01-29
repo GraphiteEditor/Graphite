@@ -456,7 +456,7 @@ export default defineComponent({
 			this.canvasCursor = updateMouseCursor.cursor;
 		});
 		this.editor.dispatcher.subscribeJsMessage(TriggerTextCommit, () => {
-			if (this.textInput) this.editor.instance.on_change_text(this.textInput.innerText || "");
+			if (this.textInput) this.editor.instance.on_change_text(this.textInput.textContent || "");
 		});
 
 		this.editor.dispatcher.subscribeJsMessage(DisplayEditableTextbox, (displayEditableTextbox) => {
@@ -468,7 +468,7 @@ export default defineComponent({
 			this.textInput.style.height = "auto";
 			this.textInput.style.fontSize = `${displayEditableTextbox.font_size}px`;
 			this.textInput.oninput = (): void => {
-				if (this.textInput) this.editor.instance.update_bounds(this.textInput.innerText || "");
+				if (this.textInput) this.editor.instance.update_bounds(this.textInput.textContent || "");
 			};
 		});
 

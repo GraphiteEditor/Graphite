@@ -1,8 +1,6 @@
-use std::str::Chars;
-
 use glam::DVec2;
 use kurbo::{BezPath, Point, Vec2};
-use rustybuzz::{GlyphPosition, UnicodeBuffer};
+use rustybuzz::{GlyphBuffer, UnicodeBuffer};
 use ttf_parser::{GlyphId, OutlineBuilder};
 
 struct Builder {
@@ -42,35 +40,35 @@ impl OutlineBuilder for Builder {
 	}
 }
 
-fn word_over_length(mut str: Chars, positions: &[GlyphPosition], mut index: usize, mut pos: f64, scale: f64, line_width: Option<f64>) -> bool {
+fn font_properties(buzz_face: &rustybuzz::Face, font_size: f64) -> (f64, f64, UnicodeBuffer) {
+	let scale = (buzz_face.units_per_em() as f64).recip() * font_size;
+	let line_height = font_size;
+	let buffer = UnicodeBuffer::new();
+	(scale, line_height, buffer)
+}
+
+fn push_str(buffer: &mut UnicodeBuffer, word: &str, trailing_space: bool) {
+	buffer.push_str(word);
+
+	if trailing_space {
+		buffer.push_str(" ");
+	}
+}
+
+fn wrap_word(line_width: Option<f64>, glyph_buffer: &GlyphBuffer, scale: f64, x_pos: f64) -> bool {
 	if let Some(line_width) = line_width {
-		assert_eq!(str.nth(index), Some(' '));
-		pos += positions[index].x_advance as f64 * scale;
+		let word_length: i32 = glyph_buffer.glyph_positions().iter().map(|pos| pos.x_advance).sum();
+		let scaled_word_length = word_length as f64 * scale;
 
-		for c in str {
-			index += 1;
-
-			if c == ' ' || c == '\n' {
-				return false;
-			}
-
-			pos += positions[index].x_advance as f64 * scale;
-
-			if pos > line_width {
-				return true;
-			}
+		if scaled_word_length + x_pos > line_width {
+			return true;
 		}
 	}
 	false
 }
 
 pub fn to_kurbo(str: &str, buzz_face: rustybuzz::Face, font_size: f64, line_width: Option<f64>) -> BezPath {
-	let scale = (buzz_face.units_per_em() as f64).recip() * font_size;
-	let line_hight = font_size;
-
-	let mut buffer = UnicodeBuffer::new();
-	buffer.push_str(str);
-	let glyph_buffer = rustybuzz::shape(&buzz_face, &[], buffer);
+	let (scale, line_height, mut buffer) = font_properties(&buzz_face, font_size);
 
 	let mut builder = Builder {
 		path: BezPath::new(),
@@ -80,51 +78,67 @@ pub fn to_kurbo(str: &str, buzz_face: rustybuzz::Face, font_size: f64, line_widt
 		scale,
 	};
 
-	let positions = glyph_buffer.glyph_positions();
+	for line in str.split('\n') {
+		let length = line.split(' ').count();
+		for (index, word) in line.split(' ').enumerate() {
+			push_str(&mut buffer, word, index != length - 1);
 
-	for (index, ((char, pos), info)) in str.chars().zip(positions).zip(glyph_buffer.glyph_infos()).enumerate() {
-		if char == '\n' || (char == ' ' && word_over_length(str.chars(), positions, index, builder.pos.x, scale, line_width)) {
-			builder.pos = Point::new(0., builder.pos.y + line_hight);
-		} else {
-			if let Some(line_width) = line_width {
-				if builder.pos.x + (pos.x_advance as f64 * scale) >= line_width {
-					builder.pos = Point::new(0., builder.pos.y + line_hight);
-				}
+			let glyph_buffer = rustybuzz::shape(&buzz_face, &[], buffer);
+
+			if wrap_word(line_width, &glyph_buffer, scale, builder.pos.x) {
+				builder.pos = Point::new(0., builder.pos.y + line_height);
 			}
-			builder.offset = Vec2::new(pos.x_offset as f64, pos.y_offset as f64) * scale;
-			buzz_face.outline_glyph(GlyphId(info.glyph_id as u16), &mut builder);
-			builder.pos += Vec2::new(pos.x_advance as f64, pos.y_advance as f64) * scale;
+
+			for (glyph_position, glyph_info) in glyph_buffer.glyph_positions().iter().zip(glyph_buffer.glyph_infos()) {
+				if let Some(line_width) = line_width {
+					if builder.pos.x + (glyph_position.x_advance as f64 * builder.scale) >= line_width {
+						builder.pos = Point::new(0., builder.pos.y + line_height);
+					}
+				}
+				builder.offset = Vec2::new(glyph_position.x_offset as f64, glyph_position.y_offset as f64) * builder.scale;
+				buzz_face.outline_glyph(GlyphId(glyph_info.glyph_id as u16), &mut builder);
+				builder.pos += Vec2::new(glyph_position.x_advance as f64, glyph_position.y_advance as f64) * builder.scale;
+			}
+
+			buffer = glyph_buffer.clear();
 		}
+		builder.pos = Point::new(0., builder.pos.y + line_height);
 	}
 	builder.path
 }
 
 pub fn bounding_box(str: &str, buzz_face: rustybuzz::Face, font_size: f64, line_width: Option<f64>) -> DVec2 {
-	let scale = (buzz_face.units_per_em() as f64).recip() * font_size;
-	let line_hight = font_size;
-
-	let mut buffer = UnicodeBuffer::new();
-	buffer.push_str(str);
-	let glyph_buffer = rustybuzz::shape(&buzz_face, &[], buffer);
-
-	let positions = glyph_buffer.glyph_positions();
+	let (scale, line_height, mut buffer) = font_properties(&buzz_face, font_size);
 
 	let mut pos = DVec2::ZERO;
 	let mut bounds = DVec2::ZERO;
 
-	for (index, (char, glyph_pos)) in str.chars().zip(positions).enumerate() {
-		if char == '\n' || (char == ' ' && word_over_length(str.chars(), positions, index, pos.x, scale, line_width)) {
-			pos = DVec2::new(0., pos.y + line_hight);
-		} else {
-			if let Some(line_width) = line_width {
-				if pos.x + (glyph_pos.x_advance as f64 * scale) >= line_width {
-					pos = DVec2::new(0., pos.y + line_hight);
-				}
+	for line in str.split('\n') {
+		let length = line.split(' ').count();
+		for (index, word) in line.split(' ').enumerate() {
+			push_str(&mut buffer, word, index != length - 1);
+
+			let glyph_buffer = rustybuzz::shape(&buzz_face, &[], buffer);
+
+			if wrap_word(line_width, &glyph_buffer, scale, pos.x) {
+				pos = DVec2::new(0., pos.y + line_height);
 			}
-			pos += DVec2::new(glyph_pos.x_advance as f64, glyph_pos.y_advance as f64) * scale;
+
+			for glyph_position in glyph_buffer.glyph_positions() {
+				if let Some(line_width) = line_width {
+					if pos.x + (glyph_position.x_advance as f64 * scale) >= line_width {
+						pos = DVec2::new(0., pos.y + line_height);
+					}
+				}
+				pos += DVec2::new(glyph_position.x_advance as f64, glyph_position.y_advance as f64) * scale;
+			}
+			bounds = bounds.max(pos + DVec2::new(0., line_height));
+
+			buffer = glyph_buffer.clear();
 		}
-		bounds = bounds.max(pos);
+		pos = DVec2::new(0., pos.y + line_height);
 	}
+
 	bounds
 }
 

@@ -120,7 +120,7 @@ export function createInputManager(editor: EditorState, container: HTMLElement, 
 		}
 
 		if (textInput && !inTextInput) {
-			editor.instance.on_change_text(textInput.innerText || "");
+			editor.instance.on_change_text(textInput.textContent || "");
 		} else if (inCanvas && !inTextInput) viewportPointerInteractionOngoing = true;
 
 		if (viewportPointerInteractionOngoing) {
