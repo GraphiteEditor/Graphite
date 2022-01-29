@@ -1,6 +1,4 @@
-use std::{
-	collections::{HashMap, VecDeque}
-};
+use std::collections::{HashMap, VecDeque};
 
 use serde_json::Value;
 
