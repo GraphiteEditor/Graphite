@@ -1,14 +1,6 @@
-use std::rc::Rc;
-use std::{
-	cell::RefCell,
-	collections::{HashMap, VecDeque},
-};
-
-use serde::{Deserialize, Serialize};
-
-use crate::message_prelude::{generate_uuid, Message};
-
 use super::{layout_message::LayoutTarget, LayoutMessage};
+use crate::message_prelude::*;
+use serde::{Deserialize, Serialize};
 
 use derivative::*;
 
@@ -31,14 +23,25 @@ pub trait PropertyHolder {
 #[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq)]
 pub struct WidgetLayout {
 	pub layout: SubLayout,
-	#[serde(skip)]
-	pub widget_lookup: HashMap<u64, Rc<RefCell<Widget>>>,
 }
 
 impl WidgetLayout {
 	pub fn new(layout: SubLayout) -> Self {
-		let widget_lookup: HashMap<u64, Rc<RefCell<Widget>>> = layout.iter().flat_map(|row| row.widgets()).map(|holder| (holder.widget_id, holder.widget)).collect();
-		Self { layout, widget_lookup }
+		Self { layout }
+	}
+
+	pub fn iter(&self) -> WidgetIter<'_> {
+		WidgetIter {
+			stack: self.layout.iter().collect(),
+			current_slice: None,
+		}
+	}
+
+	pub fn iter_mut(&mut self) -> WidgetIterMut<'_> {
+		WidgetIterMut {
+			stack: self.layout.iter_mut().collect(),
+			current_slice: None,
+		}
 	}
 }
 
@@ -60,18 +63,77 @@ impl LayoutRow {
 	}
 }
 
+#[derive(Debug, Default)]
+pub struct WidgetIterMut<'a> {
+	pub stack: Vec<&'a mut LayoutRow>,
+	pub current_slice: Option<&'a mut [WidgetHolder]>,
+}
+
+impl<'a> Iterator for WidgetIterMut<'a> {
+	type Item = &'a mut WidgetHolder;
+
+	fn next(&mut self) -> Option<Self::Item> {
+		if let Some((first, rest)) = self.current_slice.take().map(|slice| slice.split_first_mut()).flatten() {
+			self.current_slice = Some(rest);
+			return Some(first);
+		};
+
+		match self.stack.pop() {
+			Some(LayoutRow::Row { name: _, widgets }) => {
+				self.current_slice = Some(widgets);
+				self.next()
+			}
+			Some(LayoutRow::Section { name: _, layout }) => {
+				for layout_row in layout {
+					self.stack.push(layout_row);
+				}
+				self.next()
+			}
+			None => None,
+		}
+	}
+}
+
+#[derive(Debug, Default)]
+pub struct WidgetIter<'a> {
+	pub stack: Vec<&'a LayoutRow>,
+	pub current_slice: Option<&'a [WidgetHolder]>,
+}
+
+impl<'a> Iterator for WidgetIter<'a> {
+	type Item = &'a WidgetHolder;
+
+	fn next(&mut self) -> Option<Self::Item> {
+		if let Some(item) = self.current_slice.map(|slice| slice.first()).flatten() {
+			self.current_slice = Some(&self.current_slice.unwrap()[1..]);
+			return Some(item);
+		}
+
+		match self.stack.pop() {
+			Some(LayoutRow::Row { name: _, widgets }) => {
+				self.current_slice = Some(widgets);
+				self.next()
+			}
+			Some(LayoutRow::Section { name: _, layout }) => {
+				for layout_row in layout {
+					self.stack.push(layout_row);
+				}
+				self.next()
+			}
+			None => None,
+		}
+	}
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct WidgetHolder {
 	pub widget_id: u64,
-	pub widget: Rc<RefCell<Widget>>,
+	pub widget: Widget,
 }
 
 impl WidgetHolder {
 	pub fn new(widget: Widget) -> Self {
-		Self {
-			widget_id: generate_uuid(),
-			widget: Rc::new(RefCell::new(widget)),
-		}
+		Self { widget_id: generate_uuid(), widget }
 	}
 }
 

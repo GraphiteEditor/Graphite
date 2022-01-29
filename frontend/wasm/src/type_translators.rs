@@ -3,7 +3,6 @@ use crate::helpers::match_string_to_enum;
 use editor::input::keyboard::Key;
 use editor::viewport_tools::tool::ToolType;
 use graphene::layers::blend_mode::BlendMode;
-use graphene::layers::style::ViewMode;
 
 pub fn translate_tool_type(name: &str) -> Option<ToolType> {
 	use ToolType::*;

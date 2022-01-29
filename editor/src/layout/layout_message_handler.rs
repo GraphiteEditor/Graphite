@@ -1,6 +1,5 @@
 use std::{
-	collections::{HashMap, VecDeque},
-	ops::DerefMut,
+	collections::{HashMap, VecDeque}
 };
 
 use serde_json::Value;
@@ -44,9 +43,9 @@ impl MessageHandler<LayoutMessage, ()> for LayoutMessageHandler {
 				self.send_layout(layout_target, responses);
 			}
 			UpdateLayout { layout_target, widget_id, value } => {
-				let layout = self.layouts.get(&layout_target).expect("Received invalid layout_id from the frontend");
-				let widget = layout.widget_lookup.get(&widget_id).expect("Received invalid widget_id from the frontend");
-				match (**widget).borrow_mut().deref_mut() {
+				let layout = self.layouts.get_mut(&layout_target).expect("Received invalid layout_id from the frontend");
+				let widget_holder = layout.iter_mut().find(|widget| widget.widget_id == widget_id).expect("Received invalid widget_id from the frontend");
+				match &mut widget_holder.widget {
 					Widget::NumberInput(number_input) => match value {
 						Value::Number(num) => {
 							let update_value = num.as_f64().unwrap();
