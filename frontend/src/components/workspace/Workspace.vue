@@ -23,12 +23,12 @@
 					ref="documentsPanel"
 				/>
 			</LayoutCol>
-			<LayoutCol class="workspace-grid-resize-gutter" @pointerdown="resizePanel($event)"></LayoutCol>
+			<LayoutCol class="workspace-grid-resize-gutter" @pointerdown="(e) => resizePanel(e)"></LayoutCol>
 			<LayoutCol class="workspace-grid-subdivision" style="flex-grow: 0.17">
 				<LayoutRow class="workspace-grid-subdivision" style="flex-grow: 402">
 					<Panel :panelType="'Properties'" :tabLabels="['Properties']" :tabActiveIndex="0" />
 				</LayoutRow>
-				<LayoutRow class="workspace-grid-resize-gutter" @pointerdown="resizePanel($event)"></LayoutRow>
+				<LayoutRow class="workspace-grid-resize-gutter" @pointerdown="(e) => resizePanel(e)"></LayoutRow>
 				<LayoutRow class="workspace-grid-subdivision" style="flex-grow: 590">
 					<Panel :panelType="'LayerTree'" :tabLabels="['Layer Tree']" :tabActiveIndex="0" />
 				</LayoutRow>

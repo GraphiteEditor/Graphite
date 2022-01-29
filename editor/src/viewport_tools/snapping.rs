@@ -21,7 +21,7 @@ impl SnapHandler {
 		overlay_paths: &mut Vec<Vec<LayerId>>,
 		responses: &mut VecDeque<Message>,
 		viewport_bounds: DVec2,
-		(positions_and_distances): (impl Iterator<Item = (f64, f64)>, impl Iterator<Item = (f64, f64)>),
+		positions_and_distances: (impl Iterator<Item = (f64, f64)>, impl Iterator<Item = (f64, f64)>),
 		closest_distance: DVec2,
 	) {
 		/// Draws an alignment line overlay with the correct transform and fade opacity, reusing lines from the pool if available.
