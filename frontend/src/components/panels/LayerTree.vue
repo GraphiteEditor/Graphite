@@ -357,7 +357,7 @@ export default defineComponent({
 				layer.entry.layer_metadata.selected = false;
 			});
 		},
-		closest(tree: HTMLElement, clientY: number): DraggingData {
+		calculateDragIndex(tree: HTMLElement, clientY: number): DraggingData {
 			const treeChildren = tree.children;
 			const treeOffset = tree.getBoundingClientRect().top;
 
@@ -428,14 +428,14 @@ export default defineComponent({
 			}
 			const tree = (this.$refs.layerTreeList as typeof LayoutCol).$el;
 
-			this.draggingData = this.closest(tree, event.clientY);
+			this.draggingData = this.calculateDragIndex(tree, event.clientY);
 		},
 		updateInsertLine(event: DragEvent) {
 			// Stop the drag from being shown as cancelled
 			event.preventDefault();
 
 			const tree = (this.$refs.layerTreeList as typeof LayoutCol).$el as HTMLElement;
-			this.draggingData = this.closest(tree, event.clientY);
+			this.draggingData = this.calculateDragIndex(tree, event.clientY);
 		},
 		async drop() {
 			if (this.draggingData) {
