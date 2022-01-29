@@ -79,6 +79,7 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Select {
 			Ready => actions!(SelectMessageDiscriminant; DragStart),
 			Dragging => actions!(SelectMessageDiscriminant; DragStop, MouseMove),
 			DrawingBox => actions!(SelectMessageDiscriminant; DragStop, MouseMove, Abort),
+			ResizingBounds => actions!(SelectMessageDiscriminant; DragStop, MouseMove, Abort),
 		}
 	}
 }
@@ -88,6 +89,7 @@ enum SelectToolFsmState {
 	Ready,
 	Dragging,
 	DrawingBox,
+	ResizingBounds,
 }
 
 impl Default for SelectToolFsmState {
@@ -122,13 +124,14 @@ impl SelectToolData {
 	}
 }
 
-// const SELECT_THRESHOLD: f64 = 20.;
+const SELECT_THRESHOLD: f64 = 20.;
 #[derive(Clone, Debug, Default)]
 struct BoundingBoxOverlays {
 	pub bounding_box: Vec<LayerId>,
 	pub transform_handles: [Vec<LayerId>; 8],
 	pub bounds: [DVec2; 2],
-	// pub selected_handle_index: Option<usize>,
+	/// Top bottom left right
+	pub selected_edges: Option<(bool, bool, bool, bool)>,
 }
 
 impl BoundingBoxOverlays {
@@ -155,6 +158,26 @@ impl BoundingBoxOverlays {
 			let path = path.clone();
 			buffer.push(DocumentMessage::Overlays(Operation::SetLayerTransformInViewport { path, transform }.into()).into());
 		}
+	}
+
+	pub fn check_select(&mut self, cursor: DVec2) -> bool {
+		let min = self.bounds[0].min(self.bounds[1]);
+		let max = self.bounds[0].max(self.bounds[1]);
+		if min.x - cursor.x < SELECT_THRESHOLD && min.y - cursor.y < SELECT_THRESHOLD && cursor.x - max.x < SELECT_THRESHOLD && cursor.y - max.y < SELECT_THRESHOLD {
+			let top = (cursor.y - min.y).abs() < SELECT_THRESHOLD;
+			let bottom = (max.y - cursor.y).abs() < SELECT_THRESHOLD;
+			let left = (cursor.x - min.x).abs() < SELECT_THRESHOLD;
+			let right = (cursor.x - max.x).abs() < SELECT_THRESHOLD;
+			if top || bottom || left || right {
+				self.selected_edges = Some((top, bottom, left, right));
+				log::info!("Selected");
+				return true;
+			}
+		}
+
+		log::info!("Not selected");
+		self.selected_edges = None;
+		false
 	}
 
 	pub fn delete(self, buffer: &mut impl Extend<Message>) {
@@ -255,13 +278,25 @@ impl Fsm for SelectToolFsmState {
 					data.drag_start = input.mouse.position;
 					data.drag_current = input.mouse.position;
 					let mut buffer = Vec::new();
+
+					let dragging_bounds = if let Some(bounding_box) = &mut data.bounding_box_overlays {
+						bounding_box.check_select(input.mouse.position)
+					} else {
+						false
+					};
+
 					let mut selected: Vec<_> = document.selected_visible_layers().map(|path| path.to_vec()).collect();
 					let quad = data.selection_quad();
 					let mut intersection = document.graphene_document.intersects_quad_root(quad);
 					// If the user clicks on a layer that is in their current selection, go into the dragging mode.
 					// If the user clicks on new shape, make that layer their new selection.
 					// Otherwise enter the box select mode
-					let state = if selected.iter().any(|path| intersection.contains(path)) {
+					let state = if dragging_bounds {
+						data.snap_handler
+							.start_snap(document, document.visible_layers().filter(|layer| !selected.iter().any(|path| path == layer)));
+
+						ResizingBounds
+					} else if selected.iter().any(|path| intersection.contains(path)) {
 						buffer.push(DocumentMessage::StartTransaction.into());
 						data.layers_dragging = selected;
 
@@ -290,6 +325,8 @@ impl Fsm for SelectToolFsmState {
 						}
 					};
 					buffer.into_iter().rev().for_each(|message| responses.push_front(message));
+
+					log::info!("State {:?}", state);
 
 					state
 				}
@@ -323,6 +360,13 @@ impl Fsm for SelectToolFsmState {
 					data.drag_current = mouse_position + closest_move;
 					Dragging
 				}
+				(ResizingBounds, MouseMove { .. }) => {
+					let mouse_position = input.mouse.position;
+
+					// let closest_move = data.snap_handler.snap_layers(responses, document, &data.layers_dragging, input.viewport_bounds.size(), mouse_delta);
+
+					ResizingBounds
+				}
 				(DrawingBox, MouseMove { .. }) => {
 					data.drag_current = input.mouse.position;
 
@@ -339,6 +383,15 @@ impl Fsm for SelectToolFsmState {
 					DrawingBox
 				}
 				(Dragging, DragStop) => {
+					let response = match input.mouse.position.distance(data.drag_start) < 10. * f64::EPSILON {
+						true => DocumentMessage::Undo,
+						false => DocumentMessage::CommitTransaction,
+					};
+					data.snap_handler.cleanup(responses);
+					responses.push_front(response.into());
+					Ready
+				}
+				(ResizingBounds, DragStop) => {
 					let response = match input.mouse.position.distance(data.drag_start) < 10. * f64::EPSILON {
 						true => DocumentMessage::Undo,
 						false => DocumentMessage::CommitTransaction,
@@ -511,6 +564,7 @@ impl Fsm for SelectToolFsmState {
 				},
 			])]),
 			SelectToolFsmState::DrawingBox => HintData(vec![]),
+			SelectToolFsmState::ResizingBounds => HintData(vec![]),
 		};
 
 		responses.push_back(FrontendMessage::UpdateInputHints { hint_data }.into());
