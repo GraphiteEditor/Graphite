@@ -84,7 +84,6 @@ struct PenToolData {
 	next_point: DVec2,
 	weight: u32,
 	path: Option<Vec<LayerId>>,
-	layer_exists: bool,
 	snap_handler: SnapHandler,
 }
 
@@ -111,7 +110,6 @@ impl Fsm for PenToolFsmState {
 					responses.push_back(DocumentMessage::StartTransaction.into());
 					responses.push_back(DocumentMessage::DeselectAllLayers.into());
 					data.path = Some(vec![generate_uuid()]);
-					data.layer_exists = false;
 
 					data.snap_handler.start_snap(document, document.visible_layers());
 					let snapped_position = data.snap_handler.snap_position(responses, input.viewport_bounds.size(), document, input.mouse.position);
@@ -220,7 +218,7 @@ fn make_operation(data: &PenToolData, tool_data: &DocumentToolData, show_preview
 		points.push((data.next_point.x, data.next_point.y))
 	}
 
-	Operation::AddPen {
+	Operation::AddPolyline {
 		path: data.path.clone().unwrap(),
 		insert_index: -1,
 		transform: DAffine2::IDENTITY.to_cols_array(),

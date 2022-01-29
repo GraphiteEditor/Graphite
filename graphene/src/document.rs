@@ -474,18 +474,7 @@ impl Document {
 
 				Some([vec![DocumentChanged, CreatedLayer { path: path.clone() }]].concat())
 			}
-			Operation::AddPen {
-				path,
-				insert_index,
-				points,
-				transform,
-				style,
-			} => {
-				let points: Vec<glam::DVec2> = points.iter().map(|&it| it.into()).collect();
-				self.set_layer(path, Layer::new(LayerDataType::Shape(Shape::poly_line(points, *style)), *transform), *insert_index)?;
-				Some([vec![DocumentChanged, CreatedLayer { path: path.clone() }], update_thumbnails_upstream(path)].concat())
-			}
-			Operation::AddFreehand {
+			Operation::AddPolyline {
 				path,
 				insert_index,
 				points,

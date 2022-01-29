@@ -94,7 +94,7 @@ impl Default for Mapping {
 			entry! {action=PenMessage::Confirm, key_down=Rmb},
 			entry! {action=PenMessage::Confirm, key_down=KeyEscape},
 			entry! {action=PenMessage::Confirm, key_down=KeyEnter},
-			// Pen
+			// Freehand
 			entry! {action=FreehandMessage::PointerMove, message=InputMapperMessage::PointerMove},
 			entry! {action=FreehandMessage::DragStart, key_down=Lmb},
 			entry! {action=FreehandMessage::DragStop, key_up=Lmb},

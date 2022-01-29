@@ -80,7 +80,6 @@ struct FreehandToolData {
 	points: Vec<DVec2>,
 	weight: u32,
 	path: Option<Vec<LayerId>>,
-	layer_exists: bool,
 }
 
 impl Fsm for FreehandToolFsmState {
@@ -106,7 +105,6 @@ impl Fsm for FreehandToolFsmState {
 					responses.push_back(DocumentMessage::StartTransaction.into());
 					responses.push_back(DocumentMessage::DeselectAllLayers.into());
 					data.path = Some(vec![generate_uuid()]);
-					data.layer_exists = false;
 
 					let pos = transform.inverse().transform_point2(input.mouse.position);
 
@@ -181,7 +179,7 @@ fn remove_preview(data: &FreehandToolData) -> Message {
 fn make_operation(data: &FreehandToolData, tool_data: &DocumentToolData) -> Message {
 	let points: Vec<(f64, f64)> = data.points.iter().map(|p| (p.x, p.y)).collect();
 
-	Operation::AddFreehand {
+	Operation::AddPolyline {
 		path: data.path.clone().unwrap(),
 		insert_index: -1,
 		transform: DAffine2::IDENTITY.to_cols_array(),
