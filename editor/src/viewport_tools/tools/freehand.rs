@@ -157,8 +157,8 @@ impl Fsm for FreehandToolFsmState {
 		let hint_data = match self {
 			FreehandToolFsmState::Ready => HintData(vec![HintGroup(vec![HintInfo {
 				key_groups: vec![],
-				mouse: Some(MouseMotion::Lmb),
-				label: String::from("Draw Freehand"),
+				mouse: Some(MouseMotion::LmbDrag),
+				label: String::from("Draw Polyline"),
 				plus: false,
 			}])]),
 			FreehandToolFsmState::Drawing => HintData(vec![]),
