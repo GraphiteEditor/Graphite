@@ -13,25 +13,43 @@ pub enum ToolMessage {
 	// Sub-messages
 	#[remain::unsorted]
 	#[child]
+	Select(SelectMessage),
+	#[remain::unsorted]
+	#[child]
 	Crop(CropMessage),
 	#[remain::unsorted]
 	#[child]
-	Ellipse(EllipseMessage),
+	Navigate(NavigateMessage),
 	#[remain::unsorted]
 	#[child]
 	Eyedropper(EyedropperMessage),
+	// #[remain::unsorted]
+	// #[child]
+	// Text(TextMessage),
 	#[remain::unsorted]
 	#[child]
 	Fill(FillMessage),
-	#[remain::unsorted]
-	#[child]
-	Freehand(FreehandMessage),
-	#[remain::unsorted]
-	#[child]
-	Line(LineMessage),
-	#[remain::unsorted]
-	#[child]
-	Navigate(NavigateMessage),
+	// #[remain::unsorted]
+	// #[child]
+	// Gradient(GradientMessage),
+	// #[remain::unsorted]
+	// #[child]
+	// Brush(BrushMessage),
+	// #[remain::unsorted]
+	// #[child]
+	// Heal(HealMessage),
+	// #[remain::unsorted]
+	// #[child]
+	// Clone(CloneMessage),
+	// #[remain::unsorted]
+	// #[child]
+	// Patch(PatchMessage),
+	// #[remain::unsorted]
+	// #[child]
+	// Detail(DetailMessage),
+	// #[remain::unsorted]
+	// #[child]
+	// Relight(RelightMessage),
 	#[remain::unsorted]
 	#[child]
 	Path(PathMessage),
@@ -40,10 +58,19 @@ pub enum ToolMessage {
 	Pen(PenMessage),
 	#[remain::unsorted]
 	#[child]
+	Freehand(FreehandMessage),
+	// #[remain::unsorted]
+	// #[child]
+	// Spline(SplineMessage),
+	#[remain::unsorted]
+	#[child]
+	Line(LineMessage),
+	#[remain::unsorted]
+	#[child]
 	Rectangle(RectangleMessage),
 	#[remain::unsorted]
 	#[child]
-	Select(SelectMessage),
+	Ellipse(EllipseMessage),
 	#[remain::unsorted]
 	#[child]
 	Shape(ShapeMessage),
