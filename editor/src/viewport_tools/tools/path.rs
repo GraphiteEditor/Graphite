@@ -105,6 +105,7 @@ impl Fsm for PathToolFsmState {
 
 			match (self, event) {
 				(_, SelectionChanged) => {
+					// TODO: Capture a tool event instead of doing this?
 					// Remove any residual overlays that might exist on selection change
 					for shape in &mut data.manipulation_handler.selected_shapes {
 						shape.remove_all_overlays(responses);
