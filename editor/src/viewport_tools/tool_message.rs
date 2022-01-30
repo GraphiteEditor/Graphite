@@ -81,6 +81,7 @@ pub enum ToolMessage {
 	// Messages
 	#[remain::unsorted]
 	NoOp,
+	AbortCurrentTool,
 	ActivateTool {
 		tool_type: ToolType,
 	},

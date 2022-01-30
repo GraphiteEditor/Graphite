@@ -21,6 +21,11 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, &InputPreprocessorMes
 		#[remain::sorted]
 		match message {
 			// Messages
+			AbortCurrentTool => {
+				if let Some(tool_message) = standard_tool_message(self.tool_state.tool_data.active_tool_type, StandardToolMessageType::Abort) {
+					responses.push_front(tool_message.into());
+				}
+			}
 			ActivateTool { tool_type } => {
 				let tool_data = &mut self.tool_state.tool_data;
 				let document_data = &self.tool_state.document_tool_data;

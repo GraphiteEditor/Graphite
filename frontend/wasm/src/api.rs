@@ -145,6 +145,9 @@ impl JsEditorHandle {
 	}
 
 	pub fn select_document(&self, document_id: u64) {
+		let message = ToolMessage::AbortCurrentTool;
+		self.dispatch(message);
+
 		let message = PortfolioMessage::SelectDocument { document_id };
 		self.dispatch(message);
 	}

@@ -92,6 +92,7 @@ impl PortfolioMessageHandler {
 
 		responses.push_back(FrontendMessage::UpdateOpenDocumentsList { open_documents }.into());
 
+		responses.push_back(ToolMessage::AbortCurrentTool.into());
 		responses.push_back(PortfolioMessage::SelectDocument { document_id }.into());
 	}
 
@@ -216,6 +217,9 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 					responses.push_back(PortfolioMessage::CloseDocument { document_id }.into());
 				} else {
 					responses.push_back(FrontendMessage::DisplayConfirmationToCloseDocument { document_id }.into());
+
+					responses.push_back(ToolMessage::AbortCurrentTool.into());
+
 					// Select the document being closed
 					responses.push_back(PortfolioMessage::SelectDocument { document_id }.into());
 				}
@@ -251,6 +255,8 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 				let current_index = self.document_index(self.active_document_id);
 				let next_index = (current_index + 1) % self.document_ids.len();
 				let next_id = self.document_ids[next_index];
+
+				responses.push_back(ToolMessage::AbortCurrentTool.into());
 				responses.push_back(PortfolioMessage::SelectDocument { document_id: next_id }.into());
 			}
 			OpenDocument => {
@@ -351,6 +357,8 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 				let current_index = self.document_index(self.active_document_id);
 				let prev_index = (current_index + len - 1) % len;
 				let prev_id = self.document_ids[prev_index];
+
+				responses.push_back(ToolMessage::AbortCurrentTool.into());
 				responses.push_back(PortfolioMessage::SelectDocument { document_id: prev_id }.into());
 			}
 			RequestAboutGraphiteDialog => {
