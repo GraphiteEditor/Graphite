@@ -37,8 +37,8 @@ impl MessageHandler<TransformLayerMessage, (&mut HashMap<Vec<LayerId>, LayerMeta
 
 		let (layer_metadata, document, ipp) = data;
 
-		let selected = layer_metadata.iter().filter_map(|(layer_path, data)| data.selected.then(|| layer_path.to_owned())).collect();
-		let mut selected = Selected::new(&mut self.original_transforms, &mut self.pivot, selected, responses, document);
+		let selected_layers = layer_metadata.iter().filter_map(|(layer_path, data)| data.selected.then(|| layer_path)).collect::<Vec<_>>();
+		let mut selected = Selected::new(&mut self.original_transforms, &mut self.pivot, &selected_layers, responses, document);
 
 		let mut begin_operation = |operation: TransformOperation, typing: &mut Typing, mouse_position: &mut DVec2, start_mouse: &mut DVec2| {
 			if operation != TransformOperation::None {
