@@ -1,9 +1,9 @@
 use crate::{
 	consts::F64PRECISION,
-	intersection::{intersections, Intersect, Origin},
+	intersection::{intersections, line_curve_intersections, valid_t, Intersect, Origin},
 	layers::{simple_shape::Shape, style::PathStyle},
 };
-use kurbo::{BezPath, CubicBez, Line, ParamCurve, ParamCurveArclen, ParamCurveArea, ParamCurveExtrema, PathEl, PathSeg, QuadBez, Rect};
+use kurbo::{BezPath, CubicBez, Line, ParamCurve, ParamCurveArclen, ParamCurveArea, ParamCurveExtrema, PathEl, PathSeg, Point, QuadBez, Rect};
 use serde::{Deserialize, Serialize};
 use std::fmt::{self, Debug, Formatter};
 
@@ -20,6 +20,8 @@ pub enum BooleanOperation {
 pub enum BooleanOperationError {
 	InvalidSelection,
 	InvalidIntersections,
+	NoIntersections,
+	NothingDone, // not neccesarily an error
 	DirectionUndefined,
 	Unexpected, // for debugging, when complete nothing should be unexpected
 }
@@ -165,7 +167,10 @@ impl PathGraph {
 		// An odd number of intersections occurrs when either
 		//    1. There exists a tangential intersection (which shouldn't effect boolean operations)
 		//    2. The algorithm has found an extra intersection or missed an intersection
-		if new.size() == 0 || new.size() % 2 != 0 {
+		if new.size() == 0 {
+			return Err(BooleanOperationError::NoIntersections);
+		}
+		if new.size() % 2 != 0 {
 			return Err(BooleanOperationError::InvalidIntersections);
 		}
 		new.add_edges_from_path(alpha, Origin::Alpha);
@@ -381,7 +386,7 @@ pub fn subdivide_path_seg(p: &PathSeg, t_vals: &mut [f64]) -> Vec<Option<PathSeg
 
 /// ? It may be better to move alpha and beta then take references
 /// !check if shapes are filled
-pub fn boolean_operation(select: BooleanOperation, alpha: &Shape, beta: &Shape) -> Result<Vec<Shape>, BooleanOperationError> {
+pub fn boolean_operation(select: BooleanOperation, mut alpha: Shape, mut beta: Shape) -> Result<Vec<Shape>, BooleanOperationError> {
 	if alpha.path.is_empty() || beta.path.is_empty() {
 		return Err(BooleanOperationError::InvalidSelection);
 	}
@@ -389,17 +394,32 @@ pub fn boolean_operation(select: BooleanOperation, alpha: &Shape, beta: &Shape) 
 	let beta_dir = Cycle::direction_for_path(&beta.path)?;
 	match select {
 		BooleanOperation::Union => {
-			let graph = if beta_dir == alpha_dir {
-				PathGraph::from_paths(&alpha.path, &beta.path)?
+			match if beta_dir == alpha_dir {
+				PathGraph::from_paths(&alpha.path, &beta.path)
 			} else {
-				PathGraph::from_paths(&alpha.path, &reverse_path(&beta.path))?
-			};
-			let mut cycles = graph.get_cycles();
-			// "extra calls to ParamCurveArea::area here"
-			let outline: Cycle = (*cycles.iter().reduce(|max, cycle| if cycle.area().abs() >= max.area().abs() { cycle } else { max }).unwrap()).clone();
-			let mut insides = collect_shapes(&graph, &mut cycles, |dir| dir != alpha_dir, |_| &alpha.style)?;
-			insides.push(graph.get_shape(&outline, &alpha.style));
-			Ok(insides)
+				PathGraph::from_paths(&alpha.path, &reverse_path(&beta.path))
+			} {
+				Ok(graph) => {
+					let mut cycles = graph.get_cycles();
+					// "extra calls to ParamCurveArea::area here"
+					let outline: Cycle = (*cycles.iter().reduce(|max, cycle| if cycle.area().abs() >= max.area().abs() { cycle } else { max }).unwrap()).clone();
+					let mut insides = collect_shapes(&graph, &mut cycles, |dir| dir != alpha_dir, |_| &alpha.style)?;
+					insides.push(graph.get_shape(&outline, &alpha.style));
+					Ok(insides)
+				}
+				Err(BooleanOperationError::NoIntersections) => {
+					if cast_horizontal_ray(point_on_curve(&alpha.path), &beta.path) % 2 != 0 {
+						add_subpath(&mut beta.path, if beta_dir == alpha_dir { reverse_path(&alpha.path) } else { alpha.path });
+						Ok(vec![beta])
+					} else if cast_horizontal_ray(point_on_curve(&beta.path), &alpha.path) % 2 != 0 {
+						add_subpath(&mut alpha.path, if beta_dir == alpha_dir { reverse_path(&beta.path) } else { beta.path });
+						Ok(vec![alpha])
+					} else {
+						Err(BooleanOperationError::NothingDone)
+					}
+				}
+				Err(err) => Err(err),
+			}
 		}
 		BooleanOperation::Difference => {
 			let graph = if beta_dir != alpha_dir {
@@ -444,6 +464,34 @@ pub fn boolean_operation(select: BooleanOperation, alpha: &Shape, beta: &Shape) 
 			collect_shapes(&graph, &mut graph.get_cycles(), |dir| dir == alpha_dir, |_| &alpha.style)
 		}
 	}
+}
+
+/// !May be a bug where ray is cast into the endpoints of two lines
+pub fn cast_horizontal_ray(from: Point, into: &BezPath) -> usize {
+	let mut num = 0;
+	let ray = Line {
+		p0: from,
+		p1: Point { x: from.x + 1.0, y: from.y },
+	};
+	let mut intersects = Vec::new();
+	for ref seg in into.segments() {
+		// * could check bounding boxes more rigorously
+		if seg.bounding_box().x1 > from.x {
+			line_curve_intersections(&ray, seg, true, |_, b| valid_t(b), &mut intersects);
+		}
+	}
+	for intersect in intersects {
+		if valid_t(intersect.t_val(Origin::Beta)) {
+			num += 1;
+		}
+	}
+	num
+}
+
+/// * uses curve start point as point on the curve
+/// ! Panics if the curve is empty
+pub fn point_on_curve(curve: &BezPath) -> Point {
+	curve.segments().nth(0).unwrap().start()
 }
 
 /// panics if the curve has no PathSeg's
@@ -517,7 +565,7 @@ pub fn is_closed(curve: &BezPath) -> bool {
 }
 
 /// append a PathEl::ClosePath to the curve if it is not there already
-/// ? Should all subpaths be closed as well
+/// ? Should all subpaths be closed as well...  yes?
 pub fn close_path(curve: &mut BezPath) {
 	match curve.iter().last() {
 		Some(PathEl::ClosePath) | None => (),
@@ -537,8 +585,13 @@ pub fn concat_paths(a: &mut Vec<PathEl>, b: &BezPath) {
 	if let Some(PathEl::ClosePath) = a.last() {
 		a.remove(a.len() - 1);
 	}
-	// skip inital moveto
+	// skip inital moveto, which should be guarenteed to exist
 	b.iter().skip(1).for_each(|element| a.push(element));
+}
+
+/// concat b to a, where b is a new subpath
+pub fn add_subpath(a: &mut BezPath, b: BezPath) {
+	b.into_iter().for_each(|el| a.push(el));
 }
 
 pub fn path_length(a: &BezPath, accuracy: Option<f64>) -> f64 {

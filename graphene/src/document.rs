@@ -520,15 +520,16 @@ impl Document {
 				// log::debug!("{:?}", selected);
 				if selected.len() > 1 && selected.len() < 3 {
 					// ? apparently selected should be reversed
-					let shapes = self.transformed_shapes(selected)?;
-					let new_shapes = boolean_operation(*operation, &shapes[0], &shapes[1])?;
+					let mut shapes = self.transformed_shapes(selected)?;
+					let mut shape_drain = shapes.drain(..);
+					let new_shapes = boolean_operation(*operation, shape_drain.nth(0).unwrap(), shape_drain.nth(0).unwrap())?;
 
 					for path in selected {
 						self.delete(path)?;
 						responses.push(DocumentResponse::DeletedLayer { path: path.clone() })
 					}
 					for new_shape in new_shapes {
-						log::debug!("{:?}", new_shape.path);
+						// log::debug!("{:?}", new_shape.path);
 						let new_id = self.add_layer(&[], Layer::new(LayerDataType::Shape(new_shape), DAffine2::IDENTITY.to_cols_array()), -1)?;
 						responses.push(DocumentResponse::CreatedLayer { path: vec![new_id] })
 					}

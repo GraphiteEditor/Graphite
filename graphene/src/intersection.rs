@@ -93,6 +93,7 @@ impl std::ops::Not for Origin {
 	}
 }
 
+///TODO: remove quality from Intersect
 #[derive(Debug, PartialEq)]
 pub struct Intersect {
 	pub point: Point,
@@ -244,11 +245,11 @@ Bezier Curve Intersection Algorithm
 */
 fn path_intersections(a: &SubCurve, b: &SubCurve, mut recursion: f64, intersections: &mut Vec<Intersect>) {
 	if let (PathSeg::Line(line), _) = (a.curve, b) {
-		line_curve_intersections(line, b.curve, true, intersections);
+		line_curve_intersections(line, b.curve, true, |a, b| valid_t(a) && valid_t(b), intersections);
 		return;
 	}
 	if let (_, PathSeg::Line(line)) = (a, b.curve) {
-		line_curve_intersections(line, a.curve, false, intersections);
+		line_curve_intersections(line, a.curve, false, |a, b| valid_t(a) && valid_t(b), intersections);
 		return;
 	}
 	if overlap(&a.bounding_box(), &b.bounding_box()) {
@@ -291,10 +292,15 @@ fn path_intersections(a: &SubCurve, b: &SubCurve, mut recursion: f64, intersecti
 	}
 }
 
-fn line_curve_intersections(line: &Line, curve: &PathSeg, is_line_a: bool, intersections: &mut Vec<Intersect>) {
+pub fn line_curve_intersections<F>(line: &Line, curve: &PathSeg, is_line_a: bool, t_validate: F, intersections: &mut Vec<Intersect>)
+where
+	F: Fn(f64, f64) -> bool,
+{
 	if let (line, PathSeg::Line(line2)) = (line, curve) {
 		if let Some(cross) = line_intersection(line, line2) {
-			intersections.push(cross);
+			if t_validate(cross.t_a, cross.t_b) {
+				intersections.push(cross);
+			}
 		}
 	} else {
 		// forced to construct a vec here because match arms must return same type, and E0716
@@ -314,7 +320,7 @@ fn line_curve_intersections(line: &Line, curve: &PathSeg, is_line_a: bool, inter
 							_ => Point::new(0.0, 0.0), //should never occur
 						};
 						let line_time = line_t_value(line, &point);
-						if !valid_t(*time) || !valid_t(line_time) {
+						if t_validate(*time, line_time) {
 							return None;
 						}
 						if is_line_a {
@@ -393,24 +399,32 @@ pub fn intersection_candidates(a: &BezPath, b: &BezPath) -> Vec<(usize, usize)> 
 
 /// returns intersection point as if lines extended forever
 pub fn line_intersect_point(a: &Line, b: &Line) -> Option<Point> {
-	let slopes = DMat2::from_cols_array(&[(b.p1 - b.p0).x, (b.p1 - b.p0).y, (a.p0 - a.p1).x, (a.p0 - a.p1).y]);
-	if slopes.determinant() == 0.0 {
-		return None;
+	match line_intersection_unchecked(a, b) {
+		Some(isect) => Some(isect.point),
+		None => None,
 	}
-	let t_vals = slopes.inverse() * DVec2::new((a.p0 - b.p0).x, (a.p0 - b.p0).y);
-	Some(b.eval(t_vals[0]))
 }
 
 /// returns intersection point and t values, treating lines as Bezier curves
 pub fn line_intersection(a: &Line, b: &Line) -> Option<Intersect> {
+	if let Some(isect) = line_intersection_unchecked(a, b) {
+		if valid_t(isect.t_a) && valid_t(isect.t_b) {
+			Some(isect)
+		} else {
+			None
+		}
+	} else {
+		None
+	}
+}
+
+/// returns intersection point and t values, treating lines as rays
+pub fn line_intersection_unchecked(a: &Line, b: &Line) -> Option<Intersect> {
 	let slopes = DMat2::from_cols_array(&[(b.p1 - b.p0).x, (b.p1 - b.p0).y, (a.p0 - a.p1).x, (a.p0 - a.p1).y]);
 	if slopes.determinant() == 0.0 {
 		return None;
 	}
 	let t_vals = slopes.inverse() * DVec2::new((a.p0 - b.p0).x, (a.p0 - b.p0).y);
-	if !valid_t(t_vals[0]) || !valid_t(t_vals[1]) {
-		return None;
-	}
 	Some(Intersect::from((b.eval(t_vals[0]), t_vals[1], t_vals[0])))
 }
 
@@ -511,7 +525,7 @@ pub fn overlap(a: &Rect, b: &Rect) -> bool {
 
 /// tests if a t value belongs to [0.0, 1.0)
 /// uses F64PRECISION to allow a slightly larger range of values
-fn valid_t(t: f64) -> bool {
+pub fn valid_t(t: f64) -> bool {
 	t > -F64PRECISION && t < 1.0
 }
 
