@@ -201,7 +201,7 @@ export class UpdateDocumentRulers extends JsMessage {
 	readonly interval!: number;
 }
 
-export type MouseCursorIcon = "default" | "zoom-in" | "zoom-out" | "grabbing" | "crosshair";
+export type MouseCursorIcon = "default" | "zoom-in" | "zoom-out" | "grabbing" | "crosshair" | "text";
 
 const ToCssCursorProperty = Transform(({ value }) => {
 	const cssNames: Record<string, MouseCursorIcon> = {
@@ -209,6 +209,7 @@ const ToCssCursorProperty = Transform(({ value }) => {
 		ZoomOut: "zoom-out",
 		Grabbing: "grabbing",
 		Crosshair: "crosshair",
+		Text: "text",
 	};
 
 	return cssNames[value] || "default";
@@ -294,6 +295,16 @@ export function newDisplayDocumentLayerTreeStructure(input: { data_buffer: DataB
 	return currentFolder;
 }
 
+export class DisplayEditableTextbox extends JsMessage {
+	readonly text!: string;
+
+	readonly line_width!: undefined | number;
+
+	readonly font_size!: number;
+}
+
+export class DisplayRemoveEditableTextbox extends JsMessage {}
+
 export class UpdateDocumentLayer extends JsMessage {
 	@Type(() => LayerPanelEntry)
 	readonly data!: LayerPanelEntry;
@@ -375,6 +386,8 @@ export class TriggerIndexedDbRemoveDocument extends JsMessage {
 	document_id!: string;
 }
 
+export class TriggerTextCommit extends JsMessage {}
+
 // Any is used since the type of the object should be known from the rust side
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type JSMessageFactory = (data: any, wasm: WasmInstance, instance: RustEditorInstance) => JsMessage;
@@ -388,6 +401,8 @@ export const messageConstructors: Record<string, MessageMaker> = {
 	TriggerFileDownload,
 	TriggerFileUpload,
 	DisplayDocumentLayerTreeStructure: newDisplayDocumentLayerTreeStructure,
+	DisplayEditableTextbox,
+	DisplayRemoveEditableTextbox,
 	UpdateDocumentLayer,
 	UpdateActiveTool,
 	UpdateActiveDocument,
@@ -404,6 +419,7 @@ export const messageConstructors: Record<string, MessageMaker> = {
 	DisplayDialogAboutGraphite,
 	TriggerIndexedDbWriteDocument,
 	TriggerIndexedDbRemoveDocument,
+	TriggerTextCommit,
 	UpdateDocumentArtboards,
 } as const;
 export type JsMessageType = keyof typeof messageConstructors;
