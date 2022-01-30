@@ -6,7 +6,7 @@ use graphene::{
 	layers::{
 		layer_info::LayerDataType,
 		simple_shape::Shape,
-		style::{self, Fill, Stroke},
+		style::{self, Fill, PathStyle, Stroke},
 	},
 	LayerId, Operation,
 };
@@ -39,7 +39,8 @@ pub struct ManipulationHandler {
 
 impl ManipulationHandler {
 	/// Select the first manipulator within the selection threshold
-	pub fn select_manipulator(&mut self, mouse_position: DVec2, select_threshold: f64) -> bool {
+	pub fn select_manipulator(&mut self, mouse_position: DVec2, select_threshold: f64, responses: &mut VecDeque<Message>) -> bool {
+		self.selected_point.set_selected(false, responses);
 		let select_threshold_squared = select_threshold * select_threshold;
 		for shape_index in 0..self.selected_shapes.len() {
 			let selected_shape = &self.selected_shapes[shape_index];
@@ -55,6 +56,7 @@ impl ManipulationHandler {
 				// Due to the shape data structure not persisting across selection changes we need to rely on the kurbo path to tell know if we should mirror
 				self.selected_anchor.handle_mirroring = (anchor.angle_between_handles().abs() - std::f64::consts::PI).abs() < 0.1;
 				self.alt_mirror_toggle_debounce = false;
+				self.selected_point.set_selected(true, responses);
 				return true;
 			}
 		}
@@ -182,7 +184,7 @@ impl ManipulationHandler {
 		let mut closest_distance: f64 = f64::MAX; // Not ideal
 		for anchor in shape.anchors.iter() {
 			let point = anchor.closest_handle_or_anchor(pos);
-			if point.selectable {
+			if point.can_be_selected {
 				let distance_squared = point.position.distance_squared(pos);
 				if distance_squared < closest_distance {
 					closest_distance = distance_squared;
@@ -225,9 +227,9 @@ impl VectorManipulatorShape {
 			anchors: vec![],
 			shape_overlay: None,
 		};
-		manipulator_shape.segments = manipulator_shape.create_segments_from_kurbo();
-		manipulator_shape.anchors = manipulator_shape.create_anchors_from_kurbo(responses);
 		manipulator_shape.shape_overlay = Some(manipulator_shape.create_shape_outline_overlay(responses));
+		manipulator_shape.anchors = manipulator_shape.create_anchors_from_kurbo(responses);
+		manipulator_shape.segments = manipulator_shape.create_segments_from_kurbo();
 		manipulator_shape
 	}
 
@@ -248,42 +250,37 @@ impl VectorManipulatorShape {
 			let (first_id, first_element) = first;
 			let (second_id, second_element) = second;
 
+			let create_point = |id: usize, point: DVec2, overlay: Vec<LayerId>| -> VectorManipulatorPoint {
+				VectorManipulatorPoint {
+					element_id: id,
+					position: point,
+					overlay: Some(overlay),
+					can_be_selected: true,
+					is_selected: false,
+				}
+			};
+
 			match first_element {
 				kurbo::PathEl::MoveTo(anchor) | kurbo::PathEl::LineTo(anchor) => anchor_position = self.to_local_space(anchor),
 				kurbo::PathEl::QuadTo(handle, anchor) | kurbo::PathEl::CurveTo(_, handle, anchor) => {
 					anchor_position = self.to_local_space(anchor);
-					handle1 = Some(VectorManipulatorPoint {
-						element_id: first_id,
-						position: self.to_local_space(handle),
-						overlay: Some(self.create_handle_overlay(responses)),
-						selectable: true,
-					});
+					handle1 = Some(create_point(first_id, self.to_local_space(handle), self.create_handle_overlay(responses)));
 				}
 				_ => (),
 			}
 
 			match second_element {
 				kurbo::PathEl::CurveTo(handle, _, _) | kurbo::PathEl::QuadTo(handle, _) => {
-					handle2 = Some(VectorManipulatorPoint {
-						element_id: second_id,
-						position: self.to_local_space(handle),
-						overlay: Some(self.create_handle_overlay(responses)),
-						selectable: true,
-					});
+					handle2 = Some(create_point(second_id, self.to_local_space(handle), self.create_handle_overlay(responses)));
 				}
 				_ => (),
 			}
 
 			VectorManipulatorAnchor {
-				point: VectorManipulatorPoint {
-					element_id: first_id,
-					position: anchor_position,
-					overlay: Some(self.create_anchor_overlay(responses)),
-					selectable: true,
-				},
-				close_element_id: None,
 				handle_line_overlays: (self.create_handle_line_overlay(&handle1, responses), self.create_handle_line_overlay(&handle2, responses)),
+				point: create_point(first_id, anchor_position, self.create_anchor_overlay(responses)),
 				handles: (handle1, handle2),
+				close_element_id: None,
 				handle_mirroring: true,
 			}
 		};
@@ -465,7 +462,7 @@ impl VectorManipulatorShape {
 			transform: DAffine2::IDENTITY.to_cols_array(),
 			style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 1.0)), Some(Fill::none())),
 		};
-		responses.push_back(DocumentMessage::Overlays(operation.into()).into());
+		responses.push_front(DocumentMessage::Overlays(operation.into()).into());
 
 		Some(layer_path)
 	}
@@ -757,7 +754,35 @@ pub struct VectorManipulatorPoint {
 	// the overlay for this point rendering
 	pub overlay: Option<Vec<LayerId>>,
 	// Can be selected
-	pub selectable: bool,
+	pub can_be_selected: bool,
+	// Is this point currently selected?
+	pub is_selected: bool,
+}
+
+impl VectorManipulatorPoint {
+	pub fn set_selected(&mut self, selected: bool, responses: &mut VecDeque<Message>) {
+		self.can_be_selected = selected;
+		if selected {
+			self.set_overlay_style(3.0, COLOR_ACCENT, COLOR_ACCENT, responses);
+		} else {
+			self.set_overlay_style(2.0, COLOR_ACCENT, Color::WHITE, responses);
+		}
+	}
+
+	pub fn set_overlay_style(&self, stroke_width: f32, stroke_color: Color, fill_color: Color, responses: &mut VecDeque<Message>) {
+		if let Some(overlay) = &self.overlay {
+			responses.push_back(
+				DocumentMessage::Overlays(
+					Operation::SetLayerStyle {
+						path: overlay.clone(),
+						style: PathStyle::new(Some(Stroke::new(stroke_color, stroke_width)), Some(Fill::new(fill_color))),
+					}
+					.into(),
+				)
+				.into(),
+			);
+		}
+	}
 }
 
 impl VectorManipulatorPoint {
@@ -766,7 +791,8 @@ impl VectorManipulatorPoint {
 			element_id: self.element_id,
 			position: self.position,
 			overlay: self.overlay.clone(),
-			selectable: self.selectable,
+			can_be_selected: self.can_be_selected,
+			is_selected: self.is_selected,
 		}
 	}
 }

@@ -126,7 +126,7 @@ impl Fsm for PathToolFsmState {
 				(_, DragStart) => {
 					// Select the first point within the threshold (in pixels)
 					let select_threshold = SELECTION_THRESHOLD;
-					if data.manipulation_handler.select_manipulator(input.mouse.position, select_threshold) {
+					if data.manipulation_handler.select_manipulator(input.mouse.position, select_threshold, responses) {
 						responses.push_back(DocumentMessage::StartTransaction.into());
 						data.snap_handler.start_snap(document, document.visible_layers());
 						let snap_points = data
