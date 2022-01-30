@@ -156,6 +156,7 @@ impl MessageHandler<MovementMessage, (&Document, &InputPreprocessorMessageHandle
 				responses.push_back(FrontendMessage::UpdateCanvasZoom { factor: self.zoom }.into());
 				responses.push_back(ToolMessage::DocumentIsDirty.into());
 				responses.push_back(DocumentMessage::DirtyRenderDocumentInOutlineView.into());
+				responses.push_back(PortfolioMessage::UpdateDocumentBar.into());
 				self.create_document_transform(&ipp.viewport_bounds, responses);
 			}
 			IncreaseCanvasZoom { center_on_mouse } => {
