@@ -28,6 +28,9 @@ pub enum ToolMessage {
 	// Text(TextMessage),
 	#[remain::unsorted]
 	#[child]
+	Text(TextMessage),
+	#[remain::unsorted]
+	#[child]
 	Fill(FillMessage),
 	// #[remain::unsorted]
 	// #[child]

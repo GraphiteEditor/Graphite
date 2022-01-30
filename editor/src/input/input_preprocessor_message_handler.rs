@@ -49,6 +49,14 @@ impl MessageHandler<InputPreprocessorMessage, ()> for InputPreprocessorMessageHa
 					);
 				}
 			}
+			InputPreprocessorMessage::DoubleClick { editor_mouse_state, modifier_keys } => {
+				self.handle_modifier_keys(modifier_keys, responses);
+
+				let mouse_state = editor_mouse_state.to_mouse_state(&self.viewport_bounds);
+				self.mouse.position = mouse_state.position;
+
+				responses.push_back(InputMapperMessage::DoubleClick.into());
+			}
 			InputPreprocessorMessage::KeyDown { key, modifier_keys } => {
 				self.handle_modifier_keys(modifier_keys, responses);
 				self.keyboard.set(key as usize);
