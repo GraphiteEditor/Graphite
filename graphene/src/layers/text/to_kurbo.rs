@@ -141,28 +141,3 @@ pub fn bounding_box(str: &str, buzz_face: rustybuzz::Face, font_size: f64, line_
 
 	bounds
 }
-
-#[test]
-fn test() {
-	use std::fs::File;
-	use std::io::Write;
-
-	let buzz_face = rustybuzz::Face::from_slice(include_bytes!("SourceSansPro/SourceSansPro-Regular.ttf"), 0).unwrap();
-
-	let text = r#"The quick brown
-fox jumped over the lazy cat.
-In publishing and graphic design, Lorem ipsum is a placeholder text commonly used to demonstrate the visual form of a document or a typeface without relying on meaningful content. Lorem ipsum may be used as a placeholder before the final copy is available. It is also used to temporarily replace text in a process called greeking, which allows designers to consider the form of a webpage or publication, without the meaning of the text influencing the design.
-
-Lorem ipsum is typically a corrupted version of De finibus bonorum et malorum, a 1st-century BC text by the Roman statesman and philosopher Cicero, with words altered, added, and removed to make it nonsensical and improper Latin.
-
-Test for really long word: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"#;
-	let svg = to_kurbo(text, buzz_face, 20., Some(400.)).to_svg();
-
-	let mut file = File::create("src/layers/text/SourceSansPro/font_text.svg").unwrap();
-	write!(
-		&mut file,
-		r#"<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"><path d="{}" /></svg>"#,
-		svg
-	)
-	.unwrap();
-}
