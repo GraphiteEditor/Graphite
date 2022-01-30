@@ -1,32 +1,38 @@
 <template>
-	<div class="header-third">
-		<WindowButtonsMac :maximized="maximized" v-if="platform === 'Mac'" />
-		<MenuBarInput v-if="platform !== 'Mac'" />
-	</div>
-	<div class="header-third">
-		<WindowTitle :title="`${activeDocumentDisplayName} - Graphite`" />
-	</div>
-	<div class="header-third">
-		<WindowButtonsWindows :maximized="maximized" v-if="platform === 'Windows' || platform === 'Linux'" />
-		<WindowButtonsWeb :maximized="maximized" v-if="platform === 'Web'" />
-	</div>
+	<LayoutRow class="title-bar">
+		<LayoutRow class="header-part">
+			<WindowButtonsMac :maximized="maximized" v-if="platform === 'Mac'" />
+			<MenuBarInput v-if="platform !== 'Mac'" />
+		</LayoutRow>
+		<LayoutRow class="header-part">
+			<WindowTitle :title="`${activeDocumentDisplayName} - Graphite`" />
+		</LayoutRow>
+		<LayoutRow class="header-part">
+			<WindowButtonsWindows :maximized="maximized" v-if="platform === 'Windows' || platform === 'Linux'" />
+			<WindowButtonsWeb :maximized="maximized" v-if="platform === 'Web'" />
+		</LayoutRow>
+	</LayoutRow>
 </template>
 
 <style lang="scss">
-.header-third {
-	display: flex;
-	flex: 1 1 100%;
+.title-bar {
+	height: 28px;
+	flex: 0 0 auto;
 
-	&:nth-child(1) {
-		justify-content: flex-start;
-	}
+	.header-part {
+		flex: 1 1 100%;
 
-	&:nth-child(2) {
-		justify-content: center;
-	}
+		&:nth-child(1) {
+			justify-content: flex-start;
+		}
 
-	&:nth-child(3) {
-		justify-content: flex-end;
+		&:nth-child(2) {
+			justify-content: center;
+		}
+
+		&:nth-child(3) {
+			justify-content: flex-end;
+		}
 	}
 }
 </style>
@@ -34,6 +40,7 @@
 <script lang="ts">
 import { defineComponent, PropType } from "vue";
 
+import LayoutRow from "@/components/layout/LayoutRow.vue";
 import MenuBarInput from "@/components/widgets/inputs/MenuBarInput.vue";
 import WindowButtonsMac from "@/components/window/title-bar/WindowButtonsMac.vue";
 import WindowButtonsWeb from "@/components/window/title-bar/WindowButtonsWeb.vue";
@@ -59,6 +66,7 @@ export default defineComponent({
 		WindowButtonsWindows,
 		WindowButtonsMac,
 		WindowButtonsWeb,
+		LayoutRow,
 	},
 });
 </script>

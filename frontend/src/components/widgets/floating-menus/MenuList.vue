@@ -1,8 +1,8 @@
 <template>
-	<FloatingMenu :class="'menu-list'" :direction="direction" :type="'Dropdown'" ref="floatingMenu" :windowEdgeMargin="0" :scrollable="scrollable" data-hover-menu-keep-open>
+	<FloatingMenu class="menu-list" :direction="direction" :type="'Dropdown'" ref="floatingMenu" :windowEdgeMargin="0" :scrollableY="scrollableY" data-hover-menu-keep-open>
 		<template v-for="(section, sectionIndex) in menuEntries" :key="sectionIndex">
 			<Separator :type="'List'" :direction="'Vertical'" v-if="sectionIndex > 0" />
-			<div
+			<LayoutRow
 				v-for="(entry, entryIndex) in section"
 				:key="entryIndex"
 				class="row"
@@ -12,8 +12,8 @@
 				@pointerleave="handleEntryPointerLeave(entry)"
 				:data-hover-menu-spawner-extend="entry.children && []"
 			>
-				<CheckboxInput v-if="entry.checkbox" v-model:checked="entry.checked" :outlineStyle="true" :class="'entry-checkbox'" />
-				<IconLabel v-else-if="entry.icon && drawIcon" :icon="entry.icon" :class="'entry-icon'" />
+				<CheckboxInput v-if="entry.checkbox" v-model:checked="entry.checked" :outlineStyle="true" class="entry-checkbox" />
+				<IconLabel v-else-if="entry.icon && drawIcon" :icon="entry.icon" class="entry-icon" />
 				<div v-else-if="drawIcon" class="no-icon"></div>
 
 				<span class="entry-label">{{ entry.label }}</span>
@@ -28,10 +28,10 @@
 					v-if="entry.children"
 					:direction="'TopRight'"
 					:menuEntries="entry.children"
-					v-bind="{ defaultAction, minWidth, drawIcon, scrollable }"
+					v-bind="{ defaultAction, minWidth, drawIcon, scrollableY }"
 					:ref="(ref: any) => setEntryRefs(entry, ref)"
 				/>
-			</div>
+			</LayoutRow>
 		</template>
 	</FloatingMenu>
 </template>
@@ -43,7 +43,6 @@
 
 		.row {
 			height: 20px;
-			display: flex;
 			align-items: center;
 			white-space: nowrap;
 			position: relative;
@@ -134,6 +133,7 @@ import { defineComponent, PropType } from "vue";
 
 import { IconName } from "@/utilities/icons";
 
+import LayoutRow from "@/components/layout/LayoutRow.vue";
 import FloatingMenu, { MenuDirection } from "@/components/widgets/floating-menus/FloatingMenu.vue";
 import CheckboxInput from "@/components/widgets/inputs/CheckboxInput.vue";
 import IconLabel from "@/components/widgets/labels/IconLabel.vue";
@@ -168,7 +168,7 @@ const MenuList = defineComponent({
 		defaultAction: { type: Function as PropType<() => void>, required: false },
 		minWidth: { type: Number as PropType<number>, default: 0 },
 		drawIcon: { type: Boolean as PropType<boolean>, default: false },
-		scrollable: { type: Boolean as PropType<boolean>, default: false },
+		scrollableY: { type: Boolean as PropType<boolean>, default: false },
 	},
 	methods: {
 		setEntryRefs(menuEntry: MenuListEntry, ref: typeof FloatingMenu) {
@@ -263,9 +263,7 @@ const MenuList = defineComponent({
 		},
 	},
 	data() {
-		return {
-			keyboardLockInfoMessage: this.fullscreen.keyboardLockApiSupported ? KEYBOARD_LOCK_USE_FULLSCREEN : KEYBOARD_LOCK_SWITCH_BROWSER,
-		};
+		return { keyboardLockInfoMessage: this.fullscreen.keyboardLockApiSupported ? KEYBOARD_LOCK_USE_FULLSCREEN : KEYBOARD_LOCK_SWITCH_BROWSER };
 	},
 	components: {
 		FloatingMenu,
@@ -273,6 +271,7 @@ const MenuList = defineComponent({
 		IconLabel,
 		CheckboxInput,
 		UserInputLabel,
+		LayoutRow,
 	},
 });
 export default MenuList;

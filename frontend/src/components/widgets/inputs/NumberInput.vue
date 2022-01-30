@@ -1,5 +1,5 @@
 <template>
-	<div class="number-input" :class="{ disabled }">
+	<LayoutRow class="number-input" :class="{ disabled }">
 		<input
 			:class="{ 'has-label': label }"
 			:id="`number-input-${id}`"
@@ -14,7 +14,7 @@
 		<label v-if="label" :for="`number-input-${id}`">{{ label }}</label>
 		<button v-if="!Number.isNaN(value)" class="arrow left" @click="onIncrement('Decrease')"></button>
 		<button v-if="!Number.isNaN(value)" class="arrow right" @click="onIncrement('Increase')"></button>
-	</div>
+	</LayoutRow>
 </template>
 
 <style lang="scss">
@@ -25,7 +25,6 @@
 	border-radius: 2px;
 	background: var(--color-1-nearblack);
 	overflow: hidden;
-	display: flex;
 	flex-direction: row-reverse;
 
 	label {
@@ -53,18 +52,12 @@
 		border: none;
 		background: none;
 		color: var(--color-e-nearwhite);
-		font-size: inherit;
-		font-family: inherit;
 		text-align: center;
 
 		&:not(:focus).has-label {
 			text-align: right;
 			margin-left: 0;
 			margin-right: 8px;
-		}
-
-		&::selection {
-			background: var(--color-accent);
 		}
 
 		&:focus {
@@ -154,6 +147,8 @@ import { defineComponent, PropType } from "vue";
 
 import { IncrementBehavior, IncrementDirection } from "@/utilities/widgets";
 
+import LayoutRow from "@/components/layout/LayoutRow.vue";
+
 export default defineComponent({
 	props: {
 		value: { type: Number as PropType<number>, required: true },
@@ -182,7 +177,6 @@ export default defineComponent({
 			if (Number.isNaN(this.value)) this.text = "";
 			else if (this.unitIsHiddenWhenEditing) this.text = `${this.value}`;
 			else this.text = `${this.value}${this.unit}`;
-
 			this.editing = true;
 			const inputElement = this.$refs.input as HTMLInputElement;
 			// Setting the value directly is required to make `inputElement.select()` work
@@ -194,24 +188,20 @@ export default defineComponent({
 		onTextChanged() {
 			// The `inputElement.blur()` call at the bottom of this function causes itself to be run again, so this check skips a second run
 			if (!this.editing) return;
-
 			const newValue = parseFloat(this.text);
 			this.updateValue(newValue);
-
 			this.editing = false;
 			const inputElement = this.$refs.input as HTMLElement;
 			inputElement.blur();
 		},
 		onCancelTextChange() {
 			this.updateValue(NaN);
-
 			this.editing = false;
 			const inputElement = this.$refs.input as HTMLElement;
 			inputElement.blur();
 		},
 		onIncrement(direction: IncrementDirection) {
 			if (Number.isNaN(this.value)) return;
-
 			switch (this.incrementBehavior) {
 				case "Add": {
 					const directionAddend = direction === "Increase" ? this.incrementFactor : -this.incrementFactor;
@@ -234,16 +224,12 @@ export default defineComponent({
 		},
 		updateValue(newValue: number) {
 			let sanitized = newValue;
-
 			const invalid = Number.isNaN(newValue);
 			if (invalid) sanitized = this.value;
-
 			if (this.isInteger) sanitized = Math.round(sanitized);
 			if (typeof this.min === "number" && !Number.isNaN(this.min)) sanitized = Math.max(sanitized, this.min);
 			if (typeof this.max === "number" && !Number.isNaN(this.max)) sanitized = Math.min(sanitized, this.max);
-
 			if (!invalid) this.$emit("update:value", sanitized);
-
 			this.setText(sanitized);
 		},
 		setText(value: number) {
@@ -252,7 +238,6 @@ export default defineComponent({
 			// 1.23 == 1
 			// 0.23 == 0 (Reason for the slightly more complicated code)
 			const leftSideDigits = Math.max(Math.floor(value).toString().length, 0) * Math.sign(value);
-
 			const roundingPower = 10 ** Math.max(this.displayDecimalPlaces - leftSideDigits, 0);
 			const displayValue = Math.round(value * roundingPower) / roundingPower;
 			this.text = `${displayValue}${this.unit}`;
@@ -265,12 +250,10 @@ export default defineComponent({
 				this.text = "-";
 				return;
 			}
-
 			// The simple `clamp()` function can't be used here since `undefined` values need to be boundless
 			let sanitized = newValue;
 			if (typeof this.min === "number") sanitized = Math.max(sanitized, this.min);
 			if (typeof this.max === "number") sanitized = Math.min(sanitized, this.max);
-
 			this.setText(sanitized);
 		},
 	},
@@ -284,5 +267,6 @@ export default defineComponent({
 		inputElement.removeEventListener("focus", this.onTextFocused);
 		inputElement.removeEventListener("blur", this.onTextChanged);
 	},
+	components: { LayoutRow },
 });
 </script>

@@ -1,65 +1,68 @@
 <template>
-	<LayoutRow class="workspace-grid-subdivision">
-		<LayoutCol class="workspace-grid-subdivision">
-			<Panel
-				:panelType="'Document'"
-				:tabCloseButtons="true"
-				:tabMinWidths="true"
-				:tabLabels="documents.state.documents.map((doc) => doc.displayName)"
-				:clickAction="
-					(tabIndex) => {
-						const targetId = documents.state.documents[tabIndex].id;
-						editor.instance.select_document(targetId);
-					}
-				"
-				:closeAction="
-					(tabIndex) => {
-						const targetId = documents.state.documents[tabIndex].id;
-						editor.instance.close_document_with_confirmation(targetId);
-					}
-				"
-				:tabActiveIndex="documents.state.activeDocumentIndex"
-				ref="documentsPanel"
-			/>
-		</LayoutCol>
-		<LayoutCol class="workspace-grid-resize-gutter" @pointerdown="resizePanel($event)"></LayoutCol>
-		<LayoutCol class="workspace-grid-subdivision" style="flex-grow: 0.17">
-			<LayoutRow class="workspace-grid-subdivision" style="flex-grow: 402">
-				<Panel :panelType="'Properties'" :tabLabels="['Properties']" :tabActiveIndex="0" />
-			</LayoutRow>
-			<LayoutRow class="workspace-grid-resize-gutter" @pointerdown="resizePanel($event)"></LayoutRow>
-			<LayoutRow class="workspace-grid-subdivision" style="flex-grow: 590">
-				<Panel :panelType="'LayerTree'" :tabLabels="['Layer Tree']" :tabActiveIndex="0" />
-			</LayoutRow>
-			<!-- <LayoutRow class="workspace-grid-resize-gutter"></LayoutRow>
-			<LayoutRow class="workspace-grid-subdivision folded">
-				<Panel :panelType="'Minimap'" :tabLabels="['Minimap', 'Asset Manager']" :tabActiveIndex="0" />
-			</LayoutRow> -->
-		</LayoutCol>
+	<LayoutRow class="workspace" data-workspace>
+		<LayoutRow class="workspace-grid-subdivision">
+			<LayoutCol class="workspace-grid-subdivision">
+				<Panel
+					:panelType="'Document'"
+					:tabCloseButtons="true"
+					:tabMinWidths="true"
+					:tabLabels="documents.state.documents.map((doc) => doc.displayName)"
+					:clickAction="
+						(tabIndex) => {
+							const targetId = documents.state.documents[tabIndex].id;
+							editor.instance.select_document(targetId);
+						}
+					"
+					:closeAction="
+						(tabIndex) => {
+							const targetId = documents.state.documents[tabIndex].id;
+							editor.instance.close_document_with_confirmation(targetId);
+						}
+					"
+					:tabActiveIndex="documents.state.activeDocumentIndex"
+					ref="documentsPanel"
+				/>
+			</LayoutCol>
+			<LayoutCol class="workspace-grid-resize-gutter" @pointerdown="(e) => resizePanel(e)"></LayoutCol>
+			<LayoutCol class="workspace-grid-subdivision" style="flex-grow: 0.17">
+				<LayoutRow class="workspace-grid-subdivision" style="flex-grow: 402">
+					<Panel :panelType="'Properties'" :tabLabels="['Properties']" :tabActiveIndex="0" />
+				</LayoutRow>
+				<LayoutRow class="workspace-grid-resize-gutter" @pointerdown="(e) => resizePanel(e)"></LayoutRow>
+				<LayoutRow class="workspace-grid-subdivision" style="flex-grow: 590">
+					<Panel :panelType="'LayerTree'" :tabLabels="['Layer Tree']" :tabActiveIndex="0" />
+				</LayoutRow>
+			</LayoutCol>
+		</LayoutRow>
+		<DialogModal v-if="dialog.state.visible" />
 	</LayoutRow>
-	<DialogModal v-if="dialog.state.visible" />
 </template>
 
 <style lang="scss">
-.workspace-grid-subdivision {
-	min-height: 28px;
-	flex: 1 1 0;
+.workspace {
+	position: relative;
+	flex: 1 1 100%;
 
-	&.folded {
-		flex-grow: 0;
-		height: 0;
-	}
-}
+	.workspace-grid-subdivision {
+		min-height: 28px;
+		flex: 1 1 0;
 
-.workspace-grid-resize-gutter {
-	flex: 0 0 4px;
-
-	&.layout-row {
-		cursor: ns-resize;
+		&.folded {
+			flex-grow: 0;
+			height: 0;
+		}
 	}
 
-	&.layout-col {
-		cursor: ew-resize;
+	.workspace-grid-resize-gutter {
+		flex: 0 0 4px;
+
+		&.layout-row {
+			cursor: ns-resize;
+		}
+
+		&.layout-col {
+			cursor: ew-resize;
+		}
 	}
 }
 </style>
@@ -139,7 +142,7 @@ export default defineComponent({
 		activeDocumentIndex(newIndex: number) {
 			this.$nextTick(() => {
 				const documentsPanel = this.$refs.documentsPanel as typeof Panel;
-				const newActiveTab = documentsPanel.$el.querySelectorAll(".tab-bar .tab-group .tab")[newIndex];
+				const newActiveTab = documentsPanel.$el.querySelectorAll("[data-tab-bar] [data-tab]")[newIndex];
 				newActiveTab.scrollIntoView();
 			});
 		},

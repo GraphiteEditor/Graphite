@@ -1,7 +1,7 @@
 <template>
-	<div class="shelf-item-input" :class="{ active: active }">
+	<LayoutRow class="shelf-item-input" :class="{ active: active }">
 		<IconButton :action="action" :icon="icon" :size="32" />
-	</div>
+	</LayoutRow>
 </template>
 
 <style lang="scss">
@@ -33,10 +33,14 @@ import { defineComponent, PropType } from "vue";
 
 import { IconName } from "@/utilities/icons";
 
+import LayoutRow from "@/components/layout/LayoutRow.vue";
 import IconButton from "@/components/widgets/buttons/IconButton.vue";
 
 export default defineComponent({
-	components: { IconButton },
+	components: {
+		IconButton,
+		LayoutRow,
+	},
 	props: {
 		icon: { type: String as PropType<IconName>, required: true },
 		action: { type: Function as PropType<(e?: MouseEvent) => void>, required: true },

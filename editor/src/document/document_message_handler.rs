@@ -380,6 +380,7 @@ impl DocumentMessageHandler {
 		}
 	}
 
+	// TODO: This should probably take a slice not a vec, also why does this even exist when `layer_panel_entry_from_path` also exists?
 	pub fn layer_panel_entry(&mut self, path: Vec<LayerId>) -> Result<LayerPanelEntry, EditorError> {
 		let data: LayerMetadata = *self
 			.layer_metadata
@@ -906,6 +907,15 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 				self.layer_metadata_mut(&layer_path).expanded = set_expanded;
 				responses.push_back(DocumentStructureChanged.into());
 				responses.push_back(LayerChanged { affected_layer_path: layer_path }.into())
+			}
+			SetLayerName { layer_path, name } => {
+				if let Some(layer) = self.layer_panel_entry_from_path(&layer_path) {
+					// Only save the history state if the name actually changed to something different
+					if layer.name != name {
+						self.backup(responses);
+						responses.push_back(DocumentOperation::SetLayerName { path: layer_path, name }.into());
+					}
+				}
 			}
 			SetOpacityForSelectedLayers { opacity } => {
 				self.backup(responses);

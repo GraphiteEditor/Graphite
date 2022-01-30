@@ -1,23 +1,27 @@
 <template>
-	<div class="mac window-buttons">
+	<LayoutRow class="window-buttons mac">
 		<div class="close" title="Close"></div>
 		<div class="minimize" title="Minimize"></div>
 		<div class="zoom" title="Zoom"></div>
-	</div>
+	</LayoutRow>
 </template>
 
 <style lang="scss">
-.mac.window-buttons {
-	display: flex;
+.window-buttons.mac {
+	flex: 0 0 auto;
 	align-items: center;
+	margin: 0 8px;
 
 	div {
-		display: flex;
+		flex: 0 0 auto;
 		align-items: center;
-		margin-left: 8px;
 		width: 11px;
 		height: 11px;
 		border-radius: 50%;
+
+		& + div {
+			margin-left: 8px;
+		}
 
 		&.close {
 			background: #ff5a52;
@@ -37,9 +41,12 @@
 <script lang="ts">
 import { defineComponent, PropType } from "vue";
 
+import LayoutRow from "@/components/layout/LayoutRow.vue";
+
 export default defineComponent({
 	props: {
 		maximized: { type: Boolean as PropType<boolean>, default: false },
 	},
+	components: { LayoutRow },
 });
 </script>
