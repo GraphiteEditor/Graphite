@@ -134,13 +134,12 @@ impl DocumentMessageHandler {
 		self.graphene_document.combined_viewport_bounding_box(paths)
 	}
 
-	// TODO: Consider moving this to some kind of overlays manager in the future
+	/// Create a new vector shape representation with the underlying kurbo data, VectorManipulatorShape
 	pub fn selected_visible_layers_vector_shapes(&self) -> Vec<VectorManipulatorShape> {
 		let shapes = self.selected_layers().filter_map(|path_to_shape| {
 			let viewport_transform = self.graphene_document.generate_transform_relative_to_viewport(path_to_shape).ok()?;
 			let layer = self.graphene_document.layer(path_to_shape);
 
-			// Filter out the non-visible layers from the `filter_map`
 			match &layer {
 				Ok(layer) if layer.visible => {}
 				_ => return None,
@@ -150,182 +149,12 @@ impl DocumentMessageHandler {
 				LayerDataType::Shape(shape) => Some(shape),
 				LayerDataType::Folder(_) => None,
 			}?;
-			let path = shape.path.clone();
 
-			let place = |point: kurbo::Point| -> DVec2 { viewport_transform.transform_point2(DVec2::from((point.x, point.y))) };
-
-			let segments = path
-				.segments()
-				.map(|segment| -> VectorManipulatorSegment {
-					match segment {
-						PathSeg::Line(line) => VectorManipulatorSegment::Line(place(line.p0), place(line.p1)),
-						PathSeg::Quad(quad) => VectorManipulatorSegment::Quad(place(quad.p0), place(quad.p1), place(quad.p2)),
-						PathSeg::Cubic(cubic) => VectorManipulatorSegment::Cubic(place(cubic.p0), place(cubic.p1), place(cubic.p2), place(cubic.p3)),
-					}
-				})
-				.collect::<Vec<VectorManipulatorSegment>>();
-
-			let points = self.create_anchor_points(&path, place);
-
-			Some(VectorManipulatorShape {
-				layer_path: path_to_shape.to_vec(),
-				path,
-				segments,
-				points,
-				transform: viewport_transform,
-				closed: shape.closed,
-			})
+			Some(VectorManipulatorShape::new(path_to_shape.to_vec(), viewport_transform, shape))
 		});
 
 		// TODO: Consider refactoring this in a way that avoids needing to collect() so we can skip the heap allocations
 		shapes.collect::<Vec<VectorManipulatorShape>>()
-	}
-
-	pub fn update_selected_vector_shapes(&self, vector_manipulator_shapes: &mut Vec<VectorManipulatorShape>) {
-		for vector_manipulator_shape in vector_manipulator_shapes {
-			let viewport_transform = self.graphene_document.generate_transform_relative_to_viewport(&vector_manipulator_shape.layer_path).unwrap();
-			let place = |point: kurbo::Point| -> DVec2 { viewport_transform.transform_point2(DVec2::from((point.x, point.y))) };
-			let layer = self.graphene_document.layer(&vector_manipulator_shape.layer_path).unwrap();
-			if let LayerDataType::Shape(shape) = &layer.data {
-				let path = shape.path.clone();
-
-				// Update the segment positions
-				vector_manipulator_shape.segments = path
-					.segments()
-					.map(|segment| -> VectorManipulatorSegment {
-						match segment {
-							PathSeg::Line(line) => VectorManipulatorSegment::Line(place(line.p0), place(line.p1)),
-							PathSeg::Quad(quad) => VectorManipulatorSegment::Quad(place(quad.p0), place(quad.p1), place(quad.p2)),
-							PathSeg::Cubic(cubic) => VectorManipulatorSegment::Cubic(place(cubic.p0), place(cubic.p1), place(cubic.p2), place(cubic.p3)),
-						}
-					})
-					.collect::<Vec<VectorManipulatorSegment>>();
-
-				// Update point positions
-				self.update_anchor_point_positions(&mut vector_manipulator_shape.points, &path, place);
-
-				vector_manipulator_shape.transform = viewport_transform;
-				vector_manipulator_shape.path = path;
-			}
-		}
-	}
-
-	// TODO Figure out a new home for this
-	fn update_anchor_point_positions<Transform: Fn(kurbo::Point) -> DVec2>(&self, vector_manipulator_anchors: &mut Vec<VectorManipulatorAnchor>, path: &BezPath, point_transform: Transform) {
-		for vector_manipulator_anchor in vector_manipulator_anchors {
-			let elements = path.elements();
-			let (h1, h2) = vector_manipulator_anchor.handles;
-			match elements[vector_manipulator_anchor.point.element_id] {
-				kurbo::PathEl::MoveTo(anchor_position) | kurbo::PathEl::LineTo(anchor_position) => vector_manipulator_anchor.point.position = point_transform(anchor_position),
-				kurbo::PathEl::QuadTo(handle_position, anchor_position) | kurbo::PathEl::CurveTo(_, handle_position, anchor_position) => {
-					vector_manipulator_anchor.point.position = point_transform(anchor_position);
-					if let Some(mut handle) = h1 {
-						handle.position = point_transform(handle_position);
-						vector_manipulator_anchor.handles.0 = Some(handle.clone());
-					}
-				}
-				_ => (),
-			}
-			if let Some(handle) = h2 {
-				match elements[handle.element_id] {
-					kurbo::PathEl::CurveTo(handle_position, _, _) | kurbo::PathEl::QuadTo(handle_position, _) => {
-						if let Some(mut handle) = h2 {
-							handle.position = point_transform(handle_position);
-							vector_manipulator_anchor.handles.1 = Some(handle);
-						}
-					}
-					_ => (),
-				}
-			}
-		}
-	}
-
-	// TODO Figure out a new home for this
-	fn create_anchor_points<Transform: Fn(kurbo::Point) -> DVec2>(&self, path: &BezPath, point_transform: Transform) -> Vec<VectorManipulatorAnchor> {
-		type IndexedEl = (usize, kurbo::PathEl);
-
-		// Create an anchor on the boundary between two kurbo PathElements with optional handles
-		let create_anchor_manipulator = |first: IndexedEl, second: IndexedEl| -> VectorManipulatorAnchor {
-			let mut handle1 = None;
-			let mut anchor_position: glam::DVec2 = glam::DVec2::ZERO;
-			let mut handle2 = None;
-			let (first_id, first_element) = first;
-			let (second_id, second_element) = second;
-
-			match first_element {
-				kurbo::PathEl::MoveTo(anchor) | kurbo::PathEl::LineTo(anchor) => anchor_position = point_transform(anchor),
-				kurbo::PathEl::QuadTo(handle, anchor) | kurbo::PathEl::CurveTo(_, handle, anchor) => {
-					anchor_position = point_transform(anchor);
-					handle1 = Some(VectorManipulatorPoint {
-						element_id: first_id,
-						position: point_transform(handle),
-					});
-				}
-				_ => (),
-			}
-
-			match second_element {
-				kurbo::PathEl::CurveTo(handle, _, _) | kurbo::PathEl::QuadTo(handle, _) => {
-					handle2 = Some(VectorManipulatorPoint {
-						element_id: second_id,
-						position: point_transform(handle),
-					});
-				}
-				_ => (),
-			}
-
-			VectorManipulatorAnchor {
-				point: VectorManipulatorPoint {
-					element_id: first_id,
-					position: anchor_position,
-				},
-				close_element_id: None,
-				handles: (handle1, handle2),
-				handle_mirroring: true,
-			}
-		};
-
-		// We need the indices paired with the kurbo path elements
-		let indexed_elements = path.elements().iter().enumerate().map(|(index, element)| (index, *element)).collect::<Vec<IndexedEl>>();
-
-		// Create the manipulation points
-		let mut points: Vec<VectorManipulatorAnchor> = vec![];
-		let (mut first, mut last): (Option<IndexedEl>, Option<IndexedEl>) = (None, None);
-		let mut close_element_id: Option<usize> = None;
-
-		// Create an anchor at each join between two kurbo segments
-		for elements in indexed_elements.windows(2) {
-			let (current_index, current_element) = elements[0];
-			let (_, next_element) = elements[1];
-
-			// An anchor cannot stradle a line / curve segment and a ClosePath segment
-			if matches!(next_element, kurbo::PathEl::ClosePath) {
-				break;
-			}
-
-			// TODO: Currently a unique case for [MoveTo, CurveTo, ...], refactor more generally if possible
-			if matches!(current_element, kurbo::PathEl::MoveTo(_)) && (matches!(next_element, kurbo::PathEl::CurveTo(_, _, _)) || matches!(next_element, kurbo::PathEl::QuadTo(_, _))) {
-				close_element_id = Some(current_index);
-				continue;
-			}
-
-			// Keep track of the first and last elements of this shape
-			if first.is_none() {
-				first = Some(elements[0]);
-			}
-			last = Some(elements[1]);
-
-			points.push(create_anchor_manipulator(elements[0], elements[1]));
-		}
-
-		// Close the shape
-		if let (Some(first), Some(last)) = (first, last) {
-			let mut element = create_anchor_manipulator(last, first);
-			element.close_element_id = close_element_id;
-			points.push(element);
-		}
-
-		points
 	}
 
 	pub fn selected_layers(&self) -> impl Iterator<Item = &[LayerId]> {

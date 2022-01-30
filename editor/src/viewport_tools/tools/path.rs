@@ -317,13 +317,13 @@ impl ManipulationHandler {
 		}
 	}
 
-	// TODO Use quadtree or some equivalent spatial locality data structure to improve this to O(log(n))
+	// TODO Use quadtree or some equivalent spatial acceleration structure to improve this to O(log(n))
 	// Brute force comparison to determine which handle / anchor we want to select, O(n)
 	fn closest_manipulator<'a>(&self, shape: &'a VectorManipulatorShape, pos: glam::DVec2) -> (&'a VectorManipulatorAnchor, &'a VectorManipulatorPoint, f64) {
-		let mut closest_anchor: &'a VectorManipulatorAnchor = &shape.points[0];
-		let mut closest_point: &'a VectorManipulatorPoint = &shape.points[0].point;
+		let mut closest_anchor: &'a VectorManipulatorAnchor = &shape.anchors[0];
+		let mut closest_point: &'a VectorManipulatorPoint = &shape.anchors[0].point;
 		let mut closest_distance: f64 = f64::MAX; // Not ideal
-		for anchor in shape.points.iter() {
+		for anchor in shape.anchors.iter() {
 			let point = anchor.closest_handle_or_anchor(pos);
 			let distance_squared = point.position.distance_squared(pos);
 			if distance_squared < closest_distance {
@@ -363,8 +363,17 @@ impl Fsm for PathToolFsmState {
 					self
 				}
 				(_, DocumentIsDirty) => {
+					let selected_shapes = document.selected_visible_layers_vector_shapes();
+					if !data.overlay_pooler_initialized {
+						data.setup_pools(&selected_shapes, responses);
+						data.overlay_pooler_initialized = true;
+					}
+					data.manipulation_handler.selected_shapes = selected_shapes;
+
 					// Update the VectorManipulator structures by reference. They need to match the kurbo data
-					document.update_selected_vector_shapes(&mut data.manipulation_handler.selected_shapes);
+					for shape in &mut data.manipulation_handler.selected_shapes {
+						shape.update_shape(document);
+					}
 
 					// Recycle all overlays
 					data.overlay_pooler.recycle_all_channels();
@@ -374,7 +383,7 @@ impl Fsm for PathToolFsmState {
 
 					// Draw the overlays for each shape
 					for shape_to_draw in &data.manipulation_handler.selected_shapes {
-						let (shape_layer_path, _) = &data.overlay_pooler.consume_from_channel(OverlayPoolType::Shape as usize, responses);
+						let (shape_layer_path, _) = &data.overlay_pooler.create_from_channel(OverlayPoolType::Shape as usize, responses);
 
 						responses.push_back(
 							DocumentMessage::Overlays(
@@ -398,13 +407,13 @@ impl Fsm for PathToolFsmState {
 							.into(),
 						);
 
-						let anchors = &shape_to_draw.points;
+						let anchors = &shape_to_draw.anchors;
 
 						// Draw the line connecting the anchor with handle for cubic and quadratic bezier segments
 						for anchor in anchors {
 							let (handle1, handle2) = anchor.handles;
 							let mut draw_connector = |position: DVec2| {
-								let (marker, _) = &data.overlay_pooler.consume_from_channel(OverlayPoolType::HandleLine as usize, responses);
+								let (marker, _) = &data.overlay_pooler.create_from_channel(OverlayPoolType::HandleLine as usize, responses);
 								let line_vector = anchor.point.position - position;
 								let scale = DVec2::splat(line_vector.length());
 								let angle = -line_vector.angle_between(DVec2::X);
@@ -431,7 +440,7 @@ impl Fsm for PathToolFsmState {
 							let translation = (anchor.point.position - (scale / 2.) + BIAS).round();
 							let transform = DAffine2::from_scale_angle_translation(scale, angle, translation).to_cols_array();
 
-							let (marker, _) = &data.overlay_pooler.consume_from_channel(OverlayPoolType::Anchor as usize, responses);
+							let (marker, _) = &data.overlay_pooler.create_from_channel(OverlayPoolType::Anchor as usize, responses);
 							responses.push_back(DocumentMessage::Overlays(Operation::SetLayerTransformInViewport { path: marker.clone(), transform }.into()).into());
 							responses.push_back(DocumentMessage::Overlays(Operation::SetLayerVisibility { path: marker.clone(), visible: true }.into()).into());
 						}
@@ -441,7 +450,7 @@ impl Fsm for PathToolFsmState {
 							let (handle1, handle2) = anchor.handles;
 
 							let mut draw_handle = |position: DVec2| {
-								let (marker, _) = &data.overlay_pooler.consume_from_channel(OverlayPoolType::Handle as usize, responses);
+								let (marker, _) = &data.overlay_pooler.create_from_channel(OverlayPoolType::Handle as usize, responses);
 								let scale = DVec2::splat(VECTOR_MANIPULATOR_ANCHOR_MARKER_SIZE);
 								let angle = 0.;
 								let translation = (position - (scale / 2.) + BIAS).round();
@@ -474,7 +483,7 @@ impl Fsm for PathToolFsmState {
 							.manipulation_handler
 							.selected_shapes
 							.iter()
-							.flat_map(|shape| shape.points.iter().map(|anchor| anchor.point.position))
+							.flat_map(|shape| shape.anchors.iter().map(|anchor| anchor.point.position))
 							.collect();
 						data.snap_handler.add_snap_points(document, snap_points);
 						Dragging
