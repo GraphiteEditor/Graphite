@@ -9,7 +9,7 @@ use super::widgets::WidgetLayout;
 #[derive(PartialEq, Clone, Deserialize, Serialize, Debug)]
 pub enum LayoutMessage {
 	SendLayout { layout: WidgetLayout, layout_target: LayoutTarget },
-	UpdateLayout { layout_target: LayoutTarget, widget_id: u64, value: serde_json::Value }
+	UpdateLayout { layout_target: LayoutTarget, widget_id: u64, value: serde_json::Value },
 }
 
 #[remain::sorted]

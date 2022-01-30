@@ -1,12 +1,9 @@
 use core::panic;
-use std::collections::{VecDeque};
+use std::collections::VecDeque;
 
 use serde_json::Value;
 
-use crate::{
-	layout::widgets::Widget,
-	message_prelude::*,
-};
+use crate::{layout::widgets::Widget, message_prelude::*};
 
 use super::{layout_message::LayoutTarget, widgets::WidgetLayout};
 
@@ -27,7 +24,7 @@ impl LayoutMessageHandler {
 				layout_target,
 				layout: widget_layout.layout.clone(),
 			},
-			LayoutTarget::LayoutTargetLength => panic!("`LayoutTargetLength` is not a valid Layout Target and is used for array indexing")
+			LayoutTarget::LayoutTargetLength => panic!("`LayoutTargetLength` is not a valid Layout Target and is used for array indexing"),
 		};
 		responses.push_back(message.into());
 	}
@@ -38,7 +35,7 @@ impl MessageHandler<LayoutMessage, ()> for LayoutMessageHandler {
 		use LayoutMessage::*;
 		match action {
 			SendLayout { layout, layout_target } => {
-				self.layouts[layout_target as usize] =  layout;
+				self.layouts[layout_target as usize] = layout;
 
 				self.send_layout(layout_target, responses);
 			}

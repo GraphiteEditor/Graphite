@@ -1,4 +1,4 @@
-use super::{layout_message::LayoutTarget};
+use super::layout_message::LayoutTarget;
 use crate::message_prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -195,7 +195,7 @@ pub struct NumberInput {
 pub enum NumberInputIncrementBehavior {
 	Add,
 	Multiply,
-	Callback
+	Callback,
 }
 
 impl Default for NumberInputIncrementBehavior {
