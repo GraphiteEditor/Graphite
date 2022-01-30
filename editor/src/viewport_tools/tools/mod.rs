@@ -11,3 +11,4 @@ pub mod rectangle;
 pub mod select;
 pub mod shape;
 pub mod shared;
+pub mod text;

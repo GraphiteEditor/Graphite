@@ -78,7 +78,7 @@
 
 					<Separator :type="'Section'" :direction="'Vertical'" />
 
-					<ShelfItemInput icon="ParametricTextTool" title="Text Tool (T)" :active="activeTool === 'Text'" :action="() => (dialog.comingSoon(153), false) && selectTool('Text')" />
+					<ShelfItemInput icon="ParametricTextTool" title="Text Tool (T)" :active="activeTool === 'Text'" :action="() => selectTool('Text')" />
 					<ShelfItemInput icon="ParametricFillTool" title="Fill Tool (F)" :active="activeTool === 'Fill'" :action="() => selectTool('Fill')" />
 					<ShelfItemInput
 						icon="ParametricGradientTool"
@@ -246,6 +246,32 @@
 						pointer-events: auto;
 					}
 				}
+				foreignObject {
+					overflow: visible;
+					width: 1px;
+					height: 1px;
+
+					div {
+						color: black;
+						background: none;
+						cursor: text;
+						border: none;
+						margin: 0;
+						padding: 0;
+						overflow: visible;
+						white-space: pre-wrap;
+						display: inline-block;
+						// Workaround to force Chrome to display the flashing text entry cursor when text is empty
+						padding-left: 1px;
+						margin-left: -1px;
+					}
+
+					div:focus {
+						border: none;
+						outline: none;
+						margin: -1px;
+					}
+				}
 			}
 		}
 	}
@@ -253,7 +279,7 @@
 </style>
 
 <script lang="ts">
-import { defineComponent } from "vue";
+import { defineComponent, nextTick } from "vue";
 
 import {
 	UpdateDocumentArtwork,
@@ -266,6 +292,9 @@ import {
 	ToolName,
 	UpdateDocumentArtboards,
 	UpdateMouseCursor,
+	TriggerTextCommit,
+	DisplayRemoveEditableTextbox,
+	DisplayEditableTextbox,
 } from "@/dispatcher/js-messages";
 
 import LayoutCol from "@/components/layout/LayoutCol.vue";
@@ -347,13 +376,46 @@ export default defineComponent({
 			this.editor.instance.reset_colors();
 		},
 		canvasPointerDown(e: PointerEvent) {
-			const canvas = this.$refs.canvas as HTMLElement;
-			canvas.setPointerCapture(e.pointerId);
+			const onEditbox = e.target instanceof HTMLDivElement && e.target.contentEditable;
+			if (!onEditbox) {
+				const canvas = this.$refs.canvas as HTMLElement;
+				canvas.setPointerCapture(e.pointerId);
+			}
 		},
 	},
 	mounted() {
 		this.editor.dispatcher.subscribeJsMessage(UpdateDocumentArtwork, (UpdateDocumentArtwork) => {
 			this.artworkSvg = UpdateDocumentArtwork.svg;
+
+			nextTick((): void => {
+				if (this.textInput) {
+					const canvas = this.$refs.canvas as HTMLElement;
+					const foreignObject = canvas.getElementsByTagName("foreignObject")[0] as SVGForeignObjectElement;
+					if (foreignObject.children.length > 0) return;
+
+					const addedInput = foreignObject.appendChild(this.textInput);
+
+					nextTick((): void => {
+						// Necessary to select contenteditable: https://stackoverflow.com/questions/6139107/programmatically-select-text-in-a-contenteditable-html-element/6150060#6150060
+
+						const range = document.createRange();
+						range.selectNodeContents(addedInput);
+						const selection = window.getSelection();
+						if (selection) {
+							selection.removeAllRanges();
+							selection.addRange(range);
+						}
+						addedInput.focus();
+						addedInput.click();
+					});
+
+					window.dispatchEvent(
+						new CustomEvent("modifyinputfield", {
+							detail: addedInput,
+						})
+					);
+				}
+			});
 		});
 
 		this.editor.dispatcher.subscribeJsMessage(UpdateDocumentOverlays, (updateDocumentOverlays) => {
@@ -392,6 +454,31 @@ export default defineComponent({
 
 		this.editor.dispatcher.subscribeJsMessage(UpdateMouseCursor, (updateMouseCursor) => {
 			this.canvasCursor = updateMouseCursor.cursor;
+		});
+		this.editor.dispatcher.subscribeJsMessage(TriggerTextCommit, () => {
+			if (this.textInput) this.editor.instance.on_change_text(this.textInput.textContent || "");
+		});
+
+		this.editor.dispatcher.subscribeJsMessage(DisplayEditableTextbox, (displayEditableTextbox) => {
+			this.textInput = document.createElement("DIV") as HTMLDivElement;
+			this.textInput.id = "editable-textbox";
+			this.textInput.textContent = displayEditableTextbox.text;
+			this.textInput.contentEditable = "true";
+			this.textInput.style.width = displayEditableTextbox.line_width ? `${displayEditableTextbox.line_width}px` : "max-content";
+			this.textInput.style.height = "auto";
+			this.textInput.style.fontSize = `${displayEditableTextbox.font_size}px`;
+			this.textInput.oninput = (): void => {
+				if (this.textInput) this.editor.instance.update_bounds(this.textInput.textContent || "");
+			};
+		});
+
+		this.editor.dispatcher.subscribeJsMessage(DisplayRemoveEditableTextbox, () => {
+			this.textInput = undefined;
+			window.dispatchEvent(
+				new CustomEvent("modifyinputfield", {
+					detail: undefined,
+				})
+			);
 		});
 
 		window.addEventListener("resize", this.viewportResize);
@@ -435,6 +522,7 @@ export default defineComponent({
 			rulerOrigin: { x: 0, y: 0 },
 			rulerSpacing: 100,
 			rulerInterval: 100,
+			textInput: undefined as undefined | HTMLDivElement,
 		};
 	},
 	components: {

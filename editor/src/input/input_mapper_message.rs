@@ -16,6 +16,7 @@ pub enum InputMapperMessage {
 	KeyUp(Key),
 
 	// Messages
+	DoubleClick,
 	MouseScroll,
 	PointerMove,
 }

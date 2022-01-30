@@ -6,7 +6,7 @@ pub enum ToolOptions {
 	Crop {},
 	Navigate {},
 	Eyedropper {},
-	Text {},
+	Text { font_size: u32 },
 	Fill {},
 	Gradient {},
 	Brush {},

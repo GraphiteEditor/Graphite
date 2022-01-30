@@ -13,6 +13,7 @@ use serde::{Deserialize, Serialize};
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub enum InputPreprocessorMessage {
 	BoundsOfViewports { bounds_of_viewports: Vec<ViewportBounds> },
+	DoubleClick { editor_mouse_state: EditorMouseState, modifier_keys: ModifierKeys },
 	KeyDown { key: Key, modifier_keys: ModifierKeys },
 	KeyUp { key: Key, modifier_keys: ModifierKeys },
 	MouseDown { editor_mouse_state: EditorMouseState, modifier_keys: ModifierKeys },
