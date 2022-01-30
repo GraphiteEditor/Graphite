@@ -474,7 +474,7 @@ impl Document {
 
 				Some([vec![DocumentChanged, CreatedLayer { path: path.clone() }]].concat())
 			}
-			Operation::AddPen {
+			Operation::AddPolyline {
 				path,
 				insert_index,
 				points,
