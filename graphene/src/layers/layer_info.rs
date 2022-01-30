@@ -2,6 +2,7 @@ use super::blend_mode::BlendMode;
 use super::folder::Folder;
 use super::simple_shape::Shape;
 use super::style::ViewMode;
+use super::text::Text;
 use crate::intersection::Quad;
 use crate::DocumentError;
 use crate::LayerId;
@@ -14,6 +15,7 @@ use std::fmt::Write;
 pub enum LayerDataType {
 	Folder(Folder),
 	Shape(Shape),
+	Text(Text),
 }
 
 impl LayerDataType {
@@ -21,6 +23,7 @@ impl LayerDataType {
 		match self {
 			LayerDataType::Shape(s) => s,
 			LayerDataType::Folder(f) => f,
+			LayerDataType::Text(t) => t,
 		}
 	}
 
@@ -28,6 +31,7 @@ impl LayerDataType {
 		match self {
 			LayerDataType::Shape(s) => s,
 			LayerDataType::Folder(f) => f,
+			LayerDataType::Text(t) => t,
 		}
 	}
 }
@@ -156,6 +160,20 @@ impl Layer {
 		match &self.data {
 			LayerDataType::Folder(f) => Ok(f),
 			_ => Err(DocumentError::NotAFolder),
+		}
+	}
+
+	pub fn as_text_mut(&mut self) -> Result<&mut Text, DocumentError> {
+		match &mut self.data {
+			LayerDataType::Text(t) => Ok(t),
+			_ => Err(DocumentError::NotText),
+		}
+	}
+
+	pub fn as_text(&self) -> Result<&Text, DocumentError> {
+		match &self.data {
+			LayerDataType::Text(t) => Ok(t),
+			_ => Err(DocumentError::NotText),
 		}
 	}
 }

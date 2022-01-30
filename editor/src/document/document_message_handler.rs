@@ -1,5 +1,5 @@
 use super::clipboards::Clipboard;
-use super::layer_panel::{layer_panel_entry, LayerMetadata, LayerPanelEntry, RawBuffer};
+use super::layer_panel::{layer_panel_entry, LayerDataTypeDiscriminant, LayerMetadata, LayerPanelEntry, RawBuffer};
 use super::utility_types::{AlignAggregate, AlignAxis, DocumentSave, FlipAxis, VectorManipulatorSegment, VectorManipulatorShape};
 use super::vectorize_layer_metadata;
 use super::{ArtboardMessageHandler, MovementMessageHandler, OverlaysMessageHandler, TransformLayerMessageHandler};
@@ -151,11 +151,11 @@ impl DocumentMessageHandler {
 				_ => return None,
 			};
 
-			let shape = match &layer.ok()?.data {
-				LayerDataType::Shape(shape) => Some(shape),
-				LayerDataType::Folder(_) => None,
+			let (path, closed) = match &layer.ok()?.data {
+				LayerDataType::Shape(shape) => Some((shape.path.clone(), shape.closed)),
+				LayerDataType::Text(text) => Some((text.to_bez_path_nonmut(), true)),
+				_ => None,
 			}?;
-			let path = shape.path.clone();
 
 			let segments = path
 				.segments()
@@ -175,7 +175,7 @@ impl DocumentMessageHandler {
 				path,
 				segments,
 				transform: viewport_transform,
-				closed: shape.closed,
+				closed,
 			})
 		});
 
@@ -209,6 +209,16 @@ impl DocumentMessageHandler {
 		})
 	}
 
+	pub fn selected_visible_text_layers(&self) -> impl Iterator<Item = &[LayerId]> {
+		self.selected_layers().filter(|path| match self.graphene_document.layer(path) {
+			Ok(layer) => {
+				let discriminant: LayerDataTypeDiscriminant = (&layer.data).into();
+				layer.visible && discriminant == LayerDataTypeDiscriminant::Text
+			}
+			Err(_) => false,
+		})
+	}
+
 	pub fn visible_layers(&self) -> impl Iterator<Item = &[LayerId]> {
 		self.all_layers().filter(|path| match self.graphene_document.layer(path) {
 			Ok(layer) => layer.visible,
@@ -221,17 +231,14 @@ impl DocumentMessageHandler {
 		for (id, layer) in folder.layer_ids.iter().zip(folder.layers()).rev() {
 			data.push(*id);
 			space += 1;
-			match layer.data {
-				LayerDataType::Shape(_) => (),
-				LayerDataType::Folder(ref folder) => {
-					path.push(*id);
-					if self.layer_metadata(path).expanded {
-						structure.push(space);
-						self.serialize_structure(folder, structure, data, path);
-						space = 0;
-					}
-					path.pop();
+			if let LayerDataType::Folder(ref folder) = layer.data {
+				path.push(*id);
+				if self.layer_metadata(path).expanded {
+					structure.push(space);
+					self.serialize_structure(folder, structure, data, path);
+					space = 0;
 				}
+				path.pop();
 			}
 		}
 		structure.push(space | 1 << 63);
@@ -406,6 +413,7 @@ impl DocumentMessageHandler {
 		}
 	}
 
+	// TODO: This should probably take a slice not a vec, also why does this even exist when `layer_panel_entry_from_path` also exists?
 	pub fn layer_panel_entry(&mut self, path: Vec<LayerId>) -> Result<LayerPanelEntry, EditorError> {
 		let data: LayerMetadata = *self
 			.layer_metadata
@@ -1081,6 +1089,15 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 				responses.push_back(DocumentStructureChanged.into());
 				responses.push_back(LayerChanged { affected_layer_path: layer_path }.into())
 			}
+			SetLayerName { layer_path, name } => {
+				if let Some(layer) = self.layer_panel_entry_from_path(&layer_path) {
+					// Only save the history state if the name actually changed to something different
+					if layer.name != name {
+						self.backup(responses);
+						responses.push_back(DocumentOperation::SetLayerName { path: layer_path, name }.into());
+					}
+				}
+			}
 			SetOpacityForSelectedLayers { opacity } => {
 				self.backup(responses);
 				let opacity = opacity.clamp(0., 1.);
@@ -1105,6 +1122,22 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 			}
 			SetSnapping { snap } => {
 				self.snapping_enabled = snap;
+			}
+			SetTexboxEditability { path, editable } => {
+				let text = self.graphene_document.layer(&path).unwrap().as_text().unwrap();
+				responses.push_back(DocumentOperation::SetTextEditability { path, editable }.into());
+				if editable {
+					responses.push_back(
+						FrontendMessage::DisplayEditableTextbox {
+							text: text.text.clone(),
+							line_width: text.line_width,
+							font_size: text.size,
+						}
+						.into(),
+					);
+				} else {
+					responses.push_back(FrontendMessage::DisplayRemoveEditableTextbox.into());
+				}
 			}
 			SetViewMode { view_mode } => {
 				self.view_mode = view_mode;

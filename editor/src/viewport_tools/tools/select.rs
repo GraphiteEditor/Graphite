@@ -9,7 +9,7 @@ use crate::layout::widgets::{IconButton, LayoutRow, PopoverButton, PropertyHolde
 use crate::message_prelude::*;
 use crate::misc::{HintData, HintGroup, HintInfo, KeysGroup};
 use crate::viewport_tools::snapping::SnapHandler;
-use crate::viewport_tools::tool::{DocumentToolData, Fsm, ToolActionHandlerData};
+use crate::viewport_tools::tool::{DocumentToolData, Fsm, ToolActionHandlerData, ToolType};
 
 use graphene::document::Document;
 use graphene::intersection::Quad;
@@ -44,6 +44,7 @@ pub enum SelectMessage {
 		add_to_selection: Key,
 	},
 	DragStop,
+	EditText,
 	FlipHorizontal,
 	FlipVertical,
 	MouseMove {
@@ -249,9 +250,9 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Select {
 		use SelectToolFsmState::*;
 
 		match self.fsm_state {
-			Ready => actions!(SelectMessageDiscriminant; DragStart),
-			Dragging => actions!(SelectMessageDiscriminant; DragStop, MouseMove),
-			DrawingBox => actions!(SelectMessageDiscriminant; DragStop, MouseMove, Abort),
+			Ready => actions!(SelectMessageDiscriminant; DragStart, EditText),
+			Dragging => actions!(SelectMessageDiscriminant; DragStop, MouseMove, EditText),
+			DrawingBox => actions!(SelectMessageDiscriminant; DragStop, MouseMove, Abort, EditText),
 		}
 	}
 }
@@ -347,6 +348,24 @@ impl Fsm for SelectToolFsmState {
 					};
 					responses.push_front(response);
 					buffer.into_iter().rev().for_each(|message| responses.push_front(message));
+					self
+				}
+				(_, EditText) => {
+					let mouse_pos = input.mouse.position;
+					let tolerance = DVec2::splat(SELECTION_TOLERANCE);
+					let quad = Quad::from_box([mouse_pos - tolerance, mouse_pos + tolerance]);
+
+					if document
+						.graphene_document
+						.intersects_quad_root(quad)
+						.last()
+						.map(|l| document.graphene_document.layer(l).map(|l| l.as_text().is_ok()).unwrap_or(false))
+						.unwrap_or(false)
+					{
+						responses.push_front(ToolMessage::ActivateTool { tool_type: ToolType::Text }.into());
+						responses.push_back(TextMessage::Interact.into());
+					}
+
 					self
 				}
 				(Ready, DragStart { add_to_selection }) => {

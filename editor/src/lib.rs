@@ -75,6 +75,7 @@ pub mod message_prelude {
 	pub use crate::viewport_tools::tools::ellipse::{EllipseMessage, EllipseMessageDiscriminant};
 	pub use crate::viewport_tools::tools::eyedropper::{EyedropperMessage, EyedropperMessageDiscriminant};
 	pub use crate::viewport_tools::tools::fill::{FillMessage, FillMessageDiscriminant};
+	pub use crate::viewport_tools::tools::freehand::{FreehandMessage, FreehandMessageDiscriminant};
 	pub use crate::viewport_tools::tools::line::{LineMessage, LineMessageDiscriminant};
 	pub use crate::viewport_tools::tools::navigate::{NavigateMessage, NavigateMessageDiscriminant};
 	pub use crate::viewport_tools::tools::path::{PathMessage, PathMessageDiscriminant};
@@ -82,6 +83,7 @@ pub mod message_prelude {
 	pub use crate::viewport_tools::tools::rectangle::{RectangleMessage, RectangleMessageDiscriminant};
 	pub use crate::viewport_tools::tools::select::{SelectMessage, SelectMessageDiscriminant};
 	pub use crate::viewport_tools::tools::shape::{ShapeMessage, ShapeMessageDiscriminant};
+	pub use crate::viewport_tools::tools::text::{TextMessage, TextMessageDiscriminant};
 	pub use graphite_proc_macros::*;
 
 	pub use std::collections::VecDeque;

@@ -267,6 +267,15 @@ impl JsEditorHandle {
 		self.dispatch(message);
 	}
 
+	/// Mouse double clicked
+	pub fn on_double_click(&self, x: f64, y: f64, mouse_keys: u8, modifiers: u8) {
+		let editor_mouse_state = EditorMouseState::from_keys_and_editor_position(mouse_keys, (x, y).into());
+		let modifier_keys = ModifierKeys::from_bits(modifiers).expect("Invalid modifier keys");
+
+		let message = InputPreprocessorMessage::DoubleClick { editor_mouse_state, modifier_keys };
+		self.dispatch(message);
+	}
+
 	/// A keyboard button depressed within screenspace the bounds of the viewport
 	pub fn on_key_down(&self, name: String, modifiers: u8) {
 		let key = translate_key(&name);
@@ -287,6 +296,22 @@ impl JsEditorHandle {
 
 		let message = InputPreprocessorMessage::KeyUp { key, modifier_keys };
 		self.dispatch(message);
+	}
+
+	/// A text box was committed
+	pub fn on_change_text(&self, new_text: String) -> Result<(), JsValue> {
+		let message = TextMessage::TextChange { new_text };
+		self.dispatch(message);
+
+		Ok(())
+	}
+
+	/// A text box was changed
+	pub fn update_bounds(&self, new_text: String) -> Result<(), JsValue> {
+		let message = TextMessage::UpdateBounds { new_text };
+		self.dispatch(message);
+
+		Ok(())
 	}
 
 	/// Update primary color
@@ -357,6 +382,7 @@ impl JsEditorHandle {
 		self.dispatch(message);
 	}
 
+	/// Modify the layer selection based on the layer which is clicked while holding down the <kbd>Ctrl</kbd> and/or <kbd>Shift</kbd> modifier keys used for range selection behavior
 	pub fn select_layer(&self, layer_path: Vec<LayerId>, ctrl: bool, shift: bool) {
 		let message = DocumentMessage::SelectLayer { layer_path, ctrl, shift };
 		self.dispatch(message);
@@ -387,6 +413,12 @@ impl JsEditorHandle {
 			insert_index,
 			reverse_index: true,
 		};
+		self.dispatch(message);
+	}
+
+	/// Set the name for the layer
+	pub fn set_layer_name(&self, layer_path: Vec<LayerId>, name: String) {
+		let message = DocumentMessage::SetLayerName { layer_path, name };
 		self.dispatch(message);
 	}
 

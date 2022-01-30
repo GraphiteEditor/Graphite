@@ -258,7 +258,7 @@ mod test {
 			style: Default::default(),
 		});
 
-		editor.handle_message(Operation::AddPen {
+		editor.handle_message(Operation::AddPolyline {
 			path: vec![folder_id, PEN_INDEX as u64],
 			insert_index: 0,
 			transform: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],

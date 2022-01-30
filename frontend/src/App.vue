@@ -87,6 +87,10 @@ button {
 	color: var(--color-e-nearwhite);
 }
 
+::selection {
+	background: var(--color-accent);
+}
+
 svg,
 img {
 	display: block;
@@ -262,6 +266,7 @@ export default defineComponent({
 			dialog: this.dialog,
 			documents: this.documents,
 			fullscreen: this.fullscreen,
+			inputManager: this.inputManager,
 		};
 	},
 	data() {

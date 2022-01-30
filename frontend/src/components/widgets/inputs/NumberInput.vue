@@ -52,18 +52,12 @@
 		border: none;
 		background: none;
 		color: var(--color-e-nearwhite);
-		font-size: inherit;
-		font-family: inherit;
 		text-align: center;
 
 		&:not(:focus).has-label {
 			text-align: right;
 			margin-left: 0;
 			margin-right: 8px;
-		}
-
-		&::selection {
-			background: var(--color-accent);
 		}
 
 		&:focus {

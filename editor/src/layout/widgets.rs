@@ -165,8 +165,8 @@ pub enum Widget {
 	Separator(Separator),
 }
 
-#[derive(Clone, Serialize, Deserialize, Derivative, Default)]
-#[derivative(Debug, PartialEq)]
+#[derive(Clone, Serialize, Deserialize, Derivative)]
+#[derivative(Debug, PartialEq, Default)]
 pub struct NumberInput {
 	pub value: f64,
 	#[serde(skip)]
@@ -179,6 +179,7 @@ pub struct NumberInput {
 	#[serde(rename = "incrementBehavior")]
 	pub increment_behavior: NumberInputIncrementBehavior,
 	#[serde(rename = "incrementFactor")]
+	#[derivative(Default(value="1."))]
 	pub increment_factor: f64,
 	#[serde(skip)]
 	#[derivative(Debug = "ignore", PartialEq = "ignore")]
