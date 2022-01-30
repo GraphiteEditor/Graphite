@@ -1,4 +1,5 @@
 use crate::consts::{COLOR_ACCENT, SELECTION_DRAG_ANGLE, SELECTION_TOLERANCE, VECTOR_MANIPULATOR_ANCHOR_MARKER_SIZE};
+use crate::document::transformation::{OriginalTransforms, Selected};
 use crate::document::utility_types::{AlignAggregate, AlignAxis, FlipAxis};
 use crate::document::DocumentMessageHandler;
 use crate::frontend::utility_types::MouseCursorIcon;
@@ -124,71 +125,83 @@ impl SelectToolData {
 	}
 }
 
-const SELECT_THRESHOLD: f64 = 20.;
+/// Handles the selected edges whilst dragging the layer bounds
 #[derive(Clone, Debug, Default)]
-struct BoundingBoxOverlays {
-	pub bounding_box: Vec<LayerId>,
-	pub transform_handles: [Vec<LayerId>; 8],
-	pub bounds: [DVec2; 2],
-	/// Top bottom left right
-	pub selected_edges: Option<(bool, bool, bool, bool)>,
+struct SelectedEdges {
+	original_transforms: OriginalTransforms,
+	pivot: DVec2,
+	bounds: [DVec2; 2],
+	top: bool,
+	bottom: bool,
+	left: bool,
+	right: bool,
 }
+impl SelectedEdges {
+	fn new(top: bool, bottom: bool, left: bool, right: bool, bounds: [DVec2; 2]) -> Self {
+		// Calculate the pivot for the operation (the opposite point to the one being dragged)
+		let pivot = {
+			let min = bounds[0];
+			let max = bounds[1];
 
-impl BoundingBoxOverlays {
-	#[must_use]
-	pub fn new(buffer: &mut Vec<Message>) -> Self {
+			let x = if left {
+				max.x
+			} else if right {
+				min.x
+			} else {
+				(min.x + max.x) / 2.
+			};
+
+			let y = if top {
+				max.y
+			} else if bottom {
+				min.y
+			} else {
+				(min.y + max.y) / 2.
+			};
+
+			DVec2::new(x, y)
+		};
+
 		Self {
-			bounding_box: add_bounding_box(buffer),
-			transform_handles: add_transform_handles(buffer),
-			..Default::default()
-		}
-	}
-	pub fn transform(&mut self, buffer: &mut Vec<Message>) {
-		let transform = transform_from_box(self.bounds[0], self.bounds[1]);
-		let path = self.bounding_box.clone();
-		buffer.push(DocumentMessage::Overlays(Operation::SetLayerTransformInViewport { path, transform }.into()).into());
-
-		// Helps push values that end in approximately half, plus or minus some floating point imprecision, towards the same side of the round() function
-		const BIAS: f64 = 0.0001;
-
-		for (position, path) in evaluate_points(self.bounds[0].into(), self.bounds[1].into()).into_iter().zip(&self.transform_handles) {
-			let scale = DVec2::splat(VECTOR_MANIPULATOR_ANCHOR_MARKER_SIZE);
-			let translation = (position - (scale / 2.) - 0.5 + BIAS).round();
-			let transform = DAffine2::from_scale_angle_translation(scale, 0., translation).to_cols_array();
-			let path = path.clone();
-			buffer.push(DocumentMessage::Overlays(Operation::SetLayerTransformInViewport { path, transform }.into()).into());
+			original_transforms: Default::default(),
+			pivot,
+			top,
+			bottom,
+			left,
+			right,
+			bounds,
 		}
 	}
 
-	pub fn check_select(&mut self, cursor: DVec2) -> bool {
-		let min = self.bounds[0].min(self.bounds[1]);
-		let max = self.bounds[0].max(self.bounds[1]);
-		if min.x - cursor.x < SELECT_THRESHOLD && min.y - cursor.y < SELECT_THRESHOLD && cursor.x - max.x < SELECT_THRESHOLD && cursor.y - max.y < SELECT_THRESHOLD {
-			let top = (cursor.y - min.y).abs() < SELECT_THRESHOLD;
-			let bottom = (max.y - cursor.y).abs() < SELECT_THRESHOLD;
-			let left = (cursor.x - min.x).abs() < SELECT_THRESHOLD;
-			let right = (cursor.x - max.x).abs() < SELECT_THRESHOLD;
-			if top || bottom || left || right {
-				self.selected_edges = Some((top, bottom, left, right));
-				log::info!("Selected");
-				return true;
-			}
+	/// Calculates the required scaling to resize the bounding box
+	fn pos_to_scale_transform(&self, mouse: DVec2) -> DAffine2 {
+		let mut min = self.bounds[0];
+		let mut max = self.bounds[1];
+		if self.top {
+			min.y = mouse.y;
+		} else if self.bottom {
+			max.y = mouse.y;
 		}
-
-		log::info!("Not selected");
-		self.selected_edges = None;
-		false
+		if self.left {
+			min.x = mouse.x
+		} else if self.right {
+			max.x = mouse.x;
+		}
+		DAffine2::from_scale((max - min) / (self.bounds[1] - self.bounds[0]))
 	}
 
-	pub fn delete(self, buffer: &mut impl Extend<Message>) {
-		buffer.extend([DocumentMessage::Overlays(Operation::DeleteLayer { path: self.bounding_box }.into()).into()]);
-		buffer.extend(
-			self.transform_handles
-				.iter()
-				.map(|path| DocumentMessage::Overlays(Operation::DeleteLayer { path: path.clone() }.into()).into()),
-		);
+	/// Transforms the layers to handle dragging the edge
+	pub fn transform_layers(&mut self, mouse: DVec2, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
+		let delta = self.pos_to_scale_transform(mouse);
+
+		let selected = document.selected_layers().map(|path| path.to_vec()).collect();
+		let mut selected = Selected::new(&mut self.original_transforms, &mut self.pivot, selected, responses, &document.graphene_document);
+
+		selected.update_transforms(delta);
 	}
 }
+
+const SELECT_THRESHOLD: f64 = 20.;
 
 fn add_bounding_box(responses: &mut Vec<Message>) -> Vec<LayerId> {
 	let path = vec![generate_uuid()];
@@ -203,7 +216,7 @@ fn add_bounding_box(responses: &mut Vec<Message>) -> Vec<LayerId> {
 	path
 }
 
-fn evaluate_points((left, top): (f64, f64), (right, bottom): (f64, f64)) -> [DVec2; 8] {
+fn evaluate_transform_handle_positions((left, top): (f64, f64), (right, bottom): (f64, f64)) -> [DVec2; 8] {
 	[
 		DVec2::new(left, top),
 		DVec2::new(left, (top + bottom) / 2.),
@@ -238,6 +251,78 @@ fn add_transform_handles(responses: &mut Vec<Message>) -> [Vec<LayerId>; 8] {
 
 fn transform_from_box(pos1: DVec2, pos2: DVec2) -> [f64; 6] {
 	DAffine2::from_scale_angle_translation((pos2 - pos1).round(), 0., pos1.round() - DVec2::splat(0.5)).to_cols_array()
+}
+
+/// Contains info on the overlays for the bounding box and transform handles
+#[derive(Clone, Debug, Default)]
+struct BoundingBoxOverlays {
+	pub bounding_box: Vec<LayerId>,
+	pub transform_handles: [Vec<LayerId>; 8],
+	pub bounds: [DVec2; 2],
+	pub selected_edges: Option<SelectedEdges>,
+}
+
+impl BoundingBoxOverlays {
+	#[must_use]
+	pub fn new(buffer: &mut Vec<Message>) -> Self {
+		Self {
+			bounding_box: add_bounding_box(buffer),
+			transform_handles: add_transform_handles(buffer),
+			..Default::default()
+		}
+	}
+
+	/// Update the position of the bounding box and transform handles
+	pub fn transform(&mut self, buffer: &mut Vec<Message>) {
+		let transform = transform_from_box(self.bounds[0], self.bounds[1]);
+		let path = self.bounding_box.clone();
+		buffer.push(DocumentMessage::Overlays(Operation::SetLayerTransformInViewport { path, transform }.into()).into());
+
+		// Helps push values that end in approximately half, plus or minus some floating point imprecision, towards the same side of the round() function
+		const BIAS: f64 = 0.0001;
+
+		for (position, path) in evaluate_transform_handle_positions(self.bounds[0].into(), self.bounds[1].into())
+			.into_iter()
+			.zip(&self.transform_handles)
+		{
+			let scale = DVec2::splat(VECTOR_MANIPULATOR_ANCHOR_MARKER_SIZE);
+			let translation = (position - (scale / 2.) - 0.5 + BIAS).round();
+			let transform = DAffine2::from_scale_angle_translation(scale, 0., translation).to_cols_array();
+			let path = path.clone();
+			buffer.push(DocumentMessage::Overlays(Operation::SetLayerTransformInViewport { path, transform }.into()).into());
+		}
+	}
+
+	/// Check if the user has selected the edge for dragging (returns which edge in order top, bottom, left, right)
+	pub fn check_select(&mut self, cursor: DVec2) -> Option<(bool, bool, bool, bool)> {
+		let min = self.bounds[0].min(self.bounds[1]);
+		let max = self.bounds[0].max(self.bounds[1]);
+		if min.x - cursor.x < SELECT_THRESHOLD && min.y - cursor.y < SELECT_THRESHOLD && cursor.x - max.x < SELECT_THRESHOLD && cursor.y - max.y < SELECT_THRESHOLD {
+			let top = (cursor.y - min.y).abs() < SELECT_THRESHOLD;
+			let bottom = (max.y - cursor.y).abs() < SELECT_THRESHOLD;
+			let left = (cursor.x - min.x).abs() < SELECT_THRESHOLD;
+			let right = (cursor.x - max.x).abs() < SELECT_THRESHOLD;
+
+			if top || bottom || left || right {
+				self.selected_edges = Some(SelectedEdges::new(top, bottom, left, right, self.bounds));
+
+				return Some((top, bottom, left, right));
+			}
+		}
+
+		self.selected_edges = None;
+		None
+	}
+
+	/// Removes the overlays
+	pub fn delete(self, buffer: &mut impl Extend<Message>) {
+		buffer.extend([DocumentMessage::Overlays(Operation::DeleteLayer { path: self.bounding_box }.into()).into()]);
+		buffer.extend(
+			self.transform_handles
+				.iter()
+				.map(|path| DocumentMessage::Overlays(Operation::DeleteLayer { path: path.clone() }.into()).into()),
+		);
+	}
 }
 
 impl Fsm for SelectToolFsmState {
@@ -282,18 +367,24 @@ impl Fsm for SelectToolFsmState {
 					let dragging_bounds = if let Some(bounding_box) = &mut data.bounding_box_overlays {
 						bounding_box.check_select(input.mouse.position)
 					} else {
-						false
+						None
 					};
 
 					let mut selected: Vec<_> = document.selected_visible_layers().map(|path| path.to_vec()).collect();
 					let quad = data.selection_quad();
 					let mut intersection = document.graphene_document.intersects_quad_root(quad);
+					// If the user is dragging the bounding box bounds, go into ResizingBounds mode.
 					// If the user clicks on a layer that is in their current selection, go into the dragging mode.
 					// If the user clicks on new shape, make that layer their new selection.
 					// Otherwise enter the box select mode
-					let state = if dragging_bounds {
+					let state = if let Some(selected_edges) = dragging_bounds {
+						let snap_x = selected_edges.2 || selected_edges.3;
+						let snap_y = selected_edges.0 || selected_edges.1;
+
 						data.snap_handler
-							.start_snap(document, document.visible_layers().filter(|layer| !selected.iter().any(|path| path == layer)));
+							.start_snap(document, document.visible_layers().filter(|layer| !selected.iter().any(|path| path == layer)), snap_x, snap_y);
+
+						data.layers_dragging = selected;
 
 						ResizingBounds
 					} else if selected.iter().any(|path| intersection.contains(path)) {
@@ -301,7 +392,7 @@ impl Fsm for SelectToolFsmState {
 						data.layers_dragging = selected;
 
 						data.snap_handler
-							.start_snap(document, document.visible_layers().filter(|layer| !data.layers_dragging.iter().any(|path| path == layer)));
+							.start_snap(document, document.visible_layers().filter(|layer| !data.layers_dragging.iter().any(|path| path == layer)), true, true);
 
 						Dragging
 					} else {
@@ -316,7 +407,7 @@ impl Fsm for SelectToolFsmState {
 							buffer.push(DocumentMessage::StartTransaction.into());
 							data.layers_dragging.append(&mut selected);
 							data.snap_handler
-								.start_snap(document, document.visible_layers().filter(|layer| !data.layers_dragging.iter().any(|path| path == layer)));
+								.start_snap(document, document.visible_layers().filter(|layer| !data.layers_dragging.iter().any(|path| path == layer)), true, true);
 
 							Dragging
 						} else {
@@ -361,10 +452,15 @@ impl Fsm for SelectToolFsmState {
 					Dragging
 				}
 				(ResizingBounds, MouseMove { .. }) => {
-					let mouse_position = input.mouse.position;
+					if let Some(bounds) = &mut data.bounding_box_overlays {
+						if let Some(movement) = &mut bounds.selected_edges {
+							let mouse_position = input.mouse.position;
 
-					// let closest_move = data.snap_handler.snap_layers(responses, document, &data.layers_dragging, input.viewport_bounds.size(), mouse_delta);
+							let snapped_mouse_position = data.snap_handler.snap_position(responses, input.viewport_bounds.size(), document, mouse_position);
 
+							movement.transform_layers(snapped_mouse_position, document, responses);
+						}
+					}
 					ResizingBounds
 				}
 				(DrawingBox, MouseMove { .. }) => {

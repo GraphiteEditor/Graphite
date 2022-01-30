@@ -1,4 +1,3 @@
-use super::layer_panel::LayerMetadata;
 use crate::consts::{ROTATE_SNAP_ANGLE, SCALE_SNAP_INTERVAL};
 use crate::message_prelude::*;
 
@@ -190,20 +189,13 @@ impl TransformOperation {
 pub struct Selected<'a> {
 	pub selected: Vec<Vec<LayerId>>,
 	pub responses: &'a mut VecDeque<Message>,
-	pub document: &'a mut Document,
+	pub document: &'a Document,
 	pub original_transforms: &'a mut OriginalTransforms,
 	pub pivot: &'a mut DVec2,
 }
 
 impl<'a> Selected<'a> {
-	pub fn new(
-		original_transforms: &'a mut OriginalTransforms,
-		pivot: &'a mut DVec2,
-		layer_metadata: &'a mut HashMap<Vec<LayerId>, LayerMetadata>,
-		responses: &'a mut VecDeque<Message>,
-		document: &'a mut Document,
-	) -> Self {
-		let selected = layer_metadata.iter().filter_map(|(layer_path, data)| data.selected.then(|| layer_path.to_owned())).collect();
+	pub fn new(original_transforms: &'a mut OriginalTransforms, pivot: &'a mut DVec2, selected: Vec<Vec<LayerId>>, responses: &'a mut VecDeque<Message>, document: &'a Document) -> Self {
 		for path in &selected {
 			if !original_transforms.contains_key::<Vec<LayerId>>(path) {
 				original_transforms.insert(path.clone(), document.layer(path).unwrap().transform);
