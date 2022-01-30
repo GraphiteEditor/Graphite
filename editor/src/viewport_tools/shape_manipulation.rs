@@ -21,6 +21,10 @@ use crate::{
 // Helps push values that end in approximately half, plus or minus some floating point imprecision, towards the same side of the round() function
 const BIAS: f64 = 0.0001;
 
+/// ManipulationHandler is the container for all of the selected kurbo paths that are
+/// represented as VectorManipulatorShapes and provides functionality required
+/// to query and create the VectorManipulatorShapes / VectorManipulatorAnchors
+// TODO Provide support for multiple selected points / drag select
 #[derive(Clone, Debug, Default)]
 pub struct ManipulationHandler {
 	// The selected shapes, the cloned path and the kurbo PathElements
@@ -177,6 +181,7 @@ impl ManipulationHandler {
 	}
 
 	// TODO Use quadtree or some equivalent spatial acceleration structure to improve this to O(log(n))
+	/// Find the closest point, anchor and distance so we can select path elements
 	/// Brute force comparison to determine which handle / anchor we want to select, O(n)
 	fn closest_manipulator<'a>(&self, shape: &'a VectorManipulatorShape, pos: glam::DVec2) -> (&'a VectorManipulatorAnchor, &'a VectorManipulatorPoint, f64) {
 		let mut closest_anchor: &'a VectorManipulatorAnchor = &shape.anchors[0];
@@ -197,6 +202,8 @@ impl ManipulationHandler {
 	}
 }
 
+/// VectorManipulatorShape represents a single kurbo shape and maintainces a parallel data structure
+/// For each kurbo path we keep a VectorManipulatorShape which contains the handles and anchors for that path
 #[derive(PartialEq, Clone, Debug, Default)]
 pub struct VectorManipulatorShape {
 	/// The path to the layer
@@ -415,6 +422,7 @@ impl VectorManipulatorShape {
 		}
 	}
 
+	/// Create the kurbo shape that matches the selected viewport shape
 	fn create_shape_outline_overlay(&self, responses: &mut VecDeque<Message>) -> Vec<LayerId> {
 		let layer_path = vec![generate_uuid()];
 		let operation = Operation::AddOverlayShape {
@@ -428,7 +436,7 @@ impl VectorManipulatorShape {
 		layer_path
 	}
 
-	/// Create a single anchor overlay
+	/// Create a single anchor overlay and return its layer id
 	fn create_anchor_overlay(&self, responses: &mut VecDeque<Message>) -> Vec<LayerId> {
 		let layer_path = vec![generate_uuid()];
 		let operation = Operation::AddOverlayRect {
@@ -440,6 +448,7 @@ impl VectorManipulatorShape {
 		layer_path
 	}
 
+	/// Create a single handle overlay and return its layer id
 	fn create_handle_overlay(&self, responses: &mut VecDeque<Message>) -> Vec<LayerId> {
 		let layer_path = vec![generate_uuid()];
 		let operation = Operation::AddOverlayEllipse {
@@ -451,6 +460,7 @@ impl VectorManipulatorShape {
 		layer_path
 	}
 
+	/// Create the shape outline overlay and return its layer id
 	fn create_handle_line_overlay(&self, handle: &Option<VectorManipulatorPoint>, responses: &mut VecDeque<Message>) -> Option<Vec<LayerId>> {
 		if handle.is_none() {
 			return None;
@@ -566,6 +576,7 @@ impl VectorManipulatorShape {
 	}
 }
 
+/// Used to alias PathSeg for our own purposes
 #[derive(PartialEq, Clone, Debug)]
 pub enum VectorManipulatorSegment {
 	Line(DVec2, DVec2),
@@ -573,6 +584,8 @@ pub enum VectorManipulatorSegment {
 	Cubic(DVec2, DVec2, DVec2, DVec2),
 }
 
+/// VectorManipulatorAnchor is used to represent a point on the path that can be moved
+/// It contains 0-2 handles that can be moved to reposition the submit modifications to the path
 #[derive(PartialEq, Clone, Debug, Default)]
 pub struct VectorManipulatorAnchor {
 	// The associated position in the BezPath
@@ -588,6 +601,7 @@ pub struct VectorManipulatorAnchor {
 }
 
 impl VectorManipulatorAnchor {
+	/// Finds the closest VectorManipulatorPoint owned by this anchor, handles or the anchor itself
 	pub fn closest_handle_or_anchor(&self, target: glam::DVec2) -> &VectorManipulatorPoint {
 		let mut closest_point: &VectorManipulatorPoint = &self.point;
 		let mut distance = self.point.position.distance_squared(target);
@@ -618,6 +632,7 @@ impl VectorManipulatorAnchor {
 		0.0
 	}
 
+	/// Returns the opposing handle to the provided one
 	pub fn opposing_handle(&self, handle: &VectorManipulatorPoint) -> &Option<VectorManipulatorPoint> {
 		if Some(handle) == self.handles.0.as_ref() {
 			&self.handles.1
@@ -626,6 +641,7 @@ impl VectorManipulatorAnchor {
 		}
 	}
 
+	/// Updates the position of the anchor based on the kurbo path
 	pub fn place_anchor_overlay(&self, responses: &mut VecDeque<Message>) {
 		if let Some(overlay) = &self.point.overlay {
 			let scale = DVec2::splat(VECTOR_MANIPULATOR_ANCHOR_MARKER_SIZE);
@@ -636,6 +652,7 @@ impl VectorManipulatorAnchor {
 		}
 	}
 
+	/// Updates the position of the handles based on the kurbo path
 	pub fn place_handle_overlay(&self, responses: &mut VecDeque<Message>) {
 		// Helper function to keep things DRY
 		let mut place_handle_and_line = |handle: &VectorManipulatorPoint, line: &Option<Vec<LayerId>>| {
@@ -669,6 +686,7 @@ impl VectorManipulatorAnchor {
 		}
 	}
 
+	/// Removes the anchor overlay from the overlay document
 	pub fn remove_anchor_overlay(&mut self, responses: &mut VecDeque<Message>) {
 		if let Some(overlay) = &self.point.overlay {
 			responses.push_back(DocumentMessage::Overlays(Operation::DeleteLayer { path: overlay.clone() }.into()).into());
@@ -676,6 +694,7 @@ impl VectorManipulatorAnchor {
 		self.point.overlay = None;
 	}
 
+	/// Removes the handles overlay from the overlay document
 	pub fn remove_handle_overlay(&mut self, responses: &mut VecDeque<Message>) {
 		let (h1, h2) = &mut self.handles;
 		let (line1, line2) = &mut self.handle_line_overlays;
@@ -703,12 +722,14 @@ impl VectorManipulatorAnchor {
 		self.handle_line_overlays = (None, None);
 	}
 
+	/// Sets the visibility of the anchors overlay
 	pub fn set_anchor_visiblity(&self, visibility: bool, responses: &mut VecDeque<Message>) {
 		if let Some(overlay) = &self.point.overlay {
 			responses.push_back(self.visibility_message(overlay.clone(), visibility));
 		}
 	}
 
+	/// Sets the visibility of the handles overlay
 	pub fn set_handle_visiblity(&self, visibility: bool, responses: &mut VecDeque<Message>) {
 		let (h1, h2) = &self.handles;
 		let (line1, line2) = &self.handle_line_overlays;
@@ -745,6 +766,7 @@ impl VectorManipulatorAnchor {
 	}
 }
 
+/// VectorManipulatorPoint represents any grabbable point, anchor or handle
 #[derive(PartialEq, Clone, Debug, Default)]
 pub struct VectorManipulatorPoint {
 	// The associated position in the BezPath
@@ -760,6 +782,7 @@ pub struct VectorManipulatorPoint {
 }
 
 impl VectorManipulatorPoint {
+	/// Sets if this point is selected and updates the overlay to represent that
 	pub fn set_selected(&mut self, selected: bool, responses: &mut VecDeque<Message>) {
 		self.can_be_selected = selected;
 		if selected {
@@ -769,6 +792,7 @@ impl VectorManipulatorPoint {
 		}
 	}
 
+	/// Sets the overlay style for this point
 	pub fn set_overlay_style(&self, stroke_width: f32, stroke_color: Color, fill_color: Color, responses: &mut VecDeque<Message>) {
 		if let Some(overlay) = &self.overlay {
 			responses.push_back(
