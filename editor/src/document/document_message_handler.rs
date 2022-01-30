@@ -1,6 +1,6 @@
 use super::clipboards::Clipboard;
 use super::layer_panel::{layer_panel_entry, LayerMetadata, LayerPanelEntry, RawBuffer};
-use super::utility_types::{AlignAggregate, AlignAxis, DocumentSave, FlipAxis, VectorManipulatorAnchor, VectorManipulatorPoint, VectorManipulatorSegment, VectorManipulatorShape};
+use super::utility_types::{AlignAggregate, AlignAxis, DocumentSave, FlipAxis};
 use super::vectorize_layer_metadata;
 use super::{ArtboardMessageHandler, MovementMessageHandler, OverlaysMessageHandler, TransformLayerMessageHandler};
 use crate::consts::{
@@ -8,6 +8,7 @@ use crate::consts::{
 };
 use crate::input::InputPreprocessorMessageHandler;
 use crate::message_prelude::*;
+use crate::viewport_tools::shape_manipulation::VectorManipulatorShape;
 use crate::EditorError;
 
 use graphene::document::Document as GrapheneDocument;
@@ -17,7 +18,6 @@ use graphene::layers::style::ViewMode;
 use graphene::{DocumentError, DocumentResponse, LayerId, Operation as DocumentOperation};
 
 use glam::{DAffine2, DVec2};
-use kurbo::{BezPath, PathSeg};
 use log::warn;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -135,7 +135,7 @@ impl DocumentMessageHandler {
 	}
 
 	/// Create a new vector shape representation with the underlying kurbo data, VectorManipulatorShape
-	pub fn selected_visible_layers_vector_shapes(&self) -> Vec<VectorManipulatorShape> {
+	pub fn selected_visible_layers_vector_shapes(&self, responses: &mut VecDeque<Message>) -> Vec<VectorManipulatorShape> {
 		let shapes = self.selected_layers().filter_map(|path_to_shape| {
 			let viewport_transform = self.graphene_document.generate_transform_relative_to_viewport(path_to_shape).ok()?;
 			let layer = self.graphene_document.layer(path_to_shape);
@@ -150,7 +150,7 @@ impl DocumentMessageHandler {
 				LayerDataType::Folder(_) => None,
 			}?;
 
-			Some(VectorManipulatorShape::new(path_to_shape.to_vec(), viewport_transform, shape))
+			Some(VectorManipulatorShape::new(path_to_shape.to_vec(), viewport_transform, shape, responses))
 		});
 
 		// TODO: Consider refactoring this in a way that avoids needing to collect() so we can skip the heap allocations

@@ -1,3 +1,4 @@
+pub mod shape_manipulation;
 pub mod snapping;
 pub mod tool;
 pub mod tool_message;

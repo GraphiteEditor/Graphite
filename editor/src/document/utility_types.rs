@@ -1,15 +1,11 @@
 use crate::message_prelude::Message;
 
 pub use super::layer_panel::{layer_panel_entry, LayerMetadata, LayerPanelEntry, RawBuffer};
-use super::{DocumentMessage, DocumentMessageHandler};
+use super::DocumentMessage;
 
-use graphene::layers::layer_info::LayerDataType;
-use graphene::layers::simple_shape::Shape;
 use graphene::LayerId;
 use graphene::{document::Document as GrapheneDocument, Operation};
 
-use glam::{DAffine2, DVec2};
-use kurbo::{BezPath, PathSeg};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
 
@@ -33,291 +29,6 @@ pub enum AlignAggregate {
 	Max,
 	Center,
 	Average,
-}
-
-#[derive(PartialEq, Clone, Debug)]
-pub enum VectorManipulatorSegment {
-	Line(DVec2, DVec2),
-	Quad(DVec2, DVec2, DVec2),
-	Cubic(DVec2, DVec2, DVec2, DVec2),
-}
-
-#[derive(PartialEq, Clone, Debug, Default)]
-pub struct VectorManipulatorShape {
-	/// The path to the layer
-	pub layer_path: Vec<LayerId>,
-	/// The outline of the shape
-	pub path: kurbo::BezPath,
-	/// The segments containing the control points / manipulator handles
-	pub segments: Vec<VectorManipulatorSegment>,
-	/// The control points / manipulator handles
-	pub anchors: Vec<VectorManipulatorAnchor>,
-	/// The compound Bezier curve is closed
-	pub closed: bool,
-	/// The transformation matrix to apply
-	pub transform: DAffine2,
-}
-
-impl VectorManipulatorShape {
-	// TODO: Figure out a more elegant way to construct this
-	pub fn new(layer_path: Vec<LayerId>, transform: DAffine2, shape: &Shape) -> Self {
-		let mut manipulator_shape = VectorManipulatorShape {
-			layer_path,
-			path: shape.path.clone(),
-			closed: shape.closed,
-			transform,
-			segments: vec![],
-			anchors: vec![],
-		};
-		manipulator_shape.segments = manipulator_shape.create_segments_from_kurbo();
-		manipulator_shape.anchors = manipulator_shape.create_anchors_from_kurbo();
-		manipulator_shape
-	}
-
-	/// Place points in local space
-	fn to_local_space(&self, point: kurbo::Point) -> DVec2 {
-		self.transform.transform_point2(DVec2::from((point.x, point.y)))
-	}
-
-	/// Create the anchors from the kurbo path, only done on construction
-	fn create_anchors_from_kurbo(&self) -> Vec<VectorManipulatorAnchor> {
-		type IndexedEl = (usize, kurbo::PathEl);
-
-		// Create an anchor on the boundary between two kurbo PathElements with optional handles
-		let create_anchor_manipulator = |first: IndexedEl, second: IndexedEl| -> VectorManipulatorAnchor {
-			let mut handle1 = None;
-			let mut anchor_position: glam::DVec2 = glam::DVec2::ZERO;
-			let mut handle2 = None;
-			let (first_id, first_element) = first;
-			let (second_id, second_element) = second;
-
-			match first_element {
-				kurbo::PathEl::MoveTo(anchor) | kurbo::PathEl::LineTo(anchor) => anchor_position = self.to_local_space(anchor),
-				kurbo::PathEl::QuadTo(handle, anchor) | kurbo::PathEl::CurveTo(_, handle, anchor) => {
-					anchor_position = self.to_local_space(anchor);
-					handle1 = Some(VectorManipulatorPoint {
-						element_id: first_id,
-						position: self.to_local_space(handle),
-					});
-				}
-				_ => (),
-			}
-
-			match second_element {
-				kurbo::PathEl::CurveTo(handle, _, _) | kurbo::PathEl::QuadTo(handle, _) => {
-					handle2 = Some(VectorManipulatorPoint {
-						element_id: second_id,
-						position: self.to_local_space(handle),
-					});
-				}
-				_ => (),
-			}
-
-			VectorManipulatorAnchor {
-				point: VectorManipulatorPoint {
-					element_id: first_id,
-					position: anchor_position,
-				},
-				close_element_id: None,
-				handles: (handle1, handle2),
-				handle_mirroring: true,
-			}
-		};
-
-		// We need the indices paired with the kurbo path elements
-		let indexed_elements = self.path.elements().iter().enumerate().map(|(index, element)| (index, *element)).collect::<Vec<IndexedEl>>();
-
-		// Create the manipulation points
-		let mut points: Vec<VectorManipulatorAnchor> = vec![];
-		let (mut first, mut last): (Option<IndexedEl>, Option<IndexedEl>) = (None, None);
-		let mut close_element_id: Option<usize> = None;
-
-		// Create an anchor at each join between two kurbo segments
-		for elements in indexed_elements.windows(2) {
-			let (current_index, current_element) = elements[0];
-			let (_, next_element) = elements[1];
-
-			// An anchor cannot stradle a line / curve segment and a ClosePath segment
-			if matches!(next_element, kurbo::PathEl::ClosePath) {
-				break;
-			}
-
-			// TODO: Currently a unique case for [MoveTo, CurveTo, ...], refactor more generally if possible
-			if matches!(current_element, kurbo::PathEl::MoveTo(_)) && (matches!(next_element, kurbo::PathEl::CurveTo(_, _, _)) || matches!(next_element, kurbo::PathEl::QuadTo(_, _))) {
-				close_element_id = Some(current_index);
-				continue;
-			}
-
-			// Keep track of the first and last elements of this shape
-			if first.is_none() {
-				first = Some(elements[0]);
-			}
-			last = Some(elements[1]);
-
-			points.push(create_anchor_manipulator(elements[0], elements[1]));
-		}
-
-		// Close the shape
-		if let (Some(first), Some(last)) = (first, last) {
-			let mut element = create_anchor_manipulator(last, first);
-			element.close_element_id = close_element_id;
-			points.push(element);
-		}
-
-		points
-	}
-
-	/// Update the anchors to natch the kurbo path
-	fn update_anchors(&mut self, path: &BezPath) {
-		for anchor_index in 0..self.anchors.len() {
-			let elements = path.elements();
-			let (h1, h2) = self.anchors[anchor_index].handles;
-			match elements[self.anchors[anchor_index].point.element_id] {
-				kurbo::PathEl::MoveTo(anchor_position) | kurbo::PathEl::LineTo(anchor_position) => self.anchors[anchor_index].point.position = self.to_local_space(anchor_position),
-				kurbo::PathEl::QuadTo(handle_position, anchor_position) | kurbo::PathEl::CurveTo(_, handle_position, anchor_position) => {
-					self.anchors[anchor_index].point.position = self.to_local_space(anchor_position);
-					if let Some(mut handle) = h1 {
-						handle.position = self.to_local_space(handle_position);
-						self.anchors[anchor_index].handles.0 = Some(handle.clone());
-					}
-				}
-				_ => (),
-			}
-			if let Some(handle) = h2 {
-				match elements[handle.element_id] {
-					kurbo::PathEl::CurveTo(handle_position, _, _) | kurbo::PathEl::QuadTo(handle_position, _) => {
-						if let Some(mut handle) = h2 {
-							handle.position = self.to_local_space(handle_position);
-							self.anchors[anchor_index].handles.1 = Some(handle);
-						}
-					}
-					_ => (),
-				}
-			}
-		}
-	}
-
-	/// Create the segments from the kurbo shape
-	fn create_segments_from_kurbo(&self) -> Vec<VectorManipulatorSegment> {
-		self.path
-			.segments()
-			.map(|segment| -> VectorManipulatorSegment {
-				match segment {
-					PathSeg::Line(line) => VectorManipulatorSegment::Line(self.to_local_space(line.p0), self.to_local_space(line.p1)),
-					PathSeg::Quad(quad) => VectorManipulatorSegment::Quad(self.to_local_space(quad.p0), self.to_local_space(quad.p1), self.to_local_space(quad.p2)),
-					PathSeg::Cubic(cubic) => VectorManipulatorSegment::Cubic(
-						self.to_local_space(cubic.p0),
-						self.to_local_space(cubic.p1),
-						self.to_local_space(cubic.p2),
-						self.to_local_space(cubic.p3),
-					),
-				}
-			})
-			.collect::<Vec<VectorManipulatorSegment>>()
-	}
-
-	/// Update the segments to match the kurbo shape
-	fn update_segments(&mut self, path: &BezPath) {
-		path.segments().enumerate().for_each(|(index, segment)| {
-			self.segments[index] = match segment {
-				PathSeg::Line(line) => VectorManipulatorSegment::Line(self.to_local_space(line.p0), self.to_local_space(line.p1)),
-				PathSeg::Quad(quad) => VectorManipulatorSegment::Quad(self.to_local_space(quad.p0), self.to_local_space(quad.p1), self.to_local_space(quad.p2)),
-				PathSeg::Cubic(cubic) => VectorManipulatorSegment::Cubic(
-					self.to_local_space(cubic.p0),
-					self.to_local_space(cubic.p1),
-					self.to_local_space(cubic.p2),
-					self.to_local_space(cubic.p3),
-				),
-			};
-		});
-	}
-
-	/// Update the anchors and segments to match the kurbo shape
-	pub fn update_shape(&mut self, document: &DocumentMessageHandler) {
-		let viewport_transform = document.graphene_document.generate_transform_relative_to_viewport(&self.layer_path).unwrap();
-		let layer = document.graphene_document.layer(&self.layer_path).unwrap();
-		if let LayerDataType::Shape(shape) = &layer.data {
-			let path = shape.path.clone();
-			self.transform = viewport_transform;
-
-			// Update point positions
-			self.update_anchors(&path);
-
-			// Update the segment positions
-			self.update_segments(&path);
-
-			self.path = path;
-		}
-	}
-}
-
-#[derive(PartialEq, Clone, Debug, Copy, Default)]
-pub struct VectorManipulatorPoint {
-	// The associated position in the BezPath
-	pub element_id: usize,
-	// The sibling element if this is a handle
-	pub position: glam::DVec2,
-}
-
-#[derive(PartialEq, Clone, Debug, Default)]
-pub struct VectorManipulatorAnchor {
-	// The associated position in the BezPath
-	pub point: VectorManipulatorPoint,
-	// Does this anchor point have a path close element we also needs to move?
-	pub close_element_id: Option<usize>,
-	// Should we mirror the handles
-	pub handle_mirroring: bool,
-	// Anchor handles
-	pub handles: (Option<VectorManipulatorPoint>, Option<VectorManipulatorPoint>),
-}
-
-impl VectorManipulatorAnchor {
-	pub fn closest_handle_or_anchor(&self, target: glam::DVec2) -> &VectorManipulatorPoint {
-		let mut closest_point: &VectorManipulatorPoint = &self.point;
-		let mut distance = self.point.position.distance_squared(target);
-		let (handle1, handle2) = &self.handles;
-		if let Some(handle1) = handle1 {
-			let handle1_dist = handle1.position.distance_squared(target);
-			if distance > handle1_dist {
-				distance = handle1_dist;
-				closest_point = handle1;
-			}
-		}
-
-		if let Some(handle2) = handle2 {
-			let handle2_dist = handle2.position.distance_squared(target);
-			if distance > handle2_dist {
-				closest_point = handle2;
-			}
-		}
-
-		closest_point
-	}
-
-	/// Angle between handles in radians
-	pub fn angle_between_handles(&self) -> f64 {
-		if let (Some(h1), Some(h2)) = &self.handles {
-			return (self.point.position - h1.position).angle_between(self.point.position - h2.position);
-		}
-		0.0
-	}
-
-	pub fn opposing_handle(&self, handle: &VectorManipulatorPoint) -> &Option<VectorManipulatorPoint> {
-		if Some(handle) == self.handles.0.as_ref() {
-			&self.handles.1
-		} else {
-			&self.handles.0
-		}
-	}
-}
-
-impl VectorManipulatorPoint {
-	pub(crate) fn clone(&self) -> VectorManipulatorPoint {
-		VectorManipulatorPoint {
-			element_id: self.element_id,
-			position: self.position,
-		}
-	}
 }
 
 /// Simple implementation of an pooler for overlays
@@ -399,6 +110,13 @@ pub struct OverlayPooler {
 
 impl OverlayPooler {
 	// Add a new overlay pool with a channel id and a starting capacity
+	// Example of how you might create an enum for the channel
+	// enum OverlayPoolType {
+	// 	Shape = 0,
+	// 	Anchor = 1,
+	// 	Handle = 2,
+	// 	HandleLine = 3,
+	// }
 	pub fn add_overlay_pool<F>(&mut self, channel: Channel, capacity: usize, responses: &mut VecDeque<Message>, create_overlay: F)
 	where
 		F: Fn(&mut VecDeque<Message>) -> Vec<LayerId> + 'static,
@@ -445,3 +163,33 @@ impl OverlayPooler {
 		}
 	}
 }
+
+// Potentially useful for pooling
+// fn calculate_total_overlays_per_type(shapes: &[VectorManipulatorShape]) -> (usize, usize, usize) {
+// 	shapes.iter().fold((0, 0, 0), |acc, shape| {
+// 		let counts = calculate_shape_overlays_per_type(shape);
+// 		(acc.0 + counts.0, acc.1 + counts.1, acc.2 + counts.2)
+// 	})
+// }
+
+// fn calculate_shape_overlays_per_type(shape: &VectorManipulatorShape) -> (usize, usize, usize) {
+// 	let (mut total_anchors, mut total_handles, mut total_anchor_handle_lines) = (0, 0, 0);
+
+// 	for segment in &shape.segments {
+// 		let (anchors, handles, anchor_handle_lines) = match segment {
+// 			VectorManipulatorSegment::Line(_, _) => (1, 0, 0),
+// 			VectorManipulatorSegment::Quad(_, _, _) => (1, 1, 1),
+// 			VectorManipulatorSegment::Cubic(_, _, _, _) => (1, 2, 2),
+// 		};
+// 		total_anchors += anchors;
+// 		total_handles += handles;
+// 		total_anchor_handle_lines += anchor_handle_lines;
+// 	}
+
+// 	// A non-closed shape does not reuse the start and end point, so there is one extra
+// 	if !shape.closed {
+// 		total_anchors += 1;
+// 	}
+
+// 	(total_anchors, total_handles, total_anchor_handle_lines)
+// }
