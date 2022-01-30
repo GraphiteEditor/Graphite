@@ -52,8 +52,8 @@ impl ManipulationHandler {
 				self.selected_shape = shape_index;
 				self.selected_point = point.clone();
 				self.selected_anchor = anchor.clone();
-				// Due to the shape data structure not persisting across selections we need to rely on the svg to tell know if we should mirror
-				self.selected_anchor.handle_mirroring = (anchor.angle_between_handles() - std::f64::consts::PI).abs() < 0.1;
+				// Due to the shape data structure not persisting across selection changes we need to rely on the kurbo path to tell know if we should mirror
+				self.selected_anchor.handle_mirroring = (anchor.angle_between_handles().abs() - std::f64::consts::PI).abs() < 0.1;
 				self.alt_mirror_toggle_debounce = false;
 				return true;
 			}
@@ -182,11 +182,13 @@ impl ManipulationHandler {
 		let mut closest_distance: f64 = f64::MAX; // Not ideal
 		for anchor in shape.anchors.iter() {
 			let point = anchor.closest_handle_or_anchor(pos);
-			let distance_squared = point.position.distance_squared(pos);
-			if distance_squared < closest_distance {
-				closest_distance = distance_squared;
-				closest_anchor = anchor;
-				closest_point = point;
+			if point.selectable {
+				let distance_squared = point.position.distance_squared(pos);
+				if distance_squared < closest_distance {
+					closest_distance = distance_squared;
+					closest_anchor = anchor;
+					closest_point = point;
+				}
 			}
 		}
 		(closest_anchor, closest_point, closest_distance)
@@ -225,7 +227,7 @@ impl VectorManipulatorShape {
 		};
 		manipulator_shape.segments = manipulator_shape.create_segments_from_kurbo();
 		manipulator_shape.anchors = manipulator_shape.create_anchors_from_kurbo(responses);
-		manipulator_shape.shape_overlay = Some(manipulator_shape.add_shape_outline_overlay(responses));
+		manipulator_shape.shape_overlay = Some(manipulator_shape.create_shape_outline_overlay(responses));
 		manipulator_shape
 	}
 
@@ -253,7 +255,8 @@ impl VectorManipulatorShape {
 					handle1 = Some(VectorManipulatorPoint {
 						element_id: first_id,
 						position: self.to_local_space(handle),
-						point_overlay: Some(self.add_handle_overlay(responses)),
+						overlay: Some(self.create_handle_overlay(responses)),
+						selectable: true,
 					});
 				}
 				_ => (),
@@ -264,7 +267,8 @@ impl VectorManipulatorShape {
 					handle2 = Some(VectorManipulatorPoint {
 						element_id: second_id,
 						position: self.to_local_space(handle),
-						point_overlay: Some(self.add_handle_overlay(responses)),
+						overlay: Some(self.create_handle_overlay(responses)),
+						selectable: true,
 					});
 				}
 				_ => (),
@@ -274,10 +278,11 @@ impl VectorManipulatorShape {
 				point: VectorManipulatorPoint {
 					element_id: first_id,
 					position: anchor_position,
-					point_overlay: Some(self.add_anchor_overlay(responses)),
+					overlay: Some(self.create_anchor_overlay(responses)),
+					selectable: true,
 				},
 				close_element_id: None,
-				handle_line_overlays: (self.add_handle_line_overlay(&handle1, responses), self.add_handle_line_overlay(&handle2, responses)),
+				handle_line_overlays: (self.create_handle_line_overlay(&handle1, responses), self.create_handle_line_overlay(&handle2, responses)),
 				handles: (handle1, handle2),
 				handle_mirroring: true,
 			}
@@ -346,7 +351,7 @@ impl VectorManipulatorShape {
 	}
 
 	/// Update the anchors to natch the kurbo path
-	fn update_anchors(&mut self, path: &BezPath) {
+	fn update_anchors_from_kurbo(&mut self, path: &BezPath) {
 		let space_transform = |point: kurbo::Point| self.transform.transform_point2(DVec2::from((point.x, point.y)));
 		for anchor_index in 0..self.anchors.len() {
 			let elements = path.elements();
@@ -375,7 +380,7 @@ impl VectorManipulatorShape {
 	}
 
 	/// Update the segments to match the kurbo shape
-	fn update_segments(&mut self, path: &BezPath) {
+	fn update_segments_from_kurbo(&mut self, path: &BezPath) {
 		path.segments().enumerate().for_each(|(index, segment)| {
 			self.segments[index] = match segment {
 				PathSeg::Line(line) => VectorManipulatorSegment::Line(self.to_local_space(line.p0), self.to_local_space(line.p1)),
@@ -399,10 +404,10 @@ impl VectorManipulatorShape {
 			self.transform = viewport_transform;
 
 			// Update point positions
-			self.update_anchors(&path);
+			self.update_anchors_from_kurbo(&path);
 
 			// Update the segment positions
-			self.update_segments(&path);
+			self.update_segments_from_kurbo(&path);
 
 			self.path = path;
 
@@ -413,7 +418,7 @@ impl VectorManipulatorShape {
 		}
 	}
 
-	fn add_shape_outline_overlay(&self, responses: &mut VecDeque<Message>) -> Vec<LayerId> {
+	fn create_shape_outline_overlay(&self, responses: &mut VecDeque<Message>) -> Vec<LayerId> {
 		let layer_path = vec![generate_uuid()];
 		let operation = Operation::AddOverlayShape {
 			path: layer_path.clone(),
@@ -427,7 +432,7 @@ impl VectorManipulatorShape {
 	}
 
 	/// Create a single anchor overlay
-	fn add_anchor_overlay(&self, responses: &mut VecDeque<Message>) -> Vec<LayerId> {
+	fn create_anchor_overlay(&self, responses: &mut VecDeque<Message>) -> Vec<LayerId> {
 		let layer_path = vec![generate_uuid()];
 		let operation = Operation::AddOverlayRect {
 			path: layer_path.clone(),
@@ -438,7 +443,7 @@ impl VectorManipulatorShape {
 		layer_path
 	}
 
-	fn add_handle_overlay(&self, responses: &mut VecDeque<Message>) -> Vec<LayerId> {
+	fn create_handle_overlay(&self, responses: &mut VecDeque<Message>) -> Vec<LayerId> {
 		let layer_path = vec![generate_uuid()];
 		let operation = Operation::AddOverlayEllipse {
 			path: layer_path.clone(),
@@ -449,7 +454,7 @@ impl VectorManipulatorShape {
 		layer_path
 	}
 
-	fn add_handle_line_overlay(&self, handle: &Option<VectorManipulatorPoint>, responses: &mut VecDeque<Message>) -> Option<Vec<LayerId>> {
+	fn create_handle_line_overlay(&self, handle: &Option<VectorManipulatorPoint>, responses: &mut VecDeque<Message>) -> Option<Vec<LayerId>> {
 		if handle.is_none() {
 			return None;
 		}
@@ -485,49 +490,14 @@ impl VectorManipulatorShape {
 	/// Update the positions of the anchor points based on the kurbo path
 	fn place_anchor_overlays(&self, responses: &mut VecDeque<Message>) {
 		for anchor in &self.anchors {
-			if let Some(overlay) = &anchor.point.point_overlay {
-				let scale = DVec2::splat(VECTOR_MANIPULATOR_ANCHOR_MARKER_SIZE);
-				let angle = 0.;
-				let translation = (anchor.point.position - (scale / 2.) + BIAS).round();
-				let transform = DAffine2::from_scale_angle_translation(scale, angle, translation).to_cols_array();
-				responses.push_back(DocumentMessage::Overlays(Operation::SetLayerTransformInViewport { path: overlay.clone(), transform }.into()).into());
-			}
+			anchor.place_anchor_overlay(responses);
 		}
 	}
 
 	/// Update the positions of the handle points and lines based on the kurbo path
 	fn place_handle_overlays(&self, responses: &mut VecDeque<Message>) {
 		for anchor in &self.anchors {
-			// Helper function to keep things DRY
-			let mut place_handle_and_line = |handle: &VectorManipulatorPoint, line: &Option<Vec<LayerId>>| {
-				if let Some(overlay) = line {
-					let line_vector = anchor.point.position - handle.position;
-					let scale = DVec2::splat(line_vector.length());
-					let angle = -line_vector.angle_between(DVec2::X);
-					let translation = (handle.position + BIAS).round() + DVec2::splat(0.5);
-					let transform = DAffine2::from_scale_angle_translation(scale, angle, translation).to_cols_array();
-					responses.push_back(DocumentMessage::Overlays(Operation::SetLayerTransformInViewport { path: overlay.clone(), transform }.into()).into());
-				}
-
-				if let Some(overlay) = &handle.point_overlay {
-					let scale = DVec2::splat(VECTOR_MANIPULATOR_ANCHOR_MARKER_SIZE);
-					let angle = 0.;
-					let translation = (handle.position - (scale / 2.) + BIAS).round();
-					let transform = DAffine2::from_scale_angle_translation(scale, angle, translation).to_cols_array();
-					responses.push_back(DocumentMessage::Overlays(Operation::SetLayerTransformInViewport { path: overlay.clone(), transform }.into()).into());
-				}
-			};
-
-			let (h1, h2) = &anchor.handles;
-			let (line1, line2) = &anchor.handle_line_overlays;
-
-			if let Some(handle) = &h1 {
-				place_handle_and_line(handle, line1);
-			}
-
-			if let Some(handle) = &h2 {
-				place_handle_and_line(handle, line2);
-			}
+			anchor.place_handle_overlay(responses);
 		}
 	}
 
@@ -539,7 +509,7 @@ impl VectorManipulatorShape {
 	}
 
 	/// Remove the outline around the shape
-	fn remove_shape_outline_overlay(&mut self, responses: &mut VecDeque<Message>) {
+	pub fn remove_shape_outline_overlay(&mut self, responses: &mut VecDeque<Message>) {
 		if let Some(overlay) = &self.shape_overlay {
 			responses.push_back(DocumentMessage::Overlays(Operation::DeleteLayer { path: overlay.clone() }.into()).into());
 		}
@@ -547,42 +517,16 @@ impl VectorManipulatorShape {
 	}
 
 	/// Remove the all the anchor overlays
-	fn remove_anchor_overlays(&mut self, responses: &mut VecDeque<Message>) {
+	pub fn remove_anchor_overlays(&mut self, responses: &mut VecDeque<Message>) {
 		for anchor in &mut self.anchors {
-			if let Some(overlay) = &anchor.point.point_overlay {
-				responses.push_back(DocumentMessage::Overlays(Operation::DeleteLayer { path: overlay.clone() }.into()).into());
-			}
-			anchor.point.point_overlay = None;
+			anchor.remove_anchor_overlay(responses);
 		}
 	}
 
 	/// Remove the all the anchor overlays
-	fn remove_handle_overlays(&mut self, responses: &mut VecDeque<Message>) {
+	pub fn remove_handle_overlays(&mut self, responses: &mut VecDeque<Message>) {
 		for anchor in &mut self.anchors {
-			let (h1, h2) = &mut anchor.handles;
-			let (line1, line2) = &mut anchor.handle_line_overlays;
-
-			// Helper function to keep things DRY
-			let mut delete_message = |handle: &Option<Vec<LayerId>>| {
-				if let Some(overlay) = handle {
-					responses.push_back(DocumentMessage::Overlays(Operation::DeleteLayer { path: overlay.clone() }.into()).into());
-				}
-			};
-
-			// Delete the handles themselves
-			if let Some(handle) = h1 {
-				delete_message(&handle.point_overlay);
-				handle.point_overlay = None;
-			}
-			if let Some(handle) = h2 {
-				delete_message(&handle.point_overlay);
-				handle.point_overlay = None;
-			}
-
-			// Delete the handle line layers
-			delete_message(line1);
-			delete_message(line2);
-			anchor.handle_line_overlays = (None, None);
+			anchor.remove_handle_overlay(responses);
 		}
 	}
 
@@ -590,59 +534,38 @@ impl VectorManipulatorShape {
 	#[warn(dead_code)]
 	pub fn set_all_overlay_visibility(&mut self, visibility: bool, responses: &mut VecDeque<Message>) {
 		self.set_shape_outline_visiblity(visibility, responses);
-		self.set_anchor_visiblity(visibility, responses);
-		self.set_handle_visiblity(visibility, responses);
+		self.set_anchors_visiblity(visibility, responses);
+		self.set_handles_visiblity(visibility, responses);
 	}
 
-	fn set_shape_outline_visiblity(&self, visibility: bool, responses: &mut VecDeque<Message>) {
+	/// Set the visibility of the shape outline
+	pub fn set_shape_outline_visiblity(&self, visibility: bool, responses: &mut VecDeque<Message>) {
 		if let Some(overlay) = &self.shape_overlay {
-			responses.push_back(self.visibility_message(overlay.clone(), visibility));
+			responses.push_back(
+				DocumentMessage::Overlays(
+					Operation::SetLayerVisibility {
+						path: overlay.clone(),
+						visible: visibility,
+					}
+					.into(),
+				)
+				.into(),
+			);
 		}
 	}
 
-	fn set_anchor_visiblity(&self, visibility: bool, responses: &mut VecDeque<Message>) {
+	/// Set visibility on all of the anchors
+	pub fn set_anchors_visiblity(&self, visibility: bool, responses: &mut VecDeque<Message>) {
 		for anchor in &self.anchors {
-			if let Some(overlay) = &anchor.point.point_overlay {
-				responses.push_back(self.visibility_message(overlay.clone(), visibility));
-			}
+			anchor.set_anchor_visiblity(visibility, responses);
 		}
 	}
 
-	pub fn set_handle_visiblity(&self, visibility: bool, responses: &mut VecDeque<Message>) {
+	/// Set visibility on all of the handles
+	pub fn set_handles_visiblity(&self, visibility: bool, responses: &mut VecDeque<Message>) {
 		for anchor in &self.anchors {
-			let (h1, h2) = &anchor.handles;
-			let (line1, line2) = &anchor.handle_line_overlays;
-
-			if let Some(handle) = h1 {
-				if let Some(overlay) = &handle.point_overlay {
-					responses.push_back(self.visibility_message(overlay.clone(), visibility));
-				}
-			}
-			if let Some(handle) = h2 {
-				if let Some(overlay) = &handle.point_overlay {
-					responses.push_back(self.visibility_message(overlay.clone(), visibility));
-				}
-			}
-
-			if let Some(overlay) = &line1 {
-				responses.push_back(self.visibility_message(overlay.clone(), visibility));
-			}
-			if let Some(overlay) = &line2 {
-				responses.push_back(self.visibility_message(overlay.clone(), visibility));
-			}
+			anchor.set_handle_visiblity(visibility, responses);
 		}
-	}
-
-	/// Create a visibility message for an overlay
-	fn visibility_message(&self, layer_path: Vec<LayerId>, visibility: bool) -> Message {
-		DocumentMessage::Overlays(
-			Operation::SetLayerVisibility {
-				path: layer_path,
-				visible: visibility,
-			}
-			.into(),
-		)
-		.into()
 	}
 }
 
@@ -705,6 +628,124 @@ impl VectorManipulatorAnchor {
 			&self.handles.0
 		}
 	}
+
+	pub fn place_anchor_overlay(&self, responses: &mut VecDeque<Message>) {
+		if let Some(overlay) = &self.point.overlay {
+			let scale = DVec2::splat(VECTOR_MANIPULATOR_ANCHOR_MARKER_SIZE);
+			let angle = 0.;
+			let translation = (self.point.position - (scale / 2.) + BIAS).round();
+			let transform = DAffine2::from_scale_angle_translation(scale, angle, translation).to_cols_array();
+			responses.push_back(DocumentMessage::Overlays(Operation::SetLayerTransformInViewport { path: overlay.clone(), transform }.into()).into());
+		}
+	}
+
+	pub fn place_handle_overlay(&self, responses: &mut VecDeque<Message>) {
+		// Helper function to keep things DRY
+		let mut place_handle_and_line = |handle: &VectorManipulatorPoint, line: &Option<Vec<LayerId>>| {
+			if let Some(overlay) = line {
+				let line_vector = self.point.position - handle.position;
+				let scale = DVec2::splat(line_vector.length());
+				let angle = -line_vector.angle_between(DVec2::X);
+				let translation = (handle.position + BIAS).round() + DVec2::splat(0.5);
+				let transform = DAffine2::from_scale_angle_translation(scale, angle, translation).to_cols_array();
+				responses.push_back(DocumentMessage::Overlays(Operation::SetLayerTransformInViewport { path: overlay.clone(), transform }.into()).into());
+			}
+
+			if let Some(overlay) = &handle.overlay {
+				let scale = DVec2::splat(VECTOR_MANIPULATOR_ANCHOR_MARKER_SIZE);
+				let angle = 0.;
+				let translation = (handle.position - (scale / 2.) + BIAS).round();
+				let transform = DAffine2::from_scale_angle_translation(scale, angle, translation).to_cols_array();
+				responses.push_back(DocumentMessage::Overlays(Operation::SetLayerTransformInViewport { path: overlay.clone(), transform }.into()).into());
+			}
+		};
+
+		let (h1, h2) = &self.handles;
+		let (line1, line2) = &self.handle_line_overlays;
+
+		if let Some(handle) = &h1 {
+			place_handle_and_line(handle, line1);
+		}
+
+		if let Some(handle) = &h2 {
+			place_handle_and_line(handle, line2);
+		}
+	}
+
+	pub fn remove_anchor_overlay(&mut self, responses: &mut VecDeque<Message>) {
+		if let Some(overlay) = &self.point.overlay {
+			responses.push_back(DocumentMessage::Overlays(Operation::DeleteLayer { path: overlay.clone() }.into()).into());
+		}
+		self.point.overlay = None;
+	}
+
+	pub fn remove_handle_overlay(&mut self, responses: &mut VecDeque<Message>) {
+		let (h1, h2) = &mut self.handles;
+		let (line1, line2) = &mut self.handle_line_overlays;
+
+		// Helper function to keep things DRY
+		let mut delete_message = |handle: &Option<Vec<LayerId>>| {
+			if let Some(overlay) = handle {
+				responses.push_back(DocumentMessage::Overlays(Operation::DeleteLayer { path: overlay.clone() }.into()).into());
+			}
+		};
+
+		// Delete the handles themselves
+		if let Some(handle) = h1 {
+			delete_message(&handle.overlay);
+			handle.overlay = None;
+		}
+		if let Some(handle) = h2 {
+			delete_message(&handle.overlay);
+			handle.overlay = None;
+		}
+
+		// Delete the handle line layers
+		delete_message(line1);
+		delete_message(line2);
+		self.handle_line_overlays = (None, None);
+	}
+
+	pub fn set_anchor_visiblity(&self, visibility: bool, responses: &mut VecDeque<Message>) {
+		if let Some(overlay) = &self.point.overlay {
+			responses.push_back(self.visibility_message(overlay.clone(), visibility));
+		}
+	}
+
+	pub fn set_handle_visiblity(&self, visibility: bool, responses: &mut VecDeque<Message>) {
+		let (h1, h2) = &self.handles;
+		let (line1, line2) = &self.handle_line_overlays;
+
+		if let Some(handle) = h1 {
+			if let Some(overlay) = &handle.overlay {
+				responses.push_back(self.visibility_message(overlay.clone(), visibility));
+			}
+		}
+		if let Some(handle) = h2 {
+			if let Some(overlay) = &handle.overlay {
+				responses.push_back(self.visibility_message(overlay.clone(), visibility));
+			}
+		}
+
+		if let Some(overlay) = &line1 {
+			responses.push_back(self.visibility_message(overlay.clone(), visibility));
+		}
+		if let Some(overlay) = &line2 {
+			responses.push_back(self.visibility_message(overlay.clone(), visibility));
+		}
+	}
+
+	/// Create a visibility message for an overlay
+	fn visibility_message(&self, layer_path: Vec<LayerId>, visibility: bool) -> Message {
+		DocumentMessage::Overlays(
+			Operation::SetLayerVisibility {
+				path: layer_path,
+				visible: visibility,
+			}
+			.into(),
+		)
+		.into()
+	}
 }
 
 #[derive(PartialEq, Clone, Debug, Default)]
@@ -714,7 +755,9 @@ pub struct VectorManipulatorPoint {
 	// The sibling element if this is a handle
 	pub position: glam::DVec2,
 	// the overlay for this point rendering
-	pub point_overlay: Option<Vec<LayerId>>,
+	pub overlay: Option<Vec<LayerId>>,
+	// Can be selected
+	pub selectable: bool,
 }
 
 impl VectorManipulatorPoint {
@@ -722,7 +765,8 @@ impl VectorManipulatorPoint {
 		VectorManipulatorPoint {
 			element_id: self.element_id,
 			position: self.position,
-			point_overlay: self.point_overlay.clone(),
+			overlay: self.overlay.clone(),
+			selectable: self.selectable,
 		}
 	}
 }

@@ -150,6 +150,7 @@ impl DocumentMessageHandler {
 				LayerDataType::Folder(_) => None,
 			}?;
 
+			// TODO: Create VectorManipulatorShape when creating a kurbo shape as a stopgap, rather than on each new selection
 			Some(VectorManipulatorShape::new(path_to_shape.to_vec(), viewport_transform, shape, responses))
 		});
 
