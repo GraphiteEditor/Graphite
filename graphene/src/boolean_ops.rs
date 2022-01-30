@@ -408,12 +408,13 @@ pub fn boolean_operation(select: BooleanOperation, mut alpha: Shape, mut beta: S
 					Ok(insides)
 				}
 				Err(BooleanOperationError::NoIntersections) => {
-					if cast_horizontal_ray(point_on_curve(&alpha.path), &beta.path) % 2 != 0 {
-						add_subpath(&mut beta.path, if beta_dir == alpha_dir { reverse_path(&alpha.path) } else { alpha.path });
-						Ok(vec![beta])
-					} else if cast_horizontal_ray(point_on_curve(&beta.path), &alpha.path) % 2 != 0 {
-						add_subpath(&mut alpha.path, if beta_dir == alpha_dir { reverse_path(&beta.path) } else { beta.path });
+					//if shape is inside the other the Union is just the larger
+					//TODO: pathstyle of the resulting shape should still be set by the highest shape
+					//check could also be done with area and single ray cast
+					if cast_horizontal_ray(point_on_curve(&beta.path), &alpha.path) % 2 != 0 {
 						Ok(vec![alpha])
+					} else if cast_horizontal_ray(point_on_curve(&alpha.path), &beta.path) % 2 != 0 {
+						Ok(vec![beta])
 					} else {
 						Err(BooleanOperationError::NothingDone)
 					}
@@ -430,38 +431,72 @@ pub fn boolean_operation(select: BooleanOperation, mut alpha: Shape, mut beta: S
 			collect_shapes(&graph, &mut graph.get_cycles(), |_| true, |dir| if dir == alpha_dir { &alpha.style } else { &beta.style })
 		}
 		BooleanOperation::Intersection => {
-			let graph = if beta_dir == alpha_dir {
-				PathGraph::from_paths(&alpha.path, &beta.path)?
+			match if beta_dir == alpha_dir {
+				PathGraph::from_paths(&alpha.path, &beta.path)
 			} else {
-				PathGraph::from_paths(&alpha.path, &reverse_path(&beta.path))?
-			};
-			let mut cycles = graph.get_cycles();
-			// "extra calls to ParamCurveArea::area here"
-			cycles.remove(
-				cycles
-					.iter()
-					.enumerate()
-					.reduce(|(midx, max), (idx, cycle)| if cycle.area().abs() >= max.area().abs() { (idx, cycle) } else { (midx, max) })
-					.unwrap()
-					.0,
-			);
-			collect_shapes(&graph, &mut cycles, |dir| dir == alpha_dir, |_| &alpha.style)
+				PathGraph::from_paths(&alpha.path, &reverse_path(&beta.path))
+			} {
+				Ok(graph) => {
+					let mut cycles = graph.get_cycles();
+					// "extra calls to ParamCurveArea::area here"
+					cycles.remove(
+						cycles
+							.iter()
+							.enumerate()
+							.reduce(|(midx, max), (idx, cycle)| if cycle.area().abs() >= max.area().abs() { (idx, cycle) } else { (midx, max) })
+							.unwrap()
+							.0,
+					);
+					collect_shapes(&graph, &mut cycles, |dir| dir == alpha_dir, |_| &alpha.style)
+				}
+				Err(BooleanOperationError::NoIntersections) => {
+					//check could also be done with area and single ray cast
+					if cast_horizontal_ray(point_on_curve(&beta.path), &alpha.path) % 2 != 0 {
+						Ok(vec![beta])
+					} else if cast_horizontal_ray(point_on_curve(&alpha.path), &beta.path) % 2 != 0 {
+						Ok(vec![alpha])
+					} else {
+						Err(BooleanOperationError::NothingDone)
+					}
+				}
+				Err(err) => Err(err),
+			}
 		}
 		BooleanOperation::SubtractBack => {
-			let graph = if beta_dir != alpha_dir {
-				PathGraph::from_paths(&alpha.path, &beta.path)?
+			match if beta_dir != alpha_dir {
+				PathGraph::from_paths(&alpha.path, &beta.path)
 			} else {
-				PathGraph::from_paths(&alpha.path, &reverse_path(&beta.path))?
-			};
-			collect_shapes(&graph, &mut graph.get_cycles(), |dir| dir != alpha_dir, |_| &beta.style)
+				PathGraph::from_paths(&alpha.path, &reverse_path(&beta.path))
+			} {
+				Ok(graph) => collect_shapes(&graph, &mut graph.get_cycles(), |dir| dir != alpha_dir, |_| &beta.style),
+				Err(BooleanOperationError::NoIntersections) => {
+					if cast_horizontal_ray(point_on_curve(&alpha.path), &beta.path) % 2 != 0 {
+						add_subpath(&mut beta.path, if beta_dir == alpha_dir { reverse_path(&alpha.path) } else { alpha.path });
+						Ok(vec![beta])
+					} else {
+						Err(BooleanOperationError::NothingDone)
+					}
+				}
+				Err(err) => Err(err),
+			}
 		}
 		BooleanOperation::SubtractFront => {
-			let graph = if beta_dir != alpha_dir {
-				PathGraph::from_paths(&alpha.path, &beta.path)?
+			match if beta_dir != alpha_dir {
+				PathGraph::from_paths(&alpha.path, &beta.path)
 			} else {
-				PathGraph::from_paths(&alpha.path, &reverse_path(&beta.path))?
-			};
-			collect_shapes(&graph, &mut graph.get_cycles(), |dir| dir == alpha_dir, |_| &alpha.style)
+				PathGraph::from_paths(&alpha.path, &reverse_path(&beta.path))
+			} {
+				Ok(graph) => collect_shapes(&graph, &mut graph.get_cycles(), |dir| dir == alpha_dir, |_| &alpha.style),
+				Err(BooleanOperationError::NoIntersections) => {
+					if cast_horizontal_ray(point_on_curve(&beta.path), &alpha.path) % 2 != 0 {
+						add_subpath(&mut alpha.path, if beta_dir == alpha_dir { reverse_path(&beta.path) } else { beta.path });
+						Ok(vec![alpha])
+					} else {
+						Err(BooleanOperationError::NothingDone)
+					}
+				}
+				Err(err) => Err(err),
+			}
 		}
 	}
 }
