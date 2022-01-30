@@ -1,22 +1,23 @@
-use std::collections::{HashMap, VecDeque};
+use core::panic;
+use std::collections::{VecDeque};
 
 use serde_json::Value;
 
 use crate::{
 	layout::widgets::Widget,
-	message_prelude::{FrontendMessage, Message, MessageHandler},
+	message_prelude::*,
 };
 
-use super::{layout_message::LayoutTarget, widgets::WidgetLayout, LayoutMessage};
+use super::{layout_message::LayoutTarget, widgets::WidgetLayout};
 
 #[derive(Debug, Clone, Default)]
 pub struct LayoutMessageHandler {
-	layouts: HashMap<LayoutTarget, WidgetLayout>,
+	layouts: [WidgetLayout; LayoutTarget::LayoutTargetLength as usize],
 }
 
 impl LayoutMessageHandler {
 	fn send_layout(&self, layout_target: LayoutTarget, responses: &mut VecDeque<Message>) {
-		let widget_layout = self.layouts.get(&layout_target).unwrap();
+		let widget_layout = &self.layouts[layout_target as usize];
 		let message = match layout_target {
 			LayoutTarget::ToolOptions => FrontendMessage::UpdateToolOptionsLayout {
 				layout_target,
@@ -26,6 +27,7 @@ impl LayoutMessageHandler {
 				layout_target,
 				layout: widget_layout.layout.clone(),
 			},
+			LayoutTarget::LayoutTargetLength => panic!("`LayoutTargetLength` is not a valid Layout Target and is used for array indexing")
 		};
 		responses.push_back(message.into());
 	}
@@ -36,12 +38,12 @@ impl MessageHandler<LayoutMessage, ()> for LayoutMessageHandler {
 		use LayoutMessage::*;
 		match action {
 			SendLayout { layout, layout_target } => {
-				self.layouts.insert(layout_target.clone(), layout);
+				self.layouts[layout_target as usize] =  layout;
 
 				self.send_layout(layout_target, responses);
 			}
 			UpdateLayout { layout_target, widget_id, value } => {
-				let layout = self.layouts.get_mut(&layout_target).expect("Received invalid layout_id from the frontend");
+				let layout = &mut self.layouts[layout_target as usize];
 				let widget_holder = layout.iter_mut().find(|widget| widget.widget_id == widget_id).expect("Received invalid widget_id from the frontend");
 				match &mut widget_holder.widget {
 					Widget::NumberInput(number_input) => match value {
@@ -80,9 +82,6 @@ impl MessageHandler<LayoutMessage, ()> for LayoutMessageHandler {
 					}
 				};
 				self.send_layout(layout_target, responses);
-			}
-			WidgetDefaultMarker => {
-				panic!("Please ensure that all widgets have an `on_update` property")
 			}
 		}
 	}
