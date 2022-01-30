@@ -7,7 +7,6 @@ use crate::consts::{
 	ASYMPTOTIC_EFFECT, DEFAULT_DOCUMENT_NAME, FILE_EXPORT_SUFFIX, FILE_SAVE_SUFFIX, GRAPHITE_DOCUMENT_VERSION, SCALE_EFFECT, SCROLLBAR_SPACING, VIEWPORT_ZOOM_TO_FIT_PADDING_SCALE_FACTOR,
 };
 use crate::input::InputPreprocessorMessageHandler;
-use crate::layout::layout_message::LayoutTarget;
 use crate::layout::widgets::{
 	IconButton, LayoutRow, NumberInput, NumberInputIncrementBehavior, OptionalInput, PopoverButton, PropertyHolder, RadioEntryData, RadioInput, Separator, SeparatorDirection, SeparatorType, Widget,
 	WidgetCallback, WidgetHolder, WidgetLayout,
@@ -660,7 +659,6 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 			#[remain::unsorted]
 			Movement(message) => {
 				self.movement_handler.process_action(message, (&self.graphene_document, ipp), responses);
-				self.register_properties(responses, LayoutTarget::DocumentBar);
 			}
 			#[remain::unsorted]
 			Overlays(message) => {

@@ -179,7 +179,7 @@ pub struct NumberInput {
 	#[serde(rename = "incrementBehavior")]
 	pub increment_behavior: NumberInputIncrementBehavior,
 	#[serde(rename = "incrementFactor")]
-	#[derivative(Default(value="1."))]
+	#[derivative(Default(value = "1."))]
 	pub increment_factor: f64,
 	#[serde(skip)]
 	#[derivative(Debug = "ignore", PartialEq = "ignore")]
