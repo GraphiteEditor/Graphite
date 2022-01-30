@@ -243,60 +243,108 @@ Bezier Curve Intersection Algorithm
 - Optimization: specialized line/quad/cubic combination algorithms
 */
 fn path_intersections(a: &SubCurve, b: &SubCurve, mut recursion: f64, intersections: &mut Vec<Intersect>) {
-	match (a.curve, b.curve) {
-		(PathSeg::Line(line_a), PathSeg::Line(line_b)) => {
-			if let Some(cross) = line_intersection(line_a, line_b) {
-				intersections.push(cross);
-			}
-		}
-		(PathSeg::Line(line), PathSeg::Quad(quad)) | (PathSeg::Quad(quad), PathSeg::Line(line)) => {
-			intersections.extend(
-				quad_line_intersect(line, quad)
-					.iter()
-					.filter_map(|point_option| if let Some(point) = point_option { Some(Intersect::from((point,))) } else { None })
-					.collect(),
-			);
-		}
-		(PathSeg::Line(line), PathSeg::Cubic(cubic)) | (PathSeg::Cubic(cubic), PathSeg::Line(line)) => {}
-		_ if overlap(&a.bounding_box(), &b.bounding_box()) => {
-			// we are close enough to try linear approximation
-			if recursion < (1 << 10) as f64 {
-				if let Some(mut cross) = line_intersection(&Line { p0: a.start(), p1: a.end() }, &Line { p0: b.start(), p1: b.end() }) {
-					// intersection t_value equals the recursive t_value + interpolated intersection value
-					cross.t_a = a.start_t + cross.t_a * recursion;
-					cross.t_b = b.start_t + cross.t_b * recursion;
-					cross.quality = guess_quality(a.curve, b.curve, &cross);
+	if let (PathSeg::Line(line), _) = (a.curve, b) {
+		line_curve_intersections(line, b.curve, true, intersections);
+		return;
+	}
+	if let (_, PathSeg::Line(line)) = (a, b.curve) {
+		line_curve_intersections(line, a.curve, false, intersections);
+		return;
+	}
+	if overlap(&a.bounding_box(), &b.bounding_box()) {
+		// we are close enough to try linear approximation
+		if recursion < (1 << 10) as f64 {
+			if let Some(mut cross) = line_intersection(&Line { p0: a.start(), p1: a.end() }, &Line { p0: b.start(), p1: b.end() }) {
+				// intersection t_value equals the recursive t_value + interpolated intersection value
+				cross.t_a = a.start_t + cross.t_a * recursion;
+				cross.t_b = b.start_t + cross.t_b * recursion;
+				cross.quality = guess_quality(a.curve, b.curve, &cross);
 
-					// log::debug!("checking: {:?}", cross.quality);
-					if cross.quality <= CURVE_FIDELITY {
-						intersections.push(cross);
-						return;
-					}
-					// Eventually the points in the curve become to close together to split the curve meaningfully
-					// Also provides a base case and prevents infinite recursion
-					if a.available_precision() <= F64PRECISION || b.available_precision() <= F64PRECISION {
-						log::debug!("precision reached");
-						intersections.push(cross);
-						return;
-					}
+				// log::debug!("checking: {:?}", cross.quality);
+				if cross.quality <= CURVE_FIDELITY {
+					intersections.push(cross);
+					return;
 				}
-
-				// Alternate base case
-				// Note: may occur for the less forgiving side of an PathSeg endpoint intersect
+				// Eventually the points in the curve become to close together to split the curve meaningfully
+				// Also provides a base case and prevents infinite recursion
 				if a.available_precision() <= F64PRECISION || b.available_precision() <= F64PRECISION {
-					log::debug!("precision reached without finding intersect");
+					log::debug!("precision reached");
+					intersections.push(cross);
 					return;
 				}
 			}
-			recursion /= 2.0;
-			let (a1, a2) = a.split(0.5);
-			let (b1, b2) = b.split(0.5);
-			path_intersections(&a1, &b1, recursion, intersections);
-			path_intersections(&a1, &b2, recursion, intersections);
-			path_intersections(&a2, &b1, recursion, intersections);
-			path_intersections(&a2, &b2, recursion, intersections);
+
+			// Alternate base case
+			// Note: may occur for the less forgiving side of an PathSeg endpoint intersect
+			if a.available_precision() <= F64PRECISION || b.available_precision() <= F64PRECISION {
+				log::debug!("precision reached without finding intersect");
+				return;
+			}
 		}
-		_ => (),
+		recursion /= 2.0;
+		let (a1, a2) = a.split(0.5);
+		let (b1, b2) = b.split(0.5);
+		path_intersections(&a1, &b1, recursion, intersections);
+		path_intersections(&a1, &b2, recursion, intersections);
+		path_intersections(&a2, &b1, recursion, intersections);
+		path_intersections(&a2, &b2, recursion, intersections);
+	}
+}
+
+fn line_curve_intersections(line: &Line, curve: &PathSeg, is_line_a: bool, intersections: &mut Vec<Intersect>) {
+	match (line, curve) {
+		(line, PathSeg::Line(line2)) => {
+			if let Some(cross) = line_intersection(line, line2) {
+				intersections.push(cross);
+			}
+		}
+		(line, PathSeg::Quad(quad)) => {
+			intersections.extend(
+				quad_line_intersect(line, quad)
+					.iter()
+					.filter_map(|time_option| {
+						if let Some(time) = time_option {
+							let point = quad.eval(*time);
+							let line_time = get_line_t_value(line, &point);
+							if !valid_t(*time) || !valid_t(line_time) {
+								return None;
+							}
+							if is_line_a {
+								Some(Intersect::from((point, line_time, *time)))
+							} else {
+								Some(Intersect::from((point, *time, line_time)))
+							}
+						} else {
+							None
+						}
+					})
+					.collect::<Vec<Intersect>>(),
+			);
+		}
+		(line, PathSeg::Cubic(cubic)) => {
+			intersections.extend(
+				cubic_line_intersect(line, cubic)
+					.iter()
+					.filter_map(|time_option| {
+						if let Some(time) = time_option {
+							let point = cubic.eval(*time);
+							let line_time = get_line_t_value(line, &point);
+							if !valid_t(*time) || !valid_t(line_time) {
+								log::debug!("{:?}, {:?}", *time, line_time);
+								return None;
+							}
+							if is_line_a {
+								Some(Intersect::from((point, line_time, *time)))
+							} else {
+								Some(Intersect::from((point, *time, line_time)))
+							}
+						} else {
+							None
+						}
+					})
+					.collect::<Vec<Intersect>>(),
+			);
+		}
 	}
 }
 
@@ -332,6 +380,7 @@ pub fn intersections(a: &BezPath, b: &BezPath) -> Vec<Intersect> {
 			let mut intersects = Vec::new();
 			path_intersections(&SubCurve::new(&a_seg, &a_extrema), &SubCurve::new(&b_seg, &b_extrema), 1.0, &mut intersects);
 			for mut path_intersection in intersects {
+				log::info!("{:?}", path_intersection);
 				intersections.push({
 					path_intersection.add_idx(a_idx, b_idx);
 					path_intersection
@@ -383,7 +432,12 @@ pub fn line_intersection(a: &Line, b: &Line) -> Option<Intersect> {
 }
 
 pub fn get_line_t_value(a: &Line, p: &Point) -> f64 {
-	return (p.x - a.p0.x) / (a.p1.x - a.p0.x);
+	let from_x = (p.x - a.p0.x) / (a.p1.x - a.p0.x);
+	if from_x.is_normal() {
+		from_x
+	} else {
+		(p.y - a.p0.y) / (a.p1.y - a.p0.y)
+	}
 }
 
 pub fn cubic_line_intersect(a: &Line, b: &CubicBez) -> [Option<f64>; 3] {
@@ -396,7 +450,7 @@ pub fn cubic_line_intersect(a: &Line, b: &CubicBez) -> [Option<f64>; 3] {
 	let c0 = bp0;
 	let c1 = -3.0 * bp0 + 3.0 * bp1;
 	let c2 = 3.0 * bp0 - 6.0 * bp1 + 3.0 * bp2;
-	let c3 = -1.0 * bp0 + 3.0 * bp1 - bp2 + bp3;
+	let c3 = -1.0 * bp0 + 3.0 * bp1 - 3.0 * bp2 + bp3;
 	cubic_real_roots(
 		-a.p0.y * l_y + a.p0.x * l_x - l_x * c0.x + l_y * c0.y,
 		l_y * c1.y - l_x * c1.x,
@@ -418,26 +472,33 @@ pub fn quad_line_intersect(a: &Line, b: &QuadBez) -> [Option<f64>; 2] {
 }
 
 /// return real roots to cubic equation: f(t) = a0 + t*a1 + t^2*a2 + t^3*a3
-/// this function uses the Cardano-Viete algorithm, found here: https://quarticequations.com/Cubic.pdf
+/// this function uses the Cardano-Viete and Numerical Recipes algorithm, found here: https://quarticequations.com/Cubic.pdf
 pub fn cubic_real_roots(mut a0: f64, mut a1: f64, mut a2: f64, a3: f64) -> [Option<f64>; 3] {
 	use std::f64::consts::FRAC_PI_3 as PI_3;
 	a0 /= a3;
 	a1 /= a3;
 	a2 /= a3;
 	let q: f64 = a1 / 3.0 - a2 * a2 / 9.0;
-	let r: f64 = (a1 * a3 - 3.0 * a0) / 6.0 - a2 * a2 / 27.0;
-	let r2_q3 = r * r - q * q * q;
+	let r: f64 = (a1 * a2 - 3.0 * a0) / 6.0 - a2 * a2 * a2 / 27.0;
+	let r2_q3 = r * r + q * q * q;
 	if r2_q3 > 0.0 {
-		[Some((r + r2_q3.sqrt()).cbrt() + (r - r2_q3.sqrt()).cbrt() - a2 / 3.0), None, None]
+		#[allow(non_snake_case)] // allow name 'A' for consistency with algorithm
+		let A = (r.abs() + r2_q3.sqrt()).cbrt();
+		let t1 = match r {
+			r if r >= 0.0 => A - q / A,
+			r if r < 0.0 => q / A - A,
+			_ => 0.0, // should never occurr
+		};
+		[Some(t1 - a2 / 3.0), None, None]
 	} else {
 		let phi = match q > -F64PRECISION && q < F64PRECISION {
 			true => 0.0,
-			false => (r / (-q).powf(3.0 / 2.0)).acos(),
+			false => (r / (-q).powf(3.0 / 2.0)).acos() / 3.0,
 		};
 		[
-			Some(2.0 * (-q).sqrt() * (phi / 2.0).cos() - a2 / 3.0),
-			Some(2.0 * (-q).sqrt() * (phi / 2.0 + 2.0 * PI_3).cos() - a2 / 3.0),
-			Some(2.0 * (-q).sqrt() * (phi / 2.0 - 2.0 * PI_3).cos() - a2 / 3.0),
+			Some(2.0 * (-q).sqrt() * (phi).cos() - a2 / 3.0),
+			Some(2.0 * (-q).sqrt() * (phi + 2.0 * PI_3).cos() - a2 / 3.0),
+			Some(2.0 * (-q).sqrt() * (phi - 2.0 * PI_3).cos() - a2 / 3.0),
 		]
 	}
 }
@@ -452,11 +513,11 @@ pub fn quadratic_real_roots(a0: f64, a1: f64, a2: f64) -> [Option<f64>; 2] {
 }
 
 // return root to linear equation: f(t) = a0 + t*a1
-pub fn linear_root(a0: f64, a1: f64) -> Vec<Option<f64>> {
+pub fn linear_root(a0: f64, a1: f64) -> [Option<f64>; 1] {
 	if a1 == 0.0 {
-		return vec![None];
+		return [None];
 	}
-	vec![Some(-a0 / a1)]
+	[Some(-a0 / a1)]
 }
 
 /// returns true if rectangles overlap, even if either rectangle has 0 area
@@ -584,5 +645,27 @@ mod tests {
 		let result = intersections(&a, &b);
 		assert_eq!(expected.len(), result.len());
 		assert!(expected.iter().zip(result.iter()).fold(true, |equal, (a, b)| equal && a == b));
+	}
+
+	#[test]
+	fn cubic_roots_intersection() {
+		let roots = cubic_real_roots(1.5, 1.1, 3.6, 1.0);
+		assert_eq!(roots.iter().filter_map(|r| *r).last().unwrap(), -3.4063481215142195);
+
+		let roots = cubic_real_roots(-7.1, 1.1, 3.6, 1.0);
+		assert_eq!(roots.iter().filter_map(|r| *r).last().unwrap(), 1.115909058984805);
+
+		let roots = cubic_real_roots(-7.1, -9.5, -4.6, 1.0);
+		assert_eq!(roots.iter().filter_map(|r| *r).last().unwrap(), 6.289837710873103);
+
+		let roots = cubic_real_roots(-1.5, -3.3, 1.6, 1.0);
+		assert_eq!(roots, [Some(1.4330896870185468), Some(-2.636017358627879), Some(-0.3970723283906693)]);
+
+		//TODO 3 real root case
+		// for root in roots {
+		// 	if let Some(num) = root {
+		// 		print!("{:.32}", num);
+		// 	}
+		// }
 	}
 }
