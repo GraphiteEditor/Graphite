@@ -17,7 +17,7 @@ pub enum ToolOptions {
 	Relight {},
 	Path {},
 	Pen { weight: u32 },
-	Freehand {},
+	Freehand { weight: u32 },
 	Spline {},
 	Line { weight: u32 },
 	Rectangle {},

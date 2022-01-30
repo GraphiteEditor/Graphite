@@ -45,7 +45,7 @@ pub enum Operation {
 		transform: [f64; 6],
 		style: style::PathStyle,
 	},
-	AddPen {
+	AddPolyline {
 		path: Vec<LayerId>,
 		transform: [f64; 6],
 		insert_index: isize,
