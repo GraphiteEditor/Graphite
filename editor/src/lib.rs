@@ -73,6 +73,7 @@ pub mod message_prelude {
 	pub use crate::viewport_tools::tools::ellipse::{EllipseMessage, EllipseMessageDiscriminant};
 	pub use crate::viewport_tools::tools::eyedropper::{EyedropperMessage, EyedropperMessageDiscriminant};
 	pub use crate::viewport_tools::tools::fill::{FillMessage, FillMessageDiscriminant};
+	pub use crate::viewport_tools::tools::freehand::{FreehandMessage, FreehandMessageDiscriminant};
 	pub use crate::viewport_tools::tools::line::{LineMessage, LineMessageDiscriminant};
 	pub use crate::viewport_tools::tools::navigate::{NavigateMessage, NavigateMessageDiscriminant};
 	pub use crate::viewport_tools::tools::path::{PathMessage, PathMessageDiscriminant};

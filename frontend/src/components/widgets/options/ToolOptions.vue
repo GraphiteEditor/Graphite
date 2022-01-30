@@ -165,7 +165,7 @@ export default defineComponent({
 			Relight: [],
 			Path: [],
 			Pen: [{ kind: "NumberInput", optionPath: ["weight"], props: { min: 1, isInteger: true, unit: " px", label: "Weight" } }],
-			Freehand: [],
+			Freehand: [{ kind: "NumberInput", optionPath: ["weight"], props: { min: 1, isInteger: true, unit: " px", label: "Weight" } }],
 			Spline: [],
 			Line: [{ kind: "NumberInput", optionPath: ["weight"], props: { min: 1, isInteger: true, unit: " px", label: "Weight" } }],
 			Rectangle: [],

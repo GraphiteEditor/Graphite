@@ -21,8 +21,7 @@ impl LayerMetadata {
 }
 
 pub fn layer_panel_entry(layer_metadata: &LayerMetadata, transform: DAffine2, layer: &Layer, path: Vec<LayerId>) -> LayerPanelEntry {
-	let layer_type: LayerDataTypeDiscriminant = (&layer.data).into();
-	let name = layer.name.clone().unwrap_or_else(|| format!("Unnamed {}", layer_type));
+	let name = layer.name.clone().unwrap_or_else(|| String::from(""));
 	let arr = layer.data.bounding_box(transform).unwrap_or([DVec2::ZERO, DVec2::ZERO]);
 	let arr = arr.iter().map(|x| (*x).into()).collect::<Vec<(f64, f64)>>();
 

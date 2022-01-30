@@ -100,6 +100,10 @@ impl Default for Mapping {
 			entry! {action=PenMessage::Confirm, key_down=Rmb},
 			entry! {action=PenMessage::Confirm, key_down=KeyEscape},
 			entry! {action=PenMessage::Confirm, key_down=KeyEnter},
+			// Freehand
+			entry! {action=FreehandMessage::PointerMove, message=InputMapperMessage::PointerMove},
+			entry! {action=FreehandMessage::DragStart, key_down=Lmb},
+			entry! {action=FreehandMessage::DragStop, key_up=Lmb},
 			// Fill
 			entry! {action=FillMessage::LeftMouseDown, key_down=Lmb},
 			entry! {action=FillMessage::RightMouseDown, key_down=Rmb},
@@ -111,6 +115,7 @@ impl Default for Mapping {
 			entry! {action=ToolMessage::ActivateTool { tool_type: ToolType::Fill }, key_down=KeyF},
 			entry! {action=ToolMessage::ActivateTool { tool_type: ToolType::Path }, key_down=KeyA},
 			entry! {action=ToolMessage::ActivateTool { tool_type: ToolType::Pen }, key_down=KeyP},
+			entry! {action=ToolMessage::ActivateTool { tool_type: ToolType::Freehand }, key_down=KeyN},
 			entry! {action=ToolMessage::ActivateTool { tool_type: ToolType::Line }, key_down=KeyL},
 			entry! {action=ToolMessage::ActivateTool { tool_type: ToolType::Rectangle }, key_down=KeyM},
 			entry! {action=ToolMessage::ActivateTool { tool_type: ToolType::Ellipse }, key_down=KeyE},

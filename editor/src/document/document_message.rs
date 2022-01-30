@@ -99,6 +99,10 @@ pub enum DocumentMessage {
 		layer_path: Vec<LayerId>,
 		set_expanded: bool,
 	},
+	SetLayerName {
+		layer_path: Vec<LayerId>,
+		name: String,
+	},
 	SetOpacityForSelectedLayers {
 		opacity: f64,
 	},

@@ -2,6 +2,7 @@ pub mod crop;
 pub mod ellipse;
 pub mod eyedropper;
 pub mod fill;
+pub mod freehand;
 pub mod line;
 pub mod navigate;
 pub mod path;

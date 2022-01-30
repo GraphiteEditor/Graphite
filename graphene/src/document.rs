@@ -502,7 +502,7 @@ impl Document {
 
 				Some([vec![DocumentChanged, CreatedLayer { path: path.clone() }]].concat())
 			}
-			Operation::AddPen {
+			Operation::AddPolyline {
 				path,
 				insert_index,
 				points,
@@ -667,6 +667,13 @@ impl Document {
 				let layer = self.layer_mut(path)?;
 				layer.visible = *visible;
 				Some([vec![DocumentChanged], update_thumbnails_upstream(path)].concat())
+			}
+			Operation::SetLayerName { path, name } => {
+				self.mark_as_dirty(path)?;
+				let mut layer = self.layer_mut(path)?;
+				layer.name = if name.as_str() == "" { None } else { Some(name.clone()) };
+
+				Some(vec![LayerChanged { path: path.clone() }])
 			}
 			Operation::SetLayerBlendMode { path, blend_mode } => {
 				self.mark_as_dirty(path)?;
