@@ -469,7 +469,7 @@ impl Document {
 
 				Some([vec![DocumentChanged, CreatedLayer { path: path.clone() }], update_thumbnails_upstream(path)].concat())
 			}
-			Operation::SetTextEditable { path, editable } => {
+			Operation::SetTextEditability { path, editable } => {
 				self.layer_mut(path)?.as_text_mut()?.editable = *editable;
 				self.mark_as_dirty(path)?;
 				Some(vec![DocumentChanged])

@@ -959,9 +959,9 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 			SetSnapping { snap } => {
 				self.snapping_enabled = snap;
 			}
-			SetTextboxEditable { path, editable } => {
+			SetTexboxEditability { path, editable } => {
 				let text = self.graphene_document.layer(&path).unwrap().as_text().unwrap();
-				responses.push_back(DocumentOperation::SetTextEditable { path, editable }.into());
+				responses.push_back(DocumentOperation::SetTextEditability { path, editable }.into());
 				if editable {
 					responses.push_back(
 						FrontendMessage::DisplayEditableTextbox {

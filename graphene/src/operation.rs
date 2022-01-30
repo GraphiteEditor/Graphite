@@ -52,7 +52,7 @@ pub enum Operation {
 		style: style::PathStyle,
 		size: f64,
 	},
-	SetTextEditable {
+	SetTextEditability {
 		path: Vec<LayerId>,
 		editable: bool,
 	},

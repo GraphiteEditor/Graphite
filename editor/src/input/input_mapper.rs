@@ -64,7 +64,7 @@ impl Default for Mapping {
 			// Text
 			entry! {action=TextMessage::Interact, key_up=Lmb},
 			entry! {action=TextMessage::Abort, key_down=KeyEscape},
-			entry! {action=TextMessage::CommitText, key_down=KeyControl, modifiers=[KeyControl]},
+			entry! {action=TextMessage::CommitText, key_down=KeyEnter, modifiers=[KeyControl]},
 			// Rectangle
 			entry! {action=RectangleMessage::DragStart, key_down=Lmb},
 			entry! {action=RectangleMessage::DragStop, key_up=Lmb},
