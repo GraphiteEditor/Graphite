@@ -4,6 +4,7 @@ use crate::layers::folder::Folder;
 use crate::layers::layer_info::{Layer, LayerData, LayerDataType};
 use crate::layers::simple_shape::Shape;
 use crate::layers::style::ViewMode;
+use crate::layers::text::Text;
 use crate::{DocumentError, DocumentResponse, Operation};
 
 use glam::{DAffine2, DVec2};
@@ -113,7 +114,7 @@ impl Document {
 
 		Ok(match self.layer(common_prefix_of_path)?.data {
 			LayerDataType::Folder(_) => common_prefix_of_path,
-			LayerDataType::Shape(_) => &common_prefix_of_path[..common_prefix_of_path.len() - 1],
+			_ => &common_prefix_of_path[..common_prefix_of_path.len() - 1],
 		})
 	}
 
@@ -256,6 +257,7 @@ impl Document {
 					}
 				}
 			}
+			LayerDataType::Text(_) => layer.cache_dirty = true,
 		}
 		layer.cache_dirty
 	}
@@ -452,6 +454,32 @@ impl Document {
 
 				Some([vec![DocumentChanged, CreatedLayer { path: path.clone() }]].concat())
 			}
+			Operation::AddText {
+				path,
+				insert_index,
+				transform,
+				text,
+
+				style,
+				size,
+			} => {
+				let layer = Layer::new(LayerDataType::Text(Text::new(text.clone(), *style, *size)), *transform);
+
+				self.set_layer(path, layer, *insert_index)?;
+
+				Some([vec![DocumentChanged, CreatedLayer { path: path.clone() }], update_thumbnails_upstream(path)].concat())
+			}
+			Operation::SetTextEditability { path, editable } => {
+				self.layer_mut(path)?.as_text_mut()?.editable = *editable;
+				self.mark_as_dirty(path)?;
+				Some(vec![DocumentChanged])
+			}
+			Operation::SetTextContent { path, new_text } => {
+				self.layer_mut(path)?.as_text_mut()?.update_text(new_text.clone());
+				self.mark_as_dirty(path)?;
+
+				Some([vec![DocumentChanged], update_thumbnails_upstream(path)].concat())
+			}
 			Operation::AddNgon {
 				path,
 				insert_index,
@@ -587,11 +615,8 @@ impl Document {
 			Operation::SetShapePath { path, bez_path } => {
 				self.mark_as_dirty(path)?;
 
-				match &mut self.layer_mut(path)?.data {
-					LayerDataType::Shape(shape) => {
-						shape.path = bez_path.clone();
-					}
-					LayerDataType::Folder(_) => (),
+				if let LayerDataType::Shape(shape) = &mut self.layer_mut(path)?.data {
+					shape.path = bez_path.clone();
 				}
 				Some(vec![DocumentChanged, LayerChanged { path: path.clone() }])
 			}
@@ -600,11 +625,13 @@ impl Document {
 				self.set_transform_relative_to_viewport(path, transform)?;
 				self.mark_as_dirty(path)?;
 
-				match &mut self.layer_mut(path)?.data {
-					LayerDataType::Shape(shape) => {
-						shape.path = bez_path.clone();
-					}
-					LayerDataType::Folder(_) => (),
+				if let LayerDataType::Text(t) = &mut self.layer_mut(path)?.data {
+					let bezpath = t.to_bez_path();
+					self.layer_mut(path)?.data = layers::layer_info::LayerDataType::Shape(Shape::from_bez_path(bezpath, t.style, true));
+				}
+
+				if let LayerDataType::Shape(shape) = &mut self.layer_mut(path)?.data {
+					shape.path = bez_path.clone();
 				}
 				Some([vec![DocumentChanged, LayerChanged { path: path.clone() }], update_thumbnails_upstream(path)].concat())
 			}

@@ -14,6 +14,7 @@ pub struct Mapping {
 	pub key_down: [KeyMappingEntries; NUMBER_OF_KEYS],
 	pub pointer_move: KeyMappingEntries,
 	pub mouse_scroll: KeyMappingEntries,
+	pub double_click: KeyMappingEntries,
 }
 
 impl Default for Mapping {
@@ -44,6 +45,7 @@ impl Default for Mapping {
 			entry! {action=SelectMessage::MouseMove { snap_angle: KeyShift }, message=InputMapperMessage::PointerMove},
 			entry! {action=SelectMessage::DragStart { add_to_selection: KeyShift }, key_down=Lmb},
 			entry! {action=SelectMessage::DragStop, key_up=Lmb},
+			entry! {action=SelectMessage::EditText, message=InputMapperMessage::DoubleClick},
 			entry! {action=SelectMessage::Abort, key_down=Rmb},
 			entry! {action=SelectMessage::Abort, key_down=KeyEscape},
 			// Navigate
@@ -59,6 +61,10 @@ impl Default for Mapping {
 			// Eyedropper
 			entry! {action=EyedropperMessage::LeftMouseDown, key_down=Lmb},
 			entry! {action=EyedropperMessage::RightMouseDown, key_down=Rmb},
+			// Text
+			entry! {action=TextMessage::Interact, key_up=Lmb},
+			entry! {action=TextMessage::Abort, key_down=KeyEscape},
+			entry! {action=TextMessage::CommitText, key_down=KeyEnter, modifiers=[KeyControl]},
 			// Rectangle
 			entry! {action=RectangleMessage::DragStart, key_down=Lmb},
 			entry! {action=RectangleMessage::DragStop, key_up=Lmb},
@@ -105,6 +111,7 @@ impl Default for Mapping {
 			entry! {action=ToolMessage::ActivateTool { tool_type: ToolType::Select }, key_down=KeyV},
 			entry! {action=ToolMessage::ActivateTool { tool_type: ToolType::Navigate }, key_down=KeyZ},
 			entry! {action=ToolMessage::ActivateTool { tool_type: ToolType::Eyedropper }, key_down=KeyI},
+			entry! {action=ToolMessage::ActivateTool { tool_type: ToolType::Text }, key_down=KeyT},
 			entry! {action=ToolMessage::ActivateTool { tool_type: ToolType::Fill }, key_down=KeyF},
 			entry! {action=ToolMessage::ActivateTool { tool_type: ToolType::Path }, key_down=KeyA},
 			entry! {action=ToolMessage::ActivateTool { tool_type: ToolType::Pen }, key_down=KeyP},
@@ -203,7 +210,7 @@ impl Default for Mapping {
 			entry! {action=GlobalMessage::LogDebug, key_down=Key2},
 			entry! {action=GlobalMessage::LogTrace, key_down=Key3},
 		];
-		let (mut key_up, mut key_down, mut pointer_move, mut mouse_scroll) = mappings;
+		let (mut key_up, mut key_down, mut pointer_move, mut mouse_scroll, mut double_click) = mappings;
 
 		// TODO: Hardcode these 10 lines into 10 lines of declarations, or make this use a macro to do all 10 in one line
 		const NUMBER_KEYS: [Key; 10] = [Key0, Key1, Key2, Key3, Key4, Key5, Key6, Key7, Key8, Key9];
@@ -226,12 +233,14 @@ impl Default for Mapping {
 		}
 		sort(&mut pointer_move);
 		sort(&mut mouse_scroll);
+		sort(&mut double_click);
 
 		Self {
 			key_up,
 			key_down,
 			pointer_move,
 			mouse_scroll,
+			double_click,
 		}
 	}
 }
@@ -243,6 +252,7 @@ impl Mapping {
 		let list = match message {
 			KeyDown(key) => &self.key_down[key as usize],
 			KeyUp(key) => &self.key_up[key as usize],
+			DoubleClick => &self.double_click,
 			MouseScroll => &self.mouse_scroll,
 			PointerMove => &self.pointer_move,
 		};
@@ -331,6 +341,7 @@ mod input_mapper_macros {
 			let mut key_down = KeyMappingEntries::key_array();
 			let mut pointer_move: KeyMappingEntries = Default::default();
 			let mut mouse_scroll: KeyMappingEntries = Default::default();
+			let mut double_click: KeyMappingEntries = Default::default();
 			$(
 				for entry in $entry {
 					let arr = match entry.trigger {
@@ -338,11 +349,12 @@ mod input_mapper_macros {
 						InputMapperMessage::KeyUp(key) => &mut key_up[key as usize],
 						InputMapperMessage::MouseScroll => &mut mouse_scroll,
 						InputMapperMessage::PointerMove => &mut pointer_move,
+						InputMapperMessage::DoubleClick => &mut double_click,
 					};
 					arr.push(entry.clone());
 				}
 			)*
-			(key_up, key_down, pointer_move, mouse_scroll)
+			(key_up, key_down, pointer_move, mouse_scroll, double_click)
 		}};
 	}
 

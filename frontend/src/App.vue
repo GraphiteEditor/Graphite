@@ -266,6 +266,7 @@ export default defineComponent({
 			dialog: this.dialog,
 			documents: this.documents,
 			fullscreen: this.fullscreen,
+			inputManager: this.inputManager,
 		};
 	},
 	data() {
