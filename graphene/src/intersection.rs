@@ -1,4 +1,4 @@
-use std::ops::Mul;
+use std::{ops::Mul, path::Path};
 
 use crate::consts::{CURVE_FIDELITY, F64PRECISION};
 use glam::{DAffine2, DMat2, DVec2};
@@ -292,59 +292,42 @@ fn path_intersections(a: &SubCurve, b: &SubCurve, mut recursion: f64, intersecti
 }
 
 fn line_curve_intersections(line: &Line, curve: &PathSeg, is_line_a: bool, intersections: &mut Vec<Intersect>) {
-	match (line, curve) {
-		(line, PathSeg::Line(line2)) => {
-			if let Some(cross) = line_intersection(line, line2) {
-				intersections.push(cross);
-			}
+	if let (line, PathSeg::Line(line2)) = (line, curve) {
+		if let Some(cross) = line_intersection(line, line2) {
+			intersections.push(cross);
 		}
-		(line, PathSeg::Quad(quad)) => {
-			intersections.extend(
-				quad_line_intersect(line, quad)
-					.iter()
-					.filter_map(|time_option| {
-						if let Some(time) = time_option {
-							let point = quad.eval(*time);
-							let line_time = get_line_t_value(line, &point);
-							if !valid_t(*time) || !valid_t(line_time) {
-								return None;
-							}
-							if is_line_a {
-								Some(Intersect::from((point, line_time, *time)))
-							} else {
-								Some(Intersect::from((point, *time, line_time)))
-							}
-						} else {
-							None
+	} else {
+		// forced to construct a vec here because match arms must return same type, and E0716
+		let roots = match curve {
+			PathSeg::Quad(quad) => Vec::from(quad_line_intersect(line, quad)),
+			PathSeg::Cubic(cubic) => Vec::from(cubic_line_intersect(line, cubic)),
+			_ => vec![], //should never occur
+		};
+		intersections.extend(
+			roots
+				.iter()
+				.filter_map(|time_option| {
+					if let Some(time) = time_option {
+						let point = match curve {
+							PathSeg::Cubic(cubic) => cubic.eval(*time),
+							PathSeg::Quad(quad) => quad.eval(*time),
+							_ => Point::new(0.0, 0.0), //should never occur
+						};
+						let line_time = line_t_value(line, &point);
+						if !valid_t(*time) || !valid_t(line_time) {
+							return None;
 						}
-					})
-					.collect::<Vec<Intersect>>(),
-			);
-		}
-		(line, PathSeg::Cubic(cubic)) => {
-			intersections.extend(
-				cubic_line_intersect(line, cubic)
-					.iter()
-					.filter_map(|time_option| {
-						if let Some(time) = time_option {
-							let point = cubic.eval(*time);
-							let line_time = get_line_t_value(line, &point);
-							if !valid_t(*time) || !valid_t(line_time) {
-								log::debug!("{:?}, {:?}", *time, line_time);
-								return None;
-							}
-							if is_line_a {
-								Some(Intersect::from((point, line_time, *time)))
-							} else {
-								Some(Intersect::from((point, *time, line_time)))
-							}
+						if is_line_a {
+							Some(Intersect::from((point, line_time, *time)))
 						} else {
-							None
+							Some(Intersect::from((point, *time, line_time)))
 						}
-					})
-					.collect::<Vec<Intersect>>(),
-			);
-		}
+					} else {
+						None
+					}
+				})
+				.collect::<Vec<Intersect>>(),
+		);
 	}
 }
 
@@ -431,7 +414,7 @@ pub fn line_intersection(a: &Line, b: &Line) -> Option<Intersect> {
 	Some(Intersect::from((b.eval(t_vals[0]), t_vals[1], t_vals[0])))
 }
 
-pub fn get_line_t_value(a: &Line, p: &Point) -> f64 {
+pub fn line_t_value(a: &Line, p: &Point) -> f64 {
 	let from_x = (p.x - a.p0.x) / (a.p1.x - a.p0.x);
 	if from_x.is_normal() {
 		from_x
