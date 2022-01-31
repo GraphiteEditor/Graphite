@@ -246,12 +246,16 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 				responses.push_back(Copy { clipboard }.into());
 				responses.push_back(DeleteSelectedLayers.into());
 			}
-			NewDocument => {
+			GenerateNewDocument => {
 				let name = self.generate_new_document_name();
 				let new_document = DocumentMessageHandler::with_name(name, ipp);
 				let document_id = generate_uuid();
 				self.active_document_id = document_id;
 				self.load_document(new_document, document_id, false, responses);
+			}
+			NewDocument => {
+				responses.push_front(GenerateNewDocument.into());
+				responses.push_front(ToolMessage::AbortCurrentTool.into());
 			}
 			NextDocument => {
 				let current_index = self.document_index(self.active_document_id);

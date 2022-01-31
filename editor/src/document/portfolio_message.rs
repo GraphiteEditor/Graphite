@@ -34,6 +34,7 @@ pub enum PortfolioMessage {
 	Cut {
 		clipboard: Clipboard,
 	},
+	GenerateNewDocument,
 	NewDocument,
 	NextDocument,
 	OpenDocument,
