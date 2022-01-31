@@ -1,8 +1,7 @@
+use super::widgets::WidgetLayout;
 use crate::message_prelude::*;
 
 use serde::{Deserialize, Serialize};
-
-use super::widgets::WidgetLayout;
 
 #[remain::sorted]
 #[impl_message(Message, Layout)]

@@ -66,7 +66,7 @@ impl PropertyHolder for Text {
 		WidgetLayout::new(vec![LayoutRow::Row {
 			name: "".into(),
 			widgets: vec![WidgetHolder::new(Widget::NumberInput(NumberInput {
-				unit: "px".into(),
+				unit: " px".into(),
 				label: "Font Size".into(),
 				value: self.options.font_size as f64,
 				is_integer: true,

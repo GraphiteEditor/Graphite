@@ -1,6 +1,7 @@
 <template>
 	<div class="widget-row">
-		<template v-for="(component, index) in widgetRow.widgets" :key="index">
+		<template v-for="(component, index) in widgetData.widgets" :key="index">
+			<!-- TODO: Use `<component :is="" v-bind="attributesObject"></component>` to avoid all the separate components with `v-if` -->
 			<PopoverButton v-if="component.kind === 'PopoverButton'">
 				<h3>{{ component.props.title }}</h3>
 				<p>{{ component.props.text }}</p>
@@ -44,7 +45,7 @@ import Separator from "@/components/widgets/separators/Separator.vue";
 export default defineComponent({
 	inject: ["editor"],
 	props: {
-		widgetRow: { type: Object as PropType<WidgetRow>, required: true },
+		widgetData: { type: Object as PropType<WidgetRow>, required: true },
 		layoutTarget: { required: true },
 	},
 	methods: {

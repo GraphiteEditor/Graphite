@@ -107,7 +107,6 @@ export function createDialogState(editor: EditorState) {
 
 	// Run on creation
 	editor.dispatcher.subscribeJsMessage(DisplayDialogAboutGraphite, () => onAboutHandler());
-
 	editor.dispatcher.subscribeJsMessage(DisplayDialogComingSoon, (displayDialogComingSoon) => comingSoon(displayDialogComingSoon.issue));
 
 	return {

@@ -59,7 +59,7 @@ impl PropertyHolder for Select {
 			widgets: vec![
 				WidgetHolder::new(Widget::IconButton(IconButton {
 					icon: "AlignLeft".into(),
-					title: "Align Left".into(),
+					tooltip: "Align Left".into(),
 					size: 24,
 					on_update: WidgetCallback::new(|_| {
 						DocumentMessage::AlignSelectedLayers {
@@ -72,7 +72,7 @@ impl PropertyHolder for Select {
 				})),
 				WidgetHolder::new(Widget::IconButton(IconButton {
 					icon: "AlignHorizontalCenter".into(),
-					title: "Align Horizontal Center".into(),
+					tooltip: "Align Horizontal Center".into(),
 					size: 24,
 					on_update: WidgetCallback::new(|_| {
 						DocumentMessage::AlignSelectedLayers {
@@ -85,7 +85,7 @@ impl PropertyHolder for Select {
 				})),
 				WidgetHolder::new(Widget::IconButton(IconButton {
 					icon: "AlignRight".into(),
-					title: "Align Right".into(),
+					tooltip: "Align Right".into(),
 					size: 24,
 					on_update: WidgetCallback::new(|_| {
 						DocumentMessage::AlignSelectedLayers {
@@ -102,7 +102,7 @@ impl PropertyHolder for Select {
 				})),
 				WidgetHolder::new(Widget::IconButton(IconButton {
 					icon: "AlignTop".into(),
-					title: "Align Top".into(),
+					tooltip: "Align Top".into(),
 					size: 24,
 					on_update: WidgetCallback::new(|_| {
 						DocumentMessage::AlignSelectedLayers {
@@ -115,7 +115,7 @@ impl PropertyHolder for Select {
 				})),
 				WidgetHolder::new(Widget::IconButton(IconButton {
 					icon: "AlignVerticalCenter".into(),
-					title: "Align Vertical Center".into(),
+					tooltip: "Align Vertical Center".into(),
 					size: 24,
 					on_update: WidgetCallback::new(|_| {
 						DocumentMessage::AlignSelectedLayers {
@@ -128,7 +128,7 @@ impl PropertyHolder for Select {
 				})),
 				WidgetHolder::new(Widget::IconButton(IconButton {
 					icon: "AlignBottom".into(),
-					title: "Align Bottom".into(),
+					tooltip: "Align Bottom".into(),
 					size: 24,
 					on_update: WidgetCallback::new(|_| {
 						DocumentMessage::AlignSelectedLayers {
@@ -153,14 +153,14 @@ impl PropertyHolder for Select {
 				})),
 				WidgetHolder::new(Widget::IconButton(IconButton {
 					icon: "FlipHorizontal".into(),
-					title: "Flip Horizontal".into(),
+					tooltip: "Flip Horizontal".into(),
 					size: 24,
 					on_update: WidgetCallback::new(|_| SelectMessage::FlipHorizontal.into()),
 					..IconButton::default()
 				})),
 				WidgetHolder::new(Widget::IconButton(IconButton {
 					icon: "FlipVertical".into(),
-					title: "Flip Vertical".into(),
+					tooltip: "Flip Vertical".into(),
 					size: 24,
 					on_update: WidgetCallback::new(|_| SelectMessage::FlipVertical.into()),
 					..IconButton::default()
@@ -179,35 +179,35 @@ impl PropertyHolder for Select {
 				})),
 				WidgetHolder::new(Widget::IconButton(IconButton {
 					icon: "BooleanUnion".into(),
-					title: "Boolean Union".into(),
+					tooltip: "Boolean Union".into(),
 					size: 24,
 					on_update: WidgetCallback::new(|_| FrontendMessage::DisplayDialogComingSoon { issue: Some(197) }.into()),
 					..IconButton::default()
 				})),
 				WidgetHolder::new(Widget::IconButton(IconButton {
 					icon: "BooleanSubtractFront".into(),
-					title: "Boolean Subtract Front".into(),
+					tooltip: "Boolean Subtract Front".into(),
 					size: 24,
 					on_update: WidgetCallback::new(|_| FrontendMessage::DisplayDialogComingSoon { issue: Some(197) }.into()),
 					..IconButton::default()
 				})),
 				WidgetHolder::new(Widget::IconButton(IconButton {
 					icon: "BooleanSubtractBack".into(),
-					title: "Boolean Subtract Back".into(),
+					tooltip: "Boolean Subtract Back".into(),
 					size: 24,
 					on_update: WidgetCallback::new(|_| FrontendMessage::DisplayDialogComingSoon { issue: Some(197) }.into()),
 					..IconButton::default()
 				})),
 				WidgetHolder::new(Widget::IconButton(IconButton {
 					icon: "BooleanIntersect".into(),
-					title: "Boolean Intersect".into(),
+					tooltip: "Boolean Intersect".into(),
 					size: 24,
 					on_update: WidgetCallback::new(|_| FrontendMessage::DisplayDialogComingSoon { issue: Some(197) }.into()),
 					..IconButton::default()
 				})),
 				WidgetHolder::new(Widget::IconButton(IconButton {
 					icon: "BooleanDifference".into(),
-					title: "Boolean Difference".into(),
+					tooltip: "Boolean Difference".into(),
 					size: 24,
 					on_update: WidgetCallback::new(|_| FrontendMessage::DisplayDialogComingSoon { issue: Some(197) }.into()),
 					..IconButton::default()

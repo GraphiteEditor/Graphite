@@ -1,9 +1,8 @@
-<!-- TODO: Implement Collapsable sections with properties system -->
+<!-- TODO: Implement collapsable sections with properties system -->
 <template>
 	<div class="widget-section">
-		<template v-for="(layoutRow, index) in WidgetSection.layout" :key="index">
-			<WidgetRow v-if="isWidgetRow(layoutRow)" :widgetRow="layoutRow" :layoutTarget="layoutTarget" />
-			<WidgetSection v-if="isWidgetSection(layoutRow)" :WidgetSection="layoutRow" :layoutTarget="layoutTarget" />
+		<template v-for="(layoutRow, index) in widgetData.layout" :key="index">
+			<component :is="layoutRowType(layoutRow)" :widgetData="layoutRow" :layoutTarget="layoutTarget"></component>
 		</template>
 	</div>
 </template>
@@ -20,15 +19,15 @@
 <script lang="ts">
 import { defineComponent, PropType } from "vue";
 
-import { isWidgetRow, isWidgetSection, WidgetSection } from "@/dispatcher/js-messages";
+import { isWidgetRow, isWidgetSection, LayoutRow, WidgetSection as WidgetSectionFromJsMessages } from "@/dispatcher/js-messages";
 
 import WidgetRow from "@/components/widgets/WidgetRow.vue";
 
-export default defineComponent({
+const WidgetSection = defineComponent({
 	name: "WidgetSection",
 	inject: ["editor"],
 	props: {
-		WidgetSection: { type: Object as PropType<WidgetSection>, required: true },
+		widgetData: { type: Object as PropType<WidgetSectionFromJsMessages>, required: true },
 		layoutTarget: { required: true },
 	},
 	data: () => {
@@ -41,10 +40,17 @@ export default defineComponent({
 		updateLayout(widgetId: BigInt, value: unknown) {
 			this.editor.instance.update_layout(this.layoutTarget, widgetId, value);
 		},
+		layoutRowType(layoutRow: LayoutRow): unknown {
+			if (isWidgetRow(layoutRow)) return WidgetRow;
+			if (isWidgetSection(layoutRow)) return WidgetSection;
+
+			throw new Error("Layout row type does not exist");
+		},
 	},
 	components: {
 		WidgetRow,
 	},
 });
+export default WidgetSection;
 </script>
 

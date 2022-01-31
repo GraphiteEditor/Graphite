@@ -1,8 +1,7 @@
 <template>
 	<div class="widget-layout">
 		<template v-for="(layoutRow, index) in layout.layout" :key="index">
-			<WidgetRow v-if="isWidgetRow(layoutRow)" :widgetRow="layoutRow" :layoutTarget="layout.layout_target" />
-			<WidgetSection v-if="isWidgetSection(layoutRow)" :WidgetSection="layoutRow" :layoutTarget="layout.layout_target" />
+			<component :is="layoutRowType(layoutRow)" :widgetData="layoutRow" :layoutTarget="layout.layout_target"></component>
 		</template>
 	</div>
 </template>
@@ -20,7 +19,7 @@
 <script lang="ts">
 import { defineComponent, PropType } from "vue";
 
-import { isWidgetRow, isWidgetSection, WidgetLayout } from "@/dispatcher/js-messages";
+import { isWidgetRow, isWidgetSection, LayoutRow, WidgetLayout } from "@/dispatcher/js-messages";
 
 import WidgetRow from "@/components/widgets/WidgetRow.vue";
 import WidgetSection from "@/components/widgets/WidgetSection.vue";
@@ -28,6 +27,14 @@ import WidgetSection from "@/components/widgets/WidgetSection.vue";
 export default defineComponent({
 	props: {
 		layout: { type: Object as PropType<WidgetLayout>, required: true },
+	},
+	methods: {
+		layoutRowType(layoutRow: LayoutRow): unknown {
+			if (isWidgetRow(layoutRow)) return WidgetRow;
+			if (isWidgetSection(layoutRow)) return WidgetSection;
+
+			throw new Error("Layout row type does not exist");
+		},
 	},
 	data: () => {
 		return {
@@ -41,4 +48,3 @@ export default defineComponent({
 	},
 });
 </script>
-

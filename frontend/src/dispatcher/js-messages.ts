@@ -386,7 +386,6 @@ export class TriggerIndexedDbRemoveDocument extends JsMessage {
 
 export interface WidgetLayout {
 	layout_target: unknown;
-
 	layout: LayoutRow[];
 }
 
@@ -401,12 +400,12 @@ export type LayoutRow = WidgetRow | WidgetSection;
 
 export type WidgetRow = { name: string; widgets: Widget[] };
 export function isWidgetRow(layoutRow: WidgetRow | WidgetSection): layoutRow is WidgetRow {
-	return !!(layoutRow as WidgetRow).widgets;
+	return Boolean((layoutRow as WidgetRow).widgets);
 }
 
 export type WidgetSection = { name: string; layout: LayoutRow[] };
 export function isWidgetSection(layoutRow: WidgetRow | WidgetSection): layoutRow is WidgetSection {
-	return !!(layoutRow as WidgetSection).layout;
+	return Boolean((layoutRow as WidgetSection).layout);
 }
 
 export type WidgetKind = "NumberInput" | "Separator" | "IconButton" | "PopoverButton" | "OptionalInput" | "RadioInput";
@@ -441,18 +440,24 @@ function createWidgetLayout(widgetLayout: any[]): LayoutRow[] {
 			const widgets = rowOrSection.Row.widgets.map((widgetHolder: any) => {
 				const { widget_id } = widgetHolder;
 				const kind = Object.keys(widgetHolder.widget)[0];
-				return {
-					widget_id,
-					kind,
-					props: widgetHolder.widget[kind],
-				};
+				const props = widgetHolder.widget[kind];
+
+				return { widget_id, kind, props };
 			});
+
 			return {
 				name: rowOrSection.Row.name,
 				widgets,
 			};
 		}
-		return { name: rowOrSection.Section.name, layout: createWidgetLayout(rowOrSection.Section) };
+		if (rowOrSection.Section) {
+			return {
+				name: rowOrSection.Section.name,
+				layout: createWidgetLayout(rowOrSection.Section),
+			};
+		}
+
+		throw new Error("Layout row type does not exist");
 	});
 }
 

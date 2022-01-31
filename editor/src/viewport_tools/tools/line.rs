@@ -63,7 +63,7 @@ impl PropertyHolder for Line {
 		WidgetLayout::new(vec![LayoutRow::Row {
 			name: "".into(),
 			widgets: vec![WidgetHolder::new(Widget::NumberInput(NumberInput {
-				unit: "px".into(),
+				unit: " px".into(),
 				label: "Weight".into(),
 				value: self.options.line_weight as f64,
 				is_integer: true,

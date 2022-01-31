@@ -59,6 +59,7 @@ impl ToolData {
 	pub fn active_tool_mut(&mut self) -> &mut Box<Tool> {
 		self.tools.get_mut(&self.active_tool_type).expect("The active tool is not initialized")
 	}
+
 	pub fn active_tool(&self) -> &Tool {
 		self.tools.get(&self.active_tool_type).map(|x| x.as_ref()).expect("The active tool is not initialized")
 	}

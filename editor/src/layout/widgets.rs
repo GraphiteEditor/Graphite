@@ -1,8 +1,8 @@
 use super::layout_message::LayoutTarget;
 use crate::message_prelude::*;
-use serde::{Deserialize, Serialize};
 
 use derivative::*;
+use serde::{Deserialize, Serialize};
 
 pub trait PropertyHolder {
 	fn properties(&self) -> WidgetLayout {
@@ -64,19 +64,19 @@ impl LayoutRow {
 }
 
 #[derive(Debug, Default)]
-pub struct WidgetIterMut<'a> {
-	pub stack: Vec<&'a mut LayoutRow>,
-	pub current_slice: Option<&'a mut [WidgetHolder]>,
+pub struct WidgetIter<'a> {
+	pub stack: Vec<&'a LayoutRow>,
+	pub current_slice: Option<&'a [WidgetHolder]>,
 }
 
-impl<'a> Iterator for WidgetIterMut<'a> {
-	type Item = &'a mut WidgetHolder;
+impl<'a> Iterator for WidgetIter<'a> {
+	type Item = &'a WidgetHolder;
 
 	fn next(&mut self) -> Option<Self::Item> {
-		if let Some((first, rest)) = self.current_slice.take().map(|slice| slice.split_first_mut()).flatten() {
-			self.current_slice = Some(rest);
-			return Some(first);
-		};
+		if let Some(item) = self.current_slice.map(|slice| slice.first()).flatten() {
+			self.current_slice = Some(&self.current_slice.unwrap()[1..]);
+			return Some(item);
+		}
 
 		match self.stack.pop() {
 			Some(LayoutRow::Row { name: _, widgets }) => {
@@ -95,19 +95,19 @@ impl<'a> Iterator for WidgetIterMut<'a> {
 }
 
 #[derive(Debug, Default)]
-pub struct WidgetIter<'a> {
-	pub stack: Vec<&'a LayoutRow>,
-	pub current_slice: Option<&'a [WidgetHolder]>,
+pub struct WidgetIterMut<'a> {
+	pub stack: Vec<&'a mut LayoutRow>,
+	pub current_slice: Option<&'a mut [WidgetHolder]>,
 }
 
-impl<'a> Iterator for WidgetIter<'a> {
-	type Item = &'a WidgetHolder;
+impl<'a> Iterator for WidgetIterMut<'a> {
+	type Item = &'a mut WidgetHolder;
 
 	fn next(&mut self) -> Option<Self::Item> {
-		if let Some(item) = self.current_slice.map(|slice| slice.first()).flatten() {
-			self.current_slice = Some(&self.current_slice.unwrap()[1..]);
-			return Some(item);
-		}
+		if let Some((first, rest)) = self.current_slice.take().map(|slice| slice.split_first_mut()).flatten() {
+			self.current_slice = Some(rest);
+			return Some(first);
+		};
 
 		match self.stack.pop() {
 			Some(LayoutRow::Row { name: _, widgets }) => {
@@ -191,8 +191,7 @@ pub struct NumberInput {
 	pub unit: String,
 }
 
-#[derive(Clone, Serialize, Deserialize, Derivative)]
-#[derivative(Debug, PartialEq)]
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
 pub enum NumberInputIncrementBehavior {
 	Add,
 	Multiply,
@@ -206,7 +205,6 @@ impl Default for NumberInputIncrementBehavior {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-
 pub struct Separator {
 	pub direction: SeparatorDirection,
 
@@ -215,14 +213,12 @@ pub struct Separator {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-
 pub enum SeparatorDirection {
 	Horizontal,
 	Vertical,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-
 pub enum SeparatorType {
 	Related,
 	Unrelated,
@@ -234,7 +230,8 @@ pub enum SeparatorType {
 #[derivative(Debug, PartialEq)]
 pub struct IconButton {
 	pub icon: String,
-	pub title: String,
+	#[serde(rename = "title")]
+	pub tooltip: String,
 	pub size: u32,
 	#[serde(rename = "gapAfter")]
 	pub gap_after: bool,
@@ -248,7 +245,8 @@ pub struct IconButton {
 pub struct OptionalInput {
 	pub checked: bool,
 	pub icon: String,
-	pub title: String,
+	#[serde(rename = "title")]
+	pub tooltip: String,
 	#[serde(skip)]
 	#[derivative(Debug = "ignore", PartialEq = "ignore")]
 	pub on_update: WidgetCallback<OptionalInput>,
@@ -266,7 +264,7 @@ pub struct PopoverButton {
 pub struct RadioInput {
 	pub entries: Vec<RadioEntryData>,
 
-	// use u32 since it will be serialized as a normal JS number
+	// This uses `u32` instead of `usize` since it will be serialized as a normal JS number
 	// TODO(mfish33): Replace with usize when using native UI
 	#[serde(rename = "selectedIndex")]
 	pub selected_index: u32,
