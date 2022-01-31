@@ -3,10 +3,10 @@ use crate::document::DocumentMessageHandler;
 use crate::frontend::utility_types::MouseCursorIcon;
 use crate::input::keyboard::{Key, MouseMotion};
 use crate::input::InputPreprocessorMessageHandler;
+use crate::layout::widgets::{LayoutRow, NumberInput, PropertyHolder, Widget, WidgetCallback, WidgetHolder, WidgetLayout};
 use crate::message_prelude::*;
 use crate::misc::{HintData, HintGroup, HintInfo, KeysGroup};
-use crate::viewport_tools::tool::{DocumentToolData, Fsm, ToolActionHandlerData, ToolType};
-use crate::viewport_tools::tool_options::ToolOptions;
+use crate::viewport_tools::tool::{DocumentToolData, Fsm, ToolActionHandlerData};
 
 use glam::{DAffine2, DVec2};
 use graphene::intersection::Quad;
@@ -19,6 +19,17 @@ use serde::{Deserialize, Serialize};
 pub struct Text {
 	fsm_state: TextToolFsmState,
 	data: TextToolData,
+	options: TextOptions,
+}
+
+pub struct TextOptions {
+	font_size: u32,
+}
+
+impl Default for TextOptions {
+	fn default() -> Self {
+		Self { font_size: 14 }
+	}
 }
 
 #[remain::sorted]
@@ -41,6 +52,30 @@ pub enum TextMessage {
 	UpdateBounds {
 		new_text: String,
 	},
+	UpdateOptions(TextOptionsUpdate),
+}
+
+#[remain::sorted]
+#[derive(PartialEq, Clone, Debug, Hash, Serialize, Deserialize)]
+pub enum TextOptionsUpdate {
+	FontSize(u32),
+}
+
+impl PropertyHolder for Text {
+	fn properties(&self) -> WidgetLayout {
+		WidgetLayout::new(vec![LayoutRow::Row {
+			name: "".into(),
+			widgets: vec![WidgetHolder::new(Widget::NumberInput(NumberInput {
+				unit: " px".into(),
+				label: "Font Size".into(),
+				value: self.options.font_size as f64,
+				is_integer: true,
+				min: Some(1.),
+				on_update: WidgetCallback::new(|number_input| TextMessage::UpdateOptions(TextOptionsUpdate::FontSize(number_input.value as u32)).into()),
+				..NumberInput::default()
+			}))],
+		}])
+	}
 }
 
 impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Text {
@@ -55,7 +90,14 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Text {
 			return;
 		}
 
-		let new_state = self.fsm_state.transition(action, data.0, data.1, &mut self.data, data.2, responses);
+		if let ToolMessage::Text(TextMessage::UpdateOptions(action)) = action {
+			match action {
+				TextOptionsUpdate::FontSize(font_size) => self.options.font_size = font_size,
+			}
+			return;
+		}
+
+		let new_state = self.fsm_state.transition(action, data.0, data.1, &mut self.data, &self.options, data.2, responses);
 
 		if self.fsm_state != new_state {
 			self.fsm_state = new_state;
@@ -137,6 +179,7 @@ fn update_overlays(document: &DocumentMessageHandler, data: &mut TextToolData, r
 
 impl Fsm for TextToolFsmState {
 	type ToolData = TextToolData;
+	type ToolOptions = TextOptions;
 
 	fn transition(
 		self,
@@ -144,6 +187,7 @@ impl Fsm for TextToolFsmState {
 		document: &DocumentMessageHandler,
 		tool_data: &DocumentToolData,
 		data: &mut Self::ToolData,
+		tool_options: &Self::ToolOptions,
 		input: &InputPreprocessorMessageHandler,
 		responses: &mut VecDeque<Message>,
 	) -> Self {
@@ -200,10 +244,7 @@ impl Fsm for TextToolFsmState {
 					// Creating new text
 					else if state == TextToolFsmState::Ready {
 						let transform = DAffine2::from_translation(input.mouse.position).to_cols_array();
-						let font_size = match tool_data.tool_options.get(&ToolType::Text) {
-							Some(&ToolOptions::Text { font_size }) => font_size,
-							_ => 14,
-						};
+						let font_size = tool_options.font_size;
 						data.path = vec![generate_uuid()];
 
 						responses.push_back(
