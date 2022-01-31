@@ -282,10 +282,18 @@ impl BoundingBoxOverlays {
 		let min = self.bounds[0].min(self.bounds[1]);
 		let max = self.bounds[0].max(self.bounds[1]);
 		if min.x - cursor.x < BOUNDS_SELECT_THRESHOLD && min.y - cursor.y < BOUNDS_SELECT_THRESHOLD && cursor.x - max.x < BOUNDS_SELECT_THRESHOLD && cursor.y - max.y < BOUNDS_SELECT_THRESHOLD {
-			let top = (cursor.y - min.y).abs() < BOUNDS_SELECT_THRESHOLD;
-			let bottom = (max.y - cursor.y).abs() < BOUNDS_SELECT_THRESHOLD;
-			let left = (cursor.x - min.x).abs() < BOUNDS_SELECT_THRESHOLD;
-			let right = (cursor.x - max.x).abs() < BOUNDS_SELECT_THRESHOLD;
+			let mut top = (cursor.y - min.y).abs() < BOUNDS_SELECT_THRESHOLD;
+			let mut bottom = (max.y - cursor.y).abs() < BOUNDS_SELECT_THRESHOLD;
+			let mut left = (cursor.x - min.x).abs() < BOUNDS_SELECT_THRESHOLD;
+			let mut right = (max.x - cursor.x).abs() < BOUNDS_SELECT_THRESHOLD;
+			if cursor.y - min.y + max.y - cursor.y < BOUNDS_SELECT_THRESHOLD * 2. && (left || right) {
+				top = false;
+				bottom = false;
+			}
+			if cursor.x - min.x + max.x - cursor.x < BOUNDS_SELECT_THRESHOLD * 2. && (top || bottom) {
+				left = false;
+				right = false;
+			}
 
 			if top || bottom || left || right {
 				self.selected_edges = Some(SelectedEdges::new(top, bottom, left, right, self.bounds, &mut self.pivot));
