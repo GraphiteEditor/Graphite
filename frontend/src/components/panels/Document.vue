@@ -192,9 +192,8 @@
 					}
 				}
 				foreignObject {
-					overflow: visible;
-					width: 1px;
-					height: 1px;
+					width: 10000px;
+					height: 10000px;
 
 					div {
 						color: black;
