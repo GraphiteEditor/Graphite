@@ -3,6 +3,8 @@ use super::DocumentMessageHandler;
 use crate::consts::{DEFAULT_DOCUMENT_NAME, GRAPHITE_DOCUMENT_VERSION};
 use crate::frontend::utility_types::FrontendDocumentDetails;
 use crate::input::InputPreprocessorMessageHandler;
+use crate::layout::layout_message::LayoutTarget;
+use crate::layout::widgets::PropertyHolder;
 use crate::message_prelude::*;
 
 use graphene::Operation as DocumentOperation;
@@ -377,6 +379,11 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 					responses.push_back(DocumentMessage::LayerChanged { affected_layer_path: layer.clone() }.into());
 				}
 				responses.push_back(ToolMessage::DocumentIsDirty.into());
+				responses.push_back(PortfolioMessage::UpdateDocumentBar.into());
+			}
+			UpdateDocumentBar => {
+				let active_document = self.active_document();
+				active_document.register_properties(responses, LayoutTarget::DocumentBar)
 			}
 			UpdateOpenDocumentsList => {
 				// Send the list of document tab names

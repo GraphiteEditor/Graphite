@@ -3,10 +3,10 @@ use crate::document::DocumentMessageHandler;
 use crate::frontend::utility_types::MouseCursorIcon;
 use crate::input::keyboard::{Key, MouseMotion};
 use crate::input::InputPreprocessorMessageHandler;
+use crate::layout::widgets::{LayoutRow, NumberInput, PropertyHolder, Widget, WidgetCallback, WidgetHolder, WidgetLayout};
 use crate::message_prelude::*;
 use crate::misc::{HintData, HintGroup, HintInfo, KeysGroup};
-use crate::viewport_tools::tool::{DocumentToolData, Fsm, ToolActionHandlerData, ToolType};
-use crate::viewport_tools::tool_options::{ShapeType, ToolOptions};
+use crate::viewport_tools::tool::{DocumentToolData, Fsm, ToolActionHandlerData};
 
 use graphene::layers::style;
 use graphene::Operation;
@@ -18,6 +18,17 @@ use serde::{Deserialize, Serialize};
 pub struct Shape {
 	fsm_state: ShapeToolFsmState,
 	data: ShapeToolData,
+	options: ShapeOptions,
+}
+
+pub struct ShapeOptions {
+	vertices: u8,
+}
+
+impl Default for ShapeOptions {
+	fn default() -> Self {
+		Self { vertices: 6 }
+	}
 }
 
 #[remain::sorted]
@@ -35,6 +46,30 @@ pub enum ShapeMessage {
 		center: Key,
 		lock_ratio: Key,
 	},
+	UpdateOptions(ShapeOptionsUpdate),
+}
+
+#[remain::sorted]
+#[derive(PartialEq, Clone, Debug, Hash, Serialize, Deserialize)]
+pub enum ShapeOptionsUpdate {
+	Vertices(u8),
+}
+
+impl PropertyHolder for Shape {
+	fn properties(&self) -> WidgetLayout {
+		WidgetLayout::new(vec![LayoutRow::Row {
+			name: "".into(),
+			widgets: vec![WidgetHolder::new(Widget::NumberInput(NumberInput {
+				label: "Sides".into(),
+				value: self.options.vertices as f64,
+				is_integer: true,
+				min: Some(3.),
+				max: Some(256.),
+				on_update: WidgetCallback::new(|number_input| ShapeMessage::UpdateOptions(ShapeOptionsUpdate::Vertices(number_input.value as u8)).into()),
+				..NumberInput::default()
+			}))],
+		}])
+	}
 }
 
 impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Shape {
@@ -49,7 +84,14 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Shape {
 			return;
 		}
 
-		let new_state = self.fsm_state.transition(action, data.0, data.1, &mut self.data, data.2, responses);
+		if let ToolMessage::Shape(ShapeMessage::UpdateOptions(action)) = action {
+			match action {
+				ShapeOptionsUpdate::Vertices(vertices) => self.options.vertices = vertices,
+			}
+			return;
+		}
+
+		let new_state = self.fsm_state.transition(action, data.0, data.1, &mut self.data, &self.options, data.2, responses);
 
 		if self.fsm_state != new_state {
 			self.fsm_state = new_state;
@@ -87,6 +129,7 @@ struct ShapeToolData {
 
 impl Fsm for ShapeToolFsmState {
 	type ToolData = ShapeToolData;
+	type ToolOptions = ShapeOptions;
 
 	fn transition(
 		self,
@@ -94,6 +137,7 @@ impl Fsm for ShapeToolFsmState {
 		document: &DocumentMessageHandler,
 		tool_data: &DocumentToolData,
 		data: &mut Self::ToolData,
+		tool_options: &Self::ToolOptions,
 		input: &InputPreprocessorMessageHandler,
 		responses: &mut VecDeque<Message>,
 	) -> Self {
@@ -109,12 +153,7 @@ impl Fsm for ShapeToolFsmState {
 					responses.push_back(DocumentMessage::StartTransaction.into());
 					shape_data.path = Some(vec![generate_uuid()]);
 					responses.push_back(DocumentMessage::DeselectAllLayers.into());
-					data.sides = match tool_data.tool_options.get(&ToolType::Shape) {
-						Some(&ToolOptions::Shape {
-							shape_type: ShapeType::Polygon { vertices },
-						}) => vertices as u8,
-						_ => 6,
-					};
+					data.sides = tool_options.vertices;
 
 					responses.push_back(
 						Operation::AddNgon {
