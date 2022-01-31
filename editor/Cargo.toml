@@ -24,6 +24,7 @@ kurbo = { git = "https://github.com/GraphiteEditor/kurbo.git", features = [
 	"serde",
 ] }
 remain = "0.2.2"
+derivative = "2.2.0"
 
 [dependencies.graphene]
 path = "../graphene"

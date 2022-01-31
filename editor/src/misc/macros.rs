@@ -41,7 +41,7 @@ macro_rules! count_args {
 /// ```
 macro_rules! gen_tools_hash_map {
 	($($enum_variant:ident => $struct_path:ty),* $(,)?) => {{
-		let mut hash_map: ::std::collections::HashMap<$crate::viewport_tools::tool::ToolType, ::std::boxed::Box<dyn for<'a> $crate::message_prelude::MessageHandler<$crate::viewport_tools::tool_message::ToolMessage,$crate::viewport_tools::tool::ToolActionHandlerData<'a>>>> = ::std::collections::HashMap::with_capacity(count_args!($(($enum_variant)),*));
+		let mut hash_map: ::std::collections::HashMap<$crate::viewport_tools::tool::ToolType, ::std::boxed::Box<$crate::viewport_tools::tool::Tool>> = ::std::collections::HashMap::with_capacity(count_args!($(($enum_variant)),*));
 		$(hash_map.insert($crate::viewport_tools::tool::ToolType::$enum_variant, ::std::boxed::Box::new(<$struct_path>::default()));)*
 
 		hash_map

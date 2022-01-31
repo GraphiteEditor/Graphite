@@ -1,9 +1,5 @@
 import { IconName, IconSize } from "@/utilities/icons";
 
-export type Widgets = TextButtonWidget | IconButtonWidget | SeparatorWidget | PopoverButtonWidget | NumberInputWidget;
-export type WidgetRow = Widgets[];
-export type WidgetLayout = WidgetRow[];
-
 // Text Button
 export interface TextButtonWidget {
 	kind: "TextButton";

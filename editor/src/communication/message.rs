@@ -31,6 +31,8 @@ pub enum Message {
 	#[child]
 	InputPreprocessor(InputPreprocessorMessage),
 	#[child]
+	Layout(LayoutMessage),
+	#[child]
 	Portfolio(PortfolioMessage),
 	#[child]
 	Tool(ToolMessage),

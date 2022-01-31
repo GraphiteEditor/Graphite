@@ -8,6 +8,7 @@ pub mod document;
 pub mod frontend;
 pub mod global;
 pub mod input;
+pub mod layout;
 pub mod viewport_tools;
 
 #[doc(inline)]
@@ -67,6 +68,7 @@ pub mod message_prelude {
 	pub use crate::frontend::{FrontendMessage, FrontendMessageDiscriminant};
 	pub use crate::global::{GlobalMessage, GlobalMessageDiscriminant};
 	pub use crate::input::{InputMapperMessage, InputMapperMessageDiscriminant, InputPreprocessorMessage, InputPreprocessorMessageDiscriminant};
+	pub use crate::layout::{LayoutMessage, LayoutMessageDiscriminant};
 	pub use crate::misc::derivable_custom_traits::{ToDiscriminant, TransitiveChild};
 	pub use crate::viewport_tools::tool_message::{ToolMessage, ToolMessageDiscriminant};
 	pub use crate::viewport_tools::tools::crop::{CropMessage, CropMessageDiscriminant};
