@@ -2,11 +2,11 @@ use crate::document::DocumentMessageHandler;
 use crate::frontend::utility_types::MouseCursorIcon;
 use crate::input::keyboard::{Key, MouseMotion};
 use crate::input::InputPreprocessorMessageHandler;
+use crate::layout::widgets::{LayoutRow, NumberInput, PropertyHolder, Widget, WidgetCallback, WidgetHolder, WidgetLayout};
 use crate::message_prelude::*;
 use crate::misc::{HintData, HintGroup, HintInfo, KeysGroup};
 use crate::viewport_tools::snapping::SnapHandler;
-use crate::viewport_tools::tool::{DocumentToolData, Fsm, ToolActionHandlerData, ToolType};
-use crate::viewport_tools::tool_options::ToolOptions;
+use crate::viewport_tools::tool::{DocumentToolData, Fsm, ToolActionHandlerData};
 
 use graphene::layers::style;
 use graphene::Operation;
@@ -18,6 +18,17 @@ use serde::{Deserialize, Serialize};
 pub struct Pen {
 	fsm_state: PenToolFsmState,
 	data: PenToolData,
+	options: PenOptions,
+}
+
+pub struct PenOptions {
+	line_weight: u32,
+}
+
+impl Default for PenOptions {
+	fn default() -> Self {
+		Self { line_weight: 5 }
+	}
 }
 
 #[remain::sorted]
@@ -34,12 +45,36 @@ pub enum PenMessage {
 	DragStop,
 	PointerMove,
 	Undo,
+	UpdateOptions(PenOptionsUpdate),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum PenToolFsmState {
 	Ready,
 	Drawing,
+}
+
+#[remain::sorted]
+#[derive(PartialEq, Clone, Debug, Hash, Serialize, Deserialize)]
+pub enum PenOptionsUpdate {
+	LineWeight(u32),
+}
+
+impl PropertyHolder for Pen {
+	fn properties(&self) -> WidgetLayout {
+		WidgetLayout::new(vec![LayoutRow::Row {
+			name: "".into(),
+			widgets: vec![WidgetHolder::new(Widget::NumberInput(NumberInput {
+				unit: " px".into(),
+				label: "Weight".into(),
+				value: self.options.line_weight as f64,
+				is_integer: true,
+				min: Some(0.),
+				on_update: WidgetCallback::new(|number_input| PenMessage::UpdateOptions(PenOptionsUpdate::LineWeight(number_input.value as u32)).into()),
+				..NumberInput::default()
+			}))],
+		}])
+	}
 }
 
 impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Pen {
@@ -54,7 +89,14 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Pen {
 			return;
 		}
 
-		let new_state = self.fsm_state.transition(action, data.0, data.1, &mut self.data, data.2, responses);
+		if let ToolMessage::Pen(PenMessage::UpdateOptions(action)) = action {
+			match action {
+				PenOptionsUpdate::LineWeight(line_weight) => self.options.line_weight = line_weight,
+			}
+			return;
+		}
+
+		let new_state = self.fsm_state.transition(action, data.0, data.1, &mut self.data, &self.options, data.2, responses);
 
 		if self.fsm_state != new_state {
 			self.fsm_state = new_state;
@@ -89,6 +131,7 @@ struct PenToolData {
 
 impl Fsm for PenToolFsmState {
 	type ToolData = PenToolData;
+	type ToolOptions = PenOptions;
 
 	fn transition(
 		self,
@@ -96,6 +139,7 @@ impl Fsm for PenToolFsmState {
 		document: &DocumentMessageHandler,
 		tool_data: &DocumentToolData,
 		data: &mut Self::ToolData,
+		tool_options: &Self::ToolOptions,
 		input: &InputPreprocessorMessageHandler,
 		responses: &mut VecDeque<Message>,
 	) -> Self {
@@ -119,10 +163,7 @@ impl Fsm for PenToolFsmState {
 					data.points.push(pos);
 					data.next_point = pos;
 
-					data.weight = match tool_data.tool_options.get(&ToolType::Pen) {
-						Some(&ToolOptions::Pen { weight }) => weight,
-						_ => 5,
-					};
+					data.weight = tool_options.line_weight;
 
 					responses.push_back(make_operation(data, tool_data, true));
 

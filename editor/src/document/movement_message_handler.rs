@@ -156,6 +156,7 @@ impl MessageHandler<MovementMessage, (&Document, &InputPreprocessorMessageHandle
 				responses.push_back(FrontendMessage::UpdateCanvasZoom { factor: self.zoom }.into());
 				responses.push_back(ToolMessage::DocumentIsDirty.into());
 				responses.push_back(DocumentMessage::DirtyRenderDocumentInOutlineView.into());
+				responses.push_back(PortfolioMessage::UpdateDocumentBar.into());
 				self.create_document_transform(&ipp.viewport_bounds, responses);
 			}
 			IncreaseCanvasZoom { center_on_mouse } => {
@@ -245,12 +246,14 @@ impl MessageHandler<MovementMessage, (&Document, &InputPreprocessorMessageHandle
 				self.create_document_transform(&ipp.viewport_bounds, responses);
 				responses.push_back(ToolMessage::DocumentIsDirty.into());
 				responses.push_back(FrontendMessage::UpdateCanvasRotation { angle_radians: self.snapped_angle() }.into());
+				responses.push_back(PortfolioMessage::UpdateDocumentBar.into());
 			}
 			SetCanvasZoom { zoom_factor } => {
 				self.zoom = zoom_factor.clamp(VIEWPORT_ZOOM_SCALE_MIN, VIEWPORT_ZOOM_SCALE_MAX);
 				responses.push_back(FrontendMessage::UpdateCanvasZoom { factor: self.snapped_scale() }.into());
 				responses.push_back(ToolMessage::DocumentIsDirty.into());
 				responses.push_back(DocumentMessage::DirtyRenderDocumentInOutlineView.into());
+				responses.push_back(PortfolioMessage::UpdateDocumentBar.into());
 				self.create_document_transform(&ipp.viewport_bounds, responses);
 			}
 			TransformCanvasEnd => {

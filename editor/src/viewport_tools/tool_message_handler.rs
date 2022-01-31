@@ -1,6 +1,7 @@
 use super::tool::{message_to_tool_type, standard_tool_message, update_working_colors, StandardToolMessageType, ToolFsmState};
 use crate::document::DocumentMessageHandler;
 use crate::input::InputPreprocessorMessageHandler;
+use crate::layout::layout_message::LayoutTarget;
 use crate::message_prelude::*;
 
 use graphene::color::Color;
@@ -60,8 +61,10 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, &InputPreprocessorMes
 
 				// Notify the frontend about the new active tool to be displayed
 				let tool_name = tool_type.to_string();
-				let tool_options = self.tool_state.document_tool_data.tool_options.get(&tool_type).copied();
-				responses.push_back(FrontendMessage::UpdateActiveTool { tool_name, tool_options }.into());
+				responses.push_back(FrontendMessage::UpdateActiveTool { tool_name }.into());
+
+				// Send Properties to the frontend
+				tool_data.tools.get(&tool_type).unwrap().register_properties(responses, LayoutTarget::ToolOptions);
 			}
 			DocumentIsDirty => {
 				// Send the DocumentIsDirty message to the active tool's sub-tool message handler
@@ -89,11 +92,6 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, &InputPreprocessorMes
 				document_data.secondary_color = color;
 
 				update_working_colors(document_data, responses);
-			}
-			SetToolOptions { tool_type, tool_options } => {
-				let document_data = &mut self.tool_state.document_tool_data;
-
-				document_data.tool_options.insert(tool_type, tool_options);
 			}
 			SwapColors => {
 				let document_data = &mut self.tool_state.document_tool_data;
@@ -123,7 +121,7 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, &InputPreprocessorMes
 	}
 
 	fn actions(&self) -> ActionList {
-		let mut list = actions!(ToolMessageDiscriminant; ResetColors, SwapColors, ActivateTool, SetToolOptions);
+		let mut list = actions!(ToolMessageDiscriminant; ResetColors, SwapColors, ActivateTool);
 		list.extend(self.tool_state.tool_data.active_tool().actions());
 
 		list
