@@ -194,6 +194,7 @@
 				foreignObject {
 					width: 10000px;
 					height: 10000px;
+					overflow: visible;
 
 					div {
 						color: black;
