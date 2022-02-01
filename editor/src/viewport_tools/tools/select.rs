@@ -1,4 +1,4 @@
-use crate::consts::{BOUNDS_ROTATE_THRESHOLD, BOUNDS_SELECT_THRESHOLD, COLOR_ACCENT, SELECTION_DRAG_ANGLE, SELECTION_TOLERANCE, VECTOR_MANIPULATOR_ANCHOR_MARKER_SIZE};
+use crate::consts::{BOUNDS_ROTATE_THRESHOLD, BOUNDS_SELECT_THRESHOLD, COLOR_ACCENT, ROTATE_SNAP_ANGLE, SELECTION_DRAG_ANGLE, SELECTION_TOLERANCE, VECTOR_MANIPULATOR_ANCHOR_MARKER_SIZE};
 use crate::document::transformation::{OriginalTransforms, Selected};
 use crate::document::utility_types::{AlignAggregate, AlignAxis, FlipAxis};
 use crate::document::DocumentMessageHandler;
@@ -49,6 +49,7 @@ pub enum SelectMessage {
 	FlipHorizontal,
 	FlipVertical,
 	MouseMove {
+		axis_align: Key,
 		snap_angle: Key,
 	},
 }
@@ -476,11 +477,11 @@ impl Fsm for SelectToolFsmState {
 
 					state
 				}
-				(Dragging, MouseMove { snap_angle }) => {
+				(Dragging, MouseMove { axis_align, .. }) => {
 					// TODO: This is a cheat. Break out the relevant functionality from the handler above and call it from there and here.
 					responses.push_front(SelectMessage::DocumentIsDirty.into());
 
-					let mouse_position = if input.keyboard.get(snap_angle as usize) {
+					let mouse_position = if input.keyboard.get(axis_align as usize) {
 						let mouse_position = input.mouse.position - data.drag_start;
 						let snap_resolution = SELECTION_DRAG_ANGLE.to_radians();
 						let angle = -mouse_position.angle_between(DVec2::X);
@@ -523,7 +524,7 @@ impl Fsm for SelectToolFsmState {
 					}
 					ResizingBounds
 				}
-				(RotatingBounds, MouseMove { .. }) => {
+				(RotatingBounds, MouseMove { snap_angle, .. }) => {
 					if let Some(bounds) = &mut data.bounding_box_overlays {
 						let angle = {
 							let start_vec = data.drag_start - bounds.pivot;
@@ -532,7 +533,14 @@ impl Fsm for SelectToolFsmState {
 							start_vec.angle_between(end_vec)
 						};
 
-						let delta = DAffine2::from_angle(angle);
+						let snapped_angle = if input.keyboard.get(snap_angle as usize) {
+							let snap_resolution = ROTATE_SNAP_ANGLE.to_radians();
+							(angle / snap_resolution).round() * snap_resolution
+						} else {
+							angle
+						};
+
+						let delta = DAffine2::from_angle(snapped_angle);
 
 						let selected = data.layers_dragging.iter().collect::<Vec<_>>();
 						let mut selected = Selected::new(&mut bounds.origional_transforms, &mut bounds.pivot, &selected, responses, &document.graphene_document);
@@ -768,7 +776,12 @@ impl Fsm for SelectToolFsmState {
 			])]),
 			SelectToolFsmState::DrawingBox => HintData(vec![]),
 			SelectToolFsmState::ResizingBounds => HintData(vec![]),
-			SelectToolFsmState::RotatingBounds => HintData(vec![]),
+			SelectToolFsmState::RotatingBounds => HintData(vec![HintGroup(vec![HintInfo {
+				key_groups: vec![KeysGroup(vec![Key::KeyControl])],
+				mouse: None,
+				label: String::from("Snap 15°"),
+				plus: false,
+			}])]),
 		};
 
 		responses.push_back(FrontendMessage::UpdateInputHints { hint_data }.into());
