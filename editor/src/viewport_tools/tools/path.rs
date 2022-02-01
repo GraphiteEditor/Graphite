@@ -134,7 +134,7 @@ impl Fsm for PathToolFsmState {
 							.manipulation_handler
 							.selected_shapes
 							.iter()
-							.flat_map(|shape| shape.anchors.iter().map(|anchor| anchor.point.position))
+							.flat_map(|shape| shape.anchors.iter().map(|anchor| anchor.anchor_point_position()))
 							.collect();
 						data.snap_handler.add_snap_points(document, snap_points);
 						Dragging
