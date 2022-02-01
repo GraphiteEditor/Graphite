@@ -61,7 +61,7 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Select {
 		}
 
 		if action == ToolMessage::UpdateCursor {
-			self.fsm_state.update_cursor(responses);
+			responses.push_back(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Default }.into());
 			return;
 		}
 
@@ -70,7 +70,6 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Select {
 		if self.fsm_state != new_state {
 			self.fsm_state = new_state;
 			self.fsm_state.update_hints(responses);
-			self.fsm_state.update_cursor(responses);
 		}
 	}
 
@@ -78,7 +77,7 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Select {
 		use SelectToolFsmState::*;
 
 		match self.fsm_state {
-			Ready => actions!(SelectMessageDiscriminant; DragStart, EditText),
+			Ready => actions!(SelectMessageDiscriminant; DragStart, MouseMove, EditText),
 			Dragging => actions!(SelectMessageDiscriminant; DragStop, MouseMove, EditText),
 			DrawingBox => actions!(SelectMessageDiscriminant; DragStop, MouseMove, Abort, EditText),
 			ResizingBounds => actions!(SelectMessageDiscriminant; DragStop, MouseMove, Abort, EditText),
@@ -110,6 +109,7 @@ struct SelectToolData {
 	drag_box_overlay_layer: Option<Vec<LayerId>>,
 	bounding_box_overlays: Option<BoundingBoxOverlays>,
 	snap_handler: SnapHandler,
+	cursor: MouseCursorIcon,
 }
 
 impl SelectToolData {
@@ -278,7 +278,7 @@ impl BoundingBoxOverlays {
 	}
 
 	/// Check if the user has selected the edge for dragging (returns which edge in order top, bottom, left, right)
-	pub fn check_select(&mut self, cursor: DVec2) -> Option<(bool, bool, bool, bool)> {
+	pub fn check_selected_edges(&self, cursor: DVec2) -> Option<(bool, bool, bool, bool)> {
 		let min = self.bounds[0].min(self.bounds[1]);
 		let max = self.bounds[0].max(self.bounds[1]);
 		if min.x - cursor.x < BOUNDS_SELECT_THRESHOLD && min.y - cursor.y < BOUNDS_SELECT_THRESHOLD && cursor.x - max.x < BOUNDS_SELECT_THRESHOLD && cursor.y - max.y < BOUNDS_SELECT_THRESHOLD {
@@ -296,18 +296,15 @@ impl BoundingBoxOverlays {
 			}
 
 			if top || bottom || left || right {
-				self.selected_edges = Some(SelectedEdges::new(top, bottom, left, right, self.bounds, &mut self.pivot));
-
 				return Some((top, bottom, left, right));
 			}
 		}
 
-		self.selected_edges = None;
 		None
 	}
 
 	/// Check if the user is rotating with the bounds
-	pub fn check_rotate(&mut self, cursor: DVec2) -> bool {
+	pub fn check_rotate(&self, cursor: DVec2) -> bool {
 		let min = self.bounds[0].min(self.bounds[1]);
 		let max = self.bounds[0].max(self.bounds[1]);
 
@@ -316,6 +313,22 @@ impl BoundingBoxOverlays {
 			min.x - cursor.x < BOUNDS_ROTATE_THRESHOLD && min.y - cursor.y < BOUNDS_ROTATE_THRESHOLD && cursor.x - max.x < BOUNDS_ROTATE_THRESHOLD && cursor.y - max.y < BOUNDS_ROTATE_THRESHOLD;
 
 		outside_bounds & inside_extended_bounds
+	}
+
+	pub fn get_cursor(&self, input: &InputPreprocessorMessageHandler) -> MouseCursorIcon {
+		if let Some(directions) = self.check_selected_edges(input.mouse.position) {
+			match directions {
+				(true, false, false, false) | (false, true, false, false) => MouseCursorIcon::NSResize,
+				(false, false, true, false) | (false, false, false, true) => MouseCursorIcon::EWResize,
+				(true, false, true, false) | (false, true, false, true) => MouseCursorIcon::NWSEResize,
+				(true, false, false, true) | (false, true, true, false) => MouseCursorIcon::NESWResize,
+				_ => MouseCursorIcon::Default,
+			}
+		} else if self.check_rotate(input.mouse.position) {
+			MouseCursorIcon::Grabbing
+		} else {
+			MouseCursorIcon::Default
+		}
 	}
 
 	/// Removes the overlays
@@ -387,7 +400,11 @@ impl Fsm for SelectToolFsmState {
 					let mut buffer = Vec::new();
 
 					let dragging_bounds = if let Some(bounding_box) = &mut data.bounding_box_overlays {
-						bounding_box.check_select(input.mouse.position)
+						let edges = bounding_box.check_selected_edges(input.mouse.position);
+
+						bounding_box.selected_edges = edges.map(|(top, bottom, left, right)| SelectedEdges::new(top, bottom, left, right, bounding_box.bounds, &mut bounding_box.pivot));
+
+						edges
 					} else {
 						None
 					};
@@ -539,6 +556,16 @@ impl Fsm for SelectToolFsmState {
 						.into(),
 					);
 					DrawingBox
+				}
+				(Ready, MouseMove { .. }) => {
+					let cursor = data.bounding_box_overlays.as_ref().map_or(MouseCursorIcon::Default, |bounds| bounds.get_cursor(input));
+
+					if data.cursor != cursor {
+						data.cursor = cursor;
+						responses.push_back(FrontendMessage::UpdateMouseCursor { cursor }.into());
+					}
+
+					Ready
 				}
 				(Dragging, DragStop) => {
 					let response = match input.mouse.position.distance(data.drag_start) < 10. * f64::EPSILON {
