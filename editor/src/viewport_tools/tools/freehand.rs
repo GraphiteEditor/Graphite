@@ -2,10 +2,10 @@ use crate::document::DocumentMessageHandler;
 use crate::frontend::utility_types::MouseCursorIcon;
 use crate::input::keyboard::MouseMotion;
 use crate::input::InputPreprocessorMessageHandler;
+use crate::layout::widgets::{LayoutRow, NumberInput, PropertyHolder, Widget, WidgetCallback, WidgetHolder, WidgetLayout};
 use crate::message_prelude::*;
 use crate::misc::{HintData, HintGroup, HintInfo};
-use crate::viewport_tools::tool::{DocumentToolData, Fsm, ToolActionHandlerData, ToolType};
-use crate::viewport_tools::tool_options::ToolOptions;
+use crate::viewport_tools::tool::{DocumentToolData, Fsm, ToolActionHandlerData};
 
 use graphene::layers::style;
 use graphene::Operation;
@@ -17,6 +17,17 @@ use serde::{Deserialize, Serialize};
 pub struct Freehand {
 	fsm_state: FreehandToolFsmState,
 	data: FreehandToolData,
+	options: FreehandOptions,
+}
+
+pub struct FreehandOptions {
+	line_weight: u32,
+}
+
+impl Default for FreehandOptions {
+	fn default() -> Self {
+		Self { line_weight: 5 }
+	}
 }
 
 #[remain::sorted]
@@ -31,12 +42,36 @@ pub enum FreehandMessage {
 	DragStart,
 	DragStop,
 	PointerMove,
+	UpdateOptions(FreehandMessageOptionsUpdate),
+}
+
+#[remain::sorted]
+#[derive(PartialEq, Clone, Debug, Hash, Serialize, Deserialize)]
+pub enum FreehandMessageOptionsUpdate {
+	LineWeight(u32),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum FreehandToolFsmState {
 	Ready,
 	Drawing,
+}
+
+impl PropertyHolder for Freehand {
+	fn properties(&self) -> WidgetLayout {
+		WidgetLayout::new(vec![LayoutRow::Row {
+			name: "".into(),
+			widgets: vec![WidgetHolder::new(Widget::NumberInput(NumberInput {
+				unit: " px".into(),
+				label: "Weight".into(),
+				value: self.options.line_weight as f64,
+				is_integer: true,
+				min: Some(1.),
+				on_update: WidgetCallback::new(|number_input| FreehandMessage::UpdateOptions(FreehandMessageOptionsUpdate::LineWeight(number_input.value as u32)).into()),
+				..NumberInput::default()
+			}))],
+		}])
+	}
 }
 
 impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Freehand {
@@ -51,7 +86,14 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Freehand {
 			return;
 		}
 
-		let new_state = self.fsm_state.transition(action, data.0, data.1, &mut self.data, data.2, responses);
+		if let ToolMessage::Freehand(FreehandMessage::UpdateOptions(action)) = action {
+			match action {
+				FreehandMessageOptionsUpdate::LineWeight(line_weight) => self.options.line_weight = line_weight,
+			}
+			return;
+		}
+
+		let new_state = self.fsm_state.transition(action, data.0, data.1, &mut self.data, &self.options, data.2, responses);
 
 		if self.fsm_state != new_state {
 			self.fsm_state = new_state;
@@ -84,6 +126,7 @@ struct FreehandToolData {
 
 impl Fsm for FreehandToolFsmState {
 	type ToolData = FreehandToolData;
+	type ToolOptions = FreehandOptions;
 
 	fn transition(
 		self,
@@ -91,6 +134,7 @@ impl Fsm for FreehandToolFsmState {
 		document: &DocumentMessageHandler,
 		tool_data: &DocumentToolData,
 		data: &mut Self::ToolData,
+		tool_options: &Self::ToolOptions,
 		input: &InputPreprocessorMessageHandler,
 		responses: &mut VecDeque<Message>,
 	) -> Self {
@@ -110,10 +154,7 @@ impl Fsm for FreehandToolFsmState {
 
 					data.points.push(pos);
 
-					data.weight = match tool_data.tool_options.get(&ToolType::Freehand) {
-						Some(&ToolOptions::Freehand { weight }) => weight,
-						_ => 5,
-					};
+					data.weight = tool_options.line_weight;
 
 					responses.push_back(make_operation(data, tool_data));
 

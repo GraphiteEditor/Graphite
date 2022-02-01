@@ -137,8 +137,6 @@ export type ToolName =
 
 export class UpdateActiveTool extends JsMessage {
 	readonly tool_name!: ToolName;
-
-	readonly tool_options!: object;
 }
 
 export class UpdateActiveDocument extends JsMessage {
@@ -390,6 +388,87 @@ export class TriggerIndexedDbRemoveDocument extends JsMessage {
 	document_id!: string;
 }
 
+export interface WidgetLayout {
+	layout_target: unknown;
+	layout: LayoutRow[];
+}
+
+export function defaultWidgetLayout(): WidgetLayout {
+	return {
+		layout: [],
+		layout_target: null,
+	};
+}
+
+export type LayoutRow = WidgetRow | WidgetSection;
+
+export type WidgetRow = { name: string; widgets: Widget[] };
+export function isWidgetRow(layoutRow: WidgetRow | WidgetSection): layoutRow is WidgetRow {
+	return Boolean((layoutRow as WidgetRow).widgets);
+}
+
+export type WidgetSection = { name: string; layout: LayoutRow[] };
+export function isWidgetSection(layoutRow: WidgetRow | WidgetSection): layoutRow is WidgetSection {
+	return Boolean((layoutRow as WidgetSection).layout);
+}
+
+export type WidgetKind = "NumberInput" | "Separator" | "IconButton" | "PopoverButton" | "OptionalInput" | "RadioInput";
+
+export interface Widget {
+	kind: WidgetKind;
+	widget_id: BigInt;
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	props: any;
+}
+
+export class UpdateToolOptionsLayout extends JsMessage implements WidgetLayout {
+	layout_target!: unknown;
+
+	@Transform(({ value }) => createWidgetLayout(value))
+	layout!: LayoutRow[];
+}
+
+export class UpdateDocumentBarLayout extends JsMessage {
+	layout_target!: unknown;
+
+	@Transform(({ value }) => createWidgetLayout(value))
+	layout!: LayoutRow[];
+}
+
+// Unpacking rust types to more usable type in the frontend
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function createWidgetLayout(widgetLayout: any[]): LayoutRow[] {
+	return widgetLayout.map((rowOrSection) => {
+		if (rowOrSection.Row) {
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			const widgets = rowOrSection.Row.widgets.map((widgetHolder: any) => {
+				const { widget_id } = widgetHolder;
+				const kind = Object.keys(widgetHolder.widget)[0];
+				const props = widgetHolder.widget[kind];
+
+				return { widget_id, kind, props };
+			});
+
+			return {
+				name: rowOrSection.Row.name,
+				widgets,
+			};
+		}
+		if (rowOrSection.Section) {
+			return {
+				name: rowOrSection.Section.name,
+				layout: createWidgetLayout(rowOrSection.Section),
+			};
+		}
+
+		throw new Error("Layout row type does not exist");
+	});
+}
+
+export class DisplayDialogComingSoon extends JsMessage {
+	issue: number | undefined;
+}
+
 export class TriggerTextCommit extends JsMessage {}
 
 // Any is used since the type of the object should be known from the rust side
@@ -425,5 +504,8 @@ export const messageConstructors: Record<string, MessageMaker> = {
 	TriggerIndexedDbRemoveDocument,
 	TriggerTextCommit,
 	UpdateDocumentArtboards,
+	UpdateToolOptionsLayout,
+	DisplayDialogComingSoon,
+	UpdateDocumentBarLayout,
 } as const;
 export type JsMessageType = keyof typeof messageConstructors;

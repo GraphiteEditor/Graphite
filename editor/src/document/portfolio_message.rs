@@ -60,5 +60,6 @@ pub enum PortfolioMessage {
 	SelectDocument {
 		document_id: u64,
 	},
+	UpdateDocumentBar,
 	UpdateOpenDocumentsList,
 }
