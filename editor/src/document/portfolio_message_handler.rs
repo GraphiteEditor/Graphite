@@ -56,6 +56,7 @@ impl PortfolioMessageHandler {
 	fn load_document(&mut self, new_document: DocumentMessageHandler, document_id: u64, replace_first_empty: bool, responses: &mut VecDeque<Message>) {
 		// Special case when loading a document on an empty page
 		if replace_first_empty && self.active_document().is_unmodified_default() {
+			responses.push_back(ToolMessage::AbortCurrentTool.into());
 			responses.push_back(PortfolioMessage::CloseDocument { document_id: self.active_document_id }.into());
 
 			let active_document_index = self
@@ -215,6 +216,7 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 			CloseDocumentWithConfirmation { document_id } => {
 				let target_document = self.documents.get(&document_id).unwrap();
 				if target_document.is_saved() {
+					responses.push_back(ToolMessage::AbortCurrentTool.into());
 					responses.push_back(PortfolioMessage::CloseDocument { document_id }.into());
 				} else {
 					responses.push_back(FrontendMessage::DisplayConfirmationToCloseDocument { document_id }.into());
