@@ -94,7 +94,6 @@ impl PortfolioMessageHandler {
 
 		responses.push_back(FrontendMessage::UpdateOpenDocumentsList { open_documents }.into());
 
-		responses.push_back(ToolMessage::AbortCurrentTool.into());
 		responses.push_back(PortfolioMessage::SelectDocument { document_id }.into());
 	}
 
@@ -219,9 +218,6 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 					responses.push_back(PortfolioMessage::CloseDocument { document_id }.into());
 				} else {
 					responses.push_back(FrontendMessage::DisplayConfirmationToCloseDocument { document_id }.into());
-
-					responses.push_back(ToolMessage::AbortCurrentTool.into());
-
 					// Select the document being closed
 					responses.push_back(PortfolioMessage::SelectDocument { document_id }.into());
 				}
@@ -246,23 +242,18 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 				responses.push_back(Copy { clipboard }.into());
 				responses.push_back(DeleteSelectedLayers.into());
 			}
-			GenerateNewDocument => {
+			NewDocument => {
 				let name = self.generate_new_document_name();
 				let new_document = DocumentMessageHandler::with_name(name, ipp);
 				let document_id = generate_uuid();
-				self.active_document_id = document_id;
+				responses.push_back(ToolMessage::AbortCurrentTool.into());
 				self.load_document(new_document, document_id, false, responses);
-			}
-			NewDocument => {
-				responses.push_front(GenerateNewDocument.into());
-				responses.push_front(ToolMessage::AbortCurrentTool.into());
 			}
 			NextDocument => {
 				let current_index = self.document_index(self.active_document_id);
 				let next_index = (current_index + 1) % self.document_ids.len();
 				let next_id = self.document_ids[next_index];
 
-				responses.push_back(ToolMessage::AbortCurrentTool.into());
 				responses.push_back(PortfolioMessage::SelectDocument { document_id: next_id }.into());
 			}
 			OpenDocument => {
@@ -363,8 +354,6 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 				let current_index = self.document_index(self.active_document_id);
 				let prev_index = (current_index + len - 1) % len;
 				let prev_id = self.document_ids[prev_index];
-
-				responses.push_back(ToolMessage::AbortCurrentTool.into());
 				responses.push_back(PortfolioMessage::SelectDocument { document_id: prev_id }.into());
 			}
 			RequestAboutGraphiteDialog => {
@@ -375,15 +364,20 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 				if !active_document.is_saved() {
 					responses.push_back(PortfolioMessage::AutoSaveDocument { document_id: self.active_document_id }.into());
 				}
-				self.active_document_id = document_id;
+				responses.push_back(ToolMessage::AbortCurrentTool.into());
+				responses.push_back(SetActiveDcoument { document_id }.into());
+
 				responses.push_back(FrontendMessage::UpdateActiveDocument { document_id }.into());
 				responses.push_back(RenderDocument.into());
 				responses.push_back(DocumentMessage::DocumentStructureChanged.into());
-				for layer in self.active_document().layer_metadata.keys() {
+				for layer in self.documents.get(&document_id).unwrap().layer_metadata.keys() {
 					responses.push_back(DocumentMessage::LayerChanged { affected_layer_path: layer.clone() }.into());
 				}
 				responses.push_back(ToolMessage::DocumentIsDirty.into());
 				responses.push_back(PortfolioMessage::UpdateDocumentBar.into());
+			}
+			SetActiveDcoument { document_id } => {
+				self.active_document_id = document_id;
 			}
 			UpdateDocumentBar => {
 				let active_document = self.active_document();

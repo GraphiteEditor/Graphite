@@ -34,7 +34,6 @@ pub enum PortfolioMessage {
 	Cut {
 		clipboard: Clipboard,
 	},
-	GenerateNewDocument,
 	NewDocument,
 	NextDocument,
 	OpenDocument,
@@ -59,6 +58,9 @@ pub enum PortfolioMessage {
 	PrevDocument,
 	RequestAboutGraphiteDialog,
 	SelectDocument {
+		document_id: u64,
+	},
+	SetActiveDcoument {
 		document_id: u64,
 	},
 	UpdateDocumentBar,
