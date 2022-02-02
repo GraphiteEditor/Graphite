@@ -60,14 +60,14 @@ pub struct ManipulationHandler {
 	// Index of the most recently select point's anchor
 	pub selected_anchor_index: usize,
 
-	// Have we selected a point on our shapes_to_modify shapes yet?
+	// Have we selected a point in shapes_to_modify yet?
 	pub has_had_point_selection: bool,
 	// Debounce for toggling mirroring with alt
 	alt_mirror_toggle_debounce: bool,
 }
 
 impl ManipulationHandler {
-	/// Select the first manipulator within the selection threshold
+	/// Select the first point within the selection threshold
 	pub fn select_point(&mut self, mouse_position: DVec2, select_threshold: f64, responses: &mut VecDeque<Message>) -> bool {
 		if self.shapes_to_modify.is_empty() {
 			return false;
@@ -78,9 +78,9 @@ impl ManipulationHandler {
 		for shape_index in 0..self.shapes_to_modify.len() {
 			let selected_shape = &self.shapes_to_modify[shape_index];
 			let (anchor_index, point_index, distance) = self.closest_manipulator_indices(selected_shape, mouse_position);
-			// Choose the first manipulator under the threshold
+			// Choose the first point under the threshold
 			if distance < select_threshold_squared {
-				// Populate the elements from the path and store the path to th selected shape
+				// Populate the elements from the path and store the path to the selected shape
 				self.selected_shape_elements = selected_shape.bez_path.clone().into_iter().collect();
 				self.selected_layer_path = selected_shape.layer_path.clone();
 
