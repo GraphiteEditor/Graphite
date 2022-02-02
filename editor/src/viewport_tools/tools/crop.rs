@@ -1,3 +1,4 @@
+use crate::layout::widgets::PropertyHolder;
 use crate::message_prelude::*;
 use crate::viewport_tools::tool::ToolActionHandlerData;
 
@@ -25,3 +26,5 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Crop {
 
 	advertise_actions!();
 }
+
+impl PropertyHolder for Crop {}

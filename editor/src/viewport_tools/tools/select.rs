@@ -5,10 +5,11 @@ use crate::frontend::utility_types::MouseCursorIcon;
 use crate::input::keyboard::{Key, MouseMotion};
 use crate::input::mouse::ViewportPosition;
 use crate::input::InputPreprocessorMessageHandler;
+use crate::layout::widgets::{IconButton, LayoutRow, PopoverButton, PropertyHolder, Separator, SeparatorDirection, SeparatorType, Widget, WidgetCallback, WidgetHolder, WidgetLayout};
 use crate::message_prelude::*;
 use crate::misc::{HintData, HintGroup, HintInfo, KeysGroup};
 use crate::viewport_tools::snapping::SnapHandler;
-use crate::viewport_tools::tool::{DocumentToolData, Fsm, ToolActionHandlerData};
+use crate::viewport_tools::tool::{DocumentToolData, Fsm, ToolActionHandlerData, ToolType};
 
 use graphene::document::Document;
 use graphene::intersection::Quad;
@@ -43,11 +44,185 @@ pub enum SelectMessage {
 		add_to_selection: Key,
 	},
 	DragStop,
+	EditText,
 	FlipHorizontal,
 	FlipVertical,
 	MouseMove {
 		snap_angle: Key,
 	},
+}
+
+impl PropertyHolder for Select {
+	fn properties(&self) -> WidgetLayout {
+		WidgetLayout::new(vec![LayoutRow::Row {
+			name: "".into(),
+			widgets: vec![
+				WidgetHolder::new(Widget::IconButton(IconButton {
+					icon: "AlignLeft".into(),
+					tooltip: "Align Left".into(),
+					size: 24,
+					on_update: WidgetCallback::new(|_| {
+						DocumentMessage::AlignSelectedLayers {
+							axis: AlignAxis::X,
+							aggregate: AlignAggregate::Min,
+						}
+						.into()
+					}),
+					..IconButton::default()
+				})),
+				WidgetHolder::new(Widget::IconButton(IconButton {
+					icon: "AlignHorizontalCenter".into(),
+					tooltip: "Align Horizontal Center".into(),
+					size: 24,
+					on_update: WidgetCallback::new(|_| {
+						DocumentMessage::AlignSelectedLayers {
+							axis: AlignAxis::X,
+							aggregate: AlignAggregate::Center,
+						}
+						.into()
+					}),
+					..IconButton::default()
+				})),
+				WidgetHolder::new(Widget::IconButton(IconButton {
+					icon: "AlignRight".into(),
+					tooltip: "Align Right".into(),
+					size: 24,
+					on_update: WidgetCallback::new(|_| {
+						DocumentMessage::AlignSelectedLayers {
+							axis: AlignAxis::X,
+							aggregate: AlignAggregate::Max,
+						}
+						.into()
+					}),
+					..IconButton::default()
+				})),
+				WidgetHolder::new(Widget::Separator(Separator {
+					direction: SeparatorDirection::Horizontal,
+					separator_type: SeparatorType::Unrelated,
+				})),
+				WidgetHolder::new(Widget::IconButton(IconButton {
+					icon: "AlignTop".into(),
+					tooltip: "Align Top".into(),
+					size: 24,
+					on_update: WidgetCallback::new(|_| {
+						DocumentMessage::AlignSelectedLayers {
+							axis: AlignAxis::Y,
+							aggregate: AlignAggregate::Min,
+						}
+						.into()
+					}),
+					..IconButton::default()
+				})),
+				WidgetHolder::new(Widget::IconButton(IconButton {
+					icon: "AlignVerticalCenter".into(),
+					tooltip: "Align Vertical Center".into(),
+					size: 24,
+					on_update: WidgetCallback::new(|_| {
+						DocumentMessage::AlignSelectedLayers {
+							axis: AlignAxis::Y,
+							aggregate: AlignAggregate::Center,
+						}
+						.into()
+					}),
+					..IconButton::default()
+				})),
+				WidgetHolder::new(Widget::IconButton(IconButton {
+					icon: "AlignBottom".into(),
+					tooltip: "Align Bottom".into(),
+					size: 24,
+					on_update: WidgetCallback::new(|_| {
+						DocumentMessage::AlignSelectedLayers {
+							axis: AlignAxis::Y,
+							aggregate: AlignAggregate::Max,
+						}
+						.into()
+					}),
+					..IconButton::default()
+				})),
+				WidgetHolder::new(Widget::Separator(Separator {
+					direction: SeparatorDirection::Horizontal,
+					separator_type: SeparatorType::Related,
+				})),
+				WidgetHolder::new(Widget::PopoverButton(PopoverButton {
+					title: "Align".into(),
+					text: "The contents of this popover menu are coming soon".into(),
+				})),
+				WidgetHolder::new(Widget::Separator(Separator {
+					direction: SeparatorDirection::Horizontal,
+					separator_type: SeparatorType::Section,
+				})),
+				WidgetHolder::new(Widget::IconButton(IconButton {
+					icon: "FlipHorizontal".into(),
+					tooltip: "Flip Horizontal".into(),
+					size: 24,
+					on_update: WidgetCallback::new(|_| SelectMessage::FlipHorizontal.into()),
+					..IconButton::default()
+				})),
+				WidgetHolder::new(Widget::IconButton(IconButton {
+					icon: "FlipVertical".into(),
+					tooltip: "Flip Vertical".into(),
+					size: 24,
+					on_update: WidgetCallback::new(|_| SelectMessage::FlipVertical.into()),
+					..IconButton::default()
+				})),
+				WidgetHolder::new(Widget::Separator(Separator {
+					direction: SeparatorDirection::Horizontal,
+					separator_type: SeparatorType::Related,
+				})),
+				WidgetHolder::new(Widget::PopoverButton(PopoverButton {
+					title: "Flip".into(),
+					text: "The contents of this popover menu are coming soon".into(),
+				})),
+				WidgetHolder::new(Widget::Separator(Separator {
+					direction: SeparatorDirection::Horizontal,
+					separator_type: SeparatorType::Section,
+				})),
+				WidgetHolder::new(Widget::IconButton(IconButton {
+					icon: "BooleanUnion".into(),
+					tooltip: "Boolean Union".into(),
+					size: 24,
+					on_update: WidgetCallback::new(|_| FrontendMessage::DisplayDialogComingSoon { issue: Some(197) }.into()),
+					..IconButton::default()
+				})),
+				WidgetHolder::new(Widget::IconButton(IconButton {
+					icon: "BooleanSubtractFront".into(),
+					tooltip: "Boolean Subtract Front".into(),
+					size: 24,
+					on_update: WidgetCallback::new(|_| FrontendMessage::DisplayDialogComingSoon { issue: Some(197) }.into()),
+					..IconButton::default()
+				})),
+				WidgetHolder::new(Widget::IconButton(IconButton {
+					icon: "BooleanSubtractBack".into(),
+					tooltip: "Boolean Subtract Back".into(),
+					size: 24,
+					on_update: WidgetCallback::new(|_| FrontendMessage::DisplayDialogComingSoon { issue: Some(197) }.into()),
+					..IconButton::default()
+				})),
+				WidgetHolder::new(Widget::IconButton(IconButton {
+					icon: "BooleanIntersect".into(),
+					tooltip: "Boolean Intersect".into(),
+					size: 24,
+					on_update: WidgetCallback::new(|_| FrontendMessage::DisplayDialogComingSoon { issue: Some(197) }.into()),
+					..IconButton::default()
+				})),
+				WidgetHolder::new(Widget::IconButton(IconButton {
+					icon: "BooleanDifference".into(),
+					tooltip: "Boolean Difference".into(),
+					size: 24,
+					on_update: WidgetCallback::new(|_| FrontendMessage::DisplayDialogComingSoon { issue: Some(197) }.into()),
+					..IconButton::default()
+				})),
+				WidgetHolder::new(Widget::Separator(Separator {
+					direction: SeparatorDirection::Horizontal,
+					separator_type: SeparatorType::Related,
+				})),
+				WidgetHolder::new(Widget::PopoverButton(PopoverButton {
+					title: "Boolean".into(),
+					text: "The contents of this popover menu are coming soon".into(),
+				})),
+			],
+		}])
+	}
 }
 
 impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Select {
@@ -62,7 +237,7 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Select {
 			return;
 		}
 
-		let new_state = self.fsm_state.transition(action, data.0, data.1, &mut self.data, data.2, responses);
+		let new_state = self.fsm_state.transition(action, data.0, data.1, &mut self.data, &(), data.2, responses);
 
 		if self.fsm_state != new_state {
 			self.fsm_state = new_state;
@@ -75,9 +250,9 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Select {
 		use SelectToolFsmState::*;
 
 		match self.fsm_state {
-			Ready => actions!(SelectMessageDiscriminant; DragStart),
-			Dragging => actions!(SelectMessageDiscriminant; DragStop, MouseMove),
-			DrawingBox => actions!(SelectMessageDiscriminant; DragStop, MouseMove, Abort),
+			Ready => actions!(SelectMessageDiscriminant; DragStart, EditText),
+			Dragging => actions!(SelectMessageDiscriminant; DragStop, MouseMove, EditText),
+			DrawingBox => actions!(SelectMessageDiscriminant; DragStop, MouseMove, Abort, EditText),
 		}
 	}
 }
@@ -140,6 +315,7 @@ fn transform_from_box(pos1: DVec2, pos2: DVec2) -> [f64; 6] {
 
 impl Fsm for SelectToolFsmState {
 	type ToolData = SelectToolData;
+	type ToolOptions = ();
 
 	fn transition(
 		self,
@@ -147,6 +323,7 @@ impl Fsm for SelectToolFsmState {
 		document: &DocumentMessageHandler,
 		_tool_data: &DocumentToolData,
 		data: &mut Self::ToolData,
+		_tool_options: &Self::ToolOptions,
 		input: &InputPreprocessorMessageHandler,
 		responses: &mut VecDeque<Message>,
 	) -> Self {
@@ -171,6 +348,24 @@ impl Fsm for SelectToolFsmState {
 					};
 					responses.push_front(response);
 					buffer.into_iter().rev().for_each(|message| responses.push_front(message));
+					self
+				}
+				(_, EditText) => {
+					let mouse_pos = input.mouse.position;
+					let tolerance = DVec2::splat(SELECTION_TOLERANCE);
+					let quad = Quad::from_box([mouse_pos - tolerance, mouse_pos + tolerance]);
+
+					if document
+						.graphene_document
+						.intersects_quad_root(quad)
+						.last()
+						.map(|l| document.graphene_document.layer(l).map(|l| l.as_text().is_ok()).unwrap_or(false))
+						.unwrap_or(false)
+					{
+						responses.push_front(ToolMessage::ActivateTool { tool_type: ToolType::Text }.into());
+						responses.push_back(TextMessage::Interact.into());
+					}
+
 					self
 				}
 				(Ready, DragStart { add_to_selection }) => {

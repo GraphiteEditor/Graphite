@@ -45,7 +45,23 @@ pub enum Operation {
 		transform: [f64; 6],
 		style: style::PathStyle,
 	},
-	AddPen {
+	AddText {
+		path: Vec<LayerId>,
+		transform: [f64; 6],
+		insert_index: isize,
+		text: String,
+		style: style::PathStyle,
+		size: f64,
+	},
+	SetTextEditability {
+		path: Vec<LayerId>,
+		editable: bool,
+	},
+	SetTextContent {
+		path: Vec<LayerId>,
+		new_text: String,
+	},
+	AddPolyline {
 		path: Vec<LayerId>,
 		transform: [f64; 6],
 		insert_index: isize,

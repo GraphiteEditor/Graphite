@@ -1,11 +1,10 @@
-use std::collections::VecDeque;
+use std::{collections::VecDeque, ops::IndexMut};
 
 use glam::{DAffine2, DVec2};
 use graphene::{
 	color::Color,
 	layers::{
 		layer_info::LayerDataType,
-		simple_shape::Shape,
 		style::{self, Fill, PathStyle, Stroke},
 	},
 	LayerId, Operation,
@@ -29,10 +28,17 @@ enum ManipulatorType {
 	Handle1 = 1,
 	Handle2 = 2,
 }
+
 impl<T> Index<ManipulatorType> for [T; 3] {
 	type Output = T;
-	fn index(&self, rg: ManipulatorType) -> &T {
-		&self[rg as usize]
+	fn index(&self, mt: ManipulatorType) -> &T {
+		&self[mt as usize]
+	}
+}
+
+impl<T> IndexMut<ManipulatorType> for [T; 3] {
+	fn index_mut(&mut self, mt: ManipulatorType) -> &mut T {
+		&mut self[mt as usize]
 	}
 }
 
@@ -54,6 +60,8 @@ pub struct ManipulationHandler {
 	// This is specifically the related anchor, even if we have a handle selected
 	pub selected_anchor_index: usize,
 
+	// Has selection within this shape
+	pub has_selection: bool,
 	// Debounce for toggling mirroring with alt
 	alt_mirror_toggle_debounce: bool,
 }
@@ -61,6 +69,10 @@ pub struct ManipulationHandler {
 impl ManipulationHandler {
 	/// Select the first manipulator within the selection threshold
 	pub fn select_manipulator(&mut self, mouse_position: DVec2, select_threshold: f64, responses: &mut VecDeque<Message>) -> bool {
+		if self.selected_shapes.is_empty() {
+			return false;
+		}
+
 		let select_threshold_squared = select_threshold * select_threshold;
 		for shape_index in 0..self.selected_shapes.len() {
 			let selected_shape = &self.selected_shapes[shape_index];
@@ -68,29 +80,36 @@ impl ManipulationHandler {
 			let (anchor_index, point_index, distance) = self.closest_manipulator_indices(selected_shape, mouse_position);
 			// Choose the first manipulator under the threshold
 			if distance < select_threshold_squared {
-				self.selected_shape_elements = selected_shape.path.clone().into_iter().collect();
+				// Populate the elements from the path and store the path to th selected shape
+				self.selected_shape_elements = selected_shape.bez_path.clone().into_iter().collect();
 				self.selected_layer_path = selected_shape.layer_path.clone();
 
-				// Set the previous selected point to no longer be selected
-				self.set_selected_point_selected(false, responses);
-
+				// Update the indices
 				self.selected_shape_index = shape_index;
 				self.selected_point_index = point_index;
 				self.selected_anchor_index = anchor_index;
 
-				self.set_selected_point_selected(true, responses);
+				// Set the new point to selected
+				self.set_selection_state(true, responses);
 
-				// Due to the shape data structure not persisting across selection changes we need to rely on the kurbo path to tell know if we should mirror
+				// Due to the shape data structure not persisting across selection changes we need to rely on the kurbo path to know if we should mirror
 				let selected_anchor = &mut self.selected_shapes[self.selected_shape_index].anchors[self.selected_anchor_index];
 				selected_anchor.handle_mirroring = (selected_anchor.angle_between_handles().abs() - std::f64::consts::PI).abs() < 0.1;
 				self.alt_mirror_toggle_debounce = false;
+				self.has_selection = true;
 				return true;
 			}
 		}
 		false
 	}
 
-	/// Provide the currently selected shape by reference
+	/// Set the shapes we consider for selection
+	pub fn set_selected_shapes(&mut self, selected_shapes: Vec<VectorManipulatorShape>) {
+		self.has_selection = false;
+		self.selected_shapes = selected_shapes;
+	}
+
+	/// Provide the shape that the currently selected point is a part of
 	pub fn selected_shape(&self) -> &VectorManipulatorShape {
 		&self.selected_shapes[self.selected_shape_index]
 	}
@@ -105,8 +124,23 @@ impl ManipulationHandler {
 		&self.selected_shape().anchors[self.selected_anchor_index]
 	}
 
-	/// Utility to set the selected point to be selected or not. Yes the name is silly.
-	fn set_selected_point_selected(&mut self, selected: bool, responses: &mut VecDeque<Message>) {
+	/// Remove all of the overlays this manipulation handler has created
+	pub fn remove_overlays(&mut self, responses: &mut VecDeque<Message>) {
+		if self.selected_shapes.is_empty() {
+			return;
+		}
+
+		for shape in &mut self.selected_shapes {
+			shape.remove_overlays(responses);
+		}
+	}
+
+	/// Utility for when we want to deselect the point but keep the indices for the shape, anchor and point
+	pub fn set_selection_state(&mut self, selected: bool, responses: &mut VecDeque<Message>) {
+		if self.selected_shapes.is_empty() {
+			return;
+		}
+
 		let selected_anchor = &mut self.selected_shapes[self.selected_shape_index].anchors[self.selected_anchor_index];
 		if let Some(selected_point) = &mut selected_anchor.points[self.selected_point_index] {
 			selected_point.set_selected(selected, responses);
@@ -117,7 +151,7 @@ impl ManipulationHandler {
 	pub fn move_selected_to(&mut self, target_position: DVec2, should_mirror: bool) -> Operation {
 		let target_to_shape = self.selected_shape().transform.inverse().transform_point2(target_position);
 		let target_position = Vec2::new(target_to_shape.x, target_to_shape.y);
-		let selected_anchor = &mut self.selected_shape().to_owned().anchors[self.selected_anchor_index];
+		let selected_anchor = &mut self.selected_shapes[self.selected_shape_index].anchors[self.selected_anchor_index];
 
 		// Should we mirror the opposing handle or not?
 		if !should_mirror && self.alt_mirror_toggle_debounce != should_mirror {
@@ -138,7 +172,7 @@ impl ManipulationHandler {
 	/// Move the selected point to the specificed target position
 	fn move_point(&mut self, target_position: Vec2) {
 		let target_position_as_point = target_position.to_point();
-		let selected_anchor = &mut self.selected_shape().to_owned().anchors[self.selected_anchor_index];
+		let selected_anchor = &mut self.selected_shapes[self.selected_shape_index].anchors[self.selected_anchor_index];
 		let selected_point = &selected_anchor.points[self.selected_point_index];
 		let h1_selected = ManipulatorType::Handle1 as usize == self.selected_point_index;
 		let h2_selected = ManipulatorType::Handle2 as usize == self.selected_point_index;
@@ -169,24 +203,31 @@ impl ManipulationHandler {
 					PathEl::CurveTo(a1, a2, p) => (PathEl::CurveTo(*a1, *a2 - (*p - target_position_as_point), target_position_as_point), p),
 					PathEl::ClosePath => (PathEl::ClosePath, &target_position_as_point),
 				};
+				let point_delta = (*point - target_position).to_vec2();
 
 				// Move the handle on the adjacent path element
 				if let Some(handle) = &selected_anchor.points[ManipulatorType::Handle2] {
-					let point_delta = (*point - target_position).to_vec2();
 					let neighbor = match &self.selected_shape_elements[handle.element_id] {
-						PathEl::MoveTo(p) => PathEl::MoveTo(*p),
+						PathEl::MoveTo(_) => PathEl::MoveTo(target_position_as_point),
 						PathEl::LineTo(_) => PathEl::LineTo(target_position_as_point),
 						PathEl::QuadTo(a1, p) => PathEl::QuadTo(*a1 - point_delta, *p),
 						PathEl::CurveTo(a1, a2, p) => PathEl::CurveTo(*a1 - point_delta, *a2, *p),
 						PathEl::ClosePath => PathEl::ClosePath,
 					};
 					self.selected_shape_elements[handle.element_id] = neighbor;
-
-					// Handle the invisible point that can be caused by MoveTo
-					if let Some(close_id) = selected_anchor.close_element_id {
-						self.selected_shape_elements[close_id] = PathEl::MoveTo(target_position_as_point);
-					}
 				}
+
+				// Handle the invisible point that can be caused by MoveTo
+				if let Some(close_id) = selected_anchor.close_element_id {
+					self.selected_shape_elements[close_id] = match &self.selected_shape_elements[close_id] {
+						PathEl::MoveTo(_) => PathEl::MoveTo(target_position_as_point),
+						PathEl::LineTo(_) => PathEl::LineTo(target_position_as_point),
+						PathEl::QuadTo(a1, p) => PathEl::QuadTo(*a1 - (*p - target_position_as_point), target_position_as_point),
+						PathEl::CurveTo(a1, a2, p) => PathEl::CurveTo(*a1, *a2 - (*p - target_position_as_point), target_position_as_point),
+						PathEl::ClosePath => PathEl::ClosePath,
+					};
+				}
+
 				if let Some(selected_point) = selected_point {
 					self.selected_shape_elements[selected_point.element_id] = selected;
 				}
@@ -209,7 +250,7 @@ impl ManipulationHandler {
 				};
 
 				// Move the opposing handle on the adjacent path element
-				if let Some(handle) = selected_anchor.opposing_handle(&selected_point) {
+				if let Some(handle) = selected_anchor.opposing_handle(selected_point) {
 					let neighbor = match &self.selected_shape_elements[handle.element_id] {
 						PathEl::MoveTo(p) => PathEl::MoveTo(*p),
 						PathEl::LineTo(p) => PathEl::LineTo(*p),
@@ -259,7 +300,7 @@ pub struct VectorManipulatorShape {
 	/// The path to the layer
 	pub layer_path: Vec<LayerId>,
 	/// The outline of the shape
-	pub path: kurbo::BezPath,
+	pub bez_path: kurbo::BezPath,
 	/// The segments containing the control points / manipulator handles
 	pub segments: Vec<VectorManipulatorSegment>,
 	/// The control points / manipulator handles
@@ -271,14 +312,15 @@ pub struct VectorManipulatorShape {
 	/// The transformation matrix to apply
 	pub transform: DAffine2,
 }
+type IndexedEl = (usize, kurbo::PathEl);
 
 impl VectorManipulatorShape {
 	// TODO: Figure out a more elegant way to construct this
-	pub fn new(layer_path: Vec<LayerId>, transform: DAffine2, shape: &Shape, responses: &mut VecDeque<Message>) -> Self {
+	pub fn new(layer_path: Vec<LayerId>, transform: DAffine2, bez_path: &BezPath, closed: bool, responses: &mut VecDeque<Message>) -> Self {
 		let mut manipulator_shape = VectorManipulatorShape {
 			layer_path,
-			path: shape.path.clone(),
-			closed: shape.closed,
+			bez_path: bez_path.clone(),
+			closed,
 			transform,
 			segments: vec![],
 			anchors: vec![],
@@ -295,98 +337,130 @@ impl VectorManipulatorShape {
 		self.transform.transform_point2(DVec2::from((point.x, point.y)))
 	}
 
-	/// Create the anchors from the kurbo path, only done on construction
-	fn create_anchors_from_kurbo(&self, responses: &mut VecDeque<Message>) -> Vec<VectorManipulatorAnchor> {
-		type IndexedEl = (usize, kurbo::PathEl);
+	/// Create an anchor on the boundary between two kurbo PathElements with optional handles
+	fn create_anchor_manipulator(&self, first: IndexedEl, second: IndexedEl, responses: &mut VecDeque<Message>) -> VectorManipulatorAnchor {
+		let mut handle1 = None;
+		let mut anchor_position: glam::DVec2 = glam::DVec2::ZERO;
+		let mut handle2 = None;
+		let (first_id, first_element) = first;
+		let (second_id, second_element) = second;
 
-		// Create an anchor on the boundary between two kurbo PathElements with optional handles
-		let mut create_anchor_manipulator = |first: IndexedEl, second: IndexedEl| -> VectorManipulatorAnchor {
-			let mut handle1 = None;
-			let mut anchor_position: glam::DVec2 = glam::DVec2::ZERO;
-			let mut handle2 = None;
-			let (first_id, first_element) = first;
-			let (second_id, second_element) = second;
-
-			let create_point = |id: usize, point: DVec2, overlay_path: Vec<LayerId>| -> VectorManipulatorPoint {
-				VectorManipulatorPoint {
-					element_id: id,
-					position: point,
-					overlay_path: Some(overlay_path),
-					can_be_selected: true,
-					is_selected: false,
-				}
-			};
-
-			match first_element {
-				kurbo::PathEl::MoveTo(anchor) | kurbo::PathEl::LineTo(anchor) => anchor_position = self.to_local_space(anchor),
-				kurbo::PathEl::QuadTo(handle, anchor) | kurbo::PathEl::CurveTo(_, handle, anchor) => {
-					anchor_position = self.to_local_space(anchor);
-					handle1 = Some(create_point(first_id, self.to_local_space(handle), self.create_handle_overlay(responses)));
-				}
-				_ => (),
-			}
-
-			match second_element {
-				kurbo::PathEl::CurveTo(handle, _, _) | kurbo::PathEl::QuadTo(handle, _) => {
-					handle2 = Some(create_point(second_id, self.to_local_space(handle), self.create_handle_overlay(responses)));
-				}
-				_ => (),
-			}
-
-			VectorManipulatorAnchor {
-				handle_line_overlays: (self.create_handle_line_overlay(&handle1, responses), self.create_handle_line_overlay(&handle2, responses)),
-				points: [Some(create_point(first_id, anchor_position, self.create_anchor_overlay(responses))), handle1, handle2],
-				close_element_id: None,
-				handle_mirroring: true,
+		let create_point = |id: usize, point: DVec2, overlay_path: Vec<LayerId>| -> VectorManipulatorPoint {
+			VectorManipulatorPoint {
+				element_id: id,
+				position: point,
+				overlay_path: Some(overlay_path),
+				can_be_selected: true,
+				is_selected: false,
 			}
 		};
 
+		match first_element {
+			kurbo::PathEl::MoveTo(anchor) | kurbo::PathEl::LineTo(anchor) => anchor_position = self.to_local_space(anchor),
+			kurbo::PathEl::QuadTo(handle, anchor) | kurbo::PathEl::CurveTo(_, handle, anchor) => {
+				anchor_position = self.to_local_space(anchor);
+				handle1 = Some(create_point(first_id, self.to_local_space(handle), self.create_handle_overlay(responses)));
+			}
+			_ => (),
+		}
+
+		match second_element {
+			kurbo::PathEl::CurveTo(handle, _, _) | kurbo::PathEl::QuadTo(handle, _) => {
+				handle2 = Some(create_point(second_id, self.to_local_space(handle), self.create_handle_overlay(responses)));
+			}
+			_ => (),
+		}
+
+		VectorManipulatorAnchor {
+			handle_line_overlays: (self.create_handle_line_overlay(&handle1, responses), self.create_handle_line_overlay(&handle2, responses)),
+			points: [Some(create_point(first_id, anchor_position, self.create_anchor_overlay(responses))), handle1, handle2],
+			close_element_id: None,
+			handle_mirroring: true,
+		}
+	}
+
+	/// Close the path by checking if the distance between the last element and the first MoveTo is less than the tolerance.
+	/// If so, create a new anchor at the first point. Otherwise, create a new anchor at the last point.
+	fn close_path(
+		&self,
+		points: &mut Vec<VectorManipulatorAnchor>,
+		to_replace: usize,
+		first_path_element: Option<IndexedEl>,
+		last_path_element: Option<IndexedEl>,
+		recent_move_to: Option<IndexedEl>,
+		responses: &mut VecDeque<Message>,
+	) {
+		if let (Some(first), Some(last), Some(move_to)) = (first_path_element, last_path_element, recent_move_to) {
+			let position_equal = match (move_to.1, last.1) {
+				(PathEl::MoveTo(p1), PathEl::LineTo(p2)) => p1.distance_squared(p2) < 0.01,
+				(PathEl::MoveTo(p1), PathEl::QuadTo(_, p2)) => p1.distance_squared(p2) < 0.01,
+				(PathEl::MoveTo(p1), PathEl::CurveTo(_, _, p2)) => p1.distance_squared(p2) < 0.01,
+				_ => false,
+			};
+
+			if position_equal {
+				points[to_replace].remove_overlays(responses);
+				points[to_replace] = self.create_anchor_manipulator(last, first, responses);
+				points[to_replace].close_element_id = Some(move_to.0);
+			} else {
+				points.push(self.create_anchor_manipulator(last, first, responses));
+			}
+		}
+	}
+
+	/// Create the anchors from the kurbo path, only done on construction
+	fn create_anchors_from_kurbo(&self, responses: &mut VecDeque<Message>) -> Vec<VectorManipulatorAnchor> {
 		// We need the indices paired with the kurbo path elements
-		let indexed_elements = self.path.elements().iter().enumerate().map(|(index, element)| (index, *element)).collect::<Vec<IndexedEl>>();
+		let indexed_elements = self.bez_path.elements().iter().enumerate().map(|(index, element)| (index, *element)).collect::<Vec<IndexedEl>>();
 
 		// Create the manipulation points
 		let mut points: Vec<VectorManipulatorAnchor> = vec![];
-		let (mut first, mut last): (Option<IndexedEl>, Option<IndexedEl>) = (None, None);
-		let mut close_element_id: Option<usize> = None;
+		let (mut first_path_element, mut last_path_element): (Option<IndexedEl>, Option<IndexedEl>) = (None, None);
+		let mut last_move_to_element: Option<IndexedEl> = None;
+		let mut ended_with_close_path = false;
+		let mut replace_id: usize = 0;
 
 		// Create an anchor at each join between two kurbo segments
 		for elements in indexed_elements.windows(2) {
-			let (current_index, current_element) = elements[0];
+			let (_, current_element) = elements[0];
 			let (_, next_element) = elements[1];
+			ended_with_close_path = false;
+
+			if matches!(current_element, kurbo::PathEl::ClosePath) {
+				continue;
+			}
 
 			// An anchor cannot stradle a line / curve segment and a ClosePath segment
 			if matches!(next_element, kurbo::PathEl::ClosePath) {
-				break;
-			}
+				ended_with_close_path = true;
+				// Does this end in the same position it started?
+				self.close_path(&mut points, replace_id, first_path_element, last_path_element, last_move_to_element, responses);
 
-			// TODO: Currently a unique case for [MoveTo, CurveTo, ...], refactor more generally if possible
-			if matches!(current_element, kurbo::PathEl::MoveTo(_)) && (matches!(next_element, kurbo::PathEl::CurveTo(_, _, _)) || matches!(next_element, kurbo::PathEl::QuadTo(_, _))) {
-				close_element_id = Some(current_index);
 				continue;
 			}
 
 			// Keep track of the first and last elements of this shape
-			if first.is_none() {
-				first = Some(elements[0]);
+			if matches!(current_element, kurbo::PathEl::MoveTo(_)) {
+				last_move_to_element = Some(elements[0]);
+				first_path_element = Some(elements[1]);
+				replace_id = points.len();
 			}
-			last = Some(elements[1]);
+			last_path_element = Some(elements[1]);
 
-			points.push(create_anchor_manipulator(elements[0], elements[1]));
+			points.push(self.create_anchor_manipulator(elements[0], elements[1], responses));
 		}
 
-		// Close the shape
-		if let (Some(first), Some(last)) = (first, last) {
-			let mut element = create_anchor_manipulator(last, first);
-			element.close_element_id = close_element_id;
-			points.push(element);
+		// If the path definition didn't include a ClosePath, we still need to behave as though it did
+		if !ended_with_close_path {
+			// Close the shape
+			self.close_path(&mut points, replace_id, first_path_element, last_path_element, last_move_to_element, responses);
 		}
-
 		points
 	}
 
 	/// Create the segments from the kurbo shape
 	fn create_segments_from_kurbo(&self) -> Vec<VectorManipulatorSegment> {
-		self.path
+		self.bez_path
 			.segments()
 			.map(|segment| -> VectorManipulatorSegment {
 				match segment {
@@ -409,21 +483,21 @@ impl VectorManipulatorShape {
 		for anchor_index in 0..self.anchors.len() {
 			let elements = path.elements();
 			let anchor = &mut self.anchors[anchor_index];
-			if let Some(anchor_point) = &mut anchor.points[0] {
+			if let Some(anchor_point) = &mut anchor.points[ManipulatorType::Anchor] {
 				match elements[anchor_point.element_id] {
-					kurbo::PathEl::MoveTo(anchor_position) | kurbo::PathEl::LineTo(anchor_position) => anchor.set_point_position(0, space_transform(anchor_position)),
+					kurbo::PathEl::MoveTo(anchor_position) | kurbo::PathEl::LineTo(anchor_position) => anchor.set_point_position(ManipulatorType::Anchor as usize, space_transform(anchor_position)),
 					kurbo::PathEl::QuadTo(handle_position, anchor_position) | kurbo::PathEl::CurveTo(_, handle_position, anchor_position) => {
-						anchor.set_point_position(0, space_transform(anchor_position));
-						if let Some(_) = &anchor.points[1] {
-							anchor.set_point_position(1, space_transform(handle_position));
+						anchor.set_point_position(ManipulatorType::Anchor as usize, space_transform(anchor_position));
+						if anchor.points[ManipulatorType::Handle1].is_some() {
+							anchor.set_point_position(ManipulatorType::Handle1 as usize, space_transform(handle_position));
 						}
 					}
 					_ => (),
 				}
-				if let Some(handle) = &mut anchor.points[2] {
+				if let Some(handle) = &mut anchor.points[ManipulatorType::Handle2] {
 					match elements[handle.element_id] {
 						kurbo::PathEl::CurveTo(handle_position, _, _) | kurbo::PathEl::QuadTo(handle_position, _) => {
-							anchor.set_point_position(2, space_transform(handle_position));
+							anchor.set_point_position(ManipulatorType::Handle2 as usize, space_transform(handle_position));
 						}
 						_ => (),
 					}
@@ -462,7 +536,7 @@ impl VectorManipulatorShape {
 			// Update the segment positions
 			self.update_segments_from_kurbo(&path);
 
-			self.path = path;
+			self.bez_path = path;
 
 			// Update the overlays to represent the changes to the kurbo path
 			self.place_shape_outline_overlay(responses);
@@ -476,7 +550,7 @@ impl VectorManipulatorShape {
 		let layer_path = vec![generate_uuid()];
 		let operation = Operation::AddOverlayShape {
 			path: layer_path.clone(),
-			bez_path: self.path.clone(),
+			bez_path: self.bez_path.clone(),
 			style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 1.0)), Some(Fill::none())),
 			closed: false,
 		};
@@ -533,7 +607,7 @@ impl VectorManipulatorShape {
 				DocumentMessage::Overlays(
 					Operation::SetShapePathInViewport {
 						path: overlay_path.clone(),
-						bez_path: self.path.clone(),
+						bez_path: self.bez_path.clone(),
 						transform: self.transform.to_cols_array(),
 					}
 					.into(),
@@ -558,7 +632,7 @@ impl VectorManipulatorShape {
 	}
 
 	/// Remove all of the overlays from the shape
-	pub fn remove_all_overlays(&mut self, responses: &mut VecDeque<Message>) {
+	pub fn remove_overlays(&mut self, responses: &mut VecDeque<Message>) {
 		self.remove_shape_outline_overlay(responses);
 		self.remove_anchor_overlays(responses);
 		self.remove_handle_overlays(responses);
@@ -675,15 +749,15 @@ impl VectorManipulatorAnchor {
 
 	/// Returns the opposing handle to the provided one
 	pub fn opposing_handle(&self, handle: &VectorManipulatorPoint) -> &Option<VectorManipulatorPoint> {
-		if let Some(point) = &self.points[1] {
+		if let Some(point) = &self.points[ManipulatorType::Handle1] {
 			if *point == *handle {
-				return &self.points[2];
+				return &self.points[ManipulatorType::Handle2];
 			}
 		};
 
-		if let Some(point) = &self.points[2] {
+		if let Some(point) = &self.points[ManipulatorType::Handle2] {
 			if *point == *handle {
-				return &self.points[1];
+				return &self.points[ManipulatorType::Handle1];
 			}
 		};
 		&None
@@ -691,7 +765,7 @@ impl VectorManipulatorAnchor {
 
 	/// Return the anchor position or a sane defau
 	pub fn anchor_point_position(&self) -> DVec2 {
-		if let Some(anchor) = &self.points[0] {
+		if let Some(anchor) = &self.points[ManipulatorType::Anchor] {
 			return anchor.position;
 		}
 		DVec2::ZERO
@@ -706,7 +780,7 @@ impl VectorManipulatorAnchor {
 
 	/// Updates the position of the anchor based on the kurbo path
 	pub fn place_anchor_overlay(&self, responses: &mut VecDeque<Message>) {
-		if let Some(anchor_point) = &self.points[0] {
+		if let Some(anchor_point) = &self.points[ManipulatorType::Anchor] {
 			if let Some(anchor_overlay) = &anchor_point.overlay_path {
 				let scale = DVec2::splat(VECTOR_MANIPULATOR_ANCHOR_MARKER_SIZE);
 				let angle = 0.;
@@ -728,7 +802,7 @@ impl VectorManipulatorAnchor {
 
 	/// Updates the position of the handles based on the kurbo path
 	pub fn place_handle_overlay(&self, responses: &mut VecDeque<Message>) {
-		if let Some(anchor_point) = &self.points[0] {
+		if let Some(anchor_point) = &self.points[ManipulatorType::Anchor] {
 			// Helper function to keep things DRY
 			let mut place_handle_and_line = |handle: &VectorManipulatorPoint, line: &Option<Vec<LayerId>>| {
 				if let Some(line_overlay) = line {
@@ -782,7 +856,7 @@ impl VectorManipulatorAnchor {
 
 	/// Removes the anchor overlay from the overlay document
 	pub fn remove_anchor_overlay(&mut self, responses: &mut VecDeque<Message>) {
-		if let Some(anchor_point) = &mut self.points[0] {
+		if let Some(anchor_point) = &mut self.points[ManipulatorType::Anchor] {
 			if let Some(overlay_path) = &anchor_point.overlay_path {
 				responses.push_back(DocumentMessage::Overlays(Operation::DeleteLayer { path: overlay_path.clone() }.into()).into());
 			}
@@ -818,9 +892,15 @@ impl VectorManipulatorAnchor {
 		self.handle_line_overlays = (None, None);
 	}
 
+	/// Clear overlays for this anchor, do this prior to deletion
+	pub fn remove_overlays(&mut self, responses: &mut VecDeque<Message>) {
+		self.remove_anchor_overlay(responses);
+		self.remove_handle_overlay(responses);
+	}
+
 	/// Sets the visibility of the anchors overlay
 	pub fn set_anchor_visiblity(&self, visibility: bool, responses: &mut VecDeque<Message>) {
-		if let Some(anchor_point) = &self.points[0] {
+		if let Some(anchor_point) = &self.points[ManipulatorType::Anchor] {
 			if let Some(overlay_path) = &anchor_point.overlay_path {
 				responses.push_back(self.visibility_message(overlay_path.clone(), visibility));
 			}

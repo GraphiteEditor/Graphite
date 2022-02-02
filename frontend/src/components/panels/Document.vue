@@ -6,67 +6,12 @@
 
 				<Separator :type="'Section'" />
 
-				<ToolOptions :activeTool="activeTool" :activeToolOptions="activeToolOptions" />
+				<WidgetLayout :layout="toolOptionsLayout" />
 			</LayoutRow>
 
 			<LayoutRow class="spacer"></LayoutRow>
 
-			<LayoutRow class="right side">
-				<OptionalInput v-model:checked="snappingEnabled" @update:checked="(snap: boolean) => setSnapping(snap)" :icon="'Snapping'" title="Snapping" />
-				<PopoverButton>
-					<h3>Snapping</h3>
-					<p>The contents of this popover menu are coming soon</p>
-				</PopoverButton>
-
-				<Separator :type="'Unrelated'" />
-
-				<OptionalInput v-model:checked="gridEnabled" @update:checked="() => dialog.comingSoon(318)" :icon="'Grid'" title="Grid" />
-				<PopoverButton>
-					<h3>Grid</h3>
-					<p>The contents of this popover menu are coming soon</p>
-				</PopoverButton>
-
-				<Separator :type="'Unrelated'" />
-
-				<OptionalInput v-model:checked="overlaysEnabled" @update:checked="(visible: boolean) => setOverlaysVisibility(visible)" :icon="'Overlays'" title="Overlays" />
-				<PopoverButton>
-					<h3>Overlays</h3>
-					<p>The contents of this popover menu are coming soon</p>
-				</PopoverButton>
-
-				<Separator :type="'Unrelated'" />
-
-				<RadioInput :entries="viewModeEntries" v-model:selectedIndex="viewModeIndex" class="combined-after" />
-				<PopoverButton>
-					<h3>View Mode</h3>
-					<p>The contents of this popover menu are coming soon</p>
-				</PopoverButton>
-
-				<Separator :type="'Section'" />
-
-				<NumberInput @update:value="(newRotation: number) => setRotation(newRotation)" v-model:value="documentRotation" :incrementFactor="15" :unit="'°'" />
-
-				<Separator :type="'Section'" />
-
-				<IconButton :action="increaseCanvasZoom" :icon="'ZoomIn'" :size="24" title="Zoom In" />
-				<IconButton :action="decreaseCanvasZoom" :icon="'ZoomOut'" :size="24" title="Zoom Out" />
-				<IconButton :action="() => setCanvasZoom(100)" :icon="'ZoomReset'" :size="24" title="Zoom to 100%" />
-
-				<Separator :type="'Related'" />
-
-				<NumberInput
-					v-model:value="documentZoom"
-					@update:value="(newZoom: number) => setCanvasZoom(newZoom)"
-					:min="0.000001"
-					:max="1000000"
-					:incrementBehavior="'Callback'"
-					:incrementCallbackIncrease="increaseCanvasZoom"
-					:incrementCallbackDecrease="decreaseCanvasZoom"
-					:unit="'%'"
-					:displayDecimalPlaces="4"
-					ref="zoom"
-				/>
-			</LayoutRow>
+			<WidgetLayout :layout="documentBarLayout" class="right side" />
 		</LayoutRow>
 		<LayoutRow class="shelf-and-viewport">
 			<LayoutCol class="shelf">
@@ -78,7 +23,7 @@
 
 					<Separator :type="'Section'" :direction="'Vertical'" />
 
-					<ShelfItemInput icon="ParametricTextTool" title="Text Tool (T)" :active="activeTool === 'Text'" :action="() => (dialog.comingSoon(153), false) && selectTool('Text')" />
+					<ShelfItemInput icon="ParametricTextTool" title="Text Tool (T)" :active="activeTool === 'Text'" :action="() => selectTool('Text')" />
 					<ShelfItemInput icon="ParametricFillTool" title="Fill Tool (F)" :active="activeTool === 'Fill'" :action="() => selectTool('Fill')" />
 					<ShelfItemInput
 						icon="ParametricGradientTool"
@@ -100,7 +45,7 @@
 
 					<ShelfItemInput icon="VectorPathTool" title="Path Tool (A)" :active="activeTool === 'Path'" :action="() => selectTool('Path')" />
 					<ShelfItemInput icon="VectorPenTool" title="Pen Tool (P)" :active="activeTool === 'Pen'" :action="() => selectTool('Pen')" />
-					<ShelfItemInput icon="VectorFreehandTool" title="Freehand Tool (N)" :active="activeTool === 'Freehand'" :action="() => (dialog.comingSoon(), false) && selectTool('Freehand')" />
+					<ShelfItemInput icon="VectorFreehandTool" title="Freehand Tool (N)" :active="activeTool === 'Freehand'" :action="() => selectTool('Freehand')" />
 					<ShelfItemInput icon="VectorSplineTool" title="Spline Tool" :active="activeTool === 'Spline'" :action="() => (dialog.comingSoon(), false) && selectTool('Spline')" />
 					<ShelfItemInput icon="VectorLineTool" title="Line Tool (L)" :active="activeTool === 'Line'" :action="() => selectTool('Line')" />
 					<ShelfItemInput icon="VectorRectangleTool" title="Rectangle Tool (M)" :active="activeTool === 'Rectangle'" :action="() => selectTool('Rectangle')" />
@@ -246,6 +191,32 @@
 						pointer-events: auto;
 					}
 				}
+				foreignObject {
+					overflow: visible;
+					width: 1px;
+					height: 1px;
+
+					div {
+						color: black;
+						background: none;
+						cursor: text;
+						border: none;
+						margin: 0;
+						padding: 0;
+						overflow: visible;
+						white-space: pre-wrap;
+						display: inline-block;
+						// Workaround to force Chrome to display the flashing text entry cursor when text is empty
+						padding-left: 1px;
+						margin-left: -1px;
+					}
+
+					div:focus {
+						border: none;
+						outline: none;
+						margin: -1px;
+					}
+				}
 			}
 		}
 	}
@@ -253,7 +224,7 @@
 </style>
 
 <script lang="ts">
-import { defineComponent } from "vue";
+import { defineComponent, nextTick } from "vue";
 
 import {
 	UpdateDocumentArtwork,
@@ -266,36 +237,30 @@ import {
 	ToolName,
 	UpdateDocumentArtboards,
 	UpdateMouseCursor,
+	UpdateToolOptionsLayout,
+	defaultWidgetLayout,
+	UpdateDocumentBarLayout,
+	TriggerTextCommit,
+	DisplayRemoveEditableTextbox,
+	DisplayEditableTextbox,
 } from "@/dispatcher/js-messages";
 
 import LayoutCol from "@/components/layout/LayoutCol.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
 import IconButton from "@/components/widgets/buttons/IconButton.vue";
-import PopoverButton from "@/components/widgets/buttons/PopoverButton.vue";
 import { SectionsOfMenuListEntries } from "@/components/widgets/floating-menus/MenuList.vue";
 import DropdownInput from "@/components/widgets/inputs/DropdownInput.vue";
-import NumberInput from "@/components/widgets/inputs/NumberInput.vue";
-import OptionalInput from "@/components/widgets/inputs/OptionalInput.vue";
-import RadioInput, { RadioEntries } from "@/components/widgets/inputs/RadioInput.vue";
+import { RadioEntries } from "@/components/widgets/inputs/RadioInput.vue";
 import ShelfItemInput from "@/components/widgets/inputs/ShelfItemInput.vue";
 import SwatchPairInput from "@/components/widgets/inputs/SwatchPairInput.vue";
-import ToolOptions from "@/components/widgets/options/ToolOptions.vue";
 import CanvasRuler from "@/components/widgets/rulers/CanvasRuler.vue";
 import PersistentScrollbar from "@/components/widgets/scrollbars/PersistentScrollbar.vue";
 import Separator from "@/components/widgets/separators/Separator.vue";
+import WidgetLayout from "@/components/widgets/WidgetLayout.vue";
 
 export default defineComponent({
 	inject: ["editor", "dialog"],
 	methods: {
-		setSnapping(snap: boolean) {
-			this.editor.instance.set_snapping(snap);
-		},
-		setOverlaysVisibility(visible: boolean) {
-			this.editor.instance.set_overlays_visibility(visible);
-		},
-		setViewMode(newViewMode: string) {
-			this.editor.instance.set_view_mode(newViewMode);
-		},
 		viewportResize() {
 			const canvas = this.$refs.canvas as HTMLElement;
 			// Get the width and height rounded up to the nearest even number because resizing is centered and dividing an odd number by 2 for centering causes antialiasing
@@ -306,18 +271,6 @@ export default defineComponent({
 
 			this.canvasSvgWidth = `${width}px`;
 			this.canvasSvgHeight = `${height}px`;
-		},
-		setCanvasZoom(newZoom: number) {
-			this.editor.instance.set_canvas_zoom(newZoom / 100);
-		},
-		increaseCanvasZoom() {
-			this.editor.instance.increase_canvas_zoom();
-		},
-		decreaseCanvasZoom() {
-			this.editor.instance.decrease_canvas_zoom();
-		},
-		setRotation(newRotation: number) {
-			this.editor.instance.set_rotation(newRotation * (Math.PI / 180));
 		},
 		translateCanvasX(newValue: number) {
 			const delta = newValue - this.scrollbarPos.x;
@@ -347,13 +300,46 @@ export default defineComponent({
 			this.editor.instance.reset_colors();
 		},
 		canvasPointerDown(e: PointerEvent) {
-			const canvas = this.$refs.canvas as HTMLElement;
-			canvas.setPointerCapture(e.pointerId);
+			const onEditbox = e.target instanceof HTMLDivElement && e.target.contentEditable;
+			if (!onEditbox) {
+				const canvas = this.$refs.canvas as HTMLElement;
+				canvas.setPointerCapture(e.pointerId);
+			}
 		},
 	},
 	mounted() {
 		this.editor.dispatcher.subscribeJsMessage(UpdateDocumentArtwork, (UpdateDocumentArtwork) => {
 			this.artworkSvg = UpdateDocumentArtwork.svg;
+
+			nextTick((): void => {
+				if (this.textInput) {
+					const canvas = this.$refs.canvas as HTMLElement;
+					const foreignObject = canvas.getElementsByTagName("foreignObject")[0] as SVGForeignObjectElement;
+					if (foreignObject.children.length > 0) return;
+
+					const addedInput = foreignObject.appendChild(this.textInput);
+
+					nextTick((): void => {
+						// Necessary to select contenteditable: https://stackoverflow.com/questions/6139107/programmatically-select-text-in-a-contenteditable-html-element/6150060#6150060
+
+						const range = document.createRange();
+						range.selectNodeContents(addedInput);
+						const selection = window.getSelection();
+						if (selection) {
+							selection.removeAllRanges();
+							selection.addRange(range);
+						}
+						addedInput.focus();
+						addedInput.click();
+					});
+
+					window.dispatchEvent(
+						new CustomEvent("modifyinputfield", {
+							detail: addedInput,
+						})
+					);
+				}
+			});
 		});
 
 		this.editor.dispatcher.subscribeJsMessage(UpdateDocumentOverlays, (updateDocumentOverlays) => {
@@ -378,7 +364,6 @@ export default defineComponent({
 
 		this.editor.dispatcher.subscribeJsMessage(UpdateActiveTool, (updateActiveTool) => {
 			this.activeTool = updateActiveTool.tool_name;
-			this.activeToolOptions = updateActiveTool.tool_options;
 		});
 
 		this.editor.dispatcher.subscribeJsMessage(UpdateCanvasZoom, (updateCanvasZoom) => {
@@ -392,6 +377,39 @@ export default defineComponent({
 
 		this.editor.dispatcher.subscribeJsMessage(UpdateMouseCursor, (updateMouseCursor) => {
 			this.canvasCursor = updateMouseCursor.cursor;
+		});
+		this.editor.dispatcher.subscribeJsMessage(TriggerTextCommit, () => {
+			if (this.textInput) this.editor.instance.on_change_text(this.textInput.textContent || "");
+		});
+
+		this.editor.dispatcher.subscribeJsMessage(DisplayEditableTextbox, (displayEditableTextbox) => {
+			this.textInput = document.createElement("DIV") as HTMLDivElement;
+			this.textInput.id = "editable-textbox";
+			this.textInput.textContent = displayEditableTextbox.text;
+			this.textInput.contentEditable = "true";
+			this.textInput.style.width = displayEditableTextbox.line_width ? `${displayEditableTextbox.line_width}px` : "max-content";
+			this.textInput.style.height = "auto";
+			this.textInput.style.fontSize = `${displayEditableTextbox.font_size}px`;
+			this.textInput.oninput = (): void => {
+				if (this.textInput) this.editor.instance.update_bounds(this.textInput.textContent || "");
+			};
+		});
+
+		this.editor.dispatcher.subscribeJsMessage(DisplayRemoveEditableTextbox, () => {
+			this.textInput = undefined;
+			window.dispatchEvent(
+				new CustomEvent("modifyinputfield", {
+					detail: undefined,
+				})
+			);
+		});
+
+		this.editor.dispatcher.subscribeJsMessage(UpdateToolOptionsLayout, (updateToolOptionsLayout) => {
+			this.toolOptionsLayout = updateToolOptionsLayout;
+		});
+
+		this.editor.dispatcher.subscribeJsMessage(UpdateDocumentBarLayout, (updateDocumentBarLayout) => {
+			this.documentBarLayout = updateDocumentBarLayout;
 		});
 
 		window.addEventListener("resize", this.viewportResize);
@@ -419,7 +437,8 @@ export default defineComponent({
 			canvasSvgHeight: "100%",
 			canvasCursor: "default",
 			activeTool: "Select" as ToolName,
-			activeToolOptions: {},
+			toolOptionsLayout: defaultWidgetLayout(),
+			documentBarLayout: defaultWidgetLayout(),
 			documentModeEntries,
 			viewModeEntries,
 			documentModeSelectionIndex: 0,
@@ -435,6 +454,7 @@ export default defineComponent({
 			rulerOrigin: { x: 0, y: 0 },
 			rulerSpacing: 100,
 			rulerInterval: 100,
+			textInput: undefined as undefined | HTMLDivElement,
 		};
 	},
 	components: {
@@ -446,12 +466,8 @@ export default defineComponent({
 		PersistentScrollbar,
 		CanvasRuler,
 		IconButton,
-		PopoverButton,
-		RadioInput,
-		NumberInput,
 		DropdownInput,
-		OptionalInput,
-		ToolOptions,
+		WidgetLayout,
 	},
 });
 </script>

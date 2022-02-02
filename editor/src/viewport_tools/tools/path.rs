@@ -1,14 +1,18 @@
+use std::ops::Mul;
+
 use crate::consts::SELECTION_THRESHOLD;
 use crate::document::DocumentMessageHandler;
 use crate::frontend::utility_types::MouseCursorIcon;
 use crate::input::keyboard::{Key, MouseMotion};
 use crate::input::InputPreprocessorMessageHandler;
+use crate::layout::widgets::PropertyHolder;
 use crate::message_prelude::*;
 use crate::misc::{HintData, HintGroup, HintInfo, KeysGroup};
 use crate::viewport_tools::shape_manipulation::ManipulationHandler;
 use crate::viewport_tools::snapping::SnapHandler;
 use crate::viewport_tools::tool::{DocumentToolData, Fsm, ToolActionHandlerData};
 
+use glam::DVec2;
 use graphene::intersection::Quad;
 
 use serde::{Deserialize, Serialize};
@@ -32,10 +36,16 @@ pub enum PathMessage {
 	SelectionChanged,
 
 	// Tool-specific messages
-	DragStart,
+	DragStart {
+		add_to_selection: Key,
+	},
 	DragStop,
-	PointerMove,
+	PointerMove {
+		alt_mirror_toggle: Key,
+	},
 }
+
+impl PropertyHolder for Path {}
 
 impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Path {
 	fn process_action(&mut self, action: ToolMessage, data: ToolActionHandlerData<'a>, responses: &mut VecDeque<Message>) {
@@ -49,7 +59,7 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Path {
 			return;
 		}
 
-		let new_state = self.fsm_state.transition(action, data.0, data.1, &mut self.data, data.2, responses);
+		let new_state = self.fsm_state.transition(action, data.0, data.1, &mut self.data, &(), data.2, responses);
 
 		if self.fsm_state != new_state {
 			self.fsm_state = new_state;
@@ -89,6 +99,7 @@ struct PathToolData {
 
 impl Fsm for PathToolFsmState {
 	type ToolData = PathToolData;
+	type ToolOptions = ();
 
 	fn transition(
 		self,
@@ -96,6 +107,7 @@ impl Fsm for PathToolFsmState {
 		document: &DocumentMessageHandler,
 		_tool_data: &DocumentToolData,
 		data: &mut Self::ToolData,
+		_tool_options: &Self::ToolOptions,
 		input: &InputPreprocessorMessageHandler,
 		responses: &mut VecDeque<Message>,
 	) -> Self {
@@ -104,16 +116,14 @@ impl Fsm for PathToolFsmState {
 			use PathToolFsmState::*;
 
 			match (self, event) {
+				// TODO: Capture a tool event instead of doing this?
 				(_, SelectionChanged) => {
-					// TODO: Capture a tool event instead of doing this?
 					// Remove any residual overlays that might exist on selection change
-					for shape in &mut data.manipulation_handler.selected_shapes {
-						shape.remove_all_overlays(responses);
-					}
+					data.manipulation_handler.remove_overlays(responses);
 
 					// This currently creates new VectorManipulatorShapes for every shape, which is not ideal
 					// Atleast it is only on selection change for now
-					data.manipulation_handler.selected_shapes = document.selected_visible_layers_vector_shapes(responses);
+					data.manipulation_handler.set_selected_shapes(document.selected_visible_layers_vector_shapes(responses));
 
 					self
 				}
@@ -124,10 +134,13 @@ impl Fsm for PathToolFsmState {
 					}
 					self
 				}
-				(_, DragStart) => {
+				(_, DragStart { add_to_selection }) => {
+					if data.manipulation_handler.has_selection {
+						// Set the previous selected point to no longer be selected
+						data.manipulation_handler.set_selection_state(false, responses);
+					}
 					// Select the first point within the threshold (in pixels)
-					let select_threshold = SELECTION_THRESHOLD;
-					if data.manipulation_handler.select_manipulator(input.mouse.position, select_threshold, responses) {
+					if data.manipulation_handler.select_manipulator(input.mouse.position, SELECTION_THRESHOLD, responses) {
 						responses.push_back(DocumentMessage::StartTransaction.into());
 						data.snap_handler.start_snap(document, document.visible_layers());
 						let snap_points = data
@@ -138,25 +151,36 @@ impl Fsm for PathToolFsmState {
 							.collect();
 						data.snap_handler.add_snap_points(document, snap_points);
 						Dragging
-					} else {
+					}
+					// We didn't find a point nearby, so consider selecting the nearest shape instead
+					else {
 						// Select shapes directly under our mouse
-						let intersection = document.graphene_document.intersects_quad_root(Quad::from_box([input.mouse.position, input.mouse.position]));
+						let intersection = document
+							.graphene_document
+							.intersects_quad_root(Quad::from_box([input.mouse.position - DVec2::ONE, input.mouse.position + DVec2::ONE]));
 						if !intersection.is_empty() {
-							for shape in &mut data.manipulation_handler.selected_shapes {
-								shape.remove_all_overlays(responses);
+							data.manipulation_handler.remove_overlays(responses);
+							if input.keyboard.get(add_to_selection as usize) {
+								responses.push_back(DocumentMessage::AddSelectedLayers { additional_layers: intersection }.into());
+							} else {
+								responses.push_back(
+									DocumentMessage::SetSelectedLayers {
+										replacement_selected_layers: intersection,
+									}
+									.into(),
+								);
 							}
-							responses.push_back(
-								DocumentMessage::SetSelectedLayers {
-									replacement_selected_layers: intersection,
-								}
-								.into(),
-							);
+						} else {
+							// Clear the previous selection if we didn't find anything
+							if !input.keyboard.get(add_to_selection as usize) {
+								responses.push_back(DocumentMessage::DeselectAllLayers.into());
+							}
 						}
 						Ready
 					}
 				}
-				(Dragging, PointerMove) => {
-					let should_not_mirror = input.keyboard.get(Key::KeyAlt as usize);
+				(Dragging, PointerMove { alt_mirror_toggle }) => {
+					let should_not_mirror = input.keyboard.get(alt_mirror_toggle as usize);
 
 					// Move the selected points by the mouse position
 					let snapped_position = data.snap_handler.snap_position(responses, input.viewport_bounds.size(), document, input.mouse.position);
@@ -169,12 +193,10 @@ impl Fsm for PathToolFsmState {
 					Ready
 				}
 				(_, Abort) => {
-					for shape in &mut data.manipulation_handler.selected_shapes {
-						shape.remove_all_overlays(responses);
-					}
+					data.manipulation_handler.remove_overlays(responses);
 					Ready
 				}
-				(_, PointerMove) => self,
+				(_, PointerMove { alt_mirror_toggle: _ }) => self,
 			}
 		} else {
 			self

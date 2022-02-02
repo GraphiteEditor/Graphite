@@ -3,7 +3,7 @@
 // on the dispatcher messaging system and more complex Rust data types.
 
 use crate::helpers::Error;
-use crate::type_translators::{translate_blend_mode, translate_key, translate_tool_type, translate_view_mode};
+use crate::type_translators::{translate_blend_mode, translate_key, translate_tool_type};
 use crate::{EDITOR_HAS_CRASHED, EDITOR_INSTANCES};
 
 use editor::consts::{FILE_SAVE_SUFFIX, GRAPHITE_DOCUMENT_VERSION};
@@ -12,14 +12,13 @@ use editor::input::mouse::{EditorMouseState, ScrollDelta, ViewportBounds};
 use editor::message_prelude::*;
 use editor::misc::EditorError;
 use editor::viewport_tools::tool::ToolType;
-use editor::viewport_tools::tool_options::ToolOptions;
 use editor::viewport_tools::tools;
 use editor::Color;
 use editor::Editor;
 use editor::LayerId;
 
 use serde::Serialize;
-use serde_wasm_bindgen;
+use serde_wasm_bindgen::{self, from_value};
 use std::sync::atomic::Ordering;
 use wasm_bindgen::prelude::*;
 
@@ -105,19 +104,15 @@ impl JsEditorHandle {
 		}
 	}
 
-	/// Update the options for a given tool
-	pub fn set_tool_options(&self, tool: String, options: &JsValue) -> Result<(), JsValue> {
-		match serde_wasm_bindgen::from_value::<ToolOptions>(options.clone()) {
-			Ok(tool_options) => match translate_tool_type(&tool) {
-				Some(tool_type) => {
-					let message = ToolMessage::SetToolOptions { tool_type, tool_options };
-					self.dispatch(message);
-
-					Ok(())
-				}
-				None => Err(Error::new(&format!("Couldn't set options for {} because it was not recognized as a valid tool", tool)).into()),
-			},
-			Err(err) => Err(Error::new(&format!("Invalid JSON for ToolOptions: {}", err)).into()),
+	/// Update layout of a given UI
+	pub fn update_layout(&self, layout_target: JsValue, widget_id: u64, value: JsValue) -> Result<(), JsValue> {
+		match (from_value(layout_target), from_value(value)) {
+			(Ok(layout_target), Ok(value)) => {
+				let message = LayoutMessage::UpdateLayout { layout_target, widget_id, value };
+				self.dispatch(message);
+				Ok(())
+			}
+			_ => Err(Error::new("Could not update UI").into()),
 		}
 	}
 
@@ -217,7 +212,6 @@ impl JsEditorHandle {
 		self.dispatch(message);
 	}
 
-	#[wasm_bindgen]
 	pub fn request_about_graphite_dialog(&self) {
 		let message = PortfolioMessage::RequestAboutGraphiteDialog;
 		self.dispatch(message);
@@ -225,7 +219,6 @@ impl JsEditorHandle {
 
 	/// Send new bounds when document panel viewports get resized or moved within the editor
 	/// [left, top, right, bottom]...
-	#[wasm_bindgen]
 	pub fn bounds_of_viewports(&self, bounds_of_viewports: &[f64]) {
 		let chunked: Vec<_> = bounds_of_viewports.chunks(4).map(ViewportBounds::from_slice).collect();
 
@@ -274,6 +267,15 @@ impl JsEditorHandle {
 		self.dispatch(message);
 	}
 
+	/// Mouse double clicked
+	pub fn on_double_click(&self, x: f64, y: f64, mouse_keys: u8, modifiers: u8) {
+		let editor_mouse_state = EditorMouseState::from_keys_and_editor_position(mouse_keys, (x, y).into());
+		let modifier_keys = ModifierKeys::from_bits(modifiers).expect("Invalid modifier keys");
+
+		let message = InputPreprocessorMessage::DoubleClick { editor_mouse_state, modifier_keys };
+		self.dispatch(message);
+	}
+
 	/// A keyboard button depressed within screenspace the bounds of the viewport
 	pub fn on_key_down(&self, name: String, modifiers: u8) {
 		let key = translate_key(&name);
@@ -294,6 +296,22 @@ impl JsEditorHandle {
 
 		let message = InputPreprocessorMessage::KeyUp { key, modifier_keys };
 		self.dispatch(message);
+	}
+
+	/// A text box was committed
+	pub fn on_change_text(&self, new_text: String) -> Result<(), JsValue> {
+		let message = TextMessage::TextChange { new_text };
+		self.dispatch(message);
+
+		Ok(())
+	}
+
+	/// A text box was changed
+	pub fn update_bounds(&self, new_text: String) -> Result<(), JsValue> {
+		let message = TextMessage::UpdateBounds { new_text };
+		self.dispatch(message);
+
+		Ok(())
 	}
 
 	/// Update primary color
@@ -426,52 +444,6 @@ impl JsEditorHandle {
 	/// Export the document
 	pub fn export_document(&self) {
 		let message = DocumentMessage::ExportDocument;
-		self.dispatch(message);
-	}
-
-	/// Set snapping on or off
-	pub fn set_snapping(&self, snap: bool) {
-		let message = DocumentMessage::SetSnapping { snap };
-		self.dispatch(message);
-	}
-
-	/// Set display of overlays on or off
-	pub fn set_overlays_visibility(&self, visible: bool) {
-		let message = DocumentMessage::SetOverlaysVisibility { visible };
-		self.dispatch(message);
-	}
-
-	/// Set the view mode to change the way layers are drawn in the viewport
-	pub fn set_view_mode(&self, view_mode: String) -> Result<(), JsValue> {
-		if let Some(view_mode) = translate_view_mode(view_mode.as_str()) {
-			self.dispatch(DocumentMessage::SetViewMode { view_mode });
-			Ok(())
-		} else {
-			Err(Error::new("Invalid view mode").into())
-		}
-	}
-
-	/// Sets the zoom to the value
-	pub fn set_canvas_zoom(&self, zoom_factor: f64) {
-		let message = MovementMessage::SetCanvasZoom { zoom_factor };
-		self.dispatch(message);
-	}
-
-	/// Zoom in to the next step
-	pub fn increase_canvas_zoom(&self) {
-		let message = MovementMessage::IncreaseCanvasZoom { center_on_mouse: false };
-		self.dispatch(message);
-	}
-
-	/// Zoom out to the next step
-	pub fn decrease_canvas_zoom(&self) {
-		let message = MovementMessage::DecreaseCanvasZoom { center_on_mouse: false };
-		self.dispatch(message);
-	}
-
-	/// Sets the rotation to the new value (in radians)
-	pub fn set_rotation(&self, angle_radians: f64) {
-		let message = MovementMessage::SetCanvasRotation { angle_radians };
 		self.dispatch(message);
 	}
 
