@@ -329,7 +329,6 @@ impl MessageHandler<MovementMessage, (&Document, &InputPreprocessorMessageHandle
 
 	fn actions(&self) -> ActionList {
 		let mut common = actions!(MovementMessageDiscriminant;
-			MouseMove,
 			TranslateCanvasBegin,
 			RotateCanvasBegin,
 			ZoomCanvasBegin,
@@ -345,6 +344,7 @@ impl MessageHandler<MovementMessage, (&Document, &InputPreprocessorMessageHandle
 
 		if self.panning || self.tilting || self.zooming {
 			let transforming = actions!(MovementMessageDiscriminant;
+				MouseMove,
 				TransformCanvasEnd,
 			);
 			common.extend(transforming);
