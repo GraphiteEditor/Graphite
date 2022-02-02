@@ -1,5 +1,3 @@
-use std::{collections::VecDeque, ops::IndexMut};
-
 use glam::{DAffine2, DVec2};
 use graphene::{
 	color::Color,
@@ -10,13 +8,14 @@ use graphene::{
 	LayerId, Operation,
 };
 use kurbo::{BezPath, PathEl, PathSeg, Vec2};
+use std::ops::Index;
+use std::{collections::VecDeque, ops::IndexMut};
 
 use crate::{
 	consts::{COLOR_ACCENT, VECTOR_MANIPULATOR_ANCHOR_MARKER_SIZE},
 	document::DocumentMessageHandler,
 	message_prelude::{generate_uuid, DocumentMessage, Message},
 };
-use std::ops::Index;
 
 // Helps push values that end in approximately half, plus or minus some floating point imprecision, towards the same side of the round() function
 const BIAS: f64 = 0.0001;
@@ -68,7 +67,7 @@ pub struct ManipulationHandler {
 
 impl ManipulationHandler {
 	/// Select the first manipulator within the selection threshold
-	pub fn select_manipulator(&mut self, mouse_position: DVec2, select_threshold: f64, responses: &mut VecDeque<Message>) -> bool {
+	pub fn select_point(&mut self, mouse_position: DVec2, select_threshold: f64, responses: &mut VecDeque<Message>) -> bool {
 		if self.selected_shapes.is_empty() {
 			return false;
 		}
@@ -110,18 +109,54 @@ impl ManipulationHandler {
 	}
 
 	/// Provide the shape that the currently selected point is a part of
-	pub fn selected_shape(&self) -> &VectorManipulatorShape {
-		&self.selected_shapes[self.selected_shape_index]
+	pub fn selected_shape(&self) -> Option<&VectorManipulatorShape> {
+		if self.selected_shapes.is_empty() {
+			return None;
+		}
+		Some(&self.selected_shapes[self.selected_shape_index])
+	}
+
+	/// Provide the mutable shape that the currently selected point is a part of
+	pub fn selected_shape_mut(&mut self) -> Option<&mut VectorManipulatorShape> {
+		if self.selected_shapes.is_empty() {
+			return None;
+		}
+		Some(&mut self.selected_shapes[self.selected_shape_index])
 	}
 
 	/// Provide the currently selected point by reference
-	pub fn selected_point(&self) -> &VectorManipulatorPoint {
-		self.selected_shape().anchors[self.selected_anchor_index].points[self.selected_point_index].as_ref().unwrap()
+	pub fn selected_point(&self) -> Option<&VectorManipulatorPoint> {
+		match self.selected_shape() {
+			Some(shape) => shape.anchors[self.selected_anchor_index].points[self.selected_point_index].as_ref(),
+			None => None,
+		}
+	}
+
+	/// Provide the currently selected mutable point by reference
+	pub fn selected_point_mut(&mut self) -> Option<&mut VectorManipulatorPoint> {
+		let anchor_index = self.selected_anchor_index;
+		let point_index = self.selected_point_index;
+		match self.selected_shape_mut() {
+			Some(shape) => shape.anchors[anchor_index].points[point_index].as_mut(),
+			None => None,
+		}
 	}
 
 	/// Provide the currently selected anchor by reference
-	pub fn selected_anchor(&self) -> &VectorManipulatorAnchor {
-		&self.selected_shape().anchors[self.selected_anchor_index]
+	pub fn selected_anchor(&self) -> Option<&VectorManipulatorAnchor> {
+		match self.selected_shape() {
+			Some(shape) => Some(&shape.anchors[self.selected_anchor_index]),
+			None => None,
+		}
+	}
+
+	/// Provide the currently selected mutable anchor by reference
+	pub fn selected_anchor_mut(&mut self) -> Option<&mut VectorManipulatorAnchor> {
+		let anchor_index = self.selected_anchor_index;
+		match self.selected_shape_mut() {
+			Some(shape) => Some(&mut shape.anchors[anchor_index]),
+			None => None,
+		}
 	}
 
 	/// Remove all of the overlays this manipulation handler has created
@@ -148,25 +183,29 @@ impl ManipulationHandler {
 	}
 
 	/// A wrapper around move_point to handle mirror state / submit the changes
-	pub fn move_selected_to(&mut self, target_position: DVec2, should_mirror: bool) -> Operation {
-		let target_to_shape = self.selected_shape().transform.inverse().transform_point2(target_position);
+	pub fn move_selected_to(&mut self, target_position: DVec2, should_mirror: bool) -> Option<Operation> {
+		self.selected_shape()?;
+
+		let target_to_shape = self.selected_shape().unwrap().transform.inverse().transform_point2(target_position);
 		let target_position = Vec2::new(target_to_shape.x, target_to_shape.y);
-		let selected_anchor = &mut self.selected_shapes[self.selected_shape_index].anchors[self.selected_anchor_index];
 
-		// Should we mirror the opposing handle or not?
-		if !should_mirror && self.alt_mirror_toggle_debounce != should_mirror {
-			selected_anchor.handle_mirroring = !selected_anchor.handle_mirroring;
+		let toggle_debounce = self.alt_mirror_toggle_debounce;
+		if let Some(selected_anchor) = self.selected_anchor_mut() {
+			// Should we mirror the opposing handle or not?
+			if !should_mirror && toggle_debounce != should_mirror {
+				selected_anchor.handle_mirroring = !selected_anchor.handle_mirroring;
+			}
+
+			self.move_point(target_position);
 		}
+
 		self.alt_mirror_toggle_debounce = should_mirror;
-
-		self.move_point(target_position);
-
 		// We've made our changes to the shape, submit them
-		Operation::SetShapePathInViewport {
+		Some(Operation::SetShapePathInViewport {
 			path: self.selected_layer_path.clone(),
 			bez_path: self.selected_shape_elements.clone().into_iter().collect(),
-			transform: self.selected_shape().transform.to_cols_array(),
-		}
+			transform: self.selected_shape().unwrap().transform.to_cols_array(),
+		})
 	}
 
 	/// Move the selected point to the specificed target position
@@ -317,7 +356,7 @@ type IndexedEl = (usize, kurbo::PathEl);
 impl VectorManipulatorShape {
 	// TODO: Figure out a more elegant way to construct this
 	pub fn new(layer_path: Vec<LayerId>, transform: DAffine2, bez_path: &BezPath, closed: bool, responses: &mut VecDeque<Message>) -> Self {
-		let mut manipulator_shape = VectorManipulatorShape {
+		let mut shape = VectorManipulatorShape {
 			layer_path,
 			bez_path: bez_path.clone(),
 			closed,
@@ -326,10 +365,21 @@ impl VectorManipulatorShape {
 			anchors: vec![],
 			shape_overlay: None,
 		};
-		manipulator_shape.shape_overlay = Some(manipulator_shape.create_shape_outline_overlay(responses));
-		manipulator_shape.anchors = manipulator_shape.create_anchors_from_kurbo(responses);
-		manipulator_shape.segments = manipulator_shape.create_segments_from_kurbo();
-		manipulator_shape
+		shape.shape_overlay = Some(shape.create_shape_outline_overlay(responses));
+		shape.anchors = shape.create_anchors_from_kurbo(responses);
+		shape.segments = shape.create_segments_from_kurbo();
+
+		// TODO: This is a hack to allow Text to work. The shape isn't a path until this message is sent (it appears)
+		responses.push_back(
+			Operation::SetShapePathInViewport {
+				path: shape.layer_path.clone(),
+				bez_path: shape.bez_path.clone().into_iter().collect(),
+				transform: shape.transform.to_cols_array(),
+			}
+			.into(),
+		);
+
+		shape
 	}
 
 	/// Place points in local space

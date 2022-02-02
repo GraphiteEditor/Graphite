@@ -1,5 +1,3 @@
-use std::ops::Mul;
-
 use crate::consts::SELECTION_THRESHOLD;
 use crate::document::DocumentMessageHandler;
 use crate::frontend::utility_types::MouseCursorIcon;
@@ -140,7 +138,7 @@ impl Fsm for PathToolFsmState {
 						data.manipulation_handler.set_selection_state(false, responses);
 					}
 					// Select the first point within the threshold (in pixels)
-					if data.manipulation_handler.select_manipulator(input.mouse.position, SELECTION_THRESHOLD, responses) {
+					if data.manipulation_handler.select_point(input.mouse.position, SELECTION_THRESHOLD, responses) {
 						responses.push_back(DocumentMessage::StartTransaction.into());
 						data.snap_handler.start_snap(document, document.visible_layers());
 						let snap_points = data
@@ -184,8 +182,9 @@ impl Fsm for PathToolFsmState {
 
 					// Move the selected points by the mouse position
 					let snapped_position = data.snap_handler.snap_position(responses, input.viewport_bounds.size(), document, input.mouse.position);
-					let move_operation = data.manipulation_handler.move_selected_to(snapped_position, !should_not_mirror);
-					responses.push_back(move_operation.into());
+					if let Some(move_operation) = data.manipulation_handler.move_selected_to(snapped_position, !should_not_mirror) {
+						responses.push_back(move_operation.into());
+					}
 					Dragging
 				}
 				(_, DragStop) => {
