@@ -2,6 +2,7 @@
 // It serves as a thin wrapper over the editor backend API that relies
 // on the dispatcher messaging system and more complex Rust data types.
 
+use crate::canvas::RenderingContext;
 use crate::helpers::Error;
 use crate::type_translators::{translate_blend_mode, translate_key, translate_tool_type};
 use crate::{EDITOR_HAS_CRASHED, EDITOR_INSTANCES};
@@ -29,6 +30,7 @@ use wasm_bindgen::prelude::*;
 pub struct JsEditorHandle {
 	editor_id: u64,
 	handle_response: js_sys::Function,
+	renderer: Option<RenderingContext>,
 }
 
 #[wasm_bindgen]
@@ -38,7 +40,8 @@ impl JsEditorHandle {
 	pub fn new(handle_response: js_sys::Function) -> Self {
 		let editor_id = generate_uuid();
 		let editor = Editor::new();
-		let editor_handle = JsEditorHandle { editor_id, handle_response };
+		let renderer = None;
+		let editor_handle = JsEditorHandle { editor_id, handle_response, renderer };
 		EDITOR_INSTANCES.with(|instances| instances.borrow_mut().insert(editor_id, (editor, editor_handle.clone())));
 		editor_handle
 	}
@@ -80,6 +83,13 @@ impl JsEditorHandle {
 				error,
 			)
 		}
+	}
+
+	fn renderer(&mut self) -> &mut RenderingContext {
+		if self.renderer.is_none() {
+			self.renderer = Some(RenderingContext::new().unwrap());
+		}
+		self.renderer.as_mut().unwrap()
 	}
 
 	// ========================================================================
@@ -359,7 +369,8 @@ impl JsEditorHandle {
 	}
 
 	/// Swap primary and secondary color
-	pub fn swap_colors(&self) {
+	pub fn swap_colors(&mut self) {
+		self.renderer().draw();
 		let message = ToolMessage::SwapColors;
 		self.dispatch(message);
 	}

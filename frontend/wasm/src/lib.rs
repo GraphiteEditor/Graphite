@@ -1,4 +1,5 @@
 pub mod api;
+pub mod canvas;
 pub mod helpers;
 pub mod logging;
 pub mod type_translators;
