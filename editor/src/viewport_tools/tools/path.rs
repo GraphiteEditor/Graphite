@@ -121,19 +121,19 @@ impl Fsm for PathToolFsmState {
 
 					// This currently creates new VectorManipulatorShapes for every shape, which is not ideal
 					// Atleast it is only on selection change for now
-					data.manipulation_handler.set_selected_shapes(document.selected_visible_layers_vector_shapes(responses));
+					data.manipulation_handler.set_shapes_to_modify(document.selected_visible_layers_vector_shapes(responses));
 
 					self
 				}
 				(_, DocumentIsDirty) => {
 					// Update the VectorManipulatorShapes by reference so they match the kurbo data
-					for shape in &mut data.manipulation_handler.selected_shapes {
+					for shape in &mut data.manipulation_handler.shapes_to_modify {
 						shape.update_shape(document, responses);
 					}
 					self
 				}
 				(_, DragStart { add_to_selection }) => {
-					if data.manipulation_handler.has_selection {
+					if data.manipulation_handler.has_had_point_selection {
 						// Set the previous selected point to no longer be selected
 						data.manipulation_handler.set_selection_state(false, responses);
 					}
@@ -143,7 +143,7 @@ impl Fsm for PathToolFsmState {
 						data.snap_handler.start_snap(document, document.visible_layers());
 						let snap_points = data
 							.manipulation_handler
-							.selected_shapes
+							.shapes_to_modify
 							.iter()
 							.flat_map(|shape| shape.anchors.iter().map(|anchor| anchor.anchor_point_position()))
 							.collect();
