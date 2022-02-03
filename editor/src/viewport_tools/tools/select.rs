@@ -417,7 +417,7 @@ struct BoundingBoxOverlays {
 	pub transform_handles: [Vec<LayerId>; 8],
 	pub bounds: [DVec2; 2],
 	pub selected_edges: Option<SelectedEdges>,
-	pub origional_transforms: OriginalTransforms,
+	pub original_transforms: OriginalTransforms,
 	pub pivot: DVec2,
 }
 
@@ -617,7 +617,7 @@ impl Fsm for SelectToolFsmState {
 					} else if rotating_bounds {
 						if let Some(bounds) = &mut data.bounding_box_overlays {
 							let selected = selected.iter().collect::<Vec<_>>();
-							let mut selected = Selected::new(&mut bounds.origional_transforms, &mut bounds.pivot, &selected, responses, &document.graphene_document);
+							let mut selected = Selected::new(&mut bounds.original_transforms, &mut bounds.pivot, &selected, responses, &document.graphene_document);
 
 							*selected.pivot = selected.calculate_pivot();
 						}
@@ -697,7 +697,7 @@ impl Fsm for SelectToolFsmState {
 							let delta = movement.pos_to_scale_transform(snapped_mouse_position);
 
 							let selected = data.layers_dragging.iter().collect::<Vec<_>>();
-							let mut selected = Selected::new(&mut bounds.origional_transforms, &mut bounds.pivot, &selected, responses, &document.graphene_document);
+							let mut selected = Selected::new(&mut bounds.original_transforms, &mut bounds.pivot, &selected, responses, &document.graphene_document);
 
 							selected.update_transforms(delta);
 						}
@@ -723,7 +723,7 @@ impl Fsm for SelectToolFsmState {
 						let delta = DAffine2::from_angle(snapped_angle);
 
 						let selected = data.layers_dragging.iter().collect::<Vec<_>>();
-						let mut selected = Selected::new(&mut bounds.origional_transforms, &mut bounds.pivot, &selected, responses, &document.graphene_document);
+						let mut selected = Selected::new(&mut bounds.original_transforms, &mut bounds.pivot, &selected, responses, &document.graphene_document);
 
 						selected.update_transforms(delta);
 					}
@@ -773,7 +773,7 @@ impl Fsm for SelectToolFsmState {
 					responses.push_front(response.into());
 
 					if let Some(bounds) = &mut data.bounding_box_overlays {
-						bounds.origional_transforms.clear();
+						bounds.original_transforms.clear();
 					}
 
 					Ready
@@ -786,7 +786,7 @@ impl Fsm for SelectToolFsmState {
 					responses.push_front(response.into());
 
 					if let Some(bounds) = &mut data.bounding_box_overlays {
-						bounds.origional_transforms.clear();
+						bounds.original_transforms.clear();
 					}
 
 					Ready
