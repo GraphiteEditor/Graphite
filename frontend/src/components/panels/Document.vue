@@ -381,6 +381,7 @@ export default defineComponent({
 		this.editor.dispatcher.subscribeJsMessage(TriggerTextCommit, () => {
 			if (this.textInput) {
 				let text = this.textInput.innerText;
+				// Necessary because innerText puts an extra newline character at the end when the text is more than one line.
 				if (text[text.length - 1] === "\n") text = text.slice(0, -1);
 
 				this.editor.instance.on_change_text(text);
@@ -401,6 +402,7 @@ export default defineComponent({
 			this.textInput.oninput = (): void => {
 				if (this.textInput) {
 					let text = this.textInput.innerText;
+					// Necessary because innerText puts an extra newline character at the end when the text is more than one line.
 					if (text[text.length - 1] === "\n") text = text.slice(0, -1);
 
 					this.editor.instance.update_bounds(text);

@@ -121,6 +121,7 @@ export function createInputManager(editor: EditorState, container: HTMLElement, 
 
 		if (textInput && !inTextInput) {
 			let text = textInput.innerText;
+			// Necessary because innerText puts an extra newline character at the end when the text is more than one line.
 			if (text[text.length - 1] === "\n") text = text.slice(0, -1);
 
 			editor.instance.on_change_text(text);
