@@ -68,12 +68,9 @@
 					</LayoutCol>
 					<LayoutCol class="canvas-area">
 						<div class="canvas" data-canvas ref="canvas" :style="{ cursor: canvasCursor }" @pointerdown="(e: PointerEvent) => canvasPointerDown(e)">
-							<svg class="artboards" v-html="artboardSvg" style="height: 0%"></svg>
+							<canvas class='rendering-canvas' ref="rendering"></canvas>
 							<svg class="artwork" v-html="artworkSvg" :style="{ width: canvasSvgWidth, height: canvasSvgHeight }"></svg>
 							<svg class="overlays" v-html="overlaysSvg" :style="{ width: canvasSvgWidth, height: canvasSvgHeight }"></svg>
-							<canvas id='rendering-canvas' :style="{width: canvasSvgWidth, height: canvasSvgHeight }">
-								You've got one shitty browser man!
-							</canvas>
 						</div>
 					</LayoutCol>
 					<LayoutCol class="bar-area">
@@ -274,13 +271,16 @@ export default defineComponent({
 
 			this.canvasSvgWidth = `${width}px`;
 			this.canvasSvgHeight = `${height}px`;
-
 			// Resize the rulers
 
 			const rulerHorizontal = this.$refs.rulerHorizontal as typeof CanvasRuler;
 			const rulerVertical = this.$refs.rulerVertical as typeof CanvasRuler;
 			if (rulerHorizontal) rulerHorizontal.handleResize();
 			if (rulerVertical) rulerVertical.handleResize();
+			(this.$refs.rendering as HTMLCanvasElement).width = width;
+			(this.$refs.rendering as HTMLCanvasElement).height = height;
+			(this.$refs.canvas as HTMLCanvasElement).width = width;
+			(this.$refs.canvas as HTMLCanvasElement).height = height;
 		},
 		translateCanvasX(newValue: number) {
 			const delta = newValue - this.scrollbarPos.x;

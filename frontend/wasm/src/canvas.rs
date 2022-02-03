@@ -55,8 +55,7 @@ fn create_vertices(lines: &[(f32, f32, f32, f32)], padding: f32) -> (Vec<Vertex>
 impl RenderingContext {
 	pub fn new() -> Result<Self, JsValue> {
 		let document = web_sys::window().unwrap().document().unwrap();
-		log::debug!("{:?}", document);
-		let canvas = document.get_element_by_id("rendering-canvas").unwrap();
+		let canvas = document.query_selector(".rendering-canvas").unwrap().unwrap();
 		let canvas: web_sys::HtmlCanvasElement = canvas.dyn_into::<web_sys::HtmlCanvasElement>()?;
 
 		let context = canvas.get_context("webgl2")?.unwrap().dyn_into::<WebGl2RenderingContext>()?;
