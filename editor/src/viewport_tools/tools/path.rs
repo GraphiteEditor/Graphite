@@ -6,7 +6,7 @@ use crate::input::InputPreprocessorMessageHandler;
 use crate::layout::widgets::PropertyHolder;
 use crate::message_prelude::*;
 use crate::misc::{HintData, HintGroup, HintInfo, KeysGroup};
-use crate::viewport_tools::shape_manipulation::ManipulationHandler;
+use crate::viewport_tools::shape_manipulation::ShapeEditor;
 use crate::viewport_tools::snapping::SnapHandler;
 use crate::viewport_tools::tool::{DocumentToolData, Fsm, ToolActionHandlerData};
 
@@ -91,7 +91,7 @@ impl Default for PathToolFsmState {
 
 #[derive(Default)]
 struct PathToolData {
-	manipulation_handler: ManipulationHandler,
+	shape_editor: ShapeEditor,
 	snap_handler: SnapHandler,
 }
 
@@ -117,32 +117,32 @@ impl Fsm for PathToolFsmState {
 				// TODO: Capture a tool event instead of doing this?
 				(_, SelectionChanged) => {
 					// Remove any residual overlays that might exist on selection change
-					data.manipulation_handler.remove_overlays(responses);
+					data.shape_editor.remove_overlays(responses);
 
 					// This currently creates new VectorManipulatorShapes for every shape, which is not ideal
 					// Atleast it is only on selection change for now
-					data.manipulation_handler.set_shapes_to_modify(document.selected_visible_layers_vector_shapes(responses));
+					data.shape_editor.set_shapes_to_modify(document.selected_visible_layers_vector_shapes(responses));
 
 					self
 				}
 				(_, DocumentIsDirty) => {
 					// Update the VectorManipulatorShapes by reference so they match the kurbo data
-					for shape in &mut data.manipulation_handler.shapes_to_modify {
+					for shape in &mut data.shape_editor.shapes_to_modify {
 						shape.update_shape(document, responses);
 					}
 					self
 				}
 				(_, DragStart { add_to_selection }) => {
-					if data.manipulation_handler.has_had_point_selection {
+					if data.shape_editor.has_had_point_selection {
 						// Set the previous selected point to no longer be selected
-						data.manipulation_handler.set_selection_state(false, responses);
+						data.shape_editor.set_selection_state(false, responses);
 					}
 					// Select the first point within the threshold (in pixels)
-					if data.manipulation_handler.select_point(input.mouse.position, SELECTION_THRESHOLD, responses) {
+					if data.shape_editor.select_point(input.mouse.position, SELECTION_THRESHOLD, responses) {
 						responses.push_back(DocumentMessage::StartTransaction.into());
 						data.snap_handler.start_snap(document, document.visible_layers());
 						let snap_points = data
-							.manipulation_handler
+							.shape_editor
 							.shapes_to_modify
 							.iter()
 							.flat_map(|shape| shape.anchors.iter().map(|anchor| anchor.anchor_point_position()))
@@ -157,7 +157,7 @@ impl Fsm for PathToolFsmState {
 							.graphene_document
 							.intersects_quad_root(Quad::from_box([input.mouse.position - DVec2::ONE, input.mouse.position + DVec2::ONE]));
 						if !intersection.is_empty() {
-							data.manipulation_handler.remove_overlays(responses);
+							data.shape_editor.remove_overlays(responses);
 							if input.keyboard.get(add_to_selection as usize) {
 								responses.push_back(DocumentMessage::AddSelectedLayers { additional_layers: intersection }.into());
 							} else {
@@ -182,7 +182,7 @@ impl Fsm for PathToolFsmState {
 
 					// Move the selected points by the mouse position
 					let snapped_position = data.snap_handler.snap_position(responses, input.viewport_bounds.size(), document, input.mouse.position);
-					if let Some(move_operation) = data.manipulation_handler.move_selected_to(snapped_position, !should_not_mirror) {
+					if let Some(move_operation) = data.shape_editor.move_selected_to(snapped_position, !should_not_mirror) {
 						responses.push_back(move_operation.into());
 					}
 					Dragging
@@ -192,7 +192,7 @@ impl Fsm for PathToolFsmState {
 					Ready
 				}
 				(_, Abort) => {
-					data.manipulation_handler.remove_overlays(responses);
+					data.shape_editor.remove_overlays(responses);
 					Ready
 				}
 				(_, PointerMove { alt_mirror_toggle: _ }) => self,

@@ -20,35 +20,14 @@ use crate::{
 // Helps push values that end in approximately half, plus or minus some floating point imprecision, towards the same side of the round() function
 const BIAS: f64 = 0.0001;
 
-#[repr(usize)]
-#[derive(std::cmp::PartialEq)]
-enum ManipulatorType {
-	Anchor = 0,
-	Handle1 = 1,
-	Handle2 = 2,
-}
-
-impl<T> Index<ManipulatorType> for [T; 3] {
-	type Output = T;
-	fn index(&self, mt: ManipulatorType) -> &T {
-		&self[mt as usize]
-	}
-}
-
-impl<T> IndexMut<ManipulatorType> for [T; 3] {
-	fn index_mut(&mut self, mt: ManipulatorType) -> &mut T {
-		&mut self[mt as usize]
-	}
-}
-
-/// ManipulationHandler is the container for all of the selected kurbo paths that are
-/// represented as VectorManipulatorShapes and provides functionality required
-/// to query and create the VectorManipulatorShapes / VectorManipulatorAnchors
+/// ShapeEditor is the container for all of the selected kurbo paths that are
+/// represented as VectorShapes and provides functionality required
+/// to query and create the VectorShapes / VectorManipulators
 // TODO Provide support for multiple selected points / drag select
 #[derive(Clone, Debug, Default)]
-pub struct ManipulationHandler {
+pub struct ShapeEditor {
 	// The shapes we can select anchors / handles from
-	pub shapes_to_modify: Vec<VectorManipulatorShape>,
+	pub shapes_to_modify: Vec<VectorShape>,
 	// The path to the shape that contained the most recent selected point
 	pub selected_layer_path: Vec<LayerId>,
 	// The kurbo path elements that make up the most recent shape
@@ -66,7 +45,7 @@ pub struct ManipulationHandler {
 	alt_mirror_toggle_debounce: bool,
 }
 
-impl ManipulationHandler {
+impl ShapeEditor {
 	/// Select the first point within the selection threshold
 	pub fn select_point(&mut self, mouse_position: DVec2, select_threshold: f64, responses: &mut VecDeque<Message>) -> bool {
 		if self.shapes_to_modify.is_empty() {
@@ -92,7 +71,7 @@ impl ManipulationHandler {
 				// Set the new point to selected
 				self.set_selection_state(true, responses);
 
-				// Due to the shape data structure not persisting across selection changes we need to rely on the kurbo path to know if we should mirror
+				// Due to the shape data structure not persisting across shape selection changes we need to rely on the kurbo path to know if we should mirror
 				let selected_anchor = &mut self.shapes_to_modify[self.selected_shape_index].anchors[self.selected_anchor_index];
 				selected_anchor.handle_mirroring = (selected_anchor.angle_between_handles().abs() - std::f64::consts::PI).abs() < 0.1;
 				self.alt_mirror_toggle_debounce = false;
@@ -104,13 +83,13 @@ impl ManipulationHandler {
 	}
 
 	/// Set the shapes we consider for selection, we will choose draggable handles / anchors from these shapes.
-	pub fn set_shapes_to_modify(&mut self, selected_shapes: Vec<VectorManipulatorShape>) {
+	pub fn set_shapes_to_modify(&mut self, selected_shapes: Vec<VectorShape>) {
 		self.has_had_point_selection = false;
 		self.shapes_to_modify = selected_shapes;
 	}
 
 	/// Provide the shape that the currently selected point is a part of
-	pub fn selected_shape(&self) -> Option<&VectorManipulatorShape> {
+	pub fn selected_shape(&self) -> Option<&VectorShape> {
 		if self.shapes_to_modify.is_empty() {
 			return None;
 		}
@@ -118,7 +97,7 @@ impl ManipulationHandler {
 	}
 
 	/// Provide the mutable shape that the currently selected point is a part of
-	pub fn selected_shape_mut(&mut self) -> Option<&mut VectorManipulatorShape> {
+	pub fn selected_shape_mut(&mut self) -> Option<&mut VectorShape> {
 		if self.shapes_to_modify.is_empty() {
 			return None;
 		}
@@ -240,7 +219,7 @@ impl ManipulationHandler {
 				let (selected, point) = match &self.selected_shape_elements[anchor_point.element_id] {
 					PathEl::MoveTo(p) => (PathEl::MoveTo(target_position_as_point), p),
 					PathEl::LineTo(p) => (PathEl::LineTo(target_position_as_point), p),
-					PathEl::QuadTo(a1, p) => (PathEl::QuadTo(*a1 - (*p - target_position_as_point), target_position_as_point), p),
+					PathEl::QuadTo(a1, p) => (PathEl::QuadTo(*a1, target_position_as_point), p),
 					PathEl::CurveTo(a1, a2, p) => (PathEl::CurveTo(*a1, *a2 - (*p - target_position_as_point), target_position_as_point), p),
 					PathEl::ClosePath => (PathEl::ClosePath, &target_position_as_point),
 				};
@@ -251,7 +230,7 @@ impl ManipulationHandler {
 					let neighbor = match &self.selected_shape_elements[handle.element_id] {
 						PathEl::MoveTo(_) => PathEl::MoveTo(target_position_as_point),
 						PathEl::LineTo(_) => PathEl::LineTo(target_position_as_point),
-						PathEl::QuadTo(a1, p) => PathEl::QuadTo(*a1 - point_delta, *p),
+						PathEl::QuadTo(a1, p) => PathEl::QuadTo(*a1, *p),
 						PathEl::CurveTo(a1, a2, p) => PathEl::CurveTo(*a1 - point_delta, *a2, *p),
 						PathEl::ClosePath => PathEl::ClosePath,
 					};
@@ -263,7 +242,7 @@ impl ManipulationHandler {
 					self.selected_shape_elements[close_element_id] = match &self.selected_shape_elements[close_element_id] {
 						PathEl::MoveTo(_) => PathEl::MoveTo(target_position_as_point),
 						PathEl::LineTo(_) => PathEl::LineTo(target_position_as_point),
-						PathEl::QuadTo(a1, p) => PathEl::QuadTo(*a1 - (*p - target_position_as_point), target_position_as_point),
+						PathEl::QuadTo(a1, _) => PathEl::QuadTo(*a1, target_position_as_point),
 						PathEl::CurveTo(a1, a2, p) => PathEl::CurveTo(*a1, *a2 - (*p - target_position_as_point), target_position_as_point),
 						PathEl::ClosePath => PathEl::ClosePath,
 					};
@@ -313,7 +292,7 @@ impl ManipulationHandler {
 	// TODO Use quadtree or some equivalent spatial acceleration structure to improve this to O(log(n))
 	/// Find the closest point, anchor and distance so we can select path elements
 	/// Brute force comparison to determine which handle / anchor we want to select, O(n)
-	fn closest_manipulator_indices(&self, shape: &VectorManipulatorShape, pos: glam::DVec2) -> (usize, usize, f64) {
+	fn closest_manipulator_indices(&self, shape: &VectorShape, pos: glam::DVec2) -> (usize, usize, f64) {
 		let mut closest_anchor_index: usize = 0;
 		let mut closest_point_index: usize = 0;
 		let mut closest_distance: f64 = f64::MAX; // Not ideal
@@ -334,10 +313,10 @@ impl ManipulationHandler {
 	}
 }
 
-/// VectorManipulatorShape represents a single kurbo shape and maintains a parallel data structure
-/// For each kurbo path we keep a VectorManipulatorShape which contains the handles and anchors for that path
+/// VectorShape represents a single kurbo shape and maintains a parallel data structure
+/// For each kurbo path we keep a VectorShape which contains the handles and anchors for that path
 #[derive(PartialEq, Clone, Debug, Default)]
-pub struct VectorManipulatorShape {
+pub struct VectorShape {
 	/// The path to the shape layer
 	pub layer_path: Vec<LayerId>,
 	/// The outline of the shape via kurbo
@@ -355,10 +334,10 @@ pub struct VectorManipulatorShape {
 }
 type IndexedEl = (usize, kurbo::PathEl);
 
-impl VectorManipulatorShape {
+impl VectorShape {
 	// TODO: Figure out a more elegant way to construct this
 	pub fn new(layer_path: Vec<LayerId>, transform: DAffine2, bez_path: &BezPath, closed: bool, responses: &mut VecDeque<Message>) -> Self {
-		let mut shape = VectorManipulatorShape {
+		let mut shape = VectorShape {
 			layer_path,
 			bez_path: bez_path.clone(),
 			closed,
@@ -758,6 +737,27 @@ pub enum VectorManipulatorSegment {
 	Line(DVec2, DVec2),
 	Quad(DVec2, DVec2, DVec2),
 	Cubic(DVec2, DVec2, DVec2, DVec2),
+}
+
+#[repr(usize)]
+#[derive(std::cmp::PartialEq)]
+enum ManipulatorType {
+	Anchor = 0,
+	Handle1 = 1,
+	Handle2 = 2,
+}
+
+impl<T> Index<ManipulatorType> for [T; 3] {
+	type Output = T;
+	fn index(&self, mt: ManipulatorType) -> &T {
+		&self[mt as usize]
+	}
+}
+
+impl<T> IndexMut<ManipulatorType> for [T; 3] {
+	fn index_mut(&mut self, mt: ManipulatorType) -> &mut T {
+		&mut self[mt as usize]
+	}
 }
 
 /// VectorManipulatorAnchor is used to represent an anchor point on the path that can be moved.

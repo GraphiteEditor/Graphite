@@ -12,7 +12,7 @@ use crate::layout::widgets::{
 	WidgetCallback, WidgetHolder, WidgetLayout,
 };
 use crate::message_prelude::*;
-use crate::viewport_tools::shape_manipulation::VectorManipulatorShape;
+use crate::viewport_tools::shape_manipulation::VectorShape;
 use crate::EditorError;
 
 use graphene::document::Document as GrapheneDocument;
@@ -139,7 +139,7 @@ impl DocumentMessageHandler {
 	}
 
 	/// Create a new vector shape representation with the underlying kurbo data, VectorManipulatorShape
-	pub fn selected_visible_layers_vector_shapes(&self, responses: &mut VecDeque<Message>) -> Vec<VectorManipulatorShape> {
+	pub fn selected_visible_layers_vector_shapes(&self, responses: &mut VecDeque<Message>) -> Vec<VectorShape> {
 		let shapes = self.selected_layers().filter_map(|path_to_shape| {
 			let viewport_transform = self.graphene_document.generate_transform_relative_to_viewport(path_to_shape).ok()?;
 			let layer = self.graphene_document.layer(path_to_shape);
@@ -151,14 +151,14 @@ impl DocumentMessageHandler {
 
 			// TODO: Create VectorManipulatorShape when creating a kurbo shape as a stopgap, rather than on each new selection
 			match &layer.ok()?.data {
-				LayerDataType::Shape(shape) => Some(VectorManipulatorShape::new(path_to_shape.to_vec(), viewport_transform, &shape.path, shape.closed, responses)),
-				LayerDataType::Text(text) => Some(VectorManipulatorShape::new(path_to_shape.to_vec(), viewport_transform, &text.to_bez_path_nonmut(), true, responses)),
+				LayerDataType::Shape(shape) => Some(VectorShape::new(path_to_shape.to_vec(), viewport_transform, &shape.path, shape.closed, responses)),
+				LayerDataType::Text(text) => Some(VectorShape::new(path_to_shape.to_vec(), viewport_transform, &text.to_bez_path_nonmut(), true, responses)),
 				_ => None,
 			}
 		});
 
 		// TODO: Consider refactoring this in a way that avoids needing to collect() so we can skip the heap allocations
-		shapes.collect::<Vec<VectorManipulatorShape>>()
+		shapes.collect::<Vec<VectorShape>>()
 	}
 
 	pub fn selected_layers(&self) -> impl Iterator<Item = &[LayerId]> {
