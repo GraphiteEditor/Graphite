@@ -245,6 +245,8 @@ import {
 	DisplayEditableTextbox,
 } from "@/dispatcher/js-messages";
 
+import { cleanupTextInput } from "@/utilities/cleanup_text_input";
+
 import LayoutCol from "@/components/layout/LayoutCol.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
 import IconButton from "@/components/widgets/buttons/IconButton.vue";
@@ -379,13 +381,7 @@ export default defineComponent({
 			this.canvasCursor = updateMouseCursor.cursor;
 		});
 		this.editor.dispatcher.subscribeJsMessage(TriggerTextCommit, () => {
-			if (this.textInput) {
-				let text = this.textInput.innerText;
-				// Necessary because innerText puts an extra newline character at the end when the text is more than one line.
-				if (text[text.length - 1] === "\n") text = text.slice(0, -1);
-
-				this.editor.instance.on_change_text(text);
-			}
+			if (this.textInput) this.editor.instance.on_change_text(cleanupTextInput(this.textInput.innerText));
 		});
 
 		this.editor.dispatcher.subscribeJsMessage(DisplayEditableTextbox, (displayEditableTextbox) => {
@@ -400,13 +396,7 @@ export default defineComponent({
 			this.textInput.style.fontSize = `${displayEditableTextbox.font_size}px`;
 
 			this.textInput.oninput = (): void => {
-				if (this.textInput) {
-					let text = this.textInput.innerText;
-					// Necessary because innerText puts an extra newline character at the end when the text is more than one line.
-					if (text[text.length - 1] === "\n") text = text.slice(0, -1);
-
-					this.editor.instance.update_bounds(text);
-				}
+				if (this.textInput) this.editor.instance.update_bounds(cleanupTextInput(this.textInput.innerText));
 			};
 		});
 

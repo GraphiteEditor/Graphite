@@ -2,6 +2,7 @@ import { DialogState } from "@/state/dialog";
 import { DocumentsState } from "@/state/documents";
 import { FullscreenState } from "@/state/fullscreen";
 import { EditorState } from "@/state/wasm-loader";
+import { cleanupTextInput } from "@/utilities/cleanup_text_input";
 
 type EventName = keyof HTMLElementEventMap | keyof WindowEventHandlersEventMap | "modifyinputfield";
 interface EventListenerTarget {
@@ -120,11 +121,7 @@ export function createInputManager(editor: EditorState, container: HTMLElement, 
 		}
 
 		if (textInput && !inTextInput) {
-			let text = textInput.innerText;
-			// Necessary because innerText puts an extra newline character at the end when the text is more than one line.
-			if (text[text.length - 1] === "\n") text = text.slice(0, -1);
-
-			editor.instance.on_change_text(text);
+			editor.instance.on_change_text(cleanupTextInput(textInput.innerText));
 		} else if (inCanvas && !inTextInput) viewportPointerInteractionOngoing = true;
 
 		if (viewportPointerInteractionOngoing) {
