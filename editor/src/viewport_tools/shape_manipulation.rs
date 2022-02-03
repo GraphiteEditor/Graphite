@@ -29,16 +29,10 @@ pub struct ShapeEditor {
 	// The shapes we can select anchors / handles from
 	pub shapes_to_modify: Vec<VectorShape>,
 	// The path to the shape that contained the most recent selected point
-	pub selected_layer_path: Vec<LayerId>,
-	// The kurbo path elements that make up the most recent shape
-	pub selected_shape_elements: Vec<kurbo::PathEl>,
 	// Index of the shape that contained the most recent selected point
 	pub selected_shape_indices: HashSet<usize>,
-
 	// Have we selected a point in shapes_to_modify yet?
 	pub has_had_point_selection: bool,
-	// Debounce for toggling mirroring with alt
-	alt_mirror_toggle_debounce: bool,
 }
 
 impl ShapeEditor {
@@ -51,22 +45,21 @@ impl ShapeEditor {
 		let select_threshold_squared = select_threshold * select_threshold;
 		// Find the closest control point among all elements of shapes_to_modify
 		for shape_index in 0..self.shapes_to_modify.len() {
-			let selected_shape = &self.shapes_to_modify[shape_index];
-			let (anchor_index, point_index, distance) = self.closest_manipulator_indices(selected_shape, mouse_position);
+			let (anchor_index, point_index, distance) = self.closest_manipulator_indices(&self.shapes_to_modify[shape_index], mouse_position);
 			// Choose the first point under the threshold
 			if distance < select_threshold_squared {
-				// Populate the elements from the path and store the path to the selected shape
-				self.selected_shape_elements = selected_shape.bez_path.clone().into_iter().collect();
-				self.selected_layer_path = selected_shape.layer_path.clone();
+				// Add this shape to the selection
+				self.add_selected_shape(shape_index);
 
-				// Update the indices
-				self.selected_shape_indices.insert(shape_index);
-				selected_shape.add_selected_anchor(anchor_index).set_selected_point(point_index, true, responses);
+				let selected_shape = &mut self.shapes_to_modify[shape_index];
+				// Refresh the elements of the path
+				selected_shape.elements = selected_shape.bez_path.clone().into_iter().collect();
+				// Add which anchor and point was selected
+				selected_shape.add_selected_anchor(anchor_index).set_selected(point_index, true, responses);
 
 				// Due to the shape data structure not persisting across shape selection changes we need to rely on the kurbo path to know if we should mirror
-				let selected_anchor = &mut self.shapes_to_modify[shape_index].anchors[anchor_index];
+				let selected_anchor = &mut selected_shape.anchors[anchor_index];
 				selected_anchor.set_mirroring((selected_anchor.angle_between_handles().abs() - std::f64::consts::PI).abs() < 0.1);
-				self.alt_mirror_toggle_debounce = false;
 				self.has_had_point_selection = true;
 				return true;
 			}
@@ -78,6 +71,10 @@ impl ShapeEditor {
 	pub fn set_shapes_to_modify(&mut self, selected_shapes: Vec<VectorShape>) {
 		self.has_had_point_selection = false;
 		self.shapes_to_modify = selected_shapes;
+	}
+
+	pub fn add_selected_shape(&mut self, shape_index: usize) {
+		self.selected_shape_indices.insert(shape_index);
 	}
 
 	/// Provide the shapes that the currently selected points are a part of
@@ -96,19 +93,6 @@ impl ShapeEditor {
 			.filter_map(|(index, shape)| if self.selected_shape_indices.contains(&index) { Some(shape) } else { None })
 	}
 
-	/// Provide the currently selected points by reference
-	pub fn selected_points(&self) -> impl Iterator<Item = &VectorManipulatorPoint> {
-		self.selected_shapes().flat_map(|shape| shape.selected_anchors()).map(|anchors| anchors.selected_points()).flatten()
-	}
-
-	/// Provide the currently selected points by mutable reference
-	pub fn selected_points_mut(&mut self) -> impl Iterator<Item = &mut VectorManipulatorPoint> {
-		self.selected_shapes_mut()
-			.flat_map(|shape| shape.selected_anchors_mut())
-			.map(|anchors| anchors.selected_points_mut())
-			.flatten()
-	}
-
 	/// Provide the currently selected anchor by reference
 	pub fn selected_anchors(&self) -> impl Iterator<Item = &VectorManipulatorAnchor> {
 		self.selected_shapes().flat_map(|shape| shape.selected_anchors())
@@ -119,141 +103,45 @@ impl ShapeEditor {
 		self.selected_shapes_mut().flat_map(|shape| shape.selected_anchors_mut())
 	}
 
+	/// Provide the currently selected points by reference
+	pub fn selected_points(&self) -> impl Iterator<Item = &VectorManipulatorPoint> {
+		self.selected_shapes().flat_map(|shape| shape.selected_anchors()).flat_map(|anchors| anchors.selected_points())
+	}
+
+	/// Provide the currently selected points by mutable reference
+	pub fn selected_points_mut(&mut self) -> impl Iterator<Item = &mut VectorManipulatorPoint> {
+		self.selected_shapes_mut()
+			.flat_map(|shape| shape.selected_anchors_mut())
+			.flat_map(|anchors| anchors.selected_points_mut())
+	}
+
+	pub fn set_drag_start_positions(&mut self) {
+		for shape in self.selected_shapes_mut() {
+			let transform = shape.transform.inverse();
+			for anchor in shape.selected_anchors_mut() {
+				for point in anchor.selected_points_mut() {
+					point.drag_start_position = transform.transform_point2(point.position);
+				}
+			}
+		}
+	}
+
+	pub fn move_selected_points(&mut self, mouse_position: DVec2, should_mirror: bool, responses: &mut VecDeque<Message>) {
+		for shape in self.selected_shapes_mut() {
+			shape.move_selected(mouse_position, should_mirror, responses);
+		}
+	}
+
 	/// Remove all of the overlays from the shapes the manipulation handler has created
+	pub fn deselect_all(&mut self, responses: &mut VecDeque<Message>) {
+		for shape in self.shapes_to_modify.iter_mut() {
+			shape.clear_selected_anchors(responses)
+		}
+	}
+
 	pub fn remove_overlays(&mut self, responses: &mut VecDeque<Message>) {
-		if self.shapes_to_modify.is_empty() {
-			return;
-		}
-
-		for shape in &mut self.shapes_to_modify {
-			shape.remove_overlays(responses);
-		}
-	}
-
-	/// Move the selected point based on mouse input, if this is a handle we can control if we are mirroring or not
-	/// A wrapper around move_point to handle mirror state / submit the changes
-	pub fn move_selected_to(&mut self, target_position: DVec2, should_mirror: bool) -> Option<Operation> {
-		self.selected_shapes()?;
-
-		let target_to_shape = self.selected_shapes().unwrap().transform.inverse().transform_point2(target_position);
-		let target_position = Vec2::new(target_to_shape.x, target_to_shape.y);
-
-		let toggle_debounce = self.alt_mirror_toggle_debounce;
-		if let Some(selected_anchor) = self.selected_anchors_mut() {
-			// Should we mirror the opposing handle or not?
-			if !should_mirror && toggle_debounce != should_mirror {
-				selected_anchor.handle_mirroring = !selected_anchor.handle_mirroring;
-			}
-
-			self.move_point(target_position);
-		}
-
-		self.alt_mirror_toggle_debounce = should_mirror;
-		// We've made our changes to the shape, submit them
-		Some(Operation::SetShapePathInViewport {
-			path: self.selected_layer_path.clone(),
-			bez_path: self.selected_shape_elements.clone().into_iter().collect(),
-			transform: self.selected_shapes().unwrap().transform.to_cols_array(),
-		})
-	}
-
-	/// Move the selected point to the specificed target position
-	fn move_point(&mut self, target_position: Vec2) {
-		let target_position_as_point = target_position.to_point();
-		let selected_anchor = &mut self.shapes_to_modify[self.selected_shape_indices].anchors[self.selected_anchor_indices];
-		let selected_point = &selected_anchor.points[self.selected_point_indices];
-		let h1_selected = ManipulatorType::Handle1 as usize == self.selected_point_indices;
-		let h2_selected = ManipulatorType::Handle2 as usize == self.selected_point_indices;
-
-		let place_mirrored_handle = |center: kurbo::Point, original: kurbo::Point, mirror: bool, selected: bool| -> kurbo::Point {
-			if !selected || !mirror {
-				return original;
-			}
-
-			// Keep rotational similarity, but distance variable
-			let radius = center.distance(original);
-			let phi = (center - target_position_as_point).atan2();
-
-			kurbo::Point {
-				x: radius * phi.cos() + center.x,
-				y: radius * phi.sin() + center.y,
-			}
-		};
-
-		// If neither handle is selected, we are dragging an anchor point
-		if !(h1_selected || h2_selected) {
-			// Move the anchor point and handle on the same path element
-			if let Some(anchor_point) = &selected_anchor.points[ManipulatorType::Anchor] {
-				let (selected, point) = match &self.selected_shape_elements[anchor_point.element_id] {
-					PathEl::MoveTo(p) => (PathEl::MoveTo(target_position_as_point), p),
-					PathEl::LineTo(p) => (PathEl::LineTo(target_position_as_point), p),
-					PathEl::QuadTo(a1, p) => (PathEl::QuadTo(*a1, target_position_as_point), p),
-					PathEl::CurveTo(a1, a2, p) => (PathEl::CurveTo(*a1, *a2 - (*p - target_position_as_point), target_position_as_point), p),
-					PathEl::ClosePath => (PathEl::ClosePath, &target_position_as_point),
-				};
-				let point_delta = (*point - target_position).to_vec2();
-
-				// Move the handle on the adjacent path element
-				if let Some(handle) = &selected_anchor.points[ManipulatorType::Handle2] {
-					let neighbor = match &self.selected_shape_elements[handle.element_id] {
-						PathEl::MoveTo(_) => PathEl::MoveTo(target_position_as_point),
-						PathEl::LineTo(_) => PathEl::LineTo(target_position_as_point),
-						PathEl::QuadTo(a1, p) => PathEl::QuadTo(*a1, *p),
-						PathEl::CurveTo(a1, a2, p) => PathEl::CurveTo(*a1 - point_delta, *a2, *p),
-						PathEl::ClosePath => PathEl::ClosePath,
-					};
-					self.selected_shape_elements[handle.element_id] = neighbor;
-				}
-
-				// Move the invisible point that can be caused by MoveTo / closing the path
-				if let Some(close_element_id) = selected_anchor.close_element_id {
-					self.selected_shape_elements[close_element_id] = match &self.selected_shape_elements[close_element_id] {
-						PathEl::MoveTo(_) => PathEl::MoveTo(target_position_as_point),
-						PathEl::LineTo(_) => PathEl::LineTo(target_position_as_point),
-						PathEl::QuadTo(a1, _) => PathEl::QuadTo(*a1, target_position_as_point),
-						PathEl::CurveTo(a1, a2, p) => PathEl::CurveTo(*a1, *a2 - (*p - target_position_as_point), target_position_as_point),
-						PathEl::ClosePath => PathEl::ClosePath,
-					};
-				}
-
-				if let Some(selected_point) = selected_point {
-					self.selected_shape_elements[selected_point.element_id] = selected;
-				}
-			}
-		}
-		// We are dragging a handle
-		else {
-			let should_mirror = selected_anchor.handle_mirroring;
-			if let Some(selected_point) = selected_point {
-				// Move the selected handle
-				let (selected, anchor) = match &self.selected_shape_elements[selected_point.element_id] {
-					PathEl::MoveTo(p) => (PathEl::MoveTo(*p), *p),
-					PathEl::LineTo(p) => (PathEl::LineTo(*p), *p),
-					PathEl::QuadTo(_, p) => (PathEl::QuadTo(target_position_as_point, *p), *p),
-					PathEl::CurveTo(a1, a2, p) => (
-						PathEl::CurveTo(if h2_selected { target_position_as_point } else { *a1 }, if h1_selected { target_position_as_point } else { *a2 }, *p),
-						*p,
-					),
-					PathEl::ClosePath => (PathEl::ClosePath, target_position_as_point),
-				};
-
-				// Move the opposing handle on the adjacent path element
-				if let Some(handle) = selected_anchor.opposing_handle(selected_point) {
-					let neighbor = match &self.selected_shape_elements[handle.element_id] {
-						PathEl::MoveTo(p) => PathEl::MoveTo(*p),
-						PathEl::LineTo(p) => PathEl::LineTo(*p),
-						PathEl::QuadTo(a1, p) => PathEl::QuadTo(*a1, *p),
-						PathEl::CurveTo(a1, a2, p) => PathEl::CurveTo(
-							place_mirrored_handle(anchor, *a1, h1_selected, should_mirror),
-							place_mirrored_handle(*p, *a2, h2_selected, should_mirror),
-							*p,
-						),
-						PathEl::ClosePath => PathEl::ClosePath,
-					};
-					self.selected_shape_elements[handle.element_id] = neighbor;
-				}
-				self.selected_shape_elements[selected_point.element_id] = selected;
-			}
+		for shape in self.shapes_to_modify.iter_mut() {
+			shape.remove_overlays(responses)
 		}
 	}
 
@@ -289,6 +177,8 @@ pub struct VectorShape {
 	pub layer_path: Vec<LayerId>,
 	/// The outline of the shape via kurbo
 	pub bez_path: kurbo::BezPath,
+	/// The elements of the kurbo shape
+	pub elements: Vec<kurbo::PathEl>,
 	/// The segments containing the control points / manipulator handles
 	pub segments: Vec<VectorManipulatorSegment>,
 	/// The anchors that are made up of the control points / handles
@@ -312,20 +202,22 @@ impl VectorShape {
 			bez_path: bez_path.clone(),
 			closed,
 			transform,
+			elements: vec![],
 			segments: vec![],
 			anchors: vec![],
 			shape_overlay: None,
 			selected_anchor_indices: HashSet::<usize>::new(),
 		};
+		shape.elements = bez_path.into_iter().collect();
+		shape.segments = shape.create_segments_from_kurbo();
 		shape.shape_overlay = Some(shape.create_shape_outline_overlay(responses));
 		shape.anchors = shape.create_anchors_from_kurbo(responses);
-		shape.segments = shape.create_segments_from_kurbo();
 
 		// TODO: This is a hack to allow Text to work. The shape isn't a path until this message is sent (it appears)
 		responses.push_back(
 			Operation::SetShapePathInViewport {
 				path: shape.layer_path.clone(),
-				bez_path: shape.bez_path.clone().into_iter().collect(),
+				bez_path: shape.elements.clone().into_iter().collect(),
 				transform: shape.transform.to_cols_array(),
 			}
 			.into(),
@@ -334,9 +226,21 @@ impl VectorShape {
 		shape
 	}
 
-	pub fn add_selected_anchor(&mut self, anchor_index: usize) -> &VectorManipulatorAnchor {
+	pub fn add_selected_anchor(&mut self, anchor_index: usize) -> &mut VectorManipulatorAnchor {
 		self.selected_anchor_indices.insert(anchor_index);
-		&self.anchors[anchor_index]
+		&mut self.anchors[anchor_index]
+	}
+
+	pub fn remove_selected_anchor(&mut self, anchor_index: usize, responses: &mut VecDeque<Message>) {
+		self.anchors[anchor_index].clear_selected_points(responses);
+		self.selected_anchor_indices.remove(&anchor_index);
+	}
+
+	pub fn clear_selected_anchors(&mut self, responses: &mut VecDeque<Message>) {
+		for anchor_index in self.selected_anchor_indices.iter() {
+			self.anchors[*anchor_index].clear_selected_points(responses);
+		}
+		self.selected_anchor_indices.clear();
 	}
 
 	pub fn selected_anchors(&self) -> impl Iterator<Item = &VectorManipulatorAnchor> {
@@ -346,11 +250,37 @@ impl VectorShape {
 			.filter_map(|(index, anchor)| if self.selected_anchor_indices.contains(&index) { Some(anchor) } else { None })
 	}
 
-	pub fn selected_anchors_mut<'a>(&'a mut self) -> impl Iterator<Item = &'a mut VectorManipulatorAnchor> {
+	pub fn selected_anchors_mut(&mut self) -> impl Iterator<Item = &mut VectorManipulatorAnchor> {
 		self.anchors
 			.iter_mut()
 			.enumerate()
 			.filter_map(|(index, anchor)| if self.selected_anchor_indices.contains(&index) { Some(anchor) } else { None })
+	}
+
+	/// Move the selected point based on mouse input, if this is a handle we can control if we are mirroring or not
+	/// A wrapper around move_point to handle mirror state / submit the changes
+	pub fn move_selected(&mut self, target_position: DVec2, should_mirror: bool, responses: &mut VecDeque<Message>) {
+		let target_to_shape = self.transform.inverse().transform_point2(target_position);
+		let target_position = Vec2::new(target_to_shape.x, target_to_shape.y);
+		let mut edited_bez_path = self.elements.clone();
+
+		for selected_anchor in self.selected_anchors_mut() {
+			// Should we mirror the opposing handle or not?
+			if !should_mirror && should_mirror == selected_anchor.handle_mirroring {
+				selected_anchor.handle_mirroring = !selected_anchor.handle_mirroring;
+			}
+			selected_anchor.move_anchor_points(target_position, &mut edited_bez_path);
+		}
+
+		// We've made our changes to the shape, submit them
+		responses.push_back(
+			Operation::SetShapePathInViewport {
+				path: self.layer_path.clone(),
+				bez_path: edited_bez_path.into_iter().collect(),
+				transform: self.transform.to_cols_array(),
+			}
+			.into(),
+		);
 	}
 
 	/// Place points in local space
@@ -366,13 +296,15 @@ impl VectorShape {
 		let (first_id, first_element) = first;
 		let (second_id, second_element) = second;
 
-		let create_point = |id: usize, point: DVec2, overlay_path: Vec<LayerId>| -> VectorManipulatorPoint {
+		let create_point = |id: usize, point: DVec2, overlay_path: Vec<LayerId>, manipulator_type: ManipulatorType| -> VectorManipulatorPoint {
 			VectorManipulatorPoint {
 				element_id: id,
 				position: point,
+				drag_start_position: point,
 				overlay_path: Some(overlay_path),
 				can_be_selected: true,
 				is_selected: false,
+				manipulator_type,
 			}
 		};
 
@@ -380,21 +312,25 @@ impl VectorShape {
 			kurbo::PathEl::MoveTo(anchor) | kurbo::PathEl::LineTo(anchor) => anchor_position = self.to_local_space(anchor),
 			kurbo::PathEl::QuadTo(handle, anchor) | kurbo::PathEl::CurveTo(_, handle, anchor) => {
 				anchor_position = self.to_local_space(anchor);
-				handle1 = Some(create_point(first_id, self.to_local_space(handle), self.create_handle_overlay(responses)));
+				handle1 = Some(create_point(first_id, self.to_local_space(handle), self.create_handle_overlay(responses), ManipulatorType::Handle1));
 			}
 			_ => (),
 		}
 
 		match second_element {
 			kurbo::PathEl::CurveTo(handle, _, _) | kurbo::PathEl::QuadTo(handle, _) => {
-				handle2 = Some(create_point(second_id, self.to_local_space(handle), self.create_handle_overlay(responses)));
+				handle2 = Some(create_point(second_id, self.to_local_space(handle), self.create_handle_overlay(responses), ManipulatorType::Handle2));
 			}
 			_ => (),
 		}
 
 		VectorManipulatorAnchor {
 			handle_line_overlays: (self.create_handle_line_overlay(&handle1, responses), self.create_handle_line_overlay(&handle2, responses)),
-			points: [Some(create_point(first_id, anchor_position, self.create_anchor_overlay(responses))), handle1, handle2],
+			points: [
+				Some(create_point(first_id, anchor_position, self.create_anchor_overlay(responses), ManipulatorType::Anchor)),
+				handle1,
+				handle2,
+			],
 			close_element_id: None,
 			handle_mirroring: true,
 		}
@@ -730,8 +666,8 @@ pub enum VectorManipulatorSegment {
 }
 
 #[repr(usize)]
-#[derive(std::cmp::PartialEq)]
-enum ManipulatorType {
+#[derive(PartialEq, Clone, Debug)]
+pub enum ManipulatorType {
 	Anchor = 0,
 	Handle1 = 1,
 	Handle2 = 2,
@@ -782,18 +718,122 @@ impl VectorManipulatorAnchor {
 			.0
 	}
 
-	pub fn set_selected_point(&mut self, point_id: usize, selected: bool, responses: &mut VecDeque<Message>) -> Option<&mut VectorManipulatorPoint> {
-		let point = self.points[point_id];
-		point.as_mut()?.set_selected(true, responses);
-		point.as_mut()
+	/// Move the selected points to the specificed target position
+	fn move_anchor_points(&mut self, target_position: Vec2, path_to_update: &mut Vec<kurbo::PathEl>) {
+		let selected_points = self.selected_points();
+		let place_mirrored_handle = |center: kurbo::Point, original: kurbo::Point, mirror: bool, selected: bool| -> kurbo::Point {
+			if !selected || !mirror {
+				return original;
+			}
+
+			// Keep rotational similarity, but distance variable
+			let radius = center.distance(original);
+			let phi = (center - (target_position.to_point())).atan2();
+
+			kurbo::Point {
+				x: radius * phi.cos() + center.x,
+				y: radius * phi.sin() + center.y,
+			}
+		};
+
+		for selected_point in selected_points {
+			let delta = target_position - Vec2::new(selected_point.drag_start_position.x, selected_point.drag_start_position.y);
+			let h1_selected = ManipulatorType::Handle1 == selected_point.manipulator_type;
+			let h2_selected = ManipulatorType::Handle2 == selected_point.manipulator_type;
+
+			// If neither handle is selected, we are dragging an anchor point
+			if !(h1_selected || h2_selected) {
+				// Move the anchor point and handle on the same path element
+				if let Some(anchor_point) = &self.points[ManipulatorType::Anchor] {
+					let selected = match &path_to_update[anchor_point.element_id] {
+						PathEl::MoveTo(p) => PathEl::MoveTo(delta.to_point()),
+						PathEl::LineTo(p) => PathEl::LineTo(delta.to_point()),
+						PathEl::QuadTo(a1, p) => PathEl::QuadTo(*a1, *p - delta),
+						PathEl::CurveTo(a1, a2, p) => PathEl::CurveTo(*a1, *a2 - delta, *p - delta),
+						PathEl::ClosePath => PathEl::ClosePath,
+					};
+					// let point_delta = (*point - target_position).to_vec2();
+
+					// Move the handle on the adjacent path element
+					if let Some(handle) = &self.points[ManipulatorType::Handle2] {
+						let neighbor = match &path_to_update[handle.element_id] {
+							PathEl::MoveTo(p) => PathEl::MoveTo(*p - delta),
+							PathEl::LineTo(p) => PathEl::LineTo(*p - delta),
+							PathEl::QuadTo(a1, p) => PathEl::QuadTo(*a1, *p),
+							PathEl::CurveTo(a1, a2, p) => PathEl::CurveTo(*a1 - delta, *a2, *p),
+							PathEl::ClosePath => PathEl::ClosePath,
+						};
+						path_to_update[handle.element_id] = neighbor;
+					}
+
+					// Move the invisible point that can be caused by MoveTo / closing the path
+					if let Some(close_element_id) = self.close_element_id {
+						path_to_update[close_element_id] = match &path_to_update[close_element_id] {
+							PathEl::MoveTo(p) => PathEl::MoveTo(delta.to_point()),
+							PathEl::LineTo(p) => PathEl::LineTo(delta.to_point()),
+							PathEl::QuadTo(a1, p) => PathEl::QuadTo(*a1, *p - delta),
+							PathEl::CurveTo(a1, a2, p) => PathEl::CurveTo(*a1, *a2 - delta, *p - delta),
+							PathEl::ClosePath => PathEl::ClosePath,
+						};
+					}
+
+					path_to_update[selected_point.element_id] = selected;
+				}
+			}
+			// We are dragging a handle
+			else {
+				let should_mirror = self.handle_mirroring;
+				// Move the selected handle
+				let (selected, anchor) = match &path_to_update[selected_point.element_id] {
+					PathEl::MoveTo(p) => (PathEl::MoveTo(*p), *p),
+					PathEl::LineTo(p) => (PathEl::LineTo(*p), *p),
+					PathEl::QuadTo(a1, p) => (PathEl::QuadTo(*a1 - delta, *p), *p),
+					PathEl::CurveTo(a1, a2, p) => (PathEl::CurveTo(if h2_selected { *a1 - delta } else { *a1 }, if h1_selected { *a2 - delta } else { *a2 }, *p), *p),
+					PathEl::ClosePath => (PathEl::ClosePath, delta.to_point()),
+				};
+
+				// Move the opposing handle on the adjacent path element
+				if let Some(handle) = self.opposing_handle(selected_point) {
+					let neighbor = match &path_to_update[handle.element_id] {
+						PathEl::MoveTo(p) => PathEl::MoveTo(*p),
+						PathEl::LineTo(p) => PathEl::LineTo(*p),
+						PathEl::QuadTo(a1, p) => PathEl::QuadTo(*a1, *p),
+						PathEl::CurveTo(a1, a2, p) => PathEl::CurveTo(
+							place_mirrored_handle(anchor, *a1, h1_selected, should_mirror),
+							place_mirrored_handle(*p, *a2, h2_selected, should_mirror),
+							*p,
+						),
+						PathEl::ClosePath => PathEl::ClosePath,
+					};
+					path_to_update[handle.element_id] = neighbor;
+				}
+				path_to_update[selected_point.element_id] = selected;
+			}
+		}
+	}
+
+	pub fn is_selected(&self) -> bool {
+		self.points.iter().flatten().any(|pnt| pnt.is_selected())
+	}
+
+	pub fn set_selected(&mut self, point_id: usize, selected: bool, responses: &mut VecDeque<Message>) {
+		if let Some(point) = self.points[point_id].as_mut() {
+			point.set_selected(selected, responses);
+		}
+	}
+
+	pub fn clear_selected_points(&mut self, responses: &mut VecDeque<Message>) {
+		for point in self.points.iter_mut().flatten() {
+			point.set_selected(false, responses);
+		}
 	}
 
 	pub fn selected_points(&self) -> impl Iterator<Item = &VectorManipulatorPoint> {
-		self.points.iter().flatten().filter(|pnt| pnt.is_selected)
+		self.points.iter().flatten().filter(|pnt| pnt.is_selected())
 	}
 
 	pub fn selected_points_mut(&mut self) -> impl Iterator<Item = &mut VectorManipulatorPoint> {
-		self.points.iter_mut().flatten().filter(|pnt| pnt.is_selected)
+		self.points.iter_mut().flatten().filter(|pnt| pnt.is_selected())
 	}
 
 	/// Angle between handles in radians
@@ -1006,7 +1046,7 @@ impl VectorManipulatorAnchor {
 }
 
 /// VectorManipulatorPoint represents any grabbable point, anchor or handle
-#[derive(PartialEq, Clone, Debug, Default)]
+#[derive(PartialEq, Clone, Debug)]
 pub struct VectorManipulatorPoint {
 	// The associated position in the BezPath
 	pub element_id: usize,
@@ -1014,13 +1054,36 @@ pub struct VectorManipulatorPoint {
 	pub position: glam::DVec2,
 	// The path to the overlay for this point rendering
 	pub overlay_path: Option<Vec<LayerId>>,
+	// The type of manipulator this point is
+	pub manipulator_type: ManipulatorType,
+
 	// Can be selected
-	pub can_be_selected: bool,
+	can_be_selected: bool,
 	// Is this point currently selected?
-	pub is_selected: bool,
+	is_selected: bool,
+
+	drag_start_position: glam::DVec2,
+}
+
+impl Default for VectorManipulatorPoint {
+	fn default() -> Self {
+		Self {
+			element_id: 0,
+			position: DVec2::ZERO,
+			drag_start_position: DVec2::ZERO,
+			overlay_path: None,
+			manipulator_type: ManipulatorType::Anchor,
+			can_be_selected: true,
+			is_selected: false,
+		}
+	}
 }
 
 impl VectorManipulatorPoint {
+	pub fn is_selected(&self) -> bool {
+		self.is_selected
+	}
+
 	/// Sets if this point is selected and updates the overlay to represent that
 	pub fn set_selected(&mut self, selected: bool, responses: &mut VecDeque<Message>) {
 		if selected {
