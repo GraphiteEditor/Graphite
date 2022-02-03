@@ -188,6 +188,9 @@ impl JsEditorHandle {
 	}
 
 	pub fn close_document(&self, document_id: u64) {
+		let message = ToolMessage::AbortCurrentTool;
+		self.dispatch(message);
+
 		let message = PortfolioMessage::CloseDocument { document_id };
 		self.dispatch(message);
 	}
