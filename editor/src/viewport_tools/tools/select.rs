@@ -314,32 +314,32 @@ struct SelectedEdges {
 }
 
 impl SelectedEdges {
-	fn new(top: bool, bottom: bool, left: bool, right: bool, bounds: [DVec2; 2], pivot: &mut DVec2) -> Self {
-		// Calculate the pivot for the operation (the opposite point to the edge dragged)
-		*pivot = {
-			let min = bounds[0];
-			let max = bounds[1];
+	fn new(top: bool, bottom: bool, left: bool, right: bool, bounds: [DVec2; 2]) -> Self {
+		Self { top, bottom, left, right, bounds }
+	}
 
-			let x = if left {
-				max.x
-			} else if right {
-				min.x
-			} else {
-				(min.x + max.x) / 2.
-			};
+	/// Calculate the pivot for the operation (the opposite point to the edge dragged)
+	fn calculate_pivot(&self) -> DVec2 {
+		let min = self.bounds[0];
+		let max = self.bounds[1];
 
-			let y = if top {
-				max.y
-			} else if bottom {
-				min.y
-			} else {
-				(min.y + max.y) / 2.
-			};
-
-			DVec2::new(x, y)
+		let x = if self.left {
+			max.x
+		} else if self.right {
+			min.x
+		} else {
+			(min.x + max.x) / 2.
 		};
 
-		Self { top, bottom, left, right, bounds }
+		let y = if self.top {
+			max.y
+		} else if self.bottom {
+			min.y
+		} else {
+			(min.y + max.y) / 2.
+		};
+
+		DVec2::new(x, y)
 	}
 
 	/// Calculates the required scaling to resize the bounding box
@@ -579,7 +579,11 @@ impl Fsm for SelectToolFsmState {
 					let dragging_bounds = if let Some(bounding_box) = &mut data.bounding_box_overlays {
 						let edges = bounding_box.check_selected_edges(input.mouse.position);
 
-						bounding_box.selected_edges = edges.map(|(top, bottom, left, right)| SelectedEdges::new(top, bottom, left, right, bounding_box.bounds, &mut bounding_box.pivot));
+						bounding_box.selected_edges = edges.map(|(top, bottom, left, right)| {
+							let edges = SelectedEdges::new(top, bottom, left, right, bounding_box.bounds);
+							bounding_box.pivot = edges.calculate_pivot();
+							edges
+						});
 
 						edges
 					} else {
