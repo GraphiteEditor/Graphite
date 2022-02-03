@@ -389,12 +389,15 @@ export default defineComponent({
 
 		this.editor.dispatcher.subscribeJsMessage(DisplayEditableTextbox, (displayEditableTextbox) => {
 			this.textInput = document.createElement("DIV") as HTMLDivElement;
-			this.textInput.id = "editable-textbox";
-			this.textInput.innerText = `${displayEditableTextbox.text}\n`;
+
+			if (displayEditableTextbox.text === "") this.textInput.textContent = "";
+			else this.textInput.textContent = `${displayEditableTextbox.text}\n`;
+
 			this.textInput.contentEditable = "true";
 			this.textInput.style.width = displayEditableTextbox.line_width ? `${displayEditableTextbox.line_width}px` : "max-content";
 			this.textInput.style.height = "auto";
 			this.textInput.style.fontSize = `${displayEditableTextbox.font_size}px`;
+
 			this.textInput.oninput = (): void => {
 				if (this.textInput) {
 					let text = this.textInput.innerText;
