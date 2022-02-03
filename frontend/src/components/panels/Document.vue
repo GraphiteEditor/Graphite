@@ -68,7 +68,7 @@
 					</LayoutCol>
 					<LayoutCol class="canvas-area">
 						<div class="canvas" data-canvas ref="canvas" :style="{ cursor: canvasCursor }" @pointerdown="(e: PointerEvent) => canvasPointerDown(e)">
-							<canvas class='rendering-canvas' ref="rendering"></canvas>
+							<canvas class='rendering-canvas' ref="rendering" :style="{ width: canvasSvgWidth, height: canvasSvgHeight }"></canvas>
 							<svg class="artwork" v-html="artworkSvg" :style="{ width: canvasSvgWidth, height: canvasSvgHeight }"></svg>
 							<svg class="overlays" v-html="overlaysSvg" :style="{ width: canvasSvgWidth, height: canvasSvgHeight }"></svg>
 						</div>
@@ -261,8 +261,7 @@ export default defineComponent({
 		viewportResize() {
 			// Resize the canvas
 
-			const canvas = this.$refs.canvas as HTMLElement;
-
+			const canvas = this.$refs.canvas as HTMLCanvasElement;
 			// Get the width and height rounded up to the nearest even number because resizing is centered and dividing an odd number by 2 for centering causes antialiasing
 			let width = Math.ceil(parseFloat(getComputedStyle(canvas).width));
 			if (width % 2 === 1) width += 1;
@@ -277,10 +276,31 @@ export default defineComponent({
 			const rulerVertical = this.$refs.rulerVertical as typeof CanvasRuler;
 			if (rulerHorizontal) rulerHorizontal.handleResize();
 			if (rulerVertical) rulerVertical.handleResize();
-			(this.$refs.rendering as HTMLCanvasElement).width = width;
-			(this.$refs.rendering as HTMLCanvasElement).height = height;
-			(this.$refs.canvas as HTMLCanvasElement).width = width;
-			(this.$refs.canvas as HTMLCanvasElement).height = height;
+
+			var rendering = this.$refs.rendering as HTMLCanvasElement;
+			const dpr = window.devicePixelRatio || 1;
+
+
+			 const ratio = dpr;
+				var can = rendering;
+				can.width = width * ratio;
+				can.height = height * ratio;
+				can.style.width = width + "px";
+				can.style.height = height + "px";
+
+				/*var ctx = rendering.getContext("2d");
+					if (ctx) {
+						ctx.scale(ratio, ratio);
+						ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+					}
+*/
+			//ctx.scale(ratio * dpr, ratio * dpr); //adjust this!
+
+			console.log(width, dpr);
+			(this.$refs.rendering as HTMLCanvasElement).width = dpr * width;
+			(this.$refs.rendering as HTMLCanvasElement).height = dpr * height;
+			//(this.$refs.canvas as HTMLCanvasElement).width = width * dpr;
+			//(this.$refs.canvas as HTMLCanvasElement).height = height * dpr;
 		},
 		translateCanvasX(newValue: number) {
 			const delta = newValue - this.scrollbarPos.x;
