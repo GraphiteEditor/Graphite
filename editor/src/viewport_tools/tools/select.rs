@@ -765,12 +765,7 @@ impl Fsm for SelectToolFsmState {
 					Ready
 				}
 				(ResizingBounds, DragStop) => {
-					let response = match input.mouse.position.distance(data.drag_start) < 10. * f64::EPSILON {
-						true => DocumentMessage::Undo,
-						false => DocumentMessage::CommitTransaction,
-					};
 					data.snap_handler.cleanup(responses);
-					responses.push_front(response.into());
 
 					if let Some(bounds) = &mut data.bounding_box_overlays {
 						bounds.original_transforms.clear();
@@ -779,12 +774,6 @@ impl Fsm for SelectToolFsmState {
 					Ready
 				}
 				(RotatingBounds, DragStop) => {
-					let response = match input.mouse.position.distance(data.drag_start) < 10. * f64::EPSILON {
-						true => DocumentMessage::Undo,
-						false => DocumentMessage::CommitTransaction,
-					};
-					responses.push_front(response.into());
-
 					if let Some(bounds) = &mut data.bounding_box_overlays {
 						bounds.original_transforms.clear();
 					}
