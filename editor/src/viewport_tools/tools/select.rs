@@ -707,10 +707,10 @@ impl Fsm for SelectToolFsmState {
 				(RotatingBounds, MouseMove { snap_angle, .. }) => {
 					if let Some(bounds) = &mut data.bounding_box_overlays {
 						let angle = {
-							let start_vec = data.drag_start - bounds.pivot;
-							let end_vec = input.mouse.position - bounds.pivot;
+							let start_offset = data.drag_start - bounds.pivot;
+							let end_offset = input.mouse.position - bounds.pivot;
 
-							start_vec.angle_between(end_vec)
+							start_offset.angle_between(end_offset)
 						};
 
 						let snapped_angle = if input.keyboard.get(snap_angle as usize) {

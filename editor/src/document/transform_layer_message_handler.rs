@@ -130,10 +130,10 @@ impl MessageHandler<TransformLayerMessage, (&mut HashMap<Vec<LayerId>, LayerMeta
 						TransformOperation::Rotating(rotation) => {
 							let selected_pivot = selected.calculate_pivot();
 							let angle = {
-								let start_vec = self.mouse_position - selected_pivot;
-								let end_vec = ipp.mouse.position - selected_pivot;
+								let start_offset = self.mouse_position - selected_pivot;
+								let end_offset = ipp.mouse.position - selected_pivot;
 
-								start_vec.angle_between(end_vec)
+								start_offset.angle_between(end_offset)
 							};
 
 							let change = if self.slow { angle / SLOWING_DIVISOR } else { angle };
