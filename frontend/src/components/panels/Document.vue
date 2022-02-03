@@ -379,19 +379,29 @@ export default defineComponent({
 			this.canvasCursor = updateMouseCursor.cursor;
 		});
 		this.editor.dispatcher.subscribeJsMessage(TriggerTextCommit, () => {
-			if (this.textInput) this.editor.instance.on_change_text(this.textInput.textContent || "");
+			if (this.textInput) {
+				let text = this.textInput.innerText;
+				if (text[text.length - 1] === "\n") text = text.slice(0, -1);
+
+				this.editor.instance.on_change_text(text);
+			}
 		});
 
 		this.editor.dispatcher.subscribeJsMessage(DisplayEditableTextbox, (displayEditableTextbox) => {
 			this.textInput = document.createElement("DIV") as HTMLDivElement;
 			this.textInput.id = "editable-textbox";
-			this.textInput.textContent = displayEditableTextbox.text;
+			this.textInput.innerText = `${displayEditableTextbox.text}\n`;
 			this.textInput.contentEditable = "true";
 			this.textInput.style.width = displayEditableTextbox.line_width ? `${displayEditableTextbox.line_width}px` : "max-content";
 			this.textInput.style.height = "auto";
 			this.textInput.style.fontSize = `${displayEditableTextbox.font_size}px`;
 			this.textInput.oninput = (): void => {
-				if (this.textInput) this.editor.instance.update_bounds(this.textInput.textContent || "");
+				if (this.textInput) {
+					let text = this.textInput.innerText;
+					if (text[text.length - 1] === "\n") text = text.slice(0, -1);
+
+					this.editor.instance.update_bounds(text);
+				}
 			};
 		});
 
