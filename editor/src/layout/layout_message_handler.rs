@@ -1,11 +1,10 @@
-use core::panic;
-use std::collections::VecDeque;
+use super::layout_message::LayoutTarget;
+use super::widgets::WidgetLayout;
+use crate::layout::widgets::Widget;
+use crate::message_prelude::*;
 
 use serde_json::Value;
-
-use crate::{layout::widgets::Widget, message_prelude::*};
-
-use super::{layout_message::LayoutTarget, widgets::WidgetLayout};
+use std::collections::VecDeque;
 
 #[derive(Debug, Clone, Default)]
 pub struct LayoutMessageHandler {

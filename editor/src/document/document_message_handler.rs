@@ -472,7 +472,7 @@ impl PropertyHolder for DocumentMessageHandler {
 				WidgetHolder::new(Widget::OptionalInput(OptionalInput {
 					checked: self.snapping_enabled,
 					icon: "Snapping".into(),
-					title: "Snapping".into(),
+					tooltip: "Snapping".into(),
 					on_update: WidgetCallback::new(|updated_optional_input| DocumentMessage::SetSnapping { snap: updated_optional_input.checked }.into()),
 				})),
 				WidgetHolder::new(Widget::PopoverButton(PopoverButton {
@@ -486,7 +486,7 @@ impl PropertyHolder for DocumentMessageHandler {
 				WidgetHolder::new(Widget::OptionalInput(OptionalInput {
 					checked: true,
 					icon: "Grid".into(),
-					title: "Grid".into(),
+					tooltip: "Grid".into(),
 					on_update: WidgetCallback::new(|_| FrontendMessage::DisplayDialogComingSoon { issue: Some(318) }.into()),
 				})),
 				WidgetHolder::new(Widget::PopoverButton(PopoverButton {
@@ -500,7 +500,7 @@ impl PropertyHolder for DocumentMessageHandler {
 				WidgetHolder::new(Widget::OptionalInput(OptionalInput {
 					checked: self.overlays_visible,
 					icon: "Overlays".into(),
-					title: "Overlays".into(),
+					tooltip: "Overlays".into(),
 					on_update: WidgetCallback::new(|updated_optional_input| {
 						DocumentMessage::SetOverlaysVisibility {
 							visible: updated_optional_input.checked,
@@ -569,21 +569,21 @@ impl PropertyHolder for DocumentMessageHandler {
 				WidgetHolder::new(Widget::IconButton(IconButton {
 					size: 24,
 					icon: "ZoomIn".into(),
-					title: "Zoom In".into(),
+					tooltip: "Zoom In".into(),
 					on_update: WidgetCallback::new(|_| MovementMessage::IncreaseCanvasZoom { center_on_mouse: false }.into()),
 					..IconButton::default()
 				})),
 				WidgetHolder::new(Widget::IconButton(IconButton {
 					size: 24,
 					icon: "ZoomOut".into(),
-					title: "Zoom Out".into(),
+					tooltip: "Zoom Out".into(),
 					on_update: WidgetCallback::new(|_| MovementMessage::DecreaseCanvasZoom { center_on_mouse: false }.into()),
 					..IconButton::default()
 				})),
 				WidgetHolder::new(Widget::IconButton(IconButton {
 					size: 24,
 					icon: "ZoomReset".into(),
-					title: "Zoom to 100%".into(),
+					tooltip: "Zoom to 100%".into(),
 					on_update: WidgetCallback::new(|_| MovementMessage::SetCanvasZoom { zoom_factor: 1. }.into()),
 					..IconButton::default()
 				})),
@@ -841,7 +841,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 				responses.extend([LayerChanged { affected_layer_path }.into(), DocumentStructureChanged.into()]);
 			}
 			GroupSelectedLayers => {
-				let mut new_folder_path: Vec<u64> = self.graphene_document.shallowest_common_folder(self.selected_layers()).unwrap_or(&[]).to_vec();
+				let mut new_folder_path = self.graphene_document.shallowest_common_folder(self.selected_layers()).unwrap_or(&[]).to_vec();
 
 				// Required for grouping parent folders with their own children
 				if !new_folder_path.is_empty() && self.selected_layers_contains(&new_folder_path) {

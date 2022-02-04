@@ -63,7 +63,7 @@ impl PropertyHolder for Line {
 		WidgetLayout::new(vec![LayoutRow::Row {
 			name: "".into(),
 			widgets: vec![WidgetHolder::new(Widget::NumberInput(NumberInput {
-				unit: "px".into(),
+				unit: " px".into(),
 				label: "Weight".into(),
 				value: self.options.line_weight as f64,
 				is_integer: true,
@@ -155,7 +155,7 @@ impl Fsm for LineToolFsmState {
 		if let ToolMessage::Line(event) = event {
 			match (self, event) {
 				(Ready, DragStart) => {
-					data.snap_handler.start_snap(document, document.visible_layers());
+					data.snap_handler.start_snap(document, document.visible_layers(), true, true);
 					data.drag_start = data.snap_handler.snap_position(responses, input.viewport_bounds.size(), document, input.mouse.position);
 
 					responses.push_back(DocumentMessage::StartTransaction.into());

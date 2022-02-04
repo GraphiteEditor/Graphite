@@ -36,7 +36,9 @@ impl MessageHandler<TransformLayerMessage, (&mut HashMap<Vec<LayerId>, LayerMeta
 		use TransformLayerMessage::*;
 
 		let (layer_metadata, document, ipp) = data;
-		let mut selected = Selected::new(&mut self.original_transforms, &mut self.pivot, layer_metadata, responses, document);
+
+		let selected_layers = layer_metadata.iter().filter_map(|(layer_path, data)| data.selected.then(|| layer_path)).collect::<Vec<_>>();
+		let mut selected = Selected::new(&mut self.original_transforms, &mut self.pivot, &selected_layers, responses, document);
 
 		let mut begin_operation = |operation: TransformOperation, typing: &mut Typing, mouse_position: &mut DVec2, start_mouse: &mut DVec2| {
 			if operation != TransformOperation::None {
@@ -128,10 +130,10 @@ impl MessageHandler<TransformLayerMessage, (&mut HashMap<Vec<LayerId>, LayerMeta
 						TransformOperation::Rotating(rotation) => {
 							let selected_pivot = selected.calculate_pivot();
 							let angle = {
-								let start_vec = self.mouse_position - selected_pivot;
-								let end_vec = ipp.mouse.position - selected_pivot;
+								let start_offset = self.mouse_position - selected_pivot;
+								let end_offset = ipp.mouse.position - selected_pivot;
 
-								start_vec.angle_between(end_vec)
+								start_offset.angle_between(end_offset)
 							};
 
 							let change = if self.slow { angle / SLOWING_DIVISOR } else { angle };

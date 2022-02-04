@@ -104,7 +104,7 @@ impl JsEditorHandle {
 		}
 	}
 
-	/// Update layout of a given ui
+	/// Update layout of a given UI
 	pub fn update_layout(&self, layout_target: JsValue, widget_id: u64, value: JsValue) -> Result<(), JsValue> {
 		match (from_value(layout_target), from_value(value)) {
 			(Ok(layout_target), Ok(value)) => {
@@ -188,6 +188,9 @@ impl JsEditorHandle {
 	}
 
 	pub fn close_document(&self, document_id: u64) {
+		let message = ToolMessage::AbortCurrentTool;
+		self.dispatch(message);
+
 		let message = PortfolioMessage::CloseDocument { document_id };
 		self.dispatch(message);
 	}

@@ -192,9 +192,9 @@
 					}
 				}
 				foreignObject {
+					width: 10000px;
+					height: 10000px;
 					overflow: visible;
-					width: 1px;
-					height: 1px;
 
 					div {
 						color: black;
@@ -244,6 +244,8 @@ import {
 	DisplayRemoveEditableTextbox,
 	DisplayEditableTextbox,
 } from "@/dispatcher/js-messages";
+
+import { textInputCleanup } from "@/lifetime/input";
 
 import LayoutCol from "@/components/layout/LayoutCol.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
@@ -379,19 +381,22 @@ export default defineComponent({
 			this.canvasCursor = updateMouseCursor.cursor;
 		});
 		this.editor.dispatcher.subscribeJsMessage(TriggerTextCommit, () => {
-			if (this.textInput) this.editor.instance.on_change_text(this.textInput.textContent || "");
+			if (this.textInput) this.editor.instance.on_change_text(textInputCleanup(this.textInput.innerText));
 		});
 
 		this.editor.dispatcher.subscribeJsMessage(DisplayEditableTextbox, (displayEditableTextbox) => {
 			this.textInput = document.createElement("DIV") as HTMLDivElement;
-			this.textInput.id = "editable-textbox";
-			this.textInput.textContent = displayEditableTextbox.text;
+
+			if (displayEditableTextbox.text === "") this.textInput.textContent = "";
+			else this.textInput.textContent = `${displayEditableTextbox.text}\n`;
+
 			this.textInput.contentEditable = "true";
 			this.textInput.style.width = displayEditableTextbox.line_width ? `${displayEditableTextbox.line_width}px` : "max-content";
 			this.textInput.style.height = "auto";
 			this.textInput.style.fontSize = `${displayEditableTextbox.font_size}px`;
+
 			this.textInput.oninput = (): void => {
-				if (this.textInput) this.editor.instance.update_bounds(this.textInput.textContent || "");
+				if (this.textInput) this.editor.instance.update_bounds(textInputCleanup(this.textInput.innerText));
 			};
 		});
 
