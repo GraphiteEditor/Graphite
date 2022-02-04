@@ -99,18 +99,29 @@ pub struct Intersect {
 	pub point: Point,
 	pub t_a: f64,
 	pub t_b: f64,
-	pub a_seg_idx: usize,
-	pub b_seg_idx: usize,
+	pub a_seg_idx: i32,
+	pub b_seg_idx: i32,
 	pub quality: f64,
 }
 
 impl Intersect {
-	pub fn add_idx(&mut self, a_idx: usize, b_idx: usize) {
+	pub fn new(point: Point, t_a: f64, t_b: f64, a_seg_idx: i32, b_seg_idx: i32) -> Self {
+		Intersect {
+			point,
+			t_a,
+			t_b,
+			a_seg_idx,
+			b_seg_idx,
+			quality: -1.0,
+		}
+	}
+
+	pub fn add_idx(&mut self, a_idx: i32, b_idx: i32) {
 		self.a_seg_idx = a_idx;
 		self.b_seg_idx = b_idx;
 	}
 
-	pub fn seg_idx(&self, o: Origin) -> usize {
+	pub fn seg_idx(&self, o: Origin) -> i32 {
 		match o {
 			Origin::Alpha => self.a_seg_idx,
 			Origin::Beta => self.b_seg_idx,
@@ -370,7 +381,7 @@ pub fn intersections(a: &BezPath, b: &BezPath) -> Vec<Intersect> {
 			path_intersections(&SubCurve::new(&a_seg, &a_extrema), &SubCurve::new(&b_seg, &b_extrema), 1.0, &mut intersects);
 			for mut path_intersection in intersects {
 				intersections.push({
-					path_intersection.add_idx(a_idx, b_idx);
+					path_intersection.add_idx(a_idx.try_into().unwrap(), b_idx.try_into().unwrap());
 					path_intersection
 				});
 			}

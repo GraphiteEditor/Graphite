@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 use std::{
 	fmt::{self, Debug, Formatter},
 	num::IntErrorKind,
+	ops::Deref,
 };
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq)]
@@ -94,10 +95,12 @@ impl Cycle {
 	fn extend(&mut self, vertex: usize, edge_origin: Origin, edge_curve: &BezPath) -> bool {
 		self.vertices.push((vertex, edge_origin));
 		self.area += path_area(edge_curve);
-		if vertex == self.vertices[0].0 {
-			return true;
-		}
-		return false;
+		vertex == self.vertices[0].0
+	}
+
+	/// returns number of vertices == number of edges in cycle
+	fn len(&self) -> usize {
+		self.vertices.len() - 1
 	}
 
 	pub fn prev_edge_origin(&self) -> Origin {
@@ -182,7 +185,6 @@ impl PathGraph {
 		Ok(new)
 	}
 
-	/// TODO: When a path has multiple subpaths, that should not be removed, could iterate by PathEl not PathSeg
 	/// NOTE: about intersection time_val order
 	/// !Panics when path is empty
 	fn add_edges_from_path(&mut self, path: &BezPath, origin: Origin) {
@@ -194,7 +196,7 @@ impl PathGraph {
 			beginning: Vec<PathSeg>,
 			start_idx: Option<usize>,
 			// seg idx != el_idx
-			seg_idx: usize,
+			seg_idx: i32,
 		}
 
 		impl AlgorithmState {
@@ -213,6 +215,7 @@ impl PathGraph {
 				self.current = Vec::new();
 				self.beginning = Vec::new();
 				self.start_idx = None;
+				log::debug!("resete")
 			}
 
 			fn advance_by_seg(&mut self, graph: &mut PathGraph, seg: PathSeg, origin: Origin) {
@@ -223,7 +226,6 @@ impl PathGraph {
 						match self.cstart {
 							Some(idx) => {
 								do_if!(sub_seg, end_of_edge { self.current.push(*end_of_edge)});
-								log::debug!("adding edge");
 								graph.add_edge(origin, idx, vertex_id, self.current.clone());
 								self.cstart = Some(vertex_id);
 								self.current = Vec::new();
@@ -267,7 +269,7 @@ impl PathGraph {
 				} else {
 					//path has a subpath with no intersects
 					//create a dummy vertex with single edge which will be identified as cycle
-					let dumb_id = graph.add_vertex(Intersect::from((self.beginning[0].start(), 0.0, 0.0)));
+					let dumb_id = graph.add_vertex(Intersect::new(self.beginning[0].start(), 0.0, 0.0, -1, -1));
 					graph.add_edge(origin, dumb_id, dumb_id, self.beginning.clone());
 				}
 			}
@@ -310,7 +312,7 @@ impl PathGraph {
 
 	/// returns the Vertex idx and intersect t-value for all intersects in segment identified by seg_idx from origin
 	/// sorts both lists for ascending t_value
-	fn intersects_in_seg(&self, seg_idx: usize, origin: Origin) -> (Vec<usize>, Vec<f64>) {
+	fn intersects_in_seg(&self, seg_idx: i32, origin: Origin) -> (Vec<usize>, Vec<f64>) {
 		let mut vertice_idx = Vec::new();
 		let mut t_values = Vec::new();
 		for (v_idx, vertex) in self.vertices.iter().enumerate() {
@@ -359,9 +361,6 @@ impl PathGraph {
 			if !cycle.extend(next_edge.destination, next_edge.from, &next_edge.curve) {
 				self.get_cycle(cycle, marker_map)
 			}
-		} else {
-			// dummy cycle
-			marker_map[cycle.prev_vertex()] |= 3;
 		}
 	}
 
@@ -374,12 +373,16 @@ impl PathGraph {
 			if (markers[vertex_idx] & 1) == 0 {
 				let mut temp = Cycle::new(vertex_idx, Origin::Alpha);
 				self.get_cycle(&mut temp, &mut markers);
-				cycles.push(temp);
+				if temp.len() > 0 {
+					cycles.push(temp);
+				}
 			}
 			if (markers[vertex_idx] & 2) == 0 {
 				let mut temp = Cycle::new(vertex_idx, Origin::Beta);
 				self.get_cycle(&mut temp, &mut markers);
-				cycles.push(temp);
+				if temp.len() > 0 {
+					cycles.push(temp);
+				}
 			}
 		});
 		cycles
@@ -478,10 +481,14 @@ pub fn boolean_operation(select: BooleanOperation, mut alpha: Shape, mut beta: S
 				Ok(graph) => {
 					let mut cycles = graph.get_cycles();
 					// "extra calls to ParamCurveArea::area here"
-					let outline: Cycle = (*cycles.iter().reduce(|max, cycle| if cycle.area().abs() >= max.area().abs() { cycle } else { max }).unwrap()).clone();
-					let mut insides = collect_shapes(&graph, &mut cycles, |dir| dir != alpha_dir, |_| &alpha.style)?;
-					insides.push(graph.get_shape(&outline, &alpha.style));
-					Ok(insides)
+					let mut boolean_union = graph.get_shape(
+						cycles.iter().reduce(|max, cycle| if cycle.area().abs() >= max.area().abs() { cycle } else { max }).unwrap(),
+						&alpha.style,
+					);
+					for interior in collect_shapes(&graph, &mut cycles, |dir| dir != alpha_dir, |_| &alpha.style)? {
+						add_subpath(&mut boolean_union.path, interior.path);
+					}
+					Ok(vec![boolean_union])
 				}
 				Err(BooleanOperationError::NoIntersections) => {
 					//if shape is inside the other the Union is just the larger

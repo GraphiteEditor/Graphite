@@ -507,15 +507,12 @@ impl Document {
 				Some([vec![DocumentChanged, CreatedLayer { path: path.clone() }], update_thumbnails_upstream(path)].concat())
 			}
 			Operation::BooleanOperation { operation, selected } => {
-				// Behavior: Accept any number of selected shapes
-				// Behavior: Use Pathstyle of highest shape
-				// Behavior: Close unclosed paths
-				// Behavior: Where in the tree structure should new shapes go? This also effects how the transforms are handled
-				//		- currently new shapes are added to the root, with the identity transform
-				// Behavior: Old shapes could be deleted, or added to
-
-				//it could equal 2.. but for Union and Intersection operations more than two selections could make sense
-				//Bug:: The order of selected does not correspond to the order of layers in the LayerTree
+				// TODO: proper difference
+				// TODO: proper style selection
+				// TODO:
+				// TODO: click on shape should drag the shape
+				// TODO: either fix the layer sort function or reverse order of selected shapes
+				// TODO: add ability to undo
 				let mut responses = Vec::new();
 				// log::debug!("{:?}", selected);
 				if selected.len() > 1 && selected.len() < 3 {
