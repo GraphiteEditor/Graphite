@@ -29,7 +29,7 @@
 			</PopoverButton>
 		</LayoutRow>
 		<LayoutRow class="layer-tree" :scrollableY="true">
-			<LayoutCol class="list" ref="layerTreeList" @click="() => deselectAllLayers()" @dragover="(e) => draggable && updateInsertLine(e)" @dragend="draggable && drop()">
+			<LayoutCol class="list" ref="layerTreeList" @click="() => deselectAllLayers()" @dragover="(e) => draggable && updateInsertLine(e)" @dragend="() => draggable && drop()">
 				<LayoutRow
 					class="layer-row"
 					v-for="(listing, index) in layers"
@@ -69,14 +69,15 @@
 							<IconLabel v-if="listing.entry.layer_type === 'Folder'" :icon="'NodeTypeFolder'" title="Folder" />
 							<IconLabel v-else :icon="'NodeTypePath'" title="Path" />
 						</LayoutRow>
-						<LayoutRow class="layer-name" @dblclick="onEditLayerName(listing)">
+						<LayoutRow class="layer-name" @dblclick="() => onEditLayerName(listing)">
 							<input
+								data-text-input
 								type="text"
 								:value="listing.entry.name"
 								:placeholder="listing.entry.layer_type"
 								:disabled="!listing.editingName"
 								@change="(e) => onEditLayerNameChange(listing, e.target)"
-								@blur="onEditLayerNameDeselect(listing)"
+								@blur="() => onEditLayerNameDeselect(listing)"
 								@keydown.enter="(e) => onEditLayerNameChange(listing, e.target)"
 								@keydown.escape="onEditLayerNameDeselect(listing)"
 							/>
@@ -379,7 +380,7 @@ export default defineComponent({
 			listing.editingName = true;
 			const tree = (this.$refs.layerTreeList as typeof LayoutCol).$el as HTMLElement;
 			this.$nextTick(() => {
-				(tree.querySelector("input:not([disabled])") as HTMLInputElement).select();
+				(tree.querySelector("[data-text-input]:not([disabled])") as HTMLInputElement).select();
 			});
 		},
 		async onEditLayerNameChange(listing: LayerListingInfo, inputElement: EventTarget | null) {
