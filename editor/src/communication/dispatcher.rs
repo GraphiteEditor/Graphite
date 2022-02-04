@@ -11,17 +11,17 @@ use std::collections::VecDeque;
 pub struct Dispatcher {
 	message_queue: VecDeque<Message>,
 	pub responses: Vec<FrontendMessage>,
-	message_handlers: DispatcherMessageHandlers,
+	pub message_handlers: DispatcherMessageHandlers,
 }
 
 #[remain::sorted]
 #[derive(Debug, Default)]
-struct DispatcherMessageHandlers {
+pub struct DispatcherMessageHandlers {
 	global_message_handler: GlobalMessageHandler,
 	input_mapper_message_handler: InputMapperMessageHandler,
 	input_preprocessor_message_handler: InputPreprocessorMessageHandler,
 	layout_message_handler: LayoutMessageHandler,
-	portfolio_message_handler: PortfolioMessageHandler,
+	pub portfolio_message_handler: PortfolioMessageHandler,
 	tool_message_handler: ToolMessageHandler,
 }
 

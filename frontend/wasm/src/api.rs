@@ -370,7 +370,12 @@ impl JsEditorHandle {
 
 	/// Swap primary and secondary color
 	pub fn swap_colors(&mut self) {
-		self.renderer().draw();
+		EDITOR_INSTANCES.with(|instances| {
+			let instances = instances.borrow();
+			let editor = instances.get(&self.editor_id).expect("EDITOR_INSTANCES does not contain the current editor_id");
+			let lines = editor.0.dispatcher.message_handlers.portfolio_message_handler.active_document().graphene_document.root.line_iter();
+			self.renderer().draw_paths(lines);
+		});
 		let message = ToolMessage::SwapColors;
 		self.dispatch(message);
 	}

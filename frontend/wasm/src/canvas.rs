@@ -1,3 +1,5 @@
+use glam::Vec2;
+use graphene::layers::style::PathStyle;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use web_sys::{Document, HtmlCanvasElement, WebGl2RenderingContext, WebGlProgram, WebGlShader};
@@ -15,7 +17,7 @@ pub struct RenderingContext {
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
 #[allow(unused_variables)]
-struct Vertex {
+pub struct Vertex {
 	pos: [f32; 3],
 	line_start: [f32; 2],
 	line_end: [f32; 2],
@@ -74,10 +76,21 @@ impl RenderingContext {
 			program,
 		})
 	}
+	pub fn draw_paths(&mut self, lines: impl Iterator<Item = (Vec<(Vec2, Vec2)>, PathStyle, u32)>) {
+		let vec: Vec<_> = lines.flat_map(|(segments, _, _)| segments).map(|(p1, p2)| (p1.x, p1.y, p2.x, p2.y)).collect();
+		let (vertex_data, _index_data) = create_vertices(&vec, 0.02);
+		self.draw(vertex_data);
+	}
 
-	pub fn draw(&mut self) -> Result<(), JsValue> {
+	pub fn draw_lines(&mut self, lines: &[(f32, f32, f32, f32)]) {
+		let (vertex_data, _index_data) = create_vertices(&lines, 0.15);
+		self.draw(vertex_data);
+	}
+
+	pub fn draw(&mut self, vertices: Vec<Vertex>) -> Result<(), JsValue> {
 		//let vertices: [f32; 9] = [-0.7, -0.7, 0.0, 0.7, -0.7, 0.0, 0.0, 0.7, 0.0];
-		let (vertex_data, index_data) = create_vertices(&[(-0.5, -0.5, 0.5, 0.5), (-0.5, 0.5, 0.5, -0.5), (-0.5, -0.5, 0.5, -0.5), (-0.5, 0.5, 0.5, 0.5)], 0.15);
+		let vertex_data = vertices;
+		//let (vertex_data, index_data) = create_vertices(&[(-0.5, -0.5, 0.5, 0.5), (-0.5, 0.5, 0.5, -0.5), (-0.5, -0.5, 0.5, -0.5), (-0.5, 0.5, 0.5, 0.5)], 0.15);
 
 		log::debug!("vertices: {vertex_data:?}");
 		let vertices: &[f32] = unsafe { std::slice::from_raw_parts(vertex_data.as_ptr() as *const f32, vertex_data.len() * std::mem::size_of::<Vertex>() / std::mem::size_of::<f32>()) };

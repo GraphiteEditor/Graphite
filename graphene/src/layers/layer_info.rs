@@ -7,7 +7,8 @@ use crate::intersection::Quad;
 use crate::DocumentError;
 use crate::LayerId;
 
-use glam::{DAffine2, DMat2, DVec2};
+use glam::{DAffine2, DMat2, DVec2, Vec2};
+use kurbo::PathEl;
 use serde::{Deserialize, Serialize};
 use std::fmt::Write;
 
@@ -104,6 +105,52 @@ impl Layer {
 
 	pub fn iter(&self) -> LayerIter<'_> {
 		LayerIter { stack: vec![self] }
+	}
+
+	pub fn transform_iter(&self) -> TransformIter<'_> {
+		TransformIter {
+			stack: vec![(self, glam::DAffine2::default(), 0)],
+		}
+	}
+
+	pub fn curve_iter(&self) -> impl Iterator<Item = (kurbo::BezPath, PathStyle, u32)> + '_ {
+		fn glam_to_kurbo(transform: DAffine2) -> kurbo::Affine {
+			kurbo::Affine::new(transform.to_cols_array())
+		}
+		self.transform_iter().filter_map(|(layer, transform, depth)| match &layer.data {
+			LayerDataType::Folder(_) => None,
+			LayerDataType::Shape(shape) => {
+				let mut path = shape.path.clone();
+				path.apply_affine(glam_to_kurbo(transform));
+				Some((path, shape.style.clone(), depth))
+			}
+			LayerDataType::Text(_) => None, // TODO: Implement
+		})
+	}
+
+	pub fn line_iter(&self) -> impl Iterator<Item = (Vec<(Vec2, Vec2)>, PathStyle, u32)> + '_ {
+		log::debug!("line_iter");
+		self.curve_iter().map(|(path, style, depth)| {
+			let mut vec = Vec::new();
+			path.flatten(0.05, |segment| vec.push(segment));
+			log::debug!("flat {vec:?}");
+			let mut paths = Vec::new();
+			let mut state = None;
+			for operation in vec {
+				state = match (state, operation) {
+					(None, PathEl::MoveTo(point)) => Some(point),
+					(Some(first), PathEl::LineTo(second)) => {
+						let point_to_vec = |point: kurbo::Point| glam::Vec2::new(point.x as f32, point.y as f32);
+						paths.push((point_to_vec(first), point_to_vec(second)));
+						log::debug!("{operation:?}");
+						Some(second)
+					}
+					_ => unreachable!("Bezier flattening returned non line segments"),
+				}
+			}
+			log::debug!("flat {paths:?}");
+			(paths, style, depth)
+		})
 	}
 
 	pub fn render(&mut self, transforms: &mut Vec<DAffine2>, view_mode: ViewMode, svg_defs: &mut String) -> &str {
@@ -241,6 +288,29 @@ impl<'a> Iterator for LayerIter<'a> {
 					self.stack.extend(layers);
 				};
 				Some(layer)
+			}
+			None => None,
+		}
+	}
+}
+
+#[derive(Debug, Default)]
+pub struct TransformIter<'a> {
+	pub stack: Vec<(&'a Layer, glam::DAffine2, u32)>,
+}
+
+impl<'a> Iterator for TransformIter<'a> {
+	type Item = (&'a Layer, glam::DAffine2, u32);
+
+	fn next(&mut self) -> Option<Self::Item> {
+		match self.stack.pop() {
+			Some((layer, transform, depth)) => {
+				if let LayerDataType::Folder(folder) = &layer.data {
+					let layers = folder.layers();
+					let new_transform = transform * layer.transform;
+					self.stack.extend(layers.iter().map(|x| (x, new_transform, depth + 1)));
+				};
+				Some((layer, transform, depth))
 			}
 			None => None,
 		}

@@ -25,7 +25,7 @@ use message_prelude::*;
 
 // TODO: serialize with serde to save the current editor state
 pub struct Editor {
-	dispatcher: Dispatcher,
+	pub dispatcher: Dispatcher,
 }
 
 impl Editor {
