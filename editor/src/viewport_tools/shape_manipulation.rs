@@ -220,6 +220,7 @@ impl VectorShape {
 		shape.segments = shape.create_segments_from_kurbo();
 		shape.shape_overlay = Some(shape.create_shape_outline_overlay(responses));
 		shape.anchors = shape.create_anchors_from_kurbo(responses);
+		// shape.select_all_anchors(responses);
 
 		// TODO: This is a hack to allow Text to work. The shape isn't a path until this message is sent (it appears)
 		responses.push_back(
@@ -244,6 +245,14 @@ impl VectorShape {
 	pub fn deselect_anchor(&mut self, anchor_index: usize, responses: &mut VecDeque<Message>) {
 		self.anchors[anchor_index].clear_selected_points(responses);
 		self.selected_anchor_indices.remove(&anchor_index);
+	}
+
+	/// Select all the anchors in this shape
+	pub fn select_all_anchors(&mut self, responses: &mut VecDeque<Message>) {
+		for (index, anchor) in self.anchors.iter_mut().enumerate() {
+			self.selected_anchor_indices.insert(index);
+			anchor.set_selected(0, true, responses);
+		}
 	}
 
 	/// Clear all the selected anchors, and clear the selected points on the anchors

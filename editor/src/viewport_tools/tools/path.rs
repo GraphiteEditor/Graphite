@@ -93,6 +93,7 @@ impl Default for PathToolFsmState {
 struct PathToolData {
 	shape_editor: ShapeEditor,
 	snap_handler: SnapHandler,
+	// did_click: bool,
 }
 
 impl Fsm for PathToolFsmState {
@@ -132,6 +133,7 @@ impl Fsm for PathToolFsmState {
 					}
 					self
 				}
+				// Mouse down
 				(_, DragStart { add_to_selection }) => {
 					let add_to_selection = input.keyboard.get(add_to_selection as usize);
 
@@ -146,6 +148,7 @@ impl Fsm for PathToolFsmState {
 							.flat_map(|shape| shape.anchors.iter().map(|anchor| anchor.anchor_point_position()))
 							.collect();
 						data.snap_handler.add_snap_points(document, snap_points);
+						// data.did_click = true;
 						Dragging
 					}
 					// We didn't find a point nearby, so consider selecting the nearest shape instead
@@ -175,16 +178,21 @@ impl Fsm for PathToolFsmState {
 						Ready
 					}
 				}
+				// Dragging
 				(Dragging, PointerMove { alt_mirror_toggle }) => {
 					let should_not_mirror = input.keyboard.get(alt_mirror_toggle as usize);
-
+					// data.did_click = false;
 					// Move the selected points by the mouse position
 					let snapped_position = data.snap_handler.snap_position(responses, input.viewport_bounds.size(), document, input.mouse.position);
 					data.shape_editor.move_selected_points(snapped_position, !should_not_mirror, responses);
 					Dragging
 				}
+				// Mouse up
 				(_, DragStop) => {
 					data.snap_handler.cleanup(responses);
+					// if data.did_click {
+					// 	data.shape_editor.deselect_all(responses);
+					// }
 					Ready
 				}
 				(_, Abort) => {
