@@ -74,7 +74,7 @@ pub fn to_kurbo(str: &str, buzz_face: rustybuzz::Face, font_size: f64, line_widt
 		path: BezPath::new(),
 		pos: Point::ZERO,
 		offset: Vec2::ZERO,
-		ascender: buzz_face.ascender() as f64,
+		ascender: (buzz_face.ascender() as f64 / buzz_face.height() as f64) * font_size / scale,
 		scale,
 	};
 
