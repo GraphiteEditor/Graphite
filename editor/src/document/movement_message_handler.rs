@@ -191,9 +191,9 @@ impl MessageHandler<MovementMessage, (&Document, &InputPreprocessorMessageHandle
 
 					let half_viewport = ipp.viewport_bounds.size() / 2.;
 					let rotation = {
-						let start_vec = self.mouse_position - half_viewport;
-						let end_vec = ipp.mouse.position - half_viewport;
-						start_vec.angle_between(end_vec)
+						let start_offset = self.mouse_position - half_viewport;
+						let end_offset = ipp.mouse.position - half_viewport;
+						start_offset.angle_between(end_offset)
 					};
 
 					responses.push_back(SetCanvasRotation { angle_radians: self.tilt + rotation }.into());
@@ -329,7 +329,6 @@ impl MessageHandler<MovementMessage, (&Document, &InputPreprocessorMessageHandle
 
 	fn actions(&self) -> ActionList {
 		let mut common = actions!(MovementMessageDiscriminant;
-			MouseMove,
 			TranslateCanvasBegin,
 			RotateCanvasBegin,
 			ZoomCanvasBegin,
@@ -345,6 +344,7 @@ impl MessageHandler<MovementMessage, (&Document, &InputPreprocessorMessageHandle
 
 		if self.panning || self.tilting || self.zooming {
 			let transforming = actions!(MovementMessageDiscriminant;
+				MouseMove,
 				TransformCanvasEnd,
 			);
 			common.extend(transforming);

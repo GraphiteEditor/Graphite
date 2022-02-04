@@ -1,4 +1,3 @@
-use super::layer_panel::LayerMetadata;
 use crate::consts::{ROTATE_SNAP_ANGLE, SCALE_SNAP_INTERVAL};
 use crate::message_prelude::*;
 
@@ -188,25 +187,18 @@ impl TransformOperation {
 }
 
 pub struct Selected<'a> {
-	pub selected: Vec<Vec<LayerId>>,
+	pub selected: &'a [&'a Vec<LayerId>],
 	pub responses: &'a mut VecDeque<Message>,
-	pub document: &'a mut Document,
+	pub document: &'a Document,
 	pub original_transforms: &'a mut OriginalTransforms,
 	pub pivot: &'a mut DVec2,
 }
 
 impl<'a> Selected<'a> {
-	pub fn new(
-		original_transforms: &'a mut OriginalTransforms,
-		pivot: &'a mut DVec2,
-		layer_metadata: &'a mut HashMap<Vec<LayerId>, LayerMetadata>,
-		responses: &'a mut VecDeque<Message>,
-		document: &'a mut Document,
-	) -> Self {
-		let selected = layer_metadata.iter().filter_map(|(layer_path, data)| data.selected.then(|| layer_path.to_owned())).collect();
-		for path in &selected {
-			if !original_transforms.contains_key::<Vec<LayerId>>(path) {
-				original_transforms.insert(path.clone(), document.layer(path).unwrap().transform);
+	pub fn new(original_transforms: &'a mut OriginalTransforms, pivot: &'a mut DVec2, selected: &'a [&'a Vec<LayerId>], responses: &'a mut VecDeque<Message>, document: &'a Document) -> Self {
+		for path in selected {
+			if !original_transforms.contains_key(*path) {
+				original_transforms.insert(path.to_vec(), document.layer(path).unwrap().transform);
 			}
 		}
 		Self {
@@ -247,7 +239,7 @@ impl<'a> Selected<'a> {
 			// TODO: Cache the result of `shallowest_unique_layers` to avoid this heavy computation every frame of movement, see https://github.com/GraphiteEditor/Graphite/pull/481
 			for layer_path in Document::shallowest_unique_layers(self.selected.iter()) {
 				let parent_folder_path = &layer_path[..layer_path.len() - 1];
-				let original_layer_transforms = *self.original_transforms.get(layer_path).unwrap();
+				let original_layer_transforms = *self.original_transforms.get(*layer_path).unwrap();
 
 				let to = self.document.generate_transform_across_scope(parent_folder_path, None).unwrap();
 				let new = to.inverse() * transformation * to * original_layer_transforms;
@@ -266,11 +258,11 @@ impl<'a> Selected<'a> {
 	}
 
 	pub fn revert_operation(&mut self) {
-		for path in &self.selected {
+		for path in self.selected {
 			self.responses.push_back(
 				DocumentOperation::SetLayerTransform {
 					path: path.to_vec(),
-					transform: (*self.original_transforms.get(path).unwrap()).to_cols_array(),
+					transform: (*self.original_transforms.get(*path).unwrap()).to_cols_array(),
 				}
 				.into(),
 			);

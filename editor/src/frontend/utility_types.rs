@@ -15,4 +15,14 @@ pub enum MouseCursorIcon {
 	Grabbing,
 	Crosshair,
 	Text,
+	NSResize,
+	EWResize,
+	NESWResize,
+	NWSEResize,
+}
+
+impl Default for MouseCursorIcon {
+	fn default() -> Self {
+		Self::Default
+	}
 }
