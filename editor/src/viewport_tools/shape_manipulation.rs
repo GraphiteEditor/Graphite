@@ -68,7 +68,6 @@ impl ShapeEditor {
 				let selected_point = selected_shape.select_anchor(anchor_index).set_selected(point_index, true, responses);
 				// Set the mouse position for dragging
 				if let Some(point) = selected_point {
-					log::debug!("Setting drag start position to {:?}", point.position);
 					self.drag_start_position = point.position;
 				}
 
