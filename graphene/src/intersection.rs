@@ -244,15 +244,15 @@ Bezier Curve Intersection Algorithm
 - Optimization: specialized line/quad/cubic combination algorithms
 */
 fn path_intersections(a: &SubCurve, b: &SubCurve, mut recursion: f64, intersections: &mut Vec<Intersect>) {
-	if let (PathSeg::Line(line), _) = (a.curve, b) {
-		line_curve_intersections(line, b.curve, true, |a, b| valid_t(a) && valid_t(b), intersections);
-		return;
-	}
-	if let (_, PathSeg::Line(line)) = (a, b.curve) {
-		line_curve_intersections(line, a.curve, false, |a, b| valid_t(a) && valid_t(b), intersections);
-		return;
-	}
 	if overlap(&a.bounding_box(), &b.bounding_box()) {
+		if let (PathSeg::Line(line), _) = (a.curve, b) {
+			line_curve_intersections(line, b.curve, true, |a, b| valid_t(a) && valid_t(b), intersections);
+			return;
+		}
+		if let (_, PathSeg::Line(line)) = (a, b.curve) {
+			line_curve_intersections(line, a.curve, false, |a, b| valid_t(a) && valid_t(b), intersections);
+			return;
+		}
 		// we are close enough to try linear approximation
 		if recursion < (1 << 10) as f64 {
 			if let Some(mut cross) = line_intersection(&Line { p0: a.start(), p1: a.end() }, &Line { p0: b.start(), p1: b.end() }) {
@@ -320,7 +320,7 @@ where
 							_ => Point::new(0.0, 0.0), //should never occur
 						};
 						let line_time = line_t_value(line, &point);
-						if t_validate(line_time, *time) {
+						if !t_validate(line_time, *time) {
 							return None;
 						}
 						if is_line_a {
