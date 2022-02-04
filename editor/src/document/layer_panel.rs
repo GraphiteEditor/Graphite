@@ -1,6 +1,5 @@
 use graphene::layers::blend_mode::BlendMode;
 use graphene::layers::layer_info::{Layer, LayerData, LayerDataType};
-use graphene::layers::simple_shape::Shape;
 use graphene::layers::style::ViewMode;
 use graphene::LayerId;
 
@@ -9,7 +8,7 @@ use serde::ser::SerializeStruct;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
-use crate::layout::widgets::{LayoutRow, NumberInput, PropertyHolder, Widget, WidgetHolder, WidgetLayout};
+use crate::layout::widgets::{IconLabel, LayoutRow, PropertyHolder, TextInput, TextLabel, Widget, WidgetCallback, WidgetHolder, WidgetLayout};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Copy)]
 pub struct LayerMetadata {
@@ -25,9 +24,54 @@ impl LayerMetadata {
 
 impl PropertyHolder for Layer {
 	fn properties(&self) -> WidgetLayout {
+		let mut options_bar = match &self.data {
+			LayerDataType::Folder(_) => {
+				vec![
+					WidgetHolder::new(Widget::IconLabel(IconLabel {
+						value: "NodeTypeFolder".into(),
+						gap_after: true,
+					})),
+					WidgetHolder::new(Widget::TextLabel(TextLabel {
+						value: "Folder".into(),
+						..TextLabel::default()
+					})),
+				]
+			}
+			LayerDataType::Shape(_) => {
+				vec![
+					WidgetHolder::new(Widget::IconLabel(IconLabel {
+						value: "NodeTypePath".into(),
+						gap_after: true,
+					})),
+					WidgetHolder::new(Widget::TextLabel(TextLabel {
+						value: "Path".into(),
+						..TextLabel::default()
+					})),
+				]
+			}
+			LayerDataType::Text(_) => {
+				vec![
+					WidgetHolder::new(Widget::IconLabel(IconLabel {
+						value: "NodeTypePath".into(),
+						gap_after: true,
+					})),
+					WidgetHolder::new(Widget::TextLabel(TextLabel {
+						value: "Text".into(),
+						..TextLabel::default()
+					})),
+				]
+			}
+		};
+
+		options_bar.push(WidgetHolder::new(Widget::TextInput(TextInput {
+			value: self.name.clone().unwrap_or_default(),
+			// TODO: Add update to change name
+			on_update: WidgetCallback::default(),
+		})));
+
 		WidgetLayout::new(vec![LayoutRow::Row {
-			name: "Points".into(),
-			widgets: vec![WidgetHolder::new(Widget::NumberInput(NumberInput { ..NumberInput::default() }))],
+			name: "".into(),
+			widgets: options_bar,
 		}])
 	}
 }

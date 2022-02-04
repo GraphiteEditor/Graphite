@@ -149,11 +149,14 @@ impl<T> Default for WidgetCallback<T> {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Widget {
 	IconButton(IconButton),
+	IconLabel(IconLabel),
 	NumberInput(NumberInput),
 	OptionalInput(OptionalInput),
 	PopoverButton(PopoverButton),
 	RadioInput(RadioInput),
 	Separator(Separator),
+	TextInput(TextInput),
+	TextLabel(TextLabel),
 }
 
 #[derive(Clone, Serialize, Deserialize, Derivative)]
@@ -180,6 +183,15 @@ pub struct NumberInput {
 	pub increment_callback_decrease: WidgetCallback<NumberInput>,
 	pub label: String,
 	pub unit: String,
+}
+
+#[derive(Clone, Serialize, Deserialize, Derivative)]
+#[derivative(Debug, PartialEq, Default)]
+pub struct TextInput {
+	pub value: String,
+	#[serde(skip)]
+	#[derivative(Debug = "ignore", PartialEq = "ignore")]
+	pub on_update: WidgetCallback<TextInput>,
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
@@ -271,4 +283,18 @@ pub struct RadioEntryData {
 	#[serde(skip)]
 	#[derivative(Debug = "ignore", PartialEq = "ignore")]
 	pub on_update: WidgetCallback<()>,
+}
+
+#[derive(Clone, Serialize, Deserialize, Derivative, Debug, PartialEq)]
+pub struct IconLabel {
+	pub value: String,
+	#[serde(rename = "gapAfter")]
+	pub gap_after:bool,
+}
+
+#[derive(Clone, Serialize, Deserialize, Derivative, Debug, PartialEq, Default)]
+pub struct TextLabel {
+	pub value: String,
+	pub bold: bool,
+	pub italic: bool	
 }

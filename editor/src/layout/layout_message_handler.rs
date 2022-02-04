@@ -67,6 +67,7 @@ impl MessageHandler<LayoutMessage, ()> for LayoutMessageHandler {
 						let callback_message = (icon_button.on_update.callback)(icon_button);
 						responses.push_back(callback_message);
 					}
+					Widget::IconLabel(_) => {}
 					Widget::PopoverButton(_) => {}
 					Widget::OptionalInput(optional_input) => {
 						let update_value = value.as_bool().expect("OptionalInput update was not of type: bool");
@@ -80,6 +81,13 @@ impl MessageHandler<LayoutMessage, ()> for LayoutMessageHandler {
 						let callback_message = (radio_input.entries[update_value as usize].on_update.callback)(&());
 						responses.push_back(callback_message);
 					}
+					Widget::TextInput(text_input) =>{
+						let update_value = value.as_str().expect("OptionalInput update was not of type: string");
+						text_input.value = update_value.into();
+						let callback_message = (text_input.on_update.callback)(text_input);
+						responses.push_back(callback_message);
+					}
+					Widget::TextLabel(_) => {}
 				};
 				self.send_layout(layout_target, responses);
 			}

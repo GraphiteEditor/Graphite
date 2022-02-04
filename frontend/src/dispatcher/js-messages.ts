@@ -412,7 +412,7 @@ export function isWidgetSection(layoutRow: WidgetRow | WidgetSection): layoutRow
 	return Boolean((layoutRow as WidgetSection).layout);
 }
 
-export type WidgetKind = "NumberInput" | "Separator" | "IconButton" | "PopoverButton" | "OptionalInput" | "RadioInput";
+export type WidgetKind = "NumberInput" | "Separator" | "IconButton" | "PopoverButton" | "OptionalInput" | "RadioInput" | "TextInput" | "TextLabel" | "IconLabel";
 
 export interface Widget {
 	kind: WidgetKind;
