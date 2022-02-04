@@ -245,7 +245,7 @@ import {
 	DisplayEditableTextbox,
 } from "@/dispatcher/js-messages";
 
-import { cleanupTextInput } from "@/utilities/cleanup_text_input";
+import { textInputCleanup } from "@/lifetime/input";
 
 import LayoutCol from "@/components/layout/LayoutCol.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
@@ -381,7 +381,7 @@ export default defineComponent({
 			this.canvasCursor = updateMouseCursor.cursor;
 		});
 		this.editor.dispatcher.subscribeJsMessage(TriggerTextCommit, () => {
-			if (this.textInput) this.editor.instance.on_change_text(cleanupTextInput(this.textInput.innerText));
+			if (this.textInput) this.editor.instance.on_change_text(textInputCleanup(this.textInput.innerText));
 		});
 
 		this.editor.dispatcher.subscribeJsMessage(DisplayEditableTextbox, (displayEditableTextbox) => {
@@ -396,7 +396,7 @@ export default defineComponent({
 			this.textInput.style.fontSize = `${displayEditableTextbox.font_size}px`;
 
 			this.textInput.oninput = (): void => {
-				if (this.textInput) this.editor.instance.update_bounds(cleanupTextInput(this.textInput.innerText));
+				if (this.textInput) this.editor.instance.update_bounds(textInputCleanup(this.textInput.innerText));
 			};
 		});
 
