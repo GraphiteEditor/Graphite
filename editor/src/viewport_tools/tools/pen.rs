@@ -155,7 +155,7 @@ impl Fsm for PenToolFsmState {
 					responses.push_back(DocumentMessage::DeselectAllLayers.into());
 					data.path = Some(vec![generate_uuid()]);
 
-					data.snap_handler.start_snap(document, document.visible_layers());
+					data.snap_handler.start_snap(document, document.visible_layers(), true, true);
 					let snapped_position = data.snap_handler.snap_position(responses, input.viewport_bounds.size(), document, input.mouse.position);
 
 					let pos = transform.inverse().transform_point2(snapped_position);
