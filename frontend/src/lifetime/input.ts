@@ -25,7 +25,7 @@ export function createInputManager(editor: EditorState, container: HTMLElement, 
 		{ target: window, eventName: "dblclick", action: (e: PointerEvent): void => onDoubleClick(e) },
 		{ target: window, eventName: "mousedown", action: (e: MouseEvent): void => onMouseDown(e) },
 		{ target: window, eventName: "wheel", action: (e: WheelEvent): void => onMouseScroll(e), options: { passive: false } },
-		{ target: window, eventName: "modifyinputfield", action: (e: CustomEvent): void => onmodifyinputfiled(e) },
+		{ target: window, eventName: "modifyinputfield", action: (e: CustomEvent): void => onModifyInputField(e) },
 	];
 
 	let viewportPointerInteractionOngoing = false;
@@ -120,7 +120,7 @@ export function createInputManager(editor: EditorState, container: HTMLElement, 
 		}
 
 		if (textInput && !inTextInput) {
-			editor.instance.on_change_text(textInput.textContent || "");
+			editor.instance.on_change_text(textInputCleanup(textInput.innerText));
 		} else if (inCanvas && !inTextInput) viewportPointerInteractionOngoing = true;
 
 		if (viewportPointerInteractionOngoing) {
@@ -172,7 +172,7 @@ export function createInputManager(editor: EditorState, container: HTMLElement, 
 		}
 	};
 
-	const onmodifyinputfiled = (e: CustomEvent): void => {
+	const onModifyInputField = (e: CustomEvent): void => {
 		textInput = e.detail;
 	};
 
@@ -230,6 +230,12 @@ export type InputManager = ReturnType<typeof createInputManager>;
 
 export function makeModifiersBitfield(e: WheelEvent | PointerEvent | KeyboardEvent): number {
 	return Number(e.ctrlKey) | (Number(e.shiftKey) << 1) | (Number(e.altKey) << 2);
+}
+
+// Necessary because innerText puts an extra newline character at the end when the text is more than one line.
+export function textInputCleanup(text: string): string {
+	if (text[text.length - 1] === "\n") return text.slice(0, -1);
+	return text;
 }
 
 // This function is a naive, temporary solution to allow non-Latin keyboards to fall back on the physical QWERTY layout
