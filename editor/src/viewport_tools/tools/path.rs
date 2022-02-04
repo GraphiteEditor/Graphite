@@ -133,12 +133,10 @@ impl Fsm for PathToolFsmState {
 					self
 				}
 				(_, DragStart { add_to_selection }) => {
-					// if data.shape_editor.has_had_point_selection {
-					// 	// Set the previous selected point to no longer be selected
-					// 	data.shape_editor.deselect_all(responses);
-					// }
+					let add_to_selection = input.keyboard.get(add_to_selection as usize);
+
 					// Select the first point within the threshold (in pixels)
-					if data.shape_editor.select_point(input.mouse.position, SELECTION_THRESHOLD, responses) {
+					if data.shape_editor.select_point(input.mouse.position, SELECTION_THRESHOLD, add_to_selection, responses) {
 						responses.push_back(DocumentMessage::StartTransaction.into());
 						data.snap_handler.start_snap(document, document.visible_layers());
 						let snap_points = data
@@ -148,7 +146,6 @@ impl Fsm for PathToolFsmState {
 							.flat_map(|shape| shape.anchors.iter().map(|anchor| anchor.anchor_point_position()))
 							.collect();
 						data.snap_handler.add_snap_points(document, snap_points);
-						data.shape_editor.set_drag_start_positions();
 						Dragging
 					}
 					// We didn't find a point nearby, so consider selecting the nearest shape instead
@@ -159,7 +156,7 @@ impl Fsm for PathToolFsmState {
 							.intersects_quad_root(Quad::from_box([input.mouse.position - DVec2::ONE, input.mouse.position + DVec2::ONE]));
 						if !intersection.is_empty() {
 							data.shape_editor.deselect_all(responses);
-							if input.keyboard.get(add_to_selection as usize) {
+							if add_to_selection {
 								responses.push_back(DocumentMessage::AddSelectedLayers { additional_layers: intersection }.into());
 							} else {
 								responses.push_back(
