@@ -5,7 +5,10 @@ use crate::{
 };
 use kurbo::{BezPath, CubicBez, Line, ParamCurve, ParamCurveArclen, ParamCurveArea, ParamCurveExtrema, PathEl, PathSeg, Point, QuadBez, Rect};
 use serde::{Deserialize, Serialize};
-use std::fmt::{self, Debug, Formatter};
+use std::{
+	fmt::{self, Debug, Formatter},
+	num::IntErrorKind,
+};
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq)]
 pub enum BooleanOperation {
@@ -175,58 +178,125 @@ impl PathGraph {
 		}
 		new.add_edges_from_path(alpha, Origin::Alpha);
 		new.add_edges_from_path(beta, Origin::Beta);
-		// log::debug!("size: {}, {:?}", new.size(), new);
+		log::debug!("size: {}, {:?}", new.size(), new);
 		Ok(new)
 	}
 
-	/// TODO: When a path has multiple subpaths, that should not be removed, have to iterate by PathEl not PathSeg
+	/// TODO: When a path has multiple subpaths, that should not be removed, could iterate by PathEl not PathSeg
 	/// NOTE: about intersection time_val order
+	/// !Panics when path is empty
 	fn add_edges_from_path(&mut self, path: &BezPath, origin: Origin) {
-		//cstart holds the idx of the vertex the current edge is starting from
-		let mut cstart = None;
-		let mut current = Vec::new();
-		// in order to iterate through once, store information for incomplete first edge
-		let mut beginning = Vec::new();
-		let mut start_idx = None;
+		struct AlgorithmState {
+			//cstart holds the idx of the vertex the current edge is starting from
+			cstart: Option<usize>,
+			current: Vec<PathSeg>,
+			// in order to iterate through once, store information for incomplete first edge
+			beginning: Vec<PathSeg>,
+			start_idx: Option<usize>,
+			// seg idx != el_idx
+			seg_idx: usize,
+		}
 
-		for (seg_idx, seg) in path.segments().enumerate() {
-			let (v_ids, mut t_values) = self.intersects_in_seg(seg_idx, origin);
-			if !v_ids.is_empty() {
-				let sub_segs = subdivide_path_seg(&seg, &mut t_values);
-				for (vertex_id, sub_seg) in v_ids.into_iter().zip(sub_segs.iter()) {
-					match cstart {
-						Some(idx) => {
-							do_if!(sub_seg, end_of_edge { current.push(*end_of_edge)});
-							self.add_edge(origin, idx, vertex_id, current);
-							cstart = Some(vertex_id);
-							current = Vec::new();
-						}
-						None => {
-							cstart = Some(vertex_id);
-							start_idx = Some(vertex_id);
-							do_if!(sub_seg, end_of_begining {beginning.push(*end_of_begining)});
+		impl AlgorithmState {
+			fn new() -> Self {
+				AlgorithmState {
+					cstart: None,
+					current: Vec::new(),
+					beginning: Vec::new(),
+					start_idx: None,
+					seg_idx: 0,
+				}
+			}
+
+			fn reset(&mut self) {
+				self.cstart = None;
+				self.current = Vec::new();
+				self.beginning = Vec::new();
+				self.start_idx = None;
+			}
+
+			fn advance_by_seg(&mut self, graph: &mut PathGraph, seg: PathSeg, origin: Origin) {
+				let (v_ids, mut t_values) = graph.intersects_in_seg(self.seg_idx, origin);
+				if !v_ids.is_empty() {
+					let sub_segs = subdivide_path_seg(&seg, &mut t_values);
+					for (vertex_id, sub_seg) in v_ids.into_iter().zip(sub_segs.iter()) {
+						match self.cstart {
+							Some(idx) => {
+								do_if!(sub_seg, end_of_edge { self.current.push(*end_of_edge)});
+								log::debug!("adding edge");
+								graph.add_edge(origin, idx, vertex_id, self.current.clone());
+								self.cstart = Some(vertex_id);
+								self.current = Vec::new();
+							}
+							None => {
+								self.cstart = Some(vertex_id);
+								self.start_idx = Some(vertex_id);
+								do_if!(sub_seg, end_of_begining {self.beginning.push(*end_of_begining)});
+							}
 						}
 					}
+					do_if!(sub_segs.last().unwrap(), start_of_edge {self.current.push(*start_of_edge)});
+				} else {
+					match self.cstart {
+						Some(_) => self.current.push(seg),
+						None => self.beginning.push(seg),
+					}
 				}
-				do_if!(sub_segs.last().unwrap(), start_of_edge {current.push(*start_of_edge)});
-			} else {
-				match cstart {
-					Some(_) => current.push(seg),
-					None => beginning.push(seg),
+				self.seg_idx += 1;
+			}
+
+			fn advance_by_closepath(&mut self, graph: &mut PathGraph, initial_point: &mut Point, origin: Origin) {
+				// *when a curve ends in a closepath and its start point does not equal its enpoint they should be connected with a line
+				let end_seg = match self.current.last() {
+					Some(seg) => seg,
+					None => self.beginning.last().unwrap(), // if both current and beginning are empty, the path is empty
+				};
+				let temp_copy = end_seg.end();
+				if temp_copy != *initial_point {
+					self.advance_by_seg(graph, PathSeg::Line(Line { p0: temp_copy, p1: *initial_point }), origin);
+				}
+				// when a closepath is not followed by moveto, the next startpath starts at the end of the current path
+				*initial_point = temp_copy;
+			}
+
+			fn finalize_sub_path(&mut self, graph: &mut PathGraph, origin: Origin) {
+				if let (Some(cstart_), Some(start_idx_)) = (self.cstart, self.start_idx) {
+					//complete the current path
+					self.current.append(&mut self.beginning);
+					graph.add_edge(origin, cstart_, start_idx_, self.current.clone());
+				} else {
+					//path has a subpath with no intersects
+					//create a dummy vertex with single edge which will be identified as cycle
+					let dumb_id = graph.add_vertex(Intersect::from((self.beginning[0].start(), 0.0, 0.0)));
+					graph.add_edge(origin, dumb_id, dumb_id, self.beginning.clone());
 				}
 			}
 		}
 
-		// when a PathSeg does not start at EXACTLY the same place the last curve ends, Kurbo inserts a moveto into the final SVG
-		// *modify curve such that its start is moved to its end
-		// ?could also insert a line segment to connect start and end, this behavior is more consistent with SVG closepath behavior
-		if let (Some(end_seg), Some(start_seg)) = (current.last(), beginning.get_mut(0)) {
-			*(match start_seg {
-				PathSeg::Line(Line { p0, .. }) | PathSeg::Quad(QuadBez { p0, .. }) | PathSeg::Cubic(CubicBez { p0, .. }) => p0,
-			}) = end_seg.end();
+		let mut algorithm_state = AlgorithmState::new();
+
+		let mut initial_point = Point::new(0.0, 0.0);
+
+		for (el_idx, el) in path.iter().enumerate() {
+			match el {
+				PathEl::MoveTo(p) => initial_point = p,
+				PathEl::ClosePath => {
+					algorithm_state.advance_by_closepath(self, &mut initial_point, origin);
+
+					algorithm_state.finalize_sub_path(self, origin);
+
+					algorithm_state.reset();
+				}
+				_ => {
+					algorithm_state.advance_by_seg(self, path.get_seg(el_idx).unwrap(), origin);
+				}
+			}
 		}
-		current.append(&mut beginning);
-		self.add_edge(origin, cstart.unwrap(), start_idx.unwrap(), current);
+	}
+
+	fn add_vertex(&mut self, intersect: Intersect) -> usize {
+		self.vertices.push(Vertex { intersect, edges: Vec::new() });
+		self.vertices.len() - 1
 	}
 
 	fn add_edge(&mut self, origin: Origin, vertex: usize, destination: usize, curve: Vec<PathSeg>) {
@@ -278,15 +348,20 @@ impl PathGraph {
 	}
 
 	/// where a valid cycle alternates edge Origin
+	/// Single edge/Singel vertex 'dummy' cycles are also valid
 	fn get_cycle(&self, cycle: &mut Cycle, marker_map: &mut Vec<u8>) {
 		if cycle.prev_edge_origin() == Origin::Alpha {
 			marker_map[cycle.prev_vertex()] |= 1;
 		} else {
 			marker_map[cycle.prev_vertex()] |= 2;
 		}
-		let next_edge = self.vertex(cycle.prev_vertex()).edges.iter().find(|edge| edge.from != cycle.prev_edge_origin()).unwrap();
-		if !cycle.extend(next_edge.destination, next_edge.from, &next_edge.curve) {
-			return self.get_cycle(cycle, marker_map);
+		if let Some(next_edge) = self.vertex(cycle.prev_vertex()).edges.iter().find(|edge| edge.from != cycle.prev_edge_origin()) {
+			if !cycle.extend(next_edge.destination, next_edge.from, &next_edge.curve) {
+				self.get_cycle(cycle, marker_map)
+			}
+		} else {
+			// dummy cycle
+			marker_map[cycle.prev_vertex()] |= 3;
 		}
 	}
 
@@ -384,12 +459,13 @@ pub fn subdivide_path_seg(p: &PathSeg, t_vals: &mut [f64]) -> Vec<Option<PathSeg
 	sub_segs
 }
 
-/// ? It may be better to move alpha and beta then take references
 /// !check if shapes are filled
 pub fn boolean_operation(select: BooleanOperation, mut alpha: Shape, mut beta: Shape) -> Result<Vec<Shape>, BooleanOperationError> {
 	if alpha.path.is_empty() || beta.path.is_empty() {
 		return Err(BooleanOperationError::InvalidSelection);
 	}
+	close_path(&mut alpha.path);
+	close_path(&mut beta.path);
 	let alpha_dir = Cycle::direction_for_path(&alpha.path)?;
 	let beta_dir = Cycle::direction_for_path(&beta.path)?;
 	match select {

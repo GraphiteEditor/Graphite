@@ -320,7 +320,7 @@ where
 							_ => Point::new(0.0, 0.0), //should never occur
 						};
 						let line_time = line_t_value(line, &point);
-						if t_validate(*time, line_time) {
+						if t_validate(line_time, *time) {
 							return None;
 						}
 						if is_line_a {
@@ -369,7 +369,6 @@ pub fn intersections(a: &BezPath, b: &BezPath) -> Vec<Intersect> {
 			let mut intersects = Vec::new();
 			path_intersections(&SubCurve::new(&a_seg, &a_extrema), &SubCurve::new(&b_seg, &b_extrema), 1.0, &mut intersects);
 			for mut path_intersection in intersects {
-				log::info!("{:?}", path_intersection);
 				intersections.push({
 					path_intersection.add_idx(a_idx, b_idx);
 					path_intersection
