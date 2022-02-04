@@ -24,6 +24,10 @@ impl LayoutMessageHandler {
 				layout_target,
 				layout: widget_layout.layout.clone(),
 			},
+			LayoutTarget::PropertiesPanel => FrontendMessage::UpdatePropertyPanelLayout {
+				layout_target,
+				layout: widget_layout.layout.clone(),
+			},
 			LayoutTarget::LayoutTargetLength => panic!("`LayoutTargetLength` is not a valid Layout Target and is used for array indexing"),
 		};
 		responses.push_back(message.into());

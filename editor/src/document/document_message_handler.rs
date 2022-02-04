@@ -7,6 +7,7 @@ use crate::consts::{
 	ASYMPTOTIC_EFFECT, DEFAULT_DOCUMENT_NAME, FILE_EXPORT_SUFFIX, FILE_SAVE_SUFFIX, GRAPHITE_DOCUMENT_VERSION, SCALE_EFFECT, SCROLLBAR_SPACING, VIEWPORT_ZOOM_TO_FIT_PADDING_SCALE_FACTOR,
 };
 use crate::input::InputPreprocessorMessageHandler;
+use crate::layout::layout_message::LayoutTarget;
 use crate::layout::widgets::{
 	IconButton, LayoutRow, NumberInput, NumberInputIncrementBehavior, OptionalInput, PopoverButton, PropertyHolder, RadioEntryData, RadioInput, Separator, SeparatorDirection, SeparatorType, Widget,
 	WidgetCallback, WidgetHolder, WidgetLayout,
@@ -677,6 +678,20 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 				responses.extend([RenderDocument.into(), DocumentStructureChanged.into()]);
 			}
 			AddSelectedLayers { additional_layers } => {
+				log::debug!("Aditional Layers: {:?}", additional_layers);
+				if let Some(path) = additional_layers.get(0) {
+					let layer = self.graphene_document.layer(path).unwrap();
+					layer.register_properties(responses, LayoutTarget::PropertiesPanel);
+				} else {
+					responses.push_back(
+						LayoutMessage::SendLayout {
+							layout: WidgetLayout::default(),
+							layout_target: LayoutTarget::PropertiesPanel,
+						}
+						.into(),
+					)
+				}
+
 				for layer_path in additional_layers {
 					responses.extend(self.select_layer(&layer_path));
 				}

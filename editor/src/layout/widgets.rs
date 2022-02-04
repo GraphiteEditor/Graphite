@@ -54,15 +54,6 @@ pub enum LayoutRow {
 	Section { name: String, layout: SubLayout },
 }
 
-impl LayoutRow {
-	pub fn widgets(&self) -> Vec<WidgetHolder> {
-		match &self {
-			Self::Row { name: _, widgets } => widgets.to_vec(),
-			Self::Section { name: _, layout } => layout.iter().flat_map(|row| row.widgets()).collect(),
-		}
-	}
-}
-
 #[derive(Debug, Default)]
 pub struct WidgetIterMut<'a> {
 	pub stack: Vec<&'a mut LayoutRow>,

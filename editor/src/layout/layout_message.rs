@@ -17,6 +17,7 @@ pub enum LayoutMessage {
 #[repr(u8)]
 pub enum LayoutTarget {
 	DocumentBar,
+	PropertiesPanel,
 	ToolOptions,
 
 	// KEEP THIS ENUM LAST

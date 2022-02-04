@@ -425,7 +425,14 @@ export class UpdateToolOptionsLayout extends JsMessage implements WidgetLayout {
 	layout!: LayoutRow[];
 }
 
-export class UpdateDocumentBarLayout extends JsMessage {
+export class UpdateDocumentBarLayout extends JsMessage implements WidgetLayout {
+	layout_target!: unknown;
+
+	@Transform(({ value }) => createWidgetLayout(value))
+	layout!: LayoutRow[];
+}
+
+export class UpdatePropertyPanelLayout extends JsMessage implements WidgetLayout {
 	layout_target!: unknown;
 
 	@Transform(({ value }) => createWidgetLayout(value))
@@ -498,5 +505,6 @@ export const messageConstructors: Record<string, MessageMaker> = {
 	UpdateToolOptionsLayout,
 	DisplayDialogComingSoon,
 	UpdateDocumentBarLayout,
+	UpdatePropertyPanelLayout,
 } as const;
 export type JsMessageType = keyof typeof messageConstructors;

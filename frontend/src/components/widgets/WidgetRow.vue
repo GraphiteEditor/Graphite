@@ -1,4 +1,5 @@
 <template>
+	<div>{{ widgetRow.name }}</div>
 	<div class="widget-row">
 		<template v-for="(component, index) in widgetRow.widgets" :key="index">
 			<PopoverButton v-if="component.kind === 'PopoverButton'">

@@ -45,6 +45,7 @@ pub enum FrontendMessage {
 	UpdateInputHints { hint_data: HintData },
 	UpdateMouseCursor { cursor: MouseCursorIcon },
 	UpdateOpenDocumentsList { open_documents: Vec<FrontendDocumentDetails> },
+	UpdatePropertyPanelLayout { layout_target: LayoutTarget, layout: SubLayout },
 	UpdateToolOptionsLayout { layout_target: LayoutTarget, layout: SubLayout },
 	UpdateWorkingColors { primary: Color, secondary: Color },
 }

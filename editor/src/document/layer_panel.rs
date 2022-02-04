@@ -1,5 +1,6 @@
 use graphene::layers::blend_mode::BlendMode;
 use graphene::layers::layer_info::{Layer, LayerData, LayerDataType};
+use graphene::layers::simple_shape::Shape;
 use graphene::layers::style::ViewMode;
 use graphene::LayerId;
 
@@ -7,6 +8,8 @@ use glam::{DAffine2, DVec2};
 use serde::ser::SerializeStruct;
 use serde::{Deserialize, Serialize};
 use std::fmt;
+
+use crate::layout::widgets::{LayoutRow, NumberInput, PropertyHolder, Widget, WidgetHolder, WidgetLayout};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Copy)]
 pub struct LayerMetadata {
@@ -17,6 +20,15 @@ pub struct LayerMetadata {
 impl LayerMetadata {
 	pub fn new(expanded: bool) -> LayerMetadata {
 		LayerMetadata { selected: false, expanded }
+	}
+}
+
+impl PropertyHolder for Layer {
+	fn properties(&self) -> WidgetLayout {
+		WidgetLayout::new(vec![LayoutRow::Row {
+			name: "Points".into(),
+			widgets: vec![WidgetHolder::new(Widget::NumberInput(NumberInput { ..NumberInput::default() }))],
+		}])
 	}
 }
 
