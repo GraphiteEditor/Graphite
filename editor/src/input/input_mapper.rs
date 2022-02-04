@@ -46,7 +46,7 @@ impl Default for Mapping {
 			entry! {action=SelectMessage::MouseMove { axis_align: KeyShift, snap_angle: KeyControl }, message=InputMapperMessage::PointerMove},
 			entry! {action=SelectMessage::DragStart { add_to_selection: KeyShift }, key_down=Lmb},
 			entry! {action=SelectMessage::DragStop, key_up=Lmb},
-			entry! {action=SelectMessage::EditText, message=InputMapperMessage::DoubleClick},
+			entry! {action=SelectMessage::EditLayer, message=InputMapperMessage::DoubleClick},
 			entry! {action=SelectMessage::Abort, key_down=Rmb},
 			entry! {action=SelectMessage::Abort, key_down=KeyEscape},
 			// Navigate
