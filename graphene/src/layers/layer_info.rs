@@ -109,7 +109,7 @@ impl Layer {
 
 	pub fn transform_iter(&self) -> TransformIter<'_> {
 		TransformIter {
-			stack: vec![(self, glam::DAffine2::default(), 0)],
+			stack: vec![(self, glam::DAffine2::from_scale(DVec2::splat(0.1)), 0)],
 		}
 	}
 
@@ -305,6 +305,7 @@ impl<'a> Iterator for TransformIter<'a> {
 	fn next(&mut self) -> Option<Self::Item> {
 		match self.stack.pop() {
 			Some((layer, transform, depth)) => {
+				log::debug!("transform: {transform:?}");
 				if let LayerDataType::Folder(folder) = &layer.data {
 					let layers = folder.layers();
 					let new_transform = transform * layer.transform;

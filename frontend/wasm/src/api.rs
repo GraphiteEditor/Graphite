@@ -23,7 +23,7 @@ use serde_wasm_bindgen::{self, from_value};
 use std::sync::atomic::Ordering;
 use wasm_bindgen::prelude::*;
 
-// To avoid wasm-bindgen from checking mutable reference issues using WasmRefCell we must make all methods take a non mutable reference to self.
+// To avoid wasm-bindgen from checking mutable reference issues using WasmRefCell we must make all methods take a non mutable reference to mut self.
 // Not doing this creates an issue when rust calls into JS which calls back to rust in the same call stack.
 #[wasm_bindgen]
 #[derive(Clone)]
@@ -47,7 +47,7 @@ impl JsEditorHandle {
 	}
 
 	// Sends a message to the dispatcher in the Editor Backend
-	fn dispatch<T: Into<Message>>(&self, message: T) {
+	fn dispatch<T: Into<Message>>(&mut self, message: T) {
 		// Process no further messages after a crash to avoid spamming the console
 		if EDITOR_HAS_CRASHED.load(Ordering::SeqCst) {
 			return;
@@ -56,19 +56,27 @@ impl JsEditorHandle {
 		let responses = EDITOR_INSTANCES.with(|instances| {
 			instances
 				.borrow_mut()
-				.get_mut(&self.editor_id)
+				.get_mut(&mut self.editor_id)
 				.expect("EDITOR_INSTANCES does not contain the current editor_id")
 				.0
 				.handle_message(message.into())
 		});
 		for response in responses.into_iter() {
 			// Send each FrontendMessage to the JavaScript frontend
+			if let FrontendMessage::UpdateDocumentArtwork { .. } = response {
+				EDITOR_INSTANCES.with(|instances| {
+					let instances = instances.borrow();
+					let editor = instances.get(&mut self.editor_id).expect("EDITOR_INSTANCES does not contain the current editor_id");
+					let lines = editor.0.dispatcher.message_handlers.portfolio_message_handler.active_document().graphene_document.root.line_iter();
+					self.renderer().draw_paths(lines);
+				});
+			}
 			self.handle_response(response);
 		}
 	}
 
 	// Sends a FrontendMessage to JavaScript
-	fn handle_response(&self, message: FrontendMessage) {
+	fn handle_response(&mut self, message: FrontendMessage) {
 		let message_type = message.to_discriminant().local_name();
 
 		let serializer = serde_wasm_bindgen::Serializer::new().serialize_large_number_types_as_bigints(true);
@@ -97,12 +105,12 @@ impl JsEditorHandle {
 	// backend from the web frontend.
 	// ========================================================================
 
-	pub fn has_crashed(&self) -> bool {
+	pub fn has_crashed(&mut self) -> bool {
 		EDITOR_HAS_CRASHED.load(Ordering::SeqCst)
 	}
 
 	/// Modify the currently selected tool in the document state store
-	pub fn select_tool(&self, tool: String) -> Result<(), JsValue> {
+	pub fn select_tool(&mut self, tool: String) -> Result<(), JsValue> {
 		match translate_tool_type(&tool) {
 			Some(tool_type) => {
 				let message = ToolMessage::ActivateTool { tool_type };
@@ -115,7 +123,7 @@ impl JsEditorHandle {
 	}
 
 	/// Update layout of a given UI
-	pub fn update_layout(&self, layout_target: JsValue, widget_id: u64, value: JsValue) -> Result<(), JsValue> {
+	pub fn update_layout(&mut self, layout_target: JsValue, widget_id: u64, value: JsValue) -> Result<(), JsValue> {
 		match (from_value(layout_target), from_value(value)) {
 			(Ok(layout_target), Ok(value)) => {
 				let message = LayoutMessage::UpdateLayout { layout_target, widget_id, value };
@@ -127,7 +135,7 @@ impl JsEditorHandle {
 	}
 
 	/// Send a message to a given tool
-	pub fn send_tool_message(&self, tool: String, message: &JsValue) -> Result<(), JsValue> {
+	pub fn send_tool_message(&mut self, tool: String, message: &JsValue) -> Result<(), JsValue> {
 		let tool_message = match translate_tool_type(&tool) {
 			Some(tool) => match tool {
 				ToolType::Select => match serde_wasm_bindgen::from_value::<tools::select_tool::SelectToolMessage>(message.clone()) {
@@ -149,27 +157,27 @@ impl JsEditorHandle {
 		}
 	}
 
-	pub fn select_document(&self, document_id: u64) {
+	pub fn select_document(&mut self, document_id: u64) {
 		let message = PortfolioMessage::SelectDocument { document_id };
 		self.dispatch(message);
 	}
 
-	pub fn get_open_documents_list(&self) {
+	pub fn get_open_documents_list(&mut self) {
 		let message = PortfolioMessage::UpdateOpenDocumentsList;
 		self.dispatch(message);
 	}
 
-	pub fn new_document(&self) {
+	pub fn new_document(&mut self) {
 		let message = PortfolioMessage::NewDocument;
 		self.dispatch(message);
 	}
 
-	pub fn open_document(&self) {
+	pub fn open_document(&mut self) {
 		let message = PortfolioMessage::OpenDocument;
 		self.dispatch(message);
 	}
 
-	pub fn open_document_file(&self, document_name: String, document_serialized_content: String) {
+	pub fn open_document_file(&mut self, document_name: String, document_serialized_content: String) {
 		let message = PortfolioMessage::OpenDocumentFile {
 			document_name,
 			document_serialized_content,
@@ -177,7 +185,7 @@ impl JsEditorHandle {
 		self.dispatch(message);
 	}
 
-	pub fn open_auto_saved_document(&self, document_id: u64, document_name: String, document_is_saved: bool, document_serialized_content: String) {
+	pub fn open_auto_saved_document(&mut self, document_id: u64, document_name: String, document_is_saved: bool, document_serialized_content: String) {
 		let message = PortfolioMessage::OpenDocumentFileWithId {
 			document_id,
 			document_name,
@@ -187,67 +195,66 @@ impl JsEditorHandle {
 		self.dispatch(message);
 	}
 
-	pub fn save_document(&self) {
+	pub fn save_document(&mut self) {
 		let message = DocumentMessage::SaveDocument;
 		self.dispatch(message);
 	}
 
-	pub fn trigger_auto_save(&self, document_id: u64) {
+	pub fn trigger_auto_save(&mut self, document_id: u64) {
 		let message = PortfolioMessage::AutoSaveDocument { document_id };
 		self.dispatch(message);
 	}
 
-	pub fn close_document(&self, document_id: u64) {
+	pub fn close_document(&mut self, document_id: u64) {
 		let message = ToolMessage::AbortCurrentTool;
 		self.dispatch(message);
-
 		let message = PortfolioMessage::CloseDocument { document_id };
 		self.dispatch(message);
 	}
 
-	pub fn close_all_documents(&self) {
+	pub fn close_all_documents(&mut self) {
 		let message = PortfolioMessage::CloseAllDocuments;
 		self.dispatch(message);
 	}
 
-	pub fn close_active_document_with_confirmation(&self) {
+	pub fn close_active_document_with_confirmation(&mut self) {
 		let message = PortfolioMessage::CloseActiveDocumentWithConfirmation;
 		self.dispatch(message);
 	}
 
-	pub fn close_document_with_confirmation(&self, document_id: u64) {
+	pub fn close_document_with_confirmation(&mut self, document_id: u64) {
 		let message = PortfolioMessage::CloseDocumentWithConfirmation { document_id };
 		self.dispatch(message);
 	}
 
-	pub fn close_all_documents_with_confirmation(&self) {
+	pub fn close_all_documents_with_confirmation(&mut self) {
 		let message = PortfolioMessage::CloseAllDocumentsWithConfirmation;
 		self.dispatch(message);
 	}
 
-	pub fn request_about_graphite_dialog(&self) {
+	pub fn request_about_graphite_dialog(&mut self) {
 		let message = PortfolioMessage::RequestAboutGraphiteDialog;
 		self.dispatch(message);
 	}
 
-	pub fn log_level_info(&self) {
+	pub fn log_level_info(&mut self) {
 		let message = GlobalMessage::LogInfo;
 		self.dispatch(message);
 	}
 
-	pub fn log_level_debug(&self) {
+	pub fn log_level_debug(&mut self) {
 		let message = GlobalMessage::LogDebug;
 		self.dispatch(message);
 	}
 
-	pub fn log_level_trace(&self) {
+	pub fn log_level_trace(&mut self) {
 		let message = GlobalMessage::LogTrace;
 		self.dispatch(message);
 	}
 
 	/// Send new bounds when document panel viewports get resized or moved within the editor
 	/// [left, top, right, bottom]...
-	pub fn bounds_of_viewports(&self, bounds_of_viewports: &[f64]) {
+	pub fn bounds_of_viewports(&mut self, bounds_of_viewports: &[f64]) {
 		let chunked: Vec<_> = bounds_of_viewports.chunks(4).map(ViewportBounds::from_slice).collect();
 
 		let message = InputPreprocessorMessage::BoundsOfViewports { bounds_of_viewports: chunked };
@@ -255,7 +262,7 @@ impl JsEditorHandle {
 	}
 
 	/// Mouse movement within the screenspace bounds of the viewport
-	pub fn on_mouse_move(&self, x: f64, y: f64, mouse_keys: u8, modifiers: u8) {
+	pub fn on_mouse_move(&mut self, x: f64, y: f64, mouse_keys: u8, modifiers: u8) {
 		let editor_mouse_state = EditorMouseState::from_keys_and_editor_position(mouse_keys, (x, y).into());
 
 		let modifier_keys = ModifierKeys::from_bits(modifiers).expect("Invalid modifier keys");
@@ -265,7 +272,7 @@ impl JsEditorHandle {
 	}
 
 	/// Mouse scrolling within the screenspace bounds of the viewport
-	pub fn on_mouse_scroll(&self, x: f64, y: f64, mouse_keys: u8, wheel_delta_x: i32, wheel_delta_y: i32, wheel_delta_z: i32, modifiers: u8) {
+	pub fn on_mouse_scroll(&mut self, x: f64, y: f64, mouse_keys: u8, wheel_delta_x: i32, wheel_delta_y: i32, wheel_delta_z: i32, modifiers: u8) {
 		let mut editor_mouse_state = EditorMouseState::from_keys_and_editor_position(mouse_keys, (x, y).into());
 		editor_mouse_state.scroll_delta = ScrollDelta::new(wheel_delta_x, wheel_delta_y, wheel_delta_z);
 
@@ -276,7 +283,7 @@ impl JsEditorHandle {
 	}
 
 	/// A mouse button depressed within screenspace the bounds of the viewport
-	pub fn on_mouse_down(&self, x: f64, y: f64, mouse_keys: u8, modifiers: u8) {
+	pub fn on_mouse_down(&mut self, x: f64, y: f64, mouse_keys: u8, modifiers: u8) {
 		let editor_mouse_state = EditorMouseState::from_keys_and_editor_position(mouse_keys, (x, y).into());
 
 		let modifier_keys = ModifierKeys::from_bits(modifiers).expect("Invalid modifier keys");
@@ -286,7 +293,7 @@ impl JsEditorHandle {
 	}
 
 	/// A mouse button released
-	pub fn on_mouse_up(&self, x: f64, y: f64, mouse_keys: u8, modifiers: u8) {
+	pub fn on_mouse_up(&mut self, x: f64, y: f64, mouse_keys: u8, modifiers: u8) {
 		let editor_mouse_state = EditorMouseState::from_keys_and_editor_position(mouse_keys, (x, y).into());
 
 		let modifier_keys = ModifierKeys::from_bits(modifiers).expect("Invalid modifier keys");
@@ -296,7 +303,7 @@ impl JsEditorHandle {
 	}
 
 	/// Mouse double clicked
-	pub fn on_double_click(&self, x: f64, y: f64, mouse_keys: u8, modifiers: u8) {
+	pub fn on_double_click(&mut self, x: f64, y: f64, mouse_keys: u8, modifiers: u8) {
 		let editor_mouse_state = EditorMouseState::from_keys_and_editor_position(mouse_keys, (x, y).into());
 		let modifier_keys = ModifierKeys::from_bits(modifiers).expect("Invalid modifier keys");
 
@@ -305,7 +312,7 @@ impl JsEditorHandle {
 	}
 
 	/// A keyboard button depressed within screenspace the bounds of the viewport
-	pub fn on_key_down(&self, name: String, modifiers: u8) {
+	pub fn on_key_down(&mut self, name: String, modifiers: u8) {
 		let key = translate_key(&name);
 		let modifier_keys = ModifierKeys::from_bits(modifiers).expect("Invalid modifier keys");
 
@@ -316,7 +323,7 @@ impl JsEditorHandle {
 	}
 
 	/// A keyboard button released
-	pub fn on_key_up(&self, name: String, modifiers: u8) {
+	pub fn on_key_up(&mut self, name: String, modifiers: u8) {
 		let key = translate_key(&name);
 		let modifier_keys = ModifierKeys::from_bits(modifiers).expect("Invalid modifier keys");
 
@@ -327,7 +334,7 @@ impl JsEditorHandle {
 	}
 
 	/// A text box was committed
-	pub fn on_change_text(&self, new_text: String) -> Result<(), JsValue> {
+	pub fn on_change_text(&mut self, new_text: String) -> Result<(), JsValue> {
 		let message = TextMessage::TextChange { new_text };
 		self.dispatch(message);
 
@@ -335,7 +342,7 @@ impl JsEditorHandle {
 	}
 
 	/// A text box was changed
-	pub fn update_bounds(&self, new_text: String) -> Result<(), JsValue> {
+	pub fn update_bounds(&mut self, new_text: String) -> Result<(), JsValue> {
 		let message = TextMessage::UpdateBounds { new_text };
 		self.dispatch(message);
 
@@ -343,7 +350,7 @@ impl JsEditorHandle {
 	}
 
 	/// Update primary color
-	pub fn update_primary_color(&self, red: f32, green: f32, blue: f32, alpha: f32) -> Result<(), JsValue> {
+	pub fn update_primary_color(&mut self, red: f32, green: f32, blue: f32, alpha: f32) -> Result<(), JsValue> {
 		let primary_color = match Color::from_rgbaf32(red, green, blue, alpha) {
 			Some(color) => color,
 			None => return Err(Error::new("Invalid color").into()),
@@ -356,7 +363,7 @@ impl JsEditorHandle {
 	}
 
 	/// Update secondary color
-	pub fn update_secondary_color(&self, red: f32, green: f32, blue: f32, alpha: f32) -> Result<(), JsValue> {
+	pub fn update_secondary_color(&mut self, red: f32, green: f32, blue: f32, alpha: f32) -> Result<(), JsValue> {
 		let secondary_color = match Color::from_rgbaf32(red, green, blue, alpha) {
 			Some(color) => color,
 			None => return Err(Error::new("Invalid color").into()),
@@ -370,78 +377,72 @@ impl JsEditorHandle {
 
 	/// Swap primary and secondary color
 	pub fn swap_colors(&mut self) {
-		EDITOR_INSTANCES.with(|instances| {
-			let instances = instances.borrow();
-			let editor = instances.get(&self.editor_id).expect("EDITOR_INSTANCES does not contain the current editor_id");
-			let lines = editor.0.dispatcher.message_handlers.portfolio_message_handler.active_document().graphene_document.root.line_iter();
-			self.renderer().draw_paths(lines);
-		});
 		let message = ToolMessage::SwapColors;
 		self.dispatch(message);
 	}
 
 	/// Reset primary and secondary colors to their defaults
-	pub fn reset_colors(&self) {
+	pub fn reset_colors(&mut self) {
 		let message = ToolMessage::ResetColors;
 		self.dispatch(message);
 	}
 
 	/// Undo history one step
-	pub fn undo(&self) {
+	pub fn undo(&mut self) {
 		let message = DocumentMessage::Undo;
 		self.dispatch(message);
 	}
 
 	/// Redo history one step
-	pub fn redo(&self) {
+	pub fn redo(&mut self) {
 		let message = DocumentMessage::Redo;
 		self.dispatch(message);
 	}
 
 	/// Cut selected layers
-	pub fn cut(&self) {
+	pub fn cut(&mut self) {
 		let message = PortfolioMessage::Cut { clipboard: Clipboard::User };
 		self.dispatch(message);
 	}
 
 	/// Copy selected layers
-	pub fn copy(&self) {
+	pub fn copy(&mut self) {
 		let message = PortfolioMessage::Copy { clipboard: Clipboard::User };
 		self.dispatch(message);
 	}
 
 	/// Paste selected layers
-	pub fn paste(&self) {
+	pub fn paste(&mut self) {
 		let message = PortfolioMessage::Paste { clipboard: Clipboard::User };
 		self.dispatch(message);
 	}
 
 	/// Modify the layer selection based on the layer which is clicked while holding down the <kbd>Ctrl</kbd> and/or <kbd>Shift</kbd> modifier keys used for range selection behavior
-	pub fn select_layer(&self, layer_path: Vec<LayerId>, ctrl: bool, shift: bool) {
+	pub fn select_layer(&mut self, layer_path: Vec<LayerId>, ctrl: bool, shift: bool) {
 		let message = DocumentMessage::SelectLayer { layer_path, ctrl, shift };
 		self.dispatch(message);
 	}
 
 	/// Select all layers
-	pub fn select_all_layers(&self) {
+	pub fn select_all_layers(&mut self) {
 		let message = DocumentMessage::SelectAllLayers;
 		self.dispatch(message);
 	}
 
 	/// Deselect all layers
-	pub fn deselect_all_layers(&self) {
+	pub fn deselect_all_layers(&mut self) {
 		let message = DocumentMessage::DeselectAllLayers;
 		self.dispatch(message);
 	}
 
 	/// Reorder selected layer
-	pub fn reorder_selected_layers(&self, relative_index_offset: isize) {
+	pub fn reorder_selected_layers(&mut self, relative_index_offset: isize) {
 		let message = DocumentMessage::ReorderSelectedLayers { relative_index_offset };
 		self.dispatch(message);
 	}
 
 	/// Move a layer to be next to the specified neighbor
-	pub fn move_layer_in_tree(&self, folder_path: Vec<LayerId>, insert_index: isize) {
+	pub fn move_layer_in_tree(&mut self, folder_path: Vec<LayerId>, insert_index: isize) {
 		let message = DocumentMessage::MoveSelectedLayersTo {
 			folder_path,
 			insert_index,
@@ -451,13 +452,13 @@ impl JsEditorHandle {
 	}
 
 	/// Set the name for the layer
-	pub fn set_layer_name(&self, layer_path: Vec<LayerId>, name: String) {
+	pub fn set_layer_name(&mut self, layer_path: Vec<LayerId>, name: String) {
 		let message = DocumentMessage::SetLayerName { layer_path, name };
 		self.dispatch(message);
 	}
 
 	/// Set the blend mode for the selected layers
-	pub fn set_blend_mode_for_selected_layers(&self, blend_mode_svg_style_name: String) -> Result<(), JsValue> {
+	pub fn set_blend_mode_for_selected_layers(&mut self, blend_mode_svg_style_name: String) -> Result<(), JsValue> {
 		if let Some(blend_mode) = translate_blend_mode(blend_mode_svg_style_name.as_str()) {
 			let message = DocumentMessage::SetBlendModeForSelectedLayers { blend_mode };
 			self.dispatch(message);
@@ -469,69 +470,69 @@ impl JsEditorHandle {
 	}
 
 	/// Set the opacity for the selected layers
-	pub fn set_opacity_for_selected_layers(&self, opacity_percent: f64) {
+	pub fn set_opacity_for_selected_layers(&mut self, opacity_percent: f64) {
 		let opacity = opacity_percent / 100.;
 		let message = DocumentMessage::SetOpacityForSelectedLayers { opacity };
 		self.dispatch(message);
 	}
 
 	/// Export the document
-	pub fn export_document(&self) {
+	pub fn export_document(&mut self) {
 		let message = DocumentMessage::ExportDocument;
 		self.dispatch(message);
 	}
 
 	/// Translates document (in viewport coords)
-	pub fn translate_canvas(&self, delta_x: f64, delta_y: f64) {
+	pub fn translate_canvas(&mut self, delta_x: f64, delta_y: f64) {
 		let message = MovementMessage::TranslateCanvas { delta: (delta_x, delta_y).into() };
 		self.dispatch(message);
 	}
 
 	/// Translates document (in viewport coords)
-	pub fn translate_canvas_by_fraction(&self, delta_x: f64, delta_y: f64) {
+	pub fn translate_canvas_by_fraction(&mut self, delta_x: f64, delta_y: f64) {
 		let message = MovementMessage::TranslateCanvasByViewportFraction { delta: (delta_x, delta_y).into() };
 		self.dispatch(message);
 	}
 
 	/// Update the list of selected layers. The layer paths have to be stored in one array and are separated by LayerId::MAX
-	pub fn select_layers(&self, paths: Vec<LayerId>) {
+	pub fn select_layers(&mut self, paths: Vec<LayerId>) {
 		let replacement_selected_layers = paths.split(|id| *id == LayerId::MAX).map(|path| path.to_vec()).collect();
 		let message = DocumentMessage::SetSelectedLayers { replacement_selected_layers };
 		self.dispatch(message);
 	}
 
 	/// Toggle visibility of a layer from the layer list
-	pub fn toggle_layer_visibility(&self, layer_path: Vec<LayerId>) {
+	pub fn toggle_layer_visibility(&mut self, layer_path: Vec<LayerId>) {
 		let message = DocumentMessage::ToggleLayerVisibility { layer_path };
 		self.dispatch(message);
 	}
 
 	/// Toggle expansions state of a layer from the layer list
-	pub fn toggle_layer_expansion(&self, layer_path: Vec<LayerId>) {
+	pub fn toggle_layer_expansion(&mut self, layer_path: Vec<LayerId>) {
 		let message = DocumentMessage::ToggleLayerExpansion { layer_path };
 		self.dispatch(message);
 	}
 
 	/// Renames a layer from the layer list
-	pub fn rename_layer(&self, layer_path: Vec<LayerId>, new_name: String) {
+	pub fn rename_layer(&mut self, layer_path: Vec<LayerId>, new_name: String) {
 		let message = DocumentMessage::RenameLayer { layer_path, new_name };
 		self.dispatch(message);
 	}
 
 	/// Deletes a layer from the layer list
-	pub fn delete_layer(&self, layer_path: Vec<LayerId>) {
+	pub fn delete_layer(&mut self, layer_path: Vec<LayerId>) {
 		let message = DocumentMessage::DeleteLayer { layer_path };
 		self.dispatch(message);
 	}
 
 	/// Requests the backend to add an empty folder inside the provided containing folder
-	pub fn add_folder(&self, container_path: Vec<LayerId>) {
+	pub fn add_folder(&mut self, container_path: Vec<LayerId>) {
 		let message = DocumentMessage::CreateEmptyFolder { container_path };
 		self.dispatch(message);
 	}
 
 	/// Creates an artboard at a specified point with a width and height
-	pub fn create_artboard_and_fit_to_viewport(&self, pos_x: f64, pos_y: f64, width: f64, height: f64) {
+	pub fn create_artboard_and_fit_to_viewport(&mut self, pos_x: f64, pos_y: f64, width: f64, height: f64) {
 		let message = ArtboardMessage::AddArtboard {
 			id: None,
 			position: (pos_x, pos_y),
@@ -543,7 +544,7 @@ impl JsEditorHandle {
 	}
 
 	// TODO(mfish33): Replace with initialization system Issue:#524
-	pub fn init_document_bar(&self) {
+	pub fn init_document_bar(&mut self) {
 		let message = PortfolioMessage::UpdateDocumentBar;
 		self.dispatch(message)
 	}
@@ -552,14 +553,14 @@ impl JsEditorHandle {
 // Needed to make JsEditorHandle functions pub to rust. Do not fully
 // understand reason but has to do with #[wasm_bindgen] procedural macro.
 impl JsEditorHandle {
-	pub fn handle_response_rust_proxy(&self, message: FrontendMessage) {
+	pub fn handle_response_rust_proxy(&mut self, message: FrontendMessage) {
 		self.handle_response(message);
 	}
 }
 
 impl Drop for JsEditorHandle {
 	fn drop(&mut self) {
-		EDITOR_INSTANCES.with(|instances| instances.borrow_mut().remove(&self.editor_id));
+		EDITOR_INSTANCES.with(|instances| instances.borrow_mut().remove(&mut self.editor_id));
 	}
 }
 

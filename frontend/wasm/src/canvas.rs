@@ -67,6 +67,7 @@ impl RenderingContext {
 		let frag_shader = compile_shader(&context, WebGl2RenderingContext::FRAGMENT_SHADER, include_str!("../shaders/shader.frag"))?;
 		let program = link_program(&context, &vert_shader, &frag_shader)?;
 		context.use_program(Some(&program));
+		context.viewport(0, 0, canvas.width() as i32, canvas.height() as i32);
 		Ok(Self {
 			document,
 			canvas,
@@ -90,6 +91,7 @@ impl RenderingContext {
 	pub fn draw(&mut self, vertices: Vec<Vertex>) -> Result<(), JsValue> {
 		//let vertices: [f32; 9] = [-0.7, -0.7, 0.0, 0.7, -0.7, 0.0, 0.0, 0.7, 0.0];
 		let vertex_data = vertices;
+		self.context.viewport(0, 0, self.canvas.width() as i32, self.canvas.height() as i32);
 		//let (vertex_data, index_data) = create_vertices(&[(-0.5, -0.5, 0.5, 0.5), (-0.5, 0.5, 0.5, -0.5), (-0.5, -0.5, 0.5, -0.5), (-0.5, 0.5, 0.5, 0.5)], 0.15);
 
 		log::debug!("vertices: {vertex_data:?}");
@@ -137,6 +139,7 @@ impl RenderingContext {
 
 fn draw(context: &WebGl2RenderingContext, vert_count: i32) {
 	context.clear_color(0.6, 0.5, 1.0, 1.0);
+	context.clear_color(1.0, 1.0, 1.0, 1.0);
 	context.clear(WebGl2RenderingContext::COLOR_BUFFER_BIT);
 	context.enable(WebGl2RenderingContext::DEPTH_TEST);
 	context.depth_func(WebGl2RenderingContext::LESS);
