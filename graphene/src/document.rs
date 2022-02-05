@@ -699,7 +699,10 @@ impl Document {
 			Operation::SetLayerFill { path, color } => {
 				let layer = self.layer_mut(path)?;
 				match &mut layer.data {
-					LayerDataType::Shape(s) => s.style.set_fill(layers::style::Fill::new(*color)),
+					LayerDataType::Shape(s) => {
+						s.style.set_fill(layers::style::Fill::new(*color));
+						s.closed = true;
+					}
 					_ => return Err(DocumentError::NotAShape),
 				}
 				self.mark_as_dirty(path)?;
