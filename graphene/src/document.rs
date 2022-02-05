@@ -518,7 +518,7 @@ impl Document {
 				if selected.len() > 1 && selected.len() < 3 {
 					// ? apparently selected should be reversed
 					let mut shapes = self.transformed_shapes(selected)?;
-					let mut shape_drain = shapes.drain(..);
+					let mut shape_drain = shapes.drain(..).rev();
 					let new_shapes = boolean_operation(*operation, shape_drain.nth(0).unwrap(), shape_drain.nth(0).unwrap())?;
 
 					for path in selected {

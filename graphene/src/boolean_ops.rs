@@ -215,7 +215,6 @@ impl PathGraph {
 				self.current = Vec::new();
 				self.beginning = Vec::new();
 				self.start_idx = None;
-				log::debug!("resete")
 			}
 
 			fn advance_by_seg(&mut self, graph: &mut PathGraph, seg: PathSeg, origin: Origin) {
@@ -463,6 +462,7 @@ pub fn subdivide_path_seg(p: &PathSeg, t_vals: &mut [f64]) -> Vec<Option<PathSeg
 }
 
 /// !check if shapes are filled
+/// !Bug: shape with at least two subpaths and comprised of many unions sometimes has erroneous movetos emmbedded in edges
 pub fn boolean_operation(select: BooleanOperation, mut alpha: Shape, mut beta: Shape) -> Result<Vec<Shape>, BooleanOperationError> {
 	if alpha.path.is_empty() || beta.path.is_empty() {
 		return Err(BooleanOperationError::InvalidSelection);
@@ -492,11 +492,11 @@ pub fn boolean_operation(select: BooleanOperation, mut alpha: Shape, mut beta: S
 				}
 				Err(BooleanOperationError::NoIntersections) => {
 					//if shape is inside the other the Union is just the larger
-					//TODO: pathstyle of the resulting shape should still be set by the highest shape
 					//check could also be done with area and single ray cast
 					if cast_horizontal_ray(point_on_curve(&beta.path), &alpha.path) % 2 != 0 {
 						Ok(vec![alpha])
 					} else if cast_horizontal_ray(point_on_curve(&alpha.path), &beta.path) % 2 != 0 {
+						beta.style = alpha.style;
 						Ok(vec![beta])
 					} else {
 						Err(BooleanOperationError::NothingDone)
@@ -535,6 +535,7 @@ pub fn boolean_operation(select: BooleanOperation, mut alpha: Shape, mut beta: S
 				Err(BooleanOperationError::NoIntersections) => {
 					//check could also be done with area and single ray cast
 					if cast_horizontal_ray(point_on_curve(&beta.path), &alpha.path) % 2 != 0 {
+						beta.style = alpha.style;
 						Ok(vec![beta])
 					} else if cast_horizontal_ray(point_on_curve(&alpha.path), &beta.path) % 2 != 0 {
 						Ok(vec![alpha])
