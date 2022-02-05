@@ -20,6 +20,22 @@ use crate::{
 // Helps push values that end in approximately half, plus or minus some floating point imprecision, towards the same side of the round() function
 const BIAS: f64 = 0.0001;
 
+/* Light overview of structs in this file and hierarchy:
+
+						ShapeEditor
+						/		  \
+				VectorShape ... VectorShape  <- ShapeEditor contains many
+					/		         \
+	VectorManipulatorAnchor ...  VectorManipulatorAnchor <- each VectorShape contains many
+
+
+				VectorManipulatorAnchor <- Container for properties only an anchor has
+						/
+			[Option<VectorManipulatorPoint>; 3] <- 0th place is the handle point, 1st is handle1, second is handle2
+			/				|				\
+		"Anchor"		"Handle1" 		 "Handle2" <- These are VectorManipulatorPoints and the only editable "primitive"
+*/
+
 /// ShapeEditor is the container for all of the selected kurbo paths that are
 /// represented as VectorShapes and provides functionality required
 /// to query and create the VectorShapes / VectorManipulators
@@ -54,8 +70,10 @@ impl ShapeEditor {
 				self.add_selected_shape(shape_index);
 
 				// If the point we're selecting has already been selected
+				// We can assume this point exists.. since we did just click on it hense the unwrap
 				let is_point_selected = self.shapes_to_modify[shape_index].anchors[anchor_index].points[point_index].as_ref().unwrap().is_selected();
 
+				// Deselected if we're not adding to the selection
 				if !add_to_selection && !is_point_selected {
 					self.deselect_all(responses);
 				}

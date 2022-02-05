@@ -93,7 +93,6 @@ impl Default for PathToolFsmState {
 struct PathToolData {
 	shape_editor: ShapeEditor,
 	snap_handler: SnapHandler,
-	// did_click: bool,
 }
 
 impl Fsm for PathToolFsmState {
