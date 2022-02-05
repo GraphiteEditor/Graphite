@@ -78,6 +78,7 @@ function makeMenuEntries(editor: EditorState): MenuListEntries {
 					{
 						label: "Open Recent",
 						shortcut: ["KeyControl", "KeyShift", "KeyO"],
+						action: (): void => undefined,
 						children: [
 							[{ label: "Reopen Last Closed", shortcut: ["KeyControl", "KeyShift", "KeyT"], shortcutRequiresLock: true }, { label: "Clear Recently Opened" }],
 							[
@@ -131,6 +132,7 @@ function makeMenuEntries(editor: EditorState): MenuListEntries {
 					{ label: "Deselect All", shortcut: ["KeyControl", "KeyAlt", "KeyA"], action: async (): Promise<void> => editor.instance.deselect_all_layers() },
 					{
 						label: "Order",
+						action: (): void => undefined,
 						children: [
 							[
 								{
@@ -173,7 +175,6 @@ function makeMenuEntries(editor: EditorState): MenuListEntries {
 				[
 					{
 						label: "Debug: Set Log Level",
-						// TODO: Remove empty action after merge of (https://github.com/GraphiteEditor/Graphite/pull/338)
 						action: (): void => undefined,
 						children: [
 							[
