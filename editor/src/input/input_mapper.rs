@@ -105,6 +105,13 @@ impl Default for Mapping {
 			entry! {action=FreehandMessage::PointerMove, message=InputMapperMessage::PointerMove},
 			entry! {action=FreehandMessage::DragStart, key_down=Lmb},
 			entry! {action=FreehandMessage::DragStop, key_up=Lmb},
+			// Spline
+			entry! {action=SplineMessage::PointerMove, message=InputMapperMessage::PointerMove},
+			entry! {action=SplineMessage::DragStart, key_down=Lmb},
+			entry! {action=SplineMessage::DragStop, key_up=Lmb},
+			entry! {action=SplineMessage::Confirm, key_down=Rmb},
+			entry! {action=SplineMessage::Confirm, key_down=KeyEscape},
+			entry! {action=SplineMessage::Confirm, key_down=KeyEnter},
 			// Fill
 			entry! {action=FillMessage::LeftMouseDown, key_down=Lmb},
 			entry! {action=FillMessage::RightMouseDown, key_down=Rmb},

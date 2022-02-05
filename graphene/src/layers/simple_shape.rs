@@ -140,4 +140,68 @@ impl Shape {
 
 		Self { path, style, render_index: 0 }
 	}
+
+	pub fn spline(points: Vec<impl Into<glam::DVec2>>, style: PathStyle) -> Self {
+		let mut path = kurbo::BezPath::new();
+		if points.len() > 2 {
+			let points: Vec<_> = points.into_iter().map(|v| v.into()).map(|v: DVec2| kurbo::Vec2 { x: v.x, y: v.y }).collect();
+
+			let n = points.len() - 1;
+			let mut p1 = vec![kurbo::Vec2::ZERO; n];
+			let mut p2 = vec![kurbo::Vec2::ZERO; n];
+
+			let mut a = vec![1.0; n];
+			a[0] = 0.0;
+			a[n - 1] = 2.0;
+
+			let mut b = vec![4.0; n];
+			b[0] = 2.0;
+			b[n - 1] = 7.0;
+
+			let mut c = vec![1.0; n];
+			c[n - 1] = 0.0;
+
+			let mut r: Vec<_> = (0..n).map(|i| 4.0 * points[i] + 2.0 * points[i + 1]).collect();
+			r[0] = points[0] + (2.0 * points[1]);
+			r[n - 1] = 8.0 * points[n - 1] + points[n];
+
+			for i in 1..n {
+				let m = a[i] / b[i - 1];
+				b[i] = b[i] - m * c[i - 1];
+				r[i] = r[i] - m * r[i - 1];
+			}
+
+			p1[n - 1] = r[n - 1] / b[n - 1];
+			for i in (0..n - 1).rev() {
+				p1[i] = (r[i] - c[i] * p1[i + 1]) / b[i];
+			}
+
+			for i in 0..n - 1 {
+				p2[i] = 2.0 * points[i + 1] - p1[i + 1];
+			}
+			p2[n - 1] = 0.5 * (points[n] + p1[n - 1]);
+
+			points.into_iter().enumerate().for_each(|(i, p)| {
+				if i == 0 {
+					path.move_to(p.to_point())
+				} else {
+					path.curve_to(p1[i - 1].to_point(), p2[i - 1].to_point(), p.to_point())
+				}
+			});
+		} else {
+			points
+				.into_iter()
+				.map(|v| v.into())
+				.map(|v: DVec2| kurbo::Point { x: v.x, y: v.y })
+				.enumerate()
+				.for_each(|(i, p)| if i == 0 { path.move_to(p) } else { path.line_to(p) });
+		}
+
+		Self {
+			path,
+			style,
+			render_index: 0,
+			closed: false,
+		}
+	}
 }
