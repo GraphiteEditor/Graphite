@@ -142,10 +142,14 @@ impl Layer {
 					(Some(first), PathEl::LineTo(second)) => {
 						let point_to_vec = |point: kurbo::Point| glam::Vec2::new(point.x as f32, point.y as f32);
 						paths.push((point_to_vec(first), point_to_vec(second)));
-						log::debug!("{operation:?}");
+						//log::debug!("{operation:?}");
 						Some(second)
 					}
-					_ => unreachable!("Bezier flattening returned non line segments"),
+					(_, PathEl::ClosePath) => {
+						paths.push((paths[0].0, paths.last().unwrap().1));
+						None
+					}
+					(current, next) => unreachable!(format!("Bezier flattening returned non line segments {current:?} {next:?}")),
 				}
 			}
 			log::debug!("flat {paths:?}");
