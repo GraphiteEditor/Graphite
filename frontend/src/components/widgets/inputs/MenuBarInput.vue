@@ -170,7 +170,21 @@ function makeMenuEntries(editor: EditorState): MenuListEntries {
 					{ label: "Report a Bug", action: (): unknown => window.open("https://github.com/GraphiteEditor/Graphite/issues/new", "_blank") },
 					{ label: "Visit on GitHub", action: (): unknown => window.open("https://github.com/GraphiteEditor/Graphite", "_blank") },
 				],
-				[{ label: "Debug: Panic (DANGER)", action: async (): Promise<void> => editor.rawWasm.intentional_panic() }],
+				[
+					{
+						label: "Debug: Set Log Level",
+						// TODO: Remove empty action after merge of (https://github.com/GraphiteEditor/Graphite/pull/338)
+						action: (): void => undefined,
+						children: [
+							[
+								{ label: "Log Level Info", action: async (): Promise<void> => editor.instance.log_level_info(), shortcut: ["Key1"] },
+								{ label: "Log Level Debug", action: async (): Promise<void> => editor.instance.log_level_debug(), shortcut: ["Key2"] },
+								{ label: "Log Level Trace", action: async (): Promise<void> => editor.instance.log_level_trace(), shortcut: ["Key3"] },
+							],
+						],
+					},
+					{ label: "Debug: Panic (DANGER)", action: async (): Promise<void> => editor.rawWasm.intentional_panic() },
+				],
 			],
 		},
 	];
