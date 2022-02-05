@@ -310,12 +310,14 @@ impl<'a> Iterator for TransformIter<'a> {
 		match self.stack.pop() {
 			Some((layer, transform, depth)) => {
 				log::debug!("transform: {transform:?}");
+				let new_transform = transform * layer.transform;
 				if let LayerDataType::Folder(folder) = &layer.data {
 					let layers = folder.layers();
-					let new_transform = transform * layer.transform;
 					self.stack.extend(layers.iter().map(|x| (x, new_transform, depth + 1)));
-				};
-				Some((layer, transform, depth))
+					self.next()
+				} else {
+					Some((layer, new_transform, depth))
+				}
 			}
 			None => None,
 		}
