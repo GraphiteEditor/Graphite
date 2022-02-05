@@ -177,9 +177,9 @@ function makeMenuEntries(editor: EditorState): MenuListEntries {
 						action: (): void => undefined,
 						children: [
 							[
-								{ label: "Log Level Info", action: async (): Promise<void> => editor.instance.log_level_info() },
-								{ label: "Log Level Debug", action: async (): Promise<void> => editor.instance.log_level_debug() },
-								{ label: "Log Level Trace", action: async (): Promise<void> => editor.instance.log_level_trace() },
+								{ label: "Log Level Info", action: async (): Promise<void> => editor.instance.log_level_info(), shortcut: ["Key1"] },
+								{ label: "Log Level Debug", action: async (): Promise<void> => editor.instance.log_level_debug(), shortcut: ["Key2"] },
+								{ label: "Log Level Trace", action: async (): Promise<void> => editor.instance.log_level_trace(), shortcut: ["Key3"] },
 							],
 						],
 					},
