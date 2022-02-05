@@ -93,18 +93,18 @@ impl SnapHandler {
 		}
 	}
 
-	/// Gets a list of snap targets for the X and Y axes in Viewport coords for the target layers (usually all layers or all non-selected layers.)
+	/// Gets a list of snap targets for the X and Y axes (if specified) in Viewport coords for the target layers (usually all layers or all non-selected layers.)
 	/// This should be called at the start of a drag.
-	pub fn start_snap<'a>(&mut self, document_message_handler: &DocumentMessageHandler, target_layers: impl Iterator<Item = &'a [LayerId]>) {
+	pub fn start_snap<'a>(&mut self, document_message_handler: &DocumentMessageHandler, target_layers: impl Iterator<Item = &'a [LayerId]>, snap_x: bool, snap_y: bool) {
 		if document_message_handler.snapping_enabled {
+			let (x_targets, y_targets) = target_layers
+				.filter_map(|path| document_message_handler.graphene_document.viewport_bounding_box(path).ok()?)
+				.flat_map(|[bound1, bound2]| [bound1, bound2, ((bound1 + bound2) / 2.)])
+				.map(|vec| vec.into())
+				.unzip();
+
 			// Could be made into sorted Vec or a HashSet for more performant lookups.
-			self.snap_targets = Some(
-				target_layers
-					.filter_map(|path| document_message_handler.graphene_document.viewport_bounding_box(path).ok()?)
-					.flat_map(|[bound1, bound2]| [bound1, bound2, ((bound1 + bound2) / 2.)])
-					.map(|vec| vec.into())
-					.unzip(),
-			);
+			self.snap_targets = Some((if snap_x { x_targets } else { Vec::new() }, if snap_y { y_targets } else { Vec::new() }));
 		}
 	}
 
