@@ -186,7 +186,7 @@ pub fn standard_tool_message(tool: ToolType, message_type: StandardToolMessageTy
 	match message_type {
 		StandardToolMessageType::DocumentIsDirty => match tool {
 			ToolType::Select => Some(SelectMessage::DocumentIsDirty.into()),
-			ToolType::Crop => None,       // Some(CropMessage::DocumentIsDirty.into()),
+			ToolType::Crop => Some(CropMessage::DocumentIsDirty.into()),
 			ToolType::Navigate => None,   // Some(NavigateMessage::DocumentIsDirty.into()),
 			ToolType::Eyedropper => None, // Some(EyedropperMessage::DocumentIsDirty.into()),
 			ToolType::Text => Some(TextMessage::DocumentIsDirty.into()),
@@ -209,7 +209,7 @@ pub fn standard_tool_message(tool: ToolType, message_type: StandardToolMessageTy
 		},
 		StandardToolMessageType::Abort => match tool {
 			ToolType::Select => Some(SelectMessage::Abort.into()),
-			// ToolType::Crop => Some(CropMessage::Abort.into()),
+			ToolType::Crop => Some(CropMessage::Abort.into()),
 			ToolType::Navigate => Some(NavigateMessage::Abort.into()),
 			ToolType::Eyedropper => Some(EyedropperMessage::Abort.into()),
 			ToolType::Text => Some(TextMessage::Abort.into()),

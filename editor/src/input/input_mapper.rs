@@ -49,6 +49,10 @@ impl Default for Mapping {
 			entry! {action=SelectMessage::EditLayer, message=InputMapperMessage::DoubleClick},
 			entry! {action=SelectMessage::Abort, key_down=Rmb},
 			entry! {action=SelectMessage::Abort, key_down=KeyEscape},
+			// Crop
+			entry! {action=CropMessage::MouseDown, key_down=Lmb},
+			entry! {action=CropMessage::MouseMove, message=InputMapperMessage::PointerMove},
+			entry! {action=CropMessage::MouseUp, key_up=Lmb},
 			// Navigate
 			entry! {action=NavigateMessage::ClickZoom { zoom_in: false }, key_up=Lmb, modifiers=[KeyShift]},
 			entry! {action=NavigateMessage::ClickZoom { zoom_in: true }, key_up=Lmb},
