@@ -15,6 +15,7 @@ use crate::viewport_tools::tool::{DocumentToolData, Fsm, ToolActionHandlerData, 
 use graphene::color::Color;
 use graphene::document::Document;
 use graphene::intersection::Quad;
+use graphene::layers::layer_info::LayerDataType;
 use graphene::layers::style::{self, Fill, Stroke};
 use graphene::Operation;
 
@@ -46,7 +47,7 @@ pub enum SelectMessage {
 		add_to_selection: Key,
 	},
 	DragStop,
-	EditText,
+	EditLayer,
 	FlipHorizontal,
 	FlipVertical,
 	MouseMove {
@@ -252,11 +253,11 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Select {
 		use SelectToolFsmState::*;
 
 		match self.fsm_state {
-			Ready => actions!(SelectMessageDiscriminant; DragStart, MouseMove, EditText),
-			Dragging => actions!(SelectMessageDiscriminant; DragStop, MouseMove, EditText),
-			DrawingBox => actions!(SelectMessageDiscriminant; DragStop, MouseMove, Abort, EditText),
-			ResizingBounds => actions!(SelectMessageDiscriminant; DragStop, MouseMove, Abort, EditText),
-			RotatingBounds => actions!(SelectMessageDiscriminant; DragStop, MouseMove, Abort, EditText),
+			Ready => actions!(SelectMessageDiscriminant; DragStart, MouseMove, EditLayer),
+			Dragging => actions!(SelectMessageDiscriminant; DragStop, MouseMove, EditLayer),
+			DrawingBox => actions!(SelectMessageDiscriminant; DragStop, MouseMove, Abort, EditLayer),
+			ResizingBounds => actions!(SelectMessageDiscriminant; DragStop, MouseMove, Abort, EditLayer),
+			RotatingBounds => actions!(SelectMessageDiscriminant; DragStop, MouseMove, Abort, EditLayer),
 		}
 	}
 }
@@ -553,20 +554,22 @@ impl Fsm for SelectToolFsmState {
 					buffer.into_iter().rev().for_each(|message| responses.push_front(message));
 					self
 				}
-				(_, EditText) => {
+				(_, EditLayer) => {
 					let mouse_pos = input.mouse.position;
 					let tolerance = DVec2::splat(SELECTION_TOLERANCE);
 					let quad = Quad::from_box([mouse_pos - tolerance, mouse_pos + tolerance]);
 
-					if document
-						.graphene_document
-						.intersects_quad_root(quad)
-						.last()
-						.map(|l| document.graphene_document.layer(l).map(|l| l.as_text().is_ok()).unwrap_or(false))
-						.unwrap_or(false)
-					{
-						responses.push_front(ToolMessage::ActivateTool { tool_type: ToolType::Text }.into());
-						responses.push_back(TextMessage::Interact.into());
+					if let Some(Ok(intersect)) = document.graphene_document.intersects_quad_root(quad).last().map(|path| document.graphene_document.layer(path)) {
+						match intersect.data {
+							LayerDataType::Text(_) => {
+								responses.push_front(ToolMessage::ActivateTool { tool_type: ToolType::Text }.into());
+								responses.push_back(TextMessage::Interact.into());
+							}
+							LayerDataType::Shape(_) => {
+								responses.push_front(ToolMessage::ActivateTool { tool_type: ToolType::Path }.into());
+							}
+							_ => {}
+						}
 					}
 
 					self
