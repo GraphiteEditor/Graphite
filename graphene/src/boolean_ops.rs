@@ -181,12 +181,13 @@ impl PathGraph {
 		}
 		new.add_edges_from_path(alpha, Origin::Alpha);
 		new.add_edges_from_path(beta, Origin::Beta);
-		log::debug!("size: {}, {:?}", new.size(), new);
+		// log::debug!("size: {}, {:?}", new.size(), new);
 		Ok(new)
 	}
 
 	/// NOTE: about intersection time_val order
 	/// !Panics when path is empty
+	/// !closepaths aren't being properly removed maye?
 	fn add_edges_from_path(&mut self, path: &BezPath, origin: Origin) {
 		struct AlgorithmState {
 			//cstart holds the idx of the vertex the current edge is starting from
@@ -254,6 +255,7 @@ impl PathGraph {
 				};
 				let temp_copy = end_seg.end();
 				if temp_copy != *initial_point {
+					// a closepath implicitly defines a line which closes the path
 					self.advance_by_seg(graph, PathSeg::Line(Line { p0: temp_copy, p1: *initial_point }), origin);
 				}
 				// when a closepath is not followed by moveto, the next startpath starts at the end of the current path
@@ -394,6 +396,7 @@ impl PathGraph {
 			// we expect the cycle to be valid, this should not panic
 			concat_paths(&mut curve, &self.edge(vertices[idx - 1].0, vertices[idx].0, vertices[idx].1).unwrap().curve);
 		}
+		curve.push(PathEl::ClosePath);
 		Shape::from_bez_path(BezPath::from_vec(curve), *style, false)
 	}
 }
@@ -556,6 +559,7 @@ pub fn boolean_operation(select: BooleanOperation, mut alpha: Shape, mut beta: S
 				Err(BooleanOperationError::NoIntersections) => {
 					if cast_horizontal_ray(point_on_curve(&alpha.path), &beta.path) % 2 != 0 {
 						add_subpath(&mut beta.path, if beta_dir == alpha_dir { reverse_path(&alpha.path) } else { alpha.path });
+						beta.style = alpha.style;
 						Ok(vec![beta])
 					} else {
 						Err(BooleanOperationError::NothingDone)
