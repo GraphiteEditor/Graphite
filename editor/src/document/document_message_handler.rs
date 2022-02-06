@@ -41,7 +41,7 @@ pub struct DocumentMessageHandler {
 	layer_range_selection_reference: Vec<LayerId>,
 	movement_handler: MovementMessageHandler,
 	#[serde(skip)]
-	overlays_message_handler: OverlaysMessageHandler,
+	pub overlays_message_handler: OverlaysMessageHandler,
 	pub artboard_message_handler: ArtboardMessageHandler,
 	#[serde(skip)]
 	transform_layer_handler: TransformLayerMessageHandler,

@@ -63,11 +63,20 @@ impl JsEditorHandle {
 		});
 		for response in responses.into_iter() {
 			// Send each FrontendMessage to the JavaScript frontend
-			if let FrontendMessage::UpdateDocumentArtwork { .. } = response {
+			if let FrontendMessage::UpdateDocumentOverlays { .. } = response {
 				EDITOR_INSTANCES.with(|instances| {
 					let instances = instances.borrow();
-					let editor = instances.get(&mut self.editor_id).expect("EDITOR_INSTANCES does not contain the current editor_id");
-					let lines = editor.0.dispatcher.message_handlers.portfolio_message_handler.active_document().graphene_document.root.line_iter();
+					let editor = instances.get(&self.editor_id).expect("EDITOR_INSTANCES does not contain the current editor_id");
+					let lines = editor
+						.0
+						.dispatcher
+						.message_handlers
+						.portfolio_message_handler
+						.active_document()
+						.overlays_message_handler
+						.overlays_graphene_document
+						.root
+						.line_iter();
 					self.renderer().draw_paths(lines);
 				});
 			}

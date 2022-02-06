@@ -68,9 +68,10 @@
 					</LayoutCol>
 					<LayoutCol class="canvas-area">
 						<div class="canvas" data-canvas ref="canvas" :style="{ cursor: canvasCursor }" @pointerdown="(e: PointerEvent) => canvasPointerDown(e)">
-							<canvas class="rendering-canvas" ref="rendering" :style="{ width: canvasSvgWidth, height: canvasSvgHeight }"></canvas>
+							<svg class="artboards" v-html="artboardSvg" :style="{ width: canvasSvgWidth, height: canvasSvgHeight }"></svg>
 							<svg class="artwork" v-html="artworkSvg" :style="{ width: canvasSvgWidth, height: canvasSvgHeight }"></svg>
 							<svg class="overlays" v-html="overlaysSvg" :style="{ width: canvasSvgWidth, height: canvasSvgHeight }"></svg>
+							<canvas class="rendering-canvas" ref="rendering" :style="{ width: canvasSvgWidth, height: canvasSvgHeight }"></canvas>
 						</div>
 					</LayoutCol>
 					<LayoutCol class="bar-area">
@@ -173,7 +174,8 @@
 				position: relative;
 				overflow: hidden;
 
-				svg {
+				svg,
+				canvas {
 					position: absolute;
 					// Fallback values if JS hasn't set these to integers yet
 					width: 100%;
@@ -326,7 +328,6 @@ export default defineComponent({
 	},
 	mounted() {
 		this.viewportResize();
-
 		this.editor.dispatcher.subscribeJsMessage(UpdateDocumentArtwork, (UpdateDocumentArtwork) => {
 			this.artworkSvg = UpdateDocumentArtwork.svg;
 

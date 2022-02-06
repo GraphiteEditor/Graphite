@@ -129,11 +129,11 @@ impl Layer {
 	}
 
 	pub fn line_iter(&self) -> impl Iterator<Item = (Vec<(Vec2, Vec2)>, PathStyle, u32)> + '_ {
-		log::debug!("line_iter");
+		//log::debug!("line_iter");
 		self.curve_iter().map(|(path, style, depth)| {
 			let mut vec = Vec::new();
-			path.flatten(0.05, |segment| vec.push(segment));
-			log::debug!("flat {vec:?}");
+			path.flatten(0.5, |segment| vec.push(segment));
+			//log::trace!("flat {vec:?}");
 			let mut paths = Vec::new();
 			let mut state = None;
 			for operation in vec {
@@ -152,7 +152,7 @@ impl Layer {
 					(current, next) => unreachable!(format!("Bezier flattening returned non line segments {current:?} {next:?}")),
 				}
 			}
-			log::debug!("flat {paths:?}");
+			//log::debug!("flat {paths:?}");
 			(paths, style, depth)
 		})
 	}
