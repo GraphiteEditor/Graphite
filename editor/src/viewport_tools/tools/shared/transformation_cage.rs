@@ -123,7 +123,7 @@ pub fn add_bounding_box(responses: &mut Vec<Message>) -> Vec<LayerId> {
 	let operation = Operation::AddOverlayRect {
 		path: path.clone(),
 		transform: DAffine2::ZERO.to_cols_array(),
-		style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 1.0)), Some(Fill::none())),
+		style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 1.0)), None),
 	};
 	responses.push(DocumentMessage::Overlays(operation.into()).into());
 

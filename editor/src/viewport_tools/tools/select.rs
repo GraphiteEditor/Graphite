@@ -305,8 +305,6 @@ impl SelectToolData {
 	}
 }
 
-/// Handles the selected edges whilst dragging the layer bounds
-
 impl Fsm for SelectToolFsmState {
 	type ToolData = SelectToolData;
 	type ToolOptions = ();
