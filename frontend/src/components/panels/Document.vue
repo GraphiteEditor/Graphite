@@ -68,7 +68,7 @@
 					</LayoutCol>
 					<LayoutCol class="canvas-area">
 						<div class="canvas" data-canvas ref="canvas" :style="{ cursor: canvasCursor }" @pointerdown="(e: PointerEvent) => canvasPointerDown(e)">
-							<canvas class='rendering-canvas' ref="rendering" :style="{ width: canvasSvgWidth, height: canvasSvgHeight }"></canvas>
+							<canvas class="rendering-canvas" ref="rendering" :style="{ width: canvasSvgWidth, height: canvasSvgHeight }"></canvas>
 							<svg class="artwork" v-html="artworkSvg" :style="{ width: canvasSvgWidth, height: canvasSvgHeight }"></svg>
 							<svg class="overlays" v-html="overlaysSvg" :style="{ width: canvasSvgWidth, height: canvasSvgHeight }"></svg>
 						</div>
@@ -277,30 +277,17 @@ export default defineComponent({
 			if (rulerHorizontal) rulerHorizontal.handleResize();
 			if (rulerVertical) rulerVertical.handleResize();
 
-			var rendering = this.$refs.rendering as HTMLCanvasElement;
-			const dpr = window.devicePixelRatio || 1;
+			const htmlCanvas = this.$refs.rendering as HTMLCanvasElement;
 
+			// Set display size (css pixels).
+			htmlCanvas.style.width = `${width}px`;
+			htmlCanvas.style.height = `${height}px`;
 
-			 const ratio = dpr;
-				var can = rendering;
-				can.width = width * ratio;
-				can.height = height * ratio;
-				can.style.width = width + "px";
-				can.style.height = height + "px";
-
-				/*var ctx = rendering.getContext("2d");
-					if (ctx) {
-						ctx.scale(ratio, ratio);
-						ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
-					}
-*/
-			//ctx.scale(ratio * dpr, ratio * dpr); //adjust this!
-
-			console.log(width, dpr);
-			(this.$refs.rendering as HTMLCanvasElement).width = dpr * width;
-			(this.$refs.rendering as HTMLCanvasElement).height = dpr * height;
-			//(this.$refs.canvas as HTMLCanvasElement).width = width * dpr;
-			//(this.$refs.canvas as HTMLCanvasElement).height = height * dpr;
+			// Set actual size in memory (scaled to account for extra pixel density).
+			// From https://developer.mozilla.org/en-US/docs/Web/API/Window/devicePixelRatio#correcting_resolution_in_a_canvas
+			const scale = window.devicePixelRatio || 1;
+			htmlCanvas.width = Math.floor(width * scale);
+			htmlCanvas.height = Math.floor(height * scale);
 		},
 		translateCanvasX(newValue: number) {
 			const delta = newValue - this.scrollbarPos.x;
@@ -338,6 +325,8 @@ export default defineComponent({
 		},
 	},
 	mounted() {
+		this.viewportResize();
+
 		this.editor.dispatcher.subscribeJsMessage(UpdateDocumentArtwork, (UpdateDocumentArtwork) => {
 			this.artworkSvg = UpdateDocumentArtwork.svg;
 
