@@ -612,7 +612,7 @@ fn add_anchor_handle_line(responses: &mut VecDeque<Message>) -> Vec<LayerId> {
 	let operation = Operation::AddOverlayLine {
 		path: layer_path.clone(),
 		transform: DAffine2::IDENTITY.to_cols_array(),
-		style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 1.0)), Some(Fill::none())),
+		style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 1.0)), None),
 	};
 	responses.push_back(DocumentMessage::Overlays(operation.into()).into());
 
@@ -625,7 +625,7 @@ fn add_shape_outline(responses: &mut VecDeque<Message>) -> Vec<LayerId> {
 	let operation = Operation::AddOverlayShape {
 		path: layer_path.clone(),
 		bez_path: BezPath::default(),
-		style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 1.0)), Some(Fill::none())),
+		style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 1.0)), None),
 		closed: false,
 	};
 	responses.push_back(DocumentMessage::Overlays(operation.into()).into());
