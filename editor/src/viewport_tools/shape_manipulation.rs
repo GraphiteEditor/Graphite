@@ -20,6 +20,9 @@ use crate::{
 // Helps push values that end in approximately half, plus or minus some floating point imprecision, towards the same side of the round() function
 const BIAS: f64 = 0.0001;
 
+// The angle in radians to determine if the kurbo shape is mirroring
+const MINIMUM_MIRROR_THRESHOLD: f64 = 0.1;
+
 /* Light overview of structs in this file and hierarchy:
 
 						ShapeEditor
@@ -29,12 +32,33 @@ const BIAS: f64 = 0.0001;
 	VectorManipulatorAnchor ...  VectorManipulatorAnchor <- each VectorShape contains many
 
 
-				VectorManipulatorAnchor <- Container for properties only an anchor has
+				VectorManipulatorAnchor <- Container for the anchor metadata and optional VectorManipulatorPoints
 						/
-			[Option<VectorManipulatorPoint>; 3] <- 0th place is the handle point, 1st is handle1, second is handle2
+			[Option<VectorManipulatorPoint>; 3] <- [0] is the anchor's draggable point (but not metadata), [1] is the handle1 point, [2] is the handle2 point
 			/				|				\
 		"Anchor"		"Handle1" 		 "Handle2" <- These are VectorManipulatorPoints and the only editable "primitive"
 */
+
+#[repr(usize)]
+#[derive(PartialEq, Clone, Debug)]
+pub enum ManipulatorType {
+	Anchor = 0,
+	Handle1 = 1,
+	Handle2 = 2,
+}
+// Allows us to use ManipulatorType for indexing
+impl<T> Index<ManipulatorType> for [T; 3] {
+	type Output = T;
+	fn index(&self, mt: ManipulatorType) -> &T {
+		&self[mt as usize]
+	}
+}
+// Allows us to use ManipulatorType for indexing, mutably
+impl<T> IndexMut<ManipulatorType> for [T; 3] {
+	fn index_mut(&mut self, mt: ManipulatorType) -> &mut T {
+		&mut self[mt as usize]
+	}
+}
 
 /// ShapeEditor is the container for all of the selected kurbo paths that are
 /// represented as VectorShapes and provides functionality required
@@ -44,7 +68,6 @@ const BIAS: f64 = 0.0001;
 pub struct ShapeEditor {
 	// The shapes we can select anchors / handles from
 	pub shapes_to_modify: Vec<VectorShape>,
-	// The path to the shape that contained the most recent selected point
 	// Index of the shape that contained the most recent selected point
 	pub selected_shape_indices: HashSet<usize>,
 	// Have we selected a point in shapes_to_modify yet?
@@ -63,14 +86,14 @@ impl ShapeEditor {
 		let select_threshold_squared = select_threshold * select_threshold;
 		// Find the closest control point among all elements of shapes_to_modify
 		for shape_index in 0..self.shapes_to_modify.len() {
-			let (anchor_index, point_index, distance) = self.closest_manipulator_indices(&self.shapes_to_modify[shape_index], mouse_position);
+			let (anchor_index, point_index, distance_squared) = self.closest_manipulator_indices(&self.shapes_to_modify[shape_index], mouse_position);
 			// Choose the first point under the threshold
-			if distance < select_threshold_squared {
+			if distance_squared < select_threshold_squared {
 				// Add this shape to the selection
 				self.add_selected_shape(shape_index);
 
 				// If the point we're selecting has already been selected
-				// We can assume this point exists.. since we did just click on it hense the unwrap
+				// we can assume this point exists.. since we did just click on it hense the unwrap
 				let is_point_selected = self.shapes_to_modify[shape_index].anchors[anchor_index].points[point_index].as_ref().unwrap().is_selected();
 
 				// Deselected if we're not adding to the selection
@@ -82,6 +105,7 @@ impl ShapeEditor {
 
 				// Refresh the elements of the path
 				selected_shape.elements = selected_shape.bez_path.clone().into_iter().collect();
+
 				// Add which anchor and point was selected
 				let selected_point = selected_shape.select_anchor(anchor_index).set_selected(point_index, true, responses);
 				// Set the mouse position for dragging
@@ -91,7 +115,7 @@ impl ShapeEditor {
 
 				// Due to the shape data structure not persisting across shape selection changes we need to rely on the kurbo path to know if we should mirror
 				let selected_anchor = &mut selected_shape.anchors[anchor_index];
-				selected_anchor.set_mirroring((selected_anchor.angle_between_handles().abs() - std::f64::consts::PI).abs() < 0.1);
+				selected_anchor.set_mirroring((selected_anchor.angle_between_handles().abs() - std::f64::consts::PI).abs() < MINIMUM_MIRROR_THRESHOLD);
 				self.has_had_point_selection = true;
 				return true;
 			}
@@ -176,21 +200,21 @@ impl ShapeEditor {
 	fn closest_manipulator_indices(&self, shape: &VectorShape, pos: glam::DVec2) -> (usize, usize, f64) {
 		let mut closest_anchor_index: usize = 0;
 		let mut closest_point_index: usize = 0;
-		let mut closest_distance: f64 = f64::MAX; // Not ideal
+		let mut closest_distance_squared: f64 = f64::MAX; // Not ideal
 		for (anchor_index, anchor) in shape.anchors.iter().enumerate() {
 			let point_index = anchor.closest_handle_or_anchor(pos);
 			if let Some(point) = &anchor.points[point_index] {
 				if point.can_be_selected {
 					let distance_squared = point.position.distance_squared(pos);
-					if distance_squared < closest_distance {
-						closest_distance = distance_squared;
+					if distance_squared < closest_distance_squared {
+						closest_distance_squared = distance_squared;
 						closest_anchor_index = anchor_index;
 						closest_point_index = point_index;
 					}
 				}
 			}
 		}
-		(closest_anchor_index, closest_point_index, closest_distance)
+		(closest_anchor_index, closest_point_index, closest_distance_squared)
 	}
 }
 
@@ -705,27 +729,6 @@ pub enum VectorManipulatorSegment {
 	Cubic(DVec2, DVec2, DVec2, DVec2),
 }
 
-#[repr(usize)]
-#[derive(PartialEq, Clone, Debug)]
-pub enum ManipulatorType {
-	Anchor = 0,
-	Handle1 = 1,
-	Handle2 = 2,
-}
-
-impl<T> Index<ManipulatorType> for [T; 3] {
-	type Output = T;
-	fn index(&self, mt: ManipulatorType) -> &T {
-		&self[mt as usize]
-	}
-}
-
-impl<T> IndexMut<ManipulatorType> for [T; 3] {
-	fn index_mut(&mut self, mt: ManipulatorType) -> &mut T {
-		&mut self[mt as usize]
-	}
-}
-
 /// VectorManipulatorAnchor is used to represent an anchor point on the path that can be moved.
 /// It contains 0-2 handles that are optionally displayed.
 #[derive(PartialEq, Clone, Debug, Default)]
@@ -785,6 +788,7 @@ impl VectorManipulatorAnchor {
 			let h1_selected = ManipulatorType::Handle1 == selected_point.manipulator_type;
 			let h2_selected = ManipulatorType::Handle2 == selected_point.manipulator_type;
 
+			// This section is particularly ugly and could use revision. Kurbo makes it somewhat difficult based on its approach.
 			// If neither handle is selected, we are dragging an anchor point
 			if !(h1_selected || h2_selected) {
 				let handle1_exists_and_selected = self.points[ManipulatorType::Handle1].is_some() && self.points[ManipulatorType::Handle1].as_ref().unwrap().is_selected();
@@ -1137,6 +1141,8 @@ impl Default for VectorManipulatorPoint {
 	}
 }
 
+const POINT_STROKE_WIDTH: f32 = 2.0;
+
 impl VectorManipulatorPoint {
 	pub fn is_selected(&self) -> bool {
 		self.is_selected
@@ -1145,9 +1151,9 @@ impl VectorManipulatorPoint {
 	/// Sets if this point is selected and updates the overlay to represent that
 	pub fn set_selected(&mut self, selected: bool, responses: &mut VecDeque<Message>) {
 		if selected {
-			self.set_overlay_style(3.0, COLOR_ACCENT, COLOR_ACCENT, responses);
+			self.set_overlay_style(POINT_STROKE_WIDTH + 1.0, COLOR_ACCENT, COLOR_ACCENT, responses);
 		} else {
-			self.set_overlay_style(2.0, COLOR_ACCENT, Color::WHITE, responses);
+			self.set_overlay_style(POINT_STROKE_WIDTH, COLOR_ACCENT, Color::WHITE, responses);
 		}
 		self.is_selected = selected;
 	}
