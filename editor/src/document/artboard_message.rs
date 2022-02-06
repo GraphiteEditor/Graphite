@@ -14,12 +14,15 @@ pub enum ArtboardMessage {
 
 	// Messages
 	AddArtboard {
-		top: f64,
-		left: f64,
-		height: f64,
-		width: f64,
+		position: (f64, f64),
+		size: (f64, f64),
 	},
 	RenderArtboards,
+	ResizeArtboard {
+		artboard: Vec<LayerId>,
+		position: (f64, f64),
+		size: (f64, f64),
+	},
 }
 
 impl From<DocumentOperation> for ArtboardMessage {

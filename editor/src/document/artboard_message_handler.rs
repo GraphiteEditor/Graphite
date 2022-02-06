@@ -36,7 +36,7 @@ impl MessageHandler<ArtboardMessage, ()> for ArtboardMessageHandler {
 			},
 
 			// Messages
-			AddArtboard { top, left, height, width } => {
+			AddArtboard { position, size } => {
 				let artboard_id = generate_uuid();
 				self.artboard_ids.push(artboard_id);
 
@@ -45,7 +45,7 @@ impl MessageHandler<ArtboardMessage, ()> for ArtboardMessageHandler {
 						DocumentOperation::AddRect {
 							path: vec![artboard_id],
 							insert_index: -1,
-							transform: DAffine2::from_scale_angle_translation(DVec2::new(height, width), 0., DVec2::new(top, left)).to_cols_array(),
+							transform: DAffine2::from_scale_angle_translation(size.into(), 0., position.into()).to_cols_array(),
 							style: style::PathStyle::new(None, Some(Fill::new(Color::WHITE))),
 						}
 						.into(),
@@ -72,6 +72,20 @@ impl MessageHandler<ArtboardMessage, ()> for ArtboardMessageHandler {
 						.into(),
 					);
 				}
+			}
+			ResizeArtboard { artboard, position, size } => {
+				responses.push_back(
+					ArtboardMessage::DispatchOperation(
+						DocumentOperation::SetLayerTransform {
+							path: artboard,
+							transform: DAffine2::from_scale_angle_translation(size.into(), 0., position.into()).to_cols_array(),
+						}
+						.into(),
+					)
+					.into(),
+				);
+
+				responses.push_back(DocumentMessage::RenderDocument.into());
 			}
 		}
 	}

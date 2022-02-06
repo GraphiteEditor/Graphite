@@ -42,7 +42,7 @@ pub struct DocumentMessageHandler {
 	movement_handler: MovementMessageHandler,
 	#[serde(skip)]
 	overlays_message_handler: OverlaysMessageHandler,
-	artboard_message_handler: ArtboardMessageHandler,
+	pub artboard_message_handler: ArtboardMessageHandler,
 	#[serde(skip)]
 	transform_layer_handler: TransformLayerMessageHandler,
 	pub overlays_visible: bool,
@@ -136,6 +136,10 @@ impl DocumentMessageHandler {
 	pub fn selected_visible_layers_bounding_box(&self) -> Option<[DVec2; 2]> {
 		let paths = self.selected_visible_layers();
 		self.graphene_document.combined_viewport_bounding_box(paths)
+	}
+
+	pub fn artboard_bounding_box(&self, path: &[LayerId]) -> Option<[DVec2; 2]> {
+		self.artboard_message_handler.artboards_graphene_document.viewport_bounding_box(path).unwrap_or(None)
 	}
 
 	// TODO: Consider moving this to some kind of overlays manager in the future

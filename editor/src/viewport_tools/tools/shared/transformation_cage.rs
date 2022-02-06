@@ -48,8 +48,7 @@ impl SelectedEdges {
 		DVec2::new(x, y)
 	}
 
-	/// Calculates the required scaling to resize the bounding box
-	pub fn pos_to_scale_transform(&self, mouse: DVec2) -> DAffine2 {
+	pub fn new_size(&self, mouse: DVec2) -> [DVec2; 2] {
 		let mut min = self.bounds[0];
 		let mut max = self.bounds[1];
 		if self.top {
@@ -62,6 +61,12 @@ impl SelectedEdges {
 		} else if self.right {
 			max.x = mouse.x;
 		}
+		[min, max]
+	}
+
+	/// Calculates the required scaling to resize the bounding box
+	pub fn pos_to_scale_transform(&self, mouse: DVec2) -> DAffine2 {
+		let [min, max] = self.new_size(mouse);
 		DAffine2::from_scale((max - min) / (self.bounds[1] - self.bounds[0]))
 	}
 }
