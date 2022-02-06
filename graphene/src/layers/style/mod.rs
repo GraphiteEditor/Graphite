@@ -29,25 +29,21 @@ impl Default for ViewMode {
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize)]
 pub struct Fill {
-	color: Option<Color>,
+	color: Color,
 }
 
 impl Fill {
 	pub fn new(color: Color) -> Self {
-		Self { color: Some(color) }
+		Self { color }
 	}
 
-	pub fn color(&self) -> Option<Color> {
+	pub fn color(&self) -> Color {
 		self.color
 	}
 
-	pub const fn none() -> Self {
-		Self { color: None }
-	}
-
-	pub fn render(&self) -> String {
-		match self.color {
-			Some(c) => format!(r##" fill="#{}"{}"##, c.rgb_hex(), format_opacity("fill", c.a())),
+	pub fn render(fill: Option<Fill>) -> String {
+		match fill {
+			Some(c) => format!(r##" fill="#{}"{}"##, c.color.rgb_hex(), format_opacity("fill", c.color.a())),
 			None => r#" fill="none""#.to_string(),
 		}
 	}
@@ -116,9 +112,8 @@ impl PathStyle {
 
 	pub fn render(&self, view_mode: ViewMode) -> String {
 		let fill_attribute = match (view_mode, self.fill) {
-			(ViewMode::Outline, _) => Fill::none().render(),
-			(_, Some(fill)) => fill.render(),
-			(_, None) => String::new(),
+			(ViewMode::Outline, _) => Fill::render(None),
+			(_, fill) => Fill::render(fill),
 		};
 		let stroke_attribute = match (view_mode, self.stroke) {
 			(ViewMode::Outline, _) => Stroke::new(LAYER_OUTLINE_STROKE_COLOR, LAYER_OUTLINE_STROKE_WIDTH).render(),

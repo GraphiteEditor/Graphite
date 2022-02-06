@@ -17,7 +17,6 @@ pub struct Shape {
 	pub path: BezPath,
 	pub style: style::PathStyle,
 	pub render_index: i32,
-	pub closed: bool,
 }
 
 impl LayerData for Shape {
@@ -54,7 +53,7 @@ impl LayerData for Shape {
 	}
 
 	fn intersects_quad(&self, quad: Quad, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>) {
-		if intersect_quad_bez_path(quad, &self.path, self.closed) {
+		if intersect_quad_bez_path(quad, &self.path, self.style.fill().is_some()) {
 			intersections.push(path.clone());
 		}
 	}
@@ -75,7 +74,6 @@ impl Shape {
 			path: bez_path,
 			style,
 			render_index: 1,
-			closed,
 		}
 	}
 
@@ -104,12 +102,7 @@ impl Shape {
 
 		path.close_path();
 
-		Self {
-			path,
-			style,
-			render_index: 1,
-			closed: true,
-		}
+		Self { path, style, render_index: 1 }
 	}
 
 	pub fn rectangle(style: PathStyle) -> Self {
@@ -117,7 +110,6 @@ impl Shape {
 			path: kurbo::Rect::new(0., 0., 1., 1.).to_path(0.01),
 			style,
 			render_index: 1,
-			closed: true,
 		}
 	}
 
@@ -126,7 +118,6 @@ impl Shape {
 			path: kurbo::Ellipse::from_rect(kurbo::Rect::new(0., 0., 1., 1.)).to_path(0.01),
 			style,
 			render_index: 1,
-			closed: true,
 		}
 	}
 
@@ -135,7 +126,6 @@ impl Shape {
 			path: kurbo::Line::new((0., 0.), (1., 0.)).to_path(0.01),
 			style,
 			render_index: 1,
-			closed: false,
 		}
 	}
 
@@ -148,11 +138,6 @@ impl Shape {
 			.enumerate()
 			.for_each(|(i, p)| if i == 0 { path.move_to(p) } else { path.line_to(p) });
 
-		Self {
-			path,
-			style,
-			render_index: 0,
-			closed: false,
-		}
+		Self { path, style, render_index: 0 }
 	}
 }

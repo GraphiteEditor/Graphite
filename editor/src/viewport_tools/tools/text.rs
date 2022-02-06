@@ -150,7 +150,7 @@ fn resize_overlays(overlays: &mut Vec<Vec<LayerId>>, responses: &mut VecDeque<Me
 		let operation = Operation::AddOverlayRect {
 			path,
 			transform: DAffine2::ZERO.to_cols_array(),
-			style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 1.0)), Some(Fill::none())),
+			style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 1.0)), None),
 		};
 		responses.push_back(DocumentMessage::Overlays(operation.into()).into());
 	}
