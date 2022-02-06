@@ -379,19 +379,6 @@ pub fn intersections(a: &BezPath, b: &BezPath) -> Vec<Intersect> {
 	intersections
 }
 
-pub fn intersection_candidates(a: &BezPath, b: &BezPath) -> Vec<(usize, usize)> {
-	let mut intersections = Vec::new();
-
-	a.segments().enumerate().for_each(|(a_idx, a_seg)| {
-		b.segments().enumerate().for_each(|(b_idx, b_seg)| {
-			if overlap(&<PathSeg as ParamCurveExtrema>::bounding_box(&a_seg), &<PathSeg as ParamCurveExtrema>::bounding_box(&b_seg)) {
-				intersections.push((a_idx, b_idx));
-			}
-		})
-	});
-	intersections
-}
-
 /// returns intersection point as if lines extended forever
 pub fn line_intersect_point(a: &Line, b: &Line) -> Option<Point> {
 	line_intersection_unchecked(a, b).map(|isect| isect.point)

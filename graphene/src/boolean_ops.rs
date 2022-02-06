@@ -585,7 +585,7 @@ pub fn boolean_operation(select: BooleanOperation, mut alpha: Shape, mut beta: S
 	}
 }
 
-/// !May be a bug where ray is cast into the endpoints of two lines
+/// !May (pretty sure there) be a bug where ray is cast into the endpoints of two lines
 pub fn cast_horizontal_ray(from: Point, into: &BezPath) -> usize {
 	let mut num = 0;
 	let ray = Line {
