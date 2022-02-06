@@ -70,8 +70,6 @@ pub struct ShapeEditor {
 	pub shapes_to_modify: Vec<VectorShape>,
 	// Index of the shape that contained the most recent selected point
 	pub selected_shape_indices: HashSet<usize>,
-	// Have we selected a point in shapes_to_modify yet?
-	pub has_had_point_selection: bool,
 	// The initial drag position of the mouse on drag start
 	pub drag_start_position: DVec2,
 }
@@ -102,21 +100,19 @@ impl ShapeEditor {
 				}
 
 				let selected_shape = &mut self.shapes_to_modify[shape_index];
-
-				// Refresh the elements of the path
 				selected_shape.elements = selected_shape.bez_path.clone().into_iter().collect();
 
 				// Add which anchor and point was selected
-				let selected_point = selected_shape.select_anchor(anchor_index).set_selected(point_index, true, responses);
+				let selected_anchor = selected_shape.select_anchor(anchor_index);
+				let selected_point = selected_anchor.select_point(point_index, true, responses);
+
 				// Set the mouse position for dragging
 				if let Some(point) = selected_point {
 					self.drag_start_position = point.position;
 				}
 
 				// Due to the shape data structure not persisting across shape selection changes we need to rely on the kurbo path to know if we should mirror
-				let selected_anchor = &mut selected_shape.anchors[anchor_index];
 				selected_anchor.set_mirroring((selected_anchor.angle_between_handles().abs() - std::f64::consts::PI).abs() < MINIMUM_MIRROR_THRESHOLD);
-				self.has_had_point_selection = true;
 				return true;
 			}
 		}
@@ -125,7 +121,6 @@ impl ShapeEditor {
 
 	/// Set the shapes we consider for selection, we will choose draggable handles / anchors from these shapes.
 	pub fn set_shapes_to_modify(&mut self, selected_shapes: Vec<VectorShape>) {
-		self.has_had_point_selection = false;
 		self.shapes_to_modify = selected_shapes;
 	}
 
@@ -183,7 +178,11 @@ impl ShapeEditor {
 	/// Remove all of the overlays from the shapes the manipulation handler has created
 	pub fn deselect_all(&mut self, responses: &mut VecDeque<Message>) {
 		for shape in self.shapes_to_modify.iter_mut() {
-			shape.clear_selected_anchors(responses)
+			shape.clear_selected_anchors(responses);
+
+			// Need to update the path elements here, ideally this could be worked around a different way
+			// Solves "snap back" when switching shape selection
+			shape.elements = shape.bez_path.clone().into_iter().collect();
 		}
 	}
 
@@ -238,7 +237,7 @@ pub struct VectorShape {
 	pub closed: bool,
 	/// The transformation matrix to apply
 	pub transform: DAffine2,
-	// Index of the most recently select point's anchor
+	// Indices for the most recent select point anchors
 	pub selected_anchor_indices: HashSet<usize>,
 }
 type IndexedEl = (usize, kurbo::PathEl);
@@ -261,7 +260,6 @@ impl VectorShape {
 		shape.segments = shape.create_segments_from_kurbo();
 		shape.shape_overlay = Some(shape.create_shape_outline_overlay(responses));
 		shape.anchors = shape.create_anchors_from_kurbo(responses);
-		// shape.select_all_anchors(responses);
 
 		// TODO: This is a hack to allow Text to work. The shape isn't a path until this message is sent (it appears)
 		responses.push_back(
@@ -292,7 +290,7 @@ impl VectorShape {
 	pub fn select_all_anchors(&mut self, responses: &mut VecDeque<Message>) {
 		for (index, anchor) in self.anchors.iter_mut().enumerate() {
 			self.selected_anchor_indices.insert(index);
-			anchor.set_selected(0, true, responses);
+			anchor.select_point(0, true, responses);
 		}
 	}
 
@@ -345,6 +343,30 @@ impl VectorShape {
 			}
 			.into(),
 		);
+	}
+
+	/// Update the anchors and segments to match the kurbo shape
+	/// Should be called whenever the kurbo shape changes
+	pub fn update_shape(&mut self, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
+		let viewport_transform = document.graphene_document.generate_transform_relative_to_viewport(&self.layer_path).unwrap();
+		let layer = document.graphene_document.layer(&self.layer_path).unwrap();
+		if let LayerDataType::Shape(shape) = &layer.data {
+			let path = shape.path.clone();
+			self.transform = viewport_transform;
+
+			// Update point positions
+			self.update_anchors_from_kurbo(&path);
+
+			// Update the segment positions
+			self.update_segments_from_kurbo(&path);
+
+			self.bez_path = path;
+
+			// Update the overlays to represent the changes to the kurbo path
+			self.place_shape_outline_overlay(responses);
+			self.place_anchor_overlays(responses);
+			self.place_handle_overlays(responses);
+		}
 	}
 
 	/// Place points in local space
@@ -541,30 +563,6 @@ impl VectorShape {
 				),
 			};
 		});
-	}
-
-	/// Update the anchors and segments to match the kurbo shape
-	/// Should be called whenever the kurbo shape changes
-	pub fn update_shape(&mut self, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
-		let viewport_transform = document.graphene_document.generate_transform_relative_to_viewport(&self.layer_path).unwrap();
-		let layer = document.graphene_document.layer(&self.layer_path).unwrap();
-		if let LayerDataType::Shape(shape) = &layer.data {
-			let path = shape.path.clone();
-			self.transform = viewport_transform;
-
-			// Update point positions
-			self.update_anchors_from_kurbo(&path);
-
-			// Update the segment positions
-			self.update_segments_from_kurbo(&path);
-
-			self.bez_path = path;
-
-			// Update the overlays to represent the changes to the kurbo path
-			self.place_shape_outline_overlay(responses);
-			self.place_anchor_overlays(responses);
-			self.place_handle_overlays(responses);
-		}
 	}
 
 	/// Create the kurbo shape that matches the selected viewport shape
@@ -877,7 +875,7 @@ impl VectorManipulatorAnchor {
 	}
 
 	/// Set a point to selected by ID
-	pub fn set_selected(&mut self, point_id: usize, selected: bool, responses: &mut VecDeque<Message>) -> Option<&mut VectorManipulatorPoint> {
+	pub fn select_point(&mut self, point_id: usize, selected: bool, responses: &mut VecDeque<Message>) -> Option<&mut VectorManipulatorPoint> {
 		if let Some(point) = self.points[point_id].as_mut() {
 			point.set_selected(selected, responses);
 		}

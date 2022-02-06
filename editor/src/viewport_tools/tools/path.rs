@@ -156,7 +156,6 @@ impl Fsm for PathToolFsmState {
 							.graphene_document
 							.intersects_quad_root(Quad::from_box([input.mouse.position - DVec2::ONE, input.mouse.position + DVec2::ONE]));
 						if !intersection.is_empty() {
-							data.shape_editor.deselect_all(responses);
 							if add_to_selection {
 								responses.push_back(DocumentMessage::AddSelectedLayers { additional_layers: intersection }.into());
 							} else {
@@ -187,6 +186,9 @@ impl Fsm for PathToolFsmState {
 				}
 				// Mouse up
 				(_, DragStop) => {
+					for shape in &mut data.shape_editor.shapes_to_modify {
+						shape.update_shape(document, responses);
+					}
 					data.snap_handler.cleanup(responses);
 					Ready
 				}
