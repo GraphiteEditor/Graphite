@@ -9,6 +9,7 @@ use std::{
 	fmt::{self, Debug, Formatter},
 	num::IntErrorKind,
 	ops::Deref,
+	path,
 };
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq)]
@@ -470,8 +471,8 @@ pub fn boolean_operation(select: BooleanOperation, mut alpha: Shape, mut beta: S
 	if alpha.path.is_empty() || beta.path.is_empty() {
 		return Err(BooleanOperationError::InvalidSelection);
 	}
-	close_path(&mut alpha.path);
-	close_path(&mut beta.path);
+	alpha.path = close_path(&alpha.path);
+	beta.path = close_path(&beta.path);
 	let alpha_dir = Cycle::direction_for_path(&alpha.path)?;
 	let beta_dir = Cycle::direction_for_path(&beta.path)?;
 	match select {
@@ -687,15 +688,32 @@ pub fn is_closed(curve: &BezPath) -> bool {
 	curve.iter().last() == Some(PathEl::ClosePath)
 }
 
-/// append a PathEl::ClosePath to the curve if it is not there already
-/// ? Should all subpaths be closed as well...  yes?
-pub fn close_path(curve: &mut BezPath) {
-	match curve.iter().last() {
-		Some(PathEl::ClosePath) | None => (),
-		Some(_) => {
-			curve.push(PathEl::ClosePath);
+/// Close off all subpaths in curve by inserting a ClosePath whenever a MoveTo is not preceded by one
+pub fn close_path(curve: &BezPath) -> BezPath {
+	let mut new = BezPath::new();
+	let mut path_closed_flag = true;
+	for el in curve.iter().skip(1) {
+		match el {
+			PathEl::MoveTo(p) => {
+				if !path_closed_flag {
+					new.push(PathEl::ClosePath);
+				}
+				new.push(PathEl::MoveTo(p));
+				path_closed_flag = false;
+			}
+			PathEl::ClosePath => {
+				path_closed_flag = true;
+				new.push(PathEl::ClosePath);
+			}
+			element => {
+				new.push(element);
+			}
 		}
 	}
+	if !path_closed_flag {
+		new.push(PathEl::ClosePath);
+	}
+	new
 }
 
 /// concat b to a, where b is not a new subpath but a continuation of a
