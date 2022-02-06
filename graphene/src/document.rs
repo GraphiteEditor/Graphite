@@ -510,6 +510,7 @@ impl Document {
 				// TODO: proper difference
 				// TODO: proper style selection (done?)
 				// TODO: Operations on any numeber of shapes
+				// TODO: handle overlapping identical curve case
 				// TODO: precision reached without intersection bug (maybe caused by seperating a closed path, or dragging handles)
 				// TODO: click on shape should drag the shape
 				// TODO: either fix the layer sort function or reverse order of selected shapes

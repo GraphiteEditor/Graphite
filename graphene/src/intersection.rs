@@ -1,8 +1,8 @@
-use std::{ops::Mul, path::Path};
+use std::ops::Mul;
 
 use crate::consts::{CURVE_FIDELITY, F64PRECISION};
 use glam::{DAffine2, DMat2, DVec2};
-use kurbo::{BezPath, CubicBez, Line, ParamCurve, ParamCurveExtrema, PathSeg, Point, QuadBez, Rect, Shape, Vec2 as KVec2};
+use kurbo::{BezPath, CubicBez, Line, ParamCurve, ParamCurveExtrema, PathSeg, Point, QuadBez, Rect, Shape};
 
 #[derive(Debug, Clone, Default, Copy)]
 pub struct Quad([DVec2; 4]);
@@ -192,18 +192,8 @@ impl<'a> SubCurve<'a> {
 		bound
 	}
 
-	/// eval subcurve at t as though the subcurve is a bezier curve
-	fn eval(&self, t: f64) -> Point {
-		self.curve.eval(self.start_t + t * (self.end_t - self.start_t))
-	}
-
 	fn available_precision(&self) -> f64 {
 		(self.start_t - self.end_t).abs()
-	}
-
-	// In a bounding box of A area, the points are at most A units apart
-	fn size_precision_ratio(&self) -> f64 {
-		self.bounding_box().area()
 	}
 
 	/// split subcurve at t, as though the subcurve is a bezier curve, where t is a value between 0.0 and 1.0
@@ -241,18 +231,13 @@ Bezier Curve Intersection Algorithm
 - TODO: How does f64 precision effect the algorithm?
 - TODO: profile algorithm
 - Bug: intersections of "perfectly alligned" line or curve
-	- If the algorithm is rewritten to be non-recursive it can be restructured to be more breadth first then depth first.
-	  This would allow easy recognition of the case where many (or all) bounding boxes intersect, this case is correlated with alligned curves
-	- Alternatively, this bug can be solved only for the linear case, which probably covers the great majority of cases
-- Bug: deep recursion can result in stack overflow
+ If the algorithm is rewritten to be non-recursive it can be restructured to be more breadth first then depth first.
+ This would allow easy recognition of the case where many (or all) bounding boxes intersect, this case is correlated with alligned curves
+ Alternatively, this bug can be solved only for the linear case, which probably covers the great majority of cases
+- Behavior: deep recursion could result in stack overflow
 - Improvement: intersections on the end of segments
-	- Intersections near the end of segments seem to be consistently lower 'quality', why?
-- Improvement: algorithm behavior when curves have very different sizes
 - Improvement: more adapative way to decide when "close enough"
-- Improvement: quality metric?
 - Optimization: any extra copying happening?
-- Optimization: how efficiently does std::Vec::append work?
-- Optimization: specialized line/quad/cubic combination algorithms
 */
 fn path_intersections(a: &SubCurve, b: &SubCurve, mut recursion: f64, intersections: &mut Vec<Intersect>) {
 	if overlap(&a.bounding_box(), &b.bounding_box()) {
@@ -409,10 +394,7 @@ pub fn intersection_candidates(a: &BezPath, b: &BezPath) -> Vec<(usize, usize)> 
 
 /// returns intersection point as if lines extended forever
 pub fn line_intersect_point(a: &Line, b: &Line) -> Option<Point> {
-	match line_intersection_unchecked(a, b) {
-		Some(isect) => Some(isect.point),
-		None => None,
-	}
+	line_intersection_unchecked(a, b).map(|isect| isect.point)
 }
 
 /// returns intersection point and t values, treating lines as Bezier curves

@@ -5,12 +5,7 @@ use crate::{
 };
 use kurbo::{BezPath, CubicBez, Line, ParamCurve, ParamCurveArclen, ParamCurveArea, ParamCurveExtrema, PathEl, PathSeg, Point, QuadBez, Rect};
 use serde::{Deserialize, Serialize};
-use std::{
-	fmt::{self, Debug, Formatter},
-	num::IntErrorKind,
-	ops::Deref,
-	path,
-};
+use std::fmt::{self, Debug, Formatter};
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq)]
 pub enum BooleanOperation {
@@ -187,8 +182,8 @@ impl PathGraph {
 	}
 
 	/// NOTE: about intersection time_val order
-	/// !Panics when path is empty
-	/// !closepaths aren't being properly removed maye?
+	/// *Panics when path is empty
+	/// *Expects path, and all subpaths in path to be closed
 	fn add_edges_from_path(&mut self, path: &BezPath, origin: Origin) {
 		struct AlgorithmState {
 			//cstart holds the idx of the vertex the current edge is starting from
@@ -332,7 +327,7 @@ impl PathGraph {
 
 	// return number of vertices in graph, this is equivalent to the number of intersections
 	pub fn size(&self) -> usize {
-		return self.vertices.len();
+		self.vertices.len()
 	}
 
 	pub fn vertex(&self, idx: usize) -> &Vertex {
