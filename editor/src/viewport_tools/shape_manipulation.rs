@@ -180,6 +180,7 @@ impl ShapeEditor {
 		for shape in self.shapes_to_modify.iter_mut() {
 			shape.clear_selected_anchors(responses);
 
+			// TODO Determine a less processing intensive way of keeping elements up-to-date (delete kurbo)
 			// Need to update the path elements here, ideally this could be worked around a different way
 			// Solves "snap back" when switching shape selection
 			shape.elements = shape.bez_path.clone().into_iter().collect();
