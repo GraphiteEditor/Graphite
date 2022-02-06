@@ -376,12 +376,11 @@ impl VectorShape {
 	}
 
 	/// Create an anchor on the boundary between two kurbo PathElements with optional handles
-	fn create_anchor_manipulator(&self, first: IndexedEl, second: IndexedEl, responses: &mut VecDeque<Message>) -> VectorManipulatorAnchor {
+	fn create_anchor_manipulator(&self, first: Option<IndexedEl>, second: Option<IndexedEl>, responses: &mut VecDeque<Message>) -> VectorManipulatorAnchor {
 		let mut handle1 = None;
 		let mut anchor_position: glam::DVec2 = glam::DVec2::ZERO;
 		let mut handle2 = None;
-		let (first_id, first_element) = first;
-		let (second_id, second_element) = second;
+		let mut anchor_element_id: usize = 0;
 
 		let create_point = |id: usize, point: DVec2, overlay_path: Vec<LayerId>, manipulator_type: ManipulatorType| -> VectorManipulatorPoint {
 			VectorManipulatorPoint {
@@ -394,26 +393,41 @@ impl VectorShape {
 			}
 		};
 
-		match first_element {
-			kurbo::PathEl::MoveTo(anchor) | kurbo::PathEl::LineTo(anchor) => anchor_position = self.to_local_space(anchor),
-			kurbo::PathEl::QuadTo(handle, anchor) | kurbo::PathEl::CurveTo(_, handle, anchor) => {
-				anchor_position = self.to_local_space(anchor);
-				handle1 = Some(create_point(first_id, self.to_local_space(handle), self.create_handle_overlay(responses), ManipulatorType::Handle1));
+		if let Some((first_element_id, first_element)) = first {
+			anchor_element_id = first_element_id;
+			match first_element {
+				kurbo::PathEl::MoveTo(anchor) | kurbo::PathEl::LineTo(anchor) => anchor_position = self.to_local_space(anchor),
+				kurbo::PathEl::QuadTo(handle, anchor) | kurbo::PathEl::CurveTo(_, handle, anchor) => {
+					anchor_position = self.to_local_space(anchor);
+					handle1 = Some(create_point(
+						first_element_id,
+						self.to_local_space(handle),
+						self.create_handle_overlay(responses),
+						ManipulatorType::Handle1,
+					));
+				}
+				_ => (),
 			}
-			_ => (),
 		}
 
-		match second_element {
-			kurbo::PathEl::CurveTo(handle, _, _) | kurbo::PathEl::QuadTo(handle, _) => {
-				handle2 = Some(create_point(second_id, self.to_local_space(handle), self.create_handle_overlay(responses), ManipulatorType::Handle2));
+		if let Some((second_element_id, second_element)) = second {
+			match second_element {
+				kurbo::PathEl::CurveTo(handle, _, _) | kurbo::PathEl::QuadTo(handle, _) => {
+					handle2 = Some(create_point(
+						second_element_id,
+						self.to_local_space(handle),
+						self.create_handle_overlay(responses),
+						ManipulatorType::Handle2,
+					));
+				}
+				_ => (),
 			}
-			_ => (),
 		}
 
 		VectorManipulatorAnchor {
 			handle_line_overlays: (self.create_handle_line_overlay(&handle1, responses), self.create_handle_line_overlay(&handle2, responses)),
 			points: [
-				Some(create_point(first_id, anchor_position, self.create_anchor_overlay(responses), ManipulatorType::Anchor)),
+				Some(create_point(anchor_element_id, anchor_position, self.create_anchor_overlay(responses), ManipulatorType::Anchor)),
 				handle1,
 				handle2,
 			],
@@ -442,12 +456,13 @@ impl VectorShape {
 				_ => false,
 			};
 
+			// Does this end in the same position it started?
 			if position_equal {
 				points[to_replace].remove_overlays(responses);
-				points[to_replace] = self.create_anchor_manipulator(last, first, responses);
+				points[to_replace] = self.create_anchor_manipulator(Some(last), Some(first), responses);
 				points[to_replace].close_element_id = Some(move_to.0);
 			} else {
-				points.push(self.create_anchor_manipulator(last, first, responses));
+				points.push(self.create_anchor_manipulator(Some(last), Some(first), responses));
 			}
 		}
 	}
@@ -462,7 +477,9 @@ impl VectorShape {
 		let (mut first_path_element, mut last_path_element): (Option<IndexedEl>, Option<IndexedEl>) = (None, None);
 		let mut last_move_to_element: Option<IndexedEl> = None;
 		let mut ended_with_close_path = false;
-		let mut replace_id: usize = 0;
+		let mut first_move_to_id: usize = 0;
+
+		log::debug!("{:#?}", indexed_elements);
 
 		// Create an anchor at each join between two kurbo segments
 		for elements in indexed_elements.windows(2) {
@@ -477,9 +494,11 @@ impl VectorShape {
 			// An anchor cannot stradle a line / curve segment and a ClosePath segment
 			if matches!(next_element, kurbo::PathEl::ClosePath) {
 				ended_with_close_path = true;
-				// Does this end in the same position it started?
-				self.close_path(&mut points, replace_id, first_path_element, last_path_element, last_move_to_element, responses);
-
+				if self.closed {
+					self.close_path(&mut points, first_move_to_id, first_path_element, last_path_element, last_move_to_element, responses);
+				} else {
+					points.push(self.create_anchor_manipulator(last_path_element, None, responses));
+				}
 				continue;
 			}
 
@@ -487,17 +506,20 @@ impl VectorShape {
 			if matches!(current_element, kurbo::PathEl::MoveTo(_)) {
 				last_move_to_element = Some(elements[0]);
 				first_path_element = Some(elements[1]);
-				replace_id = points.len();
+				first_move_to_id = points.len();
 			}
 			last_path_element = Some(elements[1]);
 
-			points.push(self.create_anchor_manipulator(elements[0], elements[1], responses));
+			points.push(self.create_anchor_manipulator(Some(elements[0]), Some(elements[1]), responses));
 		}
 
 		// If the path definition didn't include a ClosePath, we still need to behave as though it did
 		if !ended_with_close_path {
-			// Close the shape
-			self.close_path(&mut points, replace_id, first_path_element, last_path_element, last_move_to_element, responses);
+			if self.closed {
+				self.close_path(&mut points, first_move_to_id, first_path_element, last_path_element, last_move_to_element, responses);
+			} else {
+				points.push(self.create_anchor_manipulator(last_path_element, None, responses));
+			}
 		}
 		points
 	}
