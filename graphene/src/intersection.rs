@@ -47,13 +47,13 @@ fn to_point(vec: DVec2) -> Point {
 	Point::new(vec.x, vec.y)
 }
 
-pub fn intersect_quad_bez_path(quad: Quad, shape: &BezPath, closed: bool) -> bool {
+pub fn intersect_quad_bez_path(quad: Quad, shape: &BezPath, filled: bool) -> bool {
 	// check if outlines intersect
 	if shape.segments().any(|path_segment| quad.lines().iter().any(|line| !path_segment.intersect_line(*line).is_empty())) {
 		return true;
 	}
 	// check if selection is entirely within the shape
-	if closed && shape.contains(to_point(quad.0[0])) {
+	if filled && shape.contains(to_point(quad.0[0])) {
 		return true;
 	}
 
