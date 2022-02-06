@@ -151,6 +151,7 @@ impl DocumentMessageHandler {
 			};
 
 			let (path, closed) = match &layer.ok()?.data {
+				// TODO: This ClosePath check does not handle all cases, fix this soon
 				LayerDataType::Shape(shape) => Some((shape.path.clone(), shape.path.elements().last() == Some(&kurbo::PathEl::ClosePath))),
 				LayerDataType::Text(text) => Some((text.to_bez_path_nonmut(), true)),
 				_ => None,
