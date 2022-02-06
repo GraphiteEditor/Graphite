@@ -1,5 +1,5 @@
-use crate::consts::{BOUNDS_ROTATE_THRESHOLD, BOUNDS_SELECT_THRESHOLD, COLOR_ACCENT, ROTATE_SNAP_ANGLE, SELECTION_DRAG_ANGLE, SELECTION_TOLERANCE, VECTOR_MANIPULATOR_ANCHOR_MARKER_SIZE};
-use crate::document::transformation::{OriginalTransforms, Selected};
+use crate::consts::{ROTATE_SNAP_ANGLE, SELECTION_DRAG_ANGLE, SELECTION_TOLERANCE};
+use crate::document::transformation::Selected;
 use crate::document::utility_types::{AlignAggregate, AlignAxis, FlipAxis};
 use crate::document::DocumentMessageHandler;
 use crate::frontend::utility_types::MouseCursorIcon;
@@ -12,12 +12,12 @@ use crate::misc::{HintData, HintGroup, HintInfo, KeysGroup};
 use crate::viewport_tools::snapping::SnapHandler;
 use crate::viewport_tools::tool::{DocumentToolData, Fsm, ToolActionHandlerData, ToolType};
 
-use graphene::color::Color;
 use graphene::document::Document;
 use graphene::intersection::Quad;
 use graphene::layers::layer_info::LayerDataType;
-use graphene::layers::style::{self, Fill, Stroke};
 use graphene::Operation;
+
+use super::shared::transformation_cage::*;
 
 use glam::{DAffine2, DVec2};
 use serde::{Deserialize, Serialize};
@@ -305,218 +305,6 @@ impl SelectToolData {
 }
 
 /// Handles the selected edges whilst dragging the layer bounds
-#[derive(Clone, Debug, Default)]
-struct SelectedEdges {
-	bounds: [DVec2; 2],
-	top: bool,
-	bottom: bool,
-	left: bool,
-	right: bool,
-}
-
-impl SelectedEdges {
-	fn new(top: bool, bottom: bool, left: bool, right: bool, bounds: [DVec2; 2]) -> Self {
-		Self { top, bottom, left, right, bounds }
-	}
-
-	/// Calculate the pivot for the operation (the opposite point to the edge dragged)
-	fn calculate_pivot(&self) -> DVec2 {
-		let min = self.bounds[0];
-		let max = self.bounds[1];
-
-		let x = if self.left {
-			max.x
-		} else if self.right {
-			min.x
-		} else {
-			(min.x + max.x) / 2.
-		};
-
-		let y = if self.top {
-			max.y
-		} else if self.bottom {
-			min.y
-		} else {
-			(min.y + max.y) / 2.
-		};
-
-		DVec2::new(x, y)
-	}
-
-	/// Calculates the required scaling to resize the bounding box
-	fn pos_to_scale_transform(&self, mouse: DVec2) -> DAffine2 {
-		let mut min = self.bounds[0];
-		let mut max = self.bounds[1];
-		if self.top {
-			min.y = mouse.y;
-		} else if self.bottom {
-			max.y = mouse.y;
-		}
-		if self.left {
-			min.x = mouse.x
-		} else if self.right {
-			max.x = mouse.x;
-		}
-		DAffine2::from_scale((max - min) / (self.bounds[1] - self.bounds[0]))
-	}
-}
-
-fn add_bounding_box(responses: &mut Vec<Message>) -> Vec<LayerId> {
-	let path = vec![generate_uuid()];
-
-	let operation = Operation::AddOverlayRect {
-		path: path.clone(),
-		transform: DAffine2::ZERO.to_cols_array(),
-		style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 1.0)), Some(Fill::none())),
-	};
-	responses.push(DocumentMessage::Overlays(operation.into()).into());
-
-	path
-}
-
-fn evaluate_transform_handle_positions((left, top): (f64, f64), (right, bottom): (f64, f64)) -> [DVec2; 8] {
-	[
-		DVec2::new(left, top),
-		DVec2::new(left, (top + bottom) / 2.),
-		DVec2::new(left, bottom),
-		DVec2::new((left + right) / 2., top),
-		DVec2::new((left + right) / 2., bottom),
-		DVec2::new(right, top),
-		DVec2::new(right, (top + bottom) / 2.),
-		DVec2::new(right, bottom),
-	]
-}
-
-fn add_transform_handles(responses: &mut Vec<Message>) -> [Vec<LayerId>; 8] {
-	const EMPTY_VEC: Vec<LayerId> = Vec::new();
-	let mut transform_handle_paths = [EMPTY_VEC; 8];
-
-	for item in &mut transform_handle_paths {
-		let current_path = vec![generate_uuid()];
-
-		let operation = Operation::AddOverlayRect {
-			path: current_path.clone(),
-			transform: DAffine2::ZERO.to_cols_array(),
-			style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 2.0)), Some(Fill::new(Color::WHITE))),
-		};
-		responses.push(DocumentMessage::Overlays(operation.into()).into());
-
-		*item = current_path;
-	}
-
-	transform_handle_paths
-}
-
-fn transform_from_box(pos1: DVec2, pos2: DVec2) -> [f64; 6] {
-	DAffine2::from_scale_angle_translation((pos2 - pos1).round(), 0., pos1.round() - DVec2::splat(0.5)).to_cols_array()
-}
-
-/// Contains info on the overlays for the bounding box and transform handles
-#[derive(Clone, Debug, Default)]
-struct BoundingBoxOverlays {
-	pub bounding_box: Vec<LayerId>,
-	pub transform_handles: [Vec<LayerId>; 8],
-	pub bounds: [DVec2; 2],
-	pub selected_edges: Option<SelectedEdges>,
-	pub original_transforms: OriginalTransforms,
-	pub pivot: DVec2,
-}
-
-impl BoundingBoxOverlays {
-	#[must_use]
-	pub fn new(buffer: &mut Vec<Message>) -> Self {
-		Self {
-			bounding_box: add_bounding_box(buffer),
-			transform_handles: add_transform_handles(buffer),
-			..Default::default()
-		}
-	}
-
-	/// Update the position of the bounding box and transform handles
-	pub fn transform(&mut self, buffer: &mut Vec<Message>) {
-		let transform = transform_from_box(self.bounds[0], self.bounds[1]);
-		let path = self.bounding_box.clone();
-		buffer.push(DocumentMessage::Overlays(Operation::SetLayerTransformInViewport { path, transform }.into()).into());
-
-		// Helps push values that end in approximately half, plus or minus some floating point imprecision, towards the same side of the round() function
-		const BIAS: f64 = 0.0001;
-
-		for (position, path) in evaluate_transform_handle_positions(self.bounds[0].into(), self.bounds[1].into())
-			.into_iter()
-			.zip(&self.transform_handles)
-		{
-			let scale = DVec2::splat(VECTOR_MANIPULATOR_ANCHOR_MARKER_SIZE);
-			let translation = (position - (scale / 2.) - 0.5 + BIAS).round();
-			let transform = DAffine2::from_scale_angle_translation(scale, 0., translation).to_cols_array();
-			let path = path.clone();
-			buffer.push(DocumentMessage::Overlays(Operation::SetLayerTransformInViewport { path, transform }.into()).into());
-		}
-	}
-
-	/// Check if the user has selected the edge for dragging (returns which edge in order top, bottom, left, right)
-	pub fn check_selected_edges(&self, cursor: DVec2) -> Option<(bool, bool, bool, bool)> {
-		let min = self.bounds[0].min(self.bounds[1]);
-		let max = self.bounds[0].max(self.bounds[1]);
-		if min.x - cursor.x < BOUNDS_SELECT_THRESHOLD && min.y - cursor.y < BOUNDS_SELECT_THRESHOLD && cursor.x - max.x < BOUNDS_SELECT_THRESHOLD && cursor.y - max.y < BOUNDS_SELECT_THRESHOLD {
-			let mut top = (cursor.y - min.y).abs() < BOUNDS_SELECT_THRESHOLD;
-			let mut bottom = (max.y - cursor.y).abs() < BOUNDS_SELECT_THRESHOLD;
-			let mut left = (cursor.x - min.x).abs() < BOUNDS_SELECT_THRESHOLD;
-			let mut right = (max.x - cursor.x).abs() < BOUNDS_SELECT_THRESHOLD;
-			if cursor.y - min.y + max.y - cursor.y < BOUNDS_SELECT_THRESHOLD * 2. && (left || right) {
-				top = false;
-				bottom = false;
-			}
-			if cursor.x - min.x + max.x - cursor.x < BOUNDS_SELECT_THRESHOLD * 2. && (top || bottom) {
-				left = false;
-				right = false;
-			}
-
-			if top || bottom || left || right {
-				return Some((top, bottom, left, right));
-			}
-		}
-
-		None
-	}
-
-	/// Check if the user is rotating with the bounds
-	pub fn check_rotate(&self, cursor: DVec2) -> bool {
-		let min = self.bounds[0].min(self.bounds[1]);
-		let max = self.bounds[0].max(self.bounds[1]);
-
-		let outside_bounds = (min.x > cursor.x || cursor.x > max.x) || (min.y > cursor.y || cursor.y > max.y);
-		let inside_extended_bounds =
-			min.x - cursor.x < BOUNDS_ROTATE_THRESHOLD && min.y - cursor.y < BOUNDS_ROTATE_THRESHOLD && cursor.x - max.x < BOUNDS_ROTATE_THRESHOLD && cursor.y - max.y < BOUNDS_ROTATE_THRESHOLD;
-
-		outside_bounds & inside_extended_bounds
-	}
-
-	pub fn get_cursor(&self, input: &InputPreprocessorMessageHandler) -> MouseCursorIcon {
-		if let Some(directions) = self.check_selected_edges(input.mouse.position) {
-			match directions {
-				(true, false, false, false) | (false, true, false, false) => MouseCursorIcon::NSResize,
-				(false, false, true, false) | (false, false, false, true) => MouseCursorIcon::EWResize,
-				(true, false, true, false) | (false, true, false, true) => MouseCursorIcon::NWSEResize,
-				(true, false, false, true) | (false, true, true, false) => MouseCursorIcon::NESWResize,
-				_ => MouseCursorIcon::Default,
-			}
-		} else if self.check_rotate(input.mouse.position) {
-			MouseCursorIcon::Grabbing
-		} else {
-			MouseCursorIcon::Default
-		}
-	}
-
-	/// Removes the overlays
-	pub fn delete(self, buffer: &mut impl Extend<Message>) {
-		buffer.extend([DocumentMessage::Overlays(Operation::DeleteLayer { path: self.bounding_box }.into()).into()]);
-		buffer.extend(
-			self.transform_handles
-				.iter()
-				.map(|path| DocumentMessage::Overlays(Operation::DeleteLayer { path: path.clone() }.into()).into()),
-		);
-	}
-}
 
 impl Fsm for SelectToolFsmState {
 	type ToolData = SelectToolData;
