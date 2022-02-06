@@ -14,6 +14,7 @@ pub enum ArtboardMessage {
 
 	// Messages
 	AddArtboard {
+		id: Option<LayerId>,
 		position: (f64, f64),
 		size: (f64, f64),
 	},

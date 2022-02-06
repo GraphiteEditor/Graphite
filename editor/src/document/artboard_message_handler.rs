@@ -36,8 +36,8 @@ impl MessageHandler<ArtboardMessage, ()> for ArtboardMessageHandler {
 			},
 
 			// Messages
-			AddArtboard { position, size } => {
-				let artboard_id = generate_uuid();
+			AddArtboard { id, position, size } => {
+				let artboard_id = id.unwrap_or_else(generate_uuid);
 				self.artboard_ids.push(artboard_id);
 
 				responses.push_back(

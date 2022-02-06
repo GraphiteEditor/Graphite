@@ -69,7 +69,7 @@ impl PropertyHolder for Crop {}
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum CropToolFsmState {
 	Ready,
-	Dragging,
+	Drawing,
 	ResizingBounds,
 }
 
@@ -85,6 +85,7 @@ struct CropToolData {
 	selected_board: Option<Vec<LayerId>>,
 	snap_handler: SnapHandler,
 	cursor: MouseCursorIcon,
+	drag_start: DVec2,
 }
 
 impl Fsm for CropToolFsmState {
@@ -103,7 +104,7 @@ impl Fsm for CropToolFsmState {
 	) -> Self {
 		if let ToolMessage::Crop(event) = event {
 			match (self, event) {
-				(_, CropMessage::DocumentIsDirty) => {
+				(CropToolFsmState::Ready | CropToolFsmState::ResizingBounds, CropMessage::DocumentIsDirty) => {
 					let mut buffer = Vec::new();
 					match (
 						data.selected_board.as_ref().map(|path| document.artboard_bounding_box(&path)).unwrap_or(None),
@@ -126,6 +127,8 @@ impl Fsm for CropToolFsmState {
 					self
 				}
 				(CropToolFsmState::Ready, CropMessage::MouseDown) => {
+					data.drag_start = input.mouse.position;
+
 					let dragging_bounds = if let Some(bounding_box) = &mut data.bounding_box_overlays {
 						let edges = bounding_box.check_selected_edges(input.mouse.position);
 
@@ -156,11 +159,23 @@ impl Fsm for CropToolFsmState {
 						if let Some(intersection) = intersection.last() {
 							data.selected_board = Some(intersection.clone());
 
-							CropToolFsmState::Dragging
-						} else {
-							data.selected_board = None;
-
 							CropToolFsmState::Ready
+						} else {
+							let id = generate_uuid();
+							data.selected_board = Some(vec![id]);
+
+							data.snap_handler.start_snap(document, document.visible_layers(), true, true);
+
+							responses.push_back(
+								ArtboardMessage::AddArtboard {
+									id: Some(id),
+									position: (0., 0.),
+									size: (0., 0.),
+								}
+								.into(),
+							);
+
+							CropToolFsmState::Drawing
 						}
 					}
 				}
@@ -190,6 +205,29 @@ impl Fsm for CropToolFsmState {
 					}
 					CropToolFsmState::ResizingBounds
 				}
+				(CropToolFsmState::Drawing, CropMessage::MouseMove) => {
+					let mouse_position = input.mouse.position;
+					let snapped_mouse_position = data.snap_handler.snap_position(responses, input.viewport_bounds.size(), document, mouse_position);
+
+					let root_transform = document.graphene_document.root.transform.inverse();
+
+					let start = root_transform.transform_point2(data.drag_start);
+					let end = root_transform.transform_point2(snapped_mouse_position);
+					let size = end - start;
+
+					responses.push_back(
+						ArtboardMessage::ResizeArtboard {
+							artboard: data.selected_board.clone().unwrap(),
+							position: start.into(),
+							size: size.into(),
+						}
+						.into(),
+					);
+
+					responses.push_back(ToolMessage::DocumentIsDirty.into());
+
+					CropToolFsmState::Drawing
+				}
 				(CropToolFsmState::Ready, CropMessage::MouseMove) => {
 					let cursor = data.bounding_box_overlays.as_ref().map_or(MouseCursorIcon::Default, |bounds| bounds.get_cursor(input));
 
@@ -209,12 +247,14 @@ impl Fsm for CropToolFsmState {
 
 					CropToolFsmState::Ready
 				}
-				(CropToolFsmState::Dragging, CropMessage::MouseUp) => {
+				(CropToolFsmState::Drawing, CropMessage::MouseUp) => {
 					data.snap_handler.cleanup(responses);
 
 					if let Some(bounds) = &mut data.bounding_box_overlays {
 						bounds.original_transforms.clear();
 					}
+
+					responses.push_back(ToolMessage::DocumentIsDirty.into());
 
 					CropToolFsmState::Ready
 				}

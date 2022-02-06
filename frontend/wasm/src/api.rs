@@ -517,6 +517,7 @@ impl JsEditorHandle {
 	/// Creates an artboard at a specified point with a width and height
 	pub fn create_artboard_and_fit_to_viewport(&self, pos_x: f64, pos_y: f64, width: f64, height: f64) {
 		let message = ArtboardMessage::AddArtboard {
+			id: None,
 			position: (pos_x, pos_y),
 			size: (width, height),
 		};
