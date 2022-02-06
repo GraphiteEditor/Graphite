@@ -151,10 +151,11 @@ impl Fsm for PathToolFsmState {
 					}
 					// We didn't find a point nearby, so consider selecting the nearest shape instead
 					else {
+						let selection_size = DVec2::new(2.0, 2.0);
 						// Select shapes directly under our mouse
 						let intersection = document
 							.graphene_document
-							.intersects_quad_root(Quad::from_box([input.mouse.position - DVec2::ONE, input.mouse.position + DVec2::ONE]));
+							.intersects_quad_root(Quad::from_box([input.mouse.position - selection_size, input.mouse.position + selection_size]));
 						if !intersection.is_empty() {
 							if add_to_selection {
 								responses.push_back(DocumentMessage::AddSelectedLayers { additional_layers: intersection }.into());
