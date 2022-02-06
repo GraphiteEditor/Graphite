@@ -53,6 +53,7 @@ pub enum SelectMessage {
 	MouseMove {
 		axis_align: Key,
 		snap_angle: Key,
+		centre: Key,
 	},
 }
 
@@ -478,14 +479,17 @@ impl Fsm for SelectToolFsmState {
 					data.drag_current = mouse_position + closest_move;
 					Dragging
 				}
-				(ResizingBounds, MouseMove { .. }) => {
+				(ResizingBounds, MouseMove { axis_align, centre, .. }) => {
 					if let Some(bounds) = &mut data.bounding_box_overlays {
 						if let Some(movement) = &mut bounds.selected_edges {
+							let (centre, axis_align) = (input.keyboard.get(centre as usize), input.keyboard.get(axis_align as usize));
+
 							let mouse_position = input.mouse.position;
 
 							let snapped_mouse_position = data.snap_handler.snap_position(responses, input.viewport_bounds.size(), document, mouse_position);
 
-							let delta = movement.pos_to_scale_transform(snapped_mouse_position);
+							let [min, size] = movement.new_size(snapped_mouse_position, centre, axis_align);
+							let delta = movement.bounds_to_scale_transform(centre, min, size);
 
 							let selected = data.layers_dragging.iter().collect::<Vec<_>>();
 							let mut selected = Selected::new(&mut bounds.original_transforms, &mut bounds.pivot, &selected, responses, &document.graphene_document);

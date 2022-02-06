@@ -1,22 +1,18 @@
 use crate::consts::SELECTION_TOLERANCE;
-use crate::document::transformation::Selected;
 use crate::document::DocumentMessageHandler;
 use crate::frontend::utility_types::MouseCursorIcon;
+use crate::input::keyboard::Key;
 use crate::input::InputPreprocessorMessageHandler;
-use crate::layout::widgets::{IconButton, LayoutRow, PopoverButton, PropertyHolder, Separator, SeparatorDirection, SeparatorType, Widget, WidgetCallback, WidgetHolder, WidgetLayout};
+use crate::layout::widgets::PropertyHolder;
 use crate::message_prelude::*;
-use crate::misc::{HintData, HintGroup, HintInfo, KeysGroup};
 use crate::viewport_tools::snapping::SnapHandler;
-use crate::viewport_tools::tool::{DocumentToolData, Fsm, ToolActionHandlerData, ToolType};
+use crate::viewport_tools::tool::{DocumentToolData, Fsm, ToolActionHandlerData};
 
-use graphene::document::Document;
 use graphene::intersection::Quad;
-use graphene::layers::layer_info::LayerDataType;
-use graphene::Operation;
 
 use super::shared::transformation_cage::*;
 
-use glam::{DAffine2, DVec2};
+use glam::{DVec2, Vec2Swizzles};
 use serde::{Deserialize, Serialize};
 
 #[derive(Default)]
@@ -37,7 +33,10 @@ pub enum CropMessage {
 
 	// Tool-specific messages
 	MouseDown,
-	MouseMove,
+	MouseMove {
+		axis_align: Key,
+		centre: Key,
+	},
 	MouseUp,
 }
 
@@ -96,7 +95,7 @@ impl Fsm for CropToolFsmState {
 		self,
 		event: ToolMessage,
 		document: &DocumentMessageHandler,
-		tool_data: &DocumentToolData,
+		_tool_data: &DocumentToolData,
 		data: &mut Self::ToolData,
 		_tool_options: &Self::ToolOptions,
 		input: &InputPreprocessorMessageHandler,
@@ -179,17 +178,19 @@ impl Fsm for CropToolFsmState {
 						}
 					}
 				}
-				(CropToolFsmState::ResizingBounds, CropMessage::MouseMove) => {
+				(CropToolFsmState::ResizingBounds, CropMessage::MouseMove { axis_align, centre }) => {
 					if let Some(bounds) = &mut data.bounding_box_overlays {
 						if let Some(movement) = &mut bounds.selected_edges {
+							let (centre, axis_align) = (input.keyboard.get(centre as usize), input.keyboard.get(axis_align as usize));
 							let mouse_position = input.mouse.position;
 
 							let snapped_mouse_position = data.snap_handler.snap_position(responses, input.viewport_bounds.size(), document, mouse_position);
 
-							let [bounds1, bounds2] = movement.new_size(snapped_mouse_position);
+							let [position, size] = movement.new_size(snapped_mouse_position, centre, axis_align);
+							let position = movement.centre_position(position, size, centre);
+
 							let root_transform = document.graphene_document.root.transform.inverse();
-							let [bounds1, bounds2] = [root_transform.transform_point2(bounds1), root_transform.transform_point2(bounds2)];
-							let size = bounds2 - bounds1;
+							let [bounds1, size] = [root_transform.transform_point2(position), root_transform.transform_vector2(size)];
 
 							responses.push_back(
 								ArtboardMessage::ResizeArtboard {
@@ -205,15 +206,24 @@ impl Fsm for CropToolFsmState {
 					}
 					CropToolFsmState::ResizingBounds
 				}
-				(CropToolFsmState::Drawing, CropMessage::MouseMove) => {
+				(CropToolFsmState::Drawing, CropMessage::MouseMove { axis_align, centre }) => {
 					let mouse_position = input.mouse.position;
 					let snapped_mouse_position = data.snap_handler.snap_position(responses, input.viewport_bounds.size(), document, mouse_position);
 
 					let root_transform = document.graphene_document.root.transform.inverse();
 
-					let start = root_transform.transform_point2(data.drag_start);
-					let end = root_transform.transform_point2(snapped_mouse_position);
-					let size = end - start;
+					let mut start = data.drag_start;
+					let mut size = snapped_mouse_position - start;
+					if input.keyboard.get(axis_align as usize) {
+						size = size.abs().max(size.abs().yx()) * size.signum();
+					}
+					if input.keyboard.get(centre as usize) {
+						start -= size;
+						size *= 2.;
+					}
+
+					let start = root_transform.transform_point2(start);
+					let size = root_transform.transform_vector2(size);
 
 					responses.push_back(
 						ArtboardMessage::ResizeArtboard {
@@ -228,7 +238,7 @@ impl Fsm for CropToolFsmState {
 
 					CropToolFsmState::Drawing
 				}
-				(CropToolFsmState::Ready, CropMessage::MouseMove) => {
+				(CropToolFsmState::Ready, CropMessage::MouseMove { .. }) => {
 					let cursor = data.bounding_box_overlays.as_ref().map_or(MouseCursorIcon::Default, |bounds| bounds.get_cursor(input));
 
 					if data.cursor != cursor {
@@ -273,7 +283,7 @@ impl Fsm for CropToolFsmState {
 		}
 	}
 
-	fn update_hints(&self, responses: &mut VecDeque<Message>) {}
+	fn update_hints(&self, _responses: &mut VecDeque<Message>) {}
 
 	fn update_cursor(&self, responses: &mut VecDeque<Message>) {
 		responses.push_back(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Default }.into());

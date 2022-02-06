@@ -8,7 +8,7 @@ use graphene::color::Color;
 use graphene::layers::style::{self, Fill, Stroke};
 use graphene::Operation;
 
-use glam::{DAffine2, DVec2};
+use glam::{DAffine2, DVec2, Vec2Swizzles};
 
 #[derive(Clone, Debug, Default)]
 pub struct SelectedEdges {
@@ -48,7 +48,8 @@ impl SelectedEdges {
 		DVec2::new(x, y)
 	}
 
-	pub fn new_size(&self, mouse: DVec2) -> [DVec2; 2] {
+	/// Computes the new bounds with the given mouse move and modifier keys
+	pub fn new_size(&self, mouse: DVec2, centre: bool, constrain: bool) -> [DVec2; 2] {
 		let mut min = self.bounds[0];
 		let mut max = self.bounds[1];
 		if self.top {
@@ -61,13 +62,58 @@ impl SelectedEdges {
 		} else if self.right {
 			max.x = mouse.x;
 		}
-		[min, max]
+
+		let mut size = max - min;
+		if constrain && ((self.top || self.bottom) && (self.left || self.right)) {
+			size = size.abs().max(size.abs().yx()) * size.signum();
+		}
+		if centre {
+			if self.left || self.right {
+				size.x *= 2.;
+			}
+
+			if self.bottom || self.top {
+				size.y *= 2.;
+			}
+		}
+
+		[min, size]
+	}
+
+	/// Offsets the transformation pivot in order to scale from the centre
+	fn offset_pivot(&self, centre: bool, size: DVec2) -> DVec2 {
+		let mut offset = DVec2::ZERO;
+
+		if centre && self.right {
+			offset.x -= size.x / 2.;
+		}
+		if centre && self.left {
+			offset.x += size.x / 2.;
+		}
+		if centre && self.bottom {
+			offset.y -= size.y / 2.;
+		}
+		if centre && self.top {
+			offset.y += size.y / 2.;
+		}
+		offset
+	}
+
+	pub fn centre_position(&self, mut position: DVec2, size: DVec2, centre: bool) -> DVec2 {
+		if centre && self.right {
+			position.x -= size.x / 2.;
+		}
+		if centre && self.bottom {
+			position.y -= size.y / 2.;
+		}
+
+		position
 	}
 
 	/// Calculates the required scaling to resize the bounding box
-	pub fn pos_to_scale_transform(&self, mouse: DVec2) -> DAffine2 {
-		let [min, max] = self.new_size(mouse);
-		DAffine2::from_scale((max - min) / (self.bounds[1] - self.bounds[0]))
+	pub fn bounds_to_scale_transform(&self, centre: bool, min: DVec2, size: DVec2) -> DAffine2 {
+		let translation = DAffine2::from_translation(self.offset_pivot(centre, size));
+		translation * DAffine2::from_scale(size / (self.bounds[1] - self.bounds[0]))
 	}
 }
 

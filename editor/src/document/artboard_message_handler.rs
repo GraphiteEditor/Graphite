@@ -5,7 +5,7 @@ use graphene::document::Document as GrapheneDocument;
 use graphene::layers::style::{self, Fill, ViewMode};
 use graphene::Operation as DocumentOperation;
 
-use glam::{DAffine2, DVec2};
+use glam::DAffine2;
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 

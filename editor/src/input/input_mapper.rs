@@ -43,7 +43,7 @@ impl Default for Mapping {
 			entry! {action=TransformLayerMessage::TypeDecimalPoint, key_down=KeyPeriod},
 			entry! {action=TransformLayerMessage::MouseMove { slow_key: KeyShift, snap_key: KeyControl }, triggers=[KeyShift, KeyControl]},
 			// Select
-			entry! {action=SelectMessage::MouseMove { axis_align: KeyShift, snap_angle: KeyControl }, message=InputMapperMessage::PointerMove},
+			entry! {action=SelectMessage::MouseMove { axis_align: KeyShift, snap_angle: KeyControl, centre: KeyAlt }, message=InputMapperMessage::PointerMove},
 			entry! {action=SelectMessage::DragStart { add_to_selection: KeyShift }, key_down=Lmb},
 			entry! {action=SelectMessage::DragStop, key_up=Lmb},
 			entry! {action=SelectMessage::EditLayer, message=InputMapperMessage::DoubleClick},
@@ -51,7 +51,7 @@ impl Default for Mapping {
 			entry! {action=SelectMessage::Abort, key_down=KeyEscape},
 			// Crop
 			entry! {action=CropMessage::MouseDown, key_down=Lmb},
-			entry! {action=CropMessage::MouseMove, message=InputMapperMessage::PointerMove},
+			entry! {action=CropMessage::MouseMove { axis_align: KeyShift, centre: KeyAlt }, message=InputMapperMessage::PointerMove},
 			entry! {action=CropMessage::MouseUp, key_up=Lmb},
 			// Navigate
 			entry! {action=NavigateMessage::ClickZoom { zoom_in: false }, key_up=Lmb, modifiers=[KeyShift]},
