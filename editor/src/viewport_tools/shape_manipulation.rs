@@ -20,7 +20,7 @@ use crate::{
 // Helps push values that end in approximately half, plus or minus some floating point imprecision, towards the same side of the round() function
 const BIAS: f64 = 0.0001;
 
-// The angle in radians to determine if the kurbo shape is mirroring
+// The angle threshold in radians that we should mirror handles if we are below
 const MINIMUM_MIRROR_THRESHOLD: f64 = 0.1;
 
 /* Light overview of structs in this file and hierarchy:
