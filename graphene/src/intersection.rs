@@ -48,6 +48,12 @@ fn to_point(vec: DVec2) -> Point {
 }
 
 pub fn intersect_quad_bez_path(quad: Quad, shape: &BezPath, filled: bool) -> bool {
+	let mut shape = shape.clone();
+	// for filled shapes act like shape was closed even if it isn't
+	if filled && shape.elements().last() != Some(&kurbo::PathEl::ClosePath) {
+		shape.close_path();
+	}
+
 	// check if outlines intersect
 	if shape.segments().any(|path_segment| quad.lines().iter().any(|line| !path_segment.intersect_line(*line).is_empty())) {
 		return true;
@@ -58,7 +64,7 @@ pub fn intersect_quad_bez_path(quad: Quad, shape: &BezPath, filled: bool) -> boo
 	}
 
 	// check if shape is entirely within selection
-	get_arbitrary_point_on_path(shape).map(|shape_point| quad.path().contains(shape_point)).unwrap_or_default()
+	get_arbitrary_point_on_path(&shape).map(|shape_point| quad.path().contains(shape_point)).unwrap_or_default()
 }
 
 pub fn get_arbitrary_point_on_path(path: &BezPath) -> Option<Point> {
