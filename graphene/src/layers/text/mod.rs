@@ -52,7 +52,7 @@ impl LayerData for Text {
 					.collect::<String>(),
 				match self.style.fill() {
 					Some(fill) => format!("#{}", fill.color().rgba_hex()),
-					None => "#00000000".to_string(),
+					None => "gray".to_string(),
 				}
 			);
 		} else {
