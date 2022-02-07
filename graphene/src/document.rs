@@ -537,9 +537,9 @@ impl Document {
 			Operation::BooleanOperation { operation, selected } => {
 				// TODO: proper difference
 				// TODO: proper style selection (done?)
-				// TODO: Operations on any numeber of shapes
+				// TODO: Operations on any number of shapes
 				// TODO: handle overlapping identical curve case
-				// TODO: precision reached without intersection bug (maybe caused by seperating a closed path, or dragging handles)
+				// TODO: precision reached without intersection bug (maybe caused by separating a closed path, or dragging handles)
 				// TODO: click on shape should drag the shape
 				// TODO: add ability to undo
 				let mut responses = Vec::new();

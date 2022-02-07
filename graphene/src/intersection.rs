@@ -82,7 +82,7 @@ pub fn get_arbitrary_point_on_path(path: &BezPath) -> Option<Point> {
 /// \/                               \/
 
 /// each intersection has two curves, which are distinguished between using this enum
-/// TODO: refactor so actual curve data and Origin aren't seperate
+/// TODO: refactor so actual curve data and Origin aren't separate
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum Origin {
 	Alpha,
@@ -237,12 +237,12 @@ impl<'a> SubCurve<'a> {
 // - Bezier Curve Intersection Algorithm
 // - TODO: How does f64 precision effect the algorithm?
 // - TODO: profile algorithm
-// - Bug: intersections of "perfectly alligned" line or curve
+// - Bug: intersections of "perfectly aligned" line or curve
 // - If the algorithm is rewritten to be non-recursive it can be restructured to be more breadth first then depth first
 // - - test for overlapping curves by splitting the curves
 // - Behavior: deep recursion could result in stack overflow
 // - Improvement: intersections on the end of segments
-// - Improvement: more adapative way to decide when "close enough"
+// - Improvement: more adaptive way to decide when "close enough"
 // - Optimization: any extra copying happening?
 
 fn path_intersections(a: &SubCurve, b: &SubCurve, mut recursion: f64, intersections: &mut Vec<Intersect>) {
@@ -387,14 +387,14 @@ pub fn intersections(a: &BezPath, b: &BezPath) -> Vec<Intersect> {
 
 /// returns intersection point as if lines extended forever
 pub fn line_intersect_point(a: &Line, b: &Line) -> Option<Point> {
-	line_intersection_unchecked(a, b).map(|isect| isect.point)
+	line_intersection_unchecked(a, b).map(|intersect| intersect.point)
 }
 
 /// returns intersection point and t values, treating lines as Bezier curves
 pub fn line_intersection(a: &Line, b: &Line) -> Option<Intersect> {
-	if let Some(isect) = line_intersection_unchecked(a, b) {
-		if valid_t(isect.t_a) && valid_t(isect.t_b) {
-			Some(isect)
+	if let Some(intersect) = line_intersection_unchecked(a, b) {
+		if valid_t(intersect.t_a) && valid_t(intersect.t_b) {
+			Some(intersect)
 		} else {
 			None
 		}
@@ -409,8 +409,8 @@ pub fn line_intersection_unchecked(a: &Line, b: &Line) -> Option<Intersect> {
 	if slopes.determinant() == 0.0 {
 		return None;
 	}
-	let t_vals = slopes.inverse() * DVec2::new((a.p0 - b.p0).x, (a.p0 - b.p0).y);
-	Some(Intersect::from((b.eval(t_vals[0]), t_vals[1], t_vals[0])))
+	let t_values = slopes.inverse() * DVec2::new((a.p0 - b.p0).x, (a.p0 - b.p0).y);
+	Some(Intersect::from((b.eval(t_values[0]), t_values[1], t_values[0])))
 }
 
 pub fn line_t_value(a: &Line, p: &Point) -> f64 {
@@ -469,7 +469,7 @@ pub fn cubic_real_roots(mut a0: f64, mut a1: f64, mut a2: f64, a3: f64) -> [Opti
 		let t1 = match r {
 			r if r >= 0.0 => A - q / A,
 			r if r < 0.0 => q / A - A,
-			_ => 0.0, // should never occurr
+			_ => 0.0, // should never occur
 		};
 		[Some(t1 - a2 / 3.0), None, None]
 	} else {
@@ -514,8 +514,8 @@ pub fn valid_t(t: f64) -> bool {
 	t > -F64PRECISION && t < 1.0
 }
 
-/// each of these tests has been visualy, but not mathematically verified
-/// each test looks for exact floating point comparisions, so isn't flexible to small adjustments in the algorithm
+/// each of these tests has been visually, but not mathematically verified
+/// each test looks for exact floating point comparisons, so isn't flexible to small adjustments in the algorithm
 mod tests {
 	#[allow(unused_imports)] // this import is used
 	use super::*;
