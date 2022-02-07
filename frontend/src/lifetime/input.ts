@@ -3,7 +3,7 @@ import { DocumentsState } from "@/state/documents";
 import { FullscreenState } from "@/state/fullscreen";
 import { EditorState } from "@/state/wasm-loader";
 
-type EventName = keyof HTMLElementEventMap | keyof WindowEventHandlersEventMap;
+type EventName = keyof HTMLElementEventMap | keyof WindowEventHandlersEventMap | "modifyinputfield";
 interface EventListenerTarget {
 	addEventListener: typeof window.addEventListener;
 	removeEventListener: typeof window.removeEventListener;
@@ -22,24 +22,28 @@ export function createInputManager(editor: EditorState, container: HTMLElement, 
 		{ target: window, eventName: "pointermove", action: (e: PointerEvent): void => onPointerMove(e) },
 		{ target: window, eventName: "pointerdown", action: (e: PointerEvent): void => onPointerDown(e) },
 		{ target: window, eventName: "pointerup", action: (e: PointerEvent): void => onPointerUp(e) },
+		{ target: window, eventName: "dblclick", action: (e: PointerEvent): void => onDoubleClick(e) },
 		{ target: window, eventName: "mousedown", action: (e: MouseEvent): void => onMouseDown(e) },
 		{ target: window, eventName: "wheel", action: (e: WheelEvent): void => onMouseScroll(e), options: { passive: false } },
+		{ target: window, eventName: "modifyinputfield", action: (e: CustomEvent): void => onModifyInputField(e) },
 	];
 
 	let viewportPointerInteractionOngoing = false;
+	let textInput = undefined as undefined | HTMLDivElement;
 
 	// Keyboard events
 
 	const shouldRedirectKeyboardEventToBackend = (e: KeyboardEvent): boolean => {
-		// Don't redirect user input from text entry into HTML elements
-		const { target } = e;
-		if (target instanceof HTMLElement && (target.nodeName === "INPUT" || target.nodeName === "TEXTAREA" || target.isContentEditable)) return false;
-
 		// Don't redirect when a modal is covering the workspace
 		if (dialog.dialogIsVisible()) return false;
 
 		const key = getLatinKey(e);
 		if (!key) return false;
+
+		// Don't redirect user input from text entry into HTML elements
+		const { target } = e;
+		if (key !== "escape" && !(key === "enter" && e.ctrlKey) && target instanceof HTMLElement && (target.nodeName === "INPUT" || target.nodeName === "TEXTAREA" || target.isContentEditable))
+			return false;
 
 		// Don't redirect a fullscreen request
 		if (key === "f11" && e.type === "keydown" && !e.repeat) {
@@ -105,8 +109,9 @@ export function createInputManager(editor: EditorState, container: HTMLElement, 
 
 	const onPointerDown = (e: PointerEvent): void => {
 		const { target } = e;
-		const inCanvas = target instanceof Element && target.closest(".canvas");
-		const inDialog = target instanceof Element && target.closest(".dialog-modal .floating-menu-content");
+		const inCanvas = target instanceof Element && target.closest("[data-canvas]");
+		const inDialog = target instanceof Element && target.closest("[data-dialog-modal] [data-floating-menu-content]");
+		const inTextInput = target === textInput;
 
 		if (dialog.dialogIsVisible() && !inDialog) {
 			dialog.dismissDialog();
@@ -114,7 +119,9 @@ export function createInputManager(editor: EditorState, container: HTMLElement, 
 			e.stopPropagation();
 		}
 
-		if (inCanvas) viewportPointerInteractionOngoing = true;
+		if (textInput && !inTextInput) {
+			editor.instance.on_change_text(textInputCleanup(textInput.innerText));
+		} else if (inCanvas && !inTextInput) viewportPointerInteractionOngoing = true;
 
 		if (viewportPointerInteractionOngoing) {
 			const modifiers = makeModifiersBitfield(e);
@@ -125,8 +132,19 @@ export function createInputManager(editor: EditorState, container: HTMLElement, 
 	const onPointerUp = (e: PointerEvent): void => {
 		if (!e.buttons) viewportPointerInteractionOngoing = false;
 
-		const modifiers = makeModifiersBitfield(e);
-		editor.instance.on_mouse_up(e.clientX, e.clientY, e.buttons, modifiers);
+		if (!textInput) {
+			const modifiers = makeModifiersBitfield(e);
+			editor.instance.on_mouse_up(e.clientX, e.clientY, e.buttons, modifiers);
+		}
+	};
+
+	const onDoubleClick = (e: PointerEvent): void => {
+		if (!e.buttons) viewportPointerInteractionOngoing = false;
+
+		if (!textInput) {
+			const modifiers = makeModifiersBitfield(e);
+			editor.instance.on_double_click(e.clientX, e.clientY, e.buttons, modifiers);
+		}
 	};
 
 	// Mouse events
@@ -139,9 +157,9 @@ export function createInputManager(editor: EditorState, container: HTMLElement, 
 
 	const onMouseScroll = (e: WheelEvent): void => {
 		const { target } = e;
-		const inCanvas = target instanceof Element && target.closest(".canvas");
+		const inCanvas = target instanceof Element && target.closest("[data-canvas]");
 
-		const horizontalScrollableElement = target instanceof Element && target.closest(".scrollable-x");
+		const horizontalScrollableElement = target instanceof Element && target.closest("[data-scrollable-x]");
 		if (horizontalScrollableElement && e.deltaY !== 0) {
 			horizontalScrollableElement.scrollTo(horizontalScrollableElement.scrollLeft + e.deltaY, 0);
 			return;
@@ -154,10 +172,14 @@ export function createInputManager(editor: EditorState, container: HTMLElement, 
 		}
 	};
 
+	const onModifyInputField = (e: CustomEvent): void => {
+		textInput = e.detail;
+	};
+
 	// Window events
 
 	const onWindowResize = (container: HTMLElement): void => {
-		const viewports = Array.from(container.querySelectorAll(".canvas"));
+		const viewports = Array.from(container.querySelectorAll("[data-canvas]"));
 		const boundsOfViewports = viewports.map((canvas) => {
 			const bounds = canvas.getBoundingClientRect();
 			return [bounds.left, bounds.top, bounds.right, bounds.bottom];
@@ -208,6 +230,12 @@ export type InputManager = ReturnType<typeof createInputManager>;
 
 export function makeModifiersBitfield(e: WheelEvent | PointerEvent | KeyboardEvent): number {
 	return Number(e.ctrlKey) | (Number(e.shiftKey) << 1) | (Number(e.altKey) << 2);
+}
+
+// Necessary because innerText puts an extra newline character at the end when the text is more than one line.
+export function textInputCleanup(text: string): string {
+	if (text[text.length - 1] === "\n") return text.slice(0, -1);
+	return text;
 }
 
 // This function is a naive, temporary solution to allow non-Latin keyboards to fall back on the physical QWERTY layout

@@ -9,6 +9,7 @@ pub enum DocumentError {
 	NotAFolder,
 	NonReorderableSelection,
 	NotAShape,
+	NotText,
 	InvalidFile(String),
 }
 

@@ -1,8 +1,8 @@
-use super::tool_options::{SelectAppendMode, ShapeType, ToolOptions};
 use super::tools::*;
 use crate::communication::message_handler::MessageHandler;
 use crate::document::DocumentMessageHandler;
 use crate::input::InputPreprocessorMessageHandler;
+use crate::layout::widgets::PropertyHolder;
 use crate::message_prelude::*;
 
 use graphene::color::Color;
@@ -15,6 +15,7 @@ pub type ToolActionHandlerData<'a> = (&'a DocumentMessageHandler, &'a DocumentTo
 
 pub trait Fsm {
 	type ToolData;
+	type ToolOptions;
 
 	#[must_use]
 	fn transition(
@@ -23,6 +24,7 @@ pub trait Fsm {
 		document: &DocumentMessageHandler,
 		tool_data: &DocumentToolData,
 		data: &mut Self::ToolData,
+		options: &Self::ToolOptions,
 		input: &InputPreprocessorMessageHandler,
 		messages: &mut VecDeque<Message>,
 	) -> Self;
@@ -35,14 +37,16 @@ pub trait Fsm {
 pub struct DocumentToolData {
 	pub primary_color: Color,
 	pub secondary_color: Color,
-	pub tool_options: HashMap<ToolType, ToolOptions>,
 }
 
-type SubToolMessageHandler = dyn for<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>>;
+pub trait ToolCommon: for<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> + PropertyHolder {}
+impl<T> ToolCommon for T where T: for<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> + PropertyHolder {}
+
+type Tool = dyn ToolCommon;
 
 pub struct ToolData {
 	pub active_tool_type: ToolType,
-	pub tools: HashMap<ToolType, Box<SubToolMessageHandler>>,
+	pub tools: HashMap<ToolType, Box<Tool>>,
 }
 
 impl fmt::Debug for ToolData {
@@ -52,10 +56,11 @@ impl fmt::Debug for ToolData {
 }
 
 impl ToolData {
-	pub fn active_tool_mut(&mut self) -> &mut Box<SubToolMessageHandler> {
+	pub fn active_tool_mut(&mut self) -> &mut Box<Tool> {
 		self.tools.get_mut(&self.active_tool_type).expect("The active tool is not initialized")
 	}
-	pub fn active_tool(&self) -> &SubToolMessageHandler {
+
+	pub fn active_tool(&self) -> &Tool {
 		self.tools.get(&self.active_tool_type).map(|x| x.as_ref()).expect("The active tool is not initialized")
 	}
 }
@@ -76,7 +81,7 @@ impl Default for ToolFsmState {
 					Crop => crop::Crop,
 					Navigate => navigate::Navigate,
 					Eyedropper => eyedropper::Eyedropper,
-					// Text => text::Text,
+					Text => text::Text,
 					Fill => fill::Fill,
 					// Gradient => gradient::Gradient,
 					// Brush => brush::Brush,
@@ -87,7 +92,7 @@ impl Default for ToolFsmState {
 					// Relight => relight::Relight,
 					Path => path::Path,
 					Pen => pen::Pen,
-					// Freehand => freehand::Freehand,
+					Freehand => freehand::Freehand,
 					// Spline => spline::Spline,
 					Line => line::Line,
 					Rectangle => rectangle::Rectangle,
@@ -98,7 +103,6 @@ impl Default for ToolFsmState {
 			document_tool_data: DocumentToolData {
 				primary_color: Color::BLACK,
 				secondary_color: Color::WHITE,
-				tool_options: default_tool_options(),
 			},
 		}
 	}
@@ -112,35 +116,6 @@ impl ToolFsmState {
 	pub fn swap_colors(&mut self) {
 		std::mem::swap(&mut self.document_tool_data.primary_color, &mut self.document_tool_data.secondary_color);
 	}
-}
-
-fn default_tool_options() -> HashMap<ToolType, ToolOptions> {
-	let tool_init = |tool: ToolType| (tool, tool.default_options());
-	[
-		tool_init(ToolType::Select),
-		tool_init(ToolType::Crop),
-		tool_init(ToolType::Navigate),
-		tool_init(ToolType::Eyedropper),
-		tool_init(ToolType::Text),
-		tool_init(ToolType::Fill),
-		tool_init(ToolType::Gradient),
-		tool_init(ToolType::Brush),
-		tool_init(ToolType::Heal),
-		tool_init(ToolType::Clone),
-		tool_init(ToolType::Patch),
-		tool_init(ToolType::BlurSharpen),
-		tool_init(ToolType::Relight),
-		tool_init(ToolType::Path),
-		tool_init(ToolType::Pen),
-		tool_init(ToolType::Freehand),
-		tool_init(ToolType::Spline),
-		tool_init(ToolType::Line),
-		tool_init(ToolType::Rectangle),
-		tool_init(ToolType::Ellipse),
-		tool_init(ToolType::Shape),
-	]
-	.into_iter()
-	.collect()
 }
 
 #[repr(usize)]
@@ -201,36 +176,6 @@ impl fmt::Display for ToolType {
 	}
 }
 
-impl ToolType {
-	fn default_options(&self) -> ToolOptions {
-		match self {
-			ToolType::Select => ToolOptions::Select { append_mode: SelectAppendMode::New },
-			ToolType::Crop => ToolOptions::Crop {},
-			ToolType::Navigate => ToolOptions::Navigate {},
-			ToolType::Eyedropper => ToolOptions::Eyedropper {},
-			ToolType::Text => ToolOptions::Text {},
-			ToolType::Fill => ToolOptions::Fill {},
-			ToolType::Gradient => ToolOptions::Gradient {},
-			ToolType::Brush => ToolOptions::Brush {},
-			ToolType::Heal => ToolOptions::Heal {},
-			ToolType::Clone => ToolOptions::Clone {},
-			ToolType::Patch => ToolOptions::Patch {},
-			ToolType::BlurSharpen => ToolOptions::BlurSharpen {},
-			ToolType::Relight => ToolOptions::Relight {},
-			ToolType::Path => ToolOptions::Path {},
-			ToolType::Pen => ToolOptions::Pen { weight: 5 },
-			ToolType::Freehand => ToolOptions::Freehand {},
-			ToolType::Spline => ToolOptions::Spline {},
-			ToolType::Line => ToolOptions::Line { weight: 5 },
-			ToolType::Rectangle => ToolOptions::Rectangle {},
-			ToolType::Ellipse => ToolOptions::Ellipse {},
-			ToolType::Shape => ToolOptions::Shape {
-				shape_type: ShapeType::Polygon { vertices: 6 },
-			},
-		}
-	}
-}
-
 pub enum StandardToolMessageType {
 	Abort,
 	DocumentIsDirty,
@@ -241,10 +186,10 @@ pub fn standard_tool_message(tool: ToolType, message_type: StandardToolMessageTy
 	match message_type {
 		StandardToolMessageType::DocumentIsDirty => match tool {
 			ToolType::Select => Some(SelectMessage::DocumentIsDirty.into()),
-			ToolType::Crop => None,        // Some(CropMessage::DocumentIsDirty.into()),
-			ToolType::Navigate => None,    // Some(NavigateMessage::DocumentIsDirty.into()),
-			ToolType::Eyedropper => None,  // Some(EyedropperMessage::DocumentIsDirty.into()),
-			ToolType::Text => None,        // Some(TextMessage::DocumentIsDirty.into()),
+			ToolType::Crop => None,       // Some(CropMessage::DocumentIsDirty.into()),
+			ToolType::Navigate => None,   // Some(NavigateMessage::DocumentIsDirty.into()),
+			ToolType::Eyedropper => None, // Some(EyedropperMessage::DocumentIsDirty.into()),
+			ToolType::Text => Some(TextMessage::DocumentIsDirty.into()),
 			ToolType::Fill => None,        // Some(FillMessage::DocumentIsDirty.into()),
 			ToolType::Gradient => None,    // Some(GradientMessage::DocumentIsDirty.into()),
 			ToolType::Brush => None,       // Some(BrushMessage::DocumentIsDirty.into()),
@@ -264,15 +209,26 @@ pub fn standard_tool_message(tool: ToolType, message_type: StandardToolMessageTy
 		},
 		StandardToolMessageType::Abort => match tool {
 			ToolType::Select => Some(SelectMessage::Abort.into()),
-			ToolType::Path => Some(PathMessage::Abort.into()),
+			// ToolType::Crop => Some(CropMessage::Abort.into()),
 			ToolType::Navigate => Some(NavigateMessage::Abort.into()),
+			ToolType::Eyedropper => Some(EyedropperMessage::Abort.into()),
+			ToolType::Text => Some(TextMessage::Abort.into()),
+			ToolType::Fill => Some(FillMessage::Abort.into()),
+			// ToolType::Gradient => Some(GradientMessage::Abort.into()),
+			// ToolType::Brush => Some(BrushMessage::Abort.into()),
+			// ToolType::Heal => Some(HealMessage::Abort.into()),
+			// ToolType::Clone => Some(CloneMessage::Abort.into()),
+			// ToolType::Patch => Some(PatchMessage::Abort.into()),
+			// ToolType::BlurSharpen => Some(BlurSharpenMessage::Abort.into()),
+			// ToolType::Relight => Some(RelightMessage::Abort.into()),
+			ToolType::Path => Some(PathMessage::Abort.into()),
 			ToolType::Pen => Some(PenMessage::Abort.into()),
+			ToolType::Freehand => Some(FreehandMessage::Abort.into()),
+			// ToolType::Spline => Some(SplineMessage::Abort.into()),
 			ToolType::Line => Some(LineMessage::Abort.into()),
 			ToolType::Rectangle => Some(RectangleMessage::Abort.into()),
 			ToolType::Ellipse => Some(EllipseMessage::Abort.into()),
 			ToolType::Shape => Some(ShapeMessage::Abort.into()),
-			ToolType::Eyedropper => Some(EyedropperMessage::Abort.into()),
-			ToolType::Fill => Some(FillMessage::Abort.into()),
 			_ => None,
 		},
 	}
@@ -286,7 +242,7 @@ pub fn message_to_tool_type(message: &ToolMessage) -> ToolType {
 		Crop(_) => ToolType::Crop,
 		Navigate(_) => ToolType::Navigate,
 		Eyedropper(_) => ToolType::Eyedropper,
-		// Text(_) => ToolType::Text,
+		Text(_) => ToolType::Text,
 		Fill(_) => ToolType::Fill,
 		// Gradient(_) => ToolType::Gradient,
 		// Brush(_) => ToolType::Brush,
@@ -297,7 +253,7 @@ pub fn message_to_tool_type(message: &ToolMessage) -> ToolType {
 		// Relight(_) => ToolType::Relight,
 		Path(_) => ToolType::Path,
 		Pen(_) => ToolType::Pen,
-		// Freehand(_) => ToolType::Freehand,
+		Freehand(_) => ToolType::Freehand,
 		// Spline(_) => ToolType::Spline,
 		Line(_) => ToolType::Line,
 		Rectangle(_) => ToolType::Rectangle,

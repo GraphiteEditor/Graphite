@@ -3,6 +3,7 @@ use crate::document::DocumentMessageHandler;
 use crate::frontend::utility_types::MouseCursorIcon;
 use crate::input::keyboard::MouseMotion;
 use crate::input::InputPreprocessorMessageHandler;
+use crate::layout::widgets::PropertyHolder;
 use crate::message_prelude::*;
 use crate::misc::{HintData, HintGroup, HintInfo};
 use crate::viewport_tools::tool::{DocumentToolData, Fsm, ToolActionHandlerData};
@@ -32,6 +33,8 @@ pub enum EyedropperMessage {
 	RightMouseDown,
 }
 
+impl PropertyHolder for Eyedropper {}
+
 impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Eyedropper {
 	fn process_action(&mut self, action: ToolMessage, data: ToolActionHandlerData<'a>, responses: &mut VecDeque<Message>) {
 		if action == ToolMessage::UpdateHints {
@@ -44,7 +47,7 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Eyedropper {
 			return;
 		}
 
-		let new_state = self.fsm_state.transition(action, data.0, data.1, &mut self.data, data.2, responses);
+		let new_state = self.fsm_state.transition(action, data.0, data.1, &mut self.data, &(), data.2, responses);
 
 		if self.fsm_state != new_state {
 			self.fsm_state = new_state;
@@ -72,6 +75,7 @@ struct EyedropperToolData {}
 
 impl Fsm for EyedropperToolFsmState {
 	type ToolData = EyedropperToolData;
+	type ToolOptions = ();
 
 	fn transition(
 		self,
@@ -79,6 +83,7 @@ impl Fsm for EyedropperToolFsmState {
 		document: &DocumentMessageHandler,
 		_tool_data: &DocumentToolData,
 		_data: &mut Self::ToolData,
+		_tool_options: &Self::ToolOptions,
 		input: &InputPreprocessorMessageHandler,
 		responses: &mut VecDeque<Message>,
 	) -> Self {
@@ -97,12 +102,10 @@ impl Fsm for EyedropperToolFsmState {
 						if let Ok(layer) = document.graphene_document.layer(path) {
 							if let LayerDataType::Shape(shape) = &layer.data {
 								if let Some(fill) = shape.style.fill() {
-									if let Some(color) = fill.color() {
-										match lmb_or_rmb {
-											EyedropperMessage::LeftMouseDown => responses.push_back(ToolMessage::SelectPrimaryColor { color }.into()),
-											EyedropperMessage::RightMouseDown => responses.push_back(ToolMessage::SelectSecondaryColor { color }.into()),
-											_ => {}
-										}
+									match lmb_or_rmb {
+										EyedropperMessage::LeftMouseDown => responses.push_back(ToolMessage::SelectPrimaryColor { color: fill.color() }.into()),
+										EyedropperMessage::RightMouseDown => responses.push_back(ToolMessage::SelectSecondaryColor { color: fill.color() }.into()),
+										_ => {}
 									}
 								}
 							}

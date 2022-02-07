@@ -1,12 +1,12 @@
 <template>
-	<div class="window-title">
+	<LayoutRow class="window-title">
 		<span>{{ title }}</span>
-	</div>
+	</LayoutRow>
 </template>
 
 <style lang="scss">
 .window-title {
-	display: flex;
+	flex: 0 0 auto;
 	align-items: center;
 	white-space: nowrap;
 	padding: 0 8px;
@@ -16,9 +16,12 @@
 <script lang="ts">
 import { defineComponent, PropType } from "vue";
 
+import LayoutRow from "@/components/layout/LayoutRow.vue";
+
 export default defineComponent({
 	props: {
 		title: { type: String as PropType<string>, required: true },
 	},
+	components: { LayoutRow },
 });
 </script>

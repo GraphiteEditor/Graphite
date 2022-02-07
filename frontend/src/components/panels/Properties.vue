@@ -1,5 +1,5 @@
 <template>
-	<div></div>
+	<LayoutCol class="properties-panel"></LayoutCol>
 </template>
 
 <style lang="scss"></style>
@@ -7,5 +7,9 @@
 <script lang="ts">
 import { defineComponent } from "vue";
 
-export default defineComponent({});
+import LayoutCol from "@/components/layout/LayoutCol.vue";
+
+export default defineComponent({
+	components: { LayoutCol },
+});
 </script>

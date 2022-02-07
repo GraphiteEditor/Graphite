@@ -4,6 +4,7 @@ use crate::document::DocumentMessageHandler;
 use crate::frontend::utility_types::MouseCursorIcon;
 use crate::input::keyboard::{Key, MouseMotion};
 use crate::input::InputPreprocessorMessageHandler;
+use crate::layout::widgets::PropertyHolder;
 use crate::message_prelude::*;
 use crate::misc::{HintData, HintGroup, HintInfo, KeysGroup};
 use crate::viewport_tools::tool::{DocumentToolData, Fsm, ToolActionHandlerData};
@@ -38,6 +39,8 @@ pub enum PathMessage {
 	PointerMove,
 }
 
+impl PropertyHolder for Path {}
+
 impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Path {
 	fn process_action(&mut self, action: ToolMessage, data: ToolActionHandlerData<'a>, responses: &mut VecDeque<Message>) {
 		if action == ToolMessage::UpdateHints {
@@ -50,7 +53,7 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Path {
 			return;
 		}
 
-		let new_state = self.fsm_state.transition(action, data.0, data.1, &mut self.data, data.2, responses);
+		let new_state = self.fsm_state.transition(action, data.0, data.1, &mut self.data, &(), data.2, responses);
 
 		if self.fsm_state != new_state {
 			self.fsm_state = new_state;
@@ -105,6 +108,7 @@ struct PathToolSelection {
 
 impl Fsm for PathToolFsmState {
 	type ToolData = PathToolData;
+	type ToolOptions = ();
 
 	fn transition(
 		self,
@@ -112,6 +116,7 @@ impl Fsm for PathToolFsmState {
 		document: &DocumentMessageHandler,
 		_tool_data: &DocumentToolData,
 		data: &mut Self::ToolData,
+		_tool_options: &Self::ToolOptions,
 		input: &InputPreprocessorMessageHandler,
 		responses: &mut VecDeque<Message>,
 	) -> Self {
@@ -607,7 +612,7 @@ fn add_anchor_handle_line(responses: &mut VecDeque<Message>) -> Vec<LayerId> {
 	let operation = Operation::AddOverlayLine {
 		path: layer_path.clone(),
 		transform: DAffine2::IDENTITY.to_cols_array(),
-		style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 1.0)), Some(Fill::none())),
+		style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 1.0)), None),
 	};
 	responses.push_back(DocumentMessage::Overlays(operation.into()).into());
 
@@ -620,7 +625,7 @@ fn add_shape_outline(responses: &mut VecDeque<Message>) -> Vec<LayerId> {
 	let operation = Operation::AddOverlayShape {
 		path: layer_path.clone(),
 		bez_path: BezPath::default(),
-		style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 1.0)), Some(Fill::none())),
+		style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 1.0)), None),
 		closed: false,
 	};
 	responses.push_back(DocumentMessage::Overlays(operation.into()).into());

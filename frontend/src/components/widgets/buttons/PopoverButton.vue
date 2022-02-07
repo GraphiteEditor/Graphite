@@ -1,15 +1,14 @@
 <template>
-	<div class="popover-button">
+	<LayoutRow class="popover-button">
 		<IconButton :action="handleClick" :icon="icon" :size="16" data-hover-menu-spawner />
 		<FloatingMenu :type="'Popover'" :direction="'Bottom'" ref="floatingMenu">
 			<slot></slot>
 		</FloatingMenu>
-	</div>
+	</LayoutRow>
 </template>
 
 <style lang="scss">
 .popover-button {
-	display: inline-block;
 	position: relative;
 	width: 16px;
 	height: 24px;
@@ -17,6 +16,7 @@
 
 	.floating-menu {
 		left: 50%;
+		bottom: 0;
 	}
 
 	.icon-button {
@@ -51,6 +51,7 @@ import { defineComponent, PropType } from "vue";
 
 import { PopoverButtonIcon } from "@/utilities/widgets";
 
+import LayoutRow from "@/components/layout/LayoutRow.vue";
 import IconButton from "@/components/widgets/buttons/IconButton.vue";
 import FloatingMenu from "@/components/widgets/floating-menus/FloatingMenu.vue";
 
@@ -58,6 +59,7 @@ export default defineComponent({
 	components: {
 		FloatingMenu,
 		IconButton,
+		LayoutRow,
 	},
 	props: {
 		action: { type: Function as PropType<() => void>, required: false },

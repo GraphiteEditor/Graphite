@@ -156,6 +156,7 @@ impl MessageHandler<MovementMessage, (&Document, &InputPreprocessorMessageHandle
 				responses.push_back(FrontendMessage::UpdateCanvasZoom { factor: self.zoom }.into());
 				responses.push_back(ToolMessage::DocumentIsDirty.into());
 				responses.push_back(DocumentMessage::DirtyRenderDocumentInOutlineView.into());
+				responses.push_back(PortfolioMessage::UpdateDocumentBar.into());
 				self.create_document_transform(&ipp.viewport_bounds, responses);
 			}
 			IncreaseCanvasZoom { center_on_mouse } => {
@@ -190,9 +191,9 @@ impl MessageHandler<MovementMessage, (&Document, &InputPreprocessorMessageHandle
 
 					let half_viewport = ipp.viewport_bounds.size() / 2.;
 					let rotation = {
-						let start_vec = self.mouse_position - half_viewport;
-						let end_vec = ipp.mouse.position - half_viewport;
-						start_vec.angle_between(end_vec)
+						let start_offset = self.mouse_position - half_viewport;
+						let end_offset = ipp.mouse.position - half_viewport;
+						start_offset.angle_between(end_offset)
 					};
 
 					responses.push_back(SetCanvasRotation { angle_radians: self.tilt + rotation }.into());
@@ -245,12 +246,14 @@ impl MessageHandler<MovementMessage, (&Document, &InputPreprocessorMessageHandle
 				self.create_document_transform(&ipp.viewport_bounds, responses);
 				responses.push_back(ToolMessage::DocumentIsDirty.into());
 				responses.push_back(FrontendMessage::UpdateCanvasRotation { angle_radians: self.snapped_angle() }.into());
+				responses.push_back(PortfolioMessage::UpdateDocumentBar.into());
 			}
 			SetCanvasZoom { zoom_factor } => {
 				self.zoom = zoom_factor.clamp(VIEWPORT_ZOOM_SCALE_MIN, VIEWPORT_ZOOM_SCALE_MAX);
 				responses.push_back(FrontendMessage::UpdateCanvasZoom { factor: self.snapped_scale() }.into());
 				responses.push_back(ToolMessage::DocumentIsDirty.into());
 				responses.push_back(DocumentMessage::DirtyRenderDocumentInOutlineView.into());
+				responses.push_back(PortfolioMessage::UpdateDocumentBar.into());
 				self.create_document_transform(&ipp.viewport_bounds, responses);
 			}
 			TransformCanvasEnd => {
@@ -326,7 +329,6 @@ impl MessageHandler<MovementMessage, (&Document, &InputPreprocessorMessageHandle
 
 	fn actions(&self) -> ActionList {
 		let mut common = actions!(MovementMessageDiscriminant;
-			MouseMove,
 			TranslateCanvasBegin,
 			RotateCanvasBegin,
 			ZoomCanvasBegin,
@@ -342,6 +344,7 @@ impl MessageHandler<MovementMessage, (&Document, &InputPreprocessorMessageHandle
 
 		if self.panning || self.tilting || self.zooming {
 			let transforming = actions!(MovementMessageDiscriminant;
+				MouseMove,
 				TransformCanvasEnd,
 			);
 			common.extend(transforming);
