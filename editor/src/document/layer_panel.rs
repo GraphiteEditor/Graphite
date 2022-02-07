@@ -8,8 +8,6 @@ use serde::ser::SerializeStruct;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
-use crate::layout::widgets::{IconLabel, LayoutRow, PropertyHolder, TextInput, TextLabel, Widget, WidgetCallback, WidgetHolder, WidgetLayout};
-
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Copy)]
 pub struct LayerMetadata {
 	pub selected: bool,
@@ -19,60 +17,6 @@ pub struct LayerMetadata {
 impl LayerMetadata {
 	pub fn new(expanded: bool) -> LayerMetadata {
 		LayerMetadata { selected: false, expanded }
-	}
-}
-
-impl PropertyHolder for Layer {
-	fn properties(&self) -> WidgetLayout {
-		let mut options_bar = match &self.data {
-			LayerDataType::Folder(_) => {
-				vec![
-					WidgetHolder::new(Widget::IconLabel(IconLabel {
-						value: "NodeTypeFolder".into(),
-						gap_after: true,
-					})),
-					WidgetHolder::new(Widget::TextLabel(TextLabel {
-						value: "Folder".into(),
-						..TextLabel::default()
-					})),
-				]
-			}
-			LayerDataType::Shape(_) => {
-				vec![
-					WidgetHolder::new(Widget::IconLabel(IconLabel {
-						value: "NodeTypePath".into(),
-						gap_after: true,
-					})),
-					WidgetHolder::new(Widget::TextLabel(TextLabel {
-						value: "Path".into(),
-						..TextLabel::default()
-					})),
-				]
-			}
-			LayerDataType::Text(_) => {
-				vec![
-					WidgetHolder::new(Widget::IconLabel(IconLabel {
-						value: "NodeTypePath".into(),
-						gap_after: true,
-					})),
-					WidgetHolder::new(Widget::TextLabel(TextLabel {
-						value: "Text".into(),
-						..TextLabel::default()
-					})),
-				]
-			}
-		};
-
-		options_bar.push(WidgetHolder::new(Widget::TextInput(TextInput {
-			value: self.name.clone().unwrap_or_default(),
-			// TODO: Add update to change name
-			on_update: WidgetCallback::default(),
-		})));
-
-		WidgetLayout::new(vec![LayoutRow::Row {
-			name: "".into(),
-			widgets: options_bar,
-		}])
 	}
 }
 

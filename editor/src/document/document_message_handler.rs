@@ -1,7 +1,7 @@
 use super::clipboards::Clipboard;
 use super::layer_panel::{layer_panel_entry, LayerDataTypeDiscriminant, LayerMetadata, LayerPanelEntry, RawBuffer};
 use super::utility_types::{AlignAggregate, AlignAxis, DocumentSave, FlipAxis, VectorManipulatorSegment, VectorManipulatorShape};
-use super::vectorize_layer_metadata;
+use super::{vectorize_layer_metadata, PropertiesPanelMessageHandler};
 use super::{ArtboardMessageHandler, MovementMessageHandler, OverlaysMessageHandler, TransformLayerMessageHandler};
 use crate::consts::{
 	ASYMPTOTIC_EFFECT, DEFAULT_DOCUMENT_NAME, FILE_EXPORT_SUFFIX, FILE_SAVE_SUFFIX, GRAPHITE_DOCUMENT_VERSION, SCALE_EFFECT, SCROLLBAR_SPACING, VIEWPORT_ZOOM_TO_FIT_PADDING_SCALE_FACTOR,
@@ -46,6 +46,7 @@ pub struct DocumentMessageHandler {
 	artboard_message_handler: ArtboardMessageHandler,
 	#[serde(skip)]
 	transform_layer_handler: TransformLayerMessageHandler,
+	properties_panel_message_handler: PropertiesPanelMessageHandler,
 	pub overlays_visible: bool,
 	pub snapping_enabled: bool,
 	pub view_mode: ViewMode,
@@ -66,6 +67,7 @@ impl Default for DocumentMessageHandler {
 			overlays_message_handler: OverlaysMessageHandler::default(),
 			artboard_message_handler: ArtboardMessageHandler::default(),
 			transform_layer_handler: TransformLayerMessageHandler::default(),
+			properties_panel_message_handler: PropertiesPanelMessageHandler::default(),
 			snapping_enabled: true,
 			overlays_visible: true,
 			view_mode: ViewMode::default(),
@@ -671,6 +673,10 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 				self.transform_layer_handler
 					.process_action(message, (&mut self.layer_metadata, &mut self.graphene_document, ipp), responses);
 			}
+			#[remain::unsorted]
+			PropertiesPanel(message) => {
+				self.properties_panel_message_handler.process_action(message, (&mut self.graphene_document), responses);
+			}
 
 			// Messages
 			AbortTransaction => {
@@ -678,18 +684,11 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 				responses.extend([RenderDocument.into(), DocumentStructureChanged.into()]);
 			}
 			AddSelectedLayers { additional_layers } => {
-				log::debug!("Aditional Layers: {:?}", additional_layers);
-				if let Some(path) = additional_layers.get(0) {
-					let layer = self.graphene_document.layer(path).unwrap();
-					layer.register_properties(responses, LayoutTarget::PropertiesPanel);
+				if additional_layers.len() == 1 {
+					let path = additional_layers[0].clone();
+					responses.push_back(PropertiesPanelMessage::SetActiveLayer(path).into())
 				} else {
-					responses.push_back(
-						LayoutMessage::SendLayout {
-							layout: WidgetLayout::default(),
-							layout_target: LayoutTarget::PropertiesPanel,
-						}
-						.into(),
-					)
+					responses.push_back(PropertiesPanelMessage::ClearSelection.into())
 				}
 
 				for layer_path in additional_layers {

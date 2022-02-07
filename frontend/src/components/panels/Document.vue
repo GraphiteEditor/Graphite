@@ -6,12 +6,12 @@
 
 				<Separator :type="'Section'" />
 
-				<WidgetLayout :layout="toolOptionsLayout" />
+				<WidgetLayout :layout="toolOptionsLayout" class="tool-options" />
 			</LayoutRow>
 
 			<LayoutRow class="spacer"></LayoutRow>
 
-			<WidgetLayout :layout="documentBarLayout" class="right side" />
+			<WidgetLayout :layout="documentBarLayout" class="right side document-bar" />
 		</LayoutRow>
 		<LayoutRow class="shelf-and-viewport">
 			<LayoutCol class="shelf">
@@ -108,6 +108,12 @@
 .document {
 	height: 100%;
 
+	.document-bar {
+		.widget-row {
+			height: 100%;
+		}
+	}
+
 	.options-bar {
 		height: 32px;
 		flex: 0 0 auto;
@@ -117,6 +123,12 @@
 			flex: 0 0 auto;
 			align-items: center;
 			margin: 0 4px;
+		}
+
+		.tool-options {
+			.widget-row {
+				height: 100%;
+			}
 		}
 
 		.spacer {

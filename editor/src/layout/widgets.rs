@@ -287,7 +287,7 @@ pub struct RadioEntryData {
 
 #[derive(Clone, Serialize, Deserialize, Derivative, Debug, PartialEq)]
 pub struct IconLabel {
-	pub value: String,
+	pub icon: String,
 	#[serde(rename = "gapAfter")]
 	pub gap_after:bool,
 }

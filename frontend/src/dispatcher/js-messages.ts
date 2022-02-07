@@ -464,7 +464,7 @@ function createWidgetLayout(widgetLayout: any[]): LayoutRow[] {
 		if (rowOrSection.Section) {
 			return {
 				name: rowOrSection.Section.name,
-				layout: createWidgetLayout(rowOrSection.Section),
+				layout: createWidgetLayout(rowOrSection.Section.layout),
 			};
 		}
 

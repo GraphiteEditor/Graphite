@@ -18,13 +18,16 @@
 			<OptionalInput v-if="component.kind === 'OptionalInput'" v-bind="component.props" @update:checked="(value: boolean) => updateLayout(component.widget_id, value)" />
 			<RadioInput v-if="component.kind === 'RadioInput'" v-bind="component.props" @update:selectedIndex="(value: number) => updateLayout(component.widget_id, value)" />
 			<Separator v-if="component.kind === 'Separator'" v-bind="component.props" />
+			<TextLabel v-if="component.kind === 'TextLabel'" v-bind="component.props">{{ component.props.value }}</TextLabel>
+			<IconLabel v-if="component.kind === 'IconLabel'" v-bind="component.props" />
+			<NumberInput v-if="component.kind === 'TextInput'" v-bind="component.props" @update:value="(value: number) => updateLayout(component.widget_id, value)" />
 		</template>
 	</div>
 </template>
 
 <style lang="scss">
 .widget-row {
-	height: 100%;
+	// height: 100%;
 	flex: 0 0 auto;
 	display: flex;
 	align-items: center;
@@ -41,6 +44,8 @@ import PopoverButton from "@/components/widgets/buttons/PopoverButton.vue";
 import NumberInput from "@/components/widgets/inputs/NumberInput.vue";
 import OptionalInput from "@/components/widgets/inputs/OptionalInput.vue";
 import RadioInput from "@/components/widgets/inputs/RadioInput.vue";
+import IconLabel from "@/components/widgets/labels/IconLabel.vue";
+import TextLabel from "@/components/widgets/labels/TextLabel.vue";
 import Separator from "@/components/widgets/separators/Separator.vue";
 
 export default defineComponent({
@@ -61,6 +66,8 @@ export default defineComponent({
 		IconButton,
 		OptionalInput,
 		RadioInput,
+		TextLabel,
+		IconLabel,
 	},
 });
 </script>

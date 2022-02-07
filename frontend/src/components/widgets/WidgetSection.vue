@@ -1,5 +1,6 @@
 <!-- TODO: Implement collapsable sections with properties system -->
 <template>
+	<div class="section-title">{{ widgetData.name }}</div>
 	<div class="widget-section">
 		<template v-for="(layoutRow, index) in widgetData.layout" :key="index">
 			<component :is="layoutRowType(layoutRow)" :widgetData="layoutRow" :layoutTarget="layoutTarget"></component>
@@ -8,11 +9,11 @@
 </template>
 
 <style lang="scss">
+.section-title {
+	text-align: left;
+}
 .widget-section {
-	height: 100%;
-	flex: 0 0 auto;
-	display: flex;
-	align-items: center;
+	align-items: right;
 }
 </style>
 
