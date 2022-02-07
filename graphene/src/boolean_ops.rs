@@ -586,6 +586,7 @@ pub fn boolean_operation(select: BooleanOperation, mut alpha: Shape, mut beta: S
 }
 
 /// !May (pretty sure there) be a bug where ray is cast into the endpoints of two lines
+/// TODO check bounding boxes more rigorously
 pub fn cast_horizontal_ray(from: Point, into: &BezPath) -> usize {
 	let mut num = 0;
 	let ray = Line {
@@ -597,11 +598,6 @@ pub fn cast_horizontal_ray(from: Point, into: &BezPath) -> usize {
 		// * could check bounding boxes more rigorously
 		if seg.bounding_box().x1 > from.x {
 			line_curve_intersections(&ray, seg, true, |_, b| valid_t(b), &mut intersects);
-		}
-	}
-	for intersect in intersects {
-		if valid_t(intersect.t_val(Origin::Beta)) {
-			num += 1;
 		}
 	}
 	num

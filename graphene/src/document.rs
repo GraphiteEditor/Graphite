@@ -513,7 +513,6 @@ impl Document {
 				// TODO: handle overlapping identical curve case
 				// TODO: precision reached without intersection bug (maybe caused by seperating a closed path, or dragging handles)
 				// TODO: click on shape should drag the shape
-				// TODO: either fix the layer sort function or reverse order of selected shapes
 				// TODO: add ability to undo
 				let mut responses = Vec::new();
 				// log::debug!("{:?}", selected);
