@@ -254,7 +254,7 @@ impl Fsm for TextToolFsmState {
 								transform: DAffine2::ZERO.to_cols_array(),
 								insert_index: -1,
 								text: r#""#.to_string(),
-								style: style::PathStyle::new(None, Some(Fill::new(Color::BLACK))),
+								style: style::PathStyle::new(None, Some(Fill::new(tool_data.primary_color))),
 								size: font_size as f64,
 							}
 							.into(),
