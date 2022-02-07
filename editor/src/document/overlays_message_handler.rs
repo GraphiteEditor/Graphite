@@ -27,16 +27,7 @@ impl MessageHandler<OverlaysMessage, bool> for OverlaysMessageHandler {
 			Rerender =>
 			// Render overlays
 			{
-				responses.push_back(
-					FrontendMessage::UpdateDocumentOverlays {
-						svg: if overlays_visible {
-							self.overlays_graphene_document.render_root(ViewMode::Normal)
-						} else {
-							String::from("")
-						},
-					}
-					.into(),
-				)
+				responses.push_back(FrontendMessage::UpdateDocumentOverlays { svg: String::from("") }.into())
 			}
 		}
 	}
