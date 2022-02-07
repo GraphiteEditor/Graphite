@@ -88,7 +88,7 @@ impl RenderingContext {
 	}
 	pub fn draw_paths(&mut self, lines: impl Iterator<Item = (Vec<(Vec2, Vec2)>, PathStyle, u32)>) {
 		let vec: Vec<_> = lines.flat_map(|(segments, _, _)| segments).map(|(p1, p2)| (p1.x, p1.y, p2.x, p2.y)).collect();
-		let (vertex_data, _index_data) = create_vertices(&vec, 0.3);
+		let (vertex_data, _index_data) = create_vertices(&vec, 0.1);
 		self.draw(vertex_data);
 		//self.draw_lines(&[(500.7, 500.7, 3100.7, 2700.7)]);
 	}
@@ -120,7 +120,7 @@ impl RenderingContext {
 		// As a result, after `Float32Array::view` we have to be very careful not to
 		// do any memory allocations before it's dropped.
 		//let vertices = std::mem::transmute(&vertices[..]);
-		log::debug!("vertices: {vertices:?}");
+		//log::debug!("vertices: {vertices:?}");
 		let positions_array_buf_view = js_sys::Float32Array::new_with_length(vertices.len() as u32);
 		positions_array_buf_view.copy_from(vertices);
 
@@ -130,8 +130,8 @@ impl RenderingContext {
 		let transform = glam::Affine2::from_translation(Vec2::new(-1., 1.)) * transform;
 		let transform = glam::Mat3::from(transform);
 		//let transform = glam::Mat3::IDENTITY;
-		log::debug!("tranform: {transform:?}");
-		log::debug!("matrix_location: {matrix_location:?}");
+		//log::debug!("tranform: {transform:?}");
+		//log::debug!("matrix_location: {matrix_location:?}");
 		self.context.uniform_matrix3fv_with_f32_array(matrix_location.as_ref(), false, &transform.to_cols_array());
 
 		self.context
@@ -140,8 +140,8 @@ impl RenderingContext {
 		let vao = self.context.create_vertex_array().ok_or("Could not create vertex array object")?;
 		self.context.bind_vertex_array(Some(&vao));
 
-		log::debug!("positon location: {position_attribute_location:?}");
-		log::debug!("line location: {line_attribute_location:?}");
+		//log::debug!("positon location: {position_attribute_location:?}");
+		//log::debug!("line location: {line_attribute_location:?}");
 
 		self.context.vertex_attrib_pointer_with_i32(0, 3, WebGl2RenderingContext::FLOAT, false, 28, 0);
 		self.context.enable_vertex_attrib_array(position_attribute_location as u32);
@@ -149,7 +149,7 @@ impl RenderingContext {
 		self.context.enable_vertex_attrib_array(line_attribute_location as u32);
 
 		let vert_count = (vertices.len() / 7) as i32;
-		log::debug!("vert count {vert_count}");
+		//log::debug!("vert count {vert_count}");
 		draw(&self.context, vert_count);
 
 		Ok(())

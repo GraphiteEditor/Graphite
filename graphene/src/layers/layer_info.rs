@@ -309,7 +309,7 @@ impl<'a> Iterator for TransformIter<'a> {
 	fn next(&mut self) -> Option<Self::Item> {
 		match self.stack.pop() {
 			Some((layer, transform, depth)) => {
-				log::debug!("transform: {transform:?}");
+				//log::debug!("transform: {transform:?}");
 				let new_transform = transform * layer.transform;
 				if let LayerDataType::Folder(folder) = &layer.data {
 					let layers = folder.layers();
