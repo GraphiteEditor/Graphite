@@ -1,5 +1,5 @@
 use crate::{
-	consts::F64PRECISION,
+	consts::{F64PRECISION, RAY_FUDGE_FACTOR},
 	intersection::{intersections, line_curve_intersections, valid_t, Intersect, Origin},
 	layers::{simple_shape::Shape, style::PathStyle},
 };
@@ -585,22 +585,25 @@ pub fn boolean_operation(select: BooleanOperation, mut alpha: Shape, mut beta: S
 	}
 }
 
-/// !May (pretty sure there) be a bug where ray is cast into the endpoints of two lines
+/// TODO less hacky way to handle double counts on shared endpoints
 /// TODO check bounding boxes more rigorously
-pub fn cast_horizontal_ray(from: Point, into: &BezPath) -> usize {
-	let mut num = 0;
+pub fn cast_horizontal_ray(mut from: Point, into: &BezPath) -> usize {
+	// In practice, this makes it less likely that a ray will intersect with shared point between two curves
+	from.y += RAY_FUDGE_FACTOR;
 	let ray = Line {
 		p0: from,
-		p1: Point { x: from.x + 1.0, y: from.y },
+		p1: Point {
+			x: from.x + 1.0,
+			y: from.y + RAY_FUDGE_FACTOR,
+		},
 	};
 	let mut intersects = Vec::new();
 	for ref seg in into.segments() {
-		// * could check bounding boxes more rigorously
 		if seg.bounding_box().x1 > from.x {
 			line_curve_intersections(&ray, seg, true, |_, b| valid_t(b), &mut intersects);
 		}
 	}
-	num
+	intersects.len()
 }
 
 /// * uses curve start point as point on the curve
