@@ -226,19 +226,19 @@ impl<'a> SubCurve<'a> {
 	}
 }
 
-/**
-Bezier Curve Intersection Algorithm
-- TODO: How does f64 precision effect the algorithm?
-- TODO: profile algorithm
-- Bug: intersections of "perfectly alligned" line or curve
- If the algorithm is rewritten to be non-recursive it can be restructured to be more breadth first then depth first.
- This would allow easy recognition of the case where many (or all) bounding boxes intersect, this case is correlated with alligned curves
- Alternatively, this bug can be solved only for the linear case, which probably covers the great majority of cases
-- Behavior: deep recursion could result in stack overflow
-- Improvement: intersections on the end of segments
-- Improvement: more adapative way to decide when "close enough"
-- Optimization: any extra copying happening?
-*/
+// TODO use the cool algorithm described in the paper below
+// * https://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.99.9678&rep=rep1&type=pdf
+// - Bezier Curve Intersection Algorithm
+// - TODO: How does f64 precision effect the algorithm?
+// - TODO: profile algorithm
+// - Bug: intersections of "perfectly alligned" line or curve
+// - If the algorithm is rewritten to be non-recursive it can be restructured to be more breadth first then depth first
+// - - test for overlapping curves by splitting the curves
+// - Behavior: deep recursion could result in stack overflow
+// - Improvement: intersections on the end of segments
+// - Improvement: more adapative way to decide when "close enough"
+// - Optimization: any extra copying happening?
+
 fn path_intersections(a: &SubCurve, b: &SubCurve, mut recursion: f64, intersections: &mut Vec<Intersect>) {
 	if overlap(&a.bounding_box(), &b.bounding_box()) {
 		if let (PathSeg::Line(line), _) = (a.curve, b) {
