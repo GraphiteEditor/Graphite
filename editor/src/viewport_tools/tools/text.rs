@@ -9,6 +9,7 @@ use crate::misc::{HintData, HintGroup, HintInfo, KeysGroup};
 use crate::viewport_tools::tool::{DocumentToolData, Fsm, ToolActionHandlerData};
 
 use glam::{DAffine2, DVec2};
+use graphene::color::Color;
 use graphene::intersection::Quad;
 use graphene::layers::style::{self, Fill, Stroke};
 use graphene::Operation;
@@ -253,7 +254,7 @@ impl Fsm for TextToolFsmState {
 								transform: DAffine2::ZERO.to_cols_array(),
 								insert_index: -1,
 								text: r#""#.to_string(),
-								style: style::PathStyle::new(Some(style::Stroke::new(tool_data.primary_color, 0.)), None),
+								style: style::PathStyle::new(None, Some(Fill::new(tool_data.primary_color))),
 								size: font_size as f64,
 							}
 							.into(),
