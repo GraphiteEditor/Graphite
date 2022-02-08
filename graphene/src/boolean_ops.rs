@@ -21,7 +21,7 @@ pub enum BooleanOperationError {
 	InvalidSelection,
 	InvalidIntersections,
 	NoIntersections,
-	NothingDone, // not neccesarily an error
+	NothingDone, // not necessarily an error
 	DirectionUndefined,
 	Unexpected, // for debugging, when complete nothing should be unexpected
 }
@@ -67,7 +67,7 @@ enum Direction {
 }
 
 /// Behavior: Intersection and Union cases are distinguished between by cycle area magnitude
-///   - This only effects shapes whose intersection is a single shape, and the intersection is similalarly sized to the union
+///   - This only effects shapes whose intersection is a single shape, and the intersection is similarly sized to the union
 ///   - can be solved by first computing at low accuracy, and if the values are close recomputing.
 #[derive(Clone)]
 struct Cycle {
@@ -136,7 +136,7 @@ impl Cycle {
 	/// - if the path crosses itself the computed direction may be (probably will be) wrong, on account of it not really being defined
 	pub fn direction_for_path(path: &BezPath) -> Result<Direction, BooleanOperationError> {
 		let mut area = 0.0;
-		path.segments().for_each(|seg| area += seg.signed_area());
+		path.segments().for_each(|path_segment| area += path_segment.signed_area());
 		if area > 0.0 {
 			Ok(Direction::CCW)
 		} else if area < 0.0 {
@@ -166,7 +166,7 @@ impl PathGraph {
 			vertices: intersections(alpha, beta).into_iter().map(|i| Vertex { intersect: i, edges: Vec::new() }).collect(),
 		};
 		// we only consider graphs with even numbers of intersections.
-		// An odd number of intersections occurrs when either
+		// An odd number of intersections occurs when either
 		//    1. There exists a tangential intersection (which shouldn't effect boolean operations)
 		//    2. The algorithm has found an extra intersection or missed an intersection
 		if new.size() == 0 {
@@ -336,8 +336,8 @@ impl PathGraph {
 
 	/// a properly constructed PathGraph has no duplicate edges of the same Origin
 	pub fn edge(&self, from: usize, to: usize, origin: Origin) -> Option<&Edge> {
-		// with a data strucutre restructure, or a hashmap, the find here could be avoided
-		// but it probably has a miniaml performance impact
+		// with a data structure restructure, or a hashmap, the find here could be avoided
+		// but it probably has a minimal performance impact
 		self.vertex(from).edges.iter().find(|edge| edge.destination == to && edge.from == origin)
 	}
 
@@ -439,29 +439,29 @@ pub fn split_path_seg(p: &PathSeg, t: f64) -> (Option<PathSeg>, Option<PathSeg>)
 	}
 }
 
-/// splits p at each of t_vals
-/// t_vals should be sorted in ascending order
-/// the length of the returned vector is equal to 1 + t_vals.len()
-pub fn subdivide_path_seg(p: &PathSeg, t_vals: &mut [f64]) -> Vec<Option<PathSeg>> {
-	let mut sub_segs = Vec::new();
+/// splits p at each of t_values
+/// t_values should be sorted in ascending order
+/// the length of the returned vector is equal to 1 + t_values.len()
+pub fn subdivide_path_seg(p: &PathSeg, t_values: &mut [f64]) -> Vec<Option<PathSeg>> {
+	let mut sub_segments = Vec::new();
 	let mut to_split = Some(*p);
 	let mut prev_split = 0.0;
-	for split in t_vals {
+	for split in t_values {
 		if let Some(unhewn) = to_split {
 			let (sub_seg, _to_split) = split_path_seg(&unhewn, (*split - prev_split) / (1.0 - prev_split));
 			to_split = _to_split;
-			sub_segs.push(sub_seg);
+			sub_segments.push(sub_seg);
 			prev_split = *split;
 		} else {
-			sub_segs.push(None);
+			sub_segments.push(None);
 		}
 	}
-	sub_segs.push(to_split);
-	sub_segs
+	sub_segments.push(to_split);
+	sub_segments
 }
 
 /// !check if shapes are filled
-/// !Bug: shape with at least two subpaths and comprised of many unions sometimes has erroneous movetos emmbedded in edges
+/// !Bug: shape with at least two subpaths and comprised of many unions sometimes has erroneous movetos embedded in edges
 pub fn boolean_operation(select: BooleanOperation, mut alpha: Shape, mut beta: Shape) -> Result<Vec<Shape>, BooleanOperationError> {
 	if alpha.path.is_empty() || beta.path.is_empty() {
 		return Err(BooleanOperationError::InvalidSelection);
@@ -644,7 +644,7 @@ where
 	Ok(shapes)
 }
 
-pub fn reverse_pathseg(seg: &mut PathSeg) {
+pub fn reverse_path_segment(seg: &mut PathSeg) {
 	match seg {
 		PathSeg::Line(line) => std::mem::swap(&mut line.p0, &mut line.p1),
 		PathSeg::Quad(quad) => std::mem::swap(&mut quad.p0, &mut quad.p2),
@@ -660,7 +660,7 @@ pub fn reverse_pathseg(seg: &mut PathSeg) {
 pub fn reverse_path(path: &BezPath) -> BezPath {
 	let mut curve = Vec::new();
 	let mut temp = Vec::new();
-	let mut segs = path.segments();
+	let mut path_segments = path.segments();
 
 	for element in path.iter() {
 		match element {
@@ -669,8 +669,8 @@ pub fn reverse_path(path: &BezPath) -> BezPath {
 				temp = Vec::new();
 			}
 			_ => {
-				if let Some(mut seg) = segs.next() {
-					reverse_pathseg(&mut seg);
+				if let Some(mut seg) = path_segments.next() {
+					reverse_path_segment(&mut seg);
 					temp.push(seg);
 				}
 			}
