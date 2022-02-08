@@ -468,6 +468,7 @@ pub fn boolean_operation(select: BooleanOperation, mut alpha: Shape, mut beta: S
 	}
 	alpha.path = close_path(&alpha.path);
 	beta.path = close_path(&beta.path);
+	let beta_reverse = close_path(&reverse_path(&beta.path));
 	let alpha_dir = Cycle::direction_for_path(&alpha.path)?;
 	let beta_dir = Cycle::direction_for_path(&beta.path)?;
 	match select {
@@ -475,7 +476,7 @@ pub fn boolean_operation(select: BooleanOperation, mut alpha: Shape, mut beta: S
 			match if beta_dir == alpha_dir {
 				PathGraph::from_paths(&alpha.path, &beta.path)
 			} else {
-				PathGraph::from_paths(&alpha.path, &reverse_path(&beta.path))
+				PathGraph::from_paths(&alpha.path, &beta_reverse)
 			} {
 				Ok(graph) => {
 					let mut cycles = graph.get_cycles();
@@ -508,7 +509,7 @@ pub fn boolean_operation(select: BooleanOperation, mut alpha: Shape, mut beta: S
 			let graph = if beta_dir != alpha_dir {
 				PathGraph::from_paths(&alpha.path, &beta.path)?
 			} else {
-				PathGraph::from_paths(&alpha.path, &reverse_path(&beta.path))?
+				PathGraph::from_paths(&alpha.path, &beta_reverse)?
 			};
 			collect_shapes(&graph, &mut graph.get_cycles(), |_| true, |dir| if dir == alpha_dir { &alpha.style } else { &beta.style })
 		}
@@ -516,7 +517,7 @@ pub fn boolean_operation(select: BooleanOperation, mut alpha: Shape, mut beta: S
 			match if beta_dir == alpha_dir {
 				PathGraph::from_paths(&alpha.path, &beta.path)
 			} else {
-				PathGraph::from_paths(&alpha.path, &reverse_path(&beta.path))
+				PathGraph::from_paths(&alpha.path, &beta_reverse)
 			} {
 				Ok(graph) => {
 					let mut cycles = graph.get_cycles();
@@ -549,7 +550,7 @@ pub fn boolean_operation(select: BooleanOperation, mut alpha: Shape, mut beta: S
 			match if beta_dir != alpha_dir {
 				PathGraph::from_paths(&alpha.path, &beta.path)
 			} else {
-				PathGraph::from_paths(&alpha.path, &reverse_path(&beta.path))
+				PathGraph::from_paths(&alpha.path, &beta_reverse)
 			} {
 				Ok(graph) => collect_shapes(&graph, &mut graph.get_cycles(), |dir| dir != alpha_dir, |_| &beta.style),
 				Err(BooleanOperationError::NoIntersections) => {
@@ -568,7 +569,7 @@ pub fn boolean_operation(select: BooleanOperation, mut alpha: Shape, mut beta: S
 			match if beta_dir != alpha_dir {
 				PathGraph::from_paths(&alpha.path, &beta.path)
 			} else {
-				PathGraph::from_paths(&alpha.path, &reverse_path(&beta.path))
+				PathGraph::from_paths(&alpha.path, &beta_reverse)
 			} {
 				Ok(graph) => collect_shapes(&graph, &mut graph.get_cycles(), |dir| dir == alpha_dir, |_| &alpha.style),
 				Err(BooleanOperationError::NoIntersections) => {
@@ -655,6 +656,7 @@ pub fn reverse_pathseg(seg: &mut PathSeg) {
 }
 
 /// reverse path by reversing each PathSeg, and reversing the order of PathSegs within each subpath
+/// *a closed path may no longer be closed after applying this function
 pub fn reverse_path(path: &BezPath) -> BezPath {
 	let mut curve = Vec::new();
 	let mut temp = Vec::new();
@@ -717,7 +719,7 @@ pub fn concat_paths(a: &mut Vec<PathEl>, b: &BezPath) {
 	if let Some(PathEl::ClosePath) = a.last() {
 		a.remove(a.len() - 1);
 	}
-	// skip inital moveto, which should be guarenteed to exist
+	// skip initial moveto, which should be guaranteed to exist
 	b.iter().skip(1).for_each(|element| a.push(element));
 }
 

@@ -160,11 +160,11 @@ struct SubCurve<'a> {
 	pub start_t: f64,
 	pub end_t: f64,
 	local: [Point; 2], // local endpoints
-	pub extrema: &'a Vec<Point>,
+	pub extrema: &'a Vec<(Point, f64)>,
 }
 
 impl<'a> SubCurve<'a> {
-	pub fn new(parent: &'a PathSeg, extrema: &'a Vec<Point>) -> Self {
+	pub fn new(parent: &'a PathSeg, extrema: &'a Vec<(Point, f64)>) -> Self {
 		SubCurve {
 			curve: parent,
 			start_t: 0.0,
@@ -181,20 +181,27 @@ impl<'a> SubCurve<'a> {
 			x1: self.end().x,
 			y1: self.end().y,
 		};
-		self.local.iter().chain(self.extrema.iter()).for_each(|p| {
-			if p.x < bound.x0 {
-				bound.x0 = p.x;
-			}
-			if p.x > bound.x1 {
-				bound.x1 = p.x;
-			}
-			if p.y < bound.y0 {
-				bound.y0 = p.y;
-			}
-			if p.y > bound.y1 {
-				bound.y1 = p.y;
-			}
-		});
+		self.local
+			.iter()
+			.chain(
+				self.extrema
+					.iter()
+					.filter_map(|place_time| if place_time.1 > self.start_t && place_time.1 < self.end_t { Some(&place_time.0) } else { None }),
+			)
+			.for_each(|p| {
+				if p.x < bound.x0 {
+					bound.x0 = p.x;
+				}
+				if p.x > bound.x1 {
+					bound.x1 = p.x;
+				}
+				if p.y < bound.y0 {
+					bound.y0 = p.y;
+				}
+				if p.y > bound.y1 {
+					bound.y1 = p.y;
+				}
+			});
 		bound
 	}
 
@@ -360,13 +367,13 @@ pub fn intersections(a: &BezPath, b: &BezPath) -> Vec<Intersect> {
 		let a_extrema = a_seg
 			.extrema()
 			.iter()
-			.filter_map(|t| if *t > F64PRECISION && *t < 1.0 - F64PRECISION { Some(a_seg.eval(*t)) } else { None })
+			.filter_map(|t| if *t > F64PRECISION && *t < 1.0 - F64PRECISION { Some((a_seg.eval(*t), *t)) } else { None })
 			.collect();
 		b.segments().enumerate().for_each(|(b_idx, b_seg)| {
 			let b_extrema = b_seg
 				.extrema()
 				.iter()
-				.filter_map(|t| if *t > F64PRECISION && *t < 1.0 - F64PRECISION { Some(b_seg.eval(*t)) } else { None })
+				.filter_map(|t| if *t > F64PRECISION && *t < 1.0 - F64PRECISION { Some((b_seg.eval(*t), *t)) } else { None })
 				.collect();
 			let mut intersects = Vec::new();
 			path_intersections(&SubCurve::new(&a_seg, &a_extrema), &SubCurve::new(&b_seg, &b_extrema), 1.0, &mut intersects);
