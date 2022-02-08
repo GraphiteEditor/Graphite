@@ -49,7 +49,9 @@ impl SelectedEdges {
 	}
 
 	/// Computes the new bounds with the given mouse move and modifier keys
-	pub fn new_size(&self, mouse: DVec2, centre: bool, constrain: bool) -> [DVec2; 2] {
+	pub fn new_size(&self, mouse: DVec2, transform: DAffine2, centre: bool, constrain: bool) -> [DVec2; 2] {
+		let mouse = transform.inverse().transform_point2(mouse);
+
 		let mut min = self.bounds[0];
 		let mut max = self.bounds[1];
 		if self.top {
@@ -163,8 +165,8 @@ fn add_transform_handles(responses: &mut Vec<Message>) -> [Vec<LayerId>; 8] {
 	transform_handle_paths
 }
 
-pub fn transform_from_box(pos1: DVec2, pos2: DVec2) -> [f64; 6] {
-	DAffine2::from_scale_angle_translation((pos2 - pos1).round(), 0., pos1.round() - DVec2::splat(0.5)).to_cols_array()
+pub fn transform_from_box(pos1: DVec2, pos2: DVec2) -> DAffine2 {
+	DAffine2::from_scale_angle_translation((pos2 - pos1).round(), 0., pos1.round() - DVec2::splat(0.5))
 }
 
 /// Contains info on the overlays for the bounding box and transform handles
@@ -173,6 +175,7 @@ pub struct BoundingBoxOverlays {
 	pub bounding_box: Vec<LayerId>,
 	pub transform_handles: [Vec<LayerId>; 8],
 	pub bounds: [DVec2; 2],
+	pub transform: DAffine2,
 	pub selected_edges: Option<SelectedEdges>,
 	pub original_transforms: OriginalTransforms,
 	pub pivot: DVec2,
@@ -190,7 +193,7 @@ impl BoundingBoxOverlays {
 
 	/// Update the position of the bounding box and transform handles
 	pub fn transform(&mut self, buffer: &mut Vec<Message>) {
-		let transform = transform_from_box(self.bounds[0], self.bounds[1]);
+		let transform = (self.transform * transform_from_box(self.bounds[0], self.bounds[1])).to_cols_array();
 		let path = self.bounding_box.clone();
 		buffer.push(DocumentMessage::Overlays(Operation::SetLayerTransformInViewport { path, transform }.into()).into());
 
@@ -211,18 +214,21 @@ impl BoundingBoxOverlays {
 
 	/// Check if the user has selected the edge for dragging (returns which edge in order top, bottom, left, right)
 	pub fn check_selected_edges(&self, cursor: DVec2) -> Option<(bool, bool, bool, bool)> {
+		let cursor = self.transform.inverse().transform_point2(cursor);
+		let select_threshold = self.transform.inverse().transform_vector2(DVec2::new(0., BOUNDS_SELECT_THRESHOLD)).length();
+
 		let min = self.bounds[0].min(self.bounds[1]);
 		let max = self.bounds[0].max(self.bounds[1]);
-		if min.x - cursor.x < BOUNDS_SELECT_THRESHOLD && min.y - cursor.y < BOUNDS_SELECT_THRESHOLD && cursor.x - max.x < BOUNDS_SELECT_THRESHOLD && cursor.y - max.y < BOUNDS_SELECT_THRESHOLD {
-			let mut top = (cursor.y - min.y).abs() < BOUNDS_SELECT_THRESHOLD;
-			let mut bottom = (max.y - cursor.y).abs() < BOUNDS_SELECT_THRESHOLD;
-			let mut left = (cursor.x - min.x).abs() < BOUNDS_SELECT_THRESHOLD;
-			let mut right = (max.x - cursor.x).abs() < BOUNDS_SELECT_THRESHOLD;
-			if cursor.y - min.y + max.y - cursor.y < BOUNDS_SELECT_THRESHOLD * 2. && (left || right) {
+		if min.x - cursor.x < select_threshold && min.y - cursor.y < select_threshold && cursor.x - max.x < select_threshold && cursor.y - max.y < select_threshold {
+			let mut top = (cursor.y - min.y).abs() < select_threshold;
+			let mut bottom = (max.y - cursor.y).abs() < select_threshold;
+			let mut left = (cursor.x - min.x).abs() < select_threshold;
+			let mut right = (max.x - cursor.x).abs() < select_threshold;
+			if cursor.y - min.y + max.y - cursor.y < select_threshold * 2. && (left || right) {
 				top = false;
 				bottom = false;
 			}
-			if cursor.x - min.x + max.x - cursor.x < BOUNDS_SELECT_THRESHOLD * 2. && (top || bottom) {
+			if cursor.x - min.x + max.x - cursor.x < select_threshold * 2. && (top || bottom) {
 				left = false;
 				right = false;
 			}
@@ -237,12 +243,14 @@ impl BoundingBoxOverlays {
 
 	/// Check if the user is rotating with the bounds
 	pub fn check_rotate(&self, cursor: DVec2) -> bool {
+		let cursor = self.transform.inverse().transform_point2(cursor);
+		let rotate_threshold = self.transform.inverse().transform_vector2(DVec2::new(0., BOUNDS_ROTATE_THRESHOLD)).length();
+
 		let min = self.bounds[0].min(self.bounds[1]);
 		let max = self.bounds[0].max(self.bounds[1]);
 
 		let outside_bounds = (min.x > cursor.x || cursor.x > max.x) || (min.y > cursor.y || cursor.y > max.y);
-		let inside_extended_bounds =
-			min.x - cursor.x < BOUNDS_ROTATE_THRESHOLD && min.y - cursor.y < BOUNDS_ROTATE_THRESHOLD && cursor.x - max.x < BOUNDS_ROTATE_THRESHOLD && cursor.y - max.y < BOUNDS_ROTATE_THRESHOLD;
+		let inside_extended_bounds = min.x - cursor.x < rotate_threshold && min.y - cursor.y < rotate_threshold && cursor.x - max.x < rotate_threshold && cursor.y - max.y < rotate_threshold;
 
 		outside_bounds & inside_extended_bounds
 	}

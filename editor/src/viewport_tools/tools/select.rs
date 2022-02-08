@@ -332,6 +332,8 @@ impl Fsm for SelectToolFsmState {
 							let mut bounding_box_overlays = paths.unwrap_or_else(|| BoundingBoxOverlays::new(&mut buffer));
 
 							bounding_box_overlays.bounds = bounds;
+							bounding_box_overlays.transform = DAffine2::IDENTITY;
+
 							bounding_box_overlays.transform(&mut buffer);
 
 							data.bounding_box_overlays = Some(bounding_box_overlays);
@@ -486,7 +488,7 @@ impl Fsm for SelectToolFsmState {
 
 							let snapped_mouse_position = data.snap_handler.snap_position(responses, input.viewport_bounds.size(), document, mouse_position);
 
-							let [min, size] = movement.new_size(snapped_mouse_position, centre, axis_align);
+							let [min, size] = movement.new_size(snapped_mouse_position, bounds.transform, centre, axis_align);
 							let delta = movement.bounds_to_scale_transform(centre, min, size);
 
 							let selected = data.layers_dragging.iter().collect::<Vec<_>>();
@@ -530,7 +532,7 @@ impl Fsm for SelectToolFsmState {
 						DocumentMessage::Overlays(
 							Operation::SetLayerTransformInViewport {
 								path: data.drag_box_overlay_layer.clone().unwrap(),
-								transform: transform_from_box(data.drag_start, data.drag_current),
+								transform: transform_from_box(data.drag_start, data.drag_current).to_cols_array(),
 							}
 							.into(),
 						)

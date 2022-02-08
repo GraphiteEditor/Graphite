@@ -138,8 +138,8 @@ impl DocumentMessageHandler {
 		self.graphene_document.combined_viewport_bounding_box(paths)
 	}
 
-	pub fn artboard_bounding_box(&self, path: &[LayerId]) -> Option<[DVec2; 2]> {
-		self.artboard_message_handler.artboards_graphene_document.viewport_bounding_box(path).unwrap_or(None)
+	pub fn artboard_bounding_box_and_transform(&self, path: &[LayerId]) -> Option<([DVec2; 2], DAffine2)> {
+		self.artboard_message_handler.artboards_graphene_document.bounding_box_and_transform(path).unwrap_or(None)
 	}
 
 	// TODO: Consider moving this to some kind of overlays manager in the future

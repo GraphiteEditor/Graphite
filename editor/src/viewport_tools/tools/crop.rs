@@ -106,14 +106,16 @@ impl Fsm for CropToolFsmState {
 				(CropToolFsmState::Ready | CropToolFsmState::ResizingBounds, CropMessage::DocumentIsDirty) => {
 					let mut buffer = Vec::new();
 					match (
-						data.selected_board.as_ref().map(|path| document.artboard_bounding_box(&path)).unwrap_or(None),
+						data.selected_board.as_ref().map(|path| document.artboard_bounding_box_and_transform(&path)).unwrap_or(None),
 						data.bounding_box_overlays.take(),
 					) {
 						(None, Some(bounding_box_overlays)) => bounding_box_overlays.delete(&mut buffer),
-						(Some(bounds), paths) => {
+						(Some((bounds, transform)), paths) => {
 							let mut bounding_box_overlays = paths.unwrap_or_else(|| BoundingBoxOverlays::new(&mut buffer));
 
 							bounding_box_overlays.bounds = bounds;
+							bounding_box_overlays.transform = transform;
+
 							bounding_box_overlays.transform(&mut buffer);
 
 							data.bounding_box_overlays = Some(bounding_box_overlays);
@@ -186,16 +188,13 @@ impl Fsm for CropToolFsmState {
 
 							let snapped_mouse_position = data.snap_handler.snap_position(responses, input.viewport_bounds.size(), document, mouse_position);
 
-							let [position, size] = movement.new_size(snapped_mouse_position, centre, axis_align);
+							let [position, size] = movement.new_size(snapped_mouse_position, bounds.transform, centre, axis_align);
 							let position = movement.centre_position(position, size, centre);
-
-							let root_transform = document.graphene_document.root.transform.inverse();
-							let [bounds1, size] = [root_transform.transform_point2(position), root_transform.transform_vector2(size)];
 
 							responses.push_back(
 								ArtboardMessage::ResizeArtboard {
 									artboard: data.selected_board.clone().unwrap(),
-									position: bounds1.into(),
+									position: position.into(),
 									size: size.into(),
 								}
 								.into(),
