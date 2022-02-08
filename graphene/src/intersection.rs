@@ -1,8 +1,8 @@
-use std::ops::Mul;
-
 use crate::consts::{CURVE_FIDELITY, F64PRECISION};
+
 use glam::{DAffine2, DMat2, DVec2};
 use kurbo::{BezPath, CubicBez, Line, ParamCurve, ParamCurveExtrema, PathSeg, Point, QuadBez, Rect, Shape};
+use std::ops::Mul;
 
 #[derive(Debug, Clone, Default, Copy)]
 pub struct Quad([DVec2; 4]);
@@ -81,8 +81,8 @@ pub fn get_arbitrary_point_on_path(path: &BezPath) -> Option<Point> {
 /// Bezier Curve Intersection algorithm
 /// \/                               \/
 
-/// each intersection has two curves, which are distinguished between using this enum
-/// TODO: refactor so actual curve data and Origin aren't separate
+/// Each intersection has two curves. This enum helps distinguished between the two.
+// TODO: refactor so actual curve data and Origin aren't separate
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum Origin {
 	Alpha,
@@ -99,42 +99,42 @@ impl std::ops::Not for Origin {
 	}
 }
 
-///TODO: remove quality from Intersect
 #[derive(Debug, PartialEq)]
 pub struct Intersect {
 	pub point: Point,
 	pub t_a: f64,
 	pub t_b: f64,
-	pub a_seg_idx: i32,
-	pub b_seg_idx: i32,
+	pub a_seg_index: i32,
+	pub b_seg_index: i32,
+	// TODO: remove the `quality` field
 	pub quality: f64,
 }
 
 impl Intersect {
-	pub fn new(point: Point, t_a: f64, t_b: f64, a_seg_idx: i32, b_seg_idx: i32) -> Self {
+	pub fn new(point: Point, t_a: f64, t_b: f64, a_seg_index: i32, b_seg_index: i32) -> Self {
 		Intersect {
 			point,
 			t_a,
 			t_b,
-			a_seg_idx,
-			b_seg_idx,
+			a_seg_index,
+			b_seg_index,
 			quality: -1.0,
 		}
 	}
 
-	pub fn add_idx(&mut self, a_idx: i32, b_idx: i32) {
-		self.a_seg_idx = a_idx;
-		self.b_seg_idx = b_idx;
+	pub fn add_index(&mut self, a_index: i32, b_index: i32) {
+		self.a_seg_index = a_index;
+		self.b_seg_index = b_index;
 	}
 
-	pub fn seg_idx(&self, o: Origin) -> i32 {
+	pub fn segment_index(&self, o: Origin) -> i32 {
 		match o {
-			Origin::Alpha => self.a_seg_idx,
-			Origin::Beta => self.b_seg_idx,
+			Origin::Alpha => self.a_seg_index,
+			Origin::Beta => self.b_seg_index,
 		}
 	}
 
-	pub fn t_val(&self, o: Origin) -> f64 {
+	pub fn t_value(&self, o: Origin) -> f64 {
 		match o {
 			Origin::Alpha => self.t_a,
 			Origin::Beta => self.t_b,
@@ -148,8 +148,8 @@ impl From<(Point, f64, f64)> for Intersect {
 			point: place_time.0,
 			t_a: place_time.1,
 			t_b: place_time.2,
-			a_seg_idx: 0,
-			b_seg_idx: 0,
+			a_seg_index: 0,
+			b_seg_index: 0,
 			quality: 0.0,
 		}
 	}
@@ -164,6 +164,7 @@ struct SubCurve<'a> {
 }
 
 impl<'a> SubCurve<'a> {
+	// TODO: Fix this Clippy lint error
 	pub fn new(parent: &'a PathSeg, extrema: &'a Vec<(Point, f64)>) -> Self {
 		SubCurve {
 			curve: parent,
@@ -209,7 +210,7 @@ impl<'a> SubCurve<'a> {
 		(self.start_t - self.end_t).abs()
 	}
 
-	/// split subcurve at t, as though the subcurve is a bezier curve, where t is a value between 0.0 and 1.0
+	/// Split subcurve at `t`, as though the subcurve is a bezier curve, where `t` is a value between `0.0` and `1.0`.
 	fn split(&self, t: f64) -> (SubCurve, SubCurve) {
 		let split_t = self.start_t + t * (self.end_t - self.start_t);
 		(
@@ -239,18 +240,17 @@ impl<'a> SubCurve<'a> {
 	}
 }
 
-// TODO use the cool algorithm described in the paper below
-// * https://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.99.9678&rep=rep1&type=pdf
-// - Bezier Curve Intersection Algorithm
-// - TODO: How does f64 precision effect the algorithm?
-// - TODO: profile algorithm
-// - Bug: intersections of "perfectly aligned" line or curve
-// - If the algorithm is rewritten to be non-recursive it can be restructured to be more breadth first then depth first
-// - - test for overlapping curves by splitting the curves
-// - Behavior: deep recursion could result in stack overflow
-// - Improvement: intersections on the end of segments
-// - Improvement: more adaptive way to decide when "close enough"
-// - Optimization: any extra copying happening?
+// TODO: use the cool algorithm described in: https://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.99.9678&rep=rep1&type=pdf
+// Bezier Curve Intersection Algorithm
+// TODO: how does f64 precision affect the algorithm?
+// TODO: profile algorithm
+// Bug: intersections of "perfectly aligned" line or curve
+// If the algorithm is rewritten to be non-recursive it can be restructured to be more breadth first then depth first
+// Test for overlapping curves by splitting the curves
+// Behavior: deep recursion could result in stack overflow
+// Improvement: intersections on the end of segments
+// Improvement: more adaptive way to decide when "close enough"
+// Optimization: any extra copying happening?
 
 fn path_intersections(a: &SubCurve, b: &SubCurve, mut recursion: f64, intersections: &mut Vec<Intersect>) {
 	if overlap(&a.bounding_box(), &b.bounding_box()) {
@@ -262,10 +262,10 @@ fn path_intersections(a: &SubCurve, b: &SubCurve, mut recursion: f64, intersecti
 			line_curve_intersections(line, a.curve, false, |a, b| valid_t(a) && valid_t(b), intersections);
 			return;
 		}
-		// we are close enough to try linear approximation
+		// We are close enough to try linear approximation
 		if recursion < (1 << 10) as f64 {
 			if let Some(mut cross) = line_intersection(&Line { p0: a.start(), p1: a.end() }, &Line { p0: b.start(), p1: b.end() }) {
-				// intersection t_value equals the recursive t_value + interpolated intersection value
+				// Intersection `t_value` equals the recursive `t_value` + interpolated intersection value
 				cross.t_a = a.start_t + cross.t_a * recursion;
 				cross.t_b = b.start_t + cross.t_b * recursion;
 				cross.quality = guess_quality(a.curve, b.curve, &cross);
@@ -275,7 +275,7 @@ fn path_intersections(a: &SubCurve, b: &SubCurve, mut recursion: f64, intersecti
 					intersections.push(cross);
 					return;
 				}
-				// Eventually the points in the curve become to close together to split the curve meaningfully
+				// Eventually the points in the curve become too close together to split the curve meaningfully
 				// Also provides a base case and prevents infinite recursion
 				if a.available_precision() <= F64PRECISION || b.available_precision() <= F64PRECISION {
 					log::debug!("precision reached");
@@ -285,7 +285,7 @@ fn path_intersections(a: &SubCurve, b: &SubCurve, mut recursion: f64, intersecti
 			}
 
 			// Alternate base case
-			// Note: may occur for the less forgiving side of an PathSeg endpoint intersect
+			// Note: may occur for the less forgiving side of a `PathSeg` endpoint intersect
 			if a.available_precision() <= F64PRECISION || b.available_precision() <= F64PRECISION {
 				log::debug!("precision reached without finding intersect");
 				return;
@@ -312,11 +312,11 @@ where
 			}
 		}
 	} else {
-		// forced to construct a vec here because match arms must return same type, and E0716
+		// Forced to construct a `Vec` here because match arms must return same type, and E0716
 		let roots = match curve {
 			PathSeg::Quad(quad) => Vec::from(quad_line_intersect(line, quad)),
 			PathSeg::Cubic(cubic) => Vec::from(cubic_line_intersect(line, cubic)),
-			_ => vec![], //should never occur
+			_ => vec![], // Should never occur
 		};
 		intersections.extend(
 			roots
@@ -326,7 +326,7 @@ where
 						let point = match curve {
 							PathSeg::Cubic(cubic) => cubic.eval(*time),
 							PathSeg::Quad(quad) => quad.eval(*time),
-							_ => Point::new(0.0, 0.0), //should never occur
+							_ => Point::new(0.0, 0.0), // Should never occur
 						};
 						let line_time = line_t_value(line, &point);
 						if !t_validate(line_time, *time) {
@@ -346,8 +346,8 @@ where
 	}
 }
 
-/// Optimization: inline? maybe...
-/// For quality Q in the worst case, the point on curve "a" corresponding to "guess" is distance Q from the point on curve "b"
+/// For quality Q in the worst case, the point on curve `a` corresponding to `guess` is distance Q from the point on curve `b`.
+// TODO: Optimization: inline? maybe...
 fn guess_quality(a: &PathSeg, b: &PathSeg, guess: &Intersect) -> f64 {
 	let at_a = b.eval(guess.t_b);
 	let at_b = a.eval(guess.t_a);
@@ -355,21 +355,20 @@ fn guess_quality(a: &PathSeg, b: &PathSeg, guess: &Intersect) -> f64 {
 }
 
 pub fn intersections(a: &BezPath, b: &BezPath) -> Vec<Intersect> {
-	// print out paths for testing
 	// log::info!("{:?}", a.to_svg());
 	// log::info!("{:?}", b.to_svg());
 
 	let mut intersections: Vec<Intersect> = Vec::new();
-	// there is some duplicate computation of b_extrema here, but I doubt it's significant
-	a.segments().enumerate().for_each(|(a_idx, a_seg)| {
-		// extrema at endpoints should not be included here as they must be calculated for each subcurve
+	// There is some duplicate computation of b_extrema here, but I doubt it's significant
+	a.segments().enumerate().for_each(|(a_index, a_seg)| {
+		// Extrema at endpoints should not be included here as they must be calculated for each subcurve
 		// Note: below filtering may filter out extrema near the endpoints
 		let a_extrema = a_seg
 			.extrema()
 			.iter()
 			.filter_map(|t| if *t > F64PRECISION && *t < 1.0 - F64PRECISION { Some((a_seg.eval(*t), *t)) } else { None })
 			.collect();
-		b.segments().enumerate().for_each(|(b_idx, b_seg)| {
+		b.segments().enumerate().for_each(|(b_index, b_seg)| {
 			let b_extrema = b_seg
 				.extrema()
 				.iter()
@@ -379,25 +378,24 @@ pub fn intersections(a: &BezPath, b: &BezPath) -> Vec<Intersect> {
 			path_intersections(&SubCurve::new(&a_seg, &a_extrema), &SubCurve::new(&b_seg, &b_extrema), 1.0, &mut intersects);
 			for mut path_intersection in intersects {
 				intersections.push({
-					path_intersection.add_idx(a_idx.try_into().unwrap(), b_idx.try_into().unwrap());
+					path_intersection.add_index(a_index.try_into().unwrap(), b_index.try_into().unwrap());
 					path_intersection
 				});
 			}
 		})
 	});
 
-	// print out result for testing
 	// log::info!("{:?}", intersections);
 
 	intersections
 }
 
-/// returns intersection point as if lines extended forever
+/// Returns the intersection point as if lines extended forever.
 pub fn line_intersect_point(a: &Line, b: &Line) -> Option<Point> {
 	line_intersection_unchecked(a, b).map(|intersect| intersect.point)
 }
 
-/// returns intersection point and t values, treating lines as Bezier curves
+/// Returns intersection point and `t` values, treating lines as Bezier curves.
 pub fn line_intersection(a: &Line, b: &Line) -> Option<Intersect> {
 	if let Some(intersect) = line_intersection_unchecked(a, b) {
 		if valid_t(intersect.t_a) && valid_t(intersect.t_b) {
@@ -410,7 +408,7 @@ pub fn line_intersection(a: &Line, b: &Line) -> Option<Intersect> {
 	}
 }
 
-/// returns intersection point and t values, treating lines as rays
+/// Returns intersection point and `t` values, treating lines as rays.
 pub fn line_intersection_unchecked(a: &Line, b: &Line) -> Option<Intersect> {
 	let slopes = DMat2::from_cols_array(&[(b.p1 - b.p0).x, (b.p1 - b.p0).y, (a.p0 - a.p1).x, (a.p0 - a.p1).y]);
 	if slopes.determinant() == 0.0 {
@@ -440,6 +438,7 @@ pub fn cubic_line_intersect(a: &Line, b: &CubicBez) -> [Option<f64>; 3] {
 	let c1 = -3.0 * bp0 + 3.0 * bp1;
 	let c2 = 3.0 * bp0 - 6.0 * bp1 + 3.0 * bp2;
 	let c3 = -1.0 * bp0 + 3.0 * bp1 - 3.0 * bp2 + bp3;
+
 	cubic_real_roots(
 		-a.p0.y * l_y + a.p0.x * l_x - l_x * c0.x + l_y * c0.y,
 		l_y * c1.y - l_x * c1.x,
@@ -457,33 +456,40 @@ pub fn quad_line_intersect(a: &Line, b: &QuadBez) -> [Option<f64>; 2] {
 	let c0 = bp0;
 	let c1 = -2.0 * bp0 + 2.0 * bp1;
 	let c2 = bp0 - 2.0 * bp1 + bp2;
+
 	quadratic_real_roots(-a.p0.y * l_y + a.p0.x * l_x - l_x * c0.x + l_y * c0.y, l_y * c1.y - l_x * c1.x, l_y * c2.y - l_x * c2.x)
 }
 
-/// return real roots to cubic equation: f(t) = a0 + t*a1 + t^2*a2 + t^3*a3
-/// this function uses the Cardano-Viete and Numerical Recipes algorithm, found here: https://quarticequations.com/Cubic.pdf
+/// Returns real roots to cubic equation: `f(t) = a0 + t*a1 + t^2*a2 + t^3*a3`.
+/// This function uses the Cardano-Viete and Numerical Recipes algorithm, found here: https://quarticequations.com/Cubic.pdf
 pub fn cubic_real_roots(mut a0: f64, mut a1: f64, mut a2: f64, a3: f64) -> [Option<f64>; 3] {
 	use std::f64::consts::FRAC_PI_3 as PI_3;
+
 	a0 /= a3;
 	a1 /= a3;
 	a2 /= a3;
+
 	let q: f64 = a1 / 3.0 - a2 * a2 / 9.0;
 	let r: f64 = (a1 * a2 - 3.0 * a0) / 6.0 - a2 * a2 * a2 / 27.0;
+
 	let r2_q3 = r * r + q * q * q;
 	if r2_q3 > 0.0 {
-		#[allow(non_snake_case)] // allow name 'A' for consistency with algorithm
+		#[allow(non_snake_case)] // Allow name `A` for consistency with algorithm
 		let A = (r.abs() + r2_q3.sqrt()).cbrt();
+
 		let t1 = match r {
 			r if r >= 0.0 => A - q / A,
 			r if r < 0.0 => q / A - A,
-			_ => 0.0, // should never occur
+			_ => 0.0, // Should never occur
 		};
+
 		[Some(t1 - a2 / 3.0), None, None]
 	} else {
 		let phi = match q > -F64PRECISION && q < F64PRECISION {
 			true => 0.0,
 			false => (r / (-q).powf(3.0 / 2.0)).acos() / 3.0,
 		};
+
 		[
 			Some(2.0 * (-q).sqrt() * (phi).cos() - a2 / 3.0),
 			Some(2.0 * (-q).sqrt() * (phi + 2.0 * PI_3).cos() - a2 / 3.0),
@@ -492,7 +498,7 @@ pub fn cubic_real_roots(mut a0: f64, mut a1: f64, mut a2: f64, a3: f64) -> [Opti
 	}
 }
 
-/// return real roots to quadratic equation: f(t) = a0 + t*a1 + t^2*a2
+/// Returns real roots to quadratic equation: `f(t) = a0 + t*a1 + t^2*a2`.
 pub fn quadratic_real_roots(a0: f64, a1: f64, a2: f64) -> [Option<f64>; 2] {
 	let radicand = a1 * a1 - 4.0 * a2 * a0;
 	if radicand < 0.0 {
@@ -501,7 +507,7 @@ pub fn quadratic_real_roots(a0: f64, a1: f64, a2: f64) -> [Option<f64>; 2] {
 	[Some((-a1 + radicand.sqrt()) / (2.0 * a2)), Some((-a1 - radicand.sqrt()) / (2.0 * a2))]
 }
 
-// return root to linear equation: f(t) = a0 + t*a1
+// Returns root to linear equation: `f(t) = a0 + t*a1`.
 pub fn linear_root(a0: f64, a1: f64) -> [Option<f64>; 1] {
 	if a1 == 0.0 {
 		return [None];
@@ -509,25 +515,25 @@ pub fn linear_root(a0: f64, a1: f64) -> [Option<f64>; 1] {
 	[Some(-a0 / a1)]
 }
 
-/// returns true if rectangles overlap, even if either rectangle has 0 area
-/// uses kurbo::Rect{x0, y0, x1, y1} where x0 <= x1 and y0 <= y1
+/// Returns `true` if rectangles overlap, even if either rectangle has 0 area.
+/// Uses `kurbo::Rect{x0, y0, x1, y1}` where `x0 <= x1` and `y0 <= y1`.
 pub fn overlap(a: &Rect, b: &Rect) -> bool {
 	a.x0 <= b.x1 && a.y0 <= b.y1 && b.x0 <= a.x1 && b.y0 <= a.y1
 }
 
-/// tests if a t value belongs to [0.0, 1.0)
-/// uses F64PRECISION to allow a slightly larger range of values
+/// Tests if a `t` value belongs to `[0.0, 1.0)`.
+/// Uses F64PRECISION to allow a slightly larger range of values.
 pub fn valid_t(t: f64) -> bool {
 	t > -F64PRECISION && t < 1.0
 }
 
-/// each of these tests has been visually, but not mathematically verified
-/// These tests are all ignored because each test looks for exact floating point comparisons, so isn't flexible to small adjustments in the algorithm
+/// Each of these tests has been visually, but not mathematically verified.
+/// These tests are all ignored because each test looks for exact floating point comparisons, so isn't flexible to small adjustments in the algorithm.
 mod tests {
-	#[allow(unused_imports)] // this import is used
+	#[allow(unused_imports)] // This import is used
 	use super::*;
 
-	/// two intersect points, on different PathSegs
+	/// Two intersect points, on different `PathSegs`.
 	#[ignore]
 	#[test]
 	fn curve_intersection_basic() {
@@ -539,16 +545,16 @@ mod tests {
 				point: Point::new(-676.7999877929688, 0.8222196224152754),
 				t_a: 0.6631053797745545,
 				t_b: 0.3956043956043956,
-				a_seg_idx: 1,
-				b_seg_idx: 2,
+				a_seg_index: 1,
+				b_seg_index: 2,
 				quality: 0.0,
 			},
 			Intersect {
 				point: Point::new(-694.7999877929688, 27.10000000000003),
 				t_a: 0.2857142857142857,
 				t_b: 0.6313327906904278,
-				a_seg_idx: 2,
-				b_seg_idx: 1,
+				a_seg_index: 2,
+				b_seg_index: 1,
 				quality: 0.0,
 			},
 		];
@@ -564,16 +570,16 @@ mod tests {
 				point: Point::new(-770.4753350264828, -510.09456728384305),
 				t_a: 0.5368149286026136,
 				t_b: 0.005039955230097687,
-				a_seg_idx: 1,
-				b_seg_idx: 3,
+				a_seg_index: 1,
+				b_seg_index: 3,
 				quality: 0.0,
 			},
 			Intersect {
 				point: Point::new(-727.3175070060661, -608.5433117814998),
 				t_a: 0.9731908875121124,
 				t_b: 0.45548363569548905,
-				a_seg_idx: 2,
-				b_seg_idx: 1,
+				a_seg_index: 2,
+				b_seg_index: 1,
 				quality: 0.0,
 			},
 		];
@@ -590,16 +596,16 @@ mod tests {
 				point: Point::new(-502.81748678026577, -999.757857413672),
 				t_a: 0.24324324324304233,
 				t_b: 0.33091616223235865,
-				a_seg_idx: 2,
-				b_seg_idx: 1,
+				a_seg_index: 2,
+				b_seg_index: 1,
 				quality: 0.0,
 			},
 			Intersect {
 				point: Point::new(-512.8092221038916, -945.8843391320225),
 				t_a: 0.35764790573087535,
 				t_b: 0.1717096219530834,
-				a_seg_idx: 3,
-				b_seg_idx: 2,
+				a_seg_index: 3,
+				b_seg_index: 2,
 				quality: 0.0,
 			},
 		];
@@ -608,7 +614,7 @@ mod tests {
 		assert!(expected.iter().zip(result.iter()).fold(true, |equal, (a, b)| equal && a == b));
 	}
 
-	/// intersect points at ends of PathSegs
+	/// Intersect points at ends of `PathSegs`.
 	#[ignore]
 	#[test]
 	fn curve_intersection_seg_edges() {
@@ -620,16 +626,16 @@ mod tests {
 				point: Point::new(-449.629331039312, -133.2349088577284),
 				t_a: 0.1383488820074267,
 				t_b: 0.8842879656175459,
-				a_seg_idx: 1,
-				b_seg_idx: 3,
+				a_seg_index: 1,
+				b_seg_index: 3,
 				quality: 0.00000000000002842170943040401,
 			},
 			Intersect {
 				point: Point::new(-355.5702650533912, -209.683276560014),
 				t_a: 0.9606918211578568,
 				t_b: 0.28804943846673475,
-				a_seg_idx: 3,
-				b_seg_idx: 1,
+				a_seg_index: 3,
+				b_seg_index: 1,
 				quality: 0.0,
 			},
 		];
@@ -653,7 +659,7 @@ mod tests {
 		let roots = cubic_real_roots(-1.5, -3.3, 1.6, 1.0);
 		assert_eq!(roots, [Some(1.4330896870185468), Some(-2.636017358627879), Some(-0.3970723283906693)]);
 
-		//TODO 3 real root case
+		// TODO: 3 real root case
 		// for root in roots {
 		// 	if let Some(num) = root {
 		// 		print!("{:.32}", num);

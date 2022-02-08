@@ -13,7 +13,7 @@ pub enum DocumentError {
 	InvalidFile(String),
 }
 
-//TODO: change how BooleanOperationErrors are handled
+// TODO: change how BooleanOperationErrors are handled
 impl From<BooleanOperationError> for DocumentError {
 	fn from(err: BooleanOperationError) -> Self {
 		DocumentError::InvalidFile(format!("{:?}", err))

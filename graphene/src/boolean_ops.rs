@@ -1,8 +1,8 @@
-use crate::{
-	consts::{F64PRECISION, RAY_FUDGE_FACTOR},
-	intersection::{intersections, line_curve_intersections, valid_t, Intersect, Origin},
-	layers::{simple_shape::Shape, style::PathStyle},
-};
+use crate::consts::{F64PRECISION, RAY_FUDGE_FACTOR};
+use crate::intersection::{intersections, line_curve_intersections, valid_t, Intersect, Origin};
+use crate::layers::simple_shape::Shape;
+use crate::layers::style::PathStyle;
+
 use kurbo::{BezPath, CubicBez, Line, ParamCurve, ParamCurveArclen, ParamCurveArea, ParamCurveExtrema, PathEl, PathSeg, Point, QuadBez, Rect};
 use serde::{Deserialize, Serialize};
 use std::fmt::{self, Debug, Formatter};
@@ -21,12 +21,12 @@ pub enum BooleanOperationError {
 	InvalidSelection,
 	InvalidIntersections,
 	NoIntersections,
-	NothingDone, // not necessarily an error
+	NothingDone, // Not necessarily an error
 	DirectionUndefined,
-	Unexpected, // for debugging, when complete nothing should be unexpected
+	Unexpected, // For debugging, when complete nothing should be unexpected
 }
 
-/// A simple and idiomatic way to write short "if Let" statements
+/// A simple and idiomatic way to write short `if let` statements.
 macro_rules! do_if {
 	($option:expr, $name:ident{$todo:expr}) => {
 		if let Some($name) = $option {
@@ -62,39 +62,38 @@ impl Debug for Vertex {
 
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
 enum Direction {
-	CCW,
-	CW,
+	Ccw,
+	Cw,
 }
 
-/// Behavior: Intersection and Union cases are distinguished between by cycle area magnitude
-///   - This only effects shapes whose intersection is a single shape, and the intersection is similarly sized to the union
-///   - can be solved by first computing at low accuracy, and if the values are close recomputing.
+/// Behavior: Intersection and Union cases are distinguished between by cycle area magnitude.
+/// This only affects shapes whose intersection is a single shape, and the intersection is similarly sized to the union.
+/// Can be solved by first computing at low accuracy, and if the values are close recomputing.
 #[derive(Clone)]
 struct Cycle {
 	vertices: Vec<(usize, Origin)>,
-	dir: Option<Direction>,
+	direction: Option<Direction>,
 	area: f64,
 }
 
 impl Cycle {
-	pub fn new(start_vertex_idx: usize, edge_origin: Origin) -> Self {
+	pub fn new(start_vertex_index: usize, edge_origin: Origin) -> Self {
 		Cycle {
-			vertices: vec![(start_vertex_idx, edge_origin)],
-			dir: None,
+			vertices: vec![(start_vertex_index, edge_origin)],
+			direction: None,
 			area: 0.0,
 		}
 	}
 
-	/// returns true when the cycle is complete, a cycle is complete when it revisits its first vertex
-	/// where edge is the edge traversed in order to get to vertex
-	/// for purposes of computing direction this function assumes vertices are traversed in order
+	/// Returns true when the cycle is complete, a cycle is complete when it revisits its first vertex where edge is the edge traversed in order to get to vertex.
+	/// For purposes of computing direction this function assumes vertices are traversed in order
 	fn extend(&mut self, vertex: usize, edge_origin: Origin, edge_curve: &BezPath) -> bool {
 		self.vertices.push((vertex, edge_origin));
 		self.area += path_area(edge_curve);
 		vertex == self.vertices[0].0
 	}
 
-	/// returns number of vertices == number of edges in cycle
+	/// Returns number of vertices == number of edges in cycle.
 	fn len(&self) -> usize {
 		self.vertices.len() - 1
 	}
@@ -116,15 +115,15 @@ impl Cycle {
 	}
 
 	pub fn direction(&mut self) -> Result<Direction, BooleanOperationError> {
-		match self.dir {
+		match self.direction {
 			Some(direction) => Ok(direction),
 			None => {
 				if self.area > 0.0 {
-					self.dir = Some(Direction::CCW);
-					Ok(Direction::CCW)
+					self.direction = Some(Direction::Ccw);
+					Ok(Direction::Ccw)
 				} else if self.area < 0.0 {
-					self.dir = Some(Direction::CW);
-					Ok(Direction::CW)
+					self.direction = Some(Direction::Cw);
+					Ok(Direction::Cw)
 				} else {
 					Err(BooleanOperationError::DirectionUndefined)
 				}
@@ -132,43 +131,41 @@ impl Cycle {
 		}
 	}
 
-	/// - if the path is empty (has no segments) the function Errs
-	/// - if the path crosses itself the computed direction may be (probably will be) wrong, on account of it not really being defined
+	/// If the path is empty (has no segments), the function `Err`s.
+	/// If the path crosses itself, the computed direction may (or probably will) be wrong, on account of it not really being defined.
 	pub fn direction_for_path(path: &BezPath) -> Result<Direction, BooleanOperationError> {
 		let mut area = 0.0;
 		path.segments().for_each(|path_segment| area += path_segment.signed_area());
 		if area > 0.0 {
-			Ok(Direction::CCW)
+			Ok(Direction::Ccw)
 		} else if area < 0.0 {
-			Ok(Direction::CW)
+			Ok(Direction::Cw)
 		} else {
 			Err(BooleanOperationError::DirectionUndefined)
 		}
 	}
 }
 
-/// Optimization: store computed segment bounding boxes, or even edge bounding boxes to prevent recomputation
+/// Optimization: store computed segment bounding boxes, or even edge bounding boxes to prevent recomputation.
 #[derive(Debug)]
 struct PathGraph {
 	vertices: Vec<Vertex>,
 }
 
-/// Boolean Operation Algorithm
-///   - Behavior: Has somewhat (totally?) undefined behavior when shapes have self intersections
-/// PathGraph: represents a directional graph with edges "colored" by Origin
-/// each edge also represents a portion of a visible shape
-/// ! remove this allow @ release
-#[allow(dead_code)]
+/// # Boolean Operation Algorithm
+/// `PathGraph` represents a directional graph with edges "colored" by `Origin`.
+/// Each edge also represents a portion of a visible shape.
+/// Has somewhat (totally?) undefined behavior when shapes have self intersections.
 impl PathGraph {
 	pub fn from_paths(alpha: &BezPath, beta: &BezPath) -> Result<PathGraph, BooleanOperationError> {
-		//TODO: check for closed paths somewhere, maybe here?
+		// TODO: check for closed paths somewhere, maybe here?
 		let mut new = PathGraph {
 			vertices: intersections(alpha, beta).into_iter().map(|i| Vertex { intersect: i, edges: Vec::new() }).collect(),
 		};
-		// we only consider graphs with even numbers of intersections.
-		// An odd number of intersections occurs when either
-		//    1. There exists a tangential intersection (which shouldn't effect boolean operations)
-		//    2. The algorithm has found an extra intersection or missed an intersection
+		// We only consider graphs with even numbers of intersections.
+		// An odd number of intersections occurs when either:
+		// 1. There exists a tangential intersection (which shouldn't affect boolean ops)
+		// 2. The algorithm has found an extra intersection or missed an intersection
 		if new.size() == 0 {
 			return Err(BooleanOperationError::NoIntersections);
 		}
@@ -181,19 +178,20 @@ impl PathGraph {
 		Ok(new)
 	}
 
-	/// NOTE: about intersection time_val order
-	/// *Panics when path is empty
-	/// *Expects path, and all subpaths in path to be closed
+	// TODO: NOTE: about intersection time_val order
+	/// Expects `path` (and all subpaths in `path`) to be closed.
+	/// # Panics
+	/// This function panics when `path` is empty.
 	fn add_edges_from_path(&mut self, path: &BezPath, origin: Origin) {
 		struct AlgorithmState {
-			//current_start holds the idx of the vertex the current edge is starting from
+			//current_start holds the index of the vertex the current edge is starting from
 			current_start: Option<usize>,
 			current: Vec<PathSeg>,
 			// in order to iterate through once, store information for incomplete first edge
 			beginning: Vec<PathSeg>,
-			start_idx: Option<usize>,
-			// seg idx != el_idx
-			seg_idx: i32,
+			start_index: Option<usize>,
+			// seg index != el_index
+			seg_index: i32,
 		}
 
 		impl AlgorithmState {
@@ -202,8 +200,8 @@ impl PathGraph {
 					current_start: None,
 					current: Vec::new(),
 					beginning: Vec::new(),
-					start_idx: None,
-					seg_idx: 0,
+					start_index: None,
+					seg_index: 0,
 				}
 			}
 
@@ -211,24 +209,24 @@ impl PathGraph {
 				self.current_start = None;
 				self.current = Vec::new();
 				self.beginning = Vec::new();
-				self.start_idx = None;
+				self.start_index = None;
 			}
 
 			fn advance_by_seg(&mut self, graph: &mut PathGraph, seg: PathSeg, origin: Origin) {
-				let (vertex_ids, mut t_values) = graph.intersects_in_seg(self.seg_idx, origin);
+				let (vertex_ids, mut t_values) = graph.intersects_in_seg(self.seg_index, origin);
 				if !vertex_ids.is_empty() {
 					let subdivided = subdivide_path_seg(&seg, &mut t_values);
 					for (vertex_id, sub_seg) in vertex_ids.into_iter().zip(subdivided.iter()) {
 						match self.current_start {
-							Some(idx) => {
+							Some(index) => {
 								do_if!(sub_seg, end_of_edge { self.current.push(*end_of_edge)});
-								graph.add_edge(origin, idx, vertex_id, self.current.clone());
+								graph.add_edge(origin, index, vertex_id, self.current.clone());
 								self.current_start = Some(vertex_id);
 								self.current = Vec::new();
 							}
 							None => {
 								self.current_start = Some(vertex_id);
-								self.start_idx = Some(vertex_id);
+								self.start_index = Some(vertex_id);
 								do_if!(sub_seg, end_of_beginning {self.beginning.push(*end_of_beginning)});
 							}
 						}
@@ -240,7 +238,7 @@ impl PathGraph {
 						None => self.beginning.push(seg),
 					}
 				}
-				self.seg_idx += 1;
+				self.seg_index += 1;
 			}
 
 			fn advance_by_closepath(&mut self, graph: &mut PathGraph, initial_point: &mut Point, origin: Origin) {
@@ -259,10 +257,10 @@ impl PathGraph {
 			}
 
 			fn finalize_sub_path(&mut self, graph: &mut PathGraph, origin: Origin) {
-				if let (Some(current_start_), Some(start_idx_)) = (self.current_start, self.start_idx) {
+				if let (Some(current_start_), Some(start_index_)) = (self.current_start, self.start_index) {
 					//complete the current path
 					self.current.append(&mut self.beginning);
-					graph.add_edge(origin, current_start_, start_idx_, self.current.clone());
+					graph.add_edge(origin, current_start_, start_index_, self.current.clone());
 				} else {
 					//path has a subpath with no intersects
 					//create a dummy vertex with single edge which will be identified as cycle
@@ -276,7 +274,7 @@ impl PathGraph {
 
 		let mut initial_point = Point::new(0.0, 0.0);
 
-		for (el_idx, el) in path.iter().enumerate() {
+		for (el_index, el) in path.iter().enumerate() {
 			match el {
 				PathEl::MoveTo(p) => initial_point = p,
 				PathEl::ClosePath => {
@@ -287,7 +285,7 @@ impl PathGraph {
 					algorithm_state.reset();
 				}
 				_ => {
-					algorithm_state.advance_by_seg(self, path.get_seg(el_idx).unwrap(), origin);
+					algorithm_state.advance_by_seg(self, path.get_seg(el_index).unwrap(), origin);
 				}
 			}
 		}
@@ -307,47 +305,46 @@ impl PathGraph {
 		self.vertices[vertex].edges.push(new_edge);
 	}
 
-	/// returns the Vertex idx and intersect t-value for all intersects in segment identified by seg_idx from origin
+	/// Returns the `Vertex` index and intersect `t_value` for all intersects in the segment identified by `seg_index` from `origin`.
 	/// sorts both lists for ascending t_value
-	fn intersects_in_seg(&self, seg_idx: i32, origin: Origin) -> (Vec<usize>, Vec<f64>) {
-		let mut vertex_idx = Vec::new();
+	fn intersects_in_seg(&self, seg_index: i32, origin: Origin) -> (Vec<usize>, Vec<f64>) {
+		let mut vertex_index = Vec::new();
 		let mut t_values = Vec::new();
-		for (v_idx, vertex) in self.vertices.iter().enumerate() {
-			if vertex.intersect.seg_idx(origin) == seg_idx {
-				let next_t = vertex.intersect.t_val(origin);
-				let insert_idx = match t_values.binary_search_by(|val: &f64| (*val).partial_cmp(&next_t).unwrap_or(std::cmp::Ordering::Less)) {
+		for (v_index, vertex) in self.vertices.iter().enumerate() {
+			if vertex.intersect.segment_index(origin) == seg_index {
+				let next_t = vertex.intersect.t_value(origin);
+				let insert_index = match t_values.binary_search_by(|val: &f64| (*val).partial_cmp(&next_t).unwrap_or(std::cmp::Ordering::Less)) {
 					Ok(val) | Err(val) => val,
 				};
-				t_values.insert(insert_idx, next_t);
-				vertex_idx.insert(insert_idx, v_idx)
+				t_values.insert(insert_index, next_t);
+				vertex_index.insert(insert_index, v_index)
 			}
 		}
-		(vertex_idx, t_values)
+		(vertex_index, t_values)
 	}
 
-	// return number of vertices in graph, this is equivalent to the number of intersections
+	// Returns the number of vertices in the graph. This is equivalent to the number of intersections.
 	pub fn size(&self) -> usize {
 		self.vertices.len()
 	}
 
-	pub fn vertex(&self, idx: usize) -> &Vertex {
-		&self.vertices[idx]
+	pub fn vertex(&self, index: usize) -> &Vertex {
+		&self.vertices[index]
 	}
 
-	/// a properly constructed PathGraph has no duplicate edges of the same Origin
+	/// A properly constructed `PathGraph` has no duplicate edges of the same `Origin`.
 	pub fn edge(&self, from: usize, to: usize, origin: Origin) -> Option<&Edge> {
-		// with a data structure restructure, or a hashmap, the find here could be avoided
-		// but it probably has a minimal performance impact
+		// With a data structure restructure, or a hashmap, the `find()` here could be avoided, but it probably has a minimal performance impact
 		self.vertex(from).edges.iter().find(|edge| edge.destination == to && edge.from == origin)
 	}
 
-	/// return reference to intersect associated with the vertex at idx
-	pub fn intersect(&self, idx: usize) -> &Intersect {
-		&self.vertices[idx].intersect
+	/// Return reference to intersect associated with the vertex at index.
+	pub fn intersect(&self, index: usize) -> &Intersect {
+		&self.vertices[index].intersect
 	}
 
-	/// where a valid cycle alternates edge Origin
-	/// Single edge/Single vertex 'dummy' cycles are also valid
+	/// Where a valid cycle alternates edge `Origin`.
+	/// Single edge/single vertex "dummy" cycles are also valid.
 	fn get_cycle(&self, cycle: &mut Cycle, marker_map: &mut Vec<u8>) {
 		if cycle.prev_edge_origin() == Origin::Alpha {
 			marker_map[cycle.prev_vertex()] |= 1;
@@ -366,16 +363,16 @@ impl PathGraph {
 		let mut markers = Vec::new();
 		markers.resize(self.size(), 0);
 
-		self.vertices.iter().enumerate().for_each(|(vertex_idx, _vertex)| {
-			if (markers[vertex_idx] & 1) == 0 {
-				let mut temp = Cycle::new(vertex_idx, Origin::Alpha);
+		self.vertices.iter().enumerate().for_each(|(vertex_index, _vertex)| {
+			if (markers[vertex_index] & 1) == 0 {
+				let mut temp = Cycle::new(vertex_index, Origin::Alpha);
 				self.get_cycle(&mut temp, &mut markers);
 				if temp.len() > 0 {
 					cycles.push(temp);
 				}
 			}
-			if (markers[vertex_idx] & 2) == 0 {
-				let mut temp = Cycle::new(vertex_idx, Origin::Beta);
+			if (markers[vertex_index] & 2) == 0 {
+				let mut temp = Cycle::new(vertex_index, Origin::Beta);
 				self.get_cycle(&mut temp, &mut markers);
 				if temp.len() > 0 {
 					cycles.push(temp);
@@ -388,19 +385,19 @@ impl PathGraph {
 	pub fn get_shape(&self, cycle: &Cycle, style: &PathStyle) -> Shape {
 		let mut curve = Vec::new();
 		let vertices = cycle.vertices();
-		for idx in 1..vertices.len() {
-			// we expect the cycle to be valid, this should not panic
-			concat_paths(&mut curve, &self.edge(vertices[idx - 1].0, vertices[idx].0, vertices[idx].1).unwrap().curve);
+		for index in 1..vertices.len() {
+			// We expect the cycle to be valid so this should not panic
+			concat_paths(&mut curve, &self.edge(vertices[index - 1].0, vertices[index].0, vertices[index].1).unwrap().curve);
 		}
 		curve.push(PathEl::ClosePath);
 		Shape::from_bez_path(BezPath::from_vec(curve), *style, false)
 	}
 }
 
-/// if t is on (0, 1), returns the split curve
-/// if t is outside [0, 1], returns None, None
-/// otherwise returns the whole path
-/// TODO: test values outside 1
+/// If `t` is on `(0, 1)`, returns the split curve.
+/// If `t` is outside `[0, 1]`, returns `(None, None)`
+/// Otherwise, returns the whole path.
+// TODO: test values outside 1
 pub fn split_path_seg(p: &PathSeg, t: f64) -> (Option<PathSeg>, Option<PathSeg>) {
 	if t <= F64PRECISION {
 		if t >= 1.0 - F64PRECISION {
@@ -439,9 +436,9 @@ pub fn split_path_seg(p: &PathSeg, t: f64) -> (Option<PathSeg>, Option<PathSeg>)
 	}
 }
 
-/// splits p at each of t_values
-/// t_values should be sorted in ascending order
-/// the length of the returned vector is equal to 1 + t_values.len()
+/// Splits `p` at each of `t_values`.
+/// `t_values` should be sorted in ascending order.
+/// The length of the returned `Vec` is equal to `1 + t_values.len()`.
 pub fn subdivide_path_seg(p: &PathSeg, t_values: &mut [f64]) -> Vec<Option<PathSeg>> {
 	let mut sub_segments = Vec::new();
 	let mut to_split = Some(*p);
@@ -460,8 +457,8 @@ pub fn subdivide_path_seg(p: &PathSeg, t_values: &mut [f64]) -> Vec<Option<PathS
 	sub_segments
 }
 
-/// !check if shapes are filled
-/// !Bug: shape with at least two subpaths and comprised of many unions sometimes has erroneous movetos embedded in edges
+// TODO: check if shapes are filled
+// TODO: Bug: shape with at least two subpaths and comprised of many unions sometimes has erroneous movetos embedded in edges
 pub fn boolean_operation(select: BooleanOperation, mut alpha: Shape, mut beta: Shape) -> Result<Vec<Shape>, BooleanOperationError> {
 	if alpha.path.is_empty() || beta.path.is_empty() {
 		return Err(BooleanOperationError::InvalidSelection);
@@ -491,8 +488,8 @@ pub fn boolean_operation(select: BooleanOperation, mut alpha: Shape, mut beta: S
 					Ok(vec![boolean_union])
 				}
 				Err(BooleanOperationError::NoIntersections) => {
-					//if shape is inside the other the Union is just the larger
-					//check could also be done with area and single ray cast
+					// If shape is inside the other the Union is just the larger
+					// Check could also be done with area and single ray cast
 					if cast_horizontal_ray(point_on_curve(&beta.path), &alpha.path) % 2 != 0 {
 						Ok(vec![alpha])
 					} else if cast_horizontal_ray(point_on_curve(&alpha.path), &beta.path) % 2 != 0 {
@@ -526,14 +523,14 @@ pub fn boolean_operation(select: BooleanOperation, mut alpha: Shape, mut beta: S
 						cycles
 							.iter()
 							.enumerate()
-							.reduce(|(max_idx, max), (idx, cycle)| if cycle.area().abs() >= max.area().abs() { (idx, cycle) } else { (max_idx, max) })
+							.reduce(|(max_index, max), (index, cycle)| if cycle.area().abs() >= max.area().abs() { (index, cycle) } else { (max_index, max) })
 							.unwrap()
 							.0,
 					);
 					collect_shapes(&graph, &mut cycles, |dir| dir == alpha_dir, |_| &alpha.style)
 				}
 				Err(BooleanOperationError::NoIntersections) => {
-					//check could also be done with area and single ray cast
+					// Check could also be done with area and single ray cast
 					if cast_horizontal_ray(point_on_curve(&beta.path), &alpha.path) % 2 != 0 {
 						beta.style = alpha.style;
 						Ok(vec![beta])
@@ -586,11 +583,12 @@ pub fn boolean_operation(select: BooleanOperation, mut alpha: Shape, mut beta: S
 	}
 }
 
-/// TODO less hacky way to handle double counts on shared endpoints
-/// TODO check bounding boxes more rigorously
+// TODO less hacky way to handle double counts on shared endpoints
+// TODO check bounding boxes more rigorously
 pub fn cast_horizontal_ray(mut from: Point, into: &BezPath) -> usize {
 	// In practice, this makes it less likely that a ray will intersect with shared point between two curves
 	from.y += RAY_FUDGE_FACTOR;
+
 	let ray = Line {
 		p0: from,
 		p1: Point {
@@ -607,13 +605,15 @@ pub fn cast_horizontal_ray(mut from: Point, into: &BezPath) -> usize {
 	intersects.len()
 }
 
-/// * uses curve start point as point on the curve
-/// ! Panics if the curve is empty
+/// Uses curve start point as point on the curve.
+/// # Panics
+/// This function panics if the `curve` is empty.
 pub fn point_on_curve(curve: &BezPath) -> Point {
 	curve.segments().next().unwrap().start()
 }
 
-/// panics if the curve has no PathSeg's
+/// # Panics
+/// This function panics if the curve has no `PathSeg`s.
 pub fn bounding_box(curve: &BezPath) -> Rect {
 	curve
 		.segments()
@@ -628,9 +628,11 @@ where
 	G: Fn(Direction) -> &'a PathStyle,
 {
 	let mut shapes = Vec::new();
+
 	if cycles.is_empty() {
 		return Err(BooleanOperationError::Unexpected);
 	}
+
 	for cycle in cycles {
 		match cycle.direction() {
 			Ok(dir) => {
@@ -655,8 +657,8 @@ pub fn reverse_path_segment(seg: &mut PathSeg) {
 	}
 }
 
-/// reverse path by reversing each PathSeg, and reversing the order of PathSegs within each subpath
-/// *a closed path may no longer be closed after applying this function
+/// Reverses `path` by reversing each `PathSeg`, and reversing the order of `PathSegs` within each subpath.
+/// Note: a closed path might no longer be closed after applying this function.
 pub fn reverse_path(path: &BezPath) -> BezPath {
 	let mut curve = Vec::new();
 	let mut temp = Vec::new();
@@ -681,7 +683,7 @@ pub fn reverse_path(path: &BezPath) -> BezPath {
 	BezPath::from_path_segments(curve.into_iter())
 }
 
-/// Close off all sub-paths in curve by inserting a ClosePath whenever a MoveTo is not preceded by one
+/// Close off all sub-paths in curve by inserting a `ClosePath` whenever a `MoveTo` is not preceded by one.
 pub fn close_path(curve: &BezPath) -> BezPath {
 	let mut new = BezPath::new();
 	let mut path_closed_flag = true;
@@ -709,28 +711,28 @@ pub fn close_path(curve: &BezPath) -> BezPath {
 	new
 }
 
-/// concat b to a, where b is not a new subpath but a continuation of a
+/// Concatenate `b` to `a`, where `b` is not a new subpath but a continuation of `a`.
 pub fn concat_paths(a: &mut Vec<PathEl>, b: &BezPath) {
 	if a.is_empty() {
 		a.append(&mut b.elements().to_vec());
 		return;
 	}
-	// remove closepath
+	// Remove closepath
 	if let Some(PathEl::ClosePath) = a.last() {
 		a.remove(a.len() - 1);
 	}
-	// skip initial moveto, which should be guaranteed to exist
+	// Skip initial `MoveTo`, which should be guaranteed to exist
 	b.iter().skip(1).for_each(|element| a.push(element));
 }
 
-/// concat b to a, where b is a new subpath
+/// Concatenate `b` to `a`, where `b` is a new subpath.
 pub fn add_subpath(a: &mut BezPath, b: BezPath) {
 	b.into_iter().for_each(|el| a.push(el));
 }
 
 pub fn path_length(a: &BezPath, accuracy: Option<f64>) -> f64 {
 	let mut sum = 0.0;
-	//computing arclen with F64PRECISION accuracy is probably ridiculous
+	// Computing arc length with `F64PRECISION` accuracy is probably ridiculous
 	match accuracy {
 		Some(val) => a.segments().for_each(|seg| sum += seg.arclen(val)),
 		None => a.segments().for_each(|seg| sum += seg.arclen(F64PRECISION)),
