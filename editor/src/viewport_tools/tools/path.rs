@@ -6,9 +6,9 @@ use crate::input::InputPreprocessorMessageHandler;
 use crate::layout::widgets::PropertyHolder;
 use crate::message_prelude::*;
 use crate::misc::{HintData, HintGroup, HintInfo, KeysGroup};
-use crate::viewport_tools::shape_manipulation::ShapeEditor;
 use crate::viewport_tools::snapping::SnapHandler;
 use crate::viewport_tools::tool::{DocumentToolData, Fsm, ToolActionHandlerData};
+use crate::viewport_tools::vector_editor::shape_editor::ShapeEditor;
 
 use glam::DVec2;
 use graphene::intersection::Quad;
@@ -144,7 +144,8 @@ impl Fsm for PathToolFsmState {
 							.shape_editor
 							.shapes_to_modify
 							.iter()
-							.flat_map(|shape| shape.anchors.iter().map(|anchor| anchor.anchor_point_position()))
+							.flat_map(|shape| shape.anchors.iter().flat_map(|anchor| anchor.points[0].as_ref()))
+							.map(|point| point.position)
 							.collect();
 						data.snap_handler.add_snap_points(document, snap_points);
 						Dragging

@@ -12,7 +12,7 @@ use crate::layout::widgets::{
 	WidgetCallback, WidgetHolder, WidgetLayout,
 };
 use crate::message_prelude::*;
-use crate::viewport_tools::shape_manipulation::VectorShape;
+use crate::viewport_tools::vector_editor::vector_shape::VectorShape;
 use crate::EditorError;
 
 use graphene::document::Document as GrapheneDocument;
