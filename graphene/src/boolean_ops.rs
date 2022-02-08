@@ -215,10 +215,10 @@ impl PathGraph {
 			}
 
 			fn advance_by_seg(&mut self, graph: &mut PathGraph, seg: PathSeg, origin: Origin) {
-				let (v_ids, mut t_values) = graph.intersects_in_seg(self.seg_idx, origin);
-				if !v_ids.is_empty() {
-					let sub_segs = subdivide_path_seg(&seg, &mut t_values);
-					for (vertex_id, sub_seg) in v_ids.into_iter().zip(sub_segs.iter()) {
+				let (vertex_ids, mut t_values) = graph.intersects_in_seg(self.seg_idx, origin);
+				if !vertex_ids.is_empty() {
+					let subdivided = subdivide_path_seg(&seg, &mut t_values);
+					for (vertex_id, sub_seg) in vertex_ids.into_iter().zip(subdivided.iter()) {
 						match self.current_start {
 							Some(idx) => {
 								do_if!(sub_seg, end_of_edge { self.current.push(*end_of_edge)});
@@ -233,7 +233,7 @@ impl PathGraph {
 							}
 						}
 					}
-					do_if!(sub_segs.last().unwrap(), start_of_edge {self.current.push(*start_of_edge)});
+					do_if!(subdivided.last().unwrap(), start_of_edge {self.current.push(*start_of_edge)});
 				} else {
 					match self.current_start {
 						Some(_) => self.current.push(seg),
@@ -310,7 +310,7 @@ impl PathGraph {
 	/// returns the Vertex idx and intersect t-value for all intersects in segment identified by seg_idx from origin
 	/// sorts both lists for ascending t_value
 	fn intersects_in_seg(&self, seg_idx: i32, origin: Origin) -> (Vec<usize>, Vec<f64>) {
-		let mut vertice_idx = Vec::new();
+		let mut vertex_idx = Vec::new();
 		let mut t_values = Vec::new();
 		for (v_idx, vertex) in self.vertices.iter().enumerate() {
 			if vertex.intersect.seg_idx(origin) == seg_idx {
@@ -319,10 +319,10 @@ impl PathGraph {
 					Ok(val) | Err(val) => val,
 				};
 				t_values.insert(insert_idx, next_t);
-				vertice_idx.insert(insert_idx, v_idx)
+				vertex_idx.insert(insert_idx, v_idx)
 			}
 		}
-		(vertice_idx, t_values)
+		(vertex_idx, t_values)
 	}
 
 	// return number of vertices in graph, this is equivalent to the number of intersections
@@ -347,7 +347,7 @@ impl PathGraph {
 	}
 
 	/// where a valid cycle alternates edge Origin
-	/// Single edge/Singel vertex 'dummy' cycles are also valid
+	/// Single edge/Single vertex 'dummy' cycles are also valid
 	fn get_cycle(&self, cycle: &mut Cycle, marker_map: &mut Vec<u8>) {
 		if cycle.prev_edge_origin() == Origin::Alpha {
 			marker_map[cycle.prev_vertex()] |= 1;
@@ -526,7 +526,7 @@ pub fn boolean_operation(select: BooleanOperation, mut alpha: Shape, mut beta: S
 						cycles
 							.iter()
 							.enumerate()
-							.reduce(|(midx, max), (idx, cycle)| if cycle.area().abs() >= max.area().abs() { (idx, cycle) } else { (midx, max) })
+							.reduce(|(max_idx, max), (idx, cycle)| if cycle.area().abs() >= max.area().abs() { (idx, cycle) } else { (max_idx, max) })
 							.unwrap()
 							.0,
 					);
@@ -610,7 +610,7 @@ pub fn cast_horizontal_ray(mut from: Point, into: &BezPath) -> usize {
 /// * uses curve start point as point on the curve
 /// ! Panics if the curve is empty
 pub fn point_on_curve(curve: &BezPath) -> Point {
-	curve.segments().nth(0).unwrap().start()
+	curve.segments().next().unwrap().start()
 }
 
 /// panics if the curve has no PathSeg's
@@ -628,7 +628,7 @@ where
 	G: Fn(Direction) -> &'a PathStyle,
 {
 	let mut shapes = Vec::new();
-	if cycles.len() == 0 {
+	if cycles.is_empty() {
 		return Err(BooleanOperationError::Unexpected);
 	}
 	for cycle in cycles {
