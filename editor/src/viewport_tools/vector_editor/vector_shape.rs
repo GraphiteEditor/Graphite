@@ -349,7 +349,7 @@ impl VectorShape {
 		let operation = Operation::AddOverlayShape {
 			path: layer_path.clone(),
 			bez_path: self.bez_path.clone(),
-			style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 1.0)), Some(Fill::none())),
+			style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 1.0)), None),
 			closed: false,
 		};
 		responses.push_back(DocumentMessage::Overlays(operation.into()).into());
@@ -391,7 +391,7 @@ impl VectorShape {
 		let operation = Operation::AddOverlayLine {
 			path: layer_path.clone(),
 			transform: DAffine2::IDENTITY.to_cols_array(),
-			style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 1.0)), Some(Fill::none())),
+			style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 1.0)), None),
 		};
 		responses.push_front(DocumentMessage::Overlays(operation.into()).into());
 
