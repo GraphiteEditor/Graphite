@@ -113,7 +113,7 @@ impl SelectedEdges {
 	}
 
 	/// Calculates the required scaling to resize the bounding box
-	pub fn bounds_to_scale_transform(&self, centre: bool, min: DVec2, size: DVec2) -> DAffine2 {
+	pub fn bounds_to_scale_transform(&self, centre: bool, size: DVec2) -> DAffine2 {
 		let translation = DAffine2::from_translation(self.offset_pivot(centre, size));
 		translation * DAffine2::from_scale(size / (self.bounds[1] - self.bounds[0]))
 	}
@@ -130,19 +130,6 @@ pub fn add_bounding_box(responses: &mut Vec<Message>) -> Vec<LayerId> {
 	responses.push(DocumentMessage::Overlays(operation.into()).into());
 
 	path
-}
-
-fn evaluate_transform_handle_positions((left, top): (f64, f64), (right, bottom): (f64, f64)) -> [DVec2; 8] {
-	[
-		DVec2::new(left, top),
-		DVec2::new(left, (top + bottom) / 2.),
-		DVec2::new(left, bottom),
-		DVec2::new((left + right) / 2., top),
-		DVec2::new((left + right) / 2., bottom),
-		DVec2::new(right, top),
-		DVec2::new(right, (top + bottom) / 2.),
-		DVec2::new(right, bottom),
-	]
 }
 
 fn add_transform_handles(responses: &mut Vec<Message>) -> [Vec<LayerId>; 8] {
@@ -191,6 +178,21 @@ impl BoundingBoxOverlays {
 		}
 	}
 
+	fn evaluate_transform_handle_positions(&self) -> [DVec2; 8] {
+		let (left, top): (f64, f64) = self.bounds[0].into();
+		let (right, bottom): (f64, f64) = self.bounds[1].into();
+		[
+			self.transform.transform_point2(DVec2::new(left, top)),
+			self.transform.transform_point2(DVec2::new(left, (top + bottom) / 2.)),
+			self.transform.transform_point2(DVec2::new(left, bottom)),
+			self.transform.transform_point2(DVec2::new((left + right) / 2., top)),
+			self.transform.transform_point2(DVec2::new((left + right) / 2., bottom)),
+			self.transform.transform_point2(DVec2::new(right, top)),
+			self.transform.transform_point2(DVec2::new(right, (top + bottom) / 2.)),
+			self.transform.transform_point2(DVec2::new(right, bottom)),
+		]
+	}
+
 	/// Update the position of the bounding box and transform handles
 	pub fn transform(&mut self, buffer: &mut Vec<Message>) {
 		let transform = (self.transform * transform_from_box(self.bounds[0], self.bounds[1])).to_cols_array();
@@ -200,10 +202,7 @@ impl BoundingBoxOverlays {
 		// Helps push values that end in approximately half, plus or minus some floating point imprecision, towards the same side of the round() function
 		const BIAS: f64 = 0.0001;
 
-		for (position, path) in evaluate_transform_handle_positions(self.bounds[0].into(), self.bounds[1].into())
-			.into_iter()
-			.zip(&self.transform_handles)
-		{
+		for (position, path) in self.evaluate_transform_handle_positions().into_iter().zip(&self.transform_handles) {
 			let scale = DVec2::splat(VECTOR_MANIPULATOR_ANCHOR_MARKER_SIZE);
 			let translation = (position - (scale / 2.) - 0.5 + BIAS).round();
 			let transform = DAffine2::from_scale_angle_translation(scale, 0., translation).to_cols_array();
