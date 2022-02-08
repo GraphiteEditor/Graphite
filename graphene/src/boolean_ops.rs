@@ -66,7 +66,7 @@ enum Direction {
 	CW,
 }
 
-/// Behavior: Intersection and Union cases are distinuguished between by cycle area magnitude
+/// Behavior: Intersection and Union cases are distinguished between by cycle area magnitude
 ///   - This only effects shapes whose intersection is a single shape, and the intersection is similalarly sized to the union
 ///   - can be solved by first computing at low accuracy, and if the values are close recomputing.
 #[derive(Clone)]
@@ -77,9 +77,9 @@ struct Cycle {
 }
 
 impl Cycle {
-	pub fn new(vidx: usize, eorg: Origin) -> Self {
+	pub fn new(start_vertex_idx: usize, edge_origin: Origin) -> Self {
 		Cycle {
-			vertices: vec![(vidx, eorg)],
+			vertices: vec![(start_vertex_idx, edge_origin)],
 			dir: None,
 			area: 0.0,
 		}
@@ -186,8 +186,8 @@ impl PathGraph {
 	/// *Expects path, and all subpaths in path to be closed
 	fn add_edges_from_path(&mut self, path: &BezPath, origin: Origin) {
 		struct AlgorithmState {
-			//cstart holds the idx of the vertex the current edge is starting from
-			cstart: Option<usize>,
+			//current_start holds the idx of the vertex the current edge is starting from
+			current_start: Option<usize>,
 			current: Vec<PathSeg>,
 			// in order to iterate through once, store information for incomplete first edge
 			beginning: Vec<PathSeg>,
@@ -199,7 +199,7 @@ impl PathGraph {
 		impl AlgorithmState {
 			fn new() -> Self {
 				AlgorithmState {
-					cstart: None,
+					current_start: None,
 					current: Vec::new(),
 					beginning: Vec::new(),
 					start_idx: None,
@@ -208,7 +208,7 @@ impl PathGraph {
 			}
 
 			fn reset(&mut self) {
-				self.cstart = None;
+				self.current_start = None;
 				self.current = Vec::new();
 				self.beginning = Vec::new();
 				self.start_idx = None;
@@ -219,23 +219,23 @@ impl PathGraph {
 				if !v_ids.is_empty() {
 					let sub_segs = subdivide_path_seg(&seg, &mut t_values);
 					for (vertex_id, sub_seg) in v_ids.into_iter().zip(sub_segs.iter()) {
-						match self.cstart {
+						match self.current_start {
 							Some(idx) => {
 								do_if!(sub_seg, end_of_edge { self.current.push(*end_of_edge)});
 								graph.add_edge(origin, idx, vertex_id, self.current.clone());
-								self.cstart = Some(vertex_id);
+								self.current_start = Some(vertex_id);
 								self.current = Vec::new();
 							}
 							None => {
-								self.cstart = Some(vertex_id);
+								self.current_start = Some(vertex_id);
 								self.start_idx = Some(vertex_id);
-								do_if!(sub_seg, end_of_begining {self.beginning.push(*end_of_begining)});
+								do_if!(sub_seg, end_of_beginning {self.beginning.push(*end_of_beginning)});
 							}
 						}
 					}
 					do_if!(sub_segs.last().unwrap(), start_of_edge {self.current.push(*start_of_edge)});
 				} else {
-					match self.cstart {
+					match self.current_start {
 						Some(_) => self.current.push(seg),
 						None => self.beginning.push(seg),
 					}
@@ -244,7 +244,7 @@ impl PathGraph {
 			}
 
 			fn advance_by_closepath(&mut self, graph: &mut PathGraph, initial_point: &mut Point, origin: Origin) {
-				// *when a curve ends in a closepath and its start point does not equal its enpoint they should be connected with a line
+				// *when a curve ends in a closepath and its start point does not equal its endpoint they should be connected with a line
 				let end_seg = match self.current.last() {
 					Some(seg) => seg,
 					None => self.beginning.last().unwrap(), // if both current and beginning are empty, the path is empty
@@ -254,15 +254,15 @@ impl PathGraph {
 					// a closepath implicitly defines a line which closes the path
 					self.advance_by_seg(graph, PathSeg::Line(Line { p0: temp_copy, p1: *initial_point }), origin);
 				}
-				// when a closepath is not followed by moveto, the next startpath starts at the end of the current path
+				// when a closepath is not followed by moveto, the next path starts at the end of the current path
 				*initial_point = temp_copy;
 			}
 
 			fn finalize_sub_path(&mut self, graph: &mut PathGraph, origin: Origin) {
-				if let (Some(cstart_), Some(start_idx_)) = (self.cstart, self.start_idx) {
+				if let (Some(current_start_), Some(start_idx_)) = (self.current_start, self.start_idx) {
 					//complete the current path
 					self.current.append(&mut self.beginning);
-					graph.add_edge(origin, cstart_, start_idx_, self.current.clone());
+					graph.add_edge(origin, current_start_, start_idx_, self.current.clone());
 				} else {
 					//path has a subpath with no intersects
 					//create a dummy vertex with single edge which will be identified as cycle
@@ -397,7 +397,7 @@ impl PathGraph {
 	}
 }
 
-/// if t is on (0, 1), returns the splitcurvepath
+/// if t is on (0, 1), returns the split curve
 /// if t is outside [0, 1], returns None, None
 /// otherwise returns the whole path
 /// TODO: test values outside 1
@@ -646,7 +646,7 @@ where
 pub fn reverse_pathseg(seg: &mut PathSeg) {
 	match seg {
 		PathSeg::Line(line) => std::mem::swap(&mut line.p0, &mut line.p1),
-		PathSeg::Quad(quad) => std::mem::swap(&mut quad.p0, &mut quad.p1),
+		PathSeg::Quad(quad) => std::mem::swap(&mut quad.p0, &mut quad.p2),
 		PathSeg::Cubic(cubic) => {
 			std::mem::swap(&mut cubic.p0, &mut cubic.p3);
 			std::mem::swap(&mut cubic.p1, &mut cubic.p2);
@@ -663,7 +663,7 @@ pub fn reverse_path(path: &BezPath) -> BezPath {
 	for element in path.iter() {
 		match element {
 			PathEl::MoveTo(_) => {
-				curve.append(&mut temp);
+				curve.append(&mut temp.into_iter().rev().collect());
 				temp = Vec::new();
 			}
 			_ => {
@@ -674,19 +674,16 @@ pub fn reverse_path(path: &BezPath) -> BezPath {
 			}
 		}
 	}
-	curve.append(&mut temp);
-	BezPath::from_path_segments(curve.into_iter().rev())
+	curve.append(&mut temp.into_iter().rev().collect());
+	log::debug!("{:?}", BezPath::from_path_segments(curve.clone().into_iter()));
+	BezPath::from_path_segments(curve.into_iter())
 }
 
-pub fn is_closed(curve: &BezPath) -> bool {
-	curve.iter().last() == Some(PathEl::ClosePath)
-}
-
-/// Close off all subpaths in curve by inserting a ClosePath whenever a MoveTo is not preceded by one
+/// Close off all sub-paths in curve by inserting a ClosePath whenever a MoveTo is not preceded by one
 pub fn close_path(curve: &BezPath) -> BezPath {
 	let mut new = BezPath::new();
 	let mut path_closed_flag = true;
-	for el in curve.iter().skip(1) {
+	for el in curve.iter() {
 		match el {
 			PathEl::MoveTo(p) => {
 				if !path_closed_flag {
