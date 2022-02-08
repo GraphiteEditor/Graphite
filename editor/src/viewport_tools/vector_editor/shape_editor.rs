@@ -1,3 +1,20 @@
+/*
+Overview:
+
+						ShapeEditor
+						/          \
+				VectorShape ... VectorShape  <- ShapeEditor contains many VectorShapes
+					/                 \
+			   VectorAnchor ...  VectorAnchor <- VectorShape contains many VectorAnchors
+
+
+					VectorAnchor <- Container for the anchor metadata and optional VectorControlPoints
+						  /
+			[Option<VectorControlPoint>; 3] <- [0] is the anchor's draggable point (but not metadata), [1] is the handle1's draggable point, [2] is the handle2's draggable point
+			 /              |                      \
+		"Anchor"        "Handle1"          "Handle2" <- These are VectorControlPoints and the only editable / draggable "primitive"
+*/
+
 use super::vector_shape::VectorShape;
 use super::{constants::MINIMUM_MIRROR_THRESHOLD, vector_anchor::VectorAnchor, vector_control_point::VectorControlPoint};
 use crate::message_prelude::Message;
