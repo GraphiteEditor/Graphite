@@ -98,6 +98,7 @@ declare global {
 }
 
 export default defineComponent({
+	emits: ["update:selectedIndex"],
 	props: {
 		menuEntries: { type: Array as PropType<SectionsOfMenuListEntries>, required: true },
 		selectedIndex: { type: Number as PropType<number>, required: true },

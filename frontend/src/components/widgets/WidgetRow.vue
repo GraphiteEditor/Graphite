@@ -13,6 +13,7 @@
 				:incrementCallbackIncrease="() => updateLayout(component.widget_id, 'Increment')"
 				:incrementCallbackDecrease="() => updateLayout(component.widget_id, 'Decrement')"
 			/>
+			<TextInput v-if="component.kind === 'TextInput'" v-bind="component.props" @update:value="(value: number) => updateLayout(component.widget_id, value)" />
 			<IconButton v-if="component.kind === 'IconButton'" v-bind="component.props" :action="() => updateLayout(component.widget_id, null)" />
 			<OptionalInput v-if="component.kind === 'OptionalInput'" v-bind="component.props" @update:checked="(value: boolean) => updateLayout(component.widget_id, value)" />
 			<RadioInput v-if="component.kind === 'RadioInput'" v-bind="component.props" @update:selectedIndex="(value: number) => updateLayout(component.widget_id, value)" />
@@ -40,6 +41,7 @@ import PopoverButton from "@/components/widgets/buttons/PopoverButton.vue";
 import NumberInput from "@/components/widgets/inputs/NumberInput.vue";
 import OptionalInput from "@/components/widgets/inputs/OptionalInput.vue";
 import RadioInput from "@/components/widgets/inputs/RadioInput.vue";
+import TextInput from "@/components/widgets/inputs/TextInput.vue";
 import Separator from "@/components/widgets/separators/Separator.vue";
 
 export default defineComponent({
@@ -57,6 +59,7 @@ export default defineComponent({
 		Separator,
 		PopoverButton,
 		NumberInput,
+		TextInput,
 		IconButton,
 		OptionalInput,
 		RadioInput,
