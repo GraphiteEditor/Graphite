@@ -157,7 +157,13 @@ fn add_transform_handles(responses: &mut Vec<Message>) -> [Vec<LayerId>; 8] {
 
 /// Converts a bounding box to a rounded transform (with translation and scale)
 pub fn transform_from_box(pos1: DVec2, pos2: DVec2, transform: DAffine2) -> DAffine2 {
-	DAffine2::from_scale_angle_translation(transform.transform_vector2(pos2 - pos1).round(), 0., transform.transform_point2(pos1).round() - DVec2::splat(0.5))
+	let inverse = transform.inverse();
+	transform
+		* DAffine2::from_scale_angle_translation(
+			inverse.transform_vector2(transform.transform_vector2(pos2 - pos1).round()),
+			0.,
+			inverse.transform_point2(transform.transform_point2(pos1).round() - DVec2::splat(0.5)),
+		)
 }
 
 /// Aligns the mouse position to the closest axis
