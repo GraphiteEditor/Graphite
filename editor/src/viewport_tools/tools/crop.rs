@@ -332,33 +332,27 @@ impl Fsm for CropToolFsmState {
 
 	fn update_hints(&self, responses: &mut VecDeque<Message>) {
 		let hint_data = match self {
-			CropToolFsmState::Ready => HintData(vec![HintGroup(vec![
-				HintInfo {
-					key_groups: vec![],
-					mouse: Some(MouseMotion::LmbDrag),
-					label: String::from("Move Artboard"),
-					plus: false,
-				},
-				HintInfo {
+			CropToolFsmState::Ready => HintData(vec![
+				HintGroup(vec![HintInfo {
 					key_groups: vec![],
 					mouse: Some(MouseMotion::LmbDrag),
 					label: String::from("Draw Artboard"),
 					plus: false,
-				},
-				HintInfo {
+				}]),
+				HintGroup(vec![HintInfo {
+					key_groups: vec![],
+					mouse: Some(MouseMotion::LmbDrag),
+					label: String::from("Move Artboard"),
+					plus: false,
+				}]),
+			]),
+			CropToolFsmState::Dragging => HintData(vec![HintGroup(vec![HintInfo {
 				key_groups: vec![KeysGroup(vec![Key::KeyShift])],
 				mouse: None,
-					label: String::from("Constrain Square"),
-					plus: true,
-				},
-				HintInfo {
-					key_groups: vec![KeysGroup(vec![Key::KeyAlt])],
-					mouse: None,
-					label: String::from("From Center"),
-					plus: true,
-				},
-			])]),
-			CropToolFsmState::Dragging | CropToolFsmState::Drawing | CropToolFsmState::ResizingBounds => HintData(vec![HintGroup(vec![
+				label: String::from("Constrain to Axis"),
+				plus: false,
+			}])]),
+			CropToolFsmState::Drawing | CropToolFsmState::ResizingBounds => HintData(vec![HintGroup(vec![
 				HintInfo {
 					key_groups: vec![KeysGroup(vec![Key::KeyShift])],
 					mouse: None,
