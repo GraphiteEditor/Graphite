@@ -11,7 +11,7 @@
 				API which is required for using the editor. However, you can still explore the user interface.
 			</p>
 			<LayoutRow>
-				<button class="unsupported-modal-button" @click="closeModal()">I understand, let's just see the interface</button>
+				<button class="unsupported-modal-button" @click="() => closeModal()">I understand, let's just see the interface</button>
 			</LayoutRow>
 		</LayoutCol>
 	</div>

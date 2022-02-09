@@ -41,6 +41,7 @@ import LayoutRow from "@/components/layout/LayoutRow.vue";
 import CheckboxInput from "@/components/widgets/inputs/CheckboxInput.vue";
 
 export default defineComponent({
+	emits: ["update:checked"],
 	props: {
 		checked: { type: Boolean as PropType<boolean>, required: true },
 		icon: { type: String as PropType<IconName>, default: "Checkmark" },
