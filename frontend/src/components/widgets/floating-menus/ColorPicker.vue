@@ -131,6 +131,7 @@ type ColorPickerState = "Idle" | "MoveHue" | "MoveOpacity" | "MoveSaturation";
 // TODO: Such as removing the `picker*` data variables and reducing the number of functions which call each other in weird, non-obvious ways.
 
 export default defineComponent({
+	emits: ["update:color"],
 	props: {
 		color: { type: Object as PropType<RGBA>, required: true },
 	},

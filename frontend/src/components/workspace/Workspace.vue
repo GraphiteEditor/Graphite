@@ -118,22 +118,18 @@ export default defineComponent({
 				nextSibling.style.flexGrow = (nextSiblingSize + mouseDelta).toString();
 				previousSibling.style.flexGrow = (previousSiblingSize - mouseDelta).toString();
 
-				window.dispatchEvent(
-					new CustomEvent("resize", {
-						detail: {},
-					})
-				);
+				window.dispatchEvent(new CustomEvent("resize", { detail: {} }));
 			}
-
-			document.addEventListener("pointermove", updatePosition);
 
 			function cleanup(event: PointerEvent): void {
 				gutter.releasePointerCapture(event.pointerId);
+
 				document.removeEventListener("pointermove", updatePosition);
 				document.removeEventListener("pointerleave", cleanup);
 				document.removeEventListener("pointerup", cleanup);
 			}
 
+			document.addEventListener("pointermove", updatePosition);
 			document.addEventListener("pointerleave", cleanup);
 			document.addEventListener("pointerup", cleanup);
 		},

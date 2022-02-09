@@ -88,6 +88,7 @@ import LayoutRow from "@/components/layout/LayoutRow.vue";
 import IconLabel from "@/components/widgets/labels/IconLabel.vue";
 
 export default defineComponent({
+	emits: ["update:checked"],
 	data() {
 		return {
 			id: `${Math.random()}`.substring(2),

@@ -47,9 +47,7 @@ const WidgetSection = defineComponent({
 			throw new Error("Layout row type does not exist");
 		},
 	},
-	components: {
-		WidgetRow,
-	},
+	components: { WidgetRow },
 });
 export default WidgetSection;
 </script>
