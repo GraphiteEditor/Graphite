@@ -114,17 +114,11 @@ impl VectorShape {
 
 	/// Move the selected point based on mouse input, if this is a handle we can control if we are mirroring or not
 	/// A wrapper around move_point to handle mirror state / submit the changes
-	pub fn move_selected(&mut self, position_delta: DVec2, should_mirror_handles: bool, responses: &mut VecDeque<Message>) {
+	pub fn move_selected(&mut self, position_delta: DVec2, responses: &mut VecDeque<Message>) {
 		let transform = &self.transform.clone();
 		let mut edited_bez_path = self.elements.clone();
 
 		for selected_anchor in self.selected_anchors_mut() {
-			// Should we mirror the opposing handle or not?
-			if !should_mirror_handles && selected_anchor.mirroring_debounce != should_mirror_handles {
-				selected_anchor.handle_mirror_angle = !selected_anchor.handle_mirror_angle;
-			}
-			selected_anchor.mirroring_debounce = should_mirror_handles;
-
 			selected_anchor.move_selected_points(position_delta, &mut edited_bez_path, transform);
 		}
 
@@ -160,7 +154,7 @@ impl VectorShape {
 		}
 	}
 
-	/// Place points in local space
+	/// Place point in local space in relation to this shape's transform
 	fn to_local_space(&self, point: kurbo::Point) -> DVec2 {
 		self.transform.transform_point2(DVec2::from((point.x, point.y)))
 	}
@@ -224,7 +218,6 @@ impl VectorShape {
 			close_element_id: None,
 			handle_mirror_angle: true,
 			handle_mirror_distance: false,
-			mirroring_debounce: false,
 		}
 	}
 

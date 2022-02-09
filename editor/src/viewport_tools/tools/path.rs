@@ -39,7 +39,8 @@ pub enum PathMessage {
 	},
 	DragStop,
 	PointerMove {
-		alt_mirror_toggle: Key,
+		alt_mirror_angle: Key,
+		shift_mirror_distance: Key,
 	},
 }
 
@@ -93,6 +94,8 @@ impl Default for PathToolFsmState {
 struct PathToolData {
 	shape_editor: ShapeEditor,
 	snap_handler: SnapHandler,
+	alt_debounce: bool,
+	shift_debounce: bool,
 }
 
 impl Fsm for PathToolFsmState {
@@ -178,19 +181,37 @@ impl Fsm for PathToolFsmState {
 					}
 				}
 				// Dragging
-				(Dragging, PointerMove { alt_mirror_toggle }) => {
-					let should_not_mirror = input.keyboard.get(alt_mirror_toggle as usize);
+				(
+					Dragging,
+					PointerMove {
+						alt_mirror_angle,
+						shift_mirror_distance,
+					},
+				) => {
+					// Determine when alt state changes
+					let alt_pressed = input.keyboard.get(alt_mirror_angle as usize);
+					if alt_pressed != data.alt_debounce {
+						data.alt_debounce = alt_pressed;
+						// Only on alt down
+						if alt_pressed {
+							data.shape_editor.toggle_selected_mirror_angle();
+						}
+					}
+
+					// Determine when shift state changes
+					let shift_pressed = input.keyboard.get(shift_mirror_distance as usize);
+					if shift_pressed != data.shift_debounce {
+						data.shift_debounce = shift_pressed;
+						data.shape_editor.toggle_selected_mirror_distance();
+					}
 
 					// Move the selected points by the mouse position
 					let snapped_position = data.snap_handler.snap_position(responses, input.viewport_bounds.size(), document, input.mouse.position);
-					data.shape_editor.move_selected_points(snapped_position, !should_not_mirror, responses);
+					data.shape_editor.move_selected_points(snapped_position, responses);
 					Dragging
 				}
 				// Mouse up
 				(_, DragStop) => {
-					for shape in &mut data.shape_editor.shapes_to_modify {
-						shape.update_shape(document, responses);
-					}
 					data.snap_handler.cleanup(responses);
 					Ready
 				}
@@ -198,7 +219,13 @@ impl Fsm for PathToolFsmState {
 					data.shape_editor.remove_overlays(responses);
 					Ready
 				}
-				(_, PointerMove { alt_mirror_toggle: _ }) => self,
+				(
+					_,
+					PointerMove {
+						alt_mirror_angle: _,
+						shift_mirror_distance: _,
+					},
+				) => self,
 			}
 		} else {
 			self
@@ -268,12 +295,20 @@ impl Fsm for PathToolFsmState {
 					},
 				]),
 			]),
-			PathToolFsmState::Dragging => HintData(vec![HintGroup(vec![HintInfo {
-				key_groups: vec![KeysGroup(vec![Key::KeyAlt])],
-				mouse: None,
-				label: String::from("Handle Mirroring Toggle"),
-				plus: false,
-			}])]),
+			PathToolFsmState::Dragging => HintData(vec![
+				HintGroup(vec![HintInfo {
+					key_groups: vec![KeysGroup(vec![Key::KeyAlt])],
+					mouse: None,
+					label: String::from("Toggle Mirror Angle"),
+					plus: false,
+				}]),
+				HintGroup(vec![HintInfo {
+					key_groups: vec![KeysGroup(vec![Key::KeyShift])],
+					mouse: None,
+					label: String::from("Hold To Mirror Distance"),
+					plus: false,
+				}]),
+			]),
 		};
 
 		responses.push_back(FrontendMessage::UpdateInputHints { hint_data }.into());

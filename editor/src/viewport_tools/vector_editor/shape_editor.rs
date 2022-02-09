@@ -155,10 +155,24 @@ impl ShapeEditor {
 	}
 
 	/// Move the selected points by dragging the moue
-	pub fn move_selected_points(&mut self, mouse_position: DVec2, should_mirror: bool, responses: &mut VecDeque<Message>) {
+	pub fn move_selected_points(&mut self, mouse_position: DVec2, responses: &mut VecDeque<Message>) {
 		let drag_start_position = self.drag_start_position;
 		for shape in self.selected_shapes_mut() {
-			shape.move_selected(mouse_position - drag_start_position, should_mirror, responses);
+			shape.move_selected(mouse_position - drag_start_position, responses);
+		}
+	}
+
+	/// Toggle if the handles should mirror angle across the anchor positon
+	pub fn toggle_selected_mirror_angle(&mut self) {
+		for anchor in self.selected_anchors_mut() {
+			anchor.handle_mirror_angle = !anchor.handle_mirror_angle;
+		}
+	}
+
+	/// Toggle if the handles should mirror distance across the anchor position
+	pub fn toggle_selected_mirror_distance(&mut self) {
+		for anchor in self.selected_anchors_mut() {
+			anchor.handle_mirror_distance = !anchor.handle_mirror_distance;
 		}
 	}
 

@@ -28,9 +28,6 @@ pub struct VectorAnchor {
 	pub handle_mirror_angle: bool,
 	// Should we make the handles equidistance from the anchor?
 	pub handle_mirror_distance: bool,
-	// TODO Remove this in favor of a more event driven approach
-	// A debounce to handle alt toggling
-	pub mirroring_debounce: bool,
 }
 
 impl VectorAnchor {
