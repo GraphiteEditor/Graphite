@@ -24,8 +24,10 @@ pub struct VectorAnchor {
 
 	// Does this anchor point have a path close element?
 	pub close_element_id: Option<usize>,
-	// Should we mirror the handles?
-	pub handles_are_mirroring: bool,
+	// Should we maintain the angle between the handles?
+	pub handle_mirror_angle: bool,
+	// Should we make the handles equidistance from the anchor?
+	pub handle_mirror_distance: bool,
 	// TODO Remove this in favor of a more event driven approach
 	// A debounce to handle alt toggling
 	pub mirroring_debounce: bool,
@@ -51,13 +53,13 @@ impl VectorAnchor {
 	// TODO Cleanup the internals of this function
 	/// Move the selected points by the provided delta
 	pub fn move_selected_points(&mut self, position_delta: DVec2, path_elements: &mut Vec<kurbo::PathEl>, transform: &DAffine2) {
-		let place_mirrored_handle = |center: kurbo::Point, original: kurbo::Point, target: kurbo::Point, mirror: bool, selected: bool| -> kurbo::Point {
-			if !selected || !mirror {
+		let place_mirrored_handle = |center: kurbo::Point, original: kurbo::Point, target: kurbo::Point, selected: bool, mirror_angle: bool, mirror_distance: bool| -> kurbo::Point {
+			if !selected || !mirror_angle {
 				return original;
 			}
 
 			// Keep rotational similarity, but distance variable
-			let radius = center.distance(original);
+			let radius = if mirror_distance { center.distance(target) } else { center.distance(original) };
 			let phi = (center - target).atan2();
 
 			kurbo::Point {
@@ -115,8 +117,9 @@ impl VectorAnchor {
 			}
 			// We are dragging a handle
 			else {
-				// Only move the handles if we don't have both handles selected
-				let should_mirror = self.handles_are_mirroring;
+				let should_mirror_angle = self.handle_mirror_angle;
+				let should_mirror_distance = self.handle_mirror_distance;
+
 				// Move the selected handle
 				let (selected_element, anchor, selected_handle) = match &path_elements[selected_point.kurbo_element_id] {
 					PathEl::MoveTo(p) => (PathEl::MoveTo(*p), *p, *p),
@@ -132,6 +135,7 @@ impl VectorAnchor {
 
 				let opposing_handle = self.opposing_handle(selected_point);
 				let only_one_handle_selected = !(selected_point.is_selected && opposing_handle.is_some() && opposing_handle.as_ref().unwrap().is_selected);
+				// Only move the handles if we don't have both handles selected
 				if only_one_handle_selected {
 					// Move the opposing handle on the adjacent path element
 					if let Some(handle) = opposing_handle {
@@ -142,8 +146,22 @@ impl VectorAnchor {
 							PathEl::LineTo(p) => PathEl::LineTo(*p),
 							PathEl::QuadTo(a1, p) => PathEl::QuadTo(*a1, *p),
 							PathEl::CurveTo(a1, a2, p) => PathEl::CurveTo(
-								place_mirrored_handle(anchor, if h1_selected { handle_point } else { *a1 }, selected_handle, h1_selected, should_mirror),
-								place_mirrored_handle(*p, if h2_selected { handle_point } else { *a2 }, selected_handle, h2_selected, should_mirror),
+								place_mirrored_handle(
+									anchor,
+									if h1_selected { handle_point } else { *a1 },
+									selected_handle,
+									h1_selected,
+									should_mirror_angle,
+									should_mirror_distance,
+								),
+								place_mirrored_handle(
+									*p,
+									if h2_selected { handle_point } else { *a2 },
+									selected_handle,
+									h2_selected,
+									should_mirror_angle,
+									should_mirror_distance,
+								),
 								*p,
 							),
 							PathEl::ClosePath => PathEl::ClosePath,
@@ -212,7 +230,7 @@ impl VectorAnchor {
 
 	/// Set the mirroring state
 	pub fn set_mirroring(&mut self, mirroring: bool) {
-		self.handles_are_mirroring = mirroring;
+		self.handle_mirror_angle = mirroring;
 	}
 
 	/// Helper function to more easily set position of VectorControlPoints

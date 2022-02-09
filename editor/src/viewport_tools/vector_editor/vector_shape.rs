@@ -121,7 +121,7 @@ impl VectorShape {
 		for selected_anchor in self.selected_anchors_mut() {
 			// Should we mirror the opposing handle or not?
 			if !should_mirror_handles && selected_anchor.mirroring_debounce != should_mirror_handles {
-				selected_anchor.handles_are_mirroring = !selected_anchor.handles_are_mirroring;
+				selected_anchor.handle_mirror_angle = !selected_anchor.handle_mirror_angle;
 			}
 			selected_anchor.mirroring_debounce = should_mirror_handles;
 
@@ -222,7 +222,8 @@ impl VectorShape {
 				handle2,
 			],
 			close_element_id: None,
-			handles_are_mirroring: true,
+			handle_mirror_angle: true,
+			handle_mirror_distance: false,
 			mirroring_debounce: false,
 		}
 	}

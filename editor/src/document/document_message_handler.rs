@@ -151,13 +151,12 @@ impl DocumentMessageHandler {
 
 			// TODO: Create VectorManipulatorShape when creating a kurbo shape as a stopgap, rather than on each new selection
 			match &layer.ok()?.data {
-				LayerDataType::Shape(shape) => Some(VectorShape::new(path_to_shape.to_vec(), viewport_transform, &shape.path, true, responses)),
+				LayerDataType::Shape(shape) => Some(VectorShape::new(path_to_shape.to_vec(), viewport_transform, &shape.path, shape.closed, responses)),
 				LayerDataType::Text(text) => Some(VectorShape::new(path_to_shape.to_vec(), viewport_transform, &text.to_bez_path_nonmut(), true, responses)),
 				_ => None,
 			}
 		});
 
-		// TODO: Consider refactoring this in a way that avoids needing to collect() so we can skip the heap allocations
 		shapes.collect::<Vec<VectorShape>>()
 	}
 
