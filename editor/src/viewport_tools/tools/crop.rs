@@ -1,10 +1,11 @@
 use crate::consts::SELECTION_TOLERANCE;
 use crate::document::DocumentMessageHandler;
 use crate::frontend::utility_types::MouseCursorIcon;
-use crate::input::keyboard::Key;
+use crate::input::keyboard::{Key, MouseMotion};
 use crate::input::InputPreprocessorMessageHandler;
 use crate::layout::widgets::PropertyHolder;
 use crate::message_prelude::*;
+use crate::misc::{HintData, HintGroup, HintInfo, KeysGroup};
 use crate::viewport_tools::snapping::SnapHandler;
 use crate::viewport_tools::tool::{DocumentToolData, Fsm, ToolActionHandlerData};
 
@@ -124,8 +125,6 @@ impl Fsm for CropToolFsmState {
 
 							responses.push_back(OverlaysMessage::Rerender.into());
 						}
-						// When the scale is 0, no bounds are returned. In this situation we should not delete the bounding box overlays
-						(None, Some(paths))
 						_ => {}
 					};
 					buffer.into_iter().rev().for_each(|message| responses.push_front(message));
@@ -328,7 +327,52 @@ impl Fsm for CropToolFsmState {
 		}
 	}
 
-	fn update_hints(&self, _responses: &mut VecDeque<Message>) {}
+	fn update_hints(&self, responses: &mut VecDeque<Message>) {
+		let hint_data = match self {
+			CropToolFsmState::Ready => HintData(vec![HintGroup(vec![
+				HintInfo {
+					key_groups: vec![],
+					mouse: Some(MouseMotion::LmbDrag),
+					label: String::from("Move Artboard"),
+					plus: false,
+				},
+				HintInfo {
+					key_groups: vec![],
+					mouse: Some(MouseMotion::LmbDrag),
+					label: String::from("Draw Artboard"),
+					plus: false,
+				},
+				HintInfo {
+					key_groups: vec![KeysGroup(vec![Key::KeyShift])],
+					mouse: None,
+					label: String::from("Constrain Square"),
+					plus: true,
+				},
+				HintInfo {
+					key_groups: vec![KeysGroup(vec![Key::KeyAlt])],
+					mouse: None,
+					label: String::from("From Center"),
+					plus: true,
+				},
+			])]),
+			CropToolFsmState::Dragging | CropToolFsmState::Drawing | CropToolFsmState::ResizingBounds => HintData(vec![HintGroup(vec![
+				HintInfo {
+					key_groups: vec![KeysGroup(vec![Key::KeyShift])],
+					mouse: None,
+					label: String::from("Constrain Square"),
+					plus: false,
+				},
+				HintInfo {
+					key_groups: vec![KeysGroup(vec![Key::KeyAlt])],
+					mouse: None,
+					label: String::from("From Center"),
+					plus: false,
+				},
+			])]),
+		};
+
+		responses.push_back(FrontendMessage::UpdateInputHints { hint_data }.into());
+	}
 
 	fn update_cursor(&self, responses: &mut VecDeque<Message>) {
 		responses.push_back(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Default }.into());
