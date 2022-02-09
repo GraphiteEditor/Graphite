@@ -1,4 +1,4 @@
-use crate::consts::{BOUNDS_ROTATE_THRESHOLD, BOUNDS_SELECT_THRESHOLD, COLOR_ACCENT, VECTOR_MANIPULATOR_ANCHOR_MARKER_SIZE};
+use crate::consts::{BOUNDS_ROTATE_THRESHOLD, BOUNDS_SELECT_THRESHOLD, COLOR_ACCENT, SELECTION_DRAG_ANGLE, VECTOR_MANIPULATOR_ANCHOR_MARKER_SIZE};
 use crate::document::transformation::OriginalTransforms;
 use crate::frontend::utility_types::MouseCursorIcon;
 use crate::input::InputPreprocessorMessageHandler;
@@ -156,6 +156,18 @@ pub fn transform_from_box(pos1: DVec2, pos2: DVec2) -> DAffine2 {
 	DAffine2::from_scale_angle_translation((pos2 - pos1).round(), 0., pos1.round() - DVec2::splat(0.5))
 }
 
+pub fn axis_align_drag(axis_align: bool, position: DVec2, start: DVec2) -> DVec2 {
+	if axis_align {
+		let mouse_position = position - start;
+		let snap_resolution = SELECTION_DRAG_ANGLE.to_radians();
+		let angle = -mouse_position.angle_between(DVec2::X);
+		let snapped_angle = (angle / snap_resolution).round() * snap_resolution;
+		DVec2::new(snapped_angle.cos(), snapped_angle.sin()) * mouse_position.length() + start
+	} else {
+		position
+	}
+}
+
 /// Contains info on the overlays for the bounding box and transform handles
 #[derive(Clone, Debug, Default)]
 pub struct BoundingBoxOverlays {
@@ -178,7 +190,7 @@ impl BoundingBoxOverlays {
 		}
 	}
 
-	fn evaluate_transform_handle_positions(&self) -> [DVec2; 8] {
+	pub fn evaluate_transform_handle_positions(&self) -> [DVec2; 8] {
 		let (left, top): (f64, f64) = self.bounds[0].into();
 		let (right, bottom): (f64, f64) = self.bounds[1].into();
 		[

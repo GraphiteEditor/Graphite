@@ -114,19 +114,12 @@ impl SnapHandler {
 		&mut self,
 		responses: &mut VecDeque<Message>,
 		document_message_handler: &DocumentMessageHandler,
-		selected_layers: &[Vec<LayerId>],
+		(snap_x, snap_y): (Vec<f64>, Vec<f64>),
 		viewport_bounds: DVec2,
 		mouse_delta: DVec2,
 	) -> DVec2 {
 		if document_message_handler.snapping_enabled {
 			if let Some((targets_x, targets_y)) = &self.snap_targets {
-				let (snap_x, snap_y): (Vec<f64>, Vec<f64>) = selected_layers
-					.iter()
-					.filter_map(|path| document_message_handler.graphene_document.viewport_bounding_box(path).ok()?)
-					.flat_map(|[bound1, bound2]| [bound1, bound2, (bound1 + bound2) / 2.])
-					.map(|vec| vec.into())
-					.unzip();
-
 				let positions = targets_x.iter().flat_map(|&target| snap_x.iter().map(move |&snap| (target, target - mouse_delta.x - snap)));
 				let distances = targets_y.iter().flat_map(|&target| snap_y.iter().map(move |&snap| (target, target - mouse_delta.y - snap)));
 

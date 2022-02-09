@@ -1,4 +1,4 @@
-use crate::consts::{ROTATE_SNAP_ANGLE, SELECTION_DRAG_ANGLE, SELECTION_TOLERANCE};
+use crate::consts::{ROTATE_SNAP_ANGLE, SELECTION_TOLERANCE};
 use crate::document::transformation::Selected;
 use crate::document::utility_types::{AlignAggregate, AlignAxis, FlipAxis};
 use crate::document::DocumentMessageHandler;
@@ -453,19 +453,19 @@ impl Fsm for SelectToolFsmState {
 					// TODO: This is a cheat. Break out the relevant functionality from the handler above and call it from there and here.
 					responses.push_front(SelectMessage::DocumentIsDirty.into());
 
-					let mouse_position = if input.keyboard.get(axis_align as usize) {
-						let mouse_position = input.mouse.position - data.drag_start;
-						let snap_resolution = SELECTION_DRAG_ANGLE.to_radians();
-						let angle = -mouse_position.angle_between(DVec2::X);
-						let snapped_angle = (angle / snap_resolution).round() * snap_resolution;
-						DVec2::new(snapped_angle.cos(), snapped_angle.sin()) * mouse_position.length() + data.drag_start
-					} else {
-						input.mouse.position
-					};
+					let mouse_position = axis_align_drag(input.keyboard.get(axis_align as usize), input.mouse.position, data.drag_start);
 
 					let mouse_delta = mouse_position - data.drag_current;
 
-					let closest_move = data.snap_handler.snap_layers(responses, document, &data.layers_dragging, input.viewport_bounds.size(), mouse_delta);
+					let snap = data
+						.layers_dragging
+						.iter()
+						.filter_map(|path| document.graphene_document.viewport_bounding_box(path).ok()?)
+						.flat_map(|[bound1, bound2]| [bound1, bound2, (bound1 + bound2) / 2.])
+						.map(|vec| vec.into())
+						.unzip();
+
+					let closest_move = data.snap_handler.snap_layers(responses, document, snap, input.viewport_bounds.size(), mouse_delta);
 					// TODO: Cache the result of `shallowest_unique_layers` to avoid this heavy computation every frame of movement, see https://github.com/GraphiteEditor/Graphite/pull/481
 					for path in Document::shallowest_unique_layers(data.layers_dragging.iter()) {
 						responses.push_front(
@@ -488,7 +488,7 @@ impl Fsm for SelectToolFsmState {
 
 							let snapped_mouse_position = data.snap_handler.snap_position(responses, input.viewport_bounds.size(), document, mouse_position);
 
-							let [min, size] = movement.new_size(snapped_mouse_position, bounds.transform, centre, axis_align);
+							let [_position, size] = movement.new_size(snapped_mouse_position, bounds.transform, centre, axis_align);
 							let delta = movement.bounds_to_scale_transform(centre, size);
 
 							let selected = data.layers_dragging.iter().collect::<Vec<_>>();

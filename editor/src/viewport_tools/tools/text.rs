@@ -10,7 +10,7 @@ use crate::viewport_tools::tool::{DocumentToolData, Fsm, ToolActionHandlerData};
 
 use glam::{DAffine2, DVec2};
 use graphene::intersection::Quad;
-use graphene::layers::style::{self, Fill, Stroke};
+use graphene::layers::style::{self, Stroke};
 use graphene::Operation;
 use kurbo::Shape;
 use serde::{Deserialize, Serialize};
