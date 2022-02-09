@@ -19,7 +19,7 @@ pub enum MovementMessage {
 	IncreaseCanvasZoom {
 		center_on_mouse: bool,
 	},
-	MouseMove {
+	PointerMove {
 		snap_angle: Key,
 		wait_for_snap_angle_release: bool,
 		snap_zoom: Key,

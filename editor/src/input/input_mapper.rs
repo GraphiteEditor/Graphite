@@ -29,7 +29,7 @@ impl Default for Mapping {
 		let mappings = mapping![
 			// Higher priority than entries in sections below
 			entry! {action=PortfolioMessage::Paste { clipboard: Clipboard::User }, key_down=KeyV, modifiers=[KeyControl]},
-			entry! {action=MovementMessage::MouseMove { snap_angle: KeyControl, wait_for_snap_angle_release: true, snap_zoom: KeyControl, zoom_from_viewport: None }, message=InputMapperMessage::PointerMove},
+			entry! {action=MovementMessage::PointerMove { snap_angle: KeyControl, wait_for_snap_angle_release: true, snap_zoom: KeyControl, zoom_from_viewport: None }, message=InputMapperMessage::PointerMove},
 			// Transform layers
 			entry! {action=TransformLayerMessage::ApplyTransformOperation, key_down=KeyEnter},
 			entry! {action=TransformLayerMessage::ApplyTransformOperation, key_down=Lmb},
@@ -41,18 +41,22 @@ impl Default for Mapping {
 			entry! {action=TransformLayerMessage::TypeNegate, key_down=KeyMinus},
 			entry! {action=TransformLayerMessage::TypeDecimalPoint, key_down=KeyComma},
 			entry! {action=TransformLayerMessage::TypeDecimalPoint, key_down=KeyPeriod},
-			entry! {action=TransformLayerMessage::MouseMove { slow_key: KeyShift, snap_key: KeyControl }, triggers=[KeyShift, KeyControl]},
+			entry! {action=TransformLayerMessage::PointerMove { slow_key: KeyShift, snap_key: KeyControl }, triggers=[KeyShift, KeyControl]},
 			// Select
-			entry! {action=SelectMessage::MouseMove { axis_align: KeyShift, snap_angle: KeyControl }, message=InputMapperMessage::PointerMove},
+			entry! {action=SelectMessage::PointerMove { axis_align: KeyShift, snap_angle: KeyControl, center: KeyAlt }, message=InputMapperMessage::PointerMove},
 			entry! {action=SelectMessage::DragStart { add_to_selection: KeyShift }, key_down=Lmb},
 			entry! {action=SelectMessage::DragStop, key_up=Lmb},
 			entry! {action=SelectMessage::EditLayer, message=InputMapperMessage::DoubleClick},
 			entry! {action=SelectMessage::Abort, key_down=Rmb},
 			entry! {action=SelectMessage::Abort, key_down=KeyEscape},
+			// Crop
+			entry! {action=CropMessage::PointerDown, key_down=Lmb},
+			entry! {action=CropMessage::PointerMove { constrain_axis_or_aspect: KeyShift, center: KeyAlt }, message=InputMapperMessage::PointerMove},
+			entry! {action=CropMessage::PointerUp, key_up=Lmb},
 			// Navigate
 			entry! {action=NavigateMessage::ClickZoom { zoom_in: false }, key_up=Lmb, modifiers=[KeyShift]},
 			entry! {action=NavigateMessage::ClickZoom { zoom_in: true }, key_up=Lmb},
-			entry! {action=NavigateMessage::MouseMove { snap_angle: KeyControl, snap_zoom: KeyControl }, message=InputMapperMessage::PointerMove},
+			entry! {action=NavigateMessage::PointerMove { snap_angle: KeyControl, snap_zoom: KeyControl }, message=InputMapperMessage::PointerMove},
 			entry! {action=NavigateMessage::TranslateCanvasBegin, key_down=Mmb},
 			entry! {action=NavigateMessage::RotateCanvasBegin, key_down=Rmb},
 			entry! {action=NavigateMessage::ZoomCanvasBegin, key_down=Lmb},

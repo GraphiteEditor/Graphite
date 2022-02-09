@@ -166,7 +166,7 @@ impl MessageHandler<MovementMessage, (&Document, &InputPreprocessorMessageHandle
 				}
 				responses.push_back(SetCanvasZoom { zoom_factor: new_scale }.into());
 			}
-			MouseMove {
+			PointerMove {
 				snap_angle,
 				wait_for_snap_angle_release,
 				snap_zoom,
@@ -344,7 +344,7 @@ impl MessageHandler<MovementMessage, (&Document, &InputPreprocessorMessageHandle
 
 		if self.panning || self.tilting || self.zooming {
 			let transforming = actions!(MovementMessageDiscriminant;
-				MouseMove,
+				PointerMove,
 				TransformCanvasEnd,
 			);
 			common.extend(transforming);
