@@ -161,7 +161,7 @@ impl Shape {
 	pub fn spline(points: Vec<impl Into<glam::DVec2>>, style: PathStyle) -> Self {
 		let mut path = kurbo::BezPath::new();
 
-		// Creating a bezier spline is only neccesary for 3 or more points.
+		// Creating a bezier spline is only necessary for 3 or more points.
 		// For 2 given points a line segment is created instead.
 		if points.len() > 2 {
 			let points: Vec<_> = points.into_iter().map(|v| v.into()).map(|v: DVec2| kurbo::Vec2 { x: v.x, y: v.y }).collect();
@@ -173,7 +173,7 @@ impl Shape {
 			let mut p1 = vec![kurbo::Vec2::ZERO; n];
 			let mut p2 = vec![kurbo::Vec2::ZERO; n];
 
-			// Tridiagonal matrix coefficients a, b and c (see https://en.wikipedia.org/wiki/Tridiagonal_matrix_algorithm)
+			// Tri-diagonal matrix coefficients a, b and c (see https://en.wikipedia.org/wiki/Tridiagonal_matrix_algorithm)
 			let mut a = vec![1.0; n];
 			a[0] = 0.0;
 			a[n - 1] = 2.0;
@@ -192,6 +192,7 @@ impl Shape {
 			// Solve with Thomas algorithm (see https://en.wikipedia.org/wiki/Tridiagonal_matrix_algorithm)
 			for i in 1..n {
 				let m = a[i] / b[i - 1];
+				// TODO: Fix Clippy warning which makes the borrow checker angry
 				b[i] = b[i] - m * c[i - 1];
 				r[i] = r[i] - m * r[i - 1];
 			}
