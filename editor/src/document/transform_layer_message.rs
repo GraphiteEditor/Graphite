@@ -14,7 +14,7 @@ pub enum TransformLayerMessage {
 	CancelTransformOperation,
 	ConstrainX,
 	ConstrainY,
-	MouseMove { slow_key: Key, snap_key: Key },
+	PointerMove { slow_key: Key, snap_key: Key },
 	TypeBackspace,
 	TypeDecimalPoint,
 	TypeDigit { digit: u8 },

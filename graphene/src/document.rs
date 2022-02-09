@@ -299,6 +299,12 @@ impl Document {
 		Ok(layer.data.bounding_box(transform))
 	}
 
+	pub fn bounding_box_and_transform(&self, path: &[LayerId]) -> Result<Option<([DVec2; 2], DAffine2)>, DocumentError> {
+		let layer = self.layer(path)?;
+		let transform = self.multiply_transforms(&path[..path.len() - 1])?;
+		Ok(layer.data.bounding_box(layer.transform).map(|bounds| (bounds, transform)))
+	}
+
 	pub fn visible_layers_bounding_box(&self) -> Option<[DVec2; 2]> {
 		let mut paths = vec![];
 		self.visible_layers(&mut vec![], &mut paths).ok()?;

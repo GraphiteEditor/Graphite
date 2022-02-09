@@ -250,7 +250,7 @@ impl JsEditorHandle {
 
 		let modifier_keys = ModifierKeys::from_bits(modifiers).expect("Invalid modifier keys");
 
-		let message = InputPreprocessorMessage::MouseMove { editor_mouse_state, modifier_keys };
+		let message = InputPreprocessorMessage::PointerMove { editor_mouse_state, modifier_keys };
 		self.dispatch(message);
 	}
 
@@ -271,7 +271,7 @@ impl JsEditorHandle {
 
 		let modifier_keys = ModifierKeys::from_bits(modifiers).expect("Invalid modifier keys");
 
-		let message = InputPreprocessorMessage::MouseDown { editor_mouse_state, modifier_keys };
+		let message = InputPreprocessorMessage::PointerDown { editor_mouse_state, modifier_keys };
 		self.dispatch(message);
 	}
 
@@ -281,7 +281,7 @@ impl JsEditorHandle {
 
 		let modifier_keys = ModifierKeys::from_bits(modifiers).expect("Invalid modifier keys");
 
-		let message = InputPreprocessorMessage::MouseUp { editor_mouse_state, modifier_keys };
+		let message = InputPreprocessorMessage::PointerUp { editor_mouse_state, modifier_keys };
 		self.dispatch(message);
 	}
 
@@ -515,8 +515,12 @@ impl JsEditorHandle {
 	}
 
 	/// Creates an artboard at a specified point with a width and height
-	pub fn create_artboard_and_fit_to_viewport(&self, top: f64, left: f64, height: f64, width: f64) {
-		let message = ArtboardMessage::AddArtboard { top, left, height, width };
+	pub fn create_artboard_and_fit_to_viewport(&self, pos_x: f64, pos_y: f64, width: f64, height: f64) {
+		let message = ArtboardMessage::AddArtboard {
+			id: None,
+			position: (pos_x, pos_y),
+			size: (width, height),
+		};
 		self.dispatch(message);
 		let message = DocumentMessage::ZoomCanvasToFitAll;
 		self.dispatch(message);

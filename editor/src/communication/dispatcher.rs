@@ -117,7 +117,7 @@ impl Dispatcher {
 			&& !(matches!(
 				message,
 				InputPreprocessor(_) | Frontend(FrontendMessage::UpdateCanvasZoom { .. }) | Frontend(FrontendMessage::UpdateCanvasRotation { .. })
-			) || MessageDiscriminant::from(message).local_name().ends_with("MouseMove"))
+			) || MessageDiscriminant::from(message).local_name().ends_with("PointerMove"))
 		{
 			log::trace!("Message: {:?}", message);
 			// log::trace!("Hints: {:?}", self.input_mapper_message_handler.hints(self.collect_actions()));
