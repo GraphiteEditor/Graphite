@@ -1,9 +1,7 @@
 pub use super::layer_panel::{layer_panel_entry, LayerMetadata, LayerPanelEntry, RawBuffer};
-
 use graphene::document::Document as GrapheneDocument;
 use graphene::LayerId;
 
-use glam::{DAffine2, DVec2};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -27,25 +25,4 @@ pub enum AlignAggregate {
 	Max,
 	Center,
 	Average,
-}
-
-#[derive(PartialEq, Clone, Debug)]
-pub enum VectorManipulatorSegment {
-	Line(DVec2, DVec2),
-	Quad(DVec2, DVec2, DVec2),
-	Cubic(DVec2, DVec2, DVec2, DVec2),
-}
-
-#[derive(PartialEq, Clone, Debug)]
-pub struct VectorManipulatorShape {
-	/// The path to the layer
-	pub layer_path: Vec<LayerId>,
-	/// The outline of the shape
-	pub path: kurbo::BezPath,
-	/// The control points / manipulator handles
-	pub segments: Vec<VectorManipulatorSegment>,
-	/// The compound Bezier curve is closed
-	pub closed: bool,
-	/// The transformation matrix to apply
-	pub transform: DAffine2,
 }
