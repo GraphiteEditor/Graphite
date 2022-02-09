@@ -15,6 +15,7 @@ pub struct Resize {
 	pub path: Option<Vec<LayerId>>,
 	snap_handler: SnapHandler,
 }
+
 impl Resize {
 	/// Starts a resize, assigning the snap targets and snapping the starting position.
 	pub fn start(&mut self, responses: &mut VecDeque<Message>, viewport_bounds: DVec2, document: &DocumentMessageHandler, mouse_position: DVec2) {

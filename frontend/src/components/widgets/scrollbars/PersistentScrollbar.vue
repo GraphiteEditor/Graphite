@@ -1,10 +1,10 @@
 <template>
 	<div class="persistent-scrollbar" :class="direction.toLowerCase()">
-		<button class="arrow decrease" @pointerdown="changePosition(-50)"></button>
+		<button class="arrow decrease" @pointerdown="() => changePosition(-50)"></button>
 		<div class="scroll-track" ref="scrollTrack" @pointerdown="(e) => grabArea(e)">
 			<div class="scroll-thumb" @pointerdown="(e) => grabHandle(e)" :class="{ dragging }" ref="handle" :style="[thumbStart, thumbEnd, sides]"></div>
 		</div>
-		<button class="arrow increase" @click="changePosition(50)"></button>
+		<button class="arrow increase" @click="() => changePosition(50)"></button>
 	</div>
 </template>
 
@@ -121,6 +121,10 @@ const handleToTrack = (handleLen: number, handlePos: number): number => lerp(han
 const pointerPosition = (direction: ScrollbarDirection, e: PointerEvent): number => (direction === "Vertical" ? e.clientY : e.clientX);
 
 export default defineComponent({
+	emits: {
+		"update:handlePosition": null,
+		pressTrack: (pointerOffset: number) => typeof pointerOffset === "number",
+	},
 	props: {
 		direction: { type: String as PropType<ScrollbarDirection>, default: "Vertical" },
 		handlePosition: { type: Number as PropType<number>, default: 0.5 },

@@ -245,7 +245,7 @@ impl Fsm for TextToolFsmState {
 					else if state == TextToolFsmState::Ready {
 						let transform = DAffine2::from_translation(input.mouse.position).to_cols_array();
 						let font_size = tool_options.font_size;
-						data.path = vec![generate_uuid()];
+						data.path = document.get_path_for_new_layer();
 
 						responses.push_back(
 							Operation::AddText {

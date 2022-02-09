@@ -499,8 +499,8 @@ impl Document {
 
 				Some([vec![DocumentChanged, CreatedLayer { path: path.clone() }], update_thumbnails_upstream(path)].concat())
 			}
-			Operation::AddOverlayShape { path, style, bez_path } => {
-				let mut shape = Shape::from_bez_path(bez_path.clone(), *style);
+			Operation::AddOverlayShape { path, style, bez_path, closed } => {
+				let mut shape = Shape::from_bez_path(bez_path.clone(), *style, *closed);
 				shape.render_index = -1;
 
 				let layer = Layer::new(LayerDataType::Shape(shape), DAffine2::IDENTITY.to_cols_array());
@@ -633,7 +633,7 @@ impl Document {
 
 				if let LayerDataType::Text(t) = &mut self.layer_mut(path)?.data {
 					let bezpath = t.to_bez_path();
-					self.layer_mut(path)?.data = layers::layer_info::LayerDataType::Shape(Shape::from_bez_path(bezpath, t.style));
+					self.layer_mut(path)?.data = layers::layer_info::LayerDataType::Shape(Shape::from_bez_path(bezpath, t.style, true));
 				}
 
 				if let LayerDataType::Shape(shape) = &mut self.layer_mut(path)?.data {

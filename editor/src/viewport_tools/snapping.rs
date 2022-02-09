@@ -104,6 +104,19 @@ impl SnapHandler {
 		}
 	}
 
+	/// Add arbitrary snapping points
+	/// This should be called after start_snap
+	pub fn add_snap_points(&mut self, document_message_handler: &DocumentMessageHandler, snap_points: Vec<DVec2>) {
+		if document_message_handler.snapping_enabled {
+			let (mut x_targets, mut y_targets): (Vec<f64>, Vec<f64>) = snap_points.into_iter().map(|vec| vec.into()).unzip();
+			if let Some((new_x_targets, new_y_targets)) = &mut self.snap_targets {
+				x_targets.append(new_x_targets);
+				y_targets.append(new_y_targets);
+				self.snap_targets = Some((x_targets, y_targets));
+			}
+		}
+	}
+
 	/// Finds the closest snap from an array of layers to the specified snap targets in viewport coords.
 	/// Returns 0 for each axis that there is no snap less than the snap tolerance.
 	pub fn snap_layers(

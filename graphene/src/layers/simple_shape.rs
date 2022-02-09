@@ -17,6 +17,7 @@ pub struct Shape {
 	pub path: BezPath,
 	pub style: style::PathStyle,
 	pub render_index: i32,
+	pub closed: bool,
 }
 
 impl LayerData for Shape {
@@ -69,11 +70,12 @@ impl Shape {
 		transforms.iter().skip(start).cloned().reduce(|a, b| a * b).unwrap_or(DAffine2::IDENTITY)
 	}
 
-	pub fn from_bez_path(bez_path: BezPath, style: PathStyle) -> Self {
+	pub fn from_bez_path(bez_path: BezPath, style: PathStyle, closed: bool) -> Self {
 		Self {
 			path: bez_path,
 			style,
 			render_index: 1,
+			closed,
 		}
 	}
 
@@ -102,7 +104,12 @@ impl Shape {
 
 		path.close_path();
 
-		Self { path, style, render_index: 1 }
+		Self {
+			path,
+			style,
+			render_index: 1,
+			closed: true,
+		}
 	}
 
 	pub fn rectangle(style: PathStyle) -> Self {
@@ -110,6 +117,7 @@ impl Shape {
 			path: kurbo::Rect::new(0., 0., 1., 1.).to_path(0.01),
 			style,
 			render_index: 1,
+			closed: true,
 		}
 	}
 
@@ -118,6 +126,7 @@ impl Shape {
 			path: kurbo::Ellipse::from_rect(kurbo::Rect::new(0., 0., 1., 1.)).to_path(0.01),
 			style,
 			render_index: 1,
+			closed: true,
 		}
 	}
 
@@ -126,6 +135,7 @@ impl Shape {
 			path: kurbo::Line::new((0., 0.), (1., 0.)).to_path(0.01),
 			style,
 			render_index: 1,
+			closed: false,
 		}
 	}
 
@@ -138,6 +148,11 @@ impl Shape {
 			.enumerate()
 			.for_each(|(i, p)| if i == 0 { path.move_to(p) } else { path.line_to(p) });
 
-		Self { path, style, render_index: 0 }
+		Self {
+			path,
+			style,
+			render_index: 0,
+			closed: false,
+		}
 	}
 }
