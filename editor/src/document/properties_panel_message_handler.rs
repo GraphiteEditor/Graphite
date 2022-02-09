@@ -91,7 +91,7 @@ impl MessageHandler<PropertiesPanelMessage, &mut GrapheneDocument> for Propertie
 		let graphine_document = data;
 		use PropertiesPanelMessage::*;
 		match message {
-			SetActiveLayer(path) => {
+			SetActiveLayer { path } => {
 				let layer = graphine_document.layer(&path).unwrap();
 				layer.register_properties(responses, LayoutTarget::PropertiesPanel);
 				self.active_path = Some(path)
@@ -103,12 +103,12 @@ impl MessageHandler<PropertiesPanelMessage, &mut GrapheneDocument> for Propertie
 				}
 				.into(),
 			),
-			ModifyTransform(value, op) => {
+			ModifyTransform { value, transform_op } => {
 				let path = self.active_path.as_ref().expect("Received update for properties panel with no active layer");
 				let layer = graphine_document.layer(path).unwrap();
 
 				use TransformOp::*;
-				let action = match op {
+				let action = match transform_op {
 					X => DAffine2::update_x,
 					Y => DAffine2::update_y,
 					Width => DAffine2::update_width,
@@ -124,13 +124,13 @@ impl MessageHandler<PropertiesPanelMessage, &mut GrapheneDocument> for Propertie
 					.into(),
 				);
 			}
-			MaybeUpdate(path) => {
+			MaybeUpdate { path } => {
 				if self.matches_selected(&path) {
 					let layer = graphine_document.layer(&path).unwrap();
 					layer.register_properties(responses, LayoutTarget::PropertiesPanel);
 				}
 			}
-			MaybeDelete(path) => {
+			MaybeDelete { path } => {
 				if self.matches_selected(&path) {
 					self.active_path = None;
 					responses.push_back(
@@ -224,7 +224,13 @@ impl PropertyHolder for Layer {
 									value: self.transform.x(),
 									label: "X".into(),
 									unit: " px".into(),
-									on_update: WidgetCallback::new(|number_input| PropertiesPanelMessage::ModifyTransform(number_input.value, TransformOp::X).into()),
+									on_update: WidgetCallback::new(|number_input| {
+										PropertiesPanelMessage::ModifyTransform {
+											value: number_input.value,
+											transform_op: TransformOp::X,
+										}
+										.into()
+									}),
 									..NumberInput::default()
 								})),
 								WidgetHolder::new(Widget::Separator(Separator {
@@ -235,7 +241,13 @@ impl PropertyHolder for Layer {
 									value: self.transform.y(),
 									label: "Y".into(),
 									unit: " px".into(),
-									on_update: WidgetCallback::new(|number_input| PropertiesPanelMessage::ModifyTransform(number_input.value, TransformOp::Y).into()),
+									on_update: WidgetCallback::new(|number_input| {
+										PropertiesPanelMessage::ModifyTransform {
+											value: number_input.value,
+											transform_op: TransformOp::Y,
+										}
+										.into()
+									}),
 									..NumberInput::default()
 								})),
 							],
@@ -255,7 +267,13 @@ impl PropertyHolder for Layer {
 									value: self.transform.width(),
 									label: "W".into(),
 									unit: " px".into(),
-									on_update: WidgetCallback::new(|number_input| PropertiesPanelMessage::ModifyTransform(number_input.value, TransformOp::Width).into()),
+									on_update: WidgetCallback::new(|number_input| {
+										PropertiesPanelMessage::ModifyTransform {
+											value: number_input.value,
+											transform_op: TransformOp::Width,
+										}
+										.into()
+									}),
 									..NumberInput::default()
 								})),
 								WidgetHolder::new(Widget::Separator(Separator {
@@ -266,7 +284,13 @@ impl PropertyHolder for Layer {
 									value: self.transform.height(),
 									label: "H".into(),
 									unit: " px".into(),
-									on_update: WidgetCallback::new(|number_input| PropertiesPanelMessage::ModifyTransform(number_input.value, TransformOp::Height).into()),
+									on_update: WidgetCallback::new(|number_input| {
+										PropertiesPanelMessage::ModifyTransform {
+											value: number_input.value,
+											transform_op: TransformOp::Height,
+										}
+										.into()
+									}),
 									..NumberInput::default()
 								})),
 							],
@@ -286,7 +310,13 @@ impl PropertyHolder for Layer {
 									value: self.transform.rotation() * 180. / PI,
 									label: "R".into(),
 									unit: "°".into(),
-									on_update: WidgetCallback::new(|number_input| PropertiesPanelMessage::ModifyTransform(number_input.value / 180. * PI, TransformOp::Rotation).into()),
+									on_update: WidgetCallback::new(|number_input| {
+										PropertiesPanelMessage::ModifyTransform {
+											value: number_input.value / 180. * PI,
+											transform_op: TransformOp::Rotation,
+										}
+										.into()
+									}),
 									..NumberInput::default()
 								})),
 							],

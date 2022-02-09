@@ -685,7 +685,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 			AddSelectedLayers { additional_layers } => {
 				if additional_layers.len() == 1 {
 					let path = additional_layers[0].clone();
-					responses.push_back(PropertiesPanelMessage::SetActiveLayer(path).into())
+					responses.push_back(PropertiesPanelMessage::SetActiveLayer { path }.into())
 				} else {
 					responses.push_back(PropertiesPanelMessage::ClearSelection.into())
 				}
@@ -752,7 +752,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 			}
 			DeleteLayer { layer_path } => {
 				responses.push_front(DocumentOperation::DeleteLayer { path: layer_path.clone() }.into());
-				responses.push_back(PropertiesPanelMessage::MaybeDelete(layer_path).into());
+				responses.push_back(PropertiesPanelMessage::MaybeDelete { path: layer_path }.into());
 			}
 			DeleteSelectedLayers => {
 				self.backup(responses);
@@ -874,7 +874,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 				if let Ok(layer_entry) = self.layer_panel_entry(affected_layer_path.clone()) {
 					responses.push_back(FrontendMessage::UpdateDocumentLayer { data: layer_entry }.into());
 				}
-				responses.push_back(PropertiesPanelMessage::MaybeUpdate(affected_layer_path).into());
+				responses.push_back(PropertiesPanelMessage::MaybeUpdate { path: affected_layer_path }.into());
 			}
 			MoveSelectedLayersTo {
 				folder_path,

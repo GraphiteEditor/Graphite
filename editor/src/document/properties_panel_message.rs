@@ -7,10 +7,10 @@ use serde::{Deserialize, Serialize};
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub enum PropertiesPanelMessage {
 	ClearSelection,
-	MaybeDelete(Vec<LayerId>),
-	MaybeUpdate(Vec<LayerId>),
-	ModifyTransform(f64, TransformOp),
-	SetActiveLayer(Vec<LayerId>),
+	MaybeDelete { path: Vec<LayerId> },
+	MaybeUpdate { path: Vec<LayerId> },
+	ModifyTransform { value: f64, transform_op: TransformOp },
+	SetActiveLayer { path: Vec<LayerId> },
 }
 
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
