@@ -141,15 +141,24 @@ impl Shape {
 		Self { path, style, render_index: 0 }
 	}
 
+	/// Creates a smooth bezier spline that passes through all given points.
+	/// The algorithm used in this implementation is described here: https://www.particleincell.com/2012/bezier-splines/
 	pub fn spline(points: Vec<impl Into<glam::DVec2>>, style: PathStyle) -> Self {
 		let mut path = kurbo::BezPath::new();
+
+		// Creating a bezier spline is only neccesary for 3 or more points.
+		// For 2 given points a line segment is created instead.
 		if points.len() > 2 {
 			let points: Vec<_> = points.into_iter().map(|v| v.into()).map(|v: DVec2| kurbo::Vec2 { x: v.x, y: v.y }).collect();
 
+			// Number of bezier segments
 			let n = points.len() - 1;
+
+			// Control points for each bezier segment
 			let mut p1 = vec![kurbo::Vec2::ZERO; n];
 			let mut p2 = vec![kurbo::Vec2::ZERO; n];
 
+			// Tridiagonal matrix coefficients a, b and c (see https://en.wikipedia.org/wiki/Tridiagonal_matrix_algorithm)
 			let mut a = vec![1.0; n];
 			a[0] = 0.0;
 			a[n - 1] = 2.0;
@@ -165,22 +174,26 @@ impl Shape {
 			r[0] = points[0] + (2.0 * points[1]);
 			r[n - 1] = 8.0 * points[n - 1] + points[n];
 
+			// Solve with Thomas algorithm (see https://en.wikipedia.org/wiki/Tridiagonal_matrix_algorithm)
 			for i in 1..n {
 				let m = a[i] / b[i - 1];
 				b[i] = b[i] - m * c[i - 1];
 				r[i] = r[i] - m * r[i - 1];
 			}
 
+			// Determine first control point for each segment
 			p1[n - 1] = r[n - 1] / b[n - 1];
 			for i in (0..n - 1).rev() {
 				p1[i] = (r[i] - c[i] * p1[i + 1]) / b[i];
 			}
 
+			// Determine second control point per segment from first
 			for i in 0..n - 1 {
 				p2[i] = 2.0 * points[i + 1] - p1[i + 1];
 			}
 			p2[n - 1] = 0.5 * (points[n] + p1[n - 1]);
 
+			// Create bezier path from given points and computed control points
 			points.into_iter().enumerate().for_each(|(i, p)| {
 				if i == 0 {
 					path.move_to(p.to_point())

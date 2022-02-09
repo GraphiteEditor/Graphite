@@ -156,7 +156,7 @@ impl Fsm for FreehandToolFsmState {
 
 					data.weight = tool_options.line_weight;
 
-					responses.push_back(make_operation(data, tool_data));
+					responses.push_back(add_polyline(data, tool_data));
 
 					Drawing
 				}
@@ -168,7 +168,7 @@ impl Fsm for FreehandToolFsmState {
 					}
 
 					responses.push_back(remove_preview(data));
-					responses.push_back(make_operation(data, tool_data));
+					responses.push_back(add_polyline(data, tool_data));
 
 					Drawing
 				}
@@ -176,7 +176,7 @@ impl Fsm for FreehandToolFsmState {
 					if data.points.len() >= 2 {
 						responses.push_back(DocumentMessage::DeselectAllLayers.into());
 						responses.push_back(remove_preview(data));
-						responses.push_back(make_operation(data, tool_data));
+						responses.push_back(add_polyline(data, tool_data));
 						responses.push_back(DocumentMessage::CommitTransaction.into());
 					} else {
 						responses.push_back(DocumentMessage::AbortTransaction.into());
@@ -217,7 +217,7 @@ fn remove_preview(data: &FreehandToolData) -> Message {
 	Operation::DeleteLayer { path: data.path.clone().unwrap() }.into()
 }
 
-fn make_operation(data: &FreehandToolData, tool_data: &DocumentToolData) -> Message {
+fn add_polyline(data: &FreehandToolData, tool_data: &DocumentToolData) -> Message {
 	let points: Vec<(f64, f64)> = data.points.iter().map(|p| (p.x, p.y)).collect();
 
 	Operation::AddPolyline {

@@ -19,6 +19,8 @@ pub const SNAP_TOLERANCE: f64 = 3.;
 pub const SNAP_OVERLAY_FADE_DISTANCE: f64 = 20.;
 pub const SNAP_OVERLAY_UNSNAPPED_OPACITY: f64 = 0.4;
 
+pub const DRAG_THRESHOLD: f64 = 1.;
+
 // Transforming layer
 pub const ROTATE_SNAP_ANGLE: f64 = 15.;
 pub const SCALE_SNAP_INTERVAL: f64 = 0.1;
