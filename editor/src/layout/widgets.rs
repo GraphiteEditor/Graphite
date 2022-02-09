@@ -183,6 +183,9 @@ pub struct NumberInput {
 	pub increment_callback_decrease: WidgetCallback<NumberInput>,
 	pub label: String,
 	pub unit: String,
+	#[serde(rename = "displayDecimalPlaces")]
+	#[derivative(Default(value = "3"))]
+	pub display_decimal_places: u32,
 }
 
 #[derive(Clone, Serialize, Deserialize, Derivative)]
@@ -289,12 +292,12 @@ pub struct RadioEntryData {
 pub struct IconLabel {
 	pub icon: String,
 	#[serde(rename = "gapAfter")]
-	pub gap_after:bool,
+	pub gap_after: bool,
 }
 
 #[derive(Clone, Serialize, Deserialize, Derivative, Debug, PartialEq, Default)]
 pub struct TextLabel {
 	pub value: String,
 	pub bold: bool,
-	pub italic: bool	
+	pub italic: bool,
 }

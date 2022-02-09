@@ -81,7 +81,7 @@ impl MessageHandler<LayoutMessage, ()> for LayoutMessageHandler {
 						let callback_message = (radio_input.entries[update_value as usize].on_update.callback)(&());
 						responses.push_back(callback_message);
 					}
-					Widget::TextInput(text_input) =>{
+					Widget::TextInput(text_input) => {
 						let update_value = value.as_str().expect("OptionalInput update was not of type: string");
 						text_input.value = update_value.into();
 						let callback_message = (text_input.on_update.callback)(text_input);

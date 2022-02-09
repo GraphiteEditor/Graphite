@@ -7,7 +7,6 @@ use crate::consts::{
 	ASYMPTOTIC_EFFECT, DEFAULT_DOCUMENT_NAME, FILE_EXPORT_SUFFIX, FILE_SAVE_SUFFIX, GRAPHITE_DOCUMENT_VERSION, SCALE_EFFECT, SCROLLBAR_SPACING, VIEWPORT_ZOOM_TO_FIT_PADDING_SCALE_FACTOR,
 };
 use crate::input::InputPreprocessorMessageHandler;
-use crate::layout::layout_message::LayoutTarget;
 use crate::layout::widgets::{
 	IconButton, LayoutRow, NumberInput, NumberInputIncrementBehavior, OptionalInput, PopoverButton, PropertyHolder, RadioEntryData, RadioInput, Separator, SeparatorDirection, SeparatorType, Widget,
 	WidgetCallback, WidgetHolder, WidgetLayout,
@@ -675,7 +674,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 			}
 			#[remain::unsorted]
 			PropertiesPanel(message) => {
-				self.properties_panel_message_handler.process_action(message, (&mut self.graphene_document), responses);
+				self.properties_panel_message_handler.process_action(message, &mut self.graphene_document, responses);
 			}
 
 			// Messages
@@ -751,12 +750,15 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 			DebugPrintDocument => {
 				log::debug!("{:#?}\n{:#?}", self.graphene_document, self.layer_metadata);
 			}
-			DeleteLayer { layer_path } => responses.push_front(DocumentOperation::DeleteLayer { path: layer_path }.into()),
+			DeleteLayer { layer_path } => {
+				responses.push_front(DocumentOperation::DeleteLayer { path: layer_path.clone() }.into());
+				responses.push_back(PropertiesPanelMessage::MaybeDelete(layer_path).into());
+			}
 			DeleteSelectedLayers => {
 				self.backup(responses);
 
 				for path in self.selected_layers_without_children() {
-					responses.push_front(DocumentOperation::DeleteLayer { path: path.to_vec() }.into());
+					responses.push_front(DocumentMessage::DeleteLayer { layer_path: path.to_vec() }.into());
 				}
 
 				responses.push_front(ToolMessage::DocumentIsDirty.into());
@@ -869,9 +871,10 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 				);
 			}
 			LayerChanged { affected_layer_path } => {
-				if let Ok(layer_entry) = self.layer_panel_entry(affected_layer_path) {
+				if let Ok(layer_entry) = self.layer_panel_entry(affected_layer_path.clone()) {
 					responses.push_back(FrontendMessage::UpdateDocumentLayer { data: layer_entry }.into());
 				}
+				responses.push_back(PropertiesPanelMessage::MaybeUpdate(affected_layer_path).into());
 			}
 			MoveSelectedLayersTo {
 				folder_path,

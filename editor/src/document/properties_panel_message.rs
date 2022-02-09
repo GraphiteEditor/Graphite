@@ -7,11 +7,17 @@ use serde::{Deserialize, Serialize};
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub enum PropertiesPanelMessage {
 	ClearSelection,
-	SetActiveHeight(f64),
+	MaybeDelete(Vec<LayerId>),
+	MaybeUpdate(Vec<LayerId>),
+	ModifyTransform(f64, TransformOp),
 	SetActiveLayer(Vec<LayerId>),
-	SetActiveRotation(f64),
-	SetActiveSkew(f64),
-	SetActiveWidth(f64),
-	SetActiveX(f64),
-	SetActiveY(f64),
+}
+
+#[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
+pub enum TransformOp {
+	X,
+	Y,
+	Width,
+	Height,
+	Rotation,
 }

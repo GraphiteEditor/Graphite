@@ -1,17 +1,88 @@
+use std::f64::consts::PI;
+
+use crate::document::properties_panel_message::TransformOp;
 use crate::layout::layout_message::LayoutTarget;
-use crate::layout::widgets::{IconLabel, LayoutRow, NumberInput, PopoverButton, PropertyHolder, TextInput, TextLabel, Widget, WidgetCallback, WidgetHolder, WidgetLayout};
+use crate::layout::widgets::{
+	IconLabel, LayoutRow, NumberInput, PopoverButton, PropertyHolder, Separator, SeparatorDirection, SeparatorType, TextInput, TextLabel, Widget, WidgetCallback, WidgetHolder, WidgetLayout,
+};
 use crate::message_prelude::*;
 
 use graphene::document::Document as GrapheneDocument;
 use graphene::layers::layer_info::{Layer, LayerDataType};
-use graphene::LayerId;
+use graphene::{LayerId, Operation};
 
 use glam::{DAffine2, DVec2};
 use serde::{Deserialize, Serialize};
 
+trait DAffine2Utils {
+	fn width(&self) -> f64;
+	fn update_width(self, new_width: f64) -> Self;
+	fn height(&self) -> f64;
+	fn update_height(self, new_height: f64) -> Self;
+	fn x(&self) -> f64;
+	fn update_x(self, new_x: f64) -> Self;
+	fn y(&self) -> f64;
+	fn update_y(self, new_y: f64) -> Self;
+	fn rotation(&self) -> f64;
+	fn update_rotation(self, new_rotation: f64) -> Self;
+}
+
+impl DAffine2Utils for DAffine2 {
+	fn width(&self) -> f64 {
+		self.transform_vector2((1., 0.).into()).length()
+	}
+	fn update_width(self, new_width: f64) -> Self {
+		self * DAffine2::from_scale((new_width / self.width(), 1.).into())
+	}
+	fn height(&self) -> f64 {
+		self.transform_vector2((0., 1.).into()).length()
+	}
+	fn update_height(self, new_height: f64) -> Self {
+		self * DAffine2::from_scale((1., new_height / self.height()).into())
+	}
+	fn x(&self) -> f64 {
+		self.translation.x
+	}
+	fn update_x(mut self, new_x: f64) -> Self {
+		self.translation.x = new_x;
+		self
+	}
+	fn y(&self) -> f64 {
+		self.translation.y
+	}
+	fn update_y(mut self, new_y: f64) -> Self {
+		self.translation.y = new_y;
+		self
+	}
+	fn rotation(&self) -> f64 {
+		let cos = self.matrix2.col(0).x / self.width();
+		let sin = self.matrix2.col(0).y / self.width();
+		sin.atan2(cos)
+	}
+	fn update_rotation(self, new_rotation: f64) -> Self {
+		let width = self.width();
+		let height = self.height();
+		let half_width = width / 2.;
+		let half_height = height / 2.;
+
+		let angle_translation_offset = |angle: f64| DVec2::new(-half_width * angle.cos() + half_height * angle.sin(), -half_width * angle.sin() - half_height * angle.cos());
+		let angle_adj = angle_translation_offset(new_rotation) - angle_translation_offset(self.rotation());
+
+		DAffine2::from_scale_angle_translation((width, height).into(), new_rotation, self.translation + angle_adj)
+	}
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct PropertiesPanelMessageHandler {
 	active_path: Option<Vec<LayerId>>,
+}
+
+impl PropertiesPanelMessageHandler {
+	fn matches_selected(&self, path: &[LayerId]) -> bool {
+		let last_active_path = self.active_path.as_ref().map(|v| v.last().copied()).flatten();
+		let last_modified = path.last().copied();
+		matches!((last_active_path, last_modified), (Some(active_last), Some(modified_last)) if active_last == modified_last)
+	}
 }
 
 impl MessageHandler<PropertiesPanelMessage, &mut GrapheneDocument> for PropertiesPanelMessageHandler {
@@ -32,21 +103,45 @@ impl MessageHandler<PropertiesPanelMessage, &mut GrapheneDocument> for Propertie
 				}
 				.into(),
 			),
-			SetActiveX(new_x) => {
-				let path = &self.active_path.as_ref().expect("Received update for properties panel with no active layer");
-				let mut layer = graphine_document.layer(path).unwrap().clone();
-				layer.transform.translation.x = new_x;
-				graphine_document.set_layer(path, layer, -1).unwrap();
-				responses.push_back(DocumentMessage::RenderDocument.into())
+			ModifyTransform(value, op) => {
+				let path = self.active_path.as_ref().expect("Received update for properties panel with no active layer");
+				let layer = graphine_document.layer(path).unwrap();
+
+				use TransformOp::*;
+				let action = match op {
+					X => DAffine2::update_x,
+					Y => DAffine2::update_y,
+					Width => DAffine2::update_width,
+					Height => DAffine2::update_height,
+					Rotation => DAffine2::update_rotation,
+				};
+
+				responses.push_back(
+					Operation::SetLayerTransform {
+						path: path.clone(),
+						transform: action(layer.transform, value).to_cols_array(),
+					}
+					.into(),
+				);
 			}
-			SetActiveY(new_y) => {
-				let path = &self.active_path.as_ref().expect("Received update for properties panel with no active layer");
-				let mut layer = graphine_document.layer(path).unwrap().clone();
-				layer.transform.translation.y = new_y;
-				graphine_document.set_layer(path, layer, -1).unwrap();
-				responses.push_back(DocumentMessage::RenderDocument.into())
+			MaybeUpdate(path) => {
+				if self.matches_selected(&path) {
+					let layer = graphine_document.layer(&path).unwrap();
+					layer.register_properties(responses, LayoutTarget::PropertiesPanel);
+				}
 			}
-			_ => todo!(),
+			MaybeDelete(path) => {
+				if self.matches_selected(&path) {
+					self.active_path = None;
+					responses.push_back(
+						LayoutMessage::SendLayout {
+							layout_target: LayoutTarget::PropertiesPanel,
+							layout: WidgetLayout::default(),
+						}
+						.into(),
+					)
+				}
+			}
 		}
 	}
 
@@ -110,7 +205,7 @@ impl PropertyHolder for Layer {
 			LayerDataType::Folder(_) => {
 				vec![]
 			}
-			LayerDataType::Shape(shape) => {
+			LayerDataType::Shape(_) => {
 				vec![LayoutRow::Section {
 					name: "Transform".into(),
 					layout: vec![
@@ -121,18 +216,26 @@ impl PropertyHolder for Layer {
 									value: "Position".into(),
 									..TextLabel::default()
 								})),
-								WidgetHolder::new(Widget::NumberInput(NumberInput {
-									value: self.transform.translation.x,
-									label: "X".into(),
-									unit: " px".into(),
-									on_update: WidgetCallback::new(|number_input| PropertiesPanelMessage::SetActiveX(number_input.value).into()),
-									..NumberInput::default()
+								WidgetHolder::new(Widget::Separator(Separator {
+									separator_type: SeparatorType::Related,
+									direction: SeparatorDirection::Horizontal,
 								})),
 								WidgetHolder::new(Widget::NumberInput(NumberInput {
-									value: self.transform.translation.y,
+									value: self.transform.x(),
+									label: "X".into(),
+									unit: " px".into(),
+									on_update: WidgetCallback::new(|number_input| PropertiesPanelMessage::ModifyTransform(number_input.value, TransformOp::X).into()),
+									..NumberInput::default()
+								})),
+								WidgetHolder::new(Widget::Separator(Separator {
+									separator_type: SeparatorType::Related,
+									direction: SeparatorDirection::Horizontal,
+								})),
+								WidgetHolder::new(Widget::NumberInput(NumberInput {
+									value: self.transform.y(),
 									label: "Y".into(),
 									unit: " px".into(),
-									on_update: WidgetCallback::new(|number_input| PropertiesPanelMessage::SetActiveY(number_input.value).into()),
+									on_update: WidgetCallback::new(|number_input| PropertiesPanelMessage::ModifyTransform(number_input.value, TransformOp::Y).into()),
 									..NumberInput::default()
 								})),
 							],
@@ -144,16 +247,26 @@ impl PropertyHolder for Layer {
 									value: "Dimensions".into(),
 									..TextLabel::default()
 								})),
-								WidgetHolder::new(Widget::NumberInput(NumberInput {
-									value: self.transform.to_cols_array()[0],
-									label: "W".into(),
-									unit: " px".into(),
-									..NumberInput::default()
+								WidgetHolder::new(Widget::Separator(Separator {
+									separator_type: SeparatorType::Related,
+									direction: SeparatorDirection::Horizontal,
 								})),
 								WidgetHolder::new(Widget::NumberInput(NumberInput {
-									value: self.transform.to_cols_array()[1],
+									value: self.transform.width(),
+									label: "W".into(),
+									unit: " px".into(),
+									on_update: WidgetCallback::new(|number_input| PropertiesPanelMessage::ModifyTransform(number_input.value, TransformOp::Width).into()),
+									..NumberInput::default()
+								})),
+								WidgetHolder::new(Widget::Separator(Separator {
+									separator_type: SeparatorType::Related,
+									direction: SeparatorDirection::Horizontal,
+								})),
+								WidgetHolder::new(Widget::NumberInput(NumberInput {
+									value: self.transform.height(),
 									label: "H".into(),
 									unit: " px".into(),
+									on_update: WidgetCallback::new(|number_input| PropertiesPanelMessage::ModifyTransform(number_input.value, TransformOp::Height).into()),
 									..NumberInput::default()
 								})),
 							],
@@ -165,16 +278,15 @@ impl PropertyHolder for Layer {
 									value: "Rotation/Sheer".into(),
 									..TextLabel::default()
 								})),
-								WidgetHolder::new(Widget::NumberInput(NumberInput {
-									value: self.transform.to_cols_array()[2],
-									label: "R".into(),
-									unit: "°".into(),
-									..NumberInput::default()
+								WidgetHolder::new(Widget::Separator(Separator {
+									separator_type: SeparatorType::Related,
+									direction: SeparatorDirection::Horizontal,
 								})),
 								WidgetHolder::new(Widget::NumberInput(NumberInput {
-									value: self.transform.to_cols_array()[3],
-									label: "S".into(),
+									value: self.transform.rotation() * 180. / PI,
+									label: "R".into(),
 									unit: "°".into(),
+									on_update: WidgetCallback::new(|number_input| PropertiesPanelMessage::ModifyTransform(number_input.value / 180. * PI, TransformOp::Rotation).into()),
 									..NumberInput::default()
 								})),
 							],
