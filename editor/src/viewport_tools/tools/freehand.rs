@@ -5,7 +5,7 @@ use crate::input::InputPreprocessorMessageHandler;
 use crate::layout::widgets::{LayoutRow, NumberInput, PropertyHolder, Widget, WidgetCallback, WidgetHolder, WidgetLayout};
 use crate::message_prelude::*;
 use crate::misc::{HintData, HintGroup, HintInfo};
-use crate::viewport_tools::tool::{get_new_layer_location, DocumentToolData, Fsm, ToolActionHandlerData};
+use crate::viewport_tools::tool::{DocumentToolData, Fsm, ToolActionHandlerData};
 
 use graphene::layers::style;
 use graphene::Operation;
@@ -148,7 +148,7 @@ impl Fsm for FreehandToolFsmState {
 				(Ready, DragStart) => {
 					responses.push_back(DocumentMessage::StartTransaction.into());
 					responses.push_back(DocumentMessage::DeselectAllLayers.into());
-					data.path = Some(get_new_layer_location(&document));
+					data.path = Some(document.get_path_for_new_layer());
 
 					let pos = transform.inverse().transform_point2(input.mouse.position);
 
