@@ -208,19 +208,17 @@ impl DocumentMessageHandler {
 	}
 
 	/// Returns the bounding boxes for all visible layers and artboards, optionally excluding any paths.
-	pub fn bounding_boxes(&self, ignore_document: Option<&Vec<Vec<LayerId>>>, ignore_artboard: Option<LayerId>) -> impl Iterator<Item = [DVec2; 2]> {
+	pub fn bounding_boxes<'a>(&'a self, ignore_document: Option<&'a Vec<Vec<LayerId>>>, ignore_artboard: Option<LayerId>) -> impl Iterator<Item = [DVec2; 2]> + 'a {
 		self.visible_layers()
-			.filter(|path| ignore_document.clone().map_or(true, |ignore_document| !ignore_document.iter().any(|ig| ig.as_slice() == *path)))
+			.filter(move |path| ignore_document.map_or(true, |ignore_document| !ignore_document.iter().any(|ig| ig.as_slice() == *path)))
 			.filter_map(|path| self.graphene_document.viewport_bounding_box(path).ok()?)
 			.chain(
 				self.artboard_message_handler
 					.artboard_ids
 					.iter()
-					.filter(|&&id| Some(id) != ignore_artboard)
+					.filter(move |&&id| Some(id) != ignore_artboard)
 					.filter_map(|&path| self.artboard_message_handler.artboards_graphene_document.viewport_bounding_box(&[path]).ok()?),
 			)
-			.collect::<Vec<_>>()
-			.into_iter()
 	}
 
 	fn serialize_structure(&self, folder: &Folder, structure: &mut Vec<u64>, data: &mut Vec<LayerId>, path: &mut Vec<LayerId>) {
