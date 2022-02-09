@@ -110,7 +110,7 @@ impl Fsm for RectangleToolFsmState {
 				(Ready, DragStart) => {
 					shape_data.start(responses, input.viewport_bounds.size(), document, input.mouse.position);
 					responses.push_back(DocumentMessage::StartTransaction.into());
-					shape_data.path = Some(vec![generate_uuid()]);
+					shape_data.path = Some(document.get_path_for_new_layer());
 					responses.push_back(DocumentMessage::DeselectAllLayers.into());
 
 					responses.push_back(
