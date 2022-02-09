@@ -1,8 +1,13 @@
-use std::ops::Mul;
+use core::{panic, slice::SlicePattern};
+use std::{ops::Mul, path::Path};
 
-use crate::consts::{CURVE_FIDELITY, F64PRECISION};
+use crate::{
+	boolean_ops::split_path_seg,
+	boolean_ops::subdivide_path_seg,
+	consts::{CURVE_FIDELITY, F64PRECISION},
+};
 use glam::{DAffine2, DMat2, DVec2};
-use kurbo::{BezPath, CubicBez, Line, ParamCurve, ParamCurveExtrema, PathSeg, Point, QuadBez, Rect, Shape};
+use kurbo::{BezPath, CubicBez, Line, ParamCurve, ParamCurveExtrema, PathSeg, Point, QuadBez, Rect, Shape, Vec2};
 
 #[derive(Debug, Clone, Default, Copy)]
 pub struct Quad([DVec2; 4]);
@@ -328,7 +333,8 @@ where
 							PathSeg::Quad(quad) => quad.eval(*time),
 							_ => Point::new(0.0, 0.0), //should never occur
 						};
-						let line_time = line_t_value(line, &point);
+						// the intersection point should be on the line, unless FP math error produces bad results
+						let line_time = line_t_value(line, &point).unwrap();
 						if !t_validate(line_time, *time) {
 							return None;
 						}
@@ -352,6 +358,69 @@ fn guess_quality(a: &PathSeg, b: &PathSeg, guess: &Intersect) -> f64 {
 	let at_a = b.eval(guess.t_b);
 	let at_b = a.eval(guess.t_a);
 	at_a.distance(guess.point) + at_b.distance(guess.point)
+}
+
+///
+pub fn same_curve_intersections(a: &PathSeg, b: &PathSeg) -> [Option<Intersect>; 2] {
+	let mut b_on_a: Vec<Option<f64>> = [point_t_value(a, &b.start()), point_t_value(a, &b.end())].into_iter().collect();
+	let mut a_on_b: Vec<Option<f64>> = [point_t_value(b, &a.start()), point_t_value(b, &a.end())].into_iter().collect();
+	// I think, but have not mathematically shown, that if a and b are parts of the same curve then b_on_a and a_on_b should together have no more than three non-None elements. Which occurs when a or b is a cubic bezier which crosses itself
+	let b_on_a_not_None = b_on_a.iter().filter_map(|o| *o).count();
+	let a_on_b_not_None = a_on_b.iter().filter_map(|o| o).count();
+	match b_on_a.len() + a_on_b.len() {
+		2 | 3 => {
+			let to_compare = if b_on_a.len() == 2 {
+				b_on_a.sort_by(|val1, val2| (val1).partial_cmp(val2).unwrap_or(std::cmp::Ordering::Less));
+				(*b, subdivide_path_seg(a, &mut b_on_a.iter().filter_map(|o| *o).collect::<Vec<f64>>().as_slice())[1].unwrap())
+			} else if a_on_b.len() == 2 {
+				a_on_b.sort_by(|val1, val2| (val1).partial_cmp(val2).unwrap_or(std::cmp::Ordering::Less));
+				(*a, subdivide_path_seg(a, &mut a_on_b.iter().filter_map(|o| *o).collect::<Vec<f64>>().as_slice())[1].unwrap())
+			} else {
+				(
+					match (b_on_a[0], b_on_a[1], a_on_b[0], a_on_b[1]) {
+						(None, Some(_), _, Some(t_val)) | (None, Some(_), Some(t_val), _) => split_path_seg(b, t_val).1.unwrap(),
+						(Some(_), None, _, Some(t_val)) | (Some(_), None, Some(t_val), _) => split_path_seg(b, t_val).0.unwrap(),
+						_ => panic!(),
+					},
+					match (a_on_b[0], a_on_b[1], b_on_a[0], b_on_a[1]) {
+						(None, Some(_), _, Some(t_val)) | (None, Some(_), Some(t_val), _) => split_path_seg(a, t_val).1.unwrap(),
+						(Some(_), None, _, Some(t_val)) | (Some(_), None, Some(t_val), _) => split_path_seg(a, t_val).0.unwrap(),
+						_ => panic!(),
+					},
+				)
+			};
+
+			[None, None]
+		}
+		_ => [None, None],
+	}
+	[None, None]
+}
+
+/// if p in on pathseg a, returns Some(t_value) for p
+/// in the edge case where the path crosses itself, and p is at the cross, the first t_value found (but not necessarily the smallest) is returned
+pub fn point_t_value(a: &PathSeg, p: &Point) -> Option<f64> {
+	match a {
+		PathSeg::Line(line) => line_t_value(line, p),
+		PathSeg::Quad(quad) => {
+			let [mut p0, p1, p2] = quadratic_bezier_coefficients(quad);
+			p0 -= p.to_vec2();
+			let x_roots = quadratic_real_roots(p0.x, p1.x, p2.x);
+			quadratic_real_roots(p0.y, p1.y, p2.y)
+				.into_iter()
+				.find(|yt_option| x_roots.iter().any(|xt_option| yt_option.is_some() && xt_option.is_some() && (yt_option.unwrap() == xt_option.unwrap())))
+				.flatten()
+		}
+		PathSeg::Cubic(cubic) => {
+			let [mut p0, p1, p2, p3] = cubic_bezier_coefficients(cubic);
+			p0 -= p.to_vec2();
+			let x_roots = cubic_real_roots(p0.x, p1.x, p2.x, p3.x);
+			cubic_real_roots(p0.y, p1.y, p2.y, p3.y)
+				.into_iter()
+				.find(|yt_option| x_roots.iter().any(|xt_option| yt_option.is_some() && xt_option.is_some() && (yt_option.unwrap() == xt_option.unwrap())))
+				.flatten()
+		}
+	}
 }
 
 pub fn intersections(a: &BezPath, b: &BezPath) -> Vec<Intersect> {
@@ -420,12 +489,20 @@ pub fn line_intersection_unchecked(a: &Line, b: &Line) -> Option<Intersect> {
 	Some(Intersect::from((b.eval(t_values[0]), t_values[1], t_values[0])))
 }
 
-pub fn line_t_value(a: &Line, p: &Point) -> f64 {
+///if p in on line a, returns Some(t_value) for p
+pub fn line_t_value(a: &Line, p: &Point) -> Option<f64> {
 	let from_x = (p.x - a.p0.x) / (a.p1.x - a.p0.x);
-	if from_x.is_normal() {
-		from_x
+	let from_y = (p.y - a.p0.y) / (a.p1.y - a.p0.y);
+	if !from_x.is_normal() {
+		if !from_y.is_normal() {
+			None
+		} else {
+			Some(from_y)
+		}
+	} else if !from_y.is_normal() || from_x == from_y {
+		Some(from_x)
 	} else {
-		(p.y - a.p0.y) / (a.p1.y - a.p0.y)
+		None
 	}
 }
 
@@ -492,6 +569,20 @@ pub fn cubic_real_roots(mut a0: f64, mut a1: f64, mut a2: f64, a3: f64) -> [Opti
 	}
 }
 
+/// a quadratic bezier can be written x = p0 + t*p1 + t^2*p2 + t^3*p3, where x, p0, p1, p2, and p3 are vectors
+/// this function returns [p0, p1, p2, p3]
+pub fn cubic_bezier_coefficients(cubic: &CubicBez) -> [Vec2; 4] {
+	let p0 = cubic.p0.to_vec2();
+	let p1 = cubic.p1.to_vec2();
+	let p2 = cubic.p2.to_vec2();
+	let p3 = cubic.p3.to_vec2();
+	let c0 = p0;
+	let c1 = -3.0 * p0 + 3.0 * p1;
+	let c2 = 3.0 * p0 - 6.0 * p1 + 3.0 * p2;
+	let c3 = -1.0 * p0 + 3.0 * p1 - 3.0 * p2 + p3;
+	[c0, c1, c2, c3]
+}
+
 /// return real roots to quadratic equation: f(t) = a0 + t*a1 + t^2*a2
 pub fn quadratic_real_roots(a0: f64, a1: f64, a2: f64) -> [Option<f64>; 2] {
 	let radicand = a1 * a1 - 4.0 * a2 * a0;
@@ -499,6 +590,18 @@ pub fn quadratic_real_roots(a0: f64, a1: f64, a2: f64) -> [Option<f64>; 2] {
 		return [None, None];
 	}
 	[Some((-a1 + radicand.sqrt()) / (2.0 * a2)), Some((-a1 - radicand.sqrt()) / (2.0 * a2))]
+}
+
+/// a quadratic bezier can be written x = p0 + t*p1 + t^2*p2, where x, p0, p1, and p2 are vectors
+/// this function returns [p0, p1, p2]
+pub fn quadratic_bezier_coefficients(quad: &QuadBez) -> [Vec2; 3] {
+	let p0 = quad.p0.to_vec2();
+	let p1 = quad.p1.to_vec2();
+	let p2 = quad.p2.to_vec2();
+	let c0 = p0;
+	let c1 = -2.0 * p0 + 2.0 * p1;
+	let c2 = p0 - 2.0 * p1 + p2;
+	[c0, c1, c2]
 }
 
 // return root to linear equation: f(t) = a0 + t*a1

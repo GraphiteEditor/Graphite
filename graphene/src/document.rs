@@ -537,6 +537,7 @@ impl Document {
 			Operation::BooleanOperation { operation, selected } => {
 				// TODO: proper difference
 				// TODO: proper style selection (done?)
+				// TODO: should generate symmetrical code
 				// TODO: Operations on any number of shapes
 				// TODO: handle overlapping identical curve case
 				// TODO: precision reached without intersection bug (maybe caused by separating a closed path, or dragging handles)
@@ -548,7 +549,7 @@ impl Document {
 					// ? apparently selected should be reversed
 					let mut shapes = self.transformed_shapes(selected)?;
 					let mut shape_drain = shapes.drain(..).rev();
-					let new_shapes = boolean_operation(*operation, shape_drain.nth(0).unwrap(), shape_drain.nth(0).unwrap())?;
+					let new_shapes = boolean_operation(*operation, shape_drain.next().unwrap(), shape_drain.next().unwrap())?;
 
 					for path in selected {
 						self.delete(path)?;

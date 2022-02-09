@@ -26,7 +26,7 @@ pub enum BooleanOperationError {
 	Unexpected, // for debugging, when complete nothing should be unexpected
 }
 
-/// A simple and idiomatic way to write short "if Let" statements
+/// A simple and idiomatic way to write short "if let Some(_)" statements which do nothing in the None case
 macro_rules! do_if {
 	($option:expr, $name:ident{$todo:expr}) => {
 		if let Some($name) = $option {
