@@ -527,7 +527,7 @@ impl Fsm for SelectToolFsmState {
 						DocumentMessage::Overlays(
 							Operation::SetLayerTransformInViewport {
 								path: data.drag_box_overlay_layer.clone().unwrap(),
-								transform: transform_from_box(data.drag_start, data.drag_current).to_cols_array(),
+								transform: transform_from_box(data.drag_start, data.drag_current, DAffine2::IDENTITY).to_cols_array(),
 							}
 							.into(),
 						)

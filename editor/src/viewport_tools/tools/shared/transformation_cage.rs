@@ -156,8 +156,8 @@ fn add_transform_handles(responses: &mut Vec<Message>) -> [Vec<LayerId>; 8] {
 }
 
 /// Converts a bounding box to a rounded transform (with translation and scale)
-pub fn transform_from_box(pos1: DVec2, pos2: DVec2) -> DAffine2 {
-	DAffine2::from_scale_angle_translation((pos2 - pos1).round(), 0., pos1.round() - DVec2::splat(0.5))
+pub fn transform_from_box(pos1: DVec2, pos2: DVec2, transform: DAffine2) -> DAffine2 {
+	DAffine2::from_scale_angle_translation(transform.transform_vector2(pos2 - pos1).round(), 0., transform.transform_point2(pos1).round() - DVec2::splat(0.5))
 }
 
 /// Aligns the mouse position to the closest axis
@@ -213,7 +213,7 @@ impl BoundingBoxOverlays {
 
 	/// Update the position of the bounding box and transform handles
 	pub fn transform(&mut self, buffer: &mut Vec<Message>) {
-		let transform = (self.transform * transform_from_box(self.bounds[0], self.bounds[1])).to_cols_array();
+		let transform = transform_from_box(self.bounds[0], self.bounds[1], self.transform).to_cols_array();
 		let path = self.bounding_box.clone();
 		buffer.push(DocumentMessage::Overlays(Operation::SetLayerTransformInViewport { path, transform }.into()).into());
 

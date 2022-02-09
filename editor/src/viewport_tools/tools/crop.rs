@@ -124,7 +124,9 @@ impl Fsm for CropToolFsmState {
 
 							responses.push_back(OverlaysMessage::Rerender.into());
 						}
-						(_, _) => {}
+						// When the scale is 0, no bounds are returned. In this situation we should not delete the bounding box overlays
+						(None, Some(paths))
+						_ => {}
 					};
 					buffer.into_iter().rev().for_each(|message| responses.push_front(message));
 					self
@@ -187,8 +189,8 @@ impl Fsm for CropToolFsmState {
 					}
 				}
 				(CropToolFsmState::ResizingBounds, CropMessage::PointerMove { axis_align, centre }) => {
-					if let Some(bounds) = &mut data.bounding_box_overlays {
-						if let Some(movement) = &mut bounds.selected_edges {
+					if let Some(bounds) = &data.bounding_box_overlays {
+						if let Some(movement) = &bounds.selected_edges {
 							let (centre, axis_align) = (input.keyboard.get(centre as usize), input.keyboard.get(axis_align as usize));
 							let mouse_position = input.mouse.position;
 
@@ -200,8 +202,8 @@ impl Fsm for CropToolFsmState {
 							responses.push_back(
 								ArtboardMessage::ResizeArtboard {
 									artboard: vec![data.selected_board.unwrap()],
-									position: position.into(),
-									size: size.into(),
+									position: position.round().into(),
+									size: size.round().into(),
 								}
 								.into(),
 							);
@@ -212,7 +214,7 @@ impl Fsm for CropToolFsmState {
 					CropToolFsmState::ResizingBounds
 				}
 				(CropToolFsmState::Dragging, CropMessage::PointerMove { axis_align, .. }) => {
-					if let Some(bounds) = &mut data.bounding_box_overlays {
+					if let Some(bounds) = &data.bounding_box_overlays {
 						let mouse_position = axis_align_drag(input.keyboard.get(axis_align as usize), input.mouse.position, data.drag_start);
 
 						let mouse_delta = mouse_position - data.drag_current;
@@ -228,8 +230,8 @@ impl Fsm for CropToolFsmState {
 						responses.push_back(
 							ArtboardMessage::ResizeArtboard {
 								artboard: vec![data.selected_board.unwrap()],
-								position: position.into(),
-								size: size.into(),
+								position: position.round().into(),
+								size: size.round().into(),
 							}
 							.into(),
 						);
@@ -262,8 +264,8 @@ impl Fsm for CropToolFsmState {
 					responses.push_back(
 						ArtboardMessage::ResizeArtboard {
 							artboard: vec![data.selected_board.unwrap()],
-							position: start.into(),
-							size: size.into(),
+							position: start.round().into(),
+							size: size.round().into(),
 						}
 						.into(),
 					);
