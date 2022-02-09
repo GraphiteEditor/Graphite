@@ -52,17 +52,17 @@ impl EditorTestUtils for Editor {
 		let mut editor_mouse_state = EditorMouseState::new();
 		editor_mouse_state.editor_position = ViewportPosition::new(x, y);
 		let modifier_keys = ModifierKeys::default();
-		self.input(InputPreprocessorMessage::MouseMove { editor_mouse_state, modifier_keys });
+		self.input(InputPreprocessorMessage::PointerMove { editor_mouse_state, modifier_keys });
 	}
 
 	fn mousedown(&mut self, editor_mouse_state: EditorMouseState) {
 		let modifier_keys = ModifierKeys::default();
-		self.input(InputPreprocessorMessage::MouseDown { editor_mouse_state, modifier_keys });
+		self.input(InputPreprocessorMessage::PointerDown { editor_mouse_state, modifier_keys });
 	}
 
 	fn mouseup(&mut self, editor_mouse_state: EditorMouseState) {
 		let modifier_keys = ModifierKeys::default();
-		self.handle_message(InputPreprocessorMessage::MouseUp { editor_mouse_state, modifier_keys });
+		self.handle_message(InputPreprocessorMessage::PointerUp { editor_mouse_state, modifier_keys });
 	}
 
 	fn lmb_mousedown(&mut self, x: f64, y: f64) {

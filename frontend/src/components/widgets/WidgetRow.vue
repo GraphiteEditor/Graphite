@@ -13,7 +13,7 @@
 				:incrementCallbackIncrease="() => updateLayout(component.widget_id, 'Increment')"
 				:incrementCallbackDecrease="() => updateLayout(component.widget_id, 'Decrement')"
 			/>
-			<TextInput v-if="component.kind === 'TextInput'" v-bind="component.props" @update:value="(value: number) => updateLayout(component.widget_id, value)" />
+			<TextInput v-if="component.kind === 'TextInput'" v-bind="component.props" @update:value="(value: string) => updateLayout(component.widget_id, value)" />
 			<IconButton v-if="component.kind === 'IconButton'" v-bind="component.props" :action="() => updateLayout(component.widget_id, null)" />
 			<OptionalInput v-if="component.kind === 'OptionalInput'" v-bind="component.props" @update:checked="(value: boolean) => updateLayout(component.widget_id, value)" />
 			<RadioInput v-if="component.kind === 'RadioInput'" v-bind="component.props" @update:selectedIndex="(value: number) => updateLayout(component.widget_id, value)" />

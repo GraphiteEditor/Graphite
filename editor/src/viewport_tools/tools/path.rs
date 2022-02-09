@@ -142,7 +142,7 @@ impl Fsm for PathToolFsmState {
 					// Select the first point within the threshold (in pixels)
 					if data.shape_editor.select_point(input.mouse.position, SELECTION_THRESHOLD, add_to_selection, responses) {
 						responses.push_back(DocumentMessage::StartTransaction.into());
-						data.snap_handler.start_snap(document, document.visible_layers(), true, true);
+						data.snap_handler.start_snap(document, document.bounding_boxes(None, None), true, true);
 						let snap_points = data
 							.shape_editor
 							.shapes_to_modify
