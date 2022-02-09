@@ -9,6 +9,7 @@ use crate::misc::{HintData, HintGroup, HintInfo, KeysGroup};
 use crate::viewport_tools::tool::{DocumentToolData, Fsm, ToolActionHandlerData};
 
 use glam::{DAffine2, DVec2};
+use graphene::color::Color;
 use graphene::intersection::Quad;
 use graphene::layers::style::{self, Fill, Stroke};
 use graphene::Operation;
@@ -245,7 +246,7 @@ impl Fsm for TextToolFsmState {
 					else if state == TextToolFsmState::Ready {
 						let transform = DAffine2::from_translation(input.mouse.position).to_cols_array();
 						let font_size = tool_options.font_size;
-						data.path = vec![generate_uuid()];
+						data.path = document.get_path_for_new_layer();
 
 						responses.push_back(
 							Operation::AddText {
@@ -253,7 +254,7 @@ impl Fsm for TextToolFsmState {
 								transform: DAffine2::ZERO.to_cols_array(),
 								insert_index: -1,
 								text: r#""#.to_string(),
-								style: style::PathStyle::new(Some(style::Stroke::new(tool_data.primary_color, 0.)), None),
+								style: style::PathStyle::new(None, Some(Fill::new(tool_data.primary_color))),
 								size: font_size as f64,
 							}
 							.into(),
