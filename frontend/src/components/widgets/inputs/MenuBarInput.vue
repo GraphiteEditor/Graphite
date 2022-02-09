@@ -78,6 +78,7 @@ function makeMenuEntries(editor: EditorState): MenuListEntries {
 					{
 						label: "Open Recent",
 						shortcut: ["KeyControl", "KeyShift", "KeyO"],
+						action: (): void => undefined,
 						children: [
 							[{ label: "Reopen Last Closed", shortcut: ["KeyControl", "KeyShift", "KeyT"], shortcutRequiresLock: true }, { label: "Clear Recently Opened" }],
 							[
@@ -131,6 +132,7 @@ function makeMenuEntries(editor: EditorState): MenuListEntries {
 					{ label: "Deselect All", shortcut: ["KeyControl", "KeyAlt", "KeyA"], action: async (): Promise<void> => editor.instance.deselect_all_layers() },
 					{
 						label: "Order",
+						action: (): void => undefined,
 						children: [
 							[
 								{
@@ -170,7 +172,20 @@ function makeMenuEntries(editor: EditorState): MenuListEntries {
 					{ label: "Report a Bug", action: (): unknown => window.open("https://github.com/GraphiteEditor/Graphite/issues/new", "_blank") },
 					{ label: "Visit on GitHub", action: (): unknown => window.open("https://github.com/GraphiteEditor/Graphite", "_blank") },
 				],
-				[{ label: "Debug: Panic (DANGER)", action: async (): Promise<void> => editor.rawWasm.intentional_panic() }],
+				[
+					{
+						label: "Debug: Set Log Level",
+						action: (): void => undefined,
+						children: [
+							[
+								{ label: "Log Level Info", action: async (): Promise<void> => editor.instance.log_level_info(), shortcut: ["Key1"] },
+								{ label: "Log Level Debug", action: async (): Promise<void> => editor.instance.log_level_debug(), shortcut: ["Key2"] },
+								{ label: "Log Level Trace", action: async (): Promise<void> => editor.instance.log_level_trace(), shortcut: ["Key3"] },
+							],
+						],
+					},
+					{ label: "Debug: Panic (DANGER)", action: async (): Promise<void> => editor.rawWasm.intentional_panic() },
+				],
 			],
 		},
 	];

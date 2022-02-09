@@ -148,7 +148,7 @@ impl Fsm for FreehandToolFsmState {
 				(Ready, DragStart) => {
 					responses.push_back(DocumentMessage::StartTransaction.into());
 					responses.push_back(DocumentMessage::DeselectAllLayers.into());
-					data.path = Some(vec![generate_uuid()]);
+					data.path = Some(document.get_path_for_new_layer());
 
 					let pos = transform.inverse().transform_point2(input.mouse.position);
 
@@ -225,7 +225,7 @@ fn make_operation(data: &FreehandToolData, tool_data: &DocumentToolData) -> Mess
 		insert_index: -1,
 		transform: DAffine2::IDENTITY.to_cols_array(),
 		points,
-		style: style::PathStyle::new(Some(style::Stroke::new(tool_data.primary_color, data.weight as f32)), Some(style::Fill::none())),
+		style: style::PathStyle::new(Some(style::Stroke::new(tool_data.primary_color, data.weight as f32)), None),
 	}
 	.into()
 }
