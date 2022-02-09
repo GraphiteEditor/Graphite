@@ -209,7 +209,6 @@
 					overflow: visible;
 
 					div {
-						color: black;
 						background: none;
 						cursor: text;
 						border: none;

@@ -18,26 +18,27 @@ impl MessageHandler<OverlaysMessage, bool> for OverlaysMessageHandler {
 			// Sub-messages
 			#[remain::unsorted]
 			DispatchOperation(operation) => match self.overlays_graphene_document.handle_operation(&operation) {
-				Ok(_) => (),
+				Ok(_) => responses.push_back(OverlaysMessage::Rerender.into()),
 				Err(e) => log::error!("OverlaysError: {:?}", e),
 			},
 
 			// Messages
 			ClearAllOverlays => todo!(),
-			Rerender => (),
-		}
-
-		// Render overlays
-		responses.push_back(
-			FrontendMessage::UpdateDocumentOverlays {
-				svg: if overlays_visible {
-					self.overlays_graphene_document.render_root(ViewMode::Normal)
-				} else {
-					String::from("")
-				},
+			Rerender =>
+			// Render overlays
+			{
+				responses.push_back(
+					FrontendMessage::UpdateDocumentOverlays {
+						svg: if overlays_visible {
+							self.overlays_graphene_document.render_root(ViewMode::Normal)
+						} else {
+							String::from("")
+						},
+					}
+					.into(),
+				)
 			}
-			.into(),
-		);
+		}
 	}
 
 	fn actions(&self) -> ActionList {

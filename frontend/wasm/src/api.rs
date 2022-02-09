@@ -220,6 +220,21 @@ impl JsEditorHandle {
 		self.dispatch(message);
 	}
 
+	pub fn log_level_info(&self) {
+		let message = GlobalMessage::LogInfo;
+		self.dispatch(message);
+	}
+
+	pub fn log_level_debug(&self) {
+		let message = GlobalMessage::LogDebug;
+		self.dispatch(message);
+	}
+
+	pub fn log_level_trace(&self) {
+		let message = GlobalMessage::LogTrace;
+		self.dispatch(message);
+	}
+
 	/// Send new bounds when document panel viewports get resized or moved within the editor
 	/// [left, top, right, bottom]...
 	pub fn bounds_of_viewports(&self, bounds_of_viewports: &[f64]) {

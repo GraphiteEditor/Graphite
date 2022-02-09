@@ -153,7 +153,8 @@ impl DocumentMessageHandler {
 			};
 
 			let (path, closed) = match &layer.ok()?.data {
-				LayerDataType::Shape(shape) => Some((shape.path.clone(), shape.closed)),
+				// TODO: This ClosePath check does not handle all cases, fix this soon
+				LayerDataType::Shape(shape) => Some((shape.path.clone(), shape.path.elements().last() == Some(&kurbo::PathEl::ClosePath))),
 				LayerDataType::Text(text) => Some((text.to_bez_path_nonmut(), true)),
 				_ => None,
 			}?;
@@ -462,6 +463,16 @@ impl DocumentMessageHandler {
 		} else {
 			self.artboard_message_handler.artboards_graphene_document.viewport_bounding_box(&[]).ok().flatten()
 		}
+	}
+
+	/// Calculate the path that new layers should be inserted to.
+	/// Depends on the selected layers as well as their types (Folder/Non-Folder)
+	pub fn get_path_for_new_layer(&self) -> Vec<u64> {
+		// If the selected layers dont actually exist, a new uuid for the
+		// root folder will be returned
+		let mut path = self.graphene_document.shallowest_common_folder(self.selected_layers()).map_or(vec![], |v| v.to_vec());
+		path.push(generate_uuid());
+		path
 	}
 }
 
