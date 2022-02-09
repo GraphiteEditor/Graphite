@@ -95,13 +95,9 @@ impl SnapHandler {
 
 	/// Gets a list of snap targets for the X and Y axes (if specified) in Viewport coords for the target layers (usually all layers or all non-selected layers.)
 	/// This should be called at the start of a drag.
-	pub fn start_snap<'a>(&mut self, document_message_handler: &DocumentMessageHandler, bounding_boxes: Vec<[DVec2; 2]>, snap_x: bool, snap_y: bool) {
+	pub fn start_snap(&mut self, document_message_handler: &DocumentMessageHandler, bounding_boxes: impl Iterator<Item = [DVec2; 2]>, snap_x: bool, snap_y: bool) {
 		if document_message_handler.snapping_enabled {
-			let (x_targets, y_targets) = bounding_boxes
-				.into_iter()
-				.flat_map(|[bound1, bound2]| [bound1, bound2, ((bound1 + bound2) / 2.)])
-				.map(|vec| vec.into())
-				.unzip();
+			let (x_targets, y_targets) = bounding_boxes.flat_map(|[bound1, bound2]| [bound1, bound2, ((bound1 + bound2) / 2.)]).map(|vec| vec.into()).unzip();
 
 			// Could be made into sorted Vec or a HashSet for more performant lookups.
 			self.snap_targets = Some((if snap_x { x_targets } else { Vec::new() }, if snap_y { y_targets } else { Vec::new() }));

@@ -108,7 +108,7 @@ impl MessageHandler<TransformLayerMessage, (&mut HashMap<Vec<LayerId>, LayerMeta
 			}
 			ConstrainX => self.transform_operation.constrain_axis(Axis::X, &mut selected, self.snap),
 			ConstrainY => self.transform_operation.constrain_axis(Axis::Y, &mut selected, self.snap),
-			MouseMove { slow_key, snap_key } => {
+			PointerMove { slow_key, snap_key } => {
 				self.slow = ipp.keyboard.get(slow_key as usize);
 
 				let new_snap = ipp.keyboard.get(snap_key as usize);
@@ -173,7 +173,7 @@ impl MessageHandler<TransformLayerMessage, (&mut HashMap<Vec<LayerId>, LayerMeta
 
 		if self.transform_operation != TransformOperation::None {
 			let active = actions!(TransformLayerMessageDiscriminant;
-				MouseMove,
+				PointerMove,
 				CancelTransformOperation,
 				ApplyTransformOperation,
 				TypeDigit,

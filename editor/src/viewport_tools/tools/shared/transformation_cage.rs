@@ -10,6 +10,7 @@ use graphene::Operation;
 
 use glam::{DAffine2, DVec2, Vec2Swizzles};
 
+/// Contains the edges that are being dragged along with the origional bounds
 #[derive(Clone, Debug, Default)]
 pub struct SelectedEdges {
 	bounds: [DVec2; 2],
@@ -101,6 +102,7 @@ impl SelectedEdges {
 		offset
 	}
 
+	/// Moves the position to account for centring (only necessary with absolute transforms - e.g. with artboards)
 	pub fn centre_position(&self, mut position: DVec2, size: DVec2, centre: bool) -> DVec2 {
 		if centre && self.right {
 			position.x -= size.x / 2.;
@@ -114,11 +116,11 @@ impl SelectedEdges {
 
 	/// Calculates the required scaling to resize the bounding box
 	pub fn bounds_to_scale_transform(&self, centre: bool, size: DVec2) -> DAffine2 {
-		let translation = DAffine2::from_translation(self.offset_pivot(centre, size));
-		translation * DAffine2::from_scale(size / (self.bounds[1] - self.bounds[0]))
+		DAffine2::from_translation(self.offset_pivot(centre, size)) * DAffine2::from_scale(size / (self.bounds[1] - self.bounds[0]))
 	}
 }
 
+/// Create a viewport relative bounding box overlay with no transform handles
 pub fn add_bounding_box(responses: &mut Vec<Message>) -> Vec<LayerId> {
 	let path = vec![generate_uuid()];
 
@@ -132,6 +134,7 @@ pub fn add_bounding_box(responses: &mut Vec<Message>) -> Vec<LayerId> {
 	path
 }
 
+/// Add the transform handle overlay
 fn add_transform_handles(responses: &mut Vec<Message>) -> [Vec<LayerId>; 8] {
 	const EMPTY_VEC: Vec<LayerId> = Vec::new();
 	let mut transform_handle_paths = [EMPTY_VEC; 8];
@@ -152,10 +155,12 @@ fn add_transform_handles(responses: &mut Vec<Message>) -> [Vec<LayerId>; 8] {
 	transform_handle_paths
 }
 
+/// Converts a bounding box to a rounded transform (with translation and scale)
 pub fn transform_from_box(pos1: DVec2, pos2: DVec2) -> DAffine2 {
 	DAffine2::from_scale_angle_translation((pos2 - pos1).round(), 0., pos1.round() - DVec2::splat(0.5))
 }
 
+/// Aligns the mouse position to the closest axis
 pub fn axis_align_drag(axis_align: bool, position: DVec2, start: DVec2) -> DVec2 {
 	if axis_align {
 		let mouse_position = position - start;
@@ -190,6 +195,7 @@ impl BoundingBoxOverlays {
 		}
 	}
 
+	/// Calculats the transformed handle positions based on the bounding box and the transform
 	pub fn evaluate_transform_handle_positions(&self) -> [DVec2; 8] {
 		let (left, top): (f64, f64) = self.bounds[0].into();
 		let (right, bottom): (f64, f64) = self.bounds[1].into();
@@ -266,6 +272,7 @@ impl BoundingBoxOverlays {
 		outside_bounds & inside_extended_bounds
 	}
 
+	/// Gets the required mouse cursor to show resizing bounds or optionally rotation
 	pub fn get_cursor(&self, input: &InputPreprocessorMessageHandler, rotate: bool) -> MouseCursorIcon {
 		if let Some(directions) = self.check_selected_edges(input.mouse.position) {
 			match directions {

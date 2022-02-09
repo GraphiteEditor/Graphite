@@ -50,7 +50,7 @@ pub enum SelectMessage {
 	EditLayer,
 	FlipHorizontal,
 	FlipVertical,
-	MouseMove {
+	PointerMove {
 		axis_align: Key,
 		snap_angle: Key,
 		centre: Key,
@@ -254,11 +254,9 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Select {
 		use SelectToolFsmState::*;
 
 		match self.fsm_state {
-			Ready => actions!(SelectMessageDiscriminant; DragStart, MouseMove, EditLayer),
-			Dragging => actions!(SelectMessageDiscriminant; DragStop, MouseMove, EditLayer),
-			DrawingBox => actions!(SelectMessageDiscriminant; DragStop, MouseMove, Abort, EditLayer),
-			ResizingBounds => actions!(SelectMessageDiscriminant; DragStop, MouseMove, Abort, EditLayer),
-			RotatingBounds => actions!(SelectMessageDiscriminant; DragStop, MouseMove, Abort, EditLayer),
+			Ready => actions!(SelectMessageDiscriminant; DragStart, PointerMove, EditLayer),
+			Dragging => actions!(SelectMessageDiscriminant; DragStop, PointerMove, EditLayer),
+			_ => actions!(SelectMessageDiscriminant; DragStop, PointerMove, Abort, EditLayer),
 		}
 	}
 }
@@ -446,7 +444,7 @@ impl Fsm for SelectToolFsmState {
 
 					state
 				}
-				(Dragging, MouseMove { axis_align, .. }) => {
+				(Dragging, PointerMove { axis_align, .. }) => {
 					// TODO: This is a cheat. Break out the relevant functionality from the handler above and call it from there and here.
 					responses.push_front(SelectMessage::DocumentIsDirty.into());
 
@@ -476,7 +474,7 @@ impl Fsm for SelectToolFsmState {
 					data.drag_current = mouse_position + closest_move;
 					Dragging
 				}
-				(ResizingBounds, MouseMove { axis_align, centre, .. }) => {
+				(ResizingBounds, PointerMove { axis_align, centre, .. }) => {
 					if let Some(bounds) = &mut data.bounding_box_overlays {
 						if let Some(movement) = &mut bounds.selected_edges {
 							let (centre, axis_align) = (input.keyboard.get(centre as usize), input.keyboard.get(axis_align as usize));
@@ -496,7 +494,7 @@ impl Fsm for SelectToolFsmState {
 					}
 					ResizingBounds
 				}
-				(RotatingBounds, MouseMove { snap_angle, .. }) => {
+				(RotatingBounds, PointerMove { snap_angle, .. }) => {
 					if let Some(bounds) = &mut data.bounding_box_overlays {
 						let angle = {
 							let start_offset = data.drag_start - bounds.pivot;
@@ -522,7 +520,7 @@ impl Fsm for SelectToolFsmState {
 
 					RotatingBounds
 				}
-				(DrawingBox, MouseMove { .. }) => {
+				(DrawingBox, PointerMove { .. }) => {
 					data.drag_current = input.mouse.position;
 
 					responses.push_front(
@@ -537,7 +535,7 @@ impl Fsm for SelectToolFsmState {
 					);
 					DrawingBox
 				}
-				(Ready, MouseMove { .. }) => {
+				(Ready, PointerMove { .. }) => {
 					let cursor = data.bounding_box_overlays.as_ref().map_or(MouseCursorIcon::Default, |bounds| bounds.get_cursor(input, true));
 
 					if data.cursor != cursor {

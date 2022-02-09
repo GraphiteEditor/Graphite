@@ -626,7 +626,6 @@ fn add_shape_outline(responses: &mut VecDeque<Message>) -> Vec<LayerId> {
 		path: layer_path.clone(),
 		bez_path: BezPath::default(),
 		style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 1.0)), None),
-		closed: false,
 	};
 	responses.push_back(DocumentMessage::Overlays(operation.into()).into());
 

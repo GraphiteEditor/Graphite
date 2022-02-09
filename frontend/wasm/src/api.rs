@@ -250,7 +250,7 @@ impl JsEditorHandle {
 
 		let modifier_keys = ModifierKeys::from_bits(modifiers).expect("Invalid modifier keys");
 
-		let message = InputPreprocessorMessage::MouseMove { editor_mouse_state, modifier_keys };
+		let message = InputPreprocessorMessage::PointerMove { editor_mouse_state, modifier_keys };
 		self.dispatch(message);
 	}
 
@@ -271,7 +271,7 @@ impl JsEditorHandle {
 
 		let modifier_keys = ModifierKeys::from_bits(modifiers).expect("Invalid modifier keys");
 
-		let message = InputPreprocessorMessage::MouseDown { editor_mouse_state, modifier_keys };
+		let message = InputPreprocessorMessage::PointerDown { editor_mouse_state, modifier_keys };
 		self.dispatch(message);
 	}
 
@@ -281,7 +281,7 @@ impl JsEditorHandle {
 
 		let modifier_keys = ModifierKeys::from_bits(modifiers).expect("Invalid modifier keys");
 
-		let message = InputPreprocessorMessage::MouseUp { editor_mouse_state, modifier_keys };
+		let message = InputPreprocessorMessage::PointerUp { editor_mouse_state, modifier_keys };
 		self.dispatch(message);
 	}
 

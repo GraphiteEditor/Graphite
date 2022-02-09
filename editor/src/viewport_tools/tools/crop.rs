@@ -32,12 +32,12 @@ pub enum CropMessage {
 	DocumentIsDirty,
 
 	// Tool-specific messages
-	MouseDown,
-	MouseMove {
+	PointerDown,
+	PointerMove {
 		axis_align: Key,
 		centre: Key,
 	},
-	MouseUp,
+	PointerUp,
 }
 
 impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Crop {
@@ -60,7 +60,7 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Crop {
 		}
 	}
 
-	advertise_actions!(CropMessageDiscriminant; MouseDown, MouseUp, MouseMove, Abort);
+	advertise_actions!(CropMessageDiscriminant; PointerDown, PointerUp, PointerMove, Abort);
 }
 
 impl PropertyHolder for Crop {}
@@ -129,7 +129,7 @@ impl Fsm for CropToolFsmState {
 					buffer.into_iter().rev().for_each(|message| responses.push_front(message));
 					self
 				}
-				(CropToolFsmState::Ready, CropMessage::MouseDown) => {
+				(CropToolFsmState::Ready, CropMessage::PointerDown) => {
 					data.drag_start = input.mouse.position;
 					data.drag_current = input.mouse.position;
 
@@ -186,7 +186,7 @@ impl Fsm for CropToolFsmState {
 						}
 					}
 				}
-				(CropToolFsmState::ResizingBounds, CropMessage::MouseMove { axis_align, centre }) => {
+				(CropToolFsmState::ResizingBounds, CropMessage::PointerMove { axis_align, centre }) => {
 					if let Some(bounds) = &mut data.bounding_box_overlays {
 						if let Some(movement) = &mut bounds.selected_edges {
 							let (centre, axis_align) = (input.keyboard.get(centre as usize), input.keyboard.get(axis_align as usize));
@@ -211,7 +211,7 @@ impl Fsm for CropToolFsmState {
 					}
 					CropToolFsmState::ResizingBounds
 				}
-				(CropToolFsmState::Dragging, CropMessage::MouseMove { axis_align, .. }) => {
+				(CropToolFsmState::Dragging, CropMessage::PointerMove { axis_align, .. }) => {
 					if let Some(bounds) = &mut data.bounding_box_overlays {
 						let mouse_position = axis_align_drag(input.keyboard.get(axis_align as usize), input.mouse.position, data.drag_start);
 
@@ -240,7 +240,7 @@ impl Fsm for CropToolFsmState {
 					}
 					CropToolFsmState::Dragging
 				}
-				(CropToolFsmState::Drawing, CropMessage::MouseMove { axis_align, centre }) => {
+				(CropToolFsmState::Drawing, CropMessage::PointerMove { axis_align, centre }) => {
 					let mouse_position = input.mouse.position;
 					let snapped_mouse_position = data.snap_handler.snap_position(responses, input.viewport_bounds.size(), document, mouse_position);
 
@@ -272,7 +272,7 @@ impl Fsm for CropToolFsmState {
 
 					CropToolFsmState::Drawing
 				}
-				(CropToolFsmState::Ready, CropMessage::MouseMove { .. }) => {
+				(CropToolFsmState::Ready, CropMessage::PointerMove { .. }) => {
 					let cursor = data.bounding_box_overlays.as_ref().map_or(MouseCursorIcon::Default, |bounds| bounds.get_cursor(input, false));
 
 					if data.cursor != cursor {
@@ -282,7 +282,7 @@ impl Fsm for CropToolFsmState {
 
 					CropToolFsmState::Ready
 				}
-				(CropToolFsmState::ResizingBounds, CropMessage::MouseUp) => {
+				(CropToolFsmState::ResizingBounds, CropMessage::PointerUp) => {
 					data.snap_handler.cleanup(responses);
 
 					if let Some(bounds) = &mut data.bounding_box_overlays {
@@ -291,7 +291,7 @@ impl Fsm for CropToolFsmState {
 
 					CropToolFsmState::Ready
 				}
-				(CropToolFsmState::Drawing, CropMessage::MouseUp) => {
+				(CropToolFsmState::Drawing, CropMessage::PointerUp) => {
 					data.snap_handler.cleanup(responses);
 
 					if let Some(bounds) = &mut data.bounding_box_overlays {
@@ -302,7 +302,7 @@ impl Fsm for CropToolFsmState {
 
 					CropToolFsmState::Ready
 				}
-				(CropToolFsmState::Dragging, CropMessage::MouseUp) => {
+				(CropToolFsmState::Dragging, CropMessage::PointerUp) => {
 					data.snap_handler.cleanup(responses);
 
 					if let Some(bounds) = &mut data.bounding_box_overlays {

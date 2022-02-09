@@ -75,13 +75,10 @@ impl MessageHandler<ArtboardMessage, ()> for ArtboardMessageHandler {
 			}
 			ResizeArtboard { artboard, position, size } => {
 				responses.push_back(
-					ArtboardMessage::DispatchOperation(
-						DocumentOperation::SetLayerTransform {
-							path: artboard,
-							transform: DAffine2::from_scale_angle_translation(size.into(), 0., position.into()).to_cols_array(),
-						}
-						.into(),
-					)
+					ArtboardMessage::DispatchOperation(Box::new(DocumentOperation::SetLayerTransform {
+						path: artboard,
+						transform: DAffine2::from_scale_angle_translation(size.into(), 0., position.into()).to_cols_array(),
+					}))
 					.into(),
 				);
 
