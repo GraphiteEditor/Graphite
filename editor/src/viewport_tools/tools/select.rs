@@ -400,8 +400,7 @@ impl Fsm for SelectToolFsmState {
 						let snap_x = selected_edges.2 || selected_edges.3;
 						let snap_y = selected_edges.0 || selected_edges.1;
 
-						data.snap_handler
-							.start_snap(document, document.visible_layers().filter(|layer| !selected.iter().any(|path| path == layer)), snap_x, snap_y);
+						data.snap_handler.start_snap(document, document.bounding_boxes(Some(&selected), None), snap_x, snap_y);
 
 						data.layers_dragging = selected;
 
@@ -421,8 +420,7 @@ impl Fsm for SelectToolFsmState {
 						buffer.push(DocumentMessage::StartTransaction.into());
 						data.layers_dragging = selected;
 
-						data.snap_handler
-							.start_snap(document, document.visible_layers().filter(|layer| !data.layers_dragging.iter().any(|path| path == layer)), true, true);
+						data.snap_handler.start_snap(document, document.bounding_boxes(Some(&data.layers_dragging), None), true, true);
 
 						Dragging
 					} else {
@@ -436,8 +434,7 @@ impl Fsm for SelectToolFsmState {
 							buffer.push(DocumentMessage::AddSelectedLayers { additional_layers: selected.clone() }.into());
 							buffer.push(DocumentMessage::StartTransaction.into());
 							data.layers_dragging.append(&mut selected);
-							data.snap_handler
-								.start_snap(document, document.visible_layers().filter(|layer| !data.layers_dragging.iter().any(|path| path == layer)), true, true);
+							data.snap_handler.start_snap(document, document.bounding_boxes(Some(&data.layers_dragging), None), true, true);
 
 							Dragging
 						} else {
@@ -541,7 +538,7 @@ impl Fsm for SelectToolFsmState {
 					DrawingBox
 				}
 				(Ready, MouseMove { .. }) => {
-					let cursor = data.bounding_box_overlays.as_ref().map_or(MouseCursorIcon::Default, |bounds| bounds.get_cursor(input));
+					let cursor = data.bounding_box_overlays.as_ref().map_or(MouseCursorIcon::Default, |bounds| bounds.get_cursor(input, true));
 
 					if data.cursor != cursor {
 						data.cursor = cursor;

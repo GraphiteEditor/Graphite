@@ -266,7 +266,7 @@ impl BoundingBoxOverlays {
 		outside_bounds & inside_extended_bounds
 	}
 
-	pub fn get_cursor(&self, input: &InputPreprocessorMessageHandler) -> MouseCursorIcon {
+	pub fn get_cursor(&self, input: &InputPreprocessorMessageHandler, rotate: bool) -> MouseCursorIcon {
 		if let Some(directions) = self.check_selected_edges(input.mouse.position) {
 			match directions {
 				(true, false, false, false) | (false, true, false, false) => MouseCursorIcon::NSResize,
@@ -275,7 +275,7 @@ impl BoundingBoxOverlays {
 				(true, false, false, true) | (false, true, true, false) => MouseCursorIcon::NESWResize,
 				_ => MouseCursorIcon::Default,
 			}
-		} else if self.check_rotate(input.mouse.position) {
+		} else if rotate && self.check_rotate(input.mouse.position) {
 			MouseCursorIcon::Grabbing
 		} else {
 			MouseCursorIcon::Default

@@ -82,7 +82,7 @@ impl Default for CropToolFsmState {
 #[derive(Clone, Debug, Default)]
 struct CropToolData {
 	bounding_box_overlays: Option<BoundingBoxOverlays>,
-	selected_board: Option<Vec<LayerId>>,
+	selected_board: Option<LayerId>,
 	snap_handler: SnapHandler,
 	cursor: MouseCursorIcon,
 	drag_start: DVec2,
@@ -108,7 +108,7 @@ impl Fsm for CropToolFsmState {
 				(CropToolFsmState::Ready | CropToolFsmState::ResizingBounds | CropToolFsmState::Dragging, CropMessage::DocumentIsDirty) => {
 					let mut buffer = Vec::new();
 					match (
-						data.selected_board.as_ref().map(|path| document.artboard_bounding_box_and_transform(&path)).unwrap_or(None),
+						data.selected_board.map(|path| document.artboard_bounding_box_and_transform(&[path])).unwrap_or(None),
 						data.bounding_box_overlays.take(),
 					) {
 						(None, Some(bounding_box_overlays)) => bounding_box_overlays.delete(&mut buffer),
@@ -151,7 +151,8 @@ impl Fsm for CropToolFsmState {
 						let snap_x = selected_edges.2 || selected_edges.3;
 						let snap_y = selected_edges.0 || selected_edges.1;
 
-						data.snap_handler.start_snap(document, document.visible_layers(), snap_x, snap_y);
+						data.snap_handler
+							.start_snap(document, document.bounding_boxes(None, Some(data.selected_board.unwrap())), snap_x, snap_y);
 
 						CropToolFsmState::ResizingBounds
 					} else {
@@ -161,16 +162,16 @@ impl Fsm for CropToolFsmState {
 
 						responses.push_back(ToolMessage::DocumentIsDirty.into());
 						if let Some(intersection) = intersection.last() {
-							data.selected_board = Some(intersection.clone());
+							data.selected_board = Some(intersection[0]);
 
-							data.snap_handler.start_snap(document, document.visible_layers(), true, true);
+							data.snap_handler.start_snap(document, document.bounding_boxes(None, Some(intersection[0])), true, true);
 
 							CropToolFsmState::Dragging
 						} else {
 							let id = generate_uuid();
-							data.selected_board = Some(vec![id]);
+							data.selected_board = Some(id);
 
-							data.snap_handler.start_snap(document, document.visible_layers(), true, true);
+							data.snap_handler.start_snap(document, document.bounding_boxes(None, Some(id)), true, true);
 
 							responses.push_back(
 								ArtboardMessage::AddArtboard {
@@ -198,7 +199,7 @@ impl Fsm for CropToolFsmState {
 
 							responses.push_back(
 								ArtboardMessage::ResizeArtboard {
-									artboard: data.selected_board.clone().unwrap(),
+									artboard: vec![data.selected_board.unwrap()],
 									position: position.into(),
 									size: size.into(),
 								}
@@ -226,7 +227,7 @@ impl Fsm for CropToolFsmState {
 
 						responses.push_back(
 							ArtboardMessage::ResizeArtboard {
-								artboard: data.selected_board.clone().unwrap(),
+								artboard: vec![data.selected_board.unwrap()],
 								position: position.into(),
 								size: size.into(),
 							}
@@ -260,7 +261,7 @@ impl Fsm for CropToolFsmState {
 
 					responses.push_back(
 						ArtboardMessage::ResizeArtboard {
-							artboard: data.selected_board.clone().unwrap(),
+							artboard: vec![data.selected_board.unwrap()],
 							position: start.into(),
 							size: size.into(),
 						}
@@ -272,7 +273,7 @@ impl Fsm for CropToolFsmState {
 					CropToolFsmState::Drawing
 				}
 				(CropToolFsmState::Ready, CropMessage::MouseMove { .. }) => {
-					let cursor = data.bounding_box_overlays.as_ref().map_or(MouseCursorIcon::Default, |bounds| bounds.get_cursor(input));
+					let cursor = data.bounding_box_overlays.as_ref().map_or(MouseCursorIcon::Default, |bounds| bounds.get_cursor(input, false));
 
 					if data.cursor != cursor {
 						data.cursor = cursor;
