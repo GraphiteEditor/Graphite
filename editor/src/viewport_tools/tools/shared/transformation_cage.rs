@@ -50,7 +50,7 @@ impl SelectedEdges {
 	}
 
 	/// Computes the new bounds with the given mouse move and modifier keys
-	pub fn new_size(&self, mouse: DVec2, transform: DAffine2, centre: bool, constrain: bool) -> [DVec2; 2] {
+	pub fn new_size(&self, mouse: DVec2, transform: DAffine2, center: bool, constrain: bool) -> [DVec2; 2] {
 		let mouse = transform.inverse().transform_point2(mouse);
 
 		let mut min = self.bounds[0];
@@ -70,7 +70,7 @@ impl SelectedEdges {
 		if constrain && ((self.top || self.bottom) && (self.left || self.right)) {
 			size = size.abs().max(size.abs().yx()) * size.signum();
 		}
-		if centre {
+		if center {
 			if self.left || self.right {
 				size.x *= 2.;
 			}
@@ -83,31 +83,31 @@ impl SelectedEdges {
 		[min, size]
 	}
 
-	/// Offsets the transformation pivot in order to scale from the centre
-	fn offset_pivot(&self, centre: bool, size: DVec2) -> DVec2 {
+	/// Offsets the transformation pivot in order to scale from the center
+	fn offset_pivot(&self, center: bool, size: DVec2) -> DVec2 {
 		let mut offset = DVec2::ZERO;
 
-		if centre && self.right {
+		if center && self.right {
 			offset.x -= size.x / 2.;
 		}
-		if centre && self.left {
+		if center && self.left {
 			offset.x += size.x / 2.;
 		}
-		if centre && self.bottom {
+		if center && self.bottom {
 			offset.y -= size.y / 2.;
 		}
-		if centre && self.top {
+		if center && self.top {
 			offset.y += size.y / 2.;
 		}
 		offset
 	}
 
 	/// Moves the position to account for centring (only necessary with absolute transforms - e.g. with artboards)
-	pub fn centre_position(&self, mut position: DVec2, size: DVec2, centre: bool) -> DVec2 {
-		if centre && self.right {
+	pub fn center_position(&self, mut position: DVec2, size: DVec2, center: bool) -> DVec2 {
+		if center && self.right {
 			position.x -= size.x / 2.;
 		}
-		if centre && self.bottom {
+		if center && self.bottom {
 			position.y -= size.y / 2.;
 		}
 
@@ -115,8 +115,8 @@ impl SelectedEdges {
 	}
 
 	/// Calculates the required scaling to resize the bounding box
-	pub fn bounds_to_scale_transform(&self, centre: bool, size: DVec2) -> DAffine2 {
-		DAffine2::from_translation(self.offset_pivot(centre, size)) * DAffine2::from_scale(size / (self.bounds[1] - self.bounds[0]))
+	pub fn bounds_to_scale_transform(&self, center: bool, size: DVec2) -> DAffine2 {
+		DAffine2::from_translation(self.offset_pivot(center, size)) * DAffine2::from_scale(size / (self.bounds[1] - self.bounds[0]))
 	}
 }
 

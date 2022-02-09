@@ -35,8 +35,8 @@ pub enum CropMessage {
 	// Tool-specific messages
 	PointerDown,
 	PointerMove {
-		axis_align: Key,
-		centre: Key,
+		constrain_axis_or_aspect: Key,
+		center: Key,
 	},
 	PointerUp,
 }
@@ -187,16 +187,17 @@ impl Fsm for CropToolFsmState {
 						}
 					}
 				}
-				(CropToolFsmState::ResizingBounds, CropMessage::PointerMove { axis_align, centre }) => {
+				(CropToolFsmState::ResizingBounds, CropMessage::PointerMove { constrain_axis_or_aspect, center }) => {
 					if let Some(bounds) = &data.bounding_box_overlays {
 						if let Some(movement) = &bounds.selected_edges {
-							let (centre, axis_align) = (input.keyboard.get(centre as usize), input.keyboard.get(axis_align as usize));
-							let mouse_position = input.mouse.position;
+							let from_center = input.keyboard.get(center as usize);
+							let constrain_square = input.keyboard.get(constrain_axis_or_aspect as usize);
 
+							let mouse_position = input.mouse.position;
 							let snapped_mouse_position = data.snap_handler.snap_position(responses, input.viewport_bounds.size(), document, mouse_position);
 
-							let [position, size] = movement.new_size(snapped_mouse_position, bounds.transform, centre, axis_align);
-							let position = movement.centre_position(position, size, centre);
+							let [position, size] = movement.new_size(snapped_mouse_position, bounds.transform, from_center, constrain_square);
+							let position = movement.center_position(position, size, from_center);
 
 							responses.push_back(
 								ArtboardMessage::ResizeArtboard {
@@ -212,19 +213,19 @@ impl Fsm for CropToolFsmState {
 					}
 					CropToolFsmState::ResizingBounds
 				}
-				(CropToolFsmState::Dragging, CropMessage::PointerMove { axis_align, .. }) => {
+				(CropToolFsmState::Dragging, CropMessage::PointerMove { constrain_axis_or_aspect, .. }) => {
 					if let Some(bounds) = &data.bounding_box_overlays {
-						let mouse_position = axis_align_drag(input.keyboard.get(axis_align as usize), input.mouse.position, data.drag_start);
+						let axis_align = input.keyboard.get(constrain_axis_or_aspect as usize);
 
+						let mouse_position = axis_align_drag(axis_align, input.mouse.position, data.drag_start);
 						let mouse_delta = mouse_position - data.drag_current;
 
 						let snap = bounds.evaluate_transform_handle_positions().iter().map(|v| (v.x, v.y)).unzip();
-
 						let closest_move = data.snap_handler.snap_layers(responses, document, snap, input.viewport_bounds.size(), mouse_delta);
 
-						let [position, size] = [bounds.bounds[0], bounds.bounds[1] - bounds.bounds[0]];
+						let size = bounds.bounds[1] - bounds.bounds[0];
 
-						let position = position + bounds.transform.inverse().transform_vector2(mouse_position - data.drag_current + closest_move);
+						let position = bounds.bounds[0] + bounds.transform.inverse().transform_vector2(mouse_position - data.drag_current + closest_move);
 
 						responses.push_back(
 							ArtboardMessage::ResizeArtboard {
@@ -241,7 +242,7 @@ impl Fsm for CropToolFsmState {
 					}
 					CropToolFsmState::Dragging
 				}
-				(CropToolFsmState::Drawing, CropMessage::PointerMove { axis_align, centre }) => {
+				(CropToolFsmState::Drawing, CropMessage::PointerMove { constrain_axis_or_aspect, center }) => {
 					let mouse_position = input.mouse.position;
 					let snapped_mouse_position = data.snap_handler.snap_position(responses, input.viewport_bounds.size(), document, mouse_position);
 
@@ -249,10 +250,12 @@ impl Fsm for CropToolFsmState {
 
 					let mut start = data.drag_start;
 					let mut size = snapped_mouse_position - start;
-					if input.keyboard.get(axis_align as usize) {
+					// Constrain axis
+					if input.keyboard.get(constrain_axis_or_aspect as usize) {
 						size = size.abs().max(size.abs().yx()) * size.signum();
 					}
-					if input.keyboard.get(centre as usize) {
+					// From center
+					if input.keyboard.get(center as usize) {
 						start -= size;
 						size *= 2.;
 					}
@@ -343,8 +346,8 @@ impl Fsm for CropToolFsmState {
 					plus: false,
 				},
 				HintInfo {
-					key_groups: vec![KeysGroup(vec![Key::KeyShift])],
-					mouse: None,
+				key_groups: vec![KeysGroup(vec![Key::KeyShift])],
+				mouse: None,
 					label: String::from("Constrain Square"),
 					plus: true,
 				},
