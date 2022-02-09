@@ -1,6 +1,6 @@
 <template>
 	<LayoutRow class="radio-input">
-		<button :class="{ active: index === selectedIndex }" v-for="(entry, index) in entries" :key="index" @click="handleEntryClick(entry)" :title="entry.tooltip">
+		<button :class="{ active: index === selectedIndex }" v-for="(entry, index) in entries" :key="index" @click="() => handleEntryClick(entry)" :title="entry.tooltip">
 			<IconLabel v-if="entry.icon" :icon="entry.icon" />
 			<TextLabel v-if="entry.label">{{ entry.label }}</TextLabel>
 		</button>
@@ -81,6 +81,7 @@ export interface RadioEntryData {
 export type RadioEntries = RadioEntryData[];
 
 export default defineComponent({
+	emits: ["update:selectedIndex"],
 	props: {
 		entries: { type: Array as PropType<RadioEntries>, required: true },
 		selectedIndex: { type: Number as PropType<number>, required: true },
