@@ -1,73 +1,24 @@
 <template>
-	<LayoutRow class="number-input" :class="{ disabled }">
-		<input
-			:class="{ 'has-label': label }"
-			:id="`number-input-${id}`"
-			type="text"
-			spellcheck="false"
-			v-model="text"
-			@change="onTextChanged()"
-			@keydown.esc="onCancelTextChange"
-			ref="input"
-			:disabled="disabled"
-		/>
-		<label v-if="label" :for="`number-input-${id}`">{{ label }}</label>
-		<button v-if="!Number.isNaN(value)" class="arrow left" @click="onIncrement('Decrease')"></button>
-		<button v-if="!Number.isNaN(value)" class="arrow right" @click="onIncrement('Increase')"></button>
-	</LayoutRow>
+	<FieldInput
+		class="number-input"
+		v-model:value="text"
+		:label="label"
+		:spellcheck="false"
+		:disabled="disabled"
+		@textFocused="() => onTextFocused()"
+		@textChanged="() => onTextChanged()"
+		@cancelTextChange="() => onCancelTextChange()"
+		ref="fieldInput"
+	>
+		<button v-if="!Number.isNaN(value)" class="arrow left" @click="() => onIncrement('Decrease')"></button>
+		<button v-if="!Number.isNaN(value)" class="arrow right" @click="() => onIncrement('Increase')"></button>
+	</FieldInput>
 </template>
 
 <style lang="scss">
 .number-input {
-	min-width: 80px;
-	height: 24px;
-	position: relative;
-	border-radius: 2px;
-	background: var(--color-1-nearblack);
-	overflow: hidden;
-	flex-direction: row-reverse;
-
-	label {
-		flex: 1 1 100%;
-		line-height: 18px;
-		margin-left: 8px;
-		padding: 3px 0;
-		overflow: hidden;
-		text-overflow: ellipsis;
-	}
-
-	&:not(.disabled) label {
-		cursor: text;
-	}
-
-	input {
-		flex: 1 1 100%;
-		width: 0;
-		min-width: 30px;
-		height: 18px;
-		line-height: 18px;
-		margin: 0 8px;
-		padding: 3px 0;
-		outline: none;
-		border: none;
-		background: none;
-		color: var(--color-e-nearwhite);
-		text-align: center;
-
-		&:not(:focus).has-label {
-			text-align: right;
-			margin-left: 0;
-			margin-right: 8px;
-		}
-
-		&:focus {
-			text-align: left;
-
-			& + label,
-			& ~ .arrow {
-				display: none;
-			}
-		}
+	input:focus ~ .arrow {
+		display: none;
 	}
 
 	&:not(:hover) .arrow {
@@ -127,17 +78,8 @@
 		}
 	}
 
-	&.disabled {
-		background: var(--color-2-mildblack);
-
-		label,
-		input {
-			color: var(--color-8-uppergray);
-		}
-
-		.arrow {
-			display: none;
-		}
+	&.disabled .arrow {
+		display: none;
 	}
 }
 </style>
@@ -147,9 +89,10 @@ import { defineComponent, PropType } from "vue";
 
 import { IncrementBehavior, IncrementDirection } from "@/utilities/widgets";
 
-import LayoutRow from "@/components/layout/LayoutRow.vue";
+import FieldInput from "@/components/widgets/inputs/FieldInput.vue";
 
 export default defineComponent({
+	emits: ["update:value"],
 	props: {
 		value: { type: Number as PropType<number>, required: true },
 		min: { type: Number as PropType<number>, required: false },
@@ -167,9 +110,8 @@ export default defineComponent({
 	},
 	data() {
 		return {
-			text: this.generateText(this.value),
+			text: this.displayText(this.value),
 			editing: false,
-			id: `${Math.random()}`.substring(2),
 		};
 	},
 	methods: {
@@ -177,8 +119,10 @@ export default defineComponent({
 			if (Number.isNaN(this.value)) this.text = "";
 			else if (this.unitIsHiddenWhenEditing) this.text = `${this.value}`;
 			else this.text = `${this.value}${this.unit}`;
+
 			this.editing = true;
-			const inputElement = this.$refs.input as HTMLInputElement;
+
+			const inputElement = (this.$refs.fieldInput as typeof FieldInput).$refs.input as HTMLInputElement;
 			// Setting the value directly is required to make `inputElement.select()` work
 			inputElement.value = this.text;
 			inputElement.select();
@@ -187,59 +131,66 @@ export default defineComponent({
 		// enter key (via the `change` event) or when the <input> element is defocused (with the `blur` event binding)
 		onTextChanged() {
 			// The `inputElement.blur()` call at the bottom of this function causes itself to be run again, so this check skips a second run
-			if (!this.editing) return;
-			const newValue = parseFloat(this.text);
-			this.updateValue(newValue);
-			this.editing = false;
-			const inputElement = this.$refs.input as HTMLElement;
-			inputElement.blur();
+			if (this.editing) {
+				const newValue = parseFloat(this.text);
+				this.updateValue(newValue);
+
+				this.editing = false;
+
+				const inputElement = (this.$refs.fieldInput as typeof FieldInput).$refs.input as HTMLInputElement;
+				inputElement.blur();
+			}
 		},
 		onCancelTextChange() {
 			this.updateValue(NaN);
+
 			this.editing = false;
-			const inputElement = this.$refs.input as HTMLElement;
+
+			const inputElement = (this.$refs.fieldInput as typeof FieldInput).$refs.input as HTMLInputElement;
 			inputElement.blur();
 		},
 		onIncrement(direction: IncrementDirection) {
 			if (Number.isNaN(this.value)) return;
-			switch (this.incrementBehavior) {
-				case "Add": {
+
+			({
+				Add: (): void => {
 					const directionAddend = direction === "Increase" ? this.incrementFactor : -this.incrementFactor;
 					this.updateValue(this.value + directionAddend);
-					break;
-				}
-				case "Multiply": {
+				},
+				Multiply: (): void => {
 					const directionMultiplier = direction === "Increase" ? this.incrementFactor : 1 / this.incrementFactor;
 					this.updateValue(this.value * directionMultiplier);
-					break;
-				}
-				case "Callback": {
+				},
+				Callback: (): void => {
 					if (direction === "Increase" && this.incrementCallbackIncrease) this.incrementCallbackIncrease();
 					if (direction === "Decrease" && this.incrementCallbackDecrease) this.incrementCallbackDecrease();
-					break;
-				}
-				default:
-					break;
-			}
+				},
+				None: (): void => undefined,
+			}[this.incrementBehavior]());
 		},
 		updateValue(newValue: number) {
-			let sanitized = newValue;
 			const invalid = Number.isNaN(newValue);
+
+			let sanitized = newValue;
 			if (invalid) sanitized = this.value;
 			if (this.isInteger) sanitized = Math.round(sanitized);
 			if (typeof this.min === "number" && !Number.isNaN(this.min)) sanitized = Math.max(sanitized, this.min);
 			if (typeof this.max === "number" && !Number.isNaN(this.max)) sanitized = Math.min(sanitized, this.max);
+
 			if (!invalid) this.$emit("update:value", sanitized);
-			this.text = this.generateText(sanitized);
+
+			this.text = this.displayText(sanitized);
 		},
-		generateText(value: number): string {
+		displayText(value: number): string {
 			// Find the amount of digits on the left side of the decimal
 			// 10.25 == 2
 			// 1.23 == 1
-			// 0.23 == 0 (Reason for the slightly more complicated code)
+			// 0.23 == 0 (reason for the slightly more complicated code)
 			const leftSideDigits = Math.max(Math.floor(value).toString().length, 0) * Math.sign(value);
 			const roundingPower = 10 ** Math.max(this.displayDecimalPlaces - leftSideDigits, 0);
+
 			const displayValue = Math.round(value * roundingPower) / roundingPower;
+
 			return `${displayValue}${this.unit}`;
 		},
 	},
@@ -250,23 +201,15 @@ export default defineComponent({
 				this.text = "-";
 				return;
 			}
+
 			// The simple `clamp()` function can't be used here since `undefined` values need to be boundless
 			let sanitized = newValue;
 			if (typeof this.min === "number") sanitized = Math.max(sanitized, this.min);
 			if (typeof this.max === "number") sanitized = Math.min(sanitized, this.max);
-			this.text = this.generateText(sanitized);
+
+			this.text = this.displayText(sanitized);
 		},
 	},
-	mounted() {
-		const inputElement = this.$refs.input as HTMLInputElement;
-		inputElement.addEventListener("focus", this.onTextFocused);
-		inputElement.addEventListener("blur", this.onTextChanged);
-	},
-	beforeUnmount() {
-		const inputElement = this.$refs.input as HTMLInputElement;
-		inputElement.removeEventListener("focus", this.onTextFocused);
-		inputElement.removeEventListener("blur", this.onTextChanged);
-	},
-	components: { LayoutRow },
+	components: { FieldInput },
 });
 </script>
