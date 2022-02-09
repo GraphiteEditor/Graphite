@@ -6,7 +6,7 @@ use crate::input::InputPreprocessorMessageHandler;
 use crate::layout::widgets::PropertyHolder;
 use crate::message_prelude::*;
 use crate::misc::{HintData, HintGroup, HintInfo, KeysGroup};
-use crate::viewport_tools::tool::{DocumentToolData, Fsm, ToolActionHandlerData};
+use crate::viewport_tools::tool::{get_new_layer_location, DocumentToolData, Fsm, ToolActionHandlerData};
 
 use graphene::layers::style;
 use graphene::Operation;
@@ -111,7 +111,7 @@ impl Fsm for EllipseToolFsmState {
 				(Ready, DragStart) => {
 					shape_data.start(responses, input.viewport_bounds.size(), document, input.mouse.position);
 					responses.push_back(DocumentMessage::StartTransaction.into());
-					shape_data.path = Some(vec![generate_uuid()]);
+					shape_data.path = Some(get_new_layer_location(&document));
 					responses.push_back(DocumentMessage::DeselectAllLayers.into());
 
 					responses.push_back(

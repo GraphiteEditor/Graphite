@@ -272,3 +272,13 @@ pub fn update_working_colors(document_data: &DocumentToolData, responses: &mut V
 		.into(),
 	);
 }
+
+/// Calculate the path that new layers should be inserted to.
+/// Depends on the selected layers as well as their types (Folder/Non-Folder)
+pub fn get_new_layer_location(document: &DocumentMessageHandler) -> Vec<u64> {
+	// If the selected layers dont actually exist, a new uuid for the
+	// root folder will be returned
+	let mut path = document.graphene_document.shallowest_common_folder(document.selected_layers()).map_or(vec![], |v| v.to_vec());
+	path.push(generate_uuid());
+	path
+}
