@@ -240,23 +240,23 @@ pub fn derive_hint(input_item: TokenStream) -> TokenStream {
 /// # Example
 /// ```ignore
 /// match (example_tool_state, event) {
-///     (ToolState::Ready, Event::MouseDown(mouse_state)) if *mouse_state == MouseState::Left => {
+///     (ToolState::Ready, Event::PointerDown(mouse_state)) if *mouse_state == MouseState::Left => {
 ///         #[edge("LMB Down")]
 ///         ToolState::Pending
 ///     }
-///     (SelectToolState::Pending, Event::MouseUp(mouse_state)) if *mouse_state == MouseState::Left => {
+///     (SelectToolState::Pending, Event::PointerUp(mouse_state)) if *mouse_state == MouseState::Left => {
 ///         #[edge("LMB Up: Select Object")]
 ///         SelectToolState::Ready
 ///     }
-///     (SelectToolState::Pending, Event::MouseMove(x,y)) => {
+///     (SelectToolState::Pending, Event::PointerMove(x,y)) => {
 ///         #[edge("Mouse Move")]
 ///         SelectToolState::TransformSelected
 ///     }
-///     (SelectToolState::TransformSelected, Event::MouseMove(x,y)) => {
+///     (SelectToolState::TransformSelected, Event::PointerMove(x,y)) => {
 ///         #[edge("Mouse Move")]
 ///         SelectToolState::TransformSelected
 ///     }
-///     (SelectToolState::TransformSelected, Event::MouseUp(mouse_state)) if *mouse_state == MouseState::Left => {
+///     (SelectToolState::TransformSelected, Event::PointerUp(mouse_state)) if *mouse_state == MouseState::Left => {
 ///         #[edge("LMB Up")]
 ///         SelectToolState::Ready
 ///     }
