@@ -159,7 +159,7 @@ impl Fsm for LineToolFsmState {
 					data.drag_start = data.snap_handler.snap_position(responses, input.viewport_bounds.size(), document, input.mouse.position);
 
 					responses.push_back(DocumentMessage::StartTransaction.into());
-					data.path = Some(vec![generate_uuid()]);
+					data.path = Some(document.get_path_for_new_layer());
 					responses.push_back(DocumentMessage::DeselectAllLayers.into());
 
 					data.weight = tool_options.line_weight;
