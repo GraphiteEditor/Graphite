@@ -197,11 +197,6 @@ impl Shape {
 				.for_each(|(i, p)| if i == 0 { path.move_to(p) } else { path.line_to(p) });
 		}
 
-		Self {
-			path,
-			style,
-			render_index: 0,
-			closed: false,
-		}
+		Self { path, style, render_index: 0 }
 	}
 }
