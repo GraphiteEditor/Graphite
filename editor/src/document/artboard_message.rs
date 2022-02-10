@@ -18,9 +18,12 @@ pub enum ArtboardMessage {
 		position: (f64, f64),
 		size: (f64, f64),
 	},
+	DeleteArtboard {
+		artboard: LayerId,
+	},
 	RenderArtboards,
 	ResizeArtboard {
-		artboard: Vec<LayerId>,
+		artboard: LayerId,
 		position: (f64, f64),
 		size: (f64, f64),
 	},
