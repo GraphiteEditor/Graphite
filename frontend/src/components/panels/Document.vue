@@ -108,12 +108,6 @@
 .document {
 	height: 100%;
 
-	.document-bar {
-		.widget-row {
-			height: 100%;
-		}
-	}
-
 	.options-bar {
 		height: 32px;
 		flex: 0 0 auto;
@@ -123,12 +117,6 @@
 			flex: 0 0 auto;
 			align-items: center;
 			margin: 0 4px;
-		}
-
-		.tool-options {
-			.widget-row {
-				height: 100%;
-			}
 		}
 
 		.spacer {

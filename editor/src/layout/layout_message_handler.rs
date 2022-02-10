@@ -23,7 +23,11 @@ impl LayoutMessageHandler {
 				layout_target,
 				layout: widget_layout.layout.clone(),
 			},
-			LayoutTarget::PropertiesPanel => FrontendMessage::UpdatePropertyPanelLayout {
+			LayoutTarget::PropertiesOptionsPanel => FrontendMessage::UpdatePropertyPanelOptionsLayout {
+				layout_target,
+				layout: widget_layout.layout.clone(),
+			},
+			LayoutTarget::PropertiesSectionsPanel => FrontendMessage::UpdatePropertyPanelSectionsLayout {
 				layout_target,
 				layout: widget_layout.layout.clone(),
 			},
