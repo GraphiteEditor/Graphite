@@ -156,7 +156,7 @@ impl MessageHandler<PropertiesPanelMessage, &GrapheneDocument> for PropertiesPan
 	}
 
 	fn actions(&self) -> ActionList {
-		actions!(ArtboardMessageDiscriminant;)
+		actions!(PropertiesMessageDiscriminant;)
 	}
 }
 

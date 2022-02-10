@@ -186,7 +186,8 @@ export default defineComponent({
 			// 10.25 == 2
 			// 1.23 == 1
 			// 0.23 == 0 (Reason for the slightly more complicated code)
-			const leftSideDigits = Math.abs(Math.max(Math.floor(value).toString().length, 0) * Math.sign(value));
+			const absValueInt = Math.floor(Math.abs(value));
+			const leftSideDigits = absValueInt === 0 ? 0 : absValueInt.toString().length;
 			const roundingPower = 10 ** Math.max(this.displayDecimalPlaces - leftSideDigits, 0);
 
 			const displayValue = Math.round(value * roundingPower) / roundingPower;
