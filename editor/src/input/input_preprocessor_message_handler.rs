@@ -47,6 +47,7 @@ impl MessageHandler<InputPreprocessorMessage, ()> for InputPreprocessorMessageHa
 						)
 						.into(),
 					);
+					responses.push_back(FrontendMessage::TriggerViewportResize.into());
 				}
 			}
 			InputPreprocessorMessage::DoubleClick { editor_mouse_state, modifier_keys } => {

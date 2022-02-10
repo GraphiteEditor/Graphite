@@ -25,9 +25,9 @@ struct DispatcherMessageHandlers {
 	tool_message_handler: ToolMessageHandler,
 }
 
-// For optimization, these are messages guaranteed to be redundant when repeated.
-// The last occurrence of the message in the message queue is sufficient to ensure correct behavior.
-// In addition, these messages do not change any state in the backend (aside from caches).
+/// For optimization, these are messages guaranteed to be redundant when repeated.
+/// The last occurrence of the message in the message queue is sufficient to ensure correct behavior.
+/// In addition, these messages do not change any state in the backend (aside from caches).
 const SIDE_EFFECT_FREE_MESSAGES: &[MessageDiscriminant] = &[
 	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::Document(DocumentMessageDiscriminant::RenderDocument)),
 	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::Document(DocumentMessageDiscriminant::Overlays(OverlaysMessageDiscriminant::Rerender))),

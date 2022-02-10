@@ -10,9 +10,9 @@ use crate::viewport_tools::snapping::SnapHandler;
 use crate::viewport_tools::tool::{DocumentToolData, Fsm, ToolActionHandlerData};
 use crate::viewport_tools::vector_editor::shape_editor::ShapeEditor;
 
-use glam::DVec2;
 use graphene::intersection::Quad;
 
+use glam::DVec2;
 use serde::{Deserialize, Serialize};
 
 #[derive(Default)]
