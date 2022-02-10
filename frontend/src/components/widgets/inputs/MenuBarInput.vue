@@ -1,12 +1,12 @@
 <template>
 	<div class="menu-bar-input">
 		<div class="entry-container">
-			<div @click="visitWebsite('https://www.graphite.design')" class="entry">
+			<div @click="() => visitWebsite('https://www.graphite.design')" class="entry">
 				<IconLabel :icon="'GraphiteLogo'" />
 			</div>
 		</div>
 		<div class="entry-container" v-for="(entry, index) in menuEntries" :key="index">
-			<div @click="handleEntryClick(entry)" class="entry" :class="{ open: entry.ref && entry.ref.isOpen() }" data-hover-menu-spawner>
+			<div @click="() => handleEntryClick(entry)" class="entry" :class="{ open: entry.ref && entry.ref.isOpen() }" data-hover-menu-spawner>
 				<IconLabel :icon="entry.icon" v-if="entry.icon" />
 				<span v-if="entry.label">{{ entry.label }}</span>
 			</div>

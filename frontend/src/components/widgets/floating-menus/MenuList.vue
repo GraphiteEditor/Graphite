@@ -7,9 +7,9 @@
 				:key="entryIndex"
 				class="row"
 				:class="{ open: isMenuEntryOpen(entry), active: entry === activeEntry }"
-				@click="handleEntryClick(entry)"
-				@pointerenter="handleEntryPointerEnter(entry)"
-				@pointerleave="handleEntryPointerLeave(entry)"
+				@click="() => handleEntryClick(entry)"
+				@pointerenter="() => handleEntryPointerEnter(entry)"
+				@pointerleave="() => handleEntryPointerLeave(entry)"
 				:data-hover-menu-spawner-extend="entry.children && []"
 			>
 				<CheckboxInput v-if="entry.checkbox" v-model:checked="entry.checked" :outlineStyle="true" class="entry-checkbox" />
@@ -160,6 +160,10 @@ const KEYBOARD_LOCK_USE_FULLSCREEN = "This hotkey is reserved by the browser, bu
 const KEYBOARD_LOCK_SWITCH_BROWSER = "This hotkey is reserved by the browser, but becomes available in Chrome, Edge, and Opera which support the Keyboard.lock() API";
 
 const MenuList = defineComponent({
+	emits: {
+		"update:activeEntry": null,
+		widthChanged: (width: number) => typeof width === "number",
+	},
 	inject: ["fullscreen"],
 	props: {
 		direction: { type: String as PropType<MenuDirection>, default: "Bottom" },
