@@ -123,7 +123,7 @@ impl Fsm for PathToolFsmState {
 					data.shape_editor.remove_overlays(responses);
 
 					// This currently creates new VectorManipulatorShapes for every shape, which is not ideal
-					// Atleast it is only on selection change for now
+					// At least it is only on selection change for now
 					data.shape_editor.set_shapes_to_modify(document.selected_visible_layers_vector_shapes(responses));
 
 					self
@@ -245,7 +245,7 @@ impl Fsm for PathToolFsmState {
 					HintInfo {
 						key_groups: vec![KeysGroup(vec![Key::KeyShift])],
 						mouse: None,
-						label: String::from("Add/Remove Point (coming soon)"),
+						label: String::from("Grow/Shrink Selection"),
 						plus: true,
 					},
 				]),
@@ -295,20 +295,20 @@ impl Fsm for PathToolFsmState {
 					},
 				]),
 			]),
-			PathToolFsmState::Dragging => HintData(vec![
-				HintGroup(vec![HintInfo {
+			PathToolFsmState::Dragging => HintData(vec![HintGroup(vec![
+				HintInfo {
 					key_groups: vec![KeysGroup(vec![Key::KeyAlt])],
 					mouse: None,
-					label: String::from("Toggle Mirror Angle"),
+					label: String::from("Split/Align Handles (Toggle)"),
 					plus: false,
-				}]),
-				HintGroup(vec![HintInfo {
+				},
+				HintInfo {
 					key_groups: vec![KeysGroup(vec![Key::KeyShift])],
 					mouse: None,
-					label: String::from("Hold To Mirror Distance"),
+					label: String::from("Share Lengths of Aligned Handles"),
 					plus: false,
-				}]),
-			]),
+				},
+			])]),
 		};
 
 		responses.push_back(FrontendMessage::UpdateInputHints { hint_data }.into());
