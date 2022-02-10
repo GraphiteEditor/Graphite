@@ -519,6 +519,17 @@ impl Document {
 				self.set_layer(path, Layer::new(LayerDataType::Shape(Shape::poly_line(points, *style)), *transform), *insert_index)?;
 				Some([vec![DocumentChanged, CreatedLayer { path: path.clone() }], update_thumbnails_upstream(path)].concat())
 			}
+			Operation::AddSpline {
+				path,
+				insert_index,
+				points,
+				transform,
+				style,
+			} => {
+				let points: Vec<glam::DVec2> = points.iter().map(|&it| it.into()).collect();
+				self.set_layer(path, Layer::new(LayerDataType::Shape(Shape::spline(points, *style)), *transform), *insert_index)?;
+				Some([vec![DocumentChanged, CreatedLayer { path: path.clone() }], update_thumbnails_upstream(path)].concat())
+			}
 			Operation::DeleteLayer { path } => {
 				fn aggregate_deletions(folder: &Folder, path: &mut Vec<LayerId>, responses: &mut Vec<DocumentResponse>) {
 					for (id, layer) in folder.layer_ids.iter().zip(folder.layers()) {

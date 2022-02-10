@@ -61,9 +61,9 @@ pub enum ToolMessage {
 	#[remain::unsorted]
 	#[child]
 	Freehand(FreehandMessage),
-	// #[remain::unsorted]
-	// #[child]
-	// Spline(SplineMessage),
+	#[remain::unsorted]
+	#[child]
+	Spline(SplineMessage),
 	#[remain::unsorted]
 	#[child]
 	Line(LineMessage),
