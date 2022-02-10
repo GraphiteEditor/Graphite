@@ -97,9 +97,9 @@ impl Document {
 		self.folder_mut(path)?.layer_mut(id).ok_or_else(|| DocumentError::LayerNotFound(path.into()))
 	}
 
-	/// Return vector Shapes for each specified in paths
-	/// If any path is not a shape, or does not exist, DocumentError::InvalidPath is returned
-	fn transformed_shapes(&self, paths: &Vec<Vec<LayerId>>) -> Result<Vec<Shape>, DocumentError> {
+	/// Returns vector `Shape`s for each specified in `paths`.
+	/// If any path is not a shape, or does not exist, `DocumentError::InvalidPath` is returned.
+	fn transformed_shapes(&self, paths: &[Vec<LayerId>]) -> Result<Vec<Shape>, DocumentError> {
 		let mut shapes: Vec<Shape> = Vec::new();
 		let undo_viewport = self.root.transform.inverse();
 		for path in paths {
@@ -539,14 +539,14 @@ impl Document {
 				// TODO: proper style selection (done?)
 				// TODO: should generate symmetrical code
 				// TODO: Operations on any number of shapes
+				// TODO: boolean ops on any number of shapes
 				// TODO: handle overlapping identical curve case
 				// TODO: precision reached without intersection bug (maybe caused by separating a closed path, or dragging handles)
 				// TODO: click on shape should drag the shape
 				// TODO: add ability to undo
 				let mut responses = Vec::new();
-				// log::debug!("{:?}", selected);
 				if selected.len() > 1 && selected.len() < 3 {
-					// ? apparently selected should be reversed
+					// ? apparently `selected` should be reversed
 					let mut shapes = self.transformed_shapes(selected)?;
 					let mut shape_drain = shapes.drain(..).rev();
 					let new_shapes = boolean_operation(*operation, shape_drain.next().unwrap(), shape_drain.next().unwrap())?;
@@ -556,7 +556,6 @@ impl Document {
 						responses.push(DocumentResponse::DeletedLayer { path: path.clone() })
 					}
 					for new_shape in new_shapes {
-						// log::debug!("{:?}", new_shape.path);
 						let new_id = self.add_layer(&[], Layer::new(LayerDataType::Shape(new_shape), DAffine2::IDENTITY.to_cols_array()), -1)?;
 						responses.push(DocumentResponse::CreatedLayer { path: vec![new_id] })
 					}
