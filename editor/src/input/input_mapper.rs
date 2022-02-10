@@ -53,6 +53,8 @@ impl Default for Mapping {
 			entry! {action=CropMessage::PointerDown, key_down=Lmb},
 			entry! {action=CropMessage::PointerMove { constrain_axis_or_aspect: KeyShift, center: KeyAlt }, message=InputMapperMessage::PointerMove},
 			entry! {action=CropMessage::PointerUp, key_up=Lmb},
+			entry! {action=CropMessage::DeleteSelected, key_down=KeyDelete},
+			entry! {action=CropMessage::DeleteSelected, key_down=KeyBackspace},
 			// Navigate
 			entry! {action=NavigateMessage::ClickZoom { zoom_in: false }, key_up=Lmb, modifiers=[KeyShift]},
 			entry! {action=NavigateMessage::ClickZoom { zoom_in: true }, key_up=Lmb},
