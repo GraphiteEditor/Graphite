@@ -55,6 +55,13 @@ impl MessageHandler<ArtboardMessage, ()> for ArtboardMessageHandler {
 
 				responses.push_back(DocumentMessage::RenderDocument.into());
 			}
+			DeleteArtboard { artboard } => {
+				self.artboard_ids.retain(|&id| id != artboard);
+
+				responses.push_back(ArtboardMessage::DispatchOperation(Box::new(DocumentOperation::DeleteLayer { path: vec![artboard] })).into());
+
+				responses.push_back(DocumentMessage::RenderDocument.into());
+			}
 			RenderArtboards => {
 				// Render an infinite canvas if there are no artboards
 				if self.artboard_ids.is_empty() {
@@ -76,7 +83,7 @@ impl MessageHandler<ArtboardMessage, ()> for ArtboardMessageHandler {
 			ResizeArtboard { artboard, position, size } => {
 				responses.push_back(
 					ArtboardMessage::DispatchOperation(Box::new(DocumentOperation::SetLayerTransform {
-						path: artboard,
+						path: vec![artboard],
 						transform: DAffine2::from_scale_angle_translation(size.into(), 0., position.into()).to_cols_array(),
 					}))
 					.into(),
