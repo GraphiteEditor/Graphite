@@ -391,7 +391,8 @@ impl PathGraph {
 
 /// If `t` is on `(0, 1)`, returns the split curve.
 /// If `t` is outside `[0, 1]`, returns `(None, None)`
-/// Otherwise, returns the whole path.
+/// If `t` is 0 returns (None, `p`).
+/// If `t` is 1 returns (`p`, None).
 // TODO: test values outside 1
 pub fn split_path_seg(p: &PathSeg, t: f64) -> (Option<PathSeg>, Option<PathSeg>) {
 	if t <= F64PRECISION {
@@ -433,14 +434,14 @@ pub fn split_path_seg(p: &PathSeg, t: f64) -> (Option<PathSeg>, Option<PathSeg>)
 
 /// Splits `p` at each of `t_values`.
 /// `t_values` should be sorted in ascending order.
-/// The length of the returned `Vec` is equal to `1 + t_values.len()`.
+/// The length of the returned `Vec` is always equal to `1 + t_values.len()`.
 pub fn subdivide_path_seg(p: &PathSeg, t_values: &mut [f64]) -> Vec<Option<PathSeg>> {
 	let mut sub_segments = Vec::new();
 	let mut to_split = Some(*p);
 	let mut prev_split = 0.0;
 	for split in t_values {
-		if let Some(unhewn) = to_split {
-			let (sub_seg, _to_split) = split_path_seg(&unhewn, (*split - prev_split) / (1.0 - prev_split));
+		if let Some(to_split_next) = to_split {
+			let (sub_seg, _to_split) = split_path_seg(&to_split_next, (*split - prev_split) / (1.0 - prev_split));
 			to_split = _to_split;
 			sub_segments.push(sub_seg);
 			prev_split = *split;

@@ -360,7 +360,8 @@ fn guess_quality(a: &PathSeg, b: &PathSeg, guess: &Intersect) -> f64 {
 	at_a.distance(guess.point) + at_b.distance(guess.point)
 }
 
-/// Returns either [None, None] or [Some(_), Some(_)]
+/// Returns either [None, None] or [Some(_), Some(_)],
+/// The above may not be true when either a or b is very small (their endpoints are close together), so that when the algorithm does curve splitting
 /// TODO: test this
 pub fn overlapping_curve_intersections(a: &PathSeg, b: &PathSeg) -> [Option<Intersect>; 2] {
 	// To check if two curves overlap we find if the endpoints of either curve are on the other curve.
@@ -574,10 +575,10 @@ pub fn line_t_value(a: &Line, p: &Point) -> Option<f64> {
 		} else {
 			Some(from_y)
 		}
-	} else if !from_y.is_normal() || from_x == from_y {
+	} else if !from_y.is_normal() {
 		Some(from_x)
 	} else {
-		None
+		Some(0.5 * (from_x + from_y))
 	}
 }
 
