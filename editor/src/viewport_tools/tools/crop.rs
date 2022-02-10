@@ -33,6 +33,7 @@ pub enum CropMessage {
 	DocumentIsDirty,
 
 	// Tool-specific messages
+	DeleteSelected,
 	PointerDown,
 	PointerMove {
 		constrain_axis_or_aspect: Key,
@@ -61,7 +62,7 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Crop {
 		}
 	}
 
-	advertise_actions!(CropMessageDiscriminant; PointerDown, PointerUp, PointerMove, Abort);
+	advertise_actions!(CropMessageDiscriminant; PointerDown, PointerUp, PointerMove, DeleteSelected, Abort);
 }
 
 impl PropertyHolder for Crop {}
@@ -201,7 +202,7 @@ impl Fsm for CropToolFsmState {
 
 							responses.push_back(
 								ArtboardMessage::ResizeArtboard {
-									artboard: vec![data.selected_board.unwrap()],
+									artboard: data.selected_board.unwrap(),
 									position: position.round().into(),
 									size: size.round().into(),
 								}
@@ -229,7 +230,7 @@ impl Fsm for CropToolFsmState {
 
 						responses.push_back(
 							ArtboardMessage::ResizeArtboard {
-								artboard: vec![data.selected_board.unwrap()],
+								artboard: data.selected_board.unwrap(),
 								position: position.round().into(),
 								size: size.round().into(),
 							}
@@ -265,7 +266,7 @@ impl Fsm for CropToolFsmState {
 
 					responses.push_back(
 						ArtboardMessage::ResizeArtboard {
-							artboard: vec![data.selected_board.unwrap()],
+							artboard: data.selected_board.unwrap(),
 							position: start.round().into(),
 							size: size.round().into(),
 						}
@@ -313,6 +314,13 @@ impl Fsm for CropToolFsmState {
 						bounds.original_transforms.clear();
 					}
 
+					CropToolFsmState::Ready
+				}
+				(_, CropMessage::DeleteSelected) => {
+					if let Some(artboard) = data.selected_board.take() {
+						responses.push_back(ArtboardMessage::DeleteArtboard { artboard }.into());
+						responses.push_back(ToolMessage::DocumentIsDirty.into());
+					}
 					CropToolFsmState::Ready
 				}
 				(_, CropMessage::Abort) => {
