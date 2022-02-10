@@ -1,10 +1,12 @@
+use crate::consts::DRAG_THRESHOLD;
 use crate::document::DocumentMessageHandler;
 use crate::frontend::utility_types::MouseCursorIcon;
-use crate::input::keyboard::MouseMotion;
+use crate::input::keyboard::{Key, MouseMotion};
 use crate::input::InputPreprocessorMessageHandler;
 use crate::layout::widgets::{LayoutRow, NumberInput, PropertyHolder, Widget, WidgetCallback, WidgetHolder, WidgetLayout};
 use crate::message_prelude::*;
-use crate::misc::{HintData, HintGroup, HintInfo};
+use crate::misc::{HintData, HintGroup, HintInfo, KeysGroup};
+use crate::viewport_tools::snapping::SnapHandler;
 use crate::viewport_tools::tool::{DocumentToolData, Fsm, ToolActionHandlerData};
 
 use graphene::layers::style;
@@ -14,50 +16,52 @@ use glam::{DAffine2, DVec2};
 use serde::{Deserialize, Serialize};
 
 #[derive(Default)]
-pub struct Freehand {
-	fsm_state: FreehandToolFsmState,
-	data: FreehandToolData,
-	options: FreehandOptions,
+pub struct Spline {
+	fsm_state: SplineToolFsmState,
+	data: SplineToolData,
+	options: SplineOptions,
 }
 
-pub struct FreehandOptions {
+pub struct SplineOptions {
 	line_weight: u32,
 }
 
-impl Default for FreehandOptions {
+impl Default for SplineOptions {
 	fn default() -> Self {
 		Self { line_weight: 5 }
 	}
 }
 
 #[remain::sorted]
-#[impl_message(Message, ToolMessage, Freehand)]
+#[impl_message(Message, ToolMessage, Spline)]
 #[derive(PartialEq, Clone, Debug, Hash, Serialize, Deserialize)]
-pub enum FreehandMessage {
+pub enum SplineMessage {
 	// Standard messages
 	#[remain::unsorted]
 	Abort,
 
 	// Tool-specific messages
+	Confirm,
 	DragStart,
 	DragStop,
 	PointerMove,
-	UpdateOptions(FreehandMessageOptionsUpdate),
-}
-
-#[remain::sorted]
-#[derive(PartialEq, Clone, Debug, Hash, Serialize, Deserialize)]
-pub enum FreehandMessageOptionsUpdate {
-	LineWeight(u32),
+	Undo,
+	UpdateOptions(SplineOptionsUpdate),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum FreehandToolFsmState {
+enum SplineToolFsmState {
 	Ready,
 	Drawing,
 }
 
-impl PropertyHolder for Freehand {
+#[remain::sorted]
+#[derive(PartialEq, Clone, Debug, Hash, Serialize, Deserialize)]
+pub enum SplineOptionsUpdate {
+	LineWeight(u32),
+}
+
+impl PropertyHolder for Spline {
 	fn properties(&self) -> WidgetLayout {
 		WidgetLayout::new(vec![LayoutRow::Row {
 			name: "".into(),
@@ -66,15 +70,15 @@ impl PropertyHolder for Freehand {
 				label: "Weight".into(),
 				value: self.options.line_weight as f64,
 				is_integer: true,
-				min: Some(1.),
-				on_update: WidgetCallback::new(|number_input| FreehandMessage::UpdateOptions(FreehandMessageOptionsUpdate::LineWeight(number_input.value as u32)).into()),
+				min: Some(0.),
+				on_update: WidgetCallback::new(|number_input| SplineMessage::UpdateOptions(SplineOptionsUpdate::LineWeight(number_input.value as u32)).into()),
 				..NumberInput::default()
 			}))],
 		}])
 	}
 }
 
-impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Freehand {
+impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Spline {
 	fn process_action(&mut self, action: ToolMessage, data: ToolActionHandlerData<'a>, responses: &mut VecDeque<Message>) {
 		if action == ToolMessage::UpdateHints {
 			self.fsm_state.update_hints(responses);
@@ -86,9 +90,9 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Freehand {
 			return;
 		}
 
-		if let ToolMessage::Freehand(FreehandMessage::UpdateOptions(action)) = action {
+		if let ToolMessage::Spline(SplineMessage::UpdateOptions(action)) = action {
 			match action {
-				FreehandMessageOptionsUpdate::LineWeight(line_weight) => self.options.line_weight = line_weight,
+				SplineOptionsUpdate::LineWeight(line_weight) => self.options.line_weight = line_weight,
 			}
 			return;
 		}
@@ -103,30 +107,32 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Freehand {
 	}
 
 	fn actions(&self) -> ActionList {
-		use FreehandToolFsmState::*;
+		use SplineToolFsmState::*;
 
 		match self.fsm_state {
-			Ready => actions!(FreehandMessageDiscriminant; DragStart, DragStop, Abort),
-			Drawing => actions!(FreehandMessageDiscriminant; DragStop, PointerMove, Abort),
+			Ready => actions!(SplineMessageDiscriminant; Undo, DragStart, DragStop, Confirm, Abort),
+			Drawing => actions!(SplineMessageDiscriminant; DragStop, PointerMove, Confirm, Abort),
 		}
 	}
 }
 
-impl Default for FreehandToolFsmState {
+impl Default for SplineToolFsmState {
 	fn default() -> Self {
-		FreehandToolFsmState::Ready
+		SplineToolFsmState::Ready
 	}
 }
 #[derive(Clone, Debug, Default)]
-struct FreehandToolData {
+struct SplineToolData {
 	points: Vec<DVec2>,
+	next_point: DVec2,
 	weight: u32,
 	path: Option<Vec<LayerId>>,
+	snap_handler: SnapHandler,
 }
 
-impl Fsm for FreehandToolFsmState {
-	type ToolData = FreehandToolData;
-	type ToolOptions = FreehandOptions;
+impl Fsm for SplineToolFsmState {
+	type ToolData = SplineToolData;
+	type ToolOptions = SplineOptions;
 
 	fn transition(
 		self,
@@ -138,45 +144,63 @@ impl Fsm for FreehandToolFsmState {
 		input: &InputPreprocessorMessageHandler,
 		responses: &mut VecDeque<Message>,
 	) -> Self {
-		use FreehandMessage::*;
-		use FreehandToolFsmState::*;
+		use SplineMessage::*;
+		use SplineToolFsmState::*;
 
 		let transform = document.graphene_document.root.transform;
 
-		if let ToolMessage::Freehand(event) = event {
+		if let ToolMessage::Spline(event) = event {
 			match (self, event) {
 				(Ready, DragStart) => {
 					responses.push_back(DocumentMessage::StartTransaction.into());
 					responses.push_back(DocumentMessage::DeselectAllLayers.into());
 					data.path = Some(document.get_path_for_new_layer());
 
-					let pos = transform.inverse().transform_point2(input.mouse.position);
+					data.snap_handler.start_snap(document, document.bounding_boxes(None, None), true, true);
+					let snapped_position = data.snap_handler.snap_position(responses, input.viewport_bounds.size(), document, input.mouse.position);
+
+					let pos = transform.inverse().transform_point2(snapped_position);
 
 					data.points.push(pos);
+					data.next_point = pos;
 
 					data.weight = tool_options.line_weight;
 
-					responses.push_back(add_polyline(data, tool_data));
+					responses.push_back(add_spline(data, tool_data, true));
+
+					Drawing
+				}
+				(Drawing, DragStop) => {
+					let snapped_position = data.snap_handler.snap_position(responses, input.viewport_bounds.size(), document, input.mouse.position);
+					let pos = transform.inverse().transform_point2(snapped_position);
+
+					if let Some(last_pos) = data.points.last() {
+						if last_pos.distance(pos) > DRAG_THRESHOLD {
+							data.points.push(pos);
+							data.next_point = pos;
+						}
+					}
+
+					responses.push_back(remove_preview(data));
+					responses.push_back(add_spline(data, tool_data, true));
 
 					Drawing
 				}
 				(Drawing, PointerMove) => {
-					let pos = transform.inverse().transform_point2(input.mouse.position);
-
-					if data.points.last() != Some(&pos) {
-						data.points.push(pos);
-					}
+					let snapped_position = data.snap_handler.snap_position(responses, input.viewport_bounds.size(), document, input.mouse.position);
+					let pos = transform.inverse().transform_point2(snapped_position);
+					data.next_point = pos;
 
 					responses.push_back(remove_preview(data));
-					responses.push_back(add_polyline(data, tool_data));
+					responses.push_back(add_spline(data, tool_data, true));
 
 					Drawing
 				}
-				(Drawing, DragStop) | (Drawing, Abort) => {
+				(Drawing, Confirm) | (Drawing, Abort) => {
 					if data.points.len() >= 2 {
 						responses.push_back(DocumentMessage::DeselectAllLayers.into());
 						responses.push_back(remove_preview(data));
-						responses.push_back(add_polyline(data, tool_data));
+						responses.push_back(add_spline(data, tool_data, false));
 						responses.push_back(DocumentMessage::CommitTransaction.into());
 					} else {
 						responses.push_back(DocumentMessage::AbortTransaction.into());
@@ -184,6 +208,7 @@ impl Fsm for FreehandToolFsmState {
 
 					data.path = None;
 					data.points.clear();
+					data.snap_handler.cleanup(responses);
 
 					Ready
 				}
@@ -196,13 +221,26 @@ impl Fsm for FreehandToolFsmState {
 
 	fn update_hints(&self, responses: &mut VecDeque<Message>) {
 		let hint_data = match self {
-			FreehandToolFsmState::Ready => HintData(vec![HintGroup(vec![HintInfo {
+			SplineToolFsmState::Ready => HintData(vec![HintGroup(vec![HintInfo {
 				key_groups: vec![],
-				mouse: Some(MouseMotion::LmbDrag),
-				label: String::from("Draw Polyline"),
+				mouse: Some(MouseMotion::Lmb),
+				label: String::from("Draw Spline"),
 				plus: false,
 			}])]),
-			FreehandToolFsmState::Drawing => HintData(vec![]),
+			SplineToolFsmState::Drawing => HintData(vec![
+				HintGroup(vec![HintInfo {
+					key_groups: vec![],
+					mouse: Some(MouseMotion::Lmb),
+					label: String::from("Extend Spline"),
+					plus: false,
+				}]),
+				HintGroup(vec![HintInfo {
+					key_groups: vec![KeysGroup(vec![Key::KeyEnter])],
+					mouse: None,
+					label: String::from("End Spline"),
+					plus: false,
+				}]),
+			]),
 		};
 
 		responses.push_back(FrontendMessage::UpdateInputHints { hint_data }.into());
@@ -213,14 +251,17 @@ impl Fsm for FreehandToolFsmState {
 	}
 }
 
-fn remove_preview(data: &FreehandToolData) -> Message {
+fn remove_preview(data: &SplineToolData) -> Message {
 	Operation::DeleteLayer { path: data.path.clone().unwrap() }.into()
 }
 
-fn add_polyline(data: &FreehandToolData, tool_data: &DocumentToolData) -> Message {
-	let points: Vec<(f64, f64)> = data.points.iter().map(|p| (p.x, p.y)).collect();
+fn add_spline(data: &SplineToolData, tool_data: &DocumentToolData, show_preview: bool) -> Message {
+	let mut points: Vec<(f64, f64)> = data.points.iter().map(|p| (p.x, p.y)).collect();
+	if show_preview {
+		points.push((data.next_point.x, data.next_point.y))
+	}
 
-	Operation::AddPolyline {
+	Operation::AddSpline {
 		path: data.path.clone().unwrap(),
 		insert_index: -1,
 		transform: DAffine2::IDENTITY.to_cols_array(),

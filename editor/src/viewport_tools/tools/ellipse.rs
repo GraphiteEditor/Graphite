@@ -1,4 +1,5 @@
 use super::shared::resize::Resize;
+use crate::consts::DRAG_THRESHOLD;
 use crate::document::DocumentMessageHandler;
 use crate::frontend::utility_types::MouseCursorIcon;
 use crate::input::keyboard::{Key, MouseMotion};
@@ -134,8 +135,7 @@ impl Fsm for EllipseToolFsmState {
 					state
 				}
 				(Drawing, DragStop) => {
-					// TODO: introduce comparison threshold when operating with canvas coordinates (https://github.com/GraphiteEditor/Graphite/issues/100)
-					match shape_data.drag_start == input.mouse.position {
+					match shape_data.drag_start.distance(input.mouse.position) <= DRAG_THRESHOLD {
 						true => responses.push_back(DocumentMessage::AbortTransaction.into()),
 						false => responses.push_back(DocumentMessage::CommitTransaction.into()),
 					}
