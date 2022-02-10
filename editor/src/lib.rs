@@ -84,6 +84,7 @@ pub mod message_prelude {
 	pub use crate::viewport_tools::tools::rectangle::{RectangleMessage, RectangleMessageDiscriminant};
 	pub use crate::viewport_tools::tools::select::{SelectMessage, SelectMessageDiscriminant};
 	pub use crate::viewport_tools::tools::shape::{ShapeMessage, ShapeMessageDiscriminant};
+	pub use crate::viewport_tools::tools::spline::{SplineMessage, SplineMessageDiscriminant};
 	pub use crate::viewport_tools::tools::text::{TextMessage, TextMessageDiscriminant};
 	pub use graphite_proc_macros::*;
 

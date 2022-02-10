@@ -35,7 +35,7 @@ mod test {
 
 		let editor_mouse_state = EditorMouseState::from_editor_position(4., 809.);
 		let modifier_keys = ModifierKeys::ALT;
-		let message = InputPreprocessorMessage::MouseMove { editor_mouse_state, modifier_keys };
+		let message = InputPreprocessorMessage::PointerMove { editor_mouse_state, modifier_keys };
 
 		let mut responses = VecDeque::new();
 
@@ -51,7 +51,7 @@ mod test {
 
 		let editor_mouse_state = EditorMouseState::new();
 		let modifier_keys = ModifierKeys::CONTROL;
-		let message = InputPreprocessorMessage::MouseDown { editor_mouse_state, modifier_keys };
+		let message = InputPreprocessorMessage::PointerDown { editor_mouse_state, modifier_keys };
 
 		let mut responses = VecDeque::new();
 
@@ -67,7 +67,7 @@ mod test {
 
 		let editor_mouse_state = EditorMouseState::new();
 		let modifier_keys = ModifierKeys::SHIFT;
-		let message = InputPreprocessorMessage::MouseUp { editor_mouse_state, modifier_keys };
+		let message = InputPreprocessorMessage::PointerUp { editor_mouse_state, modifier_keys };
 
 		let mut responses = VecDeque::new();
 

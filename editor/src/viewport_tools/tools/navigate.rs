@@ -28,7 +28,7 @@ pub enum NavigateMessage {
 	ClickZoom {
 		zoom_in: bool,
 	},
-	MouseMove {
+	PointerMove {
 		snap_angle: Key,
 		snap_zoom: Key,
 	},
@@ -66,7 +66,7 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Navigate {
 
 		match self.fsm_state {
 			Ready => actions!(NavigateMessageDiscriminant; TranslateCanvasBegin, RotateCanvasBegin, ZoomCanvasBegin),
-			_ => actions!(NavigateMessageDiscriminant; ClickZoom, MouseMove, TransformCanvasEnd),
+			_ => actions!(NavigateMessageDiscriminant; ClickZoom, PointerMove, TransformCanvasEnd),
 		}
 	}
 }
@@ -111,7 +111,7 @@ impl Fsm for NavigateToolFsmState {
 				ClickZoom { zoom_in } => {
 					messages.push_front(MovementMessage::TransformCanvasEnd.into());
 
-					// Mouse has not moved from mousedown to mouseup
+					// Mouse has not moved from pointerdown to pointerup
 					if data.drag_start == input.mouse.position {
 						messages.push_front(if zoom_in {
 							MovementMessage::IncreaseCanvasZoom { center_on_mouse: true }.into()
@@ -122,9 +122,9 @@ impl Fsm for NavigateToolFsmState {
 
 					NavigateToolFsmState::Ready
 				}
-				MouseMove { snap_angle, snap_zoom } => {
+				PointerMove { snap_angle, snap_zoom } => {
 					messages.push_front(
-						MovementMessage::MouseMove {
+						MovementMessage::PointerMove {
 							snap_angle,
 							wait_for_snap_angle_release: false,
 							snap_zoom,

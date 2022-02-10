@@ -1,5 +1,5 @@
-use crate::consts::{BOUNDS_ROTATE_THRESHOLD, BOUNDS_SELECT_THRESHOLD, COLOR_ACCENT, ROTATE_SNAP_ANGLE, SELECTION_DRAG_ANGLE, SELECTION_TOLERANCE, VECTOR_MANIPULATOR_ANCHOR_MARKER_SIZE};
-use crate::document::transformation::{OriginalTransforms, Selected};
+use crate::consts::{ROTATE_SNAP_ANGLE, SELECTION_TOLERANCE};
+use crate::document::transformation::Selected;
 use crate::document::utility_types::{AlignAggregate, AlignAxis, FlipAxis};
 use crate::document::DocumentMessageHandler;
 use crate::frontend::utility_types::MouseCursorIcon;
@@ -12,12 +12,12 @@ use crate::misc::{HintData, HintGroup, HintInfo, KeysGroup};
 use crate::viewport_tools::snapping::SnapHandler;
 use crate::viewport_tools::tool::{DocumentToolData, Fsm, ToolActionHandlerData, ToolType};
 
-use graphene::color::Color;
 use graphene::document::Document;
 use graphene::intersection::Quad;
 use graphene::layers::layer_info::LayerDataType;
-use graphene::layers::style::{self, Fill, Stroke};
 use graphene::Operation;
+
+use super::shared::transformation_cage::*;
 
 use glam::{DAffine2, DVec2};
 use serde::{Deserialize, Serialize};
@@ -50,9 +50,10 @@ pub enum SelectMessage {
 	EditLayer,
 	FlipHorizontal,
 	FlipVertical,
-	MouseMove {
+	PointerMove {
 		axis_align: Key,
 		snap_angle: Key,
+		center: Key,
 	},
 }
 
@@ -253,11 +254,9 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Select {
 		use SelectToolFsmState::*;
 
 		match self.fsm_state {
-			Ready => actions!(SelectMessageDiscriminant; DragStart, MouseMove, EditLayer),
-			Dragging => actions!(SelectMessageDiscriminant; DragStop, MouseMove, EditLayer),
-			DrawingBox => actions!(SelectMessageDiscriminant; DragStop, MouseMove, Abort, EditLayer),
-			ResizingBounds => actions!(SelectMessageDiscriminant; DragStop, MouseMove, Abort, EditLayer),
-			RotatingBounds => actions!(SelectMessageDiscriminant; DragStop, MouseMove, Abort, EditLayer),
+			Ready => actions!(SelectMessageDiscriminant; DragStart, PointerMove, EditLayer),
+			Dragging => actions!(SelectMessageDiscriminant; DragStop, PointerMove, EditLayer),
+			_ => actions!(SelectMessageDiscriminant; DragStop, PointerMove, Abort, EditLayer),
 		}
 	}
 }
@@ -304,220 +303,6 @@ impl SelectToolData {
 	}
 }
 
-/// Handles the selected edges whilst dragging the layer bounds
-#[derive(Clone, Debug, Default)]
-struct SelectedEdges {
-	bounds: [DVec2; 2],
-	top: bool,
-	bottom: bool,
-	left: bool,
-	right: bool,
-}
-
-impl SelectedEdges {
-	fn new(top: bool, bottom: bool, left: bool, right: bool, bounds: [DVec2; 2]) -> Self {
-		Self { top, bottom, left, right, bounds }
-	}
-
-	/// Calculate the pivot for the operation (the opposite point to the edge dragged)
-	fn calculate_pivot(&self) -> DVec2 {
-		let min = self.bounds[0];
-		let max = self.bounds[1];
-
-		let x = if self.left {
-			max.x
-		} else if self.right {
-			min.x
-		} else {
-			(min.x + max.x) / 2.
-		};
-
-		let y = if self.top {
-			max.y
-		} else if self.bottom {
-			min.y
-		} else {
-			(min.y + max.y) / 2.
-		};
-
-		DVec2::new(x, y)
-	}
-
-	/// Calculates the required scaling to resize the bounding box
-	fn pos_to_scale_transform(&self, mouse: DVec2) -> DAffine2 {
-		let mut min = self.bounds[0];
-		let mut max = self.bounds[1];
-		if self.top {
-			min.y = mouse.y;
-		} else if self.bottom {
-			max.y = mouse.y;
-		}
-		if self.left {
-			min.x = mouse.x
-		} else if self.right {
-			max.x = mouse.x;
-		}
-		DAffine2::from_scale((max - min) / (self.bounds[1] - self.bounds[0]))
-	}
-}
-
-fn add_bounding_box(responses: &mut Vec<Message>) -> Vec<LayerId> {
-	let path = vec![generate_uuid()];
-
-	let operation = Operation::AddOverlayRect {
-		path: path.clone(),
-		transform: DAffine2::ZERO.to_cols_array(),
-		style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 1.0)), None),
-	};
-	responses.push(DocumentMessage::Overlays(operation.into()).into());
-
-	path
-}
-
-fn evaluate_transform_handle_positions((left, top): (f64, f64), (right, bottom): (f64, f64)) -> [DVec2; 8] {
-	[
-		DVec2::new(left, top),
-		DVec2::new(left, (top + bottom) / 2.),
-		DVec2::new(left, bottom),
-		DVec2::new((left + right) / 2., top),
-		DVec2::new((left + right) / 2., bottom),
-		DVec2::new(right, top),
-		DVec2::new(right, (top + bottom) / 2.),
-		DVec2::new(right, bottom),
-	]
-}
-
-fn add_transform_handles(responses: &mut Vec<Message>) -> [Vec<LayerId>; 8] {
-	const EMPTY_VEC: Vec<LayerId> = Vec::new();
-	let mut transform_handle_paths = [EMPTY_VEC; 8];
-
-	for item in &mut transform_handle_paths {
-		let current_path = vec![generate_uuid()];
-
-		let operation = Operation::AddOverlayRect {
-			path: current_path.clone(),
-			transform: DAffine2::ZERO.to_cols_array(),
-			style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 2.0)), Some(Fill::new(Color::WHITE))),
-		};
-		responses.push(DocumentMessage::Overlays(operation.into()).into());
-
-		*item = current_path;
-	}
-
-	transform_handle_paths
-}
-
-fn transform_from_box(pos1: DVec2, pos2: DVec2) -> [f64; 6] {
-	DAffine2::from_scale_angle_translation((pos2 - pos1).round(), 0., pos1.round() - DVec2::splat(0.5)).to_cols_array()
-}
-
-/// Contains info on the overlays for the bounding box and transform handles
-#[derive(Clone, Debug, Default)]
-struct BoundingBoxOverlays {
-	pub bounding_box: Vec<LayerId>,
-	pub transform_handles: [Vec<LayerId>; 8],
-	pub bounds: [DVec2; 2],
-	pub selected_edges: Option<SelectedEdges>,
-	pub original_transforms: OriginalTransforms,
-	pub pivot: DVec2,
-}
-
-impl BoundingBoxOverlays {
-	#[must_use]
-	pub fn new(buffer: &mut Vec<Message>) -> Self {
-		Self {
-			bounding_box: add_bounding_box(buffer),
-			transform_handles: add_transform_handles(buffer),
-			..Default::default()
-		}
-	}
-
-	/// Update the position of the bounding box and transform handles
-	pub fn transform(&mut self, buffer: &mut Vec<Message>) {
-		let transform = transform_from_box(self.bounds[0], self.bounds[1]);
-		let path = self.bounding_box.clone();
-		buffer.push(DocumentMessage::Overlays(Operation::SetLayerTransformInViewport { path, transform }.into()).into());
-
-		// Helps push values that end in approximately half, plus or minus some floating point imprecision, towards the same side of the round() function
-		const BIAS: f64 = 0.0001;
-
-		for (position, path) in evaluate_transform_handle_positions(self.bounds[0].into(), self.bounds[1].into())
-			.into_iter()
-			.zip(&self.transform_handles)
-		{
-			let scale = DVec2::splat(VECTOR_MANIPULATOR_ANCHOR_MARKER_SIZE);
-			let translation = (position - (scale / 2.) - 0.5 + BIAS).round();
-			let transform = DAffine2::from_scale_angle_translation(scale, 0., translation).to_cols_array();
-			let path = path.clone();
-			buffer.push(DocumentMessage::Overlays(Operation::SetLayerTransformInViewport { path, transform }.into()).into());
-		}
-	}
-
-	/// Check if the user has selected the edge for dragging (returns which edge in order top, bottom, left, right)
-	pub fn check_selected_edges(&self, cursor: DVec2) -> Option<(bool, bool, bool, bool)> {
-		let min = self.bounds[0].min(self.bounds[1]);
-		let max = self.bounds[0].max(self.bounds[1]);
-		if min.x - cursor.x < BOUNDS_SELECT_THRESHOLD && min.y - cursor.y < BOUNDS_SELECT_THRESHOLD && cursor.x - max.x < BOUNDS_SELECT_THRESHOLD && cursor.y - max.y < BOUNDS_SELECT_THRESHOLD {
-			let mut top = (cursor.y - min.y).abs() < BOUNDS_SELECT_THRESHOLD;
-			let mut bottom = (max.y - cursor.y).abs() < BOUNDS_SELECT_THRESHOLD;
-			let mut left = (cursor.x - min.x).abs() < BOUNDS_SELECT_THRESHOLD;
-			let mut right = (max.x - cursor.x).abs() < BOUNDS_SELECT_THRESHOLD;
-			if cursor.y - min.y + max.y - cursor.y < BOUNDS_SELECT_THRESHOLD * 2. && (left || right) {
-				top = false;
-				bottom = false;
-			}
-			if cursor.x - min.x + max.x - cursor.x < BOUNDS_SELECT_THRESHOLD * 2. && (top || bottom) {
-				left = false;
-				right = false;
-			}
-
-			if top || bottom || left || right {
-				return Some((top, bottom, left, right));
-			}
-		}
-
-		None
-	}
-
-	/// Check if the user is rotating with the bounds
-	pub fn check_rotate(&self, cursor: DVec2) -> bool {
-		let min = self.bounds[0].min(self.bounds[1]);
-		let max = self.bounds[0].max(self.bounds[1]);
-
-		let outside_bounds = (min.x > cursor.x || cursor.x > max.x) || (min.y > cursor.y || cursor.y > max.y);
-		let inside_extended_bounds =
-			min.x - cursor.x < BOUNDS_ROTATE_THRESHOLD && min.y - cursor.y < BOUNDS_ROTATE_THRESHOLD && cursor.x - max.x < BOUNDS_ROTATE_THRESHOLD && cursor.y - max.y < BOUNDS_ROTATE_THRESHOLD;
-
-		outside_bounds & inside_extended_bounds
-	}
-
-	pub fn get_cursor(&self, input: &InputPreprocessorMessageHandler) -> MouseCursorIcon {
-		if let Some(directions) = self.check_selected_edges(input.mouse.position) {
-			match directions {
-				(true, false, false, false) | (false, true, false, false) => MouseCursorIcon::NSResize,
-				(false, false, true, false) | (false, false, false, true) => MouseCursorIcon::EWResize,
-				(true, false, true, false) | (false, true, false, true) => MouseCursorIcon::NWSEResize,
-				(true, false, false, true) | (false, true, true, false) => MouseCursorIcon::NESWResize,
-				_ => MouseCursorIcon::Default,
-			}
-		} else if self.check_rotate(input.mouse.position) {
-			MouseCursorIcon::Grabbing
-		} else {
-			MouseCursorIcon::Default
-		}
-	}
-
-	/// Removes the overlays
-	pub fn delete(self, buffer: &mut impl Extend<Message>) {
-		buffer.extend([DocumentMessage::Overlays(Operation::DeleteLayer { path: self.bounding_box }.into()).into()]);
-		buffer.extend(
-			self.transform_handles
-				.iter()
-				.map(|path| DocumentMessage::Overlays(Operation::DeleteLayer { path: path.clone() }.into()).into()),
-		);
-	}
-}
-
 impl Fsm for SelectToolFsmState {
 	type ToolData = SelectToolData;
 	type ToolOptions = ();
@@ -545,6 +330,8 @@ impl Fsm for SelectToolFsmState {
 							let mut bounding_box_overlays = paths.unwrap_or_else(|| BoundingBoxOverlays::new(&mut buffer));
 
 							bounding_box_overlays.bounds = bounds;
+							bounding_box_overlays.transform = DAffine2::IDENTITY;
+
 							bounding_box_overlays.transform(&mut buffer);
 
 							data.bounding_box_overlays = Some(bounding_box_overlays);
@@ -611,8 +398,7 @@ impl Fsm for SelectToolFsmState {
 						let snap_x = selected_edges.2 || selected_edges.3;
 						let snap_y = selected_edges.0 || selected_edges.1;
 
-						data.snap_handler
-							.start_snap(document, document.visible_layers().filter(|layer| !selected.iter().any(|path| path == layer)), snap_x, snap_y);
+						data.snap_handler.start_snap(document, document.bounding_boxes(Some(&selected), None), snap_x, snap_y);
 
 						data.layers_dragging = selected;
 
@@ -632,8 +418,7 @@ impl Fsm for SelectToolFsmState {
 						buffer.push(DocumentMessage::StartTransaction.into());
 						data.layers_dragging = selected;
 
-						data.snap_handler
-							.start_snap(document, document.visible_layers().filter(|layer| !data.layers_dragging.iter().any(|path| path == layer)), true, true);
+						data.snap_handler.start_snap(document, document.bounding_boxes(Some(&data.layers_dragging), None), true, true);
 
 						Dragging
 					} else {
@@ -647,8 +432,7 @@ impl Fsm for SelectToolFsmState {
 							buffer.push(DocumentMessage::AddSelectedLayers { additional_layers: selected.clone() }.into());
 							buffer.push(DocumentMessage::StartTransaction.into());
 							data.layers_dragging.append(&mut selected);
-							data.snap_handler
-								.start_snap(document, document.visible_layers().filter(|layer| !data.layers_dragging.iter().any(|path| path == layer)), true, true);
+							data.snap_handler.start_snap(document, document.bounding_boxes(Some(&data.layers_dragging), None), true, true);
 
 							Dragging
 						} else {
@@ -660,23 +444,23 @@ impl Fsm for SelectToolFsmState {
 
 					state
 				}
-				(Dragging, MouseMove { axis_align, .. }) => {
+				(Dragging, PointerMove { axis_align, .. }) => {
 					// TODO: This is a cheat. Break out the relevant functionality from the handler above and call it from there and here.
 					responses.push_front(SelectMessage::DocumentIsDirty.into());
 
-					let mouse_position = if input.keyboard.get(axis_align as usize) {
-						let mouse_position = input.mouse.position - data.drag_start;
-						let snap_resolution = SELECTION_DRAG_ANGLE.to_radians();
-						let angle = -mouse_position.angle_between(DVec2::X);
-						let snapped_angle = (angle / snap_resolution).round() * snap_resolution;
-						DVec2::new(snapped_angle.cos(), snapped_angle.sin()) * mouse_position.length() + data.drag_start
-					} else {
-						input.mouse.position
-					};
+					let mouse_position = axis_align_drag(input.keyboard.get(axis_align as usize), input.mouse.position, data.drag_start);
 
 					let mouse_delta = mouse_position - data.drag_current;
 
-					let closest_move = data.snap_handler.snap_layers(responses, document, &data.layers_dragging, input.viewport_bounds.size(), mouse_delta);
+					let snap = data
+						.layers_dragging
+						.iter()
+						.filter_map(|path| document.graphene_document.viewport_bounding_box(path).ok()?)
+						.flat_map(|[bound1, bound2]| [bound1, bound2, (bound1 + bound2) / 2.])
+						.map(|vec| vec.into())
+						.unzip();
+
+					let closest_move = data.snap_handler.snap_layers(responses, document, snap, input.viewport_bounds.size(), mouse_delta);
 					// TODO: Cache the result of `shallowest_unique_layers` to avoid this heavy computation every frame of movement, see https://github.com/GraphiteEditor/Graphite/pull/481
 					for path in Document::shallowest_unique_layers(data.layers_dragging.iter()) {
 						responses.push_front(
@@ -690,14 +474,17 @@ impl Fsm for SelectToolFsmState {
 					data.drag_current = mouse_position + closest_move;
 					Dragging
 				}
-				(ResizingBounds, MouseMove { .. }) => {
+				(ResizingBounds, PointerMove { axis_align, center, .. }) => {
 					if let Some(bounds) = &mut data.bounding_box_overlays {
 						if let Some(movement) = &mut bounds.selected_edges {
+							let (center, axis_align) = (input.keyboard.get(center as usize), input.keyboard.get(axis_align as usize));
+
 							let mouse_position = input.mouse.position;
 
 							let snapped_mouse_position = data.snap_handler.snap_position(responses, input.viewport_bounds.size(), document, mouse_position);
 
-							let delta = movement.pos_to_scale_transform(snapped_mouse_position);
+							let [_position, size] = movement.new_size(snapped_mouse_position, bounds.transform, center, axis_align);
+							let delta = movement.bounds_to_scale_transform(center, size);
 
 							let selected = data.layers_dragging.iter().collect::<Vec<_>>();
 							let mut selected = Selected::new(&mut bounds.original_transforms, &mut bounds.pivot, &selected, responses, &document.graphene_document);
@@ -707,7 +494,7 @@ impl Fsm for SelectToolFsmState {
 					}
 					ResizingBounds
 				}
-				(RotatingBounds, MouseMove { snap_angle, .. }) => {
+				(RotatingBounds, PointerMove { snap_angle, .. }) => {
 					if let Some(bounds) = &mut data.bounding_box_overlays {
 						let angle = {
 							let start_offset = data.drag_start - bounds.pivot;
@@ -733,14 +520,14 @@ impl Fsm for SelectToolFsmState {
 
 					RotatingBounds
 				}
-				(DrawingBox, MouseMove { .. }) => {
+				(DrawingBox, PointerMove { .. }) => {
 					data.drag_current = input.mouse.position;
 
 					responses.push_front(
 						DocumentMessage::Overlays(
 							Operation::SetLayerTransformInViewport {
 								path: data.drag_box_overlay_layer.clone().unwrap(),
-								transform: transform_from_box(data.drag_start, data.drag_current),
+								transform: transform_from_box(data.drag_start, data.drag_current, DAffine2::IDENTITY).to_cols_array(),
 							}
 							.into(),
 						)
@@ -748,8 +535,8 @@ impl Fsm for SelectToolFsmState {
 					);
 					DrawingBox
 				}
-				(Ready, MouseMove { .. }) => {
-					let cursor = data.bounding_box_overlays.as_ref().map_or(MouseCursorIcon::Default, |bounds| bounds.get_cursor(input));
+				(Ready, PointerMove { .. }) => {
+					let cursor = data.bounding_box_overlays.as_ref().map_or(MouseCursorIcon::Default, |bounds| bounds.get_cursor(input, true));
 
 					if data.cursor != cursor {
 						data.cursor = cursor;
