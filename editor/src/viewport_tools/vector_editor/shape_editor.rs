@@ -17,8 +17,10 @@ Overview:
 
 use super::vector_shape::VectorShape;
 use super::{constants::MINIMUM_MIRROR_THRESHOLD, vector_anchor::VectorAnchor, vector_control_point::VectorControlPoint};
+use crate::document::DocumentMessageHandler;
 use crate::message_prelude::Message;
-use glam::DVec2;
+use glam::{DAffine2, DVec2};
+use graphene::layers::layer_info::LayerDataType;
 use std::collections::{HashSet, VecDeque};
 
 /// ShapeEditor is the container for all of the selected kurbo paths that are
@@ -46,7 +48,7 @@ impl ShapeEditor {
 			log::trace!("Selecting: shape {} / anchor {} / point {}", shape_index, anchor_index, point_index);
 
 			// Add this shape to the selection
-			self.add_selected_shape(shape_index);
+			self.set_shape_selected(shape_index);
 
 			// If the point we're selecting has already been selected
 			// we can assume this point exists.. since we did just click on it hense the unwrap
@@ -111,9 +113,37 @@ impl ShapeEditor {
 		self.shapes_to_modify = selected_shapes;
 	}
 
+	/// Set a single shape to be modifed by providing a layer path
+	pub fn set_shapes_to_modify_from_layer(&mut self, layer_path: &[u64], transform: DAffine2, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
+		// Setup the shape editor
+		let layer = document.graphene_document.layer(layer_path);
+		if let Ok(layer) = layer {
+			let shape = match &layer.data {
+				LayerDataType::Shape(shape) => Some(VectorShape::new(layer_path.to_vec(), transform, &shape.path, shape.closed, responses)),
+				_ => None,
+			};
+			self.set_shapes_to_modify(vec![shape.expect("The layer provided didn't have a shape we could use.")]);
+		}
+	}
+
+	pub fn clear_shapes_to_modify(&mut self) {
+		self.shapes_to_modify.clear();
+	}
+
 	/// Add a shape to the hashset of shapes we consider for selection
-	pub fn add_selected_shape(&mut self, shape_index: usize) {
+	pub fn set_shape_selected(&mut self, shape_index: usize) {
 		self.selected_shape_indices.insert(shape_index);
+	}
+
+	/// Update the currently shapes we consider for selection
+	pub fn update_shapes(&mut self, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
+		if self.shapes_to_modify.is_empty() {
+			return;
+		}
+
+		for shape in self.shapes_to_modify.iter_mut() {
+			shape.update_shape(document, responses);
+		}
 	}
 
 	/// Provide the shapes that the currently selected points are a part of

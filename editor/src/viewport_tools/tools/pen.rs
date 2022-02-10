@@ -8,7 +8,10 @@ use crate::message_prelude::*;
 use crate::misc::{HintData, HintGroup, HintInfo, KeysGroup};
 use crate::viewport_tools::snapping::SnapHandler;
 use crate::viewport_tools::tool::{DocumentToolData, Fsm, ToolActionHandlerData};
+use crate::viewport_tools::vector_editor::shape_editor::ShapeEditor;
+use crate::viewport_tools::vector_editor::vector_shape::VectorShape;
 
+use graphene::layers::layer_info::LayerDataType;
 use graphene::layers::style;
 use graphene::Operation;
 
@@ -128,6 +131,7 @@ struct PenToolData {
 	weight: u32,
 	path: Option<Vec<LayerId>>,
 	snap_handler: SnapHandler,
+	shape_editor: ShapeEditor,
 }
 
 impl Fsm for PenToolFsmState {
@@ -154,6 +158,7 @@ impl Fsm for PenToolFsmState {
 				(Ready, DragStart) => {
 					responses.push_back(DocumentMessage::StartTransaction.into());
 					responses.push_back(DocumentMessage::DeselectAllLayers.into());
+
 					data.path = Some(document.get_path_for_new_layer());
 
 					data.snap_handler.start_snap(document, document.bounding_boxes(None, None), true, true);
@@ -184,6 +189,14 @@ impl Fsm for PenToolFsmState {
 					responses.push_back(remove_preview(data));
 					responses.push_back(add_polyline(data, tool_data, true));
 
+					if let Some(path) = &data.path {
+						if data.points.len() > 1 {
+							data.shape_editor.remove_overlays(responses);
+							data.shape_editor.set_shapes_to_modify_from_layer(path, transform, document, responses);
+							data.shape_editor.update_shapes(document, responses);
+						}
+					}
+
 					Drawing
 				}
 				(Drawing, PointerMove) => {
@@ -193,6 +206,7 @@ impl Fsm for PenToolFsmState {
 
 					responses.push_back(remove_preview(data));
 					responses.push_back(add_polyline(data, tool_data, true));
+					data.shape_editor.update_shapes(document, responses);
 
 					Drawing
 				}
@@ -206,10 +220,17 @@ impl Fsm for PenToolFsmState {
 						responses.push_back(DocumentMessage::AbortTransaction.into());
 					}
 
+					data.shape_editor.remove_overlays(responses);
+					data.shape_editor.clear_shapes_to_modify();
+
 					data.path = None;
 					data.points.clear();
 					data.snap_handler.cleanup(responses);
 
+					Ready
+				}
+				(_, Abort) => {
+					data.shape_editor.remove_overlays(responses);
 					Ready
 				}
 				_ => self,
@@ -261,7 +282,7 @@ fn add_polyline(data: &PenToolData, tool_data: &DocumentToolData, show_preview: 
 		points.push((data.next_point.x, data.next_point.y))
 	}
 
-	Operation::AddPolyline {
+	Operation::AddSpline {
 		path: data.path.clone().unwrap(),
 		insert_index: -1,
 		transform: DAffine2::IDENTITY.to_cols_array(),
