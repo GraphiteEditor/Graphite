@@ -21,7 +21,6 @@
 			<Separator v-if="component.kind === 'Separator'" v-bind="component.props" />
 			<TextLabel v-if="component.kind === 'TextLabel'" v-bind="component.props">{{ component.props.value }}</TextLabel>
 			<IconLabel v-if="component.kind === 'IconLabel'" v-bind="component.props" />
-			<NumberInput v-if="component.kind === 'TextInput'" v-bind="component.props" @update:value="(value: number) => updateLayout(component.widget_id, value)" />
 		</template>
 	</div>
 </template>

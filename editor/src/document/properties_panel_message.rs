@@ -6,11 +6,12 @@ use serde::{Deserialize, Serialize};
 #[impl_message(Message, DocumentMessage, PropertiesPanel)]
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub enum PropertiesPanelMessage {
+	CheckSelectedWasDeleted { path: Vec<LayerId> },
+	CheckSelectedWasUpdated { path: Vec<LayerId> },
 	ClearSelection,
-	MaybeDelete { path: Vec<LayerId> },
-	MaybeUpdate { path: Vec<LayerId> },
+	ModifyName { name: String },
 	ModifyTransform { value: f64, transform_op: TransformOp },
-	SetActiveLayer { path: Vec<LayerId> },
+	SetActiveLayers { paths: Vec<Vec<LayerId>> },
 }
 
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]

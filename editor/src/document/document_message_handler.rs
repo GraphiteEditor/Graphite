@@ -1,7 +1,7 @@
 use super::clipboards::Clipboard;
 use super::layer_panel::{layer_panel_entry, LayerDataTypeDiscriminant, LayerMetadata, LayerPanelEntry, RawBuffer};
 use super::utility_types::{AlignAggregate, AlignAxis, DocumentSave, FlipAxis};
-use super::vectorize_layer_metadata;
+use super::{vectorize_layer_metadata, PropertiesPanelMessageHandler};
 use super::{ArtboardMessageHandler, MovementMessageHandler, OverlaysMessageHandler, TransformLayerMessageHandler};
 use crate::consts::{
 	ASYMPTOTIC_EFFECT, DEFAULT_DOCUMENT_NAME, FILE_EXPORT_SUFFIX, FILE_SAVE_SUFFIX, GRAPHITE_DOCUMENT_VERSION, SCALE_EFFECT, SCROLLBAR_SPACING, VIEWPORT_ZOOM_TO_FIT_PADDING_SCALE_FACTOR,
@@ -662,7 +662,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 			}
 			#[remain::unsorted]
 			PropertiesPanel(message) => {
-				self.properties_panel_message_handler.process_action(message, &mut self.graphene_document, responses);
+				self.properties_panel_message_handler.process_action(message, &self.graphene_document, responses);
 			}
 
 			// Messages
@@ -671,16 +671,17 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 				responses.extend([RenderDocument.into(), DocumentStructureChanged.into()]);
 			}
 			AddSelectedLayers { additional_layers } => {
-				if additional_layers.len() == 1 {
-					let path = additional_layers[0].clone();
-					responses.push_back(PropertiesPanelMessage::SetActiveLayer { path }.into())
-				} else {
-					responses.push_back(PropertiesPanelMessage::ClearSelection.into())
+				for layer_path in &additional_layers {
+					responses.extend(self.select_layer(layer_path));
 				}
 
-				for layer_path in additional_layers {
-					responses.extend(self.select_layer(&layer_path));
+				let selected_paths: Vec<Vec<u64>> = self.selected_layers().map(|path| path.to_vec()).collect();
+				if selected_paths.is_empty() {
+					responses.push_back(PropertiesPanelMessage::ClearSelection.into())
+				} else {
+					responses.push_back(PropertiesPanelMessage::SetActiveLayers { paths: selected_paths }.into())
 				}
+
 				// TODO: Correctly update layer panel in clear_selection instead of here
 				responses.push_back(FolderChanged { affected_folder_path: vec![] }.into());
 				responses.push_back(DocumentMessage::SelectionChanged.into());
@@ -740,7 +741,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 			}
 			DeleteLayer { layer_path } => {
 				responses.push_front(DocumentOperation::DeleteLayer { path: layer_path.clone() }.into());
-				responses.push_back(PropertiesPanelMessage::MaybeDelete { path: layer_path }.into());
+				responses.push_back(PropertiesPanelMessage::CheckSelectedWasDeleted { path: layer_path }.into());
 			}
 			DeleteSelectedLayers => {
 				self.backup(responses);
@@ -862,7 +863,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 				if let Ok(layer_entry) = self.layer_panel_entry(affected_layer_path.clone()) {
 					responses.push_back(FrontendMessage::UpdateDocumentLayer { data: layer_entry }.into());
 				}
-				responses.push_back(PropertiesPanelMessage::MaybeUpdate { path: affected_layer_path }.into());
+				responses.push_back(PropertiesPanelMessage::CheckSelectedWasUpdated { path: affected_layer_path }.into());
 			}
 			MoveSelectedLayersTo {
 				folder_path,

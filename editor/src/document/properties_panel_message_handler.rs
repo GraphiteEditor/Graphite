@@ -85,16 +85,22 @@ impl PropertiesPanelMessageHandler {
 	}
 }
 
-impl MessageHandler<PropertiesPanelMessage, &mut GrapheneDocument> for PropertiesPanelMessageHandler {
+impl MessageHandler<PropertiesPanelMessage, &GrapheneDocument> for PropertiesPanelMessageHandler {
 	#[remain::check]
-	fn process_action(&mut self, message: PropertiesPanelMessage, data: &mut GrapheneDocument, responses: &mut VecDeque<Message>) {
+	fn process_action(&mut self, message: PropertiesPanelMessage, data: &GrapheneDocument, responses: &mut VecDeque<Message>) {
 		let graphine_document = data;
 		use PropertiesPanelMessage::*;
 		match message {
-			SetActiveLayer { path } => {
-				let layer = graphine_document.layer(&path).unwrap();
-				layer.register_properties(responses, LayoutTarget::PropertiesPanel);
-				self.active_path = Some(path)
+			SetActiveLayers { paths } => {
+				if paths.len() > 1 {
+					// TODO: Allow for multiple selected layers
+					responses.push_back(PropertiesPanelMessage::ClearSelection.into())
+				} else {
+					let path = paths.into_iter().next().unwrap();
+					let layer = graphine_document.layer(&path).unwrap();
+					layer.register_properties(responses, LayoutTarget::PropertiesPanel);
+					self.active_path = Some(path)
+				}
 			}
 			ClearSelection => responses.push_back(
 				LayoutMessage::SendLayout {
@@ -124,13 +130,17 @@ impl MessageHandler<PropertiesPanelMessage, &mut GrapheneDocument> for Propertie
 					.into(),
 				);
 			}
-			MaybeUpdate { path } => {
+			ModifyName { name } => {
+				let path = self.active_path.clone().expect("Received update for properties panel with no active layer");
+				responses.push_back(DocumentMessage::SetLayerName { layer_path: path, name }.into())
+			}
+			CheckSelectedWasUpdated { path } => {
 				if self.matches_selected(&path) {
 					let layer = graphine_document.layer(&path).unwrap();
 					layer.register_properties(responses, LayoutTarget::PropertiesPanel);
 				}
 			}
-			MaybeDelete { path } => {
+			CheckSelectedWasDeleted { path } => {
 				if self.matches_selected(&path) {
 					self.active_path = None;
 					responses.push_back(
@@ -192,9 +202,8 @@ impl PropertyHolder for Layer {
 		};
 
 		options_bar.push(WidgetHolder::new(Widget::TextInput(TextInput {
-			value: self.name.clone().unwrap_or_default(),
-			// TODO: Add update to change name
-			on_update: WidgetCallback::default(),
+			value: self.name.clone().unwrap_or_else(|| "Untitled".to_string()),
+			on_update: WidgetCallback::new(|text_input| PropertiesPanelMessage::ModifyName { name: text_input.value.clone() }.into()),
 		})));
 		options_bar.push(WidgetHolder::new(Widget::PopoverButton(PopoverButton {
 			title: "Options Bar".into(),
