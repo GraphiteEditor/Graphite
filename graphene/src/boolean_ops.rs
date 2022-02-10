@@ -338,11 +338,6 @@ impl PathGraph {
 		self.vertex(from).edges.iter().find(|edge| edge.destination == to && edge.from == origin)
 	}
 
-	/// Return reference to intersect associated with the vertex at index.
-	pub fn intersect(&self, index: usize) -> &Intersect {
-		&self.vertices[index].intersect
-	}
-
 	/// Where a valid cycle alternates edge `Origin`.
 	/// Single edge/single vertex "dummy" cycles are also valid.
 	fn get_cycle(&self, cycle: &mut Cycle, marker_map: &mut Vec<u8>) {
