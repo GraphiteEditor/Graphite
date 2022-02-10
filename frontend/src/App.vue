@@ -270,7 +270,10 @@ export default defineComponent({
 		};
 	},
 	data() {
+		// Initialize the Graphite WASM editor instance
 		const editor = createEditorState();
+
+		// Initialize other stateful Vue systems
 		const dialog = createDialogState(editor);
 		const documents = createDocumentsState(editor, dialog);
 		const fullscreen = createFullscreenState();
