@@ -1,5 +1,5 @@
-use core::{panic, slice::SlicePattern};
-use std::{ops::Mul, path::Path};
+use core::panic;
+use std::ops::Mul;
 
 use crate::{
 	boolean_ops::split_path_seg,
@@ -353,48 +353,125 @@ where
 }
 
 /// For quality Q in the worst case, the point on curve `a` corresponding to `guess` is distance Q from the point on curve `b`.
-// TODO: Optimization: inline? maybe...
+// TODO: Optimization: inline? maybe..
 fn guess_quality(a: &PathSeg, b: &PathSeg, guess: &Intersect) -> f64 {
 	let at_a = b.eval(guess.t_b);
 	let at_b = a.eval(guess.t_a);
 	at_a.distance(guess.point) + at_b.distance(guess.point)
 }
 
-///
-pub fn same_curve_intersections(a: &PathSeg, b: &PathSeg) -> [Option<Intersect>; 2] {
+/// Returns either [None, None] or [Some(_), Some(_)]
+/// TODO: test this
+pub fn overlapping_curve_intersections(a: &PathSeg, b: &PathSeg) -> [Option<Intersect>; 2] {
+	// To check if two curves overlap we find if the endpoints of either curve are on the other curve.
+	// Then, the curves are split at these points, if the resulting control polygons match the curves are the same
 	let mut b_on_a: Vec<Option<f64>> = [point_t_value(a, &b.start()), point_t_value(a, &b.end())].into_iter().collect();
 	let mut a_on_b: Vec<Option<f64>> = [point_t_value(b, &a.start()), point_t_value(b, &a.end())].into_iter().collect();
 	// I think, but have not mathematically shown, that if a and b are parts of the same curve then b_on_a and a_on_b should together have no more than three non-None elements. Which occurs when a or b is a cubic bezier which crosses itself
-	let b_on_a_not_None = b_on_a.iter().filter_map(|o| *o).count();
-	let a_on_b_not_None = a_on_b.iter().filter_map(|o| o).count();
-	match b_on_a.len() + a_on_b.len() {
+	let b_on_a_not_none = b_on_a.iter().filter_map(|o| *o).count();
+	let a_on_b_not_none = a_on_b.iter().filter_map(|o| *o).count();
+	match b_on_a_not_none + a_on_b_not_none {
 		2 | 3 => {
-			let to_compare = if b_on_a.len() == 2 {
+			let (t1a, t1b, t2a, t2b): (f64, f64, f64, f64);
+			let to_compare = if b_on_a_not_none == 2 {
 				b_on_a.sort_by(|val1, val2| (val1).partial_cmp(val2).unwrap_or(std::cmp::Ordering::Less));
-				(*b, subdivide_path_seg(a, &mut b_on_a.iter().filter_map(|o| *o).collect::<Vec<f64>>().as_slice())[1].unwrap())
-			} else if a_on_b.len() == 2 {
+				let mut a_ts = b_on_a.iter_mut().filter_map(|o| *o).collect::<Vec<f64>>();
+				t1a = a_ts[0];
+				t1b = 0.0;
+				t2a = a_ts[1];
+				t2b = 1.0;
+				(*b, subdivide_path_seg(a, a_ts.as_mut_slice())[1].unwrap())
+			} else if a_on_b_not_none == 2 {
 				a_on_b.sort_by(|val1, val2| (val1).partial_cmp(val2).unwrap_or(std::cmp::Ordering::Less));
-				(*a, subdivide_path_seg(a, &mut a_on_b.iter().filter_map(|o| *o).collect::<Vec<f64>>().as_slice())[1].unwrap())
+				let mut b_ts = a_on_b.iter_mut().filter_map(|o| *o).collect::<Vec<f64>>();
+				t1a = 0.0;
+				t1b = b_ts[0];
+				t2a = 1.0;
+				t2b = b_ts[1];
+				(*a, subdivide_path_seg(a, b_ts.as_mut_slice())[1].unwrap())
 			} else {
 				(
 					match (b_on_a[0], b_on_a[1], a_on_b[0], a_on_b[1]) {
-						(None, Some(_), _, Some(t_val)) | (None, Some(_), Some(t_val), _) => split_path_seg(b, t_val).1.unwrap(),
-						(Some(_), None, _, Some(t_val)) | (Some(_), None, Some(t_val), _) => split_path_seg(b, t_val).0.unwrap(),
+						(None, Some(_), _, Some(t_val)) | (None, Some(_), Some(t_val), _) => {
+							t1b = t_val;
+							t2b = 1.0;
+							split_path_seg(b, t_val).1.unwrap()
+						}
+						(Some(_), None, _, Some(t_val)) | (Some(_), None, Some(t_val), _) => {
+							t1b = 0.0;
+							t2b = t_val;
+							split_path_seg(b, t_val).0.unwrap()
+						}
 						_ => panic!(),
 					},
 					match (a_on_b[0], a_on_b[1], b_on_a[0], b_on_a[1]) {
-						(None, Some(_), _, Some(t_val)) | (None, Some(_), Some(t_val), _) => split_path_seg(a, t_val).1.unwrap(),
-						(Some(_), None, _, Some(t_val)) | (Some(_), None, Some(t_val), _) => split_path_seg(a, t_val).0.unwrap(),
+						(None, Some(_), _, Some(t_val)) | (None, Some(_), Some(t_val), _) => {
+							t1a = t_val;
+							t2a = 1.0;
+							split_path_seg(a, t_val).1.unwrap()
+						}
+						(Some(_), None, _, Some(t_val)) | (Some(_), None, Some(t_val), _) => {
+							t1a = 0.0;
+							t2a = t_val;
+							split_path_seg(a, t_val).0.unwrap()
+						}
 						_ => panic!(),
 					},
 				)
 			};
-
-			[None, None]
+			if match_control_polygon(&to_compare.0, &to_compare.1) {
+				[Some(Intersect::from((to_compare.0.start(), t1a, t1b))), Some(Intersect::from((to_compare.0.end(), t2a, t2b)))]
+			} else {
+				[None, None]
+			}
 		}
 		_ => [None, None],
 	}
-	[None, None]
+}
+
+/// Returns true if the Bezier curves described by A and B have the same control polygon
+/// TODO: test this
+pub fn match_control_polygon(a: &PathSeg, b: &PathSeg) -> bool {
+	let mut a_polygon = get_control_polygon(a);
+	let mut b_polygon = get_control_polygon(b);
+	if a_polygon.first().unwrap() == b_polygon.last().unwrap() && a_polygon.last().unwrap() == b_polygon.first().unwrap() {
+		b_polygon.reverse()
+	}
+	if a_polygon.len() == b_polygon.len() {
+		a_polygon.iter().eq(b_polygon.iter())
+	} else {
+		let (a_ref, b_ref) = if a_polygon.len() < b_polygon.len() {
+			(&mut b_polygon, &mut a_polygon)
+		} else {
+			(&mut a_polygon, &mut b_polygon)
+		};
+
+		let mut a_iter = a_ref.iter();
+		for b_point in b_ref.iter() {
+			let a_point = a_iter.next().unwrap();
+			if *a_point != *b_point {
+				if let Some(a_line) = a_iter.next() {
+					if *a_line != *b_point {
+						return false;
+					}
+					if point_t_value(&PathSeg::Line(Line { p0: *a_point, p1: *a_line }), b_point).is_none() {
+						return false;
+					}
+				} else {
+					return false;
+				}
+			}
+		}
+		true
+	}
+}
+
+pub fn get_control_polygon(a: &PathSeg) -> Vec<Point> {
+	match a {
+		PathSeg::Line(Line { p0, p1 }) => vec![*p0, *p1],
+		PathSeg::Quad(QuadBez { p0, p1, p2 }) => vec![*p0, *p1, *p2],
+		PathSeg::Cubic(CubicBez { p0, p1, p2, p3 }) => vec![*p0, *p1, *p2, *p3],
+	}
 }
 
 /// if p in on pathseg a, returns Some(t_value) for p
