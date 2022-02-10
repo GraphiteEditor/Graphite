@@ -23,13 +23,13 @@ impl Default for Mapping {
 		use Key::*;
 
 		// WARNING!
-		// If a new mapping isn't being handled (and perhaps another lower-precedence one is instead), make sure to advertise
+		// If a new mapping you added here isn't working (and perhaps another lower-precedence one is instead), make sure to advertise
 		// it as an available action in the respective message handler file (such as the bottom of `document_message_handler.rs`).
 
 		let mappings = mapping![
 			// Higher priority than entries in sections below
 			entry! {action=PortfolioMessage::Paste { clipboard: Clipboard::User }, key_down=KeyV, modifiers=[KeyControl]},
-			entry! {action=MovementMessage::MouseMove { snap_angle: KeyControl, wait_for_snap_angle_release: true, snap_zoom: KeyControl, zoom_from_viewport: None }, message=InputMapperMessage::PointerMove},
+			entry! {action=MovementMessage::PointerMove { snap_angle: KeyControl, wait_for_snap_angle_release: true, snap_zoom: KeyControl, zoom_from_viewport: None }, message=InputMapperMessage::PointerMove},
 			// Transform layers
 			entry! {action=TransformLayerMessage::ApplyTransformOperation, key_down=KeyEnter},
 			entry! {action=TransformLayerMessage::ApplyTransformOperation, key_down=Lmb},
@@ -41,18 +41,24 @@ impl Default for Mapping {
 			entry! {action=TransformLayerMessage::TypeNegate, key_down=KeyMinus},
 			entry! {action=TransformLayerMessage::TypeDecimalPoint, key_down=KeyComma},
 			entry! {action=TransformLayerMessage::TypeDecimalPoint, key_down=KeyPeriod},
-			entry! {action=TransformLayerMessage::MouseMove { slow_key: KeyShift, snap_key: KeyControl }, triggers=[KeyShift, KeyControl]},
+			entry! {action=TransformLayerMessage::PointerMove { slow_key: KeyShift, snap_key: KeyControl }, triggers=[KeyShift, KeyControl]},
 			// Select
-			entry! {action=SelectMessage::MouseMove { axis_align: KeyShift, snap_angle: KeyControl }, message=InputMapperMessage::PointerMove},
+			entry! {action=SelectMessage::PointerMove { axis_align: KeyShift, snap_angle: KeyControl, center: KeyAlt }, message=InputMapperMessage::PointerMove},
 			entry! {action=SelectMessage::DragStart { add_to_selection: KeyShift }, key_down=Lmb},
 			entry! {action=SelectMessage::DragStop, key_up=Lmb},
 			entry! {action=SelectMessage::EditLayer, message=InputMapperMessage::DoubleClick},
 			entry! {action=SelectMessage::Abort, key_down=Rmb},
 			entry! {action=SelectMessage::Abort, key_down=KeyEscape},
+			// Crop
+			entry! {action=CropMessage::PointerDown, key_down=Lmb},
+			entry! {action=CropMessage::PointerMove { constrain_axis_or_aspect: KeyShift, center: KeyAlt }, message=InputMapperMessage::PointerMove},
+			entry! {action=CropMessage::PointerUp, key_up=Lmb},
+			entry! {action=CropMessage::DeleteSelected, key_down=KeyDelete},
+			entry! {action=CropMessage::DeleteSelected, key_down=KeyBackspace},
 			// Navigate
 			entry! {action=NavigateMessage::ClickZoom { zoom_in: false }, key_up=Lmb, modifiers=[KeyShift]},
 			entry! {action=NavigateMessage::ClickZoom { zoom_in: true }, key_up=Lmb},
-			entry! {action=NavigateMessage::MouseMove { snap_angle: KeyControl, snap_zoom: KeyControl }, message=InputMapperMessage::PointerMove},
+			entry! {action=NavigateMessage::PointerMove { snap_angle: KeyControl, snap_zoom: KeyControl }, message=InputMapperMessage::PointerMove},
 			entry! {action=NavigateMessage::TranslateCanvasBegin, key_down=Mmb},
 			entry! {action=NavigateMessage::RotateCanvasBegin, key_down=Rmb},
 			entry! {action=NavigateMessage::ZoomCanvasBegin, key_down=Lmb},
@@ -91,8 +97,8 @@ impl Default for Mapping {
 			entry! {action=LineMessage::Abort, key_down=KeyEscape},
 			entry! {action=LineMessage::Redraw { center: KeyAlt, lock_angle: KeyControl, snap_angle: KeyShift }, triggers=[KeyAlt, KeyShift, KeyControl]},
 			// Path
-			entry! {action=PathMessage::DragStart, key_down=Lmb},
-			entry! {action=PathMessage::PointerMove, message=InputMapperMessage::PointerMove},
+			entry! {action=PathMessage::DragStart { add_to_selection: KeyShift }, key_down=Lmb},
+			entry! {action=PathMessage::PointerMove { alt_mirror_angle: KeyAlt, shift_mirror_distance: KeyShift }, message=InputMapperMessage::PointerMove},
 			entry! {action=PathMessage::DragStop, key_up=Lmb},
 			// Pen
 			entry! {action=PenMessage::PointerMove, message=InputMapperMessage::PointerMove},
@@ -105,6 +111,13 @@ impl Default for Mapping {
 			entry! {action=FreehandMessage::PointerMove, message=InputMapperMessage::PointerMove},
 			entry! {action=FreehandMessage::DragStart, key_down=Lmb},
 			entry! {action=FreehandMessage::DragStop, key_up=Lmb},
+			// Spline
+			entry! {action=SplineMessage::PointerMove, message=InputMapperMessage::PointerMove},
+			entry! {action=SplineMessage::DragStart, key_down=Lmb},
+			entry! {action=SplineMessage::DragStop, key_up=Lmb},
+			entry! {action=SplineMessage::Confirm, key_down=Rmb},
+			entry! {action=SplineMessage::Confirm, key_down=KeyEscape},
+			entry! {action=SplineMessage::Confirm, key_down=KeyEnter},
 			// Fill
 			entry! {action=FillMessage::LeftMouseDown, key_down=Lmb},
 			entry! {action=FillMessage::RightMouseDown, key_down=Rmb},
@@ -134,7 +147,6 @@ impl Default for Mapping {
 			entry! {action=DocumentMessage::SelectAllLayers, key_down=KeyA, modifiers=[KeyControl]},
 			entry! {action=DocumentMessage::CreateEmptyFolder { container_path: vec![] }, key_down=KeyN, modifiers=[KeyControl, KeyShift]},
 			entry! {action=DocumentMessage::DeleteSelectedLayers, key_down=KeyDelete},
-			entry! {action=DocumentMessage::DeleteSelectedLayers, key_down=KeyX},
 			entry! {action=DocumentMessage::DeleteSelectedLayers, key_down=KeyBackspace},
 			entry! {action=DocumentMessage::ExportDocument, key_down=KeyE, modifiers=[KeyControl]},
 			entry! {action=DocumentMessage::SaveDocument, key_down=KeyS, modifiers=[KeyControl]},

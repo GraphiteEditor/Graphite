@@ -138,13 +138,6 @@ export default defineComponent({
 			}
 		},
 	},
-	mounted() {
-		window.addEventListener("resize", this.handleResize);
-		this.handleResize();
-	},
-	beforeUnmount() {
-		window.removeEventListener("resize", this.handleResize);
-	},
 	data() {
 		return {
 			rulerLength: 0,

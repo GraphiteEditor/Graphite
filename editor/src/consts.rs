@@ -19,6 +19,8 @@ pub const SNAP_TOLERANCE: f64 = 3.;
 pub const SNAP_OVERLAY_FADE_DISTANCE: f64 = 20.;
 pub const SNAP_OVERLAY_UNSNAPPED_OPACITY: f64 = 0.4;
 
+pub const DRAG_THRESHOLD: f64 = 1.;
+
 // Transforming layer
 pub const ROTATE_SNAP_ANGLE: f64 = 15.;
 pub const SCALE_SNAP_INTERVAL: f64 = 0.1;
@@ -34,6 +36,7 @@ pub const BOUNDS_ROTATE_THRESHOLD: f64 = 40.;
 
 // Path tool
 pub const VECTOR_MANIPULATOR_ANCHOR_MARKER_SIZE: f64 = 5.;
+pub const SELECTION_THRESHOLD: f64 = 10.;
 
 // Line tool
 pub const LINE_ROTATE_SNAP_ANGLE: f64 = 15.;

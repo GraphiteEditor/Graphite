@@ -93,7 +93,7 @@ impl Default for ToolFsmState {
 					Path => path::Path,
 					Pen => pen::Pen,
 					Freehand => freehand::Freehand,
-					// Spline => spline::Spline,
+					Spline => spline::Spline,
 					Line => line::Line,
 					Rectangle => rectangle::Rectangle,
 					Ellipse => ellipse::Ellipse,
@@ -179,6 +179,7 @@ impl fmt::Display for ToolType {
 pub enum StandardToolMessageType {
 	Abort,
 	DocumentIsDirty,
+	SelectionChanged,
 }
 
 // TODO: Find a nicer way in Rust to make this generic so we don't have to manually map to enum variants
@@ -186,7 +187,7 @@ pub fn standard_tool_message(tool: ToolType, message_type: StandardToolMessageTy
 	match message_type {
 		StandardToolMessageType::DocumentIsDirty => match tool {
 			ToolType::Select => Some(SelectMessage::DocumentIsDirty.into()),
-			ToolType::Crop => None,       // Some(CropMessage::DocumentIsDirty.into()),
+			ToolType::Crop => Some(CropMessage::DocumentIsDirty.into()),
 			ToolType::Navigate => None,   // Some(NavigateMessage::DocumentIsDirty.into()),
 			ToolType::Eyedropper => None, // Some(EyedropperMessage::DocumentIsDirty.into()),
 			ToolType::Text => Some(TextMessage::DocumentIsDirty.into()),
@@ -209,7 +210,7 @@ pub fn standard_tool_message(tool: ToolType, message_type: StandardToolMessageTy
 		},
 		StandardToolMessageType::Abort => match tool {
 			ToolType::Select => Some(SelectMessage::Abort.into()),
-			// ToolType::Crop => Some(CropMessage::Abort.into()),
+			ToolType::Crop => Some(CropMessage::Abort.into()),
 			ToolType::Navigate => Some(NavigateMessage::Abort.into()),
 			ToolType::Eyedropper => Some(EyedropperMessage::Abort.into()),
 			ToolType::Text => Some(TextMessage::Abort.into()),
@@ -224,11 +225,15 @@ pub fn standard_tool_message(tool: ToolType, message_type: StandardToolMessageTy
 			ToolType::Path => Some(PathMessage::Abort.into()),
 			ToolType::Pen => Some(PenMessage::Abort.into()),
 			ToolType::Freehand => Some(FreehandMessage::Abort.into()),
-			// ToolType::Spline => Some(SplineMessage::Abort.into()),
+			ToolType::Spline => Some(SplineMessage::Abort.into()),
 			ToolType::Line => Some(LineMessage::Abort.into()),
 			ToolType::Rectangle => Some(RectangleMessage::Abort.into()),
 			ToolType::Ellipse => Some(EllipseMessage::Abort.into()),
 			ToolType::Shape => Some(ShapeMessage::Abort.into()),
+			_ => None,
+		},
+		StandardToolMessageType::SelectionChanged => match tool {
+			ToolType::Path => Some(PathMessage::SelectionChanged.into()),
 			_ => None,
 		},
 	}
@@ -254,7 +259,7 @@ pub fn message_to_tool_type(message: &ToolMessage) -> ToolType {
 		Path(_) => ToolType::Path,
 		Pen(_) => ToolType::Pen,
 		Freehand(_) => ToolType::Freehand,
-		// Spline(_) => ToolType::Spline,
+		Spline(_) => ToolType::Spline,
 		Line(_) => ToolType::Line,
 		Rectangle(_) => ToolType::Rectangle,
 		Ellipse(_) => ToolType::Ellipse,

@@ -15,10 +15,11 @@ pub struct Resize {
 	pub path: Option<Vec<LayerId>>,
 	snap_handler: SnapHandler,
 }
+
 impl Resize {
 	/// Starts a resize, assigning the snap targets and snapping the starting position.
 	pub fn start(&mut self, responses: &mut VecDeque<Message>, viewport_bounds: DVec2, document: &DocumentMessageHandler, mouse_position: DVec2) {
-		self.snap_handler.start_snap(document, document.visible_layers(), true, true);
+		self.snap_handler.start_snap(document, document.bounding_boxes(None, None), true, true);
 		self.drag_start = self.snap_handler.snap_position(responses, viewport_bounds, document, mouse_position);
 	}
 

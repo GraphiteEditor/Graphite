@@ -1,6 +1,6 @@
 use super::clipboards::Clipboard;
 use super::layer_panel::{layer_panel_entry, LayerDataTypeDiscriminant, LayerMetadata, LayerPanelEntry, RawBuffer};
-use super::utility_types::{AlignAggregate, AlignAxis, DocumentSave, FlipAxis, VectorManipulatorSegment, VectorManipulatorShape};
+use super::utility_types::{AlignAggregate, AlignAxis, DocumentSave, FlipAxis};
 use super::vectorize_layer_metadata;
 use super::{ArtboardMessageHandler, MovementMessageHandler, OverlaysMessageHandler, TransformLayerMessageHandler};
 use crate::consts::{
@@ -12,6 +12,7 @@ use crate::layout::widgets::{
 	WidgetCallback, WidgetHolder, WidgetLayout,
 };
 use crate::message_prelude::*;
+use crate::viewport_tools::vector_editor::vector_shape::VectorShape;
 use crate::EditorError;
 
 use graphene::document::Document as GrapheneDocument;
@@ -21,7 +22,6 @@ use graphene::layers::style::ViewMode;
 use graphene::{DocumentError, DocumentResponse, LayerId, Operation as DocumentOperation};
 
 use glam::{DAffine2, DVec2};
-use kurbo::PathSeg;
 use log::warn;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -42,7 +42,7 @@ pub struct DocumentMessageHandler {
 	movement_handler: MovementMessageHandler,
 	#[serde(skip)]
 	overlays_message_handler: OverlaysMessageHandler,
-	artboard_message_handler: ArtboardMessageHandler,
+	pub artboard_message_handler: ArtboardMessageHandler,
 	#[serde(skip)]
 	transform_layer_handler: TransformLayerMessageHandler,
 	pub overlays_visible: bool,
@@ -138,49 +138,30 @@ impl DocumentMessageHandler {
 		self.graphene_document.combined_viewport_bounding_box(paths)
 	}
 
-	// TODO: Consider moving this to some kind of overlays manager in the future
-	pub fn selected_visible_layers_vector_points(&self) -> Vec<VectorManipulatorShape> {
+	pub fn artboard_bounding_box_and_transform(&self, path: &[LayerId]) -> Option<([DVec2; 2], DAffine2)> {
+		self.artboard_message_handler.artboards_graphene_document.bounding_box_and_transform(path).unwrap_or(None)
+	}
+
+	/// Create a new vector shape representation with the underlying kurbo data, VectorManipulatorShape
+	pub fn selected_visible_layers_vector_shapes(&self, responses: &mut VecDeque<Message>) -> Vec<VectorShape> {
 		let shapes = self.selected_layers().filter_map(|path_to_shape| {
 			let viewport_transform = self.graphene_document.generate_transform_relative_to_viewport(path_to_shape).ok()?;
 			let layer = self.graphene_document.layer(path_to_shape);
 
-			// Filter out the non-visible layers from the `filter_map`
 			match &layer {
 				Ok(layer) if layer.visible => {}
 				_ => return None,
 			};
 
-			let (path, closed) = match &layer.ok()?.data {
-				// TODO: This ClosePath check does not handle all cases, fix this soon
-				LayerDataType::Shape(shape) => Some((shape.path.clone(), shape.path.elements().last() == Some(&kurbo::PathEl::ClosePath))),
-				LayerDataType::Text(text) => Some((text.to_bez_path_nonmut(), true)),
+			// TODO: Create VectorManipulatorShape when creating a kurbo shape as a stopgap, rather than on each new selection
+			match &layer.ok()?.data {
+				LayerDataType::Shape(shape) => Some(VectorShape::new(path_to_shape.to_vec(), viewport_transform, &shape.path, shape.closed, responses)),
+				LayerDataType::Text(text) => Some(VectorShape::new(path_to_shape.to_vec(), viewport_transform, &text.to_bez_path_nonmut(), true, responses)),
 				_ => None,
-			}?;
-
-			let segments = path
-				.segments()
-				.map(|segment| -> VectorManipulatorSegment {
-					let place = |point: kurbo::Point| -> DVec2 { viewport_transform.transform_point2(DVec2::from((point.x, point.y))) };
-
-					match segment {
-						PathSeg::Line(line) => VectorManipulatorSegment::Line(place(line.p0), place(line.p1)),
-						PathSeg::Quad(quad) => VectorManipulatorSegment::Quad(place(quad.p0), place(quad.p1), place(quad.p2)),
-						PathSeg::Cubic(cubic) => VectorManipulatorSegment::Cubic(place(cubic.p0), place(cubic.p1), place(cubic.p2), place(cubic.p3)),
-					}
-				})
-				.collect::<Vec<VectorManipulatorSegment>>();
-
-			Some(VectorManipulatorShape {
-				layer_path: path_to_shape.to_vec(),
-				path,
-				segments,
-				transform: viewport_transform,
-				closed,
-			})
+			}
 		});
 
-		// TODO: Consider refactoring this in a way that avoids needing to collect() so we can skip the heap allocations
-		shapes.collect::<Vec<VectorManipulatorShape>>()
+		shapes.collect::<Vec<VectorShape>>()
 	}
 
 	pub fn selected_layers(&self) -> impl Iterator<Item = &[LayerId]> {
@@ -224,6 +205,20 @@ impl DocumentMessageHandler {
 			Ok(layer) => layer.visible,
 			Err(_) => false,
 		})
+	}
+
+	/// Returns the bounding boxes for all visible layers and artboards, optionally excluding any paths.
+	pub fn bounding_boxes<'a>(&'a self, ignore_document: Option<&'a Vec<Vec<LayerId>>>, ignore_artboard: Option<LayerId>) -> impl Iterator<Item = [DVec2; 2]> + 'a {
+		self.visible_layers()
+			.filter(move |path| ignore_document.map_or(true, |ignore_document| !ignore_document.iter().any(|ig| ig.as_slice() == *path)))
+			.filter_map(|path| self.graphene_document.viewport_bounding_box(path).ok()?)
+			.chain(
+				self.artboard_message_handler
+					.artboard_ids
+					.iter()
+					.filter(move |&&id| Some(id) != ignore_artboard)
+					.filter_map(|&path| self.artboard_message_handler.artboards_graphene_document.viewport_bounding_box(&[path]).ok()?),
+			)
 	}
 
 	fn serialize_structure(&self, folder: &Folder, structure: &mut Vec<u64>, data: &mut Vec<LayerId>, path: &mut Vec<LayerId>) {
@@ -462,6 +457,16 @@ impl DocumentMessageHandler {
 			self.artboard_message_handler.artboards_graphene_document.viewport_bounding_box(&[]).ok().flatten()
 		}
 	}
+
+	/// Calculate the path that new layers should be inserted to.
+	/// Depends on the selected layers as well as their types (Folder/Non-Folder)
+	pub fn get_path_for_new_layer(&self) -> Vec<u64> {
+		// If the selected layers dont actually exist, a new uuid for the
+		// root folder will be returned
+		let mut path = self.graphene_document.shallowest_common_folder(self.selected_layers()).map_or(vec![], |v| v.to_vec());
+		path.push(generate_uuid());
+		path
+	}
 }
 
 impl PropertyHolder for DocumentMessageHandler {
@@ -683,7 +688,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 				}
 				// TODO: Correctly update layer panel in clear_selection instead of here
 				responses.push_back(FolderChanged { affected_folder_path: vec![] }.into());
-				responses.push_back(ToolMessage::DocumentIsDirty.into());
+				responses.push_back(DocumentMessage::SelectionChanged.into());
 			}
 			AlignSelectedLayers { axis, aggregate } => {
 				self.backup(responses);
@@ -756,7 +761,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 					responses.push_front(DocumentOperation::DeleteLayer { path: path.to_vec() }.into());
 				}
 
-				responses.push_front(ToolMessage::DocumentIsDirty.into());
+				responses.push_front(DocumentMessage::SelectionChanged.into());
 			}
 			DeselectAllLayers => {
 				responses.push_front(SetSelectedLayers { replacement_selected_layers: vec![] }.into());
@@ -1042,6 +1047,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 			}
 			SelectionChanged => {
 				// TODO: Hoist this duplicated code into wider system
+				responses.push_back(ToolMessage::SelectionChanged.into());
 				responses.push_back(ToolMessage::DocumentIsDirty.into());
 			}
 			SelectLayer { layer_path, ctrl, shift } => {
@@ -1068,7 +1074,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 							}
 							.into(),
 						);
-						responses.push_back(ToolMessage::DocumentIsDirty.into());
+						responses.push_back(DocumentMessage::SelectionChanged.into());
 					} else {
 						paths.push(layer_path.clone());
 					}

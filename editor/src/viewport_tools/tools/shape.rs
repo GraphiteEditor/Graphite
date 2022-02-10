@@ -1,4 +1,5 @@
 use super::shared::resize::Resize;
+use crate::consts::DRAG_THRESHOLD;
 use crate::document::DocumentMessageHandler;
 use crate::frontend::utility_types::MouseCursorIcon;
 use crate::input::keyboard::{Key, MouseMotion};
@@ -151,7 +152,7 @@ impl Fsm for ShapeToolFsmState {
 				(Ready, DragStart) => {
 					shape_data.start(responses, input.viewport_bounds.size(), document, input.mouse.position);
 					responses.push_back(DocumentMessage::StartTransaction.into());
-					shape_data.path = Some(vec![generate_uuid()]);
+					shape_data.path = Some(document.get_path_for_new_layer());
 					responses.push_back(DocumentMessage::DeselectAllLayers.into());
 					data.sides = tool_options.vertices;
 
@@ -176,8 +177,7 @@ impl Fsm for ShapeToolFsmState {
 					state
 				}
 				(Drawing, DragStop) => {
-					// TODO: introduce comparison threshold when operating with canvas coordinates (https://github.com/GraphiteEditor/Graphite/issues/100)
-					match shape_data.drag_start == input.mouse.position {
+					match shape_data.drag_start.distance(input.mouse.position) <= DRAG_THRESHOLD {
 						true => responses.push_back(DocumentMessage::AbortTransaction.into()),
 						false => responses.push_back(DocumentMessage::CommitTransaction.into()),
 					}

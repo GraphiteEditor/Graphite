@@ -47,6 +47,7 @@ impl MessageHandler<InputPreprocessorMessage, ()> for InputPreprocessorMessageHa
 						)
 						.into(),
 					);
+					responses.push_back(FrontendMessage::TriggerViewportResize.into());
 				}
 			}
 			InputPreprocessorMessage::DoubleClick { editor_mouse_state, modifier_keys } => {
@@ -67,24 +68,6 @@ impl MessageHandler<InputPreprocessorMessage, ()> for InputPreprocessorMessageHa
 				self.keyboard.unset(key as usize);
 				responses.push_back(InputMapperMessage::KeyUp(key).into());
 			}
-			InputPreprocessorMessage::MouseDown { editor_mouse_state, modifier_keys } => {
-				self.handle_modifier_keys(modifier_keys, responses);
-
-				let mouse_state = editor_mouse_state.to_mouse_state(&self.viewport_bounds);
-				self.mouse.position = mouse_state.position;
-
-				if let Some(message) = self.translate_mouse_event(mouse_state, KeyPosition::Pressed) {
-					responses.push_back(message);
-				}
-			}
-			InputPreprocessorMessage::MouseMove { editor_mouse_state, modifier_keys } => {
-				self.handle_modifier_keys(modifier_keys, responses);
-
-				let mouse_state = editor_mouse_state.to_mouse_state(&self.viewport_bounds);
-				self.mouse.position = mouse_state.position;
-
-				responses.push_back(InputMapperMessage::PointerMove.into());
-			}
 			InputPreprocessorMessage::MouseScroll { editor_mouse_state, modifier_keys } => {
 				self.handle_modifier_keys(modifier_keys, responses);
 
@@ -94,7 +77,25 @@ impl MessageHandler<InputPreprocessorMessage, ()> for InputPreprocessorMessageHa
 
 				responses.push_back(InputMapperMessage::MouseScroll.into());
 			}
-			InputPreprocessorMessage::MouseUp { editor_mouse_state, modifier_keys } => {
+			InputPreprocessorMessage::PointerDown { editor_mouse_state, modifier_keys } => {
+				self.handle_modifier_keys(modifier_keys, responses);
+
+				let mouse_state = editor_mouse_state.to_mouse_state(&self.viewport_bounds);
+				self.mouse.position = mouse_state.position;
+
+				if let Some(message) = self.translate_mouse_event(mouse_state, KeyPosition::Pressed) {
+					responses.push_back(message);
+				}
+			}
+			InputPreprocessorMessage::PointerMove { editor_mouse_state, modifier_keys } => {
+				self.handle_modifier_keys(modifier_keys, responses);
+
+				let mouse_state = editor_mouse_state.to_mouse_state(&self.viewport_bounds);
+				self.mouse.position = mouse_state.position;
+
+				responses.push_back(InputMapperMessage::PointerMove.into());
+			}
+			InputPreprocessorMessage::PointerUp { editor_mouse_state, modifier_keys } => {
 				self.handle_modifier_keys(modifier_keys, responses);
 
 				let mouse_state = editor_mouse_state.to_mouse_state(&self.viewport_bounds);

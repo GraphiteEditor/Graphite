@@ -11,7 +11,7 @@
 				API which is required for using the editor. However, you can still explore the user interface.
 			</p>
 			<LayoutRow>
-				<button class="unsupported-modal-button" @click="closeModal()">I understand, let's just see the interface</button>
+				<button class="unsupported-modal-button" @click="() => closeModal()">I understand, let's just see the interface</button>
 			</LayoutRow>
 		</LayoutCol>
 	</div>
@@ -270,7 +270,10 @@ export default defineComponent({
 		};
 	},
 	data() {
+		// Initialize the Graphite WASM editor instance
 		const editor = createEditorState();
+
+		// Initialize other stateful Vue systems
 		const dialog = createDialogState(editor);
 		const documents = createDocumentsState(editor, dialog);
 		const fullscreen = createFullscreenState();

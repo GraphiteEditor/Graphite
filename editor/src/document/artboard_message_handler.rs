@@ -5,7 +5,7 @@ use graphene::document::Document as GrapheneDocument;
 use graphene::layers::style::{self, Fill, ViewMode};
 use graphene::Operation as DocumentOperation;
 
-use glam::{DAffine2, DVec2};
+use glam::DAffine2;
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 
@@ -36,8 +36,8 @@ impl MessageHandler<ArtboardMessage, ()> for ArtboardMessageHandler {
 			},
 
 			// Messages
-			AddArtboard { top, left, height, width } => {
-				let artboard_id = generate_uuid();
+			AddArtboard { id, position, size } => {
+				let artboard_id = id.unwrap_or_else(generate_uuid);
 				self.artboard_ids.push(artboard_id);
 
 				responses.push_back(
@@ -45,13 +45,20 @@ impl MessageHandler<ArtboardMessage, ()> for ArtboardMessageHandler {
 						DocumentOperation::AddRect {
 							path: vec![artboard_id],
 							insert_index: -1,
-							transform: DAffine2::from_scale_angle_translation(DVec2::new(height, width), 0., DVec2::new(top, left)).to_cols_array(),
+							transform: DAffine2::from_scale_angle_translation(size.into(), 0., position.into()).to_cols_array(),
 							style: style::PathStyle::new(None, Some(Fill::new(Color::WHITE))),
 						}
 						.into(),
 					)
 					.into(),
 				);
+
+				responses.push_back(DocumentMessage::RenderDocument.into());
+			}
+			DeleteArtboard { artboard } => {
+				self.artboard_ids.retain(|&id| id != artboard);
+
+				responses.push_back(ArtboardMessage::DispatchOperation(Box::new(DocumentOperation::DeleteLayer { path: vec![artboard] })).into());
 
 				responses.push_back(DocumentMessage::RenderDocument.into());
 			}
@@ -72,6 +79,17 @@ impl MessageHandler<ArtboardMessage, ()> for ArtboardMessageHandler {
 						.into(),
 					);
 				}
+			}
+			ResizeArtboard { artboard, position, size } => {
+				responses.push_back(
+					ArtboardMessage::DispatchOperation(Box::new(DocumentOperation::SetLayerTransform {
+						path: vec![artboard],
+						transform: DAffine2::from_scale_angle_translation(size.into(), 0., position.into()).to_cols_array(),
+					}))
+					.into(),
+				);
+
+				responses.push_back(DocumentMessage::RenderDocument.into());
 			}
 		}
 	}

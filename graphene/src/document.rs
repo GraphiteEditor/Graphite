@@ -320,6 +320,12 @@ impl Document {
 		Ok(layer.data.bounding_box(transform))
 	}
 
+	pub fn bounding_box_and_transform(&self, path: &[LayerId]) -> Result<Option<([DVec2; 2], DAffine2)>, DocumentError> {
+		let layer = self.layer(path)?;
+		let transform = self.multiply_transforms(&path[..path.len() - 1])?;
+		Ok(layer.data.bounding_box(layer.transform).map(|bounds| (bounds, transform)))
+	}
+
 	pub fn visible_layers_bounding_box(&self) -> Option<[DVec2; 2]> {
 		let mut paths = vec![];
 		self.visible_layers(&mut vec![], &mut paths).ok()?;
@@ -561,6 +567,17 @@ impl Document {
 					}
 				}
 				Some([vec![DocumentChanged, DocumentResponse::FolderChanged { path: vec![] }], responses].concat())
+			}
+			Operation::AddSpline {
+				path,
+				insert_index,
+				points,
+				transform,
+				style,
+			} => {
+				let points: Vec<glam::DVec2> = points.iter().map(|&it| it.into()).collect();
+				self.set_layer(path, Layer::new(LayerDataType::Shape(Shape::spline(points, *style)), *transform), *insert_index)?;
+				Some([vec![DocumentChanged, CreatedLayer { path: path.clone() }], update_thumbnails_upstream(path)].concat())
 			}
 			Operation::DeleteLayer { path } => {
 				fn aggregate_deletions(folder: &Folder, path: &mut Vec<LayerId>, responses: &mut Vec<DocumentResponse>) {

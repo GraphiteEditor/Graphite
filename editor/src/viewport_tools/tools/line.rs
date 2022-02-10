@@ -1,4 +1,4 @@
-use crate::consts::LINE_ROTATE_SNAP_ANGLE;
+use crate::consts::{DRAG_THRESHOLD, LINE_ROTATE_SNAP_ANGLE};
 use crate::document::DocumentMessageHandler;
 use crate::frontend::utility_types::MouseCursorIcon;
 use crate::input::keyboard::{Key, MouseMotion};
@@ -155,11 +155,11 @@ impl Fsm for LineToolFsmState {
 		if let ToolMessage::Line(event) = event {
 			match (self, event) {
 				(Ready, DragStart) => {
-					data.snap_handler.start_snap(document, document.visible_layers(), true, true);
+					data.snap_handler.start_snap(document, document.bounding_boxes(None, None), true, true);
 					data.drag_start = data.snap_handler.snap_position(responses, input.viewport_bounds.size(), document, input.mouse.position);
 
 					responses.push_back(DocumentMessage::StartTransaction.into());
-					data.path = Some(vec![generate_uuid()]);
+					data.path = Some(document.get_path_for_new_layer());
 					responses.push_back(DocumentMessage::DeselectAllLayers.into());
 
 					data.weight = tool_options.line_weight;
@@ -188,8 +188,7 @@ impl Fsm for LineToolFsmState {
 					data.drag_current = data.snap_handler.snap_position(responses, input.viewport_bounds.size(), document, input.mouse.position);
 					data.snap_handler.cleanup(responses);
 
-					// TODO: introduce comparison threshold when operating with canvas coordinates (https://github.com/GraphiteEditor/Graphite/issues/100)
-					match data.drag_start == input.mouse.position {
+					match data.drag_start.distance(input.mouse.position) <= DRAG_THRESHOLD {
 						true => responses.push_back(DocumentMessage::AbortTransaction.into()),
 						false => responses.push_back(DocumentMessage::CommitTransaction.into()),
 					}

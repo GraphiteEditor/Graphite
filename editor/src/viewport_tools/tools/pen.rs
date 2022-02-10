@@ -1,3 +1,4 @@
+use crate::consts::DRAG_THRESHOLD;
 use crate::document::DocumentMessageHandler;
 use crate::frontend::utility_types::MouseCursorIcon;
 use crate::input::keyboard::{Key, MouseMotion};
@@ -153,9 +154,9 @@ impl Fsm for PenToolFsmState {
 				(Ready, DragStart) => {
 					responses.push_back(DocumentMessage::StartTransaction.into());
 					responses.push_back(DocumentMessage::DeselectAllLayers.into());
-					data.path = Some(vec![generate_uuid()]);
+					data.path = Some(document.get_path_for_new_layer());
 
-					data.snap_handler.start_snap(document, document.visible_layers(), true, true);
+					data.snap_handler.start_snap(document, document.bounding_boxes(None, None), true, true);
 					let snapped_position = data.snap_handler.snap_position(responses, input.viewport_bounds.size(), document, input.mouse.position);
 
 					let pos = transform.inverse().transform_point2(snapped_position);
@@ -165,7 +166,7 @@ impl Fsm for PenToolFsmState {
 
 					data.weight = tool_options.line_weight;
 
-					responses.push_back(make_operation(data, tool_data, true));
+					responses.push_back(add_polyline(data, tool_data, true));
 
 					Drawing
 				}
@@ -173,14 +174,15 @@ impl Fsm for PenToolFsmState {
 					let snapped_position = data.snap_handler.snap_position(responses, input.viewport_bounds.size(), document, input.mouse.position);
 					let pos = transform.inverse().transform_point2(snapped_position);
 
-					// TODO: introduce comparison threshold when operating with canvas coordinates (https://github.com/GraphiteEditor/Graphite/issues/100)
-					if data.points.last() != Some(&pos) {
-						data.points.push(pos);
-						data.next_point = pos;
+					if let Some(last_pos) = data.points.last() {
+						if last_pos.distance(pos) > DRAG_THRESHOLD {
+							data.points.push(pos);
+							data.next_point = pos;
+						}
 					}
 
 					responses.push_back(remove_preview(data));
-					responses.push_back(make_operation(data, tool_data, true));
+					responses.push_back(add_polyline(data, tool_data, true));
 
 					Drawing
 				}
@@ -190,7 +192,7 @@ impl Fsm for PenToolFsmState {
 					data.next_point = pos;
 
 					responses.push_back(remove_preview(data));
-					responses.push_back(make_operation(data, tool_data, true));
+					responses.push_back(add_polyline(data, tool_data, true));
 
 					Drawing
 				}
@@ -198,7 +200,7 @@ impl Fsm for PenToolFsmState {
 					if data.points.len() >= 2 {
 						responses.push_back(DocumentMessage::DeselectAllLayers.into());
 						responses.push_back(remove_preview(data));
-						responses.push_back(make_operation(data, tool_data, false));
+						responses.push_back(add_polyline(data, tool_data, false));
 						responses.push_back(DocumentMessage::CommitTransaction.into());
 					} else {
 						responses.push_back(DocumentMessage::AbortTransaction.into());
@@ -253,7 +255,7 @@ fn remove_preview(data: &PenToolData) -> Message {
 	Operation::DeleteLayer { path: data.path.clone().unwrap() }.into()
 }
 
-fn make_operation(data: &PenToolData, tool_data: &DocumentToolData, show_preview: bool) -> Message {
+fn add_polyline(data: &PenToolData, tool_data: &DocumentToolData, show_preview: bool) -> Message {
 	let mut points: Vec<(f64, f64)> = data.points.iter().map(|p| (p.x, p.y)).collect();
 	if show_preview {
 		points.push((data.next_point.x, data.next_point.y))
