@@ -12,11 +12,18 @@ fn glam_to_kurbo(transform: DAffine2) -> Affine {
 	Affine::new(transform.to_cols_array())
 }
 
+/// A generic SVG Element defined using Bezier Paths.
+/// Shapes are rendered as [`<path>`](https://developer.mozilla.org/en-US/docs/Web/SVG/Element/path) elements
+/// inside a [`<g>`](https://developer.mozilla.org/en-US/docs/Web/SVG/Element/g) group that the
+/// transformation matrix is applied to.
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub struct Shape {
+	/// A Bezier path.
 	pub path: BezPath,
+	/// The visual style of the shape.
 	pub style: style::PathStyle,
 	pub render_index: i32,
+	/// Whether or not the [path](Shape::path) connects to itself.
 	pub closed: bool,
 }
 
@@ -79,6 +86,10 @@ impl Shape {
 		}
 	}
 
+	/// Create an N-gon.
+	///
+	/// # Panics
+	/// This function panics if `sides` is zero.
 	pub fn ngon(sides: u8, style: PathStyle) -> Self {
 		use std::f64::consts::{FRAC_PI_2, TAU};
 
@@ -112,6 +123,7 @@ impl Shape {
 		}
 	}
 
+	/// Create a rectangular shape.
 	pub fn rectangle(style: PathStyle) -> Self {
 		Self {
 			path: kurbo::Rect::new(0., 0., 1., 1.).to_path(0.01),
@@ -121,6 +133,7 @@ impl Shape {
 		}
 	}
 
+	/// Create an elliptical shape.
 	pub fn ellipse(style: PathStyle) -> Self {
 		Self {
 			path: kurbo::Ellipse::from_rect(kurbo::Rect::new(0., 0., 1., 1.)).to_path(0.01),
@@ -130,6 +143,7 @@ impl Shape {
 		}
 	}
 
+	/// Create a straight line from [0, 0] to [1, 0].
 	pub fn line(style: PathStyle) -> Self {
 		Self {
 			path: kurbo::Line::new((0., 0.), (1., 0.)).to_path(0.01),
@@ -139,6 +153,7 @@ impl Shape {
 		}
 	}
 
+	/// Create a polygonal line that visits each provided point
 	pub fn poly_line(points: Vec<impl Into<glam::DVec2>>, style: PathStyle) -> Self {
 		let mut path = kurbo::BezPath::new();
 		points
@@ -157,7 +172,7 @@ impl Shape {
 	}
 
 	/// Creates a smooth bezier spline that passes through all given points.
-	/// The algorithm used in this implementation is described here: https://www.particleincell.com/2012/bezier-splines/
+	/// The algorithm used in this implementation is described here: <https://www.particleincell.com/2012/bezier-splines/>
 	pub fn spline(points: Vec<impl Into<glam::DVec2>>, style: PathStyle) -> Self {
 		let mut path = kurbo::BezPath::new();
 

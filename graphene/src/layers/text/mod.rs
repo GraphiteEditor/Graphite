@@ -1,5 +1,5 @@
 use super::layer_info::LayerData;
-use super::style::{self, PathStyle, ViewMode};
+use super::style::{PathStyle, ViewMode};
 use crate::intersection::{intersect_quad_bez_path, Quad};
 use crate::LayerId;
 
@@ -15,9 +15,12 @@ fn glam_to_kurbo(transform: DAffine2) -> Affine {
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+/// A Text element rendered as a SVG [`<foreignObject>`](https://developer.mozilla.org/en-US/docs/Web/SVG/Element/foreignObject).
 pub struct Text {
+	/// The displayed Text.
 	pub text: String,
-	pub style: style::PathStyle,
+	/// The visual style of the Text.
+	pub style: PathStyle,
 	pub size: f64,
 	pub line_width: Option<f64>,
 	#[serde(skip)]

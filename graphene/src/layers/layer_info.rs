@@ -12,9 +12,13 @@ use serde::{Deserialize, Serialize};
 use std::fmt::Write;
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+/// Represents different types of layers.
 pub enum LayerDataType {
+	/// A layer that wraps a [Folder].
 	Folder(Folder),
+	/// A layer that wraps a [Shape].
 	Shape(Shape),
+	/// A layer that wraps [Text].
 	Text(Text),
 }
 
@@ -36,9 +40,71 @@ impl LayerDataType {
 	}
 }
 
+/// Defines shared behaviour for every layer type.
 pub trait LayerData {
+	/// Render the layer as SVG to a given string.
+	///
+	/// # Example
+	/// ```
+	/// # use graphite_graphene::layers::simple_shape::Shape;
+	/// # use graphite_graphene::layers::style::{PathStyle, ViewMode};
+	/// # use graphite_graphene::layers::layer_info::LayerData;
+	/// let mut shape = Shape::rectangle(PathStyle::new(None, None));
+	/// let mut svg = String::new();
+    ///
+	/// // Render the shape without any transforms, in normal view mode
+	/// shape.render(&mut svg, &mut vec![], ViewMode::Normal);
+    ///
+	/// assert_eq!(
+    ///     svg, 
+    ///     "<g transform=\"matrix(\n1,-0,-0,1,-0,-0)\">\
+    ///     <path d=\"M0 0L1 0L1 1L0 1Z\"  fill=\"none\" />\
+    ///     </g>"
+    /// );
+	/// ```
 	fn render(&mut self, svg: &mut String, transforms: &mut Vec<glam::DAffine2>, view_mode: ViewMode);
+
+    // FIXME: finish this test
+    /// Determine the layers within this layer that intersect a given quad.
+	/// # Example
+	/// ```no_run
+	/// # use graphite_graphene::layers::simple_shape::Shape;
+	/// # use graphite_graphene::layers::style::{PathStyle, ViewMode};
+	/// # use graphite_graphene::layers::layer_info::LayerData;
+	/// # use graphite_graphene::intersection::Quad;
+    /// # use glam::f64::{DAffine2, DVec2};
+	/// let mut shape = Shape::ellipse(PathStyle::new(None, None));
+	/// let mut svg = String::new();
+    ///
+    /// let quad = Quad::from_box([DVec2::ZERO, DVec2::ONE]);
+    /// let mut intersections = vec![];
+    ///
+    /// // Since we are not working with a Folder layer, the path is empty
+    /// let mut path = vec![];
+    ///
+	/// shape.intersects_quad(quad, &mut path, &mut intersections);
+    ///
+	/// assert_eq!(intersections, vec![vec![0_u64]]);
+	/// ```
 	fn intersects_quad(&self, quad: Quad, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>);
+
+    // FIXME: this doctest fails because 0 != 1E-32
+	/// Calculate the bounding box for the layers contents after applying a given transform.
+	/// # Example
+	/// ```no_run
+	/// # use graphite_graphene::layers::simple_shape::Shape;
+	/// # use graphite_graphene::layers::style::PathStyle;
+	/// # use graphite_graphene::layers::layer_info::LayerData;
+    /// # use glam::f64::{DAffine2, DVec2};
+	/// let shape = Shape::ellipse(PathStyle::new(None, None));
+    ///
+    /// // Calculate the bounding box without applying any transformations.
+    /// // (The identity transform maps every vector to itself)
+    /// let transform = DAffine2::IDENTITY;
+    /// let bounding_box = shape.bounding_box(transform);
+    ///
+	/// assert_eq!(bounding_box, Some([DVec2::ZERO, DVec2::ONE]));
+	/// ```
 	fn bounding_box(&self, transform: glam::DAffine2) -> Option<[DVec2; 2]>;
 }
 
@@ -63,24 +129,34 @@ struct DAffine2Ref {
 	pub translation: DVec2,
 }
 
+/// Utility function for providing a default boolean value to serde.
+#[inline(always)]
 fn return_true() -> bool {
+	// No, there is no smarter way to do this.
 	true
 }
 
 #[derive(Debug, PartialEq, Deserialize, Serialize)]
 pub struct Layer {
+	/// Whether or not the layer is currently visible.
 	pub visible: bool,
+	/// The name of the layer.
 	pub name: Option<String>,
+	/// The type of layer.
 	pub data: LayerDataType,
+	/// A transformation applied to the layer(translation, rotation, scaling and shear).
 	#[serde(with = "DAffine2Ref")]
 	pub transform: glam::DAffine2,
 	#[serde(skip)]
 	pub cache: String,
 	#[serde(skip)]
 	pub thumbnail_cache: String,
+	/// Whether or not the [Cache](Layer::cache) and [Thumbnail Cache](Layer::thumbnail_cache) need to be updated.
 	#[serde(skip, default = "return_true")]
 	pub cache_dirty: bool,
+	/// Describes how overlapping SVG elements should be blended together.
 	pub blend_mode: BlendMode,
+	/// The opacity of the Layer, always ∈ [0, 1].
 	pub opacity: f64,
 }
 
@@ -99,6 +175,11 @@ impl Layer {
 		}
 	}
 
+    /// Iterate over the layers encapsulated by this layer.
+    /// If the [Layer Type](Layer::data) is [Text](LayerDataType::Text) or [Shape](LayerDataType::Shape),
+    /// the only item in the iterator will be the layer itself.
+    /// If the [Layer Type](Layer::data) wraps a [Folder](LayerDataType::Folder), the iterator
+    /// will recursively yield all the layers contained in the folder as well as potential sub-folders.
 	pub fn iter(&self) -> LayerIter<'_> {
 		LayerIter { stack: vec![self] }
 	}
@@ -149,6 +230,8 @@ impl Layer {
 		self.current_bounding_box_with_transform(self.transform)
 	}
 
+    /// Get a mutable reference to the Folder wrapped by the layer.
+    /// This operation will fail if the [Layer type](Layer::data) is not `LayerDataType::Folder`.
 	pub fn as_folder_mut(&mut self) -> Result<&mut Folder, DocumentError> {
 		match &mut self.data {
 			LayerDataType::Folder(f) => Ok(f),
@@ -156,6 +239,8 @@ impl Layer {
 		}
 	}
 
+    /// Get a reference to the Folder wrapped by the layer.
+    /// This operation will fail if the [Layer type](Layer::data) is not `LayerDataType::Folder`.
 	pub fn as_folder(&self) -> Result<&Folder, DocumentError> {
 		match &self.data {
 			LayerDataType::Folder(f) => Ok(f),
@@ -163,6 +248,8 @@ impl Layer {
 		}
 	}
 
+    /// Get a mutable reference to the Text element wrapped by the layer.
+    /// This operation will fail if the [Layer type](Layer::data) is not `LayerDataType::Text`.
 	pub fn as_text_mut(&mut self) -> Result<&mut Text, DocumentError> {
 		match &mut self.data {
 			LayerDataType::Text(t) => Ok(t),
@@ -170,6 +257,8 @@ impl Layer {
 		}
 	}
 
+    /// Get a reference to the Text element wrapped by the layer.
+    /// This operation will fail if the [Layer type](Layer::data) is not `LayerDataType::Text`.
 	pub fn as_text(&self) -> Result<&Text, DocumentError> {
 		match &self.data {
 			LayerDataType::Text(t) => Ok(t),
@@ -203,6 +292,8 @@ impl<'a> IntoIterator for &'a Layer {
 	}
 }
 
+/// An iterator over the layers encapsulated by this layer.
+/// See [Layer::iter] for more information.
 #[derive(Debug, Default)]
 pub struct LayerIter<'a> {
 	pub stack: Vec<&'a Layer>,

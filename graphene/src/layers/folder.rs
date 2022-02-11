@@ -7,10 +7,17 @@ use glam::DVec2;
 use serde::{Deserialize, Serialize};
 use std::fmt::Write;
 
+/// A layer that encapsulates other layers, including potentially more folders.
+/// The contained layers are rendered in the same order they are
+/// added to the folder.
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize, Default)]
 pub struct Folder {
+	/// The id that will be assigned to the next layer that
+	/// is added to the folder
 	next_assignment_id: LayerId,
+	/// The ID's of the Layers contained within the Folder
 	pub layer_ids: Vec<LayerId>,
+	/// The layers contained in the folder
 	layers: Vec<Layer>,
 }
 
@@ -42,8 +49,25 @@ impl Folder {
 	/// If that id is already used, return None.
 	/// When no insertion id is provided, search for the next free id and insert it with that.
 	/// Negative values for insert_index represent distance from the end
+    ///
+    /// # Example
+    /// ```
+    /// # use graphite_graphene::layers::simple_shape::Shape;
+    /// # use graphite_graphene::layers::folder::Folder;
+    /// # use graphite_graphene::layers::style::PathStyle;
+    /// # use graphite_graphene::layers::layer_info::LayerDataType;
+    /// let mut folder = Folder::default();
+    ///
+    /// // Create two layers to be added to the folder
+    /// let mut layer_shape = Shape::rectangle(PathStyle::default());
+    /// let mut layer_folder = Folder::default();
+    ///
+    /// folder.add_layer(layer_shape, None, -1);
+    /// folder.add_layer(layer_folder, Some(123), 0);
+    /// ```
 	pub fn add_layer(&mut self, layer: Layer, id: Option<LayerId>, insert_index: isize) -> Option<LayerId> {
 		let mut insert_index = insert_index as i128;
+
 		if insert_index < 0 {
 			insert_index = self.layers.len() as i128 + insert_index as i128 + 1;
 		}
@@ -71,6 +95,23 @@ impl Folder {
 		}
 	}
 
+	/// Remove a layer with a given id from the folder.
+    ///
+    /// # Example
+    /// ```
+    /// # use graphite_graphene::layers::folder::Folder;
+    /// let mut folder = Folder::default();
+    ///
+    /// // Try to remove a layer that does not exist
+    /// assert!(folder.remove_layer(123).is_err());
+    ///
+    /// // Add another folder to the folder
+    /// folder.add_layer(Folder::default(), Some(123), -1);
+    ///
+    /// // Try to remove that folder again
+    /// assert!(folder.remove_layer(123).is_ok());
+    /// assert_eq!(folder.layers().len(), 0)
+    /// ```
 	pub fn remove_layer(&mut self, id: LayerId) -> Result<(), DocumentError> {
 		let pos = self.position_of_layer(id)?;
 		self.layers.remove(pos);
@@ -78,7 +119,7 @@ impl Folder {
 		Ok(())
 	}
 
-	/// Returns a list of layers in the folder
+	/// Returns a list of layers in the folder.
 	pub fn list_layers(&self) -> &[LayerId] {
 		self.layer_ids.as_slice()
 	}
@@ -101,10 +142,12 @@ impl Folder {
 		Some(&mut self.layers[pos])
 	}
 
+    /// Returns `true` if the folder contains a layer with the given id.
 	pub fn folder_contains(&self, id: LayerId) -> bool {
 		self.layer_ids.contains(&id)
 	}
 
+	/// Try to find the index of a layer with the given id within the folder.
 	pub fn position_of_layer(&self, layer_id: LayerId) -> Result<usize, DocumentError> {
 		self.layer_ids.iter().position(|x| *x == layer_id).ok_or_else(|| DocumentError::LayerNotFound([layer_id].into()))
 	}
