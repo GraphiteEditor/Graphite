@@ -248,8 +248,9 @@ impl<'a> SubCurve<'a> {
 // TODO: use the cool algorithm described in: https://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.99.9678&rep=rep1&type=pdf
 // Bezier Curve Intersection Algorithm
 // TODO: how does f64 precision affect the algorithm?
+// Error correction schemes?
 // TODO: profile algorithm
-// Bug: intersections of "perfectly aligned" line or curve
+// TODO: intersections of overlapping curve
 // If the algorithm is rewritten to be non-recursive it can be restructured to be more breadth first then depth first
 // Test for overlapping curves by splitting the curves
 // Behavior: deep recursion could result in stack overflow
@@ -335,7 +336,6 @@ where
 						};
 						// the intersection point should be on the line, unless FP math error produces bad results
 						let line_time = projection_on_line(line, &point);
-						log::debug!("{:?}", line_time);
 						if !t_validate(line_time, *time) {
 							return None;
 						}
