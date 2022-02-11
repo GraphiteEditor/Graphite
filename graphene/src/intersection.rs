@@ -335,6 +335,7 @@ where
 						};
 						// the intersection point should be on the line, unless FP math error produces bad results
 						let line_time = projection_on_line(line, &point);
+						log::debug!("{:?}", line_time);
 						if !t_validate(line_time, *time) {
 							return None;
 						}
@@ -602,7 +603,7 @@ pub fn line_t_value(a: &Line, p: &Point) -> Option<f64> {
 /// return the t_value of the point nearest to p on a
 pub fn projection_on_line(a: &Line, p: &Point) -> f64 {
 	let ray = a.p1.to_vec2() - a.p0.to_vec2();
-	(ray).dot(p.to_vec2() - a.p1.to_vec2()) / (ray.to_point().distance(Point::ORIGIN))
+	ray.dot(p.to_vec2() - a.p0.to_vec2()) / ((ray.to_point().distance(Point::ORIGIN)) * (ray.to_point().distance(Point::ORIGIN)))
 }
 
 pub fn cubic_line_intersect(a: &Line, b: &CubicBez) -> [Option<f64>; 3] {
