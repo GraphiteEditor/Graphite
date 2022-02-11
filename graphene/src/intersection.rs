@@ -4,7 +4,7 @@ use std::ops::Mul;
 use crate::{
 	boolean_ops::split_path_seg,
 	boolean_ops::subdivide_path_seg,
-	consts::{CURVE_FIDELITY, F64PRECISION},
+	consts::{CURVE_FIDELITY, F64LOOSE, F64PRECISE},
 };
 use glam::{DAffine2, DMat2, DVec2};
 use kurbo::{BezPath, CubicBez, Line, ParamCurve, ParamCurveExtrema, PathSeg, Point, QuadBez, Rect, Shape, Vec2};
@@ -282,7 +282,7 @@ fn path_intersections(a: &SubCurve, b: &SubCurve, mut recursion: f64, intersecti
 				}
 				// Eventually the points in the curve become too close together to split the curve meaningfully
 				// Also provides a base case and prevents infinite recursion
-				if a.available_precision() <= F64PRECISION || b.available_precision() <= F64PRECISION {
+				if a.available_precision() <= F64PRECISE || b.available_precision() <= F64PRECISE {
 					log::debug!("precision reached");
 					intersections.push(cross);
 					return;
@@ -291,7 +291,7 @@ fn path_intersections(a: &SubCurve, b: &SubCurve, mut recursion: f64, intersecti
 
 			// Alternate base case
 			// Note: may occur for the less forgiving side of a `PathSeg` endpoint intersect
-			if a.available_precision() <= F64PRECISION || b.available_precision() <= F64PRECISION {
+			if a.available_precision() <= F64PRECISE || b.available_precision() <= F64PRECISE {
 				log::debug!("precision reached without finding intersect");
 				return;
 			}
@@ -431,7 +431,7 @@ pub fn overlapping_curve_intersections(a: &PathSeg, b: &PathSeg) -> [Option<Inte
 }
 
 /// Returns true if the Bezier curves described by A and B have the same control polygon
-/// TODO: test this
+/// TODO: test this, please GOD, test this for me.
 pub fn match_control_polygon(a: &PathSeg, b: &PathSeg) -> bool {
 	let mut a_polygon = get_control_polygon(a);
 	let mut b_polygon = get_control_polygon(b);
@@ -441,6 +441,7 @@ pub fn match_control_polygon(a: &PathSeg, b: &PathSeg) -> bool {
 	if a_polygon.len() == b_polygon.len() {
 		a_polygon.iter().eq(b_polygon.iter())
 	} else {
+		// A sneaky higher degree Bezier curve may pose as a lower degree one
 		let (a_ref, b_ref) = if a_polygon.len() < b_polygon.len() {
 			(&mut b_polygon, &mut a_polygon)
 		} else {
@@ -451,20 +452,32 @@ pub fn match_control_polygon(a: &PathSeg, b: &PathSeg) -> bool {
 		for b_point in b_ref.iter() {
 			let a_point = a_iter.next().unwrap();
 			if *a_point != *b_point {
-				if let Some(a_line) = a_iter.next() {
-					if *a_line != *b_point {
+				loop {
+					if let Some(a_line) = a_iter.next() {
+						if !colinear(&[a_point, b_point, a_line]) {
+							return false;
+						}
+						if *a_line == *b_point {
+							break;
+						}
+					} else {
 						return false;
 					}
-					if point_t_value(&PathSeg::Line(Line { p0: *a_point, p1: *a_line }), b_point).is_none() {
-						return false;
-					}
-				} else {
-					return false;
 				}
 			}
 		}
 		true
 	}
+}
+
+pub fn colinear(points: &[&Point]) -> bool {
+	let ray = Line { p0: *points[0], p1: *points[1] };
+	for p in points.iter().skip(2) {
+		if line_t_value(&ray, p).is_none() {
+			return false;
+		}
+	}
+	false
 }
 
 pub fn get_control_polygon(a: &PathSeg) -> Vec<Point> {
@@ -513,13 +526,13 @@ pub fn intersections(a: &BezPath, b: &BezPath) -> Vec<Intersect> {
 		let a_extrema = a_seg
 			.extrema()
 			.iter()
-			.filter_map(|t| if *t > F64PRECISION && *t < 1.0 - F64PRECISION { Some((a_seg.eval(*t), *t)) } else { None })
+			.filter_map(|t| if *t > F64PRECISE && *t < 1.0 - F64PRECISE { Some((a_seg.eval(*t), *t)) } else { None })
 			.collect();
 		b.segments().enumerate().for_each(|(b_index, b_seg)| {
 			let b_extrema = b_seg
 				.extrema()
 				.iter()
-				.filter_map(|t| if *t > F64PRECISION && *t < 1.0 - F64PRECISION { Some((b_seg.eval(*t), *t)) } else { None })
+				.filter_map(|t| if *t > F64PRECISE && *t < 1.0 - F64PRECISE { Some((b_seg.eval(*t), *t)) } else { None })
 				.collect();
 			let mut intersects = Vec::new();
 			path_intersections(&SubCurve::new(&a_seg, &a_extrema), &SubCurve::new(&b_seg, &b_extrema), 1.0, &mut intersects);
@@ -577,8 +590,10 @@ pub fn line_t_value(a: &Line, p: &Point) -> Option<f64> {
 		}
 	} else if !from_y.is_normal() {
 		Some(from_x)
-	} else {
+	} else if (from_x - from_y).abs() < F64PRECISE {
 		Some(0.5 * (from_x + from_y))
+	} else {
+		None
 	}
 }
 
@@ -640,7 +655,7 @@ pub fn cubic_real_roots(mut a0: f64, mut a1: f64, mut a2: f64, a3: f64) -> [Opti
 
 		[Some(t1 - a2 / 3.0), None, None]
 	} else {
-		let phi = match q > -F64PRECISION && q < F64PRECISION {
+		let phi = match q > -F64PRECISE && q < F64PRECISE {
 			true => 0.0,
 			false => (r / (-q).powf(3.0 / 2.0)).acos() / 3.0,
 		};
@@ -703,9 +718,9 @@ pub fn overlap(a: &Rect, b: &Rect) -> bool {
 }
 
 /// Tests if a `t` value belongs to `[0.0, 1.0)`.
-/// Uses F64PRECISION to allow a slightly larger range of values.
+/// Uses F64PRECISE to allow a slightly larger range of values.
 pub fn valid_t(t: f64) -> bool {
-	t > -F64PRECISION && t < 1.0
+	t > -F64PRECISE && t < 1.0
 }
 
 /// Each of these tests has been visually, but not mathematically verified.

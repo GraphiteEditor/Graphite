@@ -1,4 +1,4 @@
-use crate::consts::{F64PRECISION, RAY_FUDGE_FACTOR};
+use crate::consts::{F64PRECISE, RAY_FUDGE_FACTOR};
 use crate::intersection::{intersections, line_curve_intersections, valid_t, Intersect, Origin};
 use crate::layers::simple_shape::Shape;
 use crate::layers::style::PathStyle;
@@ -395,12 +395,12 @@ impl PathGraph {
 /// If `t` is 1 returns (`p`, None).
 // TODO: test values outside 1
 pub fn split_path_seg(p: &PathSeg, t: f64) -> (Option<PathSeg>, Option<PathSeg>) {
-	if t <= F64PRECISION {
-		if t >= 1.0 - F64PRECISION {
+	if t <= F64PRECISE {
+		if t >= 1.0 - F64PRECISE {
 			return (None, None);
 		}
 		return (Some(*p), None);
-	} else if t >= 1.0 - F64PRECISION {
+	} else if t >= 1.0 - F64PRECISE {
 		return (None, Some(*p));
 	}
 	match p {
@@ -728,10 +728,10 @@ pub fn add_subpath(a: &mut BezPath, b: BezPath) {
 
 pub fn path_length(a: &BezPath, accuracy: Option<f64>) -> f64 {
 	let mut sum = 0.0;
-	// Computing arc length with `F64PRECISION` accuracy is probably ridiculous
+	// Computing arc length with `F64PRECISE` accuracy is probably ridiculous
 	match accuracy {
 		Some(val) => a.segments().for_each(|seg| sum += seg.arclen(val)),
-		None => a.segments().for_each(|seg| sum += seg.arclen(F64PRECISION)),
+		None => a.segments().for_each(|seg| sum += seg.arclen(F64PRECISE)),
 	}
 	sum
 }
