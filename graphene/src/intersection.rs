@@ -334,7 +334,7 @@ where
 							_ => Point::new(0.0, 0.0), // Should never occur
 						};
 						// the intersection point should be on the line, unless FP math error produces bad results
-						let line_time = line_t_value(line, &point).unwrap();
+						let line_time = projection_on_line(line, &point);
 						if !t_validate(line_time, *time) {
 							return None;
 						}
@@ -363,6 +363,7 @@ fn guess_quality(a: &PathSeg, b: &PathSeg, guess: &Intersect) -> f64 {
 /// Returns either [None, None] or [Some(_), Some(_)],
 /// The above may not be true when either a or b is very small (their endpoints are close together), so that when the algorithm does curve splitting
 /// TODO: test this
+/// TODO: use this
 pub fn overlapping_curve_intersections(a: &PathSeg, b: &PathSeg) -> [Option<Intersect>; 2] {
 	// To check if two curves overlap we find if the endpoints of either curve are on the other curve.
 	// Then, the curves are split at these points, if the resulting control polygons match the curves are the same
@@ -431,7 +432,7 @@ pub fn overlapping_curve_intersections(a: &PathSeg, b: &PathSeg) -> [Option<Inte
 }
 
 /// Returns true if the Bezier curves described by A and B have the same control polygon
-/// TODO: test this, please GOD, test this for me.
+/// TODO: test this
 pub fn match_control_polygon(a: &PathSeg, b: &PathSeg) -> bool {
 	let mut a_polygon = get_control_polygon(a);
 	let mut b_polygon = get_control_polygon(b);
@@ -477,7 +478,7 @@ pub fn colinear(points: &[&Point]) -> bool {
 			return false;
 		}
 	}
-	false
+	true
 }
 
 pub fn get_control_polygon(a: &PathSeg) -> Vec<Point> {
@@ -578,7 +579,8 @@ pub fn line_intersection_unchecked(a: &Line, b: &Line) -> Option<Intersect> {
 	Some(Intersect::from((b.eval(t_values[0]), t_values[1], t_values[0])))
 }
 
-///if p in on line a, returns Some(t_value) for p
+/// if p in on line a, returns Some(t_value) for p
+/// t_values seem to be accurate to roughly 7-10 decimal places
 pub fn line_t_value(a: &Line, p: &Point) -> Option<f64> {
 	let from_x = (p.x - a.p0.x) / (a.p1.x - a.p0.x);
 	let from_y = (p.y - a.p0.y) / (a.p1.y - a.p0.y);
@@ -590,11 +592,17 @@ pub fn line_t_value(a: &Line, p: &Point) -> Option<f64> {
 		}
 	} else if !from_y.is_normal() {
 		Some(from_x)
-	} else if (from_x - from_y).abs() < F64PRECISE {
+	} else if (from_x - from_y).abs() < F64LOOSE {
 		Some(0.5 * (from_x + from_y))
 	} else {
 		None
 	}
+}
+
+/// return the t_value of the point nearest to p on a
+pub fn projection_on_line(a: &Line, p: &Point) -> f64 {
+	let ray = a.p1.to_vec2() - a.p0.to_vec2();
+	(ray).dot(p.to_vec2() - a.p1.to_vec2()) / (ray.to_point().distance(Point::ORIGIN))
 }
 
 pub fn cubic_line_intersect(a: &Line, b: &CubicBez) -> [Option<f64>; 3] {
@@ -861,5 +869,15 @@ mod tests {
 		// 		print!("{:.32}", num);
 		// 	}
 		// }
+	}
+
+	#[test]
+	#[ignore]
+	fn test_colinear() {
+		let p1 = Point { x: 0.0001, y: 3.0002 };
+		let p2 = Point { x: 0.029, y: 3.058 };
+		let p3 = Point { x: 100.237, y: 203.474 };
+		let p4 = Point { x: 720.297, y: 1443.594 };
+		assert!(colinear(&[&p1, &p2, &p3, &p4]));
 	}
 }
