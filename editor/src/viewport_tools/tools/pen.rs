@@ -130,16 +130,11 @@ struct PenToolData {
 	weight: u32,
 	path: Option<Vec<LayerId>>,
 	curve_shape: VectorShape,
+	previous_start_position: DVec2,
 	bez_path: Vec<PathEl>,
 	snap_handler: SnapHandler,
 	shape_editor: ShapeEditor,
 }
-
-// Drag start event -> setup, moveto, place first point
-// moving, but not clicked -> update preview
-// Drag mouse down -> on first down, place root point
-// - place second segment
-// - Select second segment & handle
 
 impl Fsm for PenToolFsmState {
 	type ToolData = PenToolData;
@@ -172,11 +167,13 @@ impl Fsm for PenToolFsmState {
 					let snapped_position = data.snap_handler.snap_position(responses, input.viewport_bounds.size(), document, input.mouse.position);
 
 					// Get the position and set properties
-					let pos = transform.inverse().transform_point2(snapped_position);
+					let start_position = transform.inverse().transform_point2(snapped_position);
+					data.previous_start_position = start_position;
 					data.weight = tool_options.line_weight;
 
+					// Create the initial shape with a bez_path (only contains a moveto initially)
 					if let Some(layer_path) = &data.path {
-						data.bez_path = start_bez_path(pos);
+						data.bez_path = start_bez_path(start_position);
 						responses.push_back(
 							Operation::AddShape {
 								path: layer_path.clone(),
@@ -194,52 +191,61 @@ impl Fsm for PenToolFsmState {
 					Drawing
 				}
 				(Drawing, DragStart) => {
+					// Setup our position params
 					let snapped_position = data.snap_handler.snap_position(responses, input.viewport_bounds.size(), document, input.mouse.position);
 					let start_position = transform.inverse().transform_point2(snapped_position);
 					data.shape_editor.drag_start_position = snapped_position;
 
+					// Add a curve to the path
 					if let Some(layer_path) = &data.path {
-						add_curve_to_bez_path(start_position, start_position, &mut data.bez_path);
+						add_curve_to_bez_path(data.previous_start_position, start_position, &mut data.bez_path);
 						responses.push_back(apply_bez_path(layer_path.clone(), data.bez_path.clone(), transform));
 					}
 
 					if let Some(layer_path) = &data.path {
 						// Clear previous overlays
 						data.shape_editor.remove_overlays(responses);
-						// Create the new bez path with the updated segments
+
+						// Create a new shape from the updated bez_path
 						let bez_path = data.bez_path.clone().into_iter().collect();
 						data.curve_shape = VectorShape::new(layer_path.to_vec(), transform, &bez_path, false, responses);
 						data.shape_editor.set_shapes_to_modify(vec![data.curve_shape.clone()]);
 
-						// let last_anchor = data.curve_shape.select_last_anchor();
-						// last_anchor.select_point(2, true, responses);
-						// Set this shape to selected
+						// Select the second to last segment's handle
 						data.shape_editor.set_shape_selected(0);
-						if let handle_element = data.shape_editor.anchors_mut().nth(data.bez_path.len() - 2) {
-							handle_element.select_point();
-						}
+						let handle_element = data.shape_editor.select_nth_anchor(0, -2);
+						handle_element.select_point(2, true, responses);
+
+						// Select the last segment's anchor point
 						if let Some(last_anchor) = data.shape_editor.select_last_anchor() {
 							last_anchor.select_point(0, true, responses);
 						}
 						data.shape_editor.set_selected_mirror_options(true, true);
 					}
-
+					data.previous_start_position = start_position;
 					log::debug!("Added to path {:#?}", data.bez_path);
 
 					Dragging
 				}
-				(Dragging, PointerMove) => Dragging,
-				(Dragging, DragStop) => {
-					// data.shape_editor.
-					Drawing
-				}
-				(Drawing, PointerMove) => {
+				(Dragging, PointerMove) => {
 					let snapped_position = data.snap_handler.snap_position(responses, input.viewport_bounds.size(), document, input.mouse.position);
 					data.shape_editor.update_shapes(document, responses);
 					data.shape_editor.move_selected_points(snapped_position, responses);
 
+					Dragging
+				}
+				(Dragging, DragStop) => {
+					// Hacky way of saving the curve changes
+					data.bez_path = data.shape_editor.shapes_to_modify[0].bez_path.elements().to_vec();
 					Drawing
 				}
+				// (Drawing, PointerMove) => {
+				// 	let snapped_position = data.snap_handler.snap_position(responses, input.viewport_bounds.size(), document, input.mouse.position);
+				// 	data.shape_editor.update_shapes(document, responses);
+				// 	data.shape_editor.move_selected_points(snapped_position, responses);
+
+				// 	Drawing
+				// }
 				(Drawing, Confirm) | (Drawing, Abort) => {
 					if data.bez_path.len() >= 2 {
 						responses.push_back(DocumentMessage::DeselectAllLayers.into());
@@ -276,6 +282,20 @@ impl Fsm for PenToolFsmState {
 				plus: false,
 			}])]),
 			PenToolFsmState::Drawing => HintData(vec![
+				HintGroup(vec![HintInfo {
+					key_groups: vec![],
+					mouse: Some(MouseMotion::Lmb),
+					label: String::from("Extend Path"),
+					plus: false,
+				}]),
+				HintGroup(vec![HintInfo {
+					key_groups: vec![KeysGroup(vec![Key::KeyEnter])],
+					mouse: None,
+					label: String::from("End Path"),
+					plus: false,
+				}]),
+			]),
+			PenToolFsmState::Dragging => HintData(vec![
 				HintGroup(vec![HintInfo {
 					key_groups: vec![],
 					mouse: Some(MouseMotion::Lmb),

@@ -184,6 +184,17 @@ impl ShapeEditor {
 		None
 	}
 
+	pub fn select_nth_anchor(&mut self, shape_index: usize, anchor_index: i32) -> &mut VectorAnchor {
+		let shape = &mut self.shapes_to_modify[shape_index];
+		if anchor_index < 0 {
+			let anchor_index = shape.anchors.len() - ((-anchor_index) as usize);
+			shape.select_anchor(anchor_index)
+		} else {
+			let anchor_index = anchor_index as usize;
+			shape.select_anchor(anchor_index)
+		}
+	}
+
 	/// Provide the currently selected points by reference
 	pub fn selected_points(&self) -> impl Iterator<Item = &VectorControlPoint> {
 		self.selected_shapes().flat_map(|shape| shape.selected_anchors()).flat_map(|anchors| anchors.selected_points())
