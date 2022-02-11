@@ -194,6 +194,33 @@ impl Clone for Layer {
 	}
 }
 
+impl From<Folder> for Layer {
+    fn from(from: Folder) -> Layer {
+        Layer::new(
+            LayerDataType::Folder(from),
+            [0.; 6],
+        )
+    }
+}
+
+impl From<Shape> for Layer {
+    fn from(from: Shape) -> Layer {
+        Layer::new(
+            LayerDataType::Shape(from),
+            [0.; 6],
+        )
+    }
+}
+
+impl From<Text> for Layer {
+    fn from(from: Text) -> Layer {
+        Layer::new(
+            LayerDataType::Text(from),
+            [0.; 6],
+        )
+    }
+}
+
 impl<'a> IntoIterator for &'a Layer {
 	type Item = &'a Layer;
 	type IntoIter = LayerIter<'a>;
@@ -224,3 +251,4 @@ impl<'a> Iterator for LayerIter<'a> {
 		}
 	}
 }
+
