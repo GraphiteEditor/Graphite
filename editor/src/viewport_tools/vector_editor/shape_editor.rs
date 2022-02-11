@@ -172,6 +172,18 @@ impl ShapeEditor {
 		self.selected_shapes_mut().flat_map(|shape| shape.selected_anchors_mut())
 	}
 
+	// A mutable list of all the anchors
+	pub fn anchors_mut(&mut self) -> impl Iterator<Item = &mut VectorAnchor> {
+		self.shapes_to_modify.iter_mut().flat_map(|shape| shape.anchors_mut())
+	}
+
+	pub fn select_last_anchor(&mut self) -> Option<&mut VectorAnchor> {
+		if let Some(last) = self.shapes_to_modify.last_mut() {
+			return Some(last.select_last_anchor());
+		}
+		None
+	}
+
 	/// Provide the currently selected points by reference
 	pub fn selected_points(&self) -> impl Iterator<Item = &VectorControlPoint> {
 		self.selected_shapes().flat_map(|shape| shape.selected_anchors()).flat_map(|anchors| anchors.selected_points())
@@ -196,6 +208,13 @@ impl ShapeEditor {
 	pub fn toggle_selected_mirror_angle(&mut self) {
 		for anchor in self.selected_anchors_mut() {
 			anchor.handle_mirror_angle = !anchor.handle_mirror_angle;
+		}
+	}
+
+	pub fn set_selected_mirror_options(&mut self, mirror_angle: bool, mirror_distance: bool) {
+		for anchor in self.selected_anchors_mut() {
+			anchor.handle_mirror_angle = mirror_angle;
+			anchor.handle_mirror_distance = mirror_distance;
 		}
 	}
 

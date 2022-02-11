@@ -74,6 +74,13 @@ impl VectorShape {
 		&mut self.anchors[anchor_index]
 	}
 
+	/// The last anchor in the shape thus far
+	pub fn select_last_anchor(&mut self) -> &mut VectorAnchor {
+		let last_index = self.anchors.len() - 1;
+		self.selected_anchor_indices.insert(last_index);
+		&mut self.anchors[last_index]
+	}
+
 	/// Deselect an anchor
 	pub fn deselect_anchor(&mut self, anchor_index: usize, responses: &mut VecDeque<Message>) {
 		self.anchors[anchor_index].clear_selected_points(responses);
@@ -110,6 +117,10 @@ impl VectorShape {
 			.iter_mut()
 			.enumerate()
 			.filter_map(|(index, anchor)| if self.selected_anchor_indices.contains(&index) { Some(anchor) } else { None })
+	}
+
+	pub fn anchors_mut(&mut self) -> impl Iterator<Item = &mut VectorAnchor> {
+		self.anchors.iter_mut()
 	}
 
 	/// Move the selected point based on mouse input, if this is a handle we can control if we are mirroring or not
