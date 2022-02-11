@@ -13,10 +13,13 @@ use std::cmp::max;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
+/// A number that uniquely identifies a layer.
 pub type LayerId = u64;
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Document {
+    /// The root layer, usually a [Folder](layers::folder::Folder) 
+    /// that contains all other [Layers](layers::layer_info::Layer).
 	pub root: Layer,
 	/// The state_identifier serves to provide a way to uniquely identify a particular state that the document is in.
 	/// This identifier is not a hash and is not guaranteed to be equal for equivalent documents.
@@ -316,6 +319,7 @@ impl Document {
 		boxes.reduce(|a, b| [a[0].min(b[0]), a[1].max(b[1])])
 	}
 
+    /// Mark the layer at the provided path, as well as all the folders containing it, as dirty.
 	pub fn mark_upstream_as_dirty(&mut self, path: &[LayerId]) -> Result<(), DocumentError> {
 		let mut root = &mut self.root;
 		root.cache_dirty = true;

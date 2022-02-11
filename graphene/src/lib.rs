@@ -1,7 +1,11 @@
+/// Contains the [Color](color::Color) type.
 pub mod color;
+/// Contains constant values used by graphene.
 pub mod consts;
 pub mod document;
+/// Defines errors that can occur when using graphene.
 pub mod error;
+/// Utilities for computing intersections.
 pub mod intersection;
 pub mod layers;
 pub mod operation;
