@@ -526,7 +526,7 @@ impl JsEditorHandle {
 		self.dispatch(message);
 	}
 
-	// TODO(mfish33): Replace with initialization system
+	// TODO(mfish33): Replace with initialization system Issue:#524
 	pub fn init_document_bar(&self) {
 		let message = PortfolioMessage::UpdateDocumentBar;
 		self.dispatch(message)

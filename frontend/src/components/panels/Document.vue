@@ -428,7 +428,7 @@ export default defineComponent({
 		});
 		this.editor.dispatcher.subscribeJsMessage(TriggerViewportResize, this.viewportResize);
 
-		// TODO(mfish33): Replace with initialization system
+		// TODO(mfish33): Replace with initialization system Issue:#524
 		// Get initial Document Bar
 		this.editor.instance.init_document_bar();
 	},
