@@ -104,6 +104,7 @@ export function createDocumentsState(editor: EditorState, dialogState: DialogSta
 		download(triggerFileDownload.name, triggerFileDownload.document);
 	});
 
+	// TODO(mfish33): Replace with initialization system
 	// Get the initial documents
 	editor.instance.get_open_documents_list();
 
