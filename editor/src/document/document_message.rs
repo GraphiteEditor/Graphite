@@ -2,6 +2,7 @@ use super::layer_panel::LayerMetadata;
 use super::utility_types::{AlignAggregate, AlignAxis, FlipAxis};
 use crate::message_prelude::*;
 
+use graphene::boolean_ops::BooleanOperation as BooleanOperationType;
 use graphene::layers::blend_mode::BlendMode;
 use graphene::layers::style::ViewMode;
 use graphene::LayerId;
@@ -41,6 +42,7 @@ pub enum DocumentMessage {
 		axis: AlignAxis,
 		aggregate: AlignAggregate,
 	},
+	BooleanOperation(BooleanOperationType),
 	CommitTransaction,
 	CreateEmptyFolder {
 		container_path: Vec<LayerId>,
