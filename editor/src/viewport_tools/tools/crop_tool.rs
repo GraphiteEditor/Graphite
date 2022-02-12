@@ -17,7 +17,7 @@ use glam::{DVec2, Vec2Swizzles};
 use serde::{Deserialize, Serialize};
 
 #[derive(Default)]
-pub struct Crop {
+pub struct CropTool {
 	fsm_state: CropToolFsmState,
 	data: CropToolData,
 }
@@ -25,7 +25,7 @@ pub struct Crop {
 #[remain::sorted]
 #[impl_message(Message, ToolMessage, Crop)]
 #[derive(PartialEq, Clone, Debug, Hash, Serialize, Deserialize)]
-pub enum CropMessage {
+pub enum CropToolMessage {
 	// Standard messages
 	#[remain::unsorted]
 	Abort,
@@ -42,7 +42,7 @@ pub enum CropMessage {
 	PointerUp,
 }
 
-impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Crop {
+impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for CropTool {
 	fn process_action(&mut self, action: ToolMessage, data: ToolActionHandlerData<'a>, responses: &mut VecDeque<Message>) {
 		if action == ToolMessage::UpdateHints {
 			self.fsm_state.update_hints(responses);
@@ -62,10 +62,10 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Crop {
 		}
 	}
 
-	advertise_actions!(CropMessageDiscriminant; PointerDown, PointerUp, PointerMove, DeleteSelected, Abort);
+	advertise_actions!(CropToolMessageDiscriminant; PointerDown, PointerUp, PointerMove, DeleteSelected, Abort);
 }
 
-impl PropertyHolder for Crop {}
+impl PropertyHolder for CropTool {}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum CropToolFsmState {
@@ -107,7 +107,7 @@ impl Fsm for CropToolFsmState {
 	) -> Self {
 		if let ToolMessage::Crop(event) = event {
 			match (self, event) {
-				(CropToolFsmState::Ready | CropToolFsmState::ResizingBounds | CropToolFsmState::Dragging, CropMessage::DocumentIsDirty) => {
+				(CropToolFsmState::Ready | CropToolFsmState::ResizingBounds | CropToolFsmState::Dragging, CropToolMessage::DocumentIsDirty) => {
 					let mut buffer = Vec::new();
 					match (
 						data.selected_board.map(|path| document.artboard_bounding_box_and_transform(&[path])).unwrap_or(None),
@@ -131,7 +131,7 @@ impl Fsm for CropToolFsmState {
 					buffer.into_iter().rev().for_each(|message| responses.push_front(message));
 					self
 				}
-				(CropToolFsmState::Ready, CropMessage::PointerDown) => {
+				(CropToolFsmState::Ready, CropToolMessage::PointerDown) => {
 					data.drag_start = input.mouse.position;
 					data.drag_current = input.mouse.position;
 
@@ -188,7 +188,7 @@ impl Fsm for CropToolFsmState {
 						}
 					}
 				}
-				(CropToolFsmState::ResizingBounds, CropMessage::PointerMove { constrain_axis_or_aspect, center }) => {
+				(CropToolFsmState::ResizingBounds, CropToolMessage::PointerMove { constrain_axis_or_aspect, center }) => {
 					if let Some(bounds) = &data.bounding_box_overlays {
 						if let Some(movement) = &bounds.selected_edges {
 							let from_center = input.keyboard.get(center as usize);
@@ -214,7 +214,7 @@ impl Fsm for CropToolFsmState {
 					}
 					CropToolFsmState::ResizingBounds
 				}
-				(CropToolFsmState::Dragging, CropMessage::PointerMove { constrain_axis_or_aspect, .. }) => {
+				(CropToolFsmState::Dragging, CropToolMessage::PointerMove { constrain_axis_or_aspect, .. }) => {
 					if let Some(bounds) = &data.bounding_box_overlays {
 						let axis_align = input.keyboard.get(constrain_axis_or_aspect as usize);
 
@@ -243,7 +243,7 @@ impl Fsm for CropToolFsmState {
 					}
 					CropToolFsmState::Dragging
 				}
-				(CropToolFsmState::Drawing, CropMessage::PointerMove { constrain_axis_or_aspect, center }) => {
+				(CropToolFsmState::Drawing, CropToolMessage::PointerMove { constrain_axis_or_aspect, center }) => {
 					let mouse_position = input.mouse.position;
 					let snapped_mouse_position = data.snap_handler.snap_position(responses, input.viewport_bounds.size(), document, mouse_position);
 
@@ -277,7 +277,7 @@ impl Fsm for CropToolFsmState {
 
 					CropToolFsmState::Drawing
 				}
-				(CropToolFsmState::Ready, CropMessage::PointerMove { .. }) => {
+				(CropToolFsmState::Ready, CropToolMessage::PointerMove { .. }) => {
 					let cursor = data.bounding_box_overlays.as_ref().map_or(MouseCursorIcon::Default, |bounds| bounds.get_cursor(input, false));
 
 					if data.cursor != cursor {
@@ -287,7 +287,7 @@ impl Fsm for CropToolFsmState {
 
 					CropToolFsmState::Ready
 				}
-				(CropToolFsmState::ResizingBounds, CropMessage::PointerUp) => {
+				(CropToolFsmState::ResizingBounds, CropToolMessage::PointerUp) => {
 					data.snap_handler.cleanup(responses);
 
 					if let Some(bounds) = &mut data.bounding_box_overlays {
@@ -296,7 +296,7 @@ impl Fsm for CropToolFsmState {
 
 					CropToolFsmState::Ready
 				}
-				(CropToolFsmState::Drawing, CropMessage::PointerUp) => {
+				(CropToolFsmState::Drawing, CropToolMessage::PointerUp) => {
 					data.snap_handler.cleanup(responses);
 
 					if let Some(bounds) = &mut data.bounding_box_overlays {
@@ -307,7 +307,7 @@ impl Fsm for CropToolFsmState {
 
 					CropToolFsmState::Ready
 				}
-				(CropToolFsmState::Dragging, CropMessage::PointerUp) => {
+				(CropToolFsmState::Dragging, CropToolMessage::PointerUp) => {
 					data.snap_handler.cleanup(responses);
 
 					if let Some(bounds) = &mut data.bounding_box_overlays {
@@ -316,14 +316,14 @@ impl Fsm for CropToolFsmState {
 
 					CropToolFsmState::Ready
 				}
-				(_, CropMessage::DeleteSelected) => {
+				(_, CropToolMessage::DeleteSelected) => {
 					if let Some(artboard) = data.selected_board.take() {
 						responses.push_back(ArtboardMessage::DeleteArtboard { artboard }.into());
 						responses.push_back(ToolMessage::DocumentIsDirty.into());
 					}
 					CropToolFsmState::Ready
 				}
-				(_, CropMessage::Abort) => {
+				(_, CropToolMessage::Abort) => {
 					if let Some(bounding_box_overlays) = data.bounding_box_overlays.take() {
 						bounding_box_overlays.delete(responses);
 					}

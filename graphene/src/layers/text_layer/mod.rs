@@ -15,7 +15,7 @@ fn glam_to_kurbo(transform: DAffine2) -> Affine {
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
-pub struct Text {
+pub struct TextLayer {
 	pub text: String,
 	pub style: style::PathStyle,
 	pub size: f64,
@@ -26,7 +26,7 @@ pub struct Text {
 	cached_path: Option<BezPath>,
 }
 
-impl LayerData for Text {
+impl LayerData for TextLayer {
 	fn render(&mut self, svg: &mut String, transforms: &mut Vec<DAffine2>, view_mode: ViewMode) {
 		let transform = self.transform(transforms, view_mode);
 		let inverse = transform.inverse();
@@ -84,7 +84,7 @@ impl LayerData for Text {
 	}
 }
 
-impl Text {
+impl TextLayer {
 	pub fn transform(&self, transforms: &[DAffine2], mode: ViewMode) -> DAffine2 {
 		let start = match mode {
 			ViewMode::Outline => 0,

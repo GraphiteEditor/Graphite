@@ -12,16 +12,16 @@ pub enum ToolMessage {
 	// Sub-messages
 	#[remain::unsorted]
 	#[child]
-	Select(SelectMessage),
+	Select(SelectToolMessage),
 	#[remain::unsorted]
 	#[child]
-	Crop(CropMessage),
+	Crop(CropToolMessage),
 	#[remain::unsorted]
 	#[child]
-	Navigate(NavigateMessage),
+	Navigate(NavigateToolMessage),
 	#[remain::unsorted]
 	#[child]
-	Eyedropper(EyedropperMessage),
+	Eyedropper(EyedropperToolMessage),
 	// #[remain::unsorted]
 	// #[child]
 	// Text(TextMessage),
@@ -30,7 +30,7 @@ pub enum ToolMessage {
 	Text(TextMessage),
 	#[remain::unsorted]
 	#[child]
-	Fill(FillMessage),
+	Fill(FillToolMessage),
 	// #[remain::unsorted]
 	// #[child]
 	// Gradient(GradientMessage),
@@ -54,28 +54,28 @@ pub enum ToolMessage {
 	// Relight(RelightMessage),
 	#[remain::unsorted]
 	#[child]
-	Path(PathMessage),
+	Path(PathToolMessage),
 	#[remain::unsorted]
 	#[child]
-	Pen(PenMessage),
+	Pen(PenToolMessage),
 	#[remain::unsorted]
 	#[child]
-	Freehand(FreehandMessage),
+	Freehand(FreehandToolMessage),
 	#[remain::unsorted]
 	#[child]
-	Spline(SplineMessage),
+	Spline(SplineToolMessage),
 	#[remain::unsorted]
 	#[child]
-	Line(LineMessage),
+	Line(LineToolMessage),
 	#[remain::unsorted]
 	#[child]
-	Rectangle(RectangleMessage),
+	Rectangle(RectangleToolMessage),
 	#[remain::unsorted]
 	#[child]
-	Ellipse(EllipseMessage),
+	Ellipse(EllipseToolMessage),
 	#[remain::unsorted]
 	#[child]
-	Shape(ShapeMessage),
+	Shape(ShapeToolMessage),
 
 	// Messages
 	#[remain::unsorted]
