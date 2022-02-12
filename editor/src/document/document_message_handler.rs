@@ -16,7 +16,7 @@ use crate::viewport_tools::vector_editor::vector_shape::VectorShape;
 use crate::EditorError;
 
 use graphene::document::Document as GrapheneDocument;
-use graphene::layers::folder::Folder;
+use graphene::layers::folder_layer::FolderLayer;
 use graphene::layers::layer_info::LayerDataType;
 use graphene::layers::style::ViewMode;
 use graphene::{DocumentError, DocumentResponse, LayerId, Operation as DocumentOperation};
@@ -223,7 +223,7 @@ impl DocumentMessageHandler {
 			)
 	}
 
-	fn serialize_structure(&self, folder: &Folder, structure: &mut Vec<u64>, data: &mut Vec<LayerId>, path: &mut Vec<LayerId>) {
+	fn serialize_structure(&self, folder: &FolderLayer, structure: &mut Vec<u64>, data: &mut Vec<LayerId>, path: &mut Vec<LayerId>) {
 		let mut space = 0;
 		for (id, layer) in folder.layer_ids.iter().zip(folder.layers()).rev() {
 			data.push(*id);
@@ -930,7 +930,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 				responses.push_back(ToolMessage::DocumentIsDirty.into());
 			}
 			Redo => {
-				responses.push_back(SelectMessage::Abort.into());
+				responses.push_back(SelectToolMessage::Abort.into());
 				responses.push_back(DocumentHistoryForward.into());
 				responses.push_back(ToolMessage::DocumentIsDirty.into());
 				responses.push_back(RenderDocument.into());
@@ -1187,7 +1187,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 				responses.push_back(ToolMessage::DocumentIsDirty.into());
 			}
 			Undo => {
-				responses.push_back(SelectMessage::Abort.into());
+				responses.push_back(SelectToolMessage::Abort.into());
 				responses.push_back(DocumentHistoryBackward.into());
 				responses.push_back(ToolMessage::DocumentIsDirty.into());
 				responses.push_back(RenderDocument.into());

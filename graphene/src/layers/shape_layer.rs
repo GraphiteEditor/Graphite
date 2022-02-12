@@ -13,14 +13,14 @@ fn glam_to_kurbo(transform: DAffine2) -> Affine {
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
-pub struct Shape {
+pub struct ShapeLayer {
 	pub path: BezPath,
 	pub style: style::PathStyle,
 	pub render_index: i32,
 	pub closed: bool,
 }
 
-impl LayerData for Shape {
+impl LayerData for ShapeLayer {
 	fn render(&mut self, svg: &mut String, transforms: &mut Vec<DAffine2>, view_mode: ViewMode) {
 		let mut path = self.path.clone();
 		let transform = self.transform(transforms, view_mode);
@@ -60,7 +60,7 @@ impl LayerData for Shape {
 	}
 }
 
-impl Shape {
+impl ShapeLayer {
 	pub fn transform(&self, transforms: &[DAffine2], mode: ViewMode) -> DAffine2 {
 		let start = match (mode, self.render_index) {
 			(ViewMode::Outline, _) => 0,
