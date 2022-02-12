@@ -5,7 +5,7 @@ use crate::layers::folder_layer::FolderLayer;
 use crate::layers::layer_info::{Layer, LayerData, LayerDataType};
 use crate::layers::shape_layer::ShapeLayer;
 use crate::layers::style::ViewMode;
-use crate::layers::text_layer::Text;
+use crate::layers::text_layer::TextLayer;
 use crate::{DocumentError, DocumentResponse, Operation};
 
 use glam::{DAffine2, DVec2};
@@ -490,7 +490,7 @@ impl Document {
 				style,
 				size,
 			} => {
-				let layer = Layer::new(LayerDataType::Text(Text::new(text.clone(), *style, *size)), *transform);
+				let layer = Layer::new(LayerDataType::Text(TextLayer::new(text.clone(), *style, *size)), *transform);
 
 				self.set_layer(path, layer, *insert_index)?;
 

@@ -2,7 +2,7 @@ use super::blend_mode::BlendMode;
 use super::folder_layer::FolderLayer;
 use super::shape_layer::ShapeLayer;
 use super::style::ViewMode;
-use super::text_layer::Text;
+use super::text_layer::TextLayer;
 use crate::intersection::Quad;
 use crate::DocumentError;
 use crate::LayerId;
@@ -15,7 +15,7 @@ use std::fmt::Write;
 pub enum LayerDataType {
 	Folder(FolderLayer),
 	Shape(ShapeLayer),
-	Text(Text),
+	Text(TextLayer),
 }
 
 impl LayerDataType {
@@ -163,14 +163,14 @@ impl Layer {
 		}
 	}
 
-	pub fn as_text_mut(&mut self) -> Result<&mut Text, DocumentError> {
+	pub fn as_text_mut(&mut self) -> Result<&mut TextLayer, DocumentError> {
 		match &mut self.data {
 			LayerDataType::Text(t) => Ok(t),
 			_ => Err(DocumentError::NotText),
 		}
 	}
 
-	pub fn as_text(&self) -> Result<&Text, DocumentError> {
+	pub fn as_text(&self) -> Result<&TextLayer, DocumentError> {
 		match &self.data {
 			LayerDataType::Text(t) => Ok(t),
 			_ => Err(DocumentError::NotText),
