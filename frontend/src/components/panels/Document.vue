@@ -6,12 +6,12 @@
 
 				<Separator :type="'Section'" />
 
-				<WidgetLayout :layout="toolOptionsLayout" />
+				<WidgetLayout :layout="toolOptionsLayout" class="tool-options" />
 			</LayoutRow>
 
 			<LayoutRow class="spacer"></LayoutRow>
 
-			<WidgetLayout :layout="documentBarLayout" class="right side" />
+			<WidgetLayout :layout="documentBarLayout" class="right side document-bar" />
 		</LayoutRow>
 		<LayoutRow class="shelf-and-viewport">
 			<LayoutCol class="shelf">
