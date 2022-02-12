@@ -12,7 +12,13 @@
 	></FieldInput>
 </template>
 
-<style lang="scss"></style>
+<style lang="scss">
+.text-input {
+	input {
+		text-align: left;
+	}
+}
+</style>
 
 <script lang="ts">
 import { defineComponent, PropType } from "vue";
@@ -20,7 +26,7 @@ import { defineComponent, PropType } from "vue";
 import FieldInput from "@/components/widgets/inputs/FieldInput.vue";
 
 export default defineComponent({
-	emits: ["update:value"],
+	emits: ["update:value", "commitText"],
 	props: {
 		value: { type: String as PropType<string>, required: true },
 		label: { type: String as PropType<string>, required: false },
@@ -54,7 +60,13 @@ export default defineComponent({
 		// enter key (via the `change` event) or when the <input> element is defocused (with the `blur` event binding)
 		onTextChanged() {
 			// The `inputElement.blur()` call in `onCancelTextChange()` causes itself to be run again, so this if statement skips a second run
-			if (this.editing) this.onCancelTextChange();
+			if (!this.editing) return;
+
+			this.onCancelTextChange();
+
+			// TODO: Find a less hacky way to do this
+			const inputElement = (this.$refs.fieldInput as typeof FieldInput).$refs.input as HTMLInputElement;
+			this.$emit("commitText", inputElement.value);
 		},
 		onCancelTextChange() {
 			this.editing = false;

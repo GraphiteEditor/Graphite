@@ -1,15 +1,64 @@
 <template>
-	<LayoutCol class="properties-panel"></LayoutCol>
+	<LayoutCol class="properties">
+		<LayoutRow class="options-bar">
+			<WidgetLayout :layout="propertiesOptionsLayout"></WidgetLayout>
+		</LayoutRow>
+		<LayoutRow class="sections" :scrollableY="true">
+			<WidgetLayout :layout="propertiesSectionsLayout"></WidgetLayout>
+		</LayoutRow>
+	</LayoutCol>
 </template>
 
-<style lang="scss"></style>
+<style lang="scss">
+.properties {
+	height: 100%;
+
+	.widget-layout {
+		flex: 1 1 100%;
+		margin: 0 4px;
+	}
+
+	.options-bar {
+		height: 32px;
+		flex: 0 0 auto;
+	}
+
+	.sections {
+		flex: 1 1 100%;
+	}
+}
+</style>
 
 <script lang="ts">
 import { defineComponent } from "vue";
 
+import { defaultWidgetLayout, UpdatePropertyPanelOptionsLayout, UpdatePropertyPanelSectionsLayout } from "@/dispatcher/js-messages";
+
 import LayoutCol from "@/components/layout/LayoutCol.vue";
+import LayoutRow from "@/components/layout/LayoutRow.vue";
+
+import WidgetLayout from "@/components/widgets/WidgetLayout.vue";
 
 export default defineComponent({
-	components: { LayoutCol },
+	inject: ["editor", "dialog"],
+	data() {
+		return {
+			propertiesOptionsLayout: defaultWidgetLayout(),
+			propertiesSectionsLayout: defaultWidgetLayout(),
+		};
+	},
+	mounted() {
+		this.editor.dispatcher.subscribeJsMessage(UpdatePropertyPanelOptionsLayout, (updatePropertyPanelOptionsLayout) => {
+			this.propertiesOptionsLayout = updatePropertyPanelOptionsLayout;
+		});
+		this.editor.dispatcher.subscribeJsMessage(UpdatePropertyPanelSectionsLayout, (updatePropertyPanelSectionsLayout) => {
+			this.propertiesSectionsLayout = updatePropertyPanelSectionsLayout;
+		});
+	},
+	components: {
+		WidgetLayout,
+		LayoutRow,
+		LayoutCol,
+	},
 });
 </script>
