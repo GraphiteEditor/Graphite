@@ -485,43 +485,46 @@ export class DisplayDialogComingSoon extends JsMessage {
 
 export class TriggerTextCommit extends JsMessage {}
 
+export class TriggerViewportResize extends JsMessage {}
+
 // Any is used since the type of the object should be known from the rust side
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type JSMessageFactory = (data: any, wasm: WasmInstance, instance: RustEditorInstance) => JsMessage;
 type MessageMaker = typeof JsMessage | JSMessageFactory;
 
 export const messageConstructors: Record<string, MessageMaker> = {
-	UpdateDocumentArtwork,
-	UpdateDocumentOverlays,
-	UpdateDocumentScrollbars,
-	UpdateDocumentRulers,
-	TriggerFileDownload,
-	TriggerFileUpload,
+	DisplayConfirmationToCloseAllDocuments,
+	DisplayConfirmationToCloseDocument,
+	DisplayDialogAboutGraphite,
+	DisplayDialogComingSoon,
+	DisplayDialogError,
+	DisplayDialogPanic,
 	DisplayDocumentLayerTreeStructure: newDisplayDocumentLayerTreeStructure,
 	DisplayEditableTextbox,
 	DisplayRemoveEditableTextbox,
-	UpdateDocumentLayer,
-	UpdateActiveTool,
-	UpdateActiveDocument,
-	UpdateOpenDocumentsList,
-	UpdateInputHints,
-	UpdateWorkingColors,
-	UpdateCanvasZoom,
-	UpdateCanvasRotation,
-	UpdateMouseCursor,
-	DisplayDialogError,
-	DisplayDialogPanic,
-	DisplayConfirmationToCloseDocument,
-	DisplayConfirmationToCloseAllDocuments,
-	DisplayDialogAboutGraphite,
-	TriggerIndexedDbWriteDocument,
+	TriggerFileDownload,
+	TriggerFileUpload,
 	TriggerIndexedDbRemoveDocument,
+	TriggerIndexedDbWriteDocument,
 	TriggerTextCommit,
+	TriggerViewportResize,
+	UpdateActiveDocument,
+	UpdateActiveTool,
+	UpdateCanvasRotation,
+	UpdateCanvasZoom,
 	UpdateDocumentArtboards,
-	UpdateToolOptionsLayout,
-	DisplayDialogComingSoon,
+	UpdateDocumentArtwork,
 	UpdateDocumentBarLayout,
+	UpdateDocumentLayer,
+	UpdateDocumentOverlays,
+	UpdateDocumentRulers,
+	UpdateDocumentScrollbars,
+	UpdateInputHints,
+	UpdateMouseCursor,
+	UpdateOpenDocumentsList,
 	UpdatePropertyPanelOptionsLayout,
 	UpdatePropertyPanelSectionsLayout,
+	UpdateToolOptionsLayout,
+	UpdateWorkingColors,
 } as const;
 export type JsMessageType = keyof typeof messageConstructors;

@@ -65,11 +65,11 @@
 			</LayoutCol>
 			<LayoutCol class="viewport">
 				<LayoutRow class="bar-area">
-					<CanvasRuler :origin="rulerOrigin.x" :majorMarkSpacing="rulerSpacing" :numberInterval="rulerInterval" :direction="'Horizontal'" class="top-ruler" />
+					<CanvasRuler :origin="rulerOrigin.x" :majorMarkSpacing="rulerSpacing" :numberInterval="rulerInterval" :direction="'Horizontal'" class="top-ruler" ref="rulerHorizontal" />
 				</LayoutRow>
 				<LayoutRow class="canvas-area">
 					<LayoutCol class="bar-area">
-						<CanvasRuler :origin="rulerOrigin.y" :majorMarkSpacing="rulerSpacing" :numberInterval="rulerInterval" :direction="'Vertical'" />
+						<CanvasRuler :origin="rulerOrigin.y" :majorMarkSpacing="rulerSpacing" :numberInterval="rulerInterval" :direction="'Vertical'" ref="rulerVertical" />
 					</LayoutCol>
 					<LayoutCol class="canvas-area">
 						<div class="canvas" data-canvas ref="canvas" :style="{ cursor: canvasCursor }" @pointerdown="(e: PointerEvent) => canvasPointerDown(e)">
@@ -240,6 +240,7 @@ import {
 	defaultWidgetLayout,
 	UpdateDocumentBarLayout,
 	TriggerTextCommit,
+	TriggerViewportResize,
 	DisplayRemoveEditableTextbox,
 	DisplayEditableTextbox,
 } from "@/dispatcher/js-messages";
@@ -263,7 +264,10 @@ export default defineComponent({
 	inject: ["editor", "dialog"],
 	methods: {
 		viewportResize() {
+			// Resize the canvas
+
 			const canvas = this.$refs.canvas as HTMLElement;
+
 			// Get the width and height rounded up to the nearest even number because resizing is centered and dividing an odd number by 2 for centering causes antialiasing
 			let width = Math.ceil(parseFloat(getComputedStyle(canvas).width));
 			if (width % 2 === 1) width += 1;
@@ -272,6 +276,13 @@ export default defineComponent({
 
 			this.canvasSvgWidth = `${width}px`;
 			this.canvasSvgHeight = `${height}px`;
+
+			// Resize the rulers
+
+			const rulerHorizontal = this.$refs.rulerHorizontal as typeof CanvasRuler;
+			const rulerVertical = this.$refs.rulerVertical as typeof CanvasRuler;
+			if (rulerHorizontal) rulerHorizontal.handleResize();
+			if (rulerVertical) rulerVertical.handleResize();
 		},
 		translateCanvasX(newValue: number) {
 			const delta = newValue - this.scrollbarPos.x;
@@ -415,9 +426,11 @@ export default defineComponent({
 		this.editor.dispatcher.subscribeJsMessage(UpdateDocumentBarLayout, (updateDocumentBarLayout) => {
 			this.documentBarLayout = updateDocumentBarLayout;
 		});
+		this.editor.dispatcher.subscribeJsMessage(TriggerViewportResize, this.viewportResize);
 
-		window.addEventListener("resize", this.viewportResize);
-		window.addEventListener("DOMContentLoaded", this.viewportResize);
+		// TODO(mfish33): Replace with initialization system Issue:#524
+		// Get initial Document Bar
+		this.editor.instance.init_document_bar();
 	},
 	data() {
 		const documentModeEntries: SectionsOfMenuListEntries = [

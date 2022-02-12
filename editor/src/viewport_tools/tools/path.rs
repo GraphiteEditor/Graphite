@@ -10,9 +10,9 @@ use crate::viewport_tools::snapping::SnapHandler;
 use crate::viewport_tools::tool::{DocumentToolData, Fsm, ToolActionHandlerData};
 use crate::viewport_tools::vector_editor::shape_editor::ShapeEditor;
 
-use glam::DVec2;
 use graphene::intersection::Quad;
 
+use glam::DVec2;
 use serde::{Deserialize, Serialize};
 
 #[derive(Default)]
@@ -94,6 +94,8 @@ impl Default for PathToolFsmState {
 struct PathToolData {
 	shape_editor: ShapeEditor,
 	snap_handler: SnapHandler,
+
+	drag_start_pos: DVec2,
 	alt_debounce: bool,
 	shift_debounce: bool,
 }
@@ -151,6 +153,7 @@ impl Fsm for PathToolFsmState {
 							.map(|point| point.position)
 							.collect();
 						data.snap_handler.add_snap_points(document, snap_points);
+						data.drag_start_pos = input.mouse.position;
 						Dragging
 					}
 					// We didn't find a point nearby, so consider selecting the nearest shape instead
@@ -207,7 +210,7 @@ impl Fsm for PathToolFsmState {
 
 					// Move the selected points by the mouse position
 					let snapped_position = data.snap_handler.snap_position(responses, input.viewport_bounds.size(), document, input.mouse.position);
-					data.shape_editor.move_selected_points(snapped_position, responses);
+					data.shape_editor.move_selected_points(snapped_position - data.drag_start_pos, true, responses);
 					Dragging
 				}
 				// Mouse up

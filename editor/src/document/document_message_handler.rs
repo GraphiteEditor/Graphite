@@ -798,7 +798,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 				}
 			}
 			ExportDocument => {
-				// TODO(MFISH33): Add Dialog to select artboards
+				// TODO(mfish33): Add Dialog to select artboards
 				let bbox = self.document_bounds().unwrap_or_else(|| [DVec2::ZERO, ipp.viewport_bounds.size()]);
 				let size = bbox[1] - bbox[0];
 				let name = match self.name.ends_with(FILE_SAVE_SUFFIX) {

@@ -200,7 +200,7 @@ pub fn standard_tool_message(tool: ToolType, message_type: StandardToolMessageTy
 			ToolType::BlurSharpen => None, // Some(BlurSharpenMessage::DocumentIsDirty.into()),
 			ToolType::Relight => None,     // Some(RelightMessage::DocumentIsDirty.into()),
 			ToolType::Path => Some(PathMessage::DocumentIsDirty.into()),
-			ToolType::Pen => None,       // Some(PenMessage::DocumentIsDirty.into()),
+			ToolType::Pen => Some(PenMessage::DocumentIsDirty.into()),
 			ToolType::Freehand => None,  // Some(FreehandMessage::DocumentIsDirty.into()),
 			ToolType::Spline => None,    // Some(SplineMessage::DocumentIsDirty.into()),
 			ToolType::Line => None,      // Some(LineMessage::DocumentIsDirty.into()),
