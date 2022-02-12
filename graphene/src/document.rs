@@ -529,6 +529,18 @@ impl Document {
 
 				Some([vec![DocumentChanged, CreatedLayer { path: path.clone() }]].concat())
 			}
+			Operation::AddShape {
+				path,
+				transform,
+				insert_index,
+				style,
+				bez_path,
+				closed,
+			} => {
+				let shape = Shape::from_bez_path(bez_path.clone(), *style, *closed);
+				self.set_layer(path, Layer::new(LayerDataType::Shape(shape), *transform), *insert_index)?;
+				Some([vec![DocumentChanged, CreatedLayer { path: path.clone() }]].concat())
+			}
 			Operation::AddPolyline {
 				path,
 				insert_index,

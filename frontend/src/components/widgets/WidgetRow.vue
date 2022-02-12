@@ -1,4 +1,5 @@
 <template>
+	<div>{{ widgetData.name }}</div>
 	<div class="widget-row">
 		<template v-for="(component, index) in widgetData.widgets" :key="index">
 			<!-- TODO: Use `<component :is="" v-bind="attributesObject"></component>` to avoid all the separate components with `v-if` -->
@@ -13,18 +14,20 @@
 				:incrementCallbackIncrease="() => updateLayout(component.widget_id, 'Increment')"
 				:incrementCallbackDecrease="() => updateLayout(component.widget_id, 'Decrement')"
 			/>
-			<TextInput v-if="component.kind === 'TextInput'" v-bind="component.props" @update:value="(value: string) => updateLayout(component.widget_id, value)" />
+			<TextInput v-if="component.kind === 'TextInput'" v-bind="component.props" @commitText="(value: string) => updateLayout(component.widget_id, value)" />
 			<IconButton v-if="component.kind === 'IconButton'" v-bind="component.props" :action="() => updateLayout(component.widget_id, null)" />
 			<OptionalInput v-if="component.kind === 'OptionalInput'" v-bind="component.props" @update:checked="(value: boolean) => updateLayout(component.widget_id, value)" />
 			<RadioInput v-if="component.kind === 'RadioInput'" v-bind="component.props" @update:selectedIndex="(value: number) => updateLayout(component.widget_id, value)" />
 			<Separator v-if="component.kind === 'Separator'" v-bind="component.props" />
+			<TextLabel v-if="component.kind === 'TextLabel'" v-bind="component.props">{{ component.props.value }}</TextLabel>
+			<IconLabel v-if="component.kind === 'IconLabel'" v-bind="component.props" />
 		</template>
 	</div>
 </template>
 
 <style lang="scss">
 .widget-row {
-	height: 100%;
+	height: 32px;
 	flex: 0 0 auto;
 	display: flex;
 	align-items: center;
@@ -42,6 +45,8 @@ import NumberInput from "@/components/widgets/inputs/NumberInput.vue";
 import OptionalInput from "@/components/widgets/inputs/OptionalInput.vue";
 import RadioInput from "@/components/widgets/inputs/RadioInput.vue";
 import TextInput from "@/components/widgets/inputs/TextInput.vue";
+import IconLabel from "@/components/widgets/labels/IconLabel.vue";
+import TextLabel from "@/components/widgets/labels/TextLabel.vue";
 import Separator from "@/components/widgets/separators/Separator.vue";
 
 export default defineComponent({
@@ -63,6 +68,8 @@ export default defineComponent({
 		IconButton,
 		OptionalInput,
 		RadioInput,
+		TextLabel,
+		IconLabel,
 	},
 });
 </script>

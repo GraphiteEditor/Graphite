@@ -1,4 +1,10 @@
-use glam::{DAffine2, DVec2};
+use super::{constants::ControlPointType, vector_anchor::VectorAnchor, vector_control_point::VectorControlPoint};
+use crate::{
+	consts::COLOR_ACCENT,
+	document::DocumentMessageHandler,
+	message_prelude::{generate_uuid, DocumentMessage, Message},
+};
+
 use graphene::{
 	color::Color,
 	layers::{
@@ -7,17 +13,11 @@ use graphene::{
 	},
 	LayerId, Operation,
 };
+
+use glam::{DAffine2, DVec2};
 use kurbo::{BezPath, PathEl};
 use std::collections::HashSet;
 use std::collections::VecDeque;
-
-use crate::{
-	consts::COLOR_ACCENT,
-	document::DocumentMessageHandler,
-	message_prelude::{generate_uuid, DocumentMessage, Message},
-};
-
-use super::{constants::ControlPointType, vector_anchor::VectorAnchor, vector_control_point::VectorControlPoint};
 
 /// VectorShape represents a single kurbo shape and maintains a parallel data structure
 /// For each kurbo path we keep a VectorShape which contains the handles and anchors for that path
@@ -74,6 +74,13 @@ impl VectorShape {
 		&mut self.anchors[anchor_index]
 	}
 
+	/// The last anchor in the shape thus far
+	pub fn select_last_anchor(&mut self) -> &mut VectorAnchor {
+		let last_index = self.anchors.len() - 1;
+		self.selected_anchor_indices.insert(last_index);
+		&mut self.anchors[last_index]
+	}
+
 	/// Deselect an anchor
 	pub fn deselect_anchor(&mut self, anchor_index: usize, responses: &mut VecDeque<Message>) {
 		self.anchors[anchor_index].clear_selected_points(responses);
@@ -112,14 +119,19 @@ impl VectorShape {
 			.filter_map(|(index, anchor)| if self.selected_anchor_indices.contains(&index) { Some(anchor) } else { None })
 	}
 
+	/// Return a mutable interator of the anchors regardless of selection
+	pub fn anchors_mut(&mut self) -> impl Iterator<Item = &mut VectorAnchor> {
+		self.anchors.iter_mut()
+	}
+
 	/// Move the selected point based on mouse input, if this is a handle we can control if we are mirroring or not
 	/// A wrapper around move_point to handle mirror state / submit the changes
-	pub fn move_selected(&mut self, position_delta: DVec2, responses: &mut VecDeque<Message>) {
+	pub fn move_selected(&mut self, target: DVec2, relative: bool, responses: &mut VecDeque<Message>) {
 		let transform = &self.transform.clone();
 		let mut edited_bez_path = self.elements.clone();
 
 		for selected_anchor in self.selected_anchors_mut() {
-			selected_anchor.move_selected_points(position_delta, &mut edited_bez_path, transform);
+			selected_anchor.move_selected_points(target, relative, &mut edited_bez_path, transform);
 		}
 
 		// We've made our changes to the shape, submit them

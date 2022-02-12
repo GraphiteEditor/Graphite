@@ -89,10 +89,18 @@ pub enum Operation {
 		style: style::PathStyle,
 		closed: bool,
 	},
-	BooleanOperation {
+	AddShape {
+		path: Vec<LayerId>,
+		transform: [f64; 6],
+		insert_index: isize,
+		bez_path: kurbo::BezPath,
+		style: style::PathStyle,
+		closed: bool,
+	},
+  BooleanOperation {
 		operation: BooleanOperationType,
 		selected: Vec<Vec<LayerId>>,
-	},
+  },
 	DeleteLayer {
 		path: Vec<LayerId>,
 	},

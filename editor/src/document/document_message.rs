@@ -29,6 +29,9 @@ pub enum DocumentMessage {
 	#[remain::unsorted]
 	#[child]
 	TransformLayers(TransformLayerMessage),
+	#[remain::unsorted]
+	#[child]
+	PropertiesPanel(PropertiesPanelMessage),
 
 	// Messages
 	AbortTransaction,
