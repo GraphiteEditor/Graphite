@@ -128,7 +128,6 @@ struct PenToolData {
 	weight: u32,
 	path: Option<Vec<LayerId>>,
 	curve_shape: VectorShape,
-	previous_start_position: DVec2,
 	bez_path: Vec<PathEl>,
 	snap_handler: SnapHandler,
 	shape_editor: ShapeEditor,
@@ -185,52 +184,15 @@ impl Fsm for PenToolFsmState {
 						);
 					}
 
-					log::debug!("Started creating path {:#?}", data.bez_path);
+					add_to_curve(data, input, transform, document, responses);
 					Drawing
 				}
 				(Drawing, DragStart) => {
-					// Setup our position params
-					let snapped_position = data.snap_handler.snap_position(responses, input.viewport_bounds.size(), document, input.mouse.position);
-					let position = transform.inverse().transform_point2(snapped_position);
-
-					// Add a curve to the path
-					if let Some(layer_path) = &data.path {
-						add_curve_to_bez_path(position, &mut data.bez_path);
-						responses.push_back(apply_bez_path(layer_path.clone(), data.bez_path.clone(), transform));
-					}
-
-					if let Some(layer_path) = &data.path {
-						// Clear previous overlays
-						data.shape_editor.remove_overlays(responses);
-
-						// Create a new shape from the updated bez_path
-						let bez_path = data.bez_path.clone().into_iter().collect();
-						data.curve_shape = VectorShape::new(layer_path.to_vec(), transform, &bez_path, false, responses);
-						data.shape_editor.set_shapes_to_modify(vec![data.curve_shape.clone()]);
-
-						// Select the second to last segment's handle
-						data.shape_editor.set_shape_selected(0);
-						let handle_element = data.shape_editor.select_nth_anchor(0, -2);
-						handle_element.select_point(2, true, responses);
-
-						// Select the last segment's anchor point
-						if let Some(last_anchor) = data.shape_editor.select_last_anchor() {
-							last_anchor.select_point(0, true, responses);
-						}
-						data.shape_editor.set_selected_mirror_options(true, true);
-					}
-					// data.previous_start_position = start_position;
-					log::debug!("Added to path {:#?}", data.bez_path);
-
-					if !data.shape_editor.shapes_to_modify.is_empty() {
-						// Hacky way of saving the curve changes
-						data.bez_path = data.shape_editor.shapes_to_modify[0].bez_path.elements().to_vec();
-					}
-
+					add_to_curve(data, input, transform, document, responses);
 					Drawing
 				}
 				(Drawing, DragStop) => {
-					// Deselect everything
+					// Deselect everything (this means we are no longer dragging the handle)
 					data.shape_editor.deselect_all(responses);
 
 					// Reselect the last point
@@ -238,6 +200,7 @@ impl Fsm for PenToolFsmState {
 						last_anchor.select_point(0, true, responses);
 					}
 
+					// Would like to remove this hack eventually
 					if !data.shape_editor.shapes_to_modify.is_empty() {
 						// Hacky way of saving the curve changes
 						data.bez_path = data.shape_editor.shapes_to_modify[0].bez_path.elements().to_vec();
@@ -252,6 +215,7 @@ impl Fsm for PenToolFsmState {
 					Drawing
 				}
 				(Drawing, Confirm) | (Drawing, Abort) => {
+					// Cleanup, we are either canceling or finished drawing
 					if data.bez_path.len() >= 2 {
 						responses.push_back(DocumentMessage::DeselectAllLayers.into());
 						responses.push_back(DocumentMessage::CommitTransaction.into());
@@ -311,6 +275,48 @@ impl Fsm for PenToolFsmState {
 	}
 }
 
+// Add to the curve and select the second anchor of the last point and the newly added anchor point
+fn add_to_curve(data: &mut PenToolData, input: &InputPreprocessorMessageHandler, transform: DAffine2, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
+	// We need to make sure we have the most up-to-date bez_path
+	// Would like to remove this hack eventually
+	if !data.shape_editor.shapes_to_modify.is_empty() {
+		// Hacky way of saving the curve changes
+		data.bez_path = data.shape_editor.shapes_to_modify[0].bez_path.elements().to_vec();
+	}
+
+	// Setup our position params
+	let snapped_position = data.snap_handler.snap_position(responses, input.viewport_bounds.size(), document, input.mouse.position);
+	let position = transform.inverse().transform_point2(snapped_position);
+
+	// Add a curve to the path
+	if let Some(layer_path) = &data.path {
+		add_curve_to_bez_path(position, &mut data.bez_path);
+		responses.push_back(apply_bez_path(layer_path.clone(), data.bez_path.clone(), transform));
+	}
+
+	if let Some(layer_path) = &data.path {
+		// Clear previous overlays
+		data.shape_editor.remove_overlays(responses);
+
+		// Create a new shape from the updated bez_path
+		let bez_path = data.bez_path.clone().into_iter().collect();
+		data.curve_shape = VectorShape::new(layer_path.to_vec(), transform, &bez_path, false, responses);
+		data.shape_editor.set_shapes_to_modify(vec![data.curve_shape.clone()]);
+
+		// Select the second to last segment's handle
+		data.shape_editor.set_shape_selected(0);
+		let handle_element = data.shape_editor.select_nth_anchor(0, -2);
+		handle_element.select_point(2, true, responses);
+
+		// Select the last segment's anchor point
+		if let Some(last_anchor) = data.shape_editor.select_last_anchor() {
+			last_anchor.select_point(0, true, responses);
+		}
+		data.shape_editor.set_selected_mirror_options(true, true);
+	}
+}
+
+// Create the initial moveto for the bez_path
 fn start_bez_path(start_position: DVec2) -> Vec<PathEl> {
 	vec![PathEl::MoveTo(Point {
 		x: start_position.x,
@@ -318,11 +324,13 @@ fn start_bez_path(start_position: DVec2) -> Vec<PathEl> {
 	})]
 }
 
+// Add a curve to the bez_path
 fn add_curve_to_bez_path(point: DVec2, bez_path: &mut Vec<PathEl>) {
 	let point = Point { x: point.x, y: point.y };
 	bez_path.push(PathEl::CurveTo(point, point, point));
 }
 
+// Apple the bez_path to the shape in the viewport
 fn apply_bez_path(layer_path: Vec<LayerId>, bez_path: Vec<PathEl>, transform: DAffine2) -> Message {
 	Operation::SetShapePathInViewport {
 		path: layer_path,

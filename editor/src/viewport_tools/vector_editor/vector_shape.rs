@@ -119,6 +119,7 @@ impl VectorShape {
 			.filter_map(|(index, anchor)| if self.selected_anchor_indices.contains(&index) { Some(anchor) } else { None })
 	}
 
+	/// Return a mutable interator of the anchors regardless of selection
 	pub fn anchors_mut(&mut self) -> impl Iterator<Item = &mut VectorAnchor> {
 		self.anchors.iter_mut()
 	}

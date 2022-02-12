@@ -119,6 +119,7 @@ impl ShapeEditor {
 		}
 	}
 
+	/// Clear all of the shapes we can modify
 	pub fn clear_shapes_to_modify(&mut self) {
 		self.shapes_to_modify.clear();
 	}
@@ -165,11 +166,12 @@ impl ShapeEditor {
 		self.selected_shapes_mut().flat_map(|shape| shape.selected_anchors_mut())
 	}
 
-	// A mutable list of all the anchors
+	/// A mutable iterator of all the anchors, regardless of selection
 	pub fn anchors_mut(&mut self) -> impl Iterator<Item = &mut VectorAnchor> {
 		self.shapes_to_modify.iter_mut().flat_map(|shape| shape.anchors_mut())
 	}
 
+	/// Select the last anchor in this shape
 	pub fn select_last_anchor(&mut self) -> Option<&mut VectorAnchor> {
 		if let Some(last) = self.shapes_to_modify.last_mut() {
 			return Some(last.select_last_anchor());
@@ -177,6 +179,7 @@ impl ShapeEditor {
 		None
 	}
 
+	/// Select the Nth anchor of the shape, negative numbers index from the end
 	pub fn select_nth_anchor(&mut self, shape_index: usize, anchor_index: i32) -> &mut VectorAnchor {
 		let shape = &mut self.shapes_to_modify[shape_index];
 		if anchor_index < 0 {
