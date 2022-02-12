@@ -37,7 +37,7 @@ function generateRustLicenses() {
 process.env.VUE_APP_COMMIT_DATE = execSync("git log -1 --format=%cd", { encoding: "utf-8" }).trim();
 process.env.VUE_APP_COMMIT_HASH = execSync("git rev-parse HEAD", { encoding: "utf-8" }).trim();
 process.env.VUE_APP_COMMIT_BRANCH = execSync("git rev-parse --abbrev-ref HEAD", { encoding: "utf-8" }).trim();
-process.env.VUE_APP_RELEASE_SERIES = "Pre-Alpha";
+process.env.VUE_APP_RELEASE_SERIES = "Alpha Milestone 1";
 
 module.exports = {
 	lintOnSave: "warning",
