@@ -9,21 +9,21 @@ use crate::misc::{HintData, HintGroup, HintInfo};
 use crate::viewport_tools::tool::{DocumentToolData, Fsm, ToolActionHandlerData};
 
 use graphene::intersection::Quad;
-use graphene::layers::layer_info::LayerDataType;
+use graphene::Operation;
 
 use glam::DVec2;
 use serde::{Deserialize, Serialize};
 
 #[derive(Default)]
-pub struct Eyedropper {
-	fsm_state: EyedropperToolFsmState,
-	data: EyedropperToolData,
+pub struct FillTool {
+	fsm_state: FillToolFsmState,
+	data: FillToolData,
 }
 
 #[remain::sorted]
-#[impl_message(Message, ToolMessage, Eyedropper)]
+#[impl_message(Message, ToolMessage, Fill)]
 #[derive(PartialEq, Clone, Debug, Hash, Serialize, Deserialize)]
-pub enum EyedropperMessage {
+pub enum FillToolMessage {
 	// Standard messages
 	#[remain::unsorted]
 	Abort,
@@ -33,9 +33,9 @@ pub enum EyedropperMessage {
 	RightMouseDown,
 }
 
-impl PropertyHolder for Eyedropper {}
+impl PropertyHolder for FillTool {}
 
-impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Eyedropper {
+impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for FillTool {
 	fn process_action(&mut self, action: ToolMessage, data: ToolActionHandlerData<'a>, responses: &mut VecDeque<Message>) {
 		if action == ToolMessage::UpdateHints {
 			self.fsm_state.update_hints(responses);
@@ -56,60 +56,56 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Eyedropper {
 		}
 	}
 
-	advertise_actions!(EyedropperMessageDiscriminant; LeftMouseDown, RightMouseDown);
+	advertise_actions!(FillToolMessageDiscriminant; LeftMouseDown, RightMouseDown);
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum EyedropperToolFsmState {
+enum FillToolFsmState {
 	Ready,
 }
 
-impl Default for EyedropperToolFsmState {
+impl Default for FillToolFsmState {
 	fn default() -> Self {
-		EyedropperToolFsmState::Ready
+		FillToolFsmState::Ready
 	}
 }
 
 #[derive(Clone, Debug, Default)]
-struct EyedropperToolData {}
+struct FillToolData {}
 
-impl Fsm for EyedropperToolFsmState {
-	type ToolData = EyedropperToolData;
+impl Fsm for FillToolFsmState {
+	type ToolData = FillToolData;
 	type ToolOptions = ();
 
 	fn transition(
 		self,
 		event: ToolMessage,
 		document: &DocumentMessageHandler,
-		_tool_data: &DocumentToolData,
+		tool_data: &DocumentToolData,
 		_data: &mut Self::ToolData,
 		_tool_options: &Self::ToolOptions,
 		input: &InputPreprocessorMessageHandler,
 		responses: &mut VecDeque<Message>,
 	) -> Self {
-		use EyedropperMessage::*;
-		use EyedropperToolFsmState::*;
+		use FillToolFsmState::*;
+		use FillToolMessage::*;
 
-		if let ToolMessage::Eyedropper(event) = event {
+		if let ToolMessage::Fill(event) = event {
 			match (self, event) {
 				(Ready, lmb_or_rmb) if lmb_or_rmb == LeftMouseDown || lmb_or_rmb == RightMouseDown => {
 					let mouse_pos = input.mouse.position;
 					let tolerance = DVec2::splat(SELECTION_TOLERANCE);
 					let quad = Quad::from_box([mouse_pos - tolerance, mouse_pos + tolerance]);
 
-					// TODO: Destroy this pyramid
 					if let Some(path) = document.graphene_document.intersects_quad_root(quad).last() {
-						if let Ok(layer) = document.graphene_document.layer(path) {
-							if let LayerDataType::Shape(shape) = &layer.data {
-								if let Some(fill) = shape.style.fill() {
-									match lmb_or_rmb {
-										EyedropperMessage::LeftMouseDown => responses.push_back(ToolMessage::SelectPrimaryColor { color: fill.color() }.into()),
-										EyedropperMessage::RightMouseDown => responses.push_back(ToolMessage::SelectSecondaryColor { color: fill.color() }.into()),
-										_ => {}
-									}
-								}
-							}
-						}
+						let color = match lmb_or_rmb {
+							LeftMouseDown => tool_data.primary_color,
+							RightMouseDown => tool_data.secondary_color,
+							Abort => unreachable!(),
+						};
+						responses.push_back(DocumentMessage::StartTransaction.into());
+						responses.push_back(Operation::SetLayerFill { path: path.to_vec(), color }.into());
+						responses.push_back(DocumentMessage::CommitTransaction.into());
 					}
 
 					Ready
@@ -123,17 +119,17 @@ impl Fsm for EyedropperToolFsmState {
 
 	fn update_hints(&self, responses: &mut VecDeque<Message>) {
 		let hint_data = match self {
-			EyedropperToolFsmState::Ready => HintData(vec![HintGroup(vec![
+			FillToolFsmState::Ready => HintData(vec![HintGroup(vec![
 				HintInfo {
 					key_groups: vec![],
 					mouse: Some(MouseMotion::Lmb),
-					label: String::from("Sample to Primary"),
+					label: String::from("Fill with Primary"),
 					plus: false,
 				},
 				HintInfo {
 					key_groups: vec![],
 					mouse: Some(MouseMotion::Rmb),
-					label: String::from("Sample to Secondary"),
+					label: String::from("Fill with Secondary"),
 					plus: false,
 				},
 			])]),

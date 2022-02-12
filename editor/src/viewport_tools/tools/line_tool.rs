@@ -17,7 +17,7 @@ use glam::{DAffine2, DVec2};
 use serde::{Deserialize, Serialize};
 
 #[derive(Default)]
-pub struct Line {
+pub struct LineTool {
 	fsm_state: LineToolFsmState,
 	data: LineToolData,
 	options: LineOptions,
@@ -36,7 +36,7 @@ impl Default for LineOptions {
 #[remain::sorted]
 #[impl_message(Message, ToolMessage, Line)]
 #[derive(PartialEq, Clone, Debug, Hash, Serialize, Deserialize)]
-pub enum LineMessage {
+pub enum LineToolMessage {
 	// Standard messages
 	#[remain::unsorted]
 	Abort,
@@ -58,7 +58,7 @@ pub enum LineOptionsUpdate {
 	LineWeight(u32),
 }
 
-impl PropertyHolder for Line {
+impl PropertyHolder for LineTool {
 	fn properties(&self) -> WidgetLayout {
 		WidgetLayout::new(vec![LayoutRow::Row {
 			name: "".into(),
@@ -68,14 +68,14 @@ impl PropertyHolder for Line {
 				value: self.options.line_weight as f64,
 				is_integer: true,
 				min: Some(0.),
-				on_update: WidgetCallback::new(|number_input| LineMessage::UpdateOptions(LineOptionsUpdate::LineWeight(number_input.value as u32)).into()),
+				on_update: WidgetCallback::new(|number_input| LineToolMessage::UpdateOptions(LineOptionsUpdate::LineWeight(number_input.value as u32)).into()),
 				..NumberInput::default()
 			}))],
 		}])
 	}
 }
 
-impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Line {
+impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for LineTool {
 	fn process_action(&mut self, action: ToolMessage, data: ToolActionHandlerData<'a>, responses: &mut VecDeque<Message>) {
 		if action == ToolMessage::UpdateHints {
 			self.fsm_state.update_hints(responses);
@@ -87,7 +87,7 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Line {
 			return;
 		}
 
-		if let ToolMessage::Line(LineMessage::UpdateOptions(action)) = action {
+		if let ToolMessage::Line(LineToolMessage::UpdateOptions(action)) = action {
 			match action {
 				LineOptionsUpdate::LineWeight(line_weight) => self.options.line_weight = line_weight,
 			}
@@ -107,8 +107,8 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Line {
 		use LineToolFsmState::*;
 
 		match self.fsm_state {
-			Ready => actions!(LineMessageDiscriminant; DragStart),
-			Drawing => actions!(LineMessageDiscriminant; DragStop, Redraw, Abort),
+			Ready => actions!(LineToolMessageDiscriminant; DragStart),
+			Drawing => actions!(LineToolMessageDiscriminant; DragStop, Redraw, Abort),
 		}
 	}
 }
@@ -149,8 +149,8 @@ impl Fsm for LineToolFsmState {
 		input: &InputPreprocessorMessageHandler,
 		responses: &mut VecDeque<Message>,
 	) -> Self {
-		use LineMessage::*;
 		use LineToolFsmState::*;
+		use LineToolMessage::*;
 
 		if let ToolMessage::Line(event) = event {
 			match (self, event) {

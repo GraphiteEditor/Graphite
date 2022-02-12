@@ -18,7 +18,7 @@ use kurbo::{PathEl, Point};
 use serde::{Deserialize, Serialize};
 
 #[derive(Default)]
-pub struct Pen {
+pub struct PenTool {
 	fsm_state: PenToolFsmState,
 	data: PenToolData,
 	options: PenOptions,
@@ -37,7 +37,7 @@ impl Default for PenOptions {
 #[remain::sorted]
 #[impl_message(Message, ToolMessage, Pen)]
 #[derive(PartialEq, Clone, Debug, Hash, Serialize, Deserialize)]
-pub enum PenMessage {
+pub enum PenToolMessage {
 	// Standard messages
 	#[remain::unsorted]
 	DocumentIsDirty,
@@ -65,7 +65,7 @@ pub enum PenOptionsUpdate {
 	LineWeight(u32),
 }
 
-impl PropertyHolder for Pen {
+impl PropertyHolder for PenTool {
 	fn properties(&self) -> WidgetLayout {
 		WidgetLayout::new(vec![LayoutRow::Row {
 			name: "".into(),
@@ -75,14 +75,14 @@ impl PropertyHolder for Pen {
 				value: self.options.line_weight as f64,
 				is_integer: true,
 				min: Some(0.),
-				on_update: WidgetCallback::new(|number_input| PenMessage::UpdateOptions(PenOptionsUpdate::LineWeight(number_input.value as u32)).into()),
+				on_update: WidgetCallback::new(|number_input| PenToolMessage::UpdateOptions(PenOptionsUpdate::LineWeight(number_input.value as u32)).into()),
 				..NumberInput::default()
 			}))],
 		}])
 	}
 }
 
-impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Pen {
+impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for PenTool {
 	fn process_action(&mut self, action: ToolMessage, data: ToolActionHandlerData<'a>, responses: &mut VecDeque<Message>) {
 		if action == ToolMessage::UpdateHints {
 			self.fsm_state.update_hints(responses);
@@ -94,7 +94,7 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Pen {
 			return;
 		}
 
-		if let ToolMessage::Pen(PenMessage::UpdateOptions(action)) = action {
+		if let ToolMessage::Pen(PenToolMessage::UpdateOptions(action)) = action {
 			match action {
 				PenOptionsUpdate::LineWeight(line_weight) => self.options.line_weight = line_weight,
 			}
@@ -114,8 +114,8 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Pen {
 		use PenToolFsmState::*;
 
 		match self.fsm_state {
-			Ready => actions!(PenMessageDiscriminant; Undo, DragStart, DragStop, Confirm, Abort),
-			Drawing => actions!(PenMessageDiscriminant; DragStart, DragStop, PointerMove, Confirm, Abort),
+			Ready => actions!(PenToolMessageDiscriminant; Undo, DragStart, DragStop, Confirm, Abort),
+			Drawing => actions!(PenToolMessageDiscriminant; DragStart, DragStop, PointerMove, Confirm, Abort),
 		}
 	}
 }
@@ -149,8 +149,8 @@ impl Fsm for PenToolFsmState {
 		input: &InputPreprocessorMessageHandler,
 		responses: &mut VecDeque<Message>,
 	) -> Self {
-		use PenMessage::*;
 		use PenToolFsmState::*;
+		use PenToolMessage::*;
 
 		let transform = document.graphene_document.root.transform;
 

@@ -1,6 +1,6 @@
 use crate::consts::{F64PRECISE, RAY_FUDGE_FACTOR};
 use crate::intersection::{intersections, line_curve_intersections, valid_t, Intersect, Origin};
-use crate::layers::simple_shape::Shape;
+use crate::layers::shape_layer::ShapeLayer;
 use crate::layers::style::PathStyle;
 
 use kurbo::{BezPath, CubicBez, Line, ParamCurve, ParamCurveArclen, ParamCurveArea, ParamCurveExtrema, PathEl, PathSeg, Point, QuadBez, Rect};
@@ -377,7 +377,7 @@ impl PathGraph {
 		cycles
 	}
 
-	pub fn get_shape(&self, cycle: &Cycle, style: &PathStyle) -> Shape {
+	pub fn get_shape(&self, cycle: &Cycle, style: &PathStyle) -> ShapeLayer {
 		let mut curve = Vec::new();
 		let vertices = cycle.vertices();
 		for index in 1..vertices.len() {
@@ -385,7 +385,7 @@ impl PathGraph {
 			concat_paths(&mut curve, &self.edge(vertices[index - 1].0, vertices[index].0, vertices[index].1).unwrap().curve);
 		}
 		curve.push(PathEl::ClosePath);
-		Shape::from_bez_path(BezPath::from_vec(curve), *style, false)
+		ShapeLayer::from_bez_path(BezPath::from_vec(curve), *style, false)
 	}
 }
 
@@ -455,7 +455,7 @@ pub fn subdivide_path_seg(p: &PathSeg, t_values: &mut [f64]) -> Vec<Option<PathS
 
 // TODO: check if shapes are filled
 // TODO: Bug: shape with at least two subpaths and comprised of many unions sometimes has erroneous movetos embedded in edges
-pub fn boolean_operation(select: BooleanOperation, mut alpha: Shape, mut beta: Shape) -> Result<Vec<Shape>, BooleanOperationError> {
+pub fn boolean_operation(select: BooleanOperation, mut alpha: ShapeLayer, mut beta: ShapeLayer) -> Result<Vec<ShapeLayer>, BooleanOperationError> {
 	if alpha.path.is_empty() || beta.path.is_empty() {
 		return Err(BooleanOperationError::InvalidSelection);
 	}
@@ -618,7 +618,7 @@ pub fn bounding_box(curve: &BezPath) -> Rect {
 		.unwrap()
 }
 
-fn collect_shapes<'a, F, G>(graph: &PathGraph, cycles: &mut Vec<Cycle>, predicate: F, style: G) -> Result<Vec<Shape>, BooleanOperationError>
+fn collect_shapes<'a, F, G>(graph: &PathGraph, cycles: &mut Vec<Cycle>, predicate: F, style: G) -> Result<Vec<ShapeLayer>, BooleanOperationError>
 where
 	F: Fn(Direction) -> bool,
 	G: Fn(Direction) -> &'a PathStyle,
