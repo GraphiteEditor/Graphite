@@ -1,3 +1,4 @@
+pub mod boolean_ops;
 pub mod color;
 pub mod consts;
 pub mod document;
