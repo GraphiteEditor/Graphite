@@ -16,7 +16,7 @@ use kurbo::Shape;
 use serde::{Deserialize, Serialize};
 
 #[derive(Default)]
-pub struct Text {
+pub struct TextTool {
 	fsm_state: TextToolFsmState,
 	data: TextToolData,
 	options: TextOptions,
@@ -61,7 +61,7 @@ pub enum TextOptionsUpdate {
 	FontSize(u32),
 }
 
-impl PropertyHolder for Text {
+impl PropertyHolder for TextTool {
 	fn properties(&self) -> WidgetLayout {
 		WidgetLayout::new(vec![LayoutRow::Row {
 			name: "".into(),
@@ -78,7 +78,7 @@ impl PropertyHolder for Text {
 	}
 }
 
-impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Text {
+impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for TextTool {
 	fn process_action(&mut self, action: ToolMessage, data: ToolActionHandlerData<'a>, responses: &mut VecDeque<Message>) {
 		if action == ToolMessage::UpdateHints {
 			self.fsm_state.update_hints(responses);

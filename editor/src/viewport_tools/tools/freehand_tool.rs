@@ -14,7 +14,7 @@ use glam::{DAffine2, DVec2};
 use serde::{Deserialize, Serialize};
 
 #[derive(Default)]
-pub struct Freehand {
+pub struct FreehandTool {
 	fsm_state: FreehandToolFsmState,
 	data: FreehandToolData,
 	options: FreehandOptions,
@@ -33,7 +33,7 @@ impl Default for FreehandOptions {
 #[remain::sorted]
 #[impl_message(Message, ToolMessage, Freehand)]
 #[derive(PartialEq, Clone, Debug, Hash, Serialize, Deserialize)]
-pub enum FreehandMessage {
+pub enum FreehandToolMessage {
 	// Standard messages
 	#[remain::unsorted]
 	Abort,
@@ -42,12 +42,12 @@ pub enum FreehandMessage {
 	DragStart,
 	DragStop,
 	PointerMove,
-	UpdateOptions(FreehandMessageOptionsUpdate),
+	UpdateOptions(FreehandToolMessageOptionsUpdate),
 }
 
 #[remain::sorted]
 #[derive(PartialEq, Clone, Debug, Hash, Serialize, Deserialize)]
-pub enum FreehandMessageOptionsUpdate {
+pub enum FreehandToolMessageOptionsUpdate {
 	LineWeight(u32),
 }
 
@@ -57,7 +57,7 @@ enum FreehandToolFsmState {
 	Drawing,
 }
 
-impl PropertyHolder for Freehand {
+impl PropertyHolder for FreehandTool {
 	fn properties(&self) -> WidgetLayout {
 		WidgetLayout::new(vec![LayoutRow::Row {
 			name: "".into(),
@@ -67,14 +67,14 @@ impl PropertyHolder for Freehand {
 				value: self.options.line_weight as f64,
 				is_integer: true,
 				min: Some(1.),
-				on_update: WidgetCallback::new(|number_input| FreehandMessage::UpdateOptions(FreehandMessageOptionsUpdate::LineWeight(number_input.value as u32)).into()),
+				on_update: WidgetCallback::new(|number_input| FreehandToolMessage::UpdateOptions(FreehandToolMessageOptionsUpdate::LineWeight(number_input.value as u32)).into()),
 				..NumberInput::default()
 			}))],
 		}])
 	}
 }
 
-impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Freehand {
+impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for FreehandTool {
 	fn process_action(&mut self, action: ToolMessage, data: ToolActionHandlerData<'a>, responses: &mut VecDeque<Message>) {
 		if action == ToolMessage::UpdateHints {
 			self.fsm_state.update_hints(responses);
@@ -86,9 +86,9 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Freehand {
 			return;
 		}
 
-		if let ToolMessage::Freehand(FreehandMessage::UpdateOptions(action)) = action {
+		if let ToolMessage::Freehand(FreehandToolMessage::UpdateOptions(action)) = action {
 			match action {
-				FreehandMessageOptionsUpdate::LineWeight(line_weight) => self.options.line_weight = line_weight,
+				FreehandToolMessageOptionsUpdate::LineWeight(line_weight) => self.options.line_weight = line_weight,
 			}
 			return;
 		}
@@ -106,8 +106,8 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Freehand {
 		use FreehandToolFsmState::*;
 
 		match self.fsm_state {
-			Ready => actions!(FreehandMessageDiscriminant; DragStart, DragStop, Abort),
-			Drawing => actions!(FreehandMessageDiscriminant; DragStop, PointerMove, Abort),
+			Ready => actions!(FreehandToolMessageDiscriminant; DragStart, DragStop, Abort),
+			Drawing => actions!(FreehandToolMessageDiscriminant; DragStop, PointerMove, Abort),
 		}
 	}
 }
@@ -138,8 +138,8 @@ impl Fsm for FreehandToolFsmState {
 		input: &InputPreprocessorMessageHandler,
 		responses: &mut VecDeque<Message>,
 	) -> Self {
-		use FreehandMessage::*;
 		use FreehandToolFsmState::*;
+		use FreehandToolMessage::*;
 
 		let transform = document.graphene_document.root.transform;
 

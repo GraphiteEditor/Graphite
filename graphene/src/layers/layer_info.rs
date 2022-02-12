@@ -1,8 +1,8 @@
 use super::blend_mode::BlendMode;
-use super::folder::Folder;
-use super::simple_shape::Shape;
+use super::folder_layer::FolderLayer;
+use super::shape_layer::ShapeLayer;
 use super::style::ViewMode;
-use super::text::Text;
+use super::text_layer::TextLayer;
 use crate::intersection::Quad;
 use crate::DocumentError;
 use crate::LayerId;
@@ -13,9 +13,9 @@ use std::fmt::Write;
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub enum LayerDataType {
-	Folder(Folder),
-	Shape(Shape),
-	Text(Text),
+	Folder(FolderLayer),
+	Shape(ShapeLayer),
+	Text(TextLayer),
 }
 
 impl LayerDataType {
@@ -149,28 +149,28 @@ impl Layer {
 		self.current_bounding_box_with_transform(self.transform)
 	}
 
-	pub fn as_folder_mut(&mut self) -> Result<&mut Folder, DocumentError> {
+	pub fn as_folder_mut(&mut self) -> Result<&mut FolderLayer, DocumentError> {
 		match &mut self.data {
 			LayerDataType::Folder(f) => Ok(f),
 			_ => Err(DocumentError::NotAFolder),
 		}
 	}
 
-	pub fn as_folder(&self) -> Result<&Folder, DocumentError> {
+	pub fn as_folder(&self) -> Result<&FolderLayer, DocumentError> {
 		match &self.data {
 			LayerDataType::Folder(f) => Ok(f),
 			_ => Err(DocumentError::NotAFolder),
 		}
 	}
 
-	pub fn as_text_mut(&mut self) -> Result<&mut Text, DocumentError> {
+	pub fn as_text_mut(&mut self) -> Result<&mut TextLayer, DocumentError> {
 		match &mut self.data {
 			LayerDataType::Text(t) => Ok(t),
 			_ => Err(DocumentError::NotText),
 		}
 	}
 
-	pub fn as_text(&self) -> Result<&Text, DocumentError> {
+	pub fn as_text(&self) -> Result<&TextLayer, DocumentError> {
 		match &self.data {
 			LayerDataType::Text(t) => Ok(t),
 			_ => Err(DocumentError::NotText),

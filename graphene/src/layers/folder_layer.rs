@@ -8,13 +8,13 @@ use serde::{Deserialize, Serialize};
 use std::fmt::Write;
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize, Default)]
-pub struct Folder {
+pub struct FolderLayer {
 	next_assignment_id: LayerId,
 	pub layer_ids: Vec<LayerId>,
 	layers: Vec<Layer>,
 }
 
-impl LayerData for Folder {
+impl LayerData for FolderLayer {
 	fn render(&mut self, svg: &mut String, transforms: &mut Vec<glam::DAffine2>, view_mode: ViewMode) {
 		for layer in &mut self.layers {
 			let _ = writeln!(svg, "{}", layer.render(transforms, view_mode));
@@ -37,7 +37,7 @@ impl LayerData for Folder {
 	}
 }
 
-impl Folder {
+impl FolderLayer {
 	/// When a insertion id is provided, try to insert the layer with the given id.
 	/// If that id is already used, return None.
 	/// When no insertion id is provided, search for the next free id and insert it with that.
@@ -109,7 +109,7 @@ impl Folder {
 		self.layer_ids.iter().position(|x| *x == layer_id).ok_or_else(|| DocumentError::LayerNotFound([layer_id].into()))
 	}
 
-	pub fn folder(&self, id: LayerId) -> Option<&Folder> {
+	pub fn folder(&self, id: LayerId) -> Option<&FolderLayer> {
 		match self.layer(id) {
 			Some(Layer {
 				data: LayerDataType::Folder(folder), ..
@@ -118,7 +118,7 @@ impl Folder {
 		}
 	}
 
-	pub fn folder_mut(&mut self, id: LayerId) -> Option<&mut Folder> {
+	pub fn folder_mut(&mut self, id: LayerId) -> Option<&mut FolderLayer> {
 		match self.layer_mut(id) {
 			Some(Layer {
 				data: LayerDataType::Folder(folder), ..

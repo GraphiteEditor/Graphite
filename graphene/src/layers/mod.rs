@@ -1,6 +1,6 @@
 pub mod blend_mode;
-pub mod folder;
+pub mod folder_layer;
 pub mod layer_info;
-pub mod simple_shape;
+pub mod shape_layer;
 pub mod style;
-pub mod text;
+pub mod text_layer;
