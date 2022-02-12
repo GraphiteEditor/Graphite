@@ -60,7 +60,7 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for GradientTool
 		}
 	}
 
-	advertise_actions!(GradientToolMessageDiscriminant; PointerDown, PointerUp, PointerMove, DeleteSelected, Abort);
+	advertise_actions!(GradientToolMessageDiscriminant; PointerDown, PointerUp, PointerMove, Abort);
 }
 
 impl PropertyHolder for GradientTool {}
