@@ -97,10 +97,10 @@ pub enum Operation {
 		style: style::PathStyle,
 		closed: bool,
 	},
-  BooleanOperation {
+	BooleanOperation {
 		operation: BooleanOperationType,
 		selected: Vec<Vec<LayerId>>,
-  },
+	},
 	DeleteLayer {
 		path: Vec<LayerId>,
 	},
