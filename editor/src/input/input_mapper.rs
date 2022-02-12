@@ -127,6 +127,7 @@ impl Default for Mapping {
 			entry! {action=ToolMessage::ActivateTool { tool_type: ToolType::Eyedropper }, key_down=KeyI},
 			entry! {action=ToolMessage::ActivateTool { tool_type: ToolType::Text }, key_down=KeyT},
 			entry! {action=ToolMessage::ActivateTool { tool_type: ToolType::Fill }, key_down=KeyF},
+			entry! {action=ToolMessage::ActivateTool { tool_type: ToolType::Gradient }, key_down=KeyH},
 			entry! {action=ToolMessage::ActivateTool { tool_type: ToolType::Path }, key_down=KeyA},
 			entry! {action=ToolMessage::ActivateTool { tool_type: ToolType::Pen }, key_down=KeyP},
 			entry! {action=ToolMessage::ActivateTool { tool_type: ToolType::Freehand }, key_down=KeyN},
