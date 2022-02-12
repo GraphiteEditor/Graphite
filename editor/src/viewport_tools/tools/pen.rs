@@ -39,6 +39,8 @@ impl Default for PenOptions {
 pub enum PenMessage {
 	// Standard messages
 	#[remain::unsorted]
+	DocumentIsDirty,
+	#[remain::unsorted]
 	Abort,
 
 	// Tool-specific messages
@@ -153,6 +155,10 @@ impl Fsm for PenToolFsmState {
 
 		if let ToolMessage::Pen(event) = event {
 			match (self, event) {
+				(_, DocumentIsDirty) => {
+					data.shape_editor.update_shapes(document, responses);
+					self
+				}
 				(Ready, DragStart) => {
 					responses.push_back(DocumentMessage::StartTransaction.into());
 					responses.push_back(DocumentMessage::DeselectAllLayers.into());
@@ -164,7 +170,6 @@ impl Fsm for PenToolFsmState {
 
 					// Get the position and set properties
 					let start_position = transform.inverse().transform_point2(snapped_position);
-					// data.previous_start_position = start_position;
 					data.weight = tool_options.line_weight;
 
 					// Create the initial shape with a bez_path (only contains a moveto initially)
@@ -199,21 +204,22 @@ impl Fsm for PenToolFsmState {
 						last_anchor.select_point(0, true, responses);
 					}
 
-					// Would like to remove this hack eventually
-					if !data.shape_editor.shapes_to_modify.is_empty() {
-						// Hacky way of saving the curve changes
-						data.bez_path = data.shape_editor.shapes_to_modify[0].bez_path.elements().to_vec();
-					}
 					Drawing
 				}
 				(Drawing, PointerMove) => {
 					let snapped_position = data.snap_handler.snap_position(responses, input.viewport_bounds.size(), document, input.mouse.position);
-					data.shape_editor.update_shapes(document, responses);
+					//data.shape_editor.update_shapes(document, responses);
 					data.shape_editor.move_selected_points(snapped_position, false, responses);
 
 					Drawing
 				}
 				(Drawing, Confirm) | (Drawing, Abort) => {
+					// Add a curve to the path
+					if let Some(layer_path) = &data.path {
+						remove_curve_from_end(&mut data.bez_path);
+						responses.push_back(apply_bez_path(layer_path.clone(), data.bez_path.clone(), transform));
+					}
+
 					// Cleanup, we are either canceling or finished drawing
 					if data.bez_path.len() >= 2 {
 						responses.push_back(DocumentMessage::DeselectAllLayers.into());
@@ -289,11 +295,9 @@ fn add_to_curve(data: &mut PenToolData, input: &InputPreprocessorMessageHandler,
 
 	// Add a curve to the path
 	if let Some(layer_path) = &data.path {
-		add_curve_to_bez_path(position, &mut data.bez_path);
+		add_curve_to_end(position, &mut data.bez_path);
 		responses.push_back(apply_bez_path(layer_path.clone(), data.bez_path.clone(), transform));
-	}
 
-	if let Some(layer_path) = &data.path {
 		// Clear previous overlays
 		data.shape_editor.remove_overlays(responses);
 
@@ -324,12 +328,17 @@ fn start_bez_path(start_position: DVec2) -> Vec<PathEl> {
 }
 
 // Add a curve to the bez_path
-fn add_curve_to_bez_path(point: DVec2, bez_path: &mut Vec<PathEl>) {
+fn add_curve_to_end(point: DVec2, bez_path: &mut Vec<PathEl>) {
 	let point = Point { x: point.x, y: point.y };
 	bez_path.push(PathEl::CurveTo(point, point, point));
 }
 
-// Apple the bez_path to the shape in the viewport
+// Add a curve to the bez_path
+fn remove_curve_from_end(bez_path: &mut Vec<PathEl>) {
+	bez_path.pop();
+}
+
+// Apply the bez_path to the shape in the viewport
 fn apply_bez_path(layer_path: Vec<LayerId>, bez_path: Vec<PathEl>, transform: DAffine2) -> Message {
 	Operation::SetShapePathInViewport {
 		path: layer_path,
