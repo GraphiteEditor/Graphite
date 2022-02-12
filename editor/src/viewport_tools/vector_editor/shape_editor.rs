@@ -65,7 +65,7 @@ impl ShapeEditor {
 
 			// Add which anchor and point was selected
 			let selected_anchor = selected_shape.select_anchor(anchor_index);
-			let selected_point = selected_anchor.select_point(point_index, should_select, responses);
+			selected_anchor.select_point(point_index, should_select, responses);
 
 			// Due to the shape data structure not persisting across shape selection changes we need to rely on the kurbo path to know if we should mirror
 			selected_anchor.set_mirroring((selected_anchor.angle_between_handles().abs() - std::f64::consts::PI).abs() < MINIMUM_MIRROR_THRESHOLD);

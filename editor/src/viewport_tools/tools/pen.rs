@@ -1,4 +1,3 @@
-use crate::consts::DRAG_THRESHOLD;
 use crate::document::DocumentMessageHandler;
 use crate::frontend::utility_types::MouseCursorIcon;
 use crate::input::keyboard::{Key, MouseMotion};
