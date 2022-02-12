@@ -9,10 +9,11 @@ use crate::viewport_tools::snapping::SnapHandler;
 use crate::viewport_tools::tool::{DocumentToolData, Fsm, ToolActionHandlerData};
 use crate::viewport_tools::vector_editor::shape_editor::ShapeEditor;
 use crate::viewport_tools::vector_editor::vector_shape::VectorShape;
+
+use graphene::layers::style;
 use graphene::Operation;
 
 use glam::{DAffine2, DVec2};
-use graphene::layers::style;
 use kurbo::{PathEl, Point};
 use serde::{Deserialize, Serialize};
 

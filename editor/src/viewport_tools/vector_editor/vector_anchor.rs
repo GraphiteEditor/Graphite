@@ -1,8 +1,3 @@
-use glam::{DAffine2, DVec2};
-use graphene::{LayerId, Operation};
-use kurbo::{PathEl, Point, Vec2};
-use std::collections::VecDeque;
-
 use crate::{
 	consts::VECTOR_MANIPULATOR_ANCHOR_MARKER_SIZE,
 	message_prelude::{DocumentMessage, Message},
@@ -12,6 +7,12 @@ use super::{
 	constants::{ControlPointType, ROUNDING_BIAS},
 	vector_control_point::VectorControlPoint,
 };
+
+use graphene::{LayerId, Operation};
+
+use glam::{DAffine2, DVec2};
+use kurbo::{PathEl, Point, Vec2};
+use std::collections::VecDeque;
 
 /// VectorAnchor is used to represent an anchor point on the path that can be moved.
 /// It contains 0-2 handles that are optionally displayed.

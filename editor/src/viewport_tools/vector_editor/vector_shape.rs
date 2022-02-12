@@ -1,4 +1,10 @@
-use glam::{DAffine2, DVec2};
+use super::{constants::ControlPointType, vector_anchor::VectorAnchor, vector_control_point::VectorControlPoint};
+use crate::{
+	consts::COLOR_ACCENT,
+	document::DocumentMessageHandler,
+	message_prelude::{generate_uuid, DocumentMessage, Message},
+};
+
 use graphene::{
 	color::Color,
 	layers::{
@@ -7,17 +13,11 @@ use graphene::{
 	},
 	LayerId, Operation,
 };
+
+use glam::{DAffine2, DVec2};
 use kurbo::{BezPath, PathEl};
 use std::collections::HashSet;
 use std::collections::VecDeque;
-
-use crate::{
-	consts::COLOR_ACCENT,
-	document::DocumentMessageHandler,
-	message_prelude::{generate_uuid, DocumentMessage, Message},
-};
-
-use super::{constants::ControlPointType, vector_anchor::VectorAnchor, vector_control_point::VectorControlPoint};
 
 /// VectorShape represents a single kurbo shape and maintains a parallel data structure
 /// For each kurbo path we keep a VectorShape which contains the handles and anchors for that path
