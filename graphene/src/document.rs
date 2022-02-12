@@ -1,3 +1,4 @@
+use crate::boolean_ops::boolean_operation;
 use crate::intersection::Quad;
 use crate::layers;
 use crate::layers::folder::Folder;
@@ -8,6 +9,7 @@ use crate::layers::text::Text;
 use crate::{DocumentError, DocumentResponse, Operation};
 
 use glam::{DAffine2, DVec2};
+use kurbo::Affine;
 use serde::{Deserialize, Serialize};
 use std::cmp::max;
 use std::collections::hash_map::DefaultHasher;
@@ -93,6 +95,25 @@ impl Document {
 		}
 		let (path, id) = split_path(path)?;
 		self.folder_mut(path)?.layer_mut(id).ok_or_else(|| DocumentError::LayerNotFound(path.into()))
+	}
+
+	/// Returns vector `Shape`s for each specified in `paths`.
+	/// If any path is not a shape, or does not exist, `DocumentError::InvalidPath` is returned.
+	fn transformed_shapes(&self, paths: &[Vec<LayerId>]) -> Result<Vec<Shape>, DocumentError> {
+		let mut shapes: Vec<Shape> = Vec::new();
+		let undo_viewport = self.root.transform.inverse();
+		for path in paths {
+			match (self.multiply_transforms(path), &self.layer(path)?.data) {
+				(Ok(shape_transform), LayerDataType::Shape(shape)) => {
+					let mut new_shape = shape.clone();
+					new_shape.path.apply_affine(Affine::new((undo_viewport * shape_transform).to_cols_array()));
+					shapes.push(new_shape);
+				}
+				(Ok(_), _) => return Err(DocumentError::InvalidPath),
+				(Err(err), _) => return Err(err),
+			}
+		}
+		Ok(shapes)
 	}
 
 	pub fn common_layer_path_prefix<'a>(&self, layers: impl Iterator<Item = &'a [LayerId]>) -> &'a [LayerId] {
@@ -530,6 +551,34 @@ impl Document {
 				let points: Vec<glam::DVec2> = points.iter().map(|&it| it.into()).collect();
 				self.set_layer(path, Layer::new(LayerDataType::Shape(Shape::poly_line(points, *style)), *transform), *insert_index)?;
 				Some([vec![DocumentChanged, CreatedLayer { path: path.clone() }], update_thumbnails_upstream(path)].concat())
+			}
+			Operation::BooleanOperation { operation, selected } => {
+				// TODO: proper difference
+				// TODO: proper style selection (done?)
+				// TODO: should generate symmetrical code
+				// TODO: Operations on any number of shapes
+				// TODO: boolean ops on any number of shapes
+				// TODO: handle overlapping identical curve case
+				// TODO: precision reached without intersection bug (maybe caused by separating a closed path, or dragging handles)
+				// TODO: click on shape should drag the shape
+				// TODO: add ability to undo
+				let mut responses = Vec::new();
+				if selected.len() > 1 && selected.len() < 3 {
+					// ? apparently `selected` should be reversed
+					let mut shapes = self.transformed_shapes(selected)?;
+					let mut shape_drain = shapes.drain(..).rev();
+					let new_shapes = boolean_operation(*operation, shape_drain.next().unwrap(), shape_drain.next().unwrap())?;
+
+					for path in selected {
+						self.delete(path)?;
+						responses.push(DocumentResponse::DeletedLayer { path: path.clone() })
+					}
+					for new_shape in new_shapes {
+						let new_id = self.add_layer(&[], Layer::new(LayerDataType::Shape(new_shape), DAffine2::IDENTITY.to_cols_array()), -1)?;
+						responses.push(DocumentResponse::CreatedLayer { path: vec![new_id] })
+					}
+				}
+				Some([vec![DocumentChanged, DocumentResponse::FolderChanged { path: vec![] }], responses].concat())
 			}
 			Operation::AddSpline {
 				path,

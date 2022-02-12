@@ -11,7 +11,7 @@ use crate::message_prelude::*;
 use crate::misc::{HintData, HintGroup, HintInfo, KeysGroup};
 use crate::viewport_tools::snapping::SnapHandler;
 use crate::viewport_tools::tool::{DocumentToolData, Fsm, ToolActionHandlerData, ToolType};
-
+use graphene::boolean_ops::BooleanOperation;
 use graphene::document::Document;
 use graphene::intersection::Quad;
 use graphene::layers::layer_info::LayerDataType;
@@ -186,35 +186,35 @@ impl PropertyHolder for Select {
 					icon: "BooleanUnion".into(),
 					tooltip: "Boolean Union".into(),
 					size: 24,
-					on_update: WidgetCallback::new(|_| FrontendMessage::DisplayDialogComingSoon { issue: Some(197) }.into()),
+					on_update: WidgetCallback::new(|_| DocumentMessage::BooleanOperation(BooleanOperation::Union).into()),
 					..IconButton::default()
 				})),
 				WidgetHolder::new(Widget::IconButton(IconButton {
 					icon: "BooleanSubtractFront".into(),
 					tooltip: "Boolean Subtract Front".into(),
 					size: 24,
-					on_update: WidgetCallback::new(|_| FrontendMessage::DisplayDialogComingSoon { issue: Some(197) }.into()),
+					on_update: WidgetCallback::new(|_| DocumentMessage::BooleanOperation(BooleanOperation::SubtractFront).into()),
 					..IconButton::default()
 				})),
 				WidgetHolder::new(Widget::IconButton(IconButton {
 					icon: "BooleanSubtractBack".into(),
 					tooltip: "Boolean Subtract Back".into(),
 					size: 24,
-					on_update: WidgetCallback::new(|_| FrontendMessage::DisplayDialogComingSoon { issue: Some(197) }.into()),
+					on_update: WidgetCallback::new(|_| DocumentMessage::BooleanOperation(BooleanOperation::SubtractBack).into()),
 					..IconButton::default()
 				})),
 				WidgetHolder::new(Widget::IconButton(IconButton {
 					icon: "BooleanIntersect".into(),
 					tooltip: "Boolean Intersect".into(),
 					size: 24,
-					on_update: WidgetCallback::new(|_| FrontendMessage::DisplayDialogComingSoon { issue: Some(197) }.into()),
+					on_update: WidgetCallback::new(|_| DocumentMessage::BooleanOperation(BooleanOperation::Intersection).into()),
 					..IconButton::default()
 				})),
 				WidgetHolder::new(Widget::IconButton(IconButton {
 					icon: "BooleanDifference".into(),
 					tooltip: "Boolean Difference".into(),
 					size: 24,
-					on_update: WidgetCallback::new(|_| FrontendMessage::DisplayDialogComingSoon { issue: Some(197) }.into()),
+					on_update: WidgetCallback::new(|_| DocumentMessage::BooleanOperation(BooleanOperation::Difference).into()),
 					..IconButton::default()
 				})),
 				WidgetHolder::new(Widget::Separator(Separator {

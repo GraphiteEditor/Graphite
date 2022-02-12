@@ -741,6 +741,16 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 					responses.push_back(ToolMessage::DocumentIsDirty.into());
 				}
 			}
+			BooleanOperation(op) => {
+				// convert Vec<&[LayerId]> to Vec<Vec<&LayerId>> because Vec<&[LayerId]> does not implement several traits (Debug, Serialize, Deserialize, ...) required by DocumentOperation enum
+				responses.push_back(
+					DocumentOperation::BooleanOperation {
+						operation: op,
+						selected: self.selected_layers_sorted().iter().map(|slice| (*slice).into()).collect(),
+					}
+					.into(),
+				);
+			}
 			CommitTransaction => (),
 			CreateEmptyFolder { mut container_path } => {
 				let id = generate_uuid();
