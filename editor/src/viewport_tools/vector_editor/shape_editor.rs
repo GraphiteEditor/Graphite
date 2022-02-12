@@ -32,8 +32,6 @@ pub struct ShapeEditor {
 	pub shapes_to_modify: Vec<VectorShape>,
 	// Index of the shape that contained the most recent selected point
 	pub selected_shape_indices: HashSet<usize>,
-	// The initial drag position of the mouse on drag start
-	pub drag_start_position: DVec2,
 }
 
 impl ShapeEditor {
@@ -68,11 +66,6 @@ impl ShapeEditor {
 			// Add which anchor and point was selected
 			let selected_anchor = selected_shape.select_anchor(anchor_index);
 			let selected_point = selected_anchor.select_point(point_index, should_select, responses);
-
-			// Set the drag start position based on the selected point
-			if let Some(point) = selected_point {
-				self.drag_start_position = point.position;
-			}
 
 			// Due to the shape data structure not persisting across shape selection changes we need to rely on the kurbo path to know if we should mirror
 			selected_anchor.set_mirroring((selected_anchor.angle_between_handles().abs() - std::f64::consts::PI).abs() < MINIMUM_MIRROR_THRESHOLD);
@@ -208,10 +201,9 @@ impl ShapeEditor {
 	}
 
 	/// Move the selected points by dragging the moue
-	pub fn move_selected_points(&mut self, mouse_position: DVec2, responses: &mut VecDeque<Message>) {
-		let drag_start_position = self.drag_start_position;
+	pub fn move_selected_points(&mut self, target: DVec2, relative: bool, responses: &mut VecDeque<Message>) {
 		for shape in self.selected_shapes_mut() {
-			shape.move_selected(mouse_position - drag_start_position, responses);
+			shape.move_selected(target, relative, responses);
 		}
 	}
 

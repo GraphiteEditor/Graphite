@@ -55,7 +55,6 @@ pub enum PenMessage {
 enum PenToolFsmState {
 	Ready,
 	Drawing,
-	Dragging,
 }
 
 #[remain::sorted]
@@ -115,7 +114,6 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Pen {
 		match self.fsm_state {
 			Ready => actions!(PenMessageDiscriminant; Undo, DragStart, DragStop, Confirm, Abort),
 			Drawing => actions!(PenMessageDiscriminant; DragStart, DragStop, PointerMove, Confirm, Abort),
-			Dragging => actions!(PenMessageDiscriminant; DragStop, PointerMove, Confirm, Abort),
 		}
 	}
 }
@@ -168,7 +166,7 @@ impl Fsm for PenToolFsmState {
 
 					// Get the position and set properties
 					let start_position = transform.inverse().transform_point2(snapped_position);
-					data.previous_start_position = start_position;
+					// data.previous_start_position = start_position;
 					data.weight = tool_options.line_weight;
 
 					// Create the initial shape with a bez_path (only contains a moveto initially)
@@ -193,12 +191,11 @@ impl Fsm for PenToolFsmState {
 				(Drawing, DragStart) => {
 					// Setup our position params
 					let snapped_position = data.snap_handler.snap_position(responses, input.viewport_bounds.size(), document, input.mouse.position);
-					let start_position = transform.inverse().transform_point2(snapped_position);
-					data.shape_editor.drag_start_position = snapped_position;
+					let position = transform.inverse().transform_point2(snapped_position);
 
 					// Add a curve to the path
 					if let Some(layer_path) = &data.path {
-						add_curve_to_bez_path(data.previous_start_position, start_position, &mut data.bez_path);
+						add_curve_to_bez_path(position, &mut data.bez_path);
 						responses.push_back(apply_bez_path(layer_path.clone(), data.bez_path.clone(), transform));
 					}
 
@@ -222,30 +219,38 @@ impl Fsm for PenToolFsmState {
 						}
 						data.shape_editor.set_selected_mirror_options(true, true);
 					}
-					data.previous_start_position = start_position;
+					// data.previous_start_position = start_position;
 					log::debug!("Added to path {:#?}", data.bez_path);
 
-					Dragging
-				}
-				(Dragging, PointerMove) => {
-					let snapped_position = data.snap_handler.snap_position(responses, input.viewport_bounds.size(), document, input.mouse.position);
-					data.shape_editor.update_shapes(document, responses);
-					data.shape_editor.move_selected_points(snapped_position, responses);
+					if !data.shape_editor.shapes_to_modify.is_empty() {
+						// Hacky way of saving the curve changes
+						data.bez_path = data.shape_editor.shapes_to_modify[0].bez_path.elements().to_vec();
+					}
 
-					Dragging
-				}
-				(Dragging, DragStop) => {
-					// Hacky way of saving the curve changes
-					data.bez_path = data.shape_editor.shapes_to_modify[0].bez_path.elements().to_vec();
 					Drawing
 				}
-				// (Drawing, PointerMove) => {
-				// 	let snapped_position = data.snap_handler.snap_position(responses, input.viewport_bounds.size(), document, input.mouse.position);
-				// 	data.shape_editor.update_shapes(document, responses);
-				// 	data.shape_editor.move_selected_points(snapped_position, responses);
+				(Drawing, DragStop) => {
+					// Deselect everything
+					data.shape_editor.deselect_all(responses);
 
-				// 	Drawing
-				// }
+					// Reselect the last point
+					if let Some(last_anchor) = data.shape_editor.select_last_anchor() {
+						last_anchor.select_point(0, true, responses);
+					}
+
+					if !data.shape_editor.shapes_to_modify.is_empty() {
+						// Hacky way of saving the curve changes
+						data.bez_path = data.shape_editor.shapes_to_modify[0].bez_path.elements().to_vec();
+					}
+					Drawing
+				}
+				(Drawing, PointerMove) => {
+					let snapped_position = data.snap_handler.snap_position(responses, input.viewport_bounds.size(), document, input.mouse.position);
+					data.shape_editor.update_shapes(document, responses);
+					data.shape_editor.move_selected_points(snapped_position, false, responses);
+
+					Drawing
+				}
 				(Drawing, Confirm) | (Drawing, Abort) => {
 					if data.bez_path.len() >= 2 {
 						responses.push_back(DocumentMessage::DeselectAllLayers.into());
@@ -264,6 +269,7 @@ impl Fsm for PenToolFsmState {
 				}
 				(_, Abort) => {
 					data.shape_editor.remove_overlays(responses);
+					data.shape_editor.clear_shapes_to_modify();
 					Ready
 				}
 				_ => self,
@@ -295,20 +301,6 @@ impl Fsm for PenToolFsmState {
 					plus: false,
 				}]),
 			]),
-			PenToolFsmState::Dragging => HintData(vec![
-				HintGroup(vec![HintInfo {
-					key_groups: vec![],
-					mouse: Some(MouseMotion::Lmb),
-					label: String::from("Extend Path"),
-					plus: false,
-				}]),
-				HintGroup(vec![HintInfo {
-					key_groups: vec![KeysGroup(vec![Key::KeyEnter])],
-					mouse: None,
-					label: String::from("End Path"),
-					plus: false,
-				}]),
-			]),
 		};
 
 		responses.push_back(FrontendMessage::UpdateInputHints { hint_data }.into());
@@ -326,10 +318,9 @@ fn start_bez_path(start_position: DVec2) -> Vec<PathEl> {
 	})]
 }
 
-fn add_curve_to_bez_path(start: DVec2, end: DVec2, bez_path: &mut Vec<PathEl>) {
-	let start = Point { x: start.x, y: start.y };
-	let end = Point { x: end.x, y: end.y };
-	bez_path.push(PathEl::CurveTo(start, end, end));
+fn add_curve_to_bez_path(point: DVec2, bez_path: &mut Vec<PathEl>) {
+	let point = Point { x: point.x, y: point.y };
+	bez_path.push(PathEl::CurveTo(point, point, point));
 }
 
 fn apply_bez_path(layer_path: Vec<LayerId>, bez_path: Vec<PathEl>, transform: DAffine2) -> Message {

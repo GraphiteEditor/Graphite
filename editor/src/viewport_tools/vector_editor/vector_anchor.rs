@@ -49,7 +49,7 @@ impl VectorAnchor {
 
 	// TODO Cleanup the internals of this function
 	/// Move the selected points by the provided delta
-	pub fn move_selected_points(&mut self, position_delta: DVec2, path_elements: &mut Vec<kurbo::PathEl>, transform: &DAffine2) {
+	pub fn move_selected_points(&mut self, translation: DVec2, relative: bool, path_elements: &mut Vec<kurbo::PathEl>, transform: &DAffine2) {
 		let place_mirrored_handle = |center: kurbo::Point, original: kurbo::Point, target: kurbo::Point, selected: bool, mirror_angle: bool, mirror_distance: bool| -> kurbo::Point {
 			if !selected || !mirror_angle {
 				return original;
@@ -65,9 +65,17 @@ impl VectorAnchor {
 			}
 		};
 
+		let offset = |point: Point| -> Point {
+			if relative {
+				let relative = transform.inverse().transform_vector2(translation);
+				point + Vec2::new(relative.x, relative.y)
+			} else {
+				let absolute = transform.inverse().transform_point2(translation);
+				Point { x: absolute.x, y: absolute.y }
+			}
+		};
+
 		for selected_point in self.selected_points() {
-			let delta = transform.inverse().transform_vector2(position_delta);
-			let delta = Vec2::new(delta.x, delta.y);
 			let h1_selected = ControlPointType::Handle1 == selected_point.manipulator_type;
 			let h2_selected = ControlPointType::Handle2 == selected_point.manipulator_type;
 			let dragging_anchor = !(h1_selected || h2_selected);
@@ -78,10 +86,10 @@ impl VectorAnchor {
 				let handle1_exists_and_selected = self.points[ControlPointType::Handle1].is_some() && self.points[ControlPointType::Handle1].as_ref().unwrap().is_selected;
 				// Move the anchor point and handle on the same path element
 				let selected_element = match &path_elements[selected_point.kurbo_element_id] {
-					PathEl::MoveTo(p) => PathEl::MoveTo(*p + delta),
-					PathEl::LineTo(p) => PathEl::LineTo(*p + delta),
-					PathEl::QuadTo(a1, p) => PathEl::QuadTo(*a1, *p + delta),
-					PathEl::CurveTo(a1, a2, p) => PathEl::CurveTo(*a1, if handle1_exists_and_selected { *a2 } else { *a2 + delta }, *p + delta),
+					PathEl::MoveTo(p) => PathEl::MoveTo(offset(*p)),
+					PathEl::LineTo(p) => PathEl::LineTo(offset(*p)),
+					PathEl::QuadTo(a1, p) => PathEl::QuadTo(*a1, offset(*p)),
+					PathEl::CurveTo(a1, a2, p) => PathEl::CurveTo(*a1, if handle1_exists_and_selected { *a2 } else { offset(*a2) }, offset(*p)),
 					PathEl::ClosePath => PathEl::ClosePath,
 				};
 
@@ -92,7 +100,7 @@ impl VectorAnchor {
 							PathEl::MoveTo(p) => PathEl::MoveTo(*p),
 							PathEl::LineTo(p) => PathEl::LineTo(*p),
 							PathEl::QuadTo(a1, p) => PathEl::QuadTo(*a1, *p),
-							PathEl::CurveTo(a1, a2, p) => PathEl::CurveTo(*a1 + delta, *a2, *p),
+							PathEl::CurveTo(a1, a2, p) => PathEl::CurveTo(offset(*a1), *a2, *p),
 							PathEl::ClosePath => PathEl::ClosePath,
 						};
 						path_elements[handle.kurbo_element_id] = neighbor;
@@ -102,10 +110,10 @@ impl VectorAnchor {
 				if let Some(close_id) = self.close_element_id {
 					// Move the invisible point that can be caused by MoveTo / closing the path
 					path_elements[close_id] = match &path_elements[close_id] {
-						PathEl::MoveTo(p) => PathEl::MoveTo(*p + delta),
-						PathEl::LineTo(p) => PathEl::LineTo(*p + delta),
-						PathEl::QuadTo(a1, p) => PathEl::QuadTo(*a1, *p + delta),
-						PathEl::CurveTo(a1, a2, p) => PathEl::CurveTo(*a1, *a2 + delta, *p + delta),
+						PathEl::MoveTo(p) => PathEl::MoveTo(offset(*p)),
+						PathEl::LineTo(p) => PathEl::LineTo(offset(*p)),
+						PathEl::QuadTo(a1, p) => PathEl::QuadTo(*a1, offset(*p)),
+						PathEl::CurveTo(a1, a2, p) => PathEl::CurveTo(*a1, offset(*a2), offset(*p)),
 						PathEl::ClosePath => PathEl::ClosePath,
 					};
 				}
@@ -121,10 +129,10 @@ impl VectorAnchor {
 				let (selected_element, anchor, selected_handle) = match &path_elements[selected_point.kurbo_element_id] {
 					PathEl::MoveTo(p) => (PathEl::MoveTo(*p), *p, *p),
 					PathEl::LineTo(p) => (PathEl::LineTo(*p), *p, *p),
-					PathEl::QuadTo(a1, p) => (PathEl::QuadTo(*a1 + delta, *p), *p, *a1 + delta),
+					PathEl::QuadTo(a1, p) => (PathEl::QuadTo(offset(*a1), *p), *p, offset(*a1)),
 					PathEl::CurveTo(a1, a2, p) => {
-						let a1_point = if h2_selected { *a1 + delta } else { *a1 };
-						let a2_point = if h1_selected { *a2 + delta } else { *a2 };
+						let a1_point = if h2_selected { offset(*a1) } else { *a1 };
+						let a2_point = if h1_selected { offset(*a2) } else { *a2 };
 						(PathEl::CurveTo(a1_point, a2_point, *p), *p, if h1_selected { a2_point } else { a1_point })
 					}
 					PathEl::ClosePath => (PathEl::ClosePath, Point::ZERO, Point::ZERO),

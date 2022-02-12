@@ -125,12 +125,12 @@ impl VectorShape {
 
 	/// Move the selected point based on mouse input, if this is a handle we can control if we are mirroring or not
 	/// A wrapper around move_point to handle mirror state / submit the changes
-	pub fn move_selected(&mut self, position_delta: DVec2, responses: &mut VecDeque<Message>) {
+	pub fn move_selected(&mut self, target: DVec2, relative: bool, responses: &mut VecDeque<Message>) {
 		let transform = &self.transform.clone();
 		let mut edited_bez_path = self.elements.clone();
 
 		for selected_anchor in self.selected_anchors_mut() {
-			selected_anchor.move_selected_points(position_delta, &mut edited_bez_path, transform);
+			selected_anchor.move_selected_points(target, relative, &mut edited_bez_path, transform);
 		}
 
 		// We've made our changes to the shape, submit them
