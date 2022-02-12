@@ -17,8 +17,12 @@ Overview:
 
 use super::vector_shape::VectorShape;
 use super::{constants::MINIMUM_MIRROR_THRESHOLD, vector_anchor::VectorAnchor, vector_control_point::VectorControlPoint};
+use crate::document::DocumentMessageHandler;
 use crate::message_prelude::Message;
-use glam::DVec2;
+
+use graphene::layers::layer_info::LayerDataType;
+
+use glam::{DAffine2, DVec2};
 use std::collections::{HashSet, VecDeque};
 
 /// ShapeEditor is the container for all of the selected kurbo paths that are
@@ -30,8 +34,6 @@ pub struct ShapeEditor {
 	pub shapes_to_modify: Vec<VectorShape>,
 	// Index of the shape that contained the most recent selected point
 	pub selected_shape_indices: HashSet<usize>,
-	// The initial drag position of the mouse on drag start
-	pub drag_start_position: DVec2,
 }
 
 impl ShapeEditor {
@@ -46,7 +48,7 @@ impl ShapeEditor {
 			log::trace!("Selecting: shape {} / anchor {} / point {}", shape_index, anchor_index, point_index);
 
 			// Add this shape to the selection
-			self.add_selected_shape(shape_index);
+			self.set_shape_selected(shape_index);
 
 			// If the point we're selecting has already been selected
 			// we can assume this point exists.. since we did just click on it hense the unwrap
@@ -65,12 +67,7 @@ impl ShapeEditor {
 
 			// Add which anchor and point was selected
 			let selected_anchor = selected_shape.select_anchor(anchor_index);
-			let selected_point = selected_anchor.select_point(point_index, should_select, responses);
-
-			// Set the drag start position based on the selected point
-			if let Some(point) = selected_point {
-				self.drag_start_position = point.position;
-			}
+			selected_anchor.select_point(point_index, should_select, responses);
 
 			// Due to the shape data structure not persisting across shape selection changes we need to rely on the kurbo path to know if we should mirror
 			selected_anchor.set_mirroring((selected_anchor.angle_between_handles().abs() - std::f64::consts::PI).abs() < MINIMUM_MIRROR_THRESHOLD);
@@ -111,9 +108,38 @@ impl ShapeEditor {
 		self.shapes_to_modify = selected_shapes;
 	}
 
+	/// Set a single shape to be modifed by providing a layer path
+	pub fn set_shapes_to_modify_from_layer(&mut self, layer_path: &[u64], transform: DAffine2, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
+		// Setup the shape editor
+		let layer = document.graphene_document.layer(layer_path);
+		if let Ok(layer) = layer {
+			let shape = match &layer.data {
+				LayerDataType::Shape(shape) => Some(VectorShape::new(layer_path.to_vec(), transform, &shape.path, shape.closed, responses)),
+				_ => None,
+			};
+			self.set_shapes_to_modify(vec![shape.expect("The layer provided didn't have a shape we could use.")]);
+		}
+	}
+
+	/// Clear all of the shapes we can modify
+	pub fn clear_shapes_to_modify(&mut self) {
+		self.shapes_to_modify.clear();
+	}
+
 	/// Add a shape to the hashset of shapes we consider for selection
-	pub fn add_selected_shape(&mut self, shape_index: usize) {
+	pub fn set_shape_selected(&mut self, shape_index: usize) {
 		self.selected_shape_indices.insert(shape_index);
+	}
+
+	/// Update the currently shapes we consider for selection
+	pub fn update_shapes(&mut self, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
+		if self.shapes_to_modify.is_empty() {
+			return;
+		}
+
+		for shape in self.shapes_to_modify.iter_mut() {
+			shape.update_shape(document, responses);
+		}
 	}
 
 	/// Provide the shapes that the currently selected points are a part of
@@ -142,6 +168,31 @@ impl ShapeEditor {
 		self.selected_shapes_mut().flat_map(|shape| shape.selected_anchors_mut())
 	}
 
+	/// A mutable iterator of all the anchors, regardless of selection
+	pub fn anchors_mut(&mut self) -> impl Iterator<Item = &mut VectorAnchor> {
+		self.shapes_to_modify.iter_mut().flat_map(|shape| shape.anchors_mut())
+	}
+
+	/// Select the last anchor in this shape
+	pub fn select_last_anchor(&mut self) -> Option<&mut VectorAnchor> {
+		if let Some(last) = self.shapes_to_modify.last_mut() {
+			return Some(last.select_last_anchor());
+		}
+		None
+	}
+
+	/// Select the Nth anchor of the shape, negative numbers index from the end
+	pub fn select_nth_anchor(&mut self, shape_index: usize, anchor_index: i32) -> &mut VectorAnchor {
+		let shape = &mut self.shapes_to_modify[shape_index];
+		if anchor_index < 0 {
+			let anchor_index = shape.anchors.len() - ((-anchor_index) as usize);
+			shape.select_anchor(anchor_index)
+		} else {
+			let anchor_index = anchor_index as usize;
+			shape.select_anchor(anchor_index)
+		}
+	}
+
 	/// Provide the currently selected points by reference
 	pub fn selected_points(&self) -> impl Iterator<Item = &VectorControlPoint> {
 		self.selected_shapes().flat_map(|shape| shape.selected_anchors()).flat_map(|anchors| anchors.selected_points())
@@ -155,10 +206,9 @@ impl ShapeEditor {
 	}
 
 	/// Move the selected points by dragging the moue
-	pub fn move_selected_points(&mut self, mouse_position: DVec2, responses: &mut VecDeque<Message>) {
-		let drag_start_position = self.drag_start_position;
+	pub fn move_selected_points(&mut self, target: DVec2, relative: bool, responses: &mut VecDeque<Message>) {
 		for shape in self.selected_shapes_mut() {
-			shape.move_selected(mouse_position - drag_start_position, responses);
+			shape.move_selected(target, relative, responses);
 		}
 	}
 
@@ -166,6 +216,13 @@ impl ShapeEditor {
 	pub fn toggle_selected_mirror_angle(&mut self) {
 		for anchor in self.selected_anchors_mut() {
 			anchor.handle_mirror_angle = !anchor.handle_mirror_angle;
+		}
+	}
+
+	pub fn set_selected_mirror_options(&mut self, mirror_angle: bool, mirror_distance: bool) {
+		for anchor in self.selected_anchors_mut() {
+			anchor.handle_mirror_angle = mirror_angle;
+			anchor.handle_mirror_distance = mirror_distance;
 		}
 	}
 

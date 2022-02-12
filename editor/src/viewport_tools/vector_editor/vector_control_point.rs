@@ -1,17 +1,17 @@
-use glam::DVec2;
-use graphene::{
-	color::Color,
-	layers::style::{Fill, PathStyle, Stroke},
-	LayerId, Operation,
-};
-use std::collections::VecDeque;
-
+use super::constants::ControlPointType;
 use crate::{
 	consts::COLOR_ACCENT,
 	message_prelude::{DocumentMessage, Message},
 };
 
-use super::constants::ControlPointType;
+use graphene::{
+	color::Color,
+	layers::style::{Fill, PathStyle, Stroke},
+	LayerId, Operation,
+};
+
+use glam::DVec2;
+use std::collections::VecDeque;
 
 /// VectorControlPoint represents any grabbable point, anchor or handle
 #[derive(PartialEq, Clone, Debug)]
