@@ -1,7 +1,11 @@
+use std::default;
+
 use crate::color::Color;
 use crate::consts::{LAYER_OUTLINE_STROKE_COLOR, LAYER_OUTLINE_STROKE_WIDTH};
 
 use serde::{Deserialize, Serialize};
+
+use glam::DVec2;
 
 const OPACITY_PRECISION: usize = 3;
 
@@ -26,26 +30,59 @@ impl Default for ViewMode {
 	}
 }
 
+/// A gradient fill.
+///
+/// Contains the start and end points, along with the colours at varying points along the length.
 #[repr(C)]
-#[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize)]
-pub struct Fill {
-	color: Color,
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct Gradient {
+	pub start: DVec2,
+	pub end: DVec2,
+	pub positions: Vec<(f64, Color)>,
+}
+
+/// Describes the fill of a layer.
+///
+/// Can be None, flat or potentially some sort of image or pattern
+#[repr(C)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum Fill {
+	None,
+	Flat(Color),
+	LinearGradient(Gradient),
+}
+
+impl Default for Fill {
+	fn default() -> Self {
+		Self::None
+	}
 }
 
 impl Fill {
-	pub fn new(color: Color) -> Self {
-		Self { color }
+	pub fn flat(color: Color) -> Self {
+		Self::Flat(color)
 	}
 
+	/// Evaluate the colour at some point on the fill
 	pub fn color(&self) -> Color {
-		self.color
+		match self {
+			Self::None => Color::BLACK,
+			Self::Flat(color) => *color,
+			// ToDo: Should correctly sample the gradient
+			Self::LinearGradient(Gradient { positions, .. }) => positions[0].1,
+		}
 	}
 
-	pub fn render(fill: Option<Fill>) -> String {
-		match fill {
-			Some(c) => format!(r##" fill="#{}"{}"##, c.color.rgb_hex(), format_opacity("fill", c.color.a())),
-			None => r#" fill="none""#.to_string(),
+	pub fn render(&self) -> String {
+		match self {
+			Self::None => r#" fill="none""#.to_string(),
+			Self::Flat(color) => format!(r##" fill="#{}"{}"##, color.rgb_hex(), format_opacity("fill", color.a())),
+			Self::LinearGradient(gradient) => "".to_string(),
 		}
+	}
+
+	pub fn is_some(&self) -> bool {
+		*self != Self::None
 	}
 }
 
@@ -75,19 +112,19 @@ impl Stroke {
 }
 
 #[repr(C)]
-#[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct PathStyle {
 	stroke: Option<Stroke>,
-	fill: Option<Fill>,
+	fill: Fill,
 }
 
 impl PathStyle {
-	pub fn new(stroke: Option<Stroke>, fill: Option<Fill>) -> Self {
+	pub fn new(stroke: Option<Stroke>, fill: Fill) -> Self {
 		Self { stroke, fill }
 	}
 
-	pub fn fill(&self) -> Option<Fill> {
-		self.fill
+	pub fn fill(&self) -> &Fill {
+		&self.fill
 	}
 
 	pub fn stroke(&self) -> Option<Stroke> {
@@ -95,7 +132,7 @@ impl PathStyle {
 	}
 
 	pub fn set_fill(&mut self, fill: Fill) {
-		self.fill = Some(fill);
+		self.fill = fill;
 	}
 
 	pub fn set_stroke(&mut self, stroke: Stroke) {
@@ -103,7 +140,7 @@ impl PathStyle {
 	}
 
 	pub fn clear_fill(&mut self) {
-		self.fill = None;
+		self.fill = Fill::None;
 	}
 
 	pub fn clear_stroke(&mut self) {
@@ -111,9 +148,9 @@ impl PathStyle {
 	}
 
 	pub fn render(&self, view_mode: ViewMode) -> String {
-		let fill_attribute = match (view_mode, self.fill) {
-			(ViewMode::Outline, _) => Fill::render(None),
-			(_, fill) => Fill::render(fill),
+		let fill_attribute = match (view_mode, &self.fill) {
+			(ViewMode::Outline, _) => Fill::None.render(),
+			(_, fill) => fill.render(),
 		};
 		let stroke_attribute = match (view_mode, self.stroke) {
 			(ViewMode::Outline, _) => Stroke::new(LAYER_OUTLINE_STROKE_COLOR, LAYER_OUTLINE_STROKE_WIDTH).render(),

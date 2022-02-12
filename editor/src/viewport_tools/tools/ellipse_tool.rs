@@ -120,7 +120,7 @@ impl Fsm for EllipseToolFsmState {
 							path: shape_data.path.clone().unwrap(),
 							insert_index: -1,
 							transform: DAffine2::ZERO.to_cols_array(),
-							style: style::PathStyle::new(None, Some(style::Fill::new(tool_data.primary_color))),
+							style: style::PathStyle::new(None, style::Fill::flat(tool_data.primary_color)),
 						}
 						.into(),
 					);

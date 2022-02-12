@@ -150,7 +150,7 @@ fn resize_overlays(overlays: &mut Vec<Vec<LayerId>>, responses: &mut VecDeque<Me
 		let operation = Operation::AddOverlayRect {
 			path,
 			transform: DAffine2::ZERO.to_cols_array(),
-			style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 1.0)), None),
+			style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 1.0)), Fill::None),
 		};
 		responses.push_back(DocumentMessage::Overlays(operation.into()).into());
 	}
@@ -253,7 +253,7 @@ impl Fsm for TextToolFsmState {
 								transform: DAffine2::ZERO.to_cols_array(),
 								insert_index: -1,
 								text: r#""#.to_string(),
-								style: style::PathStyle::new(None, Some(Fill::new(tool_data.primary_color))),
+								style: style::PathStyle::new(None, Fill::flat(tool_data.primary_color)),
 								size: font_size as f64,
 							}
 							.into(),

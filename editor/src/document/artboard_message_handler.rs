@@ -30,7 +30,7 @@ impl MessageHandler<ArtboardMessage, ()> for ArtboardMessageHandler {
 		match message {
 			// Sub-messages
 			#[remain::unsorted]
-			DispatchOperation(operation) => match self.artboards_graphene_document.handle_operation(&operation) {
+			DispatchOperation(operation) => match self.artboards_graphene_document.handle_operation(*operation) {
 				Ok(_) => (),
 				Err(e) => log::error!("Artboard Error: {:?}", e),
 			},
@@ -46,7 +46,7 @@ impl MessageHandler<ArtboardMessage, ()> for ArtboardMessageHandler {
 							path: vec![artboard_id],
 							insert_index: -1,
 							transform: DAffine2::from_scale_angle_translation(size.into(), 0., position.into()).to_cols_array(),
-							style: style::PathStyle::new(None, Some(Fill::new(Color::WHITE))),
+							style: style::PathStyle::new(None, Fill::flat(Color::WHITE)),
 						}
 						.into(),
 					)

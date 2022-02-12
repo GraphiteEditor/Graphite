@@ -21,7 +21,7 @@ pub struct ShapeLayer {
 }
 
 impl LayerData for ShapeLayer {
-	fn render(&mut self, svg: &mut String, transforms: &mut Vec<DAffine2>, view_mode: ViewMode) {
+	fn render(&mut self, svg: &mut String, svg_defs: &mut String, transforms: &mut Vec<DAffine2>, view_mode: ViewMode) {
 		let mut path = self.path.clone();
 		let transform = self.transform(transforms, view_mode);
 		let inverse = transform.inverse();

@@ -162,7 +162,7 @@ impl Fsm for ShapeToolFsmState {
 							insert_index: -1,
 							transform: DAffine2::ZERO.to_cols_array(),
 							sides: data.sides,
-							style: style::PathStyle::new(None, Some(style::Fill::new(tool_data.primary_color))),
+							style: style::PathStyle::new(None, style::Fill::flat(tool_data.primary_color)),
 						}
 						.into(),
 					);

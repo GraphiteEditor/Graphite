@@ -225,7 +225,7 @@ fn add_polyline(data: &FreehandToolData, tool_data: &DocumentToolData) -> Messag
 		insert_index: -1,
 		transform: DAffine2::IDENTITY.to_cols_array(),
 		points,
-		style: style::PathStyle::new(Some(style::Stroke::new(tool_data.primary_color, data.weight as f32)), None),
+		style: style::PathStyle::new(Some(style::Stroke::new(tool_data.primary_color, data.weight as f32)), style::Fill::None),
 	}
 	.into()
 }

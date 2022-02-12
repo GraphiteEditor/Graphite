@@ -27,7 +27,7 @@ pub struct TextLayer {
 }
 
 impl LayerData for TextLayer {
-	fn render(&mut self, svg: &mut String, transforms: &mut Vec<DAffine2>, view_mode: ViewMode) {
+	fn render(&mut self, svg: &mut String, svg_defs: &mut String, transforms: &mut Vec<DAffine2>, view_mode: ViewMode) {
 		let transform = self.transform(transforms, view_mode);
 		let inverse = transform.inverse();
 		if !inverse.is_finite() {
@@ -43,17 +43,13 @@ impl LayerData for TextLayer {
 		if self.editable {
 			let _ = write!(
 				svg,
-				r#"<foreignObject transform="matrix({})" style="color: {}"></foreignObject>"#,
+				r#"<foreignObject transform="matrix({})"></foreignObject>"#,
 				transform
 					.to_cols_array()
 					.iter()
 					.enumerate()
 					.map(|(i, entry)| { entry.to_string() + if i == 5 { "" } else { "," } })
 					.collect::<String>(),
-				match self.style.fill() {
-					Some(fill) => format!("#{}", fill.color().rgba_hex()),
-					None => "gray".to_string(),
-				}
 			);
 		} else {
 			let mut path = self.to_bez_path();
