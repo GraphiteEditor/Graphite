@@ -88,6 +88,14 @@ pub enum Operation {
 		style: style::PathStyle,
 		closed: bool,
 	},
+	AddShape {
+		path: Vec<LayerId>,
+		transform: [f64; 6],
+		insert_index: isize,
+		bez_path: kurbo::BezPath,
+		style: style::PathStyle,
+		closed: bool,
+	},
 	DeleteLayer {
 		path: Vec<LayerId>,
 	},
