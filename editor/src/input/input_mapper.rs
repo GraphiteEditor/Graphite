@@ -23,7 +23,7 @@ impl Default for Mapping {
 		use Key::*;
 
 		// WARNING!
-		// If a new mapping isn't being handled (and perhaps another lower-precedence one is instead), make sure to advertise
+		// If a new mapping you added here isn't working (and perhaps another lower-precedence one is instead), make sure to advertise
 		// it as an available action in the respective message handler file (such as the bottom of `document_message_handler.rs`).
 
 		let mappings = mapping![
@@ -53,6 +53,8 @@ impl Default for Mapping {
 			entry! {action=CropMessage::PointerDown, key_down=Lmb},
 			entry! {action=CropMessage::PointerMove { constrain_axis_or_aspect: KeyShift, center: KeyAlt }, message=InputMapperMessage::PointerMove},
 			entry! {action=CropMessage::PointerUp, key_up=Lmb},
+			entry! {action=CropMessage::DeleteSelected, key_down=KeyDelete},
+			entry! {action=CropMessage::DeleteSelected, key_down=KeyBackspace},
 			// Navigate
 			entry! {action=NavigateMessage::ClickZoom { zoom_in: false }, key_up=Lmb, modifiers=[KeyShift]},
 			entry! {action=NavigateMessage::ClickZoom { zoom_in: true }, key_up=Lmb},
@@ -145,7 +147,6 @@ impl Default for Mapping {
 			entry! {action=DocumentMessage::SelectAllLayers, key_down=KeyA, modifiers=[KeyControl]},
 			entry! {action=DocumentMessage::CreateEmptyFolder { container_path: vec![] }, key_down=KeyN, modifiers=[KeyControl, KeyShift]},
 			entry! {action=DocumentMessage::DeleteSelectedLayers, key_down=KeyDelete},
-			entry! {action=DocumentMessage::DeleteSelectedLayers, key_down=KeyX},
 			entry! {action=DocumentMessage::DeleteSelectedLayers, key_down=KeyBackspace},
 			entry! {action=DocumentMessage::ExportDocument, key_down=KeyE, modifiers=[KeyControl]},
 			entry! {action=DocumentMessage::SaveDocument, key_down=KeyS, modifiers=[KeyControl]},
