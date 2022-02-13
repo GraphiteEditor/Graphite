@@ -11,6 +11,7 @@ pub struct RenderingContext {
 	context: WebGl2RenderingContext,
 	vert_shader: WebGlShader,
 	frag_shader: WebGlShader,
+	scale: f64,
 	program: WebGlProgram,
 }
 
@@ -57,6 +58,7 @@ fn create_vertices(lines: &[(f32, f32, f32, f32)], padding: f32) -> (Vec<Vertex>
 impl RenderingContext {
 	pub fn new() -> Result<Self, JsValue> {
 		let document = web_sys::window().unwrap().document().unwrap();
+		let scale = web_sys::window().unwrap().device_pixel_ratio();
 		let canvas = document.query_selector(".rendering-canvas").unwrap().unwrap();
 		let canvas: web_sys::HtmlCanvasElement = canvas.dyn_into::<web_sys::HtmlCanvasElement>()?;
 		let map = js_sys::Map::new();
@@ -83,6 +85,7 @@ impl RenderingContext {
 			context,
 			vert_shader,
 			frag_shader,
+			scale,
 			program,
 		})
 	}
@@ -125,14 +128,16 @@ impl RenderingContext {
 		positions_array_buf_view.copy_from(vertices);
 
 		let matrix_location = self.context.get_uniform_location(&self.program, "matrix");
-		let transform = glam::Affine2::from_scale(2. * Vec2::new(self.canvas.width() as f32, self.canvas.height() as f32).recip());
-		let transform = glam::Affine2::from_scale(20. * Vec2::new(1., -1.)) * transform;
+		let transform = glam::Affine2::from_scale(20. * Vec2::new(self.canvas.width() as f32, self.canvas.height() as f32).recip());
+		let transform = glam::Affine2::from_scale(self.scale as f32 * Vec2::new(1., -1.)) * transform;
 		let transform = glam::Affine2::from_translation(Vec2::new(-1., 1.)) * transform;
 		let transform = glam::Mat3::from(transform);
 		//let transform = glam::Mat3::IDENTITY;
 		//log::debug!("tranform: {transform:?}");
 		//log::debug!("matrix_location: {matrix_location:?}");
 		self.context.uniform_matrix3fv_with_f32_array(matrix_location.as_ref(), false, &transform.to_cols_array());
+		let path_style_location = self.context.get_uniform_location(&self.program, "path_style");
+		self.context.uniform1fv_with_f32_array(path_style_location.as_ref(), &[]);
 
 		self.context
 			.buffer_data_with_array_buffer_view(WebGl2RenderingContext::ARRAY_BUFFER, &positions_array_buf_view, WebGl2RenderingContext::STATIC_DRAW);
@@ -160,8 +165,8 @@ fn draw(context: &WebGl2RenderingContext, vert_count: i32) {
 	context.clear_color(0.0, 0.0, 0.0, 0.0);
 	//context.clear_color(1.0, 1.0, 1.0, 1.0);
 	context.clear(WebGl2RenderingContext::COLOR_BUFFER_BIT);
-	//context.enable(WebGl2RenderingContext::DEPTH_TEST);
-	//context.depth_func(WebGl2RenderingContext::LESS);
+	context.enable(WebGl2RenderingContext::DEPTH_TEST);
+	context.depth_func(WebGl2RenderingContext::LESS);
 
 	context.draw_arrays(WebGl2RenderingContext::TRIANGLES, 0, vert_count);
 }

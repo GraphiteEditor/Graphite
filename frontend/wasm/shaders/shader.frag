@@ -1,6 +1,7 @@
 #version 300 es
 
 precision highp float;
+uniform float path_style[4];
 
 struct Result {
     float dist;
@@ -10,6 +11,9 @@ struct Result {
 in vec2 vertex_position;
 in vec2 line_start;
 in vec2 line_stop;
+in vec4 color;
+in float width;
+
 //layout(location = 0) out vec4 _fs2p_location0;
 out vec4 outColor;
 
