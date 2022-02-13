@@ -103,111 +103,111 @@ impl PathStyle {
 	}
 
 	/// Get the current path fill.
-    ///
-    /// # Example
-    /// ```
-    /// # use graphite_graphene::layers::style::PathStyle;
-    /// # use graphite_graphene::layers::style::Fill;
-    /// # use graphite_graphene::color::Color;
-    /// let fill = Fill::new(Color::RED);
-    /// let style = PathStyle::new(None, Some(fill));
-    /// 
-    /// assert_eq!(style.fill(), Some(fill));
-    /// ```
+	///
+	/// # Example
+	/// ```
+	/// # use graphite_graphene::layers::style::PathStyle;
+	/// # use graphite_graphene::layers::style::Fill;
+	/// # use graphite_graphene::color::Color;
+	/// let fill = Fill::new(Color::RED);
+	/// let style = PathStyle::new(None, Some(fill));
+	///
+	/// assert_eq!(style.fill(), Some(fill));
+	/// ```
 	pub fn fill(&self) -> Option<Fill> {
 		self.fill
 	}
 
 	/// Get the current path stroke.
-    ///
-    /// # Example
-    /// ```
-    /// # use graphite_graphene::layers::style::PathStyle;
-    /// # use graphite_graphene::layers::style::Stroke;
-    /// # use graphite_graphene::color::Color;
-    /// let stroke = Stroke::new(Color::GREEN, 42.);
-    /// let style = PathStyle::new(Some(stroke), None);
-    /// 
-    /// assert_eq!(style.stroke(), Some(stroke));
-    /// ```
+	///
+	/// # Example
+	/// ```
+	/// # use graphite_graphene::layers::style::PathStyle;
+	/// # use graphite_graphene::layers::style::Stroke;
+	/// # use graphite_graphene::color::Color;
+	/// let stroke = Stroke::new(Color::GREEN, 42.);
+	/// let style = PathStyle::new(Some(stroke), None);
+	///
+	/// assert_eq!(style.stroke(), Some(stroke));
+	/// ```
 	pub fn stroke(&self) -> Option<Stroke> {
 		self.stroke
 	}
 
 	/// Set the path fill.
-    ///
-    /// # Example
-    /// ```
-    /// # use graphite_graphene::layers::style::PathStyle;
-    /// # use graphite_graphene::layers::style::Fill;
-    /// # use graphite_graphene::color::Color;
-    /// let mut style = PathStyle::default();
-    ///
-    /// assert_eq!(style.fill(), None);
-    ///
-    /// let fill = Fill::new(Color::RED);
-    /// style.set_fill(fill);
-    /// 
-    /// assert_eq!(style.fill(), Some(fill));
-    /// ```
+	///
+	/// # Example
+	/// ```
+	/// # use graphite_graphene::layers::style::PathStyle;
+	/// # use graphite_graphene::layers::style::Fill;
+	/// # use graphite_graphene::color::Color;
+	/// let mut style = PathStyle::default();
+	///
+	/// assert_eq!(style.fill(), None);
+	///
+	/// let fill = Fill::new(Color::RED);
+	/// style.set_fill(fill);
+	///
+	/// assert_eq!(style.fill(), Some(fill));
+	/// ```
 	pub fn set_fill(&mut self, fill: Fill) {
 		self.fill = Some(fill);
 	}
 
 	/// Set the path stroke.
-    ///
-    /// # Example
-    /// ```
-    /// # use graphite_graphene::layers::style::PathStyle;
-    /// # use graphite_graphene::layers::style::Stroke;
-    /// # use graphite_graphene::color::Color;
-    /// let mut style = PathStyle::default();
-    ///
-    /// assert_eq!(style.stroke(), None);
-    ///
-    /// let stroke = Stroke::new(Color::GREEN, 42.);
-    /// style.set_stroke(stroke);
-    /// 
-    /// assert_eq!(style.stroke(), Some(stroke));
-    /// ```
+	///
+	/// # Example
+	/// ```
+	/// # use graphite_graphene::layers::style::PathStyle;
+	/// # use graphite_graphene::layers::style::Stroke;
+	/// # use graphite_graphene::color::Color;
+	/// let mut style = PathStyle::default();
+	///
+	/// assert_eq!(style.stroke(), None);
+	///
+	/// let stroke = Stroke::new(Color::GREEN, 42.);
+	/// style.set_stroke(stroke);
+	///
+	/// assert_eq!(style.stroke(), Some(stroke));
+	/// ```
 	pub fn set_stroke(&mut self, stroke: Stroke) {
 		self.stroke = Some(stroke);
 	}
 
 	/// Clear the path fill.
-    ///
-    /// # Example
-    /// ```
-    /// # use graphite_graphene::layers::style::PathStyle;
-    /// # use graphite_graphene::layers::style::Fill;
-    /// # use graphite_graphene::color::Color;
-    /// let mut style = PathStyle::new(None, Some(Fill::new(Color::RED)));
-    /// 
-    /// assert!(style.fill().is_some());
-    ///
-    /// style.clear_fill();
-    /// 
-    /// assert!(style.fill().is_none());
-    /// ```
+	///
+	/// # Example
+	/// ```
+	/// # use graphite_graphene::layers::style::PathStyle;
+	/// # use graphite_graphene::layers::style::Fill;
+	/// # use graphite_graphene::color::Color;
+	/// let mut style = PathStyle::new(None, Some(Fill::new(Color::RED)));
+	///
+	/// assert!(style.fill().is_some());
+	///
+	/// style.clear_fill();
+	///
+	/// assert!(style.fill().is_none());
+	/// ```
 	pub fn clear_fill(&mut self) {
 		self.fill = None;
 	}
 
 	/// Clear the path stroke.
-    ///
-    /// # Example
-    /// ```
-    /// # use graphite_graphene::layers::style::PathStyle;
-    /// # use graphite_graphene::layers::style::Stroke;
-    /// # use graphite_graphene::color::Color;
-    /// let mut style = PathStyle::new(Some(Stroke::new(Color::GREEN, 42.)), None);
-    /// 
-    /// assert!(style.stroke().is_some());
-    ///
-    /// style.clear_stroke();
-    /// 
-    /// assert!(style.stroke().is_none());
-    /// ```
+	///
+	/// # Example
+	/// ```
+	/// # use graphite_graphene::layers::style::PathStyle;
+	/// # use graphite_graphene::layers::style::Stroke;
+	/// # use graphite_graphene::color::Color;
+	/// let mut style = PathStyle::new(Some(Stroke::new(Color::GREEN, 42.)), None);
+	///
+	/// assert!(style.stroke().is_some());
+	///
+	/// style.clear_stroke();
+	///
+	/// assert!(style.stroke().is_none());
+	/// ```
 	pub fn clear_stroke(&mut self) {
 		self.stroke = None;
 	}

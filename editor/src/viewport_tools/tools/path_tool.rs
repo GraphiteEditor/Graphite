@@ -16,7 +16,7 @@ use glam::DVec2;
 use serde::{Deserialize, Serialize};
 
 #[derive(Default)]
-pub struct Path {
+pub struct PathTool {
 	fsm_state: PathToolFsmState,
 	data: PathToolData,
 }
@@ -24,7 +24,7 @@ pub struct Path {
 #[remain::sorted]
 #[impl_message(Message, ToolMessage, Path)]
 #[derive(PartialEq, Clone, Debug, Hash, Serialize, Deserialize)]
-pub enum PathMessage {
+pub enum PathToolMessage {
 	// Standard messages
 	#[remain::unsorted]
 	Abort,
@@ -44,9 +44,9 @@ pub enum PathMessage {
 	},
 }
 
-impl PropertyHolder for Path {}
+impl PropertyHolder for PathTool {}
 
-impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Path {
+impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for PathTool {
 	fn process_action(&mut self, action: ToolMessage, data: ToolActionHandlerData<'a>, responses: &mut VecDeque<Message>) {
 		if action == ToolMessage::UpdateHints {
 			self.fsm_state.update_hints(responses);
@@ -72,8 +72,8 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Path {
 		use PathToolFsmState::*;
 
 		match self.fsm_state {
-			Ready => actions!(PathMessageDiscriminant; DragStart),
-			Dragging => actions!(PathMessageDiscriminant; DragStop, PointerMove),
+			Ready => actions!(PathToolMessageDiscriminant; DragStart),
+			Dragging => actions!(PathToolMessageDiscriminant; DragStop, PointerMove),
 		}
 	}
 }
@@ -94,6 +94,8 @@ impl Default for PathToolFsmState {
 struct PathToolData {
 	shape_editor: ShapeEditor,
 	snap_handler: SnapHandler,
+
+	drag_start_pos: DVec2,
 	alt_debounce: bool,
 	shift_debounce: bool,
 }
@@ -113,8 +115,8 @@ impl Fsm for PathToolFsmState {
 		responses: &mut VecDeque<Message>,
 	) -> Self {
 		if let ToolMessage::Path(event) = event {
-			use PathMessage::*;
 			use PathToolFsmState::*;
+			use PathToolMessage::*;
 
 			match (self, event) {
 				// TODO: Capture a tool event instead of doing this?
@@ -151,6 +153,7 @@ impl Fsm for PathToolFsmState {
 							.map(|point| point.position)
 							.collect();
 						data.snap_handler.add_snap_points(document, snap_points);
+						data.drag_start_pos = input.mouse.position;
 						Dragging
 					}
 					// We didn't find a point nearby, so consider selecting the nearest shape instead
@@ -207,7 +210,7 @@ impl Fsm for PathToolFsmState {
 
 					// Move the selected points by the mouse position
 					let snapped_position = data.snap_handler.snap_position(responses, input.viewport_bounds.size(), document, input.mouse.position);
-					data.shape_editor.move_selected_points(snapped_position, responses);
+					data.shape_editor.move_selected_points(snapped_position - data.drag_start_pos, true, responses);
 					Dragging
 				}
 				// Mouse up

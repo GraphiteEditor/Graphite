@@ -11,7 +11,7 @@ use crate::message_prelude::*;
 use crate::misc::{HintData, HintGroup, HintInfo, KeysGroup};
 use crate::viewport_tools::snapping::SnapHandler;
 use crate::viewport_tools::tool::{DocumentToolData, Fsm, ToolActionHandlerData, ToolType};
-
+use graphene::boolean_ops::BooleanOperation;
 use graphene::document::Document;
 use graphene::intersection::Quad;
 use graphene::layers::layer_info::LayerDataType;
@@ -23,7 +23,7 @@ use glam::{DAffine2, DVec2};
 use serde::{Deserialize, Serialize};
 
 #[derive(Default)]
-pub struct Select {
+pub struct SelectTool {
 	fsm_state: SelectToolFsmState,
 	data: SelectToolData,
 }
@@ -31,7 +31,7 @@ pub struct Select {
 #[remain::sorted]
 #[impl_message(Message, ToolMessage, Select)]
 #[derive(PartialEq, Clone, Debug, Hash, Serialize, Deserialize)]
-pub enum SelectMessage {
+pub enum SelectToolMessage {
 	// Standard messages
 	#[remain::unsorted]
 	Abort,
@@ -57,7 +57,7 @@ pub enum SelectMessage {
 	},
 }
 
-impl PropertyHolder for Select {
+impl PropertyHolder for SelectTool {
 	fn properties(&self) -> WidgetLayout {
 		WidgetLayout::new(vec![LayoutRow::Row {
 			name: "".into(),
@@ -160,14 +160,14 @@ impl PropertyHolder for Select {
 					icon: "FlipHorizontal".into(),
 					tooltip: "Flip Horizontal".into(),
 					size: 24,
-					on_update: WidgetCallback::new(|_| SelectMessage::FlipHorizontal.into()),
+					on_update: WidgetCallback::new(|_| SelectToolMessage::FlipHorizontal.into()),
 					..IconButton::default()
 				})),
 				WidgetHolder::new(Widget::IconButton(IconButton {
 					icon: "FlipVertical".into(),
 					tooltip: "Flip Vertical".into(),
 					size: 24,
-					on_update: WidgetCallback::new(|_| SelectMessage::FlipVertical.into()),
+					on_update: WidgetCallback::new(|_| SelectToolMessage::FlipVertical.into()),
 					..IconButton::default()
 				})),
 				WidgetHolder::new(Widget::Separator(Separator {
@@ -186,35 +186,35 @@ impl PropertyHolder for Select {
 					icon: "BooleanUnion".into(),
 					tooltip: "Boolean Union".into(),
 					size: 24,
-					on_update: WidgetCallback::new(|_| FrontendMessage::DisplayDialogComingSoon { issue: Some(197) }.into()),
+					on_update: WidgetCallback::new(|_| DocumentMessage::BooleanOperation(BooleanOperation::Union).into()),
 					..IconButton::default()
 				})),
 				WidgetHolder::new(Widget::IconButton(IconButton {
 					icon: "BooleanSubtractFront".into(),
 					tooltip: "Boolean Subtract Front".into(),
 					size: 24,
-					on_update: WidgetCallback::new(|_| FrontendMessage::DisplayDialogComingSoon { issue: Some(197) }.into()),
+					on_update: WidgetCallback::new(|_| DocumentMessage::BooleanOperation(BooleanOperation::SubtractFront).into()),
 					..IconButton::default()
 				})),
 				WidgetHolder::new(Widget::IconButton(IconButton {
 					icon: "BooleanSubtractBack".into(),
 					tooltip: "Boolean Subtract Back".into(),
 					size: 24,
-					on_update: WidgetCallback::new(|_| FrontendMessage::DisplayDialogComingSoon { issue: Some(197) }.into()),
+					on_update: WidgetCallback::new(|_| DocumentMessage::BooleanOperation(BooleanOperation::SubtractBack).into()),
 					..IconButton::default()
 				})),
 				WidgetHolder::new(Widget::IconButton(IconButton {
 					icon: "BooleanIntersect".into(),
 					tooltip: "Boolean Intersect".into(),
 					size: 24,
-					on_update: WidgetCallback::new(|_| FrontendMessage::DisplayDialogComingSoon { issue: Some(197) }.into()),
+					on_update: WidgetCallback::new(|_| DocumentMessage::BooleanOperation(BooleanOperation::Intersection).into()),
 					..IconButton::default()
 				})),
 				WidgetHolder::new(Widget::IconButton(IconButton {
 					icon: "BooleanDifference".into(),
 					tooltip: "Boolean Difference".into(),
 					size: 24,
-					on_update: WidgetCallback::new(|_| FrontendMessage::DisplayDialogComingSoon { issue: Some(197) }.into()),
+					on_update: WidgetCallback::new(|_| DocumentMessage::BooleanOperation(BooleanOperation::Difference).into()),
 					..IconButton::default()
 				})),
 				WidgetHolder::new(Widget::Separator(Separator {
@@ -230,7 +230,7 @@ impl PropertyHolder for Select {
 	}
 }
 
-impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Select {
+impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for SelectTool {
 	fn process_action(&mut self, action: ToolMessage, data: ToolActionHandlerData<'a>, responses: &mut VecDeque<Message>) {
 		if action == ToolMessage::UpdateHints {
 			self.fsm_state.update_hints(responses);
@@ -254,9 +254,9 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Select {
 		use SelectToolFsmState::*;
 
 		match self.fsm_state {
-			Ready => actions!(SelectMessageDiscriminant; DragStart, PointerMove, EditLayer),
-			Dragging => actions!(SelectMessageDiscriminant; DragStop, PointerMove, EditLayer),
-			_ => actions!(SelectMessageDiscriminant; DragStop, PointerMove, Abort, EditLayer),
+			Ready => actions!(SelectToolMessageDiscriminant; DragStart, PointerMove, EditLayer),
+			Dragging => actions!(SelectToolMessageDiscriminant; DragStop, PointerMove, EditLayer),
+			_ => actions!(SelectToolMessageDiscriminant; DragStop, PointerMove, Abort, EditLayer),
 		}
 	}
 }
@@ -317,8 +317,8 @@ impl Fsm for SelectToolFsmState {
 		input: &InputPreprocessorMessageHandler,
 		responses: &mut VecDeque<Message>,
 	) -> Self {
-		use SelectMessage::*;
 		use SelectToolFsmState::*;
+		use SelectToolMessage::*;
 
 		if let ToolMessage::Select(event) = event {
 			match (self, event) {
@@ -446,7 +446,7 @@ impl Fsm for SelectToolFsmState {
 				}
 				(Dragging, PointerMove { axis_align, .. }) => {
 					// TODO: This is a cheat. Break out the relevant functionality from the handler above and call it from there and here.
-					responses.push_front(SelectMessage::DocumentIsDirty.into());
+					responses.push_front(SelectToolMessage::DocumentIsDirty.into());
 
 					let mouse_position = axis_align_drag(input.keyboard.get(axis_align as usize), input.mouse.position, data.drag_start);
 

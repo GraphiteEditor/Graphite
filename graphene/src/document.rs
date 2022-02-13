@@ -1,13 +1,15 @@
+use crate::boolean_ops::boolean_operation;
 use crate::intersection::Quad;
 use crate::layers;
-use crate::layers::folder::Folder;
+use crate::layers::folder_layer::FolderLayer;
 use crate::layers::layer_info::{Layer, LayerData, LayerDataType};
-use crate::layers::simple_shape::Shape;
+use crate::layers::shape_layer::ShapeLayer;
 use crate::layers::style::ViewMode;
-use crate::layers::text::Text;
+use crate::layers::text_layer::TextLayer;
 use crate::{DocumentError, DocumentResponse, Operation};
 
 use glam::{DAffine2, DVec2};
+use kurbo::Affine;
 use serde::{Deserialize, Serialize};
 use std::cmp::max;
 use std::collections::hash_map::DefaultHasher;
@@ -18,8 +20,8 @@ pub type LayerId = u64;
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Document {
-    /// The root layer, usually a [Folder](layers::folder::Folder) 
-    /// that contains all other [Layers](layers::layer_info::Layer).
+	/// The root layer, usually a [FolderLayer](layers::folder_layer::FolderLayer)
+	/// that contains all other [Layers](layers::layer_info::Layer).
 	pub root: Layer,
 	/// The state_identifier serves to provide a way to uniquely identify a particular state that the document is in.
 	/// This identifier is not a hash and is not guaranteed to be equal for equivalent documents.
@@ -30,7 +32,7 @@ pub struct Document {
 impl Default for Document {
 	fn default() -> Self {
 		Self {
-			root: Layer::new(LayerDataType::Folder(Folder::default()), DAffine2::IDENTITY.to_cols_array()),
+			root: Layer::new(LayerDataType::Folder(FolderLayer::default()), DAffine2::IDENTITY.to_cols_array()),
 			state_identifier: DefaultHasher::new(),
 		}
 	}
@@ -61,7 +63,7 @@ impl Document {
 
 	/// Returns a reference to the requested folder. Fails if the path does not exist,
 	/// or if the requested layer is not of type folder.
-	pub fn folder(&self, path: impl AsRef<[LayerId]>) -> Result<&Folder, DocumentError> {
+	pub fn folder(&self, path: impl AsRef<[LayerId]>) -> Result<&FolderLayer, DocumentError> {
 		let mut root = &self.root;
 		for id in path.as_ref() {
 			root = root.as_folder()?.layer(*id).ok_or_else(|| DocumentError::LayerNotFound(path.as_ref().into()))?;
@@ -72,7 +74,7 @@ impl Document {
 	/// Returns a mutable reference to the requested folder. Fails if the path does not exist,
 	/// or if the requested layer is not of type folder.
 	/// If you manually edit the folder you have to set the cache_dirty flag yourself.
-	fn folder_mut(&mut self, path: &[LayerId]) -> Result<&mut Folder, DocumentError> {
+	fn folder_mut(&mut self, path: &[LayerId]) -> Result<&mut FolderLayer, DocumentError> {
 		let mut root = &mut self.root;
 		for id in path {
 			root = root.as_folder_mut()?.layer_mut(*id).ok_or_else(|| DocumentError::LayerNotFound(path.into()))?;
@@ -96,6 +98,25 @@ impl Document {
 		}
 		let (path, id) = split_path(path)?;
 		self.folder_mut(path)?.layer_mut(id).ok_or_else(|| DocumentError::LayerNotFound(path.into()))
+	}
+
+	/// Returns vector `Shape`s for each specified in `paths`.
+	/// If any path is not a shape, or does not exist, `DocumentError::InvalidPath` is returned.
+	fn transformed_shapes(&self, paths: &[Vec<LayerId>]) -> Result<Vec<ShapeLayer>, DocumentError> {
+		let mut shapes: Vec<ShapeLayer> = Vec::new();
+		let undo_viewport = self.root.transform.inverse();
+		for path in paths {
+			match (self.multiply_transforms(path), &self.layer(path)?.data) {
+				(Ok(shape_transform), LayerDataType::Shape(shape)) => {
+					let mut new_shape = shape.clone();
+					new_shape.path.apply_affine(Affine::new((undo_viewport * shape_transform).to_cols_array()));
+					shapes.push(new_shape);
+				}
+				(Ok(_), _) => return Err(DocumentError::InvalidPath),
+				(Err(err), _) => return Err(err),
+			}
+		}
+		Ok(shapes)
 	}
 
 	pub fn common_layer_path_prefix<'a>(&self, layers: impl Iterator<Item = &'a [LayerId]>) -> &'a [LayerId] {
@@ -245,7 +266,7 @@ impl Document {
 	}
 
 	/// Visit each layer recursively, applies modify_shape to each non-overlay Shape
-	pub fn visit_all_shapes<F: FnMut(&mut Shape)>(layer: &mut Layer, modify_shape: &mut F) -> bool {
+	pub fn visit_all_shapes<F: FnMut(&mut ShapeLayer)>(layer: &mut Layer, modify_shape: &mut F) -> bool {
 		match layer.data {
 			LayerDataType::Shape(ref mut shape) => {
 				modify_shape(shape);
@@ -319,7 +340,7 @@ impl Document {
 		boxes.reduce(|a, b| [a[0].min(b[0]), a[1].max(b[1])])
 	}
 
-    /// Mark the layer at the provided path, as well as all the folders containing it, as dirty.
+	/// Mark the layer at the provided path, as well as all the folders containing it, as dirty.
 	pub fn mark_upstream_as_dirty(&mut self, path: &[LayerId]) -> Result<(), DocumentError> {
 		let mut root = &mut self.root;
 		root.cache_dirty = true;
@@ -417,14 +438,14 @@ impl Document {
 
 		let responses = match &operation {
 			Operation::AddEllipse { path, insert_index, transform, style } => {
-				let layer = Layer::new(LayerDataType::Shape(Shape::ellipse(*style)), *transform);
+				let layer = Layer::new(LayerDataType::Shape(ShapeLayer::ellipse(*style)), *transform);
 
 				self.set_layer(path, layer, *insert_index)?;
 
 				Some([vec![DocumentChanged, CreatedLayer { path: path.clone() }], update_thumbnails_upstream(path)].concat())
 			}
 			Operation::AddOverlayEllipse { path, transform, style } => {
-				let mut ellipse = Shape::ellipse(*style);
+				let mut ellipse = ShapeLayer::ellipse(*style);
 				ellipse.render_index = -1;
 
 				let layer = Layer::new(LayerDataType::Shape(ellipse), *transform);
@@ -433,14 +454,14 @@ impl Document {
 				Some([vec![DocumentChanged, CreatedLayer { path: path.clone() }]].concat())
 			}
 			Operation::AddRect { path, insert_index, transform, style } => {
-				let layer = Layer::new(LayerDataType::Shape(Shape::rectangle(*style)), *transform);
+				let layer = Layer::new(LayerDataType::Shape(ShapeLayer::rectangle(*style)), *transform);
 
 				self.set_layer(path, layer, *insert_index)?;
 
 				Some([vec![DocumentChanged, CreatedLayer { path: path.clone() }], update_thumbnails_upstream(path)].concat())
 			}
 			Operation::AddOverlayRect { path, transform, style } => {
-				let mut rect = Shape::rectangle(*style);
+				let mut rect = ShapeLayer::rectangle(*style);
 				rect.render_index = -1;
 
 				let layer = Layer::new(LayerDataType::Shape(rect), *transform);
@@ -449,14 +470,14 @@ impl Document {
 				Some([vec![DocumentChanged, CreatedLayer { path: path.clone() }]].concat())
 			}
 			Operation::AddLine { path, insert_index, transform, style } => {
-				let layer = Layer::new(LayerDataType::Shape(Shape::line(*style)), *transform);
+				let layer = Layer::new(LayerDataType::Shape(ShapeLayer::line(*style)), *transform);
 
 				self.set_layer(path, layer, *insert_index)?;
 
 				Some([vec![DocumentChanged, CreatedLayer { path: path.clone() }], update_thumbnails_upstream(path)].concat())
 			}
 			Operation::AddOverlayLine { path, transform, style } => {
-				let mut line = Shape::line(*style);
+				let mut line = ShapeLayer::line(*style);
 				line.render_index = -1;
 
 				let layer = Layer::new(LayerDataType::Shape(line), *transform);
@@ -473,7 +494,7 @@ impl Document {
 				style,
 				size,
 			} => {
-				let layer = Layer::new(LayerDataType::Text(Text::new(text.clone(), *style, *size)), *transform);
+				let layer = Layer::new(LayerDataType::Text(TextLayer::new(text.clone(), *style, *size)), *transform);
 
 				self.set_layer(path, layer, *insert_index)?;
 
@@ -497,19 +518,31 @@ impl Document {
 				style,
 				sides,
 			} => {
-				let layer = Layer::new(LayerDataType::Shape(Shape::ngon(*sides, *style)), *transform);
+				let layer = Layer::new(LayerDataType::Shape(ShapeLayer::ngon(*sides, *style)), *transform);
 
 				self.set_layer(path, layer, *insert_index)?;
 
 				Some([vec![DocumentChanged, CreatedLayer { path: path.clone() }], update_thumbnails_upstream(path)].concat())
 			}
 			Operation::AddOverlayShape { path, style, bez_path, closed } => {
-				let mut shape = Shape::from_bez_path(bez_path.clone(), *style, *closed);
+				let mut shape = ShapeLayer::from_bez_path(bez_path.clone(), *style, *closed);
 				shape.render_index = -1;
 
 				let layer = Layer::new(LayerDataType::Shape(shape), DAffine2::IDENTITY.to_cols_array());
 				self.set_layer(path, layer, -1)?;
 
+				Some([vec![DocumentChanged, CreatedLayer { path: path.clone() }]].concat())
+			}
+			Operation::AddShape {
+				path,
+				transform,
+				insert_index,
+				style,
+				bez_path,
+				closed,
+			} => {
+				let shape = ShapeLayer::from_bez_path(bez_path.clone(), *style, *closed);
+				self.set_layer(path, Layer::new(LayerDataType::Shape(shape), *transform), *insert_index)?;
 				Some([vec![DocumentChanged, CreatedLayer { path: path.clone() }]].concat())
 			}
 			Operation::AddPolyline {
@@ -520,8 +553,36 @@ impl Document {
 				style,
 			} => {
 				let points: Vec<glam::DVec2> = points.iter().map(|&it| it.into()).collect();
-				self.set_layer(path, Layer::new(LayerDataType::Shape(Shape::poly_line(points, *style)), *transform), *insert_index)?;
+				self.set_layer(path, Layer::new(LayerDataType::Shape(ShapeLayer::poly_line(points, *style)), *transform), *insert_index)?;
 				Some([vec![DocumentChanged, CreatedLayer { path: path.clone() }], update_thumbnails_upstream(path)].concat())
+			}
+			Operation::BooleanOperation { operation, selected } => {
+				// TODO: proper difference
+				// TODO: proper style selection (done?)
+				// TODO: should generate symmetrical code
+				// TODO: Operations on any number of shapes
+				// TODO: boolean ops on any number of shapes
+				// TODO: handle overlapping identical curve case
+				// TODO: precision reached without intersection bug (maybe caused by separating a closed path, or dragging handles)
+				// TODO: click on shape should drag the shape
+				// TODO: add ability to undo
+				let mut responses = Vec::new();
+				if selected.len() > 1 && selected.len() < 3 {
+					// ? apparently `selected` should be reversed
+					let mut shapes = self.transformed_shapes(selected)?;
+					let mut shape_drain = shapes.drain(..).rev();
+					let new_shapes = boolean_operation(*operation, shape_drain.next().unwrap(), shape_drain.next().unwrap())?;
+
+					for path in selected {
+						self.delete(path)?;
+						responses.push(DocumentResponse::DeletedLayer { path: path.clone() })
+					}
+					for new_shape in new_shapes {
+						let new_id = self.add_layer(&[], Layer::new(LayerDataType::Shape(new_shape), DAffine2::IDENTITY.to_cols_array()), -1)?;
+						responses.push(DocumentResponse::CreatedLayer { path: vec![new_id] })
+					}
+				}
+				Some([vec![DocumentChanged, DocumentResponse::FolderChanged { path: vec![] }], responses].concat())
 			}
 			Operation::AddSpline {
 				path,
@@ -531,11 +592,11 @@ impl Document {
 				style,
 			} => {
 				let points: Vec<glam::DVec2> = points.iter().map(|&it| it.into()).collect();
-				self.set_layer(path, Layer::new(LayerDataType::Shape(Shape::spline(points, *style)), *transform), *insert_index)?;
+				self.set_layer(path, Layer::new(LayerDataType::Shape(ShapeLayer::spline(points, *style)), *transform), *insert_index)?;
 				Some([vec![DocumentChanged, CreatedLayer { path: path.clone() }], update_thumbnails_upstream(path)].concat())
 			}
 			Operation::DeleteLayer { path } => {
-				fn aggregate_deletions(folder: &Folder, path: &mut Vec<LayerId>, responses: &mut Vec<DocumentResponse>) {
+				fn aggregate_deletions(folder: &FolderLayer, path: &mut Vec<LayerId>, responses: &mut Vec<DocumentResponse>) {
 					for (id, layer) in folder.layer_ids.iter().zip(folder.layers()) {
 						path.push(*id);
 						responses.push(DocumentResponse::DeletedLayer { path: path.clone() });
@@ -566,7 +627,7 @@ impl Document {
 				folder.add_layer(layer.clone(), Some(layer_id), *insert_index).ok_or(DocumentError::IndexOutOfBounds)?;
 				self.mark_as_dirty(destination_path)?;
 
-				fn aggregate_insertions(folder: &Folder, path: &mut Vec<LayerId>, responses: &mut Vec<DocumentResponse>) {
+				fn aggregate_insertions(folder: &FolderLayer, path: &mut Vec<LayerId>, responses: &mut Vec<DocumentResponse>) {
 					for (id, layer) in folder.layer_ids.iter().zip(folder.layers()) {
 						path.push(*id);
 						responses.push(DocumentResponse::CreatedLayer { path: path.clone() });
@@ -609,7 +670,7 @@ impl Document {
 				Some(vec![LayerChanged { path: path.clone() }])
 			}
 			Operation::CreateFolder { path } => {
-				self.set_layer(path, Layer::new(LayerDataType::Folder(Folder::default()), DAffine2::IDENTITY.to_cols_array()), -1)?;
+				self.set_layer(path, Layer::new(LayerDataType::Folder(FolderLayer::default()), DAffine2::IDENTITY.to_cols_array()), -1)?;
 				self.mark_as_dirty(path)?;
 
 				Some([vec![DocumentChanged, CreatedLayer { path: path.clone() }], update_thumbnails_upstream(path)].concat())
@@ -648,7 +709,7 @@ impl Document {
 
 				if let LayerDataType::Text(t) = &mut self.layer_mut(path)?.data {
 					let bezpath = t.to_bez_path();
-					self.layer_mut(path)?.data = layers::layer_info::LayerDataType::Shape(Shape::from_bez_path(bezpath, t.style, true));
+					self.layer_mut(path)?.data = layers::layer_info::LayerDataType::Shape(ShapeLayer::from_bez_path(bezpath, t.style, true));
 				}
 
 				if let LayerDataType::Shape(shape) = &mut self.layer_mut(path)?.data {

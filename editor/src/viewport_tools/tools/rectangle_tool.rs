@@ -16,15 +16,15 @@ use glam::DAffine2;
 use serde::{Deserialize, Serialize};
 
 #[derive(Default)]
-pub struct Ellipse {
-	fsm_state: EllipseToolFsmState,
-	data: EllipseToolData,
+pub struct RectangleTool {
+	fsm_state: RectangleToolFsmState,
+	data: RectangleToolData,
 }
 
 #[remain::sorted]
-#[impl_message(Message, ToolMessage, Ellipse)]
+#[impl_message(Message, ToolMessage, Rectangle)]
 #[derive(PartialEq, Clone, Debug, Hash, Serialize, Deserialize)]
-pub enum EllipseMessage {
+pub enum RectangleToolMessage {
 	// Standard messages
 	#[remain::unsorted]
 	Abort,
@@ -38,9 +38,9 @@ pub enum EllipseMessage {
 	},
 }
 
-impl PropertyHolder for Ellipse {}
+impl PropertyHolder for RectangleTool {}
 
-impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Ellipse {
+impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for RectangleTool {
 	fn process_action(&mut self, action: ToolMessage, data: ToolActionHandlerData<'a>, responses: &mut VecDeque<Message>) {
 		if action == ToolMessage::UpdateHints {
 			self.fsm_state.update_hints(responses);
@@ -62,34 +62,33 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Ellipse {
 	}
 
 	fn actions(&self) -> ActionList {
-		use EllipseToolFsmState::*;
+		use RectangleToolFsmState::*;
 
 		match self.fsm_state {
-			Ready => actions!(EllipseMessageDiscriminant; DragStart),
-			Drawing => actions!(EllipseMessageDiscriminant; DragStop, Abort, Resize),
+			Ready => actions!(RectangleToolMessageDiscriminant; DragStart),
+			Drawing => actions!(RectangleToolMessageDiscriminant; DragStop, Abort, Resize),
 		}
 	}
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum EllipseToolFsmState {
+enum RectangleToolFsmState {
 	Ready,
 	Drawing,
 }
 
-impl Default for EllipseToolFsmState {
+impl Default for RectangleToolFsmState {
 	fn default() -> Self {
-		EllipseToolFsmState::Ready
+		RectangleToolFsmState::Ready
 	}
 }
-
 #[derive(Clone, Debug, Default)]
-struct EllipseToolData {
+struct RectangleToolData {
 	data: Resize,
 }
 
-impl Fsm for EllipseToolFsmState {
-	type ToolData = EllipseToolData;
+impl Fsm for RectangleToolFsmState {
+	type ToolData = RectangleToolData;
 	type ToolOptions = ();
 
 	fn transition(
@@ -102,12 +101,12 @@ impl Fsm for EllipseToolFsmState {
 		input: &InputPreprocessorMessageHandler,
 		responses: &mut VecDeque<Message>,
 	) -> Self {
-		use EllipseMessage::*;
-		use EllipseToolFsmState::*;
+		use RectangleToolFsmState::*;
+		use RectangleToolMessage::*;
 
 		let mut shape_data = &mut data.data;
 
-		if let ToolMessage::Ellipse(event) = event {
+		if let ToolMessage::Rectangle(event) = event {
 			match (self, event) {
 				(Ready, DragStart) => {
 					shape_data.start(responses, input.viewport_bounds.size(), document, input.mouse.position);
@@ -116,7 +115,7 @@ impl Fsm for EllipseToolFsmState {
 					responses.push_back(DocumentMessage::DeselectAllLayers.into());
 
 					responses.push_back(
-						Operation::AddEllipse {
+						Operation::AddRect {
 							path: shape_data.path.clone().unwrap(),
 							insert_index: -1,
 							transform: DAffine2::ZERO.to_cols_array(),
@@ -141,10 +140,12 @@ impl Fsm for EllipseToolFsmState {
 					}
 
 					shape_data.cleanup(responses);
+
 					Ready
 				}
 				(Drawing, Abort) => {
 					responses.push_back(DocumentMessage::AbortTransaction.into());
+
 					shape_data.cleanup(responses);
 
 					Ready
@@ -158,17 +159,17 @@ impl Fsm for EllipseToolFsmState {
 
 	fn update_hints(&self, responses: &mut VecDeque<Message>) {
 		let hint_data = match self {
-			EllipseToolFsmState::Ready => HintData(vec![HintGroup(vec![
+			RectangleToolFsmState::Ready => HintData(vec![HintGroup(vec![
 				HintInfo {
 					key_groups: vec![],
 					mouse: Some(MouseMotion::LmbDrag),
-					label: String::from("Draw Ellipse"),
+					label: String::from("Draw Rectangle"),
 					plus: false,
 				},
 				HintInfo {
 					key_groups: vec![KeysGroup(vec![Key::KeyShift])],
 					mouse: None,
-					label: String::from("Constrain Circular"),
+					label: String::from("Constrain Square"),
 					plus: true,
 				},
 				HintInfo {
@@ -178,11 +179,11 @@ impl Fsm for EllipseToolFsmState {
 					plus: true,
 				},
 			])]),
-			EllipseToolFsmState::Drawing => HintData(vec![HintGroup(vec![
+			RectangleToolFsmState::Drawing => HintData(vec![HintGroup(vec![
 				HintInfo {
 					key_groups: vec![KeysGroup(vec![Key::KeyShift])],
 					mouse: None,
-					label: String::from("Constrain Circular"),
+					label: String::from("Constrain Square"),
 					plus: false,
 				},
 				HintInfo {

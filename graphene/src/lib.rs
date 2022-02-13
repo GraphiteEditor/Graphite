@@ -1,3 +1,4 @@
+pub mod boolean_ops;
 /// Contains the [Color](color::Color) type.
 pub mod color;
 /// Contains constant values used by graphene.

@@ -120,7 +120,7 @@ impl JsEditorHandle {
 	pub fn send_tool_message(&self, tool: String, message: &JsValue) -> Result<(), JsValue> {
 		let tool_message = match translate_tool_type(&tool) {
 			Some(tool) => match tool {
-				ToolType::Select => match serde_wasm_bindgen::from_value::<tools::select::SelectMessage>(message.clone()) {
+				ToolType::Select => match serde_wasm_bindgen::from_value::<tools::select_tool::SelectToolMessage>(message.clone()) {
 					Ok(select_message) => Ok(ToolMessage::Select(select_message)),
 					Err(err) => Err(Error::new(&format!("Invalid message for {}: {}", tool, err)).into()),
 				},
@@ -524,6 +524,12 @@ impl JsEditorHandle {
 		self.dispatch(message);
 		let message = DocumentMessage::ZoomCanvasToFitAll;
 		self.dispatch(message);
+	}
+
+	// TODO(mfish33): Replace with initialization system Issue:#524
+	pub fn init_document_bar(&self) {
+		let message = PortfolioMessage::UpdateDocumentBar;
+		self.dispatch(message)
 	}
 }
 

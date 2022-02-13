@@ -16,7 +16,7 @@ use glam::{DAffine2, DVec2};
 use serde::{Deserialize, Serialize};
 
 #[derive(Default)]
-pub struct Spline {
+pub struct SplineTool {
 	fsm_state: SplineToolFsmState,
 	data: SplineToolData,
 	options: SplineOptions,
@@ -35,7 +35,7 @@ impl Default for SplineOptions {
 #[remain::sorted]
 #[impl_message(Message, ToolMessage, Spline)]
 #[derive(PartialEq, Clone, Debug, Hash, Serialize, Deserialize)]
-pub enum SplineMessage {
+pub enum SplineToolMessage {
 	// Standard messages
 	#[remain::unsorted]
 	Abort,
@@ -61,7 +61,7 @@ pub enum SplineOptionsUpdate {
 	LineWeight(u32),
 }
 
-impl PropertyHolder for Spline {
+impl PropertyHolder for SplineTool {
 	fn properties(&self) -> WidgetLayout {
 		WidgetLayout::new(vec![LayoutRow::Row {
 			name: "".into(),
@@ -71,14 +71,14 @@ impl PropertyHolder for Spline {
 				value: self.options.line_weight as f64,
 				is_integer: true,
 				min: Some(0.),
-				on_update: WidgetCallback::new(|number_input| SplineMessage::UpdateOptions(SplineOptionsUpdate::LineWeight(number_input.value as u32)).into()),
+				on_update: WidgetCallback::new(|number_input| SplineToolMessage::UpdateOptions(SplineOptionsUpdate::LineWeight(number_input.value as u32)).into()),
 				..NumberInput::default()
 			}))],
 		}])
 	}
 }
 
-impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Spline {
+impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for SplineTool {
 	fn process_action(&mut self, action: ToolMessage, data: ToolActionHandlerData<'a>, responses: &mut VecDeque<Message>) {
 		if action == ToolMessage::UpdateHints {
 			self.fsm_state.update_hints(responses);
@@ -90,7 +90,7 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Spline {
 			return;
 		}
 
-		if let ToolMessage::Spline(SplineMessage::UpdateOptions(action)) = action {
+		if let ToolMessage::Spline(SplineToolMessage::UpdateOptions(action)) = action {
 			match action {
 				SplineOptionsUpdate::LineWeight(line_weight) => self.options.line_weight = line_weight,
 			}
@@ -110,8 +110,8 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Spline {
 		use SplineToolFsmState::*;
 
 		match self.fsm_state {
-			Ready => actions!(SplineMessageDiscriminant; Undo, DragStart, DragStop, Confirm, Abort),
-			Drawing => actions!(SplineMessageDiscriminant; DragStop, PointerMove, Confirm, Abort),
+			Ready => actions!(SplineToolMessageDiscriminant; Undo, DragStart, DragStop, Confirm, Abort),
+			Drawing => actions!(SplineToolMessageDiscriminant; DragStop, PointerMove, Confirm, Abort),
 		}
 	}
 }
@@ -144,8 +144,8 @@ impl Fsm for SplineToolFsmState {
 		input: &InputPreprocessorMessageHandler,
 		responses: &mut VecDeque<Message>,
 	) -> Self {
-		use SplineMessage::*;
 		use SplineToolFsmState::*;
+		use SplineToolMessage::*;
 
 		let transform = document.graphene_document.root.transform;
 

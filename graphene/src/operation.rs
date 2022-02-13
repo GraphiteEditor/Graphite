@@ -1,3 +1,4 @@
+use crate::boolean_ops::BooleanOperation as BooleanOperationType;
 use crate::color::Color;
 use crate::layers::blend_mode::BlendMode;
 use crate::layers::layer_info::Layer;
@@ -88,6 +89,18 @@ pub enum Operation {
 		bez_path: kurbo::BezPath,
 		style: style::PathStyle,
 		closed: bool,
+	},
+	AddShape {
+		path: Vec<LayerId>,
+		transform: [f64; 6],
+		insert_index: isize,
+		bez_path: kurbo::BezPath,
+		style: style::PathStyle,
+		closed: bool,
+	},
+	BooleanOperation {
+		operation: BooleanOperationType,
+		selected: Vec<Vec<LayerId>>,
 	},
 	DeleteLayer {
 		path: Vec<LayerId>,

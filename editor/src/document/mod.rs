@@ -14,6 +14,8 @@ mod overlays_message;
 mod overlays_message_handler;
 mod portfolio_message;
 mod portfolio_message_handler;
+mod properties_panel_message;
+mod properties_panel_message_handler;
 mod transform_layer_message;
 mod transform_layer_message_handler;
 
@@ -41,6 +43,11 @@ pub use overlays_message_handler::OverlaysMessageHandler;
 pub use portfolio_message::{PortfolioMessage, PortfolioMessageDiscriminant};
 #[doc(inline)]
 pub use portfolio_message_handler::PortfolioMessageHandler;
+
+#[doc(inline)]
+pub use properties_panel_message::{PropertiesPanelMessage, PropertiesPanelMessageDiscriminant};
+#[doc(inline)]
+pub use properties_panel_message_handler::PropertiesPanelMessageHandler;
 
 #[doc(inline)]
 pub use transform_layer_message::{TransformLayerMessage, TransformLayerMessageDiscriminant};

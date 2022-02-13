@@ -14,12 +14,12 @@ fn glam_to_kurbo(transform: DAffine2) -> Affine {
 	Affine::new(transform.to_cols_array())
 }
 
-#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 /// A character sequence.
-/// Like [Shapes](super::simple_shape::Shape), [Text] is rendered as a 
-/// [`<path>`](https://developer.mozilla.org/en-US/docs/Web/SVG/Element/path).
+/// Like [ShapeLayers](super::shape_layer::ShapeLayer), [TextLayer] are rendered as
+/// [`<path>`s](https://developer.mozilla.org/en-US/docs/Web/SVG/Element/path).
 /// Currently, the only supported font is `SourceSansPro-Regular`.
-pub struct Text {
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+pub struct TextLayer {
 	/// The displayed Text.
 	pub text: String,
 	/// The visual style of the Text.
@@ -32,7 +32,7 @@ pub struct Text {
 	cached_path: Option<BezPath>,
 }
 
-impl LayerData for Text {
+impl LayerData for TextLayer {
 	fn render(&mut self, svg: &mut String, transforms: &mut Vec<DAffine2>, view_mode: ViewMode) {
 		let transform = self.transform(transforms, view_mode);
 		let inverse = transform.inverse();
@@ -92,7 +92,7 @@ impl LayerData for Text {
 	}
 }
 
-impl Text {
+impl TextLayer {
 	pub fn transform(&self, transforms: &[DAffine2], mode: ViewMode) -> DAffine2 {
 		let start = match mode {
 			ViewMode::Outline => 0,
@@ -131,8 +131,8 @@ impl Text {
 		self.cached_path.clone().unwrap_or_else(|| self.generate_path())
 	}
 
-    /// Get the font face for `SourceSansPro-Regular`.
-    /// For now, the font is hardcoded in the wasm binary.
+	/// Get the font face for `SourceSansPro-Regular`.
+	/// For now, the font is hardcoded in the wasm binary.
 	#[inline]
 	fn font_face() -> rustybuzz::Face<'static> {
 		rustybuzz::Face::from_slice(include_bytes!("SourceSansPro/SourceSansPro-Regular.ttf"), 0).unwrap()
@@ -149,7 +149,7 @@ impl Text {
 		Rect::new(0., 0., far.x, far.y)
 	}
 
-    /// Populate the cache.
+	/// Populate the cache.
 	pub fn regenerate_path(&mut self) {
 		self.cached_path = Some(self.generate_path());
 	}

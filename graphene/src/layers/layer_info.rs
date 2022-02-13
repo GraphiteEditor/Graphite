@@ -1,8 +1,8 @@
 use super::blend_mode::BlendMode;
-use super::folder::Folder;
-use super::simple_shape::Shape;
+use super::folder_layer::FolderLayer;
+use super::shape_layer::ShapeLayer;
 use super::style::ViewMode;
-use super::text::Text;
+use super::text_layer::TextLayer;
 use crate::intersection::Quad;
 use crate::DocumentError;
 use crate::LayerId;
@@ -14,12 +14,12 @@ use std::fmt::Write;
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 /// Represents different types of layers.
 pub enum LayerDataType {
-	/// A layer that wraps a [Folder].
-	Folder(Folder),
-	/// A layer that wraps a [Shape].
-	Shape(Shape),
-	/// A layer that wraps [Text].
-	Text(Text),
+	/// A layer that wraps a [FolderLayer].
+	Folder(FolderLayer),
+	/// A layer that wraps a [ShapeLayer].
+	Shape(ShapeLayer),
+	/// A layer that wraps [TextLayer].
+	Text(TextLayer),
 }
 
 impl LayerDataType {
@@ -46,60 +46,60 @@ pub trait LayerData {
 	///
 	/// # Example
 	/// ```
-	/// # use graphite_graphene::layers::simple_shape::Shape;
+	/// # use graphite_graphene::layers::shape_layer::ShapeLayer;
 	/// # use graphite_graphene::layers::style::{PathStyle, ViewMode};
 	/// # use graphite_graphene::layers::layer_info::LayerData;
-	/// let mut shape = Shape::rectangle(PathStyle::new(None, None));
+	/// let mut shape = ShapeLayer::rectangle(PathStyle::new(None, None));
 	/// let mut svg = String::new();
-    ///
+	///
 	/// // Render the shape without any transforms, in normal view mode
 	/// shape.render(&mut svg, &mut vec![], ViewMode::Normal);
-    ///
+	///
 	/// assert_eq!(
-    ///     svg, 
-    ///     "<g transform=\"matrix(\n1,-0,-0,1,-0,-0)\">\
-    ///     <path d=\"M0 0L1 0L1 1L0 1Z\"  fill=\"none\" />\
-    ///     </g>"
-    /// );
+	///     svg,
+	///     "<g transform=\"matrix(\n1,-0,-0,1,-0,-0)\">\
+	///     <path d=\"M0 0L1 0L1 1L0 1Z\"  fill=\"none\" />\
+	///     </g>"
+	/// );
 	/// ```
 	fn render(&mut self, svg: &mut String, transforms: &mut Vec<glam::DAffine2>, view_mode: ViewMode);
 
-    /// Determine the layers within this layer that intersect a given quad.
+	/// Determine the layers within this layer that intersect a given quad.
 	/// # Example
 	/// ```
-	/// # use graphite_graphene::layers::simple_shape::Shape;
+	/// # use graphite_graphene::layers::shape_layer::ShapeLayer;
 	/// # use graphite_graphene::layers::style::{PathStyle, ViewMode};
 	/// # use graphite_graphene::layers::layer_info::LayerData;
 	/// # use graphite_graphene::intersection::Quad;
-    /// # use glam::f64::{DAffine2, DVec2};
-	/// let mut shape = Shape::ellipse(PathStyle::new(None, None));
-    /// let shape_id = 42;
+	/// # use glam::f64::{DAffine2, DVec2};
+	/// let mut shape = ShapeLayer::ellipse(PathStyle::new(None, None));
+	/// let shape_id = 42;
 	/// let mut svg = String::new();
-    ///
-    /// let quad = Quad::from_box([DVec2::ZERO, DVec2::ONE]);
-    /// let mut intersections = vec![];
-    ///
+	///
+	/// let quad = Quad::from_box([DVec2::ZERO, DVec2::ONE]);
+	/// let mut intersections = vec![];
+	///
 	/// shape.intersects_quad(quad, &mut vec![shape_id], &mut intersections);
-    ///
+	///
 	/// assert_eq!(intersections, vec![vec![shape_id]]);
 	/// ```
 	fn intersects_quad(&self, quad: Quad, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>);
 
-    // FIXME: this doctest fails because 0 != 1E-32 - maybe assert difference < epsilon?
+	// FIXME: this doctest fails because 0 != 1E-32 - maybe assert difference < epsilon?
 	/// Calculate the bounding box for the layers contents after applying a given transform.
 	/// # Example
 	/// ```no_run
-	/// # use graphite_graphene::layers::simple_shape::Shape;
+	/// # use graphite_graphene::layers::shape_layer::ShapeLayer;
 	/// # use graphite_graphene::layers::style::PathStyle;
 	/// # use graphite_graphene::layers::layer_info::LayerData;
-    /// # use glam::f64::{DAffine2, DVec2};
-	/// let shape = Shape::ellipse(PathStyle::new(None, None));
-    ///
-    /// // Calculate the bounding box without applying any transformations.
-    /// // (The identity transform maps every vector to itself)
-    /// let transform = DAffine2::IDENTITY;
-    /// let bounding_box = shape.bounding_box(transform);
-    ///
+	/// # use glam::f64::{DAffine2, DVec2};
+	/// let shape = ShapeLayer::ellipse(PathStyle::new(None, None));
+	///
+	/// // Calculate the bounding box without applying any transformations.
+	/// // (The identity transform maps every vector to itself)
+	/// let transform = DAffine2::IDENTITY;
+	/// let bounding_box = shape.bounding_box(transform);
+	///
 	/// assert_eq!(bounding_box, Some([DVec2::ZERO, DVec2::ONE]));
 	/// ```
 	fn bounding_box(&self, transform: glam::DAffine2) -> Option<[DVec2; 2]>;
@@ -144,10 +144,10 @@ pub struct Layer {
 	/// A transformation applied to the layer(translation, rotation, scaling and shear).
 	#[serde(with = "DAffine2Ref")]
 	pub transform: glam::DAffine2,
-    /// The cached svg render of the layer.
+	/// The cached svg render of the layer.
 	#[serde(skip)]
 	pub cache: String,
-    /// The cached svg thumbnail view of the layer.
+	/// The cached svg thumbnail view of the layer.
 	#[serde(skip)]
 	pub thumbnail_cache: String,
 	/// Whether or not the [Cache](Layer::cache) and [Thumbnail Cache](Layer::thumbnail_cache) need to be updated.
@@ -174,39 +174,39 @@ impl Layer {
 		}
 	}
 
-    /// Iterate over the layers encapsulated by this layer.
-    /// If the [Layer Type](Layer::data) is [Text](LayerDataType::Text) or [Shape](LayerDataType::Shape),
-    /// the only item in the iterator will be the layer itself.
-    /// If the [Layer Type](Layer::data) wraps a [Folder](LayerDataType::Folder), the iterator
-    /// will recursively yield all the layers contained in the folder as well as potential sub-folders.
-    ///
-    /// # Example
-    /// ```
-    /// # use graphite_graphene::layers::simple_shape::Shape;
-    /// # use graphite_graphene::layers::layer_info::Layer;
-    /// # use graphite_graphene::layers::style::PathStyle;
-    /// # use graphite_graphene::layers::folder::Folder;
-    /// let mut root_folder = Folder::default();
-    ///
-    /// // Add a shape to the root folder
-    /// let child_1: Layer = Shape::rectangle(PathStyle::default()).into();
-    /// root_folder.add_layer(child_1.clone(), None, -1);
-    ///
-    /// // Add a folder containing another shape to the root layer
-    /// let mut child_folder = Folder::default();
-    /// let grandchild: Layer = Shape::rectangle(PathStyle::default()).into();
-    /// child_folder.add_layer(grandchild.clone(), None, -1);
-    /// let child_2: Layer = child_folder.into();
-    /// root_folder.add_layer(child_2.clone(), None, -1);
-    /// let root: Layer = root_folder.into();
-    ///
-    /// let mut iter = root.iter();
-    /// assert_eq!(iter.next(), Some(&root));
-    /// assert_eq!(iter.next(), Some(&child_2));
-    /// assert_eq!(iter.next(), Some(&grandchild));
-    /// assert_eq!(iter.next(), Some(&child_1));
-    /// assert_eq!(iter.next(), None);
-    /// ```
+	/// Iterate over the layers encapsulated by this layer.
+	/// If the [Layer Type](Layer::data) is [Text](LayerDataType::Text) or [Shape](LayerDataType::Shape),
+	/// the only item in the iterator will be the layer itself.
+	/// If the [Layer Type](Layer::data) wraps a [Folder](LayerDataType::Folder), the iterator
+	/// will recursively yield all the layers contained in the folder as well as potential sub-folders.
+	///
+	/// # Example
+	/// ```
+	/// # use graphite_graphene::layers::shape_layer::ShapeLayer;
+	/// # use graphite_graphene::layers::layer_info::Layer;
+	/// # use graphite_graphene::layers::style::PathStyle;
+	/// # use graphite_graphene::layers::folder_layer::FolderLayer;
+	/// let mut root_folder = FolderLayer::default();
+	///
+	/// // Add a shape to the root folder
+	/// let child_1: Layer = ShapeLayer::rectangle(PathStyle::default()).into();
+	/// root_folder.add_layer(child_1.clone(), None, -1);
+	///
+	/// // Add a folder containing another shape to the root layer
+	/// let mut child_folder = FolderLayer::default();
+	/// let grandchild: Layer = ShapeLayer::rectangle(PathStyle::default()).into();
+	/// child_folder.add_layer(grandchild.clone(), None, -1);
+	/// let child_2: Layer = child_folder.into();
+	/// root_folder.add_layer(child_2.clone(), None, -1);
+	/// let root: Layer = root_folder.into();
+	///
+	/// let mut iter = root.iter();
+	/// assert_eq!(iter.next(), Some(&root));
+	/// assert_eq!(iter.next(), Some(&child_2));
+	/// assert_eq!(iter.next(), Some(&grandchild));
+	/// assert_eq!(iter.next(), Some(&child_1));
+	/// assert_eq!(iter.next(), None);
+	/// ```
 	pub fn iter(&self) -> LayerIter<'_> {
 		LayerIter { stack: vec![self] }
 	}
@@ -249,30 +249,30 @@ impl Layer {
 		self.data.intersects_quad(transformed_quad, path, intersections)
 	}
 
-    /// Compute the bounding box of the layer after applying a transform to it.
-    ///
-    /// # Example
-    /// ```
-    /// # use graphite_graphene::layers::simple_shape::Shape;
-    /// # use graphite_graphene::layers::layer_info::Layer;
-    /// # use graphite_graphene::layers::style::PathStyle;
-    /// # use glam::DVec2;
-    /// # use glam::f64::DAffine2;
-    /// // Create a rectangle with the default dimensions, from `(0|0)` to `(1|1)`
-    /// let layer: Layer = Shape::rectangle(PathStyle::default()).into();
-    ///
-    /// // Apply the Identity transform, which leaves the points unchanged
-    /// assert_eq!(
-    ///     layer.current_bounding_box_with_transform(DAffine2::IDENTITY), 
-    ///     Some([DVec2::ZERO, DVec2::ONE]),
-    /// );
-    ///
-    /// // Apply a transform that scales every point by a factor of two
-    /// let transform = DAffine2::from_scale(DVec2::ONE * 2.);
-    /// assert_eq!(
-    ///     layer.current_bounding_box_with_transform(transform), 
-    ///     Some([DVec2::ZERO, DVec2::ONE * 2.]),
-    /// );
+	/// Compute the bounding box of the layer after applying a transform to it.
+	///
+	/// # Example
+	/// ```
+	/// # use graphite_graphene::layers::shape_layer::ShapeLayer;
+	/// # use graphite_graphene::layers::layer_info::Layer;
+	/// # use graphite_graphene::layers::style::PathStyle;
+	/// # use glam::DVec2;
+	/// # use glam::f64::DAffine2;
+	/// // Create a rectangle with the default dimensions, from `(0|0)` to `(1|1)`
+	/// let layer: Layer = ShapeLayer::rectangle(PathStyle::default()).into();
+	///
+	/// // Apply the Identity transform, which leaves the points unchanged
+	/// assert_eq!(
+	///     layer.current_bounding_box_with_transform(DAffine2::IDENTITY),
+	///     Some([DVec2::ZERO, DVec2::ONE]),
+	/// );
+	///
+	/// // Apply a transform that scales every point by a factor of two
+	/// let transform = DAffine2::from_scale(DVec2::ONE * 2.);
+	/// assert_eq!(
+	///     layer.current_bounding_box_with_transform(transform),
+	///     Some([DVec2::ZERO, DVec2::ONE * 2.]),
+	/// );
 	pub fn current_bounding_box_with_transform(&self, transform: DAffine2) -> Option<[DVec2; 2]> {
 		self.data.bounding_box(transform)
 	}
@@ -281,36 +281,36 @@ impl Layer {
 		self.current_bounding_box_with_transform(self.transform)
 	}
 
-    /// Get a mutable reference to the Folder wrapped by the layer.
-    /// This operation will fail if the [Layer type](Layer::data) is not `LayerDataType::Folder`.
-	pub fn as_folder_mut(&mut self) -> Result<&mut Folder, DocumentError> {
+	/// Get a mutable reference to the Folder wrapped by the layer.
+	/// This operation will fail if the [Layer type](Layer::data) is not `LayerDataType::Folder`.
+	pub fn as_folder_mut(&mut self) -> Result<&mut FolderLayer, DocumentError> {
 		match &mut self.data {
 			LayerDataType::Folder(f) => Ok(f),
 			_ => Err(DocumentError::NotAFolder),
 		}
 	}
 
-    /// Get a reference to the Folder wrapped by the layer.
-    /// This operation will fail if the [Layer type](Layer::data) is not `LayerDataType::Folder`.
-	pub fn as_folder(&self) -> Result<&Folder, DocumentError> {
+	/// Get a reference to the Folder wrapped by the layer.
+	/// This operation will fail if the [Layer type](Layer::data) is not `LayerDataType::Folder`.
+	pub fn as_folder(&self) -> Result<&FolderLayer, DocumentError> {
 		match &self.data {
 			LayerDataType::Folder(f) => Ok(f),
 			_ => Err(DocumentError::NotAFolder),
 		}
 	}
 
-    /// Get a mutable reference to the Text element wrapped by the layer.
-    /// This operation will fail if the [Layer type](Layer::data) is not `LayerDataType::Text`.
-	pub fn as_text_mut(&mut self) -> Result<&mut Text, DocumentError> {
+	/// Get a mutable reference to the Text element wrapped by the layer.
+	/// This operation will fail if the [Layer type](Layer::data) is not `LayerDataType::Text`.
+	pub fn as_text_mut(&mut self) -> Result<&mut TextLayer, DocumentError> {
 		match &mut self.data {
 			LayerDataType::Text(t) => Ok(t),
 			_ => Err(DocumentError::NotText),
 		}
 	}
 
-    /// Get a reference to the Text element wrapped by the layer.
-    /// This operation will fail if the [Layer type](Layer::data) is not `LayerDataType::Text`.
-	pub fn as_text(&self) -> Result<&Text, DocumentError> {
+	/// Get a reference to the Text element wrapped by the layer.
+	/// This operation will fail if the [Layer type](Layer::data) is not `LayerDataType::Text`.
+	pub fn as_text(&self) -> Result<&TextLayer, DocumentError> {
 		match &self.data {
 			LayerDataType::Text(t) => Ok(t),
 			_ => Err(DocumentError::NotText),
@@ -334,31 +334,22 @@ impl Clone for Layer {
 	}
 }
 
-impl From<Folder> for Layer {
-    fn from(from: Folder) -> Layer {
-        Layer::new(
-            LayerDataType::Folder(from),
-            DAffine2::IDENTITY.to_cols_array(),
-        )
-    }
+impl From<FolderLayer> for Layer {
+	fn from(from: FolderLayer) -> Layer {
+		Layer::new(LayerDataType::Folder(from), DAffine2::IDENTITY.to_cols_array())
+	}
 }
 
-impl From<Shape> for Layer {
-    fn from(from: Shape) -> Layer {
-        Layer::new(
-            LayerDataType::Shape(from),
-            DAffine2::IDENTITY.to_cols_array(),
-        )
-    }
+impl From<ShapeLayer> for Layer {
+	fn from(from: ShapeLayer) -> Layer {
+		Layer::new(LayerDataType::Shape(from), DAffine2::IDENTITY.to_cols_array())
+	}
 }
 
-impl From<Text> for Layer {
-    fn from(from: Text) -> Layer {
-        Layer::new(
-            LayerDataType::Text(from),
-            DAffine2::IDENTITY.to_cols_array(),
-        )
-    }
+impl From<TextLayer> for Layer {
+	fn from(from: TextLayer) -> Layer {
+		Layer::new(LayerDataType::Text(from), DAffine2::IDENTITY.to_cols_array())
+	}
 }
 
 impl<'a> IntoIterator for &'a Layer {
@@ -393,4 +384,3 @@ impl<'a> Iterator for LayerIter<'a> {
 		}
 	}
 }
-

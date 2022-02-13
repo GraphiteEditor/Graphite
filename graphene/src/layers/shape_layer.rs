@@ -17,17 +17,17 @@ fn glam_to_kurbo(transform: DAffine2) -> Affine {
 /// inside a [`<g>`](https://developer.mozilla.org/en-US/docs/Web/SVG/Element/g) group that the
 /// transformation matrix is applied to.
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
-pub struct Shape {
+pub struct ShapeLayer {
 	/// A Bezier path.
 	pub path: BezPath,
 	/// The visual style of the shape.
 	pub style: style::PathStyle,
 	pub render_index: i32,
-	/// Whether or not the [path](Shape::path) connects to itself.
+	/// Whether or not the [path](ShapeLayer::path) connects to itself.
 	pub closed: bool,
 }
 
-impl LayerData for Shape {
+impl LayerData for ShapeLayer {
 	fn render(&mut self, svg: &mut String, transforms: &mut Vec<DAffine2>, view_mode: ViewMode) {
 		let mut path = self.path.clone();
 		let transform = self.transform(transforms, view_mode);
@@ -67,7 +67,7 @@ impl LayerData for Shape {
 	}
 }
 
-impl Shape {
+impl ShapeLayer {
 	pub fn transform(&self, transforms: &[DAffine2], mode: ViewMode) -> DAffine2 {
 		let start = match (mode, self.render_index) {
 			(ViewMode::Outline, _) => 0,

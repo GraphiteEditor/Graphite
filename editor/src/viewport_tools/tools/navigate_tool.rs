@@ -11,7 +11,7 @@ use glam::DVec2;
 use serde::{Deserialize, Serialize};
 
 #[derive(Default)]
-pub struct Navigate {
+pub struct NavigateTool {
 	fsm_state: NavigateToolFsmState,
 	data: NavigateToolData,
 }
@@ -19,7 +19,7 @@ pub struct Navigate {
 #[remain::sorted]
 #[impl_message(Message, ToolMessage, Navigate)]
 #[derive(PartialEq, Clone, Debug, Hash, Serialize, Deserialize)]
-pub enum NavigateMessage {
+pub enum NavigateToolMessage {
 	// Standard messages
 	#[remain::unsorted]
 	Abort,
@@ -38,9 +38,9 @@ pub enum NavigateMessage {
 	ZoomCanvasBegin,
 }
 
-impl PropertyHolder for Navigate {}
+impl PropertyHolder for NavigateTool {}
 
-impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Navigate {
+impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for NavigateTool {
 	fn process_action(&mut self, action: ToolMessage, data: ToolActionHandlerData<'a>, responses: &mut VecDeque<Message>) {
 		if action == ToolMessage::UpdateHints {
 			self.fsm_state.update_hints(responses);
@@ -65,8 +65,8 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for Navigate {
 		use NavigateToolFsmState::*;
 
 		match self.fsm_state {
-			Ready => actions!(NavigateMessageDiscriminant; TranslateCanvasBegin, RotateCanvasBegin, ZoomCanvasBegin),
-			_ => actions!(NavigateMessageDiscriminant; ClickZoom, PointerMove, TransformCanvasEnd),
+			Ready => actions!(NavigateToolMessageDiscriminant; TranslateCanvasBegin, RotateCanvasBegin, ZoomCanvasBegin),
+			_ => actions!(NavigateToolMessageDiscriminant; ClickZoom, PointerMove, TransformCanvasEnd),
 		}
 	}
 }
@@ -105,7 +105,7 @@ impl Fsm for NavigateToolFsmState {
 		messages: &mut VecDeque<Message>,
 	) -> Self {
 		if let ToolMessage::Navigate(navigate) = message {
-			use NavigateMessage::*;
+			use NavigateToolMessage::*;
 
 			match navigate {
 				ClickZoom { zoom_in } => {

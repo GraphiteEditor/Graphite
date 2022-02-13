@@ -1,7 +1,7 @@
 use super::clipboards::Clipboard;
 use super::layer_panel::{layer_panel_entry, LayerDataTypeDiscriminant, LayerMetadata, LayerPanelEntry, RawBuffer};
 use super::utility_types::{AlignAggregate, AlignAxis, DocumentSave, FlipAxis};
-use super::vectorize_layer_metadata;
+use super::{vectorize_layer_metadata, PropertiesPanelMessageHandler};
 use super::{ArtboardMessageHandler, MovementMessageHandler, OverlaysMessageHandler, TransformLayerMessageHandler};
 use crate::consts::{
 	ASYMPTOTIC_EFFECT, DEFAULT_DOCUMENT_NAME, FILE_EXPORT_SUFFIX, FILE_SAVE_SUFFIX, GRAPHITE_DOCUMENT_VERSION, SCALE_EFFECT, SCROLLBAR_SPACING, VIEWPORT_ZOOM_TO_FIT_PADDING_SCALE_FACTOR,
@@ -16,7 +16,7 @@ use crate::viewport_tools::vector_editor::vector_shape::VectorShape;
 use crate::EditorError;
 
 use graphene::document::Document as GrapheneDocument;
-use graphene::layers::folder::Folder;
+use graphene::layers::folder_layer::FolderLayer;
 use graphene::layers::layer_info::LayerDataType;
 use graphene::layers::style::ViewMode;
 use graphene::{DocumentError, DocumentResponse, LayerId, Operation as DocumentOperation};
@@ -45,6 +45,7 @@ pub struct DocumentMessageHandler {
 	pub artboard_message_handler: ArtboardMessageHandler,
 	#[serde(skip)]
 	transform_layer_handler: TransformLayerMessageHandler,
+	properties_panel_message_handler: PropertiesPanelMessageHandler,
 	pub overlays_visible: bool,
 	pub snapping_enabled: bool,
 	pub view_mode: ViewMode,
@@ -65,6 +66,7 @@ impl Default for DocumentMessageHandler {
 			overlays_message_handler: OverlaysMessageHandler::default(),
 			artboard_message_handler: ArtboardMessageHandler::default(),
 			transform_layer_handler: TransformLayerMessageHandler::default(),
+			properties_panel_message_handler: PropertiesPanelMessageHandler::default(),
 			snapping_enabled: true,
 			overlays_visible: true,
 			view_mode: ViewMode::default(),
@@ -221,7 +223,7 @@ impl DocumentMessageHandler {
 			)
 	}
 
-	fn serialize_structure(&self, folder: &Folder, structure: &mut Vec<u64>, data: &mut Vec<LayerId>, path: &mut Vec<LayerId>) {
+	fn serialize_structure(&self, folder: &FolderLayer, structure: &mut Vec<u64>, data: &mut Vec<LayerId>, path: &mut Vec<LayerId>) {
 		let mut space = 0;
 		for (id, layer) in folder.layer_ids.iter().zip(folder.layers()).rev() {
 			data.push(*id);
@@ -676,6 +678,10 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 				self.transform_layer_handler
 					.process_action(message, (&mut self.layer_metadata, &mut self.graphene_document, ipp), responses);
 			}
+			#[remain::unsorted]
+			PropertiesPanel(message) => {
+				self.properties_panel_message_handler.process_action(message, &self.graphene_document, responses);
+			}
 
 			// Messages
 			AbortTransaction => {
@@ -683,9 +689,17 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 				responses.extend([RenderDocument.into(), DocumentStructureChanged.into()]);
 			}
 			AddSelectedLayers { additional_layers } => {
-				for layer_path in additional_layers {
-					responses.extend(self.select_layer(&layer_path));
+				for layer_path in &additional_layers {
+					responses.extend(self.select_layer(layer_path));
 				}
+
+				let selected_paths: Vec<Vec<u64>> = self.selected_layers().map(|path| path.to_vec()).collect();
+				if selected_paths.is_empty() {
+					responses.push_back(PropertiesPanelMessage::ClearSelection.into())
+				} else {
+					responses.push_back(PropertiesPanelMessage::SetActiveLayers { paths: selected_paths }.into())
+				}
+
 				// TODO: Correctly update layer panel in clear_selection instead of here
 				responses.push_back(FolderChanged { affected_folder_path: vec![] }.into());
 				responses.push_back(DocumentMessage::SelectionChanged.into());
@@ -727,6 +741,16 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 					responses.push_back(ToolMessage::DocumentIsDirty.into());
 				}
 			}
+			BooleanOperation(op) => {
+				// convert Vec<&[LayerId]> to Vec<Vec<&LayerId>> because Vec<&[LayerId]> does not implement several traits (Debug, Serialize, Deserialize, ...) required by DocumentOperation enum
+				responses.push_back(
+					DocumentOperation::BooleanOperation {
+						operation: op,
+						selected: self.selected_layers_sorted().iter().map(|slice| (*slice).into()).collect(),
+					}
+					.into(),
+				);
+			}
 			CommitTransaction => (),
 			CreateEmptyFolder { mut container_path } => {
 				let id = generate_uuid();
@@ -743,12 +767,15 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 			DebugPrintDocument => {
 				log::debug!("{:#?}\n{:#?}", self.graphene_document, self.layer_metadata);
 			}
-			DeleteLayer { layer_path } => responses.push_front(DocumentOperation::DeleteLayer { path: layer_path }.into()),
+			DeleteLayer { layer_path } => {
+				responses.push_front(DocumentOperation::DeleteLayer { path: layer_path.clone() }.into());
+				responses.push_back(PropertiesPanelMessage::CheckSelectedWasDeleted { path: layer_path }.into());
+			}
 			DeleteSelectedLayers => {
 				self.backup(responses);
 
 				for path in self.selected_layers_without_children() {
-					responses.push_front(DocumentOperation::DeleteLayer { path: path.to_vec() }.into());
+					responses.push_front(DocumentMessage::DeleteLayer { layer_path: path.to_vec() }.into());
 				}
 
 				responses.push_front(DocumentMessage::SelectionChanged.into());
@@ -781,7 +808,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 				}
 			}
 			ExportDocument => {
-				// TODO(MFISH33): Add Dialog to select artboards
+				// TODO(mfish33): Add Dialog to select artboards
 				let bbox = self.document_bounds().unwrap_or_else(|| [DVec2::ZERO, ipp.viewport_bounds.size()]);
 				let size = bbox[1] - bbox[0];
 				let name = match self.name.ends_with(FILE_SAVE_SUFFIX) {
@@ -861,9 +888,10 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 				);
 			}
 			LayerChanged { affected_layer_path } => {
-				if let Ok(layer_entry) = self.layer_panel_entry(affected_layer_path) {
+				if let Ok(layer_entry) = self.layer_panel_entry(affected_layer_path.clone()) {
 					responses.push_back(FrontendMessage::UpdateDocumentLayer { data: layer_entry }.into());
 				}
+				responses.push_back(PropertiesPanelMessage::CheckSelectedWasUpdated { path: affected_layer_path }.into());
 			}
 			MoveSelectedLayersTo {
 				folder_path,
@@ -902,7 +930,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 				responses.push_back(ToolMessage::DocumentIsDirty.into());
 			}
 			Redo => {
-				responses.push_back(SelectMessage::Abort.into());
+				responses.push_back(SelectToolMessage::Abort.into());
 				responses.push_back(DocumentHistoryForward.into());
 				responses.push_back(ToolMessage::DocumentIsDirty.into());
 				responses.push_back(RenderDocument.into());
@@ -1159,7 +1187,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 				responses.push_back(ToolMessage::DocumentIsDirty.into());
 			}
 			Undo => {
-				responses.push_back(SelectMessage::Abort.into());
+				responses.push_back(SelectToolMessage::Abort.into());
 				responses.push_back(DocumentHistoryBackward.into());
 				responses.push_back(ToolMessage::DocumentIsDirty.into());
 				responses.push_back(RenderDocument.into());

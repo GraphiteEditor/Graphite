@@ -412,7 +412,7 @@ export function isWidgetSection(layoutRow: WidgetRow | WidgetSection): layoutRow
 	return Boolean((layoutRow as WidgetSection).layout);
 }
 
-export type WidgetKind = "NumberInput" | "Separator" | "IconButton" | "PopoverButton" | "OptionalInput" | "RadioInput" | "TextInput";
+export type WidgetKind = "NumberInput" | "Separator" | "IconButton" | "PopoverButton" | "OptionalInput" | "RadioInput" | "TextInput" | "TextLabel" | "IconLabel";
 
 export interface Widget {
 	kind: WidgetKind;
@@ -428,7 +428,21 @@ export class UpdateToolOptionsLayout extends JsMessage implements WidgetLayout {
 	layout!: LayoutRow[];
 }
 
-export class UpdateDocumentBarLayout extends JsMessage {
+export class UpdateDocumentBarLayout extends JsMessage implements WidgetLayout {
+	layout_target!: unknown;
+
+	@Transform(({ value }) => createWidgetLayout(value))
+	layout!: LayoutRow[];
+}
+
+export class UpdatePropertyPanelOptionsLayout extends JsMessage implements WidgetLayout {
+	layout_target!: unknown;
+
+	@Transform(({ value }) => createWidgetLayout(value))
+	layout!: LayoutRow[];
+}
+
+export class UpdatePropertyPanelSectionsLayout extends JsMessage implements WidgetLayout {
 	layout_target!: unknown;
 
 	@Transform(({ value }) => createWidgetLayout(value))
@@ -457,7 +471,7 @@ function createWidgetLayout(widgetLayout: any[]): LayoutRow[] {
 		if (rowOrSection.Section) {
 			return {
 				name: rowOrSection.Section.name,
-				layout: createWidgetLayout(rowOrSection.Section),
+				layout: createWidgetLayout(rowOrSection.Section.layout),
 			};
 		}
 
@@ -508,6 +522,8 @@ export const messageConstructors: Record<string, MessageMaker> = {
 	UpdateInputHints,
 	UpdateMouseCursor,
 	UpdateOpenDocumentsList,
+	UpdatePropertyPanelOptionsLayout,
+	UpdatePropertyPanelSectionsLayout,
 	UpdateToolOptionsLayout,
 	UpdateWorkingColors,
 } as const;

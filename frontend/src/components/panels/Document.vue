@@ -6,12 +6,12 @@
 
 				<Separator :type="'Section'" />
 
-				<WidgetLayout :layout="toolOptionsLayout" />
+				<WidgetLayout :layout="toolOptionsLayout" class="tool-options" />
 			</LayoutRow>
 
 			<LayoutRow class="spacer"></LayoutRow>
 
-			<WidgetLayout :layout="documentBarLayout" class="right side" />
+			<WidgetLayout :layout="documentBarLayout" class="right side document-bar" />
 		</LayoutRow>
 		<LayoutRow class="shelf-and-viewport">
 			<LayoutCol class="shelf">
@@ -427,6 +427,10 @@ export default defineComponent({
 			this.documentBarLayout = updateDocumentBarLayout;
 		});
 		this.editor.dispatcher.subscribeJsMessage(TriggerViewportResize, this.viewportResize);
+
+		// TODO(mfish33): Replace with initialization system Issue:#524
+		// Get initial Document Bar
+		this.editor.instance.init_document_bar();
 	},
 	data() {
 		const documentModeEntries: SectionsOfMenuListEntries = [
