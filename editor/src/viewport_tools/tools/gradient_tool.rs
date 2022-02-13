@@ -382,7 +382,32 @@ impl Fsm for GradientToolFsmState {
 		}
 	}
 
-	fn update_hints(&self, _responses: &mut VecDeque<Message>) {}
+	fn update_hints(&self, responses: &mut VecDeque<Message>) {
+		let hint_data = match self {
+			GradientToolFsmState::Ready => HintData(vec![HintGroup(vec![
+				HintInfo {
+					key_groups: vec![],
+					mouse: Some(MouseMotion::LmbDrag),
+					label: String::from("Draw Gradient"),
+					plus: false,
+				},
+				HintInfo {
+					key_groups: vec![KeysGroup(vec![Key::KeyShift])],
+					mouse: None,
+					label: String::from("Snap 15°"),
+					plus: true,
+				},
+			])]),
+			GradientToolFsmState::Drawing => HintData(vec![HintGroup(vec![HintInfo {
+				key_groups: vec![KeysGroup(vec![Key::KeyShift])],
+				mouse: None,
+				label: String::from("Snap 15°"),
+				plus: false,
+			}])]),
+		};
+
+		responses.push_back(FrontendMessage::UpdateInputHints { hint_data }.into());
+	}
 
 	fn update_cursor(&self, responses: &mut VecDeque<Message>) {
 		responses.push_back(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Default }.into());
