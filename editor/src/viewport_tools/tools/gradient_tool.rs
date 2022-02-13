@@ -202,6 +202,7 @@ impl SelectedGradient {
 		} else {
 			self.gradient.end = mouse;
 		}
+		self.gradient.transform = self.transform.inverse();
 		let fill = Fill::LinearGradient(self.gradient.clone());
 		let path = self.path.clone();
 		responses.push_back(Operation::SetLayerFill { path, fill }.into());
@@ -292,7 +293,7 @@ impl Fsm for GradientToolFsmState {
 
 							let layer = document.graphene_document.layer(&intersection).unwrap();
 
-							let gradient = Gradient::new(DVec2::ZERO, tool_data.secondary_color, DVec2::ONE, tool_data.primary_color, generate_uuid());
+							let gradient = Gradient::new(DVec2::ZERO, tool_data.secondary_color, DVec2::ONE, tool_data.primary_color, DAffine2::IDENTITY, generate_uuid());
 							let mut selected_gradient = SelectedGradient::new(gradient, &intersection, layer, document).with_gradient_start(input.mouse.position);
 							selected_gradient.update_gradient(input.mouse.position, responses);
 

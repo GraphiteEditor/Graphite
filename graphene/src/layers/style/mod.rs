@@ -5,7 +5,7 @@ use crate::consts::{LAYER_OUTLINE_STROKE_COLOR, LAYER_OUTLINE_STROKE_WIDTH};
 
 use serde::{Deserialize, Serialize};
 
-use glam::DVec2;
+use glam::{DAffine2, DVec2};
 
 const OPACITY_PRECISION: usize = 3;
 
@@ -38,16 +38,18 @@ impl Default for ViewMode {
 pub struct Gradient {
 	pub start: DVec2,
 	pub end: DVec2,
+	pub transform: DAffine2,
 	pub positions: Vec<(f64, Color)>,
 	uuid: u64,
 }
 impl Gradient {
 	/// Constructs a new gradient with the colours at 0 and 1 specified.
-	pub fn new(start: DVec2, start_colour: Color, end: DVec2, end_colour: Color, uuid: u64) -> Self {
+	pub fn new(start: DVec2, start_colour: Color, end: DVec2, end_colour: Color, transform: DAffine2, uuid: u64) -> Self {
 		Gradient {
 			start,
 			end,
 			positions: vec![(0., start_colour), (1., end_colour)],
+			transform,
 			uuid,
 		}
 	}
@@ -59,12 +61,24 @@ impl Gradient {
 			.iter()
 			.map(|(position, colour)| format!(r##"<stop offset="{}" stop-color="#{}" />"##, position, colour.rgba_hex()))
 			.collect::<String>();
+
+		let start = self.transform.inverse().transform_point2(self.start);
+		let end = self.transform.inverse().transform_point2(self.end);
+
+		let transform = self
+			.transform
+			.to_cols_array()
+			.iter()
+			.enumerate()
+			.map(|(i, entry)| entry.to_string() + if i == 5 { "" } else { "," })
+			.collect::<String>();
+
 		let _ = write!(
 			svg_defs,
-			r##"<linearGradient id="{}" x1="{}" x2="{}" y1="{}" y2="{}">
+			r##"<linearGradient id="{}" x1="{}" x2="{}" y1="{}" y2="{}" gradientTransform="matrix({})">
 						{}
 						</linearGradient>"##,
-			self.uuid, self.start.x, self.end.x, self.start.y, self.end.y, positions
+			self.uuid, start.x, end.x, start.y, end.y, transform, positions
 		);
 	}
 }
