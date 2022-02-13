@@ -85,12 +85,12 @@ impl Gradient {
 
 /// Describes the fill of a layer.
 ///
-/// Can be None, flat or potentially some sort of image or pattern
+/// Can be None, solid or potentially some sort of image or pattern
 #[repr(C)]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Fill {
 	None,
-	Flat(Color),
+	Solid(Color),
 	LinearGradient(Gradient),
 }
 
@@ -101,16 +101,16 @@ impl Default for Fill {
 }
 
 impl Fill {
-	/// Construct a new flat fill
-	pub fn flat(color: Color) -> Self {
-		Self::Flat(color)
+	/// Construct a new solid fill
+	pub fn solid(color: Color) -> Self {
+		Self::Solid(color)
 	}
 
 	/// Evaluate the colour at some point on the fill
 	pub fn color(&self) -> Color {
 		match self {
 			Self::None => Color::BLACK,
-			Self::Flat(color) => *color,
+			Self::Solid(color) => *color,
 			// ToDo: Should correctly sample the gradient
 			Self::LinearGradient(Gradient { positions, .. }) => positions[0].1,
 		}
@@ -120,7 +120,7 @@ impl Fill {
 	pub fn render(&self, svg_defs: &mut String) -> String {
 		match self {
 			Self::None => r#" fill="none""#.to_string(),
-			Self::Flat(color) => format!(r##" fill="#{}"{}"##, color.rgb_hex(), format_opacity("fill", color.a())),
+			Self::Solid(color) => format!(r##" fill="#{}"{}"##, color.rgb_hex(), format_opacity("fill", color.a())),
 			Self::LinearGradient(gradient) => {
 				gradient.render_defs(svg_defs);
 				format!(r##" fill="url('#{}')" "##, gradient.uuid)

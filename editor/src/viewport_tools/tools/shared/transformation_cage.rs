@@ -145,7 +145,7 @@ fn add_transform_handles(responses: &mut Vec<Message>) -> [Vec<LayerId>; 8] {
 		let operation = Operation::AddOverlayRect {
 			path: current_path.clone(),
 			transform: DAffine2::ZERO.to_cols_array(),
-			style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 2.0)), Fill::flat(Color::WHITE)),
+			style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 2.0)), Fill::solid(Color::WHITE)),
 		};
 		responses.push(DocumentMessage::Overlays(operation.into()).into());
 

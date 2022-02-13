@@ -369,7 +369,7 @@ impl VectorShape {
 		let operation = Operation::AddOverlayRect {
 			path: layer_path.clone(),
 			transform: DAffine2::IDENTITY.to_cols_array(),
-			style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 2.0)), Fill::flat(Color::WHITE)),
+			style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 2.0)), Fill::solid(Color::WHITE)),
 		};
 		responses.push_back(DocumentMessage::Overlays(operation.into()).into());
 		layer_path
@@ -381,7 +381,7 @@ impl VectorShape {
 		let operation = Operation::AddOverlayEllipse {
 			path: layer_path.clone(),
 			transform: DAffine2::IDENTITY.to_cols_array(),
-			style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 2.0)), Fill::flat(Color::WHITE)),
+			style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 2.0)), Fill::solid(Color::WHITE)),
 		};
 		responses.push_back(DocumentMessage::Overlays(operation.into()).into());
 		layer_path
