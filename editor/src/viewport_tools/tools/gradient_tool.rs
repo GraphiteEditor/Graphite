@@ -12,6 +12,7 @@ use crate::viewport_tools::tool::{DocumentToolData, Fsm, ToolActionHandlerData};
 
 use graphene::color::Color;
 use graphene::intersection::Quad;
+use graphene::layers::layer_info::Layer;
 use graphene::layers::style::{Fill, Gradient, PathStyle, Stroke};
 use graphene::Operation;
 
@@ -83,8 +84,7 @@ impl Default for GradientToolFsmState {
 	}
 }
 
-fn from_gradient_space(path: &[LayerId], document: &DocumentMessageHandler) -> DAffine2 {
-	let layer = document.graphene_document.layer(path).unwrap();
+fn from_gradient_space(path: &[LayerId], layer: &Layer, document: &DocumentMessageHandler) -> DAffine2 {
 	let bounds = layer.current_bounding_box().unwrap();
 	let bound_transform = DAffine2::from_scale_angle_translation(bounds[1] - bounds[0], 0., bounds[0]);
 
@@ -102,28 +102,48 @@ impl GradientOverlay {
 	fn generate_handle(translation: DVec2, responses: &mut VecDeque<Message>) -> Vec<LayerId> {
 		let path = vec![generate_uuid()];
 
+		let size = DVec2::splat(VECTOR_MANIPULATOR_ANCHOR_MARKER_SIZE);
+
 		let operation = Operation::AddOverlayEllipse {
 			path: path.clone(),
-			transform: DAffine2::from_scale_angle_translation(DVec2::splat(VECTOR_MANIPULATOR_ANCHOR_MARKER_SIZE), 0., translation).to_cols_array(),
+			transform: DAffine2::from_scale_angle_translation(size, 0., translation - size / 2.).to_cols_array(),
 			style: PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 1.0)), Fill::flat(Color::WHITE)),
 		};
 		responses.push_back(DocumentMessage::Overlays(operation.into()).into());
 
 		path
 	}
+	fn generate_line(start: DVec2, end: DVec2, responses: &mut VecDeque<Message>) -> Vec<LayerId> {
+		let path = vec![generate_uuid()];
 
-	pub fn new(fill: &Gradient, path: &[LayerId], document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) -> Self {
-		let transform = from_gradient_space(path, document);
+		let line_vector = end - start;
+		let scale = DVec2::splat(line_vector.length());
+		let angle = -line_vector.angle_between(DVec2::X);
+		let translation = start;
+		let transform = DAffine2::from_scale_angle_translation(scale, angle, translation).to_cols_array();
+
+		let operation = Operation::AddOverlayLine {
+			path: path.clone(),
+			transform,
+			style: PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 1.0)), Fill::None),
+		};
+		responses.push_back(DocumentMessage::Overlays(operation.into()).into());
+
+		path
+	}
+
+	pub fn new(fill: &Gradient, path: &[LayerId], layer: &Layer, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) -> Self {
+		let transform = from_gradient_space(path, layer, document);
 		let Gradient { start, end, .. } = fill;
-		let handles = [
-			Self::generate_handle(transform.transform_point2(*start), responses),
-			Self::generate_handle(transform.transform_point2(*end), responses),
-		];
+		let [start, end] = [transform.transform_point2(*start), transform.transform_point2(*end)];
 
-		Self { handles, line: Vec::new() }
+		let line = Self::generate_line(start, end, responses);
+		let handles = [Self::generate_handle(start, responses), Self::generate_handle(end, responses)];
+
+		Self { handles, line }
 	}
 	pub fn delete(self, responses: &mut VecDeque<Message>) {
-		//responses.push_back(DocumentMessage::Overlays(Operation::DeleteLayer { path: self.line }.into()).into());
+		responses.push_back(DocumentMessage::Overlays(Operation::DeleteLayer { path: self.line }.into()).into());
 		let [start, end] = self.handles;
 		responses.push_back(DocumentMessage::Overlays(Operation::DeleteLayer { path: start }.into()).into());
 		responses.push_back(DocumentMessage::Overlays(Operation::DeleteLayer { path: end }.into()).into());
@@ -139,8 +159,8 @@ struct SelectedGradient {
 }
 
 impl SelectedGradient {
-	pub fn new(gradient: Gradient, path: &[LayerId], document: &DocumentMessageHandler) -> Self {
-		let transform = from_gradient_space(path, document);
+	pub fn new(gradient: Gradient, path: &[LayerId], layer: &Layer, document: &DocumentMessageHandler) -> Self {
+		let transform = from_gradient_space(path, layer, document);
 		Self {
 			path: path.to_vec(),
 			transform,
@@ -193,7 +213,17 @@ impl Fsm for GradientToolFsmState {
 		if let ToolMessage::Gradient(event) = event {
 			match (self, event) {
 				(_, GradientToolMessage::DocumentIsDirty) => {
-					for layer in document.selected_visible_layers() {}
+					while let Some(overlay) = data.gradient_overlays.pop() {
+						overlay.delete(responses);
+					}
+
+					for path in document.selected_visible_layers() {
+						let layer = document.graphene_document.layer(path).unwrap();
+
+						if let Ok(Fill::LinearGradient(gradient)) = layer.style().map(|style| style.fill()) {
+							data.gradient_overlays.push(GradientOverlay::new(gradient, path, layer, document, responses))
+						}
+					}
 
 					self
 				}
@@ -212,10 +242,9 @@ impl Fsm for GradientToolFsmState {
 						}
 
 						let layer = document.graphene_document.layer(&intersection).unwrap();
-						if let Fill::LinearGradient(gradient) = layer.style().unwrap().fill() {}
 
 						let gradient = Gradient::new(DVec2::ZERO, tool_data.secondary_color, DVec2::ONE, tool_data.primary_color, generate_uuid());
-						let mut selected_gradient = SelectedGradient::new(gradient, &intersection, document).with_start(input.mouse.position);
+						let mut selected_gradient = SelectedGradient::new(gradient, &intersection, layer, document).with_start(input.mouse.position);
 						selected_gradient.update_gradient(input.mouse.position, responses);
 
 						data.selected_gradient = Some(selected_gradient);
@@ -233,6 +262,13 @@ impl Fsm for GradientToolFsmState {
 				}
 
 				(GradientToolFsmState::Drawing, GradientToolMessage::PointerUp) => GradientToolFsmState::Ready,
+
+				(_, GradientToolMessage::Abort) => {
+					while let Some(overlay) = data.gradient_overlays.pop() {
+						overlay.delete(responses);
+					}
+					GradientToolFsmState::Ready
+				}
 				_ => self,
 			}
 		} else {
