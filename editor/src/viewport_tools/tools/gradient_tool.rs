@@ -5,11 +5,12 @@ use crate::input::keyboard::Key;
 use crate::input::InputPreprocessorMessageHandler;
 use crate::layout::widgets::PropertyHolder;
 use crate::message_prelude::*;
+use crate::viewport_tools::snapping::SnapHandler;
 use crate::viewport_tools::tool::{DocumentToolData, Fsm, ToolActionHandlerData};
 
 use graphene::color::Color;
 use graphene::intersection::Quad;
-use graphene::layers::layer_info::Layer;
+use graphene::layers::layer_info::{Layer, LayerDataType};
 use graphene::layers::style::{Fill, Gradient, PathStyle, Stroke};
 use graphene::Operation;
 
@@ -234,6 +235,28 @@ impl SelectedGradient {
 struct GradientToolData {
 	gradient_overlays: Vec<GradientOverlay>,
 	selected_gradient: Option<SelectedGradient>,
+	snap_handler: SnapHandler,
+}
+
+pub fn start_snap(snap_handler: &mut SnapHandler, document: &DocumentMessageHandler, layer: &Layer, path: &[LayerId]) {
+	snap_handler.start_snap(document, document.bounding_boxes(None, None), true, true);
+	if let LayerDataType::Shape(s) = &layer.data {
+		let transform = document.graphene_document.multiply_transforms(path).unwrap();
+		let snap_points = s
+			.path
+			.iter()
+			.filter_map(|shape| match shape {
+				kurbo::PathEl::MoveTo(point) => Some(point),
+				kurbo::PathEl::LineTo(point) => Some(point),
+				kurbo::PathEl::QuadTo(_, point) => Some(point),
+				kurbo::PathEl::CurveTo(_, _, point) => Some(point),
+				kurbo::PathEl::ClosePath => None,
+			})
+			.map(|point| DVec2::new(point.x, point.y))
+			.map(|pos| transform.transform_point2(pos))
+			.collect();
+		snap_handler.add_snap_points(document, snap_points);
+	}
 }
 
 impl Fsm for GradientToolFsmState {
@@ -281,6 +304,7 @@ impl Fsm for GradientToolFsmState {
 					for overlay in &data.gradient_overlays {
 						if overlay.evaluate_gradient_start().distance_squared(mouse) < tolerance {
 							dragging = true;
+							start_snap(&mut data.snap_handler, document, document.graphene_document.layer(&overlay.path).unwrap(), &overlay.path);
 							data.selected_gradient = Some(SelectedGradient {
 								path: overlay.path.clone(),
 								transform: overlay.transform.clone(),
@@ -290,6 +314,7 @@ impl Fsm for GradientToolFsmState {
 						}
 						if overlay.evaluate_gradient_end().distance_squared(mouse) < tolerance {
 							dragging = true;
+							start_snap(&mut data.snap_handler, document, document.graphene_document.layer(&overlay.path).unwrap(), &overlay.path);
 							data.selected_gradient = Some(SelectedGradient {
 								path: overlay.path.clone(),
 								transform: overlay.transform.clone(),
@@ -320,6 +345,8 @@ impl Fsm for GradientToolFsmState {
 
 							data.selected_gradient = Some(selected_gradient);
 
+							start_snap(&mut data.snap_handler, document, layer, &intersection);
+
 							GradientToolFsmState::Drawing
 						} else {
 							GradientToolFsmState::Ready
@@ -328,14 +355,21 @@ impl Fsm for GradientToolFsmState {
 				}
 				(GradientToolFsmState::Drawing, GradientToolMessage::PointerMove { constrain_axis }) => {
 					if let Some(selected_gradient) = &mut data.selected_gradient {
-						selected_gradient.update_gradient(input.mouse.position, responses, input.keyboard.get(constrain_axis as usize));
+						let mouse = data.snap_handler.snap_position(responses, input.viewport_bounds.size(), document, input.mouse.position);
+						selected_gradient.update_gradient(mouse, responses, input.keyboard.get(constrain_axis as usize));
 					}
 					GradientToolFsmState::Drawing
 				}
 
-				(GradientToolFsmState::Drawing, GradientToolMessage::PointerUp) => GradientToolFsmState::Ready,
+				(GradientToolFsmState::Drawing, GradientToolMessage::PointerUp) => {
+					data.snap_handler.cleanup(responses);
+
+					GradientToolFsmState::Ready
+				}
 
 				(_, GradientToolMessage::Abort) => {
+					data.snap_handler.cleanup(responses);
+
 					while let Some(overlay) = data.gradient_overlays.pop() {
 						overlay.delete_overlays(responses);
 					}
