@@ -26,15 +26,6 @@ pub enum BooleanOperationError {
 	Unexpected, // For debugging, when complete nothing should be unexpected
 }
 
-/// A simple and idiomatic way to write short "if let Some(_)" statements which do nothing in the None case
-macro_rules! do_if {
-	($option:expr, $name:ident{$todo:expr}) => {
-		if let Some($name) = $option {
-			$todo
-		}
-	};
-}
-
 struct Edge {
 	pub from: Origin,
 	pub destination: usize,
@@ -219,7 +210,7 @@ impl PathGraph {
 					for (vertex_id, sub_seg) in vertex_ids.into_iter().zip(subdivided.iter()) {
 						match self.current_start {
 							Some(index) => {
-								do_if!(sub_seg, end_of_edge { self.current.push(*end_of_edge)});
+								sub_seg.map(|end_of_edge| self.current.push(end_of_edge));
 								graph.add_edge(origin, index, vertex_id, self.current.clone());
 								self.current_start = Some(vertex_id);
 								self.current = Vec::new();
@@ -227,11 +218,11 @@ impl PathGraph {
 							None => {
 								self.current_start = Some(vertex_id);
 								self.start_index = Some(vertex_id);
-								do_if!(sub_seg, end_of_beginning {self.beginning.push(*end_of_beginning)});
+								sub_seg.map(|end_of_beginning| self.beginning.push(end_of_beginning));
 							}
 						}
 					}
-					do_if!(subdivided.last().unwrap(), start_of_edge {self.current.push(*start_of_edge)});
+					subdivided.last().unwrap().map(|start_of_edge| self.current.push(start_of_edge));
 				} else {
 					match self.current_start {
 						Some(_) => self.current.push(seg),
