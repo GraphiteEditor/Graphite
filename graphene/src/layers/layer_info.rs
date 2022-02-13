@@ -1,7 +1,7 @@
 use super::blend_mode::BlendMode;
 use super::folder_layer::FolderLayer;
 use super::shape_layer::ShapeLayer;
-use super::style::ViewMode;
+use super::style::{PathStyle, ViewMode};
 use super::text_layer::TextLayer;
 use crate::intersection::Quad;
 use crate::DocumentError;
@@ -179,6 +179,22 @@ impl Layer {
 		match &self.data {
 			LayerDataType::Text(t) => Ok(t),
 			_ => Err(DocumentError::NotText),
+		}
+	}
+
+	pub fn style(&self) -> Result<&PathStyle, DocumentError> {
+		match &self.data {
+			LayerDataType::Shape(s) => Ok(&s.style),
+			LayerDataType::Text(t) => Ok(&t.style),
+			_ => return Err(DocumentError::NotAShape),
+		}
+	}
+
+	pub fn style_mut(&mut self) -> Result<&mut PathStyle, DocumentError> {
+		match &mut self.data {
+			LayerDataType::Shape(s) => Ok(&mut s.style),
+			LayerDataType::Text(t) => Ok(&mut t.style),
+			_ => return Err(DocumentError::NotAShape),
 		}
 	}
 }

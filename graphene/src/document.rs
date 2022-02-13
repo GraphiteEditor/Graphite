@@ -780,12 +780,9 @@ impl Document {
 				self.mark_as_dirty(&path)?;
 				Some([vec![DocumentChanged, LayerChanged { path: path.clone() }], update_thumbnails_upstream(&path)].concat())
 			}
-			Operation::SetLayerFill { path, color } => {
+			Operation::SetLayerFill { path, fill } => {
 				let layer = self.layer_mut(&path)?;
-				match &mut layer.data {
-					LayerDataType::Shape(s) => s.style.set_fill(layers::style::Fill::flat(color)),
-					_ => return Err(DocumentError::NotAShape),
-				}
+				layer.style_mut()?.set_fill(fill);
 				self.mark_as_dirty(&path)?;
 				Some([vec![DocumentChanged], update_thumbnails_upstream(&path)].concat())
 			}

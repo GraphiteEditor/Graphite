@@ -72,6 +72,10 @@ impl Default for Mapping {
 			entry! {action=TextMessage::Interact, key_up=Lmb},
 			entry! {action=TextMessage::Abort, key_down=KeyEscape},
 			entry! {action=TextMessage::CommitText, key_down=KeyEnter, modifiers=[KeyControl]},
+			// Gradient
+			entry! {action=GradientToolMessage::PointerDown, key_down=Lmb},
+			entry! {action=GradientToolMessage::PointerMove { constrain_axis: KeyShift }, message=InputMapperMessage::PointerMove},
+			entry! {action=GradientToolMessage::PointerUp, key_up=Lmb},
 			// Rectangle
 			entry! {action=RectangleToolMessage::DragStart, key_down=Lmb},
 			entry! {action=RectangleToolMessage::DragStop, key_up=Lmb},

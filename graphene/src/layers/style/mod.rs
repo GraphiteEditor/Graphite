@@ -1,4 +1,5 @@
 use std::default;
+use std::fmt::Write;
 
 use crate::color::Color;
 use crate::consts::{LAYER_OUTLINE_STROKE_COLOR, LAYER_OUTLINE_STROKE_WIDTH};
@@ -39,6 +40,31 @@ pub struct Gradient {
 	pub start: DVec2,
 	pub end: DVec2,
 	pub positions: Vec<(f64, Color)>,
+	uuid: u64,
+}
+impl Gradient {
+	pub fn new(start: DVec2, start_colour: Color, end: DVec2, end_colour: Color, uuid: u64) -> Self {
+		Gradient {
+			start,
+			end,
+			positions: vec![(0., start_colour), (1., end_colour)],
+			uuid,
+		}
+	}
+	fn render_defs(&self, svg_defs: &mut String) {
+		let positions = self
+			.positions
+			.iter()
+			.map(|(position, colour)| format!(r##"<stop offset="{}" stop-color="#{}" />"##, position, colour.rgba_hex()))
+			.collect::<String>();
+		write!(
+			svg_defs,
+			r##"<linearGradient id="{}" x1="{}" x2="{}" y1="{}" y2="{}">
+						{}
+						</linearGradient>"##,
+			self.uuid, self.start.x, self.end.x, self.start.y, self.end.y, positions
+		);
+	}
 }
 
 /// Describes the fill of a layer.
@@ -73,11 +99,14 @@ impl Fill {
 		}
 	}
 
-	pub fn render(&self) -> String {
+	pub fn render(&self, svg_defs: &mut String) -> String {
 		match self {
 			Self::None => r#" fill="none""#.to_string(),
 			Self::Flat(color) => format!(r##" fill="#{}"{}"##, color.rgb_hex(), format_opacity("fill", color.a())),
-			Self::LinearGradient(gradient) => "".to_string(),
+			Self::LinearGradient(gradient) => {
+				gradient.render_defs(svg_defs);
+				format!(r##" fill="url('#{}')" "##, gradient.uuid)
+			}
 		}
 	}
 
@@ -147,10 +176,10 @@ impl PathStyle {
 		self.stroke = None;
 	}
 
-	pub fn render(&self, view_mode: ViewMode) -> String {
+	pub fn render(&self, view_mode: ViewMode, svg_defs: &mut String) -> String {
 		let fill_attribute = match (view_mode, &self.fill) {
-			(ViewMode::Outline, _) => Fill::None.render(),
-			(_, fill) => fill.render(),
+			(ViewMode::Outline, _) => Fill::None.render(svg_defs),
+			(_, fill) => fill.render(svg_defs),
 		};
 		let stroke_attribute = match (view_mode, self.stroke) {
 			(ViewMode::Outline, _) => Stroke::new(LAYER_OUTLINE_STROKE_COLOR, LAYER_OUTLINE_STROKE_WIDTH).render(),

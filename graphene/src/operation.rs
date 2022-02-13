@@ -179,7 +179,7 @@ pub enum Operation {
 	},
 	SetLayerFill {
 		path: Vec<LayerId>,
-		color: Color,
+		fill: style::Fill,
 	},
 }
 

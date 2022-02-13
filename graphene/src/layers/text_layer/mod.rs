@@ -56,7 +56,7 @@ impl LayerData for TextLayer {
 
 			path.apply_affine(glam_to_kurbo(transform));
 
-			let _ = write!(svg, r#"<path d="{}" {} />"#, path.to_svg(), self.style.render(view_mode));
+			let _ = write!(svg, r#"<path d="{}" {} />"#, path.to_svg(), self.style.render(view_mode, svg_defs));
 		}
 		let _ = svg.write_str("</g>");
 	}
