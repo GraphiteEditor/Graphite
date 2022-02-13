@@ -259,50 +259,56 @@ impl<'a> SubCurve<'a> {
 // Optimization: any extra copying happening?
 
 fn path_intersections(a: &SubCurve, b: &SubCurve, mut recursion: f64, intersections: &mut Vec<Intersect>) {
-	if overlap(&a.bounding_box(), &b.bounding_box()) {
-		if let (PathSeg::Line(line), _) = (a.curve, b) {
-			line_curve_intersections(line, b.curve, true, |a, b| valid_t(a) && valid_t(b), intersections);
-			return;
-		}
-		if let (_, PathSeg::Line(line)) = (a, b.curve) {
-			line_curve_intersections(line, a.curve, false, |a, b| valid_t(a) && valid_t(b), intersections);
-			return;
-		}
-		// We are close enough to try linear approximation
-		if recursion < (1 << 10) as f64 {
-			if let Some(mut cross) = line_intersection(&Line { p0: a.start(), p1: a.end() }, &Line { p0: b.start(), p1: b.end() }) {
-				// Intersection `t_value` equals the recursive `t_value` + interpolated intersection value
-				cross.t_a = a.start_t + cross.t_a * recursion;
-				cross.t_b = b.start_t + cross.t_b * recursion;
-				cross.quality = guess_quality(a.curve, b.curve, &cross);
+	if let (PathSeg::Line(line), _) = (a.curve, b) {
+		line_curve_intersections(line, b.curve, true, |a, b| valid_t(a) && valid_t(b), intersections);
+		return;
+	}
+	if let (_, PathSeg::Line(line)) = (a, b.curve) {
+		line_curve_intersections(line, a.curve, false, |a, b| valid_t(a) && valid_t(b), intersections);
+		return;
+	}
+	// We are close enough to try linear approximation
+	if recursion < (1 << 10) as f64 {
+		if let Some(mut cross) = line_intersection(&Line { p0: a.start(), p1: a.end() }, &Line { p0: b.start(), p1: b.end() }) {
+			// Intersection `t_value` equals the recursive `t_value` + interpolated intersection value
+			cross.t_a = a.start_t + cross.t_a * recursion;
+			cross.t_b = b.start_t + cross.t_b * recursion;
+			cross.quality = guess_quality(a.curve, b.curve, &cross);
 
-				// log::debug!("checking: {:?}", cross.quality);
-				if cross.quality <= CURVE_FIDELITY {
-					intersections.push(cross);
-					return;
-				}
-				// Eventually the points in the curve become too close together to split the curve meaningfully
-				// Also provides a base case and prevents infinite recursion
-				if a.available_precision() <= F64PRECISE || b.available_precision() <= F64PRECISE {
-					log::debug!("precision reached");
-					intersections.push(cross);
-					return;
-				}
+			// log::debug!("checking: {:?}", cross.quality);
+			if cross.quality <= CURVE_FIDELITY {
+				intersections.push(cross);
+				return;
 			}
-
-			// Alternate base case
-			// Note: may occur for the less forgiving side of a `PathSeg` endpoint intersect
+			// Eventually the points in the curve become too close together to split the curve meaningfully
+			// Also provides a base case and prevents infinite recursion
 			if a.available_precision() <= F64PRECISE || b.available_precision() <= F64PRECISE {
-				log::debug!("precision reached without finding intersect");
+				log::debug!("precision reached");
+				intersections.push(cross);
 				return;
 			}
 		}
-		recursion /= 2.0;
-		let (a1, a2) = a.split(0.5);
-		let (b1, b2) = b.split(0.5);
+
+		// Alternate base case
+		// Note: may occur for the less forgiving side of a `PathSeg` endpoint intersect
+		if a.available_precision() <= F64PRECISE || b.available_precision() <= F64PRECISE {
+			log::debug!("precision reached without finding intersect");
+			return;
+		}
+	}
+	recursion /= 2.0;
+	let (a1, a2) = a.split(0.5);
+	let (b1, b2) = b.split(0.5);
+	if overlap(&a1.bounding_box(), &b1.bounding_box()) {
 		path_intersections(&a1, &b1, recursion, intersections);
+	}
+	if overlap(&a1.bounding_box(), &b2.bounding_box()) {
 		path_intersections(&a1, &b2, recursion, intersections);
+	}
+	if overlap(&a2.bounding_box(), &b1.bounding_box()) {
 		path_intersections(&a2, &b1, recursion, intersections);
+	}
+	if overlap(&a2.bounding_box(), &b2.bounding_box()) {
 		path_intersections(&a2, &b2, recursion, intersections);
 	}
 }
