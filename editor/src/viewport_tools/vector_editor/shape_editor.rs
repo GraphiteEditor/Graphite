@@ -212,6 +212,13 @@ impl ShapeEditor {
 		}
 	}
 
+	/// Dissolve the selected points
+	pub fn delete_selected_points(&mut self, responses: &mut VecDeque<Message>) {
+		for shape in self.selected_shapes_mut() {
+			shape.delete_selected(responses);
+		}
+	}
+
 	/// Toggle if the handles should mirror angle across the anchor positon
 	pub fn toggle_selected_mirror_angle(&mut self) {
 		for anchor in self.selected_anchors_mut() {

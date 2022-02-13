@@ -59,7 +59,7 @@ impl VectorShape {
 		responses.push_back(
 			Operation::SetShapePathInViewport {
 				path: shape.layer_path.clone(),
-				bez_path: shape.elements.clone().into_iter().collect(),
+				bez_path: BezPath::from_vec(shape.elements.clone()),
 				transform: shape.transform.to_cols_array(),
 			}
 			.into(),
@@ -138,7 +138,31 @@ impl VectorShape {
 		responses.push_back(
 			Operation::SetShapePathInViewport {
 				path: self.layer_path.clone(),
-				bez_path: edited_bez_path.into_iter().collect(),
+				bez_path: BezPath::from_vec(edited_bez_path),
+				transform: self.transform.to_cols_array(),
+			}
+			.into(),
+		);
+	}
+
+	/// Delete the selected point
+	/// A wrapper around move_point to handle mirror state / submit the changes
+	pub fn delete_selected(&mut self, responses: &mut VecDeque<Message>) {
+		let mut edited_bez_path = self.elements.clone();
+
+		let indices: Vec<_> = self
+			.selected_anchors_mut()
+			.filter_map(|anchor| anchor.points[ControlPointType::Anchor].as_ref().map(|x| x.kurbo_element_id))
+			.collect();
+		for index in indices.iter().rev() {
+			edited_bez_path.remove(*index);
+		}
+
+		// We've made our changes to the shape, submit them
+		responses.push_back(
+			Operation::SetShapePathInViewport {
+				path: self.layer_path.clone(),
+				bez_path: BezPath::from_vec(edited_bez_path),
 				transform: self.transform.to_cols_array(),
 			}
 			.into(),

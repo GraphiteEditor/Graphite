@@ -2,7 +2,7 @@ use crate::message_prelude::*;
 
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
-use std::ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign};
+use std::ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign, Index};
 
 // TODO: Increase size of type
 /// Edit this to specify the storage type used.

@@ -42,6 +42,7 @@ pub enum PathToolMessage {
 		alt_mirror_angle: Key,
 		shift_mirror_distance: Key,
 	},
+	SelectPoint,
 }
 
 impl PropertyHolder for PathTool {}
@@ -72,8 +73,9 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for PathTool {
 		use PathToolFsmState::*;
 
 		match self.fsm_state {
-			Ready => actions!(PathToolMessageDiscriminant; DragStart),
+			Ready => actions!(PathToolMessageDiscriminant; DragStart, SelectPoint),
 			Dragging => actions!(PathToolMessageDiscriminant; DragStop, PointerMove),
+			PointSelected => actions!(PathToolMessageDiscriminant; SelectPoint/*TODO: Delete */),
 		}
 	}
 }
@@ -82,6 +84,7 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for PathTool {
 enum PathToolFsmState {
 	Ready,
 	Dragging,
+	PointSelected,
 }
 
 impl Default for PathToolFsmState {
@@ -213,6 +216,16 @@ impl Fsm for PathToolFsmState {
 					data.shape_editor.move_selected_points(snapped_position - data.drag_start_pos, true, responses);
 					Dragging
 				}
+				// DoubleClick
+				(Ready, SelectPoint) | (PointSelected, SelectPoint) | (Dragging, SelectPoint) => {
+					// Select the first point within the threshold (in pixels)
+					if data.shape_editor.select_point(input.mouse.position, SELECTION_THRESHOLD, false, responses) {
+						responses.push_back(DocumentMessage::StartTransaction.into());
+						data.shape_editor.delete_selected_points(responses);
+						responses.push_back(SelectionChanged.into());
+					}
+					Ready
+				}
 				// Mouse up
 				(_, DragStop) => {
 					data.snap_handler.cleanup(responses);
@@ -299,6 +312,20 @@ impl Fsm for PathToolFsmState {
 				]),
 			]),
 			PathToolFsmState::Dragging => HintData(vec![HintGroup(vec![
+				HintInfo {
+					key_groups: vec![KeysGroup(vec![Key::KeyAlt])],
+					mouse: None,
+					label: String::from("Split/Align Handles (Toggle)"),
+					plus: false,
+				},
+				HintInfo {
+					key_groups: vec![KeysGroup(vec![Key::KeyShift])],
+					mouse: None,
+					label: String::from("Share Lengths of Aligned Handles"),
+					plus: false,
+				},
+			])]),
+			PathToolFsmState::PointSelected => HintData(vec![HintGroup(vec![
 				HintInfo {
 					key_groups: vec![KeysGroup(vec![Key::KeyAlt])],
 					mouse: None,

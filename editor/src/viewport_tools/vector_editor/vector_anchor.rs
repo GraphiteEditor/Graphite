@@ -326,7 +326,7 @@ impl VectorAnchor {
 	pub fn remove_anchor_overlay(&mut self, responses: &mut VecDeque<Message>) {
 		if let Some(anchor_point) = &mut self.points[ControlPointType::Anchor] {
 			if let Some(overlay_path) = &anchor_point.overlay_path {
-				responses.push_back(DocumentMessage::Overlays(Operation::DeleteLayer { path: overlay_path.clone() }.into()).into());
+				responses.push_front(DocumentMessage::Overlays(Operation::DeleteLayer { path: overlay_path.clone() }.into()).into());
 			}
 			anchor_point.overlay_path = None;
 		}
@@ -340,7 +340,7 @@ impl VectorAnchor {
 		// Helper function to keep things DRY
 		let mut delete_message = |handle: &Option<Vec<LayerId>>| {
 			if let Some(overlay_path) = handle {
-				responses.push_back(DocumentMessage::Overlays(Operation::DeleteLayer { path: overlay_path.clone() }.into()).into());
+				responses.push_front(DocumentMessage::Overlays(Operation::DeleteLayer { path: overlay_path.clone() }.into()).into());
 			}
 		};
 
