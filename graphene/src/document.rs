@@ -553,15 +553,14 @@ impl Document {
 				Some([vec![DocumentChanged, CreatedLayer { path: path.clone() }], update_thumbnails_upstream(path)].concat())
 			}
 			Operation::BooleanOperation { operation, selected } => {
+				// TODO: handle overlapping identical curve case
+				// TODO: add ability to undo
 				// TODO: proper difference
 				// TODO: proper style selection (done?)
-				// TODO: should generate symmetrical code
-				// TODO: Operations on any number of shapes
+				// TODO: could generate symmetrical code
 				// TODO: boolean ops on any number of shapes
-				// TODO: handle overlapping identical curve case
 				// TODO: precision reached without intersection bug (maybe caused by separating a closed path, or dragging handles)
 				// TODO: click on shape should drag the shape
-				// TODO: add ability to undo
 				let mut responses = Vec::new();
 				if selected.len() > 1 && selected.len() < 3 {
 					// ? apparently `selected` should be reversed
