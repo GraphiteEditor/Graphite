@@ -1,4 +1,3 @@
-use std::default;
 use std::fmt::Write;
 
 use crate::color::Color;
@@ -43,6 +42,7 @@ pub struct Gradient {
 	uuid: u64,
 }
 impl Gradient {
+	/// Constructs a new gradient with the colours at 0 and 1 specified.
 	pub fn new(start: DVec2, start_colour: Color, end: DVec2, end_colour: Color, uuid: u64) -> Self {
 		Gradient {
 			start,
@@ -51,13 +51,15 @@ impl Gradient {
 			uuid,
 		}
 	}
+
+	/// Adds the gradient def with the uuid specified
 	fn render_defs(&self, svg_defs: &mut String) {
 		let positions = self
 			.positions
 			.iter()
 			.map(|(position, colour)| format!(r##"<stop offset="{}" stop-color="#{}" />"##, position, colour.rgba_hex()))
 			.collect::<String>();
-		write!(
+		let _ = write!(
 			svg_defs,
 			r##"<linearGradient id="{}" x1="{}" x2="{}" y1="{}" y2="{}">
 						{}
@@ -85,6 +87,7 @@ impl Default for Fill {
 }
 
 impl Fill {
+	/// Construct a new flat fill
 	pub fn flat(color: Color) -> Self {
 		Self::Flat(color)
 	}
@@ -99,6 +102,7 @@ impl Fill {
 		}
 	}
 
+	/// Renders the fill, adding necessary defs.
 	pub fn render(&self, svg_defs: &mut String) -> String {
 		match self {
 			Self::None => r#" fill="none""#.to_string(),
@@ -110,6 +114,7 @@ impl Fill {
 		}
 	}
 
+	/// Check if the fill is not none
 	pub fn is_some(&self) -> bool {
 		*self != Self::None
 	}

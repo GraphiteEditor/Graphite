@@ -1,5 +1,4 @@
 use crate::boolean_ops::BooleanOperation as BooleanOperationType;
-use crate::color::Color;
 use crate::layers::blend_mode::BlendMode;
 use crate::layers::layer_info::Layer;
 use crate::layers::style;
