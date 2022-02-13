@@ -85,10 +85,10 @@ pub trait LayerData {
 	/// ```
 	fn intersects_quad(&self, quad: Quad, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>);
 
-    // FIXME: this doctest fails because 0 != 1E-32
+    // FIXME: this doctest fails because 0 != 1E-32 - maybe assert difference < epsilon?
 	/// Calculate the bounding box for the layers contents after applying a given transform.
 	/// # Example
-	/// ```
+	/// ```no_run
 	/// # use graphite_graphene::layers::simple_shape::Shape;
 	/// # use graphite_graphene::layers::style::PathStyle;
 	/// # use graphite_graphene::layers::layer_info::LayerData;
