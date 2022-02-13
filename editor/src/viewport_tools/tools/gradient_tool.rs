@@ -1,4 +1,4 @@
-use crate::consts::{COLOR_ACCENT, SELECTION_TOLERANCE, VECTOR_MANIPULATOR_ANCHOR_MARKER_SIZE};
+use crate::consts::{COLOR_ACCENT, LINE_ROTATE_SNAP_ANGLE, SELECTION_TOLERANCE, VECTOR_MANIPULATOR_ANCHOR_MARKER_SIZE};
 use crate::document::DocumentMessageHandler;
 use crate::frontend::utility_types::MouseCursorIcon;
 use crate::input::keyboard::Key;
@@ -195,13 +195,34 @@ impl SelectedGradient {
 		self
 	}
 
-	pub fn update_gradient(&mut self, mouse: DVec2, responses: &mut VecDeque<Message>) {
-		let mouse = self.transform.inverse().transform_point2(mouse);
+	pub fn update_gradient(&mut self, mut mouse: DVec2, responses: &mut VecDeque<Message>, snap_rotate: bool) {
+		if snap_rotate {
+			let point = if self.dragging_start {
+				self.transform.transform_point2(self.gradient.end)
+			} else {
+				self.transform.transform_point2(self.gradient.start)
+			};
+
+			let delta = point - mouse;
+
+			let length = delta.length();
+			let mut angle = -delta.angle_between(DVec2::X);
+
+			let snap_resolution = LINE_ROTATE_SNAP_ANGLE.to_radians();
+			angle = (angle / snap_resolution).round() * snap_resolution;
+
+			let rotated = DVec2::new(length * angle.cos(), length * angle.sin());
+			mouse = point - rotated;
+		}
+
+		mouse = self.transform.inverse().transform_point2(mouse);
+
 		if self.dragging_start {
 			self.gradient.start = mouse;
 		} else {
 			self.gradient.end = mouse;
 		}
+
 		self.gradient.transform = self.transform.inverse();
 		let fill = Fill::LinearGradient(self.gradient.clone());
 		let path = self.path.clone();
@@ -295,7 +316,7 @@ impl Fsm for GradientToolFsmState {
 
 							let gradient = Gradient::new(DVec2::ZERO, tool_data.secondary_color, DVec2::ONE, tool_data.primary_color, DAffine2::IDENTITY, generate_uuid());
 							let mut selected_gradient = SelectedGradient::new(gradient, &intersection, layer, document).with_gradient_start(input.mouse.position);
-							selected_gradient.update_gradient(input.mouse.position, responses);
+							selected_gradient.update_gradient(input.mouse.position, responses, false);
 
 							data.selected_gradient = Some(selected_gradient);
 
@@ -305,9 +326,9 @@ impl Fsm for GradientToolFsmState {
 						}
 					}
 				}
-				(GradientToolFsmState::Drawing, GradientToolMessage::PointerMove { .. }) => {
+				(GradientToolFsmState::Drawing, GradientToolMessage::PointerMove { constrain_axis }) => {
 					if let Some(selected_gradient) = &mut data.selected_gradient {
-						selected_gradient.update_gradient(input.mouse.position, responses);
+						selected_gradient.update_gradient(input.mouse.position, responses, input.keyboard.get(constrain_axis as usize));
 					}
 					GradientToolFsmState::Drawing
 				}
