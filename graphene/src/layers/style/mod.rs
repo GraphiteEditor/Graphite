@@ -32,7 +32,7 @@ impl Default for ViewMode {
 
 /// A gradient fill.
 ///
-/// Contains the start and end points, along with the colours at varying points along the length.
+/// Contains the start and end points, along with the colors at varying points along the length.
 #[repr(C)]
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct Gradient {
@@ -43,12 +43,12 @@ pub struct Gradient {
 	uuid: u64,
 }
 impl Gradient {
-	/// Constructs a new gradient with the colours at 0 and 1 specified.
-	pub fn new(start: DVec2, start_colour: Color, end: DVec2, end_colour: Color, transform: DAffine2, uuid: u64) -> Self {
+	/// Constructs a new gradient with the colors at 0 and 1 specified.
+	pub fn new(start: DVec2, start_color: Color, end: DVec2, end_color: Color, transform: DAffine2, uuid: u64) -> Self {
 		Gradient {
 			start,
 			end,
-			positions: vec![(0., start_colour), (1., end_colour)],
+			positions: vec![(0., start_color), (1., end_color)],
 			transform,
 			uuid,
 		}
@@ -59,7 +59,7 @@ impl Gradient {
 		let positions = self
 			.positions
 			.iter()
-			.map(|(position, colour)| format!(r##"<stop offset="{}" stop-color="#{}" />"##, position, colour.rgba_hex()))
+			.map(|(position, color)| format!(r##"<stop offset="{}" stop-color="#{}" />"##, position, color.rgba_hex()))
 			.collect::<String>();
 
 		let start = self.transform.inverse().transform_point2(self.start);
@@ -75,9 +75,7 @@ impl Gradient {
 
 		let _ = write!(
 			svg_defs,
-			r##"<linearGradient id="{}" x1="{}" x2="{}" y1="{}" y2="{}" gradientTransform="matrix({})">
-						{}
-						</linearGradient>"##,
+			r#"<linearGradient id="{}" x1="{}" x2="{}" y1="{}" y2="{}" gradientTransform="matrix({})">{}</linearGradient>"#,
 			self.uuid, start.x, end.x, start.y, end.y, transform, positions
 		);
 	}
@@ -106,7 +104,7 @@ impl Fill {
 		Self::Solid(color)
 	}
 
-	/// Evaluate the colour at some point on the fill
+	/// Evaluate the color at some point on the fill
 	pub fn color(&self) -> Color {
 		match self {
 			Self::None => Color::BLACK,
@@ -123,7 +121,7 @@ impl Fill {
 			Self::Solid(color) => format!(r##" fill="#{}"{}"##, color.rgb_hex(), format_opacity("fill", color.a())),
 			Self::LinearGradient(gradient) => {
 				gradient.render_defs(svg_defs);
-				format!(r##" fill="url('#{}')" "##, gradient.uuid)
+				format!(r##" fill="url('#{}')""##, gradient.uuid)
 			}
 		}
 	}
