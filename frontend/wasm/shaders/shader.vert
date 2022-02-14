@@ -3,30 +3,35 @@
 precision highp float;
 precision highp int;
 
-uniform mat3 matrix;
+uniform mat2x3 matrix;
+layout(location = 0) in vec2 line_segment_start;
+layout(location = 1) in vec2 line_segment_end;
+layout(location = 2) in vec4 line_color;
+layout(location = 3) in float line_zindex;
+layout(location = 4) in float line_width;
+layout(location = 5) in mat2x3 instance_offset;
 
-layout(location = 0) in vec4 position;
-layout(location = 1) in vec4 line;
-layout(location = 2) in mat3 instance_offset;
-layout(location = 3) in vec4 color;
-layout(location = 4) in float width;
 
 smooth out vec2 vertex_position;
 smooth out vec2 line_start;
 smooth out vec2 line_stop;
 smooth out vec4 color;
 smooth out float width;
+smooth out float zindex;
 
 
 void main() {
-    vec3 new_position = instance_offset  * vec3(position.xy, 1);
-    position = vec4(new_position.xy, position.zw);
-    line_start = (matrix * vec3(line.xy, 1.)).xy;
-    line_stop = (matrix * vec3(line.zw, 1.)).xy;
-    vertex_position = (matrix * vec3(position.xy, 1.)).xy;
-    //vertex_position = (matrix * vec3(1., 0., 1.)).xy;
-    gl_Position = vec4(vertex_position,  position.z, position.w);
-    //gl_Position = vec4(position.xy,  position.z, position.w);
+    int id = gl_VertexID;
+    float x = float((id&2) >> 1) * 2. - 1.;
+    float y = float((id + 1)&1) * 2. -1.;
+    vec2 new_position = (instance_offset  * vec2(x, y)).xy;
+    vertex_position = (matrix * new_position).xy;
+    line_start = (matrix * line_segment_start).xy;
+    line_stop = (matrix * line_segment_end).xy;
+    gl_Position = vec4(x,y,  zindex, 1.);
+    color = line_color;
+    zindex = line_zindex;
+    width = line_width;
     return;
 }
 

@@ -9,8 +9,6 @@ pub struct RenderingContext {
 	document: Document,
 	canvas: HtmlCanvasElement,
 	context: WebGl2RenderingContext,
-	vert_shader: WebGlShader,
-	frag_shader: WebGlShader,
 	scale: f64,
 	program: WebGlProgram,
 }
@@ -18,41 +16,41 @@ pub struct RenderingContext {
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
 #[allow(unused_variables)]
-pub struct Vertex {
-	pos: [f32; 3],
+pub struct VertexData {
 	line_start: [f32; 2],
 	line_end: [f32; 2],
+	color: [f32; 4],
+	width: f32,
+	zindex: f32,
+	transform: [f32; 6],
 }
 
-fn create_vertices(lines: &[(f32, f32, f32, f32)], padding: f32) -> (Vec<Vertex>, Vec<(glam::Vec2, glam::Vec2)>) {
-	let mut positions = Vec::with_capacity(lines.len() * 4);
-	let mut line_attrib = Vec::with_capacity(lines.len() * 4);
-	let mut index_data = Vec::with_capacity(lines.len() * 6);
-	for line in lines {
-		use glam::Vec2;
-		let a: Vec2 = (line.0, line.1).into();
-		let b: Vec2 = (line.2, line.3).into();
+impl VertexData {
+	pub fn new(line_start: Vec2, line_end: Vec2, zindex: f32, width: f32, color: editor::Color) -> Self {
+		let a = line_start;
+		let b = line_end;
 
-		let v = (a - b).normalize_or_zero() * std::f32::consts::SQRT_2 * padding;
+		let v = (a - b).normalize_or_zero() * std::f32::consts::SQRT_2 * width * 0.5;
 		let pv = v.perp();
 		let a1 = a + v + pv;
 		let a2 = a + v - pv;
 		let b1 = b - v - pv;
 		let b2 = b - v + pv;
 
-		for index in &[0, 1, 2, 2, 3, 0] {
-			index_data.push(positions.len() as u16 + index);
-		}
-		for point in &[a1, a2, b1, b1, b2, a1] {
-			positions.push(Vertex {
-				pos: [point.x, point.y, 0.],
-				line_start: a.into(),
-				line_end: b.into(),
-			});
-			line_attrib.push((a, b));
+		let scalex = a1.distance(b2) / 2.;
+		let scaley = a1.distance(a2) / 2.;
+		let angle = v.angle_between((1., 0.).into());
+		let matrix = glam::Affine2::from_scale_angle_translation((scalex, scaley).into(), angle, a.lerp(b, 0.5));
+
+		Self {
+			line_start: line_start.into(),
+			line_end: line_start.into(),
+			color: [color.r(), color.g(), color.b(), color.a()],
+			zindex,
+			width,
+			transform: matrix.to_cols_array(),
 		}
 	}
-	(positions.to_vec(), line_attrib.to_vec())
 }
 
 impl RenderingContext {
@@ -83,34 +81,31 @@ impl RenderingContext {
 			document,
 			canvas,
 			context,
-			vert_shader,
-			frag_shader,
 			scale,
 			program,
 		})
 	}
 	pub fn draw_paths(&mut self, lines: impl Iterator<Item = (Vec<(Vec2, Vec2)>, PathStyle, u32)>) {
-		let vec: Vec<_> = lines.flat_map(|(segments, _, _)| segments).map(|(p1, p2)| (p1.x, p1.y, p2.x, p2.y)).collect();
-		let (vertex_data, _index_data) = create_vertices(&vec, 0.1);
-		self.draw(vertex_data);
+		let mut buffer = Vec::new();
+		for (segments, style, depth) in lines {
+			let stroke = style.stroke().unwrap();
+			for (line_start, line_end) in segments {
+				buffer.push(VertexData::new(line_start, line_end, depth as f32 / 100., stroke.width(), stroke.color()))
+			}
+		}
+
+		self.draw(buffer);
 		//self.draw_lines(&[(500.7, 500.7, 3100.7, 2700.7)]);
 	}
 
-	pub fn draw_lines(&mut self, lines: &[(f32, f32, f32, f32)]) {
-		let (vertex_data, _index_data) = create_vertices(lines, 100.15);
-		self.draw(vertex_data);
-	}
-
-	pub fn draw(&mut self, vertices: Vec<Vertex>) -> Result<(), JsValue> {
-		//let vertices: [f32; 9] = [-0.7, -0.7, 0.0, 0.7, -0.7, 0.0, 0.0, 0.7, 0.0];
-		let vertex_data = vertices;
+	pub fn draw(&mut self, vertex_data: Vec<VertexData>) -> Result<(), JsValue> {
 		self.context.viewport(0, 0, self.canvas.width() as i32, self.canvas.height() as i32);
 		//let (vertex_data, index_data) = create_vertices(&[(-0.5, -0.5, 0.5, 0.5), (-0.5, 0.5, 0.5, -0.5), (-0.5, -0.5, 0.5, -0.5), (-0.5, 0.5, 0.5, 0.5)], 0.15);
+		let float_size = std::mem::size_of::<f32>() as i32;
+		let vertex_size = std::mem::size_of::<VertexData>() as i32;
 
-		let vertices: &[f32] = unsafe { std::slice::from_raw_parts(vertex_data.as_ptr() as *const f32, vertex_data.len() * std::mem::size_of::<Vertex>() / std::mem::size_of::<f32>()) };
+		let vertices: &[f32] = unsafe { std::slice::from_raw_parts(vertex_data.as_ptr() as *const f32, vertex_data.len() * vertex_size as usize / float_size as usize) };
 
-		let position_attribute_location = self.context.get_attrib_location(&self.program, "position");
-		let line_attribute_location = 1; // self.context.get_attrib_location(&self.program, "line");
 		let buffer = self.context.create_buffer().ok_or("Failed to create buffer")?;
 		self.context.bind_buffer(WebGl2RenderingContext::ARRAY_BUFFER, Some(&buffer));
 
@@ -124,6 +119,7 @@ impl RenderingContext {
 		// do any memory allocations before it's dropped.
 		//let vertices = std::mem::transmute(&vertices[..]);
 		//log::debug!("vertices: {vertices:?}");
+
 		let positions_array_buf_view = js_sys::Float32Array::new_with_length(vertices.len() as u32);
 		positions_array_buf_view.copy_from(vertices);
 
@@ -131,16 +127,10 @@ impl RenderingContext {
 		let transform = glam::Affine2::from_scale(20. * Vec2::new(self.canvas.width() as f32, self.canvas.height() as f32).recip());
 		let transform = glam::Affine2::from_scale(self.scale as f32 * Vec2::new(1., -1.)) * transform;
 		let transform = glam::Affine2::from_translation(Vec2::new(-1., 1.)) * transform;
-		let transform = glam::Mat3::from(transform);
-		//let transform = glam::Mat3::IDENTITY;
-		//log::debug!("tranform: {transform:?}");
-		//log::debug!("matrix_location: {matrix_location:?}");
-		self.context.uniform_matrix3fv_with_f32_array(matrix_location.as_ref(), false, &transform.to_cols_array());
-		let path_style_location = self.context.get_uniform_location(&self.program, "path_style");
-		self.context.uniform1fv_with_f32_array(path_style_location.as_ref(), &[]);
+		self.context.uniform_matrix2x3fv_with_f32_array(matrix_location.as_ref(), false, &transform.to_cols_array());
 
 		self.context
-			.buffer_data_with_array_buffer_view(WebGl2RenderingContext::ARRAY_BUFFER, &positions_array_buf_view, WebGl2RenderingContext::STATIC_DRAW);
+			.buffer_data_with_array_buffer_view(WebGl2RenderingContext::ARRAY_BUFFER, &positions_array_buf_view, WebGl2RenderingContext::DYNAMIC_DRAW);
 
 		let vao = self.context.create_vertex_array().ok_or("Could not create vertex array object")?;
 		self.context.bind_vertex_array(Some(&vao));
@@ -148,13 +138,40 @@ impl RenderingContext {
 		//log::debug!("positon location: {position_attribute_location:?}");
 		//log::debug!("line location: {line_attribute_location:?}");
 
-		self.context.vertex_attrib_pointer_with_i32(0, 3, WebGl2RenderingContext::FLOAT, false, 28, 0);
-		self.context.enable_vertex_attrib_array(position_attribute_location as u32);
-		self.context.vertex_attrib_pointer_with_i32(1, 4, WebGl2RenderingContext::FLOAT, false, 28, 12);
-		self.context.enable_vertex_attrib_array(line_attribute_location as u32);
+		let line_start_attribute_location = self.context.get_attrib_location(&self.program, "line_segment_start");
+		let line_end_attribute_location = self.context.get_attrib_location(&self.program, "line_segment_end");
+		let color_attribute_location = self.context.get_attrib_location(&self.program, "line_color");
+		let offset_matrix_attribute_location = self.context.get_attrib_location(&self.program, "instance_offset");
+		let zindex_attribute_location = self.context.get_attrib_location(&self.program, "line_zindex");
+		let width_attribute_location = self.context.get_attrib_location(&self.program, "line_width");
 
-		let vert_count = (vertices.len() / 7) as i32;
-		//log::debug!("vert count {vert_count}");
+		/*assert_eq!(line_start_attribute_location, 0);
+				assert_eq!(line_end_attribute_location, 1);
+				assert_eq!(color_attribute_location, 2);
+				assert_eq!(zindex_attribute_location, 3);
+				assert_eq!(width_attribute_location, 4);
+				assert_eq!(offset_matrix_attribute_location, 5);
+		*/
+		self.context.enable_vertex_attrib_array(line_start_attribute_location as u32);
+		self.context.vertex_attrib_pointer_with_i32(0, 2, WebGl2RenderingContext::FLOAT, false, vertex_size, 0);
+		self.context.vertex_attrib_divisor(line_start_attribute_location as u32, 1);
+		self.context.enable_vertex_attrib_array(line_end_attribute_location as u32);
+		self.context.vertex_attrib_pointer_with_i32(1, 2, WebGl2RenderingContext::FLOAT, false, vertex_size, float_size * 2);
+		self.context.vertex_attrib_divisor(line_end_attribute_location as u32, 1);
+		self.context.enable_vertex_attrib_array(color_attribute_location as u32);
+		self.context.vertex_attrib_pointer_with_i32(2, 4, WebGl2RenderingContext::FLOAT, false, vertex_size, float_size * 4);
+		self.context.vertex_attrib_divisor(color_attribute_location as u32, 1);
+		self.context.enable_vertex_attrib_array(zindex_attribute_location as u32);
+		self.context.vertex_attrib_pointer_with_i32(3, 1, WebGl2RenderingContext::FLOAT, false, vertex_size, float_size * 8);
+		self.context.vertex_attrib_divisor(zindex_attribute_location as u32, 1);
+		self.context.enable_vertex_attrib_array(width_attribute_location as u32);
+		self.context.vertex_attrib_pointer_with_i32(4, 1, WebGl2RenderingContext::FLOAT, false, vertex_size, float_size * 9);
+		self.context.vertex_attrib_divisor(width_attribute_location as u32, 1);
+		self.context.enable_vertex_attrib_array(offset_matrix_attribute_location as u32);
+		self.context.vertex_attrib_divisor(offset_matrix_attribute_location as u32, 1);
+		self.context.vertex_attrib_pointer_with_i32(5, 2, WebGl2RenderingContext::FLOAT, false, vertex_size, float_size * 10);
+		let vert_count = vertex_data.len() as i32;
+		log::debug!("vert count {vert_count}");
 		draw(&self.context, vert_count);
 
 		Ok(())
@@ -168,7 +185,8 @@ fn draw(context: &WebGl2RenderingContext, vert_count: i32) {
 	context.enable(WebGl2RenderingContext::DEPTH_TEST);
 	context.depth_func(WebGl2RenderingContext::LESS);
 
-	context.draw_arrays(WebGl2RenderingContext::TRIANGLES, 0, vert_count);
+	context.draw_arrays_instanced(WebGl2RenderingContext::TRIANGLE_STRIP, 0, 4, vert_count);
+	//context.draw_arrays(WebGl2RenderingContext::TRIANGLES, 0, vert_count);
 }
 
 pub fn compile_shader(context: &WebGl2RenderingContext, shader_type: u32, source: &str) -> Result<WebGlShader, String> {

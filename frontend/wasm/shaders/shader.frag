@@ -1,7 +1,6 @@
 #version 300 es
 
 precision highp float;
-uniform float path_style[4];
 
 struct Result {
     float dist;
@@ -13,6 +12,7 @@ in vec2 line_start;
 in vec2 line_stop;
 in vec4 color;
 in float width;
+in float zindex;
 
 //layout(location = 0) out vec4 _fs2p_location0;
 out vec4 outColor;
@@ -31,9 +31,8 @@ void main() {
     Result res = ud_segment(vertex_position, line_start, line_stop);
     float dist = res.dist;
     float pos = ((dist * 20.0) - 1.0 * trunc((dist * 20.0) / 1.0));
-    outColor = vec4(vertex_position.x, vertex_position.y, 0., 1.0);
-    //out_1.depth = (dist * 6.0);
-    //gl_FragDepth = dist * 1.;
+    outColor = vec4(0., 0., 0., 1.);
+    gl_FragDepth = dist * 1. * width + zindex;
     return;
 }
 
