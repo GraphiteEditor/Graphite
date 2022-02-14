@@ -25,12 +25,7 @@
 
 					<ShelfItemInput icon="ParametricTextTool" title="Text Tool (T)" :active="activeTool === 'Text'" :action="() => selectTool('Text')" />
 					<ShelfItemInput icon="ParametricFillTool" title="Fill Tool (F)" :active="activeTool === 'Fill'" :action="() => selectTool('Fill')" />
-					<ShelfItemInput
-						icon="ParametricGradientTool"
-						title="Gradient Tool (H)"
-						:active="activeTool === 'Gradient'"
-						:action="() => (dialog.comingSoon(), false) && selectTool('Gradient')"
-					/>
+					<ShelfItemInput icon="ParametricGradientTool" title="Gradient Tool (H)" :active="activeTool === 'Gradient'" :action="() => selectTool('Gradient')" />
 
 					<Separator :type="'Section'" :direction="'Vertical'" />
 

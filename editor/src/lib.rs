@@ -77,6 +77,7 @@ pub mod message_prelude {
 	pub use crate::viewport_tools::tools::eyedropper_tool::{EyedropperToolMessage, EyedropperToolMessageDiscriminant};
 	pub use crate::viewport_tools::tools::fill_tool::{FillToolMessage, FillToolMessageDiscriminant};
 	pub use crate::viewport_tools::tools::freehand_tool::{FreehandToolMessage, FreehandToolMessageDiscriminant};
+	pub use crate::viewport_tools::tools::gradient_tool::{GradientToolMessage, GradientToolMessageDiscriminant};
 	pub use crate::viewport_tools::tools::line_tool::{LineToolMessage, LineToolMessageDiscriminant};
 	pub use crate::viewport_tools::tools::navigate_tool::{NavigateToolMessage, NavigateToolMessageDiscriminant};
 	pub use crate::viewport_tools::tools::path_tool::{PathToolMessage, PathToolMessageDiscriminant};

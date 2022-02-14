@@ -34,7 +34,7 @@ impl SnapHandler {
 						Operation::AddOverlayLine {
 							path: layer_path.clone(),
 							transform,
-							style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 1.0)), None),
+							style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 1.0)), style::Fill::None),
 						}
 						.into(),
 					)

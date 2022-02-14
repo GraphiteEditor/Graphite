@@ -182,7 +182,7 @@ impl Fsm for PenToolFsmState {
 								transform: transform.to_cols_array(),
 								insert_index: -1,
 								bez_path: data.bez_path.clone().into_iter().collect(),
-								style: style::PathStyle::new(Some(style::Stroke::new(tool_data.primary_color, data.weight as f32)), None),
+								style: style::PathStyle::new(Some(style::Stroke::new(tool_data.primary_color, data.weight as f32)), style::Fill::None),
 								closed: false,
 							}
 							.into(),
