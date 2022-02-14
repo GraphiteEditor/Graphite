@@ -162,4 +162,41 @@ impl Color {
 	pub fn rgb_hex(&self) -> String {
 		format!("{:02X?}{:02X?}{:02X?}", (self.r() * 255.) as u8, (self.g() * 255.) as u8, (self.b() * 255.) as u8,)
 	}
+
+	/// Creates a color from a 8-character RGBA hex string (without a # prefix).
+	///
+	/// # Examples
+	/// ```
+	/// use graphite_graphene::color::Color;
+	/// let color = Color::from_rgba_str("7C67FA61").unwrap();
+	/// assert!("7C67FA61" == color.rgba_hex())
+	/// ```
+	pub fn from_rgba_str(color_str: &str) -> Option<Color> {
+		if color_str.len() != 8 {
+			return None;
+		}
+		let r = u8::from_str_radix(&color_str[0..2], 16).ok()?;
+		let g = u8::from_str_radix(&color_str[2..4], 16).ok()?;
+		let b = u8::from_str_radix(&color_str[4..6], 16).ok()?;
+		let a = u8::from_str_radix(&color_str[6..8], 16).ok()?;
+
+		Some(Color::from_rgba8(r, g, b, a))
+	}
+
+	/// Creates a color from a 6-character RGB hex string (without a # prefix).
+	/// ```
+	/// use graphite_graphene::color::Color;
+	/// let color = Color::from_rgb_str("7C67FA").unwrap();
+	/// assert!("7C67FA" == color.rgb_hex())
+	/// ```
+	pub fn from_rgb_str(color_str: &str) -> Option<Color> {
+		if color_str.len() != 6 {
+			return None;
+		}
+		let r = u8::from_str_radix(&color_str[0..2], 16).ok()?;
+		let g = u8::from_str_radix(&color_str[2..4], 16).ok()?;
+		let b = u8::from_str_radix(&color_str[4..6], 16).ok()?;
+
+		Some(Color::from_rgb8(r, g, b))
+	}
 }

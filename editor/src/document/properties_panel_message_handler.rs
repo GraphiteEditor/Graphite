@@ -6,8 +6,10 @@ use crate::layout::widgets::{
 };
 use crate::message_prelude::*;
 
+use graphene::color::Color;
 use graphene::document::Document as GrapheneDocument;
 use graphene::layers::layer_info::{Layer, LayerDataType};
+use graphene::layers::style::{Fill, Stroke};
 use graphene::{LayerId, Operation};
 
 use glam::{DAffine2, DVec2};
@@ -152,6 +154,39 @@ impl MessageHandler<PropertiesPanelMessage, &GrapheneDocument> for PropertiesPan
 				let path = self.active_path.clone().expect("Received update for properties panel with no active layer");
 				responses.push_back(DocumentMessage::SetLayerName { layer_path: path, name }.into())
 			}
+			ModifyFill { value } => {
+				if let Some(color) = Color::from_rgba_str(&value).or(Color::from_rgb_str(&value)) {
+					let path = self.active_path.clone().expect("Received update for properties panel with no active layer");
+					responses.push_back(Operation::SetLayerFill { path, color }.into())
+				}
+			}
+			ModifyStroke { color, weight } => {
+				let path = self.active_path.clone().expect("Received update for properties panel with no active layer");
+				let layer = graphene_document.layer(&path).unwrap();
+				let current_stroke = match &layer.data {
+					LayerDataType::Shape(shape) => shape.style.stroke().unwrap_or_default(),
+					LayerDataType::Text(text) => text.style.stroke().unwrap_or_default(),
+					_ => panic!("Invalid update to ModifyStroke"),
+				};
+
+				if let Some(color) = color.map(|color_str| Color::from_rgba_str(&color_str).or(Color::from_rgb_str(&color_str))).flatten() {
+					responses.push_back(
+						Operation::SetLayerStroke {
+							path,
+							stroke: Stroke::new(color, current_stroke.width()),
+						}
+						.into(),
+					)
+				} else if let Some(weight) = weight {
+					responses.push_back(
+						Operation::SetLayerStroke {
+							path,
+							stroke: Stroke::new(current_stroke.color(), weight as f32),
+						}
+						.into(),
+					)
+				}
+			}
 			CheckSelectedWasUpdated { path } => {
 				if self.matches_selected(&path) {
 					let layer = graphene_document.layer(&path).unwrap();
@@ -232,13 +267,21 @@ fn register_layer_properties(layer: &Layer, responses: &mut VecDeque<Message>) {
 
 	let properties_body = match &layer.data {
 		LayerDataType::Folder(_) => {
-			vec![node_section_transform(layer)]
+			vec![]
 		}
-		LayerDataType::Shape(_) => {
-			vec![node_section_transform(layer)]
+		LayerDataType::Shape(shape) => {
+			vec![
+				node_section_transform(layer),
+				node_section_fill(&shape.style.fill().unwrap_or_default()),
+				node_section_stroke(&shape.style.stroke().unwrap_or_default()),
+			]
 		}
-		LayerDataType::Text(_) => {
-			vec![node_section_transform(layer)]
+		LayerDataType::Text(text) => {
+			vec![
+				node_section_transform(layer),
+				node_section_fill(&text.style.fill().unwrap_or_default()),
+				node_section_stroke(&text.style.stroke().unwrap_or_default()),
+			]
 		}
 	};
 
@@ -367,6 +410,87 @@ fn node_section_transform(layer: &Layer) -> LayoutRow {
 							PropertiesPanelMessage::ModifyTransform {
 								value: number_input.value / 180. * PI,
 								transform_op: TransformOp::Rotation,
+							}
+							.into()
+						}),
+						..NumberInput::default()
+					})),
+				],
+			},
+		],
+	}
+}
+
+fn node_section_fill(fill: &Fill) -> LayoutRow {
+	LayoutRow::Section {
+		name: "Fill".into(),
+		layout: vec![LayoutRow::Row {
+			name: "".into(),
+			widgets: vec![
+				WidgetHolder::new(Widget::TextLabel(TextLabel {
+					value: "Color".into(),
+					..TextLabel::default()
+				})),
+				WidgetHolder::new(Widget::Separator(Separator {
+					separator_type: SeparatorType::Related,
+					direction: SeparatorDirection::Horizontal,
+				})),
+				WidgetHolder::new(Widget::TextInput(TextInput {
+					value: fill.color().rgba_hex(),
+					on_update: WidgetCallback::new(|text_input| PropertiesPanelMessage::ModifyFill { value: text_input.value.clone() }.into()),
+				})),
+			],
+		}],
+	}
+}
+
+fn node_section_stroke(stroke: &Stroke) -> LayoutRow {
+	LayoutRow::Section {
+		name: "Stroke".into(),
+		layout: vec![
+			LayoutRow::Row {
+				name: "".into(),
+				widgets: vec![
+					WidgetHolder::new(Widget::TextLabel(TextLabel {
+						value: "Color".into(),
+						..TextLabel::default()
+					})),
+					WidgetHolder::new(Widget::Separator(Separator {
+						separator_type: SeparatorType::Related,
+						direction: SeparatorDirection::Horizontal,
+					})),
+					WidgetHolder::new(Widget::TextInput(TextInput {
+						value: stroke.color().rgba_hex(),
+						on_update: WidgetCallback::new(|text_input| {
+							PropertiesPanelMessage::ModifyStroke {
+								color: Some(text_input.value.clone()),
+								weight: None,
+							}
+							.into()
+						}),
+					})),
+				],
+			},
+			LayoutRow::Row {
+				name: "".into(),
+				widgets: vec![
+					WidgetHolder::new(Widget::TextLabel(TextLabel {
+						value: "Weight".into(),
+						..TextLabel::default()
+					})),
+					WidgetHolder::new(Widget::Separator(Separator {
+						separator_type: SeparatorType::Related,
+						direction: SeparatorDirection::Horizontal,
+					})),
+					WidgetHolder::new(Widget::NumberInput(NumberInput {
+						value: stroke.width() as f64,
+						is_integer: true,
+						min: Some(0.),
+						unit: " px".into(),
+						on_update: WidgetCallback::new(|number_input| {
+							PropertiesPanelMessage::ModifyStroke {
+								color: None,
+								weight: Some(number_input.value),
 							}
 							.into()
 						}),

@@ -141,7 +141,7 @@ impl<T> WidgetCallback<T> {
 
 impl<T> Default for WidgetCallback<T> {
 	fn default() -> Self {
-		Self { callback: |_| Message::NoOp }
+		Self::new(|_| Message::NoOp)
 	}
 }
 

@@ -2,7 +2,7 @@ use crate::boolean_ops::BooleanOperation as BooleanOperationType;
 use crate::color::Color;
 use crate::layers::blend_mode::BlendMode;
 use crate::layers::layer_info::Layer;
-use crate::layers::style;
+use crate::layers::style::{self, Stroke};
 use crate::LayerId;
 
 use serde::{Deserialize, Serialize};
@@ -180,6 +180,10 @@ pub enum Operation {
 	SetLayerFill {
 		path: Vec<LayerId>,
 		color: Color,
+	},
+	SetLayerStroke {
+		path: Vec<LayerId>,
+		stroke: Stroke,
 	},
 }
 

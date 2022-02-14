@@ -9,7 +9,9 @@ pub enum PropertiesPanelMessage {
 	CheckSelectedWasDeleted { path: Vec<LayerId> },
 	CheckSelectedWasUpdated { path: Vec<LayerId> },
 	ClearSelection,
+	ModifyFill { value: String },
 	ModifyName { name: String },
+	ModifyStroke { color: Option<String>, weight: Option<f64> },
 	ModifyTransform { value: f64, transform_op: TransformOp },
 	SetActiveLayers { paths: Vec<Vec<LayerId>> },
 }

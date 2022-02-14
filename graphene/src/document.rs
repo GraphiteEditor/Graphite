@@ -778,6 +778,17 @@ impl Document {
 				let layer = self.layer_mut(path)?;
 				match &mut layer.data {
 					LayerDataType::Shape(s) => s.style.set_fill(layers::style::Fill::new(*color)),
+					LayerDataType::Text(t) => t.style.set_fill(layers::style::Fill::new(*color)),
+					_ => return Err(DocumentError::NotAShape),
+				}
+				self.mark_as_dirty(path)?;
+				Some([vec![DocumentChanged], update_thumbnails_upstream(path)].concat())
+			}
+			Operation::SetLayerStroke { path, stroke } => {
+				let layer = self.layer_mut(path)?;
+				match &mut layer.data {
+					LayerDataType::Shape(s) => s.style.set_stroke(*stroke),
+					LayerDataType::Text(t) => t.style.set_stroke(*stroke),
 					_ => return Err(DocumentError::NotAShape),
 				}
 				self.mark_as_dirty(path)?;
