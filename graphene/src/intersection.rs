@@ -10,7 +10,7 @@ use glam::{DAffine2, DMat2, DVec2};
 use kurbo::{BezPath, CubicBez, Line, ParamCurve, ParamCurveExtrema, PathSeg, Point, QuadBez, Rect, Shape, Vec2};
 
 #[derive(Debug, Clone, Default, Copy)]
-/// A quadriliteral defined by four vertices.
+/// A quad defined by four vertices.
 pub struct Quad([DVec2; 4]);
 
 impl Quad {
@@ -83,7 +83,9 @@ pub fn intersect_quad_bez_path(quad: Quad, shape: &BezPath, filled: bool) -> boo
 	get_arbitrary_point_on_path(&shape).map(|shape_point| quad.path().contains(shape_point)).unwrap_or_default()
 }
 
-/// Returns any point on `path`.
+/// Returns a point on `path`.
+/// This function will usually return the first point from the path's first segment,
+/// but callers should not rely on this behaviour.
 pub fn get_arbitrary_point_on_path(path: &BezPath) -> Option<Point> {
 	path.segments().next().map(|seg| match seg {
 		PathSeg::Line(line) => line.p0,

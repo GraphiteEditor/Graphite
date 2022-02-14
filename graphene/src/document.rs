@@ -15,7 +15,9 @@ use std::cmp::max;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
-/// A number that uniquely identifies a layer.
+/// A number that identifies a layer.
+/// This does not technically need to be unique globally,
+/// only within a folder.
 pub type LayerId = u64;
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

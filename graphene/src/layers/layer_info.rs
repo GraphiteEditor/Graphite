@@ -85,7 +85,7 @@ pub trait LayerData {
 	/// ```
 	fn intersects_quad(&self, quad: Quad, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>);
 
-	// FIXME: this doctest fails because 0 != 1E-32 - maybe assert difference < epsilon?
+	// TODO: this doctest fails because 0 != 1E-32 - maybe assert difference < epsilon?
 	/// Calculate the bounding box for the layers contents after applying a given transform.
 	/// # Example
 	/// ```no_run
