@@ -77,13 +77,15 @@ impl RenderingContext {
 		let program = link_program(&context, &vert_shader, &frag_shader)?;
 		context.use_program(Some(&program));
 		context.viewport(0, 0, canvas.width() as i32, canvas.height() as i32);
-		Ok(Self {
+		let context = Self {
 			document,
 			canvas,
 			context,
 			scale,
 			program,
-		})
+		};
+		context.init_buffer(Vec::new());
+		Ok(context)
 	}
 	pub fn draw_paths(&mut self, lines: impl Iterator<Item = (Vec<(Vec2, Vec2)>, PathStyle, u32)>) {
 		let mut buffer = Vec::new();
@@ -104,9 +106,24 @@ impl RenderingContext {
 		glam::Affine2::from_translation(Vec2::new(-1., 1.)) * transform
 	}
 
-	pub fn draw(&mut self, vertex_data: Vec<VertexData>) -> Result<(), JsValue> {
+	fn update_buffer(&self, vertex_data: Vec<VertexData>) -> Result<(), JsValue> {
 		self.context.viewport(0, 0, self.canvas.width() as i32, self.canvas.height() as i32);
-		//let (vertex_data, index_data) = create_vertices(&[(-0.5, -0.5, 0.5, 0.5), (-0.5, 0.5, 0.5, -0.5), (-0.5, -0.5, 0.5, -0.5), (-0.5, 0.5, 0.5, 0.5)], 0.15);
+		let float_size = std::mem::size_of::<f32>() as i32;
+		let vertex_size = std::mem::size_of::<VertexData>() as i32;
+
+		let vertices: &[f32] = unsafe { std::slice::from_raw_parts(vertex_data.as_ptr() as *const f32, vertex_data.len() * vertex_size as usize / float_size as usize) };
+
+		let positions_array_buf_view = js_sys::Float32Array::new_with_length(vertices.len() as u32);
+		positions_array_buf_view.copy_from(vertices);
+
+		self.context
+			.buffer_data_with_array_buffer_view(WebGl2RenderingContext::ARRAY_BUFFER, &positions_array_buf_view, WebGl2RenderingContext::DYNAMIC_DRAW);
+
+		Ok(())
+	}
+
+	fn init_buffer(&self, vertex_data: Vec<VertexData>) -> Result<(), JsValue> {
+		self.context.viewport(0, 0, self.canvas.width() as i32, self.canvas.height() as i32);
 		let float_size = std::mem::size_of::<f32>() as i32;
 		let vertex_size = std::mem::size_of::<VertexData>() as i32;
 
@@ -183,7 +200,12 @@ impl RenderingContext {
 				.vertex_attrib_pointer_with_i32(location, 2, WebGl2RenderingContext::FLOAT, false, vertex_size, float_size * (10 + 2 * i as i32));
 		}
 		let vert_count = vertex_data.len() as i32;
-		//log::debug!("vert count {vert_count}");
+		Ok(())
+	}
+
+	pub fn draw(&mut self, vertex_data: Vec<VertexData>) -> Result<(), JsValue> {
+		let vert_count = vertex_data.len() as i32;
+		self.update_buffer(vertex_data);
 		draw(&self.context, vert_count);
 
 		Ok(())

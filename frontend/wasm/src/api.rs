@@ -56,7 +56,7 @@ impl JsEditorHandle {
 		let responses = EDITOR_INSTANCES.with(|instances| {
 			instances
 				.borrow_mut()
-				.get_mut(&mut self.editor_id)
+				.get_mut(&self.editor_id)
 				.expect("EDITOR_INSTANCES does not contain the current editor_id")
 				.0
 				.handle_message(message.into())
@@ -79,8 +79,9 @@ impl JsEditorHandle {
 						.line_iter();
 					self.renderer().draw_paths(lines);
 				});
+			} else {
+				self.handle_response(response);
 			}
-			self.handle_response(response);
 		}
 	}
 
