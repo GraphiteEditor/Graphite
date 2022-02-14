@@ -20,8 +20,8 @@ pub struct VertexData {
 	line_start: [f32; 2],
 	line_end: [f32; 2],
 	color: [f32; 4],
-	width: f32,
 	zindex: f32,
+	width: f32,
 	transform: [f32; 6],
 }
 
@@ -34,7 +34,7 @@ impl VertexData {
 		let pv = v.perp();
 		let a1 = a + v + pv;
 		let a2 = a + v - pv;
-		let b1 = b - v - pv;
+		let _b1 = b - v - pv;
 		let b2 = b - v + pv;
 
 		let scalex = a1.distance(b2) / 2.;
@@ -44,7 +44,7 @@ impl VertexData {
 
 		Self {
 			line_start: line_start.into(),
-			line_end: line_start.into(),
+			line_end: line_end.into(),
 			color: [color.r(), color.g(), color.b(), color.a()],
 			zindex,
 			width,
@@ -90,12 +90,18 @@ impl RenderingContext {
 		for (segments, style, depth) in lines {
 			let stroke = style.stroke().unwrap();
 			for (line_start, line_end) in segments {
-				buffer.push(VertexData::new(line_start, line_end, depth as f32 / 100., stroke.width(), stroke.color()))
+				buffer.push(VertexData::new(line_start, line_end, depth as f32 / 100., stroke.width() * 10., stroke.color()))
 			}
 		}
 
 		self.draw(buffer);
 		//self.draw_lines(&[(500.7, 500.7, 3100.7, 2700.7)]);
+	}
+
+	fn viewport_transform(&self) -> glam::Affine2 {
+		let transform = glam::Affine2::from_scale(2. * Vec2::new(self.canvas.width() as f32, self.canvas.height() as f32).recip());
+		let transform = glam::Affine2::from_scale(self.scale as f32 * Vec2::new(1., -1.)) * transform;
+		glam::Affine2::from_translation(Vec2::new(-1., 1.)) * transform
 	}
 
 	pub fn draw(&mut self, vertex_data: Vec<VertexData>) -> Result<(), JsValue> {
@@ -122,12 +128,14 @@ impl RenderingContext {
 
 		let positions_array_buf_view = js_sys::Float32Array::new_with_length(vertices.len() as u32);
 		positions_array_buf_view.copy_from(vertices);
+		let transform = self.viewport_transform();
 
 		let matrix_location = self.context.get_uniform_location(&self.program, "matrix");
-		let transform = glam::Affine2::from_scale(20. * Vec2::new(self.canvas.width() as f32, self.canvas.height() as f32).recip());
-		let transform = glam::Affine2::from_scale(self.scale as f32 * Vec2::new(1., -1.)) * transform;
-		let transform = glam::Affine2::from_translation(Vec2::new(-1., 1.)) * transform;
 		self.context.uniform_matrix3x2fv_with_f32_array(matrix_location.as_ref(), false, &transform.to_cols_array());
+
+		let resolution_location = self.context.get_uniform_location(&self.program, "canvas_resolution");
+		self.context
+			.uniform2fv_with_f32_array(resolution_location.as_ref(), &[self.canvas.width() as f32, self.canvas.height() as f32]);
 
 		self.context
 			.buffer_data_with_array_buffer_view(WebGl2RenderingContext::ARRAY_BUFFER, &positions_array_buf_view, WebGl2RenderingContext::DYNAMIC_DRAW);
@@ -175,7 +183,7 @@ impl RenderingContext {
 				.vertex_attrib_pointer_with_i32(location, 2, WebGl2RenderingContext::FLOAT, false, vertex_size, float_size * (10 + 2 * i as i32));
 		}
 		let vert_count = vertex_data.len() as i32;
-		log::debug!("vert count {vert_count}");
+		//log::debug!("vert count {vert_count}");
 		draw(&self.context, vert_count);
 
 		Ok(())

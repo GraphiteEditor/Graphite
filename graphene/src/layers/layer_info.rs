@@ -109,7 +109,7 @@ impl Layer {
 
 	pub fn transform_iter(&self) -> TransformIter<'_> {
 		TransformIter {
-			stack: vec![(self, glam::DAffine2::from_scale(DVec2::splat(0.1)), 0)],
+			stack: vec![(self, glam::DAffine2::from_scale(DVec2::splat(1.)), 0)],
 		}
 	}
 
@@ -146,7 +146,7 @@ impl Layer {
 						Some(second)
 					}
 					(_, PathEl::ClosePath) => {
-						paths.push((paths[0].0, paths.last().unwrap().1));
+						paths.push((paths.last().unwrap().1, paths[0].0));
 						None
 					}
 					(current, next) => unreachable!(format!("Bezier flattening returned non line segments {current:?} {next:?}")),
@@ -309,8 +309,8 @@ impl<'a> Iterator for TransformIter<'a> {
 	fn next(&mut self) -> Option<Self::Item> {
 		match self.stack.pop() {
 			Some((layer, transform, depth)) => {
-				//log::debug!("transform: {transform:?}");
 				let new_transform = transform * layer.transform;
+				//log::debug!("new_transform: {new_transform:?}");
 				if let LayerDataType::Folder(folder) = &layer.data {
 					let layers = folder.layers();
 					self.stack.extend(layers.iter().map(|x| (x, new_transform, depth + 1)));
