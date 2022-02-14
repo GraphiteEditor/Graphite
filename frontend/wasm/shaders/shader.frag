@@ -31,8 +31,8 @@ void main() {
     Result res = ud_segment(vertex_position, line_start, line_stop);
     float dist = res.dist;
     float pos = ((dist * 20.0) - 1.0 * trunc((dist * 20.0) / 1.0));
-    outColor = vec4(0., 0., 0., 1.);
-    gl_FragDepth = dist * 1. * width + zindex;
+    outColor = color;
+    gl_FragDepth = (dist * 1. * width + zindex) / 1000.;
     return;
 }
 

@@ -145,13 +145,13 @@ impl RenderingContext {
 		let zindex_attribute_location = self.context.get_attrib_location(&self.program, "line_zindex");
 		let width_attribute_location = self.context.get_attrib_location(&self.program, "line_width");
 
-		/*assert_eq!(line_start_attribute_location, 0);
-				assert_eq!(line_end_attribute_location, 1);
-				assert_eq!(color_attribute_location, 2);
-				assert_eq!(zindex_attribute_location, 3);
-				assert_eq!(width_attribute_location, 4);
-				assert_eq!(offset_matrix_attribute_location, 5);
-		*/
+		assert_eq!(line_start_attribute_location, 0);
+		assert_eq!(line_end_attribute_location, 1);
+		assert_eq!(color_attribute_location, 2);
+		assert_eq!(zindex_attribute_location, 3);
+		assert_eq!(width_attribute_location, 4);
+		assert_eq!(offset_matrix_attribute_location, 5);
+
 		self.context.enable_vertex_attrib_array(line_start_attribute_location as u32);
 		self.context.vertex_attrib_pointer_with_i32(0, 2, WebGl2RenderingContext::FLOAT, false, vertex_size, 0);
 		self.context.vertex_attrib_divisor(line_start_attribute_location as u32, 1);
@@ -167,9 +167,13 @@ impl RenderingContext {
 		self.context.enable_vertex_attrib_array(width_attribute_location as u32);
 		self.context.vertex_attrib_pointer_with_i32(4, 1, WebGl2RenderingContext::FLOAT, false, vertex_size, float_size * 9);
 		self.context.vertex_attrib_divisor(width_attribute_location as u32, 1);
-		self.context.enable_vertex_attrib_array(offset_matrix_attribute_location as u32);
-		self.context.vertex_attrib_divisor(offset_matrix_attribute_location as u32, 1);
-		self.context.vertex_attrib_pointer_with_i32(5, 2, WebGl2RenderingContext::FLOAT, false, vertex_size, float_size * 10);
+		for i in 0..3 {
+			let location = offset_matrix_attribute_location as u32 + i;
+			self.context.enable_vertex_attrib_array(location);
+			self.context.vertex_attrib_divisor(location, 1);
+			self.context
+				.vertex_attrib_pointer_with_i32(location, 2, WebGl2RenderingContext::FLOAT, false, vertex_size, float_size * (10 + 2 * i as i32));
+		}
 		let vert_count = vertex_data.len() as i32;
 		log::debug!("vert count {vert_count}");
 		draw(&self.context, vert_count);
