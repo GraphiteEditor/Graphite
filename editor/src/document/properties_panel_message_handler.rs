@@ -155,9 +155,13 @@ impl MessageHandler<PropertiesPanelMessage, &GrapheneDocument> for PropertiesPan
 				responses.push_back(DocumentMessage::SetLayerName { layer_path: path, name }.into())
 			}
 			ModifyFill { value } => {
+				let path = self.active_path.clone().expect("Received update for properties panel with no active layer");
 				if let Some(color) = Color::from_rgba_str(&value).or(Color::from_rgb_str(&value)) {
-					let path = self.active_path.clone().expect("Received update for properties panel with no active layer");
 					responses.push_back(Operation::SetLayerFill { path, color }.into())
+				} else {
+					let layer = graphene_document.layer(&path).unwrap();
+					// Failed to update, Show user unchanged state
+					register_layer_properties(layer, responses)
 				}
 			}
 			ModifyStroke { color, weight } => {
@@ -185,6 +189,9 @@ impl MessageHandler<PropertiesPanelMessage, &GrapheneDocument> for PropertiesPan
 						}
 						.into(),
 					)
+				} else {
+					// Failed to update, Show user unchanged state
+					register_layer_properties(layer, responses)
 				}
 			}
 			CheckSelectedWasUpdated { path } => {
