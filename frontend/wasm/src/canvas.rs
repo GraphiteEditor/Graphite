@@ -127,7 +127,7 @@ impl RenderingContext {
 		let transform = glam::Affine2::from_scale(20. * Vec2::new(self.canvas.width() as f32, self.canvas.height() as f32).recip());
 		let transform = glam::Affine2::from_scale(self.scale as f32 * Vec2::new(1., -1.)) * transform;
 		let transform = glam::Affine2::from_translation(Vec2::new(-1., 1.)) * transform;
-		self.context.uniform_matrix2x3fv_with_f32_array(matrix_location.as_ref(), false, &transform.to_cols_array());
+		self.context.uniform_matrix3x2fv_with_f32_array(matrix_location.as_ref(), false, &transform.to_cols_array());
 
 		self.context
 			.buffer_data_with_array_buffer_view(WebGl2RenderingContext::ARRAY_BUFFER, &positions_array_buf_view, WebGl2RenderingContext::DYNAMIC_DRAW);
