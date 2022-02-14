@@ -31,27 +31,27 @@ pub enum ToolMessage {
 	#[remain::unsorted]
 	#[child]
 	Fill(FillToolMessage),
+	#[remain::unsorted]
+	#[child]
+	Gradient(GradientToolMessage),
 	// #[remain::unsorted]
 	// #[child]
-	// Gradient(GradientMessage),
+	// Brush(BrushToolMessage),
 	// #[remain::unsorted]
 	// #[child]
-	// Brush(BrushMessage),
+	// Heal(HealToolMessage),
 	// #[remain::unsorted]
 	// #[child]
-	// Heal(HealMessage),
+	// Clone(CloneToolMessage),
 	// #[remain::unsorted]
 	// #[child]
-	// Clone(CloneMessage),
+	// Patch(PatchToolMessage),
 	// #[remain::unsorted]
 	// #[child]
-	// Patch(PatchMessage),
+	// Detail(DetailToolMessage),
 	// #[remain::unsorted]
 	// #[child]
-	// Detail(DetailMessage),
-	// #[remain::unsorted]
-	// #[child]
-	// Relight(RelightMessage),
+	// Relight(RelightToolMessage),
 	#[remain::unsorted]
 	#[child]
 	Path(PathToolMessage),

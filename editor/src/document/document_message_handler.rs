@@ -628,7 +628,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 		match message {
 			// Sub-messages
 			#[remain::unsorted]
-			DispatchOperation(op) => match self.graphene_document.handle_operation(&op) {
+			DispatchOperation(op) => match self.graphene_document.handle_operation(*op) {
 				Ok(Some(document_responses)) => {
 					for response in document_responses {
 						match &response {

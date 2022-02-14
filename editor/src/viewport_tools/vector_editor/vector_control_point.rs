@@ -63,7 +63,7 @@ impl VectorControlPoint {
 				DocumentMessage::Overlays(
 					Operation::SetLayerStyle {
 						path: overlay_path.clone(),
-						style: PathStyle::new(Some(Stroke::new(stroke_color, stroke_width)), Some(Fill::new(fill_color))),
+						style: PathStyle::new(Some(Stroke::new(stroke_color, stroke_width)), Fill::solid(fill_color)),
 					}
 					.into(),
 				)

@@ -1,7 +1,7 @@
 use super::blend_mode::BlendMode;
 use super::folder_layer::FolderLayer;
 use super::shape_layer::ShapeLayer;
-use super::style::ViewMode;
+use super::style::{PathStyle, ViewMode};
 use super::text_layer::TextLayer;
 use crate::intersection::Quad;
 use crate::DocumentError;
@@ -37,14 +37,14 @@ impl LayerDataType {
 }
 
 pub trait LayerData {
-	fn render(&mut self, svg: &mut String, transforms: &mut Vec<glam::DAffine2>, view_mode: ViewMode);
+	fn render(&mut self, svg: &mut String, svg_defs: &mut String, transforms: &mut Vec<glam::DAffine2>, view_mode: ViewMode);
 	fn intersects_quad(&self, quad: Quad, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>);
 	fn bounding_box(&self, transform: glam::DAffine2) -> Option<[DVec2; 2]>;
 }
 
 impl LayerData for LayerDataType {
-	fn render(&mut self, svg: &mut String, transforms: &mut Vec<glam::DAffine2>, view_mode: ViewMode) {
-		self.inner_mut().render(svg, transforms, view_mode)
+	fn render(&mut self, svg: &mut String, svg_defs: &mut String, transforms: &mut Vec<glam::DAffine2>, view_mode: ViewMode) {
+		self.inner_mut().render(svg, svg_defs, transforms, view_mode)
 	}
 
 	fn intersects_quad(&self, quad: Quad, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>) {
@@ -78,6 +78,8 @@ pub struct Layer {
 	pub cache: String,
 	#[serde(skip)]
 	pub thumbnail_cache: String,
+	#[serde(skip)]
+	pub svg_defs_cache: String,
 	#[serde(skip, default = "return_true")]
 	pub cache_dirty: bool,
 	pub blend_mode: BlendMode,
@@ -93,6 +95,7 @@ impl Layer {
 			transform: glam::DAffine2::from_cols_array(&transform),
 			cache: String::new(),
 			thumbnail_cache: String::new(),
+			svg_defs_cache: String::new(),
 			cache_dirty: true,
 			blend_mode: BlendMode::Normal,
 			opacity: 1.,
@@ -103,7 +106,7 @@ impl Layer {
 		LayerIter { stack: vec![self] }
 	}
 
-	pub fn render(&mut self, transforms: &mut Vec<DAffine2>, view_mode: ViewMode) -> &str {
+	pub fn render(&mut self, transforms: &mut Vec<DAffine2>, view_mode: ViewMode, svg_defs: &mut String) -> &str {
 		if !self.visible {
 			return "";
 		}
@@ -111,7 +114,8 @@ impl Layer {
 		if self.cache_dirty {
 			transforms.push(self.transform);
 			self.thumbnail_cache.clear();
-			self.data.render(&mut self.thumbnail_cache, transforms, view_mode);
+			self.svg_defs_cache.clear();
+			self.data.render(&mut self.thumbnail_cache, &mut self.svg_defs_cache, transforms, view_mode);
 
 			self.cache.clear();
 			let _ = writeln!(self.cache, r#"<g transform="matrix("#);
@@ -128,6 +132,7 @@ impl Layer {
 			transforms.pop();
 			self.cache_dirty = false;
 		}
+		svg_defs.push_str(&self.svg_defs_cache);
 
 		self.cache.as_str()
 	}
@@ -176,6 +181,22 @@ impl Layer {
 			_ => Err(DocumentError::NotText),
 		}
 	}
+
+	pub fn style(&self) -> Result<&PathStyle, DocumentError> {
+		match &self.data {
+			LayerDataType::Shape(s) => Ok(&s.style),
+			LayerDataType::Text(t) => Ok(&t.style),
+			_ => return Err(DocumentError::NotAShape),
+		}
+	}
+
+	pub fn style_mut(&mut self) -> Result<&mut PathStyle, DocumentError> {
+		match &mut self.data {
+			LayerDataType::Shape(s) => Ok(&mut s.style),
+			LayerDataType::Text(t) => Ok(&mut t.style),
+			_ => return Err(DocumentError::NotAShape),
+		}
+	}
 }
 
 impl Clone for Layer {
@@ -187,6 +208,7 @@ impl Clone for Layer {
 			transform: self.transform,
 			cache: String::new(),
 			thumbnail_cache: String::new(),
+			svg_defs_cache: String::new(),
 			cache_dirty: true,
 			blend_mode: self.blend_mode,
 			opacity: self.opacity,
