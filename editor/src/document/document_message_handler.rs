@@ -480,7 +480,7 @@ impl PropertyHolder for DocumentMessageHandler {
 					checked: self.snapping_enabled,
 					icon: "Snapping".into(),
 					tooltip: "Snapping".into(),
-					on_update: WidgetCallback::new(|updated_optional_input| DocumentMessage::SetSnapping { snap: updated_optional_input.checked }.into()),
+					on_update: WidgetCallback::new(|optional_input: &OptionalInput| DocumentMessage::SetSnapping { snap: optional_input.checked }.into()),
 				})),
 				WidgetHolder::new(Widget::PopoverButton(PopoverButton {
 					title: "Snapping".into(),
@@ -508,12 +508,7 @@ impl PropertyHolder for DocumentMessageHandler {
 					checked: self.overlays_visible,
 					icon: "Overlays".into(),
 					tooltip: "Overlays".into(),
-					on_update: WidgetCallback::new(|updated_optional_input| {
-						DocumentMessage::SetOverlaysVisibility {
-							visible: updated_optional_input.checked,
-						}
-						.into()
-					}),
+					on_update: WidgetCallback::new(|optional_input: &OptionalInput| DocumentMessage::SetOverlaysVisibility { visible: optional_input.checked }.into()),
 				})),
 				WidgetHolder::new(Widget::PopoverButton(PopoverButton {
 					title: "Overlays".into(),
@@ -561,7 +556,7 @@ impl PropertyHolder for DocumentMessageHandler {
 					unit: "°".into(),
 					value: self.movement_handler.tilt / (std::f64::consts::PI / 180.),
 					increment_factor: 15.,
-					on_update: WidgetCallback::new(|number_input| {
+					on_update: WidgetCallback::new(|number_input: &NumberInput| {
 						MovementMessage::SetCanvasRotation {
 							angle_radians: number_input.value * (std::f64::consts::PI / 180.),
 						}
@@ -603,7 +598,7 @@ impl PropertyHolder for DocumentMessageHandler {
 					value: self.movement_handler.zoom * 100.,
 					min: Some(0.000001),
 					max: Some(1000000.),
-					on_update: WidgetCallback::new(|number_input| {
+					on_update: WidgetCallback::new(|number_input: &NumberInput| {
 						MovementMessage::SetCanvasZoom {
 							zoom_factor: number_input.value / 100.,
 						}
