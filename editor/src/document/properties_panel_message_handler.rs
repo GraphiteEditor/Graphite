@@ -447,7 +447,7 @@ fn node_section_fill(fill: &Fill) -> LayoutRow {
 						name: "".into(),
 						widgets: vec![
 							WidgetHolder::new(Widget::TextLabel(TextLabel {
-								value: "0%".into(),
+								value: "Gradient: 0%".into(),
 								..TextLabel::default()
 							})),
 							WidgetHolder::new(Widget::Separator(Separator {
@@ -475,7 +475,7 @@ fn node_section_fill(fill: &Fill) -> LayoutRow {
 						name: "".into(),
 						widgets: vec![
 							WidgetHolder::new(Widget::TextLabel(TextLabel {
-								value: "100%".into(),
+								value: "Gradient: 100%".into(),
 								..TextLabel::default()
 							})),
 							WidgetHolder::new(Widget::Separator(Separator {
