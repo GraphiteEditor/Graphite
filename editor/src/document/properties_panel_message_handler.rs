@@ -439,8 +439,7 @@ fn node_section_fill(fill: &Fill) -> LayoutRow {
 			}],
 		},
 		Fill::LinearGradient(gradient) => {
-			let gradient = Rc::new(gradient.clone());
-			let gradient_1 = gradient.clone();
+			let gradient_1 = Rc::new(gradient.clone());
 			let gradient_2 = gradient.clone();
 			LayoutRow::Section {
 				name: "Fill".into(),
