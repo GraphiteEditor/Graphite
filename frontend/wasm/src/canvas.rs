@@ -1,12 +1,13 @@
 use glam::Vec2;
 use graphene::layers::style::PathStyle;
+use std::cell::RefCell;
+use std::rc::Rc;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
-use web_sys::{Document, HtmlCanvasElement, WebGl2RenderingContext, WebGlProgram, WebGlShader};
+use web_sys::{HtmlCanvasElement, WebGl2RenderingContext, WebGlProgram, WebGlShader};
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct RenderingContext {
-	document: Document,
 	canvas: HtmlCanvasElement,
 	context: WebGl2RenderingContext,
 	scale: f64,
@@ -53,10 +54,26 @@ impl VertexData {
 	}
 }
 
+fn window() -> web_sys::Window {
+	web_sys::window().expect("no global `window` exists")
+}
+
+fn request_animation_frame(f: &Closure<dyn FnMut()>) {
+	window().request_animation_frame(f.as_ref().unchecked_ref()).expect("should register `requestAnimationFrame` OK");
+}
+
+fn document() -> web_sys::Document {
+	window().document().expect("should have a document on window")
+}
+
+fn body() -> web_sys::HtmlElement {
+	document().body().expect("document should have a body")
+}
+
 impl RenderingContext {
 	pub fn new() -> Result<Self, JsValue> {
-		let document = web_sys::window().unwrap().document().unwrap();
-		let scale = web_sys::window().unwrap().device_pixel_ratio();
+		let document = document();
+		let scale = window().device_pixel_ratio();
 		let canvas = document.query_selector(".rendering-canvas").unwrap().unwrap();
 		let canvas: web_sys::HtmlCanvasElement = canvas.dyn_into::<web_sys::HtmlCanvasElement>()?;
 		let map = js_sys::Map::new();
@@ -77,17 +94,38 @@ impl RenderingContext {
 		let program = link_program(&context, &vert_shader, &frag_shader)?;
 		context.use_program(Some(&program));
 		context.viewport(0, 0, canvas.width() as i32, canvas.height() as i32);
-		let context = Self {
-			document,
-			canvas,
-			context,
-			scale,
-			program,
-		};
+
+		let f = Rc::new(RefCell::new(None));
+		let g = f.clone();
+
+		*g.borrow_mut() = Some(Closure::wrap(Box::new(move || {
+			super::EDITOR_INSTANCES.with(|instances| {
+				let instances = instances.borrow();
+				if let Some((editor, handle)) = instances.values().find(|(_, h)| h.renderer.is_some()) {
+					let lines = editor
+						.dispatcher
+						.message_handlers
+						.portfolio_message_handler
+						.active_document()
+						.overlays_message_handler
+						.overlays_graphene_document
+						.root
+						.line_iter();
+					if let Some(renderer) = handle.renderer.as_ref() {
+						renderer.draw_paths(lines);
+					}
+				}
+			});
+			// Schedule ourself for another requestAnimationFrame callback.
+			request_animation_frame(f.borrow().as_ref().unwrap());
+		}) as Box<dyn FnMut()>));
+
+		let context = Self { canvas, context, scale, program };
 		context.init_buffer(Vec::new());
+		request_animation_frame(g.borrow().as_ref().unwrap());
 		Ok(context)
 	}
-	pub fn draw_paths(&mut self, lines: impl Iterator<Item = (Vec<(Vec2, Vec2)>, PathStyle, u32)>) {
+	pub fn draw_paths(&self, lines: impl Iterator<Item = (Vec<(Vec2, Vec2)>, PathStyle, u32)>) {
 		let mut buffer = Vec::new();
 		for (segments, style, depth) in lines {
 			let stroke = style.stroke().unwrap();
@@ -203,7 +241,7 @@ impl RenderingContext {
 		Ok(())
 	}
 
-	pub fn draw(&mut self, vertex_data: Vec<VertexData>) -> Result<(), JsValue> {
+	pub fn draw(&self, vertex_data: Vec<VertexData>) -> Result<(), JsValue> {
 		let vert_count = vertex_data.len() as i32;
 		self.update_buffer(vertex_data);
 		draw(&self.context, vert_count);

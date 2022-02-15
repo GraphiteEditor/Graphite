@@ -26,11 +26,11 @@ use wasm_bindgen::prelude::*;
 // To avoid wasm-bindgen from checking mutable reference issues using WasmRefCell we must make all methods take a non mutable reference to mut self.
 // Not doing this creates an issue when rust calls into JS which calls back to rust in the same call stack.
 #[wasm_bindgen]
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct JsEditorHandle {
 	editor_id: u64,
 	handle_response: js_sys::Function,
-	renderer: Option<RenderingContext>,
+	pub(crate) renderer: Option<RenderingContext>,
 }
 
 #[wasm_bindgen]
@@ -65,19 +65,7 @@ impl JsEditorHandle {
 			// Send each FrontendMessage to the JavaScript frontend
 			if let FrontendMessage::UpdateDocumentOverlays { .. } = response {
 				EDITOR_INSTANCES.with(|instances| {
-					let instances = instances.borrow();
-					let editor = instances.get(&self.editor_id).expect("EDITOR_INSTANCES does not contain the current editor_id");
-					let lines = editor
-						.0
-						.dispatcher
-						.message_handlers
-						.portfolio_message_handler
-						.active_document()
-						.overlays_message_handler
-						.overlays_graphene_document
-						.root
-						.line_iter();
-					self.renderer().draw_paths(lines);
+					instances.borrow_mut().get_mut(&self.editor_id).unwrap().1.renderer();
 				});
 			} else {
 				self.handle_response(response);
@@ -103,7 +91,7 @@ impl JsEditorHandle {
 		}
 	}
 
-	fn renderer(&mut self) -> &mut RenderingContext {
+	pub(crate) fn renderer(&mut self) -> &mut RenderingContext {
 		if self.renderer.is_none() {
 			self.renderer = Some(RenderingContext::new().unwrap());
 		}
@@ -117,6 +105,25 @@ impl JsEditorHandle {
 
 	pub fn has_crashed(&mut self) -> bool {
 		EDITOR_HAS_CRASHED.load(Ordering::SeqCst)
+	}
+
+	///
+	pub fn draw_overlays(&mut self) {
+		EDITOR_INSTANCES.with(|instances| {
+			let instances = instances.borrow();
+			let editor = instances.get(&self.editor_id).expect("EDITOR_INSTANCES does not contain the current editor_id");
+			let lines = editor
+				.0
+				.dispatcher
+				.message_handlers
+				.portfolio_message_handler
+				.active_document()
+				.overlays_message_handler
+				.overlays_graphene_document
+				.root
+				.line_iter();
+			self.renderer().draw_paths(lines);
+		});
 	}
 
 	/// Modify the currently selected tool in the document state store
