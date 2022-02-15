@@ -71,7 +71,7 @@ impl PropertyHolder for SplineTool {
 				value: self.options.line_weight as f64,
 				is_integer: true,
 				min: Some(0.),
-				on_update: WidgetCallback::new(|number_input| SplineToolMessage::UpdateOptions(SplineOptionsUpdate::LineWeight(number_input.value as u32)).into()),
+				on_update: WidgetCallback::new(|number_input: &NumberInput| SplineToolMessage::UpdateOptions(SplineOptionsUpdate::LineWeight(number_input.value as u32)).into()),
 				..NumberInput::default()
 			}))],
 		}])

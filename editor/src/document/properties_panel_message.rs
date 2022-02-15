@@ -1,5 +1,6 @@
 use crate::message_prelude::*;
 
+use graphene::layers::style::Fill;
 use serde::{Deserialize, Serialize};
 
 #[remain::sorted]
@@ -9,11 +10,11 @@ pub enum PropertiesPanelMessage {
 	CheckSelectedWasDeleted { path: Vec<LayerId> },
 	CheckSelectedWasUpdated { path: Vec<LayerId> },
 	ClearSelection,
-	ModifyLinearGradientFill { ends: [Option<String>; 2] },
+	ModifyFill { fill: Fill },
 	ModifyName { name: String },
-	ModifySolidFill { value: String },
-	ModifyStroke { color: Option<String>, weight: Option<f64> },
+	ModifyStroke { color: String, weight: f64 },
 	ModifyTransform { value: f64, transform_op: TransformOp },
+	ResendActiveProperties,
 	SetActiveLayers { paths: Vec<Vec<LayerId>> },
 }
 

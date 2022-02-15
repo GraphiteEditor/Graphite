@@ -66,7 +66,7 @@ impl PropertyHolder for ShapeTool {
 				is_integer: true,
 				min: Some(3.),
 				max: Some(256.),
-				on_update: WidgetCallback::new(|number_input| ShapeToolMessage::UpdateOptions(ShapeOptionsUpdate::Vertices(number_input.value as u8)).into()),
+				on_update: WidgetCallback::new(|number_input: &NumberInput| ShapeToolMessage::UpdateOptions(ShapeOptionsUpdate::Vertices(number_input.value as u8)).into()),
 				..NumberInput::default()
 			}))],
 		}])
