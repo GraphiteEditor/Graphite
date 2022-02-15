@@ -154,15 +154,40 @@ impl MessageHandler<PropertiesPanelMessage, &GrapheneDocument> for PropertiesPan
 				let path = self.active_path.clone().expect("Received update for properties panel with no active layer");
 				responses.push_back(DocumentMessage::SetLayerName { layer_path: path, name }.into())
 			}
-			ModifyFill { value } => {
+			ModifySolidFill { value } => {
 				let path = self.active_path.clone().expect("Received update for properties panel with no active layer");
 				if let Some(color) = Color::from_rgba_str(&value).or(Color::from_rgb_str(&value)) {
-					responses.push_back(Operation::SetLayerFill { path, color }.into())
+					let fill = Fill::Solid(color);
+					responses.push_back(Operation::SetLayerFill { path, fill }.into())
 				} else {
 					let layer = graphene_document.layer(&path).unwrap();
 					// Failed to update, Show user unchanged state
 					register_layer_properties(layer, responses)
 				}
+			}
+			ModifyLinearGradientFill { ends } => {
+				let path = self.active_path.clone().expect("Received update for properties panel with no active layer");
+				let layer = graphene_document.layer(&path).unwrap();
+
+				let mut gradient = match layer.style().expect("Attempted to update linear gradient on layer that does not have a fill").fill() {
+					Fill::LinearGradient(gradient) => gradient.clone(),
+					_ => panic!("Attempted to update a gradient when the layer did not contain one"),
+				};
+
+				let [start, end] = ends;
+				if let Some(color) = start.map(|color_str| Color::from_rgba_str(&color_str).or(Color::from_rgb_str(&color_str))).flatten() {
+					gradient.positions[0].1 = color;
+				} else if let Some(color) = end.map(|color_str| Color::from_rgba_str(&color_str).or(Color::from_rgb_str(&color_str))).flatten() {
+					gradient.positions[1].1 = color;
+				}
+
+				responses.push_back(
+					Operation::SetLayerFill {
+						path,
+						fill: Fill::LinearGradient(gradient),
+					}
+					.into(),
+				)
 			}
 			ModifyStroke { color, weight } => {
 				let path = self.active_path.clone().expect("Received update for properties panel with no active layer");
@@ -279,14 +304,14 @@ fn register_layer_properties(layer: &Layer, responses: &mut VecDeque<Message>) {
 		LayerDataType::Shape(shape) => {
 			vec![
 				node_section_transform(layer),
-				node_section_fill(&shape.style.fill().unwrap_or_default()),
+				node_section_fill(&shape.style.fill()),
 				node_section_stroke(&shape.style.stroke().unwrap_or_default()),
 			]
 		}
 		LayerDataType::Text(text) => {
 			vec![
 				node_section_transform(layer),
-				node_section_fill(&text.style.fill().unwrap_or_default()),
+				node_section_fill(&text.style.fill()),
 				node_section_stroke(&text.style.stroke().unwrap_or_default()),
 			]
 		}
@@ -429,25 +454,77 @@ fn node_section_transform(layer: &Layer) -> LayoutRow {
 }
 
 fn node_section_fill(fill: &Fill) -> LayoutRow {
-	LayoutRow::Section {
-		name: "Fill".into(),
-		layout: vec![LayoutRow::Row {
-			name: "".into(),
-			widgets: vec![
-				WidgetHolder::new(Widget::TextLabel(TextLabel {
-					value: "Color".into(),
-					..TextLabel::default()
-				})),
-				WidgetHolder::new(Widget::Separator(Separator {
-					separator_type: SeparatorType::Related,
-					direction: SeparatorDirection::Horizontal,
-				})),
-				WidgetHolder::new(Widget::TextInput(TextInput {
-					value: fill.color().rgba_hex(),
-					on_update: WidgetCallback::new(|text_input| PropertiesPanelMessage::ModifyFill { value: text_input.value.clone() }.into()),
-				})),
+	match fill {
+		Fill::Solid(color) => LayoutRow::Section {
+			name: "Fill".into(),
+			layout: vec![LayoutRow::Row {
+				name: "".into(),
+				widgets: vec![
+					WidgetHolder::new(Widget::TextLabel(TextLabel {
+						value: "Color".into(),
+						..TextLabel::default()
+					})),
+					WidgetHolder::new(Widget::Separator(Separator {
+						separator_type: SeparatorType::Related,
+						direction: SeparatorDirection::Horizontal,
+					})),
+					WidgetHolder::new(Widget::TextInput(TextInput {
+						value: color.rgba_hex(),
+						on_update: WidgetCallback::new(|text_input| PropertiesPanelMessage::ModifySolidFill { value: text_input.value.clone() }.into()),
+					})),
+				],
+			}],
+		},
+		Fill::LinearGradient(gradient) => LayoutRow::Section {
+			name: "Fill".into(),
+			layout: vec![
+				LayoutRow::Row {
+					name: "".into(),
+					widgets: vec![
+						WidgetHolder::new(Widget::TextLabel(TextLabel {
+							value: "0%".into(),
+							..TextLabel::default()
+						})),
+						WidgetHolder::new(Widget::Separator(Separator {
+							separator_type: SeparatorType::Related,
+							direction: SeparatorDirection::Horizontal,
+						})),
+						WidgetHolder::new(Widget::TextInput(TextInput {
+							value: gradient.positions[0].1.rgba_hex(),
+							on_update: WidgetCallback::new(|text_input| {
+								PropertiesPanelMessage::ModifyLinearGradientFill {
+									ends: [Some(text_input.value.clone()), None],
+								}
+								.into()
+							}),
+						})),
+					],
+				},
+				LayoutRow::Row {
+					name: "".into(),
+					widgets: vec![
+						WidgetHolder::new(Widget::TextLabel(TextLabel {
+							value: "100%".into(),
+							..TextLabel::default()
+						})),
+						WidgetHolder::new(Widget::Separator(Separator {
+							separator_type: SeparatorType::Related,
+							direction: SeparatorDirection::Horizontal,
+						})),
+						WidgetHolder::new(Widget::TextInput(TextInput {
+							value: gradient.positions[1].1.rgba_hex(),
+							on_update: WidgetCallback::new(|text_input| {
+								PropertiesPanelMessage::ModifyLinearGradientFill {
+									ends: [None, Some(text_input.value.clone())],
+								}
+								.into()
+							}),
+						})),
+					],
+				},
 			],
-		}],
+		},
+		Fill::None => panic!("`node_section_fill` called on a shape that does not have a fill"),
 	}
 }
 
