@@ -15,6 +15,7 @@ use graphene::{LayerId, Operation};
 use glam::{DAffine2, DVec2};
 use serde::{Deserialize, Serialize};
 use std::f64::consts::PI;
+use std::rc::Rc;
 
 trait DAffine2Utils {
 	fn width(&self) -> f64;
@@ -438,6 +439,7 @@ fn node_section_fill(fill: &Fill) -> LayoutRow {
 			}],
 		},
 		Fill::LinearGradient(gradient) => {
+			let gradient = Rc::new(gradient.clone());
 			let gradient_1 = gradient.clone();
 			let gradient_2 = gradient.clone();
 			LayoutRow::Section {
@@ -458,7 +460,7 @@ fn node_section_fill(fill: &Fill) -> LayoutRow {
 								value: gradient_1.positions[0].1.rgba_hex(),
 								on_update: WidgetCallback::new(move |text_input: &TextInput| {
 									if let Some(color) = Color::from_rgba_str(&text_input.value).or(Color::from_rgb_str(&text_input.value)) {
-										let mut new_gradient = gradient_1.clone();
+										let mut new_gradient = (*gradient_1).clone();
 										new_gradient.positions[0].1 = color;
 										PropertiesPanelMessage::ModifyFill {
 											fill: Fill::LinearGradient(new_gradient),
@@ -486,7 +488,7 @@ fn node_section_fill(fill: &Fill) -> LayoutRow {
 								value: gradient_2.positions[1].1.rgba_hex(),
 								on_update: WidgetCallback::new(move |text_input: &TextInput| {
 									if let Some(color) = Color::from_rgba_str(&text_input.value).or(Color::from_rgb_str(&text_input.value)) {
-										let mut new_gradient = gradient_2.clone();
+										let mut new_gradient = (*gradient_2).clone();
 										new_gradient.positions[1].1 = color;
 										PropertiesPanelMessage::ModifyFill {
 											fill: Fill::LinearGradient(new_gradient),
