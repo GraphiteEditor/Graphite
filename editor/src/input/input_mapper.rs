@@ -72,6 +72,10 @@ impl Default for Mapping {
 			entry! {action=TextMessage::Interact, key_up=Lmb},
 			entry! {action=TextMessage::Abort, key_down=KeyEscape},
 			entry! {action=TextMessage::CommitText, key_down=KeyEnter, modifiers=[KeyControl]},
+			// Gradient
+			entry! {action=GradientToolMessage::PointerDown, key_down=Lmb},
+			entry! {action=GradientToolMessage::PointerMove { constrain_axis: KeyShift }, message=InputMapperMessage::PointerMove},
+			entry! {action=GradientToolMessage::PointerUp, key_up=Lmb},
 			// Rectangle
 			entry! {action=RectangleToolMessage::DragStart, key_down=Lmb},
 			entry! {action=RectangleToolMessage::DragStop, key_up=Lmb},
@@ -127,6 +131,7 @@ impl Default for Mapping {
 			entry! {action=ToolMessage::ActivateTool { tool_type: ToolType::Eyedropper }, key_down=KeyI},
 			entry! {action=ToolMessage::ActivateTool { tool_type: ToolType::Text }, key_down=KeyT},
 			entry! {action=ToolMessage::ActivateTool { tool_type: ToolType::Fill }, key_down=KeyF},
+			entry! {action=ToolMessage::ActivateTool { tool_type: ToolType::Gradient }, key_down=KeyH},
 			entry! {action=ToolMessage::ActivateTool { tool_type: ToolType::Path }, key_down=KeyA},
 			entry! {action=ToolMessage::ActivateTool { tool_type: ToolType::Pen }, key_down=KeyP},
 			entry! {action=ToolMessage::ActivateTool { tool_type: ToolType::Freehand }, key_down=KeyN},

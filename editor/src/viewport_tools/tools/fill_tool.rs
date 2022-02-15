@@ -12,6 +12,7 @@ use graphene::intersection::Quad;
 use graphene::Operation;
 
 use glam::DVec2;
+use graphene::layers::style::Fill;
 use serde::{Deserialize, Serialize};
 
 #[derive(Default)]
@@ -103,8 +104,10 @@ impl Fsm for FillToolFsmState {
 							RightMouseDown => tool_data.secondary_color,
 							Abort => unreachable!(),
 						};
+						let fill = Fill::Solid(color);
+
 						responses.push_back(DocumentMessage::StartTransaction.into());
-						responses.push_back(Operation::SetLayerFill { path: path.to_vec(), color }.into());
+						responses.push_back(Operation::SetLayerFill { path: path.to_vec(), fill }.into());
 						responses.push_back(DocumentMessage::CommitTransaction.into());
 					}
 

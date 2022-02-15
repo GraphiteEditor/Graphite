@@ -101,10 +101,10 @@ impl Fsm for EyedropperToolFsmState {
 					if let Some(path) = document.graphene_document.intersects_quad_root(quad).last() {
 						if let Ok(layer) = document.graphene_document.layer(path) {
 							if let LayerDataType::Shape(shape) = &layer.data {
-								if let Some(fill) = shape.style.fill() {
+								if shape.style.fill().is_some() {
 									match lmb_or_rmb {
-										EyedropperToolMessage::LeftMouseDown => responses.push_back(ToolMessage::SelectPrimaryColor { color: fill.color() }.into()),
-										EyedropperToolMessage::RightMouseDown => responses.push_back(ToolMessage::SelectSecondaryColor { color: fill.color() }.into()),
+										EyedropperToolMessage::LeftMouseDown => responses.push_back(ToolMessage::SelectPrimaryColor { color: shape.style.fill().color() }.into()),
+										EyedropperToolMessage::RightMouseDown => responses.push_back(ToolMessage::SelectSecondaryColor { color: shape.style.fill().color() }.into()),
 										_ => {}
 									}
 								}
