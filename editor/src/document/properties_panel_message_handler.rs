@@ -6,13 +6,16 @@ use crate::layout::widgets::{
 };
 use crate::message_prelude::*;
 
+use graphene::color::Color;
 use graphene::document::Document as GrapheneDocument;
 use graphene::layers::layer_info::{Layer, LayerDataType};
+use graphene::layers::style::{Fill, Stroke};
 use graphene::{LayerId, Operation};
 
 use glam::{DAffine2, DVec2};
 use serde::{Deserialize, Serialize};
 use std::f64::consts::PI;
+use std::rc::Rc;
 
 trait DAffine2Utils {
 	fn width(&self) -> f64;
@@ -152,6 +155,21 @@ impl MessageHandler<PropertiesPanelMessage, &GrapheneDocument> for PropertiesPan
 				let path = self.active_path.clone().expect("Received update for properties panel with no active layer");
 				responses.push_back(DocumentMessage::SetLayerName { layer_path: path, name }.into())
 			}
+			ModifyFill { fill } => {
+				let path = self.active_path.clone().expect("Received update for properties panel with no active layer");
+				responses.push_back(Operation::SetLayerFill { path, fill }.into());
+			}
+			ModifyStroke { color, weight } => {
+				let path = self.active_path.clone().expect("Received update for properties panel with no active layer");
+				let layer = graphene_document.layer(&path).unwrap();
+				if let Some(color) = Color::from_rgba_str(&color).or(Color::from_rgb_str(&color)) {
+					let stroke = Stroke::new(color, weight as f32);
+					responses.push_back(Operation::SetLayerStroke { path, stroke }.into())
+				} else {
+					// Failed to update, Show user unchanged state
+					register_layer_properties(layer, responses)
+				}
+			}
 			CheckSelectedWasUpdated { path } => {
 				if self.matches_selected(&path) {
 					let layer = graphene_document.layer(&path).unwrap();
@@ -176,6 +194,11 @@ impl MessageHandler<PropertiesPanelMessage, &GrapheneDocument> for PropertiesPan
 						.into(),
 					);
 				}
+			}
+			ResendActiveProperties => {
+				let path = self.active_path.clone().expect("Received update for properties panel with no active layer");
+				let layer = graphene_document.layer(&path).unwrap();
+				register_layer_properties(layer, responses)
 			}
 		}
 	}
@@ -217,7 +240,7 @@ fn register_layer_properties(layer: &Layer, responses: &mut VecDeque<Message>) {
 			})),
 			WidgetHolder::new(Widget::TextInput(TextInput {
 				value: layer.name.clone().unwrap_or_else(|| "Untitled".to_string()),
-				on_update: WidgetCallback::new(|text_input| PropertiesPanelMessage::ModifyName { name: text_input.value.clone() }.into()),
+				on_update: WidgetCallback::new(|text_input: &TextInput| PropertiesPanelMessage::ModifyName { name: text_input.value.clone() }.into()),
 			})),
 			WidgetHolder::new(Widget::Separator(Separator {
 				separator_type: SeparatorType::Related,
@@ -232,13 +255,21 @@ fn register_layer_properties(layer: &Layer, responses: &mut VecDeque<Message>) {
 
 	let properties_body = match &layer.data {
 		LayerDataType::Folder(_) => {
-			vec![node_section_transform(layer)]
+			vec![]
 		}
-		LayerDataType::Shape(_) => {
-			vec![node_section_transform(layer)]
+		LayerDataType::Shape(shape) => {
+			vec![
+				node_section_transform(layer),
+				node_section_fill(&shape.style.fill()),
+				node_section_stroke(&shape.style.stroke().unwrap_or_default()),
+			]
 		}
-		LayerDataType::Text(_) => {
-			vec![node_section_transform(layer)]
+		LayerDataType::Text(text) => {
+			vec![
+				node_section_transform(layer),
+				node_section_fill(&text.style.fill()),
+				node_section_stroke(&text.style.stroke().unwrap_or_default()),
+			]
 		}
 	};
 
@@ -277,7 +308,7 @@ fn node_section_transform(layer: &Layer) -> LayoutRow {
 						value: layer.transform.x(),
 						label: "X".into(),
 						unit: " px".into(),
-						on_update: WidgetCallback::new(|number_input| {
+						on_update: WidgetCallback::new(|number_input: &NumberInput| {
 							PropertiesPanelMessage::ModifyTransform {
 								value: number_input.value,
 								transform_op: TransformOp::X,
@@ -294,7 +325,7 @@ fn node_section_transform(layer: &Layer) -> LayoutRow {
 						value: layer.transform.y(),
 						label: "Y".into(),
 						unit: " px".into(),
-						on_update: WidgetCallback::new(|number_input| {
+						on_update: WidgetCallback::new(|number_input: &NumberInput| {
 							PropertiesPanelMessage::ModifyTransform {
 								value: number_input.value,
 								transform_op: TransformOp::Y,
@@ -320,7 +351,7 @@ fn node_section_transform(layer: &Layer) -> LayoutRow {
 						value: layer.transform.width(),
 						label: "W".into(),
 						unit: " px".into(),
-						on_update: WidgetCallback::new(|number_input| {
+						on_update: WidgetCallback::new(|number_input: &NumberInput| {
 							PropertiesPanelMessage::ModifyTransform {
 								value: number_input.value,
 								transform_op: TransformOp::Width,
@@ -337,7 +368,7 @@ fn node_section_transform(layer: &Layer) -> LayoutRow {
 						value: layer.transform.height(),
 						label: "H".into(),
 						unit: " px".into(),
-						on_update: WidgetCallback::new(|number_input| {
+						on_update: WidgetCallback::new(|number_input: &NumberInput| {
 							PropertiesPanelMessage::ModifyTransform {
 								value: number_input.value,
 								transform_op: TransformOp::Height,
@@ -363,10 +394,168 @@ fn node_section_transform(layer: &Layer) -> LayoutRow {
 						value: layer.transform.rotation() * 180. / PI,
 						label: "R".into(),
 						unit: "°".into(),
-						on_update: WidgetCallback::new(|number_input| {
+						on_update: WidgetCallback::new(|number_input: &NumberInput| {
 							PropertiesPanelMessage::ModifyTransform {
 								value: number_input.value / 180. * PI,
 								transform_op: TransformOp::Rotation,
+							}
+							.into()
+						}),
+						..NumberInput::default()
+					})),
+				],
+			},
+		],
+	}
+}
+
+fn node_section_fill(fill: &Fill) -> LayoutRow {
+	match fill {
+		Fill::Solid(color) => LayoutRow::Section {
+			name: "Fill".into(),
+			layout: vec![LayoutRow::Row {
+				name: "".into(),
+				widgets: vec![
+					WidgetHolder::new(Widget::TextLabel(TextLabel {
+						value: "Color".into(),
+						..TextLabel::default()
+					})),
+					WidgetHolder::new(Widget::Separator(Separator {
+						separator_type: SeparatorType::Related,
+						direction: SeparatorDirection::Horizontal,
+					})),
+					WidgetHolder::new(Widget::TextInput(TextInput {
+						value: color.rgba_hex(),
+						on_update: WidgetCallback::new(|text_input: &TextInput| {
+							if let Some(color) = Color::from_rgba_str(&text_input.value).or(Color::from_rgb_str(&text_input.value)) {
+								let new_fill = Fill::Solid(color);
+								PropertiesPanelMessage::ModifyFill { fill: new_fill }.into()
+							} else {
+								PropertiesPanelMessage::ResendActiveProperties.into()
+							}
+						}),
+					})),
+				],
+			}],
+		},
+		Fill::LinearGradient(gradient) => {
+			let gradient_1 = Rc::new(gradient.clone());
+			let gradient_2 = gradient_1.clone();
+			LayoutRow::Section {
+				name: "Fill".into(),
+				layout: vec![
+					LayoutRow::Row {
+						name: "".into(),
+						widgets: vec![
+							WidgetHolder::new(Widget::TextLabel(TextLabel {
+								value: "Gradient: 0%".into(),
+								..TextLabel::default()
+							})),
+							WidgetHolder::new(Widget::Separator(Separator {
+								separator_type: SeparatorType::Related,
+								direction: SeparatorDirection::Horizontal,
+							})),
+							WidgetHolder::new(Widget::TextInput(TextInput {
+								value: gradient_1.positions[0].1.rgba_hex(),
+								on_update: WidgetCallback::new(move |text_input: &TextInput| {
+									if let Some(color) = Color::from_rgba_str(&text_input.value).or(Color::from_rgb_str(&text_input.value)) {
+										let mut new_gradient = (*gradient_1).clone();
+										new_gradient.positions[0].1 = color;
+										PropertiesPanelMessage::ModifyFill {
+											fill: Fill::LinearGradient(new_gradient),
+										}
+										.into()
+									} else {
+										PropertiesPanelMessage::ResendActiveProperties.into()
+									}
+								}),
+							})),
+						],
+					},
+					LayoutRow::Row {
+						name: "".into(),
+						widgets: vec![
+							WidgetHolder::new(Widget::TextLabel(TextLabel {
+								value: "Gradient: 100%".into(),
+								..TextLabel::default()
+							})),
+							WidgetHolder::new(Widget::Separator(Separator {
+								separator_type: SeparatorType::Related,
+								direction: SeparatorDirection::Horizontal,
+							})),
+							WidgetHolder::new(Widget::TextInput(TextInput {
+								value: gradient_2.positions[1].1.rgba_hex(),
+								on_update: WidgetCallback::new(move |text_input: &TextInput| {
+									if let Some(color) = Color::from_rgba_str(&text_input.value).or(Color::from_rgb_str(&text_input.value)) {
+										let mut new_gradient = (*gradient_2).clone();
+										new_gradient.positions[1].1 = color;
+										PropertiesPanelMessage::ModifyFill {
+											fill: Fill::LinearGradient(new_gradient),
+										}
+										.into()
+									} else {
+										PropertiesPanelMessage::ResendActiveProperties.into()
+									}
+								}),
+							})),
+						],
+					},
+				],
+			}
+		}
+		Fill::None => panic!("`node_section_fill` called on a shape that does not have a fill"),
+	}
+}
+
+fn node_section_stroke(stroke: &Stroke) -> LayoutRow {
+	let color = stroke.color();
+	let weight = stroke.width();
+	LayoutRow::Section {
+		name: "Stroke".into(),
+		layout: vec![
+			LayoutRow::Row {
+				name: "".into(),
+				widgets: vec![
+					WidgetHolder::new(Widget::TextLabel(TextLabel {
+						value: "Color".into(),
+						..TextLabel::default()
+					})),
+					WidgetHolder::new(Widget::Separator(Separator {
+						separator_type: SeparatorType::Related,
+						direction: SeparatorDirection::Horizontal,
+					})),
+					WidgetHolder::new(Widget::TextInput(TextInput {
+						value: stroke.color().rgba_hex(),
+						on_update: WidgetCallback::new(move |text_input: &TextInput| {
+							PropertiesPanelMessage::ModifyStroke {
+								color: text_input.value.clone(),
+								weight: weight as f64,
+							}
+							.into()
+						}),
+					})),
+				],
+			},
+			LayoutRow::Row {
+				name: "".into(),
+				widgets: vec![
+					WidgetHolder::new(Widget::TextLabel(TextLabel {
+						value: "Weight".into(),
+						..TextLabel::default()
+					})),
+					WidgetHolder::new(Widget::Separator(Separator {
+						separator_type: SeparatorType::Related,
+						direction: SeparatorDirection::Horizontal,
+					})),
+					WidgetHolder::new(Widget::NumberInput(NumberInput {
+						value: stroke.width() as f64,
+						is_integer: true,
+						min: Some(0.),
+						unit: " px".into(),
+						on_update: WidgetCallback::new(move |number_input: &NumberInput| {
+							PropertiesPanelMessage::ModifyStroke {
+								color: color.rgba_hex(),
+								weight: number_input.value,
 							}
 							.into()
 						}),

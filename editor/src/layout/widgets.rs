@@ -1,3 +1,5 @@
+use std::rc::Rc;
+
 use super::layout_message::LayoutTarget;
 use crate::message_prelude::*;
 
@@ -130,18 +132,18 @@ impl WidgetHolder {
 
 #[derive(Clone)]
 pub struct WidgetCallback<T> {
-	pub callback: fn(&T) -> Message,
+	pub callback: Rc<dyn Fn(&T) -> Message + 'static>,
 }
 
 impl<T> WidgetCallback<T> {
-	pub fn new(callback: fn(&T) -> Message) -> Self {
-		Self { callback }
+	pub fn new(callback: impl Fn(&T) -> Message + 'static) -> Self {
+		Self { callback: Rc::new(callback) }
 	}
 }
 
 impl<T> Default for WidgetCallback<T> {
 	fn default() -> Self {
-		Self { callback: |_| Message::NoOp }
+		Self::new(|_| Message::NoOp)
 	}
 }
 

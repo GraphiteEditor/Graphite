@@ -133,7 +133,7 @@ impl Fill {
 }
 
 #[repr(C)]
-#[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct Stroke {
 	color: Color,
 	width: f32,
@@ -154,6 +154,16 @@ impl Stroke {
 
 	pub fn render(&self) -> String {
 		format!(r##" stroke="#{}"{} stroke-width="{}""##, self.color.rgb_hex(), format_opacity("stroke", self.color.a()), self.width)
+	}
+}
+
+// Having an alpha of 1 to start with leads to a better experience with the properties panel
+impl Default for Stroke {
+	fn default() -> Self {
+		Self {
+			width: 0.,
+			color: Color::from_rgba8(0, 0, 0, 255),
+		}
 	}
 }
 
