@@ -1182,7 +1182,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 				responses.push_back(ToolMessage::DocumentIsDirty.into());
 			}
 			Undo => {
-				responses.push_back(SelectToolMessage::Abort.into());
+				responses.push_back(ToolMessage::AbortCurrentTool.into());
 				responses.push_back(DocumentHistoryBackward.into());
 				responses.push_back(ToolMessage::DocumentIsDirty.into());
 				responses.push_back(RenderDocument.into());
