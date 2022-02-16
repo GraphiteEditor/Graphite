@@ -2,7 +2,7 @@ use super::{constants::ControlPointType, vector_anchor::VectorAnchor, vector_con
 use crate::{
 	consts::COLOR_ACCENT,
 	document::DocumentMessageHandler,
-	message_prelude::{generate_uuid, DocumentMessage, Message},
+	message_prelude::{generate_uuid, DocumentMessage, Message, ToolMessage},
 };
 
 use graphene::{
@@ -148,21 +148,25 @@ impl VectorShape {
 	/// Update the anchors and segments to match the kurbo shape
 	/// Should be called whenever the kurbo shape changes
 	pub fn update_shape(&mut self, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
-		let viewport_transform = document.graphene_document.generate_transform_relative_to_viewport(&self.layer_path).unwrap();
-		let layer = document.graphene_document.layer(&self.layer_path).unwrap();
-		if let LayerDataType::Shape(shape) = &layer.data {
-			let path = shape.path.clone();
-			self.transform = viewport_transform;
+		if let Ok(layer) = document.graphene_document.layer(&self.layer_path) {
+			let viewport_transform = document.graphene_document.generate_transform_relative_to_viewport(&self.layer_path).unwrap();
+			if let LayerDataType::Shape(shape) = &layer.data {
+				let path = shape.path.clone();
+				self.transform = viewport_transform;
 
-			// Update point positions
-			self.update_anchors_from_kurbo(&path);
+				// Update point positions
+				self.update_anchors_from_kurbo(&path);
 
-			self.bez_path = path;
+				self.bez_path = path;
 
-			// Update the overlays to represent the changes to the kurbo path
-			self.place_shape_outline_overlay(responses);
-			self.place_anchor_overlays(responses);
-			self.place_handle_overlays(responses);
+				// Update the overlays to represent the changes to the kurbo path
+				self.place_shape_outline_overlay(responses);
+				self.place_anchor_overlays(responses);
+				self.place_handle_overlays(responses);
+			}
+		} else {
+			// TODO: HOTFIX: Investigate the cause of #559
+			responses.push_back(ToolMessage::AbortCurrentTool.into());
 		}
 	}
 
