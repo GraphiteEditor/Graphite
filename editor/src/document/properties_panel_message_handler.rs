@@ -258,16 +258,16 @@ fn register_layer_properties(layer: &Layer, responses: &mut VecDeque<Message>) {
 			vec![]
 		}
 		LayerDataType::Shape(shape) => {
-			vec![
-				node_section_transform(layer),
-				node_section_fill(&shape.style.fill()),
-				node_section_stroke(&shape.style.stroke().unwrap_or_default()),
-			]
+			if let Some(fill_layout) = node_section_fill(&shape.style.fill()) {
+				vec![node_section_transform(layer), fill_layout, node_section_stroke(&shape.style.stroke().unwrap_or_default())]
+			} else {
+				vec![node_section_transform(layer), node_section_stroke(&shape.style.stroke().unwrap_or_default())]
+			}
 		}
 		LayerDataType::Text(text) => {
 			vec![
 				node_section_transform(layer),
-				node_section_fill(&text.style.fill()),
+				node_section_fill(&text.style.fill()).expect("Text should have fill"),
 				node_section_stroke(&text.style.stroke().unwrap_or_default()),
 			]
 		}
@@ -409,9 +409,9 @@ fn node_section_transform(layer: &Layer) -> LayoutRow {
 	}
 }
 
-fn node_section_fill(fill: &Fill) -> LayoutRow {
+fn node_section_fill(fill: &Fill) -> Option<LayoutRow> {
 	match fill {
-		Fill::Solid(color) => LayoutRow::Section {
+		Fill::Solid(color) => Some(LayoutRow::Section {
 			name: "Fill".into(),
 			layout: vec![LayoutRow::Row {
 				name: "".into(),
@@ -437,11 +437,11 @@ fn node_section_fill(fill: &Fill) -> LayoutRow {
 					})),
 				],
 			}],
-		},
+		}),
 		Fill::LinearGradient(gradient) => {
 			let gradient_1 = Rc::new(gradient.clone());
 			let gradient_2 = gradient_1.clone();
-			LayoutRow::Section {
+			Some(LayoutRow::Section {
 				name: "Fill".into(),
 				layout: vec![
 					LayoutRow::Row {
@@ -501,9 +501,9 @@ fn node_section_fill(fill: &Fill) -> LayoutRow {
 						],
 					},
 				],
-			}
+			})
 		}
-		Fill::None => panic!("`node_section_fill` called on a shape that does not have a fill"),
+		Fill::None => None,
 	}
 }
 
