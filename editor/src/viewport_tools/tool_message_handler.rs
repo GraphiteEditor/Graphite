@@ -103,12 +103,13 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, &InputPreprocessorMes
 
 				update_working_colors(&self.tool_state.document_tool_data, responses);
 			}
-			SelectPrimaryRandomColor => {
+			SelectRandomPrimaryColor => {
 				let document_data = &mut self.tool_state.document_tool_data;
-				let r = generate_uuid() as u8;
-				let g = generate_uuid() as u8;
-				let b = generate_uuid() as u8;
-				let a = generate_uuid() as u8;
+				let random_number = generate_uuid();
+				let r = (random_number >> 24) as u8;
+				let g = (random_number >> 16) as u8;
+				let b = (random_number >> 8) as u8;
+				let a = random_number as u8;
 				let random_color = Color::from_rgba8(r, g, b, a);
 				document_data.primary_color = random_color;
 
@@ -148,7 +149,7 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, &InputPreprocessorMes
 	}
 
 	fn actions(&self) -> ActionList {
-		let mut list = actions!(ToolMessageDiscriminant; SelectPrimaryRandomColor, ResetColors, SwapColors, ActivateTool);
+		let mut list = actions!(ToolMessageDiscriminant; SelectRandomPrimaryColor, ResetColors, SwapColors, ActivateTool);
 		list.extend(self.tool_state.tool_data.active_tool().actions());
 
 		list
