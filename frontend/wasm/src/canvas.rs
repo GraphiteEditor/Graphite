@@ -1,3 +1,4 @@
+use editor::message_prelude::FrontendMessage;
 use glam::Vec2;
 use graphene::layers::style::PathStyle;
 use std::cell::RefCell;
@@ -66,10 +67,6 @@ fn document() -> web_sys::Document {
 	window().document().expect("should have a document on window")
 }
 
-fn body() -> web_sys::HtmlElement {
-	document().body().expect("document should have a body")
-}
-
 impl RenderingContext {
 	pub fn new() -> Result<Self, JsValue> {
 		let document = document();
@@ -102,16 +99,11 @@ impl RenderingContext {
 			super::EDITOR_INSTANCES.with(|instances| {
 				let instances = instances.borrow();
 				if let Some((editor, handle)) = instances.values().find(|(_, h)| h.renderer.is_some()) {
-					let lines = editor
-						.dispatcher
-						.message_handlers
-						.portfolio_message_handler
-						.active_document()
-						.overlays_message_handler
-						.overlays_graphene_document
-						.root
-						.line_iter();
+					let document = editor.dispatcher.message_handlers.portfolio_message_handler.active_document();
+					let lines = document.overlays_message_handler.overlays_graphene_document.root.line_iter();
+					let svg = document.graphene_document.root.cache.clone();
 					if let Some(renderer) = handle.renderer.as_ref() {
+						handle.handle_response(FrontendMessage::UpdateDocumentArtwork { svg });
 						renderer.draw_paths(lines);
 					}
 				}

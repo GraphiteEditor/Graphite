@@ -18,6 +18,7 @@ use editor::Color;
 use editor::Editor;
 use editor::LayerId;
 
+use graphene::response;
 use serde::Serialize;
 use serde_wasm_bindgen::{self, from_value};
 use std::sync::atomic::Ordering;
@@ -68,13 +69,24 @@ impl JsEditorHandle {
 					instances.borrow_mut().get_mut(&self.editor_id).unwrap().1.renderer();
 				});
 			} else {
-				self.handle_response(response);
+				match response {
+					//FrontendMessage::UpdatePropertyPanelOptionsLayout { .. } => return,
+					//FrontendMessage::UpdateToolOptionsLayout { .. } => return,
+					//FrontendMessage::UpdateDocumentBarLayout { .. } => return,
+					FrontendMessage::UpdateDocumentArtwork { .. } => return,
+					//FrontendMessage::UpdateDocumentScrollbars { .. } => return,
+					//FrontendMessage::UpdateDocumentRulers { .. } => return,
+					response => {
+						log::debug!("{response:?}");
+						self.handle_response(response);
+					}
+				}
 			}
 		}
 	}
 
 	// Sends a FrontendMessage to JavaScript
-	fn handle_response(&mut self, message: FrontendMessage) {
+	pub(crate) fn handle_response(&self, message: FrontendMessage) {
 		let message_type = message.to_discriminant().local_name();
 
 		let serializer = serde_wasm_bindgen::Serializer::new().serialize_large_number_types_as_bigints(true);
