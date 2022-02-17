@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=0.6, maximum-scale=5.0, minimum-scale=0.6">
+	<title>Graphite | {% block title %}{% endblock title %}</title>
+	{% block head %}{% endblock head %}
+	<link rel="stylesheet" href="/base.css">
+	<link rel="stylesheet" href="https://rsms.me/inter/inter.css">
+	<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bona+Nova:wght@400;700">
+	<script src="/js/navbar.js"></script>
+	<style>
+		.balance-text {
+			visibility: hidden;
+		}
+
+		@media (scripting: none) {
+			.balance-text {
+				visibility: visible;
+			}
+		}
+
+		@supports (text-wrap: balance) {
+			.balance-text {
+				text-wrap: balance;
+				visibility: visible;
+			}
+		}
+
+	</style>
+	<noscript>
+		<style>
+			.balance-text {
+				visibility: visible !important;
+			}
+
+		</style>
+	</noscript>
+</head>
+<body>
+	<div class="page">
+		<header>
+			<nav>
+				<div class="row">
+					<div class="left">
+						<a href="/">
+							<svg width="60" height="60" viewBox="0 0 60 60" xmlns="http://www.w3.org/2000/svg">
+								<path
+									d="M21.51,38.68c0.36,0.59,0.17,1.36-0.42,1.72s-1.36,0.17-1.72-0.42c-0.01-0.02-0.02-0.03-0.03-0.05h0L10.6,24.77c-0.36-0.59-0.17-1.36,0.42-1.72c0.59-0.36,1.36-0.17,1.72,0.42c0.01,0.02,0.02,0.03,0.03,0.05L21.51,38.68z M58.89,54.74c0.07,0.76-0.21,1.51-0.76,2.04c-1.05,1.27-5.6,2.22-9.04,2.69c-2.28,0.32-4.57,0.5-6.87,0.53c-2.16-0.02-5.16-0.57-8.01-0.74c-4.03-0.25-17.36-0.74-21.94-0.73c-5.14,0.02-6.18-0.27-7.05-1.02c-0.34-0.29,2.58-1.76,8.76-2.26c10.92-0.95,21.89-1.34,32.85-1.16c1.82,0.09,3.63,0.41,5.37,0.96l-9.65-6.92c-0.8,0.53-1.75,0.82-2.71,0.83h-22.5c-1.79,0-3.44-0.95-4.33-2.5L1.77,26.98c-0.89-1.55-0.89-3.45,0-5L13.02,2.5C13.91,0.95,15.56,0,17.35,0h22.5c1.79,0,3.44,0.95,4.33,2.5l8.3,14.37l2.95,5.11l0,0l0.01,0.04c0.01,0.02,0.02,0.04,0.03,0.06c0.35,0.62,0.55,1.31,0.61,2.02c0.01,0.12,2.58,28.12,2.79,30.46L58.89,54.74z M16.29,6.83l14.03,24.31c1.75-0.43,3.55-0.64,5.35-0.64l3.69-5.02l6.19-0.69c0.89-1.57,1.98-3.01,3.22-4.32l-8.31-14.4C40.05,5.44,39.35,5.04,38.59,5h-20c-0.76,0.04-1.46,0.44-1.88,1.08L16.29,6.83zM36.74,43.97l-7.73-5.54c-0.29-0.21-0.53-0.48-0.7-0.79l-0.01,0.01L13.4,11.83L6.72,23.4c-0.34,0.68-0.34,1.48,0,2.17l10,17.32c0.42,0.64,1.11,1.04,1.88,1.08H36.74z M52.7,42.9l-1.76-17.72c-1.1,1.21-2.06,2.53-2.88,3.95l-6.19,0.69l-3.69,5.02c-1.63,0-3.26,0.17-4.86,0.52l14.47,10.38C48.63,43.82,50.62,42.67,52.7,42.9z" />
+							</svg>
+						</a>
+					</div>
+					<div class="right">
+						<a href="/blog">Blog</a>
+						<a href="/features">Features</a>
+						<a href="/contribute">Contribute</a>
+						<a href="https://editor.graphite.rs" class="button arrow">Launch</a>
+					</div>
+				</div>
+			</nav>
+			<svg class="divider ripple" xmlns="http://www.w3.org/2000/svg">
+				<path d="M 0,15 l 10000,0" />
+			</svg>
+			<div class="divider"></div>
+		</header>
+		<main>
+			<div class="content">
+				{% block content %} {% endblock %}
+			</div>
+		</main>
+		<footer>
+			<div class="divider"></div>
+			<nav>
+				<a href="https://github.com/GraphiteEditor/Graphite" class="link not-uppercase">GitHub</a>
+				<a href="/docs" class="link not-uppercase">Documentation</a>
+				<a href="https://github.com/GraphiteEditor/Graphite/graphs/contributors" class="link not-uppercase">Credits</a>
+				<a href="/press" class="link not-uppercase">Press</a>
+				<a href="/contact" class="link not-uppercase">Contact</a>
+			</nav>
+			<span class="balance-text">Graphite is licensed under the terms of the <a href="https://github.com/GraphiteEditor/Graphite/blob/master/LICENSE.txt">Apache 2.0 license</a>. Copyright &copy;
+				{{ now() | date(format="%Y") }} Graphite contributors.</span>
+		</footer>
+	</div>
+	<script src="https://static.graphite.rs/text-balancer/text-balancer.js"></script>
+</body>
+</html>
