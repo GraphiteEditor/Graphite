@@ -34,6 +34,7 @@ pub enum PathToolMessage {
 	SelectionChanged,
 
 	// Tool-specific messages
+	Delete,
 	DragStart {
 		add_to_selection: Key,
 	},
@@ -73,9 +74,9 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for PathTool {
 		use PathToolFsmState::*;
 
 		match self.fsm_state {
-			Ready => actions!(PathToolMessageDiscriminant; DragStart, SelectPoint),
-			Dragging => actions!(PathToolMessageDiscriminant; DragStop, PointerMove),
-			PointSelected => actions!(PathToolMessageDiscriminant; SelectPoint/*TODO: Delete */),
+			Ready => actions!(PathToolMessageDiscriminant; DragStart, SelectPoint, Delete),
+			Dragging => actions!(PathToolMessageDiscriminant; DragStop, PointerMove, Delete),
+			PointSelected => actions!(PathToolMessageDiscriminant; SelectPoint, Delete/*TODO: Delete */),
 		}
 	}
 }
@@ -217,7 +218,7 @@ impl Fsm for PathToolFsmState {
 					Dragging
 				}
 				// DoubleClick
-				(Ready, SelectPoint) | (PointSelected, SelectPoint) | (Dragging, SelectPoint) => {
+				(_, Delete) => {
 					// Select the first point within the threshold (in pixels)
 					if data.shape_editor.select_point(input.mouse.position, SELECTION_THRESHOLD, false, responses) {
 						responses.push_back(DocumentMessage::StartTransaction.into());
@@ -231,7 +232,7 @@ impl Fsm for PathToolFsmState {
 					data.snap_handler.cleanup(responses);
 					Ready
 				}
-				(_, Abort) => {
+				(_, Abort) | (_, SelectPoint) => {
 					data.shape_editor.remove_overlays(responses);
 					Ready
 				}

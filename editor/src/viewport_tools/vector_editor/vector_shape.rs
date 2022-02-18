@@ -154,6 +154,19 @@ impl VectorShape {
 			.selected_anchors_mut()
 			.filter_map(|anchor| anchor.points[ControlPointType::Anchor].as_ref().map(|x| x.kurbo_element_id))
 			.collect();
+		for index in &indices {
+			if matches!(edited_bez_path[*index], PathEl::MoveTo(_)) {
+				if let Some(element) = edited_bez_path.get_mut(index + 1) {
+					let new_segment = match *element {
+						PathEl::LineTo(p) => PathEl::MoveTo(p),
+						PathEl::QuadTo(_, p) => PathEl::MoveTo(p),
+						PathEl::CurveTo(_, _, p) => PathEl::MoveTo(p),
+						op => op,
+					};
+					*element = new_segment;
+				}
+			}
+		}
 		for index in indices.iter().rev() {
 			edited_bez_path.remove(*index);
 		}
