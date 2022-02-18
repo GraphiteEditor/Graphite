@@ -192,6 +192,7 @@ impl<'a> SubCurve<'a> {
 			.chain(
 				self.extrema
 					.iter()
+					// filter out "internal extrema which are not contained within this subcurve"
 					.filter_map(|place_time| if place_time.1 > self.start_t && place_time.1 < self.end_t { Some(&place_time.0) } else { None }),
 			)
 			.for_each(|p| {

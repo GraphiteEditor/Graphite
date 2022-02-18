@@ -563,7 +563,6 @@ impl Document {
 				// TODO: click on shape should drag the shape
 				let mut responses = Vec::new();
 				if selected.len() > 1 && selected.len() < 3 {
-					// ? apparently `selected` should be reversed
 					let mut shapes = self.transformed_shapes(selected)?;
 					let mut shape_drain = shapes.drain(..).rev();
 					let new_shapes = boolean_operation(*operation, shape_drain.next().unwrap(), shape_drain.next().unwrap())?;

@@ -743,6 +743,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 			}
 			BooleanOperation(op) => {
 				// convert Vec<&[LayerId]> to Vec<Vec<&LayerId>> because Vec<&[LayerId]> does not implement several traits (Debug, Serialize, Deserialize, ...) required by DocumentOperation enum
+				responses.push_back(StartTransaction.into());
 				responses.push_back(
 					DocumentOperation::BooleanOperation {
 						operation: op,
@@ -750,6 +751,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 					}
 					.into(),
 				);
+				responses.push_back(CommitTransaction.into());
 			}
 			CommitTransaction => (),
 			CreateEmptyFolder { mut container_path } => {
