@@ -223,11 +223,15 @@
 				Graphite is early in development and the most exciting, ambitious features are still to come. Enter your email below to receive only occasional announcements when major updates are
 				ready for your enjoyment. The first newsletter will likely be sent out for the Graphite alpha milestone 2 release, featuring node-based editing, later this year.
 			</p>
+			<div id="newsletter-success">
+				<h4>Thanks!</h4>
+				<p>You'll receive the first newsletter with the next major Graphite news.</p>
+			</div>
 			<form action="https://graphite.rs/newsletter-signup" method="post">
 				<div class="same-line">
 					<div class="column name">
 						<label for="newsletter-name">First + last name:</label>
-						<input id="newsletter-name" name="name" type="text" />
+						<input id="newsletter-name" name="name" type="text" required />
 					</div>
 					<div class="column phone">
 						<label for="newsletter-phone">Phone:</label>
@@ -235,7 +239,7 @@
 					</div>
 					<div class="column email">
 						<label for="newsletter-email">Email address:</label>
-						<input id="newsletter-email" name="email" type="email" />
+						<input id="newsletter-email" name="email" type="email" required />
 					</div>
 				</div>
 				<div class="column submit">
