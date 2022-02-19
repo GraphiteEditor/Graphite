@@ -1,3 +1,4 @@
 target/
 *.spv
 *.exrc
+website/public
