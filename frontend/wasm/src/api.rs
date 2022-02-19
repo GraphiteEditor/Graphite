@@ -77,7 +77,7 @@ impl JsEditorHandle {
 					//FrontendMessage::UpdateDocumentScrollbars { .. } => return,
 					//FrontendMessage::UpdateDocumentRulers { .. } => return,
 					response => {
-						log::debug!("{response:?}");
+						//log::debug!("{response:?}");
 						self.handle_response(response);
 					}
 				}

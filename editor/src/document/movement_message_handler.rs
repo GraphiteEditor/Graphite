@@ -73,7 +73,7 @@ impl MovementMessageHandler {
 
 	pub fn calculate_offset_transform(&self, offset: DVec2) -> DAffine2 {
 		// TODO: replace with DAffine2::from_scale_angle_translation and fix the errors
-		let offset_transform = DAffine2::default(); //DAffine2::from_translation(offset);
+		let offset_transform = DAffine2::from_translation(offset);
 		let scale_transform = DAffine2::from_scale(DVec2::splat(self.snapped_scale()));
 		let angle_transform = DAffine2::from_angle(self.snapped_angle());
 		let translation_transform = DAffine2::from_translation(self.pan);

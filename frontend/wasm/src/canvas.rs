@@ -165,6 +165,10 @@ impl RenderingContext {
 		let matrix_location = self.context.get_uniform_location(&self.program, "matrix");
 		self.context.uniform_matrix3x2fv_with_f32_array(matrix_location.as_ref(), false, &transform.to_cols_array());
 
+		let resolution_location = self.context.get_uniform_location(&self.program, "canvas_resolution");
+		self.context
+			.uniform2fv_with_f32_array(resolution_location.as_ref(), &[canvas().width() as f32, canvas().height() as f32]);
+
 		Ok(())
 	}
 
