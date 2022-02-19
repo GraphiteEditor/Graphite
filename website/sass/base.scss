@@ -9,6 +9,35 @@
 	--max-width: 1600px;
 	--max-width-plus-padding: calc(var(--max-width) + 40px * 2);
 	--variable-px: Min(1px, 0.15vw);
+	--font-size-intro-heading: 60px;
+	--font-size-intro-body: 22px;
+	--font-size-link: 24px;
+	--font-size-heading: 40px;
+	--font-size-body: 18px;
+
+	@media screen and (max-width: 760px) {
+		--font-size-intro-heading: 40px;
+		--font-size-intro-body: 18px;
+		--font-size-link: 20px;
+		--font-size-heading: 32px;
+		--font-size-body: 16px;
+	}
+
+	@media screen and (max-width: 500px) {
+		--font-size-intro-heading: 32px;
+		--font-size-intro-body: 16px;
+		--font-size-link: 16px;
+		--font-size-heading: 28px;
+		--font-size-body: 16px;
+	}
+
+	@media screen and (max-width: 400px) {
+		--font-size-intro-heading: 24px;
+		--font-size-intro-body: 14px;
+		--font-size-link: 14px;
+		--font-size-heading: 24px;
+		--font-size-body: 16px;
+	}
 }
 
 // Global element styles
@@ -22,7 +51,7 @@ body {
 	font-family: "Inter", sans-serif;
 	line-height: 1.5;
 	font-weight: 500;
-	font-size: 18px;
+	font-size: var(--font-size-body);
 	color: var(--color-navy);
 }
 
@@ -43,10 +72,10 @@ h1 {
 	font-feature-settings: "lnum";
 	line-height: 1.25;
 	font-weight: 700;
-	font-size: 60px;
+	font-size: var(--font-size-intro-heading);
 
 	~ p {
-		font-size: 22px;
+		font-size: var(--font-size-intro-body);
 	}
 }
 
@@ -55,11 +84,11 @@ h2 {
 	font-feature-settings: "lnum";
 	line-height: 1.25;
 	font-weight: 700;
-	font-size: 40px;
+	font-size: var(--font-size-heading);
 }
 
 h3 {
-	font-size: 24px;
+	font-size: var(--font-size-link);
 	font-weight: 800;
 	text-transform: uppercase;
 
@@ -81,7 +110,7 @@ h4 {
 	font-family: "Bona Nova", serif;
 	font-feature-settings: "lnum";
 	line-height: 1.25;
-	font-size: 32px;
+	font-size: var(--font-size-heading);
 	font-weight: 400;
 }
 
@@ -105,7 +134,7 @@ p + p {
 
 .link {
 	display: inline-block;
-	font-size: 24px;
+	font-size: var(--font-size-link);
 	font-weight: 800;
 	text-decoration: none;
 	color: var(--color-crimson);
@@ -120,10 +149,10 @@ p + p {
 	color: var(--color-crimson);
 	display: inline-block;
 	border: 2px solid currentColor;
-	height: 48px;
-	line-height: calc(48px - 2 * 2px);
-	font-size: 24px;
-	padding: 0 24px;
+	height: calc(var(--font-size-link) * 2);
+	line-height: calc(var(--font-size-link) * 2 - 2 * 2px);
+	font-size: var(--font-size-link);
+	padding: 0 var(--font-size-link);
 	box-sizing: border-box;
 	text-decoration: none;
 	font-weight: 800;
@@ -189,6 +218,11 @@ p + p {
 			display: block;
 			width: 100%;
 			height: auto;
+
+			@media screen and (max-width: 800px) {
+				width: auto;
+				height: 120px;
+			}
 		}
 	}
 
@@ -248,6 +282,13 @@ p + p {
 		min-width: 280px;
 	}
 
+	@media screen and (max-width: 600px) {
+		&.diptych .section,
+		&.triptych .section {
+			min-width: 100%;
+		}
+	}
+
 	img[alt=""]{
 		display: block;
 
@@ -270,7 +311,7 @@ p + p {
 .page {
 	box-sizing: border-box;
 	overflow: hidden;
-	min-width: 600px;
+	min-width: 320px;
 
 	header {
 		padding: 0 40px;
@@ -299,7 +340,10 @@ p + p {
 				display: flex;
 				justify-content: space-between;
 				padding: 30px 0;
-				gap: 80px;
+
+				@media screen and (max-width: 760px) {
+					padding: 20px 0;
+				}
 
 				.left,
 				.right {
@@ -316,19 +360,18 @@ p + p {
 						text-decoration: none;
 						--height: 60px;
 						--button-padding: 24px;
-						--font-size: 36px;
-						font-size: var(--font-size);
+						--nav-font-size: 32px;
+						font-size: var(--nav-font-size);
 
 						&.button {
 							height: var(--height);
 							padding-left: var(--button-padding);
 							padding-right: var(--button-padding);
 							line-height: calc(var(--height) - 2 * 2px);
-							font-size: var(--font-size);
+							font-size: var(--nav-font-size);
 
 							&::after {
-								content: "»";
-								margin-left: 8px
+								content: " »";
 							}
 						}
 
@@ -339,34 +382,74 @@ p + p {
 							height: var(--height);
 						}
 					}
-				}
 
-				@media screen and (max-width: 960px) {
-					gap: 60px;
-
-					.left,
-					.right {
+					@media screen and (max-width: 960px) {
 						gap: 30px;
 
 						a {
 							--height: 50px;
 							--button-padding: 16px;
-							--font-size: 26px;
+							--nav-font-size: 26px;
 						}
 					}
-				}
-
-				@media screen and (max-width: 760px) {
-					gap: 40px;
-
-					.left,
-					.right {
+	
+					@media screen and (max-width: 760px) {
 						gap: 20px;
 
 						a {
 							--height: 40px;
-							--button-padding: 16px;
-							--font-size: 22px;
+							--button-padding: 12px;
+							--nav-font-size: 22px;
+						}
+					}
+	
+					@media screen and (max-width: 600px) {
+						gap: 16px;
+
+						a {
+							--height: 30px;
+							--button-padding: 8px;
+							--nav-font-size: 18px;
+						}
+					}
+
+					@media screen and (max-width: 500px) {
+						gap: 12px;
+
+						a {
+							--height: 24px;
+							--button-padding: 8px;
+							--nav-font-size: 16px;
+						}
+					}
+
+					@media screen and (max-width: 460px) {
+						gap: 10px;
+
+						a {
+							--height: 22px;
+							--button-padding: 6px;
+							--nav-font-size: 14px;
+						}
+					}
+
+					@media screen and (max-width: 400px) {
+						gap: 8px;
+
+						a {
+							--height: 20px;
+							--button-padding: 4px;
+							--nav-font-size: 12px;
+						}
+					}
+
+					@media screen and (max-width: 360px) {
+						gap: 6px;
+
+						a {
+							--height: 20px;
+							--button-padding: 4px;
+							--nav-font-size: 10px;
 						}
 					}
 				}
