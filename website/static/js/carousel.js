@@ -1,14 +1,17 @@
+const FLING_VELOCITY_THRESHOLD = 10;
+const FLING_VELOCITY_WINDOW_SIZE = 20;
+
 let carouselImages;
 let carouselDirectionPrev;
 let carouselDirectionNext;
 let carouselDots;
 let carouselDescriptions;
 let carouselDragLastClientX;
-let velocityDeltaWindow = Array.from({ length: 20 }, () => ({ time: 0, delta: 0 }));
+let velocityDeltaWindow = Array.from({ length: FLING_VELOCITY_WINDOW_SIZE }, () => ({ time: 0, delta: 0 }));
 
 window.addEventListener("DOMContentLoaded", initializeCarousel);
-window.addEventListener("pointerup", dragEnd);
-window.addEventListener("scroll", dragEnd);
+window.addEventListener("pointerup", () => dragEnd(false));
+window.addEventListener("scroll", () => dragEnd(true));
 window.addEventListener("pointermove", dragMove);
 
 function initializeCarousel() {
@@ -87,7 +90,7 @@ function dragBegin(event) {
 	document.querySelector("#screenshots").classList.add("dragging");
 }
 
-function dragEnd() {
+function dragEnd(dropWithoutVelocity) {
 	if (!carouselImages) return;
 
 	carouselDragLastClientX = undefined;
@@ -108,7 +111,7 @@ function dragEnd() {
 	const activeDotIndex = currentActiveDotIndex();
 
 	// If the speed is fast enough, slide to the next or previous image in that direction
-	if (Math.abs(recentVelocity) > 10) {
+	if (Math.abs(recentVelocity) > FLING_VELOCITY_THRESHOLD && !dropWithoutVelocity) {
 		// Positive velocity should go to the previous image
 		if (recentVelocity > 0) {
 			// Don't apply the velocity-based fling if we're already snapping to the next image
@@ -128,6 +131,7 @@ function dragEnd() {
 	}
 
 	// If we didn't slide in a direction due to clear velocity, just snap to the closest image
+	// This can be reached either by not entering the if statement above, or by its inner if statements not returning early and exiting back to this scope
 	slideTo(clamp(closestImageIndex, 0, carouselDots.length - 1), true);
 }
 
@@ -138,7 +142,7 @@ function dragMove(event) {
 
 	const LEFT_MOUSE_BUTTON = 1;
 	if (!(event.buttons & LEFT_MOUSE_BUTTON)) {
-		dragEnd();
+		dragEnd(false);
 		return;
 	}
 
