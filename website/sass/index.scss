@@ -230,99 +230,118 @@
 }
 
 #community {
-	#newsletter form {
-		width: 100%;
-		margin-top: 40px;
-		display: flex;
-		gap: 20px;
-		flex-wrap: wrap;
-
-		.same-line {
-			display: flex;
-			gap: 20px;
-			flex: 100000 1 0;
-
-			@media screen and (max-width: 1200px) {
-				flex-direction: column;
-				flex: 1 1 100%;
-
-				&.name,
-				&.email {
-					flex: 1 1 100%;
-				}
+	#newsletter {
+		#newsletter-success {
+			background: var(--color-crimson);
+			margin-top: 40px;
+			padding: 40px;
+			width: 100%;
+			color: var(--color-fog);
+			box-sizing: border-box;
+			
+			&:not(:target) {
+				display: none;
 			}
 		}
 
-		.column {
+		#newsletter-success:target ~ form {
+			display: none;
+		}
+
+		form {
+			width: 100%;
+			margin-top: 40px;
 			display: flex;
-			flex-direction: column;
-			justify-content: flex-end;
+			gap: 20px;
+			flex-wrap: wrap;
 
-			&.name {
-				flex: 1 0 0;
-				min-width: 240px;
-				
+			.same-line {
+				display: flex;
+				gap: 20px;
+				flex: 100000 1 0;
+
+				@media screen and (max-width: 1200px) {
+					flex-direction: column;
+					flex: 1 1 100%;
+
+					&.name,
+					&.email {
+						flex: 1 1 100%;
+					}
+				}
 			}
 
-			&.phone {
-				display: none;
-			}
+			.column {
+				display: flex;
+				flex-direction: column;
+				justify-content: flex-end;
 
-			&.email {
-				flex: 1 0 0;
-				min-width: 240px;
-			}
+				&.name {
+					flex: 1 0 0;
+					min-width: 240px;
+					
+				}
 
-			@media screen and (max-width: 400px) {
-				&.name,
+				&.phone {
+					display: none;
+				}
+
 				&.email {
-					min-width: 100%;
+					flex: 1 0 0;
+					min-width: 240px;
 				}
-			}
 
-			&.submit {
-				flex: 1 0 0;
-			}
-
-			label,
-			input {
-				flex: 0 0 auto;
-			}
-
-			label {
-				font-size: var(--font-size-link);
-				font-weight: 800;
-				margin-bottom: 10px;
-				line-height: 1;
-			}
-
-			input:not([type="submit"]) {
-				flex: 0 0 auto;
-				width: 100%;
-				height: calc(var(--font-size-link) * 2);
-				font-size: calc(var(--font-size-link) * 0.9);
-				color: inherit;
-				border: 2px solid currentColor;
-				outline: none;
-				margin: 0;
-				padding: 0 var(--font-size-link);
-				font-family: inherit;
-				font-weight: inherit;
-				box-sizing: border-box;
-
-				&:focus {
-					border-color: var(--color-mustard);
+				@media screen and (max-width: 400px) {
+					&.name,
+					&.email {
+						min-width: 100%;
+					}
 				}
-			}
 
-			input[type="submit"] {
-				background: none;
-				outline: none;
-				cursor: pointer;
+				&.submit {
+					flex: 1 0 0;
+				}
 
-				&:focus {
-					border-color: var(--color-mustard);
-					color: var(--color-mustard);
+				label,
+				input {
+					flex: 0 0 auto;
+				}
+
+				label {
+					font-size: var(--font-size-link);
+					font-weight: 800;
+					margin-bottom: 10px;
+					line-height: 1;
+				}
+
+				input:not([type="submit"]) {
+					flex: 0 0 auto;
+					width: 100%;
+					height: calc(var(--font-size-link) * 2);
+					font-size: calc(var(--font-size-link) * 0.9);
+					color: inherit;
+					border: 2px solid currentColor;
+					outline: none;
+					margin: 0;
+					padding: 0 var(--font-size-link);
+					font-family: inherit;
+					font-weight: inherit;
+					box-sizing: border-box;
+
+					&:focus {
+						border-color: var(--color-mustard);
+					}
+				}
+
+				input[type="submit"] {
+					background: none;
+					outline: none;
+					cursor: pointer;
+
+					&:focus {
+						border-color: var(--color-mustard);
+						color: var(--color-mustard);
+					}
 				}
 			}
 		}
