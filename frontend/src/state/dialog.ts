@@ -36,9 +36,7 @@ export function createDialogState(editor: EditorState) {
 		}
 	};
 
-	const dialogIsVisible = (): boolean => {
-		return state.visible;
-	};
+	const dialogIsVisible = (): boolean => state.visible;
 
 	const comingSoon = (issueNumber?: number): void => {
 		const bugMessage = `— but you can help add it!\nSee issue #${issueNumber} on GitHub.`;

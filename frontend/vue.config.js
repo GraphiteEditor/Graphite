@@ -96,6 +96,11 @@ module.exports = {
 			.loader("./vue-svg-loader")
 			.end();
 	},
+	configureWebpack: {
+		experiments: {
+			asyncWebAssembly: true,
+		},
+	},
 };
 
 function formatThirdPartyLicenses(jsLicenses) {
