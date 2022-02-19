@@ -9,15 +9,18 @@ layout(location = 1) in vec2 line_segment_end;
 layout(location = 2) in vec4 line_color;
 layout(location = 3) in float line_zindex;
 layout(location = 4) in float line_width;
-layout(location = 5) in mat3x2 instance_offset;
+layout(location = 5) in uint line_flags;
+layout(location = 6) in mat3x2 instance_offset;
 
 
 smooth out vec2 vertex_position;
-smooth out vec2 line_start;
-smooth out vec2 line_stop;
-smooth out vec4 color;
-smooth out float width;
-smooth out float zindex;
+flat out vec2 line_start;
+flat out vec2 line_stop;
+flat out vec4 color;
+flat out float width;
+flat out float zindex;
+
+flat out uint flags;
 
 
 void main() {
@@ -32,6 +35,6 @@ void main() {
     color = line_color;
     zindex = line_zindex;
     width = line_width;
-    return;
+    flags = line_flags;
 }
 

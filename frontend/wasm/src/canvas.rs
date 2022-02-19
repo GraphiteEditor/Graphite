@@ -9,7 +9,6 @@ use web_sys::{HtmlCanvasElement, WebGl2RenderingContext, WebGlProgram, WebGlShad
 
 #[derive(Clone, Debug)]
 pub struct RenderingContext {
-	canvas: HtmlCanvasElement,
 	context: WebGl2RenderingContext,
 	scale: f64,
 	program: WebGlProgram,
@@ -24,11 +23,15 @@ pub struct VertexData {
 	color: [f32; 4],
 	zindex: f32,
 	width: f32,
+	flags: u32,
 	transform: [f32; 6],
 }
 
 impl VertexData {
-	pub fn new(line_start: Vec2, line_end: Vec2, zindex: f32, width: f32, color: editor::Color) -> Self {
+	pub const CLOSED: u32 = 0b0000_0001;
+	pub const ROUNDED: u32 = 0b0000_0010;
+
+	pub fn new(line_start: Vec2, line_end: Vec2, zindex: f32, width: f32, color: editor::Color, closed: bool) -> Self {
 		let a = line_start;
 		let b = line_end;
 
@@ -41,8 +44,13 @@ impl VertexData {
 
 		let scalex = a1.distance(b2) / 2.;
 		let scaley = a1.distance(a2) / 2.;
-		let angle = v.angle_between((1., 0.).into());
+		let angle = -v.angle_between((1., 0.).into());
 		let matrix = glam::Affine2::from_scale_angle_translation((scalex, scaley).into(), angle, a.lerp(b, 0.5));
+		let mut flags = 0;
+		flags |= Self::ROUNDED;
+		if closed {
+			//flags |= Self::CLOSED;
+		}
 
 		Self {
 			line_start: line_start.into(),
@@ -50,6 +58,7 @@ impl VertexData {
 			color: [color.r(), color.g(), color.b(), color.a()],
 			zindex,
 			width,
+			flags,
 			transform: matrix.to_cols_array(),
 		}
 	}
@@ -67,17 +76,19 @@ fn document() -> web_sys::Document {
 	window().document().expect("should have a document on window")
 }
 
+fn canvas() -> web_sys::HtmlCanvasElement {
+	let canvas = document().query_selector(".rendering-canvas").unwrap().unwrap();
+	canvas.dyn_into::<web_sys::HtmlCanvasElement>().unwrap()
+}
+
 impl RenderingContext {
 	pub fn new() -> Result<Self, JsValue> {
-		let document = document();
 		let scale = window().device_pixel_ratio();
-		let canvas = document.query_selector(".rendering-canvas").unwrap().unwrap();
-		let canvas: web_sys::HtmlCanvasElement = canvas.dyn_into::<web_sys::HtmlCanvasElement>()?;
 		let map = js_sys::Map::new();
 		map.set(&JsValue::from_str("premultipliedalpha"), &JsValue::from_str("false"));
 
 		//.get_context_with_context_options("experimental-webgl", map.as_ref())
-		let context = canvas.get_context("webgl2").unwrap().unwrap().dyn_into::<WebGl2RenderingContext>()?;
+		let context = canvas().get_context("webgl2").unwrap().unwrap().dyn_into::<WebGl2RenderingContext>()?;
 		context.blend_func_separate(
 			WebGl2RenderingContext::SRC_ALPHA,
 			WebGl2RenderingContext::ONE_MINUS_SRC_ALPHA,
@@ -90,7 +101,7 @@ impl RenderingContext {
 		let frag_shader = compile_shader(&context, WebGl2RenderingContext::FRAGMENT_SHADER, include_str!("../shaders/shader.frag"))?;
 		let program = link_program(&context, &vert_shader, &frag_shader)?;
 		context.use_program(Some(&program));
-		context.viewport(0, 0, canvas.width() as i32, canvas.height() as i32);
+		context.viewport(0, 0, canvas().width() as i32, canvas().height() as i32);
 
 		let f = Rc::new(RefCell::new(None));
 		let g = f.clone();
@@ -112,7 +123,7 @@ impl RenderingContext {
 			request_animation_frame(f.borrow().as_ref().unwrap());
 		}) as Box<dyn FnMut()>));
 
-		let context = Self { canvas, context, scale, program };
+		let context = Self { context, scale, program };
 		context.init_buffer(Vec::new());
 		request_animation_frame(g.borrow().as_ref().unwrap());
 		Ok(context)
@@ -122,7 +133,7 @@ impl RenderingContext {
 		for (segments, style, depth) in lines {
 			let stroke = style.stroke().unwrap();
 			for (line_start, line_end) in segments {
-				buffer.push(VertexData::new(line_start, line_end, depth as f32 / 100., stroke.width() * 10., stroke.color()))
+				buffer.push(VertexData::new(line_start, line_end, depth as f32 / 100., stroke.width() * 10., stroke.color(), style.fill().is_some()))
 			}
 		}
 
@@ -131,13 +142,13 @@ impl RenderingContext {
 	}
 
 	fn viewport_transform(&self) -> glam::Affine2 {
-		let transform = glam::Affine2::from_scale(2. * Vec2::new(self.canvas.width() as f32, self.canvas.height() as f32).recip());
+		let transform = glam::Affine2::from_scale(2. * Vec2::new(canvas().width() as f32, canvas().height() as f32).recip());
 		let transform = glam::Affine2::from_scale(self.scale as f32 * Vec2::new(1., -1.)) * transform;
 		glam::Affine2::from_translation(Vec2::new(-1., 1.)) * transform
 	}
 
 	fn update_buffer(&self, vertex_data: Vec<VertexData>) -> Result<(), JsValue> {
-		self.context.viewport(0, 0, self.canvas.width() as i32, self.canvas.height() as i32);
+		self.context.viewport(0, 0, canvas().width() as i32, canvas().height() as i32);
 		let float_size = std::mem::size_of::<f32>() as i32;
 		let vertex_size = std::mem::size_of::<VertexData>() as i32;
 
@@ -149,11 +160,16 @@ impl RenderingContext {
 		self.context
 			.buffer_data_with_array_buffer_view(WebGl2RenderingContext::ARRAY_BUFFER, &positions_array_buf_view, WebGl2RenderingContext::DYNAMIC_DRAW);
 
+		let transform = self.viewport_transform();
+
+		let matrix_location = self.context.get_uniform_location(&self.program, "matrix");
+		self.context.uniform_matrix3x2fv_with_f32_array(matrix_location.as_ref(), false, &transform.to_cols_array());
+
 		Ok(())
 	}
 
 	fn init_buffer(&self, vertex_data: Vec<VertexData>) -> Result<(), JsValue> {
-		self.context.viewport(0, 0, self.canvas.width() as i32, self.canvas.height() as i32);
+		self.context.viewport(0, 0, canvas().width() as i32, canvas().height() as i32);
 		let float_size = std::mem::size_of::<f32>() as i32;
 		let vertex_size = std::mem::size_of::<VertexData>() as i32;
 
@@ -182,7 +198,7 @@ impl RenderingContext {
 
 		let resolution_location = self.context.get_uniform_location(&self.program, "canvas_resolution");
 		self.context
-			.uniform2fv_with_f32_array(resolution_location.as_ref(), &[self.canvas.width() as f32, self.canvas.height() as f32]);
+			.uniform2fv_with_f32_array(resolution_location.as_ref(), &[canvas().width() as f32, canvas().height() as f32]);
 
 		self.context
 			.buffer_data_with_array_buffer_view(WebGl2RenderingContext::ARRAY_BUFFER, &positions_array_buf_view, WebGl2RenderingContext::DYNAMIC_DRAW);
@@ -199,13 +215,15 @@ impl RenderingContext {
 		let offset_matrix_attribute_location = self.context.get_attrib_location(&self.program, "instance_offset");
 		let zindex_attribute_location = self.context.get_attrib_location(&self.program, "line_zindex");
 		let width_attribute_location = self.context.get_attrib_location(&self.program, "line_width");
+		let flags_attribute_location = self.context.get_attrib_location(&self.program, "line_flags");
 
 		assert_eq!(line_start_attribute_location, 0);
 		assert_eq!(line_end_attribute_location, 1);
 		assert_eq!(color_attribute_location, 2);
 		assert_eq!(zindex_attribute_location, 3);
 		assert_eq!(width_attribute_location, 4);
-		assert_eq!(offset_matrix_attribute_location, 5);
+		assert_eq!(flags_attribute_location, 5);
+		assert_eq!(offset_matrix_attribute_location, 6);
 
 		self.context.enable_vertex_attrib_array(line_start_attribute_location as u32);
 		self.context.vertex_attrib_pointer_with_i32(0, 2, WebGl2RenderingContext::FLOAT, false, vertex_size, 0);
@@ -222,14 +240,16 @@ impl RenderingContext {
 		self.context.enable_vertex_attrib_array(width_attribute_location as u32);
 		self.context.vertex_attrib_pointer_with_i32(4, 1, WebGl2RenderingContext::FLOAT, false, vertex_size, float_size * 9);
 		self.context.vertex_attrib_divisor(width_attribute_location as u32, 1);
+		self.context.enable_vertex_attrib_array(flags_attribute_location as u32);
+		self.context.vertex_attrib_i_pointer_with_i32(5, 1, WebGl2RenderingContext::UNSIGNED_INT, vertex_size, float_size * 10);
+		self.context.vertex_attrib_divisor(flags_attribute_location as u32, 1);
 		for i in 0..3 {
 			let location = offset_matrix_attribute_location as u32 + i;
 			self.context.enable_vertex_attrib_array(location);
 			self.context.vertex_attrib_divisor(location, 1);
 			self.context
-				.vertex_attrib_pointer_with_i32(location, 2, WebGl2RenderingContext::FLOAT, false, vertex_size, float_size * (10 + 2 * i as i32));
+				.vertex_attrib_pointer_with_i32(location, 2, WebGl2RenderingContext::FLOAT, false, vertex_size, float_size * (11 + 2 * i as i32));
 		}
-		let vert_count = vertex_data.len() as i32;
 		Ok(())
 	}
 
