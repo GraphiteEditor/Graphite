@@ -49,8 +49,8 @@ Result ud_segment(vec2 p, vec2 a, vec2 b) {
 void main() {
     Result res = ud_segment(vertex_position, line_start, line_stop);
 
+    //float pos = ((dist) - 1.0 * trunc((dist)));
     float dist = res.dist;
-    float pos = ((dist) - 1.0 * trunc((dist)));
     float new_width = width / 10.;
     float alpha = min(1.,  1. + new_width - dist);
     outColor = vec4(color.rgb, alpha * color.a);// vec4(width , color.yzw);// vec4(color.xyz, pos);

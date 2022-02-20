@@ -104,12 +104,6 @@ impl RenderingContext {
 			.unwrap()
 			.dyn_into::<WebGl2RenderingContext>()?;
 		//let context = canvas().get_context("webgl2").unwrap().unwrap().dyn_into::<WebGl2RenderingContext>()?;
-		context.blend_func_separate(
-			WebGl2RenderingContext::SRC_ALPHA,
-			WebGl2RenderingContext::ONE_MINUS_SRC_ALPHA,
-			WebGl2RenderingContext::ZERO,
-			WebGl2RenderingContext::ONE,
-		);
 
 		let vert_shader = compile_shader(&context, WebGl2RenderingContext::VERTEX_SHADER, include_str!("../shaders/shader.vert"))?;
 
@@ -286,8 +280,16 @@ fn draw(context: &WebGl2RenderingContext, vert_count: i32) {
 	context.clear_color(1.0, 0.0, 0.0, 0.0);
 	//context.clear_color(1.0, 0.5, 1.0, 1.0);
 	context.clear(WebGl2RenderingContext::COLOR_BUFFER_BIT);
-	context.enable(WebGl2RenderingContext::DEPTH_TEST);
-	context.depth_func(WebGl2RenderingContext::LESS);
+	context.disable(WebGl2RenderingContext::DEPTH_TEST);
+	context.enable(WebGl2RenderingContext::BLEND);
+
+	context.blend_func_separate(
+		WebGl2RenderingContext::SRC_ALPHA,
+		WebGl2RenderingContext::ONE_MINUS_SRC_ALPHA,
+		WebGl2RenderingContext::ONE,
+		WebGl2RenderingContext::ONE_MINUS_SRC_ALPHA,
+	);
+	//context.depth_func(WebGl2RenderingContext::LESS);
 
 	context.draw_arrays_instanced(WebGl2RenderingContext::TRIANGLE_STRIP, 0, 4, vert_count);
 	//context.draw_arrays(WebGl2RenderingContext::TRIANGLES, 0, vert_count);
