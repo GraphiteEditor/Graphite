@@ -18,7 +18,6 @@ use editor::Color;
 use editor::Editor;
 use editor::LayerId;
 
-use graphene::response;
 use serde::Serialize;
 use serde_wasm_bindgen::{self, from_value};
 use std::sync::atomic::Ordering;
@@ -64,22 +63,20 @@ impl JsEditorHandle {
 		});
 		for response in responses.into_iter() {
 			// Send each FrontendMessage to the JavaScript frontend
-			if let FrontendMessage::UpdateDocumentOverlays { .. } = response {
-				EDITOR_INSTANCES.with(|instances| {
-					instances.borrow_mut().get_mut(&self.editor_id).unwrap().1.renderer();
-				});
-			} else {
-				match response {
-					//FrontendMessage::UpdatePropertyPanelOptionsLayout { .. } => return,
-					//FrontendMessage::UpdateToolOptionsLayout { .. } => return,
-					//FrontendMessage::UpdateDocumentBarLayout { .. } => return,
-					FrontendMessage::UpdateDocumentArtwork { .. } => return,
-					//FrontendMessage::UpdateDocumentScrollbars { .. } => return,
-					//FrontendMessage::UpdateDocumentRulers { .. } => return,
-					response => {
-						//log::debug!("{response:?}");
-						self.handle_response(response);
-					}
+			match response {
+				//FrontendMessage::UpdatePropertyPanelOptionsLayout { .. } => return,
+				//FrontendMessage::UpdateToolOptionsLayout { .. } => return,
+				//FrontendMessage::UpdateDocumentBarLayout { .. } => return,
+				FrontendMessage::UpdateDocumentArtwork { .. } | FrontendMessage::UpdateDocumentOverlays { .. } => {
+					EDITOR_INSTANCES.with(|instances| {
+						instances.borrow_mut().get_mut(&self.editor_id).unwrap().1.renderer();
+					});
+				}
+				//FrontendMessage::UpdateDocumentScrollbars { .. } => return,
+				//FrontendMessage::UpdateDocumentRulers { .. } => return,
+				response => {
+					//log::debug!("{response:?}");
+					self.handle_response(response);
 				}
 			}
 		}

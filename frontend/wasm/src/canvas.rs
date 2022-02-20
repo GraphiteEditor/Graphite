@@ -1,6 +1,7 @@
 use editor::message_prelude::FrontendMessage;
 use glam::Vec2;
 use graphene::layers::style::PathStyle;
+use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
 use std::rc::Rc;
 use wasm_bindgen::prelude::*;
@@ -64,7 +65,7 @@ impl VertexData {
 	}
 }
 
-fn window() -> web_sys::Window {
+pub fn window() -> web_sys::Window {
 	web_sys::window().expect("no global `window` exists")
 }
 
@@ -72,13 +73,19 @@ fn request_animation_frame(f: &Closure<dyn FnMut()>) {
 	window().request_animation_frame(f.as_ref().unchecked_ref()).expect("should register `requestAnimationFrame` OK");
 }
 
-fn document() -> web_sys::Document {
+pub fn document() -> web_sys::Document {
 	window().document().expect("should have a document on window")
 }
 
-fn canvas() -> web_sys::HtmlCanvasElement {
+fn canvas() -> HtmlCanvasElement {
 	let canvas = document().query_selector(".rendering-canvas").unwrap().unwrap();
-	canvas.dyn_into::<web_sys::HtmlCanvasElement>().unwrap()
+	canvas.dyn_into::<HtmlCanvasElement>().unwrap()
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+struct CanvasOptions {
+	antialias: bool,
+	premultipliedAlpha: bool,
 }
 
 impl RenderingContext {
@@ -86,9 +93,17 @@ impl RenderingContext {
 		let scale = window().device_pixel_ratio();
 		let map = js_sys::Map::new();
 		map.set(&JsValue::from_str("premultipliedalpha"), &JsValue::from_str("false"));
+		let options = CanvasOptions {
+			antialias: false,
+			premultipliedAlpha: false,
+		};
 
-		//.get_context_with_context_options("experimental-webgl", map.as_ref())
-		let context = canvas().get_context("webgl2").unwrap().unwrap().dyn_into::<WebGl2RenderingContext>()?;
+		let context = canvas()
+			.get_context_with_context_options("webgl2", &JsValue::from_serde(&options).unwrap())
+			.unwrap()
+			.unwrap()
+			.dyn_into::<WebGl2RenderingContext>()?;
+		//let context = canvas().get_context("webgl2").unwrap().unwrap().dyn_into::<WebGl2RenderingContext>()?;
 		context.blend_func_separate(
 			WebGl2RenderingContext::SRC_ALPHA,
 			WebGl2RenderingContext::ONE_MINUS_SRC_ALPHA,
@@ -259,6 +274,7 @@ impl RenderingContext {
 
 	pub fn draw(&self, vertex_data: Vec<VertexData>) -> Result<(), JsValue> {
 		let vert_count = vertex_data.len() as i32;
+		log::trace!("vert count: {}", vert_count);
 		self.update_buffer(vertex_data);
 		draw(&self.context, vert_count);
 
@@ -267,8 +283,8 @@ impl RenderingContext {
 }
 
 fn draw(context: &WebGl2RenderingContext, vert_count: i32) {
-	context.clear_color(0.0, 0.0, 0.0, 0.0);
-	//context.clear_color(1.0, 1.0, 1.0, 1.0);
+	context.clear_color(1.0, 0.0, 0.0, 0.0);
+	//context.clear_color(1.0, 0.5, 1.0, 1.0);
 	context.clear(WebGl2RenderingContext::COLOR_BUFFER_BIT);
 	context.enable(WebGl2RenderingContext::DEPTH_TEST);
 	context.depth_func(WebGl2RenderingContext::LESS);

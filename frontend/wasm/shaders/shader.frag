@@ -54,7 +54,7 @@ void main() {
     float new_width = width / 10.;
     float alpha = min(1.,  1. + new_width - dist);
     outColor = vec4(color.rgb, alpha * color.a);// vec4(width , color.yzw);// vec4(color.xyz, pos);
-    if (alpha <= 0. && !(flag(CLOSED) && res.side < 0.)) {
+    if (outColor.a <= 0. && !(flag(CLOSED) && res.side < 0.)) {
         discard;
     }
     gl_FragDepth = (dist * 1.  + zindex) / 100000000.;
