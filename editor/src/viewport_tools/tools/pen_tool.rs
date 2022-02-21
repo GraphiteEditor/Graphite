@@ -218,8 +218,8 @@ impl Fsm for PenToolFsmState {
 					// Cleanup, we are either canceling or finished drawing
 					if data.bez_path.len() >= 2 {
 						// Remove the last segment
+						remove_curve_from_end(data);
 						if let Some(layer_path) = &data.path {
-							remove_curve_from_end(&mut data.bez_path);
 							responses.push_back(apply_bez_path(layer_path.clone(), data.bez_path.clone(), transform));
 						}
 
@@ -283,12 +283,8 @@ impl Fsm for PenToolFsmState {
 
 // Add to the curve and select the second anchor of the last point and the newly added anchor point
 fn add_to_curve(data: &mut PenToolData, input: &InputPreprocessorMessageHandler, transform: DAffine2, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
-	// We need to make sure we have the most up-to-date bez_path
-	// Would like to remove this hack eventually
-	if !data.shape_editor.shapes_to_modify.is_empty() {
-		// Hacky way of saving the curve changes
-		data.bez_path = data.shape_editor.shapes_to_modify[0].bez_path.elements().to_vec();
-	}
+	// Refresh data's representation of the path
+	update_path_representation(data);
 
 	// Setup our position params
 	let snapped_position = data.snap_handler.snap_position(responses, input.viewport_bounds.size(), document, input.mouse.position);
@@ -334,9 +330,21 @@ fn add_curve_to_end(point: DVec2, bez_path: &mut Vec<PathEl>) {
 	bez_path.push(PathEl::CurveTo(point, point, point));
 }
 
-// Add a curve to the bez_path
-fn remove_curve_from_end(bez_path: &mut Vec<PathEl>) {
-	bez_path.pop();
+// Remove a curve to the bez_path
+fn remove_curve_from_end(data: &mut PenToolData) {
+	// Refresh data's representation of the path
+	update_path_representation(data);
+	data.bez_path.pop();
+}
+
+// Update data's version of the path data to match ShapeEditor's version
+fn update_path_representation(data: &mut PenToolData) {
+	// TODO Update ShapeEditor to provide simular functionality
+	// We need to make sure we have the most up-to-date bez_path
+	if !data.shape_editor.shapes_to_modify.is_empty() {
+		// Hacky way of saving the curve changes
+		data.bez_path = data.shape_editor.shapes_to_modify[0].bez_path.elements().to_vec();
+	}
 }
 
 // Apply the bez_path to the shape in the viewport
