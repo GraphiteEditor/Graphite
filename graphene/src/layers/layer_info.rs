@@ -1,3 +1,4 @@
+use super::bitmap_layer::BitmapLayer;
 use super::blend_mode::BlendMode;
 use super::folder_layer::FolderLayer;
 use super::shape_layer::ShapeLayer;
@@ -16,6 +17,7 @@ pub enum LayerDataType {
 	Folder(FolderLayer),
 	Shape(ShapeLayer),
 	Text(TextLayer),
+	Bitmap(BitmapLayer),
 }
 
 impl LayerDataType {
@@ -24,6 +26,7 @@ impl LayerDataType {
 			LayerDataType::Shape(s) => s,
 			LayerDataType::Folder(f) => f,
 			LayerDataType::Text(t) => t,
+			LayerDataType::Bitmap(b) => b,
 		}
 	}
 
@@ -32,6 +35,7 @@ impl LayerDataType {
 			LayerDataType::Shape(s) => s,
 			LayerDataType::Folder(f) => f,
 			LayerDataType::Text(t) => t,
+			LayerDataType::Bitmap(b) => b,
 		}
 	}
 }

@@ -53,6 +53,12 @@ pub enum Operation {
 		style: style::PathStyle,
 		size: f64,
 	},
+	AddBitmap {
+		path: Vec<LayerId>,
+		transform: [f64; 6],
+		insert_index: isize,
+		image_data: String,
+	},
 	SetTextEditability {
 		path: Vec<LayerId>,
 		editable: bool,

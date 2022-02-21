@@ -67,9 +67,23 @@
 						<CanvasRuler :origin="rulerOrigin.y" :majorMarkSpacing="rulerSpacing" :numberInterval="rulerInterval" :direction="'Vertical'" ref="rulerVertical" />
 					</LayoutCol>
 					<LayoutCol class="canvas-area">
-						<div class="canvas" data-canvas ref="canvas" :style="{ cursor: canvasCursor }" @pointerdown="(e: PointerEvent) => canvasPointerDown(e)">
+						<div
+							class="canvas"
+							data-canvas
+							ref="canvas"
+							:style="{ cursor: canvasCursor }"
+							@pointerdown="(e: PointerEvent) => canvasPointerDown(e)"
+							@dragover="(e) => e.preventDefault()"
+							@drop="(e) => pasteFile(e)"
+						>
 							<svg class="artboards" v-html="artboardSvg" :style="{ width: canvasSvgWidth, height: canvasSvgHeight }"></svg>
-							<svg class="artwork" v-html="artworkSvg" :style="{ width: canvasSvgWidth, height: canvasSvgHeight }"></svg>
+							<svg
+								class="artwork"
+								xmlns="http://www.w3.org/2000/svg"
+								xmlns:xlink="http://www.w3.org/1999/xlink"
+								v-html="artworkSvg"
+								:style="{ width: canvasSvgWidth, height: canvasSvgHeight }"
+							></svg>
 							<svg class="overlays" v-html="overlaysSvg" :style="{ width: canvasSvgWidth, height: canvasSvgHeight }"></svg>
 						</div>
 					</LayoutCol>
@@ -278,6 +292,26 @@ export default defineComponent({
 			const rulerVertical = this.$refs.rulerVertical as typeof CanvasRuler;
 			if (rulerHorizontal) rulerHorizontal.handleResize();
 			if (rulerVertical) rulerVertical.handleResize();
+		},
+		async pasteFile(e: DragEvent) {
+			const { dataTransfer } = e;
+			if (!dataTransfer) return;
+			e.preventDefault();
+
+			for (let index = 0; index < dataTransfer.items.length; index += 1) {
+				const item = dataTransfer.items[index];
+				const file = item.getAsFile();
+				if (file && file.type.startsWith("image")) {
+					const reader = new FileReader();
+
+					reader.onloadend = (): void => {
+						const { result } = reader;
+						if (result) this.editor.instance.paste_bitmap(result.toString(), e.clientX, e.clientY);
+					};
+
+					reader.readAsDataURL(file);
+				}
+			}
 		},
 		translateCanvasX(newValue: number) {
 			const delta = newValue - this.scrollbarPos.x;

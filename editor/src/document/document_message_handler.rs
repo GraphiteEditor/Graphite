@@ -924,6 +924,21 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 				}
 				responses.push_back(ToolMessage::DocumentIsDirty.into());
 			}
+			PasteBitmap { image_data, mouse } => {
+				let path = vec![generate_uuid()];
+				responses.push_back(
+					DocumentOperation::AddBitmap {
+						path: path.clone(),
+						transform: DAffine2::ZERO.to_cols_array(),
+						insert_index: -1,
+						image_data,
+					}
+					.into(),
+				);
+				let mouse: DVec2 = mouse.into();
+				let transform = DAffine2::from_translation(mouse - ipp.viewport_bounds.top_left).to_cols_array();
+				responses.push_back(DocumentOperation::SetLayerTransformInViewport { path, transform }.into());
+			}
 			Redo => {
 				responses.push_back(SelectToolMessage::Abort.into());
 				responses.push_back(DocumentHistoryForward.into());

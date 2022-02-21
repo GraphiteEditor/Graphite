@@ -1,6 +1,7 @@
 use crate::boolean_ops::boolean_operation;
 use crate::intersection::Quad;
 use crate::layers;
+use crate::layers::bitmap_layer::BitmapLayer;
 use crate::layers::folder_layer::FolderLayer;
 use crate::layers::layer_info::{Layer, LayerData, LayerDataType};
 use crate::layers::shape_layer::ShapeLayer;
@@ -284,7 +285,7 @@ impl Document {
 					}
 				}
 			}
-			LayerDataType::Text(_) => layer.cache_dirty = true,
+			_ => layer.cache_dirty = true,
 		}
 		layer.cache_dirty
 	}
@@ -497,6 +498,18 @@ impl Document {
 				size,
 			} => {
 				let layer = Layer::new(LayerDataType::Text(TextLayer::new(text.clone(), style, size)), transform);
+
+				self.set_layer(&path, layer, insert_index)?;
+
+				Some([vec![DocumentChanged, CreatedLayer { path: path.clone() }], update_thumbnails_upstream(&path)].concat())
+			}
+			Operation::AddBitmap {
+				path,
+				transform,
+				insert_index,
+				image_data,
+			} => {
+				let layer = Layer::new(LayerDataType::Bitmap(BitmapLayer::new(image_data)), transform);
 
 				self.set_layer(&path, layer, insert_index)?;
 

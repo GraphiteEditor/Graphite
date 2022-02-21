@@ -1,3 +1,4 @@
+pub mod bitmap_layer;
 pub mod blend_mode;
 pub mod folder_layer;
 pub mod layer_info;

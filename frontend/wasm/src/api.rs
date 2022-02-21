@@ -484,6 +484,13 @@ impl JsEditorHandle {
 		self.dispatch(message);
 	}
 
+	/// Pastes a bitmap image
+	pub fn paste_bitmap(&self, image_data: String, mouse_x: f64, mouse_y: f64) {
+		let mouse = (mouse_x, mouse_y);
+		let message = DocumentMessage::PasteBitmap { image_data, mouse };
+		self.dispatch(message);
+	}
+
 	/// Toggle visibility of a layer from the layer list
 	pub fn toggle_layer_visibility(&self, layer_path: Vec<LayerId>) {
 		let message = DocumentMessage::ToggleLayerVisibility { layer_path };
