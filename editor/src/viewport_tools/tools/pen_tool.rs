@@ -334,7 +334,7 @@ fn add_to_curve(data: &mut PenToolData, input: &InputPreprocessorMessageHandler,
 	}
 }
 
-// Replace a path element by ID
+/// Replace a PathEl by ID inside of the bez_path
 fn replace_path_element(data: &mut PenToolData, transform: DAffine2, path_element_id: usize, replacement: PathEl, responses: &mut VecDeque<Message>) {
 	data.bez_path[path_element_id] = replacement;
 	if let Some(layer_path) = &data.path {
@@ -342,14 +342,14 @@ fn replace_path_element(data: &mut PenToolData, transform: DAffine2, path_elemen
 	}
 }
 
-// Remove a curve to the bez_path
+/// Remove a curve from the end of the bez_path
 fn remove_from_curve(data: &mut PenToolData) {
 	// Refresh data's representation of the path
 	update_path_representation(data);
 	data.bez_path.pop();
 }
 
-// Create the initial moveto for the bez_path
+/// Create the initial moveto for the bez_path
 fn start_bez_path(start_position: DVec2) -> Vec<PathEl> {
 	vec![PathEl::MoveTo(Point {
 		x: start_position.x,
@@ -357,6 +357,7 @@ fn start_bez_path(start_position: DVec2) -> Vec<PathEl> {
 	})]
 }
 
+/// Convert curve segment into a line segment
 fn convert_curve_to_line(curve: PathEl) -> PathEl {
 	match curve {
 		PathEl::CurveTo(_, _, p) => PathEl::LineTo(p),
