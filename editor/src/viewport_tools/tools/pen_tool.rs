@@ -296,7 +296,7 @@ impl Fsm for PenToolFsmState {
 	}
 }
 
-// Add to the curve and select the second anchor of the last point and the newly added anchor point
+/// Add to the curve and select the second anchor of the last point and the newly added anchor point
 fn add_to_curve(data: &mut PenToolData, input: &InputPreprocessorMessageHandler, transform: DAffine2, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
 	// Refresh data's representation of the path
 	update_path_representation(data);
@@ -365,7 +365,7 @@ fn convert_curve_to_line(curve: PathEl) -> PathEl {
 	}
 }
 
-// Update data's version of bez_path to match ShapeEditor's version
+/// Update data's version of bez_path to match ShapeEditor's version
 fn update_path_representation(data: &mut PenToolData) {
 	// TODO Update ShapeEditor to provide similar functionality
 	// We need to make sure we have the most up-to-date bez_path
@@ -375,7 +375,7 @@ fn update_path_representation(data: &mut PenToolData) {
 	}
 }
 
-// Apply the bez_path to the shape in the viewport
+/// Apply the bez_path to the shape in the viewport
 fn apply_bez_path(layer_path: Vec<LayerId>, bez_path: Vec<PathEl>, transform: DAffine2) -> Message {
 	Operation::SetShapePathInViewport {
 		path: layer_path,
