@@ -334,7 +334,7 @@ fn add_to_curve(data: &mut PenToolData, input: &InputPreprocessorMessageHandler,
 	}
 }
 
-/// Replace a PathEl by ID inside of the bez_path
+/// Replace a PathEl inside of bez_path by index
 fn replace_path_element(data: &mut PenToolData, transform: DAffine2, path_element_id: usize, replacement: PathEl, responses: &mut VecDeque<Message>) {
 	data.bez_path[path_element_id] = replacement;
 	if let Some(layer_path) = &data.path {
