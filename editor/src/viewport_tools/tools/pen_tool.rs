@@ -215,14 +215,14 @@ impl Fsm for PenToolFsmState {
 					Drawing
 				}
 				(Drawing, Confirm) | (Drawing, Abort) => {
-					// Add a curve to the path
-					if let Some(layer_path) = &data.path {
-						remove_curve_from_end(&mut data.bez_path);
-						responses.push_back(apply_bez_path(layer_path.clone(), data.bez_path.clone(), transform));
-					}
-
 					// Cleanup, we are either canceling or finished drawing
 					if data.bez_path.len() >= 2 {
+						// Remove the last segment
+						if let Some(layer_path) = &data.path {
+							remove_curve_from_end(&mut data.bez_path);
+							responses.push_back(apply_bez_path(layer_path.clone(), data.bez_path.clone(), transform));
+						}
+
 						responses.push_back(DocumentMessage::DeselectAllLayers.into());
 						responses.push_back(DocumentMessage::CommitTransaction.into());
 					} else {
