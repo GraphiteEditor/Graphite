@@ -204,7 +204,9 @@ impl Fsm for PenToolFsmState {
 					// Deselect everything (this means we are no longer dragging the handle)
 					data.shape_editor.deselect_all(responses);
 
+					// If the drag does not exceed the threshold, then replace the curve with a line
 					if data.drag_start_position.distance(input.mouse.position) < CREATE_CURVE_THRESHOLD {
+						// Modify the second to last element (as we have an unplaced element tracing to the cursor as the last element)
 						let replace_id = data.bez_path.len() - 2;
 						replace_path_element(data, transform, replace_id, convert_curve_to_line(data.bez_path[replace_id]), responses);
 					}
