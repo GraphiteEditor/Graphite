@@ -176,7 +176,7 @@ impl Fsm for PenToolFsmState {
 					let start_position = transform.inverse().transform_point2(snapped_position);
 					data.weight = tool_options.line_weight;
 
-					// Create the initial shape with a bez_path (only contains a moveto initially)
+					// Create the initial shape with a `bez_path` (only contains a moveto initially)
 					if let Some(layer_path) = &data.path {
 						data.bez_path = start_bez_path(start_position);
 						responses.push_back(
@@ -317,17 +317,17 @@ fn add_to_curve(data: &mut PenToolData, input: &InputPreprocessorMessageHandler,
 		// Clear previous overlays
 		data.shape_editor.remove_overlays(responses);
 
-		// Create a new shape from the updated bez_path
+		// Create a new `shape` from the updated `bez_path`
 		let bez_path = data.bez_path.clone().into_iter().collect();
 		data.curve_shape = VectorShape::new(layer_path.to_vec(), transform, &bez_path, false, responses);
 		data.shape_editor.set_shapes_to_modify(vec![data.curve_shape.clone()]);
 
-		// Select the second to last segment's handle
+		// Select the second to last `PathEl`'s handle
 		data.shape_editor.set_shape_selected(0);
 		let handle_element = data.shape_editor.select_nth_anchor(0, -2);
 		handle_element.select_point(ControlPointType::Handle2 as usize, true, responses);
 
-		// Select the last segment's anchor point
+		// Select the last `PathEl`'s anchor point
 		if let Some(last_anchor) = data.shape_editor.select_last_anchor() {
 			last_anchor.select_point(ControlPointType::Anchor as usize, true, responses);
 		}
@@ -335,7 +335,7 @@ fn add_to_curve(data: &mut PenToolData, input: &InputPreprocessorMessageHandler,
 	}
 }
 
-/// Replace a PathEl with another inside of bez_path by index
+/// Replace a `PathEl` with another inside of `bez_path` by index
 fn replace_path_element(data: &mut PenToolData, transform: DAffine2, replace_index: usize, replacement: PathEl, responses: &mut VecDeque<Message>) {
 	data.bez_path[replace_index] = replacement;
 	if let Some(layer_path) = &data.path {
@@ -343,14 +343,14 @@ fn replace_path_element(data: &mut PenToolData, transform: DAffine2, replace_ind
 	}
 }
 
-/// Remove a curve from the end of the bez_path
+/// Remove a curve from the end of the `bez_path`
 fn remove_from_curve(data: &mut PenToolData) {
 	// Refresh data's representation of the path
 	update_path_representation(data);
 	data.bez_path.pop();
 }
 
-/// Create the initial moveto for the bez_path
+/// Create the initial moveto for the `bez_path`
 fn start_bez_path(start_position: DVec2) -> Vec<PathEl> {
 	vec![PathEl::MoveTo(Point {
 		x: start_position.x,
@@ -358,7 +358,7 @@ fn start_bez_path(start_position: DVec2) -> Vec<PathEl> {
 	})]
 }
 
-/// Convert curve segment into a line segment
+/// Convert curve `PathEl` into a line `PathEl`
 fn convert_curve_to_line(curve: PathEl) -> PathEl {
 	match curve {
 		PathEl::CurveTo(_, _, p) => PathEl::LineTo(p),
@@ -366,7 +366,7 @@ fn convert_curve_to_line(curve: PathEl) -> PathEl {
 	}
 }
 
-/// Update data's version of bez_path to match ShapeEditor's version
+/// Update data's version of `bez_path` to match `ShapeEditor`'s version
 fn update_path_representation(data: &mut PenToolData) {
 	// TODO Update ShapeEditor to provide similar functionality
 	// We need to make sure we have the most up-to-date bez_path
@@ -376,7 +376,7 @@ fn update_path_representation(data: &mut PenToolData) {
 	}
 }
 
-/// Apply the bez_path to the shape in the viewport
+/// Apply the `bez_path` to the `shape` in the viewport
 fn apply_bez_path(layer_path: Vec<LayerId>, bez_path: Vec<PathEl>, transform: DAffine2) -> Message {
 	Operation::SetShapePathInViewport {
 		path: layer_path,
