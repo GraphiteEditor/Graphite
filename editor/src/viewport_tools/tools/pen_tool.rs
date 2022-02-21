@@ -207,8 +207,9 @@ impl Fsm for PenToolFsmState {
 					// If the drag does not exceed the threshold, then replace the curve with a line
 					if data.drag_start_position.distance(input.mouse.position) < CREATE_CURVE_THRESHOLD {
 						// Modify the second to last element (as we have an unplaced element tracing to the cursor as the last element)
-						let replace_id = data.bez_path.len() - 2;
-						replace_path_element(data, transform, replace_id, convert_curve_to_line(data.bez_path[replace_id]), responses);
+						let replace_index = data.bez_path.len() - 2;
+						let line_from_curve = convert_curve_to_line(data.bez_path[replace_index]);
+						replace_path_element(data, transform, replace_index, line_from_curve, responses);
 					}
 
 					// Reselect the last point
@@ -334,9 +335,9 @@ fn add_to_curve(data: &mut PenToolData, input: &InputPreprocessorMessageHandler,
 	}
 }
 
-/// Replace a PathEl inside of bez_path by index
-fn replace_path_element(data: &mut PenToolData, transform: DAffine2, path_element_id: usize, replacement: PathEl, responses: &mut VecDeque<Message>) {
-	data.bez_path[path_element_id] = replacement;
+/// Replace a PathEl with another inside of bez_path by index
+fn replace_path_element(data: &mut PenToolData, transform: DAffine2, replace_index: usize, replacement: PathEl, responses: &mut VecDeque<Message>) {
+	data.bez_path[replace_index] = replacement;
 	if let Some(layer_path) = &data.path {
 		responses.push_back(apply_bez_path(layer_path.clone(), data.bez_path.clone(), transform));
 	}
