@@ -364,9 +364,9 @@ fn convert_curve_to_line(curve: PathEl) -> PathEl {
 	}
 }
 
-// Update data's version of the path data to match ShapeEditor's version
+// Update data's version of bez_path to match ShapeEditor's version
 fn update_path_representation(data: &mut PenToolData) {
-	// TODO Update ShapeEditor to provide simular functionality
+	// TODO Update ShapeEditor to provide similar functionality
 	// We need to make sure we have the most up-to-date bez_path
 	if !data.shape_editor.shapes_to_modify.is_empty() {
 		// Hacky way of saving the curve changes
