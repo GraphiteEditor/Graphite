@@ -1,10 +1,10 @@
 <template>
 	<LayoutRow class="color-input">
 		<TextInput :value="value" :label="label" :disabled="disabled" @commitText="(value: string) => textInputUpdated(value)" :center="true" />
-		<Separator />
+		<Separator :type="'Related'" />
 		<LayoutRow class="swatch">
 			<button class="swatch-button" @click="() => menuOpen()" ref="colorSwatch" v-bind:style="{ background: `#${value}` }"></button>
-			<FloatingMenu :type="'Popover'" :direction="'Bottom'" horizontal ref="colorFloatingMenu" :windowEdgeMargin="40">
+			<FloatingMenu :type="'Popover'" :direction="'Bottom'" horizontal ref="colorFloatingMenu">
 				<ColorPicker @update:color="(color) => colorPickerUpdated(color)" :color="color" />
 			</FloatingMenu>
 		</LayoutRow>
@@ -13,26 +13,30 @@
 
 <style lang="scss">
 .color-input {
-	.swatch-button {
-		box-sizing: border-box;
-		height: 24px;
-		width: 24px;
-		padding: 0;
-		border: none;
-		border-radius: 2px;
-	}
-
-	.floating-menu {
-		margin-top: 24px;
+	.text-input input {
+		text-align: center;
 	}
 
 	.swatch {
 		flex-grow: 0;
-	}
+		position: relative;
 
-	.text-input {
-		input {
-			text-align: center;
+		.swatch-button {
+			box-sizing: border-box;
+			height: 24px;
+			width: 24px;
+			padding: 0;
+			outline: none;
+			border: none;
+			border-radius: 2px;
+			bottom: 0;
+			left: 50%;
+		}
+
+		.floating-menu {
+			margin-top: 24px;
+			left: 50%;
+			bottom: 0;
 		}
 	}
 }
