@@ -2,7 +2,7 @@ use super::layer_panel::LayerDataTypeDiscriminant;
 use crate::document::properties_panel_message::TransformOp;
 use crate::layout::layout_message::LayoutTarget;
 use crate::layout::widgets::{
-	IconLabel, LayoutRow, NumberInput, PopoverButton, Separator, SeparatorDirection, SeparatorType, TextInput, TextLabel, Widget, WidgetCallback, WidgetHolder, WidgetLayout,
+	ColorInput, IconLabel, LayoutRow, NumberInput, PopoverButton, Separator, SeparatorDirection, SeparatorType, TextInput, TextLabel, Widget, WidgetCallback, WidgetHolder, WidgetLayout,
 };
 use crate::message_prelude::*;
 
@@ -424,9 +424,9 @@ fn node_section_fill(fill: &Fill) -> Option<LayoutRow> {
 						separator_type: SeparatorType::Related,
 						direction: SeparatorDirection::Horizontal,
 					})),
-					WidgetHolder::new(Widget::TextInput(TextInput {
+					WidgetHolder::new(Widget::ColorInput(ColorInput {
 						value: color.rgba_hex(),
-						on_update: WidgetCallback::new(|text_input: &TextInput| {
+						on_update: WidgetCallback::new(|text_input: &ColorInput| {
 							if let Some(color) = Color::from_rgba_str(&text_input.value).or(Color::from_rgb_str(&text_input.value)) {
 								let new_fill = Fill::Solid(color);
 								PropertiesPanelMessage::ModifyFill { fill: new_fill }.into()
@@ -455,9 +455,9 @@ fn node_section_fill(fill: &Fill) -> Option<LayoutRow> {
 								separator_type: SeparatorType::Related,
 								direction: SeparatorDirection::Horizontal,
 							})),
-							WidgetHolder::new(Widget::TextInput(TextInput {
+							WidgetHolder::new(Widget::ColorInput(ColorInput {
 								value: gradient_1.positions[0].1.rgba_hex(),
-								on_update: WidgetCallback::new(move |text_input: &TextInput| {
+								on_update: WidgetCallback::new(move |text_input: &ColorInput| {
 									if let Some(color) = Color::from_rgba_str(&text_input.value).or(Color::from_rgb_str(&text_input.value)) {
 										let mut new_gradient = (*gradient_1).clone();
 										new_gradient.positions[0].1 = color;
@@ -483,9 +483,9 @@ fn node_section_fill(fill: &Fill) -> Option<LayoutRow> {
 								separator_type: SeparatorType::Related,
 								direction: SeparatorDirection::Horizontal,
 							})),
-							WidgetHolder::new(Widget::TextInput(TextInput {
+							WidgetHolder::new(Widget::ColorInput(ColorInput {
 								value: gradient_2.positions[1].1.rgba_hex(),
-								on_update: WidgetCallback::new(move |text_input: &TextInput| {
+								on_update: WidgetCallback::new(move |text_input: &ColorInput| {
 									if let Some(color) = Color::from_rgba_str(&text_input.value).or(Color::from_rgb_str(&text_input.value)) {
 										let mut new_gradient = (*gradient_2).clone();
 										new_gradient.positions[1].1 = color;
@@ -524,9 +524,9 @@ fn node_section_stroke(stroke: &Stroke) -> LayoutRow {
 						separator_type: SeparatorType::Related,
 						direction: SeparatorDirection::Horizontal,
 					})),
-					WidgetHolder::new(Widget::TextInput(TextInput {
+					WidgetHolder::new(Widget::ColorInput(ColorInput {
 						value: stroke.color().rgba_hex(),
-						on_update: WidgetCallback::new(move |text_input: &TextInput| {
+						on_update: WidgetCallback::new(move |text_input: &ColorInput| {
 							PropertiesPanelMessage::ModifyStroke {
 								color: text_input.value.clone(),
 								weight: weight as f64,
