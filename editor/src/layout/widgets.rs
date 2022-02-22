@@ -150,6 +150,7 @@ impl<T> Default for WidgetCallback<T> {
 #[remain::sorted]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Widget {
+	ColorInput(ColorInput),
 	IconButton(IconButton),
 	IconLabel(IconLabel),
 	NumberInput(NumberInput),
@@ -197,6 +198,15 @@ pub struct TextInput {
 	#[serde(skip)]
 	#[derivative(Debug = "ignore", PartialEq = "ignore")]
 	pub on_update: WidgetCallback<TextInput>,
+}
+
+#[derive(Clone, Serialize, Deserialize, Derivative)]
+#[derivative(Debug, PartialEq, Default)]
+pub struct ColorInput {
+	pub value: String,
+	#[serde(skip)]
+	#[derivative(Debug = "ignore", PartialEq = "ignore")]
+	pub on_update: WidgetCallback<ColorInput>,
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
