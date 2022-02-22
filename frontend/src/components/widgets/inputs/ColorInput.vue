@@ -3,7 +3,7 @@
 		<TextInput :value="value" :label="label" :disabled="disabled" @commitText="(value: string) => textInputUpdated(value)" :center="true" />
 		<Separator :type="'Related'" />
 		<LayoutRow class="swatch">
-			<button class="swatch-button" @click="() => menuOpen()" ref="colorSwatch" v-bind:style="{ background: `#${value}` }"></button>
+			<button class="swatch-button" @click="() => menuOpen()" :style="{ background: `#${value}` }"></button>
 			<FloatingMenu :type="'Popover'" :direction="'Bottom'" horizontal ref="colorFloatingMenu">
 				<ColorPicker @update:color="(color) => colorPickerUpdated(color)" :color="color" />
 			</FloatingMenu>
@@ -18,19 +18,18 @@
 	}
 
 	.swatch {
-		flex-grow: 0;
+		flex: 0 0 auto;
 		position: relative;
 
 		.swatch-button {
-			box-sizing: border-box;
 			height: 24px;
 			width: 24px;
+			bottom: 0;
+			left: 50%;
 			padding: 0;
 			outline: none;
 			border: none;
 			border-radius: 2px;
-			bottom: 0;
-			left: 50%;
 		}
 
 		.floating-menu {
@@ -71,15 +70,14 @@ export default defineComponent({
 	},
 	methods: {
 		colorPickerUpdated(color: RGBA) {
-			const twoDigitHex = (val: number): string => val.toString(16).padStart(2, "0");
+			const twoDigitHex = (value: number): string => value.toString(16).padStart(2, "0");
 			const alphaU8Scale = Math.floor(color.a * 255);
 			const newValue = `${twoDigitHex(color.r)}${twoDigitHex(color.g)}${twoDigitHex(color.b)}${twoDigitHex(alphaU8Scale)}`;
 			this.$emit("update:value", newValue);
 		},
 		textInputUpdated(newValue: string) {
-			if ((newValue.length !== 6 && newValue.length !== 8) || !newValue.match(/[A-F,a-f,0-9]*/)) {
-				return;
-			}
+			if ((newValue.length !== 6 && newValue.length !== 8) || !newValue.match(/[A-F,a-f,0-9]*/)) return;
+
 			this.$emit("update:value", newValue);
 		},
 		menuOpen() {
