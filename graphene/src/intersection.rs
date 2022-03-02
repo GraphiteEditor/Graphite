@@ -1,5 +1,6 @@
 use core::panic;
 use std::ops::Mul;
+use std::{array::from_ref, collections::VecDeque};
 
 use crate::{
 	boolean_ops::split_path_seg,
@@ -160,6 +161,7 @@ impl From<(Point, f64, f64)> for Intersect {
 	}
 }
 
+#[derive(Clone, Copy)]
 struct SubCurve<'a> {
 	pub curve: &'a PathSeg,
 	pub start_t: f64,
@@ -217,7 +219,7 @@ impl<'a> SubCurve<'a> {
 	}
 
 	/// Split subcurve at `t`, as though the subcurve is a bezier curve, where `t` is a value between `0.0` and `1.0`.
-	fn split(&self, t: f64) -> (SubCurve, SubCurve) {
+	fn split<'sub_life>(self: &'sub_life SubCurve<'a>, t: f64) -> (SubCurve<'a>, SubCurve<'a>) {
 		let split_t = self.start_t + t * (self.end_t - self.start_t);
 		(
 			SubCurve {
@@ -254,66 +256,113 @@ impl<'a> SubCurve<'a> {
 // TODO: intersections of overlapping curve
 // If the algorithm is rewritten to be non-recursive it can be restructured to be more breadth first then depth first
 // Test for overlapping curves by splitting the curves
-// Behavior: deep recursion could result in stack overflow
 // Improvement: intersections on the end of segments
 // Improvement: more adaptive way to decide when "close enough"
 // Optimization: any extra copying happening?
 
-fn path_intersections(a: &SubCurve, b: &SubCurve, mut recursion: f64, intersections: &mut Vec<Intersect>) {
-	if let (PathSeg::Line(line), _) = (a.curve, b) {
-		line_curve_intersections(line, b.curve, true, |a, b| valid_t(a) && valid_t(b), intersections);
-		return;
-	}
-	if let (_, PathSeg::Line(line)) = (a, b.curve) {
-		line_curve_intersections(line, a.curve, false, |a, b| valid_t(a) && valid_t(b), intersections);
-		return;
-	}
-	// We are close enough to try linear approximation
-	if recursion < (1 << 10) as f64 {
-		if let Some(mut cross) = line_intersection(&Line { p0: a.start(), p1: a.end() }, &Line { p0: b.start(), p1: b.end() }) {
-			// Intersection `t_value` equals the recursive `t_value` + interpolated intersection value
-			cross.t_a = a.start_t + cross.t_a * recursion;
-			cross.t_b = b.start_t + cross.t_b * recursion;
-			cross.quality = guess_quality(a.curve, b.curve, &cross);
+fn path_intersections(a: &SubCurve, b: &SubCurve, intersections: &mut Vec<Intersect>) {
+	// at recursion depth 10:
+	//		maximum recursive execution paths = 4^10 = 1048576
+	//		minimum recursive execution paths = 1
+	// 		up to 9 cubic Bezier intersections
+	// 		SubCurve is 1/2^10 of the original curve
+	// 		Conservatively: there should never be more than 9 * 100 = 1000 total recursive execution paths
+	// 		TODO: Can probably be much less, should find a better capacity
+	const MAX_CALL_NUM: usize = 1000;
+	let mut call_buffer: VecDeque<(SubCurve, SubCurve)> = VecDeque::with_capacity(MAX_CALL_NUM);
+	let mut recursion = 1.0;
 
-			// log::debug!("checking: {:?}", cross.quality);
-			if cross.quality <= CURVE_FIDELITY {
-				intersections.push(cross);
-				return;
-			}
-			// Eventually the points in the curve become too close together to split the curve meaningfully
-			// Also provides a base case and prevents infinite recursion
-			if a.available_precision() <= F64PRECISE || b.available_precision() <= F64PRECISE {
-				log::debug!("precision reached");
-				intersections.push(cross);
-				return;
-			}
-		}
-
-		// Alternate base case
-		// Note: may occur for the less forgiving side of a `PathSeg` endpoint intersect
-		if a.available_precision() <= F64PRECISE || b.available_precision() <= F64PRECISE {
-			log::debug!("precision reached without finding intersect");
+	fn helper<'a, 'b: 'a>(a: &'a SubCurve<'b>, b: &'a SubCurve<'b>, recursion: f64, intersections: &mut Vec<Intersect>, call_buffer: &'a mut VecDeque<(SubCurve<'b>, SubCurve<'b>)>) {
+		if let (PathSeg::Line(line), _) = (a.curve, b) {
+			line_curve_intersections(line, b.curve, true, |a, b| valid_t(a) && valid_t(b), intersections);
 			return;
 		}
+		if let (_, PathSeg::Line(line)) = (a, b.curve) {
+			line_curve_intersections(line, a.curve, false, |a, b| valid_t(a) && valid_t(b), intersections);
+			return;
+		}
+		// We are close enough to try linear approximation
+		if recursion < (1 << 10) as f64 {
+			if let Some(mut cross) = line_intersection(&Line { p0: a.start(), p1: a.end() }, &Line { p0: b.start(), p1: b.end() }) {
+				// Intersection `t_value` equals the recursive `t_value` + interpolated intersection value
+				cross.t_a = a.start_t + cross.t_a * recursion;
+				cross.t_b = b.start_t + cross.t_b * recursion;
+
+				//Invalid intersections should still be rejected
+				//rejects "valid" intersections on the non-inclusive end of a pathseg
+				if !valid_t(cross.t_a) || !valid_t(cross.t_b) {
+					return;
+				}
+
+				cross.quality = guess_quality(a.curve, b.curve, &cross);
+
+				// log::debug!("checking: {:?}", cross.quality);
+				if cross.quality <= CURVE_FIDELITY {
+					intersections.push(cross);
+					return;
+				}
+				// Eventually the points in the curve become too close together to split the curve meaningfully
+				// Also provides a base case and prevents infinite recursion
+				if a.available_precision() <= F64PRECISE || b.available_precision() <= F64PRECISE {
+					log::debug!("precision reached");
+					intersections.push(cross);
+					return;
+				}
+			}
+
+			// if the number of sub-curves being checked could exceed the threshold, check
+			if call_buffer.len() >= MAX_CALL_NUM - 4 {
+				match overlapping_curve_intersections(a.curve, b.curve) {
+					[Some(i1), Some(i2)] => {
+						intersections.push(i1);
+						intersections.push(i2);
+						return;
+					}
+					[None, None] => {
+						//likely a case where the curves are very close to overlapping... but not quite
+						//*In the worst case the algorithm performs this check for 100's of sub-curves repeatedly, this would freeze the editor
+					}
+					_ => panic!("overlapping curve with unbalanced intersections"), // should never occur
+				}
+			}
+
+			// Alternate base case
+			// Note: may occur for the less forgiving side of a `PathSeg` endpoint intersect
+			if a.available_precision() <= F64PRECISE || b.available_precision() <= F64PRECISE {
+				log::debug!("precision reached without finding intersect");
+				return;
+			}
+		}
+		let (a1, a2) = a.split(0.5);
+		let (b1, b2) = b.split(0.5);
+
+		if overlap(&a1.bounding_box(), &b1.bounding_box()) {
+			call_buffer.push_back((a1, b1));
+		}
+		if overlap(&a1.bounding_box(), &b2.bounding_box()) {
+			call_buffer.push_back((a1, b2));
+		}
+		if overlap(&a2.bounding_box(), &b1.bounding_box()) {
+			call_buffer.push_back((a2, b1));
+		}
+		if overlap(&a2.bounding_box(), &b2.bounding_box()) {
+			call_buffer.push_back((a2, b2));
+		}
 	}
-	recursion /= 2.0;
-	let (a1, a2) = a.split(0.5);
-	let (b1, b2) = b.split(0.5);
-	if overlap(&a1.bounding_box(), &b1.bounding_box()) {
-		path_intersections(&a1, &b1, recursion, intersections);
-	}
-	if overlap(&a1.bounding_box(), &b2.bounding_box()) {
-		path_intersections(&a1, &b2, recursion, intersections);
-	}
-	if overlap(&a2.bounding_box(), &b1.bounding_box()) {
-		path_intersections(&a2, &b1, recursion, intersections);
-	}
-	if overlap(&a2.bounding_box(), &b2.bounding_box()) {
-		path_intersections(&a2, &b2, recursion, intersections);
+
+	call_buffer.push_back((*a, *b));
+	while !call_buffer.is_empty() {
+		let mut current_level = call_buffer.len();
+		while current_level > 0 {
+			let (a, b) = call_buffer.pop_front().unwrap();
+			helper(&a, &b, recursion, intersections, &mut call_buffer);
+			recursion /= 2.0;
+			current_level -= 1;
+		}
 	}
 }
 
+// TODO: handle the case where a quadratic or cubic curve is straight and overlaps with a line
 pub fn line_curve_intersections<F>(line: &Line, curve: &PathSeg, is_line_a: bool, t_validate: F, intersections: &mut Vec<Intersect>)
 where
 	F: Fn(f64, f64) -> bool,
@@ -323,9 +372,19 @@ where
 			if t_validate(cross.t_a, cross.t_b) {
 				intersections.push(cross);
 			}
+		} else {
+			//the lines may be overlapping
+			match overlapping_curve_intersections(&PathSeg::Line(*line), curve) {
+				[Some(i1), Some(i2)] => {
+					log::debug!("found overlapping {:?} {:?}", i1, i2);
+					intersections.push(i1);
+					intersections.push(i2);
+				}
+				[None, None] => (),
+				_ => panic!("overlapping curve with unbalanced intersections"), // should never occur
+			}
 		}
 	} else {
-		// Forced to construct a `Vec` here because match arms must return same type, and E0716
 		let roots = match curve {
 			PathSeg::Quad(quad) => Vec::from(quad_line_intersect(line, quad)),
 			PathSeg::Cubic(cubic) => Vec::from(cubic_line_intersect(line, cubic)),
@@ -368,10 +427,8 @@ fn guess_quality(a: &PathSeg, b: &PathSeg, guess: &Intersect) -> f64 {
 	at_a.distance(guess.point) + at_b.distance(guess.point)
 }
 
-/// Returns either [None, None] or [Some(_), Some(_)],
-/// The above may not be true when either a or b is very small (their endpoints are close together), so that when the algorithm does curve splitting
-/// TODO: test this
-/// TODO: use this
+/// if curves overlap, returns intersects corresponding to the endpoints of the overlapping section
+/// TODO: test this, especially the overlapping curve cases which are more complex
 pub fn overlapping_curve_intersections(a: &PathSeg, b: &PathSeg) -> [Option<Intersect>; 2] {
 	// To check if two curves overlap we find if the endpoints of either curve are on the other curve.
 	// Then, the curves are split at these points, if the resulting control polygons match the curves are the same
@@ -398,7 +455,7 @@ pub fn overlapping_curve_intersections(a: &PathSeg, b: &PathSeg) -> [Option<Inte
 				t1b = b_ts[0];
 				t2a = 1.0;
 				t2b = b_ts[1];
-				(*a, subdivide_path_seg(a, b_ts.as_mut_slice())[1].unwrap())
+				(*a, subdivide_path_seg(b, b_ts.as_mut_slice())[1].unwrap())
 			} else {
 				(
 					match (b_on_a[0], b_on_a[1], a_on_b[0], a_on_b[1]) {
@@ -429,11 +486,16 @@ pub fn overlapping_curve_intersections(a: &PathSeg, b: &PathSeg) -> [Option<Inte
 					},
 				)
 			};
+			let mut to_return = [None, None];
 			if match_control_polygon(&to_compare.0, &to_compare.1) {
-				[Some(Intersect::from((to_compare.0.start(), t1a, t1b))), Some(Intersect::from((to_compare.0.end(), t2a, t2b)))]
-			} else {
-				[None, None]
+				if valid_t(t1a) && valid_t(t1b) {
+					to_return[0] = Some(Intersect::from((to_compare.0.start(), t1a, t1b)));
+				}
+				if valid_t(t2a) && valid_t(t2b) {
+					to_return[1] = Some(Intersect::from((to_compare.0.end(), t2a, t2b)));
+				}
 			}
+			to_return
 		}
 		_ => [None, None],
 	}
@@ -482,7 +544,7 @@ pub fn match_control_polygon(a: &PathSeg, b: &PathSeg) -> bool {
 pub fn colinear(points: &[&Point]) -> bool {
 	let ray = Line { p0: *points[0], p1: *points[1] };
 	for p in points.iter().skip(2) {
-		if line_t_value(&ray, p).is_none() {
+		if point_t_value(&PathSeg::Line(ray), p).is_none() {
 			return false;
 		}
 	}
@@ -498,17 +560,37 @@ pub fn get_control_polygon(a: &PathSeg) -> Vec<Point> {
 }
 
 /// if p in on pathseg a, returns Some(t_value) for p
-/// in the edge case where the path crosses itself, and p is at the cross, the first t_value found (but not necessarily the smallest) is returned
+/// in the edge case where the path crosses itself, and p is at the cross, the first t_value found (but not necessarily the smallest t_value) is returned
+/// TODO: How precise should the below comparisons be
 pub fn point_t_value(a: &PathSeg, p: &Point) -> Option<f64> {
 	match a {
-		PathSeg::Line(line) => line_t_value(line, p),
+		PathSeg::Line(line) => {
+			let mut test_line = line_intersection(line, &Line::new(Point::new(p.x, p.y - 1.0), Point::new(p.x, p.y + 1.0)));
+			if test_line.is_none() {
+				test_line = line_intersection(line, &Line::new(Point::new(p.x - 1.0, p.y), Point::new(p.x + 1.0, p.y)))
+			}
+			match test_line {
+				Some(intersect) => {
+					if (intersect.point.y - p.y).abs() < F64LOOSE && (intersect.point.x - p.x).abs() < F64LOOSE {
+						Some(intersect.t_a)
+					} else {
+						None
+					}
+				}
+				_ => None,
+			}
+		}
 		PathSeg::Quad(quad) => {
 			let [mut p0, p1, p2] = quadratic_bezier_coefficients(quad);
 			p0 -= p.to_vec2();
 			let x_roots = quadratic_real_roots(p0.x, p1.x, p2.x);
 			quadratic_real_roots(p0.y, p1.y, p2.y)
 				.into_iter()
-				.find(|yt_option| x_roots.iter().any(|xt_option| yt_option.is_some() && xt_option.is_some() && (yt_option.unwrap() == xt_option.unwrap())))
+				.find(|yt_option| {
+					x_roots
+						.iter()
+						.any(|xt_option| yt_option.is_some() && xt_option.is_some() && ((yt_option.unwrap() - xt_option.unwrap()).abs() < F64LOOSE))
+				})
 				.flatten()
 		}
 		PathSeg::Cubic(cubic) => {
@@ -517,10 +599,16 @@ pub fn point_t_value(a: &PathSeg, p: &Point) -> Option<f64> {
 			let x_roots = cubic_real_roots(p0.x, p1.x, p2.x, p3.x);
 			cubic_real_roots(p0.y, p1.y, p2.y, p3.y)
 				.into_iter()
-				.find(|yt_option| x_roots.iter().any(|xt_option| yt_option.is_some() && xt_option.is_some() && (yt_option.unwrap() == xt_option.unwrap())))
+				.find(|yt_option| {
+					x_roots
+						.iter()
+						.any(|xt_option| yt_option.is_some() && xt_option.is_some() && ((yt_option.unwrap() - xt_option.unwrap()).abs() < F64LOOSE))
+				})
 				.flatten()
 		}
 	}
+	.map(|t| if valid_t(t) { Some(t) } else { None })
+	.flatten()
 }
 
 pub fn intersections(a: &BezPath, b: &BezPath) -> Vec<Intersect> {
@@ -544,12 +632,10 @@ pub fn intersections(a: &BezPath, b: &BezPath) -> Vec<Intersect> {
 				.filter_map(|t| if *t > F64PRECISE && *t < 1.0 - F64PRECISE { Some((b_seg.eval(*t), *t)) } else { None })
 				.collect();
 			let mut intersects = Vec::new();
-			path_intersections(&SubCurve::new(&a_seg, &a_extrema), &SubCurve::new(&b_seg, &b_extrema), 1.0, &mut intersects);
+			path_intersections(&SubCurve::new(&a_seg, &a_extrema), &SubCurve::new(&b_seg, &b_extrema), &mut intersects);
 			for mut path_intersection in intersects {
-				intersections.push({
-					path_intersection.add_index(a_index.try_into().unwrap(), b_index.try_into().unwrap());
-					path_intersection
-				});
+				path_intersection.add_index(a_index.try_into().unwrap(), b_index.try_into().unwrap());
+				intersections.push(path_intersection);
 			}
 		})
 	});
@@ -566,14 +652,15 @@ pub fn line_intersect_point(a: &Line, b: &Line) -> Option<Point> {
 
 /// Returns intersection point and `t` values, treating lines as Bezier curves.
 pub fn line_intersection(a: &Line, b: &Line) -> Option<Intersect> {
-	if let Some(intersect) = line_intersection_unchecked(a, b) {
-		if valid_t(intersect.t_a) && valid_t(intersect.t_b) {
-			Some(intersect)
-		} else {
-			None
+	match line_intersection_unchecked(a, b) {
+		Some(intersect) => {
+			if valid_t(intersect.t_a) && valid_t(intersect.t_b) {
+				Some(intersect)
+			} else {
+				None
+			}
 		}
-	} else {
-		None
+		None => None,
 	}
 }
 
@@ -585,26 +672,6 @@ pub fn line_intersection_unchecked(a: &Line, b: &Line) -> Option<Intersect> {
 	}
 	let t_values = slopes.inverse() * DVec2::new((a.p0 - b.p0).x, (a.p0 - b.p0).y);
 	Some(Intersect::from((b.eval(t_values[0]), t_values[1], t_values[0])))
-}
-
-/// if p in on line a, returns Some(t_value) for p
-/// t_values seem to be accurate to roughly 7-10 decimal places
-pub fn line_t_value(a: &Line, p: &Point) -> Option<f64> {
-	let from_x = (p.x - a.p0.x) / (a.p1.x - a.p0.x);
-	let from_y = (p.y - a.p0.y) / (a.p1.y - a.p0.y);
-	if !from_x.is_normal() {
-		if !from_y.is_normal() {
-			None
-		} else {
-			Some(from_y)
-		}
-	} else if !from_y.is_normal() {
-		Some(from_x)
-	} else if (from_x - from_y).abs() < F64LOOSE {
-		Some(0.5 * (from_x + from_y))
-	} else {
-		None
-	}
 }
 
 /// return the t_value of the point nearest to p on a
@@ -720,11 +787,22 @@ pub fn quadratic_bezier_coefficients(quad: &QuadBez) -> [Vec2; 3] {
 }
 
 /// Returns root to linear equation: `f(t) = a0 + t*a1`.
-pub fn linear_root(a0: f64, a1: f64) -> [Option<f64>; 1] {
+pub fn linear_root(a0: f64, a1: f64) -> Option<f64> {
 	if a1 == 0.0 {
-		return [None];
+		return None;
 	}
-	[Some(-a0 / a1)]
+	if a1.is_infinite() {
+		return Some(a0);
+	}
+	Some(-a0 / a1)
+}
+
+/// a line can be written x = p0 + t*p1, where x, p0 and p1 are vectors
+/// returns [p0, p1]
+pub fn linear_bezier_coefficients(line: &Line) -> [Vec2; 2] {
+	let p0 = line.p0.to_vec2();
+	let p1 = line.p1.to_vec2();
+	[p0, p1 - p0]
 }
 
 /// Returns `true` if rectangles overlap, even if either rectangle has 0 area.
@@ -736,12 +814,14 @@ pub fn overlap(a: &Rect, b: &Rect) -> bool {
 /// Tests if a `t` value belongs to `[0.0, 1.0)`.
 /// Uses F64PRECISE to allow a slightly larger range of values.
 pub fn valid_t(t: f64) -> bool {
-	t > -F64PRECISE && t < 1.0
+	t > -F64PRECISE && t < (1.0 - F64PRECISE)
 }
 
 /// Each of these tests has been visually, but not mathematically verified.
 /// These tests are all ignored because each test looks for exact floating point comparisons, so isn't flexible to small adjustments in the algorithm.
 mod tests {
+	use crate::boolean_ops::point_on_curve;
+
 	#[allow(unused_imports)] // This import is used
 	use super::*;
 
@@ -887,5 +967,13 @@ mod tests {
 		let p3 = Point { x: 100.237, y: 203.474 };
 		let p4 = Point { x: 720.297, y: 1443.594 };
 		assert!(colinear(&[&p1, &p2, &p3, &p4]));
+	}
+
+	#[test]
+	#[ignore]
+	fn test_point_t_value() {
+		let vertical_line = Line::new(Point::new(0.0, -10.0), Point::new(0.0, 10.0));
+		let t_value = point_t_value(&PathSeg::Line(vertical_line), &Point::new(0.0, 1.0));
+		assert_eq!(t_value.unwrap(), 0.55);
 	}
 }

@@ -157,6 +157,7 @@ impl PathGraph {
 		// An odd number of intersections occurs when either:
 		// 1. There exists a tangential intersection (which shouldn't affect boolean ops)
 		// 2. The algorithm has found an extra intersection or missed an intersection
+		// log::debug!("{:?}", new.vertices);
 		if new.size() == 0 {
 			return Err(BooleanOperationError::NoIntersections);
 		}
@@ -205,8 +206,10 @@ impl PathGraph {
 
 			fn advance_by_seg(&mut self, graph: &mut PathGraph, seg: PathSeg, origin: Origin) {
 				let (vertex_ids, mut t_values) = graph.intersects_in_seg(self.seg_index, origin);
+				log::debug!("advance by seg {:?} {:?}", self.beginning.len(), self.current.len());
 				if !vertex_ids.is_empty() {
 					let subdivided = subdivide_path_seg(&seg, &mut t_values);
+					log::debug!("{:?}", subdivided);
 					for (vertex_id, sub_seg) in vertex_ids.into_iter().zip(subdivided.iter()) {
 						match self.current_start {
 							Some(index) => {
@@ -234,17 +237,29 @@ impl PathGraph {
 
 			fn advance_by_closepath(&mut self, graph: &mut PathGraph, initial_point: &mut Point, origin: Origin) {
 				// *when a curve ends in a closepath and its start point does not equal its endpoint they should be connected with a line
-				let end_seg = match self.current.last() {
-					Some(seg) => seg,
-					None => self.beginning.last().unwrap(), // if both current and beginning are empty, the path is empty
+				let last_line = match self.current.last() {
+					Some(start_of_final_edge) => Line {
+						p0: start_of_final_edge.end(),
+						p1: *initial_point,
+					},
+					None => match self.beginning.last() {
+						Some(_end_of_final_edge) => Line {
+							p0: graph.vertex(self.current_start.unwrap()).intersect.point,
+							p1: *initial_point, // _end_of_final_edge.start() == *initial_point
+						},
+						// None occurs when an intersection is on the first PathSeg's start point.
+						// Implies that the path is already closed, because the current edge is connected to another vertex, and there is no dangling start edge.
+						None => {
+							return;
+						}
+					},
 				};
-				let temp_copy = end_seg.end();
-				if temp_copy != *initial_point {
+
+				if last_line.length() > F64PRECISE {
 					// a closepath implicitly defines a line which closes the path
-					self.advance_by_seg(graph, PathSeg::Line(Line { p0: temp_copy, p1: *initial_point }), origin);
+					// and the closepath line may contain intersections
+					self.advance_by_seg(graph, PathSeg::Line(last_line), origin);
 				}
-				// when a closepath is not followed by moveto, the next path starts at the end of the current path
-				*initial_point = temp_copy;
 			}
 
 			fn finalize_sub_path(&mut self, graph: &mut PathGraph, origin: Origin) {
@@ -263,6 +278,7 @@ impl PathGraph {
 
 		let mut algorithm_state = AlgorithmState::new();
 
+		// All valid SVG paths start with a moveto, so this will always be initialized
 		let mut initial_point = Point::new(0.0, 0.0);
 
 		for (el_index, el) in path.iter().enumerate() {
@@ -666,7 +682,6 @@ pub fn reverse_path(path: &BezPath) -> BezPath {
 		}
 	}
 	curve.append(&mut temp.into_iter().rev().collect());
-	log::debug!("{:?}", BezPath::from_path_segments(curve.clone().into_iter()));
 	BezPath::from_path_segments(curve.into_iter())
 }
 
