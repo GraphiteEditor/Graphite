@@ -312,18 +312,10 @@ fn path_intersections(a: &SubCurve, b: &SubCurve, intersections: &mut Vec<Inters
 
 			// if the number of sub-curves being checked could exceed the threshold, check
 			if call_buffer.len() >= MAX_CALL_NUM - 4 {
-				match overlapping_curve_intersections(a.curve, b.curve) {
-					[Some(i1), Some(i2)] => {
-						intersections.push(i1);
-						intersections.push(i2);
-						return;
-					}
-					[None, None] => {
-						//likely a case where the curves are very close to overlapping... but not quite
-						//*In the worst case the algorithm performs this check for 100's of sub-curves repeatedly, this would freeze the editor
-					}
-					_ => panic!("overlapping curve with unbalanced intersections"), // should never occur
-				}
+				overlapping_curve_intersections(a.curve, b.curve)
+					.into_iter()
+					.filter_map(|o| o)
+					.for_each(|intersect| intersections.push(intersect))
 			}
 
 			// Alternate base case
@@ -374,15 +366,10 @@ where
 			}
 		} else {
 			//the lines may be overlapping
-			match overlapping_curve_intersections(&PathSeg::Line(*line), curve) {
-				[Some(i1), Some(i2)] => {
-					log::debug!("found overlapping {:?} {:?}", i1, i2);
-					intersections.push(i1);
-					intersections.push(i2);
-				}
-				[None, None] => (),
-				_ => panic!("overlapping curve with unbalanced intersections"), // should never occur
-			}
+			overlapping_curve_intersections(&PathSeg::Line(*line), curve)
+				.into_iter()
+				.filter_map(|o| o)
+				.for_each(|intersect| intersections.push(intersect))
 		}
 	} else {
 		let roots = match curve {

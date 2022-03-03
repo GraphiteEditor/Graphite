@@ -157,7 +157,7 @@ impl PathGraph {
 		// An odd number of intersections occurs when either:
 		// 1. There exists a tangential intersection (which shouldn't affect boolean ops)
 		// 2. The algorithm has found an extra intersection or missed an intersection
-		// log::debug!("{:?}", new.vertices);
+		log::debug!("{:?}", new.vertices);
 		if new.size() == 0 {
 			return Err(BooleanOperationError::NoIntersections);
 		}
@@ -206,10 +206,8 @@ impl PathGraph {
 
 			fn advance_by_seg(&mut self, graph: &mut PathGraph, seg: PathSeg, origin: Origin) {
 				let (vertex_ids, mut t_values) = graph.intersects_in_seg(self.seg_index, origin);
-				log::debug!("advance by seg {:?} {:?}", self.beginning.len(), self.current.len());
 				if !vertex_ids.is_empty() {
 					let subdivided = subdivide_path_seg(&seg, &mut t_values);
-					log::debug!("{:?}", subdivided);
 					for (vertex_id, sub_seg) in vertex_ids.into_iter().zip(subdivided.iter()) {
 						match self.current_start {
 							Some(index) => {
@@ -243,6 +241,9 @@ impl PathGraph {
 						p1: *initial_point,
 					},
 					None => match self.beginning.last() {
+						// When None occurs the current edge has been connected to a vertex.
+						// Either self.beginning is Some or None, if self.beginning is Some there may be a dangling edge to connect
+						// if self.beginning is None, the end of the current edge may not have closed the path
 						Some(_end_of_final_edge) => Line {
 							p0: graph.vertex(self.current_start.unwrap()).intersect.point,
 							p1: *initial_point, // _end_of_final_edge.start() == *initial_point
