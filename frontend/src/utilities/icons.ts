@@ -46,7 +46,9 @@ import File from "@/../assets/16px-solid/file.svg";
 import FlipHorizontal from "@/../assets/16px-solid/flip-horizontal.svg";
 import FlipVertical from "@/../assets/16px-solid/flip-vertical.svg";
 import GraphiteLogo from "@/../assets/16px-solid/graphite-logo.svg";
+import NewLayer from "@/../assets/16px-solid/new-layer.svg";
 import Paste from "@/../assets/16px-solid/paste.svg";
+import Trash from "@/../assets/16px-solid/trash.svg";
 import ViewModeNormal from "@/../assets/16px-solid/view-mode-normal.svg";
 import ViewModeOutline from "@/../assets/16px-solid/view-mode-outline.svg";
 import ViewModePixels from "@/../assets/16px-solid/view-mode-pixels.svg";
@@ -150,7 +152,9 @@ export const ICON_LIST = {
 	FlipHorizontal: { component: FlipHorizontal, size: size16 },
 	FlipVertical: { component: FlipVertical, size: size16 },
 	GraphiteLogo: { component: GraphiteLogo, size: size16 },
+	NewLayer: { component: NewLayer, size: size16 },
 	Paste: { component: Paste, size: size16 },
+	Trash: { component: Trash, size: size16 },
 	ViewModeNormal: { component: ViewModeNormal, size: size16 },
 	ViewModeOutline: { component: ViewModeOutline, size: size16 },
 	ViewModePixels: { component: ViewModePixels, size: size16 },

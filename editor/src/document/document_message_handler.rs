@@ -750,6 +750,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 			CreateEmptyFolder { mut container_path } => {
 				let id = generate_uuid();
 				container_path.push(id);
+				responses.push_back(DocumentMessage::DeselectAllLayers.into());
 				responses.push_back(DocumentOperation::CreateFolder { path: container_path.clone() }.into());
 				responses.push_back(
 					DocumentMessage::SetLayerExpansion {
@@ -1251,6 +1252,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 			SetSnapping,
 			DebugPrintDocument,
 			ZoomCanvasToFitAll,
+			CreateEmptyFolder,
 		);
 
 		if self.layer_metadata.values().any(|data| data.selected) {

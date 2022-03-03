@@ -28,6 +28,14 @@
 				<p>The contents of this popover menu are coming soon</p>
 			</PopoverButton>
 		</LayoutRow>
+		<LayoutRow class="button-bar">
+			<LayoutRow></LayoutRow>
+			<LayoutRow>
+				<!-- TODO: Remember to make these tooltip input hints customized to macOS also -->
+				<IconButton :action="createEmptyFolder" :icon="'NewLayer'" title="New Folder (Ctrl+Shift+N)" :size="16" />
+				<IconButton :action="deleteSelectedLayers" :icon="'Trash'" title="Delete Selected (Del)" :size="16" />
+			</LayoutRow>
+		</LayoutRow>
 		<LayoutRow class="layer-tree" :scrollableY="true">
 			<LayoutCol class="list" ref="layerTreeList" @click="() => deselectAllLayers()" @dragover="(e) => draggable && updateInsertLine(e)" @dragend="() => draggable && drop()">
 				<LayoutRow
@@ -111,7 +119,21 @@
 		}
 	}
 
+	.button-bar {
+		height: 24px;
+		flex: 0 0 auto;
+		justify-content: space-between;
+		align-items: center;
+		margin: 0 4px;
+
+		.layout-row {
+			flex: 0 0 auto;
+			gap: 4px;
+		}
+	}
+
 	.layer-tree {
+		margin-top: 4px;
 		// Crop away the 1px border below the bottom layer entry when it uses the full space of this panel
 		margin-bottom: -1px;
 		position: relative;
@@ -365,6 +387,12 @@ export default defineComponent({
 		},
 		markTopOffset(height: number): string {
 			return `${height}px`;
+		},
+		async createEmptyFolder() {
+			this.editor.instance.create_empty_folder();
+		},
+		async deleteSelectedLayers() {
+			this.editor.instance.delete_selected_layers();
 		},
 		async toggleLayerVisibility(path: BigUint64Array) {
 			this.editor.instance.toggle_layer_visibility(path);
