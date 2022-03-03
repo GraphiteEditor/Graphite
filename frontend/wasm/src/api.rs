@@ -418,6 +418,12 @@ impl JsEditorHandle {
 		self.dispatch(message);
 	}
 
+	/// Delete all selected layers
+	pub fn delete_selected_layers(&self) {
+		let message = DocumentMessage::DeleteSelectedLayers;
+		self.dispatch(message);
+	}
+
 	/// Reorder selected layer
 	pub fn reorder_selected_layers(&self, relative_index_offset: isize) {
 		let message = DocumentMessage::ReorderSelectedLayers { relative_index_offset };
@@ -508,9 +514,9 @@ impl JsEditorHandle {
 		self.dispatch(message);
 	}
 
-	/// Requests the backend to add an empty folder inside the provided containing folder
-	pub fn add_folder(&self, container_path: Vec<LayerId>) {
-		let message = DocumentMessage::CreateEmptyFolder { container_path };
+	/// Creates an empty folder at the document root
+	pub fn create_empty_folder(&self) {
+		let message = DocumentMessage::CreateEmptyFolder { container_path: vec![] };
 		self.dispatch(message);
 	}
 

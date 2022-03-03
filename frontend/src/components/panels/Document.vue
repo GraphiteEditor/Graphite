@@ -53,6 +53,7 @@
 				<LayoutCol class="working-colors">
 					<SwatchPairInput />
 					<LayoutRow class="swap-and-reset">
+						<!-- TODO: Remember to make these tooltip input hints customized to macOS also -->
 						<IconButton :action="swapWorkingColors" :icon="'Swap'" title="Swap (Shift+X)" :size="16" />
 						<IconButton :action="resetWorkingColors" :icon="'ResetColors'" title="Reset (Ctrl+Shift+X)" :size="16" />
 					</LayoutRow>
