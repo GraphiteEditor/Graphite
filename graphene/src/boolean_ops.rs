@@ -46,7 +46,17 @@ struct Vertex {
 
 impl Debug for Vertex {
 	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-		f.write_str(format!("\n    Intersect@ {:?}", self.intersect.point).as_str())?;
+		f.write_str(
+			format!(
+				"\n    Intersect@ {:?} a_seg: {:?}, b_seg: {:?} t_a: {:?} t_b: {:?}",
+				self.intersect.point,
+				self.intersect.segment_index(Origin::Alpha),
+				self.intersect.segment_index(Origin::Beta),
+				self.intersect.t_value(Origin::Alpha),
+				self.intersect.t_value(Origin::Beta),
+			)
+			.as_str(),
+		)?;
 		f.debug_list().entries(self.edges.iter()).finish()
 	}
 }
@@ -166,7 +176,7 @@ impl PathGraph {
 		}
 		new.add_edges_from_path(alpha, Origin::Alpha);
 		new.add_edges_from_path(beta, Origin::Beta);
-		// log::debug!("size: {}, {:?}", new.size(), new);
+		log::debug!("size: {}, {:?}", new.size(), new);
 		Ok(new)
 	}
 
@@ -240,19 +250,12 @@ impl PathGraph {
 						p0: start_of_final_edge.end(),
 						p1: *initial_point,
 					},
-					None => match self.beginning.last() {
+					None => Line {
 						// When None occurs the current edge has been connected to a vertex.
 						// Either self.beginning is Some or None, if self.beginning is Some there may be a dangling edge to connect
 						// if self.beginning is None, the end of the current edge may not have closed the path
-						Some(_end_of_final_edge) => Line {
-							p0: graph.vertex(self.current_start.unwrap()).intersect.point,
-							p1: *initial_point, // _end_of_final_edge.start() == *initial_point
-						},
-						// None occurs when an intersection is on the first PathSeg's start point.
-						// Implies that the path is already closed, because the current edge is connected to another vertex, and there is no dangling start edge.
-						None => {
-							return;
-						}
+						p0: graph.vertex(self.current_start.unwrap()).intersect.point,
+						p1: *initial_point, // _end_of_final_edge.start() == *initial_point
 					},
 				};
 
@@ -593,17 +596,17 @@ pub fn cast_horizontal_ray(mut from: Point, into: &BezPath) -> usize {
 	// In practice, this makes it less likely that a ray will intersect with shared point between two curves
 	from.y += RAY_FUDGE_FACTOR;
 
-	let ray = Line {
+	let ray = PathSeg::Line(Line {
 		p0: from,
 		p1: Point {
 			x: from.x + 1.0,
 			y: from.y + RAY_FUDGE_FACTOR,
 		},
-	};
+	});
 	let mut intersects = Vec::new();
 	for ref seg in into.segments() {
 		if seg.bounding_box().x1 > from.x {
-			line_curve_intersections(&ray, seg, true, |_, b| valid_t(b), &mut intersects);
+			line_curve_intersections((&ray, seg), |_, b| valid_t(b), &mut intersects);
 		}
 	}
 	intersects.len()

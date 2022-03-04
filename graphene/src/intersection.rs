@@ -273,12 +273,8 @@ fn path_intersections(a: &SubCurve, b: &SubCurve, intersections: &mut Vec<Inters
 	let mut recursion = 1.0;
 
 	fn helper<'a, 'b: 'a>(a: &'a SubCurve<'b>, b: &'a SubCurve<'b>, recursion: f64, intersections: &mut Vec<Intersect>, call_buffer: &'a mut VecDeque<(SubCurve<'b>, SubCurve<'b>)>) {
-		if let (PathSeg::Line(line), _) = (a.curve, b) {
-			line_curve_intersections(line, b.curve, true, |a, b| valid_t(a) && valid_t(b), intersections);
-			return;
-		}
-		if let (_, PathSeg::Line(line)) = (a, b.curve) {
-			line_curve_intersections(line, a.curve, false, |a, b| valid_t(a) && valid_t(b), intersections);
+		if let (PathSeg::Line(_), _) | (_, PathSeg::Line(_)) = (a.curve, b.curve) {
+			line_curve_intersections((a.curve, b.curve), |a, b| valid_t(a) && valid_t(b), intersections);
 			return;
 		}
 		// We are close enough to try linear approximation
@@ -355,23 +351,36 @@ fn path_intersections(a: &SubCurve, b: &SubCurve, intersections: &mut Vec<Inters
 }
 
 // TODO: handle the case where a quadratic or cubic curve is straight and overlaps with a line
-pub fn line_curve_intersections<F>(line: &Line, curve: &PathSeg, is_line_a: bool, t_validate: F, intersections: &mut Vec<Intersect>)
+/// Does nothing when neither PathSeg is a line
+pub fn line_curve_intersections<F>(line_curve: (&PathSeg, &PathSeg), t_validate: F, intersections: &mut Vec<Intersect>)
 where
 	F: Fn(f64, f64) -> bool,
 {
-	if let (line, PathSeg::Line(line2)) = (line, curve) {
+	if let (PathSeg::Line(line), PathSeg::Line(line2)) = line_curve {
 		if let Some(cross) = line_intersection(line, line2) {
 			if t_validate(cross.t_a, cross.t_b) {
 				intersections.push(cross);
 			}
 		} else {
 			//the lines may be overlapping
-			overlapping_curve_intersections(&PathSeg::Line(*line), curve)
+			overlapping_curve_intersections(line_curve.0, line_curve.1)
 				.into_iter()
 				.filter_map(|o| o)
 				.for_each(|intersect| intersections.push(intersect))
 		}
 	} else {
+		let is_line_a;
+		let (line, curve) = match line_curve {
+			(PathSeg::Line(line), curve) => {
+				is_line_a = true;
+				(line, curve)
+			}
+			(curve, PathSeg::Line(line)) => {
+				is_line_a = false;
+				(line, curve)
+			}
+			_ => return,
+		};
 		let roots = match curve {
 			PathSeg::Quad(quad) => Vec::from(quad_line_intersect(line, quad)),
 			PathSeg::Cubic(cubic) => Vec::from(cubic_line_intersect(line, cubic)),
@@ -473,6 +482,7 @@ pub fn overlapping_curve_intersections(a: &PathSeg, b: &PathSeg) -> [Option<Inte
 					},
 				)
 			};
+
 			let mut to_return = [None, None];
 			if match_control_polygon(&to_compare.0, &to_compare.1) {
 				if valid_t(t1a) && valid_t(t1b) {
