@@ -303,6 +303,9 @@ export class DisplayEditableTextbox extends JsMessage {
 	readonly line_width!: undefined | number;
 
 	readonly font_size!: number;
+
+	@Type(() => Color)
+	readonly color!: Color;
 }
 
 export class DisplayRemoveEditableTextbox extends JsMessage {}
