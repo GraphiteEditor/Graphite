@@ -400,6 +400,7 @@ export default defineComponent({
 			this.textInput.style.width = displayEditableTextbox.line_width ? `${displayEditableTextbox.line_width}px` : "max-content";
 			this.textInput.style.height = "auto";
 			this.textInput.style.fontSize = `${displayEditableTextbox.font_size}px`;
+			this.textInput.style.color = displayEditableTextbox.color.toRgbaCSS();
 
 			this.textInput.oninput = (): void => {
 				if (this.textInput) this.editor.instance.update_bounds(textInputCleanup(this.textInput.innerText));

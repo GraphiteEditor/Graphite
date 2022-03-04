@@ -15,10 +15,11 @@ use crate::message_prelude::*;
 use crate::viewport_tools::vector_editor::vector_shape::VectorShape;
 use crate::EditorError;
 
+use graphene::color::Color;
 use graphene::document::Document as GrapheneDocument;
 use graphene::layers::folder_layer::FolderLayer;
 use graphene::layers::layer_info::LayerDataType;
-use graphene::layers::style::ViewMode;
+use graphene::layers::style::{Fill, ViewMode};
 use graphene::{DocumentError, DocumentResponse, LayerId, Operation as DocumentOperation};
 
 use glam::{DAffine2, DVec2};
@@ -1156,11 +1157,13 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 				let text = self.graphene_document.layer(&path).unwrap().as_text().unwrap();
 				responses.push_back(DocumentOperation::SetTextEditability { path, editable }.into());
 				if editable {
+					let color = if let Fill::Solid(solid_color) = text.style.fill() { *solid_color } else { Color::BLACK };
 					responses.push_back(
 						FrontendMessage::DisplayEditableTextbox {
 							text: text.text.clone(),
 							line_width: text.line_width,
 							font_size: text.size,
+							color,
 						}
 						.into(),
 					);
