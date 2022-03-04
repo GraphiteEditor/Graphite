@@ -65,10 +65,9 @@ Work in progress.
 - Tools
 	- Overview
 		- Tools add and update assets
-	- Layout tool group
-	- Parametric tool group
-	- Raster tool group
+	- General tool group
 	- Vector tool group
+	- Raster tool group
 - Masking
 	- Mask mode
 - Vector editing
