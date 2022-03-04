@@ -1,6 +1,6 @@
 use core::panic;
+use std::collections::VecDeque;
 use std::ops::Mul;
-use std::{array::from_ref, collections::VecDeque};
 
 use crate::{
 	boolean_ops::split_path_seg,
@@ -424,34 +424,34 @@ fn guess_quality(a: &PathSeg, b: &PathSeg, guess: &Intersect) -> f64 {
 }
 
 /// if curves overlap, returns intersects corresponding to the endpoints of the overlapping section
+/// *May Panic if either curve is very short, has endpoints which are close together
 /// TODO: test this, especially the overlapping curve cases which are more complex
 pub fn overlapping_curve_intersections(a: &PathSeg, b: &PathSeg) -> [Option<Intersect>; 2] {
 	// To check if two curves overlap we find if the endpoints of either curve are on the other curve.
 	// Then, the curves are split at these points, if the resulting control polygons match the curves are the same
-	let mut b_on_a: Vec<Option<f64>> = [point_t_value(a, &b.start()), point_t_value(a, &b.end())].into_iter().collect();
-	let mut a_on_b: Vec<Option<f64>> = [point_t_value(b, &a.start()), point_t_value(b, &a.end())].into_iter().collect();
+	let b_on_a: Vec<Option<f64>> = [point_t_value(a, &b.start()), point_t_value(a, &b.end())].into_iter().collect();
+	let a_on_b: Vec<Option<f64>> = [point_t_value(b, &a.start()), point_t_value(b, &a.end())].into_iter().collect();
 	// I think, but have not mathematically shown, that if a and b are parts of the same curve then b_on_a and a_on_b should together have no more than three non-None elements. Which occurs when a or b is a cubic bezier which crosses itself
 	let b_on_a_not_none = b_on_a.iter().filter_map(|o| *o).count();
 	let a_on_b_not_none = a_on_b.iter().filter_map(|o| *o).count();
+	log::debug!("{:?}", b_on_a_not_none + a_on_b_not_none);
 	match b_on_a_not_none + a_on_b_not_none {
 		2 | 3 => {
 			let (t1a, t1b, t2a, t2b): (f64, f64, f64, f64);
 			let to_compare = if b_on_a_not_none == 2 {
-				b_on_a.sort_by(|val1, val2| (val1).partial_cmp(val2).unwrap_or(std::cmp::Ordering::Less));
-				let mut a_ts = b_on_a.iter_mut().filter_map(|o| *o).collect::<Vec<f64>>();
-				t1a = a_ts[0];
+				t1a = b_on_a[0].unwrap();
 				t1b = 0.0;
-				t2a = a_ts[1];
+				t2a = b_on_a[1].unwrap();
 				t2b = 1.0;
-				(*b, subdivide_path_seg(a, a_ts.as_mut_slice())[1].unwrap())
+				let mut split_at = if t1a > t2a { [t2a, t1a] } else { [t1a, t2a] };
+				(*b, subdivide_path_seg(a, &mut split_at)[1].unwrap())
 			} else if a_on_b_not_none == 2 {
-				a_on_b.sort_by(|val1, val2| (val1).partial_cmp(val2).unwrap_or(std::cmp::Ordering::Less));
-				let mut b_ts = a_on_b.iter_mut().filter_map(|o| *o).collect::<Vec<f64>>();
 				t1a = 0.0;
-				t1b = b_ts[0];
+				t1b = a_on_b[0].unwrap();
 				t2a = 1.0;
-				t2b = b_ts[1];
-				(*a, subdivide_path_seg(b, b_ts.as_mut_slice())[1].unwrap())
+				t2b = a_on_b[1].unwrap();
+				let mut split_at = if t1b > t2b { [t2b, t1b] } else { [t1b, t2b] };
+				(*a, subdivide_path_seg(b, &mut split_at)[1].unwrap())
 			} else {
 				(
 					match (b_on_a[0], b_on_a[1], a_on_b[0], a_on_b[1]) {
@@ -482,7 +482,7 @@ pub fn overlapping_curve_intersections(a: &PathSeg, b: &PathSeg) -> [Option<Inte
 					},
 				)
 			};
-
+			log::debug!("{:?} {:?} {:?} {:?}", t1a, t2a, t1b, t2b);
 			let mut to_return = [None, None];
 			if match_control_polygon(&to_compare.0, &to_compare.1) {
 				if valid_t(t1a) && valid_t(t1b) {
