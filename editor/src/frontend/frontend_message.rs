@@ -20,7 +20,7 @@ pub enum FrontendMessage {
 	DisplayDialogError { title: String, description: String },
 	DisplayDialogPanic { panic_info: String, title: String, description: String },
 	DisplayDocumentLayerTreeStructure { data_buffer: RawBuffer },
-	DisplayEditableTextbox { text: String, line_width: Option<f64>, font_size: f64 },
+	DisplayEditableTextbox { text: String, line_width: Option<f64>, font_size: f64, color: Color },
 	DisplayRemoveEditableTextbox,
 
 	// Trigger prefix: cause a browser API to do something
