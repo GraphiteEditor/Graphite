@@ -434,7 +434,6 @@ pub fn overlapping_curve_intersections(a: &PathSeg, b: &PathSeg) -> [Option<Inte
 	// I think, but have not mathematically shown, that if a and b are parts of the same curve then b_on_a and a_on_b should together have no more than three non-None elements. Which occurs when a or b is a cubic bezier which crosses itself
 	let b_on_a_not_none = b_on_a.iter().filter_map(|o| *o).count();
 	let a_on_b_not_none = a_on_b.iter().filter_map(|o| *o).count();
-	log::debug!("{:?}", b_on_a_not_none + a_on_b_not_none);
 	match b_on_a_not_none + a_on_b_not_none {
 		2 | 3 => {
 			let (t1a, t1b, t2a, t2b): (f64, f64, f64, f64);
@@ -482,7 +481,6 @@ pub fn overlapping_curve_intersections(a: &PathSeg, b: &PathSeg) -> [Option<Inte
 					},
 				)
 			};
-			log::debug!("{:?} {:?} {:?} {:?}", t1a, t2a, t1b, t2b);
 			let mut to_return = [None, None];
 			if match_control_polygon(&to_compare.0, &to_compare.1) {
 				if valid_t(t1a) && valid_t(t1b) {

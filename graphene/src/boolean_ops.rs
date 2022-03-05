@@ -218,6 +218,7 @@ impl PathGraph {
 				let (vertex_ids, mut t_values) = graph.intersects_in_seg(self.seg_index, origin);
 				if !vertex_ids.is_empty() {
 					let subdivided = subdivide_path_seg(&seg, &mut t_values);
+					log::debug!("{:?}", subdivided);
 					for (vertex_id, sub_seg) in vertex_ids.into_iter().zip(subdivided.iter()) {
 						match self.current_start {
 							Some(index) => {
@@ -250,15 +251,24 @@ impl PathGraph {
 						p0: start_of_final_edge.end(),
 						p1: *initial_point,
 					},
-					None => Line {
+					None => {
 						// When None occurs the current edge has been connected to a vertex.
 						// Either self.beginning is Some or None, if self.beginning is Some there may be a dangling edge to connect
 						// if self.beginning is None, the end of the current edge may not have closed the path
-						p0: graph.vertex(self.current_start.unwrap()).intersect.point,
-						p1: *initial_point, // _end_of_final_edge.start() == *initial_point
-					},
+						match self.beginning.last() {
+							Some(end_of_first_edge) => Line {
+								p0: end_of_first_edge.end(),
+								p1: *initial_point,
+							},
+							None => Line {
+								// should never panic, either a intersection has been encountered, so self.current_start is Some.
+								// or no vertex has been encountered so self.beginning.last() is Some
+								p0: graph.vertex(self.current_start.unwrap()).intersect.point,
+								p1: *initial_point,
+							},
+						}
+					}
 				};
-
 				if last_line.length() > F64PRECISE {
 					// a closepath implicitly defines a line which closes the path
 					// and the closepath line may contain intersections
@@ -406,13 +416,14 @@ impl PathGraph {
 /// If `t` is 1 returns (`p`, None).
 // TODO: test values outside 1
 pub fn split_path_seg(p: &PathSeg, t: f64) -> (Option<PathSeg>, Option<PathSeg>) {
+	if t <= -F64PRECISE || t >= 1.0 + F64PRECISE {
+		return (None, None);
+	}
 	if t <= F64PRECISE {
-		if t >= 1.0 - F64PRECISE {
-			return (None, None);
-		}
-		return (Some(*p), None);
-	} else if t >= 1.0 - F64PRECISE {
 		return (None, Some(*p));
+	}
+	if t >= 1.0 - F64PRECISE {
+		return (Some(*p), None);
 	}
 	match p {
 		PathSeg::Cubic(cubic) => {
