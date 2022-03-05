@@ -53,6 +53,7 @@
 	--color-e-nearwhite-rgb: 238, 238, 238;
 	--color-f-white: #fff;
 	--color-f-white-rgb: 255, 255, 255;
+
 	--color-accent: #3194d6;
 	--color-accent-rgb: 49, 148, 214;
 	--color-accent-hover: #49a5e2;
@@ -62,6 +63,11 @@
 
 	--color-data-raster: #e4bb72;
 	--color-data-raster-rgb: 228, 187, 114;
+
+	--color-node-background: #f1decd;
+	--color-node-background-rgb: 241, 222, 205;
+	--color-node-icon: #473a3a;
+	--color-node-icon-rgb: 71, 58, 58;
 }
 
 html,
