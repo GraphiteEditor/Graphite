@@ -1,9 +1,9 @@
 <template>
 	<LayoutRow class="color-input">
-		<TextInput :value="value" :label="label" :disabled="disabled" @commitText="(value: string) => textInputUpdated(value)" :center="true" />
+		<TextInput :value="displayValue" :label="label" :disabled="disabled" @commitText="(value: string) => textInputUpdated(value)" :center="true" />
 		<Separator :type="'Related'" />
 		<LayoutRow class="swatch">
-			<button class="swatch-button" @click="() => menuOpen()" :style="{ background: `#${value}` }"></button>
+			<button class="swatch-button" @click="() => menuOpen()" :style="`--swatch-color: #${value}`"></button>
 			<FloatingMenu :type="'Popover'" :direction="'Bottom'" horizontal ref="colorFloatingMenu">
 				<ColorPicker @update:color="(color) => colorPickerUpdated(color)" :color="color" />
 			</FloatingMenu>
@@ -22,6 +22,7 @@
 		position: relative;
 
 		.swatch-button {
+			--swatch-color: #ffffff;
 			height: 24px;
 			width: 24px;
 			bottom: 0;
@@ -30,6 +31,19 @@
 			outline: none;
 			border: none;
 			border-radius: 2px;
+			background: linear-gradient(45deg, #cccccc 25%, transparent 25%, transparent 75%, #cccccc 75%), linear-gradient(45deg, #cccccc 25%, transparent 25%, transparent 75%, #cccccc 75%),
+				linear-gradient(#ffffff, #ffffff);
+			background-size: 16px 16px;
+			background-position: 0 0, 8px 8px;
+			overflow: hidden;
+
+			&::before {
+				content: "";
+				display: block;
+				width: 100%;
+				height: 100%;
+				background: var(--swatch-color);
+			}
 		}
 
 		.floating-menu {
@@ -67,6 +81,11 @@ export default defineComponent({
 			const a = parseInt(this.value.slice(6, 8), 16);
 			return { r, g, b, a: a / 255 };
 		},
+		displayValue() {
+			const value = this.value.toLowerCase();
+			const shortenedIfOpaque = value.slice(-2) === "ff" ? value.slice(0, 6) : value;
+			return `#${shortenedIfOpaque}`;
+		},
 	},
 	methods: {
 		colorPickerUpdated(color: RGBA) {
@@ -76,9 +95,22 @@ export default defineComponent({
 			this.$emit("update:value", newValue);
 		},
 		textInputUpdated(newValue: string) {
-			if ((newValue.length !== 6 && newValue.length !== 8) || !newValue.match(/[A-F,a-f,0-9]*/)) return;
+			const sanitizedMatch = newValue.match(/^\s*#?([0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{3})\s*$/);
+			if (!sanitizedMatch) return;
 
-			this.$emit("update:value", newValue);
+			let sanitized;
+			const match = sanitizedMatch[1];
+			if (match.length === 3) {
+				sanitized = match
+					.split("")
+					.map((byte) => `${byte}${byte}`)
+					.concat("ff")
+					.join("");
+			} else if (match.length === 6) sanitized = `${match}ff`;
+			else if (match.length === 8) sanitized = match;
+			else return;
+
+			this.$emit("update:value", sanitized);
 		},
 		menuOpen() {
 			(this.$refs.colorFloatingMenu as typeof FloatingMenu).setOpen();
