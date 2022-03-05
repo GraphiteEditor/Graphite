@@ -1,3 +1,4 @@
+// 12px Solid
 import Checkmark from "@/../assets/12px-solid/checkmark.svg";
 import CloseX from "@/../assets/12px-solid/close-x.svg";
 import DropdownArrow from "@/../assets/12px-solid/dropdown-arrow.svg";
@@ -28,6 +29,7 @@ import WindowButtonWinMaximize from "@/../assets/12px-solid/window-button-win-ma
 import WindowButtonWinMinimize from "@/../assets/12px-solid/window-button-win-minimize.svg";
 import WindowButtonWinRestoreDown from "@/../assets/12px-solid/window-button-win-restore-down.svg";
 
+// 16px Solid
 import AlignBottom from "@/../assets/16px-solid/align-bottom.svg";
 import AlignHorizontalCenter from "@/../assets/16px-solid/align-horizontal-center.svg";
 import AlignLeft from "@/../assets/16px-solid/align-left.svg";
@@ -47,6 +49,9 @@ import FlipHorizontal from "@/../assets/16px-solid/flip-horizontal.svg";
 import FlipVertical from "@/../assets/16px-solid/flip-vertical.svg";
 import GraphiteLogo from "@/../assets/16px-solid/graphite-logo.svg";
 import NewLayer from "@/../assets/16px-solid/new-layer.svg";
+import NodeFolder from "@/../assets/16px-solid/node-folder.svg";
+import NodePath from "@/../assets/16px-solid/node-path.svg";
+import NodeText from "@/../assets/16px-solid/node-text.svg";
 import Paste from "@/../assets/16px-solid/paste.svg";
 import Trash from "@/../assets/16px-solid/trash.svg";
 import ViewModeNormal from "@/../assets/16px-solid/view-mode-normal.svg";
@@ -59,6 +64,7 @@ import ZoomIn from "@/../assets/16px-solid/zoom-in.svg";
 import ZoomOut from "@/../assets/16px-solid/zoom-out.svg";
 import ZoomReset from "@/../assets/16px-solid/zoom-reset.svg";
 
+// 16px Two-Tone
 import MouseHintDrag from "@/../assets/16px-two-tone/mouse-hint-drag.svg";
 import MouseHintLmbDrag from "@/../assets/16px-two-tone/mouse-hint-lmb-drag.svg";
 import MouseHintLmb from "@/../assets/16px-two-tone/mouse-hint-lmb.svg";
@@ -70,9 +76,7 @@ import MouseHintRmb from "@/../assets/16px-two-tone/mouse-hint-rmb.svg";
 import MouseHintScrollDown from "@/../assets/16px-two-tone/mouse-hint-scroll-down.svg";
 import MouseHintScrollUp from "@/../assets/16px-two-tone/mouse-hint-scroll-up.svg";
 
-import NodeTypeFolder from "@/../assets/24px-full-color/node-type-folder.svg";
-import NodeTypePath from "@/../assets/24px-full-color/node-type-path.svg";
-
+// 24px Two-Tone
 import GeneralCropTool from "@/../assets/24px-two-tone/general-crop-tool.svg";
 import GeneralEyedropperTool from "@/../assets/24px-two-tone/general-eyedropper-tool.svg";
 import GeneralFillTool from "@/../assets/24px-two-tone/general-fill-tool.svg";
@@ -96,12 +100,11 @@ import VectorSplineTool from "@/../assets/24px-two-tone/vector-spline-tool.svg";
 import VectorTextTool from "@/../assets/24px-two-tone/vector-text-tool.svg";
 
 export type IconName = keyof typeof ICON_LIST;
-export type IconSize = 12 | 16 | 24 | 32;
+export type IconSize = 12 | 16 | 24;
 
 const size12: IconSize = 12;
 const size16: IconSize = 16;
 const size24: IconSize = 24;
-// const size32: IconSize = 32;
 
 export const ICON_LIST = {
 	Checkmark: { component: Checkmark, size: size12 },
@@ -154,6 +157,9 @@ export const ICON_LIST = {
 	GraphiteLogo: { component: GraphiteLogo, size: size16 },
 	NewLayer: { component: NewLayer, size: size16 },
 	Paste: { component: Paste, size: size16 },
+	NodeFolder: { component: NodeFolder, size: size16 },
+	NodePath: { component: NodePath, size: size16 },
+	NodeText: { component: NodeText, size: size16 },
 	Trash: { component: Trash, size: size16 },
 	ViewModeNormal: { component: ViewModeNormal, size: size16 },
 	ViewModeOutline: { component: ViewModeOutline, size: size16 },
@@ -175,9 +181,6 @@ export const ICON_LIST = {
 	MouseHintRmb: { component: MouseHintRmb, size: size16 },
 	MouseHintScrollDown: { component: MouseHintScrollDown, size: size16 },
 	MouseHintScrollUp: { component: MouseHintScrollUp, size: size16 },
-
-	NodeTypeFolder: { component: NodeTypeFolder, size: size24 },
-	NodeTypePath: { component: NodeTypePath, size: size24 },
 
 	GeneralCropTool: { component: GeneralCropTool, size: size24 },
 	GeneralEyedropperTool: { component: GeneralEyedropperTool, size: size24 },
