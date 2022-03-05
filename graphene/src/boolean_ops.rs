@@ -658,7 +658,8 @@ where
 					shapes.push(graph.get_shape(cycle, style(dir)));
 				}
 			}
-			Err(err) => return Err(err),
+			// exclude cycles with 0.0 area
+			Err(err) => (),
 		}
 	}
 	Ok(shapes)
