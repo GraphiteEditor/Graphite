@@ -142,6 +142,22 @@
 						opacity: 1;
 					}
 				}
+
+				.color-solid {
+					fill: var(--color-f-white);
+				}
+
+				.color-general {
+					fill: var(--color-data-general);
+				}
+
+				.color-vector {
+					fill: var(--color-data-vector);
+				}
+
+				.color-raster {
+					fill: var(--color-data-raster);
+				}
 			}
 
 			.spacer {

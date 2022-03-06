@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
-	<path fill="#ffffff" d="M4,3v5h1c0,0,0-3,4-3h2v13.5c0,1.1,0,2-3,2V22h9v-1.5c-3,0-3-0.9-3-2V5h2c4,0,4,3,4,3h1V3H4z" />
-	<path fill="#65bbe5" d="M5,20H1v2h5v-1C6,20.45,5.55,20,5,20z" />
-	<path fill="#65bbe5" d="M20,20c-0.55,0-1,0.45-1,1v1h5v-2H20z" />
+	<path class="color-solid" d="M4,3v5h1c0,0,0-3,4-3h2v13.5c0,1.1,0,2-3,2V22h9v-1.5c-3,0-3-0.9-3-2V5h2c4,0,4,3,4,3h1V3H4z" />
+	<path class="color-vector" d="M5,20H1v2h5v-1C6,20.45,5.55,20,5,20z" />
+	<path class="color-vector" d="M20,20c-0.55,0-1,0.45-1,1v1h5v-2H20z" />
 </svg>
