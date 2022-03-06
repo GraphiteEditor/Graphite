@@ -61,13 +61,23 @@
 	--color-accent-disabled: #416277;
 	--color-accent-disabled-rgb: 65, 98, 119;
 
-	--color-data-raster: #e4bb72;
-	--color-data-raster-rgb: 228, 187, 114;
-
 	--color-node-background: #f1decd;
 	--color-node-background-rgb: 241, 222, 205;
 	--color-node-icon: #473a3a;
 	--color-node-icon-rgb: 71, 58, 58;
+
+	--color-data-general: #c5c5c5;
+	--color-data-general-rgb: 197, 197, 197;
+	--color-data-vector: #65bbe5;
+	--color-data-vector-rgb: 101, 187, 229;
+	--color-data-raster: #e4bb72;
+	--color-data-raster-rgb: 228, 187, 114;
+	--color-data-mask: #8d85c7;
+	--color-data-mask-rgb: 141, 133, 199;
+	--color-data-unused1: #d6536e;
+	--color-data-unused1-rgb: 214, 83, 110;
+	--color-data-unused2: #70a898;
+	--color-data-unused2-rgb: 112, 168, 152;
 }
 
 html,
