@@ -218,7 +218,7 @@ fn register_layer_properties(layer: &Layer, responses: &mut VecDeque<Message>) {
 					gap_after: true,
 				})),
 				LayerDataType::Shape(_) => WidgetHolder::new(Widget::IconLabel(IconLabel {
-					icon: "NodePath".into(),
+					icon: "NodeShape".into(),
 					gap_after: true,
 				})),
 				LayerDataType::Text(_) => WidgetHolder::new(Widget::IconLabel(IconLabel {
