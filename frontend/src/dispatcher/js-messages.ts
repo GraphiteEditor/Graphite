@@ -369,7 +369,7 @@ export class LayerMetadata {
 	selected!: boolean;
 }
 
-export type LayerType = "Folder" | "Shape" | "Text";
+export type LayerType = "Folder" | "Image" | "Shape" | "Text";
 
 export class IndexedDbDocumentDetails extends DocumentDetails {
 	@Transform(({ value }: { value: BigInt }) => value.toString())

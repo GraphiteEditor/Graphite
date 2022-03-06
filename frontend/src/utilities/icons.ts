@@ -50,7 +50,8 @@ import FlipVertical from "@/../assets/16px-solid/flip-vertical.svg";
 import GraphiteLogo from "@/../assets/16px-solid/graphite-logo.svg";
 import NewLayer from "@/../assets/16px-solid/new-layer.svg";
 import NodeFolder from "@/../assets/16px-solid/node-folder.svg";
-import NodePath from "@/../assets/16px-solid/node-path.svg";
+import NodeImage from "@/../assets/16px-solid/node-image.svg";
+import NodeShape from "@/../assets/16px-solid/node-shape.svg";
 import NodeText from "@/../assets/16px-solid/node-text.svg";
 import Paste from "@/../assets/16px-solid/paste.svg";
 import Trash from "@/../assets/16px-solid/trash.svg";
@@ -158,7 +159,8 @@ export const ICON_LIST = {
 	NewLayer: { component: NewLayer, size: size16 },
 	Paste: { component: Paste, size: size16 },
 	NodeFolder: { component: NodeFolder, size: size16 },
-	NodePath: { component: NodePath, size: size16 },
+	NodeImage: { component: NodeImage, size: size16 },
+	NodeShape: { component: NodeShape, size: size16 },
 	NodeText: { component: NodeText, size: size16 },
 	Trash: { component: Trash, size: size16 },
 	ViewModeNormal: { component: ViewModeNormal, size: size16 },
