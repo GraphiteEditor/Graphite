@@ -489,11 +489,9 @@ pub fn overlapping_curve_intersections(a: &PathSeg, b: &PathSeg) -> [Option<Inte
 			if match_control_polygon(&to_compare.0, &to_compare.1) {
 				if valid_t(t1a) && valid_t(t1b) {
 					to_return[0] = Some(Intersect::from((to_compare.0.start(), t1a, t1b)));
-					log::debug!("{:?}", to_return[0]);
 				}
 				if valid_t(t2a) && valid_t(t2b) {
 					to_return[1] = Some(Intersect::from((to_compare.0.end(), t2a, t2b)));
-					log::debug!("{:?}", to_return[1]);
 				}
 			}
 			to_return

@@ -167,7 +167,7 @@ impl PathGraph {
 		// An odd number of intersections occurs when either:
 		// 1. There exists a tangential intersection (which shouldn't affect boolean ops)
 		// 2. The algorithm has found an extra intersection or missed an intersection
-		log::debug!("{:?}", new.vertices);
+		// log::debug!("{:?}", new.vertices);
 		if new.size() == 0 {
 			return Err(BooleanOperationError::NoIntersections);
 		}
@@ -176,7 +176,7 @@ impl PathGraph {
 		}
 		new.add_edges_from_path(alpha, Origin::Alpha);
 		new.add_edges_from_path(beta, Origin::Beta);
-		log::debug!("size: {}, {:?}", new.size(), new);
+		// log::debug!("size: {}, {:?}", new.size(), new);
 		Ok(new)
 	}
 
@@ -218,7 +218,6 @@ impl PathGraph {
 				let (vertex_ids, mut t_values) = graph.intersects_in_seg(self.seg_index, origin);
 				if !vertex_ids.is_empty() {
 					let subdivided = subdivide_path_seg(&seg, &mut t_values);
-					log::debug!("{:?}", subdivided);
 					for (vertex_id, sub_seg) in vertex_ids.into_iter().zip(subdivided.iter()) {
 						match self.current_start {
 							Some(index) => {
