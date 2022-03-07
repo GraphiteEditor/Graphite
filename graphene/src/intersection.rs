@@ -3,6 +3,7 @@ use std::collections::VecDeque;
 use std::ops::Mul;
 
 use crate::{
+	boolean_ops::reverse_path_segment,
 	boolean_ops::split_path_seg,
 	boolean_ops::subdivide_path_seg,
 	consts::{CURVE_FIDELITY, F64LOOSE, F64PRECISE},
@@ -452,42 +453,47 @@ pub fn overlapping_curve_intersections(a: &PathSeg, b: &PathSeg) -> [Option<Inte
 				let mut split_at = if t1b > t2b { [t2b, t1b] } else { [t1b, t2b] };
 				(*a, subdivide_path_seg(b, &mut split_at)[1].unwrap())
 			} else {
-				(
-					match (b_on_a[0], b_on_a[1], a_on_b[0], a_on_b[1]) {
-						(None, Some(_), _, Some(t_val)) | (None, Some(_), Some(t_val), _) => {
-							t1b = t_val;
-							t2b = 1.0;
-							split_path_seg(b, t_val).1.unwrap()
-						}
-						(Some(_), None, _, Some(t_val)) | (Some(_), None, Some(t_val), _) => {
-							t1b = 0.0;
-							t2b = t_val;
-							split_path_seg(b, t_val).0.unwrap()
-						}
-						_ => panic!(),
-					},
-					match (a_on_b[0], a_on_b[1], b_on_a[0], b_on_a[1]) {
-						(None, Some(_), _, Some(t_val)) | (None, Some(_), Some(t_val), _) => {
-							t1a = t_val;
-							t2a = 1.0;
-							split_path_seg(a, t_val).1.unwrap()
-						}
-						(Some(_), None, _, Some(t_val)) | (Some(_), None, Some(t_val), _) => {
-							t1a = 0.0;
-							t2a = t_val;
-							split_path_seg(a, t_val).0.unwrap()
-						}
-						_ => panic!(),
-					},
-				)
+				match (b_on_a[0], b_on_a[1], a_on_b[0], a_on_b[1]) {
+					(None, Some(a_val), None, Some(b_val)) => {
+						t1b = b_val;
+						t2b = 1.0;
+						t1a = 1.0;
+						t2a = a_val;
+						(split_path_seg(b, b_val).1.unwrap(), split_path_seg(a, a_val).1.unwrap())
+					}
+					(None, Some(a_val), Some(b_val), None) => {
+						t1b = b_val;
+						t2b = 1.0;
+						t1a = 0.0;
+						t2a = a_val;
+						(split_path_seg(b, b_val).1.unwrap(), split_path_seg(a, a_val).0.unwrap())
+					}
+					(Some(a_val), None, None, Some(b_val)) => {
+						t1b = 0.0;
+						t2b = b_val;
+						t1a = a_val;
+						t2a = 1.0;
+						(split_path_seg(b, b_val).0.unwrap(), split_path_seg(a, a_val).1.unwrap())
+					}
+					(Some(a_val), None, Some(b_val), None) => {
+						t1b = 0.0;
+						t2b = b_val;
+						t1a = a_val;
+						t2a = 0.0;
+						(split_path_seg(b, b_val).0.unwrap(), split_path_seg(a, a_val).0.unwrap())
+					}
+					_ => panic!(),
+				}
 			};
 			let mut to_return = [None, None];
 			if match_control_polygon(&to_compare.0, &to_compare.1) {
 				if valid_t(t1a) && valid_t(t1b) {
 					to_return[0] = Some(Intersect::from((to_compare.0.start(), t1a, t1b)));
+					log::debug!("{:?}", to_return[0]);
 				}
 				if valid_t(t2a) && valid_t(t2b) {
 					to_return[1] = Some(Intersect::from((to_compare.0.end(), t2a, t2b)));
+					log::debug!("{:?}", to_return[1]);
 				}
 			}
 			to_return
@@ -497,10 +503,11 @@ pub fn overlapping_curve_intersections(a: &PathSeg, b: &PathSeg) -> [Option<Inte
 }
 
 /// Returns true if the Bezier curves described by A and B have the same control polygon
-/// TODO: test this
+/// The order of the polygon does not effect the result,
 pub fn match_control_polygon(a: &PathSeg, b: &PathSeg) -> bool {
 	let mut a_polygon = get_control_polygon(a);
 	let mut b_polygon = get_control_polygon(b);
+	// Allow matching of polygons whose points are reverse ordered
 	if a_polygon.first().unwrap() == b_polygon.last().unwrap() && a_polygon.last().unwrap() == b_polygon.first().unwrap() {
 		b_polygon.reverse()
 	}
