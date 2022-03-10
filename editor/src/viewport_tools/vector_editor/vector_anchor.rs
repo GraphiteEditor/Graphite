@@ -201,6 +201,11 @@ impl VectorAnchor {
 	}
 
 	/// Provides the selected points in this anchor
+	pub fn points(&self) -> impl Iterator<Item = &VectorControlPoint> {
+		self.points.iter().flatten()
+	}
+
+	/// Returns
 	pub fn selected_points(&self) -> impl Iterator<Item = &VectorControlPoint> {
 		self.points.iter().flatten().filter(|pnt| pnt.is_selected)
 	}

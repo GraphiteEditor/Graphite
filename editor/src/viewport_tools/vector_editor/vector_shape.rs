@@ -182,8 +182,7 @@ impl VectorShape {
 		);
 	}
 
-	/// Delete the selected point
-	/// A wrapper around move_point to handle mirror state / submit the changes
+	/// Return a bezpath based on our internal representation points
 	pub fn to_bezpath(&self) -> BezPath {
 		if self.anchors.is_empty() {
 			return BezPath::new();
