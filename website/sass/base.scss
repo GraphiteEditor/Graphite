@@ -13,7 +13,9 @@
 	--font-size-intro-body: 22px;
 	--font-size-link: 24px;
 	--font-size-heading: 40px;
+	--font-size-subheading: 24px;
 	--font-size-body: 18px;
+	--border-thickness: 2px;
 
 	@media screen and (max-width: 760px) {
 		--font-size-intro-heading: 40px;
@@ -29,6 +31,7 @@
 		--font-size-link: 16px;
 		--font-size-heading: 28px;
 		--font-size-body: 16px;
+		--border-thickness: 1px;
 	}
 
 	@media screen and (max-width: 400px) {
@@ -59,35 +62,9 @@ a {
 	color: var(--color-crimson);
 }
 
-h1,
-h2,
-h3,
-h4 {
-	margin: 0;
-	display: inline-block;
-}
-
-h1 {
-	font-family: "Bona Nova", serif;
-	font-feature-settings: "lnum";
-	line-height: 1.25;
-	font-weight: 700;
-	font-size: var(--font-size-intro-heading);
-
-	~ p {
-		font-size: var(--font-size-intro-body);
-	}
-}
-
-h2 {
-	font-family: "Bona Nova", serif;
-	font-feature-settings: "lnum";
-	line-height: 1.25;
-	font-weight: 700;
-	font-size: var(--font-size-heading);
-}
-
-h3 {
+h1.box-header {
+	font-family: "Inter", sans-serif;
+	line-height: 1.5;
 	font-size: var(--font-size-link);
 	font-weight: 800;
 	text-transform: uppercase;
@@ -96,22 +73,52 @@ h3 {
 		white-space: pre;
 	}
 
-	~ .divider {
+	~ hr {
 		margin-top: 20px;
 	}
 
-	+ .divider + .diptych,
-	+ .divider + .triptych {
+	+ hr + .diptych,
+	+ hr + .triptych {
 		margin-top: 40px;
 	}
 }
 
-h4 {
+h1.hero {
+	font-size: var(--font-size-intro-heading);
+
+	~ p {
+		font-size: var(--font-size-intro-body);
+	}
+}
+
+h1 {
+	font-family: "Bona Nova", serif;
+	font-feature-settings: "lnum";
+	line-height: 1.25;
+	font-weight: 700;
+	font-size: var(--font-size-heading);
+}
+
+h2 {
 	font-family: "Bona Nova", serif;
 	font-feature-settings: "lnum";
 	line-height: 1.25;
 	font-size: var(--font-size-heading);
 	font-weight: 400;
+}
+
+h3 {
+	font-size: var(--font-size-subheading);
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+	margin: 0;
+	display: inline-block;
 }
 
 p {
@@ -120,16 +127,54 @@ p {
 	text-align: justify;
 }
 
+p ~ p {
+	margin-top: 1.5em;
+}
+
 h1 ~ p,
 h2 ~ p,
-h4 ~ p,
-h4 ~ img,
+h3 ~ p,
+h1 ~ ol li p,
+h2 ~ ol li p,
+h3 ~ ol li p,
+h1 ~ img,
+h2 ~ img,
+h3 ~ img,
+p ~ h1,
+p ~ h2,
+p ~ h3,
+p ~ details summary,
 p + .link {
 	margin-top: 20px;
 }
 
-p + p {
-	margin-top: calc(1em * 1.5);
+h1 ~ hr {
+	margin-top: 40px;
+	margin-bottom: 20px;
+}
+
+ol + p {
+	margin-top: 0;
+}
+
+code {
+	background: var(--color-fog);
+	padding: 0 4px;
+}
+
+pre {
+	padding: 20px;
+	background: var(--color-navy);
+	color: var(--color-fog);
+
+	code {
+		background: initial;
+		padding: 0;
+	}
+}
+
+summary {
+	cursor: pointer;
 }
 
 .link {
@@ -148,9 +193,9 @@ p + p {
 .button.button.button.button {
 	color: var(--color-crimson);
 	display: inline-block;
-	border: 2px solid currentColor;
+	border: var(--border-thickness) solid currentColor;
 	height: calc(var(--font-size-link) * 2);
-	line-height: calc(var(--font-size-link) * 2 - 2 * 2px);
+	line-height: calc(var(--font-size-link) * 2 - 2 * var(--border-thickness));
 	font-size: var(--font-size-link);
 	padding: 0 var(--font-size-link);
 	box-sizing: border-box;
@@ -164,21 +209,27 @@ p + p {
 	font-family: "Inter", sans-serif;
 }
 
-.divider {
-	margin: 0 32px;
+hr {
+	overflow: visible;
+}
+
+hr,
+.ripple {
 	width: calc(100% - 32px * 2);
-	height: 2px;
+	height: var(--border-thickness);
+	margin: 0 32px;
 	background: currentColor;
 	position: relative;
+	border: none;
 
 	&::before {
 		left: -40px;
-		border-width: 0 0 2px 40px;
+		border-width: 0 0 var(--border-thickness) 40px;
 	}
 
 	&::after {
 		right: -40px;
-		border-width: 0 40px 2px 0;
+		border-width: 0 40px var(--border-thickness) 0;
 	}
 
 	&::before,
@@ -254,7 +305,7 @@ p + p {
 		max-width: var(--max-width);
 		margin: 0 auto;
 
-		.section h4 + .graphic {
+		.section h2 + .graphic {
 			margin-top: 20px;
 			
 			img {
@@ -317,18 +368,16 @@ p + p {
 		padding: 0 40px;
 		color: var(--color-walnut);
 
-		// max-width + (80px + 32px) * 2
+		// var(--max-width) + (80px + 32px) * 2
 		@media screen and (max-width: 1824px) {
-			.divider {
-				&.ripple {
-					width: calc(100% + (40px * 2));
-					margin-left: -40px;
-					margin-right: -40px;
-				}
+			.ripple {
+				width: calc(100% + (40px * 2));
+				margin-left: -40px;
+				margin-right: -40px;
+			}
 
-				&:not(.ripple) {
-					display: none;
-				}
+			hr {
+				display: none;
 			}
 		}
 
@@ -367,16 +416,15 @@ p + p {
 							height: var(--height);
 							padding-left: var(--button-padding);
 							padding-right: var(--button-padding);
-							line-height: calc(var(--height) - 2 * 2px);
+							line-height: calc(var(--height) - 2 * var(--border-thickness));
 							font-size: var(--nav-font-size);
 
 							&::after {
 								content: " »";
 							}
 						}
-				
-						svg {
-							fill: currentColor;
+						
+						img {
 							display: block;
 							width: var(--height);
 							height: var(--height);
@@ -456,24 +504,25 @@ p + p {
 			}
 		}
 
-		.divider {
+		.ripple {
+			display: block;
 			background: none;
+			fill: none;
+			stroke: currentColor;
+			--ripple-height: 16px;
+			height: var(--ripple-height);
+			margin-top: calc(-1 * var(--ripple-height) + var(--border-thickness));
+			margin-bottom: calc(-1 * var(--border-thickness));
+			stroke-width: var(--border-thickness);
 
-			&.ripple {
-				display: block;
-				fill: none;
-				stroke: currentColor;
-				--ripple-height: 16px;
-				height: var(--ripple-height);
-				margin-top: calc(-1 * var(--ripple-height) + 2px);
-				margin-bottom: -2px;
-				stroke-width: 2px;
-
-				&::before,
-				&::after {
-					content: none;
-				}
+			&::before,
+			&::after {
+				content: none;
 			}
+		}
+
+		hr {
+			background: none;
 		}
 	}
 
@@ -505,15 +554,24 @@ p + p {
 		gap: 40px;
 		padding: 40px;
 		padding-top: 0;
+
 		
 		nav {
 			display: flex;
 			flex-wrap: wrap;
 			justify-content: center;
 			gap: 8px 40px;
-
-			@media screen and (max-width: 800px) {
+			
+			@media screen and (max-width: 900px) {
 				max-width: 500px;
+			}
+			
+			@media screen and (max-width: 760px) {
+				max-width: 440px;
+			}
+
+			@media screen and (max-width: 400px) {
+				gap: 6px 20px;
 			}
 		}
 

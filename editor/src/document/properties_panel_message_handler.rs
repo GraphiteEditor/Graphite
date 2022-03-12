@@ -2,7 +2,7 @@ use super::layer_panel::LayerDataTypeDiscriminant;
 use crate::document::properties_panel_message::TransformOp;
 use crate::layout::layout_message::LayoutTarget;
 use crate::layout::widgets::{
-	IconLabel, LayoutRow, NumberInput, PopoverButton, Separator, SeparatorDirection, SeparatorType, TextInput, TextLabel, Widget, WidgetCallback, WidgetHolder, WidgetLayout,
+	ColorInput, IconLabel, LayoutRow, NumberInput, PopoverButton, Separator, SeparatorDirection, SeparatorType, TextInput, TextLabel, Widget, WidgetCallback, WidgetHolder, WidgetLayout,
 };
 use crate::message_prelude::*;
 
@@ -162,7 +162,7 @@ impl MessageHandler<PropertiesPanelMessage, &GrapheneDocument> for PropertiesPan
 			ModifyStroke { color, weight } => {
 				let path = self.active_path.clone().expect("Received update for properties panel with no active layer");
 				let layer = graphene_document.layer(&path).unwrap();
-				if let Some(color) = Color::from_rgba_str(&color).or(Color::from_rgb_str(&color)) {
+				if let Some(color) = Color::from_rgba_str(&color).or_else(|| Color::from_rgb_str(&color)) {
 					let stroke = Stroke::new(color, weight as f32);
 					responses.push_back(Operation::SetLayerStroke { path, stroke }.into())
 				} else {
@@ -214,15 +214,15 @@ fn register_layer_properties(layer: &Layer, responses: &mut VecDeque<Message>) {
 		widgets: vec![
 			match &layer.data {
 				LayerDataType::Folder(_) => WidgetHolder::new(Widget::IconLabel(IconLabel {
-					icon: "NodeTypeFolder".into(),
+					icon: "NodeFolder".into(),
 					gap_after: true,
 				})),
 				LayerDataType::Shape(_) => WidgetHolder::new(Widget::IconLabel(IconLabel {
-					icon: "NodeTypePath".into(),
+					icon: "NodeShape".into(),
 					gap_after: true,
 				})),
 				LayerDataType::Text(_) => WidgetHolder::new(Widget::IconLabel(IconLabel {
-					icon: "NodeTypePath".into(),
+					icon: "NodeText".into(),
 					gap_after: true,
 				})),
 				LayerDataType::Bitmap(_) => WidgetHolder::new(Widget::IconLabel(IconLabel {
@@ -259,7 +259,7 @@ fn register_layer_properties(layer: &Layer, responses: &mut VecDeque<Message>) {
 
 	let properties_body = match &layer.data {
 		LayerDataType::Shape(shape) => {
-			if let Some(fill_layout) = node_section_fill(&shape.style.fill()) {
+			if let Some(fill_layout) = node_section_fill(shape.style.fill()) {
 				vec![node_section_transform(layer), fill_layout, node_section_stroke(&shape.style.stroke().unwrap_or_default())]
 			} else {
 				vec![node_section_transform(layer), node_section_stroke(&shape.style.stroke().unwrap_or_default())]
@@ -268,7 +268,7 @@ fn register_layer_properties(layer: &Layer, responses: &mut VecDeque<Message>) {
 		LayerDataType::Text(text) => {
 			vec![
 				node_section_transform(layer),
-				node_section_fill(&text.style.fill()).expect("Text should have fill"),
+				node_section_fill(text.style.fill()).expect("Text should have fill"),
 				node_section_stroke(&text.style.stroke().unwrap_or_default()),
 			]
 		}
@@ -425,13 +425,13 @@ fn node_section_fill(fill: &Fill) -> Option<LayoutRow> {
 						..TextLabel::default()
 					})),
 					WidgetHolder::new(Widget::Separator(Separator {
-						separator_type: SeparatorType::Related,
+						separator_type: SeparatorType::Unrelated,
 						direction: SeparatorDirection::Horizontal,
 					})),
-					WidgetHolder::new(Widget::TextInput(TextInput {
+					WidgetHolder::new(Widget::ColorInput(ColorInput {
 						value: color.rgba_hex(),
-						on_update: WidgetCallback::new(|text_input: &TextInput| {
-							if let Some(color) = Color::from_rgba_str(&text_input.value).or(Color::from_rgb_str(&text_input.value)) {
+						on_update: WidgetCallback::new(|text_input: &ColorInput| {
+							if let Some(color) = Color::from_rgba_str(&text_input.value).or_else(|| Color::from_rgb_str(&text_input.value)) {
 								let new_fill = Fill::Solid(color);
 								PropertiesPanelMessage::ModifyFill { fill: new_fill }.into()
 							} else {
@@ -456,13 +456,13 @@ fn node_section_fill(fill: &Fill) -> Option<LayoutRow> {
 								..TextLabel::default()
 							})),
 							WidgetHolder::new(Widget::Separator(Separator {
-								separator_type: SeparatorType::Related,
+								separator_type: SeparatorType::Unrelated,
 								direction: SeparatorDirection::Horizontal,
 							})),
-							WidgetHolder::new(Widget::TextInput(TextInput {
+							WidgetHolder::new(Widget::ColorInput(ColorInput {
 								value: gradient_1.positions[0].1.rgba_hex(),
-								on_update: WidgetCallback::new(move |text_input: &TextInput| {
-									if let Some(color) = Color::from_rgba_str(&text_input.value).or(Color::from_rgb_str(&text_input.value)) {
+								on_update: WidgetCallback::new(move |text_input: &ColorInput| {
+									if let Some(color) = Color::from_rgba_str(&text_input.value).or_else(|| Color::from_rgb_str(&text_input.value)) {
 										let mut new_gradient = (*gradient_1).clone();
 										new_gradient.positions[0].1 = color;
 										PropertiesPanelMessage::ModifyFill {
@@ -484,13 +484,13 @@ fn node_section_fill(fill: &Fill) -> Option<LayoutRow> {
 								..TextLabel::default()
 							})),
 							WidgetHolder::new(Widget::Separator(Separator {
-								separator_type: SeparatorType::Related,
+								separator_type: SeparatorType::Unrelated,
 								direction: SeparatorDirection::Horizontal,
 							})),
-							WidgetHolder::new(Widget::TextInput(TextInput {
+							WidgetHolder::new(Widget::ColorInput(ColorInput {
 								value: gradient_2.positions[1].1.rgba_hex(),
-								on_update: WidgetCallback::new(move |text_input: &TextInput| {
-									if let Some(color) = Color::from_rgba_str(&text_input.value).or(Color::from_rgb_str(&text_input.value)) {
+								on_update: WidgetCallback::new(move |text_input: &ColorInput| {
+									if let Some(color) = Color::from_rgba_str(&text_input.value).or_else(|| Color::from_rgb_str(&text_input.value)) {
 										let mut new_gradient = (*gradient_2).clone();
 										new_gradient.positions[1].1 = color;
 										PropertiesPanelMessage::ModifyFill {
@@ -525,12 +525,12 @@ fn node_section_stroke(stroke: &Stroke) -> LayoutRow {
 						..TextLabel::default()
 					})),
 					WidgetHolder::new(Widget::Separator(Separator {
-						separator_type: SeparatorType::Related,
+						separator_type: SeparatorType::Unrelated,
 						direction: SeparatorDirection::Horizontal,
 					})),
-					WidgetHolder::new(Widget::TextInput(TextInput {
+					WidgetHolder::new(Widget::ColorInput(ColorInput {
 						value: stroke.color().rgba_hex(),
-						on_update: WidgetCallback::new(move |text_input: &TextInput| {
+						on_update: WidgetCallback::new(move |text_input: &ColorInput| {
 							PropertiesPanelMessage::ModifyStroke {
 								color: text_input.value.clone(),
 								weight: weight as f64,
@@ -548,7 +548,7 @@ fn node_section_stroke(stroke: &Stroke) -> LayoutRow {
 						..TextLabel::default()
 					})),
 					WidgetHolder::new(Widget::Separator(Separator {
-						separator_type: SeparatorType::Related,
+						separator_type: SeparatorType::Unrelated,
 						direction: SeparatorDirection::Horizontal,
 					})),
 					WidgetHolder::new(Widget::NumberInput(NumberInput {

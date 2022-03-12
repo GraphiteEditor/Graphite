@@ -16,25 +16,12 @@
 		<LayoutRow class="shelf-and-viewport">
 			<LayoutCol class="shelf">
 				<LayoutCol class="tools" :scrollableY="true">
-					<ShelfItemInput icon="LayoutSelectTool" title="Select Tool (V)" :active="activeTool === 'Select'" :action="() => selectTool('Select')" />
-					<ShelfItemInput icon="LayoutCropTool" title="Crop Tool" :active="activeTool === 'Crop'" :action="() => selectTool('Crop')" />
-					<ShelfItemInput icon="LayoutNavigateTool" title="Navigate Tool (Z)" :active="activeTool === 'Navigate'" :action="() => selectTool('Navigate')" />
-					<ShelfItemInput icon="LayoutEyedropperTool" title="Eyedropper Tool (I)" :active="activeTool === 'Eyedropper'" :action="() => selectTool('Eyedropper')" />
-
-					<Separator :type="'Section'" :direction="'Vertical'" />
-
-					<ShelfItemInput icon="ParametricTextTool" title="Text Tool (T)" :active="activeTool === 'Text'" :action="() => selectTool('Text')" />
-					<ShelfItemInput icon="ParametricFillTool" title="Fill Tool (F)" :active="activeTool === 'Fill'" :action="() => selectTool('Fill')" />
-					<ShelfItemInput icon="ParametricGradientTool" title="Gradient Tool (H)" :active="activeTool === 'Gradient'" :action="() => selectTool('Gradient')" />
-
-					<Separator :type="'Section'" :direction="'Vertical'" />
-
-					<ShelfItemInput icon="RasterBrushTool" title="Brush Tool (B)" :active="activeTool === 'Brush'" :action="() => (dialog.comingSoon(), false) && selectTool('Brush')" />
-					<ShelfItemInput icon="RasterHealTool" title="Heal Tool (J)" :active="activeTool === 'Heal'" :action="() => (dialog.comingSoon(), false) && selectTool('Heal')" />
-					<ShelfItemInput icon="RasterCloneTool" title="Clone Tool (C)" :active="activeTool === 'Clone'" :action="() => (dialog.comingSoon(), false) && selectTool('Clone')" />
-					<ShelfItemInput icon="RasterPatchTool" title="Patch Tool" :active="activeTool === 'Patch'" :action="() => (dialog.comingSoon(), false) && selectTool('Patch')" />
-					<ShelfItemInput icon="RasterDetailTool" title="Detail Tool (D)" :active="activeTool === 'Detail'" :action="() => (dialog.comingSoon(), false) && selectTool('Detail')" />
-					<ShelfItemInput icon="RasterRelightTool" title="Relight Tool (O)" :active="activeTool === 'Relight'" :action="() => (dialog.comingSoon(), false) && selectTool('Relight')" />
+					<ShelfItemInput icon="GeneralSelectTool" title="Select Tool (V)" :active="activeTool === 'Select'" :action="() => selectTool('Select')" />
+					<ShelfItemInput icon="GeneralCropTool" title="Crop Tool" :active="activeTool === 'Crop'" :action="() => selectTool('Crop')" />
+					<ShelfItemInput icon="GeneralNavigateTool" title="Navigate Tool (Z)" :active="activeTool === 'Navigate'" :action="() => selectTool('Navigate')" />
+					<ShelfItemInput icon="GeneralEyedropperTool" title="Eyedropper Tool (I)" :active="activeTool === 'Eyedropper'" :action="() => selectTool('Eyedropper')" />
+					<ShelfItemInput icon="GeneralFillTool" title="Fill Tool (F)" :active="activeTool === 'Fill'" :action="() => selectTool('Fill')" />
+					<ShelfItemInput icon="GeneralGradientTool" title="Gradient Tool (H)" :active="activeTool === 'Gradient'" :action="() => selectTool('Gradient')" />
 
 					<Separator :type="'Section'" :direction="'Vertical'" />
 
@@ -46,6 +33,26 @@
 					<ShelfItemInput icon="VectorRectangleTool" title="Rectangle Tool (M)" :active="activeTool === 'Rectangle'" :action="() => selectTool('Rectangle')" />
 					<ShelfItemInput icon="VectorEllipseTool" title="Ellipse Tool (E)" :active="activeTool === 'Ellipse'" :action="() => selectTool('Ellipse')" />
 					<ShelfItemInput icon="VectorShapeTool" title="Shape Tool (Y)" :active="activeTool === 'Shape'" :action="() => selectTool('Shape')" />
+					<ShelfItemInput icon="VectorTextTool" title="Text Tool (T)" :active="activeTool === 'Text'" :action="() => selectTool('Text')" />
+
+					<Separator :type="'Section'" :direction="'Vertical'" />
+
+					<ShelfItemInput icon="RasterBrushTool" title="Coming Soon: Brush Tool (B)" :active="activeTool === 'Brush'" :action="() => (dialog.comingSoon(), false) && selectTool('Brush')" />
+					<ShelfItemInput icon="RasterHealTool" title="Coming Soon: Heal Tool (J)" :active="activeTool === 'Heal'" :action="() => (dialog.comingSoon(), false) && selectTool('Heal')" />
+					<ShelfItemInput icon="RasterCloneTool" title="Coming Soon: Clone Tool (C)" :active="activeTool === 'Clone'" :action="() => (dialog.comingSoon(), false) && selectTool('Clone')" />
+					<ShelfItemInput icon="RasterPatchTool" title="Coming Soon: Patch Tool" :active="activeTool === 'Patch'" :action="() => (dialog.comingSoon(), false) && selectTool('Patch')" />
+					<ShelfItemInput
+						icon="RasterDetailTool"
+						title="Coming Soon: Detail Tool (D)"
+						:active="activeTool === 'Detail'"
+						:action="() => (dialog.comingSoon(), false) && selectTool('Detail')"
+					/>
+					<ShelfItemInput
+						icon="RasterRelightTool"
+						title="Coming Soon: Relight Tool (O)"
+						:active="activeTool === 'Relight'"
+						:action="() => (dialog.comingSoon(), false) && selectTool('Relight')"
+					/>
 				</LayoutCol>
 
 				<LayoutCol class="spacer"></LayoutCol>
@@ -53,6 +60,7 @@
 				<LayoutCol class="working-colors">
 					<SwatchPairInput />
 					<LayoutRow class="swap-and-reset">
+						<!-- TODO: Remember to make these tooltip input hints customized to macOS also -->
 						<IconButton :action="swapWorkingColors" :icon="'Swap'" title="Swap (Shift+X)" :size="16" />
 						<IconButton :action="resetWorkingColors" :icon="'ResetColors'" title="Reset (Ctrl+Shift+X)" :size="16" />
 					</LayoutRow>
@@ -139,6 +147,31 @@
 
 			.tools {
 				flex: 0 1 auto;
+
+				.shelf-item-input[title^="Coming Soon"] {
+					opacity: 0.25;
+					transition: opacity 0.25s;
+
+					&:hover {
+						opacity: 1;
+					}
+				}
+
+				.color-solid {
+					fill: var(--color-f-white);
+				}
+
+				.color-general {
+					fill: var(--color-data-general);
+				}
+
+				.color-vector {
+					fill: var(--color-data-vector);
+				}
+
+				.color-raster {
+					fill: var(--color-data-raster);
+				}
 			}
 
 			.spacer {
@@ -433,6 +466,7 @@ export default defineComponent({
 			this.textInput.style.width = displayEditableTextbox.line_width ? `${displayEditableTextbox.line_width}px` : "max-content";
 			this.textInput.style.height = "auto";
 			this.textInput.style.fontSize = `${displayEditableTextbox.font_size}px`;
+			this.textInput.style.color = displayEditableTextbox.color.toRgbaCSS();
 
 			this.textInput.oninput = (): void => {
 				if (this.textInput) this.editor.instance.update_bounds(textInputCleanup(this.textInput.innerText));

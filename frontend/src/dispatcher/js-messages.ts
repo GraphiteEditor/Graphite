@@ -303,6 +303,9 @@ export class DisplayEditableTextbox extends JsMessage {
 	readonly line_width!: undefined | number;
 
 	readonly font_size!: number;
+
+	@Type(() => Color)
+	readonly color!: Color;
 }
 
 export class DisplayRemoveEditableTextbox extends JsMessage {}
@@ -366,7 +369,7 @@ export class LayerMetadata {
 	selected!: boolean;
 }
 
-export type LayerType = "Folder" | "Shape" | "Circle" | "Rect" | "Line" | "PolyLine" | "Ellipse";
+export type LayerType = "Folder" | "Image" | "Shape" | "Text";
 
 export class IndexedDbDocumentDetails extends DocumentDetails {
 	@Transform(({ value }: { value: BigInt }) => value.toString())
@@ -412,7 +415,7 @@ export function isWidgetSection(layoutRow: WidgetRow | WidgetSection): layoutRow
 	return Boolean((layoutRow as WidgetSection).layout);
 }
 
-export type WidgetKind = "NumberInput" | "Separator" | "IconButton" | "PopoverButton" | "OptionalInput" | "RadioInput" | "TextInput" | "TextLabel" | "IconLabel";
+export type WidgetKind = "NumberInput" | "Separator" | "IconButton" | "PopoverButton" | "OptionalInput" | "RadioInput" | "TextInput" | "TextLabel" | "IconLabel" | "ColorInput";
 
 export interface Widget {
 	kind: WidgetKind;
