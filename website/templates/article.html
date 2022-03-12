@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}Blog | {{ page.title }}.{% endblock title %}
+
+{% block head %}
+<link rel="stylesheet" href="/article.css">
+{% endblock head %}
+
+{% block content %}
+<section id="article" class="section-row">
+	<div class="section">
+		<div class="details">
+			<h2 class="headline">{{ page.title }}.</h2>
+			<span class="publication">By {{ page.extra.author }}. {{ page.date | date(format="%B %d, %Y", timezone="America/Los_Angeles") }}.</span>
+			<img class="banner" src="{{ page.extra.banner }}" />
+			<hr />
+		</div>
+		<article>
+			{{ page.content | safe }}
+		</article>
+	</div>
+</section>
+{% endblock content %}
