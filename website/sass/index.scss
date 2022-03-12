@@ -27,6 +27,18 @@
 	display: flex;
 	gap: calc(var(--font-size-link) * 0.8);
 	flex-wrap: wrap;
+	
+	div {
+		display: flex;
+		gap: calc(var(--font-size-link) * 0.8);
+		flex-direction: row;
+
+		img {
+			width: 48px;
+			display: block;
+		}
+	}
+
 }
 
 #hero-message {
@@ -172,7 +184,7 @@
 				height: 16px;
 				box-sizing: border-box;
 				border-radius: 50%;
-				border: 2px solid currentColor;
+				border: var(--border-thickness) solid currentColor;
 
 				&.active {
 					border: none;
@@ -205,7 +217,7 @@
 			margin-right: 40px;
 		}
 
-		.divider.divider {
+		hr {
 			width: calc(100% - (32px + 40px) * 2);
 			margin-left: auto;
 			margin-right: auto;
@@ -320,7 +332,7 @@
 					height: calc(var(--font-size-link) * 2);
 					font-size: calc(var(--font-size-link) * 0.9);
 					color: inherit;
-					border: 2px solid currentColor;
+					border: var(--border-thickness) solid currentColor;
 					outline: none;
 					margin: 0;
 					padding: 0 var(--font-size-link);
@@ -380,7 +392,26 @@
 	background-color: var(--color-mustard);
 	color: var(--color-navy);
 
-	a {
-		color: var(--color-crimson);
+	article {
+		display: flex;
+		flex-direction: column;
+		gap: 20px;
+		
+		.headline a {
+			text-decoration: none;
+			color: var(--color-navy);
+		}
+
+		.publication {
+			font-weight: 800;
+		}
+		
+		.summary {
+			overflow: hidden;
+			text-overflow: ellipsis;
+			display: -webkit-box;
+			-webkit-box-orient: vertical;
+			-webkit-line-clamp: 8;
+		}
 	}
 }
