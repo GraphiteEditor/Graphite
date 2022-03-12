@@ -1,6 +1,6 @@
-const NAV_BUTTON_INITIAL_FONT_SIZE = 36;
+const NAV_BUTTON_INITIAL_FONT_SIZE = 32;
 const RIPPLE_ANIMATION_MILLISECONDS = 100;
-const RIPPLE_WIDTH = 150;
+const RIPPLE_WIDTH = 140;
 const HANDLE_STRETCH = 0.4;
 
 let ripplesInitialized;
@@ -46,7 +46,7 @@ function initializeRipples() {
 			ripple.animationEndTime = now < stop ? now + elapsed : now + RIPPLE_ANIMATION_MILLISECONDS;
 
 			ripple.goingUp = goingUp;
-			animate();
+			animate(false);
 		};
 
 		ripple.element.addEventListener("pointerenter", () => updateTimings(true));
@@ -60,34 +60,35 @@ function initializeRipples() {
 		goingUp: true,
 	};
 
-	animate();
+	animate(false);
 }
 
 function animate(forceRefresh) {
 	if (!ripplesInitialized) return;
 
-	navButtonFontSize = Number.parseInt(window.getComputedStyle(navButtons[0]).fontSize) || 36;
+	navButtonFontSize = Number.parseInt(window.getComputedStyle(navButtons[0]).fontSize) || NAV_BUTTON_INITIAL_FONT_SIZE;
 	const mediaQueryScaleFactor = navButtonFontSize / NAV_BUTTON_INITIAL_FONT_SIZE;
 
 	const animateThisFrame = ripples.some((ripple) => ripple.animationStartTime && ripple.animationEndTime && Date.now() <= ripple.animationEndTime);
 	if (animateThisFrame || forceRefresh) {
 		setRipples(mediaQueryScaleFactor);
-		window.requestAnimationFrame(animate);
+		window.requestAnimationFrame(() => animate(false));
 	}
 }
 
 function setRipples(mediaQueryScaleFactor) {
+	const rippleHeight = fullRippleHeight * (mediaQueryScaleFactor * 0.5 + 0.5);
 	const rippleSvgRect = rippleSvg.getBoundingClientRect();
 	const rippleSvgLeft = rippleSvgRect.left;
 	const rippleSvgWidth = rippleSvgRect.width;
 
-	let path = `M 0,${fullRippleHeight + 3} `;
+	let path = `M 0,${rippleHeight + 3} `;
 
 	ripples.forEach((ripple) => {
 		if (!ripple.animationStartTime || !ripple.animationEndTime) return;
 
 		const t = Math.min((Date.now() - ripple.animationStartTime) / (ripple.animationEndTime - ripple.animationStartTime), 1);
-		const height = fullRippleHeight * (ripple.goingUp ? ease(t) : 1 - ease(t));
+		const height = rippleHeight * (ripple.goingUp ? ease(t) : 1 - ease(t));
 
 		const buttonRect = ripple.element.getBoundingClientRect();
 
@@ -100,8 +101,8 @@ function setRipples(mediaQueryScaleFactor) {
 		const rippleRadius = RIPPLE_WIDTH / 2 * mediaQueryScaleFactor;
 		const handleRadius = rippleRadius * HANDLE_STRETCH;
 
-		path += `L ${rippleStartX},${fullRippleHeight + 3} `;
-		path += `c ${handleRadius},0 ${rippleRadius - handleRadius},-${height} ${rippleRadius},-${height} `;
+		path += `L ${rippleStartX},${rippleHeight + 3} `;
+		path += `c ${handleRadius},0 ${rippleRadius - handleRadius},${-height} ${rippleRadius},${-height} `;
 		path += `s ${rippleRadius - handleRadius},${height} ${rippleRadius},${height} `;
 	});
 
