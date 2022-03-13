@@ -124,7 +124,7 @@ impl From<&LayerDataType> for LayerDataTypeDiscriminant {
 			Folder(_) => LayerDataTypeDiscriminant::Folder,
 			Shape(_) => LayerDataTypeDiscriminant::Shape,
 			Text(_) => LayerDataTypeDiscriminant::Text,
-			Bitmap(_) => LayerDataTypeDiscriminant::Image,
+			Image(_) => LayerDataTypeDiscriminant::Image,
 		}
 	}
 }

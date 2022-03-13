@@ -497,10 +497,10 @@ impl JsEditorHandle {
 		self.dispatch(message);
 	}
 
-	/// Pastes a bitmap image
-	pub fn paste_bitmap(&self, mime: String, image_data: Vec<u8>, mouse_x: f64, mouse_y: f64) {
+	/// Pastes an image
+	pub fn paste_image(&self, mime: String, image_data: Vec<u8>, mouse_x: f64, mouse_y: f64) {
 		let mouse = (mouse_x, mouse_y);
-		let message = DocumentMessage::PasteBitmap { mime, image_data, mouse };
+		let message = DocumentMessage::PasteImage { mime, image_data, mouse };
 		self.dispatch(message);
 	}
 

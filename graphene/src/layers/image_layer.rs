@@ -13,14 +13,14 @@ fn glam_to_kurbo(transform: DAffine2) -> Affine {
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
-pub struct BitmapLayer {
+pub struct ImageLayer {
 	pub mime: String,
 	pub image_data: Vec<u8>,
 	#[serde(skip)]
 	pub blob_url: Option<String>,
 }
 
-impl LayerData for BitmapLayer {
+impl LayerData for ImageLayer {
 	fn render(&mut self, svg: &mut String, _svg_defs: &mut String, transforms: &mut Vec<DAffine2>, view_mode: ViewMode) {
 		let transform = self.transform(transforms, view_mode);
 		let inverse = transform.inverse();
@@ -72,7 +72,7 @@ impl LayerData for BitmapLayer {
 	}
 }
 
-impl BitmapLayer {
+impl ImageLayer {
 	pub fn new(mime: String, image_data: Vec<u8>) -> Self {
 		let blob_url = None;
 		Self { mime, image_data, blob_url }

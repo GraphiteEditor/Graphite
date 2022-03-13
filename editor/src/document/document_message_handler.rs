@@ -483,7 +483,7 @@ impl DocumentMessageHandler {
 						path.pop();
 					}
 				}
-				LayerDataType::Bitmap(img) => responses.push_front(
+				LayerDataType::Image(img) => responses.push_front(
 					FrontendMessage::UpdateImageData {
 						path: path.clone(),
 						image_data: img.image_data.clone(),
@@ -952,7 +952,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 				}
 				responses.push_back(ToolMessage::DocumentIsDirty.into());
 			}
-			PasteBitmap { mime, image_data, mouse } => {
+			PasteImage { mime, image_data, mouse } => {
 				let path = vec![generate_uuid()];
 				responses.push_front(
 					FrontendMessage::UpdateImageData {
@@ -963,7 +963,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 					.into(),
 				);
 				responses.push_back(
-					DocumentOperation::AddBitmap {
+					DocumentOperation::AddImage {
 						path: path.clone(),
 						transform: DAffine2::ZERO.to_cols_array(),
 						insert_index: -1,

@@ -1,8 +1,8 @@
 use crate::boolean_ops::boolean_operation;
 use crate::intersection::Quad;
 use crate::layers;
-use crate::layers::bitmap_layer::BitmapLayer;
 use crate::layers::folder_layer::FolderLayer;
+use crate::layers::image_layer::ImageLayer;
 use crate::layers::layer_info::{Layer, LayerData, LayerDataType};
 use crate::layers::shape_layer::ShapeLayer;
 use crate::layers::style::ViewMode;
@@ -503,14 +503,14 @@ impl Document {
 
 				Some([vec![DocumentChanged, CreatedLayer { path: path.clone() }], update_thumbnails_upstream(&path)].concat())
 			}
-			Operation::AddBitmap {
+			Operation::AddImage {
 				path,
 				transform,
 				insert_index,
 				image_data,
 				mime,
 			} => {
-				let layer = Layer::new(LayerDataType::Bitmap(BitmapLayer::new(mime, image_data)), transform);
+				let layer = Layer::new(LayerDataType::Image(ImageLayer::new(mime, image_data)), transform);
 
 				self.set_layer(&path, layer, insert_index)?;
 

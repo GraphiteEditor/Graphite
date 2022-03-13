@@ -344,7 +344,7 @@ export default defineComponent({
 						console.log("Converted to u8 array in: ", performance.now() - start2);
 
 						const start3 = performance.now();
-						this.editor.instance.paste_bitmap(file.type, u8Array, e.clientX, e.clientY);
+						this.editor.instance.paste_image(file.type, u8Array, e.clientX, e.clientY);
 						console.log("Wasm handled in: ", performance.now() - start3);
 					});
 				}

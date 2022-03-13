@@ -53,7 +53,7 @@ pub enum Operation {
 		style: style::PathStyle,
 		size: f64,
 	},
-	AddBitmap {
+	AddImage {
 		path: Vec<LayerId>,
 		transform: [f64; 6],
 		insert_index: isize,

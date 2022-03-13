@@ -225,7 +225,7 @@ fn register_layer_properties(layer: &Layer, responses: &mut VecDeque<Message>) {
 					icon: "NodeText".into(),
 					gap_after: true,
 				})),
-				LayerDataType::Bitmap(_) => WidgetHolder::new(Widget::IconLabel(IconLabel {
+				LayerDataType::Image(_) => WidgetHolder::new(Widget::IconLabel(IconLabel {
 					icon: "NodeImage".into(),
 					gap_after: true,
 				})),

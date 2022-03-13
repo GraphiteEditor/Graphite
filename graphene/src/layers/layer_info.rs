@@ -1,6 +1,6 @@
-use super::bitmap_layer::BitmapLayer;
 use super::blend_mode::BlendMode;
 use super::folder_layer::FolderLayer;
+use super::image_layer::ImageLayer;
 use super::shape_layer::ShapeLayer;
 use super::style::{PathStyle, ViewMode};
 use super::text_layer::TextLayer;
@@ -17,7 +17,7 @@ pub enum LayerDataType {
 	Folder(FolderLayer),
 	Shape(ShapeLayer),
 	Text(TextLayer),
-	Bitmap(BitmapLayer),
+	Image(ImageLayer),
 }
 
 impl LayerDataType {
@@ -26,7 +26,7 @@ impl LayerDataType {
 			LayerDataType::Shape(s) => s,
 			LayerDataType::Folder(f) => f,
 			LayerDataType::Text(t) => t,
-			LayerDataType::Bitmap(b) => b,
+			LayerDataType::Image(b) => b,
 		}
 	}
 
@@ -35,7 +35,7 @@ impl LayerDataType {
 			LayerDataType::Shape(s) => s,
 			LayerDataType::Folder(f) => f,
 			LayerDataType::Text(t) => t,
-			LayerDataType::Bitmap(b) => b,
+			LayerDataType::Image(b) => b,
 		}
 	}
 }
@@ -186,9 +186,9 @@ impl Layer {
 		}
 	}
 
-	pub fn as_image_mut(&mut self) -> Result<&mut BitmapLayer, DocumentError> {
+	pub fn as_image_mut(&mut self) -> Result<&mut ImageLayer, DocumentError> {
 		match &mut self.data {
-			LayerDataType::Bitmap(img) => Ok(img),
+			LayerDataType::Image(img) => Ok(img),
 			_ => Err(DocumentError::NotAnImage),
 		}
 	}

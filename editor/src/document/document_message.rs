@@ -79,7 +79,7 @@ pub enum DocumentMessage {
 		delta_x: f64,
 		delta_y: f64,
 	},
-	PasteBitmap {
+	PasteImage {
 		mime: String,
 		image_data: Vec<u8>,
 		mouse: (f64, f64),
