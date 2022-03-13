@@ -70,6 +70,7 @@ pub enum DocumentMessage {
 	LayerChanged {
 		affected_layer_path: Vec<LayerId>,
 	},
+	LoadImageData,
 	MoveSelectedLayersTo {
 		folder_path: Vec<LayerId>,
 		insert_index: isize,
@@ -80,7 +81,8 @@ pub enum DocumentMessage {
 		delta_y: f64,
 	},
 	PasteBitmap {
-		image_data: String,
+		mime: String,
+		image_data: Vec<u8>,
 		mouse: (f64, f64),
 	},
 	Redo,

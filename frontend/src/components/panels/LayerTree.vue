@@ -75,8 +75,8 @@
 					>
 						<LayoutRow class="layer-type-icon">
 							<IconLabel v-if="listing.entry.layer_type === 'Folder'" :icon="'NodeFolder'" title="Folder" />
-							<IconLabel v-else-if="listing.entry.layer_type === 'Image'" :icon="'NodeImage'" title="Path" />
-							<IconLabel v-else-if="listing.entry.layer_type === 'Shape'" :icon="'NodeShape'" title="Path" />
+							<IconLabel v-else-if="listing.entry.layer_type === 'Image'" :icon="'NodeImage'" title="Image" />
+							<IconLabel v-else-if="listing.entry.layer_type === 'Shape'" :icon="'NodeShape'" title="Shape" />
 							<IconLabel v-else-if="listing.entry.layer_type === 'Text'" :icon="'NodeText'" title="Path" />
 						</LayoutRow>
 						<LayoutRow class="layer-name" @dblclick="() => onEditLayerName(listing)">

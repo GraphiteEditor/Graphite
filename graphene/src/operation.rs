@@ -57,7 +57,8 @@ pub enum Operation {
 		path: Vec<LayerId>,
 		transform: [f64; 6],
 		insert_index: isize,
-		image_data: String,
+		mime: String,
+		image_data: Vec<u8>,
 	},
 	SetTextEditability {
 		path: Vec<LayerId>,

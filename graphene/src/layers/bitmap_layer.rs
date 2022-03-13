@@ -14,7 +14,10 @@ fn glam_to_kurbo(transform: DAffine2) -> Affine {
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub struct BitmapLayer {
-	pub image_data: String,
+	pub mime: String,
+	pub image_data: Vec<u8>,
+	#[serde(skip)]
+	pub blob_url: Option<String>,
 }
 
 impl LayerData for BitmapLayer {
@@ -39,7 +42,7 @@ impl LayerData for BitmapLayer {
 			.enumerate()
 			.map(|(i, entry)| entry.to_string() + if i == 5 { "" } else { "," })
 			.collect::<String>();
-		let _ = write!(svg, r#"<image width="100" height="100" transform="matrix({})" xlink:href="{}" />"#, svg_transform, self.image_data);
+		let _ = write!(svg, r#"<image width="100" height="100" transform="matrix({})" xlink:href="{}" />"#, svg_transform, "");
 		let _ = svg.write_str("</g>");
 	}
 
@@ -63,8 +66,9 @@ impl LayerData for BitmapLayer {
 }
 
 impl BitmapLayer {
-	pub fn new(image_data: String) -> Self {
-		Self { image_data }
+	pub fn new(mime: String, image_data: Vec<u8>) -> Self {
+		let blob_url = None;
+		Self { mime, image_data, blob_url }
 	}
 
 	pub fn transform(&self, transforms: &[DAffine2], mode: ViewMode) -> DAffine2 {

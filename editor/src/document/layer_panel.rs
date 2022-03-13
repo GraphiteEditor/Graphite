@@ -100,7 +100,7 @@ pub enum LayerDataTypeDiscriminant {
 	Folder,
 	Shape,
 	Text,
-	Bitmap,
+	Image,
 }
 
 impl fmt::Display for LayerDataTypeDiscriminant {
@@ -109,7 +109,7 @@ impl fmt::Display for LayerDataTypeDiscriminant {
 			LayerDataTypeDiscriminant::Folder => "Folder",
 			LayerDataTypeDiscriminant::Shape => "Shape",
 			LayerDataTypeDiscriminant::Text => "Text",
-			&LayerDataTypeDiscriminant::Bitmap => "Bitmap",
+			&LayerDataTypeDiscriminant::Image => "Image",
 		};
 
 		formatter.write_str(name)
@@ -124,7 +124,7 @@ impl From<&LayerDataType> for LayerDataTypeDiscriminant {
 			Folder(_) => LayerDataTypeDiscriminant::Folder,
 			Shape(_) => LayerDataTypeDiscriminant::Shape,
 			Text(_) => LayerDataTypeDiscriminant::Text,
-			Bitmap(_) => LayerDataTypeDiscriminant::Bitmap,
+			Bitmap(_) => LayerDataTypeDiscriminant::Image,
 		}
 	}
 }

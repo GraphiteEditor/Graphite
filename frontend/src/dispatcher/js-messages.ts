@@ -308,6 +308,14 @@ export class DisplayEditableTextbox extends JsMessage {
 	readonly color!: Color;
 }
 
+export class UpdateImageData extends JsMessage {
+	readonly path!: BigUint64Array;
+
+	readonly mime!: string;
+
+	readonly image_data!: Uint8Array;
+}
+
 export class DisplayRemoveEditableTextbox extends JsMessage {}
 
 export class UpdateDocumentLayer extends JsMessage {
@@ -504,6 +512,7 @@ export const messageConstructors: Record<string, MessageMaker> = {
 	DisplayDialogPanic,
 	DisplayDocumentLayerTreeStructure: newDisplayDocumentLayerTreeStructure,
 	DisplayEditableTextbox,
+	UpdateImageData,
 	DisplayRemoveEditableTextbox,
 	TriggerFileDownload,
 	TriggerFileUpload,

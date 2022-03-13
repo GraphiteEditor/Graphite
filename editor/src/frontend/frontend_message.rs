@@ -43,6 +43,7 @@ pub enum FrontendMessage {
 	UpdateDocumentOverlays { svg: String },
 	UpdateDocumentRulers { origin: (f64, f64), spacing: f64, interval: f64 },
 	UpdateDocumentScrollbars { position: (f64, f64), size: (f64, f64), multiplier: (f64, f64) },
+	UpdateImageData { path: Vec<LayerId>, mime: String, image_data: Vec<u8> },
 	UpdateInputHints { hint_data: HintData },
 	UpdateMouseCursor { cursor: MouseCursorIcon },
 	UpdateOpenDocumentsList { open_documents: Vec<FrontendDocumentDetails> },

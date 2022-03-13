@@ -13,6 +13,7 @@
 
 			<WidgetLayout :layout="documentBarLayout" class="right side document-bar" />
 		</LayoutRow>
+		<img style="width: 100px; height: 100px" id="display_test" />
 		<LayoutRow class="shelf-and-viewport">
 			<LayoutCol class="shelf">
 				<LayoutCol class="tools" :scrollableY="true">
@@ -281,6 +282,7 @@ import {
 	UpdateToolOptionsLayout,
 	defaultWidgetLayout,
 	UpdateDocumentBarLayout,
+	UpdateImageData,
 	TriggerTextCommit,
 	TriggerViewportResize,
 	DisplayRemoveEditableTextbox,
@@ -335,14 +337,15 @@ export default defineComponent({
 				const item = dataTransfer.items[index];
 				const file = item.getAsFile();
 				if (file && file.type.startsWith("image")) {
-					const reader = new FileReader();
+					file.arrayBuffer().then((buffer): void => {
+						this.editor.instance.paste_bitmap(file.type, new Uint8Array(buffer), e.clientX, e.clientY);
 
-					reader.onloadend = (): void => {
-						const { result } = reader;
-						if (result) this.editor.instance.paste_bitmap(result.toString(), e.clientX, e.clientY);
-					};
-
-					reader.readAsDataURL(file);
+						// const el = document.getElementById("display_test");
+						// if (el instanceof HTMLImageElement) {
+						// 	console.log("Real: ", buffer);
+						// 	el.src = URL.createObjectURL(new Blob([buffer]));
+						// }
+					});
 				}
 			}
 		},
@@ -490,6 +493,16 @@ export default defineComponent({
 			this.documentBarLayout = updateDocumentBarLayout;
 		});
 		this.editor.dispatcher.subscribeJsMessage(TriggerViewportResize, this.viewportResize);
+
+		this.editor.dispatcher.subscribeJsMessage(UpdateImageData, (updateImageData) => {
+			// Using updateImageData.image_data.buffer returns undefined for some reason?
+			const blob = new Blob([new Uint8Array(updateImageData.image_data.values()).buffer]);
+			const url = URL.createObjectURL(blob);
+			const el = document.getElementById("display_test");
+			if (el instanceof HTMLImageElement) {
+				el.src = url;
+			}
+		});
 
 		// TODO(mfish33): Replace with initialization system Issue:#524
 		// Get initial Document Bar

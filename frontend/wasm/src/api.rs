@@ -490,10 +490,17 @@ impl JsEditorHandle {
 		self.dispatch(message);
 	}
 
+	/// Sends the js all of the blob data for images in the document
+	pub fn load_document_blob_data(&self) {
+		let message = DocumentMessage::LoadImageData;
+		self.dispatch(message);
+	}
+
 	/// Pastes a bitmap image
-	pub fn paste_bitmap(&self, image_data: String, mouse_x: f64, mouse_y: f64) {
+	pub fn paste_bitmap(&self, mime: String, image_data: Vec<u8>, mouse_x: f64, mouse_y: f64) {
+		log::info!("Data {:?}", image_data);
 		let mouse = (mouse_x, mouse_y);
-		let message = DocumentMessage::PasteBitmap { image_data, mouse };
+		let message = DocumentMessage::PasteBitmap { mime, image_data, mouse };
 		self.dispatch(message);
 	}
 

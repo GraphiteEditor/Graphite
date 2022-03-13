@@ -890,6 +890,30 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 				}
 				responses.push_back(PropertiesPanelMessage::CheckSelectedWasUpdated { path: affected_layer_path }.into());
 			}
+			LoadImageData => {
+				log::info!("Load image data ex");
+				fn walk_layers(data: &mut LayerDataType, path: &mut Vec<LayerId>, responses: &mut VecDeque<Message>) {
+					match data {
+						LayerDataType::Folder(f) => {
+							for (id, layer) in f.layers_mut_with_ids() {
+								path.push(*id);
+								walk_layers(&mut layer.data, path, responses);
+								path.pop();
+							}
+						}
+						LayerDataType::Bitmap(img) => responses.push_front(
+							FrontendMessage::UpdateImageData {
+								path: path.clone(),
+								image_data: img.image_data.clone(),
+								mime: img.mime.clone(),
+							}
+							.into(),
+						),
+						_ => {}
+					}
+				}
+				walk_layers(&mut self.graphene_document.root.data, &mut Vec::new(), responses);
+			}
 			MoveSelectedLayersTo {
 				folder_path,
 				insert_index,
@@ -926,13 +950,22 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 				}
 				responses.push_back(ToolMessage::DocumentIsDirty.into());
 			}
-			PasteBitmap { image_data, mouse } => {
+			PasteBitmap { mime, image_data, mouse } => {
 				let path = vec![generate_uuid()];
+				responses.push_front(
+					FrontendMessage::UpdateImageData {
+						path: path.clone(),
+						image_data: image_data.clone(),
+						mime: mime.clone(),
+					}
+					.into(),
+				);
 				responses.push_back(
 					DocumentOperation::AddBitmap {
 						path: path.clone(),
 						transform: DAffine2::ZERO.to_cols_array(),
 						insert_index: -1,
+						mime,
 						image_data,
 					}
 					.into(),
@@ -1271,6 +1304,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 			DebugPrintDocument,
 			ZoomCanvasToFitAll,
 			CreateEmptyFolder,
+			LoadImageData,
 		);
 
 		if self.layer_metadata.values().any(|data| data.selected) {

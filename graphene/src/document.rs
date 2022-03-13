@@ -508,8 +508,9 @@ impl Document {
 				transform,
 				insert_index,
 				image_data,
+				mime,
 			} => {
-				let layer = Layer::new(LayerDataType::Bitmap(BitmapLayer::new(image_data)), transform);
+				let layer = Layer::new(LayerDataType::Bitmap(BitmapLayer::new(mime, image_data)), transform);
 
 				self.set_layer(&path, layer, insert_index)?;
 
