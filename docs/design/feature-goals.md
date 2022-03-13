@@ -20,20 +20,14 @@
 	- Web/digital-focused graphics (marketing, branding, infographics, ads, etc.)
 	- Templates filled with file/spreadsheet data (e.g. prototyping/iterating components of a board/card game)
 - Illustration
-- Digital painting
-- Icon design
-- Logo design
-- UI/UX design
-	- Mockups
-	- Wireframing
+	- Digital painting
+	- Logo and icon design
 - Desktop publishing
 	- Templates filled with Markdown/HTML content with export to PDF
-- Font design
 - Video compositing
 - Data Visualization
 	- Data-powered graphs/charts/etc.
 	- Automated rendering with live/often-updated data
-- Traditional Animation
 - 3D/Gamedev
 	- PBR procedural material authorship
 	- 3D model UV map texturing
