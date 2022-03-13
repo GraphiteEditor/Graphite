@@ -704,6 +704,11 @@ impl Document {
 				self.mark_as_dirty(&path)?;
 				Some([vec![DocumentChanged], update_thumbnails_upstream(&path)].concat())
 			}
+			Operation::SetImageBlobUrl { path, blob_url } => {
+				self.layer_mut(&path).expect("Blob url for invalid layer").as_image_mut().unwrap().blob_url = Some(blob_url);
+				Some([vec![DocumentChanged], update_thumbnails_upstream(&path)].concat())
+			}
+
 			Operation::SetLayerTransformInViewport { path, transform } => {
 				let transform = DAffine2::from_cols_array(&transform);
 				self.set_transform_relative_to_viewport(&path, transform)?;

@@ -36,13 +36,20 @@ impl LayerData for BitmapLayer {
 		});
 		let _ = svg.write_str(r#")">"#);
 
+		log::info!("{:?}", self.blob_url);
+
 		let svg_transform = transform
 			.to_cols_array()
 			.iter()
 			.enumerate()
 			.map(|(i, entry)| entry.to_string() + if i == 5 { "" } else { "," })
 			.collect::<String>();
-		let _ = write!(svg, r#"<image width="100" height="100" transform="matrix({})" xlink:href="{}" />"#, svg_transform, "");
+		let _ = write!(
+			svg,
+			r#"<image width="100" height="100" transform="matrix({})" xlink:href="{}" />"#,
+			svg_transform,
+			self.blob_url.as_ref().unwrap_or(&String::new())
+		);
 		let _ = svg.write_str("</g>");
 	}
 

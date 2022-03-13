@@ -60,6 +60,10 @@ pub enum Operation {
 		mime: String,
 		image_data: Vec<u8>,
 	},
+	SetImageBlobUrl {
+		path: Vec<LayerId>,
+		blob_url: String,
+	},
 	SetTextEditability {
 		path: Vec<LayerId>,
 		editable: bool,

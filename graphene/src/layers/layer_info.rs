@@ -186,6 +186,13 @@ impl Layer {
 		}
 	}
 
+	pub fn as_image_mut(&mut self) -> Result<&mut BitmapLayer, DocumentError> {
+		match &mut self.data {
+			LayerDataType::Bitmap(img) => Ok(img),
+			_ => Err(DocumentError::NotAnImage),
+		}
+	}
+
 	pub fn style(&self) -> Result<&PathStyle, DocumentError> {
 		match &self.data {
 			LayerDataType::Shape(s) => Ok(&s.style),

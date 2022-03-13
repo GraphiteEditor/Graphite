@@ -13,7 +13,6 @@
 
 			<WidgetLayout :layout="documentBarLayout" class="right side document-bar" />
 		</LayoutRow>
-		<img style="width: 100px; height: 100px" id="display_test" />
 		<LayoutRow class="shelf-and-viewport">
 			<LayoutCol class="shelf">
 				<LayoutCol class="tools" :scrollableY="true">
@@ -333,18 +332,20 @@ export default defineComponent({
 			if (!dataTransfer) return;
 			e.preventDefault();
 
+			const start = performance.now();
 			for (let index = 0; index < dataTransfer.items.length; index += 1) {
 				const item = dataTransfer.items[index];
 				const file = item.getAsFile();
 				if (file && file.type.startsWith("image")) {
 					file.arrayBuffer().then((buffer): void => {
-						this.editor.instance.paste_bitmap(file.type, new Uint8Array(buffer), e.clientX, e.clientY);
+						console.log("Loaded the file in: ", performance.now() - start);
+						const start2 = performance.now();
+						const u8Array = new Uint8Array(buffer);
+						console.log("Converted to u8 array in: ", performance.now() - start2);
 
-						// const el = document.getElementById("display_test");
-						// if (el instanceof HTMLImageElement) {
-						// 	console.log("Real: ", buffer);
-						// 	el.src = URL.createObjectURL(new Blob([buffer]));
-						// }
+						const start3 = performance.now();
+						this.editor.instance.paste_bitmap(file.type, u8Array, e.clientX, e.clientY);
+						console.log("Wasm handled in: ", performance.now() - start3);
 					});
 				}
 			}
@@ -496,12 +497,13 @@ export default defineComponent({
 
 		this.editor.dispatcher.subscribeJsMessage(UpdateImageData, (updateImageData) => {
 			// Using updateImageData.image_data.buffer returns undefined for some reason?
-			const blob = new Blob([new Uint8Array(updateImageData.image_data.values()).buffer]);
+			const start = performance.now();
+			const blob = new Blob([new Uint8Array(updateImageData.image_data.values()).buffer], { type: updateImageData.mime });
+			console.log("Created blob in: ", performance.now() - start);
+			const start2 = performance.now();
 			const url = URL.createObjectURL(blob);
-			const el = document.getElementById("display_test");
-			if (el instanceof HTMLImageElement) {
-				el.src = url;
-			}
+			console.log("Created url in: ", performance.now() - start2);
+			this.editor.instance.set_image_blob_url(updateImageData.path, url);
 		});
 
 		// TODO(mfish33): Replace with initialization system Issue:#524
