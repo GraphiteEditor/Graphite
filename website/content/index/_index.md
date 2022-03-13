@@ -1,4 +1,4 @@
 +++
-title = "Redefining state-of-the-art graphics editing."
+title = ""
 template = "index.html"
 +++
