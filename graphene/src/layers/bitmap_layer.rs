@@ -36,7 +36,7 @@ impl LayerData for BitmapLayer {
 		});
 		let _ = svg.write_str(r#")">"#);
 
-		log::info!("{:?}", self.blob_url);
+		log::info!("Blob url: {:?}", self.blob_url);
 
 		let svg_transform = transform
 			.to_cols_array()

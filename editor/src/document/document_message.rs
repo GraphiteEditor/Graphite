@@ -70,7 +70,6 @@ pub enum DocumentMessage {
 	LayerChanged {
 		affected_layer_path: Vec<LayerId>,
 	},
-	LoadImageData,
 	MoveSelectedLayersTo {
 		folder_path: Vec<LayerId>,
 		insert_index: isize,

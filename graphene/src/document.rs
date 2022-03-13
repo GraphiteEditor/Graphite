@@ -706,7 +706,8 @@ impl Document {
 			}
 			Operation::SetImageBlobUrl { path, blob_url } => {
 				self.layer_mut(&path).expect("Blob url for invalid layer").as_image_mut().unwrap().blob_url = Some(blob_url);
-				Some([vec![DocumentChanged], update_thumbnails_upstream(&path)].concat())
+				self.mark_as_dirty(&path)?;
+				Some([vec![DocumentChanged, LayerChanged { path: path.clone() }], update_thumbnails_upstream(&path)].concat())
 			}
 
 			Operation::SetLayerTransformInViewport { path, transform } => {

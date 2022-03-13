@@ -53,7 +53,7 @@ impl PortfolioMessageHandler {
 	}
 
 	// TODO Fix how this doesn't preserve tab order upon loading new document from file>load
-	fn load_document(&mut self, new_document: DocumentMessageHandler, document_id: u64, replace_first_empty: bool, responses: &mut VecDeque<Message>) {
+	fn load_document(&mut self, mut new_document: DocumentMessageHandler, document_id: u64, replace_first_empty: bool, responses: &mut VecDeque<Message>) {
 		// Special case when loading a document on an empty page
 		if replace_first_empty && self.active_document().is_unmodified_default() {
 			responses.push_back(ToolMessage::AbortCurrentTool.into());
@@ -77,6 +77,8 @@ impl PortfolioMessageHandler {
 				.map(|entry| FrontendMessage::UpdateDocumentLayer { data: entry }.into())
 				.collect::<Vec<_>>(),
 		);
+
+		new_document.load_image_data(responses);
 
 		self.documents.insert(document_id, new_document);
 
