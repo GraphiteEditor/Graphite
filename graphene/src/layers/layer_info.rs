@@ -186,7 +186,7 @@ impl Layer {
 		match &self.data {
 			LayerDataType::Shape(s) => Ok(&s.style),
 			LayerDataType::Text(t) => Ok(&t.style),
-			_ => return Err(DocumentError::NotAShape),
+			_ => Err(DocumentError::NotAShape),
 		}
 	}
 
@@ -194,7 +194,7 @@ impl Layer {
 		match &mut self.data {
 			LayerDataType::Shape(s) => Ok(&mut s.style),
 			LayerDataType::Text(t) => Ok(&mut t.style),
-			_ => return Err(DocumentError::NotAShape),
+			_ => Err(DocumentError::NotAShape),
 		}
 	}
 }

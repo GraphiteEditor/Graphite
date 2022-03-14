@@ -66,7 +66,7 @@ impl<'a> Iterator for WidgetIter<'a> {
 	type Item = &'a WidgetHolder;
 
 	fn next(&mut self) -> Option<Self::Item> {
-		if let Some(item) = self.current_slice.map(|slice| slice.first()).flatten() {
+		if let Some(item) = self.current_slice.and_then(|slice| slice.first()) {
 			self.current_slice = Some(&self.current_slice.unwrap()[1..]);
 			return Some(item);
 		}
@@ -97,7 +97,7 @@ impl<'a> Iterator for WidgetIterMut<'a> {
 	type Item = &'a mut WidgetHolder;
 
 	fn next(&mut self) -> Option<Self::Item> {
-		if let Some((first, rest)) = self.current_slice.take().map(|slice| slice.split_first_mut()).flatten() {
+		if let Some((first, rest)) = self.current_slice.take().and_then(|slice| slice.split_first_mut()) {
 			self.current_slice = Some(rest);
 			return Some(first);
 		};
