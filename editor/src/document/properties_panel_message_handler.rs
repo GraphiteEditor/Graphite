@@ -91,7 +91,7 @@ pub struct PropertiesPanelMessageHandler {
 
 impl PropertiesPanelMessageHandler {
 	fn matches_selected(&self, path: &[LayerId]) -> bool {
-		let last_active_path = self.active_path.as_ref().map(|v| v.last().copied()).flatten();
+		let last_active_path = self.active_path.as_ref().and_then(|v| v.last().copied());
 		let last_modified = path.last().copied();
 		matches!((last_active_path, last_modified), (Some(active_last), Some(modified_last)) if active_last == modified_last)
 	}
