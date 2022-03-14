@@ -288,7 +288,7 @@ impl Fsm for GradientToolFsmState {
 							let dragging_start = data
 								.selected_gradient
 								.as_ref()
-								.map_or(None, |selected| if selected.path == path { Some(selected.dragging_start) } else { None });
+								.and_then(|selected| if selected.path == path { Some(selected.dragging_start) } else { None });
 							data.gradient_overlays.push(GradientOverlay::new(gradient, dragging_start, path, layer, document, responses))
 						}
 					}
@@ -308,7 +308,7 @@ impl Fsm for GradientToolFsmState {
 							start_snap(&mut data.snap_handler, document, document.graphene_document.layer(&overlay.path).unwrap(), &overlay.path);
 							data.selected_gradient = Some(SelectedGradient {
 								path: overlay.path.clone(),
-								transform: overlay.transform.clone(),
+								transform: overlay.transform,
 								gradient: overlay.gradient.clone(),
 								dragging_start: true,
 							})
@@ -318,7 +318,7 @@ impl Fsm for GradientToolFsmState {
 							start_snap(&mut data.snap_handler, document, document.graphene_document.layer(&overlay.path).unwrap(), &overlay.path);
 							data.selected_gradient = Some(SelectedGradient {
 								path: overlay.path.clone(),
-								transform: overlay.transform.clone(),
+								transform: overlay.transform,
 								gradient: overlay.gradient.clone(),
 								dragging_start: false,
 							})
