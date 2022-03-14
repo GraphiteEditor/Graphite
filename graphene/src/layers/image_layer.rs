@@ -36,8 +36,6 @@ impl LayerData for ImageLayer {
 		});
 		let _ = svg.write_str(r#")">"#);
 
-		log::info!("Blob url: {:?}", self.blob_url);
-
 		let svg_transform = transform
 			.to_cols_array()
 			.iter()

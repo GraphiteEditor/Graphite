@@ -332,20 +332,14 @@ export default defineComponent({
 			if (!dataTransfer) return;
 			e.preventDefault();
 
-			const start = performance.now();
 			for (let index = 0; index < dataTransfer.items.length; index += 1) {
 				const item = dataTransfer.items[index];
 				const file = item.getAsFile();
 				if (file && file.type.startsWith("image")) {
 					file.arrayBuffer().then((buffer): void => {
-						console.log("Loaded the file in: ", performance.now() - start);
-						const start2 = performance.now();
 						const u8Array = new Uint8Array(buffer);
-						console.log("Converted to u8 array in: ", performance.now() - start2);
 
-						const start3 = performance.now();
 						this.editor.instance.paste_image(file.type, u8Array, e.clientX, e.clientY);
-						console.log("Wasm handled in: ", performance.now() - start3);
 					});
 				}
 			}
@@ -498,12 +492,8 @@ export default defineComponent({
 		this.editor.dispatcher.subscribeJsMessage(UpdateImageData, (updateImageData) => {
 			updateImageData.image_data.forEach((element) => {
 				// Using updateImageData.image_data.buffer returns undefined for some reason?
-				const start = performance.now();
 				const blob = new Blob([new Uint8Array(element.image_data.values()).buffer], { type: element.mime });
-				console.log("Created blob in: ", performance.now() - start);
-				const start2 = performance.now();
 				const url = URL.createObjectURL(blob);
-				console.log("Created url in: ", performance.now() - start2);
 				this.editor.instance.set_image_blob_url(element.path, url);
 			});
 		});

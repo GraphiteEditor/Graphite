@@ -25,7 +25,7 @@ pub fn init() {
 	panic::set_hook(Box::new(panic_hook));
 
 	log::set_logger(&LOGGER).expect("Failed to set logger");
-	log::set_max_level(log::LevelFilter::Trace);
+	log::set_max_level(log::LevelFilter::Debug);
 }
 
 // When a panic occurs, close up shop before the backend dies
