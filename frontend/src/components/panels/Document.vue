@@ -496,14 +496,16 @@ export default defineComponent({
 		this.editor.dispatcher.subscribeJsMessage(TriggerViewportResize, this.viewportResize);
 
 		this.editor.dispatcher.subscribeJsMessage(UpdateImageData, (updateImageData) => {
-			// Using updateImageData.image_data.buffer returns undefined for some reason?
-			const start = performance.now();
-			const blob = new Blob([new Uint8Array(updateImageData.image_data.values()).buffer], { type: updateImageData.mime });
-			console.log("Created blob in: ", performance.now() - start);
-			const start2 = performance.now();
-			const url = URL.createObjectURL(blob);
-			console.log("Created url in: ", performance.now() - start2);
-			this.editor.instance.set_image_blob_url(updateImageData.path, url);
+			updateImageData.image_data.forEach((element) => {
+				// Using updateImageData.image_data.buffer returns undefined for some reason?
+				const start = performance.now();
+				const blob = new Blob([new Uint8Array(element.image_data.values()).buffer], { type: element.mime });
+				console.log("Created blob in: ", performance.now() - start);
+				const start2 = performance.now();
+				const url = URL.createObjectURL(blob);
+				console.log("Created url in: ", performance.now() - start2);
+				this.editor.instance.set_image_blob_url(element.path, url);
+			});
 		});
 
 		// TODO(mfish33): Replace with initialization system Issue:#524

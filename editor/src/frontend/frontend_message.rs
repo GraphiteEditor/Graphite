@@ -1,4 +1,4 @@
-use super::utility_types::{FrontendDocumentDetails, MouseCursorIcon};
+use super::utility_types::{FrontendDocumentDetails, FrontendImageData, MouseCursorIcon};
 use crate::document::layer_panel::{LayerPanelEntry, RawBuffer};
 use crate::layout::layout_message::LayoutTarget;
 use crate::layout::widgets::SubLayout;
@@ -43,7 +43,7 @@ pub enum FrontendMessage {
 	UpdateDocumentOverlays { svg: String },
 	UpdateDocumentRulers { origin: (f64, f64), spacing: f64, interval: f64 },
 	UpdateDocumentScrollbars { position: (f64, f64), size: (f64, f64), multiplier: (f64, f64) },
-	UpdateImageData { path: Vec<LayerId>, mime: String, image_data: Vec<u8> },
+	UpdateImageData { image_data: Vec<FrontendImageData> },
 	UpdateInputHints { hint_data: HintData },
 	UpdateMouseCursor { cursor: MouseCursorIcon },
 	UpdateOpenDocumentsList { open_documents: Vec<FrontendDocumentDetails> },

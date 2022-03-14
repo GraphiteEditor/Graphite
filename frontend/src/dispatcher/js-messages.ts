@@ -309,11 +309,7 @@ export class DisplayEditableTextbox extends JsMessage {
 }
 
 export class UpdateImageData extends JsMessage {
-	readonly path!: BigUint64Array;
-
-	readonly mime!: string;
-
-	readonly image_data!: Uint8Array;
+	readonly image_data!: ImageData[];
 }
 
 export class DisplayRemoveEditableTextbox extends JsMessage {}
@@ -378,6 +374,14 @@ export class LayerMetadata {
 }
 
 export type LayerType = "Folder" | "Image" | "Shape" | "Text";
+
+export class ImageData {
+	readonly path!: BigUint64Array;
+
+	readonly mime!: string;
+
+	readonly image_data!: Uint8Array;
+}
 
 export class IndexedDbDocumentDetails extends DocumentDetails {
 	@Transform(({ value }: { value: BigInt }) => value.toString())

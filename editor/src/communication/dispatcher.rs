@@ -64,6 +64,12 @@ impl Dispatcher {
 				#[remain::unsorted]
 				NoOp => {}
 				Frontend(message) => {
+					// Image data should be immediatly handled
+					if let FrontendMessage::UpdateImageData { .. } = message {
+						self.responses.push(message);
+						return;
+					}
+
 					// `FrontendMessage`s are saved and will be sent to the frontend after the message queue is done being processed
 					self.responses.push(message);
 				}

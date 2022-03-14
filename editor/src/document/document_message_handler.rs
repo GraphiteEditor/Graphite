@@ -6,6 +6,7 @@ use super::{ArtboardMessageHandler, MovementMessageHandler, OverlaysMessageHandl
 use crate::consts::{
 	ASYMPTOTIC_EFFECT, DEFAULT_DOCUMENT_NAME, FILE_EXPORT_SUFFIX, FILE_SAVE_SUFFIX, GRAPHITE_DOCUMENT_VERSION, SCALE_EFFECT, SCROLLBAR_SPACING, VIEWPORT_ZOOM_TO_FIT_PADDING_SCALE_FACTOR,
 };
+use crate::frontend::utility_types::FrontendImageData;
 use crate::input::InputPreprocessorMessageHandler;
 use crate::layout::widgets::{
 	IconButton, LayoutRow, NumberInput, NumberInputIncrementBehavior, OptionalInput, PopoverButton, PropertyHolder, RadioEntryData, RadioInput, Separator, SeparatorDirection, SeparatorType, Widget,
@@ -474,27 +475,27 @@ impl DocumentMessageHandler {
 	/// Creates the blob URLs for the image data in the document
 	pub fn load_image_data(&mut self, responses: &mut VecDeque<Message>) {
 		log::info!("Load image data ex");
-		fn walk_layers(data: &mut LayerDataType, path: &mut Vec<LayerId>, responses: &mut VecDeque<Message>) {
+		let mut image_data = Vec::new();
+		fn walk_layers(data: &mut LayerDataType, path: &mut Vec<LayerId>, responses: &mut VecDeque<Message>, image_data: &mut Vec<FrontendImageData>) {
 			match data {
 				LayerDataType::Folder(f) => {
 					for (id, layer) in f.layers_mut_with_ids() {
 						path.push(*id);
-						walk_layers(&mut layer.data, path, responses);
+						walk_layers(&mut layer.data, path, responses, image_data);
 						path.pop();
 					}
 				}
-				LayerDataType::Image(img) => responses.push_front(
-					FrontendMessage::UpdateImageData {
-						path: path.clone(),
-						image_data: img.image_data.clone(),
-						mime: img.mime.clone(),
-					}
-					.into(),
-				),
+				LayerDataType::Image(img) => image_data.push(FrontendImageData {
+					path: path.clone(),
+					image_data: img.image_data.clone(),
+					mime: img.mime.clone(),
+				}),
 				_ => {}
 			}
 		}
-		walk_layers(&mut self.graphene_document.root.data, &mut Vec::new(), responses);
+
+		walk_layers(&mut self.graphene_document.root.data, &mut Vec::new(), responses, &mut image_data);
+		responses.push_front(FrontendMessage::UpdateImageData { image_data }.into());
 	}
 }
 
@@ -956,9 +957,11 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 				let path = vec![generate_uuid()];
 				responses.push_front(
 					FrontendMessage::UpdateImageData {
-						path: path.clone(),
-						image_data: image_data.clone(),
-						mime: mime.clone(),
+						image_data: vec![FrontendImageData {
+							path: path.clone(),
+							image_data: image_data.clone(),
+							mime: mime.clone(),
+						}],
 					}
 					.into(),
 				);
