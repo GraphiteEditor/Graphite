@@ -272,6 +272,9 @@ fn register_layer_properties(layer: &Layer, responses: &mut VecDeque<Message>) {
 				node_section_stroke(&text.style.stroke().unwrap_or_default()),
 			]
 		}
+		LayerDataType::Image(_) => {
+			vec![node_section_transform(layer)]
+		}
 		_ => {
 			vec![]
 		}
