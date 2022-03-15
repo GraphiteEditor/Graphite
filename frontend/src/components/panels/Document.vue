@@ -493,8 +493,12 @@ export default defineComponent({
 			updateImageData.image_data.forEach((element) => {
 				// Using updateImageData.image_data.buffer returns undefined for some reason?
 				const blob = new Blob([new Uint8Array(element.image_data.values()).buffer], { type: element.mime });
+
 				const url = URL.createObjectURL(blob);
-				this.editor.instance.set_image_blob_url(element.path, url);
+
+				createImageBitmap(blob).then((i) => {
+					this.editor.instance.set_image_blob_url(element.path, url, i.width, i.height);
+				});
 			});
 		});
 

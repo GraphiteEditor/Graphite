@@ -18,6 +18,8 @@ pub struct ImageLayer {
 	pub image_data: Vec<u8>,
 	#[serde(skip)]
 	pub blob_url: Option<String>,
+	#[serde(skip)]
+	pub dimensions: DVec2,
 }
 
 impl LayerData for ImageLayer {
@@ -44,7 +46,9 @@ impl LayerData for ImageLayer {
 			.collect::<String>();
 		let _ = write!(
 			svg,
-			r#"<image width="100" height="100" transform="matrix({})" xlink:href="{}" />"#,
+			r#"<image width="{}" height="{}" transform="matrix({})" xlink:href="{}" />"#,
+			self.dimensions.x,
+			self.dimensions.y,
 			svg_transform,
 			self.blob_url.as_ref().unwrap_or(&String::new())
 		);
@@ -73,7 +77,13 @@ impl LayerData for ImageLayer {
 impl ImageLayer {
 	pub fn new(mime: String, image_data: Vec<u8>) -> Self {
 		let blob_url = None;
-		Self { mime, image_data, blob_url }
+		let dimensions = DVec2::ONE;
+		Self {
+			mime,
+			image_data,
+			blob_url,
+			dimensions,
+		}
 	}
 
 	pub fn transform(&self, transforms: &[DAffine2], mode: ViewMode) -> DAffine2 {
@@ -85,6 +95,6 @@ impl ImageLayer {
 	}
 
 	fn bounds(&self) -> BezPath {
-		kurbo::Rect::from_origin_size(kurbo::Point::ZERO, kurbo::Size::new(100., 100.)).to_path(0.)
+		kurbo::Rect::from_origin_size(kurbo::Point::ZERO, kurbo::Size::new(self.dimensions.x, self.dimensions.y)).to_path(0.)
 	}
 }

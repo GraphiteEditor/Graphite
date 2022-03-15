@@ -704,8 +704,10 @@ impl Document {
 				self.mark_as_dirty(&path)?;
 				Some([vec![DocumentChanged], update_thumbnails_upstream(&path)].concat())
 			}
-			Operation::SetImageBlobUrl { path, blob_url } => {
-				self.layer_mut(&path).expect("Blob url for invalid layer").as_image_mut().unwrap().blob_url = Some(blob_url);
+			Operation::SetImageBlobUrl { path, blob_url, dimentions } => {
+				let image = self.layer_mut(&path).expect("Blob url for invalid layer").as_image_mut().unwrap();
+				image.blob_url = Some(blob_url);
+				image.dimensions = dimentions.into();
 				self.mark_as_dirty(&path)?;
 				Some([vec![DocumentChanged, LayerChanged { path: path.clone() }], update_thumbnails_upstream(&path)].concat())
 			}

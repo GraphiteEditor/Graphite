@@ -975,6 +975,13 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 					}
 					.into(),
 				);
+				responses.push_back(
+					DocumentMessage::SetSelectedLayers {
+						replacement_selected_layers: vec![path.clone()],
+					}
+					.into(),
+				);
+
 				let mouse: DVec2 = mouse.into();
 				let transform = DAffine2::from_translation(mouse - ipp.viewport_bounds.top_left).to_cols_array();
 				responses.push_back(DocumentOperation::SetLayerTransformInViewport { path, transform }.into());
