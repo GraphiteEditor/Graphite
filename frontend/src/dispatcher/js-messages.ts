@@ -500,6 +500,10 @@ export class DisplayDialogComingSoon extends JsMessage {
 
 export class TriggerTextCommit extends JsMessage {}
 
+export class TriggerTextCopy extends JsMessage {
+	readonly copy_text!: string;
+}
+
 export class TriggerViewportResize extends JsMessage {}
 
 // Any is used since the type of the object should be known from the rust side
@@ -523,6 +527,7 @@ export const messageConstructors: Record<string, MessageMaker> = {
 	TriggerIndexedDbRemoveDocument,
 	TriggerIndexedDbWriteDocument,
 	TriggerTextCommit,
+	TriggerTextCopy,
 	TriggerViewportResize,
 	UpdateActiveDocument,
 	UpdateActiveTool,

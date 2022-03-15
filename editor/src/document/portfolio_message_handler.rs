@@ -1,4 +1,4 @@
-use super::clipboards::{CopyBufferEntry, CLIPBOARD_COUNT};
+use super::clipboards::{CopyBufferEntry, INTERNAL_CLIPBOARD_COUNT};
 use super::DocumentMessageHandler;
 use crate::consts::{DEFAULT_DOCUMENT_NAME, GRAPHITE_DOCUMENT_VERSION};
 use crate::frontend::utility_types::FrontendDocumentDetails;
@@ -17,7 +17,7 @@ pub struct PortfolioMessageHandler {
 	documents: HashMap<u64, DocumentMessageHandler>,
 	document_ids: Vec<u64>,
 	active_document_id: u64,
-	copy_buffer: [Vec<CopyBufferEntry>; CLIPBOARD_COUNT as usize],
+	copy_buffer: [Vec<CopyBufferEntry>; INTERNAL_CLIPBOARD_COUNT as usize],
 }
 
 impl PortfolioMessageHandler {
@@ -121,7 +121,7 @@ impl Default for PortfolioMessageHandler {
 		Self {
 			documents: documents_map,
 			document_ids: vec![starting_key],
-			copy_buffer: [EMPTY_VEC; CLIPBOARD_COUNT as usize],
+			copy_buffer: [EMPTY_VEC; INTERNAL_CLIPBOARD_COUNT as usize],
 			active_document_id: starting_key,
 		}
 	}
@@ -230,16 +230,28 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 				// We can't use `self.active_document()` because it counts as an immutable borrow of the entirety of `self`
 				let active_document = self.documents.get(&self.active_document_id).unwrap();
 
-				let copy_buffer = &mut self.copy_buffer;
-				copy_buffer[clipboard as usize].clear();
-
-				for layer_path in active_document.selected_layers_without_children() {
-					match (active_document.graphene_document.layer(layer_path).map(|t| t.clone()), *active_document.layer_metadata(layer_path)) {
-						(Ok(layer), layer_metadata) => {
-							copy_buffer[clipboard as usize].push(CopyBufferEntry { layer, layer_metadata });
+				let copy_val = |buffer: &mut Vec<CopyBufferEntry>| {
+					for layer_path in active_document.selected_layers_without_children() {
+						match (active_document.graphene_document.layer(layer_path).map(|t| t.clone()), *active_document.layer_metadata(layer_path)) {
+							(Ok(layer), layer_metadata) => {
+								buffer.push(CopyBufferEntry { layer, layer_metadata });
+							}
+							(Err(e), _) => warn!("Could not access selected layer {:?}: {:?}", layer_path, e),
 						}
-						(Err(e), _) => warn!("Could not access selected layer {:?}: {:?}", layer_path, e),
 					}
+				};
+
+				if clipboard == Clipboard::Device {
+					let mut buffer = Vec::new();
+					copy_val(&mut buffer);
+					let mut copy_text = String::from("graphite/layer: ");
+					copy_text += &serde_json::to_string(&buffer).expect("Could not serialize paste");
+
+					responses.push_back(FrontendMessage::TriggerTextCopy { copy_text }.into());
+				} else {
+					let copy_buffer = &mut self.copy_buffer;
+					copy_buffer[clipboard as usize].clear();
+					copy_val(&mut copy_buffer[clipboard as usize]);
 				}
 			}
 			Cut { clipboard } => {
@@ -351,6 +363,39 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 					for entry in self.copy_buffer[clipboard as usize].iter() {
 						paste(entry, responses)
 					}
+				}
+			}
+			PasteSerializedData { data } => {
+				if let Ok(data) = serde_json::from_str::<Vec<CopyBufferEntry>>(&data) {
+					let document = self.active_document();
+					let shallowest_common_folder = document
+						.graphene_document
+						.shallowest_common_folder(document.selected_layers())
+						.expect("While pasting from serialized, the selected layers did not exist while attempting to find the appropriate folder path for insertion");
+					responses.push_back(DeselectAllLayers.into());
+					responses.push_back(StartTransaction.into());
+
+					for entry in data {
+						let destination_path = [shallowest_common_folder.to_vec(), vec![generate_uuid()]].concat();
+
+						responses.push_front(
+							DocumentMessage::UpdateLayerMetadata {
+								layer_path: destination_path.clone(),
+								layer_metadata: entry.layer_metadata,
+							}
+							.into(),
+						);
+						responses.push_front(
+							DocumentOperation::InsertLayer {
+								layer: entry.layer.clone(),
+								destination_path,
+								insert_index: -1,
+							}
+							.into(),
+						);
+					}
+
+					responses.push_back(CommitTransaction.into());
 				}
 			}
 			PrevDocument => {

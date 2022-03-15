@@ -385,19 +385,19 @@ impl JsEditorHandle {
 
 	/// Cut selected layers
 	pub fn cut(&self) {
-		let message = PortfolioMessage::Cut { clipboard: Clipboard::User };
+		let message = PortfolioMessage::Cut { clipboard: Clipboard::Device };
 		self.dispatch(message);
 	}
 
 	/// Copy selected layers
 	pub fn copy(&self) {
-		let message = PortfolioMessage::Copy { clipboard: Clipboard::User };
+		let message = PortfolioMessage::Copy { clipboard: Clipboard::Device };
 		self.dispatch(message);
 	}
 
-	/// Paste selected layers
-	pub fn paste(&self) {
-		let message = PortfolioMessage::Paste { clipboard: Clipboard::User };
+	/// Paste layers
+	pub fn paste_serialized_data(&self, data: String) {
+		let message = PortfolioMessage::PasteSerializedData { data };
 		self.dispatch(message);
 	}
 
@@ -499,8 +499,8 @@ impl JsEditorHandle {
 	}
 
 	/// Pastes an image
-	pub fn paste_image(&self, mime: String, image_data: Vec<u8>, mouse_x: f64, mouse_y: f64) {
-		let mouse = (mouse_x, mouse_y);
+	pub fn paste_image(&self, mime: String, image_data: Vec<u8>, mouse_x: Option<f64>, mouse_y: Option<f64>) {
+		let mouse = mouse_x.and_then(|x| mouse_y.map(|y| (x, y)));
 		let message = DocumentMessage::PasteImage { mime, image_data, mouse };
 		self.dispatch(message);
 	}

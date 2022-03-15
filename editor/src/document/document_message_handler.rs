@@ -892,13 +892,13 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 
 				new_folder_path.push(generate_uuid());
 
-				responses.push_back(PortfolioMessage::Copy { clipboard: Clipboard::System }.into());
+				responses.push_back(PortfolioMessage::Copy { clipboard: Clipboard::Internal }.into());
 				responses.push_back(DocumentMessage::DeleteSelectedLayers.into());
 				responses.push_back(DocumentOperation::CreateFolder { path: new_folder_path.clone() }.into());
 				responses.push_back(DocumentMessage::ToggleLayerExpansion { layer_path: new_folder_path.clone() }.into());
 				responses.push_back(
 					PortfolioMessage::PasteIntoFolder {
-						clipboard: Clipboard::System,
+						clipboard: Clipboard::Internal,
 						folder_path: new_folder_path.clone(),
 						insert_index: -1,
 					}
@@ -931,11 +931,11 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 
 				let insert_index = self.update_insert_index(&selected_layers, &folder_path, insert_index, reverse_index).unwrap();
 
-				responses.push_back(PortfolioMessage::Copy { clipboard: Clipboard::System }.into());
+				responses.push_back(PortfolioMessage::Copy { clipboard: Clipboard::Internal }.into());
 				responses.push_back(DocumentMessage::DeleteSelectedLayers.into());
 				responses.push_back(
 					PortfolioMessage::PasteIntoFolder {
-						clipboard: Clipboard::System,
+						clipboard: Clipboard::Internal,
 						folder_path,
 						insert_index,
 					}
@@ -982,7 +982,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 					.into(),
 				);
 
-				let mouse: DVec2 = mouse.into();
+				let mouse = mouse.map_or(ipp.mouse.position, |pos| pos.into());
 				let transform = DAffine2::from_translation(mouse - ipp.viewport_bounds.top_left).to_cols_array();
 				responses.push_back(DocumentOperation::SetLayerTransformInViewport { path, transform }.into());
 			}
@@ -1260,10 +1260,10 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 					// Select them
 					DocumentMessage::SetSelectedLayers { replacement_selected_layers: select }.into(),
 					// Copy them
-					PortfolioMessage::Copy { clipboard: Clipboard::System }.into(),
+					PortfolioMessage::Copy { clipboard: Clipboard::Internal }.into(),
 					// Paste them into the folder above
 					PortfolioMessage::PasteIntoFolder {
-						clipboard: Clipboard::System,
+						clipboard: Clipboard::Internal,
 						folder_path: folder_path[..folder_path.len() - 1].to_vec(),
 						insert_index: -1,
 					}

@@ -29,6 +29,7 @@ pub enum FrontendMessage {
 	TriggerIndexedDbRemoveDocument { document_id: u64 },
 	TriggerIndexedDbWriteDocument { document: String, details: FrontendDocumentDetails, version: String },
 	TriggerTextCommit,
+	TriggerTextCopy { copy_text: String },
 	TriggerViewportResize,
 
 	// Update prefix: give the frontend a new value or state for it to use

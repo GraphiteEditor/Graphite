@@ -188,9 +188,8 @@ impl Default for Mapping {
 			entry! {action=PortfolioMessage::PrevDocument, key_down=KeyTab, modifiers=[KeyControl, KeyShift]},
 			entry! {action=PortfolioMessage::CloseAllDocumentsWithConfirmation, key_down=KeyW, modifiers=[KeyControl, KeyAlt]},
 			entry! {action=PortfolioMessage::CloseActiveDocumentWithConfirmation, key_down=KeyW, modifiers=[KeyControl]},
-			entry! {action=PortfolioMessage::Paste { clipboard: Clipboard::User }, key_down=KeyV, modifiers=[KeyControl]},
-			entry! {action=PortfolioMessage::Copy { clipboard: Clipboard::User }, key_down=KeyC, modifiers=[KeyControl]},
-			entry! {action=PortfolioMessage::Cut { clipboard: Clipboard::User }, key_down=KeyX, modifiers=[KeyControl]},
+			entry! {action=PortfolioMessage::Copy { clipboard: Clipboard::Device }, key_down=KeyC, modifiers=[KeyControl]},
+			entry! {action=PortfolioMessage::Cut { clipboard: Clipboard::Device }, key_down=KeyX, modifiers=[KeyControl]},
 			// Nudging
 			entry! {action=DocumentMessage::NudgeSelectedLayers { delta_x: -SHIFT_NUDGE_AMOUNT, delta_y: -SHIFT_NUDGE_AMOUNT }, key_down=KeyArrowUp, modifiers=[KeyShift, KeyArrowLeft]},
 			entry! {action=DocumentMessage::NudgeSelectedLayers { delta_x: SHIFT_NUDGE_AMOUNT, delta_y: -SHIFT_NUDGE_AMOUNT }, key_down=KeyArrowUp, modifiers=[KeyShift, KeyArrowRight]},

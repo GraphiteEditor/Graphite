@@ -283,6 +283,7 @@ import {
 	UpdateDocumentBarLayout,
 	UpdateImageData,
 	TriggerTextCommit,
+	TriggerTextCopy,
 	TriggerViewportResize,
 	DisplayRemoveEditableTextbox,
 	DisplayEditableTextbox,
@@ -452,6 +453,15 @@ export default defineComponent({
 		});
 		this.editor.dispatcher.subscribeJsMessage(TriggerTextCommit, () => {
 			if (this.textInput) this.editor.instance.on_change_text(textInputCleanup(this.textInput.innerText));
+		});
+		this.editor.dispatcher.subscribeJsMessage(TriggerTextCopy, async (triggerTextCopy) => {
+			// Clipboard API supported?
+			if (!navigator.clipboard) return;
+
+			// copy text to clipboard
+			if (navigator.clipboard.writeText) {
+				await navigator.clipboard.writeText(triggerTextCopy.copy_text);
+			}
 		});
 
 		this.editor.dispatcher.subscribeJsMessage(DisplayEditableTextbox, (displayEditableTextbox) => {

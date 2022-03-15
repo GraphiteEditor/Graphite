@@ -7,12 +7,14 @@ use serde::{Deserialize, Serialize};
 #[repr(u8)]
 #[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Clipboard {
-	System,
-	User,
-	_ClipboardCount, // Keep this as the last entry since it is used for counting the number of enum variants
+	Internal,
+
+	_InternalClipboardCount, // Keep this as the last entry in internal clipboards since it is used for counting the number of enum variants
+
+	Device,
 }
 
-pub const CLIPBOARD_COUNT: u8 = Clipboard::_ClipboardCount as u8;
+pub const INTERNAL_CLIPBOARD_COUNT: u8 = Clipboard::_InternalClipboardCount as u8;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CopyBufferEntry {

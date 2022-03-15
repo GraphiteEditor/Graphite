@@ -119,7 +119,8 @@ function makeMenuEntries(editor: EditorState): MenuListEntries {
 				[
 					{ label: "Cut", shortcut: ["KeyControl", "KeyX"], action: async (): Promise<void> => editor.instance.cut() },
 					{ label: "Copy", icon: "Copy", shortcut: ["KeyControl", "KeyC"], action: async (): Promise<void> => editor.instance.copy() },
-					{ label: "Paste", icon: "Paste", shortcut: ["KeyControl", "KeyV"], action: async (): Promise<void> => editor.instance.paste() },
+					// TODO: Fix this
+					// { label: "Paste", icon: "Paste", shortcut: ["KeyControl", "KeyV"], action: async (): Promise<void> => editor.instance.paste() },
 				],
 			],
 		},

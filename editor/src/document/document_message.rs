@@ -82,7 +82,7 @@ pub enum DocumentMessage {
 	PasteImage {
 		mime: String,
 		image_data: Vec<u8>,
-		mouse: (f64, f64),
+		mouse: Option<(f64, f64)>,
 	},
 	Redo,
 	RenameLayer {
