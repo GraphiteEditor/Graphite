@@ -5,7 +5,7 @@ template = "logo.html"
 
 The Graphite logo is made available for community use. While the software is free and open source, the brand identity is more restrictive. Please be respectful of the Graphite brand by reviewing the usage policy.
 
-## Usage policy
+## Usage policy.
 
 The Graphite logo is not part of the software's Apache 2.0 license. Users of the logo must adhere to the usage policy:
 
@@ -16,6 +16,6 @@ The Graphite logo is not part of the software's Apache 2.0 license. Users of the
 
 If in doubt, please send an email to <contact@graphite.rs> for permission.
 
-## Download
+## Download.
 
 Download the complete [logo kit](https://static.graphite.rs/logos/graphite-logo-kit.zip) or a specific version in PNG or SVG format below.
