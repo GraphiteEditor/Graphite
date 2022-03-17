@@ -82,7 +82,7 @@ export function createDialogState(editor: EditorState) {
 		const buttons: TextButtonWidget[] = [
 			{
 				kind: "TextButton",
-				callback: (): unknown => window.open("https://www.graphite.design", "_blank"),
+				callback: (): unknown => window.open("https://graphite.rs", "_blank"),
 				props: { label: "Website", emphasized: false, minWidth: 0 },
 			},
 			{
