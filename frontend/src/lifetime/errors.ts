@@ -58,7 +58,7 @@ function githubUrl(panicDetails: string): string {
 
 		**Steps To Reproduce**
 		Describe precisely how the crash occurred, step by step, starting with a new editor window.
-		1. Open the Graphite Editor at https://editor.graphite.design
+		1. Open the Graphite Editor at https://editor.graphite.rs
 		2. 
 		3. 
 		4. 

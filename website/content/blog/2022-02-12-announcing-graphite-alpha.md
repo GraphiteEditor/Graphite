@@ -1,6 +1,6 @@
 +++
 title = "Announcing Graphite alpha"
-date = 2021-02-12
+date = 2022-02-12
 
 [extra]
 banner = "https://static.graphite.rs/content/blog/2022-02-12-announcing-graphite-alpha.png"

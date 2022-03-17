@@ -5,12 +5,13 @@ const HANDLE_STRETCH = 0.4;
 
 let ripplesInitialized;
 let navButtons;
-let navButtonFontSize;
 let rippleSvg;
 let ripplePath;
 let fullRippleHeight;
 let ripples;
 let activeRippleIndex;
+
+let globalCount = 0;
 
 window.addEventListener("DOMContentLoaded", initializeRipples);
 window.addEventListener("resize", () => animate(true));
@@ -30,7 +31,7 @@ function initializeRipples() {
 		goingUp: false,
 	}));
 
-	activeRippleIndex = ripples.findIndex((ripple) => ripple.element.getAttribute("href") === window.location.pathname);
+	activeRippleIndex = ripples.findIndex((ripple) => ripple.element.getAttribute("href").replace(/\//g, "") === window.location.pathname.replace(/\//g, ""));
 
 
 	ripples.forEach((ripple) => {
@@ -55,28 +56,32 @@ function initializeRipples() {
 
 	ripples[activeRippleIndex] = {
 		...ripples[activeRippleIndex],
-		animationStartTime: Date.now(),
-		animationEndTime: Date.now() + RIPPLE_ANIMATION_MILLISECONDS,
+		animationStartTime: 1,
+		animationEndTime: 1 + RIPPLE_ANIMATION_MILLISECONDS,
 		goingUp: true,
 	};
 
-	animate(false);
+	setRipples();
 }
 
 function animate(forceRefresh) {
 	if (!ripplesInitialized) return;
-
-	navButtonFontSize = Number.parseInt(window.getComputedStyle(navButtons[0]).fontSize) || NAV_BUTTON_INITIAL_FONT_SIZE;
-	const mediaQueryScaleFactor = navButtonFontSize / NAV_BUTTON_INITIAL_FONT_SIZE;
-
+	
 	const animateThisFrame = ripples.some((ripple) => ripple.animationStartTime && ripple.animationEndTime && Date.now() <= ripple.animationEndTime);
+
+	console.log(globalCount, new Date().getSeconds(), Date.now(), animateThisFrame, {...ripples[0]});
+	globalCount++;
+
 	if (animateThisFrame || forceRefresh) {
-		setRipples(mediaQueryScaleFactor);
+		setRipples();
 		window.requestAnimationFrame(() => animate(false));
 	}
 }
 
-function setRipples(mediaQueryScaleFactor) {
+function setRipples() {
+	const navButtonFontSize = Number.parseInt(window.getComputedStyle(navButtons[0]).fontSize) || NAV_BUTTON_INITIAL_FONT_SIZE;
+	const mediaQueryScaleFactor = navButtonFontSize / NAV_BUTTON_INITIAL_FONT_SIZE;
+
 	const rippleHeight = fullRippleHeight * (mediaQueryScaleFactor * 0.5 + 0.5);
 	const rippleSvgRect = rippleSvg.getBoundingClientRect();
 	const rippleSvgLeft = rippleSvgRect.left;
