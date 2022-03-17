@@ -9,7 +9,7 @@ It's great to hear you are interested in contributing to Graphite! We want to ma
 
 Graphite is built with Rust and web technologies. Download and install the latest LTS version of [Node.js](https://nodejs.org/) and stable release of [Rust](https://www.rust-lang.org/), as well as [Git](https://git-scm.com/).
 
-**On Windows**, Rust requires the MSVC toolchain properly configured with the Visual Studio Build Tools installed on your machine including the "Desktop development with C++" workload. **If you are having issues building,** you might have skipped this step or you may have outdated Node.js or Rust versions (compare `node --version` and `rustc --version` against the versions listed in the links above, use `rustup update` to upgrade Rust).
+On Windows, Rust requires the MSVC toolchain properly configured with the Visual Studio Build Tools installed on your machine including the "Desktop development with C++" workload. **If you are having issues building,** you might have skipped this step or you may have outdated Node.js or Rust versions (compare `node --version` and `rustc --version` against the versions listed in the links above, use `rustup update` to upgrade Rust).
 
 Clone the project:
 ```
@@ -43,7 +43,7 @@ Pay attention to the tags which provide some useful information like which ones 
 
 ## Mentorship.
 
-Join the [project's Discord server](https://discord.graphite.design) then hop on the `#development` channel and ping @Keavon and @TrueDoctor. We would be delighted to help you get started with in-depth explanations of the code, one-on-one mentorship and pair programming. This is very valuable and not at all an inconvenience to us because it helps you avoid the intimidating step of getting started, so please do not hesitate to reach out right away.
+Join the [project's Discord server](https://discord.graphite.rs) then hop on the `#development` channel and ping @Keavon and @TrueDoctor. We would be delighted to help you get started with in-depth explanations of the code, one-on-one mentorship and pair programming. This is very valuable and not at all an inconvenience to us because it helps you avoid the intimidating step of getting started, so please do not hesitate to reach out right away.
 
 ## Docs.
 
