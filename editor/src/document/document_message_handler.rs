@@ -473,15 +473,14 @@ impl DocumentMessageHandler {
 	}
 
 	/// Creates the blob URLs for the image data in the document
-	pub fn load_image_data(&mut self, responses: &mut VecDeque<Message>) {
-		log::info!("Load image data ex");
+	pub fn load_image_data(&self, responses: &mut VecDeque<Message>, root: &LayerDataType, mut path: Vec<LayerId>) {
 		let mut image_data = Vec::new();
-		fn walk_layers(data: &mut LayerDataType, path: &mut Vec<LayerId>, responses: &mut VecDeque<Message>, image_data: &mut Vec<FrontendImageData>) {
+		fn walk_layers(data: &LayerDataType, path: &mut Vec<LayerId>, responses: &mut VecDeque<Message>, image_data: &mut Vec<FrontendImageData>) {
 			match data {
 				LayerDataType::Folder(f) => {
-					for (id, layer) in f.layers_mut_with_ids() {
+					for (id, layer) in f.layer_ids.iter().zip(f.layers().iter()) {
 						path.push(*id);
-						walk_layers(&mut layer.data, path, responses, image_data);
+						walk_layers(&layer.data, path, responses, image_data);
 						path.pop();
 					}
 				}
@@ -494,7 +493,7 @@ impl DocumentMessageHandler {
 			}
 		}
 
-		walk_layers(&mut self.graphene_document.root.data, &mut Vec::new(), responses, &mut image_data);
+		walk_layers(&root, &mut path, responses, &mut image_data);
 		responses.push_front(FrontendMessage::UpdateImageData { image_data }.into());
 	}
 }

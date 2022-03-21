@@ -53,7 +53,7 @@ impl PortfolioMessageHandler {
 	}
 
 	// TODO Fix how this doesn't preserve tab order upon loading new document from file>load
-	fn load_document(&mut self, mut new_document: DocumentMessageHandler, document_id: u64, replace_first_empty: bool, responses: &mut VecDeque<Message>) {
+	fn load_document(&mut self, new_document: DocumentMessageHandler, document_id: u64, replace_first_empty: bool, responses: &mut VecDeque<Message>) {
 		// Special case when loading a document on an empty page
 		if replace_first_empty && self.active_document().is_unmodified_default() {
 			responses.push_back(ToolMessage::AbortCurrentTool.into());
@@ -78,7 +78,7 @@ impl PortfolioMessageHandler {
 				.collect::<Vec<_>>(),
 		);
 
-		new_document.load_image_data(responses);
+		new_document.load_image_data(responses, &new_document.graphene_document.root.data, Vec::new());
 
 		self.documents.insert(document_id, new_document);
 
@@ -345,6 +345,7 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 						}
 						.into(),
 					);
+					self.active_document().load_image_data(responses, &entry.layer.data, destination_path.clone());
 					responses.push_front(
 						DocumentOperation::InsertLayer {
 							layer: entry.layer.clone(),
@@ -385,6 +386,7 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 							}
 							.into(),
 						);
+						self.active_document().load_image_data(responses, &entry.layer.data, destination_path.clone());
 						responses.push_front(
 							DocumentOperation::InsertLayer {
 								layer: entry.layer.clone(),

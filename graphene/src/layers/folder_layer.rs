@@ -91,10 +91,6 @@ impl FolderLayer {
 		self.layers.as_mut_slice()
 	}
 
-	pub fn layers_mut_with_ids(&mut self) -> impl Iterator<Item = (&LayerId, &mut Layer)> {
-		self.layer_ids.iter().zip(self.layers.iter_mut())
-	}
-
 	pub fn layer(&self, id: LayerId) -> Option<&Layer> {
 		let pos = self.position_of_layer(id).ok()?;
 		Some(&self.layers[pos])
