@@ -5,7 +5,9 @@ use crate::layers::style::PathStyle;
 
 use kurbo::{BezPath, CubicBez, Line, ParamCurve, ParamCurveArclen, ParamCurveArea, ParamCurveExtrema, PathEl, PathSeg, Point, QuadBez, Rect};
 use serde::{Deserialize, Serialize};
+use std::collections::btree_set::Difference;
 use std::fmt::{self, Debug, Formatter};
+use std::mem::{replace, swap};
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq)]
 pub enum BooleanOperation {
@@ -474,11 +476,41 @@ pub fn subdivide_path_seg(p: &PathSeg, t_values: &mut [f64]) -> Vec<Option<PathS
 	sub_segments
 }
 
+/// * shapes.len() > 1
+pub fn composite_boolean_operation(mut select: BooleanOperation, shapes: &mut Vec<ShapeLayer>) -> Result<Vec<ShapeLayer>, BooleanOperationError> {
+	if let BooleanOperation::SubtractBack = select {
+		select = BooleanOperation::SubtractFront;
+		let temp_len = shapes.len();
+		shapes.swap(0, temp_len - 1);
+	}
+	match select {
+		BooleanOperation::Union | BooleanOperation::Intersection | BooleanOperation::SubtractFront | BooleanOperation::SubtractBack => {
+			let mut partial_union = boolean_operation(select, &mut shapes[0].clone(), &mut shapes[1])?;
+			for shape_idx in 2..shapes.len() {
+				partial_union = boolean_operation(select, partial_union.first_mut().unwrap(), shapes.get_mut(shape_idx).unwrap())?;
+			}
+			Ok(partial_union)
+		}
+		BooleanOperation::Difference => {
+			let mut difference = Vec::new();
+			for shape_idx in 0..shapes.len() {
+				shapes.swap(0, shape_idx);
+				difference.append(&mut composite_boolean_operation(BooleanOperation::SubtractFront, shapes)?);
+			}
+			Ok(difference)
+		}
+	}
+}
+
 // TODO: check if shapes are filled
 // TODO: Bug: shape with at least two subpaths and comprised of many unions sometimes has erroneous movetos embedded in edges
-pub fn boolean_operation(select: BooleanOperation, mut alpha: ShapeLayer, mut beta: ShapeLayer) -> Result<Vec<ShapeLayer>, BooleanOperationError> {
+pub fn boolean_operation(mut select: BooleanOperation, alpha: &mut ShapeLayer, beta: &mut ShapeLayer) -> Result<Vec<ShapeLayer>, BooleanOperationError> {
 	if alpha.path.is_empty() || beta.path.is_empty() {
 		return Err(BooleanOperationError::InvalidSelection);
+	}
+	if let BooleanOperation::SubtractBack = select {
+		select = BooleanOperation::SubtractFront;
+		swap(alpha, beta);
 	}
 	alpha.path = close_path(&alpha.path);
 	beta.path = close_path(&beta.path);
@@ -508,10 +540,10 @@ pub fn boolean_operation(select: BooleanOperation, mut alpha: ShapeLayer, mut be
 					// If shape is inside the other the Union is just the larger
 					// Check could also be done with area and single ray cast
 					if cast_horizontal_ray(point_on_curve(&beta.path), &alpha.path) % 2 != 0 {
-						Ok(vec![alpha])
+						Ok(vec![alpha.clone()])
 					} else if cast_horizontal_ray(point_on_curve(&alpha.path), &beta.path) % 2 != 0 {
 						beta.style = alpha.style;
-						Ok(vec![beta])
+						Ok(vec![beta.clone()])
 					} else {
 						Err(BooleanOperationError::NothingDone)
 					}
@@ -550,9 +582,9 @@ pub fn boolean_operation(select: BooleanOperation, mut alpha: ShapeLayer, mut be
 					// Check could also be done with area and single ray cast
 					if cast_horizontal_ray(point_on_curve(&beta.path), &alpha.path) % 2 != 0 {
 						beta.style = alpha.style;
-						Ok(vec![beta])
+						Ok(vec![beta.clone()])
 					} else if cast_horizontal_ray(point_on_curve(&alpha.path), &beta.path) % 2 != 0 {
-						Ok(vec![alpha])
+						Ok(vec![alpha.clone()])
 					} else {
 						Err(BooleanOperationError::NothingDone)
 					}
@@ -561,23 +593,7 @@ pub fn boolean_operation(select: BooleanOperation, mut alpha: ShapeLayer, mut be
 			}
 		}
 		BooleanOperation::SubtractBack => {
-			match if beta_dir != alpha_dir {
-				PathGraph::from_paths(&alpha.path, &beta.path)
-			} else {
-				PathGraph::from_paths(&alpha.path, &beta_reverse)
-			} {
-				Ok(graph) => collect_shapes(&graph, &mut graph.get_cycles(), |dir| dir != alpha_dir, |_| &beta.style),
-				Err(BooleanOperationError::NoIntersections) => {
-					if cast_horizontal_ray(point_on_curve(&alpha.path), &beta.path) % 2 != 0 {
-						add_subpath(&mut beta.path, if beta_dir == alpha_dir { reverse_path(&alpha.path) } else { alpha.path });
-						beta.style = alpha.style;
-						Ok(vec![beta])
-					} else {
-						Err(BooleanOperationError::NothingDone)
-					}
-				}
-				Err(err) => Err(err),
-			}
+			panic!("Should never occur");
 		}
 		BooleanOperation::SubtractFront => {
 			match if beta_dir != alpha_dir {
@@ -588,8 +604,8 @@ pub fn boolean_operation(select: BooleanOperation, mut alpha: ShapeLayer, mut be
 				Ok(graph) => collect_shapes(&graph, &mut graph.get_cycles(), |dir| dir == alpha_dir, |_| &alpha.style),
 				Err(BooleanOperationError::NoIntersections) => {
 					if cast_horizontal_ray(point_on_curve(&beta.path), &alpha.path) % 2 != 0 {
-						add_subpath(&mut alpha.path, if beta_dir == alpha_dir { reverse_path(&beta.path) } else { beta.path });
-						Ok(vec![alpha])
+						add_subpath(&mut alpha.path, if beta_dir == alpha_dir { reverse_path(&beta.path) } else { beta.path.clone() });
+						Ok(vec![alpha.clone()])
 					} else {
 						Err(BooleanOperationError::NothingDone)
 					}

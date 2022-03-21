@@ -562,10 +562,10 @@ impl Document {
 				// TODO: precision reached without intersection bug (maybe caused by separating a closed path, or dragging handles)
 				// TODO: click on shape should drag the shape
 				let mut responses = Vec::new();
-				if selected.len() > 1 && selected.len() < 3 {
+				if selected.len() > 1 {
 					let mut shapes = self.transformed_shapes(selected)?;
 					let mut shape_drain = shapes.drain(..).rev();
-					let new_shapes = boolean_operation(*operation, shape_drain.next().unwrap(), shape_drain.next().unwrap())?;
+					let new_shapes = boolean_operation(*operation, &mut shape_drain.next().unwrap(), &mut shape_drain.next().unwrap())?;
 
 					for path in selected {
 						self.delete(path)?;
