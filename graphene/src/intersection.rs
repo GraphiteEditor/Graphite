@@ -280,25 +280,34 @@ fn path_intersections(a: &SubCurve, b: &SubCurve, intersections: &mut Vec<Inters
 		}
 		// We are close enough to try linear approximation
 		if recursion < (1 << 10) as f64 {
+			// if the number of sub-curves being checked could exceed the threshold, check for overlap
+			if call_buffer.len() >= MAX_CALL_NUM - 4 {
+				overlapping_curve_intersections(a.curve, b.curve)
+					.into_iter()
+					.filter_map(|o| o)
+					.for_each(|intersect| intersections.push(intersect));
+				// regardless of whether intersections were found, need to return to prevent crashing the editor
+				// if no intersections are found above the curves are very close to overlapping but not quite
+				return;
+			}
 			if let Some(mut cross) = line_intersection(&Line { p0: a.start(), p1: a.end() }, &Line { p0: b.start(), p1: b.end() }) {
 				// Intersection `t_value` equals the recursive `t_value` + interpolated intersection value
 				cross.t_a = a.start_t + cross.t_a * recursion;
 				cross.t_b = b.start_t + cross.t_b * recursion;
-
-				//Invalid intersections should still be rejected
-				//rejects "valid" intersections on the non-inclusive end of a pathseg
-				if !valid_t(cross.t_a) || !valid_t(cross.t_b) {
-					return;
-				}
-
 				cross.quality = guess_quality(a.curve, b.curve, &cross);
 
 				// log::debug!("checking: {:?}", cross.quality);
 				if cross.quality <= CURVE_FIDELITY {
-					intersections.push(cross);
+					//Invalid intersections should still be rejected
+					//rejects "valid" intersections on the non-inclusive end of a pathseg
+					if valid_t(cross.t_a) && valid_t(cross.t_b) {
+						intersections.push(cross);
+					}
 					return;
 				}
+
 				// Eventually the points in the curve become too close together to split the curve meaningfully
+				// Return the best estimate of intersection regardless of quality
 				// Also provides a base case and prevents infinite recursion
 				if a.available_precision() <= F64PRECISE || b.available_precision() <= F64PRECISE {
 					log::debug!("precision reached");
@@ -306,15 +315,6 @@ fn path_intersections(a: &SubCurve, b: &SubCurve, intersections: &mut Vec<Inters
 					return;
 				}
 			}
-
-			// if the number of sub-curves being checked could exceed the threshold, check
-			if call_buffer.len() >= MAX_CALL_NUM - 4 {
-				overlapping_curve_intersections(a.curve, b.curve)
-					.into_iter()
-					.filter_map(|o| o)
-					.for_each(|intersect| intersections.push(intersect))
-			}
-
 			// Alternate base case
 			// Note: may occur for the less forgiving side of a `PathSeg` endpoint intersect
 			if a.available_precision() <= F64PRECISE || b.available_precision() <= F64PRECISE {
