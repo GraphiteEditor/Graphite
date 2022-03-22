@@ -15,18 +15,20 @@ use graphene::{
 	LayerId, Operation,
 };
 
-struct OverlayManager {
+struct OverlayRenderer {
 	overlays: HashMap<VectorShape, Vec<Vec<LayerId>>>,
 }
 
+/// AnchorOverlay is the collection of overlays that make up an anchor
+/// Notably the anchor point, the lines to the handles and the handles
 type AnchorOverlays = Vec<[Option<Vec<LayerId>>; 5]>;
 
-impl OverlayManager {
+impl OverlayRenderer {
 	pub fn new() -> Self {
-		OverlayManager { overlays: HashMap::new() }
+		OverlayRenderer { overlays: HashMap::new() }
 	}
 
-	pub fn add_overlays_for_shape(&mut self, shape: &VectorShape, responses: &mut VecDeque<Message>) {
+	pub fn draw_overlays_for_shape(&mut self, shape: &VectorShape, responses: &mut VecDeque<Message>) {
 		let outline = self.create_shape_outline_overlay(shape.to_bezpath(), responses);
 		let anchors: AnchorOverlays = shape
 			.anchors
@@ -43,7 +45,7 @@ impl OverlayManager {
 			.collect::<_>();
 	}
 
-	pub fn remove_overlays_for_shape(&mut self, shape: &VectorShape, responses: &mut VecDeque<Message>) {
+	pub fn hide_overlays_for_shape(&mut self, shape: &VectorShape, responses: &mut VecDeque<Message>) {
 		// Delete here
 	}
 

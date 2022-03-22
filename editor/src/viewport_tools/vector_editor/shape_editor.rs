@@ -39,6 +39,7 @@ pub struct ShapeEditor {
 impl ShapeEditor {
 	/// Select the first point within the selection threshold
 	/// Returns true if we've found a point, false otherwise
+	// TODO Refactor to select_point_from(vectorshapes[..], ...)
 	pub fn select_point(&mut self, mouse_position: DVec2, select_threshold: f64, add_to_selection: bool, responses: &mut VecDeque<Message>) -> bool {
 		if self.shapes_to_modify.is_empty() {
 			return false;

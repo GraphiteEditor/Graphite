@@ -26,13 +26,13 @@ pub struct VectorShape {
 	/// The path to the shape layer
 	pub layer_path: Vec<LayerId>,
 	/// The outline of the shape via kurbo
-	pub bez_path: kurbo::BezPath,
+	//pub bez_path: kurbo::BezPath,
 	/// The elements of the kurbo shape
-	pub elements: Vec<kurbo::PathEl>,
+	//pub elements: Vec<kurbo::PathEl>,
 	/// The anchors that are made up of the control points / handles
 	pub anchors: Vec<VectorAnchor>,
 	/// The overlays for the shape, anchors and manipulator handles
-	pub shape_overlay: Option<Vec<LayerId>>,
+	//pub shape_overlay: Option<Vec<LayerId>>,
 	/// If the compound Bezier curve is closed
 	pub closed: bool,
 	/// The transformation matrix to apply
@@ -46,24 +46,24 @@ impl VectorShape {
 	pub fn new(layer_path: Vec<LayerId>, transform: DAffine2, bez_path: &BezPath, closed: bool, responses: &mut VecDeque<Message>) -> Self {
 		let mut shape = VectorShape {
 			layer_path,
-			bez_path: bez_path.clone(),
+			//bez_path: bez_path.clone(),
 			closed,
 			transform,
-			elements: bez_path.into_iter().collect(),
+			//elements: bez_path.into_iter().collect(),
 			..Default::default()
 		};
-		shape.shape_overlay = Some(shape.create_shape_outline_overlay(responses));
-		shape.anchors = shape.create_anchors_from_kurbo(responses);
+		// shape.shape_overlay = Some(shape.create_shape_outline_overlay(responses));
+		shape.anchors = shape.create_anchors_from_kurbo(responses); // TODO REMOVE, no more read back of kurbo
 
-		// TODO: This is a hack to allow Text to work. The shape isn't a path until this message is sent (it appears)
-		responses.push_back(
-			Operation::SetShapePathInViewport {
-				path: shape.layer_path.clone(),
-				bez_path: BezPath::from_vec(shape.elements.clone()),
-				transform: shape.transform.to_cols_array(),
-			}
-			.into(),
-		);
+		// // TODO: This is a hack to allow Text to work. The shape isn't a path until this message is sent (it appears)
+		// responses.push_back(
+		// 	Operation::SetShapePathInViewport {
+		// 		path: shape.layer_path.clone(),
+		// 		bez_path: BezPath::from_vec(shape.elements.clone()),
+		// 		transform: shape.transform.to_cols_array(),
+		// 	}
+		// 	.into(),
+		// );
 
 		shape
 	}
@@ -126,6 +126,7 @@ impl VectorShape {
 
 	/// Move the selected point based on mouse input, if this is a handle we can control if we are mirroring or not
 	/// A wrapper around move_point to handle mirror state / submit the changes
+	// TODO: Move into ShapeEditor
 	pub fn move_selected(&mut self, target: DVec2, relative: bool, responses: &mut VecDeque<Message>) {
 		let transform = &self.transform.clone();
 		let mut edited_bez_path = self.elements.clone();
@@ -147,6 +148,7 @@ impl VectorShape {
 
 	/// Delete the selected point
 	/// A wrapper around move_point to handle mirror state / submit the changes
+	// TODO: Move into ShapeEditor
 	pub fn delete_selected(&mut self, responses: &mut VecDeque<Message>) {
 		let mut edited_bez_path = self.elements.clone();
 
@@ -182,35 +184,9 @@ impl VectorShape {
 		);
 	}
 
-	/// Return a bezpath based on our internal representation points
-	pub fn to_bezpath(&self) -> BezPath {
-		if self.anchors.is_empty() {
-			return BezPath::new();
-		}
-		let point_to_kurbo = |x: &VectorControlPoint| kurbo::Point::new(x.position.x, x.position.y);
-		let point = self.anchors[0].points[0].as_ref().unwrap().position;
-		let mut bez_path = vec![PathEl::MoveTo((point.x, point.y).into())];
-
-		for elements in self.anchors.windows(2) {
-			let first = &elements[0];
-			let second = &elements[1];
-			let new_segment = match [&first.points[2], &second.points[1], &second.points[0]] {
-				[None, None, Some(p)] => PathEl::LineTo(point_to_kurbo(p)),
-				[None, Some(a), Some(p)] => PathEl::QuadTo(point_to_kurbo(a), point_to_kurbo(p)),
-				[Some(a1), Some(a2), Some(p)] => PathEl::CurveTo(point_to_kurbo(a1), point_to_kurbo(a2), point_to_kurbo(p)),
-				_ => panic!("unexpected path found"),
-			};
-			bez_path.push(new_segment);
-		}
-		if self.closed {
-			bez_path.push(PathEl::ClosePath);
-		}
-		log::debug!("path: {:?}", bez_path);
-		BezPath::from_vec(bez_path)
-	}
-
 	/// Update the anchors and segments to match the kurbo shape
 	/// Should be called whenever the kurbo shape changes
+	// TODO: Move into ShapeEditor, no more kurbo read back
 	pub fn update_shape(&mut self, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
 		let viewport_transform = document.graphene_document.generate_transform_relative_to_viewport(&self.layer_path).unwrap();
 		let layer = document.graphene_document.layer(&self.layer_path).unwrap();
@@ -236,6 +212,7 @@ impl VectorShape {
 	}
 
 	/// Create an anchor on the boundary between two kurbo PathElements with optional handles
+	// TODO remove anything to do with overlays
 	fn create_anchor(&self, first: Option<IndexedEl>, second: Option<IndexedEl>, responses: &mut VecDeque<Message>) -> VectorAnchor {
 		let mut handle1 = None;
 		let mut anchor_position: glam::DVec2 = glam::DVec2::ZERO;
@@ -244,9 +221,9 @@ impl VectorShape {
 
 		let create_point = |id: usize, point: DVec2, overlay_path: Vec<LayerId>, manipulator_type: ControlPointType| -> VectorControlPoint {
 			VectorControlPoint {
-				kurbo_element_id: id,
+				// kurbo_element_id: id,
 				position: point,
-				overlay_path: Some(overlay_path),
+				// overlay_path: Some(overlay_path),
 				can_be_selected: true,
 				manipulator_type,
 				is_selected: false,
@@ -285,7 +262,7 @@ impl VectorShape {
 		}
 
 		VectorAnchor {
-			handle_line_overlays: (self.create_handle_line_overlay(&handle1, responses), self.create_handle_line_overlay(&handle2, responses)),
+			// handle_line_overlays: (self.create_handle_line_overlay(&handle1, responses), self.create_handle_line_overlay(&handle2, responses)),
 			points: [
 				Some(create_point(anchor_element_id, anchor_position, self.create_anchor_overlay(responses), ControlPointType::Anchor)),
 				handle1,
@@ -328,6 +305,7 @@ impl VectorShape {
 	}
 
 	/// Create the anchors from the kurbo path, only done during of new anchors construction
+	// TODO remove anything to do with overlays
 	fn create_anchors_from_kurbo(&self, responses: &mut VecDeque<Message>) -> Vec<VectorAnchor> {
 		// We need the indices paired with the kurbo path elements
 		let indexed_elements = self.bez_path.elements().iter().enumerate().map(|(index, element)| (index, *element)).collect::<Vec<IndexedEl>>();
@@ -385,6 +363,7 @@ impl VectorShape {
 	}
 
 	/// Update the anchors to match the kurbo path
+	// TODO remove, no more kurbo read back
 	fn update_anchors_from_kurbo(&mut self, path: &BezPath) {
 		let space_transform = |point: kurbo::Point| self.transform.transform_point2(DVec2::from((point.x, point.y)));
 		for anchor_index in 0..self.anchors.len() {
@@ -413,155 +392,155 @@ impl VectorShape {
 		}
 	}
 
-	/// Create the kurbo shape that matches the selected viewport shape
-	fn create_shape_outline_overlay(&self, responses: &mut VecDeque<Message>) -> Vec<LayerId> {
-		let layer_path = vec![generate_uuid()];
-		let operation = Operation::AddOverlayShape {
-			path: layer_path.clone(),
-			bez_path: self.bez_path.clone(),
-			style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 1.0)), None),
-			closed: false,
-		};
-		responses.push_back(DocumentMessage::Overlays(operation.into()).into());
+	// /// Create the kurbo shape that matches the selected viewport shape
+	// fn create_shape_outline_overlay(&self, responses: &mut VecDeque<Message>) -> Vec<LayerId> {
+	// 	let layer_path = vec![generate_uuid()];
+	// 	let operation = Operation::AddOverlayShape {
+	// 		path: layer_path.clone(),
+	// 		bez_path: self.bez_path.clone(),
+	// 		style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 1.0)), None),
+	// 		closed: false,
+	// 	};
+	// 	responses.push_back(DocumentMessage::Overlays(operation.into()).into());
 
-		layer_path
-	}
+	// 	layer_path
+	// }
 
-	/// Create a single anchor overlay and return its layer id
-	fn create_anchor_overlay(&self, responses: &mut VecDeque<Message>) -> Vec<LayerId> {
-		let layer_path = vec![generate_uuid()];
-		let operation = Operation::AddOverlayRect {
-			path: layer_path.clone(),
-			transform: DAffine2::IDENTITY.to_cols_array(),
-			style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 2.0)), Some(Fill::new(Color::WHITE))),
-		};
-		responses.push_back(DocumentMessage::Overlays(operation.into()).into());
-		layer_path
-	}
+	// /// Create a single anchor overlay and return its layer id
+	// fn create_anchor_overlay(&self, responses: &mut VecDeque<Message>) -> Vec<LayerId> {
+	// 	let layer_path = vec![generate_uuid()];
+	// 	let operation = Operation::AddOverlayRect {
+	// 		path: layer_path.clone(),
+	// 		transform: DAffine2::IDENTITY.to_cols_array(),
+	// 		style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 2.0)), Some(Fill::new(Color::WHITE))),
+	// 	};
+	// 	responses.push_back(DocumentMessage::Overlays(operation.into()).into());
+	// 	layer_path
+	// }
 
-	/// Create a single handle overlay and return its layer id
-	fn create_handle_overlay(&self, responses: &mut VecDeque<Message>) -> Vec<LayerId> {
-		let layer_path = vec![generate_uuid()];
-		let operation = Operation::AddOverlayEllipse {
-			path: layer_path.clone(),
-			transform: DAffine2::IDENTITY.to_cols_array(),
-			style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 2.0)), Some(Fill::new(Color::WHITE))),
-		};
-		responses.push_back(DocumentMessage::Overlays(operation.into()).into());
-		layer_path
-	}
+	// /// Create a single handle overlay and return its layer id
+	// fn create_handle_overlay(&self, responses: &mut VecDeque<Message>) -> Vec<LayerId> {
+	// 	let layer_path = vec![generate_uuid()];
+	// 	let operation = Operation::AddOverlayEllipse {
+	// 		path: layer_path.clone(),
+	// 		transform: DAffine2::IDENTITY.to_cols_array(),
+	// 		style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 2.0)), Some(Fill::new(Color::WHITE))),
+	// 	};
+	// 	responses.push_back(DocumentMessage::Overlays(operation.into()).into());
+	// 	layer_path
+	// }
 
-	/// Create the shape outline overlay and return its layer id
-	fn create_handle_line_overlay(&self, handle: &Option<VectorControlPoint>, responses: &mut VecDeque<Message>) -> Option<Vec<LayerId>> {
-		if handle.is_none() {
-			return None;
-		}
+	// /// Create the shape outline overlay and return its layer id
+	// fn create_handle_line_overlay(&self, handle: &Option<VectorControlPoint>, responses: &mut VecDeque<Message>) -> Option<Vec<LayerId>> {
+	// 	if handle.is_none() {
+	// 		return None;
+	// 	}
 
-		let layer_path = vec![generate_uuid()];
-		let operation = Operation::AddOverlayLine {
-			path: layer_path.clone(),
-			transform: DAffine2::IDENTITY.to_cols_array(),
-			style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 1.0)), None),
-		};
-		responses.push_front(DocumentMessage::Overlays(operation.into()).into());
+	// 	let layer_path = vec![generate_uuid()];
+	// 	let operation = Operation::AddOverlayLine {
+	// 		path: layer_path.clone(),
+	// 		transform: DAffine2::IDENTITY.to_cols_array(),
+	// 		style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 1.0)), None),
+	// 	};
+	// 	responses.push_front(DocumentMessage::Overlays(operation.into()).into());
 
-		Some(layer_path)
-	}
+	// 	Some(layer_path)
+	// }
 
-	/// Update the positions of the anchor points based on the kurbo path
-	fn place_shape_outline_overlay(&self, responses: &mut VecDeque<Message>) {
-		if let Some(overlay_path) = &self.shape_overlay {
-			responses.push_back(
-				DocumentMessage::Overlays(
-					Operation::SetShapePathInViewport {
-						path: overlay_path.clone(),
-						bez_path: self.bez_path.clone(),
-						transform: self.transform.to_cols_array(),
-					}
-					.into(),
-				)
-				.into(),
-			);
-		}
-	}
+	// /// Update the positions of the anchor points based on the kurbo path
+	// fn place_shape_outline_overlay(&self, responses: &mut VecDeque<Message>) {
+	// 	if let Some(overlay_path) = &self.shape_overlay {
+	// 		responses.push_back(
+	// 			DocumentMessage::Overlays(
+	// 				Operation::SetShapePathInViewport {
+	// 					path: overlay_path.clone(),
+	// 					bez_path: self.bez_path.clone(),
+	// 					transform: self.transform.to_cols_array(),
+	// 				}
+	// 				.into(),
+	// 			)
+	// 			.into(),
+	// 		);
+	// 	}
+	// }
 
-	/// Update the positions of the anchor points based on the kurbo path
-	fn place_anchor_overlays(&self, responses: &mut VecDeque<Message>) {
-		for anchor in &self.anchors {
-			anchor.place_anchor_overlay(responses);
-		}
-	}
+	// /// Update the positions of the anchor points based on the kurbo path
+	// fn place_anchor_overlays(&self, responses: &mut VecDeque<Message>) {
+	// 	for anchor in &self.anchors {
+	// 		anchor.place_anchor_overlay(responses);
+	// 	}
+	// }
 
-	/// Update the positions of the handle points and lines based on the kurbo path
-	fn place_handle_overlays(&self, responses: &mut VecDeque<Message>) {
-		for anchor in &self.anchors {
-			anchor.place_handle_overlay(responses);
-		}
-	}
+	// /// Update the positions of the handle points and lines based on the kurbo path
+	// fn place_handle_overlays(&self, responses: &mut VecDeque<Message>) {
+	// 	for anchor in &self.anchors {
+	// 		anchor.place_handle_overlay(responses);
+	// 	}
+	// }
 
-	/// Remove all of the overlays from the shape
-	pub fn remove_overlays(&mut self, responses: &mut VecDeque<Message>) {
-		self.remove_shape_outline_overlay(responses);
-		self.remove_anchor_overlays(responses);
-		self.remove_handle_overlays(responses);
-	}
+	// /// Remove all of the overlays from the shape
+	// pub fn remove_overlays(&mut self, responses: &mut VecDeque<Message>) {
+	// 	self.remove_shape_outline_overlay(responses);
+	// 	self.remove_anchor_overlays(responses);
+	// 	self.remove_handle_overlays(responses);
+	// }
 
-	/// Remove the outline around the shape
-	pub fn remove_shape_outline_overlay(&mut self, responses: &mut VecDeque<Message>) {
-		if let Some(overlay_path) = &self.shape_overlay {
-			responses.push_back(DocumentMessage::Overlays(Operation::DeleteLayer { path: overlay_path.clone() }.into()).into());
-		}
-		self.shape_overlay = None;
-	}
+	// /// Remove the outline around the shape
+	// pub fn remove_shape_outline_overlay(&mut self, responses: &mut VecDeque<Message>) {
+	// 	if let Some(overlay_path) = &self.shape_overlay {
+	// 		responses.push_back(DocumentMessage::Overlays(Operation::DeleteLayer { path: overlay_path.clone() }.into()).into());
+	// 	}
+	// 	self.shape_overlay = None;
+	// }
 
-	/// Remove the all the anchor overlays
-	pub fn remove_anchor_overlays(&mut self, responses: &mut VecDeque<Message>) {
-		for anchor in &mut self.anchors {
-			anchor.remove_anchor_overlay(responses);
-		}
-	}
+	// /// Remove the all the anchor overlays
+	// pub fn remove_anchor_overlays(&mut self, responses: &mut VecDeque<Message>) {
+	// 	for anchor in &mut self.anchors {
+	// 		anchor.remove_anchor_overlay(responses);
+	// 	}
+	// }
 
-	/// Remove the all the anchor overlays
-	pub fn remove_handle_overlays(&mut self, responses: &mut VecDeque<Message>) {
-		for anchor in &mut self.anchors {
-			anchor.remove_handle_overlay(responses);
-		}
-	}
+	// /// Remove the all the anchor overlays
+	// pub fn remove_handle_overlays(&mut self, responses: &mut VecDeque<Message>) {
+	// 	for anchor in &mut self.anchors {
+	// 		anchor.remove_handle_overlay(responses);
+	// 	}
+	// }
 
-	/// Eventually we will want to hide the overlays instead of clearing them when selecting a new shape
-	pub fn set_overlay_visibility(&mut self, visibility: bool, responses: &mut VecDeque<Message>) {
-		self.set_shape_outline_visiblity(visibility, responses);
-		self.set_anchors_visiblity(visibility, responses);
-		self.set_handles_visiblity(visibility, responses);
-	}
+	// /// Eventually we will want to hide the overlays instead of clearing them when selecting a new shape
+	// pub fn set_overlay_visibility(&mut self, visibility: bool, responses: &mut VecDeque<Message>) {
+	// 	self.set_shape_outline_visiblity(visibility, responses);
+	// 	self.set_anchors_visiblity(visibility, responses);
+	// 	self.set_handles_visiblity(visibility, responses);
+	// }
 
-	/// Set the visibility of the shape outline
-	pub fn set_shape_outline_visiblity(&self, visibility: bool, responses: &mut VecDeque<Message>) {
-		if let Some(overlay_path) = &self.shape_overlay {
-			responses.push_back(
-				DocumentMessage::Overlays(
-					Operation::SetLayerVisibility {
-						path: overlay_path.clone(),
-						visible: visibility,
-					}
-					.into(),
-				)
-				.into(),
-			);
-		}
-	}
+	// /// Set the visibility of the shape outline
+	// pub fn set_shape_outline_visiblity(&self, visibility: bool, responses: &mut VecDeque<Message>) {
+	// 	if let Some(overlay_path) = &self.shape_overlay {
+	// 		responses.push_back(
+	// 			DocumentMessage::Overlays(
+	// 				Operation::SetLayerVisibility {
+	// 					path: overlay_path.clone(),
+	// 					visible: visibility,
+	// 				}
+	// 				.into(),
+	// 			)
+	// 			.into(),
+	// 		);
+	// 	}
+	// }
 
-	/// Set visibility on all of the anchors in this shape
-	pub fn set_anchors_visiblity(&self, visibility: bool, responses: &mut VecDeque<Message>) {
-		for anchor in &self.anchors {
-			anchor.set_anchor_visiblity(visibility, responses);
-		}
-	}
+	// /// Set visibility on all of the anchors in this shape
+	// pub fn set_anchors_visiblity(&self, visibility: bool, responses: &mut VecDeque<Message>) {
+	// 	for anchor in &self.anchors {
+	// 		anchor.set_anchor_visiblity(visibility, responses);
+	// 	}
+	// }
 
-	/// Set visibility on all of the handles in this shape
-	pub fn set_handles_visiblity(&self, visibility: bool, responses: &mut VecDeque<Message>) {
-		for anchor in &self.anchors {
-			anchor.set_handle_visiblity(visibility, responses);
-		}
-	}
+	// /// Set visibility on all of the handles in this shape
+	// pub fn set_handles_visiblity(&self, visibility: bool, responses: &mut VecDeque<Message>) {
+	// 	for anchor in &self.anchors {
+	// 		anchor.set_handle_visiblity(visibility, responses);
+	// 	}
+	// }
 }
