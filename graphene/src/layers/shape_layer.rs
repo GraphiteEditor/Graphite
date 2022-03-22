@@ -192,9 +192,9 @@ impl ShapeLayer {
 			// Solve with Thomas algorithm (see https://en.wikipedia.org/wiki/Tridiagonal_matrix_algorithm)
 			for i in 1..n {
 				let m = a[i] / b[i - 1];
-				// TODO: Fix Clippy warning which makes the borrow checker angry
-				b[i] = b[i] - m * c[i - 1];
-				r[i] = r[i] - m * r[i - 1];
+				b[i] -= m * c[i - 1];
+				let last_iteration_r = r[i - 1];
+				r[i] -= m * last_iteration_r;
 			}
 
 			// Determine first control point for each segment

@@ -173,6 +173,15 @@ pre {
 	}
 }
 
+kbd {
+	background: var(--color-fog);
+	border-radius: calc(var(--variable-px) * 4);
+	outline: var(--border-thickness) solid var(--color-navy);
+	padding: 0 4px;
+	margin: 0 4px;
+	color: var(--color-navy);
+}
+
 summary {
 	cursor: pointer;
 }
@@ -287,7 +296,7 @@ hr,
 .feature-box {
 	padding: calc(80 * var(--variable-px));
 	background-image: url("images/textures/noise.png");
-	background-blend-mode: soft-light;
+	background-blend-mode: overlay;
 	background-position: center;
 
 	&.feature-box.feature-box {

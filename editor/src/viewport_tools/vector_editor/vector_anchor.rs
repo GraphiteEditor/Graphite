@@ -50,7 +50,7 @@ impl VectorAnchor {
 
 	// TODO Cleanup the internals of this function
 	/// Move the selected points by the provided delta
-	pub fn move_selected_points(&mut self, translation: DVec2, relative: bool, path_elements: &mut Vec<kurbo::PathEl>, transform: &DAffine2) {
+	pub fn move_selected_points(&mut self, translation: DVec2, relative: bool, path_elements: &mut [kurbo::PathEl], transform: &DAffine2) {
 		let place_mirrored_handle = |center: kurbo::Point, original: kurbo::Point, target: kurbo::Point, selected: bool, mirror_angle: bool, mirror_distance: bool| -> kurbo::Point {
 			if !selected || !mirror_angle {
 				return original;

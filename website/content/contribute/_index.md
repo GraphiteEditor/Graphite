@@ -5,41 +5,51 @@ template = "page.html"
 
 It's great to hear you are interested in contributing to Graphite! We want to make it as easy and frictionless as possible for you to get started. Here are the basics.
 
-## Building and running the codebase
+## Building and running the codebase.
 
-Graphite is built with Rust and web technologies. Download and install the latest LTS version of [Node.js](https://nodejs.org/) and stable release of [Rust](https://www.rust-lang.org/). On Windows, Rust requires the MSVC toolchain properly configured with the Visual Studio Build Tools installed on your machine including the "Desktop development with C++" workload. **If you are having issues building,** you might have skipped this step or you may have outdated Node.js or Rust versions (compare `node --version` and `rustc --version` against the versions listed in the links above, use `rustup update` to upgrade Rust).
+Graphite is built with Rust and web technologies. Download and install the latest LTS version of [Node.js](https://nodejs.org/) and stable release of [Rust](https://www.rust-lang.org/), as well as [Git](https://git-scm.com/).
 
-After cloning the project, acquire the required Node.js packages:
+On Windows, Rust requires the MSVC toolchain properly configured with the Visual Studio Build Tools installed on your machine including the "Desktop development with C++" workload. **If you are having issues building,** you might have skipped this step or you may have outdated Node.js or Rust versions (compare `node --version` and `rustc --version` against the versions listed in the links above, use `rustup update` to upgrade Rust).
+
+Clone the project:
 ```
-cd frontend && npm install
+git clone https://github.com/GraphiteEditor/Graphite.git
 ```
-(Rust's cargo packages will be acquired automatically when building.) One dependency in the build chain, `wasm-pack`, will be installed automatically on your system when the npm packages are installing. If you prefer to install this manually, you can get it from the [wasm-pack website](https://rustwasm.github.io/wasm-pack/), then install dependencies with `npm install --no-optional`. **This is necessary on Apple Silicon/M1 Macs** until [this bug](https://github.com/rustwasm/wasm-pack/issues/952) is fixed.
+
+Then install the required Node.js packages:
+```
+cd frontend
+npm install
+```
+
+You only need to explicitly install Node.js dependencies. Rust's cargo dependencies will be installed automatically on your first build. One dependency in the build chain, `wasm-pack`, will be installed automatically on your system when the Node.js packages are installing. If you prefer to install this manually, you can get it from the [wasm-pack website](https://rustwasm.github.io/wasm-pack/), then install dependencies with `npm install --no-optional`. **This is necessary on Apple Silicon/M1 Macs** until [this bug](https://github.com/rustwasm/wasm-pack/issues/952) is fixed.
 
 To run the project while developing:
 ```
-npm run serve
+npm start
 ```
-This spins up the dev server on `localhost:8080` with a file watcher that performs hot reloading of the web page. You should be able to start the server, edit and save web and Rust code, and rarely have to kill the server (by hitting <kbd>Ctrl</kbd><kbd>C</kbd> twice). You sometimes may need to reload the web page if the hot reloading didn't behave perfectly.
+
+This spins up the dev server at <http://localhost:8080> with a file watcher that performs hot reloading of the web page. You should be able to start the server, edit and save web and Rust code, and rarely have to kill the server (by hitting <kbd>Ctrl</kbd><kbd>C</kbd> twice). You sometimes may need to reload the web page if the hot reloading didn't behave perfectly.
 
 While developing Rust code, `cargo check` and `cargo clippy` may be run from the root directory. You can also use `npm run lint`/`npm run lint-no-fix` to solve web code formatting and `cargo fmt` for Rust code formatting. If you don't use VS Code and its format-on-save feature, please remember or format before committing or consider [setting up a `pre-commit` hook](https://githooks.com/) to do that automatically.
 
 We provide default configurations for VS Code users. When you open the project, watch for a prompt to install the project's suggested extensions. They will provide helpful web and Rust tooling. If you use a different IDE, you won't get default configurations for the project out of the box, so please remember to format your code and check CI for errors.
 
-## Task board
+## Task board.
 
 Visit our [**task board**](https://github.com/GraphiteEditor/Graphite/projects/1) board and look through the current sprint's column. You are also welcome to work on tasks prioritized for upcoming sprints. Find any issues with the green "Available" tag.
 
 Pay attention to the tags which provide some useful information like which ones are a [**Good First Issue**](https://github.com/GraphiteEditor/Graphite/issues?q=is%3Aissue+is%3Aopen+label%3AAvailable+label%3A%22Good+First+Issue%22+) and whether they involve [**only Rust**](https://github.com/GraphiteEditor/Graphite/issues?q=is%3Aissue+is%3Aopen+label%3ARust+label%3AAvailable+-label%3AWeb+), [**only Web**](https://github.com/GraphiteEditor/Graphite/issues?q=is%3Aissue+is%3Aopen+label%3AWeb+label%3AAvailable+-label%3ARust+) (HTML/CSS/TypeScript/Vue.js), or [**both**](https://github.com/GraphiteEditor/Graphite/issues?q=is%3Aissue+is%3Aopen+label%3AAvailable+label%3ARust+label%3AWeb+). Feel free to pick whatever task interests you, then comment on the issue that you would like to start. After commenting, you can dig in right away, then we will assign the issue to your GitHub user to keep the status of things organized.
 
-## Mentorship
+## Mentorship.
 
-Join the [project's Discord server](https://discord.graphite.design) then hop on the `#development` channel and ping @Keavon and @TrueDoctor. We would be delighted to help you get started with in-depth explanations of the code, one-on-one mentorship and pair programming. This is very valuable and not at all an inconvenience to us because it helps you avoid the intimidating step of getting started, so please do not hesitate to reach out right away.
+Join the [project's Discord server](https://discord.graphite.rs) then hop on the `#development` channel and ping @Keavon and @TrueDoctor. We would be delighted to help you get started with in-depth explanations of the code, one-on-one mentorship and pair programming. This is very valuable and not at all an inconvenience to us because it helps you avoid the intimidating step of getting started, so please do not hesitate to reach out right away.
 
-## Docs
+## Docs.
 
 We have some documentation [here](https://github.com/GraphiteEditor/Graphite/blob/master/docs/README.md). However it could use some improvements and currently isn't a substitute for mentorship described in the section above. If you also want to dig into the code and solidify your understanding by writing documentation, that would be equally valuable to the project!
 
-## Codebase overview
+## Codebase overview.
 
 The Graphite Editor is built as a web app powered by Vue.js in the frontend and Rust in the backend which is compiled to WebAssembly (wasm) and run in the browser.
 
@@ -71,7 +81,7 @@ Because this is cumbersome, we have a proc macro `#[child]` that automatically i
 
 </details>
 
-## Contributing guide
+## Contributing guide.
 
 ### Code style
 
@@ -81,11 +91,12 @@ The Graphite project highly values code quality and accessibility to new contrib
 
 **Tests:** It's great if you can write tests for your code, especially if it's a tricky stand-alone function. However at the moment, we are prioritizing rapid iteration and will usually accept code without associated unit tests. That stance will change in the near future as we begin focusing more on stability than iteration.
 
-Additional best practices will be added here soon (when #192 is done). Please ask @Keavon in the mean time.
+Additional best practices will be added here soon. Please ask @Keavon in the mean time.
 
 ### Draft pull requests
 
 Once you begin writing code, please open a pull request immediately and mark it as a **Draft**. Please push to this on a frequent basis, even if things don't compile or work fully yet. It's very helpful to have your work-in-progress code up on GitHub so the status of your feature is less of a mystery.
 
-Open a new PR as a draft / Convert an existing PR to a draft:  
+Open a new PR as a draft / Convert an existing PR to a draft:
+
 ![](/contribute/draft-pr.png)
