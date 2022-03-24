@@ -493,8 +493,10 @@ impl DocumentMessageHandler {
 			}
 		}
 
-		walk_layers(&root, &mut path, responses, &mut image_data);
-		responses.push_front(FrontendMessage::UpdateImageData { image_data }.into());
+		walk_layers(root, &mut path, responses, &mut image_data);
+		if !image_data.is_empty() {
+			responses.push_front(FrontendMessage::UpdateImageData { image_data }.into());
+		}
 	}
 }
 
