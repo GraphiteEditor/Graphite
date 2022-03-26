@@ -18,10 +18,10 @@ use std::f64::consts::PI;
 use std::rc::Rc;
 
 trait DAffine2Utils {
-	fn width(&self) -> f64;
-	fn update_width(self, new_width: f64) -> Self;
-	fn height(&self) -> f64;
-	fn update_height(self, new_height: f64) -> Self;
+	fn scale_x(&self) -> f64;
+	fn update_scale_x(self, new_width: f64) -> Self;
+	fn scale_y(&self) -> f64;
+	fn update_scale_y(self, new_height: f64) -> Self;
 	fn x(&self) -> f64;
 	fn update_x(self, new_x: f64) -> Self;
 	fn y(&self) -> f64;
@@ -31,20 +31,20 @@ trait DAffine2Utils {
 }
 
 impl DAffine2Utils for DAffine2 {
-	fn width(&self) -> f64 {
+	fn scale_x(&self) -> f64 {
 		self.transform_vector2((1., 0.).into()).length()
 	}
 
-	fn update_width(self, new_width: f64) -> Self {
-		self * DAffine2::from_scale((new_width / self.width(), 1.).into())
+	fn update_scale_x(self, new_width: f64) -> Self {
+		self * DAffine2::from_scale((new_width / self.scale_x(), 1.).into())
 	}
 
-	fn height(&self) -> f64 {
+	fn scale_y(&self) -> f64 {
 		self.transform_vector2((0., 1.).into()).length()
 	}
 
-	fn update_height(self, new_height: f64) -> Self {
-		self * DAffine2::from_scale((1., new_height / self.height()).into())
+	fn update_scale_y(self, new_height: f64) -> Self {
+		self * DAffine2::from_scale((1., new_height / self.scale_y()).into())
 	}
 
 	fn x(&self) -> f64 {
@@ -66,14 +66,14 @@ impl DAffine2Utils for DAffine2 {
 	}
 
 	fn rotation(&self) -> f64 {
-		let cos = self.matrix2.col(0).x / self.width();
-		let sin = self.matrix2.col(0).y / self.width();
+		let cos = self.matrix2.col(0).x / self.scale_x();
+		let sin = self.matrix2.col(0).y / self.scale_x();
 		sin.atan2(cos)
 	}
 
 	fn update_rotation(self, new_rotation: f64) -> Self {
-		let width = self.width();
-		let height = self.height();
+		let width = self.scale_x();
+		let height = self.scale_y();
 		let half_width = width / 2.;
 		let half_height = height / 2.;
 
@@ -138,15 +138,23 @@ impl MessageHandler<PropertiesPanelMessage, &GrapheneDocument> for PropertiesPan
 				let action = match transform_op {
 					X => DAffine2::update_x,
 					Y => DAffine2::update_y,
-					Width => DAffine2::update_width,
-					Height => DAffine2::update_height,
+					ScaleX | Width => DAffine2::update_scale_x,
+					ScaleY | Height => DAffine2::update_scale_y,
 					Rotation => DAffine2::update_rotation,
 				};
+
+				log::debug!("bounding_transform {:?} ", layer.bounding_transform());
+				let scale = match transform_op {
+					Width => layer.bounding_transform().scale_x() / layer.transform.scale_x(),
+					Height => layer.bounding_transform().scale_y() / layer.transform.scale_y(),
+					_ => 1.,
+				};
+				log::debug!("scale {scale}");
 
 				responses.push_back(
 					Operation::SetLayerTransform {
 						path: path.clone(),
-						transform: action(layer.transform, value).to_cols_array(),
+						transform: action(layer.transform, value / scale).to_cols_array(),
 					}
 					.into(),
 				);
@@ -340,6 +348,49 @@ fn node_section_transform(layer: &Layer) -> LayoutRow {
 				name: "".into(),
 				widgets: vec![
 					WidgetHolder::new(Widget::TextLabel(TextLabel {
+						value: "Scale".into(),
+						..TextLabel::default()
+					})),
+					WidgetHolder::new(Widget::Separator(Separator {
+						separator_type: SeparatorType::Unrelated,
+						direction: SeparatorDirection::Horizontal,
+					})),
+					WidgetHolder::new(Widget::NumberInput(NumberInput {
+						value: layer.transform.scale_x() * 100.,
+						label: "W".into(),
+						unit: " %".into(),
+						on_update: WidgetCallback::new(|number_input: &NumberInput| {
+							PropertiesPanelMessage::ModifyTransform {
+								value: number_input.value / 100.,
+								transform_op: TransformOp::ScaleX,
+							}
+							.into()
+						}),
+						..NumberInput::default()
+					})),
+					WidgetHolder::new(Widget::Separator(Separator {
+						separator_type: SeparatorType::Related,
+						direction: SeparatorDirection::Horizontal,
+					})),
+					WidgetHolder::new(Widget::NumberInput(NumberInput {
+						value: layer.transform.scale_y() * 100.,
+						label: "H".into(),
+						unit: " %".into(),
+						on_update: WidgetCallback::new(|number_input: &NumberInput| {
+							PropertiesPanelMessage::ModifyTransform {
+								value: number_input.value / 100.,
+								transform_op: TransformOp::ScaleY,
+							}
+							.into()
+						}),
+						..NumberInput::default()
+					})),
+				],
+			},
+			LayoutRow::Row {
+				name: "".into(),
+				widgets: vec![
+					WidgetHolder::new(Widget::TextLabel(TextLabel {
 						value: "Dimensions".into(),
 						..TextLabel::default()
 					})),
@@ -348,7 +399,7 @@ fn node_section_transform(layer: &Layer) -> LayoutRow {
 						direction: SeparatorDirection::Horizontal,
 					})),
 					WidgetHolder::new(Widget::NumberInput(NumberInput {
-						value: layer.transform.width(),
+						value: layer.bounding_transform().scale_x(),
 						label: "W".into(),
 						unit: " px".into(),
 						on_update: WidgetCallback::new(|number_input: &NumberInput| {
@@ -365,7 +416,7 @@ fn node_section_transform(layer: &Layer) -> LayoutRow {
 						direction: SeparatorDirection::Horizontal,
 					})),
 					WidgetHolder::new(Widget::NumberInput(NumberInput {
-						value: layer.transform.height(),
+						value: layer.bounding_transform().scale_y(),
 						label: "H".into(),
 						unit: " px".into(),
 						on_update: WidgetCallback::new(|number_input: &NumberInput| {

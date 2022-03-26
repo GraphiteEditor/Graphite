@@ -22,6 +22,8 @@ pub enum PropertiesPanelMessage {
 pub enum TransformOp {
 	X,
 	Y,
+	ScaleX,
+	ScaleY,
 	Width,
 	Height,
 	Rotation,
