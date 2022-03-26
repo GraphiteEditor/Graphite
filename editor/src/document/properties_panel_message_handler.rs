@@ -143,13 +143,11 @@ impl MessageHandler<PropertiesPanelMessage, &GrapheneDocument> for PropertiesPan
 					Rotation => DAffine2::update_rotation,
 				};
 
-				log::debug!("bounding_transform {:?} ", layer.bounding_transform());
 				let scale = match transform_op {
 					Width => layer.bounding_transform().scale_x() / layer.transform.scale_x(),
 					Height => layer.bounding_transform().scale_y() / layer.transform.scale_y(),
 					_ => 1.,
 				};
-				log::debug!("scale {scale}");
 
 				responses.push_back(
 					Operation::SetLayerTransform {
@@ -305,7 +303,7 @@ fn node_section_transform(layer: &Layer) -> LayoutRow {
 				name: "".into(),
 				widgets: vec![
 					WidgetHolder::new(Widget::TextLabel(TextLabel {
-						value: "Position".into(),
+						value: "Location".into(),
 						..TextLabel::default()
 					})),
 					WidgetHolder::new(Widget::Separator(Separator {
@@ -348,6 +346,32 @@ fn node_section_transform(layer: &Layer) -> LayoutRow {
 				name: "".into(),
 				widgets: vec![
 					WidgetHolder::new(Widget::TextLabel(TextLabel {
+						value: "Rotation".into(),
+						..TextLabel::default()
+					})),
+					WidgetHolder::new(Widget::Separator(Separator {
+						separator_type: SeparatorType::Unrelated,
+						direction: SeparatorDirection::Horizontal,
+					})),
+					WidgetHolder::new(Widget::NumberInput(NumberInput {
+						value: layer.transform.rotation() * 180. / PI,
+						label: "".into(),
+						unit: "°".into(),
+						on_update: WidgetCallback::new(|number_input: &NumberInput| {
+							PropertiesPanelMessage::ModifyTransform {
+								value: number_input.value / 180. * PI,
+								transform_op: TransformOp::Rotation,
+							}
+							.into()
+						}),
+						..NumberInput::default()
+					})),
+				],
+			},
+			LayoutRow::Row {
+				name: "".into(),
+				widgets: vec![
+					WidgetHolder::new(Widget::TextLabel(TextLabel {
 						value: "Scale".into(),
 						..TextLabel::default()
 					})),
@@ -356,12 +380,12 @@ fn node_section_transform(layer: &Layer) -> LayoutRow {
 						direction: SeparatorDirection::Horizontal,
 					})),
 					WidgetHolder::new(Widget::NumberInput(NumberInput {
-						value: layer.transform.scale_x() * 100.,
-						label: "W".into(),
-						unit: " %".into(),
+						value: layer.transform.scale_x(),
+						label: "X".into(),
+						unit: "".into(),
 						on_update: WidgetCallback::new(|number_input: &NumberInput| {
 							PropertiesPanelMessage::ModifyTransform {
-								value: number_input.value / 100.,
+								value: number_input.value,
 								transform_op: TransformOp::ScaleX,
 							}
 							.into()
@@ -373,12 +397,12 @@ fn node_section_transform(layer: &Layer) -> LayoutRow {
 						direction: SeparatorDirection::Horizontal,
 					})),
 					WidgetHolder::new(Widget::NumberInput(NumberInput {
-						value: layer.transform.scale_y() * 100.,
-						label: "H".into(),
-						unit: " %".into(),
+						value: layer.transform.scale_y(),
+						label: "Y".into(),
+						unit: "".into(),
 						on_update: WidgetCallback::new(|number_input: &NumberInput| {
 							PropertiesPanelMessage::ModifyTransform {
-								value: number_input.value / 100.,
+								value: number_input.value,
 								transform_op: TransformOp::ScaleY,
 							}
 							.into()
@@ -423,32 +447,6 @@ fn node_section_transform(layer: &Layer) -> LayoutRow {
 							PropertiesPanelMessage::ModifyTransform {
 								value: number_input.value,
 								transform_op: TransformOp::Height,
-							}
-							.into()
-						}),
-						..NumberInput::default()
-					})),
-				],
-			},
-			LayoutRow::Row {
-				name: "".into(),
-				widgets: vec![
-					WidgetHolder::new(Widget::TextLabel(TextLabel {
-						value: "Rotation".into(),
-						..TextLabel::default()
-					})),
-					WidgetHolder::new(Widget::Separator(Separator {
-						separator_type: SeparatorType::Unrelated,
-						direction: SeparatorDirection::Horizontal,
-					})),
-					WidgetHolder::new(Widget::NumberInput(NumberInput {
-						value: layer.transform.rotation() * 180. / PI,
-						label: "R".into(),
-						unit: "°".into(),
-						on_update: WidgetCallback::new(|number_input: &NumberInput| {
-							PropertiesPanelMessage::ModifyTransform {
-								value: number_input.value / 180. * PI,
-								transform_op: TransformOp::Rotation,
 							}
 							.into()
 						}),
