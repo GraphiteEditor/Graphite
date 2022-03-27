@@ -75,9 +75,23 @@
 						<CanvasRuler :origin="rulerOrigin.y" :majorMarkSpacing="rulerSpacing" :numberInterval="rulerInterval" :direction="'Vertical'" ref="rulerVertical" />
 					</LayoutCol>
 					<LayoutCol class="canvas-area">
-						<div class="canvas" data-canvas ref="canvas" :style="{ cursor: canvasCursor }" @pointerdown="(e: PointerEvent) => canvasPointerDown(e)">
+						<div
+							class="canvas"
+							data-canvas
+							ref="canvas"
+							:style="{ cursor: canvasCursor }"
+							@pointerdown="(e: PointerEvent) => canvasPointerDown(e)"
+							@dragover="(e) => e.preventDefault()"
+							@drop="(e) => pasteFile(e)"
+						>
 							<svg class="artboards" v-html="artboardSvg" :style="{ width: canvasSvgWidth, height: canvasSvgHeight }"></svg>
-							<svg class="artwork" v-html="artworkSvg" :style="{ width: canvasSvgWidth, height: canvasSvgHeight }"></svg>
+							<svg
+								class="artwork"
+								xmlns="http://www.w3.org/2000/svg"
+								xmlns:xlink="http://www.w3.org/1999/xlink"
+								v-html="artworkSvg"
+								:style="{ width: canvasSvgWidth, height: canvasSvgHeight }"
+							></svg>
 							<svg class="overlays" v-html="overlaysSvg" :style="{ width: canvasSvgWidth, height: canvasSvgHeight }"></svg>
 						</div>
 					</LayoutCol>
@@ -267,7 +281,9 @@ import {
 	UpdateToolOptionsLayout,
 	defaultWidgetLayout,
 	UpdateDocumentBarLayout,
+	UpdateImageData,
 	TriggerTextCommit,
+	TriggerTextCopy,
 	TriggerViewportResize,
 	DisplayRemoveEditableTextbox,
 	DisplayEditableTextbox,
@@ -311,6 +327,22 @@ export default defineComponent({
 			const rulerVertical = this.$refs.rulerVertical as typeof CanvasRuler;
 			if (rulerHorizontal) rulerHorizontal.handleResize();
 			if (rulerVertical) rulerVertical.handleResize();
+		},
+		pasteFile(e: DragEvent) {
+			const { dataTransfer } = e;
+			if (!dataTransfer) return;
+			e.preventDefault();
+
+			Array.from(dataTransfer.items).forEach((item) => {
+				const file = item.getAsFile();
+				if (file && file.type.startsWith("image")) {
+					file.arrayBuffer().then((buffer): void => {
+						const u8Array = new Uint8Array(buffer);
+
+						this.editor.instance.paste_image(file.type, u8Array, e.clientX, e.clientY);
+					});
+				}
+			});
 		},
 		translateCanvasX(newValue: number) {
 			const delta = newValue - this.scrollbarPos.x;
@@ -421,6 +453,15 @@ export default defineComponent({
 		this.editor.dispatcher.subscribeJsMessage(TriggerTextCommit, () => {
 			if (this.textInput) this.editor.instance.on_change_text(textInputCleanup(this.textInput.innerText));
 		});
+		this.editor.dispatcher.subscribeJsMessage(TriggerTextCopy, async (triggerTextCopy) => {
+			// Clipboard API supported?
+			if (!navigator.clipboard) return;
+
+			// copy text to clipboard
+			if (navigator.clipboard.writeText) {
+				await navigator.clipboard.writeText(triggerTextCopy.copy_text);
+			}
+		});
 
 		this.editor.dispatcher.subscribeJsMessage(DisplayEditableTextbox, (displayEditableTextbox) => {
 			this.textInput = document.createElement("DIV") as HTMLDivElement;
@@ -456,6 +497,19 @@ export default defineComponent({
 			this.documentBarLayout = updateDocumentBarLayout;
 		});
 		this.editor.dispatcher.subscribeJsMessage(TriggerViewportResize, this.viewportResize);
+
+		this.editor.dispatcher.subscribeJsMessage(UpdateImageData, (updateImageData) => {
+			updateImageData.image_data.forEach((element) => {
+				// Using updateImageData.image_data.buffer returns undefined for some reason?
+				const blob = new Blob([new Uint8Array(element.image_data.values()).buffer], { type: element.mime });
+
+				const url = URL.createObjectURL(blob);
+
+				createImageBitmap(blob).then((image) => {
+					this.editor.instance.set_image_blob_url(element.path, url, image.width, image.height);
+				});
+			});
+		});
 
 		// TODO(mfish33): Replace with initialization system Issue:#524
 		// Get initial Document Bar

@@ -2,6 +2,7 @@ use crate::boolean_ops::boolean_operation;
 use crate::intersection::Quad;
 use crate::layers;
 use crate::layers::folder_layer::FolderLayer;
+use crate::layers::image_layer::ImageLayer;
 use crate::layers::layer_info::{Layer, LayerData, LayerDataType};
 use crate::layers::shape_layer::ShapeLayer;
 use crate::layers::style::ViewMode;
@@ -268,23 +269,17 @@ impl Document {
 		Ok(())
 	}
 
-	/// Visit each layer recursively, applies modify_shape to each non-overlay Shape
-	pub fn visit_all_shapes<F: FnMut(&mut ShapeLayer)>(layer: &mut Layer, modify_shape: &mut F) -> bool {
+	/// Visit each layer recursively, marks all children as dirty
+	pub fn mark_children_as_dirty(layer: &mut Layer) -> bool {
 		match layer.data {
-			LayerDataType::Shape(ref mut shape) => {
-				modify_shape(shape);
-
-				// This layer should be updated on next render pass
-				layer.cache_dirty = true;
-			}
 			LayerDataType::Folder(ref mut folder) => {
 				for sub_layer in folder.layers_mut() {
-					if Document::visit_all_shapes(sub_layer, modify_shape) {
+					if Document::mark_children_as_dirty(sub_layer) {
 						layer.cache_dirty = true;
 					}
 				}
 			}
-			LayerDataType::Text(_) => layer.cache_dirty = true,
+			_ => layer.cache_dirty = true,
 		}
 		layer.cache_dirty
 	}
@@ -502,6 +497,19 @@ impl Document {
 
 				Some([vec![DocumentChanged, CreatedLayer { path: path.clone() }], update_thumbnails_upstream(&path)].concat())
 			}
+			Operation::AddImage {
+				path,
+				transform,
+				insert_index,
+				image_data,
+				mime,
+			} => {
+				let layer = Layer::new(LayerDataType::Image(ImageLayer::new(mime, image_data)), transform);
+
+				self.set_layer(&path, layer, insert_index)?;
+
+				Some([vec![DocumentChanged, CreatedLayer { path: path.clone() }], update_thumbnails_upstream(&path)].concat())
+			}
 			Operation::SetTextEditability { path, editable } => {
 				self.layer_mut(&path)?.as_text_mut()?.editable = editable;
 				self.mark_as_dirty(&path)?;
@@ -690,6 +698,14 @@ impl Document {
 				self.mark_as_dirty(&path)?;
 				Some([vec![DocumentChanged], update_thumbnails_upstream(&path)].concat())
 			}
+			Operation::SetImageBlobUrl { path, blob_url, dimensions } => {
+				let image = self.layer_mut(&path).expect("Blob url for invalid layer").as_image_mut().unwrap();
+				image.blob_url = Some(blob_url);
+				image.dimensions = dimensions.into();
+				self.mark_as_dirty(&path)?;
+				Some([vec![DocumentChanged, LayerChanged { path: path.clone() }], update_thumbnails_upstream(&path)].concat())
+			}
+
 			Operation::SetLayerTransformInViewport { path, transform } => {
 				let transform = DAffine2::from_cols_array(&transform);
 				self.set_transform_relative_to_viewport(&path, transform)?;
