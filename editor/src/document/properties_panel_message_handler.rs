@@ -231,6 +231,10 @@ fn register_layer_properties(layer: &Layer, responses: &mut VecDeque<Message>) {
 					icon: "NodeText".into(),
 					gap_after: true,
 				})),
+				LayerDataType::Image(_) => WidgetHolder::new(Widget::IconLabel(IconLabel {
+					icon: "NodeImage".into(),
+					gap_after: true,
+				})),
 			},
 			WidgetHolder::new(Widget::Separator(Separator {
 				separator_type: SeparatorType::Related,
@@ -260,9 +264,6 @@ fn register_layer_properties(layer: &Layer, responses: &mut VecDeque<Message>) {
 	}];
 
 	let properties_body = match &layer.data {
-		LayerDataType::Folder(_) => {
-			vec![]
-		}
 		LayerDataType::Shape(shape) => {
 			if let Some(fill_layout) = node_section_fill(shape.style.fill()) {
 				vec![node_section_transform(layer), fill_layout, node_section_stroke(&shape.style.stroke().unwrap_or_default())]
@@ -276,6 +277,12 @@ fn register_layer_properties(layer: &Layer, responses: &mut VecDeque<Message>) {
 				node_section_fill(text.style.fill()).expect("Text should have fill"),
 				node_section_stroke(&text.style.stroke().unwrap_or_default()),
 			]
+		}
+		LayerDataType::Image(_) => {
+			vec![node_section_transform(layer)]
+		}
+		_ => {
+			vec![]
 		}
 	};
 

@@ -308,6 +308,10 @@ export class DisplayEditableTextbox extends JsMessage {
 	readonly color!: Color;
 }
 
+export class UpdateImageData extends JsMessage {
+	readonly image_data!: ImageData[];
+}
+
 export class DisplayRemoveEditableTextbox extends JsMessage {}
 
 export class UpdateDocumentLayer extends JsMessage {
@@ -370,6 +374,14 @@ export class LayerMetadata {
 }
 
 export type LayerType = "Folder" | "Image" | "Shape" | "Text";
+
+export class ImageData {
+	readonly path!: BigUint64Array;
+
+	readonly mime!: string;
+
+	readonly image_data!: Uint8Array;
+}
 
 export class IndexedDbDocumentDetails extends DocumentDetails {
 	@Transform(({ value }: { value: BigInt }) => value.toString())
@@ -488,6 +500,10 @@ export class DisplayDialogComingSoon extends JsMessage {
 
 export class TriggerTextCommit extends JsMessage {}
 
+export class TriggerTextCopy extends JsMessage {
+	readonly copy_text!: string;
+}
+
 export class TriggerViewportResize extends JsMessage {}
 
 // Any is used since the type of the object should be known from the rust side
@@ -504,12 +520,14 @@ export const messageConstructors: Record<string, MessageMaker> = {
 	DisplayDialogPanic,
 	DisplayDocumentLayerTreeStructure: newDisplayDocumentLayerTreeStructure,
 	DisplayEditableTextbox,
+	UpdateImageData,
 	DisplayRemoveEditableTextbox,
 	TriggerFileDownload,
 	TriggerFileUpload,
 	TriggerIndexedDbRemoveDocument,
 	TriggerIndexedDbWriteDocument,
 	TriggerTextCommit,
+	TriggerTextCopy,
 	TriggerViewportResize,
 	UpdateActiveDocument,
 	UpdateActiveTool,

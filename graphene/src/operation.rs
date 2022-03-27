@@ -53,6 +53,18 @@ pub enum Operation {
 		style: style::PathStyle,
 		size: f64,
 	},
+	AddImage {
+		path: Vec<LayerId>,
+		transform: [f64; 6],
+		insert_index: isize,
+		mime: String,
+		image_data: Vec<u8>,
+	},
+	SetImageBlobUrl {
+		path: Vec<LayerId>,
+		blob_url: String,
+		dimensions: (f64, f64),
+	},
 	SetTextEditability {
 		path: Vec<LayerId>,
 		editable: bool,

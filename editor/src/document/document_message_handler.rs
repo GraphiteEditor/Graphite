@@ -6,6 +6,7 @@ use super::{ArtboardMessageHandler, MovementMessageHandler, OverlaysMessageHandl
 use crate::consts::{
 	ASYMPTOTIC_EFFECT, DEFAULT_DOCUMENT_NAME, FILE_EXPORT_SUFFIX, FILE_SAVE_SUFFIX, GRAPHITE_DOCUMENT_VERSION, SCALE_EFFECT, SCROLLBAR_SPACING, VIEWPORT_ZOOM_TO_FIT_PADDING_SCALE_FACTOR,
 };
+use crate::frontend::utility_types::FrontendImageData;
 use crate::input::InputPreprocessorMessageHandler;
 use crate::layout::widgets::{
 	IconButton, LayoutRow, NumberInput, NumberInputIncrementBehavior, OptionalInput, PopoverButton, PropertyHolder, RadioEntryData, RadioInput, Separator, SeparatorDirection, SeparatorType, Widget,
@@ -470,6 +471,33 @@ impl DocumentMessageHandler {
 		path.push(generate_uuid());
 		path
 	}
+
+	/// Creates the blob URLs for the image data in the document
+	pub fn load_image_data(&self, responses: &mut VecDeque<Message>, root: &LayerDataType, mut path: Vec<LayerId>) {
+		let mut image_data = Vec::new();
+		fn walk_layers(data: &LayerDataType, path: &mut Vec<LayerId>, responses: &mut VecDeque<Message>, image_data: &mut Vec<FrontendImageData>) {
+			match data {
+				LayerDataType::Folder(f) => {
+					for (id, layer) in f.layer_ids.iter().zip(f.layers().iter()) {
+						path.push(*id);
+						walk_layers(&layer.data, path, responses, image_data);
+						path.pop();
+					}
+				}
+				LayerDataType::Image(img) => image_data.push(FrontendImageData {
+					path: path.clone(),
+					image_data: img.image_data.clone(),
+					mime: img.mime.clone(),
+				}),
+				_ => {}
+			}
+		}
+
+		walk_layers(root, &mut path, responses, &mut image_data);
+		if !image_data.is_empty() {
+			responses.push_front(FrontendMessage::UpdateImageData { image_data }.into());
+		}
+	}
 }
 
 impl PropertyHolder for DocumentMessageHandler {
@@ -783,7 +811,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 			}
 			DirtyRenderDocument => {
 				// Mark all non-overlay caches as dirty
-				GrapheneDocument::visit_all_shapes(&mut self.graphene_document.root, &mut |_| {});
+				GrapheneDocument::mark_children_as_dirty(&mut self.graphene_document.root);
 
 				responses.push_back(DocumentMessage::RenderDocument.into());
 			}
@@ -865,13 +893,13 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 
 				new_folder_path.push(generate_uuid());
 
-				responses.push_back(PortfolioMessage::Copy { clipboard: Clipboard::System }.into());
+				responses.push_back(PortfolioMessage::Copy { clipboard: Clipboard::Internal }.into());
 				responses.push_back(DocumentMessage::DeleteSelectedLayers.into());
 				responses.push_back(DocumentOperation::CreateFolder { path: new_folder_path.clone() }.into());
 				responses.push_back(DocumentMessage::ToggleLayerExpansion { layer_path: new_folder_path.clone() }.into());
 				responses.push_back(
 					PortfolioMessage::PasteIntoFolder {
-						clipboard: Clipboard::System,
+						clipboard: Clipboard::Internal,
 						folder_path: new_folder_path.clone(),
 						insert_index: -1,
 					}
@@ -904,11 +932,11 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 
 				let insert_index = self.update_insert_index(&selected_layers, &folder_path, insert_index, reverse_index).unwrap();
 
-				responses.push_back(PortfolioMessage::Copy { clipboard: Clipboard::System }.into());
+				responses.push_back(PortfolioMessage::Copy { clipboard: Clipboard::Internal }.into());
 				responses.push_back(DocumentMessage::DeleteSelectedLayers.into());
 				responses.push_back(
 					PortfolioMessage::PasteIntoFolder {
-						clipboard: Clipboard::System,
+						clipboard: Clipboard::Internal,
 						folder_path,
 						insert_index,
 					}
@@ -925,6 +953,39 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 					responses.push_back(operation.into());
 				}
 				responses.push_back(ToolMessage::DocumentIsDirty.into());
+			}
+			PasteImage { mime, image_data, mouse } => {
+				let path = vec![generate_uuid()];
+				responses.push_front(
+					FrontendMessage::UpdateImageData {
+						image_data: vec![FrontendImageData {
+							path: path.clone(),
+							image_data: image_data.clone(),
+							mime: mime.clone(),
+						}],
+					}
+					.into(),
+				);
+				responses.push_back(
+					DocumentOperation::AddImage {
+						path: path.clone(),
+						transform: DAffine2::ZERO.to_cols_array(),
+						insert_index: -1,
+						mime,
+						image_data,
+					}
+					.into(),
+				);
+				responses.push_back(
+					DocumentMessage::SetSelectedLayers {
+						replacement_selected_layers: vec![path.clone()],
+					}
+					.into(),
+				);
+
+				let mouse = mouse.map_or(ipp.mouse.position, |pos| pos.into());
+				let transform = DAffine2::from_translation(mouse - ipp.viewport_bounds.top_left).to_cols_array();
+				responses.push_back(DocumentOperation::SetLayerTransformInViewport { path, transform }.into());
 			}
 			Redo => {
 				responses.push_back(SelectToolMessage::Abort.into());
@@ -1200,10 +1261,10 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 					// Select them
 					DocumentMessage::SetSelectedLayers { replacement_selected_layers: select }.into(),
 					// Copy them
-					PortfolioMessage::Copy { clipboard: Clipboard::System }.into(),
+					PortfolioMessage::Copy { clipboard: Clipboard::Internal }.into(),
 					// Paste them into the folder above
 					PortfolioMessage::PasteIntoFolder {
-						clipboard: Clipboard::System,
+						clipboard: Clipboard::Internal,
 						folder_path: folder_path[..folder_path.len() - 1].to_vec(),
 						insert_index: -1,
 					}

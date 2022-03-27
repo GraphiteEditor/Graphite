@@ -26,6 +26,7 @@ export function createInputManager(editor: EditorState, container: HTMLElement, 
 		{ target: window, eventName: "mousedown", action: (e: MouseEvent): void => onMouseDown(e) },
 		{ target: window, eventName: "wheel", action: (e: WheelEvent): void => onMouseScroll(e), options: { passive: false } },
 		{ target: window, eventName: "modifyinputfield", action: (e: CustomEvent): void => onModifyInputField(e) },
+		{ target: window.document.body, eventName: "paste", action: (e: ClipboardEvent): void => onPaste(e) },
 	];
 
 	let viewportPointerInteractionOngoing = false;
@@ -44,6 +45,9 @@ export function createInputManager(editor: EditorState, container: HTMLElement, 
 		const { target } = e;
 		if (key !== "escape" && !(key === "enter" && e.ctrlKey) && target instanceof HTMLElement && (target.nodeName === "INPUT" || target.nodeName === "TEXTAREA" || target.isContentEditable))
 			return false;
+
+		// Don't redirect paste
+		if (key === "v" && e.ctrlKey) return false;
 
 		// Don't redirect a fullscreen request
 		if (key === "f11" && e.type === "keydown" && !e.repeat) {
@@ -206,6 +210,31 @@ export function createInputManager(editor: EditorState, container: HTMLElement, 
 			e.returnValue = "Unsaved work will be lost if the web browser tab is closed. Close anyway?";
 			e.preventDefault();
 		}
+	};
+
+	const onPaste = (e: ClipboardEvent): void => {
+		const dataTransfer = e.clipboardData;
+		if (!dataTransfer) return;
+		e.preventDefault();
+
+		Array.from(dataTransfer.items).forEach((item) => {
+			if (item.type === "text/plain") {
+				item.getAsString((text) => {
+					if (text.startsWith("graphite/layer: ")) {
+						editor.instance.paste_serialized_data(text.substring(16, text.length));
+					}
+				});
+			}
+
+			const file = item.getAsFile();
+			if (file && file.type.startsWith("image")) {
+				file.arrayBuffer().then((buffer): void => {
+					const u8Array = new Uint8Array(buffer);
+
+					editor.instance.paste_image(file.type, u8Array, undefined, undefined);
+				});
+			}
+		});
 	};
 
 	// Event bindings
