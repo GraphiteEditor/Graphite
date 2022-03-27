@@ -12,3 +12,5 @@ rust_analyzer = ["ide", "ide_db"]
 ide = { version = "*", package = "ra_ap_ide", optional = true }
 ide_db = { version = "*", package = "ra_ap_ide_db" , optional = true }
 graph-proc-macros = {path = "proc-macro"}
+once_cell = "1.10"
+dashmap = "5.2"
