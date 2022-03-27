@@ -150,12 +150,23 @@ impl Layer {
 		self.data.intersects_quad(transformed_quad, path, intersections)
 	}
 
-	pub fn current_bounding_box_with_transform(&self, transform: DAffine2) -> Option<[DVec2; 2]> {
+	pub fn aabounding_box_for_transform(&self, transform: DAffine2) -> Option<[DVec2; 2]> {
 		self.data.bounding_box(transform)
 	}
 
-	pub fn current_bounding_box(&self) -> Option<[DVec2; 2]> {
-		self.current_bounding_box_with_transform(self.transform)
+	pub fn aabounding_box(&self) -> Option<[DVec2; 2]> {
+		self.aabounding_box_for_transform(self.transform)
+	}
+	pub fn bounding_transform(&self) -> DAffine2 {
+		let scale = match self.aabounding_box_for_transform(DAffine2::IDENTITY) {
+			Some([a, b]) => {
+				let dimensions = b - a;
+				DAffine2::from_scale(dimensions)
+			}
+			_ => DAffine2::IDENTITY,
+		};
+
+		self.transform * scale
 	}
 
 	pub fn as_folder_mut(&mut self) -> Result<&mut FolderLayer, DocumentError> {
