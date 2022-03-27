@@ -166,7 +166,7 @@ fn update_overlays(document: &DocumentMessageHandler, data: &mut TextToolData, r
 			.graphene_document
 			.layer(layer_path)
 			.unwrap()
-			.current_bounding_box_with_transform(document.graphene_document.multiply_transforms(layer_path).unwrap())
+			.aabounding_box_for_transform(document.graphene_document.multiply_transforms(layer_path).unwrap())
 			.unwrap();
 
 		let operation = Operation::SetLayerTransformInViewport {
