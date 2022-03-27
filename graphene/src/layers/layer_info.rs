@@ -26,7 +26,7 @@ impl LayerDataType {
 			LayerDataType::Shape(s) => s,
 			LayerDataType::Folder(f) => f,
 			LayerDataType::Text(t) => t,
-			LayerDataType::Image(b) => b,
+			LayerDataType::Image(i) => i,
 		}
 	}
 
@@ -35,7 +35,7 @@ impl LayerDataType {
 			LayerDataType::Shape(s) => s,
 			LayerDataType::Folder(f) => f,
 			LayerDataType::Text(t) => t,
-			LayerDataType::Image(b) => b,
+			LayerDataType::Image(i) => i,
 		}
 	}
 }

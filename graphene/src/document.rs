@@ -269,18 +269,12 @@ impl Document {
 		Ok(())
 	}
 
-	/// Visit each layer recursively, applies modify_shape to each non-overlay Shape
-	pub fn visit_all_shapes<F: FnMut(&mut ShapeLayer)>(layer: &mut Layer, modify_shape: &mut F) -> bool {
+	/// Visit each layer recursively, marks all children as dirty
+	pub fn mark_children_as_dirty(layer: &mut Layer) -> bool {
 		match layer.data {
-			LayerDataType::Shape(ref mut shape) => {
-				modify_shape(shape);
-
-				// This layer should be updated on next render pass
-				layer.cache_dirty = true;
-			}
 			LayerDataType::Folder(ref mut folder) => {
 				for sub_layer in folder.layers_mut() {
-					if Document::visit_all_shapes(sub_layer, modify_shape) {
+					if Document::mark_children_as_dirty(sub_layer) {
 						layer.cache_dirty = true;
 					}
 				}
@@ -704,10 +698,10 @@ impl Document {
 				self.mark_as_dirty(&path)?;
 				Some([vec![DocumentChanged], update_thumbnails_upstream(&path)].concat())
 			}
-			Operation::SetImageBlobUrl { path, blob_url, dimentions } => {
+			Operation::SetImageBlobUrl { path, blob_url, dimensions } => {
 				let image = self.layer_mut(&path).expect("Blob url for invalid layer").as_image_mut().unwrap();
 				image.blob_url = Some(blob_url);
-				image.dimensions = dimentions.into();
+				image.dimensions = dimensions.into();
 				self.mark_as_dirty(&path)?;
 				Some([vec![DocumentChanged, LayerChanged { path: path.clone() }], update_thumbnails_upstream(&path)].concat())
 			}

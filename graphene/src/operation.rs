@@ -63,7 +63,7 @@ pub enum Operation {
 	SetImageBlobUrl {
 		path: Vec<LayerId>,
 		blob_url: String,
-		dimentions: (f64, f64),
+		dimensions: (f64, f64),
 	},
 	SetTextEditability {
 		path: Vec<LayerId>,

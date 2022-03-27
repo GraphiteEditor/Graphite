@@ -217,9 +217,7 @@ export function createInputManager(editor: EditorState, container: HTMLElement, 
 		if (!dataTransfer) return;
 		e.preventDefault();
 
-		for (let index = 0; index < dataTransfer.items.length; index += 1) {
-			const item = dataTransfer.items[index];
-
+		Array.from(dataTransfer.items).forEach((item) => {
 			if (item.type === "text/plain") {
 				item.getAsString((text) => {
 					if (text.startsWith("graphite/layer: ")) {
@@ -236,7 +234,7 @@ export function createInputManager(editor: EditorState, container: HTMLElement, 
 					editor.instance.paste_image(file.type, u8Array, undefined, undefined);
 				});
 			}
-		}
+		});
 	};
 
 	// Event bindings

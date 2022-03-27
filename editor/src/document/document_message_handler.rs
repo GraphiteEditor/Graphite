@@ -811,7 +811,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 			}
 			DirtyRenderDocument => {
 				// Mark all non-overlay caches as dirty
-				GrapheneDocument::visit_all_shapes(&mut self.graphene_document.root, &mut |_| {});
+				GrapheneDocument::mark_children_as_dirty(&mut self.graphene_document.root);
 
 				responses.push_back(DocumentMessage::RenderDocument.into());
 			}

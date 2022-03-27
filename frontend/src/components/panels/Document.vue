@@ -328,13 +328,12 @@ export default defineComponent({
 			if (rulerHorizontal) rulerHorizontal.handleResize();
 			if (rulerVertical) rulerVertical.handleResize();
 		},
-		async pasteFile(e: DragEvent) {
+		pasteFile(e: DragEvent) {
 			const { dataTransfer } = e;
 			if (!dataTransfer) return;
 			e.preventDefault();
 
-			for (let index = 0; index < dataTransfer.items.length; index += 1) {
-				const item = dataTransfer.items[index];
+			Array.from(dataTransfer.items).forEach((item) => {
 				const file = item.getAsFile();
 				if (file && file.type.startsWith("image")) {
 					file.arrayBuffer().then((buffer): void => {
@@ -343,7 +342,7 @@ export default defineComponent({
 						this.editor.instance.paste_image(file.type, u8Array, e.clientX, e.clientY);
 					});
 				}
-			}
+			});
 		},
 		translateCanvasX(newValue: number) {
 			const delta = newValue - this.scrollbarPos.x;
@@ -506,8 +505,8 @@ export default defineComponent({
 
 				const url = URL.createObjectURL(blob);
 
-				createImageBitmap(blob).then((i) => {
-					this.editor.instance.set_image_blob_url(element.path, url, i.width, i.height);
+				createImageBitmap(blob).then((image) => {
+					this.editor.instance.set_image_blob_url(element.path, url, image.width, image.height);
 				});
 			});
 		});

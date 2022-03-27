@@ -109,7 +109,7 @@ impl fmt::Display for LayerDataTypeDiscriminant {
 			LayerDataTypeDiscriminant::Folder => "Folder",
 			LayerDataTypeDiscriminant::Shape => "Shape",
 			LayerDataTypeDiscriminant::Text => "Text",
-			&LayerDataTypeDiscriminant::Image => "Image",
+			LayerDataTypeDiscriminant::Image => "Image",
 		};
 
 		formatter.write_str(name)
