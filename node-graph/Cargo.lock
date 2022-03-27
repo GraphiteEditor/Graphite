@@ -219,15 +219,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7ab85b9b05e3978cc9a9cf8fea7f01b494e1a09ed3037e16ba39edc7a29eb61a"
 
 [[package]]
-name = "graph-ite"
-version = "0.1.0"
-dependencies = [
- "graph-proc-macros",
- "ra_ap_ide",
- "ra_ap_ide_db",
-]
-
-[[package]]
 name = "graph-proc-macros"
 version = "0.1.0"
 dependencies = [
@@ -357,6 +348,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b9f1c5b025cda876f66ef43a113f91ebc9f4ccef34843000e0adf6ebbab84e21"
 dependencies = [
  "winapi",
+]
+
+[[package]]
+name = "nodegraph-experiments"
+version = "0.1.0"
+dependencies = [
+ "graph-proc-macros",
+ "ra_ap_ide",
+ "ra_ap_ide_db",
 ]
 
 [[package]]
