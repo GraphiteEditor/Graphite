@@ -10,6 +10,7 @@ pub enum DocumentError {
 	NonReorderableSelection,
 	NotAShape,
 	NotText,
+	NotAnImage,
 	InvalidFile(String),
 }
 

@@ -79,6 +79,11 @@ pub enum DocumentMessage {
 		delta_x: f64,
 		delta_y: f64,
 	},
+	PasteImage {
+		mime: String,
+		image_data: Vec<u8>,
+		mouse: Option<(f64, f64)>,
+	},
 	Redo,
 	RenameLayer {
 		layer_path: Vec<LayerId>,

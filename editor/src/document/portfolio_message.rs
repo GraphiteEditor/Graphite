@@ -55,6 +55,9 @@ pub enum PortfolioMessage {
 		folder_path: Vec<LayerId>,
 		insert_index: isize,
 	},
+	PasteSerializedData {
+		data: String,
+	},
 	PrevDocument,
 	RequestAboutGraphiteDialog,
 	SelectDocument {
