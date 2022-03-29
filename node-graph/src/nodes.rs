@@ -1,28 +1,27 @@
 use std::{
-    any::Any, collections::hash_map::DefaultHasher, hash::Hasher, iter, iter::Sum,
+    any::Any, borrow::Borrow, collections::hash_map::DefaultHasher, hash::Hasher, iter, iter::Sum,
     marker::PhantomData,
 };
 
-use crate::{insert_after_nth, After, Node};
+use crate::{insert_after_nth, /*After,*/ Node};
 use once_cell::sync::OnceCell;
 
 pub struct IntNode<const N: u32>;
-impl<'n, const N: u32> Node<'n, u32> for IntNode<N> {
-    fn eval(&'n self, _input: impl Iterator<Item = &'n dyn Any>) -> u32 {
+impl<const N: u32> Node for IntNode<N> {
+    type Out<'a> = u32;
+    type Input<'a> = ();
+    fn eval<'a, I: Borrow<Self::Input<'a>>>(&self, _input: I) -> u32 {
         N
     }
 }
 
 #[derive(Default)]
 pub struct ValueNode<T>(T);
-impl<'n, T> Node<'n, &'n T> for ValueNode<T> {
-    fn eval(&'n self, _input: impl Iterator<Item = &'n dyn Any>) -> &T {
+impl<T> Node for ValueNode<T> {
+    type Out<'a> = &'a T where T: 'a;
+    type Input<'a> = () where T: 'a;
+    fn eval<'n, I: Borrow<Self::Input<'n>>>(&'n self, _input: I) -> &T {
         &self.0
-    }
-}
-impl<'n, T: Copy> Node<'n, T> for ValueNode<T> {
-    fn eval(&'n self, _input: impl Iterator<Item = &'n dyn Any>) -> T {
-        self.0
     }
 }
 
@@ -32,29 +31,34 @@ impl<T> ValueNode<T> {
     }
 }
 
-pub struct AddNode;
-impl<'n, T: Sum + 'static + Copy> Node<'n, T> for AddNode {
-    fn eval(&'n self, input: impl Iterator<Item = &'n dyn Any>) -> T {
-        input.map(|x| *(x.downcast_ref::<T>().unwrap())).sum::<T>()
+#[derive(Default)]
+pub struct AddNode<T>(PhantomData<T>);
+impl<T: std::ops::Add + 'static + Copy> Node for AddNode<T> {
+    type Out<'a> = T::Output;
+    type Input<'a> = (T, T);
+    fn eval<'a, I: Borrow<Self::Input<'a>>>(&'a self, input: I) -> T::Output {
+        input.borrow().0 + input.borrow().1
     }
 }
 
 /// Caches the output of a given Node and acts as a proxy
-pub struct CacheNode<'n, NODE: Node<'n, OUT>, OUT: Clone> {
-    node: &'n NODE,
-    cache: OnceCell<OUT>,
+pub struct CacheNode<'n, 'c, CachedNode: Node + 'c> {
+    node: &'n CachedNode,
+    cache: OnceCell<CachedNode::Out<'c>>,
 }
-impl<'n, NODE: Node<'n, OUT>, OUT: Clone> Node<'n, &'n OUT> for CacheNode<'n, NODE, OUT> {
-    fn eval(&'n self, input: impl Iterator<Item = &'n dyn Any> + Clone) -> &'n OUT {
+impl<'n: 'c, 'c, CashedNode: Node> Node for CacheNode<'n, 'c, CashedNode> {
+    type Out<'a> = &'a CashedNode::Out<'c> where 'c: 'a;
+    type Input<'a> = CashedNode::Input<'c> where 'c: 'a;
+    fn eval<'a, I: Borrow<Self::Input<'a>>>(&'a self, input: I) -> Self::Out<'a> {
         self.cache.get_or_init(|| self.node.eval(input))
     }
 }
 
-impl<'n, NODE: Node<'n, OUT>, OUT: Clone> CacheNode<'n, NODE, OUT> {
-    fn clear(&'n mut self) {
+impl<'n, 'c, NODE: Node> CacheNode<'n, 'c, NODE> {
+    pub fn clear(&'n mut self) {
         self.cache = OnceCell::new();
     }
-    fn new(node: &'n NODE) -> CacheNode<'n, NODE, OUT> {
+    pub fn new(node: &'n NODE) -> CacheNode<'n, 'c, NODE> {
         CacheNode {
             node,
             cache: OnceCell::new(),
@@ -110,6 +114,8 @@ impl<'n, NODE: Node<'n, OUT>, OUT: Clone> SmartCacheNode<'n, NODE, OUT> {
     }
 }*/
 
+/*
+
 pub struct CurryNthArgNode<
     'n,
     CurryNode: Node<'n, OUT>,
@@ -151,27 +157,38 @@ impl<'n, CurryNode: Node<'n, Out>, ArgNode: Node<'n, Arg>, Arg: Clone, Out, cons
         }
     }
 }
-
-pub struct ComposeNode<'n, FIRST, SECOND, INTERMEDIATE>
+*/
+/*
+pub struct ComposeNode<'n, FIRST, SECOND>
 where
-    FIRST: Node<'n, INTERMEDIATE>,
+    FIRST: Node,
 {
     first: &'n FIRST,
     second: &'n SECOND,
     _phantom_data: PhantomData<INTERMEDIATE>,
 }
 
-impl<'n, FIRST, SECOND, OUT: 'n, INTERMEDIATE: 'static + Clone> Node<'n, OUT>
-    for ComposeNode<'n, FIRST, SECOND, INTERMEDIATE>
+impl<'n, FIRST, SECOND> Node for ComposeNode<'n, FIRST, SECOND>
 where
-    FIRST: Node<'n, INTERMEDIATE>,
-    SECOND: Node<'n, OUT>,
+    FIRST: Node,
+    SECOND: Node,
 {
-    fn eval(&'n self, input: impl Iterator<Item = &'n dyn Any> + Clone) -> OUT {
-        let curry = CurryNthArgNode::<'_, _, _, _, _, 0>::new(self.second, self.first);
-        CurryNthArgNode::<'_, _, _, _, _, 0>::new(curry, ValueNode::new(input)).eval(input)
+    fn eval<'a, T: &Self::Input<'a>>(&'a self, input: T) -> &Self::Out<'a> {
+        self.second.eval(self.first.eval(input))
+        //let curry = CurryNthArgNode::<'_, _, _, _, _, 0>::new(self.second, self.first);
+        //CurryNthArgNode::<'_, _, _, _, _, 0>::new(curry, ValueNode::new(input)).eval(input)
     }
+
+    type Out<'a> = SECOND::Out<'a>
+    where
+        Self: 'a;
+
+    type Input<'a> = FIRST::Input<'a>
+    where
+        Self: 'a;
 }
+*/
+/*
 
 impl<'n, FIRST, SECOND, INTERMEDIATE: 'static> ComposeNode<'n, FIRST, SECOND, INTERMEDIATE>
 where
@@ -198,3 +215,4 @@ impl<'n, OUT, SECOND: Node<'n, OUT>> After<'n, OUT, SECOND> for SECOND {
         }
     }
 }
+*/
