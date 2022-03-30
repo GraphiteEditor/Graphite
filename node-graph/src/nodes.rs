@@ -3,12 +3,12 @@ use std::{
     marker::PhantomData,
 };
 
-use crate::{insert_after_nth, /*After,*/ Node};
+use crate::{insert_after_nth, After, Node};
 use once_cell::sync::OnceCell;
 
 pub struct IntNode<const N: u32>;
 impl<const N: u32> Node for IntNode<N> {
-    type Out<'a> = u32;
+    type Output<'a> = u32;
     type Input<'a> = ();
     fn eval<'a, I: Borrow<Self::Input<'a>>>(&self, _input: I) -> u32 {
         N
@@ -18,9 +18,9 @@ impl<const N: u32> Node for IntNode<N> {
 #[derive(Default)]
 pub struct ValueNode<T>(T);
 impl<T> Node for ValueNode<T> {
-    type Out<'a> = &'a T where T: 'a;
-    type Input<'a> = () where T: 'a;
-    fn eval<'n, I: Borrow<Self::Input<'n>>>(&'n self, _input: I) -> &T {
+    type Output<'o> = &'o T where T: 'o;
+    type Input<'i> = () where T: 'i;
+    fn eval<'a, I: Borrow<Self::Input<'a>>>(&'a self, _input: I) -> &T {
         &self.0
     }
 }
@@ -34,7 +34,7 @@ impl<T> ValueNode<T> {
 #[derive(Default)]
 pub struct AddNode<T>(PhantomData<T>);
 impl<T: std::ops::Add + 'static + Copy> Node for AddNode<T> {
-    type Out<'a> = T::Output;
+    type Output<'a> = <T as std::ops::Add>::Output;
     type Input<'a> = (T, T);
     fn eval<'a, I: Borrow<Self::Input<'a>>>(&'a self, input: I) -> T::Output {
         input.borrow().0 + input.borrow().1
@@ -42,29 +42,71 @@ impl<T: std::ops::Add + 'static + Copy> Node for AddNode<T> {
 }
 
 /// Caches the output of a given Node and acts as a proxy
-pub struct CacheNode<'n, 'c, CachedNode: Node + 'c> {
+pub struct CachingNode<'n, 'c, CachedNode: Node + 'c> {
     node: &'n CachedNode,
-    cache: OnceCell<CachedNode::Out<'c>>,
+    cache: OnceCell<CachedNode::Output<'c>>,
 }
-impl<'n: 'c, 'c, CashedNode: Node> Node for CacheNode<'n, 'c, CashedNode> {
-    type Out<'a> = &'a CashedNode::Out<'c> where 'c: 'a;
+impl<'n: 'c, 'c, CashedNode: Node> Node for CachingNode<'n, 'c, CashedNode> {
+    type Output<'a> = &'a CashedNode::Output<'c> where 'c: 'a;
     type Input<'a> = CashedNode::Input<'c> where 'c: 'a;
-    fn eval<'a, I: Borrow<Self::Input<'a>>>(&'a self, input: I) -> Self::Out<'a> {
+    fn eval<'a, I: Borrow<Self::Input<'a>>>(&'a self, input: I) -> Self::Output<'a> {
         self.cache.get_or_init(|| self.node.eval(input))
     }
 }
 
-impl<'n, 'c, NODE: Node> CacheNode<'n, 'c, NODE> {
+impl<'n, 'c, CachedNode: Node> CachingNode<'n, 'c, CachedNode> {
     pub fn clear(&'n mut self) {
         self.cache = OnceCell::new();
     }
-    pub fn new(node: &'n NODE) -> CacheNode<'n, 'c, NODE> {
-        CacheNode {
+    pub fn new(node: &'n CachedNode) -> CachingNode<'n, 'c, CachedNode> {
+        CachingNode {
             node,
             cache: OnceCell::new(),
         }
     }
 }
+
+pub struct ComposeNode<'n, FIRST, SECOND> {
+    first: &'n FIRST,
+    second: &'n SECOND,
+}
+
+impl<'n, FIRST, SECOND> Node for ComposeNode<'n, FIRST, SECOND>
+where
+    FIRST: Node,
+    SECOND: Node,
+    for<'a> FIRST::Output<'a>: Borrow<SECOND::Input<'a>>,
+{
+    type Input<'a> = FIRST::Input<'a> where Self: 'a;
+    type Output<'a> = SECOND::Output<'a> where Self: 'a;
+
+    fn eval<'a, I: Borrow<Self::Input<'a>>>(&'a self, input: I) -> Self::Output<'a> {
+        // evaluate the first node with the given input
+        // and then pipe the result from the first computation
+        // into the second node
+        let arg = self.first.eval(input);
+        self.second.eval(arg)
+    }
+}
+
+impl<'n, FIRST, SECOND> ComposeNode<'n, FIRST, SECOND>
+where
+    FIRST: Node,
+{
+    pub fn new(first: &'n FIRST, second: &'n SECOND) -> Self {
+        ComposeNode::<'n, FIRST, SECOND> { first, second }
+    }
+}
+
+impl<'n, SECOND: Node> After<SECOND> for SECOND {
+    fn after<'a, FIRST: Node>(&'a self, first: &'a FIRST) -> ComposeNode<'a, FIRST, SECOND> {
+        ComposeNode::<'a, FIRST, SECOND> {
+            first,
+            second: self,
+        }
+    }
+}
+
 /*
 /// Caches the output of a given Node and acts as a proxy
 /// Automatically resets if it receives different input
@@ -159,60 +201,4 @@ impl<'n, CurryNode: Node<'n, Out>, ArgNode: Node<'n, Arg>, Arg: Clone, Out, cons
 }
 */
 /*
-pub struct ComposeNode<'n, FIRST, SECOND>
-where
-    FIRST: Node,
-{
-    first: &'n FIRST,
-    second: &'n SECOND,
-    _phantom_data: PhantomData<INTERMEDIATE>,
-}
-
-impl<'n, FIRST, SECOND> Node for ComposeNode<'n, FIRST, SECOND>
-where
-    FIRST: Node,
-    SECOND: Node,
-{
-    fn eval<'a, T: &Self::Input<'a>>(&'a self, input: T) -> &Self::Out<'a> {
-        self.second.eval(self.first.eval(input))
-        //let curry = CurryNthArgNode::<'_, _, _, _, _, 0>::new(self.second, self.first);
-        //CurryNthArgNode::<'_, _, _, _, _, 0>::new(curry, ValueNode::new(input)).eval(input)
-    }
-
-    type Out<'a> = SECOND::Out<'a>
-    where
-        Self: 'a;
-
-    type Input<'a> = FIRST::Input<'a>
-    where
-        Self: 'a;
-}
-*/
-/*
-
-impl<'n, FIRST, SECOND, INTERMEDIATE: 'static> ComposeNode<'n, FIRST, SECOND, INTERMEDIATE>
-where
-    FIRST: Node<'n, INTERMEDIATE>,
-{
-    pub fn new(first: &'n FIRST, second: &'n SECOND) -> Self {
-        ComposeNode::<'n, FIRST, SECOND, INTERMEDIATE> {
-            first,
-            second,
-            _phantom_data: PhantomData::default(),
-        }
-    }
-}
-
-impl<'n, OUT, SECOND: Node<'n, OUT>> After<'n, OUT, SECOND> for SECOND {
-    fn after<INTERMEDIATE, FIRST: Node<'n, INTERMEDIATE>>(
-        &'n self,
-        first: &'n FIRST,
-    ) -> ComposeNode<'n, FIRST, SECOND, INTERMEDIATE> {
-        ComposeNode::<'n, FIRST, SECOND, INTERMEDIATE> {
-            first,
-            second: self,
-            _phantom_data: PhantomData::default(),
-        }
-    }
-}
 */
