@@ -7,22 +7,23 @@ pub mod nodes;
 use iter::insert_after_nth;
 use nodes::*;
 
+#[rustfmt::skip]
 pub trait Node {
-    type Out<'a>
-    where
-        Self: 'a;
-    type Input<'a>
-    where
-        Self: 'a;
-    fn eval<'a, T: Borrow<Self::Input<'a>>>(&'a self, input: T) -> Self::Out<'a>;
+    // Self: 'a means that Self has to live at least as long as 'a (the input and output)
+    // this ensures that the node does not spontaneously disappear during evaluation
+    type Output<'a> where Self: 'a;
+    type Input<'a> where Self: 'a;
+
+    fn eval<'a, I: Borrow<Self::Input<'a>>>(&'a self, input: I) -> Self::Output<'a>;
 }
+
 pub trait AnyRef: Node {
-    fn any<'a>(&'a self, input: &'a dyn Any) -> Self::Out<'a>
+    fn any<'a>(&'a self, input: &'a dyn Any) -> Self::Output<'a>
     where
         Self::Input<'a>: 'static + Copy;
 }
 impl<T: Node> AnyRef for T {
-    fn any<'a>(&'a self, input: &'a dyn Any) -> Self::Out<'a>
+    fn any<'a>(&'a self, input: &'a dyn Any) -> Self::Output<'a>
     where
         Self::Input<'a>: 'static + Copy,
     {
@@ -30,20 +31,14 @@ impl<T: Node> AnyRef for T {
     }
 }
 
-/*
 trait After<SECOND: Node> {
-    type Out<'a>
-    where
-        Self: 'a;
-    fn after<'a><FIRST: Node>(
-        &'a self,
-        first: &'a FIRST,
-    ) -> ComposeNode<'a, FIRST, SECOND, INTERMEDIATE>;
-}*/
+    fn after<'a, FIRST: Node>(&'a self, first: &'a FIRST) -> ComposeNode<'a, FIRST, SECOND>;
+}
 
 fn main() {
     let int = IntNode::<32>;
     let add: u32 = AddNode::<u32>::default().any(&(int.eval(&()), int.eval(&())) as &dyn Any);
+
     /*
     let curry: CurryNthArgNode<'_, _, _, u32, u32, 0> = CurryNthArgNode::new(&AddNode, &int);
     let composition = curry.after(&curry);
