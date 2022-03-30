@@ -1,5 +1,5 @@
 /*
-Overview:
+Overview: (OUT OF DATE, WILL BE UPDATED)
 
 						ShapeEditor
 						/          \
@@ -278,4 +278,175 @@ impl ShapeEditor {
 		}
 		result
 	}
+
+	/// Move the selected point based on mouse input, if this is a handle we can control if we are mirroring or not
+	/// A wrapper around move_point to handle mirror state / submit the changes
+	pub fn move_selected(&mut self, target: DVec2, relative: bool, responses: &mut VecDeque<Message>) {
+		let transform = &self.transform.clone();
+
+		for selected_anchor in self.selected_anchors_mut() {
+			selected_anchor.move_selected_points(target, relative, transform);
+		}
+
+		// We've made our changes to the shape, submit them
+		responses.push_back(
+			Operation::SetShapePathInViewport {
+				path: self.layer_path.clone(),
+				bez_path: BezPath::from_vec(edited_bez_path),
+				transform: self.transform.to_cols_array(),
+			}
+			.into(),
+		);
+	}
+
+	/// Delete the selected point
+	/// A wrapper around move_point to handle mirror state / submit the changes
+	pub fn delete_selected(&mut self, responses: &mut VecDeque<Message>) {
+		let mut edited_bez_path = self.elements.clone();
+
+		let indices: Vec<_> = self
+			.selected_anchors_mut()
+			.filter_map(|anchor| anchor.points[ControlPointType::Anchor].as_ref().map(|x| x.kurbo_element_id))
+			.collect();
+		for index in &indices {
+			if matches!(edited_bez_path[*index], PathEl::MoveTo(_)) {
+				if let Some(element) = edited_bez_path.get_mut(index + 1) {
+					let new_segment = match *element {
+						PathEl::LineTo(p) => PathEl::MoveTo(p),
+						PathEl::QuadTo(_, p) => PathEl::MoveTo(p),
+						PathEl::CurveTo(_, _, p) => PathEl::MoveTo(p),
+						op => op,
+					};
+					*element = new_segment;
+				}
+			}
+		}
+		for index in indices.iter().rev() {
+			edited_bez_path.remove(*index);
+		}
+
+		// We've made our changes to the shape, submit them
+		responses.push_back(
+			Operation::SetShapePathInViewport {
+				path: self.layer_path.clone(),
+				bez_path: self.to_bezpath(), //BezPath::from_vec(edited_bez_path),
+				transform: self.transform.to_cols_array(),
+			}
+			.into(),
+		);
+	}
+
+	/// Update the anchors and segments to match the kurbo shape
+	/// Should be called whenever the kurbo shape changes
+	pub fn update_shape(&mut self, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
+		let viewport_transform = document.graphene_document.generate_transform_relative_to_viewport(&self.layer_path).unwrap();
+		let layer = document.graphene_document.layer(&self.layer_path).unwrap();
+		if let LayerDataType::Shape(shape) = &layer.data {
+			let path = shape.path.clone();
+			self.transform = viewport_transform;
+
+			// Update point positions
+			self.update_anchors_from_kurbo(&path);
+
+			self.bez_path = path;
+
+			// Update the overlays to represent the changes to the kurbo path
+			self.place_shape_outline_overlay(responses);
+			self.place_anchor_overlays(responses);
+			self.place_handle_overlays(responses);
+		}
+	}
+
+	// 	/// Create an anchor on the boundary between two kurbo PathElements with optional handles
+	// // TODO remove anything to do with overlays
+	// fn create_anchor(&self, first: Option<IndexedEl>, second: Option<IndexedEl>, responses: &mut VecDeque<Message>) -> VectorAnchor {
+	// 	let mut handle1 = None;
+	// 	let mut anchor_position: glam::DVec2 = glam::DVec2::ZERO;
+	// 	let mut handle2 = None;
+	// 	let mut anchor_element_id: usize = 0;
+
+	// 	let create_point = |id: usize, point: DVec2, overlay_path: Vec<LayerId>, manipulator_type: ControlPointType| -> VectorControlPoint {
+	// 		VectorControlPoint {
+	// 			// kurbo_element_id: id,
+	// 			position: point,
+	// 			// overlay_path: Some(overlay_path),
+	// 			can_be_selected: true,
+	// 			manipulator_type,
+	// 			is_selected: false,
+	// 		}
+	// 	};
+
+	// 	if let Some((first_element_id, first_element)) = first {
+	// 		anchor_element_id = first_element_id;
+	// 		match first_element {
+	// 			kurbo::PathEl::MoveTo(anchor) | kurbo::PathEl::LineTo(anchor) => anchor_position = self.to_local_space(anchor),
+	// 			kurbo::PathEl::QuadTo(handle, anchor) | kurbo::PathEl::CurveTo(_, handle, anchor) => {
+	// 				anchor_position = self.to_local_space(anchor);
+	// 				handle1 = Some(create_point(
+	// 					first_element_id,
+	// 					self.to_local_space(handle),
+	// 					self.create_handle_overlay(responses),
+	// 					ControlPointType::Handle1,
+	// 				));
+	// 			}
+	// 			_ => (),
+	// 		}
+	// 	}
+
+	// 	if let Some((second_element_id, second_element)) = second {
+	// 		match second_element {
+	// 			kurbo::PathEl::CurveTo(handle, _, _) | kurbo::PathEl::QuadTo(handle, _) => {
+	// 				handle2 = Some(create_point(
+	// 					second_element_id,
+	// 					self.to_local_space(handle),
+	// 					self.create_handle_overlay(responses),
+	// 					ControlPointType::Handle2,
+	// 				));
+	// 			}
+	// 			_ => (),
+	// 		}
+	// 	}
+
+	// 	VectorAnchor {
+	// 		// handle_line_overlays: (self.create_handle_line_overlay(&handle1, responses), self.create_handle_line_overlay(&handle2, responses)),
+	// 		points: [
+	// 			Some(create_point(anchor_element_id, anchor_position, self.create_anchor_overlay(responses), ControlPointType::Anchor)),
+	// 			handle1,
+	// 			handle2,
+	// 		],
+	// 		close_element_id: None,
+	// 		handle_mirror_angle: true,
+	// 		handle_mirror_distance: false,
+	// 	}
+	// }
+
+	// /// Close the path by checking if the distance between the last element and the first MoveTo is less than the tolerance.
+	// /// If so, create a new anchor at the first point. Otherwise, create a new anchor at the last point.
+	// fn close_path(
+	// 	&self,
+	// 	points: &mut Vec<VectorAnchor>,
+	// 	to_replace: usize,
+	// 	first_path_element: Option<IndexedEl>,
+	// 	last_path_element: Option<IndexedEl>,
+	// 	recent_move_to: Option<IndexedEl>,
+	// 	responses: &mut VecDeque<Message>,
+	// ) {
+	// 	if let (Some(first), Some(last), Some(move_to)) = (first_path_element, last_path_element, recent_move_to) {
+	// 		let position_equal = match (move_to.1, last.1) {
+	// 			(PathEl::MoveTo(p1), PathEl::LineTo(p2)) => p1.distance_squared(p2) < 0.01,
+	// 			(PathEl::MoveTo(p1), PathEl::QuadTo(_, p2)) => p1.distance_squared(p2) < 0.01,
+	// 			(PathEl::MoveTo(p1), PathEl::CurveTo(_, _, p2)) => p1.distance_squared(p2) < 0.01,
+	// 			_ => false,
+	// 		};
+
+	// 		// Does this end in the same position it started?
+	// 		if position_equal {
+	// 			points[to_replace].remove_overlays(responses);
+	// 			points[to_replace] = self.create_anchor(Some(last), Some(first), responses);
+	// 			points[to_replace].close_element_id = Some(move_to.0);
+	// 		} else {
+	// 			points.push(self.create_anchor(Some(last), Some(first), responses));
+	// 		}
+	// 	}
+	// }
 }

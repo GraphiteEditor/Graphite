@@ -12,6 +12,7 @@ pub enum ControlPointType {
 	Handle1 = 1,
 	Handle2 = 2,
 }
+
 // Allows us to use ManipulatorType for indexing
 impl<T> Index<ControlPointType> for [T; 3] {
 	type Output = T;
