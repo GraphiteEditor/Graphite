@@ -28,6 +28,14 @@
 				<p>The contents of this popover menu are coming soon</p>
 			</PopoverButton>
 		</LayoutRow>
+		<LayoutRow class="button-bar">
+			<LayoutRow></LayoutRow>
+			<LayoutRow>
+				<!-- TODO: Remember to make these tooltip input hints customized to macOS also -->
+				<IconButton :action="createEmptyFolder" :icon="'NodeFolder'" title="New Folder (Ctrl+Shift+N)" :size="16" />
+				<IconButton :action="deleteSelectedLayers" :icon="'Trash'" title="Delete Selected (Del)" :size="16" />
+			</LayoutRow>
+		</LayoutRow>
 		<LayoutRow class="layer-tree" :scrollableY="true">
 			<LayoutCol class="list" ref="layerTreeList" @click="() => deselectAllLayers()" @dragover="(e) => draggable && updateInsertLine(e)" @dragend="() => draggable && drop()">
 				<LayoutRow
@@ -66,8 +74,10 @@
 						:title="`${listing.entry.name}\n${devMode ? 'Layer Path: ' + listing.entry.path.join(' / ') : ''}`"
 					>
 						<LayoutRow class="layer-type-icon">
-							<IconLabel v-if="listing.entry.layer_type === 'Folder'" :icon="'NodeTypeFolder'" title="Folder" />
-							<IconLabel v-else :icon="'NodeTypePath'" title="Path" />
+							<IconLabel v-if="listing.entry.layer_type === 'Folder'" :icon="'NodeFolder'" title="Folder" />
+							<IconLabel v-else-if="listing.entry.layer_type === 'Image'" :icon="'NodeImage'" title="Image" />
+							<IconLabel v-else-if="listing.entry.layer_type === 'Shape'" :icon="'NodeShape'" title="Shape" />
+							<IconLabel v-else-if="listing.entry.layer_type === 'Text'" :icon="'NodeText'" title="Path" />
 						</LayoutRow>
 						<LayoutRow class="layer-name" @dblclick="() => onEditLayerName(listing)">
 							<input
@@ -111,7 +121,21 @@
 		}
 	}
 
+	.button-bar {
+		height: 24px;
+		flex: 0 0 auto;
+		justify-content: space-between;
+		align-items: center;
+		margin: 0 4px;
+
+		.layout-row {
+			flex: 0 0 auto;
+			gap: 4px;
+		}
+	}
+
 	.layer-tree {
+		margin-top: 4px;
 		// Crop away the 1px border below the bottom layer entry when it uses the full space of this panel
 		margin-bottom: -1px;
 		position: relative;
@@ -120,7 +144,7 @@
 			flex: 0 0 auto;
 			align-items: center;
 			position: relative;
-			height: 36px;
+			height: 32px;
 			margin: 0 4px;
 			border-bottom: 1px solid var(--color-4-dimgray);
 
@@ -195,6 +219,12 @@
 				.layer-type-icon {
 					flex: 0 0 auto;
 					margin: 0 4px;
+
+					.icon-label {
+						border-radius: 2px;
+						background: var(--color-node-background);
+						fill: var(--color-node-icon);
+					}
 				}
 
 				.layer-name {
@@ -238,10 +268,10 @@
 				}
 
 				.thumbnail {
-					height: calc(100% - 4px);
+					width: 36px;
+					height: 24px;
 					margin: 2px 0;
 					margin-left: 4px;
-					width: 64px;
 					background: white;
 					border-radius: 2px;
 					flex: 0 0 auto;
@@ -365,6 +395,12 @@ export default defineComponent({
 		},
 		markTopOffset(height: number): string {
 			return `${height}px`;
+		},
+		async createEmptyFolder() {
+			this.editor.instance.create_empty_folder();
+		},
+		async deleteSelectedLayers() {
+			this.editor.instance.delete_selected_layers();
 		},
 		async toggleLayerVisibility(path: BigUint64Array) {
 			this.editor.instance.toggle_layer_visibility(path);

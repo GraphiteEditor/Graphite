@@ -28,7 +28,7 @@ pub struct ShapeLayer {
 }
 
 impl LayerData for ShapeLayer {
-	fn render(&mut self, svg: &mut String, transforms: &mut Vec<DAffine2>, view_mode: ViewMode) {
+	fn render(&mut self, svg: &mut String, svg_defs: &mut String, transforms: &mut Vec<DAffine2>, view_mode: ViewMode) {
 		let mut path = self.path.clone();
 		let transform = self.transform(transforms, view_mode);
 		let inverse = transform.inverse();
@@ -43,7 +43,7 @@ impl LayerData for ShapeLayer {
 			let _ = svg.write_str(&(entry.to_string() + if i == 5 { "" } else { "," }));
 		});
 		let _ = svg.write_str(r#")">"#);
-		let _ = write!(svg, r#"<path d="{}" {} />"#, path.to_svg(), self.style.render(view_mode));
+		let _ = write!(svg, r#"<path d="{}" {} />"#, path.to_svg(), self.style.render(view_mode, svg_defs));
 		let _ = svg.write_str("</g>");
 	}
 
@@ -207,9 +207,9 @@ impl ShapeLayer {
 			// Solve with Thomas algorithm (see https://en.wikipedia.org/wiki/Tridiagonal_matrix_algorithm)
 			for i in 1..n {
 				let m = a[i] / b[i - 1];
-				// TODO: Fix Clippy warning which makes the borrow checker angry
-				b[i] = b[i] - m * c[i - 1];
-				r[i] = r[i] - m * r[i - 1];
+				b[i] -= m * c[i - 1];
+				let last_iteration_r = r[i - 1];
+				r[i] -= m * last_iteration_r;
 			}
 
 			// Determine first control point for each segment

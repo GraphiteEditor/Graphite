@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}{{ section.title }}.{% endblock title %}
+
+{% block head %}
+<link rel="stylesheet" href="/logo.css">
+{% endblock head %}
+
+{% block content %}
+<section class="section-row">
+	<div class="section">
+		<h1>{{ section.title }}.</h1>
+		{{ section.content | safe }}
+		<br />
+	</div>
+</section>
+<section class="feature-box logo-view color">
+	<div class="box">
+		<div>
+			<img src="/images/logos/graphite-logotype-color.svg" height="160" />
+			<span>Graphite Logotype (Color)</span>
+			<a href="/images/logos/graphite-logotype-color.svg" download>Download (SVG)</a>
+			<a href="/images/logos/graphite-logotype-color-240x937.png" download>Download (PNG 240x937)</a>
+			<a href="/images/logos/graphite-logotype-color-480x1874.png" download>Download (PNG 480x1874)</a>
+		</div>
+		<div>
+			<img src="/images/logos/graphite-logo-color.svg" height="160" />
+			<span>Graphite Icon (Color)</span>
+			<a href="/images/logos/graphite-logo-color.svg" download>Download (SVG)</a>
+			<a href="/images/logos/graphite-logo-color-240x240.png" download>Download (PNG 240x240)</a>
+			<a href="/images/logos/graphite-logo-color-480x480.png" download>Download (PNG 480x480)</a>
+		</div>
+	</div>
+</section>
+<section class="feature-box logo-view light">
+	<div class="box">
+		<div>
+			<img src="/images/logos/graphite-logotype-solid.svg" height="160" />
+			<span>Graphite Logotype (Solid)</span>
+			<a href="/images/logos/graphite-logotype-solid.svg" download>Download (SVG)</a>
+			<a href="/images/logos/graphite-logotype-solid-240x937.png" download>Download (PNG 240x937)</a>
+			<a href="/images/logos/graphite-logotype-solid-480x1874.png" download>Download (PNG 480x1874)</a>
+		</div>
+		<div>
+			<img src="/images/logos/graphite-logo-solid.svg" height="160" />
+			<span>Graphite Icon (Solid)</span>
+			<a href="/images/logos/graphite-logo-solid.svg" download>Download (SVG)</a>
+			<a href="/images/logos/graphite-logo-solid-240x240.png" download>Download (PNG 240x240)</a>
+			<a href="/images/logos/graphite-logo-solid-480x480.png" download>Download (PNG 480x480)</a>
+		</div>
+	</div>
+</section>
+<section class="feature-box logo-view dark">
+	<div class="box">
+		<div>
+			<img src="/images/logos/graphite-logotype-solid-white.svg" height="160" />
+			<span>Graphite Logotype (Solid, White)</span>
+			<a href="/images/logos/graphite-logotype-solid-white.svg" download>Download (SVG)</a>
+			<a href="/images/logos/graphite-logotype-solid-white-240x937.png" download>Download (PNG 240x937)</a>
+			<a href="/images/logos/graphite-logotype-solid-white-480x1874.png" download>Download (PNG 480x1874)</a>
+		</div>
+		<div>
+			<img src="/images/logos/graphite-logo-solid-white.svg" height="160" />
+			<span>Graphite Icon (Solid, White)</span>
+			<a href="/images/logos/graphite-logo-solid-white.svg" download>Download (SVG)</a>
+			<a href="/images/logos/graphite-logo-solid-white-240x240.png" download>Download (PNG 240x240)</a>
+			<a href="/images/logos/graphite-logo-solid-white-480x480.png" download>Download (PNG 480x480)</a>
+		</div>
+	</div>
+</section>
+{% endblock content %}

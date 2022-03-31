@@ -38,6 +38,9 @@ pub const BOUNDS_ROTATE_THRESHOLD: f64 = 20.;
 pub const VECTOR_MANIPULATOR_ANCHOR_MARKER_SIZE: f64 = 5.;
 pub const SELECTION_THRESHOLD: f64 = 10.;
 
+// Pen tool
+pub const CREATE_CURVE_THRESHOLD: f64 = 5.;
+
 // Line tool
 pub const LINE_ROTATE_SNAP_ANGLE: f64 = 15.;
 
@@ -54,5 +57,5 @@ pub const FILE_EXPORT_SUFFIX: &str = ".svg";
 pub const COLOR_ACCENT: Color = Color::from_unsafe(0x00 as f32 / 255., 0xA8 as f32 / 255., 0xFF as f32 / 255.);
 
 // Document
-pub const GRAPHITE_DOCUMENT_VERSION: &str = "0.0.3";
+pub const GRAPHITE_DOCUMENT_VERSION: &str = "0.0.4";
 pub const VIEWPORT_ZOOM_TO_FIT_PADDING_SCALE_FACTOR: f32 = 1.05;

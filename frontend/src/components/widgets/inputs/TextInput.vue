@@ -67,6 +67,9 @@ export default defineComponent({
 			// TODO: Find a less hacky way to do this
 			const inputElement = (this.$refs.fieldInput as typeof FieldInput).$refs.input as HTMLInputElement;
 			this.$emit("commitText", inputElement.value);
+
+			// Required if value is not changed by the parent component upon update:value event
+			inputElement.value = this.value;
 		},
 		onCancelTextChange() {
 			this.editing = false;

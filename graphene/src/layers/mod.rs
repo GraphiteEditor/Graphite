@@ -17,6 +17,7 @@
 pub mod blend_mode;
 /// Contains the [FolderLayer](folder_layer::FolderLayer) type that encapsulates other layers, including more folders.
 pub mod folder_layer;
+pub mod image_layer;
 /// Contains the base [Layer](layer_info::Layer) type, an abstraction over the different types of layers.
 pub mod layer_info;
 /// Contains the [ShapeLayer](shape_layer::ShapeLayer) type, a generic SVG Element defined using Bezier paths.

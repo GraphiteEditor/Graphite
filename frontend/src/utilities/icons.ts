@@ -1,3 +1,4 @@
+// 12px Solid
 import Checkmark from "@/../assets/12px-solid/checkmark.svg";
 import CloseX from "@/../assets/12px-solid/close-x.svg";
 import DropdownArrow from "@/../assets/12px-solid/dropdown-arrow.svg";
@@ -28,6 +29,7 @@ import WindowButtonWinMaximize from "@/../assets/12px-solid/window-button-win-ma
 import WindowButtonWinMinimize from "@/../assets/12px-solid/window-button-win-minimize.svg";
 import WindowButtonWinRestoreDown from "@/../assets/12px-solid/window-button-win-restore-down.svg";
 
+// 16px Solid
 import AlignBottom from "@/../assets/16px-solid/align-bottom.svg";
 import AlignHorizontalCenter from "@/../assets/16px-solid/align-horizontal-center.svg";
 import AlignLeft from "@/../assets/16px-solid/align-left.svg";
@@ -46,7 +48,13 @@ import File from "@/../assets/16px-solid/file.svg";
 import FlipHorizontal from "@/../assets/16px-solid/flip-horizontal.svg";
 import FlipVertical from "@/../assets/16px-solid/flip-vertical.svg";
 import GraphiteLogo from "@/../assets/16px-solid/graphite-logo.svg";
+import NewLayer from "@/../assets/16px-solid/new-layer.svg";
+import NodeFolder from "@/../assets/16px-solid/node-folder.svg";
+import NodeImage from "@/../assets/16px-solid/node-image.svg";
+import NodeShape from "@/../assets/16px-solid/node-shape.svg";
+import NodeText from "@/../assets/16px-solid/node-text.svg";
 import Paste from "@/../assets/16px-solid/paste.svg";
+import Trash from "@/../assets/16px-solid/trash.svg";
 import ViewModeNormal from "@/../assets/16px-solid/view-mode-normal.svg";
 import ViewModeOutline from "@/../assets/16px-solid/view-mode-outline.svg";
 import ViewModePixels from "@/../assets/16px-solid/view-mode-pixels.svg";
@@ -57,6 +65,7 @@ import ZoomIn from "@/../assets/16px-solid/zoom-in.svg";
 import ZoomOut from "@/../assets/16px-solid/zoom-out.svg";
 import ZoomReset from "@/../assets/16px-solid/zoom-reset.svg";
 
+// 16px Two-Tone
 import MouseHintDrag from "@/../assets/16px-two-tone/mouse-hint-drag.svg";
 import MouseHintLmbDrag from "@/../assets/16px-two-tone/mouse-hint-lmb-drag.svg";
 import MouseHintLmb from "@/../assets/16px-two-tone/mouse-hint-lmb.svg";
@@ -68,16 +77,13 @@ import MouseHintRmb from "@/../assets/16px-two-tone/mouse-hint-rmb.svg";
 import MouseHintScrollDown from "@/../assets/16px-two-tone/mouse-hint-scroll-down.svg";
 import MouseHintScrollUp from "@/../assets/16px-two-tone/mouse-hint-scroll-up.svg";
 
-import NodeTypeFolder from "@/../assets/24px-full-color/node-type-folder.svg";
-import NodeTypePath from "@/../assets/24px-full-color/node-type-path.svg";
-
-import LayoutCropTool from "@/../assets/24px-two-tone/layout-crop-tool.svg";
-import LayoutEyedropperTool from "@/../assets/24px-two-tone/layout-eyedropper-tool.svg";
-import LayoutNavigateTool from "@/../assets/24px-two-tone/layout-navigate-tool.svg";
-import LayoutSelectTool from "@/../assets/24px-two-tone/layout-select-tool.svg";
-import ParametricFillTool from "@/../assets/24px-two-tone/parametric-fill-tool.svg";
-import ParametricGradientTool from "@/../assets/24px-two-tone/parametric-gradient-tool.svg";
-import ParametricTextTool from "@/../assets/24px-two-tone/parametric-text-tool.svg";
+// 24px Two-Tone
+import GeneralCropTool from "@/../assets/24px-two-tone/general-crop-tool.svg";
+import GeneralEyedropperTool from "@/../assets/24px-two-tone/general-eyedropper-tool.svg";
+import GeneralFillTool from "@/../assets/24px-two-tone/general-fill-tool.svg";
+import GeneralGradientTool from "@/../assets/24px-two-tone/general-gradient-tool.svg";
+import GeneralNavigateTool from "@/../assets/24px-two-tone/general-navigate-tool.svg";
+import GeneralSelectTool from "@/../assets/24px-two-tone/general-select-tool.svg";
 import RasterBrushTool from "@/../assets/24px-two-tone/raster-brush-tool.svg";
 import RasterCloneTool from "@/../assets/24px-two-tone/raster-clone-tool.svg";
 import RasterDetailTool from "@/../assets/24px-two-tone/raster-detail-tool.svg";
@@ -92,14 +98,14 @@ import VectorPenTool from "@/../assets/24px-two-tone/vector-pen-tool.svg";
 import VectorRectangleTool from "@/../assets/24px-two-tone/vector-rectangle-tool.svg";
 import VectorShapeTool from "@/../assets/24px-two-tone/vector-shape-tool.svg";
 import VectorSplineTool from "@/../assets/24px-two-tone/vector-spline-tool.svg";
+import VectorTextTool from "@/../assets/24px-two-tone/vector-text-tool.svg";
 
 export type IconName = keyof typeof ICON_LIST;
-export type IconSize = 12 | 16 | 24 | 32;
+export type IconSize = 12 | 16 | 24;
 
 const size12: IconSize = 12;
 const size16: IconSize = 16;
 const size24: IconSize = 24;
-// const size32: IconSize = 32;
 
 export const ICON_LIST = {
 	Checkmark: { component: Checkmark, size: size12 },
@@ -150,7 +156,13 @@ export const ICON_LIST = {
 	FlipHorizontal: { component: FlipHorizontal, size: size16 },
 	FlipVertical: { component: FlipVertical, size: size16 },
 	GraphiteLogo: { component: GraphiteLogo, size: size16 },
+	NewLayer: { component: NewLayer, size: size16 },
 	Paste: { component: Paste, size: size16 },
+	NodeFolder: { component: NodeFolder, size: size16 },
+	NodeImage: { component: NodeImage, size: size16 },
+	NodeShape: { component: NodeShape, size: size16 },
+	NodeText: { component: NodeText, size: size16 },
+	Trash: { component: Trash, size: size16 },
 	ViewModeNormal: { component: ViewModeNormal, size: size16 },
 	ViewModeOutline: { component: ViewModeOutline, size: size16 },
 	ViewModePixels: { component: ViewModePixels, size: size16 },
@@ -172,16 +184,12 @@ export const ICON_LIST = {
 	MouseHintScrollDown: { component: MouseHintScrollDown, size: size16 },
 	MouseHintScrollUp: { component: MouseHintScrollUp, size: size16 },
 
-	NodeTypeFolder: { component: NodeTypeFolder, size: size24 },
-	NodeTypePath: { component: NodeTypePath, size: size24 },
-
-	LayoutCropTool: { component: LayoutCropTool, size: size24 },
-	LayoutEyedropperTool: { component: LayoutEyedropperTool, size: size24 },
-	LayoutNavigateTool: { component: LayoutNavigateTool, size: size24 },
-	LayoutSelectTool: { component: LayoutSelectTool, size: size24 },
-	ParametricFillTool: { component: ParametricFillTool, size: size24 },
-	ParametricGradientTool: { component: ParametricGradientTool, size: size24 },
-	ParametricTextTool: { component: ParametricTextTool, size: size24 },
+	GeneralCropTool: { component: GeneralCropTool, size: size24 },
+	GeneralEyedropperTool: { component: GeneralEyedropperTool, size: size24 },
+	GeneralNavigateTool: { component: GeneralNavigateTool, size: size24 },
+	GeneralSelectTool: { component: GeneralSelectTool, size: size24 },
+	GeneralFillTool: { component: GeneralFillTool, size: size24 },
+	GeneralGradientTool: { component: GeneralGradientTool, size: size24 },
 	RasterBrushTool: { component: RasterBrushTool, size: size24 },
 	RasterCloneTool: { component: RasterCloneTool, size: size24 },
 	RasterDetailTool: { component: RasterDetailTool, size: size24 },
@@ -196,4 +204,5 @@ export const ICON_LIST = {
 	VectorRectangleTool: { component: VectorRectangleTool, size: size24 },
 	VectorShapeTool: { component: VectorShapeTool, size: size24 },
 	VectorSplineTool: { component: VectorSplineTool, size: size24 },
+	VectorTextTool: { component: VectorTextTool, size: size24 },
 };

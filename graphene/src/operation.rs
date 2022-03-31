@@ -1,8 +1,7 @@
 use crate::boolean_ops::BooleanOperation as BooleanOperationType;
-use crate::color::Color;
 use crate::layers::blend_mode::BlendMode;
 use crate::layers::layer_info::Layer;
-use crate::layers::style;
+use crate::layers::style::{self, Stroke};
 use crate::LayerId;
 
 use serde::{Deserialize, Serialize};
@@ -54,6 +53,18 @@ pub enum Operation {
 		text: String,
 		style: style::PathStyle,
 		size: f64,
+	},
+	AddImage {
+		path: Vec<LayerId>,
+		transform: [f64; 6],
+		insert_index: isize,
+		mime: String,
+		image_data: Vec<u8>,
+	},
+	SetImageBlobUrl {
+		path: Vec<LayerId>,
+		blob_url: String,
+		dimensions: (f64, f64),
 	},
 	SetTextEditability {
 		path: Vec<LayerId>,
@@ -180,7 +191,11 @@ pub enum Operation {
 	},
 	SetLayerFill {
 		path: Vec<LayerId>,
-		color: Color,
+		fill: style::Fill,
+	},
+	SetLayerStroke {
+		path: Vec<LayerId>,
+		stroke: Stroke,
 	},
 }
 

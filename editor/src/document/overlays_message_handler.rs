@@ -17,7 +17,7 @@ impl MessageHandler<OverlaysMessage, bool> for OverlaysMessageHandler {
 		match message {
 			// Sub-messages
 			#[remain::unsorted]
-			DispatchOperation(operation) => match self.overlays_graphene_document.handle_operation(&operation) {
+			DispatchOperation(operation) => match self.overlays_graphene_document.handle_operation(*operation) {
 				Ok(_) => responses.push_back(OverlaysMessage::Rerender.into()),
 				Err(e) => log::error!("OverlaysError: {:?}", e),
 			},

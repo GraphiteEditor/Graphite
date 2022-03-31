@@ -1,7 +1,8 @@
 use super::blend_mode::BlendMode;
 use super::folder_layer::FolderLayer;
+use super::image_layer::ImageLayer;
 use super::shape_layer::ShapeLayer;
-use super::style::ViewMode;
+use super::style::{PathStyle, ViewMode};
 use super::text_layer::TextLayer;
 use crate::intersection::Quad;
 use crate::DocumentError;
@@ -20,6 +21,7 @@ pub enum LayerDataType {
 	Shape(ShapeLayer),
 	/// A layer that wraps [TextLayer].
 	Text(TextLayer),
+	Image(ImageLayer),
 }
 
 impl LayerDataType {
@@ -28,6 +30,7 @@ impl LayerDataType {
 			LayerDataType::Shape(s) => s,
 			LayerDataType::Folder(f) => f,
 			LayerDataType::Text(t) => t,
+			LayerDataType::Image(i) => i,
 		}
 	}
 
@@ -36,6 +39,7 @@ impl LayerDataType {
 			LayerDataType::Shape(s) => s,
 			LayerDataType::Folder(f) => f,
 			LayerDataType::Text(t) => t,
+			LayerDataType::Image(i) => i,
 		}
 	}
 }
@@ -47,13 +51,14 @@ pub trait LayerData {
 	/// # Example
 	/// ```
 	/// # use graphite_graphene::layers::shape_layer::ShapeLayer;
-	/// # use graphite_graphene::layers::style::{PathStyle, ViewMode};
+	/// # use graphite_graphene::layers::style::{Fill, PathStyle, ViewMode};
 	/// # use graphite_graphene::layers::layer_info::LayerData;
-	/// let mut shape = ShapeLayer::rectangle(PathStyle::new(None, None));
+	///
+	/// let mut shape = ShapeLayer::rectangle(PathStyle::new(None, Fill::None));
 	/// let mut svg = String::new();
 	///
 	/// // Render the shape without any transforms, in normal view mode
-	/// shape.render(&mut svg, &mut vec![], ViewMode::Normal);
+	/// shape.render(&mut svg, &mut String::new(), &mut vec![], ViewMode::Normal);
 	///
 	/// assert_eq!(
 	///     svg,
@@ -62,17 +67,18 @@ pub trait LayerData {
 	///     </g>"
 	/// );
 	/// ```
-	fn render(&mut self, svg: &mut String, transforms: &mut Vec<glam::DAffine2>, view_mode: ViewMode);
+	fn render(&mut self, svg: &mut String, svg_defs: &mut String, transforms: &mut Vec<glam::DAffine2>, view_mode: ViewMode);
 
 	/// Determine the layers within this layer that intersect a given quad.
 	/// # Example
 	/// ```
 	/// # use graphite_graphene::layers::shape_layer::ShapeLayer;
-	/// # use graphite_graphene::layers::style::{PathStyle, ViewMode};
+	/// # use graphite_graphene::layers::style::{Fill, PathStyle, ViewMode};
 	/// # use graphite_graphene::layers::layer_info::LayerData;
 	/// # use graphite_graphene::intersection::Quad;
 	/// # use glam::f64::{DAffine2, DVec2};
-	/// let mut shape = ShapeLayer::ellipse(PathStyle::new(None, None));
+	///
+	/// let mut shape = ShapeLayer::ellipse(PathStyle::new(None, Fill::None));
 	/// let shape_id = 42;
 	/// let mut svg = String::new();
 	///
@@ -90,10 +96,10 @@ pub trait LayerData {
 	/// # Example
 	/// ```no_run
 	/// # use graphite_graphene::layers::shape_layer::ShapeLayer;
-	/// # use graphite_graphene::layers::style::PathStyle;
+	/// # use graphite_graphene::layers::style::{Fill, PathStyle};
 	/// # use graphite_graphene::layers::layer_info::LayerData;
 	/// # use glam::f64::{DAffine2, DVec2};
-	/// let shape = ShapeLayer::ellipse(PathStyle::new(None, None));
+	/// let shape = ShapeLayer::ellipse(PathStyle::new(None, Fill::None));
 	///
 	/// // Calculate the bounding box without applying any transformations.
 	/// // (The identity transform maps every vector to itself)
@@ -106,8 +112,8 @@ pub trait LayerData {
 }
 
 impl LayerData for LayerDataType {
-	fn render(&mut self, svg: &mut String, transforms: &mut Vec<glam::DAffine2>, view_mode: ViewMode) {
-		self.inner_mut().render(svg, transforms, view_mode)
+	fn render(&mut self, svg: &mut String, svg_defs: &mut String, transforms: &mut Vec<glam::DAffine2>, view_mode: ViewMode) {
+		self.inner_mut().render(svg, svg_defs, transforms, view_mode)
 	}
 
 	fn intersects_quad(&self, quad: Quad, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>) {
@@ -150,6 +156,8 @@ pub struct Layer {
 	/// The cached svg thumbnail view of the layer.
 	#[serde(skip)]
 	pub thumbnail_cache: String,
+	#[serde(skip)]
+	pub svg_defs_cache: String,
 	/// Whether or not the [Cache](Layer::cache) and [Thumbnail Cache](Layer::thumbnail_cache) need to be updated.
 	#[serde(skip, default = "return_true")]
 	pub cache_dirty: bool,
@@ -168,6 +176,7 @@ impl Layer {
 			transform: glam::DAffine2::from_cols_array(&transform),
 			cache: String::new(),
 			thumbnail_cache: String::new(),
+			svg_defs_cache: String::new(),
 			cache_dirty: true,
 			blend_mode: BlendMode::Normal,
 			opacity: 1.,
@@ -211,7 +220,7 @@ impl Layer {
 		LayerIter { stack: vec![self] }
 	}
 
-	pub fn render(&mut self, transforms: &mut Vec<DAffine2>, view_mode: ViewMode) -> &str {
+	pub fn render(&mut self, transforms: &mut Vec<DAffine2>, view_mode: ViewMode, svg_defs: &mut String) -> &str {
 		if !self.visible {
 			return "";
 		}
@@ -219,7 +228,8 @@ impl Layer {
 		if self.cache_dirty {
 			transforms.push(self.transform);
 			self.thumbnail_cache.clear();
-			self.data.render(&mut self.thumbnail_cache, transforms, view_mode);
+			self.svg_defs_cache.clear();
+			self.data.render(&mut self.thumbnail_cache, &mut self.svg_defs_cache, transforms, view_mode);
 
 			self.cache.clear();
 			let _ = writeln!(self.cache, r#"<g transform="matrix("#);
@@ -236,6 +246,7 @@ impl Layer {
 			transforms.pop();
 			self.cache_dirty = false;
 		}
+		svg_defs.push_str(&self.svg_defs_cache);
 
 		self.cache.as_str()
 	}
@@ -263,22 +274,33 @@ impl Layer {
 	///
 	/// // Apply the Identity transform, which leaves the points unchanged
 	/// assert_eq!(
-	///     layer.current_bounding_box_with_transform(DAffine2::IDENTITY),
+	///     layer.aabounding_box_for_transform(DAffine2::IDENTITY),
 	///     Some([DVec2::ZERO, DVec2::ONE]),
 	/// );
 	///
 	/// // Apply a transform that scales every point by a factor of two
 	/// let transform = DAffine2::from_scale(DVec2::ONE * 2.);
 	/// assert_eq!(
-	///     layer.current_bounding_box_with_transform(transform),
+	///     layer.aabounding_box_for_transform(transform),
 	///     Some([DVec2::ZERO, DVec2::ONE * 2.]),
 	/// );
-	pub fn current_bounding_box_with_transform(&self, transform: DAffine2) -> Option<[DVec2; 2]> {
+	pub fn aabounding_box_for_transform(&self, transform: DAffine2) -> Option<[DVec2; 2]> {
 		self.data.bounding_box(transform)
 	}
 
-	pub fn current_bounding_box(&self) -> Option<[DVec2; 2]> {
-		self.current_bounding_box_with_transform(self.transform)
+	pub fn aabounding_box(&self) -> Option<[DVec2; 2]> {
+		self.aabounding_box_for_transform(self.transform)
+	}
+	pub fn bounding_transform(&self) -> DAffine2 {
+		let scale = match self.aabounding_box_for_transform(DAffine2::IDENTITY) {
+			Some([a, b]) => {
+				let dimensions = b - a;
+				DAffine2::from_scale(dimensions)
+			}
+			_ => DAffine2::IDENTITY,
+		};
+
+		self.transform * scale
 	}
 
 	/// Get a mutable reference to the Folder wrapped by the layer.
@@ -316,6 +338,29 @@ impl Layer {
 			_ => Err(DocumentError::NotText),
 		}
 	}
+
+	pub fn as_image_mut(&mut self) -> Result<&mut ImageLayer, DocumentError> {
+		match &mut self.data {
+			LayerDataType::Image(img) => Ok(img),
+			_ => Err(DocumentError::NotAnImage),
+		}
+	}
+
+	pub fn style(&self) -> Result<&PathStyle, DocumentError> {
+		match &self.data {
+			LayerDataType::Shape(s) => Ok(&s.style),
+			LayerDataType::Text(t) => Ok(&t.style),
+			_ => Err(DocumentError::NotAShape),
+		}
+	}
+
+	pub fn style_mut(&mut self) -> Result<&mut PathStyle, DocumentError> {
+		match &mut self.data {
+			LayerDataType::Shape(s) => Ok(&mut s.style),
+			LayerDataType::Text(t) => Ok(&mut t.style),
+			_ => Err(DocumentError::NotAShape),
+		}
+	}
 }
 
 impl Clone for Layer {
@@ -327,6 +372,7 @@ impl Clone for Layer {
 			transform: self.transform,
 			cache: String::new(),
 			thumbnail_cache: String::new(),
+			svg_defs_cache: String::new(),
 			cache_dirty: true,
 			blend_mode: self.blend_mode,
 			opacity: self.opacity,

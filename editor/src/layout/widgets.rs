@@ -1,3 +1,5 @@
+use std::rc::Rc;
+
 use super::layout_message::LayoutTarget;
 use crate::message_prelude::*;
 
@@ -64,7 +66,7 @@ impl<'a> Iterator for WidgetIter<'a> {
 	type Item = &'a WidgetHolder;
 
 	fn next(&mut self) -> Option<Self::Item> {
-		if let Some(item) = self.current_slice.map(|slice| slice.first()).flatten() {
+		if let Some(item) = self.current_slice.and_then(|slice| slice.first()) {
 			self.current_slice = Some(&self.current_slice.unwrap()[1..]);
 			return Some(item);
 		}
@@ -95,7 +97,7 @@ impl<'a> Iterator for WidgetIterMut<'a> {
 	type Item = &'a mut WidgetHolder;
 
 	fn next(&mut self) -> Option<Self::Item> {
-		if let Some((first, rest)) = self.current_slice.take().map(|slice| slice.split_first_mut()).flatten() {
+		if let Some((first, rest)) = self.current_slice.take().and_then(|slice| slice.split_first_mut()) {
 			self.current_slice = Some(rest);
 			return Some(first);
 		};
@@ -130,24 +132,25 @@ impl WidgetHolder {
 
 #[derive(Clone)]
 pub struct WidgetCallback<T> {
-	pub callback: fn(&T) -> Message,
+	pub callback: Rc<dyn Fn(&T) -> Message + 'static>,
 }
 
 impl<T> WidgetCallback<T> {
-	pub fn new(callback: fn(&T) -> Message) -> Self {
-		Self { callback }
+	pub fn new(callback: impl Fn(&T) -> Message + 'static) -> Self {
+		Self { callback: Rc::new(callback) }
 	}
 }
 
 impl<T> Default for WidgetCallback<T> {
 	fn default() -> Self {
-		Self { callback: |_| Message::NoOp }
+		Self::new(|_| Message::NoOp)
 	}
 }
 
 #[remain::sorted]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Widget {
+	ColorInput(ColorInput),
 	IconButton(IconButton),
 	IconLabel(IconLabel),
 	NumberInput(NumberInput),
@@ -195,6 +198,15 @@ pub struct TextInput {
 	#[serde(skip)]
 	#[derivative(Debug = "ignore", PartialEq = "ignore")]
 	pub on_update: WidgetCallback<TextInput>,
+}
+
+#[derive(Clone, Serialize, Deserialize, Derivative)]
+#[derivative(Debug, PartialEq, Default)]
+pub struct ColorInput {
+	pub value: String,
+	#[serde(skip)]
+	#[derivative(Debug = "ignore", PartialEq = "ignore")]
+	pub on_update: WidgetCallback<ColorInput>,
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]

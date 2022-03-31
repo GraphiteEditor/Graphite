@@ -22,9 +22,9 @@ pub struct FolderLayer {
 }
 
 impl LayerData for FolderLayer {
-	fn render(&mut self, svg: &mut String, transforms: &mut Vec<glam::DAffine2>, view_mode: ViewMode) {
+	fn render(&mut self, svg: &mut String, svg_defs: &mut String, transforms: &mut Vec<glam::DAffine2>, view_mode: ViewMode) {
 		for layer in &mut self.layers {
-			let _ = writeln!(svg, "{}", layer.render(transforms, view_mode));
+			let _ = writeln!(svg, "{}", layer.render(transforms, view_mode, svg_defs));
 		}
 	}
 
