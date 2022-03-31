@@ -169,7 +169,7 @@ impl MessageHandler<PropertiesPanelMessage, (&GrapheneDocument, &GrapheneDocumen
 			}
 			ModifyName { name } => {
 				let (path, _) = self.active_selection.clone().expect("Received update for properties panel with no active layer");
-				responses.push_back(DocumentMessage::SetLayerName { layer_path: path, name }.into())
+				responses.push_back(self.create_document_operation(Operation::SetLayerName { path, name }))
 			}
 			ModifyFill { fill } => {
 				let (path, _) = self.active_selection.clone().expect("Received update for properties panel with no active layer");
