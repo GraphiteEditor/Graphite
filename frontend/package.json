@@ -22,30 +22,35 @@
 		"vue": "^3.2.26"
 	},
 	"devDependencies": {
-		"@typescript-eslint/eslint-plugin": "^5.12.0",
-		"@typescript-eslint/parser": "^5.12.0",
-		"@vue/cli-plugin-eslint": "^5.0.1",
-		"@vue/cli-plugin-typescript": "^5.0.1",
-		"@vue/cli-service": "^5.0.1",
+		"@typescript-eslint/eslint-plugin": "^5.17.0",
+		"@typescript-eslint/parser": "^5.17.0",
+		"@vue/cli-plugin-eslint": "^5.0.4",
+		"@vue/cli-plugin-typescript": "^5.0.4",
+		"@vue/cli-service": "^5.0.4",
 		"@vue/compiler-sfc": "^3.2.31",
 		"@vue/eslint-config-airbnb": "^6.0.0",
 		"@vue/eslint-config-typescript": "^10.0.0",
 		"@wasm-tool/wasm-pack-plugin": "^1.6.0",
-		"eslint": "^8.9.0",
-		"eslint-config-prettier": "^8.3.0",
+		"eslint": "^8.12.0",
+		"eslint-config-prettier": "^8.5.0",
 		"eslint-plugin-import": "^2.25.4",
 		"eslint-plugin-prettier-vue": "^3.1.0",
-		"eslint-plugin-vue": "^8.4.1",
+		"eslint-plugin-vue": "^8.5.0",
 		"license-checker-webpack-plugin": "^0.2.1",
-		"prettier": "^2.5.1",
-		"sass": "^1.49.8",
+		"prettier": "^2.6.1",
+		"sass": "^1.49.10",
 		"sass-loader": "^12.6.0",
-		"typescript": "^4.5.5",
+		"typescript": "^4.6.3",
 		"vue-loader": "^17.0.0",
 		"vue-template-compiler": "^2.6.14"
 	},
 	"optionalDependencies": {
 		"wasm-pack": "0.10.1"
+	},
+	"overrides": {
+		"@vue/cli-plugin-typescript": {
+			"fork-ts-checker-webpack-plugin": "7.2.1"
+		}
 	},
 	"//": "@vue/cli-plugin-eslint 4.5.x does not support eslint 7.x or higher. sass-loader 10.x is the last version to support webpack 4. wasm-pack 0.10.2 is broken on Windows so it should remain pinned to 0.10.1 until a fix is released."
 }
