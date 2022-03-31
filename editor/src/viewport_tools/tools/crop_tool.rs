@@ -1,4 +1,5 @@
 use crate::consts::SELECTION_TOLERANCE;
+use crate::document::properties_panel_message::TargetDocument;
 use crate::document::DocumentMessageHandler;
 use crate::frontend::utility_types::MouseCursorIcon;
 use crate::input::keyboard::{Key, MouseMotion};
@@ -168,6 +169,14 @@ impl Fsm for CropToolFsmState {
 
 							data.snap_handler.start_snap(document, document.bounding_boxes(None, Some(intersection[0])), true, true);
 
+							responses.push_back(
+								PropertiesPanelMessage::SetActiveLayers {
+									paths: vec![intersection.clone()],
+									document: TargetDocument::Artboard,
+								}
+								.into(),
+							);
+
 							CropToolFsmState::Dragging
 						} else {
 							let id = generate_uuid();
@@ -183,6 +192,8 @@ impl Fsm for CropToolFsmState {
 								}
 								.into(),
 							);
+
+							responses.push_back(PropertiesPanelMessage::ClearSelection.into());
 
 							CropToolFsmState::Drawing
 						}
@@ -269,6 +280,16 @@ impl Fsm for CropToolFsmState {
 							artboard: data.selected_board.unwrap(),
 							position: start.round().into(),
 							size: size.round().into(),
+						}
+						.into(),
+					);
+
+					// Have to put message here instead of when Artboard is created
+					// This might result in a few more calls but it is not reliant on the order of messages
+					responses.push_back(
+						PropertiesPanelMessage::SetActiveLayers {
+							paths: vec![vec![data.selected_board.unwrap()]],
+							document: TargetDocument::Artboard,
 						}
 						.into(),
 					);

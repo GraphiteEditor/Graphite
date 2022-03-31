@@ -15,10 +15,10 @@ pub enum PropertiesPanelMessage {
 	ModifyStroke { color: String, weight: f64 },
 	ModifyTransform { value: f64, transform_op: TransformOp },
 	ResendActiveProperties,
-	SetActiveLayers { paths: Vec<Vec<LayerId>> },
+	SetActiveLayers { paths: Vec<Vec<LayerId>>, document: TargetDocument },
 }
 
-#[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
+#[derive(PartialEq, Clone, Copy, Debug, Serialize, Deserialize)]
 pub enum TransformOp {
 	X,
 	Y,
@@ -27,4 +27,10 @@ pub enum TransformOp {
 	Width,
 	Height,
 	Rotation,
+}
+
+#[derive(PartialEq, Clone, Copy, Debug, Serialize, Deserialize)]
+pub enum TargetDocument {
+	Artboard,
+	Artwork,
 }

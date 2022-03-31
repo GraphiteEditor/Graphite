@@ -1,5 +1,6 @@
 use super::clipboards::Clipboard;
 use super::layer_panel::{layer_panel_entry, LayerDataTypeDiscriminant, LayerMetadata, LayerPanelEntry, RawBuffer};
+use super::properties_panel_message::TargetDocument;
 use super::utility_types::{AlignAggregate, AlignAxis, DocumentSave, FlipAxis};
 use super::{vectorize_layer_metadata, PropertiesPanelMessageHandler};
 use super::{ArtboardMessageHandler, MovementMessageHandler, OverlaysMessageHandler, TransformLayerMessageHandler};
@@ -704,7 +705,8 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 			}
 			#[remain::unsorted]
 			PropertiesPanel(message) => {
-				self.properties_panel_message_handler.process_action(message, &self.graphene_document, responses);
+				self.properties_panel_message_handler
+					.process_action(message, (&self.graphene_document, &self.artboard_message_handler.artboards_graphene_document), responses);
 			}
 
 			// Messages
@@ -721,7 +723,13 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 				if selected_paths.is_empty() {
 					responses.push_back(PropertiesPanelMessage::ClearSelection.into())
 				} else {
-					responses.push_back(PropertiesPanelMessage::SetActiveLayers { paths: selected_paths }.into())
+					responses.push_back(
+						PropertiesPanelMessage::SetActiveLayers {
+							paths: selected_paths,
+							document: TargetDocument::Artwork,
+						}
+						.into(),
+					)
 				}
 
 				// TODO: Correctly update layer panel in clear_selection instead of here

@@ -1,4 +1,5 @@
 use super::layer_panel::LayerDataTypeDiscriminant;
+use super::properties_panel_message::TargetDocument;
 use crate::document::properties_panel_message::TransformOp;
 use crate::layout::layout_message::LayoutTarget;
 use crate::layout::widgets::{
@@ -84,34 +85,46 @@ impl DAffine2Utils for DAffine2 {
 	}
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct PropertiesPanelMessageHandler {
-	active_path: Option<Vec<LayerId>>,
+	active_selection: Option<(Vec<LayerId>, TargetDocument)>,
 }
 
 impl PropertiesPanelMessageHandler {
 	fn matches_selected(&self, path: &[LayerId]) -> bool {
-		let last_active_path = self.active_path.as_ref().and_then(|v| v.last().copied());
+		let last_active_path = self.active_selection.as_ref().and_then(|(v, _)| v.last().copied());
 		let last_modified = path.last().copied();
 		matches!((last_active_path, last_modified), (Some(active_last), Some(modified_last)) if active_last == modified_last)
 	}
+
+	fn create_document_operation(&self, operation: Operation) -> Message {
+		let (_, target_document) = self.active_selection.as_ref().unwrap();
+		match *target_document {
+			TargetDocument::Artboard => ArtboardMessage::DispatchOperation(Box::new(operation)).into(),
+			TargetDocument::Artwork => DocumentMessage::DispatchOperation(Box::new(operation)).into(),
+		}
+	}
 }
 
-impl MessageHandler<PropertiesPanelMessage, &GrapheneDocument> for PropertiesPanelMessageHandler {
+impl MessageHandler<PropertiesPanelMessage, (&GrapheneDocument, &GrapheneDocument)> for PropertiesPanelMessageHandler {
 	#[remain::check]
-	fn process_action(&mut self, message: PropertiesPanelMessage, data: &GrapheneDocument, responses: &mut VecDeque<Message>) {
-		let graphene_document = data;
+	fn process_action(&mut self, message: PropertiesPanelMessage, data: (&GrapheneDocument, &GrapheneDocument), responses: &mut VecDeque<Message>) {
+		let (artwork_document, artboard_document) = data;
+		let get_document = |document_selector: TargetDocument| match document_selector {
+			TargetDocument::Artboard => artboard_document,
+			TargetDocument::Artwork => artwork_document,
+		};
 		use PropertiesPanelMessage::*;
 		match message {
-			SetActiveLayers { paths } => {
+			SetActiveLayers { paths, document } => {
 				if paths.len() > 1 {
 					// TODO: Allow for multiple selected layers
 					responses.push_back(PropertiesPanelMessage::ClearSelection.into())
 				} else {
 					let path = paths.into_iter().next().unwrap();
-					let layer = graphene_document.layer(&path).unwrap();
+					let layer = get_document(document).layer(&path).unwrap();
 					register_layer_properties(layer, responses);
-					self.active_path = Some(path)
+					self.active_selection = Some((path, document));
 				}
 			}
 			ClearSelection => {
@@ -131,8 +144,8 @@ impl MessageHandler<PropertiesPanelMessage, &GrapheneDocument> for PropertiesPan
 				);
 			}
 			ModifyTransform { value, transform_op } => {
-				let path = self.active_path.as_ref().expect("Received update for properties panel with no active layer");
-				let layer = graphene_document.layer(path).unwrap();
+				let (path, target_document) = self.active_selection.as_ref().expect("Received update for properties panel with no active layer");
+				let layer = get_document(*target_document).layer(path).unwrap();
 
 				use TransformOp::*;
 				let action = match transform_op {
@@ -149,28 +162,25 @@ impl MessageHandler<PropertiesPanelMessage, &GrapheneDocument> for PropertiesPan
 					_ => 1.,
 				};
 
-				responses.push_back(
-					Operation::SetLayerTransform {
-						path: path.clone(),
-						transform: action(layer.transform, value / scale).to_cols_array(),
-					}
-					.into(),
-				);
+				responses.push_back(self.create_document_operation(Operation::SetLayerTransform {
+					path: path.clone(),
+					transform: action(layer.transform, value / scale).to_cols_array(),
+				}));
 			}
 			ModifyName { name } => {
-				let path = self.active_path.clone().expect("Received update for properties panel with no active layer");
+				let (path, _) = self.active_selection.clone().expect("Received update for properties panel with no active layer");
 				responses.push_back(DocumentMessage::SetLayerName { layer_path: path, name }.into())
 			}
 			ModifyFill { fill } => {
-				let path = self.active_path.clone().expect("Received update for properties panel with no active layer");
-				responses.push_back(Operation::SetLayerFill { path, fill }.into());
+				let (path, _) = self.active_selection.clone().expect("Received update for properties panel with no active layer");
+				responses.push_back(self.create_document_operation(Operation::SetLayerFill { path, fill }));
 			}
 			ModifyStroke { color, weight } => {
-				let path = self.active_path.clone().expect("Received update for properties panel with no active layer");
-				let layer = graphene_document.layer(&path).unwrap();
+				let (path, target_document) = self.active_selection.clone().expect("Received update for properties panel with no active layer");
+				let layer = get_document(target_document).layer(&path).unwrap();
 				if let Some(color) = Color::from_rgba_str(&color).or_else(|| Color::from_rgb_str(&color)) {
 					let stroke = Stroke::new(color, weight as f32);
-					responses.push_back(Operation::SetLayerStroke { path, stroke }.into())
+					responses.push_back(self.create_document_operation(Operation::SetLayerStroke { path, stroke }))
 				} else {
 					// Failed to update, Show user unchanged state
 					register_layer_properties(layer, responses)
@@ -178,13 +188,14 @@ impl MessageHandler<PropertiesPanelMessage, &GrapheneDocument> for PropertiesPan
 			}
 			CheckSelectedWasUpdated { path } => {
 				if self.matches_selected(&path) {
-					let layer = graphene_document.layer(&path).unwrap();
+					let (_, target_document) = self.active_selection.as_ref().unwrap();
+					let layer = get_document(*target_document).layer(&path).unwrap();
 					register_layer_properties(layer, responses);
 				}
 			}
 			CheckSelectedWasDeleted { path } => {
 				if self.matches_selected(&path) {
-					self.active_path = None;
+					self.active_selection = None;
 					responses.push_back(
 						LayoutMessage::SendLayout {
 							layout_target: LayoutTarget::PropertiesOptionsPanel,
@@ -202,8 +213,8 @@ impl MessageHandler<PropertiesPanelMessage, &GrapheneDocument> for PropertiesPan
 				}
 			}
 			ResendActiveProperties => {
-				let path = self.active_path.clone().expect("Received update for properties panel with no active layer");
-				let layer = graphene_document.layer(&path).unwrap();
+				let (path, target_document) = self.active_selection.clone().expect("Received update for properties panel with no active layer");
+				let layer = get_document(target_document).layer(&path).unwrap();
 				register_layer_properties(layer, responses)
 			}
 		}
