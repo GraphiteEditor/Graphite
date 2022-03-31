@@ -22,22 +22,42 @@ pub trait AnyRef: Node {
     where
         Self::Input<'a>: 'static + Copy;
 }
+
 impl<T: Node> AnyRef for T {
     fn any<'a>(&'a self, input: &'a dyn Any) -> Self::Output<'a>
     where
         Self::Input<'a>: 'static + Copy,
     {
-        self.eval::<&Self::Input<'a>>(input.downcast_ref::<Self::Input<'a>>().unwrap())
+        self.eval::<&Self::Input<'a>>(input.downcast_ref::<Self::Input<'a>>().unwrap_or_else(
+            || {
+                panic!(
+                    "Node was evaluated with wrong input. The input has to be of type: {}",
+                    std::any::type_name::<Self::Input<'a>>(),
+                )
+            },
+        ))
     }
 }
 
-trait After<SECOND: Node> {
-    fn after<'a, FIRST: Node>(&'a self, first: &'a FIRST) -> ComposeNode<'a, FIRST, SECOND>;
+trait DefaultNode: Default {
+    fn default_node() -> ValueNode<Self> {
+        ValueNode::new(Self::default())
+    }
 }
+impl<T: std::default::Default> DefaultNode for T {}
+
+trait After: Sized {
+    fn after<'a, First: Node>(&'a self, first: &'a First) -> ComposeNode<'a, First, Self> {
+        ComposeNode::new(first, self)
+    }
+}
+impl<Second: Node> After for Second {}
 
 fn main() {
     let int = IntNode::<32>;
-    let add: u32 = AddNode::<u32>::default().any(&(int.eval(&()), int.eval(&())) as &dyn Any);
+    let add: u32 = AddNode::<u32>::default().eval((int.eval(&()), int.eval(&())));
+    let fnode = FnNode::new(|(a, b): &(i32, i32)| a - b);
+    let sub = fnode.any(&("a", 2));
 
     /*
     let curry: CurryNthArgNode<'_, _, _, u32, u32, 0> = CurryNthArgNode::new(&AddNode, &int);
@@ -45,5 +65,5 @@ fn main() {
     let n = ValueNode::new(10_u32);
     let curry: CurryNthArgNode<'_, _, _, u32, _, 0> = CurryNthArgNode::new(&composition, &n);
     */
-    println!("{}", add)
+    println!("{}", sub)
 }
