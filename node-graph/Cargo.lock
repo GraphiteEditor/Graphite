@@ -367,9 +367,12 @@ version = "0.1.0"
 dependencies = [
  "dashmap 5.2.0",
  "graph-proc-macros",
+ "lock_api",
  "once_cell",
+ "parking_lot 0.11.1",
  "ra_ap_ide",
  "ra_ap_ide_db",
+ "storage-map",
 ]
 
 [[package]]
@@ -1038,6 +1041,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b203e79e90905594272c1c97c7af701533d42adaab0beb3859018e477d54a3b0"
 dependencies = [
  "serde",
+]
+
+[[package]]
+name = "storage-map"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "418bb14643aa55a7841d5303f72cf512cfb323b8cc221d51580500a1ca75206c"
+dependencies = [
+ "lock_api",
 ]
 
 [[package]]

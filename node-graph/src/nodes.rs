@@ -1,10 +1,18 @@
 use std::{
-    any::Any, borrow::Borrow, collections::hash_map::DefaultHasher, hash::Hasher, iter, iter::Sum,
+    any::Any,
+    borrow::Borrow,
+    cell::RefCell,
+    collections::{hash_map::DefaultHasher, HashMap},
+    hash::{Hash, Hasher},
+    iter,
+    iter::Sum,
     marker::PhantomData,
 };
 
 use crate::{insert_after_nth, After, Node};
 use once_cell::sync::OnceCell;
+use parking_lot::RawRwLock;
+use storage_map::{StorageMap, StorageMapGuard};
 
 pub struct IntNode<const N: u32>;
 impl<const N: u32> Node for IntNode<N> {
@@ -41,31 +49,6 @@ impl<T: std::ops::Add + 'static + Copy> Node for AddNode<T> {
     }
 }
 
-/// Caches the output of a given Node and acts as a proxy
-pub struct CachingNode<'n, 'c, CachedNode: Node + 'c> {
-    node: &'n CachedNode,
-    cache: OnceCell<CachedNode::Output<'c>>,
-}
-impl<'n: 'c, 'c, CashedNode: Node> Node for CachingNode<'n, 'c, CashedNode> {
-    type Output<'a> = &'a CashedNode::Output<'c> where 'c: 'a;
-    type Input<'a> = CashedNode::Input<'c> where 'c: 'a;
-    fn eval<'a, I: Borrow<Self::Input<'a>>>(&'a self, input: I) -> Self::Output<'a> {
-        self.cache.get_or_init(|| self.node.eval(input))
-    }
-}
-
-impl<'n, 'c, CachedNode: Node> CachingNode<'n, 'c, CachedNode> {
-    pub fn clear(&'n mut self) {
-        self.cache = OnceCell::new();
-    }
-    pub fn new(node: &'n CachedNode) -> CachingNode<'n, 'c, CachedNode> {
-        CachingNode {
-            node,
-            cache: OnceCell::new(),
-        }
-    }
-}
-
 pub struct ComposeNode<'n, FIRST, SECOND> {
     first: &'n FIRST,
     second: &'n SECOND,
@@ -98,11 +81,64 @@ where
     }
 }
 
-impl<'n, SECOND: Node> After<SECOND> for SECOND {
-    fn after<'a, FIRST: Node>(&'a self, first: &'a FIRST) -> ComposeNode<'a, FIRST, SECOND> {
-        ComposeNode::<'a, FIRST, SECOND> {
-            first,
-            second: self,
+pub struct FnNode<T: Fn(&In) -> O, In, O>(T, PhantomData<In>, PhantomData<O>);
+impl<T: Fn(&In) -> O, In, O> Node for FnNode<T, In, O> {
+    type Output<'a> = O where Self: 'a;
+    type Input<'a> = In where Self: 'a;
+
+    fn eval<'a, I: Borrow<Self::Input<'a>>>(&'a self, input: I) -> Self::Output<'a> {
+        self.0(input.borrow())
+    }
+}
+
+impl<T: Fn(&In) -> O, In, O> FnNode<T, In, O> {
+    pub fn new(f: T) -> Self {
+        FnNode(f, PhantomData::default(), PhantomData::default())
+    }
+}
+
+pub struct FnNodeWithState<T: Fn(&In, &State) -> O, In, O, State>(
+    T,
+    State,
+    PhantomData<In>,
+    PhantomData<O>,
+);
+impl<T: Fn(&In, &State) -> O, In, O, State> Node for FnNodeWithState<T, In, O, State> {
+    type Output<'a> = O where Self: 'a;
+    type Input<'a> = In where Self: 'a;
+
+    fn eval<'a, I: Borrow<Self::Input<'a>>>(&'a self, input: I) -> Self::Output<'a> {
+        self.0(input.borrow(), &self.1)
+    }
+}
+
+impl<T: Fn(&In, &State) -> O, In, O, State> FnNodeWithState<T, In, O, State> {
+    pub fn new(f: T, state: State) -> Self {
+        FnNodeWithState(f, state, PhantomData::default(), PhantomData::default())
+    }
+}
+
+/// Caches the output of a given Node and acts as a proxy
+pub struct CacheNode<'n, 'c, CachedNode: Node + 'c> {
+    node: &'n CachedNode,
+    cache: OnceCell<CachedNode::Output<'c>>,
+}
+impl<'n: 'c, 'c, CashedNode: Node> Node for CacheNode<'n, 'c, CashedNode> {
+    type Output<'a> = &'a CashedNode::Output<'c> where 'c: 'a;
+    type Input<'a> = CashedNode::Input<'c> where 'c: 'a;
+    fn eval<'a, I: Borrow<Self::Input<'a>>>(&'a self, input: I) -> Self::Output<'a> {
+        self.cache.get_or_init(|| self.node.eval(input))
+    }
+}
+
+impl<'n, 'c, CachedNode: Node> CacheNode<'n, 'c, CachedNode> {
+    pub fn clear(&'n mut self) {
+        self.cache = OnceCell::new();
+    }
+    pub fn new(node: &'n CachedNode) -> CacheNode<'n, 'c, CachedNode> {
+        CacheNode {
+            node,
+            cache: OnceCell::new(),
         }
     }
 }
@@ -110,51 +146,76 @@ impl<'n, SECOND: Node> After<SECOND> for SECOND {
 /*
 /// Caches the output of a given Node and acts as a proxy
 /// Automatically resets if it receives different input
-pub struct SmartCacheNode<'n, NODE: Node<'n, OUT>, OUT: Clone> {
-    node: &'n NODE,
-    map: dashmap::DashMap<u64, CacheNode<'n, NODE, OUT>>,
-}
-impl<'n, NODE: for<'a> Node<'a, OUT>, OUT: Clone> Node<'n, &'n CacheNode<'n, NODE, OUT>>
-    for SmartCacheNode<'n, NODE, OUT>
+struct SmartCacheNode<'n, 'c, NODE: Node + 'c>
+where
+    for<'a> NODE::Input<'a>: Hash,
 {
-    fn eval(
-        &'n self,
-        input: impl Iterator<Item = &'n dyn Any> + Clone,
-    ) -> &'n CacheNode<'n, NODE, OUT> {
+    cache: InnerSmartCacheNode<'n, 'c, NODE>,
+}
+impl<'n: 'c, 'c, NODE: Node> Node for SmartCacheNode<'n, 'c, NODE>
+where
+    for<'a> NODE::Input<'a>: Hash,
+{
+    type Input<'a> = NODE::Input<'a> where Self: 'a, 'c : 'a;
+    type Output<'a> = &'a NODE::Output<'a> where Self: 'a, 'c: 'a;
+    fn eval<'a, I: Borrow<Self::Input<'a>>>(&'a self, input: I) -> Self::Output<'a> {
         let mut hasher = DefaultHasher::new();
-        input.clone().for_each(|value| unsafe {
-            hasher.write(std::slice::from_raw_parts(
-                value as *const dyn Any as *const u8,
-                std::mem::size_of_val(value),
-            ))
-        });
+        input.borrow().hash(&mut hasher);
         let hash = hasher.finish();
-        self.map.entry(hash).or_insert(CacheNode::new(self.node));
-        fn map<'a, 'c, 'd, N, OUT: Clone>(
-            _key: &'a u64,
-            node: &'c CacheNode<'d, N, OUT>,
-        ) -> &'c CacheNode<'b, N, OUT>
-        where
-            N: for<'b> Node<'b, OUT>,
-        {
-            node
-        }
-        let foo: Option<&CacheNode<'n, NODE, OUT>> = self.map.view(&hash, map);
-        foo.unwrap()
+
+        let node = self.cache.eval(input);
+        node.eval(input);
+        todo!()
     }
 }
 
-impl<'n, NODE: Node<'n, OUT>, OUT: Clone> SmartCacheNode<'n, NODE, OUT> {
-    fn clear(&'n mut self) {
-        self.map.clear();
+impl<'n, 'c, NODE: Node> SmartCacheNode<'n, 'c, NODE>
+where
+    for<'a> NODE::Input<'a>: Hash,
+{
+    pub fn clear(&'n mut self) {
+        self.cache.clear();
     }
-    fn new(node: &'n NODE) -> SmartCacheNode<'n, NODE, OUT> {
+    pub fn new(node: &'n NODE) -> SmartCacheNode<'n, 'c, NODE> {
         SmartCacheNode {
-            node,
-            map: dashmap::DashMap::new(),
+            cache: InnerSmartCacheNode::new(node),
         }
     }
 }*/
+
+/// Caches the output of a given Node and acts as a proxy
+/// Automatically resets if it receives different input
+pub struct SmartCacheNode<'n, 'c, NODE: Node + 'c> {
+    node: &'n NODE,
+    map: StorageMap<RawRwLock, HashMap<u64, CacheNode<'n, 'c, NODE>>>,
+}
+impl<'n: 'c, 'c, NODE: Node + 'c> Node for SmartCacheNode<'n, 'c, NODE>
+where
+    for<'a> NODE::Input<'a>: Hash,
+{
+    type Input<'a> = NODE::Input<'a> where Self: 'a, 'c : 'a;
+    type Output<'a> = StorageMapGuard<'a, RawRwLock,  CacheNode<'n, 'c, NODE>> where Self: 'a, 'c: 'a;
+    fn eval<'a, I: Borrow<Self::Input<'a>>>(&'a self, input: I) -> Self::Output<'a> {
+        let mut hasher = DefaultHasher::new();
+        input.borrow().hash(&mut hasher);
+        let hash = hasher.finish();
+
+        self.map
+            .get_or_create_with(&hash, || CacheNode::new(self.node))
+    }
+}
+
+impl<'n, 'c, NODE: Node> SmartCacheNode<'n, 'c, NODE> {
+    pub fn clear(&'n mut self) {
+        self.map = StorageMap::default();
+    }
+    pub fn new(node: &'n NODE) -> SmartCacheNode<'n, 'c, NODE> {
+        SmartCacheNode {
+            node,
+            map: StorageMap::default(),
+        }
+    }
+}
 
 /*
 
