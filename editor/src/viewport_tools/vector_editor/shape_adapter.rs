@@ -1,6 +1,6 @@
 // WIP
 
-use super::{vector_anchor::VectorAnchor, vector_shape::VectorShape};
+use super::vector_shape::VectorShape;
 use crate::viewport_tools::vector_editor::vector_control_point::VectorControlPoint;
 use kurbo::{BezPath, PathEl};
 

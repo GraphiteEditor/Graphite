@@ -6,7 +6,7 @@ pub const ROUNDING_BIAS: f64 = 0.0001;
 pub const MINIMUM_MIRROR_THRESHOLD: f64 = 0.1;
 
 #[repr(usize)]
-#[derive(PartialEq, Clone, Debug)]
+#[derive(PartialEq, Clone, Debug, Copy)]
 pub enum ControlPointType {
 	Anchor = 0,
 	Handle1 = 1,

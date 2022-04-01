@@ -26,13 +26,13 @@ type AnchorOverlays = [Option<Vec<LayerId>>; 5];
 
 const POINT_STROKE_WIDTH: f32 = 2.0;
 
-struct OverlayRenderer<'a> {
+struct OverlayRenderer {
 	// Yes, I know I can't use refs here, just a reminder to myself for now
-	shape_overlay_cache: HashMap<&'a VectorShape, Vec<LayerId>>,
-	anchor_overlay_cache: HashMap<&'a VectorAnchor, AnchorOverlays>,
+	shape_overlay_cache: HashMap<Vec<LayerId>, Vec<LayerId>>,
+	anchor_overlay_cache: HashMap<u64, AnchorOverlays>,
 }
 
-impl<'a> OverlayRenderer<'a> {
+impl<'a> OverlayRenderer {
 	pub fn new() -> Self {
 		OverlayRenderer {
 			anchor_overlay_cache: HashMap::new(),
@@ -42,17 +42,17 @@ impl<'a> OverlayRenderer<'a> {
 
 	pub fn draw_overlays_for_shape(&mut self, shape: &VectorShape, responses: &mut VecDeque<Message>) {
 		// Draw the shape outline overlays
-		if !self.shape_overlay_cache.contains_key(shape) {
+		if !self.shape_overlay_cache.contains_key(&shape.layer_path) {
 			let outline = self.create_shape_outline_overlay(shape.into(), responses);
 			// Cache outline overlay
-			self.shape_overlay_cache.insert(shape, outline);
+			self.shape_overlay_cache.insert(shape.layer_path.clone(), outline);
 			// TODO Handle removing shapes so we don't memory leak
 		}
 
 		// Draw the anchor / handle overlays
 		for anchor in shape.anchors.iter() {
 			// If we already have these overlays don't recreate them
-			if !self.anchor_overlay_cache.contains_key(anchor) {
+			if !self.anchor_overlay_cache.contains_key(&anchor.local_id) {
 				// Create the overlays
 				let anchor_overlays = [
 					Some(self.create_anchor_overlay(anchor, responses)),
@@ -63,11 +63,11 @@ impl<'a> OverlayRenderer<'a> {
 				];
 
 				// Cache overlays
-				self.anchor_overlay_cache.insert(anchor, anchor_overlays);
+				self.anchor_overlay_cache.insert(anchor.local_id, anchor_overlays);
 			}
 
 			// Position the overlays
-			if let Some(anchor_overlays) = self.anchor_overlay_cache.get(anchor) {
+			if let Some(anchor_overlays) = self.anchor_overlay_cache.get(&anchor.local_id) {
 				self.place_overlays(anchor, anchor_overlays, responses);
 			}
 
@@ -143,7 +143,7 @@ impl<'a> OverlayRenderer<'a> {
 
 	/// Updates the position of the overlays based on the VectorShape points
 	fn place_overlays(&self, anchor: &VectorAnchor, overlays: &AnchorOverlays, responses: &mut VecDeque<Message>) {
-		if let Some(anchor_point) = anchor.points[ControlPointType::Anchor] {
+		if let Some(anchor_point) = &anchor.points[ControlPointType::Anchor] {
 			// Helper function to keep things DRY
 			let mut place_handle_and_line = |handle: &VectorControlPoint, line: &Option<Vec<LayerId>>| {
 				if let Some(line_overlay) = line {
@@ -155,7 +155,7 @@ impl<'a> OverlayRenderer<'a> {
 					responses.push_back(self.overlay_transform_message(line_overlay.clone(), transform));
 				}
 
-				if let Some(line_overlay) = &handle.overlay_path {
+				if let Some(line_overlay) = &overlays[handle.manipulator_type as usize] {
 					let scale = DVec2::splat(VECTOR_MANIPULATOR_ANCHOR_MARKER_SIZE);
 					let angle = 0.;
 					let translation = (handle.position - (scale / 2.) + ROUNDING_BIAS).round();
@@ -164,23 +164,24 @@ impl<'a> OverlayRenderer<'a> {
 				}
 			};
 
-			// Place the anchor point overlay
-			if let Some(anchor_overlay) = &anchor_point.overlay_path {
-				let scale = DVec2::splat(VECTOR_MANIPULATOR_ANCHOR_MARKER_SIZE);
-				let angle = 0.;
-				let translation = (anchor_point.position - (scale / 2.) + ROUNDING_BIAS).round();
-				let transform = DAffine2::from_scale_angle_translation(scale, angle, translation).to_cols_array();
-				responses.push_back(self.overlay_transform_message(anchor_overlay.clone(), transform));
-			}
-
 			// Place the handle overlays
-			let [_, h1, h2] = anchor.points;
+			let [_, h1, h2] = &anchor.points;
 			let [_, _, _, line1, line2] = &overlays;
 			if let Some(handle) = &h1 {
 				place_handle_and_line(handle, line1);
 			}
 			if let Some(handle) = &h2 {
 				place_handle_and_line(handle, line2);
+			}
+
+			// Place the anchor point overlay
+			if let Some(anchor_overlay) = &overlays[ControlPointType::Anchor as usize] {
+				let scale = DVec2::splat(VECTOR_MANIPULATOR_ANCHOR_MARKER_SIZE);
+				let angle = 0.;
+				let translation = (anchor_point.position - (scale / 2.) + ROUNDING_BIAS).round();
+				let transform = DAffine2::from_scale_angle_translation(scale, angle, translation).to_cols_array();
+				let message = self.overlay_transform_message(anchor_overlay.clone(), transform);
+				responses.push_back(message);
 			}
 		}
 	}
@@ -218,17 +219,18 @@ impl<'a> OverlayRenderer<'a> {
 
 	/// Sets the overlay style for this point
 	fn set_overlay_style(&self, stroke_width: f32, stroke_color: Color, fill_color: Color, responses: &mut VecDeque<Message>) {
-		if let Some(overlay_path) = &self.overlay_path {
-			responses.push_back(
-				DocumentMessage::Overlays(
-					Operation::SetLayerStyle {
-						path: overlay_path.clone(),
-						style: PathStyle::new(Some(Stroke::new(stroke_color, stroke_width)), Some(Fill::new(fill_color))),
-					}
-					.into(),
-				)
-				.into(),
-			);
-		}
+		// Use something like &overlays[handle.manipulator_type as usize]
+		// if let Some(overlay_path) = &self.overlay_path {
+		// 	responses.push_back(
+		// 		DocumentMessage::Overlays(
+		// 			Operation::SetLayerStyle {
+		// 				path: overlay_path.clone(),
+		// 				style: PathStyle::new(Some(Stroke::new(stroke_color, stroke_width)), Some(Fill::new(fill_color))),
+		// 			}
+		// 			.into(),
+		// 		)
+		// 		.into(),
+		// 	);
+		// }
 	}
 }

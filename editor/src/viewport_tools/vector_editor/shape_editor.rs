@@ -245,7 +245,7 @@ impl ShapeEditor {
 	/// Move the selected point based on mouse input, if this is a handle we can control if we are mirroring or not
 	/// A wrapper around move_point to handle mirror state / submit the changes
 	pub fn move_selected(&mut self, target: DVec2, relative: bool) {
-		for selected_shape in self.selected_shapes() {
+		for selected_shape in self.selected_shapes_mut() {
 			selected_shape.move_selected(target, relative);
 		}
 
@@ -256,7 +256,7 @@ impl ShapeEditor {
 	/// Delete the selected point
 	/// A wrapper around move_point to handle mirror state / submit the changes
 	pub fn delete_selected(&mut self) {
-		for selected_shape in self.selected_shapes() {
+		for mut selected_shape in self.selected_shapes_mut() {
 			selected_shape.delete_selected();
 		}
 
