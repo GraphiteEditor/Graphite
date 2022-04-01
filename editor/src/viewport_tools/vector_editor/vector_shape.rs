@@ -33,7 +33,7 @@ pub struct VectorShape {
 type IndexedEl = (usize, kurbo::PathEl);
 
 impl VectorShape {
-	pub fn new(layer_path: Vec<LayerId>, transform: DAffine2, bez_path: &BezPath, closed: bool, responses: &mut VecDeque<Message>) -> Self {
+	pub fn new(layer_path: Vec<LayerId>, transform: DAffine2, closed: bool) -> Self {
 		let mut shape = VectorShape {
 			layer_path,
 			closed,
@@ -42,6 +42,21 @@ impl VectorShape {
 		};
 
 		shape
+	}
+
+	pub fn move_selected(&mut self, delta: DVec2, relative: bool) {
+		for anchor in self.selected_anchors_mut() {
+			if anchor.is_selected {
+				anchor.move_by(delta);
+			}
+		}
+	}
+
+	pub fn delete_selected(&mut self) {
+		let mut anchors_to_delete = Vec::new();
+		for anchor in self.selected_anchors_mut() {
+			if anchor.is_selected {}
+		}
 	}
 
 	/// Select an anchor
@@ -64,14 +79,14 @@ impl VectorShape {
 	}
 
 	/// Select all the anchors in this shape
-	pub fn select_all_anchors(&mut self, responses: &mut VecDeque<Message>) {
+	pub fn select_all_anchors(&mut self) {
 		for anchor in self.anchors.iter_mut() {
 			anchor.select_point(ControlPointType::Anchor, true);
 		}
 	}
 
 	/// Clear all the selected anchors, and clear the selected points on the anchors
-	pub fn clear_selected_anchors(&mut self, responses: &mut VecDeque<Message>) {
+	pub fn clear_selected_anchors(&mut self) {
 		for anchor in self.anchors.iter_mut() {
 			anchor.clear_selected_points();
 		}
