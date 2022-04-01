@@ -15,8 +15,6 @@ use graphene::{
 };
 
 use glam::{DAffine2, DVec2};
-use kurbo::{BezPath, PathEl};
-use std::collections::HashSet;
 use std::collections::VecDeque;
 
 /// VectorShape represents a single kurbo shape and maintains a parallel data structure
@@ -31,8 +29,6 @@ pub struct VectorShape {
 	pub closed: bool,
 	/// The transformation matrix to apply
 	pub transform: DAffine2,
-	// Indices for the most recent select point anchors
-	pub selected_anchor_indices: HashSet<usize>,
 }
 type IndexedEl = (usize, kurbo::PathEl);
 
@@ -50,35 +46,34 @@ impl VectorShape {
 
 	/// Select an anchor
 	pub fn select_anchor(&mut self, anchor_index: usize) -> &mut VectorAnchor {
-		self.selected_anchor_indices.insert(anchor_index);
+		self.anchors[anchor_index].select_point(ControlPointType::Anchor, true);
 		&mut self.anchors[anchor_index]
 	}
 
 	/// The last anchor in the shape thus far
 	pub fn select_last_anchor(&mut self) -> &mut VectorAnchor {
 		let last_index = self.anchors.len() - 1;
-		self.selected_anchor_indices.insert(last_index);
+		self.anchors[last_index].select_point(ControlPointType::Anchor, true);
 		&mut self.anchors[last_index]
 	}
 
 	/// Deselect an anchor
-	pub fn deselect_anchor(&mut self, anchor_index: usize, responses: &mut VecDeque<Message>) {
-		self.anchors[anchor_index].clear_selected_points(responses);
-		self.selected_anchor_indices.remove(&anchor_index);
+	pub fn deselect_anchor(&mut self, anchor_index: usize) {
+		self.anchors[anchor_index].clear_selected_points();
+		self.anchors[anchor_index].select_point(ControlPointType::Anchor, false);
 	}
 
 	/// Select all the anchors in this shape
 	pub fn select_all_anchors(&mut self, responses: &mut VecDeque<Message>) {
-		for (index, anchor) in self.anchors.iter_mut().enumerate() {
-			self.selected_anchor_indices.insert(index);
-			anchor.select_point(0, true, responses);
+		for anchor in self.anchors.iter_mut() {
+			anchor.select_point(ControlPointType::Anchor, true);
 		}
 	}
 
 	/// Clear all the selected anchors, and clear the selected points on the anchors
 	pub fn clear_selected_anchors(&mut self, responses: &mut VecDeque<Message>) {
-		for anchor_index in self.selected_anchor_indices.iter() {
-			self.anchors[*anchor_index].clear_selected_points(responses);
+		for anchor in self.anchors.iter_mut() {
+			anchor.clear_selected_points();
 		}
 		self.selected_anchor_indices.clear();
 	}
@@ -88,7 +83,7 @@ impl VectorShape {
 		self.anchors
 			.iter()
 			.enumerate()
-			.filter_map(|(index, anchor)| if self.selected_anchor_indices.contains(&index) { Some(anchor) } else { None })
+			.filter_map(|(index, anchor)| if anchor.is_anchor_selected() { Some(anchor) } else { None })
 	}
 
 	/// Return all the selected anchors, mutable

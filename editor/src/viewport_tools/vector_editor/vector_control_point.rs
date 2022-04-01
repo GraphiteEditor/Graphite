@@ -20,7 +20,7 @@ pub struct VectorControlPoint {
 	pub position: glam::DVec2,
 	// The type of manipulator this point is
 	pub manipulator_type: ControlPointType,
-	// Can be selected
+	// Can this control point be selected?
 	pub can_be_selected: bool,
 	// Is this point currently selected?
 	pub is_selected: bool,
@@ -38,8 +38,23 @@ impl Default for VectorControlPoint {
 }
 
 impl VectorControlPoint {
+	// Initialize a new control point
+	pub fn new(position: glam::DVec2, manipulator_type: ControlPointType) -> Self {
+		Self {
+			position,
+			manipulator_type,
+			can_be_selected: true,
+			is_selected: false,
+		}
+	}
+
 	/// Sets if this point is selected and updates the overlay to represent that
-	pub fn set_selected(&mut self, selected: bool, responses: &mut VecDeque<Message>) {
+	pub fn set_selected(&mut self, selected: bool) {
 		self.is_selected = selected;
+	}
+
+	/// Move by a delta amount
+	pub fn move_by(&mut self, delta: DVec2) {
+		self.position += delta;
 	}
 }

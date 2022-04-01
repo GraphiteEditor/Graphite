@@ -241,20 +241,10 @@ impl ShapeEditor {
 		}
 	}
 
-	/// Remove all of the overlays from the shapes the manipulation handler has created
+	/// Deselect all anchors from the shapes the manipulation handler has created
 	pub fn deselect_all(&mut self, responses: &mut VecDeque<Message>) {
 		for shape in self.shapes_to_modify.iter_mut() {
 			shape.clear_selected_anchors(responses);
-			// Apply the final elements to the shape
-			// Fixes the snapback problem
-			shape.elements = shape.bez_path.clone().into_iter().collect();
-		}
-	}
-
-	/// Remove all of the overlays for the VectorManipulators / shape
-	pub fn remove_overlays(&mut self, responses: &mut VecDeque<Message>) {
-		for shape in self.shapes_to_modify.iter_mut() {
-			shape.remove_overlays(responses)
 		}
 	}
 

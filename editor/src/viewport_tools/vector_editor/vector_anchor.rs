@@ -11,7 +11,6 @@ use super::{
 use graphene::{LayerId, Operation};
 
 use glam::{DAffine2, DVec2};
-use kurbo::{PathEl, Point, Vec2};
 use std::collections::VecDeque;
 
 /// VectorAnchor is used to represent an anchor point on the path that can be moved.
@@ -20,15 +19,45 @@ use std::collections::VecDeque;
 pub struct VectorAnchor {
 	// Editable points for the anchor & handles
 	pub points: [Option<VectorControlPoint>; 3],
-	// Does this anchor point have a path close element?
-	pub close_element_id: Option<usize>,
 	// Should we maintain the angle between the handles?
 	pub handle_mirror_angle: bool,
 	// Should we make the handles equidistance from the anchor?
 	pub handle_mirror_distance: bool,
 }
 
+impl Default for VectorAnchor {
+	fn default() -> Self {
+		Self {
+			points: [None, None, None],
+			handle_mirror_angle: true,
+			handle_mirror_distance: true,
+		}
+	}
+}
+
 impl VectorAnchor {
+	/// Create a new anchor with the given position
+	pub fn new(anchor_pos: DVec2) -> Self {
+		Self {
+			points: [Some(VectorControlPoint::new(anchor_pos, ControlPointType::Anchor)), None, None],
+			handle_mirror_angle: false,
+			handle_mirror_distance: false,
+		}
+	}
+
+	/// Create a new anchor with the given anchor position and handles
+	pub fn new(anchor_pos: DVec2, handle1_pos: DVec2, handle2_pos: DVec2) -> Self {
+		Self {
+			points: [
+				Some(VectorControlPoint::new(anchor_pos, ControlPointType::Anchor)),
+				Some(VectorControlPoint::new(handle1_pos, ControlPointType::Handle)),
+				Some(VectorControlPoint::new(handle2_pos, ControlPointType::Handle)),
+			],
+			handle_mirror_angle: false,
+			handle_mirror_distance: false,
+		}
+	}
+
 	/// Finds the closest VectorControlPoint owned by this anchor. This can be the handles or the anchor itself
 	pub fn closest_point(&self, target: glam::DVec2) -> usize {
 		let mut closest_index: usize = 0;
@@ -49,25 +78,35 @@ impl VectorAnchor {
 	/// Move the selected points by the provided delta
 	pub fn move_selected_points(&mut self, translation: DVec2, relative: bool, transform: &DAffine2) {
 		// TODO This needs to be rebuilt without usage of kurbo
+		// Move associated handles
 	}
 
 	/// Returns true if any points in this anchor are selected
-	pub fn is_selected(&self) -> bool {
+	pub fn any_points_selected(&self) -> bool {
 		self.points.iter().flatten().any(|pnt| pnt.is_selected)
 	}
 
+	/// Returns true if the anchor point is selected
+	pub fn is_anchor_selected(&self) -> bool {
+		if let Some(anchor) = self.points[0].is_some() {
+			anchor.is_selected
+		} else {
+			false
+		}
+	}
+
 	/// Set a point to selected by ID
-	pub fn select_point(&mut self, point_id: usize, selected: bool, responses: &mut VecDeque<Message>) -> Option<&mut VectorControlPoint> {
+	pub fn select_point(&mut self, point_id: usize, selected: bool) -> Option<&mut VectorControlPoint> {
 		if let Some(point) = self.points[point_id].as_mut() {
-			point.set_selected(selected, responses);
+			point.set_selected(selected);
 		}
 		self.points[point_id].as_mut()
 	}
 
 	/// Clear the selected points for this anchor
-	pub fn clear_selected_points(&mut self, responses: &mut VecDeque<Message>) {
+	pub fn clear_selected_points(&mut self) {
 		for point in self.points.iter_mut().flatten() {
-			point.set_selected(false, responses);
+			point.set_selected(false);
 		}
 	}
 
