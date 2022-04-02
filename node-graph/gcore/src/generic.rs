@@ -1,6 +1,6 @@
 use std::{borrow::Borrow, marker::PhantomData};
 
-use graphene_core::Node;
+use crate::Node;
 pub struct FnNode<T: Fn(&In) -> O, In, O>(T, PhantomData<In>, PhantomData<O>);
 impl<T: Fn(&In) -> O, In, O> Node for FnNode<T, In, O> {
     type Output<'a> = O where Self: 'a;

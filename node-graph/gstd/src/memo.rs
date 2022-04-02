@@ -1,6 +1,6 @@
-use graphene_core::Node;
+use graphene_core::{ExecPtr, Node};
 use once_cell::sync::OnceCell;
-use std::borrow::Borrow;
+use std::{any::Any, borrow::Borrow, ops::Deref};
 
 /// Caches the output of a given Node and acts as a proxy
 pub struct CacheNode<'n, 'c, CachedNode: Node + 'c> {

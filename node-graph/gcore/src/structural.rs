@@ -1,6 +1,6 @@
 use std::{any::Any, borrow::Borrow};
 
-use graphene_core::{DynamicInput, Node};
+use crate::{DynamicInput, Node};
 pub struct ComposeNode<'n, FIRST, SECOND> {
     first: &'n FIRST,
     second: &'n SECOND,
