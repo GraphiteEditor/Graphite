@@ -71,11 +71,12 @@ function githubUrl(panicDetails: string): string {
 		${browserVersion()}, ${operatingSystem()}
 
 		**Stack Trace**
-		Copied from the crash dialog in the Graphite Editor:`;
+		Copied from the crash dialog in the Graphite Editor:
+	`;
 
 	body += "\n\n```\n";
-	body += panicDetails;
-	body += "```";
+	body += panicDetails.trimEnd();
+	body += "\n```";
 
 	const fields = {
 		title: "[Crash Report] ",
