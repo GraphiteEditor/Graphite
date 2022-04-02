@@ -169,12 +169,12 @@ impl<'n, 'c, CachedNode: Node> CacheNode<'n, 'c, CachedNode> {
 
 pub struct ProxyNode<T: DynamicInput>(T);
 impl<T: DynamicInput> Node for ProxyNode<T> {
-    type Output<'a> = T where Self: 'a;
+    type Output<'a> = &'a T where Self: 'a;
 
     type Input<'a> = &'a () where Self: 'a;
 
-    fn eval<'a, I: Borrow<Self::Input<'a>>>(&'a self, input: I) -> Self::Output<'a> {
-        todo!()
+    fn eval<'a, I: Borrow<Self::Input<'a>>>(&'a self, _input: I) -> Self::Output<'a> {
+        &self.0
     }
 }
 impl<T: DynamicInput> DynamicInput for ProxyNode<T> {
