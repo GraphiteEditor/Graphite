@@ -6,5 +6,9 @@ description = "Api definitions for graphene"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[features]
+const_default =  ["const-default"]
+default = ["const_default"]
 
 [dependencies]
+const-default = { version = "1.0", optional = true }

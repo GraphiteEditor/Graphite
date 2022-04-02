@@ -1,6 +1,6 @@
 use std::{borrow::Borrow, marker::PhantomData};
 
-use graphene_core::Node;
+use crate::Node;
 
 #[derive(Default)]
 pub struct AddNode<T>(PhantomData<T>);

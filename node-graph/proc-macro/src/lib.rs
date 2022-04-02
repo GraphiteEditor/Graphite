@@ -1,28 +1,27 @@
-use graphene_core;
 use proc_macro::TokenStream;
 use proc_macro_roids::*;
 use quote::{quote, ToTokens};
 use syn::punctuated::Punctuated;
 use syn::{parse_macro_input, FnArg, ItemFn, Pat, Type};
 
-fn extract_type(a: FnArg) -> Box<Type> {
+fn extract_type(a: FnArg) -> Type {
     match a {
-        FnArg::Typed(p) => p.ty, // notice `ty` instead of `pat`
+        FnArg::Typed(p) => *p.ty, // notice `ty` instead of `pat`
         _ => panic!("Not supported on types with `self`!"),
     }
 }
 
-fn extract_arg_types(fn_args: Punctuated<FnArg, syn::token::Comma>) -> Vec<Box<Type>> {
-    return fn_args.into_iter().map(extract_type).collect::<Vec<_>>();
+fn extract_arg_types(fn_args: Punctuated<FnArg, syn::token::Comma>) -> Vec<Type> {
+    fn_args.into_iter().map(extract_type).collect::<Vec<_>>()
 }
 
-fn extract_arg_idents(fn_args: Punctuated<FnArg, syn::token::Comma>) -> Vec<Box<Pat>> {
-    return fn_args.into_iter().map(extract_arg_pat).collect::<Vec<_>>();
+fn extract_arg_idents(fn_args: Punctuated<FnArg, syn::token::Comma>) -> Vec<Pat> {
+    fn_args.into_iter().map(extract_arg_pat).collect::<Vec<_>>()
 }
 
-fn extract_arg_pat(a: FnArg) -> Box<Pat> {
+fn extract_arg_pat(a: FnArg) -> Pat {
     match a {
-        FnArg::Typed(p) => p.pat,
+        FnArg::Typed(p) => *p.pat,
         _ => panic!("Not supported on types with `self`!"),
     }
 }
@@ -30,7 +29,7 @@ fn extract_arg_pat(a: FnArg) -> Box<Pat> {
 #[proc_macro_attribute] // 2
 pub fn to_node(_attr: TokenStream, item: TokenStream) -> TokenStream {
     let string = item.to_string();
-    let item2 = item.clone();
+    let item2 = item;
     let parsed = parse_macro_input!(item2 as ItemFn); // 3
                                                       //item.extend(generate_to_string(parsed, string)); // 4
                                                       //item
@@ -56,9 +55,16 @@ fn generate_to_string(parsed: ItemFn, string: String) -> TokenStream {
         .iter()
         .map(|t| t.to_token_stream())
         .collect::<Vec<_>>();
+    let const_idents = idents
+        .iter()
+        .map(|t| {
+            let name = t.to_string().to_uppercase();
+            quote! {#name}
+        })
+        .collect::<Vec<_>>();
 
     let node_fn_name = fn_name.append("_node");
-    let struct_name = fn_name.append("_node");
+    let struct_name = fn_name.append("_input");
     let return_type_string = fn_return_type
         .to_token_stream()
         .to_string()
@@ -68,15 +74,18 @@ fn generate_to_string(parsed: ItemFn, string: String) -> TokenStream {
         .map(|t| t.to_string())
         .collect::<Vec<_>>()
         .join(", ");
-    let error = format!("called {} with the wrong type", fn_name.to_string());
+    let error = format!("called {} with the wrong type", fn_name);
 
     let x = quote! {
         //#whole_function
         mod #fn_name {
+            #(const #const_idents: DefaultNode<#types> = DefaultNode::new();)*
             struct #struct_name {
+                #(#idents: #types,)*
+            }
+            impl Node for #struct_name {
 
             }
-            impl
 
         }
         fn #node_fn_name #generics() -> Node<'static> {
