@@ -9,7 +9,7 @@ use std::{
     marker::PhantomData,
 };
 
-use crate::{insert_after_nth, After, Node};
+use crate::{insert_after_nth, After, DynamicInput, Node};
 use once_cell::sync::OnceCell;
 use parking_lot::RawRwLock;
 use storage_map::{StorageMap, StorageMapGuard};
@@ -46,6 +46,30 @@ impl<T: std::ops::Add + 'static + Copy> Node for AddNode<T> {
     type Input<'a> = (T, T);
     fn eval<'a, I: Borrow<Self::Input<'a>>>(&'a self, input: I) -> T::Output {
         input.borrow().0 + input.borrow().1
+    }
+}
+
+#[derive(Default)]
+/// Destructures a Tuple of two values and returns the first one
+pub struct FstNode<T, U>(PhantomData<T>, PhantomData<U>);
+impl<T: Copy, U> Node for FstNode<T, U> {
+    type Output<'a> = &'a T where Self: 'a;
+    type Input<'a> = &'a (T, U) where Self: 'a;
+    fn eval<'a, I: Borrow<Self::Input<'a>>>(&'a self, input: I) -> Self::Output<'a> {
+        let &(ref a, _) = input.borrow();
+        a
+    }
+}
+
+#[derive(Default)]
+/// Destructures a Tuple of two values and returns the first one
+pub struct SndNode<T, U>(PhantomData<T>, PhantomData<U>);
+impl<T, U: Copy> Node for SndNode<T, U> {
+    type Output<'a> = &'a U where Self: 'a;
+    type Input<'a> = &'a (T, U) where Self: 'a;
+    fn eval<'a, I: Borrow<Self::Input<'a>>>(&'a self, input: I) -> Self::Output<'a> {
+        let &(_, ref b) = input.borrow();
+        b
     }
 }
 
@@ -143,45 +167,25 @@ impl<'n, 'c, CachedNode: Node> CacheNode<'n, 'c, CachedNode> {
     }
 }
 
-/*
-/// Caches the output of a given Node and acts as a proxy
-/// Automatically resets if it receives different input
-struct SmartCacheNode<'n, 'c, NODE: Node + 'c>
-where
-    for<'a> NODE::Input<'a>: Hash,
-{
-    cache: InnerSmartCacheNode<'n, 'c, NODE>,
-}
-impl<'n: 'c, 'c, NODE: Node> Node for SmartCacheNode<'n, 'c, NODE>
-where
-    for<'a> NODE::Input<'a>: Hash,
-{
-    type Input<'a> = NODE::Input<'a> where Self: 'a, 'c : 'a;
-    type Output<'a> = &'a NODE::Output<'a> where Self: 'a, 'c: 'a;
-    fn eval<'a, I: Borrow<Self::Input<'a>>>(&'a self, input: I) -> Self::Output<'a> {
-        let mut hasher = DefaultHasher::new();
-        input.borrow().hash(&mut hasher);
-        let hash = hasher.finish();
+pub struct ProxyNode<T: DynamicInput>(T);
+impl<T: DynamicInput> Node for ProxyNode<T> {
+    type Output<'a> = T where Self: 'a;
 
-        let node = self.cache.eval(input);
-        node.eval(input);
+    type Input<'a> = &'a () where Self: 'a;
+
+    fn eval<'a, I: Borrow<Self::Input<'a>>>(&'a self, input: I) -> Self::Output<'a> {
         todo!()
     }
 }
+impl<T: DynamicInput> DynamicInput for ProxyNode<T> {
+    fn set_kwarg_by_name(&mut self, name: &str, value: &dyn Any) {
+        self.0.set_kwarg_by_name(name, value)
+    }
 
-impl<'n, 'c, NODE: Node> SmartCacheNode<'n, 'c, NODE>
-where
-    for<'a> NODE::Input<'a>: Hash,
-{
-    pub fn clear(&'n mut self) {
-        self.cache.clear();
+    fn set_arg_by_index(&mut self, index: usize, value: &dyn Any) {
+        self.0.set_arg_by_index(index, value)
     }
-    pub fn new(node: &'n NODE) -> SmartCacheNode<'n, 'c, NODE> {
-        SmartCacheNode {
-            cache: InnerSmartCacheNode::new(node),
-        }
-    }
-}*/
+}
 
 /// Caches the output of a given Node and acts as a proxy
 /// Automatically resets if it receives different input
