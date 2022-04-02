@@ -52,7 +52,7 @@ export function initErrorHandling(editor: EditorState, dialogState: DialogState)
 function githubUrl(panicDetails: string): string {
 	const url = new URL("https://github.com/GraphiteEditor/Graphite/issues/new");
 
-	const body = stripIndents`
+	let body = stripIndents`
 		**Describe the Crash**
 		Explain clearly what you were doing when the crash occurred.
 
@@ -71,12 +71,11 @@ function githubUrl(panicDetails: string): string {
 		${browserVersion()}, ${operatingSystem()}
 
 		**Stack Trace**
-		Copied from the crash dialog in the Graphite Editor:
+		Copied from the crash dialog in the Graphite Editor:`;
 
-		\`\`\`
-		${panicDetails}
-		\`\`\`
-		`;
+	body += "\n\n```\n";
+	body += panicDetails;
+	body += "```";
 
 	const fields = {
 		title: "[Crash Report] ",
