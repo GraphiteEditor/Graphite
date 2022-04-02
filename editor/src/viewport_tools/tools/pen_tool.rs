@@ -127,6 +127,37 @@ impl Default for PenToolFsmState {
 		PenToolFsmState::Ready
 	}
 }
+impl PenToolFsmState {
+	fn is_closing_shape(data: &mut PenToolData, snapped_position: DVec2) -> Option<DVec2> {
+		if let Some(s) = data.shape_editor.shapes_to_modify.first() {
+			if s.anchors.len() >= 2
+				&& !s.anchors[s.anchors.len() - 2]
+					.points
+					.iter()
+					.filter_map(|f| f.as_ref())
+					.any(|p| p.is_selected && p.manipulator_type.is_handle())
+				|| data.closing_shape
+			{
+				if let Some(kurbo::PathEl::MoveTo(kurbo::Point { x, y })) = s.elements.first() {
+					let start = s.transform.transform_point2(DVec2::new(*x, *y));
+					if start.distance_squared(snapped_position) <= CLOSE_TOLERANCE * CLOSE_TOLERANCE {
+						return Some(start);
+					}
+				}
+			}
+		}
+		None
+	}
+	fn snap(input: &InputPreprocessorMessageHandler, document: &DocumentMessageHandler, data: &mut PenToolData, responses: &mut VecDeque<Message>) -> DVec2 {
+		let mut snapped_position = data.snap_handler.snap_position(responses, input.viewport_bounds.size(), document, input.mouse.position);
+		if let Some(start) = Self::is_closing_shape(data, snapped_position) {
+			snapped_position = start;
+		}
+
+		snapped_position
+	}
+}
+
 #[derive(Clone, Debug, Default)]
 struct PenToolData {
 	weight: u32,
@@ -136,7 +167,9 @@ struct PenToolData {
 	snap_handler: SnapHandler,
 	shape_editor: ShapeEditor,
 	drag_start_position: DVec2,
+	closing_shape: bool,
 }
+const CLOSE_TOLERANCE: f64 = 20.;
 
 impl Fsm for PenToolFsmState {
 	type ToolData = PenToolData;
@@ -169,8 +202,9 @@ impl Fsm for PenToolFsmState {
 
 					// Create a new layer and prep snap system
 					data.path = Some(document.get_path_for_new_layer());
+					data.closing_shape = false;
 					data.snap_handler.start_snap(document, document.bounding_boxes(None, None), true, true);
-					let snapped_position = data.snap_handler.snap_position(responses, input.viewport_bounds.size(), document, input.mouse.position);
+					let snapped_position = Self::snap(input, document, data, responses);
 
 					// Get the position and set properties
 					let start_position = transform.inverse().transform_point2(snapped_position);
@@ -196,8 +230,12 @@ impl Fsm for PenToolFsmState {
 					Drawing
 				}
 				(Drawing, DragStart) => {
+					let snapped_position = Self::snap(input, document, data, responses);
+					data.closing_shape = Self::is_closing_shape(data, snapped_position).is_some();
+
 					data.drag_start_position = input.mouse.position;
 					add_to_curve(data, input, transform, document, responses);
+
 					Drawing
 				}
 				(Drawing, DragStop) => {
@@ -205,27 +243,41 @@ impl Fsm for PenToolFsmState {
 					data.shape_editor.deselect_all(responses);
 
 					// If the drag does not exceed the threshold, then replace the curve with a line
-					if data.drag_start_position.distance(input.mouse.position) < CREATE_CURVE_THRESHOLD {
-						// Modify the second to last element (as we have an unplaced element tracing to the cursor as the last element)
-						let replace_index = data.bez_path.len() - 2;
-						let line_from_curve = convert_curve_to_line(data.bez_path[replace_index]);
-						replace_path_element(data, transform, replace_index, line_from_curve, responses);
+					let is_line = data.drag_start_position.distance(input.mouse.position) < CREATE_CURVE_THRESHOLD;
+
+					if data.closing_shape {
+						responses.push_back(DocumentMessage::CommitTransaction.into());
+
+						data.shape_editor.remove_overlays(responses);
+						data.shape_editor.clear_shapes_to_modify();
+
+						data.path = None;
+						data.snap_handler.cleanup(responses);
+
+						Ready
+					} else {
+						if is_line {
+							// Modify the second to last element (as we have an unplaced element tracing to the cursor as the last element)
+							let replace_index = data.bez_path.len() - 2;
+							let line_from_curve = convert_curve_to_line(data.bez_path[replace_index]);
+							replace_path_element(data, transform, replace_index, line_from_curve, responses);
+						}
+
+						// Reselect the last point
+						if let Some(last_anchor) = data.shape_editor.select_last_anchor() {
+							last_anchor.select_point(ControlPointType::Anchor as usize, true, responses);
+						}
+
+						// Move the newly selected points to the cursor
+						let snapped_position = Self::snap(input, document, data, responses);
+						data.shape_editor.move_selected_points(snapped_position, false, responses);
+
+						Drawing
 					}
-
-					// Reselect the last point
-					if let Some(last_anchor) = data.shape_editor.select_last_anchor() {
-						last_anchor.select_point(ControlPointType::Anchor as usize, true, responses);
-					}
-
-					// Move the newly selected points to the cursor
-					let snapped_position = data.snap_handler.snap_position(responses, input.viewport_bounds.size(), document, input.mouse.position);
-					data.shape_editor.move_selected_points(snapped_position, false, responses);
-
-					Drawing
 				}
 				(Drawing, PointerMove) => {
 					// Move selected points
-					let snapped_position = data.snap_handler.snap_position(responses, input.viewport_bounds.size(), document, input.mouse.position);
+					let snapped_position = Self::snap(input, document, data, responses);
 					data.shape_editor.move_selected_points(snapped_position, false, responses);
 
 					Drawing
@@ -308,9 +360,13 @@ fn add_to_curve(data: &mut PenToolData, input: &InputPreprocessorMessageHandler,
 
 	// Add a curve to the path
 	if let Some(layer_path) = &data.path {
-		// Push curve onto path
-		let point = Point { x: position.x, y: position.y };
-		data.bez_path.push(PathEl::CurveTo(point, point, point));
+		if !data.closing_shape {
+			// Push curve onto path
+			let point = Point { x: position.x, y: position.y };
+			data.bez_path.push(PathEl::CurveTo(point, point, point));
+		} else {
+			data.bez_path.push(PathEl::ClosePath);
+		}
 
 		responses.push_back(apply_bez_path(layer_path.clone(), data.bez_path.clone(), transform));
 
@@ -324,13 +380,17 @@ fn add_to_curve(data: &mut PenToolData, input: &InputPreprocessorMessageHandler,
 
 		// Select the second to last `PathEl`'s handle
 		data.shape_editor.set_shape_selected(0);
-		let handle_element = data.shape_editor.select_nth_anchor(0, -2);
+		let anchor_index = if data.closing_shape { 0 } else { -2 };
+		let handle_element = data.shape_editor.select_nth_anchor(0, anchor_index);
 		handle_element.select_point(ControlPointType::Handle2 as usize, true, responses);
 
 		// Select the last `PathEl`'s anchor point
-		if let Some(last_anchor) = data.shape_editor.select_last_anchor() {
-			last_anchor.select_point(ControlPointType::Anchor as usize, true, responses);
+		if !data.closing_shape {
+			if let Some(last_anchor) = data.shape_editor.select_last_anchor() {
+				last_anchor.select_point(ControlPointType::Anchor as usize, true, responses);
+			}
 		}
+
 		data.shape_editor.set_selected_mirror_options(true, true);
 	}
 }
