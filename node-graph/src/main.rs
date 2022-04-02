@@ -53,6 +53,16 @@ pub trait After: Sized {
 }
 impl<Second: Node> After for Second {}
 
+pub trait Exec: Node
+where
+    for<'a> &'a (): Borrow<<Self as Node>::Input<'a>>,
+{
+    fn exec(&self) -> Self::Output<'_> {
+        self.eval(&())
+    }
+}
+impl<T: Node> Exec for T where for<'a> &'a (): Borrow<<T as Node>::Input<'a>> {}
+
 pub trait DynamicInput {
     fn set_kwarg_by_name(&mut self, name: &str, value: &dyn Any);
     fn set_arg_by_index(&mut self, index: usize, value: &dyn Any);
@@ -60,7 +70,7 @@ pub trait DynamicInput {
 
 fn main() {
     let int = IntNode::<32>;
-    let add: u32 = AddNode::<u32>::default().eval((int.eval(&()), int.eval(&())));
+    let add: u32 = AddNode::<u32>::default().eval((int.exec(), int.exec()));
     let fnode = FnNode::new(|(a, b): &(i32, i32)| a - b);
     //let sub = fnode.any(&("a", 2));
     let cache = CacheNode::new(&fnode);
