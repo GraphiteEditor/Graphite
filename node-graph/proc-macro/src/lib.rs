@@ -1,4 +1,6 @@
+use graphene_core;
 use proc_macro::TokenStream;
+use proc_macro_roids::*;
 use quote::{quote, ToTokens};
 use syn::punctuated::Punctuated;
 use syn::{parse_macro_input, FnArg, ItemFn, Pat, Type};
@@ -55,10 +57,8 @@ fn generate_to_string(parsed: ItemFn, string: String) -> TokenStream {
         .map(|t| t.to_token_stream())
         .collect::<Vec<_>>();
 
-    let node_fn_name = syn::Ident::new(
-        &(fn_name.to_string() + "_node"),
-        proc_macro2::Span::call_site(),
-    ); // function name/identifier
+    let node_fn_name = fn_name.append("_node");
+    let struct_name = fn_name.append("_node");
     let return_type_string = fn_return_type
         .to_token_stream()
         .to_string()
@@ -72,6 +72,13 @@ fn generate_to_string(parsed: ItemFn, string: String) -> TokenStream {
 
     let x = quote! {
         //#whole_function
+        mod #fn_name {
+            struct #struct_name {
+
+            }
+            impl
+
+        }
         fn #node_fn_name #generics() -> Node<'static> {
             Node { func: Box::new(move |x| {
                    let  args = x.downcast::<(#(#types,)*)>().expect(#error);

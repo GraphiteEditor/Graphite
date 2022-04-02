@@ -1,19 +1,7 @@
-[package]
-name = "nodegraph-experiments"
-version = "0.1.0"
-edition = "2021"
+[workspace]
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
-[features]
-rust_analyzer = ["ide", "ide_db"]
-
-[dependencies]
-ide = { version = "*", package = "ra_ap_ide", optional = true }
-ide_db = { version = "*", package = "ra_ap_ide_db" , optional = true }
-graph-proc-macros = {path = "proc-macro"}
-once_cell = "1.10"
-dashmap = "5.2"
-storage-map = "*"
-lock_api = "*"
-parking_lot = "*"
+members = [
+    "proc-macro",
+    "gcore",
+    "gstd",
+]

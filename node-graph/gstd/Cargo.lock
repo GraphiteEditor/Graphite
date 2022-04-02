@@ -225,7 +225,7 @@ checksum = "7ab85b9b05e3978cc9a9cf8fea7f01b494e1a09ed3037e16ba39edc7a29eb61a"
 name = "graph-proc-macros"
 version = "0.1.0"
 dependencies = [
- "graphene-core",
+ "graphene-api",
  "proc-macro2",
  "proc_macro_roids",
  "quote",
@@ -233,7 +233,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "graphene-core"
+name = "graphene-api"
 version = "0.1.0"
 
 [[package]]
@@ -241,7 +241,7 @@ name = "graphene-std"
 version = "0.1.0"
 dependencies = [
  "graph-proc-macros",
- "graphene-core",
+ "graphene-api",
  "lock_api",
  "once_cell",
  "parking_lot 0.12.0",
