@@ -4,7 +4,7 @@
 
 use crate::helpers::Error;
 use crate::type_translators::{translate_blend_mode, translate_key, translate_tool_type};
-use crate::{EDITOR_HAS_CRASHED, EDITOR_INSTANCES};
+use crate::{EDITOR_HAS_CRASHED, EDITOR_INSTANCES, JS_EDITOR_HANDLES};
 
 use editor::consts::{FILE_SAVE_SUFFIX, GRAPHITE_DOCUMENT_VERSION};
 use editor::input::input_preprocessor::ModifierKeys;
@@ -40,7 +40,8 @@ impl JsEditorHandle {
 		let editor_id = generate_uuid();
 		let editor = Editor::new();
 		let editor_handle = JsEditorHandle { editor_id, handle_response };
-		EDITOR_INSTANCES.with(|instances| instances.borrow_mut().insert(editor_id, (editor, editor_handle.clone())));
+		EDITOR_INSTANCES.with(|instances| instances.borrow_mut().insert(editor_id, editor));
+		JS_EDITOR_HANDLES.with(|instances| instances.borrow_mut().insert(editor_id, editor_handle.clone()));
 		editor_handle
 	}
 
@@ -56,7 +57,6 @@ impl JsEditorHandle {
 				.borrow_mut()
 				.get_mut(&self.editor_id)
 				.expect("EDITOR_INSTANCES does not contain the current editor_id")
-				.0
 				.handle_message(message.into())
 		});
 		for response in responses.into_iter() {
