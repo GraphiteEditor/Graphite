@@ -79,7 +79,8 @@ fn generate_to_string(parsed: ItemFn, string: String) -> TokenStream {
     let x = quote! {
         //#whole_function
         mod #fn_name {
-            #(const #const_idents: DefaultNode<#types> = DefaultNode::new();)*
+            #[derive(Copy, Clone)]
+            type F32Node<'n> = &'n (dyn Node<'n, (), Output = &'n (dyn Any + 'static)> + 'n);
             struct #struct_name {
                 #(#idents: #types,)*
             }

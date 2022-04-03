@@ -3,8 +3,10 @@ name = "graphene-core"
 version = "0.1.0"
 edition = "2021"
 description = "Api definitions for graphene"
+authors = ["Dennis Kobert <dennis@kobert.dev>"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 
 [dependencies]
+dyn-any = {path = "../dyn-any", features = ["derive"]}

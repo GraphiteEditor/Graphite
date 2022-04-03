@@ -1,4 +1,4 @@
-use graphene_core::Node;
+use graphene_core::{Cache, Node};
 use once_cell::sync::OnceCell;
 
 /// Caches the output of a given Node and acts as a proxy
@@ -24,3 +24,12 @@ impl<'n, CachedNode: Node<'n, Input>, Input> CacheNode<'n, CachedNode, Input> {
         }
     }
 }
+impl<'n, CachedNode: Node<'n, Input>, Input> Cache for CacheNode<'n, CachedNode, Input> {
+    fn clear(&mut self) {
+        self.cache = OnceCell::new();
+    }
+}
+
+use dyn_any::{DynAny, StaticType};
+#[derive(DynAny)]
+struct Boo<'a>(&'a u8);
