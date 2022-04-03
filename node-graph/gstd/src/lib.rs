@@ -1,4 +1,4 @@
-#![feature(generic_associated_types)]
+//#![feature(generic_associated_types)]
 
 #[cfg(feature = "caching")]
 pub mod caching;
