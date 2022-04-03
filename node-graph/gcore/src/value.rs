@@ -1,20 +1,20 @@
 use std::{any::Any, marker::PhantomData};
 
-use crate::{Exec, Node};
+use crate::Node;
 
 pub struct IntNode<const N: u32>;
-impl<'n, const N: u32> Exec<'n> for IntNode<N> {
+impl<'n, const N: u32> Node<'n, ()> for IntNode<N> {
     type Output = u32;
-    fn exec(&self) -> u32 {
+    fn eval(&self, _input: &()) -> u32 {
         N
     }
 }
 
 #[derive(Default)]
 pub struct ValueNode<'n, T>(T, PhantomData<&'n ()>);
-impl<'n, T: 'n> Exec<'n> for ValueNode<'n, T> {
+impl<'n, T: 'n> Node<'n, ()> for ValueNode<'n, T> {
     type Output = &'n T;
-    fn exec(&'n self) -> &'n T {
+    fn eval(&self, _input: &()) -> &T {
         &self.0
     }
 }
@@ -26,9 +26,9 @@ impl<'n, T> ValueNode<'n, T> {
 
 #[derive(Default)]
 pub struct DefaultNode<T>(PhantomData<T>);
-impl<'n, T: Default + 'n> Exec<'n> for DefaultNode<T> {
+impl<'n, T: Default + 'n> Node<'n, ()> for DefaultNode<T> {
     type Output = T;
-    fn exec(&self) -> T {
+    fn eval(&self, _input: &()) -> T {
         T::default()
     }
 }
@@ -38,13 +38,14 @@ impl<T> DefaultNode<T> {
     }
 }
 
+use dyn_any::{DynAny, StaticType};
 pub struct AnyRefNode<'n, N: Node<'n, I, Output = &'n O>, I, O>(
     &'n N,
     PhantomData<&'n I>,
     PhantomData<&'n O>,
 );
-impl<'n, N: Node<'n, I, Output = &'n O>, I, O: 'static> Node<'n, I> for AnyRefNode<'n, N, I, O> {
-    type Output = &'n (dyn Any + 'static);
+impl<'n, N: Node<'n, I, Output = &'n O>, I, O: DynAny<'n>> Node<'n, I> for AnyRefNode<'n, N, I, O> {
+    type Output = &'n (dyn DynAny<'n>);
     fn eval(&'n self, input: &'n I) -> Self::Output {
         let value: &O = self.0.eval(input);
         value
@@ -57,10 +58,10 @@ impl<'n, N: Node<'n, I, Output = &'n O>, I, O: 'static> AnyRefNode<'n, N, I, O> 
 }
 
 pub struct DefaultRefNode<'n, T>(ValueNode<'n, T>);
-impl<'n, T: 'n> Exec<'n> for DefaultRefNode<'n, T> {
+impl<'n, T: 'n> Node<'n, ()> for DefaultRefNode<'n, T> {
     type Output = &'n T;
-    fn exec(&'n self) -> &'n T {
-        self.0.exec()
+    fn eval(&'n self, _input: &'n ()) -> &'n T {
+        self.0.eval(&())
     }
 }
 impl<'n, T: Default> Default for DefaultRefNode<'n, T> {

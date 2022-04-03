@@ -3,6 +3,7 @@ name = "graphene-std"
 version = "0.1.0"
 edition = "2021"
 description = "Graphene standard library"
+authors = ["Dennis Kobert <dennis@kobert.dev>"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -16,6 +17,7 @@ default = ["derive", "memoization"]
 
 [dependencies]
 graphene-core = {path = "../gcore"}
+dyn-any = {path = "../dyn-any", features = ["derive"]}
 graph-proc-macros = {path = "../proc-macro", optional = true}
 once_cell = {version= "1.10", optional = true}
 ide = { version = "*", package = "ra_ap_ide", optional = true }
