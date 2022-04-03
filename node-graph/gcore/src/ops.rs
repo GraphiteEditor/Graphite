@@ -4,21 +4,20 @@ use crate::Node;
 
 #[derive(Default)]
 pub struct AddNode<T>(PhantomData<T>);
-impl<T: std::ops::Add + 'static + Copy> Node for AddNode<T> {
-    type Output<'a> = <T as std::ops::Add>::Output;
-    type Input<'a> = (T, T);
-    fn eval<'a, I: Borrow<Self::Input<'a>>>(&'a self, input: I) -> T::Output {
-        input.borrow().0 + input.borrow().1
+impl<'n, T: std::ops::Add + Copy + 'n> Node<'n, (T, T)> for AddNode<T> {
+    type Output = <T as std::ops::Add>::Output;
+    fn eval(&'n self, input: &'n (T, T)) -> T::Output {
+        let (ref a, ref b) = input.borrow();
+        *a + *b
     }
 }
 
 #[derive(Default)]
 /// Destructures a Tuple of two values and returns the first one
 pub struct FstNode<T, U>(PhantomData<T>, PhantomData<U>);
-impl<T: Copy, U> Node for FstNode<T, U> {
-    type Output<'a> = &'a T where Self: 'a;
-    type Input<'a> = &'a (T, U) where Self: 'a;
-    fn eval<'a, I: Borrow<Self::Input<'a>>>(&'a self, input: I) -> Self::Output<'a> {
+impl<'n, T: Copy + 'n, U> Node<'n, (T, U)> for FstNode<T, U> {
+    type Output = &'n T;
+    fn eval(&'n self, input: &'n (T, U)) -> Self::Output {
         let &(ref a, _) = input.borrow();
         a
     }
@@ -27,10 +26,9 @@ impl<T: Copy, U> Node for FstNode<T, U> {
 #[derive(Default)]
 /// Destructures a Tuple of two values and returns the first one
 pub struct SndNode<T, U>(PhantomData<T>, PhantomData<U>);
-impl<T, U: Copy> Node for SndNode<T, U> {
-    type Output<'a> = &'a U where Self: 'a;
-    type Input<'a> = &'a (T, U) where Self: 'a;
-    fn eval<'a, I: Borrow<Self::Input<'a>>>(&'a self, input: I) -> Self::Output<'a> {
+impl<'n, T, U: Copy + 'n> Node<'n, (T, U)> for SndNode<T, U> {
+    type Output = &'n U;
+    fn eval(&'n self, input: &'n (T, U)) -> Self::Output {
         let &(_, ref b) = input.borrow();
         b
     }

@@ -1,90 +1,57 @@
-#![feature(generic_associated_types)]
 pub mod generic;
 pub mod ops;
 pub mod structural;
 pub mod value;
 
-use std::{any::Any, borrow::Borrow, ops::Deref};
+use std::any::Any;
 
 #[rustfmt::skip]
-pub trait Node {
-    // Self: 'a means that Self has to live at least as long as 'a (the input and output)
-    // this ensures that the node does not spontaneously disappear during evaluation
-    type Input<'i> where Self: 'i;
-    type Output<'o> where Self: 'o;
+pub trait Node< 'n, Input> {
+    type Output : 'n;
 
-    fn eval<'a, I: Borrow<Self::Input<'a>>>(&'a self, input: I) -> Self::Output<'a>;
+    fn eval(&'n self, input: &'n Input) -> Self::Output;
 }
 
-pub trait SimpleNode<'n, I, O> {
-    fn eval_simple(&self, input: &I) -> &O;
+pub trait Exec<'n> {
+    type Output: 'n;
+    fn exec(&'n self) -> Self::Output;
 }
-
-impl<T: for<'n> SimpleNode<'n, I, O>, I, O> Node for T {
-    type Input<'i> = &'i I where Self: 'i;
-    type Output<'o> = &'o O where Self: 'o;
-
-    fn eval<'a, In: Borrow<Self::Input<'a>>>(&'a self, input: In) -> Self::Output<'a> {
-        self.eval_simple(input.borrow())
+impl<'n, T: Exec<'n>> Node<'n, ()> for T {
+    type Output = <Self as Exec<'n>>::Output;
+    fn eval(&'n self, _input: &()) -> Self::Output {
+        self.exec()
     }
 }
 
-#[rustfmt::skip]
-pub trait OutputNode<'a, T>: Node<Output<'a> = T> where Self: 'a {}
-#[rustfmt::skip]
-pub trait ArgNode<'a, T>: OutputNode<'a, T> + Node<Input<'a> = ()> where Self: 'a {}
-
-pub trait AnyRef: Node {
-    fn any<'a>(&'a self, input: &'a dyn Any) -> Self::Output<'a>
-    where
-        Self::Input<'a>: 'static + Copy;
+pub trait DynamicInput<'n> {
+    fn set_kwarg_by_name(
+        &mut self,
+        name: &str,
+        value: &'n dyn Node<'n, (), Output = &'n (dyn Any + 'static)>,
+    );
+    fn set_arg_by_index(
+        &mut self,
+        index: usize,
+        value: &'n dyn Node<'n, (), Output = &'n (dyn Any + 'static)>,
+    );
 }
 
-impl<T: Node> AnyRef for T {
-    fn any<'a>(&'a self, input: &'a dyn Any) -> Self::Output<'a>
+pub trait AnyRef<'n, I>: Node<'n, I> {
+    fn any(&'n self, input: &'n dyn Any) -> Self::Output
     where
-        Self::Input<'a>: 'static + Copy,
+        I: 'static + Copy;
+}
+
+impl<'n, T: Node<'n, I>, I> AnyRef<'n, I> for T {
+    fn any(&'n self, input: &'n dyn Any) -> Self::Output
+    where
+        I: 'static + Copy,
     {
-        self.eval::<&Self::Input<'a>>(input.downcast_ref::<Self::Input<'a>>().unwrap_or_else(
-            || {
-                panic!(
-                    "Node was evaluated with wrong input. The input has to be of type: {}",
-                    std::any::type_name::<Self::Input<'a>>(),
-                )
-            },
-        ))
+        self.eval(input.downcast_ref::<I>().unwrap_or_else(|| {
+            panic!(
+                "Node was evaluated with wrong input. The input has to be of type: {}",
+                std::any::type_name::<I>(),
+            )
+        }))
     }
-}
-
-trait Ref<T>: Node {}
-impl<'a, T: 'a, N: Node<Output<'a> = &'a T> + 'a> Ref<T> for N {}
-
-pub trait ExecPtr<'n, T>: Node {
-    fn fn_ptr(&self) -> &T;
-}
-
-impl<'n, T: 'n, N: Ref<T>> ExecPtr<'n, T> for N
-where
-    for<'a> &'a (): Borrow<<Self as Node>::Input<'a>>,
-    for<'a> &'a T: From<N::Output<'a>>,
-{
-    fn fn_ptr(&self) -> &T {
-        let value: &T = self.eval(&()).into();
-        value
-    }
-}
-
-pub trait Exec: Node
-where
-    for<'a> &'a (): Borrow<<Self as Node>::Input<'a>>,
-{
-    fn exec(&self) -> Self::Output<'_> {
-        self.eval(&())
-    }
-}
-impl<T: Node> Exec for T where for<'a> &'a (): Borrow<<T as Node>::Input<'a>> {}
-
-pub trait DynamicInput {
-    fn set_kwarg_by_name(&mut self, name: &str, value: &dyn Any);
-    fn set_arg_by_index(&mut self, index: usize, value: &dyn Any);
 }

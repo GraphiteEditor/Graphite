@@ -94,12 +94,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "const-default"
-version = "1.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0b396d1f76d455557e1218ec8066ae14bba60b4b36ecd55577ba979f5db7ecaa"
-
-[[package]]
 name = "countme"
 version = "3.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -241,9 +235,6 @@ dependencies = [
 [[package]]
 name = "graphene-core"
 version = "0.1.0"
-dependencies = [
- "const-default",
-]
 
 [[package]]
 name = "graphene-std"

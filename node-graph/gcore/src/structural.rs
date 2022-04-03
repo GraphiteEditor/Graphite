@@ -1,60 +1,51 @@
-use std::{any::Any, borrow::Borrow};
+use std::marker::PhantomData;
 
-use crate::{DynamicInput, Node};
-pub struct ComposeNode<'n, FIRST, SECOND> {
+use crate::Node;
+
+pub struct ComposeNode<'n, Input, Inter, FIRST, SECOND> {
     first: &'n FIRST,
     second: &'n SECOND,
+    _phantom: PhantomData<&'n Input>,
+    _phantom2: PhantomData<Inter>,
 }
 
-impl<'n, FIRST, SECOND> Node for ComposeNode<'n, FIRST, SECOND>
+impl<'n, Input: 'n, Inter: 'n, First, Second> Node<'n, Input>
+    for ComposeNode<'n, Input, Inter, First, Second>
 where
-    FIRST: Node,
-    SECOND: Node,
-    for<'a> FIRST::Output<'a>: Borrow<SECOND::Input<'a>>,
+    First: Node<'n, Input, Output = &'n Inter>,
+    Second: Node<'n, Inter>, /*+ Node<<First as Node<Input>>::Output<'n>>*/
 {
-    type Input<'a> = FIRST::Input<'a> where Self: 'a;
-    type Output<'a> = SECOND::Output<'a> where Self: 'a;
+    type Output = <Second as Node<'n, Inter>>::Output;
 
-    fn eval<'a, I: Borrow<Self::Input<'a>>>(&'a self, input: I) -> Self::Output<'a> {
+    fn eval(&'n self, input: &'n Input) -> Self::Output {
         // evaluate the first node with the given input
         // and then pipe the result from the first computation
         // into the second node
-        let arg = self.first.eval(input);
+        let arg: &Inter = self.first.eval(input);
         self.second.eval(arg)
     }
 }
 
-impl<'n, FIRST, SECOND> ComposeNode<'n, FIRST, SECOND>
+impl<'n, Input, Inter, FIRST, SECOND> ComposeNode<'n, Input, Inter, FIRST, SECOND>
 where
-    FIRST: Node,
+    FIRST: Node<'n, Input>,
 {
     pub fn new(first: &'n FIRST, second: &'n SECOND) -> Self {
-        ComposeNode::<'n, FIRST, SECOND> { first, second }
+        ComposeNode::<'n, Input, Inter, FIRST, SECOND> {
+            first,
+            second,
+            _phantom: PhantomData,
+            _phantom2: PhantomData,
+        }
     }
 }
 
-pub trait After: Sized {
-    fn after<'a, First: Node>(&'a self, first: &'a First) -> ComposeNode<'a, First, Self> {
+pub trait After<I>: Sized {
+    fn after<'n, First: Node<'n, I>>(
+        &'n self,
+        first: &'n First,
+    ) -> ComposeNode<'n, I, <First as Node<'n, I>>::Output, First, Self> {
         ComposeNode::new(first, self)
     }
 }
-impl<Second: Node> After for Second {}
-
-pub struct ProxyNode<T: DynamicInput>(T);
-impl<T: DynamicInput> Node for ProxyNode<T> {
-    type Output<'a> = &'a T where Self: 'a;
-    type Input<'a> = &'a () where Self: 'a;
-
-    fn eval<'a, I: Borrow<Self::Input<'a>>>(&'a self, _input: I) -> Self::Output<'a> {
-        &self.0
-    }
-}
-impl<T: DynamicInput> DynamicInput for ProxyNode<T> {
-    fn set_kwarg_by_name(&mut self, name: &str, value: &dyn Any) {
-        self.0.set_kwarg_by_name(name, value)
-    }
-
-    fn set_arg_by_index(&mut self, index: usize, value: &dyn Any) {
-        self.0.set_arg_by_index(index, value)
-    }
-}
+impl<Second: for<'n> Node<'n, I>, I> After<I> for Second {}

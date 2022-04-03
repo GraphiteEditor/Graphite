@@ -1,4 +1,5 @@
-#![feature(generic_associated_types)]
+//#![feature(generic_associated_types)]
+use graphene_std::value::{AnyRefNode, ValueNode};
 use graphene_std::*;
 
 /*fn mul(a: f32, b: f32) -> f32 {
@@ -6,41 +7,50 @@ use graphene_std::*;
 }*/
 
 mod mul {
-    use graphene_std::{
-        value::DefaultNode, value::DefaultRefNode, ArgNode, DynamicInput, ExecPtr, Node,
-    };
-    use std::{any::Any, ops::Deref};
-    const A: DefaultRefNode<f32> = DefaultRefNode::new();
-    const B: DefaultRefNode<f32> = DefaultRefNode::new();
-    type F32Node<'n> = &'n dyn ExecPtr<'n, f32, Output<'n> = &'n f32, Input<'n> = ()>;
+    use graphene_std::{DynamicInput, Node};
+    use std::any::Any;
+    type F32Node<'n> = &'n (dyn Node<'n, (), Output = &'n (dyn Any + 'static)> + 'n);
+    #[derive(Copy, Clone)]
     pub struct MulNode<'n> {
-        a: F32Node<'n>,
-        b: F32Node<'n>,
+        pub a: Option<F32Node<'n>>,
+        pub b: Option<F32Node<'n>>,
     }
-    impl<'n> Node for MulNode<'n> {
-        type Input<'i> = () where Self: 'i;
-        type Output<'o> = f32 where Self: 'o;
-        fn eval<'a, I>(&'a self, input: I) -> <Self as graphene_std::Node>::Output<'a>
-        where
-            I: std::borrow::Borrow<Self::Input<'a>>,
-        {
-            let a = self.a.fn_ptr();
-            let b = self.b.fn_ptr();
+    impl<'n> Node<'n, ()> for MulNode<'n> {
+        type Output = f32;
+        fn eval(&'n self, _input: &'n ()) -> <Self as graphene_std::Node<'n, ()>>::Output {
+            let a: &f32 = self
+                .a
+                .map(|v| v.eval(&()).downcast_ref().unwrap())
+                .unwrap_or(&2.);
+            let b: &f32 = self
+                .b
+                .map(|v| v.eval(&()).downcast_ref().unwrap())
+                .unwrap_or(&1.);
             a * b
         }
     }
-    impl<'n> MulNode<'n> {
-        pub const fn new() -> Self {
-            Self { a: &A, b: &B }
-        }
+    macro_rules! new {
+        () => {
+            mul::MulNode { a: None, b: None }
+        };
     }
-    impl DynamicInput for MulNode<'_> {
-        fn set_kwarg_by_name(&mut self, _: &str, _: &(dyn std::any::Any + 'static)) {
+    pub(crate) use new;
+
+    impl<'i: 'f, 'f> DynamicInput<'f> for MulNode<'f> {
+        fn set_kwarg_by_name(
+            &mut self,
+            name: &str,
+            value: &'f dyn Node<'f, (), Output = &'f (dyn Any + 'static)>,
+        ) {
             todo!()
         }
-        fn set_arg_by_index(&mut self, index: usize, input: &(dyn std::any::Any + 'static)) {
+        fn set_arg_by_index(
+            &mut self,
+            index: usize,
+            value: &'f dyn Node<'f, (), Output = &'f (dyn Any + 'static)>,
+        ) {
             match index {
-                0 => self.a = input.downcast_ref::<&dyn ExecPtr<'_, f32>>().unwrap(),
+                0 => self.a = Some(value),
                 _ => todo!(),
             }
         }
@@ -48,14 +58,26 @@ mod mul {
 }
 
 fn main() {
-    let mut mul = mul::MulNode::new();
+    //let mut mul = mul::MulNode::new();
+    let a = ValueNode::new(3.4f32);
+    let any_a = AnyRefNode::new(&a);
+    let _mul2 = mul::MulNode {
+        a: None,
+        b: Some(&any_a),
+    };
+    let mut mul2 = mul::new!();
+    //let cached = memo::CacheNode::new(&mul1);
+    //let foo = value::AnyRefNode::new(&cached);
+    mul2.set_arg_by_index(0, &any_a);
 
     let int = value::IntNode::<32>;
-    let _add: u32 = ops::AddNode::<u32>::default().eval((int.exec(), int.exec()));
-    let fnode = generic::FnNode::new(|(a, b): &(i32, i32)| a - b);
+    int.eval(&());
+    println!("{}", mul2.eval(&()));
+    //let _add: u32 = ops::AddNode::<u32>::default().eval((int.exec(), int.exec()));
+    //let fnode = generic::FnNode::new(|(a, b): &(i32, i32)| a - b);
     //let sub = fnode.any(&("a", 2));
-    let cache = memo::CacheNode::new(&fnode);
-    let cached_result = cache.eval(&(2, 3));
+    //let cache = memo::CacheNode::new(&fnode);
+    //let cached_result = cache.eval(&(2, 3));
 
-    println!("{}", cached_result)
+    //println!("{}", cached_result)
 }

@@ -2,11 +2,10 @@ use std::{borrow::Borrow, marker::PhantomData};
 
 use crate::Node;
 pub struct FnNode<T: Fn(&In) -> O, In, O>(T, PhantomData<In>, PhantomData<O>);
-impl<T: Fn(&In) -> O, In, O> Node for FnNode<T, In, O> {
-    type Output<'a> = O where Self: 'a;
-    type Input<'a> = In where Self: 'a;
+impl<'n, T: Fn(&In) -> O, In, O: 'n> Node<'n, In> for FnNode<T, In, O> {
+    type Output = O;
 
-    fn eval<'a, I: Borrow<Self::Input<'a>>>(&'a self, input: I) -> Self::Output<'a> {
+    fn eval(&'n self, input: &'n In) -> Self::Output {
         self.0(input.borrow())
     }
 }
@@ -23,11 +22,12 @@ pub struct FnNodeWithState<T: Fn(&In, &State) -> O, In, O, State>(
     PhantomData<In>,
     PhantomData<O>,
 );
-impl<T: Fn(&In, &State) -> O, In, O, State> Node for FnNodeWithState<T, In, O, State> {
-    type Output<'a> = O where Self: 'a;
-    type Input<'a> = In where Self: 'a;
+impl<'n, T: Fn(&In, &State) -> O, In, O: 'n, State> Node<'n, In>
+    for FnNodeWithState<T, In, O, State>
+{
+    type Output = O;
 
-    fn eval<'a, I: Borrow<Self::Input<'a>>>(&'a self, input: I) -> Self::Output<'a> {
+    fn eval(&'n self, input: &'n In) -> Self::Output {
         self.0(input.borrow(), &self.1)
     }
 }
