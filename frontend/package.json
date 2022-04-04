@@ -13,9 +13,9 @@
 		"type": "git",
 		"url": "git+https://github.com/GraphiteEditor/Graphite.git"
 	},
-	"author": "Graphite Authors <contact@graphite.design>",
+	"author": "Graphite Authors <contact@graphite.rs>",
 	"license": "Apache-2.0",
-	"homepage": "https://www.graphite.design",
+	"homepage": "https://graphite.rs",
 	"dependencies": {
 		"class-transformer": "^0.5.0",
 		"reflect-metadata": "^0.1.13",

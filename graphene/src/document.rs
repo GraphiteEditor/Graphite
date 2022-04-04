@@ -2,6 +2,7 @@ use crate::boolean_ops::boolean_operation;
 use crate::intersection::Quad;
 use crate::layers;
 use crate::layers::folder_layer::FolderLayer;
+use crate::layers::image_layer::ImageLayer;
 use crate::layers::layer_info::{Layer, LayerData, LayerDataType};
 use crate::layers::shape_layer::ShapeLayer;
 use crate::layers::style::ViewMode;
@@ -54,7 +55,7 @@ impl Document {
 
 	/// Checks whether each layer under `path` intersects with the provided `quad` and adds all intersection layers as paths to `intersections`.
 	pub fn intersects_quad(&self, quad: Quad, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>) {
-		self.layer(&path).unwrap().intersects_quad(quad, path, intersections);
+		self.layer(path).unwrap().intersects_quad(quad, path, intersections);
 	}
 
 	/// Checks whether each layer under the root path intersects with the provided `quad` and returns the paths to all intersecting layers.
@@ -257,7 +258,7 @@ impl Document {
 		let mut layer_id = None;
 		if let Ok((path, id)) = split_path(path) {
 			layer_id = Some(id);
-			self.mark_as_dirty(&path)?;
+			self.mark_as_dirty(path)?;
 			folder = self.folder_mut(path)?;
 			if let Some(folder_layer) = folder.layer_mut(id) {
 				*folder_layer = layer;
@@ -268,23 +269,17 @@ impl Document {
 		Ok(())
 	}
 
-	/// Visit each layer recursively, applies modify_shape to each non-overlay Shape
-	pub fn visit_all_shapes<F: FnMut(&mut ShapeLayer)>(layer: &mut Layer, modify_shape: &mut F) -> bool {
+	/// Visit each layer recursively, marks all children as dirty
+	pub fn mark_children_as_dirty(layer: &mut Layer) -> bool {
 		match layer.data {
-			LayerDataType::Shape(ref mut shape) => {
-				modify_shape(shape);
-
-				// This layer should be updated on next render pass
-				layer.cache_dirty = true;
-			}
 			LayerDataType::Folder(ref mut folder) => {
 				for sub_layer in folder.layers_mut() {
-					if Document::visit_all_shapes(sub_layer, modify_shape) {
+					if Document::mark_children_as_dirty(sub_layer) {
 						layer.cache_dirty = true;
 					}
 				}
 			}
-			LayerDataType::Text(_) => layer.cache_dirty = true,
+			_ => layer.cache_dirty = true,
 		}
 		layer.cache_dirty
 	}
@@ -300,12 +295,12 @@ impl Document {
 	/// Deletes the layer specified by `path`.
 	pub fn delete(&mut self, path: &[LayerId]) -> Result<(), DocumentError> {
 		let (path, id) = split_path(path)?;
-		self.mark_as_dirty(&path)?;
+		self.mark_as_dirty(path)?;
 		self.folder_mut(path)?.remove_layer(id)
 	}
 
 	pub fn visible_layers(&self, path: &mut Vec<LayerId>, paths: &mut Vec<Vec<LayerId>>) -> Result<(), DocumentError> {
-		if !self.layer(&path)?.visible {
+		if !self.layer(path)?.visible {
 			return Ok(());
 		}
 		if let Ok(folder) = self.folder(&path) {
@@ -321,13 +316,13 @@ impl Document {
 	}
 
 	pub fn viewport_bounding_box(&self, path: &[LayerId]) -> Result<Option<[DVec2; 2]>, DocumentError> {
-		let layer = self.layer(&path)?;
+		let layer = self.layer(path)?;
 		let transform = self.multiply_transforms(path)?;
 		Ok(layer.data.bounding_box(transform))
 	}
 
 	pub fn bounding_box_and_transform(&self, path: &[LayerId]) -> Result<Option<([DVec2; 2], DAffine2)>, DocumentError> {
-		let layer = self.layer(&path)?;
+		let layer = self.layer(path)?;
 		let transform = self.multiply_transforms(&path[..path.len() - 1])?;
 		Ok(layer.data.bounding_box(layer.transform).map(|bounds| (bounds, transform)))
 	}
@@ -354,7 +349,7 @@ impl Document {
 	}
 
 	pub fn mark_downstream_as_dirty(&mut self, path: &[LayerId]) -> Result<(), DocumentError> {
-		let mut layer = self.layer_mut(&path)?;
+		let mut layer = self.layer_mut(path)?;
 		layer.cache_dirty = true;
 
 		let mut path = path.to_vec();
@@ -496,7 +491,20 @@ impl Document {
 				style,
 				size,
 			} => {
-				let layer = Layer::new(LayerDataType::Text(TextLayer::new(text.clone(), style, size)), transform);
+				let layer = Layer::new(LayerDataType::Text(TextLayer::new(text, style, size)), transform);
+
+				self.set_layer(&path, layer, insert_index)?;
+
+				Some([vec![DocumentChanged, CreatedLayer { path: path.clone() }], update_thumbnails_upstream(&path)].concat())
+			}
+			Operation::AddImage {
+				path,
+				transform,
+				insert_index,
+				image_data,
+				mime,
+			} => {
+				let layer = Layer::new(LayerDataType::Image(ImageLayer::new(mime, image_data)), transform);
 
 				self.set_layer(&path, layer, insert_index)?;
 
@@ -508,7 +516,7 @@ impl Document {
 				Some(vec![DocumentChanged])
 			}
 			Operation::SetTextContent { path, new_text } => {
-				self.layer_mut(&path)?.as_text_mut()?.update_text(new_text.clone());
+				self.layer_mut(&path)?.as_text_mut()?.update_text(new_text);
 				self.mark_as_dirty(&path)?;
 
 				Some([vec![DocumentChanged], update_thumbnails_upstream(&path)].concat())
@@ -527,7 +535,7 @@ impl Document {
 				Some([vec![DocumentChanged, CreatedLayer { path: path.clone() }], update_thumbnails_upstream(&path)].concat())
 			}
 			Operation::AddOverlayShape { path, style, bez_path, closed } => {
-				let mut shape = ShapeLayer::from_bez_path(bez_path.clone(), style, closed);
+				let mut shape = ShapeLayer::from_bez_path(bez_path, style, closed);
 				shape.render_index = -1;
 
 				let layer = Layer::new(LayerDataType::Shape(shape), DAffine2::IDENTITY.to_cols_array());
@@ -543,7 +551,7 @@ impl Document {
 				bez_path,
 				closed,
 			} => {
-				let shape = ShapeLayer::from_bez_path(bez_path.clone(), style, closed);
+				let shape = ShapeLayer::from_bez_path(bez_path, style, closed);
 				self.set_layer(&path, Layer::new(LayerDataType::Shape(shape), transform), insert_index)?;
 				Some([vec![DocumentChanged, CreatedLayer { path }]].concat())
 			}
@@ -626,7 +634,7 @@ impl Document {
 			} => {
 				let (folder_path, layer_id) = split_path(&destination_path)?;
 				let folder = self.folder_mut(folder_path)?;
-				folder.add_layer(layer.clone(), Some(layer_id), insert_index).ok_or(DocumentError::IndexOutOfBounds)?;
+				folder.add_layer(layer, Some(layer_id), insert_index).ok_or(DocumentError::IndexOutOfBounds)?;
 				self.mark_as_dirty(&destination_path)?;
 
 				fn aggregate_insertions(folder: &FolderLayer, path: &mut Vec<LayerId>, responses: &mut Vec<DocumentResponse>) {
@@ -668,7 +676,7 @@ impl Document {
 				}
 			}
 			Operation::RenameLayer { layer_path: path, new_name: name } => {
-				self.layer_mut(&path)?.name = Some(name.clone());
+				self.layer_mut(&path)?.name = Some(name);
 				Some(vec![LayerChanged { path }])
 			}
 			Operation::CreateFolder { path } => {
@@ -690,6 +698,14 @@ impl Document {
 				self.mark_as_dirty(&path)?;
 				Some([vec![DocumentChanged], update_thumbnails_upstream(&path)].concat())
 			}
+			Operation::SetImageBlobUrl { path, blob_url, dimensions } => {
+				let image = self.layer_mut(&path).expect("Blob url for invalid layer").as_image_mut().unwrap();
+				image.blob_url = Some(blob_url);
+				image.dimensions = dimensions.into();
+				self.mark_as_dirty(&path)?;
+				Some([vec![DocumentChanged, LayerChanged { path: path.clone() }], update_thumbnails_upstream(&path)].concat())
+			}
+
 			Operation::SetLayerTransformInViewport { path, transform } => {
 				let transform = DAffine2::from_cols_array(&transform);
 				self.set_transform_relative_to_viewport(&path, transform)?;
@@ -700,7 +716,7 @@ impl Document {
 				self.mark_as_dirty(&path)?;
 
 				if let LayerDataType::Shape(shape) = &mut self.layer_mut(&path)?.data {
-					shape.path = bez_path.clone();
+					shape.path = bez_path;
 				}
 				Some(vec![DocumentChanged, LayerChanged { path }])
 			}
@@ -715,7 +731,7 @@ impl Document {
 				}
 
 				if let LayerDataType::Shape(shape) = &mut self.layer_mut(&path)?.data {
-					shape.path = bez_path.clone();
+					shape.path = bez_path;
 				}
 				Some([vec![DocumentChanged, LayerChanged { path: path.clone() }], update_thumbnails_upstream(&path)].concat())
 			}
@@ -755,7 +771,7 @@ impl Document {
 			Operation::SetLayerName { path, name } => {
 				self.mark_as_dirty(&path)?;
 				let mut layer = self.layer_mut(&path)?;
-				layer.name = if name.as_str() == "" { None } else { Some(name.clone()) };
+				layer.name = if name.as_str() == "" { None } else { Some(name) };
 
 				Some(vec![LayerChanged { path }])
 			}

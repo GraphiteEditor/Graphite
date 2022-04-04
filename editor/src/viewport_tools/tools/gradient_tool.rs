@@ -81,7 +81,7 @@ impl Default for GradientToolFsmState {
 
 /// Computes the transform from gradient space to layer space (where gradient space is 0..1 in layer space)
 fn gradient_space_transform(path: &[LayerId], layer: &Layer, document: &DocumentMessageHandler) -> DAffine2 {
-	let bounds = layer.current_bounding_box().unwrap();
+	let bounds = layer.aabounding_box().unwrap();
 	let bound_transform = DAffine2::from_scale_angle_translation(bounds[1] - bounds[0], 0., bounds[0]);
 
 	document.graphene_document.multiply_transforms(&path[..path.len() - 1]).unwrap() * bound_transform
@@ -288,7 +288,7 @@ impl Fsm for GradientToolFsmState {
 							let dragging_start = data
 								.selected_gradient
 								.as_ref()
-								.map_or(None, |selected| if selected.path == path { Some(selected.dragging_start) } else { None });
+								.and_then(|selected| if selected.path == path { Some(selected.dragging_start) } else { None });
 							data.gradient_overlays.push(GradientOverlay::new(gradient, dragging_start, path, layer, document, responses))
 						}
 					}
@@ -308,7 +308,7 @@ impl Fsm for GradientToolFsmState {
 							start_snap(&mut data.snap_handler, document, document.graphene_document.layer(&overlay.path).unwrap(), &overlay.path);
 							data.selected_gradient = Some(SelectedGradient {
 								path: overlay.path.clone(),
-								transform: overlay.transform.clone(),
+								transform: overlay.transform,
 								gradient: overlay.gradient.clone(),
 								dragging_start: true,
 							})
@@ -318,7 +318,7 @@ impl Fsm for GradientToolFsmState {
 							start_snap(&mut data.snap_handler, document, document.graphene_document.layer(&overlay.path).unwrap(), &overlay.path);
 							data.selected_gradient = Some(SelectedGradient {
 								path: overlay.path.clone(),
-								transform: overlay.transform.clone(),
+								transform: overlay.transform,
 								gradient: overlay.gradient.clone(),
 								dragging_start: false,
 							})

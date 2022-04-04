@@ -19,7 +19,7 @@ pub fn translate_tool_type(name: &str) -> Option<ToolType> {
 		Heal,
 		Clone,
 		Patch,
-		BlurSharpen,
+		Detail,
 		Relight,
 		Path,
 		Pen,

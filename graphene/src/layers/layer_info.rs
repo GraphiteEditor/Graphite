@@ -1,5 +1,6 @@
 use super::blend_mode::BlendMode;
 use super::folder_layer::FolderLayer;
+use super::image_layer::ImageLayer;
 use super::shape_layer::ShapeLayer;
 use super::style::{PathStyle, ViewMode};
 use super::text_layer::TextLayer;
@@ -16,6 +17,7 @@ pub enum LayerDataType {
 	Folder(FolderLayer),
 	Shape(ShapeLayer),
 	Text(TextLayer),
+	Image(ImageLayer),
 }
 
 impl LayerDataType {
@@ -24,6 +26,7 @@ impl LayerDataType {
 			LayerDataType::Shape(s) => s,
 			LayerDataType::Folder(f) => f,
 			LayerDataType::Text(t) => t,
+			LayerDataType::Image(i) => i,
 		}
 	}
 
@@ -32,6 +35,7 @@ impl LayerDataType {
 			LayerDataType::Shape(s) => s,
 			LayerDataType::Folder(f) => f,
 			LayerDataType::Text(t) => t,
+			LayerDataType::Image(i) => i,
 		}
 	}
 }
@@ -146,12 +150,23 @@ impl Layer {
 		self.data.intersects_quad(transformed_quad, path, intersections)
 	}
 
-	pub fn current_bounding_box_with_transform(&self, transform: DAffine2) -> Option<[DVec2; 2]> {
+	pub fn aabounding_box_for_transform(&self, transform: DAffine2) -> Option<[DVec2; 2]> {
 		self.data.bounding_box(transform)
 	}
 
-	pub fn current_bounding_box(&self) -> Option<[DVec2; 2]> {
-		self.current_bounding_box_with_transform(self.transform)
+	pub fn aabounding_box(&self) -> Option<[DVec2; 2]> {
+		self.aabounding_box_for_transform(self.transform)
+	}
+	pub fn bounding_transform(&self) -> DAffine2 {
+		let scale = match self.aabounding_box_for_transform(DAffine2::IDENTITY) {
+			Some([a, b]) => {
+				let dimensions = b - a;
+				DAffine2::from_scale(dimensions)
+			}
+			_ => DAffine2::IDENTITY,
+		};
+
+		self.transform * scale
 	}
 
 	pub fn as_folder_mut(&mut self) -> Result<&mut FolderLayer, DocumentError> {
@@ -182,11 +197,18 @@ impl Layer {
 		}
 	}
 
+	pub fn as_image_mut(&mut self) -> Result<&mut ImageLayer, DocumentError> {
+		match &mut self.data {
+			LayerDataType::Image(img) => Ok(img),
+			_ => Err(DocumentError::NotAnImage),
+		}
+	}
+
 	pub fn style(&self) -> Result<&PathStyle, DocumentError> {
 		match &self.data {
 			LayerDataType::Shape(s) => Ok(&s.style),
 			LayerDataType::Text(t) => Ok(&t.style),
-			_ => return Err(DocumentError::NotAShape),
+			_ => Err(DocumentError::NotAShape),
 		}
 	}
 
@@ -194,7 +216,7 @@ impl Layer {
 		match &mut self.data {
 			LayerDataType::Shape(s) => Ok(&mut s.style),
 			LayerDataType::Text(t) => Ok(&mut t.style),
-			_ => return Err(DocumentError::NotAShape),
+			_ => Err(DocumentError::NotAShape),
 		}
 	}
 }
