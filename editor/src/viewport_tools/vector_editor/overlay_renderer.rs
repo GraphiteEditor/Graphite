@@ -43,7 +43,7 @@ impl<'a> OverlayRenderer<'a> {
 	pub fn draw_overlays_for_shape(&mut self, shape: &VectorShape, responses: &mut VecDeque<Message>) {
 		// Draw the shape outline overlays
 		if !self.shape_overlay_cache.contains_key(shape) {
-			let outline = self.create_shape_outline_overlay(shape.to_bezpath(), responses);
+			let outline = self.create_shape_outline_overlay(shape.into(), responses);
 			// Cache outline overlay
 			self.shape_overlay_cache.insert(shape, outline);
 			// TODO Handle removing shapes so we don't memory leak
@@ -188,7 +188,7 @@ impl<'a> OverlayRenderer<'a> {
 	/// Removes the anchor / handle overlays from the overlay document
 	fn remove_anchor_overlays(&mut self, overlays: &AnchorOverlays, responses: &mut VecDeque<Message>) {
 		overlays.iter().flatten().for_each(|layer_id| {
-			responses.push_back(DocumentMessage::Overlays(Operation::RemoveLayer(layer_id.clone()).into()).into());
+			responses.push_back(DocumentMessage::Overlays(Operation::DeleteLayer { path: layer_id.clone() }).into());
 		});
 	}
 

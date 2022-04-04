@@ -1,26 +1,19 @@
 // WIP
 
+use super::{vector_anchor::VectorAnchor, vector_shape::VectorShape};
+use crate::viewport_tools::vector_editor::vector_control_point::VectorControlPoint;
 use kurbo::{BezPath, PathEl};
 
-use crate::viewport_tools::vector_editor::vector_control_point::VectorControlPoint;
-
-use super::vector_anchor::VectorAnchor;
-
-struct ShapeRenderer {}
-
-impl ShapeRenderer {
-	pub fn new() -> Self {}
-
-	/// Return a bezpath based on our internal representation points
-	fn to_bezpath(&self, anchors: &[VectorAnchor]) -> BezPath {
-		if anchors.is_empty() {
+impl From<&VectorShape> for BezPath {
+	fn from(vector_shape: &VectorShape) -> Self {
+		if vector_shape.anchors.is_empty() {
 			return BezPath::new();
 		}
 		let point_to_kurbo = |x: &VectorControlPoint| kurbo::Point::new(x.position.x, x.position.y);
-		let point = anchors[0].points[0].as_ref().unwrap().position;
+		let point = vector_shape.anchors[0].points[0].as_ref().unwrap().position;
 		let mut bez_path = vec![PathEl::MoveTo((point.x, point.y).into())];
 
-		for elements in anchors.windows(2) {
+		for elements in vector_shape.anchors.windows(2) {
 			let first = &elements[0];
 			let second = &elements[1];
 			let new_segment = match [&first.points[2], &second.points[1], &second.points[0]] {
@@ -31,16 +24,11 @@ impl ShapeRenderer {
 			};
 			bez_path.push(new_segment);
 		}
-		if self.closed {
+		if vector_shape.closed {
 			bez_path.push(PathEl::ClosePath);
 		}
-		log::debug!("path: {:?}", bez_path);
-		BezPath::from_vec(bez_path)
-	}
 
-	pub fn draw(&self, anchors: &[VectorAnchor]) {
-		// If we are using kurbo, render bezpath
-		let path = self.to_bezpath(anchors);
-		// Submit the path to a renderer in this case kurbo?
+		log::debug!("To Bezpath: {:?}", bez_path);
+		BezPath::from_vec(bez_path)
 	}
 }

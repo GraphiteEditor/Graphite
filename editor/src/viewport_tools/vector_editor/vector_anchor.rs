@@ -38,8 +38,8 @@ impl VectorAnchor {
 		Self {
 			points: [
 				Some(VectorControlPoint::new(anchor_pos, ControlPointType::Anchor)),
-				Some(VectorControlPoint::new(handle1_pos, ControlPointType::Handle)),
-				Some(VectorControlPoint::new(handle2_pos, ControlPointType::Handle)),
+				Some(VectorControlPoint::new(handle1_pos, ControlPointType::Handle1)),
+				Some(VectorControlPoint::new(handle2_pos, ControlPointType::Handle2)),
 			],
 			handle_mirror_angle: false,
 			handle_mirror_distance: false,

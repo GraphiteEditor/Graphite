@@ -157,7 +157,8 @@ impl Fsm for PenToolFsmState {
 		if let ToolMessage::Pen(event) = event {
 			match (self, event) {
 				(_, DocumentIsDirty) => {
-					data.shape_editor.update_shapes(document, responses);
+					// TODO make sure that the shape outlines will update when the canvas moves
+					// data.shape_editor.update_shapes(document, responses);
 					self
 				}
 				(Ready, DragStart) => {
@@ -289,7 +290,8 @@ fn add_to_curve(data: &mut PenToolData, input: &InputPreprocessorMessageHandler,
 	// Would like to remove this hack eventually
 	if !data.shape_editor.shapes_to_modify.is_empty() {
 		// Hacky way of saving the curve changes
-		data.bez_path = data.shape_editor.shapes_to_modify[0].bez_path.elements().to_vec();
+		// TODO We've removed .bezpath and this need to preserve the shapes instead
+		// data.bez_path = data.shape_editor.shapes_to_modify[0].bez_path.elements().to_vec();
 	}
 
 	// Setup our position params
@@ -306,7 +308,8 @@ fn add_to_curve(data: &mut PenToolData, input: &InputPreprocessorMessageHandler,
 		// data.shape_editor.remove_overlays(responses);
 
 		// Create a new shape from the updated bez_path
-		let bez_path = data.bez_path.clone().into_iter().collect();
+		// TODO We've removed .bezpath and this need to preserve the shapes instead
+		// let bez_path = data.bez_path.clone().into_iter().collect();
 		data.curve_shape = VectorShape::new(layer_path.to_vec(), transform, false);
 		data.shape_editor.set_shapes_to_modify(vec![data.curve_shape.clone()]);
 

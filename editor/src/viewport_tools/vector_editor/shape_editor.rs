@@ -57,7 +57,8 @@ impl ShapeEditor {
 			}
 
 			let selected_shape = &mut self.shapes_to_modify[shape_index];
-			selected_shape.elements = selected_shape.bez_path.clone().into_iter().collect();
+			// TODO kurbo bez_path are no long present in the vector shapes, resolve fallout
+			// selected_shape.elements = selected_shape.bez_path.clone().into_iter().collect();
 
 			// Should we select or deselect the point?
 			let should_select = if is_point_selected { !(add_to_selection && is_point_selected) } else { true };
