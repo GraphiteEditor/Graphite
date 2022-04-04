@@ -15,13 +15,14 @@ use graphene::{
 	LayerId, Operation,
 };
 
-struct OverlayRenderer {
-	overlays: HashMap<VectorShape, Vec<Vec<LayerId>>>,
-}
-
 /// AnchorOverlay is the collection of overlays that make up an anchor
 /// Notably the anchor point, the lines to the handles and the handles
-type AnchorOverlays = Vec<[Option<Vec<LayerId>>; 5]>;
+type AnchorOverlays = [Option<Vec<LayerId>>; 5];
+
+struct OverlayRenderer {
+	overlays: HashMap<&VectorAnchor, AnchorOverlays>,
+}
+
 
 impl OverlayRenderer {
 	pub fn new() -> Self {
@@ -29,24 +30,32 @@ impl OverlayRenderer {
 	}
 
 	pub fn draw_overlays_for_shape(&mut self, shape: &VectorShape, responses: &mut VecDeque<Message>) {
+		// Draw the outline of the shape
 		let outline = self.create_shape_outline_overlay(shape.to_bezpath(), responses);
-		let anchors: AnchorOverlays = shape
-			.anchors
-			.iter()
-			.map(|anchor| {
-				[
+
+		for anchor in shape.anchors.iter() {
+			// If we already have these overlays don't recreate them
+			if !self.overlays.contains_key(anchor) 
+			{
+				let anchor_overlays = [
 					Some(self.create_anchor_overlay(anchor, responses)),
 					self.create_handle_overlay(&anchor.points[ControlPointType::Handle1], responses),
 					self.create_handle_overlay(&anchor.points[ControlPointType::Handle2], responses),
 					self.create_handle_line_overlay(&anchor.points[ControlPointType::Handle1], responses),
 					self.create_handle_line_overlay(&anchor.points[ControlPointType::Handle2], responses),
-				]
-			})
-			.collect::<_>();
-	}
+				];
+				
+				// Create the overlays
+				self.overlays.insert(anchor, anchor_overlays);
+			}
 
-	pub fn hide_overlays_for_shape(&mut self, shape: &VectorShape, responses: &mut VecDeque<Message>) {
-		// Delete here
+			// Position the overlays 
+			if let Some(anchor_overlays) = self.overlays.get(anchor) {
+				self.place_overlays(anchor, anchor_overlays, responses);
+			}
+		}
+		
+		
 	}
 
 	/// Create the kurbo shape that matches the selected viewport shape
@@ -108,31 +117,9 @@ impl OverlayRenderer {
 		Some(layer_path)
 	}
 
-	/// Place an anchor overlay
-	pub fn place_anchor_overlay(&self, responses: &mut VecDeque<Message>) {
-		if let Some(anchor_point) = &self.points[ControlPointType::Anchor] {
-			if let Some(anchor_overlay) = &anchor_point.overlay_path {
-				let scale = DVec2::splat(VECTOR_MANIPULATOR_ANCHOR_MARKER_SIZE);
-				let angle = 0.;
-				let translation = (anchor_point.position - (scale / 2.) + ROUNDING_BIAS).round();
-				let transform = DAffine2::from_scale_angle_translation(scale, angle, translation).to_cols_array();
-				responses.push_back(
-					DocumentMessage::Overlays(
-						Operation::SetLayerTransformInViewport {
-							path: anchor_overlay.clone(),
-							transform,
-						}
-						.into(),
-					)
-					.into(),
-				);
-			}
-		}
-	}
-
-	/// Updates the position of the handle's overlays based on the kurbo path
-	pub fn place_handle_overlay(&self, responses: &mut VecDeque<Message>) {
-		if let Some(anchor_point) = &self.points[ControlPointType::Anchor] {
+	/// Updates the position of the overlays based on the VectorShape points
+	pub fn place_overlays(&self, anchor: &VectorAnchor, overlays: &AnchorOverlays, responses: &mut VecDeque<Message>) {
+		if let Some(anchor_point) = anchor.points[ControlPointType::Anchor] {
 			// Helper function to keep things DRY
 			let mut place_handle_and_line = |handle: &VectorControlPoint, line: &Option<Vec<LayerId>>| {
 				if let Some(line_overlay) = line {
@@ -141,16 +128,7 @@ impl OverlayRenderer {
 					let angle = -line_vector.angle_between(DVec2::X);
 					let translation = (handle.position + ROUNDING_BIAS).round() + DVec2::splat(0.5);
 					let transform = DAffine2::from_scale_angle_translation(scale, angle, translation).to_cols_array();
-					responses.push_back(
-						DocumentMessage::Overlays(
-							Operation::SetLayerTransformInViewport {
-								path: line_overlay.clone(),
-								transform,
-							}
-							.into(),
-						)
-						.into(),
-					);
+					responses.push_back(self.overlay_transform_message(line_overlay.clone(), transform));
 				}
 
 				if let Some(line_overlay) = &handle.overlay_path {
@@ -158,115 +136,63 @@ impl OverlayRenderer {
 					let angle = 0.;
 					let translation = (handle.position - (scale / 2.) + ROUNDING_BIAS).round();
 					let transform = DAffine2::from_scale_angle_translation(scale, angle, translation).to_cols_array();
-					responses.push_back(
-						DocumentMessage::Overlays(
-							Operation::SetLayerTransformInViewport {
-								path: line_overlay.clone(),
-								transform,
-							}
-							.into(),
-						)
-						.into(),
-					);
+					responses.push_back(self.overlay_transform_message(line_overlay.clone(), transform));
 				}
 			};
 
-			let [_, h1, h2] = &self.points;
-			let (line1, line2) = &self.handle_line_overlays;
+			// Place the anchor point overlay
+			if let Some(anchor_overlay) = &anchor_point.overlay_path {
+				let scale = DVec2::splat(VECTOR_MANIPULATOR_ANCHOR_MARKER_SIZE);
+				let angle = 0.;
+				let translation = (anchor_point.position - (scale / 2.) + ROUNDING_BIAS).round();
+				let transform = DAffine2::from_scale_angle_translation(scale, angle, translation).to_cols_array();
+				responses.push_back(self.overlay_transform_message(anchor_overlay.clone(), transform));
+			}
 
+			// Place the handle overlays
+			let [_, h1, h2] = anchor.points;
+			let (_, _, _, line1, line2) = &overlays;
 			if let Some(handle) = &h1 {
 				place_handle_and_line(handle, line1);
 			}
-
 			if let Some(handle) = &h2 {
 				place_handle_and_line(handle, line2);
 			}
 		}
 	}
 
-	/// Removes the anchor overlay from the overlay document
-	pub fn remove_anchor_overlay(&mut self, responses: &mut VecDeque<Message>) {
-		if let Some(anchor_point) = &mut self.points[ControlPointType::Anchor] {
-			if let Some(overlay_path) = &anchor_point.overlay_path {
-				responses.push_front(DocumentMessage::Overlays(Operation::DeleteLayer { path: overlay_path.clone() }.into()).into());
-			}
-			anchor_point.overlay_path = None;
-		}
-	}
-
-	/// Removes the handles overlay from the overlay document
-	pub fn remove_handle_overlay(&mut self, responses: &mut VecDeque<Message>) {
-		let [_, h1, h2] = &mut self.points;
-		let (line1, line2) = &mut self.handle_line_overlays;
-
-		// Helper function to keep things DRY
-		let mut delete_message = |handle: &Option<Vec<LayerId>>| {
-			if let Some(overlay_path) = handle {
-				responses.push_front(DocumentMessage::Overlays(Operation::DeleteLayer { path: overlay_path.clone() }.into()).into());
-			}
-		};
-
-		// Delete the handles themselves
-		if let Some(handle) = h1 {
-			delete_message(&handle.overlay_path);
-			handle.overlay_path = None;
-		}
-		if let Some(handle) = h2 {
-			delete_message(&handle.overlay_path);
-			handle.overlay_path = None;
-		}
-
-		// Delete the handle line layers
-		delete_message(line1);
-		delete_message(line2);
-		self.handle_line_overlays = (None, None);
-	}
-
-	/// Clear overlays for this anchor, do this prior to deletion
-	pub fn remove_overlays(&mut self, responses: &mut VecDeque<Message>) {
-		self.remove_anchor_overlay(responses);
-		self.remove_handle_overlay(responses);
-	}
-
-	/// Sets the visibility of the anchors overlay
-	pub fn set_anchor_visiblity(&self, visibility: bool, responses: &mut VecDeque<Message>) {
-		if let Some(anchor_point) = &self.points[ControlPointType::Anchor] {
-			if let Some(overlay_path) = &anchor_point.overlay_path {
-				responses.push_back(self.visibility_message(overlay_path.clone(), visibility));
-			}
-		}
+	/// Removes the anchor / handle overlays from the overlay document
+	pub fn remove_anchor_overlays(&mut self, overlays: &AnchorOverlays, responses: &mut VecDeque<Message>) {
+		overlays.iter().flatten().for_each(|layer_id| {
+			responses.push_back(DocumentMessage::Overlays(Operation::RemoveLayer(layer_id.clone()).into()).into());
+		});
 	}
 
 	/// Sets the visibility of the handles overlay
-	pub fn set_handle_visiblity(&self, visibility: bool, responses: &mut VecDeque<Message>) {
-		let [_, h1, h2] = &self.points;
-		let (line1, line2) = &self.handle_line_overlays;
-
-		if let Some(handle) = h1 {
-			if let Some(overlay_path) = &handle.overlay_path {
-				responses.push_back(self.visibility_message(overlay_path.clone(), visibility));
-			}
-		}
-		if let Some(handle) = h2 {
-			if let Some(overlay_path) = &handle.overlay_path {
-				responses.push_back(self.visibility_message(overlay_path.clone(), visibility));
-			}
-		}
-
-		if let Some(overlay_path) = &line1 {
-			responses.push_back(self.visibility_message(overlay_path.clone(), visibility));
-		}
-		if let Some(overlay_path) = &line2 {
-			responses.push_back(self.visibility_message(overlay_path.clone(), visibility));
-		}
+	pub fn set_overlay_visiblity(&self, anchor_overlays: &AnchorOverlays, visibility: bool, responses: &mut VecDeque<Message>) {
+		anchor_overlays.iter().flatten().for_each(|layer_id| {
+			responses.push_back(self.overlay_visibility_message(layer_id.clone(), visibility));
+		});
 	}
 
 	/// Create a visibility message for an overlay
-	fn visibility_message(&self, layer_path: Vec<LayerId>, visibility: bool) -> Message {
+	fn overlay_visibility_message(&self, layer_path: Vec<LayerId>, visibility: bool) -> Message {
 		DocumentMessage::Overlays(
 			Operation::SetLayerVisibility {
 				path: layer_path,
 				visible: visibility,
+			}
+			.into(),
+		)
+		.into()
+	}
+
+	/// Create a transform message for an overlay
+	fn overlay_transform_message(&self, layer_path: Vec<LayerId>, transform: [f64; 6]) -> Message {
+		DocumentMessage::Overlays(
+			Operation::SetLayerTransformInViewport {
+				path: layer_path,
+				transform,
 			}
 			.into(),
 		)

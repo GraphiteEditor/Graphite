@@ -126,7 +126,8 @@ impl Fsm for PathToolFsmState {
 				// TODO: Capture a tool event instead of doing this?
 				(_, SelectionChanged) => {
 					// Remove any residual overlays that might exist on selection change
-					data.shape_editor.remove_overlays(responses);
+					// TODO Tell overlay manager to remove the overlays
+					// data.shape_editor.remove_overlays();
 
 					// This currently creates new VectorManipulatorShapes for every shape, which is not ideal
 					// At least it is only on selection change for now
@@ -136,9 +137,10 @@ impl Fsm for PathToolFsmState {
 				}
 				(_, DocumentIsDirty) => {
 					// Update the VectorManipulatorShapes by reference so they match the kurbo data
-					for shape in &mut data.shape_editor.shapes_to_modify {
-						shape.update_shape(document, responses);
-					}
+					// TODO This used to handle when the viewport moved, update when the vectorshape gets drawn
+					// for shape in &mut data.shape_editor.shapes_to_modify {
+					// 	shape.update_shape(document);
+					// }
 					self
 				}
 				// Mouse down
@@ -146,7 +148,7 @@ impl Fsm for PathToolFsmState {
 					let add_to_selection = input.keyboard.get(add_to_selection as usize);
 
 					// Select the first point within the threshold (in pixels)
-					if data.shape_editor.select_point(input.mouse.position, SELECTION_THRESHOLD, add_to_selection, responses) {
+					if data.shape_editor.select_point(input.mouse.position, SELECTION_THRESHOLD, add_to_selection) {
 						responses.push_back(DocumentMessage::StartTransaction.into());
 						data.snap_handler.start_snap(document, document.bounding_boxes(None, None), true, true);
 						let snap_points = data
@@ -214,15 +216,15 @@ impl Fsm for PathToolFsmState {
 
 					// Move the selected points by the mouse position
 					let snapped_position = data.snap_handler.snap_position(responses, input.viewport_bounds.size(), document, input.mouse.position);
-					data.shape_editor.move_selected_points(snapped_position - data.drag_start_pos, true, responses);
+					data.shape_editor.move_selected_points(snapped_position - data.drag_start_pos, true);
 					Dragging
 				}
 				// DoubleClick
 				(_, Delete) => {
 					// Select the first point within the threshold (in pixels)
-					if data.shape_editor.select_point(input.mouse.position, SELECTION_THRESHOLD, false, responses) {
+					if data.shape_editor.select_point(input.mouse.position, SELECTION_THRESHOLD, false) {
 						responses.push_back(DocumentMessage::StartTransaction.into());
-						data.shape_editor.delete_selected_points(responses);
+						data.shape_editor.delete_selected_points();
 						responses.push_back(SelectionChanged.into());
 					}
 					Ready
@@ -233,7 +235,8 @@ impl Fsm for PathToolFsmState {
 					Ready
 				}
 				(_, Abort) | (_, SelectPoint) => {
-					data.shape_editor.remove_overlays(responses);
+					// TODO Tell overlay manager to remove the overlays
+					//data.shape_editor.remove_overlays();
 					Ready
 				}
 				(

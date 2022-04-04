@@ -198,11 +198,11 @@ impl Fsm for PenToolFsmState {
 				}
 				(Drawing, DragStop) => {
 					// Deselect everything (this means we are no longer dragging the handle)
-					data.shape_editor.deselect_all(responses);
+					data.shape_editor.deselect_all();
 
 					// Reselect the last point
 					if let Some(last_anchor) = data.shape_editor.select_last_anchor() {
-						last_anchor.select_point(0, true, responses);
+						last_anchor.select_point(0, true);
 					}
 
 					Drawing
@@ -210,7 +210,7 @@ impl Fsm for PenToolFsmState {
 				(Drawing, PointerMove) => {
 					let snapped_position = data.snap_handler.snap_position(responses, input.viewport_bounds.size(), document, input.mouse.position);
 					//data.shape_editor.update_shapes(document, responses);
-					data.shape_editor.move_selected_points(snapped_position, false, responses);
+					data.shape_editor.move_selected_points(snapped_position, false);
 
 					Drawing
 				}
@@ -229,7 +229,8 @@ impl Fsm for PenToolFsmState {
 						responses.push_back(DocumentMessage::AbortTransaction.into());
 					}
 
-					data.shape_editor.remove_overlays(responses);
+					// TODO Tell overlay manager to remove the overlays
+					//data.shape_editor.remove_overlays();
 					data.shape_editor.clear_shapes_to_modify();
 
 					data.path = None;
@@ -238,7 +239,8 @@ impl Fsm for PenToolFsmState {
 					Ready
 				}
 				(_, Abort) => {
-					data.shape_editor.remove_overlays(responses);
+					// TODO Tell overlay manager to remove the overlays
+					//data.shape_editor.remove_overlays();
 					data.shape_editor.clear_shapes_to_modify();
 					Ready
 				}
@@ -300,21 +302,22 @@ fn add_to_curve(data: &mut PenToolData, input: &InputPreprocessorMessageHandler,
 		responses.push_back(apply_bez_path(layer_path.clone(), data.bez_path.clone(), transform));
 
 		// Clear previous overlays
-		data.shape_editor.remove_overlays(responses);
+		// TODO Tell the overlay manager to remove all overlays
+		// data.shape_editor.remove_overlays(responses);
 
 		// Create a new shape from the updated bez_path
 		let bez_path = data.bez_path.clone().into_iter().collect();
-		data.curve_shape = VectorShape::new(layer_path.to_vec(), transform, &bez_path, false, responses);
+		data.curve_shape = VectorShape::new(layer_path.to_vec(), transform, false);
 		data.shape_editor.set_shapes_to_modify(vec![data.curve_shape.clone()]);
 
 		// Select the second to last segment's handle
 		data.shape_editor.set_shape_selected(0);
 		let handle_element = data.shape_editor.select_nth_anchor(0, -2);
-		handle_element.select_point(2, true, responses);
+		handle_element.select_point(2, true);
 
 		// Select the last segment's anchor point
 		if let Some(last_anchor) = data.shape_editor.select_last_anchor() {
-			last_anchor.select_point(0, true, responses);
+			last_anchor.select_point(0, true);
 		}
 		data.shape_editor.set_selected_mirror_options(true, true);
 	}

@@ -40,7 +40,7 @@ impl ShapeEditor {
 	/// Select the first point within the selection threshold
 	/// Returns true if we've found a point, false otherwise
 	// TODO Refactor to select_point_from(vectorshapes[..], ...)
-	pub fn select_point(&mut self, mouse_position: DVec2, select_threshold: f64, add_to_selection: bool, responses: &mut VecDeque<Message>) -> bool {
+	pub fn select_point(&mut self, mouse_position: DVec2, select_threshold: f64, add_to_selection: bool) -> bool {
 		if self.shapes_to_modify.is_empty() {
 			return false;
 		}
@@ -57,7 +57,7 @@ impl ShapeEditor {
 
 			// Deselected if we're not adding to the selection
 			if !add_to_selection && !is_point_selected {
-				self.deselect_all(responses);
+				self.deselect_all();
 			}
 
 			let selected_shape = &mut self.shapes_to_modify[shape_index];
@@ -183,14 +183,14 @@ impl ShapeEditor {
 	}
 
 	/// Move the selected points by dragging the moue
-	pub fn move_selected_points(&mut self, target: DVec2, relative: bool, responses: &mut VecDeque<Message>) {
+	pub fn move_selected_points(&mut self, target: DVec2, relative: bool) {
 		for shape in self.selected_shapes_mut() {
 			shape.move_selected(target, relative);
 		}
 	}
 
 	/// Dissolve the selected points
-	pub fn delete_selected_points(&mut self, responses: &mut VecDeque<Message>) {
+	pub fn delete_selected_points(&mut self) {
 		for shape in self.selected_shapes_mut() {
 			shape.delete_selected();
 		}
@@ -218,7 +218,7 @@ impl ShapeEditor {
 	}
 
 	/// Deselect all anchors from the shapes the manipulation handler has created
-	pub fn deselect_all(&mut self, responses: &mut VecDeque<Message>) {
+	pub fn deselect_all(&mut self) {
 		for shape in self.shapes_to_modify.iter_mut() {
 			shape.clear_selected_anchors();
 		}
@@ -253,7 +253,7 @@ impl ShapeEditor {
 		}
 
 		// We've made our changes to the shape, submit them
-		// Send changes to the renderer
+		// TODO Send changes to the renderer
 	}
 
 	/// Delete the selected point
@@ -264,6 +264,6 @@ impl ShapeEditor {
 		}
 
 		// We've made our changes to the shape, submit them
-		// Send changes to the renderer
+		// TODO Send changes to the renderer
 	}
 }
