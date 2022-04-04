@@ -6,6 +6,7 @@ use glam::{DAffine2, DVec2};
 
 /// VectorShape represents a single kurbo shape and maintains a parallel data structure
 /// For each kurbo path we keep a VectorShape which contains the handles and anchors for that path
+/// TODO remove clonable, we don't want any duplicates
 #[derive(PartialEq, Clone, Debug, Default)]
 pub struct VectorShape {
 	/// The path to the shape layer
@@ -32,43 +33,44 @@ impl VectorShape {
 	}
 
 	pub fn move_selected(&mut self, delta: DVec2, relative: bool) {
+		// TODO Reimplement this function properly
 		for anchor in self.selected_anchors_mut() {
-			if anchor.is_selected {
-				anchor.move_by(delta);
+			if anchor.is_anchor_selected() {
+				// anchor.move_selected_points(anchor.control_points_mut(), delta, relative);
 			}
 		}
 	}
 
 	pub fn delete_selected(&mut self) {
-		let mut anchors_to_delete = Vec::new();
+		// TODO Reimplement this function properly
 		for anchor in self.selected_anchors_mut() {
-			if anchor.is_selected {}
+			if anchor.is_anchor_selected() {}
 		}
 	}
 
 	/// Select an anchor
 	pub fn select_anchor(&mut self, anchor_index: usize) -> &mut VectorAnchor {
-		self.anchors[anchor_index].select_point(ControlPointType::Anchor, true);
+		self.anchors[anchor_index].select_point(ControlPointType::Anchor as usize, true);
 		&mut self.anchors[anchor_index]
 	}
 
 	/// The last anchor in the shape thus far
 	pub fn select_last_anchor(&mut self) -> &mut VectorAnchor {
 		let last_index = self.anchors.len() - 1;
-		self.anchors[last_index].select_point(ControlPointType::Anchor, true);
+		self.anchors[last_index].select_point(ControlPointType::Anchor as usize, true);
 		&mut self.anchors[last_index]
 	}
 
 	/// Deselect an anchor
 	pub fn deselect_anchor(&mut self, anchor_index: usize) {
 		self.anchors[anchor_index].clear_selected_points();
-		self.anchors[anchor_index].select_point(ControlPointType::Anchor, false);
+		self.anchors[anchor_index].select_point(ControlPointType::Anchor as usize, false);
 	}
 
 	/// Select all the anchors in this shape
 	pub fn select_all_anchors(&mut self) {
 		for anchor in self.anchors.iter_mut() {
-			anchor.select_point(ControlPointType::Anchor, true);
+			anchor.select_point(ControlPointType::Anchor as usize, true);
 		}
 	}
 
@@ -77,7 +79,6 @@ impl VectorShape {
 		for anchor in self.anchors.iter_mut() {
 			anchor.clear_selected_points();
 		}
-		self.selected_anchor_indices.clear();
 	}
 
 	/// Return all the selected anchors by reference

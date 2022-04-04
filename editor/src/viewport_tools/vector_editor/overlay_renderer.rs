@@ -175,7 +175,7 @@ impl<'a> OverlayRenderer<'a> {
 
 			// Place the handle overlays
 			let [_, h1, h2] = anchor.points;
-			let (_, _, _, line1, line2) = &overlays;
+			let [_, _, _, line1, line2] = &overlays;
 			if let Some(handle) = &h1 {
 				place_handle_and_line(handle, line1);
 			}
@@ -188,7 +188,7 @@ impl<'a> OverlayRenderer<'a> {
 	/// Removes the anchor / handle overlays from the overlay document
 	fn remove_anchor_overlays(&mut self, overlays: &AnchorOverlays, responses: &mut VecDeque<Message>) {
 		overlays.iter().flatten().for_each(|layer_id| {
-			responses.push_back(DocumentMessage::Overlays(Operation::DeleteLayer { path: layer_id.clone() }).into());
+			responses.push_back(DocumentMessage::Overlays(Operation::DeleteLayer { path: layer_id.clone() }.into()).into());
 		});
 	}
 

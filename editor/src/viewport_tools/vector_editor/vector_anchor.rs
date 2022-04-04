@@ -76,7 +76,7 @@ impl VectorAnchor {
 
 	/// Returns true if the anchor point is selected
 	pub fn is_anchor_selected(&self) -> bool {
-		if let Some(anchor) = self.points[0].is_some() {
+		if let Some(anchor) = self.points[0] {
 			anchor.is_selected
 		} else {
 			false
