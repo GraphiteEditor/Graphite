@@ -1,21 +1,8 @@
-use super::{constants::ControlPointType, vector_anchor::VectorAnchor, vector_control_point::VectorControlPoint};
-use crate::{
-	consts::COLOR_ACCENT,
-	document::DocumentMessageHandler,
-	message_prelude::{generate_uuid, DocumentMessage, Message},
-};
+use super::{constants::ControlPointType, vector_anchor::VectorAnchor};
 
-use graphene::{
-	color::Color,
-	layers::{
-		layer_info::LayerDataType,
-		style::{self, Fill, Stroke},
-	},
-	LayerId, Operation,
-};
+use graphene::LayerId;
 
 use glam::{DAffine2, DVec2};
-use std::collections::VecDeque;
 
 /// VectorShape represents a single kurbo shape and maintains a parallel data structure
 /// For each kurbo path we keep a VectorShape which contains the handles and anchors for that path
@@ -106,7 +93,7 @@ impl VectorShape {
 		self.anchors
 			.iter_mut()
 			.enumerate()
-			.filter_map(|(index, anchor)| if self.selected_anchor_indices.contains(&index) { Some(anchor) } else { None })
+			.filter_map(|(index, anchor)| if anchor.is_anchor_selected() { Some(anchor) } else { None })
 	}
 
 	/// Return a mutable interator of the anchors regardless of selection

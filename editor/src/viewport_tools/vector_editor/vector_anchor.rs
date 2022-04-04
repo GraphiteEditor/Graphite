@@ -1,21 +1,9 @@
-use crate::{
-	consts::VECTOR_MANIPULATOR_ANCHOR_MARKER_SIZE,
-	message_prelude::{DocumentMessage, Message},
-};
-
-use super::{
-	constants::{ControlPointType, ROUNDING_BIAS},
-	vector_control_point::VectorControlPoint,
-};
-
-use graphene::{LayerId, Operation};
-
+use super::{constants::ControlPointType, vector_control_point::VectorControlPoint};
 use glam::{DAffine2, DVec2};
-use std::collections::VecDeque;
 
 /// VectorAnchor is used to represent an anchor point on the path that can be moved.
 /// It contains 0-2 handles that are optionally displayed.
-#[derive(PartialEq, Clone, Debug, Default)]
+#[derive(PartialEq, Clone, Debug)]
 pub struct VectorAnchor {
 	// Editable points for the anchor & handles
 	pub points: [Option<VectorControlPoint>; 3],
@@ -46,7 +34,7 @@ impl VectorAnchor {
 	}
 
 	/// Create a new anchor with the given anchor position and handles
-	pub fn new(anchor_pos: DVec2, handle1_pos: DVec2, handle2_pos: DVec2) -> Self {
+	pub fn new_with_handles(anchor_pos: DVec2, handle1_pos: DVec2, handle2_pos: DVec2) -> Self {
 		Self {
 			points: [
 				Some(VectorControlPoint::new(anchor_pos, ControlPointType::Anchor)),

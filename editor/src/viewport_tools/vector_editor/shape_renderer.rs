@@ -1,5 +1,9 @@
 // WIP
 
+use kurbo::{BezPath, PathEl};
+
+use crate::viewport_tools::vector_editor::vector_control_point::VectorControlPoint;
+
 use super::vector_anchor::VectorAnchor;
 
 struct ShapeRenderer {}

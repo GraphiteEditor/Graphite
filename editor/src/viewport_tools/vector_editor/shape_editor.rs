@@ -17,13 +17,9 @@ Overview: (OUT OF DATE, WILL BE UPDATED)
 
 use super::vector_shape::VectorShape;
 use super::{constants::MINIMUM_MIRROR_THRESHOLD, vector_anchor::VectorAnchor, vector_control_point::VectorControlPoint};
-use crate::document::DocumentMessageHandler;
-use crate::message_prelude::Message;
 
-use graphene::layers::layer_info::LayerDataType;
-
-use glam::{DAffine2, DVec2};
-use std::collections::{HashSet, VecDeque};
+use glam::DVec2;
+use std::collections::HashSet;
 
 /// ShapeEditor is the container for all of the selected kurbo paths that are
 /// represented as VectorShapes and provides functionality required
