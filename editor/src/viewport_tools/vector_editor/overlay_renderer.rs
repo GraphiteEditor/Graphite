@@ -20,23 +20,31 @@ use graphene::{
 type AnchorOverlays = [Option<Vec<LayerId>>; 5];
 
 struct OverlayRenderer {
-	overlays: HashMap<&VectorAnchor, AnchorOverlays>,
+	// Yes, I know I can't use refs here, just a reminder to myself for now
+	shape_overlay_cache: HashMap<&VectorShape, Vec<LayerId>>,
+	anchor_overlay_cache: HashMap<&VectorAnchor, AnchorOverlays>,
 }
 
 
 impl OverlayRenderer {
 	pub fn new() -> Self {
-		OverlayRenderer { overlays: HashMap::new() }
+		OverlayRenderer { anchor_overlay_cache: HashMap::new(), shape_overlay_cache: HashMap::new() }
 	}
 
 	pub fn draw_overlays_for_shape(&mut self, shape: &VectorShape, responses: &mut VecDeque<Message>) {
-		// Draw the outline of the shape
-		let outline = self.create_shape_outline_overlay(shape.to_bezpath(), responses);
+		// Draw the shape outline overlays
+		if !self.shape_overlay_cache.contains_key(shape) {
+			let outline = self.create_shape_outline_overlay(shape.to_bezpath(), responses);
+			// Cache outline overlay
+			shape_overlays.insert(shape, outline);
+		}
 
+		// Draw the anchor / handle overlays
 		for anchor in shape.anchors.iter() {
 			// If we already have these overlays don't recreate them
-			if !self.overlays.contains_key(anchor) 
+			if !self.anchor_overlay_cache.contains_key(anchor) 
 			{
+				// Create the overlays
 				let anchor_overlays = [
 					Some(self.create_anchor_overlay(anchor, responses)),
 					self.create_handle_overlay(&anchor.points[ControlPointType::Handle1], responses),
@@ -45,17 +53,24 @@ impl OverlayRenderer {
 					self.create_handle_line_overlay(&anchor.points[ControlPointType::Handle2], responses),
 				];
 				
-				// Create the overlays
-				self.overlays.insert(anchor, anchor_overlays);
+				// Cache overlays
+				self.anchor_overlay_cache.insert(anchor, anchor_overlays);
 			}
 
 			// Position the overlays 
-			if let Some(anchor_overlays) = self.overlays.get(anchor) {
+			if let Some(anchor_overlays) = self.anchor_overlay_cache.get(anchor) {
 				self.place_overlays(anchor, anchor_overlays, responses);
 			}
+
+			// Update if the anchor / handle points are shown as selected
+			anchor.points.iter().flatten().for_each(|point| {
+				if point.is_selected {
+					self.set_overlay_style(POINT_STROKE_WIDTH + 1.0, COLOR_ACCENT, COLOR_ACCENT, responses);
+				} else {
+					self.set_overlay_style(POINT_STROKE_WIDTH, COLOR_ACCENT, Color::WHITE, responses);
+				}
+			});
 		}
-		
-		
 	}
 
 	/// Create the kurbo shape that matches the selected viewport shape
@@ -118,7 +133,7 @@ impl OverlayRenderer {
 	}
 
 	/// Updates the position of the overlays based on the VectorShape points
-	pub fn place_overlays(&self, anchor: &VectorAnchor, overlays: &AnchorOverlays, responses: &mut VecDeque<Message>) {
+	fn place_overlays(&self, anchor: &VectorAnchor, overlays: &AnchorOverlays, responses: &mut VecDeque<Message>) {
 		if let Some(anchor_point) = anchor.points[ControlPointType::Anchor] {
 			// Helper function to keep things DRY
 			let mut place_handle_and_line = |handle: &VectorControlPoint, line: &Option<Vec<LayerId>>| {
@@ -162,14 +177,14 @@ impl OverlayRenderer {
 	}
 
 	/// Removes the anchor / handle overlays from the overlay document
-	pub fn remove_anchor_overlays(&mut self, overlays: &AnchorOverlays, responses: &mut VecDeque<Message>) {
+	fn remove_anchor_overlays(&mut self, overlays: &AnchorOverlays, responses: &mut VecDeque<Message>) {
 		overlays.iter().flatten().for_each(|layer_id| {
 			responses.push_back(DocumentMessage::Overlays(Operation::RemoveLayer(layer_id.clone()).into()).into());
 		});
 	}
 
 	/// Sets the visibility of the handles overlay
-	pub fn set_overlay_visiblity(&self, anchor_overlays: &AnchorOverlays, visibility: bool, responses: &mut VecDeque<Message>) {
+	fn set_overlay_visiblity(&self, anchor_overlays: &AnchorOverlays, visibility: bool, responses: &mut VecDeque<Message>) {
 		anchor_overlays.iter().flatten().for_each(|layer_id| {
 			responses.push_back(self.overlay_visibility_message(layer_id.clone(), visibility));
 		});
@@ -200,7 +215,7 @@ impl OverlayRenderer {
 	}
 
 	/// Sets the overlay style for this point
-	pub fn set_overlay_style(&self, stroke_width: f32, stroke_color: Color, fill_color: Color, responses: &mut VecDeque<Message>) {
+	fn set_overlay_style(&self, stroke_width: f32, stroke_color: Color, fill_color: Color, responses: &mut VecDeque<Message>) {
 		if let Some(overlay_path) = &self.overlay_path {
 			responses.push_back(
 				DocumentMessage::Overlays(
