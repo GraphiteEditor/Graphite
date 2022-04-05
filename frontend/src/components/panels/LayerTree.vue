@@ -1,5 +1,5 @@
 <template>
-	<LayoutCol class="layer-tree-panel">
+	<LayoutCol class="layer-tree">
 		<LayoutRow class="options-bar">
 			<DropdownInput
 				v-model:selectedIndex="blendModeSelectedIndex"
@@ -36,7 +36,7 @@
 				<IconButton :action="deleteSelectedLayers" :icon="'Trash'" title="Delete Selected (Del)" :size="16" />
 			</LayoutRow>
 		</LayoutRow>
-		<LayoutRow class="layer-tree" :scrollableY="true">
+		<LayoutRow class="layer-tree-rows" :scrollableY="true">
 			<LayoutCol class="list" ref="layerTreeList" @click="() => deselectAllLayers()" @dragover="(e) => draggable && updateInsertLine(e)" @dragend="() => draggable && drop()">
 				<LayoutRow
 					class="layer-row"
@@ -74,10 +74,10 @@
 						:title="`${listing.entry.name}\n${devMode ? 'Layer Path: ' + listing.entry.path.join(' / ') : ''}`"
 					>
 						<LayoutRow class="layer-type-icon">
-							<IconLabel v-if="listing.entry.layer_type === 'Folder'" :icon="'NodeFolder'" title="Folder" />
-							<IconLabel v-else-if="listing.entry.layer_type === 'Image'" :icon="'NodeImage'" title="Image" />
-							<IconLabel v-else-if="listing.entry.layer_type === 'Shape'" :icon="'NodeShape'" title="Shape" />
-							<IconLabel v-else-if="listing.entry.layer_type === 'Text'" :icon="'NodeText'" title="Path" />
+							<IconLabel v-if="listing.entry.layer_type === 'Folder'" :icon="'NodeFolder'" :style="'node'" title="Folder" />
+							<IconLabel v-else-if="listing.entry.layer_type === 'Image'" :icon="'NodeImage'" :style="'node'" title="Image" />
+							<IconLabel v-else-if="listing.entry.layer_type === 'Shape'" :icon="'NodeShape'" :style="'node'" title="Shape" />
+							<IconLabel v-else-if="listing.entry.layer_type === 'Text'" :icon="'NodeText'" :style="'node'" title="Path" />
 						</LayoutRow>
 						<LayoutRow class="layer-name" @dblclick="() => onEditLayerName(listing)">
 							<input
@@ -102,7 +102,7 @@
 </template>
 
 <style lang="scss">
-.layer-tree-panel {
+.layer-tree {
 	min-height: 0;
 
 	.options-bar {
@@ -134,7 +134,7 @@
 		}
 	}
 
-	.layer-tree {
+	.layer-tree-rows {
 		margin-top: 4px;
 		// Crop away the 1px border below the bottom layer entry when it uses the full space of this panel
 		margin-bottom: -1px;
@@ -219,12 +219,6 @@
 				.layer-type-icon {
 					flex: 0 0 auto;
 					margin: 0 4px;
-
-					.icon-label {
-						border-radius: 2px;
-						background: var(--color-node-background);
-						fill: var(--color-node-icon);
-					}
 				}
 
 				.layer-name {

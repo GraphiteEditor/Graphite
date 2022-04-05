@@ -70,8 +70,12 @@
 	--color-data-general-rgb: 197, 197, 197;
 	--color-data-vector: #65bbe5;
 	--color-data-vector-rgb: 101, 187, 229;
+	--color-data-vector-dim: #4b778c;
+	--color-data-vector-dim-rgb: 75, 119, 140;
 	--color-data-raster: #e4bb72;
 	--color-data-raster-rgb: 228, 187, 114;
+	--color-data-raster-dim: #8b7752;
+	--color-data-raster-dim-rgb: 139, 119, 82;
 	--color-data-mask: #8d85c7;
 	--color-data-mask-rgb: 141, 133, 199;
 	--color-data-unused1: #d6536e;

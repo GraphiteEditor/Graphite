@@ -2,26 +2,32 @@
 	<LayoutRow class="workspace" data-workspace>
 		<LayoutRow class="workspace-grid-subdivision">
 			<LayoutCol class="workspace-grid-subdivision">
-				<Panel
-					:panelType="'Document'"
-					:tabCloseButtons="true"
-					:tabMinWidths="true"
-					:tabLabels="documents.state.documents.map((doc) => doc.displayName)"
-					:clickAction="
-						(tabIndex) => {
-							const targetId = documents.state.documents[tabIndex].id;
-							editor.instance.select_document(targetId);
-						}
-					"
-					:closeAction="
-						(tabIndex) => {
-							const targetId = documents.state.documents[tabIndex].id;
-							editor.instance.close_document_with_confirmation(targetId);
-						}
-					"
-					:tabActiveIndex="documents.state.activeDocumentIndex"
-					ref="documentsPanel"
-				/>
+				<LayoutRow class="workspace-grid-subdivision">
+					<Panel
+						:panelType="'Document'"
+						:tabCloseButtons="true"
+						:tabMinWidths="true"
+						:tabLabels="documents.state.documents.map((doc) => doc.displayName)"
+						:clickAction="
+							(tabIndex) => {
+								const targetId = documents.state.documents[tabIndex].id;
+								editor.instance.select_document(targetId);
+							}
+						"
+						:closeAction="
+							(tabIndex) => {
+								const targetId = documents.state.documents[tabIndex].id;
+								editor.instance.close_document_with_confirmation(targetId);
+							}
+						"
+						:tabActiveIndex="documents.state.activeDocumentIndex"
+						ref="documentsPanel"
+					/>
+				</LayoutRow>
+				<LayoutRow class="workspace-grid-resize-gutter" @pointerdown="(e) => resizePanel(e)"></LayoutRow>
+				<LayoutRow class="workspace-grid-subdivision">
+					<Panel :panelType="'NodeGraph'" :tabLabels="['Node Graph']" :tabActiveIndex="0" />
+				</LayoutRow>
 			</LayoutCol>
 			<LayoutCol class="workspace-grid-resize-gutter" @pointerdown="(e) => resizePanel(e)"></LayoutCol>
 			<LayoutCol class="workspace-grid-subdivision" style="flex-grow: 0.17">

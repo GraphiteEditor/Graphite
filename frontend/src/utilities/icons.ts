@@ -49,10 +49,19 @@ import FlipHorizontal from "@/../assets/16px-solid/flip-horizontal.svg";
 import FlipVertical from "@/../assets/16px-solid/flip-vertical.svg";
 import GraphiteLogo from "@/../assets/16px-solid/graphite-logo.svg";
 import NewLayer from "@/../assets/16px-solid/new-layer.svg";
+import NodeBlur from "@/../assets/16px-solid/node-blur.svg";
+import NodeBrushwork from "@/../assets/16px-solid/node-brushwork.svg";
+import NodeColorCorrection from "@/../assets/16px-solid/node-color-correction.svg";
 import NodeFolder from "@/../assets/16px-solid/node-folder.svg";
+import NodeGradient from "@/../assets/16px-solid/node-gradient.svg";
 import NodeImage from "@/../assets/16px-solid/node-image.svg";
+import NodeMagicWand from "@/../assets/16px-solid/node-magic-wand.svg";
+import NodeMask from "@/../assets/16px-solid/node-mask.svg";
+import NodeMotionBlur from "@/../assets/16px-solid/node-motion-blur.svg";
+import NodeOutput from "@/../assets/16px-solid/node-output.svg";
 import NodeShape from "@/../assets/16px-solid/node-shape.svg";
 import NodeText from "@/../assets/16px-solid/node-text.svg";
+import NodeTransform from "@/../assets/16px-solid/node-transform.svg";
 import Paste from "@/../assets/16px-solid/paste.svg";
 import Trash from "@/../assets/16px-solid/trash.svg";
 import ViewModeNormal from "@/../assets/16px-solid/view-mode-normal.svg";
@@ -157,11 +166,20 @@ export const ICON_LIST = {
 	FlipVertical: { component: FlipVertical, size: size16 },
 	GraphiteLogo: { component: GraphiteLogo, size: size16 },
 	NewLayer: { component: NewLayer, size: size16 },
-	Paste: { component: Paste, size: size16 },
+	NodeBlur: { component: NodeBlur, size: size16 },
+	NodeBrushwork: { component: NodeBrushwork, size: size16 },
+	NodeColorCorrection: { component: NodeColorCorrection, size: size16 },
 	NodeFolder: { component: NodeFolder, size: size16 },
+	NodeGradient: { component: NodeGradient, size: size16 },
 	NodeImage: { component: NodeImage, size: size16 },
+	NodeMagicWand: { component: NodeMagicWand, size: size16 },
+	NodeMask: { component: NodeMask, size: size16 },
+	NodeMotionBlur: { component: NodeMotionBlur, size: size16 },
+	NodeOutput: { component: NodeOutput, size: size16 },
 	NodeShape: { component: NodeShape, size: size16 },
 	NodeText: { component: NodeText, size: size16 },
+	NodeTransform: { component: NodeTransform, size: size16 },
+	Paste: { component: Paste, size: size16 },
 	Trash: { component: Trash, size: size16 },
 	ViewModeNormal: { component: ViewModeNormal, size: size16 },
 	ViewModeOutline: { component: ViewModeOutline, size: size16 },
