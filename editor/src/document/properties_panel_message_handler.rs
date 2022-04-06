@@ -2,14 +2,15 @@ use super::layer_panel::LayerDataTypeDiscriminant;
 use crate::document::properties_panel_message::TransformOp;
 use crate::layout::layout_message::LayoutTarget;
 use crate::layout::widgets::{
-	ColorInput, IconLabel, LayoutRow, NumberInput, PopoverButton, Separator, SeparatorDirection, SeparatorType, TextInput, TextLabel, Widget, WidgetCallback, WidgetHolder, WidgetLayout,
+	ColorInput, IconLabel, LayoutRow, NumberInput, PopoverButton, RadioEntryData, RadioInput, Separator, SeparatorDirection, SeparatorType, TextInput, TextLabel, Widget, WidgetCallback, WidgetHolder,
+	WidgetLayout,
 };
 use crate::message_prelude::*;
 
 use graphene::color::Color;
 use graphene::document::Document as GrapheneDocument;
 use graphene::layers::layer_info::{Layer, LayerDataType};
-use graphene::layers::style::{Fill, Stroke};
+use graphene::layers::style::{Fill, LineCap, LineJoin, Stroke};
 use graphene::{LayerId, Operation};
 
 use glam::{DAffine2, DVec2};
@@ -165,16 +166,9 @@ impl MessageHandler<PropertiesPanelMessage, &GrapheneDocument> for PropertiesPan
 				let path = self.active_path.clone().expect("Received update for properties panel with no active layer");
 				responses.push_back(Operation::SetLayerFill { path, fill }.into());
 			}
-			ModifyStroke { color, weight } => {
+			ModifyStroke { stroke } => {
 				let path = self.active_path.clone().expect("Received update for properties panel with no active layer");
-				let layer = graphene_document.layer(&path).unwrap();
-				if let Some(color) = Color::from_rgba_str(&color).or_else(|| Color::from_rgb_str(&color)) {
-					let stroke = Stroke::new(color, weight as f32);
-					responses.push_back(Operation::SetLayerStroke { path, stroke }.into())
-				} else {
-					// Failed to update, Show user unchanged state
-					register_layer_properties(layer, responses)
-				}
+				responses.push_back(Operation::SetLayerStroke { path, stroke }.into())
 			}
 			CheckSelectedWasUpdated { path } => {
 				if self.matches_selected(&path) {
@@ -564,8 +558,19 @@ fn node_section_fill(fill: &Fill) -> Option<LayoutRow> {
 }
 
 fn node_section_stroke(stroke: &Stroke) -> LayoutRow {
-	let color = stroke.color();
-	let weight = stroke.width();
+	// TODO: Cleanup
+	let internal_stroke1 = stroke.clone();
+	let internal_stroke2 = stroke.clone();
+	let internal_stroke3 = stroke.clone();
+	let internal_stroke4 = stroke.clone();
+	let internal_stroke5 = stroke.clone();
+	let internal_stroke6 = stroke.clone();
+	let internal_stroke7 = stroke.clone();
+	let internal_stroke8 = stroke.clone();
+	let internal_stroke9 = stroke.clone();
+	let internal_stroke10 = stroke.clone();
+	let internal_stroke11 = stroke.clone();
+
 	LayoutRow::Section {
 		name: "Stroke".into(),
 		layout: vec![
@@ -583,11 +588,10 @@ fn node_section_stroke(stroke: &Stroke) -> LayoutRow {
 					WidgetHolder::new(Widget::ColorInput(ColorInput {
 						value: stroke.color().rgba_hex(),
 						on_update: WidgetCallback::new(move |text_input: &ColorInput| {
-							PropertiesPanelMessage::ModifyStroke {
-								color: text_input.value.clone(),
-								weight: weight as f64,
-							}
-							.into()
+							internal_stroke1
+								.clone()
+								.with_color(&text_input.value)
+								.map_or(PropertiesPanelMessage::ResendActiveProperties.into(), |stroke| PropertiesPanelMessage::ModifyStroke { stroke }.into())
 						}),
 					})),
 				],
@@ -610,8 +614,177 @@ fn node_section_stroke(stroke: &Stroke) -> LayoutRow {
 						unit: " px".into(),
 						on_update: WidgetCallback::new(move |number_input: &NumberInput| {
 							PropertiesPanelMessage::ModifyStroke {
-								color: color.rgba_hex(),
-								weight: number_input.value,
+								stroke: internal_stroke2.clone().with_width(number_input.value as f32),
+							}
+							.into()
+						}),
+						..NumberInput::default()
+					})),
+				],
+			},
+			LayoutRow::Row {
+				name: "".into(),
+				widgets: vec![
+					WidgetHolder::new(Widget::TextLabel(TextLabel {
+						value: "Dash lengths array".into(),
+						..TextLabel::default()
+					})),
+					WidgetHolder::new(Widget::Separator(Separator {
+						separator_type: SeparatorType::Unrelated,
+						direction: SeparatorDirection::Horizontal,
+					})),
+					WidgetHolder::new(Widget::TextInput(TextInput {
+						value: stroke.dash_lengths(),
+						on_update: WidgetCallback::new(move |text_input: &TextInput| {
+							internal_stroke3
+								.clone()
+								.with_dash_lengths(&text_input.value)
+								.map_or(PropertiesPanelMessage::ResendActiveProperties.into(), |stroke| PropertiesPanelMessage::ModifyStroke { stroke }.into())
+						}),
+					})),
+				],
+			},
+			LayoutRow::Row {
+				name: "".into(),
+				widgets: vec![
+					WidgetHolder::new(Widget::TextLabel(TextLabel {
+						value: "Dash offset".into(),
+						..TextLabel::default()
+					})),
+					WidgetHolder::new(Widget::Separator(Separator {
+						separator_type: SeparatorType::Unrelated,
+						direction: SeparatorDirection::Horizontal,
+					})),
+					WidgetHolder::new(Widget::NumberInput(NumberInput {
+						value: stroke.dash_offset() as f64,
+						is_integer: true,
+						min: Some(0.),
+						unit: " px".into(),
+						on_update: WidgetCallback::new(move |number_input: &NumberInput| {
+							PropertiesPanelMessage::ModifyStroke {
+								stroke: internal_stroke4.clone().with_dash_offset(number_input.value as f32),
+							}
+							.into()
+						}),
+						..NumberInput::default()
+					})),
+				],
+			},
+			LayoutRow::Row {
+				name: "".into(),
+				widgets: vec![
+					WidgetHolder::new(Widget::TextLabel(TextLabel {
+						value: "Line cap".into(),
+						..TextLabel::default()
+					})),
+					WidgetHolder::new(Widget::Separator(Separator {
+						separator_type: SeparatorType::Unrelated,
+						direction: SeparatorDirection::Horizontal,
+					})),
+					WidgetHolder::new(Widget::RadioInput(RadioInput {
+						selected_index: stroke.line_cap_index(),
+						entries: vec![
+							RadioEntryData {
+								label: "butt".into(),
+								on_update: WidgetCallback::new(move |_| {
+									PropertiesPanelMessage::ModifyStroke {
+										stroke: internal_stroke6.clone().with_linecap(LineCap::Butt),
+									}
+									.into()
+								}),
+								..RadioEntryData::default()
+							},
+							RadioEntryData {
+								label: "round".into(),
+								on_update: WidgetCallback::new(move |_| {
+									PropertiesPanelMessage::ModifyStroke {
+										stroke: internal_stroke7.clone().with_linecap(LineCap::Round),
+									}
+									.into()
+								}),
+								..RadioEntryData::default()
+							},
+							RadioEntryData {
+								label: "square".into(),
+								on_update: WidgetCallback::new(move |_| {
+									PropertiesPanelMessage::ModifyStroke {
+										stroke: internal_stroke8.clone().with_linecap(LineCap::Square),
+									}
+									.into()
+								}),
+								..RadioEntryData::default()
+							},
+						],
+					})),
+				],
+			},
+			LayoutRow::Row {
+				name: "".into(),
+				widgets: vec![
+					WidgetHolder::new(Widget::TextLabel(TextLabel {
+						value: "Line join".into(),
+						..TextLabel::default()
+					})),
+					WidgetHolder::new(Widget::Separator(Separator {
+						separator_type: SeparatorType::Unrelated,
+						direction: SeparatorDirection::Horizontal,
+					})),
+					WidgetHolder::new(Widget::RadioInput(RadioInput {
+						selected_index: stroke.line_join_index(),
+						entries: vec![
+							RadioEntryData {
+								label: "bevel".into(),
+								on_update: WidgetCallback::new(move |_| {
+									PropertiesPanelMessage::ModifyStroke {
+										stroke: internal_stroke9.clone().with_linejoin(LineJoin::Bevel),
+									}
+									.into()
+								}),
+								..RadioEntryData::default()
+							},
+							RadioEntryData {
+								label: "miter".into(),
+								on_update: WidgetCallback::new(move |_| {
+									PropertiesPanelMessage::ModifyStroke {
+										stroke: internal_stroke10.clone().with_linejoin(LineJoin::Miter),
+									}
+									.into()
+								}),
+								..RadioEntryData::default()
+							},
+							RadioEntryData {
+								label: "round".into(),
+								on_update: WidgetCallback::new(move |_| {
+									PropertiesPanelMessage::ModifyStroke {
+										stroke: internal_stroke11.clone().with_linejoin(LineJoin::Round),
+									}
+									.into()
+								}),
+								..RadioEntryData::default()
+							},
+						],
+					})),
+				],
+			},
+			LayoutRow::Row {
+				name: "".into(),
+				widgets: vec![
+					WidgetHolder::new(Widget::TextLabel(TextLabel {
+						value: "Miterlimit".into(),
+						..TextLabel::default()
+					})),
+					WidgetHolder::new(Widget::Separator(Separator {
+						separator_type: SeparatorType::Unrelated,
+						direction: SeparatorDirection::Horizontal,
+					})),
+					WidgetHolder::new(Widget::NumberInput(NumberInput {
+						value: stroke.miterlimit() as f64,
+						is_integer: true,
+						min: Some(0.),
+						unit: " miter length / weight".into(),
+						on_update: WidgetCallback::new(move |number_input: &NumberInput| {
+							PropertiesPanelMessage::ModifyStroke {
+								stroke: internal_stroke5.clone().with_miterlimit(number_input.value as f32),
 							}
 							.into()
 						}),

@@ -1,4 +1,4 @@
-use std::fmt::Write;
+use std::fmt::{self, Display, Write};
 
 use crate::color::Color;
 use crate::consts::{LAYER_OUTLINE_STROKE_COLOR, LAYER_OUTLINE_STROKE_WIDTH};
@@ -134,14 +134,55 @@ impl Fill {
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub enum LineCap {
+	Butt,
+	Round,
+	Square,
+}
+
+impl Display for LineCap {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		f.write_str(match &self {
+			LineCap::Butt => "butt",
+			LineCap::Round => "round",
+			LineCap::Square => "square",
+		})
+	}
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub enum LineJoin {
+	Bevel,
+	Miter,
+	Round,
+}
+
+impl Display for LineJoin {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		f.write_str(match &self {
+			LineJoin::Bevel => "bevel",
+			LineJoin::Miter => "miter",
+			LineJoin::Round => "round",
+		})
+	}
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Stroke {
 	color: Color,
 	width: f32,
+	dash_lengths: Vec<f32>,
+	dash_offset: f32,
+	line_cap: LineCap,
+	line_join: LineJoin,
+	miter_limit: f32,
 }
 
 impl Stroke {
-	pub const fn new(color: Color, width: f32) -> Self {
-		Self { color, width }
+	pub fn new(color: Color, width: f32) -> Self {
+		Self { color, width, ..Default::default() }
 	}
 
 	pub fn color(&self) -> Color {
@@ -152,8 +193,76 @@ impl Stroke {
 		self.width
 	}
 
+	pub fn dash_lengths(&self) -> String {
+		self.dash_lengths.iter().map(|v| v.to_string()).collect::<Vec<_>>().join(", ")
+	}
+
+	pub fn dash_offset(&self) -> f32 {
+		self.dash_offset
+	}
+
+	pub fn line_cap_index(&self) -> u32 {
+		self.line_cap as u32
+	}
+	pub fn line_join_index(&self) -> u32 {
+		self.line_join as u32
+	}
+
+	pub fn miterlimit(&self) -> f32 {
+		self.miter_limit as f32
+	}
+
 	pub fn render(&self) -> String {
-		format!(r##" stroke="#{}"{} stroke-width="{}""##, self.color.rgb_hex(), format_opacity("stroke", self.color.a()), self.width)
+		format!(
+			r##" stroke="#{}"{} stroke-width="{}" stroke-dasharray="{}" stroke-dashoffset="{}" stroke-linecap="{}" stroke-linejoin="{}" stroke-miterlimit="{}" "##,
+			self.color.rgb_hex(),
+			format_opacity("stroke", self.color.a()),
+			self.width,
+			self.dash_lengths(),
+			self.dash_offset,
+			self.line_cap,
+			self.line_join,
+			self.miter_limit
+		)
+	}
+
+	pub fn with_color(mut self, color: &str) -> Option<Self> {
+		Color::from_rgba_str(color).or_else(|| Color::from_rgb_str(color)).map(|color| {
+			self.color = color;
+			self
+		})
+	}
+	pub fn with_width(mut self, width: f32) -> Self {
+		self.width = width;
+		self
+	}
+	pub fn with_dash_lengths(mut self, dash_lengths: &str) -> Option<Self> {
+		dash_lengths
+			.split(&[',', ' '])
+			.filter(|x| !x.is_empty())
+			.map(str::parse::<f32>)
+			.collect::<Result<Vec<_>, _>>()
+			.ok()
+			.map(|lengths| {
+				self.dash_lengths = lengths;
+				self
+			})
+	}
+	pub fn with_dash_offset(mut self, dash_offset: f32) -> Self {
+		self.dash_offset = dash_offset;
+		self
+	}
+	pub fn with_linecap(mut self, line_cap: LineCap) -> Self {
+		self.line_cap = line_cap;
+		self
+	}
+	pub fn with_linejoin(mut self, line_join: LineJoin) -> Self {
+		self.line_join = line_join;
+		self
+	}
+	pub fn with_miterlimit(mut self, miterlimit: f32) -> Self {
+		self.miter_limit = miterlimit;
+		self
 	}
 }
 
@@ -163,6 +272,11 @@ impl Default for Stroke {
 		Self {
 			width: 0.,
 			color: Color::from_rgba8(0, 0, 0, 255),
+			dash_lengths: vec![0.],
+			dash_offset: 0.,
+			line_cap: LineCap::Butt,
+			line_join: LineJoin::Miter,
+			miter_limit: 4.,
 		}
 	}
 }
@@ -184,7 +298,7 @@ impl PathStyle {
 	}
 
 	pub fn stroke(&self) -> Option<Stroke> {
-		self.stroke
+		self.stroke.clone()
 	}
 
 	pub fn set_fill(&mut self, fill: Fill) {
@@ -208,7 +322,7 @@ impl PathStyle {
 			(ViewMode::Outline, _) => Fill::None.render(svg_defs),
 			(_, fill) => fill.render(svg_defs),
 		};
-		let stroke_attribute = match (view_mode, self.stroke) {
+		let stroke_attribute = match (view_mode, &self.stroke) {
 			(ViewMode::Outline, _) => Stroke::new(LAYER_OUTLINE_STROKE_COLOR, LAYER_OUTLINE_STROKE_WIDTH).render(),
 			(_, Some(stroke)) => stroke.render(),
 			(_, None) => String::new(),
