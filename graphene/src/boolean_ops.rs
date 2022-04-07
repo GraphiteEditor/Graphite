@@ -5,9 +5,9 @@ use crate::layers::style::PathStyle;
 
 use kurbo::{BezPath, CubicBez, Line, ParamCurve, ParamCurveArclen, ParamCurveArea, ParamCurveExtrema, PathEl, PathSeg, Point, QuadBez, Rect};
 use serde::{Deserialize, Serialize};
-use std::collections::btree_set::Difference;
+use std::cell::RefCell;
 use std::fmt::{self, Debug, Formatter};
-use std::mem::{replace, swap};
+use std::mem::swap;
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq)]
 pub enum BooleanOperation {
@@ -169,7 +169,6 @@ impl PathGraph {
 		// An odd number of intersections occurs when either:
 		// 1. There exists a tangential intersection (which shouldn't affect boolean ops)
 		// 2. The algorithm has found an extra intersection or missed an intersection
-		// log::debug!("{:?}", new.vertices);
 		if new.size() == 0 {
 			return Err(BooleanOperationError::NoIntersections);
 		}
@@ -477,19 +476,43 @@ pub fn subdivide_path_seg(p: &PathSeg, t_values: &mut [f64]) -> Vec<Option<PathS
 }
 
 /// * shapes.len() > 1
-pub fn composite_boolean_operation(mut select: BooleanOperation, shapes: &mut Vec<ShapeLayer>) -> Result<Vec<ShapeLayer>, BooleanOperationError> {
+pub fn composite_boolean_operation(mut select: BooleanOperation, shapes: &mut Vec<RefCell<ShapeLayer>>) -> Result<Vec<ShapeLayer>, BooleanOperationError> {
 	if let BooleanOperation::SubtractBack = select {
 		select = BooleanOperation::SubtractFront;
 		let temp_len = shapes.len();
 		shapes.swap(0, temp_len - 1);
 	}
 	match select {
-		BooleanOperation::Union | BooleanOperation::Intersection | BooleanOperation::SubtractFront | BooleanOperation::SubtractBack => {
-			let mut partial_union = boolean_operation(select, &mut shapes[0].clone(), &mut shapes[1])?;
-			for shape_idx in 2..shapes.len() {
-				partial_union = boolean_operation(select, partial_union.first_mut().unwrap(), shapes.get_mut(shape_idx).unwrap())?;
+		BooleanOperation::Union => {
+			let mut nothing_done = false;
+			let mut idx = 0;
+			while !nothing_done && shapes.len() > 1 {
+				idx += 1;
+				nothing_done = true;
+				let partial_union = boolean_operation(select, &mut shapes[idx].borrow_mut(), &mut shapes[(idx + 1) % shapes.len()].borrow_mut());
+				match partial_union {
+					Ok(temp_union) => {
+						nothing_done = false;
+						shapes.append(&mut temp_union.into_iter().map(|shape_layer| RefCell::new(shape_layer)).collect());
+						shapes.swap_remove(idx);
+						shapes.swap_remove((idx + 1) % shapes.len());
+					}
+					Err(BooleanOperationError::NothingDone) => (),
+					Err(err) => return Err(err),
+				}
 			}
-			Ok(partial_union)
+			Ok(shapes.iter().map(|ref_shape_layer| ref_shape_layer.borrow().clone()).collect())
+		}
+		BooleanOperation::Intersection | BooleanOperation::SubtractFront | BooleanOperation::SubtractBack => {
+			let mut partial = boolean_operation(select, &mut shapes[0].borrow_mut(), &mut shapes[1].borrow_mut())?;
+			for shape_idx in 2..shapes.len() {
+				let mut temp = Vec::new();
+				for mut partial_piece in partial {
+					temp.append(&mut boolean_operation(select, &mut partial_piece, &mut shapes[shape_idx].borrow_mut())?);
+				}
+				partial = temp; // this move should be done without copying
+			}
+			Ok(partial)
 		}
 		BooleanOperation::Difference => {
 			let mut difference = Vec::new();

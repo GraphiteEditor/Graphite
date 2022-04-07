@@ -1,6 +1,6 @@
 use core::panic;
-use std::collections::VecDeque;
 use std::ops::Mul;
+use std::{collections::VecDeque, ops::Sub};
 
 use crate::{
 	boolean_ops::reverse_path_segment,
@@ -172,7 +172,7 @@ struct SubCurve<'a> {
 }
 
 impl<'a> SubCurve<'a> {
-	// TODO: Fix this Clippy lint error
+	/// extrema given by SubCurve::subcurve_extrema, they are stored externally so they don't have to recalculated
 	pub fn new(parent: &'a PathSeg, extrema: &'a Vec<(Point, f64)>) -> Self {
 		SubCurve {
 			curve: parent,
@@ -181,6 +181,16 @@ impl<'a> SubCurve<'a> {
 			local: [parent.eval(0.0), parent.eval(1.0)],
 			extrema,
 		}
+	}
+
+	pub fn subcurve_extrema(parent: &PathSeg) -> Vec<(Point, f64)> {
+		// Extrema at endpoints should not be included here as they must be calculated for each subcurve
+		// Note: below filtering may filter out extrema near the endpoints
+		parent
+			.extrema()
+			.iter()
+			.filter_map(|t| if *t > F64PRECISE && *t < 1.0 - F64PRECISE { Some((parent.eval(*t), *t)) } else { None })
+			.collect()
 	}
 
 	fn bounding_box(&self) -> Rect {
@@ -250,17 +260,7 @@ impl<'a> SubCurve<'a> {
 }
 
 // TODO: use the cool algorithm described in: https://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.99.9678&rep=rep1&type=pdf
-// Bezier Curve Intersection Algorithm
-// TODO: how does f64 precision affect the algorithm?
-// Error correction schemes?
-// TODO: profile algorithm
-// TODO: intersections of overlapping curve
-// If the algorithm is rewritten to be non-recursive it can be restructured to be more breadth first then depth first
-// Test for overlapping curves by splitting the curves
-// Improvement: intersections on the end of segments
-// Improvement: more adaptive way to decide when "close enough"
-// Optimization: any extra copying happening?
-
+/// Bezier Curve Intersection Algorithm
 fn path_intersections(a: &SubCurve, b: &SubCurve, intersections: &mut Vec<Intersect>) {
 	// at recursion depth 10:
 	//		maximum recursive execution paths = 4^10 = 1048576
@@ -292,8 +292,8 @@ fn path_intersections(a: &SubCurve, b: &SubCurve, intersections: &mut Vec<Inters
 			}
 			if let Some(mut cross) = line_intersection(&Line { p0: a.start(), p1: a.end() }, &Line { p0: b.start(), p1: b.end() }) {
 				// Intersection `t_value` equals the recursive `t_value` + interpolated intersection value
-				cross.t_a = a.start_t + cross.t_a * recursion;
 				cross.t_b = b.start_t + cross.t_b * recursion;
+				cross.t_a = a.start_t + cross.t_a * recursion;
 				cross.quality = guess_quality(a.curve, b.curve, &cross);
 
 				// log::debug!("checking: {:?}", cross.quality);
@@ -351,8 +351,10 @@ fn path_intersections(a: &SubCurve, b: &SubCurve, intersections: &mut Vec<Inters
 	}
 }
 
-// TODO: handle the case where a quadratic or cubic curve is straight and overlaps with a line
-/// Does nothing when neither PathSeg is a line
+/// Does nothing when neither PathSeg in `line_curve` is a line.
+/// Closure `t_validate` takes the two t_values of an Intersect as arguments.
+/// The order of the t_values corresponds with the order of the PathSegs in `line_curve`,
+/// `t_validate` should return true for allowable intersection t_values, valid intersections will be added to `intersections`.
 pub fn line_curve_intersections<F>(line_curve: (&PathSeg, &PathSeg), t_validate: F, intersections: &mut Vec<Intersect>)
 where
 	F: Fn(f64, f64) -> bool,
@@ -403,8 +405,10 @@ where
 							return None;
 						}
 						if is_line_a {
+							log::debug!("{:?}", guess_quality(&PathSeg::Line(*line), curve, &Intersect::from((point, line_time, *time))));
 							Some(Intersect::from((point, line_time, *time)))
 						} else {
+							log::debug!("{:?}", guess_quality(&PathSeg::Line(*line), curve, &Intersect::from((point, line_time, *time))));
 							Some(Intersect::from((point, *time, line_time)))
 						}
 					} else {
@@ -425,7 +429,7 @@ fn guess_quality(a: &PathSeg, b: &PathSeg, guess: &Intersect) -> f64 {
 }
 
 /// if curves overlap, returns intersects corresponding to the endpoints of the overlapping section
-/// *May Panic if either curve is very short, has endpoints which are close together
+/// *May Panic if either curve is very short, or has endpoints which are close together
 /// TODO: test this, especially the overlapping curve cases which are more complex
 pub fn overlapping_curve_intersections(a: &PathSeg, b: &PathSeg) -> [Option<Intersect>; 2] {
 	// To check if two curves overlap we find if the endpoints of either curve are on the other curve.
@@ -500,7 +504,7 @@ pub fn overlapping_curve_intersections(a: &PathSeg, b: &PathSeg) -> [Option<Inte
 	}
 }
 
-/// Returns true if the Bezier curves described by A and B have the same control polygon
+/// Returns true if the Bezier curves described by `a` and `b` have the same control polygon.
 /// The order of the polygon does not effect the result,
 pub fn match_control_polygon(a: &PathSeg, b: &PathSeg) -> bool {
 	let mut a_polygon = get_control_polygon(a);
@@ -559,26 +563,22 @@ pub fn get_control_polygon(a: &PathSeg) -> Vec<Point> {
 	}
 }
 
-/// if p in on pathseg a, returns Some(t_value) for p
-/// in the edge case where the path crosses itself, and p is at the cross, the first t_value found (but not necessarily the smallest t_value) is returned
-/// TODO: How precise should the below comparisons be
+/// if `p` in on pathseg `a`, returns `Some(t_value)` for `p`
+/// in the edge case where the path crosses itself, and `p` is at the cross, the first t_value found (but not necessarily the smallest t_value) is returned
+/// TODO: create a trait or something for roots to remove duplicate code
 pub fn point_t_value(a: &PathSeg, p: &Point) -> Option<f64> {
 	match a {
 		PathSeg::Line(line) => {
-			let mut test_line = line_intersection(line, &Line::new(Point::new(p.x, p.y - 1.0), Point::new(p.x, p.y + 1.0)));
-			if test_line.is_none() {
-				test_line = line_intersection(line, &Line::new(Point::new(p.x - 1.0, p.y), Point::new(p.x + 1.0, p.y)))
-			}
-			match test_line {
-				Some(intersect) => {
-					if (intersect.point.y - p.y).abs() < F64LOOSE && (intersect.point.x - p.x).abs() < F64LOOSE {
-						Some(intersect.t_a)
-					} else {
-						None
-					}
+			let [mut p0, p1] = linear_bezier_coefficients(line);
+			p0 -= p.to_vec2();
+			let x_root = linear_root(p0.x, p1.x);
+			let y_root = linear_root(p0.x, p1.y);
+			if let (Some(x_root_val), Some(y_root_val)) = (x_root, y_root) {
+				if x_root_val == y_root_val {
+					return Some(x_root_val);
 				}
-				_ => None,
 			}
+			return None;
 		}
 		PathSeg::Quad(quad) => {
 			let [mut p0, p1, p2] = quadratic_bezier_coefficients(quad);
@@ -618,19 +618,9 @@ pub fn intersections(a: &BezPath, b: &BezPath) -> Vec<Intersect> {
 	let mut intersections: Vec<Intersect> = Vec::new();
 	// There is some duplicate computation of b_extrema here, but I doubt it's significant
 	a.segments().enumerate().for_each(|(a_index, a_seg)| {
-		// Extrema at endpoints should not be included here as they must be calculated for each subcurve
-		// Note: below filtering may filter out extrema near the endpoints
-		let a_extrema = a_seg
-			.extrema()
-			.iter()
-			.filter_map(|t| if *t > F64PRECISE && *t < 1.0 - F64PRECISE { Some((a_seg.eval(*t), *t)) } else { None })
-			.collect();
+		let a_extrema = SubCurve::subcurve_extrema(&a_seg);
 		b.segments().enumerate().for_each(|(b_index, b_seg)| {
-			let b_extrema = b_seg
-				.extrema()
-				.iter()
-				.filter_map(|t| if *t > F64PRECISE && *t < 1.0 - F64PRECISE { Some((b_seg.eval(*t), *t)) } else { None })
-				.collect();
+			let b_extrema = SubCurve::subcurve_extrema(&b_seg);
 			let mut intersects = Vec::new();
 			path_intersections(&SubCurve::new(&a_seg, &a_extrema), &SubCurve::new(&b_seg, &b_extrema), &mut intersects);
 			for mut path_intersection in intersects {
@@ -674,7 +664,7 @@ pub fn line_intersection_unchecked(a: &Line, b: &Line) -> Option<Intersect> {
 	Some(Intersect::from((b.eval(t_values[0]), t_values[1], t_values[0])))
 }
 
-/// return the t_value of the point nearest to p on a
+/// return the t_value of the point nearest to `p` on `a`
 pub fn projection_on_line(a: &Line, p: &Point) -> f64 {
 	let ray = a.p1.to_vec2() - a.p0.to_vec2();
 	ray.dot(p.to_vec2() - a.p0.to_vec2()) / ((ray.to_point().distance(Point::ORIGIN)) * (ray.to_point().distance(Point::ORIGIN)))
@@ -821,6 +811,7 @@ pub fn valid_t(t: f64) -> bool {
 /// These tests are all ignored because each test looks for exact floating point comparisons, so isn't flexible to small adjustments in the algorithm.
 mod tests {
 	use crate::boolean_ops::point_on_curve;
+	use std::{fs::File, io::Write};
 
 	#[allow(unused_imports)] // This import is used
 	use super::*;
@@ -975,5 +966,155 @@ mod tests {
 		let vertical_line = Line::new(Point::new(0.0, -10.0), Point::new(0.0, 10.0));
 		let t_value = point_t_value(&PathSeg::Line(vertical_line), &Point::new(0.0, 1.0));
 		assert_eq!(t_value.unwrap(), 0.55);
+	}
+
+	#[test]
+	#[ignore]
+	fn test_kurbo_eval_stability() {
+		let mut test_results = File::create("..\\target\\debug\\test_kurbo_eval_results.txt").expect("");
+		let test_curve = BezPath::from_svg("M-355.41190151646936 -204.93220299904385C-355.41190151646936 -164.32790664074417 -389.9224217662629 -131.4116207799262 -432.4933059063151 -131.4116207799262C-475.06419004636723 -131.4116207799262 -509.5747102961608 -164.32790664074417 -509.5747102961608 -204.93220299904382C-509.5747102961608 -245.53649935734347 -475.06419004636723 -278.45278521816147 -432.4933059063151 -278.45278521816147C-389.9224217662629 -278.45278521816147 -355.41190151646936 -245.5364993573435 -355.41190151646936 -204.93220299904385").expect("").segments().next().unwrap();
+		let mut val = 0.0;
+		while val < 0.0 + 1000000.0 * f64::EPSILON {
+			writeln!(&mut test_results, "{:?}, {:?}", val, test_curve.eval(val).x).expect("");
+			val += f64::EPSILON;
+		}
+	}
+
+	#[test]
+	#[ignore]
+	fn test_quality_stability() {
+		let mut test_results = File::create("..\\target\\debug\\test_quality_results.txt").expect("");
+		let mut val = 0.0;
+
+		while val < 0.0 + 1000000.0 * f64::EPSILON {
+			let a = Line::new(Point::new(0.0, 0.0), Point::new(1.0 + val + val, 1.0 + val + val));
+			let b = Line::new(Point::new(0.0, 1.0 + val + val), Point::new(1.0 + val + val, 0.0));
+			let guess = Intersect::from((Point::new(0.5 + val, 0.5 + val), 0.5, 0.5));
+
+			writeln!(&mut test_results, "{:?}, {:?}", val, guess_quality(&PathSeg::Line(a), &PathSeg::Line(b), &guess)).expect("");
+			val += f64::EPSILON;
+		}
+	}
+
+	#[test]
+	#[ignore]
+	fn test_quality_cubic_stability() {
+		let mut test_results = File::create("..\\target\\debug\\test_quality_cubic_results.txt").expect("");
+		let mut val = 0.0;
+
+		while val < 0.0 + 1000000.0 * f64::EPSILON {
+			let a = PathSeg::Cubic(CubicBez::new(
+				Point::new(0.0 + val, 0.0),
+				Point::new(0.25 + val, 0.661437827766),
+				Point::new(0.75 + val, 0.968245836552),
+				Point::new(1.0 + val, 1.0),
+			));
+			let b = PathSeg::Cubic(CubicBez::new(
+				Point::new(0.0, 1.0),
+				Point::new(0.25, 0.968245836552),
+				Point::new(0.75, 0.661437827766),
+				Point::new(1.0, 0.0),
+			));
+			let guess = Intersect::from((Point::new(0.5 + val, 0.5 + val), 0.5 + val, 0.5 + val));
+
+			writeln!(&mut test_results, "{:?}, {:?}", val, guess_quality(&a, &b, &guess)).expect("");
+			val += f64::EPSILON;
+		}
+	}
+
+	#[test]
+	#[ignore]
+	fn test_line_intersection_stability() {
+		let mut test_results = File::create("..\\target\\debug\\test_line_isct_results.txt").expect("");
+		let mut val = 0.0;
+
+		while val < 0.0 + 1000000.0 * f64::EPSILON {
+			let a = Line::new(Point::new(0.0 + val, 0.0), Point::new(1.0 + val, 1.0));
+			let b = Line::new(Point::new(0.0, 1.0), Point::new(1.0, 0.0));
+
+			let line_isct = line_intersection(&a, &b).unwrap();
+			writeln!(
+				&mut test_results,
+				"{:?}, {:?}, {:?}, {:?}",
+				val,
+				line_isct.t_a,
+				line_isct.point.x,
+				guess_quality(&PathSeg::Line(a), &PathSeg::Line(b), &line_isct)
+			)
+			.expect("");
+			val += f64::EPSILON;
+		}
+	}
+
+	#[test]
+	#[ignore]
+	fn test_line_intersection_cancellation() {
+		let mut test_results = File::create("..\\target\\debug\\test_line_isct_cncl_results.txt").expect("");
+		let val = 2.0 * F64PRECISE;
+		let mut theta = F64PRECISE;
+
+		while theta < std::f64::consts::FRAC_PI_2 - 0.1 {
+			let a = Line::new(Point::new(1.0, 1.0), Point::new(1.0 + val, 1.0 + val));
+			let b = Line::new(Point::new(1.0, 1.0 + val * f64::cos(theta)), Point::new(1.0 + val, 1.0 + val * f64::sin(theta)));
+
+			let line_isct = line_intersection(&a, &b).unwrap();
+			writeln!(
+				&mut test_results,
+				"{:?}, {:?}, {:?}, {:?}",
+				theta,
+				line_isct.t_a,
+				line_isct.point.x,
+				guess_quality(&PathSeg::Line(a), &PathSeg::Line(b), &line_isct)
+			)
+			.expect("");
+			theta += f64::powf(2.0, 20.0) * F64LOOSE;
+		}
+	}
+
+	#[test]
+	#[ignore]
+	fn test_intersections_stability() {
+		let mut test_results_isct = File::create("..\\target\\debug\\test_curve_isct_multi_results.txt").expect("");
+		let mut val = 0.0;
+
+		while val < 0.0 + 1000000.0 * f64::EPSILON {
+			let a = PathSeg::Cubic(CubicBez::new(
+				Point::new(0.0 + val, 0.0),
+				Point::new(0.25 + val, 0.661437827766),
+				Point::new(0.75 + val, 0.968245836552),
+				Point::new(1.0 + val, 1.0),
+			));
+			let b = PathSeg::Cubic(CubicBez::new(
+				Point::new(0.0, 1.0),
+				Point::new(0.25, 0.968245836552),
+				Point::new(0.75, 0.661437827766),
+				Point::new(1.0, 0.0),
+			));
+			let aex = SubCurve::subcurve_extrema(&a);
+			let bex = SubCurve::subcurve_extrema(&b);
+			let asub = SubCurve::new(&a, &aex);
+			let bsub = SubCurve::new(&b, &bex);
+			let mut iscts = Vec::new();
+			path_intersections(&asub, &bsub, &mut iscts);
+
+			writeln!(
+				&mut test_results_isct,
+				"{:?}, {:?}, {:?}, {:?}",
+				val,
+				iscts.first().unwrap().point.x,
+				iscts.first().unwrap().quality,
+				iscts.first().unwrap().t_a
+			)
+			.expect("");
+
+			val += f64::EPSILON;
+		}
+	}
+
+	#[ignore]
+	#[test]
+	fn test_test_dir() {
+		use std::env::current_dir;
+		println!("{:?}", current_dir());
 	}
 }

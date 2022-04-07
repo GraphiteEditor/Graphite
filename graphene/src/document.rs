@@ -1,4 +1,4 @@
-use crate::boolean_ops::boolean_operation;
+use crate::boolean_ops::composite_boolean_operation;
 use crate::intersection::Quad;
 use crate::layers;
 use crate::layers::folder_layer::FolderLayer;
@@ -11,6 +11,7 @@ use crate::{DocumentError, DocumentResponse, Operation};
 use glam::{DAffine2, DVec2};
 use kurbo::Affine;
 use serde::{Deserialize, Serialize};
+use std::cell::RefCell;
 use std::cmp::max;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
@@ -563,9 +564,9 @@ impl Document {
 				// TODO: click on shape should drag the shape
 				let mut responses = Vec::new();
 				if selected.len() > 1 {
-					let mut shapes = self.transformed_shapes(selected)?;
-					let mut shape_drain = shapes.drain(..).rev();
-					let new_shapes = boolean_operation(*operation, &mut shape_drain.next().unwrap(), &mut shape_drain.next().unwrap())?;
+					let shapes = self.transformed_shapes(selected)?;
+
+					let new_shapes = composite_boolean_operation(*operation, &mut shapes.into_iter().map(|s| RefCell::new(s)).collect())?;
 
 					for path in selected {
 						self.delete(path)?;
