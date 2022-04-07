@@ -39,7 +39,7 @@ pub struct Gradient {
 	pub start: DVec2,
 	pub end: DVec2,
 	pub transform: DAffine2,
-	pub positions: Vec<(f64, Color)>,
+	pub positions: Vec<(f64, Option<Color>)>,
 	uuid: u64,
 }
 impl Gradient {
@@ -48,7 +48,7 @@ impl Gradient {
 		Gradient {
 			start,
 			end,
-			positions: vec![(0., start_color), (1., end_color)],
+			positions: vec![(0., Some(start_color)), (1., Some(end_color))],
 			transform,
 			uuid,
 		}
@@ -59,6 +59,7 @@ impl Gradient {
 		let positions = self
 			.positions
 			.iter()
+			.filter_map(|(pos, color)| color.map(|color| (pos, color)))
 			.map(|(position, color)| format!(r##"<stop offset="{}" stop-color="#{}" />"##, position, color.rgba_hex()))
 			.collect::<String>();
 
@@ -110,7 +111,7 @@ impl Fill {
 			Self::None => Color::BLACK,
 			Self::Solid(color) => *color,
 			// ToDo: Should correctly sample the gradient
-			Self::LinearGradient(Gradient { positions, .. }) => positions[0].1,
+			Self::LinearGradient(Gradient { positions, .. }) => positions[0].1.unwrap_or(Color::BLACK),
 		}
 	}
 
@@ -171,7 +172,7 @@ impl Display for LineJoin {
 #[repr(C)]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Stroke {
-	color: Color,
+	color: Option<Color>,
 	width: f32,
 	dash_lengths: Vec<f32>,
 	dash_offset: f32,
@@ -182,10 +183,14 @@ pub struct Stroke {
 
 impl Stroke {
 	pub fn new(color: Color, width: f32) -> Self {
-		Self { color, width, ..Default::default() }
+		Self {
+			color: Some(color),
+			width,
+			..Default::default()
+		}
 	}
 
-	pub fn color(&self) -> Color {
+	pub fn color(&self) -> Option<Color> {
 		self.color
 	}
 
@@ -213,24 +218,33 @@ impl Stroke {
 	}
 
 	pub fn render(&self) -> String {
-		format!(
-			r##" stroke="#{}"{} stroke-width="{}" stroke-dasharray="{}" stroke-dashoffset="{}" stroke-linecap="{}" stroke-linejoin="{}" stroke-miterlimit="{}" "##,
-			self.color.rgb_hex(),
-			format_opacity("stroke", self.color.a()),
-			self.width,
-			self.dash_lengths(),
-			self.dash_offset,
-			self.line_cap,
-			self.line_join,
-			self.miter_limit
-		)
+		if let Some(color) = self.color {
+			format!(
+				r##" stroke="#{}"{} stroke-width="{}" stroke-dasharray="{}" stroke-dashoffset="{}" stroke-linecap="{}" stroke-linejoin="{}" stroke-miterlimit="{}" "##,
+				color.rgb_hex(),
+				format_opacity("stroke", color.a()),
+				self.width,
+				self.dash_lengths(),
+				self.dash_offset,
+				self.line_cap,
+				self.line_join,
+				self.miter_limit
+			)
+		} else {
+			String::new()
+		}
 	}
 
-	pub fn with_color(mut self, color: &str) -> Option<Self> {
-		Color::from_rgba_str(color).or_else(|| Color::from_rgb_str(color)).map(|color| {
-			self.color = color;
-			self
-		})
+	pub fn with_color(mut self, color: &Option<String>) -> Option<Self> {
+		if let Some(color) = color {
+			Color::from_rgba_str(color).or_else(|| Color::from_rgb_str(color)).map(|color| {
+				self.color = Some(color);
+				self
+			})
+		} else {
+			self.color = None;
+			Some(self)
+		}
 	}
 	pub fn with_width(mut self, width: f32) -> Self {
 		self.width = width;
@@ -271,7 +285,7 @@ impl Default for Stroke {
 	fn default() -> Self {
 		Self {
 			width: 0.,
-			color: Color::from_rgba8(0, 0, 0, 255),
+			color: Some(Color::from_rgba8(0, 0, 0, 255)),
 			dash_lengths: vec![0.],
 			dash_offset: 0.,
 			line_cap: LineCap::Butt,

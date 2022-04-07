@@ -1,6 +1,6 @@
 <template>
 	<div class="floating-menu" :class="[direction.toLowerCase(), type.toLowerCase()]" v-if="open || type === 'Dialog'" ref="floatingMenu">
-		<div class="tail" v-if="type === 'Popover'"></div>
+		<div class="tail" ref="tail" v-if="type === 'Popover'"></div>
 		<div class="floating-menu-container" ref="floatingMenuContainer">
 			<LayoutCol class="floating-menu-content" data-floating-menu-content :scrollableY="scrollableY" ref="floatingMenuContent" :style="floatingMenuContentStyle">
 				<slot></slot>
@@ -213,6 +213,16 @@ export default defineComponent({
 
 		const workspaceBounds = workspace.getBoundingClientRect();
 		const floatingMenuBounds = floatingMenuContent.getBoundingClientRect();
+
+		if (floatingMenuBounds.bottom + this.windowEdgeMargin <= workspaceBounds.bottom) {
+			const { top } = (this.$refs.floatingMenu as HTMLElement).getBoundingClientRect();
+			if (this.type === "Popover") {
+				floatingMenuContent.style.top = `${top + 10}px`;
+				if (this.$refs.tail) (this.$refs.tail as HTMLElement).style.top = `${top}px`;
+			} else {
+				floatingMenuContent.style.top = `${top}px`;
+			}
+		}
 
 		type Edge = "Top" | "Bottom" | "Left" | "Right";
 		let zeroedBorderDirection1: Edge | undefined;
