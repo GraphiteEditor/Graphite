@@ -1,8 +1,15 @@
 <template>
 	<LayoutCol class="node-graph">
 		<LayoutRow class="options-bar"></LayoutRow>
-		<LayoutRow class="graph">
-			<div class="nodes" ref="nodesContainer">
+		<LayoutRow class="graph" @wheel="(e) => scroll(e)" ref="graph" @pointerdown="(e) => pointerDown(e)" @pointermove="(e) => pointerMove(e)" @pointerup="(e) => pointerUp(e)">
+			<div
+				class="nodes"
+				ref="nodesContainer"
+				:style="{
+					transform: `scale(${transform.scale}) translate(${transform.x}px, ${transform.y}px)`,
+					transformOrigin: `0 0`,
+				}"
+			>
 				<div class="node" style="--offset-left: 3; --offset-top: 2; --data-color: var(--color-data-raster); --data-color-dim: var(--color-data-raster-dim)">
 					<div class="primary">
 						<div class="ports">
@@ -170,6 +177,7 @@
 		margin-left: 4px;
 		margin-bottom: 4px;
 		border-radius: 2px;
+		overflow: hidden;
 	}
 
 	.nodes,
@@ -314,10 +322,12 @@ import LayoutRow from "@/components/layout/LayoutRow.vue";
 import IconLabel from "@/components/widgets/labels/IconLabel.vue";
 import TextLabel from "@/components/widgets/labels/TextLabel.vue";
 
+const WHEEL_RATE = 1 / 600;
+
 export default defineComponent({
 	inject: ["editor"],
 	data() {
-		return {};
+		return { transform: { scale: 2, x: 0, y: 0 }, panning: false };
 	},
 	methods: {
 		buildWirePathString(outputPort: HTMLElement, inputPort: HTMLElement): string {
@@ -347,6 +357,41 @@ export default defineComponent({
 			path.setAttribute("d", pathString);
 			path.setAttribute("style", `--data-color: var(--color-data-${dataType}); --data-color-dim: var(--color-data-${dataType}-dim)`);
 			(this.$refs.wiresContainer as HTMLElement).appendChild(path);
+		},
+		scroll(e: WheelEvent) {
+			const scroll = e.deltaY;
+			let zoomFactor = 1 + Math.abs(scroll) * WHEEL_RATE;
+			if (scroll > 0) zoomFactor = 1 / zoomFactor;
+
+			const { x, y, width, height } = ((this.$refs.graph as typeof LayoutCol).$el as HTMLElement).getBoundingClientRect();
+
+			this.transform.scale *= zoomFactor;
+
+			const newViewportX = width / zoomFactor;
+			const newViewportY = height / zoomFactor;
+
+			const deltaSizeX = width - newViewportX;
+			const deltaSizeY = height - newViewportY;
+
+			const deltaX = deltaSizeX * ((e.x - x) / width);
+			const deltaY = deltaSizeY * ((e.y - y) / height);
+
+			this.transform.x -= (deltaX / this.transform.scale) * zoomFactor;
+			this.transform.y -= (deltaY / this.transform.scale) * zoomFactor;
+		},
+		pointerDown(e: PointerEvent) {
+			((this.$refs.graph as typeof LayoutCol).$el as HTMLElement).setPointerCapture(e.pointerId);
+			this.panning = true;
+		},
+		pointerMove(e: PointerEvent) {
+			if (this.panning) {
+				this.transform.x += e.movementX / this.transform.scale;
+				this.transform.y += e.movementY / this.transform.scale;
+			}
+		},
+		pointerUp(e: PointerEvent) {
+			((this.$refs.graph as typeof LayoutCol).$el as HTMLElement).releasePointerCapture(e.pointerId);
+			this.panning = false;
 		},
 	},
 	mounted() {
