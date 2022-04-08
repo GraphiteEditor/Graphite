@@ -558,7 +558,7 @@ fn node_section_fill(fill: &Fill) -> Option<LayoutRow> {
 }
 
 fn node_section_stroke(stroke: &Stroke) -> LayoutRow {
-	// TODO: Cleanup
+	// We have to make multiple variables because they get moved into different closures.
 	let internal_stroke1 = stroke.clone();
 	let internal_stroke2 = stroke.clone();
 	let internal_stroke3 = stroke.clone();
