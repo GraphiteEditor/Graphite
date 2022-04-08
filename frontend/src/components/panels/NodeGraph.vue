@@ -1,7 +1,15 @@
 <template>
 	<LayoutCol class="node-graph">
 		<LayoutRow class="options-bar"></LayoutRow>
-		<LayoutRow class="graph" @wheel="(e) => scroll(e)" ref="graph" @pointerdown="(e) => pointerDown(e)" @pointermove="(e) => pointerMove(e)" @pointerup="(e) => pointerUp(e)">
+		<LayoutRow
+			class="graph"
+			@wheel="(e) => scroll(e)"
+			ref="graph"
+			@pointerdown="(e) => pointerDown(e)"
+			@pointermove="(e) => pointerMove(e)"
+			@pointerup="(e) => pointerUp(e)"
+			:style="`--grid-spacing: ${gridSpacing}px; --grid-offset-x: ${transform.x * transform.scale}px; --grid-offset-y: ${transform.y * transform.scale}px; --dot-radius: ${dotRadius}px`"
+		>
 			<div
 				class="nodes"
 				ref="nodesContainer"
@@ -170,14 +178,23 @@
 	.graph {
 		position: relative;
 		background: var(--color-2-mildblack);
-		background-image: radial-gradient(circle at 1px 1px, var(--color-3-darkgray) 1px, transparent 0);
-		background-size: 24px 24px;
-		background-position: -1px -1px;
 		width: calc(100% - 8px);
 		margin-left: 4px;
 		margin-bottom: 4px;
 		border-radius: 2px;
 		overflow: hidden;
+
+		// We're displaying the dotted grid in a pseudo-element because `image-rendering` is an inherited property and we don't want it to apply to child elements
+		&::before {
+			content: "";
+			position: absolute;
+			width: 100%;
+			height: 100%;
+			background-size: var(--grid-spacing) var(--grid-spacing);
+			background-position: calc(var(--grid-offset-x) - var(--dot-radius)) calc(var(--grid-offset-y) - var(--dot-radius));
+			background-image: radial-gradient(circle at var(--dot-radius) var(--dot-radius), var(--color-3-darkgray) var(--dot-radius), transparent 0);
+			image-rendering: pixelated;
+		}
 	}
 
 	.nodes,
@@ -210,7 +227,7 @@
 				display: flex;
 				flex-direction: column;
 				min-width: 120px;
-				border-radius: 2px;
+				border-radius: 4px;
 				background: var(--color-4-dimgray);
 				left: calc(var(--offset-left) * 24px);
 				top: calc(var(--offset-top) * 24px);
@@ -323,11 +340,31 @@ import IconLabel from "@/components/widgets/labels/IconLabel.vue";
 import TextLabel from "@/components/widgets/labels/TextLabel.vue";
 
 const WHEEL_RATE = 1 / 600;
+const GRID_COLLAPSE_SPACING = 10;
+const GRID_SIZE = 24;
 
 export default defineComponent({
 	inject: ["editor"],
 	data() {
-		return { transform: { scale: 2, x: 0, y: 0 }, panning: false };
+		return {
+			transform: { scale: 1, x: 0, y: 0 },
+			panning: false,
+		};
+	},
+	computed: {
+		gridSpacing(): number {
+			const dense = this.transform.scale * GRID_SIZE;
+			let sparse = dense;
+
+			while (sparse > 0 && sparse < GRID_COLLAPSE_SPACING) {
+				sparse *= 2;
+			}
+
+			return sparse;
+		},
+		dotRadius(): number {
+			return 1 + Math.floor(this.transform.scale + 0.001) / 2;
+		},
 	},
 	methods: {
 		buildWirePathString(outputPort: HTMLElement, inputPort: HTMLElement): string {
