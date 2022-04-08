@@ -349,6 +349,7 @@ export default defineComponent({
 		return {
 			transform: { scale: 1, x: 0, y: 0 },
 			panning: false,
+			drawing: undefined as { port: HTMLElement; output: boolean; path: SVGElement } | undefined,
 		};
 	},
 	computed: {
@@ -367,33 +368,44 @@ export default defineComponent({
 		},
 	},
 	methods: {
-		buildWirePathString(outputPort: HTMLElement, inputPort: HTMLElement): string {
+		buildWirePathString(outputBounds: DOMRect, inputBounds: DOMRect, verticalOut: boolean, verticalIn: boolean): string {
 			const containerBounds = (this.$refs.nodesContainer as HTMLElement).getBoundingClientRect();
-			const outputBounds = outputPort.getBoundingClientRect();
-			const inputBounds = inputPort.getBoundingClientRect();
 
-			const outConnectorX = outputBounds.x + (outputBounds.width - 1) - containerBounds.x;
-			const outConnectorY = outputBounds.y + outputBounds.height / 2 - containerBounds.y;
-			const inConnectorX = inputBounds.x + 1 - containerBounds.x;
-			const inConnectorY = inputBounds.y + inputBounds.height / 2 - containerBounds.y;
+			const outX = verticalOut ? outputBounds.x + outputBounds.width / 2 : outputBounds.x + (outputBounds.width - 1);
+			const outY = verticalOut ? outputBounds.y : outputBounds.y + outputBounds.height / 2;
+			const outConnectorX = outX - containerBounds.x;
+			const outConnectorY = outY - containerBounds.y;
+
+			const inX = verticalIn ? inputBounds.x + inputBounds.width / 2 : inputBounds.x + 1;
+			const inY = verticalIn ? inputBounds.y + (outputBounds.height + 1) : inputBounds.y + inputBounds.height / 2;
+			const inConnectorX = inX - containerBounds.x;
+			const inConnectorY = inY - containerBounds.y;
 			// debugger;
-
 			const horizontalGap = Math.abs(outConnectorX - inConnectorX);
+			const verticalGap = Math.abs(outConnectorY - inConnectorY);
+
 			const curveLength = 200;
 			const curveFalloffRate = curveLength * Math.PI * 2;
-			const curveAmount = -(2 ** ((-10 * horizontalGap) / curveFalloffRate)) + 1;
-			const curve = curveAmount * curveLength;
 
-			return `M${outConnectorX},${outConnectorY} C${outConnectorX + curve},${outConnectorY} ${inConnectorX - curve},${inConnectorY} ${inConnectorX},${inConnectorY}`;
+			const horizontalCurveAmount = -(2 ** ((-10 * horizontalGap) / curveFalloffRate)) + 1;
+			const verticalCurveAmount = -(2 ** ((-10 * verticalGap) / curveFalloffRate)) + 1;
+			const horizontalCurve = horizontalCurveAmount * curveLength;
+			const verticalCurve = verticalCurveAmount * curveLength;
+
+			return `M${outConnectorX},${outConnectorY} C${verticalOut ? outConnectorX : outConnectorX + horizontalCurve},${verticalOut ? outConnectorY - verticalCurve : outConnectorY} ${
+				verticalIn ? inConnectorX : inConnectorX - horizontalCurve
+			},${verticalIn ? inConnectorY + verticalCurve : inConnectorY} ${inConnectorX},${inConnectorY}`;
 		},
-		createWirePath(outputPort: HTMLElement, inputPort: HTMLElement) {
-			const pathString = this.buildWirePathString(outputPort, inputPort);
+		createWirePath(outputPort: HTMLElement, inputPort: HTMLElement): SVGPathElement {
+			const pathString = this.buildWirePathString(outputPort.getBoundingClientRect(), inputPort.getBoundingClientRect(), true, false);
 			const dataType = "vector";
 
 			const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
 			path.setAttribute("d", pathString);
 			path.setAttribute("style", `--data-color: var(--color-data-${dataType}); --data-color-dim: var(--color-data-${dataType}-dim)`);
 			(this.$refs.wiresContainer as HTMLElement).appendChild(path);
+
+			return path;
 		},
 		scroll(e: WheelEvent) {
 			const scroll = e.deltaY;
@@ -417,18 +429,36 @@ export default defineComponent({
 			this.transform.y -= (deltaY / this.transform.scale) * zoomFactor;
 		},
 		pointerDown(e: PointerEvent) {
+			const port = (e.target as HTMLElement).closest(".port") as HTMLElement;
+			console.log(e.target, port);
+
+			if (port) {
+				const output = port.classList.contains("output");
+				const path = this.createWirePath(port, port);
+				this.drawing = { port, output, path };
+			} else {
+				this.panning = true;
+			}
 			((this.$refs.graph as typeof LayoutCol).$el as HTMLElement).setPointerCapture(e.pointerId);
-			this.panning = true;
 		},
 		pointerMove(e: PointerEvent) {
 			if (this.panning) {
 				this.transform.x += e.movementX / this.transform.scale;
 				this.transform.y += e.movementY / this.transform.scale;
+			} else if (this.drawing) {
+				const mouse = new DOMRect(e.x, e.y);
+				const port = this.drawing.port.getBoundingClientRect();
+				const output = this.drawing.output ? port : mouse;
+				const input = this.drawing.output ? mouse : port;
+
+				const pathString = this.buildWirePathString(output, input, true, false);
+				this.drawing.path.setAttribute("d", pathString);
 			}
 		},
 		pointerUp(e: PointerEvent) {
 			((this.$refs.graph as typeof LayoutCol).$el as HTMLElement).releasePointerCapture(e.pointerId);
 			this.panning = false;
+			this.drawing = undefined;
 		},
 	},
 	mounted() {
