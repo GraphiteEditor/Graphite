@@ -1,6 +1,6 @@
 use crate::message_prelude::*;
 
-use graphene::layers::style::Fill;
+use graphene::layers::style::{Fill, Stroke};
 use serde::{Deserialize, Serialize};
 
 #[remain::sorted]
@@ -12,7 +12,7 @@ pub enum PropertiesPanelMessage {
 	ClearSelection,
 	ModifyFill { fill: Fill },
 	ModifyName { name: String },
-	ModifyStroke { color: String, weight: f64 },
+	ModifyStroke { stroke: Stroke },
 	ModifyTransform { value: f64, transform_op: TransformOp },
 	ResendActiveProperties,
 	SetActiveLayers { paths: Vec<Vec<LayerId>> },
