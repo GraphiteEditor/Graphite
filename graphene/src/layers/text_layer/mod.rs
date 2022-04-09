@@ -1,5 +1,5 @@
 use super::layer_info::LayerData;
-use super::style::{self, PathStyle, ViewMode};
+use super::style::{PathStyle, ViewMode};
 use crate::intersection::{intersect_quad_bez_path, Quad};
 use crate::LayerId;
 
@@ -14,10 +14,17 @@ fn glam_to_kurbo(transform: DAffine2) -> Affine {
 	Affine::new(transform.to_cols_array())
 }
 
+/// A line, or multiple lines, of text drawn in the document.
+/// Like [ShapeLayers](super::shape_layer::ShapeLayer), [TextLayer] are rendered as
+/// [`<path>`s](https://developer.mozilla.org/en-US/docs/Web/SVG/Element/path).
+/// Currently, the only supported font is `SourceSansPro-Regular`.
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub struct TextLayer {
+	/// The string of text, encompassing one or multiple lines.
 	pub text: String,
-	pub style: style::PathStyle,
+	/// Fill color and stroke used to render the text.
+	pub style: PathStyle,
+	/// Font size in pixels.
 	pub size: f64,
 	pub line_width: Option<f64>,
 	#[serde(skip)]
@@ -30,10 +37,12 @@ impl LayerData for TextLayer {
 	fn render(&mut self, svg: &mut String, svg_defs: &mut String, transforms: &mut Vec<DAffine2>, view_mode: ViewMode) {
 		let transform = self.transform(transforms, view_mode);
 		let inverse = transform.inverse();
+
 		if !inverse.is_finite() {
 			let _ = write!(svg, "<!-- SVG shape has an invalid transform -->");
 			return;
 		}
+
 		let _ = writeln!(svg, r#"<g transform="matrix("#);
 		inverse.to_cols_array().iter().enumerate().for_each(|(i, entry)| {
 			let _ = svg.write_str(&(entry.to_string() + if i == 5 { "" } else { "," }));
@@ -104,7 +113,7 @@ impl TextLayer {
 		new
 	}
 
-	/// Converts to a BezPath, populating the cache if necessary
+	/// Converts to a [BezPath], populating the cache if necessary.
 	#[inline]
 	pub fn to_bez_path(&mut self) -> BezPath {
 		if self.cached_path.is_none() {
@@ -113,12 +122,14 @@ impl TextLayer {
 		self.cached_path.clone().unwrap()
 	}
 
-	/// Converts to a bezpath, without populating the cache
+	/// Converts to a [BezPath], without populating the cache.
 	#[inline]
 	pub fn to_bez_path_nonmut(&self) -> BezPath {
 		self.cached_path.clone().unwrap_or_else(|| self.generate_path())
 	}
 
+	/// Get the font face for `SourceSansPro-Regular`.
+	/// For now, the font is hardcoded in the wasm binary.
 	#[inline]
 	fn font_face() -> rustybuzz::Face<'static> {
 		rustybuzz::Face::from_slice(include_bytes!("SourceSansPro/SourceSansPro-Regular.ttf"), 0).unwrap()
@@ -135,6 +146,7 @@ impl TextLayer {
 		Rect::new(0., 0., far.x, far.y)
 	}
 
+	/// Populate the cache.
 	pub fn regenerate_path(&mut self) {
 		self.cached_path = Some(self.generate_path());
 	}
