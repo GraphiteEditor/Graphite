@@ -334,7 +334,7 @@ impl PathStyle {
 	/// # use graphite_graphene::layers::style::{Fill, Stroke, PathStyle};
 	/// # use graphite_graphene::color::Color;
 	/// let stroke = Stroke::new(Color::GREEN, 42.);
-	/// let style = PathStyle::new(Some(stroke), Fill::None);
+	/// let style = PathStyle::new(Some(stroke.clone()), Fill::None);
 	///
 	/// assert_eq!(style.stroke(), Some(stroke));
 	/// ```
@@ -372,7 +372,7 @@ impl PathStyle {
 	/// assert_eq!(style.stroke(), None);
 	///
 	/// let stroke = Stroke::new(Color::GREEN, 42.);
-	/// style.set_stroke(stroke);
+	/// style.set_stroke(stroke.clone());
 	///
 	/// assert_eq!(style.stroke(), Some(stroke));
 	/// ```
