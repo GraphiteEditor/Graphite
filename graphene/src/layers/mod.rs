@@ -4,3 +4,4 @@ pub mod layer_info;
 pub mod shape_layer;
 pub mod style;
 pub mod text_layer;
+pub mod vector;

@@ -1,5 +1,6 @@
 use super::layer_info::LayerData;
 use super::style::{self, PathStyle, ViewMode};
+use super::vector::vector_shape::VectorShape;
 use crate::intersection::{intersect_quad_bez_path, Quad};
 use crate::LayerId;
 
@@ -14,7 +15,7 @@ fn glam_to_kurbo(transform: DAffine2) -> Affine {
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub struct ShapeLayer {
-	pub path: BezPath,
+	pub shape: VectorShape,
 	pub style: style::PathStyle,
 	pub render_index: i32,
 	pub closed: bool,
@@ -22,7 +23,7 @@ pub struct ShapeLayer {
 
 impl LayerData for ShapeLayer {
 	fn render(&mut self, svg: &mut String, transforms: &mut Vec<DAffine2>, view_mode: ViewMode) {
-		let mut path = self.path.clone();
+		let mut path = self.shape.clone();
 		let transform = self.transform(transforms, view_mode);
 		let inverse = transform.inverse();
 		if !inverse.is_finite() {
@@ -43,7 +44,7 @@ impl LayerData for ShapeLayer {
 	fn bounding_box(&self, transform: glam::DAffine2) -> Option<[DVec2; 2]> {
 		use kurbo::Shape;
 
-		let mut path = self.path.clone();
+		let mut path = self.shape.clone();
 		if transform.matrix2 == DMat2::ZERO {
 			return None;
 		}
@@ -54,7 +55,7 @@ impl LayerData for ShapeLayer {
 	}
 
 	fn intersects_quad(&self, quad: Quad, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>) {
-		if intersect_quad_bez_path(quad, &self.path, self.style.fill().is_some()) {
+		if intersect_quad_bez_path(quad, &self.shape, self.style.fill().is_some()) {
 			intersections.push(path.clone());
 		}
 	}
@@ -72,7 +73,7 @@ impl ShapeLayer {
 
 	pub fn from_bez_path(bez_path: BezPath, style: PathStyle, closed: bool) -> Self {
 		Self {
-			path: bez_path,
+			shape: bez_path,
 			style,
 			render_index: 1,
 			closed,
@@ -105,7 +106,7 @@ impl ShapeLayer {
 		path.close_path();
 
 		Self {
-			path,
+			shape: path,
 			style,
 			render_index: 1,
 			closed: true,
@@ -114,7 +115,7 @@ impl ShapeLayer {
 
 	pub fn rectangle(style: PathStyle) -> Self {
 		Self {
-			path: kurbo::Rect::new(0., 0., 1., 1.).to_path(0.01),
+			shape: kurbo::Rect::new(0., 0., 1., 1.).to_path(0.01),
 			style,
 			render_index: 1,
 			closed: true,
@@ -123,7 +124,7 @@ impl ShapeLayer {
 
 	pub fn ellipse(style: PathStyle) -> Self {
 		Self {
-			path: kurbo::Ellipse::from_rect(kurbo::Rect::new(0., 0., 1., 1.)).to_path(0.01),
+			shape: kurbo::Ellipse::from_rect(kurbo::Rect::new(0., 0., 1., 1.)).to_path(0.01),
 			style,
 			render_index: 1,
 			closed: true,
@@ -132,7 +133,7 @@ impl ShapeLayer {
 
 	pub fn line(style: PathStyle) -> Self {
 		Self {
-			path: kurbo::Line::new((0., 0.), (1., 0.)).to_path(0.01),
+			shape: kurbo::Line::new((0., 0.), (1., 0.)).to_path(0.01),
 			style,
 			render_index: 1,
 			closed: false,
@@ -149,7 +150,7 @@ impl ShapeLayer {
 			.for_each(|(i, p)| if i == 0 { path.move_to(p) } else { path.line_to(p) });
 
 		Self {
-			path,
+			shape: path,
 			style,
 			render_index: 0,
 			closed: false,
@@ -227,7 +228,7 @@ impl ShapeLayer {
 		}
 
 		Self {
-			path,
+			shape: path,
 			style,
 			render_index: 0,
 			closed: false,

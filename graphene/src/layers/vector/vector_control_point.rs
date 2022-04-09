@@ -1,16 +1,19 @@
 use super::constants::ControlPointType;
 use glam::DVec2;
+use serde::{Deserialize, Serialize};
 
 /// VectorControlPoint represents any grabbable point, anchor or handle
-#[derive(PartialEq, Clone, Debug)]
+#[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub struct VectorControlPoint {
 	// The sibling element if this is a handle
 	pub position: glam::DVec2,
 	// The type of manipulator this point is
 	pub manipulator_type: ControlPointType,
 	// Can this control point be selected?
+	#[serde(skip_serializing)]
 	pub can_be_selected: bool,
 	// Is this point currently selected?
+	#[serde(skip_serializing)]
 	pub is_selected: bool,
 }
 

@@ -1,13 +1,14 @@
+use crate::LayerId;
+
 use super::{constants::ControlPointType, vector_anchor::VectorAnchor};
 
-use graphene::LayerId;
-
 use glam::{DAffine2, DVec2};
+use serde::{Deserialize, Serialize};
 
 /// VectorShape represents a single kurbo shape and maintains a parallel data structure
 /// For each kurbo path we keep a VectorShape which contains the handles and anchors for that path
 /// TODO remove clonable, we don't want any duplicates
-#[derive(PartialEq, Clone, Debug, Default)]
+#[derive(PartialEq, Clone, Debug, Default, Serialize, Deserialize)]
 pub struct VectorShape {
 	/// The path to the shape layer
 	pub layer_path: Vec<LayerId>,
@@ -18,7 +19,6 @@ pub struct VectorShape {
 	/// The transformation matrix to apply
 	pub transform: DAffine2,
 }
-type IndexedEl = (usize, kurbo::PathEl);
 
 impl VectorShape {
 	pub fn new(layer_path: Vec<LayerId>, transform: DAffine2, closed: bool) -> Self {

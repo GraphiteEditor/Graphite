@@ -1,17 +1,20 @@
 use super::{constants::ControlPointType, vector_control_point::VectorControlPoint};
 use glam::{DAffine2, DVec2};
+use serde::{Deserialize, Serialize};
 
 /// VectorAnchor is used to represent an anchor point on the path that can be moved.
 /// It contains 0-2 handles that are optionally displayed.
-#[derive(PartialEq, Clone, Debug)]
+#[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub struct VectorAnchor {
 	/// An id that is locally unique to the containing shape
 	pub local_id: u64,
 	// Editable points for the anchor & handles
 	pub points: [Option<VectorControlPoint>; 3],
 	// Should we maintain the angle between the handles?
+	#[serde(skip_serializing)]
 	pub handle_mirror_angle: bool,
 	// Should we make the handles equidistance from the anchor?
+	#[serde(skip_serializing)]
 	pub handle_mirror_distance: bool,
 }
 

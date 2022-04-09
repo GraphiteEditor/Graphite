@@ -159,7 +159,7 @@ impl DocumentMessageHandler {
 				// TODO Create VectorShapes at the operation level, not from shapes after the fact
 				LayerDataType::Shape(shape) => Some(VectorShape::new(path_to_shape.to_vec(), viewport_transform, shape.closed)),
 				// Leverage &text.to_bez_path_nonmut() for this, or maybe create VectorShapes from text?
-				LayerDataType::Text(text) => Some(VectorShape::new(path_to_shape.to_vec(), viewport_transform, true)),
+				// LayerDataType::Text(text) => Some(VectorShape::new(path_to_shape.to_vec(), viewport_transform, true)),
 				_ => None,
 			}
 		});
