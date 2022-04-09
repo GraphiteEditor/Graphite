@@ -82,7 +82,6 @@ pub fn to_kurbo(str: &str, buzz_face: rustybuzz::Face, font_size: f64, line_widt
 		let length = line.split(' ').count();
 		for (index, word) in line.split(' ').enumerate() {
 			push_str(&mut buffer, word, index != length - 1);
-
 			let glyph_buffer = rustybuzz::shape(&buzz_face, &[], buffer);
 
 			if wrap_word(line_width, &glyph_buffer, scale, builder.pos.x) {
