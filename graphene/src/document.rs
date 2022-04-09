@@ -17,14 +17,12 @@ use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
 /// A number that identifies a layer.
-/// This does not technically need to be unique globally,
-/// only within a folder.
+/// This does not technically need to be unique globally, only within a folder.
 pub type LayerId = u64;
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Document {
-	/// The root layer, usually a [FolderLayer](layers::folder_layer::FolderLayer)
-	/// that contains all other [Layers](layers::layer_info::Layer).
+	/// The root layer, usually a [FolderLayer](layers::folder_layer::FolderLayer) that contains all other [Layers](layers::layer_info::Layer).
 	pub root: Layer,
 	/// The state_identifier serves to provide a way to uniquely identify a particular state that the document is in.
 	/// This identifier is not a hash and is not guaranteed to be equal for equivalent documents.

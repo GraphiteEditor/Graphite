@@ -12,10 +12,12 @@ fn glam_to_kurbo(transform: DAffine2) -> Affine {
 	Affine::new(transform.to_cols_array())
 }
 
-/// A generic SVG Element defined using Bezier Paths.
-/// Shapes are rendered as [`<path>`](https://developer.mozilla.org/en-US/docs/Web/SVG/Element/path) elements
-/// inside a [`<g>`](https://developer.mozilla.org/en-US/docs/Web/SVG/Element/g) group that the
-/// transformation matrix is applied to.
+/// A generic SVG element defined using Bezier paths.
+/// Shapes are rendered as
+/// [`<path>`](https://developer.mozilla.org/en-US/docs/Web/SVG/Element/path)
+/// elements inside a
+/// [`<g>`](https://developer.mozilla.org/en-US/docs/Web/SVG/Element/g)
+/// group that the transformation matrix is applied to.
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub struct ShapeLayer {
 	/// A Bezier path.
@@ -143,7 +145,7 @@ impl ShapeLayer {
 		}
 	}
 
-	/// Create a straight line from [0, 0] to [1, 0].
+	/// Create a straight line from (0, 0) to (1, 0).
 	pub fn line(style: PathStyle) -> Self {
 		Self {
 			path: kurbo::Line::new((0., 0.), (1., 0.)).to_path(0.01),
@@ -153,7 +155,7 @@ impl ShapeLayer {
 		}
 	}
 
-	/// Create a polygonal line that visits each provided point
+	/// Create a polygonal line that visits each provided point.
 	pub fn poly_line(points: Vec<impl Into<glam::DVec2>>, style: PathStyle) -> Self {
 		let mut path = kurbo::BezPath::new();
 		points

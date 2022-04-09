@@ -15,12 +15,13 @@ use std::fmt::Write;
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 /// Represents different types of layers.
 pub enum LayerDataType {
-	/// A layer that wraps a [FolderLayer].
+	/// A layer that wraps a [FolderLayer] struct.
 	Folder(FolderLayer),
-	/// A layer that wraps a [ShapeLayer].
+	/// A layer that wraps a [ShapeLayer] struct.
 	Shape(ShapeLayer),
-	/// A layer that wraps [TextLayer].
+	/// A layer that wraps a [TextLayer] struct.
 	Text(TextLayer),
+	/// A layer that wraps an [ImageLayer] struct.
 	Image(ImageLayer),
 }
 
@@ -44,9 +45,9 @@ impl LayerDataType {
 	}
 }
 
-/// Defines shared behaviour for every layer type.
+/// Defines shared behavior for every layer type.
 pub trait LayerData {
-	/// Render the layer as SVG to a given string.
+	/// Render the layer as an SVG tag to a given string.
 	///
 	/// # Example
 	/// ```
@@ -91,8 +92,8 @@ pub trait LayerData {
 	/// ```
 	fn intersects_quad(&self, quad: Quad, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>);
 
-	// TODO: this doctest fails because 0 != 1E-32 - maybe assert difference < epsilon?
-	/// Calculate the bounding box for the layers contents after applying a given transform.
+	// TODO: this doctest fails because 0 != 1e-32, maybe assert difference < epsilon?
+	/// Calculate the bounding box for the layer's contents after applying a given transform.
 	/// # Example
 	/// ```no_run
 	/// # use graphite_graphene::layers::shape_layer::ShapeLayer;
@@ -102,7 +103,7 @@ pub trait LayerData {
 	/// let shape = ShapeLayer::ellipse(PathStyle::new(None, Fill::None));
 	///
 	/// // Calculate the bounding box without applying any transformations.
-	/// // (The identity transform maps every vector to itself)
+	/// // (The identity transform maps every vector to itself.)
 	/// let transform = DAffine2::IDENTITY;
 	/// let bounding_box = shape.bounding_box(transform);
 	///
@@ -135,35 +136,35 @@ struct DAffine2Ref {
 /// Utility function for providing a default boolean value to serde.
 #[inline(always)]
 fn return_true() -> bool {
-	// No, there is no smarter way to do this.
 	true
 }
 
 #[derive(Debug, PartialEq, Deserialize, Serialize)]
 pub struct Layer {
-	/// Whether or not the layer is currently visible.
+	/// Whether the layer is currently visible or hidden.
 	pub visible: bool,
-	/// The name of the layer.
+	/// The user-given name of the layer.
 	pub name: Option<String>,
-	/// The type of layer.
+	/// The type of layer, such as folder or shape.
 	pub data: LayerDataType,
-	/// A transformation applied to the layer(translation, rotation, scaling and shear).
+	/// A transformation applied to the layer (translation, rotation, scaling, and shear).
 	#[serde(with = "DAffine2Ref")]
 	pub transform: glam::DAffine2,
-	/// The cached svg render of the layer.
-	#[serde(skip)]
-	pub cache: String,
-	/// The cached svg thumbnail view of the layer.
+	/// The cached SVG thumbnail view of the layer.
 	#[serde(skip)]
 	pub thumbnail_cache: String,
+	/// The cached SVG render of the layer.
+	#[serde(skip)]
+	pub cache: String,
+	/// The cached definition(s) used by the layer's SVG tag, placed at the top in the SVG defs tag.
 	#[serde(skip)]
 	pub svg_defs_cache: String,
 	/// Whether or not the [Cache](Layer::cache) and [Thumbnail Cache](Layer::thumbnail_cache) need to be updated.
 	#[serde(skip, default = "return_true")]
 	pub cache_dirty: bool,
-	/// Describes how overlapping SVG elements should be blended together.
+	/// The blend mode describing how this layer should composite with others underneath it.
 	pub blend_mode: BlendMode,
-	/// The opacity of the Layer, always ∈ [0, 1].
+	/// The opacity, in the range of 0 to 1.
 	pub opacity: f64,
 }
 
@@ -184,10 +185,8 @@ impl Layer {
 	}
 
 	/// Iterate over the layers encapsulated by this layer.
-	/// If the [Layer Type](Layer::data) is [Text](LayerDataType::Text) or [Shape](LayerDataType::Shape),
-	/// the only item in the iterator will be the layer itself.
-	/// If the [Layer Type](Layer::data) wraps a [Folder](LayerDataType::Folder), the iterator
-	/// will recursively yield all the layers contained in the folder as well as potential sub-folders.
+	/// If the [Layer type](Layer::data) is not a folder, the only item in the iterator will be the layer itself.
+	/// If the [Layer type](Layer::data) wraps a [Folder](LayerDataType::Folder), the iterator will recursively yield all the layers contained in the folder as well as potential sub-folders.
 	///
 	/// # Example
 	/// ```
@@ -291,6 +290,7 @@ impl Layer {
 	pub fn aabounding_box(&self) -> Option<[DVec2; 2]> {
 		self.aabounding_box_for_transform(self.transform)
 	}
+
 	pub fn bounding_transform(&self) -> DAffine2 {
 		let scale = match self.aabounding_box_for_transform(DAffine2::IDENTITY) {
 			Some([a, b]) => {
@@ -339,8 +339,19 @@ impl Layer {
 		}
 	}
 
+	/// Get a mutable reference to the Image element wrapped by the layer.
+	/// This operation will fail if the [Layer type](Layer::data) is not `LayerDataType::Image`.
 	pub fn as_image_mut(&mut self) -> Result<&mut ImageLayer, DocumentError> {
 		match &mut self.data {
+			LayerDataType::Image(img) => Ok(img),
+			_ => Err(DocumentError::NotAnImage),
+		}
+	}
+
+	/// Get a reference to the Image element wrapped by the layer.
+	/// This operation will fail if the [Layer type](Layer::data) is not `LayerDataType::Image`.
+	pub fn as_image(&self) -> Result<&ImageLayer, DocumentError> {
+		match &self.data {
 			LayerDataType::Image(img) => Ok(img),
 			_ => Err(DocumentError::NotAnImage),
 		}
@@ -395,6 +406,12 @@ impl From<ShapeLayer> for Layer {
 impl From<TextLayer> for Layer {
 	fn from(from: TextLayer) -> Layer {
 		Layer::new(LayerDataType::Text(from), DAffine2::IDENTITY.to_cols_array())
+	}
+}
+
+impl From<ImageLayer> for Layer {
+	fn from(from: ImageLayer) -> Layer {
+		Layer::new(LayerDataType::Image(from), DAffine2::IDENTITY.to_cols_array())
 	}
 }
 

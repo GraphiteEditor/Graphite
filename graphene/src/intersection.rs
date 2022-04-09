@@ -30,7 +30,7 @@ impl Quad {
 		]
 	}
 
-	/// Compute a Bezier Path along every point in the Quad
+	/// Generate a [BezPath] of the quad
 	pub fn path(&self) -> BezPath {
 		let mut path = kurbo::BezPath::new();
 		path.move_to(to_point(self.0[0]));
@@ -84,8 +84,7 @@ pub fn intersect_quad_bez_path(quad: Quad, shape: &BezPath, filled: bool) -> boo
 }
 
 /// Returns a point on `path`.
-/// This function will usually return the first point from the path's first segment,
-/// but callers should not rely on this behaviour.
+/// This function will usually return the first point from the path's first segment, but callers should not rely on this behavior.
 pub fn get_arbitrary_point_on_path(path: &BezPath) -> Option<Point> {
 	path.segments().next().map(|seg| match seg {
 		PathSeg::Line(line) => line.p0,

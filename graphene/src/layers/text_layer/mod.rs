@@ -14,16 +14,17 @@ fn glam_to_kurbo(transform: DAffine2) -> Affine {
 	Affine::new(transform.to_cols_array())
 }
 
-/// A character sequence.
+/// A line, or multiple lines, of text drawn in the document.
 /// Like [ShapeLayers](super::shape_layer::ShapeLayer), [TextLayer] are rendered as
 /// [`<path>`s](https://developer.mozilla.org/en-US/docs/Web/SVG/Element/path).
 /// Currently, the only supported font is `SourceSansPro-Regular`.
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub struct TextLayer {
-	/// The displayed Text.
+	/// The string of text, encompassing one or multiple lines.
 	pub text: String,
-	/// The visual style of the Text.
+	/// Fill color and stroke used to render the text.
 	pub style: PathStyle,
+	/// Font size in pixels.
 	pub size: f64,
 	pub line_width: Option<f64>,
 	#[serde(skip)]
@@ -112,7 +113,7 @@ impl TextLayer {
 		new
 	}
 
-	/// Converts to a BezPath, populating the cache if necessary.
+	/// Converts to a [BezPath], populating the cache if necessary.
 	#[inline]
 	pub fn to_bez_path(&mut self) -> BezPath {
 		if self.cached_path.is_none() {
@@ -121,7 +122,7 @@ impl TextLayer {
 		self.cached_path.clone().unwrap()
 	}
 
-	/// Converts to a bezpath, without populating the cache.
+	/// Converts to a [BezPath], without populating the cache.
 	#[inline]
 	pub fn to_bez_path_nonmut(&self) -> BezPath {
 		self.cached_path.clone().unwrap_or_else(|| self.generate_path())

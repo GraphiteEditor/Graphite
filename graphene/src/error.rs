@@ -1,7 +1,7 @@
 use super::LayerId;
 use crate::boolean_ops::BooleanOperationError;
 
-/// A representation of different errors that can occur when using Graphene.
+/// A set of different errors that can occur when using Graphene.
 #[derive(Debug, Clone, PartialEq)]
 pub enum DocumentError {
 	LayerNotFound(Vec<LayerId>),

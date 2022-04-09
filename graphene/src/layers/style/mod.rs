@@ -1,4 +1,4 @@
-//! Contains stylistic options for SVG Elements.
+//! Contains stylistic options for SVG elements.
 
 use crate::color::Color;
 use crate::consts::{LAYER_OUTLINE_STROKE_COLOR, LAYER_OUTLINE_STROKE_WIDTH};
@@ -22,10 +22,11 @@ fn format_opacity(name: &str, opacity: f32) -> String {
 /// Represents different ways of rendering an object
 #[derive(Debug, Clone, Copy, PartialEq, Deserialize, Serialize)]
 pub enum ViewMode {
-	/// Render everything.
+	/// Render with normal coloration at the current viewport resolution
 	Normal,
-	/// Only render the outline.
+	/// Render only the outlines of shapes at the current viewport resolution
 	Outline,
+	/// Render with normal coloration at the document resolution, showing the pixels when the current viewport resolution is higher
 	Pixels,
 }
 
@@ -88,7 +89,7 @@ impl Gradient {
 
 /// Describes the fill of a layer.
 ///
-/// Can be None, solid, or potentially some sort of image or pattern
+/// Can be None, a solid [Color], a linear [Gradient], or potentially some sort of image or pattern in the future
 #[repr(C)]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Fill {
@@ -109,12 +110,12 @@ impl Fill {
 		Self::Solid(color)
 	}
 
-	/// Evaluate the color at some point on the fill.
+	/// Evaluate the color at some point on the fill. Doesn't currently work for LinearGradient.
 	pub fn color(&self) -> Color {
 		match self {
 			Self::None => Color::BLACK,
 			Self::Solid(color) => *color,
-			// ToDo: Should correctly sample the gradient
+			// TODO: Should correctly sample the gradient
 			Self::LinearGradient(Gradient { positions, .. }) => positions[0].1,
 		}
 	}
@@ -137,13 +138,13 @@ impl Fill {
 	}
 }
 
-/// The line style of an SVG element.
+/// The stroke (outline) style of an SVG element.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct Stroke {
-	/// The stroke color
+	/// Stroke color
 	color: Color,
-	/// The line width
+	/// Line thickness
 	width: f32,
 }
 
@@ -162,6 +163,7 @@ impl Stroke {
 		self.width
 	}
 
+	/// Provide the SVG attributes for the stroke.
 	pub fn render(&self) -> String {
 		format!(r##" stroke="#{}"{} stroke-width="{}""##, self.color.rgb_hex(), format_opacity("stroke", self.color.a()), self.width)
 	}
@@ -189,7 +191,7 @@ impl PathStyle {
 		Self { stroke, fill }
 	}
 
-	/// Get the current path fill.
+	/// Get the current path's [Fill].
 	///
 	/// # Example
 	/// ```
@@ -204,7 +206,7 @@ impl PathStyle {
 		&self.fill
 	}
 
-	/// Get the current path stroke.
+	/// Get the current path's [Stroke].
 	///
 	/// # Example
 	/// ```
@@ -219,7 +221,7 @@ impl PathStyle {
 		self.stroke
 	}
 
-	/// Set the path fill.
+	/// Replace the path's [Fill] with a provided one.
 	///
 	/// # Example
 	/// ```
@@ -238,7 +240,7 @@ impl PathStyle {
 		self.fill = fill;
 	}
 
-	/// Set the path stroke.
+	/// Replace the path's [Stroke] with a provided one.
 	///
 	/// # Example
 	/// ```
@@ -257,7 +259,7 @@ impl PathStyle {
 		self.stroke = Some(stroke);
 	}
 
-	/// Clear the path fill.
+	/// Set the path's fill to None.
 	///
 	/// # Example
 	/// ```
@@ -275,7 +277,7 @@ impl PathStyle {
 		self.fill = Fill::None;
 	}
 
-	/// Clear the path stroke.
+	/// Set the path's stroke to None.
 	///
 	/// # Example
 	/// ```

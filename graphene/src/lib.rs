@@ -1,10 +1,10 @@
 pub mod boolean_ops;
 /// Contains the [Color](color::Color) type.
 pub mod color;
-/// Contains constant values used by graphene.
+/// Contains constant values used by Graphene.
 pub mod consts;
 pub mod document;
-/// Defines errors that can occur when using graphene.
+/// Defines errors that can occur when using Graphene.
 pub mod error;
 /// Utilities for computing intersections.
 pub mod intersection;

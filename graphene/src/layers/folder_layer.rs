@@ -12,12 +12,11 @@ use std::fmt::Write;
 /// stored in the [layers](FolderLayer::layers) field.
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize, Default)]
 pub struct FolderLayer {
-	/// The id that will be assigned to the next layer that
-	/// is added to the folder
+	/// The ID that will be assigned to the next layer that is added to the folder
 	next_assignment_id: LayerId,
-	/// The ID's of the Layers contained within the Folder
+	/// The IDs of the [Layer]s contained within the Folder
 	pub layer_ids: Vec<LayerId>,
-	/// The layers contained in the folder
+	/// The [Layer]s contained in the folder
 	layers: Vec<Layer>,
 }
 
@@ -45,9 +44,9 @@ impl LayerData for FolderLayer {
 }
 
 impl FolderLayer {
-	/// When a insertion id is provided, try to insert the layer with the given id.
-	/// If that id is already used, return `None`.
-	/// When no insertion id is provided, search for the next free id and insert it with that.
+	/// When a insertion ID is provided, try to insert the layer with the given ID.
+	/// If that ID is already used, return `None`.
+	/// When no insertion ID is provided, search for the next free ID and insert it with that.
 	/// Negative values for `insert_index` represent distance from the end
 	///
 	/// # Example
@@ -95,7 +94,7 @@ impl FolderLayer {
 		}
 	}
 
-	/// Remove a layer with a given id from the folder.
+	/// Remove a layer with a given ID from the folder.
 	/// This operation will fail if `id` is not present in the folder.
 	///
 	/// # Example
@@ -120,17 +119,17 @@ impl FolderLayer {
 		Ok(())
 	}
 
-	/// Returns a list of layer id's in the folder.
+	/// Returns a list of [LayerId]s in the folder.
 	pub fn list_layers(&self) -> &[LayerId] {
 		self.layer_ids.as_slice()
 	}
 
-	/// Get references to all the layers in the folder.
+	/// Get references to all the [Layer]s in the folder.
 	pub fn layers(&self) -> &[Layer] {
 		self.layers.as_slice()
 	}
 
-	/// Get mutable references to all the layers in the folder.
+	/// Get mutable references to all the [Layer]s in the folder.
 	pub fn layers_mut(&mut self) -> &mut [Layer] {
 		self.layers.as_mut_slice()
 	}
@@ -145,7 +144,7 @@ impl FolderLayer {
 		Some(&mut self.layers[pos])
 	}
 
-	/// Returns `true` if the folder contains a layer with the given id.
+	/// Returns `true` if the folder contains a layer with the given [LayerId].
 	///
 	/// # Example
 	/// ```
@@ -165,8 +164,8 @@ impl FolderLayer {
 		self.layer_ids.contains(&id)
 	}
 
-	/// Try to find the index of a layer with the given id within the folder.
-	/// This operation will fail if no layer with the id `id` is present in the folder.
+	/// Tries to find the index of a layer with the given [LayerId] within the folder.
+	/// This operation will fail if no layer with a matching ID is present in the folder.
 	///
 	/// # Example
 	/// ```
@@ -187,9 +186,9 @@ impl FolderLayer {
 		self.layer_ids.iter().position(|x| *x == layer_id).ok_or_else(|| DocumentError::LayerNotFound([layer_id].into()))
 	}
 
-	/// Try to get a reference to a folder with the given `id`.
+	/// Tries to get a reference to a folder with the given [LayerId].
 	/// This operation will return `None` if either no layer with `id` exists
-	/// in the folder or the layer with matching id is not a folder.
+	/// in the folder, or the layer with matching ID is not a folder.
 	///
 	/// # Example
 	/// ```
@@ -218,9 +217,9 @@ impl FolderLayer {
 		}
 	}
 
-	/// Try to get a mutable reference to folder with the given `id`.
+	/// Tries to get a mutable reference to folder with the given `id`.
 	/// This operation will return `None` if either no layer with `id` exists
-	/// in the folder or the layer with matching id is not a folder.
+	/// in the folder or the layer with matching ID is not a folder.
 	/// See the [FolderLayer::folder] method for a usage example.
 	pub fn folder_mut(&mut self, id: LayerId) -> Option<&mut FolderLayer> {
 		match self.layer_mut(id) {
