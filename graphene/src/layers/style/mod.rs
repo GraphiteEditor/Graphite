@@ -160,8 +160,8 @@ impl Display for LineCap {
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum LineJoin {
-	Bevel,
 	Miter,
+	Bevel,
 	Round,
 }
 
@@ -215,11 +215,12 @@ impl Stroke {
 	pub fn line_cap_index(&self) -> u32 {
 		self.line_cap as u32
 	}
+
 	pub fn line_join_index(&self) -> u32 {
 		self.line_join as u32
 	}
 
-	pub fn miterlimit(&self) -> f32 {
+	pub fn miter_limit(&self) -> f32 {
 		self.miter_limit as f32
 	}
 
@@ -244,10 +245,12 @@ impl Stroke {
 			self
 		})
 	}
+
 	pub fn with_width(mut self, width: f32) -> Self {
 		self.width = width;
 		self
 	}
+
 	pub fn with_dash_lengths(mut self, dash_lengths: &str) -> Option<Self> {
 		dash_lengths
 			.split(&[',', ' '])
@@ -260,20 +263,24 @@ impl Stroke {
 				self
 			})
 	}
+
 	pub fn with_dash_offset(mut self, dash_offset: f32) -> Self {
 		self.dash_offset = dash_offset;
 		self
 	}
-	pub fn with_linecap(mut self, line_cap: LineCap) -> Self {
+
+	pub fn with_line_cap(mut self, line_cap: LineCap) -> Self {
 		self.line_cap = line_cap;
 		self
 	}
-	pub fn with_linejoin(mut self, line_join: LineJoin) -> Self {
+
+	pub fn with_line_join(mut self, line_join: LineJoin) -> Self {
 		self.line_join = line_join;
 		self
 	}
-	pub fn with_miterlimit(mut self, miterlimit: f32) -> Self {
-		self.miter_limit = miterlimit;
+
+	pub fn with_miter_limit(mut self, miter_limit: f32) -> Self {
+		self.miter_limit = miter_limit;
 		self
 	}
 }

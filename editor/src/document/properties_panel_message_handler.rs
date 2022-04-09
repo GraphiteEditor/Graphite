@@ -626,7 +626,7 @@ fn node_section_stroke(stroke: &Stroke) -> LayoutRow {
 				name: "".into(),
 				widgets: vec![
 					WidgetHolder::new(Widget::TextLabel(TextLabel {
-						value: "Dash lengths array".into(),
+						value: "Dash Lengths".into(),
 						..TextLabel::default()
 					})),
 					WidgetHolder::new(Widget::Separator(Separator {
@@ -648,7 +648,7 @@ fn node_section_stroke(stroke: &Stroke) -> LayoutRow {
 				name: "".into(),
 				widgets: vec![
 					WidgetHolder::new(Widget::TextLabel(TextLabel {
-						value: "Dash offset".into(),
+						value: "Dash Offset".into(),
 						..TextLabel::default()
 					})),
 					WidgetHolder::new(Widget::Separator(Separator {
@@ -674,7 +674,7 @@ fn node_section_stroke(stroke: &Stroke) -> LayoutRow {
 				name: "".into(),
 				widgets: vec![
 					WidgetHolder::new(Widget::TextLabel(TextLabel {
-						value: "Line cap".into(),
+						value: "Line Cap".into(),
 						..TextLabel::default()
 					})),
 					WidgetHolder::new(Widget::Separator(Separator {
@@ -685,30 +685,30 @@ fn node_section_stroke(stroke: &Stroke) -> LayoutRow {
 						selected_index: stroke.line_cap_index(),
 						entries: vec![
 							RadioEntryData {
-								label: "butt".into(),
+								label: "Butt".into(),
 								on_update: WidgetCallback::new(move |_| {
 									PropertiesPanelMessage::ModifyStroke {
-										stroke: internal_stroke6.clone().with_linecap(LineCap::Butt),
+										stroke: internal_stroke6.clone().with_line_cap(LineCap::Butt),
 									}
 									.into()
 								}),
 								..RadioEntryData::default()
 							},
 							RadioEntryData {
-								label: "round".into(),
+								label: "Round".into(),
 								on_update: WidgetCallback::new(move |_| {
 									PropertiesPanelMessage::ModifyStroke {
-										stroke: internal_stroke7.clone().with_linecap(LineCap::Round),
+										stroke: internal_stroke7.clone().with_line_cap(LineCap::Round),
 									}
 									.into()
 								}),
 								..RadioEntryData::default()
 							},
 							RadioEntryData {
-								label: "square".into(),
+								label: "Square".into(),
 								on_update: WidgetCallback::new(move |_| {
 									PropertiesPanelMessage::ModifyStroke {
-										stroke: internal_stroke8.clone().with_linecap(LineCap::Square),
+										stroke: internal_stroke8.clone().with_line_cap(LineCap::Square),
 									}
 									.into()
 								}),
@@ -722,7 +722,7 @@ fn node_section_stroke(stroke: &Stroke) -> LayoutRow {
 				name: "".into(),
 				widgets: vec![
 					WidgetHolder::new(Widget::TextLabel(TextLabel {
-						value: "Line join".into(),
+						value: "Line Join".into(),
 						..TextLabel::default()
 					})),
 					WidgetHolder::new(Widget::Separator(Separator {
@@ -733,30 +733,30 @@ fn node_section_stroke(stroke: &Stroke) -> LayoutRow {
 						selected_index: stroke.line_join_index(),
 						entries: vec![
 							RadioEntryData {
-								label: "bevel".into(),
+								label: "Miter".into(),
 								on_update: WidgetCallback::new(move |_| {
 									PropertiesPanelMessage::ModifyStroke {
-										stroke: internal_stroke9.clone().with_linejoin(LineJoin::Bevel),
+										stroke: internal_stroke9.clone().with_line_join(LineJoin::Miter),
 									}
 									.into()
 								}),
 								..RadioEntryData::default()
 							},
 							RadioEntryData {
-								label: "miter".into(),
+								label: "Bevel".into(),
 								on_update: WidgetCallback::new(move |_| {
 									PropertiesPanelMessage::ModifyStroke {
-										stroke: internal_stroke10.clone().with_linejoin(LineJoin::Miter),
+										stroke: internal_stroke10.clone().with_line_join(LineJoin::Bevel),
 									}
 									.into()
 								}),
 								..RadioEntryData::default()
 							},
 							RadioEntryData {
-								label: "round".into(),
+								label: "Round".into(),
 								on_update: WidgetCallback::new(move |_| {
 									PropertiesPanelMessage::ModifyStroke {
-										stroke: internal_stroke11.clone().with_linejoin(LineJoin::Round),
+										stroke: internal_stroke11.clone().with_line_join(LineJoin::Round),
 									}
 									.into()
 								}),
@@ -766,11 +766,12 @@ fn node_section_stroke(stroke: &Stroke) -> LayoutRow {
 					})),
 				],
 			},
+			// TODO: Gray out this row when Line Join isn't set to Miter
 			LayoutRow::Row {
 				name: "".into(),
 				widgets: vec![
 					WidgetHolder::new(Widget::TextLabel(TextLabel {
-						value: "Miterlimit".into(),
+						value: "Miter Limit".into(),
 						..TextLabel::default()
 					})),
 					WidgetHolder::new(Widget::Separator(Separator {
@@ -778,13 +779,13 @@ fn node_section_stroke(stroke: &Stroke) -> LayoutRow {
 						direction: SeparatorDirection::Horizontal,
 					})),
 					WidgetHolder::new(Widget::NumberInput(NumberInput {
-						value: stroke.miterlimit() as f64,
+						value: stroke.miter_limit() as f64,
 						is_integer: true,
 						min: Some(0.),
-						unit: " miter length / weight".into(),
+						unit: "".into(),
 						on_update: WidgetCallback::new(move |number_input: &NumberInput| {
 							PropertiesPanelMessage::ModifyStroke {
-								stroke: internal_stroke5.clone().with_miterlimit(number_input.value as f32),
+								stroke: internal_stroke5.clone().with_miter_limit(number_input.value as f32),
 							}
 							.into()
 						}),
