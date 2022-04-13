@@ -572,9 +572,9 @@ pub fn point_t_value(a: &PathSeg, p: &Point) -> Option<f64> {
 			let [mut p0, p1] = linear_bezier_coefficients(line);
 			p0 -= p.to_vec2();
 			let x_root = linear_root(p0.x, p1.x);
-			let y_root = linear_root(p0.x, p1.y);
+			let y_root = linear_root(p0.y, p1.y);
 			if let (Some(x_root_val), Some(y_root_val)) = (x_root, y_root) {
-				if x_root_val == y_root_val {
+				if (y_root_val - x_root_val).abs() < F64LOOSE {
 					return Some(x_root_val);
 				}
 			}
@@ -660,7 +660,7 @@ pub fn line_intersection_unchecked(a: &Line, b: &Line) -> Option<Intersect> {
 	if slopes.determinant() == 0.0 {
 		return None;
 	}
-	let t_values = slopes.inverse() * DVec2::new((a.p0 - b.p0).x, (a.p0 - b.p0).y);
+	let t_values = slopes.inverse() * DVec2::new(a.p0.x - b.p0.x, a.p0.y - b.p0.y);
 	Some(Intersect::from((b.eval(t_values[0]), t_values[1], t_values[0])))
 }
 
@@ -756,6 +756,7 @@ pub fn cubic_bezier_coefficients(cubic: &CubicBez) -> [Vec2; 4] {
 }
 
 /// Returns real roots to quadratic equation: `f(t) = a0 + t*a1 + t^2*a2`.
+/// TODO: make numerically stable
 pub fn quadratic_real_roots(a0: f64, a1: f64, a2: f64) -> [Option<f64>; 2] {
 	let radicand = a1 * a1 - 4.0 * a2 * a0;
 	if radicand < 0.0 {
@@ -1050,7 +1051,7 @@ mod tests {
 	#[ignore]
 	fn test_line_intersection_cancellation() {
 		let mut test_results = File::create("..\\target\\debug\\test_line_isct_cncl_results.txt").expect("");
-		let val = 2.0 * F64PRECISE;
+		let val = 1.0;
 		let mut theta = F64PRECISE;
 
 		while theta < std::f64::consts::FRAC_PI_2 - 0.1 {
@@ -1058,15 +1059,7 @@ mod tests {
 			let b = Line::new(Point::new(1.0, 1.0 + val * f64::cos(theta)), Point::new(1.0 + val, 1.0 + val * f64::sin(theta)));
 
 			let line_isct = line_intersection(&a, &b).unwrap();
-			writeln!(
-				&mut test_results,
-				"{:?}, {:?}, {:?}, {:?}",
-				theta,
-				line_isct.t_a,
-				line_isct.point.x,
-				guess_quality(&PathSeg::Line(a), &PathSeg::Line(b), &line_isct)
-			)
-			.expect("");
+			writeln!(&mut test_results, "{:?}, {:?}, {:?}, {:?}", theta, line_isct.t_a, line_isct.t_b, line_isct.point.x,).expect("");
 			theta += f64::powf(2.0, 20.0) * F64LOOSE;
 		}
 	}
