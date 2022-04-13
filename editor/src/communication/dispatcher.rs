@@ -421,4 +421,35 @@ mod test {
 		let (all, non_selected, selected) = verify_order(editor.dispatcher.message_handlers.portfolio_message_handler.active_document_mut());
 		assert_eq!(all, non_selected.into_iter().chain(selected.into_iter()).collect::<Vec<_>>());
 	}
+
+	#[test]
+	fn check_if_graphite_file_version_upgrade_is_needed() {
+		init_logger();
+		set_uuid_seed(0);
+		let mut editor = Editor::new();
+		let test_file = include_str!("./graphite-test-document.graphite");
+		let responses = editor.handle_message(PortfolioMessage::OpenDocumentFile {
+			document_name: "Graphite Version Test".into(),
+			document_serialized_content: test_file.into(),
+		});
+
+		for response in responses {
+			match response {
+				FrontendMessage::DisplayDialogError { title, description } => {
+					println!();
+					println!("-------------------------------------------------");
+					println!("Failed test due to receiving a DisplayDialogError while loading the graphite sample file!");
+					println!("This is most likely caused by forgetting to bump the `GRAPHITE_DOCUMENT_VERSION` in `editor/src/consts.rs`");
+					println!("Once bumping this version number please replace the `graphite-test-document.graphite` with a valid file");
+					println!("DisplayDialogError details:");
+					println!("Title: {}", title);
+					println!("description: {}", description);
+					println!("-------------------------------------------------");
+					println!();
+					assert!(false)
+				}
+				_ => {}
+			}
+		}
+	}
 }
