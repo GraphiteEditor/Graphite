@@ -16,7 +16,8 @@ use wasm_bindgen::prelude::*;
 pub static EDITOR_HAS_CRASHED: AtomicBool = AtomicBool::new(false);
 pub static LOGGER: WasmLog = WasmLog;
 thread_local! {
-	pub static EDITOR_INSTANCES: RefCell<HashMap<u64, (editor::Editor, api::JsEditorHandle)>> = RefCell::new(HashMap::new());
+	pub static EDITOR_INSTANCES: RefCell<HashMap<u64, editor::Editor>> = RefCell::new(HashMap::new());
+	pub static JS_EDITOR_HANDLES: RefCell<HashMap<u64, api::JsEditorHandle>> = RefCell::new(HashMap::new());
 }
 
 // Initialize the backend
@@ -34,9 +35,9 @@ fn panic_hook(info: &panic::PanicInfo) {
 	let title = "The editor crashed — sorry about that".to_string();
 	let description = "An internal error occurred. Reload the editor to continue. Please report this by filing an issue on GitHub.".to_string();
 	log::error!("{}", info);
-	EDITOR_INSTANCES.with(|instances| {
+	JS_EDITOR_HANDLES.with(|instances| {
 		instances.borrow_mut().values_mut().for_each(|instance| {
-			instance.1.handle_response_rust_proxy(FrontendMessage::DisplayDialogPanic {
+			instance.handle_response_rust_proxy(FrontendMessage::DisplayDialogPanic {
 				panic_info: panic_info.clone(),
 				title: title.clone(),
 				description: description.clone(),
