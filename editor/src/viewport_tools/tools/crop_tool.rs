@@ -1,5 +1,5 @@
 use crate::consts::SELECTION_TOLERANCE;
-use crate::document::properties_panel_message::TargetDocument;
+use crate::document::utility_types::TargetDocument;
 use crate::document::DocumentMessageHandler;
 use crate::frontend::utility_types::MouseCursorIcon;
 use crate::input::keyboard::{Key, MouseMotion};

@@ -14,7 +14,7 @@ mod overlays_message;
 mod overlays_message_handler;
 mod portfolio_message;
 mod portfolio_message_handler;
-pub mod properties_panel_message;
+mod properties_panel_message;
 mod properties_panel_message_handler;
 mod transform_layer_message;
 mod transform_layer_message_handler;

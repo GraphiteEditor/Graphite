@@ -1,5 +1,7 @@
 use crate::message_prelude::*;
 
+use super::utility_types::TargetDocument;
+
 use graphene::layers::style::Fill;
 use serde::{Deserialize, Serialize};
 
@@ -27,10 +29,4 @@ pub enum TransformOp {
 	Width,
 	Height,
 	Rotation,
-}
-
-#[derive(PartialEq, Clone, Copy, Debug, Serialize, Deserialize)]
-pub enum TargetDocument {
-	Artboard,
-	Artwork,
 }

@@ -1,5 +1,5 @@
 use super::layer_panel::LayerDataTypeDiscriminant;
-use super::properties_panel_message::TargetDocument;
+use super::utility_types::TargetDocument;
 use crate::document::properties_panel_message::TransformOp;
 use crate::layout::layout_message::LayoutTarget;
 use crate::layout::widgets::{
