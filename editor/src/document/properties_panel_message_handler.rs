@@ -177,8 +177,8 @@ impl MessageHandler<PropertiesPanelMessage, (&GrapheneDocument, &GrapheneDocumen
 				responses.push_back(self.create_document_operation(Operation::SetLayerFill { path, fill }));
 			}
 			ModifyStroke { stroke } => {
-				let path = self.active_path.clone().expect("Received update for properties panel with no active layer");
-				responses.push_back(Operation::SetLayerStroke { path, stroke }.into())
+				let (path, _) = self.active_selection.clone().expect("Received update for properties panel with no active layer");
+				responses.push_back(self.create_document_operation(Operation::SetLayerStroke { path, stroke }))
 			}
 			CheckSelectedWasUpdated { path } => {
 				if self.matches_selected(&path) {
