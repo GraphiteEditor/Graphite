@@ -1,5 +1,7 @@
 use crate::message_prelude::*;
 
+use super::utility_types::TargetDocument;
+
 use graphene::layers::style::{Fill, Stroke};
 use serde::{Deserialize, Serialize};
 
