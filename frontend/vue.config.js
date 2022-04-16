@@ -85,6 +85,9 @@ module.exports = {
 			.rule("svg")
 			.uses.clear()
 			.end()
+			// Required (since upgrading vue-cli) to stop default importing behaviours as documented in
+			/// https://webpack.js.org/configuration/module/#ruletype
+			.type("javascript/auto")
 			// Add vue-loader as a loader for Vue single-file components
 			// https://www.npmjs.com/package/vue-loader
 			.use("vue-loader")
