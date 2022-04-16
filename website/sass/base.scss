@@ -9,13 +9,16 @@
 	--max-width: 1600px;
 	--max-width-plus-padding: calc(var(--max-width) + 40px * 2);
 	--variable-px: Min(1px, 0.15vw);
+	--border-thickness: 2px;
 	--font-size-intro-heading: 60px;
 	--font-size-intro-body: 22px;
 	--font-size-link: 24px;
 	--font-size-heading: 40px;
 	--font-size-subheading: 24px;
 	--font-size-body: 18px;
-	--border-thickness: 2px;
+	--font-size-article-h1: 32px;
+	--font-size-article-h2: 24px;
+	--font-size-article-h3: 18px;
 
 	@media screen and (max-width: 760px) {
 		--font-size-intro-heading: 40px;
@@ -349,7 +352,7 @@ hr,
 		}
 	}
 
-	img[alt=""]{
+	img[alt=""] {
 		display: block;
 
 		&::after {
