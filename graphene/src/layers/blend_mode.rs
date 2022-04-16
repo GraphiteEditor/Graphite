@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+/// Describes how overlapping SVG elements should be blended together.
+/// See the [MDN Docs](https://developer.mozilla.org/en-US/docs/Web/CSS/blend-mode#examples) for examples.
 #[derive(PartialEq, Copy, Clone, Debug, Serialize, Deserialize)]
 pub enum BlendMode {
 	Normal,
@@ -21,6 +23,8 @@ pub enum BlendMode {
 }
 
 impl BlendMode {
+	/// Convert the enum to the CSS string for the blend mode.
+	/// [Read more](https://developer.mozilla.org/en-US/docs/Web/CSS/blend-mode#values)
 	pub fn to_svg_style_name(&self) -> &str {
 		match self {
 			BlendMode::Normal => "normal",
