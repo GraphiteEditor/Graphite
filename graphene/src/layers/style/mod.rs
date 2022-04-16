@@ -198,8 +198,8 @@ impl Stroke {
 			..Default::default()
 		}
 	}
-  
-  /// Get the current stroke color.
+
+	/// Get the current stroke color.
 	pub fn color(&self) -> Option<Color> {
 		self.color
 	}
