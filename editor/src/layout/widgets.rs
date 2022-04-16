@@ -151,6 +151,7 @@ impl<T> Default for WidgetCallback<T> {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Widget {
 	ColorInput(ColorInput),
+	FontInput(FontInput),
 	IconButton(IconButton),
 	IconLabel(IconLabel),
 	NumberInput(NumberInput),
@@ -158,6 +159,7 @@ pub enum Widget {
 	PopoverButton(PopoverButton),
 	RadioInput(RadioInput),
 	Separator(Separator),
+	TextAreaInput(TextAreaInput),
 	TextInput(TextInput),
 	TextLabel(TextLabel),
 }
@@ -202,11 +204,30 @@ pub struct TextInput {
 
 #[derive(Clone, Serialize, Deserialize, Derivative)]
 #[derivative(Debug, PartialEq, Default)]
+pub struct TextAreaInput {
+	pub value: String,
+	#[serde(skip)]
+	#[derivative(Debug = "ignore", PartialEq = "ignore")]
+	pub on_update: WidgetCallback<TextAreaInput>,
+}
+
+#[derive(Clone, Serialize, Deserialize, Derivative)]
+#[derivative(Debug, PartialEq, Default)]
 pub struct ColorInput {
 	pub value: String,
 	#[serde(skip)]
 	#[derivative(Debug = "ignore", PartialEq = "ignore")]
 	pub on_update: WidgetCallback<ColorInput>,
+}
+
+#[derive(Clone, Serialize, Deserialize, Derivative)]
+#[derivative(Debug, PartialEq, Default)]
+pub struct FontInput {
+	pub name: String,
+	pub file: String,
+	#[serde(skip)]
+	#[derivative(Debug = "ignore", PartialEq = "ignore")]
+	pub on_update: WidgetCallback<FontInput>,
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]

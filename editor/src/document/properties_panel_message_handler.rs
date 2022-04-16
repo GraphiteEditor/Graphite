@@ -2,8 +2,8 @@ use super::layer_panel::LayerDataTypeDiscriminant;
 use crate::document::properties_panel_message::TransformOp;
 use crate::layout::layout_message::LayoutTarget;
 use crate::layout::widgets::{
-	ColorInput, IconLabel, LayoutRow, NumberInput, PopoverButton, RadioEntryData, RadioInput, Separator, SeparatorDirection, SeparatorType, TextInput, TextLabel, Widget, WidgetCallback, WidgetHolder,
-	WidgetLayout,
+	ColorInput, FontInput, IconLabel, LayoutRow, NumberInput, PopoverButton, RadioEntryData, RadioInput, Separator, SeparatorDirection, SeparatorType, TextAreaInput, TextInput, TextLabel, Widget,
+	WidgetCallback, WidgetHolder, WidgetLayout,
 };
 use crate::message_prelude::*;
 
@@ -11,6 +11,7 @@ use graphene::color::Color;
 use graphene::document::Document as GrapheneDocument;
 use graphene::layers::layer_info::{Layer, LayerDataType};
 use graphene::layers::style::{Fill, LineCap, LineJoin, Stroke};
+use graphene::layers::text_layer::TextLayer;
 use graphene::{LayerId, Operation};
 
 use glam::{DAffine2, DVec2};
@@ -170,6 +171,10 @@ impl MessageHandler<PropertiesPanelMessage, &GrapheneDocument> for PropertiesPan
 				let path = self.active_path.clone().expect("Received update for properties panel with no active layer");
 				responses.push_back(Operation::SetLayerStroke { path, stroke }.into())
 			}
+			ModifyText { new_text } => {
+				let path = self.active_path.clone().expect("Received update for properties panel with no active layer");
+				responses.push_back(Operation::SetTextContent { path, new_text }.into())
+			}
 			CheckSelectedWasUpdated { path } => {
 				if self.matches_selected(&path) {
 					let layer = graphene_document.layer(&path).unwrap();
@@ -268,6 +273,7 @@ fn register_layer_properties(layer: &Layer, responses: &mut VecDeque<Message>) {
 		LayerDataType::Text(text) => {
 			vec![
 				node_section_transform(layer),
+				node_section_font(text),
 				node_section_fill(text.style.fill()).expect("Text should have fill"),
 				node_section_stroke(&text.style.stroke().unwrap_or_default()),
 			]
@@ -452,6 +458,49 @@ fn node_section_transform(layer: &Layer) -> LayoutRow {
 							.into()
 						}),
 						..NumberInput::default()
+					})),
+				],
+			},
+		],
+	}
+}
+
+fn node_section_font(layer: &TextLayer) -> LayoutRow {
+	LayoutRow::Section {
+		name: "Font".into(),
+		layout: vec![
+			LayoutRow::Row {
+				name: "".into(),
+				widgets: vec![
+					WidgetHolder::new(Widget::TextLabel(TextLabel {
+						value: "Text".into(),
+						..TextLabel::default()
+					})),
+					WidgetHolder::new(Widget::Separator(Separator {
+						separator_type: SeparatorType::Unrelated,
+						direction: SeparatorDirection::Horizontal,
+					})),
+					WidgetHolder::new(Widget::TextAreaInput(TextAreaInput {
+						value: layer.text.clone(),
+						on_update: WidgetCallback::new(|text_area: &TextAreaInput| PropertiesPanelMessage::ModifyText { new_text: text_area.value.clone() }.into()),
+					})),
+				],
+			},
+			LayoutRow::Row {
+				name: "".into(),
+				widgets: vec![
+					WidgetHolder::new(Widget::TextLabel(TextLabel {
+						value: "Font".into(),
+						..TextLabel::default()
+					})),
+					WidgetHolder::new(Widget::Separator(Separator {
+						separator_type: SeparatorType::Unrelated,
+						direction: SeparatorDirection::Horizontal,
+					})),
+					WidgetHolder::new(Widget::FontInput(FontInput {
+						name: layer.text.clone(),
+						file: String::new(),
+						on_update: WidgetCallback::new(|text_area: &FontInput| PropertiesPanelMessage::ModifyText { new_text: text_area.file.clone() }.into()),
 					})),
 				],
 			},

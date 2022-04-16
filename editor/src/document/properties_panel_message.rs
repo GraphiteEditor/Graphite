@@ -13,6 +13,7 @@ pub enum PropertiesPanelMessage {
 	ModifyFill { fill: Fill },
 	ModifyName { name: String },
 	ModifyStroke { stroke: Stroke },
+	ModifyText { new_text: String },
 	ModifyTransform { value: f64, transform_op: TransformOp },
 	ResendActiveProperties,
 	SetActiveLayers { paths: Vec<Vec<LayerId>> },
