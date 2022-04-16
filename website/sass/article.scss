@@ -1,11 +1,11 @@
 #article {
 	max-width: 800px;
-	
+
 	.details {
 		display: flex;
 		flex-direction: column;
 		gap: 20px;
-		
+
 		.publication {
 			font-weight: 800;
 		}
@@ -20,6 +20,29 @@
 		hr {
 			margin-top: calc(40px - 20px);
 			margin-bottom: 40px;
+		}
+	}
+
+	article {
+
+		h1,
+		h2,
+		h3 {
+			font-family: "Inter", sans-serif;
+			line-height: 1.5;
+			font-weight: 800;
+		}
+
+		h1 {
+			font-size: var(--font-size-article-h1);
+		}
+
+		h2 {
+			font-size: var(--font-size-article-h2);
+		}
+
+		h3 {
+			font-size: var(--font-size-article-h3);
 		}
 	}
 }
