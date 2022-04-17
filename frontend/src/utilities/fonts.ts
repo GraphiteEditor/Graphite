@@ -16,5 +16,5 @@ export function fontNames(): string[] {
 
 export function getFontFile(name: string): string | undefined {
 	const font = fontsList.find((value) => value.family === name);
-	return font ? font.files[font.variants[0]] : undefined;
+	return font ? font.files[font.variants[0]].replace("http://", "https://") : undefined;
 }
