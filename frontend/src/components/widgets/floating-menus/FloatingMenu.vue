@@ -177,8 +177,6 @@
 <script lang="ts">
 import { defineComponent, PropType, StyleValue } from "vue";
 
-import { clamp } from "@/utilities/math";
-
 import LayoutCol from "@/components/layout/LayoutCol.vue";
 
 export type MenuDirection = "Top" | "Bottom" | "Left" | "Right" | "TopLeft" | "TopRight" | "BottomLeft" | "BottomRight" | "Center";
@@ -209,7 +207,7 @@ export default defineComponent({
 		};
 	},
 	// Gets the client bounds of the elements and apply relevant styles to them
-	// TODO: Use the vue :style attribute more whilst not causing recursive updates
+	// TODO: Use the Vue :style attribute more whilst not causing recursive updates
 	updated() {
 		const workspace = document.querySelector("[data-workspace]");
 		const floatingMenuContainer = this.$refs.floatingMenuContainer as HTMLElement;
@@ -217,7 +215,7 @@ export default defineComponent({
 		const floatingMenuContent = floatingMenuContentComponent && (floatingMenuContentComponent.$el as HTMLElement);
 		const floatingMenu = this.$refs.floatingMenu as HTMLElement;
 
-		if (!floatingMenuContainer || !floatingMenuContentComponent || !floatingMenuContent || !workspace || !floatingMenu) return;
+		if (!workspace || !floatingMenuContainer || !floatingMenuContentComponent || !floatingMenuContent || !floatingMenu) return;
 
 		this.workspaceBounds = workspace.getBoundingClientRect();
 		this.floatingMenuBounds = floatingMenu.getBoundingClientRect();
@@ -259,7 +257,7 @@ export default defineComponent({
 			}
 		}
 
-		// Remove the rounded corner from the copntent where the tail perfectly meets the corner
+		// Remove the rounded corner from the content where the tail perfectly meets the corner
 		if (this.type === "Popover" && this.windowEdgeMargin === 6 && zeroedBorderVertical && zeroedBorderHorizontal) {
 			switch (`${zeroedBorderVertical}${zeroedBorderHorizontal}`) {
 				case "TopLeft":
@@ -391,6 +389,7 @@ export default defineComponent({
 					}
 				});
 			}
+
 			// Switching from open to closed
 			if (!newState && oldState) {
 				window.removeEventListener("pointermove", this.pointerMoveHandler);
@@ -405,7 +404,6 @@ export default defineComponent({
 				minWidth: this.minWidth > 0 ? `${this.minWidth}px` : "",
 			};
 		},
-
 		// Required to correctly position the tail when scrolled (it has a `position: fixed` to prevent clipping)
 		tailStyle(): StyleValue {
 			if (this.direction === "Bottom") return { top: `${this.floatingMenuBounds.top}px` };
