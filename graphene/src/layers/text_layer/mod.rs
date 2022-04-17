@@ -19,7 +19,6 @@ fn glam_to_kurbo(transform: DAffine2) -> Affine {
 /// A line, or multiple lines, of text drawn in the document.
 /// Like [ShapeLayers](super::shape_layer::ShapeLayer), [TextLayer] are rendered as
 /// [`<path>`s](https://developer.mozilla.org/en-US/docs/Web/SVG/Element/path).
-/// Currently, the only supported font is `SourceSansPro-Regular`.
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub struct TextLayer {
 	/// The string of text, encompassing one or multiple lines.
@@ -102,9 +101,10 @@ impl LayerData for TextLayer {
 
 impl TextLayer {
 	pub fn load_face<'a>(&self, font_cache: FontCache<'a>) -> Face<'a> {
+		const DEFAULT_FONT: &str = "https://fonts.gstatic.com/s/sourcesanspro/v19/6xK3dSBYKcSV-LCoeQqfX1RYOo3aP6TkmDZz9g.ttf";
 		let data = font_cache
 			.get(&self.font_file)
-			.map_or_else(|| include_bytes!("SourceSansPro/SourceSansPro-Regular.ttf").as_slice(), |v| v.as_slice());
+			.map_or_else(|| font_cache.get(DEFAULT_FONT).expect("Fonts failed to load").as_slice(), |v| v.as_slice());
 		rustybuzz::Face::from_slice(data, 0).expect("Loading font failed")
 	}
 

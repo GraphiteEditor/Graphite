@@ -522,6 +522,17 @@ export default defineComponent({
 		// TODO(mfish33): Replace with initialization system Issue:#524
 		// Get initial Document Bar
 		this.editor.instance.init_document_bar();
+
+		// Load a default font
+		// Should also probably be called on rust init
+		{
+			const font = "https://fonts.gstatic.com/s/sourcesanspro/v19/6xK3dSBYKcSV-LCoeQqfX1RYOo3aP6TkmDZz9g.ttf";
+			fetch(font)
+				.then((response) => response.arrayBuffer())
+				.then((response) => {
+					this.editor.instance.on_font_load(font, new Uint8Array(response));
+				});
+		}
 	},
 	data() {
 		const documentModeEntries: SectionsOfMenuListEntries = [
