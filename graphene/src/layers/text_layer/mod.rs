@@ -115,14 +115,14 @@ impl TextLayer {
 		transforms.iter().skip(start).cloned().reduce(|a, b| a * b).unwrap_or(DAffine2::IDENTITY)
 	}
 
-	pub fn new(text: String, style: PathStyle, size: f64, font_cache: FontCache) -> Self {
+	pub fn new(text: String, style: PathStyle, size: f64, font_name: String, font_file: String, font_cache: FontCache) -> Self {
 		let mut new = Self {
 			text,
 			style,
 			size,
 			line_width: None,
-			font: "Source Sans Pro".into(),
-			font_file: "".into(),
+			font: font_name,
+			font_file,
 			editable: false,
 			cached_path: None,
 		};

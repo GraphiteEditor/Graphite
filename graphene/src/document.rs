@@ -498,8 +498,10 @@ impl Document {
 
 				style,
 				size,
+				font_name,
+				font_file,
 			} => {
-				let layer = Layer::new(LayerDataType::Text(TextLayer::new(text, style, size, &self.font_cache)), transform);
+				let layer = Layer::new(LayerDataType::Text(TextLayer::new(text, style, size, font_name, font_file, &self.font_cache)), transform);
 
 				self.set_layer(&path, layer, insert_index)?;
 

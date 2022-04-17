@@ -53,6 +53,8 @@ pub enum Operation {
 		text: String,
 		style: style::PathStyle,
 		size: f64,
+		font_name: String,
+		font_file: String,
 	},
 	AddImage {
 		path: Vec<LayerId>,

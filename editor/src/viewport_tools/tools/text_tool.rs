@@ -3,7 +3,7 @@ use crate::document::DocumentMessageHandler;
 use crate::frontend::utility_types::MouseCursorIcon;
 use crate::input::keyboard::{Key, MouseMotion};
 use crate::input::InputPreprocessorMessageHandler;
-use crate::layout::widgets::{LayoutRow, NumberInput, PropertyHolder, Widget, WidgetCallback, WidgetHolder, WidgetLayout};
+use crate::layout::widgets::{FontInput, LayoutRow, NumberInput, PropertyHolder, Separator, SeparatorDirection, SeparatorType, Widget, WidgetCallback, WidgetHolder, WidgetLayout};
 use crate::message_prelude::*;
 use crate::misc::{HintData, HintGroup, HintInfo, KeysGroup};
 use crate::viewport_tools::tool::{DocumentToolData, Fsm, ToolActionHandlerData};
@@ -25,11 +25,17 @@ pub struct TextTool {
 
 pub struct TextOptions {
 	font_size: u32,
+	font_name: String,
+	font_file: String,
 }
 
 impl Default for TextOptions {
 	fn default() -> Self {
-		Self { font_size: 14 }
+		Self {
+			font_size: 14,
+			font_name: "Source Sans Pro".into(),
+			font_file: String::new(),
+		}
 	}
 }
 
@@ -59,6 +65,7 @@ pub enum TextMessage {
 #[remain::sorted]
 #[derive(PartialEq, Clone, Debug, Hash, Serialize, Deserialize)]
 pub enum TextOptionsUpdate {
+	Font { name: String, file: String },
 	FontSize(u32),
 }
 
@@ -66,15 +73,32 @@ impl PropertyHolder for TextTool {
 	fn properties(&self) -> WidgetLayout {
 		WidgetLayout::new(vec![LayoutRow::Row {
 			name: "".into(),
-			widgets: vec![WidgetHolder::new(Widget::NumberInput(NumberInput {
-				unit: " px".into(),
-				label: "Font Size".into(),
-				value: self.options.font_size as f64,
-				is_integer: true,
-				min: Some(1.),
-				on_update: WidgetCallback::new(|number_input: &NumberInput| TextMessage::UpdateOptions(TextOptionsUpdate::FontSize(number_input.value as u32)).into()),
-				..NumberInput::default()
-			}))],
+			widgets: vec![
+				WidgetHolder::new(Widget::FontInput(FontInput {
+					name: self.options.font_name.clone(),
+					on_update: WidgetCallback::new(|font_input: &FontInput| {
+						TextMessage::UpdateOptions(TextOptionsUpdate::Font {
+							name: font_input.name.clone(),
+							file: font_input.file.clone(),
+						})
+						.into()
+					}),
+					..FontInput::default()
+				})),
+				WidgetHolder::new(Widget::Separator(Separator {
+					direction: SeparatorDirection::Horizontal,
+					separator_type: SeparatorType::Related,
+				})),
+				WidgetHolder::new(Widget::NumberInput(NumberInput {
+					unit: " px".into(),
+					label: "Size".into(),
+					value: self.options.font_size as f64,
+					is_integer: true,
+					min: Some(1.),
+					on_update: WidgetCallback::new(|number_input: &NumberInput| TextMessage::UpdateOptions(TextOptionsUpdate::FontSize(number_input.value as u32)).into()),
+					..NumberInput::default()
+				})),
+			],
 		}])
 	}
 }
@@ -93,6 +117,10 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for TextTool {
 
 		if let ToolMessage::Text(TextMessage::UpdateOptions(action)) = action {
 			match action {
+				TextOptionsUpdate::Font { name, file } => {
+					self.options.font_name = name;
+					self.options.font_file = file;
+				}
 				TextOptionsUpdate::FontSize(font_size) => self.options.font_size = font_size,
 			}
 			return;
@@ -246,6 +274,8 @@ impl Fsm for TextToolFsmState {
 					else if state == TextToolFsmState::Ready {
 						let transform = DAffine2::from_translation(input.mouse.position).to_cols_array();
 						let font_size = tool_options.font_size;
+						let font_name = tool_options.font_name.clone();
+						let font_file = tool_options.font_file.clone();
 						data.path = document.get_path_for_new_layer();
 
 						responses.push_back(
@@ -256,6 +286,8 @@ impl Fsm for TextToolFsmState {
 								text: r#""#.to_string(),
 								style: style::PathStyle::new(None, Fill::solid(tool_data.primary_color)),
 								size: font_size as f64,
+								font_name,
+								font_file,
 							}
 							.into(),
 						);

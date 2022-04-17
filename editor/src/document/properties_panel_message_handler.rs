@@ -532,6 +532,7 @@ fn node_section_font(layer: &TextLayer) -> LayoutRow {
 					WidgetHolder::new(Widget::NumberInput(NumberInput {
 						value: layer.size,
 						min: Some(1.),
+						unit: " px".into(),
 						on_update: WidgetCallback::new(move |number_input: &NumberInput| {
 							PropertiesPanelMessage::ModifyFont {
 								name: name.clone(),
