@@ -47,5 +47,5 @@
 	"optionalDependencies": {
 		"wasm-pack": "0.10.1"
 	},
-	"//": "@vue/cli-plugin-eslint 4.5.x does not support eslint 7.x or higher. sass-loader 10.x is the last version to support webpack 4. wasm-pack 0.10.2 is broken on Windows so it should remain pinned to 0.10.1 until a fix is released."
+	"//": "wasm-pack 0.10.2 is broken on Windows so it should remain pinned to 0.10.1 until a fix is released."
 }
