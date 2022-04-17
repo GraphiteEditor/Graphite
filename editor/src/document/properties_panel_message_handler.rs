@@ -8,7 +8,7 @@ use crate::layout::widgets::{
 use crate::message_prelude::*;
 
 use graphene::color::Color;
-use graphene::document::Document as GrapheneDocument;
+use graphene::document::{Document as GrapheneDocument, FontCache};
 use graphene::layers::layer_info::{Layer, LayerDataType};
 use graphene::layers::style::{Fill, LineCap, LineJoin, Stroke};
 use graphene::layers::text_layer::TextLayer;
@@ -112,7 +112,7 @@ impl MessageHandler<PropertiesPanelMessage, &GrapheneDocument> for PropertiesPan
 				} else {
 					let path = paths.into_iter().next().unwrap();
 					let layer = graphene_document.layer(&path).unwrap();
-					register_layer_properties(layer, responses);
+					register_layer_properties(layer, responses, &graphene_document.font_cache);
 					self.active_path = Some(path)
 				}
 			}
@@ -132,6 +132,10 @@ impl MessageHandler<PropertiesPanelMessage, &GrapheneDocument> for PropertiesPan
 					.into(),
 				);
 			}
+			ModifyFont { name, file, size } => {
+				let path = self.active_path.clone().expect("Received update for properties panel with no active layer");
+				responses.push_back(Operation::ModifyFont { path, name, file, size }.into())
+			}
 			ModifyTransform { value, transform_op } => {
 				let path = self.active_path.as_ref().expect("Received update for properties panel with no active layer");
 				let layer = graphene_document.layer(path).unwrap();
@@ -146,8 +150,8 @@ impl MessageHandler<PropertiesPanelMessage, &GrapheneDocument> for PropertiesPan
 				};
 
 				let scale = match transform_op {
-					Width => layer.bounding_transform().scale_x() / layer.transform.scale_x(),
-					Height => layer.bounding_transform().scale_y() / layer.transform.scale_y(),
+					Width => layer.bounding_transform(&graphene_document.font_cache).scale_x() / layer.transform.scale_x(),
+					Height => layer.bounding_transform(&graphene_document.font_cache).scale_y() / layer.transform.scale_y(),
 					_ => 1.,
 				};
 
@@ -178,7 +182,7 @@ impl MessageHandler<PropertiesPanelMessage, &GrapheneDocument> for PropertiesPan
 			CheckSelectedWasUpdated { path } => {
 				if self.matches_selected(&path) {
 					let layer = graphene_document.layer(&path).unwrap();
-					register_layer_properties(layer, responses);
+					register_layer_properties(layer, responses, &graphene_document.font_cache);
 				}
 			}
 			CheckSelectedWasDeleted { path } => {
@@ -203,7 +207,7 @@ impl MessageHandler<PropertiesPanelMessage, &GrapheneDocument> for PropertiesPan
 			ResendActiveProperties => {
 				let path = self.active_path.clone().expect("Received update for properties panel with no active layer");
 				let layer = graphene_document.layer(&path).unwrap();
-				register_layer_properties(layer, responses)
+				register_layer_properties(layer, responses, &graphene_document.font_cache)
 			}
 		}
 	}
@@ -213,7 +217,7 @@ impl MessageHandler<PropertiesPanelMessage, &GrapheneDocument> for PropertiesPan
 	}
 }
 
-fn register_layer_properties(layer: &Layer, responses: &mut VecDeque<Message>) {
+fn register_layer_properties(layer: &Layer, responses: &mut VecDeque<Message>, font_cache: FontCache) {
 	let options_bar = vec![LayoutRow::Row {
 		name: "".into(),
 		widgets: vec![
@@ -265,21 +269,21 @@ fn register_layer_properties(layer: &Layer, responses: &mut VecDeque<Message>) {
 	let properties_body = match &layer.data {
 		LayerDataType::Shape(shape) => {
 			if let Some(fill_layout) = node_section_fill(shape.style.fill()) {
-				vec![node_section_transform(layer), fill_layout, node_section_stroke(&shape.style.stroke().unwrap_or_default())]
+				vec![node_section_transform(layer, font_cache), fill_layout, node_section_stroke(&shape.style.stroke().unwrap_or_default())]
 			} else {
-				vec![node_section_transform(layer), node_section_stroke(&shape.style.stroke().unwrap_or_default())]
+				vec![node_section_transform(layer, font_cache), node_section_stroke(&shape.style.stroke().unwrap_or_default())]
 			}
 		}
 		LayerDataType::Text(text) => {
 			vec![
-				node_section_transform(layer),
+				node_section_transform(layer, font_cache),
 				node_section_font(text),
 				node_section_fill(text.style.fill()).expect("Text should have fill"),
 				node_section_stroke(&text.style.stroke().unwrap_or_default()),
 			]
 		}
 		LayerDataType::Image(_) => {
-			vec![node_section_transform(layer)]
+			vec![node_section_transform(layer, font_cache)]
 		}
 		_ => {
 			vec![]
@@ -302,7 +306,7 @@ fn register_layer_properties(layer: &Layer, responses: &mut VecDeque<Message>) {
 	);
 }
 
-fn node_section_transform(layer: &Layer) -> LayoutRow {
+fn node_section_transform(layer: &Layer, font_cache: FontCache) -> LayoutRow {
 	LayoutRow::Section {
 		name: "Transform".into(),
 		layout: vec![
@@ -430,7 +434,7 @@ fn node_section_transform(layer: &Layer) -> LayoutRow {
 						direction: SeparatorDirection::Horizontal,
 					})),
 					WidgetHolder::new(Widget::NumberInput(NumberInput {
-						value: layer.bounding_transform().scale_x(),
+						value: layer.bounding_transform(font_cache).scale_x(),
 						label: "W".into(),
 						unit: " px".into(),
 						on_update: WidgetCallback::new(|number_input: &NumberInput| {
@@ -447,7 +451,7 @@ fn node_section_transform(layer: &Layer) -> LayoutRow {
 						direction: SeparatorDirection::Horizontal,
 					})),
 					WidgetHolder::new(Widget::NumberInput(NumberInput {
-						value: layer.bounding_transform().scale_y(),
+						value: layer.bounding_transform(font_cache).scale_y(),
 						label: "H".into(),
 						unit: " px".into(),
 						on_update: WidgetCallback::new(|number_input: &NumberInput| {
@@ -466,6 +470,9 @@ fn node_section_transform(layer: &Layer) -> LayoutRow {
 }
 
 fn node_section_font(layer: &TextLayer) -> LayoutRow {
+	let name = layer.font.clone();
+	let file = layer.font_file.clone();
+	let size = layer.size;
 	LayoutRow::Section {
 		name: "Font".into(),
 		layout: vec![
@@ -498,9 +505,42 @@ fn node_section_font(layer: &TextLayer) -> LayoutRow {
 						direction: SeparatorDirection::Horizontal,
 					})),
 					WidgetHolder::new(Widget::FontInput(FontInput {
-						name: layer.text.clone(),
+						name: layer.font.clone(),
 						file: String::new(),
-						on_update: WidgetCallback::new(|text_area: &FontInput| PropertiesPanelMessage::ModifyText { new_text: text_area.file.clone() }.into()),
+						on_update: WidgetCallback::new(move |font_input: &FontInput| {
+							PropertiesPanelMessage::ModifyFont {
+								name: font_input.name.clone(),
+								file: font_input.file.clone(),
+								size,
+							}
+							.into()
+						}),
+					})),
+				],
+			},
+			LayoutRow::Row {
+				name: "".into(),
+				widgets: vec![
+					WidgetHolder::new(Widget::TextLabel(TextLabel {
+						value: "Size".into(),
+						..TextLabel::default()
+					})),
+					WidgetHolder::new(Widget::Separator(Separator {
+						separator_type: SeparatorType::Unrelated,
+						direction: SeparatorDirection::Horizontal,
+					})),
+					WidgetHolder::new(Widget::NumberInput(NumberInput {
+						value: layer.size,
+						min: Some(1.),
+						on_update: WidgetCallback::new(move |number_input: &NumberInput| {
+							PropertiesPanelMessage::ModifyFont {
+								name: name.clone(),
+								file: file.clone(),
+								size: number_input.value,
+							}
+							.into()
+						}),
+						..Default::default()
 					})),
 				],
 			},

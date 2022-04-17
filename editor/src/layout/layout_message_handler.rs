@@ -108,10 +108,12 @@ impl MessageHandler<LayoutMessage, ()> for LayoutMessageHandler {
 						let name_value = update_value.get("name").expect("FontInput update does not have a name");
 						let file_value = update_value.get("file").expect("FontInput update does not have a file");
 						let name = name_value.as_str().expect("FontInput update name was not of type: string");
-						let file = name_value.as_str().expect("FontInput update file was not of type: string");
+						let file = file_value.as_str().expect("FontInput update file was not of type: string");
 
 						font_input.name = name.into();
 						font_input.file = file.into();
+
+						responses.push_back(DocumentMessage::LoadFont { font: file.into() }.into());
 						let callback_message = (font_input.on_update.callback)(font_input);
 						responses.push_back(callback_message);
 					}

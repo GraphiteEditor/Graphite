@@ -119,6 +119,12 @@ pub enum Operation {
 	DuplicateLayer {
 		path: Vec<LayerId>,
 	},
+	ModifyFont {
+		path: Vec<LayerId>,
+		name: String,
+		file: String,
+		size: f64,
+	},
 	RenameLayer {
 		layer_path: Vec<LayerId>,
 		new_name: String,

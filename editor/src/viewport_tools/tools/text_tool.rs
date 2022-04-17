@@ -9,6 +9,7 @@ use crate::misc::{HintData, HintGroup, HintInfo, KeysGroup};
 use crate::viewport_tools::tool::{DocumentToolData, Fsm, ToolActionHandlerData};
 
 use glam::{DAffine2, DVec2};
+use graphene::document::FontCache;
 use graphene::intersection::Quad;
 use graphene::layers::style::{self, Fill, Stroke};
 use graphene::Operation;
@@ -156,7 +157,7 @@ fn resize_overlays(overlays: &mut Vec<Vec<LayerId>>, responses: &mut VecDeque<Me
 	}
 }
 
-fn update_overlays(document: &DocumentMessageHandler, data: &mut TextToolData, responses: &mut VecDeque<Message>) {
+fn update_overlays(document: &DocumentMessageHandler, data: &mut TextToolData, responses: &mut VecDeque<Message>, font_cache: FontCache) {
 	let visible_text_layers = document.selected_visible_text_layers().collect::<Vec<_>>();
 
 	resize_overlays(&mut data.overlays, responses, visible_text_layers.len());
@@ -166,7 +167,7 @@ fn update_overlays(document: &DocumentMessageHandler, data: &mut TextToolData, r
 			.graphene_document
 			.layer(layer_path)
 			.unwrap()
-			.aabounding_box_for_transform(document.graphene_document.multiply_transforms(layer_path).unwrap())
+			.aabounding_box_for_transform(document.graphene_document.multiply_transforms(layer_path).unwrap(), font_cache)
 			.unwrap();
 
 		let operation = Operation::SetLayerTransformInViewport {
@@ -197,7 +198,7 @@ impl Fsm for TextToolFsmState {
 		if let ToolMessage::Text(event) = event {
 			match (self, event) {
 				(state, DocumentIsDirty) => {
-					update_overlays(document, data, responses);
+					update_overlays(document, data, responses, &document.graphene_document.font_cache);
 
 					state
 				}
@@ -330,7 +331,8 @@ impl Fsm for TextToolFsmState {
 				}
 				(Editing, UpdateBounds { new_text }) => {
 					resize_overlays(&mut data.overlays, responses, 1);
-					let mut path = document.graphene_document.layer(&data.path).unwrap().as_text().unwrap().bounding_box(&new_text).to_path(0.1);
+					let text = document.graphene_document.layer(&data.path).unwrap().as_text().unwrap();
+					let mut path = text.bounding_box(&new_text, text.load_face(&document.graphene_document.font_cache)).to_path(0.1);
 
 					fn glam_to_kurbo(transform: DAffine2) -> kurbo::Affine {
 						kurbo::Affine::new(transform.to_cols_array())

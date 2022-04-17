@@ -287,6 +287,7 @@ import {
 	TriggerViewportResize,
 	DisplayRemoveEditableTextbox,
 	DisplayEditableTextbox,
+	TriggerFontLoad,
 } from "@/dispatcher/js-messages";
 
 import { textInputCleanup } from "@/lifetime/input";
@@ -452,6 +453,13 @@ export default defineComponent({
 		});
 		this.editor.dispatcher.subscribeJsMessage(TriggerTextCommit, () => {
 			if (this.textInput) this.editor.instance.on_change_text(textInputCleanup(this.textInput.innerText));
+		});
+		this.editor.dispatcher.subscribeJsMessage(TriggerFontLoad, (triggerFontLoad) => {
+			fetch(triggerFontLoad.font)
+				.then((response) => response.arrayBuffer())
+				.then((response) => {
+					this.editor.instance.on_font_load(triggerFontLoad.font, new Uint8Array(response));
+				});
 		});
 		this.editor.dispatcher.subscribeJsMessage(TriggerTextCopy, async (triggerTextCopy) => {
 			// Clipboard API supported?

@@ -26,6 +26,7 @@ pub enum FrontendMessage {
 	// Trigger prefix: cause a browser API to do something
 	TriggerFileDownload { document: String, name: String },
 	TriggerFileUpload,
+	TriggerFontLoad { font: String },
 	TriggerIndexedDbRemoveDocument { document_id: u64 },
 	TriggerIndexedDbWriteDocument { document: String, details: FrontendDocumentDetails, version: String },
 	TriggerTextCommit,

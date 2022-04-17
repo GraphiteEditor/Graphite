@@ -403,6 +403,10 @@ export class TriggerIndexedDbRemoveDocument extends JsMessage {
 	document_id!: string;
 }
 
+export class TriggerFontLoad extends JsMessage {
+	font!: string;
+}
+
 export interface WidgetLayout {
 	layout_target: unknown;
 	layout: LayoutRow[];
@@ -537,6 +541,7 @@ export const messageConstructors: Record<string, MessageMaker> = {
 	TriggerFileDownload,
 	TriggerFileUpload,
 	TriggerIndexedDbRemoveDocument,
+	TriggerFontLoad,
 	TriggerIndexedDbWriteDocument,
 	TriggerTextCommit,
 	TriggerTextCopy,

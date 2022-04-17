@@ -1,5 +1,6 @@
 use super::layer_info::LayerData;
 use super::style::ViewMode;
+use crate::document::FontCache;
 use crate::intersection::{intersect_quad_bez_path, Quad};
 use crate::LayerId;
 
@@ -23,7 +24,7 @@ pub struct ImageLayer {
 }
 
 impl LayerData for ImageLayer {
-	fn render(&mut self, svg: &mut String, _svg_defs: &mut String, transforms: &mut Vec<DAffine2>, view_mode: ViewMode) {
+	fn render(&mut self, svg: &mut String, _svg_defs: &mut String, transforms: &mut Vec<DAffine2>, view_mode: ViewMode, _font_cache: FontCache) {
 		let transform = self.transform(transforms, view_mode);
 		let inverse = transform.inverse();
 
@@ -55,7 +56,7 @@ impl LayerData for ImageLayer {
 		let _ = svg.write_str("</g>");
 	}
 
-	fn bounding_box(&self, transform: glam::DAffine2) -> Option<[DVec2; 2]> {
+	fn bounding_box(&self, transform: glam::DAffine2, _font_cache: FontCache) -> Option<[DVec2; 2]> {
 		let mut path = self.bounds();
 
 		if transform.matrix2 == DMat2::ZERO {
@@ -67,7 +68,7 @@ impl LayerData for ImageLayer {
 		Some([(x0, y0).into(), (x1, y1).into()])
 	}
 
-	fn intersects_quad(&self, quad: Quad, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>) {
+	fn intersects_quad(&self, quad: Quad, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>, _font_cache: FontCache) {
 		if intersect_quad_bez_path(quad, &self.bounds(), true) {
 			intersections.push(path.clone());
 		}

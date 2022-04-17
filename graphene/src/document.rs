@@ -14,11 +14,13 @@ use kurbo::Affine;
 use serde::{Deserialize, Serialize};
 use std::cmp::max;
 use std::collections::hash_map::DefaultHasher;
+use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 
 /// A number that identifies a layer.
 /// This does not technically need to be unique globally, only within a folder.
 pub type LayerId = u64;
+pub type FontCache<'a> = &'a HashMap<String, Vec<u8>>;
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Document {
@@ -28,6 +30,7 @@ pub struct Document {
 	/// This identifier is not a hash and is not guaranteed to be equal for equivalent documents.
 	#[serde(skip)]
 	pub state_identifier: DefaultHasher,
+	pub font_cache: HashMap<String, Vec<u8>>,
 }
 
 impl Default for Document {
@@ -35,6 +38,7 @@ impl Default for Document {
 		Self {
 			root: Layer::new(LayerDataType::Folder(FolderLayer::default()), DAffine2::IDENTITY.to_cols_array()),
 			state_identifier: DefaultHasher::new(),
+			font_cache: HashMap::new(),
 		}
 	}
 }
@@ -44,7 +48,7 @@ impl Document {
 	pub fn render_root(&mut self, mode: ViewMode) -> String {
 		let mut svg_defs = String::from("<defs>");
 
-		self.root.render(&mut vec![], mode, &mut svg_defs);
+		self.root.render(&mut vec![], mode, &mut svg_defs, &self.font_cache);
 
 		svg_defs.push_str("</defs>");
 
@@ -58,7 +62,7 @@ impl Document {
 
 	/// Checks whether each layer under `path` intersects with the provided `quad` and adds all intersection layers as paths to `intersections`.
 	pub fn intersects_quad(&self, quad: Quad, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>) {
-		self.layer(path).unwrap().intersects_quad(quad, path, intersections);
+		self.layer(path).unwrap().intersects_quad(quad, path, intersections, &self.font_cache);
 	}
 
 	/// Checks whether each layer under the root path intersects with the provided `quad` and returns the paths to all intersecting layers.
@@ -321,13 +325,13 @@ impl Document {
 	pub fn viewport_bounding_box(&self, path: &[LayerId]) -> Result<Option<[DVec2; 2]>, DocumentError> {
 		let layer = self.layer(path)?;
 		let transform = self.multiply_transforms(path)?;
-		Ok(layer.data.bounding_box(transform))
+		Ok(layer.data.bounding_box(transform, &self.font_cache))
 	}
 
 	pub fn bounding_box_and_transform(&self, path: &[LayerId]) -> Result<Option<([DVec2; 2], DAffine2)>, DocumentError> {
 		let layer = self.layer(path)?;
 		let transform = self.multiply_transforms(&path[..path.len() - 1])?;
-		Ok(layer.data.bounding_box(layer.transform).map(|bounds| (bounds, transform)))
+		Ok(layer.data.bounding_box(layer.transform, &self.font_cache).map(|bounds| (bounds, transform)))
 	}
 
 	pub fn visible_layers_bounding_box(&self) -> Option<[DVec2; 2]> {
@@ -495,7 +499,7 @@ impl Document {
 				style,
 				size,
 			} => {
-				let layer = Layer::new(LayerDataType::Text(TextLayer::new(text, style, size)), transform);
+				let layer = Layer::new(LayerDataType::Text(TextLayer::new(text, style, size, &self.font_cache)), transform);
 
 				self.set_layer(&path, layer, insert_index)?;
 
@@ -520,7 +524,20 @@ impl Document {
 				Some(vec![DocumentChanged])
 			}
 			Operation::SetTextContent { path, new_text } => {
-				self.layer_mut(&path)?.as_text_mut()?.update_text(new_text);
+				// Not using Document::layer_mut is necessary because we alson need to borrow the font cache
+				let mut current_folder = &mut self.root;
+
+				let (layer_path, id) = split_path(&path)?;
+				for id in layer_path {
+					current_folder = current_folder.as_folder_mut()?.layer_mut(*id).ok_or_else(|| DocumentError::LayerNotFound(layer_path.into()))?;
+				}
+				current_folder
+					.as_folder_mut()?
+					.layer_mut(id)
+					.ok_or_else(|| DocumentError::LayerNotFound(path.clone()))?
+					.as_text_mut()?
+					.update_text(new_text, &self.font_cache);
+
 				self.mark_as_dirty(&path)?;
 
 				Some([vec![DocumentChanged], update_thumbnails_upstream(&path)].concat())
@@ -679,6 +696,23 @@ impl Document {
 					return Err(DocumentError::IndexOutOfBounds);
 				}
 			}
+			Operation::ModifyFont { path, name, file, size } => {
+				// Not using Document::layer_mut is necessary because we alson need to borrow the font cache
+				let mut current_folder = &mut self.root;
+				let (folder_path, id) = split_path(&path)?;
+				for id in folder_path {
+					current_folder = current_folder.as_folder_mut()?.layer_mut(*id).ok_or_else(|| DocumentError::LayerNotFound(folder_path.into()))?;
+				}
+				let layer_mut = current_folder.as_folder_mut()?.layer_mut(id).ok_or_else(|| DocumentError::LayerNotFound(folder_path.into()))?;
+				let text = layer_mut.as_text_mut()?;
+
+				text.font = name;
+				text.font_file = file;
+				text.size = size;
+				text.regenerate_path(text.load_face(&self.font_cache));
+				self.mark_as_dirty(&path)?;
+				Some([vec![DocumentChanged, LayerChanged { path: path.clone() }], update_thumbnails_upstream(&path)].concat())
+			}
 			Operation::RenameLayer { layer_path: path, new_name: name } => {
 				self.layer_mut(&path)?.name = Some(name);
 				Some(vec![LayerChanged { path }])
@@ -729,12 +763,20 @@ impl Document {
 				self.set_transform_relative_to_viewport(&path, transform)?;
 				self.mark_as_dirty(&path)?;
 
-				if let LayerDataType::Text(t) = &mut self.layer_mut(&path)?.data {
-					let bezpath = t.to_bez_path();
-					self.layer_mut(&path)?.data = layers::layer_info::LayerDataType::Shape(ShapeLayer::from_bez_path(bezpath, t.style.clone(), true));
+				// Not using Document::layer_mut is necessary because we alson need to borrow the font cache
+				let mut current_folder = &mut self.root;
+				let (folder_path, id) = split_path(&path)?;
+				for id in folder_path {
+					current_folder = current_folder.as_folder_mut()?.layer_mut(*id).ok_or_else(|| DocumentError::LayerNotFound(folder_path.into()))?;
+				}
+				let layer_mut = current_folder.as_folder_mut()?.layer_mut(id).ok_or_else(|| DocumentError::LayerNotFound(folder_path.into()))?;
+
+				if let LayerDataType::Text(t) = &mut layer_mut.data {
+					let bezpath = t.to_bez_path(t.load_face(&self.font_cache));
+					layer_mut.data = layers::layer_info::LayerDataType::Shape(ShapeLayer::from_bez_path(bezpath, t.style.clone(), true));
 				}
 
-				if let LayerDataType::Shape(shape) = &mut self.layer_mut(&path)?.data {
+				if let LayerDataType::Shape(shape) = &mut layer_mut.data {
 					shape.path = bez_path;
 				}
 				Some([vec![DocumentChanged, LayerChanged { path: path.clone() }], update_thumbnails_upstream(&path)].concat())

@@ -325,6 +325,14 @@ impl JsEditorHandle {
 		Ok(())
 	}
 
+	/// A font has been downloaded
+	pub fn on_font_load(&self, font: String, data: Vec<u8>) -> Result<(), JsValue> {
+		let message = DocumentMessage::FontLoaded { font, data };
+		self.dispatch(message);
+
+		Ok(())
+	}
+
 	/// A text box was changed
 	pub fn update_bounds(&self, new_text: String) -> Result<(), JsValue> {
 		let message = TextMessage::UpdateBounds { new_text };
