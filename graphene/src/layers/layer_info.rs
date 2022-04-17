@@ -80,6 +80,7 @@ pub trait LayerData {
 	/// # use graphite_graphene::layers::layer_info::LayerData;
 	/// # use graphite_graphene::intersection::Quad;
 	/// # use glam::f64::{DAffine2, DVec2};
+	/// # use std::collections::HashMap;
 	///
 	/// let mut shape = ShapeLayer::ellipse(PathStyle::new(None, Fill::None));
 	/// let shape_id = 42;
@@ -88,7 +89,7 @@ pub trait LayerData {
 	/// let quad = Quad::from_box([DVec2::ZERO, DVec2::ONE]);
 	/// let mut intersections = vec![];
 	///
-	/// shape.intersects_quad(quad, &mut vec![shape_id], &mut intersections);
+	/// shape.intersects_quad(quad, &mut vec![shape_id], &mut intersections, &HashMap::new());
 	///
 	/// assert_eq!(intersections, vec![vec![shape_id]]);
 	/// ```
@@ -102,12 +103,13 @@ pub trait LayerData {
 	/// # use graphite_graphene::layers::style::{Fill, PathStyle};
 	/// # use graphite_graphene::layers::layer_info::LayerData;
 	/// # use glam::f64::{DAffine2, DVec2};
+	/// # use std::collections::HashMap;
 	/// let shape = ShapeLayer::ellipse(PathStyle::new(None, Fill::None));
 	///
 	/// // Calculate the bounding box without applying any transformations.
 	/// // (The identity transform maps every vector to itself.)
 	/// let transform = DAffine2::IDENTITY;
-	/// let bounding_box = shape.bounding_box(transform);
+	/// let bounding_box = shape.bounding_box(transform, &HashMap::new());
 	///
 	/// assert_eq!(bounding_box, Some([DVec2::ZERO, DVec2::ONE]));
 	/// ```
@@ -270,19 +272,20 @@ impl Layer {
 	/// # use graphite_graphene::layers::style::PathStyle;
 	/// # use glam::DVec2;
 	/// # use glam::f64::DAffine2;
+	/// # use std::collections::HashMap;
 	/// // Create a rectangle with the default dimensions, from `(0|0)` to `(1|1)`
 	/// let layer: Layer = ShapeLayer::rectangle(PathStyle::default()).into();
 	///
 	/// // Apply the Identity transform, which leaves the points unchanged
 	/// assert_eq!(
-	///     layer.aabounding_box_for_transform(DAffine2::IDENTITY),
+	///     layer.aabounding_box_for_transform(DAffine2::IDENTITY, &HashMap::new()),
 	///     Some([DVec2::ZERO, DVec2::ONE]),
 	/// );
 	///
 	/// // Apply a transform that scales every point by a factor of two
 	/// let transform = DAffine2::from_scale(DVec2::ONE * 2.);
 	/// assert_eq!(
-	///     layer.aabounding_box_for_transform(transform),
+	///     layer.aabounding_box_for_transform(transform, &HashMap::new()),
 	///     Some([DVec2::ZERO, DVec2::ONE * 2.]),
 	/// );
 	pub fn aabounding_box_for_transform(&self, transform: DAffine2, font_cache: FontCache) -> Option<[DVec2; 2]> {
