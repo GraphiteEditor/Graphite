@@ -1,6 +1,6 @@
 <template>
 	<div class="floating-menu" :class="[direction.toLowerCase(), type.toLowerCase()]" v-if="open || type === 'Dialog'" ref="floatingMenu">
-		<div class="tail" ref="tail" v-if="type === 'Popover'"></div>
+		<div class="tail" v-if="type === 'Popover'" :style="tailStyle"></div>
 		<div class="floating-menu-container" ref="floatingMenuContainer">
 			<LayoutCol class="floating-menu-content" data-floating-menu-content :scrollableY="scrollableY" ref="floatingMenuContent" :style="floatingMenuContentStyle">
 				<slot></slot>
@@ -177,6 +177,8 @@
 <script lang="ts">
 import { defineComponent, PropType, StyleValue } from "vue";
 
+import { clamp } from "@/utilities/math";
+
 import LayoutCol from "@/components/layout/LayoutCol.vue";
 
 export type MenuDirection = "Top" | "Bottom" | "Left" | "Right" | "TopLeft" | "TopRight" | "BottomLeft" | "BottomRight" | "Center";
@@ -201,61 +203,65 @@ export default defineComponent({
 			open: false,
 			pointerStillDown: false,
 			containerResizeObserver,
+			workspaceBounds: new DOMRect(),
+			floatingMenuBounds: new DOMRect(),
+			floatingMenuContentBounds: new DOMRect(),
 		};
 	},
+	// Gets the client bounds of the elements and apply relevant styles to them
+	// TODO: Use the vue :style attribute more whilst not causing recursive updates
 	updated() {
+		const workspace = document.querySelector("[data-workspace]");
 		const floatingMenuContainer = this.$refs.floatingMenuContainer as HTMLElement;
 		const floatingMenuContentComponent = this.$refs.floatingMenuContent as typeof LayoutCol;
 		const floatingMenuContent = floatingMenuContentComponent && (floatingMenuContentComponent.$el as HTMLElement);
-		const workspace = document.querySelector("[data-workspace]");
+		const floatingMenu = this.$refs.floatingMenu as HTMLElement;
 
-		if (!floatingMenuContainer || !floatingMenuContentComponent || !floatingMenuContent || !workspace) return;
+		if (!floatingMenuContainer || !floatingMenuContentComponent || !floatingMenuContent || !workspace || !floatingMenu) return;
 
-		const workspaceBounds = workspace.getBoundingClientRect();
-		const floatingMenuBounds = floatingMenuContent.getBoundingClientRect();
+		this.workspaceBounds = workspace.getBoundingClientRect();
+		this.floatingMenuBounds = floatingMenu.getBoundingClientRect();
+		this.floatingMenuContentBounds = floatingMenuContent.getBoundingClientRect();
 
-		if (floatingMenuBounds.bottom + this.windowEdgeMargin <= workspaceBounds.bottom) {
-			const { top } = (this.$refs.floatingMenu as HTMLElement).getBoundingClientRect();
-			if (this.type === "Popover") {
-				floatingMenuContent.style.top = `${top + 10}px`;
-				if (this.$refs.tail) (this.$refs.tail as HTMLElement).style.top = `${top}px`;
-			} else {
-				floatingMenuContent.style.top = `${top}px`;
-			}
-		}
+		// Required to correctly position content when scrolled (it has a `position: fixed` to prevent clipping)
+		const tailOffset = this.type === "Popover" ? 10 : 0;
+		if (this.direction === "Bottom") floatingMenuContent.style.top = `${tailOffset + this.floatingMenuBounds.top}px`;
+		if (this.direction === "Top") floatingMenuContent.style.bottom = `${tailOffset + this.floatingMenuBounds.bottom}px`;
+		if (this.direction === "Right") floatingMenuContent.style.left = `${tailOffset + this.floatingMenuBounds.left}px`;
+		if (this.direction === "Left") floatingMenuContent.style.right = `${tailOffset + this.floatingMenuBounds.right}px`;
 
 		type Edge = "Top" | "Bottom" | "Left" | "Right";
-		let zeroedBorderDirection1: Edge | undefined;
-		let zeroedBorderDirection2: Edge | undefined;
+		let zeroedBorderVertical: Edge | undefined;
+		let zeroedBorderHorizontal: Edge | undefined;
 
 		if (this.direction === "Top" || this.direction === "Bottom") {
-			zeroedBorderDirection1 = this.direction === "Top" ? "Bottom" : "Top";
+			zeroedBorderVertical = this.direction === "Top" ? "Bottom" : "Top";
 
-			if (floatingMenuBounds.left - this.windowEdgeMargin <= workspaceBounds.left) {
+			if (this.floatingMenuContentBounds.left - this.windowEdgeMargin <= this.workspaceBounds.left) {
 				floatingMenuContent.style.left = `${this.windowEdgeMargin}px`;
-				if (workspaceBounds.left + floatingMenuContainer.getBoundingClientRect().left === 12) zeroedBorderDirection2 = "Left";
+				if (this.workspaceBounds.left + floatingMenuContainer.getBoundingClientRect().left === 12) zeroedBorderHorizontal = "Left";
 			}
-			if (floatingMenuBounds.right + this.windowEdgeMargin >= workspaceBounds.right) {
+			if (this.floatingMenuContentBounds.right + this.windowEdgeMargin >= this.workspaceBounds.right) {
 				floatingMenuContent.style.right = `${this.windowEdgeMargin}px`;
-				if (workspaceBounds.right - floatingMenuContainer.getBoundingClientRect().right === 12) zeroedBorderDirection2 = "Right";
+				if (this.workspaceBounds.right - floatingMenuContainer.getBoundingClientRect().right === 12) zeroedBorderHorizontal = "Right";
 			}
 		}
 		if (this.direction === "Left" || this.direction === "Right") {
-			zeroedBorderDirection2 = this.direction === "Left" ? "Right" : "Left";
+			zeroedBorderHorizontal = this.direction === "Left" ? "Right" : "Left";
 
-			if (floatingMenuBounds.top - this.windowEdgeMargin <= workspaceBounds.top) {
+			if (this.floatingMenuContentBounds.top - this.windowEdgeMargin <= this.workspaceBounds.top) {
 				floatingMenuContent.style.top = `${this.windowEdgeMargin}px`;
-				if (workspaceBounds.top + floatingMenuContainer.getBoundingClientRect().top === 12) zeroedBorderDirection1 = "Top";
+				if (this.workspaceBounds.top + floatingMenuContainer.getBoundingClientRect().top === 12) zeroedBorderVertical = "Top";
 			}
-			if (floatingMenuBounds.bottom + this.windowEdgeMargin >= workspaceBounds.bottom) {
+			if (this.floatingMenuContentBounds.bottom + this.windowEdgeMargin >= this.workspaceBounds.bottom) {
 				floatingMenuContent.style.bottom = `${this.windowEdgeMargin}px`;
-				if (workspaceBounds.bottom - floatingMenuContainer.getBoundingClientRect().bottom === 12) zeroedBorderDirection1 = "Bottom";
+				if (this.workspaceBounds.bottom - floatingMenuContainer.getBoundingClientRect().bottom === 12) zeroedBorderVertical = "Bottom";
 			}
 		}
 
-		// Remove the rounded corner from where the tail perfectly meets the corner
-		if (this.type === "Popover" && this.windowEdgeMargin === 6 && zeroedBorderDirection1 && zeroedBorderDirection2) {
-			switch (`${zeroedBorderDirection1}${zeroedBorderDirection2}`) {
+		// Remove the rounded corner from the copntent where the tail perfectly meets the corner
+		if (this.type === "Popover" && this.windowEdgeMargin === 6 && zeroedBorderVertical && zeroedBorderHorizontal) {
+			switch (`${zeroedBorderVertical}${zeroedBorderHorizontal}`) {
 				case "TopLeft":
 					floatingMenuContent.style.borderTopLeftRadius = "0";
 					break;
@@ -398,6 +404,15 @@ export default defineComponent({
 			return {
 				minWidth: this.minWidth > 0 ? `${this.minWidth}px` : "",
 			};
+		},
+
+		// Required to correctly position the tail when scrolled (it has a `position: fixed` to prevent clipping)
+		tailStyle(): StyleValue {
+			if (this.direction === "Bottom") return { top: `${this.floatingMenuBounds.top}px` };
+			if (this.direction === "Top") return { bottom: `${this.floatingMenuBounds.bottom}px` };
+			if (this.direction === "Right") return { left: `${this.floatingMenuBounds.left}px` };
+			if (this.direction === "Left") return { right: `${this.floatingMenuBounds.right}px` };
+			return {};
 		},
 	},
 	components: { LayoutCol },

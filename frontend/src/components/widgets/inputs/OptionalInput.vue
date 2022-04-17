@@ -1,11 +1,12 @@
 <template>
-	<div class="optional-input">
+	<LayoutRow class="optional-input">
 		<CheckboxInput :checked="checked" @input="(e) => $emit('update:checked', (e.target as HTMLInputElement).checked)" :icon="icon" />
-	</div>
+	</LayoutRow>
 </template>
 
 <style lang="scss">
 .optional-input {
+	flex-grow: 0;
 	label {
 		align-items: center;
 		justify-content: center;
@@ -37,6 +38,7 @@ import { defineComponent, PropType } from "vue";
 
 import { IconName } from "@/utilities/icons";
 
+import LayoutRow from "@/components/layout/LayoutRow.vue";
 import CheckboxInput from "@/components/widgets/inputs/CheckboxInput.vue";
 
 export default defineComponent({
@@ -47,6 +49,7 @@ export default defineComponent({
 	},
 	components: {
 		CheckboxInput,
+		LayoutRow,
 	},
 });
 </script>

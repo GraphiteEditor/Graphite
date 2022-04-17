@@ -81,7 +81,7 @@ import TextInput from "@/components/widgets/inputs/TextInput.vue";
 import Separator from "@/components/widgets/separators/Separator.vue";
 
 export default defineComponent({
-	emits: ["update:value", "update:disabled", "update:qyt"],
+	emits: ["update:value"],
 	props: {
 		value: { type: String as PropType<string | undefined>, required: true },
 		label: { type: String as PropType<string>, required: false },

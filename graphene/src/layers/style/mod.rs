@@ -116,7 +116,7 @@ impl Fill {
 		match self {
 			Self::None => Color::BLACK,
 			Self::Solid(color) => *color,
-			// ToDo: Should correctly sample the gradient
+			// TODO: Should correctly sample the gradient
 			Self::LinearGradient(Gradient { positions, .. }) => positions[0].1.unwrap_or(Color::BLACK),
 		}
 	}
