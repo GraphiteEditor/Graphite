@@ -3,6 +3,7 @@ use crate::document::DocumentMessageHandler;
 use crate::frontend::utility_types::MouseCursorIcon;
 use crate::input::keyboard::{Key, MouseMotion};
 use crate::input::InputPreprocessorMessageHandler;
+use crate::layout::layout_message::LayoutTarget;
 use crate::layout::widgets::{FontInput, LayoutRow, NumberInput, PropertyHolder, Separator, SeparatorDirection, SeparatorType, Widget, WidgetCallback, WidgetHolder, WidgetLayout};
 use crate::message_prelude::*;
 use crate::misc::{HintData, HintGroup, HintInfo, KeysGroup};
@@ -26,6 +27,7 @@ pub struct TextTool {
 pub struct TextOptions {
 	font_size: u32,
 	font_name: String,
+	font_variant: String,
 	font_file: String,
 }
 
@@ -34,6 +36,7 @@ impl Default for TextOptions {
 		Self {
 			font_size: 14,
 			font_name: "Source Sans Pro".into(),
+			font_variant: "regular".into(),
 			font_file: String::new(),
 		}
 	}
@@ -65,7 +68,7 @@ pub enum TextMessage {
 #[remain::sorted]
 #[derive(PartialEq, Clone, Debug, Hash, Serialize, Deserialize)]
 pub enum TextOptionsUpdate {
-	Font { name: String, file: String },
+	Font { name: String, variant: String, file: String },
 	FontSize(u32),
 }
 
@@ -75,15 +78,32 @@ impl PropertyHolder for TextTool {
 			name: "".into(),
 			widgets: vec![
 				WidgetHolder::new(Widget::FontInput(FontInput {
+					is_variant_picker: false,
 					name: self.options.font_name.clone(),
+					variant: self.options.font_variant.clone(),
 					on_update: WidgetCallback::new(|font_input: &FontInput| {
 						TextMessage::UpdateOptions(TextOptionsUpdate::Font {
 							name: font_input.name.clone(),
+							variant: font_input.variant.clone(),
 							file: font_input.file.clone(),
 						})
 						.into()
 					}),
-					..FontInput::default()
+					..Default::default()
+				})),
+				WidgetHolder::new(Widget::FontInput(FontInput {
+					is_variant_picker: true,
+					name: self.options.font_name.clone(),
+					variant: self.options.font_variant.clone(),
+					on_update: WidgetCallback::new(|font_input: &FontInput| {
+						TextMessage::UpdateOptions(TextOptionsUpdate::Font {
+							name: font_input.name.clone(),
+							variant: font_input.variant.clone(),
+							file: font_input.file.clone(),
+						})
+						.into()
+					}),
+					..Default::default()
 				})),
 				WidgetHolder::new(Widget::Separator(Separator {
 					direction: SeparatorDirection::Horizontal,
@@ -117,9 +137,12 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for TextTool {
 
 		if let ToolMessage::Text(TextMessage::UpdateOptions(action)) = action {
 			match action {
-				TextOptionsUpdate::Font { name, file } => {
+				TextOptionsUpdate::Font { name, variant, file } => {
 					self.options.font_name = name;
+					self.options.font_variant = variant;
 					self.options.font_file = file;
+
+					self.register_properties(responses, LayoutTarget::ToolOptions);
 				}
 				TextOptionsUpdate::FontSize(font_size) => self.options.font_size = font_size,
 			}
@@ -275,6 +298,7 @@ impl Fsm for TextToolFsmState {
 						let transform = DAffine2::from_translation(input.mouse.position).to_cols_array();
 						let font_size = tool_options.font_size;
 						let font_name = tool_options.font_name.clone();
+						let font_variant = tool_options.font_variant.clone();
 						let font_file = tool_options.font_file.clone();
 						data.path = document.get_path_for_new_layer();
 
@@ -287,6 +311,7 @@ impl Fsm for TextToolFsmState {
 								style: style::PathStyle::new(None, Fill::solid(tool_data.primary_color)),
 								size: font_size as f64,
 								font_name,
+								font_variant,
 								font_file,
 							}
 							.into(),

@@ -7,14 +7,18 @@ fetch(fontsURI)
 	.then((response) => response.json())
 	.then((json) => {
 		fontsList = json.items;
-		console.log(fontsList, json, fontsURI);
 	});
 
 export function fontNames(): string[] {
 	return fontsList.map((value) => value.family);
 }
 
-export function getFontFile(name: string): string | undefined {
+export function getFontVariants(name: string): string[] {
 	const font = fontsList.find((value) => value.family === name);
-	return font ? font.files[font.variants[0]].replace("http://", "https://") : undefined;
+	return font ? font.variants : [];
+}
+
+export function getFontFile(name: string, variant: string): string | undefined {
+	const font = fontsList.find((value) => value.family === name);
+	return font ? font.files[variant].replace("http://", "https://") : undefined;
 }

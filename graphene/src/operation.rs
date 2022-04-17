@@ -54,6 +54,7 @@ pub enum Operation {
 		style: style::PathStyle,
 		size: f64,
 		font_name: String,
+		font_variant: String,
 		font_file: String,
 	},
 	AddImage {
@@ -124,6 +125,7 @@ pub enum Operation {
 	ModifyFont {
 		path: Vec<LayerId>,
 		name: String,
+		variant: String,
 		file: String,
 		size: f64,
 	},

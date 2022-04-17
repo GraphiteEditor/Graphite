@@ -30,6 +30,7 @@ pub struct TextLayer {
 	pub size: f64,
 	pub line_width: Option<f64>,
 	pub font: String,
+	pub variant: String,
 	pub font_file: String,
 	#[serde(skip)]
 	pub editable: bool,
@@ -115,13 +116,14 @@ impl TextLayer {
 		transforms.iter().skip(start).cloned().reduce(|a, b| a * b).unwrap_or(DAffine2::IDENTITY)
 	}
 
-	pub fn new(text: String, style: PathStyle, size: f64, font_name: String, font_file: String, font_cache: FontCache) -> Self {
+	pub fn new(text: String, style: PathStyle, size: f64, font_name: String, font_variant: String, font_file: String, font_cache: FontCache) -> Self {
 		let mut new = Self {
 			text,
 			style,
 			size,
 			line_width: None,
 			font: font_name,
+			variant: font_variant,
 			font_file,
 			editable: false,
 			cached_path: None,

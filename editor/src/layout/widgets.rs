@@ -223,7 +223,10 @@ pub struct ColorInput {
 #[derive(Clone, Serialize, Deserialize, Derivative)]
 #[derivative(Debug, PartialEq, Default)]
 pub struct FontInput {
+	#[serde(rename = "isVariant")]
+	pub is_variant_picker: bool,
 	pub name: String,
+	pub variant: String,
 	pub file: String,
 	#[serde(skip)]
 	#[derivative(Debug = "ignore", PartialEq = "ignore")]

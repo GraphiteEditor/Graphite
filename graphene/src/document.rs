@@ -495,13 +495,13 @@ impl Document {
 				insert_index,
 				transform,
 				text,
-
 				style,
 				size,
 				font_name,
+				font_variant,
 				font_file,
 			} => {
-				let layer = Layer::new(LayerDataType::Text(TextLayer::new(text, style, size, font_name, font_file, &self.font_cache)), transform);
+				let layer = Layer::new(LayerDataType::Text(TextLayer::new(text, style, size, font_name, font_variant, font_file, &self.font_cache)), transform);
 
 				self.set_layer(&path, layer, insert_index)?;
 
@@ -698,7 +698,7 @@ impl Document {
 					return Err(DocumentError::IndexOutOfBounds);
 				}
 			}
-			Operation::ModifyFont { path, name, file, size } => {
+			Operation::ModifyFont { path, name, variant, file, size } => {
 				// Not using Document::layer_mut is necessary because we alson need to borrow the font cache
 				let mut current_folder = &mut self.root;
 				let (folder_path, id) = split_path(&path)?;
@@ -709,6 +709,7 @@ impl Document {
 				let text = layer_mut.as_text_mut()?;
 
 				text.font = name;
+				text.variant = variant;
 				text.font_file = file;
 				text.size = size;
 				text.regenerate_path(text.load_face(&self.font_cache));

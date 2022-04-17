@@ -85,36 +85,22 @@
 <script lang="ts">
 import { defineComponent, PropType } from "vue";
 
-import { fontNames, getFontFile } from "@/utilities/fonts";
+import { fontNames, getFontFile, getFontVariants } from "@/utilities/fonts";
 
 import LayoutRow from "@/components/layout/LayoutRow.vue";
 import MenuList, { MenuListEntry, SectionsOfMenuListEntries } from "@/components/widgets/floating-menus/MenuList.vue";
 import IconLabel from "@/components/widgets/labels/IconLabel.vue";
 
 export default defineComponent({
-	emits: ["update:name", "changeFont"],
+	emits: ["update:name", "update:variant", "changeFont"],
 	props: {
 		name: { type: String as PropType<string>, required: true },
+		variant: { type: String as PropType<string>, required: true },
 		disabled: { type: Boolean as PropType<boolean>, default: false },
+		isVariant: { type: Boolean as PropType<boolean>, default: false },
 	},
 	data() {
-		let selectedIndex = -1;
-		const menuEntries: SectionsOfMenuListEntries = [
-			fontNames().map((name, index) => {
-				if (name === this.name) selectedIndex = index;
-
-				console.log(name);
-
-				const x: MenuListEntry = {
-					label: name,
-					action: (): void => this.selectFont(name),
-				};
-				return x;
-			}),
-		];
-
-		const activeEntry = selectedIndex < 0 ? { label: "-" } : menuEntries.flat()[selectedIndex];
-
+		const { menuEntries, activeEntry } = this.updateEntries();
 		return {
 			menuEntries,
 			activeEntry,
@@ -125,12 +111,48 @@ export default defineComponent({
 		clickDropdownBox() {
 			if (!this.disabled) (this.$refs.menuList as typeof MenuList).setOpen();
 		},
-		selectFont(name: string) {
-			this.$emit("update:name", name);
-			this.$emit("changeFont", { name, file: getFontFile(name) });
+		selectFont(newName: string) {
+			if (this.isVariant) this.$emit("update:variant", newName);
+			else this.$emit("update:name", newName);
+
+			{
+				const name = this.isVariant ? this.name : newName;
+				const variant = this.isVariant ? newName : getFontVariants(newName)[0];
+				this.$emit("changeFont", { name, variant, file: getFontFile(name, variant) });
+			}
 		},
 		onWidthChanged(newWidth: number) {
 			this.minWidth = newWidth;
+		},
+		updateEntries(): { menuEntries: SectionsOfMenuListEntries; activeEntry: MenuListEntry } {
+			let selectedIndex = -1;
+			const menuEntries: SectionsOfMenuListEntries = [
+				(this.isVariant ? getFontVariants(this.name) : fontNames()).map((name, index) => {
+					if (name === (this.isVariant ? this.variant : this.name)) selectedIndex = index;
+
+					const x: MenuListEntry = {
+						label: name,
+						action: (): void => this.selectFont(name),
+					};
+					return x;
+				}),
+			];
+
+			const activeEntry = selectedIndex < 0 ? { label: "-" } : menuEntries.flat()[selectedIndex];
+
+			return { menuEntries, activeEntry };
+		},
+	},
+	watch: {
+		name() {
+			const { menuEntries, activeEntry } = this.updateEntries();
+			this.menuEntries = menuEntries;
+			this.activeEntry = activeEntry;
+		},
+		variant() {
+			const { menuEntries, activeEntry } = this.updateEntries();
+			this.menuEntries = menuEntries;
+			this.activeEntry = activeEntry;
 		},
 	},
 	components: {
