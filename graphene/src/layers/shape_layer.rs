@@ -32,6 +32,10 @@ pub struct ShapeLayer {
 impl LayerData for ShapeLayer {
 	fn render(&mut self, svg: &mut String, svg_defs: &mut String, transforms: &mut Vec<DAffine2>, view_mode: ViewMode) {
 		let mut path = self.path.clone();
+
+		let kurbo::Rect { x0, y0, x1, y1 } = path.bounding_box();
+		let bounds = [(x0, y0).into(), (x1, y1).into()];
+
 		let transform = self.transform(transforms, view_mode);
 		let inverse = transform.inverse();
 		if !inverse.is_finite() {
@@ -45,7 +49,7 @@ impl LayerData for ShapeLayer {
 			let _ = svg.write_str(&(entry.to_string() + if i == 5 { "" } else { "," }));
 		});
 		let _ = svg.write_str(r#")">"#);
-		let _ = write!(svg, r#"<path d="{}" {} />"#, path.to_svg(), self.style.render(view_mode, svg_defs));
+		let _ = write!(svg, r#"<path d="{}" {} />"#, path.to_svg(), self.style.render(view_mode, svg_defs, transforms, bounds));
 		let _ = svg.write_str("</g>");
 	}
 

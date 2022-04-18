@@ -61,7 +61,11 @@ impl Gradient {
 	}
 
 	/// Adds the gradient def with the uuid specified
-	fn render_defs(&self, svg_defs: &mut String) {
+	fn render_defs(&self, svg_defs: &mut String, transforms: &[DAffine2], bounds: [DVec2; 2]) {
+		let bound_transform = DAffine2::from_scale_angle_translation(bounds[1] - bounds[0], 0., bounds[0]);
+		let updated_transform = transforms.iter().cloned().reduce(|a, b| a * b).unwrap() * bound_transform;
+		let origional_transform = self.transform.inverse();
+
 		let positions = self
 			.positions
 			.iter()
@@ -69,11 +73,15 @@ impl Gradient {
 			.map(|(position, color)| format!(r##"<stop offset="{}" stop-color="#{}" />"##, position, color.rgba_hex()))
 			.collect::<String>();
 
-		let start = self.transform.inverse().transform_point2(self.start);
-		let end = self.transform.inverse().transform_point2(self.end);
+		let mod_points = updated_transform.inverse() * origional_transform;
+		let mod_transform = DAffine2::IDENTITY;
 
-		let transform = self
-			.transform
+		let start = origional_transform.inverse().transform_point2(updated_transform.transform_point2(self.start));
+		let enddd = origional_transform.inverse().transform_point2(updated_transform.transform_point2(self.end));
+
+		log::info!("Start {:?} end {:?} or {} up {} mul {} ", start, enddd, origional_transform, updated_transform, mod_points);
+
+		let transform = mod_transform
 			.to_cols_array()
 			.iter()
 			.enumerate()
@@ -83,7 +91,7 @@ impl Gradient {
 		let _ = write!(
 			svg_defs,
 			r#"<linearGradient id="{}" x1="{}" x2="{}" y1="{}" y2="{}" gradientTransform="matrix({})">{}</linearGradient>"#,
-			self.uuid, start.x, end.x, start.y, end.y, transform, positions
+			self.uuid, start.x, enddd.x, start.y, enddd.y, transform, positions
 		);
 	}
 }
@@ -122,12 +130,12 @@ impl Fill {
 	}
 
 	/// Renders the fill, adding necessary defs.
-	pub fn render(&self, svg_defs: &mut String) -> String {
+	pub fn render(&self, svg_defs: &mut String, transforms: &[DAffine2], bounds: [DVec2; 2]) -> String {
 		match self {
 			Self::None => r#" fill="none""#.to_string(),
 			Self::Solid(color) => format!(r##" fill="#{}"{}"##, color.rgb_hex(), format_opacity("fill", color.a())),
 			Self::LinearGradient(gradient) => {
-				gradient.render_defs(svg_defs);
+				gradient.render_defs(svg_defs, transforms, bounds);
 				format!(r##" fill="url('#{}')""##, gradient.uuid)
 			}
 		}
@@ -430,10 +438,10 @@ impl PathStyle {
 		self.stroke = None;
 	}
 
-	pub fn render(&self, view_mode: ViewMode, svg_defs: &mut String) -> String {
+	pub fn render(&self, view_mode: ViewMode, svg_defs: &mut String, transforms: &[DAffine2], bounds: [DVec2; 2]) -> String {
 		let fill_attribute = match (view_mode, &self.fill) {
-			(ViewMode::Outline, _) => Fill::None.render(svg_defs),
-			(_, fill) => fill.render(svg_defs),
+			(ViewMode::Outline, _) => Fill::None.render(svg_defs, transforms, bounds),
+			(_, fill) => fill.render(svg_defs, transforms, bounds),
 		};
 		let stroke_attribute = match (view_mode, &self.stroke) {
 			(ViewMode::Outline, _) => Stroke::new(LAYER_OUTLINE_STROKE_COLOR, LAYER_OUTLINE_STROKE_WIDTH).render(),

@@ -63,9 +63,12 @@ impl LayerData for TextLayer {
 		} else {
 			let mut path = self.to_bez_path();
 
+			let kurbo::Rect { x0, y0, x1, y1 } = path.bounding_box();
+			let bounds = [(x0, y0).into(), (x1, y1).into()];
+
 			path.apply_affine(glam_to_kurbo(transform));
 
-			let _ = write!(svg, r#"<path d="{}" {} />"#, path.to_svg(), self.style.render(view_mode, svg_defs));
+			let _ = write!(svg, r#"<path d="{}" {} />"#, path.to_svg(), self.style.render(view_mode, svg_defs, transforms, bounds));
 		}
 		let _ = svg.write_str("</g>");
 	}
