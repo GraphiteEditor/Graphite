@@ -288,9 +288,12 @@ import {
 	DisplayRemoveEditableTextbox,
 	DisplayEditableTextbox,
 	TriggerFontLoad,
+	TriggerDefaultFontLoad,
 } from "@/dispatcher/js-messages";
 
 import { textInputCleanup } from "@/lifetime/input";
+
+import { loadDefaultFont, setLoadDefaultFontCallback } from "@/utilities/fonts";
 
 import LayoutCol from "@/components/layout/LayoutCol.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
@@ -458,9 +461,10 @@ export default defineComponent({
 			fetch(triggerFontLoad.font)
 				.then((response) => response.arrayBuffer())
 				.then((response) => {
-					this.editor.instance.on_font_load(triggerFontLoad.font, new Uint8Array(response));
+					this.editor.instance.on_font_load(triggerFontLoad.font, new Uint8Array(response), false);
 				});
 		});
+		this.editor.dispatcher.subscribeJsMessage(TriggerDefaultFontLoad, loadDefaultFont);
 		this.editor.dispatcher.subscribeJsMessage(TriggerTextCopy, async (triggerTextCopy) => {
 			// Clipboard API supported?
 			if (!navigator.clipboard) return;
@@ -522,17 +526,7 @@ export default defineComponent({
 		// TODO(mfish33): Replace with initialization system Issue:#524
 		// Get initial Document Bar
 		this.editor.instance.init_document_bar();
-
-		// Load a default font
-		// Should also probably be called on rust init
-		{
-			const font = "http://fonts.gstatic.com/s/merriweather/v28/u-440qyriQwlOrhSvowK_l5OeyxNV-bnrw.ttf";
-			fetch(font)
-				.then((response) => response.arrayBuffer())
-				.then((response) => {
-					this.editor.instance.on_font_load(font, new Uint8Array(response));
-				});
-		}
+		setLoadDefaultFontCallback((font: string, data: Uint8Array) => this.editor.instance.on_font_load(font, data, true));
 	},
 	data() {
 		const documentModeEntries: SectionsOfMenuListEntries = [

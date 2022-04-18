@@ -388,6 +388,8 @@ export class IndexedDbDocumentDetails extends DocumentDetails {
 	id!: string;
 }
 
+export class TriggerDefaultFontLoad extends JsMessage {}
+
 export class TriggerIndexedDbWriteDocument extends JsMessage {
 	document!: string;
 
@@ -538,6 +540,7 @@ export const messageConstructors: Record<string, MessageMaker> = {
 	DisplayEditableTextbox,
 	UpdateImageData,
 	DisplayRemoveEditableTextbox,
+	TriggerDefaultFontLoad,
 	TriggerFileDownload,
 	TriggerFileUpload,
 	TriggerIndexedDbRemoveDocument,

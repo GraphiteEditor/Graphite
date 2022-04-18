@@ -504,6 +504,12 @@ impl DocumentMessageHandler {
 			responses.push_front(FrontendMessage::UpdateImageData { image_data }.into());
 		}
 	}
+
+	pub fn load_default_font(&self, responses: &mut VecDeque<Message>) {
+		if !self.graphene_document.font_cache.has_default() {
+			responses.push_back(FrontendMessage::TriggerDefaultFontLoad.into())
+		}
+	}
 }
 
 impl PropertyHolder for DocumentMessageHandler {
@@ -889,8 +895,8 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 				let affected_layer_path = affected_folder_path;
 				responses.extend([LayerChanged { affected_layer_path }.into(), DocumentStructureChanged.into()]);
 			}
-			FontLoaded { font, data } => {
-				self.graphene_document.font_cache.insert(font, data);
+			FontLoaded { font, data, is_default } => {
+				self.graphene_document.font_cache.insert(font, data, is_default);
 			}
 			GroupSelectedLayers => {
 				let mut new_folder_path = self.graphene_document.shallowest_common_folder(self.selected_layers()).unwrap_or(&[]).to_vec();
@@ -928,7 +934,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 				responses.push_back(PropertiesPanelMessage::CheckSelectedWasUpdated { path: affected_layer_path }.into());
 			}
 			LoadFont { font } => {
-				if !self.graphene_document.font_cache.contains_key(&font) {
+				if !self.graphene_document.font_cache.loaded_font(&font) {
 					responses.push_front(FrontendMessage::TriggerFontLoad { font }.into());
 				}
 			}

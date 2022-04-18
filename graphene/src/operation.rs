@@ -55,7 +55,7 @@ pub enum Operation {
 		size: f64,
 		font_name: String,
 		font_variant: String,
-		font_file: String,
+		font_file: Option<String>,
 	},
 	AddImage {
 		path: Vec<LayerId>,
@@ -126,7 +126,7 @@ pub enum Operation {
 		path: Vec<LayerId>,
 		name: String,
 		variant: String,
-		file: String,
+		file: Option<String>,
 		size: f64,
 	},
 	RenameLayer {

@@ -22,13 +22,13 @@ pub struct FolderLayer {
 }
 
 impl LayerData for FolderLayer {
-	fn render(&mut self, svg: &mut String, svg_defs: &mut String, transforms: &mut Vec<glam::DAffine2>, view_mode: ViewMode, font_cache: FontCache) {
+	fn render(&mut self, svg: &mut String, svg_defs: &mut String, transforms: &mut Vec<glam::DAffine2>, view_mode: ViewMode, font_cache: &FontCache) {
 		for layer in &mut self.layers {
 			let _ = writeln!(svg, "{}", layer.render(transforms, view_mode, svg_defs, font_cache));
 		}
 	}
 
-	fn intersects_quad(&self, quad: Quad, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>, font_cache: FontCache) {
+	fn intersects_quad(&self, quad: Quad, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>, font_cache: &FontCache) {
 		for (layer, layer_id) in self.layers().iter().zip(&self.layer_ids) {
 			path.push(*layer_id);
 			layer.intersects_quad(quad, path, intersections, font_cache);
@@ -36,7 +36,7 @@ impl LayerData for FolderLayer {
 		}
 	}
 
-	fn bounding_box(&self, transform: glam::DAffine2, font_cache: FontCache) -> Option<[DVec2; 2]> {
+	fn bounding_box(&self, transform: glam::DAffine2, font_cache: &FontCache) -> Option<[DVec2; 2]> {
 		self.layers
 			.iter()
 			.filter_map(|layer| layer.data.bounding_box(transform * layer.transform, font_cache))

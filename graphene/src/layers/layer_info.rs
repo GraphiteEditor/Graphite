@@ -70,7 +70,7 @@ pub trait LayerData {
 	///     </g>"
 	/// );
 	/// ```
-	fn render(&mut self, svg: &mut String, svg_defs: &mut String, transforms: &mut Vec<glam::DAffine2>, view_mode: ViewMode, font_cache: FontCache);
+	fn render(&mut self, svg: &mut String, svg_defs: &mut String, transforms: &mut Vec<glam::DAffine2>, view_mode: ViewMode, font_cache: &FontCache);
 
 	/// Determine the layers within this layer that intersect a given quad.
 	/// # Example
@@ -93,7 +93,7 @@ pub trait LayerData {
 	///
 	/// assert_eq!(intersections, vec![vec![shape_id]]);
 	/// ```
-	fn intersects_quad(&self, quad: Quad, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>, font_cache: FontCache);
+	fn intersects_quad(&self, quad: Quad, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>, font_cache: &FontCache);
 
 	// TODO: this doctest fails because 0 != 1e-32, maybe assert difference < epsilon?
 	/// Calculate the bounding box for the layer's contents after applying a given transform.
@@ -113,19 +113,19 @@ pub trait LayerData {
 	///
 	/// assert_eq!(bounding_box, Some([DVec2::ZERO, DVec2::ONE]));
 	/// ```
-	fn bounding_box(&self, transform: glam::DAffine2, font_cache: FontCache) -> Option<[DVec2; 2]>;
+	fn bounding_box(&self, transform: glam::DAffine2, font_cache: &FontCache) -> Option<[DVec2; 2]>;
 }
 
 impl LayerData for LayerDataType {
-	fn render(&mut self, svg: &mut String, svg_defs: &mut String, transforms: &mut Vec<glam::DAffine2>, view_mode: ViewMode, font_cache: FontCache) {
+	fn render(&mut self, svg: &mut String, svg_defs: &mut String, transforms: &mut Vec<glam::DAffine2>, view_mode: ViewMode, font_cache: &FontCache) {
 		self.inner_mut().render(svg, svg_defs, transforms, view_mode, font_cache)
 	}
 
-	fn intersects_quad(&self, quad: Quad, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>, font_cache: FontCache) {
+	fn intersects_quad(&self, quad: Quad, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>, font_cache: &FontCache) {
 		self.inner().intersects_quad(quad, path, intersections, font_cache)
 	}
 
-	fn bounding_box(&self, transform: glam::DAffine2, font_cache: FontCache) -> Option<[DVec2; 2]> {
+	fn bounding_box(&self, transform: glam::DAffine2, font_cache: &FontCache) -> Option<[DVec2; 2]> {
 		self.inner().bounding_box(transform, font_cache)
 	}
 }
@@ -223,7 +223,7 @@ impl Layer {
 		LayerIter { stack: vec![self] }
 	}
 
-	pub fn render(&mut self, transforms: &mut Vec<DAffine2>, view_mode: ViewMode, svg_defs: &mut String, font_cache: FontCache) -> &str {
+	pub fn render(&mut self, transforms: &mut Vec<DAffine2>, view_mode: ViewMode, svg_defs: &mut String, font_cache: &FontCache) -> &str {
 		if !self.visible {
 			return "";
 		}
@@ -254,7 +254,7 @@ impl Layer {
 		self.cache.as_str()
 	}
 
-	pub fn intersects_quad(&self, quad: Quad, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>, font_cache: FontCache) {
+	pub fn intersects_quad(&self, quad: Quad, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>, font_cache: &FontCache) {
 		if !self.visible {
 			return;
 		}
@@ -288,15 +288,15 @@ impl Layer {
 	///     layer.aabounding_box_for_transform(transform, &HashMap::new()),
 	///     Some([DVec2::ZERO, DVec2::ONE * 2.]),
 	/// );
-	pub fn aabounding_box_for_transform(&self, transform: DAffine2, font_cache: FontCache) -> Option<[DVec2; 2]> {
+	pub fn aabounding_box_for_transform(&self, transform: DAffine2, font_cache: &FontCache) -> Option<[DVec2; 2]> {
 		self.data.bounding_box(transform, font_cache)
 	}
 
-	pub fn aabounding_box(&self, font_cache: FontCache) -> Option<[DVec2; 2]> {
+	pub fn aabounding_box(&self, font_cache: &FontCache) -> Option<[DVec2; 2]> {
 		self.aabounding_box_for_transform(self.transform, font_cache)
 	}
 
-	pub fn bounding_transform(&self, font_cache: FontCache) -> DAffine2 {
+	pub fn bounding_transform(&self, font_cache: &FontCache) -> DAffine2 {
 		let scale = match self.aabounding_box_for_transform(DAffine2::IDENTITY, font_cache) {
 			Some([a, b]) => {
 				let dimensions = b - a;

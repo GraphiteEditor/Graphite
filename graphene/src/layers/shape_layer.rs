@@ -31,7 +31,7 @@ pub struct ShapeLayer {
 }
 
 impl LayerData for ShapeLayer {
-	fn render(&mut self, svg: &mut String, svg_defs: &mut String, transforms: &mut Vec<DAffine2>, view_mode: ViewMode, _font_cache: FontCache) {
+	fn render(&mut self, svg: &mut String, svg_defs: &mut String, transforms: &mut Vec<DAffine2>, view_mode: ViewMode, _font_cache: &FontCache) {
 		let mut path = self.path.clone();
 		let transform = self.transform(transforms, view_mode);
 		let inverse = transform.inverse();
@@ -50,7 +50,7 @@ impl LayerData for ShapeLayer {
 		let _ = svg.write_str("</g>");
 	}
 
-	fn bounding_box(&self, transform: glam::DAffine2, _font_cache: FontCache) -> Option<[DVec2; 2]> {
+	fn bounding_box(&self, transform: glam::DAffine2, _font_cache: &FontCache) -> Option<[DVec2; 2]> {
 		use kurbo::Shape;
 
 		let mut path = self.path.clone();
@@ -63,7 +63,7 @@ impl LayerData for ShapeLayer {
 		Some([(x0, y0).into(), (x1, y1).into()])
 	}
 
-	fn intersects_quad(&self, quad: Quad, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>, _font_cache: FontCache) {
+	fn intersects_quad(&self, quad: Quad, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>, _font_cache: &FontCache) {
 		if intersect_quad_bez_path(quad, &self.path, self.style.fill().is_some()) {
 			intersections.push(path.clone());
 		}

@@ -20,7 +20,39 @@ use std::hash::{Hash, Hasher};
 /// A number that identifies a layer.
 /// This does not technically need to be unique globally, only within a folder.
 pub type LayerId = u64;
-pub type FontCache<'a> = &'a HashMap<String, Vec<u8>>;
+
+/// A cache of all loaded fonts along with a string of the name of the default font (sent from js)
+#[derive(Debug, Clone, Deserialize, Serialize, Default)]
+pub struct FontCache {
+	data: HashMap<String, Vec<u8>>,
+	default_font: Option<String>,
+}
+impl FontCache {
+	/// Returns the font name if the font is cached, otherwise returns the default font name if that is cached
+	pub fn resolve_font<'a>(&'a self, font: Option<&'a String>) -> Option<&'a String> {
+		font.filter(|font| self.loaded_font(font))
+			.map_or(self.default_font.as_ref().filter(|font| self.loaded_font(font)), Some)
+	}
+	/// Try to get the bytes for a font
+	pub fn get<'a>(&'a self, font: Option<&String>) -> Option<&'a Vec<u8>> {
+		self.resolve_font(font).and_then(|font| self.data.get(font))
+	}
+	/// Check if the font is already loaded
+	pub fn loaded_font(&self, font: &String) -> bool {
+		self.data.contains_key(font)
+	}
+	/// Insert a new font into the cache
+	pub fn insert(&mut self, font: String, data: Vec<u8>, is_default: bool) {
+		if is_default {
+			self.default_font = Some(font.clone());
+		}
+		self.data.insert(font, data);
+	}
+	/// Checks if the font cache has a default font
+	pub fn has_default(&self) -> bool {
+		self.default_font.is_some()
+	}
+}
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Document {
@@ -30,7 +62,7 @@ pub struct Document {
 	/// This identifier is not a hash and is not guaranteed to be equal for equivalent documents.
 	#[serde(skip)]
 	pub state_identifier: DefaultHasher,
-	pub font_cache: HashMap<String, Vec<u8>>,
+	pub font_cache: FontCache,
 }
 
 impl Default for Document {
@@ -38,7 +70,7 @@ impl Default for Document {
 		Self {
 			root: Layer::new(LayerDataType::Folder(FolderLayer::default()), DAffine2::IDENTITY.to_cols_array()),
 			state_identifier: DefaultHasher::new(),
-			font_cache: HashMap::new(),
+			font_cache: FontCache::default(),
 		}
 	}
 }

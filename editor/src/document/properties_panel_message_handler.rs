@@ -221,7 +221,7 @@ impl MessageHandler<PropertiesPanelMessage, &GrapheneDocument> for PropertiesPan
 	}
 }
 
-fn register_layer_properties(layer: &Layer, responses: &mut VecDeque<Message>, font_cache: FontCache) {
+fn register_layer_properties(layer: &Layer, responses: &mut VecDeque<Message>, font_cache: &FontCache) {
 	let options_bar = vec![LayoutRow::Row {
 		name: "".into(),
 		widgets: vec![
@@ -310,7 +310,7 @@ fn register_layer_properties(layer: &Layer, responses: &mut VecDeque<Message>, f
 	);
 }
 
-fn node_section_transform(layer: &Layer, font_cache: FontCache) -> LayoutRow {
+fn node_section_transform(layer: &Layer, font_cache: &FontCache) -> LayoutRow {
 	LayoutRow::Section {
 		name: "Transform".into(),
 		layout: vec![
@@ -518,7 +518,7 @@ fn node_section_font(layer: &TextLayer) -> LayoutRow {
 							PropertiesPanelMessage::ModifyFont {
 								name: font_input.name.clone(),
 								variant: font_input.variant.clone(),
-								file: font_input.file.clone(),
+								file: Some(font_input.file.clone()),
 								size,
 							}
 							.into()
@@ -546,7 +546,7 @@ fn node_section_font(layer: &TextLayer) -> LayoutRow {
 							PropertiesPanelMessage::ModifyFont {
 								name: font_input.name.clone(),
 								variant: font_input.variant.clone(),
-								file: font_input.file.clone(),
+								file: Some(font_input.file.clone()),
 								size,
 							}
 							.into()

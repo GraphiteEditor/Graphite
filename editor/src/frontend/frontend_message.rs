@@ -24,6 +24,7 @@ pub enum FrontendMessage {
 	DisplayRemoveEditableTextbox,
 
 	// Trigger prefix: cause a browser API to do something
+	TriggerDefaultFontLoad,
 	TriggerFileDownload { document: String, name: String },
 	TriggerFileUpload,
 	TriggerFontLoad { font: String },

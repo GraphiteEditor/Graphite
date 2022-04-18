@@ -21,7 +21,7 @@ impl LayerMetadata {
 	}
 }
 
-pub fn layer_panel_entry(layer_metadata: &LayerMetadata, transform: DAffine2, layer: &Layer, path: Vec<LayerId>, font_cache: FontCache) -> LayerPanelEntry {
+pub fn layer_panel_entry(layer_metadata: &LayerMetadata, transform: DAffine2, layer: &Layer, path: Vec<LayerId>, font_cache: &FontCache) -> LayerPanelEntry {
 	let name = layer.name.clone().unwrap_or_else(|| String::from(""));
 	let arr = layer.data.bounding_box(transform, font_cache).unwrap_or([DVec2::ZERO, DVec2::ZERO]);
 	let arr = arr.iter().map(|x| (*x).into()).collect::<Vec<(f64, f64)>>();

@@ -210,7 +210,7 @@ impl<'a> Selected<'a> {
 		}
 	}
 
-	pub fn calculate_pivot(&mut self, font_cache: FontCache) -> DVec2 {
+	pub fn calculate_pivot(&mut self, font_cache: &FontCache) -> DVec2 {
 		let xy_summation = self
 			.selected
 			.iter()

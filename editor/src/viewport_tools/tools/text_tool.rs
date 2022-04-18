@@ -28,7 +28,7 @@ pub struct TextOptions {
 	font_size: u32,
 	font_name: String,
 	font_variant: String,
-	font_file: String,
+	font_file: Option<String>,
 }
 
 impl Default for TextOptions {
@@ -37,7 +37,7 @@ impl Default for TextOptions {
 			font_size: 24,
 			font_name: "Merriweather".into(),
 			font_variant: "regular".into(),
-			font_file: String::new(),
+			font_file: None,
 		}
 	}
 }
@@ -144,7 +144,7 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for TextTool {
 				TextOptionsUpdate::Font { name, variant, file } => {
 					self.options.font_name = name;
 					self.options.font_variant = variant;
-					self.options.font_file = file;
+					self.options.font_file = Some(file);
 
 					self.register_properties(responses, LayoutTarget::ToolOptions);
 				}
@@ -212,25 +212,33 @@ fn resize_overlays(overlays: &mut Vec<Vec<LayerId>>, responses: &mut VecDeque<Me
 	}
 }
 
-fn update_overlays(document: &DocumentMessageHandler, data: &mut TextToolData, responses: &mut VecDeque<Message>, font_cache: FontCache) {
+fn update_overlays(document: &DocumentMessageHandler, data: &mut TextToolData, responses: &mut VecDeque<Message>, font_cache: &FontCache) {
 	let visible_text_layers = document.selected_visible_text_layers().collect::<Vec<_>>();
-
 	resize_overlays(&mut data.overlays, responses, visible_text_layers.len());
 
-	for (layer_path, overlay_path) in visible_text_layers.into_iter().zip(&data.overlays) {
-		let bounds = document
-			.graphene_document
-			.layer(layer_path)
-			.unwrap()
-			.aabounding_box_for_transform(document.graphene_document.multiply_transforms(layer_path).unwrap(), font_cache)
-			.unwrap();
+	let bounds = visible_text_layers
+		.into_iter()
+		.zip(&data.overlays)
+		.filter_map(|(layer_path, overlay_path)| {
+			document
+				.graphene_document
+				.layer(layer_path)
+				.unwrap()
+				.aabounding_box_for_transform(document.graphene_document.multiply_transforms(layer_path).unwrap(), font_cache)
+				.map(|bounds| (bounds, overlay_path))
+		})
+		.collect::<Vec<_>>();
 
+	let new_len = bounds.len();
+
+	for (bounds, overlay_path) in bounds {
 		let operation = Operation::SetLayerTransformInViewport {
 			path: overlay_path.to_vec(),
 			transform: transform_from_box(bounds[0], bounds[1]),
 		};
 		responses.push_back(DocumentMessage::Overlays(operation.into()).into());
 	}
+	resize_overlays(&mut data.overlays, responses, new_len);
 }
 
 impl Fsm for TextToolFsmState {
