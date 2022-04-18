@@ -461,7 +461,7 @@ fn node_section_transform(layer: &Layer) -> LayoutRow {
 
 fn node_section_fill(fill: &Fill) -> Option<LayoutRow> {
 	match fill {
-		Fill::Solid(color) => Some(LayoutRow::Section {
+		Fill::Solid(_) | Fill::None => Some(LayoutRow::Section {
 			name: "Fill".into(),
 			layout: vec![LayoutRow::Row {
 				name: "".into(),
@@ -475,13 +475,17 @@ fn node_section_fill(fill: &Fill) -> Option<LayoutRow> {
 						direction: SeparatorDirection::Horizontal,
 					})),
 					WidgetHolder::new(Widget::ColorInput(ColorInput {
-						value: color.rgba_hex(),
+						value: if let Fill::Solid(color) = fill { Some(color.rgba_hex()) } else { None },
 						on_update: WidgetCallback::new(|text_input: &ColorInput| {
-							if let Some(color) = Color::from_rgba_str(&text_input.value).or_else(|| Color::from_rgb_str(&text_input.value)) {
-								let new_fill = Fill::Solid(color);
-								PropertiesPanelMessage::ModifyFill { fill: new_fill }.into()
+							if let Some(value) = &text_input.value {
+								if let Some(color) = Color::from_rgba_str(value).or_else(|| Color::from_rgb_str(value)) {
+									let new_fill = Fill::Solid(color);
+									PropertiesPanelMessage::ModifyFill { fill: new_fill }.into()
+								} else {
+									PropertiesPanelMessage::ResendActiveProperties.into()
+								}
 							} else {
-								PropertiesPanelMessage::ResendActiveProperties.into()
+								PropertiesPanelMessage::ModifyFill { fill: Fill::None }.into()
 							}
 						}),
 					})),
@@ -506,17 +510,26 @@ fn node_section_fill(fill: &Fill) -> Option<LayoutRow> {
 								direction: SeparatorDirection::Horizontal,
 							})),
 							WidgetHolder::new(Widget::ColorInput(ColorInput {
-								value: gradient_1.positions[0].1.rgba_hex(),
+								value: gradient_1.positions[0].1.map(|color| color.rgba_hex()),
 								on_update: WidgetCallback::new(move |text_input: &ColorInput| {
-									if let Some(color) = Color::from_rgba_str(&text_input.value).or_else(|| Color::from_rgb_str(&text_input.value)) {
+									if let Some(value) = &text_input.value {
+										if let Some(color) = Color::from_rgba_str(value).or_else(|| Color::from_rgb_str(value)) {
+											let mut new_gradient = (*gradient_1).clone();
+											new_gradient.positions[0].1 = Some(color);
+											PropertiesPanelMessage::ModifyFill {
+												fill: Fill::LinearGradient(new_gradient),
+											}
+											.into()
+										} else {
+											PropertiesPanelMessage::ResendActiveProperties.into()
+										}
+									} else {
 										let mut new_gradient = (*gradient_1).clone();
-										new_gradient.positions[0].1 = color;
+										new_gradient.positions[0].1 = None;
 										PropertiesPanelMessage::ModifyFill {
 											fill: Fill::LinearGradient(new_gradient),
 										}
 										.into()
-									} else {
-										PropertiesPanelMessage::ResendActiveProperties.into()
 									}
 								}),
 							})),
@@ -534,17 +547,26 @@ fn node_section_fill(fill: &Fill) -> Option<LayoutRow> {
 								direction: SeparatorDirection::Horizontal,
 							})),
 							WidgetHolder::new(Widget::ColorInput(ColorInput {
-								value: gradient_2.positions[1].1.rgba_hex(),
+								value: gradient_2.positions[1].1.map(|color| color.rgba_hex()),
 								on_update: WidgetCallback::new(move |text_input: &ColorInput| {
-									if let Some(color) = Color::from_rgba_str(&text_input.value).or_else(|| Color::from_rgb_str(&text_input.value)) {
+									if let Some(value) = &text_input.value {
+										if let Some(color) = Color::from_rgba_str(value).or_else(|| Color::from_rgb_str(value)) {
+											let mut new_gradient = (*gradient_2).clone();
+											new_gradient.positions[1].1 = Some(color);
+											PropertiesPanelMessage::ModifyFill {
+												fill: Fill::LinearGradient(new_gradient),
+											}
+											.into()
+										} else {
+											PropertiesPanelMessage::ResendActiveProperties.into()
+										}
+									} else {
 										let mut new_gradient = (*gradient_2).clone();
-										new_gradient.positions[1].1 = color;
+										new_gradient.positions[1].1 = None;
 										PropertiesPanelMessage::ModifyFill {
 											fill: Fill::LinearGradient(new_gradient),
 										}
 										.into()
-									} else {
-										PropertiesPanelMessage::ResendActiveProperties.into()
 									}
 								}),
 							})),
@@ -553,7 +575,6 @@ fn node_section_fill(fill: &Fill) -> Option<LayoutRow> {
 				],
 			})
 		}
-		Fill::None => None,
 	}
 }
 
@@ -586,7 +607,7 @@ fn node_section_stroke(stroke: &Stroke) -> LayoutRow {
 						direction: SeparatorDirection::Horizontal,
 					})),
 					WidgetHolder::new(Widget::ColorInput(ColorInput {
-						value: stroke.color().rgba_hex(),
+						value: stroke.color().map(|color| color.rgba_hex()),
 						on_update: WidgetCallback::new(move |text_input: &ColorInput| {
 							internal_stroke1
 								.clone()
