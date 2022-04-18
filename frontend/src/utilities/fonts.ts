@@ -32,12 +32,12 @@ export function fontNames(): string[] {
 	return fontList.map((value) => value.family);
 }
 
-export function getFontVariants(name: string): string[] {
+export function getFontStyles(name: string): string[] {
 	const font = fontList.find((value) => value.family === name);
 	return font ? font.variants : [];
 }
 
-export function getFontFile(name: string, variant: string): string | undefined {
+export function getFontFile(name: string, fontStyle: string): string | undefined {
 	const font = fontList.find((value) => value.family === name);
-	return font && font.files[variant].replace("http://", "https://");
+	return font && font.files[fontStyle].replace("http://", "https://");
 }

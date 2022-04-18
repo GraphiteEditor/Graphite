@@ -530,10 +530,10 @@ impl Document {
 				style,
 				size,
 				font_name,
-				font_variant,
+				font_style,
 				font_file,
 			} => {
-				let layer = Layer::new(LayerDataType::Text(TextLayer::new(text, style, size, font_name, font_variant, font_file, &self.font_cache)), transform);
+				let layer = Layer::new(LayerDataType::Text(TextLayer::new(text, style, size, font_name, font_style, font_file, &self.font_cache)), transform);
 
 				self.set_layer(&path, layer, insert_index)?;
 
@@ -730,7 +730,7 @@ impl Document {
 					return Err(DocumentError::IndexOutOfBounds);
 				}
 			}
-			Operation::ModifyFont { path, name, variant, file, size } => {
+			Operation::ModifyFont { path, name, font_style, file, size } => {
 				// Not using Document::layer_mut is necessary because we alson need to borrow the font cache
 				let mut current_folder = &mut self.root;
 				let (folder_path, id) = split_path(&path)?;
@@ -741,7 +741,7 @@ impl Document {
 				let text = layer_mut.as_text_mut()?;
 
 				text.font = name;
-				text.variant = variant;
+				text.font_style = font_style;
 				text.font_file = file;
 				text.size = size;
 				text.regenerate_path(text.load_face(&self.font_cache));
@@ -808,7 +808,7 @@ impl Document {
 
 				if let LayerDataType::Text(t) = &mut layer_mut.data {
 					let bezpath = t.to_bez_path(t.load_face(&self.font_cache));
-					layer_mut.data = layers::layer_info::LayerDataType::Shape(ShapeLayer::from_bez_path(bezpath, t.style.clone(), true));
+					layer_mut.data = layers::layer_info::LayerDataType::Shape(ShapeLayer::from_bez_path(bezpath, t.path_style.clone(), true));
 				}
 
 				if let LayerDataType::Shape(shape) = &mut layer_mut.data {
@@ -872,7 +872,7 @@ impl Document {
 				let layer = self.layer_mut(&path)?;
 				match &mut layer.data {
 					LayerDataType::Shape(s) => s.style = style,
-					LayerDataType::Text(text) => text.style = style,
+					LayerDataType::Text(text) => text.path_style = style,
 					_ => return Err(DocumentError::NotAShape),
 				}
 				self.mark_as_dirty(&path)?;

@@ -11,7 +11,7 @@ pub enum PropertiesPanelMessage {
 	CheckSelectedWasUpdated { path: Vec<LayerId> },
 	ClearSelection,
 	ModifyFill { fill: Fill },
-	ModifyFont { name: String, variant: String, file: Option<String>, size: f64 },
+	ModifyFont { name: String, font_style: String, file: Option<String>, size: f64 },
 	ModifyName { name: String },
 	ModifyStroke { stroke: Stroke },
 	ModifyText { new_text: String },

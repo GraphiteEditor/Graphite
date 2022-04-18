@@ -897,6 +897,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 			}
 			FontLoaded { font, data, is_default } => {
 				self.graphene_document.font_cache.insert(font, data, is_default);
+				responses.push_back(DocumentMessage::DirtyRenderDocument.into());
 			}
 			GroupSelectedLayers => {
 				let mut new_folder_path = self.graphene_document.shallowest_common_folder(self.selected_layers()).unwrap_or(&[]).to_vec();
@@ -1238,7 +1239,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 				let text = self.graphene_document.layer(&path).unwrap().as_text().unwrap();
 				responses.push_back(DocumentOperation::SetTextEditability { path, editable }.into());
 				if editable {
-					let color = if let Fill::Solid(solid_color) = text.style.fill() { *solid_color } else { Color::BLACK };
+					let color = if let Fill::Solid(solid_color) = text.path_style.fill() { *solid_color } else { Color::BLACK };
 					responses.push_back(
 						FrontendMessage::DisplayEditableTextbox {
 							text: text.text.clone(),

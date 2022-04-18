@@ -106,14 +106,14 @@ impl MessageHandler<LayoutMessage, ()> for LayoutMessageHandler {
 					Widget::FontInput(font_input) => {
 						let update_value = value.as_object().expect("FontInput update was not of type: object");
 						let name_value = update_value.get("name").expect("FontInput update does not have a name");
-						let variant_value = update_value.get("variant").expect("FontInput update does not have a variant");
+						let font_style_value = update_value.get("fontStyle").expect("FontInput update does not have a fontStyle");
 						let file_value = update_value.get("file").expect("FontInput update does not have a file");
 						let name = name_value.as_str().expect("FontInput update name was not of type: string");
-						let variant = variant_value.as_str().expect("FontInput update variant was not of type: string");
+						let font_style = font_style_value.as_str().expect("FontInput update fontStyle was not of type: string");
 						let file = file_value.as_str().expect("FontInput update file was not of type: string");
 
 						font_input.name = name.into();
-						font_input.variant = variant.into();
+						font_input.font_style = font_style.into();
 						font_input.file = file.into();
 
 						responses.push_back(DocumentMessage::LoadFont { font: file.into() }.into());

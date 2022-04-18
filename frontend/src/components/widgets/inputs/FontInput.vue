@@ -85,19 +85,19 @@
 <script lang="ts">
 import { defineComponent, PropType } from "vue";
 
-import { fontNames, getFontFile, getFontVariants } from "@/utilities/fonts";
+import { fontNames, getFontFile, getFontStyles } from "@/utilities/fonts";
 
 import LayoutRow from "@/components/layout/LayoutRow.vue";
 import MenuList, { MenuListEntry, SectionsOfMenuListEntries } from "@/components/widgets/floating-menus/MenuList.vue";
 import IconLabel from "@/components/widgets/labels/IconLabel.vue";
 
 export default defineComponent({
-	emits: ["update:name", "update:variant", "changeFont"],
+	emits: ["update:name", "update:fontStyle", "changeFont"],
 	props: {
 		name: { type: String as PropType<string>, required: true },
-		variant: { type: String as PropType<string>, required: true },
+		fontStyle: { type: String as PropType<string>, required: true },
 		disabled: { type: Boolean as PropType<boolean>, default: false },
-		isVariant: { type: Boolean as PropType<boolean>, default: false },
+		isStyle: { type: Boolean as PropType<boolean>, default: false },
 	},
 	data() {
 		const { menuEntries, activeEntry } = this.updateEntries();
@@ -112,13 +112,13 @@ export default defineComponent({
 			if (!this.disabled) (this.$refs.menuList as typeof MenuList).setOpen();
 		},
 		selectFont(newName: string) {
-			if (this.isVariant) this.$emit("update:variant", newName);
+			if (this.isStyle) this.$emit("update:fontStyle", newName);
 			else this.$emit("update:name", newName);
 
 			{
-				const name = this.isVariant ? this.name : newName;
-				const variant = this.isVariant ? newName : getFontVariants(newName)[0];
-				this.$emit("changeFont", { name, variant, file: getFontFile(name, variant) });
+				const name = this.isStyle ? this.name : newName;
+				const fontStyle = this.isStyle ? newName : getFontStyles(newName)[0];
+				this.$emit("changeFont", { name, fontStyle, file: getFontFile(name, fontStyle) });
 			}
 		},
 		onWidthChanged(newWidth: number) {
@@ -127,8 +127,8 @@ export default defineComponent({
 		updateEntries(): { menuEntries: SectionsOfMenuListEntries; activeEntry: MenuListEntry } {
 			let selectedIndex = -1;
 			const menuEntries: SectionsOfMenuListEntries = [
-				(this.isVariant ? getFontVariants(this.name) : fontNames()).map((name, index) => {
-					if (name === (this.isVariant ? this.variant : this.name)) selectedIndex = index;
+				(this.isStyle ? getFontStyles(this.name) : fontNames()).map((name, index) => {
+					if (name === (this.isStyle ? this.fontStyle : this.name)) selectedIndex = index;
 
 					const x: MenuListEntry = {
 						label: name,
@@ -149,7 +149,7 @@ export default defineComponent({
 			this.menuEntries = menuEntries;
 			this.activeEntry = activeEntry;
 		},
-		variant() {
+		fontStyle() {
 			const { menuEntries, activeEntry } = this.updateEntries();
 			this.menuEntries = menuEntries;
 			this.activeEntry = activeEntry;

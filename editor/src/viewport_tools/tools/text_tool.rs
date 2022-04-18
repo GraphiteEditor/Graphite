@@ -27,7 +27,7 @@ pub struct TextTool {
 pub struct TextOptions {
 	font_size: u32,
 	font_name: String,
-	font_variant: String,
+	font_style: String,
 	font_file: Option<String>,
 }
 
@@ -36,7 +36,7 @@ impl Default for TextOptions {
 		Self {
 			font_size: 24,
 			font_name: "Merriweather".into(),
-			font_variant: "regular".into(),
+			font_style: "regular".into(),
 			font_file: None,
 		}
 	}
@@ -68,7 +68,7 @@ pub enum TextMessage {
 #[remain::sorted]
 #[derive(PartialEq, Clone, Debug, Hash, Serialize, Deserialize)]
 pub enum TextOptionsUpdate {
-	Font { name: String, variant: String, file: String },
+	Font { name: String, style: String, file: String },
 	FontSize(u32),
 }
 
@@ -78,13 +78,13 @@ impl PropertyHolder for TextTool {
 			name: "".into(),
 			widgets: vec![
 				WidgetHolder::new(Widget::FontInput(FontInput {
-					is_variant_picker: false,
+					is_style_picker: false,
 					name: self.options.font_name.clone(),
-					variant: self.options.font_variant.clone(),
+					font_style: self.options.font_style.clone(),
 					on_update: WidgetCallback::new(|font_input: &FontInput| {
 						TextMessage::UpdateOptions(TextOptionsUpdate::Font {
 							name: font_input.name.clone(),
-							variant: font_input.variant.clone(),
+							style: font_input.font_style.clone(),
 							file: font_input.file.clone(),
 						})
 						.into()
@@ -96,13 +96,13 @@ impl PropertyHolder for TextTool {
 					separator_type: SeparatorType::Related,
 				})),
 				WidgetHolder::new(Widget::FontInput(FontInput {
-					is_variant_picker: true,
+					is_style_picker: true,
 					name: self.options.font_name.clone(),
-					variant: self.options.font_variant.clone(),
+					font_style: self.options.font_style.clone(),
 					on_update: WidgetCallback::new(|font_input: &FontInput| {
 						TextMessage::UpdateOptions(TextOptionsUpdate::Font {
 							name: font_input.name.clone(),
-							variant: font_input.variant.clone(),
+							style: font_input.font_style.clone(),
 							file: font_input.file.clone(),
 						})
 						.into()
@@ -141,9 +141,9 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for TextTool {
 
 		if let ToolMessage::Text(TextMessage::UpdateOptions(action)) = action {
 			match action {
-				TextOptionsUpdate::Font { name, variant, file } => {
+				TextOptionsUpdate::Font { name, style, file } => {
 					self.options.font_name = name;
-					self.options.font_variant = variant;
+					self.options.font_style = style;
 					self.options.font_file = Some(file);
 
 					self.register_properties(responses, LayoutTarget::ToolOptions);
@@ -310,7 +310,7 @@ impl Fsm for TextToolFsmState {
 						let transform = DAffine2::from_translation(input.mouse.position).to_cols_array();
 						let font_size = tool_options.font_size;
 						let font_name = tool_options.font_name.clone();
-						let font_variant = tool_options.font_variant.clone();
+						let font_style = tool_options.font_style.clone();
 						let font_file = tool_options.font_file.clone();
 						data.path = document.get_path_for_new_layer();
 
@@ -323,7 +323,7 @@ impl Fsm for TextToolFsmState {
 								style: style::PathStyle::new(None, Fill::solid(tool_data.primary_color)),
 								size: font_size as f64,
 								font_name,
-								font_variant,
+								font_style,
 								font_file,
 							}
 							.into(),

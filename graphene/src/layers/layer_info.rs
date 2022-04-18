@@ -365,7 +365,7 @@ impl Layer {
 	pub fn style(&self) -> Result<&PathStyle, DocumentError> {
 		match &self.data {
 			LayerDataType::Shape(s) => Ok(&s.style),
-			LayerDataType::Text(t) => Ok(&t.style),
+			LayerDataType::Text(t) => Ok(&t.path_style),
 			_ => Err(DocumentError::NotAShape),
 		}
 	}
@@ -373,7 +373,7 @@ impl Layer {
 	pub fn style_mut(&mut self) -> Result<&mut PathStyle, DocumentError> {
 		match &mut self.data {
 			LayerDataType::Shape(s) => Ok(&mut s.style),
-			LayerDataType::Text(t) => Ok(&mut t.style),
+			LayerDataType::Text(t) => Ok(&mut t.path_style),
 			_ => Err(DocumentError::NotAShape),
 		}
 	}

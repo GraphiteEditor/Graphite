@@ -24,12 +24,12 @@ pub struct TextLayer {
 	/// The string of text, encompassing one or multiple lines.
 	pub text: String,
 	/// Fill color and stroke used to render the text.
-	pub style: PathStyle,
+	pub path_style: PathStyle,
 	/// Font size in pixels.
 	pub size: f64,
 	pub line_width: Option<f64>,
 	pub font: String,
-	pub variant: String,
+	pub font_style: String,
 	pub font_file: Option<String>,
 	#[serde(skip)]
 	pub editable: bool,
@@ -77,7 +77,7 @@ impl LayerData for TextLayer {
 
 			path.apply_affine(glam_to_kurbo(transform));
 
-			let _ = write!(svg, r#"<path d="{}" {} />"#, path.to_svg(), self.style.render(view_mode, svg_defs));
+			let _ = write!(svg, r#"<path d="{}" {} />"#, path.to_svg(), self.path_style.render(view_mode, svg_defs));
 		}
 		let _ = svg.write_str("</g>");
 	}
@@ -118,14 +118,14 @@ impl TextLayer {
 		transforms.iter().skip(start).cloned().reduce(|a, b| a * b).unwrap_or(DAffine2::IDENTITY)
 	}
 
-	pub fn new(text: String, style: PathStyle, size: f64, font_name: String, font_variant: String, font_file: Option<String>, font_cache: &FontCache) -> Self {
+	pub fn new(text: String, style: PathStyle, size: f64, font_name: String, font_style: String, font_file: Option<String>, font_cache: &FontCache) -> Self {
 		let mut new = Self {
 			text,
-			style,
+			path_style: style,
 			size,
 			line_width: None,
 			font: font_name,
-			variant: font_variant,
+			font_style,
 			font_file,
 			editable: false,
 			cached_path: None,

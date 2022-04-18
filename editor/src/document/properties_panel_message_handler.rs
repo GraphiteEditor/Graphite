@@ -132,13 +132,13 @@ impl MessageHandler<PropertiesPanelMessage, &GrapheneDocument> for PropertiesPan
 					.into(),
 				);
 			}
-			ModifyFont { name, variant, file, size } => {
+			ModifyFont { name, font_style, file, size } => {
 				let path = self.active_path.clone().expect("Received update for properties panel with no active layer");
 
 				let layer = graphene_document.layer(&path).unwrap();
 				register_layer_properties(layer, responses, &graphene_document.font_cache);
 
-				responses.push_back(Operation::ModifyFont { path, name, variant, file, size }.into());
+				responses.push_back(Operation::ModifyFont { path, name, font_style, file, size }.into());
 			}
 			ModifyTransform { value, transform_op } => {
 				let path = self.active_path.as_ref().expect("Received update for properties panel with no active layer");
@@ -282,8 +282,8 @@ fn register_layer_properties(layer: &Layer, responses: &mut VecDeque<Message>, f
 			vec![
 				node_section_transform(layer, font_cache),
 				node_section_font(text),
-				node_section_fill(text.style.fill()).expect("Text should have fill"),
-				node_section_stroke(&text.style.stroke().unwrap_or_default()),
+				node_section_fill(text.path_style.fill()).expect("Text should have fill"),
+				node_section_stroke(&text.path_style.stroke().unwrap_or_default()),
 			]
 		}
 		LayerDataType::Image(_) => {
@@ -475,7 +475,7 @@ fn node_section_transform(layer: &Layer, font_cache: &FontCache) -> LayoutRow {
 
 fn node_section_font(layer: &TextLayer) -> LayoutRow {
 	let name = layer.font.clone();
-	let variant = layer.variant.clone();
+	let font_style = layer.font_style.clone();
 	let file = layer.font_file.clone();
 	let size = layer.size;
 	LayoutRow::Section {
@@ -510,14 +510,14 @@ fn node_section_font(layer: &TextLayer) -> LayoutRow {
 						direction: SeparatorDirection::Horizontal,
 					})),
 					WidgetHolder::new(Widget::FontInput(FontInput {
-						is_variant_picker: false,
+						is_style_picker: false,
 						name: layer.font.clone(),
-						variant: layer.variant.clone(),
+						font_style: layer.font_style.clone(),
 						file: String::new(),
 						on_update: WidgetCallback::new(move |font_input: &FontInput| {
 							PropertiesPanelMessage::ModifyFont {
 								name: font_input.name.clone(),
-								variant: font_input.variant.clone(),
+								font_style: font_input.font_style.clone(),
 								file: Some(font_input.file.clone()),
 								size,
 							}
@@ -530,7 +530,7 @@ fn node_section_font(layer: &TextLayer) -> LayoutRow {
 				name: "".into(),
 				widgets: vec![
 					WidgetHolder::new(Widget::TextLabel(TextLabel {
-						value: "Variant".into(),
+						value: "Style".into(),
 						..TextLabel::default()
 					})),
 					WidgetHolder::new(Widget::Separator(Separator {
@@ -538,14 +538,14 @@ fn node_section_font(layer: &TextLayer) -> LayoutRow {
 						direction: SeparatorDirection::Horizontal,
 					})),
 					WidgetHolder::new(Widget::FontInput(FontInput {
-						is_variant_picker: true,
+						is_style_picker: true,
 						name: layer.font.clone(),
-						variant: layer.variant.clone(),
+						font_style: layer.font_style.clone(),
 						file: String::new(),
 						on_update: WidgetCallback::new(move |font_input: &FontInput| {
 							PropertiesPanelMessage::ModifyFont {
 								name: font_input.name.clone(),
-								variant: font_input.variant.clone(),
+								font_style: font_input.font_style.clone(),
 								file: Some(font_input.file.clone()),
 								size,
 							}
@@ -572,7 +572,7 @@ fn node_section_font(layer: &TextLayer) -> LayoutRow {
 						on_update: WidgetCallback::new(move |number_input: &NumberInput| {
 							PropertiesPanelMessage::ModifyFont {
 								name: name.clone(),
-								variant: variant.clone(),
+								font_style: font_style.clone(),
 								file: file.clone(),
 								size: number_input.value,
 							}
