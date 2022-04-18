@@ -101,7 +101,7 @@ impl LayerData for TextLayer {
 
 impl TextLayer {
 	pub fn load_face<'a>(&self, font_cache: FontCache<'a>) -> Face<'a> {
-		const DEFAULT_FONT: &str = "https://fonts.gstatic.com/s/sourcesanspro/v19/6xK3dSBYKcSV-LCoeQqfX1RYOo3aP6TkmDZz9g.ttf";
+		const DEFAULT_FONT: &str = "http://fonts.gstatic.com/s/merriweather/v28/u-440qyriQwlOrhSvowK_l5OeyxNV-bnrw.ttf";
 		let data = font_cache
 			.get(&self.font_file)
 			.map_or_else(|| font_cache.get(DEFAULT_FONT).expect("Fonts failed to load").as_slice(), |v| v.as_slice());

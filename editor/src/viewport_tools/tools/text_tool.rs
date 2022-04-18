@@ -34,8 +34,8 @@ pub struct TextOptions {
 impl Default for TextOptions {
 	fn default() -> Self {
 		Self {
-			font_size: 14,
-			font_name: "Source Sans Pro".into(),
+			font_size: 24,
+			font_name: "Merriweather".into(),
 			font_variant: "regular".into(),
 			font_file: String::new(),
 		}
@@ -90,6 +90,10 @@ impl PropertyHolder for TextTool {
 						.into()
 					}),
 					..Default::default()
+				})),
+				WidgetHolder::new(Widget::Separator(Separator {
+					direction: SeparatorDirection::Horizontal,
+					separator_type: SeparatorType::Related,
 				})),
 				WidgetHolder::new(Widget::FontInput(FontInput {
 					is_variant_picker: true,

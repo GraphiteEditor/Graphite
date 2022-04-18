@@ -526,7 +526,7 @@ export default defineComponent({
 		// Load a default font
 		// Should also probably be called on rust init
 		{
-			const font = "https://fonts.gstatic.com/s/sourcesanspro/v19/6xK3dSBYKcSV-LCoeQqfX1RYOo3aP6TkmDZz9g.ttf";
+			const font = "http://fonts.gstatic.com/s/merriweather/v28/u-440qyriQwlOrhSvowK_l5OeyxNV-bnrw.ttf";
 			fetch(font)
 				.then((response) => response.arrayBuffer())
 				.then((response) => {
