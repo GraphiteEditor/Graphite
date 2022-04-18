@@ -214,7 +214,7 @@ pub struct TextAreaInput {
 #[derive(Clone, Serialize, Deserialize, Derivative)]
 #[derivative(Debug, PartialEq, Default)]
 pub struct ColorInput {
-	pub value: String,
+	pub value: Option<String>,
 	#[serde(skip)]
 	#[derivative(Debug = "ignore", PartialEq = "ignore")]
 	pub on_update: WidgetCallback<ColorInput>,

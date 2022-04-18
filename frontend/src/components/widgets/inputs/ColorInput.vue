@@ -1,9 +1,10 @@
 <template>
 	<LayoutRow class="color-input">
-		<TextInput :value="displayValue" :label="label" :disabled="disabled" @commitText="(value: string) => textInputUpdated(value)" :center="true" />
+		<OptionalInput :icon="'CloseX'" :checked="!!value" @update:checked="(val) => updateEnabled(val)"></OptionalInput>
+		<TextInput :value="displayValue" :label="label" :disabled="disabled || !value" @commitText="(value: string) => textInputUpdated(value)" :center="true" />
 		<Separator :type="'Related'" />
 		<LayoutRow class="swatch">
-			<button class="swatch-button" @click="() => menuOpen()" :style="`--swatch-color: #${value}`"></button>
+			<button class="swatch-button" :class="{ 'disabled-swatch': !value }" :style="`--swatch-color: #${value}`" @click="() => menuOpen()"></button>
 			<FloatingMenu :type="'Popover'" :direction="'Bottom'" horizontal ref="colorFloatingMenu">
 				<ColorPicker @update:color="(color) => colorPickerUpdated(color)" :color="color" />
 			</FloatingMenu>
@@ -44,6 +45,17 @@
 				height: 100%;
 				background: var(--swatch-color);
 			}
+
+			&.disabled-swatch::after {
+				content: "";
+				position: absolute;
+				border-top: 4px solid red;
+				width: 33px;
+				left: 22px;
+				top: -4px;
+				transform: rotate(135deg);
+				transform-origin: 0% 100%;
+			}
 		}
 
 		.floating-menu {
@@ -63,18 +75,21 @@ import { RGBA } from "@/dispatcher/js-messages";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
 import ColorPicker from "@/components/widgets/floating-menus/ColorPicker.vue";
 import FloatingMenu from "@/components/widgets/floating-menus/FloatingMenu.vue";
+import OptionalInput from "@/components/widgets/inputs/OptionalInput.vue";
 import TextInput from "@/components/widgets/inputs/TextInput.vue";
 import Separator from "@/components/widgets/separators/Separator.vue";
 
 export default defineComponent({
 	emits: ["update:value"],
 	props: {
-		value: { type: String as PropType<string>, required: true },
+		value: { type: String as PropType<string | undefined>, required: true },
 		label: { type: String as PropType<string>, required: false },
 		disabled: { type: Boolean as PropType<boolean>, default: false },
 	},
 	computed: {
 		color() {
+			if (!this.value) return { r: 0, g: 0, b: 0, a: 1 };
+
 			const r = parseInt(this.value.slice(0, 2), 16);
 			const g = parseInt(this.value.slice(2, 4), 16);
 			const b = parseInt(this.value.slice(4, 6), 16);
@@ -82,6 +97,8 @@ export default defineComponent({
 			return { r, g, b, a: a / 255 };
 		},
 		displayValue() {
+			if (!this.value) return "";
+
 			const value = this.value.toLowerCase();
 			const shortenedIfOpaque = value.slice(-2) === "ff" ? value.slice(0, 6) : value;
 			return `#${shortenedIfOpaque}`;
@@ -106,14 +123,22 @@ export default defineComponent({
 					.map((byte) => `${byte}${byte}`)
 					.concat("ff")
 					.join("");
-			} else if (match.length === 6) sanitized = `${match}ff`;
-			else if (match.length === 8) sanitized = match;
-			else return;
+			} else if (match.length === 6) {
+				sanitized = `${match}ff`;
+			} else if (match.length === 8) {
+				sanitized = match;
+			} else {
+				return;
+			}
 
 			this.$emit("update:value", sanitized);
 		},
 		menuOpen() {
 			(this.$refs.colorFloatingMenu as typeof FloatingMenu).setOpen();
+		},
+		updateEnabled(value: boolean) {
+			if (value) this.$emit("update:value", "000000");
+			else this.$emit("update:value", undefined);
 		},
 	},
 	components: {
@@ -122,6 +147,7 @@ export default defineComponent({
 		LayoutRow,
 		FloatingMenu,
 		Separator,
+		OptionalInput,
 	},
 });
 </script>
