@@ -1,6 +1,6 @@
 <template>
 	<div class="floating-menu" :class="[direction.toLowerCase(), type.toLowerCase()]" v-if="open || type === 'Dialog'" ref="floatingMenu">
-		<div class="tail" v-if="type === 'Popover'" :style="tailStyle"></div>
+		<div class="tail" v-if="type === 'Popover'" ref="tail"></div>
 		<div class="floating-menu-container" ref="floatingMenuContainer">
 			<LayoutCol class="floating-menu-content" data-floating-menu-content :scrollableY="scrollableY" ref="floatingMenuContent" :style="floatingMenuContentStyle">
 				<slot></slot>
@@ -228,6 +228,15 @@ export default defineComponent({
 		if (this.direction === "Right") floatingMenuContent.style.left = `${tailOffset + this.floatingMenuBounds.left}px`;
 		if (this.direction === "Left") floatingMenuContent.style.right = `${tailOffset + this.floatingMenuBounds.right}px`;
 
+		// Required to correctly position content when scrolled (it has a `position: fixed` to prevent clipping)
+		const tail = this.$refs.tail as HTMLElement;
+		if (tail) {
+			if (this.direction === "Bottom") tail.style.top = `${this.floatingMenuBounds.top}px`;
+			if (this.direction === "Top") tail.style.bottom = `${this.floatingMenuBounds.bottom}px`;
+			if (this.direction === "Right") tail.style.left = `${this.floatingMenuBounds.left}px`;
+			if (this.direction === "Left") tail.style.right = `${this.floatingMenuBounds.right}px`;
+		}
+
 		type Edge = "Top" | "Bottom" | "Left" | "Right";
 		let zeroedBorderVertical: Edge | undefined;
 		let zeroedBorderHorizontal: Edge | undefined;
@@ -403,14 +412,6 @@ export default defineComponent({
 			return {
 				minWidth: this.minWidth > 0 ? `${this.minWidth}px` : "",
 			};
-		},
-		// Required to correctly position the tail when scrolled (it has a `position: fixed` to prevent clipping)
-		tailStyle(): StyleValue {
-			if (this.direction === "Bottom") return { top: `${this.floatingMenuBounds.top}px` };
-			if (this.direction === "Top") return { bottom: `${this.floatingMenuBounds.bottom}px` };
-			if (this.direction === "Right") return { left: `${this.floatingMenuBounds.left}px` };
-			if (this.direction === "Left") return { right: `${this.floatingMenuBounds.right}px` };
-			return {};
 		},
 	},
 	components: { LayoutCol },
