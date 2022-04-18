@@ -6,6 +6,8 @@
 
 <style lang="scss">
 .optional-input {
+	flex-grow: 0;
+
 	label {
 		align-items: center;
 		justify-content: center;

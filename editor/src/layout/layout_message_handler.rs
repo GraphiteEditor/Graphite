@@ -92,8 +92,8 @@ impl MessageHandler<LayoutMessage, ()> for LayoutMessageHandler {
 						responses.push_back(callback_message);
 					}
 					Widget::ColorInput(color_input) => {
-						let update_value = value.as_str().expect("ColorInput update was not of type: string");
-						color_input.value = update_value.into();
+						let update_value = value.as_str().map(String::from);
+						color_input.value = update_value;
 						let callback_message = (color_input.on_update.callback)(color_input);
 						responses.push_back(callback_message);
 					}
