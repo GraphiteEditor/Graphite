@@ -61,7 +61,7 @@ pub trait LayerData {
 	/// let mut svg = String::new();
 	///
 	/// // Render the shape without any transforms, in normal view mode
-	/// shape.render(&mut svg, &mut String::new(), &mut vec![], ViewMode::Normal, &HashMap::new());
+	/// shape.render(&mut svg, &mut String::new(), &mut vec![], ViewMode::Normal, &Default::default());
 	///
 	/// assert_eq!(
 	///     svg,
@@ -89,7 +89,7 @@ pub trait LayerData {
 	/// let quad = Quad::from_box([DVec2::ZERO, DVec2::ONE]);
 	/// let mut intersections = vec![];
 	///
-	/// shape.intersects_quad(quad, &mut vec![shape_id], &mut intersections, &HashMap::new());
+	/// shape.intersects_quad(quad, &mut vec![shape_id], &mut intersections, &Default::default());
 	///
 	/// assert_eq!(intersections, vec![vec![shape_id]]);
 	/// ```
@@ -109,7 +109,7 @@ pub trait LayerData {
 	/// // Calculate the bounding box without applying any transformations.
 	/// // (The identity transform maps every vector to itself.)
 	/// let transform = DAffine2::IDENTITY;
-	/// let bounding_box = shape.bounding_box(transform, &HashMap::new());
+	/// let bounding_box = shape.bounding_box(transform, &Default::default());
 	///
 	/// assert_eq!(bounding_box, Some([DVec2::ZERO, DVec2::ONE]));
 	/// ```
@@ -278,14 +278,14 @@ impl Layer {
 	///
 	/// // Apply the Identity transform, which leaves the points unchanged
 	/// assert_eq!(
-	///     layer.aabounding_box_for_transform(DAffine2::IDENTITY, &HashMap::new()),
+	///     layer.aabounding_box_for_transform(DAffine2::IDENTITY, &Default::default()),
 	///     Some([DVec2::ZERO, DVec2::ONE]),
 	/// );
 	///
 	/// // Apply a transform that scales every point by a factor of two
 	/// let transform = DAffine2::from_scale(DVec2::ONE * 2.);
 	/// assert_eq!(
-	///     layer.aabounding_box_for_transform(transform, &HashMap::new()),
+	///     layer.aabounding_box_for_transform(transform, &Default::default()),
 	///     Some([DVec2::ZERO, DVec2::ONE * 2.]),
 	/// );
 	pub fn aabounding_box_for_transform(&self, transform: DAffine2, font_cache: &FontCache) -> Option<[DVec2; 2]> {
