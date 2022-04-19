@@ -45,7 +45,7 @@ function formatVariantName(name: string): string {
 			}
 		});
 	}
-	return `${italic ? "Italic " : ""}${weightName} (${weight})`;
+	return `${weightName}${italic ? " Italic" : ""} (${weight})`;
 }
 
 export function loadDefaultFont(): void {
