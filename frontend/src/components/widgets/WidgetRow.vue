@@ -30,10 +30,24 @@
 
 <style lang="scss">
 .widget-row {
-	height: 32px;
+	min-height: 32px;
 	flex: 0 0 auto;
 	display: flex;
-	align-items: center;
+
+	> * {
+		--widget-height: 24px;
+		min-height: var(--widget-height);
+		line-height: var(--widget-height);
+		margin: calc((24px - var(--widget-height)) / 2 + 4px) 0;
+
+		&.icon-label.size-12 {
+			--widget-height: 12px;
+		}
+
+		&.icon-label.size-16 {
+			--widget-height: 16px;
+		}
+	}
 }
 </style>
 

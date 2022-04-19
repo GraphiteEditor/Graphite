@@ -1,5 +1,5 @@
 <template>
-	<LayoutRow class="row">
+	<!-- <LayoutRow class="text-area-input">
 		<textarea
 			:class="{ 'has-label': label }"
 			:id="`field-input-${id}`"
@@ -14,76 +14,28 @@
 			@keydown.esc="() => onCancelTextChange()"
 		/>
 		<label v-if="label" :for="`field-input-${id}`">{{ label }}</label>
-	</LayoutRow>
+	</LayoutRow> -->
+	<FieldInput
+		:textarea="true"
+		class="text-area-input"
+		:class="{ 'has-label': label }"
+		v-model:value="inputValue"
+		:label="label"
+		:spellcheck="true"
+		:disabled="disabled"
+		@textFocused="() => onTextFocused()"
+		@textChanged="() => onTextChanged()"
+		@cancelTextChange="() => onCancelTextChange()"
+		ref="input"
+	></FieldInput>
 </template>
 
-<style lang="scss">
-.row {
-	min-width: 80px;
-	min-height: 24px;
-	position: relative;
-	border-radius: 2px;
-	background: var(--color-1-nearblack);
-	overflow: hidden;
-	flex-direction: row-reverse;
-
-	label {
-		flex: 1 1 100%;
-		line-height: 18px;
-		margin-left: 8px;
-		padding: 3px 0;
-		overflow: hidden;
-		text-overflow: ellipsis;
-	}
-
-	&:not(.disabled) label {
-		cursor: text;
-	}
-
-	textarea {
-		text-align: left;
-		flex: 1 1 100%;
-		width: 0;
-		min-width: 30px;
-		line-height: 18px;
-		height: 18px;
-		margin: 0 8px;
-		padding: 3px 0;
-		outline: none;
-		border: none;
-		background: none;
-		color: var(--color-e-nearwhite);
-
-		&:not(:focus).has-label {
-			text-align: right;
-			margin-left: 0;
-			margin-right: 8px;
-		}
-
-		&:focus {
-			text-align: left;
-
-			& + label {
-				display: none;
-			}
-		}
-	}
-
-	&.disabled {
-		background: var(--color-2-mildblack);
-
-		label,
-		input {
-			color: var(--color-8-uppergray);
-		}
-	}
-}
-</style>
+<style lang="scss"></style>
 
 <script lang="ts">
 import { defineComponent, PropType } from "vue";
 
-import LayoutRow from "@/components/layout/LayoutRow.vue";
+import FieldInput from "@/components/widgets/inputs/FieldInput.vue";
 
 export default defineComponent({
 	emits: ["update:value", "commitText"],
@@ -95,7 +47,6 @@ export default defineComponent({
 	data() {
 		return {
 			editing: false,
-			id: `${Math.random()}`.substring(2),
 		};
 	},
 	computed: {
@@ -134,6 +85,6 @@ export default defineComponent({
 			inputElement.blur();
 		},
 	},
-	components: { LayoutRow },
+	components: { FieldInput },
 });
 </script>
