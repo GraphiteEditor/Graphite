@@ -36,7 +36,7 @@ impl Default for TextOptions {
 		Self {
 			font_size: 24,
 			font_name: "Merriweather".into(),
-			font_style: "regular".into(),
+			font_style: "Normal (400)".into(),
 			font_file: None,
 		}
 	}
