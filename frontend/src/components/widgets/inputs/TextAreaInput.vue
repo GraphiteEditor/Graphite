@@ -72,7 +72,7 @@ export default defineComponent({
 			this.onCancelTextChange();
 
 			// TODO: Find a less hacky way to do this
-			const inputElement = (this.$refs.fieldInput as typeof FieldInput).$refs.input as HTMLInputElement;
+			const inputElement = (this.$refs.fieldInput as typeof FieldInput).$refs.input as HTMLTextAreaElement;
 			this.$emit("commitText", inputElement.value);
 
 			// Required if value is not changed by the parent component upon update:value event
@@ -81,7 +81,7 @@ export default defineComponent({
 		onCancelTextChange() {
 			this.editing = false;
 
-			const inputElement = (this.$refs.fieldInput as typeof FieldInput).$refs.input as HTMLInputElement;
+			const inputElement = (this.$refs.fieldInput as typeof FieldInput).$refs.input as HTMLTextAreaElement;
 			inputElement.blur();
 		},
 	},
