@@ -34,7 +34,10 @@ impl LayerData for ShapeLayer {
 		let mut path = self.path.clone();
 
 		let kurbo::Rect { x0, y0, x1, y1 } = path.bounding_box();
-		let bounds = [(x0, y0).into(), (x1, y1).into()];
+		let layer_bounds = [(x0, y0).into(), (x1, y1).into()];
+		let transformed_bounds = self
+			.bounding_box(transforms.iter().cloned().reduce(|a, b| a * b).unwrap_or(DAffine2::IDENTITY))
+			.unwrap_or([DVec2::ZERO, DVec2::ONE]);
 
 		let transform = self.transform(transforms, view_mode);
 		let inverse = transform.inverse();
@@ -49,7 +52,12 @@ impl LayerData for ShapeLayer {
 			let _ = svg.write_str(&(entry.to_string() + if i == 5 { "" } else { "," }));
 		});
 		let _ = svg.write_str(r#")">"#);
-		let _ = write!(svg, r#"<path d="{}" {} />"#, path.to_svg(), self.style.render(view_mode, svg_defs, transforms, bounds));
+		let _ = write!(
+			svg,
+			r#"<path d="{}" {} />"#,
+			path.to_svg(),
+			self.style.render(view_mode, svg_defs, transforms, layer_bounds, transformed_bounds)
+		);
 		let _ = svg.write_str("</g>");
 	}
 
