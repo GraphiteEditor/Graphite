@@ -107,10 +107,15 @@ impl PropertiesPanelMessageHandler {
 	}
 }
 
-impl MessageHandler<PropertiesPanelMessage, (&GrapheneDocument, &GrapheneDocument)> for PropertiesPanelMessageHandler {
+pub struct PropertiesPanelMessageHandlerData<'a> {
+	pub artwork_document: &'a GrapheneDocument,
+	pub artboard_document: &'a GrapheneDocument,
+}
+
+impl<'a> MessageHandler<PropertiesPanelMessage, PropertiesPanelMessageHandlerData<'a>> for PropertiesPanelMessageHandler {
 	#[remain::check]
-	fn process_action(&mut self, message: PropertiesPanelMessage, data: (&GrapheneDocument, &GrapheneDocument), responses: &mut VecDeque<Message>) {
-		let (artwork_document, artboard_document) = data;
+	fn process_action(&mut self, message: PropertiesPanelMessage, data: PropertiesPanelMessageHandlerData, responses: &mut VecDeque<Message>) {
+		let PropertiesPanelMessageHandlerData { artwork_document, artboard_document } = data;
 		let get_document = |document_selector: TargetDocument| match document_selector {
 			TargetDocument::Artboard => artboard_document,
 			TargetDocument::Artwork => artwork_document,
@@ -221,7 +226,6 @@ impl MessageHandler<PropertiesPanelMessage, (&GrapheneDocument, &GrapheneDocumen
 
 fn register_layer_properties(layer: &Layer, responses: &mut VecDeque<Message>) {
 	let options_bar = vec![LayoutRow::Row {
-		name: "".into(),
 		widgets: vec![
 			match &layer.data {
 				LayerDataType::Folder(_) => WidgetHolder::new(Widget::IconLabel(IconLabel {
@@ -312,7 +316,6 @@ fn node_section_transform(layer: &Layer) -> LayoutRow {
 		name: "Transform".into(),
 		layout: vec![
 			LayoutRow::Row {
-				name: "".into(),
 				widgets: vec![
 					WidgetHolder::new(Widget::TextLabel(TextLabel {
 						value: "Location".into(),
@@ -355,7 +358,6 @@ fn node_section_transform(layer: &Layer) -> LayoutRow {
 				],
 			},
 			LayoutRow::Row {
-				name: "".into(),
 				widgets: vec![
 					WidgetHolder::new(Widget::TextLabel(TextLabel {
 						value: "Rotation".into(),
@@ -381,7 +383,6 @@ fn node_section_transform(layer: &Layer) -> LayoutRow {
 				],
 			},
 			LayoutRow::Row {
-				name: "".into(),
 				widgets: vec![
 					WidgetHolder::new(Widget::TextLabel(TextLabel {
 						value: "Scale".into(),
@@ -424,7 +425,6 @@ fn node_section_transform(layer: &Layer) -> LayoutRow {
 				],
 			},
 			LayoutRow::Row {
-				name: "".into(),
 				widgets: vec![
 					WidgetHolder::new(Widget::TextLabel(TextLabel {
 						value: "Dimensions".into(),
@@ -475,7 +475,6 @@ fn node_section_fill(fill: &Fill) -> Option<LayoutRow> {
 		Fill::Solid(color) => Some(LayoutRow::Section {
 			name: "Fill".into(),
 			layout: vec![LayoutRow::Row {
-				name: "".into(),
 				widgets: vec![
 					WidgetHolder::new(Widget::TextLabel(TextLabel {
 						value: "Color".into(),
@@ -506,7 +505,6 @@ fn node_section_fill(fill: &Fill) -> Option<LayoutRow> {
 				name: "Fill".into(),
 				layout: vec![
 					LayoutRow::Row {
-						name: "".into(),
 						widgets: vec![
 							WidgetHolder::new(Widget::TextLabel(TextLabel {
 								value: "Gradient: 0%".into(),
@@ -534,7 +532,6 @@ fn node_section_fill(fill: &Fill) -> Option<LayoutRow> {
 						],
 					},
 					LayoutRow::Row {
-						name: "".into(),
 						widgets: vec![
 							WidgetHolder::new(Widget::TextLabel(TextLabel {
 								value: "Gradient: 100%".into(),
@@ -586,7 +583,6 @@ fn node_section_stroke(stroke: &Stroke) -> LayoutRow {
 		name: "Stroke".into(),
 		layout: vec![
 			LayoutRow::Row {
-				name: "".into(),
 				widgets: vec![
 					WidgetHolder::new(Widget::TextLabel(TextLabel {
 						value: "Color".into(),
@@ -608,7 +604,6 @@ fn node_section_stroke(stroke: &Stroke) -> LayoutRow {
 				],
 			},
 			LayoutRow::Row {
-				name: "".into(),
 				widgets: vec![
 					WidgetHolder::new(Widget::TextLabel(TextLabel {
 						value: "Weight".into(),
@@ -634,7 +629,6 @@ fn node_section_stroke(stroke: &Stroke) -> LayoutRow {
 				],
 			},
 			LayoutRow::Row {
-				name: "".into(),
 				widgets: vec![
 					WidgetHolder::new(Widget::TextLabel(TextLabel {
 						value: "Dash Lengths".into(),
@@ -656,7 +650,6 @@ fn node_section_stroke(stroke: &Stroke) -> LayoutRow {
 				],
 			},
 			LayoutRow::Row {
-				name: "".into(),
 				widgets: vec![
 					WidgetHolder::new(Widget::TextLabel(TextLabel {
 						value: "Dash Offset".into(),
@@ -682,7 +675,6 @@ fn node_section_stroke(stroke: &Stroke) -> LayoutRow {
 				],
 			},
 			LayoutRow::Row {
-				name: "".into(),
 				widgets: vec![
 					WidgetHolder::new(Widget::TextLabel(TextLabel {
 						value: "Line Cap".into(),
@@ -730,7 +722,6 @@ fn node_section_stroke(stroke: &Stroke) -> LayoutRow {
 				],
 			},
 			LayoutRow::Row {
-				name: "".into(),
 				widgets: vec![
 					WidgetHolder::new(Widget::TextLabel(TextLabel {
 						value: "Line Join".into(),
@@ -779,7 +770,6 @@ fn node_section_stroke(stroke: &Stroke) -> LayoutRow {
 			},
 			// TODO: Gray out this row when Line Join isn't set to Miter
 			LayoutRow::Row {
-				name: "".into(),
 				widgets: vec![
 					WidgetHolder::new(Widget::TextLabel(TextLabel {
 						value: "Miter Limit".into(),

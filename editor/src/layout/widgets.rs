@@ -52,7 +52,7 @@ pub type SubLayout = Vec<LayoutRow>;
 #[remain::sorted]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum LayoutRow {
-	Row { name: String, widgets: Vec<WidgetHolder> },
+	Row { widgets: Vec<WidgetHolder> },
 	Section { name: String, layout: SubLayout },
 }
 
@@ -72,7 +72,7 @@ impl<'a> Iterator for WidgetIter<'a> {
 		}
 
 		match self.stack.pop() {
-			Some(LayoutRow::Row { name: _, widgets }) => {
+			Some(LayoutRow::Row { widgets }) => {
 				self.current_slice = Some(widgets);
 				self.next()
 			}
@@ -103,7 +103,7 @@ impl<'a> Iterator for WidgetIterMut<'a> {
 		};
 
 		match self.stack.pop() {
-			Some(LayoutRow::Row { name: _, widgets }) => {
+			Some(LayoutRow::Row { widgets }) => {
 				self.current_slice = Some(widgets);
 				self.next()
 			}

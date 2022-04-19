@@ -1,5 +1,6 @@
 use super::clipboards::Clipboard;
 use super::layer_panel::{layer_panel_entry, LayerDataTypeDiscriminant, LayerMetadata, LayerPanelEntry, RawBuffer};
+use super::properties_panel_message_handler::PropertiesPanelMessageHandlerData;
 use super::utility_types::TargetDocument;
 use super::utility_types::{AlignAggregate, AlignAxis, DocumentSave, FlipAxis};
 use super::{vectorize_layer_metadata, PropertiesPanelMessageHandler};
@@ -504,7 +505,6 @@ impl DocumentMessageHandler {
 impl PropertyHolder for DocumentMessageHandler {
 	fn properties(&self) -> WidgetLayout {
 		WidgetLayout::new(vec![LayoutRow::Row {
-			name: "".into(),
 			widgets: vec![
 				WidgetHolder::new(Widget::OptionalInput(OptionalInput {
 					checked: self.snapping_enabled,
@@ -705,8 +705,14 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 			}
 			#[remain::unsorted]
 			PropertiesPanel(message) => {
-				self.properties_panel_message_handler
-					.process_action(message, (&self.graphene_document, &self.artboard_message_handler.artboards_graphene_document), responses);
+				self.properties_panel_message_handler.process_action(
+					message,
+					PropertiesPanelMessageHandlerData {
+						artwork_document: &self.graphene_document,
+						artboard_document: &self.artboard_message_handler.artboards_graphene_document,
+					},
+					responses,
+				);
 			}
 
 			// Messages
