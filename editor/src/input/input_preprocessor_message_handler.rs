@@ -83,9 +83,7 @@ impl MessageHandler<InputPreprocessorMessage, ()> for InputPreprocessorMessageHa
 				let mouse_state = editor_mouse_state.to_mouse_state(&self.viewport_bounds);
 				self.mouse.position = mouse_state.position;
 
-				if let Some(message) = self.translate_mouse_event(mouse_state, KeyPosition::Pressed) {
-					responses.push_back(message);
-				}
+				self.translate_mouse_event(mouse_state, responses);
 			}
 			InputPreprocessorMessage::PointerMove { editor_mouse_state, modifier_keys } => {
 				self.handle_modifier_keys(modifier_keys, responses);
@@ -94,6 +92,9 @@ impl MessageHandler<InputPreprocessorMessage, ()> for InputPreprocessorMessageHa
 				self.mouse.position = mouse_state.position;
 
 				responses.push_back(InputMapperMessage::PointerMove.into());
+
+				// While any pointer button is already down, additional button down events are not reported, but they are sent as `pointermove` events
+				self.translate_mouse_event(mouse_state, responses);
 			}
 			InputPreprocessorMessage::PointerUp { editor_mouse_state, modifier_keys } => {
 				self.handle_modifier_keys(modifier_keys, responses);
@@ -101,9 +102,7 @@ impl MessageHandler<InputPreprocessorMessage, ()> for InputPreprocessorMessageHa
 				let mouse_state = editor_mouse_state.to_mouse_state(&self.viewport_bounds);
 				self.mouse.position = mouse_state.position;
 
-				if let Some(message) = self.translate_mouse_event(mouse_state, KeyPosition::Released) {
-					responses.push_back(message);
-				}
+				self.translate_mouse_event(mouse_state, responses);
 			}
 		};
 	}
@@ -115,27 +114,20 @@ impl MessageHandler<InputPreprocessorMessage, ()> for InputPreprocessorMessageHa
 }
 
 impl InputPreprocessorMessageHandler {
-	fn translate_mouse_event(&mut self, new_state: MouseState, position: KeyPosition) -> Option<Message> {
-		// Calculate the difference between the two key states (binary xor)
-		let difference = self.mouse.mouse_keys ^ new_state.mouse_keys;
+	fn translate_mouse_event(&mut self, new_state: MouseState, responses: &mut VecDeque<Message>) {
+		for (bit_flag, key) in [(MouseKeys::LEFT, Key::Lmb), (MouseKeys::RIGHT, Key::Rmb), (MouseKeys::MIDDLE, Key::Mmb)] {
+			// Calculate the intersection between the two key states
+			let old_down = self.mouse.mouse_keys & bit_flag == bit_flag;
+			let new_down = new_state.mouse_keys & bit_flag == bit_flag;
+			if !old_down && new_down {
+				responses.push_back(InputMapperMessage::KeyDown(key).into());
+			}
+			if old_down && !new_down {
+				responses.push_back(InputMapperMessage::KeyUp(key).into());
+			}
+		}
 
 		self.mouse = new_state;
-
-		let key = match difference {
-			MouseKeys::LEFT => Key::Lmb,
-			MouseKeys::RIGHT => Key::Rmb,
-			MouseKeys::MIDDLE => Key::Mmb,
-			MouseKeys::NONE => return None, // self.mouse.mouse_keys was invalid, e.g. when a drag began outside the client
-			_ => {
-				log::warn!("The number of buttons modified at the same time was greater than 1. Modification: {:#010b}", difference);
-				Key::UnknownKey
-			}
-		};
-
-		Some(match position {
-			KeyPosition::Pressed => InputMapperMessage::KeyDown(key).into(),
-			KeyPosition::Released => InputMapperMessage::KeyUp(key).into(),
-		})
 	}
 
 	fn handle_modifier_keys(&mut self, modifier_keys: ModifierKeys, responses: &mut VecDeque<Message>) {
