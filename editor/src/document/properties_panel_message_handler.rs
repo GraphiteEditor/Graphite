@@ -93,9 +93,9 @@ pub struct PropertiesPanelMessageHandler {
 
 impl PropertiesPanelMessageHandler {
 	fn matches_selected(&self, path: &[LayerId]) -> bool {
-		let last_active_path = self.active_selection.as_ref().and_then(|(v, _)| v.last().copied());
+		let last_active_path_id = self.active_selection.as_ref().and_then(|(v, _)| v.last().copied());
 		let last_modified = path.last().copied();
-		matches!((last_active_path, last_modified), (Some(active_last), Some(modified_last)) if active_last == modified_last)
+		matches!((last_active_path_id, last_modified), (Some(active_last), Some(modified_last)) if active_last == modified_last)
 	}
 
 	fn create_document_operation(&self, operation: Operation) -> Message {
