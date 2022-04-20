@@ -84,7 +84,7 @@ export default defineComponent({
 	props: {
 		value: { type: String as PropType<string | undefined>, required: true },
 		label: { type: String as PropType<string>, required: false },
-		canSetTransparent: { type: Boolean as PropType<Boolean>, required: false, default: true },
+		canSetTransparent: { type: Boolean as PropType<boolean>, required: false, default: true },
 		disabled: { type: Boolean as PropType<boolean>, default: false },
 	},
 	computed: {
