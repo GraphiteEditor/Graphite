@@ -86,7 +86,13 @@ fn gradient_space_transform(path: &[LayerId], layer: &Layer, document: &Document
 
 	// DAffine2 { matrix2: DMat2 { x_axis: DVec2(351.0, 0.0), y_axis: DVec2(0.0, 40.0) }, translation: DVec2(145.0, 90.0) }
 	let multiplied = document.graphene_document.multiply_transforms(path).unwrap();
-	log::info!("Actuall multiplied transforms: {} mult {}", multiplied * bound_transform, multiplied);
+	log::info!(
+		"Actual multiplied transforms: {} mult {} bounds [{},{}]",
+		multiplied * bound_transform,
+		multiplied,
+		bounds[0],
+		bounds[1]
+	);
 
 	multiplied * bound_transform
 }
@@ -229,7 +235,7 @@ impl SelectedGradient {
 			self.gradient.end = mouse;
 		}
 
-		self.gradient.transform = self.transform.inverse();
+		self.gradient.transform = self.transform;
 		let fill = Fill::LinearGradient(self.gradient.clone());
 		let path = self.path.clone();
 		responses.push_back(Operation::SetLayerFill { path, fill }.into());

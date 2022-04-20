@@ -73,7 +73,7 @@ impl LayerData for TextLayer {
 				svg,
 				r#"<path d="{}" {} />"#,
 				path.to_svg(),
-				self.style.render(view_mode, svg_defs, transforms, bounds, transformed_bounds)
+				self.style.render(view_mode, svg_defs, transforms, transform, bounds, transformed_bounds)
 			);
 		}
 		let _ = svg.write_str("</g>");

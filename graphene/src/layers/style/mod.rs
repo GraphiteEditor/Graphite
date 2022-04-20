@@ -61,16 +61,18 @@ impl Gradient {
 	}
 
 	/// Adds the gradient def with the uuid specified
-	fn render_defs(&self, svg_defs: &mut String, transforms: &[DAffine2], bounds: [DVec2; 2], transformed_bounds: [DVec2; 2]) {
-		let multiplied_transform = transforms.iter().cloned().reduce(|a, b| a * b).unwrap_or(DAffine2::IDENTITY);
-		//let bounds = [multiplied_transform.transform_point2(bounds[0]), multiplied_transform.transform_point2(bounds[1])];
-
-		let bound_transform = multiplied_transform * DAffine2::from_scale_angle_translation(bounds[1] - bounds[0], 0., bounds[0]);
-		let transformed_bound_transform = DAffine2::from_scale_angle_translation(transformed_bounds[1] - transformed_bounds[0], 0., transformed_bounds[0]);
+	fn render_defs(&self, svg_defs: &mut String, transforms: &[DAffine2], multiplied_transform: DAffine2, bounds: [DVec2; 2], transformed_bounds: [DVec2; 2]) {
 		let root = *transforms.first().unwrap();
 
+		let all_multiplied_transform = transforms.iter().cloned().reduce(|a, b| a * b).unwrap_or(DAffine2::IDENTITY);
+		//let bounds = [multiplied_transform.transform_point2(bounds[0]), multiplied_transform.transform_point2(bounds[1])];
+
+		let bound_transform = DAffine2::from_scale_angle_translation(bounds[1] - bounds[0], 0., bounds[0]);
+		let transformed_bound_transform = DAffine2::from_scale_angle_translation(transformed_bounds[1] - transformed_bounds[0], 0., transformed_bounds[0]);
+
+		//log::info!("Root: {}", root);
+
 		let updated_transform = multiplied_transform * bound_transform;
-		let origional_transform = self.transform.inverse();
 
 		let positions = self
 			.positions
@@ -79,24 +81,15 @@ impl Gradient {
 			.map(|(position, color)| format!(r##"<stop offset="{}" stop-color="#{}" />"##, position, color.rgba_hex()))
 			.collect::<String>();
 		//root.inverse()
-		let mod_points = transformed_bound_transform.inverse() * bound_transform;
-		let mod_transform = DAffine2::IDENTITY;
+		let mod_gradient = transformed_bound_transform.inverse();
+		let mod_points = mod_gradient.inverse() * transformed_bound_transform.inverse() * updated_transform;
 
 		let start = mod_points.transform_point2(self.start);
 		let enddd = mod_points.transform_point2(self.end);
 
-		log::info!(
-			"Mul {} Mod points {} Start {} end {} old start {} old end {} endy {} ",
-			multiplied_transform,
-			mod_points,
-			start,
-			enddd,
-			self.start,
-			self.end,
-			enddd.y
-		);
+		log::info!("Gradient multiplied {}, updated_trans {} ", all_multiplied_transform, mod_gradient);
 
-		let transform = mod_transform
+		let transform = mod_gradient
 			.to_cols_array()
 			.iter()
 			.enumerate()
@@ -146,12 +139,12 @@ impl Fill {
 	}
 
 	/// Renders the fill, adding necessary defs.
-	pub fn render(&self, svg_defs: &mut String, transforms: &[DAffine2], bounds: [DVec2; 2], transformed_bounds: [DVec2; 2]) -> String {
+	pub fn render(&self, svg_defs: &mut String, transforms: &[DAffine2], multiplied_transform: DAffine2, bounds: [DVec2; 2], transformed_bounds: [DVec2; 2]) -> String {
 		match self {
 			Self::None => r#" fill="none""#.to_string(),
 			Self::Solid(color) => format!(r##" fill="#{}"{}"##, color.rgb_hex(), format_opacity("fill", color.a())),
 			Self::LinearGradient(gradient) => {
-				gradient.render_defs(svg_defs, transforms, bounds, transformed_bounds);
+				gradient.render_defs(svg_defs, transforms, multiplied_transform, bounds, transformed_bounds);
 				format!(r##" fill="url('#{}')""##, gradient.uuid)
 			}
 		}
@@ -454,10 +447,10 @@ impl PathStyle {
 		self.stroke = None;
 	}
 
-	pub fn render(&self, view_mode: ViewMode, svg_defs: &mut String, transforms: &[DAffine2], bounds: [DVec2; 2], transformed_bounds: [DVec2; 2]) -> String {
+	pub fn render(&self, view_mode: ViewMode, svg_defs: &mut String, transforms: &[DAffine2], multiplied_transform: DAffine2, bounds: [DVec2; 2], transformed_bounds: [DVec2; 2]) -> String {
 		let fill_attribute = match (view_mode, &self.fill) {
-			(ViewMode::Outline, _) => Fill::None.render(svg_defs, transforms, bounds, transformed_bounds),
-			(_, fill) => fill.render(svg_defs, transforms, bounds, transformed_bounds),
+			(ViewMode::Outline, _) => Fill::None.render(svg_defs, transforms, multiplied_transform, bounds, transformed_bounds),
+			(_, fill) => fill.render(svg_defs, transforms, multiplied_transform, bounds, transformed_bounds),
 		};
 		let stroke_attribute = match (view_mode, &self.stroke) {
 			(ViewMode::Outline, _) => Stroke::new(LAYER_OUTLINE_STROKE_COLOR, LAYER_OUTLINE_STROKE_WIDTH).render(),

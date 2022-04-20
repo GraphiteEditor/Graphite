@@ -35,9 +35,6 @@ impl LayerData for ShapeLayer {
 
 		let kurbo::Rect { x0, y0, x1, y1 } = path.bounding_box();
 		let layer_bounds = [(x0, y0).into(), (x1, y1).into()];
-		let transformed_bounds = self
-			.bounding_box(transforms.iter().cloned().reduce(|a, b| a * b).unwrap_or(DAffine2::IDENTITY))
-			.unwrap_or([DVec2::ZERO, DVec2::ONE]);
 
 		let transform = self.transform(transforms, view_mode);
 		let inverse = transform.inverse();
@@ -46,6 +43,9 @@ impl LayerData for ShapeLayer {
 			return;
 		}
 		path.apply_affine(glam_to_kurbo(transform));
+
+		let kurbo::Rect { x0, y0, x1, y1 } = path.bounding_box();
+		let transformed_bounds = [(x0, y0).into(), (x1, y1).into()];
 
 		let _ = writeln!(svg, r#"<g transform="matrix("#);
 		inverse.to_cols_array().iter().enumerate().for_each(|(i, entry)| {
@@ -56,7 +56,7 @@ impl LayerData for ShapeLayer {
 			svg,
 			r#"<path d="{}" {} />"#,
 			path.to_svg(),
-			self.style.render(view_mode, svg_defs, transforms, layer_bounds, transformed_bounds)
+			self.style.render(view_mode, svg_defs, transforms, transform, layer_bounds, transformed_bounds)
 		);
 		let _ = svg.write_str("</g>");
 	}
