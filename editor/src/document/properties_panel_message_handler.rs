@@ -227,9 +227,8 @@ impl<'a> MessageHandler<PropertiesPanelMessage, PropertiesPanelMessageHandlerDat
 fn register_artboard_layer_properties(layer: &Layer, responses: &mut VecDeque<Message>) {
 	let options_bar = vec![LayoutRow::Row {
 		widgets: vec![
-			// TODO: Replace with custom Artboard Icon
 			WidgetHolder::new(Widget::IconLabel(IconLabel {
-				icon: "NodeShape".into(),
+				icon: "NodeArtboard".into(),
 				gap_after: true,
 			})),
 			WidgetHolder::new(Widget::Separator(Separator {
