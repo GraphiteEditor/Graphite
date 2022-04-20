@@ -263,7 +263,6 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for SelectTool {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 enum SelectToolFsmState {
 	Ready,
-	DeActivated,
 	Dragging,
 	DrawingBox,
 	ResizingBounds,
@@ -589,17 +588,6 @@ impl Fsm for SelectToolFsmState {
 					);
 					Ready
 				}
-				(DeActivated, Abort) => {
-					// Register properties when switching back to select tool
-					responses.push_back(
-						PropertiesPanelMessage::SetActiveLayers {
-							paths: document.selected_layers().map(|path| path.to_vec()).collect(),
-							document: TargetDocument::Artwork,
-						}
-						.into(),
-					);
-					Ready
-				}
 				(_, Abort) => {
 					if let Some(path) = data.drag_box_overlay_layer.take() {
 						responses.push_front(DocumentMessage::Overlays(Operation::DeleteLayer { path }.into()).into())
@@ -608,8 +596,17 @@ impl Fsm for SelectToolFsmState {
 						bounding_box_overlays.delete(responses);
 					}
 
+					// Register properties when switching back to select tool
+					responses.push_back(
+						PropertiesPanelMessage::SetActiveLayers {
+							paths: document.selected_layers().map(|path| path.to_vec()).collect(),
+							document: TargetDocument::Artwork,
+						}
+						.into(),
+					);
+
 					data.snap_handler.cleanup(responses);
-					DeActivated
+					Ready
 				}
 				(_, Align { axis, aggregate }) => {
 					responses.push_back(DocumentMessage::AlignSelectedLayers { axis, aggregate }.into());
@@ -746,7 +743,6 @@ impl Fsm for SelectToolFsmState {
 			])]),
 			SelectToolFsmState::DrawingBox => HintData(vec![]),
 			SelectToolFsmState::ResizingBounds => HintData(vec![]),
-			SelectToolFsmState::DeActivated => HintData(vec![]),
 			SelectToolFsmState::RotatingBounds => HintData(vec![HintGroup(vec![HintInfo {
 				key_groups: vec![KeysGroup(vec![Key::KeyControl])],
 				mouse: None,
