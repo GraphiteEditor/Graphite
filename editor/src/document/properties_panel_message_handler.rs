@@ -123,7 +123,7 @@ impl<'a> MessageHandler<PropertiesPanelMessage, PropertiesPanelMessageHandlerDat
 		use PropertiesPanelMessage::*;
 		match message {
 			SetActiveLayers { paths, document } => {
-				if paths.len() > 1 {
+				if paths.len() != 1 {
 					// TODO: Allow for multiple selected layers
 					responses.push_back(PropertiesPanelMessage::ClearSelection.into())
 				} else {
@@ -275,15 +275,20 @@ fn register_artboard_layer_properties(layer: &Layer, responses: &mut VecDeque<Me
 								direction: SeparatorDirection::Horizontal,
 							})),
 							WidgetHolder::new(Widget::ColorInput(ColorInput {
-								value: color.rgba_hex(),
+								value: Some(color.rgba_hex()),
 								on_update: WidgetCallback::new(|text_input: &ColorInput| {
-									if let Some(color) = Color::from_rgba_str(&text_input.value).or_else(|| Color::from_rgb_str(&text_input.value)) {
-										let new_fill = Fill::Solid(color);
-										PropertiesPanelMessage::ModifyFill { fill: new_fill }.into()
+									if let Some(value) = &text_input.value {
+										if let Some(color) = Color::from_rgba_str(value).or_else(|| Color::from_rgb_str(value)) {
+											let new_fill = Fill::Solid(color);
+											PropertiesPanelMessage::ModifyFill { fill: new_fill }.into()
+										} else {
+											PropertiesPanelMessage::ResendActiveProperties.into()
+										}
 									} else {
-										PropertiesPanelMessage::ResendActiveProperties.into()
+										PropertiesPanelMessage::ModifyFill { fill: Fill::None }.into()
 									}
 								}),
+								can_set_transparent: false,
 							})),
 						],
 					}],
@@ -293,7 +298,7 @@ fn register_artboard_layer_properties(layer: &Layer, responses: &mut VecDeque<Me
 
 			vec![node_section_transform(layer), artboard_properties]
 		}
-		_ => panic!("Artboard's can only be shapes"),
+		_ => panic!("Artboards can only be shapes"),
 	};
 
 	responses.push_back(
@@ -586,6 +591,7 @@ fn node_section_fill(fill: &Fill) -> Option<LayoutRow> {
 								PropertiesPanelMessage::ModifyFill { fill: Fill::None }.into()
 							}
 						}),
+						..ColorInput::default()
 					})),
 				],
 			}],
@@ -629,6 +635,7 @@ fn node_section_fill(fill: &Fill) -> Option<LayoutRow> {
 										.into()
 									}
 								}),
+								..ColorInput::default()
 							})),
 						],
 					},
@@ -665,6 +672,7 @@ fn node_section_fill(fill: &Fill) -> Option<LayoutRow> {
 										.into()
 									}
 								}),
+								..ColorInput::default()
 							})),
 						],
 					},
@@ -709,6 +717,7 @@ fn node_section_stroke(stroke: &Stroke) -> LayoutRow {
 								.with_color(&text_input.value)
 								.map_or(PropertiesPanelMessage::ResendActiveProperties.into(), |stroke| PropertiesPanelMessage::ModifyStroke { stroke }.into())
 						}),
+						..ColorInput::default()
 					})),
 				],
 			},

@@ -207,6 +207,9 @@ pub struct ColorInput {
 	#[serde(skip)]
 	#[derivative(Debug = "ignore", PartialEq = "ignore")]
 	pub on_update: WidgetCallback<ColorInput>,
+	#[serde(rename = "canSetTransparent")]
+	#[derivative(Default(value = "true"))]
+	pub can_set_transparent: bool,
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]

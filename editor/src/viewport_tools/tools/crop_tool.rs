@@ -126,6 +126,13 @@ impl Fsm for CropToolFsmState {
 							data.bounding_box_overlays = Some(bounding_box_overlays);
 
 							responses.push_back(OverlaysMessage::Rerender.into());
+							responses.push_back(
+								PropertiesPanelMessage::SetActiveLayers {
+									paths: vec![vec![data.selected_board.unwrap()]],
+									document: TargetDocument::Artboard,
+								}
+								.into(),
+							);
 						}
 						_ => {}
 					};
