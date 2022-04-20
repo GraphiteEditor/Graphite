@@ -381,6 +381,12 @@ impl Fsm for CropToolFsmState {
 					label: String::from("Move Artboard"),
 					plus: false,
 				}]),
+				HintGroup(vec![HintInfo {
+					key_groups: vec![KeysGroup(vec![Key::KeyBackspace])],
+					mouse: None,
+					label: String::from("Delete Artboard"),
+					plus: false,
+				}]),
 			]),
 			CropToolFsmState::Dragging => HintData(vec![HintGroup(vec![HintInfo {
 				key_groups: vec![KeysGroup(vec![Key::KeyShift])],
