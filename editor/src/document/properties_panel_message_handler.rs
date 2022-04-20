@@ -128,9 +128,8 @@ impl<'a> MessageHandler<PropertiesPanelMessage, PropertiesPanelMessageHandlerDat
 					responses.push_back(PropertiesPanelMessage::ClearSelection.into())
 				} else {
 					let path = paths.into_iter().next().unwrap();
-					let layer = get_document(document).layer(&path).unwrap();
-					register_layer_properties(layer, responses);
 					self.active_selection = Some((path, document));
+					responses.push_back(PropertiesPanelMessage::ResendActiveProperties.into())
 				}
 			}
 			ClearSelection => {
@@ -187,9 +186,7 @@ impl<'a> MessageHandler<PropertiesPanelMessage, PropertiesPanelMessageHandlerDat
 			}
 			CheckSelectedWasUpdated { path } => {
 				if self.matches_selected(&path) {
-					let (_, target_document) = self.active_selection.as_ref().unwrap();
-					let layer = get_document(*target_document).layer(&path).unwrap();
-					register_layer_properties(layer, responses);
+					responses.push_back(PropertiesPanelMessage::ResendActiveProperties.into())
 				}
 			}
 			CheckSelectedWasDeleted { path } => {
@@ -214,7 +211,10 @@ impl<'a> MessageHandler<PropertiesPanelMessage, PropertiesPanelMessageHandlerDat
 			ResendActiveProperties => {
 				let (path, target_document) = self.active_selection.clone().expect("Received update for properties panel with no active layer");
 				let layer = get_document(target_document).layer(&path).unwrap();
-				register_layer_properties(layer, responses)
+				match target_document {
+					TargetDocument::Artboard => register_artboard_layer_properties(layer, responses),
+					TargetDocument::Artwork => register_artwork_layer_properties(layer, responses),
+				}
 			}
 		}
 	}
@@ -224,7 +224,95 @@ impl<'a> MessageHandler<PropertiesPanelMessage, PropertiesPanelMessageHandlerDat
 	}
 }
 
-fn register_layer_properties(layer: &Layer, responses: &mut VecDeque<Message>) {
+fn register_artboard_layer_properties(layer: &Layer, responses: &mut VecDeque<Message>) {
+	let options_bar = vec![LayoutRow::Row {
+		widgets: vec![
+			// TODO: Replace with custom Artboard Icon
+			WidgetHolder::new(Widget::IconLabel(IconLabel {
+				icon: "NodeShape".into(),
+				gap_after: true,
+			})),
+			WidgetHolder::new(Widget::Separator(Separator {
+				separator_type: SeparatorType::Related,
+				direction: SeparatorDirection::Horizontal,
+			})),
+			WidgetHolder::new(Widget::TextLabel(TextLabel {
+				value: "Artboard".into(),
+				..TextLabel::default()
+			})),
+			WidgetHolder::new(Widget::Separator(Separator {
+				separator_type: SeparatorType::Unrelated,
+				direction: SeparatorDirection::Horizontal,
+			})),
+			WidgetHolder::new(Widget::TextInput(TextInput {
+				value: layer.name.clone().unwrap_or_else(|| "Untitled".to_string()),
+				on_update: WidgetCallback::new(|text_input: &TextInput| PropertiesPanelMessage::ModifyName { name: text_input.value.clone() }.into()),
+			})),
+			WidgetHolder::new(Widget::Separator(Separator {
+				separator_type: SeparatorType::Related,
+				direction: SeparatorDirection::Horizontal,
+			})),
+			WidgetHolder::new(Widget::PopoverButton(PopoverButton {
+				title: "Options Bar".into(),
+				text: "The contents of this popover menu are coming soon".into(),
+			})),
+		],
+	}];
+
+	let properties_body = match &layer.data {
+		LayerDataType::Shape(shape) => {
+			let artboard_properties = match shape.style.fill() {
+				Fill::Solid(color) => LayoutRow::Section {
+					name: "Artboard".into(),
+					layout: vec![LayoutRow::Row {
+						widgets: vec![
+							WidgetHolder::new(Widget::TextLabel(TextLabel {
+								value: "Background".into(),
+								..TextLabel::default()
+							})),
+							WidgetHolder::new(Widget::Separator(Separator {
+								separator_type: SeparatorType::Unrelated,
+								direction: SeparatorDirection::Horizontal,
+							})),
+							WidgetHolder::new(Widget::ColorInput(ColorInput {
+								value: color.rgba_hex(),
+								on_update: WidgetCallback::new(|text_input: &ColorInput| {
+									if let Some(color) = Color::from_rgba_str(&text_input.value).or_else(|| Color::from_rgb_str(&text_input.value)) {
+										let new_fill = Fill::Solid(color);
+										PropertiesPanelMessage::ModifyFill { fill: new_fill }.into()
+									} else {
+										PropertiesPanelMessage::ResendActiveProperties.into()
+									}
+								}),
+							})),
+						],
+					}],
+				},
+				_ => panic!("Artboard must have a solid fill"),
+			};
+
+			vec![node_section_transform(layer), artboard_properties]
+		}
+		_ => panic!("Artboard's can only be shapes"),
+	};
+
+	responses.push_back(
+		LayoutMessage::SendLayout {
+			layout: WidgetLayout::new(options_bar),
+			layout_target: LayoutTarget::PropertiesOptionsPanel,
+		}
+		.into(),
+	);
+	responses.push_back(
+		LayoutMessage::SendLayout {
+			layout: WidgetLayout::new(properties_body),
+			layout_target: LayoutTarget::PropertiesSectionsPanel,
+		}
+		.into(),
+	);
+}
+
+fn register_artwork_layer_properties(layer: &Layer, responses: &mut VecDeque<Message>) {
 	let options_bar = vec![LayoutRow::Row {
 		widgets: vec![
 			match &layer.data {
