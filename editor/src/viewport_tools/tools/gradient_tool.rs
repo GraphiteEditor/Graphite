@@ -81,10 +81,12 @@ impl Default for GradientToolFsmState {
 
 /// Computes the transform from gradient space to layer space (where gradient space is 0..1 in layer space)
 fn gradient_space_transform(path: &[LayerId], layer: &Layer, document: &DocumentMessageHandler) -> DAffine2 {
-	let bounds = layer.aabounding_box(&document.graphene_document.font_cache).unwrap();
+	let bounds = layer.aabounding_box_for_transform(DAffine2::IDENTITY, &document.graphene_document.font_cache).unwrap();
 	let bound_transform = DAffine2::from_scale_angle_translation(bounds[1] - bounds[0], 0., bounds[0]);
 
-	document.graphene_document.multiply_transforms(&path[..path.len() - 1]).unwrap() * bound_transform
+	let multiplied = document.graphene_document.multiply_transforms(path).unwrap();
+
+	multiplied * bound_transform
 }
 
 /// Contains info on the overlays for a single gradient
@@ -225,7 +227,7 @@ impl SelectedGradient {
 			self.gradient.end = mouse;
 		}
 
-		self.gradient.transform = self.transform.inverse();
+		self.gradient.transform = self.transform;
 		let fill = Fill::LinearGradient(self.gradient.clone());
 		let path = self.path.clone();
 		responses.push_back(Operation::SetLayerFill { path, fill }.into());
