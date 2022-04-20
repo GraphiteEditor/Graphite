@@ -65,15 +65,17 @@ impl LayerData for TextLayer {
 
 			let kurbo::Rect { x0, y0, x1, y1 } = path.bounding_box();
 			let bounds = [(x0, y0).into(), (x1, y1).into()];
-			let transformed_bounds = (self as &mut dyn LayerData).bounding_box(*transforms.last().unwrap()).unwrap_or([DVec2::ZERO, DVec2::ONE]);
 
 			path.apply_affine(glam_to_kurbo(transform));
+
+			let kurbo::Rect { x0, y0, x1, y1 } = path.bounding_box();
+			let transformed_bounds = [(x0, y0).into(), (x1, y1).into()];
 
 			let _ = write!(
 				svg,
 				r#"<path d="{}" {} />"#,
 				path.to_svg(),
-				self.style.render(view_mode, svg_defs, transforms, transform, bounds, transformed_bounds)
+				self.style.render(view_mode, svg_defs, transform, bounds, transformed_bounds)
 			);
 		}
 		let _ = svg.write_str("</g>");

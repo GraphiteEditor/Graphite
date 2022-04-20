@@ -61,17 +61,9 @@ impl Gradient {
 	}
 
 	/// Adds the gradient def with the uuid specified
-	fn render_defs(&self, svg_defs: &mut String, transforms: &[DAffine2], multiplied_transform: DAffine2, bounds: [DVec2; 2], transformed_bounds: [DVec2; 2]) {
-		let root = *transforms.first().unwrap();
-
-		let all_multiplied_transform = transforms.iter().cloned().reduce(|a, b| a * b).unwrap_or(DAffine2::IDENTITY);
-		//let bounds = [multiplied_transform.transform_point2(bounds[0]), multiplied_transform.transform_point2(bounds[1])];
-
+	fn render_defs(&self, svg_defs: &mut String, multiplied_transform: DAffine2, bounds: [DVec2; 2], transformed_bounds: [DVec2; 2]) {
 		let bound_transform = DAffine2::from_scale_angle_translation(bounds[1] - bounds[0], 0., bounds[0]);
 		let transformed_bound_transform = DAffine2::from_scale_angle_translation(transformed_bounds[1] - transformed_bounds[0], 0., transformed_bounds[0]);
-
-		//log::info!("Root: {}", root);
-
 		let updated_transform = multiplied_transform * bound_transform;
 
 		let positions = self
@@ -80,14 +72,12 @@ impl Gradient {
 			.filter_map(|(pos, color)| color.map(|color| (pos, color)))
 			.map(|(position, color)| format!(r##"<stop offset="{}" stop-color="#{}" />"##, position, color.rgba_hex()))
 			.collect::<String>();
-		//root.inverse()
+
 		let mod_gradient = transformed_bound_transform.inverse();
 		let mod_points = mod_gradient.inverse() * transformed_bound_transform.inverse() * updated_transform;
 
 		let start = mod_points.transform_point2(self.start);
-		let enddd = mod_points.transform_point2(self.end);
-
-		log::info!("Gradient multiplied {}, updated_trans {} ", all_multiplied_transform, mod_gradient);
+		let end = mod_points.transform_point2(self.end);
 
 		let transform = mod_gradient
 			.to_cols_array()
@@ -99,9 +89,8 @@ impl Gradient {
 		let _ = write!(
 			svg_defs,
 			r#"<linearGradient id="{}" x1="{}" x2="{}" y1="{}" y2="{}" gradientTransform="matrix({})">{}</linearGradient>"#,
-			self.uuid, start.x, enddd.x, start.y, enddd.y, transform, positions
+			self.uuid, start.x, end.x, start.y, end.y, transform, positions
 		);
-		log::info!("Start {} end {} svg defs {}", start, enddd, svg_defs);
 	}
 }
 
@@ -139,12 +128,12 @@ impl Fill {
 	}
 
 	/// Renders the fill, adding necessary defs.
-	pub fn render(&self, svg_defs: &mut String, transforms: &[DAffine2], multiplied_transform: DAffine2, bounds: [DVec2; 2], transformed_bounds: [DVec2; 2]) -> String {
+	pub fn render(&self, svg_defs: &mut String, multiplied_transform: DAffine2, bounds: [DVec2; 2], transformed_bounds: [DVec2; 2]) -> String {
 		match self {
 			Self::None => r#" fill="none""#.to_string(),
 			Self::Solid(color) => format!(r##" fill="#{}"{}"##, color.rgb_hex(), format_opacity("fill", color.a())),
 			Self::LinearGradient(gradient) => {
-				gradient.render_defs(svg_defs, transforms, multiplied_transform, bounds, transformed_bounds);
+				gradient.render_defs(svg_defs, multiplied_transform, bounds, transformed_bounds);
 				format!(r##" fill="url('#{}')""##, gradient.uuid)
 			}
 		}
@@ -447,10 +436,10 @@ impl PathStyle {
 		self.stroke = None;
 	}
 
-	pub fn render(&self, view_mode: ViewMode, svg_defs: &mut String, transforms: &[DAffine2], multiplied_transform: DAffine2, bounds: [DVec2; 2], transformed_bounds: [DVec2; 2]) -> String {
+	pub fn render(&self, view_mode: ViewMode, svg_defs: &mut String, multiplied_transform: DAffine2, bounds: [DVec2; 2], transformed_bounds: [DVec2; 2]) -> String {
 		let fill_attribute = match (view_mode, &self.fill) {
-			(ViewMode::Outline, _) => Fill::None.render(svg_defs, transforms, multiplied_transform, bounds, transformed_bounds),
-			(_, fill) => fill.render(svg_defs, transforms, multiplied_transform, bounds, transformed_bounds),
+			(ViewMode::Outline, _) => Fill::None.render(svg_defs, multiplied_transform, bounds, transformed_bounds),
+			(_, fill) => fill.render(svg_defs, multiplied_transform, bounds, transformed_bounds),
 		};
 		let stroke_attribute = match (view_mode, &self.stroke) {
 			(ViewMode::Outline, _) => Stroke::new(LAYER_OUTLINE_STROKE_COLOR, LAYER_OUTLINE_STROKE_WIDTH).render(),

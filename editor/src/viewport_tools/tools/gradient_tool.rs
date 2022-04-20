@@ -84,15 +84,7 @@ fn gradient_space_transform(path: &[LayerId], layer: &Layer, document: &Document
 	let bounds = layer.aabounding_box_for_transform(DAffine2::IDENTITY).unwrap();
 	let bound_transform = DAffine2::from_scale_angle_translation(bounds[1] - bounds[0], 0., bounds[0]);
 
-	// DAffine2 { matrix2: DMat2 { x_axis: DVec2(351.0, 0.0), y_axis: DVec2(0.0, 40.0) }, translation: DVec2(145.0, 90.0) }
 	let multiplied = document.graphene_document.multiply_transforms(path).unwrap();
-	log::info!(
-		"Actual multiplied transforms: {} mult {} bounds [{},{}]",
-		multiplied * bound_transform,
-		multiplied,
-		bounds[0],
-		bounds[1]
-	);
 
 	multiplied * bound_transform
 }
