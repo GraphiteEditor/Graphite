@@ -708,7 +708,7 @@ where
 				}
 			}
 			// exclude cycles with 0.0 area
-			Err(err) => (),
+			Err(_err) => (),
 		}
 	}
 	Ok(shapes)
