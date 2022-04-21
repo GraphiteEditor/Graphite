@@ -64,7 +64,6 @@ pub enum TextOptionsUpdate {
 impl PropertyHolder for TextTool {
 	fn properties(&self) -> WidgetLayout {
 		WidgetLayout::new(vec![LayoutRow::Row {
-			name: "".into(),
 			widgets: vec![WidgetHolder::new(Widget::NumberInput(NumberInput {
 				unit: " px".into(),
 				label: "Font Size".into(),

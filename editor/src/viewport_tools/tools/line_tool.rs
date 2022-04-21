@@ -61,7 +61,6 @@ pub enum LineOptionsUpdate {
 impl PropertyHolder for LineTool {
 	fn properties(&self) -> WidgetLayout {
 		WidgetLayout::new(vec![LayoutRow::Row {
-			name: "".into(),
 			widgets: vec![WidgetHolder::new(Widget::NumberInput(NumberInput {
 				unit: " px".into(),
 				label: "Weight".into(),
