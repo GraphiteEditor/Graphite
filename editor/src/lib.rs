@@ -72,7 +72,7 @@ pub mod message_prelude {
 	pub use crate::layout::{LayoutMessage, LayoutMessageDiscriminant};
 	pub use crate::misc::derivable_custom_traits::{ToDiscriminant, TransitiveChild};
 	pub use crate::viewport_tools::tool_message::{ToolMessage, ToolMessageDiscriminant};
-	pub use crate::viewport_tools::tools::crop_tool::{CropToolMessage, CropToolMessageDiscriminant};
+	pub use crate::viewport_tools::tools::artboard_tool::{ArtboardToolMessage, ArtboardToolMessageDiscriminant};
 	pub use crate::viewport_tools::tools::ellipse_tool::{EllipseToolMessage, EllipseToolMessageDiscriminant};
 	pub use crate::viewport_tools::tools::eyedropper_tool::{EyedropperToolMessage, EyedropperToolMessageDiscriminant};
 	pub use crate::viewport_tools::tools::fill_tool::{FillToolMessage, FillToolMessageDiscriminant};

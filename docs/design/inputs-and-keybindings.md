@@ -81,7 +81,7 @@
 | Tool            | Graphite     | Photoshop                                  | Illustrator                   | XD               | Affinity Designer             | Inkscape | Gimp     |
 | --------------- | ------------ | ------------------------------------------ | ----------------------------- | ---------------- | ----------------------------- | -------- | -------- |
 Select Tool       | <kbd>V</kbd> | **<kbd>V</kbd>**                           | <kbd>V</kbd>                  | <kbd>V</kbd>     | <kbd>V</kbd>                  |          |          |
-Crop Tool         | <kbd> </kbd> | <kbd>C</kbd>                               | <kbd>Shift</kbd><kbd>O</kbd>  | <kbd>A</kbd>     |                               |          |          |
+Artboard Tool     | <kbd> </kbd> | <kbd>C</kbd>                               | <kbd>Shift</kbd><kbd>O</kbd>  | <kbd>A</kbd>     |                               |          |          |
 Navigate Tool     | <kbd>Z</kbd> | **<kbd>Z</kbd>**/<kbd>H</kbd>/<kbd>R</kbd> | **<kbd>Z</kbd>**/<kbd>H</kbd> | **<kbd>Z</kbd>** | **<kbd>Z</kbd>**/<kbd>H</kbd> |          |          |
 Eyedropper Tool   | <kbd>I</kbd> | **<kbd>I</kbd>**                           | **<kbd>I</kbd>**              |                  | **<kbd>I</kbd>**              |          |          |
 Fill Tool         | <kbd>F</kbd> | <kbd>G</kbd>                               |                               |                  | <kbd>G</kbd>                  |          |          |
@@ -112,7 +112,7 @@ Excluding mouse inputs and modifier keys.
 - <kbd>R</kbd> Rotate the selected items. Type a number to rotate by that many degrees (`°` or `deg` or `degree` or `degrees`), or type a unit suffix (`turn` or `turns` or `rev` or `revs`, `rad` or `radians`, `min` or `minutes` or `'`, `sec` or `seconds` or `"`, `grad`).
 - <kbd>S</kbd> Scale the selected items. Hit X or Y to constrain to that global axis, hit X or Y again to constrain to that local axis. Type a number to scale along that axis by that factor (`fac` or `factor`), or type a unit suffix (`%`).
 
-##### Crop Tool
+##### Artboard Tool
 
 ##### Navigate Tool
 

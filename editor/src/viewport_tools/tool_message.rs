@@ -15,7 +15,7 @@ pub enum ToolMessage {
 	Select(SelectToolMessage),
 	#[remain::unsorted]
 	#[child]
-	Crop(CropToolMessage),
+	Artboard(ArtboardToolMessage),
 	#[remain::unsorted]
 	#[child]
 	Navigate(NavigateToolMessage),

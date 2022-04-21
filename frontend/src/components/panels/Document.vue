@@ -17,7 +17,7 @@
 			<LayoutCol class="shelf">
 				<LayoutCol class="tools" :scrollableY="true">
 					<ShelfItemInput icon="GeneralSelectTool" title="Select Tool (V)" :active="activeTool === 'Select'" :action="() => selectTool('Select')" />
-					<ShelfItemInput icon="GeneralCropTool" title="Crop Tool" :active="activeTool === 'Crop'" :action="() => selectTool('Crop')" />
+					<ShelfItemInput icon="GeneralArtboardTool" title="Artboard Tool" :active="activeTool === 'Artboard'" :action="() => selectTool('Artboard')" />
 					<ShelfItemInput icon="GeneralNavigateTool" title="Navigate Tool (Z)" :active="activeTool === 'Navigate'" :action="() => selectTool('Navigate')" />
 					<ShelfItemInput icon="GeneralEyedropperTool" title="Eyedropper Tool (I)" :active="activeTool === 'Eyedropper'" :action="() => selectTool('Eyedropper')" />
 					<ShelfItemInput icon="GeneralFillTool" title="Fill Tool (F)" :active="activeTool === 'Fill'" :action="() => selectTool('Fill')" />
