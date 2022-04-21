@@ -2,6 +2,7 @@
 <template>
 	<LayoutRow class="field-input" :class="{ disabled }">
 		<input
+			v-if="!textarea"
 			:class="{ 'has-label': label }"
 			:id="`field-input-${id}`"
 			ref="input"
@@ -15,6 +16,22 @@
 			@keydown.enter="() => $emit('textChanged')"
 			@keydown.esc="() => $emit('cancelTextChange')"
 		/>
+		<textarea
+			v-else
+			:class="{ 'has-label': label }"
+			:id="`field-input-${id}`"
+			class="scrollable-y"
+			data-scrollable-y
+			ref="input"
+			v-model="inputValue"
+			:spellcheck="spellcheck"
+			:disabled="disabled"
+			@focus="() => $emit('textFocused')"
+			@blur="() => $emit('textChanged')"
+			@change="() => $emit('textChanged')"
+			@keydown.ctrl.enter="() => $emit('textChanged')"
+			@keydown.esc="() => $emit('cancelTextChange')"
+		></textarea>
 		<label v-if="label" :for="`field-input-${id}`">{{ label }}</label>
 		<slot></slot>
 	</LayoutRow>
@@ -23,7 +40,7 @@
 <style lang="scss">
 .field-input {
 	min-width: 80px;
-	height: 24px;
+	height: auto;
 	position: relative;
 	border-radius: 2px;
 	background: var(--color-1-nearblack);
@@ -43,7 +60,8 @@
 		cursor: text;
 	}
 
-	input {
+	input,
+	textarea {
 		flex: 1 1 100%;
 		width: 0;
 		min-width: 30px;
@@ -55,6 +73,9 @@
 		border: none;
 		background: none;
 		color: var(--color-e-nearwhite);
+	}
+
+	input {
 		text-align: center;
 
 		&:not(:focus).has-label {
@@ -72,11 +93,20 @@
 		}
 	}
 
+	textarea {
+		min-height: calc(18px * 4);
+		margin: 3px;
+		padding: 0 5px;
+		box-sizing: border-box;
+		resize: vertical;
+	}
+
 	&.disabled {
 		background: var(--color-2-mildblack);
 
 		label,
-		input {
+		input,
+		textarea {
 			color: var(--color-8-uppergray);
 		}
 	}
@@ -95,6 +125,7 @@ export default defineComponent({
 		label: { type: String as PropType<string>, required: false },
 		spellcheck: { type: Boolean as PropType<boolean>, default: false },
 		disabled: { type: Boolean as PropType<boolean>, default: false },
+		textarea: { type: Boolean as PropType<boolean>, default: false },
 	},
 	data() {
 		return {
