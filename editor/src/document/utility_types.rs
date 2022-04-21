@@ -26,3 +26,9 @@ pub enum AlignAggregate {
 	Center,
 	Average,
 }
+
+#[derive(PartialEq, Clone, Copy, Debug, Serialize, Deserialize)]
+pub enum TargetDocument {
+	Artboard,
+	Artwork,
+}
