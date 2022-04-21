@@ -1,20 +1,4 @@
 <template>
-	<!-- <LayoutRow class="text-area-input">
-		<textarea
-			:class="{ 'has-label': label }"
-			:id="`field-input-${id}`"
-			ref="input"
-			type="text"
-			v-model="inputValue"
-			:spellcheck="true"
-			:disabled="disabled"
-			@focus="() => onTextFocused()"
-			@blur="() => onTextChanged()"
-			@change="() => onTextChanged()"
-			@keydown.esc="() => onCancelTextChange()"
-		/>
-		<label v-if="label" :for="`field-input-${id}`">{{ label }}</label>
-	</LayoutRow> -->
 	<FieldInput
 		:textarea="true"
 		class="text-area-input"
