@@ -1,4 +1,4 @@
-use super::input_preprocessor::{KeyPosition, ModifierKeys};
+use super::input_preprocessor::ModifierKeys;
 use super::keyboard::{Key, KeyStates};
 use super::mouse::{MouseKeys, MouseState, ViewportBounds};
 use crate::message_prelude::*;

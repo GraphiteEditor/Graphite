@@ -254,7 +254,6 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for SelectTool {
 
 		match self.fsm_state {
 			Ready => actions!(SelectToolMessageDiscriminant; DragStart, PointerMove, EditLayer),
-			Dragging => actions!(SelectToolMessageDiscriminant; DragStop, PointerMove, EditLayer),
 			_ => actions!(SelectToolMessageDiscriminant; DragStop, PointerMove, Abort, EditLayer),
 		}
 	}
@@ -586,6 +585,11 @@ impl Fsm for SelectToolFsmState {
 						)
 						.into(),
 					);
+					Ready
+				}
+				(Dragging, Abort) => {
+					data.snap_handler.cleanup(responses);
+					responses.push_back(DocumentMessage::Undo.into());
 					Ready
 				}
 				(_, Abort) => {
