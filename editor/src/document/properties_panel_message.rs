@@ -41,7 +41,7 @@ pub enum PropertiesPanelMessage {
 	ResendActiveProperties,
 	SetActiveLayers {
 		paths: Vec<Vec<LayerId>>,
-		document: TargetDocument
+		document: TargetDocument,
 	},
 }
 
