@@ -25,7 +25,7 @@ macro_rules! count_args {
 /// ```ignore
 /// let tools = gen_tools_hash_map! {
 ///     Select => select::Select,
-///     Crop => crop::Crop,
+///     Artboard => artboard::Artboard,
 /// };
 /// ```
 /// expands to
@@ -34,7 +34,7 @@ macro_rules! count_args {
 ///     let mut hash_map: std::collections::HashMap<crate::tool::ToolType, Box<dyn crate::tool::Tool>> = std::collections::HashMap::with_capacity(count_args!(/* Macro args */));
 ///
 ///     hash_map.insert(crate::tool::ToolType::Select, Box::new(select::Select::default()));
-///     hash_map.insert(crate::tool::ToolType::Crop, Box::new(crop::Crop::default()));
+///     hash_map.insert(crate::tool::ToolType::Artboard, Box::new(artboard::Artboard::default()));
 ///
 ///     hash_map
 /// };

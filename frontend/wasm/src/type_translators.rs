@@ -9,7 +9,7 @@ pub fn translate_tool_type(name: &str) -> Option<ToolType> {
 
 	match_string_to_enum!(match (name) {
 		Select,
-		Crop,
+		Artboard,
 		Navigate,
 		Eyedropper,
 		Text,
