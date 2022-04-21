@@ -484,22 +484,28 @@ pub fn composite_boolean_operation(mut select: BooleanOperation, shapes: &mut Ve
 	}
 	match select {
 		BooleanOperation::Union => {
-			let mut nothing_done = false;
-			let mut idx = 0;
-			while !nothing_done && shapes.len() > 1 {
-				idx += 1;
-				nothing_done = true;
-				let partial_union = boolean_operation(select, &mut shapes[idx].borrow_mut(), &mut shapes[(idx + 1) % shapes.len()].borrow_mut());
-				match partial_union {
-					Ok(temp_union) => {
-						nothing_done = false;
-						shapes.append(&mut temp_union.into_iter().map(|shape_layer| RefCell::new(shape_layer)).collect());
-						shapes.swap_remove(idx);
-						shapes.swap_remove((idx + 1) % shapes.len());
+			// We must attempt to Union each shape with every other shape
+			let mut subject_idx = 0;
+			while subject_idx < shapes.len() {
+				let mut shape_idx = 0;
+				while shape_idx < shapes.len() {
+					if shape_idx == subject_idx {
+						shape_idx += 1;
+						continue;
 					}
-					Err(BooleanOperationError::NothingDone) => (),
-					Err(err) => return Err(err),
+					let partial_union = boolean_operation(select, &mut shapes[subject_idx].borrow_mut(), &mut shapes[shape_idx].borrow_mut());
+					match partial_union {
+						Ok(temp_union) => {
+							// the result of a successful union will be exactly one shape
+							shapes.push(RefCell::new(temp_union.into_iter().next().unwrap()));
+							shapes.swap_remove(subject_idx);
+							shapes.swap_remove(shape_idx);
+						}
+						Err(BooleanOperationError::NothingDone) => shape_idx += 1,
+						Err(err) => return Err(err),
+					}
 				}
+				subject_idx += 1;
 			}
 			Ok(shapes.iter().map(|ref_shape_layer| ref_shape_layer.borrow().clone()).collect())
 		}

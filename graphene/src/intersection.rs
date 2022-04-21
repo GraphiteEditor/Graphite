@@ -1,12 +1,11 @@
 use core::panic;
+use std::collections::VecDeque;
 use std::ops::Mul;
-use std::{collections::VecDeque, ops::Sub};
 
 use crate::{
-	boolean_ops::reverse_path_segment,
 	boolean_ops::split_path_seg,
 	boolean_ops::subdivide_path_seg,
-	consts::{CURVE_FIDELITY, F64LOOSE, F64PRECISE},
+	consts::{F64LOOSE, F64PRECISE},
 };
 use glam::{DAffine2, DMat2, DVec2};
 use kurbo::{BezPath, CubicBez, Line, ParamCurve, ParamCurveExtrema, PathSeg, Point, QuadBez, Rect, Shape, Vec2};
@@ -297,7 +296,7 @@ fn path_intersections(a: &SubCurve, b: &SubCurve, intersections: &mut Vec<Inters
 				cross.quality = guess_quality(a.curve, b.curve, &cross);
 
 				// log::debug!("checking: {:?}", cross.quality);
-				if cross.quality <= CURVE_FIDELITY {
+				if cross.quality <= F64LOOSE {
 					//Invalid intersections should still be rejected
 					//rejects "valid" intersections on the non-inclusive end of a pathseg
 					if valid_t(cross.t_a) && valid_t(cross.t_b) {
@@ -811,11 +810,13 @@ pub fn valid_t(t: f64) -> bool {
 /// Each of these tests has been visually, but not mathematically verified.
 /// These tests are all ignored because each test looks for exact floating point comparisons, so isn't flexible to small adjustments in the algorithm.
 mod tests {
-	use crate::boolean_ops::point_on_curve;
-	use std::{fs::File, io::Write};
-
-	#[allow(unused_imports)] // This import is used
+	// these imports are used in the tests which are #[ignore]
+	#[allow(unused_imports)]
 	use super::*;
+	#[allow(unused_imports)]
+	use crate::boolean_ops::point_on_curve;
+	#[allow(unused_imports)]
+	use std::{fs::File, io::Write};
 
 	/// Two intersect points, on different `PathSegs`.
 	#[ignore]
