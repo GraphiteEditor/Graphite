@@ -75,7 +75,6 @@ pub enum TextOptionsUpdate {
 impl PropertyHolder for TextTool {
 	fn properties(&self) -> WidgetLayout {
 		WidgetLayout::new(vec![LayoutRow::Row {
-			name: "".into(),
 			widgets: vec![
 				WidgetHolder::new(Widget::FontInput(FontInput {
 					is_style_picker: false,
