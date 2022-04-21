@@ -79,7 +79,7 @@ impl Default for ToolFsmState {
 				tools: gen_tools_hash_map! {
 					// General
 					Select => select_tool::SelectTool,
-					Crop => crop_tool::CropTool,
+					Artboard => artboard_tool::ArtboardTool,
 					Navigate => navigate_tool::NavigateTool,
 					Eyedropper => eyedropper_tool::EyedropperTool,
 					Fill => fill_tool::FillTool,
@@ -127,7 +127,7 @@ impl ToolFsmState {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum ToolType {
 	Select,
-	Crop,
+	Artboard,
 	Navigate,
 	Eyedropper,
 	Text,
@@ -155,7 +155,7 @@ impl fmt::Display for ToolType {
 
 		let name = match_variant_name!(match (self) {
 			Select,
-			Crop,
+			Artboard,
 			Navigate,
 			Eyedropper,
 			Text,
@@ -192,7 +192,7 @@ pub fn standard_tool_message(tool: ToolType, message_type: StandardToolMessageTy
 	match message_type {
 		StandardToolMessageType::DocumentIsDirty => match tool {
 			ToolType::Select => Some(SelectToolMessage::DocumentIsDirty.into()),
-			ToolType::Crop => Some(CropToolMessage::DocumentIsDirty.into()),
+			ToolType::Artboard => Some(ArtboardToolMessage::DocumentIsDirty.into()),
 			ToolType::Navigate => None,   // Some(NavigateToolMessage::DocumentIsDirty.into()),
 			ToolType::Eyedropper => None, // Some(EyedropperToolMessage::DocumentIsDirty.into()),
 			ToolType::Text => Some(TextMessage::DocumentIsDirty.into()),
@@ -215,7 +215,7 @@ pub fn standard_tool_message(tool: ToolType, message_type: StandardToolMessageTy
 		},
 		StandardToolMessageType::Abort => match tool {
 			ToolType::Select => Some(SelectToolMessage::Abort.into()),
-			ToolType::Crop => Some(CropToolMessage::Abort.into()),
+			ToolType::Artboard => Some(ArtboardToolMessage::Abort.into()),
 			ToolType::Navigate => Some(NavigateToolMessage::Abort.into()),
 			ToolType::Eyedropper => Some(EyedropperToolMessage::Abort.into()),
 			ToolType::Text => Some(TextMessage::Abort.into()),
@@ -249,7 +249,7 @@ pub fn message_to_tool_type(message: &ToolMessage) -> ToolType {
 
 	match message {
 		Select(_) => ToolType::Select,
-		Crop(_) => ToolType::Crop,
+		Artboard(_) => ToolType::Artboard,
 		Navigate(_) => ToolType::Navigate,
 		Eyedropper(_) => ToolType::Eyedropper,
 		Text(_) => ToolType::Text,

@@ -114,7 +114,7 @@ export class UpdateWorkingColors extends JsMessage {
 
 export type ToolName =
 	| "Select"
-	| "Crop"
+	| "Artboard"
 	| "Navigate"
 	| "Eyedropper"
 	| "Text"
