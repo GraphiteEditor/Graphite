@@ -1,5 +1,7 @@
 use crate::message_prelude::*;
 
+use super::utility_types::TargetDocument;
+
 use graphene::layers::style::{Fill, Stroke};
 use serde::{Deserialize, Serialize};
 
@@ -15,10 +17,10 @@ pub enum PropertiesPanelMessage {
 	ModifyStroke { stroke: Stroke },
 	ModifyTransform { value: f64, transform_op: TransformOp },
 	ResendActiveProperties,
-	SetActiveLayers { paths: Vec<Vec<LayerId>> },
+	SetActiveLayers { paths: Vec<Vec<LayerId>>, document: TargetDocument },
 }
 
-#[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
+#[derive(PartialEq, Clone, Copy, Debug, Serialize, Deserialize)]
 pub enum TransformOp {
 	X,
 	Y,
