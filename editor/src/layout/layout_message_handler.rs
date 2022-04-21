@@ -91,10 +91,34 @@ impl MessageHandler<LayoutMessage, ()> for LayoutMessageHandler {
 						let callback_message = (text_input.on_update.callback)(text_input);
 						responses.push_back(callback_message);
 					}
+					Widget::TextAreaInput(text_area_input) => {
+						let update_value = value.as_str().expect("TextAreaInput update was not of type: string");
+						text_area_input.value = update_value.into();
+						let callback_message = (text_area_input.on_update.callback)(text_area_input);
+						responses.push_back(callback_message);
+					}
 					Widget::ColorInput(color_input) => {
 						let update_value = value.as_str().map(String::from);
 						color_input.value = update_value;
 						let callback_message = (color_input.on_update.callback)(color_input);
+						responses.push_back(callback_message);
+					}
+					Widget::FontInput(font_input) => {
+						let update_value = value.as_object().expect("FontInput update was not of type: object");
+						let font_family_value = update_value.get("fontFamily").expect("FontInput update does not have a fontFamily");
+						let font_style_value = update_value.get("fontStyle").expect("FontInput update does not have a fontStyle");
+						let font_file_value = update_value.get("fontFile").expect("FontInput update does not have a fontFile");
+
+						let font_family = font_family_value.as_str().expect("FontInput update fontFamily was not of type: string");
+						let font_style = font_style_value.as_str().expect("FontInput update fontStyle was not of type: string");
+						let font_file = font_file_value.as_str().expect("FontInput update fontFile was not of type: string");
+
+						font_input.font_family = font_family.into();
+						font_input.font_style = font_style.into();
+						font_input.font_file = font_file.into();
+
+						responses.push_back(DocumentMessage::LoadFont { font: font_file.into() }.into());
+						let callback_message = (font_input.on_update.callback)(font_input);
 						responses.push_back(callback_message);
 					}
 					Widget::TextLabel(_) => {}

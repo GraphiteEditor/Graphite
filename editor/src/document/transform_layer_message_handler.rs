@@ -45,7 +45,7 @@ impl MessageHandler<TransformLayerMessage, (&mut HashMap<Vec<LayerId>, LayerMeta
 				selected.revert_operation();
 				typing.clear();
 			} else {
-				*selected.pivot = selected.calculate_pivot();
+				*selected.pivot = selected.calculate_pivot(&document.font_cache);
 			}
 
 			*mouse_position = ipp.mouse.position;
@@ -128,7 +128,7 @@ impl MessageHandler<TransformLayerMessage, (&mut HashMap<Vec<LayerId>, LayerMeta
 							self.transform_operation.apply_transform_operation(&mut selected, self.snap);
 						}
 						TransformOperation::Rotating(rotation) => {
-							let selected_pivot = selected.calculate_pivot();
+							let selected_pivot = selected.calculate_pivot(&document.font_cache);
 							let angle = {
 								let start_offset = self.mouse_position - selected_pivot;
 								let end_offset = ipp.mouse.position - selected_pivot;
