@@ -193,14 +193,14 @@ pub struct Stroke {
 	dash_offset: f64,
 	line_cap: LineCap,
 	line_join: LineJoin,
-	miter_limit: f64,
+	line_join_miter_limit: f64,
 }
 
 impl Stroke {
-	pub fn new(color: Color, width: f64) -> Self {
+	pub fn new(color: Color, weight: f64) -> Self {
 		Self {
 			color: Some(color),
-			weight: width,
+			weight,
 			..Default::default()
 		}
 	}
@@ -231,8 +231,8 @@ impl Stroke {
 		self.line_join as u32
 	}
 
-	pub fn miter_limit(&self) -> f32 {
-		self.miter_limit as f32
+	pub fn line_join_miter_limit(&self) -> f32 {
+		self.line_join_miter_limit as f32
 	}
 
 	/// Provide the SVG attributes for the stroke.
@@ -247,7 +247,7 @@ impl Stroke {
 				self.dash_offset,
 				self.line_cap,
 				self.line_join,
-				self.miter_limit
+				self.line_join_miter_limit
 			)
 		} else {
 			String::new()
@@ -299,8 +299,8 @@ impl Stroke {
 		self
 	}
 
-	pub fn with_miter_limit(mut self, miter_limit: f64) -> Self {
-		self.miter_limit = miter_limit;
+	pub fn with_line_join_miter_limit(mut self, limit: f64) -> Self {
+		self.line_join_miter_limit = limit;
 		self
 	}
 }
@@ -315,7 +315,7 @@ impl Default for Stroke {
 			dash_offset: 0.,
 			line_cap: LineCap::Butt,
 			line_join: LineJoin::Miter,
-			miter_limit: 4.,
+			line_join_miter_limit: 4.,
 		}
 	}
 }

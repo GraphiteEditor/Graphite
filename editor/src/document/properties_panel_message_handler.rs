@@ -1118,13 +1118,13 @@ fn node_section_stroke(stroke: &Stroke) -> LayoutRow {
 						direction: SeparatorDirection::Horizontal,
 					})),
 					WidgetHolder::new(Widget::NumberInput(NumberInput {
-						value: stroke.miter_limit() as f64,
+						value: stroke.line_join_miter_limit() as f64,
 						is_integer: true,
 						min: Some(0.),
 						unit: "".into(),
 						on_update: WidgetCallback::new(move |number_input: &NumberInput| {
 							PropertiesPanelMessage::ModifyStroke {
-								stroke: internal_stroke5.clone().with_miter_limit(number_input.value),
+								stroke: internal_stroke5.clone().with_line_join_miter_limit(number_input.value),
 							}
 							.into()
 						}),
