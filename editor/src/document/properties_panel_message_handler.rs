@@ -155,21 +155,16 @@ impl<'a> MessageHandler<PropertiesPanelMessage, PropertiesPanelMessageHandlerDat
 				font_file,
 				size,
 			} => {
-				let path = self.active_path.clone().expect("Received update for properties panel with no active layer");
+				let (path, _) = self.active_selection.clone().expect("Received update for properties panel with no active layer");
 
-				let layer = graphene_document.layer(&path).unwrap();
-				register_layer_properties(layer, responses, &graphene_document.font_cache);
-
-				responses.push_back(
-					Operation::ModifyFont {
-						path,
-						font_family,
-						font_style,
-						font_file,
-						size,
-					}
-					.into(),
-				);
+				responses.push_back(self.create_document_operation(Operation::ModifyFont {
+					path,
+					font_family,
+					font_style,
+					font_file,
+					size,
+				}));
+				responses.push_back(ResendActiveProperties.into());
 			}
 			ModifyTransform { value, transform_op } => {
 				let (path, target_document) = self.active_selection.as_ref().expect("Received update for properties panel with no active layer");
@@ -185,8 +180,8 @@ impl<'a> MessageHandler<PropertiesPanelMessage, PropertiesPanelMessageHandlerDat
 				};
 
 				let scale = match transform_op {
-					Width => layer.bounding_transform(&graphene_document.font_cache).scale_x() / layer.transform.scale_x(),
-					Height => layer.bounding_transform(&graphene_document.font_cache).scale_y() / layer.transform.scale_y(),
+					Width => layer.bounding_transform(&get_document(*target_document).font_cache).scale_x() / layer.transform.scale_x(),
+					Height => layer.bounding_transform(&get_document(*target_document).font_cache).scale_y() / layer.transform.scale_y(),
 					_ => 1.,
 				};
 
@@ -208,7 +203,7 @@ impl<'a> MessageHandler<PropertiesPanelMessage, PropertiesPanelMessageHandlerDat
 				responses.push_back(self.create_document_operation(Operation::SetLayerStroke { path, stroke }))
 			}
 			ModifyText { new_text } => {
-				let path = self.active_path.clone().expect("Received update for properties panel with no active layer");
+				let (path, _) = self.active_selection.clone().expect("Received update for properties panel with no active layer");
 				responses.push_back(Operation::SetTextContent { path, new_text }.into())
 			}
 			CheckSelectedWasUpdated { path } => {
@@ -239,8 +234,8 @@ impl<'a> MessageHandler<PropertiesPanelMessage, PropertiesPanelMessageHandlerDat
 				let (path, target_document) = self.active_selection.clone().expect("Received update for properties panel with no active layer");
 				let layer = get_document(target_document).layer(&path).unwrap();
 				match target_document {
-					TargetDocument::Artboard => register_artboard_layer_properties(layer, responses),
-					TargetDocument::Artwork => register_artwork_layer_properties(layer, responses, &graphene_document.font_cache),
+					TargetDocument::Artboard => register_artboard_layer_properties(layer, responses, &get_document(target_document).font_cache),
+					TargetDocument::Artwork => register_artwork_layer_properties(layer, responses, &get_document(target_document).font_cache),
 				}
 			}
 		}
@@ -251,7 +246,7 @@ impl<'a> MessageHandler<PropertiesPanelMessage, PropertiesPanelMessageHandlerDat
 	}
 }
 
-fn register_artboard_layer_properties(layer: &Layer, responses: &mut VecDeque<Message>) {
+fn register_artboard_layer_properties(layer: &Layer, responses: &mut VecDeque<Message>, font_cache: &FontCache) {
 	let options_bar = vec![LayoutRow::Row {
 		widgets: vec![
 			WidgetHolder::new(Widget::IconLabel(IconLabel {
@@ -353,7 +348,7 @@ fn register_artboard_layer_properties(layer: &Layer, responses: &mut VecDeque<Me
 							direction: SeparatorDirection::Horizontal,
 						})),
 						WidgetHolder::new(Widget::NumberInput(NumberInput {
-							value: layer.bounding_transform().scale_x(),
+							value: layer.bounding_transform(font_cache).scale_x(),
 							label: "W".into(),
 							unit: " px".into(),
 							on_update: WidgetCallback::new(|number_input: &NumberInput| {
@@ -370,7 +365,7 @@ fn register_artboard_layer_properties(layer: &Layer, responses: &mut VecDeque<Me
 							direction: SeparatorDirection::Horizontal,
 						})),
 						WidgetHolder::new(Widget::NumberInput(NumberInput {
-							value: layer.bounding_transform().scale_y(),
+							value: layer.bounding_transform(font_cache).scale_y(),
 							label: "H".into(),
 							unit: " px".into(),
 							on_update: WidgetCallback::new(|number_input: &NumberInput| {
@@ -688,7 +683,6 @@ fn node_section_font(layer: &TextLayer) -> LayoutRow {
 		name: "Font".into(),
 		layout: vec![
 			LayoutRow::Row {
-				name: "".into(),
 				widgets: vec![
 					WidgetHolder::new(Widget::TextLabel(TextLabel {
 						value: "Text".into(),
@@ -705,7 +699,6 @@ fn node_section_font(layer: &TextLayer) -> LayoutRow {
 				],
 			},
 			LayoutRow::Row {
-				name: "".into(),
 				widgets: vec![
 					WidgetHolder::new(Widget::TextLabel(TextLabel {
 						value: "Font".into(),
@@ -733,7 +726,6 @@ fn node_section_font(layer: &TextLayer) -> LayoutRow {
 				],
 			},
 			LayoutRow::Row {
-				name: "".into(),
 				widgets: vec![
 					WidgetHolder::new(Widget::TextLabel(TextLabel {
 						value: "Style".into(),
@@ -761,7 +753,6 @@ fn node_section_font(layer: &TextLayer) -> LayoutRow {
 				],
 			},
 			LayoutRow::Row {
-				name: "".into(),
 				widgets: vec![
 					WidgetHolder::new(Widget::TextLabel(TextLabel {
 						value: "Size".into(),
