@@ -4,6 +4,7 @@ use super::image_layer::ImageLayer;
 use super::shape_layer::ShapeLayer;
 use super::style::{PathStyle, ViewMode};
 use super::text_layer::TextLayer;
+use crate::document::FontCache;
 use crate::intersection::Quad;
 use crate::DocumentError;
 use crate::LayerId;
@@ -54,12 +55,13 @@ pub trait LayerData {
 	/// # use graphite_graphene::layers::shape_layer::ShapeLayer;
 	/// # use graphite_graphene::layers::style::{Fill, PathStyle, ViewMode};
 	/// # use graphite_graphene::layers::layer_info::LayerData;
+	/// # use std::collections::HashMap;
 	///
 	/// let mut shape = ShapeLayer::rectangle(PathStyle::new(None, Fill::None));
 	/// let mut svg = String::new();
 	///
 	/// // Render the shape without any transforms, in normal view mode
-	/// shape.render(&mut svg, &mut String::new(), &mut vec![], ViewMode::Normal);
+	/// shape.render(&mut svg, &mut String::new(), &mut vec![], ViewMode::Normal, &Default::default());
 	///
 	/// assert_eq!(
 	///     svg,
@@ -68,7 +70,7 @@ pub trait LayerData {
 	///     </g>"
 	/// );
 	/// ```
-	fn render(&mut self, svg: &mut String, svg_defs: &mut String, transforms: &mut Vec<glam::DAffine2>, view_mode: ViewMode);
+	fn render(&mut self, svg: &mut String, svg_defs: &mut String, transforms: &mut Vec<glam::DAffine2>, view_mode: ViewMode, font_cache: &FontCache);
 
 	/// Determine the layers within this layer that intersect a given quad.
 	/// # Example
@@ -78,6 +80,7 @@ pub trait LayerData {
 	/// # use graphite_graphene::layers::layer_info::LayerData;
 	/// # use graphite_graphene::intersection::Quad;
 	/// # use glam::f64::{DAffine2, DVec2};
+	/// # use std::collections::HashMap;
 	///
 	/// let mut shape = ShapeLayer::ellipse(PathStyle::new(None, Fill::None));
 	/// let shape_id = 42;
@@ -86,11 +89,11 @@ pub trait LayerData {
 	/// let quad = Quad::from_box([DVec2::ZERO, DVec2::ONE]);
 	/// let mut intersections = vec![];
 	///
-	/// shape.intersects_quad(quad, &mut vec![shape_id], &mut intersections);
+	/// shape.intersects_quad(quad, &mut vec![shape_id], &mut intersections, &Default::default());
 	///
 	/// assert_eq!(intersections, vec![vec![shape_id]]);
 	/// ```
-	fn intersects_quad(&self, quad: Quad, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>);
+	fn intersects_quad(&self, quad: Quad, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>, font_cache: &FontCache);
 
 	// TODO: this doctest fails because 0 != 1e-32, maybe assert difference < epsilon?
 	/// Calculate the bounding box for the layer's contents after applying a given transform.
@@ -100,29 +103,30 @@ pub trait LayerData {
 	/// # use graphite_graphene::layers::style::{Fill, PathStyle};
 	/// # use graphite_graphene::layers::layer_info::LayerData;
 	/// # use glam::f64::{DAffine2, DVec2};
+	/// # use std::collections::HashMap;
 	/// let shape = ShapeLayer::ellipse(PathStyle::new(None, Fill::None));
 	///
 	/// // Calculate the bounding box without applying any transformations.
 	/// // (The identity transform maps every vector to itself.)
 	/// let transform = DAffine2::IDENTITY;
-	/// let bounding_box = shape.bounding_box(transform);
+	/// let bounding_box = shape.bounding_box(transform, &Default::default());
 	///
 	/// assert_eq!(bounding_box, Some([DVec2::ZERO, DVec2::ONE]));
 	/// ```
-	fn bounding_box(&self, transform: glam::DAffine2) -> Option<[DVec2; 2]>;
+	fn bounding_box(&self, transform: glam::DAffine2, font_cache: &FontCache) -> Option<[DVec2; 2]>;
 }
 
 impl LayerData for LayerDataType {
-	fn render(&mut self, svg: &mut String, svg_defs: &mut String, transforms: &mut Vec<glam::DAffine2>, view_mode: ViewMode) {
-		self.inner_mut().render(svg, svg_defs, transforms, view_mode)
+	fn render(&mut self, svg: &mut String, svg_defs: &mut String, transforms: &mut Vec<glam::DAffine2>, view_mode: ViewMode, font_cache: &FontCache) {
+		self.inner_mut().render(svg, svg_defs, transforms, view_mode, font_cache)
 	}
 
-	fn intersects_quad(&self, quad: Quad, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>) {
-		self.inner().intersects_quad(quad, path, intersections)
+	fn intersects_quad(&self, quad: Quad, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>, font_cache: &FontCache) {
+		self.inner().intersects_quad(quad, path, intersections, font_cache)
 	}
 
-	fn bounding_box(&self, transform: glam::DAffine2) -> Option<[DVec2; 2]> {
-		self.inner().bounding_box(transform)
+	fn bounding_box(&self, transform: glam::DAffine2, font_cache: &FontCache) -> Option<[DVec2; 2]> {
+		self.inner().bounding_box(transform, font_cache)
 	}
 }
 
@@ -219,7 +223,7 @@ impl Layer {
 		LayerIter { stack: vec![self] }
 	}
 
-	pub fn render(&mut self, transforms: &mut Vec<DAffine2>, view_mode: ViewMode, svg_defs: &mut String) -> &str {
+	pub fn render(&mut self, transforms: &mut Vec<DAffine2>, view_mode: ViewMode, svg_defs: &mut String, font_cache: &FontCache) -> &str {
 		if !self.visible {
 			return "";
 		}
@@ -228,7 +232,7 @@ impl Layer {
 			transforms.push(self.transform);
 			self.thumbnail_cache.clear();
 			self.svg_defs_cache.clear();
-			self.data.render(&mut self.thumbnail_cache, &mut self.svg_defs_cache, transforms, view_mode);
+			self.data.render(&mut self.thumbnail_cache, &mut self.svg_defs_cache, transforms, view_mode, font_cache);
 
 			self.cache.clear();
 			let _ = writeln!(self.cache, r#"<g transform="matrix("#);
@@ -250,13 +254,13 @@ impl Layer {
 		self.cache.as_str()
 	}
 
-	pub fn intersects_quad(&self, quad: Quad, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>) {
+	pub fn intersects_quad(&self, quad: Quad, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>, font_cache: &FontCache) {
 		if !self.visible {
 			return;
 		}
 
 		let transformed_quad = self.transform.inverse() * quad;
-		self.data.intersects_quad(transformed_quad, path, intersections)
+		self.data.intersects_quad(transformed_quad, path, intersections, font_cache)
 	}
 
 	/// Compute the bounding box of the layer after applying a transform to it.
@@ -268,31 +272,32 @@ impl Layer {
 	/// # use graphite_graphene::layers::style::PathStyle;
 	/// # use glam::DVec2;
 	/// # use glam::f64::DAffine2;
+	/// # use std::collections::HashMap;
 	/// // Create a rectangle with the default dimensions, from `(0|0)` to `(1|1)`
 	/// let layer: Layer = ShapeLayer::rectangle(PathStyle::default()).into();
 	///
 	/// // Apply the Identity transform, which leaves the points unchanged
 	/// assert_eq!(
-	///     layer.aabounding_box_for_transform(DAffine2::IDENTITY),
+	///     layer.aabounding_box_for_transform(DAffine2::IDENTITY, &Default::default()),
 	///     Some([DVec2::ZERO, DVec2::ONE]),
 	/// );
 	///
 	/// // Apply a transform that scales every point by a factor of two
 	/// let transform = DAffine2::from_scale(DVec2::ONE * 2.);
 	/// assert_eq!(
-	///     layer.aabounding_box_for_transform(transform),
+	///     layer.aabounding_box_for_transform(transform, &Default::default()),
 	///     Some([DVec2::ZERO, DVec2::ONE * 2.]),
 	/// );
-	pub fn aabounding_box_for_transform(&self, transform: DAffine2) -> Option<[DVec2; 2]> {
-		self.data.bounding_box(transform)
+	pub fn aabounding_box_for_transform(&self, transform: DAffine2, font_cache: &FontCache) -> Option<[DVec2; 2]> {
+		self.data.bounding_box(transform, font_cache)
 	}
 
-	pub fn aabounding_box(&self) -> Option<[DVec2; 2]> {
-		self.aabounding_box_for_transform(self.transform)
+	pub fn aabounding_box(&self, font_cache: &FontCache) -> Option<[DVec2; 2]> {
+		self.aabounding_box_for_transform(self.transform, font_cache)
 	}
 
-	pub fn bounding_transform(&self) -> DAffine2 {
-		let scale = match self.aabounding_box_for_transform(DAffine2::IDENTITY) {
+	pub fn bounding_transform(&self, font_cache: &FontCache) -> DAffine2 {
+		let scale = match self.aabounding_box_for_transform(DAffine2::IDENTITY, font_cache) {
 			Some([a, b]) => {
 				let dimensions = b - a;
 				DAffine2::from_scale(dimensions)
@@ -360,7 +365,7 @@ impl Layer {
 	pub fn style(&self) -> Result<&PathStyle, DocumentError> {
 		match &self.data {
 			LayerDataType::Shape(s) => Ok(&s.style),
-			LayerDataType::Text(t) => Ok(&t.style),
+			LayerDataType::Text(t) => Ok(&t.path_style),
 			_ => Err(DocumentError::NotAShape),
 		}
 	}
@@ -368,7 +373,7 @@ impl Layer {
 	pub fn style_mut(&mut self) -> Result<&mut PathStyle, DocumentError> {
 		match &mut self.data {
 			LayerDataType::Shape(s) => Ok(&mut s.style),
-			LayerDataType::Text(t) => Ok(&mut t.style),
+			LayerDataType::Text(t) => Ok(&mut t.path_style),
 			_ => Err(DocumentError::NotAShape),
 		}
 	}
