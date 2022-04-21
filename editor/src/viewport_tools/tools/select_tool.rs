@@ -60,7 +60,6 @@ pub enum SelectToolMessage {
 impl PropertyHolder for SelectTool {
 	fn properties(&self) -> WidgetLayout {
 		WidgetLayout::new(vec![LayoutRow::Row {
-			name: "".into(),
 			widgets: vec![
 				WidgetHolder::new(Widget::IconButton(IconButton {
 					icon: "AlignLeft".into(),

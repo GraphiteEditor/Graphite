@@ -3,6 +3,7 @@ use crate::message_prelude::*;
 use graphene::color::Color;
 use graphene::document::Document as GrapheneDocument;
 use graphene::layers::style::{self, Fill, ViewMode};
+use graphene::DocumentResponse;
 use graphene::Operation as DocumentOperation;
 
 use glam::DAffine2;
@@ -31,7 +32,18 @@ impl MessageHandler<ArtboardMessage, ()> for ArtboardMessageHandler {
 			// Sub-messages
 			#[remain::unsorted]
 			DispatchOperation(operation) => match self.artboards_graphene_document.handle_operation(*operation) {
-				Ok(_) => (),
+				Ok(Some(document_responses)) => {
+					for response in document_responses {
+						match &response {
+							DocumentResponse::LayerChanged { path } => responses.push_back(PropertiesPanelMessage::CheckSelectedWasUpdated { path: path.clone() }.into()),
+							DocumentResponse::DeletedLayer { path } => responses.push_back(PropertiesPanelMessage::CheckSelectedWasDeleted { path: path.clone() }.into()),
+							DocumentResponse::DocumentChanged => responses.push_back(ArtboardMessage::RenderArtboards.into()),
+							_ => {}
+						};
+						responses.push_back(ToolMessage::DocumentIsDirty.into());
+					}
+				}
+				Ok(None) => {}
 				Err(e) => log::error!("Artboard Error: {:?}", e),
 			},
 

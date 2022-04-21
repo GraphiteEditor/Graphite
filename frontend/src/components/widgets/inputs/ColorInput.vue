@@ -1,6 +1,6 @@
 <template>
 	<LayoutRow class="color-input">
-		<OptionalInput :icon="'CloseX'" :checked="!!value" @update:checked="(val) => updateEnabled(val)"></OptionalInput>
+		<OptionalInput v-if="canSetTransparent" :icon="'CloseX'" :checked="!!value" @update:checked="(val) => updateEnabled(val)"></OptionalInput>
 		<TextInput :value="displayValue" :label="label" :disabled="disabled || !value" @commitText="(value: string) => textInputUpdated(value)" :center="true" />
 		<Separator :type="'Related'" />
 		<LayoutRow class="swatch">
@@ -84,6 +84,7 @@ export default defineComponent({
 	props: {
 		value: { type: String as PropType<string | undefined>, required: true },
 		label: { type: String as PropType<string>, required: false },
+		canSetTransparent: { type: Boolean as PropType<boolean>, required: false, default: true },
 		disabled: { type: Boolean as PropType<boolean>, default: false },
 	},
 	computed: {
