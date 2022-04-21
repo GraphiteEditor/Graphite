@@ -108,8 +108,10 @@ export function createInputManager(editor: EditorState, container: HTMLElement, 
 	const onPointerMove = (e: PointerEvent): void => {
 		if (!e.buttons) viewportPointerInteractionOngoing = false;
 
-		const modifiers = makeModifiersBitfield(e);
-		editor.instance.on_mouse_move(e.clientX, e.clientY, e.buttons, modifiers);
+		if (viewportPointerInteractionOngoing) {
+			const modifiers = makeModifiersBitfield(e);
+			editor.instance.on_mouse_move(e.clientX, e.clientY, e.buttons, modifiers);
+		}
 	};
 
 	const onPointerDown = (e: PointerEvent): void => {
