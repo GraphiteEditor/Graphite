@@ -952,13 +952,13 @@ fn node_section_stroke(stroke: &Stroke) -> LayoutRow {
 						direction: SeparatorDirection::Horizontal,
 					})),
 					WidgetHolder::new(Widget::NumberInput(NumberInput {
-						value: stroke.width() as f64,
-						is_integer: true,
+						value: stroke.weight() as f64,
+						is_integer: false,
 						min: Some(0.),
 						unit: " px".into(),
 						on_update: WidgetCallback::new(move |number_input: &NumberInput| {
 							PropertiesPanelMessage::ModifyStroke {
-								stroke: internal_stroke2.clone().with_width(number_input.value as f32),
+								stroke: internal_stroke2.clone().with_weight(number_input.value),
 							}
 							.into()
 						}),
@@ -1004,7 +1004,7 @@ fn node_section_stroke(stroke: &Stroke) -> LayoutRow {
 						unit: " px".into(),
 						on_update: WidgetCallback::new(move |number_input: &NumberInput| {
 							PropertiesPanelMessage::ModifyStroke {
-								stroke: internal_stroke4.clone().with_dash_offset(number_input.value as f32),
+								stroke: internal_stroke4.clone().with_dash_offset(number_input.value),
 							}
 							.into()
 						}),
@@ -1124,7 +1124,7 @@ fn node_section_stroke(stroke: &Stroke) -> LayoutRow {
 						unit: "".into(),
 						on_update: WidgetCallback::new(move |number_input: &NumberInput| {
 							PropertiesPanelMessage::ModifyStroke {
-								stroke: internal_stroke5.clone().with_miter_limit(number_input.value as f32),
+								stroke: internal_stroke5.clone().with_miter_limit(number_input.value),
 							}
 							.into()
 						}),
