@@ -258,46 +258,135 @@ fn register_artboard_layer_properties(layer: &Layer, responses: &mut VecDeque<Me
 		],
 	}];
 
-	let properties_body = match &layer.data {
-		LayerDataType::Shape(shape) => {
-			let artboard_properties = match shape.style.fill() {
-				Fill::Solid(color) => LayoutRow::Section {
-					name: "Artboard".into(),
-					layout: vec![LayoutRow::Row {
-						widgets: vec![
-							WidgetHolder::new(Widget::TextLabel(TextLabel {
-								value: "Background".into(),
-								..TextLabel::default()
-							})),
-							WidgetHolder::new(Widget::Separator(Separator {
-								separator_type: SeparatorType::Unrelated,
-								direction: SeparatorDirection::Horizontal,
-							})),
-							WidgetHolder::new(Widget::ColorInput(ColorInput {
-								value: Some(color.rgba_hex()),
-								on_update: WidgetCallback::new(|text_input: &ColorInput| {
-									if let Some(value) = &text_input.value {
-										if let Some(color) = Color::from_rgba_str(value).or_else(|| Color::from_rgb_str(value)) {
-											let new_fill = Fill::Solid(color);
-											PropertiesPanelMessage::ModifyFill { fill: new_fill }.into()
-										} else {
-											PropertiesPanelMessage::ResendActiveProperties.into()
-										}
-									} else {
-										PropertiesPanelMessage::ModifyFill { fill: Fill::None }.into()
-									}
-								}),
-								can_set_transparent: false,
-							})),
-						],
-					}],
-				},
-				_ => panic!("Artboard must have a solid fill"),
-			};
+	let properties_body = {
+		let shape = if let LayerDataType::Shape(shape) = &layer.data {
+			shape
+		} else {
+			panic!("Artboards can only be shapes")
+		};
+		let color = if let Fill::Solid(color) = shape.style.fill() {
+			color
+		} else {
+			panic!("Artboard must have a solid fill")
+		};
 
-			vec![node_section_transform(layer), artboard_properties]
-		}
-		_ => panic!("Artboards can only be shapes"),
+		vec![LayoutRow::Section {
+			name: "Artboard".into(),
+			layout: vec![
+				LayoutRow::Row {
+					widgets: vec![
+						WidgetHolder::new(Widget::TextLabel(TextLabel {
+							value: "Location".into(),
+							..TextLabel::default()
+						})),
+						WidgetHolder::new(Widget::Separator(Separator {
+							separator_type: SeparatorType::Unrelated,
+							direction: SeparatorDirection::Horizontal,
+						})),
+						WidgetHolder::new(Widget::NumberInput(NumberInput {
+							value: layer.transform.x(),
+							label: "X".into(),
+							unit: " px".into(),
+							on_update: WidgetCallback::new(|number_input: &NumberInput| {
+								PropertiesPanelMessage::ModifyTransform {
+									value: number_input.value,
+									transform_op: TransformOp::X,
+								}
+								.into()
+							}),
+							..NumberInput::default()
+						})),
+						WidgetHolder::new(Widget::Separator(Separator {
+							separator_type: SeparatorType::Related,
+							direction: SeparatorDirection::Horizontal,
+						})),
+						WidgetHolder::new(Widget::NumberInput(NumberInput {
+							value: layer.transform.y(),
+							label: "Y".into(),
+							unit: " px".into(),
+							on_update: WidgetCallback::new(|number_input: &NumberInput| {
+								PropertiesPanelMessage::ModifyTransform {
+									value: number_input.value,
+									transform_op: TransformOp::Y,
+								}
+								.into()
+							}),
+							..NumberInput::default()
+						})),
+					],
+				},
+				LayoutRow::Row {
+					widgets: vec![
+						WidgetHolder::new(Widget::TextLabel(TextLabel {
+							value: "Dimensions".into(),
+							..TextLabel::default()
+						})),
+						WidgetHolder::new(Widget::Separator(Separator {
+							separator_type: SeparatorType::Unrelated,
+							direction: SeparatorDirection::Horizontal,
+						})),
+						WidgetHolder::new(Widget::NumberInput(NumberInput {
+							value: layer.bounding_transform().scale_x(),
+							label: "W".into(),
+							unit: " px".into(),
+							on_update: WidgetCallback::new(|number_input: &NumberInput| {
+								PropertiesPanelMessage::ModifyTransform {
+									value: number_input.value,
+									transform_op: TransformOp::Width,
+								}
+								.into()
+							}),
+							..NumberInput::default()
+						})),
+						WidgetHolder::new(Widget::Separator(Separator {
+							separator_type: SeparatorType::Related,
+							direction: SeparatorDirection::Horizontal,
+						})),
+						WidgetHolder::new(Widget::NumberInput(NumberInput {
+							value: layer.bounding_transform().scale_y(),
+							label: "H".into(),
+							unit: " px".into(),
+							on_update: WidgetCallback::new(|number_input: &NumberInput| {
+								PropertiesPanelMessage::ModifyTransform {
+									value: number_input.value,
+									transform_op: TransformOp::Height,
+								}
+								.into()
+							}),
+							..NumberInput::default()
+						})),
+					],
+				},
+				LayoutRow::Row {
+					widgets: vec![
+						WidgetHolder::new(Widget::TextLabel(TextLabel {
+							value: "Background".into(),
+							..TextLabel::default()
+						})),
+						WidgetHolder::new(Widget::Separator(Separator {
+							separator_type: SeparatorType::Unrelated,
+							direction: SeparatorDirection::Horizontal,
+						})),
+						WidgetHolder::new(Widget::ColorInput(ColorInput {
+							value: Some(color.rgba_hex()),
+							on_update: WidgetCallback::new(|text_input: &ColorInput| {
+								if let Some(value) = &text_input.value {
+									if let Some(color) = Color::from_rgba_str(value).or_else(|| Color::from_rgb_str(value)) {
+										let new_fill = Fill::Solid(color);
+										PropertiesPanelMessage::ModifyFill { fill: new_fill }.into()
+									} else {
+										PropertiesPanelMessage::ResendActiveProperties.into()
+									}
+								} else {
+									PropertiesPanelMessage::ModifyFill { fill: Fill::None }.into()
+								}
+							}),
+							can_set_transparent: false,
+						})),
+					],
+				},
+			],
+		}]
 	};
 
 	responses.push_back(
