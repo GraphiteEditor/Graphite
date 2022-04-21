@@ -3,6 +3,7 @@ use crate::message_prelude::*;
 use graphene::color::Color;
 use graphene::document::Document as GrapheneDocument;
 use graphene::layers::style::{self, Fill, ViewMode};
+use graphene::DocumentResponse;
 use graphene::Operation as DocumentOperation;
 
 use glam::DAffine2;
@@ -30,8 +31,19 @@ impl MessageHandler<ArtboardMessage, ()> for ArtboardMessageHandler {
 		match message {
 			// Sub-messages
 			#[remain::unsorted]
-			DispatchOperation(operation) => match self.artboards_graphene_document.handle_operation(&operation) {
-				Ok(_) => (),
+			DispatchOperation(operation) => match self.artboards_graphene_document.handle_operation(*operation) {
+				Ok(Some(document_responses)) => {
+					for response in document_responses {
+						match &response {
+							DocumentResponse::LayerChanged { path } => responses.push_back(PropertiesPanelMessage::CheckSelectedWasUpdated { path: path.clone() }.into()),
+							DocumentResponse::DeletedLayer { path } => responses.push_back(PropertiesPanelMessage::CheckSelectedWasDeleted { path: path.clone() }.into()),
+							DocumentResponse::DocumentChanged => responses.push_back(ArtboardMessage::RenderArtboards.into()),
+							_ => {}
+						};
+						responses.push_back(ToolMessage::DocumentIsDirty.into());
+					}
+				}
+				Ok(None) => {}
 				Err(e) => log::error!("Artboard Error: {:?}", e),
 			},
 
@@ -46,7 +58,7 @@ impl MessageHandler<ArtboardMessage, ()> for ArtboardMessageHandler {
 							path: vec![artboard_id],
 							insert_index: -1,
 							transform: DAffine2::from_scale_angle_translation(size.into(), 0., position.into()).to_cols_array(),
-							style: style::PathStyle::new(None, Some(Fill::new(Color::WHITE))),
+							style: style::PathStyle::new(None, Fill::solid(Color::WHITE)),
 						}
 						.into(),
 					)

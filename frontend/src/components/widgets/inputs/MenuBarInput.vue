@@ -1,7 +1,7 @@
 <template>
 	<div class="menu-bar-input">
 		<div class="entry-container">
-			<div @click="() => visitWebsite('https://www.graphite.design')" class="entry">
+			<div @click="() => visitWebsite('https://graphite.rs')" class="entry">
 				<IconLabel :icon="'GraphiteLogo'" />
 			</div>
 		</div>
@@ -119,7 +119,8 @@ function makeMenuEntries(editor: EditorState): MenuListEntries {
 				[
 					{ label: "Cut", shortcut: ["KeyControl", "KeyX"], action: async (): Promise<void> => editor.instance.cut() },
 					{ label: "Copy", icon: "Copy", shortcut: ["KeyControl", "KeyC"], action: async (): Promise<void> => editor.instance.copy() },
-					{ label: "Paste", icon: "Paste", shortcut: ["KeyControl", "KeyV"], action: async (): Promise<void> => editor.instance.paste() },
+					// TODO: Fix this
+					// { label: "Paste", icon: "Paste", shortcut: ["KeyControl", "KeyV"], action: async (): Promise<void> => editor.instance.paste() },
 				],
 			],
 		},

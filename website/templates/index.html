@@ -1,0 +1,331 @@
+{% extends "base.html" %}
+
+{% block title %}Redefining state-of-the-art graphics editing.{% endblock title %}
+
+{% block head %}
+<link rel="stylesheet" href="/index.css">
+{% endblock head %}
+
+{% block content %}
+<section id="logo">
+	<img src="/images/logos/graphite-logotype-color.svg" alt="Graphite Logo" />
+</section>
+
+<img class="pencil-texture" src="/images/textures/pencil-texture.png" />
+
+<section id="quick-links">
+	<a href="/blog/announcing-graphite-alpha/" class="button arrow">Announcing Graphite alpha</a>
+	<a href="https://editor.graphite.rs" class="button arrow">Instantly launch the web editor</a>
+	<div>
+		<a href="https://github.com/GraphiteEditor/Graphite" target="_blank">
+			<img src="/images/icons/github.svg" alt="GitHub" />
+		</a>
+		<a href="https://www.reddit.com/r/graphite/" target="_blank">
+			<img src="/images/icons/reddit.svg" alt="Reddit" />
+		</a>
+		<a href="https://discord.graphite.rs" target="_blank">
+			<img src="/images/icons/discord.svg" alt="Discord" />
+		</a>
+		<a href="https://twitter.com/graphiteeditor" target="_blank">
+			<img src="/images/icons/twitter.svg" alt="Twitter" />
+		</a>
+	</div>
+</section>
+
+<section id="hero-message">
+	<h1 class="hero">Redefining state-of-the-art graphics editing.</h1>
+	<p class="balance-text">Graphite is an in-development raster and vector 2D graphics editor that is free and open source. It is powered by a node graph compositing engine that supercharges your
+		layer stack, providing a completely non-destructive editing experience.</p>
+</section>
+
+<div class="hexagons">
+	<div>
+		<svg viewBox="0 0 1400 1215.42" xmlns="http://www.w3.org/2000/svg">
+			<polygon points="1049.43,0.99 350.57,0.99 1.14,607.71 350.57,1214.44 1049.43,1214.44 1398.86,607.71" />
+			<polygon points="1016.39,57.57 383.61,57.57 67.22,607.71 383.61,1157.85 1016.39,1157.85 1332.78,607.71" />
+			<polygon points="964.49,149.01 435.51,149.01 171.02,607.71 435.51,1066.41 964.49,1066.41 1228.98,607.71" />
+			<polygon points="875.52,304.71 524.48,304.71 348.96,607.71 524.48,910.71 875.52,910.71 1051.04,607.71" />
+			<polygon points="768.12,490.96 631.88,490.96 563.78,607.71 631.88,724.47 768.12,724.47 836.22,607.71" />
+		</svg>
+	</div>
+</div>
+
+<section id="screenshots">
+	<div class="carousel">
+		<img src="/index/gui-demo-yosemite.png" />
+		<img src="/index/gui-mockup-viewport.png" />
+		<img src="/index/gui-mockup-nodes.png" />
+	</div>
+	<div class="carousel torn left">
+		<img src="/index/gui-demo-yosemite.png" />
+		<img src="/index/gui-mockup-viewport.png" />
+		<img src="/index/gui-mockup-nodes.png" />
+	</div>
+	<div class="carousel torn right">
+		<img src="/index/gui-demo-yosemite.png" />
+		<img src="/index/gui-mockup-viewport.png" />
+		<img src="/index/gui-mockup-nodes.png" />
+	</div>
+	<div class="screenshot-details">
+		<div class="carousel-controls">
+			<button class="direction prev">
+				<svg width="40" height="40" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
+					<path d="M20,0C8.95,0,0,8.95,0,20c0,11.05,8.95,20,20,20c11.05,0,20-8.95,20-20C40,8.95,31.05,0,20,0z M20,38c-9.93,0-18-8.07-18-18S10.07,2,20,2s18,8.07,18,18S29.93,38,20,38z" />
+					<polygon points="24.71,10.71 23.29,9.29 12.59,20 23.29,30.71 24.71,29.29 15.41,20" />
+				</svg>
+			</button>
+			<button class="dot active"></button>
+			<button class="dot"></button>
+			<button class="dot"></button>
+			<button class="direction next">
+				<svg width="40" height="40" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
+					<path d="M20,0C8.95,0,0,8.95,0,20c0,11.05,8.95,20,20,20c11.05,0,20-8.95,20-20C40,8.95,31.05,0,20,0z M20,38c-9.93,0-18-8.07-18-18S10.07,2,20,2s18,8.07,18,18S29.93,38,20,38z" />
+					<polygon points="16.71,9.29 15.29,10.71 24.59,20 15.29,29.29 16.71,30.71 27.41,20" />
+				</svg>
+			</button>
+		</div>
+		<div class="screenshot-description">
+			<p class="balance-text active">
+				Vector artwork created in the alpha version of the Graphite editor. Try this out at
+				<a href="https://editor.graphite.rs">editor.graphite.rs</a>
+				instantly in your browser.
+			</p>
+			<p class="balance-text">
+				Viewport interface mockup showcasing a photo editing project that utilizes Graphite's raster graphics pipeline, one of the upcoming roadmap milestones. Raster editing is not yet
+				supported.
+			</p>
+			<p class="balance-text">
+				Node graph mockup demonstrating how the layers directly correspond to nodes. Thick vertical (upward) lines represent compositing stacks and horizontal (rightward) links represent data
+				flow connections.
+			</p>
+		</div>
+	</div>
+	<hr />
+</section>
+
+<section id="opener-message" class="section-row right">
+	<div class="graphic">
+		<img src="/index/brush.svg" alt="" />
+	</div>
+	<div class="section">
+		<h1>Professional 2D content creation for everyone.</h1>
+		<p>
+			With great power comes great accessibility. Graphite is built on the belief that the best creative tools can be powerful and within reach of all.
+		</p>
+		<p>
+			Graphite is designed with a friendly and intuitive interface where a delightful user experience is of first-class importance. It is available for free under an open source
+			<a href="/license" target="_blank">license</a>
+			and usable
+			<a href="https://editor.graphite.rs">instantly through a web browser</a>
+			or an upcoming native client on Windows, Mac, and Linux.
+		</p>
+		<p>
+			The accessible design of Graphite does not sacrifice versatility for simplicity. The node-based workflow (coming soon) will open doors to an ecosystem of powerful capabilities catering to
+			the casual and professional user alike, encompassing a wide set of use cases at every skill level.
+		</p>
+		<!-- <a href="/blog/mission-statement" class="link arrow">Mission Statement</a> -->
+	</div>
+</section>
+
+<section id="available-now" class="section-row left">
+	<div class="graphic">
+		<img src="/index/alpha.svg" alt="" />
+	</div>
+	<div class="section">
+		<h1>Available now for alpha testing.</h1>
+		<p>
+			One year ago, Graphite was merely an idea. Today, the first milestone of the alpha release series is available for testing.
+		</p>
+		<p>
+			Milestone 1 focused on building an editor interface with basic vector design and illustration tools. Now the alpha release series moves toward milestone 2: developing a novel node-based
+			vector graphics workflow. After that, raster graphics and more are planned in the <a href="/features">roadmap</a>.
+		</p>
+		<p>
+			Features and fixes will continue rolling out every few days. Please report bugs and vote on issue prioritization <a href="https://github.com/GraphiteEditor/Graphite/projects/1">through
+				GitHub</a>. While you're there, give the project a star to help grow its momentum.
+		</p>
+		<p>
+			Try Graphite instantly in your browser:
+		</p>
+		<a href="https://editor.graphite.rs" class="link arrow">Launch the Editor</a>
+	</div>
+</section>
+
+<section id="upcoming-tech" class="feature-box">
+	<div class="box">
+		<h1 class="box-header">Upcoming Tech <span> / </span> <a href="/features" class="link arrow">More in the Roadmap</a></h1>
+		<hr />
+		<div class="triptych">
+			<div class="section">
+				<h2 class="balance-text">Non-destructive editing, powered by nodes.</h2>
+				<!-- <div class="graphic">
+					<img src="graphic.svg" alt="" />
+				</div> -->
+				<p>When editing in Graphite, your work gets described in <em>nodes</em> within your <em>layers</em>. Their <em>parameters</em> can be altered anytime in the creative process. The
+					simpler <em>layer tree</em> and wickedly powerful <em>node graph</em> provide two equivalent and interchangeable ways to create art.</p>
+				<!-- <a href="/blog/node-graph-explained" class="link arrow">Node Graph</a> -->
+			</div>
+			<div class="section">
+				<h2 class="balance-text">Raster and vector art, crisp at any resolution.</h2>
+				<!-- <div class="graphic">
+					<img src="graphic.svg" alt="" />
+				</div> -->
+				<p>Just like <em>vector</em> artwork, which is based on curves instead of pixels to preserve quality at any scale, Graphite's <em>raster</em> paintbrushes, generators, and other tools
+					work the same way. A <em>resolution-agnostic</em> render engine lets you zoom infinitely and export at any size.</p>
+				<!-- <a href="/blog/rendering-pipeline-explained" class="link arrow">Rendering</a> -->
+			</div>
+			<div class="section">
+				<h2 class="balance-text">Procedural superpowers, part of your art pipeline.</h2>
+				<!-- <div class="graphic">
+					<img src="graphic.svg" alt="" />
+				</div> -->
+				<p>Graphite aims to be the ultimate 2D tool for every technical artist. From procedural artwork to data viz and automation, it is designed from the ground up to fit into studio content
+					pipelines. You can also integrate Graphite's render engine into your game, app, or server.</p>
+				<!-- <a href="/blog/graphene-explained" class="link arrow">Graphene</a> -->
+			</div>
+		</div>
+		<div class="more-features section-row right">
+			<!-- <div class="graphic">
+				<img src="graphic.svg" alt="" />
+			</div> -->
+			<div class="section">
+				<h2>More to come.</h2>
+				<p>
+					RAW photo editing. Procedural texture generation. Advanced typesetting and desktop publishing. Motion graphics and animation. Physically-based digital painting. HDR and wide-gamut
+					color handling (ACES/OpenColorIO). Real-time collaboration. A rich ecosystem of custom nodes.
+				</p>
+				<p>
+					Learn more about the planned technology in forthcoming Graphite releases:
+				</p>
+				<a href="/features" class="link arrow">Features</a>
+			</div>
+		</div>
+	</div>
+</section>
+
+<section id="powered-by-rust" class="section-row left">
+	<div class="graphic">
+		<img src="/index/rust.svg" alt="" />
+	</div>
+	<div class="section">
+		<h1>Built for the future, powered by Rust.</h1>
+		<p>
+			Always on the bleeding edge and built to last— Graphite is written on a robust foundation with Rust, a modern programming language optimized for creating fast, reliable, future-proof
+			software.
+		</p>
+		<p>
+			The underlying node graph engine that computes and renders Graphite documents is called Graphene. The Graphene engine is an extension of the Rust language, acting as a system for chaining
+			together modular functions into useful pipelines with GPU and parallel computation. Artists can harness these powerful capabilities directly in the Graphite editor without touching code.
+			Technical artists and programmers can write reusable Rust functions to extend the capabilities of Graphite and create new nodes to share with the community.
+		</p>
+	</div>
+</section>
+
+<section id="get-involved" class="section-row right">
+	<!-- <div class="graphic">
+		<img src="/index/graphite-logo-color.svg" alt="" />
+	</div> -->
+	<div class="section">
+		<h1>Get involved.</h1>
+		<p>
+			The Graphite project could not exist without the community. Building its ambitious and diverse breadth of features will require contributions from developers, designers, technical experts,
+			creative professionals, and eagle-eyed bug hunters. Help build the future of digital art! <a href="https://discord.graphite.rs">Join the project Discord server</a> and ask how you can
+			help.
+		</p>
+		<p>
+			Rust, web, and graphics programmers should check out the <a href="/contribute">development page</a> for a quick technical overview and resources for getting started. Or just ask where to
+			begin in the #development channel on Discord and the community will get you set up.
+		</p>
+	</div>
+</section>
+
+<section id="community" class="section-row">
+	<div class="diptych">
+		<div id="newsletter" class="section">
+			<h1>Stay in the loop.</h1>
+			<p>
+				Graphite is early in development and the most exciting, ambitious features are still to come. Enter your email below to receive only occasional announcements when major updates are
+				ready for your enjoyment. The first newsletter will likely be sent out for the Graphite alpha milestone 2 release, featuring node-based editing, later this year.
+			</p>
+			<div id="newsletter-success">
+				<h2>Thanks!</h2>
+				<p>You'll receive your first newsletter email with the next major Graphite news.</p>
+			</div>
+			<form action="https://graphite.rs/newsletter-signup" method="post">
+				<div class="same-line">
+					<div class="column name">
+						<label for="newsletter-name">First + last name:</label>
+						<input id="newsletter-name" name="name" type="text" required />
+					</div>
+					<div class="column phone">
+						<label for="newsletter-phone">Phone:</label>
+						<input id="newsletter-phone" name="phone" type="text" tabindex="-1" autocomplete="off" />
+					</div>
+					<div class="column email">
+						<label for="newsletter-email">Email address:</label>
+						<input id="newsletter-email" name="email" type="email" required />
+					</div>
+				</div>
+				<div class="column submit">
+					<input type="submit" value="Subscribe" class="button" />
+				</div>
+			</form>
+		</div>
+		<div id="social" class="section">
+			<h1>Follow along.</h1>
+			<p>
+				High-quality open source software is a community endeavor. Whether you are a developer, an artist, or (like many of us) something in between— your presence in the Graphite community
+				will surely be valuable. As an avid user, tester, contributor, or just someone to cheer along from the sidelines, please join the conversation.
+			</p>
+			<div class="social-links">
+				<div class="column">
+					<a href="https://discord.graphite.rs" target="_blank">
+						<img src="/images/icons/discord.svg" alt="Discord" />
+						<span class="link arrow">Join on Discord</span>
+					</a>
+					<a href="https://www.reddit.com/r/graphite/" target="_blank">
+						<img src="/images/icons/reddit.svg" alt="Reddit" />
+						<span class="link not-uppercase arrow">/r/Graphite</span>
+					</a>
+				</div>
+				<div class="column">
+					<a href="https://github.com/GraphiteEditor/Graphite" target="_blank">
+						<img src="/images/icons/github.svg" alt="GitHub" />
+						<span class="link arrow">Star on GitHub</span>
+					</a>
+					<a href="https://twitter.com/graphiteeditor" target="_blank">
+						<img src="/images/icons/twitter.svg" alt="Twitter" />
+						<span class="link not-uppercase arrow">@GraphiteEditor</span>
+					</a>
+				</div>
+			</div>
+		</div>
+</section>
+
+<section id="recent-news" class="feature-box">
+	<div class="box">
+		<h1 class="box-header">Recent News <span> / </span> <a href="/features" class="link arrow">More in the Blog</a></h1>
+		<hr />
+		<div class="diptych">
+			{% set articles = get_section(path="blog/_index.md") %}
+			{% set latest = articles.pages | slice(end=2) %}
+			{% for article in latest %}
+			<article class="section">
+				<div class="headline">
+					<h2><a href="{{ article.permalink | safe }}">{{ article.title }}.</a></h2>
+				</div>
+				<span class="publication">By {{ article.extra.author }}. {{ article.date | date(format="%B %d, %Y", timezone="America/Los_Angeles") }}.</span>
+				<div class="summary">
+					{{ article.summary | safe }}
+				</div>
+				<div class="keep-reading">
+					<a href="{{ article.permalink | safe }}" class="link arrow">Keep Reading</a>
+				</div>
+			</article>
+			{% endfor %}
+		</div>
+	</div>
+</section>
+
+<script src="/js/carousel.js"></script>
+{% endblock content %}

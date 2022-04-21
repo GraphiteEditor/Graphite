@@ -11,14 +11,17 @@ use glam::{DAffine2, DMat2, DVec2};
 use kurbo::{BezPath, CubicBez, Line, ParamCurve, ParamCurveExtrema, PathSeg, Point, QuadBez, Rect, Shape, Vec2};
 
 #[derive(Debug, Clone, Default, Copy)]
+/// A quad defined by four vertices.
 pub struct Quad([DVec2; 4]);
 
 impl Quad {
+	/// Convert a box defined by two corner points to a quad.
 	pub fn from_box(bbox: [DVec2; 2]) -> Self {
 		let size = bbox[1] - bbox[0];
 		Self([bbox[0], bbox[0] + size * DVec2::X, bbox[1], bbox[0] + size * DVec2::Y])
 	}
 
+	/// Get all the edges in the quad.
 	pub fn lines(&self) -> [Line; 4] {
 		[
 			Line::new(to_point(self.0[0]), to_point(self.0[1])),
@@ -28,6 +31,7 @@ impl Quad {
 		]
 	}
 
+	/// Generate a [BezPath] of the quad
 	pub fn path(&self) -> BezPath {
 		let mut path = kurbo::BezPath::new();
 		path.move_to(to_point(self.0[0]));
@@ -55,6 +59,11 @@ fn to_point(vec: DVec2) -> Point {
 	Point::new(vec.x, vec.y)
 }
 
+/// Return `true` if `quad` intersects `shape`.
+/// This is the case if any of the following conditions are true:
+/// * the edges of `quad` and `shape` intersect
+/// * `shape` is entirely contained within `quad`
+/// * `filled` is `true` and `quad` is entirely contained within `shape`.
 pub fn intersect_quad_bez_path(quad: Quad, shape: &BezPath, filled: bool) -> bool {
 	let mut shape = shape.clone();
 	// for filled shapes act like shape was closed even if it isn't
@@ -75,6 +84,8 @@ pub fn intersect_quad_bez_path(quad: Quad, shape: &BezPath, filled: bool) -> boo
 	get_arbitrary_point_on_path(&shape).map(|shape_point| quad.path().contains(shape_point)).unwrap_or_default()
 }
 
+/// Returns a point on `path`.
+/// This function will usually return the first point from the path's first segment, but callers should not rely on this behavior.
 pub fn get_arbitrary_point_on_path(path: &BezPath) -> Option<Point> {
 	path.segments().next().map(|seg| match seg {
 		PathSeg::Line(line) => line.p0,
@@ -703,7 +714,7 @@ pub fn quad_line_intersect(a: &Line, b: &QuadBez) -> [Option<f64>; 2] {
 }
 
 /// Returns real roots to cubic equation: `f(t) = a0 + t*a1 + t^2*a2 + t^3*a3`.
-/// This function uses the Cardano-Viete and Numerical Recipes algorithm, found here: https://quarticequations.com/Cubic.pdf
+/// This function uses the Cardano-Viete and Numerical Recipes algorithm, found here: <https://quarticequations.com/Cubic.pdf>
 pub fn cubic_real_roots(mut a0: f64, mut a1: f64, mut a2: f64, a3: f64) -> [Option<f64>; 3] {
 	use std::f64::consts::FRAC_PI_3 as PI_3;
 

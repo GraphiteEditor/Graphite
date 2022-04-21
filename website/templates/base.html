@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5, minimum-scale=1">
+	<title>Graphite | {% block title %}{% endblock title %}</title>
+	{% block rss %}
+	<link rel="alternate" type="application/rss+xml" title="RSS" href="{{ get_url(path='blog/rss.xml', trailing_slash=false) }}">
+	{% endblock %}
+	{% block head %}{% endblock head %}
+	<link rel="stylesheet" href="/base.css">
+	<link rel="stylesheet" href="https://rsms.me/inter/inter.css">
+	<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bona+Nova:wght@400;700">
+	<script src="/js/navbar.js"></script>
+	<style>
+		.balance-text {
+			visibility: hidden;
+		}
+
+		@media (scripting: none) {
+			.balance-text {
+				visibility: visible;
+			}
+		}
+
+		@supports (text-wrap: balance) {
+			.balance-text {
+				text-wrap: balance;
+				visibility: visible;
+			}
+		}
+
+	</style>
+	<noscript>
+		<style>
+			.balance-text {
+				visibility: visible !important;
+			}
+
+		</style>
+	</noscript>
+</head>
+<body>
+	<div class="page">
+		<header>
+			<nav>
+				<div class="row">
+					<div class="left">
+						<a href="/">
+							<img src="/images/logos/graphite-logo-solid.svg" alt="Graphite Logo" />
+						</a>
+					</div>
+					<div class="right">
+						<a href="/blog">Blog</a>
+						<a href="/features">Features</a>
+						<a href="/contribute">Contribute</a>
+						<a href="https://editor.graphite.rs" class="button arrow">Launch</a>
+					</div>
+				</div>
+			</nav>
+			<svg class="ripple" xmlns="http://www.w3.org/2000/svg">
+				<path d="M 0,15 l 10000,0" />
+			</svg>
+			<hr />
+		</header>
+		<main>
+			<div class="content">
+				{% block content %} {% endblock %}
+			</div>
+		</main>
+		<footer>
+			<hr />
+			<nav>
+				<a href="https://github.com/GraphiteEditor/Graphite/tree/master/docs" class="link not-uppercase">Documentation</a>
+				<a href="https://github.com/GraphiteEditor/Graphite/graphs/contributors" class="link not-uppercase">Credits</a>
+				<a href="/license" class="link not-uppercase">License</a>
+				<a href="/logo" class="link not-uppercase">Logo</a>
+				<a href="/press" class="link not-uppercase">Press</a>
+				<a href="/contact" class="link not-uppercase">Contact</a>
+			</nav>
+			<span>Copyright &copy; {{ now() | date(format="%Y") }} Graphite contributors.</span>
+		</footer>
+	</div>
+	<script src="/lib/text-balancer/text-balancer.js"></script>
+	</script>
+</body>
+</html>

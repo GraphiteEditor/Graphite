@@ -26,15 +26,17 @@ pub fn layer_panel_entry(layer_metadata: &LayerMetadata, transform: DAffine2, la
 	let arr = arr.iter().map(|x| (*x).into()).collect::<Vec<(f64, f64)>>();
 
 	let mut thumbnail = String::new();
-	layer.data.clone().render(&mut thumbnail, &mut vec![transform], ViewMode::Normal);
+	let mut svg_defs = String::new();
+	layer.data.clone().render(&mut thumbnail, &mut svg_defs, &mut vec![transform], ViewMode::Normal);
 	let transform = transform.to_cols_array().iter().map(ToString::to_string).collect::<Vec<_>>().join(",");
 	let thumbnail = if let [(x_min, y_min), (x_max, y_max)] = arr.as_slice() {
 		format!(
-			r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="{} {} {} {}"><g transform="matrix({})">{}</g></svg>"#,
+			r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="{} {} {} {}"><defs>{}</defs><g transform="matrix({})">{}</g></svg>"#,
 			x_min,
 			y_min,
 			x_max - x_min,
 			y_max - y_min,
+			svg_defs,
 			transform,
 			thumbnail,
 		)
@@ -98,6 +100,7 @@ pub enum LayerDataTypeDiscriminant {
 	Folder,
 	Shape,
 	Text,
+	Image,
 }
 
 impl fmt::Display for LayerDataTypeDiscriminant {
@@ -106,6 +109,7 @@ impl fmt::Display for LayerDataTypeDiscriminant {
 			LayerDataTypeDiscriminant::Folder => "Folder",
 			LayerDataTypeDiscriminant::Shape => "Shape",
 			LayerDataTypeDiscriminant::Text => "Text",
+			LayerDataTypeDiscriminant::Image => "Image",
 		};
 
 		formatter.write_str(name)
@@ -120,6 +124,7 @@ impl From<&LayerDataType> for LayerDataTypeDiscriminant {
 			Folder(_) => LayerDataTypeDiscriminant::Folder,
 			Shape(_) => LayerDataTypeDiscriminant::Shape,
 			Text(_) => LayerDataTypeDiscriminant::Text,
+			Image(_) => LayerDataTypeDiscriminant::Image,
 		}
 	}
 }

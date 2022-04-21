@@ -52,13 +52,13 @@ export function initErrorHandling(editor: EditorState, dialogState: DialogState)
 function githubUrl(panicDetails: string): string {
 	const url = new URL("https://github.com/GraphiteEditor/Graphite/issues/new");
 
-	const body = stripIndents`
+	let body = stripIndents`
 		**Describe the Crash**
 		Explain clearly what you were doing when the crash occurred.
 
 		**Steps To Reproduce**
 		Describe precisely how the crash occurred, step by step, starting with a new editor window.
-		1. Open the Graphite Editor at https://editor.graphite.design
+		1. Open the Graphite Editor at https://editor.graphite.rs
 		2. 
 		3. 
 		4. 
@@ -72,11 +72,11 @@ function githubUrl(panicDetails: string): string {
 
 		**Stack Trace**
 		Copied from the crash dialog in the Graphite Editor:
+	`;
 
-		\`\`\`
-		${panicDetails}
-		\`\`\`
-		`;
+	body += "\n\n```\n";
+	body += panicDetails.trimEnd();
+	body += "\n```";
 
 	const fields = {
 		title: "[Crash Report] ",

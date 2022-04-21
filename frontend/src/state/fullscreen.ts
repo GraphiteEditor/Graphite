@@ -14,7 +14,7 @@ export function createFullscreenState() {
 
 	// Experimental Keyboard API: https://developer.mozilla.org/en-US/docs/Web/API/Navigator/keyboard
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	const keyboardLockApiSupported: Readonly<boolean> = "keyboard" in navigator && "lock" in (navigator as any).keyboard;
+	const keyboardLockApiSupported: Readonly<boolean> = "keyboard" in navigator && (navigator as any).keyboard && "lock" in (navigator as any).keyboard;
 
 	const enterFullscreen = async (): Promise<void> => {
 		await document.documentElement.requestFullscreen();

@@ -64,14 +64,13 @@ pub enum SplineOptionsUpdate {
 impl PropertyHolder for SplineTool {
 	fn properties(&self) -> WidgetLayout {
 		WidgetLayout::new(vec![LayoutRow::Row {
-			name: "".into(),
 			widgets: vec![WidgetHolder::new(Widget::NumberInput(NumberInput {
 				unit: " px".into(),
 				label: "Weight".into(),
 				value: self.options.line_weight as f64,
 				is_integer: true,
 				min: Some(0.),
-				on_update: WidgetCallback::new(|number_input| SplineToolMessage::UpdateOptions(SplineOptionsUpdate::LineWeight(number_input.value as u32)).into()),
+				on_update: WidgetCallback::new(|number_input: &NumberInput| SplineToolMessage::UpdateOptions(SplineOptionsUpdate::LineWeight(number_input.value as u32)).into()),
 				..NumberInput::default()
 			}))],
 		}])
@@ -266,7 +265,7 @@ fn add_spline(data: &SplineToolData, tool_data: &DocumentToolData, show_preview:
 		insert_index: -1,
 		transform: DAffine2::IDENTITY.to_cols_array(),
 		points,
-		style: style::PathStyle::new(Some(style::Stroke::new(tool_data.primary_color, data.weight as f32)), None),
+		style: style::PathStyle::new(Some(style::Stroke::new(tool_data.primary_color, data.weight as f32)), style::Fill::None),
 	}
 	.into()
 }

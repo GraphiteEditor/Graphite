@@ -303,6 +303,13 @@ export class DisplayEditableTextbox extends JsMessage {
 	readonly line_width!: undefined | number;
 
 	readonly font_size!: number;
+
+	@Type(() => Color)
+	readonly color!: Color;
+}
+
+export class UpdateImageData extends JsMessage {
+	readonly image_data!: ImageData[];
 }
 
 export class DisplayRemoveEditableTextbox extends JsMessage {}
@@ -366,7 +373,15 @@ export class LayerMetadata {
 	selected!: boolean;
 }
 
-export type LayerType = "Folder" | "Shape" | "Circle" | "Rect" | "Line" | "PolyLine" | "Ellipse";
+export type LayerType = "Folder" | "Image" | "Shape" | "Text";
+
+export class ImageData {
+	readonly path!: BigUint64Array;
+
+	readonly mime!: string;
+
+	readonly image_data!: Uint8Array;
+}
 
 export class IndexedDbDocumentDetails extends DocumentDetails {
 	@Transform(({ value }: { value: BigInt }) => value.toString())
@@ -402,7 +417,7 @@ export function defaultWidgetLayout(): WidgetLayout {
 
 export type LayoutRow = WidgetRow | WidgetSection;
 
-export type WidgetRow = { name: string; widgets: Widget[] };
+export type WidgetRow = { widgets: Widget[] };
 export function isWidgetRow(layoutRow: WidgetRow | WidgetSection): layoutRow is WidgetRow {
 	return Boolean((layoutRow as WidgetRow).widgets);
 }
@@ -412,7 +427,7 @@ export function isWidgetSection(layoutRow: WidgetRow | WidgetSection): layoutRow
 	return Boolean((layoutRow as WidgetSection).layout);
 }
 
-export type WidgetKind = "NumberInput" | "Separator" | "IconButton" | "PopoverButton" | "OptionalInput" | "RadioInput" | "TextInput" | "TextLabel" | "IconLabel";
+export type WidgetKind = "NumberInput" | "Separator" | "IconButton" | "PopoverButton" | "OptionalInput" | "RadioInput" | "TextInput" | "TextLabel" | "IconLabel" | "ColorInput";
 
 export interface Widget {
 	kind: WidgetKind;
@@ -485,6 +500,10 @@ export class DisplayDialogComingSoon extends JsMessage {
 
 export class TriggerTextCommit extends JsMessage {}
 
+export class TriggerTextCopy extends JsMessage {
+	readonly copy_text!: string;
+}
+
 export class TriggerViewportResize extends JsMessage {}
 
 // Any is used since the type of the object should be known from the rust side
@@ -501,12 +520,14 @@ export const messageConstructors: Record<string, MessageMaker> = {
 	DisplayDialogPanic,
 	DisplayDocumentLayerTreeStructure: newDisplayDocumentLayerTreeStructure,
 	DisplayEditableTextbox,
+	UpdateImageData,
 	DisplayRemoveEditableTextbox,
 	TriggerFileDownload,
 	TriggerFileUpload,
 	TriggerIndexedDbRemoveDocument,
 	TriggerIndexedDbWriteDocument,
 	TriggerTextCommit,
+	TriggerTextCopy,
 	TriggerViewportResize,
 	UpdateActiveDocument,
 	UpdateActiveTool,

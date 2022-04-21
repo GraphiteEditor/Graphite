@@ -64,14 +64,13 @@ pub enum TextOptionsUpdate {
 impl PropertyHolder for TextTool {
 	fn properties(&self) -> WidgetLayout {
 		WidgetLayout::new(vec![LayoutRow::Row {
-			name: "".into(),
 			widgets: vec![WidgetHolder::new(Widget::NumberInput(NumberInput {
 				unit: " px".into(),
 				label: "Font Size".into(),
 				value: self.options.font_size as f64,
 				is_integer: true,
 				min: Some(1.),
-				on_update: WidgetCallback::new(|number_input| TextMessage::UpdateOptions(TextOptionsUpdate::FontSize(number_input.value as u32)).into()),
+				on_update: WidgetCallback::new(|number_input: &NumberInput| TextMessage::UpdateOptions(TextOptionsUpdate::FontSize(number_input.value as u32)).into()),
 				..NumberInput::default()
 			}))],
 		}])
@@ -150,7 +149,7 @@ fn resize_overlays(overlays: &mut Vec<Vec<LayerId>>, responses: &mut VecDeque<Me
 		let operation = Operation::AddOverlayRect {
 			path,
 			transform: DAffine2::ZERO.to_cols_array(),
-			style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 1.0)), None),
+			style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 1.0)), Fill::None),
 		};
 		responses.push_back(DocumentMessage::Overlays(operation.into()).into());
 	}
@@ -166,7 +165,7 @@ fn update_overlays(document: &DocumentMessageHandler, data: &mut TextToolData, r
 			.graphene_document
 			.layer(layer_path)
 			.unwrap()
-			.current_bounding_box_with_transform(document.graphene_document.multiply_transforms(layer_path).unwrap())
+			.aabounding_box_for_transform(document.graphene_document.multiply_transforms(layer_path).unwrap())
 			.unwrap();
 
 		let operation = Operation::SetLayerTransformInViewport {
@@ -253,7 +252,7 @@ impl Fsm for TextToolFsmState {
 								transform: DAffine2::ZERO.to_cols_array(),
 								insert_index: -1,
 								text: r#""#.to_string(),
-								style: style::PathStyle::new(None, Some(Fill::new(tool_data.primary_color))),
+								style: style::PathStyle::new(None, Fill::solid(tool_data.primary_color)),
 								size: font_size as f64,
 							}
 							.into(),

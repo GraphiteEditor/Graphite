@@ -406,7 +406,7 @@ impl PathGraph {
 			concat_paths(&mut curve, &self.edge(vertices[index - 1].0, vertices[index].0, vertices[index].1).unwrap().curve);
 		}
 		curve.push(PathEl::ClosePath);
-		ShapeLayer::from_bez_path(BezPath::from_vec(curve), *style, false)
+		ShapeLayer::from_bez_path(BezPath::from_vec(curve), style.clone(), false)
 	}
 }
 

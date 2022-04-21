@@ -14,6 +14,8 @@
 
 <style lang="scss">
 .widget-section {
+	flex: 0 0 auto;
+
 	.header {
 		flex: 0 0 24px;
 		background: var(--color-4-dimgray);

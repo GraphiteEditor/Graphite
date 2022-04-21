@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}{{ section.title }}.{% endblock title %}
+
+{% block head %}
+<link rel="stylesheet" href="/page.css">
+{% endblock head %}
+
+{% block content %}
+<section class="section-row">
+	<div class="section">
+		<h1>{{ section.title }}.</h1>
+		{{ section.content | safe }}
+	</div>
+</section>
+{% endblock content %}

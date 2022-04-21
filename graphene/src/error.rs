@@ -1,6 +1,7 @@
 use super::LayerId;
 use crate::boolean_ops::BooleanOperationError;
 
+/// A set of different errors that can occur when using Graphene.
 #[derive(Debug, Clone, PartialEq)]
 pub enum DocumentError {
 	LayerNotFound(Vec<LayerId>),
@@ -10,6 +11,7 @@ pub enum DocumentError {
 	NonReorderableSelection,
 	NotAShape,
 	NotText,
+	NotAnImage,
 	InvalidFile(String),
 }
 

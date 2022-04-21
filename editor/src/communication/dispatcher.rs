@@ -64,6 +64,12 @@ impl Dispatcher {
 				#[remain::unsorted]
 				NoOp => {}
 				Frontend(message) => {
+					// Image data should be immediatly handled
+					if let FrontendMessage::UpdateImageData { .. } = message {
+						self.responses.push(message);
+						return;
+					}
+
 					// `FrontendMessage`s are saved and will be sent to the frontend after the message queue is done being processed
 					self.responses.push(message);
 				}
@@ -169,9 +175,9 @@ mod test {
 		let mut editor = create_editor_with_three_layers();
 
 		let document_before_copy = editor.dispatcher.message_handlers.portfolio_message_handler.active_document().graphene_document.clone();
-		editor.handle_message(PortfolioMessage::Copy { clipboard: Clipboard::User });
+		editor.handle_message(PortfolioMessage::Copy { clipboard: Clipboard::Internal });
 		editor.handle_message(PortfolioMessage::PasteIntoFolder {
-			clipboard: Clipboard::User,
+			clipboard: Clipboard::Internal,
 			folder_path: vec![],
 			insert_index: -1,
 		});
@@ -208,9 +214,9 @@ mod test {
 		editor.handle_message(DocumentMessage::SetSelectedLayers {
 			replacement_selected_layers: vec![vec![shape_id]],
 		});
-		editor.handle_message(PortfolioMessage::Copy { clipboard: Clipboard::User });
+		editor.handle_message(PortfolioMessage::Copy { clipboard: Clipboard::Internal });
 		editor.handle_message(PortfolioMessage::PasteIntoFolder {
-			clipboard: Clipboard::User,
+			clipboard: Clipboard::Internal,
 			folder_path: vec![],
 			insert_index: -1,
 		});
@@ -273,15 +279,15 @@ mod test {
 
 		let document_before_copy = editor.dispatcher.message_handlers.portfolio_message_handler.active_document().graphene_document.clone();
 
-		editor.handle_message(PortfolioMessage::Copy { clipboard: Clipboard::User });
+		editor.handle_message(PortfolioMessage::Copy { clipboard: Clipboard::Internal });
 		editor.handle_message(DocumentMessage::DeleteSelectedLayers);
 		editor.handle_message(PortfolioMessage::PasteIntoFolder {
-			clipboard: Clipboard::User,
+			clipboard: Clipboard::Internal,
 			folder_path: vec![],
 			insert_index: -1,
 		});
 		editor.handle_message(PortfolioMessage::PasteIntoFolder {
-			clipboard: Clipboard::User,
+			clipboard: Clipboard::Internal,
 			folder_path: vec![],
 			insert_index: -1,
 		});
@@ -344,16 +350,16 @@ mod test {
 		editor.handle_message(DocumentMessage::SetSelectedLayers {
 			replacement_selected_layers: vec![vec![rect_id], vec![ellipse_id]],
 		});
-		editor.handle_message(PortfolioMessage::Copy { clipboard: Clipboard::User });
+		editor.handle_message(PortfolioMessage::Copy { clipboard: Clipboard::Internal });
 		editor.handle_message(DocumentMessage::DeleteSelectedLayers);
 		editor.draw_rect(0., 800., 12., 200.);
 		editor.handle_message(PortfolioMessage::PasteIntoFolder {
-			clipboard: Clipboard::User,
+			clipboard: Clipboard::Internal,
 			folder_path: vec![],
 			insert_index: -1,
 		});
 		editor.handle_message(PortfolioMessage::PasteIntoFolder {
-			clipboard: Clipboard::User,
+			clipboard: Clipboard::Internal,
 			folder_path: vec![],
 			insert_index: -1,
 		});
@@ -414,5 +420,33 @@ mod test {
 		editor.handle_message(DocumentMessage::ReorderSelectedLayers { relative_index_offset: isize::MAX });
 		let (all, non_selected, selected) = verify_order(editor.dispatcher.message_handlers.portfolio_message_handler.active_document_mut());
 		assert_eq!(all, non_selected.into_iter().chain(selected.into_iter()).collect::<Vec<_>>());
+	}
+
+	#[test]
+	fn check_if_graphite_file_version_upgrade_is_needed() {
+		init_logger();
+		set_uuid_seed(0);
+		let mut editor = Editor::new();
+		let test_file = include_str!("./graphite-test-document.graphite");
+		let responses = editor.handle_message(PortfolioMessage::OpenDocumentFile {
+			document_name: "Graphite Version Test".into(),
+			document_serialized_content: test_file.into(),
+		});
+
+		for response in responses {
+			if let FrontendMessage::DisplayDialogError { title, description } = response {
+				println!();
+				println!("-------------------------------------------------");
+				println!("Failed test due to receiving a DisplayDialogError while loading the graphite sample file!");
+				println!("This is most likely caused by forgetting to bump the `GRAPHITE_DOCUMENT_VERSION` in `editor/src/consts.rs`");
+				println!("Once bumping this version number please replace the `graphite-test-document.graphite` with a valid file");
+				println!("DisplayDialogError details:");
+				println!("Title: {}", title);
+				println!("description: {}", description);
+				println!("-------------------------------------------------");
+				println!();
+				panic!()
+			}
+		}
 	}
 }

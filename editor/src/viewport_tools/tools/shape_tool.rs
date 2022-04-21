@@ -59,14 +59,13 @@ pub enum ShapeOptionsUpdate {
 impl PropertyHolder for ShapeTool {
 	fn properties(&self) -> WidgetLayout {
 		WidgetLayout::new(vec![LayoutRow::Row {
-			name: "".into(),
 			widgets: vec![WidgetHolder::new(Widget::NumberInput(NumberInput {
 				label: "Sides".into(),
 				value: self.options.vertices as f64,
 				is_integer: true,
 				min: Some(3.),
 				max: Some(256.),
-				on_update: WidgetCallback::new(|number_input| ShapeToolMessage::UpdateOptions(ShapeOptionsUpdate::Vertices(number_input.value as u8)).into()),
+				on_update: WidgetCallback::new(|number_input: &NumberInput| ShapeToolMessage::UpdateOptions(ShapeOptionsUpdate::Vertices(number_input.value as u8)).into()),
 				..NumberInput::default()
 			}))],
 		}])
@@ -162,7 +161,7 @@ impl Fsm for ShapeToolFsmState {
 							insert_index: -1,
 							transform: DAffine2::ZERO.to_cols_array(),
 							sides: data.sides,
-							style: style::PathStyle::new(None, Some(style::Fill::new(tool_data.primary_color))),
+							style: style::PathStyle::new(None, style::Fill::solid(tool_data.primary_color)),
 						}
 						.into(),
 					);

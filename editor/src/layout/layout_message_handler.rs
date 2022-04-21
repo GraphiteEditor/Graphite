@@ -80,15 +80,21 @@ impl MessageHandler<LayoutMessage, ()> for LayoutMessageHandler {
 						responses.push_back(callback_message);
 					}
 					Widget::RadioInput(radio_input) => {
-						let update_value = value.as_u64().expect("OptionalInput update was not of type: u64");
+						let update_value = value.as_u64().expect("RadioInput update was not of type: u64");
 						radio_input.selected_index = update_value as u32;
 						let callback_message = (radio_input.entries[update_value as usize].on_update.callback)(&());
 						responses.push_back(callback_message);
 					}
 					Widget::TextInput(text_input) => {
-						let update_value = value.as_str().expect("OptionalInput update was not of type: string");
+						let update_value = value.as_str().expect("TextInput update was not of type: string");
 						text_input.value = update_value.into();
 						let callback_message = (text_input.on_update.callback)(text_input);
+						responses.push_back(callback_message);
+					}
+					Widget::ColorInput(color_input) => {
+						let update_value = value.as_str().map(String::from);
+						color_input.value = update_value;
+						let callback_message = (color_input.on_update.callback)(color_input);
 						responses.push_back(callback_message);
 					}
 					Widget::TextLabel(_) => {}

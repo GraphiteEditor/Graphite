@@ -1,0 +1,4 @@
++++
+title = ""
+template = "index.html"
++++

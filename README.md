@@ -1,4 +1,4 @@
-![Graphite Logo](graphite_splash.png)
+![Graphite logo](website/static/images/logos/splash.svg)
 
 # Powerful 2D vector and raster editing. Procedural and nondestructive.
 
@@ -6,18 +6,17 @@ Graphite is a digital content creation software package for 2D graphics, merging
 
 While the project is still in early development, implementation progress has been moving forward at a swift pace. The Graphite Alpha release is launching soon and focuses on vector art for SVG creation. The next major milestone will introduce a nondestructive backend for vector graphics with a powerful node graph system. Later releases will provide better vector rendering capabilities and then resolution-agnostic raster editing and compositing.
 
-Play around with Graphite right now in your browser at [editor.graphite.design](https://editor.graphite.design). Windows, Mac, and Linux will additionally be supported with a native (not web-based) desktop client later in the development roadmap.
+Play around with Graphite right now in your browser at [editor.graphite.rs](https://editor.graphite.rs). Windows, Mac, and Linux will additionally be supported with a native (not web-based) desktop client later in the development roadmap.
 
 ## Contributing
 
 We need Rust and web developers! See [instructions here](https://github.com/GraphiteEditor/Graphite/issues/202) for getting started.
 
-We are also in search of a new logo and brand style system. If you are an experienced designer, please get in touch for more details.
+We are also in search of artists to help create material for the website. Please get in touch for more details.
 
 ## Discord
 
-If the Graphite project strikes your fancy, join our Discord community to chat with the community and development team. You're invited to stop by just to lurk, ask questions, offer suggestions, or get involved in the project. We are seeking collaborators to help design and develop the software and this is where we communicate. Paste `https://di----scord.gg/uMjBz----5N68W` into your browser and delete the dashes. (To prevent spam bots, please don't share the link on any website without the dashes.)
-
+If the Graphite project strikes your fancy, [join our Discord community](https://discord.graphite.rs) to chat with the community and development team. You're invited to stop by just to lurk, ask questions, offer suggestions, or get involved in the project. We are seeking collaborators to help design and develop the software and this is where we communicate.
 ## Vision
 
 Graphite is an open source, cross-platform digital content creation desktop and web application for 2D graphics editing, photo processing, vector art, digital painting, illustration, data visualization, compositing, and more. Inspired by the open source success of Blender in the 3D domain, it aims to bring 2D content creation to new heights with efficient workflows influenced by Photoshop/Gimp and Illustrator/Inkscape and backed by a powerful node-based, nondestructive approach proven by Houdini and Substance.
