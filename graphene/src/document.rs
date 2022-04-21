@@ -572,19 +572,9 @@ impl Document {
 				Some([vec![DocumentChanged, CreatedLayer { path: path.clone() }], update_thumbnails_upstream(&path)].concat())
 			}
 			Operation::BooleanOperation { operation, selected } => {
-				// TODO: handle overlapping identical curve case
-				// TODO: add ability to undo
-				// TODO: proper difference
-				// TODO: proper style selection (done?)
-				// TODO: could generate symmetrical code
-				// TODO: boolean ops on any number of shapes
-				// TODO: precision reached without intersection bug (maybe caused by separating a closed path, or dragging handles)
-				// TODO: click on shape should drag the shape
 				let mut responses = Vec::new();
 				if selected.len() > 1 {
-					let shapes = self.transformed_shapes(&selected)?;
-
-					let new_shapes = composite_boolean_operation(operation, &mut shapes.into_iter().map(|s| RefCell::new(s)).collect())?;
+					let new_shapes = composite_boolean_operation(operation, &mut self.transformed_shapes(&selected)?.into_iter().rev().map(|s| RefCell::new(s)).collect())?;
 
 					for path in selected {
 						self.delete(&path)?;

@@ -483,7 +483,7 @@ pub fn composite_boolean_operation(mut select: BooleanOperation, shapes: &mut Ve
 		shapes.swap(0, temp_len - 1);
 	}
 	match select {
-		BooleanOperation::Union => {
+		BooleanOperation::Union | BooleanOperation::Intersection => {
 			// We must attempt to Union each shape with every other shape
 			let mut subject_idx = 0;
 			while subject_idx < shapes.len() {
@@ -509,16 +509,20 @@ pub fn composite_boolean_operation(mut select: BooleanOperation, shapes: &mut Ve
 			}
 			Ok(shapes.iter().map(|ref_shape_layer| ref_shape_layer.borrow().clone()).collect())
 		}
-		BooleanOperation::Intersection | BooleanOperation::SubtractFront | BooleanOperation::SubtractBack => {
-			let mut partial = boolean_operation(select, &mut shapes[0].borrow_mut(), &mut shapes[1].borrow_mut())?;
-			for shape_idx in 2..shapes.len() {
+		BooleanOperation::SubtractFront => {
+			let mut result = vec![shapes[0].borrow().clone()];
+			for shape_idx in 1..shapes.len() {
 				let mut temp = Vec::new();
-				for mut partial_piece in partial {
-					temp.append(&mut boolean_operation(select, &mut partial_piece, &mut shapes[shape_idx].borrow_mut())?);
+				for mut partial in result {
+					match boolean_operation(select, &mut partial, &mut shapes[shape_idx].borrow_mut()) {
+						Ok(mut partial_result) => temp.append(&mut partial_result),
+						Err(BooleanOperationError::NothingDone) => temp.push(partial),
+						Err(err) => return Err(err),
+					}
 				}
-				partial = temp; // this move should be done without copying
+				result = temp; // this move should be done without copying
 			}
-			Ok(partial)
+			Ok(result)
 		}
 		BooleanOperation::Difference => {
 			let mut difference = Vec::new();
@@ -528,6 +532,7 @@ pub fn composite_boolean_operation(mut select: BooleanOperation, shapes: &mut Ve
 			}
 			Ok(difference)
 		}
+		BooleanOperation::SubtractBack => panic!("Should never occur"),
 	}
 }
 
