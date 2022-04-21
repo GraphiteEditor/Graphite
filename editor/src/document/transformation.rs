@@ -1,7 +1,7 @@
 use crate::consts::{ROTATE_SNAP_ANGLE, SCALE_SNAP_INTERVAL};
 use crate::message_prelude::*;
 
-use graphene::document::Document;
+use graphene::document::{Document, FontCache};
 use graphene::Operation as DocumentOperation;
 
 use glam::{DAffine2, DVec2};
@@ -210,7 +210,7 @@ impl<'a> Selected<'a> {
 		}
 	}
 
-	pub fn calculate_pivot(&mut self) -> DVec2 {
+	pub fn calculate_pivot(&mut self, font_cache: &FontCache) -> DVec2 {
 		let xy_summation = self
 			.selected
 			.iter()
@@ -221,7 +221,7 @@ impl<'a> Selected<'a> {
 					.document
 					.layer(path)
 					.unwrap()
-					.aabounding_box_for_transform(multiplied_transform)
+					.aabounding_box_for_transform(multiplied_transform, font_cache)
 					.unwrap_or([multiplied_transform.translation; 2]);
 
 				(bounds[0] + bounds[1]) / 2.

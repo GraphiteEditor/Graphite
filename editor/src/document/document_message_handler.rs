@@ -162,7 +162,13 @@ impl DocumentMessageHandler {
 			// TODO: Create VectorManipulatorShape when creating a kurbo shape as a stopgap, rather than on each new selection
 			match &layer.ok()?.data {
 				LayerDataType::Shape(shape) => Some(VectorShape::new(path_to_shape.to_vec(), viewport_transform, &shape.path, shape.closed, responses)),
-				LayerDataType::Text(text) => Some(VectorShape::new(path_to_shape.to_vec(), viewport_transform, &text.to_bez_path_nonmut(), true, responses)),
+				LayerDataType::Text(text) => Some(VectorShape::new(
+					path_to_shape.to_vec(),
+					viewport_transform,
+					&text.to_bez_path_nonmut(&self.graphene_document.font_cache),
+					true,
+					responses,
+				)),
 				_ => None,
 			}
 		});
@@ -421,7 +427,7 @@ impl DocumentMessageHandler {
 			.get_mut(&path)
 			.ok_or_else(|| EditorError::Document(format!("Could not get layer metadata for {:?}", path)))?;
 		let layer = self.graphene_document.layer(&path)?;
-		let entry = layer_panel_entry(&data, self.graphene_document.multiply_transforms(&path)?, layer, path);
+		let entry = layer_panel_entry(&data, self.graphene_document.multiply_transforms(&path)?, layer, path, &self.graphene_document.font_cache);
 		Ok(entry)
 	}
 
@@ -442,7 +448,7 @@ impl DocumentMessageHandler {
 			.ok()?;
 		let layer = self.graphene_document.layer(path).ok()?;
 
-		Some(layer_panel_entry(layer_metadata, transform, layer, path.to_vec()))
+		Some(layer_panel_entry(layer_metadata, transform, layer, path.to_vec(), &self.graphene_document.font_cache))
 	}
 
 	/// When working with an insert index, deleting the layers may cause the insert index to point to a different location (if the layer being deleted was located before the insert index).
@@ -477,12 +483,12 @@ impl DocumentMessageHandler {
 	/// Creates the blob URLs for the image data in the document
 	pub fn load_image_data(&self, responses: &mut VecDeque<Message>, root: &LayerDataType, mut path: Vec<LayerId>) {
 		let mut image_data = Vec::new();
-		fn walk_layers(data: &LayerDataType, path: &mut Vec<LayerId>, responses: &mut VecDeque<Message>, image_data: &mut Vec<FrontendImageData>) {
+		fn walk_layers(data: &LayerDataType, path: &mut Vec<LayerId>, image_data: &mut Vec<FrontendImageData>) {
 			match data {
 				LayerDataType::Folder(f) => {
 					for (id, layer) in f.layer_ids.iter().zip(f.layers().iter()) {
 						path.push(*id);
-						walk_layers(&layer.data, path, responses, image_data);
+						walk_layers(&layer.data, path, image_data);
 						path.pop();
 					}
 				}
@@ -495,9 +501,15 @@ impl DocumentMessageHandler {
 			}
 		}
 
-		walk_layers(root, &mut path, responses, &mut image_data);
+		walk_layers(root, &mut path, &mut image_data);
 		if !image_data.is_empty() {
 			responses.push_front(FrontendMessage::UpdateImageData { image_data }.into());
+		}
+	}
+
+	pub fn load_default_font(&self, responses: &mut VecDeque<Message>) {
+		if !self.graphene_document.font_cache.has_default() {
+			responses.push_back(FrontendMessage::TriggerDefaultFontLoad.into())
 		}
 	}
 }
@@ -899,6 +911,10 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 				let affected_layer_path = affected_folder_path;
 				responses.extend([LayerChanged { affected_layer_path }.into(), DocumentStructureChanged.into()]);
 			}
+			FontLoaded { font, data, is_default } => {
+				self.graphene_document.font_cache.insert(font, data, is_default);
+				responses.push_back(DocumentMessage::DirtyRenderDocument.into());
+			}
 			GroupSelectedLayers => {
 				let mut new_folder_path = self.graphene_document.shallowest_common_folder(self.selected_layers()).unwrap_or(&[]).to_vec();
 
@@ -933,6 +949,11 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 					responses.push_back(FrontendMessage::UpdateDocumentLayer { data: layer_entry }.into());
 				}
 				responses.push_back(PropertiesPanelMessage::CheckSelectedWasUpdated { path: affected_layer_path }.into());
+			}
+			LoadFont { font } => {
+				if !self.graphene_document.font_cache.loaded_font(&font) {
+					responses.push_front(FrontendMessage::TriggerFontLoad { font }.into());
+				}
 			}
 			MoveSelectedLayersTo {
 				folder_path,
@@ -1234,7 +1255,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 				let text = self.graphene_document.layer(&path).unwrap().as_text().unwrap();
 				responses.push_back(DocumentOperation::SetTextEditability { path, editable }.into());
 				if editable {
-					let color = if let Fill::Solid(solid_color) = text.style.fill() { *solid_color } else { Color::BLACK };
+					let color = if let Fill::Solid(solid_color) = text.path_style.fill() { *solid_color } else { Color::BLACK };
 					responses.push_back(
 						FrontendMessage::DisplayEditableTextbox {
 							text: text.text.clone(),

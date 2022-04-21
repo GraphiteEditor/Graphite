@@ -3,15 +3,16 @@ use super::utility_types::TargetDocument;
 use crate::document::properties_panel_message::TransformOp;
 use crate::layout::layout_message::LayoutTarget;
 use crate::layout::widgets::{
-	ColorInput, IconLabel, LayoutRow, NumberInput, PopoverButton, RadioEntryData, RadioInput, Separator, SeparatorDirection, SeparatorType, TextInput, TextLabel, Widget, WidgetCallback, WidgetHolder,
-	WidgetLayout,
+	ColorInput, FontInput, IconLabel, LayoutRow, NumberInput, PopoverButton, RadioEntryData, RadioInput, Separator, SeparatorDirection, SeparatorType, TextAreaInput, TextInput, TextLabel, Widget,
+	WidgetCallback, WidgetHolder, WidgetLayout,
 };
 use crate::message_prelude::*;
 
 use graphene::color::Color;
-use graphene::document::Document as GrapheneDocument;
+use graphene::document::{Document as GrapheneDocument, FontCache};
 use graphene::layers::layer_info::{Layer, LayerDataType};
 use graphene::layers::style::{Fill, LineCap, LineJoin, Stroke};
+use graphene::layers::text_layer::TextLayer;
 use graphene::{LayerId, Operation};
 
 use glam::{DAffine2, DVec2};
@@ -148,6 +149,23 @@ impl<'a> MessageHandler<PropertiesPanelMessage, PropertiesPanelMessageHandlerDat
 					.into(),
 				);
 			}
+			ModifyFont {
+				font_family,
+				font_style,
+				font_file,
+				size,
+			} => {
+				let (path, _) = self.active_selection.clone().expect("Received update for properties panel with no active layer");
+
+				responses.push_back(self.create_document_operation(Operation::ModifyFont {
+					path,
+					font_family,
+					font_style,
+					font_file,
+					size,
+				}));
+				responses.push_back(ResendActiveProperties.into());
+			}
 			ModifyTransform { value, transform_op } => {
 				let (path, target_document) = self.active_selection.as_ref().expect("Received update for properties panel with no active layer");
 				let layer = get_document(*target_document).layer(path).unwrap();
@@ -162,8 +180,8 @@ impl<'a> MessageHandler<PropertiesPanelMessage, PropertiesPanelMessageHandlerDat
 				};
 
 				let scale = match transform_op {
-					Width => layer.bounding_transform().scale_x() / layer.transform.scale_x(),
-					Height => layer.bounding_transform().scale_y() / layer.transform.scale_y(),
+					Width => layer.bounding_transform(&get_document(*target_document).font_cache).scale_x() / layer.transform.scale_x(),
+					Height => layer.bounding_transform(&get_document(*target_document).font_cache).scale_y() / layer.transform.scale_y(),
 					_ => 1.,
 				};
 
@@ -183,6 +201,10 @@ impl<'a> MessageHandler<PropertiesPanelMessage, PropertiesPanelMessageHandlerDat
 			ModifyStroke { stroke } => {
 				let (path, _) = self.active_selection.clone().expect("Received update for properties panel with no active layer");
 				responses.push_back(self.create_document_operation(Operation::SetLayerStroke { path, stroke }))
+			}
+			ModifyText { new_text } => {
+				let (path, _) = self.active_selection.clone().expect("Received update for properties panel with no active layer");
+				responses.push_back(Operation::SetTextContent { path, new_text }.into())
 			}
 			CheckSelectedWasUpdated { path } => {
 				if self.matches_selected(&path) {
@@ -212,8 +234,8 @@ impl<'a> MessageHandler<PropertiesPanelMessage, PropertiesPanelMessageHandlerDat
 				let (path, target_document) = self.active_selection.clone().expect("Received update for properties panel with no active layer");
 				let layer = get_document(target_document).layer(&path).unwrap();
 				match target_document {
-					TargetDocument::Artboard => register_artboard_layer_properties(layer, responses),
-					TargetDocument::Artwork => register_artwork_layer_properties(layer, responses),
+					TargetDocument::Artboard => register_artboard_layer_properties(layer, responses, &get_document(target_document).font_cache),
+					TargetDocument::Artwork => register_artwork_layer_properties(layer, responses, &get_document(target_document).font_cache),
 				}
 			}
 		}
@@ -224,7 +246,7 @@ impl<'a> MessageHandler<PropertiesPanelMessage, PropertiesPanelMessageHandlerDat
 	}
 }
 
-fn register_artboard_layer_properties(layer: &Layer, responses: &mut VecDeque<Message>) {
+fn register_artboard_layer_properties(layer: &Layer, responses: &mut VecDeque<Message>, font_cache: &FontCache) {
 	let options_bar = vec![LayoutRow::Row {
 		widgets: vec![
 			WidgetHolder::new(Widget::IconLabel(IconLabel {
@@ -326,7 +348,7 @@ fn register_artboard_layer_properties(layer: &Layer, responses: &mut VecDeque<Me
 							direction: SeparatorDirection::Horizontal,
 						})),
 						WidgetHolder::new(Widget::NumberInput(NumberInput {
-							value: layer.bounding_transform().scale_x(),
+							value: layer.bounding_transform(font_cache).scale_x(),
 							label: "W".into(),
 							unit: " px".into(),
 							on_update: WidgetCallback::new(|number_input: &NumberInput| {
@@ -343,7 +365,7 @@ fn register_artboard_layer_properties(layer: &Layer, responses: &mut VecDeque<Me
 							direction: SeparatorDirection::Horizontal,
 						})),
 						WidgetHolder::new(Widget::NumberInput(NumberInput {
-							value: layer.bounding_transform().scale_y(),
+							value: layer.bounding_transform(font_cache).scale_y(),
 							label: "H".into(),
 							unit: " px".into(),
 							on_update: WidgetCallback::new(|number_input: &NumberInput| {
@@ -405,7 +427,7 @@ fn register_artboard_layer_properties(layer: &Layer, responses: &mut VecDeque<Me
 	);
 }
 
-fn register_artwork_layer_properties(layer: &Layer, responses: &mut VecDeque<Message>) {
+fn register_artwork_layer_properties(layer: &Layer, responses: &mut VecDeque<Message>, font_cache: &FontCache) {
 	let options_bar = vec![LayoutRow::Row {
 		widgets: vec![
 			match &layer.data {
@@ -456,20 +478,21 @@ fn register_artwork_layer_properties(layer: &Layer, responses: &mut VecDeque<Mes
 	let properties_body = match &layer.data {
 		LayerDataType::Shape(shape) => {
 			if let Some(fill_layout) = node_section_fill(shape.style.fill()) {
-				vec![node_section_transform(layer), fill_layout, node_section_stroke(&shape.style.stroke().unwrap_or_default())]
+				vec![node_section_transform(layer, font_cache), fill_layout, node_section_stroke(&shape.style.stroke().unwrap_or_default())]
 			} else {
-				vec![node_section_transform(layer), node_section_stroke(&shape.style.stroke().unwrap_or_default())]
+				vec![node_section_transform(layer, font_cache), node_section_stroke(&shape.style.stroke().unwrap_or_default())]
 			}
 		}
 		LayerDataType::Text(text) => {
 			vec![
-				node_section_transform(layer),
-				node_section_fill(text.style.fill()).expect("Text should have fill"),
-				node_section_stroke(&text.style.stroke().unwrap_or_default()),
+				node_section_transform(layer, font_cache),
+				node_section_font(text),
+				node_section_fill(text.path_style.fill()).expect("Text should have fill"),
+				node_section_stroke(&text.path_style.stroke().unwrap_or_default()),
 			]
 		}
 		LayerDataType::Image(_) => {
-			vec![node_section_transform(layer)]
+			vec![node_section_transform(layer, font_cache)]
 		}
 		_ => {
 			vec![]
@@ -492,7 +515,7 @@ fn register_artwork_layer_properties(layer: &Layer, responses: &mut VecDeque<Mes
 	);
 }
 
-fn node_section_transform(layer: &Layer) -> LayoutRow {
+fn node_section_transform(layer: &Layer, font_cache: &FontCache) -> LayoutRow {
 	LayoutRow::Section {
 		name: "Transform".into(),
 		layout: vec![
@@ -616,7 +639,7 @@ fn node_section_transform(layer: &Layer) -> LayoutRow {
 						direction: SeparatorDirection::Horizontal,
 					})),
 					WidgetHolder::new(Widget::NumberInput(NumberInput {
-						value: layer.bounding_transform().scale_x(),
+						value: layer.bounding_transform(font_cache).scale_x(),
 						label: "W".into(),
 						unit: " px".into(),
 						on_update: WidgetCallback::new(|number_input: &NumberInput| {
@@ -633,7 +656,7 @@ fn node_section_transform(layer: &Layer) -> LayoutRow {
 						direction: SeparatorDirection::Horizontal,
 					})),
 					WidgetHolder::new(Widget::NumberInput(NumberInput {
-						value: layer.bounding_transform().scale_y(),
+						value: layer.bounding_transform(font_cache).scale_y(),
 						label: "H".into(),
 						unit: " px".into(),
 						on_update: WidgetCallback::new(|number_input: &NumberInput| {
@@ -644,6 +667,115 @@ fn node_section_transform(layer: &Layer) -> LayoutRow {
 							.into()
 						}),
 						..NumberInput::default()
+					})),
+				],
+			},
+		],
+	}
+}
+
+fn node_section_font(layer: &TextLayer) -> LayoutRow {
+	let font_family = layer.font_family.clone();
+	let font_style = layer.font_style.clone();
+	let font_file = layer.font_file.clone();
+	let size = layer.size;
+	LayoutRow::Section {
+		name: "Font".into(),
+		layout: vec![
+			LayoutRow::Row {
+				widgets: vec![
+					WidgetHolder::new(Widget::TextLabel(TextLabel {
+						value: "Text".into(),
+						..TextLabel::default()
+					})),
+					WidgetHolder::new(Widget::Separator(Separator {
+						separator_type: SeparatorType::Unrelated,
+						direction: SeparatorDirection::Horizontal,
+					})),
+					WidgetHolder::new(Widget::TextAreaInput(TextAreaInput {
+						value: layer.text.clone(),
+						on_update: WidgetCallback::new(|text_area: &TextAreaInput| PropertiesPanelMessage::ModifyText { new_text: text_area.value.clone() }.into()),
+					})),
+				],
+			},
+			LayoutRow::Row {
+				widgets: vec![
+					WidgetHolder::new(Widget::TextLabel(TextLabel {
+						value: "Font".into(),
+						..TextLabel::default()
+					})),
+					WidgetHolder::new(Widget::Separator(Separator {
+						separator_type: SeparatorType::Unrelated,
+						direction: SeparatorDirection::Horizontal,
+					})),
+					WidgetHolder::new(Widget::FontInput(FontInput {
+						is_style_picker: false,
+						font_family: layer.font_family.clone(),
+						font_style: layer.font_style.clone(),
+						font_file: String::new(),
+						on_update: WidgetCallback::new(move |font_input: &FontInput| {
+							PropertiesPanelMessage::ModifyFont {
+								font_family: font_input.font_family.clone(),
+								font_style: font_input.font_style.clone(),
+								font_file: Some(font_input.font_file.clone()),
+								size,
+							}
+							.into()
+						}),
+					})),
+				],
+			},
+			LayoutRow::Row {
+				widgets: vec![
+					WidgetHolder::new(Widget::TextLabel(TextLabel {
+						value: "Style".into(),
+						..TextLabel::default()
+					})),
+					WidgetHolder::new(Widget::Separator(Separator {
+						separator_type: SeparatorType::Unrelated,
+						direction: SeparatorDirection::Horizontal,
+					})),
+					WidgetHolder::new(Widget::FontInput(FontInput {
+						is_style_picker: true,
+						font_family: layer.font_family.clone(),
+						font_style: layer.font_style.clone(),
+						font_file: String::new(),
+						on_update: WidgetCallback::new(move |font_input: &FontInput| {
+							PropertiesPanelMessage::ModifyFont {
+								font_family: font_input.font_family.clone(),
+								font_style: font_input.font_style.clone(),
+								font_file: Some(font_input.font_file.clone()),
+								size,
+							}
+							.into()
+						}),
+					})),
+				],
+			},
+			LayoutRow::Row {
+				widgets: vec![
+					WidgetHolder::new(Widget::TextLabel(TextLabel {
+						value: "Size".into(),
+						..TextLabel::default()
+					})),
+					WidgetHolder::new(Widget::Separator(Separator {
+						separator_type: SeparatorType::Unrelated,
+						direction: SeparatorDirection::Horizontal,
+					})),
+					WidgetHolder::new(Widget::NumberInput(NumberInput {
+						value: layer.size,
+						min: Some(1.),
+						unit: " px".into(),
+						on_update: WidgetCallback::new(move |number_input: &NumberInput| {
+							PropertiesPanelMessage::ModifyFont {
+								font_family: font_family.clone(),
+								font_style: font_style.clone(),
+								font_file: font_file.clone(),
+								size: number_input.value,
+							}
+							.into()
+						}),
+						..Default::default()
 					})),
 				],
 			},
@@ -820,13 +952,13 @@ fn node_section_stroke(stroke: &Stroke) -> LayoutRow {
 						direction: SeparatorDirection::Horizontal,
 					})),
 					WidgetHolder::new(Widget::NumberInput(NumberInput {
-						value: stroke.width() as f64,
-						is_integer: true,
+						value: stroke.weight() as f64,
+						is_integer: false,
 						min: Some(0.),
 						unit: " px".into(),
 						on_update: WidgetCallback::new(move |number_input: &NumberInput| {
 							PropertiesPanelMessage::ModifyStroke {
-								stroke: internal_stroke2.clone().with_width(number_input.value as f32),
+								stroke: internal_stroke2.clone().with_weight(number_input.value),
 							}
 							.into()
 						}),
@@ -872,7 +1004,7 @@ fn node_section_stroke(stroke: &Stroke) -> LayoutRow {
 						unit: " px".into(),
 						on_update: WidgetCallback::new(move |number_input: &NumberInput| {
 							PropertiesPanelMessage::ModifyStroke {
-								stroke: internal_stroke4.clone().with_dash_offset(number_input.value as f32),
+								stroke: internal_stroke4.clone().with_dash_offset(number_input.value),
 							}
 							.into()
 						}),
@@ -986,13 +1118,13 @@ fn node_section_stroke(stroke: &Stroke) -> LayoutRow {
 						direction: SeparatorDirection::Horizontal,
 					})),
 					WidgetHolder::new(Widget::NumberInput(NumberInput {
-						value: stroke.miter_limit() as f64,
+						value: stroke.line_join_miter_limit() as f64,
 						is_integer: true,
 						min: Some(0.),
 						unit: "".into(),
 						on_update: WidgetCallback::new(move |number_input: &NumberInput| {
 							PropertiesPanelMessage::ModifyStroke {
-								stroke: internal_stroke5.clone().with_miter_limit(number_input.value as f32),
+								stroke: internal_stroke5.clone().with_line_join_miter_limit(number_input.value),
 							}
 							.into()
 						}),

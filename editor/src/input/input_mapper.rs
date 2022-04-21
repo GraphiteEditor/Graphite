@@ -45,15 +45,16 @@ impl Default for Mapping {
 			entry! {action=SelectToolMessage::PointerMove { axis_align: KeyShift, snap_angle: KeyControl, center: KeyAlt }, message=InputMapperMessage::PointerMove},
 			entry! {action=SelectToolMessage::DragStart { add_to_selection: KeyShift }, key_down=Lmb},
 			entry! {action=SelectToolMessage::DragStop, key_up=Lmb},
+			entry! {action=SelectToolMessage::DragStop, key_down=KeyEnter},
 			entry! {action=SelectToolMessage::EditLayer, message=InputMapperMessage::DoubleClick},
 			entry! {action=SelectToolMessage::Abort, key_down=Rmb},
 			entry! {action=SelectToolMessage::Abort, key_down=KeyEscape},
-			// Crop
-			entry! {action=CropToolMessage::PointerDown, key_down=Lmb},
-			entry! {action=CropToolMessage::PointerMove { constrain_axis_or_aspect: KeyShift, center: KeyAlt }, message=InputMapperMessage::PointerMove},
-			entry! {action=CropToolMessage::PointerUp, key_up=Lmb},
-			entry! {action=CropToolMessage::DeleteSelected, key_down=KeyDelete},
-			entry! {action=CropToolMessage::DeleteSelected, key_down=KeyBackspace},
+			// Artboard
+			entry! {action=ArtboardToolMessage::PointerDown, key_down=Lmb},
+			entry! {action=ArtboardToolMessage::PointerMove { constrain_axis_or_aspect: KeyShift, center: KeyAlt }, message=InputMapperMessage::PointerMove},
+			entry! {action=ArtboardToolMessage::PointerUp, key_up=Lmb},
+			entry! {action=ArtboardToolMessage::DeleteSelected, key_down=KeyDelete},
+			entry! {action=ArtboardToolMessage::DeleteSelected, key_down=KeyBackspace},
 			// Navigate
 			entry! {action=NavigateToolMessage::ClickZoom { zoom_in: false }, key_up=Lmb, modifiers=[KeyShift]},
 			entry! {action=NavigateToolMessage::ClickZoom { zoom_in: true }, key_up=Lmb},

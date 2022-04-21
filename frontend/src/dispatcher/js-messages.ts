@@ -114,7 +114,7 @@ export class UpdateWorkingColors extends JsMessage {
 
 export type ToolName =
 	| "Select"
-	| "Crop"
+	| "Artboard"
 	| "Navigate"
 	| "Eyedropper"
 	| "Text"
@@ -388,6 +388,8 @@ export class IndexedDbDocumentDetails extends DocumentDetails {
 	id!: string;
 }
 
+export class TriggerDefaultFontLoad extends JsMessage {}
+
 export class TriggerIndexedDbWriteDocument extends JsMessage {
 	document!: string;
 
@@ -401,6 +403,10 @@ export class TriggerIndexedDbRemoveDocument extends JsMessage {
 	// Use a string since IndexedDB can not use BigInts for keys
 	@Transform(({ value }: { value: BigInt }) => value.toString())
 	document_id!: string;
+}
+
+export class TriggerFontLoad extends JsMessage {
+	font!: string;
 }
 
 export interface WidgetLayout {
@@ -427,7 +433,19 @@ export function isWidgetSection(layoutRow: WidgetRow | WidgetSection): layoutRow
 	return Boolean((layoutRow as WidgetSection).layout);
 }
 
-export type WidgetKind = "NumberInput" | "Separator" | "IconButton" | "PopoverButton" | "OptionalInput" | "RadioInput" | "TextInput" | "TextLabel" | "IconLabel" | "ColorInput";
+export type WidgetKind =
+	| "NumberInput"
+	| "Separator"
+	| "IconButton"
+	| "PopoverButton"
+	| "OptionalInput"
+	| "RadioInput"
+	| "TextInput"
+	| "TextAreaInput"
+	| "TextLabel"
+	| "IconLabel"
+	| "ColorInput"
+	| "FontInput";
 
 export interface Widget {
 	kind: WidgetKind;
@@ -522,9 +540,11 @@ export const messageConstructors: Record<string, MessageMaker> = {
 	DisplayEditableTextbox,
 	UpdateImageData,
 	DisplayRemoveEditableTextbox,
+	TriggerDefaultFontLoad,
 	TriggerFileDownload,
 	TriggerFileUpload,
 	TriggerIndexedDbRemoveDocument,
+	TriggerFontLoad,
 	TriggerIndexedDbWriteDocument,
 	TriggerTextCommit,
 	TriggerTextCopy,

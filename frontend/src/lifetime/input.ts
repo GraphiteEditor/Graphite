@@ -104,11 +104,14 @@ export function createInputManager(editor: EditorState, container: HTMLElement, 
 
 	// Pointer events
 
+	// While any pointer button is already down, additional button down events are not reported, but they are sent as `pointermove` events and these are handled in the backend
 	const onPointerMove = (e: PointerEvent): void => {
 		if (!e.buttons) viewportPointerInteractionOngoing = false;
 
-		const modifiers = makeModifiersBitfield(e);
-		editor.instance.on_mouse_move(e.clientX, e.clientY, e.buttons, modifiers);
+		if (viewportPointerInteractionOngoing) {
+			const modifiers = makeModifiersBitfield(e);
+			editor.instance.on_mouse_move(e.clientX, e.clientY, e.buttons, modifiers);
+		}
 	};
 
 	const onPointerDown = (e: PointerEvent): void => {

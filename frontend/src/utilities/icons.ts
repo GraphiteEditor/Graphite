@@ -78,7 +78,7 @@ import MouseHintScrollDown from "@/../assets/16px-two-tone/mouse-hint-scroll-dow
 import MouseHintScrollUp from "@/../assets/16px-two-tone/mouse-hint-scroll-up.svg";
 
 // 24px Two-Tone
-import GeneralCropTool from "@/../assets/24px-two-tone/general-crop-tool.svg";
+import GeneralArtboardTool from "@/../assets/24px-two-tone/general-artboard-tool.svg";
 import GeneralEyedropperTool from "@/../assets/24px-two-tone/general-eyedropper-tool.svg";
 import GeneralFillTool from "@/../assets/24px-two-tone/general-fill-tool.svg";
 import GeneralGradientTool from "@/../assets/24px-two-tone/general-gradient-tool.svg";
@@ -184,7 +184,7 @@ export const ICON_LIST = {
 	MouseHintScrollDown: { component: MouseHintScrollDown, size: size16 },
 	MouseHintScrollUp: { component: MouseHintScrollUp, size: size16 },
 
-	GeneralCropTool: { component: GeneralCropTool, size: size24 },
+	GeneralArtboardTool: { component: GeneralArtboardTool, size: size24 },
 	GeneralEyedropperTool: { component: GeneralEyedropperTool, size: size24 },
 	GeneralNavigateTool: { component: GeneralNavigateTool, size: size24 },
 	GeneralSelectTool: { component: GeneralSelectTool, size: size24 },

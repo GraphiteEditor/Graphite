@@ -17,7 +17,7 @@
 			<LayoutCol class="shelf">
 				<LayoutCol class="tools" :scrollableY="true">
 					<ShelfItemInput icon="GeneralSelectTool" title="Select Tool (V)" :active="activeTool === 'Select'" :action="() => selectTool('Select')" />
-					<ShelfItemInput icon="GeneralCropTool" title="Crop Tool" :active="activeTool === 'Crop'" :action="() => selectTool('Crop')" />
+					<ShelfItemInput icon="GeneralArtboardTool" title="Artboard Tool" :active="activeTool === 'Artboard'" :action="() => selectTool('Artboard')" />
 					<ShelfItemInput icon="GeneralNavigateTool" title="Navigate Tool (Z)" :active="activeTool === 'Navigate'" :action="() => selectTool('Navigate')" />
 					<ShelfItemInput icon="GeneralEyedropperTool" title="Eyedropper Tool (I)" :active="activeTool === 'Eyedropper'" :action="() => selectTool('Eyedropper')" />
 					<ShelfItemInput icon="GeneralFillTool" title="Fill Tool (F)" :active="activeTool === 'Fill'" :action="() => selectTool('Fill')" />
@@ -287,9 +287,13 @@ import {
 	TriggerViewportResize,
 	DisplayRemoveEditableTextbox,
 	DisplayEditableTextbox,
+	TriggerFontLoad,
+	TriggerDefaultFontLoad,
 } from "@/dispatcher/js-messages";
 
 import { textInputCleanup } from "@/lifetime/input";
+
+import { loadDefaultFont, setLoadDefaultFontCallback } from "@/utilities/fonts";
 
 import LayoutCol from "@/components/layout/LayoutCol.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
@@ -453,6 +457,14 @@ export default defineComponent({
 		this.editor.dispatcher.subscribeJsMessage(TriggerTextCommit, () => {
 			if (this.textInput) this.editor.instance.on_change_text(textInputCleanup(this.textInput.innerText));
 		});
+		this.editor.dispatcher.subscribeJsMessage(TriggerFontLoad, (triggerFontLoad) => {
+			fetch(triggerFontLoad.font)
+				.then((response) => response.arrayBuffer())
+				.then((response) => {
+					this.editor.instance.on_font_load(triggerFontLoad.font, new Uint8Array(response), false);
+				});
+		});
+		this.editor.dispatcher.subscribeJsMessage(TriggerDefaultFontLoad, loadDefaultFont);
 		this.editor.dispatcher.subscribeJsMessage(TriggerTextCopy, async (triggerTextCopy) => {
 			// Clipboard API supported?
 			if (!navigator.clipboard) return;
@@ -514,6 +526,7 @@ export default defineComponent({
 		// TODO(mfish33): Replace with initialization system Issue:#524
 		// Get initial Document Bar
 		this.editor.instance.init_document_bar();
+		setLoadDefaultFontCallback((font: string, data: Uint8Array) => this.editor.instance.on_font_load(font, data, true));
 	},
 	data() {
 		const documentModeEntries: SectionsOfMenuListEntries = [
