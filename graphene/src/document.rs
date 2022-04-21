@@ -582,9 +582,9 @@ impl Document {
 				// TODO: click on shape should drag the shape
 				let mut responses = Vec::new();
 				if selected.len() > 1 {
-					let shapes = self.transformed_shapes(selected)?;
+					let shapes = self.transformed_shapes(&selected)?;
 
-					let new_shapes = composite_boolean_operation(*operation, &mut shapes.into_iter().map(|s| RefCell::new(s)).collect())?;
+					let new_shapes = composite_boolean_operation(operation, &mut shapes.into_iter().map(|s| RefCell::new(s)).collect())?;
 
 					for path in selected {
 						self.delete(&path)?;

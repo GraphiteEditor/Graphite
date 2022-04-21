@@ -488,7 +488,7 @@ pub fn composite_boolean_operation(mut select: BooleanOperation, shapes: &mut Ve
 			let mut subject_idx = 0;
 			while subject_idx < shapes.len() {
 				let mut shape_idx = 0;
-				while shape_idx < shapes.len() {
+				while shape_idx < shapes.len() && subject_idx < shapes.len() {
 					if shape_idx == subject_idx {
 						shape_idx += 1;
 						continue;
@@ -571,7 +571,7 @@ pub fn boolean_operation(mut select: BooleanOperation, alpha: &mut ShapeLayer, b
 					if cast_horizontal_ray(point_on_curve(&beta.path), &alpha.path) % 2 != 0 {
 						Ok(vec![alpha.clone()])
 					} else if cast_horizontal_ray(point_on_curve(&alpha.path), &beta.path) % 2 != 0 {
-						beta.style = alpha.style;
+						beta.style = alpha.style.clone();
 						Ok(vec![beta.clone()])
 					} else {
 						Err(BooleanOperationError::NothingDone)
@@ -610,7 +610,7 @@ pub fn boolean_operation(mut select: BooleanOperation, alpha: &mut ShapeLayer, b
 				Err(BooleanOperationError::NoIntersections) => {
 					// Check could also be done with area and single ray cast
 					if cast_horizontal_ray(point_on_curve(&beta.path), &alpha.path) % 2 != 0 {
-						beta.style = alpha.style;
+						beta.style = alpha.style.clone();
 						Ok(vec![beta.clone()])
 					} else if cast_horizontal_ray(point_on_curve(&alpha.path), &beta.path) % 2 != 0 {
 						Ok(vec![alpha.clone()])
