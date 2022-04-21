@@ -18,7 +18,7 @@ pub struct SelectedEdges {
 	bottom: bool,
 	left: bool,
 	right: bool,
-	// Aspect ratio in the form: x : 1 = width : height
+	// Aspect ratio in the form of width/height, so x:1 = width:height
 	aspect_ratio: f64,
 }
 
