@@ -417,7 +417,7 @@ export function defaultWidgetLayout(): WidgetLayout {
 
 export type LayoutRow = WidgetRow | WidgetSection;
 
-export type WidgetRow = { name: string; widgets: Widget[] };
+export type WidgetRow = { widgets: Widget[] };
 export function isWidgetRow(layoutRow: WidgetRow | WidgetSection): layoutRow is WidgetRow {
 	return Boolean((layoutRow as WidgetRow).widgets);
 }
