@@ -43,27 +43,27 @@ impl Default for VectorControlPoint {
 	}
 }
 
-const POINT_STROKE_WIDTH: f32 = 2.0;
+const POINT_STROKE_WEIGHT: f64 = 2.;
 
 impl VectorControlPoint {
 	/// Sets if this point is selected and updates the overlay to represent that
 	pub fn set_selected(&mut self, selected: bool, responses: &mut VecDeque<Message>) {
 		if selected {
-			self.set_overlay_style(POINT_STROKE_WIDTH + 1.0, COLOR_ACCENT, COLOR_ACCENT, responses);
+			self.set_overlay_style(POINT_STROKE_WEIGHT + 1., COLOR_ACCENT, COLOR_ACCENT, responses);
 		} else {
-			self.set_overlay_style(POINT_STROKE_WIDTH, COLOR_ACCENT, Color::WHITE, responses);
+			self.set_overlay_style(POINT_STROKE_WEIGHT, COLOR_ACCENT, Color::WHITE, responses);
 		}
 		self.is_selected = selected;
 	}
 
 	/// Sets the overlay style for this point
-	pub fn set_overlay_style(&self, stroke_width: f32, stroke_color: Color, fill_color: Color, responses: &mut VecDeque<Message>) {
+	pub fn set_overlay_style(&self, stroke_weight: f64, stroke_color: Color, fill_color: Color, responses: &mut VecDeque<Message>) {
 		if let Some(overlay_path) = &self.overlay_path {
 			responses.push_back(
 				DocumentMessage::Overlays(
 					Operation::SetLayerStyle {
 						path: overlay_path.clone(),
-						style: PathStyle::new(Some(Stroke::new(stroke_color, stroke_width)), Fill::solid(fill_color)),
+						style: PathStyle::new(Some(Stroke::new(stroke_color, stroke_weight)), Fill::solid(fill_color)),
 					}
 					.into(),
 				)
