@@ -45,6 +45,7 @@ impl Default for Mapping {
 			entry! {action=SelectToolMessage::PointerMove { axis_align: KeyShift, snap_angle: KeyControl, center: KeyAlt }, message=InputMapperMessage::PointerMove},
 			entry! {action=SelectToolMessage::DragStart { add_to_selection: KeyShift }, key_down=Lmb},
 			entry! {action=SelectToolMessage::DragStop, key_up=Lmb},
+			entry! {action=SelectToolMessage::DragStop, key_down=KeyEnter},
 			entry! {action=SelectToolMessage::EditLayer, message=InputMapperMessage::DoubleClick},
 			entry! {action=SelectToolMessage::Abort, key_down=Rmb},
 			entry! {action=SelectToolMessage::Abort, key_down=KeyEscape},
