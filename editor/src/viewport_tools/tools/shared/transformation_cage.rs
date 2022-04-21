@@ -78,8 +78,13 @@ impl SelectedEdges {
 		}
 
 		let mut size = max - min;
-		if constrain && ((self.top || self.bottom) && (self.left || self.right)) {
-			size = DVec2::new(size.x, size.x / self.aspect_ratio).abs().max(DVec2::new(size.y * self.aspect_ratio, size.y).abs()) * size.signum();
+		if constrain {
+			size = match ((self.top || self.bottom), (self.left || self.right)) {
+				(true, true) => DVec2::new(size.x, size.x / self.aspect_ratio).abs().max(DVec2::new(size.y * self.aspect_ratio, size.y).abs()) * size.signum(),
+				(true, false) => DVec2::new(size.y * self.aspect_ratio, size.y),
+				(false, true) => DVec2::new(size.x, size.x / self.aspect_ratio),
+				_ => size,
+			};
 		}
 		if center {
 			if self.left || self.right {
