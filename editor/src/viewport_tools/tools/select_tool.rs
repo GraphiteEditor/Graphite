@@ -1,6 +1,6 @@
 use crate::consts::{ROTATE_SNAP_ANGLE, SELECTION_TOLERANCE};
 use crate::document::transformation::Selected;
-use crate::document::utility_types::{AlignAggregate, AlignAxis, FlipAxis, TargetDocument};
+use crate::document::utility_types::{AlignAggregate, AlignAxis, FlipAxis};
 use crate::document::DocumentMessageHandler;
 use crate::frontend::utility_types::MouseCursorIcon;
 use crate::input::keyboard::{Key, MouseMotion};
@@ -595,15 +595,6 @@ impl Fsm for SelectToolFsmState {
 					if let Some(bounding_box_overlays) = data.bounding_box_overlays.take() {
 						bounding_box_overlays.delete(responses);
 					}
-
-					// Register properties when switching back to select tool
-					responses.push_back(
-						PropertiesPanelMessage::SetActiveLayers {
-							paths: document.selected_layers().map(|path| path.to_vec()).collect(),
-							document: TargetDocument::Artwork,
-						}
-						.into(),
-					);
 
 					data.snap_handler.cleanup(responses);
 					Ready

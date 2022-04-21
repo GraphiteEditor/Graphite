@@ -356,6 +356,15 @@ impl Fsm for CropToolFsmState {
 						bounding_box_overlays.delete(responses);
 					}
 
+					// Register properties when switching back to other tools
+					responses.push_back(
+						PropertiesPanelMessage::SetActiveLayers {
+							paths: document.selected_layers().map(|path| path.to_vec()).collect(),
+							document: TargetDocument::Artwork,
+						}
+						.into(),
+					);
+
 					data.snap_handler.cleanup(responses);
 					CropToolFsmState::Ready
 				}
