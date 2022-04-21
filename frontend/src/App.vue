@@ -158,6 +158,10 @@ img {
 				background-color: var(--color-6-lowergray);
 			}
 		}
+
+		&::-webkit-scrollbar-corner {
+			background: none;
+		}
 	}
 
 	.scrollable-x.scrollable-y {

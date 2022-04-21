@@ -57,5 +57,5 @@ pub const FILE_EXPORT_SUFFIX: &str = ".svg";
 pub const COLOR_ACCENT: Color = Color::from_unsafe(0x00 as f32 / 255., 0xA8 as f32 / 255., 0xFF as f32 / 255.);
 
 // Document
-pub const GRAPHITE_DOCUMENT_VERSION: &str = "0.0.5";
+pub const GRAPHITE_DOCUMENT_VERSION: &str = "0.0.6";
 pub const VIEWPORT_ZOOM_TO_FIT_PADDING_SCALE_FACTOR: f32 = 1.05;
