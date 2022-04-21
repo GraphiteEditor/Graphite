@@ -92,9 +92,9 @@ import MenuList, { MenuListEntry, SectionsOfMenuListEntries } from "@/components
 import IconLabel from "@/components/widgets/labels/IconLabel.vue";
 
 export default defineComponent({
-	emits: ["update:name", "update:fontStyle", "changeFont"],
+	emits: ["update:fontFamily", "update:fontStyle", "changeFont"],
 	props: {
-		name: { type: String as PropType<string>, required: true },
+		fontFamily: { type: String as PropType<string>, required: true },
 		fontStyle: { type: String as PropType<string>, required: true },
 		disabled: { type: Boolean as PropType<boolean>, default: false },
 		isStyle: { type: Boolean as PropType<boolean>, default: false },
@@ -113,12 +113,13 @@ export default defineComponent({
 		},
 		selectFont(newName: string) {
 			if (this.isStyle) this.$emit("update:fontStyle", newName);
-			else this.$emit("update:name", newName);
+			else this.$emit("update:fontFamily", newName);
 
 			{
-				const name = this.isStyle ? this.name : newName;
+				const fontFamily = this.isStyle ? this.fontFamily : newName;
 				const fontStyle = this.isStyle ? newName : getFontStyles(newName)[0];
-				this.$emit("changeFont", { name, fontStyle, file: getFontFile(name, fontStyle) });
+				const fontFile = getFontFile(fontFamily, fontStyle);
+				this.$emit("changeFont", { fontFamily, fontStyle, fontFile });
 			}
 		},
 		onWidthChanged(newWidth: number) {
@@ -127,14 +128,14 @@ export default defineComponent({
 		updateEntries(): { menuEntries: SectionsOfMenuListEntries; activeEntry: MenuListEntry } {
 			let selectedIndex = -1;
 			const menuEntries: SectionsOfMenuListEntries = [
-				(this.isStyle ? getFontStyles(this.name) : fontNames()).map((name, index) => {
-					if (name === (this.isStyle ? this.fontStyle : this.name)) selectedIndex = index;
+				(this.isStyle ? getFontStyles(this.fontFamily) : fontNames()).map((name, index) => {
+					if (name === (this.isStyle ? this.fontStyle : this.fontFamily)) selectedIndex = index;
 
-					const x: MenuListEntry = {
+					const result: MenuListEntry = {
 						label: name,
 						action: (): void => this.selectFont(name),
 					};
-					return x;
+					return result;
 				}),
 			];
 
@@ -144,7 +145,7 @@ export default defineComponent({
 		},
 	},
 	watch: {
-		name() {
+		fontFamily() {
 			const { menuEntries, activeEntry } = this.updateEntries();
 			this.menuEntries = menuEntries;
 			this.activeEntry = activeEntry;

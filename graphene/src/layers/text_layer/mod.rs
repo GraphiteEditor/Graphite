@@ -28,7 +28,7 @@ pub struct TextLayer {
 	/// Font size in pixels.
 	pub size: f64,
 	pub line_width: Option<f64>,
-	pub font: String,
+	pub font_family: String,
 	pub font_style: String,
 	pub font_file: Option<String>,
 	#[serde(skip)]
@@ -118,13 +118,13 @@ impl TextLayer {
 		transforms.iter().skip(start).cloned().reduce(|a, b| a * b).unwrap_or(DAffine2::IDENTITY)
 	}
 
-	pub fn new(text: String, style: PathStyle, size: f64, font_name: String, font_style: String, font_file: Option<String>, font_cache: &FontCache) -> Self {
+	pub fn new(text: String, style: PathStyle, size: f64, font_family: String, font_style: String, font_file: Option<String>, font_cache: &FontCache) -> Self {
 		let mut new = Self {
 			text,
 			path_style: style,
 			size,
 			line_width: None,
-			font: font_name,
+			font_family,
 			font_style,
 			font_file,
 			editable: false,

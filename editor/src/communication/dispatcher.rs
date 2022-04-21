@@ -64,7 +64,7 @@ impl Dispatcher {
 				#[remain::unsorted]
 				NoOp => {}
 				Frontend(message) => {
-					// Image & font loading should be immediatly handled
+					// Image and font loading should be immediately handled
 					if let FrontendMessage::UpdateImageData { .. } | FrontendMessage::TriggerFontLoad { .. } = message {
 						self.responses.push(message);
 						return;

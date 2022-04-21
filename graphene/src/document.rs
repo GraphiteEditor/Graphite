@@ -28,19 +28,22 @@ pub struct FontCache {
 	default_font: Option<String>,
 }
 impl FontCache {
-	/// Returns the font name if the font is cached, otherwise returns the default font name if that is cached
+	/// Returns the font family name if the font is cached, otherwise returns the default font family name if that is cached
 	pub fn resolve_font<'a>(&'a self, font: Option<&'a String>) -> Option<&'a String> {
 		font.filter(|font| self.loaded_font(font))
 			.map_or(self.default_font.as_ref().filter(|font| self.loaded_font(font)), Some)
 	}
+
 	/// Try to get the bytes for a font
 	pub fn get<'a>(&'a self, font: Option<&String>) -> Option<&'a Vec<u8>> {
 		self.resolve_font(font).and_then(|font| self.data.get(font))
 	}
+
 	/// Check if the font is already loaded
-	pub fn loaded_font(&self, font: &String) -> bool {
+	pub fn loaded_font(&self, font: &str) -> bool {
 		self.data.contains_key(font)
 	}
+
 	/// Insert a new font into the cache
 	pub fn insert(&mut self, font: String, data: Vec<u8>, is_default: bool) {
 		if is_default {
@@ -48,6 +51,7 @@ impl FontCache {
 		}
 		self.data.insert(font, data);
 	}
+
 	/// Checks if the font cache has a default font
 	pub fn has_default(&self) -> bool {
 		self.default_font.is_some()
@@ -730,7 +734,13 @@ impl Document {
 					return Err(DocumentError::IndexOutOfBounds);
 				}
 			}
-			Operation::ModifyFont { path, name, font_style, file, size } => {
+			Operation::ModifyFont {
+				path,
+				font_family,
+				font_style,
+				font_file,
+				size,
+			} => {
 				// Not using Document::layer_mut is necessary because we alson need to borrow the font cache
 				let mut current_folder = &mut self.root;
 				let (folder_path, id) = split_path(&path)?;
@@ -740,9 +750,9 @@ impl Document {
 				let layer_mut = current_folder.as_folder_mut()?.layer_mut(id).ok_or_else(|| DocumentError::LayerNotFound(folder_path.into()))?;
 				let text = layer_mut.as_text_mut()?;
 
-				text.font = name;
+				text.font_family = font_family;
 				text.font_style = font_style;
-				text.font_file = file;
+				text.font_file = font_file;
 				text.size = size;
 				text.regenerate_path(text.load_face(&self.font_cache));
 				self.mark_as_dirty(&path)?;

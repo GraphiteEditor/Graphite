@@ -25,38 +25,39 @@ fetch(fontListAPI)
 		const loadedFonts = json.items as { family: string; variants: string[]; files: { [name: string]: string } }[];
 		fontList = loadedFonts.map((font) => {
 			const { family } = font;
-			const variants = font.variants.map(formatVariantName);
-			const files = new Map(font.variants.map((x) => [formatVariantName(x), font.files[x]]));
+			const variants = font.variants.map(formatFontStyleName);
+			const files = new Map(font.variants.map((x) => [formatFontStyleName(x), font.files[x]]));
 			return { family, variants, files };
 		});
 		loadDefaultFont();
 	});
 
-function formatVariantName(name: string): string {
-	const italic = name.endsWith("italic");
-	const weight = name === "regular" || name === "italic" ? 400 : parseInt(name, 10);
+function formatFontStyleName(fontStyle: string): string {
+	const isItalic = fontStyle.endsWith("italic");
+	const weight = fontStyle === "regular" || fontStyle === "italic" ? 400 : parseInt(fontStyle, 10);
 	let weightName = "";
-	{
-		let bestWeight = Infinity;
-		weightNameMapping.forEach((nameChecking, weightChecking) => {
-			if (Math.abs(weightChecking - weight) < bestWeight) {
-				bestWeight = Math.abs(weightChecking - weight);
-				weightName = nameChecking;
-			}
-		});
-	}
-	return `${weightName}${italic ? " Italic" : ""} (${weight})`;
+
+	let bestWeight = Infinity;
+	weightNameMapping.forEach((nameChecking, weightChecking) => {
+		if (Math.abs(weightChecking - weight) < bestWeight) {
+			bestWeight = Math.abs(weightChecking - weight);
+			weightName = nameChecking;
+		}
+	});
+
+	return `${weightName}${isItalic ? " Italic" : ""} (${weight})`;
 }
 
 export function loadDefaultFont(): void {
 	const font = getFontFile("Merriweather", "Normal (400)");
 
-	if (font)
+	if (font) {
 		fetch(font)
 			.then((response) => response.arrayBuffer())
 			.then((response) => {
 				if (loadDefaultFontCallback) loadDefaultFontCallback(font, new Uint8Array(response));
 			});
+	}
 }
 
 export function setLoadDefaultFontCallback(callback: fontCallbackType): void {
@@ -68,13 +69,13 @@ export function fontNames(): string[] {
 	return fontList.map((value) => value.family);
 }
 
-export function getFontStyles(name: string): string[] {
-	const font = fontList.find((value) => value.family === name);
+export function getFontStyles(fontFamily: string): string[] {
+	const font = fontList.find((value) => value.family === fontFamily);
 	return font ? font.variants : [];
 }
 
-export function getFontFile(name: string, fontStyle: string): string | undefined {
-	const font = fontList.find((value) => value.family === name);
-	const file = font && font.files.get(fontStyle);
-	return file && file.replace("http://", "https://");
+export function getFontFile(fontFamily: string, fontStyle: string): string | undefined {
+	const font = fontList.find((value) => value.family === fontFamily);
+	const fontFile = font && font.files.get(fontStyle);
+	return fontFile && fontFile.replace("http://", "https://");
 }

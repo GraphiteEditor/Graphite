@@ -68,7 +68,7 @@ pub enum TextMessage {
 #[remain::sorted]
 #[derive(PartialEq, Clone, Debug, Hash, Serialize, Deserialize)]
 pub enum TextOptionsUpdate {
-	Font { name: String, style: String, file: String },
+	Font { family: String, style: String, file: String },
 	FontSize(u32),
 }
 
@@ -79,13 +79,13 @@ impl PropertyHolder for TextTool {
 			widgets: vec![
 				WidgetHolder::new(Widget::FontInput(FontInput {
 					is_style_picker: false,
-					name: self.options.font_name.clone(),
+					font_family: self.options.font_name.clone(),
 					font_style: self.options.font_style.clone(),
 					on_update: WidgetCallback::new(|font_input: &FontInput| {
 						TextMessage::UpdateOptions(TextOptionsUpdate::Font {
-							name: font_input.name.clone(),
+							family: font_input.font_family.clone(),
 							style: font_input.font_style.clone(),
-							file: font_input.file.clone(),
+							file: font_input.font_file.clone(),
 						})
 						.into()
 					}),
@@ -97,13 +97,13 @@ impl PropertyHolder for TextTool {
 				})),
 				WidgetHolder::new(Widget::FontInput(FontInput {
 					is_style_picker: true,
-					name: self.options.font_name.clone(),
+					font_family: self.options.font_name.clone(),
 					font_style: self.options.font_style.clone(),
 					on_update: WidgetCallback::new(|font_input: &FontInput| {
 						TextMessage::UpdateOptions(TextOptionsUpdate::Font {
-							name: font_input.name.clone(),
+							family: font_input.font_family.clone(),
 							style: font_input.font_style.clone(),
-							file: font_input.file.clone(),
+							file: font_input.font_file.clone(),
 						})
 						.into()
 					}),
@@ -141,8 +141,8 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for TextTool {
 
 		if let ToolMessage::Text(TextMessage::UpdateOptions(action)) = action {
 			match action {
-				TextOptionsUpdate::Font { name, style, file } => {
-					self.options.font_name = name;
+				TextOptionsUpdate::Font { family, style, file } => {
+					self.options.font_name = family;
 					self.options.font_style = style;
 					self.options.font_file = Some(file);
 

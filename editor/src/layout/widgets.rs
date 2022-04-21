@@ -225,10 +225,12 @@ pub struct ColorInput {
 pub struct FontInput {
 	#[serde(rename = "isStyle")]
 	pub is_style_picker: bool,
-	pub name: String,
+	#[serde(rename = "fontFamily")]
+	pub font_family: String,
 	#[serde(rename = "fontStyle")]
 	pub font_style: String,
-	pub file: String,
+	#[serde(rename = "fontFile")]
+	pub font_file: String,
 	#[serde(skip)]
 	#[derivative(Debug = "ignore", PartialEq = "ignore")]
 	pub on_update: WidgetCallback<FontInput>,

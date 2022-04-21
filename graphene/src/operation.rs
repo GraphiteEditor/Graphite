@@ -124,9 +124,9 @@ pub enum Operation {
 	},
 	ModifyFont {
 		path: Vec<LayerId>,
-		name: String,
+		font_family: String,
 		font_style: String,
-		file: Option<String>,
+		font_file: Option<String>,
 		size: f64,
 	},
 	RenameLayer {
