@@ -23,18 +23,18 @@ pub struct SplineTool {
 }
 
 pub struct SplineOptions {
-	line_weight: u32,
+	line_weight: f64,
 }
 
 impl Default for SplineOptions {
 	fn default() -> Self {
-		Self { line_weight: 5 }
+		Self { line_weight: 5. }
 	}
 }
 
 #[remain::sorted]
 #[impl_message(Message, ToolMessage, Spline)]
-#[derive(PartialEq, Clone, Debug, Hash, Serialize, Deserialize)]
+#[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub enum SplineToolMessage {
 	// Standard messages
 	#[remain::unsorted]
@@ -56,9 +56,9 @@ enum SplineToolFsmState {
 }
 
 #[remain::sorted]
-#[derive(PartialEq, Clone, Debug, Hash, Serialize, Deserialize)]
+#[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub enum SplineOptionsUpdate {
-	LineWeight(u32),
+	LineWeight(f64),
 }
 
 impl PropertyHolder for SplineTool {
@@ -67,10 +67,10 @@ impl PropertyHolder for SplineTool {
 			widgets: vec![WidgetHolder::new(Widget::NumberInput(NumberInput {
 				unit: " px".into(),
 				label: "Weight".into(),
-				value: self.options.line_weight as f64,
-				is_integer: true,
+				value: self.options.line_weight,
+				is_integer: false,
 				min: Some(0.),
-				on_update: WidgetCallback::new(|number_input: &NumberInput| SplineToolMessage::UpdateOptions(SplineOptionsUpdate::LineWeight(number_input.value as u32)).into()),
+				on_update: WidgetCallback::new(|number_input: &NumberInput| SplineToolMessage::UpdateOptions(SplineOptionsUpdate::LineWeight(number_input.value)).into()),
 				..NumberInput::default()
 			}))],
 		}])
@@ -124,7 +124,7 @@ impl Default for SplineToolFsmState {
 struct SplineToolData {
 	points: Vec<DVec2>,
 	next_point: DVec2,
-	weight: u32,
+	weight: f64,
 	path: Option<Vec<LayerId>>,
 	snap_handler: SnapHandler,
 }
@@ -265,7 +265,7 @@ fn add_spline(data: &SplineToolData, tool_data: &DocumentToolData, show_preview:
 		insert_index: -1,
 		transform: DAffine2::IDENTITY.to_cols_array(),
 		points,
-		style: style::PathStyle::new(Some(style::Stroke::new(tool_data.primary_color, data.weight as f32)), style::Fill::None),
+		style: style::PathStyle::new(Some(style::Stroke::new(tool_data.primary_color, data.weight)), style::Fill::None),
 	}
 	.into()
 }

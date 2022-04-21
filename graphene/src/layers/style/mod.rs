@@ -1,7 +1,7 @@
 //! Contains stylistic options for SVG elements.
 
 use crate::color::Color;
-use crate::consts::{LAYER_OUTLINE_STROKE_COLOR, LAYER_OUTLINE_STROKE_WIDTH};
+use crate::consts::{LAYER_OUTLINE_STROKE_COLOR, LAYER_OUTLINE_STROKE_WEIGHT};
 
 use glam::{DAffine2, DVec2};
 use serde::{Deserialize, Serialize};
@@ -188,19 +188,19 @@ pub struct Stroke {
 	/// Stroke color
 	color: Option<Color>,
 	/// Line thickness
-	width: f32,
+	weight: f64,
 	dash_lengths: Vec<f32>,
-	dash_offset: f32,
+	dash_offset: f64,
 	line_cap: LineCap,
 	line_join: LineJoin,
-	miter_limit: f32,
+	line_join_miter_limit: f64,
 }
 
 impl Stroke {
-	pub fn new(color: Color, width: f32) -> Self {
+	pub fn new(color: Color, weight: f64) -> Self {
 		Self {
 			color: Some(color),
-			width,
+			weight,
 			..Default::default()
 		}
 	}
@@ -210,16 +210,16 @@ impl Stroke {
 		self.color
 	}
 
-	/// Get the current stroke width.
-	pub fn width(&self) -> f32 {
-		self.width
+	/// Get the current stroke weight.
+	pub fn weight(&self) -> f64 {
+		self.weight
 	}
 
 	pub fn dash_lengths(&self) -> String {
 		self.dash_lengths.iter().map(|v| v.to_string()).collect::<Vec<_>>().join(", ")
 	}
 
-	pub fn dash_offset(&self) -> f32 {
+	pub fn dash_offset(&self) -> f64 {
 		self.dash_offset
 	}
 
@@ -231,8 +231,8 @@ impl Stroke {
 		self.line_join as u32
 	}
 
-	pub fn miter_limit(&self) -> f32 {
-		self.miter_limit as f32
+	pub fn line_join_miter_limit(&self) -> f32 {
+		self.line_join_miter_limit as f32
 	}
 
 	/// Provide the SVG attributes for the stroke.
@@ -242,12 +242,12 @@ impl Stroke {
 				r##" stroke="#{}"{} stroke-width="{}" stroke-dasharray="{}" stroke-dashoffset="{}" stroke-linecap="{}" stroke-linejoin="{}" stroke-miterlimit="{}" "##,
 				color.rgb_hex(),
 				format_opacity("stroke", color.a()),
-				self.width,
+				self.weight,
 				self.dash_lengths(),
 				self.dash_offset,
 				self.line_cap,
 				self.line_join,
-				self.miter_limit
+				self.line_join_miter_limit
 			)
 		} else {
 			String::new()
@@ -266,8 +266,8 @@ impl Stroke {
 		}
 	}
 
-	pub fn with_width(mut self, width: f32) -> Self {
-		self.width = width;
+	pub fn with_weight(mut self, weight: f64) -> Self {
+		self.weight = weight;
 		self
 	}
 
@@ -284,7 +284,7 @@ impl Stroke {
 			})
 	}
 
-	pub fn with_dash_offset(mut self, dash_offset: f32) -> Self {
+	pub fn with_dash_offset(mut self, dash_offset: f64) -> Self {
 		self.dash_offset = dash_offset;
 		self
 	}
@@ -299,8 +299,8 @@ impl Stroke {
 		self
 	}
 
-	pub fn with_miter_limit(mut self, miter_limit: f32) -> Self {
-		self.miter_limit = miter_limit;
+	pub fn with_line_join_miter_limit(mut self, limit: f64) -> Self {
+		self.line_join_miter_limit = limit;
 		self
 	}
 }
@@ -309,13 +309,13 @@ impl Stroke {
 impl Default for Stroke {
 	fn default() -> Self {
 		Self {
-			width: 0.,
+			weight: 0.,
 			color: Some(Color::from_rgba8(0, 0, 0, 255)),
 			dash_lengths: vec![0.],
 			dash_offset: 0.,
 			line_cap: LineCap::Butt,
 			line_join: LineJoin::Miter,
-			miter_limit: 4.,
+			line_join_miter_limit: 4.,
 		}
 	}
 }
@@ -442,7 +442,7 @@ impl PathStyle {
 			(_, fill) => fill.render(svg_defs, multiplied_transform, bounds, transformed_bounds),
 		};
 		let stroke_attribute = match (view_mode, &self.stroke) {
-			(ViewMode::Outline, _) => Stroke::new(LAYER_OUTLINE_STROKE_COLOR, LAYER_OUTLINE_STROKE_WIDTH).render(),
+			(ViewMode::Outline, _) => Stroke::new(LAYER_OUTLINE_STROKE_COLOR, LAYER_OUTLINE_STROKE_WEIGHT).render(),
 			(_, Some(stroke)) => stroke.render(),
 			(_, None) => String::new(),
 		};
