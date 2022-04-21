@@ -151,6 +151,7 @@ impl<T> Default for WidgetCallback<T> {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Widget {
 	ColorInput(ColorInput),
+	FontInput(FontInput),
 	IconButton(IconButton),
 	IconLabel(IconLabel),
 	NumberInput(NumberInput),
@@ -158,6 +159,7 @@ pub enum Widget {
 	PopoverButton(PopoverButton),
 	RadioInput(RadioInput),
 	Separator(Separator),
+	TextAreaInput(TextAreaInput),
 	TextInput(TextInput),
 	TextLabel(TextLabel),
 }
@@ -202,6 +204,15 @@ pub struct TextInput {
 
 #[derive(Clone, Serialize, Deserialize, Derivative)]
 #[derivative(Debug, PartialEq, Default)]
+pub struct TextAreaInput {
+	pub value: String,
+	#[serde(skip)]
+	#[derivative(Debug = "ignore", PartialEq = "ignore")]
+	pub on_update: WidgetCallback<TextAreaInput>,
+}
+
+#[derive(Clone, Serialize, Deserialize, Derivative)]
+#[derivative(Debug, PartialEq, Default)]
 pub struct ColorInput {
 	pub value: Option<String>,
 	#[serde(skip)]
@@ -210,6 +221,22 @@ pub struct ColorInput {
 	#[serde(rename = "canSetTransparent")]
 	#[derivative(Default(value = "true"))]
 	pub can_set_transparent: bool,
+}
+
+#[derive(Clone, Serialize, Deserialize, Derivative)]
+#[derivative(Debug, PartialEq, Default)]
+pub struct FontInput {
+	#[serde(rename = "isStyle")]
+	pub is_style_picker: bool,
+	#[serde(rename = "fontFamily")]
+	pub font_family: String,
+	#[serde(rename = "fontStyle")]
+	pub font_style: String,
+	#[serde(rename = "fontFile")]
+	pub font_file: String,
+	#[serde(skip)]
+	#[derivative(Debug = "ignore", PartialEq = "ignore")]
+	pub on_update: WidgetCallback<FontInput>,
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
