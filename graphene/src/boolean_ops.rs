@@ -1,4 +1,4 @@
-use crate::consts::{F64PRECISE, RAY_FUDGE_FACTOR};
+use crate::consts::F64PRECISE;
 use crate::intersection::{intersections, line_curve_intersections, valid_t, Intersect, Origin};
 use crate::layers::shape_layer::ShapeLayer;
 use crate::layers::style::PathStyle;
@@ -652,16 +652,10 @@ pub fn boolean_operation(mut select: BooleanOperation, alpha: &mut ShapeLayer, b
 
 // TODO less hacky way to handle double counts on shared endpoints
 // TODO check bounding boxes more rigorously
-pub fn cast_horizontal_ray(mut from: Point, into: &BezPath) -> usize {
-	// In practice, this makes it less likely that a ray will intersect with shared point between two curves
-	// from.y += RAY_FUDGE_FACTOR;
-
+pub fn cast_horizontal_ray(from: Point, into: &BezPath) -> usize {
 	let mut ray = PathSeg::Line(Line {
 		p0: from,
-		p1: Point {
-			x: from.x + 1.0,
-			y: from.y, // + RAY_FUDGE_FACTOR,
-		},
+		p1: Point { x: from.x + 1.0, y: from.y },
 	});
 	let mut intersects = Vec::new();
 	for ref mut seg in into.segments() {
