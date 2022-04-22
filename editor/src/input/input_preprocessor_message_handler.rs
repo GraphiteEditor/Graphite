@@ -83,7 +83,7 @@ impl MessageHandler<InputPreprocessorMessage, ()> for InputPreprocessorMessageHa
 				let mouse_state = editor_mouse_state.to_mouse_state(&self.viewport_bounds);
 				self.mouse.position = mouse_state.position;
 
-				self.translate_mouse_event(mouse_state, responses);
+				self.translate_mouse_event(mouse_state, true, responses);
 			}
 			InputPreprocessorMessage::PointerMove { editor_mouse_state, modifier_keys } => {
 				self.handle_modifier_keys(modifier_keys, responses);
@@ -94,7 +94,7 @@ impl MessageHandler<InputPreprocessorMessage, ()> for InputPreprocessorMessageHa
 				responses.push_back(InputMapperMessage::PointerMove.into());
 
 				// While any pointer button is already down, additional button down events are not reported, but they are sent as `pointermove` events
-				self.translate_mouse_event(mouse_state, responses);
+				self.translate_mouse_event(mouse_state, false, responses);
 			}
 			InputPreprocessorMessage::PointerUp { editor_mouse_state, modifier_keys } => {
 				self.handle_modifier_keys(modifier_keys, responses);
@@ -102,7 +102,7 @@ impl MessageHandler<InputPreprocessorMessage, ()> for InputPreprocessorMessageHa
 				let mouse_state = editor_mouse_state.to_mouse_state(&self.viewport_bounds);
 				self.mouse.position = mouse_state.position;
 
-				self.translate_mouse_event(mouse_state, responses);
+				self.translate_mouse_event(mouse_state, false, responses);
 			}
 		};
 	}
@@ -114,12 +114,12 @@ impl MessageHandler<InputPreprocessorMessage, ()> for InputPreprocessorMessageHa
 }
 
 impl InputPreprocessorMessageHandler {
-	fn translate_mouse_event(&mut self, new_state: MouseState, responses: &mut VecDeque<Message>) {
+	fn translate_mouse_event(&mut self, new_state: MouseState, allow_first_button_down: bool, responses: &mut VecDeque<Message>) {
 		for (bit_flag, key) in [(MouseKeys::LEFT, Key::Lmb), (MouseKeys::RIGHT, Key::Rmb), (MouseKeys::MIDDLE, Key::Mmb)] {
 			// Calculate the intersection between the two key states
 			let old_down = self.mouse.mouse_keys & bit_flag == bit_flag;
 			let new_down = new_state.mouse_keys & bit_flag == bit_flag;
-			if !old_down && new_down {
+			if !old_down && new_down && (allow_first_button_down || self.mouse.mouse_keys != MouseKeys::NONE) {
 				responses.push_back(InputMapperMessage::KeyDown(key).into());
 			}
 			if old_down && !new_down {
