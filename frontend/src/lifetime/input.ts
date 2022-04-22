@@ -108,7 +108,10 @@ export function createInputManager(editor: EditorState, container: HTMLElement, 
 	const onPointerMove = (e: PointerEvent): void => {
 		if (!e.buttons) viewportPointerInteractionOngoing = false;
 
-		if (viewportPointerInteractionOngoing) {
+		const { target } = e;
+		const inCanvas = target instanceof Element && target.closest("[data-canvas]");
+
+		if (viewportPointerInteractionOngoing || inCanvas) {
 			const modifiers = makeModifiersBitfield(e);
 			editor.instance.on_mouse_move(e.clientX, e.clientY, e.buttons, modifiers);
 		}
