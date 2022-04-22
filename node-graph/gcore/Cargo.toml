@@ -12,4 +12,4 @@ authors = ["Dennis Kobert <dennis@kobert.dev>"]
 #default = ["std"]
 
 [dependencies]
-#dyn-any = {path = "../dyn-any", features = ["derive"], optional = true}
+dyn-any = {path = "../dyn-any", features = ["derive"]}

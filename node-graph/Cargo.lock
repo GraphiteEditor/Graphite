@@ -257,11 +257,15 @@ dependencies = [
 [[package]]
 name = "graphene-core"
 version = "0.1.0"
+dependencies = [
+ "dyn-any",
+]
 
 [[package]]
 name = "graphene-std"
 version = "0.1.0"
 dependencies = [
+ "borrow_stack",
  "dyn-any",
  "graph-proc-macros",
  "graphene-core",

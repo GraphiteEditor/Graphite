@@ -1,6 +1,7 @@
+use borrow_stack::BorrowStack;
 //#![feature(generic_associated_types)]
-use dyn_any::StaticType;
-use graphene_std::value::{AnyRefNode, ValueNode};
+use dyn_any::{DynAny, StaticType};
+use graphene_std::value::{AnyRefNode, AnyValueNode, StorageNode, ValueNode};
 use graphene_std::*;
 
 /*fn mul(#[dyn_any(default)] a: f32, b: f32) -> f32 {
@@ -70,9 +71,39 @@ mod mul {
         }
     }
 }
+type SNode<'n> = dyn Node<'n, (), Output = &'n dyn DynAny<'n>>;
+
+struct NodeStore<'n>(borrow_stack::FixedSizeStack<'n, Box<SNode<'n>>>);
+
+impl<'n> NodeStore<'n> {
+    fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    fn push(&'n mut self, f: fn(&'n [Box<SNode>]) -> Box<SNode<'n>>) {
+        unsafe { self.0.push(f(self.0.get())) };
+    }
+
+    /*fn get_index(&'n self, index: usize) -> &'n SNode<'n> {
+        assert!(index < self.0.len());
+        &unsafe { self.0.get()[index] }
+    }*/
+}
 
 fn main() {
     //let mut mul = mul::MulNode::new();
+    let mut stack: borrow_stack::FixedSizeStack<Box<dyn Node<'_, (), Output = &dyn DynAny>>> =
+        borrow_stack::FixedSizeStack::new(42);
+    unsafe { stack.push(Box::new(AnyValueNode::new(1f32))) };
+    //let node = unsafe { stack.get(0) };
+    //let boxed = Box::new(StorageNode::new(node));
+    //unsafe { stack.push(boxed) };
+    let result = unsafe { &stack.get()[0] }.eval(&());
+    /*unsafe {
+        stack
+            .push(Box::new(AnyRefNode::new(stack.get(0).as_ref()))
+                as Box<dyn Node<(), Output = &dyn DynAny>>)
+    };*/
     let f = (3.2f32, 3.1f32);
     let a = ValueNode::new(1.);
     let id = std::any::TypeId::of::<&f32>();
