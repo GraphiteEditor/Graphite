@@ -79,21 +79,11 @@
 							class="canvas"
 							data-canvas
 							ref="canvas"
-							:style="{ cursor: canvasCursor }"
+							:style="{ cursor: canvasCursor, '--canvas-svg-width': canvasSvgWidth, '--canvas-svg-height': canvasSvgHeight }"
 							@pointerdown="(e: PointerEvent) => canvasPointerDown(e)"
 							@dragover="(e) => e.preventDefault()"
 							@drop="(e) => pasteFile(e)"
-						>
-							<svg class="artboards" v-html="artboardSvg" :style="{ width: canvasSvgWidth, height: canvasSvgHeight }"></svg>
-							<svg
-								class="artwork"
-								xmlns="http://www.w3.org/2000/svg"
-								xmlns:xlink="http://www.w3.org/1999/xlink"
-								v-html="artworkSvg"
-								:style="{ width: canvasSvgWidth, height: canvasSvgHeight }"
-							></svg>
-							<svg class="overlays" v-html="overlaysSvg" :style="{ width: canvasSvgWidth, height: canvasSvgHeight }"></svg>
-						</div>
+						></div>
 					</LayoutCol>
 					<LayoutCol class="bar-area">
 						<PersistentScrollbar
@@ -219,45 +209,6 @@
 				// Allows the SVG to be placed at explicit integer values of width and height to prevent non-pixel-perfect SVG scaling
 				position: relative;
 				overflow: hidden;
-
-				svg {
-					position: absolute;
-					// Fallback values if JS hasn't set these to integers yet
-					width: 100%;
-					height: 100%;
-					// Allows dev tools to select the artwork without being blocked by the SVG containers
-					pointer-events: none;
-
-					// Prevent inheritance from reaching the child elements
-					> * {
-						pointer-events: auto;
-					}
-				}
-				foreignObject {
-					width: 10000px;
-					height: 10000px;
-					overflow: visible;
-
-					div {
-						background: none;
-						cursor: text;
-						border: none;
-						margin: 0;
-						padding: 0;
-						overflow: visible;
-						white-space: pre-wrap;
-						display: inline-block;
-						// Workaround to force Chrome to display the flashing text entry cursor when text is empty
-						padding-left: 1px;
-						margin-left: -1px;
-					}
-
-					div:focus {
-						border: none;
-						outline: none;
-						margin: -1px;
-					}
-				}
 			}
 		}
 	}
@@ -307,6 +258,52 @@ import CanvasRuler from "@/components/widgets/rulers/CanvasRuler.vue";
 import PersistentScrollbar from "@/components/widgets/scrollbars/PersistentScrollbar.vue";
 import Separator from "@/components/widgets/separators/Separator.vue";
 import WidgetLayout from "@/components/widgets/WidgetLayout.vue";
+
+const SHADOW_DOM_CSS = `
+:host {
+	all: unset;
+}
+
+:host > svg {
+	position: absolute;
+	/* Integer values set by JS, with fallbacks of 100% if they aren't defined yet which is a decimal value causing anti-aliasing artifacts */
+	width: var(--canvas-svg-width, 100%);
+	height: var(--canvas-svg-height, 100%);
+	/* Allows dev tools to select the artwork without being blocked by the SVG containers */
+	pointer-events: none;
+}
+
+/* Prevent inheritance from reaching the child elements */
+:host > svg > * {
+	pointer-events: auto;
+}
+
+:host > svg foreignObject {
+	width: 10000px;
+	height: 10000px;
+	overflow: visible;
+}
+
+:host > svg foreignObject div {
+	background: none;
+	cursor: text;
+	border: none;
+	margin: 0;
+	padding: 0;
+	overflow: visible;
+	white-space: pre-wrap;
+	display: inline-block;
+	/* Workaround to force Chrome to display the flashing text entry cursor when text is empty */
+	padding-left: 1px;
+	margin-left: -1px;
+}
+
+:host > svg foreignObject div:focus {
+	border: none;
+	outline: none;
+	margin: -1px;
+}
+`;
 
 export default defineComponent({
 	inject: ["editor", "dialog"],
@@ -382,10 +379,43 @@ export default defineComponent({
 				canvas.setPointerCapture(e.pointerId);
 			}
 		},
+		makeCanvasSvgShadowDOM() {
+			const createSVG = (className: string): SVGSVGElement => {
+				const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+				svg.setAttributeNS("http://www.w3.org/2000/svg", "xmlns", "http://www.w3.org/2000/svg");
+				svg.setAttributeNS("http://www.w3.org/2000/svg", "xmlns:xlink", "http://www.w3.org/1999/xlink");
+				svg.classList.add(className);
+				return svg;
+			};
+
+			// Create a shadow DOM which isolates its children from the CSS of the rest of the page
+			// This improves rendering performance by about 10-20 milliseconds per frame in a stress test by reducing the number of CSS selectors to match
+			const canvasDiv = this.$refs.canvas as HTMLElement;
+			const canvasShadow = canvasDiv.attachShadow({ mode: "open" });
+
+			// <style> tag
+			const canvasStyle = document.createElement("style");
+			canvasStyle.textContent = SHADOW_DOM_CSS;
+			canvasShadow.appendChild(canvasStyle);
+
+			// <svg class="artboards" ...> tag
+			this.canvasArtboards = createSVG("artboards");
+			canvasShadow.appendChild(this.canvasArtboards);
+
+			// <svg class="artwork" ...> tag
+			this.canvasArtwork = createSVG("artwork");
+			canvasShadow.appendChild(this.canvasArtwork);
+
+			// <svg class="overlays" ...> tag
+			this.canvasOverlays = createSVG("overlays");
+			canvasShadow.appendChild(this.canvasOverlays);
+		},
 	},
 	mounted() {
+		this.makeCanvasSvgShadowDOM();
+
 		this.editor.dispatcher.subscribeJsMessage(UpdateDocumentArtwork, (UpdateDocumentArtwork) => {
-			this.artworkSvg = UpdateDocumentArtwork.svg;
+			if (this.canvasArtwork) this.canvasArtwork.innerHTML = UpdateDocumentArtwork.svg;
 
 			nextTick((): void => {
 				if (this.textInput) {
@@ -419,11 +449,11 @@ export default defineComponent({
 		});
 
 		this.editor.dispatcher.subscribeJsMessage(UpdateDocumentOverlays, (updateDocumentOverlays) => {
-			this.overlaysSvg = updateDocumentOverlays.svg;
+			if (this.canvasOverlays) this.canvasOverlays.innerHTML = updateDocumentOverlays.svg;
 		});
 
 		this.editor.dispatcher.subscribeJsMessage(UpdateDocumentArtboards, (updateDocumentArtboards) => {
-			this.artboardSvg = updateDocumentArtboards.svg;
+			if (this.canvasArtboards) this.canvasArtboards.innerHTML = updateDocumentArtboards.svg;
 		});
 
 		this.editor.dispatcher.subscribeJsMessage(UpdateDocumentScrollbars, (updateDocumentScrollbars) => {
@@ -543,9 +573,9 @@ export default defineComponent({
 		];
 
 		return {
-			artworkSvg: "",
-			artboardSvg: "",
-			overlaysSvg: "",
+			canvasArtboards: undefined as undefined | SVGSVGElement,
+			canvasArtwork: undefined as undefined | SVGSVGElement,
+			canvasOverlays: undefined as undefined | SVGSVGElement,
 			canvasSvgWidth: "100%",
 			canvasSvgHeight: "100%",
 			canvasCursor: "default",
