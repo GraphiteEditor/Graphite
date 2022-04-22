@@ -27,7 +27,7 @@ pub const SCALE_SNAP_INTERVAL: f64 = 0.1;
 pub const SLOWING_DIVISOR: f64 = 10.;
 
 // Select tool
-pub const SELECTION_TOLERANCE: f64 = 1.;
+pub const SELECTION_TOLERANCE: f64 = 5.;
 pub const SELECTION_DRAG_ANGLE: f64 = 90.;
 
 // Transformation cage
