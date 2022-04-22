@@ -1,4 +1,4 @@
-use std::{any::Any, marker::PhantomData};
+use core::marker::PhantomData;
 
 use crate::Node;
 
@@ -35,25 +35,6 @@ impl<'n, T: Default + 'n> Node<'n, ()> for DefaultNode<T> {
 impl<T> DefaultNode<T> {
     pub const fn new() -> DefaultNode<T> {
         DefaultNode(PhantomData)
-    }
-}
-
-use dyn_any::{DynAny, StaticType};
-pub struct AnyRefNode<'n, N: Node<'n, I, Output = &'n O>, I, O>(
-    &'n N,
-    PhantomData<&'n I>,
-    PhantomData<&'n O>,
-);
-impl<'n, N: Node<'n, I, Output = &'n O>, I, O: DynAny<'n>> Node<'n, I> for AnyRefNode<'n, N, I, O> {
-    type Output = &'n (dyn DynAny<'n>);
-    fn eval(&'n self, input: &'n I) -> Self::Output {
-        let value: &O = self.0.eval(input);
-        value
-    }
-}
-impl<'n, N: Node<'n, I, Output = &'n O>, I, O: 'static> AnyRefNode<'n, N, I, O> {
-    pub fn new(n: &'n N) -> AnyRefNode<'n, N, I, O> {
-        AnyRefNode(n, PhantomData, PhantomData)
     }
 }
 

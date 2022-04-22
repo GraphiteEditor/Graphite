@@ -7,6 +7,9 @@ authors = ["Dennis Kobert <dennis@kobert.dev>"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[features]
+#std = []
+#default = ["std"]
 
 [dependencies]
-dyn-any = {path = "../dyn-any", features = ["derive"]}
+#dyn-any = {path = "../dyn-any", features = ["derive"], optional = true}

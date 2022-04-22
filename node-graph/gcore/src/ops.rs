@@ -1,11 +1,11 @@
-use std::{borrow::Borrow, marker::PhantomData};
+use core::{borrow::Borrow, marker::PhantomData, ops::Add};
 
 use crate::Node;
 
 #[derive(Default)]
 pub struct AddNode<T>(PhantomData<T>);
-impl<'n, T: std::ops::Add + Copy + 'n> Node<'n, (T, T)> for AddNode<T> {
-    type Output = <T as std::ops::Add>::Output;
+impl<'n, T: Add + Copy + 'n> Node<'n, (T, T)> for AddNode<T> {
+    type Output = <T as Add>::Output;
     fn eval(&'n self, input: &'n (T, T)) -> T::Output {
         let (ref a, ref b) = input.borrow();
         *a + *b

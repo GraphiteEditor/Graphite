@@ -1,4 +1,4 @@
-use std::{borrow::Borrow, marker::PhantomData};
+use core::{borrow::Borrow, marker::PhantomData};
 
 use crate::Node;
 pub struct FnNode<T: Fn(&In) -> O, In, O>(T, PhantomData<In>, PhantomData<O>);
