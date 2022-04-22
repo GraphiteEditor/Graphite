@@ -548,8 +548,8 @@ impl Fsm for SelectToolFsmState {
 						let mut intersection = document.graphene_document.intersects_quad_root(quad);
 
 						// If the user is hovering over a layer they have not already selected, then update outline
-						if !document.selected_visible_layers().any(|path| intersection.contains(&path.to_vec())) {
-							if let Some(path) = intersection.pop() {
+						if let Some(path) = intersection.pop() {
+							if !document.selected_visible_layers().any(|visible| visible == path.as_slice()) {
 								data.hover_outline_overlay.update(path, document, responses)
 							} else {
 								data.hover_outline_overlay.clear(responses);
