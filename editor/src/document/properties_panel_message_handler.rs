@@ -148,6 +148,7 @@ impl<'a> MessageHandler<PropertiesPanelMessage, PropertiesPanelMessageHandlerDat
 					}
 					.into(),
 				);
+				self.active_selection = None;
 			}
 			ModifyFont {
 				font_family,
