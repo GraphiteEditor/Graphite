@@ -22,3 +22,12 @@ impl<'n, T: Node<'n, ()>> Exec<'n> for T {}
 pub trait Cache {
     fn clear(&mut self);
 }
+
+extern crate alloc;
+impl<'n, I, O: 'n> Node<'n, I> for alloc::boxed::Box<dyn Node<'n, I, Output = O>> {
+    type Output = O;
+
+    fn eval(&'n self, input: &'n I) -> Self::Output {
+        self.as_ref().eval(input)
+    }
+}

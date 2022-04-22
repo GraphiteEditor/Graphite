@@ -30,6 +30,7 @@ impl<'n, CachedNode: Node<'n, Input>, Input> Cache for CacheNode<'n, CachedNode,
     }
 }
 
-use dyn_any::{DynAny, StaticType};
+/*use dyn_any::{DynAny, StaticType};
 #[derive(DynAny)]
 struct Boo<'a>(&'a u8);
+*/

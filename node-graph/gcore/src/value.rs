@@ -10,6 +10,7 @@ impl<'n, const N: u32> Node<'n, ()> for IntNode<N> {
     }
 }
 
+use dyn_any::{DynAny, StaticType, StaticTypeSized};
 #[derive(Default)]
 pub struct ValueNode<'n, T>(T, PhantomData<&'n ()>);
 impl<'n, T: 'n> Node<'n, ()> for ValueNode<'n, T> {
@@ -18,6 +19,11 @@ impl<'n, T: 'n> Node<'n, ()> for ValueNode<'n, T> {
         &self.0
     }
 }
+
+impl<'n, T: StaticTypeSized> StaticType for ValueNode<'n, T> {
+    type Static = ValueNode<'static, <T as StaticTypeSized>::Static>;
+}
+
 impl<'n, T> ValueNode<'n, T> {
     pub const fn new(value: T) -> ValueNode<'n, T> {
         ValueNode(value, PhantomData)
