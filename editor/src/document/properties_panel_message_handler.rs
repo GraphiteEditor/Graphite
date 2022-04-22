@@ -232,11 +232,12 @@ impl<'a> MessageHandler<PropertiesPanelMessage, PropertiesPanelMessageHandlerDat
 				}
 			}
 			ResendActiveProperties => {
-				let (path, target_document) = self.active_selection.clone().expect("Received update for properties panel with no active layer");
-				let layer = get_document(target_document).layer(&path).unwrap();
-				match target_document {
-					TargetDocument::Artboard => register_artboard_layer_properties(layer, responses, &get_document(target_document).font_cache),
-					TargetDocument::Artwork => register_artwork_layer_properties(layer, responses, &get_document(target_document).font_cache),
+				if let Some((path, target_document)) = self.active_selection.clone() {
+					let layer = get_document(target_document).layer(&path).unwrap();
+					match target_document {
+						TargetDocument::Artboard => register_artboard_layer_properties(layer, responses, &get_document(target_document).font_cache),
+						TargetDocument::Artwork => register_artwork_layer_properties(layer, responses, &get_document(target_document).font_cache),
+					}
 				}
 			}
 		}
