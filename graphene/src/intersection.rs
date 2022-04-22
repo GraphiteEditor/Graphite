@@ -8,7 +8,7 @@ use crate::{
 	consts::{F64LOOSE, F64PRECISE},
 };
 use glam::{DAffine2, DMat2, DVec2};
-use kurbo::{BezPath, CubicBez, Line, ParamCurve, ParamCurveExtrema, PathSeg, Point, QuadBez, Rect, Shape, Vec2};
+use kurbo::{BezPath, CubicBez, Line, ParamCurve, ParamCurveDeriv, ParamCurveExtrema, PathSeg, Point, QuadBez, Rect, Shape, Vec2};
 
 #[derive(Debug, Clone, Default, Copy)]
 /// A quad defined by four vertices.
@@ -285,7 +285,7 @@ fn path_intersections(a: &SubCurve, b: &SubCurve, intersections: &mut Vec<Inters
 
 	fn helper<'a, 'b: 'a>(a: &'a SubCurve<'b>, b: &'a SubCurve<'b>, recursion: f64, intersections: &mut Vec<Intersect>, call_buffer: &'a mut VecDeque<(SubCurve<'b>, SubCurve<'b>)>) {
 		if let (PathSeg::Line(_), _) | (_, PathSeg::Line(_)) = (a.curve, b.curve) {
-			line_curve_intersections((a.curve, b.curve), |a, b| valid_t(a) && valid_t(b), intersections);
+			line_curve_intersections((&mut a.curve.clone(), &mut b.curve.clone()), |a, b| valid_t(a) && valid_t(b), intersections);
 			return;
 		}
 		// We are close enough to try linear approximation
@@ -365,10 +365,13 @@ fn path_intersections(a: &SubCurve, b: &SubCurve, intersections: &mut Vec<Inters
 /// Closure `t_validate` takes the two t_values of an Intersect as arguments.
 /// The order of the t_values corresponds with the order of the PathSegs in `line_curve`,
 /// `t_validate` should return true for allowable intersection t_values, valid intersections will be added to `intersections`.
-pub fn line_curve_intersections<F>(line_curve: (&PathSeg, &PathSeg), t_validate: F, intersections: &mut Vec<Intersect>)
+pub fn line_curve_intersections<F>(line_curve: (&mut PathSeg, &mut PathSeg), t_validate: F, intersections: &mut Vec<Intersect>)
 where
 	F: Fn(f64, f64) -> bool,
 {
+	extend_curve(line_curve.0, F64PRECISE);
+	extend_curve(line_curve.1, F64PRECISE);
+
 	if let (PathSeg::Line(line), PathSeg::Line(line2)) = line_curve {
 		if let Some(cross) = line_intersection(line, line2) {
 			if t_validate(cross.t_a, cross.t_b) {
@@ -415,10 +418,8 @@ where
 							return None;
 						}
 						if is_line_a {
-							log::debug!("{:?}", guess_quality(&PathSeg::Line(*line), curve, &Intersect::from((point, line_time, *time))));
 							Some(Intersect::from((point, line_time, *time)))
 						} else {
-							log::debug!("{:?}", guess_quality(&PathSeg::Line(*line), curve, &Intersect::from((point, line_time, *time))));
 							Some(Intersect::from((point, *time, line_time)))
 						}
 					} else {
@@ -428,6 +429,23 @@ where
 				.collect::<Vec<Intersect>>(),
 		);
 	}
+}
+
+/// Extend the starting point of 'curve' backwards along its derivative.
+/// Used to make finding intersections near endpoints reliable.
+pub fn extend_curve(curve: &mut PathSeg, distance: f64) {
+	fn extended_start<C: ParamCurve + ParamCurveDeriv>(c: &mut C, d: f64) -> Point {
+		let mut c_prime = c.deriv().eval(0.0);
+		c_prime.x *= d / c_prime.distance(Point::ORIGIN);
+		c_prime.y *= d / c_prime.distance(Point::ORIGIN);
+		let es_vec = c.eval(0.0) - c_prime;
+		Point { x: es_vec.x, y: es_vec.y }
+	}
+	match curve {
+		PathSeg::Line(line) => line.p0 = extended_start(line, distance),
+		PathSeg::Quad(quad) => quad.p0 = extended_start(quad, distance),
+		PathSeg::Cubic(cubic) => cubic.p0 = extended_start(cubic, distance),
+	};
 }
 
 /// For quality Q in the worst case, the point on curve `a` corresponding to `guess` is distance Q from the point on curve `b`.

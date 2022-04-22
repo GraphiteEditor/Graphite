@@ -654,19 +654,19 @@ pub fn boolean_operation(mut select: BooleanOperation, alpha: &mut ShapeLayer, b
 // TODO check bounding boxes more rigorously
 pub fn cast_horizontal_ray(mut from: Point, into: &BezPath) -> usize {
 	// In practice, this makes it less likely that a ray will intersect with shared point between two curves
-	from.y += RAY_FUDGE_FACTOR;
+	// from.y += RAY_FUDGE_FACTOR;
 
-	let ray = PathSeg::Line(Line {
+	let mut ray = PathSeg::Line(Line {
 		p0: from,
 		p1: Point {
 			x: from.x + 1.0,
-			y: from.y + RAY_FUDGE_FACTOR,
+			y: from.y, // + RAY_FUDGE_FACTOR,
 		},
 	});
 	let mut intersects = Vec::new();
-	for ref seg in into.segments() {
+	for ref mut seg in into.segments() {
 		if seg.bounding_box().x1 > from.x {
-			line_curve_intersections((&ray, seg), |_, b| valid_t(b), &mut intersects);
+			line_curve_intersections((&mut ray, seg), |_, b| valid_t(b), &mut intersects);
 		}
 	}
 	intersects.len()
