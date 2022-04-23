@@ -21,18 +21,18 @@ pub struct FreehandTool {
 }
 
 pub struct FreehandOptions {
-	line_weight: u32,
+	line_weight: f64,
 }
 
 impl Default for FreehandOptions {
 	fn default() -> Self {
-		Self { line_weight: 5 }
+		Self { line_weight: 5. }
 	}
 }
 
 #[remain::sorted]
 #[impl_message(Message, ToolMessage, Freehand)]
-#[derive(PartialEq, Clone, Debug, Hash, Serialize, Deserialize)]
+#[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub enum FreehandToolMessage {
 	// Standard messages
 	#[remain::unsorted]
@@ -46,9 +46,9 @@ pub enum FreehandToolMessage {
 }
 
 #[remain::sorted]
-#[derive(PartialEq, Clone, Debug, Hash, Serialize, Deserialize)]
+#[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub enum FreehandToolMessageOptionsUpdate {
-	LineWeight(u32),
+	LineWeight(f64),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -60,14 +60,13 @@ enum FreehandToolFsmState {
 impl PropertyHolder for FreehandTool {
 	fn properties(&self) -> WidgetLayout {
 		WidgetLayout::new(vec![LayoutRow::Row {
-			name: "".into(),
 			widgets: vec![WidgetHolder::new(Widget::NumberInput(NumberInput {
 				unit: " px".into(),
 				label: "Weight".into(),
 				value: self.options.line_weight as f64,
-				is_integer: true,
+				is_integer: false,
 				min: Some(1.),
-				on_update: WidgetCallback::new(|number_input: &NumberInput| FreehandToolMessage::UpdateOptions(FreehandToolMessageOptionsUpdate::LineWeight(number_input.value as u32)).into()),
+				on_update: WidgetCallback::new(|number_input: &NumberInput| FreehandToolMessage::UpdateOptions(FreehandToolMessageOptionsUpdate::LineWeight(number_input.value)).into()),
 				..NumberInput::default()
 			}))],
 		}])
@@ -120,7 +119,7 @@ impl Default for FreehandToolFsmState {
 #[derive(Clone, Debug, Default)]
 struct FreehandToolData {
 	points: Vec<DVec2>,
-	weight: u32,
+	weight: f64,
 	path: Option<Vec<LayerId>>,
 }
 
@@ -225,7 +224,7 @@ fn add_polyline(data: &FreehandToolData, tool_data: &DocumentToolData) -> Messag
 		insert_index: -1,
 		transform: DAffine2::IDENTITY.to_cols_array(),
 		points,
-		style: style::PathStyle::new(Some(style::Stroke::new(tool_data.primary_color, data.weight as f32)), style::Fill::None),
+		style: style::PathStyle::new(Some(style::Stroke::new(tool_data.primary_color, data.weight)), style::Fill::None),
 	}
 	.into()
 }

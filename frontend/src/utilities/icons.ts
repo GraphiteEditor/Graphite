@@ -48,7 +48,7 @@ import File from "@/../assets/16px-solid/file.svg";
 import FlipHorizontal from "@/../assets/16px-solid/flip-horizontal.svg";
 import FlipVertical from "@/../assets/16px-solid/flip-vertical.svg";
 import GraphiteLogo from "@/../assets/16px-solid/graphite-logo.svg";
-import NewLayer from "@/../assets/16px-solid/new-layer.svg";
+import NodeArtboard from "@/../assets/16px-solid/node-artboard.svg";
 import NodeFolder from "@/../assets/16px-solid/node-folder.svg";
 import NodeImage from "@/../assets/16px-solid/node-image.svg";
 import NodeShape from "@/../assets/16px-solid/node-shape.svg";
@@ -78,7 +78,7 @@ import MouseHintScrollDown from "@/../assets/16px-two-tone/mouse-hint-scroll-dow
 import MouseHintScrollUp from "@/../assets/16px-two-tone/mouse-hint-scroll-up.svg";
 
 // 24px Two-Tone
-import GeneralCropTool from "@/../assets/24px-two-tone/general-crop-tool.svg";
+import GeneralArtboardTool from "@/../assets/24px-two-tone/general-artboard-tool.svg";
 import GeneralEyedropperTool from "@/../assets/24px-two-tone/general-eyedropper-tool.svg";
 import GeneralFillTool from "@/../assets/24px-two-tone/general-fill-tool.svg";
 import GeneralGradientTool from "@/../assets/24px-two-tone/general-gradient-tool.svg";
@@ -156,12 +156,12 @@ export const ICON_LIST = {
 	FlipHorizontal: { component: FlipHorizontal, size: size16 },
 	FlipVertical: { component: FlipVertical, size: size16 },
 	GraphiteLogo: { component: GraphiteLogo, size: size16 },
-	NewLayer: { component: NewLayer, size: size16 },
-	Paste: { component: Paste, size: size16 },
+	NodeArtboard: { component: NodeArtboard, size: size16 },
 	NodeFolder: { component: NodeFolder, size: size16 },
 	NodeImage: { component: NodeImage, size: size16 },
 	NodeShape: { component: NodeShape, size: size16 },
 	NodeText: { component: NodeText, size: size16 },
+	Paste: { component: Paste, size: size16 },
 	Trash: { component: Trash, size: size16 },
 	ViewModeNormal: { component: ViewModeNormal, size: size16 },
 	ViewModeOutline: { component: ViewModeOutline, size: size16 },
@@ -184,7 +184,7 @@ export const ICON_LIST = {
 	MouseHintScrollDown: { component: MouseHintScrollDown, size: size16 },
 	MouseHintScrollUp: { component: MouseHintScrollUp, size: size16 },
 
-	GeneralCropTool: { component: GeneralCropTool, size: size24 },
+	GeneralArtboardTool: { component: GeneralArtboardTool, size: size24 },
 	GeneralEyedropperTool: { component: GeneralEyedropperTool, size: size24 },
 	GeneralNavigateTool: { component: GeneralNavigateTool, size: size24 },
 	GeneralSelectTool: { component: GeneralSelectTool, size: size24 },

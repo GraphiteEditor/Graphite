@@ -60,7 +60,6 @@ pub enum SelectToolMessage {
 impl PropertyHolder for SelectTool {
 	fn properties(&self) -> WidgetLayout {
 		WidgetLayout::new(vec![LayoutRow::Row {
-			name: "".into(),
 			widgets: vec![
 				WidgetHolder::new(Widget::IconButton(IconButton {
 					icon: "AlignLeft".into(),
@@ -255,7 +254,6 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for SelectTool {
 
 		match self.fsm_state {
 			Ready => actions!(SelectToolMessageDiscriminant; DragStart, PointerMove, EditLayer),
-			Dragging => actions!(SelectToolMessageDiscriminant; DragStop, PointerMove, EditLayer),
 			_ => actions!(SelectToolMessageDiscriminant; DragStop, PointerMove, Abort, EditLayer),
 		}
 	}
@@ -408,7 +406,7 @@ impl Fsm for SelectToolFsmState {
 							let selected = selected.iter().collect::<Vec<_>>();
 							let mut selected = Selected::new(&mut bounds.original_transforms, &mut bounds.pivot, &selected, responses, &document.graphene_document);
 
-							*selected.pivot = selected.calculate_pivot();
+							*selected.pivot = selected.calculate_pivot(&document.graphene_document.font_cache);
 						}
 
 						data.layers_dragging = selected;
@@ -589,11 +587,27 @@ impl Fsm for SelectToolFsmState {
 					);
 					Ready
 				}
+				(Dragging, Abort) => {
+					data.snap_handler.cleanup(responses);
+					responses.push_back(DocumentMessage::Undo.into());
+					Ready
+				}
 				(_, Abort) => {
 					if let Some(path) = data.drag_box_overlay_layer.take() {
 						responses.push_front(DocumentMessage::Overlays(Operation::DeleteLayer { path }.into()).into())
 					};
-					if let Some(bounding_box_overlays) = data.bounding_box_overlays.take() {
+					if let Some(mut bounding_box_overlays) = data.bounding_box_overlays.take() {
+						let selected = data.layers_dragging.iter().collect::<Vec<_>>();
+						let mut selected = Selected::new(
+							&mut bounding_box_overlays.original_transforms,
+							&mut bounding_box_overlays.pivot,
+							&selected,
+							responses,
+							&document.graphene_document,
+						);
+
+						selected.revert_operation();
+
 						bounding_box_overlays.delete(responses);
 					}
 

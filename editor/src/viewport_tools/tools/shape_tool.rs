@@ -59,7 +59,6 @@ pub enum ShapeOptionsUpdate {
 impl PropertyHolder for ShapeTool {
 	fn properties(&self) -> WidgetLayout {
 		WidgetLayout::new(vec![LayoutRow::Row {
-			name: "".into(),
 			widgets: vec![WidgetHolder::new(Widget::NumberInput(NumberInput {
 				label: "Sides".into(),
 				value: self.options.vertices as f64,

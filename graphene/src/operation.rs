@@ -53,6 +53,9 @@ pub enum Operation {
 		text: String,
 		style: style::PathStyle,
 		size: f64,
+		font_name: String,
+		font_style: String,
+		font_file: Option<String>,
 	},
 	AddImage {
 		path: Vec<LayerId>,
@@ -118,6 +121,13 @@ pub enum Operation {
 	},
 	DuplicateLayer {
 		path: Vec<LayerId>,
+	},
+	ModifyFont {
+		path: Vec<LayerId>,
+		font_family: String,
+		font_style: String,
+		font_file: Option<String>,
+		size: f64,
 	},
 	RenameLayer {
 		layer_path: Vec<LayerId>,
