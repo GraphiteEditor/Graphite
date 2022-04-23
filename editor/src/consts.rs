@@ -29,7 +29,7 @@ pub const SLOWING_DIVISOR: f64 = 10.;
 // Select tool
 pub const SELECTION_TOLERANCE: f64 = 5.;
 pub const SELECTION_DRAG_ANGLE: f64 = 90.;
-pub const SELECTION_HOVER_WEIGHT: f64 = 3.;
+pub const SELECTION_OUTLINE_WEIGHT: f64 = 2.;
 
 // Transformation cage
 pub const BOUNDS_SELECT_THRESHOLD: f64 = 10.;

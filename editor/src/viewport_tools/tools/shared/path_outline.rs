@@ -8,7 +8,7 @@ use glam::DAffine2;
 use kurbo::{BezPath, Shape};
 use std::collections::VecDeque;
 
-use crate::consts::{COLOR_ACCENT, SELECTION_HOVER_WEIGHT};
+use crate::consts::{COLOR_ACCENT, SELECTION_OUTLINE_WEIGHT};
 use crate::message_prelude::*;
 
 /// Manages the overlay used by the select tool for outlining selected shapes and when hovering over a non selected shape.
@@ -42,7 +42,7 @@ impl PathOutline {
 				let operation = Operation::AddOverlayShape {
 					path: overlay_path.clone(),
 					bez_path: BezPath::new(),
-					style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, SELECTION_HOVER_WEIGHT)), Fill::None),
+					style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, SELECTION_OUTLINE_WEIGHT)), Fill::None),
 					closed: false,
 				};
 
