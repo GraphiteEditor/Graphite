@@ -161,7 +161,6 @@ struct PathGraph {
 /// Has somewhat (totally?) undefined behavior when shapes have self intersections.
 impl PathGraph {
 	pub fn from_paths(alpha: &BezPath, beta: &BezPath) -> Result<PathGraph, BooleanOperationError> {
-		// TODO: check for closed paths somewhere, maybe here?
 		let mut new = PathGraph {
 			vertices: intersections(alpha, beta).into_iter().map(|i| Vertex { intersect: i, edges: Vec::new() }).collect(),
 		};
@@ -414,7 +413,6 @@ impl PathGraph {
 /// If `t` is outside `[0, 1]`, returns `(None, None)`
 /// If `t` is 0 returns (None, `p`).
 /// If `t` is 1 returns (`p`, None).
-// TODO: test values outside 1
 pub fn split_path_seg(p: &PathSeg, t: f64) -> (Option<PathSeg>, Option<PathSeg>) {
 	if t <= -F64PRECISE || t >= 1.0 + F64PRECISE {
 		return (None, None);
@@ -650,7 +648,6 @@ pub fn boolean_operation(mut select: BooleanOperation, alpha: &mut ShapeLayer, b
 	}
 }
 
-// TODO less hacky way to handle double counts on shared endpoints
 // TODO check bounding boxes more rigorously
 pub fn cast_horizontal_ray(from: Point, into: &BezPath) -> usize {
 	let mut ray = PathSeg::Line(Line {

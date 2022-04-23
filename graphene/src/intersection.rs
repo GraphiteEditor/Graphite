@@ -123,7 +123,6 @@ pub struct Intersect {
 	pub t_b: f64,
 	pub a_seg_index: i32,
 	pub b_seg_index: i32,
-	// TODO: remove the `quality` field
 	pub quality: f64,
 }
 
@@ -458,6 +457,7 @@ fn guess_quality(a: &PathSeg, b: &PathSeg, guess: &Intersect) -> f64 {
 
 /// if curves overlap, returns intersects corresponding to the endpoints of the overlapping section
 /// *May Panic if either curve is very short, or has endpoints which are close together
+/// TODO: test the case where a and b are identical
 /// TODO: test this, especially the overlapping curve cases which are more complex
 pub fn overlapping_curve_intersections(a: &PathSeg, b: &PathSeg) -> [Option<Intersect>; 2] {
 	// To check if two curves overlap we find if the endpoints of either curve are on the other curve.
@@ -635,8 +635,7 @@ pub fn point_t_value(a: &PathSeg, p: &Point) -> Option<f64> {
 				.flatten()
 		}
 	}
-	.map(|t| if valid_t(t) { Some(t) } else { None })
-	.flatten()
+	.and_then(|t| if valid_t(t) { Some(t) } else { None })
 }
 
 pub fn intersections(a: &BezPath, b: &BezPath) -> Vec<Intersect> {
