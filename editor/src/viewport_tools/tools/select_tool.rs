@@ -17,7 +17,7 @@ use graphene::intersection::Quad;
 use graphene::layers::layer_info::LayerDataType;
 use graphene::Operation;
 
-use super::shared::hover_outline::*;
+use super::shared::path_outline::*;
 use super::shared::transformation_cage::*;
 
 use glam::{DAffine2, DVec2};
@@ -281,7 +281,7 @@ struct SelectToolData {
 	drag_current: ViewportPosition,
 	layers_dragging: Vec<Vec<LayerId>>, // Paths and offsets
 	drag_box_overlay_layer: Option<Vec<LayerId>>,
-	hover_outline_overlay: HoverOutline,
+	path_outlines: PathOutline,
 	bounding_box_overlays: Option<BoundingBoxOverlays>,
 	snap_handler: SnapHandler,
 	cursor: MouseCursorIcon,
@@ -339,6 +339,9 @@ impl Fsm for SelectToolFsmState {
 						(_, _) => {}
 					};
 					buffer.into_iter().rev().for_each(|message| responses.push_front(message));
+
+					data.path_outlines.update_selected(document.selected_visible_layers(), document, responses);
+
 					self
 				}
 				(_, EditLayer) => {
@@ -362,7 +365,7 @@ impl Fsm for SelectToolFsmState {
 					self
 				}
 				(Ready, DragStart { add_to_selection }) => {
-					data.hover_outline_overlay.clear(responses);
+					data.path_outlines.clear_hovered(responses);
 
 					data.drag_start = input.mouse.position;
 					data.drag_current = input.mouse.position;
@@ -550,15 +553,15 @@ impl Fsm for SelectToolFsmState {
 						// If the user is hovering over a layer they have not already selected, then update outline
 						if let Some(path) = intersection.pop() {
 							if !document.selected_visible_layers().any(|visible| visible == path.as_slice()) {
-								data.hover_outline_overlay.update(path, document, responses)
+								data.path_outlines.update_hovered(path, document, responses)
 							} else {
-								data.hover_outline_overlay.clear(responses);
+								data.path_outlines.clear_hovered(responses);
 							}
 						} else {
-							data.hover_outline_overlay.clear(responses);
+							data.path_outlines.clear_hovered(responses);
 						}
 					} else {
-						data.hover_outline_overlay.clear(responses);
+						data.path_outlines.clear_hovered(responses);
 					}
 
 					if data.cursor != cursor {
@@ -615,6 +618,9 @@ impl Fsm for SelectToolFsmState {
 				(Dragging, Abort) => {
 					data.snap_handler.cleanup(responses);
 					responses.push_back(DocumentMessage::Undo.into());
+
+					data.path_outlines.clear_selected(responses);
+
 					Ready
 				}
 				(_, Abort) => {
@@ -636,7 +642,8 @@ impl Fsm for SelectToolFsmState {
 						bounding_box_overlays.delete(responses);
 					}
 
-					data.hover_outline_overlay.clear(responses);
+					data.path_outlines.clear_hovered(responses);
+					data.path_outlines.clear_selected(responses);
 
 					data.snap_handler.cleanup(responses);
 					Ready
