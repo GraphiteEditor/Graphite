@@ -1,4 +1,6 @@
+use crate::consts::{COLOR_ACCENT, PATH_OUTLINE_WEIGHT};
 use crate::document::DocumentMessageHandler;
+use crate::message_prelude::*;
 
 use graphene::layers::layer_info::LayerDataType;
 use graphene::layers::style::{self, Fill, Stroke};
@@ -7,9 +9,6 @@ use graphene::{LayerId, Operation};
 use glam::DAffine2;
 use kurbo::{BezPath, Shape};
 use std::collections::VecDeque;
-
-use crate::consts::{COLOR_ACCENT, SELECTION_OUTLINE_WEIGHT};
-use crate::message_prelude::*;
 
 /// Manages the overlay used by the select tool for outlining selected shapes and when hovering over a non selected shape.
 #[derive(Clone, Debug, Default)]
@@ -42,7 +41,7 @@ impl PathOutline {
 				let operation = Operation::AddOverlayShape {
 					path: overlay_path.clone(),
 					bez_path: BezPath::new(),
-					style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, SELECTION_OUTLINE_WEIGHT)), Fill::None),
+					style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, PATH_OUTLINE_WEIGHT)), Fill::None),
 					closed: false,
 				};
 
