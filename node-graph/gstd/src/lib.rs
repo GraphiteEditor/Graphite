@@ -17,11 +17,11 @@ pub trait DynamicInput<'n> {
     fn set_arg_by_index(&mut self, index: usize, value: DynAnyNode<'n>);
 }
 
-pub trait AnyRef<'n, I: StaticType>: Node<'n, I> {
+pub trait AnyRef<'n, I: 'n + StaticType>: Node<'n, &'n I> {
     fn any(&'n self, input: &'n dyn DynAny<'n>) -> Self::Output;
 }
 
-impl<'n, T: Node<'n, I>, I: StaticType + 'n> AnyRef<'n, I> for T {
+impl<'n, N: Node<'n, &'n I>, I: StaticType + 'n> AnyRef<'n, I> for N {
     fn any(&'n self, input: &'n dyn DynAny<'n>) -> Self::Output {
         self.eval(downcast_ref::<I>(input).unwrap_or_else(|| {
             panic!(
