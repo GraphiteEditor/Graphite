@@ -17,6 +17,7 @@ use graphene::intersection::Quad;
 use graphene::layers::layer_info::LayerDataType;
 use graphene::Operation;
 
+use super::shared::path_outline::*;
 use super::shared::transformation_cage::*;
 
 use glam::{DAffine2, DVec2};
@@ -253,7 +254,7 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for SelectTool {
 		use SelectToolFsmState::*;
 
 		match self.fsm_state {
-			Ready => actions!(SelectToolMessageDiscriminant; DragStart, PointerMove, EditLayer),
+			Ready => actions!(SelectToolMessageDiscriminant; DragStart, PointerMove, Abort, EditLayer),
 			_ => actions!(SelectToolMessageDiscriminant; DragStop, PointerMove, Abort, EditLayer),
 		}
 	}
@@ -280,6 +281,7 @@ struct SelectToolData {
 	drag_current: ViewportPosition,
 	layers_dragging: Vec<Vec<LayerId>>, // Paths and offsets
 	drag_box_overlay_layer: Option<Vec<LayerId>>,
+	path_outlines: PathOutline,
 	bounding_box_overlays: Option<BoundingBoxOverlays>,
 	snap_handler: SnapHandler,
 	cursor: MouseCursorIcon,
@@ -337,6 +339,9 @@ impl Fsm for SelectToolFsmState {
 						(_, _) => {}
 					};
 					buffer.into_iter().rev().for_each(|message| responses.push_front(message));
+
+					data.path_outlines.update_selected(document.selected_visible_layers(), document, responses);
+
 					self
 				}
 				(_, EditLayer) => {
@@ -360,6 +365,8 @@ impl Fsm for SelectToolFsmState {
 					self
 				}
 				(Ready, DragStart { add_to_selection }) => {
+					data.path_outlines.clear_hovered(responses);
+
 					data.drag_start = input.mouse.position;
 					data.drag_current = input.mouse.position;
 					let mut buffer = Vec::new();
@@ -536,6 +543,27 @@ impl Fsm for SelectToolFsmState {
 				(Ready, PointerMove { .. }) => {
 					let cursor = data.bounding_box_overlays.as_ref().map_or(MouseCursorIcon::Default, |bounds| bounds.get_cursor(input, true));
 
+					// Generate the select outline (but not if the user is going to use the bound overlays)
+					if cursor == MouseCursorIcon::Default {
+						// Get the layer the user is hovering over
+						let tolerance = DVec2::splat(SELECTION_TOLERANCE);
+						let quad = Quad::from_box([input.mouse.position - tolerance, input.mouse.position + tolerance]);
+						let mut intersection = document.graphene_document.intersects_quad_root(quad);
+
+						// If the user is hovering over a layer they have not already selected, then update outline
+						if let Some(path) = intersection.pop() {
+							if !document.selected_visible_layers().any(|visible| visible == path.as_slice()) {
+								data.path_outlines.update_hovered(path, document, responses)
+							} else {
+								data.path_outlines.clear_hovered(responses);
+							}
+						} else {
+							data.path_outlines.clear_hovered(responses);
+						}
+					} else {
+						data.path_outlines.clear_hovered(responses);
+					}
+
 					if data.cursor != cursor {
 						data.cursor = cursor;
 						responses.push_back(FrontendMessage::UpdateMouseCursor { cursor }.into());
@@ -590,6 +618,9 @@ impl Fsm for SelectToolFsmState {
 				(Dragging, Abort) => {
 					data.snap_handler.cleanup(responses);
 					responses.push_back(DocumentMessage::Undo.into());
+
+					data.path_outlines.clear_selected(responses);
+
 					Ready
 				}
 				(_, Abort) => {
@@ -610,6 +641,9 @@ impl Fsm for SelectToolFsmState {
 
 						bounding_box_overlays.delete(responses);
 					}
+
+					data.path_outlines.clear_hovered(responses);
+					data.path_outlines.clear_selected(responses);
 
 					data.snap_handler.cleanup(responses);
 					Ready
