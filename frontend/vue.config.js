@@ -103,10 +103,6 @@ module.exports = {
 		experiments: {
 			asyncWebAssembly: true,
 		},
-		infrastructureLogging: {
-			level: "log",
-			debug: /ForkTsCheckerWebpackPlugin/,
-		},
 	},
 };
 
