@@ -8,7 +8,7 @@ pub struct CacheNode<'n, CachedNode: Node<'n, Input>, Input> {
 }
 impl<'n, CashedNode: Node<'n, Input>, Input> Node<'n, Input> for CacheNode<'n, CashedNode, Input> {
     type Output = &'n CashedNode::Output;
-    fn eval(&'n self, input: &'n Input) -> Self::Output {
+    fn eval(&'n self, input: Input) -> Self::Output {
         self.cache.get_or_init(|| self.node.eval(input))
     }
 }

@@ -27,11 +27,11 @@ mod mul {
     }
     impl<'n> Node<'n, ()> for MulNodeAnyProxy<'n> {
         type Output = MulNodeInput<'n>;
-        fn eval(&'n self, _input: &'n ()) -> <Self as graphene_std::Node<'n, ()>>::Output {
-            let a = self.a.unwrap().eval(&());
+        fn eval(&'n self, _input: ()) -> <Self as graphene_std::Node<'n, ()>>::Output {
+            let a = self.a.unwrap().eval(());
             let a: &f32 = self
                 .a
-                .map(|v| downcast_ref(v.eval(&())).unwrap())
+                .map(|v| downcast_ref(v.eval(())).unwrap())
                 .unwrap_or(&1.);
             /*let b: &f32 = self
                 .b
@@ -43,9 +43,9 @@ mod mul {
     }
     impl<'n> Node<'n, ()> for MulNodeTypedProxy<'n> {
         type Output = MulNodeInput<'n>;
-        fn eval(&'n self, _input: &'n ()) -> <Self as graphene_std::Node<'n, ()>>::Output {
-            let a = self.a.unwrap().eval(&());
-            let b = self.b.unwrap().eval(&());
+        fn eval(&'n self, _input: ()) -> <Self as graphene_std::Node<'n, ()>>::Output {
+            let a = self.a.unwrap().eval(());
+            let b = self.b.unwrap().eval(());
             MulNodeInput { a, b }
         }
     }
@@ -98,7 +98,7 @@ fn main() {
     //let node = unsafe { stack.get(0) };
     //let boxed = Box::new(StorageNode::new(node));
     //unsafe { stack.push(boxed) };
-    let result = unsafe { &stack.get()[0] }.eval(&());
+    let result = unsafe { &stack.get()[0] }.eval(());
     /*unsafe {
         stack
             .push(Box::new(AnyRefNode::new(stack.get(0).as_ref()))

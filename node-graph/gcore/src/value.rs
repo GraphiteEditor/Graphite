@@ -5,23 +5,18 @@ use crate::Node;
 pub struct IntNode<const N: u32>;
 impl<'n, const N: u32> Node<'n, ()> for IntNode<N> {
     type Output = u32;
-    fn eval(&self, _input: &()) -> u32 {
+    fn eval(&self, _input: ()) -> u32 {
         N
     }
 }
 
-use dyn_any::{DynAny, StaticType, StaticTypeSized};
 #[derive(Default)]
 pub struct ValueNode<'n, T>(T, PhantomData<&'n ()>);
 impl<'n, T: 'n> Node<'n, ()> for ValueNode<'n, T> {
     type Output = &'n T;
-    fn eval(&self, _input: &()) -> &T {
+    fn eval(&self, _input: ()) -> &T {
         &self.0
     }
-}
-
-impl<'n, T: StaticTypeSized> StaticType for ValueNode<'n, T> {
-    type Static = ValueNode<'static, <T as StaticTypeSized>::Static>;
 }
 
 impl<'n, T> ValueNode<'n, T> {
@@ -34,7 +29,7 @@ impl<'n, T> ValueNode<'n, T> {
 pub struct DefaultNode<T>(PhantomData<T>);
 impl<'n, T: Default + 'n> Node<'n, ()> for DefaultNode<T> {
     type Output = T;
-    fn eval(&self, _input: &()) -> T {
+    fn eval(&self, _input: ()) -> T {
         T::default()
     }
 }
@@ -47,8 +42,8 @@ impl<T> DefaultNode<T> {
 pub struct DefaultRefNode<'n, T>(ValueNode<'n, T>);
 impl<'n, T: 'n> Node<'n, ()> for DefaultRefNode<'n, T> {
     type Output = &'n T;
-    fn eval(&'n self, _input: &'n ()) -> &'n T {
-        self.0.eval(&())
+    fn eval(&'n self, _input: ()) -> &'n T {
+        self.0.eval(())
     }
 }
 impl<'n, T: Default> Default for DefaultRefNode<'n, T> {

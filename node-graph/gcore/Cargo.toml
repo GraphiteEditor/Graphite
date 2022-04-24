@@ -8,8 +8,12 @@ authors = ["Dennis Kobert <dennis@kobert.dev>"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
-#std = []
-#default = ["std"]
+std = ["dyn-any"]
+default = ["gpu"]
+gpu = ["spirv-std"]
+nightly = []
 
 [dependencies]
-dyn-any = {path = "../dyn-any", features = ["derive"]}
+dyn-any = {path = "../dyn-any", features = ["derive"], optional = true}
+
+spirv-std = { git =  "https://github.com/EmbarkStudios/rust-gpu",  features = ["glam"] , optional = true}
