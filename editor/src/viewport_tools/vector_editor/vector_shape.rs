@@ -1,9 +1,7 @@
 use super::{constants::ControlPointType, vector_anchor::VectorAnchor, vector_control_point::VectorControlPoint};
-use crate::{
-	consts::COLOR_ACCENT,
-	document::DocumentMessageHandler,
-	message_prelude::{generate_uuid, DocumentMessage, Message},
-};
+use crate::consts::{COLOR_ACCENT, PATH_OUTLINE_WEIGHT};
+use crate::document::DocumentMessageHandler;
+use crate::message_prelude::*;
 
 use graphene::{
 	color::Color,
@@ -355,7 +353,7 @@ impl VectorShape {
 		let operation = Operation::AddOverlayShape {
 			path: layer_path.clone(),
 			bez_path: self.bez_path.clone(),
-			style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 1.0)), Fill::None),
+			style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, PATH_OUTLINE_WEIGHT)), Fill::None),
 			closed: false,
 		};
 		responses.push_back(DocumentMessage::Overlays(operation.into()).into());
