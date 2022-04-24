@@ -69,7 +69,7 @@ export default defineComponent({
 		handleClick() {
 			(this.$refs.floatingMenu as typeof FloatingMenu).setOpen();
 
-			if (this.action) this.action();
+			this.action?.();
 		},
 	},
 });

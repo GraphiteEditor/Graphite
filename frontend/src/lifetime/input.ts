@@ -43,8 +43,9 @@ export function createInputManager(editor: EditorState, container: HTMLElement, 
 
 		// Don't redirect user input from text entry into HTML elements
 		const { target } = e;
-		if (key !== "escape" && !(key === "enter" && e.ctrlKey) && target instanceof HTMLElement && (target.nodeName === "INPUT" || target.nodeName === "TEXTAREA" || target.isContentEditable))
+		if (key !== "escape" && !(key === "enter" && e.ctrlKey) && target instanceof HTMLElement && (target.nodeName === "INPUT" || target.nodeName === "TEXTAREA" || target.isContentEditable)) {
 			return false;
+		}
 
 		// Don't redirect paste
 		if (key === "v" && e.ctrlKey) return false;
@@ -124,9 +125,10 @@ export function createInputManager(editor: EditorState, container: HTMLElement, 
 			e.stopPropagation();
 		}
 
-		if (textInput && !inTextInput) {
-			editor.instance.on_change_text(textInputCleanup(textInput.innerText));
-		} else if (inCanvas && !inTextInput) viewportPointerInteractionOngoing = true;
+		if (!inTextInput) {
+			if (textInput) editor.instance.on_change_text(textInputCleanup(textInput.innerText));
+			else if (inCanvas) viewportPointerInteractionOngoing = true;
+		}
 
 		if (viewportPointerInteractionOngoing) {
 			const modifiers = makeModifiersBitfield(e);
@@ -164,6 +166,8 @@ export function createInputManager(editor: EditorState, container: HTMLElement, 
 		const { target } = e;
 		const inCanvas = target instanceof Element && target.closest("[data-canvas]");
 
+		// Redirect vertical scroll wheel movement into a horizontal scroll on a horizontally scrollable element
+		// There seems to be no possible way to properly employ the browser's smooth scrolling interpolation
 		const horizontalScrollableElement = target instanceof Element && target.closest("[data-scrollable-x]");
 		if (horizontalScrollableElement && e.deltaY !== 0) {
 			horizontalScrollableElement.scrollTo(horizontalScrollableElement.scrollLeft + e.deltaY, 0);
@@ -228,7 +232,7 @@ export function createInputManager(editor: EditorState, container: HTMLElement, 
 			}
 
 			const file = item.getAsFile();
-			if (file && file.type.startsWith("image")) {
+			if (file?.type.startsWith("image")) {
 				file.arrayBuffer().then((buffer): void => {
 					const u8Array = new Uint8Array(buffer);
 
@@ -252,9 +256,7 @@ export function createInputManager(editor: EditorState, container: HTMLElement, 
 	addListeners();
 	onWindowResize(container);
 
-	return {
-		removeListeners,
-	};
+	return { removeListeners };
 }
 export type InputManager = ReturnType<typeof createInputManager>;
 
@@ -296,7 +298,7 @@ function keyCodeToKey(code: string): string | null {
 	if (code.match(/^F[1-9]|F1[0-9]|F20$/)) return code.replace("F", "").toLowerCase();
 
 	// Other characters
-	const mapping: Record<string, string> = {
+	const MAPPING: Record<string, string> = {
 		BracketLeft: "[",
 		BracketRight: "]",
 		Backslash: "\\",
@@ -314,13 +316,13 @@ function keyCodeToKey(code: string): string | null {
 		NumpadAdd: "+",
 		NumpadDecimal: ".",
 	};
-	if (code in mapping) return mapping[code];
+	if (code in MAPPING) return MAPPING[code];
 
 	return null;
 }
 
 function isKeyPrintable(key: string): boolean {
-	const allPrintableKeys: string[] = [
+	const ALL_PRINTABLE_KEYS: string[] = [
 		// Modifier
 		"Alt",
 		"AltGraph",
@@ -626,5 +628,5 @@ function isKeyPrintable(key: string): boolean {
 		"ZoomToggle",
 	];
 
-	return !allPrintableKeys.includes(key);
+	return !ALL_PRINTABLE_KEYS.includes(key);
 }

@@ -7,18 +7,8 @@
 					:tabCloseButtons="true"
 					:tabMinWidths="true"
 					:tabLabels="documents.state.documents.map((doc) => doc.displayName)"
-					:clickAction="
-						(tabIndex) => {
-							const targetId = documents.state.documents[tabIndex].id;
-							editor.instance.select_document(targetId);
-						}
-					"
-					:closeAction="
-						(tabIndex) => {
-							const targetId = documents.state.documents[tabIndex].id;
-							editor.instance.close_document_with_confirmation(targetId);
-						}
-					"
+					:clickAction="(tabIndex) => editor.instance.select_document(documents.state.documents[tabIndex].id)"
+					:closeAction="(tabIndex) => editor.instance.close_document_with_confirmation(documents.state.documents[tabIndex].id)"
 					:tabActiveIndex="documents.state.activeDocumentIndex"
 					ref="documentsPanel"
 				/>

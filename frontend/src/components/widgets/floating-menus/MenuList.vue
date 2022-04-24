@@ -19,9 +19,9 @@
 				<span class="entry-label">{{ entry.label }}</span>
 
 				<IconLabel v-if="entry.shortcutRequiresLock && !fullscreen.state.keyboardLocked" :icon="'Info'" :title="keyboardLockInfoMessage" />
-				<UserInputLabel v-else-if="entry.shortcut && entry.shortcut.length" :inputKeys="[entry.shortcut]" />
+				<UserInputLabel v-else-if="entry.shortcut?.length" :inputKeys="[entry.shortcut]" />
 
-				<div class="submenu-arrow" v-if="entry.children && entry.children.length"></div>
+				<div class="submenu-arrow" v-if="entry.children?.length"></div>
 				<div class="no-submenu-arrow" v-else></div>
 
 				<MenuList
@@ -175,33 +175,32 @@ const MenuList = defineComponent({
 		scrollableY: { type: Boolean as PropType<boolean>, default: false },
 	},
 	methods: {
-		setEntryRefs(menuEntry: MenuListEntry, ref: typeof FloatingMenu) {
+		setEntryRefs(menuEntry: MenuListEntry, ref: typeof FloatingMenu): void {
 			if (ref) menuEntry.ref = ref;
 		},
-		handleEntryClick(menuEntry: MenuListEntry) {
+		handleEntryClick(menuEntry: MenuListEntry): void {
 			(this.$refs.floatingMenu as typeof FloatingMenu).setClosed();
 
 			if (menuEntry.checkbox) menuEntry.checked = !menuEntry.checked;
 
-			if (menuEntry.action) menuEntry.action();
-			else if (this.defaultAction) this.defaultAction();
+			(menuEntry.action || this.defaultAction)?.();
 
 			this.$emit("update:activeEntry", menuEntry);
 		},
-		handleEntryPointerEnter(menuEntry: MenuListEntry) {
-			if (!menuEntry.children || !menuEntry.children.length) return;
+		handleEntryPointerEnter(menuEntry: MenuListEntry): void {
+			if (!menuEntry.children?.length) return;
 
 			if (menuEntry.ref) menuEntry.ref.setOpen();
 			else throw new Error("The menu bar floating menu has no associated ref");
 		},
-		handleEntryPointerLeave(menuEntry: MenuListEntry) {
-			if (!menuEntry.children || !menuEntry.children.length) return;
+		handleEntryPointerLeave(menuEntry: MenuListEntry): void {
+			if (!menuEntry.children?.length) return;
 
 			if (menuEntry.ref) menuEntry.ref.setClosed();
 			else throw new Error("The menu bar floating menu has no associated ref");
 		},
 		isMenuEntryOpen(menuEntry: MenuListEntry): boolean {
-			if (!menuEntry.children || !menuEntry.children.length) return false;
+			if (!menuEntry.children?.length) return false;
 
 			if (menuEntry.ref) return menuEntry.ref.isOpen();
 
@@ -215,7 +214,7 @@ const MenuList = defineComponent({
 		},
 		isOpen(): boolean {
 			const floatingMenu = this.$refs.floatingMenu as typeof FloatingMenu;
-			return Boolean(floatingMenu && floatingMenu.isOpen());
+			return Boolean(floatingMenu?.isOpen());
 		},
 		async measureAndReportWidth() {
 			// API is experimental but supported in all browsers - https://developer.mozilla.org/en-US/docs/Web/API/FontFaceSet/ready
@@ -242,10 +241,8 @@ const MenuList = defineComponent({
 	},
 	computed: {
 		menuEntriesWithoutRefs(): MenuListEntryData[][] {
-			const { menuEntries } = this;
-			return menuEntries.map((entries) =>
+			return this.menuEntries.map((entries) =>
 				entries.map((entry) => {
-					// eslint-disable-next-line @typescript-eslint/no-unused-vars
 					const { ref, ...entryWithoutRef } = entry;
 					return entryWithoutRef;
 				})

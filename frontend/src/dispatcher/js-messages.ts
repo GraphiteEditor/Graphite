@@ -244,9 +244,9 @@ interface DataBuffer {
 }
 
 export function newDisplayDocumentLayerTreeStructure(input: { data_buffer: DataBuffer }, wasm: WasmInstance): DisplayDocumentLayerTreeStructure {
-	const { pointer, length } = input.data_buffer;
-	const pointerNum = Number(pointer);
-	const lengthNum = Number(length);
+	const pointerNum = Number(input.data_buffer.pointer);
+	const lengthNum = Number(input.data_buffer.length);
+
 	const wasmMemoryBuffer = wasm.wasm_memory().buffer;
 
 	// Decode the folder structure encoding
@@ -265,7 +265,7 @@ export function newDisplayDocumentLayerTreeStructure(input: { data_buffer: DataB
 
 	for (let i = 0; i < structureSectionLength; i += 1) {
 		const msbSigned = structureSectionMsbSigned.getBigUint64(i * 8, true);
-		const msbMask = BigInt(1) << BigInt(63);
+		const msbMask = BigInt(1) << BigInt(64 - 1);
 
 		// Set the MSB to 0 to clear the sign and then read the number as usual
 		const numberOfLayersAtThisDepth = msbSigned & ~msbMask;
@@ -487,6 +487,8 @@ export class UpdatePropertyPanelSectionsLayout extends JsMessage implements Widg
 function createWidgetLayout(widgetLayout: any[]): LayoutRow[] {
 	return widgetLayout.map((rowOrSection) => {
 		if (rowOrSection.Row) {
+			const { name } = rowOrSection.Row;
+
 			// eslint-disable-next-line @typescript-eslint/no-explicit-any
 			const widgets = rowOrSection.Row.widgets.map((widgetHolder: any) => {
 				const { widget_id } = widgetHolder;
@@ -496,16 +498,14 @@ function createWidgetLayout(widgetLayout: any[]): LayoutRow[] {
 				return { widget_id, kind, props };
 			});
 
-			return {
-				name: rowOrSection.Row.name,
-				widgets,
-			};
+			return { name, widgets };
 		}
+
 		if (rowOrSection.Section) {
-			return {
-				name: rowOrSection.Section.name,
-				layout: createWidgetLayout(rowOrSection.Section.layout),
-			};
+			const { name } = rowOrSection.Section;
+			const layout = createWidgetLayout(rowOrSection.Section.layout);
+
+			return { name, layout };
 		}
 
 		throw new Error("Layout row type does not exist");

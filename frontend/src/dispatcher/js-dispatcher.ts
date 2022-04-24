@@ -20,6 +20,7 @@ export function createJsDispatcher() {
 	};
 
 	const handleJsMessage = (messageType: JsMessageType, messageData: Record<string, unknown>, wasm: WasmInstance, instance: RustEditorInstance): void => {
+		// TODO: Provide an explanatory comment here
 		const messageConstructor = messageConstructors[messageType];
 		if (!messageConstructor) {
 			// eslint-disable-next-line no-console
@@ -30,26 +31,26 @@ export function createJsDispatcher() {
 			return;
 		}
 
+		// TODO: Provide an explanatory comment here
+		const isJsMessageConstructor = (fn: typeof messageConstructor): fn is typeof JsMessage => "jsMessageMarker" in fn;
+		const messageIsConstructor = isJsMessageConstructor(messageConstructor);
+
 		// Messages with non-empty data are provided by wasm-bindgen as an object with one key as the message name, like: { NameOfThisMessage: { ... } }
 		// Messages with empty data are provided by wasm-bindgen as a string with the message name, like: "NameOfThisMessage"
+		// Here we extract the payload object or use an empty object depending on the situation.
 		const unwrappedMessageData = messageData[messageType] || {};
 
-		const isJsMessageConstructor = (fn: typeof messageConstructor): fn is typeof JsMessage => "jsMessageMarker" in fn;
-		let message: JsMessage;
-		if (isJsMessageConstructor(messageConstructor)) {
-			message = plainToInstance(messageConstructor, unwrappedMessageData);
-		} else {
-			message = messageConstructor(unwrappedMessageData, wasm, instance);
-		}
+		// TODO: Provide an explanatory comment here
+		const message = messageIsConstructor ? plainToInstance(messageConstructor, unwrappedMessageData) : messageConstructor(unwrappedMessageData, wasm, instance);
 
 		// It is ok to use constructor.name even with minification since it is used consistently with registerHandler
 		const callback = subscriptions[message.constructor.name];
 
-		if (callback && message) {
-			callback(message);
-		} else if (message) {
+		// TODO: Provide an explanatory comment here
+		if (message) {
+			if (callback) callback(message);
 			// eslint-disable-next-line no-console
-			console.error(`Received a frontend message of type "${messageType}" but no handler was registered for it from the client.`);
+			else console.error(`Received a frontend message of type "${messageType}" but no handler was registered for it from the client.`);
 		}
 	};
 

@@ -1,5 +1,4 @@
 <template>
-	<div>{{ widgetData.name }}</div>
 	<div class="widget-row">
 		<template v-for="(component, index) in widgetData.widgets" :key="index">
 			<!-- TODO: Use `<component :is="" v-bind="attributesObject"></component>` to avoid all the separate components with `v-if` -->
