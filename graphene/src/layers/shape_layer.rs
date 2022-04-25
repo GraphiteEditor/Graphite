@@ -30,7 +30,7 @@ impl LayerData for ShapeLayer {
 			let _ = write!(svg, "<!-- SVG shape has an invalid transform -->");
 			return;
 		}
-		path.apply_affine(glam_to_kurbo(transform));
+		path.apply_affine(transform);
 
 		let _ = writeln!(svg, r#"<g transform="matrix("#);
 		inverse.to_cols_array().iter().enumerate().for_each(|(i, entry)| {
@@ -48,7 +48,7 @@ impl LayerData for ShapeLayer {
 		if transform.matrix2 == DMat2::ZERO {
 			return None;
 		}
-		path.apply_affine(glam_to_kurbo(transform));
+		path.apply_affine(transform);
 
 		let kurbo::Rect { x0, y0, x1, y1 } = path.bounding_box();
 		Some([(x0, y0).into(), (x1, y1).into()])
