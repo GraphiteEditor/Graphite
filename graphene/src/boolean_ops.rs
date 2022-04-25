@@ -530,7 +530,7 @@ pub fn composite_boolean_operation(mut select: BooleanOperation, shapes: &mut Ve
 			}
 			Ok(difference)
 		}
-		BooleanOperation::SubtractBack => panic!("Should never occur"),
+		BooleanOperation::SubtractBack => unreachable!("composite boolean operation: unreachable subtract from back"),
 	}
 }
 
@@ -625,7 +625,7 @@ pub fn boolean_operation(mut select: BooleanOperation, alpha: &mut ShapeLayer, b
 			}
 		}
 		BooleanOperation::SubtractBack => {
-			panic!("Should never occur");
+			unreachable!("boolean operation: unreachable subtract from back");
 		}
 		BooleanOperation::SubtractFront => {
 			match if beta_dir != alpha_dir {

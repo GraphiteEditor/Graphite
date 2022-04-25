@@ -514,7 +514,7 @@ pub fn overlapping_curve_intersections(a: &PathSeg, b: &PathSeg) -> [Option<Inte
 						t2a = 0.0;
 						(split_path_seg(b, b_val).0.unwrap(), split_path_seg(a, a_val).0.unwrap())
 					}
-					_ => panic!(),
+					_ => unreachable!("overlapping curve intersections: too many intersections for match arm"),
 				}
 			};
 			let mut to_return = [None, None];
