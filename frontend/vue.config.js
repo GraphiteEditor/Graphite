@@ -75,6 +75,8 @@ module.exports = {
 						emitError: true,
 						outputFilename: "third-party-licenses.txt",
 						outputWriter: formatThirdPartyLicenses,
+						// Workaround for failure caused in WebPack 5: https://github.com/microsoft/license-checker-webpack-plugin/issues/25#issuecomment-833325799
+						filter: /(^.*[/\\]node_modules[/\\]((?:@[^/\\]+[/\\])?(?:[^@/\\][^/\\]*)))/,
 					})
 			);
 
