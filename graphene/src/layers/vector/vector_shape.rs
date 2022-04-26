@@ -115,7 +115,9 @@ impl VectorShape {
 	/// TODO: remove kurbo from below implementations
 
 	pub fn apply_affine(&mut self, affine: DAffine2) {
-		<&Self as Into<BezPath>>::into(self).apply_affine(glam_to_kurbo(affine));
+		let mut transformed = <&Self as Into<BezPath>>::into(self);
+		transformed.apply_affine(glam_to_kurbo(affine));
+		self.anchors = Into::<VectorShape>::into(transformed.iter()).anchors;
 	}
 
 	pub fn bounding_box(&self) -> Rect {
