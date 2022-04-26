@@ -68,11 +68,10 @@ module.exports = {
 		"no-restricted-imports": ["error", { patterns: [".*", "!@/*"] }],
 
 		// TypeScript plugin config
-		"@typescript-eslint/indent": ["error", "tab", { SwitchCase: 1 }],
+		"@typescript-eslint/indent": "off",
 		"@typescript-eslint/camelcase": "off",
 		"@typescript-eslint/no-use-before-define": "off",
 		"@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_" }],
-		"@typescript-eslint/no-loss-of-precision": "off", // TODO: Remove this line after upgrading to eslint 7.1 or greater
 		"@typescript-eslint/explicit-function-return-type": ["error"],
 
 		// Import plugin config (used to intelligently validate module import statements)
@@ -134,6 +133,10 @@ module.exports = {
 
 		// Vue plugin config (used to validate Vue single-file components)
 		"vue/multi-word-component-names": "off",
+
+		"vuejs-accessibility/form-control-has-label": "off",
+		"vuejs-accessibility/label-has-for": "off",
+		"vuejs-accessibility/click-events-have-key-events": "off",
 	},
 	overrides: [
 		{
