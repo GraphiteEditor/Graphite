@@ -47,8 +47,5 @@
 	"optionalDependencies": {
 		"wasm-pack": "0.10.1"
 	},
-	"overrides": {
-		"fork-ts-checker-webpack-plugin": "7.2.7"
-	},
-	"//": "wasm-pack 0.10.2 is broken on Windows so it should remain pinned to 0.10.1 until a fix is released."
+	"//": "wasm-pack 0.10.2 is broken on Windows so it should remain pinned to 0.10.1 until a fix is released (https://github.com/rustwasm/wasm-pack/issues/1097)."
 }
