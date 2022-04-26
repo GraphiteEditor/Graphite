@@ -12,13 +12,13 @@ use crate::layout::widgets::{
 	WidgetCallback, WidgetHolder, WidgetLayout,
 };
 use crate::message_prelude::*;
-use crate::viewport_tools::vector_editor::vector_shape::VectorShape;
 use crate::EditorError;
 
 use graphene::document::Document as GrapheneDocument;
 use graphene::layers::folder_layer::FolderLayer;
 use graphene::layers::layer_info::LayerDataType;
 use graphene::layers::style::ViewMode;
+use graphene::layers::vector::vector_shape::VectorShape;
 use graphene::{DocumentError, DocumentResponse, LayerId, Operation as DocumentOperation};
 
 use glam::{DAffine2, DVec2};

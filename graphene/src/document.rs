@@ -106,7 +106,7 @@ impl Document {
 			match (self.multiply_transforms(path), &self.layer(path)?.data) {
 				(Ok(shape_transform), LayerDataType::Shape(shape)) => {
 					let mut new_shape = shape.clone();
-					new_shape.shape.apply_affine(Affine::new((undo_viewport * shape_transform).to_cols_array()));
+					new_shape.shape.apply_affine(undo_viewport * shape_transform);
 					shapes.push(new_shape);
 				}
 				(Ok(_), _) => return Err(DocumentError::InvalidPath),
@@ -694,7 +694,7 @@ impl Document {
 				self.mark_as_dirty(path)?;
 
 				if let LayerDataType::Shape(shape) = &mut self.layer_mut(path)?.data {
-					shape.shape = bez_path.clone();
+					shape.shape = bez_path.clone().iter().into();
 				}
 				Some(vec![DocumentChanged, LayerChanged { path: path.clone() }])
 			}
@@ -709,7 +709,7 @@ impl Document {
 				}
 
 				if let LayerDataType::Shape(shape) = &mut self.layer_mut(path)?.data {
-					shape.shape = bez_path.clone();
+					shape.shape = bez_path.clone().iter().into();
 				}
 				Some([vec![DocumentChanged, LayerChanged { path: path.clone() }], update_thumbnails_upstream(path)].concat())
 			}
