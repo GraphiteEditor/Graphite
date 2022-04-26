@@ -3,7 +3,7 @@ use crate::intersection::{intersections, line_curve_intersections, valid_t, Inte
 use crate::layers::shape_layer::ShapeLayer;
 use crate::layers::style::PathStyle;
 
-use kurbo::{BezPath, CubicBez, Line, ParamCurve, ParamCurveArclen, ParamCurveArea, ParamCurveExtrema, PathEl, PathSeg, Point, QuadBez, Rect};
+use kurbo::{BezPath, CubicBez, Line, ParamCurve, ParamCurveArclen, ParamCurveArea, ParamCurveExtrema, PathEl, PathSeg, Point, QuadBez, Rect, Shape};
 use serde::{Deserialize, Serialize};
 use std::fmt::{self, Debug, Formatter};
 
@@ -454,6 +454,7 @@ pub fn subdivide_path_seg(p: &PathSeg, t_values: &mut [f64]) -> Vec<Option<PathS
 }
 
 // TODO: Bug: shape with at least two subpaths and comprised of many unions sometimes has erroneous movetos embedded in edges
+// TODO: reduce copying
 pub fn boolean_operation(select: BooleanOperation, mut alpha: ShapeLayer, mut beta: ShapeLayer) -> Result<Vec<ShapeLayer>, BooleanOperationError> {
 	if alpha.shape.anchors.len() < 2 || beta.shape.anchors.len() < 2 {
 		return Err(BooleanOperationError::InvalidSelection);
@@ -478,8 +479,11 @@ pub fn boolean_operation(select: BooleanOperation, mut alpha: ShapeLayer, mut be
 						&alpha.style,
 					);
 					for interior in collect_shapes(&graph, &mut cycles, |dir| dir != alpha_dir, |_| &alpha.style)? {
-						// add_subpath(&mut boolean_union.shape, interior.shape);
-						todo!("add support for vector shapes with holes defined by sub-paths")
+						//TODO: this is not very efficient or nice to read
+						let mut a_path: BezPath = (&boolean_union.shape).into();
+						let b_path: BezPath = (&interior.shape).into();
+						add_subpath(&mut a_path, b_path);
+						boolean_union.shape = a_path.iter().into();
 					}
 					Ok(vec![boolean_union])
 				}
@@ -594,7 +598,7 @@ pub fn cast_horizontal_ray(mut from: Point, into: &BezPath) -> usize {
 	};
 	let mut intersects = Vec::new();
 	for ref seg in into.segments() {
-		if seg.bounding_box().x1 > from.x {
+		if kurbo::ParamCurveExtrema::bounding_box(seg).x1 > from.x {
 			line_curve_intersections(&ray, seg, true, |_, b| valid_t(b), &mut intersects);
 		}
 	}
