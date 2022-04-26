@@ -75,6 +75,8 @@ module.exports = {
 						emitError: true,
 						outputFilename: "third-party-licenses.txt",
 						outputWriter: formatThirdPartyLicenses,
+						// Workaround for failure caused in WebPack 5: https://github.com/microsoft/license-checker-webpack-plugin/issues/25#issuecomment-833325799
+						filter: /(^.*[/\\]node_modules[/\\]((?:@[^/\\]+[/\\])?(?:[^@/\\][^/\\]*)))/,
 					})
 			);
 
@@ -85,6 +87,9 @@ module.exports = {
 			.rule("svg")
 			.uses.clear()
 			.end()
+			// Required (since upgrading vue-cli to v5) to stop the default import behavior, as documented in:
+			// https://webpack.js.org/configuration/module/#ruletype
+			.type("javascript/auto")
 			// Add vue-loader as a loader for Vue single-file components
 			// https://www.npmjs.com/package/vue-loader
 			.use("vue-loader")
@@ -95,6 +100,11 @@ module.exports = {
 			.use("./vue-svg-loader")
 			.loader("./vue-svg-loader")
 			.end();
+	},
+	configureWebpack: {
+		experiments: {
+			asyncWebAssembly: true,
+		},
 	},
 };
 

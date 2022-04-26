@@ -84,13 +84,11 @@ const WidgetSection = defineComponent({
 		widgetData: { type: Object as PropType<WidgetSectionFromJsMessages>, required: true },
 		layoutTarget: { required: true },
 	},
-	data: () => {
-		return {
-			isWidgetRow,
-			isWidgetSection,
-			expanded: true,
-		};
-	},
+	data: () => ({
+		isWidgetRow,
+		isWidgetSection,
+		expanded: true,
+	}),
 	methods: {
 		updateLayout(widgetId: BigInt, value: unknown) {
 			this.editor.instance.update_layout(this.layoutTarget, widgetId, value);

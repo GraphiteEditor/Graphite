@@ -35,12 +35,10 @@ export default defineComponent({
 			throw new Error("Layout row type does not exist");
 		},
 	},
-	data: () => {
-		return {
-			isWidgetRow,
-			isWidgetSection,
-		};
-	},
+	data: () => ({
+		isWidgetRow,
+		isWidgetSection,
+	}),
 	components: {
 		WidgetRow,
 		WidgetSection,

@@ -34,9 +34,7 @@ export function createJsDispatcher() {
 		// Messages with empty data are provided by wasm-bindgen as a string with the message name, like: "NameOfThisMessage"
 		const unwrappedMessageData = messageData[messageType] || {};
 
-		const isJsMessageConstructor = (fn: typeof messageConstructor): fn is typeof JsMessage => {
-			return "jsMessageMarker" in fn;
-		};
+		const isJsMessageConstructor = (fn: typeof messageConstructor): fn is typeof JsMessage => "jsMessageMarker" in fn;
 		let message: JsMessage;
 		if (isJsMessageConstructor(messageConstructor)) {
 			message = plainToInstance(messageConstructor, unwrappedMessageData);
