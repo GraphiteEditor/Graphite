@@ -1,8 +1,9 @@
 use crate::LayerId;
 
-use super::{constants::ControlPointType, vector_anchor::VectorAnchor};
+use super::{constants::ControlPointType, vector_anchor::VectorAnchor, vector_control_point::VectorControlPoint};
 
 use glam::{DAffine2, DVec2};
+use kurbo::{Affine, BezPath, PathEl, Rect, Shape};
 use serde::{Deserialize, Serialize};
 
 /// VectorShape represents a single kurbo shape and maintains a parallel data structure
@@ -30,6 +31,10 @@ impl VectorShape {
 		};
 
 		shape
+	}
+
+	pub fn from_kurbo_shape<T: Shape>(shape: &T) -> Self {
+		shape.path_elements(0.1).into()
 	}
 
 	pub fn move_selected(&mut self, delta: DVec2, relative: bool) {
@@ -106,4 +111,110 @@ impl VectorShape {
 	fn to_local_space(&self, point: kurbo::Point) -> DVec2 {
 		self.transform.transform_point2(DVec2::from((point.x, point.y)))
 	}
+
+	/// TODO: remove kurbo from below implementations
+
+	pub fn apply_affine(&mut self, affine: DAffine2) {
+		let mut transformed = <&Self as Into<BezPath>>::into(self);
+		transformed.apply_affine(glam_to_kurbo(affine));
+		self.anchors = Into::<VectorShape>::into(transformed.iter()).anchors;
+	}
+
+	pub fn bounding_box(&self) -> Rect {
+		<&Self as Into<BezPath>>::into(self).bounding_box()
+	}
+
+	pub fn to_svg(&mut self) -> String {
+		<&Self as Into<BezPath>>::into(self).to_svg()
+	}
+}
+
+impl From<&VectorShape> for BezPath {
+	fn from(vector_shape: &VectorShape) -> Self {
+		if vector_shape.anchors.is_empty() {
+			return BezPath::new();
+		}
+
+		let point = vector_shape.anchors[0].points[0].as_ref().unwrap().position;
+		let mut bez_path = vec![PathEl::MoveTo((point.x, point.y).into())];
+
+		for elements in vector_shape.anchors.windows(2) {
+			let first = &elements[0];
+			let second = &elements[1];
+			let new_segment = match [&first.points[2], &second.points[1], &second.points[0]] {
+				[None, None, Some(p)] => PathEl::LineTo(point_to_kurbo(p)),
+				[None, Some(a), Some(p)] => PathEl::QuadTo(point_to_kurbo(a), point_to_kurbo(p)),
+				[Some(a1), Some(a2), Some(p)] => PathEl::CurveTo(point_to_kurbo(a1), point_to_kurbo(a2), point_to_kurbo(p)),
+				_ => panic!("unexpected path found"),
+			};
+			bez_path.push(new_segment);
+		}
+		if vector_shape.closed {
+			bez_path.push(PathEl::ClosePath);
+		}
+
+		log::debug!("To Bezpath: {:?}", bez_path);
+		BezPath::from_vec(bez_path)
+	}
+}
+
+impl<T: Iterator<Item = PathEl>> From<T> for VectorShape {
+	fn from(path: T) -> Self {
+		let mut anchor_id = 0;
+		let mut vector_shape = VectorShape::new(vec![], DAffine2::IDENTITY, false);
+		let mut current_closed = true;
+		let mut closed_flag = false;
+		for path_el in path {
+			match path_el {
+				PathEl::MoveTo(p) => {
+					if !current_closed {
+						closed_flag = false;
+					}
+					current_closed = false;
+					vector_shape.anchors.push(VectorAnchor::new(kurbo_point_to_DVec2(p), anchor_id));
+					anchor_id += 1;
+				}
+				PathEl::LineTo(p) => {
+					vector_shape.anchors.push(VectorAnchor::new(kurbo_point_to_DVec2(p), anchor_id));
+					anchor_id += 1;
+				}
+				PathEl::QuadTo(p0, p1) => {
+					vector_shape.anchors.last_mut().unwrap().points[2] = Some(VectorControlPoint::new(kurbo_point_to_DVec2(p0), ControlPointType::Handle2));
+					vector_shape.anchors.push(VectorAnchor::new(kurbo_point_to_DVec2(p1), anchor_id));
+					vector_shape.anchors.last_mut().unwrap().points[1] = Some(VectorControlPoint::new(kurbo_point_to_DVec2(p0), ControlPointType::Handle1));
+					anchor_id += 1;
+				}
+				PathEl::CurveTo(p0, p1, p2) => {
+					vector_shape.anchors.last_mut().unwrap().points[2] = Some(VectorControlPoint::new(kurbo_point_to_DVec2(p0), ControlPointType::Handle2));
+					vector_shape.anchors.push(VectorAnchor::new(kurbo_point_to_DVec2(p2), anchor_id));
+					vector_shape.anchors.last_mut().unwrap().points[1] = Some(VectorControlPoint::new(kurbo_point_to_DVec2(p1), ControlPointType::Handle1));
+					anchor_id += 1;
+				}
+				PathEl::ClosePath => {
+					current_closed = true;
+					closed_flag = true;
+				}
+			}
+		}
+		// a VectorShape is closed if and only if every subpath is closed
+		vector_shape.closed = closed_flag;
+		vector_shape
+	}
+}
+
+///*Kurbo adaptors */
+
+#[inline]
+fn glam_to_kurbo(transform: DAffine2) -> Affine {
+	Affine::new(transform.to_cols_array())
+}
+
+#[inline]
+fn point_to_kurbo(x: &VectorControlPoint) -> kurbo::Point {
+	kurbo::Point::new(x.position.x, x.position.y)
+}
+
+#[inline]
+fn kurbo_point_to_DVec2(p: kurbo::Point) -> DVec2 {
+	DVec2::new(p.x, p.y)
 }
