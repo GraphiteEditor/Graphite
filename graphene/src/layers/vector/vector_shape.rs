@@ -23,14 +23,12 @@ pub struct VectorShape {
 
 impl VectorShape {
 	pub fn new(layer_path: Vec<LayerId>, transform: DAffine2, closed: bool) -> Self {
-		let mut shape = VectorShape {
+		VectorShape {
 			layer_path,
 			closed,
 			transform,
 			..Default::default()
-		};
-
-		shape
+		}
 	}
 
 	pub fn from_kurbo_shape<T: Shape>(shape: &T) -> Self {
@@ -50,6 +48,15 @@ impl VectorShape {
 		// TODO Reimplement this function properly
 		for anchor in self.selected_anchors_mut() {
 			if anchor.is_anchor_selected() {}
+		}
+	}
+
+	pub fn add_point(&mut self, nearest_point_on_curve: DVec2) {
+		// TODO Implement this function properly
+		for anchor in self.selected_anchors_mut() {
+			if anchor.is_anchor_selected() {
+				// anchor.add_point(anchor.control_points_mut(), nearest_point_on_curve);
+			}
 		}
 	}
 
@@ -88,10 +95,7 @@ impl VectorShape {
 
 	/// Return all the selected anchors by reference
 	pub fn selected_anchors(&self) -> impl Iterator<Item = &VectorAnchor> {
-		self.anchors
-			.iter()
-			.enumerate()
-			.filter_map(|(index, anchor)| if anchor.is_anchor_selected() { Some(anchor) } else { None })
+		self.anchors.iter().enumerate().filter_map(|(_, anchor)| if anchor.is_anchor_selected() { Some(anchor) } else { None })
 	}
 
 	/// Return all the selected anchors, mutable
@@ -99,7 +103,7 @@ impl VectorShape {
 		self.anchors
 			.iter_mut()
 			.enumerate()
-			.filter_map(|(index, anchor)| if anchor.is_anchor_selected() { Some(anchor) } else { None })
+			.filter_map(|(_, anchor)| if anchor.is_anchor_selected() { Some(anchor) } else { None })
 	}
 
 	/// Return a mutable interator of the anchors regardless of selection
@@ -129,6 +133,7 @@ impl VectorShape {
 	}
 }
 
+/// Create a BezPath from a VectorShape
 impl From<&VectorShape> for BezPath {
 	fn from(vector_shape: &VectorShape) -> Self {
 		if vector_shape.anchors.is_empty() {
@@ -158,6 +163,7 @@ impl From<&VectorShape> for BezPath {
 	}
 }
 
+/// Create a VectorShape from a BezPath
 impl<T: Iterator<Item = PathEl>> From<T> for VectorShape {
 	fn from(path: T) -> Self {
 		let mut anchor_id = 0;
@@ -203,7 +209,6 @@ impl<T: Iterator<Item = PathEl>> From<T> for VectorShape {
 }
 
 ///*Kurbo adaptors */
-
 #[inline]
 fn glam_to_kurbo(transform: DAffine2) -> Affine {
 	Affine::new(transform.to_cols_array())

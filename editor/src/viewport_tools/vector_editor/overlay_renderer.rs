@@ -21,13 +21,12 @@ use graphene::{
 };
 
 /// AnchorOverlay is the collection of overlays that make up an anchor
-/// Notably the anchor point, the lines to the handles and the handles
+/// Notably the anchor point, handles and the lines for the handles
 type AnchorOverlays = [Option<Vec<LayerId>>; 5];
 
 const POINT_STROKE_WIDTH: f32 = 2.0;
 
 struct OverlayRenderer {
-	// Yes, I know I can't use refs here, just a reminder to myself for now
 	shape_overlay_cache: HashMap<Vec<LayerId>, Vec<LayerId>>,
 	anchor_overlay_cache: HashMap<u64, AnchorOverlays>,
 }
@@ -40,7 +39,7 @@ impl<'a> OverlayRenderer {
 		}
 	}
 
-	pub fn draw_overlays_for_shape(&mut self, shape: &VectorShape, responses: &mut VecDeque<Message>) {
+	pub fn draw_overlays_for_vector_shape(&mut self, shape: &VectorShape, responses: &mut VecDeque<Message>) {
 		// Draw the shape outline overlays
 		if !self.shape_overlay_cache.contains_key(&shape.layer_path) {
 			let outline = self.create_shape_outline_overlay(shape.into(), responses);
@@ -51,11 +50,13 @@ impl<'a> OverlayRenderer {
 
 		// Draw the anchor / handle overlays
 		for anchor in shape.anchors.iter() {
+			// Do we have this cached?
+			let cached = self.anchor_overlay_cache.contains_key(&anchor.local_id);
 			// If we already have these overlays don't recreate them
-			if !self.anchor_overlay_cache.contains_key(&anchor.local_id) {
+			if !cached {
 				// Create the overlays
 				let anchor_overlays = [
-					Some(self.create_anchor_overlay(anchor, responses)),
+					Some(self.create_anchor_overlay(responses)),
 					self.create_handle_overlay(&anchor.points[ControlPointType::Handle1], responses),
 					self.create_handle_overlay(&anchor.points[ControlPointType::Handle2], responses),
 					self.create_handle_line_overlay(&anchor.points[ControlPointType::Handle1], responses),
@@ -97,7 +98,7 @@ impl<'a> OverlayRenderer {
 	}
 
 	/// Create a single anchor overlay and return its layer id
-	fn create_anchor_overlay(&self, anchor: &VectorAnchor, responses: &mut VecDeque<Message>) -> Vec<LayerId> {
+	fn create_anchor_overlay(&self, responses: &mut VecDeque<Message>) -> Vec<LayerId> {
 		let layer_path = vec![generate_uuid()];
 		let operation = Operation::AddOverlayRect {
 			path: layer_path.clone(),
