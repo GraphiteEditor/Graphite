@@ -1,4 +1,4 @@
-use crate::LayerId;
+use crate::{layers::style::PathStyle, LayerId};
 
 use super::{constants::ControlPointType, vector_anchor::VectorAnchor, vector_control_point::VectorControlPoint};
 
@@ -37,20 +37,27 @@ impl VectorShape {
 		shape.path_elements(0.1).into()
 	}
 
-	pub fn move_selected(&mut self, delta: DVec2, relative: bool) {
-		// TODO Reimplement this function properly
-		for anchor in self.selected_anchors_mut() {
-			if anchor.is_anchor_selected() {
-				// anchor.move_selected_points(anchor.control_points_mut(), delta, relative);
-			}
+	/// constructs a rectangle with `p1` as the lower left and `p2` as the top right
+	pub fn new_rect(p1: DVec2, p2: DVec2) -> Self {
+		VectorShape {
+			layer_path: vec![],
+			anchors: vec![
+				VectorAnchor::new(p1, 0),
+				VectorAnchor::new(DVec2::new(p1.x, p2.y), 1),
+				VectorAnchor::new(p2, 2),
+				VectorAnchor::new(DVec2::new(p2.x, p1.y), 3),
+			],
+			closed: true,
+			transform: DAffine2::IDENTITY,
 		}
 	}
 
+	pub fn move_selected(&mut self, delta: DVec2, relative: bool) {
+		self.selected_anchors_mut().for_each(|anchor| anchor.move_selected_points(relative, &DAffine2::from_translation(delta)));
+	}
+
 	pub fn delete_selected(&mut self) {
-		// TODO Reimplement this function properly
-		for anchor in self.selected_anchors_mut() {
-			if anchor.is_anchor_selected() {}
-		}
+		self.anchors = self.anchors.clone().into_iter().filter(|anchor| !anchor.is_anchor_selected()).collect();
 	}
 
 	/// Select an anchor
@@ -96,13 +103,10 @@ impl VectorShape {
 
 	/// Return all the selected anchors, mutable
 	pub fn selected_anchors_mut(&mut self) -> impl Iterator<Item = &mut VectorAnchor> {
-		self.anchors
-			.iter_mut()
-			.enumerate()
-			.filter_map(|(index, anchor)| if anchor.is_anchor_selected() { Some(anchor) } else { None })
+		self.anchors.iter_mut().filter(|anchor| anchor.is_anchor_selected())
 	}
 
-	/// Return a mutable interator of the anchors regardless of selection
+	/// Return a mutable iterator of the anchors regardless of selection
 	pub fn anchors_mut(&mut self) -> impl Iterator<Item = &mut VectorAnchor> {
 		self.anchors.iter_mut()
 	}

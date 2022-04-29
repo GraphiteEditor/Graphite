@@ -1,4 +1,7 @@
-use std::ops::{Index, IndexMut};
+use std::{
+	ops::{Index, IndexMut, Not},
+	thread::JoinHandle,
+};
 
 use serde::{Deserialize, Serialize};
 
@@ -8,6 +11,17 @@ pub enum ControlPointType {
 	Anchor = 0,
 	Handle1 = 1,
 	Handle2 = 2,
+}
+
+impl Not for ControlPointType {
+	type Output = Self;
+	fn not(self) -> Self::Output {
+		match self {
+			ControlPointType::Handle1 => ControlPointType::Handle2,
+			ControlPointType::Handle2 => ControlPointType::Handle1,
+			_ => ControlPointType::Anchor,
+		}
+	}
 }
 
 // Allows us to use ManipulatorType for indexing
