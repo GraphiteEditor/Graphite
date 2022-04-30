@@ -86,7 +86,5 @@ export function createAutoSaveManager(editor: EditorState, documents: DocumentsS
 	// On creation
 	openAutoSavedDocuments();
 
-	return {
-		openAutoSavedDocuments,
-	};
+	return { openAutoSavedDocuments };
 }
