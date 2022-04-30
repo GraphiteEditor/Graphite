@@ -26,7 +26,8 @@ type AnchorOverlays = [Option<Vec<LayerId>>; 5];
 
 const POINT_STROKE_WIDTH: f32 = 2.0;
 
-struct OverlayRenderer {
+#[derive(Debug, Default)]
+pub struct OverlayRenderer {
 	shape_overlay_cache: HashMap<Vec<LayerId>, Vec<LayerId>>,
 	anchor_overlay_cache: HashMap<u64, AnchorOverlays>,
 }
@@ -54,10 +55,11 @@ impl<'a> OverlayRenderer {
 		for anchor in shape.anchors.iter() {
 			// If cached update them
 			if let Some(anchor_overlays) = self.anchor_overlay_cache.get(&anchor.local_id) {
+				// Reposition cached overlays
 				self.place_overlays(anchor, anchor_overlays, responses);
 
 				// Change styles to reflect selection
-				self.update_overlay_style(anchor, &anchor_overlays, responses);
+				self.update_overlay_style(anchor, anchor_overlays, responses);
 			} else {
 				// Create if not cached
 				let anchor_overlays = [
@@ -78,7 +80,7 @@ impl<'a> OverlayRenderer {
 				self.anchor_overlay_cache.insert(anchor.local_id, anchor_overlays);
 			}
 
-			// TODO handle dead overlays
+			// TODO handle unused overlays
 		}
 	}
 
@@ -219,15 +221,16 @@ impl<'a> OverlayRenderer {
 
 	/// Sets the overlay style for this point
 	fn update_overlay_style(&self, anchor: &VectorAnchor, overlays: &AnchorOverlays, responses: &mut VecDeque<Message>) {
+		// TODO Move the style definitions out of the VectorShape, should be looked up from a stylesheet or similar
+		let selected_style = style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, POINT_STROKE_WIDTH + 1.0)), Some(Fill::new(COLOR_ACCENT)));
+		let deselected_style = style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, POINT_STROKE_WIDTH)), None);
+
 		// Update if the anchor / handle points are shown as selected
+		// Here the index is important, even though overlays[..] has five elements we only care about the first three
 		for (index, point) in anchor.points.iter().enumerate() {
 			if let Some(point) = point {
 				if let Some(overlay) = &overlays[index] {
-					let style = if point.is_selected {
-						style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, POINT_STROKE_WIDTH + 1.0)), Some(Fill::new(COLOR_ACCENT)))
-					} else {
-						style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, POINT_STROKE_WIDTH)), None)
-					};
+					let style = if point.is_selected { selected_style } else { deselected_style };
 					responses.push_back(DocumentMessage::Overlays(Operation::SetLayerStyle { path: overlay.clone(), style }.into()).into());
 				}
 			}

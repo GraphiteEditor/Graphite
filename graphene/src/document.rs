@@ -89,7 +89,7 @@ impl Document {
 	}
 
 	/// Returns a mutable reference to the layer or folder at the path.
-	fn layer_mut(&mut self, path: &[LayerId]) -> Result<&mut Layer, DocumentError> {
+	pub fn layer_mut(&mut self, path: &[LayerId]) -> Result<&mut Layer, DocumentError> {
 		if path.is_empty() {
 			return Ok(&mut self.root);
 		}
