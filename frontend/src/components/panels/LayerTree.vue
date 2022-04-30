@@ -414,7 +414,7 @@ export default defineComponent({
 			this.draggable = false;
 
 			listing.editingName = true;
-			const tree = (this.$refs.layerTreeList as typeof LayoutCol).$el as HTMLElement;
+			const tree: HTMLElement = (this.$refs.layerTreeList as typeof LayoutCol).$el;
 			this.$nextTick(() => {
 				(tree.querySelector("[data-text-input]:not([disabled])") as HTMLInputElement).select();
 			});
@@ -535,7 +535,7 @@ export default defineComponent({
 			// Stop the drag from being shown as cancelled
 			event.preventDefault();
 
-			const tree = (this.$refs.layerTreeList as typeof LayoutCol).$el as HTMLElement;
+			const tree: HTMLElement = (this.$refs.layerTreeList as typeof LayoutCol).$el;
 			this.draggingData = this.calculateDragIndex(tree, event.clientY);
 		},
 		async drop() {

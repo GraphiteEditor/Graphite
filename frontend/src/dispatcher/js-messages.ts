@@ -485,10 +485,8 @@ export class UpdatePropertyPanelSectionsLayout extends JsMessage implements Widg
 // Unpacking rust types to more usable type in the frontend
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function createWidgetLayout(widgetLayout: any[]): LayoutRow[] {
-	return widgetLayout.map((rowOrSection) => {
+	return widgetLayout.map((rowOrSection): LayoutRow => {
 		if (rowOrSection.Row) {
-			const { name } = rowOrSection.Row;
-
 			// eslint-disable-next-line @typescript-eslint/no-explicit-any
 			const widgets = rowOrSection.Row.widgets.map((widgetHolder: any) => {
 				const { widget_id } = widgetHolder;
@@ -498,14 +496,16 @@ function createWidgetLayout(widgetLayout: any[]): LayoutRow[] {
 				return { widget_id, kind, props };
 			});
 
-			return { name, widgets };
+			const result: WidgetRow = { widgets };
+			return result;
 		}
 
 		if (rowOrSection.Section) {
 			const { name } = rowOrSection.Section;
 			const layout = createWidgetLayout(rowOrSection.Section.layout);
 
-			return { name, layout };
+			const result: WidgetSection = { name, layout };
+			return result;
 		}
 
 		throw new Error("Layout row type does not exist");
@@ -524,12 +524,12 @@ export class TriggerTextCopy extends JsMessage {
 
 export class TriggerViewportResize extends JsMessage {}
 
-// Any is used since the type of the object should be known from the rust side
+// `any` is used since the type of the object should be known from the Rust side
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type JSMessageFactory = (data: any, wasm: WasmInstance, instance: RustEditorInstance) => JsMessage;
 type MessageMaker = typeof JsMessage | JSMessageFactory;
 
-export const messageConstructors: Record<string, MessageMaker> = {
+export const messageMakers: Record<string, MessageMaker> = {
 	DisplayConfirmationToCloseAllDocuments,
 	DisplayConfirmationToCloseDocument,
 	DisplayDialogAboutGraphite,
@@ -568,4 +568,4 @@ export const messageConstructors: Record<string, MessageMaker> = {
 	UpdateToolOptionsLayout,
 	UpdateWorkingColors,
 } as const;
-export type JsMessageType = keyof typeof messageConstructors;
+export type JsMessageType = keyof typeof messageMakers;

@@ -183,7 +183,8 @@ const MenuList = defineComponent({
 
 			if (menuEntry.checkbox) menuEntry.checked = !menuEntry.checked;
 
-			(menuEntry.action || this.defaultAction)?.();
+			if (menuEntry.action) menuEntry.action();
+			else if (this.defaultAction) this.defaultAction();
 
 			this.$emit("update:activeEntry", menuEntry);
 		},

@@ -212,7 +212,7 @@ export default defineComponent({
 		const workspace = document.querySelector("[data-workspace]");
 		const floatingMenuContainer = this.$refs.floatingMenuContainer as HTMLElement;
 		const floatingMenuContentComponent = this.$refs.floatingMenuContent as typeof LayoutCol;
-		const floatingMenuContent = floatingMenuContentComponent?.$el as HTMLElement | undefined;
+		const floatingMenuContent: HTMLElement | undefined = floatingMenuContentComponent?.$el;
 		const floatingMenu = this.$refs.floatingMenu as HTMLElement;
 
 		if (!workspace || !floatingMenuContainer || !floatingMenuContentComponent || !floatingMenuContent || !floatingMenu) return;
@@ -298,25 +298,25 @@ export default defineComponent({
 		},
 		getWidth(callback: (width: number) => void) {
 			this.$nextTick(() => {
-				const floatingMenuContent = (this.$refs.floatingMenuContent as typeof LayoutCol).$el as HTMLElement;
+				const floatingMenuContent: HTMLElement = (this.$refs.floatingMenuContent as typeof LayoutCol).$el;
 				const width = floatingMenuContent.clientWidth;
 				callback(width);
 			});
 		},
 		disableMinWidth(callback: (minWidth: string) => void) {
 			this.$nextTick(() => {
-				const floatingMenuContent = (this.$refs.floatingMenuContent as typeof LayoutCol).$el as HTMLElement;
+				const floatingMenuContent: HTMLElement = (this.$refs.floatingMenuContent as typeof LayoutCol).$el;
 				const initialMinWidth = floatingMenuContent.style.minWidth;
 				floatingMenuContent.style.minWidth = "0";
 				callback(initialMinWidth);
 			});
 		},
 		enableMinWidth(minWidth: string) {
-			const floatingMenuContent = (this.$refs.floatingMenuContent as typeof LayoutCol).$el as HTMLElement;
+			const floatingMenuContent: HTMLElement = (this.$refs.floatingMenuContent as typeof LayoutCol).$el;
 			floatingMenuContent.style.minWidth = minWidth;
 		},
 		pointerMoveHandler(e: PointerEvent) {
-			const target = e.target as HTMLElement;
+			const target = e.target as HTMLElement | undefined;
 			const pointerOverFloatingMenuKeepOpen = target?.closest("[data-hover-menu-keep-open]") as HTMLElement | undefined;
 			const pointerOverFloatingMenuSpawner = target?.closest("[data-hover-menu-spawner]") as HTMLElement | undefined;
 			const pointerOverOwnFloatingMenuSpawner = pointerOverFloatingMenuSpawner?.parentElement?.contains(this.$refs.floatingMenu as HTMLElement);
