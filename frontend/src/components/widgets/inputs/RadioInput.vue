@@ -91,7 +91,7 @@ export default defineComponent({
 			const index = this.entries.indexOf(menuEntry);
 			this.$emit("update:selectedIndex", index);
 
-			if (menuEntry.action) menuEntry.action();
+			menuEntry.action?.();
 		},
 	},
 	components: {

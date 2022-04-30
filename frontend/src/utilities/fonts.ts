@@ -23,12 +23,14 @@ fetch(fontListAPI)
 	.then((response) => response.json())
 	.then((json) => {
 		const loadedFonts = json.items as { family: string; variants: string[]; files: { [name: string]: string } }[];
+
 		fontList = loadedFonts.map((font) => {
 			const { family } = font;
 			const variants = font.variants.map(formatFontStyleName);
 			const files = new Map(font.variants.map((x) => [formatFontStyleName(x), font.files[x]]));
 			return { family, variants, files };
 		});
+
 		loadDefaultFont();
 	});
 
@@ -48,16 +50,13 @@ function formatFontStyleName(fontStyle: string): string {
 	return `${weightName}${isItalic ? " Italic" : ""} (${weight})`;
 }
 
-export function loadDefaultFont(): void {
+export async function loadDefaultFont(): Promise<void> {
 	const font = getFontFile("Merriweather", "Normal (400)");
+	if (!font) return;
 
-	if (font) {
-		fetch(font)
-			.then((response) => response.arrayBuffer())
-			.then((response) => {
-				if (loadDefaultFontCallback) loadDefaultFontCallback(font, new Uint8Array(response));
-			});
-	}
+	const response = await fetch(font);
+	const responseBuffer = await response.arrayBuffer();
+	loadDefaultFontCallback?.(font, new Uint8Array(responseBuffer));
 }
 
 export function setLoadDefaultFontCallback(callback: fontCallbackType): void {
@@ -71,11 +70,11 @@ export function fontNames(): string[] {
 
 export function getFontStyles(fontFamily: string): string[] {
 	const font = fontList.find((value) => value.family === fontFamily);
-	return font ? font.variants : [];
+	return font?.variants || [];
 }
 
 export function getFontFile(fontFamily: string, fontStyle: string): string | undefined {
 	const font = fontList.find((value) => value.family === fontFamily);
-	const fontFile = font && font.files.get(fontStyle);
-	return fontFile && fontFile.replace("http://", "https://");
+	const fontFile = font?.files.get(fontStyle);
+	return fontFile?.replace("http://", "https://");
 }
