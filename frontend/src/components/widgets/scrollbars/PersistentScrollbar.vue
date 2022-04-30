@@ -190,9 +190,7 @@ export default defineComponent({
 			this.dragging = false;
 		},
 		pointerMove(e: PointerEvent) {
-			if (this.dragging) {
-				this.updateHandlePosition(e);
-			}
+			if (this.dragging) this.updateHandlePosition(e);
 		},
 		changePosition(difference: number) {
 			this.clampHandlePosition(this.handlePosition + difference / this.trackLength());

@@ -59,6 +59,7 @@ module.exports = {
 		"linebreak-style": ["error", "unix"],
 		"eol-last": ["error", "always"],
 		"max-len": ["error", { code: 200, tabWidth: 4 }],
+		"prefer-destructuring": "off",
 		"no-console": "warn",
 		"no-debugger": "warn",
 		"no-param-reassign": ["error", { props: false }],
@@ -71,7 +72,7 @@ module.exports = {
 		"@typescript-eslint/indent": "off",
 		"@typescript-eslint/camelcase": "off",
 		"@typescript-eslint/no-use-before-define": "off",
-		"@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_" }],
+		"@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_", ignoreRestSiblings: true }],
 		"@typescript-eslint/explicit-function-return-type": ["error"],
 
 		// Import plugin config (used to intelligently validate module import statements)
