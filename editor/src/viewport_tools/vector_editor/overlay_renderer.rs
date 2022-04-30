@@ -55,6 +55,9 @@ impl<'a> OverlayRenderer {
 			// If cached update them
 			if let Some(anchor_overlays) = self.anchor_overlay_cache.get(&anchor.local_id) {
 				self.place_overlays(anchor, anchor_overlays, responses);
+
+				// Change styles to reflect selection
+				self.update_overlay_style(anchor, &anchor_overlays, responses);
 			} else {
 				// Create if not cached
 				let anchor_overlays = [
@@ -65,15 +68,15 @@ impl<'a> OverlayRenderer {
 					self.create_handle_line_overlay(&anchor.points[ControlPointType::Handle2], responses),
 				];
 
-				// Cache overlays
-				self.anchor_overlay_cache.insert(anchor.local_id, anchor_overlays);
-
 				// Place the new overlays
 				self.place_overlays(anchor, &anchor_overlays, responses);
-			}
 
-			// Change styles to reflect selection
-			self.update_overlay_style(anchor, anchor_overlays, responses);
+				// Change styles to reflect selection
+				self.update_overlay_style(anchor, &anchor_overlays, responses);
+
+				// Cache overlays
+				self.anchor_overlay_cache.insert(anchor.local_id, anchor_overlays);
+			}
 
 			// TODO handle dead overlays
 		}
@@ -215,16 +218,18 @@ impl<'a> OverlayRenderer {
 	}
 
 	/// Sets the overlay style for this point
-	fn update_overlay_style(&self, anchor: &VectorAnchor, overlays: AnchorOverlays, responses: &mut VecDeque<Message>) {
+	fn update_overlay_style(&self, anchor: &VectorAnchor, overlays: &AnchorOverlays, responses: &mut VecDeque<Message>) {
 		// Update if the anchor / handle points are shown as selected
 		for (index, point) in anchor.points.iter().enumerate() {
-			if let Some(overlay) = &overlays[index] {
-				let style = if point.is_selected {
-					style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, POINT_STROKE_WIDTH + 1.0)), Some(Fill::new(COLOR_ACCENT)))
-				} else {
-					style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, POINT_STROKE_WIDTH)), None)
-				};
-				responses.push_back(DocumentMessage::Overlays(Operation::SetLayerStyle { path: overlay.clone(), style }.into()).into());
+			if let Some(point) = point {
+				if let Some(overlay) = &overlays[index] {
+					let style = if point.is_selected {
+						style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, POINT_STROKE_WIDTH + 1.0)), Some(Fill::new(COLOR_ACCENT)))
+					} else {
+						style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, POINT_STROKE_WIDTH)), None)
+					};
+					responses.push_back(DocumentMessage::Overlays(Operation::SetLayerStyle { path: overlay.clone(), style }.into()).into());
+				}
 			}
 		}
 	}
