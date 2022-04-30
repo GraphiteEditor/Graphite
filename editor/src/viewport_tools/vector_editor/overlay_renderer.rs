@@ -43,18 +43,20 @@ impl<'a> OverlayRenderer {
 		// Draw the shape outline overlays
 		if !self.shape_overlay_cache.contains_key(&shape.layer_path) {
 			let outline = self.create_shape_outline_overlay(shape.into(), responses);
+
 			// Cache outline overlay
 			self.shape_overlay_cache.insert(shape.layer_path.clone(), outline);
+
 			// TODO Handle removing shapes so we don't memory leak
 		}
 
 		// Draw the anchor / handle overlays
 		for anchor in shape.anchors.iter() {
-			// Do we have this cached?
-			let cached = self.anchor_overlay_cache.contains_key(&anchor.local_id);
-			// If we already have these overlays don't recreate them
-			if !cached {
-				// Create the overlays
+			// If cached update them
+			if let Some(anchor_overlays) = self.anchor_overlay_cache.get(&anchor.local_id) {
+				self.place_overlays(anchor, anchor_overlays, responses);
+			} else {
+				// Create if not cached
 				let anchor_overlays = [
 					Some(self.create_anchor_overlay(responses)),
 					self.create_handle_overlay(&anchor.points[ControlPointType::Handle1], responses),
@@ -65,21 +67,15 @@ impl<'a> OverlayRenderer {
 
 				// Cache overlays
 				self.anchor_overlay_cache.insert(anchor.local_id, anchor_overlays);
+
+				// Place the new overlays
+				self.place_overlays(anchor, &anchor_overlays, responses);
 			}
 
-			// Position the overlays
-			if let Some(anchor_overlays) = self.anchor_overlay_cache.get(&anchor.local_id) {
-				self.place_overlays(anchor, anchor_overlays, responses);
-			}
+			// Change styles to reflect selection
+			self.update_overlay_style(anchor, anchor_overlays, responses);
 
-			// Update if the anchor / handle points are shown as selected
-			anchor.points.iter().flatten().for_each(|point| {
-				if point.is_selected {
-					self.set_overlay_style(POINT_STROKE_WIDTH + 1.0, COLOR_ACCENT, COLOR_ACCENT, responses);
-				} else {
-					self.set_overlay_style(POINT_STROKE_WIDTH, COLOR_ACCENT, Color::WHITE, responses);
-				}
-			});
+			// TODO handle dead overlays
 		}
 	}
 
@@ -219,19 +215,17 @@ impl<'a> OverlayRenderer {
 	}
 
 	/// Sets the overlay style for this point
-	fn set_overlay_style(&self, stroke_width: f32, stroke_color: Color, fill_color: Color, responses: &mut VecDeque<Message>) {
-		// Use something like &overlays[handle.manipulator_type as usize]
-		// if let Some(overlay_path) = &self.overlay_path {
-		// 	responses.push_back(
-		// 		DocumentMessage::Overlays(
-		// 			Operation::SetLayerStyle {
-		// 				path: overlay_path.clone(),
-		// 				style: PathStyle::new(Some(Stroke::new(stroke_color, stroke_width)), Some(Fill::new(fill_color))),
-		// 			}
-		// 			.into(),
-		// 		)
-		// 		.into(),
-		// 	);
-		// }
+	fn update_overlay_style(&self, anchor: &VectorAnchor, overlays: AnchorOverlays, responses: &mut VecDeque<Message>) {
+		// Update if the anchor / handle points are shown as selected
+		for (index, point) in anchor.points.iter().enumerate() {
+			if let Some(overlay) = &overlays[index] {
+				let style = if point.is_selected {
+					style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, POINT_STROKE_WIDTH + 1.0)), Some(Fill::new(COLOR_ACCENT)))
+				} else {
+					style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, POINT_STROKE_WIDTH)), None)
+				};
+				responses.push_back(DocumentMessage::Overlays(Operation::SetLayerStyle { path: overlay.clone(), style }.into()).into());
+			}
+		}
 	}
 }
