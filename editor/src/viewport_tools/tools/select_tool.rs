@@ -462,8 +462,7 @@ impl Fsm for SelectToolFsmState {
 						.iter()
 						.filter_map(|path| document.graphene_document.viewport_bounding_box(path).ok()?)
 						.flat_map(|[bound1, bound2]| [bound1, bound2, (bound1 + bound2) / 2.])
-						.map(|vec| vec.into())
-						.unzip();
+						.collect();
 
 					let closest_move = data.snap_handler.snap_layers(responses, document, snap, input.viewport_bounds.size(), mouse_delta);
 					// TODO: Cache the result of `shallowest_unique_layers` to avoid this heavy computation every frame of movement, see https://github.com/GraphiteEditor/Graphite/pull/481

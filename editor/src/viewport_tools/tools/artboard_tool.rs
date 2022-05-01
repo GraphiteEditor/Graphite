@@ -239,7 +239,7 @@ impl Fsm for ArtboardToolFsmState {
 						let mouse_position = axis_align_drag(axis_align, input.mouse.position, data.drag_start);
 						let mouse_delta = mouse_position - data.drag_current;
 
-						let snap = bounds.evaluate_transform_handle_positions().iter().map(|v| (v.x, v.y)).unzip();
+						let snap = bounds.evaluate_transform_handle_positions().into_iter().collect();
 						let closest_move = data.snap_handler.snap_layers(responses, document, snap, input.viewport_bounds.size(), mouse_delta);
 
 						let size = bounds.bounds[1] - bounds.bounds[0];
