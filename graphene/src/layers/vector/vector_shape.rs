@@ -8,7 +8,6 @@ use serde::{Deserialize, Serialize};
 
 /// VectorShape represents a single kurbo shape and maintains a parallel data structure
 /// For each kurbo path we keep a VectorShape which contains the handles and anchors for that path
-/// TODO remove clonable, we don't want any duplicates
 #[derive(PartialEq, Clone, Debug, Default, Serialize, Deserialize)]
 pub struct VectorShape {
 	/// The path to the shape layer

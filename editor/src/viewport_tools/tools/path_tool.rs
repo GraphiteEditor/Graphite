@@ -128,12 +128,12 @@ impl Fsm for PathToolFsmState {
 				// TODO: Capture a tool event instead of doing this?
 				(_, SelectionChanged) => {
 					// TODO Tell overlay renderer to clear / updates the overlays
-					data.shape_editor.set_shapes_to_modify(document.selected_visible_layers_vector_shapes(responses));
+					data.shape_editor.set_shapes_to_modify(document.selected_visible_vector_shapes_mut(responses));
 					self
 				}
 				(_, DocumentIsDirty) => {
 					// TODO This should be handled by the document not by the tool, but this is a stop gap
-					for shape in &mut data.shape_editor.shapes_to_modify {
+					for shape in &data.shape_editor.shapes_to_modify {
 						data.overlay_renderer.draw_overlays_for_vector_shape(&shape, responses);
 					}
 
