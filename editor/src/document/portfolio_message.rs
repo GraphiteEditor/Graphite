@@ -37,6 +37,10 @@ pub enum PortfolioMessage {
 	Cut {
 		clipboard: Clipboard,
 	},
+	DisplayDialogError {
+		title: String,
+		description: String,
+	},
 	NewDocument,
 	NextDocument,
 	OpenDocument,

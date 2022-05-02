@@ -1,22 +1,10 @@
-import { DisplayDialogError, DisplayDialogPanic } from "@/dispatcher/js-messages";
+import { DisplayDialogPanic } from "@/dispatcher/js-messages";
 import { DialogState } from "@/state/dialog";
 import { EditorState } from "@/state/wasm-loader";
 import { stripIndents } from "@/utilities/strip-indents";
 import { TextButtonWidget } from "@/utilities/widgets";
 
 export function initErrorHandling(editor: EditorState, dialogState: DialogState): void {
-	// Graphite error dialog
-	editor.dispatcher.subscribeJsMessage(DisplayDialogError, (displayDialogError) => {
-		const okButton: TextButtonWidget = {
-			kind: "TextButton",
-			callback: async () => dialogState.dismissDialog(),
-			props: { label: "OK", emphasized: true, minWidth: 96 },
-		};
-		const buttons = [okButton];
-
-		dialogState.createDialog("Warning", displayDialogError.title, displayDialogError.description, buttons);
-	});
-
 	// Code panic dialog and console error
 	editor.dispatcher.subscribeJsMessage(DisplayDialogPanic, (displayDialogPanic) => {
 		// `Error.stackTraceLimit` is only available in V8/Chromium

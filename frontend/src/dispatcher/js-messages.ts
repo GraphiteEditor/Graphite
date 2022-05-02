@@ -144,12 +144,6 @@ export class UpdateActiveDocument extends JsMessage {
 	readonly document_id!: BigInt;
 }
 
-export class DisplayDialogError extends JsMessage {
-	readonly title!: string;
-
-	readonly description!: string;
-}
-
 export class DisplayDialogPanic extends JsMessage {
 	readonly panic_info!: string;
 
@@ -547,7 +541,6 @@ type MessageMaker = typeof JsMessage | JSMessageFactory;
 
 export const messageMakers: Record<string, MessageMaker> = {
 	DisplayDialog,
-	DisplayDialogError,
 	DisplayDialogPanic,
 	DisplayDocumentLayerTreeStructure: newDisplayDocumentLayerTreeStructure,
 	DisplayEditableTextbox,

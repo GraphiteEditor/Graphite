@@ -284,6 +284,17 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 				responses.push_back(Copy { clipboard }.into());
 				responses.push_back(DeleteSelectedLayers.into());
 			}
+			DisplayDialogError { title, description } => {
+				let dialog = dialogs::Error { description };
+				dialog.register_properties(responses, LayoutTarget::DialogDetails);
+				responses.push_back(
+					FrontendMessage::DisplayDialog {
+						icon: "Warning".to_string(),
+						heading: title,
+					}
+					.into(),
+				);
+			}
 			NewDocument => {
 				let name = self.generate_new_document_name();
 				let new_document = DocumentMessageHandler::with_name(name, ipp);
@@ -328,7 +339,7 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 						self.load_document(document, document_id, true, responses);
 					}
 					Err(e) => responses.push_back(
-						FrontendMessage::DisplayDialogError {
+						PortfolioMessage::DisplayDialogError {
 							title: "Failed to open document".to_string(),
 							description: e.to_string(),
 						}

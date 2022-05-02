@@ -14,7 +14,6 @@ use serde::{Deserialize, Serialize};
 pub enum FrontendMessage {
 	// Display prefix: make the frontend show something, like a dialog
 	DisplayDialog { icon: String, heading: String },
-	DisplayDialogError { title: String, description: String },
 	DisplayDialogPanic { panic_info: String, title: String, description: String },
 	DisplayDocumentLayerTreeStructure { data_buffer: RawBuffer },
 	DisplayEditableTextbox { text: String, line_width: Option<f64>, font_size: f64, color: Color },

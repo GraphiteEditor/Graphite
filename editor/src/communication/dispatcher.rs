@@ -437,18 +437,21 @@ mod test {
 		});
 
 		for response in responses {
-			if let FrontendMessage::DisplayDialogError { title, description } = response {
-				println!();
-				println!("-------------------------------------------------");
-				println!("Failed test due to receiving a DisplayDialogError while loading the graphite sample file!");
-				println!("This is most likely caused by forgetting to bump the `GRAPHITE_DOCUMENT_VERSION` in `editor/src/consts.rs`");
-				println!("Once bumping this version number please replace the `graphite-test-document.graphite` with a valid file");
-				println!("DisplayDialogError details:");
-				println!("Title: {}", title);
-				println!("description: {}", description);
-				println!("-------------------------------------------------");
-				println!();
-				panic!()
+			if let FrontendMessage::UpdateDialogDetails { layout_target: _, layout } = response {
+				if let crate::layout::widgets::LayoutRow::Row { widgets } = &layout[0] {
+					if let crate::layout::widgets::Widget::TextLabel(crate::layout::widgets::TextLabel { value, .. }) = &widgets[0].widget {
+						println!();
+						println!("-------------------------------------------------");
+						println!("Failed test due to receiving a DisplayDialogError while loading the graphite sample file!");
+						println!("This is most likely caused by forgetting to bump the `GRAPHITE_DOCUMENT_VERSION` in `editor/src/consts.rs`");
+						println!("Once bumping this version number please replace the `graphite-test-document.graphite` with a valid file");
+						println!("DisplayDialogError details:");
+						println!("description: {}", value);
+						println!("-------------------------------------------------");
+						println!();
+						panic!()
+					}
+				}
 			}
 		}
 	}
