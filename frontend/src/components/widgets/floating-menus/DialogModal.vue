@@ -7,10 +7,9 @@
 			</LayoutCol>
 			<LayoutCol class="main-column">
 				<TextLabel :bold="true" class="heading">{{ dialog.state.heading }}</TextLabel>
-				<TextLabel class="details">{{ dialog.state.details }}</TextLabel>
-				<LayoutRow class="buttons-row" v-if="dialog.state.buttons.length > 0">
-					<TextButton v-for="(button, index) in dialog.state.buttons" :key="index" :title="button.tooltip" :action="() => button.callback?.()" v-bind="button.props" />
-				</LayoutRow>
+				<WidgetLayout :layout="dialog.state.details" class="details"></WidgetLayout>
+
+				<WidgetLayout :layout="dialog.state.buttons" class="buttons-row"></WidgetLayout>
 			</LayoutCol>
 		</LayoutRow>
 	</FloatingMenu>
@@ -60,6 +59,7 @@
 			user-select: text;
 			white-space: pre-wrap;
 			max-width: 400px;
+			height: auto;
 		}
 
 		.buttons-row {
@@ -74,10 +74,11 @@ import { defineComponent } from "vue";
 
 import LayoutCol from "@/components/layout/LayoutCol.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
-import TextButton from "@/components/widgets/buttons/TextButton.vue";
 import FloatingMenu from "@/components/widgets/floating-menus/FloatingMenu.vue";
 import IconLabel from "@/components/widgets/labels/IconLabel.vue";
 import TextLabel from "@/components/widgets/labels/TextLabel.vue";
+
+import WidgetLayout from "@/components/widgets/WidgetLayout.vue";
 
 export default defineComponent({
 	inject: ["dialog"],
@@ -87,7 +88,7 @@ export default defineComponent({
 		FloatingMenu,
 		IconLabel,
 		TextLabel,
-		TextButton,
+		WidgetLayout,
 	},
 	methods: {
 		dismiss() {

@@ -4,6 +4,7 @@
 import { Transform, Type } from "class-transformer";
 
 import type { RustEditorInstance, WasmInstance } from "@/state/wasm-loader";
+import { IconName } from "@/utilities/icons";
 
 export class JsMessage {
 	// The marker provides a way to check if an object is a sub-class constructor for a jsMessage.
@@ -163,7 +164,11 @@ export class DisplayConfirmationToCloseDocument extends JsMessage {
 
 export class DisplayConfirmationToCloseAllDocuments extends JsMessage {}
 
-export class DisplayDialogAboutGraphite extends JsMessage {}
+export class DisplayDialog extends JsMessage {
+	readonly icon!: IconName;
+
+	readonly heading!: string;
+}
 
 export class UpdateDocumentArtwork extends JsMessage {
 	readonly svg!: string;
@@ -390,6 +395,8 @@ export class IndexedDbDocumentDetails extends DocumentDetails {
 
 export class TriggerDefaultFontLoad extends JsMessage {}
 
+export class TriggerDismissDialog extends JsMessage {}
+
 export class TriggerIndexedDbWriteDocument extends JsMessage {
 	document!: string;
 
@@ -407,6 +414,10 @@ export class TriggerIndexedDbRemoveDocument extends JsMessage {
 
 export class TriggerFontLoad extends JsMessage {
 	font!: string;
+}
+
+export class TriggerWindowOpen extends JsMessage {
+	url!: string;
 }
 
 export interface WidgetLayout {
@@ -437,6 +448,7 @@ export type WidgetKind =
 	| "NumberInput"
 	| "Separator"
 	| "IconButton"
+	| "TextButton"
 	| "PopoverButton"
 	| "OptionalInput"
 	| "RadioInput"
@@ -452,6 +464,20 @@ export interface Widget {
 	widget_id: BigInt;
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	props: any;
+}
+
+export class UpdateDialogButtons extends JsMessage implements WidgetLayout {
+	layout_target!: unknown;
+
+	@Transform(({ value }) => createWidgetLayout(value))
+	layout!: LayoutRow[];
+}
+
+export class UpdateDialogDetails extends JsMessage implements WidgetLayout {
+	layout_target!: unknown;
+
+	@Transform(({ value }) => createWidgetLayout(value))
+	layout!: LayoutRow[];
 }
 
 export class UpdateToolOptionsLayout extends JsMessage implements WidgetLayout {
@@ -512,10 +538,6 @@ function createWidgetLayout(widgetLayout: any[]): LayoutRow[] {
 	});
 }
 
-export class DisplayDialogComingSoon extends JsMessage {
-	issue: number | undefined;
-}
-
 export class TriggerTextCommit extends JsMessage {}
 
 export class TriggerTextCopy extends JsMessage {
@@ -532,8 +554,7 @@ type MessageMaker = typeof JsMessage | JSMessageFactory;
 export const messageMakers: Record<string, MessageMaker> = {
 	DisplayConfirmationToCloseAllDocuments,
 	DisplayConfirmationToCloseDocument,
-	DisplayDialogAboutGraphite,
-	DisplayDialogComingSoon,
+	DisplayDialog,
 	DisplayDialogError,
 	DisplayDialogPanic,
 	DisplayDocumentLayerTreeStructure: newDisplayDocumentLayerTreeStructure,
@@ -541,6 +562,7 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateImageData,
 	DisplayRemoveEditableTextbox,
 	TriggerDefaultFontLoad,
+	TriggerDismissDialog,
 	TriggerFileDownload,
 	TriggerFileUpload,
 	TriggerIndexedDbRemoveDocument,
@@ -549,10 +571,13 @@ export const messageMakers: Record<string, MessageMaker> = {
 	TriggerTextCommit,
 	TriggerTextCopy,
 	TriggerViewportResize,
+	TriggerWindowOpen,
 	UpdateActiveDocument,
 	UpdateActiveTool,
 	UpdateCanvasRotation,
 	UpdateCanvasZoom,
+	UpdateDialogButtons,
+	UpdateDialogDetails,
 	UpdateDocumentArtboards,
 	UpdateDocumentArtwork,
 	UpdateDocumentBarLayout,

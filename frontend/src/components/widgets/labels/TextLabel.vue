@@ -1,5 +1,5 @@
 <template>
-	<span class="text-label" :class="{ bold, italic }">
+	<span class="text-label" :class="{ bold, italic, preserveWhitespace }">
 		<slot></slot>
 	</span>
 </template>
@@ -16,6 +16,10 @@
 	&.italic {
 		font-style: italic;
 	}
+	&.preserveWhitespace {
+		white-space: pre-wrap;
+		line-height: normal;
+	}
 }
 </style>
 
@@ -26,6 +30,7 @@ export default defineComponent({
 	props: {
 		bold: { type: Boolean as PropType<boolean>, default: false },
 		italic: { type: Boolean as PropType<boolean>, default: false },
+		preserveWhitespace: { type: Boolean as PropType<boolean>, default: false },
 	},
 });
 </script>

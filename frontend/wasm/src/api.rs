@@ -216,8 +216,13 @@ impl JsEditorHandle {
 		self.dispatch(message);
 	}
 
-	pub fn request_about_graphite_dialog(&self) {
-		let message = PortfolioMessage::RequestAboutGraphiteDialog;
+	pub fn request_about_graphite_dialog(&self, release: String, timestamp: String, hash: String, branch: String) {
+		let message = PortfolioMessage::RequestAboutGraphiteDialog { release, timestamp, hash, branch };
+		self.dispatch(message);
+	}
+
+	pub fn request_coming_soon_dialog(&self, issue: Option<i32>) {
+		let message = PortfolioMessage::RequestComingSoonDialog { issue };
 		self.dispatch(message);
 	}
 

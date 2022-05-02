@@ -1,6 +1,7 @@
 use super::clipboards::{CopyBufferEntry, INTERNAL_CLIPBOARD_COUNT};
 use super::DocumentMessageHandler;
 use crate::consts::{DEFAULT_DOCUMENT_NAME, GRAPHITE_DOCUMENT_VERSION};
+use crate::document::dialogs::{AboutGraphite, ComingSoon};
 use crate::frontend::utility_types::FrontendDocumentDetails;
 use crate::input::InputPreprocessorMessageHandler;
 use crate::layout::layout_message::LayoutTarget;
@@ -408,8 +409,27 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 				let prev_id = self.document_ids[prev_index];
 				responses.push_back(PortfolioMessage::SelectDocument { document_id: prev_id }.into());
 			}
-			RequestAboutGraphiteDialog => {
-				responses.push_back(FrontendMessage::DisplayDialogAboutGraphite.into());
+			RequestAboutGraphiteDialog { release, timestamp, hash, branch } => {
+				let about = AboutGraphite { release, timestamp, hash, branch };
+				about.register_properties(responses, LayoutTarget::DialogDetails);
+				responses.push_back(
+					FrontendMessage::DisplayDialog {
+						icon: "GraphiteLogo".to_string(),
+						heading: "Graphite".to_string(),
+					}
+					.into(),
+				);
+			}
+			RequestComingSoonDialog { issue } => {
+				let coming_soon = ComingSoon { issue };
+				coming_soon.register_properties(responses, LayoutTarget::DialogDetails);
+				responses.push_back(
+					FrontendMessage::DisplayDialog {
+						icon: "Warning".to_string(),
+						heading: "Coming soon".to_string(),
+					}
+					.into(),
+				);
 			}
 			SelectDocument { document_id } => {
 				let active_document = self.active_document();

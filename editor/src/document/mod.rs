@@ -1,4 +1,5 @@
 pub mod clipboards;
+pub mod dialogs;
 pub mod layer_panel;
 pub mod transformation;
 pub mod utility_types;

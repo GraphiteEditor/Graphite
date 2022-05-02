@@ -289,6 +289,7 @@ import {
 	DisplayEditableTextbox,
 	TriggerFontLoad,
 	TriggerDefaultFontLoad,
+	TriggerWindowOpen,
 } from "@/dispatcher/js-messages";
 
 import { textInputCleanup } from "@/lifetime/input";
@@ -465,6 +466,9 @@ export default defineComponent({
 			const response = await fetch(triggerFontLoad.font);
 			const responseBuffer = await response.arrayBuffer();
 			this.editor.instance.on_font_load(triggerFontLoad.font, new Uint8Array(responseBuffer), false);
+		});
+		this.editor.dispatcher.subscribeJsMessage(TriggerWindowOpen, async (triggerWindowOpen) => {
+			window.open(triggerWindowOpen.url, "_blank");
 		});
 		this.editor.dispatcher.subscribeJsMessage(TriggerDefaultFontLoad, loadDefaultFont);
 		this.editor.dispatcher.subscribeJsMessage(TriggerTextCopy, (triggerTextCopy) => {

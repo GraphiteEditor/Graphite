@@ -160,6 +160,7 @@ pub enum Widget {
 	RadioInput(RadioInput),
 	Separator(Separator),
 	TextAreaInput(TextAreaInput),
+	TextButton(TextButton),
 	TextInput(TextInput),
 	TextLabel(TextLabel),
 }
@@ -290,6 +291,20 @@ pub struct IconButton {
 
 #[derive(Clone, Serialize, Deserialize, Derivative, Default)]
 #[derivative(Debug, PartialEq)]
+#[serde(rename_all(serialize = "camelCase", deserialize = "camelCase"))]
+pub struct TextButton {
+	pub label: String,
+	pub emphasized: bool,
+	pub disabled: bool,
+	pub min_width: u32,
+	pub gap_after: bool,
+	#[serde(skip)]
+	#[derivative(Debug = "ignore", PartialEq = "ignore")]
+	pub on_update: WidgetCallback<TextButton>,
+}
+
+#[derive(Clone, Serialize, Deserialize, Derivative, Default)]
+#[derivative(Debug, PartialEq)]
 pub struct OptionalInput {
 	pub checked: bool,
 	pub icon: String,
@@ -342,4 +357,6 @@ pub struct TextLabel {
 	pub value: String,
 	pub bold: bool,
 	pub italic: bool,
+	#[serde(rename = "preserveWhitespace")]
+	pub preserve_whitespace: bool,
 }

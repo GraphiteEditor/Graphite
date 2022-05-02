@@ -22,6 +22,7 @@
 				@changeFont="(value: { name: string, style: string, file: string }) => updateLayout(component.widget_id, value)"
 			/>
 			<IconButton v-if="component.kind === 'IconButton'" v-bind="component.props" :action="() => updateLayout(component.widget_id, null)" />
+			<TextButton v-if="component.kind === 'TextButton'" v-bind="component.props" :action="() => updateLayout(component.widget_id, null)" />
 			<OptionalInput v-if="component.kind === 'OptionalInput'" v-bind="component.props" @update:checked="(value: boolean) => updateLayout(component.widget_id, value)" />
 			<RadioInput v-if="component.kind === 'RadioInput'" v-bind="component.props" @update:selectedIndex="(value: number) => updateLayout(component.widget_id, value)" />
 			<Separator v-if="component.kind === 'Separator'" v-bind="component.props" />
@@ -61,6 +62,7 @@ import { WidgetRow } from "@/dispatcher/js-messages";
 
 import IconButton from "@/components/widgets/buttons/IconButton.vue";
 import PopoverButton from "@/components/widgets/buttons/PopoverButton.vue";
+import TextButton from "@/components/widgets/buttons/TextButton.vue";
 import ColorInput from "@/components/widgets/inputs/ColorInput.vue";
 import FontInput from "@/components/widgets/inputs/FontInput.vue";
 import NumberInput from "@/components/widgets/inputs/NumberInput.vue";
@@ -89,6 +91,7 @@ export default defineComponent({
 		NumberInput,
 		TextInput,
 		IconButton,
+		TextButton,
 		OptionalInput,
 		RadioInput,
 		TextLabel,

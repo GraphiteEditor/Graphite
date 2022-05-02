@@ -15,6 +15,14 @@ impl LayoutMessageHandler {
 	fn send_layout(&self, layout_target: LayoutTarget, responses: &mut VecDeque<Message>) {
 		let widget_layout = &self.layouts[layout_target as usize];
 		let message = match layout_target {
+			LayoutTarget::DialogButtons => FrontendMessage::UpdateDialogButtons {
+				layout_target,
+				layout: widget_layout.layout.clone(),
+			},
+			LayoutTarget::DialogDetails => FrontendMessage::UpdateDialogDetails {
+				layout_target,
+				layout: widget_layout.layout.clone(),
+			},
 			LayoutTarget::ToolOptions => FrontendMessage::UpdateToolOptionsLayout {
 				layout_target,
 				layout: widget_layout.layout.clone(),
@@ -31,6 +39,7 @@ impl LayoutMessageHandler {
 				layout_target,
 				layout: widget_layout.layout.clone(),
 			},
+
 			LayoutTarget::LayoutTargetLength => panic!("`LayoutTargetLength` is not a valid Layout Target and is used for array indexing"),
 		};
 		responses.push_back(message.into());
@@ -69,6 +78,10 @@ impl MessageHandler<LayoutMessage, ()> for LayoutMessageHandler {
 					Widget::Separator(_) => {}
 					Widget::IconButton(icon_button) => {
 						let callback_message = (icon_button.on_update.callback)(icon_button);
+						responses.push_back(callback_message);
+					}
+					Widget::TextButton(text_button) => {
+						let callback_message = (text_button.on_update.callback)(text_button);
 						responses.push_back(callback_message);
 					}
 					Widget::IconLabel(_) => {}

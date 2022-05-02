@@ -15,8 +15,7 @@ pub enum FrontendMessage {
 	// Display prefix: make the frontend show something, like a dialog
 	DisplayConfirmationToCloseAllDocuments,
 	DisplayConfirmationToCloseDocument { document_id: u64 },
-	DisplayDialogAboutGraphite,
-	DisplayDialogComingSoon { issue: Option<i32> },
+	DisplayDialog { icon: String, heading: String },
 	DisplayDialogError { title: String, description: String },
 	DisplayDialogPanic { panic_info: String, title: String, description: String },
 	DisplayDocumentLayerTreeStructure { data_buffer: RawBuffer },
@@ -25,6 +24,7 @@ pub enum FrontendMessage {
 
 	// Trigger prefix: cause a browser API to do something
 	TriggerDefaultFontLoad,
+	TriggerDismissDialog,
 	TriggerFileDownload { document: String, name: String },
 	TriggerFileUpload,
 	TriggerFontLoad { font: String },
@@ -33,12 +33,15 @@ pub enum FrontendMessage {
 	TriggerTextCommit,
 	TriggerTextCopy { copy_text: String },
 	TriggerViewportResize,
+	TriggerWindowOpen { url: String },
 
 	// Update prefix: give the frontend a new value or state for it to use
 	UpdateActiveDocument { document_id: u64 },
 	UpdateActiveTool { tool_name: String },
 	UpdateCanvasRotation { angle_radians: f64 },
 	UpdateCanvasZoom { factor: f64 },
+	UpdateDialogButtons { layout_target: LayoutTarget, layout: SubLayout },
+	UpdateDialogDetails { layout_target: LayoutTarget, layout: SubLayout },
 	UpdateDocumentArtboards { svg: String },
 	UpdateDocumentArtwork { svg: String },
 	UpdateDocumentBarLayout { layout_target: LayoutTarget, layout: SubLayout },

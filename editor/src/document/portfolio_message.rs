@@ -59,7 +59,15 @@ pub enum PortfolioMessage {
 		data: String,
 	},
 	PrevDocument,
-	RequestAboutGraphiteDialog,
+	RequestAboutGraphiteDialog {
+		release: String,
+		timestamp: String,
+		hash: String,
+		branch: String,
+	},
+	RequestComingSoonDialog {
+		issue: Option<i32>,
+	},
 	SelectDocument {
 		document_id: u64,
 	},
