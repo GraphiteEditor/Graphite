@@ -21,12 +21,13 @@ export async function upload(acceptedEextensions: string): Promise<{ filename: s
 		element.addEventListener(
 			"change",
 			async () => {
-				if (!element.files || !element.files.length) return;
-				const file = element.files[0];
-				const filename = file.name;
-				const content = await file.text();
+				if (element.files?.length) {
+					const file = element.files[0];
+					const filename = file.name;
+					const content = await file.text();
 
-				resolve({ filename, content });
+					resolve({ filename, content });
+				}
 			},
 			{ capture: false, once: true }
 		);

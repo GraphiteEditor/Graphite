@@ -152,7 +152,7 @@ export default defineComponent({
 		onIncrement(direction: IncrementDirection) {
 			if (Number.isNaN(this.value)) return;
 
-			({
+			const actions = {
 				Add: (): void => {
 					const directionAddend = direction === "Increase" ? this.incrementFactor : -this.incrementFactor;
 					this.updateValue(this.value + directionAddend);
@@ -162,11 +162,13 @@ export default defineComponent({
 					this.updateValue(this.value * directionMultiplier);
 				},
 				Callback: (): void => {
-					if (direction === "Increase" && this.incrementCallbackIncrease) this.incrementCallbackIncrease();
-					if (direction === "Decrease" && this.incrementCallbackDecrease) this.incrementCallbackDecrease();
+					if (direction === "Increase") this.incrementCallbackIncrease?.();
+					if (direction === "Decrease") this.incrementCallbackDecrease?.();
 				},
 				None: (): void => undefined,
-			}[this.incrementBehavior]());
+			};
+			const action = actions[this.incrementBehavior];
+			action();
 		},
 		updateValue(newValue: number) {
 			const invalid = Number.isNaN(newValue);

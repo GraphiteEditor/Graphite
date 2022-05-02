@@ -30,10 +30,7 @@ export function createDialogState(editor: EditorState) {
 
 	const submitDialog = (): void => {
 		const firstEmphasizedButton = state.buttons.find((button) => button.props.emphasized && button.callback);
-		if (firstEmphasizedButton) {
-			// If statement satisfies TypeScript
-			if (firstEmphasizedButton.callback) firstEmphasizedButton.callback();
-		}
+		firstEmphasizedButton?.callback?.();
 	};
 
 	const dialogIsVisible = (): boolean => state.visible;
@@ -52,8 +49,7 @@ export function createDialogState(editor: EditorState) {
 			callback: async () => window.open(`https://github.com/GraphiteEditor/Graphite/issues/${issueNumber}`, "_blank"),
 			props: { label: `Issue #${issueNumber}`, minWidth: 96 },
 		};
-		const buttons = [okButton];
-		if (issueNumber) buttons.push(issueButton);
+		const buttons = issueNumber ? [okButton, issueButton] : [okButton];
 
 		createDialog("Warning", "Coming soon", details, buttons);
 	};
@@ -65,7 +61,7 @@ export function createDialogState(editor: EditorState) {
 		const timezoneName = Intl.DateTimeFormat(undefined, { timeZoneName: "long" })
 			.formatToParts(new Date())
 			.find((part) => part.type === "timeZoneName");
-		const timezoneNameString = timezoneName && timezoneName.value;
+		const timezoneNameString = timezoneName?.value;
 
 		const hash = (process.env.VUE_APP_COMMIT_HASH || "").substring(0, 12);
 
