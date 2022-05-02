@@ -11,7 +11,7 @@ use crate::viewport_tools::tool::{DocumentToolData, Fsm, ToolActionHandlerData};
 
 use graphene::color::Color;
 use graphene::intersection::Quad;
-use graphene::layers::layer_info::{Layer, LayerDataType};
+use graphene::layers::layer_info::Layer;
 use graphene::layers::style::{Fill, Gradient, PathStyle, Stroke};
 use graphene::Operation;
 
@@ -241,7 +241,7 @@ struct GradientToolData {
 	snap_handler: SnapHandler,
 }
 
-pub fn start_snap(snap_handler: &mut SnapHandler, document: &DocumentMessageHandler, layer: &Layer, path: &[LayerId]) {
+pub fn start_snap(snap_handler: &mut SnapHandler, document: &DocumentMessageHandler) {
 	snap_handler.start_snap(document, document.bounding_boxes(None, None), true, true);
 	snap_handler.add_all_document_handles(document, &[], &[]);
 }
@@ -291,7 +291,7 @@ impl Fsm for GradientToolFsmState {
 					for overlay in &data.gradient_overlays {
 						if overlay.evaluate_gradient_start().distance_squared(mouse) < tolerance {
 							dragging = true;
-							start_snap(&mut data.snap_handler, document, document.graphene_document.layer(&overlay.path).unwrap(), &overlay.path);
+							start_snap(&mut data.snap_handler, document);
 							data.selected_gradient = Some(SelectedGradient {
 								path: overlay.path.clone(),
 								transform: overlay.transform,
@@ -301,7 +301,7 @@ impl Fsm for GradientToolFsmState {
 						}
 						if overlay.evaluate_gradient_end().distance_squared(mouse) < tolerance {
 							dragging = true;
-							start_snap(&mut data.snap_handler, document, document.graphene_document.layer(&overlay.path).unwrap(), &overlay.path);
+							start_snap(&mut data.snap_handler, document);
 							data.selected_gradient = Some(SelectedGradient {
 								path: overlay.path.clone(),
 								transform: overlay.transform,
@@ -332,7 +332,7 @@ impl Fsm for GradientToolFsmState {
 
 							data.selected_gradient = Some(selected_gradient);
 
-							start_snap(&mut data.snap_handler, document, layer, &intersection);
+							start_snap(&mut data.snap_handler, document);
 
 							GradientToolFsmState::Drawing
 						} else {

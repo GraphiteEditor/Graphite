@@ -100,7 +100,7 @@ impl SnapOverlays {
 	}
 
 	/// Draw the snap points
-	fn draw_snap_points(&mut self, distances: impl Iterator<Item = (DVec2, DVec2, f64)>, responses: &mut VecDeque<Message>, closest_distance: DVec2, viewport_bounds: DVec2) {
+	fn draw_snap_points(&mut self, distances: impl Iterator<Item = (DVec2, DVec2, f64)>, responses: &mut VecDeque<Message>, closest_distance: DVec2) {
 		for (target, offset, distance) in distances.filter(|(_pos, _offset, dist)| dist.abs() < SNAP_POINT_OVERLAY_FADE_FAR) {
 			let active = (closest_distance - offset).length_squared() < 1.;
 			let opacity = if active {
@@ -132,7 +132,7 @@ impl SnapOverlays {
 		let (x, y, points) = positions_and_distances;
 		self.draw_alignment_lines(true, y, responses, closest_distance, viewport_bounds);
 		self.draw_alignment_lines(false, x, responses, closest_distance, viewport_bounds);
-		self.draw_snap_points(points, responses, closest_distance, viewport_bounds);
+		self.draw_snap_points(points, responses, closest_distance);
 
 		Self::remove_unused_overlays(&mut self.axis_overlay_paths, responses, self.axis_index);
 		Self::remove_unused_overlays(&mut self.point_overlay_paths, responses, self.point_index);
