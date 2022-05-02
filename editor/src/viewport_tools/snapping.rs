@@ -5,6 +5,7 @@ use crate::consts::{
 use crate::document::DocumentMessageHandler;
 use crate::message_prelude::*;
 
+use graphene::layers::layer_info::{Layer, LayerDataType};
 use graphene::layers::style::{self, Stroke};
 use graphene::{LayerId, Operation};
 
@@ -159,9 +160,10 @@ impl SnapHandler {
 		F: Fn(DVec2) -> R + Clone,
 	{
 		let empty = Vec::new();
+		let snap_points = self.snap_x && self.snap_y;
 
 		let axis = self.bound_targets.as_ref().unwrap_or(&empty);
-		let points = self.point_targets.as_ref().unwrap_or(&empty);
+		let points = if snap_points { self.point_targets.as_ref().unwrap_or(&empty) } else { &empty };
 
 		let x_axis = if self.snap_x { axis } else { &empty }.iter().flat_map(|&pos| axis_generation(pos).map(move |v| (pos, v.x)));
 		let y_axis = if self.snap_y { axis } else { &empty }.iter().flat_map(|&pos| axis_generation(pos).map(move |v| (pos, v.y)));
@@ -208,13 +210,64 @@ impl SnapHandler {
 					})
 					.collect(),
 			);
+			self.point_targets = None;
 		}
 	}
 
 	/// Add arbitrary snapping points
-	pub fn add_snap_points(&mut self, document_message_handler: &DocumentMessageHandler, snap_points: Vec<DVec2>) {
+	///
+	/// This should be called after start_snap
+	pub fn add_snap_points(&mut self, document_message_handler: &DocumentMessageHandler, snap_points: impl Iterator<Item = DVec2>) {
 		if document_message_handler.snapping_enabled {
-			self.point_targets = Some(snap_points);
+			if let Some(targets) = &mut self.point_targets {
+				targets.extend(snap_points);
+			} else {
+				self.point_targets = Some(snap_points.collect());
+			}
+		}
+	}
+
+	/// Add the control points (optionally including bézier handles) of the specified shape layer to the snapping points
+	///
+	/// This should be called after start_snap
+	pub fn add_snap_path(&mut self, document_message_handler: &DocumentMessageHandler, layer: &Layer, path: &[LayerId], include_handles: bool) {
+		if let LayerDataType::Shape(s) = &layer.data {
+			let transform = document_message_handler.graphene_document.multiply_transforms(path).unwrap();
+			let snap_points = s
+				.path
+				.iter()
+				.flat_map(|shape| {
+					if include_handles {
+						match shape {
+							kurbo::PathEl::MoveTo(point) => vec![point],
+							kurbo::PathEl::LineTo(point) => vec![point],
+							kurbo::PathEl::QuadTo(handle1, point) => vec![handle1, point],
+							kurbo::PathEl::CurveTo(handle1, handle2, point) => vec![handle1, handle2, point],
+							kurbo::PathEl::ClosePath => vec![],
+						}
+					} else {
+						match shape {
+							kurbo::PathEl::MoveTo(point) => vec![point],
+							kurbo::PathEl::LineTo(point) => vec![point],
+							kurbo::PathEl::QuadTo(_, point) => vec![point],
+							kurbo::PathEl::CurveTo(_, _, point) => vec![point],
+							kurbo::PathEl::ClosePath => vec![],
+						}
+					}
+				})
+				.map(|point| DVec2::new(point.x, point.y))
+				.map(|pos| transform.transform_point2(pos));
+			self.add_snap_points(document_message_handler, snap_points);
+		}
+	}
+
+	/// Adds all of the shape handles in the document, including bézier handles of the points specified
+	pub fn add_all_document_handles(&mut self, document_message_handler: &DocumentMessageHandler, include_handles: &[&[LayerId]], exclude: &[&[LayerId]]) {
+		for path in document_message_handler.all_layers() {
+			if !exclude.contains(&path) {
+				let layer = document_message_handler.graphene_document.layer(path).expect("Could not get layer for snapping");
+				self.add_snap_path(document_message_handler, layer, path, include_handles.contains(&path));
+			}
 		}
 	}
 

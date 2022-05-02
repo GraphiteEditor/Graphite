@@ -404,6 +404,7 @@ impl Fsm for SelectToolFsmState {
 						let snap_y = selected_edges.0 || selected_edges.1;
 
 						data.snap_handler.start_snap(document, document.bounding_boxes(Some(&selected), None), snap_x, snap_y);
+						data.snap_handler.add_all_document_handles(document, &[], &selected.iter().map(|x| x.as_slice()).collect::<Vec<_>>());
 
 						data.layers_dragging = selected;
 

@@ -163,6 +163,7 @@ impl Fsm for ArtboardToolFsmState {
 
 						data.snap_handler
 							.start_snap(document, document.bounding_boxes(None, Some(data.selected_board.unwrap())), snap_x, snap_y);
+						data.snap_handler.add_all_document_handles(document, &[], &[]);
 
 						ArtboardToolFsmState::ResizingBounds
 					} else {
@@ -175,6 +176,7 @@ impl Fsm for ArtboardToolFsmState {
 							data.selected_board = Some(intersection[0]);
 
 							data.snap_handler.start_snap(document, document.bounding_boxes(None, Some(intersection[0])), true, true);
+							data.snap_handler.add_all_document_handles(document, &[], &[]);
 
 							responses.push_back(
 								PropertiesPanelMessage::SetActiveLayers {
@@ -190,6 +192,7 @@ impl Fsm for ArtboardToolFsmState {
 							data.selected_board = Some(id);
 
 							data.snap_handler.start_snap(document, document.bounding_boxes(None, Some(id)), true, true);
+							data.snap_handler.add_all_document_handles(document, &[], &[]);
 
 							responses.push_back(
 								ArtboardMessage::AddArtboard {

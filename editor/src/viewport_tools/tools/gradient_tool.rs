@@ -243,23 +243,7 @@ struct GradientToolData {
 
 pub fn start_snap(snap_handler: &mut SnapHandler, document: &DocumentMessageHandler, layer: &Layer, path: &[LayerId]) {
 	snap_handler.start_snap(document, document.bounding_boxes(None, None), true, true);
-	if let LayerDataType::Shape(s) = &layer.data {
-		let transform = document.graphene_document.multiply_transforms(path).unwrap();
-		let snap_points = s
-			.path
-			.iter()
-			.filter_map(|shape| match shape {
-				kurbo::PathEl::MoveTo(point) => Some(point),
-				kurbo::PathEl::LineTo(point) => Some(point),
-				kurbo::PathEl::QuadTo(_, point) => Some(point),
-				kurbo::PathEl::CurveTo(_, _, point) => Some(point),
-				kurbo::PathEl::ClosePath => None,
-			})
-			.map(|point| DVec2::new(point.x, point.y))
-			.map(|pos| transform.transform_point2(pos))
-			.collect();
-		snap_handler.add_snap_points(document, snap_points);
-	}
+	snap_handler.add_all_document_handles(document, &[], &[]);
 }
 
 impl Fsm for GradientToolFsmState {
