@@ -198,7 +198,14 @@ impl SnapHandler {
 			// Could be made into sorted Vec or a HashSet for more performant lookups.
 			self.bound_targets = Some(
 				bounding_boxes
-					.flat_map(|[bound1, bound2]| [bound1, DVec2::new(bound2.x, bound1.y), DVec2::new(bound1.x, bound2.y), bound2, ((bound1 + bound2) / 2.)])
+					.flat_map(|[bound1, bound2]| {
+						[
+							DVec2::new((bound1.x + bound2.x) / 2., bound1.y),
+							DVec2::new((bound1.x + bound2.x) / 2., bound2.y),
+							DVec2::new(bound1.x, (bound1.y + bound2.y) / 2.),
+							DVec2::new(bound2.x, (bound1.y + bound2.y) / 2.),
+						]
+					})
 					.collect(),
 			);
 		}
