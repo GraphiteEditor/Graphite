@@ -158,12 +158,6 @@ export class DisplayDialogPanic extends JsMessage {
 	readonly description!: string;
 }
 
-export class DisplayConfirmationToCloseDocument extends JsMessage {
-	readonly document_id!: BigInt;
-}
-
-export class DisplayConfirmationToCloseAllDocuments extends JsMessage {}
-
 export class DisplayDialog extends JsMessage {
 	readonly icon!: IconName;
 
@@ -552,8 +546,6 @@ type JSMessageFactory = (data: any, wasm: WasmInstance, instance: RustEditorInst
 type MessageMaker = typeof JsMessage | JSMessageFactory;
 
 export const messageMakers: Record<string, MessageMaker> = {
-	DisplayConfirmationToCloseAllDocuments,
-	DisplayConfirmationToCloseDocument,
 	DisplayDialog,
 	DisplayDialogError,
 	DisplayDialogPanic,

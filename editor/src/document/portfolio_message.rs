@@ -22,6 +22,9 @@ pub enum PortfolioMessage {
 	CloseActiveDocumentWithConfirmation,
 	CloseAllDocuments,
 	CloseAllDocumentsWithConfirmation,
+	CloseDialogAndThen {
+		followup: Box<Message>,
+	},
 	CloseDocument {
 		document_id: u64,
 	},

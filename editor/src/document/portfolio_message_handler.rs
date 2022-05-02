@@ -1,7 +1,7 @@
 use super::clipboards::{CopyBufferEntry, INTERNAL_CLIPBOARD_COUNT};
 use super::DocumentMessageHandler;
 use crate::consts::{DEFAULT_DOCUMENT_NAME, GRAPHITE_DOCUMENT_VERSION};
-use crate::document::dialogs::{AboutGraphite, ComingSoon};
+use crate::document::dialogs::{self, AboutGraphite, ComingSoon};
 use crate::frontend::utility_types::FrontendDocumentDetails;
 use crate::input::InputPreprocessorMessageHandler;
 use crate::layout::layout_message::LayoutTarget;
@@ -170,7 +170,19 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 				responses.push_back(NewDocument.into());
 			}
 			CloseAllDocumentsWithConfirmation => {
-				responses.push_back(FrontendMessage::DisplayConfirmationToCloseAllDocuments.into());
+				let dialog = dialogs::CloseAllDocuments;
+				dialog.register_properties(responses, LayoutTarget::DialogDetails);
+				responses.push_back(
+					FrontendMessage::DisplayDialog {
+						icon: "Copy".to_string(),
+						heading: "Close all documents?".to_string(),
+					}
+					.into(),
+				);
+			}
+			CloseDialogAndThen { followup } => {
+				responses.push_back(FrontendMessage::TriggerDismissDialog.into());
+				responses.push_back(*followup);
 			}
 			CloseDocument { document_id } => {
 				let document_index = self.document_index(document_id);
@@ -223,7 +235,19 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 					responses.push_back(ToolMessage::AbortCurrentTool.into());
 					responses.push_back(PortfolioMessage::CloseDocument { document_id }.into());
 				} else {
-					responses.push_back(FrontendMessage::DisplayConfirmationToCloseDocument { document_id }.into());
+					let dialog = dialogs::CloseDocument {
+						document_name: target_document.name.clone(),
+						document_id,
+					};
+					dialog.register_properties(responses, LayoutTarget::DialogDetails);
+					responses.push_back(
+						FrontendMessage::DisplayDialog {
+							icon: "File".to_string(),
+							heading: "Save changes before closing?".to_string(),
+						}
+						.into(),
+					);
+
 					// Select the document being closed
 					responses.push_back(PortfolioMessage::SelectDocument { document_id }.into());
 				}
