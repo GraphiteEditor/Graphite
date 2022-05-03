@@ -37,6 +37,11 @@
 			}
 		}
 
+		&:focus {
+			outline: 1px solid var(--color-accent);
+			outline-offset: 2px;
+		}
+
 		& + button {
 			margin-left: 1px;
 		}

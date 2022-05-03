@@ -1,6 +1,6 @@
 <template>
 	<FloatingMenu class="dialog-modal" :type="'Dialog'" :direction="'Center'" data-dialog-modal>
-		<LayoutRow>
+		<LayoutRow ref="main">
 			<LayoutCol class="icon-column">
 				<!-- `dialog.state.icon` class exists to provide special sizing in CSS to specific icons -->
 				<IconLabel :icon="dialog.state.icon" :class="dialog.state.icon.toLowerCase()" />
@@ -94,6 +94,10 @@ export default defineComponent({
 		dismiss() {
 			this.dialog.dismissDialog();
 		},
+	},
+	mounted() {
+		// Focus the first button in the popup
+		(this.$el?.getElementsByTagName("button")[0] as HTMLButtonElement | undefined)?.focus();
 	},
 });
 </script>

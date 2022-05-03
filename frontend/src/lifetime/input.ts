@@ -70,6 +70,10 @@ export function createInputManager(editor: EditorState, container: HTMLElement, 
 		if (e.ctrlKey && e.shiftKey && key === "i") return false;
 		if (e.ctrlKey && e.shiftKey && key === "j") return false;
 
+		// Don't redirect tab or enter if not in canvas (to allow navigating elements)
+		const inCanvas = e.target instanceof Element && e.target.closest("[data-canvas]");
+		if (!inCanvas && (key === "tab" || key === "enter")) return false;
+
 		// Redirect to the backend
 		return true;
 	};
@@ -87,12 +91,6 @@ export function createInputManager(editor: EditorState, container: HTMLElement, 
 
 		if (dialog.dialogIsVisible()) {
 			if (key === "escape") dialog.dismissDialog();
-			if (key === "enter") {
-				dialog.submitDialog();
-
-				// Prevent the Enter key from acting like a click on the last clicked button, which might reopen the dialog
-				e.preventDefault();
-			}
 		}
 	};
 

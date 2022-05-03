@@ -1,9 +1,9 @@
 <template>
 	<LayoutRow class="dropdown-input">
-		<LayoutRow class="dropdown-box" :class="{ disabled }" :style="{ minWidth: `${minWidth}px` }" @click="() => clickDropdownBox()" data-hover-menu-spawner>
+		<button class="dropdown-box" :class="{ disabled }" :style="{ minWidth: `${minWidth}px` }" @click="() => clickDropdownBox()" data-hover-menu-spawner>
 			<span>{{ activeEntry.label }}</span>
 			<IconLabel class="dropdown-arrow" :icon="'DropdownArrow'" />
-		</LayoutRow>
+		</button>
 		<MenuList
 			v-model:activeEntry="activeEntry"
 			@widthChanged="(newWidth: number) => onWidthChanged(newWidth)"
@@ -20,6 +20,15 @@
 	position: relative;
 
 	.dropdown-box {
+		display: flex;
+		flex-direction: row;
+		flex-grow: 1;
+		min-width: 0;
+		min-height: 0;
+		border: 0;
+		padding: 0;
+		text-align: left;
+
 		align-items: center;
 		white-space: nowrap;
 		background: var(--color-1-nearblack);
@@ -44,6 +53,11 @@
 		.dropdown-arrow {
 			margin: 6px 2px;
 			flex: 0 0 auto;
+		}
+
+		&:focus {
+			outline: 1px solid var(--color-accent);
+			outline-offset: 2px;
 		}
 
 		&:hover,
