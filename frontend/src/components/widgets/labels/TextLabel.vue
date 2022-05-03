@@ -19,6 +19,7 @@
 	&.preserveWhitespace {
 		white-space: pre-wrap;
 		line-height: normal;
+		margin: 0 !important;
 	}
 }
 </style>

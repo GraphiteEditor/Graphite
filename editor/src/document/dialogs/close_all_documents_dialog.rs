@@ -31,6 +31,7 @@ impl PropertyHolder for CloseAllDocuments {
 			LayoutRow::Row {
 				widgets: vec![WidgetHolder::new(Widget::TextLabel(TextLabel {
 					value: "Unsaved work will be lost!".to_string(),
+					preserve_whitespace: true,
 					..Default::default()
 				}))],
 			},

@@ -34,7 +34,6 @@
 
 <style lang="scss">
 .widget-row {
-	min-height: 32px;
 	flex: 0 0 auto;
 	display: flex;
 
