@@ -144,57 +144,7 @@ impl DocumentMessageHandler {
 		self.artboard_message_handler.artboards_graphene_document.bounding_box_and_transform(path).unwrap_or(None)
 	}
 
-	pub fn selected_visible_vector_shapes(&self, responses: &mut VecDeque<Message>) -> impl Iterator<Item = &VectorShape> {
-		let graphene_document = &self.graphene_document;
-		let selected_layers = self.selected_layers();
-
-		selected_layers.filter_map(|path_to_shape| {
-			let viewport_transform = graphene_document.generate_transform_relative_to_viewport(path_to_shape).ok()?;
-			let layer = graphene_document.layer(path_to_shape);
-
-			if let Ok(layer) = layer {
-				if !layer.visible {
-					return None;
-				}
-
-				return match &layer.data {
-					LayerDataType::Shape(layer) => Some(&layer.shape),
-					// TODO Resolve converting text into a VectorShape at the layer level
-					// LayerDataType::Text(text) => Some(VectorShape::new(path_to_shape.to_vec(), viewport_transform, true)),
-					_ => None,
-				};
-			}
-
-			return None;
-		})
-	}
-
-	pub fn selected_visible_vector_shapes_mut(&mut self, responses: &mut VecDeque<Message>) -> impl Iterator<Item = &mut VectorShape> {
-		let graphene_document = &mut self.graphene_document;
-		let selected_layers = self.selected_layers();
-
-		selected_layers.filter_map(|path_to_shape| {
-			let viewport_transform = graphene_document.generate_transform_relative_to_viewport(path_to_shape).ok()?;
-			let layer = graphene_document.layer_mut(path_to_shape);
-
-			if let Ok(layer) = layer {
-				if !layer.visible {
-					return None;
-				}
-
-				return match &mut layer.data {
-					LayerDataType::Shape(layer) => Some(&mut layer.shape),
-					// TODO Resolve converting text into a VectorShape at the layer level
-					// LayerDataType::Text(text) => Some(VectorShape::new(path_to_shape.to_vec(), viewport_transform, true)),
-					_ => None,
-				};
-			}
-
-			return None;
-		})
-	}
-
-	pub fn selected_layers(&self) -> impl Iterator<Item = &[LayerId]> {
+	pub fn selected_layers<'a>(&'a self) -> impl Iterator<Item = &'a [LayerId]> {
 		self.layer_metadata.iter().filter_map(|(path, data)| data.selected.then(|| path.as_slice()))
 	}
 

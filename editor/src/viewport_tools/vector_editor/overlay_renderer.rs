@@ -52,9 +52,9 @@ impl<'a> OverlayRenderer {
 		}
 
 		// Draw the anchor / handle overlays
-		for anchor in shape.anchors.iter() {
+		for (anchor_id, anchor) in shape.anchors.iter().enumerate() {
 			// If cached update them
-			if let Some(anchor_overlays) = self.anchor_overlay_cache.get(&anchor.local_id) {
+			if let Some(anchor_overlays) = self.anchor_overlay_cache.get(&(anchor_id as u64)) {
 				// Reposition cached overlays
 				self.place_overlays(anchor, anchor_overlays, responses);
 
@@ -77,7 +77,7 @@ impl<'a> OverlayRenderer {
 				self.update_overlay_style(anchor, &anchor_overlays, responses);
 
 				// Cache overlays
-				self.anchor_overlay_cache.insert(anchor.local_id, anchor_overlays);
+				self.anchor_overlay_cache.insert(anchor_id as u64, anchor_overlays);
 			}
 
 			// TODO handle unused overlays

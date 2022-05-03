@@ -1,24 +1,30 @@
-use crate::LayerId;
+use crate::{LayerId, layers::layer_info::{Layer, LayerDataType}};
 
 use super::{constants::ControlPointType, vector_anchor::VectorAnchor, vector_control_point::VectorControlPoint};
 
 use glam::{DAffine2, DVec2};
 use kurbo::{Affine, BezPath, PathEl, Rect, Shape};
 use serde::{Deserialize, Serialize};
-
-/// VectorShape represents a single kurbo shape and maintains a parallel data structure
+type AnchorId = u64;
+/// VectorShape represents a single vector shape, containing many anchors
 /// For each kurbo path we keep a VectorShape which contains the handles and anchors for that path
 #[derive(PartialEq, Clone, Debug, Default, Serialize, Deserialize)]
 pub struct VectorShape {
+	// TODO Have VectorShape work like folders (use @TrueDoctors generic uuid magic)
+	/// The ids for the anchors
+	//pub anchor_ids: Vec<AnchorId>,
 	/// The path to the shape layer
 	pub layer_path: Vec<LayerId>,
-	/// The anchors that are made up of the control points / handles
+	/// Vec of anchors, each consisting of the control points / handles
 	pub anchors: Vec<VectorAnchor>,
 	/// If the compound Bezier curve is closed
 	pub closed: bool,
 	/// The transformation matrix to apply
+	/// My no longer be needed.
 	pub transform: DAffine2,
 }
+
+// TODO Implement iterator for VectorShape
 
 impl VectorShape {
 	pub fn new(layer_path: Vec<LayerId>, transform: DAffine2, closed: bool) -> Self {
@@ -132,6 +138,32 @@ impl VectorShape {
 	}
 }
 
+/// Convert a mutable layer into a mutable VectorShape
+impl <'a>TryFrom<&'a mut Layer> for &'a mut VectorShape {
+	type Error = &'static str;
+	fn try_from(layer: &'a mut Layer) -> Result<&'a mut VectorShape, Self::Error> {
+		match &mut layer.data {
+			LayerDataType::Shape(layer) => Ok(&mut layer.shape),
+			// TODO Resolve converting text into a VectorShape at the layer level
+			// LayerDataType::Text(text) => Some(VectorShape::new(path_to_shape.to_vec(), viewport_transform, true)),
+			_ => Err("Did not find any shape data in the layer"),
+		}
+	}
+}
+
+/// Convert a reference to a layer into a reference of a VectorShape
+impl <'a>TryFrom<&'a Layer> for &'a VectorShape {
+	type Error = &'static str;
+	fn try_from(layer: &'a Layer) -> Result<&'a VectorShape, Self::Error> {
+		match &layer.data {
+			LayerDataType::Shape(layer) => Ok(&layer.shape),
+			// TODO Resolve converting text into a VectorShape at the layer level
+			// LayerDataType::Text(text) => Some(VectorShape::new(path_to_shape.to_vec(), viewport_transform, true)),
+			_ => Err("Did not find any shape data in the layer"),
+		}
+	}
+}
+
 /// Create a BezPath from a VectorShape
 impl From<&VectorShape> for BezPath {
 	fn from(vector_shape: &VectorShape) -> Self {
@@ -165,7 +197,6 @@ impl From<&VectorShape> for BezPath {
 /// Create a VectorShape from a BezPath
 impl<T: Iterator<Item = PathEl>> From<T> for VectorShape {
 	fn from(path: T) -> Self {
-		let mut anchor_id = 0;
 		let mut vector_shape = VectorShape::new(vec![], DAffine2::IDENTITY, false);
 		let mut current_closed = true;
 		let mut closed_flag = false;
@@ -176,24 +207,20 @@ impl<T: Iterator<Item = PathEl>> From<T> for VectorShape {
 						closed_flag = false;
 					}
 					current_closed = false;
-					vector_shape.anchors.push(VectorAnchor::new(kurbo_point_to_DVec2(p), anchor_id));
-					anchor_id += 1;
+					vector_shape.anchors.push(VectorAnchor::new(kurbo_point_to_DVec2(p)));
 				}
 				PathEl::LineTo(p) => {
-					vector_shape.anchors.push(VectorAnchor::new(kurbo_point_to_DVec2(p), anchor_id));
-					anchor_id += 1;
+					vector_shape.anchors.push(VectorAnchor::new(kurbo_point_to_DVec2(p)));
 				}
 				PathEl::QuadTo(p0, p1) => {
 					vector_shape.anchors.last_mut().unwrap().points[2] = Some(VectorControlPoint::new(kurbo_point_to_DVec2(p0), ControlPointType::Handle2));
-					vector_shape.anchors.push(VectorAnchor::new(kurbo_point_to_DVec2(p1), anchor_id));
+					vector_shape.anchors.push(VectorAnchor::new(kurbo_point_to_DVec2(p1)));
 					vector_shape.anchors.last_mut().unwrap().points[1] = Some(VectorControlPoint::new(kurbo_point_to_DVec2(p0), ControlPointType::Handle1));
-					anchor_id += 1;
 				}
 				PathEl::CurveTo(p0, p1, p2) => {
 					vector_shape.anchors.last_mut().unwrap().points[2] = Some(VectorControlPoint::new(kurbo_point_to_DVec2(p0), ControlPointType::Handle2));
-					vector_shape.anchors.push(VectorAnchor::new(kurbo_point_to_DVec2(p2), anchor_id));
+					vector_shape.anchors.push(VectorAnchor::new(kurbo_point_to_DVec2(p2)));
 					vector_shape.anchors.last_mut().unwrap().points[1] = Some(VectorControlPoint::new(kurbo_point_to_DVec2(p1), ControlPointType::Handle1));
-					anchor_id += 1;
 				}
 				PathEl::ClosePath => {
 					current_closed = true;

@@ -3,7 +3,7 @@ use crate::intersection::{intersections, line_curve_intersections, valid_t, Inte
 use crate::layers::shape_layer::ShapeLayer;
 use crate::layers::style::PathStyle;
 
-use kurbo::{BezPath, CubicBez, Line, ParamCurve, ParamCurveArclen, ParamCurveArea, ParamCurveExtrema, PathEl, PathSeg, Point, QuadBez, Rect, Shape};
+use kurbo::{BezPath, CubicBez, Line, ParamCurve, ParamCurveArclen, ParamCurveArea, ParamCurveExtrema, PathEl, PathSeg, Point, QuadBez, Rect};
 use serde::{Deserialize, Serialize};
 use std::fmt::{self, Debug, Formatter};
 

@@ -6,51 +6,50 @@ use serde::{Deserialize, Serialize};
 /// It contains 0-2 handles that are optionally displayed.
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub struct VectorAnchor {
-	/// An id that is locally unique to the containing shape
-	pub local_id: u64,
 	// Editable points for the anchor & handles
 	pub points: [Option<VectorControlPoint>; 3],
 	// Should we maintain the angle between the handles?
+
+	// TODO Separate the editor func state from underlying data (use another struct)
 	#[serde(skip_serializing)]
-	pub handle_mirror_angle: bool,
+	pub mirror_angle_active: bool,
 	// Should we make the handles equidistance from the anchor?
 	#[serde(skip_serializing)]
-	pub handle_mirror_distance: bool,
+	pub mirror_distance_active: bool,
 }
 
 impl Default for VectorAnchor {
 	fn default() -> Self {
 		Self {
-			local_id: 0,
 			points: [None, None, None],
-			handle_mirror_angle: true,
-			handle_mirror_distance: true,
+			mirror_angle_active: true,
+			mirror_distance_active: true,
 		}
 	}
 }
 
+// TODO impl index for points
+
 impl VectorAnchor {
 	/// Create a new anchor with the given position
-	pub fn new(anchor_pos: DVec2, local_id: u64) -> Self {
+	pub fn new(anchor_pos: DVec2) -> Self {
 		Self {
-			local_id,
 			points: [Some(VectorControlPoint::new(anchor_pos, ControlPointType::Anchor)), None, None],
-			handle_mirror_angle: false,
-			handle_mirror_distance: false,
+			mirror_angle_active: false,
+			mirror_distance_active: false,
 		}
 	}
 
 	/// Create a new anchor with the given anchor position and handles
-	pub fn new_with_handles(anchor_pos: DVec2, handle1_pos: DVec2, handle2_pos: DVec2, local_id: u64) -> Self {
+	pub fn new_with_handles(anchor_pos: DVec2, handle1_pos: DVec2, handle2_pos: DVec2) -> Self {
 		Self {
-			local_id,
 			points: [
 				Some(VectorControlPoint::new(anchor_pos, ControlPointType::Anchor)),
 				Some(VectorControlPoint::new(handle1_pos, ControlPointType::Handle1)),
 				Some(VectorControlPoint::new(handle2_pos, ControlPointType::Handle2)),
 			],
-			handle_mirror_angle: false,
-			handle_mirror_distance: false,
+			mirror_angle_active: false,
+			mirror_distance_active: false,
 		}
 	}
 
@@ -147,7 +146,7 @@ impl VectorAnchor {
 
 	/// Set the mirroring state
 	pub fn set_mirroring(&mut self, mirroring: bool) {
-		self.handle_mirror_angle = mirroring;
+		self.mirror_angle_active = mirroring;
 	}
 
 	/// Helper function to more easily set position of VectorControlPoints

@@ -19,6 +19,8 @@ use super::vector_shape::VectorShape;
 use super::{constants::MINIMUM_MIRROR_THRESHOLD, vector_anchor::VectorAnchor, vector_control_point::VectorControlPoint};
 
 use glam::DVec2;
+use graphene::LayerId;
+use graphene::document::Document;
 use std::collections::HashSet;
 
 /// ShapeEditor is the container for all of the selected kurbo paths that are
@@ -72,6 +74,22 @@ impl ShapeEditor {
 			return true;
 		}
 		false
+	}
+
+	fn shapes_to_modify<'a>(&'a self, paths: &[&[LayerId]], document: &'a Document) -> Vec<&'a VectorShape> {
+		let x = paths.iter().map(|path| {
+			let shape = document.layer(path);
+			shape.unwrap().try_into().unwrap()
+		}).collect::<Vec<&VectorShape>>();
+		x
+	}
+
+	fn shapes_to_modify_mut<'a>(&'a self, paths: &[&[LayerId]], document: &'a mut Document) -> Vec<&'a mut VectorShape> {
+		let mut shapes = vec![];
+		for path in paths {
+			shapes.push(document.layer_mut(path).unwrap().try_into().unwrap());
+		}
+		shapes
 	}
 
 	/// Find a point that is within the selection threshold and return an index to the shape, anchor, and point
@@ -196,21 +214,21 @@ impl ShapeEditor {
 	/// Toggle if the handles should mirror angle across the anchor positon
 	pub fn toggle_selected_mirror_angle(&mut self) {
 		for anchor in self.selected_anchors_mut() {
-			anchor.handle_mirror_angle = !anchor.handle_mirror_angle;
+			anchor.mirror_angle_active = !anchor.mirror_angle_active;
 		}
 	}
 
 	pub fn set_selected_mirror_options(&mut self, mirror_angle: bool, mirror_distance: bool) {
 		for anchor in self.selected_anchors_mut() {
-			anchor.handle_mirror_angle = mirror_angle;
-			anchor.handle_mirror_distance = mirror_distance;
+			anchor.mirror_angle_active = mirror_angle;
+			anchor.mirror_distance_active = mirror_distance;
 		}
 	}
 
 	/// Toggle if the handles should mirror distance across the anchor position
 	pub fn toggle_selected_mirror_distance(&mut self) {
 		for anchor in self.selected_anchors_mut() {
-			anchor.handle_mirror_distance = !anchor.handle_mirror_distance;
+			anchor.mirror_distance_active = !anchor.mirror_distance_active;
 		}
 	}
 
