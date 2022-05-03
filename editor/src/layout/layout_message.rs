@@ -15,7 +15,6 @@ pub enum LayoutMessage {
 #[derive(PartialEq, Clone, Deserialize, Serialize, Debug, Hash, Eq, Copy)]
 #[repr(u8)]
 pub enum LayoutTarget {
-	DialogButtons,
 	DialogDetails,
 	DocumentBar,
 	PropertiesOptionsPanel,

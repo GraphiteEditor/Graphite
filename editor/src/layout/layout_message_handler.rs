@@ -15,10 +15,6 @@ impl LayoutMessageHandler {
 	fn send_layout(&self, layout_target: LayoutTarget, responses: &mut VecDeque<Message>) {
 		let widget_layout = &self.layouts[layout_target as usize];
 		let message = match layout_target {
-			LayoutTarget::DialogButtons => FrontendMessage::UpdateDialogButtons {
-				layout_target,
-				layout: widget_layout.layout.clone(),
-			},
 			LayoutTarget::DialogDetails => FrontendMessage::UpdateDialogDetails {
 				layout_target,
 				layout: widget_layout.layout.clone(),

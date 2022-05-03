@@ -454,13 +454,6 @@ export interface Widget {
 	props: any;
 }
 
-export class UpdateDialogButtons extends JsMessage implements WidgetLayout {
-	layout_target!: unknown;
-
-	@Transform(({ value }) => createWidgetLayout(value))
-	layout!: LayoutRow[];
-}
-
 export class UpdateDialogDetails extends JsMessage implements WidgetLayout {
 	layout_target!: unknown;
 
@@ -561,7 +554,6 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateActiveTool,
 	UpdateCanvasRotation,
 	UpdateCanvasZoom,
-	UpdateDialogButtons,
 	UpdateDialogDetails,
 	UpdateDocumentArtboards,
 	UpdateDocumentArtwork,

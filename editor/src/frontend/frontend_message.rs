@@ -37,7 +37,6 @@ pub enum FrontendMessage {
 	UpdateActiveTool { tool_name: String },
 	UpdateCanvasRotation { angle_radians: f64 },
 	UpdateCanvasZoom { factor: f64 },
-	UpdateDialogButtons { layout_target: LayoutTarget, layout: SubLayout },
 	UpdateDialogDetails { layout_target: LayoutTarget, layout: SubLayout },
 	UpdateDocumentArtboards { svg: String },
 	UpdateDocumentArtwork { svg: String },

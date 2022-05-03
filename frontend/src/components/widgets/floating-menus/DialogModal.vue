@@ -7,9 +7,11 @@
 			</LayoutCol>
 			<LayoutCol class="main-column">
 				<TextLabel :bold="true" class="heading">{{ dialog.state.heading }}</TextLabel>
-				<WidgetLayout :layout="dialog.state.details" class="details"></WidgetLayout>
-
-				<WidgetLayout :layout="dialog.state.buttons" class="buttons-row"></WidgetLayout>
+				<WidgetLayout v-if="dialog.state.widgets" :layout="dialog.state.widgets" class="details"></WidgetLayout>
+				<TextLabel v-if="dialog.state.jsComponents" class="details">{{ dialog.state.jsComponents.details }}</TextLabel>
+				<LayoutRow v-if="dialog.state.jsComponents && dialog.state.jsComponents.buttons.length > 0" class="buttons-row">
+					<TextButton v-for="(button, index) in dialog.state.jsComponents.buttons" :key="index" :title="button.tooltip" :action="() => button.callback?.()" v-bind="button.props" />
+				</LayoutRow>
 			</LayoutCol>
 		</LayoutRow>
 	</FloatingMenu>
@@ -74,6 +76,7 @@ import { defineComponent } from "vue";
 
 import LayoutCol from "@/components/layout/LayoutCol.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
+import TextButton from "@/components/widgets/buttons/TextButton.vue";
 import FloatingMenu from "@/components/widgets/floating-menus/FloatingMenu.vue";
 import IconLabel from "@/components/widgets/labels/IconLabel.vue";
 import TextLabel from "@/components/widgets/labels/TextLabel.vue";
@@ -88,6 +91,7 @@ export default defineComponent({
 		FloatingMenu,
 		IconLabel,
 		TextLabel,
+		TextButton,
 		WidgetLayout,
 	},
 	methods: {

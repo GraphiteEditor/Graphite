@@ -1,6 +1,6 @@
 import { reactive, readonly } from "vue";
 
-import { defaultWidgetLayout, DisplayDialog, TriggerDismissDialog, UpdateDialogButtons, UpdateDialogDetails, Widget, WidgetLayout } from "@/dispatcher/js-messages";
+import { defaultWidgetLayout, DisplayDialog, TriggerDismissDialog, UpdateDialogDetails, WidgetLayout } from "@/dispatcher/js-messages";
 import { EditorState } from "@/state/wasm-loader";
 import { IconName } from "@/utilities/icons";
 import { TextButtonWidget } from "@/utilities/widgets";
@@ -11,53 +11,24 @@ export function createDialogState(editor: EditorState) {
 		visible: false,
 		icon: "" as IconName,
 		heading: "",
-		details: defaultWidgetLayout(),
-		buttons: defaultWidgetLayout(),
+		widgets: defaultWidgetLayout() as WidgetLayout | undefined,
+		/// Necessary becuase we cannot handle widget callbacks from rust once the editor instance is poisened.
+		jsComponents: undefined as { details: string; buttons: TextButtonWidget[] } | undefined,
 	});
 
+	/// Creates a dialog from JS
+	/// Most dialogs should be done through rust, however for the crash dialog,
+	/// the editor instance is poisened so cannot respond to widget callbacks.
 	const createDialog = (icon: IconName, heading: string, details: string, buttons: TextButtonWidget[]): void => {
-		const detailsLayout: WidgetLayout = {
-			// eslint-disable-next-line camelcase
-			layout: [{ widgets: [{ kind: "TextLabel", widget_id: BigInt(0), props: { value: details } }] }],
-			// eslint-disable-next-line camelcase
-			layout_target: null,
-		};
-		const buttonsLayout: WidgetLayout = {
-			// eslint-disable-next-line camelcase
-			layout: [
-				{
-					widgets: buttons.map((widget) => {
-						const props = widget.props as any;
-						props.action = widget.callback;
-						return {
-							kind: "TextButton",
-							// eslint-disable-next-line camelcase
-							widget_id: BigInt(0),
-							props,
-						};
-					}),
-				},
-			],
-			// eslint-disable-next-line camelcase
-			layout_target: null,
-		};
-
 		state.visible = true;
 		state.icon = icon;
 		state.heading = heading;
-		state.details = detailsLayout;
-		state.buttons = buttonsLayout;
+		state.widgets = undefined;
+		state.jsComponents = { details, buttons };
 	};
 
 	const dismissDialog = (): void => {
 		state.visible = false;
-	};
-
-	const submitDialog = (): void => {
-		const layout = state.buttons.layout[0] as { widgets: Widget[] };
-
-		const firstEmphasizedButton = layout.widgets.find((button) => button.props.props.emphasized && button.props.callback);
-		firstEmphasizedButton?.props.callback?.();
 	};
 
 	const dialogIsVisible = (): boolean => state.visible;
@@ -76,18 +47,14 @@ export function createDialogState(editor: EditorState) {
 	};
 
 	editor.dispatcher.subscribeJsMessage(UpdateDialogDetails, (updateDialogDetails) => {
-		state.details = updateDialogDetails;
-	});
-
-	editor.dispatcher.subscribeJsMessage(UpdateDialogButtons, (updateDialogButtons) => {
-		state.buttons = updateDialogButtons;
+		state.widgets = updateDialogDetails;
+		state.jsComponents = undefined;
 	});
 
 	return {
 		state: readonly(state),
 		createDialog,
 		dismissDialog,
-		submitDialog,
 		dialogIsVisible,
 		comingSoon,
 	};
