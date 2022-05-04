@@ -34,11 +34,10 @@ impl PortfolioMessageHandler {
 	fn generate_new_document_name(&self) -> String {
 		let mut doc_title_numbers = self
 			.ordered_document_iterator()
-			.map(|doc| {
+			.filter_map(|doc| {
 				doc.name
 					.rsplit_once(DEFAULT_DOCUMENT_NAME)
 					.map(|(prefix, number)| (prefix.is_empty()).then(|| number.trim().parse::<isize>().ok()).flatten().unwrap_or(1))
-					.unwrap()
 			})
 			.collect::<Vec<isize>>();
 
