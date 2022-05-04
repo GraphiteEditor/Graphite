@@ -14,6 +14,10 @@ pub enum PortfolioMessage {
 	#[child]
 	Document(DocumentMessage),
 
+	#[remain::unsorted]
+	#[child]
+	NewDocumentDialog(NewDocumentDialogUpdate),
+
 	// Messages
 	AutoSaveActiveDocument,
 	AutoSaveDocument {
@@ -42,6 +46,9 @@ pub enum PortfolioMessage {
 		description: String,
 	},
 	NewDocument,
+	NewDocumentWithName {
+		name: String,
+	},
 	NextDocument,
 	OpenDocument,
 	OpenDocumentFile {
@@ -75,6 +82,7 @@ pub enum PortfolioMessage {
 	RequestComingSoonDialog {
 		issue: Option<i32>,
 	},
+	RequestNewDocumentDialog,
 	SelectDocument {
 		document_id: u64,
 	},

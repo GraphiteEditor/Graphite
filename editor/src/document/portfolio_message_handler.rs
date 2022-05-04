@@ -19,6 +19,7 @@ pub struct PortfolioMessageHandler {
 	document_ids: Vec<u64>,
 	active_document_id: u64,
 	copy_buffer: [Vec<CopyBufferEntry>; INTERNAL_CLIPBOARD_COUNT as usize],
+	new_document_dialog: dialogs::NewDocument,
 }
 
 impl PortfolioMessageHandler {
@@ -125,6 +126,7 @@ impl Default for PortfolioMessageHandler {
 			document_ids: vec![starting_key],
 			copy_buffer: [EMPTY_VEC; INTERNAL_CLIPBOARD_COUNT as usize],
 			active_document_id: starting_key,
+			new_document_dialog: Default::default(),
 		}
 	}
 }
@@ -140,6 +142,8 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 			// Sub-messages
 			#[remain::unsorted]
 			Document(message) => self.active_document_mut().process_action(message, ipp, responses),
+			#[remain::unsorted]
+			NewDocumentDialog(message) => self.new_document_dialog.process_action(message, (), responses),
 
 			// Messages
 			AutoSaveActiveDocument => responses.push_back(PortfolioMessage::AutoSaveDocument { document_id: self.active_document_id }.into()),
@@ -297,6 +301,12 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 			}
 			NewDocument => {
 				let name = self.generate_new_document_name();
+				let new_document = DocumentMessageHandler::with_name(name, ipp);
+				let document_id = generate_uuid();
+				responses.push_back(ToolMessage::AbortCurrentTool.into());
+				self.load_document(new_document, document_id, false, responses);
+			}
+			NewDocumentWithName { name } => {
 				let new_document = DocumentMessageHandler::with_name(name, ipp);
 				let document_id = generate_uuid();
 				responses.push_back(ToolMessage::AbortCurrentTool.into());
@@ -462,6 +472,21 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 					FrontendMessage::DisplayDialog {
 						icon: "Warning".to_string(),
 						heading: "Coming soon".to_string(),
+					}
+					.into(),
+				);
+			}
+			RequestNewDocumentDialog => {
+				self.new_document_dialog = dialogs::NewDocument {
+					name: self.generate_new_document_name(),
+					infinite: true,
+					dimensions: glam::UVec2::new(1920, 1080),
+				};
+				self.new_document_dialog.register_properties(responses, LayoutTarget::DialogDetails);
+				responses.push_back(
+					FrontendMessage::DisplayDialog {
+						icon: "File".to_string(),
+						heading: "New document".to_string(),
 					}
 					.into(),
 				);

@@ -65,15 +65,7 @@ function makeMenuEntries(editor: EditorState): MenuListEntries {
 			ref: undefined,
 			children: [
 				[
-					{ label: "New", icon: "File", shortcut: ["KeyControl", "KeyN"], shortcutRequiresLock: true, action: (): void => editor.instance.new_document() },
-					{
-						label: "New 1920x1080",
-						icon: "File",
-						action: (): void => {
-							editor.instance.new_document();
-							editor.instance.create_artboard_and_fit_to_viewport(0, 0, 1920, 1080);
-						},
-					},
+					{ label: "New", icon: "File", shortcut: ["KeyControl", "KeyN"], shortcutRequiresLock: true, action: (): void => editor.instance.request_new_document_dialog() },
 					{ label: "Open…", shortcut: ["KeyControl", "KeyO"], action: (): void => editor.instance.open_document() },
 					{
 						label: "Open Recent",

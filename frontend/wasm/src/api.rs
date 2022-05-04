@@ -150,8 +150,8 @@ impl JsEditorHandle {
 		self.dispatch(message);
 	}
 
-	pub fn new_document(&self) {
-		let message = PortfolioMessage::NewDocument;
+	pub fn request_new_document_dialog(&self) {
+		let message = PortfolioMessage::RequestNewDocumentDialog;
 		self.dispatch(message);
 	}
 
@@ -545,18 +545,6 @@ impl JsEditorHandle {
 	/// Creates an empty folder at the document root
 	pub fn create_empty_folder(&self) {
 		let message = DocumentMessage::CreateEmptyFolder { container_path: vec![] };
-		self.dispatch(message);
-	}
-
-	/// Creates an artboard at a specified point with a width and height
-	pub fn create_artboard_and_fit_to_viewport(&self, pos_x: f64, pos_y: f64, width: f64, height: f64) {
-		let message = ArtboardMessage::AddArtboard {
-			id: None,
-			position: (pos_x, pos_y),
-			size: (width, height),
-		};
-		self.dispatch(message);
-		let message = DocumentMessage::ZoomCanvasToFitAll;
 		self.dispatch(message);
 	}
 

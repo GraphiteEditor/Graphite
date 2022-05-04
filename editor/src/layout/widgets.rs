@@ -192,6 +192,7 @@ pub struct NumberInput {
 	#[serde(rename = "displayDecimalPlaces")]
 	#[derivative(Default(value = "3"))]
 	pub display_decimal_places: u32,
+	pub disabled: bool,
 }
 
 #[derive(Clone, Serialize, Deserialize, Derivative)]
@@ -359,4 +360,6 @@ pub struct TextLabel {
 	pub italic: bool,
 	#[serde(rename = "preserveWhitespace")]
 	pub preserve_whitespace: bool,
+	#[serde(rename = "tableAlign")]
+	pub table_align: bool,
 }
