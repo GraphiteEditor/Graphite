@@ -72,13 +72,14 @@ pub enum PortfolioMessage {
 	PasteSerializedData {
 		data: String,
 	},
-	PrevDocument,
-	RequestAboutGraphiteDialog {
+	PopulateAboutGraphite {
 		release: String,
 		timestamp: String,
 		hash: String,
 		branch: String,
 	},
+	PrevDocument,
+	RequestAboutGraphiteDialog,
 	RequestComingSoonDialog {
 		issue: Option<i32>,
 	},

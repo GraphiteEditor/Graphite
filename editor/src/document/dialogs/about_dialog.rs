@@ -1,5 +1,6 @@
 use crate::{layout::widgets::*, message_prelude::FrontendMessage};
 
+#[derive(Debug, Clone, Default)]
 pub struct AboutGraphite {
 	pub release: String,
 	pub timestamp: String,

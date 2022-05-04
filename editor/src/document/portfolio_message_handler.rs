@@ -20,6 +20,7 @@ pub struct PortfolioMessageHandler {
 	active_document_id: u64,
 	copy_buffer: [Vec<CopyBufferEntry>; INTERNAL_CLIPBOARD_COUNT as usize],
 	new_document_dialog: dialogs::NewDocument,
+	about_graphite_dialog: dialogs::AboutGraphite,
 }
 
 impl PortfolioMessageHandler {
@@ -126,6 +127,7 @@ impl Default for PortfolioMessageHandler {
 			copy_buffer: [EMPTY_VEC; INTERNAL_CLIPBOARD_COUNT as usize],
 			active_document_id: starting_key,
 			new_document_dialog: Default::default(),
+			about_graphite_dialog: Default::default(),
 		}
 	}
 }
@@ -446,6 +448,7 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 					responses.push_back(CommitTransaction.into());
 				}
 			}
+			PopulateAboutGraphite { release, timestamp, hash, branch } => self.about_graphite_dialog = AboutGraphite { release, timestamp, hash, branch },
 			PrevDocument => {
 				let len = self.document_ids.len();
 				let current_index = self.document_index(self.active_document_id);
@@ -453,9 +456,8 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 				let prev_id = self.document_ids[prev_index];
 				responses.push_back(PortfolioMessage::SelectDocument { document_id: prev_id }.into());
 			}
-			RequestAboutGraphiteDialog { release, timestamp, hash, branch } => {
-				let about = AboutGraphite { release, timestamp, hash, branch };
-				about.register_properties(responses, LayoutTarget::DialogDetails);
+			RequestAboutGraphiteDialog => {
+				self.about_graphite_dialog.register_properties(responses, LayoutTarget::DialogDetails);
 				responses.push_back(
 					FrontendMessage::DisplayDialog {
 						icon: "GraphiteLogo".to_string(),
