@@ -187,6 +187,7 @@ img {
 }
 
 .icon-button,
+.text-button,
 .popover-button,
 .checkbox-input label,
 .color-input .swatch .swatch-button,
