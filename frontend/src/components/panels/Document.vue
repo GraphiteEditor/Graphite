@@ -524,7 +524,8 @@ export default defineComponent({
 			});
 		});
 
-		const loadAboutGraphite = (): void => {
+		// Gets metadat populated in `frontend/vue.config.js`. We could potentially move this functionality in a build.rs file.
+		const loadBuildMetadata = (): void => {
 			const release = process.env.VUE_APP_RELEASE_SERIES;
 			let timestamp = "";
 			const hash = (process.env.VUE_APP_COMMIT_HASH || "").substring(0, 12);
@@ -540,14 +541,14 @@ export default defineComponent({
 				timestamp = `${dateString} ${timeString} ${timezoneNameString}`;
 			}
 
-			this.editor.instance.populate_about_graphite(release || "", timestamp, hash, branch || "");
+			this.editor.instance.populate_build_metadata(release || "", timestamp, hash, branch || "");
 		};
 
 		// TODO(mfish33): Replace with initialization system Issue:#524
 		// Get initial Document Bar
 		this.editor.instance.init_document_bar();
 		setLoadDefaultFontCallback((font: string, data: Uint8Array) => this.editor.instance.on_font_load(font, data, true));
-		loadAboutGraphite();
+		loadBuildMetadata();
 	},
 	data() {
 		const documentModeEntries: SectionsOfMenuListEntries = [

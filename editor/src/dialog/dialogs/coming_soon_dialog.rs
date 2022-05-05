@@ -1,5 +1,6 @@
 use crate::{layout::widgets::*, message_prelude::FrontendMessage};
 
+/// A dialog to notify users of an unfinished issue, optionally with an issue number.
 pub struct ComingSoon {
 	pub issue: Option<i32>,
 }

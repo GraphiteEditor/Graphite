@@ -14,10 +14,6 @@ pub enum PortfolioMessage {
 	#[child]
 	Document(DocumentMessage),
 
-	#[remain::unsorted]
-	#[child]
-	NewDocumentDialog(NewDocumentDialogUpdate),
-
 	// Messages
 	AutoSaveActiveDocument,
 	AutoSaveDocument {
@@ -25,10 +21,6 @@ pub enum PortfolioMessage {
 	},
 	CloseActiveDocumentWithConfirmation,
 	CloseAllDocuments,
-	CloseAllDocumentsWithConfirmation,
-	CloseDialogAndThen {
-		followup: Box<Message>,
-	},
 	CloseDocument {
 		document_id: u64,
 	},
@@ -40,10 +32,6 @@ pub enum PortfolioMessage {
 	},
 	Cut {
 		clipboard: Clipboard,
-	},
-	DisplayDialogError {
-		title: String,
-		description: String,
 	},
 	NewDocument,
 	NewDocumentWithName {
@@ -72,18 +60,7 @@ pub enum PortfolioMessage {
 	PasteSerializedData {
 		data: String,
 	},
-	PopulateAboutGraphite {
-		release: String,
-		timestamp: String,
-		hash: String,
-		branch: String,
-	},
 	PrevDocument,
-	RequestAboutGraphiteDialog,
-	RequestComingSoonDialog {
-		issue: Option<i32>,
-	},
-	RequestNewDocumentDialog,
 	SelectDocument {
 		document_id: u64,
 	},

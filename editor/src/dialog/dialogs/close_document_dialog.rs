@@ -1,17 +1,35 @@
 use crate::layout::widgets::*;
-use crate::message_prelude::{FrontendMessage, PortfolioMessage};
+use crate::message_prelude::{DialogMessage, DocumentMessage, FrontendMessage, PortfolioMessage};
 
-pub struct CloseAllDocuments;
+/// A dialog for confirming the closing a document with unsaved changes.
+pub struct CloseDocument {
+	pub document_name: String,
+	pub document_id: u64,
+}
 
-impl PropertyHolder for CloseAllDocuments {
+impl PropertyHolder for CloseDocument {
 	fn properties(&self) -> WidgetLayout {
+		let document_id = self.document_id;
+
 		let button_widgets = vec![
 			WidgetHolder::new(Widget::TextButton(TextButton {
-				label: "Discard All".to_string(),
+				label: "Save".to_string(),
 				min_width: 96,
+				emphasized: true,
 				on_update: WidgetCallback::new(|_| {
-					PortfolioMessage::CloseDialogAndThen {
-						followup: Box::new(PortfolioMessage::CloseAllDocuments.into()),
+					DialogMessage::CloseDialogAndThen {
+						followup: Box::new(DocumentMessage::SaveDocument.into()),
+					}
+					.into()
+				}),
+				..Default::default()
+			})),
+			WidgetHolder::new(Widget::TextButton(TextButton {
+				label: "Discard".to_string(),
+				min_width: 96,
+				on_update: WidgetCallback::new(move |_| {
+					DialogMessage::CloseDialogAndThen {
+						followup: Box::new(PortfolioMessage::CloseDocument { document_id }.into()),
 					}
 					.into()
 				}),
@@ -28,7 +46,7 @@ impl PropertyHolder for CloseAllDocuments {
 		WidgetLayout::new(vec![
 			LayoutRow::Row {
 				widgets: vec![WidgetHolder::new(Widget::TextLabel(TextLabel {
-					value: "Unsaved work will be lost!".to_string(),
+					value: self.document_name.clone(),
 					preserve_whitespace: true,
 					..Default::default()
 				}))],

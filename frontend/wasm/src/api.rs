@@ -151,7 +151,7 @@ impl JsEditorHandle {
 	}
 
 	pub fn request_new_document_dialog(&self) {
-		let message = PortfolioMessage::RequestNewDocumentDialog;
+		let message = DialogMessage::RequestNewDocumentDialog;
 		self.dispatch(message);
 	}
 
@@ -212,22 +212,23 @@ impl JsEditorHandle {
 	}
 
 	pub fn close_all_documents_with_confirmation(&self) {
-		let message = PortfolioMessage::CloseAllDocumentsWithConfirmation;
+		let message = DialogMessage::CloseAllDocumentsWithConfirmation;
 		self.dispatch(message);
 	}
 
-	pub fn populate_about_graphite(&self, release: String, timestamp: String, hash: String, branch: String) {
-		let message = PortfolioMessage::PopulateAboutGraphite { release, timestamp, hash, branch };
+	pub fn populate_build_metadata(&self, release: String, timestamp: String, hash: String, branch: String) {
+		let new = editor::communication::BuildMetadata { release, timestamp, hash, branch };
+		let message = Message::PopulateBuildMetadata { new };
 		self.dispatch(message);
 	}
 
 	pub fn request_about_graphite_dialog(&self) {
-		let message = PortfolioMessage::RequestAboutGraphiteDialog;
+		let message = DialogMessage::RequestAboutGraphiteDialog;
 		self.dispatch(message);
 	}
 
 	pub fn request_coming_soon_dialog(&self, issue: Option<i32>) {
-		let message = PortfolioMessage::RequestComingSoonDialog { issue };
+		let message = DialogMessage::RequestComingSoonDialog { issue };
 		self.dispatch(message);
 	}
 

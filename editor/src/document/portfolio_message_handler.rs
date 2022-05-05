@@ -1,12 +1,11 @@
 use super::clipboards::{CopyBufferEntry, INTERNAL_CLIPBOARD_COUNT};
 use super::DocumentMessageHandler;
 use crate::consts::{DEFAULT_DOCUMENT_NAME, GRAPHITE_DOCUMENT_VERSION};
-use crate::document::dialogs::{self, AboutGraphite, ComingSoon};
 use crate::frontend::utility_types::FrontendDocumentDetails;
 use crate::input::InputPreprocessorMessageHandler;
 use crate::layout::layout_message::LayoutTarget;
 use crate::layout::widgets::PropertyHolder;
-use crate::message_prelude::*;
+use crate::{dialog, message_prelude::*};
 
 use graphene::Operation as DocumentOperation;
 
@@ -19,8 +18,6 @@ pub struct PortfolioMessageHandler {
 	document_ids: Vec<u64>,
 	active_document_id: u64,
 	copy_buffer: [Vec<CopyBufferEntry>; INTERNAL_CLIPBOARD_COUNT as usize],
-	new_document_dialog: dialogs::NewDocument,
-	about_graphite_dialog: dialogs::AboutGraphite,
 }
 
 impl PortfolioMessageHandler {
@@ -32,7 +29,7 @@ impl PortfolioMessageHandler {
 		self.documents.get_mut(&self.active_document_id).unwrap()
 	}
 
-	fn generate_new_document_name(&self) -> String {
+	pub fn generate_new_document_name(&self) -> String {
 		let mut doc_title_numbers = self
 			.ordered_document_iterator()
 			.filter_map(|doc| {
@@ -126,8 +123,6 @@ impl Default for PortfolioMessageHandler {
 			document_ids: vec![starting_key],
 			copy_buffer: [EMPTY_VEC; INTERNAL_CLIPBOARD_COUNT as usize],
 			active_document_id: starting_key,
-			new_document_dialog: Default::default(),
-			about_graphite_dialog: Default::default(),
 		}
 	}
 }
@@ -143,8 +138,6 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 			// Sub-messages
 			#[remain::unsorted]
 			Document(message) => self.active_document_mut().process_action(message, ipp, responses),
-			#[remain::unsorted]
-			NewDocumentDialog(message) => self.new_document_dialog.process_action(message, (), responses),
 
 			// Messages
 			AutoSaveActiveDocument => responses.push_back(PortfolioMessage::AutoSaveDocument { document_id: self.active_document_id }.into()),
@@ -173,21 +166,6 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 
 				// Create a new blank document
 				responses.push_back(NewDocument.into());
-			}
-			CloseAllDocumentsWithConfirmation => {
-				let dialog = dialogs::CloseAllDocuments;
-				dialog.register_properties(responses, LayoutTarget::DialogDetails);
-				responses.push_back(
-					FrontendMessage::DisplayDialog {
-						icon: "Copy".to_string(),
-						heading: "Close all documents?".to_string(),
-					}
-					.into(),
-				);
-			}
-			CloseDialogAndThen { followup } => {
-				responses.push_back(FrontendMessage::DisplayDialogDismiss.into());
-				responses.push_back(*followup);
 			}
 			CloseDocument { document_id } => {
 				let document_index = self.document_index(document_id);
@@ -240,7 +218,7 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 					responses.push_back(ToolMessage::AbortCurrentTool.into());
 					responses.push_back(PortfolioMessage::CloseDocument { document_id }.into());
 				} else {
-					let dialog = dialogs::CloseDocument {
+					let dialog = dialog::CloseDocument {
 						document_name: target_document.name.clone(),
 						document_id,
 					};
@@ -288,17 +266,6 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 			Cut { clipboard } => {
 				responses.push_back(Copy { clipboard }.into());
 				responses.push_back(DeleteSelectedLayers.into());
-			}
-			DisplayDialogError { title, description } => {
-				let dialog = dialogs::Error { description };
-				dialog.register_properties(responses, LayoutTarget::DialogDetails);
-				responses.push_back(
-					FrontendMessage::DisplayDialog {
-						icon: "Warning".to_string(),
-						heading: title,
-					}
-					.into(),
-				);
 			}
 			NewDocument => {
 				let name = self.generate_new_document_name();
@@ -350,7 +317,7 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 						self.load_document(document, document_id, true, responses);
 					}
 					Err(e) => responses.push_back(
-						PortfolioMessage::DisplayDialogError {
+						DialogMessage::DisplayDialogError {
 							title: "Failed to open document".to_string(),
 							description: e.to_string(),
 						}
@@ -448,7 +415,6 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 					responses.push_back(CommitTransaction.into());
 				}
 			}
-			PopulateAboutGraphite { release, timestamp, hash, branch } => self.about_graphite_dialog = AboutGraphite { release, timestamp, hash, branch },
 			PrevDocument => {
 				let len = self.document_ids.len();
 				let current_index = self.document_index(self.active_document_id);
@@ -456,42 +422,7 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 				let prev_id = self.document_ids[prev_index];
 				responses.push_back(PortfolioMessage::SelectDocument { document_id: prev_id }.into());
 			}
-			RequestAboutGraphiteDialog => {
-				self.about_graphite_dialog.register_properties(responses, LayoutTarget::DialogDetails);
-				responses.push_back(
-					FrontendMessage::DisplayDialog {
-						icon: "GraphiteLogo".to_string(),
-						heading: "Graphite".to_string(),
-					}
-					.into(),
-				);
-			}
-			RequestComingSoonDialog { issue } => {
-				let coming_soon = ComingSoon { issue };
-				coming_soon.register_properties(responses, LayoutTarget::DialogDetails);
-				responses.push_back(
-					FrontendMessage::DisplayDialog {
-						icon: "Warning".to_string(),
-						heading: "Coming soon".to_string(),
-					}
-					.into(),
-				);
-			}
-			RequestNewDocumentDialog => {
-				self.new_document_dialog = dialogs::NewDocument {
-					name: self.generate_new_document_name(),
-					infinite: true,
-					dimensions: glam::UVec2::new(1920, 1080),
-				};
-				self.new_document_dialog.register_properties(responses, LayoutTarget::DialogDetails);
-				responses.push_back(
-					FrontendMessage::DisplayDialog {
-						icon: "File".to_string(),
-						heading: "New document".to_string(),
-					}
-					.into(),
-				);
-			}
+
 			SelectDocument { document_id } => {
 				let active_document = self.active_document();
 				if !active_document.is_saved() {
@@ -536,10 +467,8 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 
 	fn actions(&self) -> ActionList {
 		let mut common = actions!(PortfolioMessageDiscriminant;
-			RequestNewDocumentDialog,
 			NewDocument,
 			CloseActiveDocumentWithConfirmation,
-			CloseAllDocumentsWithConfirmation,
 			CloseAllDocuments,
 			NextDocument,
 			PrevDocument,

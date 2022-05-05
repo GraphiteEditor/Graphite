@@ -1,5 +1,6 @@
 use crate::{layout::widgets::*, message_prelude::FrontendMessage};
 
+/// A dialog to notify users of a non-fatal error.
 pub struct Error {
 	pub description: String,
 }

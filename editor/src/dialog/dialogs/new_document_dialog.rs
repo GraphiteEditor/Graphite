@@ -5,6 +5,7 @@ use crate::message_prelude::*;
 use glam::UVec2;
 use serde::{Deserialize, Serialize};
 
+/// A dialog to allow users to set some initial options about a new document.
 #[derive(Debug, Clone, Default)]
 pub struct NewDocument {
 	pub name: String,
@@ -90,7 +91,7 @@ impl PropertyHolder for NewDocument {
 				min_width: 96,
 				emphasized: true,
 				on_update: WidgetCallback::new(|_| {
-					PortfolioMessage::CloseDialogAndThen {
+					DialogMessage::CloseDialogAndThen {
 						followup: Box::new(NewDocumentDialogUpdate::Submit.into()),
 					}
 					.into()
@@ -120,7 +121,7 @@ impl PropertyHolder for NewDocument {
 	}
 }
 
-#[impl_message(Message, PortfolioMessage, NewDocumentDialog)]
+#[impl_message(Message, DialogMessage, NewDocumentDialog)]
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub enum NewDocumentDialogUpdate {
 	Name(String),

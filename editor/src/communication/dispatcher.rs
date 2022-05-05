@@ -7,16 +7,20 @@ use crate::viewport_tools::tool_message_handler::ToolMessageHandler;
 
 use std::collections::VecDeque;
 
+use super::BuildMetadata;
+
 #[derive(Debug, Default)]
 pub struct Dispatcher {
 	message_queue: VecDeque<Message>,
 	pub responses: Vec<FrontendMessage>,
 	message_handlers: DispatcherMessageHandlers,
+	build_metadata: BuildMetadata,
 }
 
 #[remain::sorted]
 #[derive(Debug, Default)]
 struct DispatcherMessageHandlers {
+	dialog_message_handler: DialogMessageHandler,
 	global_message_handler: GlobalMessageHandler,
 	input_mapper_message_handler: InputMapperMessageHandler,
 	input_preprocessor_message_handler: InputPreprocessorMessageHandler,
@@ -66,6 +70,11 @@ impl Dispatcher {
 			match message {
 				#[remain::unsorted]
 				NoOp => {}
+				Dialog(message) => {
+					self.message_handlers
+						.dialog_message_handler
+						.process_action(message, (&self.build_metadata, &self.message_handlers.portfolio_message_handler), &mut self.message_queue);
+				}
 				Frontend(message) => {
 					// Image and font loading should be immediately handled
 					if let FrontendMessage::UpdateImageData { .. } | FrontendMessage::TriggerFontLoad { .. } = message {
@@ -104,6 +113,9 @@ impl Dispatcher {
 						&mut self.message_queue,
 					);
 				}
+
+				#[remain::unsorted]
+				PopulateBuildMetadata { new } => self.build_metadata = new,
 			}
 		}
 	}
@@ -111,6 +123,7 @@ impl Dispatcher {
 	pub fn collect_actions(&self) -> ActionList {
 		// TODO: Reduce the number of heap allocations
 		let mut list = Vec::new();
+		list.extend(self.message_handlers.dialog_message_handler.actions());
 		list.extend(self.message_handlers.input_preprocessor_message_handler.actions());
 		list.extend(self.message_handlers.input_mapper_message_handler.actions());
 		list.extend(self.message_handlers.global_message_handler.actions());

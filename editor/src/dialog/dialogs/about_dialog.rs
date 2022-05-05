@@ -1,11 +1,8 @@
-use crate::{layout::widgets::*, message_prelude::FrontendMessage};
+use crate::{communication::BuildMetadata, layout::widgets::*, message_prelude::FrontendMessage};
 
-#[derive(Debug, Clone, Default)]
+/// A dialog for displaying information on [`BuildMetadata`] viewable via `help -> about graphite` in the menu bar.
 pub struct AboutGraphite {
-	pub release: String,
-	pub timestamp: String,
-	pub hash: String,
-	pub branch: String,
+	pub build_metadata: BuildMetadata,
 }
 
 impl PropertyHolder for AboutGraphite {
@@ -29,7 +26,7 @@ impl PropertyHolder for AboutGraphite {
 		WidgetLayout::new(vec![
 			LayoutRow::Row {
 				widgets: vec![WidgetHolder::new(Widget::TextLabel(TextLabel {
-					value: format!("Release Series: {}\n\nDate: {}\nHash:{}\nBranch: {}", self.release, self.timestamp, self.hash, self.branch),
+					value: self.build_metadata.to_string(),
 					preserve_whitespace: true,
 					..Default::default()
 				}))],
