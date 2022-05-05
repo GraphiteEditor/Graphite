@@ -33,11 +33,6 @@
 			background: var(--color-6-lowergray);
 			fill: var(--color-f-white);
 		}
-
-		&:focus {
-			outline: 1px solid var(--color-accent);
-			outline-offset: 2px;
-		}
 	}
 
 	// TODO: Refactor this and other complicated cases dealing with joined widget margins and border-radius by adding a single standard set of classes: joined-first, joined-inner, and joined-last

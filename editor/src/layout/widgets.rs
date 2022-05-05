@@ -150,6 +150,7 @@ impl<T> Default for WidgetCallback<T> {
 #[remain::sorted]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Widget {
+	CheckboxInput(CheckboxInput),
 	ColorInput(ColorInput),
 	FontInput(FontInput),
 	IconButton(IconButton),
@@ -314,6 +315,20 @@ pub struct OptionalInput {
 	#[serde(skip)]
 	#[derivative(Debug = "ignore", PartialEq = "ignore")]
 	pub on_update: WidgetCallback<OptionalInput>,
+}
+
+#[derive(Clone, Serialize, Deserialize, Derivative, Default)]
+#[derivative(Debug, PartialEq)]
+pub struct CheckboxInput {
+	pub checked: bool,
+	pub icon: String,
+	#[serde(rename = "outlineStyle")]
+	pub outline_style: bool,
+	#[serde(rename = "title")]
+	pub tooltip: String,
+	#[serde(skip)]
+	#[derivative(Debug = "ignore", PartialEq = "ignore")]
+	pub on_update: WidgetCallback<CheckboxInput>,
 }
 
 #[derive(Clone, Serialize, Deserialize, Derivative, Default)]

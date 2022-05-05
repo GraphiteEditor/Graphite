@@ -288,8 +288,8 @@ import {
 	DisplayRemoveEditableTextbox,
 	DisplayEditableTextbox,
 	TriggerFontLoad,
-	TriggerDefaultFontLoad,
-	TriggerWindowOpen,
+	TriggerFontLoadDefault,
+	TriggerVisitLink,
 } from "@/dispatcher/js-messages";
 
 import { textInputCleanup } from "@/lifetime/input";
@@ -467,10 +467,10 @@ export default defineComponent({
 			const responseBuffer = await response.arrayBuffer();
 			this.editor.instance.on_font_load(triggerFontLoad.font, new Uint8Array(responseBuffer), false);
 		});
-		this.editor.dispatcher.subscribeJsMessage(TriggerWindowOpen, async (triggerWindowOpen) => {
-			window.open(triggerWindowOpen.url, "_blank");
+		this.editor.dispatcher.subscribeJsMessage(TriggerFontLoadDefault, loadDefaultFont);
+		this.editor.dispatcher.subscribeJsMessage(TriggerVisitLink, async (triggerOpenLink) => {
+			window.open(triggerOpenLink.url, "_blank");
 		});
-		this.editor.dispatcher.subscribeJsMessage(TriggerDefaultFontLoad, loadDefaultFont);
 		this.editor.dispatcher.subscribeJsMessage(TriggerTextCopy, (triggerTextCopy) => {
 			// If the Clipboard API is supported in the browser, copy text to the clipboard
 			navigator.clipboard?.writeText?.(triggerTextCopy.copy_text);

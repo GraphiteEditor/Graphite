@@ -65,7 +65,7 @@ function makeMenuEntries(editor: EditorState): MenuListEntries {
 			ref: undefined,
 			children: [
 				[
-					{ label: "New", icon: "File", shortcut: ["KeyControl", "KeyN"], shortcutRequiresLock: true, action: (): void => editor.instance.request_new_document_dialog() },
+					{ label: "New…", icon: "File", shortcut: ["KeyControl", "KeyN"], shortcutRequiresLock: true, action: (): void => editor.instance.request_new_document_dialog() },
 					{ label: "Open…", shortcut: ["KeyControl", "KeyO"], action: (): void => editor.instance.open_document() },
 					{
 						label: "Open Recent",

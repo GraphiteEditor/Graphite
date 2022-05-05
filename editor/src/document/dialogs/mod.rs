@@ -10,6 +10,4 @@ pub use close_all_documents_dialog::CloseAllDocuments;
 pub use close_document_dialog::CloseDocument;
 pub use coming_soon_dialog::ComingSoon;
 pub use error_dialog::Error;
-pub use new_document_dialog::NewDocument;
-
-pub use new_document_dialog::{NewDocumentDialogUpdate, NewDocumentDialogUpdateDiscriminant};
+pub use new_document_dialog::{NewDocument, NewDocumentDialogUpdate, NewDocumentDialogUpdateDiscriminant};

@@ -186,7 +186,7 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 				);
 			}
 			CloseDialogAndThen { followup } => {
-				responses.push_back(FrontendMessage::TriggerDismissDialog.into());
+				responses.push_back(FrontendMessage::DisplayDialogDismiss.into());
 				responses.push_back(*followup);
 			}
 			CloseDocument { document_id } => {
@@ -498,7 +498,7 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 					responses.push_back(PortfolioMessage::AutoSaveDocument { document_id: self.active_document_id }.into());
 				}
 				responses.push_back(ToolMessage::AbortCurrentTool.into());
-				responses.push_back(SetActiveDcoument { document_id }.into());
+				responses.push_back(SetActiveDocument { document_id }.into());
 
 				responses.push_back(FrontendMessage::UpdateActiveDocument { document_id }.into());
 				responses.push_back(RenderDocument.into());
@@ -509,7 +509,7 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 				responses.push_back(ToolMessage::DocumentIsDirty.into());
 				responses.push_back(PortfolioMessage::UpdateDocumentBar.into());
 			}
-			SetActiveDcoument { document_id } => {
+			SetActiveDocument { document_id } => {
 				self.active_document_id = document_id;
 			}
 			UpdateDocumentBar => {
@@ -536,6 +536,7 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 
 	fn actions(&self) -> ActionList {
 		let mut common = actions!(PortfolioMessageDiscriminant;
+			RequestNewDocumentDialog,
 			NewDocument,
 			CloseActiveDocumentWithConfirmation,
 			CloseAllDocumentsWithConfirmation,

@@ -1,7 +1,5 @@
-use crate::{
-	layout::widgets::*,
-	message_prelude::{DocumentMessage, FrontendMessage, PortfolioMessage},
-};
+use crate::layout::widgets::*;
+use crate::message_prelude::{DocumentMessage, FrontendMessage, PortfolioMessage};
 
 pub struct CloseDocument {
 	pub document_name: String,
@@ -11,6 +9,7 @@ pub struct CloseDocument {
 impl PropertyHolder for CloseDocument {
 	fn properties(&self) -> WidgetLayout {
 		let document_id = self.document_id;
+
 		let button_widgets = vec![
 			WidgetHolder::new(Widget::TextButton(TextButton {
 				label: "Save".to_string(),
@@ -38,7 +37,7 @@ impl PropertyHolder for CloseDocument {
 			WidgetHolder::new(Widget::TextButton(TextButton {
 				label: "Cancel".to_string(),
 				min_width: 96,
-				on_update: WidgetCallback::new(|_| FrontendMessage::TriggerDismissDialog.into()),
+				on_update: WidgetCallback::new(|_| FrontendMessage::DisplayDialogDismiss.into()),
 				..Default::default()
 			})),
 		];

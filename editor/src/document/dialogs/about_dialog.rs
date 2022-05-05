@@ -21,7 +21,7 @@ impl PropertyHolder for AboutGraphite {
 			.map(|(label, url)| {
 				WidgetHolder::new(Widget::TextButton(TextButton {
 					label: label.to_string(),
-					on_update: WidgetCallback::new(|_| FrontendMessage::TriggerWindowOpen { url: url.to_string() }.into()),
+					on_update: WidgetCallback::new(|_| FrontendMessage::TriggerVisitLink { url: url.to_string() }.into()),
 					..Default::default()
 				}))
 			})

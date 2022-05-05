@@ -1,7 +1,5 @@
-use crate::{
-	layout::widgets::*,
-	message_prelude::{FrontendMessage, PortfolioMessage},
-};
+use crate::layout::widgets::*;
+use crate::message_prelude::{FrontendMessage, PortfolioMessage};
 
 pub struct CloseAllDocuments;
 
@@ -22,7 +20,7 @@ impl PropertyHolder for CloseAllDocuments {
 			WidgetHolder::new(Widget::TextButton(TextButton {
 				label: "Cancel".to_string(),
 				min_width: 96,
-				on_update: WidgetCallback::new(|_| FrontendMessage::TriggerDismissDialog.into()),
+				on_update: WidgetCallback::new(|_| FrontendMessage::DisplayDialogDismiss.into()),
 				..Default::default()
 			})),
 		];

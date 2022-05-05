@@ -34,11 +34,6 @@
 		}
 	}
 
-	&:focus {
-		outline: 1px solid var(--color-accent);
-		outline-offset: 2px;
-	}
-
 	&.size-12 {
 		width: 12px;
 		height: 12px;

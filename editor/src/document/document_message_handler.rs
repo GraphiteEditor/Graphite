@@ -509,7 +509,7 @@ impl DocumentMessageHandler {
 
 	pub fn load_default_font(&self, responses: &mut VecDeque<Message>) {
 		if !self.graphene_document.font_cache.has_default() {
-			responses.push_back(FrontendMessage::TriggerDefaultFontLoad.into())
+			responses.push_back(FrontendMessage::TriggerFontLoadDefault.into())
 		}
 	}
 }

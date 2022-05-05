@@ -1,5 +1,5 @@
 <template>
-	<span class="text-label" :class="{ bold, italic, preserveWhitespace, tableAlign }">
+	<span class="text-label" :class="{ bold, italic, 'preserve-whitespace': preserveWhitespace, 'table-align': tableAlign }">
 		<slot></slot>
 	</span>
 </template>
@@ -16,12 +16,14 @@
 	&.italic {
 		font-style: italic;
 	}
-	&.preserveWhitespace {
+
+	&.preserve-whitespace {
 		white-space: pre-wrap;
 		line-height: normal;
-		margin: 0 !important;
+		margin: 0;
 	}
-	&.tableAlign {
+
+	&.table-align {
 		flex: 0 0 30%;
 		text-align: right;
 	}

@@ -44,14 +44,13 @@
 		.row {
 			display: flex;
 			flex-direction: row;
-			flex-grow: 1;
+			flex-grow: 1; // TODO: Note, this is overridden by the flex shorthand rule below
 			min-width: 0;
 			min-height: 0;
 			border: 0;
 			padding: 0;
 			text-align: left;
 			background: none;
-
 			height: 20px;
 			align-items: center;
 			white-space: nowrap;
@@ -124,10 +123,6 @@
 				span {
 					color: var(--color-f-white);
 				}
-			}
-			&:focus {
-				outline: 1px solid var(--color-accent);
-				outline-offset: -1px;
 			}
 
 			&:hover .entry-checkbox label .checkbox-box {
@@ -280,7 +275,9 @@ const MenuList = defineComponent({
 		},
 	},
 	data() {
-		return { keyboardLockInfoMessage: this.fullscreen.keyboardLockApiSupported ? KEYBOARD_LOCK_USE_FULLSCREEN : KEYBOARD_LOCK_SWITCH_BROWSER };
+		return {
+			keyboardLockInfoMessage: this.fullscreen.keyboardLockApiSupported ? KEYBOARD_LOCK_USE_FULLSCREEN : KEYBOARD_LOCK_SWITCH_BROWSER,
+		};
 	},
 	components: {
 		FloatingMenu,

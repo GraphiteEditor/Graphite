@@ -25,7 +25,7 @@ impl PropertyHolder for Error {
 					label: "OK".to_string(),
 					emphasized: true,
 					min_width: 96,
-					on_update: WidgetCallback::new(|_| FrontendMessage::TriggerDismissDialog.into()),
+					on_update: WidgetCallback::new(|_| FrontendMessage::DisplayDialogDismiss.into()),
 					..Default::default()
 				}))],
 			},

@@ -11,15 +11,16 @@ impl PropertyHolder for ComingSoon {
 			label: "OK".to_string(),
 			emphasized: true,
 			min_width: 96,
-			on_update: WidgetCallback::new(|_| FrontendMessage::TriggerDismissDialog.into()),
+			on_update: WidgetCallback::new(|_| FrontendMessage::DisplayDialogDismiss.into()),
 			..Default::default()
 		}))];
 		if let Some(issue) = self.issue {
 			details += &format!("— but you can help add it!\nSee issue #{issue} on GitHub.");
 			buttons.push(WidgetHolder::new(Widget::TextButton(TextButton {
 				label: format!("Issue #{issue}"),
+				min_width: 96,
 				on_update: WidgetCallback::new(move |_| {
-					FrontendMessage::TriggerWindowOpen {
+					FrontendMessage::TriggerVisitLink {
 						url: format!("https://github.com/GraphiteEditor/Graphite/issues/{issue}"),
 					}
 					.into()

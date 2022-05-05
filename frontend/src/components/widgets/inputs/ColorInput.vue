@@ -56,11 +56,6 @@
 				transform: rotate(135deg);
 				transform-origin: 0% 100%;
 			}
-
-			&:focus {
-				outline: 1px solid var(--color-accent);
-				outline-offset: 2px;
-			}
 		}
 
 		.floating-menu {

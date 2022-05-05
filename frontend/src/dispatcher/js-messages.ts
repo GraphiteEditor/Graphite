@@ -381,9 +381,9 @@ export class IndexedDbDocumentDetails extends DocumentDetails {
 	id!: string;
 }
 
-export class TriggerDefaultFontLoad extends JsMessage {}
+export class TriggerFontLoadDefault extends JsMessage {}
 
-export class TriggerDismissDialog extends JsMessage {}
+export class DisplayDialogDismiss extends JsMessage {}
 
 export class TriggerIndexedDbWriteDocument extends JsMessage {
 	document!: string;
@@ -404,7 +404,7 @@ export class TriggerFontLoad extends JsMessage {
 	font!: string;
 }
 
-export class TriggerWindowOpen extends JsMessage {
+export class TriggerVisitLink extends JsMessage {
 	url!: string;
 }
 
@@ -433,19 +433,20 @@ export function isWidgetSection(layoutRow: WidgetRow | WidgetSection): layoutRow
 }
 
 export type WidgetKind =
-	| "NumberInput"
-	| "Separator"
-	| "IconButton"
-	| "TextButton"
-	| "PopoverButton"
-	| "OptionalInput"
-	| "RadioInput"
-	| "TextInput"
-	| "TextAreaInput"
-	| "TextLabel"
-	| "IconLabel"
+	| "CheckboxInput"
 	| "ColorInput"
-	| "FontInput";
+	| "FontInput"
+	| "IconButton"
+	| "IconLabel"
+	| "NumberInput"
+	| "OptionalInput"
+	| "PopoverButton"
+	| "RadioInput"
+	| "Separator"
+	| "TextAreaInput"
+	| "TextButton"
+	| "TextInput"
+	| "TextLabel";
 
 export interface Widget {
 	kind: WidgetKind;
@@ -539,8 +540,8 @@ export const messageMakers: Record<string, MessageMaker> = {
 	DisplayEditableTextbox,
 	UpdateImageData,
 	DisplayRemoveEditableTextbox,
-	TriggerDefaultFontLoad,
-	TriggerDismissDialog,
+	TriggerFontLoadDefault,
+	DisplayDialogDismiss,
 	TriggerFileDownload,
 	TriggerFileUpload,
 	TriggerIndexedDbRemoveDocument,
@@ -549,7 +550,7 @@ export const messageMakers: Record<string, MessageMaker> = {
 	TriggerTextCommit,
 	TriggerTextCopy,
 	TriggerViewportResize,
-	TriggerWindowOpen,
+	TriggerVisitLink,
 	UpdateActiveDocument,
 	UpdateActiveTool,
 	UpdateCanvasRotation,

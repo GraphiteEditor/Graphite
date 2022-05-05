@@ -10,7 +10,7 @@
 				<WidgetLayout v-if="dialog.state.widgets" :layout="dialog.state.widgets" class="details"></WidgetLayout>
 				<TextLabel v-if="dialog.state.jsComponents" class="details">{{ dialog.state.jsComponents.details }}</TextLabel>
 				<LayoutRow v-if="dialog.state.jsComponents && dialog.state.jsComponents.buttons.length > 0" class="buttons-row">
-					<TextButton v-for="(button, index) in dialog.state.jsComponents.buttons" :key="index" :title="button.tooltip" :action="() => button.callback?.()" v-bind="button.props" />
+					<TextButton v-for="(button, index) in dialog.state.jsComponents.buttons" :key="index" :action="() => button.callback?.()" v-bind="button.props" />
 				</LayoutRow>
 			</LayoutCol>
 		</LayoutRow>
@@ -101,7 +101,9 @@ export default defineComponent({
 	},
 	mounted() {
 		// Focus the first button in the popup
-		(this.$el?.getElementsByTagName("button")[0] as HTMLButtonElement | undefined)?.focus();
+		const element = this.$el as Element | null;
+		const emphasizedOrFirstButton = (element?.querySelector("button.emphasized") as HTMLButtonElement | null) || element?.querySelector("button");
+		emphasizedOrFirstButton?.focus();
 	},
 });
 </script>

@@ -111,6 +111,12 @@ export function createInputManager(editor: EditorState, container: HTMLElement, 
 	const onPointerMove = (e: PointerEvent): void => {
 		if (!e.buttons) viewportPointerInteractionOngoing = false;
 
+		// Don't redirect pointer movement to the backend if there's no ongoing interaction and it's over a floating menu on top of the canvas
+		// TODO: A better approach is to pass along a boolean to the backend's input preprocessor so it can know if it's being occluded by the GUI.
+		// TODO: This would allow it to properly decide to act on removing hover focus from something that was hovered in the canvas before moving over the GUI.
+		const inFloatingMenu = e.target instanceof Element && e.target.closest("[data-floating-menu-content]");
+		if (!viewportPointerInteractionOngoing && inFloatingMenu) return;
+
 		const modifiers = makeModifiersBitfield(e);
 		editor.instance.on_mouse_move(e.clientX, e.clientY, e.buttons, modifiers);
 	};

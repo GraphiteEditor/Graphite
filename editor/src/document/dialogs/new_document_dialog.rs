@@ -1,10 +1,8 @@
-use crate::{
-	layout::{layout_message::LayoutTarget, widgets::*},
-	message_prelude::*,
-};
+use crate::layout::layout_message::LayoutTarget;
+use crate::layout::widgets::*;
+use crate::message_prelude::*;
 
 use glam::UVec2;
-
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Default)]
@@ -34,7 +32,7 @@ impl PropertyHolder for NewDocument {
 
 		let infinite = vec![
 			WidgetHolder::new(Widget::TextLabel(TextLabel {
-				value: "Infinite".into(),
+				value: "Infinite Canvas".into(),
 				table_align: true,
 				..Default::default()
 			})),
@@ -42,10 +40,10 @@ impl PropertyHolder for NewDocument {
 				separator_type: SeparatorType::Unrelated,
 				direction: SeparatorDirection::Horizontal,
 			})),
-			WidgetHolder::new(Widget::OptionalInput(OptionalInput {
+			WidgetHolder::new(Widget::CheckboxInput(CheckboxInput {
 				checked: self.infinite,
 				icon: "Checkmark".to_string(),
-				on_update: WidgetCallback::new(|optional_input: &OptionalInput| NewDocumentDialogUpdate::Infinite(optional_input.checked).into()),
+				on_update: WidgetCallback::new(|checkbox_input: &CheckboxInput| NewDocumentDialogUpdate::Infinite(checkbox_input.checked).into()),
 				..Default::default()
 			})),
 		];
@@ -102,7 +100,7 @@ impl PropertyHolder for NewDocument {
 			WidgetHolder::new(Widget::TextButton(TextButton {
 				label: "Cancel".to_string(),
 				min_width: 96,
-				on_update: WidgetCallback::new(|_| FrontendMessage::TriggerDismissDialog.into()),
+				on_update: WidgetCallback::new(|_| FrontendMessage::DisplayDialogDismiss.into()),
 				..Default::default()
 			})),
 		];

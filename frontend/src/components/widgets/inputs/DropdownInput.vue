@@ -58,11 +58,6 @@
 			flex: 0 0 auto;
 		}
 
-		&:focus {
-			outline: 1px solid var(--color-accent);
-			outline-offset: 2px;
-		}
-
 		&:hover,
 		&.open {
 			background: var(--color-6-lowergray);
