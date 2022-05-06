@@ -6,6 +6,7 @@ use crate::layers::layer_info::{Layer, LayerData, LayerDataType};
 use crate::layers::shape_layer::ShapeLayer;
 use crate::layers::style::ViewMode;
 use crate::layers::text_layer::TextLayer;
+use crate::layers::vector::vector_shape::VectorShape;
 use crate::{DocumentError, DocumentResponse, Operation};
 
 use glam::{DAffine2, DVec2};
@@ -115,6 +116,16 @@ impl Document {
 		}
 		Ok(shapes)
 	}
+
+	pub fn vector_shapes<'a>(&'a self) -> Vec<&'a VectorShape> {
+		self.root.iter().flat_map(|layer| layer.as_vector_shape()).collect::<Vec<&VectorShape>>()
+	}
+
+	// pub fn vector_shapes_mut<'a>(&'a mut self) -> Vec<&'a mut VectorShape> {
+	// 	// Turns out we can't implement iter_mut() the same way we can iter()
+	// 	//self.root.iter_mut().flat_map(|layer: &mut Layer| layer.as_vector_shape_mut()).collect::<Vec<&mut VectorShape>>()
+	// 	// Need to figure out another way to solve this problem
+	// }
 
 	pub fn common_layer_path_prefix<'a>(&self, layers: impl Iterator<Item = &'a [LayerId]>) -> &'a [LayerId] {
 		layers.reduce(|a, b| &a[..a.iter().zip(b.iter()).take_while(|&(a, b)| a == b).count()]).unwrap_or_default()

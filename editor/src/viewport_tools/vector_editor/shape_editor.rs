@@ -76,22 +76,6 @@ impl ShapeEditor {
 		false
 	}
 
-	fn shapes_to_modify<'a>(&'a self, paths: &[&[LayerId]], document: &'a Document) -> Vec<&'a VectorShape> {
-		let x = paths.iter().map(|path| {
-			let shape = document.layer(path);
-			shape.unwrap().try_into().unwrap()
-		}).collect::<Vec<&VectorShape>>();
-		x
-	}
-
-	fn shapes_to_modify_mut<'a>(&'a self, paths: &[&[LayerId]], document: &'a mut Document) -> Vec<&'a mut VectorShape> {
-		let mut shapes = vec![];
-		for path in paths {
-			shapes.push(document.layer_mut(path).unwrap().try_into().unwrap());
-		}
-		shapes
-	}
-
 	/// Find a point that is within the selection threshold and return an index to the shape, anchor, and point
 	pub fn find_nearest_point_indicies(&mut self, mouse_position: DVec2, select_threshold: f64) -> Option<(usize, usize, usize)> {
 		if self.shapes_to_modify.is_empty() {
