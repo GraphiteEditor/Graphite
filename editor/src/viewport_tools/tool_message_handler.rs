@@ -108,11 +108,10 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, &InputPreprocessorMes
 				let document_data = &mut self.tool_state.document_tool_data;
 
 				let random_number = generate_uuid();
-				let r = (random_number >> 24) as u8;
-				let g = (random_number >> 16) as u8;
-				let b = (random_number >> 8) as u8;
-				let a = random_number as u8;
-				let random_color = Color::from_rgba8(r, g, b, a);
+				let r = (random_number >> 16) as u8;
+				let g = (random_number >> 8) as u8;
+				let b = random_number as u8;
+				let random_color = Color::from_rgba8(r, g, b, 255);
 				document_data.primary_color = random_color;
 
 				update_working_colors(document_data, responses);
