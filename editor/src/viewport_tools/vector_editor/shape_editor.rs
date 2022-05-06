@@ -19,8 +19,8 @@ use super::vector_shape::VectorShape;
 use super::{constants::MINIMUM_MIRROR_THRESHOLD, vector_anchor::VectorAnchor, vector_control_point::VectorControlPoint};
 
 use glam::DVec2;
-use graphene::LayerId;
 use graphene::document::Document;
+use graphene::LayerId;
 use std::collections::HashSet;
 
 /// ShapeEditor is the container for all of the selected kurbo paths that are
@@ -29,7 +29,7 @@ use std::collections::HashSet;
 #[derive(Clone, Debug, Default)]
 pub struct ShapeEditor {
 	// The shapes we can select anchors / handles from
-	pub shapes_to_modify: Vec<VectorShape>,
+	pub paths_to_shapes: Vec<Vec<LayerId>>,
 	// Index of the shape that contained the most recent selected point
 	pub selected_shape_indices: HashSet<usize>,
 }
@@ -39,7 +39,7 @@ impl ShapeEditor {
 	/// Returns true if we've found a point, false otherwise
 	// TODO Refactor to select_point_from(vectorshapes[..], ...)
 	pub fn select_point(&mut self, mouse_position: DVec2, select_threshold: f64, add_to_selection: bool) -> bool {
-		if self.shapes_to_modify.is_empty() {
+		if self.paths_to_shapes.is_empty() {
 			return false;
 		}
 
@@ -51,14 +51,14 @@ impl ShapeEditor {
 
 			// If the point we're selecting has already been selected
 			// we can assume this point exists.. since we did just click on it hense the unwrap
-			let is_point_selected = self.shapes_to_modify[shape_index].anchors[anchor_index].points[point_index].as_ref().unwrap().is_selected;
+			let is_point_selected = self.paths_to_shapes[shape_index].anchors[anchor_index].points[point_index].as_ref().unwrap().is_selected;
 
 			// Deselected if we're not adding to the selection
 			if !add_to_selection && !is_point_selected {
 				self.deselect_all();
 			}
 
-			let selected_shape = &mut self.shapes_to_modify[shape_index];
+			let selected_shape = &mut self.paths_to_shapes[shape_index];
 			// TODO kurbo bez_path are no long present in the vector shapes, resolve fallout
 			// selected_shape.elements = selected_shape.bez_path.clone().into_iter().collect();
 
@@ -78,14 +78,14 @@ impl ShapeEditor {
 
 	/// Find a point that is within the selection threshold and return an index to the shape, anchor, and point
 	pub fn find_nearest_point_indicies(&mut self, mouse_position: DVec2, select_threshold: f64) -> Option<(usize, usize, usize)> {
-		if self.shapes_to_modify.is_empty() {
+		if self.paths_to_shapes.is_empty() {
 			return None;
 		}
 
 		let select_threshold_squared = select_threshold * select_threshold;
 		// Find the closest control point among all elements of shapes_to_modify
-		for shape_index in 0..self.shapes_to_modify.len() {
-			if let Some((anchor_index, point_index, distance_squared)) = self.closest_point_indices(&self.shapes_to_modify[shape_index], mouse_position) {
+		for shape_index in 0..self.paths_to_shapes.len() {
+			if let Some((anchor_index, point_index, distance_squared)) = self.closest_point_indices(&self.paths_to_shapes[shape_index], mouse_position) {
 				// Choose the first point under the threshold
 				if distance_squared < select_threshold_squared {
 					log::trace!("Selecting: shape {} / anchor {} / point {}", shape_index, anchor_index, point_index);
@@ -99,18 +99,18 @@ impl ShapeEditor {
 	/// A wrapper for find_nearest_point_indicies and returns a mutable VectorControlPoint
 	pub fn find_nearest_point(&mut self, mouse_position: DVec2, select_threshold: f64) -> Option<&mut VectorControlPoint> {
 		let (shape_index, anchor_index, point_index) = self.find_nearest_point_indicies(mouse_position, select_threshold)?;
-		let selected_shape = &mut self.shapes_to_modify[shape_index];
+		let selected_shape = &mut self.paths_to_shapes[shape_index];
 		selected_shape.anchors[anchor_index].points[point_index].as_mut()
 	}
 
 	/// Set the shapes we consider for selection, we will choose draggable handles / anchors from these shapes.
 	pub fn set_shapes_to_modify(&mut self, selected_shapes: Vec<VectorShape>) {
-		self.shapes_to_modify = selected_shapes;
+		self.paths_to_shapes = selected_shapes;
 	}
 
 	/// Clear all of the shapes we can modify
 	pub fn clear_shapes_to_modify(&mut self) {
-		self.shapes_to_modify.clear();
+		self.paths_to_shapes.clear();
 	}
 
 	/// Add a shape to the hashset of shapes we consider for selection
@@ -119,39 +119,39 @@ impl ShapeEditor {
 	}
 
 	/// Provide the shapes that the currently selected points are a part of
-	pub fn selected_shapes(&self) -> impl Iterator<Item = &VectorShape> {
-		self.shapes_to_modify
+	pub fn selected_shapes<'a>(&'a self, document: &'a Document) -> impl Iterator<Item = &'a VectorShape> {
+		self.paths_to_shapes
 			.iter()
 			.enumerate()
-			.filter_map(|(index, shape)| if self.selected_shape_indices.contains(&index) { Some(shape) } else { None })
+			.filter_map(|(index, path)| if self.selected_shape_indices.contains(&index) { document.vector_shape(path) } else { None })
 	}
 
 	/// Provide the mutable shapes that the currently selected points are a part of
-	pub fn selected_shapes_mut(&mut self) -> impl Iterator<Item = &mut VectorShape> {
-		self.shapes_to_modify
+	pub fn selected_shapes_mut<'a>(&'a mut self, document: &'a mut Document) -> impl Iterator<Item = &'a mut VectorShape> {
+		self.paths_to_shapes
 			.iter_mut()
 			.enumerate()
-			.filter_map(|(index, shape)| if self.selected_shape_indices.contains(&index) { Some(shape) } else { None })
+			.filter_map(|(index, path)| if self.selected_shape_indices.contains(&index) { document.vector_shape_mut(path) } else { None })
 	}
 
 	/// Provide the currently selected anchor by reference
-	pub fn selected_anchors(&self) -> impl Iterator<Item = &VectorAnchor> {
-		self.selected_shapes().flat_map(|shape| shape.selected_anchors())
+	pub fn selected_anchors<'a>(&'a self, document: &'a Document) -> impl Iterator<Item = &'a VectorAnchor> {
+		self.selected_shapes(document).flat_map(|shape| shape.selected_anchors())
 	}
 
 	/// Provide the currently selected anchors by mutable reference
-	pub fn selected_anchors_mut(&mut self) -> impl Iterator<Item = &mut VectorAnchor> {
-		self.selected_shapes_mut().flat_map(|shape| shape.selected_anchors_mut())
+	pub fn selected_anchors_mut<'a>(&'a mut self, document: &'a mut Document) -> impl Iterator<Item = &'a mut VectorAnchor> {
+		self.selected_shapes_mut(document).flat_map(|shape| shape.selected_anchors_mut())
 	}
 
 	/// A mutable iterator of all the anchors, regardless of selection
 	pub fn anchors_mut(&mut self) -> impl Iterator<Item = &mut VectorAnchor> {
-		self.shapes_to_modify.iter_mut().flat_map(|shape| shape.anchors_mut())
+		self.paths_to_shapes.iter_mut().flat_map(|shape| shape.anchors_mut())
 	}
 
 	/// Select the last anchor in this shape
 	pub fn select_last_anchor(&mut self) -> Option<&mut VectorAnchor> {
-		if let Some(last) = self.shapes_to_modify.last_mut() {
+		if let Some(last) = self.paths_to_shapes.last_mut() {
 			return Some(last.select_last_anchor());
 		}
 		None
@@ -159,7 +159,7 @@ impl ShapeEditor {
 
 	/// Select the Nth anchor of the shape, negative numbers index from the end
 	pub fn select_nth_anchor(&mut self, shape_index: usize, anchor_index: i32) -> &mut VectorAnchor {
-		let shape = &mut self.shapes_to_modify[shape_index];
+		let shape = &mut self.paths_to_shapes[shape_index];
 		if anchor_index < 0 {
 			let anchor_index = shape.anchors.len() - ((-anchor_index) as usize);
 			shape.select_anchor(anchor_index)
@@ -218,7 +218,7 @@ impl ShapeEditor {
 
 	/// Deselect all anchors from the shapes the manipulation handler has created
 	pub fn deselect_all(&mut self) {
-		for shape in self.shapes_to_modify.iter_mut() {
+		for shape in self.paths_to_shapes.iter_mut() {
 			shape.clear_selected_anchors();
 		}
 	}

@@ -288,7 +288,7 @@ impl Fsm for PenToolFsmState {
 fn add_to_curve(data: &mut PenToolData, input: &InputPreprocessorMessageHandler, transform: DAffine2, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
 	// We need to make sure we have the most up-to-date bez_path
 	// Would like to remove this hack eventually
-	if !data.shape_editor.shapes_to_modify.is_empty() {
+	if !data.shape_editor.paths_to_shapes.is_empty() {
 		// Hacky way of saving the curve changes
 		// TODO We've removed .bezpath and this need to preserve the shapes instead
 		// data.bez_path = data.shape_editor.shapes_to_modify[0].bez_path.elements().to_vec();

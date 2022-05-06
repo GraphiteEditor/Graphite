@@ -133,7 +133,7 @@ impl Fsm for PathToolFsmState {
 				}
 				(_, DocumentIsDirty) => {
 					// TODO This should be handled by the document not by the tool, but this is a stop gap
-					for shape in &data.shape_editor.shapes_to_modify {
+					for shape in &data.shape_editor.paths_to_shapes {
 						data.overlay_renderer.draw_overlays_for_vector_shape(&shape, responses);
 					}
 
@@ -149,7 +149,7 @@ impl Fsm for PathToolFsmState {
 						data.snap_handler.start_snap(document, document.bounding_boxes(None, None), true, true);
 						let snap_points = data
 							.shape_editor
-							.shapes_to_modify
+							.paths_to_shapes
 							.iter()
 							.flat_map(|shape| shape.anchors.iter().flat_map(|anchor| anchor.points[0].as_ref()))
 							.map(|point| point.position)

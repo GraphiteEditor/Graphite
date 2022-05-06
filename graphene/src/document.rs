@@ -121,11 +121,13 @@ impl Document {
 		self.root.iter().flat_map(|layer| layer.as_vector_shape()).collect::<Vec<&VectorShape>>()
 	}
 
-	// pub fn vector_shapes_mut<'a>(&'a mut self) -> Vec<&'a mut VectorShape> {
-	// 	// Turns out we can't implement iter_mut() the same way we can iter()
-	// 	//self.root.iter_mut().flat_map(|layer: &mut Layer| layer.as_vector_shape_mut()).collect::<Vec<&mut VectorShape>>()
-	// 	// Need to figure out another way to solve this problem
-	// }
+	pub fn vector_shape_mut<'a>(&'a mut self, path: &[LayerId]) -> Option<&'a mut VectorShape> {
+		return self.layer_mut(path).ok()?.as_vector_shape_mut();
+	}
+
+	pub fn vector_shape<'a>(&'a self, path: &[LayerId]) -> Option<&'a VectorShape> {
+		return self.layer(path).ok()?.as_vector_shape();
+	}
 
 	pub fn common_layer_path_prefix<'a>(&self, layers: impl Iterator<Item = &'a [LayerId]>) -> &'a [LayerId] {
 		layers.reduce(|a, b| &a[..a.iter().zip(b.iter()).take_while(|&(a, b)| a == b).count()]).unwrap_or_default()
