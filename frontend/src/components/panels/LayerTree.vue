@@ -21,20 +21,16 @@
 				:disabled="opacityNumberInputDisabled"
 			/>
 
-			<Separator :type="'Related'" />
-
-			<PopoverButton>
+			<!-- <PopoverButton>
 				<h3>Compositing Options</h3>
 				<p>The contents of this popover menu are coming soon</p>
-			</PopoverButton>
-		</LayoutRow>
-		<LayoutRow class="button-bar">
-			<LayoutRow></LayoutRow>
-			<LayoutRow>
-				<!-- TODO: Remember to make these tooltip input hints customized to macOS also -->
-				<IconButton :action="createEmptyFolder" :icon="'NodeFolder'" title="New Folder (Ctrl+Shift+N)" :size="16" />
-				<IconButton :action="deleteSelectedLayers" :icon="'Trash'" title="Delete Selected (Del)" :size="16" />
-			</LayoutRow>
+			</PopoverButton> -->
+
+			<Separator :type="'Section'" />
+
+			<!-- TODO: Remember to make these tooltip input hints customized to macOS also -->
+			<IconButton :action="createEmptyFolder" :icon="'NodeFolder'" title="New Folder (Ctrl+Shift+N)" :size="24" />
+			<IconButton :action="deleteSelectedLayers" :icon="'Trash'" title="Delete Selected (Del)" :size="24" />
 		</LayoutRow>
 		<LayoutRow class="layer-tree" :scrollableY="true">
 			<LayoutCol class="list" ref="layerTreeList" @click="() => deselectAllLayers()" @dragover="(e) => draggable && updateInsertLine(e)" @dragend="() => draggable && drop()">
@@ -118,19 +114,6 @@
 		.dropdown-input,
 		.number-input {
 			flex: 1 1 auto;
-		}
-	}
-
-	.button-bar {
-		height: 24px;
-		flex: 0 0 auto;
-		justify-content: space-between;
-		align-items: center;
-		margin: 0 4px;
-
-		.layout-row {
-			flex: 0 0 auto;
-			gap: 4px;
 		}
 	}
 
@@ -311,7 +294,6 @@ import { BlendMode, DisplayDocumentLayerTreeStructure, UpdateDocumentLayer, Laye
 import LayoutCol from "@/components/layout/LayoutCol.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
 import IconButton from "@/components/widgets/buttons/IconButton.vue";
-import PopoverButton from "@/components/widgets/buttons/PopoverButton.vue";
 import { SectionsOfMenuListEntries } from "@/components/widgets/floating-menus/MenuList.vue";
 import DropdownInput from "@/components/widgets/inputs/DropdownInput.vue";
 import NumberInput from "@/components/widgets/inputs/NumberInput.vue";
@@ -643,7 +625,6 @@ export default defineComponent({
 		LayoutRow,
 		LayoutCol,
 		Separator,
-		PopoverButton,
 		NumberInput,
 		IconButton,
 		IconLabel,
