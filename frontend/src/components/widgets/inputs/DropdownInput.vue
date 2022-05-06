@@ -1,10 +1,10 @@
 <template>
 	<LayoutRow class="dropdown-input">
-		<LayoutRow class="dropdown-box" :class="{ disabled }" :style="{ minWidth: `${minWidth}px` }" @click="() => clickDropdownBox()" data-hover-menu-spawner>
+		<button class="dropdown-box" :class="{ disabled }" :style="{ minWidth: `${minWidth}px` }" @click="() => clickDropdownBox()" data-hover-menu-spawner>
 			<IconLabel class="dropdown-icon" :icon="activeEntry.icon" v-if="activeEntry.icon" />
 			<span>{{ activeEntry.label }}</span>
 			<IconLabel class="dropdown-arrow" :icon="'DropdownArrow'" />
-		</LayoutRow>
+		</button>
 		<MenuList
 			v-model:activeEntry="activeEntry"
 			@update:activeEntry="(newActiveEntry: typeof MENU_LIST_ENTRY) => activeEntryChanged(newActiveEntry)"
@@ -23,6 +23,15 @@
 	position: relative;
 
 	.dropdown-box {
+		display: flex;
+		flex-direction: row;
+		flex-grow: 1;
+		min-width: 0;
+		min-height: 0;
+		border: 0;
+		padding: 0;
+		text-align: left;
+
 		align-items: center;
 		white-space: nowrap;
 		background: var(--color-1-nearblack);

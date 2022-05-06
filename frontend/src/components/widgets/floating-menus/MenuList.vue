@@ -2,7 +2,7 @@
 	<FloatingMenu class="menu-list" :direction="direction" :type="'Dropdown'" ref="floatingMenu" :windowEdgeMargin="0" :scrollableY="scrollableY" data-hover-menu-keep-open>
 		<template v-for="(section, sectionIndex) in menuEntries" :key="sectionIndex">
 			<Separator :type="'List'" :direction="'Vertical'" v-if="sectionIndex > 0" />
-			<LayoutRow
+			<button
 				v-for="(entry, entryIndex) in section"
 				:key="entryIndex"
 				class="row"
@@ -31,7 +31,7 @@
 					v-bind="{ defaultAction, minWidth, drawIcon, scrollableY }"
 					:ref="(ref: any) => setEntryRefs(entry, ref)"
 				/>
-			</LayoutRow>
+			</button>
 		</template>
 	</FloatingMenu>
 </template>
@@ -42,6 +42,15 @@
 		padding: 4px 0;
 
 		.row {
+			display: flex;
+			flex-direction: row;
+			flex-grow: 1; // TODO: Note, this is overridden by the flex shorthand rule below
+			min-width: 0;
+			min-height: 0;
+			border: 0;
+			padding: 0;
+			text-align: left;
+			background: none;
 			height: 20px;
 			align-items: center;
 			white-space: nowrap;
@@ -133,7 +142,6 @@ import { defineComponent, PropType } from "vue";
 
 import { IconName } from "@/utilities/icons";
 
-import LayoutRow from "@/components/layout/LayoutRow.vue";
 import FloatingMenu, { MenuDirection } from "@/components/widgets/floating-menus/FloatingMenu.vue";
 import CheckboxInput from "@/components/widgets/inputs/CheckboxInput.vue";
 import IconLabel from "@/components/widgets/labels/IconLabel.vue";
@@ -277,7 +285,6 @@ const MenuList = defineComponent({
 		IconLabel,
 		CheckboxInput,
 		UserInputLabel,
-		LayoutRow,
 	},
 });
 export default MenuList;
