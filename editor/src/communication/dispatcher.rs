@@ -7,16 +7,20 @@ use crate::viewport_tools::tool_message_handler::ToolMessageHandler;
 
 use std::collections::VecDeque;
 
+use super::BuildMetadata;
+
 #[derive(Debug, Default)]
 pub struct Dispatcher {
 	message_queue: VecDeque<Message>,
 	pub responses: Vec<FrontendMessage>,
 	message_handlers: DispatcherMessageHandlers,
+	build_metadata: BuildMetadata,
 }
 
 #[remain::sorted]
 #[derive(Debug, Default)]
 struct DispatcherMessageHandlers {
+	dialog_message_handler: DialogMessageHandler,
 	global_message_handler: GlobalMessageHandler,
 	input_mapper_message_handler: InputMapperMessageHandler,
 	input_preprocessor_message_handler: InputPreprocessorMessageHandler,
@@ -31,6 +35,9 @@ struct DispatcherMessageHandlers {
 const SIDE_EFFECT_FREE_MESSAGES: &[MessageDiscriminant] = &[
 	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::Document(DocumentMessageDiscriminant::RenderDocument)),
 	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::Document(DocumentMessageDiscriminant::Overlays(OverlaysMessageDiscriminant::Rerender))),
+	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::Document(DocumentMessageDiscriminant::Artboard(
+		ArtboardMessageDiscriminant::RenderArtboards,
+	))),
 	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::Document(DocumentMessageDiscriminant::FolderChanged)),
 	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::UpdateDocumentLayer),
 	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::DisplayDocumentLayerTreeStructure),
@@ -63,6 +70,11 @@ impl Dispatcher {
 			match message {
 				#[remain::unsorted]
 				NoOp => {}
+				Dialog(message) => {
+					self.message_handlers
+						.dialog_message_handler
+						.process_action(message, (&self.build_metadata, &self.message_handlers.portfolio_message_handler), &mut self.message_queue);
+				}
 				Frontend(message) => {
 					// Image and font loading should be immediately handled
 					if let FrontendMessage::UpdateImageData { .. } | FrontendMessage::TriggerFontLoad { .. } = message {
@@ -101,6 +113,9 @@ impl Dispatcher {
 						&mut self.message_queue,
 					);
 				}
+
+				#[remain::unsorted]
+				PopulateBuildMetadata { new } => self.build_metadata = new,
 			}
 		}
 	}
@@ -108,6 +123,7 @@ impl Dispatcher {
 	pub fn collect_actions(&self) -> ActionList {
 		// TODO: Reduce the number of heap allocations
 		let mut list = Vec::new();
+		list.extend(self.message_handlers.dialog_message_handler.actions());
 		list.extend(self.message_handlers.input_preprocessor_message_handler.actions());
 		list.extend(self.message_handlers.input_mapper_message_handler.actions());
 		list.extend(self.message_handlers.global_message_handler.actions());
@@ -434,18 +450,22 @@ mod test {
 		});
 
 		for response in responses {
-			if let FrontendMessage::DisplayDialogError { title, description } = response {
-				println!();
-				println!("-------------------------------------------------");
-				println!("Failed test due to receiving a DisplayDialogError while loading the graphite sample file!");
-				println!("This is most likely caused by forgetting to bump the `GRAPHITE_DOCUMENT_VERSION` in `editor/src/consts.rs`");
-				println!("Once bumping this version number please replace the `graphite-test-document.graphite` with a valid file");
-				println!("DisplayDialogError details:");
-				println!("Title: {}", title);
-				println!("description: {}", description);
-				println!("-------------------------------------------------");
-				println!();
-				panic!()
+			if let FrontendMessage::UpdateDialogDetails { layout_target: _, layout } = response {
+				if let crate::layout::widgets::LayoutRow::Row { widgets } = &layout[0] {
+					if let crate::layout::widgets::Widget::TextLabel(crate::layout::widgets::TextLabel { value, .. }) = &widgets[0].widget {
+						println!();
+						println!("-------------------------------------------------");
+						println!("Failed test due to receiving a DisplayDialogError while loading the Graphite sample file!");
+						println!("This is most likely caused by forgetting to bump the `GRAPHITE_DOCUMENT_VERSION` in `editor/src/consts.rs`");
+						println!("Once bumping this version number please replace the `graphite-test-document.graphite` with a valid file.");
+						println!("DisplayDialogError details:");
+						println!();
+						println!("Description: {}", value);
+						println!("-------------------------------------------------");
+						println!();
+						panic!()
+					}
+				}
 			}
 		}
 	}

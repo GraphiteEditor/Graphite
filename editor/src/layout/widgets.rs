@@ -150,6 +150,7 @@ impl<T> Default for WidgetCallback<T> {
 #[remain::sorted]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Widget {
+	CheckboxInput(CheckboxInput),
 	ColorInput(ColorInput),
 	FontInput(FontInput),
 	IconButton(IconButton),
@@ -160,6 +161,7 @@ pub enum Widget {
 	RadioInput(RadioInput),
 	Separator(Separator),
 	TextAreaInput(TextAreaInput),
+	TextButton(TextButton),
 	TextInput(TextInput),
 	TextLabel(TextLabel),
 }
@@ -191,6 +193,7 @@ pub struct NumberInput {
 	#[serde(rename = "displayDecimalPlaces")]
 	#[derivative(Default(value = "3"))]
 	pub display_decimal_places: u32,
+	pub disabled: bool,
 }
 
 #[derive(Clone, Serialize, Deserialize, Derivative)]
@@ -290,6 +293,20 @@ pub struct IconButton {
 
 #[derive(Clone, Serialize, Deserialize, Derivative, Default)]
 #[derivative(Debug, PartialEq)]
+#[serde(rename_all(serialize = "camelCase", deserialize = "camelCase"))]
+pub struct TextButton {
+	pub label: String,
+	pub emphasized: bool,
+	pub disabled: bool,
+	pub min_width: u32,
+	pub gap_after: bool,
+	#[serde(skip)]
+	#[derivative(Debug = "ignore", PartialEq = "ignore")]
+	pub on_update: WidgetCallback<TextButton>,
+}
+
+#[derive(Clone, Serialize, Deserialize, Derivative, Default)]
+#[derivative(Debug, PartialEq)]
 pub struct OptionalInput {
 	pub checked: bool,
 	pub icon: String,
@@ -298,6 +315,20 @@ pub struct OptionalInput {
 	#[serde(skip)]
 	#[derivative(Debug = "ignore", PartialEq = "ignore")]
 	pub on_update: WidgetCallback<OptionalInput>,
+}
+
+#[derive(Clone, Serialize, Deserialize, Derivative, Default)]
+#[derivative(Debug, PartialEq)]
+pub struct CheckboxInput {
+	pub checked: bool,
+	pub icon: String,
+	#[serde(rename = "outlineStyle")]
+	pub outline_style: bool,
+	#[serde(rename = "title")]
+	pub tooltip: String,
+	#[serde(skip)]
+	#[derivative(Debug = "ignore", PartialEq = "ignore")]
+	pub on_update: WidgetCallback<CheckboxInput>,
 }
 
 #[derive(Clone, Serialize, Deserialize, Derivative, Default)]
@@ -342,4 +373,7 @@ pub struct TextLabel {
 	pub value: String,
 	pub bold: bool,
 	pub italic: bool,
+	pub multiline: bool,
+	#[serde(rename = "tableAlign")]
+	pub table_align: bool,
 }
