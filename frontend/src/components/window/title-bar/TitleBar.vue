@@ -5,7 +5,7 @@
 			<MenuBarInput v-if="platform !== 'Mac'" />
 		</LayoutRow>
 		<LayoutRow class="header-part">
-			<WindowTitle :title="`${activeDocumentDisplayName} - Graphite`" />
+			<WindowTitle :text="`${activeDocumentDisplayName} - Graphite`" />
 		</LayoutRow>
 		<LayoutRow class="header-part">
 			<WindowButtonsWindows :maximized="maximized" v-if="platform === 'Windows' || platform === 'Linux'" />

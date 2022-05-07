@@ -1,10 +1,10 @@
 <template>
 	<LayoutCol class="properties">
 		<LayoutRow class="options-bar">
-			<WidgetLayout :layout="propertiesOptionsLayout"></WidgetLayout>
+			<WidgetLayout :layout="propertiesOptionsLayout" />
 		</LayoutRow>
 		<LayoutRow class="sections" :scrollableY="true">
-			<WidgetLayout :layout="propertiesSectionsLayout"></WidgetLayout>
+			<WidgetLayout :layout="propertiesSectionsLayout" />
 		</LayoutRow>
 	</LayoutCol>
 </template>

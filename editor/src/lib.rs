@@ -4,6 +4,7 @@ pub mod communication;
 #[macro_use]
 pub mod misc;
 pub mod consts;
+pub mod dialog;
 pub mod document;
 pub mod frontend;
 pub mod global;
@@ -59,6 +60,7 @@ pub mod message_prelude {
 	pub use crate::document::clipboards::Clipboard;
 	pub use crate::LayerId;
 
+	pub use crate::dialog::messages::*;
 	pub use crate::document::{ArtboardMessage, ArtboardMessageDiscriminant};
 	pub use crate::document::{DocumentMessage, DocumentMessageDiscriminant};
 	pub use crate::document::{MovementMessage, MovementMessageDiscriminant};
