@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 #[derive(PartialEq, Clone, Deserialize, Serialize, Debug)]
 pub enum FrontendMessage {
 	// Display prefix: make the frontend show something, like a dialog
-	DisplayDialog { icon: String, heading: String },
+	DisplayDialog { icon: String },
 	DisplayDialogDismiss,
 	DisplayDialogPanic { panic_info: String, title: String, description: String },
 	DisplayDocumentLayerTreeStructure { data_buffer: RawBuffer },

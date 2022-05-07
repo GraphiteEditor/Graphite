@@ -32,15 +32,16 @@ impl PropertyHolder for ComingSoon {
 		WidgetLayout::new(vec![
 			LayoutRow::Row {
 				widgets: vec![WidgetHolder::new(Widget::TextLabel(TextLabel {
-					value: details,
-					preserve_whitespace: true,
+					value: "Coming soon".to_string(),
+					bold: true,
 					..Default::default()
 				}))],
 			},
 			LayoutRow::Row {
-				widgets: vec![WidgetHolder::new(Widget::Separator(Separator {
-					direction: SeparatorDirection::Vertical,
-					separator_type: SeparatorType::Unrelated,
+				widgets: vec![WidgetHolder::new(Widget::TextLabel(TextLabel {
+					value: details,
+					multiline: true,
+					..Default::default()
 				}))],
 			},
 			LayoutRow::Row { widgets: buttons },

@@ -26,15 +26,22 @@ impl PropertyHolder for AboutGraphite {
 		WidgetLayout::new(vec![
 			LayoutRow::Row {
 				widgets: vec![WidgetHolder::new(Widget::TextLabel(TextLabel {
-					value: self.build_metadata.to_string(),
-					preserve_whitespace: true,
+					value: "Graphite".to_string(),
+					bold: true,
 					..Default::default()
 				}))],
 			},
 			LayoutRow::Row {
-				widgets: vec![WidgetHolder::new(Widget::Separator(Separator {
-					direction: SeparatorDirection::Vertical,
-					separator_type: SeparatorType::Unrelated,
+				widgets: vec![WidgetHolder::new(Widget::TextLabel(TextLabel {
+					value: self.build_metadata.release_series(),
+					..Default::default()
+				}))],
+			},
+			LayoutRow::Row {
+				widgets: vec![WidgetHolder::new(Widget::TextLabel(TextLabel {
+					value: self.build_metadata.commit_info(),
+					multiline: true,
+					..Default::default()
 				}))],
 			},
 			LayoutRow::Row { widgets: link_widgets },

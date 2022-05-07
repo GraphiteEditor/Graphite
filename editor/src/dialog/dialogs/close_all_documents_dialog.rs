@@ -29,15 +29,16 @@ impl PropertyHolder for CloseAllDocuments {
 		WidgetLayout::new(vec![
 			LayoutRow::Row {
 				widgets: vec![WidgetHolder::new(Widget::TextLabel(TextLabel {
-					value: "Unsaved work will be lost!".to_string(),
-					preserve_whitespace: true,
+					value: "Close all documents?".to_string(),
+					bold: true,
 					..Default::default()
 				}))],
 			},
 			LayoutRow::Row {
-				widgets: vec![WidgetHolder::new(Widget::Separator(Separator {
-					direction: SeparatorDirection::Vertical,
-					separator_type: SeparatorType::Unrelated,
+				widgets: vec![WidgetHolder::new(Widget::TextLabel(TextLabel {
+					value: "Unsaved work will be lost!".to_string(),
+					multiline: true,
+					..Default::default()
 				}))],
 			},
 			LayoutRow::Row { widgets: button_widgets },

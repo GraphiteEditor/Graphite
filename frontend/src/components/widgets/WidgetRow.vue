@@ -28,7 +28,7 @@
 			<TextAreaInput v-if="component.kind === 'TextAreaInput'" v-bind="component.props" @commitText="(value: string) => updateLayout(component.widget_id, value)" />
 			<TextButton v-if="component.kind === 'TextButton'" v-bind="component.props" :action="() => updateLayout(component.widget_id, null)" />
 			<TextInput v-if="component.kind === 'TextInput'" v-bind="component.props" @commitText="(value: string) => updateLayout(component.widget_id, value)" />
-			<TextLabel v-if="component.kind === 'TextLabel'" v-bind="component.props">{{ component.props.value }}</TextLabel>
+			<TextLabel v-if="component.kind === 'TextLabel'" v-bind="withoutValue(component.props)">{{ component.props.value }}</TextLabel>
 		</template>
 	</div>
 </template>
@@ -37,12 +37,16 @@
 .widget-row {
 	flex: 0 0 auto;
 	display: flex;
+	min-height: 32px;
 
 	> * {
 		--widget-height: 24px;
-		min-height: var(--widget-height);
-		line-height: var(--widget-height);
 		margin: calc((24px - var(--widget-height)) / 2 + 4px) 0;
+		min-height: var(--widget-height);
+
+		&:not(.multiline) {
+			line-height: var(--widget-height);
+		}
 
 		&.icon-label.size-12 {
 			--widget-height: 12px;
@@ -84,6 +88,10 @@ export default defineComponent({
 	methods: {
 		updateLayout(widgetId: BigInt, value: unknown) {
 			this.editor.instance.update_layout(this.layoutTarget, widgetId, value);
+		},
+		withoutValue(props: Record<string, unknown>): Record<string, unknown> {
+			const { value: _, ...rest } = props;
+			return rest;
 		},
 	},
 	components: {

@@ -10,20 +10,18 @@ export function createDialogState(editor: EditorState) {
 	const state = reactive({
 		visible: false,
 		icon: "" as IconName,
-		heading: "",
-		widgets: defaultWidgetLayout() as WidgetLayout | undefined,
-		/// Necessary because we cannot handle widget callbacks from Rust once the editor instance has panicked.
-		jsComponents: undefined as { details: string; buttons: TextButtonWidget[] } | undefined,
+		widgets: defaultWidgetLayout(),
+		// Special case for the crash dialog because we cannot handle button widget callbacks from Rust once the editor instance has panicked
+		jsCallbackBasedButtons: undefined as undefined | TextButtonWidget[],
 	});
 
-	/// Creates a dialog from JS
-	/// Most dialogs should be done through Rust, however for the crash dialog, the editor instance has panicked so it cannot respond to widget callbacks.
-	const createDialog = (icon: IconName, heading: string, details: string, buttons: TextButtonWidget[]): void => {
+	// Creates a panic dialog from JS.
+	// Normal dialogs are created in the Rust backend, however for the crash dialog, the editor instance has panicked so it cannot respond to widget callbacks.
+	const createPanicDialog = (widgets: WidgetLayout, jsCallbackBasedButtons: TextButtonWidget[]): void => {
 		state.visible = true;
-		state.icon = icon;
-		state.heading = heading;
-		state.widgets = undefined;
-		state.jsComponents = { details, buttons };
+		state.icon = "Warning";
+		state.widgets = widgets;
+		state.jsCallbackBasedButtons = jsCallbackBasedButtons;
 	};
 
 	const dismissDialog = (): void => {
@@ -32,27 +30,26 @@ export function createDialogState(editor: EditorState) {
 
 	const dialogIsVisible = (): boolean => state.visible;
 
-	// Run on creation
-	editor.dispatcher.subscribeJsMessage(DisplayDialog, (displayDialog) => {
-		state.heading = displayDialog.heading;
-		state.icon = displayDialog.icon;
-		state.visible = true;
-	});
-
-	editor.dispatcher.subscribeJsMessage(DisplayDialogDismiss, dismissDialog);
-
 	const comingSoon = (issueNumber?: number): void => {
 		editor.instance.request_coming_soon_dialog(issueNumber);
 	};
 
+	// Run on creation
+	editor.dispatcher.subscribeJsMessage(DisplayDialog, (displayDialog) => {
+		state.visible = true;
+		state.icon = displayDialog.icon;
+	});
+
+	editor.dispatcher.subscribeJsMessage(DisplayDialogDismiss, dismissDialog);
+
 	editor.dispatcher.subscribeJsMessage(UpdateDialogDetails, (updateDialogDetails) => {
 		state.widgets = updateDialogDetails;
-		state.jsComponents = undefined;
+		state.jsCallbackBasedButtons = undefined;
 	});
 
 	return {
 		state: readonly(state),
-		createDialog,
+		createPanicDialog,
 		dismissDialog,
 		dialogIsVisible,
 		comingSoon,

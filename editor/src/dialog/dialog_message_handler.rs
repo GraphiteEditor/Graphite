@@ -21,52 +21,28 @@ impl MessageHandler<DialogMessage, (&BuildMetadata, &PortfolioMessageHandler)> f
 			DialogMessage::CloseAllDocumentsWithConfirmation => {
 				let dialog = dialogs::CloseAllDocuments;
 				dialog.register_properties(responses, LayoutTarget::DialogDetails);
-				responses.push_back(
-					FrontendMessage::DisplayDialog {
-						icon: "Copy".to_string(),
-						heading: "Close all documents?".to_string(),
-					}
-					.into(),
-				);
+				responses.push_back(FrontendMessage::DisplayDialog { icon: "Copy".to_string() }.into());
 			}
 			DialogMessage::CloseDialogAndThen { followup } => {
 				responses.push_back(FrontendMessage::DisplayDialogDismiss.into());
 				responses.push_back(*followup);
 			}
 			DialogMessage::DisplayDialogError { title, description } => {
-				let dialog = dialogs::Error { description };
+				let dialog = dialogs::Error { title, description };
 				dialog.register_properties(responses, LayoutTarget::DialogDetails);
-				responses.push_back(
-					FrontendMessage::DisplayDialog {
-						icon: "Warning".to_string(),
-						heading: title,
-					}
-					.into(),
-				);
+				responses.push_back(FrontendMessage::DisplayDialog { icon: "Warning".to_string() }.into());
 			}
 			DialogMessage::RequestAboutGraphiteDialog => {
 				let about_graphite = AboutGraphite {
 					build_metadata: build_metadata.clone(),
 				};
 				about_graphite.register_properties(responses, LayoutTarget::DialogDetails);
-				responses.push_back(
-					FrontendMessage::DisplayDialog {
-						icon: "GraphiteLogo".to_string(),
-						heading: "Graphite".to_string(),
-					}
-					.into(),
-				);
+				responses.push_back(FrontendMessage::DisplayDialog { icon: "GraphiteLogo".to_string() }.into());
 			}
 			DialogMessage::RequestComingSoonDialog { issue } => {
 				let coming_soon = ComingSoon { issue };
 				coming_soon.register_properties(responses, LayoutTarget::DialogDetails);
-				responses.push_back(
-					FrontendMessage::DisplayDialog {
-						icon: "Warning".to_string(),
-						heading: "Coming soon".to_string(),
-					}
-					.into(),
-				);
+				responses.push_back(FrontendMessage::DisplayDialog { icon: "Warning".to_string() }.into());
 			}
 			DialogMessage::RequestNewDocumentDialog => {
 				self.new_document_dialog = NewDocument {
@@ -75,13 +51,7 @@ impl MessageHandler<DialogMessage, (&BuildMetadata, &PortfolioMessageHandler)> f
 					dimensions: glam::UVec2::new(1920, 1080),
 				};
 				self.new_document_dialog.register_properties(responses, LayoutTarget::DialogDetails);
-				responses.push_back(
-					FrontendMessage::DisplayDialog {
-						icon: "File".to_string(),
-						heading: "New document".to_string(),
-					}
-					.into(),
-				);
+				responses.push_back(FrontendMessage::DisplayDialog { icon: "File".to_string() }.into());
 			}
 		}
 	}

@@ -455,11 +455,12 @@ mod test {
 					if let crate::layout::widgets::Widget::TextLabel(crate::layout::widgets::TextLabel { value, .. }) = &widgets[0].widget {
 						println!();
 						println!("-------------------------------------------------");
-						println!("Failed test due to receiving a DisplayDialogError while loading the graphite sample file!");
+						println!("Failed test due to receiving a DisplayDialogError while loading the Graphite sample file!");
 						println!("This is most likely caused by forgetting to bump the `GRAPHITE_DOCUMENT_VERSION` in `editor/src/consts.rs`");
-						println!("Once bumping this version number please replace the `graphite-test-document.graphite` with a valid file");
+						println!("Once bumping this version number please replace the `graphite-test-document.graphite` with a valid file.");
 						println!("DisplayDialogError details:");
-						println!("description: {}", value);
+						println!();
+						println!("Description: {}", value);
 						println!("-------------------------------------------------");
 						println!();
 						panic!()

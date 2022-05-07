@@ -154,8 +154,6 @@ export class DisplayDialogPanic extends JsMessage {
 
 export class DisplayDialog extends JsMessage {
 	readonly icon!: IconName;
-
-	readonly heading!: string;
 }
 
 export class UpdateDocumentArtwork extends JsMessage {
@@ -409,8 +407,8 @@ export class TriggerVisitLink extends JsMessage {
 }
 
 export interface WidgetLayout {
-	layout_target: unknown;
 	layout: LayoutRow[];
+	layout_target: unknown;
 }
 
 export function defaultWidgetLayout(): WidgetLayout {

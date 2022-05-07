@@ -6,11 +6,9 @@
 				<IconLabel :icon="dialog.state.icon" :class="dialog.state.icon.toLowerCase()" />
 			</LayoutCol>
 			<LayoutCol class="main-column">
-				<TextLabel :bold="true" class="heading">{{ dialog.state.heading }}</TextLabel>
-				<WidgetLayout v-if="dialog.state.widgets" :layout="dialog.state.widgets" class="details"></WidgetLayout>
-				<TextLabel v-if="dialog.state.jsComponents" class="details">{{ dialog.state.jsComponents.details }}</TextLabel>
-				<LayoutRow v-if="dialog.state.jsComponents && dialog.state.jsComponents.buttons.length > 0" class="buttons-row">
-					<TextButton v-for="(button, index) in dialog.state.jsComponents.buttons" :key="index" :action="() => button.callback?.()" v-bind="button.props" />
+				<WidgetLayout v-if="dialog.state.widgets.layout.length > 0" :layout="dialog.state.widgets" class="details" />
+				<LayoutRow v-if="dialog.state.jsCallbackBasedButtons?.length > 0" class="panic-buttons-row">
+					<TextButton v-for="(button, index) in dialog.state.jsCallbackBasedButtons" :key="index" :action="() => button.callback?.()" v-bind="button.props" />
 				</LayoutRow>
 			</LayoutCol>
 		</LayoutRow>
@@ -50,12 +48,7 @@
 	}
 
 	.main-column {
-		.heading {
-			user-select: text;
-			white-space: pre-wrap;
-			max-width: 400px;
-			margin-bottom: 4px;
-		}
+		margin: -4px 0;
 
 		.details {
 			user-select: text;
@@ -64,8 +57,9 @@
 			height: auto;
 		}
 
-		.buttons-row {
-			margin-top: 16px;
+		.panic-buttons-row {
+			height: 32px;
+			align-items: center;
 		}
 	}
 }
@@ -79,8 +73,6 @@ import LayoutRow from "@/components/layout/LayoutRow.vue";
 import TextButton from "@/components/widgets/buttons/TextButton.vue";
 import FloatingMenu from "@/components/widgets/floating-menus/FloatingMenu.vue";
 import IconLabel from "@/components/widgets/labels/IconLabel.vue";
-import TextLabel from "@/components/widgets/labels/TextLabel.vue";
-
 import WidgetLayout from "@/components/widgets/WidgetLayout.vue";
 
 export default defineComponent({
@@ -90,7 +82,6 @@ export default defineComponent({
 		LayoutCol,
 		FloatingMenu,
 		IconLabel,
-		TextLabel,
 		TextButton,
 		WidgetLayout,
 	},

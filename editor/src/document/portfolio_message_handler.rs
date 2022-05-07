@@ -223,13 +223,7 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 						document_id,
 					};
 					dialog.register_properties(responses, LayoutTarget::DialogDetails);
-					responses.push_back(
-						FrontendMessage::DisplayDialog {
-							icon: "File".to_string(),
-							heading: "Save changes before closing?".to_string(),
-						}
-						.into(),
-					);
+					responses.push_back(FrontendMessage::DisplayDialog { icon: "File".to_string() }.into());
 
 					// Select the document being closed
 					responses.push_back(PortfolioMessage::SelectDocument { document_id }.into());

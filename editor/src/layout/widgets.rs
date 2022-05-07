@@ -373,8 +373,7 @@ pub struct TextLabel {
 	pub value: String,
 	pub bold: bool,
 	pub italic: bool,
-	#[serde(rename = "preserveWhitespace")]
-	pub preserve_whitespace: bool,
+	pub multiline: bool,
 	#[serde(rename = "tableAlign")]
 	pub table_align: bool,
 }

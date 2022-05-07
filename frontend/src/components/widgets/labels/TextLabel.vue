@@ -1,13 +1,13 @@
 <template>
-	<span class="text-label" :class="{ bold, italic, 'preserve-whitespace': preserveWhitespace, 'table-align': tableAlign }">
+	<span class="text-label" :class="{ bold, italic, multiline, 'table-align': tableAlign }">
 		<slot></slot>
 	</span>
 </template>
 
 <style lang="scss">
 .text-label {
-	white-space: nowrap;
 	line-height: 18px;
+	white-space: nowrap;
 
 	&.bold {
 		font-weight: 700;
@@ -17,10 +17,9 @@
 		font-style: italic;
 	}
 
-	&.preserve-whitespace {
+	&.multiline {
 		white-space: pre-wrap;
-		line-height: normal;
-		margin: 0;
+		margin: 4px 0;
 	}
 
 	&.table-align {
@@ -37,8 +36,8 @@ export default defineComponent({
 	props: {
 		bold: { type: Boolean as PropType<boolean>, default: false },
 		italic: { type: Boolean as PropType<boolean>, default: false },
-		preserveWhitespace: { type: Boolean as PropType<boolean>, default: false },
 		tableAlign: { type: Boolean as PropType<boolean>, default: false },
+		multiline: { type: Boolean as PropType<boolean>, default: false },
 	},
 });
 </script>

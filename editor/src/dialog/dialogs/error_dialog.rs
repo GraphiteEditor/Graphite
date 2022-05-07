@@ -2,6 +2,7 @@ use crate::{layout::widgets::*, message_prelude::FrontendMessage};
 
 /// A dialog to notify users of a non-fatal error.
 pub struct Error {
+	pub title: String,
 	pub description: String,
 }
 
@@ -10,15 +11,16 @@ impl PropertyHolder for Error {
 		WidgetLayout::new(vec![
 			LayoutRow::Row {
 				widgets: vec![WidgetHolder::new(Widget::TextLabel(TextLabel {
-					value: self.description.clone(),
-					preserve_whitespace: true,
+					value: self.title.clone(),
+					bold: true,
 					..Default::default()
 				}))],
 			},
 			LayoutRow::Row {
-				widgets: vec![WidgetHolder::new(Widget::Separator(Separator {
-					direction: SeparatorDirection::Vertical,
-					separator_type: SeparatorType::Unrelated,
+				widgets: vec![WidgetHolder::new(Widget::TextLabel(TextLabel {
+					value: self.description.clone(),
+					multiline: true,
+					..Default::default()
 				}))],
 			},
 			LayoutRow::Row {

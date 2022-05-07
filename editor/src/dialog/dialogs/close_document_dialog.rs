@@ -46,15 +46,16 @@ impl PropertyHolder for CloseDocument {
 		WidgetLayout::new(vec![
 			LayoutRow::Row {
 				widgets: vec![WidgetHolder::new(Widget::TextLabel(TextLabel {
-					value: self.document_name.clone(),
-					preserve_whitespace: true,
+					value: "Save changes before closing?".to_string(),
+					bold: true,
 					..Default::default()
 				}))],
 			},
 			LayoutRow::Row {
-				widgets: vec![WidgetHolder::new(Widget::Separator(Separator {
-					direction: SeparatorDirection::Vertical,
-					separator_type: SeparatorType::Unrelated,
+				widgets: vec![WidgetHolder::new(Widget::TextLabel(TextLabel {
+					value: self.document_name.clone(),
+					multiline: true,
+					..Default::default()
 				}))],
 			},
 			LayoutRow::Row { widgets: button_widgets },

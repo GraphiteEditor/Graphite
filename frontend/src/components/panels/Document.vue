@@ -528,7 +528,7 @@ export default defineComponent({
 		const loadBuildMetadata = (): void => {
 			const release = process.env.VUE_APP_RELEASE_SERIES;
 			let timestamp = "";
-			const hash = (process.env.VUE_APP_COMMIT_HASH || "").substring(0, 12);
+			const hash = (process.env.VUE_APP_COMMIT_HASH || "").substring(0, 8);
 			const branch = process.env.VUE_APP_COMMIT_BRANCH;
 			{
 				const date = new Date(process.env.VUE_APP_COMMIT_DATE || "");

@@ -15,6 +15,12 @@ pub struct NewDocument {
 
 impl PropertyHolder for NewDocument {
 	fn properties(&self) -> WidgetLayout {
+		let title = vec![WidgetHolder::new(Widget::TextLabel(TextLabel {
+			value: "New document".into(),
+			bold: true,
+			..Default::default()
+		}))];
+
 		let name = vec![
 			WidgetHolder::new(Widget::TextLabel(TextLabel {
 				value: "Name".into(),
@@ -107,15 +113,10 @@ impl PropertyHolder for NewDocument {
 		];
 
 		WidgetLayout::new(vec![
+			LayoutRow::Row { widgets: title },
 			LayoutRow::Row { widgets: name },
 			LayoutRow::Row { widgets: infinite },
 			LayoutRow::Row { widgets: scale },
-			LayoutRow::Row {
-				widgets: vec![WidgetHolder::new(Widget::Separator(Separator {
-					direction: SeparatorDirection::Vertical,
-					separator_type: SeparatorType::Unrelated,
-				}))],
-			},
 			LayoutRow::Row { widgets: button_widgets },
 		])
 	}

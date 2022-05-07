@@ -1,5 +1,4 @@
 use serde::{Deserialize, Serialize};
-use std::fmt::Display;
 
 /// Provides metadata about the build environment.
 ///
@@ -23,11 +22,24 @@ impl Default for BuildMetadata {
 	}
 }
 
-impl Display for BuildMetadata {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		f.write_fmt(format_args!(
-			"Release Series: {}\n\nDate: {}\nHash:{}\nBranch: {}",
-			self.release, self.timestamp, self.hash, self.branch
-		))
+impl BuildMetadata {
+	pub fn release_series(&self) -> String {
+		format!("Release Series: {}", self.release)
+	}
+
+	pub fn commit_info(&self) -> String {
+		format!("{}\n{}\n{}", self.commit_timestamp(), self.commit_hash(), self.commit_branch())
+	}
+
+	pub fn commit_timestamp(&self) -> String {
+		format!("Date: {}", self.timestamp)
+	}
+
+	pub fn commit_hash(&self) -> String {
+		format!("Hash: {}", self.hash)
+	}
+
+	pub fn commit_branch(&self) -> String {
+		format!("Branch: {}", self.branch)
 	}
 }
