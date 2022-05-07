@@ -9,7 +9,6 @@ pub struct VectorAnchor {
 	// Editable points for the anchor & handles
 	pub points: [Option<VectorControlPoint>; 3],
 	// Should we maintain the angle between the handles?
-
 	// TODO Separate the editor func state from underlying data (use another struct)
 	#[serde(skip_serializing)]
 	pub mirror_angle_active: bool,

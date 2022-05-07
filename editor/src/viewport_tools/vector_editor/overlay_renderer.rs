@@ -16,20 +16,21 @@ use super::{
 };
 use graphene::{
 	color::Color,
-	layers::style::{self, Fill, PathStyle, Stroke},
+	layers::style::{self, Fill, Stroke},
 	LayerId, Operation,
 };
 
 /// AnchorOverlay is the collection of overlays that make up an anchor
 /// Notably the anchor point, handles and the lines for the handles
 type AnchorOverlays = [Option<Vec<LayerId>>; 5];
+type AnchorId = u64;
 
 const POINT_STROKE_WIDTH: f32 = 2.0;
 
 #[derive(Debug, Default)]
 pub struct OverlayRenderer {
 	shape_overlay_cache: HashMap<Vec<LayerId>, Vec<LayerId>>,
-	anchor_overlay_cache: HashMap<u64, AnchorOverlays>,
+	anchor_overlay_cache: HashMap<AnchorId, AnchorOverlays>,
 }
 
 impl<'a> OverlayRenderer {
@@ -52,7 +53,8 @@ impl<'a> OverlayRenderer {
 		}
 
 		// Draw the anchor / handle overlays
-		for (anchor_id, anchor) in shape.anchors.iter().enumerate() {
+		for anchor_id in shape.anchors.list_ids().iter() {
+			let anchor = shape.anchors.element_by_id_mut(anchor_id);
 			// If cached update them
 			if let Some(anchor_overlays) = self.anchor_overlay_cache.get(&(anchor_id as u64)) {
 				// Reposition cached overlays
@@ -82,6 +84,19 @@ impl<'a> OverlayRenderer {
 
 			// TODO handle unused overlays
 		}
+	}
+
+	pub fn clear_overlays_for_vector_shape(&mut self, shape: &VectorShape, responses: &mut VecDeque<Message>) {
+		// Remove the shape outline overlays
+		if let Some(outline) = self.shape_overlay_cache.get(&shape.layer_path) {
+			self.remove_outline_overlays(outline.clone(), responses)
+		}
+	}
+	// TODO add a way of updating overlays without destroying them and re-creating them
+
+	fn anchor_id(&mut self) -> AnchorId {
+		self.next_anchor_id = self.next_anchor_id + 1;
+		self.next_anchor_id
 	}
 
 	/// Create the kurbo shape that matches the selected viewport shape
@@ -189,12 +204,15 @@ impl<'a> OverlayRenderer {
 	}
 
 	/// Removes the anchor / handle overlays from the overlay document
-	fn remove_anchor_overlays(&mut self, overlays: &AnchorOverlays, responses: &mut VecDeque<Message>) {
-		overlays.iter().flatten().for_each(|layer_id| {
+	fn remove_anchor_overlays(&mut self, overlay_paths: &AnchorOverlays, responses: &mut VecDeque<Message>) {
+		overlay_paths.iter().flatten().for_each(|layer_id| {
 			responses.push_back(DocumentMessage::Overlays(Operation::DeleteLayer { path: layer_id.clone() }.into()).into());
 		});
 	}
 
+	fn remove_outline_overlays(&mut self, overlay_path: Vec<LayerId>, responses: &mut VecDeque<Message>) {
+		responses.push_back(DocumentMessage::Overlays(Operation::DeleteLayer { path: overlay_path }.into()).into());
+	}
 	/// Sets the visibility of the handles overlay
 	fn set_overlay_visiblity(&self, anchor_overlays: &AnchorOverlays, visibility: bool, responses: &mut VecDeque<Message>) {
 		anchor_overlays.iter().flatten().for_each(|layer_id| {

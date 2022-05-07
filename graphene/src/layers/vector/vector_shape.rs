@@ -1,5 +1,8 @@
 use crate::{
-	layers::layer_info::{Layer, LayerDataType},
+	layers::{
+		id_storage::UniqueElements,
+		layer_info::{Layer, LayerDataType},
+	},
 	LayerId,
 };
 
@@ -8,18 +11,15 @@ use super::{constants::ControlPointType, vector_anchor::VectorAnchor, vector_con
 use glam::{DAffine2, DVec2};
 use kurbo::{Affine, BezPath, PathEl, Rect, Shape};
 use serde::{Deserialize, Serialize};
-type AnchorId = u64;
+
 /// VectorShape represents a single vector shape, containing many anchors
 /// For each kurbo path we keep a VectorShape which contains the handles and anchors for that path
 #[derive(PartialEq, Clone, Debug, Default, Serialize, Deserialize)]
 pub struct VectorShape {
-	// TODO Have VectorShape work like folders (use @TrueDoctors generic uuid magic)
-	/// The ids for the anchors
-	//pub anchor_ids: Vec<AnchorId>,
 	/// The path to the shape layer
 	pub layer_path: Vec<LayerId>,
 	/// Vec of anchors, each consisting of the control points / handles
-	pub anchors: Vec<VectorAnchor>,
+	pub anchors: UniqueElements<VectorAnchor>,
 	/// If the compound Bezier curve is closed
 	pub closed: bool,
 	/// The transformation matrix to apply
@@ -71,46 +71,56 @@ impl VectorShape {
 	}
 
 	/// Select an anchor
-	pub fn select_anchor(&mut self, anchor_index: usize) -> &mut VectorAnchor {
-		self.anchors[anchor_index].select_point(ControlPointType::Anchor as usize, true);
-		&mut self.anchors[anchor_index]
+	pub fn select_anchor(&mut self, anchor_id: usize) -> Option<&mut VectorAnchor> {
+		// TODO test if looking this up by index actually works
+		if let Some(anchor) = self.anchors.element_by_index_mut(anchor_id) {
+			anchor.select_point(ControlPointType::Anchor as usize, true);
+			return Some(anchor);
+		}
+		None
 	}
 
 	/// The last anchor in the shape thus far
-	pub fn select_last_anchor(&mut self) -> &mut VectorAnchor {
-		let last_index = self.anchors.len() - 1;
-		self.anchors[last_index].select_point(ControlPointType::Anchor as usize, true);
-		&mut self.anchors[last_index]
+	pub fn select_last_anchor(&mut self) -> Option<&mut VectorAnchor> {
+		if let Some(anchor) = self.anchors.last_element_mut() {
+			anchor.select_point(ControlPointType::Anchor as usize, true);
+			return Some(anchor);
+		}
+		None
 	}
 
 	/// Deselect an anchor
-	pub fn deselect_anchor(&mut self, anchor_index: usize) {
-		self.anchors[anchor_index].clear_selected_points();
-		self.anchors[anchor_index].select_point(ControlPointType::Anchor as usize, false);
+	pub fn deselect_anchor(&mut self, anchor_id: usize) {
+		// TODO test if looking this up by index actually works
+		if let Some(anchor) = self.anchors.element_by_index_mut(anchor_id) {
+			anchor.clear_selected_points();
+			anchor.select_point(ControlPointType::Anchor as usize, false);
+		}
 	}
 
 	/// Select all the anchors in this shape
 	pub fn select_all_anchors(&mut self) {
-		for anchor in self.anchors.iter_mut() {
+		for anchor in self.anchors.elements_mut() {
 			anchor.select_point(ControlPointType::Anchor as usize, true);
 		}
 	}
 
 	/// Clear all the selected anchors, and clear the selected points on the anchors
 	pub fn clear_selected_anchors(&mut self) {
-		for anchor in self.anchors.iter_mut() {
+		for anchor in self.anchors.elements_mut() {
 			anchor.clear_selected_points();
 		}
 	}
 
 	/// Return all the selected anchors by reference
 	pub fn selected_anchors(&self) -> impl Iterator<Item = &VectorAnchor> {
-		self.anchors.iter().enumerate().filter_map(|(_, anchor)| if anchor.is_anchor_selected() { Some(anchor) } else { None })
+		self.anchors.elements().iter().filter(|anchor| anchor.is_anchor_selected())
 	}
 
 	/// Return all the selected anchors, mutable
 	pub fn selected_anchors_mut(&mut self) -> impl Iterator<Item = &mut VectorAnchor> {
 		self.anchors
+			.elements_mut()
 			.iter_mut()
 			.enumerate()
 			.filter_map(|(_, anchor)| if anchor.is_anchor_selected() { Some(anchor) } else { None })
@@ -122,7 +132,7 @@ impl VectorShape {
 
 	/// Return a mutable interator of the anchors regardless of selection
 	pub fn anchors_mut(&mut self) -> impl Iterator<Item = &mut VectorAnchor> {
-		self.anchors.iter_mut()
+		self.anchors.elements_mut().iter_mut()
 	}
 
 	/// Place point in local space in relation to this shape's transform
@@ -180,10 +190,10 @@ impl From<&VectorShape> for BezPath {
 			return BezPath::new();
 		}
 
-		let point = vector_shape.anchors[0].points[0].as_ref().unwrap().position;
+		let point = vector_shape.anchors.element_by_index(0).unwrap().points[0].as_ref().unwrap().position;
 		let mut bez_path = vec![PathEl::MoveTo((point.x, point.y).into())];
 
-		for elements in vector_shape.anchors.windows(2) {
+		for elements in vector_shape.anchors.elements().windows(2) {
 			let first = &elements[0];
 			let second = &elements[1];
 			let new_segment = match [&first.points[2], &second.points[1], &second.points[0]] {
@@ -216,20 +226,20 @@ impl<T: Iterator<Item = PathEl>> From<T> for VectorShape {
 						closed_flag = false;
 					}
 					current_closed = false;
-					vector_shape.anchors.push(VectorAnchor::new(kurbo_point_to_DVec2(p)));
+					vector_shape.anchors.add(VectorAnchor::new(kurbo_point_to_DVec2(p)), None, -1);
 				}
 				PathEl::LineTo(p) => {
-					vector_shape.anchors.push(VectorAnchor::new(kurbo_point_to_DVec2(p)));
+					vector_shape.anchors.add(VectorAnchor::new(kurbo_point_to_DVec2(p)), None, -1);
 				}
 				PathEl::QuadTo(p0, p1) => {
-					vector_shape.anchors.last_mut().unwrap().points[2] = Some(VectorControlPoint::new(kurbo_point_to_DVec2(p0), ControlPointType::Handle2));
-					vector_shape.anchors.push(VectorAnchor::new(kurbo_point_to_DVec2(p1)));
-					vector_shape.anchors.last_mut().unwrap().points[1] = Some(VectorControlPoint::new(kurbo_point_to_DVec2(p0), ControlPointType::Handle1));
+					vector_shape.anchors.last_element_mut().unwrap().points[2] = Some(VectorControlPoint::new(kurbo_point_to_DVec2(p0), ControlPointType::Handle2));
+					vector_shape.anchors.add(VectorAnchor::new(kurbo_point_to_DVec2(p1)), None, -1);
+					vector_shape.anchors.last_element_mut().unwrap().points[1] = Some(VectorControlPoint::new(kurbo_point_to_DVec2(p0), ControlPointType::Handle1));
 				}
 				PathEl::CurveTo(p0, p1, p2) => {
-					vector_shape.anchors.last_mut().unwrap().points[2] = Some(VectorControlPoint::new(kurbo_point_to_DVec2(p0), ControlPointType::Handle2));
-					vector_shape.anchors.push(VectorAnchor::new(kurbo_point_to_DVec2(p2)));
-					vector_shape.anchors.last_mut().unwrap().points[1] = Some(VectorControlPoint::new(kurbo_point_to_DVec2(p1), ControlPointType::Handle1));
+					vector_shape.anchors.last_element_mut().unwrap().points[2] = Some(VectorControlPoint::new(kurbo_point_to_DVec2(p0), ControlPointType::Handle2));
+					vector_shape.anchors.add(VectorAnchor::new(kurbo_point_to_DVec2(p2)), None, -1);
+					vector_shape.anchors.last_element_mut().unwrap().points[1] = Some(VectorControlPoint::new(kurbo_point_to_DVec2(p1), ControlPointType::Handle1));
 				}
 				PathEl::ClosePath => {
 					current_closed = true;

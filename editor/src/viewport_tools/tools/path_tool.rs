@@ -125,7 +125,6 @@ impl Fsm for PathToolFsmState {
 			use PathToolMessage::*;
 
 			match (self, event) {
-				// TODO: Capture a tool event instead of doing this?
 				(_, SelectionChanged) => {
 					// TODO Tell overlay renderer to clear / updates the overlays
 					data.shape_editor.set_shapes_to_modify(document.graphene_document.selected_vector_shapes());
