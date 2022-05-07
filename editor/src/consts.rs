@@ -17,7 +17,7 @@ pub const VIEWPORT_ROTATE_SNAP_INTERVAL: f64 = 15.;
 
 // Snapping axis
 pub const SNAP_AXIS_TOLERANCE: f64 = 3.;
-pub const SNAP_AXIS_OVERLAY_FADE_DISTANCE: f64 = 40.;
+pub const SNAP_AXIS_OVERLAY_FADE_DISTANCE: f64 = 15.;
 pub const SNAP_AXIS_UNSNAPPED_OPACITY: f64 = 0.4;
 
 // Snapping point
