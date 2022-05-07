@@ -1,5 +1,5 @@
 <template>
-	<LayoutRow class="dropdown-input">
+	<LayoutRow class="font-input">
 		<LayoutRow class="dropdown-box" :class="{ disabled }" :style="{ minWidth: `${minWidth}px` }" @click="() => clickDropdownBox()" data-hover-menu-spawner>
 			<span>{{ activeEntry.label }}</span>
 			<IconLabel class="dropdown-arrow" :icon="'DropdownArrow'" />
@@ -16,7 +16,7 @@
 </template>
 
 <style lang="scss">
-.dropdown-input {
+.font-input {
 	position: relative;
 
 	.dropdown-box {

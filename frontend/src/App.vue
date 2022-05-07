@@ -295,7 +295,7 @@ export default defineComponent({
 
 		// Initialize other stateful Vue systems
 		const dialog = createDialogState(editor);
-		const documents = createDocumentsState(editor, dialog);
+		const documents = createDocumentsState(editor);
 		const fullscreen = createFullscreenState();
 		initErrorHandling(editor, dialog);
 		createAutoSaveManager(editor, documents);

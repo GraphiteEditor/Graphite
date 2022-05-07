@@ -1,3 +1,4 @@
+use super::BuildMetadata;
 use crate::message_prelude::*;
 
 use graphite_proc_macros::*;
@@ -23,6 +24,8 @@ pub enum Message {
 	#[remain::unsorted]
 	NoOp,
 	#[child]
+	Dialog(DialogMessage),
+	#[child]
 	Frontend(FrontendMessage),
 	#[child]
 	Global(GlobalMessage),
@@ -36,6 +39,9 @@ pub enum Message {
 	Portfolio(PortfolioMessage),
 	#[child]
 	Tool(ToolMessage),
+
+	#[remain::unsorted]
+	PopulateBuildMetadata { new: BuildMetadata },
 }
 
 impl Message {

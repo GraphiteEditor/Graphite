@@ -150,8 +150,8 @@ impl JsEditorHandle {
 		self.dispatch(message);
 	}
 
-	pub fn new_document(&self) {
-		let message = PortfolioMessage::NewDocument;
+	pub fn request_new_document_dialog(&self) {
+		let message = DialogMessage::RequestNewDocumentDialog;
 		self.dispatch(message);
 	}
 
@@ -212,12 +212,23 @@ impl JsEditorHandle {
 	}
 
 	pub fn close_all_documents_with_confirmation(&self) {
-		let message = PortfolioMessage::CloseAllDocumentsWithConfirmation;
+		let message = DialogMessage::CloseAllDocumentsWithConfirmation;
+		self.dispatch(message);
+	}
+
+	pub fn populate_build_metadata(&self, release: String, timestamp: String, hash: String, branch: String) {
+		let new = editor::communication::BuildMetadata { release, timestamp, hash, branch };
+		let message = Message::PopulateBuildMetadata { new };
 		self.dispatch(message);
 	}
 
 	pub fn request_about_graphite_dialog(&self) {
-		let message = PortfolioMessage::RequestAboutGraphiteDialog;
+		let message = DialogMessage::RequestAboutGraphiteDialog;
+		self.dispatch(message);
+	}
+
+	pub fn request_coming_soon_dialog(&self, issue: Option<i32>) {
+		let message = DialogMessage::RequestComingSoonDialog { issue };
 		self.dispatch(message);
 	}
 
@@ -540,18 +551,6 @@ impl JsEditorHandle {
 	/// Creates an empty folder at the document root
 	pub fn create_empty_folder(&self) {
 		let message = DocumentMessage::CreateEmptyFolder { container_path: vec![] };
-		self.dispatch(message);
-	}
-
-	/// Creates an artboard at a specified point with a width and height
-	pub fn create_artboard_and_fit_to_viewport(&self, pos_x: f64, pos_y: f64, width: f64, height: f64) {
-		let message = ArtboardMessage::AddArtboard {
-			id: None,
-			position: (pos_x, pos_y),
-			size: (width, height),
-		};
-		self.dispatch(message);
-		let message = DocumentMessage::ZoomCanvasToFitAll;
 		self.dispatch(message);
 	}
 
