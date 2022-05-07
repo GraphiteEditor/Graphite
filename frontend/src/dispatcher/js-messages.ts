@@ -4,6 +4,7 @@
 import { Transform, Type } from "class-transformer";
 
 import type { RustEditorInstance, WasmInstance } from "@/state/wasm-loader";
+import { IconName } from "@/utilities/icons";
 
 export class JsMessage {
 	// The marker provides a way to check if an object is a sub-class constructor for a jsMessage.
@@ -143,12 +144,6 @@ export class UpdateActiveDocument extends JsMessage {
 	readonly document_id!: BigInt;
 }
 
-export class DisplayDialogError extends JsMessage {
-	readonly title!: string;
-
-	readonly description!: string;
-}
-
 export class DisplayDialogPanic extends JsMessage {
 	readonly panic_info!: string;
 
@@ -157,13 +152,9 @@ export class DisplayDialogPanic extends JsMessage {
 	readonly description!: string;
 }
 
-export class DisplayConfirmationToCloseDocument extends JsMessage {
-	readonly document_id!: BigInt;
+export class DisplayDialog extends JsMessage {
+	readonly icon!: IconName;
 }
-
-export class DisplayConfirmationToCloseAllDocuments extends JsMessage {}
-
-export class DisplayDialogAboutGraphite extends JsMessage {}
 
 export class UpdateDocumentArtwork extends JsMessage {
 	readonly svg!: string;
@@ -388,7 +379,9 @@ export class IndexedDbDocumentDetails extends DocumentDetails {
 	id!: string;
 }
 
-export class TriggerDefaultFontLoad extends JsMessage {}
+export class TriggerFontLoadDefault extends JsMessage {}
+
+export class DisplayDialogDismiss extends JsMessage {}
 
 export class TriggerIndexedDbWriteDocument extends JsMessage {
 	document!: string;
@@ -409,9 +402,13 @@ export class TriggerFontLoad extends JsMessage {
 	font!: string;
 }
 
+export class TriggerVisitLink extends JsMessage {
+	url!: string;
+}
+
 export interface WidgetLayout {
-	layout_target: unknown;
 	layout: LayoutRow[];
+	layout_target: unknown;
 }
 
 export function defaultWidgetLayout(): WidgetLayout {
@@ -434,24 +431,33 @@ export function isWidgetSection(layoutRow: WidgetRow | WidgetSection): layoutRow
 }
 
 export type WidgetKind =
-	| "NumberInput"
-	| "Separator"
-	| "IconButton"
-	| "PopoverButton"
-	| "OptionalInput"
-	| "RadioInput"
-	| "TextInput"
-	| "TextAreaInput"
-	| "TextLabel"
-	| "IconLabel"
+	| "CheckboxInput"
 	| "ColorInput"
-	| "FontInput";
+	| "FontInput"
+	| "IconButton"
+	| "IconLabel"
+	| "NumberInput"
+	| "OptionalInput"
+	| "PopoverButton"
+	| "RadioInput"
+	| "Separator"
+	| "TextAreaInput"
+	| "TextButton"
+	| "TextInput"
+	| "TextLabel";
 
 export interface Widget {
 	kind: WidgetKind;
 	widget_id: BigInt;
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	props: any;
+}
+
+export class UpdateDialogDetails extends JsMessage implements WidgetLayout {
+	layout_target!: unknown;
+
+	@Transform(({ value }) => createWidgetLayout(value))
+	layout!: LayoutRow[];
 }
 
 export class UpdateToolOptionsLayout extends JsMessage implements WidgetLayout {
@@ -512,10 +518,6 @@ function createWidgetLayout(widgetLayout: any[]): LayoutRow[] {
 	});
 }
 
-export class DisplayDialogComingSoon extends JsMessage {
-	issue: number | undefined;
-}
-
 export class TriggerTextCommit extends JsMessage {}
 
 export class TriggerTextCopy extends JsMessage {
@@ -530,17 +532,14 @@ type JSMessageFactory = (data: any, wasm: WasmInstance, instance: RustEditorInst
 type MessageMaker = typeof JsMessage | JSMessageFactory;
 
 export const messageMakers: Record<string, MessageMaker> = {
-	DisplayConfirmationToCloseAllDocuments,
-	DisplayConfirmationToCloseDocument,
-	DisplayDialogAboutGraphite,
-	DisplayDialogComingSoon,
-	DisplayDialogError,
+	DisplayDialog,
 	DisplayDialogPanic,
 	DisplayDocumentLayerTreeStructure: newDisplayDocumentLayerTreeStructure,
 	DisplayEditableTextbox,
 	UpdateImageData,
 	DisplayRemoveEditableTextbox,
-	TriggerDefaultFontLoad,
+	TriggerFontLoadDefault,
+	DisplayDialogDismiss,
 	TriggerFileDownload,
 	TriggerFileUpload,
 	TriggerIndexedDbRemoveDocument,
@@ -549,10 +548,12 @@ export const messageMakers: Record<string, MessageMaker> = {
 	TriggerTextCommit,
 	TriggerTextCopy,
 	TriggerViewportResize,
+	TriggerVisitLink,
 	UpdateActiveDocument,
 	UpdateActiveTool,
 	UpdateCanvasRotation,
 	UpdateCanvasZoom,
+	UpdateDialogDetails,
 	UpdateDocumentArtboards,
 	UpdateDocumentArtwork,
 	UpdateDocumentBarLayout,

@@ -1,5 +1,12 @@
 <template>
-	<button class="text-button" :class="{ emphasized, disabled }" :style="minWidth > 0 ? `min-width: ${minWidth}px` : ''" @click="(e: MouseEvent) => action(e)">
+	<button
+		class="text-button"
+		:class="{ emphasized, disabled }"
+		:data-emphasized="emphasized || null"
+		:data-disabled="disabled || null"
+		:style="minWidth > 0 ? `min-width: ${minWidth}px` : ''"
+		@click="(e: MouseEvent) => action(e)"
+	>
 		<TextLabel>{{ label }}</TextLabel>
 	</button>
 </template>

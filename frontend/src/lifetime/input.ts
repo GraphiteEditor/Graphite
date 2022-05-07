@@ -70,6 +70,10 @@ export function createInputManager(editor: EditorState, container: HTMLElement, 
 		if (e.ctrlKey && e.shiftKey && key === "i") return false;
 		if (e.ctrlKey && e.shiftKey && key === "j") return false;
 
+		// Don't redirect tab or enter if not in canvas (to allow navigating elements)
+		const inCanvas = e.target instanceof Element && e.target.closest("[data-canvas]");
+		if (!inCanvas && (key === "tab" || key === "enter")) return false;
+
 		// Redirect to the backend
 		return true;
 	};
@@ -87,12 +91,6 @@ export function createInputManager(editor: EditorState, container: HTMLElement, 
 
 		if (dialog.dialogIsVisible()) {
 			if (key === "escape") dialog.dismissDialog();
-			if (key === "enter") {
-				dialog.submitDialog();
-
-				// Prevent the Enter key from acting like a click on the last clicked button, which might reopen the dialog
-				e.preventDefault();
-			}
 		}
 	};
 
@@ -112,6 +110,13 @@ export function createInputManager(editor: EditorState, container: HTMLElement, 
 	// While any pointer button is already down, additional button down events are not reported, but they are sent as `pointermove` events and these are handled in the backend
 	const onPointerMove = (e: PointerEvent): void => {
 		if (!e.buttons) viewportPointerInteractionOngoing = false;
+
+		// Don't redirect pointer movement to the backend if there's no ongoing interaction and it's over a floating menu on top of the canvas
+		// TODO: A better approach is to pass along a boolean to the backend's input preprocessor so it can know if it's being occluded by the GUI.
+		// TODO: This would allow it to properly decide to act on removing hover focus from something that was hovered in the canvas before moving over the GUI.
+		// TODO: Further explanation: https://github.com/GraphiteEditor/Graphite/pull/623#discussion_r866436197
+		const inFloatingMenu = e.target instanceof Element && e.target.closest("[data-floating-menu-content]");
+		if (!viewportPointerInteractionOngoing && inFloatingMenu) return;
 
 		const modifiers = makeModifiersBitfield(e);
 		editor.instance.on_mouse_move(e.clientX, e.clientY, e.buttons, modifiers);

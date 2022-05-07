@@ -509,7 +509,7 @@ impl DocumentMessageHandler {
 
 	pub fn load_default_font(&self, responses: &mut VecDeque<Message>) {
 		if !self.graphene_document.font_cache.has_default() {
-			responses.push_back(FrontendMessage::TriggerDefaultFontLoad.into())
+			responses.push_back(FrontendMessage::TriggerFontLoadDefault.into())
 		}
 	}
 }
@@ -536,7 +536,7 @@ impl PropertyHolder for DocumentMessageHandler {
 					checked: true,
 					icon: "Grid".into(),
 					tooltip: "Grid".into(),
-					on_update: WidgetCallback::new(|_| FrontendMessage::DisplayDialogComingSoon { issue: Some(318) }.into()),
+					on_update: WidgetCallback::new(|_| DialogMessage::RequestComingSoonDialog { issue: Some(318) }.into()),
 				})),
 				WidgetHolder::new(Widget::PopoverButton(PopoverButton {
 					title: "Grid".into(),
@@ -581,7 +581,7 @@ impl PropertyHolder for DocumentMessageHandler {
 							value: "pixels".into(),
 							icon: "ViewModePixels".into(),
 							tooltip: "View Mode: Pixels".into(),
-							on_update: WidgetCallback::new(|_| FrontendMessage::DisplayDialogComingSoon { issue: Some(320) }.into()),
+							on_update: WidgetCallback::new(|_| DialogMessage::RequestComingSoonDialog { issue: Some(320) }.into()),
 							..RadioEntryData::default()
 						},
 					],

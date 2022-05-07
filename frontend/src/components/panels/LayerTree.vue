@@ -67,7 +67,7 @@
 						:data-index="index"
 						:draggable="draggable"
 						@dragstart="(e) => draggable && dragStart(e, listing.entry)"
-						:title="`${listing.entry.name}\n${devMode ? 'Layer Path: ' + listing.entry.path.join(' / ') : ''}`"
+						:title="`${listing.entry.name}\n${devMode ? 'Layer Path: ' + listing.entry.path.join(' / ') : ''}`.trim() || null"
 					>
 						<LayoutRow class="layer-type-icon">
 							<IconLabel v-if="listing.entry.layer_type === 'Folder'" :icon="'NodeFolder'" title="Folder" />

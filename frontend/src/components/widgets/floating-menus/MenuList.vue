@@ -224,6 +224,8 @@ const MenuList = defineComponent({
 
 			const floatingMenu = this.$refs.floatingMenu as typeof FloatingMenu;
 
+			if (!floatingMenu) return;
+
 			// Save open/closed state before forcing open, if necessary, for measurement
 			const initiallyOpen = floatingMenu.isOpen();
 			if (!initiallyOpen) floatingMenu.setOpen();
@@ -265,7 +267,9 @@ const MenuList = defineComponent({
 		},
 	},
 	data() {
-		return { keyboardLockInfoMessage: this.fullscreen.keyboardLockApiSupported ? KEYBOARD_LOCK_USE_FULLSCREEN : KEYBOARD_LOCK_SWITCH_BROWSER };
+		return {
+			keyboardLockInfoMessage: this.fullscreen.keyboardLockApiSupported ? KEYBOARD_LOCK_USE_FULLSCREEN : KEYBOARD_LOCK_SWITCH_BROWSER,
+		};
 	},
 	components: {
 		FloatingMenu,
