@@ -116,6 +116,10 @@ impl VectorShape {
 			.filter_map(|(_, anchor)| if anchor.is_anchor_selected() { Some(anchor) } else { None })
 	}
 
+	pub fn set_selected(&mut self, selected: bool) {
+		self.selected = selected;
+	}
+
 	/// Return a mutable interator of the anchors regardless of selection
 	pub fn anchors_mut(&mut self) -> impl Iterator<Item = &mut VectorAnchor> {
 		self.anchors.iter_mut()

@@ -19,7 +19,6 @@ use super::vector_shape::VectorShape;
 use super::{constants::MINIMUM_MIRROR_THRESHOLD, vector_anchor::VectorAnchor, vector_control_point::VectorControlPoint};
 
 use glam::DVec2;
-use std::collections::HashSet;
 
 /// ShapeEditor is the container for all of the selected kurbo paths that are
 /// represented as VectorShapes and provides functionality required
@@ -28,8 +27,6 @@ use std::collections::HashSet;
 pub struct ShapeEditor {
 	// The shapes we can select anchors / handles from
 	copy_of_shapes: Vec<VectorShape>,
-	// Index of the shape that contained the most recent selected point
-	selected_shape_indices: HashSet<usize>,
 }
 
 impl ShapeEditor {
@@ -45,7 +42,7 @@ impl ShapeEditor {
 			log::trace!("Selecting: shape {} / anchor {} / point {}", shape_index, anchor_index, point_index);
 
 			// Add this shape to the selection
-			self.set_shape_selected(shape_index);
+			self.set_shape_selected(shape_index, true);
 
 			// If the point we're selecting has already been selected
 			// we can assume this point exists.. since we did just click on it hense the unwrap
@@ -112,8 +109,10 @@ impl ShapeEditor {
 	}
 
 	/// Add a shape to the hashset of shapes we consider for selection
-	pub fn set_shape_selected(&mut self, shape_index: usize) {
-		self.selected_shape_indices.insert(shape_index);
+	pub fn set_shape_selected(&mut self, shape_index: usize, selected: bool) {
+		if let Some(shape) = self.copy_of_shapes.get_mut(shape_index) {
+			shape.set_selected(selected);
+		}
 	}
 
 	pub fn has_selected_shapes(&self) -> bool {
@@ -122,18 +121,12 @@ impl ShapeEditor {
 
 	/// Provide the shapes that the currently selected points are a part of
 	pub fn selected_shapes(&self) -> impl Iterator<Item = &VectorShape> {
-		self.copy_of_shapes
-			.iter()
-			.enumerate()
-			.filter_map(|(index, shape)| if self.selected_shape_indices.contains(&index) { Some(shape) } else { None })
+		self.copy_of_shapes.iter().filter(|shape| shape.selected)
 	}
 
 	/// Provide the mutable shapes that the currently selected points are a part of
 	pub fn selected_shapes_mut(&mut self) -> impl Iterator<Item = &mut VectorShape> {
-		self.copy_of_shapes
-			.iter_mut()
-			.enumerate()
-			.filter_map(|(index, shape)| if self.selected_shape_indices.contains(&index) { Some(shape) } else { None })
+		self.copy_of_shapes.iter_mut().filter(|shape| shape.selected)
 	}
 
 	/// Provide the currently selected anchor by reference
