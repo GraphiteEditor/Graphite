@@ -128,13 +128,13 @@ impl Fsm for PathToolFsmState {
 				// TODO: Capture a tool event instead of doing this?
 				(_, SelectionChanged) => {
 					// TODO Tell overlay renderer to clear / updates the overlays
-					//data.shape_editor.set_shapes_to_modify(document.selected_visible_vector_shapes_mut(responses));
+					data.shape_editor.set_shapes_to_modify(document.graphene_document.selected_vector_shapes());
 					self
 				}
 				(_, DocumentIsDirty) => {
 					// TODO This should be handled by the document not by the tool, but this is a stop gap
-					for shape in &data.shape_editor.paths_to_shapes {
-						data.overlay_renderer.draw_overlays_for_vector_shape(&shape, responses);
+					for shape in data.shape_editor.selected_shapes() {
+						data.overlay_renderer.draw_overlays_for_vector_shape(shape, responses);
 					}
 
 					self
@@ -147,13 +147,7 @@ impl Fsm for PathToolFsmState {
 					if data.shape_editor.select_point(input.mouse.position, SELECTION_THRESHOLD, add_to_selection) {
 						responses.push_back(DocumentMessage::StartTransaction.into());
 						data.snap_handler.start_snap(document, document.bounding_boxes(None, None), true, true);
-						let snap_points = data
-							.shape_editor
-							.paths_to_shapes
-							.iter()
-							.flat_map(|shape| shape.anchors.iter().flat_map(|anchor| anchor.points[0].as_ref()))
-							.map(|point| point.position)
-							.collect();
+						let snap_points = data.shape_editor.selected_anchors().flat_map(|anchor| anchor.points[0].as_ref()).map(|point| point.position).collect();
 						data.snap_handler.add_snap_points(document, snap_points);
 						data.drag_start_pos = input.mouse.position;
 						Dragging

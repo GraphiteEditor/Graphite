@@ -1,4 +1,7 @@
-use crate::{LayerId, layers::layer_info::{Layer, LayerDataType}};
+use crate::{
+	layers::layer_info::{Layer, LayerDataType},
+	LayerId,
+};
 
 use super::{constants::ControlPointType, vector_anchor::VectorAnchor, vector_control_point::VectorControlPoint};
 
@@ -20,8 +23,10 @@ pub struct VectorShape {
 	/// If the compound Bezier curve is closed
 	pub closed: bool,
 	/// The transformation matrix to apply
-	/// My no longer be needed.
+	/// May no longer be needed.
 	pub transform: DAffine2,
+	/// Is this shape selected
+	pub selected: bool,
 }
 
 // TODO Implement iterator for VectorShape
@@ -139,7 +144,7 @@ impl VectorShape {
 }
 
 /// Convert a mutable layer into a mutable VectorShape
-impl <'a>TryFrom<&'a mut Layer> for &'a mut VectorShape {
+impl<'a> TryFrom<&'a mut Layer> for &'a mut VectorShape {
 	type Error = &'static str;
 	fn try_from(layer: &'a mut Layer) -> Result<&'a mut VectorShape, Self::Error> {
 		match &mut layer.data {
@@ -152,7 +157,7 @@ impl <'a>TryFrom<&'a mut Layer> for &'a mut VectorShape {
 }
 
 /// Convert a reference to a layer into a reference of a VectorShape
-impl <'a>TryFrom<&'a Layer> for &'a VectorShape {
+impl<'a> TryFrom<&'a Layer> for &'a VectorShape {
 	type Error = &'static str;
 	fn try_from(layer: &'a Layer) -> Result<&'a VectorShape, Self::Error> {
 		match &layer.data {

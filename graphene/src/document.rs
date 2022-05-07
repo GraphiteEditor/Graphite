@@ -10,7 +10,7 @@ use crate::layers::vector::vector_shape::VectorShape;
 use crate::{DocumentError, DocumentResponse, Operation};
 
 use glam::{DAffine2, DVec2};
-use kurbo::Affine;
+// use kurbo::Affine;
 use serde::{Deserialize, Serialize};
 use std::cmp::max;
 use std::collections::hash_map::DefaultHasher;
@@ -117,16 +117,55 @@ impl Document {
 		Ok(shapes)
 	}
 
-	pub fn vector_shapes<'a>(&'a self) -> Vec<&'a VectorShape> {
+	/// Return a copy of all VectorShapes currently in the document.
+	pub fn all_vector_shapes(&self) -> Vec<VectorShape> {
+		self.root.iter().flat_map(|layer| layer.as_vector_shape_copy()).collect::<Vec<VectorShape>>()
+	}
+
+	/// Returns references to all VectorShapes currently in the document.
+	pub fn all_vector_shapes_ref(&self) -> Vec<&VectorShape> {
 		self.root.iter().flat_map(|layer| layer.as_vector_shape()).collect::<Vec<&VectorShape>>()
 	}
 
+	/// Returns a copy of all the currently selected VectorShapes.
+	pub fn selected_vector_shapes(&self) -> Vec<VectorShape> {
+		self.root
+			.iter()
+			.flat_map(|layer| layer.as_vector_shape_copy())
+			.filter(|shape| shape.selected)
+			.collect::<Vec<VectorShape>>()
+	}
+
+	/// Returns references to all the currently selected VectorShapes.
+	pub fn selected_vector_shapes_ref(&self) -> Vec<&VectorShape> {
+		self.root.iter().flat_map(|layer| layer.as_vector_shape()).filter(|shape| shape.selected).collect::<Vec<&VectorShape>>()
+	}
+
+	/// Returns a reference to the requested VectorShape by providing a path to its owner layer.
+	pub fn vector_shape_ref<'a>(&'a self, path: &[LayerId]) -> Option<&'a VectorShape> {
+		return self.layer(path).ok()?.as_vector_shape();
+	}
+
+	/// Returns a mutable reference of the requested VectorShape by providing a path to its owner layer.
 	pub fn vector_shape_mut<'a>(&'a mut self, path: &[LayerId]) -> Option<&'a mut VectorShape> {
 		return self.layer_mut(path).ok()?.as_vector_shape_mut();
 	}
 
-	pub fn vector_shape<'a>(&'a self, path: &[LayerId]) -> Option<&'a VectorShape> {
-		return self.layer(path).ok()?.as_vector_shape();
+	/// Set a VectorShape at the specified path.
+	pub fn set_vector_shape(&mut self, path: &[LayerId], shape: VectorShape) {
+		let layer = self.layer_mut(path);
+		if let Ok(layer) = layer {
+			if let LayerDataType::Shape(shape_layer) = &mut layer.data {
+				shape_layer.shape = shape;
+				// Is this needed?
+				layer.cache_dirty = true;
+			}
+		}
+	}
+
+	/// Set VectorShapes for multiple paths at once.
+	pub fn set_vector_shapes<'a>(&'a mut self, paths: impl Iterator<Item = &'a [LayerId]>, shapes: Vec<VectorShape>) {
+		paths.zip(shapes).for_each(|(path, shape)| self.set_vector_shape(path, shape));
 	}
 
 	pub fn common_layer_path_prefix<'a>(&self, layers: impl Iterator<Item = &'a [LayerId]>) -> &'a [LayerId] {

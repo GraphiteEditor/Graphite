@@ -164,6 +164,13 @@ impl Layer {
 		}
 	}
 
+	pub fn as_vector_shape_copy(&self) -> Option<VectorShape> {
+		match &self.data {
+			LayerDataType::Shape(s) => Some(s.shape.clone()),
+			_ => None,
+		}
+	}
+
 	pub fn as_vector_shape_mut(&mut self) -> Option<&mut VectorShape> {
 		match &mut self.data {
 			LayerDataType::Shape(s) => Some(&mut s.shape),
