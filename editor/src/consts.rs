@@ -15,13 +15,16 @@ pub const VIEWPORT_SCROLL_RATE: f64 = 0.6;
 
 pub const VIEWPORT_ROTATE_SNAP_INTERVAL: f64 = 15.;
 
+// Snapping axis
 pub const SNAP_AXIS_TOLERANCE: f64 = 3.;
-pub const SNAP_POINT_TOLERANCE: f64 = 5.;
-pub const SNAP_AXIS_OVERLAY_FADE_DISTANCE: f64 = 20.;
+pub const SNAP_AXIS_OVERLAY_FADE_DISTANCE: f64 = 40.;
+pub const SNAP_AXIS_UNSNAPPED_OPACITY: f64 = 0.4;
+
+// Snapping point
 pub const SNAP_POINT_OVERLAY_FADE_NEAR: f64 = 20.;
 pub const SNAP_POINT_OVERLAY_FADE_FAR: f64 = 40.;
-
-pub const SNAP_OVERLAY_UNSNAPPED_OPACITY: f64 = 0.4;
+pub const SNAP_POINT_UNSNAPPED_OPACITY: f64 = 0.4;
+pub const SNAP_POINT_TOLERANCE: f64 = 5.;
 pub const SNAP_POINT_SIZE: f64 = 5.;
 
 pub const DRAG_THRESHOLD: f64 = 1.;

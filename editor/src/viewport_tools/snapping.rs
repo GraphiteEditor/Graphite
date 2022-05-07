@@ -1,6 +1,6 @@
 use crate::consts::{
-	COLOR_ACCENT, SNAP_AXIS_OVERLAY_FADE_DISTANCE, SNAP_AXIS_TOLERANCE, SNAP_OVERLAY_UNSNAPPED_OPACITY, SNAP_POINT_OVERLAY_FADE_FAR, SNAP_POINT_OVERLAY_FADE_NEAR, SNAP_POINT_SIZE,
-	SNAP_POINT_TOLERANCE,
+	COLOR_ACCENT, SNAP_AXIS_OVERLAY_FADE_DISTANCE, SNAP_AXIS_TOLERANCE, SNAP_AXIS_UNSNAPPED_OPACITY, SNAP_POINT_OVERLAY_FADE_FAR, SNAP_POINT_OVERLAY_FADE_NEAR, SNAP_POINT_SIZE, SNAP_POINT_TOLERANCE,
+	SNAP_POINT_UNSNAPPED_OPACITY,
 };
 use crate::document::DocumentMessageHandler;
 use crate::message_prelude::*;
@@ -29,6 +29,18 @@ pub struct SnapHandler {
 	snap_overlays: SnapOverlays,
 	snap_x: bool,
 	snap_y: bool,
+}
+
+/// Converts a bounding box into a set of points for snapping
+///
+/// Puts a point in the middle of each edge (top, bottom, left, right)
+pub fn expand_bounds([bound1, bound2]: [DVec2; 2]) -> [DVec2; 4] {
+	[
+		DVec2::new((bound1.x + bound2.x) / 2., bound1.y),
+		DVec2::new((bound1.x + bound2.x) / 2., bound2.y),
+		DVec2::new(bound1.x, (bound1.y + bound2.y) / 2.),
+		DVec2::new(bound2.x, (bound1.y + bound2.y) / 2.),
+	]
 }
 
 impl SnapOverlays {
@@ -74,26 +86,39 @@ impl SnapOverlays {
 
 	/// Draw the alignment lines for an axis
 	/// Note: horizontal refers to the overlay line being horizontal and the snap being along the Y axis
-	fn draw_alignment_lines(&mut self, is_horizontal: bool, distances: impl Iterator<Item = (DVec2, f64)>, responses: &mut VecDeque<Message>, closest_distance: DVec2, viewport_bounds: DVec2) {
-		for (target, distance) in distances.filter(|(_pos, dist)| dist.abs() < SNAP_AXIS_OVERLAY_FADE_DISTANCE) {
-			let scale = if is_horizontal { DVec2::new(viewport_bounds.x, 1.) } else { DVec2::new(viewport_bounds.y, 1.) };
-			let angle = if is_horizontal { 0. } else { PI / 2. };
+	fn draw_alignment_lines(&mut self, is_horizontal: bool, distances: impl Iterator<Item = (DVec2, DVec2, f64)>, responses: &mut VecDeque<Message>, closest_distance: DVec2) {
+		for (target, goal, distance) in distances.filter(|(_target, _pos, dist)| dist.abs() < SNAP_AXIS_OVERLAY_FADE_DISTANCE) {
 			let offset = if is_horizontal { target.y } else { target.x }.round() - 0.5;
-			let translation = if is_horizontal { DVec2::new(0., offset) } else { DVec2::new(offset, 0.) };
+			let offset_other = if is_horizontal { target.x } else { target.y }.round() - 0.5;
+			let goal_axis = if is_horizontal { goal.x } else { goal.y }.round() - 0.5;
+
+			let scale = DVec2::new(offset_other - goal_axis, 1.);
+			let angle = if is_horizontal { 0. } else { PI / 2. };
+			let translation = if is_horizontal { DVec2::new(goal_axis, offset) } else { DVec2::new(offset, goal_axis) };
+
 			let transform = DAffine2::from_scale_angle_translation(scale, angle, translation).to_cols_array();
 			let closest = if is_horizontal { closest_distance.y } else { closest_distance.x };
 
 			let opacity = if (closest - distance).abs() < 1. {
 				1.
 			} else {
-				SNAP_OVERLAY_UNSNAPPED_OPACITY - distance.abs() / (SNAP_AXIS_OVERLAY_FADE_DISTANCE / SNAP_OVERLAY_UNSNAPPED_OPACITY)
+				SNAP_AXIS_UNSNAPPED_OPACITY - distance.abs() / (SNAP_AXIS_OVERLAY_FADE_DISTANCE / SNAP_AXIS_UNSNAPPED_OPACITY)
 			};
 
+			// Add line
 			Self::add_overlay(true, responses, transform, Some(opacity), self.axis_index, &mut self.axis_overlay_paths);
 			self.axis_index += 1;
 
 			let size = DVec2::splat(SNAP_POINT_SIZE);
-			let transform = DAffine2::from_scale_angle_translation(size, 0., (target - size / 2.).round() - DVec2::splat(1.)).to_cols_array();
+
+			// Add point at target
+			let transform = DAffine2::from_scale_angle_translation(size, 0., target - size / 2.).to_cols_array();
+			Self::add_overlay(false, responses, transform, Some(opacity), self.point_index, &mut self.point_overlay_paths);
+			self.point_index += 1;
+
+			// Add point along line but towards goal
+			let translation = if is_horizontal { DVec2::new(goal.x, target.y) } else { DVec2::new(target.x, goal.y) };
+			let transform = DAffine2::from_scale_angle_translation(size, 0., translation - size / 2.).to_cols_array();
 			Self::add_overlay(false, responses, transform, Some(opacity), self.point_index, &mut self.point_overlay_paths);
 			self.point_index += 1
 		}
@@ -106,11 +131,10 @@ impl SnapOverlays {
 			let opacity = if active {
 				1.
 			} else {
-				(1. - (distance - SNAP_POINT_OVERLAY_FADE_NEAR) / (SNAP_POINT_OVERLAY_FADE_FAR - SNAP_POINT_OVERLAY_FADE_NEAR)).min(1.)
+				(1. - (distance - SNAP_POINT_OVERLAY_FADE_NEAR) / (SNAP_POINT_OVERLAY_FADE_FAR - SNAP_POINT_OVERLAY_FADE_NEAR)).min(1.) / SNAP_POINT_UNSNAPPED_OPACITY
 			};
-			log::info!("opacity {opacity} target {target} offset {offset} distance {distance}");
 
-			let size = DVec2::splat(if active { SNAP_POINT_SIZE * 3. } else { SNAP_POINT_SIZE });
+			let size = DVec2::splat(SNAP_POINT_SIZE);
 			let transform = DAffine2::from_scale_angle_translation(size, 0., target - size / 2.).to_cols_array();
 			Self::add_overlay(false, responses, transform, Some(opacity), self.point_index, &mut self.point_overlay_paths);
 			self.point_index += 1
@@ -118,20 +142,19 @@ impl SnapOverlays {
 	}
 
 	/// Updates the snapping overlays with the specified distances.
-	/// `positions_and_distances` is a tuple of `x` and `y` iterators, respectively, each with `(position, distance)` values.
-	fn update_overlays(
-		&mut self,
-		responses: &mut VecDeque<Message>,
-		viewport_bounds: DVec2,
-		positions_and_distances: (impl Iterator<Item = (DVec2, f64)>, impl Iterator<Item = (DVec2, f64)>, impl Iterator<Item = (DVec2, DVec2, f64)>),
-		closest_distance: DVec2,
-	) {
+	/// `positions_and_distances` is a tuple of `x`, `y` & `point` iterators,, each with `(position, goal, distance)` values.
+	fn update_overlays<X, Y, P>(&mut self, responses: &mut VecDeque<Message>, positions_and_distances: (X, Y, P), closest_distance: DVec2)
+	where
+		X: Iterator<Item = (DVec2, DVec2, f64)>,
+		Y: Iterator<Item = (DVec2, DVec2, f64)>,
+		P: Iterator<Item = (DVec2, DVec2, f64)>,
+	{
 		self.axis_index = 0;
 		self.point_index = 0;
 
 		let (x, y, points) = positions_and_distances;
-		self.draw_alignment_lines(true, y, responses, closest_distance, viewport_bounds);
-		self.draw_alignment_lines(false, x, responses, closest_distance, viewport_bounds);
+		self.draw_alignment_lines(true, y, responses, closest_distance);
+		self.draw_alignment_lines(false, x, responses, closest_distance);
 		self.draw_snap_points(points, responses, closest_distance);
 
 		Self::remove_unused_overlays(&mut self.axis_overlay_paths, responses, self.axis_index);
@@ -154,10 +177,9 @@ impl SnapOverlays {
 
 impl SnapHandler {
 	/// Computes the necessary translation to the layer to snap it (as well as updating necessary overlays)
-	fn calculate_snap<R, F>(&mut self, axis_generation: F, responses: &mut VecDeque<Message>, viewport_bounds: DVec2) -> DVec2
+	fn calculate_snap<R>(&mut self, targets: R, responses: &mut VecDeque<Message>) -> DVec2
 	where
 		R: Iterator<Item = DVec2> + Clone,
-		F: Fn(DVec2) -> R + Clone,
 	{
 		let empty = Vec::new();
 		let snap_points = self.snap_x && self.snap_y;
@@ -165,12 +187,16 @@ impl SnapHandler {
 		let axis = self.bound_targets.as_ref().unwrap_or(&empty);
 		let points = if snap_points { self.point_targets.as_ref().unwrap_or(&empty) } else { &empty };
 
-		let x_axis = if self.snap_x { axis } else { &empty }.iter().flat_map(|&pos| axis_generation(pos).map(move |v| (pos, v.x)));
-		let y_axis = if self.snap_y { axis } else { &empty }.iter().flat_map(|&pos| axis_generation(pos).map(move |v| (pos, v.y)));
-		let points = points.iter().flat_map(|&pos| axis_generation(pos).map(move |v| (pos, v, v.length())));
+		let x_axis = if self.snap_x { axis } else { &empty }
+			.iter()
+			.flat_map(|&pos| targets.clone().map(move |goal| (pos, goal, (pos - goal).x)));
+		let y_axis = if self.snap_y { axis } else { &empty }
+			.iter()
+			.flat_map(|&pos| targets.clone().map(move |goal| (pos, goal, (pos - goal).y)));
+		let points = points.iter().flat_map(|&pos| targets.clone().map(move |goal| (pos, pos - goal, (pos - goal).length())));
 
-		let min_x = x_axis.clone().min_by(|a, b| a.1.abs().partial_cmp(&b.1.abs()).expect("Could not compare position."));
-		let min_y = y_axis.clone().min_by(|a, b| a.1.abs().partial_cmp(&b.1.abs()).expect("Could not compare position."));
+		let min_x = x_axis.clone().min_by(|a, b| a.2.abs().partial_cmp(&b.2.abs()).expect("Could not compare position."));
+		let min_y = y_axis.clone().min_by(|a, b| a.2.abs().partial_cmp(&b.2.abs()).expect("Could not compare position."));
 		let min_points = points.clone().min_by(|a, b| a.2.abs().partial_cmp(&b.2.abs()).expect("Could not compare position."));
 
 		// Snap to a point if possible
@@ -178,14 +204,14 @@ impl SnapHandler {
 			min_points.1
 		} else {
 			// Do not move if over snap tolerance
-			let closest_distance = DVec2::new(min_x.unwrap_or_default().1, min_y.unwrap_or_default().1);
+			let closest_distance = DVec2::new(min_x.unwrap_or_default().2, min_y.unwrap_or_default().2);
 			DVec2::new(
 				if closest_distance.x.abs() > SNAP_AXIS_TOLERANCE { 0. } else { closest_distance.x },
 				if closest_distance.y.abs() > SNAP_AXIS_TOLERANCE { 0. } else { closest_distance.y },
 			)
 		};
 
-		self.snap_overlays.update_overlays(responses, viewport_bounds, (x_axis, y_axis, points), clamped_closest_distance);
+		self.snap_overlays.update_overlays(responses, (x_axis, y_axis, points), clamped_closest_distance);
 
 		clamped_closest_distance
 	}
@@ -198,18 +224,7 @@ impl SnapHandler {
 			self.snap_y = snap_y;
 
 			// Could be made into sorted Vec or a HashSet for more performant lookups.
-			self.bound_targets = Some(
-				bounding_boxes
-					.flat_map(|[bound1, bound2]| {
-						[
-							DVec2::new((bound1.x + bound2.x) / 2., bound1.y),
-							DVec2::new((bound1.x + bound2.x) / 2., bound2.y),
-							DVec2::new(bound1.x, (bound1.y + bound2.y) / 2.),
-							DVec2::new(bound2.x, (bound1.y + bound2.y) / 2.),
-						]
-					})
-					.collect(),
-			);
+			self.bound_targets = Some(bounding_boxes.flat_map(expand_bounds).collect());
 			self.point_targets = None;
 		}
 	}
@@ -273,18 +288,18 @@ impl SnapHandler {
 
 	/// Finds the closest snap from an array of layers to the specified snap targets in viewport coords.
 	/// Returns 0 for each axis that there is no snap less than the snap tolerance.
-	pub fn snap_layers(&mut self, responses: &mut VecDeque<Message>, document_message_handler: &DocumentMessageHandler, snap_anchors: Vec<DVec2>, viewport_bounds: DVec2, mouse_delta: DVec2) -> DVec2 {
+	pub fn snap_layers(&mut self, responses: &mut VecDeque<Message>, document_message_handler: &DocumentMessageHandler, snap_anchors: Vec<DVec2>, mouse_delta: DVec2) -> DVec2 {
 		if document_message_handler.snapping_enabled {
-			self.calculate_snap(|pos| snap_anchors.iter().map(move |&snap| pos - mouse_delta - snap), responses, viewport_bounds)
+			self.calculate_snap(snap_anchors.iter().map(move |&snap| mouse_delta + snap), responses)
 		} else {
 			DVec2::ZERO
 		}
 	}
 
 	/// Handles snapping of a viewport position, returning another viewport position.
-	pub fn snap_position(&mut self, responses: &mut VecDeque<Message>, viewport_bounds: DVec2, document_message_handler: &DocumentMessageHandler, position_viewport: DVec2) -> DVec2 {
+	pub fn snap_position(&mut self, responses: &mut VecDeque<Message>, document_message_handler: &DocumentMessageHandler, position_viewport: DVec2) -> DVec2 {
 		if document_message_handler.snapping_enabled {
-			self.calculate_snap(|pos| [pos - position_viewport].into_iter(), responses, viewport_bounds) + position_viewport
+			self.calculate_snap([position_viewport].into_iter(), responses) + position_viewport
 		} else {
 			position_viewport
 		}

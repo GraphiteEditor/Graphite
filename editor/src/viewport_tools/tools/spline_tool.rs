@@ -157,7 +157,7 @@ impl Fsm for SplineToolFsmState {
 
 					data.snap_handler.start_snap(document, document.bounding_boxes(None, None), true, true);
 					data.snap_handler.add_all_document_handles(document, &[], &[]);
-					let snapped_position = data.snap_handler.snap_position(responses, input.viewport_bounds.size(), document, input.mouse.position);
+					let snapped_position = data.snap_handler.snap_position(responses, document, input.mouse.position);
 
 					let pos = transform.inverse().transform_point2(snapped_position);
 
@@ -171,7 +171,7 @@ impl Fsm for SplineToolFsmState {
 					Drawing
 				}
 				(Drawing, DragStop) => {
-					let snapped_position = data.snap_handler.snap_position(responses, input.viewport_bounds.size(), document, input.mouse.position);
+					let snapped_position = data.snap_handler.snap_position(responses, document, input.mouse.position);
 					let pos = transform.inverse().transform_point2(snapped_position);
 
 					if let Some(last_pos) = data.points.last() {
@@ -187,7 +187,7 @@ impl Fsm for SplineToolFsmState {
 					Drawing
 				}
 				(Drawing, PointerMove) => {
-					let snapped_position = data.snap_handler.snap_position(responses, input.viewport_bounds.size(), document, input.mouse.position);
+					let snapped_position = data.snap_handler.snap_position(responses, document, input.mouse.position);
 					let pos = transform.inverse().transform_point2(snapped_position);
 					data.next_point = pos;
 
