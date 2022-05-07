@@ -65,8 +65,6 @@
 			margin: 0 4px;
 		}
 	}
-
-	min-height: auto !important;
 }
 </style>
 

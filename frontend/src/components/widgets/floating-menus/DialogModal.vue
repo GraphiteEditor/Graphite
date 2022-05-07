@@ -99,11 +99,5 @@ export default defineComponent({
 			this.dialog.dismissDialog();
 		},
 	},
-	mounted() {
-		// Focus the first button in the popup
-		const element = this.$el as Element | null;
-		const emphasizedOrFirstButton = (element?.querySelector("button.emphasized") as HTMLButtonElement | null) || element?.querySelector("button");
-		emphasizedOrFirstButton?.focus();
-	},
 });
 </script>

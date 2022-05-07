@@ -186,27 +186,6 @@ img {
 	}
 }
 
-.icon-button,
-.text-button,
-.popover-button,
-.checkbox-input label,
-.color-input .swatch .swatch-button,
-.dropdown-input .dropdown-box,
-.font-input .dropdown-box,
-.radio-input button,
-.menu-list {
-	&:focus {
-		outline: 1px solid var(--color-accent);
-		outline-offset: 2px;
-	}
-}
-
-.menu-list {
-	&:focus {
-		outline-offset: -1px;
-	}
-}
-
 // For placeholder messages (remove eventually)
 .floating-menu {
 	h1,
