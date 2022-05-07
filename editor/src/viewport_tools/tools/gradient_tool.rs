@@ -342,7 +342,7 @@ impl Fsm for GradientToolFsmState {
 				}
 				(GradientToolFsmState::Drawing, GradientToolMessage::PointerMove { constrain_axis }) => {
 					if let Some(selected_gradient) = &mut data.selected_gradient {
-						let mouse = data.snap_handler.snap_position(responses,  document, input.mouse.position);
+						let mouse = data.snap_handler.snap_position(responses, document, input.mouse.position);
 						selected_gradient.update_gradient(mouse, responses, input.keyboard.get(constrain_axis as usize));
 					}
 					GradientToolFsmState::Drawing
