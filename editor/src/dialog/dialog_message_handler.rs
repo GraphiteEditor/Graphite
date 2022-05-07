@@ -7,6 +7,7 @@ use super::*;
 
 #[derive(Debug, Default, Clone)]
 pub struct DialogMessageHandler {
+	export_dialog: Export,
 	new_document_dialog: NewDocument,
 }
 
@@ -15,6 +16,8 @@ impl MessageHandler<DialogMessage, (&BuildMetadata, &PortfolioMessageHandler)> f
 	fn process_action(&mut self, message: DialogMessage, (build_metadata, portfolio): (&BuildMetadata, &PortfolioMessageHandler), responses: &mut VecDeque<Message>) {
 		#[remain::sorted]
 		match message {
+			#[remain::unsorted]
+			DialogMessage::ExportDialog(message) => self.export_dialog.process_action(message, (), responses),
 			#[remain::unsorted]
 			DialogMessage::NewDocumentDialog(message) => self.new_document_dialog.process_action(message, (), responses),
 
@@ -44,6 +47,33 @@ impl MessageHandler<DialogMessage, (&BuildMetadata, &PortfolioMessageHandler)> f
 				coming_soon.register_properties(responses, LayoutTarget::DialogDetails);
 				responses.push_back(FrontendMessage::DisplayDialog { icon: "Warning".to_string() }.into());
 			}
+			DialogMessage::RequestExportDialog => {
+				let artboard_handler = &portfolio.active_document().artboard_message_handler;
+				let mut index = 0;
+				let artboards = artboard_handler
+					.artboard_ids
+					.iter()
+					.filter_map(|&artboard| artboard_handler.artboards_graphene_document.layer(&[artboard]).ok().map(|layer| (artboard, layer)))
+					.map(|(artboard, layer)| {
+						(
+							artboard,
+							layer.name.clone().unwrap_or_else(|| {
+								index += 1;
+								format!("Untitled artboard {index}")
+							}),
+						)
+					})
+					.collect();
+
+				self.export_dialog = Export {
+					file_name: portfolio.active_document().name.clone(),
+					resolution: 1.,
+					artboards,
+					..Default::default()
+				};
+				self.export_dialog.register_properties(responses, LayoutTarget::DialogDetails);
+				responses.push_back(FrontendMessage::DisplayDialog { icon: "File".to_string() }.into());
+			}
 			DialogMessage::RequestNewDocumentDialog => {
 				self.new_document_dialog = NewDocument {
 					name: portfolio.generate_new_document_name(),
@@ -56,5 +86,5 @@ impl MessageHandler<DialogMessage, (&BuildMetadata, &PortfolioMessageHandler)> f
 		}
 	}
 
-	advertise_actions!(DialogMessageDiscriminant;RequestNewDocumentDialog,CloseAllDocumentsWithConfirmation);
+	advertise_actions!(DialogMessageDiscriminant;RequestNewDocumentDialog,RequestExportDialog,CloseAllDocumentsWithConfirmation);
 }

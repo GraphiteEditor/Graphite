@@ -1,5 +1,6 @@
 use super::layer_panel::LayerMetadata;
 use super::utility_types::{AlignAggregate, AlignAxis, FlipAxis};
+use crate::frontend::utility_types::{ExportArea, ExportType};
 use crate::message_prelude::*;
 
 use graphene::boolean_ops::BooleanOperation as BooleanOperationType;
@@ -59,7 +60,12 @@ pub enum DocumentMessage {
 	DocumentHistoryForward,
 	DocumentStructureChanged,
 	DuplicateSelectedLayers,
-	ExportDocument,
+	ExportDocument {
+		file_name: String,
+		export_type: ExportType,
+		resolution: f64,
+		export_area: ExportArea,
+	},
 	FlipSelectedLayers {
 		flip_axis: FlipAxis,
 	},

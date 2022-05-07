@@ -15,8 +15,9 @@ pub struct FrontendImageData {
 	pub image_data: Vec<u8>,
 }
 
-#[derive(Clone, Copy, Debug, Eq, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Eq, Deserialize, PartialEq, Default, Serialize)]
 pub enum MouseCursorIcon {
+	#[default]
 	Default,
 	ZoomIn,
 	ZoomOut,
@@ -29,8 +30,27 @@ pub enum MouseCursorIcon {
 	NWSEResize,
 }
 
-impl Default for MouseCursorIcon {
-	fn default() -> Self {
-		Self::Default
+#[derive(Clone, Copy, Debug, Eq, Deserialize, PartialEq, Default, Serialize)]
+pub enum ExportType {
+	#[default]
+	Svg,
+	Png,
+	Jpeg,
+}
+
+impl ExportType {
+	pub fn to_mime(self) -> &'static str {
+		match self {
+			ExportType::Svg => "image/svg+xml",
+			ExportType::Png => "image/png",
+			ExportType::Jpeg => "image/jpeg",
+		}
 	}
+}
+
+#[derive(Clone, Copy, Debug, Eq, Deserialize, PartialEq, Default, Serialize)]
+pub enum ExportArea {
+	#[default]
+	All,
+	Artboard(LayerId),
 }

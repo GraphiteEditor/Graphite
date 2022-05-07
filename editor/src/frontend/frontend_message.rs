@@ -27,6 +27,7 @@ pub enum FrontendMessage {
 	TriggerFontLoadDefault,
 	TriggerIndexedDbRemoveDocument { document_id: u64 },
 	TriggerIndexedDbWriteDocument { document: String, details: FrontendDocumentDetails, version: String },
+	TriggerRasterDownload { document: String, name: String, mime: String, size: (f64,f64) },
 	TriggerTextCommit,
 	TriggerTextCopy { copy_text: String },
 	TriggerViewportResize,

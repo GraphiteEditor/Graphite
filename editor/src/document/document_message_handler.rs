@@ -5,10 +5,8 @@ use super::utility_types::TargetDocument;
 use super::utility_types::{AlignAggregate, AlignAxis, DocumentSave, FlipAxis};
 use super::{vectorize_layer_metadata, PropertiesPanelMessageHandler};
 use super::{ArtboardMessageHandler, MovementMessageHandler, OverlaysMessageHandler, TransformLayerMessageHandler};
-use crate::consts::{
-	ASYMPTOTIC_EFFECT, DEFAULT_DOCUMENT_NAME, FILE_EXPORT_SUFFIX, FILE_SAVE_SUFFIX, GRAPHITE_DOCUMENT_VERSION, SCALE_EFFECT, SCROLLBAR_SPACING, VIEWPORT_ZOOM_TO_FIT_PADDING_SCALE_FACTOR,
-};
-use crate::frontend::utility_types::FrontendImageData;
+use crate::consts::{ASYMPTOTIC_EFFECT, DEFAULT_DOCUMENT_NAME, FILE_SAVE_SUFFIX, GRAPHITE_DOCUMENT_VERSION, SCALE_EFFECT, SCROLLBAR_SPACING, VIEWPORT_ZOOM_TO_FIT_PADDING_SCALE_FACTOR};
+use crate::frontend::utility_types::{ExportType, FrontendImageData};
 use crate::input::InputPreprocessorMessageHandler;
 use crate::layout::widgets::{
 	IconButton, LayoutRow, NumberInput, NumberInputIncrementBehavior, OptionalInput, PopoverButton, PropertyHolder, RadioEntryData, RadioInput, Separator, SeparatorDirection, SeparatorType, Widget,
@@ -463,11 +461,7 @@ impl DocumentMessageHandler {
 	}
 
 	pub fn document_bounds(&self) -> Option<[DVec2; 2]> {
-		if self.artboard_message_handler.is_infinite_canvas() {
-			self.graphene_document.viewport_bounding_box(&[]).ok().flatten()
-		} else {
-			self.artboard_message_handler.artboards_graphene_document.viewport_bounding_box(&[]).ok().flatten()
-		}
+		self.graphene_document.viewport_bounding_box(&[]).ok().flatten()
 	}
 
 	/// Calculate the path that new layers should be inserted to.
@@ -858,29 +852,53 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 					responses.push_back(DocumentOperation::DuplicateLayer { path: path.to_vec() }.into());
 				}
 			}
-			ExportDocument => {
-				// TODO(mfish33): Add Dialog to select artboards
-				let bbox = self.document_bounds().unwrap_or_else(|| [DVec2::ZERO, ipp.viewport_bounds.size()]);
+			ExportDocument {
+				file_name,
+				export_type,
+				resolution,
+				export_area,
+			} => {
+				// Allows the user's transform to be restored
+				let old_transform = self.graphene_document.root.transform;
+				// Reset the root's transform (required to avoid any rotation by the user)
+				self.graphene_document.root.transform = DAffine2::IDENTITY;
+				self.graphene_document.root.cache_dirty = true;
+
+				// Calculates the bounds of the region to be exported
+				let bbox = match export_area {
+					crate::frontend::utility_types::ExportArea::All => self.document_bounds(),
+					crate::frontend::utility_types::ExportArea::Artboard(id) => self
+						.artboard_message_handler
+						.artboards_graphene_document
+						.layer(&[id])
+						.ok()
+						.and_then(|layer| layer.aabounding_box(&self.graphene_document.font_cache)),
+				}
+				.unwrap_or_default();
 				let size = bbox[1] - bbox[0];
-				let name = match self.name.ends_with(FILE_SAVE_SUFFIX) {
-					true => self.name.clone().replace(FILE_SAVE_SUFFIX, FILE_EXPORT_SUFFIX),
-					false => self.name.clone() + FILE_EXPORT_SUFFIX,
+
+				let file_suffix = &format!(".{export_type:?}").to_lowercase();
+				let name = match file_name.ends_with(FILE_SAVE_SUFFIX) {
+					true => file_name.replace(FILE_SAVE_SUFFIX, file_suffix),
+					false => file_name + file_suffix,
 				};
-				responses.push_back(
-					FrontendMessage::TriggerFileDownload {
-						document: format!(
-							r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="{} {} {} {}">{}{}</svg>"#,
-							bbox[0].x,
-							bbox[0].y,
-							size.x,
-							size.y,
-							"\n",
-							self.graphene_document.render_root(self.view_mode)
-						),
-						name,
-					}
-					.into(),
-				)
+
+				let rendered = self.graphene_document.render_root(self.view_mode);
+				let document = format!(
+					r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="{} {} {} {}" width="{}px" height="{}">{}{}</svg>"#,
+					bbox[0].x, bbox[0].y, size.x, size.y, size.x, size.y, "\n", rendered
+				);
+
+				self.graphene_document.root.transform = old_transform;
+				self.graphene_document.root.cache_dirty = true;
+
+				if export_type == ExportType::Svg {
+					responses.push_back(FrontendMessage::TriggerFileDownload { document, name }.into());
+				} else {
+					let mime = export_type.to_mime().to_string();
+					let size = (size * resolution).into();
+					responses.push_back(FrontendMessage::TriggerRasterDownload { document, name, mime, size }.into());
+				}
 			}
 			FlipSelectedLayers { flip_axis } => {
 				self.backup(responses);

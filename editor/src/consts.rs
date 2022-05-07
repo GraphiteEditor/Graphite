@@ -53,7 +53,6 @@ pub const SCALE_EFFECT: f64 = 0.5;
 
 pub const DEFAULT_DOCUMENT_NAME: &str = "Untitled Document";
 pub const FILE_SAVE_SUFFIX: &str = ".graphite";
-pub const FILE_EXPORT_SUFFIX: &str = ".svg";
 
 // Colors
 pub const COLOR_ACCENT: Color = Color::from_unsafe(0x00 as f32 / 255., 0xA8 as f32 / 255., 0xFF as f32 / 255.);
