@@ -128,11 +128,12 @@ impl SnapOverlays {
 	fn draw_snap_points(&mut self, distances: impl Iterator<Item = (DVec2, DVec2, f64)>, responses: &mut VecDeque<Message>, closest_distance: DVec2) {
 		for (target, offset, distance) in distances.filter(|(_pos, _offset, dist)| dist.abs() < SNAP_POINT_OVERLAY_FADE_FAR) {
 			let active = (closest_distance - offset).length_squared() < 1.;
-			let opacity = if active {
-				1.
-			} else {
-				(1. - (distance - SNAP_POINT_OVERLAY_FADE_NEAR) / (SNAP_POINT_OVERLAY_FADE_FAR - SNAP_POINT_OVERLAY_FADE_NEAR)).min(1.) / SNAP_POINT_UNSNAPPED_OPACITY
-			};
+
+			if active {
+				continue;
+			}
+
+			let opacity = (1. - (distance - SNAP_POINT_OVERLAY_FADE_NEAR) / (SNAP_POINT_OVERLAY_FADE_FAR - SNAP_POINT_OVERLAY_FADE_NEAR)).min(1.) / SNAP_POINT_UNSNAPPED_OPACITY;
 
 			let size = DVec2::splat(SNAP_POINT_SIZE);
 			let transform = DAffine2::from_scale_angle_translation(size, 0., target - size / 2.).to_cols_array();
