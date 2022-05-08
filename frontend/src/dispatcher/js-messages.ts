@@ -444,6 +444,7 @@ export function isWidgetSection(layoutRow: WidgetRow | WidgetSection): layoutRow
 export type WidgetKind =
 	| "CheckboxInput"
 	| "ColorInput"
+	| "DropdownInput"
 	| "FontInput"
 	| "IconButton"
 	| "IconLabel"

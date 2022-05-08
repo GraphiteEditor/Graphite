@@ -6,7 +6,7 @@ use super::utility_types::{AlignAggregate, AlignAxis, DocumentSave, FlipAxis};
 use super::{vectorize_layer_metadata, PropertiesPanelMessageHandler};
 use super::{ArtboardMessageHandler, MovementMessageHandler, OverlaysMessageHandler, TransformLayerMessageHandler};
 use crate::consts::{ASYMPTOTIC_EFFECT, DEFAULT_DOCUMENT_NAME, FILE_SAVE_SUFFIX, GRAPHITE_DOCUMENT_VERSION, SCALE_EFFECT, SCROLLBAR_SPACING, VIEWPORT_ZOOM_TO_FIT_PADDING_SCALE_FACTOR};
-use crate::frontend::utility_types::{ExportType, FrontendImageData};
+use crate::frontend::utility_types::{FileType, FrontendImageData};
 use crate::input::InputPreprocessorMessageHandler;
 use crate::layout::widgets::{
 	IconButton, LayoutRow, NumberInput, NumberInputIncrementBehavior, OptionalInput, PopoverButton, PropertyHolder, RadioEntryData, RadioInput, Separator, SeparatorDirection, SeparatorType, Widget,
@@ -854,9 +854,9 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 			}
 			ExportDocument {
 				file_name,
-				export_type,
-				resolution,
-				export_area,
+				file_type,
+				scale_factor,
+				bounds,
 			} => {
 				// Allows the user's transform to be restored
 				let old_transform = self.graphene_document.root.transform;
@@ -864,10 +864,10 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 				self.graphene_document.root.transform = DAffine2::IDENTITY;
 				self.graphene_document.root.cache_dirty = true;
 
-				// Calculates the bounds of the region to be exported
-				let bbox = match export_area {
-					crate::frontend::utility_types::ExportArea::All => self.document_bounds(),
-					crate::frontend::utility_types::ExportArea::Artboard(id) => self
+				// Calculates the bounding box of the region to be exported
+				let bbox = match bounds {
+					crate::frontend::utility_types::ExportBounds::All => self.document_bounds(),
+					crate::frontend::utility_types::ExportBounds::Artboard(id) => self
 						.artboard_message_handler
 						.artboards_graphene_document
 						.layer(&[id])
@@ -877,7 +877,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 				.unwrap_or_default();
 				let size = bbox[1] - bbox[0];
 
-				let file_suffix = &format!(".{export_type:?}").to_lowercase();
+				let file_suffix = &format!(".{file_type:?}").to_lowercase();
 				let name = match file_name.ends_with(FILE_SAVE_SUFFIX) {
 					true => file_name.replace(FILE_SAVE_SUFFIX, file_suffix),
 					false => file_name + file_suffix,
@@ -892,11 +892,11 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 				self.graphene_document.root.transform = old_transform;
 				self.graphene_document.root.cache_dirty = true;
 
-				if export_type == ExportType::Svg {
+				if file_type == FileType::Svg {
 					responses.push_back(FrontendMessage::TriggerFileDownload { document, name }.into());
 				} else {
-					let mime = export_type.to_mime().to_string();
-					let size = (size * resolution).into();
+					let mime = file_type.to_mime().to_string();
+					let size = (size * scale_factor).into();
 					responses.push_back(FrontendMessage::TriggerRasterDownload { document, name, mime, size }.into());
 				}
 			}

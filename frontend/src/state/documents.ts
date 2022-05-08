@@ -44,7 +44,7 @@ export function createDocumentsState(editor: EditorState) {
 		if (!ctx) return;
 
 		// Fill the canvas with white if jpeg (does not support transparency and defaults to black)
-		if (triggerRasterDownload.mime.endsWith("jpeg")) {
+		if (triggerRasterDownload.mime.endsWith("jpg")) {
 			ctx.fillStyle = "white";
 			ctx.fillRect(0, 0, triggerRasterDownload.size.x, triggerRasterDownload.size.y);
 		}

@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::frontend::utility_types::{ExportArea, ExportType};
+use crate::frontend::utility_types::{ExportBounds, FileType};
 use crate::layout::layout_message::LayoutTarget;
 use crate::layout::widgets::*;
 use crate::message_prelude::*;
@@ -11,9 +11,9 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Default)]
 pub struct Export {
 	pub file_name: String,
-	pub export_type: ExportType,
-	pub resolution: f64,
-	pub export_area: ExportArea,
+	pub file_type: FileType,
+	pub scale_factor: f64,
+	pub bounds: ExportBounds,
 	pub artboards: HashMap<LayerId, String>,
 }
 
@@ -35,18 +35,18 @@ impl PropertyHolder for Export {
 			})),
 		];
 
-		let entries = [(ExportType::Svg, "SVG"), (ExportType::Png, "PNG"), (ExportType::Jpeg, "JPEG")]
+		let entries = [(FileType::Svg, "SVG"), (FileType::Png, "PNG"), (FileType::Jpg, "JPG")]
 			.into_iter()
 			.map(|(val, name)| RadioEntryData {
 				label: name.into(),
-				on_update: WidgetCallback::new(move |_| ExportDialogUpdate::ExportType(val).into()),
+				on_update: WidgetCallback::new(move |_| ExportDialogUpdate::FileType(val).into()),
 				..RadioEntryData::default()
 			})
 			.collect();
 
 		let export_type = vec![
 			WidgetHolder::new(Widget::TextLabel(TextLabel {
-				value: "Export type".into(),
+				value: "File Type".into(),
 				table_align: true,
 				..Default::default()
 			})),
@@ -55,27 +55,27 @@ impl PropertyHolder for Export {
 				direction: SeparatorDirection::Horizontal,
 			})),
 			WidgetHolder::new(Widget::RadioInput(RadioInput {
-				selected_index: self.export_type as u32,
+				selected_index: self.file_type as u32,
 				entries,
 			})),
 		];
 
-		let artboards = self.artboards.iter().map(|(&val, name)| (ExportArea::Artboard(val), name.to_string()));
-		let mut export_area_options = vec![(ExportArea::All, "All".to_string())];
+		let artboards = self.artboards.iter().map(|(&val, name)| (ExportBounds::Artboard(val), name.to_string()));
+		let mut export_area_options = vec![(ExportBounds::All, "All".to_string())];
 		export_area_options.extend(artboards);
-		let index = export_area_options.iter().position(|(val, _)| val == &self.export_area).unwrap();
-		let entries = export_area_options
+		let index = export_area_options.iter().position(|(val, _)| val == &self.bounds).unwrap();
+		let menu_entries = vec![export_area_options
 			.into_iter()
-			.map(|(val, name)| RadioEntryData {
+			.map(|(val, name)| DropdownEntryData {
 				label: name,
-				on_update: WidgetCallback::new(move |_| ExportDialogUpdate::ExportArea(val).into()),
-				..RadioEntryData::default()
+				on_update: WidgetCallback::new(move |_| ExportDialogUpdate::ExportBounds(val).into()),
+				..Default::default()
 			})
-			.collect();
+			.collect()];
 
 		let export_area = vec![
 			WidgetHolder::new(Widget::TextLabel(TextLabel {
-				value: "Export area".into(),
+				value: "Bounds".into(),
 				table_align: true,
 				..Default::default()
 			})),
@@ -83,15 +83,16 @@ impl PropertyHolder for Export {
 				separator_type: SeparatorType::Unrelated,
 				direction: SeparatorDirection::Horizontal,
 			})),
-			WidgetHolder::new(Widget::RadioInput(RadioInput {
+			WidgetHolder::new(Widget::DropdownInput(DropdownInput {
 				selected_index: index as u32,
-				entries,
+				menu_entries,
+				..Default::default()
 			})),
 		];
 
 		let resolution = vec![
 			WidgetHolder::new(Widget::TextLabel(TextLabel {
-				value: "Resolution".into(),
+				value: "Scale Factor".into(),
 				table_align: true,
 				..TextLabel::default()
 			})),
@@ -100,12 +101,12 @@ impl PropertyHolder for Export {
 				direction: SeparatorDirection::Horizontal,
 			})),
 			WidgetHolder::new(Widget::NumberInput(NumberInput {
-				value: self.resolution,
+				value: self.scale_factor,
 				label: "".into(),
 				unit: " ".into(),
-				disabled: self.export_type == ExportType::Svg,
+				disabled: self.file_type == FileType::Svg,
 				min: Some(0.),
-				on_update: WidgetCallback::new(|number_input: &NumberInput| ExportDialogUpdate::Resolution(number_input.value).into()),
+				on_update: WidgetCallback::new(|number_input: &NumberInput| ExportDialogUpdate::ScaleFactor(number_input.value).into()),
 				..NumberInput::default()
 			})),
 		];
@@ -158,9 +159,9 @@ impl PropertyHolder for Export {
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub enum ExportDialogUpdate {
 	FileName(String),
-	ExportType(ExportType),
-	Resolution(f64),
-	ExportArea(ExportArea),
+	FileType(FileType),
+	ScaleFactor(f64),
+	ExportBounds(ExportBounds),
 
 	Submit,
 }
@@ -169,16 +170,16 @@ impl MessageHandler<ExportDialogUpdate, ()> for Export {
 	fn process_action(&mut self, action: ExportDialogUpdate, _data: (), responses: &mut VecDeque<Message>) {
 		match action {
 			ExportDialogUpdate::FileName(name) => self.file_name = name,
-			ExportDialogUpdate::ExportType(export_type) => self.export_type = export_type,
-			ExportDialogUpdate::Resolution(x) => self.resolution = x,
-			ExportDialogUpdate::ExportArea(export_area) => self.export_area = export_area,
+			ExportDialogUpdate::FileType(export_type) => self.file_type = export_type,
+			ExportDialogUpdate::ScaleFactor(x) => self.scale_factor = x,
+			ExportDialogUpdate::ExportBounds(export_area) => self.bounds = export_area,
 
 			ExportDialogUpdate::Submit => responses.push_front(
 				DocumentMessage::ExportDocument {
 					file_name: self.file_name.clone(),
-					export_type: self.export_type,
-					resolution: self.resolution,
-					export_area: self.export_area,
+					file_type: self.file_type,
+					scale_factor: self.scale_factor,
+					bounds: self.bounds,
 				}
 				.into(),
 			),

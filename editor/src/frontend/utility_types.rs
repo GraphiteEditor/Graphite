@@ -31,25 +31,25 @@ pub enum MouseCursorIcon {
 }
 
 #[derive(Clone, Copy, Debug, Eq, Deserialize, PartialEq, Default, Serialize)]
-pub enum ExportType {
+pub enum FileType {
 	#[default]
 	Svg,
 	Png,
-	Jpeg,
+	Jpg,
 }
 
-impl ExportType {
+impl FileType {
 	pub fn to_mime(self) -> &'static str {
 		match self {
-			ExportType::Svg => "image/svg+xml",
-			ExportType::Png => "image/png",
-			ExportType::Jpeg => "image/jpeg",
+			FileType::Svg => "image/svg+xml",
+			FileType::Png => "image/png",
+			FileType::Jpg => "image/jpg",
 		}
 	}
 }
 
 #[derive(Clone, Copy, Debug, Eq, Deserialize, PartialEq, Default, Serialize)]
-pub enum ExportArea {
+pub enum ExportBounds {
 	#[default]
 	All,
 	Artboard(LayerId),

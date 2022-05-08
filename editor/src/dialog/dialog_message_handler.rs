@@ -57,17 +57,20 @@ impl MessageHandler<DialogMessage, (&BuildMetadata, &PortfolioMessageHandler)> f
 					.map(|(artboard, layer)| {
 						(
 							artboard,
-							layer.name.clone().unwrap_or_else(|| {
-								index += 1;
-								format!("Untitled artboard {index}")
-							}),
+							format!(
+								"Artboard: {}",
+								layer.name.clone().unwrap_or_else(|| {
+									index += 1;
+									format!("Untitled {index}")
+								})
+							),
 						)
 					})
 					.collect();
 
 				self.export_dialog = Export {
 					file_name: portfolio.active_document().name.clone(),
-					resolution: 1.,
+					scale_factor: 1.,
 					artboards,
 					..Default::default()
 				};
