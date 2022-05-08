@@ -288,7 +288,8 @@ import {
 	DisplayRemoveEditableTextbox,
 	DisplayEditableTextbox,
 	TriggerFontLoad,
-	TriggerDefaultFontLoad,
+	TriggerFontLoadDefault,
+	TriggerVisitLink,
 } from "@/dispatcher/js-messages";
 
 import { textInputCleanup } from "@/lifetime/input";
@@ -466,7 +467,10 @@ export default defineComponent({
 			const responseBuffer = await response.arrayBuffer();
 			this.editor.instance.on_font_load(triggerFontLoad.font, new Uint8Array(responseBuffer), false);
 		});
-		this.editor.dispatcher.subscribeJsMessage(TriggerDefaultFontLoad, loadDefaultFont);
+		this.editor.dispatcher.subscribeJsMessage(TriggerFontLoadDefault, loadDefaultFont);
+		this.editor.dispatcher.subscribeJsMessage(TriggerVisitLink, async (triggerOpenLink) => {
+			window.open(triggerOpenLink.url, "_blank");
+		});
 		this.editor.dispatcher.subscribeJsMessage(TriggerTextCopy, (triggerTextCopy) => {
 			// If the Clipboard API is supported in the browser, copy text to the clipboard
 			navigator.clipboard?.writeText?.(triggerTextCopy.copy_text);
@@ -520,10 +524,31 @@ export default defineComponent({
 			});
 		});
 
+		// Gets metadat populated in `frontend/vue.config.js`. We could potentially move this functionality in a build.rs file.
+		const loadBuildMetadata = (): void => {
+			const release = process.env.VUE_APP_RELEASE_SERIES;
+			let timestamp = "";
+			const hash = (process.env.VUE_APP_COMMIT_HASH || "").substring(0, 8);
+			const branch = process.env.VUE_APP_COMMIT_BRANCH;
+			{
+				const date = new Date(process.env.VUE_APP_COMMIT_DATE || "");
+				const dateString = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+				const timeString = `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+				const timezoneName = Intl.DateTimeFormat(undefined, { timeZoneName: "long" })
+					.formatToParts(new Date())
+					.find((part) => part.type === "timeZoneName");
+				const timezoneNameString = timezoneName?.value;
+				timestamp = `${dateString} ${timeString} ${timezoneNameString}`;
+			}
+
+			this.editor.instance.populate_build_metadata(release || "", timestamp, hash, branch || "");
+		};
+
 		// TODO(mfish33): Replace with initialization system Issue:#524
 		// Get initial Document Bar
 		this.editor.instance.init_document_bar();
 		setLoadDefaultFontCallback((font: string, data: Uint8Array) => this.editor.instance.on_font_load(font, data, true));
+		loadBuildMetadata();
 	},
 	data() {
 		const documentModeEntries: SectionsOfMenuListEntries = [

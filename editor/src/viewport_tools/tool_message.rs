@@ -87,6 +87,7 @@ pub enum ToolMessage {
 	SelectPrimaryColor {
 		color: Color,
 	},
+	SelectRandomPrimaryColor,
 	SelectSecondaryColor {
 		color: Color,
 	},
