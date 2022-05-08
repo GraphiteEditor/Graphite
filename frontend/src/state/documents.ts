@@ -45,7 +45,7 @@ export function createDocumentsState(editor: EditorState) {
 
 		// Fill the canvas with white if jpeg (does not support transparency and defaults to black)
 		if (triggerRasterDownload.mime.endsWith("jpeg")) {
-			ctx.fillStyle = "rgb(255,255,255)";
+			ctx.fillStyle = "white";
 			ctx.fillRect(0, 0, triggerRasterDownload.size.x, triggerRasterDownload.size.y);
 		}
 
@@ -64,7 +64,6 @@ export function createDocumentsState(editor: EditorState) {
 
 			// Cleanup resources
 			URL.revokeObjectURL(url);
-			document.removeChild(canvas);
 		};
 		img.src = url;
 	});

@@ -14,6 +14,8 @@ export function download(filename: string, fileData: string): void {
 	const url = URL.createObjectURL(blob);
 
 	downloadBlob(url, filename);
+
+	URL.revokeObjectURL(url);
 }
 
 export async function upload(acceptedEextensions: string): Promise<{ filename: string; content: string }> {
