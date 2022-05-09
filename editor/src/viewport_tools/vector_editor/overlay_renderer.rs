@@ -53,36 +53,37 @@ impl<'a> OverlayRenderer {
 		}
 
 		// Draw the anchor / handle overlays
-		for anchor_id in shape.anchors.list_ids().iter() {
-			let anchor = shape.anchors.element_by_id_mut(anchor_id);
-			// If cached update them
-			if let Some(anchor_overlays) = self.anchor_overlay_cache.get(&(anchor_id as u64)) {
-				// Reposition cached overlays
-				self.place_overlays(anchor, anchor_overlays, responses);
+		for anchor_id in shape.anchors.ids().iter() {
+			if let Some(anchor) = shape.anchors.element_by_id(*anchor_id) {
+				// If cached update them
+				if let Some(anchor_overlays) = self.anchor_overlay_cache.get(anchor_id) {
+					// Reposition cached overlays
+					self.place_overlays(anchor, anchor_overlays, responses);
 
-				// Change styles to reflect selection
-				self.update_overlay_style(anchor, anchor_overlays, responses);
-			} else {
-				// Create if not cached
-				let anchor_overlays = [
-					Some(self.create_anchor_overlay(responses)),
-					self.create_handle_overlay(&anchor.points[ControlPointType::Handle1], responses),
-					self.create_handle_overlay(&anchor.points[ControlPointType::Handle2], responses),
-					self.create_handle_line_overlay(&anchor.points[ControlPointType::Handle1], responses),
-					self.create_handle_line_overlay(&anchor.points[ControlPointType::Handle2], responses),
-				];
+					// Change styles to reflect selection
+					self.update_overlay_style(anchor, anchor_overlays, responses);
+				} else {
+					// Create if not cached
+					let anchor_overlays = [
+						Some(self.create_anchor_overlay(responses)),
+						self.create_handle_overlay(&anchor.points[ControlPointType::Handle1], responses),
+						self.create_handle_overlay(&anchor.points[ControlPointType::Handle2], responses),
+						self.create_handle_line_overlay(&anchor.points[ControlPointType::Handle1], responses),
+						self.create_handle_line_overlay(&anchor.points[ControlPointType::Handle2], responses),
+					];
 
-				// Place the new overlays
-				self.place_overlays(anchor, &anchor_overlays, responses);
+					// Place the new overlays
+					self.place_overlays(anchor, &anchor_overlays, responses);
 
-				// Change styles to reflect selection
-				self.update_overlay_style(anchor, &anchor_overlays, responses);
+					// Change styles to reflect selection
+					self.update_overlay_style(anchor, &anchor_overlays, responses);
 
-				// Cache overlays
-				self.anchor_overlay_cache.insert(anchor_id as u64, anchor_overlays);
+					// Cache overlays
+					self.anchor_overlay_cache.insert(*anchor_id, anchor_overlays);
+				}
+
+				// TODO handle unused overlays
 			}
-
-			// TODO handle unused overlays
 		}
 	}
 
@@ -93,11 +94,6 @@ impl<'a> OverlayRenderer {
 		}
 	}
 	// TODO add a way of updating overlays without destroying them and re-creating them
-
-	fn anchor_id(&mut self) -> AnchorId {
-		self.next_anchor_id = self.next_anchor_id + 1;
-		self.next_anchor_id
-	}
 
 	/// Create the kurbo shape that matches the selected viewport shape
 	fn create_shape_outline_overlay(&self, bez_path: BezPath, responses: &mut VecDeque<Message>) -> Vec<LayerId> {

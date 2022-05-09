@@ -95,7 +95,7 @@ impl<T> UniqueElements<T> {
 	}
 
 	/// Returns a list of [ElementId]s in the within this container.
-	pub fn list_ids(&self) -> &[ElementId] {
+	pub fn ids(&self) -> &[ElementId] {
 		self.ids.as_slice()
 	}
 

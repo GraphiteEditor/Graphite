@@ -70,10 +70,20 @@ impl VectorShape {
 		}
 	}
 
-	/// Select an anchor
-	pub fn select_anchor(&mut self, anchor_id: usize) -> Option<&mut VectorAnchor> {
+	/// Select an anchor by id
+	pub fn select_anchor(&mut self, anchor_id: u64) -> Option<&mut VectorAnchor> {
 		// TODO test if looking this up by index actually works
-		if let Some(anchor) = self.anchors.element_by_index_mut(anchor_id) {
+		if let Some(anchor) = self.anchors.element_by_id_mut(anchor_id) {
+			anchor.select_point(ControlPointType::Anchor as usize, true);
+			return Some(anchor);
+		}
+		None
+	}
+
+	/// Select an anchor by index
+	pub fn select_anchor_by_index(&mut self, anchor_index: usize) -> Option<&mut VectorAnchor> {
+		// TODO test if looking this up by index actually works
+		if let Some(anchor) = self.anchors.element_by_index_mut(anchor_index) {
 			anchor.select_point(ControlPointType::Anchor as usize, true);
 			return Some(anchor);
 		}
@@ -90,9 +100,9 @@ impl VectorShape {
 	}
 
 	/// Deselect an anchor
-	pub fn deselect_anchor(&mut self, anchor_id: usize) {
+	pub fn deselect_anchor(&mut self, anchor_id: u64) {
 		// TODO test if looking this up by index actually works
-		if let Some(anchor) = self.anchors.element_by_index_mut(anchor_id) {
+		if let Some(anchor) = self.anchors.element_by_id_mut(anchor_id) {
 			anchor.clear_selected_points();
 			anchor.select_point(ControlPointType::Anchor as usize, false);
 		}
