@@ -4,6 +4,7 @@
 			<!-- TODO: Use `<component :is="" v-bind="attributesObject"></component>` to avoid all the separate components with `v-if` -->
 			<CheckboxInput v-if="component.kind === 'CheckboxInput'" v-bind="component.props" @update:checked="(value: boolean) => updateLayout(component.widget_id, value)" />
 			<ColorInput v-if="component.kind === 'ColorInput'" v-bind="component.props" @update:value="(value: string) => updateLayout(component.widget_id, value)" />
+			<DropdownInput v-if="component.kind === 'DropdownInput'" v-bind="component.props" @update:selectedIndex="(value: number) => updateLayout(component.widget_id, value)" />
 			<FontInput
 				v-if="component.kind === 'FontInput'"
 				v-bind="component.props"
@@ -69,6 +70,7 @@ import PopoverButton from "@/components/widgets/buttons/PopoverButton.vue";
 import TextButton from "@/components/widgets/buttons/TextButton.vue";
 import CheckboxInput from "@/components/widgets/inputs/CheckboxInput.vue";
 import ColorInput from "@/components/widgets/inputs/ColorInput.vue";
+import DropdownInput from "@/components/widgets/inputs/DropdownInput.vue";
 import FontInput from "@/components/widgets/inputs/FontInput.vue";
 import NumberInput from "@/components/widgets/inputs/NumberInput.vue";
 import OptionalInput from "@/components/widgets/inputs/OptionalInput.vue";
@@ -104,6 +106,7 @@ export default defineComponent({
 		IconButton,
 		OptionalInput,
 		RadioInput,
+		DropdownInput,
 		TextLabel,
 		IconLabel,
 		ColorInput,

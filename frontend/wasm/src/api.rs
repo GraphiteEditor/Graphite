@@ -487,7 +487,7 @@ impl JsEditorHandle {
 
 	/// Export the document
 	pub fn export_document(&self) {
-		let message = DocumentMessage::ExportDocument;
+		let message = DialogMessage::RequestExportDialog;
 		self.dispatch(message);
 	}
 

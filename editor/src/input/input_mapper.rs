@@ -152,7 +152,7 @@ impl Default for Mapping {
 			entry! {action=DocumentMessage::SelectAllLayers, key_down=KeyA, modifiers=[KeyControl]},
 			entry! {action=DocumentMessage::DeleteSelectedLayers, key_down=KeyDelete},
 			entry! {action=DocumentMessage::DeleteSelectedLayers, key_down=KeyBackspace},
-			entry! {action=DocumentMessage::ExportDocument, key_down=KeyE, modifiers=[KeyControl]},
+			entry! {action=DialogMessage::RequestExportDialog, key_down=KeyE, modifiers=[KeyControl]},
 			entry! {action=DocumentMessage::SaveDocument, key_down=KeyS, modifiers=[KeyControl]},
 			entry! {action=DocumentMessage::SaveDocument, key_down=KeyS, modifiers=[KeyControl, KeyShift]},
 			entry! {action=DocumentMessage::DebugPrintDocument, key_down=Key9},
