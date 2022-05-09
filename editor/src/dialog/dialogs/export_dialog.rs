@@ -61,7 +61,7 @@ impl PropertyHolder for Export {
 		];
 
 		let artboards = self.artboards.iter().map(|(&val, name)| (ExportBounds::Artboard(val), name.to_string()));
-		let mut export_area_options = vec![(ExportBounds::All, "All".to_string())];
+		let mut export_area_options = vec![(ExportBounds::AllArtwork, "All Artwork".to_string())];
 		export_area_options.extend(artboards);
 		let index = export_area_options.iter().position(|(val, _)| val == &self.bounds).unwrap();
 		let menu_entries = vec![export_area_options
@@ -144,12 +144,6 @@ impl PropertyHolder for Export {
 			LayoutRow::Row { widgets: export_type },
 			LayoutRow::Row { widgets: resolution },
 			LayoutRow::Row { widgets: export_area },
-			LayoutRow::Row {
-				widgets: vec![WidgetHolder::new(Widget::Separator(Separator {
-					direction: SeparatorDirection::Vertical,
-					separator_type: SeparatorType::Unrelated,
-				}))],
-			},
 			LayoutRow::Row { widgets: button_widgets },
 		])
 	}

@@ -866,7 +866,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 
 				// Calculates the bounding box of the region to be exported
 				let bbox = match bounds {
-					crate::frontend::utility_types::ExportBounds::All => self.document_bounds(),
+					crate::frontend::utility_types::ExportBounds::AllArtwork => self.document_bounds(),
 					crate::frontend::utility_types::ExportBounds::Artboard(id) => self
 						.artboard_message_handler
 						.artboards_graphene_document

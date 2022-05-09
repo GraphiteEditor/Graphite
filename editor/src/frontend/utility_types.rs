@@ -53,19 +53,19 @@ impl FileType {
 		match self {
 			FileType::Svg => "image/svg+xml",
 			FileType::Png => "image/png",
-			FileType::Jpg => "image/jpg",
+			FileType::Jpg => "image/jpeg",
 		}
 	}
 }
 
 #[derive(Clone, Copy, Debug, Eq, Deserialize, PartialEq, Serialize)]
 pub enum ExportBounds {
-	All,
+	AllArtwork,
 	Artboard(LayerId),
 }
 
 impl Default for ExportBounds {
 	fn default() -> Self {
-		ExportBounds::All
+		ExportBounds::AllArtwork
 	}
 }
