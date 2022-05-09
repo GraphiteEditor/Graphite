@@ -65,7 +65,7 @@ export function createInputManager(editor: EditorState, container: HTMLElement, 
 		if (key === "f5") return false;
 
 		// Don't redirect debugging tools
-		if (key === "f12") return false;
+		if (key === "f12" || key === "f8") return false;
 		if (e.ctrlKey && e.shiftKey && key === "c") return false;
 		if (e.ctrlKey && e.shiftKey && key === "i") return false;
 		if (e.ctrlKey && e.shiftKey && key === "j") return false;

@@ -109,7 +109,7 @@ impl Fsm for RectangleToolFsmState {
 		if let ToolMessage::Rectangle(event) = event {
 			match (self, event) {
 				(Ready, DragStart) => {
-					shape_data.start(responses, input.viewport_bounds.size(), document, input.mouse.position);
+					shape_data.start(responses, document, input.mouse.position);
 					responses.push_back(DocumentMessage::StartTransaction.into());
 					shape_data.path = Some(document.get_path_for_new_layer());
 					responses.push_back(DocumentMessage::DeselectAllLayers.into());
@@ -127,7 +127,7 @@ impl Fsm for RectangleToolFsmState {
 					Drawing
 				}
 				(state, Resize { center, lock_ratio }) => {
-					if let Some(message) = shape_data.calculate_transform(responses, input.viewport_bounds.size(), document, center, lock_ratio, input) {
+					if let Some(message) = shape_data.calculate_transform(responses, document, center, lock_ratio, input) {
 						responses.push_back(message);
 					}
 
