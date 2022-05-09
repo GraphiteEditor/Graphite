@@ -9,7 +9,7 @@ use crate::input::InputPreprocessorMessageHandler;
 use crate::layout::widgets::{IconButton, LayoutRow, PopoverButton, PropertyHolder, Separator, SeparatorDirection, SeparatorType, Widget, WidgetCallback, WidgetHolder, WidgetLayout};
 use crate::message_prelude::*;
 use crate::misc::{HintData, HintGroup, HintInfo, KeysGroup};
-use crate::viewport_tools::snapping::SnapHandler;
+use crate::viewport_tools::snapping::{self, SnapHandler};
 use crate::viewport_tools::tool::{DocumentToolData, Fsm, ToolActionHandlerData, ToolType};
 use graphene::boolean_ops::BooleanOperation;
 use graphene::document::Document;
@@ -404,6 +404,7 @@ impl Fsm for SelectToolFsmState {
 						let snap_y = selected_edges.0 || selected_edges.1;
 
 						data.snap_handler.start_snap(document, document.bounding_boxes(Some(&selected), None), snap_x, snap_y);
+						data.snap_handler.add_all_document_handles(document, &[], &selected.iter().map(|x| x.as_slice()).collect::<Vec<_>>());
 
 						data.layers_dragging = selected;
 
@@ -461,11 +462,10 @@ impl Fsm for SelectToolFsmState {
 						.layers_dragging
 						.iter()
 						.filter_map(|path| document.graphene_document.viewport_bounding_box(path).ok()?)
-						.flat_map(|[bound1, bound2]| [bound1, bound2, (bound1 + bound2) / 2.])
-						.map(|vec| vec.into())
-						.unzip();
+						.flat_map(snapping::expand_bounds)
+						.collect();
 
-					let closest_move = data.snap_handler.snap_layers(responses, document, snap, input.viewport_bounds.size(), mouse_delta);
+					let closest_move = data.snap_handler.snap_layers(responses, document, snap, mouse_delta);
 					// TODO: Cache the result of `shallowest_unique_layers` to avoid this heavy computation every frame of movement, see https://github.com/GraphiteEditor/Graphite/pull/481
 					for path in Document::shallowest_unique_layers(data.layers_dragging.iter()) {
 						responses.push_front(
@@ -486,7 +486,7 @@ impl Fsm for SelectToolFsmState {
 
 							let mouse_position = input.mouse.position;
 
-							let snapped_mouse_position = data.snap_handler.snap_position(responses, input.viewport_bounds.size(), document, mouse_position);
+							let snapped_mouse_position = data.snap_handler.snap_position(responses, document, mouse_position);
 
 							let [_position, size] = movement.new_size(snapped_mouse_position, bounds.transform, center, axis_align);
 							let delta = movement.bounds_to_scale_transform(center, size);
