@@ -155,7 +155,8 @@ impl Fsm for LineToolFsmState {
 			match (self, event) {
 				(Ready, DragStart) => {
 					data.snap_handler.start_snap(document, document.bounding_boxes(None, None), true, true);
-					data.drag_start = data.snap_handler.snap_position(responses, input.viewport_bounds.size(), document, input.mouse.position);
+					data.snap_handler.add_all_document_handles(document, &[], &[]);
+					data.drag_start = data.snap_handler.snap_position(responses, document, input.mouse.position);
 
 					responses.push_back(DocumentMessage::StartTransaction.into());
 					data.path = Some(document.get_path_for_new_layer());
@@ -176,7 +177,7 @@ impl Fsm for LineToolFsmState {
 					Drawing
 				}
 				(Drawing, Redraw { center, snap_angle, lock_angle }) => {
-					data.drag_current = data.snap_handler.snap_position(responses, input.viewport_bounds.size(), document, input.mouse.position);
+					data.drag_current = data.snap_handler.snap_position(responses, document, input.mouse.position);
 
 					let values: Vec<_> = [lock_angle, snap_angle, center].iter().map(|k| input.keyboard.get(*k as usize)).collect();
 					responses.push_back(generate_transform(data, values[0], values[1], values[2]));
@@ -184,7 +185,7 @@ impl Fsm for LineToolFsmState {
 					Drawing
 				}
 				(Drawing, DragStop) => {
-					data.drag_current = data.snap_handler.snap_position(responses, input.viewport_bounds.size(), document, input.mouse.position);
+					data.drag_current = data.snap_handler.snap_position(responses, document, input.mouse.position);
 					data.snap_handler.cleanup(responses);
 
 					match data.drag_start.distance(input.mouse.position) <= DRAG_THRESHOLD {

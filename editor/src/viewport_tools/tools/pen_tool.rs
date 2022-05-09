@@ -169,7 +169,8 @@ impl Fsm for PenToolFsmState {
 					// Create a new layer and prep snap system
 					data.path = Some(document.get_path_for_new_layer());
 					data.snap_handler.start_snap(document, document.bounding_boxes(None, None), true, true);
-					let snapped_position = data.snap_handler.snap_position(responses, input.viewport_bounds.size(), document, input.mouse.position);
+					data.snap_handler.add_all_document_handles(document, &[], &[]);
+					let snapped_position = data.snap_handler.snap_position(responses, document, input.mouse.position);
 
 					// Get the position and set properties
 					let start_position = transform.inverse().transform_point2(snapped_position);
@@ -217,14 +218,14 @@ impl Fsm for PenToolFsmState {
 					}
 
 					// Move the newly selected points to the cursor
-					let snapped_position = data.snap_handler.snap_position(responses, input.viewport_bounds.size(), document, input.mouse.position);
+					let snapped_position = data.snap_handler.snap_position(responses, document, input.mouse.position);
 					data.shape_editor.move_selected_points(snapped_position, false, responses);
 
 					Drawing
 				}
 				(Drawing, PointerMove) => {
 					// Move selected points
-					let snapped_position = data.snap_handler.snap_position(responses, input.viewport_bounds.size(), document, input.mouse.position);
+					let snapped_position = data.snap_handler.snap_position(responses, document, input.mouse.position);
 					data.shape_editor.move_selected_points(snapped_position, false, responses);
 
 					Drawing
@@ -302,7 +303,7 @@ fn add_to_curve(data: &mut PenToolData, input: &InputPreprocessorMessageHandler,
 	update_path_representation(data);
 
 	// Setup our position params
-	let snapped_position = data.snap_handler.snap_position(responses, input.viewport_bounds.size(), document, input.mouse.position);
+	let snapped_position = data.snap_handler.snap_position(responses, document, input.mouse.position);
 	let position = transform.inverse().transform_point2(snapped_position);
 
 	// Add a curve to the path
