@@ -70,6 +70,12 @@ impl MessageHandler<LayoutMessage, ()> for LayoutMessageHandler {
 						let callback_message = (color_input.on_update.callback)(color_input);
 						responses.push_back(callback_message);
 					}
+					Widget::DropdownInput(dropdown_input) => {
+						let update_value = value.as_u64().expect("DropdownInput update was not of type: u64");
+						dropdown_input.selected_index = update_value as u32;
+						let callback_message = (dropdown_input.menu_entries.iter().flatten().nth(update_value as usize).unwrap().on_update.callback)(&());
+						responses.push_back(callback_message);
+					}
 					Widget::FontInput(font_input) => {
 						let update_value = value.as_object().expect("FontInput update was not of type: object");
 						let font_family_value = update_value.get("fontFamily").expect("FontInput update does not have a fontFamily");

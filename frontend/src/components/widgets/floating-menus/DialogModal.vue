@@ -22,7 +22,7 @@
 	width: 100%;
 	height: 100%;
 
-	.floating-menu-container .floating-menu-content {
+	> .floating-menu-container > .floating-menu-content {
 		pointer-events: auto;
 		padding: 24px;
 	}
@@ -50,7 +50,7 @@
 	.main-column {
 		margin: -4px 0;
 
-		.details {
+		.details.text-label {
 			user-select: text;
 			white-space: pre-wrap;
 			max-width: 400px;

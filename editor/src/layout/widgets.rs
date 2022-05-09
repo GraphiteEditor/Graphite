@@ -152,6 +152,7 @@ impl<T> Default for WidgetCallback<T> {
 pub enum Widget {
 	CheckboxInput(CheckboxInput),
 	ColorInput(ColorInput),
+	DropdownInput(DropdownInput),
 	FontInput(FontInput),
 	IconButton(IconButton),
 	IconLabel(IconLabel),
@@ -336,6 +337,38 @@ pub struct CheckboxInput {
 pub struct PopoverButton {
 	pub title: String,
 	pub text: String,
+}
+
+#[derive(Clone, Serialize, Deserialize, Derivative, Default)]
+#[derivative(Debug, PartialEq)]
+pub struct DropdownInput {
+	#[serde(rename = "menuEntries")]
+	pub menu_entries: Vec<Vec<DropdownEntryData>>,
+
+	// This uses `u32` instead of `usize` since it will be serialized as a normal JS number
+	// TODO(mfish33): Replace with usize when using native UI
+	#[serde(rename = "selectedIndex")]
+	pub selected_index: u32,
+
+	#[serde(rename = "drawIcon")]
+	pub draw_icon: bool,
+}
+
+#[derive(Clone, Serialize, Deserialize, Derivative, Default)]
+#[derivative(Debug, PartialEq)]
+pub struct DropdownEntryData {
+	pub value: String,
+	pub label: String,
+	pub icon: String,
+	pub checkbox: bool,
+	pub shortcut: Vec<String>,
+	#[serde(rename = "shortcutRequiresLock")]
+	pub shortcut_requires_lock: bool,
+	pub children: Vec<Vec<DropdownEntryData>>,
+
+	#[serde(skip)]
+	#[derivative(Debug = "ignore", PartialEq = "ignore")]
+	pub on_update: WidgetCallback<()>,
 }
 
 #[derive(Clone, Serialize, Deserialize, Derivative, Default)]
