@@ -46,10 +46,7 @@ impl ShapeEditor {
 
 			// If the point we're selecting has already been selected
 			// we can assume this point exists.. since we did just click on it hense the unwrap
-			let is_point_selected = self.copy_of_shapes[shape_index].anchors.element_by_id_mut(anchor_id).unwrap().points[point_index]
-				.as_ref()
-				.unwrap()
-				.is_selected;
+			let is_point_selected = self.copy_of_shapes[shape_index].anchors.by_id_mut(anchor_id).unwrap().points[point_index].as_ref().unwrap().is_selected;
 
 			// Deselected if we're not adding to the selection
 			if !add_to_selection && !is_point_selected {
@@ -98,7 +95,7 @@ impl ShapeEditor {
 	pub fn find_nearest_point(&mut self, mouse_position: DVec2, select_threshold: f64) -> Option<&mut VectorControlPoint> {
 		let (shape_index, anchor_id, point_index) = self.find_nearest_point_indicies(mouse_position, select_threshold)?;
 		let selected_shape = &mut self.copy_of_shapes[shape_index];
-		if let Some(anchor) = selected_shape.anchors.element_by_id_mut(anchor_id) {
+		if let Some(anchor) = selected_shape.anchors.by_id_mut(anchor_id) {
 			return anchor.points[point_index].as_mut();
 		}
 		None
@@ -230,16 +227,14 @@ impl ShapeEditor {
 	fn closest_point(&self, shape: &VectorShape, pos: glam::DVec2) -> Option<(u64, usize, f64)> {
 		let mut closest_distance_squared: f64 = f64::MAX; // Not ideal
 		let mut result: Option<(u64, usize, f64)> = None;
-		for anchor_id in shape.anchors.ids() {
-			if let Some(anchor) = shape.anchors.element_by_id(*anchor_id) {
-				let point_index = anchor.closest_point(pos);
-				if let Some(point) = &anchor.points[point_index] {
-					if point.can_be_selected {
-						let distance_squared = point.position.distance_squared(pos);
-						if distance_squared < closest_distance_squared {
-							closest_distance_squared = distance_squared;
-							result = Some((*anchor_id, point_index, distance_squared));
-						}
+		for (anchor_id, anchor) in shape.anchors.enumerate() {
+			let point_index = anchor.closest_point(pos);
+			if let Some(point) = &anchor.points[point_index] {
+				if point.can_be_selected {
+					let distance_squared = point.position.distance_squared(pos);
+					if distance_squared < closest_distance_squared {
+						closest_distance_squared = distance_squared;
+						result = Some((*anchor_id, point_index, distance_squared));
 					}
 				}
 			}

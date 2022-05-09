@@ -49,41 +49,39 @@ impl<'a> OverlayRenderer {
 			// Cache outline overlay
 			self.shape_overlay_cache.insert(shape.layer_path.clone(), outline);
 
-			// TODO Handle removing shapes so we don't memory leak
+			// TODO Handle removing shapes from cache so we don't memory leak
 		}
 
 		// Draw the anchor / handle overlays
-		for anchor_id in shape.anchors.ids().iter() {
-			if let Some(anchor) = shape.anchors.element_by_id(*anchor_id) {
-				// If cached update them
-				if let Some(anchor_overlays) = self.anchor_overlay_cache.get(anchor_id) {
-					// Reposition cached overlays
-					self.place_overlays(anchor, anchor_overlays, responses);
+		for (anchor_id, anchor) in shape.anchors.enumerate() {
+			// If cached update them
+			if let Some(anchor_overlays) = self.anchor_overlay_cache.get(anchor_id) {
+				// Reposition cached overlays
+				self.place_overlays(anchor, anchor_overlays, responses);
 
-					// Change styles to reflect selection
-					self.update_overlay_style(anchor, anchor_overlays, responses);
-				} else {
-					// Create if not cached
-					let anchor_overlays = [
-						Some(self.create_anchor_overlay(responses)),
-						self.create_handle_overlay(&anchor.points[ControlPointType::Handle1], responses),
-						self.create_handle_overlay(&anchor.points[ControlPointType::Handle2], responses),
-						self.create_handle_line_overlay(&anchor.points[ControlPointType::Handle1], responses),
-						self.create_handle_line_overlay(&anchor.points[ControlPointType::Handle2], responses),
-					];
+				// Change styles to reflect selection
+				self.style_overlays(anchor, anchor_overlays, responses);
+			} else {
+				// Create if not cached
+				let anchor_overlays = [
+					Some(self.create_anchor_overlay(responses)),
+					self.create_handle_overlay(&anchor.points[ControlPointType::Handle1], responses),
+					self.create_handle_overlay(&anchor.points[ControlPointType::Handle2], responses),
+					self.create_handle_line_overlay(&anchor.points[ControlPointType::Handle1], responses),
+					self.create_handle_line_overlay(&anchor.points[ControlPointType::Handle2], responses),
+				];
 
-					// Place the new overlays
-					self.place_overlays(anchor, &anchor_overlays, responses);
+				// Place the new overlays
+				self.place_overlays(anchor, &anchor_overlays, responses);
 
-					// Change styles to reflect selection
-					self.update_overlay_style(anchor, &anchor_overlays, responses);
+				// Change styles to reflect selection
+				self.style_overlays(anchor, &anchor_overlays, responses);
 
-					// Cache overlays
-					self.anchor_overlay_cache.insert(*anchor_id, anchor_overlays);
-				}
-
-				// TODO handle unused overlays
+				// Cache overlays
+				self.anchor_overlay_cache.insert(*anchor_id, anchor_overlays);
 			}
+
+			// TODO handle unused overlays
 		}
 	}
 
@@ -234,7 +232,7 @@ impl<'a> OverlayRenderer {
 	}
 
 	/// Sets the overlay style for this point
-	fn update_overlay_style(&self, anchor: &VectorAnchor, overlays: &AnchorOverlays, responses: &mut VecDeque<Message>) {
+	fn style_overlays(&self, anchor: &VectorAnchor, overlays: &AnchorOverlays, responses: &mut VecDeque<Message>) {
 		// TODO Move the style definitions out of the VectorShape, should be looked up from a stylesheet or similar
 		let selected_style = style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, POINT_STROKE_WIDTH + 1.0)), Some(Fill::new(COLOR_ACCENT)));
 		let deselected_style = style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, POINT_STROKE_WIDTH)), None);

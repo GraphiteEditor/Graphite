@@ -1,7 +1,10 @@
+use std::collections::HashMap;
+
 use crate::DocumentError;
 use serde::{Deserialize, Serialize};
 
 type ElementId = u64;
+type ElementIndex = i64;
 
 /// A layer that encapsulates other layers, including potentially more folders.
 /// The contained layers are rendered in the same order they are
@@ -10,12 +13,14 @@ type ElementId = u64;
 
 // TODO: Default is a bit weird because Layer does not implement Default. but we should not care because the empty vec is the default
 pub struct UniqueElements<T> {
-	/// The ID that will be assigned to the next layer that is added to the folder
+	/// The IDs of the [Elements] contained within this
+	keys: Vec<ElementId>,
+	/// The data contained in this
+	values: Vec<T>,
+	/// The ID that will be assigned to the next element that is added to this
 	next_assignment_id: ElementId,
-	/// The IDs of the [Layer]s contained within the Folder
-	pub ids: Vec<ElementId>,
-	/// The data contained in the folder
-	elements: Vec<T>,
+	/// Map from element ids to array positions
+	id_to_index: HashMap<ElementId, ElementIndex>,
 }
 
 impl<T> UniqueElements<T> {
@@ -39,27 +44,31 @@ impl<T> UniqueElements<T> {
 	/// folder.add(shape_layer.into(), None, -1);
 	/// folder.add(folder_layer.into(), Some(123), 0);
 	/// ```
-	pub fn add(&mut self, layer: T, id: Option<ElementId>, insert_index: isize) -> Option<ElementId> {
-		let mut insert_index = insert_index as i128;
+	pub fn add(&mut self, element: T, id: Option<ElementId>, insert_index: isize) -> Option<ElementId> {
+		let mut insert_index = insert_index as ElementIndex;
 
+		// If the insert index is negative, it is relative to the end
 		if insert_index < 0 {
-			insert_index = self.elements.len() as i128 + insert_index as i128 + 1;
+			insert_index = self.values.len() as ElementIndex + insert_index as ElementIndex + 1;
 		}
 
-		if insert_index <= self.elements.len() as i128 && insert_index >= 0 {
+		if insert_index <= self.values.len() as ElementIndex && insert_index >= 0 {
 			if let Some(id) = id {
 				self.next_assignment_id = id;
-			}
-			if self.ids.contains(&self.next_assignment_id) {
-				return None;
+
+				// If the chosen ID is already used, return None
+				if self.id_to_index.contains_key(&self.next_assignment_id) {
+					return None;
+				}
 			}
 
 			let id = self.next_assignment_id;
-			self.elements.insert(insert_index as usize, layer);
-			self.ids.insert(insert_index as usize, id);
+			self.values.insert(insert_index as usize, element);
+			self.keys.insert(insert_index as usize, id);
+			self.id_to_index.insert(id, insert_index);
 
 			// Linear probing for collision avoidance
-			while self.ids.contains(&self.next_assignment_id) {
+			while self.id_to_index.contains_key(&self.next_assignment_id) {
 				self.next_assignment_id += 1;
 			}
 
@@ -89,62 +98,77 @@ impl<T> UniqueElements<T> {
 	/// ```
 	pub fn remove(&mut self, id: ElementId) -> Result<(), DocumentError> {
 		let pos = self.position_of_element(id)?;
-		self.elements.remove(pos);
-		self.ids.remove(pos);
+		self.values.remove(pos);
+		self.keys.remove(pos);
+		self.id_to_index.remove(&id);
 		Ok(())
 	}
 
 	/// Returns a list of [ElementId]s in the within this container.
-	pub fn ids(&self) -> &[ElementId] {
-		self.ids.as_slice()
+	pub fn keys(&self) -> &[ElementId] {
+		self.keys.as_slice()
 	}
 
 	/// Get references to all the [T]s in the within this container.
-	pub fn elements(&self) -> &[T] {
-		self.elements.as_slice()
+	pub fn values(&self) -> &[T] {
+		self.values.as_slice()
 	}
 
 	/// Get mutable references to all the [T]s in the within this container.
-	pub fn elements_mut(&mut self) -> &mut [T] {
-		self.elements.as_mut_slice()
+	pub fn values_mut(&mut self) -> &mut [T] {
+		self.values.as_mut_slice()
 	}
 
 	/// Get a single element with a given element ID from the within this container.
-	pub fn element_by_id(&self, id: ElementId) -> Option<&T> {
+	pub fn by_id(&self, id: ElementId) -> Option<&T> {
 		let pos = self.position_of_element(id).ok()?;
-		Some(&self.elements[pos])
+		Some(&self.values[pos])
 	}
 
 	/// Get a mutable reference to a single element with a given element ID from the within this container.
-	pub fn element_by_id_mut(&mut self, id: ElementId) -> Option<&mut T> {
+	pub fn by_id_mut(&mut self, id: ElementId) -> Option<&mut T> {
 		let pos = self.position_of_element(id).ok()?;
-		Some(&mut self.elements[pos])
+		Some(&mut self.values[pos])
 	}
 
 	/// Get an element based on its index
-	pub fn element_by_index(&self, index: usize) -> Option<&T> {
-		self.elements.get(index)
+	pub fn by_index(&self, index: usize) -> Option<&T> {
+		self.values.get(index)
 	}
 
 	/// Get a mutable element based on its index
-	pub fn element_by_index_mut(&mut self, index: usize) -> Option<&mut T> {
-		self.elements.get_mut(index)
+	pub fn by_index_mut(&mut self, index: usize) -> Option<&mut T> {
+		self.values.get_mut(index)
 	}
 
-	pub fn last_element(&self) -> Option<&T> {
-		self.elements.last()
+	pub fn last(&self) -> Option<&T> {
+		self.values.last()
 	}
 
-	pub fn last_element_mut(&mut self) -> Option<&mut T> {
-		self.elements.last_mut()
+	pub fn last_mut(&mut self) -> Option<&mut T> {
+		self.values.last_mut()
 	}
 
 	pub fn len(&self) -> usize {
-		self.elements.len()
+		self.values.len()
 	}
 
 	pub fn is_empty(&self) -> bool {
-		self.elements.is_empty()
+		self.values.is_empty()
+	}
+
+	pub fn clear(&mut self) {
+		self.values.clear();
+		self.keys.clear();
+		self.id_to_index.clear();
+	}
+
+	pub fn enumerate(&self) -> impl Iterator<Item = (&ElementId, &T)> {
+		self.keys.iter().zip(self.values.iter())
+	}
+
+	pub fn enumerate_mut(&mut self) -> impl Iterator<Item = (&ElementId, &mut T)> {
+		self.keys.iter().zip(self.values.iter_mut())
 	}
 
 	/// Returns `true` if this contains an element with the given [ElementId].
@@ -164,7 +188,7 @@ impl<T> UniqueElements<T> {
 	/// assert!(folder.contains(123));
 	/// ```
 	pub fn contains(&self, id: ElementId) -> bool {
-		self.ids.contains(&id)
+		self.id_to_index.contains_key(&id)
 	}
 
 	/// Tries to find the index of a layer with the given [ElementId] within the folder.
@@ -186,7 +210,9 @@ impl<T> UniqueElements<T> {
 	/// assert_eq!(folder.position_of_element(42), Ok(1));
 	/// ```
 	pub fn position_of_element(&self, element_id: ElementId) -> Result<usize, DocumentError> {
-		// TODO This is a linear search, could we speed this up?
-		self.ids.iter().position(|x| *x == element_id).ok_or_else(|| DocumentError::LayerNotFound([element_id].into()))
+		if let Some(position) = self.id_to_index.get(&element_id) {
+			return Ok((*position) as usize);
+		}
+		Err(DocumentError::LayerNotFound([element_id].into()))
 	}
 }
