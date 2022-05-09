@@ -144,15 +144,13 @@ impl Fsm for PathToolFsmState {
 					// Select the first point within the threshold (in pixels)
 					if data.shape_editor.select_point(input.mouse.position, SELECTION_THRESHOLD, add_to_selection, responses) {
 						responses.push_back(DocumentMessage::StartTransaction.into());
-						data.snap_handler.start_snap(document, document.bounding_boxes(None, None), true, true);
-						let snap_points = data
-							.shape_editor
-							.shapes_to_modify
-							.iter()
-							.flat_map(|shape| shape.anchors.iter().flat_map(|anchor| anchor.points[0].as_ref()))
-							.map(|point| point.position)
-							.collect();
-						data.snap_handler.add_snap_points(document, snap_points);
+
+						let ignore_document = data.shape_editor.shapes_to_modify.iter().map(|shape| shape.layer_path.clone()).collect::<Vec<_>>();
+						data.snap_handler.start_snap(document, document.bounding_boxes(Some(&ignore_document), None), true, true);
+
+						let include_handles = data.shape_editor.shapes_to_modify.iter().map(|shape| shape.layer_path.as_slice()).collect::<Vec<_>>();
+						data.snap_handler.add_all_document_handles(document, &include_handles, &[]);
+
 						data.drag_start_pos = input.mouse.position;
 						Dragging
 					}
@@ -209,7 +207,7 @@ impl Fsm for PathToolFsmState {
 					}
 
 					// Move the selected points by the mouse position
-					let snapped_position = data.snap_handler.snap_position(responses, input.viewport_bounds.size(), document, input.mouse.position);
+					let snapped_position = data.snap_handler.snap_position(responses, document, input.mouse.position);
 					data.shape_editor.move_selected_points(snapped_position - data.drag_start_pos, true, responses);
 					Dragging
 				}
