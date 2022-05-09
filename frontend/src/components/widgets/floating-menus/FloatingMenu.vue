@@ -114,7 +114,7 @@
 		justify-content: center;
 		align-items: center;
 
-		.floating-menu-content {
+		> .floating-menu-container > .floating-menu-content {
 			transform: translate(-50%, -50%);
 		}
 	}
@@ -221,20 +221,24 @@ export default defineComponent({
 		this.floatingMenuBounds = floatingMenu.getBoundingClientRect();
 		this.floatingMenuContentBounds = floatingMenuContent.getBoundingClientRect();
 
-		// Required to correctly position content when scrolled (it has a `position: fixed` to prevent clipping)
-		const tailOffset = this.type === "Popover" ? 10 : 0;
-		if (this.direction === "Bottom") floatingMenuContent.style.top = `${tailOffset + this.floatingMenuBounds.top}px`;
-		if (this.direction === "Top") floatingMenuContent.style.bottom = `${tailOffset + this.floatingMenuBounds.bottom}px`;
-		if (this.direction === "Right") floatingMenuContent.style.left = `${tailOffset + this.floatingMenuBounds.left}px`;
-		if (this.direction === "Left") floatingMenuContent.style.right = `${tailOffset + this.floatingMenuBounds.right}px`;
+		const inParentFloatingMenu = Boolean(floatingMenuContainer.closest("[data-floating-menu-content]"));
 
-		// Required to correctly position content when scrolled (it has a `position: fixed` to prevent clipping)
-		const tail = this.$refs.tail as HTMLElement;
-		if (tail) {
-			if (this.direction === "Bottom") tail.style.top = `${this.floatingMenuBounds.top}px`;
-			if (this.direction === "Top") tail.style.bottom = `${this.floatingMenuBounds.bottom}px`;
-			if (this.direction === "Right") tail.style.left = `${this.floatingMenuBounds.left}px`;
-			if (this.direction === "Left") tail.style.right = `${this.floatingMenuBounds.right}px`;
+		if (!inParentFloatingMenu) {
+			// Required to correctly position content when scrolled (it has a `position: fixed` to prevent clipping)
+			const tailOffset = this.type === "Popover" ? 10 : 0;
+			if (this.direction === "Bottom") floatingMenuContent.style.top = `${tailOffset + this.floatingMenuBounds.top}px`;
+			if (this.direction === "Top") floatingMenuContent.style.bottom = `${tailOffset + this.floatingMenuBounds.bottom}px`;
+			if (this.direction === "Right") floatingMenuContent.style.left = `${tailOffset + this.floatingMenuBounds.left}px`;
+			if (this.direction === "Left") floatingMenuContent.style.right = `${tailOffset + this.floatingMenuBounds.right}px`;
+
+			// Required to correctly position content when scrolled (it has a `position: fixed` to prevent clipping)
+			const tail = this.$refs.tail as HTMLElement;
+			if (tail) {
+				if (this.direction === "Bottom") tail.style.top = `${this.floatingMenuBounds.top}px`;
+				if (this.direction === "Top") tail.style.bottom = `${this.floatingMenuBounds.bottom}px`;
+				if (this.direction === "Right") tail.style.left = `${this.floatingMenuBounds.left}px`;
+				if (this.direction === "Left") tail.style.right = `${this.floatingMenuBounds.right}px`;
+			}
 		}
 
 		type Edge = "Top" | "Bottom" | "Left" | "Right";

@@ -221,6 +221,17 @@ export class TriggerFileDownload extends JsMessage {
 
 export class TriggerFileUpload extends JsMessage {}
 
+export class TriggerRasterDownload extends JsMessage {
+	readonly document!: string;
+
+	readonly name!: string;
+
+	readonly mime!: string;
+
+	@TupleToVec2
+	readonly size!: { x: number; y: number };
+}
+
 export class DocumentChanged extends JsMessage {}
 
 export class DisplayDocumentLayerTreeStructure extends JsMessage {
@@ -433,6 +444,7 @@ export function isWidgetSection(layoutRow: WidgetRow | WidgetSection): layoutRow
 export type WidgetKind =
 	| "CheckboxInput"
 	| "ColorInput"
+	| "DropdownInput"
 	| "FontInput"
 	| "IconButton"
 	| "IconLabel"
@@ -545,6 +557,7 @@ export const messageMakers: Record<string, MessageMaker> = {
 	TriggerIndexedDbRemoveDocument,
 	TriggerFontLoad,
 	TriggerIndexedDbWriteDocument,
+	TriggerRasterDownload,
 	TriggerTextCommit,
 	TriggerTextCopy,
 	TriggerViewportResize,

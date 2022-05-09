@@ -31,6 +31,41 @@ pub enum MouseCursorIcon {
 
 impl Default for MouseCursorIcon {
 	fn default() -> Self {
-		Self::Default
+		MouseCursorIcon::Default
+	}
+}
+
+#[derive(Clone, Copy, Debug, Eq, Deserialize, PartialEq, Serialize)]
+pub enum FileType {
+	Svg,
+	Png,
+	Jpg,
+}
+
+impl Default for FileType {
+	fn default() -> Self {
+		FileType::Svg
+	}
+}
+
+impl FileType {
+	pub fn to_mime(self) -> &'static str {
+		match self {
+			FileType::Svg => "image/svg+xml",
+			FileType::Png => "image/png",
+			FileType::Jpg => "image/jpeg",
+		}
+	}
+}
+
+#[derive(Clone, Copy, Debug, Eq, Deserialize, PartialEq, Serialize)]
+pub enum ExportBounds {
+	AllArtwork,
+	Artboard(LayerId),
+}
+
+impl Default for ExportBounds {
+	fn default() -> Self {
+		ExportBounds::AllArtwork
 	}
 }
