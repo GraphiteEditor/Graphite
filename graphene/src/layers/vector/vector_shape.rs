@@ -52,6 +52,47 @@ impl VectorShape {
 		}
 	}
 
+	/// constructs an ngon
+	/// `radius` is the distance from the center to any vertex, or the radius of the circle the ngon may be inscribed inside
+	pub fn new_ngon(center: DVec2, sides: u64, radius: f64) -> Self {
+		let mut ngon = VectorShape {
+			layer_path: vec![],
+			anchors: vec![],
+			closed: true,
+			transform: DAffine2::IDENTITY,
+		};
+		for i in 0..sides {
+			let angle = (i as f64) * std::f64::consts::TAU / (sides as f64);
+			ngon.anchors
+				.push(VectorAnchor::new(DVec2::new(center.x + radius * f64::cos(angle), center.y + radius * f64::sin(angle)), i));
+		}
+		ngon
+	}
+
+	/// constructs a line from `p1` to `p2`
+	pub fn new_line(p1: DVec2, p2: DVec2) -> Self {
+		VectorShape {
+			layer_path: vec![],
+			anchors: vec![VectorAnchor::new(p1, 0), VectorAnchor::new(p2, 1)],
+			closed: false,
+			transform: DAffine2::IDENTITY,
+		}
+	}
+
+	pub fn new_poly_line<T: Into<glam::DVec2>>(points: Vec<T>) -> Self {
+		let mut p_line = VectorShape {
+			layer_path: vec![],
+			anchors: vec![],
+			closed: false,
+			transform: DAffine2::IDENTITY,
+		};
+		points
+			.into_iter()
+			.enumerate()
+			.for_each(|(local_id, point)| p_line.anchors.push(VectorAnchor::new(point.into(), local_id.try_into().unwrap())));
+		p_line
+	}
+
 	pub fn move_selected(&mut self, delta: DVec2, relative: bool) {
 		self.selected_anchors_mut().for_each(|anchor| anchor.move_selected_points(relative, &DAffine2::from_translation(delta)));
 	}
