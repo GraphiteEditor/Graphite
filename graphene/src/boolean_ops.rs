@@ -50,7 +50,7 @@ impl Debug for Vertex {
 	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		f.write_str(
 			format!(
-				"\n    Intersect@ {:?} a_seg: {:?}, b_seg: {:?} t_a: {:?} t_b: {:?}",
+				"\n    Intersect Point: {:?} Segment index of A: {:?}, Segment index of B: {:?} t value of A: {:?} t value of B: {:?}",
 				self.intersect.point,
 				self.intersect.segment_index(Origin::Alpha),
 				self.intersect.segment_index(Origin::Beta),
@@ -244,7 +244,7 @@ impl PathGraph {
 			}
 
 			fn advance_by_closepath(&mut self, graph: &mut PathGraph, initial_point: &mut Point, origin: Origin) {
-				// *when a curve ends in a closepath and its start point does not equal its endpoint they should be connected with a line
+				// When a curve ends in a closepath and its start point does not equal its endpoint they should be connected with a line
 				let last_line = match self.current.last() {
 					Some(start_of_final_edge) => Line {
 						p0: start_of_final_edge.end(),
@@ -269,20 +269,19 @@ impl PathGraph {
 					}
 				};
 				if last_line.length() > F64PRECISE {
-					// a closepath implicitly defines a line which closes the path
-					// and the closepath line may contain intersections
+					// A closepath implicitly defines a line which closes the path and the closepath line may contain intersections
 					self.advance_by_seg(graph, PathSeg::Line(last_line), origin);
 				}
 			}
 
 			fn finalize_sub_path(&mut self, graph: &mut PathGraph, origin: Origin) {
 				if let (Some(current_start_), Some(start_index_)) = (self.current_start, self.start_index) {
-					//complete the current path
+					// Complete the current path
 					self.current.append(&mut self.beginning);
 					graph.add_edge(origin, current_start_, start_index_, self.current.clone());
 				} else {
-					//path has a subpath with no intersects
-					//create a dummy vertex with single edge which will be identified as cycle
+					// Path has a subpath with no intersects.
+					// Create a dummy vertex with single edge which will be identified as cycle.
 					let dumb_id = graph.add_vertex(Intersect::new(self.beginning[0].start(), 0.0, 0.0, -1, -1));
 					graph.add_edge(origin, dumb_id, dumb_id, self.beginning.clone());
 				}
@@ -326,7 +325,7 @@ impl PathGraph {
 	}
 
 	/// Returns the `Vertex` index and intersect `t_value` for all intersects in the segment identified by `seg_index` from `origin`.
-	/// sorts both lists for ascending t_value
+	/// Sorts both lists for ascending `t_value`.
 	fn intersects_in_seg(&self, seg_index: i32, origin: Origin) -> (Vec<usize>, Vec<f64>) {
 		let mut vertex_index = Vec::new();
 		let mut t_values = Vec::new();
@@ -343,7 +342,7 @@ impl PathGraph {
 		(vertex_index, t_values)
 	}
 
-	// Returns the number of vertices in the graph. This is equivalent to the number of intersections.
+	/// Returns the number of vertices in the graph. This is equivalent to the number of intersections.
 	pub fn size(&self) -> usize {
 		self.vertices.len()
 	}
@@ -411,8 +410,8 @@ impl PathGraph {
 
 /// If `t` is on `(0, 1)`, returns the split curve.
 /// If `t` is outside `[0, 1]`, returns `(None, None)`
-/// If `t` is 0 returns (None, `p`).
-/// If `t` is 1 returns (`p`, None).
+/// If `t` is 0 returns `(None, p)`.
+/// If `t` is 1 returns `(p, None)`.
 pub fn split_path_seg(p: &PathSeg, t: f64) -> (Option<PathSeg>, Option<PathSeg>) {
 	if t <= -F64PRECISE || t >= 1.0 + F64PRECISE {
 		return (None, None);
@@ -473,16 +472,15 @@ pub fn subdivide_path_seg(p: &PathSeg, t_values: &mut [f64]) -> Vec<Option<PathS
 	sub_segments
 }
 
-/// * shapes.len() > 1
 pub fn composite_boolean_operation(mut select: BooleanOperation, shapes: &mut Vec<RefCell<ShapeLayer>>) -> Result<Vec<ShapeLayer>, BooleanOperationError> {
-	if let BooleanOperation::SubtractBack = select {
+	if select == BooleanOperation::SubtractBack {
 		select = BooleanOperation::SubtractFront;
 		let temp_len = shapes.len();
 		shapes.swap(0, temp_len - 1);
 	}
 	match select {
 		BooleanOperation::Union | BooleanOperation::Intersection => {
-			// We must attempt to Union each shape with every other shape
+			// We must attempt to union each shape with every other shape
 			let mut subject_idx = 0;
 			while subject_idx < shapes.len() {
 				let mut shape_idx = 0;
@@ -494,7 +492,7 @@ pub fn composite_boolean_operation(mut select: BooleanOperation, shapes: &mut Ve
 					let partial_union = boolean_operation(select, &mut shapes[subject_idx].borrow_mut(), &mut shapes[shape_idx].borrow_mut());
 					match partial_union {
 						Ok(temp_union) => {
-							// the result of a successful union will be exactly one shape
+							// The result of a successful union will be exactly one shape
 							shapes.push(RefCell::new(temp_union.into_iter().next().unwrap()));
 							shapes.swap_remove(subject_idx);
 							shapes.swap_remove(shape_idx);
@@ -518,7 +516,7 @@ pub fn composite_boolean_operation(mut select: BooleanOperation, shapes: &mut Ve
 						Err(err) => return Err(err),
 					}
 				}
-				result = temp; // this move should be done without copying
+				result = temp; // This move should be done without copying
 			}
 			Ok(result)
 		}
@@ -540,7 +538,7 @@ pub fn boolean_operation(mut select: BooleanOperation, alpha: &mut ShapeLayer, b
 	if alpha.path.is_empty() || beta.path.is_empty() {
 		return Err(BooleanOperationError::InvalidSelection);
 	}
-	if let BooleanOperation::SubtractBack = select {
+	if select == BooleanOperation::SubtractBack {
 		select = BooleanOperation::SubtractFront;
 		swap(alpha, beta);
 	}
@@ -625,7 +623,7 @@ pub fn boolean_operation(mut select: BooleanOperation, alpha: &mut ShapeLayer, b
 			}
 		}
 		BooleanOperation::SubtractBack => {
-			unreachable!("boolean operation: unreachable subtract from back");
+			unreachable!("Boolean operation: unreachable subtract from back");
 		}
 		BooleanOperation::SubtractFront => {
 			match if beta_dir != alpha_dir {
@@ -698,7 +696,7 @@ where
 					shapes.push(graph.get_shape(cycle, style(dir)));
 				}
 			}
-			// exclude cycles with 0.0 area
+			// Exclude cycles with 0.0 area
 			Err(_err) => (),
 		}
 	}

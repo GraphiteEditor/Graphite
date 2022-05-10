@@ -10,7 +10,7 @@ use graphene::Operation;
 
 use glam::{DAffine2, DVec2};
 
-/// Contains the edges that are being dragged along with the original bounds
+/// Contains the edges that are being dragged along with the original bounds.
 #[derive(Clone, Debug, Default)]
 pub struct SelectedEdges {
 	bounds: [DVec2; 2],

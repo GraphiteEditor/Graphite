@@ -7,8 +7,5 @@ pub const LAYER_OUTLINE_STROKE_WEIGHT: f64 = 1.;
 // BOOLEAN OPERATIONS
 
 // Bezier curve intersection algorithm
-// f64::EPSILON ~= 2^(-52)
-pub const F64PRECISE: f64 = f64::EPSILON * 128.0; // ~= 2^(-45) for f64 comparisons, to allow for rounding error
-
-// for comparisons between values that are a result of complex computations where error accumulates
-pub const F64LOOSE: f64 = f64::EPSILON * 1048576.0; // ~= 2^(-32)
+pub const F64PRECISE: f64 = f64::EPSILON * ((1 << 7) as f64); // ~= 2^(-45) - For f64 comparisons to allow for rounding error; note that f64::EPSILON ~= 2^(-52)
+pub const F64LOOSE: f64 = f64::EPSILON * ((1 << 20) as f64); // ~= 2^(-32) - For comparisons between values that are a result of complex computations where error accumulates

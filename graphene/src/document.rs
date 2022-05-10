@@ -629,7 +629,7 @@ impl Document {
 			Operation::BooleanOperation { operation, selected } => {
 				let mut responses = Vec::new();
 				if selected.len() > 1 {
-					let new_shapes = composite_boolean_operation(operation, &mut self.transformed_shapes(&selected)?.into_iter().rev().map(|s| RefCell::new(s)).collect())?;
+					let new_shapes = composite_boolean_operation(operation, &mut self.transformed_shapes(&selected)?.into_iter().rev().map(RefCell::new).collect())?;
 
 					for path in selected {
 						self.delete(&path)?;
