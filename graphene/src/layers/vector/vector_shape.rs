@@ -250,7 +250,7 @@ impl From<&VectorShape> for BezPath {
 		let point = vector_shape.anchors.by_index(0).unwrap().points[ControlPointType::Anchor].as_ref().unwrap().position;
 		let mut bez_path = vec![PathEl::MoveTo((point.x, point.y).into())];
 
-		for elements in vector_shape.anchors.windows(2) {
+		for elements in vector_shape.windows(2) {
 			let first = &elements[0];
 			let second = &elements[1];
 			let new_segment = match [&first.points[2], &second.points[1], &second.points[0]] {
