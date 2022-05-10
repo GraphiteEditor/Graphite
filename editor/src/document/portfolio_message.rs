@@ -21,7 +21,6 @@ pub enum PortfolioMessage {
 	},
 	CloseActiveDocumentWithConfirmation,
 	CloseAllDocuments,
-	CloseAllDocumentsWithConfirmation,
 	CloseDocument {
 		document_id: u64,
 	},
@@ -35,6 +34,9 @@ pub enum PortfolioMessage {
 		clipboard: Clipboard,
 	},
 	NewDocument,
+	NewDocumentWithName {
+		name: String,
+	},
 	NextDocument,
 	OpenDocument,
 	OpenDocumentFile {
@@ -59,11 +61,10 @@ pub enum PortfolioMessage {
 		data: String,
 	},
 	PrevDocument,
-	RequestAboutGraphiteDialog,
 	SelectDocument {
 		document_id: u64,
 	},
-	SetActiveDcoument {
+	SetActiveDocument {
 		document_id: u64,
 	},
 	UpdateDocumentBar,

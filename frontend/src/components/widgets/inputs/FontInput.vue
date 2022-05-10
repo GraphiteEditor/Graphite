@@ -1,5 +1,5 @@
 <template>
-	<LayoutRow class="dropdown-input">
+	<LayoutRow class="font-input">
 		<LayoutRow class="dropdown-box" :class="{ disabled }" :style="{ minWidth: `${minWidth}px` }" @click="() => clickDropdownBox()" data-hover-menu-spawner>
 			<span>{{ activeEntry.label }}</span>
 			<IconLabel class="dropdown-arrow" :icon="'DropdownArrow'" />
@@ -16,7 +16,7 @@
 </template>
 
 <style lang="scss">
-.dropdown-input {
+.font-input {
 	position: relative;
 
 	.dropdown-box {
@@ -112,34 +112,45 @@ export default defineComponent({
 			if (!this.disabled) (this.$refs.menuList as typeof MenuList).setOpen();
 		},
 		selectFont(newName: string) {
-			if (this.isStyle) this.$emit("update:fontStyle", newName);
-			else this.$emit("update:fontFamily", newName);
+			let fontFamily;
+			let fontStyle;
 
-			{
-				const fontFamily = this.isStyle ? this.fontFamily : newName;
-				const fontStyle = this.isStyle ? newName : getFontStyles(newName)[0];
-				const fontFile = getFontFile(fontFamily, fontStyle);
-				this.$emit("changeFont", { fontFamily, fontStyle, fontFile });
+			if (this.isStyle) {
+				this.$emit("update:fontStyle", newName);
+
+				fontFamily = this.fontFamily;
+				fontStyle = newName;
+			} else {
+				this.$emit("update:fontFamily", newName);
+
+				fontFamily = newName;
+				fontStyle = getFontStyles(newName)[0];
 			}
+
+			const fontFile = getFontFile(fontFamily, fontStyle);
+			this.$emit("changeFont", { fontFamily, fontStyle, fontFile });
 		},
 		onWidthChanged(newWidth: number) {
 			this.minWidth = newWidth;
 		},
 		updateEntries(): { menuEntries: SectionsOfMenuListEntries; activeEntry: MenuListEntry } {
-			let selectedIndex = -1;
-			const menuEntries: SectionsOfMenuListEntries = [
-				(this.isStyle ? getFontStyles(this.fontFamily) : fontNames()).map((name, index) => {
-					if (name === (this.isStyle ? this.fontStyle : this.fontFamily)) selectedIndex = index;
+			const choices = this.isStyle ? getFontStyles(this.fontFamily) : fontNames();
+			const selectedChoice = this.isStyle ? this.fontStyle : this.fontFamily;
 
-					const result: MenuListEntry = {
-						label: name,
-						action: (): void => this.selectFont(name),
-					};
-					return result;
-				}),
-			];
+			let selectedEntry: MenuListEntry | undefined;
+			const entries = choices.map((name) => {
+				const result: MenuListEntry = {
+					label: name,
+					action: (): void => this.selectFont(name),
+				};
 
-			const activeEntry = selectedIndex < 0 ? { label: "-" } : menuEntries.flat()[selectedIndex];
+				if (name === selectedChoice) selectedEntry = result;
+
+				return result;
+			});
+
+			const menuEntries: SectionsOfMenuListEntries = [entries];
+			const activeEntry = selectedEntry || { label: "-" };
 
 			return { menuEntries, activeEntry };
 		},

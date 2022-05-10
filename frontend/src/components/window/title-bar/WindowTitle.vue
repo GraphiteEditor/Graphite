@@ -1,6 +1,6 @@
 <template>
 	<LayoutRow class="window-title">
-		<span>{{ title }}</span>
+		<span>{{ text }}</span>
 	</LayoutRow>
 </template>
 
@@ -20,7 +20,7 @@ import LayoutRow from "@/components/layout/LayoutRow.vue";
 
 export default defineComponent({
 	props: {
-		title: { type: String as PropType<string>, required: true },
+		text: { type: String as PropType<string>, required: true },
 	},
 	components: { LayoutRow },
 });

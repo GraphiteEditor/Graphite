@@ -6,7 +6,7 @@
 			</div>
 		</div>
 		<div class="entry-container" v-for="(entry, index) in menuEntries" :key="index">
-			<div @click="() => handleEntryClick(entry)" class="entry" :class="{ open: entry.ref && entry.ref.isOpen() }" data-hover-menu-spawner>
+			<div @click="() => handleEntryClick(entry)" class="entry" :class="{ open: entry.ref?.isOpen() }" data-hover-menu-spawner>
 				<IconLabel :icon="entry.icon" v-if="entry.icon" />
 				<span v-if="entry.label">{{ entry.label }}</span>
 			</div>
@@ -65,15 +65,7 @@ function makeMenuEntries(editor: EditorState): MenuListEntries {
 			ref: undefined,
 			children: [
 				[
-					{ label: "New", icon: "File", shortcut: ["KeyControl", "KeyN"], shortcutRequiresLock: true, action: (): void => editor.instance.new_document() },
-					{
-						label: "New 1920x1080",
-						icon: "File",
-						action: (): void => {
-							editor.instance.new_document();
-							editor.instance.create_artboard_and_fit_to_viewport(0, 0, 1920, 1080);
-						},
-					},
+					{ label: "New…", icon: "File", shortcut: ["KeyControl", "KeyN"], shortcutRequiresLock: true, action: (): void => editor.instance.request_new_document_dialog() },
 					{ label: "Open…", shortcut: ["KeyControl", "KeyO"], action: (): void => editor.instance.open_document() },
 					{
 						label: "Open Recent",
@@ -168,7 +160,12 @@ function makeMenuEntries(editor: EditorState): MenuListEntries {
 			label: "Help",
 			ref: undefined,
 			children: [
-				[{ label: "About Graphite", action: async (): Promise<void> => editor.instance.request_about_graphite_dialog() }],
+				[
+					{
+						label: "About Graphite",
+						action: async (): Promise<void> => editor.instance.request_about_graphite_dialog(),
+					},
+				],
 				[
 					{ label: "Report a Bug", action: (): unknown => window.open("https://github.com/GraphiteEditor/Graphite/issues/new", "_blank") },
 					{ label: "Visit on GitHub", action: (): unknown => window.open("https://github.com/GraphiteEditor/Graphite", "_blank") },

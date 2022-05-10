@@ -142,7 +142,8 @@ impl Default for Mapping {
 			// Colors
 			entry! {action=ToolMessage::ResetColors, key_down=KeyX, modifiers=[KeyShift, KeyControl]},
 			entry! {action=ToolMessage::SwapColors, key_down=KeyX, modifiers=[KeyShift]},
-			// Editor actions
+			entry! {action=ToolMessage::SelectRandomPrimaryColor, key_down=KeyC, modifiers=[KeyAlt]},
+			// Editor Actions
 			entry! {action=FrontendMessage::TriggerFileUpload, key_down=KeyO, modifiers=[KeyControl]},
 			// Document actions
 			entry! {action=DocumentMessage::Redo, key_down=KeyZ, modifiers=[KeyControl, KeyShift]},
@@ -151,7 +152,7 @@ impl Default for Mapping {
 			entry! {action=DocumentMessage::SelectAllLayers, key_down=KeyA, modifiers=[KeyControl]},
 			entry! {action=DocumentMessage::DeleteSelectedLayers, key_down=KeyDelete},
 			entry! {action=DocumentMessage::DeleteSelectedLayers, key_down=KeyBackspace},
-			entry! {action=DocumentMessage::ExportDocument, key_down=KeyE, modifiers=[KeyControl]},
+			entry! {action=DialogMessage::RequestExportDialog, key_down=KeyE, modifiers=[KeyControl]},
 			entry! {action=DocumentMessage::SaveDocument, key_down=KeyS, modifiers=[KeyControl]},
 			entry! {action=DocumentMessage::SaveDocument, key_down=KeyS, modifiers=[KeyControl, KeyShift]},
 			entry! {action=DocumentMessage::DebugPrintDocument, key_down=Key9},
@@ -184,10 +185,10 @@ impl Default for Mapping {
 			entry! {action=MovementMessage::TranslateCanvasByViewportFraction { delta: DVec2::new(0., 1.) }, key_down=KeyPageUp},
 			entry! {action=MovementMessage::TranslateCanvasByViewportFraction { delta: DVec2::new(0., -1.) }, key_down=KeyPageDown},
 			// Portfolio actions
-			entry! {action=PortfolioMessage::NewDocument, key_down=KeyN, modifiers=[KeyControl]},
+			entry! {action=DialogMessage::RequestNewDocumentDialog, key_down=KeyN, modifiers=[KeyControl]},
 			entry! {action=PortfolioMessage::NextDocument, key_down=KeyTab, modifiers=[KeyControl]},
 			entry! {action=PortfolioMessage::PrevDocument, key_down=KeyTab, modifiers=[KeyControl, KeyShift]},
-			entry! {action=PortfolioMessage::CloseAllDocumentsWithConfirmation, key_down=KeyW, modifiers=[KeyControl, KeyAlt]},
+			entry! {action=DialogMessage::CloseAllDocumentsWithConfirmation, key_down=KeyW, modifiers=[KeyControl, KeyAlt]},
 			entry! {action=PortfolioMessage::CloseActiveDocumentWithConfirmation, key_down=KeyW, modifiers=[KeyControl]},
 			entry! {action=PortfolioMessage::Copy { clipboard: Clipboard::Device }, key_down=KeyC, modifiers=[KeyControl]},
 			entry! {action=PortfolioMessage::Cut { clipboard: Clipboard::Device }, key_down=KeyX, modifiers=[KeyControl]},

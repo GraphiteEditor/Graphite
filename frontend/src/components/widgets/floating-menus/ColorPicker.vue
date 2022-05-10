@@ -161,13 +161,13 @@ export default defineComponent({
 		},
 		onPointerDown(e: PointerEvent) {
 			const saturationPicker = this.$refs.saturationPicker as typeof LayoutCol;
-			const saturationPickerElement = saturationPicker && (saturationPicker.$el as HTMLElement);
+			const saturationPickerElement = saturationPicker?.$el as HTMLElement | undefined;
 
 			const huePicker = this.$refs.huePicker as typeof LayoutCol;
-			const huePickerElement = huePicker && (huePicker.$el as HTMLElement);
+			const huePickerElement = huePicker?.$el as HTMLElement | undefined;
 
 			const opacityPicker = this.$refs.opacityPicker as typeof LayoutCol;
-			const opacityPickerElement = opacityPicker && (opacityPicker.$el as HTMLElement);
+			const opacityPickerElement = opacityPicker?.$el as HTMLElement | undefined;
 
 			if (!(e.currentTarget instanceof HTMLElement) || !saturationPickerElement || !huePickerElement || !opacityPickerElement) return;
 
@@ -216,13 +216,13 @@ export default defineComponent({
 		},
 		updateRects() {
 			const saturationPicker = this.$refs.saturationPicker as typeof LayoutCol;
-			const saturationPickerElement = saturationPicker && (saturationPicker.$el as HTMLElement);
+			const saturationPickerElement = saturationPicker?.$el as HTMLElement | undefined;
 
 			const huePicker = this.$refs.huePicker as typeof LayoutCol;
-			const huePickerElement = huePicker && (huePicker.$el as HTMLElement);
+			const huePickerElement = huePicker?.$el as HTMLElement | undefined;
 
 			const opacityPicker = this.$refs.opacityPicker as typeof LayoutCol;
-			const opacityPickerElement = opacityPicker && (opacityPicker.$el as HTMLElement);
+			const opacityPickerElement = opacityPicker?.$el as HTMLElement | undefined;
 
 			if (!saturationPickerElement || !huePickerElement || !opacityPickerElement) return;
 

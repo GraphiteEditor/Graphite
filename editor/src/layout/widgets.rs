@@ -150,7 +150,9 @@ impl<T> Default for WidgetCallback<T> {
 #[remain::sorted]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Widget {
+	CheckboxInput(CheckboxInput),
 	ColorInput(ColorInput),
+	DropdownInput(DropdownInput),
 	FontInput(FontInput),
 	IconButton(IconButton),
 	IconLabel(IconLabel),
@@ -160,6 +162,7 @@ pub enum Widget {
 	RadioInput(RadioInput),
 	Separator(Separator),
 	TextAreaInput(TextAreaInput),
+	TextButton(TextButton),
 	TextInput(TextInput),
 	TextLabel(TextLabel),
 }
@@ -191,6 +194,7 @@ pub struct NumberInput {
 	#[serde(rename = "displayDecimalPlaces")]
 	#[derivative(Default(value = "3"))]
 	pub display_decimal_places: u32,
+	pub disabled: bool,
 }
 
 #[derive(Clone, Serialize, Deserialize, Derivative)]
@@ -290,6 +294,20 @@ pub struct IconButton {
 
 #[derive(Clone, Serialize, Deserialize, Derivative, Default)]
 #[derivative(Debug, PartialEq)]
+#[serde(rename_all(serialize = "camelCase", deserialize = "camelCase"))]
+pub struct TextButton {
+	pub label: String,
+	pub emphasized: bool,
+	pub disabled: bool,
+	pub min_width: u32,
+	pub gap_after: bool,
+	#[serde(skip)]
+	#[derivative(Debug = "ignore", PartialEq = "ignore")]
+	pub on_update: WidgetCallback<TextButton>,
+}
+
+#[derive(Clone, Serialize, Deserialize, Derivative, Default)]
+#[derivative(Debug, PartialEq)]
 pub struct OptionalInput {
 	pub checked: bool,
 	pub icon: String,
@@ -302,9 +320,55 @@ pub struct OptionalInput {
 
 #[derive(Clone, Serialize, Deserialize, Derivative, Default)]
 #[derivative(Debug, PartialEq)]
+pub struct CheckboxInput {
+	pub checked: bool,
+	pub icon: String,
+	#[serde(rename = "outlineStyle")]
+	pub outline_style: bool,
+	#[serde(rename = "title")]
+	pub tooltip: String,
+	#[serde(skip)]
+	#[derivative(Debug = "ignore", PartialEq = "ignore")]
+	pub on_update: WidgetCallback<CheckboxInput>,
+}
+
+#[derive(Clone, Serialize, Deserialize, Derivative, Default)]
+#[derivative(Debug, PartialEq)]
 pub struct PopoverButton {
 	pub title: String,
 	pub text: String,
+}
+
+#[derive(Clone, Serialize, Deserialize, Derivative, Default)]
+#[derivative(Debug, PartialEq)]
+pub struct DropdownInput {
+	#[serde(rename = "menuEntries")]
+	pub menu_entries: Vec<Vec<DropdownEntryData>>,
+
+	// This uses `u32` instead of `usize` since it will be serialized as a normal JS number
+	// TODO(mfish33): Replace with usize when using native UI
+	#[serde(rename = "selectedIndex")]
+	pub selected_index: u32,
+
+	#[serde(rename = "drawIcon")]
+	pub draw_icon: bool,
+}
+
+#[derive(Clone, Serialize, Deserialize, Derivative, Default)]
+#[derivative(Debug, PartialEq)]
+pub struct DropdownEntryData {
+	pub value: String,
+	pub label: String,
+	pub icon: String,
+	pub checkbox: bool,
+	pub shortcut: Vec<String>,
+	#[serde(rename = "shortcutRequiresLock")]
+	pub shortcut_requires_lock: bool,
+	pub children: Vec<Vec<DropdownEntryData>>,
+
+	#[serde(skip)]
+	#[derivative(Debug = "ignore", PartialEq = "ignore")]
+	pub on_update: WidgetCallback<()>,
 }
 
 #[derive(Clone, Serialize, Deserialize, Derivative, Default)]
@@ -342,4 +406,7 @@ pub struct TextLabel {
 	pub value: String,
 	pub bold: bool,
 	pub italic: bool,
+	pub multiline: bool,
+	#[serde(rename = "tableAlign")]
+	pub table_align: bool,
 }

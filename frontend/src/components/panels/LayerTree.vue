@@ -21,20 +21,16 @@
 				:disabled="opacityNumberInputDisabled"
 			/>
 
-			<Separator :type="'Related'" />
-
-			<PopoverButton>
+			<!-- <PopoverButton>
 				<h3>Compositing Options</h3>
 				<p>The contents of this popover menu are coming soon</p>
-			</PopoverButton>
-		</LayoutRow>
-		<LayoutRow class="button-bar">
-			<LayoutRow></LayoutRow>
-			<LayoutRow>
-				<!-- TODO: Remember to make these tooltip input hints customized to macOS also -->
-				<IconButton :action="createEmptyFolder" :icon="'NodeFolder'" title="New Folder (Ctrl+Shift+N)" :size="16" />
-				<IconButton :action="deleteSelectedLayers" :icon="'Trash'" title="Delete Selected (Del)" :size="16" />
-			</LayoutRow>
+			</PopoverButton> -->
+
+			<Separator :type="'Section'" />
+
+			<!-- TODO: Remember to make these tooltip input hints customized to macOS also -->
+			<IconButton :action="createEmptyFolder" :icon="'NodeFolder'" title="New Folder (Ctrl+Shift+N)" :size="24" />
+			<IconButton :action="deleteSelectedLayers" :icon="'Trash'" title="Delete Selected (Del)" :size="24" />
 		</LayoutRow>
 		<LayoutRow class="layer-tree" :scrollableY="true">
 			<LayoutCol class="list" ref="layerTreeList" @click="() => deselectAllLayers()" @dragover="(e) => draggable && updateInsertLine(e)" @dragend="() => draggable && drop()">
@@ -42,11 +38,11 @@
 					class="layer-row"
 					v-for="(listing, index) in layers"
 					:key="String(listing.entry.path.slice(-1))"
-					:class="{ 'insert-folder': draggingData && draggingData.highlightFolder && draggingData.insertFolder === listing.entry.path }"
+					:class="{ 'insert-folder': draggingData?.highlightFolder && draggingData?.insertFolder === listing.entry.path }"
 				>
 					<LayoutRow class="visibility">
 						<IconButton
-							:action="(e) => (toggleLayerVisibility(listing.entry.path), e && e.stopPropagation())"
+							:action="(e) => (toggleLayerVisibility(listing.entry.path), e?.stopPropagation())"
 							:size="24"
 							:icon="listing.entry.visible ? 'EyeVisible' : 'EyeHidden'"
 							:title="listing.entry.visible ? 'Visible' : 'Hidden'"
@@ -71,7 +67,7 @@
 						:data-index="index"
 						:draggable="draggable"
 						@dragstart="(e) => draggable && dragStart(e, listing.entry)"
-						:title="`${listing.entry.name}\n${devMode ? 'Layer Path: ' + listing.entry.path.join(' / ') : ''}`"
+						:title="`${listing.entry.name}\n${devMode ? 'Layer Path: ' + listing.entry.path.join(' / ') : ''}`.trim() || null"
 					>
 						<LayoutRow class="layer-type-icon">
 							<IconLabel v-if="listing.entry.layer_type === 'Folder'" :icon="'NodeFolder'" title="Folder" />
@@ -118,19 +114,6 @@
 		.dropdown-input,
 		.number-input {
 			flex: 1 1 auto;
-		}
-	}
-
-	.button-bar {
-		height: 24px;
-		flex: 0 0 auto;
-		justify-content: space-between;
-		align-items: center;
-		margin: 0 4px;
-
-		.layout-row {
-			flex: 0 0 auto;
-			gap: 4px;
 		}
 	}
 
@@ -311,7 +294,6 @@ import { BlendMode, DisplayDocumentLayerTreeStructure, UpdateDocumentLayer, Laye
 import LayoutCol from "@/components/layout/LayoutCol.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
 import IconButton from "@/components/widgets/buttons/IconButton.vue";
-import PopoverButton from "@/components/widgets/buttons/PopoverButton.vue";
 import { SectionsOfMenuListEntries } from "@/components/widgets/floating-menus/MenuList.vue";
 import DropdownInput from "@/components/widgets/inputs/DropdownInput.vue";
 import NumberInput from "@/components/widgets/inputs/NumberInput.vue";
@@ -396,16 +378,16 @@ export default defineComponent({
 		markTopOffset(height: number): string {
 			return `${height}px`;
 		},
-		async createEmptyFolder() {
+		createEmptyFolder() {
 			this.editor.instance.create_empty_folder();
 		},
-		async deleteSelectedLayers() {
+		deleteSelectedLayers() {
 			this.editor.instance.delete_selected_layers();
 		},
-		async toggleLayerVisibility(path: BigUint64Array) {
+		toggleLayerVisibility(path: BigUint64Array) {
 			this.editor.instance.toggle_layer_visibility(path);
 		},
-		async handleExpandArrowClick(path: BigUint64Array) {
+		handleExpandArrowClick(path: BigUint64Array) {
 			this.editor.instance.toggle_layer_expansion(path);
 		},
 		onEditLayerName(listing: LayerListingInfo) {
@@ -414,12 +396,12 @@ export default defineComponent({
 			this.draggable = false;
 
 			listing.editingName = true;
-			const tree = (this.$refs.layerTreeList as typeof LayoutCol).$el as HTMLElement;
+			const tree: HTMLElement = (this.$refs.layerTreeList as typeof LayoutCol).$el;
 			this.$nextTick(() => {
 				(tree.querySelector("[data-text-input]:not([disabled])") as HTMLInputElement).select();
 			});
 		},
-		async onEditLayerNameChange(listing: LayerListingInfo, inputElement: EventTarget | null) {
+		onEditLayerNameChange(listing: LayerListingInfo, inputElement: EventTarget | null) {
 			// Eliminate duplicate events
 			if (!listing.editingName) return;
 
@@ -434,8 +416,7 @@ export default defineComponent({
 
 			listing.editingName = false;
 			this.$nextTick(() => {
-				const selection = window.getSelection();
-				if (selection) selection.removeAllRanges();
+				window.getSelection()?.removeAllRanges();
 			});
 		},
 		async setLayerBlendMode(newSelectedIndex: number) {
@@ -536,7 +517,7 @@ export default defineComponent({
 			// Stop the drag from being shown as cancelled
 			event.preventDefault();
 
-			const tree = (this.$refs.layerTreeList as typeof LayoutCol).$el as HTMLElement;
+			const tree: HTMLElement = (this.$refs.layerTreeList as typeof LayoutCol).$el;
 			this.draggingData = this.calculateDragIndex(tree, event.clientY);
 		},
 		async drop() {
@@ -594,8 +575,8 @@ export default defineComponent({
 	mounted() {
 		this.editor.dispatcher.subscribeJsMessage(DisplayDocumentLayerTreeStructure, (displayDocumentLayerTreeStructure) => {
 			const layerWithNameBeingEdited = this.layers.find((layer: LayerListingInfo) => layer.editingName);
-			const layerPathWithNameBeingEdited = layerWithNameBeingEdited && layerWithNameBeingEdited.entry.path;
-			const layerIdWithNameBeingEdited = layerPathWithNameBeingEdited && layerPathWithNameBeingEdited.slice(-1)[0];
+			const layerPathWithNameBeingEdited = layerWithNameBeingEdited?.entry.path;
+			const layerIdWithNameBeingEdited = layerPathWithNameBeingEdited?.slice(-1)[0];
 			const path = [] as bigint[];
 			this.layers = [] as LayerListingInfo[];
 
@@ -606,9 +587,18 @@ export default defineComponent({
 					path.push(layerId);
 
 					const mapping = cache.get(path.toString());
-					if (mapping) layers.push({ folderIndex: index, bottomLayer: index === folder.children.length - 1, entry: mapping, editingName: layerIdWithNameBeingEdited === layerId });
+					if (mapping) {
+						layers.push({
+							folderIndex: index,
+							bottomLayer: index === folder.children.length - 1,
+							entry: mapping,
+							editingName: layerIdWithNameBeingEdited === layerId,
+						});
+					}
 
+					// Call self recursively if there are any children
 					if (item.children.length >= 1) recurse(item, layers, cache);
+
 					path.pop();
 				});
 			};
@@ -626,6 +616,7 @@ export default defineComponent({
 			} else {
 				this.layerCache.set(targetPath.toString(), targetLayer);
 			}
+
 			this.setBlendModeForSelectedLayers();
 			this.setOpacityForSelectedLayers();
 		});
@@ -634,7 +625,6 @@ export default defineComponent({
 		LayoutRow,
 		LayoutCol,
 		Separator,
-		PopoverButton,
 		NumberInput,
 		IconButton,
 		IconLabel,
