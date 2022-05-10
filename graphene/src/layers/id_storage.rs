@@ -65,17 +65,16 @@ impl<T> UniqueElements<T> {
 				}
 			}
 
-			let id = self.next_assignment_id;
 			self.values.insert(insert_index as usize, element);
-			self.keys.insert(insert_index as usize, id);
-			self.id_to_index.insert(id, insert_index);
+			self.keys.insert(insert_index as usize, self.next_assignment_id);
+			self.id_to_index.insert(self.next_assignment_id, insert_index);
 
 			// Linear probing for collision avoidance
 			while self.id_to_index.contains_key(&self.next_assignment_id) {
 				self.next_assignment_id += 1;
 			}
 
-			Some(id)
+			Some(self.next_assignment_id)
 		} else {
 			None
 		}
