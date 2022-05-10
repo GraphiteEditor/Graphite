@@ -1,10 +1,9 @@
-use crate::{
-	layers::{
-		id_storage::UniqueElements,
-		layer_info::{Layer, LayerDataType},
-	},
-	LayerId,
+use crate::layers::{
+	id_storage::UniqueElements,
+	layer_info::{Layer, LayerDataType},
 };
+use crate::LayerId;
+use std::ops::{Deref, DerefMut};
 
 use super::{constants::ControlPointType, vector_anchor::VectorAnchor, vector_control_point::VectorControlPoint};
 
@@ -46,20 +45,76 @@ impl VectorShape {
 		shape.path_elements(0.1).into()
 	}
 
-	pub fn move_selected(&mut self, delta: DVec2, relative: bool) {
-		// TODO Reimplement this function properly
-		for anchor in self.selected_anchors_mut() {
-			if anchor.is_anchor_selected() {
-				// anchor.move_selected_points(anchor.control_points_mut(), delta, relative);
-			}
+	/// constructs a rectangle with `p1` as the lower left and `p2` as the top right
+	pub fn new_rect(p1: DVec2, p2: DVec2) -> Self {
+		VectorShape {
+			layer_path: vec![],
+			anchors: vec![
+				VectorAnchor::new(p1),
+				VectorAnchor::new(DVec2::new(p1.x, p2.y)),
+				VectorAnchor::new(p2),
+				VectorAnchor::new(DVec2::new(p2.x, p1.y)),
+			]
+			.into_iter()
+			.collect(),
+			closed: true,
+			transform: DAffine2::IDENTITY,
+			selected: false,
 		}
 	}
 
-	pub fn delete_selected(&mut self) {
-		// TODO Reimplement this function properly
-		for anchor in self.selected_anchors_mut() {
-			if anchor.is_anchor_selected() {}
+	/// constructs an ngon
+	/// `radius` is the distance from the center to any vertex, or the radius of the circle the ngon may be inscribed inside
+	pub fn new_ngon(center: DVec2, sides: u64, radius: f64) -> Self {
+		let mut anchors = vec![];
+		for i in 0..sides {
+			let angle = (i as f64) * std::f64::consts::TAU / (sides as f64);
+			anchors.push(VectorAnchor::new(DVec2::new(center.x + radius * f64::cos(angle), center.y + radius * f64::sin(angle))));
 		}
+		VectorShape {
+			layer_path: vec![],
+			anchors: anchors.into_iter().collect(),
+			closed: true,
+			transform: DAffine2::IDENTITY,
+			selected: false,
+		}
+	}
+
+	/// constructs a line from `p1` to `p2`
+	pub fn new_line(p1: DVec2, p2: DVec2) -> Self {
+		VectorShape {
+			layer_path: vec![],
+			anchors: vec![VectorAnchor::new(p1), VectorAnchor::new(p2)].into_iter().collect(),
+			closed: false,
+			transform: DAffine2::IDENTITY,
+			selected: false,
+		}
+	}
+
+	pub fn new_poly_line<T: Into<glam::DVec2>>(points: Vec<T>) -> Self {
+		let mut p_line = VectorShape {
+			layer_path: vec![],
+			anchors: UniqueElements::default(),
+			closed: false,
+			transform: DAffine2::IDENTITY,
+			selected: false,
+		};
+		points
+			.into_iter()
+			.enumerate()
+			.for_each(|(local_id, point)| match p_line.anchors.add(VectorAnchor::new(point.into()), None, -1) {
+				_ => (),
+			});
+		p_line
+	}
+
+	pub fn move_selected(&mut self, delta: DVec2, relative: bool) {
+		self.selected_anchors_mut().for_each(|anchor| anchor.move_selected_points(relative, &DAffine2::from_translation(delta)));
+	}
+
+	pub fn delete_selected(&mut self) {
+		// involves cloning the elements of anchors, could be replaced by a more efficient implementation possibly
+		self.anchors = self.iter().filter(|anchor| !anchor.is_anchor_selected()).collect();
 	}
 
 	pub fn add_point(&mut self, nearest_point_on_curve: DVec2) {
@@ -111,39 +166,30 @@ impl VectorShape {
 
 	/// Select all the anchors in this shape
 	pub fn select_all_anchors(&mut self) {
-		for anchor in self.anchors.values_mut() {
+		for anchor in self.anchors.iter_mut() {
 			anchor.select_point(ControlPointType::Anchor as usize, true);
 		}
 	}
 
 	/// Clear all the selected anchors, and clear the selected points on the anchors
 	pub fn clear_selected_anchors(&mut self) {
-		for anchor in self.anchors.values_mut() {
+		for anchor in self.anchors.iter_mut() {
 			anchor.clear_selected_points();
 		}
 	}
 
 	/// Return all the selected anchors by reference
 	pub fn selected_anchors(&self) -> impl Iterator<Item = &VectorAnchor> {
-		self.anchors.values().iter().filter(|anchor| anchor.is_anchor_selected())
+		self.iter().filter(|anchor| anchor.is_anchor_selected())
 	}
 
 	/// Return all the selected anchors, mutable
 	pub fn selected_anchors_mut(&mut self) -> impl Iterator<Item = &mut VectorAnchor> {
-		self.anchors
-			.values_mut()
-			.iter_mut()
-			.enumerate()
-			.filter_map(|(_, anchor)| if anchor.is_anchor_selected() { Some(anchor) } else { None })
+		self.iter_mut().filter(|anchor| anchor.is_anchor_selected())
 	}
 
 	pub fn set_selected(&mut self, selected: bool) {
 		self.selected = selected;
-	}
-
-	/// Return a mutable interator of the anchors regardless of selection
-	pub fn anchors_mut(&mut self) -> impl Iterator<Item = &mut VectorAnchor> {
-		self.anchors.values_mut().iter_mut()
 	}
 
 	/// Place point in local space in relation to this shape's transform
@@ -204,7 +250,7 @@ impl From<&VectorShape> for BezPath {
 		let point = vector_shape.anchors.by_index(0).unwrap().points[ControlPointType::Anchor].as_ref().unwrap().position;
 		let mut bez_path = vec![PathEl::MoveTo((point.x, point.y).into())];
 
-		for elements in vector_shape.anchors.values().windows(2) {
+		for elements in vector_shape.windows(2) {
 			let first = &elements[0];
 			let second = &elements[1];
 			let new_segment = match [&first.points[2], &second.points[1], &second.points[0]] {
@@ -261,6 +307,21 @@ impl<T: Iterator<Item = PathEl>> From<T> for VectorShape {
 		// a VectorShape is closed if and only if every subpath is closed
 		vector_shape.closed = closed_flag;
 		vector_shape
+	}
+}
+
+// allows access to anchors as slice or iterator
+impl Deref for VectorShape {
+	type Target = [VectorAnchor];
+	fn deref(&self) -> &Self::Target {
+		&self.anchors
+	}
+}
+
+// allows mutable access to anchors as slice or iterator
+impl DerefMut for VectorShape {
+	fn deref_mut(&mut self) -> &mut Self::Target {
+		&mut self.anchors
 	}
 }
 

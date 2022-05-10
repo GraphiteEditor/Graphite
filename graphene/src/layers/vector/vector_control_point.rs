@@ -1,5 +1,5 @@
 use super::constants::ControlPointType;
-use glam::DVec2;
+use glam::{DAffine2, DVec2};
 use serde::{Deserialize, Serialize};
 
 /// VectorControlPoint represents any grabbable point, anchor or handle
@@ -44,8 +44,13 @@ impl VectorControlPoint {
 		self.is_selected = selected;
 	}
 
+	/// apply given transform
+	pub fn transform(&mut self, delta: &DAffine2) {
+		self.position = delta.transform_point2(self.position);
+	}
+
 	/// Move by a delta amount
-	pub fn move_by(&mut self, delta: DVec2) {
-		self.position += delta;
+	pub fn move_by(&mut self, delta: &DVec2) {
+		self.position += *delta;
 	}
 }

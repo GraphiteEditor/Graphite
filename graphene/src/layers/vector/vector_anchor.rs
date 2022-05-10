@@ -68,11 +68,17 @@ impl VectorAnchor {
 		closest_index
 	}
 
-	// TODO change relative to an enum (relative, absolute)
-	/// Move the selected points by the provided delta
-	pub fn move_selected_points(&mut self, translation: DVec2, relative: bool, transform: &DAffine2) {
-		// TODO This needs to be rebuilt without usage of kurbo
-		// Move associated handles
+	/// Move the selected points by the provided transform
+	/// if relative is false the point is transformed and its original position is subtracted
+	pub fn move_selected_points(&mut self, relative: bool, transform: &DAffine2) {
+		for point in self.selected_points_mut() {
+			if !relative {
+				let copy = point.clone().position;
+				point.transform(transform);
+				point.move_by(&(-copy));
+			}
+			point.transform(transform);
+		}
 	}
 
 	/// Returns true if any points in this anchor are selected
@@ -104,12 +110,12 @@ impl VectorAnchor {
 		}
 	}
 
-	/// Provides the selected points in this anchor
+	/// Provides the points in this anchor
 	pub fn points(&self) -> impl Iterator<Item = &VectorControlPoint> {
 		self.points.iter().flatten()
 	}
 
-	/// Returns
+	/// Provides the selected points in this anchor
 	pub fn selected_points(&self) -> impl Iterator<Item = &VectorControlPoint> {
 		self.points.iter().flatten().filter(|pnt| pnt.is_selected)
 	}
@@ -128,19 +134,9 @@ impl VectorAnchor {
 	}
 
 	/// Returns the opposing handle to the handle provided
+	/// Returns the anchor handle if the anchor is provided
 	pub fn opposing_handle(&self, handle: &VectorControlPoint) -> &Option<VectorControlPoint> {
-		if let Some(point) = &self.points[ControlPointType::Handle1] {
-			if point == handle {
-				return &self.points[ControlPointType::Handle2];
-			}
-		};
-
-		if let Some(point) = &self.points[ControlPointType::Handle2] {
-			if point == handle {
-				return &self.points[ControlPointType::Handle1];
-			}
-		};
-		&None
+		&self.points[!handle.manipulator_type]
 	}
 
 	/// Set the mirroring state

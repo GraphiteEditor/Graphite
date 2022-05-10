@@ -78,33 +78,10 @@ impl ShapeLayer {
 		}
 	}
 
-	pub fn ngon(sides: u8, style: PathStyle) -> Self {
-		use std::f64::consts::{FRAC_PI_2, TAU};
-
-		fn unit_rotation(theta: f64) -> DVec2 {
-			DVec2::new(theta.sin(), theta.cos())
-		}
-
-		let mut path = kurbo::BezPath::new();
-
-		let apothem_offset_angle = TAU / (sides as f64);
-		// Rotate odd sided shapes by 90 degrees
-		let offset = ((sides + 1) % 2) as f64 * FRAC_PI_2;
-
-		let relative_points = (0..sides).map(|i| apothem_offset_angle * i as f64 + offset).map(unit_rotation);
-
-		let min = relative_points.clone().reduce(|a, b| a.min(b)).unwrap_or_default();
-		let transform = DAffine2::from_scale_angle_translation(DVec2::ONE / 2., 0., -min / 2.);
-		let point = |vec: DVec2| kurbo::Point::new(vec.x, vec.y);
-
-		let mut relative_points = relative_points.map(|p| point(transform.transform_point2(p)));
-		path.move_to(relative_points.next().expect("Tried to create an ngon with 0 sides"));
-		relative_points.for_each(|p| path.line_to(p));
-
-		path.close_path();
-
+	/// TODO The behavior of ngon changed from the previous iteration slightly
+	pub fn ngon(sides: u64, style: PathStyle) -> Self {
 		Self {
-			shape: path.iter().into(),
+			shape: VectorShape::new_ngon(DVec2::new(0., 0.), sides, 1.),
 			style,
 			render_index: 1,
 			closed: true,
@@ -113,7 +90,7 @@ impl ShapeLayer {
 
 	pub fn rectangle(style: PathStyle) -> Self {
 		Self {
-			shape: VectorShape::from_kurbo_shape(&kurbo::Rect::new(0., 0., 1., 1.).to_path(0.01)),
+			shape: VectorShape::new_rect(DVec2::new(0., 0.), DVec2::new(1., 1.)),
 			style,
 			render_index: 1,
 			closed: true,
@@ -131,7 +108,7 @@ impl ShapeLayer {
 
 	pub fn line(style: PathStyle) -> Self {
 		Self {
-			shape: VectorShape::from_kurbo_shape(&kurbo::Line::new((0., 0.), (1., 0.)).to_path(0.01)),
+			shape: VectorShape::new_line(DVec2::new(0., 0.), DVec2::new(1., 0.)),
 			style,
 			render_index: 1,
 			closed: false,
@@ -139,16 +116,8 @@ impl ShapeLayer {
 	}
 
 	pub fn poly_line(points: Vec<impl Into<glam::DVec2>>, style: PathStyle) -> Self {
-		let mut path = kurbo::BezPath::new();
-		points
-			.into_iter()
-			.map(|v| v.into())
-			.map(|v: DVec2| kurbo::Point { x: v.x, y: v.y })
-			.enumerate()
-			.for_each(|(i, p)| if i == 0 { path.move_to(p) } else { path.line_to(p) });
-
 		Self {
-			shape: path.iter().into(),
+			shape: VectorShape::new_poly_line(points),
 			style,
 			render_index: 0,
 			closed: false,
