@@ -76,12 +76,12 @@ h1.box-header {
 		white-space: pre;
 	}
 
-	~hr {
+	~ hr {
 		margin-top: 20px;
 	}
 
-	+hr+.diptych,
-	+hr+.triptych {
+	+ hr + .diptych,
+	+ hr + .triptych {
 		margin-top: 40px;
 	}
 }
@@ -89,7 +89,7 @@ h1.box-header {
 h1.hero {
 	font-size: var(--font-size-intro-heading);
 
-	~p {
+	~ p {
 		font-size: var(--font-size-intro-body);
 	}
 }
@@ -130,33 +130,33 @@ p {
 	text-align: justify;
 }
 
-p~p {
+p ~ p {
 	margin-top: 1.5em;
 }
 
-h1~p,
-h2~p,
-h3~p,
-h1~ol li p,
-h2~ol li p,
-h3~ol li p,
-h1~img,
-h2~img,
-h3~img,
-p~h1,
-p~h2,
-p~h3,
-p~details summary,
-p+.link {
+h1 ~ p,
+h2 ~ p,
+h3 ~ p,
+h1 ~ ol li p,
+h2 ~ ol li p,
+h3 ~ ol li p,
+h1 ~ img,
+h2 ~ img,
+h3 ~ img,
+p ~ h1,
+p ~ h2,
+p ~ h3,
+p ~ details summary,
+p + .link {
 	margin-top: 20px;
 }
 
-h1~hr {
+h1 ~ hr {
 	margin-top: 40px;
 	margin-bottom: 20px;
 }
 
-ol+p {
+ol + p {
 	margin-top: 0;
 }
 
@@ -298,7 +298,7 @@ hr,
 
 .feature-box {
 	padding: calc(80 * var(--variable-px));
-	background-image: url("images/textures/noise.png");
+	background-image: url("https://static.graphite.rs/textures/noise.png");
 	background-blend-mode: overlay;
 	background-position: center;
 
@@ -317,7 +317,7 @@ hr,
 		max-width: var(--max-width);
 		margin: 0 auto;
 
-		.section h2+.graphic {
+		.section h2 + .graphic {
 			margin-top: 20px;
 
 			img {
@@ -346,7 +346,6 @@ hr,
 	}
 
 	@media screen and (max-width: 600px) {
-
 		&.diptych .section,
 		&.triptych .section {
 			min-width: 100%;
@@ -365,7 +364,7 @@ hr,
 		}
 	}
 
-	+div {
+	+ div {
 		margin-top: calc(80 * var(--variable-px));
 	}
 }
@@ -436,7 +435,7 @@ hr,
 								content: " »";
 							}
 						}
-
+						
 						img {
 							display: block;
 							width: var(--height);
@@ -453,7 +452,7 @@ hr,
 							--nav-font-size: 26px;
 						}
 					}
-
+	
 					@media screen and (max-width: 760px) {
 						gap: 20px;
 
@@ -463,7 +462,7 @@ hr,
 							--nav-font-size: 22px;
 						}
 					}
-
+	
 					@media screen and (max-width: 600px) {
 						gap: 16px;
 
@@ -552,7 +551,7 @@ hr,
 				position: relative;
 				z-index: 1;
 
-				~section {
+				~ section {
 					margin-top: calc(80 * var(--variable-px));
 				}
 			}
@@ -567,18 +566,17 @@ hr,
 		gap: 40px;
 		padding: 40px;
 		padding-top: 0;
-
-
+		
 		nav {
 			display: flex;
 			flex-wrap: wrap;
 			justify-content: center;
 			gap: 8px 40px;
-
+			
 			@media screen and (max-width: 900px) {
 				max-width: 500px;
 			}
-
+			
 			@media screen and (max-width: 760px) {
 				max-width: 440px;
 			}

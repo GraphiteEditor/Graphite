@@ -3,7 +3,7 @@ title = "Announcing Graphite alpha"
 date = 2022-02-12
 
 [extra]
-banner = "2022-02-12-announcing-graphite-alpha.png"
+banner = "https://static.graphite.rs/content/blog/2022-02-12-announcing-graphite-alpha.png"
 author = "Keavon Chambers"
 +++
 

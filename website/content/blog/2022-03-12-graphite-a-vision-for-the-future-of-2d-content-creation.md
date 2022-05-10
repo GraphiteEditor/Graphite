@@ -3,7 +3,7 @@ title = "Graphite: a vision for the future of 2D content creation"
 date = 2022-03-12
 
 [extra]
-banner = "2022-03-12-graphite-a-vision-for-the-future-of-2d-content-creation.png"
+banner = "https://static.graphite.rs/content/blog/2022-03-12-graphite-a-vision-for-the-future-of-2d-content-creation.png"
 author = "Keavon Chambers"
 +++
 

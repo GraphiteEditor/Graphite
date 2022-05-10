@@ -18,4 +18,4 @@ If in doubt, please send an email to <contact@graphite.rs> for permission.
 
 ## Download.
 
-Download the complete [logo kit](/images/logos/graphite-logo-kit.zip) or a specific version in PNG or SVG format below.
+Download the complete [logo kit](https://static.graphite.rs/logos/graphite-logo-kit.zip) or a specific version in PNG or SVG format below.

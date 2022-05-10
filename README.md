@@ -1,4 +1,4 @@
-![Graphite logo](website/static/images/logos/splash.svg)
+![Graphite logo](https://static.graphite.rs/readme/graphite-readme-logo.svg)
 
 # Powerful 2D vector and raster editing. Procedural and nondestructive.
 

@@ -54,7 +54,7 @@
 	margin: auto;
 	position: relative;
 	bottom: calc(-80 * var(--variable-px));
-	
+
 	div {
 		position: absolute;
 		top: 0;
@@ -128,8 +128,8 @@
 		&.left {
 			padding-left: 120px;
 			margin-left: -120px;
-			-webkit-mask-image: url("images/textures/torn-edge-left.png");
-			mask-image: url("images/textures/torn-edge-left.png");
+			-webkit-mask-image: url("https://static.graphite.rs/textures/torn-edge-left.png");
+			mask-image: url("https://static.graphite.rs/textures/torn-edge-left.png");
 			-webkit-mask-position: top left;
 			mask-position: top left;
 		}
@@ -137,8 +137,8 @@
 		&.right {
 			padding-right: 120px;
 			margin-right: -120px;
-			-webkit-mask-image: url("images/textures/torn-edge-right.png");
-			mask-image: url("images/textures/torn-edge-right.png");
+			-webkit-mask-image: url("https://static.graphite.rs/textures/torn-edge-right.png");
+			mask-image: url("https://static.graphite.rs/textures/torn-edge-right.png");
 			-webkit-mask-position: top right;
 			mask-position: top right;
 		}
@@ -153,7 +153,7 @@
 			flex-wrap: wrap;
 			justify-content: center;
 		}
-		
+
 		.carousel-controls {
 			display: flex;
 			align-items: center;
@@ -201,7 +201,7 @@
 			p + p {
 				margin: 0;
 			}
-	
+
 			p:not(.active) {
 				display: none;
 			}
@@ -235,7 +235,7 @@
 #upcoming-tech {
 	background-color: var(--color-navy);
 	color: var(--color-fog);
-	
+
 	a {
 		color: var(--color-mustard);
 	}

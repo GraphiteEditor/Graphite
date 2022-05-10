@@ -11,7 +11,7 @@
 		<div class="details">
 			<h2 class="headline">{{ page.title }}.</h2>
 			<span class="publication">By {{ page.extra.author }}. {{ page.date | date(format="%B %d, %Y", timezone="America/Los_Angeles") }}.</span>
-			<img class="banner" src="/blog/{{ page.extra.banner }}" />
+			<img class="banner" src="{{ page.extra.banner }}" />
 			<hr />
 		</div>
 		<article>

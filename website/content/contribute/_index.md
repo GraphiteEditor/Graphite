@@ -99,4 +99,4 @@ Once you begin writing code, please open a pull request immediately and mark it 
 
 Open a new PR as a draft / Convert an existing PR to a draft:
 
-![](/contribute/draft-pr.png)
+![](https://static.graphite.rs/content/contribute/draft-pr.png)
