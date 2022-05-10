@@ -3,6 +3,7 @@ use super::folder_layer::FolderLayer;
 use super::shape_layer::ShapeLayer;
 use super::style::ViewMode;
 use super::text_layer::TextLayer;
+use super::vector::vector_shape::VectorShape;
 use crate::intersection::Quad;
 use crate::DocumentError;
 use crate::LayerId;
@@ -153,6 +154,27 @@ impl Layer {
 		match &mut self.data {
 			LayerDataType::Folder(f) => Ok(f),
 			_ => Err(DocumentError::NotAFolder),
+		}
+	}
+
+	pub fn as_vector_shape(&self) -> Option<&VectorShape> {
+		match &self.data {
+			LayerDataType::Shape(s) => Some(&s.shape),
+			_ => None,
+		}
+	}
+
+	pub fn as_vector_shape_copy(&self) -> Option<VectorShape> {
+		match &self.data {
+			LayerDataType::Shape(s) => Some(s.shape.clone()),
+			_ => None,
+		}
+	}
+
+	pub fn as_vector_shape_mut(&mut self) -> Option<&mut VectorShape> {
+		match &mut self.data {
+			LayerDataType::Shape(s) => Some(&mut s.shape),
+			_ => None,
 		}
 	}
 
