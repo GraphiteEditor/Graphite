@@ -144,7 +144,7 @@ impl ShapeEditor {
 
 	/// A mutable iterator of all the anchors, regardless of selection
 	pub fn anchors_mut(&mut self) -> impl Iterator<Item = &mut VectorAnchor> {
-		self.copy_of_shapes.iter_mut().flat_map(|shape| shape.anchors_mut())
+		self.copy_of_shapes.iter_mut().flat_map(|shape| shape.iter_mut())
 	}
 
 	/// Select the last anchor in this shape
