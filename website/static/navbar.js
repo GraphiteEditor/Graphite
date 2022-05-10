@@ -69,7 +69,7 @@ function animate(forceRefresh) {
 	
 	const animateThisFrame = ripples.some((ripple) => ripple.animationStartTime && ripple.animationEndTime && Date.now() <= ripple.animationEndTime);
 
-	console.log(globalCount, new Date().getSeconds(), Date.now(), animateThisFrame, {...ripples[0]});
+	// console.log(globalCount, new Date().getSeconds(), Date.now(), animateThisFrame, {...ripples[0]});
 	globalCount++;
 
 	if (animateThisFrame || forceRefresh) {
