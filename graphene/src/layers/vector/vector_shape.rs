@@ -1,9 +1,9 @@
 use crate::layers::{
 	id_storage::UniqueElements,
 	layer_info::{Layer, LayerDataType},
-	style::PathStyle,
 };
 use crate::LayerId;
+use std::ops::{Deref, DerefMut};
 
 use super::{constants::ControlPointType, vector_anchor::VectorAnchor, vector_control_point::VectorControlPoint};
 
@@ -114,13 +114,7 @@ impl VectorShape {
 
 	pub fn delete_selected(&mut self) {
 		// involves cloning the elements of anchors, could be replaced by a more efficient implementation possibly
-		self.anchors = self.anchors.iter().filter(|anchor| !anchor.is_anchor_selected()).collect();
-	}
-
-	/// Select an anchor
-	pub fn select_anchor_index(&mut self, anchor_index: usize) -> &mut VectorAnchor {
-		self.anchors[anchor_index].select_point(ControlPointType::Anchor as usize, true);
-		&mut self.anchors[anchor_index]
+		self.anchors = self.iter().filter(|anchor| !anchor.is_anchor_selected()).collect();
 	}
 
 	pub fn add_point(&mut self, nearest_point_on_curve: DVec2) {
@@ -186,21 +180,16 @@ impl VectorShape {
 
 	/// Return all the selected anchors by reference
 	pub fn selected_anchors(&self) -> impl Iterator<Item = &VectorAnchor> {
-		self.anchors.iter().filter(|anchor| anchor.is_anchor_selected())
+		self.iter().filter(|anchor| anchor.is_anchor_selected())
 	}
 
 	/// Return all the selected anchors, mutable
 	pub fn selected_anchors_mut(&mut self) -> impl Iterator<Item = &mut VectorAnchor> {
-		self.anchors.iter_mut().filter(|anchor| anchor.is_anchor_selected())
+		self.iter_mut().filter(|anchor| anchor.is_anchor_selected())
 	}
 
 	pub fn set_selected(&mut self, selected: bool) {
 		self.selected = selected;
-	}
-
-	/// Return a mutable iterator of the anchors regardless of selection
-	pub fn anchors_mut(&mut self) -> impl Iterator<Item = &mut VectorAnchor> {
-		self.anchors.iter_mut()
 	}
 
 	/// Place point in local space in relation to this shape's transform
@@ -318,6 +307,21 @@ impl<T: Iterator<Item = PathEl>> From<T> for VectorShape {
 		// a VectorShape is closed if and only if every subpath is closed
 		vector_shape.closed = closed_flag;
 		vector_shape
+	}
+}
+
+// allows access to anchors as slice or iterator
+impl Deref for VectorShape {
+	type Target = [VectorAnchor];
+	fn deref(&self) -> &Self::Target {
+		&self.anchors
+	}
+}
+
+// allows mutable access to anchors as slice or iterator
+impl DerefMut for VectorShape {
+	fn deref_mut(&mut self) -> &mut Self::Target {
+		&mut self.anchors
 	}
 }
 
