@@ -2,8 +2,8 @@ use crate::layers::{
 	id_storage::UniqueElements,
 	layer_info::{Layer, LayerDataType},
 	style::PathStyle,
-	LayerId,
 };
+use crate::LayerId;
 
 use super::{constants::ControlPointType, vector_anchor::VectorAnchor, vector_control_point::VectorControlPoint};
 
@@ -172,14 +172,14 @@ impl VectorShape {
 
 	/// Select all the anchors in this shape
 	pub fn select_all_anchors(&mut self) {
-		for anchor in self.anchors.values_mut() {
+		for anchor in self.anchors.iter_mut() {
 			anchor.select_point(ControlPointType::Anchor as usize, true);
 		}
 	}
 
 	/// Clear all the selected anchors, and clear the selected points on the anchors
 	pub fn clear_selected_anchors(&mut self) {
-		for anchor in self.anchors.values_mut() {
+		for anchor in self.anchors.iter_mut() {
 			anchor.clear_selected_points();
 		}
 	}
@@ -261,7 +261,7 @@ impl From<&VectorShape> for BezPath {
 		let point = vector_shape.anchors.by_index(0).unwrap().points[ControlPointType::Anchor].as_ref().unwrap().position;
 		let mut bez_path = vec![PathEl::MoveTo((point.x, point.y).into())];
 
-		for elements in vector_shape.anchors.values().windows(2) {
+		for elements in vector_shape.anchors.windows(2) {
 			let first = &elements[0];
 			let second = &elements[1];
 			let new_segment = match [&first.points[2], &second.points[1], &second.points[0]] {
@@ -284,7 +284,7 @@ impl From<&VectorShape> for BezPath {
 /// Create a VectorShape from a BezPath
 impl<T: Iterator<Item = PathEl>> From<T> for VectorShape {
 	fn from(path: T) -> Self {
-		let mut vector_shape = VectorShape::new(DAffine2::IDENTITY, false);
+		let mut vector_shape = VectorShape::new(vec![], DAffine2::IDENTITY, false);
 		let mut current_closed = true;
 		let mut closed_flag = false;
 		for path_el in path {
