@@ -11,7 +11,7 @@ use crate::message_prelude::*;
 use graphene::color::Color;
 use graphene::document::{Document as GrapheneDocument, FontCache};
 use graphene::layers::layer_info::{Layer, LayerDataType};
-use graphene::layers::style::{Fill, LineCap, LineJoin, Stroke};
+use graphene::layers::style::{Fill, Gradient, LineCap, LineJoin, Stroke};
 use graphene::layers::text_layer::TextLayer;
 use graphene::{LayerId, Operation};
 
@@ -785,6 +785,42 @@ fn node_section_font(layer: &TextLayer) -> LayoutRow {
 	}
 }
 
+fn node_gradient_type(gradient: &Gradient, selected_index: u32) -> LayoutRow {
+	let cloned_gradient_1 = gradient.clone();
+	let cloned_gradient_2 = gradient.clone();
+	LayoutRow::Row {
+		widgets: vec![WidgetHolder::new(Widget::RadioInput(RadioInput {
+			selected_index,
+			entries: vec![
+				RadioEntryData {
+					value: "linear".into(),
+					label: "Linear".into(),
+					tooltip: "Linear Gradient".into(),
+					on_update: WidgetCallback::new(move |_| {
+						PropertiesPanelMessage::ModifyFill {
+							fill: Fill::LinearGradient(cloned_gradient_1.clone()),
+						}
+						.into()
+					}),
+					..RadioEntryData::default()
+				},
+				RadioEntryData {
+					value: "radial".into(),
+					label: "Radial".into(),
+					tooltip: "Radial Gradient".into(),
+					on_update: WidgetCallback::new(move |_| {
+						PropertiesPanelMessage::ModifyFill {
+							fill: Fill::RadialGradient(cloned_gradient_2.clone()),
+						}
+						.into()
+					}),
+					..RadioEntryData::default()
+				},
+			],
+		}))],
+	}
+}
+
 fn node_section_fill(fill: &Fill) -> Option<LayoutRow> {
 	match fill {
 		Fill::Solid(_) | Fill::None => Some(LayoutRow::Section {
@@ -824,6 +860,7 @@ fn node_section_fill(fill: &Fill) -> Option<LayoutRow> {
 			Some(LayoutRow::Section {
 				name: "Fill".into(),
 				layout: vec![
+					node_gradient_type(gradient, 0),
 					LayoutRow::Row {
 						widgets: vec![
 							WidgetHolder::new(Widget::TextLabel(TextLabel {
@@ -890,6 +927,90 @@ fn node_section_fill(fill: &Fill) -> Option<LayoutRow> {
 										new_gradient.positions[1].1 = None;
 										PropertiesPanelMessage::ModifyFill {
 											fill: Fill::LinearGradient(new_gradient),
+										}
+										.into()
+									}
+								}),
+								..ColorInput::default()
+							})),
+						],
+					},
+				],
+			})
+		}
+		Fill::RadialGradient(gradient) => {
+			let gradient_1 = Rc::new(gradient.clone());
+			let gradient_2 = gradient_1.clone();
+			Some(LayoutRow::Section {
+				name: "Fill".into(),
+				layout: vec![
+					node_gradient_type(gradient, 1),
+					LayoutRow::Row {
+						widgets: vec![
+							WidgetHolder::new(Widget::TextLabel(TextLabel {
+								value: "Gradient: 0%".into(),
+								..TextLabel::default()
+							})),
+							WidgetHolder::new(Widget::Separator(Separator {
+								separator_type: SeparatorType::Unrelated,
+								direction: SeparatorDirection::Horizontal,
+							})),
+							WidgetHolder::new(Widget::ColorInput(ColorInput {
+								value: gradient_1.positions[0].1.map(|color| color.rgba_hex()),
+								on_update: WidgetCallback::new(move |text_input: &ColorInput| {
+									if let Some(value) = &text_input.value {
+										if let Some(color) = Color::from_rgba_str(value).or_else(|| Color::from_rgb_str(value)) {
+											let mut new_gradient = (*gradient_1).clone();
+											new_gradient.positions[0].1 = Some(color);
+											PropertiesPanelMessage::ModifyFill {
+												fill: Fill::RadialGradient(new_gradient),
+											}
+											.into()
+										} else {
+											PropertiesPanelMessage::ResendActiveProperties.into()
+										}
+									} else {
+										let mut new_gradient = (*gradient_1).clone();
+										new_gradient.positions[0].1 = None;
+										PropertiesPanelMessage::ModifyFill {
+											fill: Fill::RadialGradient(new_gradient),
+										}
+										.into()
+									}
+								}),
+								..ColorInput::default()
+							})),
+						],
+					},
+					LayoutRow::Row {
+						widgets: vec![
+							WidgetHolder::new(Widget::TextLabel(TextLabel {
+								value: "Gradient: 100%".into(),
+								..TextLabel::default()
+							})),
+							WidgetHolder::new(Widget::Separator(Separator {
+								separator_type: SeparatorType::Unrelated,
+								direction: SeparatorDirection::Horizontal,
+							})),
+							WidgetHolder::new(Widget::ColorInput(ColorInput {
+								value: gradient_2.positions[1].1.map(|color| color.rgba_hex()),
+								on_update: WidgetCallback::new(move |text_input: &ColorInput| {
+									if let Some(value) = &text_input.value {
+										if let Some(color) = Color::from_rgba_str(value).or_else(|| Color::from_rgb_str(value)) {
+											let mut new_gradient = (*gradient_2).clone();
+											new_gradient.positions[1].1 = Some(color);
+											PropertiesPanelMessage::ModifyFill {
+												fill: Fill::RadialGradient(new_gradient),
+											}
+											.into()
+										} else {
+											PropertiesPanelMessage::ResendActiveProperties.into()
+										}
+									} else {
+										let mut new_gradient = (*gradient_2).clone();
+										new_gradient.positions[1].1 = None;
+										PropertiesPanelMessage::ModifyFill {
+											fill: Fill::RadialGradient(new_gradient),
 										}
 										.into()
 									}

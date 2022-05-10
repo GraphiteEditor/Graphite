@@ -3,7 +3,7 @@ use crate::document::DocumentMessageHandler;
 use crate::frontend::utility_types::MouseCursorIcon;
 use crate::input::keyboard::{Key, MouseMotion};
 use crate::input::InputPreprocessorMessageHandler;
-use crate::layout::widgets::PropertyHolder;
+use crate::layout::widgets::{LayoutRow, PropertyHolder, RadioEntryData, RadioInput, Widget, WidgetCallback, WidgetHolder, WidgetLayout};
 use crate::message_prelude::*;
 use crate::misc::{HintData, HintGroup, HintInfo, KeysGroup};
 use crate::viewport_tools::snapping::SnapHandler;
@@ -22,6 +22,23 @@ use serde::{Deserialize, Serialize};
 pub struct GradientTool {
 	fsm_state: GradientToolFsmState,
 	data: GradientToolData,
+	options: GradientOptions,
+}
+
+#[derive(PartialEq, Clone, Debug, Hash, Serialize, Deserialize)]
+pub enum GradientType {
+	Linear,
+	Radial,
+}
+
+pub struct GradientOptions {
+	gradient_type: GradientType,
+}
+
+impl Default for GradientOptions {
+	fn default() -> Self {
+		Self { gradient_type: GradientType::Linear }
+	}
 }
 
 #[remain::sorted]
@@ -40,6 +57,13 @@ pub enum GradientToolMessage {
 		constrain_axis: Key,
 	},
 	PointerUp,
+	UpdateOptions(GradientOptionsUpdate),
+}
+
+#[remain::sorted]
+#[derive(PartialEq, Clone, Debug, Hash, Serialize, Deserialize)]
+pub enum GradientOptionsUpdate {
+	Type(GradientType),
 }
 
 impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for GradientTool {
@@ -53,8 +77,14 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for GradientTool
 			self.fsm_state.update_cursor(responses);
 			return;
 		}
+		if let ToolMessage::Gradient(GradientToolMessage::UpdateOptions(action)) = action {
+			match action {
+				GradientOptionsUpdate::Type(gradient_type) => self.options.gradient_type = gradient_type,
+			}
+			return;
+		}
 
-		let new_state = self.fsm_state.transition(action, data.0, data.1, &mut self.data, &(), data.2, responses);
+		let new_state = self.fsm_state.transition(action, data.0, data.1, &mut self.data, &self.options, data.2, responses);
 
 		if self.fsm_state != new_state {
 			self.fsm_state = new_state;
@@ -65,7 +95,31 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for GradientTool
 	advertise_actions!(GradientToolMessageDiscriminant; PointerDown, PointerUp, PointerMove, Abort);
 }
 
-impl PropertyHolder for GradientTool {}
+impl PropertyHolder for GradientTool {
+	fn properties(&self) -> WidgetLayout {
+		WidgetLayout::new(vec![LayoutRow::Row {
+			widgets: vec![WidgetHolder::new(Widget::RadioInput(RadioInput {
+				selected_index: if self.options.gradient_type == GradientType::Radial { 1 } else { 0 },
+				entries: vec![
+					RadioEntryData {
+						value: "linear".into(),
+						label: "Linear".into(),
+						tooltip: "Linear Gradient".into(),
+						on_update: WidgetCallback::new(move |_| GradientToolMessage::UpdateOptions(GradientOptionsUpdate::Type(GradientType::Linear)).into()),
+						..RadioEntryData::default()
+					},
+					RadioEntryData {
+						value: "radial".into(),
+						label: "Radial".into(),
+						tooltip: "Radial Gradient".into(),
+						on_update: WidgetCallback::new(move |_| GradientToolMessage::UpdateOptions(GradientOptionsUpdate::Type(GradientType::Radial)).into()),
+						..RadioEntryData::default()
+					},
+				],
+			}))],
+		}])
+	}
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum GradientToolFsmState {
@@ -248,7 +302,7 @@ pub fn start_snap(snap_handler: &mut SnapHandler, document: &DocumentMessageHand
 
 impl Fsm for GradientToolFsmState {
 	type ToolData = GradientToolData;
-	type ToolOptions = ();
+	type ToolOptions = GradientOptions;
 
 	fn transition(
 		self,
@@ -256,7 +310,7 @@ impl Fsm for GradientToolFsmState {
 		document: &DocumentMessageHandler,
 		tool_data: &DocumentToolData,
 		data: &mut Self::ToolData,
-		_tool_options: &Self::ToolOptions,
+		tool_options: &Self::ToolOptions,
 		input: &InputPreprocessorMessageHandler,
 		responses: &mut VecDeque<Message>,
 	) -> Self {
