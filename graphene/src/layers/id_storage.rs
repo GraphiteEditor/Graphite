@@ -1,4 +1,7 @@
-use std::collections::HashMap;
+use std::{
+	collections::HashMap,
+	ops::{Deref, DerefMut},
+};
 
 use crate::DocumentError;
 use serde::{Deserialize, Serialize};
@@ -9,7 +12,7 @@ type ElementIndex = i64;
 /// A layer that encapsulates other layers, including potentially more folders.
 /// The contained layers are rendered in the same order they are
 /// stored in the [layers](PathStorage::layers) field.
-#[derive(Debug, Clone, PartialEq, Deserialize, Serialize, Default)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 
 // TODO: Default is a bit weird because Layer does not implement Default. but we should not care because the empty vec is the default
 pub struct UniqueElements<T> {
@@ -109,15 +112,16 @@ impl<T> UniqueElements<T> {
 		self.keys.as_slice()
 	}
 
-	/// Get references to all the [T]s in the within this container.
-	pub fn values(&self) -> &[T] {
-		self.values.as_slice()
-	}
+	/// These can be replaced by implementing Deref I think
+	// /// Get references to all the [T]s in the within this container.
+	// pub fn values(&self) -> &[T] {
+	// 	self.values.as_slice()
+	// }
 
-	/// Get mutable references to all the [T]s in the within this container.
-	pub fn values_mut(&mut self) -> &mut [T] {
-		self.values.as_mut_slice()
-	}
+	// /// Get mutable references to all the [T]s in the within this container.
+	// pub fn values_mut(&mut self) -> &mut [T] {
+	// 	self.values.as_mut_slice()
+	// }
 
 	/// Get a single element with a given element ID from the within this container.
 	pub fn by_id(&self, id: ElementId) -> Option<&T> {
@@ -214,5 +218,40 @@ impl<T> UniqueElements<T> {
 			return Ok((*position) as usize);
 		}
 		Err(DocumentError::LayerNotFound([element_id].into()))
+	}
+}
+
+impl<T> Default for UniqueElements<T> {
+	fn default() -> Self {
+		UniqueElements {
+			keys: vec![],
+			values: vec![],
+			next_assignment_id: 0,
+			id_to_index: HashMap::new(),
+		}
+	}
+}
+
+impl<T> Deref for UniqueElements<T> {
+	type Target = [T];
+	fn deref(&self) -> &Self::Target {
+		&self.values
+	}
+}
+
+impl<T> DerefMut for UniqueElements<T> {
+	fn deref_mut(&mut self) -> &mut Self::Target {
+		&mut self.values
+	}
+}
+
+/// allows use with iterators
+impl<A> FromIterator<A> for UniqueElements<A> {
+	fn from_iter<T: IntoIterator<Item = A>>(iter: T) -> Self {
+		let mut new = UniqueElements::default();
+		iter.into_iter().for_each(|element| match new.add(element, None, -1) {
+			_ => (), // attempt to add all elements, even if one fails
+		});
+		new
 	}
 }

@@ -49,12 +49,14 @@ impl VectorShape {
 	pub fn new_rect(p1: DVec2, p2: DVec2) -> Self {
 		VectorShape {
 			layer_path: vec![],
-			anchors: UniqueElements::
-				VectorAnchor::new(p1, 0),
-				VectorAnchor::new(DVec2::new(p1.x, p2.y), 1),
-				VectorAnchor::new(p2, 2),
-				VectorAnchor::new(DVec2::new(p2.x, p1.y), 3),
-			],
+			anchors: vec![
+				VectorAnchor::new(p1),
+				VectorAnchor::new(DVec2::new(p1.x, p2.y)),
+				VectorAnchor::new(p2),
+				VectorAnchor::new(DVec2::new(p2.x, p1.y)),
+			]
+			.into_iter()
+			.collect(),
 			closed: true,
 			transform: DAffine2::IDENTITY,
 			selected: false,
@@ -64,26 +66,25 @@ impl VectorShape {
 	/// constructs an ngon
 	/// `radius` is the distance from the center to any vertex, or the radius of the circle the ngon may be inscribed inside
 	pub fn new_ngon(center: DVec2, sides: u64, radius: f64) -> Self {
-		let mut ngon = VectorShape {
+		let mut anchors = vec![];
+		for i in 0..sides {
+			let angle = (i as f64) * std::f64::consts::TAU / (sides as f64);
+			anchors.push(VectorAnchor::new(DVec2::new(center.x + radius * f64::cos(angle), center.y + radius * f64::sin(angle))));
+		}
+		VectorShape {
 			layer_path: vec![],
-			anchors: vec![],
+			anchors: anchors.into_iter().collect(),
 			closed: true,
 			transform: DAffine2::IDENTITY,
 			selected: false,
-		};
-		for i in 0..sides {
-			let angle = (i as f64) * std::f64::consts::TAU / (sides as f64);
-			ngon.anchors
-				.push(VectorAnchor::new(DVec2::new(center.x + radius * f64::cos(angle), center.y + radius * f64::sin(angle)), i));
 		}
-		ngon
 	}
 
 	/// constructs a line from `p1` to `p2`
 	pub fn new_line(p1: DVec2, p2: DVec2) -> Self {
 		VectorShape {
 			layer_path: vec![],
-			anchors: vec![VectorAnchor::new(p1), VectorAnchor::new(p2)],
+			anchors: vec![VectorAnchor::new(p1), VectorAnchor::new(p2)].into_iter().collect(),
 			closed: false,
 			transform: DAffine2::IDENTITY,
 			selected: false,
@@ -93,7 +94,7 @@ impl VectorShape {
 	pub fn new_poly_line<T: Into<glam::DVec2>>(points: Vec<T>) -> Self {
 		let mut p_line = VectorShape {
 			layer_path: vec![],
-			anchors: vec![],
+			anchors: UniqueElements::default(),
 			closed: false,
 			transform: DAffine2::IDENTITY,
 			selected: false,
@@ -101,7 +102,9 @@ impl VectorShape {
 		points
 			.into_iter()
 			.enumerate()
-			.for_each(|(local_id, point)| p_line.anchors.push(VectorAnchor::new(point.into(), local_id.try_into().unwrap())));
+			.for_each(|(local_id, point)| match p_line.anchors.add(VectorAnchor::new(point.into()), None, -1) {
+				_ => (),
+			});
 		p_line
 	}
 
@@ -182,7 +185,7 @@ impl VectorShape {
 
 	/// Return all the selected anchors by reference
 	pub fn selected_anchors(&self) -> impl Iterator<Item = &VectorAnchor> {
-		self.anchors.values().iter().filter(|anchor| anchor.is_anchor_selected())
+		self.anchors.iter().filter(|anchor| anchor.is_anchor_selected())
 	}
 
 	/// Return all the selected anchors, mutable
@@ -196,7 +199,7 @@ impl VectorShape {
 
 	/// Return a mutable iterator of the anchors regardless of selection
 	pub fn anchors_mut(&mut self) -> impl Iterator<Item = &mut VectorAnchor> {
-		self.anchors.values_mut().iter_mut()
+		self.anchors.iter_mut()
 	}
 
 	/// Place point in local space in relation to this shape's transform
