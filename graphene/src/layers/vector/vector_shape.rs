@@ -113,7 +113,8 @@ impl VectorShape {
 	}
 
 	pub fn delete_selected(&mut self) {
-		self.anchors = self.anchors.clone().into_iter().filter(|anchor| !anchor.is_anchor_selected()).collect();
+		// involves cloning the elements of anchors, could be replaced by a more efficient implementation possibly
+		self.anchors = self.anchors.iter().filter(|anchor| !anchor.is_anchor_selected()).collect();
 	}
 
 	/// Select an anchor
@@ -283,7 +284,7 @@ impl From<&VectorShape> for BezPath {
 /// Create a VectorShape from a BezPath
 impl<T: Iterator<Item = PathEl>> From<T> for VectorShape {
 	fn from(path: T) -> Self {
-		let mut vector_shape = VectorShape::new(vec![], DAffine2::IDENTITY, false);
+		let mut vector_shape = VectorShape::new(DAffine2::IDENTITY, false);
 		let mut current_closed = true;
 		let mut closed_flag = false;
 		for path_el in path {

@@ -246,10 +246,21 @@ impl<T> DerefMut for UniqueElements<T> {
 }
 
 /// allows use with iterators
+/// also allows constructing UniqueElements with collect
 impl<A> FromIterator<A> for UniqueElements<A> {
 	fn from_iter<T: IntoIterator<Item = A>>(iter: T) -> Self {
 		let mut new = UniqueElements::default();
 		iter.into_iter().for_each(|element| match new.add(element, None, -1) {
+			_ => (), // attempt to add all elements, even if one fails
+		});
+		new
+	}
+}
+
+impl<'b, 'a: 'b, A: 'a + Clone> FromIterator<&'b A> for UniqueElements<A> {
+	fn from_iter<T: IntoIterator<Item = &'b A>>(iter: T) -> Self {
+		let mut new = UniqueElements::default();
+		iter.into_iter().for_each(|element| match new.add(element.clone(), None, -1) {
 			_ => (), // attempt to add all elements, even if one fails
 		});
 		new
