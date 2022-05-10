@@ -61,7 +61,7 @@ impl Gradient {
 	}
 
 	/// Adds the gradient def with the uuid specified
-	fn render_defs(&self, svg_defs: &mut String, multiplied_transform: DAffine2, bounds: [DVec2; 2], transformed_bounds: [DVec2; 2]) {
+	fn render_linear_defs(&self, svg_defs: &mut String, multiplied_transform: DAffine2, bounds: [DVec2; 2], transformed_bounds: [DVec2; 2]) {
 		let bound_transform = DAffine2::from_scale_angle_translation(bounds[1] - bounds[0], 0., bounds[0]);
 		let transformed_bound_transform = DAffine2::from_scale_angle_translation(transformed_bounds[1] - transformed_bounds[0], 0., transformed_bounds[0]);
 		let updated_transform = multiplied_transform * bound_transform;
@@ -92,6 +92,17 @@ impl Gradient {
 			self.uuid, start.x, end.x, start.y, end.y, transform, positions
 		);
 	}
+
+	fn render_radial_defs(&self, svg_defs: &mut String) {
+		let positions = self
+			.positions
+			.iter()
+			.filter_map(|(pos, color)| color.map(|color| (pos, color)))
+			.map(|(position, color)| format!(r##"<stop offset="{}" stop-color="#{}" />"##, position, color.rgba_hex()))
+			.collect::<String>();
+
+		let _ = write!(svg_defs, r#"<radialGradient id="{}">{}</radialGradient>"#, self.uuid, positions);
+	}
 }
 
 /// Describes the fill of a layer.
@@ -103,6 +114,7 @@ pub enum Fill {
 	None,
 	Solid(Color),
 	LinearGradient(Gradient),
+	RadialGradient(Gradient),
 }
 
 impl Default for Fill {
@@ -124,6 +136,7 @@ impl Fill {
 			Self::Solid(color) => *color,
 			// TODO: Should correctly sample the gradient
 			Self::LinearGradient(Gradient { positions, .. }) => positions[0].1.unwrap_or(Color::BLACK),
+			Self::RadialGradient(Gradient { positions, .. }) => positions[0].1.unwrap_or(Color::BLACK),
 		}
 	}
 
@@ -133,7 +146,11 @@ impl Fill {
 			Self::None => r#" fill="none""#.to_string(),
 			Self::Solid(color) => format!(r##" fill="#{}"{}"##, color.rgb_hex(), format_opacity("fill", color.a())),
 			Self::LinearGradient(gradient) => {
-				gradient.render_defs(svg_defs, multiplied_transform, bounds, transformed_bounds);
+				gradient.render_linear_defs(svg_defs, multiplied_transform, bounds, transformed_bounds);
+				format!(r##" fill="url('#{}')""##, gradient.uuid)
+			}
+			Self::RadialGradient(gradient) => {
+				gradient.render_radial_defs(svg_defs);
 				format!(r##" fill="url('#{}')""##, gradient.uuid)
 			}
 		}
