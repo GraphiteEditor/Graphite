@@ -8,6 +8,7 @@ use crate::message_prelude::*;
 use crate::misc::{HintData, HintGroup, HintInfo, KeysGroup};
 use crate::viewport_tools::snapping::SnapHandler;
 use crate::viewport_tools::tool::{DocumentToolData, Fsm, ToolActionHandlerData};
+use crate::viewport_tools::vector_editor::overlay_renderer::OverlayRenderer;
 use crate::viewport_tools::vector_editor::shape_editor::ShapeEditor;
 
 use graphene::intersection::Quad;
@@ -97,6 +98,7 @@ impl Default for PathToolFsmState {
 #[derive(Default)]
 struct PathToolData {
 	shape_editor: ShapeEditor,
+	overlay_renderer: OverlayRenderer,
 	snap_handler: SnapHandler,
 
 	drag_start_pos: DVec2,
@@ -123,24 +125,17 @@ impl Fsm for PathToolFsmState {
 			use PathToolMessage::*;
 
 			match (self, event) {
-				// TODO: Capture a tool event instead of doing this?
 				(_, SelectionChanged) => {
-					// Remove any residual overlays that might exist on selection change
-					// TODO Tell overlay manager to remove the overlays
-					// data.shape_editor.remove_overlays();
-
-					// This currently creates new VectorManipulatorShapes for every shape, which is not ideal
-					// At least it is only on selection change for now
-					data.shape_editor.set_shapes_to_modify(document.selected_visible_layers_vector_shapes(responses));
-
+					// TODO Tell overlay renderer to clear / updates the overlays
+					data.shape_editor.set_shapes_to_modify(document.graphene_document.selected_vector_shapes());
 					self
 				}
 				(_, DocumentIsDirty) => {
-					// Update the VectorManipulatorShapes by reference so they match the kurbo data
-					// TODO This used to handle when the viewport moved, update when the vectorshape gets drawn
-					// for shape in &mut data.shape_editor.shapes_to_modify {
-					// 	shape.update_shape(document);
-					// }
+					// TODO This should be handled by the document not by the tool, but this is a stop gap
+					for shape in data.shape_editor.selected_shapes() {
+						data.overlay_renderer.draw_overlays_for_vector_shape(shape, responses);
+					}
+
 					self
 				}
 				// Mouse down
@@ -151,13 +146,7 @@ impl Fsm for PathToolFsmState {
 					if data.shape_editor.select_point(input.mouse.position, SELECTION_THRESHOLD, add_to_selection) {
 						responses.push_back(DocumentMessage::StartTransaction.into());
 						data.snap_handler.start_snap(document, document.bounding_boxes(None, None), true, true);
-						let snap_points = data
-							.shape_editor
-							.shapes_to_modify
-							.iter()
-							.flat_map(|shape| shape.anchors.iter().flat_map(|anchor| anchor.points[0].as_ref()))
-							.map(|point| point.position)
-							.collect();
+						let snap_points = data.shape_editor.selected_anchors().flat_map(|anchor| anchor.points[0].as_ref()).map(|point| point.position).collect();
 						data.snap_handler.add_snap_points(document, snap_points);
 						data.drag_start_pos = input.mouse.position;
 						Dragging

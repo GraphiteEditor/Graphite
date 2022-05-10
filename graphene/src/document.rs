@@ -6,10 +6,11 @@ use crate::layers::layer_info::{Layer, LayerData, LayerDataType};
 use crate::layers::shape_layer::ShapeLayer;
 use crate::layers::style::ViewMode;
 use crate::layers::text_layer::TextLayer;
+use crate::layers::vector::vector_shape::VectorShape;
 use crate::{DocumentError, DocumentResponse, Operation};
 
 use glam::{DAffine2, DVec2};
-use kurbo::Affine;
+// use kurbo::Affine;
 use serde::{Deserialize, Serialize};
 use std::cmp::max;
 use std::collections::hash_map::DefaultHasher;
@@ -89,7 +90,7 @@ impl Document {
 	}
 
 	/// Returns a mutable reference to the layer or folder at the path.
-	fn layer_mut(&mut self, path: &[LayerId]) -> Result<&mut Layer, DocumentError> {
+	pub fn layer_mut(&mut self, path: &[LayerId]) -> Result<&mut Layer, DocumentError> {
 		if path.is_empty() {
 			return Ok(&mut self.root);
 		}
@@ -106,7 +107,7 @@ impl Document {
 			match (self.multiply_transforms(path), &self.layer(path)?.data) {
 				(Ok(shape_transform), LayerDataType::Shape(shape)) => {
 					let mut new_shape = shape.clone();
-					new_shape.shape.apply_affine(Affine::new((undo_viewport * shape_transform).to_cols_array()));
+					new_shape.shape.apply_affine(undo_viewport * shape_transform);
 					shapes.push(new_shape);
 				}
 				(Ok(_), _) => return Err(DocumentError::InvalidPath),
@@ -114,6 +115,57 @@ impl Document {
 			}
 		}
 		Ok(shapes)
+	}
+
+	/// Return a copy of all VectorShapes currently in the document.
+	pub fn all_vector_shapes(&self) -> Vec<VectorShape> {
+		self.root.iter().flat_map(|layer| layer.as_vector_shape_copy()).collect::<Vec<VectorShape>>()
+	}
+
+	/// Returns references to all VectorShapes currently in the document.
+	pub fn all_vector_shapes_ref(&self) -> Vec<&VectorShape> {
+		self.root.iter().flat_map(|layer| layer.as_vector_shape()).collect::<Vec<&VectorShape>>()
+	}
+
+	/// Returns a copy of all the currently selected VectorShapes.
+	pub fn selected_vector_shapes(&self) -> Vec<VectorShape> {
+		self.root
+			.iter()
+			.flat_map(|layer| layer.as_vector_shape_copy())
+			.filter(|shape| shape.selected)
+			.collect::<Vec<VectorShape>>()
+	}
+
+	/// Returns references to all the currently selected VectorShapes.
+	pub fn selected_vector_shapes_ref(&self) -> Vec<&VectorShape> {
+		self.root.iter().flat_map(|layer| layer.as_vector_shape()).filter(|shape| shape.selected).collect::<Vec<&VectorShape>>()
+	}
+
+	/// Returns a reference to the requested VectorShape by providing a path to its owner layer.
+	pub fn vector_shape_ref<'a>(&'a self, path: &[LayerId]) -> Option<&'a VectorShape> {
+		return self.layer(path).ok()?.as_vector_shape();
+	}
+
+	/// Returns a mutable reference of the requested VectorShape by providing a path to its owner layer.
+	pub fn vector_shape_mut<'a>(&'a mut self, path: &[LayerId]) -> Option<&'a mut VectorShape> {
+		return self.layer_mut(path).ok()?.as_vector_shape_mut();
+	}
+
+	/// Set a VectorShape at the specified path.
+	pub fn set_vector_shape(&mut self, path: &[LayerId], shape: VectorShape) {
+		let layer = self.layer_mut(path);
+		if let Ok(layer) = layer {
+			if let LayerDataType::Shape(shape_layer) = &mut layer.data {
+				shape_layer.shape = shape;
+				// Is this needed?
+				layer.cache_dirty = true;
+			}
+		}
+	}
+
+	/// Set VectorShapes for multiple paths at once.
+	pub fn set_vector_shapes<'a>(&'a mut self, paths: impl Iterator<Item = &'a [LayerId]>, shapes: Vec<VectorShape>) {
+		paths.zip(shapes).for_each(|(path, shape)| self.set_vector_shape(path, shape));
 	}
 
 	pub fn common_layer_path_prefix<'a>(&self, layers: impl Iterator<Item = &'a [LayerId]>) -> &'a [LayerId] {
@@ -694,7 +746,7 @@ impl Document {
 				self.mark_as_dirty(path)?;
 
 				if let LayerDataType::Shape(shape) = &mut self.layer_mut(path)?.data {
-					shape.shape = bez_path.clone();
+					shape.shape = bez_path.clone().iter().into();
 				}
 				Some(vec![DocumentChanged, LayerChanged { path: path.clone() }])
 			}
@@ -709,7 +761,7 @@ impl Document {
 				}
 
 				if let LayerDataType::Shape(shape) = &mut self.layer_mut(path)?.data {
-					shape.shape = bez_path.clone();
+					shape.shape = bez_path.clone().iter().into();
 				}
 				Some([vec![DocumentChanged, LayerChanged { path: path.clone() }], update_thumbnails_upstream(path)].concat())
 			}

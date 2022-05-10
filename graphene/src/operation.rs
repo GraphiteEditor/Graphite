@@ -80,7 +80,7 @@ pub enum Operation {
 		path: Vec<LayerId>,
 		insert_index: isize,
 		transform: [f64; 6],
-		sides: u8,
+		sides: u64,
 		style: style::PathStyle,
 	},
 	AddOverlayShape {

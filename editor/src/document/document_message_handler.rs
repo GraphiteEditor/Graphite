@@ -12,13 +12,13 @@ use crate::layout::widgets::{
 	WidgetCallback, WidgetHolder, WidgetLayout,
 };
 use crate::message_prelude::*;
-use crate::viewport_tools::vector_editor::vector_shape::VectorShape;
 use crate::EditorError;
 
 use graphene::document::Document as GrapheneDocument;
 use graphene::layers::folder_layer::FolderLayer;
 use graphene::layers::layer_info::LayerDataType;
 use graphene::layers::style::ViewMode;
+use graphene::layers::vector::vector_shape::VectorShape;
 use graphene::{DocumentError, DocumentResponse, LayerId, Operation as DocumentOperation};
 
 use glam::{DAffine2, DVec2};
@@ -144,30 +144,7 @@ impl DocumentMessageHandler {
 		self.artboard_message_handler.artboards_graphene_document.bounding_box_and_transform(path).unwrap_or(None)
 	}
 
-	/// Create a new vector shape representation with the underlying kurbo data, VectorManipulatorShape
-	pub fn selected_visible_layers_vector_shapes(&self, responses: &mut VecDeque<Message>) -> Vec<VectorShape> {
-		let shapes = self.selected_layers().filter_map(|path_to_shape| {
-			let viewport_transform = self.graphene_document.generate_transform_relative_to_viewport(path_to_shape).ok()?;
-			let layer = self.graphene_document.layer(path_to_shape);
-
-			match &layer {
-				Ok(layer) if layer.visible => {}
-				_ => return None,
-			};
-
-			match &layer.ok()?.data {
-				// TODO Create VectorShapes at the operation level, not from shapes after the fact
-				LayerDataType::Shape(shape) => Some(VectorShape::new(path_to_shape.to_vec(), viewport_transform, shape.closed)),
-				// Leverage &text.to_bez_path_nonmut() for this, or maybe create VectorShapes from text?
-				// LayerDataType::Text(text) => Some(VectorShape::new(path_to_shape.to_vec(), viewport_transform, true)),
-				_ => None,
-			}
-		});
-
-		shapes.collect::<Vec<VectorShape>>()
-	}
-
-	pub fn selected_layers(&self) -> impl Iterator<Item = &[LayerId]> {
+	pub fn selected_layers<'a>(&'a self) -> impl Iterator<Item = &'a [LayerId]> {
 		self.layer_metadata.iter().filter_map(|(path, data)| data.selected.then(|| path.as_slice()))
 	}
 

@@ -6,51 +6,49 @@ use serde::{Deserialize, Serialize};
 /// It contains 0-2 handles that are optionally displayed.
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub struct VectorAnchor {
-	/// An id that is locally unique to the containing shape
-	pub local_id: u64,
 	// Editable points for the anchor & handles
 	pub points: [Option<VectorControlPoint>; 3],
 	// Should we maintain the angle between the handles?
+	// TODO Separate the editor func state from underlying data (use another struct)
 	#[serde(skip_serializing)]
-	pub handle_mirror_angle: bool,
+	pub mirror_angle_active: bool,
 	// Should we make the handles equidistance from the anchor?
 	#[serde(skip_serializing)]
-	pub handle_mirror_distance: bool,
+	pub mirror_distance_active: bool,
 }
 
 impl Default for VectorAnchor {
 	fn default() -> Self {
 		Self {
-			local_id: 0,
 			points: [None, None, None],
-			handle_mirror_angle: true,
-			handle_mirror_distance: true,
+			mirror_angle_active: true,
+			mirror_distance_active: true,
 		}
 	}
 }
 
+// TODO impl index for points
+
 impl VectorAnchor {
 	/// Create a new anchor with the given position
-	pub fn new(anchor_pos: DVec2, local_id: u64) -> Self {
+	pub fn new(anchor_pos: DVec2) -> Self {
 		Self {
-			local_id,
 			points: [Some(VectorControlPoint::new(anchor_pos, ControlPointType::Anchor)), None, None],
-			handle_mirror_angle: false,
-			handle_mirror_distance: false,
+			mirror_angle_active: false,
+			mirror_distance_active: false,
 		}
 	}
 
 	/// Create a new anchor with the given anchor position and handles
-	pub fn new_with_handles(anchor_pos: DVec2, handle1_pos: DVec2, handle2_pos: DVec2, local_id: u64) -> Self {
+	pub fn new_with_handles(anchor_pos: DVec2, handle1_pos: DVec2, handle2_pos: DVec2) -> Self {
 		Self {
-			local_id,
 			points: [
 				Some(VectorControlPoint::new(anchor_pos, ControlPointType::Anchor)),
 				Some(VectorControlPoint::new(handle1_pos, ControlPointType::Handle1)),
 				Some(VectorControlPoint::new(handle2_pos, ControlPointType::Handle2)),
 			],
-			handle_mirror_angle: false,
-			handle_mirror_distance: false,
+			mirror_angle_active: false,
+			mirror_distance_active: false,
 		}
 	}
 
@@ -70,11 +68,17 @@ impl VectorAnchor {
 		closest_index
 	}
 
-	// TODO change relative to an enum (relative, absolute)
-	/// Move the selected points by the provided delta
-	pub fn move_selected_points(&mut self, translation: DVec2, relative: bool, transform: &DAffine2) {
-		// TODO This needs to be rebuilt without usage of kurbo
-		// Move associated handles
+	/// Move the selected points by the provided transform
+	/// if relative is false the point is transformed and its original position is subtracted
+	pub fn move_selected_points(&mut self, relative: bool, transform: &DAffine2) {
+		for point in self.selected_points_mut() {
+			if !relative {
+				let copy = point.clone().position;
+				point.transform(transform);
+				point.move_by(&(-copy));
+			}
+			point.transform(transform);
+		}
 	}
 
 	/// Returns true if any points in this anchor are selected
@@ -106,12 +110,12 @@ impl VectorAnchor {
 		}
 	}
 
-	/// Provides the selected points in this anchor
+	/// Provides the points in this anchor
 	pub fn points(&self) -> impl Iterator<Item = &VectorControlPoint> {
 		self.points.iter().flatten()
 	}
 
-	/// Returns
+	/// Provides the selected points in this anchor
 	pub fn selected_points(&self) -> impl Iterator<Item = &VectorControlPoint> {
 		self.points.iter().flatten().filter(|pnt| pnt.is_selected)
 	}
@@ -130,24 +134,14 @@ impl VectorAnchor {
 	}
 
 	/// Returns the opposing handle to the handle provided
+	/// Returns the anchor handle if the anchor is provided
 	pub fn opposing_handle(&self, handle: &VectorControlPoint) -> &Option<VectorControlPoint> {
-		if let Some(point) = &self.points[ControlPointType::Handle1] {
-			if point == handle {
-				return &self.points[ControlPointType::Handle2];
-			}
-		};
-
-		if let Some(point) = &self.points[ControlPointType::Handle2] {
-			if point == handle {
-				return &self.points[ControlPointType::Handle1];
-			}
-		};
-		&None
+		&self.points[!handle.manipulator_type]
 	}
 
 	/// Set the mirroring state
 	pub fn set_mirroring(&mut self, mirroring: bool) {
-		self.handle_mirror_angle = mirroring;
+		self.mirror_angle_active = mirroring;
 	}
 
 	/// Helper function to more easily set position of VectorControlPoints
