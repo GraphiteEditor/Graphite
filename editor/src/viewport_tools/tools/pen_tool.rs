@@ -27,18 +27,18 @@ pub struct PenTool {
 }
 
 pub struct PenOptions {
-	line_weight: u32,
+	line_weight: f64,
 }
 
 impl Default for PenOptions {
 	fn default() -> Self {
-		Self { line_weight: 5 }
+		Self { line_weight: 5. }
 	}
 }
 
 #[remain::sorted]
 #[impl_message(Message, ToolMessage, Pen)]
-#[derive(PartialEq, Clone, Debug, Hash, Serialize, Deserialize)]
+#[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub enum PenToolMessage {
 	// Standard messages
 	#[remain::unsorted]
@@ -62,22 +62,21 @@ enum PenToolFsmState {
 }
 
 #[remain::sorted]
-#[derive(PartialEq, Clone, Debug, Hash, Serialize, Deserialize)]
+#[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub enum PenOptionsUpdate {
-	LineWeight(u32),
+	LineWeight(f64),
 }
 
 impl PropertyHolder for PenTool {
 	fn properties(&self) -> WidgetLayout {
 		WidgetLayout::new(vec![LayoutRow::Row {
-			name: "".into(),
 			widgets: vec![WidgetHolder::new(Widget::NumberInput(NumberInput {
 				unit: " px".into(),
 				label: "Weight".into(),
-				value: self.options.line_weight as f64,
-				is_integer: true,
+				value: self.options.line_weight,
+				is_integer: false,
 				min: Some(0.),
-				on_update: WidgetCallback::new(|number_input: &NumberInput| PenToolMessage::UpdateOptions(PenOptionsUpdate::LineWeight(number_input.value as u32)).into()),
+				on_update: WidgetCallback::new(|number_input: &NumberInput| PenToolMessage::UpdateOptions(PenOptionsUpdate::LineWeight(number_input.value)).into()),
 				..NumberInput::default()
 			}))],
 		}])
@@ -129,7 +128,7 @@ impl Default for PenToolFsmState {
 }
 #[derive(Clone, Debug, Default)]
 struct PenToolData {
-	weight: u32,
+	weight: f64,
 	path: Option<Vec<LayerId>>,
 	curve_shape: VectorShape,
 	bez_path: Vec<PathEl>,
@@ -170,7 +169,8 @@ impl Fsm for PenToolFsmState {
 					// Create a new layer and prep snap system
 					data.path = Some(document.get_path_for_new_layer());
 					data.snap_handler.start_snap(document, document.bounding_boxes(None, None), true, true);
-					let snapped_position = data.snap_handler.snap_position(responses, input.viewport_bounds.size(), document, input.mouse.position);
+					data.snap_handler.add_all_document_handles(document, &[], &[]);
+					let snapped_position = data.snap_handler.snap_position(responses, document, input.mouse.position);
 
 					// Get the position and set properties
 					let start_position = transform.inverse().transform_point2(snapped_position);
@@ -185,7 +185,7 @@ impl Fsm for PenToolFsmState {
 								transform: transform.to_cols_array(),
 								insert_index: -1,
 								bez_path: data.bez_path.clone().into_iter().collect(),
-								style: style::PathStyle::new(Some(style::Stroke::new(tool_data.primary_color, data.weight as f32)), style::Fill::None),
+								style: style::PathStyle::new(Some(style::Stroke::new(tool_data.primary_color, data.weight)), style::Fill::None),
 								closed: false,
 							}
 							.into(),
@@ -218,14 +218,14 @@ impl Fsm for PenToolFsmState {
 					}
 
 					// Move the newly selected points to the cursor
-					let snapped_position = data.snap_handler.snap_position(responses, input.viewport_bounds.size(), document, input.mouse.position);
+					let snapped_position = data.snap_handler.snap_position(responses, document, input.mouse.position);
 					data.shape_editor.move_selected_points(snapped_position, false, responses);
 
 					Drawing
 				}
 				(Drawing, PointerMove) => {
 					// Move selected points
-					let snapped_position = data.snap_handler.snap_position(responses, input.viewport_bounds.size(), document, input.mouse.position);
+					let snapped_position = data.snap_handler.snap_position(responses, document, input.mouse.position);
 					data.shape_editor.move_selected_points(snapped_position, false, responses);
 
 					Drawing
@@ -303,7 +303,7 @@ fn add_to_curve(data: &mut PenToolData, input: &InputPreprocessorMessageHandler,
 	update_path_representation(data);
 
 	// Setup our position params
-	let snapped_position = data.snap_handler.snap_position(responses, input.viewport_bounds.size(), document, input.mouse.position);
+	let snapped_position = data.snap_handler.snap_position(responses, document, input.mouse.position);
 	let position = transform.inverse().transform_point2(snapped_position);
 
 	// Add a curve to the path

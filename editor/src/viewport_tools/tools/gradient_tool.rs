@@ -11,7 +11,7 @@ use crate::viewport_tools::tool::{DocumentToolData, Fsm, ToolActionHandlerData};
 
 use graphene::color::Color;
 use graphene::intersection::Quad;
-use graphene::layers::layer_info::{Layer, LayerDataType};
+use graphene::layers::layer_info::Layer;
 use graphene::layers::style::{Fill, Gradient, PathStyle, Stroke};
 use graphene::Operation;
 
@@ -81,10 +81,12 @@ impl Default for GradientToolFsmState {
 
 /// Computes the transform from gradient space to layer space (where gradient space is 0..1 in layer space)
 fn gradient_space_transform(path: &[LayerId], layer: &Layer, document: &DocumentMessageHandler) -> DAffine2 {
-	let bounds = layer.aabounding_box().unwrap();
+	let bounds = layer.aabounding_box_for_transform(DAffine2::IDENTITY, &document.graphene_document.font_cache).unwrap();
 	let bound_transform = DAffine2::from_scale_angle_translation(bounds[1] - bounds[0], 0., bounds[0]);
 
-	document.graphene_document.multiply_transforms(&path[..path.len() - 1]).unwrap() * bound_transform
+	let multiplied = document.graphene_document.multiply_transforms(path).unwrap();
+
+	multiplied * bound_transform
 }
 
 /// Contains info on the overlays for a single gradient
@@ -225,7 +227,7 @@ impl SelectedGradient {
 			self.gradient.end = mouse;
 		}
 
-		self.gradient.transform = self.transform.inverse();
+		self.gradient.transform = self.transform;
 		let fill = Fill::LinearGradient(self.gradient.clone());
 		let path = self.path.clone();
 		responses.push_back(Operation::SetLayerFill { path, fill }.into());
@@ -239,25 +241,9 @@ struct GradientToolData {
 	snap_handler: SnapHandler,
 }
 
-pub fn start_snap(snap_handler: &mut SnapHandler, document: &DocumentMessageHandler, layer: &Layer, path: &[LayerId]) {
+pub fn start_snap(snap_handler: &mut SnapHandler, document: &DocumentMessageHandler) {
 	snap_handler.start_snap(document, document.bounding_boxes(None, None), true, true);
-	if let LayerDataType::Shape(s) = &layer.data {
-		let transform = document.graphene_document.multiply_transforms(path).unwrap();
-		let snap_points = s
-			.path
-			.iter()
-			.filter_map(|shape| match shape {
-				kurbo::PathEl::MoveTo(point) => Some(point),
-				kurbo::PathEl::LineTo(point) => Some(point),
-				kurbo::PathEl::QuadTo(_, point) => Some(point),
-				kurbo::PathEl::CurveTo(_, _, point) => Some(point),
-				kurbo::PathEl::ClosePath => None,
-			})
-			.map(|point| DVec2::new(point.x, point.y))
-			.map(|pos| transform.transform_point2(pos))
-			.collect();
-		snap_handler.add_snap_points(document, snap_points);
-	}
+	snap_handler.add_all_document_handles(document, &[], &[]);
 }
 
 impl Fsm for GradientToolFsmState {
@@ -305,7 +291,7 @@ impl Fsm for GradientToolFsmState {
 					for overlay in &data.gradient_overlays {
 						if overlay.evaluate_gradient_start().distance_squared(mouse) < tolerance {
 							dragging = true;
-							start_snap(&mut data.snap_handler, document, document.graphene_document.layer(&overlay.path).unwrap(), &overlay.path);
+							start_snap(&mut data.snap_handler, document);
 							data.selected_gradient = Some(SelectedGradient {
 								path: overlay.path.clone(),
 								transform: overlay.transform,
@@ -315,7 +301,7 @@ impl Fsm for GradientToolFsmState {
 						}
 						if overlay.evaluate_gradient_end().distance_squared(mouse) < tolerance {
 							dragging = true;
-							start_snap(&mut data.snap_handler, document, document.graphene_document.layer(&overlay.path).unwrap(), &overlay.path);
+							start_snap(&mut data.snap_handler, document);
 							data.selected_gradient = Some(SelectedGradient {
 								path: overlay.path.clone(),
 								transform: overlay.transform,
@@ -346,7 +332,7 @@ impl Fsm for GradientToolFsmState {
 
 							data.selected_gradient = Some(selected_gradient);
 
-							start_snap(&mut data.snap_handler, document, layer, &intersection);
+							start_snap(&mut data.snap_handler, document);
 
 							GradientToolFsmState::Drawing
 						} else {
@@ -356,7 +342,7 @@ impl Fsm for GradientToolFsmState {
 				}
 				(GradientToolFsmState::Drawing, GradientToolMessage::PointerMove { constrain_axis }) => {
 					if let Some(selected_gradient) = &mut data.selected_gradient {
-						let mouse = data.snap_handler.snap_position(responses, input.viewport_bounds.size(), document, input.mouse.position);
+						let mouse = data.snap_handler.snap_position(responses, document, input.mouse.position);
 						selected_gradient.update_gradient(mouse, responses, input.keyboard.get(constrain_axis as usize));
 					}
 					GradientToolFsmState::Drawing

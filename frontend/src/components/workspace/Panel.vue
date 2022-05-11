@@ -8,11 +8,11 @@
 					data-tab
 					v-for="(tabLabel, tabIndex) in tabLabels"
 					:key="tabIndex"
-					@click="(e) => (e && e.stopPropagation(), clickAction && clickAction(tabIndex))"
-					@click.middle="(e) => (e && e.stopPropagation(), closeAction && closeAction(tabIndex))"
+					@click="(e) => (e?.stopPropagation(), clickAction?.(tabIndex))"
+					@click.middle="(e) => (e?.stopPropagation(), closeAction?.(tabIndex))"
 				>
 					<span>{{ tabLabel }}</span>
-					<IconButton :action="(e) => (e && e.stopPropagation(), closeAction && closeAction(tabIndex))" :icon="'CloseX'" :size="16" v-if="tabCloseButtons" />
+					<IconButton :action="(e) => (e?.stopPropagation(), closeAction?.(tabIndex))" :icon="'CloseX'" :size="16" v-if="tabCloseButtons" />
 				</LayoutRow>
 			</LayoutRow>
 			<PopoverButton :icon="'VerticalEllipsis'">

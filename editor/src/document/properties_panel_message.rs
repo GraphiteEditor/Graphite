@@ -1,24 +1,51 @@
 use crate::message_prelude::*;
 
-use graphene::layers::style::Fill;
+use super::utility_types::TargetDocument;
+
+use graphene::layers::style::{Fill, Stroke};
 use serde::{Deserialize, Serialize};
 
 #[remain::sorted]
 #[impl_message(Message, DocumentMessage, PropertiesPanel)]
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub enum PropertiesPanelMessage {
-	CheckSelectedWasDeleted { path: Vec<LayerId> },
-	CheckSelectedWasUpdated { path: Vec<LayerId> },
+	CheckSelectedWasDeleted {
+		path: Vec<LayerId>,
+	},
+	CheckSelectedWasUpdated {
+		path: Vec<LayerId>,
+	},
 	ClearSelection,
-	ModifyFill { fill: Fill },
-	ModifyName { name: String },
-	ModifyStroke { color: String, weight: f64 },
-	ModifyTransform { value: f64, transform_op: TransformOp },
+	ModifyFill {
+		fill: Fill,
+	},
+	ModifyFont {
+		font_family: String,
+		font_style: String,
+		font_file: Option<String>,
+		size: f64,
+	},
+	ModifyName {
+		name: String,
+	},
+	ModifyStroke {
+		stroke: Stroke,
+	},
+	ModifyText {
+		new_text: String,
+	},
+	ModifyTransform {
+		value: f64,
+		transform_op: TransformOp,
+	},
 	ResendActiveProperties,
-	SetActiveLayers { paths: Vec<Vec<LayerId>> },
+	SetActiveLayers {
+		paths: Vec<Vec<LayerId>>,
+		document: TargetDocument,
+	},
 }
 
-#[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
+#[derive(PartialEq, Clone, Copy, Debug, Serialize, Deserialize)]
 pub enum TransformOp {
 	X,
 	Y,

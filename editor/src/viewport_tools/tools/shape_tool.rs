@@ -59,7 +59,6 @@ pub enum ShapeOptionsUpdate {
 impl PropertyHolder for ShapeTool {
 	fn properties(&self) -> WidgetLayout {
 		WidgetLayout::new(vec![LayoutRow::Row {
-			name: "".into(),
 			widgets: vec![WidgetHolder::new(Widget::NumberInput(NumberInput {
 				label: "Sides".into(),
 				value: self.options.vertices as f64,
@@ -150,7 +149,7 @@ impl Fsm for ShapeToolFsmState {
 		if let ToolMessage::Shape(event) = event {
 			match (self, event) {
 				(Ready, DragStart) => {
-					shape_data.start(responses, input.viewport_bounds.size(), document, input.mouse.position);
+					shape_data.start(responses, document, input.mouse.position);
 					responses.push_back(DocumentMessage::StartTransaction.into());
 					shape_data.path = Some(document.get_path_for_new_layer());
 					responses.push_back(DocumentMessage::DeselectAllLayers.into());
@@ -170,7 +169,7 @@ impl Fsm for ShapeToolFsmState {
 					Drawing
 				}
 				(state, Resize { center, lock_ratio }) => {
-					if let Some(message) = shape_data.calculate_transform(responses, input.viewport_bounds.size(), document, center, lock_ratio, input) {
+					if let Some(message) = shape_data.calculate_transform(responses, document, center, lock_ratio, input) {
 						responses.push_back(message);
 					}
 

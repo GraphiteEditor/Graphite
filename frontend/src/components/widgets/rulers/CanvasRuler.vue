@@ -52,7 +52,7 @@ const MINOR_MARK_THICKNESS = 3;
 
 export type RulerDirection = "Horizontal" | "Vertical";
 
-// Apparently the modulo operator in js does not work properly.
+// Modulo function that works for negative numbers, unlike the JS % operator
 const mod = (n: number, m: number): number => {
 	const remainder = n % m;
 	return Math.floor(remainder >= 0 ? remainder : remainder + m);

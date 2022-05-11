@@ -45,15 +45,16 @@ impl Default for Mapping {
 			entry! {action=SelectToolMessage::PointerMove { axis_align: KeyShift, snap_angle: KeyControl, center: KeyAlt }, message=InputMapperMessage::PointerMove},
 			entry! {action=SelectToolMessage::DragStart { add_to_selection: KeyShift }, key_down=Lmb},
 			entry! {action=SelectToolMessage::DragStop, key_up=Lmb},
+			entry! {action=SelectToolMessage::DragStop, key_down=KeyEnter},
 			entry! {action=SelectToolMessage::EditLayer, message=InputMapperMessage::DoubleClick},
 			entry! {action=SelectToolMessage::Abort, key_down=Rmb},
 			entry! {action=SelectToolMessage::Abort, key_down=KeyEscape},
-			// Crop
-			entry! {action=CropToolMessage::PointerDown, key_down=Lmb},
-			entry! {action=CropToolMessage::PointerMove { constrain_axis_or_aspect: KeyShift, center: KeyAlt }, message=InputMapperMessage::PointerMove},
-			entry! {action=CropToolMessage::PointerUp, key_up=Lmb},
-			entry! {action=CropToolMessage::DeleteSelected, key_down=KeyDelete},
-			entry! {action=CropToolMessage::DeleteSelected, key_down=KeyBackspace},
+			// Artboard
+			entry! {action=ArtboardToolMessage::PointerDown, key_down=Lmb},
+			entry! {action=ArtboardToolMessage::PointerMove { constrain_axis_or_aspect: KeyShift, center: KeyAlt }, message=InputMapperMessage::PointerMove},
+			entry! {action=ArtboardToolMessage::PointerUp, key_up=Lmb},
+			entry! {action=ArtboardToolMessage::DeleteSelected, key_down=KeyDelete},
+			entry! {action=ArtboardToolMessage::DeleteSelected, key_down=KeyBackspace},
 			// Navigate
 			entry! {action=NavigateToolMessage::ClickZoom { zoom_in: false }, key_up=Lmb, modifiers=[KeyShift]},
 			entry! {action=NavigateToolMessage::ClickZoom { zoom_in: true }, key_up=Lmb},
@@ -141,7 +142,8 @@ impl Default for Mapping {
 			// Colors
 			entry! {action=ToolMessage::ResetColors, key_down=KeyX, modifiers=[KeyShift, KeyControl]},
 			entry! {action=ToolMessage::SwapColors, key_down=KeyX, modifiers=[KeyShift]},
-			// Editor actions
+			entry! {action=ToolMessage::SelectRandomPrimaryColor, key_down=KeyC, modifiers=[KeyAlt]},
+			// Editor Actions
 			entry! {action=FrontendMessage::TriggerFileUpload, key_down=KeyO, modifiers=[KeyControl]},
 			// Document actions
 			entry! {action=DocumentMessage::Redo, key_down=KeyZ, modifiers=[KeyControl, KeyShift]},
@@ -150,7 +152,7 @@ impl Default for Mapping {
 			entry! {action=DocumentMessage::SelectAllLayers, key_down=KeyA, modifiers=[KeyControl]},
 			entry! {action=DocumentMessage::DeleteSelectedLayers, key_down=KeyDelete},
 			entry! {action=DocumentMessage::DeleteSelectedLayers, key_down=KeyBackspace},
-			entry! {action=DocumentMessage::ExportDocument, key_down=KeyE, modifiers=[KeyControl]},
+			entry! {action=DialogMessage::RequestExportDialog, key_down=KeyE, modifiers=[KeyControl]},
 			entry! {action=DocumentMessage::SaveDocument, key_down=KeyS, modifiers=[KeyControl]},
 			entry! {action=DocumentMessage::SaveDocument, key_down=KeyS, modifiers=[KeyControl, KeyShift]},
 			entry! {action=DocumentMessage::DebugPrintDocument, key_down=Key9},
@@ -183,10 +185,10 @@ impl Default for Mapping {
 			entry! {action=MovementMessage::TranslateCanvasByViewportFraction { delta: DVec2::new(0., 1.) }, key_down=KeyPageUp},
 			entry! {action=MovementMessage::TranslateCanvasByViewportFraction { delta: DVec2::new(0., -1.) }, key_down=KeyPageDown},
 			// Portfolio actions
-			entry! {action=PortfolioMessage::NewDocument, key_down=KeyN, modifiers=[KeyControl]},
+			entry! {action=DialogMessage::RequestNewDocumentDialog, key_down=KeyN, modifiers=[KeyControl]},
 			entry! {action=PortfolioMessage::NextDocument, key_down=KeyTab, modifiers=[KeyControl]},
 			entry! {action=PortfolioMessage::PrevDocument, key_down=KeyTab, modifiers=[KeyControl, KeyShift]},
-			entry! {action=PortfolioMessage::CloseAllDocumentsWithConfirmation, key_down=KeyW, modifiers=[KeyControl, KeyAlt]},
+			entry! {action=DialogMessage::CloseAllDocumentsWithConfirmation, key_down=KeyW, modifiers=[KeyControl, KeyAlt]},
 			entry! {action=PortfolioMessage::CloseActiveDocumentWithConfirmation, key_down=KeyW, modifiers=[KeyControl]},
 			entry! {action=PortfolioMessage::Copy { clipboard: Clipboard::Device }, key_down=KeyC, modifiers=[KeyControl]},
 			entry! {action=PortfolioMessage::Cut { clipboard: Clipboard::Device }, key_down=KeyX, modifiers=[KeyControl]},

@@ -1,4 +1,5 @@
 use crate::consts::SELECTION_TOLERANCE;
+use crate::document::utility_types::TargetDocument;
 use crate::document::DocumentMessageHandler;
 use crate::frontend::utility_types::MouseCursorIcon;
 use crate::input::keyboard::{Key, MouseMotion};
@@ -17,15 +18,15 @@ use glam::{DVec2, Vec2Swizzles};
 use serde::{Deserialize, Serialize};
 
 #[derive(Default)]
-pub struct CropTool {
-	fsm_state: CropToolFsmState,
-	data: CropToolData,
+pub struct ArtboardTool {
+	fsm_state: ArtboardToolFsmState,
+	data: ArtboardToolData,
 }
 
 #[remain::sorted]
-#[impl_message(Message, ToolMessage, Crop)]
+#[impl_message(Message, ToolMessage, Artboard)]
 #[derive(PartialEq, Clone, Debug, Hash, Serialize, Deserialize)]
-pub enum CropToolMessage {
+pub enum ArtboardToolMessage {
 	// Standard messages
 	#[remain::unsorted]
 	Abort,
@@ -42,7 +43,7 @@ pub enum CropToolMessage {
 	PointerUp,
 }
 
-impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for CropTool {
+impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for ArtboardTool {
 	fn process_action(&mut self, action: ToolMessage, data: ToolActionHandlerData<'a>, responses: &mut VecDeque<Message>) {
 		if action == ToolMessage::UpdateHints {
 			self.fsm_state.update_hints(responses);
@@ -62,27 +63,27 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for CropTool {
 		}
 	}
 
-	advertise_actions!(CropToolMessageDiscriminant; PointerDown, PointerUp, PointerMove, DeleteSelected, Abort);
+	advertise_actions!(ArtboardToolMessageDiscriminant; PointerDown, PointerUp, PointerMove, DeleteSelected, Abort);
 }
 
-impl PropertyHolder for CropTool {}
+impl PropertyHolder for ArtboardTool {}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum CropToolFsmState {
+enum ArtboardToolFsmState {
 	Ready,
 	Drawing,
 	ResizingBounds,
 	Dragging,
 }
 
-impl Default for CropToolFsmState {
+impl Default for ArtboardToolFsmState {
 	fn default() -> Self {
-		CropToolFsmState::Ready
+		ArtboardToolFsmState::Ready
 	}
 }
 
 #[derive(Clone, Debug, Default)]
-struct CropToolData {
+struct ArtboardToolData {
 	bounding_box_overlays: Option<BoundingBoxOverlays>,
 	selected_board: Option<LayerId>,
 	snap_handler: SnapHandler,
@@ -91,8 +92,8 @@ struct CropToolData {
 	drag_current: DVec2,
 }
 
-impl Fsm for CropToolFsmState {
-	type ToolData = CropToolData;
+impl Fsm for ArtboardToolFsmState {
+	type ToolData = ArtboardToolData;
 	type ToolOptions = ();
 
 	fn transition(
@@ -105,9 +106,9 @@ impl Fsm for CropToolFsmState {
 		input: &InputPreprocessorMessageHandler,
 		responses: &mut VecDeque<Message>,
 	) -> Self {
-		if let ToolMessage::Crop(event) = event {
+		if let ToolMessage::Artboard(event) = event {
 			match (self, event) {
-				(CropToolFsmState::Ready | CropToolFsmState::ResizingBounds | CropToolFsmState::Dragging, CropToolMessage::DocumentIsDirty) => {
+				(ArtboardToolFsmState::Ready | ArtboardToolFsmState::ResizingBounds | ArtboardToolFsmState::Dragging, ArtboardToolMessage::DocumentIsDirty) => {
 					let mut buffer = Vec::new();
 					match (
 						data.selected_board.map(|path| document.artboard_bounding_box_and_transform(&[path])).unwrap_or(None),
@@ -125,13 +126,20 @@ impl Fsm for CropToolFsmState {
 							data.bounding_box_overlays = Some(bounding_box_overlays);
 
 							responses.push_back(OverlaysMessage::Rerender.into());
+							responses.push_back(
+								PropertiesPanelMessage::SetActiveLayers {
+									paths: vec![vec![data.selected_board.unwrap()]],
+									document: TargetDocument::Artboard,
+								}
+								.into(),
+							);
 						}
 						_ => {}
 					};
 					buffer.into_iter().rev().for_each(|message| responses.push_front(message));
 					self
 				}
-				(CropToolFsmState::Ready, CropToolMessage::PointerDown) => {
+				(ArtboardToolFsmState::Ready, ArtboardToolMessage::PointerDown) => {
 					data.drag_start = input.mouse.position;
 					data.drag_current = input.mouse.position;
 
@@ -155,8 +163,9 @@ impl Fsm for CropToolFsmState {
 
 						data.snap_handler
 							.start_snap(document, document.bounding_boxes(None, Some(data.selected_board.unwrap())), snap_x, snap_y);
+						data.snap_handler.add_all_document_handles(document, &[], &[]);
 
-						CropToolFsmState::ResizingBounds
+						ArtboardToolFsmState::ResizingBounds
 					} else {
 						let tolerance = DVec2::splat(SELECTION_TOLERANCE);
 						let quad = Quad::from_box([input.mouse.position - tolerance, input.mouse.position + tolerance]);
@@ -167,13 +176,23 @@ impl Fsm for CropToolFsmState {
 							data.selected_board = Some(intersection[0]);
 
 							data.snap_handler.start_snap(document, document.bounding_boxes(None, Some(intersection[0])), true, true);
+							data.snap_handler.add_all_document_handles(document, &[], &[]);
 
-							CropToolFsmState::Dragging
+							responses.push_back(
+								PropertiesPanelMessage::SetActiveLayers {
+									paths: vec![intersection.clone()],
+									document: TargetDocument::Artboard,
+								}
+								.into(),
+							);
+
+							ArtboardToolFsmState::Dragging
 						} else {
 							let id = generate_uuid();
 							data.selected_board = Some(id);
 
 							data.snap_handler.start_snap(document, document.bounding_boxes(None, Some(id)), true, true);
+							data.snap_handler.add_all_document_handles(document, &[], &[]);
 
 							responses.push_back(
 								ArtboardMessage::AddArtboard {
@@ -184,18 +203,20 @@ impl Fsm for CropToolFsmState {
 								.into(),
 							);
 
-							CropToolFsmState::Drawing
+							responses.push_back(PropertiesPanelMessage::ClearSelection.into());
+
+							ArtboardToolFsmState::Drawing
 						}
 					}
 				}
-				(CropToolFsmState::ResizingBounds, CropToolMessage::PointerMove { constrain_axis_or_aspect, center }) => {
+				(ArtboardToolFsmState::ResizingBounds, ArtboardToolMessage::PointerMove { constrain_axis_or_aspect, center }) => {
 					if let Some(bounds) = &data.bounding_box_overlays {
 						if let Some(movement) = &bounds.selected_edges {
 							let from_center = input.keyboard.get(center as usize);
 							let constrain_square = input.keyboard.get(constrain_axis_or_aspect as usize);
 
 							let mouse_position = input.mouse.position;
-							let snapped_mouse_position = data.snap_handler.snap_position(responses, input.viewport_bounds.size(), document, mouse_position);
+							let snapped_mouse_position = data.snap_handler.snap_position(responses, document, mouse_position);
 
 							let [position, size] = movement.new_size(snapped_mouse_position, bounds.transform, from_center, constrain_square);
 							let position = movement.center_position(position, size, from_center);
@@ -212,17 +233,17 @@ impl Fsm for CropToolFsmState {
 							responses.push_back(ToolMessage::DocumentIsDirty.into());
 						}
 					}
-					CropToolFsmState::ResizingBounds
+					ArtboardToolFsmState::ResizingBounds
 				}
-				(CropToolFsmState::Dragging, CropToolMessage::PointerMove { constrain_axis_or_aspect, .. }) => {
+				(ArtboardToolFsmState::Dragging, ArtboardToolMessage::PointerMove { constrain_axis_or_aspect, .. }) => {
 					if let Some(bounds) = &data.bounding_box_overlays {
 						let axis_align = input.keyboard.get(constrain_axis_or_aspect as usize);
 
 						let mouse_position = axis_align_drag(axis_align, input.mouse.position, data.drag_start);
 						let mouse_delta = mouse_position - data.drag_current;
 
-						let snap = bounds.evaluate_transform_handle_positions().iter().map(|v| (v.x, v.y)).unzip();
-						let closest_move = data.snap_handler.snap_layers(responses, document, snap, input.viewport_bounds.size(), mouse_delta);
+						let snap = bounds.evaluate_transform_handle_positions().into_iter().collect();
+						let closest_move = data.snap_handler.snap_layers(responses, document, snap, mouse_delta);
 
 						let size = bounds.bounds[1] - bounds.bounds[0];
 
@@ -241,11 +262,11 @@ impl Fsm for CropToolFsmState {
 
 						data.drag_current = mouse_position + closest_move;
 					}
-					CropToolFsmState::Dragging
+					ArtboardToolFsmState::Dragging
 				}
-				(CropToolFsmState::Drawing, CropToolMessage::PointerMove { constrain_axis_or_aspect, center }) => {
+				(ArtboardToolFsmState::Drawing, ArtboardToolMessage::PointerMove { constrain_axis_or_aspect, center }) => {
 					let mouse_position = input.mouse.position;
-					let snapped_mouse_position = data.snap_handler.snap_position(responses, input.viewport_bounds.size(), document, mouse_position);
+					let snapped_mouse_position = data.snap_handler.snap_position(responses, document, mouse_position);
 
 					let root_transform = document.graphene_document.root.transform.inverse();
 
@@ -273,11 +294,21 @@ impl Fsm for CropToolFsmState {
 						.into(),
 					);
 
+					// Have to put message here instead of when Artboard is created
+					// This might result in a few more calls but it is not reliant on the order of messages
+					responses.push_back(
+						PropertiesPanelMessage::SetActiveLayers {
+							paths: vec![vec![data.selected_board.unwrap()]],
+							document: TargetDocument::Artboard,
+						}
+						.into(),
+					);
+
 					responses.push_back(ToolMessage::DocumentIsDirty.into());
 
-					CropToolFsmState::Drawing
+					ArtboardToolFsmState::Drawing
 				}
-				(CropToolFsmState::Ready, CropToolMessage::PointerMove { .. }) => {
+				(ArtboardToolFsmState::Ready, ArtboardToolMessage::PointerMove { .. }) => {
 					let cursor = data.bounding_box_overlays.as_ref().map_or(MouseCursorIcon::Default, |bounds| bounds.get_cursor(input, false));
 
 					if data.cursor != cursor {
@@ -285,18 +316,18 @@ impl Fsm for CropToolFsmState {
 						responses.push_back(FrontendMessage::UpdateMouseCursor { cursor }.into());
 					}
 
-					CropToolFsmState::Ready
+					ArtboardToolFsmState::Ready
 				}
-				(CropToolFsmState::ResizingBounds, CropToolMessage::PointerUp) => {
+				(ArtboardToolFsmState::ResizingBounds, ArtboardToolMessage::PointerUp) => {
 					data.snap_handler.cleanup(responses);
 
 					if let Some(bounds) = &mut data.bounding_box_overlays {
 						bounds.original_transforms.clear();
 					}
 
-					CropToolFsmState::Ready
+					ArtboardToolFsmState::Ready
 				}
-				(CropToolFsmState::Drawing, CropToolMessage::PointerUp) => {
+				(ArtboardToolFsmState::Drawing, ArtboardToolMessage::PointerUp) => {
 					data.snap_handler.cleanup(responses);
 
 					if let Some(bounds) = &mut data.bounding_box_overlays {
@@ -305,31 +336,40 @@ impl Fsm for CropToolFsmState {
 
 					responses.push_back(ToolMessage::DocumentIsDirty.into());
 
-					CropToolFsmState::Ready
+					ArtboardToolFsmState::Ready
 				}
-				(CropToolFsmState::Dragging, CropToolMessage::PointerUp) => {
+				(ArtboardToolFsmState::Dragging, ArtboardToolMessage::PointerUp) => {
 					data.snap_handler.cleanup(responses);
 
 					if let Some(bounds) = &mut data.bounding_box_overlays {
 						bounds.original_transforms.clear();
 					}
 
-					CropToolFsmState::Ready
+					ArtboardToolFsmState::Ready
 				}
-				(_, CropToolMessage::DeleteSelected) => {
+				(_, ArtboardToolMessage::DeleteSelected) => {
 					if let Some(artboard) = data.selected_board.take() {
 						responses.push_back(ArtboardMessage::DeleteArtboard { artboard }.into());
 						responses.push_back(ToolMessage::DocumentIsDirty.into());
 					}
-					CropToolFsmState::Ready
+					ArtboardToolFsmState::Ready
 				}
-				(_, CropToolMessage::Abort) => {
+				(_, ArtboardToolMessage::Abort) => {
 					if let Some(bounding_box_overlays) = data.bounding_box_overlays.take() {
 						bounding_box_overlays.delete(responses);
 					}
 
+					// Register properties when switching back to other tools
+					responses.push_back(
+						PropertiesPanelMessage::SetActiveLayers {
+							paths: document.selected_layers().map(|path| path.to_vec()).collect(),
+							document: TargetDocument::Artwork,
+						}
+						.into(),
+					);
+
 					data.snap_handler.cleanup(responses);
-					CropToolFsmState::Ready
+					ArtboardToolFsmState::Ready
 				}
 				_ => self,
 			}
@@ -340,7 +380,7 @@ impl Fsm for CropToolFsmState {
 
 	fn update_hints(&self, responses: &mut VecDeque<Message>) {
 		let hint_data = match self {
-			CropToolFsmState::Ready => HintData(vec![
+			ArtboardToolFsmState::Ready => HintData(vec![
 				HintGroup(vec![HintInfo {
 					key_groups: vec![],
 					mouse: Some(MouseMotion::LmbDrag),
@@ -353,14 +393,20 @@ impl Fsm for CropToolFsmState {
 					label: String::from("Move Artboard"),
 					plus: false,
 				}]),
+				HintGroup(vec![HintInfo {
+					key_groups: vec![KeysGroup(vec![Key::KeyBackspace])],
+					mouse: None,
+					label: String::from("Delete Artboard"),
+					plus: false,
+				}]),
 			]),
-			CropToolFsmState::Dragging => HintData(vec![HintGroup(vec![HintInfo {
+			ArtboardToolFsmState::Dragging => HintData(vec![HintGroup(vec![HintInfo {
 				key_groups: vec![KeysGroup(vec![Key::KeyShift])],
 				mouse: None,
 				label: String::from("Constrain to Axis"),
 				plus: false,
 			}])]),
-			CropToolFsmState::Drawing | CropToolFsmState::ResizingBounds => HintData(vec![HintGroup(vec![
+			ArtboardToolFsmState::Drawing | ArtboardToolFsmState::ResizingBounds => HintData(vec![HintGroup(vec![
 				HintInfo {
 					key_groups: vec![KeysGroup(vec![Key::KeyShift])],
 					mouse: None,

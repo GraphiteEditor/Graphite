@@ -15,11 +15,21 @@ pub const VIEWPORT_SCROLL_RATE: f64 = 0.6;
 
 pub const VIEWPORT_ROTATE_SNAP_INTERVAL: f64 = 15.;
 
-pub const SNAP_TOLERANCE: f64 = 3.;
-pub const SNAP_OVERLAY_FADE_DISTANCE: f64 = 20.;
-pub const SNAP_OVERLAY_UNSNAPPED_OPACITY: f64 = 0.4;
+// Snapping axis
+pub const SNAP_AXIS_TOLERANCE: f64 = 3.;
+pub const SNAP_AXIS_OVERLAY_FADE_DISTANCE: f64 = 15.;
+pub const SNAP_AXIS_UNSNAPPED_OPACITY: f64 = 0.4;
+
+// Snapping point
+pub const SNAP_POINT_OVERLAY_FADE_NEAR: f64 = 20.;
+pub const SNAP_POINT_OVERLAY_FADE_FAR: f64 = 40.;
+pub const SNAP_POINT_UNSNAPPED_OPACITY: f64 = 0.4;
+pub const SNAP_POINT_TOLERANCE: f64 = 5.;
+pub const SNAP_POINT_SIZE: f64 = 5.;
 
 pub const DRAG_THRESHOLD: f64 = 1.;
+
+pub const PATH_OUTLINE_WEIGHT: f64 = 2.;
 
 // Transforming layer
 pub const ROTATE_SNAP_ANGLE: f64 = 15.;
@@ -27,7 +37,7 @@ pub const SCALE_SNAP_INTERVAL: f64 = 0.1;
 pub const SLOWING_DIVISOR: f64 = 10.;
 
 // Select tool
-pub const SELECTION_TOLERANCE: f64 = 1.;
+pub const SELECTION_TOLERANCE: f64 = 5.;
 pub const SELECTION_DRAG_ANGLE: f64 = 90.;
 
 // Transformation cage
@@ -51,11 +61,10 @@ pub const SCALE_EFFECT: f64 = 0.5;
 
 pub const DEFAULT_DOCUMENT_NAME: &str = "Untitled Document";
 pub const FILE_SAVE_SUFFIX: &str = ".graphite";
-pub const FILE_EXPORT_SUFFIX: &str = ".svg";
 
 // Colors
 pub const COLOR_ACCENT: Color = Color::from_unsafe(0x00 as f32 / 255., 0xA8 as f32 / 255., 0xFF as f32 / 255.);
 
 // Document
-pub const GRAPHITE_DOCUMENT_VERSION: &str = "0.0.4";
+pub const GRAPHITE_DOCUMENT_VERSION: &str = "0.0.7";
 pub const VIEWPORT_ZOOM_TO_FIT_PADDING_SCALE_FACTOR: f32 = 1.05;

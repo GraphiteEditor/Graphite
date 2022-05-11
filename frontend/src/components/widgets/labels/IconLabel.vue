@@ -33,13 +33,12 @@
 </style>
 
 <script lang="ts">
-import { DefineComponent, defineComponent, PropType } from "vue";
+import { defineComponent, PropType } from "vue";
 
-import { IconName, IconSize, ICON_LIST } from "@/utilities/icons";
+import { IconName, icons } from "@/utilities/icons";
 
 import LayoutRow from "@/components/layout/LayoutRow.vue";
 
-const icons: Record<IconName, { component: DefineComponent; size: IconSize }> = ICON_LIST;
 type IconStyle = "node" | "";
 
 export default defineComponent({
@@ -55,6 +54,7 @@ export default defineComponent({
 	},
 	components: {
 		LayoutRow,
+		// Import the components of all the icons
 		...Object.fromEntries(Object.entries(icons).map(([name, data]) => [name, data.component])),
 	},
 });

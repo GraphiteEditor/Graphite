@@ -162,6 +162,10 @@ img {
 				background-color: var(--color-6-lowergray);
 			}
 		}
+
+		&::-webkit-scrollbar-corner {
+			background: none;
+		}
 	}
 
 	.scrollable-x.scrollable-y {
@@ -295,7 +299,7 @@ export default defineComponent({
 
 		// Initialize other stateful Vue systems
 		const dialog = createDialogState(editor);
-		const documents = createDocumentsState(editor, dialog);
+		const documents = createDocumentsState(editor);
 		const fullscreen = createFullscreenState();
 		initErrorHandling(editor, dialog);
 		createAutoSaveManager(editor, documents);
@@ -318,11 +322,8 @@ export default defineComponent({
 		this.inputManager = createInputManager(this.editor, this.$el.parentElement, this.dialog, this.documents, this.fullscreen);
 	},
 	beforeUnmount() {
-		const { inputManager } = this;
-		if (inputManager) inputManager.removeListeners();
-
-		const { editor } = this;
-		editor.instance.free();
+		this.inputManager?.removeListeners();
+		this.editor.instance.free();
 	},
 	components: {
 		MainWindow,

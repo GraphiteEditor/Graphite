@@ -1,4 +1,4 @@
-pub mod crop_tool;
+pub mod artboard_tool;
 pub mod ellipse_tool;
 pub mod eyedropper_tool;
 pub mod fill_tool;

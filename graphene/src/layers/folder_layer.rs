@@ -1,5 +1,6 @@
 use super::layer_info::{Layer, LayerData, LayerDataType};
 use super::style::ViewMode;
+use crate::document::FontCache;
 use crate::intersection::Quad;
 use crate::{DocumentError, LayerId};
 
@@ -7,43 +8,66 @@ use glam::DVec2;
 use serde::{Deserialize, Serialize};
 use std::fmt::Write;
 
+/// A layer that encapsulates other layers, including potentially more folders.
+/// The contained layers are rendered in the same order they are
+/// stored in the [layers](FolderLayer::layers) field.
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize, Default)]
 pub struct FolderLayer {
+	/// The ID that will be assigned to the next layer that is added to the folder
 	next_assignment_id: LayerId,
+	/// The IDs of the [Layer]s contained within the Folder
 	pub layer_ids: Vec<LayerId>,
+	/// The [Layer]s contained in the folder
 	layers: Vec<Layer>,
 }
 
 impl LayerData for FolderLayer {
-	fn render(&mut self, svg: &mut String, svg_defs: &mut String, transforms: &mut Vec<glam::DAffine2>, view_mode: ViewMode) {
+	fn render(&mut self, svg: &mut String, svg_defs: &mut String, transforms: &mut Vec<glam::DAffine2>, view_mode: ViewMode, font_cache: &FontCache) {
 		for layer in &mut self.layers {
-			let _ = writeln!(svg, "{}", layer.render(transforms, view_mode, svg_defs));
+			let _ = writeln!(svg, "{}", layer.render(transforms, view_mode, svg_defs, font_cache));
 		}
 	}
 
-	fn intersects_quad(&self, quad: Quad, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>) {
+	fn intersects_quad(&self, quad: Quad, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>, font_cache: &FontCache) {
 		for (layer, layer_id) in self.layers().iter().zip(&self.layer_ids) {
 			path.push(*layer_id);
-			layer.intersects_quad(quad, path, intersections);
+			layer.intersects_quad(quad, path, intersections, font_cache);
 			path.pop();
 		}
 	}
 
-	fn bounding_box(&self, transform: glam::DAffine2) -> Option<[DVec2; 2]> {
+	fn bounding_box(&self, transform: glam::DAffine2, font_cache: &FontCache) -> Option<[DVec2; 2]> {
 		self.layers
 			.iter()
-			.filter_map(|layer| layer.data.bounding_box(transform * layer.transform))
+			.filter_map(|layer| layer.data.bounding_box(transform * layer.transform, font_cache))
 			.reduce(|a, b| [a[0].min(b[0]), a[1].max(b[1])])
 	}
 }
 
 impl FolderLayer {
-	/// When a insertion id is provided, try to insert the layer with the given id.
-	/// If that id is already used, return None.
-	/// When no insertion id is provided, search for the next free id and insert it with that.
-	/// Negative values for insert_index represent distance from the end
+	/// When a insertion ID is provided, try to insert the layer with the given ID.
+	/// If that ID is already used, return `None`.
+	/// When no insertion ID is provided, search for the next free ID and insert it with that.
+	/// Negative values for `insert_index` represent distance from the end
+	///
+	/// # Example
+	/// ```
+	/// # use graphite_graphene::layers::shape_layer::ShapeLayer;
+	/// # use graphite_graphene::layers::folder_layer::FolderLayer;
+	/// # use graphite_graphene::layers::style::PathStyle;
+	/// # use graphite_graphene::layers::layer_info::LayerDataType;
+	/// let mut folder = FolderLayer::default();
+	///
+	/// // Create two layers to be added to the folder
+	/// let mut shape_layer = ShapeLayer::rectangle(PathStyle::default());
+	/// let mut folder_layer = FolderLayer::default();
+	///
+	/// folder.add_layer(shape_layer.into(), None, -1);
+	/// folder.add_layer(folder_layer.into(), Some(123), 0);
+	/// ```
 	pub fn add_layer(&mut self, layer: Layer, id: Option<LayerId>, insert_index: isize) -> Option<LayerId> {
 		let mut insert_index = insert_index as i128;
+
 		if insert_index < 0 {
 			insert_index = self.layers.len() as i128 + insert_index as i128 + 1;
 		}
@@ -71,6 +95,24 @@ impl FolderLayer {
 		}
 	}
 
+	/// Remove a layer with a given ID from the folder.
+	/// This operation will fail if `id` is not present in the folder.
+	///
+	/// # Example
+	/// ```
+	/// # use graphite_graphene::layers::folder_layer::FolderLayer;
+	/// let mut folder = FolderLayer::default();
+	///
+	/// // Try to remove a layer that does not exist
+	/// assert!(folder.remove_layer(123).is_err());
+	///
+	/// // Add another folder to the folder
+	/// folder.add_layer(FolderLayer::default().into(), Some(123), -1);
+	///
+	/// // Try to remove that folder again
+	/// assert!(folder.remove_layer(123).is_ok());
+	/// assert_eq!(folder.layers().len(), 0)
+	/// ```
 	pub fn remove_layer(&mut self, id: LayerId) -> Result<(), DocumentError> {
 		let pos = self.position_of_layer(id)?;
 		self.layers.remove(pos);
@@ -78,15 +120,17 @@ impl FolderLayer {
 		Ok(())
 	}
 
-	/// Returns a list of layers in the folder
+	/// Returns a list of [LayerId]s in the folder.
 	pub fn list_layers(&self) -> &[LayerId] {
 		self.layer_ids.as_slice()
 	}
 
+	/// Get references to all the [Layer]s in the folder.
 	pub fn layers(&self) -> &[Layer] {
 		self.layers.as_slice()
 	}
 
+	/// Get mutable references to all the [Layer]s in the folder.
 	pub fn layers_mut(&mut self) -> &mut [Layer] {
 		self.layers.as_mut_slice()
 	}
@@ -101,14 +145,70 @@ impl FolderLayer {
 		Some(&mut self.layers[pos])
 	}
 
+	/// Returns `true` if the folder contains a layer with the given [LayerId].
+	///
+	/// # Example
+	/// ```
+	/// # use graphite_graphene::layers::folder_layer::FolderLayer;
+	/// let mut folder = FolderLayer::default();
+	///
+	/// // Search for an id that does not exist
+	/// assert!(!folder.folder_contains(123));
+	///
+	/// // Add layer with the id "123" to the folder
+	/// folder.add_layer(FolderLayer::default().into(), Some(123), -1);
+	///
+	/// // Search for the id "123"
+	/// assert!(folder.folder_contains(123));
+	/// ```
 	pub fn folder_contains(&self, id: LayerId) -> bool {
 		self.layer_ids.contains(&id)
 	}
 
+	/// Tries to find the index of a layer with the given [LayerId] within the folder.
+	/// This operation will fail if no layer with a matching ID is present in the folder.
+	///
+	/// # Example
+	/// ```
+	/// # use graphite_graphene::layers::folder_layer::FolderLayer;
+	/// let mut folder = FolderLayer::default();
+	///
+	/// // Search for an id that does not exist
+	/// assert!(folder.position_of_layer(123).is_err());
+	///
+	/// // Add layer with the id "123" to the folder
+	/// folder.add_layer(FolderLayer::default().into(), Some(123), -1);
+	/// folder.add_layer(FolderLayer::default().into(), Some(42), -1);
+	///
+	/// assert_eq!(folder.position_of_layer(123), Ok(0));
+	/// assert_eq!(folder.position_of_layer(42), Ok(1));
+	/// ```
 	pub fn position_of_layer(&self, layer_id: LayerId) -> Result<usize, DocumentError> {
 		self.layer_ids.iter().position(|x| *x == layer_id).ok_or_else(|| DocumentError::LayerNotFound([layer_id].into()))
 	}
 
+	/// Tries to get a reference to a folder with the given [LayerId].
+	/// This operation will return `None` if either no layer with `id` exists
+	/// in the folder, or the layer with matching ID is not a folder.
+	///
+	/// # Example
+	/// ```
+	/// # use graphite_graphene::layers::folder_layer::FolderLayer;
+	/// # use graphite_graphene::layers::shape_layer::ShapeLayer;
+	/// # use graphite_graphene::layers::style::PathStyle;
+	/// let mut folder = FolderLayer::default();
+	///
+	/// // Search for an id that does not exist
+	/// assert!(folder.folder(132).is_none());
+	///
+	/// // add a folder and search for it
+	/// folder.add_layer(FolderLayer::default().into(), Some(123), -1);
+	/// assert!(folder.folder(123).is_some());
+	///
+	/// // add a non-folder layer and search for it
+	/// folder.add_layer(ShapeLayer::rectangle(PathStyle::default()).into(), Some(42), -1);
+	/// assert!(folder.folder(42).is_none());
+	/// ```
 	pub fn folder(&self, id: LayerId) -> Option<&FolderLayer> {
 		match self.layer(id) {
 			Some(Layer {
@@ -118,6 +218,10 @@ impl FolderLayer {
 		}
 	}
 
+	/// Tries to get a mutable reference to folder with the given `id`.
+	/// This operation will return `None` if either no layer with `id` exists
+	/// in the folder or the layer with matching ID is not a folder.
+	/// See the [FolderLayer::folder] method for a usage example.
 	pub fn folder_mut(&mut self, id: LayerId) -> Option<&mut FolderLayer> {
 		match self.layer_mut(id) {
 			Some(Layer {

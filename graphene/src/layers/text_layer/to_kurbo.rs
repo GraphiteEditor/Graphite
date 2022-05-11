@@ -67,7 +67,13 @@ fn wrap_word(line_width: Option<f64>, glyph_buffer: &GlyphBuffer, scale: f64, x_
 	false
 }
 
-pub fn to_kurbo(str: &str, buzz_face: rustybuzz::Face, font_size: f64, line_width: Option<f64>) -> BezPath {
+pub fn to_kurbo(str: &str, buzz_face: Option<rustybuzz::Face>, font_size: f64, line_width: Option<f64>) -> BezPath {
+	let buzz_face = match buzz_face {
+		Some(face) => face,
+		// Show blank layer if font has not loaded
+		None => return BezPath::default(),
+	};
+
 	let (scale, line_height, mut buffer) = font_properties(&buzz_face, font_size);
 
 	let mut builder = Builder {
@@ -82,7 +88,6 @@ pub fn to_kurbo(str: &str, buzz_face: rustybuzz::Face, font_size: f64, line_widt
 		let length = line.split(' ').count();
 		for (index, word) in line.split(' ').enumerate() {
 			push_str(&mut buffer, word, index != length - 1);
-
 			let glyph_buffer = rustybuzz::shape(&buzz_face, &[], buffer);
 
 			if wrap_word(line_width, &glyph_buffer, scale, builder.pos.x) {
@@ -107,7 +112,13 @@ pub fn to_kurbo(str: &str, buzz_face: rustybuzz::Face, font_size: f64, line_widt
 	builder.path
 }
 
-pub fn bounding_box(str: &str, buzz_face: rustybuzz::Face, font_size: f64, line_width: Option<f64>) -> DVec2 {
+pub fn bounding_box(str: &str, buzz_face: Option<rustybuzz::Face>, font_size: f64, line_width: Option<f64>) -> DVec2 {
+	let buzz_face = match buzz_face {
+		Some(face) => face,
+		// Show blank layer if font has not loaded
+		None => return DVec2::ZERO,
+	};
+
 	let (scale, line_height, mut buffer) = font_properties(&buzz_face, font_size);
 
 	let mut pos = DVec2::ZERO;

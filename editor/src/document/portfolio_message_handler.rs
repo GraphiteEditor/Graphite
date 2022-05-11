@@ -5,7 +5,7 @@ use crate::frontend::utility_types::FrontendDocumentDetails;
 use crate::input::InputPreprocessorMessageHandler;
 use crate::layout::layout_message::LayoutTarget;
 use crate::layout::widgets::PropertyHolder;
-use crate::message_prelude::*;
+use crate::{dialog, message_prelude::*};
 
 use graphene::Operation as DocumentOperation;
 
@@ -29,14 +29,13 @@ impl PortfolioMessageHandler {
 		self.documents.get_mut(&self.active_document_id).unwrap()
 	}
 
-	fn generate_new_document_name(&self) -> String {
+	pub fn generate_new_document_name(&self) -> String {
 		let mut doc_title_numbers = self
 			.ordered_document_iterator()
-			.map(|doc| {
+			.filter_map(|doc| {
 				doc.name
 					.rsplit_once(DEFAULT_DOCUMENT_NAME)
 					.map(|(prefix, number)| (prefix.is_empty()).then(|| number.trim().parse::<isize>().ok()).flatten().unwrap_or(1))
-					.unwrap()
 			})
 			.collect::<Vec<isize>>();
 
@@ -52,7 +51,7 @@ impl PortfolioMessageHandler {
 		name
 	}
 
-	// TODO Fix how this doesn't preserve tab order upon loading new document from file>load
+	// TODO Fix how this doesn't preserve tab order upon loading new document from *File > Load*
 	fn load_document(&mut self, new_document: DocumentMessageHandler, document_id: u64, replace_first_empty: bool, responses: &mut VecDeque<Message>) {
 		// Special case when loading a document on an empty page
 		if replace_first_empty && self.active_document().is_unmodified_default() {
@@ -79,6 +78,7 @@ impl PortfolioMessageHandler {
 		);
 
 		new_document.load_image_data(responses, &new_document.graphene_document.root.data, Vec::new());
+		new_document.load_default_font(responses);
 
 		self.documents.insert(document_id, new_document);
 
@@ -167,9 +167,6 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 				// Create a new blank document
 				responses.push_back(NewDocument.into());
 			}
-			CloseAllDocumentsWithConfirmation => {
-				responses.push_back(FrontendMessage::DisplayConfirmationToCloseAllDocuments.into());
-			}
 			CloseDocument { document_id } => {
 				let document_index = self.document_index(document_id);
 				self.documents.remove(&document_id);
@@ -221,7 +218,13 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 					responses.push_back(ToolMessage::AbortCurrentTool.into());
 					responses.push_back(PortfolioMessage::CloseDocument { document_id }.into());
 				} else {
-					responses.push_back(FrontendMessage::DisplayConfirmationToCloseDocument { document_id }.into());
+					let dialog = dialog::CloseDocument {
+						document_name: target_document.name.clone(),
+						document_id,
+					};
+					dialog.register_properties(responses, LayoutTarget::DialogDetails);
+					responses.push_back(FrontendMessage::DisplayDialog { icon: "File".to_string() }.into());
+
 					// Select the document being closed
 					responses.push_back(PortfolioMessage::SelectDocument { document_id }.into());
 				}
@@ -265,6 +268,12 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 				responses.push_back(ToolMessage::AbortCurrentTool.into());
 				self.load_document(new_document, document_id, false, responses);
 			}
+			NewDocumentWithName { name } => {
+				let new_document = DocumentMessageHandler::with_name(name, ipp);
+				let document_id = generate_uuid();
+				responses.push_back(ToolMessage::AbortCurrentTool.into());
+				self.load_document(new_document, document_id, false, responses);
+			}
 			NextDocument => {
 				let current_index = self.document_index(self.active_document_id);
 				let next_index = (current_index + 1) % self.document_ids.len();
@@ -302,7 +311,7 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 						self.load_document(document, document_id, true, responses);
 					}
 					Err(e) => responses.push_back(
-						FrontendMessage::DisplayDialogError {
+						DialogMessage::DisplayDialogError {
 							title: "Failed to open document".to_string(),
 							description: e.to_string(),
 						}
@@ -407,16 +416,14 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 				let prev_id = self.document_ids[prev_index];
 				responses.push_back(PortfolioMessage::SelectDocument { document_id: prev_id }.into());
 			}
-			RequestAboutGraphiteDialog => {
-				responses.push_back(FrontendMessage::DisplayDialogAboutGraphite.into());
-			}
+
 			SelectDocument { document_id } => {
 				let active_document = self.active_document();
 				if !active_document.is_saved() {
 					responses.push_back(PortfolioMessage::AutoSaveDocument { document_id: self.active_document_id }.into());
 				}
 				responses.push_back(ToolMessage::AbortCurrentTool.into());
-				responses.push_back(SetActiveDcoument { document_id }.into());
+				responses.push_back(SetActiveDocument { document_id }.into());
 
 				responses.push_back(FrontendMessage::UpdateActiveDocument { document_id }.into());
 				responses.push_back(RenderDocument.into());
@@ -427,7 +434,7 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 				responses.push_back(ToolMessage::DocumentIsDirty.into());
 				responses.push_back(PortfolioMessage::UpdateDocumentBar.into());
 			}
-			SetActiveDcoument { document_id } => {
+			SetActiveDocument { document_id } => {
 				self.active_document_id = document_id;
 			}
 			UpdateDocumentBar => {
@@ -456,7 +463,6 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 		let mut common = actions!(PortfolioMessageDiscriminant;
 			NewDocument,
 			CloseActiveDocumentWithConfirmation,
-			CloseAllDocumentsWithConfirmation,
 			CloseAllDocuments,
 			NextDocument,
 			PrevDocument,

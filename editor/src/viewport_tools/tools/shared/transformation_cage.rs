@@ -8,9 +8,9 @@ use graphene::color::Color;
 use graphene::layers::style::{self, Fill, Stroke};
 use graphene::Operation;
 
-use glam::{DAffine2, DVec2, Vec2Swizzles};
+use glam::{DAffine2, DVec2};
 
-/// Contains the edges that are being dragged along with the origional bounds
+/// Contains the edges that are being dragged along with the original bounds.
 #[derive(Clone, Debug, Default)]
 pub struct SelectedEdges {
 	bounds: [DVec2; 2],
@@ -18,11 +18,22 @@ pub struct SelectedEdges {
 	bottom: bool,
 	left: bool,
 	right: bool,
+	// Aspect ratio in the form of width/height, so x:1 = width:height
+	aspect_ratio: f64,
 }
 
 impl SelectedEdges {
 	pub fn new(top: bool, bottom: bool, left: bool, right: bool, bounds: [DVec2; 2]) -> Self {
-		Self { top, bottom, left, right, bounds }
+		let size = (bounds[0] - bounds[1]).abs();
+		let aspect_ratio = size.x / size.y;
+		Self {
+			top,
+			bottom,
+			left,
+			right,
+			bounds,
+			aspect_ratio,
+		}
 	}
 
 	/// Calculate the pivot for the operation (the opposite point to the edge dragged)
@@ -67,8 +78,13 @@ impl SelectedEdges {
 		}
 
 		let mut size = max - min;
-		if constrain && ((self.top || self.bottom) && (self.left || self.right)) {
-			size = size.abs().max(size.abs().yx()) * size.signum();
+		if constrain {
+			size = match ((self.top || self.bottom), (self.left || self.right)) {
+				(true, true) => DVec2::new(size.x, size.x / self.aspect_ratio).abs().max(DVec2::new(size.y * self.aspect_ratio, size.y).abs()) * size.signum(),
+				(true, false) => DVec2::new(size.y * self.aspect_ratio, size.y),
+				(false, true) => DVec2::new(size.x, size.x / self.aspect_ratio),
+				_ => size,
+			};
 		}
 		if center {
 			if self.left || self.right {

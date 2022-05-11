@@ -17,7 +17,7 @@
 			<LayoutCol class="shelf">
 				<LayoutCol class="tools" :scrollableY="true">
 					<ShelfItemInput icon="GeneralSelectTool" title="Select Tool (V)" :active="activeTool === 'Select'" :action="() => selectTool('Select')" />
-					<ShelfItemInput icon="GeneralCropTool" title="Crop Tool" :active="activeTool === 'Crop'" :action="() => selectTool('Crop')" />
+					<ShelfItemInput icon="GeneralArtboardTool" title="Artboard Tool" :active="activeTool === 'Artboard'" :action="() => selectTool('Artboard')" />
 					<ShelfItemInput icon="GeneralNavigateTool" title="Navigate Tool (Z)" :active="activeTool === 'Navigate'" :action="() => selectTool('Navigate')" />
 					<ShelfItemInput icon="GeneralEyedropperTool" title="Eyedropper Tool (I)" :active="activeTool === 'Eyedropper'" :action="() => selectTool('Eyedropper')" />
 					<ShelfItemInput icon="GeneralFillTool" title="Fill Tool (F)" :active="activeTool === 'Fill'" :action="() => selectTool('Fill')" />
@@ -287,9 +287,14 @@ import {
 	TriggerViewportResize,
 	DisplayRemoveEditableTextbox,
 	DisplayEditableTextbox,
+	TriggerFontLoad,
+	TriggerFontLoadDefault,
+	TriggerVisitLink,
 } from "@/dispatcher/js-messages";
 
 import { textInputCleanup } from "@/lifetime/input";
+
+import { loadDefaultFont, setLoadDefaultFontCallback } from "@/utilities/fonts";
 
 import LayoutCol from "@/components/layout/LayoutCol.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
@@ -325,22 +330,21 @@ export default defineComponent({
 
 			const rulerHorizontal = this.$refs.rulerHorizontal as typeof CanvasRuler;
 			const rulerVertical = this.$refs.rulerVertical as typeof CanvasRuler;
-			if (rulerHorizontal) rulerHorizontal.handleResize();
-			if (rulerVertical) rulerVertical.handleResize();
+			rulerHorizontal?.handleResize();
+			rulerVertical?.handleResize();
 		},
 		pasteFile(e: DragEvent) {
 			const { dataTransfer } = e;
 			if (!dataTransfer) return;
 			e.preventDefault();
 
-			Array.from(dataTransfer.items).forEach((item) => {
+			Array.from(dataTransfer.items).forEach(async (item) => {
 				const file = item.getAsFile();
-				if (file && file.type.startsWith("image")) {
-					file.arrayBuffer().then((buffer): void => {
-						const u8Array = new Uint8Array(buffer);
+				if (file?.type.startsWith("image")) {
+					const buffer = await file.arrayBuffer();
+					const u8Array = new Uint8Array(buffer);
 
-						this.editor.instance.paste_image(file.type, u8Array, e.clientX, e.clientY);
-					});
+					this.editor.instance.paste_image(file.type, u8Array, e.clientX, e.clientY);
 				}
 			});
 		},
@@ -396,11 +400,13 @@ export default defineComponent({
 
 						const range = document.createRange();
 						range.selectNodeContents(addedInput);
+
 						const selection = window.getSelection();
 						if (selection) {
 							selection.removeAllRanges();
 							selection.addRange(range);
 						}
+
 						addedInput.focus();
 						addedInput.click();
 					});
@@ -451,16 +457,23 @@ export default defineComponent({
 			this.canvasCursor = updateMouseCursor.cursor;
 		});
 		this.editor.dispatcher.subscribeJsMessage(TriggerTextCommit, () => {
-			if (this.textInput) this.editor.instance.on_change_text(textInputCleanup(this.textInput.innerText));
-		});
-		this.editor.dispatcher.subscribeJsMessage(TriggerTextCopy, async (triggerTextCopy) => {
-			// Clipboard API supported?
-			if (!navigator.clipboard) return;
-
-			// copy text to clipboard
-			if (navigator.clipboard.writeText) {
-				await navigator.clipboard.writeText(triggerTextCopy.copy_text);
+			if (this.textInput) {
+				const textCleaned = textInputCleanup(this.textInput.innerText);
+				this.editor.instance.on_change_text(textCleaned);
 			}
+		});
+		this.editor.dispatcher.subscribeJsMessage(TriggerFontLoad, async (triggerFontLoad) => {
+			const response = await fetch(triggerFontLoad.font);
+			const responseBuffer = await response.arrayBuffer();
+			this.editor.instance.on_font_load(triggerFontLoad.font, new Uint8Array(responseBuffer), false);
+		});
+		this.editor.dispatcher.subscribeJsMessage(TriggerFontLoadDefault, loadDefaultFont);
+		this.editor.dispatcher.subscribeJsMessage(TriggerVisitLink, async (triggerOpenLink) => {
+			window.open(triggerOpenLink.url, "_blank");
+		});
+		this.editor.dispatcher.subscribeJsMessage(TriggerTextCopy, (triggerTextCopy) => {
+			// If the Clipboard API is supported in the browser, copy text to the clipboard
+			navigator.clipboard?.writeText?.(triggerTextCopy.copy_text);
 		});
 
 		this.editor.dispatcher.subscribeJsMessage(DisplayEditableTextbox, (displayEditableTextbox) => {
@@ -499,21 +512,43 @@ export default defineComponent({
 		this.editor.dispatcher.subscribeJsMessage(TriggerViewportResize, this.viewportResize);
 
 		this.editor.dispatcher.subscribeJsMessage(UpdateImageData, (updateImageData) => {
-			updateImageData.image_data.forEach((element) => {
+			updateImageData.image_data.forEach(async (element) => {
 				// Using updateImageData.image_data.buffer returns undefined for some reason?
 				const blob = new Blob([new Uint8Array(element.image_data.values()).buffer], { type: element.mime });
 
 				const url = URL.createObjectURL(blob);
 
-				createImageBitmap(blob).then((image) => {
-					this.editor.instance.set_image_blob_url(element.path, url, image.width, image.height);
-				});
+				const image = await createImageBitmap(blob);
+
+				this.editor.instance.set_image_blob_url(element.path, url, image.width, image.height);
 			});
 		});
+
+		// Gets metadat populated in `frontend/vue.config.js`. We could potentially move this functionality in a build.rs file.
+		const loadBuildMetadata = (): void => {
+			const release = process.env.VUE_APP_RELEASE_SERIES;
+			let timestamp = "";
+			const hash = (process.env.VUE_APP_COMMIT_HASH || "").substring(0, 8);
+			const branch = process.env.VUE_APP_COMMIT_BRANCH;
+			{
+				const date = new Date(process.env.VUE_APP_COMMIT_DATE || "");
+				const dateString = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+				const timeString = `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+				const timezoneName = Intl.DateTimeFormat(undefined, { timeZoneName: "long" })
+					.formatToParts(new Date())
+					.find((part) => part.type === "timeZoneName");
+				const timezoneNameString = timezoneName?.value;
+				timestamp = `${dateString} ${timeString} ${timezoneNameString}`;
+			}
+
+			this.editor.instance.populate_build_metadata(release || "", timestamp, hash, branch || "");
+		};
 
 		// TODO(mfish33): Replace with initialization system Issue:#524
 		// Get initial Document Bar
 		this.editor.instance.init_document_bar();
+		setLoadDefaultFontCallback((font: string, data: Uint8Array) => this.editor.instance.on_font_load(font, data, true));
+		loadBuildMetadata();
 	},
 	data() {
 		const documentModeEntries: SectionsOfMenuListEntries = [

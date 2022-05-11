@@ -1,9 +1,11 @@
+mod build_metadata;
 pub mod dispatcher;
 pub mod message;
 pub mod message_handler;
 
 pub use crate::communication::dispatcher::*;
 pub use crate::input::InputPreprocessorMessageHandler;
+pub use build_metadata::BuildMetadata;
 
 use rand_chacha::rand_core::{RngCore, SeedableRng};
 use rand_chacha::ChaCha20Rng;

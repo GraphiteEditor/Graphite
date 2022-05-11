@@ -15,7 +15,7 @@ pub enum ToolMessage {
 	Select(SelectToolMessage),
 	#[remain::unsorted]
 	#[child]
-	Crop(CropToolMessage),
+	Artboard(ArtboardToolMessage),
 	#[remain::unsorted]
 	#[child]
 	Navigate(NavigateToolMessage),
@@ -87,6 +87,7 @@ pub enum ToolMessage {
 	SelectPrimaryColor {
 		color: Color,
 	},
+	SelectRandomPrimaryColor,
 	SelectSecondaryColor {
 		color: Color,
 	},

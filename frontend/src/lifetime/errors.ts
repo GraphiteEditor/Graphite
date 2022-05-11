@@ -1,52 +1,71 @@
-import { DisplayDialogError, DisplayDialogPanic } from "@/dispatcher/js-messages";
+import { DisplayDialogPanic, WidgetLayout } from "@/dispatcher/js-messages";
 import { DialogState } from "@/state/dialog";
 import { EditorState } from "@/state/wasm-loader";
 import { stripIndents } from "@/utilities/strip-indents";
 import { TextButtonWidget } from "@/utilities/widgets";
 
 export function initErrorHandling(editor: EditorState, dialogState: DialogState): void {
-	// Graphite error dialog
-	editor.dispatcher.subscribeJsMessage(DisplayDialogError, (displayDialogError) => {
-		const okButton: TextButtonWidget = {
-			kind: "TextButton",
-			callback: async () => dialogState.dismissDialog(),
-			props: { label: "OK", emphasized: true, minWidth: 96 },
-		};
-		const buttons = [okButton];
-
-		dialogState.createDialog("Warning", displayDialogError.title, displayDialogError.description, buttons);
-	});
-
 	// Code panic dialog and console error
 	editor.dispatcher.subscribeJsMessage(DisplayDialogPanic, (displayDialogPanic) => {
 		// `Error.stackTraceLimit` is only available in V8/Chromium
 		// eslint-disable-next-line @typescript-eslint/no-explicit-any
 		(Error as any).stackTraceLimit = Infinity;
 		const stackTrace = new Error().stack || "";
-		const panicDetails = `${displayDialogPanic.panic_info}\n\n${stackTrace}`;
+		const panicDetails = `${displayDialogPanic.panic_info}${stackTrace ? `\n\n${stackTrace}` : ""}`;
 
 		// eslint-disable-next-line no-console
 		console.error(panicDetails);
 
-		const reloadButton: TextButtonWidget = {
-			kind: "TextButton",
-			callback: async () => window.location.reload(),
-			props: { label: "Reload", emphasized: true, minWidth: 96 },
-		};
-		const copyErrorLogButton: TextButtonWidget = {
-			kind: "TextButton",
-			callback: async () => navigator.clipboard.writeText(panicDetails),
-			props: { label: "Copy Error Log", emphasized: false, minWidth: 96 },
-		};
-		const reportOnGithubButton: TextButtonWidget = {
-			kind: "TextButton",
-			callback: async () => window.open(githubUrl(panicDetails), "_blank"),
-			props: { label: "Report Bug", emphasized: false, minWidth: 96 },
-		};
-		const buttons = [reloadButton, copyErrorLogButton, reportOnGithubButton];
-
-		dialogState.createDialog("Warning", displayDialogPanic.title, displayDialogPanic.description, buttons);
+		preparePanicDialog(dialogState, displayDialogPanic.title, displayDialogPanic.description, panicDetails);
 	});
+}
+
+function preparePanicDialog(dialogState: DialogState, title: string, details: string, panicDetails: string): void {
+	const widgets: WidgetLayout = {
+		layout: [
+			{
+				widgets: [
+					{
+						kind: "TextLabel",
+						props: { value: title, bold: true },
+						// eslint-disable-next-line camelcase
+						widget_id: 0n,
+					},
+				],
+			},
+			{
+				widgets: [
+					{
+						kind: "TextLabel",
+						props: { value: details, multiline: true },
+						// eslint-disable-next-line camelcase
+						widget_id: 0n,
+					},
+				],
+			},
+		],
+		// eslint-disable-next-line camelcase
+		layout_target: null,
+	};
+
+	const reloadButton: TextButtonWidget = {
+		kind: "TextButton",
+		callback: async () => window.location.reload(),
+		props: { label: "Reload", emphasized: true, minWidth: 96 },
+	};
+	const copyErrorLogButton: TextButtonWidget = {
+		kind: "TextButton",
+		callback: async () => navigator.clipboard.writeText(panicDetails),
+		props: { label: "Copy Error Log", emphasized: false, minWidth: 96 },
+	};
+	const reportOnGithubButton: TextButtonWidget = {
+		kind: "TextButton",
+		callback: async () => window.open(githubUrl(panicDetails), "_blank"),
+		props: { label: "Report Bug", emphasized: false, minWidth: 96 },
+	};
+	const jsCallbackBasedButtons = [reloadButton, copyErrorLogButton, reportOnGithubButton];
+
+	dialogState.createPanicDialog(widgets, jsCallbackBasedButtons);
 }
 
 function githubUrl(panicDetails: string): string {
