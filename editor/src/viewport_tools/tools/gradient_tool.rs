@@ -25,7 +25,7 @@ pub struct GradientTool {
 	options: GradientOptions,
 }
 
-#[derive(PartialEq, Clone, Debug, Hash, Serialize, Deserialize)]
+#[derive(PartialEq, Clone, Copy, Debug, Hash, Serialize, Deserialize)]
 pub enum GradientType {
 	Linear,
 	Radial,
@@ -253,7 +253,7 @@ impl SelectedGradient {
 		self
 	}
 
-	pub fn update_gradient(&mut self, mut mouse: DVec2, responses: &mut VecDeque<Message>, snap_rotate: bool, is_linear: bool) {
+	pub fn update_gradient(&mut self, mut mouse: DVec2, responses: &mut VecDeque<Message>, snap_rotate: bool, gradient_type: GradientType) {
 		if snap_rotate {
 			let point = if self.dragging_start {
 				self.transform.transform_point2(self.gradient.end)
@@ -282,10 +282,9 @@ impl SelectedGradient {
 		}
 
 		self.gradient.transform = self.transform;
-		let fill = if is_linear {
-			Fill::LinearGradient(self.gradient.clone())
-		} else {
-			Fill::RadialGradient(self.gradient.clone())
+		let fill = match gradient_type {
+			GradientType::Linear => Fill::LinearGradient(self.gradient.clone()),
+			GradientType::Radial => Fill::RadialGradient(self.gradient.clone()),
 		};
 		let path = self.path.clone();
 		responses.push_back(Operation::SetLayerFill { path, fill }.into());
@@ -328,7 +327,7 @@ impl Fsm for GradientToolFsmState {
 					for path in document.selected_visible_layers() {
 						let layer = document.graphene_document.layer(path).unwrap();
 
-						if let Ok(Fill::LinearGradient(gradient)) = layer.style().map(|style| style.fill()) {
+						if let Ok(Fill::LinearGradient(gradient)) | Ok(Fill::RadialGradient(gradient)) = layer.style().map(|style| style.fill()) {
 							let dragging_start = data
 								.selected_gradient
 								.as_ref()
@@ -368,7 +367,7 @@ impl Fsm for GradientToolFsmState {
 							})
 						}
 					}
-					if dragging && tool_options.gradient_type == GradientType::Linear {
+					if dragging {
 						GradientToolFsmState::Drawing
 					} else {
 						let tolerance = DVec2::splat(SELECTION_TOLERANCE);
@@ -386,7 +385,7 @@ impl Fsm for GradientToolFsmState {
 
 							let gradient = Gradient::new(DVec2::ZERO, tool_data.secondary_color, DVec2::ONE, tool_data.primary_color, DAffine2::IDENTITY, generate_uuid());
 							let mut selected_gradient = SelectedGradient::new(gradient, &intersection, layer, document).with_gradient_start(input.mouse.position);
-							selected_gradient.update_gradient(input.mouse.position, responses, false, tool_options.gradient_type == GradientType::Linear);
+							selected_gradient.update_gradient(input.mouse.position, responses, false, tool_options.gradient_type);
 
 							data.selected_gradient = Some(selected_gradient);
 
@@ -398,10 +397,10 @@ impl Fsm for GradientToolFsmState {
 						}
 					}
 				}
-				(GradientToolFsmState::Drawing, GradientToolMessage::PointerMove { constrain_axis }) if tool_options.gradient_type == GradientType::Linear => {
+				(GradientToolFsmState::Drawing, GradientToolMessage::PointerMove { constrain_axis }) => {
 					if let Some(selected_gradient) = &mut data.selected_gradient {
 						let mouse = data.snap_handler.snap_position(responses, document, input.mouse.position);
-						selected_gradient.update_gradient(mouse, responses, input.keyboard.get(constrain_axis as usize), true);
+						selected_gradient.update_gradient(mouse, responses, input.keyboard.get(constrain_axis as usize), tool_options.gradient_type);
 					}
 					GradientToolFsmState::Drawing
 				}
