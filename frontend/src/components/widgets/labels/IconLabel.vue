@@ -1,5 +1,5 @@
 <template>
-	<LayoutRow :class="['icon-label', `size-${icons[icon].size}`, style ? `${style}-style` : '']">
+	<LayoutRow :class="['icon-label', iconSize, iconStyle]">
 		<component :is="icon" />
 	</LayoutRow>
 </template>
@@ -35,11 +35,9 @@
 <script lang="ts">
 import { defineComponent, PropType } from "vue";
 
-import { IconName, icons } from "@/utilities/icons";
+import { IconName, IconStyle, icons, iconComponents } from "@/utilities/icons";
 
 import LayoutRow from "@/components/layout/LayoutRow.vue";
-
-type IconStyle = "node" | "";
 
 export default defineComponent({
 	props: {
@@ -47,15 +45,18 @@ export default defineComponent({
 		gapAfter: { type: Boolean as PropType<boolean>, default: false },
 		style: { type: String as PropType<IconStyle>, default: "" },
 	},
-	data() {
-		return {
-			icons,
-		};
+	computed: {
+		iconSize(): string {
+			return `size-${icons[this.icon].size}`;
+		},
+		iconStyle(): string {
+			if (!this.style) return "";
+			return `${this.style}-style`;
+		},
 	},
 	components: {
 		LayoutRow,
-		// Import the components of all the icons
-		...Object.fromEntries(Object.entries(icons).map(([name, data]) => [name, data.component])),
+		...iconComponents,
 	},
 });
 </script>

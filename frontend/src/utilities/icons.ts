@@ -1,3 +1,5 @@
+/* eslint-disable import/first */
+
 // 12px Solid
 import Checkmark from "@/../assets/12px-solid/checkmark.svg";
 import CloseX from "@/../assets/12px-solid/close-x.svg";
@@ -28,6 +30,38 @@ import WindowButtonWinClose from "@/../assets/12px-solid/window-button-win-close
 import WindowButtonWinMaximize from "@/../assets/12px-solid/window-button-win-maximize.svg";
 import WindowButtonWinMinimize from "@/../assets/12px-solid/window-button-win-minimize.svg";
 import WindowButtonWinRestoreDown from "@/../assets/12px-solid/window-button-win-restore-down.svg";
+
+const SOLID_12PX = {
+	Checkmark: { component: Checkmark, size: 12 },
+	CloseX: { component: CloseX, size: 12 },
+	DropdownArrow: { component: DropdownArrow, size: 12 },
+	FullscreenEnter: { component: FullscreenEnter, size: 12 },
+	FullscreenExit: { component: FullscreenExit, size: 12 },
+	Grid: { component: Grid, size: 12 },
+	Info: { component: Info, size: 12 },
+	KeyboardArrowDown: { component: KeyboardArrowDown, size: 12 },
+	KeyboardArrowLeft: { component: KeyboardArrowLeft, size: 12 },
+	KeyboardArrowRight: { component: KeyboardArrowRight, size: 12 },
+	KeyboardArrowUp: { component: KeyboardArrowUp, size: 12 },
+	KeyboardBackspace: { component: KeyboardBackspace, size: 12 },
+	KeyboardCommand: { component: KeyboardCommand, size: 12 },
+	KeyboardEnter: { component: KeyboardEnter, size: 12 },
+	KeyboardOption: { component: KeyboardOption, size: 12 },
+	KeyboardShift: { component: KeyboardShift, size: 12 },
+	KeyboardSpace: { component: KeyboardSpace, size: 12 },
+	KeyboardTab: { component: KeyboardTab, size: 12 },
+	Link: { component: Link, size: 12 },
+	Overlays: { component: Overlays, size: 12 },
+	ResetColors: { component: ResetColors, size: 12 },
+	Snapping: { component: Snapping, size: 12 },
+	Swap: { component: Swap, size: 12 },
+	VerticalEllipsis: { component: VerticalEllipsis, size: 12 },
+	Warning: { component: Warning, size: 12 },
+	WindowButtonWinClose: { component: WindowButtonWinClose, size: 12 },
+	WindowButtonWinMaximize: { component: WindowButtonWinMaximize, size: 12 },
+	WindowButtonWinMinimize: { component: WindowButtonWinMinimize, size: 12 },
+	WindowButtonWinRestoreDown: { component: WindowButtonWinRestoreDown, size: 12 },
+} as const;
 
 // 16px Solid
 import AlignBottom from "@/../assets/16px-solid/align-bottom.svg";
@@ -74,72 +108,7 @@ import ZoomIn from "@/../assets/16px-solid/zoom-in.svg";
 import ZoomOut from "@/../assets/16px-solid/zoom-out.svg";
 import ZoomReset from "@/../assets/16px-solid/zoom-reset.svg";
 
-// 16px Two-Tone
-import MouseHintDrag from "@/../assets/16px-two-tone/mouse-hint-drag.svg";
-import MouseHintLmbDrag from "@/../assets/16px-two-tone/mouse-hint-lmb-drag.svg";
-import MouseHintLmb from "@/../assets/16px-two-tone/mouse-hint-lmb.svg";
-import MouseHintMmbDrag from "@/../assets/16px-two-tone/mouse-hint-mmb-drag.svg";
-import MouseHintMmb from "@/../assets/16px-two-tone/mouse-hint-mmb.svg";
-import MouseHintNone from "@/../assets/16px-two-tone/mouse-hint-none.svg";
-import MouseHintRmbDrag from "@/../assets/16px-two-tone/mouse-hint-rmb-drag.svg";
-import MouseHintRmb from "@/../assets/16px-two-tone/mouse-hint-rmb.svg";
-import MouseHintScrollDown from "@/../assets/16px-two-tone/mouse-hint-scroll-down.svg";
-import MouseHintScrollUp from "@/../assets/16px-two-tone/mouse-hint-scroll-up.svg";
-
-// 24px Two-Tone
-import GeneralArtboardTool from "@/../assets/24px-two-tone/general-artboard-tool.svg";
-import GeneralEyedropperTool from "@/../assets/24px-two-tone/general-eyedropper-tool.svg";
-import GeneralFillTool from "@/../assets/24px-two-tone/general-fill-tool.svg";
-import GeneralGradientTool from "@/../assets/24px-two-tone/general-gradient-tool.svg";
-import GeneralNavigateTool from "@/../assets/24px-two-tone/general-navigate-tool.svg";
-import GeneralSelectTool from "@/../assets/24px-two-tone/general-select-tool.svg";
-import RasterBrushTool from "@/../assets/24px-two-tone/raster-brush-tool.svg";
-import RasterCloneTool from "@/../assets/24px-two-tone/raster-clone-tool.svg";
-import RasterDetailTool from "@/../assets/24px-two-tone/raster-detail-tool.svg";
-import RasterHealTool from "@/../assets/24px-two-tone/raster-heal-tool.svg";
-import RasterPatchTool from "@/../assets/24px-two-tone/raster-patch-tool.svg";
-import RasterRelightTool from "@/../assets/24px-two-tone/raster-relight-tool.svg";
-import VectorEllipseTool from "@/../assets/24px-two-tone/vector-ellipse-tool.svg";
-import VectorFreehandTool from "@/../assets/24px-two-tone/vector-freehand-tool.svg";
-import VectorLineTool from "@/../assets/24px-two-tone/vector-line-tool.svg";
-import VectorPathTool from "@/../assets/24px-two-tone/vector-path-tool.svg";
-import VectorPenTool from "@/../assets/24px-two-tone/vector-pen-tool.svg";
-import VectorRectangleTool from "@/../assets/24px-two-tone/vector-rectangle-tool.svg";
-import VectorShapeTool from "@/../assets/24px-two-tone/vector-shape-tool.svg";
-import VectorSplineTool from "@/../assets/24px-two-tone/vector-spline-tool.svg";
-import VectorTextTool from "@/../assets/24px-two-tone/vector-text-tool.svg";
-
-const ICON_LIST = {
-	Checkmark: { component: Checkmark, size: 12 },
-	CloseX: { component: CloseX, size: 12 },
-	DropdownArrow: { component: DropdownArrow, size: 12 },
-	FullscreenEnter: { component: FullscreenEnter, size: 12 },
-	FullscreenExit: { component: FullscreenExit, size: 12 },
-	Grid: { component: Grid, size: 12 },
-	Info: { component: Info, size: 12 },
-	KeyboardArrowDown: { component: KeyboardArrowDown, size: 12 },
-	KeyboardArrowLeft: { component: KeyboardArrowLeft, size: 12 },
-	KeyboardArrowRight: { component: KeyboardArrowRight, size: 12 },
-	KeyboardArrowUp: { component: KeyboardArrowUp, size: 12 },
-	KeyboardBackspace: { component: KeyboardBackspace, size: 12 },
-	KeyboardCommand: { component: KeyboardCommand, size: 12 },
-	KeyboardEnter: { component: KeyboardEnter, size: 12 },
-	KeyboardOption: { component: KeyboardOption, size: 12 },
-	KeyboardShift: { component: KeyboardShift, size: 12 },
-	KeyboardSpace: { component: KeyboardSpace, size: 12 },
-	KeyboardTab: { component: KeyboardTab, size: 12 },
-	Link: { component: Link, size: 12 },
-	Overlays: { component: Overlays, size: 12 },
-	ResetColors: { component: ResetColors, size: 12 },
-	Snapping: { component: Snapping, size: 12 },
-	Swap: { component: Swap, size: 12 },
-	VerticalEllipsis: { component: VerticalEllipsis, size: 12 },
-	Warning: { component: Warning, size: 12 },
-	WindowButtonWinClose: { component: WindowButtonWinClose, size: 12 },
-	WindowButtonWinMaximize: { component: WindowButtonWinMaximize, size: 12 },
-	WindowButtonWinMinimize: { component: WindowButtonWinMinimize, size: 12 },
-	WindowButtonWinRestoreDown: { component: WindowButtonWinRestoreDown, size: 12 },
-
+const SOLID_16PX = {
 	AlignBottom: { component: AlignBottom, size: 16 },
 	AlignHorizontalCenter: { component: AlignHorizontalCenter, size: 16 },
 	AlignLeft: { component: AlignLeft, size: 16 },
@@ -183,7 +152,21 @@ const ICON_LIST = {
 	ZoomIn: { component: ZoomIn, size: 16 },
 	ZoomOut: { component: ZoomOut, size: 16 },
 	ZoomReset: { component: ZoomReset, size: 16 },
+} as const;
 
+// 16px Two-Tone
+import MouseHintDrag from "@/../assets/16px-two-tone/mouse-hint-drag.svg";
+import MouseHintLmbDrag from "@/../assets/16px-two-tone/mouse-hint-lmb-drag.svg";
+import MouseHintLmb from "@/../assets/16px-two-tone/mouse-hint-lmb.svg";
+import MouseHintMmbDrag from "@/../assets/16px-two-tone/mouse-hint-mmb-drag.svg";
+import MouseHintMmb from "@/../assets/16px-two-tone/mouse-hint-mmb.svg";
+import MouseHintNone from "@/../assets/16px-two-tone/mouse-hint-none.svg";
+import MouseHintRmbDrag from "@/../assets/16px-two-tone/mouse-hint-rmb-drag.svg";
+import MouseHintRmb from "@/../assets/16px-two-tone/mouse-hint-rmb.svg";
+import MouseHintScrollDown from "@/../assets/16px-two-tone/mouse-hint-scroll-down.svg";
+import MouseHintScrollUp from "@/../assets/16px-two-tone/mouse-hint-scroll-up.svg";
+
+const TWO_TONE_16PX = {
 	MouseHintDrag: { component: MouseHintDrag, size: 16 },
 	MouseHintLmb: { component: MouseHintLmb, size: 16 },
 	MouseHintLmbDrag: { component: MouseHintLmbDrag, size: 16 },
@@ -194,7 +177,32 @@ const ICON_LIST = {
 	MouseHintRmbDrag: { component: MouseHintRmbDrag, size: 16 },
 	MouseHintScrollDown: { component: MouseHintScrollDown, size: 16 },
 	MouseHintScrollUp: { component: MouseHintScrollUp, size: 16 },
+} as const;
 
+// 24px Two-Tone
+import GeneralArtboardTool from "@/../assets/24px-two-tone/general-artboard-tool.svg";
+import GeneralEyedropperTool from "@/../assets/24px-two-tone/general-eyedropper-tool.svg";
+import GeneralFillTool from "@/../assets/24px-two-tone/general-fill-tool.svg";
+import GeneralGradientTool from "@/../assets/24px-two-tone/general-gradient-tool.svg";
+import GeneralNavigateTool from "@/../assets/24px-two-tone/general-navigate-tool.svg";
+import GeneralSelectTool from "@/../assets/24px-two-tone/general-select-tool.svg";
+import RasterBrushTool from "@/../assets/24px-two-tone/raster-brush-tool.svg";
+import RasterCloneTool from "@/../assets/24px-two-tone/raster-clone-tool.svg";
+import RasterDetailTool from "@/../assets/24px-two-tone/raster-detail-tool.svg";
+import RasterHealTool from "@/../assets/24px-two-tone/raster-heal-tool.svg";
+import RasterPatchTool from "@/../assets/24px-two-tone/raster-patch-tool.svg";
+import RasterRelightTool from "@/../assets/24px-two-tone/raster-relight-tool.svg";
+import VectorEllipseTool from "@/../assets/24px-two-tone/vector-ellipse-tool.svg";
+import VectorFreehandTool from "@/../assets/24px-two-tone/vector-freehand-tool.svg";
+import VectorLineTool from "@/../assets/24px-two-tone/vector-line-tool.svg";
+import VectorPathTool from "@/../assets/24px-two-tone/vector-path-tool.svg";
+import VectorPenTool from "@/../assets/24px-two-tone/vector-pen-tool.svg";
+import VectorRectangleTool from "@/../assets/24px-two-tone/vector-rectangle-tool.svg";
+import VectorShapeTool from "@/../assets/24px-two-tone/vector-shape-tool.svg";
+import VectorSplineTool from "@/../assets/24px-two-tone/vector-spline-tool.svg";
+import VectorTextTool from "@/../assets/24px-two-tone/vector-text-tool.svg";
+
+const TWO_TONE_24PX = {
 	GeneralArtboardTool: { component: GeneralArtboardTool, size: 24 },
 	GeneralEyedropperTool: { component: GeneralEyedropperTool, size: 24 },
 	GeneralNavigateTool: { component: GeneralNavigateTool, size: 24 },
@@ -217,10 +225,22 @@ const ICON_LIST = {
 	VectorSplineTool: { component: VectorSplineTool, size: 24 },
 	VectorTextTool: { component: VectorTextTool, size: 24 },
 } as const;
+
+// All icons
+const ICON_LIST = {
+	...SOLID_12PX,
+	...SOLID_16PX,
+	...TWO_TONE_16PX,
+	...TWO_TONE_24PX,
+} as const;
+
+// Exported icons and types
 export const icons: IconDefinitionType<typeof ICON_LIST> = ICON_LIST;
+export const iconComponents = Object.fromEntries(Object.entries(icons).map(([name, data]) => [name, data.component]));
 
 export type IconName = keyof typeof icons;
 export type IconSize = 12 | 16 | 24 | 32;
+export type IconStyle = "node" | "";
 
 // The following helper type declarations allow us to avoid manually maintaining the `IconName` type declaration as a string union paralleling the keys of the
 // icon definitions. It lets TypeScript do that for us. Our goal is to define the big icons key-value pair by constraining its values, but inferring its keys.
