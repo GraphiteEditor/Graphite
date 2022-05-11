@@ -1,4 +1,4 @@
-use crate::boolean_ops::boolean_operation;
+use crate::boolean_ops::composite_boolean_operation;
 use crate::intersection::Quad;
 use crate::layers;
 use crate::layers::folder_layer::FolderLayer;
@@ -12,6 +12,7 @@ use crate::{DocumentError, DocumentResponse, Operation};
 use glam::{DAffine2, DVec2};
 use kurbo::Affine;
 use serde::{Deserialize, Serialize};
+use std::cell::RefCell;
 use std::cmp::max;
 use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
@@ -626,21 +627,9 @@ impl Document {
 				Some([vec![DocumentChanged, CreatedLayer { path: path.clone() }], update_thumbnails_upstream(&path)].concat())
 			}
 			Operation::BooleanOperation { operation, selected } => {
-				// TODO: proper difference
-				// TODO: proper style selection (done?)
-				// TODO: should generate symmetrical code
-				// TODO: Operations on any number of shapes
-				// TODO: boolean ops on any number of shapes
-				// TODO: handle overlapping identical curve case
-				// TODO: precision reached without intersection bug (maybe caused by separating a closed path, or dragging handles)
-				// TODO: click on shape should drag the shape
-				// TODO: add ability to undo
 				let mut responses = Vec::new();
-				if selected.len() > 1 && selected.len() < 3 {
-					// ? apparently `selected` should be reversed
-					let mut shapes = self.transformed_shapes(&selected)?;
-					let mut shape_drain = shapes.drain(..).rev();
-					let new_shapes = boolean_operation(operation, shape_drain.next().unwrap(), shape_drain.next().unwrap())?;
+				if selected.len() > 1 {
+					let new_shapes = composite_boolean_operation(operation, &mut self.transformed_shapes(&selected)?.into_iter().rev().map(RefCell::new).collect())?;
 
 					for path in selected {
 						self.delete(&path)?;
