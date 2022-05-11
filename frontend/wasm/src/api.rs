@@ -84,12 +84,16 @@ impl JsEditorHandle {
 	}
 
 	// ========================================================================
-	// Add additional JS -> Rust wrapper functions below as needed for calling the
-	// backend from the web frontend.
+	// Add additional JS -> Rust wrapper functions below as needed for calling
+	// the backend from the web frontend.
 	// ========================================================================
 
 	pub fn has_crashed(&self) -> bool {
 		EDITOR_HAS_CRASHED.load(Ordering::SeqCst)
+	}
+
+	pub fn toggle_node_graph_visibility(&self) {
+		self.dispatch(WorkspaceMessage::NodeGraphToggleVisibility);
 	}
 
 	/// Modify the currently selected tool in the document state store

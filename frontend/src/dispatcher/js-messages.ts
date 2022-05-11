@@ -40,6 +40,10 @@ export class FrontendDocumentDetails extends DocumentDetails {
 	readonly id!: BigInt;
 }
 
+export class UpdateNodeGraphVisibility extends JsMessage {
+	readonly visible!: boolean;
+}
+
 export class UpdateOpenDocumentsList extends JsMessage {
 	@Type(() => FrontendDocumentDetails)
 	readonly open_documents!: FrontendDocumentDetails[];
@@ -234,8 +238,8 @@ export class TriggerRasterDownload extends JsMessage {
 
 export class DocumentChanged extends JsMessage {}
 
-export class DisplayDocumentLayerTreeStructure extends JsMessage {
-	constructor(readonly layerId: BigInt, readonly children: DisplayDocumentLayerTreeStructure[]) {
+export class UpdateDocumentLayerTreeStructure extends JsMessage {
+	constructor(readonly layerId: BigInt, readonly children: UpdateDocumentLayerTreeStructure[]) {
 		super();
 	}
 }
@@ -245,7 +249,7 @@ interface DataBuffer {
 	length: BigInt;
 }
 
-export function newDisplayDocumentLayerTreeStructure(input: { data_buffer: DataBuffer }, wasm: WasmInstance): DisplayDocumentLayerTreeStructure {
+export function newUpdateDocumentLayerTreeStructure(input: { data_buffer: DataBuffer }, wasm: WasmInstance): UpdateDocumentLayerTreeStructure {
 	const pointerNum = Number(input.data_buffer.pointer);
 	const lengthNum = Number(input.data_buffer.length);
 
@@ -262,7 +266,7 @@ export function newDisplayDocumentLayerTreeStructure(input: { data_buffer: DataB
 	const layerIdsSection = new DataView(wasmMemoryBuffer, pointerNum + 8 + structureSectionLength * 8);
 
 	let layersEncountered = 0;
-	let currentFolder = new DisplayDocumentLayerTreeStructure(BigInt(-1), []);
+	let currentFolder = new UpdateDocumentLayerTreeStructure(BigInt(-1), []);
 	const currentFolderStack = [currentFolder];
 
 	for (let i = 0; i < structureSectionLength; i += 1) {
@@ -277,7 +281,7 @@ export function newDisplayDocumentLayerTreeStructure(input: { data_buffer: DataB
 			const layerId = layerIdsSection.getBigUint64(layersEncountered * 8, true);
 			layersEncountered += 1;
 
-			const childLayer = new DisplayDocumentLayerTreeStructure(layerId, []);
+			const childLayer = new UpdateDocumentLayerTreeStructure(layerId, []);
 			currentFolder.children.push(childLayer);
 		}
 
@@ -546,7 +550,7 @@ type MessageMaker = typeof JsMessage | JSMessageFactory;
 export const messageMakers: Record<string, MessageMaker> = {
 	DisplayDialog,
 	DisplayDialogPanic,
-	DisplayDocumentLayerTreeStructure: newDisplayDocumentLayerTreeStructure,
+	UpdateDocumentLayerTreeStructure: newUpdateDocumentLayerTreeStructure,
 	DisplayEditableTextbox,
 	UpdateImageData,
 	DisplayRemoveEditableTextbox,
@@ -576,6 +580,7 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateDocumentScrollbars,
 	UpdateInputHints,
 	UpdateMouseCursor,
+	UpdateNodeGraphVisibility,
 	UpdateOpenDocumentsList,
 	UpdatePropertyPanelOptionsLayout,
 	UpdatePropertyPanelSectionsLayout,

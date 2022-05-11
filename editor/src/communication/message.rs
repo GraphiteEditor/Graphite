@@ -39,6 +39,8 @@ pub enum Message {
 	Portfolio(PortfolioMessage),
 	#[child]
 	Tool(ToolMessage),
+	#[child]
+	Workspace(WorkspaceMessage),
 
 	#[remain::unsorted]
 	PopulateBuildMetadata { new: BuildMetadata },
