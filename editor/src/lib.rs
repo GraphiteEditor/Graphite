@@ -11,6 +11,7 @@ pub mod global;
 pub mod input;
 pub mod layout;
 pub mod viewport_tools;
+pub mod workspace;
 
 #[doc(inline)]
 pub use graphene::color::Color;
@@ -89,6 +90,7 @@ pub mod message_prelude {
 	pub use crate::viewport_tools::tools::shape_tool::{ShapeToolMessage, ShapeToolMessageDiscriminant};
 	pub use crate::viewport_tools::tools::spline_tool::{SplineToolMessage, SplineToolMessageDiscriminant};
 	pub use crate::viewport_tools::tools::text_tool::{TextMessage, TextMessageDiscriminant};
+	pub use crate::workspace::{WorkspaceMessage, WorkspaceMessageDiscriminant};
 	pub use graphite_proc_macros::*;
 
 	pub use std::collections::VecDeque;

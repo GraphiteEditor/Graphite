@@ -1,5 +1,5 @@
 <template>
-	<LayoutCol class="layer-tree-panel">
+	<LayoutCol class="layer-tree">
 		<LayoutRow class="options-bar">
 			<DropdownInput
 				v-model:selectedIndex="blendModeSelectedIndex"
@@ -32,7 +32,7 @@
 			<IconButton :action="createEmptyFolder" :icon="'NodeFolder'" title="New Folder (Ctrl+Shift+N)" :size="24" />
 			<IconButton :action="deleteSelectedLayers" :icon="'Trash'" title="Delete Selected (Del)" :size="24" />
 		</LayoutRow>
-		<LayoutRow class="layer-tree" :scrollableY="true">
+		<LayoutRow class="layer-tree-rows" :scrollableY="true">
 			<LayoutCol class="list" ref="layerTreeList" @click="() => deselectAllLayers()" @dragover="(e) => draggable && updateInsertLine(e)" @dragend="() => draggable && drop()">
 				<LayoutRow
 					class="layer-row"
@@ -70,10 +70,10 @@
 						:title="`${listing.entry.name}\n${devMode ? 'Layer Path: ' + listing.entry.path.join(' / ') : ''}`.trim() || null"
 					>
 						<LayoutRow class="layer-type-icon">
-							<IconLabel v-if="listing.entry.layer_type === 'Folder'" :icon="'NodeFolder'" title="Folder" />
-							<IconLabel v-else-if="listing.entry.layer_type === 'Image'" :icon="'NodeImage'" title="Image" />
-							<IconLabel v-else-if="listing.entry.layer_type === 'Shape'" :icon="'NodeShape'" title="Shape" />
-							<IconLabel v-else-if="listing.entry.layer_type === 'Text'" :icon="'NodeText'" title="Path" />
+							<IconLabel v-if="listing.entry.layer_type === 'Folder'" :icon="'NodeFolder'" :style="'node'" title="Folder" />
+							<IconLabel v-else-if="listing.entry.layer_type === 'Image'" :icon="'NodeImage'" :style="'node'" title="Image" />
+							<IconLabel v-else-if="listing.entry.layer_type === 'Shape'" :icon="'NodeShape'" :style="'node'" title="Shape" />
+							<IconLabel v-else-if="listing.entry.layer_type === 'Text'" :icon="'NodeText'" :style="'node'" title="Path" />
 						</LayoutRow>
 						<LayoutRow class="layer-name" @dblclick="() => onEditLayerName(listing)">
 							<input
@@ -98,7 +98,7 @@
 </template>
 
 <style lang="scss">
-.layer-tree-panel {
+.layer-tree {
 	min-height: 0;
 
 	.options-bar {
@@ -117,7 +117,7 @@
 		}
 	}
 
-	.layer-tree {
+	.layer-tree-rows {
 		margin-top: 4px;
 		// Crop away the 1px border below the bottom layer entry when it uses the full space of this panel
 		margin-bottom: -1px;
@@ -202,12 +202,6 @@
 				.layer-type-icon {
 					flex: 0 0 auto;
 					margin: 0 4px;
-
-					.icon-label {
-						border-radius: 2px;
-						background: var(--color-node-background);
-						fill: var(--color-node-icon);
-					}
 				}
 
 				.layer-name {
@@ -289,7 +283,7 @@
 <script lang="ts">
 import { defineComponent } from "vue";
 
-import { BlendMode, DisplayDocumentLayerTreeStructure, UpdateDocumentLayer, LayerPanelEntry } from "@/dispatcher/js-messages";
+import { BlendMode, UpdateDocumentLayerTreeStructure, UpdateDocumentLayer, LayerPanelEntry } from "@/dispatcher/js-messages";
 
 import LayoutCol from "@/components/layout/LayoutCol.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
@@ -573,14 +567,14 @@ export default defineComponent({
 		},
 	},
 	mounted() {
-		this.editor.dispatcher.subscribeJsMessage(DisplayDocumentLayerTreeStructure, (displayDocumentLayerTreeStructure) => {
+		this.editor.dispatcher.subscribeJsMessage(UpdateDocumentLayerTreeStructure, (updateDocumentLayerTreeStructure) => {
 			const layerWithNameBeingEdited = this.layers.find((layer: LayerListingInfo) => layer.editingName);
 			const layerPathWithNameBeingEdited = layerWithNameBeingEdited?.entry.path;
 			const layerIdWithNameBeingEdited = layerPathWithNameBeingEdited?.slice(-1)[0];
 			const path = [] as bigint[];
 			this.layers = [] as LayerListingInfo[];
 
-			const recurse = (folder: DisplayDocumentLayerTreeStructure, layers: LayerListingInfo[], cache: Map<string, LayerPanelEntry>): void => {
+			const recurse = (folder: UpdateDocumentLayerTreeStructure, layers: LayerListingInfo[], cache: Map<string, LayerPanelEntry>): void => {
 				folder.children.forEach((item, index) => {
 					// TODO: fix toString
 					const layerId = BigInt(item.layerId.toString());
@@ -603,7 +597,7 @@ export default defineComponent({
 				});
 			};
 
-			recurse(displayDocumentLayerTreeStructure, this.layers, this.layerCache);
+			recurse(updateDocumentLayerTreeStructure, this.layers, this.layerCache);
 		});
 
 		this.editor.dispatcher.subscribeJsMessage(UpdateDocumentLayer, (updateDocumentLayer) => {

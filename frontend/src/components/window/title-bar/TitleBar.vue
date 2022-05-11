@@ -50,14 +50,14 @@ import WindowTitle from "@/components/window/title-bar/WindowTitle.vue";
 export type Platform = "Windows" | "Mac" | "Linux" | "Web";
 
 export default defineComponent({
-	inject: ["documents"],
+	inject: ["portfolio"],
 	props: {
 		platform: { type: String as PropType<Platform>, required: true },
 		maximized: { type: Boolean as PropType<boolean>, required: true },
 	},
 	computed: {
 		activeDocumentDisplayName() {
-			return this.documents.state.documents[this.documents.state.activeDocumentIndex].displayName;
+			return this.portfolio.state.documents[this.portfolio.state.activeDocumentIndex].displayName;
 		},
 	},
 	components: {
