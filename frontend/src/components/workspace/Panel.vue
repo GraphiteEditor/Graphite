@@ -29,7 +29,7 @@
 <style lang="scss">
 .panel {
 	background: var(--color-1-nearblack);
-	border-radius: 8px;
+	border-radius: 6px;
 	overflow: hidden;
 
 	.tab-bar {
@@ -64,7 +64,7 @@
 
 				&.active {
 					background: var(--color-3-darkgray);
-					border-radius: 8px 8px 0 0;
+					border-radius: 6px 6px 0 0;
 					position: relative;
 
 					&:not(:first-child)::before,
@@ -152,6 +152,7 @@ import LayoutCol from "@/components/layout/LayoutCol.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
 import Document from "@/components/panels/Document.vue";
 import LayerTree from "@/components/panels/LayerTree.vue";
+import NodeGraph from "@/components/panels/NodeGraph.vue";
 import Properties from "@/components/panels/Properties.vue";
 import IconButton from "@/components/widgets/buttons/IconButton.vue";
 import PopoverButton from "@/components/widgets/buttons/PopoverButton.vue";
@@ -160,13 +161,14 @@ const panelComponents = {
 	Document,
 	Properties,
 	LayerTree,
+	NodeGraph,
 	IconButton,
 	PopoverButton,
 };
 type PanelTypes = keyof typeof panelComponents;
 
 export default defineComponent({
-	inject: ["documents"],
+	inject: ["portfolio"],
 	props: {
 		tabMinWidths: { type: Boolean as PropType<boolean>, default: false },
 		tabCloseButtons: { type: Boolean as PropType<boolean>, default: false },
