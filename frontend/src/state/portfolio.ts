@@ -6,7 +6,7 @@ import { EditorState } from "@/state/wasm-loader";
 import { download, downloadBlob, upload } from "@/utilities/files";
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
-export function createDocumentsState(editor: EditorState) {
+export function createPortfolioState(editor: EditorState) {
 	const state = reactive({
 		unsaved: false,
 		documents: [] as FrontendDocumentDetails[],
@@ -76,4 +76,4 @@ export function createDocumentsState(editor: EditorState) {
 		state: readonly(state),
 	};
 }
-export type DocumentsState = ReturnType<typeof createDocumentsState>;
+export type PortfolioState = ReturnType<typeof createPortfolioState>;

@@ -4,6 +4,7 @@ use crate::input::{InputMapperMessageHandler, InputPreprocessorMessageHandler};
 use crate::layout::layout_message_handler::LayoutMessageHandler;
 use crate::message_prelude::*;
 use crate::viewport_tools::tool_message_handler::ToolMessageHandler;
+use crate::workspace::WorkspaceMessageHandler;
 
 use std::collections::VecDeque;
 
@@ -27,6 +28,7 @@ struct DispatcherMessageHandlers {
 	layout_message_handler: LayoutMessageHandler,
 	portfolio_message_handler: PortfolioMessageHandler,
 	tool_message_handler: ToolMessageHandler,
+	workspace_message_handler: WorkspaceMessageHandler,
 }
 
 /// For optimization, these are messages guaranteed to be redundant when repeated.
@@ -40,7 +42,7 @@ const SIDE_EFFECT_FREE_MESSAGES: &[MessageDiscriminant] = &[
 	))),
 	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::Document(DocumentMessageDiscriminant::FolderChanged)),
 	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::UpdateDocumentLayer),
-	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::DisplayDocumentLayerTreeStructure),
+	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::UpdateDocumentLayerTreeStructure),
 	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::UpdateOpenDocumentsList),
 	MessageDiscriminant::Tool(ToolMessageDiscriminant::DocumentIsDirty),
 ];
@@ -112,6 +114,11 @@ impl Dispatcher {
 						),
 						&mut self.message_queue,
 					);
+				}
+				Workspace(message) => {
+					self.message_handlers
+						.workspace_message_handler
+						.process_action(message, &self.message_handlers.input_preprocessor_message_handler, &mut self.message_queue);
 				}
 
 				#[remain::unsorted]

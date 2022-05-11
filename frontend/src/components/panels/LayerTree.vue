@@ -283,7 +283,7 @@
 <script lang="ts">
 import { defineComponent } from "vue";
 
-import { BlendMode, DisplayDocumentLayerTreeStructure, UpdateDocumentLayer, LayerPanelEntry } from "@/dispatcher/js-messages";
+import { BlendMode, UpdateDocumentLayerTreeStructure, UpdateDocumentLayer, LayerPanelEntry } from "@/dispatcher/js-messages";
 
 import LayoutCol from "@/components/layout/LayoutCol.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
@@ -567,14 +567,14 @@ export default defineComponent({
 		},
 	},
 	mounted() {
-		this.editor.dispatcher.subscribeJsMessage(DisplayDocumentLayerTreeStructure, (displayDocumentLayerTreeStructure) => {
+		this.editor.dispatcher.subscribeJsMessage(UpdateDocumentLayerTreeStructure, (updateDocumentLayerTreeStructure) => {
 			const layerWithNameBeingEdited = this.layers.find((layer: LayerListingInfo) => layer.editingName);
 			const layerPathWithNameBeingEdited = layerWithNameBeingEdited?.entry.path;
 			const layerIdWithNameBeingEdited = layerPathWithNameBeingEdited?.slice(-1)[0];
 			const path = [] as bigint[];
 			this.layers = [] as LayerListingInfo[];
 
-			const recurse = (folder: DisplayDocumentLayerTreeStructure, layers: LayerListingInfo[], cache: Map<string, LayerPanelEntry>): void => {
+			const recurse = (folder: UpdateDocumentLayerTreeStructure, layers: LayerListingInfo[], cache: Map<string, LayerPanelEntry>): void => {
 				folder.children.forEach((item, index) => {
 					// TODO: fix toString
 					const layerId = BigInt(item.layerId.toString());
@@ -597,7 +597,7 @@ export default defineComponent({
 				});
 			};
 
-			recurse(displayDocumentLayerTreeStructure, this.layers, this.layerCache);
+			recurse(updateDocumentLayerTreeStructure, this.layers, this.layerCache);
 		});
 
 		this.editor.dispatcher.subscribeJsMessage(UpdateDocumentLayer, (updateDocumentLayer) => {

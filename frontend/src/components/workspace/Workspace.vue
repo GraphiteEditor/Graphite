@@ -7,15 +7,15 @@
 						:panelType="'Document'"
 						:tabCloseButtons="true"
 						:tabMinWidths="true"
-						:tabLabels="documents.state.documents.map((doc) => doc.displayName)"
-						:clickAction="(tabIndex) => editor.instance.select_document(documents.state.documents[tabIndex].id)"
-						:closeAction="(tabIndex) => editor.instance.close_document_with_confirmation(documents.state.documents[tabIndex].id)"
-						:tabActiveIndex="documents.state.activeDocumentIndex"
+						:tabLabels="portfolio.state.documents.map((doc) => doc.displayName)"
+						:clickAction="(tabIndex) => editor.instance.select_document(portfolio.state.documents[tabIndex].id)"
+						:closeAction="(tabIndex) => editor.instance.close_document_with_confirmation(portfolio.state.documents[tabIndex].id)"
+						:tabActiveIndex="portfolio.state.activeDocumentIndex"
 						ref="documentsPanel"
 					/>
 				</LayoutRow>
-				<LayoutRow class="workspace-grid-resize-gutter" @pointerdown="(e) => resizePanel(e)"></LayoutRow>
-				<LayoutRow class="workspace-grid-subdivision">
+				<LayoutRow class="workspace-grid-resize-gutter" @pointerdown="(e) => resizePanel(e)" v-if="nodeGraphVisible"></LayoutRow>
+				<LayoutRow class="workspace-grid-subdivision" v-if="nodeGraphVisible">
 					<Panel :panelType="'NodeGraph'" :tabLabels="['Node Graph']" :tabActiveIndex="0" />
 				</LayoutRow>
 			</LayoutCol>
@@ -74,7 +74,7 @@ import Panel from "@/components/workspace/Panel.vue";
 const MIN_PANEL_SIZE = 100;
 
 export default defineComponent({
-	inject: ["documents", "dialog", "editor"],
+	inject: ["workspace", "portfolio", "dialog", "editor"],
 	components: {
 		LayoutRow,
 		LayoutCol,
@@ -83,7 +83,10 @@ export default defineComponent({
 	},
 	computed: {
 		activeDocumentIndex() {
-			return this.documents.state.activeDocumentIndex;
+			return this.portfolio.state.activeDocumentIndex;
+		},
+		nodeGraphVisible() {
+			return this.workspace.state.nodeGraphVisible;
 		},
 	},
 	methods: {

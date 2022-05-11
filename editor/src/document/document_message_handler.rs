@@ -846,7 +846,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 			DocumentHistoryForward => self.redo(responses).unwrap_or_else(|e| log::warn!("{}", e)),
 			DocumentStructureChanged => {
 				let data_buffer: RawBuffer = self.serialize_root().into();
-				responses.push_back(FrontendMessage::DisplayDocumentLayerTreeStructure { data_buffer }.into())
+				responses.push_back(FrontendMessage::UpdateDocumentLayerTreeStructure { data_buffer }.into())
 			}
 			DuplicateSelectedLayers => {
 				self.backup(responses);
