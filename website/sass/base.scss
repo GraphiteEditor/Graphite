@@ -9,6 +9,7 @@
 	--max-width: 1600px;
 	--max-width-plus-padding: calc(var(--max-width) + 40px * 2);
 	--variable-px: Min(1px, 0.15vw);
+	--page-edge-padding: 40px;
 	--border-thickness: 2px;
 	--font-size-intro-heading: 60px;
 	--font-size-intro-body: 22px;
@@ -35,6 +36,7 @@
 		--font-size-heading: 28px;
 		--font-size-body: 16px;
 		--border-thickness: 1px;
+		--page-edge-padding: 20px;
 	}
 
 	@media screen and (max-width: 400px) {
@@ -178,7 +180,7 @@ pre {
 
 kbd {
 	background: var(--color-fog);
-	border-radius: calc(var(--variable-px) * 4);
+	border-radius: calc(var(--variable-px) * 2);
 	outline: calc(var(--border-thickness) / 2) solid var(--color-navy);
 	padding: 0 4px;
 	margin: 0 4px;
@@ -303,6 +305,7 @@ hr,
 		display: flex;
 		flex-direction: column;
 		align-items: flex-start;
+		width: 100%;
 	}
 }
 
@@ -387,7 +390,7 @@ hr,
 	min-width: 320px;
 
 	header {
-		padding: 0 40px;
+		padding: 0 var(--page-edge-padding);
 		color: var(--color-walnut);
 
 		// var(--max-width) + (80px + 32px) * 2
@@ -549,7 +552,7 @@ hr,
 	}
 
 	main {
-		padding: 0 40px;
+		padding: 0 var(--page-edge-padding);
 
 		.content {
 			padding: calc(120 * var(--variable-px)) 0;
@@ -563,6 +566,16 @@ hr,
 
 				~ section {
 					margin-top: calc(80 * var(--variable-px));
+				}
+
+				p img {
+					max-width: 100%;
+				}
+
+				pre {
+					max-width: 100%;
+					box-sizing: border-box;
+					overflow: auto;
 				}
 			}
 
