@@ -16,7 +16,6 @@
 			width: 100%;
 			height: auto;
 		}
-
 	}
 
 	hr {
@@ -47,7 +46,10 @@
 	}
 
 	.social {
+		width: 100%;
 		display: flex;
-		gap: 20px;
+		gap: calc(var(--font-size-link) * 0.8);
+		flex-wrap: wrap;
+		justify-content: center;
 	}
 }
