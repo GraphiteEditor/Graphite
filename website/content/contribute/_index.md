@@ -71,7 +71,7 @@ The actual document (the artwork data and layers included in a saved `.graphite`
 
 Every part of the Graphite stack works based on the concept of message passing. Messages are pushed to the front or back of a queue and each one is processed by the module's dispatcher in the order encountered. Only the dispatcher owns a mutable reference to update its module's state.
 
-<details><summary><b>Addition technical details (click to show)</b></summary>
+<details><summary><b>Additional technical details (click to show)</b></summary>
 
 A message is an enum variant of a certain message sub-type like `FrontendMessage`, `ToolMessage`, `DocumentsMessage` (plural), or `DocumentMessage` (singular). An example is `DocumentMessage::DeleteSelectedLayers` (which carries no data) or `DocumentMessage::RenameLayer(Vec<LayerId>, String)` (which carries a layer path and a string as data).
 
