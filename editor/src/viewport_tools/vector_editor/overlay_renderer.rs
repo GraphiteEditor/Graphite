@@ -41,25 +41,25 @@ impl<'a> OverlayRenderer {
 		}
 	}
 
+	// TODO Implement a trait called HasOverlays that is implemented by Vectorshape
 	pub fn draw_vector_shape_overlays(&mut self, document: &Document, layer_path: Vec<LayerId>, responses: &mut VecDeque<Message>) {
 		if let Ok(layer) = document.layer(&layer_path) {
 			if let Some(shape) = layer.as_vector_shape() {
+				let outline_cache = self.shape_overlay_cache.get(&layer_path);
+
 				// If we do not have any cached overlays for this shape, generate them
-				if !self.shape_overlay_cache.contains_key(&layer_path) {
+				if outline_cache == None {
 					let outline = self.create_shape_outline_overlay(shape.into(), responses);
-					// Cache outline overlay
 					self.shape_overlay_cache.insert(layer_path, outline);
-					// TODO Handle removing shapes from cache so we don't memory leak
 				}
 
-				// Place and style the anchor / handle overlays
+				// Create, place and style the anchor / handle overlays
 				for (anchor_id, anchor) in shape.anchors.enumerate() {
-					// If cached update them
-					if let Some(anchor_overlays) = self.anchor_overlay_cache.get(anchor_id) {
-						// Reposition cached overlays
-						self.place_overlays(anchor, anchor_overlays, responses);
+					let anchor_cache = self.anchor_overlay_cache.get(anchor_id);
 
-						// Change styles to reflect selection
+					// If cached update placement and style
+					if let Some(anchor_overlays) = anchor_cache {
+						self.place_overlays(anchor, anchor_overlays, responses);
 						self.style_overlays(anchor, anchor_overlays, responses);
 					} else {
 						// Create if not cached
@@ -71,17 +71,13 @@ impl<'a> OverlayRenderer {
 							self.create_handle_line_overlay(&anchor.points[ControlPointType::Handle2], responses),
 						];
 
-						// Place the new overlays
 						self.place_overlays(anchor, &anchor_overlays, responses);
-
-						// Change styles to reflect selection
 						self.style_overlays(anchor, &anchor_overlays, responses);
-
-						// Cache overlays
 						self.anchor_overlay_cache.insert(*anchor_id, anchor_overlays);
 					}
 
-					// TODO handle unused overlays
+					// TODO Handle removing shapes from cache so we don't memory leak
+					// Eventually will get replaced with am immediate mode renderer for overlays
 				}
 			}
 		}
@@ -106,7 +102,6 @@ impl<'a> OverlayRenderer {
 			}
 		}
 	}
-	// TODO add a way of updating overlays without destroying them and re-creating them
 
 	/// Create the kurbo shape that matches the selected viewport shape
 	fn create_shape_outline_overlay(&self, bez_path: BezPath, responses: &mut VecDeque<Message>) -> Vec<LayerId> {

@@ -69,6 +69,7 @@ impl ShapeLayer {
 		transforms.iter().skip(start).cloned().reduce(|a, b| a * b).unwrap_or(DAffine2::IDENTITY)
 	}
 
+	// TODO Wrap an adapter around this so we don't take in BezPath directly?
 	pub fn from_bez_path(bez_path: BezPath, style: PathStyle, closed: bool) -> Self {
 		Self {
 			shape: bez_path.iter().into(),
@@ -78,7 +79,7 @@ impl ShapeLayer {
 		}
 	}
 
-	/// TODO The behavior of ngon changed from the previous iteration slightly
+	/// TODO The behavior of ngon changed from the previous iteration slightly, match original behavior
 	pub fn ngon(sides: u64, style: PathStyle) -> Self {
 		Self {
 			shape: VectorShape::new_ngon(DVec2::new(0., 0.), sides, 1.),
@@ -124,6 +125,7 @@ impl ShapeLayer {
 		}
 	}
 
+	// TODO Remove BezPath / Kurbo usage in spline
 	/// Creates a smooth bezier spline that passes through all given points.
 	/// The algorithm used in this implementation is described here: https://www.particleincell.com/2012/bezier-splines/
 	pub fn spline(points: Vec<impl Into<glam::DVec2>>, style: PathStyle) -> Self {

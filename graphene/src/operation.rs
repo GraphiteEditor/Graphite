@@ -85,6 +85,7 @@ pub enum Operation {
 	},
 	AddOverlayShape {
 		path: Vec<LayerId>,
+		// TODO Remove this (remove kurbo)
 		bez_path: kurbo::BezPath,
 		style: style::PathStyle,
 		closed: bool,
@@ -93,6 +94,7 @@ pub enum Operation {
 		path: Vec<LayerId>,
 		transform: [f64; 6],
 		insert_index: isize,
+		// TODO Remove this (remove kurbo)
 		bez_path: kurbo::BezPath,
 		style: style::PathStyle,
 		closed: bool,
@@ -133,10 +135,12 @@ pub enum Operation {
 	},
 	SetShapePath {
 		path: Vec<LayerId>,
+		// TODO Remove this (remove kurbo)
 		bez_path: kurbo::BezPath,
 	},
 	SetShapePathInViewport {
 		path: Vec<LayerId>,
+		// TODO Remove this (remove kurbo)
 		bez_path: kurbo::BezPath,
 		transform: [f64; 6],
 	},

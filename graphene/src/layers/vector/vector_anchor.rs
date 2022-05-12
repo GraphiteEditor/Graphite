@@ -11,11 +11,10 @@ pub struct VectorAnchor {
 	// Editable points for the anchor & handles
 	pub points: [Option<VectorControlPoint>; 3],
 	// Should we maintain the angle between the handles?
+
 	// TODO Separate the editor func state from underlying data (use another struct)
-	#[serde(skip_serializing)]
 	pub mirror_angle_active: bool,
 	// Should we make the handles equidistance from the anchor?
-	#[serde(skip_serializing)]
 	pub mirror_distance_active: bool,
 }
 
@@ -35,6 +34,7 @@ impl VectorAnchor {
 	/// Create a new anchor with the given position
 	pub fn new(anchor_pos: DVec2) -> Self {
 		Self {
+			// An anchor and 2x None's which represent non-existent handles
 			points: [Some(VectorControlPoint::new(anchor_pos, ControlPointType::Anchor)), None, None],
 			mirror_angle_active: false,
 			mirror_distance_active: false,

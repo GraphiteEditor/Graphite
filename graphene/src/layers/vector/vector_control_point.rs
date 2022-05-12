@@ -10,10 +10,9 @@ pub struct VectorControlPoint {
 	// The type of manipulator this point is
 	pub manipulator_type: ControlPointType,
 	// Can this control point be selected?
-	#[serde(skip_serializing)]
+	// #[serde(skip_serializing)]
 	pub can_be_selected: bool,
 	// Is this point currently selected?
-	#[serde(skip_serializing)]
 	pub is_selected: bool,
 }
 

@@ -310,7 +310,7 @@ fn add_to_curve(data: &mut PenToolData, input: &InputPreprocessorMessageHandler,
 		// Create a new shape from the updated bez_path
 		// TODO We've removed .bezpath and this need to preserve the shapes instead
 		// let bez_path = data.bez_path.clone().into_iter().collect();
-		data.curve_shape = VectorShape::new(layer_path.to_vec(), transform, false);
+		data.curve_shape = VectorShape::new(false);
 		data.shape_editor.set_shapes_to_modify(vec![data.curve_shape.clone()]);
 
 		// Select the second to last segment's handle

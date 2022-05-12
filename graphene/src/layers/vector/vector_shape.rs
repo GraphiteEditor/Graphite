@@ -24,7 +24,7 @@ pub struct VectorShape {
 // TODO Implement iterator for VectorShape
 
 impl VectorShape {
-	pub fn new(layer_path: Vec<LayerId>, transform: DAffine2, closed: bool) -> Self {
+	pub fn new(closed: bool) -> Self {
 		VectorShape { closed, ..Default::default() }
 	}
 
@@ -83,17 +83,23 @@ impl VectorShape {
 		self.selected_anchors_mut().for_each(|anchor| anchor.move_selected_points(relative, &DAffine2::from_translation(delta)));
 	}
 
+	// TODO Implement deleting currently selected points
 	pub fn delete_selected(&mut self) {
 		// involves cloning the elements of anchors, could be replaced by a more efficient implementation possibly
 		for (index, anchor) in self.selected_anchors_mut().enumerate() {
-			// Todo Delete points
+			// Example
+			// anchor.delete_selected_points();
+			// if anchor.points.is_empty() {
+			// 	self.anchors.remove(index);
+			// }
 		}
 	}
 
+	// TODO Implement adding a point to a curve
 	pub fn add_point(&mut self, nearest_point_on_curve: DVec2) {
 		for anchor in self.selected_anchors_mut() {
 			if anchor.is_anchor_selected() {
-				// TODO Add point
+				// Example
 				// anchor.add_point(anchor.control_points_mut(), nearest_point_on_curve);
 			}
 		}
@@ -236,7 +242,7 @@ impl From<&VectorShape> for BezPath {
 /// Create a VectorShape from a BezPath
 impl<T: Iterator<Item = PathEl>> From<T> for VectorShape {
 	fn from(path: T) -> Self {
-		let mut vector_shape = VectorShape::new(vec![], DAffine2::IDENTITY, false);
+		let mut vector_shape = VectorShape::new(false);
 		let mut current_closed = true;
 		let mut closed_flag = false;
 		for path_el in path {
