@@ -25,8 +25,8 @@ use glam::DVec2;
 /// to query and create the VectorShapes / VectorAnchors / VectorControlPoints
 #[derive(Clone, Debug, Default)]
 pub struct ShapeEditor {
-	// The shapes we can select anchors / handles from
-	copy_of_shapes: Vec<VectorShape>,
+	// The shapes we can select and edit anchors / handles from
+	shapes_copy: Vec<VectorShape>,
 }
 
 impl ShapeEditor {
@@ -34,26 +34,23 @@ impl ShapeEditor {
 	/// Returns true if we've found a point, false otherwise
 	// TODO Refactor to select_point_from(vectorshapes[..], ...)
 	pub fn select_point(&mut self, mouse_position: DVec2, select_threshold: f64, add_to_selection: bool) -> bool {
-		if self.copy_of_shapes.is_empty() {
+		if self.shapes_copy.is_empty() {
 			return false;
 		}
 
 		if let Some((shape_index, anchor_id, point_index)) = self.find_nearest_point_indicies(mouse_position, select_threshold) {
 			log::trace!("Selecting: shape {} / anchor {} / point {}", shape_index, anchor_id, point_index);
 
-			// Add this shape to the selection
-			self.set_shape_selected(shape_index, true);
-
 			// If the point we're selecting has already been selected
 			// we can assume this point exists.. since we did just click on it hense the unwrap
-			let is_point_selected = self.copy_of_shapes[shape_index].anchors.by_id_mut(anchor_id).unwrap().points[point_index].as_ref().unwrap().is_selected;
+			let is_point_selected = self.shapes_copy[shape_index].anchors.by_id_mut(anchor_id).unwrap().points[point_index].as_ref().unwrap().is_selected;
 
 			// Deselected if we're not adding to the selection
 			if !add_to_selection && !is_point_selected {
 				self.deselect_all();
 			}
 
-			let selected_shape = &mut self.copy_of_shapes[shape_index];
+			let selected_shape = &mut self.shapes_copy[shape_index];
 			// TODO kurbo bez_path are no long present in the vector shapes, resolve fallout
 			// selected_shape.elements = selected_shape.bez_path.clone().into_iter().collect();
 
@@ -73,14 +70,14 @@ impl ShapeEditor {
 
 	/// Find a point that is within the selection threshold and return an index to the shape, anchor, and point
 	pub fn find_nearest_point_indicies(&mut self, mouse_position: DVec2, select_threshold: f64) -> Option<(usize, u64, usize)> {
-		if self.copy_of_shapes.is_empty() {
+		if self.shapes_copy.is_empty() {
 			return None;
 		}
 
 		let select_threshold_squared = select_threshold * select_threshold;
 		// Find the closest control point among all elements of shapes_to_modify
-		for shape_index in 0..self.copy_of_shapes.len() {
-			if let Some((anchor_id, point_index, distance_squared)) = self.closest_point(&self.copy_of_shapes[shape_index], mouse_position) {
+		for shape_index in 0..self.shapes_copy.len() {
+			if let Some((anchor_id, point_index, distance_squared)) = self.closest_point(&self.shapes_copy[shape_index], mouse_position) {
 				// Choose the first point under the threshold
 				if distance_squared < select_threshold_squared {
 					log::trace!("Selecting: shape {} / anchor {} / point {}", shape_index, anchor_id, point_index);
@@ -94,7 +91,7 @@ impl ShapeEditor {
 	/// A wrapper for find_nearest_point_indicies and returns a mutable VectorControlPoint
 	pub fn find_nearest_point(&mut self, mouse_position: DVec2, select_threshold: f64) -> Option<&mut VectorControlPoint> {
 		let (shape_index, anchor_id, point_index) = self.find_nearest_point_indicies(mouse_position, select_threshold)?;
-		let selected_shape = &mut self.copy_of_shapes[shape_index];
+		let selected_shape = &mut self.shapes_copy[shape_index];
 		if let Some(anchor) = selected_shape.anchors.by_id_mut(anchor_id) {
 			return anchor.points[point_index].as_mut();
 		}
@@ -103,33 +100,26 @@ impl ShapeEditor {
 
 	/// Set the shapes we consider for selection, we will choose draggable handles / anchors from these shapes.
 	pub fn set_shapes_to_modify(&mut self, selected_shapes: Vec<VectorShape>) {
-		self.copy_of_shapes = selected_shapes;
+		self.shapes_copy = selected_shapes;
 	}
 
 	/// Clear all of the shapes we can modify
 	pub fn clear_shapes_to_modify(&mut self) {
-		self.copy_of_shapes.clear();
-	}
-
-	/// Add a shape to the hashset of shapes we consider for selection
-	pub fn set_shape_selected(&mut self, shape_index: usize, selected: bool) {
-		if let Some(shape) = self.copy_of_shapes.get_mut(shape_index) {
-			shape.set_selected(selected);
-		}
+		self.shapes_copy.clear();
 	}
 
 	pub fn has_selected_shapes(&self) -> bool {
-		!self.copy_of_shapes.is_empty()
+		!self.shapes_copy.is_empty()
 	}
 
 	/// Provide the shapes that the currently selected points are a part of
 	pub fn selected_shapes(&self) -> impl Iterator<Item = &VectorShape> {
-		self.copy_of_shapes.iter().filter(|shape| shape.selected)
+		self.shapes_copy.iter()
 	}
 
 	/// Provide the mutable shapes that the currently selected points are a part of
 	pub fn selected_shapes_mut(&mut self) -> impl Iterator<Item = &mut VectorShape> {
-		self.copy_of_shapes.iter_mut().filter(|shape| shape.selected)
+		self.shapes_copy.iter_mut()
 	}
 
 	/// Provide the currently selected anchor by reference
@@ -144,12 +134,12 @@ impl ShapeEditor {
 
 	/// A mutable iterator of all the anchors, regardless of selection
 	pub fn anchors_mut(&mut self) -> impl Iterator<Item = &mut VectorAnchor> {
-		self.copy_of_shapes.iter_mut().flat_map(|shape| shape.iter_mut())
+		self.shapes_copy.iter_mut().flat_map(|shape| shape.iter_mut())
 	}
 
 	/// Select the last anchor in this shape
 	pub fn select_last_anchor(&mut self) -> Option<&mut VectorAnchor> {
-		if let Some(last) = self.copy_of_shapes.last_mut() {
+		if let Some(last) = self.shapes_copy.last_mut() {
 			return last.select_last_anchor();
 		}
 		None
@@ -157,7 +147,7 @@ impl ShapeEditor {
 
 	/// Select the Nth anchor of the shape, negative numbers index from the end
 	pub fn select_nth_anchor(&mut self, shape_index: usize, anchor_index: i32) -> Option<&mut VectorAnchor> {
-		let shape = &mut self.copy_of_shapes[shape_index];
+		let shape = &mut self.shapes_copy[shape_index];
 		if anchor_index < 0 {
 			let anchor_index = shape.anchors.len() - ((-anchor_index) as usize);
 			shape.select_anchor_by_index(anchor_index)
@@ -216,7 +206,7 @@ impl ShapeEditor {
 
 	/// Deselect all anchors from the shapes the manipulation handler has created
 	pub fn deselect_all(&mut self) {
-		for shape in self.copy_of_shapes.iter_mut() {
+		for shape in self.shapes_copy.iter_mut() {
 			shape.clear_selected_anchors();
 		}
 	}

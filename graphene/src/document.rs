@@ -127,20 +127,6 @@ impl Document {
 		self.root.iter().flat_map(|layer| layer.as_vector_shape()).collect::<Vec<&VectorShape>>()
 	}
 
-	/// Returns a copy of all the currently selected VectorShapes.
-	pub fn selected_vector_shapes(&self) -> Vec<VectorShape> {
-		self.root
-			.iter()
-			.flat_map(|layer| layer.as_vector_shape_copy())
-			.filter(|shape| shape.selected)
-			.collect::<Vec<VectorShape>>()
-	}
-
-	/// Returns references to all the currently selected VectorShapes.
-	pub fn selected_vector_shapes_ref(&self) -> Vec<&VectorShape> {
-		self.root.iter().flat_map(|layer| layer.as_vector_shape()).filter(|shape| shape.selected).collect::<Vec<&VectorShape>>()
-	}
-
 	/// Returns a reference to the requested VectorShape by providing a path to its owner layer.
 	pub fn vector_shape_ref<'a>(&'a self, path: &[LayerId]) -> Option<&'a VectorShape> {
 		return self.layer(path).ok()?.as_vector_shape();

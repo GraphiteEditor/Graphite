@@ -144,7 +144,7 @@ impl DocumentMessageHandler {
 		self.artboard_message_handler.artboards_graphene_document.bounding_box_and_transform(path).unwrap_or(None)
 	}
 
-	pub fn selected_layers<'a>(&'a self) -> impl Iterator<Item = &'a [LayerId]> {
+	pub fn selected_layers(&self) -> impl Iterator<Item = &[LayerId]> {
 		self.layer_metadata.iter().filter_map(|(path, data)| data.selected.then(|| path.as_slice()))
 	}
 
@@ -185,6 +185,22 @@ impl DocumentMessageHandler {
 			Ok(layer) => layer.visible,
 			Err(_) => false,
 		})
+	}
+
+	/// Returns a copy of all the currently selected VectorShapes.
+	pub fn selected_vector_shapes(&self) -> Vec<VectorShape> {
+		self.selected_visible_layers()
+			.flat_map(|layer| self.graphene_document.layer(layer))
+			.flat_map(|layer| layer.as_vector_shape_copy())
+			.collect::<Vec<VectorShape>>()
+	}
+
+	/// Returns references to all the currently selected VectorShapes.
+	pub fn selected_vector_shapes_ref(&self) -> Vec<&VectorShape> {
+		self.selected_visible_layers()
+			.flat_map(|layer| self.graphene_document.layer(layer))
+			.flat_map(|layer| layer.as_vector_shape())
+			.collect::<Vec<&VectorShape>>()
 	}
 
 	/// Returns the bounding boxes for all visible layers and artboards, optionally excluding any paths.

@@ -24,8 +24,6 @@ pub struct VectorShape {
 	/// The transformation matrix to apply
 	/// May no longer be needed.
 	pub transform: DAffine2,
-	/// Is this shape selected
-	pub selected: bool,
 }
 
 // TODO Implement iterator for VectorShape
@@ -36,7 +34,6 @@ impl VectorShape {
 			layer_path,
 			closed,
 			transform,
-			selected: true,
 			..Default::default()
 		}
 	}
@@ -59,7 +56,6 @@ impl VectorShape {
 			.collect(),
 			closed: true,
 			transform: DAffine2::IDENTITY,
-			selected: false,
 		}
 	}
 
@@ -76,7 +72,6 @@ impl VectorShape {
 			anchors: anchors.into_iter().collect(),
 			closed: true,
 			transform: DAffine2::IDENTITY,
-			selected: false,
 		}
 	}
 
@@ -87,7 +82,6 @@ impl VectorShape {
 			anchors: vec![VectorAnchor::new(p1), VectorAnchor::new(p2)].into_iter().collect(),
 			closed: false,
 			transform: DAffine2::IDENTITY,
-			selected: false,
 		}
 	}
 
@@ -97,7 +91,6 @@ impl VectorShape {
 			anchors: UniqueElements::default(),
 			closed: false,
 			transform: DAffine2::IDENTITY,
-			selected: false,
 		};
 		points
 			.into_iter()
@@ -186,10 +179,6 @@ impl VectorShape {
 	/// Return all the selected anchors, mutable
 	pub fn selected_anchors_mut(&mut self) -> impl Iterator<Item = &mut VectorAnchor> {
 		self.iter_mut().filter(|anchor| anchor.is_anchor_selected())
-	}
-
-	pub fn set_selected(&mut self, selected: bool) {
-		self.selected = selected;
 	}
 
 	/// Place point in local space in relation to this shape's transform

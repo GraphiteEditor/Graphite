@@ -42,7 +42,7 @@ impl<'a> OverlayRenderer {
 	}
 
 	pub fn draw_overlays_for_vector_shape(&mut self, shape: &VectorShape, responses: &mut VecDeque<Message>) {
-		// Draw the shape outline overlays
+		// If we do not have any cached overlays for this shape, generate them
 		if !self.shape_overlay_cache.contains_key(&shape.layer_path) {
 			let outline = self.create_shape_outline_overlay(shape.into(), responses);
 
@@ -52,7 +52,7 @@ impl<'a> OverlayRenderer {
 			// TODO Handle removing shapes from cache so we don't memory leak
 		}
 
-		// Draw the anchor / handle overlays
+		// Place and style the anchor / handle overlays
 		for (anchor_id, anchor) in shape.anchors.enumerate() {
 			// If cached update them
 			if let Some(anchor_overlays) = self.anchor_overlay_cache.get(anchor_id) {

@@ -127,7 +127,7 @@ impl Fsm for PathToolFsmState {
 			match (self, event) {
 				(_, SelectionChanged) => {
 					// TODO Tell overlay renderer to clear / updates the overlays
-					data.shape_editor.set_shapes_to_modify(document.graphene_document.selected_vector_shapes());
+					// data.shape_editor.set_shapes_to_modify(document.graphene_document.selected_vector_shapes());
 					self
 				}
 				(_, DocumentIsDirty) => {

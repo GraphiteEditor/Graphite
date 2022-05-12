@@ -314,7 +314,6 @@ fn add_to_curve(data: &mut PenToolData, input: &InputPreprocessorMessageHandler,
 		data.shape_editor.set_shapes_to_modify(vec![data.curve_shape.clone()]);
 
 		// Select the second to last segment's handle
-		data.shape_editor.set_shape_selected(0, true);
 		let handle_element = data.shape_editor.select_nth_anchor(0, -2);
 		if let Some(handle) = handle_element {
 			handle.select_point(2, true);
