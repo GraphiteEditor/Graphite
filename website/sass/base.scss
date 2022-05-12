@@ -27,6 +27,7 @@
 		--font-size-link: 20px;
 		--font-size-heading: 32px;
 		--font-size-body: 16px;
+		--page-edge-padding: 28px;
 	}
 
 	@media screen and (max-width: 500px) {
@@ -45,6 +46,7 @@
 		--font-size-link: 14px;
 		--font-size-heading: 24px;
 		--font-size-body: 16px;
+		--page-edge-padding: 12px;
 	}
 }
 
@@ -165,6 +167,8 @@ ol + p {
 code {
 	background: var(--color-fog);
 	padding: 0 4px;
+	word-break: break-all;
+	hyphens: none;
 }
 
 pre {
@@ -576,6 +580,10 @@ hr,
 					max-width: 100%;
 					box-sizing: border-box;
 					overflow: auto;
+				}
+
+				details {
+					width: 100%;
 				}
 			}
 

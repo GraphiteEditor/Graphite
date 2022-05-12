@@ -316,7 +316,9 @@
 				</div>
 				<span class="publication">By {{ article.extra.author }}. {{ article.date | date(format="%B %d, %Y", timezone="America/Los_Angeles") }}.</span>
 				<div class="summary">
-					{{ article.summary | safe }}
+					<div>
+						{{ article.summary | safe }}
+					</div>
 				</div>
 				<div class="keep-reading">
 					<a href="{{ article.permalink | safe }}" class="link arrow">Keep Reading</a>
