@@ -5,6 +5,8 @@ date = 2022-02-12
 [extra]
 banner = "https://static.graphite.rs/content/blog/2022-02-12-announcing-graphite-alpha.png"
 author = "Keavon Chambers"
+reddit = "https://www.reddit.com/r/graphite/comments/unw3hi/blog_post_announcing_graphite_alpha/"
+twitter = "https://twitter.com/GraphiteEditor/status/1524663930697568256"
 +++
 
 The Graphite open source team is proud to announce the release of the alpha version of our next-generation graphics editor. This is the culmination of one year of development (and 1000 GitHub stars) by our passionate and dedicated community. The alpha release, a minimum viable product vector editor web app, completes the first chapter for our project. We can't wait to now forge ahead towards additional milestones and a beta release as we build a node-based procedural workflow, a raster graphics compositing engine, a native desktop client, and further ambitions.

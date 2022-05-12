@@ -5,6 +5,8 @@ date = 2022-05-12
 [extra]
 banner = "https://static.graphite.rs/content/blog/2022-05-12-distributed-computing-in-the-graphene-runtime.png"
 author = "Keavon Chambers"
+reddit = "https://www.reddit.com/r/graphite/comments/unw45k/blog_post_distributed_computing_in_the_graphene/"
+twitter = "https://twitter.com/GraphiteEditor/status/1524664083554791424"
 +++
 
 Graphite is a professional 2D graphics editor for photo editing, image manipulation, graphic design, illustration, data visualization, batch processing, and technical art. It is designed to run on a variety of machines, from mobile hardware like iPads or web browsers on midrange laptops up to beefy workstations with dozens of CPU cores and multiple GPUs.
