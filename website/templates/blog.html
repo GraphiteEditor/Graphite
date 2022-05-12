@@ -24,7 +24,7 @@
 	{% for page in section.pages %}
 	<article>
 		<div class="banner">
-			<a href="{{ page.permalink | safe }}"><img src="{{ page.extra.banner }}" /></a>
+			<a href="{{ page.permalink | safe }}"><img src="{{ page.extra.banner | safe }}" /></a>
 		</div>
 		<div class="details">
 			<div class="headline">
