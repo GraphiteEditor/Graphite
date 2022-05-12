@@ -9,10 +9,15 @@
 			margin-top: 20px;
 		}
 	}
-	
+
 	&.color {
+		background-color: var(--color-fog);
+		background-blend-mode: color-burn;
+	}
+
+	&.light {
 		background-color: var(--color-manilla);
-		background-blend-mode: hard-light;
+		background-blend-mode: color-burn;
 	}
 
 	&.dark {
@@ -23,11 +28,6 @@
 		a {
 			color: var(--color-mustard);
 		}
-	}
-
-	&.light {
-		background-color: var(--color-fog);
-		background-blend-mode: color-burn;
 	}
 
 	.box {
@@ -42,13 +42,13 @@
 			img {
 				max-width: calc(100vw - 2 * 80 * var(--variable-px));
 			}
-			
+
 			span {
 				font-weight: 800;
 				margin-top: 20px;
 				white-space: nowrap;
 			}
-	
+
 			a {
 				white-space: nowrap;
 			}
