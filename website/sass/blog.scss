@@ -1,6 +1,7 @@
 #intro {
 	.section {
 		flex: 1 1 100%;
+		width: 100%;
 
 		.left-right-split {
 			width: 100%;
@@ -38,10 +39,19 @@
 	flex-direction: column;
 	gap: 80px;
 
-
 	article {
 		display: flex;
-		gap: 80px;
+		gap: 20px 80px;
+
+		@media screen and (max-width: 960px) {
+			flex-wrap: wrap;
+			justify-content: center;
+
+			.banner.banner {
+				width: 100%;
+				max-width: 540px;
+			}
+		}
 	
 		.details {
 			display: flex;
