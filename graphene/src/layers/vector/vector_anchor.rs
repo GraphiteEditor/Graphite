@@ -1,3 +1,5 @@
+use std::ops::Mul;
+
 use super::{constants::ControlPointType, vector_control_point::VectorControlPoint};
 use glam::{DAffine2, DVec2};
 use serde::{Deserialize, Serialize};
@@ -115,6 +117,11 @@ impl VectorAnchor {
 		self.points.iter().flatten()
 	}
 
+	/// Provides the points in this anchor
+	pub fn points_mut(&mut self) -> impl Iterator<Item = &mut VectorControlPoint> {
+		self.points.iter_mut().flatten()
+	}
+
 	/// Provides the selected points in this anchor
 	pub fn selected_points(&self) -> impl Iterator<Item = &VectorControlPoint> {
 		self.points.iter().flatten().filter(|pnt| pnt.is_selected)
@@ -148,6 +155,12 @@ impl VectorAnchor {
 	pub fn set_point_position(&mut self, point_index: usize, position: DVec2) {
 		if let Some(point) = &mut self.points[point_index] {
 			point.position = position;
+		}
+	}
+
+	pub fn transform(&mut self, transform: &DAffine2) {
+		for point in self.points_mut() {
+			point.position = transform.transform_point2(point.position);
 		}
 	}
 }

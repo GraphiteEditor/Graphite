@@ -127,13 +127,13 @@ impl Fsm for PathToolFsmState {
 			match (self, event) {
 				(_, SelectionChanged) => {
 					// TODO Tell overlay renderer to clear / updates the overlays
-					// data.shape_editor.set_shapes_to_modify(document.graphene_document.selected_vector_shapes());
+					data.shape_editor.set_shapes_to_modify(document.selected_vector_shapes());
 					self
 				}
 				(_, DocumentIsDirty) => {
 					// TODO This should be handled by the document not by the tool, but this is a stop gap
-					for shape in data.shape_editor.selected_shapes() {
-						data.overlay_renderer.draw_overlays_for_vector_shape(shape, responses);
+					for layer_path in document.selected_visible_layers() {
+						data.overlay_renderer.draw_vector_shape_overlays(&document.graphene_document, layer_path.to_vec(), responses);
 					}
 
 					self

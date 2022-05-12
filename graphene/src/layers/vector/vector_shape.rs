@@ -15,27 +15,17 @@ use serde::{Deserialize, Serialize};
 /// For each kurbo path we keep a VectorShape which contains the handles and anchors for that path
 #[derive(PartialEq, Clone, Debug, Default, Serialize, Deserialize)]
 pub struct VectorShape {
-	/// The path to the shape layer
-	pub layer_path: Vec<LayerId>,
 	/// Vec of anchors, each consisting of the control points / handles
 	pub anchors: UniqueElements<VectorAnchor>,
 	/// If the compound Bezier curve is closed
 	pub closed: bool,
-	/// The transformation matrix to apply
-	/// May no longer be needed.
-	pub transform: DAffine2,
 }
 
 // TODO Implement iterator for VectorShape
 
 impl VectorShape {
 	pub fn new(layer_path: Vec<LayerId>, transform: DAffine2, closed: bool) -> Self {
-		VectorShape {
-			layer_path,
-			closed,
-			transform,
-			..Default::default()
-		}
+		VectorShape { closed, ..Default::default() }
 	}
 
 	pub fn from_kurbo_shape<T: Shape>(shape: &T) -> Self {
@@ -45,7 +35,6 @@ impl VectorShape {
 	/// constructs a rectangle with `p1` as the lower left and `p2` as the top right
 	pub fn new_rect(p1: DVec2, p2: DVec2) -> Self {
 		VectorShape {
-			layer_path: vec![],
 			anchors: vec![
 				VectorAnchor::new(p1),
 				VectorAnchor::new(DVec2::new(p1.x, p2.y)),
@@ -55,7 +44,6 @@ impl VectorShape {
 			.into_iter()
 			.collect(),
 			closed: true,
-			transform: DAffine2::IDENTITY,
 		}
 	}
 
@@ -68,36 +56,26 @@ impl VectorShape {
 			anchors.push(VectorAnchor::new(DVec2::new(center.x + radius * f64::cos(angle), center.y + radius * f64::sin(angle))));
 		}
 		VectorShape {
-			layer_path: vec![],
 			anchors: anchors.into_iter().collect(),
 			closed: true,
-			transform: DAffine2::IDENTITY,
 		}
 	}
 
 	/// constructs a line from `p1` to `p2`
 	pub fn new_line(p1: DVec2, p2: DVec2) -> Self {
 		VectorShape {
-			layer_path: vec![],
 			anchors: vec![VectorAnchor::new(p1), VectorAnchor::new(p2)].into_iter().collect(),
 			closed: false,
-			transform: DAffine2::IDENTITY,
 		}
 	}
 
 	pub fn new_poly_line<T: Into<glam::DVec2>>(points: Vec<T>) -> Self {
+		let anchors = points.into_iter().map(|point| VectorAnchor::new(point.into()));
 		let mut p_line = VectorShape {
-			layer_path: vec![],
 			anchors: UniqueElements::default(),
 			closed: false,
-			transform: DAffine2::IDENTITY,
 		};
-		points
-			.into_iter()
-			.enumerate()
-			.for_each(|(local_id, point)| match p_line.anchors.add(VectorAnchor::new(point.into()), None, -1) {
-				_ => (),
-			});
+		p_line.anchors.add_range(anchors, -1);
 		p_line
 	}
 
@@ -107,13 +85,15 @@ impl VectorShape {
 
 	pub fn delete_selected(&mut self) {
 		// involves cloning the elements of anchors, could be replaced by a more efficient implementation possibly
-		self.anchors = self.iter().filter(|anchor| !anchor.is_anchor_selected()).collect();
+		for (index, anchor) in self.selected_anchors_mut().enumerate() {
+			// Todo Delete points
+		}
 	}
 
 	pub fn add_point(&mut self, nearest_point_on_curve: DVec2) {
-		// TODO Implement this function properly
 		for anchor in self.selected_anchors_mut() {
 			if anchor.is_anchor_selected() {
+				// TODO Add point
 				// anchor.add_point(anchor.control_points_mut(), nearest_point_on_curve);
 			}
 		}
@@ -121,7 +101,6 @@ impl VectorShape {
 
 	/// Select an anchor by id
 	pub fn select_anchor(&mut self, anchor_id: u64) -> Option<&mut VectorAnchor> {
-		// TODO test if looking this up by index actually works
 		if let Some(anchor) = self.anchors.by_id_mut(anchor_id) {
 			anchor.select_point(ControlPointType::Anchor as usize, true);
 			return Some(anchor);
@@ -150,7 +129,6 @@ impl VectorShape {
 
 	/// Deselect an anchor
 	pub fn deselect_anchor(&mut self, anchor_id: u64) {
-		// TODO test if looking this up by index actually works
 		if let Some(anchor) = self.anchors.by_id_mut(anchor_id) {
 			anchor.clear_selected_points();
 			anchor.select_point(ControlPointType::Anchor as usize, false);
@@ -181,23 +159,19 @@ impl VectorShape {
 		self.iter_mut().filter(|anchor| anchor.is_anchor_selected())
 	}
 
-	/// Place point in local space in relation to this shape's transform
-	fn to_local_space(&self, point: kurbo::Point) -> DVec2 {
-		self.transform.transform_point2(DVec2::from((point.x, point.y)))
-	}
-
-	/// TODO: remove kurbo from below implementations
-
+	// Kurbo removed from apply_affine
 	pub fn apply_affine(&mut self, affine: DAffine2) {
-		let mut transformed = <&Self as Into<BezPath>>::into(self);
-		transformed.apply_affine(glam_to_kurbo(affine));
-		self.anchors = Into::<VectorShape>::into(transformed.iter()).anchors;
+		for anchor in self.anchors.iter_mut() {
+			anchor.transform(&affine);
+		}
 	}
 
+	// TODO Remove BezPath / kurbo reliance here
 	pub fn bounding_box(&self) -> Rect {
 		<&Self as Into<BezPath>>::into(self).bounding_box()
 	}
 
+	// TODO Abstract the usage of BezPath / Kurbo here
 	pub fn to_svg(&mut self) -> String {
 		<&Self as Into<BezPath>>::into(self).to_svg()
 	}

@@ -14,16 +14,18 @@ type ElementIndex = i64;
 /// stored in the [layers](PathStorage::layers) field.
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 
-// TODO: Default is a bit weird because Layer does not implement Default. but we should not care because the empty vec is the default
+// TODO: Simplify this struct to only use a single Vec + HashMap
 pub struct UniqueElements<T> {
 	/// The IDs of the [Elements] contained within this
 	keys: Vec<ElementId>,
 	/// The data contained in this
 	values: Vec<T>,
-	/// The ID that will be assigned to the next element that is added to this
-	next_assignment_id: ElementId,
 	/// Map from element ids to array positions
 	id_to_index: HashMap<ElementId, ElementIndex>,
+
+	/// The ID that will be assigned to the next element that is added to this
+	#[serde(skip)]
+	next_assignment_id: ElementId,
 }
 
 impl<T> UniqueElements<T> {
@@ -80,6 +82,22 @@ impl<T> UniqueElements<T> {
 		}
 	}
 
+	/// Add a range of elements of type T to this
+	/// Insert_index is where the elements should be inserted
+	/// Negative values for `insert_index` represent distance from the end
+	pub fn add_range<I>(&mut self, elements: I, insert_index: isize) -> Vec<ElementId>
+	where
+		I: IntoIterator<Item = T>,
+	{
+		let mut ids = vec![];
+		for element in elements {
+			if let Some(id) = self.add(element, None, insert_index) {
+				ids.push(id);
+			}
+		}
+		ids
+	}
+
 	/// Remove an element with a given element ID from the within this container.
 	/// This operation will fail if `id` is not present within this container.
 	///
@@ -110,17 +128,6 @@ impl<T> UniqueElements<T> {
 	pub fn keys(&self) -> &[ElementId] {
 		self.keys.as_slice()
 	}
-
-	/// These can be replaced by implementing Deref I think
-	// /// Get references to all the [T]s in the within this container.
-	// pub fn values(&self) -> &[T] {
-	// 	self.values.as_slice()
-	// }
-
-	// /// Get mutable references to all the [T]s in the within this container.
-	// pub fn values_mut(&mut self) -> &mut [T] {
-	// 	self.values.as_mut_slice()
-	// }
 
 	/// Get a single element with a given element ID from the within this container.
 	pub fn by_id(&self, id: ElementId) -> Option<&T> {
@@ -249,19 +256,16 @@ impl<T> DerefMut for UniqueElements<T> {
 impl<A> FromIterator<A> for UniqueElements<A> {
 	fn from_iter<T: IntoIterator<Item = A>>(iter: T) -> Self {
 		let mut new = UniqueElements::default();
-		iter.into_iter().for_each(|element| match new.add(element, None, -1) {
-			_ => (), // attempt to add all elements, even if one fails
-		});
+		// Add to the end of the existing elements
+		new.add_range(iter, -1);
 		new
 	}
 }
 
-impl<'b, 'a: 'b, A: 'a + Clone> FromIterator<&'b A> for UniqueElements<A> {
-	fn from_iter<T: IntoIterator<Item = &'b A>>(iter: T) -> Self {
-		let mut new = UniqueElements::default();
-		iter.into_iter().for_each(|element| match new.add(element.clone(), None, -1) {
-			_ => (), // attempt to add all elements, even if one fails
-		});
-		new
-	}
-}
+// impl<'b, 'a: 'b, A: 'a + Clone> FromIterator<&'b A> for UniqueElements<A> {
+// 	fn from_iter<T: IntoIterator<Item = &'b A>>(iter: T) -> Self {
+// 		let mut new = UniqueElements::default();
+// 		new.add_range(iter, -1);
+// 		new
+// 	}
+// }
