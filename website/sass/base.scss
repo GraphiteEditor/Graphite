@@ -53,7 +53,7 @@ body {
 	width: 100%;
 	height: 100%;
 	margin: 0;
-	background: var(--color-manilla);
+	background: white;
 	font-family: "Inter", sans-serif;
 	line-height: 1.5;
 	font-weight: 500;
@@ -179,7 +179,7 @@ pre {
 kbd {
 	background: var(--color-fog);
 	border-radius: calc(var(--variable-px) * 4);
-	outline: var(--border-thickness) solid var(--color-navy);
+	outline: calc(var(--border-thickness) / 2) solid var(--color-navy);
 	padding: 0 4px;
 	margin: 0 4px;
 	color: var(--color-navy);
@@ -214,6 +214,16 @@ summary {
 	text-decoration: none;
 	font-weight: 800;
 	white-space: nowrap;
+
+	img {
+		height: calc(var(--font-size-link) * 1.5);
+		margin-right: calc(var(--font-size-link) / 2);
+	}
+
+	img,
+	span {
+		vertical-align: middle;
+	}
 }
 
 .arrow::after {
@@ -435,7 +445,7 @@ hr,
 								content: " »";
 							}
 						}
-						
+
 						img {
 							display: block;
 							width: var(--height);
@@ -452,7 +462,7 @@ hr,
 							--nav-font-size: 26px;
 						}
 					}
-	
+
 					@media screen and (max-width: 760px) {
 						gap: 20px;
 
@@ -462,7 +472,7 @@ hr,
 							--nav-font-size: 22px;
 						}
 					}
-	
+
 					@media screen and (max-width: 600px) {
 						gap: 16px;
 
@@ -566,17 +576,17 @@ hr,
 		gap: 40px;
 		padding: 40px;
 		padding-top: 0;
-		
+
 		nav {
 			display: flex;
 			flex-wrap: wrap;
 			justify-content: center;
 			gap: 8px 40px;
-			
+
 			@media screen and (max-width: 900px) {
 				max-width: 500px;
 			}
-			
+
 			@media screen and (max-width: 760px) {
 				max-width: 440px;
 			}
