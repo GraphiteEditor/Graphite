@@ -462,7 +462,7 @@ impl DocumentMessageHandler {
 
 	/// Calculates the bounding box of all layers in the document
 	pub fn all_layer_bounds(&self) -> Option<[DVec2; 2]> {
-			self.graphene_document.viewport_bounding_box(&[]).ok().flatten()
+		self.graphene_document.viewport_bounding_box(&[]).ok().flatten()
 	}
 
 	/// Calculates the document bounds used for scrolling and centring (the layer bounds or the artboard (if applicable))
