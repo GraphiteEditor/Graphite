@@ -460,8 +460,18 @@ impl DocumentMessageHandler {
 		Ok(insert_index - layer_ids_above.iter().filter(|layer_id| layers.iter().any(|x| *x == [path, &[**layer_id]].concat())).count() as isize)
 	}
 
+	/// Calculates the bounding box of all layers in the document
+	pub fn all_layer_bounds(&self) -> Option<[DVec2; 2]> {
+			self.graphene_document.viewport_bounding_box(&[]).ok().flatten()
+	}
+
+	/// Calculates the document bounds used for scrolling and centring (the layer bounds or the artboard (if applicable))
 	pub fn document_bounds(&self) -> Option<[DVec2; 2]> {
-		self.graphene_document.viewport_bounding_box(&[]).ok().flatten()
+		if self.artboard_message_handler.is_infinite_canvas() {
+			self.all_layer_bounds()
+		} else {
+			self.artboard_message_handler.artboards_graphene_document.viewport_bounding_box(&[]).ok().flatten()
+		}
 	}
 
 	/// Calculate the path that new layers should be inserted to.
@@ -868,7 +878,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 
 				// Calculates the bounding box of the region to be exported
 				let bbox = match bounds {
-					crate::frontend::utility_types::ExportBounds::AllArtwork => self.document_bounds(),
+					crate::frontend::utility_types::ExportBounds::AllArtwork => self.all_layer_bounds(),
 					crate::frontend::utility_types::ExportBounds::Artboard(id) => self
 						.artboard_message_handler
 						.artboards_graphene_document
