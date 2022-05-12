@@ -5,6 +5,8 @@ date = 2022-03-12
 [extra]
 banner = "https://static.graphite.rs/content/blog/2022-03-12-graphite-a-vision-for-the-future-of-2d-content-creation.png"
 author = "Keavon Chambers"
+reddit = "https://www.reddit.com/r/graphite/comments/unw3va/blog_post_graphite_a_vision_for_the_future_of_2d/"
+twitter = "https://twitter.com/GraphiteEditor/status/1524664010091556864"
 +++
 
 Graphite is an open source, cross-platform digital content creation desktop and web application for 2D graphics editing, photo processing, vector art, digital painting, illustration, data visualization, compositing, and more. Inspired by the open source success of Blender in the 3D domain, it aims to bring 2D content creation to new heights with efficient workflows influenced by Photoshop/Gimp and Illustrator/Inkscape and backed by a powerful node-based, nondestructive approach proven by Houdini, Nuke, Blender, and others.
