@@ -42,6 +42,7 @@ impl LayerData for ShapeLayer {
 	}
 
 	fn bounding_box(&self, transform: glam::DAffine2) -> Option<[DVec2; 2]> {
+		// TODO Avoid this clone if possible
 		let mut vector_shape = self.shape.clone();
 		if transform.matrix2 == DMat2::ZERO {
 			return None;

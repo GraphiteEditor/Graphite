@@ -28,6 +28,7 @@ impl VectorShape {
 		VectorShape { closed, ..Default::default() }
 	}
 
+	// TODO Wrap this within an adapter to separate kurbo from VectorShape
 	pub fn from_kurbo_shape<T: Shape>(shape: &T) -> Self {
 		shape.path_elements(0.1).into()
 	}
@@ -234,7 +235,7 @@ impl From<&VectorShape> for BezPath {
 			bez_path.push(PathEl::ClosePath);
 		}
 
-		log::debug!("To Bezpath: {:?}", bez_path);
+		// log::debug!("To Bezpath: {:?}", bez_path);
 		BezPath::from_vec(bez_path)
 	}
 }
