@@ -54,6 +54,15 @@ impl VectorAnchor {
 		}
 	}
 
+	pub fn closed() -> Self {
+		Self {
+			// An anchor and 2x None's which represent non-existent handles
+			points: [None, None, None],
+			mirror_angle_active: false,
+			mirror_distance_active: false,
+		}
+	}
+
 	/// Finds the closest VectorControlPoint owned by this anchor. This can be the handles or the anchor itself
 	pub fn closest_point(&self, target: glam::DVec2) -> usize {
 		let mut closest_index: usize = 0;

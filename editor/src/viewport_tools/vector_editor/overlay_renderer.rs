@@ -64,7 +64,7 @@ impl<'a> OverlayRenderer {
 				}
 
 				// Create, place and style the anchor / handle overlays
-				for (anchor_id, anchor) in shape.anchors.enumerate() {
+				for (anchor_id, anchor) in shape.anchors().enumerate() {
 					let anchor_cache = self.anchor_overlay_cache.get(&(*layer_id, *anchor_id));
 
 					// If cached update placement and style
@@ -103,7 +103,7 @@ impl<'a> OverlayRenderer {
 		// Remove the anchor overlays
 		if let Ok(layer) = document.layer(&layer_path) {
 			if let Some(shape) = layer.as_vector_shape() {
-				for anchor_id in shape.anchors.keys() {
+				for anchor_id in shape.anchors().keys() {
 					if let Some(anchor_overlays) = self.anchor_overlay_cache.get(&(*layer_id, *anchor_id)) {
 						self.remove_anchor_overlays(anchor_overlays, responses);
 						self.anchor_overlay_cache.remove(&(*layer_id, *anchor_id));
@@ -124,7 +124,7 @@ impl<'a> OverlayRenderer {
 		// Hide the anchor overlays
 		if let Ok(layer) = document.layer(&layer_path) {
 			if let Some(shape) = layer.as_vector_shape() {
-				for anchor_id in shape.anchors.keys() {
+				for anchor_id in shape.anchors().keys() {
 					if let Some(anchor_overlays) = self.anchor_overlay_cache.get(&(*layer_id, *anchor_id)) {
 						self.set_anchor_overlay_visibility(anchor_overlays, visibility, responses);
 					}

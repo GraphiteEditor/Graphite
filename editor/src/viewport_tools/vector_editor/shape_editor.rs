@@ -38,12 +38,17 @@ impl ShapeEditor {
 			return false;
 		}
 
+		// document.generate_transform_relative_to_viewport(from);
+
 		if let Some((shape_index, anchor_id, point_index)) = self.find_nearest_point_indicies(mouse_position, select_threshold) {
 			log::trace!("Selecting: shape {} / anchor {} / point {}", shape_index, anchor_id, point_index);
 
 			// If the point we're selecting has already been selected
 			// we can assume this point exists.. since we did just click on it hense the unwrap
-			let is_point_selected = self.shapes_copy[shape_index].anchors.by_id_mut(anchor_id).unwrap().points[point_index].as_ref().unwrap().is_selected;
+			let is_point_selected = self.shapes_copy[shape_index].anchors_mut().by_id_mut(anchor_id).unwrap().points[point_index]
+				.as_ref()
+				.unwrap()
+				.is_selected;
 
 			// Deselected if we're not adding to the selection
 			if !add_to_selection && !is_point_selected {
@@ -92,7 +97,7 @@ impl ShapeEditor {
 	pub fn find_nearest_point(&mut self, mouse_position: DVec2, select_threshold: f64) -> Option<&mut VectorControlPoint> {
 		let (shape_index, anchor_id, point_index) = self.find_nearest_point_indicies(mouse_position, select_threshold)?;
 		let selected_shape = &mut self.shapes_copy[shape_index];
-		if let Some(anchor) = selected_shape.anchors.by_id_mut(anchor_id) {
+		if let Some(anchor) = selected_shape.anchors_mut().by_id_mut(anchor_id) {
 			return anchor.points[point_index].as_mut();
 		}
 		None
@@ -149,7 +154,7 @@ impl ShapeEditor {
 	pub fn select_nth_anchor(&mut self, shape_index: usize, anchor_index: i32) -> Option<&mut VectorAnchor> {
 		let shape = &mut self.shapes_copy[shape_index];
 		if anchor_index < 0 {
-			let anchor_index = shape.anchors.len() - ((-anchor_index) as usize);
+			let anchor_index = shape.anchors().len() - ((-anchor_index) as usize);
 			shape.select_anchor_by_index(anchor_index)
 		} else {
 			let anchor_index = anchor_index as usize;
@@ -217,7 +222,7 @@ impl ShapeEditor {
 	fn closest_point(&self, shape: &VectorShape, pos: glam::DVec2) -> Option<(u64, usize, f64)> {
 		let mut closest_distance_squared: f64 = f64::MAX; // Not ideal
 		let mut result: Option<(u64, usize, f64)> = None;
-		for (anchor_id, anchor) in shape.anchors.enumerate() {
+		for (anchor_id, anchor) in shape.anchors().enumerate() {
 			let point_index = anchor.closest_point(pos);
 			if let Some(point) = &anchor.points[point_index] {
 				if point.can_be_selected {

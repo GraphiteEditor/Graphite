@@ -456,7 +456,7 @@ pub fn subdivide_path_seg(p: &PathSeg, t_values: &mut [f64]) -> Vec<Option<PathS
 // TODO: Bug: shape with at least two subpaths and comprised of many unions sometimes has erroneous movetos embedded in edges
 // TODO: reduce copying
 pub fn boolean_operation(select: BooleanOperation, mut alpha: ShapeLayer, mut beta: ShapeLayer) -> Result<Vec<ShapeLayer>, BooleanOperationError> {
-	if alpha.shape.anchors.len() < 2 || beta.shape.anchors.len() < 2 {
+	if alpha.shape.anchors().len() < 2 || beta.shape.anchors().len() < 2 {
 		return Err(BooleanOperationError::InvalidSelection);
 	}
 	let mut alpha_shape = close_path(&(&alpha.shape).into());
