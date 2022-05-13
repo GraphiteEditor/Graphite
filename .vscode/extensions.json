@@ -1,7 +1,7 @@
 {
 	"recommendations": [
 		// Rust
-		"matklad.rust-analyzer",
+		"rust-lang.rust-analyzer",
 		// Web
 		"dbaeumer.vscode-eslint",
 		"Vue.volar",
