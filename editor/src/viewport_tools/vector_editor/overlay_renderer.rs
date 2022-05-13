@@ -23,13 +23,14 @@ use graphene::{
 /// AnchorOverlay is the collection of overlays that make up an anchor
 /// Notably the anchor point, handles and the lines for the handles
 type AnchorOverlays = [Option<Vec<LayerId>>; 5];
+type AnchorId = u64;
 
 const POINT_STROKE_WIDTH: f32 = 2.0;
 
 #[derive(Debug, Default)]
 pub struct OverlayRenderer {
-	shape_overlay_cache: HashMap<Vec<LayerId>, Vec<LayerId>>,
-	anchor_overlay_cache: HashMap<Vec<LayerId>, AnchorOverlays>,
+	shape_overlay_cache: HashMap<LayerId, Vec<LayerId>>,
+	anchor_overlay_cache: HashMap<(LayerId, AnchorId), AnchorOverlays>,
 }
 
 impl<'a> OverlayRenderer {
@@ -41,32 +42,34 @@ impl<'a> OverlayRenderer {
 	}
 
 	// TODO Implement a trait called HasOverlays that is implemented by Vectorshape
-	pub fn draw_vector_shape_overlays(&mut self, document: &Document, mut layer_path: Vec<LayerId>, responses: &mut VecDeque<Message>) {
+	pub fn render_vector_shape_overlays(&mut self, document: &Document, layer_path: Vec<LayerId>, responses: &mut VecDeque<Message>) {
 		let transform = document.generate_transform_relative_to_viewport(&layer_path).ok().unwrap();
+
 		if let Ok(layer) = document.layer(&layer_path) {
-			self.set_layer_overlay_visibility(document, layer_path.clone(), true, responses);
+			let layer_id = layer_path.last().unwrap();
+			log::debug!("Layer id is {:?}", layer_id);
+			self.layer_overlay_visibility(document, layer_path.clone(), true, responses);
 
 			if let Some(shape) = layer.as_vector_shape() {
-				let outline_cache = self.shape_overlay_cache.get(&layer_path);
+				let outline_cache = self.shape_overlay_cache.get(layer_id);
 
-				// If we do not have any cached overlays for this shape, generate them
+				// Create an outline if we do not have a cached one
 				if outline_cache == None {
 					let outline = self.create_shape_outline_overlay(shape.into(), responses);
-					self.shape_overlay_cache.insert(layer_path.clone(), outline);
-					log::trace!("Creating new overlays for {:?}", layer_path);
+					self.place_outline_overlays(outline.clone(), &transform, responses);
+					self.shape_overlay_cache.insert(*layer_id, outline);
+					log::debug!("Creating new overlays for {:?}", layer_path);
 				} else if let Some(outline) = outline_cache {
-					let message = self.overlay_transform_message(outline.clone(), transform.to_cols_array());
-					responses.push_back(message);
+					self.place_outline_overlays(outline.clone(), &transform, responses);
 				}
 
 				// Create, place and style the anchor / handle overlays
 				for (anchor_id, anchor) in shape.anchors.enumerate() {
-					layer_path.push(*anchor_id);
-					let anchor_cache = self.anchor_overlay_cache.get(&layer_path);
+					let anchor_cache = self.anchor_overlay_cache.get(&(*layer_id, *anchor_id));
 
 					// If cached update placement and style
 					if let Some(anchor_overlays) = anchor_cache {
-						self.place_overlays(anchor, anchor_overlays, &transform, responses);
+						self.place_anchor_overlays(anchor, anchor_overlays, &transform, responses);
 						self.style_overlays(anchor, anchor_overlays, responses);
 					} else {
 						// Create if not cached
@@ -77,11 +80,10 @@ impl<'a> OverlayRenderer {
 							self.create_handle_line_overlay(&anchor.points[ControlPointType::Handle1], responses),
 							self.create_handle_line_overlay(&anchor.points[ControlPointType::Handle2], responses),
 						];
-						self.place_overlays(anchor, &anchor_overlays, &transform, responses);
+						self.place_anchor_overlays(anchor, &anchor_overlays, &transform, responses);
 						self.style_overlays(anchor, &anchor_overlays, responses);
-						self.anchor_overlay_cache.insert(layer_path.clone(), anchor_overlays);
+						self.anchor_overlay_cache.insert((*layer_id, *anchor_id), anchor_overlays);
 					}
-					layer_path.pop();
 				}
 				// TODO Handle removing shapes from cache so we don't memory leak
 				// Eventually will get replaced with am immediate mode renderer for overlays
@@ -89,31 +91,33 @@ impl<'a> OverlayRenderer {
 		}
 	}
 
-	pub fn clear_vector_shape_overlays(&mut self, document: &Document, mut layer_path: Vec<LayerId>, responses: &mut VecDeque<Message>) {
+	pub fn clear_vector_shape_overlays(&mut self, document: &Document, layer_path: Vec<LayerId>, responses: &mut VecDeque<Message>) {
+		let layer_id = layer_path.last().unwrap();
+
 		// Remove the shape outline overlays
-		if let Some(overlay_path) = self.shape_overlay_cache.get(&layer_path) {
+		if let Some(overlay_path) = self.shape_overlay_cache.get(layer_id) {
 			self.remove_outline_overlays(overlay_path.clone(), responses)
 		}
-		self.shape_overlay_cache.remove(&layer_path);
+		self.shape_overlay_cache.remove(layer_id);
 
 		// Remove the anchor overlays
 		if let Ok(layer) = document.layer(&layer_path) {
 			if let Some(shape) = layer.as_vector_shape() {
 				for anchor_id in shape.anchors.keys() {
-					layer_path.push(*anchor_id);
-					if let Some(anchor_overlays) = self.anchor_overlay_cache.get(&layer_path) {
+					if let Some(anchor_overlays) = self.anchor_overlay_cache.get(&(*layer_id, *anchor_id)) {
 						self.remove_anchor_overlays(anchor_overlays, responses);
-						self.anchor_overlay_cache.remove(&layer_path);
+						self.anchor_overlay_cache.remove(&(*layer_id, *anchor_id));
 					}
-					layer_path.pop();
 				}
 			}
 		}
 	}
 
-	pub fn set_layer_overlay_visibility(&mut self, document: &Document, mut layer_path: Vec<LayerId>, visibility: bool, responses: &mut VecDeque<Message>) {
+	pub fn layer_overlay_visibility(&mut self, document: &Document, layer_path: Vec<LayerId>, visibility: bool, responses: &mut VecDeque<Message>) {
+		let layer_id = layer_path.last().unwrap();
+
 		// Hide the shape outline overlays
-		if let Some(overlay_path) = self.shape_overlay_cache.get(&layer_path) {
+		if let Some(overlay_path) = self.shape_overlay_cache.get(layer_id) {
 			self.set_outline_overlay_visibility(overlay_path.clone(), visibility, responses);
 		}
 
@@ -121,11 +125,9 @@ impl<'a> OverlayRenderer {
 		if let Ok(layer) = document.layer(&layer_path) {
 			if let Some(shape) = layer.as_vector_shape() {
 				for anchor_id in shape.anchors.keys() {
-					layer_path.push(*anchor_id);
-					if let Some(anchor_overlays) = self.anchor_overlay_cache.get(&layer_path) {
+					if let Some(anchor_overlays) = self.anchor_overlay_cache.get(&(*layer_id, *anchor_id)) {
 						self.set_anchor_overlay_visibility(anchor_overlays, visibility, responses);
 					}
-					layer_path.pop();
 				}
 			}
 		}
@@ -190,8 +192,13 @@ impl<'a> OverlayRenderer {
 		Some(layer_path)
 	}
 
+	fn place_outline_overlays(&self, outline_path: Vec<LayerId>, parent_transform: &DAffine2, responses: &mut VecDeque<Message>) {
+		let message = self.overlay_transform_message(outline_path, parent_transform.to_cols_array());
+		responses.push_back(message);
+	}
+
 	/// Updates the position of the overlays based on the VectorShape points
-	fn place_overlays(&self, anchor: &VectorAnchor, overlays: &AnchorOverlays, parent_transform: &DAffine2, responses: &mut VecDeque<Message>) {
+	fn place_anchor_overlays(&self, anchor: &VectorAnchor, overlays: &AnchorOverlays, parent_transform: &DAffine2, responses: &mut VecDeque<Message>) {
 		if let Some(anchor_point) = &anchor.points[ControlPointType::Anchor] {
 			// Helper function to keep things DRY
 			let mut place_handle_and_line = |handle: &VectorControlPoint, line: &Option<Vec<LayerId>>| {
@@ -280,7 +287,7 @@ impl<'a> OverlayRenderer {
 	fn style_overlays(&self, anchor: &VectorAnchor, overlays: &AnchorOverlays, responses: &mut VecDeque<Message>) {
 		// TODO Move the style definitions out of the VectorShape, should be looked up from a stylesheet or similar
 		let selected_style = style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, POINT_STROKE_WIDTH + 1.0)), Some(Fill::new(COLOR_ACCENT)));
-		let deselected_style = style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, POINT_STROKE_WIDTH)), None);
+		let deselected_style = style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, POINT_STROKE_WIDTH)), Some(Fill::new(Color::WHITE)));
 
 		// Update if the anchor / handle points are shown as selected
 		// Here the index is important, even though overlays[..] has five elements we only care about the first three

@@ -128,7 +128,7 @@ impl Fsm for PathToolFsmState {
 				(_, SelectionChanged) => {
 					// TODO Tell overlay renderer to clear / updates the overlays
 					for layer_path in document.all_layers() {
-						data.overlay_renderer.set_layer_overlay_visibility(&document.graphene_document, layer_path.to_vec(), false, responses);
+						data.overlay_renderer.layer_overlay_visibility(&document.graphene_document, layer_path.to_vec(), false, responses);
 					}
 
 					data.shape_editor.set_shapes_to_modify(document.selected_vector_shapes());
@@ -137,7 +137,7 @@ impl Fsm for PathToolFsmState {
 				(_, DocumentIsDirty) => {
 					// TODO This should be handled by the document not by the tool, but this is a stop gap
 					for layer_path in document.selected_visible_layers() {
-						data.overlay_renderer.draw_vector_shape_overlays(&document.graphene_document, layer_path.to_vec(), responses);
+						data.overlay_renderer.render_vector_shape_overlays(&document.graphene_document, layer_path.to_vec(), responses);
 					}
 
 					self
