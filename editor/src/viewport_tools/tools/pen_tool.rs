@@ -199,10 +199,11 @@ impl Fsm for PenToolFsmState {
 				}
 				(Drawing, DragStop) => {
 					// Deselect everything (this means we are no longer dragging the handle)
-					data.shape_editor.deselect_all();
+					data.shape_editor.deselect_all_points(&mut document.graphene_document);
 
+					// TODO Make this more effecient, right now this iterates all the way through all anchors to find the last one
 					// Reselect the last point
-					if let Some(last_anchor) = data.shape_editor.select_last_anchor() {
+					if let Some(last_anchor) = data.shape_editor.anchors_mut(&mut document.graphene_document).last() {
 						last_anchor.select_point(0, true);
 					}
 
@@ -211,7 +212,7 @@ impl Fsm for PenToolFsmState {
 				(Drawing, PointerMove) => {
 					let snapped_position = data.snap_handler.snap_position(responses, input.viewport_bounds.size(), document, input.mouse.position);
 					//data.shape_editor.update_shapes(document, responses);
-					data.shape_editor.move_selected_points(snapped_position, false);
+					data.shape_editor.move_selected_points(&mut document.graphene_document, snapped_position, false);
 
 					Drawing
 				}
@@ -232,7 +233,7 @@ impl Fsm for PenToolFsmState {
 
 					// TODO Tell overlay manager to remove the overlays
 					//data.shape_editor.remove_overlays();
-					data.shape_editor.clear_shapes_to_modify();
+					data.shape_editor.clear_target_layers();
 
 					data.path = None;
 					data.snap_handler.cleanup(responses);
@@ -242,7 +243,7 @@ impl Fsm for PenToolFsmState {
 				(_, Abort) => {
 					// TODO Tell overlay manager to remove the overlays
 					//data.shape_editor.remove_overlays();
-					data.shape_editor.clear_shapes_to_modify();
+					data.shape_editor.clear_target_layers();
 					Ready
 				}
 				_ => self,
@@ -288,7 +289,7 @@ impl Fsm for PenToolFsmState {
 fn add_to_curve(data: &mut PenToolData, input: &InputPreprocessorMessageHandler, transform: DAffine2, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
 	// We need to make sure we have the most up-to-date bez_path
 	// Would like to remove this hack eventually
-	if data.shape_editor.has_selected_shapes() {
+	if data.shape_editor.has_target_layers() {
 		// Hacky way of saving the curve changes
 		// TODO We've removed .bezpath and this need to preserve the shapes instead
 		// data.bez_path = data.shape_editor.shapes_to_modify[0].bez_path.elements().to_vec();
@@ -310,20 +311,22 @@ fn add_to_curve(data: &mut PenToolData, input: &InputPreprocessorMessageHandler,
 		// Create a new shape from the updated bez_path
 		// TODO We've removed .bezpath and this need to preserve the shapes instead
 		// let bez_path = data.bez_path.clone().into_iter().collect();
-		data.curve_shape = VectorShape::new();
-		data.shape_editor.set_shapes_to_modify(vec![data.curve_shape.clone()]);
 
-		// Select the second to last segment's handle
-		let handle_element = data.shape_editor.select_nth_anchor(0, -2);
-		if let Some(handle) = handle_element {
-			handle.select_point(2, true);
-		}
+		// TODO Needs to be reimplemented given the new reliance on layers for VectorShapes
+		// data.curve_shape = VectorShape::new();
+		// data.shape_editor.set_target_layers(vec![data.curve_shape.clone()]);
 
-		// Select the last segment's anchor point
-		if let Some(last_anchor) = data.shape_editor.select_last_anchor() {
-			last_anchor.select_point(0, true);
-		}
-		data.shape_editor.set_selected_mirror_options(true, true);
+		// // Select the second to last segment's handle
+		// let handle_element = data.shape_editor.select_nth_anchor(0, -2);
+		// if let Some(handle) = handle_element {
+		// 	handle.select_point(2, true);
+		// }
+
+		// // Select the last segment's anchor point
+		// if let Some(last_anchor) = data.shape_editor.select_last_anchor() {
+		// 	last_anchor.select_point(0, true);
+		// }
+		// data.shape_editor.set_selected_mirror_options(true, true);
 	}
 }
 

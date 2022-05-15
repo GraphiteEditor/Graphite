@@ -90,7 +90,7 @@ impl Document {
 	}
 
 	/// Returns a mutable reference to the layer or folder at the path.
-	pub fn layer_mut(&mut self, path: &[LayerId]) -> Result<&mut Layer, DocumentError> {
+	pub fn layer_mut<'a>(&'a mut self, path: &'a [LayerId]) -> Result<&'a mut Layer, DocumentError> {
 		if path.is_empty() {
 			return Ok(&mut self.root);
 		}
@@ -133,7 +133,7 @@ impl Document {
 	}
 
 	/// Returns a mutable reference of the requested VectorShape by providing a path to its owner layer.
-	pub fn vector_shape_mut<'a>(&'a mut self, path: &[LayerId]) -> Option<&'a mut VectorShape> {
+	pub fn vector_shape_mut<'a>(&'a mut self, path: &'a [LayerId]) -> Option<&'a mut VectorShape> {
 		return self.layer_mut(path).ok()?.as_vector_shape_mut();
 	}
 

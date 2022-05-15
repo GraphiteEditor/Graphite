@@ -131,7 +131,8 @@ impl Fsm for PathToolFsmState {
 						data.overlay_renderer.layer_overlay_visibility(&document.graphene_document, layer_path.to_vec(), false, responses);
 					}
 
-					data.shape_editor.set_shapes_to_modify(document.selected_vector_shapes());
+					let layer_paths = document.selected_visible_layers().map(|layer_path| layer_path.to_vec()).collect();
+					data.shape_editor.set_target_layers(layer_paths);
 					self
 				}
 				(_, DocumentIsDirty) => {
@@ -147,10 +148,18 @@ impl Fsm for PathToolFsmState {
 					let add_to_selection = input.keyboard.get(add_to_selection as usize);
 
 					// Select the first point within the threshold (in pixels)
-					if data.shape_editor.select_point(input.mouse.position, SELECTION_THRESHOLD, add_to_selection) {
+					if data
+						.shape_editor
+						.select_point(&mut document.graphene_document, input.mouse.position, SELECTION_THRESHOLD, add_to_selection)
+					{
 						responses.push_back(DocumentMessage::StartTransaction.into());
 						data.snap_handler.start_snap(document, document.bounding_boxes(None, None), true, true);
-						let snap_points = data.shape_editor.selected_anchors().flat_map(|anchor| anchor.points[0].as_ref()).map(|point| point.position).collect();
+						let snap_points = data
+							.shape_editor
+							.selected_anchors(&document.graphene_document)
+							.flat_map(|anchor| anchor.points[0].as_ref())
+							.map(|point| point.position)
+							.collect();
 						data.snap_handler.add_snap_points(document, snap_points);
 						data.drag_start_pos = input.mouse.position;
 						Dragging
@@ -196,7 +205,7 @@ impl Fsm for PathToolFsmState {
 						data.alt_debounce = alt_pressed;
 						// Only on alt down
 						if alt_pressed {
-							data.shape_editor.toggle_selected_mirror_angle();
+							data.shape_editor.toggle_selected_mirror_angle(&mut document.graphene_document);
 						}
 					}
 
@@ -204,20 +213,20 @@ impl Fsm for PathToolFsmState {
 					let shift_pressed = input.keyboard.get(shift_mirror_distance as usize);
 					if shift_pressed != data.shift_debounce {
 						data.shift_debounce = shift_pressed;
-						data.shape_editor.toggle_selected_mirror_distance();
+						data.shape_editor.toggle_selected_mirror_distance(&mut document.graphene_document);
 					}
 
 					// Move the selected points by the mouse position
 					let snapped_position = data.snap_handler.snap_position(responses, input.viewport_bounds.size(), document, input.mouse.position);
-					data.shape_editor.move_selected_points(snapped_position - data.drag_start_pos, true);
+					data.shape_editor.move_selected_points(&mut document.graphene_document, snapped_position - data.drag_start_pos, true);
 					Dragging
 				}
 				// DoubleClick
 				(_, Delete) => {
 					// Select the first point within the threshold (in pixels)
-					if data.shape_editor.select_point(input.mouse.position, SELECTION_THRESHOLD, false) {
+					if data.shape_editor.select_point(&mut document.graphene_document, input.mouse.position, SELECTION_THRESHOLD, false) {
 						responses.push_back(DocumentMessage::StartTransaction.into());
-						data.shape_editor.delete_selected_points();
+						data.shape_editor.delete_selected_points(&mut document.graphene_document);
 						responses.push_back(SelectionChanged.into());
 					}
 					Ready
