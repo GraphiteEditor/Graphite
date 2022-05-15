@@ -432,14 +432,14 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 					responses.push_back(DocumentMessage::LayerChanged { affected_layer_path: layer.clone() }.into());
 				}
 				responses.push_back(ToolMessage::DocumentIsDirty.into());
-				responses.push_back(PortfolioMessage::UpdateDocumentBar.into());
+				responses.push_back(PortfolioMessage::UpdateDocumentWidgets.into());
 			}
 			SetActiveDocument { document_id } => {
 				self.active_document_id = document_id;
 			}
-			UpdateDocumentBar => {
+			UpdateDocumentWidgets => {
 				let active_document = self.active_document();
-				active_document.register_properties(responses, LayoutTarget::DocumentBar)
+				active_document.register_properties(responses);
 			}
 			UpdateOpenDocumentsList => {
 				// Send the list of document tab names

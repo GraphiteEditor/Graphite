@@ -17,6 +17,7 @@ pub enum LayoutMessage {
 pub enum LayoutTarget {
 	DialogDetails,
 	DocumentBar,
+	DocumentMode,
 	PropertiesOptionsPanel,
 	PropertiesSectionsPanel,
 	ToolOptions,

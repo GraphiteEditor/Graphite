@@ -325,14 +325,6 @@ export class UpdateDocumentLayer extends JsMessage {
 	readonly data!: LayerPanelEntry;
 }
 
-export class UpdateCanvasZoom extends JsMessage {
-	readonly factor!: number;
-}
-
-export class UpdateCanvasRotation extends JsMessage {
-	readonly angle_radians!: number;
-}
-
 export type BlendMode =
 	| "Normal"
 	| "Multiply"
@@ -476,6 +468,13 @@ export class UpdateDialogDetails extends JsMessage implements WidgetLayout {
 	layout!: LayoutRow[];
 }
 
+export class UpdateDocumentModeLayout extends JsMessage implements WidgetLayout {
+	layout_target!: unknown;
+
+	@Transform(({ value }) => createWidgetLayout(value))
+	layout!: LayoutRow[];
+}
+
 export class UpdateToolOptionsLayout extends JsMessage implements WidgetLayout {
 	layout_target!: unknown;
 
@@ -568,8 +567,6 @@ export const messageMakers: Record<string, MessageMaker> = {
 	TriggerVisitLink,
 	UpdateActiveDocument,
 	UpdateActiveTool,
-	UpdateCanvasRotation,
-	UpdateCanvasZoom,
 	UpdateDialogDetails,
 	UpdateDocumentArtboards,
 	UpdateDocumentArtwork,
@@ -584,6 +581,7 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateOpenDocumentsList,
 	UpdatePropertyPanelOptionsLayout,
 	UpdatePropertyPanelSectionsLayout,
+	UpdateDocumentModeLayout,
 	UpdateToolOptionsLayout,
 	UpdateWorkingColors,
 } as const;

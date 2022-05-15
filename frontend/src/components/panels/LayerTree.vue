@@ -4,7 +4,7 @@
 			<DropdownInput
 				v-model:selectedIndex="blendModeSelectedIndex"
 				@update:selectedIndex="(newSelectedIndex: number) => setLayerBlendMode(newSelectedIndex)"
-				:menuEntries="blendModeEntries"
+				:entries="blendModeEntries"
 				:disabled="blendModeDropdownDisabled"
 			/>
 

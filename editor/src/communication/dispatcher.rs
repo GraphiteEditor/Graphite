@@ -142,12 +142,7 @@ impl Dispatcher {
 	fn log_message(&self, message: &Message) {
 		use Message::*;
 
-		if log::max_level() == log::LevelFilter::Trace
-			&& !(matches!(
-				message,
-				InputPreprocessor(_) | Frontend(FrontendMessage::UpdateCanvasZoom { .. }) | Frontend(FrontendMessage::UpdateCanvasRotation { .. })
-			) || MessageDiscriminant::from(message).local_name().ends_with("PointerMove"))
-		{
+		if log::max_level() == log::LevelFilter::Trace && !(matches!(message, InputPreprocessor(_)) || MessageDiscriminant::from(message).local_name().ends_with("PointerMove")) {
 			log::trace!("Message: {:?}", message);
 			// log::trace!("Hints: {:?}", self.input_mapper_message_handler.hints(self.collect_actions()));
 		}

@@ -64,7 +64,7 @@ impl PropertyHolder for Export {
 		let mut export_area_options = vec![(ExportBounds::AllArtwork, "All Artwork".to_string())];
 		export_area_options.extend(artboards);
 		let index = export_area_options.iter().position(|(val, _)| val == &self.bounds).unwrap();
-		let menu_entries = vec![export_area_options
+		let entries = vec![export_area_options
 			.into_iter()
 			.map(|(val, name)| DropdownEntryData {
 				label: name,
@@ -85,7 +85,7 @@ impl PropertyHolder for Export {
 			})),
 			WidgetHolder::new(Widget::DropdownInput(DropdownInput {
 				selected_index: index as u32,
-				menu_entries,
+				entries,
 				..Default::default()
 			})),
 		];

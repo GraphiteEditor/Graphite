@@ -560,7 +560,7 @@ impl JsEditorHandle {
 
 	// TODO(mfish33): Replace with initialization system Issue:#524
 	pub fn init_document_bar(&self) {
-		let message = PortfolioMessage::UpdateDocumentBar;
+		let message = PortfolioMessage::UpdateDocumentWidgets;
 		self.dispatch(message)
 	}
 }

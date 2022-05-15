@@ -1,17 +1,13 @@
 <template>
 	<LayoutCol class="document">
 		<LayoutRow class="options-bar" :scrollableX="true">
-			<LayoutRow class="left side">
-				<DropdownInput :menuEntries="documentModeEntries" v-model:selectedIndex="documentModeSelectionIndex" :drawIcon="true" />
-
-				<Separator :type="'Section'" />
-
-				<WidgetLayout :layout="toolOptionsLayout" class="tool-options" />
-			</LayoutRow>
+			<WidgetLayout :layout="documentModeLayout" />
+			<Separator :type="'Section'" />
+			<WidgetLayout :layout="toolOptionsLayout" />
 
 			<LayoutRow class="spacer"></LayoutRow>
 
-			<WidgetLayout :layout="documentBarLayout" class="right side document-bar" />
+			<WidgetLayout :layout="documentBarLayout" />
 		</LayoutRow>
 		<LayoutRow class="shelf-and-viewport">
 			<LayoutCol class="shelf">
@@ -128,13 +124,7 @@
 	.options-bar {
 		height: 32px;
 		flex: 0 0 auto;
-
-		.side {
-			height: 100%;
-			flex: 0 0 auto;
-			align-items: center;
-			margin: 0 4px;
-		}
+		margin: 0 4px;
 
 		.spacer {
 			min-width: 40px;
@@ -273,11 +263,10 @@ import {
 	UpdateDocumentScrollbars,
 	UpdateDocumentRulers,
 	UpdateActiveTool,
-	UpdateCanvasZoom,
-	UpdateCanvasRotation,
 	ToolName,
 	UpdateDocumentArtboards,
 	UpdateMouseCursor,
+	UpdateDocumentModeLayout,
 	UpdateToolOptionsLayout,
 	defaultWidgetLayout,
 	UpdateDocumentBarLayout,
@@ -299,9 +288,6 @@ import { loadDefaultFont, setLoadDefaultFontCallback } from "@/utilities/fonts";
 import LayoutCol from "@/components/layout/LayoutCol.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
 import IconButton from "@/components/widgets/buttons/IconButton.vue";
-import { SectionsOfMenuListEntries } from "@/components/widgets/floating-menus/MenuList.vue";
-import DropdownInput from "@/components/widgets/inputs/DropdownInput.vue";
-import { RadioEntries } from "@/components/widgets/inputs/RadioInput.vue";
 import ShelfItemInput from "@/components/widgets/inputs/ShelfItemInput.vue";
 import SwatchPairInput from "@/components/widgets/inputs/SwatchPairInput.vue";
 import CanvasRuler from "@/components/widgets/rulers/CanvasRuler.vue";
@@ -444,15 +430,6 @@ export default defineComponent({
 			this.activeTool = updateActiveTool.tool_name;
 		});
 
-		this.editor.dispatcher.subscribeJsMessage(UpdateCanvasZoom, (updateCanvasZoom) => {
-			this.documentZoom = updateCanvasZoom.factor * 100;
-		});
-
-		this.editor.dispatcher.subscribeJsMessage(UpdateCanvasRotation, (updateCanvasRotation) => {
-			const newRotation = updateCanvasRotation.angle_radians * (180 / Math.PI);
-			this.documentRotation = (360 + (newRotation % 360)) % 360;
-		});
-
 		this.editor.dispatcher.subscribeJsMessage(UpdateMouseCursor, (updateMouseCursor) => {
 			this.canvasCursor = updateMouseCursor.cursor;
 		});
@@ -500,6 +477,10 @@ export default defineComponent({
 					detail: undefined,
 				})
 			);
+		});
+
+		this.editor.dispatcher.subscribeJsMessage(UpdateDocumentModeLayout, (updateDocumentModeLayout) => {
+			this.documentModeLayout = updateDocumentModeLayout;
 		});
 
 		this.editor.dispatcher.subscribeJsMessage(UpdateToolOptionsLayout, (updateToolOptionsLayout) => {
@@ -551,45 +532,39 @@ export default defineComponent({
 		loadBuildMetadata();
 	},
 	data() {
-		const documentModeEntries: SectionsOfMenuListEntries = [
-			[
-				{ label: "Design Mode", icon: "ViewportDesignMode" },
-				{ label: "Select Mode", icon: "ViewportSelectMode", action: (): void => this.dialog.comingSoon(330) },
-				{ label: "Guide Mode", icon: "ViewportGuideMode", action: (): void => this.dialog.comingSoon(331) },
-			],
-		];
-		const viewModeEntries: RadioEntries = [
-			{ value: "normal", icon: "ViewModeNormal", tooltip: "View Mode: Normal", action: (): void => this.setViewMode("Normal") },
-			{ value: "outline", icon: "ViewModeOutline", tooltip: "View Mode: Outline", action: (): void => this.setViewMode("Outline") },
-			{ value: "pixels", icon: "ViewModePixels", tooltip: "View Mode: Pixels", action: (): void => this.dialog.comingSoon(320) },
-		];
+		const activeTool: ToolName = "Select";
 
 		return {
-			artworkSvg: "",
-			artboardSvg: "",
-			overlaysSvg: "",
+			// Tool (TODO: Move this whole widget group to the backend)
+			activeTool: activeTool as ToolName,
+
+			// Interactive text editing
+			textInput: undefined as undefined | HTMLDivElement,
+
+			// CSS properties
 			canvasSvgWidth: "100%",
 			canvasSvgHeight: "100%",
 			canvasCursor: "default",
-			activeTool: "Select" as ToolName,
-			toolOptionsLayout: defaultWidgetLayout(),
-			documentBarLayout: defaultWidgetLayout(),
-			documentModeEntries,
-			viewModeEntries,
-			documentModeSelectionIndex: 0,
-			viewModeIndex: 0,
-			snappingEnabled: true,
-			gridEnabled: true,
-			overlaysEnabled: true,
-			documentRotation: 0,
-			documentZoom: 100,
+
+			// Scrollbars
 			scrollbarPos: { x: 0.5, y: 0.5 },
 			scrollbarSize: { x: 0.5, y: 0.5 },
 			scrollbarMultiplier: { x: 0, y: 0 },
+
+			// Rulers
 			rulerOrigin: { x: 0, y: 0 },
 			rulerSpacing: 100,
 			rulerInterval: 100,
-			textInput: undefined as undefined | HTMLDivElement,
+
+			// Rendered SVG viewport data
+			artworkSvg: "",
+			artboardSvg: "",
+			overlaysSvg: "",
+
+			// Layouts
+			documentModeLayout: defaultWidgetLayout(),
+			toolOptionsLayout: defaultWidgetLayout(),
+			documentBarLayout: defaultWidgetLayout(),
 		};
 	},
 	components: {
@@ -601,7 +576,6 @@ export default defineComponent({
 		PersistentScrollbar,
 		CanvasRuler,
 		IconButton,
-		DropdownInput,
 		WidgetLayout,
 	},
 });

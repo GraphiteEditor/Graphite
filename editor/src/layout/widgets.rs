@@ -342,8 +342,7 @@ pub struct PopoverButton {
 #[derive(Clone, Serialize, Deserialize, Derivative, Default)]
 #[derivative(Debug, PartialEq)]
 pub struct DropdownInput {
-	#[serde(rename = "menuEntries")]
-	pub menu_entries: Vec<Vec<DropdownEntryData>>,
+	pub entries: Vec<Vec<DropdownEntryData>>,
 
 	// This uses `u32` instead of `usize` since it will be serialized as a normal JS number
 	// TODO(mfish33): Replace with usize when using native UI

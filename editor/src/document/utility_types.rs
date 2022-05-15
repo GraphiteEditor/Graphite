@@ -32,3 +32,20 @@ pub enum TargetDocument {
 	Artboard,
 	Artwork,
 }
+
+#[derive(PartialEq, Clone, Copy, Debug, Serialize, Deserialize)]
+pub enum DocumentMode {
+	DesignMode,
+	SelectMode,
+	GuideMode,
+}
+
+impl ToString for DocumentMode {
+	fn to_string(&self) -> String {
+		match self {
+			DocumentMode::DesignMode => "Design Mode".to_string(),
+			DocumentMode::SelectMode => "Select Mode".to_string(),
+			DocumentMode::GuideMode => "Guide Mode".to_string(),
+		}
+	}
+}
