@@ -3,7 +3,7 @@
 	"[rust]": {
 		"editor.formatOnSave": true,
 		"editor.formatOnPaste": true,
-		"editor.defaultFormatter": "matklad.rust-analyzer",
+		"editor.defaultFormatter": "rust-lang.rust-analyzer",
 	},
 	// Web: save on format
 	"[typescript][javascript][vue]": {
@@ -14,7 +14,6 @@
 		"editor.defaultFormatter": "dbaeumer.vscode-eslint",
 	},
 	// Rust Analyzer config
-	"rust-analyzer.experimental.procAttrMacros": true,
 	"rust-analyzer.cargo.target": "wasm32-unknown-unknown",
 	"rust-analyzer.checkOnSave.command": "clippy",
 	// ESLint config
