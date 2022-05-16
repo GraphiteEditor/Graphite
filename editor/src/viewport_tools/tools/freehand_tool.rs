@@ -63,10 +63,10 @@ impl PropertyHolder for FreehandTool {
 			widgets: vec![WidgetHolder::new(Widget::NumberInput(NumberInput {
 				unit: " px".into(),
 				label: "Weight".into(),
-				value: self.options.line_weight as f64,
+				value: Some(self.options.line_weight as f64),
 				is_integer: false,
 				min: Some(1.),
-				on_update: WidgetCallback::new(|number_input: &NumberInput| FreehandToolMessage::UpdateOptions(FreehandToolMessageOptionsUpdate::LineWeight(number_input.value)).into()),
+				on_update: WidgetCallback::new(|number_input: &NumberInput| FreehandToolMessage::UpdateOptions(FreehandToolMessageOptionsUpdate::LineWeight(number_input.value.unwrap())).into()),
 				..NumberInput::default()
 			}))],
 		}])

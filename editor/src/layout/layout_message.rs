@@ -18,8 +18,9 @@ pub enum LayoutTarget {
 	DialogDetails,
 	DocumentBar,
 	DocumentMode,
-	PropertiesOptionsPanel,
-	PropertiesSectionsPanel,
+	LayerTreeOptions,
+	PropertiesOptions,
+	PropertiesSections,
 	ToolOptions,
 
 	// KEEP THIS ENUM LAST

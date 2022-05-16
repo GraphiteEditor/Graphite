@@ -3,14 +3,13 @@
 // on the dispatcher messaging system and more complex Rust data types.
 
 use crate::helpers::Error;
-use crate::type_translators::{translate_blend_mode, translate_key, translate_tool_type};
+use crate::type_translators::{translate_key, translate_tool_type};
 use crate::{EDITOR_HAS_CRASHED, EDITOR_INSTANCES, JS_EDITOR_HANDLES};
 
 use editor::consts::{FILE_SAVE_SUFFIX, GRAPHITE_DOCUMENT_VERSION};
 use editor::input::input_preprocessor::ModifierKeys;
 use editor::input::mouse::{EditorMouseState, ScrollDelta, ViewportBounds};
 use editor::message_prelude::*;
-use editor::misc::EditorError;
 use editor::viewport_tools::tool::ToolType;
 use editor::viewport_tools::tools;
 use editor::Color;
@@ -442,12 +441,6 @@ impl JsEditorHandle {
 		self.dispatch(message);
 	}
 
-	/// Delete all selected layers
-	pub fn delete_selected_layers(&self) {
-		let message = DocumentMessage::DeleteSelectedLayers;
-		self.dispatch(message);
-	}
-
 	/// Reorder selected layer
 	pub fn reorder_selected_layers(&self, relative_index_offset: isize) {
 		let message = DocumentMessage::ReorderSelectedLayers { relative_index_offset };
@@ -467,25 +460,6 @@ impl JsEditorHandle {
 	/// Set the name for the layer
 	pub fn set_layer_name(&self, layer_path: Vec<LayerId>, name: String) {
 		let message = DocumentMessage::SetLayerName { layer_path, name };
-		self.dispatch(message);
-	}
-
-	/// Set the blend mode for the selected layers
-	pub fn set_blend_mode_for_selected_layers(&self, blend_mode_svg_style_name: String) -> Result<(), JsValue> {
-		if let Some(blend_mode) = translate_blend_mode(blend_mode_svg_style_name.as_str()) {
-			let message = DocumentMessage::SetBlendModeForSelectedLayers { blend_mode };
-			self.dispatch(message);
-
-			Ok(())
-		} else {
-			Err(Error::new(&EditorError::Misc("UnknownBlendMode".to_string()).to_string()).into())
-		}
-	}
-
-	/// Set the opacity for the selected layers
-	pub fn set_opacity_for_selected_layers(&self, opacity_percent: f64) {
-		let opacity = opacity_percent / 100.;
-		let message = DocumentMessage::SetOpacityForSelectedLayers { opacity };
 		self.dispatch(message);
 	}
 
@@ -549,12 +523,6 @@ impl JsEditorHandle {
 	/// Deletes a layer from the layer list
 	pub fn delete_layer(&self, layer_path: Vec<LayerId>) {
 		let message = DocumentMessage::DeleteLayer { layer_path };
-		self.dispatch(message);
-	}
-
-	/// Creates an empty folder at the document root
-	pub fn create_empty_folder(&self) {
-		let message = DocumentMessage::CreateEmptyFolder { container_path: vec![] };
 		self.dispatch(message);
 	}
 

@@ -2,7 +2,6 @@ use crate::helpers::match_string_to_enum;
 
 use editor::input::keyboard::Key;
 use editor::viewport_tools::tool::ToolType;
-use graphene::layers::blend_mode::BlendMode;
 
 pub fn translate_tool_type(name: &str) -> Option<ToolType> {
 	use ToolType::*;
@@ -30,32 +29,6 @@ pub fn translate_tool_type(name: &str) -> Option<ToolType> {
 		Ellipse,
 		Shape
 	})
-}
-
-pub fn translate_blend_mode(blend_mode_svg_style_name: &str) -> Option<BlendMode> {
-	use BlendMode::*;
-
-	let blend_mode = match blend_mode_svg_style_name {
-		"Normal" => Normal,
-		"Multiply" => Multiply,
-		"Darken" => Darken,
-		"ColorBurn" => ColorBurn,
-		"Screen" => Screen,
-		"Lighten" => Lighten,
-		"ColorDodge" => ColorDodge,
-		"Overlay" => Overlay,
-		"SoftLight" => SoftLight,
-		"HardLight" => HardLight,
-		"Difference" => Difference,
-		"Exclusion" => Exclusion,
-		"Hue" => Hue,
-		"Saturation" => Saturation,
-		"Color" => Color,
-		"Luminosity" => Luminosity,
-		_ => return None,
-	};
-
-	Some(blend_mode)
 }
 
 pub fn translate_key(name: &str) -> Key {

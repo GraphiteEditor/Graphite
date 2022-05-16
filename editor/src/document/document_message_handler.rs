@@ -19,6 +19,7 @@ use crate::EditorError;
 
 use graphene::color::Color;
 use graphene::document::Document as GrapheneDocument;
+use graphene::layers::blend_mode::BlendMode;
 use graphene::layers::folder_layer::FolderLayer;
 use graphene::layers::layer_info::LayerDataType;
 use graphene::layers::style::{Fill, ViewMode};
@@ -141,7 +142,7 @@ impl DocumentMessageHandler {
 		if let Some(layer) = self.layer_metadata.get_mut(path) {
 			layer.selected = true;
 			let data = self.layer_panel_entry(path.to_vec()).ok()?;
-			(!path.is_empty()).then(|| FrontendMessage::UpdateDocumentLayer { data }.into())
+			(!path.is_empty()).then(|| FrontendMessage::UpdateDocumentLayerDetails { data }.into())
 		} else {
 			log::warn!("Tried to select non existing layer {:?}", path);
 			None
@@ -528,7 +529,7 @@ impl DocumentMessageHandler {
 		}
 	}
 
-	pub fn register_properties(&self, responses: &mut VecDeque<Message>) {
+	pub fn update_document_widgets(&self, responses: &mut VecDeque<Message>) {
 		let document_bar_layout = WidgetLayout::new(vec![LayoutRow::Row {
 			widgets: vec![
 				WidgetHolder::new(Widget::OptionalInput(OptionalInput {
@@ -609,11 +610,11 @@ impl DocumentMessageHandler {
 				})),
 				WidgetHolder::new(Widget::NumberInput(NumberInput {
 					unit: "°".into(),
-					value: self.movement_handler.tilt / (std::f64::consts::PI / 180.),
+					value: Some(self.movement_handler.tilt / (std::f64::consts::PI / 180.)),
 					increment_factor: 15.,
 					on_update: WidgetCallback::new(|number_input: &NumberInput| {
 						MovementMessage::SetCanvasRotation {
-							angle_radians: number_input.value * (std::f64::consts::PI / 180.),
+							angle_radians: number_input.value.unwrap() * (std::f64::consts::PI / 180.),
 						}
 						.into()
 					}),
@@ -650,12 +651,12 @@ impl DocumentMessageHandler {
 				})),
 				WidgetHolder::new(Widget::NumberInput(NumberInput {
 					unit: "%".into(),
-					value: self.movement_handler.zoom * 100.,
+					value: Some(self.movement_handler.zoom * 100.),
 					min: Some(0.000001),
 					max: Some(1000000.),
 					on_update: WidgetCallback::new(|number_input: &NumberInput| {
 						MovementMessage::SetCanvasZoom {
-							zoom_factor: number_input.value / 100.,
+							zoom_factor: number_input.value.unwrap() / 100.,
 						}
 						.into()
 					}),
@@ -672,24 +673,25 @@ impl DocumentMessageHandler {
 				entries: vec![vec![
 					DropdownEntryData {
 						label: DocumentMode::DesignMode.to_string(),
-						icon: "ViewportDesignMode".into(),
+						icon: DocumentMode::DesignMode.icon_name(),
 						..DropdownEntryData::default()
 					},
 					DropdownEntryData {
 						label: DocumentMode::SelectMode.to_string(),
-						icon: "ViewportSelectMode".into(),
+						icon: DocumentMode::SelectMode.icon_name(),
 						on_update: WidgetCallback::new(|_| DialogMessage::RequestComingSoonDialog { issue: Some(330) }.into()),
 						..DropdownEntryData::default()
 					},
 					DropdownEntryData {
 						label: DocumentMode::GuideMode.to_string(),
-						icon: "ViewportGuideMode".into(),
+						icon: DocumentMode::GuideMode.icon_name(),
 						on_update: WidgetCallback::new(|_| DialogMessage::RequestComingSoonDialog { issue: Some(331) }.into()),
 						..DropdownEntryData::default()
 					},
 				]],
-				selected_index: self.document_mode as u32,
+				selected_index: Some(self.document_mode as u32),
 				draw_icon: true,
+				..Default::default()
 			}))],
 		}]);
 
@@ -705,6 +707,118 @@ impl DocumentMessageHandler {
 			LayoutMessage::SendLayout {
 				layout: document_mode_layout,
 				layout_target: LayoutTarget::DocumentMode,
+			}
+			.into(),
+		);
+	}
+
+	pub fn update_layer_tree_widgets(&self, responses: &mut VecDeque<Message>) {
+		let mut opacity = None;
+		let mut opacity_is_mixed = false;
+
+		let mut blend_mode = None;
+		let mut blend_mode_is_mixed = false;
+
+		self.layer_metadata
+			.keys()
+			.filter_map(|path| self.layer_panel_entry_from_path(path))
+			.filter(|layer| layer.layer_metadata.selected)
+			.for_each(|layer| {
+				match opacity {
+					None => opacity = Some(layer.opacity),
+					Some(opacity) => {
+						if (opacity - layer.opacity).abs() > (1. / 1_000_000.) {
+							opacity_is_mixed = true;
+						}
+					}
+				}
+
+				match blend_mode {
+					None => blend_mode = Some(layer.blend_mode),
+					Some(blend_mode) => {
+						if blend_mode != layer.blend_mode {
+							blend_mode_is_mixed = true;
+						}
+					}
+				}
+			});
+
+		if opacity_is_mixed {
+			opacity = None;
+		}
+		if blend_mode_is_mixed {
+			blend_mode = None;
+		}
+
+		let blend_mode_menu_entries = BlendMode::list_modes_in_groups()
+			.iter()
+			.map(|modes| {
+				modes
+					.iter()
+					.map(|mode| DropdownEntryData {
+						label: mode.to_string(),
+						value: mode.to_string(),
+						on_update: WidgetCallback::new(|_| DocumentMessage::SetBlendModeForSelectedLayers { blend_mode: *mode }.into()),
+						..Default::default()
+					})
+					.collect()
+			})
+			.collect();
+
+		let layer_tree_options = WidgetLayout::new(vec![LayoutRow::Row {
+			widgets: vec![
+				WidgetHolder::new(Widget::DropdownInput(DropdownInput {
+					entries: blend_mode_menu_entries,
+					selected_index: blend_mode.map(|blend_mode| blend_mode as u32),
+					disabled: blend_mode.is_none() && !blend_mode_is_mixed,
+					draw_icon: false,
+				})),
+				WidgetHolder::new(Widget::Separator(Separator {
+					separator_type: SeparatorType::Related,
+					direction: SeparatorDirection::Horizontal,
+				})),
+				WidgetHolder::new(Widget::NumberInput(NumberInput {
+					label: "Opacity".into(),
+					unit: "%".into(),
+					display_decimal_places: 2,
+					disabled: opacity.is_none() && !opacity_is_mixed,
+					value: opacity.map(|opacity| opacity * 100.),
+					min: Some(0.),
+					max: Some(100.),
+					on_update: WidgetCallback::new(|number_input: &NumberInput| {
+						if let Some(value) = number_input.value {
+							DocumentMessage::SetOpacityForSelectedLayers { opacity: value / 100. }.into()
+						} else {
+							Message::NoOp
+						}
+					}),
+					..NumberInput::default()
+				})),
+				WidgetHolder::new(Widget::Separator(Separator {
+					separator_type: SeparatorType::Section,
+					direction: SeparatorDirection::Horizontal,
+				})),
+				WidgetHolder::new(Widget::IconButton(IconButton {
+					icon: "NodeFolder".into(),
+					tooltip: "New Folder (Ctrl+Shift+N)".into(), // TODO: Customize this tooltip for the Mac version of the keyboard shortcut
+					size: 24,
+					on_update: WidgetCallback::new(|_| DocumentMessage::CreateEmptyFolder { container_path: vec![] }.into()),
+					..Default::default()
+				})),
+				WidgetHolder::new(Widget::IconButton(IconButton {
+					icon: "Trash".into(),
+					tooltip: "Delete Selected (Del)".into(), // TODO: Customize this tooltip for the Mac version of the keyboard shortcut
+					size: 24,
+					on_update: WidgetCallback::new(|_| DocumentMessage::DeleteSelectedLayers.into()),
+					..Default::default()
+				})),
+			],
+		}]);
+
+		responses.push_back(
+			LayoutMessage::SendLayout {
+				layout: layer_tree_options,
+				layout_target: LayoutTarget::LayerTreeOptions,
 			}
 			.into(),
 		);
@@ -808,6 +922,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 				// TODO: Correctly update layer panel in clear_selection instead of here
 				responses.push_back(FolderChanged { affected_folder_path: vec![] }.into());
 				responses.push_back(DocumentMessage::SelectionChanged.into());
+				self.update_layer_tree_widgets(responses);
 			}
 			AlignSelectedLayers { axis, aggregate } => {
 				self.backup(responses);
@@ -847,7 +962,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 				}
 			}
 			BooleanOperation(op) => {
-				// convert Vec<&[LayerId]> to Vec<Vec<&LayerId>> because Vec<&[LayerId]> does not implement several traits (Debug, Serialize, Deserialize, ...) required by DocumentOperation enum
+				// Convert Vec<&[LayerId]> to Vec<Vec<&LayerId>> because Vec<&[LayerId]> does not implement several traits (Debug, Serialize, Deserialize, ...) required by DocumentOperation enum
 				responses.push_back(StartTransaction.into());
 				responses.push_back(
 					DocumentOperation::BooleanOperation {
@@ -1025,9 +1140,10 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 			}
 			LayerChanged { affected_layer_path } => {
 				if let Ok(layer_entry) = self.layer_panel_entry(affected_layer_path.clone()) {
-					responses.push_back(FrontendMessage::UpdateDocumentLayer { data: layer_entry }.into());
+					responses.push_back(FrontendMessage::UpdateDocumentLayerDetails { data: layer_entry }.into());
 				}
 				responses.push_back(PropertiesPanelMessage::CheckSelectedWasUpdated { path: affected_layer_path }.into());
+				self.update_layer_tree_widgets(responses);
 			}
 			LoadFont { font } => {
 				if !self.graphene_document.font_cache.loaded_font(&font) {

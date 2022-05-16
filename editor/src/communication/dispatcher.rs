@@ -41,7 +41,7 @@ const SIDE_EFFECT_FREE_MESSAGES: &[MessageDiscriminant] = &[
 		ArtboardMessageDiscriminant::RenderArtboards,
 	))),
 	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::Document(DocumentMessageDiscriminant::FolderChanged)),
-	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::UpdateDocumentLayer),
+	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::UpdateDocumentLayerDetails),
 	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::UpdateDocumentLayerTreeStructure),
 	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::UpdateOpenDocumentsList),
 	MessageDiscriminant::Tool(ToolMessageDiscriminant::DocumentIsDirty),

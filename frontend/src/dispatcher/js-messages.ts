@@ -320,7 +320,7 @@ export class UpdateImageData extends JsMessage {
 
 export class DisplayRemoveEditableTextbox extends JsMessage {}
 
-export class UpdateDocumentLayer extends JsMessage {
+export class UpdateDocumentLayerDetails extends JsMessage {
 	@Type(() => LayerPanelEntry)
 	readonly data!: LayerPanelEntry;
 }
@@ -503,6 +503,13 @@ export class UpdatePropertyPanelSectionsLayout extends JsMessage implements Widg
 	layout!: LayoutRow[];
 }
 
+export class UpdateLayerTreeOptionsLayout extends JsMessage implements WidgetLayout {
+	layout_target!: unknown;
+
+	@Transform(({ value }) => createWidgetLayout(value))
+	layout!: LayoutRow[];
+}
+
 // Unpacking rust types to more usable type in the frontend
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function createWidgetLayout(widgetLayout: any[]): LayoutRow[] {
@@ -571,7 +578,7 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateDocumentArtboards,
 	UpdateDocumentArtwork,
 	UpdateDocumentBarLayout,
-	UpdateDocumentLayer,
+	UpdateDocumentLayerDetails,
 	UpdateDocumentOverlays,
 	UpdateDocumentRulers,
 	UpdateDocumentScrollbars,
@@ -581,6 +588,7 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateOpenDocumentsList,
 	UpdatePropertyPanelOptionsLayout,
 	UpdatePropertyPanelSectionsLayout,
+	UpdateLayerTreeOptionsLayout,
 	UpdateDocumentModeLayout,
 	UpdateToolOptionsLayout,
 	UpdateWorkingColors,

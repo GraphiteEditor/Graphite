@@ -101,22 +101,22 @@ export default defineComponent({
 	emits: ["update:selectedIndex"],
 	props: {
 		entries: { type: Array as PropType<SectionsOfMenuListEntries>, required: true },
-		selectedIndex: { type: Number as PropType<number>, required: true },
+		selectedIndex: { type: Number as PropType<number>, required: false }, // When not provided, a dash is displayed
 		drawIcon: { type: Boolean as PropType<boolean>, default: false },
 		disabled: { type: Boolean as PropType<boolean>, default: false },
 	},
 	data() {
 		return {
-			activeEntry: this.entries.flat()[this.selectedIndex],
+			activeEntry: this.selectedIndex !== undefined ? this.entries.flat()[this.selectedIndex] : { label: "-" },
 			minWidth: 0,
 		};
 	},
 	watch: {
 		// Called only when `selectedIndex` is changed from outside this component (with v-model)
-		selectedIndex(newSelectedIndex: number) {
+		selectedIndex(newSelectedIndex: number | undefined) {
 			const entries = this.entries.flat();
 
-			if (!Number.isNaN(newSelectedIndex) && newSelectedIndex >= 0 && newSelectedIndex < entries.length) {
+			if (newSelectedIndex !== undefined && newSelectedIndex >= 0 && newSelectedIndex < entries.length) {
 				this.activeEntry = entries[newSelectedIndex];
 			} else {
 				this.activeEntry = { label: "-" };

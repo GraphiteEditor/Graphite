@@ -49,3 +49,13 @@ impl ToString for DocumentMode {
 		}
 	}
 }
+
+impl DocumentMode {
+	pub fn icon_name(&self) -> String {
+		match self {
+			DocumentMode::DesignMode => "ViewportDesignMode".to_string(),
+			DocumentMode::SelectMode => "ViewportSelectMode".to_string(),
+			DocumentMode::GuideMode => "ViewportGuideMode".to_string(),
+		}
+	}
+}

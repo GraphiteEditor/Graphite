@@ -29,11 +29,15 @@ impl LayoutMessageHandler {
 				layout_target,
 				layout: widget_layout.layout.clone(),
 			},
-			LayoutTarget::PropertiesOptionsPanel => FrontendMessage::UpdatePropertyPanelOptionsLayout {
+			LayoutTarget::LayerTreeOptions => FrontendMessage::UpdateLayerTreeOptionsLayout {
 				layout_target,
 				layout: widget_layout.layout.clone(),
 			},
-			LayoutTarget::PropertiesSectionsPanel => FrontendMessage::UpdatePropertyPanelSectionsLayout {
+			LayoutTarget::PropertiesOptions => FrontendMessage::UpdatePropertyPanelOptionsLayout {
+				layout_target,
+				layout: widget_layout.layout.clone(),
+			},
+			LayoutTarget::PropertiesSections => FrontendMessage::UpdatePropertyPanelSectionsLayout {
 				layout_target,
 				layout: widget_layout.layout.clone(),
 			},
@@ -79,7 +83,7 @@ impl MessageHandler<LayoutMessage, ()> for LayoutMessageHandler {
 					}
 					Widget::DropdownInput(dropdown_input) => {
 						let update_value = value.as_u64().expect("DropdownInput update was not of type: u64");
-						dropdown_input.selected_index = update_value as u32;
+						dropdown_input.selected_index = Some(update_value as u32);
 						let callback_message = (dropdown_input.entries.iter().flatten().nth(update_value as usize).unwrap().on_update.callback)(&());
 						responses.push_back(callback_message);
 					}
@@ -109,7 +113,7 @@ impl MessageHandler<LayoutMessage, ()> for LayoutMessageHandler {
 					Widget::NumberInput(number_input) => match value {
 						Value::Number(num) => {
 							let update_value = num.as_f64().unwrap();
-							number_input.value = update_value;
+							number_input.value = Some(update_value);
 							let callback_message = (number_input.on_update.callback)(number_input);
 							responses.push_back(callback_message);
 						}

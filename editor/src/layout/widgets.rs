@@ -170,7 +170,7 @@ pub enum Widget {
 #[derive(Clone, Serialize, Deserialize, Derivative)]
 #[derivative(Debug, PartialEq, Default)]
 pub struct NumberInput {
-	pub value: f64,
+	pub value: Option<f64>,
 	#[serde(skip)]
 	#[derivative(Debug = "ignore", PartialEq = "ignore")]
 	pub on_update: WidgetCallback<NumberInput>,
@@ -298,12 +298,12 @@ pub struct IconButton {
 pub struct TextButton {
 	pub label: String,
 	pub emphasized: bool,
-	pub disabled: bool,
 	pub min_width: u32,
 	pub gap_after: bool,
 	#[serde(skip)]
 	#[derivative(Debug = "ignore", PartialEq = "ignore")]
 	pub on_update: WidgetCallback<TextButton>,
+	pub disabled: bool,
 }
 
 #[derive(Clone, Serialize, Deserialize, Derivative, Default)]
@@ -343,14 +343,13 @@ pub struct PopoverButton {
 #[derivative(Debug, PartialEq)]
 pub struct DropdownInput {
 	pub entries: Vec<Vec<DropdownEntryData>>,
-
-	// This uses `u32` instead of `usize` since it will be serialized as a normal JS number
-	// TODO(mfish33): Replace with usize when using native UI
+	// This uses `u32` instead of `usize` since it will be serialized as a normal JS number (replace with usize when we switch to a native UI)
 	#[serde(rename = "selectedIndex")]
-	pub selected_index: u32,
-
+	pub selected_index: Option<u32>,
 	#[serde(rename = "drawIcon")]
 	pub draw_icon: bool,
+	// `on_update` exists on the `DropdownEntryData`, not this parent `DropdownInput`
+	pub disabled: bool,
 }
 
 #[derive(Clone, Serialize, Deserialize, Derivative, Default)]
