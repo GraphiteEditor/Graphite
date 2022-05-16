@@ -298,6 +298,7 @@ export default defineComponent({
 		},
 		getWidth(callback: (width: number) => void) {
 			this.$nextTick(() => {
+				if (!this.$refs.floatingMenuContent) return;
 				const floatingMenuContent: HTMLElement = (this.$refs.floatingMenuContent as typeof LayoutCol).$el;
 				const width = floatingMenuContent.clientWidth;
 				callback(width);
@@ -305,6 +306,7 @@ export default defineComponent({
 		},
 		disableMinWidth(callback: (minWidth: string) => void) {
 			this.$nextTick(() => {
+				if (!this.$refs.floatingMenuContent) return;
 				const floatingMenuContent: HTMLElement = (this.$refs.floatingMenuContent as typeof LayoutCol).$el;
 				const initialMinWidth = floatingMenuContent.style.minWidth;
 				floatingMenuContent.style.minWidth = "0";
@@ -312,6 +314,7 @@ export default defineComponent({
 			});
 		},
 		enableMinWidth(minWidth: string) {
+			if (!this.$refs.floatingMenuContent) return;
 			const floatingMenuContent: HTMLElement = (this.$refs.floatingMenuContent as typeof LayoutCol).$el;
 			floatingMenuContent.style.minWidth = minWidth;
 		},

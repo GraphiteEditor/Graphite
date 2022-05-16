@@ -1,10 +1,10 @@
 <template>
 	<LayoutRow class="dropdown-input">
-		<button class="dropdown-box" :class="{ disabled }" :style="{ minWidth: `${minWidth}px` }" @click="() => clickDropdownBox()" data-hover-menu-spawner>
+		<LayoutRow class="dropdown-box" :class="{ disabled }" :style="{ minWidth: `${minWidth}px` }" tabindex="0" @click="() => clickDropdownBox()" @keydown="keydown" data-hover-menu-spawner>
 			<IconLabel class="dropdown-icon" :icon="activeEntry.icon" v-if="activeEntry.icon" />
 			<span>{{ activeEntry.label }}</span>
 			<IconLabel class="dropdown-arrow" :icon="'DropdownArrow'" />
-		</button>
+		</LayoutRow>
 		<MenuList
 			v-model:activeEntry="activeEntry"
 			@update:activeEntry="(newActiveEntry: typeof MENU_LIST_ENTRY) => activeEntryChanged(newActiveEntry)"
@@ -23,15 +23,6 @@
 	position: relative;
 
 	.dropdown-box {
-		display: flex;
-		flex-direction: row;
-		flex-grow: 1;
-		min-width: 0;
-		min-height: 0;
-		border: 0;
-		padding: 0;
-		text-align: left;
-
 		align-items: center;
 		white-space: nowrap;
 		background: var(--color-1-nearblack);
@@ -133,15 +124,23 @@ export default defineComponent({
 		},
 	},
 	methods: {
+		// retrieves the menu list component
+		menuList() {
+			return this.$refs.menuList as typeof MenuList;
+		},
 		// Called only when `activeEntry` is changed from the child MenuList component via user input
 		activeEntryChanged(newActiveEntry: MenuListEntry) {
 			this.$emit("update:selectedIndex", this.menuEntries.flat().indexOf(newActiveEntry));
 		},
 		clickDropdownBox() {
-			if (!this.disabled) (this.$refs.menuList as typeof MenuList).setOpen();
+			if (!this.disabled) this.menuList().setOpen();
 		},
 		onWidthChanged(newWidth: number) {
 			this.minWidth = newWidth;
+		},
+		keydown(e: KeyboardEvent) {
+			// If not disabled, redirect key to the menulist (for keyboard selection)
+			if (!this.disabled) this.menuList().keydown(e);
 		},
 	},
 	components: {

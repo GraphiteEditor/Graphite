@@ -2,11 +2,11 @@
 	<FloatingMenu class="menu-list" :direction="direction" :type="'Dropdown'" ref="floatingMenu" :windowEdgeMargin="0" :scrollableY="scrollableY" data-hover-menu-keep-open>
 		<template v-for="(section, sectionIndex) in menuEntries" :key="sectionIndex">
 			<Separator :type="'List'" :direction="'Vertical'" v-if="sectionIndex > 0" />
-			<button
+			<LayoutRow
 				v-for="(entry, entryIndex) in section"
 				:key="entryIndex"
 				class="row"
-				:class="{ open: isMenuEntryOpen(entry), active: entry === activeEntry }"
+				:class="{ open: isMenuEntryOpen(entry), active: entry === highlighted }"
 				@click="() => handleEntryClick(entry)"
 				@pointerenter="() => handleEntryPointerEnter(entry)"
 				@pointerleave="() => handleEntryPointerLeave(entry)"
@@ -31,7 +31,7 @@
 					v-bind="{ defaultAction, minWidth, drawIcon, scrollableY }"
 					:ref="(ref: any) => setEntryRefs(entry, ref)"
 				/>
-			</button>
+			</LayoutRow>
 		</template>
 	</FloatingMenu>
 </template>
@@ -42,15 +42,6 @@
 		padding: 4px 0;
 
 		.row {
-			display: flex;
-			flex-direction: row;
-			flex-grow: 1; // TODO: Note, this is overridden by the flex shorthand rule below
-			min-width: 0;
-			min-height: 0;
-			border: 0;
-			padding: 0;
-			text-align: left;
-			background: none;
 			height: 20px;
 			align-items: center;
 			white-space: nowrap;
@@ -142,6 +133,7 @@ import { defineComponent, PropType } from "vue";
 
 import { IconName } from "@/utilities/icons";
 
+import LayoutRow from "@/components/layout/LayoutRow.vue";
 import FloatingMenu, { MenuDirection } from "@/components/widgets/floating-menus/FloatingMenu.vue";
 import CheckboxInput from "@/components/widgets/inputs/CheckboxInput.vue";
 import IconLabel from "@/components/widgets/labels/IconLabel.vue";
@@ -217,6 +209,8 @@ const MenuList = defineComponent({
 		},
 		setOpen() {
 			(this.$refs.floatingMenu as typeof FloatingMenu).setOpen();
+			// Reset the highlighted entry to the active one
+			this.setHighlighted(this.activeEntry);
 		},
 		setClosed() {
 			(this.$refs.floatingMenu as typeof FloatingMenu).setClosed();
@@ -224,6 +218,77 @@ const MenuList = defineComponent({
 		isOpen(): boolean {
 			const floatingMenu = this.$refs.floatingMenu as typeof FloatingMenu;
 			return Boolean(floatingMenu?.isOpen());
+		},
+		/// Handles keyboard navigation for the menu. Returns if the entire menu stack should be dismissed
+		keydown(e: KeyboardEvent, submenu: boolean): boolean {
+			const menuOpen = this.isOpen();
+			const flatEntries = this.menuEntries.flat();
+			const openChild = flatEntries.map(this.isMenuEntryOpen).indexOf(true);
+
+			const openSubmenu = (highlighted: MenuListEntry<string>): void => {
+				if (highlighted.children?.length) {
+					highlighted.ref?.setOpen();
+
+					// Highlight first item
+					if (highlighted.ref) highlighted.ref.setHighlighted(highlighted.children[0][0]);
+				}
+			};
+
+			if (!menuOpen && (e.key === " " || e.key === "Enter")) {
+				// Allow opening menu with space or enter
+				this.setOpen();
+			} else if (menuOpen && openChild >= 0) {
+				// Redirect the keyboard navigation to a submenu if one is open
+				const shouldCloseStack = flatEntries[openChild].ref?.keydown(e, true);
+
+				// Highlight the menu item in the parent list that corresponds with the open submenu
+				if (e.key !== "Escape" && this.highlighted) this.setHighlighted(flatEntries[openChild]);
+
+				// Handle the child closing the entire menu stack
+				if (shouldCloseStack) {
+					this.setClosed();
+					return true;
+				}
+			} else if (menuOpen && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
+				// Navigate to the next and previous entries with arrow keys
+
+				let newIndex = e.key === "ArrowUp" ? flatEntries.length - 1 : 0;
+				if (this.highlighted) {
+					const index = this.highlighted ? flatEntries.indexOf(this.highlighted) : 0;
+					newIndex = (index + (e.key === "ArrowUp" ? -1 : 1) + flatEntries.length) % flatEntries.length;
+				}
+
+				const newEntry = flatEntries[newIndex];
+				this.setHighlighted(newEntry);
+			} else if (menuOpen && e.key === "Escape") {
+				// Close menu with escape key
+				this.setClosed();
+
+				// Reset active to before open
+				this.setHighlighted(this.activeEntry);
+			} else if (menuOpen && this.highlighted && e.key === "Enter") {
+				// Handle clicking on an option if enter is pressed
+				if (!this.highlighted.children?.length) this.handleEntryClick(this.highlighted);
+				else openSubmenu(this.highlighted);
+
+				// Stop the event from triggering a press on a new dialog
+				e.preventDefault();
+
+				// Enter should close the entire menu stack
+				return true;
+			} else if (menuOpen && this.highlighted && e.key === "ArrowRight") {
+				// Right arrow opens a submenu
+				openSubmenu(this.highlighted);
+			} else if (menuOpen && e.key === "ArrowLeft") {
+				// Left arrow closes a submenu
+				if (submenu) this.setClosed();
+			}
+
+			// By default, keep the menu stack open
+			return false;
+		},
+		setHighlighted(newHighlight: MenuListEntry<string> | undefined) {
+			this.highlighted = newHighlight;
 		},
 		async measureAndReportWidth() {
 			// API is experimental but supported in all browsers - https://developer.mozilla.org/en-US/docs/Web/API/FontFaceSet/ready
@@ -263,9 +328,6 @@ const MenuList = defineComponent({
 	mounted() {
 		this.measureAndReportWidth();
 	},
-	updated() {
-		this.measureAndReportWidth();
-	},
 	watch: {
 		menuEntriesWithoutRefs: {
 			handler() {
@@ -273,10 +335,15 @@ const MenuList = defineComponent({
 			},
 			deep: true,
 		},
+		activeEntry(newEntry: MenuListEntry<string>) {
+			this.setHighlighted(newEntry);
+		},
 	},
 	data() {
 		return {
 			keyboardLockInfoMessage: this.fullscreen.keyboardLockApiSupported ? KEYBOARD_LOCK_USE_FULLSCREEN : KEYBOARD_LOCK_SWITCH_BROWSER,
+			// The highlighted entry (the current active one unless keyboard navigation is taking place)
+			highlighted: this.activeEntry,
 		};
 	},
 	components: {
@@ -285,6 +352,7 @@ const MenuList = defineComponent({
 		IconLabel,
 		CheckboxInput,
 		UserInputLabel,
+		LayoutRow,
 	},
 });
 export default MenuList;
