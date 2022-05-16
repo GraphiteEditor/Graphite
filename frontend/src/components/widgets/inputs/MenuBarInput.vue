@@ -154,7 +154,14 @@ function makeMenuEntries(editor: EditorState): MenuListEntries {
 		{
 			label: "View",
 			ref: undefined,
-			children: [[{ label: "Menu entries coming soon" }]],
+			children: [
+				[
+					{
+						label: "Show/Hide Node Graph (In Development)",
+						action: async (): Promise<void> => editor.instance.toggle_node_graph_visibility(),
+					},
+				],
+			],
 		},
 		{
 			label: "Help",
@@ -190,7 +197,7 @@ function makeMenuEntries(editor: EditorState): MenuListEntries {
 }
 
 export default defineComponent({
-	inject: ["editor", "dialog"],
+	inject: ["workspace", "editor", "dialog"],
 	methods: {
 		setEntryRefs(menuEntry: MenuListEntry, ref: typeof MenuList) {
 			if (ref) menuEntry.ref = ref;

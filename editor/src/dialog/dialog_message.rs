@@ -1,12 +1,16 @@
 use crate::message_prelude::*;
 use serde::{Deserialize, Serialize};
 
-use super::NewDocumentDialogUpdate;
+use super::{ExportDialogUpdate, NewDocumentDialogUpdate};
 
 #[remain::sorted]
 #[impl_message(Message, Dialog)]
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub enum DialogMessage {
+	#[remain::unsorted]
+	#[child]
+	ExportDialog(ExportDialogUpdate),
+
 	#[remain::unsorted]
 	#[child]
 	NewDocumentDialog(NewDocumentDialogUpdate),
@@ -23,5 +27,6 @@ pub enum DialogMessage {
 	RequestComingSoonDialog {
 		issue: Option<i32>,
 	},
+	RequestExportDialog,
 	RequestNewDocumentDialog,
 }

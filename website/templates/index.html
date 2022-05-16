@@ -18,16 +18,16 @@
 	<a href="https://editor.graphite.rs" class="button arrow">Instantly launch the web editor</a>
 	<div>
 		<a href="https://github.com/GraphiteEditor/Graphite" target="_blank">
-			<img src="/images/icons/github.svg" alt="GitHub" />
+			<img src="https://static.graphite.rs/icons/github.svg" alt="GitHub" />
 		</a>
 		<a href="https://www.reddit.com/r/graphite/" target="_blank">
-			<img src="/images/icons/reddit.svg" alt="Reddit" />
+			<img src="https://static.graphite.rs/icons/reddit.svg" alt="Reddit" />
 		</a>
 		<a href="https://discord.graphite.rs" target="_blank">
-			<img src="/images/icons/discord.svg" alt="Discord" />
+			<img src="https://static.graphite.rs/icons/discord.svg" alt="Discord" />
 		</a>
 		<a href="https://twitter.com/graphiteeditor" target="_blank">
-			<img src="/images/icons/twitter.svg" alt="Twitter" />
+			<img src="https://static.graphite.rs/icons/twitter.svg" alt="Twitter" />
 		</a>
 	</div>
 </section>
@@ -105,7 +105,7 @@
 
 <section id="opener-message" class="section-row right">
 	<div class="graphic">
-		<img src="/index/brush.svg" alt="" />
+		<img src="https://static.graphite.rs/content/index/brush.svg" alt="" />
 	</div>
 	<div class="section">
 		<h1>Professional 2D content creation for everyone.</h1>
@@ -129,7 +129,7 @@
 
 <section id="available-now" class="section-row left">
 	<div class="graphic">
-		<img src="/index/alpha.svg" alt="" />
+		<img src="https://static.graphite.rs/content/index/alpha.svg" alt="" />
 	</div>
 	<div class="section">
 		<h1>Available now for alpha testing.</h1>
@@ -205,7 +205,7 @@
 
 <section id="powered-by-rust" class="section-row left">
 	<div class="graphic">
-		<img src="/index/rust.svg" alt="" />
+		<img src="https://static.graphite.rs/content/index/rust.svg" alt="" />
 	</div>
 	<div class="section">
 		<h1>Built for the future, powered by Rust.</h1>
@@ -223,7 +223,7 @@
 
 <section id="get-involved" class="section-row right">
 	<!-- <div class="graphic">
-		<img src="/index/graphite-logo-color.svg" alt="" />
+		<img src="graphic.svg" alt="" />
 	</div> -->
 	<div class="section">
 		<h1>Get involved.</h1>
@@ -280,21 +280,21 @@
 			<div class="social-links">
 				<div class="column">
 					<a href="https://discord.graphite.rs" target="_blank">
-						<img src="/images/icons/discord.svg" alt="Discord" />
+						<img src="https://static.graphite.rs/icons/discord.svg" alt="Discord" />
 						<span class="link arrow">Join on Discord</span>
 					</a>
 					<a href="https://www.reddit.com/r/graphite/" target="_blank">
-						<img src="/images/icons/reddit.svg" alt="Reddit" />
+						<img src="https://static.graphite.rs/icons/reddit.svg" alt="Reddit" />
 						<span class="link not-uppercase arrow">/r/Graphite</span>
 					</a>
 				</div>
 				<div class="column">
 					<a href="https://github.com/GraphiteEditor/Graphite" target="_blank">
-						<img src="/images/icons/github.svg" alt="GitHub" />
+						<img src="https://static.graphite.rs/icons/github.svg" alt="GitHub" />
 						<span class="link arrow">Star on GitHub</span>
 					</a>
 					<a href="https://twitter.com/graphiteeditor" target="_blank">
-						<img src="/images/icons/twitter.svg" alt="Twitter" />
+						<img src="https://static.graphite.rs/icons/twitter.svg" alt="Twitter" />
 						<span class="link not-uppercase arrow">@GraphiteEditor</span>
 					</a>
 				</div>
@@ -316,7 +316,9 @@
 				</div>
 				<span class="publication">By {{ article.extra.author }}. {{ article.date | date(format="%B %d, %Y", timezone="America/Los_Angeles") }}.</span>
 				<div class="summary">
-					{{ article.summary | safe }}
+					<div>
+						{{ article.summary | safe }}
+					</div>
 				</div>
 				<div class="keep-reading">
 					<a href="{{ article.permalink | safe }}" class="link arrow">Keep Reading</a>
@@ -327,5 +329,5 @@
 	</div>
 </section>
 
-<script src="/js/carousel.js"></script>
+<script src="/carousel.js"></script>
 {% endblock content %}

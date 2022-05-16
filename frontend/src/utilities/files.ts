@@ -1,7 +1,4 @@
-export function download(filename: string, fileData: string): void {
-	const type = filename.endsWith(".svg") ? "image/svg+xml;charset=utf-8" : "text/plain;charset=utf-8";
-	const blob = new Blob([fileData], { type });
-	const url = URL.createObjectURL(blob);
+export function downloadBlob(url: string, filename: string): void {
 	const element = document.createElement("a");
 
 	element.href = url;
@@ -9,6 +6,16 @@ export function download(filename: string, fileData: string): void {
 	element.style.display = "none";
 
 	element.click();
+}
+
+export function download(filename: string, fileData: string): void {
+	const type = filename.endsWith(".svg") ? "image/svg+xml;charset=utf-8" : "text/plain;charset=utf-8";
+	const blob = new Blob([fileData], { type });
+	const url = URL.createObjectURL(blob);
+
+	downloadBlob(url, filename);
+
+	URL.revokeObjectURL(url);
 }
 
 export async function upload(acceptedEextensions: string): Promise<{ filename: string; content: string }> {

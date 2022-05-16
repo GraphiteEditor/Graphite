@@ -7,11 +7,5 @@ pub const LAYER_OUTLINE_STROKE_WEIGHT: f64 = 1.;
 // BOOLEAN OPERATIONS
 
 // Bezier curve intersection algorithm
-pub const F64PRECISE: f64 = f64::EPSILON * 100.0; // for f64 comparisons, to allow for rounding error
-pub const F64LOOSE: f64 = f64::EPSILON * 1000000.0; // == 0.0000000002220446049250313
-
-// A bezier curve whose `available_precision()` is greater than CURVE_FIDELITY can be evaluated at least 10000 "unique" locations
-pub const CURVE_FIDELITY: f64 = F64PRECISE * 100.0;
-
-// In practice, this makes it less likely that a ray will intersect with a common anchor point between two curves
-pub const RAY_FUDGE_FACTOR: f64 = 0.00001;
+pub const F64PRECISE: f64 = f64::EPSILON * ((1 << 7) as f64); // ~= 2^(-45) - For f64 comparisons to allow for rounding error; note that f64::EPSILON ~= 2^(-52)
+pub const F64LOOSE: f64 = f64::EPSILON * ((1 << 20) as f64); // ~= 2^(-32) - For comparisons between values that are a result of complex computations where error accumulates

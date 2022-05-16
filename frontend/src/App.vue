@@ -70,8 +70,12 @@
 	--color-data-general-rgb: 197, 197, 197;
 	--color-data-vector: #65bbe5;
 	--color-data-vector-rgb: 101, 187, 229;
+	--color-data-vector-dim: #4b778c;
+	--color-data-vector-dim-rgb: 75, 119, 140;
 	--color-data-raster: #e4bb72;
 	--color-data-raster-rgb: 228, 187, 114;
+	--color-data-raster-dim: #8b7752;
+	--color-data-raster-dim-rgb: 139, 119, 82;
 	--color-data-mask: #8d85c7;
 	--color-data-mask-rgb: 141, 133, 199;
 	--color-data-unused1: #d6536e;
@@ -279,9 +283,10 @@ import { createAutoSaveManager } from "@/lifetime/auto-save";
 import { initErrorHandling } from "@/lifetime/errors";
 import { createInputManager, InputManager } from "@/lifetime/input";
 import { createDialogState, DialogState } from "@/state/dialog";
-import { createDocumentsState, DocumentsState } from "@/state/documents";
 import { createFullscreenState, FullscreenState } from "@/state/fullscreen";
+import { createPortfolioState, PortfolioState } from "@/state/portfolio";
 import { createEditorState, EditorState } from "@/state/wasm-loader";
+import { createWorkspaceState, WorkspaceState } from "@/state/workspace";
 
 import LayoutCol from "@/components/layout/LayoutCol.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
@@ -291,7 +296,8 @@ import MainWindow from "@/components/window/MainWindow.vue";
 declare module "@vue/runtime-core" {
 	interface ComponentCustomProperties {
 		dialog: DialogState;
-		documents: DocumentsState;
+		portfolio: PortfolioState;
+		workspace: WorkspaceState;
 		fullscreen: FullscreenState;
 		editor: EditorState;
 		// This must be set to optional because there is a time in the lifecycle of the component where inputManager is undefined.
@@ -305,7 +311,8 @@ export default defineComponent({
 		return {
 			editor: this.editor,
 			dialog: this.dialog,
-			documents: this.documents,
+			portfolio: this.portfolio,
+			workspace: this.workspace,
 			fullscreen: this.fullscreen,
 			inputManager: this.inputManager,
 		};
@@ -316,15 +323,17 @@ export default defineComponent({
 
 		// Initialize other stateful Vue systems
 		const dialog = createDialogState(editor);
-		const documents = createDocumentsState(editor);
+		const portfolio = createPortfolioState(editor);
+		const workspace = createWorkspaceState(editor);
 		const fullscreen = createFullscreenState();
 		initErrorHandling(editor, dialog);
-		createAutoSaveManager(editor, documents);
+		createAutoSaveManager(editor, portfolio);
 
 		return {
 			editor,
 			dialog,
-			documents,
+			portfolio,
+			workspace,
 			fullscreen,
 			showUnsupportedModal: !("BigInt64Array" in window),
 			inputManager: undefined as undefined | InputManager,
@@ -336,7 +345,7 @@ export default defineComponent({
 		},
 	},
 	mounted() {
-		this.inputManager = createInputManager(this.editor, this.$el.parentElement, this.dialog, this.documents, this.fullscreen);
+		this.inputManager = createInputManager(this.editor, this.$el.parentElement, this.dialog, this.portfolio, this.fullscreen);
 	},
 	beforeUnmount() {
 		this.inputManager?.removeListeners();

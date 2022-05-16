@@ -1,6 +1,6 @@
 import { DialogState } from "@/state/dialog";
-import { DocumentsState } from "@/state/documents";
 import { FullscreenState } from "@/state/fullscreen";
+import { PortfolioState } from "@/state/portfolio";
 import { EditorState } from "@/state/wasm-loader";
 
 type EventName = keyof HTMLElementEventMap | keyof WindowEventHandlersEventMap | "modifyinputfield";
@@ -10,7 +10,7 @@ interface EventListenerTarget {
 }
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
-export function createInputManager(editor: EditorState, container: HTMLElement, dialog: DialogState, document: DocumentsState, fullscreen: FullscreenState) {
+export function createInputManager(editor: EditorState, container: HTMLElement, dialog: DialogState, document: PortfolioState, fullscreen: FullscreenState) {
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	const listeners: { target: EventListenerTarget; eventName: EventName; action: (event: any) => void; options?: boolean | AddEventListenerOptions }[] = [
 		{ target: window, eventName: "resize", action: (): void => onWindowResize(container) },
@@ -65,7 +65,7 @@ export function createInputManager(editor: EditorState, container: HTMLElement, 
 		if (key === "f5") return false;
 
 		// Don't redirect debugging tools
-		if (key === "f12") return false;
+		if (key === "f12" || key === "f8") return false;
 		if (e.ctrlKey && e.shiftKey && key === "c") return false;
 		if (e.ctrlKey && e.shiftKey && key === "i") return false;
 		if (e.ctrlKey && e.shiftKey && key === "j") return false;

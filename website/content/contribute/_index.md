@@ -71,7 +71,7 @@ The actual document (the artwork data and layers included in a saved `.graphite`
 
 Every part of the Graphite stack works based on the concept of message passing. Messages are pushed to the front or back of a queue and each one is processed by the module's dispatcher in the order encountered. Only the dispatcher owns a mutable reference to update its module's state.
 
-<details><summary><b>Addition technical details (click to show)</b></summary>
+<details><summary><b>Additional technical details (click to show)</b></summary>
 
 A message is an enum variant of a certain message sub-type like `FrontendMessage`, `ToolMessage`, `DocumentsMessage` (plural), or `DocumentMessage` (singular). An example is `DocumentMessage::DeleteSelectedLayers` (which carries no data) or `DocumentMessage::RenameLayer(Vec<LayerId>, String)` (which carries a layer path and a string as data).
 
@@ -87,9 +87,16 @@ Because this is cumbersome, we have a proc macro `#[child]` that automatically i
 
 The Graphite project highly values code quality and accessibility to new contributors. Therefore, please make an effort to make your code readable and well-documented.
 
-**Naming:** Descriptive variable names, and not abbreviated naming conventions, is encouraged. Prefer to spell out full words most of the time, so `gen_doc_fmt` should be written out as `generate_document_format` instead. This avoids the mental burden of expanding abbreviations into semantic meaning. Monitors are wide enough to display long variable/function names, so descriptive is better than cryptic.
+**Naming:** Please use descriptive variable/function/symbol names and keep abbreviations to a minimum. Prefer to spell out full words most of the time, so `gen_doc_fmt` should be written out as `generate_document_format` instead. This avoids the mental burden of expanding abbreviations into semantic meaning. Monitors are wide enough to display long variable/function names, so descriptive is better than cryptic.
 
-**Tests:** It's great if you can write tests for your code, especially if it's a tricky stand-alone function. However at the moment, we are prioritizing rapid iteration and will usually accept code without associated unit tests. That stance will change in the near future as we begin focusing more on stability than iteration.
+**Imports:** At the top of Rust files, please follow the convention of separating imports into three blocks, in this order:
+1. Local (`use super::` and `use crate::`)
+2. First-party crates (e.g. `use graphene::`)
+3. Third-party libraries (e.g. `use std::` or `use serde::`)
+
+Combine related imports with common paths at the same depth. For example, the lines `use crate::A::B::C;`, `use crate::A::B::C::Foo;`, and `use crate::A::B::C::Bar;` should be combined into `use crate::A::B::C::{self, Foo, Bar};`. But do not combine imports at mixed path depths. For example, `use crate::A::{B::C::Foo, X::Hello};` should be split into two separate import lines. In simpler terms, avoid putting a `::` inside `{}`.
+
+**Tests:** It's great if you can write tests for your code, especially if it's a tricky stand-alone function. However at the moment, we are prioritizing rapid iteration and will usually accept code without associated unit tests. That stance will change in the near future as we begin focusing more on stability than iteration speed.
 
 Additional best practices will be added here soon. Please ask @Keavon in the mean time.
 

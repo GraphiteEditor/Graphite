@@ -1,9 +1,19 @@
 {
 	"recommendations": [
-		"matklad.rust-analyzer",
+		// Rust
+		"rust-lang.rust-analyzer",
+		// Web
 		"dbaeumer.vscode-eslint",
-		"johnsoncodehk.volar",
-		"formulahendry.auto-close-tag",
-		"aaron-bond.better-comments"
+		"Vue.volar",
+		"vitaliymaz.vscode-svg-previewer",
+		// Code quality
+		"wayou.vscode-todo-highlight",
+		"streetsidesoftware.code-spell-checker",
+		// Helpful
+		"mhutchie.git-graph",
+		"waderyan.gitblame",
+		"qezhu.gitlink",
+		"wmaurer.change-case",
+		"shalimski.swapdiff",
 	]
 }
