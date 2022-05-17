@@ -7,12 +7,14 @@
 <style lang="scss">
 .separator {
 	&.vertical {
+		flex: 0 0 auto;
+
 		&.related {
-			margin-top: 4px;
+			height: 4px;
 		}
 
 		&.unrelated {
-			margin-top: 8px;
+			height: 8px;
 		}
 
 		&.section,
@@ -37,12 +39,14 @@
 	}
 
 	&.horizontal {
+		flex: 0 0 auto;
+
 		&.related {
-			margin-left: 4px;
+			width: 4px;
 		}
 
 		&.unrelated {
-			margin-left: 8px;
+			width: 8px;
 		}
 
 		&.section,

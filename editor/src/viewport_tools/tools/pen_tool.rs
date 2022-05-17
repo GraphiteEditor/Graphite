@@ -73,10 +73,10 @@ impl PropertyHolder for PenTool {
 			widgets: vec![WidgetHolder::new(Widget::NumberInput(NumberInput {
 				unit: " px".into(),
 				label: "Weight".into(),
-				value: self.options.line_weight,
+				value: Some(self.options.line_weight),
 				is_integer: false,
 				min: Some(0.),
-				on_update: WidgetCallback::new(|number_input: &NumberInput| PenToolMessage::UpdateOptions(PenOptionsUpdate::LineWeight(number_input.value)).into()),
+				on_update: WidgetCallback::new(|number_input: &NumberInput| PenToolMessage::UpdateOptions(PenOptionsUpdate::LineWeight(number_input.value.unwrap())).into()),
 				..NumberInput::default()
 			}))],
 		}])

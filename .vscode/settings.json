@@ -3,7 +3,7 @@
 	"[rust]": {
 		"editor.formatOnSave": true,
 		"editor.formatOnPaste": true,
-		"editor.defaultFormatter": "rust-lang.rust-analyzer",
+		"editor.defaultFormatter": "matklad.rust-analyzer",
 	},
 	// Web: save on format
 	"[typescript][javascript][vue]": {

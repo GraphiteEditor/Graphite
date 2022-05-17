@@ -5,12 +5,12 @@
 				<IconLabel :icon="'GraphiteLogo'" />
 			</div>
 		</div>
-		<div class="entry-container" v-for="(entry, index) in menuEntries" :key="index">
+		<div class="entry-container" v-for="(entry, index) in entries" :key="index">
 			<div @click="() => handleEntryClick(entry)" class="entry" :class="{ open: entry.ref?.isOpen() }" data-hover-menu-spawner>
 				<IconLabel :icon="entry.icon" v-if="entry.icon" />
 				<span v-if="entry.label">{{ entry.label }}</span>
 			</div>
-			<MenuList :menuEntries="entry.children || []" :direction="'Bottom'" :minWidth="240" :drawIcon="true" :defaultAction="comingSoon" :ref="(ref: any) => setEntryRefs(entry, ref)" />
+			<MenuList :entries="entry.children || []" :direction="'Bottom'" :minWidth="240" :drawIcon="true" :defaultAction="comingSoon" :ref="(ref: any) => setEntryRefs(entry, ref)" />
 		</div>
 	</div>
 </template>
@@ -58,7 +58,7 @@ import { EditorState } from "@/state/wasm-loader";
 import MenuList, { MenuListEntry, MenuListEntries } from "@/components/widgets/floating-menus/MenuList.vue";
 import IconLabel from "@/components/widgets/labels/IconLabel.vue";
 
-function makeMenuEntries(editor: EditorState): MenuListEntries {
+function makeEntries(editor: EditorState): MenuListEntries {
 	return [
 		{
 			label: "File",
@@ -213,7 +213,7 @@ export default defineComponent({
 	},
 	data() {
 		return {
-			menuEntries: makeMenuEntries(this.editor),
+			entries: makeEntries(this.editor),
 			comingSoon: (): void => this.dialog.comingSoon(),
 		};
 	},

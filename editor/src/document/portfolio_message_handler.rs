@@ -73,9 +73,10 @@ impl PortfolioMessageHandler {
 				.layer_metadata
 				.keys()
 				.filter_map(|path| new_document.layer_panel_entry_from_path(path))
-				.map(|entry| FrontendMessage::UpdateDocumentLayer { data: entry }.into())
+				.map(|entry| FrontendMessage::UpdateDocumentLayerDetails { data: entry }.into())
 				.collect::<Vec<_>>(),
 		);
+		new_document.update_layer_tree_options_bar_widgets(responses);
 
 		new_document.load_image_data(responses, &new_document.graphene_document.root.data, Vec::new());
 		new_document.load_default_font(responses);
@@ -432,14 +433,14 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 					responses.push_back(DocumentMessage::LayerChanged { affected_layer_path: layer.clone() }.into());
 				}
 				responses.push_back(ToolMessage::DocumentIsDirty.into());
-				responses.push_back(PortfolioMessage::UpdateDocumentBar.into());
+				responses.push_back(PortfolioMessage::UpdateDocumentWidgets.into());
 			}
 			SetActiveDocument { document_id } => {
 				self.active_document_id = document_id;
 			}
-			UpdateDocumentBar => {
+			UpdateDocumentWidgets => {
 				let active_document = self.active_document();
-				active_document.register_properties(responses, LayoutTarget::DocumentBar)
+				active_document.update_document_widgets(responses);
 			}
 			UpdateOpenDocumentsList => {
 				// Send the list of document tab names

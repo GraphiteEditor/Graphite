@@ -4,14 +4,7 @@
 			<span>{{ activeEntry.label }}</span>
 			<IconLabel class="dropdown-arrow" :icon="'DropdownArrow'" />
 		</LayoutRow>
-		<MenuList
-			v-model:activeEntry="activeEntry"
-			@widthChanged="(newWidth: number) => onWidthChanged(newWidth)"
-			:menuEntries="menuEntries"
-			:direction="'Bottom'"
-			:scrollableY="true"
-			ref="menuList"
-		/>
+		<MenuList v-model:activeEntry="activeEntry" @widthChanged="(newWidth: number) => onWidthChanged(newWidth)" :entries="entries" :direction="'Bottom'" :scrollableY="true" ref="menuList" />
 	</LayoutRow>
 </template>
 
@@ -100,9 +93,9 @@ export default defineComponent({
 		isStyle: { type: Boolean as PropType<boolean>, default: false },
 	},
 	data() {
-		const { menuEntries, activeEntry } = this.updateEntries();
+		const { entries, activeEntry } = this.updateEntries();
 		return {
-			menuEntries,
+			entries,
 			activeEntry,
 			minWidth: 0,
 		};
@@ -133,12 +126,12 @@ export default defineComponent({
 		onWidthChanged(newWidth: number) {
 			this.minWidth = newWidth;
 		},
-		updateEntries(): { menuEntries: SectionsOfMenuListEntries; activeEntry: MenuListEntry } {
+		updateEntries(): { entries: SectionsOfMenuListEntries; activeEntry: MenuListEntry } {
 			const choices = this.isStyle ? getFontStyles(this.fontFamily) : fontNames();
 			const selectedChoice = this.isStyle ? this.fontStyle : this.fontFamily;
 
 			let selectedEntry: MenuListEntry | undefined;
-			const entries = choices.map((name) => {
+			const menuListEntries = choices.map((name) => {
 				const result: MenuListEntry = {
 					label: name,
 					action: (): void => this.selectFont(name),
@@ -149,21 +142,21 @@ export default defineComponent({
 				return result;
 			});
 
-			const menuEntries: SectionsOfMenuListEntries = [entries];
+			const entries: SectionsOfMenuListEntries = [menuListEntries];
 			const activeEntry = selectedEntry || { label: "-" };
 
-			return { menuEntries, activeEntry };
+			return { entries, activeEntry };
 		},
 	},
 	watch: {
 		fontFamily() {
-			const { menuEntries, activeEntry } = this.updateEntries();
-			this.menuEntries = menuEntries;
+			const { entries, activeEntry } = this.updateEntries();
+			this.entries = entries;
 			this.activeEntry = activeEntry;
 		},
 		fontStyle() {
-			const { menuEntries, activeEntry } = this.updateEntries();
-			this.menuEntries = menuEntries;
+			const { entries, activeEntry } = this.updateEntries();
+			this.entries = entries;
 			this.activeEntry = activeEntry;
 		},
 	},
