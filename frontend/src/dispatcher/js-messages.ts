@@ -298,34 +298,10 @@ export class UpdateDocumentLayerDetails extends JsMessage {
 	readonly data!: LayerPanelEntry;
 }
 
-export type BlendMode =
-	| "Normal"
-	| "Multiply"
-	| "Darken"
-	| "ColorBurn"
-	| "Screen"
-	| "Lighten"
-	| "ColorDodge"
-	| "Overlay"
-	| "SoftLight"
-	| "HardLight"
-	| "Difference"
-	| "Exclusion"
-	| "Hue"
-	| "Saturation"
-	| "Color"
-	| "Luminosity";
-
 export class LayerPanelEntry {
 	name!: string;
 
 	visible!: boolean;
-
-	blend_mode!: BlendMode;
-
-	// On the rust side opacity is out of 1 rather than 100
-	@Transform(({ value }) => value * 100)
-	opacity!: number;
 
 	layer_type!: LayerType;
 

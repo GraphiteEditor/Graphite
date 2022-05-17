@@ -76,7 +76,7 @@ impl PortfolioMessageHandler {
 				.map(|entry| FrontendMessage::UpdateDocumentLayerDetails { data: entry }.into())
 				.collect::<Vec<_>>(),
 		);
-		new_document.update_layer_tree_widgets(responses);
+		new_document.update_layer_tree_options_bar_widgets(responses);
 
 		new_document.load_image_data(responses, &new_document.graphene_document.root.data, Vec::new());
 		new_document.load_default_font(responses);

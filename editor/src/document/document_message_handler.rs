@@ -712,7 +712,7 @@ impl DocumentMessageHandler {
 		);
 	}
 
-	pub fn update_layer_tree_widgets(&self, responses: &mut VecDeque<Message>) {
+	pub fn update_layer_tree_options_bar_widgets(&self, responses: &mut VecDeque<Message>) {
 		let mut opacity = None;
 		let mut opacity_is_mixed = false;
 
@@ -722,7 +722,8 @@ impl DocumentMessageHandler {
 		self.layer_metadata
 			.keys()
 			.filter_map(|path| self.layer_panel_entry_from_path(path))
-			.filter(|layer| layer.layer_metadata.selected)
+			.filter(|layer_panel_entry| layer_panel_entry.layer_metadata.selected)
+			.flat_map(|layer_panel_entry| self.graphene_document.layer(layer_panel_entry.path.as_slice()))
 			.for_each(|layer| {
 				match opacity {
 					None => opacity = Some(layer.opacity),
@@ -922,7 +923,8 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 				// TODO: Correctly update layer panel in clear_selection instead of here
 				responses.push_back(FolderChanged { affected_folder_path: vec![] }.into());
 				responses.push_back(DocumentMessage::SelectionChanged.into());
-				self.update_layer_tree_widgets(responses);
+
+				self.update_layer_tree_options_bar_widgets(responses);
 			}
 			AlignSelectedLayers { axis, aggregate } => {
 				self.backup(responses);
@@ -1143,7 +1145,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 					responses.push_back(FrontendMessage::UpdateDocumentLayerDetails { data: layer_entry }.into());
 				}
 				responses.push_back(PropertiesPanelMessage::CheckSelectedWasUpdated { path: affected_layer_path }.into());
-				self.update_layer_tree_widgets(responses);
+				self.update_layer_tree_options_bar_widgets(responses);
 			}
 			LoadFont { font } => {
 				if !self.graphene_document.font_cache.loaded_font(&font) {
