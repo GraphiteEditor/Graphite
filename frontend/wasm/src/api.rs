@@ -490,6 +490,9 @@ impl JsEditorHandle {
 
 	// TODO: Replace with initialization system, issue #524
 	pub fn init_app(&self) {
+		let message = PortfolioMessage::UpdateDocumentWidgets;
+		self.dispatch(message);
+
 		// Switch away from, and back to, the Select Tool to make it display the correct hints in the status bar
 		let message = ToolMessage::ActivateTool { tool_type: ToolType::Path };
 		self.dispatch(message);
