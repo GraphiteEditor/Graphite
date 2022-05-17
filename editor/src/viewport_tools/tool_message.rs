@@ -82,6 +82,7 @@ pub enum ToolMessage {
 		tool_type: ToolType,
 	},
 	DocumentIsDirty,
+	InitaliseTools,
 	ResetColors,
 	SelectionChanged,
 	SelectPrimaryColor {

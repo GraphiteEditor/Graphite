@@ -70,12 +70,10 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, &InputPreprocessorMes
 				// Store the new active tool
 				tool_data.active_tool_type = tool_type;
 
-				// Notify the frontend about the new active tool to be displayed
-				let tool_name = tool_type.to_string();
-				responses.push_back(FrontendMessage::UpdateActiveTool { tool_name }.into());
-
 				// Send Properties to the frontend
 				tool_data.tools.get(&tool_type).unwrap().register_properties(responses, LayoutTarget::ToolOptions);
+
+				// Notify the frontend about the new active tool to be displayed
 				tool_data.register_properties(responses, LayoutTarget::ToolShelf);
 			}
 			DocumentIsDirty => {
@@ -84,6 +82,21 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, &InputPreprocessorMes
 				if let Some(message) = standard_tool_message(active_tool, StandardToolMessageType::DocumentIsDirty) {
 					responses.push_back(message.into());
 				}
+			}
+			InitaliseTools => {
+				let tool_data = &mut self.tool_state.tool_data;
+				let document_data = &self.tool_state.document_tool_data;
+				let active_tool = &tool_data.active_tool_type;
+
+				// Register initial properties
+				tool_data.tools.get(active_tool).unwrap().register_properties(responses, LayoutTarget::ToolOptions);
+
+				// Notify the frontend about the initial active tool
+				tool_data.register_properties(responses, LayoutTarget::ToolShelf);
+
+				// Set initial hints and cursor
+				tool_data.active_tool_mut().process_action(ToolMessage::UpdateHints, (document, document_data, input), responses);
+				tool_data.active_tool_mut().process_action(ToolMessage::UpdateCursor, (document, document_data, input), responses);
 			}
 			ResetColors => {
 				let document_data = &mut self.tool_state.document_tool_data;
