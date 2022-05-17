@@ -1,7 +1,7 @@
 import { Editor } from "@/interop/editor";
-import { DialogState } from "@/state/dialog";
-import { FullscreenState } from "@/state/fullscreen";
-import { PortfolioState } from "@/state/portfolio";
+import { DialogState } from "@/providers/dialog";
+import { FullscreenState } from "@/providers/fullscreen";
+import { PortfolioState } from "@/providers/portfolio";
 
 type EventName = keyof HTMLElementEventMap | keyof WindowEventHandlersEventMap | "modifyinputfield";
 interface EventListenerTarget {

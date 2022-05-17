@@ -1,6 +1,6 @@
 import { Editor, getWasmInstance } from "@/interop/editor";
 import { TriggerIndexedDbWriteDocument, TriggerIndexedDbRemoveDocument } from "@/interop/js-messages";
-import { PortfolioState } from "@/state/portfolio";
+import { PortfolioState } from "@/providers/portfolio";
 
 const GRAPHITE_INDEXED_DB_VERSION = 2;
 const GRAPHITE_INDEXED_DB_NAME = "graphite-indexed-db";

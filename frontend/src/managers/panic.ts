@@ -1,6 +1,6 @@
 import { Editor } from "@/interop/editor";
 import { DisplayDialogPanic, WidgetLayout } from "@/interop/js-messages";
-import { DialogState } from "@/state/dialog";
+import { DialogState } from "@/providers/dialog";
 import { stripIndents } from "@/utilities/strip-indents";
 import { TextButtonWidget } from "@/utilities/widgets";
 

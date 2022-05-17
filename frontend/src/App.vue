@@ -262,10 +262,10 @@ import { createEditor, Editor } from "@/interop/editor";
 import { createAutoSaveManager } from "@/managers/auto-save";
 import { createInputManager } from "@/managers/input";
 import { createPanicManager } from "@/managers/panic";
-import { createDialogState, DialogState } from "@/state/dialog";
-import { createFullscreenState, FullscreenState } from "@/state/fullscreen";
-import { createPortfolioState, PortfolioState } from "@/state/portfolio";
-import { createWorkspaceState, WorkspaceState } from "@/state/workspace";
+import { createDialogState, DialogState } from "@/providers/dialog";
+import { createFullscreenState, FullscreenState } from "@/providers/fullscreen";
+import { createPortfolioState, PortfolioState } from "@/providers/portfolio";
+import { createWorkspaceState, WorkspaceState } from "@/providers/workspace";
 
 import LayoutCol from "@/components/layout/LayoutCol.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
